@@ -10,7 +10,7 @@
 // =============================================================================
 
 export type TargetType = 'discord_channel'
-export type BroadcastStatus = 'draft' | 'scheduled' | 'sending' | 'sent' | 'failed'
+export type BroadcastStatus = 'draft' | 'scheduled' | 'sending' | 'sent' | 'failed' | 'rescinded'
 export type DeliveryStatus = 'pending' | 'sent' | 'failed'
 
 // =============================================================================
@@ -325,6 +325,7 @@ export interface Broadcasts {
 			permissionId?: string
 			permissionIds?: string[]
 			status?: BroadcastStatus
+			targetId?: string
 			createdBy?: string
 			limit?: number
 			offset?: number
@@ -361,6 +362,12 @@ export interface Broadcasts {
 	 * @param userId - User ID making the delete
 	 */
 	deleteBroadcast(broadcastId: string, userId: string): Promise<void>
+
+	/**
+	 * Rescind a sent broadcast — edits the Discord message to all strikethrough and marks status rescinded
+	 * @param rescindMessage - Optional message appended after the strikethrough content
+	 */
+	rescindBroadcast(broadcastId: string, userId: string, rescindMessage?: string): Promise<void>
 
 	/**
 	 * Get deliveries for a broadcast

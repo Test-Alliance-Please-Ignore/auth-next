@@ -394,6 +394,20 @@ export interface Discord {
 	): Promise<SendMessageResult>
 
 	/**
+	 * Edit an existing channel message by ID
+	 */
+	editMessage(
+		channelId: string,
+		messageId: string,
+		content: string
+	): Promise<SendMessageResult>
+
+	/**
+	 * Delete a channel message by ID
+	 */
+	deleteMessage(channelId: string, messageId: string): Promise<{ success: boolean; error?: string }>
+
+	/**
 	 * Check which guilds a user is a member of using bot token
 	 * @param coreUserId - Core user ID
 	 * @param guildIds - Array of guild IDs to check

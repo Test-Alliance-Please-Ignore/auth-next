@@ -1,8 +1,9 @@
-import { ArrowLeft, RefreshCw, Send, Trash2 } from 'lucide-react'
+import { ArrowLeft, Ban, RefreshCw, Send, Trash2 } from 'lucide-react'
 import { useState } from 'react'
 import { Link, useNavigate, useParams } from 'react-router-dom'
 
 import { renderDiscordContentValue } from '@/components/discord-content-renderer'
+import { RescindBroadcastDialog } from './rescind-broadcast-dialog'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
@@ -31,7 +32,9 @@ import {
 	useDeleteBroadcast,
 	useSendBroadcast,
 } from '@/hooks/useBroadcasts'
+import { useAuth } from '@/hooks/useAuth'
 import { usePageTitle } from '@/hooks/usePageTitle'
+import { getBroadcastActionVisibility } from '@/lib/broadcast-permissions'
 import { formatDateTimeLocal } from '@/lib/discord-time'
 
 import type { BadgeVariant } from '@/components/ui/badge'
@@ -43,6 +46,7 @@ const statusVariants: Record<BroadcastStatus, BadgeVariant> = {
 	sending: 'warning',
 	sent: 'success',
 	failed: 'destructive',
+	rescinded: 'warning',
 }
 
 const deliveryStatusVariants: Record<DeliveryStatus, BadgeVariant> = {
@@ -59,9 +63,11 @@ export default function BroadcastDetailPage() {
 		broadcastId || ''
 	)
 	const { data: targets } = useBroadcastTargets()
+	const { user, permissions } = useAuth()
 	const sendBroadcast = useSendBroadcast()
 	const deleteBroadcast = useDeleteBroadcast()
 	const [deleteDialogOpen, setDeleteDialogOpen] = useState(false)
+	const [rescindDialogOpen, setRescindDialogOpen] = useState(false)
 	const [message, setMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null)
 
 	usePageTitle(broadcast ? `Broadcast ${broadcast.id.slice(0, 8)}` : 'Broadcast Details')
@@ -97,7 +103,12 @@ export default function BroadcastDetailPage() {
 		targets?.find((target) => target.id === broadcast.targetId)?.name ||
 		broadcast.targetId
 	const canSend = true
-	const canManage = true
+	const { canDelete: canManage, canRescind } = getBroadcastActionVisibility({
+		user,
+		permissions,
+		broadcast,
+		target: broadcast.target,
+	})
 	const isSendable = canSend && ['draft', 'scheduled', 'failed'].includes(broadcast.status)
 
 	const handleSendNow = async () => {
@@ -158,6 +169,17 @@ export default function BroadcastDetailPage() {
 								>
 									<Send className="mr-2 h-4 w-4" />
 									Send Now
+								</Button>
+							)}
+							{canRescind && (
+								<Button
+									variant="cancel"
+									size="sm"
+									onClick={() => setRescindDialogOpen(true)}
+									showIcon={false}
+								>
+									<Ban className="mr-2 h-4 w-4" />
+									Rescind
 								</Button>
 							)}
 							{canManage && (
@@ -328,6 +350,19 @@ export default function BroadcastDetailPage() {
 							</DialogContent>
 						</Dialog>
 					)}
+
+					<RescindBroadcastDialog
+						broadcastId={broadcast.id}
+						open={rescindDialogOpen}
+						onOpenChange={setRescindDialogOpen}
+						onSuccess={async () => {
+							setMessage({ type: 'success', text: 'Broadcast rescinded.' })
+							await refetch()
+						}}
+						onError={(error) => {
+							setMessage({ type: 'error', text: error.message })
+						}}
+					/>
 				</div>
 			</Section>
 		</Container>

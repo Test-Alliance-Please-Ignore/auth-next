@@ -327,6 +327,7 @@ export interface CorporationPermissionWithDetails {
 }
 
 export interface UserPermission {
+	permissionId?: string | null
 	urn: string
 	name: string
 	description: string | null
@@ -940,7 +941,7 @@ export interface PaginatedResponse<T> {
  */
 
 export type TargetType = 'discord_channel'
-export type BroadcastStatus = 'draft' | 'scheduled' | 'sending' | 'sent' | 'failed'
+export type BroadcastStatus = 'draft' | 'scheduled' | 'sending' | 'sent' | 'failed' | 'rescinded'
 export type DeliveryStatus = 'pending' | 'sent' | 'failed'
 
 export interface BroadcastTarget {
@@ -2324,7 +2325,7 @@ export class ApiClient {
 	async getBroadcasts(
 		permissionId?: string,
 		status?: BroadcastStatus,
-		options?: { limit?: number; offset?: number; mine?: boolean }
+		options?: { limit?: number; offset?: number; mine?: boolean; targetId?: string }
 	): Promise<BroadcastListResponse> {
 		const params = new URLSearchParams()
 		if (permissionId) params.set('permissionId', permissionId)
@@ -2332,6 +2333,7 @@ export class ApiClient {
 		if (options?.limit !== undefined) params.set('limit', String(options.limit))
 		if (options?.offset !== undefined) params.set('offset', String(options.offset))
 		if (options?.mine) params.set('mine', 'true')
+		if (options?.targetId) params.set('targetId', options.targetId)
 		const query = params.toString()
 		return this.get(`/broadcasts${query ? `?${query}` : ''}`)
 	}
@@ -2350,6 +2352,10 @@ export class ApiClient {
 
 	async deleteBroadcast(id: string): Promise<{ success: boolean }> {
 		return this.delete(`/broadcasts/${id}`)
+	}
+
+	async rescindBroadcast(id: string, rescindMessage?: string): Promise<{ success: boolean }> {
+		return this.post(`/broadcasts/${id}/rescind`, { rescindMessage })
 	}
 
 	async getBroadcastDeliveries(broadcastId: string): Promise<BroadcastDelivery[]> {

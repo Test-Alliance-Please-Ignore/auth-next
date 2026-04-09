@@ -1,7 +1,8 @@
-import { ExternalLink, Plus, Send, Trash2 } from 'lucide-react'
+import { Ban, ExternalLink, Plus, Send, Trash2 } from 'lucide-react'
 import { useEffect, useState } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
 
+import { RescindBroadcastDialog } from './rescind-broadcast-dialog'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
@@ -31,7 +32,9 @@ import {
 	useDeleteBroadcast,
 	useSendBroadcast,
 } from '@/hooks/useBroadcasts'
+import { useAuth } from '@/hooks/useAuth'
 import { usePageTitle } from '@/hooks/usePageTitle'
+import { getBroadcastActionVisibility } from '@/lib/broadcast-permissions'
 
 import type { BadgeVariant } from '@/components/ui/badge'
 import type { Broadcast, BroadcastStatus } from '@/lib/api'
@@ -42,6 +45,7 @@ const statusVariants: Record<BroadcastStatus, BadgeVariant> = {
 	sending: 'warning',
 	sent: 'success',
 	failed: 'destructive',
+	rescinded: 'warning',
 }
 
 const statusLabels: Record<BroadcastStatus, string> = {
@@ -50,6 +54,7 @@ const statusLabels: Record<BroadcastStatus, string> = {
 	sending: 'Sending',
 	sent: 'Sent',
 	failed: 'Failed',
+	rescinded: 'Rescinded',
 }
 
 export default function BroadcastsPage() {
@@ -58,6 +63,7 @@ export default function BroadcastsPage() {
 	const pageSize = 25
 	const navigate = useNavigate()
 	const [page, setPage] = useState(0)
+	const { user, permissions } = useAuth()
 
 	const { data: broadcastsPage, isLoading } = useBroadcasts(undefined, undefined, {
 		mine: true,
@@ -69,6 +75,7 @@ export default function BroadcastsPage() {
 	const sendBroadcast = useSendBroadcast()
 	const deleteBroadcast = useDeleteBroadcast()
 	const [deleteDialogOpen, setDeleteDialogOpen] = useState(false)
+	const [rescindDialogOpen, setRescindDialogOpen] = useState(false)
 	const [selectedBroadcast, setSelectedBroadcast] = useState<Broadcast | null>(null)
 
 	const myBroadcasts = broadcastsPage?.rows ?? []
@@ -222,6 +229,12 @@ export default function BroadcastsPage() {
 										const template = broadcast.templateId
 											? templates?.find((t) => t.id === broadcast.templateId)
 											: null
+										const { canDelete, canRescind } = getBroadcastActionVisibility({
+											user,
+											permissions,
+											broadcast,
+											target,
+										})
 
 										return (
 											<TableRow key={broadcast.id}>
@@ -261,15 +274,27 @@ export default function BroadcastsPage() {
 																<Send className="h-4 w-4 text-confirm" />
 															</Button>
 														)}
-														<Button
-															variant="ghost"
-															size="sm"
-															onClick={() => handleDeleteClick(broadcast)}
-															disabled={deleteBroadcast.isPending}
-															title="Delete broadcast"
-														>
-															<Trash2 className="h-4 w-4 text-destructive" />
-														</Button>
+														{canRescind && (
+															<Button
+																variant="ghost"
+																size="sm"
+																onClick={() => { setSelectedBroadcast(broadcast); setRescindDialogOpen(true) }}
+																title="Rescind broadcast"
+															>
+																<Ban className="h-4 w-4 text-warning" />
+															</Button>
+														)}
+														{canDelete && (
+															<Button
+																variant="ghost"
+																size="sm"
+																onClick={() => handleDeleteClick(broadcast)}
+																disabled={deleteBroadcast.isPending}
+																title="Delete broadcast"
+															>
+																<Trash2 className="h-4 w-4 text-destructive" />
+															</Button>
+														)}
 													</div>
 												</TableCell>
 											</TableRow>
@@ -334,6 +359,15 @@ export default function BroadcastsPage() {
 					</DialogFooter>
 				</DialogContent>
 			</Dialog>
+
+			<RescindBroadcastDialog
+				broadcastId={selectedBroadcast?.id ?? ""}
+				open={rescindDialogOpen}
+				onOpenChange={(open) => {
+					setRescindDialogOpen(open)
+					if (!open) setSelectedBroadcast(null)
+				}}
+			/>
 		</Container>
 	)
 }

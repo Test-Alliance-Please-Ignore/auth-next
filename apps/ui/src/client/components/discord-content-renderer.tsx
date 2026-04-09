@@ -249,8 +249,22 @@ function renderMarkdownText(text: string, keyPrefix: string): ReactNode {
 	return <div className="space-y-1">{renderedLines}</div>
 }
 
+/**
+ * Pre-process multi-line ~~ spans into per-line ~~...~~ markers so the
+ * inline tokenizer (which is line-scoped) can render them correctly.
+ */
+function normalizeMultilineStrikethrough(text: string): string {
+	return text.replace(/~~([\s\S]+?)~~/g, (_, inner: string) => {
+		if (!inner.includes('\n')) return `~~${inner}~~`
+		return inner
+			.split('\n')
+			.map((line) => (line.trim() ? `~~${line}~~` : line))
+			.join('\n')
+	})
+}
+
 function renderDiscordMarkdown(value: string, keyPrefix: string): ReactNode {
-	const parts = value.split(/(```[\s\S]*?```)/g)
+	const parts = normalizeMultilineStrikethrough(value).split(/(```[\s\S]*?```)/g)
 	return (
 		<>
 			{parts.map((part, index) => {

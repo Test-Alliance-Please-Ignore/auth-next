@@ -28,7 +28,8 @@ export const broadcastKeys = {
 		status: BroadcastStatus | undefined,
 		mine: boolean | undefined,
 		limit: number,
-		offset: number
+		offset: number,
+		targetId: string | undefined
 	) =>
 		[
 			...broadcastKeys.broadcasts(),
@@ -37,6 +38,7 @@ export const broadcastKeys = {
 			mine ? 'mine' : 'all',
 			limit,
 			offset,
+			targetId ?? 'all',
 		] as const,
 	broadcast: (id: string) => [...broadcastKeys.all, id] as const,
 	broadcastsByPermission: (permissionId: string, status?: BroadcastStatus) =>
@@ -202,15 +204,16 @@ export function useDeleteBroadcastTemplate() {
 export function useBroadcasts(
 	permissionId?: string,
 	status?: BroadcastStatus,
-	options?: { limit?: number; offset?: number; mine?: boolean }
+	options?: { limit?: number; offset?: number; mine?: boolean; targetId?: string }
 ) {
 	const limit = options?.limit ?? 25
 	const offset = options?.offset ?? 0
 	const mine = options?.mine ?? false
+	const targetId = options?.targetId
 
 	return useQuery({
-		queryKey: broadcastKeys.broadcastsPage(permissionId, status, mine, limit, offset),
-		queryFn: () => api.getBroadcasts(permissionId, status, { limit, offset, mine }),
+		queryKey: broadcastKeys.broadcastsPage(permissionId, status, mine, limit, offset, targetId),
+		queryFn: () => api.getBroadcasts(permissionId, status, { limit, offset, mine, targetId }),
 		staleTime: 1000 * 30, // 30 seconds
 	})
 }
@@ -269,7 +272,18 @@ export function useDeleteBroadcast() {
 	return useMutation({
 		mutationFn: (id: string) => api.deleteBroadcast(id),
 		onSuccess: () => {
-			// Invalidate all broadcasts lists
+			queryClient.invalidateQueries({ queryKey: broadcastKeys.broadcasts() })
+		},
+	})
+}
+
+export function useRescindBroadcast() {
+	const queryClient = useQueryClient()
+
+	return useMutation({
+		mutationFn: ({ id, rescindMessage }: { id: string; rescindMessage?: string }) =>
+			api.rescindBroadcast(id, rescindMessage),
+		onSuccess: () => {
 			queryClient.invalidateQueries({ queryKey: broadcastKeys.broadcasts() })
 		},
 	})
