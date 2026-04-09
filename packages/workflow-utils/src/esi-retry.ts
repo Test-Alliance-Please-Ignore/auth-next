@@ -56,9 +56,18 @@ export function isEsiRateLimitError(error: unknown): boolean {
  */
 export function isPermanentEsiFailure(error: unknown): boolean {
 	if (!(error instanceof Error)) return false
+
+	// CharacterDeletedError by class name (avoids cross-package instanceof issues)
+	if (error.name === 'CharacterDeletedError') return true
+
 	const msg = error.message.toLowerCase()
 
+	// Match actual ESI error message: "Character 12345 has been deleted"
+	if (msg.includes('has been deleted')) return true
 	if (msg.includes('character deleted') || msg.includes('character_deleted')) return true
+
+	// Generic 404 from ESI — character/resource does not exist, retrying won't help
+	if (msg.includes('esi request failed: 404')) return true
 
 	const isAuthStatus =
 		msg.includes('esi request failed: 400') ||
