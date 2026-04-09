@@ -457,7 +457,7 @@ app.post('/applications/:applicationId/recommendations', requireAuth(), async (c
 			characterName,
 			recommendationText,
 			sentiment,
-			isPublic ?? true
+			isPublic ?? false
 		)
 
 		return c.json(recommendation, 201)
@@ -486,7 +486,7 @@ app.patch('/applications/:applicationId/recommendations/:id', requireAuth(), asy
 			characterId || user.mainCharacterId,
 			recommendationText,
 			sentiment,
-			isPublic ?? true,
+			isPublic ?? false,
 			user.is_admin
 		)
 
