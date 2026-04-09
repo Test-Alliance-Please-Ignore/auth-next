@@ -327,6 +327,7 @@ export interface CorporationPermissionWithDetails {
 }
 
 export interface UserPermission {
+	permissionId?: string | null
 	urn: string
 	name: string
 	description: string | null

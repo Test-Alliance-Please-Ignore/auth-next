@@ -32,7 +32,9 @@ import {
 	useDeleteBroadcast,
 	useSendBroadcast,
 } from '@/hooks/useBroadcasts'
+import { useAuth } from '@/hooks/useAuth'
 import { usePageTitle } from '@/hooks/usePageTitle'
+import { getBroadcastActionVisibility } from '@/lib/broadcast-permissions'
 import { formatDateTimeLocal } from '@/lib/discord-time'
 
 import type { BadgeVariant } from '@/components/ui/badge'
@@ -61,6 +63,7 @@ export default function BroadcastDetailPage() {
 		broadcastId || ''
 	)
 	const { data: targets } = useBroadcastTargets()
+	const { user, permissions } = useAuth()
 	const sendBroadcast = useSendBroadcast()
 	const deleteBroadcast = useDeleteBroadcast()
 	const [deleteDialogOpen, setDeleteDialogOpen] = useState(false)
@@ -100,7 +103,12 @@ export default function BroadcastDetailPage() {
 		targets?.find((target) => target.id === broadcast.targetId)?.name ||
 		broadcast.targetId
 	const canSend = true
-	const canManage = true
+	const { canDelete: canManage, canRescind } = getBroadcastActionVisibility({
+		user,
+		permissions,
+		broadcast,
+		target: broadcast.target,
+	})
 	const isSendable = canSend && ['draft', 'scheduled', 'failed'].includes(broadcast.status)
 
 	const handleSendNow = async () => {
@@ -163,7 +171,7 @@ export default function BroadcastDetailPage() {
 									Send Now
 								</Button>
 							)}
-							{broadcast.status === 'sent' && (
+							{canRescind && (
 								<Button
 									variant="cancel"
 									size="sm"

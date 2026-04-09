@@ -816,9 +816,11 @@ broadcasts.post('/:id/rescind', async (c) => {
 		return c.json({ error: 'Broadcast not found' }, 404)
 	}
 
+	const isOwner = broadcast.createdBy === user.id
 	const allowed = user.is_admin
 		? true
-		: canAccessBroadcastPermissionId(
+		: isOwner ||
+			canAccessBroadcastPermissionId(
 				broadcast.target.managePermissionId,
 				'manage',
 				await getUserBroadcastPermissionContext(c.env, user.id)
