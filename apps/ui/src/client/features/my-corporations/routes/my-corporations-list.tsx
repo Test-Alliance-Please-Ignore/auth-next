@@ -5,7 +5,7 @@
  */
 
 import { AlertCircle, ArrowLeft, Building2, Settings, Shield, Star, Users } from 'lucide-react'
-import { useEffect } from 'react'
+import { useEffect, useMemo } from 'react'
 import { Link, Navigate } from 'react-router-dom'
 
 import {
@@ -35,6 +35,17 @@ export default function MyCorporationsList() {
 	const { data: corporations, isLoading: corporationsLoading, error } = useMyCorporations()
 	const { prefetchMembers } = useCorporationManager()
 
+	// Identify HR-only corporations (not in the CEO/Director list)
+	const hrOnlyCorporations = useMemo(() => {
+		if (!access?.corporations) return []
+		const leadershipCorpIds = new Set((corporations ?? []).map((c) => c.corporationId))
+		return access.corporations.filter(
+			(c) =>
+				!leadershipCorpIds.has(c.corporationId) &&
+				(c.userRole === 'hr_admin' || c.userRole === 'hr_reviewer' || c.userRole === 'hr_viewer')
+		)
+	}, [access, corporations])
+
 	// Prefetch member data for all corporations
 	useEffect(() => {
 		if (corporations && corporations.length > 0) {
@@ -57,8 +68,7 @@ export default function MyCorporationsList() {
 						<Building2 className="h-16 w-16 mx-auto text-muted-foreground mb-4" />
 						<CardTitle className="text-2xl">No Corporation Access</CardTitle>
 						<CardDescription className="mt-2">
-							You don't have CEO or director access to any managed corporations. This feature is
-							only available to corporation leadership.
+							You don't have CEO, director, or HR access to any managed corporations.
 						</CardDescription>
 					</CardHeader>
 					<CardContent className="text-center">
@@ -137,7 +147,7 @@ export default function MyCorporationsList() {
 	}
 
 	// No corporations (shouldn't happen if access check passed, but just in case)
-	if (!corporations || corporations.length === 0) {
+	if ((!corporations || corporations.length === 0) && hrOnlyCorporations.length === 0) {
 		return (
 			<div className="container mx-auto max-w-6xl px-4 py-8">
 				<Card className="max-w-2xl mx-auto">
@@ -163,127 +173,160 @@ export default function MyCorporationsList() {
 					My Corporations
 				</h1>
 				<p className="text-muted-foreground mt-2">
-					Manage corporations where you have CEO or director access
+					Manage corporations where you have leadership or HR access
 				</p>
 			</div>
 
 			{/* Corporations Accordion */}
-			<Card>
-				<Accordion type="multiple" className="w-full">
-					{corporations.map((corporation) => {
-						const linkPercentage = Math.round(
-							(corporation.linkedMemberCount / corporation.memberCount) * 100
-						)
+			{corporations && corporations.length > 0 && (
+				<Card>
+					<Accordion type="multiple" className="w-full">
+						{corporations.map((corporation) => {
+							const linkPercentage = Math.round(
+								(corporation.linkedMemberCount / corporation.memberCount) * 100
+							)
 
-						return (
-							<AccordionItem key={corporation.corporationId} value={corporation.corporationId}>
-								<AccordionTrigger className="px-6 hover:no-underline">
-									<div className="flex items-center justify-between w-full pr-4">
-										<div className="flex items-center gap-3 text-left">
-											<Building2 className="h-5 w-5 text-primary" />
-											<div>
-												<div className="flex items-center gap-2">
-													<span className="font-semibold">
-														{corporation.name} [{corporation.ticker}]
-													</span>
-													{corporation.userRole === 'CEO' && (
-														<Badge variant="warning">
-															<Star className="mr-1 h-3 w-3" />
-															CEO
-														</Badge>
-													)}
-													{corporation.userRole === 'Director' && (
-														<Badge variant="secondary">
-															<Shield className="mr-1 h-3 w-3" />
-															Director
-														</Badge>
-													)}
-													{corporation.userRole === 'Both' && (
-														<>
+							return (
+								<AccordionItem key={corporation.corporationId} value={corporation.corporationId}>
+									<AccordionTrigger className="px-6 hover:no-underline">
+										<div className="flex items-center justify-between w-full pr-4">
+											<div className="flex items-center gap-3 text-left">
+												<Building2 className="h-5 w-5 text-primary" />
+												<div>
+													<div className="flex items-center gap-2">
+														<span className="font-semibold">
+															{corporation.name} [{corporation.ticker}]
+														</span>
+														{corporation.userRole === 'CEO' && (
 															<Badge variant="warning">
 																<Star className="mr-1 h-3 w-3" />
 																CEO
 															</Badge>
+														)}
+														{corporation.userRole === 'Director' && (
 															<Badge variant="secondary">
 																<Shield className="mr-1 h-3 w-3" />
 																Director
 															</Badge>
-														</>
-													)}
-												</div>
-												<p className="text-xs text-muted-foreground">
-													{corporation.memberCount} members
-													{corporation.allianceId && ` • Alliance: ${corporation.allianceId}`}
-												</p>
-											</div>
-										</div>
-									</div>
-								</AccordionTrigger>
-								<AccordionContent className="px-6 pb-4">
-									<div className="space-y-4 pt-2">
-										{/* Member Statistics */}
-										<div className="grid grid-cols-2 gap-4">
-											<div>
-												<div className="text-sm text-muted-foreground">Total Members</div>
-												<div className="text-2xl font-bold flex items-center gap-2">
-													<Users className="h-5 w-5" />
-													{corporation.memberCount}
-												</div>
-												<div className="text-xs text-muted-foreground mt-1">
-													Excludes emeritus characters
-												</div>
-											</div>
-											<div>
-												<div className="text-sm text-muted-foreground">Auth Status</div>
-												<div className="text-sm">
-													<span className="text-green-500">{corporation.linkedMemberCount}</span>
-													<span className="text-muted-foreground"> / </span>
-													<span className="text-yellow-500">{corporation.unlinkedMemberCount}</span>
-												</div>
-												<Progress value={linkPercentage} className="mt-1 h-2" />
-												<div className="text-xs text-muted-foreground mt-1">
-													{linkPercentage}% linked
+														)}
+														{corporation.userRole === 'Both' && (
+															<>
+																<Badge variant="warning">
+																	<Star className="mr-1 h-3 w-3" />
+																	CEO
+																</Badge>
+																<Badge variant="secondary">
+																	<Shield className="mr-1 h-3 w-3" />
+																	Director
+																</Badge>
+															</>
+														)}
+													</div>
+													<p className="text-xs text-muted-foreground">
+														{corporation.memberCount} members
+														{corporation.allianceId && ` • Alliance: ${corporation.allianceId}`}
+													</p>
 												</div>
 											</div>
 										</div>
+									</AccordionTrigger>
+									<AccordionContent className="px-6 pb-4">
+										<div className="space-y-4 pt-2">
+											{/* Member Statistics */}
+											<div className="grid grid-cols-2 gap-4">
+												<div>
+													<div className="text-sm text-muted-foreground">Total Members</div>
+													<div className="text-2xl font-bold flex items-center gap-2">
+														<Users className="h-5 w-5" />
+														{corporation.memberCount}
+													</div>
+													<div className="text-xs text-muted-foreground mt-1">
+														Excludes emeritus characters
+													</div>
+												</div>
+												<div>
+													<div className="text-sm text-muted-foreground">Auth Status</div>
+													<div className="text-sm">
+														<span className="text-green-500">{corporation.linkedMemberCount}</span>
+														<span className="text-muted-foreground"> / </span>
+														<span className="text-yellow-500">{corporation.unlinkedMemberCount}</span>
+													</div>
+													<Progress value={linkPercentage} className="mt-1 h-2" />
+													<div className="text-xs text-muted-foreground mt-1">
+														{linkPercentage}% linked
+													</div>
+												</div>
+											</div>
 
-										{/* Warning for low link rate */}
-										{linkPercentage < 50 && (
-											<div className="flex items-center gap-2 p-2 bg-yellow-500/10 rounded-md">
-												<AlertCircle className="h-4 w-4 text-yellow-500" />
-												<span className="text-sm text-yellow-600 dark:text-yellow-400">
-													{corporation.unlinkedMemberCount} members need auth accounts linked
-												</span>
-											</div>
-										)}
+											{/* Warning for low link rate */}
+											{linkPercentage < 50 && (
+												<div className="flex items-center gap-2 p-2 bg-yellow-500/10 rounded-md">
+													<AlertCircle className="h-4 w-4 text-yellow-500" />
+													<span className="text-sm text-yellow-600 dark:text-yellow-400">
+														{corporation.unlinkedMemberCount} members need auth accounts linked
+													</span>
+												</div>
+											)}
 
-										{/* Action Buttons */}
-										<div>
-											<Button variant="primary"
-												asChild
-												className="w-full bg-[hsl(220_10%_40%)] text-white border-2 border-[hsl(220_10%_40%)]/70 shadow-lg shadow-[hsl(220_10%_40%)]/25 hover:bg-[hsl(220_10%_32%)] hover:shadow-xl hover:shadow-[hsl(220_10%_32%)]/40 hover:border-[hsl(220_10%_32%)]/70 focus-visible:ring-2 focus-visible:ring-[hsl(220_10%_40%)] focus-visible:ring-offset-2 transition-all duration-200"
-											>
-												<Link to={`/my-corporations/${corporation.corporationId}/members`}>
-													<Settings className="mr-2 h-4 w-4" />
-													Manage Corporation
-												</Link>
-											</Button>
+											{/* Action Buttons */}
+											<div>
+												<Button variant="primary"
+													asChild
+													className="w-full bg-[hsl(220_10%_40%)] text-white border-2 border-[hsl(220_10%_40%)]/70 shadow-lg shadow-[hsl(220_10%_40%)]/25 hover:bg-[hsl(220_10%_32%)] hover:shadow-xl hover:shadow-[hsl(220_10%_32%)]/40 hover:border-[hsl(220_10%_32%)]/70 focus-visible:ring-2 focus-visible:ring-[hsl(220_10%_40%)] focus-visible:ring-offset-2 transition-all duration-200"
+												>
+													<Link to={`/my-corporations/${corporation.corporationId}/members`}>
+														<Settings className="mr-2 h-4 w-4" />
+														Manage Corporation
+													</Link>
+												</Button>
+											</div>
 										</div>
-									</div>
-								</AccordionContent>
-							</AccordionItem>
-						)
-					})}
-				</Accordion>
-			</Card>
+									</AccordionContent>
+								</AccordionItem>
+							)
+						})}
+					</Accordion>
+				</Card>
+			)}
+
+			{/* HR-Only Corporations */}
+			{hrOnlyCorporations.length > 0 && (
+				<div className={corporations && corporations.length > 0 ? 'mt-6' : ''}>
+					{corporations && corporations.length > 0 && (
+						<h2 className="text-lg font-semibold mb-3">HR Access</h2>
+					)}
+					<div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+						{hrOnlyCorporations.map((corp) => (
+							<Card key={corp.corporationId}>
+								<CardHeader>
+									<CardTitle className="flex items-center justify-between gap-3">
+										<span className="flex items-center gap-2">
+											<Building2 className="h-5 w-5 text-primary" />
+											{corp.name} {corp.ticker ? `[${corp.ticker}]` : ''}
+										</span>
+										<Badge variant="ghost">
+											{corp.userRole.replace('_', ' ')}
+										</Badge>
+									</CardTitle>
+								</CardHeader>
+								<CardContent>
+									<Button variant="primary" asChild className="w-full">
+										<Link to={`/my-corporations/${corp.corporationId}/members`}>
+											<Users className="mr-2 h-4 w-4" />
+											View Members
+										</Link>
+									</Button>
+								</CardContent>
+							</Card>
+						))}
+					</div>
+				</div>
+			)}
 
 			{/* Help Text */}
 			<div className="mt-8 text-center">
 				<p className="text-sm text-muted-foreground">
-					Only showing managed corporations where you have CEO or director roles.
-				</p>
-				<p className="text-sm text-muted-foreground mt-1">
-					Expand each corporation to see member statistics and access controls.
+					Showing managed corporations where you have leadership or HR roles.
 				</p>
 			</div>
 		</div>

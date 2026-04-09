@@ -42,7 +42,7 @@ export default function FulcrumReportPage() {
 	const fromApplication = !!applicationId
 	const backPath = fromApplication
 		? `/corporations/${corporationId}/hr/applications/${applicationId}?tab=fulcrum`
-		: `/corporations/${corporationId}/hr/dashboard`
+		: `/my-corporations/${corporationId}/members`
 	const backLabel = fromApplication ? 'Back to Application' : 'Back to HR Dashboard'
 
 	return (

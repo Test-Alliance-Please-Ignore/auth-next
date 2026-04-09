@@ -224,8 +224,8 @@ export default function HrApplicationReview() {
 						</BreadcrumbItem>
 						<BreadcrumbSeparator />
 						<BreadcrumbItem>
-							<BreadcrumbLink to={`/corporations/${corporationId}/hr/dashboard`}>
-								HR Dashboard
+							<BreadcrumbLink to={`/my-corporations/${corporationId}/members`}>
+								Members
 							</BreadcrumbLink>
 						</BreadcrumbItem>
 						<BreadcrumbSeparator />

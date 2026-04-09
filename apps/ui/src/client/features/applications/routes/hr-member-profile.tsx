@@ -425,10 +425,10 @@ export default function HrMemberProfile() {
 						</p>
 						<Button
 							variant="ghost"
-							onClick={() => navigate(`/corporations/${corporationId}/hr/dashboard`)}
+							onClick={() => navigate(`/my-corporations/${corporationId}/members`)}
 						>
 							<ArrowLeft className="mr-2 h-4 w-4" />
-							Back to HR Dashboard
+							Back to Members
 						</Button>
 					</CardContent>
 				</Card>
@@ -449,8 +449,8 @@ export default function HrMemberProfile() {
 						</BreadcrumbItem>
 						<BreadcrumbSeparator />
 						<BreadcrumbItem>
-							<BreadcrumbLink to={`/corporations/${corporationId}/hr/dashboard`}>
-								HR Dashboard
+							<BreadcrumbLink to={`/my-corporations/${corporationId}/members`}>
+								Members
 							</BreadcrumbLink>
 						</BreadcrumbItem>
 						<BreadcrumbSeparator />
@@ -461,7 +461,7 @@ export default function HrMemberProfile() {
 				</Breadcrumb>
 				<Button
 					variant="ghost"
-					onClick={() => navigate(`/corporations/${corporationId}/hr/dashboard`)}
+					onClick={() => navigate(`/my-corporations/${corporationId}/members`)}
 				>
 					<ArrowLeft className="mr-2 h-4 w-4" />
 					Back

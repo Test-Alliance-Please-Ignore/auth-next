@@ -213,11 +213,12 @@ export function useCanAccessCorporation(corporationId: string) {
 		return access.corporations.some((corp) => corp.corporationId === corporationId)
 	}, [access, corporationId])
 
-	const userRole = useMemo(() => {
+	const corporation = useMemo(() => {
 		if (!access) return undefined
-		const corp = access.corporations.find((c) => c.corporationId === corporationId)
-		return corp?.userRole
+		return access.corporations.find((c) => c.corporationId === corporationId)
 	}, [access, corporationId])
 
-	return { canAccess, userRole, isLoading, isFetching }
+	const userRole = corporation?.userRole
+
+	return { canAccess, userRole, corporation, isLoading, isFetching }
 }

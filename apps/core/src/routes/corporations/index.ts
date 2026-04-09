@@ -380,9 +380,9 @@ app.get('/browse/:corporationId', requireAuth(), async (c) => {
 			where: hasManagementAccess
 				? eq(managedCorporations.corporationId, corporationId)
 				: and(
-						eq(managedCorporations.corporationId, corporationId),
-						eq(managedCorporations.isRecruiting, true)
-					),
+					eq(managedCorporations.corporationId, corporationId),
+					eq(managedCorporations.isRecruiting, true)
+				),
 		})
 
 		if (!corporation) {
@@ -1104,29 +1104,29 @@ app.get('/:corporationId/data', requireAuth(), requireAdmin(), async (c) => {
 			publicInfo,
 			coreData: coreData
 				? {
-						memberCount: coreData.members.length,
-						trackingCount: coreData.memberTracking.length,
-					}
+					memberCount: coreData.members.length,
+					trackingCount: coreData.memberTracking.length,
+				}
 				: null,
 			financialData: financialData
 				? {
-						walletCount: financialData.wallets.length,
-						journalCount: financialData.journalEntries.length,
-						transactionCount: financialData.transactions.length,
-					}
+					walletCount: financialData.wallets.length,
+					journalCount: financialData.journalEntries.length,
+					transactionCount: financialData.transactions.length,
+				}
 				: null,
 			assetsData: assetsData
 				? {
-						assetCount: assetsData.assets.length,
-						structureCount: assetsData.structures.length,
-					}
+					assetCount: assetsData.assets.length,
+					structureCount: assetsData.structures.length,
+				}
 				: null,
 			marketData: marketData
 				? {
-						orderCount: marketData.orders.length,
-						contractCount: marketData.contracts.length,
-						industryJobCount: marketData.industryJobs.length,
-					}
+					orderCount: marketData.orders.length,
+					contractCount: marketData.contracts.length,
+					industryJobCount: marketData.industryJobs.length,
+				}
 				: null,
 			killmailCount: killmails.length,
 		}
@@ -1172,14 +1172,22 @@ app.get('/:corporationId/members', requireAuth(), async (c) => {
 			return c.json({ error: 'Corporation not found or not managed' }, 404)
 		}
 
-		// Check if user has CEO/Director/Admin access
-		let userRole: 'admin' | 'CEO' | 'Director'
+		// Check if user has CEO/Director/Admin access or an HR role
+		let userRole: 'admin' | 'CEO' | 'Director' | 'hr_admin' | 'hr_reviewer' | 'hr_viewer'
 		try {
 			const access = await checkCorporationAccess(c, corporationId)
 			userRole = access.role
-		} catch (error) {
-			// Authorization failed - return 403
-			return c.json({ error: error instanceof Error ? error.message : 'Access denied' }, 403)
+		} catch {
+			// CEO/Director/Admin check failed — fall back to HR role check
+			const hr = getStub<Hr>(c.env.HR, 'default')
+			const hasHrAccess = await hr.checkPermission(user.id, corporationId, 'hr_viewer')
+			if (!hasHrAccess) {
+				return c.json({ error: 'Access denied. Corporation CEO, Director, site admin, or HR role required.' }, 403)
+			}
+			// Determine the specific HR role for logging
+			const isHrAdmin = await hr.checkPermission(user.id, corporationId, 'hr_admin')
+			const isHrReviewer = !isHrAdmin && await hr.checkPermission(user.id, corporationId, 'hr_reviewer')
+			userRole = isHrAdmin ? 'hr_admin' : isHrReviewer ? 'hr_reviewer' : 'hr_viewer'
 		}
 
 		logger.info('[Corporations] User has access', { corporationId, userId: user.id, userRole })
@@ -1235,8 +1243,8 @@ app.get('/:corporationId/members', requireAuth(), async (c) => {
 		const linkedCharacters =
 			memberCharacterIds.length > 0
 				? await db.query.userCharacters.findMany({
-						where: inArray(userCharacters.characterId, memberCharacterIds),
-					})
+					where: inArray(userCharacters.characterId, memberCharacterIds),
+				})
 				: []
 
 		const linkedCharacterMap = new Map(linkedCharacters.map((c) => [c.characterId, c]))
@@ -1262,8 +1270,8 @@ app.get('/:corporationId/members', requireAuth(), async (c) => {
 		const linkedUsers =
 			linkedUserIds.length > 0
 				? await db.query.users.findMany({
-						where: inArray(users.id, linkedUserIds),
-					})
+					where: inArray(users.id, linkedUserIds),
+				})
 				: []
 
 		// Resolve main character IDs to character names

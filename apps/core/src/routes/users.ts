@@ -14,6 +14,7 @@ import { UserService } from '../services/user.service'
 
 import type { EveCharacterData } from '@repo/eve-character-data'
 import type { EveCorporationData } from '@repo/eve-corporation-data'
+import type { Hr } from '@repo/hr'
 import type { App } from '../context'
 import type { RequestMetadata, UserPreferencesDTO } from '@repo/core'
 
@@ -389,6 +390,17 @@ users.get('/has-corporation-access', async (c) => {
 			}
 		}
 
+		// Also check if user has any HR roles
+		try {
+			const hrStub = getStub<Hr>(c.env.HR, 'default')
+			const hrCorpIds = await hrStub.getUserHrCorporations(user.id)
+			if (hrCorpIds.length > 0) {
+				return c.json({ hasAccess: true })
+			}
+		} catch {
+			// Ignore HR check failures
+		}
+
 		return c.json({ hasAccess: false })
 	} catch (error) {
 		logger.error('Error checking corporation access:', error)
@@ -597,7 +609,66 @@ users.get('/corporation-access', async (c) => {
 
 		// Wait for all corporation checks in parallel
 		const corpResults = await Promise.all(corpCheckPromises)
-		const accessibleCorporations = corpResults.filter((result) => result !== null)
+		const accessibleCorporations: Array<{
+			corporationId: string
+			name: string
+			ticker: string
+			userRole: 'CEO' | 'Director' | 'admin' | 'hr_admin' | 'hr_reviewer' | 'hr_viewer'
+			characterId: string | null
+			characterName: string | null
+		}> = corpResults.filter((result) => result !== null)
+
+		// Also check HR roles across all managed corporations
+		const accessibleCorpIds = new Set(accessibleCorporations.map((c) => c.corporationId))
+		const hrStub = getStub<Hr>(c.env.HR, 'default')
+		const hrCorpIds = await hrStub.getUserHrCorporations(user.id)
+		const uniqueHrCorpIds = [...new Set(hrCorpIds)].filter((id) => !accessibleCorpIds.has(id))
+
+		if (uniqueHrCorpIds.length > 0) {
+			const roleHierarchy: Record<string, number> = {
+				hr_admin: 3,
+				hr_reviewer: 2,
+				hr_viewer: 1,
+			}
+
+			const hrCorpResults = await Promise.all(
+				uniqueHrCorpIds.map(async (corpId) => {
+					try {
+						const roles = await hrStub.getUserRoles(user.id, corpId)
+						const activeRoles = roles.filter((r) => r.isActive)
+						if (activeRoles.length === 0) return null
+
+						const highestRole = activeRoles.reduce((highest, role) => {
+							const highestLevel = roleHierarchy[highest.role] ?? 0
+							const currentLevel = roleHierarchy[role.role] ?? 0
+							return currentLevel > highestLevel ? role : highest
+						}, activeRoles[0])
+
+						const corp = managedCorps.find((mc) => mc.corporationId === corpId)
+						if (!corp) return null
+
+						return {
+							corporationId: corpId,
+							name: corp.name,
+							ticker: corp.ticker,
+							userRole: highestRole.role as 'hr_admin' | 'hr_reviewer' | 'hr_viewer',
+							characterId: null,
+							characterName: null,
+						}
+					} catch (error) {
+						logger.error('[Corporation Access] Error checking HR roles for corporation', {
+							corporationId: corpId,
+							error: error instanceof Error ? error.message : String(error),
+						})
+						return null
+					}
+				})
+			)
+
+			for (const result of hrCorpResults) {
+				if (result) accessibleCorporations.push(result)
+			}
+		}
 
 		const result = {
 			hasAccess: accessibleCorporations.length > 0,
@@ -825,12 +896,12 @@ users.get('/my-corporations', async (c) => {
 		const linkedCharacters =
 			allMemberCharIds.size > 0
 				? await db.query.userCharacters.findMany({
-						where: inArray(userCharacters.characterId, Array.from(allMemberCharIds)),
-						columns: {
-							characterId: true,
-							status: true,
-						},
-					})
+					where: inArray(userCharacters.characterId, Array.from(allMemberCharIds)),
+					columns: {
+						characterId: true,
+						status: true,
+					},
+				})
 				: []
 
 		// Create fast lookup set (excluding emeritus characters from statistics)

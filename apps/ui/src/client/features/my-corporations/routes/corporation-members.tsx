@@ -10,7 +10,6 @@ import {
 	Building2,
 	Download,
 	FileText,
-	LayoutDashboard,
 	RefreshCw,
 	Settings,
 } from 'lucide-react'
@@ -55,17 +54,34 @@ export default function CorporationMembers() {
 	const { showSuccess, showError } = useMessage()
 
 	const { user, isAuthenticated, isLoading: authLoading } = useAuth()
-	const { canAccess, userRole } = useCanAccessCorporation(corporationId!)
+	const { canAccess, userRole, corporation: accessCorp } = useCanAccessCorporation(corporationId!)
 	const { data: corporation, isLoading: corpLoading } = useMyCorporation(corporationId!)
 	const { data: members, isLoading: membersLoading, error } = useCorporationMembers(corporationId!)
 	const { data: hrRoles, isLoading: hrRolesLoading } = useHrRoles(corporationId!)
 	const { invalidateMembers } = useCorporationManager()
 	const [isRefreshing, setIsRefreshing] = useState(false)
 
-	// Check if current user can manage HR roles (CEOs and site admins)
+	// Determine capability flags based on user role
+	const isLeadership = userRole === 'CEO' || userRole === 'Director' || userRole === 'admin'
+	const isHrAdmin = userRole === 'hr_admin'
+	const isHrOnly = userRole === 'hr_admin' || userRole === 'hr_reviewer' || userRole === 'hr_viewer'
+
+	// Can refresh data: CEO/Director/admin only
+	const canRefresh = isLeadership
+
+	// Can export CSV: CEO/Director/admin/hr_admin
+	const canExport = isLeadership || isHrAdmin
+
+	// Can manage HR roles: CEO/admin can manage all, hr_admin can manage reviewer/viewer
 	const canManageHrRoles = useMemo(() => {
-		return userRole === 'CEO' || userRole === 'admin'
+		return userRole === 'CEO' || userRole === 'admin' || userRole === 'hr_admin'
 	}, [userRole])
+
+	// Can manage emeritus status: CEO/admin only
+	const canManageEmeritus = userRole === 'CEO' || userRole === 'admin'
+
+	// Can access settings: CEO/Director/admin/hr_admin
+	const canAccessSettings = isLeadership || isHrAdmin
 
 	// Check if current user has HR role
 	const currentUserHrRole = useMemo(() => {
@@ -86,9 +102,14 @@ export default function CorporationMembers() {
 		})
 	}, [members, hrRoles])
 
+	// Corporation info - use My Corporations data with access data as fallback (for HR-only users)
+	const corpName = corporation?.name ?? accessCorp?.name ?? 'Corporation'
+	const corpTicker = corporation?.ticker ?? accessCorp?.ticker
+	const corpAllianceName = corporation?.allianceName
+
 	// Set page title
 	usePageTitle(
-		corporation ? `${corporation.name} Members | My Corporations` : 'Corporation Members'
+		corporation || accessCorp ? `${corpName} Members | My Corporations` : 'Corporation Members'
 	)
 
 	// Handlers
@@ -107,10 +128,14 @@ export default function CorporationMembers() {
 
 	const handleMemberClick = useCallback(
 		(member: CorporationMember) => {
-			// Navigate to character detail page
-			navigate(`/character/${member.characterId}`)
+			// Navigate to HR member profile if user has an auth account
+			if (member.hasAuthAccount && member.authUserId) {
+				navigate(`/corporations/${corporationId}/hr/members/${member.authUserId}`)
+			} else {
+				navigate(`/character/${member.characterId}`)
+			}
 		},
-		[navigate]
+		[navigate, corporationId]
 	)
 
 	const handleLinkAccount = useCallback(
@@ -159,12 +184,12 @@ export default function CorporationMembers() {
 		const url = URL.createObjectURL(blob)
 		const a = document.createElement('a')
 		a.href = url
-		a.download = `${corporation?.name || 'corporation'}-members-${new Date().toISOString().split('T')[0]}.csv`
+		a.download = `${corpName}-members-${new Date().toISOString().split('T')[0]}.csv`
 		a.click()
 		URL.revokeObjectURL(url)
 
 		showSuccess('Member list exported')
-	}, [membersWithHrRoles, corporation, showSuccess])
+	}, [membersWithHrRoles, corpName, showSuccess])
 
 	// Check authentication
 	if (!authLoading && !isAuthenticated) {
@@ -196,8 +221,8 @@ export default function CorporationMembers() {
 						<AlertCircle className="h-16 w-16 mx-auto text-red-500 mb-4" />
 						<CardTitle className="text-2xl text-red-900 dark:text-red-100">Access Denied</CardTitle>
 						<CardDescription className="mt-2 text-red-700 dark:text-red-300">
-							You don't have permission to view members of this corporation. CEO or director access
-							is required.
+							You don't have permission to view members of this corporation. CEO, director, or
+							HR role access is required.
 						</CardDescription>
 					</CardHeader>
 					<CardContent className="text-center">
@@ -257,7 +282,7 @@ export default function CorporationMembers() {
 					</BreadcrumbItem>
 					<BreadcrumbSeparator />
 					<BreadcrumbItem>
-						<BreadcrumbPage>{corporation?.name || 'Corporation'}</BreadcrumbPage>
+						<BreadcrumbPage>{corpName}</BreadcrumbPage>
 					</BreadcrumbItem>
 					<BreadcrumbSeparator />
 					<BreadcrumbItem>
@@ -272,12 +297,12 @@ export default function CorporationMembers() {
 					<div>
 						<h1 className="text-3xl font-bold flex items-center gap-3">
 							<Building2 className="h-8 w-8" />
-							{corporation?.name || 'Corporation'} Members
+							{corpName} Members
 						</h1>
 						<p className="text-muted-foreground mt-2">
 							View and manage all members of{' '}
-							{corporation?.ticker ? `[${corporation.ticker}]` : 'this corporation'}
-							{corporation?.allianceName && ` • Alliance: ${corporation.allianceName}`}
+							{corpTicker ? `[${corpTicker}]` : 'this corporation'}
+							{corpAllianceName && ` • Alliance: ${corpAllianceName}`}
 						</p>
 						{userRole && (
 							<p className="text-sm text-muted-foreground mt-1">
@@ -286,17 +311,21 @@ export default function CorporationMembers() {
 						)}
 					</div>
 					<div className="flex gap-2">
-						<Button variant="ghost" onClick={handleRefresh} disabled={isRefreshing}>
-							<RefreshCw className={`mr-2 h-4 w-4 ${isRefreshing ? 'animate-spin' : ''}`} />
-							{isRefreshing ? 'Refreshing...' : 'Refresh'}
-						</Button>
-						<Button variant="ghost"
-							onClick={handleExport}
-							disabled={!membersWithHrRoles || membersWithHrRoles.length === 0}
-						>
-							<Download className="mr-2 h-4 w-4" />
-							Export CSV
-						</Button>
+						{canRefresh && (
+							<Button variant="ghost" onClick={handleRefresh} disabled={isRefreshing}>
+								<RefreshCw className={`mr-2 h-4 w-4 ${isRefreshing ? 'animate-spin' : ''}`} />
+								{isRefreshing ? 'Refreshing...' : 'Refresh'}
+							</Button>
+						)}
+						{canExport && (
+							<Button variant="ghost"
+								onClick={handleExport}
+								disabled={!membersWithHrRoles || membersWithHrRoles.length === 0}
+							>
+								<Download className="mr-2 h-4 w-4" />
+								Export CSV
+							</Button>
+						)}
 						<Button variant="ghost" asChild>
 							<Link to="/my-corporations">
 								<ArrowLeft className="mr-2 h-4 w-4" />
@@ -316,8 +345,8 @@ export default function CorporationMembers() {
 							HR Management
 						</CardTitle>
 						<CardDescription>
-							{currentUserHrRole
-								? `You have ${currentUserHrRole.role} access for this corporation`
+							{isHrOnly && !isLeadership
+								? `You have ${userRole.replace('_', ' ')} access for this corporation`
 								: userRole === 'CEO'
 									? 'You have CEO access to all HR features'
 									: 'You have site admin access to all HR features'}
@@ -326,24 +355,20 @@ export default function CorporationMembers() {
 					<CardContent>
 						<div className="flex flex-wrap gap-2">
 							<Button variant="primary" asChild>
-								<Link to={`/corporations/${corporationId}/hr/dashboard`}>
-									<LayoutDashboard className="mr-2 h-4 w-4" />
-									HR Dashboard
-								</Link>
-							</Button>
-							<Button variant="primary" asChild>
 								<Link to={`/corporations/${corporationId}/hr/applications`}>
 									<FileText className="mr-2 h-4 w-4" />
 									Review Applications
 								</Link>
 							</Button>
-							<Button variant="ghost" asChild>
-								<Link to={`/corporations/${corporationId}/hr/roles`}>
-									<Settings className="mr-2 h-4 w-4" />
-									Manage HR Roles
-								</Link>
-							</Button>
 							{canManageHrRoles && (
+								<Button variant="ghost" asChild>
+									<Link to={`/corporations/${corporationId}/hr/roles`}>
+										<Settings className="mr-2 h-4 w-4" />
+										Manage HR Roles
+									</Link>
+								</Button>
+							)}
+							{canAccessSettings && (
 								<Button variant="ghost" asChild>
 									<Link to={`/my-corporations/${corporationId}/settings`}>
 										<Settings className="mr-2 h-4 w-4" />
@@ -374,6 +399,7 @@ export default function CorporationMembers() {
 						onLinkAccount={handleLinkAccount}
 						showActions={true}
 						canManageHrRoles={canManageHrRoles}
+						canManageEmeritus={canManageEmeritus}
 						corporationId={corporationId!}
 					/>
 				) : (
@@ -389,10 +415,12 @@ export default function CorporationMembers() {
 							<p className="text-sm text-muted-foreground mb-4">
 								Member data may need to be fetched from ESI.
 							</p>
-							<Button variant="primary" onClick={handleRefresh} disabled={isRefreshing}>
-								<RefreshCw className={`mr-2 h-4 w-4 ${isRefreshing ? 'animate-spin' : ''}`} />
-								{isRefreshing ? 'Refreshing...' : 'Refresh Data'}
-							</Button>
+							{canRefresh && (
+								<Button variant="primary" onClick={handleRefresh} disabled={isRefreshing}>
+									<RefreshCw className={`mr-2 h-4 w-4 ${isRefreshing ? 'animate-spin' : ''}`} />
+									{isRefreshing ? 'Refreshing...' : 'Refresh Data'}
+								</Button>
+							)}
 						</CardContent>
 					</Card>
 				)}
