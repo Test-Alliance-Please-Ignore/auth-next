@@ -27,7 +27,7 @@ async function fetchAllMailHeaders(esiStub: Esi, characterId: string): Promise<C
 	for (let page = 0; page < 20; page++) { // Safety cap at 1000 mails (20 pages × 50)
 		const batch = await retryWithBackoff(
 			async () => await esiStub.fetchCharacterMailPage(characterId, lastMailId),
-			{ maxRetries: 3, initialDelayMs: 500, maxDelayMs: 5000 }
+			{ maxRetries: 3, initialDelayMs: 1000, maxDelayMs: 30000 }
 		)
 
 		if (!batch || batch.length === 0) break
@@ -61,11 +61,11 @@ export async function fetchMailsFromEsi(esiStub: Esi, characterId: string): Prom
 		fetchAllMailHeaders(esiStub, characterId),
 		retryWithBackoff(
 			async () => await esiStub.fetchMailingLists(characterId),
-			{ maxRetries: 3, initialDelayMs: 500, maxDelayMs: 5000 }
+			{ maxRetries: 3, initialDelayMs: 1000, maxDelayMs: 30000 }
 		).catch(() => [] as MailingList[]),
 		retryWithBackoff(
 			async () => await esiStub.fetchMailLabels(characterId),
-			{ maxRetries: 3, initialDelayMs: 500, maxDelayMs: 5000 }
+			{ maxRetries: 3, initialDelayMs: 1000, maxDelayMs: 30000 }
 		).catch(() => ({ labels: [], total_unread_count: 0 }) as MailLabelsResponse),
 	])
 
@@ -95,7 +95,7 @@ export async function fetchMailsFromEsi(esiStub: Esi, characterId: string): Prom
 				try {
 					const content = await retryWithBackoff(
 						async () => await esiStub.fetchMailContent(characterId, mail.mail_id!),
-						{ maxRetries: 2, initialDelayMs: 200, maxDelayMs: 3000 },
+						{ maxRetries: 3, initialDelayMs: 1000, maxDelayMs: 30000 },
 					)
 					return { ...mail, body: content.body } as MailWithContent
 				} catch (error) {

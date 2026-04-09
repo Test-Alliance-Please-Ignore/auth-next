@@ -23,7 +23,7 @@ export async function fetchNotificationsFromEsi(
 
     const notifications = await retryWithBackoff(
         async () => await stub.fetchCharacterNotifications(characterId),
-        { maxRetries: 3, initialDelayMs: 500, maxDelayMs: 5000 },
+        { maxRetries: 3, initialDelayMs: 1000, maxDelayMs: 30000 },
     )
 
     return { notifications }

@@ -2,6 +2,7 @@ import { WorkflowEntrypoint } from 'cloudflare:workers'
 import { eq } from 'drizzle-orm'
 
 import { ROLE_CORE_ALLIANCE_MEMBER, ROLE_CORE_CORP_MEMBER } from '@repo/core'
+import { esiRetryOptions } from '@repo/workflow-utils'
 
 import { createDb } from '../db'
 import { userCharacters } from '../db/schema'
@@ -19,10 +20,7 @@ import type { Env } from '../context'
 import type { WorkflowContext } from './context'
 
 const CHARACTER_REFRESH_CONCURRENCY = 5
-const CHARACTER_STEP_OPTIONS = {
-	retries: { limit: 5, delay: '10 seconds', backoff: 'exponential' as const },
-	timeout: '1 minute' as const,
-} as const
+const CHARACTER_STEP_OPTIONS = { ...esiRetryOptions, timeout: '1 minute' as const }
 const ROLE_STEP_OPTIONS = {
 	retries: { limit: 3, delay: '5 seconds', backoff: 'exponential' as const },
 	timeout: '30 seconds' as const,

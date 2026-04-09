@@ -1,7 +1,7 @@
 import { WorkflowEntrypoint } from 'cloudflare:workers'
-import { NonRetryableError } from 'cloudflare:workflows'
 
 import { logger } from '@repo/hono-helpers'
+import { NonRetryableError, esiRetryOptions, withEsiRetryClassification } from '@repo/workflow-utils'
 
 import { syncAssets } from './steps/assets'
 import {
@@ -42,11 +42,7 @@ import type {
 	SyncStats,
 } from './types'
 
-const STEP_RETRY_OPTIONS = {
-	retries: { limit: 5, delay: '10 seconds', backoff: 'exponential' } as const,
-}
-const ESI_RATE_LIMIT_SLEEP_FALLBACK_SECONDS = 10
-const ESI_RATE_LIMIT_SLEEP_MAX_SECONDS = 45
+const STEP_RETRY_OPTIONS = esiRetryOptions
 
 /**
  * Result type for sync steps that tracks both the data type synced and any stats
@@ -58,97 +54,6 @@ interface SyncStepResult<T extends EveCorporationSyncDataType> {
 }
 
 export class EveCorporationSyncWorkflow extends WorkflowEntrypoint<Env, EveCorporationSyncParams> {
-	private parseEsiErrorMetadata(message: string): Record<string, unknown> | null {
-		const metadataMarker = ' | metadata='
-		const markerIndex = message.lastIndexOf(metadataMarker)
-		if (markerIndex === -1) {
-			return null
-		}
-
-		const metadataText = message.slice(markerIndex + metadataMarker.length).trim()
-		if (!metadataText) {
-			return null
-		}
-
-		try {
-			const parsed = JSON.parse(metadataText)
-			return parsed && typeof parsed === 'object' ? (parsed as Record<string, unknown>) : null
-		} catch {
-			return null
-		}
-	}
-
-	private extractEsiRateLimitSleepSeconds(message: string): number | null {
-		const metadata = this.parseEsiErrorMetadata(message)
-		if (!metadata) {
-			return null
-		}
-
-		const status = typeof metadata.status === 'number' ? metadata.status : null
-		if (status !== 429) {
-			return null
-		}
-
-		const retryAfter =
-			typeof metadata.retryAfterSeconds === 'number' ? metadata.retryAfterSeconds : undefined
-		const errorLimitReset =
-			typeof metadata.errorLimitResetSeconds === 'number'
-				? metadata.errorLimitResetSeconds
-				: undefined
-		const recommendedSeconds =
-			retryAfter ?? errorLimitReset ?? ESI_RATE_LIMIT_SLEEP_FALLBACK_SECONDS
-
-		return Math.max(1, Math.min(ESI_RATE_LIMIT_SLEEP_MAX_SECONDS, recommendedSeconds))
-	}
-
-	private async sleepForRateLimitRetry(stepName: string, seconds: number): Promise<void> {
-		logger.warn('[EveCorporationSyncWorkflow] ESI 429 retry pacing delay', {
-			stepName,
-			waitSeconds: seconds,
-		})
-		await new Promise((resolve) => setTimeout(resolve, seconds * 1000))
-	}
-
-	private isPermanentEsiAuthFailure(message: string): boolean {
-		const normalized = message.toLowerCase()
-		const isBadRequest = normalized.includes('esi request failed: 400')
-		const isAuthUnauthorized = normalized.includes('esi request failed: 401')
-		const isAuthForbidden = normalized.includes('esi request failed: 403')
-		if (!isBadRequest && !isAuthUnauthorized && !isAuthForbidden) {
-			return false
-		}
-
-		return (
-			normalized.includes('bad request') ||
-			normalized.includes('unauthorized') ||
-			normalized.includes('forbidden') ||
-			normalized.includes('no token provided') ||
-			normalized.includes('invalid token') ||
-			normalized.includes('token expired')
-		)
-	}
-
-	private async withEsiRetryClassification<T>(stepName: string, run: () => Promise<T>): Promise<T> {
-		try {
-			return await run()
-		} catch (error) {
-			const message = error instanceof Error ? error.message : String(error)
-			if (this.isPermanentEsiAuthFailure(message)) {
-				logger.warn('[EveCorporationSyncWorkflow] Non-retryable ESI auth failure', {
-					stepName,
-					error: message,
-				})
-				throw new NonRetryableError(`${stepName}: ${message}`)
-			}
-
-			const rateLimitSleepSeconds = this.extractEsiRateLimitSleepSeconds(message)
-			if (rateLimitSleepSeconds !== null) {
-				await this.sleepForRateLimitRetry(stepName, rateLimitSleepSeconds)
-			}
-			throw error
-		}
-	}
-
 	async run(event: WorkflowEvent<EveCorporationSyncParams>, step: WorkflowStep) {
 		const { corporationId, dataTypes, trigger } = event.payload
 		const workflowInstanceId = event.instanceId
@@ -220,7 +125,7 @@ export class EveCorporationSyncWorkflow extends WorkflowEntrypoint<Env, EveCorpo
 				'fetch-public-info',
 				{ ...STEP_RETRY_OPTIONS, timeout: '1 minute' },
 				() =>
-					this.withEsiRetryClassification('fetch-public-info', () =>
+					withEsiRetryClassification('fetch-public-info', () =>
 						fetchPublicInfo(this.env, corporationId)
 					)
 			)
@@ -239,7 +144,7 @@ export class EveCorporationSyncWorkflow extends WorkflowEntrypoint<Env, EveCorpo
 				'fetch-members',
 				{ ...STEP_RETRY_OPTIONS, timeout: '1 minute' },
 				() =>
-					this.withEsiRetryClassification('fetch-members', () =>
+					withEsiRetryClassification('fetch-members', () =>
 						fetchMembers(this.env, corporationId, directorCharacterId!)
 					)
 			)
@@ -276,7 +181,7 @@ export class EveCorporationSyncWorkflow extends WorkflowEntrypoint<Env, EveCorpo
 				'fetch-member-tracking',
 				{ ...STEP_RETRY_OPTIONS, timeout: '1 minute' },
 				() =>
-					this.withEsiRetryClassification('fetch-member-tracking', () =>
+					withEsiRetryClassification('fetch-member-tracking', () =>
 						fetchMemberTracking(this.env, corporationId, directorCharacterId!)
 					)
 			)
@@ -295,7 +200,7 @@ export class EveCorporationSyncWorkflow extends WorkflowEntrypoint<Env, EveCorpo
 				'fetch-wallets',
 				{ ...STEP_RETRY_OPTIONS, timeout: '1 minute' },
 				() =>
-					this.withEsiRetryClassification('fetch-wallets', () =>
+					withEsiRetryClassification('fetch-wallets', () =>
 						fetchWallets(this.env, corporationId, directorCharacterId!)
 					)
 			)
@@ -314,7 +219,7 @@ export class EveCorporationSyncWorkflow extends WorkflowEntrypoint<Env, EveCorpo
 				'sync-wallet-journal',
 				{ ...STEP_RETRY_OPTIONS, timeout: '5 minutes' },
 				async () => {
-					const walletJournalResult = await this.withEsiRetryClassification(
+					const walletJournalResult = await withEsiRetryClassification(
 						'sync-wallet-journal',
 						() => syncWalletJournal(this.env, corporationId, directorCharacterId!)
 					)
@@ -336,7 +241,7 @@ export class EveCorporationSyncWorkflow extends WorkflowEntrypoint<Env, EveCorpo
 				'sync-wallet-transactions',
 				{ ...STEP_RETRY_OPTIONS, timeout: '5 minutes' },
 				async () => {
-					const walletTransactionsResult = await this.withEsiRetryClassification(
+					const walletTransactionsResult = await withEsiRetryClassification(
 						'sync-wallet-transactions',
 						() => syncWalletTransactions(this.env, corporationId, directorCharacterId!)
 					)
@@ -358,7 +263,7 @@ export class EveCorporationSyncWorkflow extends WorkflowEntrypoint<Env, EveCorpo
 				'sync-assets',
 				{ ...STEP_RETRY_OPTIONS, timeout: '10 minutes' },
 				async () => {
-					const result = await this.withEsiRetryClassification('sync-assets', () =>
+					const result = await withEsiRetryClassification('sync-assets', () =>
 						syncAssets(this.env, corporationId, directorCharacterId!)
 					)
 					return {
@@ -374,7 +279,7 @@ export class EveCorporationSyncWorkflow extends WorkflowEntrypoint<Env, EveCorpo
 				'fetch-structures',
 				{ ...STEP_RETRY_OPTIONS, timeout: '1 minute' },
 				() =>
-					this.withEsiRetryClassification('fetch-structures', () =>
+					withEsiRetryClassification('fetch-structures', () =>
 						fetchStructures(this.env, corporationId, directorCharacterId!)
 					)
 			)
@@ -393,7 +298,7 @@ export class EveCorporationSyncWorkflow extends WorkflowEntrypoint<Env, EveCorpo
 				'fetch-orders',
 				{ ...STEP_RETRY_OPTIONS, timeout: '1 minute' },
 				() =>
-					this.withEsiRetryClassification('fetch-orders', () =>
+					withEsiRetryClassification('fetch-orders', () =>
 						fetchOrders(this.env, corporationId, directorCharacterId!)
 					)
 			)
@@ -412,7 +317,7 @@ export class EveCorporationSyncWorkflow extends WorkflowEntrypoint<Env, EveCorpo
 				'fetch-contracts',
 				{ ...STEP_RETRY_OPTIONS, timeout: '1 minute' },
 				() =>
-					this.withEsiRetryClassification('fetch-contracts', () =>
+					withEsiRetryClassification('fetch-contracts', () =>
 						fetchContracts(this.env, corporationId, directorCharacterId!)
 					)
 			)
@@ -431,7 +336,7 @@ export class EveCorporationSyncWorkflow extends WorkflowEntrypoint<Env, EveCorpo
 				'fetch-industry-jobs',
 				{ ...STEP_RETRY_OPTIONS, timeout: '1 minute' },
 				() =>
-					this.withEsiRetryClassification('fetch-industry-jobs', () =>
+					withEsiRetryClassification('fetch-industry-jobs', () =>
 						fetchIndustryJobs(this.env, corporationId, directorCharacterId!)
 					)
 			)
@@ -450,7 +355,7 @@ export class EveCorporationSyncWorkflow extends WorkflowEntrypoint<Env, EveCorpo
 				'fetch-killmails',
 				{ ...STEP_RETRY_OPTIONS, timeout: '1 minute' },
 				() =>
-					this.withEsiRetryClassification('fetch-killmails', () =>
+					withEsiRetryClassification('fetch-killmails', () =>
 						fetchKillmails(this.env, corporationId, directorCharacterId!)
 					)
 			)

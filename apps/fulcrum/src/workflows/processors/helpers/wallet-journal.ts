@@ -95,9 +95,9 @@ export async function enrichWalletJournalEntries(
 				const structureInfo = await retryWithBackoff(
 					async () => await esiStub.fetchStructureInfo(characterId, structureId),
 					{
-						maxRetries: 5,
+						maxRetries: 3,
 						initialDelayMs: 1000,
-						maxDelayMs: 60000,
+						maxDelayMs: 30000,
 						backoffMultiplier: 2,
 						onRetry: (attempt, error, delayMs) => {
 							console.warn('[enrichWalletJournalEntries] Retrying structure fetch', {
