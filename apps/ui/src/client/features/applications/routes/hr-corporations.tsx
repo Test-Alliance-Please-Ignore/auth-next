@@ -4,6 +4,7 @@ import { Link, Navigate } from 'react-router-dom'
 
 import { Badge } from '@/components/ui/badge'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
+import { Skeleton } from '@/components/ui/skeleton'
 import { LoadingSpinner } from '@/components/ui/loading'
 import { PageHeader } from '@/components/ui/page-header'
 import { useHrAccessibleCorporations } from '@/features/hr'
@@ -130,14 +131,18 @@ export default function HrCorporationsPage() {
 										</Link>
 									</Button>
 								</div>
-								{hasVisibleCounts && (
+								{applicationQuery?.isLoading ? (
+									<div className="flex gap-2">
+										<Skeleton className="h-5 w-20" />
+									</div>
+								) : hasVisibleCounts ? (
 									<div className="flex flex-wrap items-center gap-2 sm:justify-end">
 										{pendingCount > 0 && <Badge variant="warning">Pending: {pendingCount}</Badge>}
 										{underReviewCount > 0 && (
 											<Badge variant="secondary">Under Review: {underReviewCount}</Badge>
 										)}
 									</div>
-								)}
+								) : null}
 							</CardContent>
 						</Card>
 					)
