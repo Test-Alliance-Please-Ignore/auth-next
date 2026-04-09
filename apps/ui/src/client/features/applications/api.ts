@@ -652,12 +652,23 @@ export type ReportSectionName =
 	| 'alerts'
 
 /**
- * Report manifest listing available sections
+ * Storage metadata for a single report section.
+ * chunks === 0 means flat file; chunks > 0 means chunked files.
+ */
+export interface ReportSectionMeta {
+	chunks: number
+	totalCount: number
+	truncated?: boolean
+}
+
+/**
+ * Report manifest listing available sections with their storage metadata.
+ * Only successfully persisted sections appear as keys.
  */
 export interface ReportManifest {
 	reportId: string
 	characterId: string
-	sections: ReportSectionName[]
+	sections: Partial<Record<ReportSectionName, ReportSectionMeta>>
 	createdAt: string
 }
 

@@ -385,7 +385,7 @@ export function FulcrumReportViewer({ reportId }: FulcrumReportViewerProps) {
 		)
 	}
 
-	if (!manifest || manifest.sections.length === 0) {
+	if (!manifest || Object.keys(manifest.sections).length === 0) {
 		return (
 			<p className="text-sm text-muted-foreground py-4">
 				Report has no sections available.
@@ -393,21 +393,24 @@ export function FulcrumReportViewer({ reportId }: FulcrumReportViewerProps) {
 		)
 	}
 
+	const hasSection = (name: ReportSectionName) => name in manifest.sections
+	const availableSectionNames = Object.keys(manifest.sections) as ReportSectionName[]
+
 	// Only show tabs for sections present in the manifest
 	// Overview tab shows if public-info, corp-history, or clones is available
 	// Communications tab shows if either mails or notifications is available
 	const availableTabs = SECTION_TABS.filter((tab) => {
 		if (tab.name === 'public-info') {
 			return (
-				manifest.sections.includes('public-info') ||
-				manifest.sections.includes('corp-history') ||
-				manifest.sections.includes('clones')
+				hasSection('public-info') ||
+				hasSection('corp-history') ||
+				hasSection('clones')
 			)
 		}
 		if (tab.name === 'mails') {
-			return manifest.sections.includes('mails') || manifest.sections.includes('notifications')
+			return hasSection('mails') || hasSection('notifications')
 		}
-		return manifest.sections.includes(tab.name)
+		return hasSection(tab.name as ReportSectionName)
 	})
 
 	// Ensure activeTab is valid
@@ -417,9 +420,7 @@ export function FulcrumReportViewer({ reportId }: FulcrumReportViewerProps) {
 			: availableTabs[0]?.name ?? 'public-info'
 
 	// Count sections missing from manifest (excluding 'alerts' which is internal)
-	const missingSections = ALL_DATA_SECTIONS.filter(
-		(s) => !manifest.sections.includes(s),
-	)
+	const missingSections = ALL_DATA_SECTIONS.filter((s) => !hasSection(s))
 
 	return (
 		<Tabs value={effectiveTab} onValueChange={setActiveTab} className="w-full">
@@ -447,7 +448,7 @@ export function FulcrumReportViewer({ reportId }: FulcrumReportViewerProps) {
 						reportId={reportId}
 						section={tab.name}
 						isActive={effectiveTab === tab.name}
-						availableSections={manifest.sections}
+						availableSections={availableSectionNames}
 						characterId={manifest.characterId}
 					/>
 				</TabsContent>

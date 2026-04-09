@@ -317,12 +317,17 @@ export class FulcrumDO extends DurableObject<Env, {}> implements Fulcrum {
 	}
 
 	/**
-	 * RPC: Get processed data for a specific report section
-	 * Returns the section's JSON data or null if not found
+	 * RPC: Get processed data for a specific report section.
+	 * Reads the manifest to determine whether the section is stored as a flat
+	 * file or as chunked files, then fetches accordingly.
+	 *
+	 * - page omitted: returns full data (all chunks concatenated for chunked sections)
+	 * - page provided: returns { data, page, totalChunks } for that chunk only
 	 */
 	async getReportSectionData(
 		reportId: string,
 		section: ReportSectionName,
+		page?: number,
 	): Promise<unknown | null> {
 		const db = this.getDb()
 		const report = await queries.getReport(db, reportId)
@@ -339,13 +344,43 @@ export class FulcrumDO extends DurableObject<Env, {}> implements Fulcrum {
 			return null
 		}
 
-		const sectionKey = `${report.r2Key}/sections/${section}.json`
-		const r2Object = await this.env.CHARACTER_REPORTS.get(sectionKey)
-		if (!r2Object) {
-			return null
+		// Read manifest to determine storage format
+		const manifestKey = `${report.r2Key}/manifest.json`
+		const manifestObj = await this.env.CHARACTER_REPORTS.get(manifestKey)
+		const manifest = manifestObj ? await manifestObj.json<{ sections: Record<string, { chunks: number }> }>() : null
+		const meta = manifest?.sections?.[section]
+
+		// Flat file (no manifest entry, chunks === 0, or no manifest at all)
+		if (!meta || meta.chunks === 0) {
+			const sectionKey = `${report.r2Key}/sections/${section}.json`
+			const r2Object = await this.env.CHARACTER_REPORTS.get(sectionKey)
+			return r2Object ? r2Object.json() : null
 		}
 
-		return await r2Object.json()
+		// Chunked: specific page requested
+		if (page !== undefined) {
+			const chunkKey = `${report.r2Key}/sections/${section}/chunk-${page}.json`
+			const r2Object = await this.env.CHARACTER_REPORTS.get(chunkKey)
+			if (!r2Object) return null
+			return {
+				data: await r2Object.json(),
+				page,
+				totalChunks: meta.chunks,
+			}
+		}
+
+		// Chunked: fetch all chunks in parallel and concatenate
+		const chunkObjects = await Promise.all(
+			Array.from({ length: meta.chunks }, (_, i) =>
+				this.env.CHARACTER_REPORTS.get(`${report.r2Key}/sections/${section}/chunk-${i}.json`),
+			),
+		)
+
+		const arrays = await Promise.all(
+			chunkObjects.map((obj) => (obj ? obj.json<unknown[]>() : Promise.resolve([] as unknown[]))),
+		)
+
+		return arrays.flat()
 	}
 
 	/**
