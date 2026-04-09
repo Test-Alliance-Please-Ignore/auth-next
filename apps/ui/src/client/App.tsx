@@ -48,6 +48,7 @@ const HrApplicationsList = lazy(() => import('./features/applications/routes/hr-
 const HrApplicationReview = lazy(
 	() => import('./features/applications/routes/hr-application-review')
 )
+const HrCorporationsPage = lazy(() => import('./features/applications/routes/hr-corporations'))
 const HrRolesManagement = lazy(() => import('./features/applications/routes/hr-roles-management'))
 const HrMemberProfile = lazy(() => import('./features/applications/routes/hr-member-profile'))
 const FulcrumReport = lazy(() => import('./features/applications/routes/fulcrum-report'))
@@ -222,7 +223,11 @@ export default function App() {
 							{/* Application routes - HR views (lazy loaded) */}
 							<Route
 								path="/hr"
-								element={<Navigate to="/my-corporations" replace />}
+								element={
+									<Suspense fallback={<LoadingPage />}>
+										<HrCorporationsPage />
+									</Suspense>
+								}
 							/>
 							<Route
 								path="/corporations/:corporationId/hr/dashboard"

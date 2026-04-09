@@ -146,18 +146,11 @@ export function SidebarNav({ onNavigate }: SidebarNavProps) {
 			},
 		]
 
-		if (hrCorporations?.length === 1) {
+		if ((hrCorporations?.length ?? 0) > 0) {
 			hrItems.push({
-				label: 'Review Applications',
-				href: `/corporations/${hrCorporations[0].corporationId}/hr/applications`,
+				label: 'HR Corporations',
+				href: '/hr',
 			})
-		} else if ((hrCorporations?.length ?? 0) > 1) {
-			for (const corp of hrCorporations!) {
-				hrItems.push({
-					label: `Applications: ${corp.ticker || corp.name}`,
-					href: `/corporations/${corp.corporationId}/hr/applications`,
-				})
-			}
 		}
 
 		navItems.push({
