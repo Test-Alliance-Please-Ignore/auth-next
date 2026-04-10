@@ -338,7 +338,6 @@ export default function NewBroadcastPage() {
 				? await updateBroadcast.mutateAsync({
 						id: draftId,
 						data: {
-							title: payload.title,
 							content: payload.content,
 						},
 					})
@@ -367,7 +366,6 @@ export default function NewBroadcastPage() {
 				? await updateBroadcast.mutateAsync({
 						id: draftId,
 						data: {
-							title: payload.title,
 							content: payload.content,
 						},
 					})
