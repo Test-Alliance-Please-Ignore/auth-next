@@ -190,8 +190,7 @@ export class HrDO extends DurableObject<Env> implements Hr {
 		)
 		const hasAdminAccess = activeRoles.some((role) => role.role === 'hr_admin')
 
-		const requiresAdminAccess = status === 'accepted' || status === 'rejected'
-		const hasPermission = requiresAdminAccess ? hasAdminAccess : hasReviewerAccess
+		const hasPermission = hasReviewerAccess
 
 		if (!hasPermission) {
 			throw new Error('You do not have permission to update this application')

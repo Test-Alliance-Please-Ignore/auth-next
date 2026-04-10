@@ -367,6 +367,7 @@ app.get('/browse/search', requireAuth(), async (c) => {
  */
 app.get('/browse/:corporationId', requireAuth(), async (c) => {
 	const corporationId = c.req.param('corporationId')
+	const user = c.get('user')!
 	const db = c.get('db')
 
 	if (!db) {
@@ -380,7 +381,12 @@ app.get('/browse/:corporationId', requireAuth(), async (c) => {
 			await checkCorporationAccess(c, corporationId)
 			hasManagementAccess = true
 		} catch {
-			// User doesn't have management access, continue with public check
+			// CEO/Director/Admin check failed — fall back to HR role check
+			const hr = getStub<Hr>(c.env.HR, 'default')
+			const hasHrRole = await hr.checkPermission(user.id, corporationId, 'hr_viewer')
+			if (hasHrRole) {
+				hasManagementAccess = true
+			}
 		}
 
 		// Get corporation - include non-recruiting if user has management access
