@@ -220,20 +220,20 @@ export default function HrApplicationReview() {
 			<div className="mb-6 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
 				<Breadcrumb>
 					<BreadcrumbList>
-					<BreadcrumbItem>
-						<BreadcrumbLink to={rootCorporationsPath}>{rootCorporationsLabel}</BreadcrumbLink>
-					</BreadcrumbItem>
-					{showMembersNavigation && (
-						<>
-							<BreadcrumbSeparator />
-							<BreadcrumbItem>
-								<BreadcrumbLink to={membersPath}>Members</BreadcrumbLink>
-							</BreadcrumbItem>
-						</>
-					)}
-					<BreadcrumbSeparator />
-					<BreadcrumbItem>
-						<BreadcrumbLink to={`/corporations/${corporationId}/applications`}>
+						<BreadcrumbItem>
+							<BreadcrumbLink to={rootCorporationsPath}>{rootCorporationsLabel}</BreadcrumbLink>
+						</BreadcrumbItem>
+						{showMembersNavigation && (
+							<>
+								<BreadcrumbSeparator />
+								<BreadcrumbItem>
+									<BreadcrumbLink to={membersPath}>Members</BreadcrumbLink>
+								</BreadcrumbItem>
+							</>
+						)}
+						<BreadcrumbSeparator />
+						<BreadcrumbItem>
+							<BreadcrumbLink to={`/corporations/${corporationId}/applications`}>
 								Applications
 							</BreadcrumbLink>
 						</BreadcrumbItem>
@@ -331,10 +331,10 @@ export default function HrApplicationReview() {
 						</CardContent>
 					</Card>
 
-					{/* Review Information (only for final decisions) */}
+					{/* Review Information (shown for under_review, accepted, rejected) */}
 					{application.reviewedAt &&
-						(application.status === 'accepted' || application.status === 'rejected') && (
-							<Card>
+						(application.status === 'under_review' || application.status === 'accepted' || application.status === 'rejected') && (
+							<Card className={application.status === 'under_review' ? 'border-primary/30 bg-primary/5' : undefined}>
 								<CardHeader>
 									<CardTitle>Review Information</CardTitle>
 									<CardDescription>Details about the application review</CardDescription>
@@ -374,10 +374,10 @@ export default function HrApplicationReview() {
 							<CardHeader>
 								<div className="flex items-center gap-2">
 									<Lock className="h-4 w-4 text-warning" />
-									<CardTitle className="text-lg">HR Notes</CardTitle>
+									<CardTitle className="text-lg">Global HR Notes</CardTitle>
 								</div>
 								<CardDescription>
-									Private internal notes about this applicant. Only visible to HR staff.
+									Private internal notes about this user across all applications. Only visible to HR staff.
 								</CardDescription>
 							</CardHeader>
 							<CardContent>

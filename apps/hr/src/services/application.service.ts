@@ -261,15 +261,15 @@ export class ApplicationService {
 
 		const previousStatus = application.status
 
-		// Only set reviewer info on final decisions
-		const isFinalDecision = status === 'accepted' || status === 'rejected'
+		// Set reviewer info for any status change that involves review
+		const isReviewAction = status === 'accepted' || status === 'rejected' || status === 'under_review'
 
 		// Update the application
 		await this.ctx.db
 			.update(applications)
 			.set({
 				status: status as ApplicationStatus,
-				...(isFinalDecision
+				...(isReviewAction
 					? {
 						reviewedBy: userId,
 						reviewedAt: new Date(),
