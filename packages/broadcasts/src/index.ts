@@ -41,7 +41,7 @@ export interface BroadcastTemplate {
 	name: string
 	description: string | null
 	targetType: string
-	groupId: string
+	targetId: string
 	fieldSchema: TemplateFieldSchema[]
 	messageTemplate: string
 	createdBy: string
@@ -153,7 +153,7 @@ export interface CreateBroadcastTemplateRequest {
 	name: string
 	description?: string
 	targetType: string
-	groupId: string
+	targetId: string
 	fieldSchema: TemplateFieldSchema[]
 	messageTemplate: string
 }
@@ -265,12 +265,12 @@ export interface Broadcasts {
 	/**
 	 * List broadcast templates with optional filters
 	 * @param userId - User ID making the request
-	 * @param filters - Optional filters (targetType, groupId)
+	 * @param filters - Optional filters (targetType, targetId)
 	 * @returns Array of templates
 	 */
 	listTemplates(
 		userId: string,
-		filters?: { targetType?: string; groupId?: string }
+		filters?: { targetType?: string; targetId?: string }
 	): Promise<BroadcastTemplate[]>
 
 	/**

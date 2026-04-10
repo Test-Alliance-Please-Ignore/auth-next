@@ -962,7 +962,7 @@ export interface BroadcastTemplate {
 	name: string
 	description: string | null
 	targetType: string
-	groupId: string
+	targetId: string
 	fieldSchema: Array<{
 		name: string
 		label: string
@@ -1047,7 +1047,7 @@ export interface CreateBroadcastTemplateRequest {
 	name: string
 	description?: string
 	targetType: string
-	groupId: string
+	targetId: string
 	fieldSchema: Array<{
 		name: string
 		label: string
@@ -2294,10 +2294,10 @@ export class ApiClient {
 	}
 
 	// Broadcast Templates
-	async getBroadcastTemplates(targetType?: string, groupId?: string): Promise<BroadcastTemplate[]> {
+	async getBroadcastTemplates(targetType?: string, targetId?: string): Promise<BroadcastTemplate[]> {
 		const params = new URLSearchParams()
 		if (targetType) params.set('targetType', targetType)
-		if (groupId) params.set('groupId', groupId)
+		if (targetId) params.set('targetId', targetId)
 		const query = params.toString()
 		return this.get(`/broadcasts/templates${query ? `?${query}` : ''}`)
 	}

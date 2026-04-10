@@ -159,7 +159,7 @@ export class BroadcastsDO extends DurableObject<Env> implements Broadcasts {
 
 	async listTemplates(
 		userId: string,
-		filters?: { targetType?: string; groupId?: string }
+		filters?: { targetType?: string; targetId?: string }
 	): Promise<BroadcastTemplate[]> {
 		let whereConditions = []
 
@@ -167,8 +167,8 @@ export class BroadcastsDO extends DurableObject<Env> implements Broadcasts {
 			whereConditions.push(eq(broadcastTemplates.targetType, filters.targetType))
 		}
 
-		if (filters?.groupId) {
-			whereConditions.push(eq(broadcastTemplates.groupId, filters.groupId))
+		if (filters?.targetId) {
+			whereConditions.push(eq(broadcastTemplates.targetId, filters.targetId))
 		}
 
 		const templates = await this.db.query.broadcastTemplates.findMany({
@@ -177,8 +177,14 @@ export class BroadcastsDO extends DurableObject<Env> implements Broadcasts {
 		})
 
 		return templates.map((t) => ({
-			...t,
+			id: t.id,
+			name: t.name,
+			description: t.description,
+			targetType: t.targetType,
+			targetId: t.targetId,
 			fieldSchema: t.fieldSchema as any,
+			messageTemplate: t.messageTemplate,
+			createdBy: t.createdBy,
 			createdAt: t.createdAt.toISOString(),
 			updatedAt: t.updatedAt.toISOString(),
 		}))
@@ -192,8 +198,14 @@ export class BroadcastsDO extends DurableObject<Env> implements Broadcasts {
 		if (!template) return null
 
 		return {
-			...template,
+			id: template.id,
+			name: template.name,
+			description: template.description,
+			targetType: template.targetType,
+			targetId: template.targetId,
 			fieldSchema: template.fieldSchema as any,
+			messageTemplate: template.messageTemplate,
+			createdBy: template.createdBy,
 			createdAt: template.createdAt.toISOString(),
 			updatedAt: template.updatedAt.toISOString(),
 		}
@@ -203,6 +215,16 @@ export class BroadcastsDO extends DurableObject<Env> implements Broadcasts {
 		data: CreateBroadcastTemplateRequest,
 		userId: string
 	): Promise<BroadcastTemplate> {
+		const target = await this.db.query.broadcastTargets.findFirst({
+			where: eq(broadcastTargets.id, data.targetId),
+		})
+		if (!target) {
+			throw new Error('Target not found')
+		}
+		if (target.type !== data.targetType) {
+			throw new Error('Template targetType must match target type')
+		}
+
 		const now = new Date()
 
 		const [template] = await this.db
@@ -211,7 +233,7 @@ export class BroadcastsDO extends DurableObject<Env> implements Broadcasts {
 				name: data.name,
 				description: data.description || null,
 				targetType: data.targetType,
-				groupId: data.groupId,
+				targetId: data.targetId,
 				fieldSchema: data.fieldSchema,
 				messageTemplate: data.messageTemplate,
 				createdBy: userId,
@@ -221,8 +243,14 @@ export class BroadcastsDO extends DurableObject<Env> implements Broadcasts {
 			.returning()
 
 		return {
-			...template,
+			id: template.id,
+			name: template.name,
+			description: template.description,
+			targetType: template.targetType,
+			targetId: template.targetId,
 			fieldSchema: template.fieldSchema as any,
+			messageTemplate: template.messageTemplate,
+			createdBy: template.createdBy,
 			createdAt: template.createdAt.toISOString(),
 			updatedAt: template.updatedAt.toISOString(),
 		}
@@ -251,8 +279,14 @@ export class BroadcastsDO extends DurableObject<Env> implements Broadcasts {
 			.returning()
 
 		return {
-			...updated,
+			id: updated.id,
+			name: updated.name,
+			description: updated.description,
+			targetType: updated.targetType,
+			targetId: updated.targetId,
 			fieldSchema: updated.fieldSchema as any,
+			messageTemplate: updated.messageTemplate,
+			createdBy: updated.createdBy,
 			createdAt: updated.createdAt.toISOString(),
 			updatedAt: updated.updatedAt.toISOString(),
 		}
@@ -365,8 +399,14 @@ export class BroadcastsDO extends DurableObject<Env> implements Broadcasts {
 			updatedAt: broadcast.updatedAt.toISOString(),
 			template: template
 				? {
-						...template,
+						id: template.id,
+						name: template.name,
+						description: template.description,
+						targetType: template.targetType,
+						targetId: template.targetId,
 						fieldSchema: template.fieldSchema as any,
+						messageTemplate: template.messageTemplate,
+						createdBy: template.createdBy,
 						createdAt: template.createdAt.toISOString(),
 						updatedAt: template.updatedAt.toISOString(),
 					}

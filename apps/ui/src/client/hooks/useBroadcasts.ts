@@ -21,7 +21,9 @@ export const broadcastKeys = {
 	target: (id: string) => [...broadcastKeys.targets(), id] as const,
 	templates: () => [...broadcastKeys.all, 'templates'] as const,
 	template: (id: string) => [...broadcastKeys.templates(), id] as const,
-	templatesByGroup: (groupId: string) => [...broadcastKeys.templates(), 'group', groupId] as const,
+	templatesFiltered: (targetType?: string, targetId?: string) =>
+		[...broadcastKeys.templates(), 'filter', targetType ?? 'all', targetId ?? 'all'] as const,
+	templatesByTarget: (targetId: string) => [...broadcastKeys.templates(), 'target', targetId] as const,
 	broadcasts: () => [...broadcastKeys.all, 'list'] as const,
 	broadcastsPage: (
 		permissionId: string | undefined,
@@ -121,12 +123,12 @@ export function useDeleteBroadcastTarget() {
 // ===== Broadcast Templates =====
 
 /**
- * Fetch all broadcast templates, optionally filtered by target type and group
+ * Fetch all broadcast templates, optionally filtered by target type and target
  */
-export function useBroadcastTemplates(targetType?: string, groupId?: string) {
+export function useBroadcastTemplates(targetType?: string, targetId?: string) {
 	return useQuery({
-		queryKey: groupId ? broadcastKeys.templatesByGroup(groupId) : broadcastKeys.templates(),
-		queryFn: () => api.getBroadcastTemplates(targetType, groupId),
+		queryKey: broadcastKeys.templatesFiltered(targetType, targetId),
+		queryFn: () => api.getBroadcastTemplates(targetType, targetId),
 		staleTime: 1000 * 60,
 	})
 }
@@ -153,10 +155,10 @@ export function useCreateBroadcastTemplate() {
 		onSuccess: (_, variables) => {
 			// Invalidate all templates lists
 			queryClient.invalidateQueries({ queryKey: broadcastKeys.templates() })
-			// Invalidate group-specific list
-			if (variables.groupId) {
+			// Invalidate target-specific list
+			if (variables.targetId) {
 				queryClient.invalidateQueries({
-					queryKey: broadcastKeys.templatesByGroup(variables.groupId),
+					queryKey: broadcastKeys.templatesByTarget(variables.targetId),
 				})
 			}
 		},

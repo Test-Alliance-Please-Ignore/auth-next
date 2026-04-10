@@ -71,8 +71,10 @@ export const broadcastTemplates = pgTable(
 		description: text('description'),
 		/** Target type this template is designed for */
 		targetType: varchar('target_type', { length: 100 }).notNull(),
-		/** Group this template belongs to */
-		groupId: uuid('group_id').notNull(),
+		/** Target this template belongs to */
+		targetId: uuid('target_id')
+			.notNull()
+			.references(() => broadcastTargets.id, { onDelete: 'cascade' }),
 		/** Field schema (JSON array) - defines what fields need to be filled */
 		fieldSchema: jsonb('field_schema').notNull(),
 		/** Message template with {{placeholder}} syntax */
@@ -83,7 +85,7 @@ export const broadcastTemplates = pgTable(
 		updatedAt: timestamp('updated_at').defaultNow().notNull(),
 	},
 	(table) => [
-		index('broadcast_templates_group_id_idx').on(table.groupId),
+		index('broadcast_templates_target_id_idx').on(table.targetId),
 		index('broadcast_templates_target_type_idx').on(table.targetType),
 	]
 )

@@ -192,8 +192,8 @@ export default function NewBroadcastPage() {
 	// Get the selected target to determine type
 	const selectedTarget = targets?.find((t) => t.id === selectedTargetId)
 
-	// Fetch templates for the selected target's type
-	const { data: templates } = useBroadcastTemplates(selectedTarget?.type)
+	// Fetch templates scoped to the selected target/type
+	const { data: templates } = useBroadcastTemplates(selectedTarget?.type, selectedTargetId || undefined)
 
 	// Message state
 	const [message, setMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null)
