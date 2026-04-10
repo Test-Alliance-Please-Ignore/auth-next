@@ -100,7 +100,7 @@ export default function CorporationsPage() {
 				description="Select a corporation to access members and application review tools"
 			/>
 
-			<div className="grid grid-cols-1 md:grid-cols-2 gap-4 mt-6">
+			<div className="mt-6 grid grid-cols-1 gap-4 md:grid-cols-2">
 				{corporations.map((corporation, index) => {
 					const applicationQuery = applicationQueries[index]
 					const applications = applicationQuery?.data ?? []
@@ -119,20 +119,25 @@ export default function CorporationsPage() {
 					const hasVisibleCounts = pendingCount > 0 || underReviewCount > 0
 
 					return (
-						<Card key={corporation.corporationId}>
-							<CardHeader>
-								<CardTitle className="flex items-center justify-between gap-3">
-									<span className="flex items-center gap-2 min-w-0">
+						<Card key={corporation.corporationId} className="h-full">
+							<CardContent className="grid min-h-44 grid-cols-[minmax(0,1fr)_auto] grid-rows-[auto_1fr] gap-x-3 gap-y-4 p-6">
+								<div className="min-w-0 self-start">
+									<CardTitle className="flex items-center gap-2">
 										<img
 											src={`https://images.evetech.net/corporations/${corporation.corporationId}/logo?size=64`}
 											alt={corporation.name}
-											className="h-5 w-5 rounded shrink-0"
+											className="h-5 w-5 shrink-0 rounded"
 										/>
 										<span className="truncate">
 											{corporation.name}
 											{corporation.ticker ? ` [${corporation.ticker}]` : ''}
 										</span>
-									</span>
+									</CardTitle>
+									<CardDescription className="mt-1">
+										Corporation ID: {corporation.corporationId}
+									</CardDescription>
+								</div>
+								<div className="justify-self-end self-start">
 									{corporationAccessEntry?.userRole === 'CEO' ? (
 										<Badge variant="warning">CEO</Badge>
 									) : corporationAccessEntry?.userRole === 'Director' ? (
@@ -140,58 +145,63 @@ export default function CorporationsPage() {
 									) : (
 										<HrRoleBadge role={corporation.currentRole} showTooltip={false} />
 									)}
-								</CardTitle>
-								<CardDescription>Corporation ID: {corporation.corporationId}</CardDescription>
-							</CardHeader>
-							<CardContent className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
-								<div className="flex flex-wrap gap-2">
-									{canAccessMembers && (
-										<Button variant="ghost" asChild>
-											<Link to={`/corporations/${corporation.corporationId}/members`}>
-												<Users className="mr-2 h-4 w-4" />
-												Members
+								</div>
+								<div className="self-end">
+									<div className="flex flex-nowrap gap-2">
+										{canAccessMembers && (
+											<Button variant="ghost" asChild>
+												<Link to={`/corporations/${corporation.corporationId}/members`}>
+													<Users className="mr-2 h-4 w-4" />
+													Members
+												</Link>
+											</Button>
+										)}
+										<Button variant={canAccessMembers ? 'ghost' : 'primary'} asChild>
+											<Link to={`/corporations/${corporation.corporationId}/applications`}>
+												<FileText className="mr-2 h-4 w-4" />
+												Applications
 											</Link>
 										</Button>
-									)}
-									<Button variant={canAccessMembers ? 'ghost' : 'primary'} asChild>
-										<Link to={`/corporations/${corporation.corporationId}/applications`}>
-											<FileText className="mr-2 h-4 w-4" />
-											Applications
-										</Link>
-									</Button>
+									</div>
 								</div>
-								{applicationQuery?.isLoading ? (
-									<div className="flex gap-2">
-										<Skeleton className="h-5 w-20" />
-									</div>
-								) : hasVisibleCounts || myCorporation ? (
-									<div className="flex flex-col gap-2 sm:items-end">
-										{myCorporation && (
-											<div className="w-full sm:w-44 space-y-1">
-												<div className="flex items-center justify-between text-xs text-muted-foreground">
-													<span>Authed Users</span>
-													<span>
-														{myCorporation.linkedMemberCount}/{myCorporation.memberCount}
-													</span>
-												</div>
-												<Progress
-													value={
-														myCorporation.memberCount > 0
-															? Math.round((myCorporation.linkedMemberCount / myCorporation.memberCount) * 100)
-															: 0
-													}
-													className="h-1.5"
-												/>
-											</div>
-										)}
-										<div className="flex flex-wrap items-center gap-2 sm:justify-end">
-										{pendingCount > 0 && <Badge variant="warning">Pending: {pendingCount}</Badge>}
-										{underReviewCount > 0 && (
-											<Badge variant="secondary">Under Review: {underReviewCount}</Badge>
-										)}
+								<div className="justify-self-end self-end">
+									{applicationQuery?.isLoading ? (
+										<div className="flex gap-2">
+											<Skeleton className="h-5 w-20" />
 										</div>
-									</div>
-								) : null}
+									) : hasVisibleCounts || myCorporation ? (
+										<div className="flex flex-col items-end gap-2">
+											{myCorporation && (
+												<div className="w-44 space-y-1">
+													<div className="flex items-center justify-between text-xs text-muted-foreground">
+														<span>Authed Users</span>
+														<span>
+															{myCorporation.linkedMemberCount}/{myCorporation.memberCount}
+														</span>
+													</div>
+													<Progress
+														value={
+															myCorporation.memberCount > 0
+																? Math.round(
+																		(myCorporation.linkedMemberCount / myCorporation.memberCount) * 100
+																	)
+																: 0
+														}
+														className="h-1.5"
+													/>
+												</div>
+											)}
+											<div className="flex flex-wrap items-center justify-end gap-2">
+												{pendingCount > 0 && (
+													<Badge variant="warning">Pending: {pendingCount}</Badge>
+												)}
+												{underReviewCount > 0 && (
+													<Badge variant="secondary">Under Review: {underReviewCount}</Badge>
+												)}
+											</div>
+										</div>
+									) : null}
+								</div>
 							</CardContent>
 						</Card>
 					)
