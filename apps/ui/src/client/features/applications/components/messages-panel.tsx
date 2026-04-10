@@ -40,7 +40,7 @@ export interface MessagesPanelProps {
 // Constants
 // ============================================================================
 
-const MAX_MESSAGE_LENGTH = 1000
+const MAX_MESSAGE_LENGTH = 2000
 const MIN_MESSAGE_LENGTH = 10
 
 // ============================================================================
