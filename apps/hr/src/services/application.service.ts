@@ -83,7 +83,7 @@ export class ApplicationService {
 		userId: string,
 		isAdmin: boolean,
 		userHrCorporations: string[] = [],
-		userHrAdminCorporations: string[] = []
+		userHrReviewerCorporations: string[] = []
 	): Promise<Application[]> {
 		const conditions: ReturnType<typeof and>[] = []
 
@@ -110,28 +110,28 @@ export class ApplicationService {
 			const authConditions = [eq(applications.userId, userId)]
 
 			if (userHrCorporations.length > 0) {
-				// Non-admin HR corps (viewer/reviewer) can only see pending/under_review
-				const nonAdminHrCorps = userHrCorporations.filter(
-					(corpId) => !userHrAdminCorporations.includes(corpId)
+				// Viewer-only corps can only see pending/under_review
+				const viewerOnlyCorps = userHrCorporations.filter(
+					(corpId) => !userHrReviewerCorporations.includes(corpId)
 				)
 
 				const corpConditions = []
 
-				// HR admin corps: see all statuses
-				if (userHrAdminCorporations.length > 0) {
+				// HR reviewer+ corps: see all statuses
+				if (userHrReviewerCorporations.length > 0) {
 					corpConditions.push(
-						inArray(applications.corporationId, userHrAdminCorporations)
+						inArray(applications.corporationId, userHrReviewerCorporations)
 					)
 				}
 
-				// Non-admin HR corps: only pending/under_review
-				if (nonAdminHrCorps.length > 0) {
-					const nonAdminCondition = and(
-						inArray(applications.corporationId, nonAdminHrCorps),
+				// Viewer-only corps: only pending/under_review
+				if (viewerOnlyCorps.length > 0) {
+					const viewerCondition = and(
+						inArray(applications.corporationId, viewerOnlyCorps),
 						inArray(applications.status, ['pending', 'under_review'])
 					)
-					if (nonAdminCondition) {
-						corpConditions.push(nonAdminCondition)
+					if (viewerCondition) {
+						corpConditions.push(viewerCondition)
 					}
 				}
 
@@ -165,7 +165,7 @@ export class ApplicationService {
 		isAdmin: boolean,
 		userHrCorporations: string[] = [],
 		includeActivityLog = false,
-		userHrAdminCorporations: string[] = []
+		userHrReviewerCorporations: string[] = []
 	): Promise<ApplicationDetail> {
 		// Get the application
 		const application = await this.ctx.db.query.applications.findFirst({
@@ -179,15 +179,15 @@ export class ApplicationService {
 		// Check authorization
 		const isOwner = application.userId === userId
 		const hasHrAccess = userHrCorporations.includes(application.corporationId)
-		const isHrAdmin = userHrAdminCorporations.includes(application.corporationId)
+		const isReviewerOrAbove = userHrReviewerCorporations.includes(application.corporationId)
 
 		if (!isOwner && !hasHrAccess && !isAdmin) {
 			throw new Error('You do not have permission to view this application')
 		}
 
-		// Non-admin HR (viewer/reviewer) can only see pending/under_review applications
+		// Viewer-only HR can only see pending/under_review applications
 		const activeStatuses = ['pending', 'under_review']
-		if (hasHrAccess && !isHrAdmin && !isAdmin && !isOwner) {
+		if (hasHrAccess && !isReviewerOrAbove && !isAdmin && !isOwner) {
 			if (!activeStatuses.includes(application.status)) {
 				throw new Error('You do not have permission to view this application')
 			}

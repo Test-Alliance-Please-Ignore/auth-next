@@ -27,7 +27,7 @@ export class HrRoleService {
 		hr_viewer: 1,
 	}
 
-	constructor(private ctx: ServiceContext) {}
+	constructor(private ctx: ServiceContext) { }
 
 	async ensureRolesExist(): Promise<void> {
 		const roles = HR_ROLES.map((role) => ({
@@ -40,7 +40,7 @@ export class HrRoleService {
 		try {
 			await groupsStub.batchCreateRoles({ roles })
 			this.logger.info('[HrRoleService.ensureRolesExist] roles created.', { roles })
-		} catch (error) {}
+		} catch (error) { }
 	}
 
 	private async lookupRoleByHrRoleType(hrRoleType: HrRoleType): Promise<string> {
@@ -469,14 +469,36 @@ export class HrRoleService {
 	 * Get corporations where user has HR admin access
 	 */
 	async getUserHrAdminCorporations(userId: string): Promise<string[]> {
+		return this.getUserHrCorporationsForMinRole(userId, 'hr_admin')
+	}
+
+	/**
+	 * Get corporations where user has HR reviewer or admin access
+	 */
+	async getUserHrReviewerCorporations(userId: string): Promise<string[]> {
+		return this.getUserHrCorporationsForMinRole(userId, 'hr_reviewer')
+	}
+
+	/**
+	 * Get corporations where user has at least the specified HR role
+	 */
+	private async getUserHrCorporationsForMinRole(userId: string, minRole: 'hr_admin' | 'hr_reviewer'): Promise<string[]> {
+		const roleIds: string[] = []
 		const adminRole = await this.getRoleForType(ROLE_HR_ADMIN)
+		roleIds.push(adminRole.id)
+
+		if (minRole === 'hr_reviewer') {
+			const reviewerRole = await this.getRoleForType(ROLE_HR_REVIEWER)
+			roleIds.push(reviewerRole.id)
+		}
+
 		const groupsStub = getStub<Groups>(this.ctx.env.GROUPS, 'default')
 
 		const roleAttachments = await groupsStub.getRolesFor({
 			attachedToType: RoleAttachmentType.USER,
 			attachedToId: userId,
 			resourceType: ResourceType.CORPORATION,
-			roleIds: [adminRole.id],
+			roleIds,
 		})
 
 		const corporationIds = new Set(
@@ -499,7 +521,9 @@ export class HrRoleService {
 
 		for (const corporationId of candidateCorporationIds) {
 			const leadershipRole = await this.getLeadershipRoleForCorporation(userId, corporationId)
-			if (leadershipRole === 'hr_admin') {
+			if (minRole === 'hr_admin' && leadershipRole === 'hr_admin') {
+				corporationIds.add(corporationId)
+			} else if (minRole === 'hr_reviewer' && (leadershipRole === 'hr_admin' || leadershipRole === 'hr_reviewer')) {
 				corporationIds.add(corporationId)
 			}
 		}
