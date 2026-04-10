@@ -47,12 +47,6 @@ export function TemplateSelector({
 	const { data: templates, isLoading, error } = useTemplates(corporationId, 'active')
 
 	const handleValueChange = (value: string) => {
-		if (value === '__manage__') {
-			setShowManageDialog(true)
-			setSelectedValue('')
-			return
-		}
-
 		const template = templates?.find((t) => t.id === value)
 		if (template) {
 			onSelectTemplate(template)
@@ -78,19 +72,16 @@ export function TemplateSelector({
 	return (
 		<>
 			<div className={cn('flex items-center gap-2', className)}>
-				<div className="h-8 w-[200px]">
+				<div className="h-8 w-[320px]">
 					<Select
 						value={selectedValue}
 						onValueChange={handleValueChange}
-						options={[
-							...(templates?.map((template) => ({ value: template.id,
+						options={
+							templates?.map((template) => ({ value: template.id,
 								label: template.templateName,
 								description: template.description ?? undefined,
-							})) ?? []),
-							{ value: '__manage__',
-								label: 'Manage templates...',
-							},
-						]}
+							})) ?? []
+						}
 						placeholder="Use template..."
 						className="text-xs"
 						inputClassName="h-8 text-xs"

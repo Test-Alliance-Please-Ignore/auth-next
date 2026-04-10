@@ -924,15 +924,15 @@ app.patch('/templates/:templateId', requireAuth(), async (c) => {
 			return c.json({ error: 'Template not found' }, 404)
 		}
 
-		// Check HR permission (reviewer or admin required to edit)
+		// Check HR permission (admin required to edit)
 		const hasPermission = await hr.checkPermission(
 			user.id,
 			template.ownerCorporationId,
-			'hr_reviewer'
+			'hr_admin'
 		)
 
 		if (!hasPermission && !user.is_admin) {
-			return c.json({ error: 'HR reviewer or admin role required' }, 403)
+			return c.json({ error: 'HR admin role required' }, 403)
 		}
 
 		const updated = await hr.updateTemplate(templateId, updates)
