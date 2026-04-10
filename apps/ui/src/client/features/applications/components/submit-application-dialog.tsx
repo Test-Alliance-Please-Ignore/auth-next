@@ -9,6 +9,7 @@
 import { useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 
+import { Card, CardContent } from '@/components/ui/card'
 import {
 	Dialog,
 	DialogContent,
@@ -70,7 +71,7 @@ export function SubmitApplicationDialog({
 }: SubmitApplicationDialogProps) {
 	const navigate = useNavigate()
 	const { user } = useAuth()
-	const { showSuccess, showError } = useMessage()
+	const { message, showError, clearMessage } = useMessage()
 	const submitMutation = useSubmitApplication()
 
 	// Form state
@@ -93,13 +94,13 @@ export function SubmitApplicationDialog({
 		if (!isFormValid) return
 
 		try {
+			clearMessage()
 			const newApplication = await submitMutation.mutateAsync({
 				corporationId,
 				characterId: selectedCharacterId,
 				applicationText,
 			})
 
-			showSuccess('Application submitted successfully')
 			onOpenChange(false)
 
 			// Reset form
@@ -119,6 +120,7 @@ export function SubmitApplicationDialog({
 		setTimeout(() => {
 			setSelectedCharacterId('')
 			setApplicationText('')
+			clearMessage()
 		}, 200)
 	}
 
@@ -132,6 +134,14 @@ export function SubmitApplicationDialog({
 						join and what you can bring to the corporation.
 					</DialogDescription>
 				</DialogHeader>
+
+				{message && (
+					<Card className="border-destructive bg-destructive/10">
+						<CardContent className="py-3">
+							<p className="text-destructive text-sm">{message.text}</p>
+						</CardContent>
+					</Card>
+				)}
 
 				<div className="space-y-4 py-4">
 					{/* Character Selection */}
