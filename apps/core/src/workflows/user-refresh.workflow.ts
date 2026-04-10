@@ -1,5 +1,5 @@
 import { WorkflowEntrypoint } from 'cloudflare:workers'
-import { eq } from 'drizzle-orm'
+import { and, eq } from 'drizzle-orm'
 
 import { ROLE_CORE_ALLIANCE_MEMBER, ROLE_CORE_CORP_MEMBER } from '@repo/core'
 import { esiRetryOptions } from '@repo/workflow-utils'
@@ -7,11 +7,7 @@ import { esiRetryOptions } from '@repo/workflow-utils'
 import { createDb } from '../db'
 import { userCharacters } from '../db/schema'
 import { checkUserBlacklisted, disableBlacklistedUser } from './steps/check-user-blacklisted'
-import {
-	handleCharacterDeleted,
-	tryCharacterAuthenticatedFetch,
-	updateCharacterPublicInfo,
-} from './steps/update-character'
+import { tryCharacterAuthenticatedFetch, updateCharacterPublicInfo } from './steps/update-character'
 import { updateCompletionTimestamp } from './steps/update-completion-timestamp'
 import { attachUserRoles, getUserRoleAttachments } from './steps/user-roles'
 
@@ -225,10 +221,6 @@ export class UserRefreshWorkflow extends WorkflowEntrypoint<Env, UserRefreshWork
 			)
 
 			if (updateCharacterPublicInfoResult.isDeleted) {
-				await step.do(`handle-character-deleted-${characterId}`, CHARACTER_STEP_OPTIONS, () => {
-					const ctx = this.createContext(userId, workflowInstanceId, refreshMode)
-					return handleCharacterDeleted(ctx, characterId)
-				})
 				return {
 					characterId,
 					status: 'deleted',
@@ -337,7 +329,7 @@ export class UserRefreshWorkflow extends WorkflowEntrypoint<Env, UserRefreshWork
 			const characters = await step.do('fetch-user-characters', async () => {
 				const db = createDb(this.env.DATABASE_URL)
 				return db.query.userCharacters.findMany({
-					where: eq(userCharacters.userId, userId),
+					where: and(eq(userCharacters.userId, userId), eq(userCharacters.isDeleted, false)),
 				})
 			})
 			steps['fetch-user-characters'] = 'ok'

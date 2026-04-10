@@ -1,4 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
+import { CharacterDeletedError } from '@repo/esi'
 
 import { updateCharacterPublicInfo } from './update-character-public'
 
@@ -77,7 +78,28 @@ describe('updateCharacterPublicInfo', () => {
 		)
 
 		expect(result.isDeleted).toBe(true)
-		expect(recorder.update).not.toHaveBeenCalled()
+		expect(recorder.update).toHaveBeenCalledTimes(1)
+		expect(recorder.updates[0]).toMatchObject({
+			isDeleted: true,
+		})
+	})
+
+	it('returns isDeleted true for CharacterDeletedError (non-retryable 404)', async () => {
+		fetchCharacterPublicInfo.mockRejectedValue(new CharacterDeletedError('123'))
+		fetchCharacterAffiliation.mockResolvedValue([])
+		resolveIds.mockResolvedValue({})
+		const recorder = createDbRecorder()
+
+		const result = await updateCharacterPublicInfo(
+			createCtx(recorder.db as unknown as WorkflowContext['db']),
+			'123'
+		)
+
+		expect(result.isDeleted).toBe(true)
+		expect(recorder.update).toHaveBeenCalledTimes(1)
+		expect(recorder.updates[0]).toMatchObject({
+			isDeleted: true,
+		})
 	})
 
 	it('resets deleted status on successful refresh persistence', async () => {
