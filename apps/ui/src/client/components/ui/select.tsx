@@ -551,71 +551,84 @@ export function Select<TOption extends SelectOption>({
 					}}
 				>
 					<Command shouldFilter={false}>
-						{canScrollUp && (
-							<PopoverListScrollButton direction="up" onClick={() => scrollListBy(-120)} />
-						)}
-						<CommandList
-							ref={listRef}
-							className={cn('max-h-60', popoverListViewportClass, listClassName)}
-							style={{ minHeight: listMinHeight, maxHeight: listMaxHeight }}
-							onScroll={() => updateScrollButtons()}
-						>
-							{minQueryBlocked ? (
-								<CommandEmpty>{resolvedQueryHintText}</CommandEmpty>
-							) : isLoading ? (
-								<CommandEmpty>{loadingText}</CommandEmpty>
-							) : renderedOptions.length === 0 ? (
-								<CommandEmpty>{emptyText}</CommandEmpty>
-							) : (
-								<CommandGroup>
-									{renderedOptions.map((option, index) => (
-										<CommandItem
-											key={`${option.value}::${index}`}
-											value={option.value}
-											ref={(node) => {
-												optionRefs.current[index] = node
-											}}
-											className={cn(
-												`cursor-pointer ${popoverListItemBaseClass}`,
-												highlightedIndex === index && popoverListItemActiveClass
-											)}
-											onMouseEnter={() => setHighlightedIndex(index)}
-											onMouseMove={() => setHighlightedIndex(index)}
-											onSelect={() => selectOption(option)}
-										>
-											{!isSelectAllInternalOption(option) && renderOption ? (
-												renderOption(option)
-											) : (
-												<div className="min-w-0">
-													<div className="truncate font-medium" title={option.label}>
-														{option.label}
+						<div className="relative">
+							<PopoverListScrollButton
+								direction="up"
+								visible={canScrollUp}
+								onClick={() => scrollListBy(-120)}
+							/>
+							<CommandList
+								ref={listRef}
+								className={cn('max-h-60', popoverListViewportClass, listClassName)}
+								style={{ minHeight: listMinHeight, maxHeight: listMaxHeight }}
+								onScroll={() => updateScrollButtons()}
+								onWheel={(event) => {
+									const listEl = listRef.current
+									if (!listEl || listEl.scrollHeight <= listEl.clientHeight) return
+									event.preventDefault()
+									listEl.scrollTop += event.deltaY
+									updateScrollButtons()
+								}}
+							>
+								{minQueryBlocked ? (
+									<CommandEmpty>{resolvedQueryHintText}</CommandEmpty>
+								) : isLoading ? (
+									<CommandEmpty>{loadingText}</CommandEmpty>
+								) : renderedOptions.length === 0 ? (
+									<CommandEmpty>{emptyText}</CommandEmpty>
+								) : (
+									<CommandGroup>
+										{renderedOptions.map((option, index) => (
+											<CommandItem
+												key={`${option.value}::${index}`}
+												value={option.value}
+												ref={(node) => {
+													optionRefs.current[index] = node
+												}}
+												className={cn(
+													`cursor-pointer ${popoverListItemBaseClass}`,
+													highlightedIndex === index && popoverListItemActiveClass
+												)}
+												onMouseEnter={() => setHighlightedIndex(index)}
+												onMouseMove={() => setHighlightedIndex(index)}
+												onSelect={() => selectOption(option)}
+											>
+												{!isSelectAllInternalOption(option) && renderOption ? (
+													renderOption(option)
+												) : (
+													<div className="min-w-0">
+														<div className="truncate font-medium" title={option.label}>
+															{option.label}
+														</div>
+														{option.description && (
+															<div
+																className="truncate text-xs text-muted-foreground"
+																title={option.description}
+															>
+																{option.description}
+															</div>
+														)}
+														{showValueHint && (
+															<div
+																className="truncate text-xs text-muted-foreground"
+																title={option.value}
+															>
+																{option.value}
+															</div>
+														)}
 													</div>
-													{option.description && (
-														<div
-															className="truncate text-xs text-muted-foreground"
-															title={option.description}
-														>
-															{option.description}
-														</div>
-													)}
-													{showValueHint && (
-														<div
-															className="truncate text-xs text-muted-foreground"
-															title={option.value}
-														>
-															{option.value}
-														</div>
-													)}
-												</div>
-											)}
-										</CommandItem>
-									))}
-								</CommandGroup>
-							)}
-						</CommandList>
-						{canScrollDown && (
-							<PopoverListScrollButton direction="down" onClick={() => scrollListBy(120)} />
-						)}
+												)}
+											</CommandItem>
+										))}
+									</CommandGroup>
+								)}
+							</CommandList>
+							<PopoverListScrollButton
+								direction="down"
+								visible={canScrollDown}
+								onClick={() => scrollListBy(120)}
+							/>
+						</div>
 					</Command>
 				</PopoverContent>
 			</Popover>

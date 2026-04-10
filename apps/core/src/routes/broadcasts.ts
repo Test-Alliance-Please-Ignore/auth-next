@@ -4,7 +4,6 @@ import { ROLE_CORE_ALLIANCE_MEMBER } from '@repo/core'
 import { getStub } from '@repo/do-utils'
 
 import {
-	getCachedUserMemberships,
 	getCachedUserPermissions,
 } from '../lib/groups-cache'
 import { validatePagination } from '../lib/validation'
@@ -33,18 +32,6 @@ async function getUserPermissionUrnSet(
 ): Promise<Set<string>> {
 	const permissions = await getCachedUserPermissions(env, userId)
 	return new Set(permissions.map((permission) => permission.urn))
-}
-
-async function hasPermission(
-	env: { GROUPS: DurableObjectNamespace },
-	userId: string,
-	permissionUrn: string,
-	isAdmin: boolean
-): Promise<boolean> {
-	if (isAdmin) return true
-
-	const permissionUrns = await getUserPermissionUrnSet(env, userId)
-	return permissionUrns.has(permissionUrn)
 }
 
 function validateBroadcastPermissionSegment(value: string, label: string): string | null {
@@ -452,34 +439,41 @@ broadcasts.delete('/targets/:id', async (c) => {
 // =============================================================================
 
 /**
- * List broadcast templates (optionally filtered by targetType and/or groupId)
- * GET /api/broadcasts/templates?targetType=xxx&groupId=xxx
- *
- * Only returns templates from groups the user is a member of (unless admin)
+ * List broadcast templates (optionally filtered by targetType and/or targetId)
+ * GET /api/broadcasts/templates?targetType=xxx&targetId=xxx
  */
 broadcasts.get('/templates', async (c) => {
 	const user = c.get('user')!
 	const targetType = c.req.query('targetType')
-	const groupId = c.req.query('groupId')
+	const targetId = c.req.query('targetId')
+	const permissionContext = user.is_admin
+		? null
+		: await getUserBroadcastPermissionContext(c.env, user.id)
 
-	// Get user's group memberships (admins can see all)
-	const memberships = user.is_admin ? [] : await getCachedUserMemberships(c.env, user.id)
-	const userGroupIds = memberships.map((m) => m.groupId)
-
-	// If filtering by a specific group, verify user is a member
-	if (groupId) {
-		if (!user.is_admin && !userGroupIds.includes(groupId)) {
-			return c.json({ error: 'Not a member of this group' }, 403)
+	const broadcastsStub = getStub<Broadcasts>(c.env.BROADCASTS, 'default')
+	if (targetId && !user.is_admin) {
+		const target = await broadcastsStub.getTarget(targetId, user.id)
+		if (!target) {
+			return c.json({ error: 'Target not found' }, 404)
+		}
+		const canAccessTarget = canAccessBroadcastTargetByAction(target, 'send', permissionContext!)
+		if (!canAccessTarget) {
+			return c.json({ error: 'Permission denied' }, 403)
 		}
 	}
 
-	const broadcastsStub = getStub<Broadcasts>(c.env.BROADCASTS, 'default')
-	const templates = await broadcastsStub.listTemplates(user.id, { targetType, groupId })
+	const templates = await broadcastsStub.listTemplates(user.id, { targetType, targetId })
 
-	// Filter templates to only include those from groups the user is a member of
-	const filteredTemplates = user.is_admin
-		? templates
-		: templates.filter((template) => userGroupIds.includes(template.groupId))
+	if (user.is_admin) {
+		return c.json(templates)
+	}
+
+	const allowedSendPermissionIds = [
+		...(permissionContext!.accessiblePermissionIdsByAction.get('send') ?? new Set()),
+	]
+	const accessibleTargets = await broadcastsStub.listTargets(user.id, allowedSendPermissionIds)
+	const accessibleTargetIds = new Set(accessibleTargets.map((target) => target.id))
+	const filteredTemplates = templates.filter((template) => accessibleTargetIds.has(template.targetId))
 
 	return c.json(filteredTemplates)
 })
@@ -499,13 +493,20 @@ broadcasts.get('/templates/:id', async (c) => {
 		return c.json({ error: 'Template not found' }, 404)
 	}
 
-	// Verify user is a member of the template's group
-	if (!user.is_admin) {
-		const memberships = await getCachedUserMemberships(c.env, user.id)
-		const isMember = memberships.some((m) => m.groupId === template.groupId)
+	const target = await broadcastsStub.getTarget(template.targetId, user.id)
+	if (!target) {
+		return c.json({ error: 'Target not found' }, 404)
+	}
 
-		if (!isMember) {
-			return c.json({ error: 'Not authorized to view this template' }, 403)
+	// Verify user can send to this template's target
+	if (!user.is_admin) {
+		const canAccessTarget = canAccessBroadcastTargetByAction(
+			target,
+			'send',
+			await getUserBroadcastPermissionContext(c.env, user.id)
+		)
+		if (!canAccessTarget) {
+			return c.json({ error: 'Permission denied' }, 403)
 		}
 	}
 
@@ -520,19 +521,25 @@ broadcasts.post('/templates', async (c) => {
 	const user = c.get('user')!
 	const data = await c.req.json()
 
-	// Check permissions
-	const allowed = await hasPermission(
-		c.env,
-		user.id,
-		`urn:group:${data.groupId}:broadcasts:manage`,
-		user.is_admin
-	)
+	const broadcastsStub = getStub<Broadcasts>(c.env.BROADCASTS, 'default')
+	const target = await broadcastsStub.getTarget(data.targetId, user.id)
+	if (!target) {
+		return c.json({ error: 'Target not found' }, 404)
+	}
+
+	// Check permissions against target's manage permission
+	const allowed = user.is_admin
+		? true
+		: canAccessBroadcastTargetByAction(
+				target,
+				'manage',
+				await getUserBroadcastPermissionContext(c.env, user.id)
+			)
 
 	if (!allowed) {
 		return c.json({ error: 'Permission denied' }, 403)
 	}
 
-	const broadcastsStub = getStub<Broadcasts>(c.env.BROADCASTS, 'default')
 	const template = await broadcastsStub.createTemplate(data, user.id)
 
 	return c.json(template, 201)
@@ -555,13 +562,19 @@ broadcasts.patch('/templates/:id', async (c) => {
 		return c.json({ error: 'Template not found' }, 404)
 	}
 
-	// Check permissions
-	const allowed = await hasPermission(
-		c.env,
-		user.id,
-		`urn:group:${template.groupId}:broadcasts:manage`,
-		user.is_admin
-	)
+	const target = await broadcastsStub.getTarget(template.targetId, user.id)
+	if (!target) {
+		return c.json({ error: 'Target not found' }, 404)
+	}
+
+	// Check permissions against target's manage permission
+	const allowed = user.is_admin
+		? true
+		: canAccessBroadcastTargetByAction(
+				target,
+				'manage',
+				await getUserBroadcastPermissionContext(c.env, user.id)
+			)
 
 	if (!allowed) {
 		return c.json({ error: 'Permission denied' }, 403)
@@ -587,13 +600,19 @@ broadcasts.delete('/templates/:id', async (c) => {
 		return c.json({ error: 'Template not found' }, 404)
 	}
 
-	// Check permissions
-	const allowed = await hasPermission(
-		c.env,
-		user.id,
-		`urn:group:${template.groupId}:broadcasts:manage`,
-		user.is_admin
-	)
+	const target = await broadcastsStub.getTarget(template.targetId, user.id)
+	if (!target) {
+		return c.json({ error: 'Target not found' }, 404)
+	}
+
+	// Check permissions against target's manage permission
+	const allowed = user.is_admin
+		? true
+		: canAccessBroadcastTargetByAction(
+				target,
+				'manage',
+				await getUserBroadcastPermissionContext(c.env, user.id)
+			)
 
 	if (!allowed) {
 		return c.json({ error: 'Permission denied' }, 403)

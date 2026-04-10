@@ -24,12 +24,12 @@ import {
 } from '@/components/ui/table'
 import { Textarea } from '@/components/ui/textarea'
 import {
+	useBroadcastTargets,
 	useBroadcastTemplates,
 	useCreateBroadcastTemplate,
 	useDeleteBroadcastTemplate,
 	useUpdateBroadcastTemplate,
 } from '@/hooks/useBroadcasts'
-import { useGroups } from '@/hooks/useGroups'
 import { usePageTitle } from '@/hooks/usePageTitle'
 
 import type { BroadcastTemplate, CreateBroadcastTemplateRequest } from '@/lib/api'
@@ -37,7 +37,7 @@ import type { BroadcastTemplate, CreateBroadcastTemplateRequest } from '@/lib/ap
 export default function BroadcastTemplatesPage() {
 	usePageTitle('Admin - Broadcast Templates')
 	const { data: templates, isLoading } = useBroadcastTemplates()
-	const { data: groups } = useGroups()
+	const { data: targets = [] } = useBroadcastTargets()
 	const createTemplate = useCreateBroadcastTemplate()
 	const updateTemplate = useUpdateBroadcastTemplate()
 	const deleteTemplate = useDeleteBroadcastTemplate()
@@ -53,7 +53,7 @@ export default function BroadcastTemplatesPage() {
 		name: '',
 		description: '',
 		targetType: 'discord_channel',
-		groupId: '',
+		targetId: '',
 		fieldSchema: [{ name: 'message', label: 'Message', type: 'text', required: true }],
 		messageTemplate: '{{message}}',
 	})
@@ -66,7 +66,7 @@ export default function BroadcastTemplatesPage() {
 			name: '',
 			description: '',
 			targetType: 'discord_channel',
-			groupId: '',
+			targetId: '',
 			fieldSchema: [{ name: 'message', label: 'Message', type: 'text', required: true }],
 			messageTemplate: '{{message}}',
 		})
@@ -95,7 +95,7 @@ export default function BroadcastTemplatesPage() {
 			name: template.name,
 			description: template.description || '',
 			targetType: template.targetType,
-			groupId: template.groupId,
+			targetId: template.targetId,
 			fieldSchema: template.fieldSchema,
 			messageTemplate: template.messageTemplate,
 		})
@@ -201,19 +201,19 @@ export default function BroadcastTemplatesPage() {
 								<TableRow>
 									<TableHead>Name</TableHead>
 									<TableHead>Target Type</TableHead>
-									<TableHead>Group</TableHead>
+									<TableHead>Target</TableHead>
 									<TableHead>Fields</TableHead>
 									<TableHead className="text-right">Actions</TableHead>
 								</TableRow>
 							</TableHeader>
 							<TableBody>
 								{templates.map((template) => {
-									const group = groups?.find((g) => g.id === template.groupId)
+									const target = targets.find((t) => t.id === template.targetId)
 									return (
 										<TableRow key={template.id}>
 											<TableCell className="font-medium">{template.name}</TableCell>
 											<TableCell>{template.targetType}</TableCell>
-											<TableCell>{group?.name || template.groupId}</TableCell>
+											<TableCell>{target?.name || template.targetId}</TableCell>
 											<TableCell className="text-sm text-muted-foreground">
 												{template.fieldSchema.length} field(s)
 											</TableCell>
@@ -265,14 +265,22 @@ export default function BroadcastTemplatesPage() {
 							/>
 						</div>
 						<div>
-							<Label htmlFor="group">Group *</Label>
+							<Label htmlFor="target">Target *</Label>
 							<Select
-								inputId="group"
-								value={formData.groupId}
-								onValueChange={(value) => setFormData({ ...formData, groupId: value })}
-								placeholder="Select a group"
-								options={(groups ?? []).map((group) => ({ value: group.id,
-									label: group.name,
+								inputId="target"
+								value={formData.targetId}
+								onValueChange={(value) => {
+									const target = targets.find((t) => t.id === value)
+									setFormData({
+										...formData,
+										targetId: value,
+										targetType: target?.type ?? formData.targetType,
+									})
+								}}
+								placeholder="Select a target"
+								options={targets.map((target) => ({
+									value: target.id,
+									label: target.name,
 								}))}
 							/>
 						</div>
