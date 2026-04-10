@@ -24,7 +24,7 @@ export default function HrAuditorUserGroupsPage() {
 	}
 
 	if (!authLoading && !isAuditor && !user?.is_admin) {
-		return <Navigate to="/hr" replace />
+		return <Navigate to="/corporations" replace />
 	}
 
 	if (authLoading || isLoading) {

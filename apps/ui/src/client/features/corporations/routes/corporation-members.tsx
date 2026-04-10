@@ -29,6 +29,7 @@ import { LoadingSpinner } from '@/components/ui/loading'
 import { useAuth } from '@/hooks/useAuth'
 import { useMessage } from '@/hooks/useMessage'
 import { usePageTitle } from '@/hooks/usePageTitle'
+import { useUserPermissions } from '@/hooks/useUserPermissions'
 
 import { useHrRoles } from '../../hr'
 import { myCorporationsApi } from '../api'
@@ -54,8 +55,10 @@ export default function CorporationMembers() {
 	const { showSuccess, showError } = useMessage()
 
 	const { user, isAuthenticated, isLoading: authLoading } = useAuth()
+	const { hasAnyPermission } = useUserPermissions()
+	const isAuditor = hasAnyPermission('urn:hr:auditor')
 	const { canAccess: hasCorpAccess, userRole, corporation: accessCorp } = useCanAccessCorporation(corporationId!)
-	const canAccess = hasCorpAccess
+	const canAccess = hasCorpAccess || isAuditor
 	const { data: corporation, isLoading: corpLoading } = useMyCorporation(corporationId!)
 	const { data: members, isLoading: membersLoading, error } = useCorporationMembers(corporationId!)
 	const { data: hrRoles, isLoading: hrRolesLoading } = useHrRoles(corporationId!)
@@ -65,7 +68,8 @@ export default function CorporationMembers() {
 	// Determine capability flags based on user role
 	const isLeadership = userRole === 'CEO' || userRole === 'Director' || userRole === 'admin'
 	const isHrAdmin = userRole === 'hr_admin'
-	const isHrOnly = userRole === 'hr_admin' || userRole === 'hr_reviewer' || userRole === 'hr_viewer'
+	const isHrOnly =
+		userRole === 'hr_admin' || userRole === 'hr_reviewer' || userRole === 'hr_viewer' || isAuditor
 
 	// Can refresh data: CEO/Director/admin only
 	const canRefresh = isLeadership
@@ -73,12 +77,20 @@ export default function CorporationMembers() {
 	// Can export CSV: CEO/Director/admin/hr_admin
 	const canExport = isLeadership || isHrAdmin
 
-	// Can manage HR roles: CEO/admin can manage all, hr_admin can manage reviewer/viewer
+	// Can manage HR roles: CEO/admin/hr_admin
 	const canManageHrRoles = useMemo(() => {
 		return userRole === 'CEO' || userRole === 'admin' || userRole === 'hr_admin'
 	}, [userRole])
+	const grantableHrRoles = useMemo(
+		() =>
+			userRole === 'CEO'
+				? (['hr_admin', 'hr_reviewer', 'hr_viewer'] as const)
+				: (['hr_reviewer', 'hr_viewer'] as const),
+		[userRole]
+	)
+	const canRevokeHrAdmin = useMemo(() => userRole === 'CEO' || userRole === 'admin', [userRole])
 
-	// Can manage emeritus status: CEO/admin only
+	// Can manage emeritus status: CEO/site admin
 	const canManageEmeritus = userRole === 'CEO' || userRole === 'admin'
 
 	// Can access settings: CEO/Director/admin/hr_admin
@@ -103,14 +115,14 @@ export default function CorporationMembers() {
 		})
 	}, [members, hrRoles])
 
-	// Corporation info - use My Corporations data with access data as fallback (for HR-only users)
+	// Corporation info - use Corporations data with access data as fallback (for HR-only users)
 	const corpName = corporation?.name ?? accessCorp?.name ?? 'Corporation'
 	const corpTicker = corporation?.ticker ?? accessCorp?.ticker
 	const corpAllianceName = corporation?.allianceName
 
 	// Set page title
 	usePageTitle(
-		corporation || accessCorp ? `${corpName} Members | My Corporations` : 'Corporation Members'
+		corporation || accessCorp ? `${corpName} Members | Corporations` : 'Corporation Members'
 	)
 
 	// Handlers
@@ -131,12 +143,22 @@ export default function CorporationMembers() {
 		(member: CorporationMember) => {
 			// Navigate to HR member profile if user has an auth account
 			if (member.hasAuthAccount && member.authUserId) {
-				navigate(`/corporations/${corporationId}/hr/members/${member.authUserId}`)
+				if (isAuditor && !hasCorpAccess && !user?.is_admin) {
+					navigate(`/hr/auditor/users/${member.authUserId}`, {
+						state: {
+							source: 'members',
+							returnTo: `/corporations/${corporationId}/members`,
+							corporationId,
+						},
+					})
+					return
+				}
+				navigate(`/corporations/${corporationId}/members/${member.authUserId}`)
 			} else {
 				navigate(`/character/${member.characterId}`)
 			}
 		},
-		[navigate, corporationId]
+		[navigate, corporationId, isAuditor, hasCorpAccess, user]
 	)
 
 	const handleLinkAccount = useCallback(
@@ -199,7 +221,7 @@ export default function CorporationMembers() {
 
 	// Check if corporation ID is provided
 	if (!corporationId) {
-		return <Navigate to="/my-corporations" replace />
+		return <Navigate to="/corporations" replace />
 	}
 
 	// Loading state
@@ -228,9 +250,9 @@ export default function CorporationMembers() {
 					</CardHeader>
 					<CardContent className="text-center">
 						<Button variant="ghost" asChild>
-							<Link to="/my-corporations">
+							<Link to="/corporations">
 								<ArrowLeft className="mr-2 h-4 w-4" />
-								Return to My Corporations
+								Return to Corporations
 							</Link>
 						</Button>
 					</CardContent>
@@ -260,9 +282,9 @@ export default function CorporationMembers() {
 						</Button>
 						<div>
 							<Button variant="ghost" asChild>
-								<Link to="/my-corporations">
+								<Link to="/corporations">
 									<ArrowLeft className="mr-2 h-4 w-4" />
-									Return to My Corporations
+									Return to Corporations
 								</Link>
 							</Button>
 						</div>
@@ -279,7 +301,7 @@ export default function CorporationMembers() {
 			<Breadcrumb className="mb-6">
 				<BreadcrumbList>
 					<BreadcrumbItem>
-						<BreadcrumbLink to="/my-corporations">My Corporations</BreadcrumbLink>
+						<BreadcrumbLink to="/corporations">Corporations</BreadcrumbLink>
 					</BreadcrumbItem>
 					<BreadcrumbSeparator />
 					<BreadcrumbItem>
@@ -328,7 +350,7 @@ export default function CorporationMembers() {
 							</Button>
 						)}
 						<Button variant="ghost" asChild>
-							<Link to={isHrOnly && !isLeadership ? '/hr' : '/my-corporations'}>
+							<Link to="/corporations">
 								<ArrowLeft className="mr-2 h-4 w-4" />
 								Back
 							</Link>
@@ -345,18 +367,18 @@ export default function CorporationMembers() {
 							<Settings className="h-5 w-5" />
 							HR Management
 						</CardTitle>
-						<CardDescription>
-							{isHrOnly && !isLeadership
-								? `You have ${userRole.replace('_', ' ')} access for this corporation`
-								: userRole === 'CEO'
-									? 'You have CEO access to all HR features'
-									: 'You have site admin access to all HR features'}
-						</CardDescription>
+							<CardDescription>
+								{isHrOnly && !isLeadership
+									? `You have ${(userRole ?? 'hr_auditor').replace('_', ' ')} access for this corporation`
+									: userRole === 'CEO'
+										? 'You have CEO access to all HR features'
+										: 'You have site admin access to all HR features'}
+							</CardDescription>
 					</CardHeader>
 					<CardContent>
 						<div className="flex flex-wrap gap-2">
 							<Button variant="primary" asChild>
-								<Link to={`/corporations/${corporationId}/hr/applications`}>
+								<Link to={`/corporations/${corporationId}/applications`}>
 									<FileText className="mr-2 h-4 w-4" />
 									Review Applications
 								</Link>
@@ -371,7 +393,7 @@ export default function CorporationMembers() {
 							)}
 							{canAccessSettings && (
 								<Button variant="ghost" asChild>
-									<Link to={`/my-corporations/${corporationId}/settings`}>
+									<Link to={`/corporations/${corporationId}/settings`}>
 										<Settings className="mr-2 h-4 w-4" />
 										Corporation Settings
 									</Link>
@@ -400,6 +422,8 @@ export default function CorporationMembers() {
 						onLinkAccount={handleLinkAccount}
 						showActions={true}
 						canManageHrRoles={canManageHrRoles}
+						grantableHrRoles={[...grantableHrRoles]}
+						canRevokeHrAdmin={canRevokeHrAdmin}
 						canManageEmeritus={canManageEmeritus}
 						corporationId={corporationId!}
 					/>

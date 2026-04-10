@@ -18,32 +18,39 @@ import {
 } from '@/components/ui/breadcrumb'
 import { Button } from '@/components/ui/button'
 import { usePageTitle } from '@/hooks/usePageTitle'
+import { useUserPermissions } from '@/hooks/useUserPermissions'
 
 import { FulcrumReportViewer } from '../components/fulcrum-report-viewer'
 
 export default function FulcrumReportPage() {
-	const { corporationId, applicationId, reportId } = useParams<{
-		corporationId: string
-		applicationId?: string
+	const { reportId } = useParams<{
 		reportId: string
 	}>()
 	const navigate = useNavigate()
 	const [searchParams] = useSearchParams()
+	const { hasAnyPermission } = useUserPermissions()
+	const isAuditor = hasAnyPermission('urn:hr:auditor')
 	const characterName = searchParams.get('char') ?? searchParams.get('name')
+	const returnTo = searchParams.get('returnTo')
+	const userId = searchParams.get('userId')
+	const corporationId = searchParams.get('corporationId')
+
+	const roleBasedBackPath = isAuditor && userId
+		? `/hr/auditor/users/${userId}`
+		: corporationId && userId
+			? `/corporations/${corporationId}/members/${userId}`
+			: '/corporations'
+
+	const backPath = returnTo ?? roleBasedBackPath
+	const isUserProfileBackPath = backPath.includes('/members/') || backPath.includes('/hr/auditor/users/')
+	const backLabel = searchParams.get('backLabel') ?? (isUserProfileBackPath ? 'Back to User Profile' : 'Back to Corporations')
+	const breadcrumbParentLabel = searchParams.get('breadcrumb') ?? (isUserProfileBackPath ? 'User Profile' : 'Reports')
 
 	usePageTitle(characterName ? `Report - ${characterName}` : 'Character Report')
 
-	if (!corporationId || !reportId) {
+	if (!reportId) {
 		return null
 	}
-
-	// When coming from an application review, link back to that application.
-	// When coming from the HR dashboard, link back to the dashboard.
-	const fromApplication = !!applicationId
-	const backPath = fromApplication
-		? `/corporations/${corporationId}/hr/applications/${applicationId}?tab=fulcrum`
-		: `/my-corporations/${corporationId}/members`
-	const backLabel = fromApplication ? 'Back to Application' : 'Back to HR Dashboard'
 
 	return (
 		<div className="container mx-auto max-w-6xl px-4 py-8">
@@ -51,25 +58,11 @@ export default function FulcrumReportPage() {
 			<div className="mb-6 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
 				<Breadcrumb>
 					<BreadcrumbList>
-						{fromApplication ? (
-							<>
-								<BreadcrumbItem>
-									<BreadcrumbLink to={`/corporations/${corporationId}/hr/applications`}>
-										Applications
-									</BreadcrumbLink>
-								</BreadcrumbItem>
-								<BreadcrumbSeparator />
-								<BreadcrumbItem>
-									<BreadcrumbLink to={backPath}>Review</BreadcrumbLink>
-								</BreadcrumbItem>
-							</>
-						) : (
-							<BreadcrumbItem>
-								<BreadcrumbLink to={backPath}>
-									HR Dashboard
-								</BreadcrumbLink>
-							</BreadcrumbItem>
-						)}
+						<BreadcrumbItem>
+							<BreadcrumbLink to={backPath}>
+								{breadcrumbParentLabel}
+							</BreadcrumbLink>
+						</BreadcrumbItem>
 						<BreadcrumbSeparator />
 						<BreadcrumbItem>
 							<BreadcrumbPage>{characterName ? `${characterName} Report` : 'Character Report'}</BreadcrumbPage>

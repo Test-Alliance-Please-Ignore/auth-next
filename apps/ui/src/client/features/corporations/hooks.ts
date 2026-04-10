@@ -1,5 +1,5 @@
 /**
- * My Corporations Feature Hooks
+ * Corporations Feature Hooks
  *
  * React Query hooks for managing corporation data fetching and caching.
  */

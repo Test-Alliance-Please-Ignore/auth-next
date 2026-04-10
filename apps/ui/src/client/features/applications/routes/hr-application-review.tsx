@@ -29,7 +29,7 @@ import { useAuth } from '@/hooks/useAuth'
 import { usePageTitle } from '@/hooks/usePageTitle'
 
 import { useHrPermissionCheck } from '../../hr/hooks'
-import { useCanAccessCorporation } from '../../my-corporations/hooks'
+import { useCanAccessCorporation } from '../../corporations/hooks'
 import { ACTIVE_APPLICATION_STATUSES } from '../constants'
 import { AccessDeniedCard } from '../components/access-denied-card'
 import { AddHRNoteDialog } from '../components/add-hr-note-dialog'
@@ -103,7 +103,7 @@ export default function HrApplicationReview() {
 
 	// Handlers
 	const handleBackClick = () => {
-		navigate(`/corporations/${corporationId}/hr/applications`)
+		navigate(`/corporations/${corporationId}/applications`)
 	}
 
 	const handleAddNote = () => {
@@ -125,11 +125,10 @@ export default function HrApplicationReview() {
 		// Refetch is handled by React Query cache invalidation
 	}
 
-	const useMyCorporationsRoot = user?.is_admin || hasCorporationAccess
 	const showMembersNavigation = user?.is_admin || hasCorporationAccess
-	const rootCorporationsPath = useMyCorporationsRoot ? '/my-corporations' : '/hr'
-	const rootCorporationsLabel = useMyCorporationsRoot ? 'My Corporations' : 'HR Corporations'
-	const membersPath = `/my-corporations/${corporationId}/members`
+	const rootCorporationsPath = '/corporations'
+	const rootCorporationsLabel = 'Corporations'
+	const membersPath = `/corporations/${corporationId}/members`
 
 	// Check authentication
 	if (!authLoading && !isAuthenticated) {
@@ -138,7 +137,7 @@ export default function HrApplicationReview() {
 
 	// Check required params
 	if (!corporationId || !applicationId) {
-		return <Navigate to="/hr" replace />
+		return <Navigate to="/corporations" replace />
 	}
 
 	// Loading state
@@ -234,7 +233,7 @@ export default function HrApplicationReview() {
 					)}
 					<BreadcrumbSeparator />
 					<BreadcrumbItem>
-						<BreadcrumbLink to={`/corporations/${corporationId}/hr/applications`}>
+						<BreadcrumbLink to={`/corporations/${corporationId}/applications`}>
 								Applications
 							</BreadcrumbLink>
 						</BreadcrumbItem>

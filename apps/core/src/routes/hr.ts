@@ -157,11 +157,16 @@ async function hasAnyHrAccess(c: Context<App>): Promise<boolean> {
 	return hrCorps.length > 0
 }
 
+type HrRoleManagementAccess = 'site_admin' | 'ceo' | 'hr_admin' | null
+
 /**
- * Check if the current user has CEO or site admin access to manage HR roles
- * Throws an error with 403 status if user is neither admin nor CEO
+ * Resolve role-management access level for the current user in a corporation.
+ * Priority: site_admin > ceo > hr_admin > none
  */
-async function checkCeoOrAdminAccess(c: Context<App>, corporationId: string): Promise<void> {
+async function getHrRoleManagementAccess(
+	c: Context<App>,
+	corporationId: string
+): Promise<HrRoleManagementAccess> {
 	const user = c.get('user')!
 	const db = c.get('db')
 
@@ -176,7 +181,7 @@ async function checkCeoOrAdminAccess(c: Context<App>, corporationId: string): Pr
 			userId: user.id,
 			reason: 'site_admin',
 		})
-		return // Access granted via admin
+		return 'site_admin'
 	}
 
 	// Get user's characters to check CEO status
@@ -203,18 +208,29 @@ async function checkCeoOrAdminAccess(c: Context<App>, corporationId: string): Pr
 			ceoId: corporationInfo.ceo_id,
 			reason: 'corporation_ceo',
 		})
-		return // Access granted via CEO
+		return 'ceo'
 	}
 
-	// No character found with CEO access
+	// HR admins can manage lower HR roles (reviewer/viewer)
+	const hr = getHrStub(c)
+	const hasHrAdmin = await hr.checkPermission(user.id, corporationId, 'hr_admin')
+	if (hasHrAdmin) {
+		logger.info('[HR Auth] HR admin access granted', {
+			corporationId,
+			userId: user.id,
+			reason: 'hr_admin_role',
+		})
+		return 'hr_admin'
+	}
+
+	// No role-management access
 	logger.warn('[HR Auth] Access denied', {
 		corporationId,
 		userId: user.id,
 		isAdmin: user.is_admin,
 		checkedCharacters: userChars.length,
 	})
-
-	throw new Error('Access denied. Only corporation CEOs or site admins can manage HR roles.')
+	return null
 }
 
 // ==================== Application Routes ====================
@@ -1141,18 +1157,30 @@ app.delete('/notes/:id', requireAuth(), async (c) => {
 /**
  * POST /api/hr/:corporationId/roles
  * Grant an HR role to a user for a corporation
- * REQUIRES: CEO access to the corporation OR site admin
+ * REQUIRES: CEO, site admin, or HR admin access
+ * CONSTRAINTS:
+ *   - Only CEOs can grant hr_admin
+ *   - HR admins can grant only hr_reviewer/hr_viewer
  */
 app.post('/:corporationId/roles', requireAuth(), async (c) => {
 	const user = c.get('user')!
 	const corporationId = c.req.param('corporationId')
 	const { userId, characterId, role, expiresAt } = await c.req.json()
 
-	// Authorization check - user must be CEO or site admin
-	try {
-		await checkCeoOrAdminAccess(c, corporationId)
-	} catch (error) {
-		return c.json({ error: error instanceof Error ? error.message : 'Access denied' }, 403)
+	// Authorization check
+	const managementAccess = await getHrRoleManagementAccess(c, corporationId)
+	if (!managementAccess) {
+		return c.json({ error: 'Access denied. CEO, HR admin, or site admin access is required.' }, 403)
+	}
+
+	// Only CEOs can grant HR admin
+	if (role === 'hr_admin' && managementAccess !== 'ceo') {
+		return c.json({ error: 'Access denied. Only corporation CEOs can grant HR admin.' }, 403)
+	}
+
+	// HR admins can only grant lower roles
+	if (managementAccess === 'hr_admin' && role === 'hr_admin') {
+		return c.json({ error: 'Access denied. HR admins can only grant reviewer/viewer roles.' }, 403)
 	}
 
 	// Get character name
@@ -1203,7 +1231,10 @@ app.get('/:corporationId/roles', requireAuth(), async (c) => {
 	const corporationId = c.req.param('corporationId')
 	const userId = c.req.query('userId')
 
-	await checkCeoOrAdminAccess(c, corporationId)
+	const managementAccess = await getHrRoleManagementAccess(c, corporationId)
+	if (!managementAccess) {
+		return c.json({ error: 'Access denied. CEO, HR admin, or site admin access is required.' }, 403)
+	}
 
 	try {
 		const hr = getHrStub(c)
@@ -1356,18 +1387,19 @@ app.patch('/roles/:id', requireAuth(), async (c) => {
 /**
  * DELETE /api/hr/:corporationId/roles/:roleId
  * Revoke an HR role
- * REQUIRES: CEO access to the corporation OR site admin
+ * REQUIRES: CEO, site admin, or HR admin access
+ * CONSTRAINTS:
+ *   - HR admins cannot revoke other hr_admin roles
  */
 app.delete('/:corporationId/roles/:roleId', requireAuth(), async (c) => {
 	const user = c.get('user')!
 	const corporationId = c.req.param('corporationId')
 	const roleId = c.req.param('roleId')
 
-	// Authorization check - user must be CEO or site admin
-	try {
-		await checkCeoOrAdminAccess(c, corporationId)
-	} catch (error) {
-		return c.json({ error: error instanceof Error ? error.message : 'Access denied' }, 403)
+	// Authorization check
+	const managementAccess = await getHrRoleManagementAccess(c, corporationId)
+	if (!managementAccess) {
+		return c.json({ error: 'Access denied. CEO, HR admin, or site admin access is required.' }, 403)
 	}
 
 	try {
@@ -1385,6 +1417,10 @@ app.delete('/:corporationId/roles/:roleId', requireAuth(), async (c) => {
 				actualCorporationId: role.corporationId,
 			})
 			return c.json({ error: 'Role does not belong to this corporation' }, 400)
+		}
+
+		if (managementAccess === 'hr_admin' && role.role === 'hr_admin') {
+			return c.json({ error: 'Access denied. HR admins cannot revoke other HR admins.' }, 403)
 		}
 
 		// Proceed with revoking the role

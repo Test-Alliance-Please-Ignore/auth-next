@@ -1,6 +1,6 @@
 # HR Permissions Matrix
 
-Last updated: 2026-04-09
+Last updated: 2026-04-10
 
 Scope notes:
 - Matrices are corporation-scoped unless marked as global.
@@ -29,20 +29,22 @@ Scope notes:
 | `HR > My Applications` | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ |
 | `HR > Join Corporations` | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ |
 | `HR > Recommendations` | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ |
-| `HR > HR Corporations` | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ |
+| `HR > Corporations` | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ |
 | `HR > User Search` (`/hr/auditor/users`) | ❌ | ❌ | ❌ | ❌ | ❌ | ✅ | ✅ |
-| `Manage Corporation` | ✅ | ✅ | ✅ | ✅ | ✅ | ❌ (unless also corp-access role) | ✅ |
+| `Corporations > Members` card action | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ |
 
 ## Page Accessibility Matrix
 
 | Page | CEO | Director | HR Admin | HR Reviewer | HR Viewer | HR Auditor | Site Admin |
 | --- | --- | --- | --- | --- | --- | --- | --- |
 | `/hr` (HR corporations) | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ (as viewer) | ✅ |
+| `/corporations` | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ |
 | `/corporations/:corpId/hr/applications` | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ |
 | `/corporations/:corpId/hr/applications/:applicationId` | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ |
-| `/my-corporations/:corpId/members` | ✅ | ✅ | ✅ | ✅ | ✅ | ❌ (unless also corp-access role) | ✅ |
+| `/corporations/:corpId/members` | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ (read-only action surface) | ✅ |
 | `/corporations/:corpId/hr/members/:accountId` | ✅ | ✅ | ✅ | ✅ | ✅ | Redirect to auditor profile unless also corp-access role | ✅ |
-| `/corporations/:corpId/hr/roles` | ✅ | ❌ | ❌ | ❌ | ❌ | ❌ | ✅ |
+| `/corporations/:corpId/hr/roles` | ✅ | ❌ | ✅ | ❌ | ❌ | ❌ | ✅ |
+| `/corporations/:corpId/settings` | ✅ | ✅ | ✅ | ❌ | ❌ | ❌ | ✅ |
 | `/hr/auditor/users` | ❌ | ❌ | ❌ | ❌ | ❌ | ✅ | ✅ |
 | `/hr/auditor/users/:userId` | ❌ | ❌ | ❌ | ❌ | ❌ | ✅ | ✅ |
 | `/hr/auditor/users/:userId/groups` | ❌ | ❌ | ❌ | ❌ | ❌ | ✅ | ✅ |
@@ -60,8 +62,26 @@ Scope notes:
 | Edit/delete HR notes | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ✅ |
 | Trigger Fulcrum scan (single/all) | ✅ | ✅ | ✅ | ✅ | ❌ | ✅ | ✅ |
 | View Fulcrum reports/status | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ |
-| Manage HR roles (grant/revoke) | ✅ | ❌ | ❌ | ❌ | ❌ | ❌ | ✅ |
+| Access HR role management page | ✅ | ❌ | ✅ | ❌ | ❌ | ❌ | ✅ |
+| Grant `hr_admin` | ✅ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ |
+| Grant `hr_reviewer` / `hr_viewer` | ✅ | ❌ | ✅ | ❌ | ❌ | ❌ | ✅ |
+| Revoke `hr_admin` | ✅ | ❌ | ❌ | ❌ | ❌ | ❌ | ✅ |
+| Revoke `hr_reviewer` / `hr_viewer` | ✅ | ❌ | ✅ | ❌ | ❌ | ❌ | ✅ |
+| Open corporation settings | ✅ | ✅ | ✅ | ❌ | ❌ | ❌ | ✅ |
 | Use auditor user search/details/groups UX | ❌ | ❌ | ❌ | ❌ | ❌ | ✅ | ✅ |
+
+## Members Page Action-Button Matrix (`/corporations/:corpId/members`)
+
+| Action Button | CEO | Director | HR Admin | HR Reviewer | HR Viewer | HR Auditor | Site Admin |
+| --- | --- | --- | --- | --- | --- | --- | --- |
+| `Refresh` | ✅ | ✅ | ❌ | ❌ | ❌ | ❌ | ✅ |
+| `Export CSV` | ✅ | ✅ | ✅ | ❌ | ❌ | ❌ | ✅ |
+| `Manage HR Roles` | ✅ | ❌ | ✅ | ❌ | ❌ | ❌ | ✅ |
+| `Corporation Settings` | ✅ | ✅ | ✅ | ❌ | ❌ | ❌ | ✅ |
+| Row action: `Grant HR Role` | ✅ | ❌ | ✅ (reviewer/viewer only) | ❌ | ❌ | ❌ | ✅ (reviewer/viewer only) |
+| Row action: `Revoke HR Role` | ✅ | ❌ | ✅ (cannot revoke `hr_admin`) | ❌ | ❌ | ❌ | ✅ |
+| Row action: `Mark as Emeritus` / `Remove Emeritus` | ✅ | ❌ | ❌ | ❌ | ❌ | ❌ | ✅ |
+| Row action: `View Profile` (linked account) | ✅ (HR member profile) | ✅ (HR member profile) | ✅ (HR member profile) | ✅ (HR member profile) | ✅ (HR member profile) | ✅ (auditor profile) | ✅ (HR member profile) |
 
 ## Auditor Routing Behavior
 

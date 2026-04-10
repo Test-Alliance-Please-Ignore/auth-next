@@ -25,7 +25,7 @@ import { usePageTitle } from '@/hooks/usePageTitle'
 import { cn } from '@/lib/utils'
 
 import { useHrPermissionCheck } from '../../hr/hooks'
-import { useCanAccessCorporation } from '../../my-corporations/hooks'
+import { useCanAccessCorporation } from '../../corporations/hooks'
 import { ApplicationStatsCard } from '../components/application-stats-card'
 import { ApplicationsTable } from '../components/applications-table'
 import { useApplications } from '../hooks'
@@ -122,7 +122,7 @@ export default function HrApplicationsList() {
 
 	// Handlers
 	const handleApplicationClick = (applicationId: string) => {
-		navigate(`/corporations/${corporationId}/hr/applications/${applicationId}`)
+		navigate(`/corporations/${corporationId}/applications/${applicationId}`)
 	}
 
 	const handleFilterChange = (filters?: { status?: ApplicationStatus[]; search?: string }) => {
@@ -131,11 +131,10 @@ export default function HrApplicationsList() {
 		}
 	}
 
-	const useMyCorporationsRoot = user?.is_admin || hasCorporationAccess
 	const showMembersNavigation = user?.is_admin || hasCorporationAccess
-	const rootCorporationsPath = useMyCorporationsRoot ? '/my-corporations' : '/hr'
-	const rootCorporationsLabel = useMyCorporationsRoot ? 'My Corporations' : 'HR Corporations'
-	const membersPath = `/my-corporations/${corporationId}/members`
+	const rootCorporationsPath = '/corporations'
+	const rootCorporationsLabel = 'Corporations'
+	const membersPath = `/corporations/${corporationId}/members`
 
 	// Check authentication
 	if (!authLoading && !isAuthenticated) {
@@ -144,7 +143,7 @@ export default function HrApplicationsList() {
 
 	// Check corporation ID
 	if (!corporationId) {
-		return <Navigate to="/hr" replace />
+		return <Navigate to="/corporations" replace />
 	}
 
 	// Loading state
@@ -238,10 +237,10 @@ export default function HrApplicationsList() {
 				action={
 					<Button
 						variant="ghost"
-						onClick={() => navigate(showMembersNavigation ? membersPath : '/hr')}
+						onClick={() => navigate(showMembersNavigation ? membersPath : '/corporations')}
 					>
 						<ArrowLeft className="mr-2 h-4 w-4" />
-						{showMembersNavigation ? 'Back to Members' : 'Back to HR Corporations'}
+						{showMembersNavigation ? 'Back to Members' : 'Back to Corporations'}
 					</Button>
 				}
 			/>

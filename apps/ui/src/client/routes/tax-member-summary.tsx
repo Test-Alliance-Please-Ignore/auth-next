@@ -8,7 +8,7 @@ import { DateRangeInput } from '@/components/ui/date-range-input'
 import { Input } from '@/components/ui/input'
 import { PageHeader } from '@/components/ui/page-header'
 import { Section } from '@/components/ui/section'
-import { useCorporationAccess } from '@/features/my-corporations'
+import { useCorporationAccess } from '@/features/corporations'
 import {
 	useTaxCapabilities,
 	useTaxCorporations,

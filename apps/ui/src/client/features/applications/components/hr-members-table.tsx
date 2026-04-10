@@ -15,7 +15,7 @@ import { Badge } from '@/components/ui/badge'
 import { cn } from '@/lib/utils'
 
 import type { MRT_ColumnDef } from 'mantine-react-table'
-import type { CorporationMember } from '../../my-corporations/api'
+import type { CorporationMember } from '../../corporations/api'
 
 // ============================================================================
 // Types
@@ -341,7 +341,7 @@ export function HrMembersTable({ members, corporationId }: HrMembersTableProps) 
 		mantineTableBodyRowProps: ({ row }) => ({
 			onClick: () =>
 				navigate(
-					`/corporations/${corporationId}/hr/members/${row.original.accountId}?name=${encodeURIComponent(row.original.mainName)}`,
+					`/corporations/${corporationId}/members/${row.original.accountId}?name=${encodeURIComponent(row.original.mainName)}`,
 				),
 			style: { cursor: 'pointer' },
 		}),

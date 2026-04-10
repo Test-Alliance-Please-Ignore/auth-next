@@ -1,6 +1,6 @@
 import { useMemo, useState } from 'react'
 
-import { useCorporationAccess } from '@/features/my-corporations'
+import { useCorporationAccess } from '@/features/corporations'
 import { useTaxCorporations } from '@/hooks/corporation-tax'
 import { useEntityNames } from '@/hooks/useEntityNames'
 

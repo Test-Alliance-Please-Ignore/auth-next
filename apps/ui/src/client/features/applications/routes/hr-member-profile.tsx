@@ -47,13 +47,13 @@ import { usePageTitle } from '@/hooks/usePageTitle'
 import { useUserPermissions } from '@/hooks/useUserPermissions'
 
 import { useHrPermissionCheck } from '../../hr/hooks'
-import { useCanAccessCorporation, useCorporationMembers } from '../../my-corporations/hooks'
+import { useCanAccessCorporation, useCorporationMembers } from '../../corporations/hooks'
 import { AddHRNoteDialog } from '../components/add-hr-note-dialog'
 import { ApplicationStatusBadge } from '../components/application-status-badge'
 import { useApplicationFulcrum, useApplications, useHRNotes, useRequestFulcrumReport } from '../hooks'
 import { groupByAccount } from '../components/hr-members-table'
 
-import type { CorporationMember } from '../../my-corporations/api'
+import type { CorporationMember } from '../../corporations/api'
 import type { CharacterReportMetadata, FulcrumCharacterData, HRNote } from '../api'
 
 // ============================================================================
@@ -372,17 +372,16 @@ export default function HrMemberProfile() {
 	usePageTitle(accountName)
 
 	// Navigation helpers
-	const useMyCorporationsRoot = user?.is_admin || hasCorporationAccess
 	const hasSupersedingCorpAccess = user?.is_admin || hasCorporationAccess
-	const rootCorporationsPath = useMyCorporationsRoot ? '/my-corporations' : '/hr'
-	const rootCorporationsLabel = useMyCorporationsRoot ? 'My Corporations' : 'HR Corporations'
+	const rootCorporationsPath = '/corporations'
+	const rootCorporationsLabel = 'Corporations'
 
 	if (!authLoading && !isAuthenticated) {
 		return <Navigate to="/login" replace />
 	}
 
 	if (!corporationId || !accountId) {
-		return <Navigate to="/hr" replace />
+		return <Navigate to="/corporations" replace />
 	}
 
 	if (authLoading || permissionLoading || membersLoading) {
@@ -423,13 +422,13 @@ export default function HrMemberProfile() {
 		const source =
 			searchParams.get('from') === 'applications' ||
 			searchParams.get('source') === 'applications' ||
-			queryReturnTo?.includes('/hr/applications')
+			queryReturnTo?.includes('/applications')
 				? 'applications'
 				: 'members'
 		const returnTo =
 			queryReturnTo ??
 			(source === 'applications' && corporationId
-				? `/corporations/${corporationId}/hr/applications`
+				? `/corporations/${corporationId}/applications`
 				: '/hr/auditor/users')
 		return (
 			<Navigate
@@ -457,7 +456,7 @@ export default function HrMemberProfile() {
 						</p>
 						<Button
 							variant="ghost"
-							onClick={() => navigate(`/my-corporations/${corporationId}/members`)}
+							onClick={() => navigate(`/corporations/${corporationId}/members`)}
 						>
 							<ArrowLeft className="mr-2 h-4 w-4" />
 							Back to Members
@@ -481,7 +480,7 @@ export default function HrMemberProfile() {
 						</BreadcrumbItem>
 						<BreadcrumbSeparator />
 						<BreadcrumbItem>
-							<BreadcrumbLink to={`/my-corporations/${corporationId}/members`}>
+							<BreadcrumbLink to={`/corporations/${corporationId}/members`}>
 								Members
 							</BreadcrumbLink>
 						</BreadcrumbItem>
@@ -493,7 +492,7 @@ export default function HrMemberProfile() {
 				</Breadcrumb>
 				<Button
 					variant="ghost"
-					onClick={() => navigate(`/my-corporations/${corporationId}/members`)}
+					onClick={() => navigate(`/corporations/${corporationId}/members`)}
 				>
 					<ArrowLeft className="mr-2 h-4 w-4" />
 					Back
@@ -622,7 +621,7 @@ export default function HrMemberProfile() {
 									onRequestReport={requestReport}
 									onViewReport={(reportId, characterName) =>
 										navigate(
-											`/corporations/${corporationId}/hr/fulcrum/${reportId}?name=${encodeURIComponent(characterName)}`,
+											`/fulcrum/reports/${reportId}?name=${encodeURIComponent(characterName)}&userId=${encodeURIComponent(accountId)}&corporationId=${encodeURIComponent(corporationId)}&returnTo=${encodeURIComponent(`/corporations/${corporationId}/members/${accountId}`)}&backLabel=${encodeURIComponent('Back to User Profile')}&breadcrumb=${encodeURIComponent('User Profile')}`,
 										)
 									}
 								/>
@@ -702,7 +701,7 @@ export default function HrMemberProfile() {
 											className="flex items-center justify-between p-3 rounded-lg border cursor-pointer hover:bg-muted/50 transition-colors"
 											onClick={() =>
 												navigate(
-													`/corporations/${corporationId}/hr/applications/${app.id}`,
+													`/corporations/${corporationId}/applications/${app.id}`,
 												)
 											}
 										>

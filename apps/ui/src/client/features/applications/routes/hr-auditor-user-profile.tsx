@@ -101,9 +101,11 @@ export default function HrAuditorUserProfilePage() {
 	const navigationState = location.state as AuditorProfileNavigationState | null
 	const source = navigationState?.source
 	const returnTo = navigationState?.returnTo
-	const fromApplications = source === 'applications' || returnTo?.includes('/hr/applications')
+	const fromApplications = source === 'applications' || returnTo?.includes('/applications')
+	const fromMembers = source === 'members' || returnTo?.includes('/members')
 	const backTarget = returnTo ?? '/hr/auditor/users'
-	const breadcrumbMidLabel = fromApplications ? 'Applications' : 'User Search'
+	const breadcrumbMidLabel = fromApplications ? 'Applications' : fromMembers ? 'Members' : 'User Search'
+	const backLabel = fromApplications ? 'Back to Applications' : fromMembers ? 'Back to Members' : 'Back to User Search'
 
 	const rows = useMemo<AuditorCharacterRow[]>(() => {
 		if (!userDetails) return []
@@ -173,7 +175,7 @@ export default function HrAuditorUserProfilePage() {
 						<Button variant="ghost" asChild>
 							<Link to={backTarget}>
 								<ArrowLeft className="mr-2 h-4 w-4" />
-								{fromApplications ? 'Back to Applications' : 'Back to User Search'}
+								{backLabel}
 							</Link>
 						</Button>
 					</CardContent>
@@ -209,8 +211,9 @@ export default function HrAuditorUserProfilePage() {
 
 	const handleViewLatestReport = (character: AuditorCharacterRow) => {
 		if (character.latestReport?.status !== 'completed' || !character.corporationId) return
+		const returnTo = `${location.pathname}${location.search}`
 		navigate(
-			`/corporations/${character.corporationId}/hr/fulcrum/${character.latestReport.id}?char=${encodeURIComponent(character.characterName)}`
+			`/fulcrum/reports/${character.latestReport.id}?char=${encodeURIComponent(character.characterName)}&userId=${encodeURIComponent(userId ?? '')}&corporationId=${encodeURIComponent(character.corporationId)}&returnTo=${encodeURIComponent(returnTo)}&backLabel=${encodeURIComponent('Back to User Profile')}&breadcrumb=${encodeURIComponent('User Profile')}`
 		)
 	}
 
@@ -244,7 +247,7 @@ export default function HrAuditorUserProfilePage() {
 				<Breadcrumb>
 					<BreadcrumbList>
 						<BreadcrumbItem>
-							<BreadcrumbLink to="/hr">HR</BreadcrumbLink>
+							<BreadcrumbLink to="/corporations">Corporations</BreadcrumbLink>
 						</BreadcrumbItem>
 						<BreadcrumbSeparator />
 						<BreadcrumbItem>
@@ -259,7 +262,7 @@ export default function HrAuditorUserProfilePage() {
 				<Button variant="ghost" asChild>
 					<Link to={backTarget}>
 						<ArrowLeft className="mr-2 h-4 w-4" />
-						Back
+						{backLabel}
 					</Link>
 				</Button>
 			</div>
@@ -590,7 +593,7 @@ export default function HrAuditorUserProfilePage() {
 								>
 									<div className="min-w-0">
 										<Link
-											to={`/corporations/${application.corporationId}/hr/applications/${application.id}`}
+											to={`/corporations/${application.corporationId}/applications/${application.id}`}
 											className="font-medium hover:underline text-sm"
 										>
 											{application.corporationName ?? `Corp ${application.corporationId}`}

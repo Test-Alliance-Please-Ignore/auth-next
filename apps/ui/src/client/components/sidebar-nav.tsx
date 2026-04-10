@@ -17,7 +17,6 @@ import {
 	Radio,
 	Receipt,
 	Scale,
-	Settings,
 	Shield,
 	Timer,
 	Truck,
@@ -27,7 +26,7 @@ import { useEffect, useState } from 'react'
 import { Link, useLocation } from 'react-router-dom'
 
 import { useHrAccessibleCorporations } from '@/features/hr'
-import { useHasCorporationAccess } from '@/features/my-corporations'
+import { useHasCorporationAccess } from '@/features/corporations'
 import { useTaxAlerts } from '@/hooks/corporation-tax'
 import { useAuth, useLogout } from '@/hooks/useAuth'
 import { usePendingInvitations } from '@/hooks/useGroups'
@@ -72,7 +71,9 @@ export function SidebarNav({ onNavigate }: SidebarNavProps) {
 		location.pathname.startsWith('/my-applications/') ||
 		location.pathname === '/join' ||
 		location.pathname.startsWith('/join/') ||
-		location.pathname === '/hr' ||
+		location.pathname === '/corporations' ||
+		/^\/corporations\/[^/]+\/members/.test(location.pathname) ||
+		/^\/corporations\/[^/]+\/settings/.test(location.pathname) ||
 		location.pathname.startsWith('/hr/') ||
 		location.pathname === '/recommendations' ||
 		location.pathname.startsWith('/recommendations/') ||
@@ -153,9 +154,13 @@ export function SidebarNav({ onNavigate }: SidebarNavProps) {
 
 		if ((hrCorporations?.length ?? 0) > 0 || isAuditor) {
 			hrItems.push({
-				label: 'HR Corporations',
-				href: '/hr',
-				isActive: location.pathname === '/hr' || (isOnCorpHrRoute && isHrOnlyUser),
+				label: 'Corporations',
+				href: '/corporations',
+				isActive:
+					location.pathname === '/corporations' ||
+					(isOnCorpHrRoute && isHrOnlyUser) ||
+					/^\/corporations\/[^/]+\/members/.test(location.pathname) ||
+					/^\/corporations\/[^/]+\/settings/.test(location.pathname),
 			})
 		}
 
@@ -311,15 +316,6 @@ export function SidebarNav({ onNavigate }: SidebarNavProps) {
 			href: '/tax',
 			icon: Scale,
 			children: taxItems,
-		})
-	}
-
-	// Add Manage Corporation nav item if user has CEO/director access (second from bottom)
-	if (corporationAccess?.hasAccess) {
-		navItems.push({
-			label: 'Manage Corporation',
-			href: '/my-corporations',
-			icon: Settings,
 		})
 	}
 

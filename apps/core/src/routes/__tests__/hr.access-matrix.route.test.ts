@@ -45,7 +45,37 @@ function makeHrStub() {
 	return {
 		getUserRoles: vi.fn().mockResolvedValue([]),
 		getUserHrCorporations: vi.fn().mockResolvedValue([]),
+		checkPermission: vi.fn().mockResolvedValue(false),
 		listApplications: vi.fn().mockResolvedValue([]),
+		grantRole: vi.fn().mockResolvedValue({
+			id: 'role-1',
+			corporationId: '1001',
+			userId: 'target-user-1',
+			characterId: '2001',
+			characterName: 'Target Pilot',
+			role: 'hr_reviewer',
+			grantedBy: 'user-1',
+			grantedAt: new Date().toISOString(),
+			expiresAt: null,
+			isActive: true,
+			createdAt: new Date().toISOString(),
+			updatedAt: new Date().toISOString(),
+		}),
+		getRole: vi.fn().mockResolvedValue({
+			id: 'role-1',
+			corporationId: '1001',
+			userId: 'target-user-1',
+			characterId: '2001',
+			characterName: 'Target Pilot',
+			role: 'hr_reviewer',
+			grantedBy: 'user-1',
+			grantedAt: new Date().toISOString(),
+			expiresAt: null,
+			isActive: true,
+			createdAt: new Date().toISOString(),
+			updatedAt: new Date().toISOString(),
+		}),
+		revokeRole: vi.fn().mockResolvedValue(undefined),
 		createNote: vi.fn().mockResolvedValue({
 			id: 'note-1',
 			subjectUserId: 'target-1',
@@ -66,6 +96,14 @@ function makeHrStub() {
 function makeResolverStub() {
 	return {
 		resolveIds: vi.fn().mockResolvedValue({}),
+	}
+}
+
+function makeEsiStub() {
+	return {
+		fetchCorporationPublicInfo: vi.fn().mockResolvedValue({
+			ceo_id: 'ceo-character-id',
+		}),
 	}
 }
 
@@ -118,6 +156,12 @@ describe('hr route access matrix', () => {
 	const env = {
 		HR: { name: 'HR' },
 		ESI_TYPE_RESOLVER: { name: 'ESI_TYPE_RESOLVER' },
+		ESI: { name: 'ESI' },
+		CORE: {
+			getCharacterOwner: vi.fn().mockResolvedValue({
+				userId: 'target-user-1',
+			}),
+		},
 		ADMIN: {
 			searchUsers: vi.fn().mockResolvedValue({ users: [], total: 0 }),
 			getUserDetails: vi.fn().mockResolvedValue(null),
@@ -126,18 +170,22 @@ describe('hr route access matrix', () => {
 
 	let hrStub: ReturnType<typeof makeHrStub>
 	let resolverStub: ReturnType<typeof makeResolverStub>
+	let esiStub: ReturnType<typeof makeEsiStub>
 	let dbStub: ReturnType<typeof makeDbStub>
 
 	beforeEach(() => {
 		vi.clearAllMocks()
 		hrStub = makeHrStub()
 		resolverStub = makeResolverStub()
+		esiStub = makeEsiStub()
 		dbStub = makeDbStub()
 
 		getCachedUserPermissionsMock.mockResolvedValue([])
 		getStubMock.mockImplementation((binding: unknown) => {
 			if (binding === env.HR) return hrStub as any
 			if (binding === env.ESI_TYPE_RESOLVER) return resolverStub as any
+			if (binding === env.ESI) return esiStub as any
+			if (binding === env.CORE) return env.CORE as any
 			throw new Error('Unexpected binding')
 		})
 	})
@@ -327,5 +375,84 @@ describe('hr route access matrix', () => {
 
 		expect(res.status).toBe(403)
 		expect(await res.json()).toEqual({ error: 'Forbidden - only site admins can edit notes' })
+	})
+
+	it('allows hr_admin to grant hr_reviewer but not hr_admin', async () => {
+		hrStub.checkPermission.mockResolvedValue(true)
+		const app = createApp({ user: makeUser(), db: dbStub })
+
+		const reviewerRes = await app.request(
+			'/api/hr/1001/roles',
+			{
+				method: 'POST',
+				body: JSON.stringify({
+					userId: 'target-user-1',
+					characterId: '2001',
+					role: 'hr_reviewer',
+				}),
+				headers: { 'content-type': 'application/json' },
+			},
+			env
+		)
+		expect(reviewerRes.status).toBe(201)
+		expect(hrStub.grantRole).toHaveBeenCalledWith('1001', 'target-user-1', 'hr_reviewer', 'user-1', undefined)
+
+		const adminRes = await app.request(
+			'/api/hr/1001/roles',
+			{
+				method: 'POST',
+				body: JSON.stringify({
+					userId: 'target-user-1',
+					characterId: '2001',
+					role: 'hr_admin',
+				}),
+				headers: { 'content-type': 'application/json' },
+			},
+			env
+		)
+		expect(adminRes.status).toBe(403)
+	})
+
+	it('blocks hr_admin from revoking another hr_admin role', async () => {
+		hrStub.checkPermission.mockResolvedValue(true)
+		hrStub.getRole.mockResolvedValue({
+			id: 'role-hr-admin',
+			corporationId: '1001',
+			userId: 'target-user-1',
+			characterId: '2001',
+			characterName: 'Target Pilot',
+			role: 'hr_admin',
+			grantedBy: 'ceo-user-1',
+			grantedAt: new Date().toISOString(),
+			expiresAt: null,
+			isActive: true,
+			createdAt: new Date().toISOString(),
+			updatedAt: new Date().toISOString(),
+		})
+		const app = createApp({ user: makeUser(), db: dbStub })
+
+		const res = await app.request('/api/hr/1001/roles/role-hr-admin', { method: 'DELETE' }, env)
+		expect(res.status).toBe(403)
+		expect(hrStub.revokeRole).not.toHaveBeenCalled()
+	})
+
+	it('blocks site admin from granting hr_admin (ceo-only)', async () => {
+		const app = createApp({ user: makeUser({ is_admin: true }), db: dbStub })
+		const res = await app.request(
+			'/api/hr/1001/roles',
+			{
+				method: 'POST',
+				body: JSON.stringify({
+					userId: 'target-user-1',
+					characterId: '2001',
+					role: 'hr_admin',
+				}),
+				headers: { 'content-type': 'application/json' },
+			},
+			env
+		)
+
+		expect(res.status).toBe(403)
+		expect(hrStub.grantRole).not.toHaveBeenCalled()
 	})
 })

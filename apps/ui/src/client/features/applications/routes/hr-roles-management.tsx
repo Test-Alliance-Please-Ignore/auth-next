@@ -44,10 +44,10 @@ import {
 	useCanAccessCorporation,
 	useCorporationMembers,
 	useMyCorporation,
-} from '../../my-corporations/hooks'
+} from '../../corporations/hooks'
 
 import type { GrantHrRoleRequest, HrRoleGrant, RevokeHrRoleRequest } from '@/features/hr'
-import type { CorporationMember } from '../../my-corporations'
+import type { CorporationMember } from '../../corporations'
 import { Button } from '@/components/ui/button'
 
 /**
@@ -70,10 +70,11 @@ export default function HrRolesManagement() {
 	const grantMutation = useGrantHrRole()
 	const revokeMutation = useRevokeHrRole()
 
-	// Check if current user can manage HR roles (CEOs and site admins)
+	// Check if current user can manage HR roles (CEO, site admin, or HR admin)
 	const canManageHrRoles = useMemo(() => {
-		return userRole === 'CEO' || userRole === 'admin'
+		return userRole === 'CEO' || userRole === 'admin' || userRole === 'hr_admin'
 	}, [userRole])
+	const canRevokeHrAdmin = useMemo(() => userRole === 'CEO' || userRole === 'admin', [userRole])
 
 	const memberByUserId = useMemo(() => {
 		const map = new Map<string, CorporationMember>()
@@ -101,7 +102,7 @@ export default function HrRolesManagement() {
 
 	// Check if corporation ID is provided
 	if (!corporationId) {
-		return <Navigate to="/my-corporations" replace />
+		return <Navigate to="/corporations" replace />
 	}
 
 	// Loading state
@@ -124,15 +125,15 @@ export default function HrRolesManagement() {
 						<AlertCircle className="h-16 w-16 mx-auto text-red-500 mb-4" />
 						<CardTitle className="text-2xl text-red-900 dark:text-red-100">Access Denied</CardTitle>
 						<CardDescription className="mt-2 text-red-700 dark:text-red-300">
-							You don't have permission to manage HR roles for this corporation. CEO access or site
-							admin privileges are required.
+							You don't have permission to manage HR roles for this corporation. CEO, HR admin,
+							or site admin access is required.
 						</CardDescription>
 					</CardHeader>
 					<CardContent className="text-center">
 						<Button variant="ghost" asChild>
-							<Link to="/my-corporations">
+							<Link to="/corporations">
 								<ArrowLeft className="mr-2 h-4 w-4" />
-								Return to My Corporations
+								Return to Corporations
 							</Link>
 						</Button>
 					</CardContent>
@@ -157,7 +158,7 @@ export default function HrRolesManagement() {
 					</CardHeader>
 					<CardContent className="text-center">
 						<Button variant="ghost" asChild>
-							<Link to={`/my-corporations/${corporationId}/members`}>
+							<Link to={`/corporations/${corporationId}/members`}>
 								<ArrowLeft className="mr-2 h-4 w-4" />
 								Return to Manage Corporation
 							</Link>
@@ -226,11 +227,11 @@ export default function HrRolesManagement() {
 			<Breadcrumb className="mb-6">
 				<BreadcrumbList>
 					<BreadcrumbItem>
-						<BreadcrumbLink to="/my-corporations">My Corporations</BreadcrumbLink>
+						<BreadcrumbLink to="/corporations">Corporations</BreadcrumbLink>
 					</BreadcrumbItem>
 					<BreadcrumbSeparator />
 					<BreadcrumbItem>
-						<BreadcrumbLink to={`/my-corporations/${corporationId}/members`}>
+						<BreadcrumbLink to={`/corporations/${corporationId}/members`}>
 							{corporation?.name || 'Manage Corporation'}
 						</BreadcrumbLink>
 					</BreadcrumbItem>
@@ -260,7 +261,7 @@ export default function HrRolesManagement() {
 						)}
 					</div>
 					<Button variant="ghost" asChild>
-						<Link to={`/my-corporations/${corporationId}/members`}>
+						<Link to={`/corporations/${corporationId}/members`}>
 							<ArrowLeft className="mr-2 h-4 w-4" />
 							Back to Manage Corporation
 						</Link>
@@ -342,7 +343,9 @@ export default function HrRolesManagement() {
 											<Button variant="ghost"
 												size="sm"
 												onClick={() => handleRevokeClick(role)}
-												disabled={!role.isActive}
+												disabled={
+													!role.isActive || (role.role === 'hr_admin' && !canRevokeHrAdmin)
+												}
 											>
 												Revoke HR Role
 											</Button>

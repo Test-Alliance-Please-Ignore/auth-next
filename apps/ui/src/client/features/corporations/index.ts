@@ -1,7 +1,7 @@
 /**
- * My Corporations Feature
+ * Corporations Feature
  *
- * Public exports for the My Corporations feature module.
+ * Public exports for the Corporations feature module.
  * Components are lazy loaded separately, not exported here.
  */
 
