@@ -78,8 +78,8 @@ export function ApplicationActionPanel({
 
 	// Determine available actions based on role
 	const canMarkUnderReview = userRole && ['hr_admin', 'hr_reviewer'].includes(userRole)
-	const canAccept = userRole === 'hr_admin'
-	const canReject = userRole === 'hr_admin'
+	const canAccept = userRole && ['hr_admin', 'hr_reviewer'].includes(userRole)
+	const canReject = userRole && ['hr_admin', 'hr_reviewer'].includes(userRole)
 
 	// Validate review notes (required for accept/reject)
 	const validateReviewNotes = (): boolean => {
