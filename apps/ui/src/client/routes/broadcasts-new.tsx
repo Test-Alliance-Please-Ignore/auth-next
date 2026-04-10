@@ -1,6 +1,6 @@
 import { Copy } from 'lucide-react'
-import { useMemo, useRef, useState } from 'react'
-import { useNavigate } from 'react-router-dom'
+import { useEffect, useMemo, useRef, useState } from 'react'
+import { useNavigate, useSearchParams } from 'react-router-dom'
 
 import { renderDiscordContentValue } from '@/components/discord-content-renderer'
 import { Button } from '@/components/ui/button'
@@ -22,9 +22,11 @@ import { Select } from '@/components/ui/select'
 import { Textarea } from '@/components/ui/textarea'
 import {
 	useBroadcastTargets,
+	useBroadcast,
 	useBroadcastTemplates,
 	useCreateBroadcast,
 	useSendBroadcast,
+	useUpdateBroadcast,
 } from '@/hooks/useBroadcasts'
 import { usePageTitle } from '@/hooks/usePageTitle'
 
@@ -163,11 +165,60 @@ function getFormatPreview(date: Date, format: TimestampFormat): string {
 	}
 }
 
+function renderTemplateMessage(
+	template: string,
+	fields: Record<string, string | undefined>,
+	includeEmptyMissing = false
+): string {
+	return template.replace(/\{\{\s*([a-zA-Z0-9_-]+)\s*\}\}/g, (_, rawKey: string) => {
+		const key = rawKey.trim()
+		const value = fields[key]
+		if (typeof value === 'string') return value
+		return includeEmptyMissing ? '' : `{{${key}}}`
+	})
+}
+
+function buildTemplatePreviewSegments(
+	template: string,
+	fields: Record<string, string | undefined>
+): Array<{ text: string; staticText: boolean }> {
+	const segments: Array<{ text: string; staticText: boolean }> = []
+	const placeholderRegex = /\{\{\s*([a-zA-Z0-9_-]+)\s*\}\}/g
+	let cursor = 0
+
+	for (const match of template.matchAll(placeholderRegex)) {
+		const fullMatch = match[0] ?? ''
+		const key = (match[1] ?? '').trim()
+		const index = match.index ?? 0
+		if (index > cursor) {
+			segments.push({ text: template.slice(cursor, index), staticText: true })
+		}
+
+		const value = fields[key]
+		segments.push({
+			text: typeof value === 'string' && value.length > 0 ? value : fullMatch,
+			staticText: false,
+		})
+		cursor = index + fullMatch.length
+	}
+
+	if (cursor < template.length) {
+		segments.push({ text: template.slice(cursor), staticText: true })
+	}
+
+	return segments
+}
+
 export default function NewBroadcastPage() {
-	usePageTitle('New Broadcast')
+	const [searchParams] = useSearchParams()
+	const draftId = searchParams.get('draftId') ?? ''
+	const isEditMode = draftId.length > 0
+	usePageTitle(isEditMode ? 'Edit Draft Broadcast' : 'New Broadcast')
 	const navigate = useNavigate()
 	const createBroadcast = useCreateBroadcast()
 	const sendBroadcast = useSendBroadcast()
+	const updateBroadcast = useUpdateBroadcast()
+	const { data: draftBroadcast, isLoading: draftLoading } = useBroadcast(draftId)
 
 	// Form state
 	const [selectedTargetId, setSelectedTargetId] = useState<string>('')
@@ -185,6 +236,7 @@ export default function NewBroadcastPage() {
 	)
 	const [copiedFormat, setCopiedFormat] = useState<TimestampFormat | null>(null)
 	const timestampInputRef = useRef<HTMLInputElement | null>(null)
+	const [isDraftInitialized, setIsDraftInitialized] = useState(false)
 
 	// Fetch all broadcast targets available to the user
 	const { data: targets } = useBroadcastTargets()
@@ -198,9 +250,49 @@ export default function NewBroadcastPage() {
 	// Message state
 	const [message, setMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null)
 
+	useEffect(() => {
+		if (!isEditMode || !draftBroadcast || isDraftInitialized) return
+
+		if (draftBroadcast.status !== 'draft') {
+			setMessage({ type: 'error', text: 'Only draft broadcasts can be edited.' })
+			setIsDraftInitialized(true)
+			return
+		}
+
+		setSelectedTargetId(draftBroadcast.targetId)
+		setSelectedTemplateId(draftBroadcast.templateId ?? 'custom')
+		const nextMentionLevel =
+			draftBroadcast.content.mentionLevel === 'here' || draftBroadcast.content.mentionLevel === 'everyone'
+				? (draftBroadcast.content.mentionLevel as 'here' | 'everyone')
+				: 'none'
+		setMentionLevel(nextMentionLevel)
+
+		if (draftBroadcast.templateId) {
+			const nextTemplateFields: Record<string, string> = {}
+			for (const [key, value] of Object.entries(draftBroadcast.content)) {
+				if (key === 'mentionLevel') continue
+				nextTemplateFields[key] = typeof value === 'string' ? value : JSON.stringify(value, null, 2)
+			}
+			setTemplateFields(nextTemplateFields)
+			setCustomMessage('')
+		} else {
+			const messageValue = draftBroadcast.content.message
+			setCustomMessage(typeof messageValue === 'string' ? messageValue : '')
+			setTemplateFields({})
+		}
+
+		setIsDraftInitialized(true)
+	}, [draftBroadcast, isDraftInitialized, isEditMode])
+
 	// Get selected template object
 	const selectedTemplate =
 		selectedTemplateId === 'custom' ? null : templates?.find((t) => t.id === selectedTemplateId)
+	const selectedTemplatePreview = selectedTemplate
+		? renderTemplateMessage(selectedTemplate.messageTemplate, templateFields, false)
+		: ''
+	const selectedTemplatePreviewSegments = selectedTemplate
+		? buildTemplatePreviewSegments(selectedTemplate.messageTemplate, templateFields)
+		: []
 
 	// Initialize template fields when template is selected
 	const handleTemplateChange = (templateId: string) => {
@@ -235,10 +327,23 @@ export default function NewBroadcastPage() {
 
 	const handleSend = async (e: React.FormEvent) => {
 		e.preventDefault()
+		if (isEditMode && draftBroadcast?.status !== 'draft') {
+			setMessage({ type: 'error', text: 'Only draft broadcasts can be edited.' })
+			return
+		}
 		setIsSending(true)
 		try {
-			const broadcast = await createBroadcast.mutateAsync(buildBroadcastData())
-			await sendBroadcast.mutateAsync(broadcast.id)
+			const payload = buildBroadcastData()
+			const broadcast = isEditMode
+				? await updateBroadcast.mutateAsync({
+						id: draftId,
+						data: {
+							title: payload.title,
+							content: payload.content,
+						},
+					})
+				: await createBroadcast.mutateAsync(payload)
+			await sendBroadcast.mutateAsync(isEditMode ? draftId : broadcast.id)
 			setMessage({ type: 'success', text: 'Broadcast sent successfully!' })
 			setTimeout(() => navigate('/broadcasts'), 2000)
 		} catch (error) {
@@ -251,9 +356,22 @@ export default function NewBroadcastPage() {
 	}
 
 	const handleSaveAsDraft = async () => {
+		if (isEditMode && draftBroadcast?.status !== 'draft') {
+			setMessage({ type: 'error', text: 'Only draft broadcasts can be edited.' })
+			return
+		}
 		setIsSavingDraft(true)
 		try {
-			const broadcast = await createBroadcast.mutateAsync(buildBroadcastData())
+			const payload = buildBroadcastData()
+			const broadcast = isEditMode
+				? await updateBroadcast.mutateAsync({
+						id: draftId,
+						data: {
+							title: payload.title,
+							content: payload.content,
+						},
+					})
+				: await createBroadcast.mutateAsync(payload)
 			setMessage({ type: 'success', text: 'Draft saved.' })
 			setTimeout(() => navigate(`/broadcasts/${broadcast.id}`), 1000)
 		} catch (error) {
@@ -267,8 +385,9 @@ export default function NewBroadcastPage() {
 
 	const canSubmit =
 		selectedTargetId &&
-		(selectedTemplateId === 'custom' ? customMessage.trim() : selectedTemplate !== null)
-	const isSubmitting = isSending || isSavingDraft
+		(selectedTemplateId === 'custom' ? customMessage.trim() : selectedTemplate !== null) &&
+		(!isEditMode || draftBroadcast?.status === 'draft')
+	const isSubmitting = isSending || isSavingDraft || updateBroadcast.isPending
 
 	const timestampDate = useMemo(
 		() => parseDateTimeInput(timestampInput, timeMode),
@@ -322,8 +441,12 @@ export default function NewBroadcastPage() {
 	return (
 		<Container>
 			<PageHeader
-				title="New Broadcast"
-				description="Send a message to a broadcast target"
+				title={isEditMode ? 'Edit Draft Broadcast' : 'New Broadcast'}
+				description={
+					isEditMode
+						? 'Update this draft before sending'
+						: 'Send a message to a broadcast target'
+				}
 				action={
 					<Button variant="cancel" onClick={() => navigate('/broadcasts')} size="default">
 						Cancel
@@ -333,6 +456,13 @@ export default function NewBroadcastPage() {
 
 			<Section>
 				{/* Success/Error Message */}
+				{isEditMode && draftLoading && (
+					<Card>
+						<CardContent className="py-3 text-sm text-muted-foreground">
+							Loading draft...
+						</CardContent>
+					</Card>
+				)}
 				{message && (
 					<Card
 						className={
@@ -372,6 +502,7 @@ export default function NewBroadcastPage() {
 										})) ?? []
 									}
 									placeholder="Select a broadcast target"
+									disabled={isEditMode}
 								/>
 								<p className="text-xs text-muted-foreground">
 									Choose where this broadcast should be sent
@@ -393,7 +524,7 @@ export default function NewBroadcastPage() {
 										})) ?? []),
 									]}
 									placeholder="Custom message"
-									disabled={!selectedTargetId}
+									disabled={!selectedTargetId || isEditMode}
 								/>
 								<p className="text-xs text-muted-foreground">
 									{!selectedTargetId
@@ -445,83 +576,99 @@ export default function NewBroadcastPage() {
 											{showPreview ? 'Hide Preview' : 'Show Preview'}
 										</Button>
 									</div>
-									{showPreview ? (
-										<div className="grid grid-cols-2 gap-4">
-											<Textarea
-												id="message"
-												value={customMessage}
-												onChange={(e) => setCustomMessage(e.target.value)}
-												rows={10}
-												placeholder="Enter your broadcast message..."
-												required
-												className="resize-none"
-											/>
-											<div className="rounded-md border border-border bg-muted/20 p-3 text-sm overflow-y-auto min-h-[160px]">
-												{customMessage.trim() ? (
-													renderDiscordContentValue(customMessage, 'preview')
-												) : (
-													<span className="text-muted-foreground italic">
-														Preview will appear here…
-													</span>
-												)}
-											</div>
+									{showPreview && (
+										<div className="rounded-md border border-border bg-muted/20 p-3 text-sm overflow-y-auto min-h-[160px]">
+											{customMessage.trim() ? (
+												renderDiscordContentValue(customMessage, 'preview')
+											) : (
+												<span className="text-muted-foreground italic">
+													Preview will appear here…
+												</span>
+											)}
 										</div>
-									) : (
-										<Textarea
-											id="message"
-											value={customMessage}
-											onChange={(e) => setCustomMessage(e.target.value)}
-											rows={6}
-											placeholder="Enter your broadcast message..."
-											required
-										/>
 									)}
+									<Textarea
+										id="message"
+										value={customMessage}
+										onChange={(e) => setCustomMessage(e.target.value)}
+										rows={showPreview ? 10 : 6}
+										placeholder="Enter your broadcast message..."
+										required
+										className={showPreview ? 'resize-none' : undefined}
+									/>
 									<p className="text-xs text-muted-foreground">
 										Write your custom message. Supports Discord markdown formatting.
 									</p>
 								</div>
 							) : selectedTemplate ? (
 								<div className="space-y-4">
-									<div className="rounded-md bg-muted p-3">
-										<Label className="text-sm font-medium">Template Preview</Label>
-										<p className="text-sm text-muted-foreground mt-1">
-											{selectedTemplate.messageTemplate}
-										</p>
+									<div className="flex items-center justify-between">
+										<Label className="text-sm font-medium">Template Fields</Label>
+										<Button
+											type="button"
+											variant="ghost"
+											size="sm"
+											onClick={() => setShowPreview((v) => !v)}
+										>
+											{showPreview ? 'Hide Preview' : 'Show Preview'}
+										</Button>
 									</div>
-									{selectedTemplate.fieldSchema.map((field) => (
-										<div key={field.name} className="space-y-2">
-											<Label htmlFor={field.name}>
-												{field.label}
-												{field.required && ' *'}
-											</Label>
-											{field.type === 'text' ? (
-												<Input
-													id={field.name}
-													value={templateFields[field.name] || ''}
-													onChange={(e) =>
-														setTemplateFields({
-															...templateFields,
-															[field.name]: e.target.value,
-														})
-													}
-													required={field.required}
-												/>
+									{showPreview && (
+										<div className="rounded-md border border-border bg-muted/20 p-3 text-sm overflow-y-auto min-h-[160px] whitespace-pre-wrap break-words">
+											{selectedTemplatePreview.trim() ? (
+												selectedTemplatePreviewSegments.map((segment, index) => (
+													<span
+														key={`template-preview-segment-${index}`}
+														className={segment.staticText ? 'text-muted-foreground' : ''}
+													>
+														{segment.text}
+													</span>
+												))
 											) : (
-												<Textarea
-													id={field.name}
-													value={templateFields[field.name] || ''}
-													onChange={(e) =>
-														setTemplateFields({
-															...templateFields,
-															[field.name]: e.target.value,
-														})
-													}
-													rows={4}
-													required={field.required}
-												/>
+												<span className="text-muted-foreground italic">
+													Preview will appear here…
+												</span>
 											)}
 										</div>
-									))}
+									)}
+									<div className="space-y-4">
+										{selectedTemplate.fieldSchema.map((field) => (
+											<div key={field.name} className="space-y-2">
+												<Label htmlFor={field.name}>
+													{field.label}
+													{field.required && ' *'}
+												</Label>
+												{field.type === 'text' &&
+												field.name.toLowerCase() !== 'message' ? (
+													<Input
+														id={field.name}
+														value={templateFields[field.name] || ''}
+														onChange={(e) =>
+															setTemplateFields({
+																...templateFields,
+																[field.name]: e.target.value,
+															})
+														}
+														required={field.required}
+													/>
+												) : (
+													<Textarea
+														id={field.name}
+														value={templateFields[field.name] || ''}
+														onChange={(e) =>
+															setTemplateFields({
+																...templateFields,
+																[field.name]: e.target.value,
+															})
+														}
+														rows={6}
+														required={field.required}
+														className="resize-none"
+													/>
+												)}
+											</div>
+										))}
+									</div>
 								</div>
 							) : null}
 

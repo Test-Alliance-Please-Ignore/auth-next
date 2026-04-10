@@ -10,6 +10,7 @@ import type {
 	CreateBroadcastRequest,
 	CreateBroadcastTargetRequest,
 	CreateBroadcastTemplateRequest,
+	UpdateBroadcastRequest,
 	UpdateBroadcastTargetRequest,
 	UpdateBroadcastTemplateRequest,
 } from '@/lib/api'
@@ -242,6 +243,19 @@ export function useCreateBroadcast() {
 		onSuccess: () => {
 			// Invalidate all broadcasts lists
 			queryClient.invalidateQueries({ queryKey: broadcastKeys.broadcasts() })
+		},
+	})
+}
+
+export function useUpdateBroadcast() {
+	const queryClient = useQueryClient()
+
+	return useMutation({
+		mutationFn: ({ id, data }: { id: string; data: UpdateBroadcastRequest }) =>
+			api.updateBroadcast(id, data),
+		onSuccess: (_, variables) => {
+			queryClient.invalidateQueries({ queryKey: broadcastKeys.broadcasts() })
+			queryClient.invalidateQueries({ queryKey: broadcastKeys.broadcast(variables.id) })
 		},
 	})
 }

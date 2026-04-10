@@ -181,6 +181,12 @@ export interface CreateBroadcastRequest {
 	scheduledFor?: string
 }
 
+export interface UpdateBroadcastRequest {
+	title?: string
+	content?: Record<string, unknown>
+	scheduledFor?: string | null
+}
+
 /**
  * Send broadcast result
  */
@@ -355,6 +361,19 @@ export interface Broadcasts {
 	 * @returns Send result with delivery status
 	 */
 	sendBroadcast(broadcastId: string, userId: string): Promise<SendBroadcastResult>
+
+	/**
+	 * Update a draft broadcast
+	 * @param broadcastId - Broadcast ID to update
+	 * @param data - Update data
+	 * @param userId - User ID making the update
+	 * @returns Updated broadcast
+	 */
+	updateBroadcast(
+		broadcastId: string,
+		data: UpdateBroadcastRequest,
+		userId: string
+	): Promise<Broadcast>
 
 	/**
 	 * Delete a broadcast

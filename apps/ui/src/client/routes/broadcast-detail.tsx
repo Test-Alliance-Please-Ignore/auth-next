@@ -1,4 +1,4 @@
-import { ArrowLeft, Ban, RefreshCw, Send, Trash2 } from 'lucide-react'
+import { ArrowLeft, Ban, Edit3, RefreshCw, Send, Trash2 } from 'lucide-react'
 import { useState } from 'react'
 import { Link, useNavigate, useParams } from 'react-router-dom'
 
@@ -110,6 +110,7 @@ export default function BroadcastDetailPage() {
 		target: broadcast.target,
 	})
 	const isSendable = canSend && ['draft', 'scheduled', 'failed'].includes(broadcast.status)
+	const isEditable = broadcast.status === 'draft'
 
 	const handleSendNow = async () => {
 		try {
@@ -169,6 +170,17 @@ export default function BroadcastDetailPage() {
 								>
 									<Send className="mr-2 h-4 w-4" />
 									Send Now
+								</Button>
+							)}
+							{isEditable && (
+								<Button
+									variant="secondary"
+									size="sm"
+									onClick={() => navigate(`/broadcasts/new?draftId=${broadcast.id}`)}
+									showIcon={false}
+								>
+									<Edit3 className="mr-2 h-4 w-4" />
+									Edit Draft
 								</Button>
 							)}
 							{canRescind && (

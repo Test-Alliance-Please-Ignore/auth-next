@@ -1,6 +1,7 @@
 import { Plus, Trash2 } from 'lucide-react'
 import { useState } from 'react'
 
+import { renderDiscordContentValue } from '@/components/discord-content-renderer'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import {
@@ -296,6 +297,15 @@ export default function BroadcastTemplatesPage() {
 							<p className="text-xs text-muted-foreground mt-1">
 								Use placeholders like {'{{message}}'} that match field names below
 							</p>
+							<div className="mt-2 rounded-md border border-border bg-muted/20 p-3 text-sm overflow-y-auto min-h-[120px]">
+								{formData.messageTemplate.trim() ? (
+									renderDiscordContentValue(formData.messageTemplate, 'create-template-preview')
+								) : (
+									<span className="text-muted-foreground italic">
+										Preview will appear here…
+									</span>
+								)}
+							</div>
 						</div>
 						<DialogFooter>
 							<Button variant="cancel" onClick={() => setCreateDialogOpen(false)} type="button">
@@ -351,6 +361,15 @@ export default function BroadcastTemplatesPage() {
 							<p className="text-xs text-muted-foreground mt-1">
 								Use placeholders like {'{{message}}'} that match field names
 							</p>
+							<div className="mt-2 rounded-md border border-border bg-muted/20 p-3 text-sm overflow-y-auto min-h-[120px]">
+								{formData.messageTemplate.trim() ? (
+									renderDiscordContentValue(formData.messageTemplate, 'edit-template-preview')
+								) : (
+									<span className="text-muted-foreground italic">
+										Preview will appear here…
+									</span>
+								)}
+							</div>
 						</div>
 						<DialogFooter>
 							<Button variant="cancel"

@@ -30,6 +30,7 @@ import {
 	useDeleteBroadcastTarget,
 	useUpdateBroadcastTarget,
 } from '@/hooks/useBroadcasts'
+import { useDiscordServers } from '@/hooks/useDiscord'
 import { usePageTitle } from '@/hooks/usePageTitle'
 import { useGlobalPermissions } from '@/hooks/usePermissions'
 import {
@@ -42,10 +43,16 @@ import type { BroadcastTarget, CreateBroadcastTargetRequest } from '@/lib/api'
 export default function BroadcastTargetsPage() {
 	usePageTitle('Admin - Broadcast Targets')
 	const { data: targets, isLoading, error } = useBroadcastTargets()
+	const { data: discordServers = [] } = useDiscordServers()
 	const { data: globalPermissions = [] } = useGlobalPermissions()
 	const createTarget = useCreateBroadcastTarget()
 	const updateTarget = useUpdateBroadcastTarget()
 	const deleteTarget = useDeleteBroadcastTarget()
+	const discordServerOptions = discordServers.map((server) => ({
+		value: server.guildId,
+		label: server.guildName,
+		description: server.guildId,
+	}))
 	const broadcastPermissionOptions = globalPermissions
 		.filter(
 			(permission) =>
@@ -244,6 +251,7 @@ export default function BroadcastTargetsPage() {
 							<TableHeader>
 								<TableRow>
 									<TableHead>Name</TableHead>
+									<TableHead>Description</TableHead>
 									<TableHead>Type</TableHead>
 									<TableHead>Configuration</TableHead>
 									<TableHead className="text-right">Actions</TableHead>
@@ -255,6 +263,9 @@ export default function BroadcastTargetsPage() {
 									return (
 										<TableRow key={target.id}>
 											<TableCell className="font-medium">{target.name}</TableCell>
+											<TableCell className="text-sm text-muted-foreground">
+												{target.description || '-'}
+											</TableCell>
 											<TableCell>{target.type}</TableCell>
 											<TableCell className="text-sm text-muted-foreground">
 												{config.channelId && `Channel: ${config.channelId}`}
@@ -351,17 +362,21 @@ export default function BroadcastTargetsPage() {
 							/>
 						</div>
 						<div>
-							<Label htmlFor="guildId">Discord Guild ID *</Label>
-							<Input
-								id="guildId"
+							<Label htmlFor="guildId">Discord Server *</Label>
+							<Select
+								inputId="guildId"
 								value={formData.config.guildId}
-								onChange={(e) =>
+								onValueChange={(value) =>
 									setFormData({
 										...formData,
-										config: { ...formData.config, guildId: e.target.value },
+										config: { ...formData.config, guildId: value },
 									})
 								}
-								required
+								options={discordServerOptions}
+								searchable
+								placeholder="Select a configured Discord server"
+								emptyText="No configured Discord servers found"
+								getOptionSearchText={(option) => `${option.label} ${option.description ?? ''}`}
 							/>
 						</div>
 						<div>
@@ -387,7 +402,12 @@ export default function BroadcastTargetsPage() {
 								type="submit"
 								loading={createTarget.isPending}
 								loadingText="Creating..."
-								disabled={!formData.permissionEntityNamespace || !formData.permissionTargetName}
+								disabled={
+									!formData.permissionEntityNamespace ||
+									!formData.permissionTargetName ||
+									!formData.config.guildId ||
+									!formData.config.channelId
+								}
 							>
 								Create Target
 							</Button>
@@ -453,17 +473,21 @@ export default function BroadcastTargetsPage() {
 							/>
 						</div>
 						<div>
-							<Label htmlFor="edit-guildId">Discord Guild ID *</Label>
-							<Input
-								id="edit-guildId"
+							<Label htmlFor="edit-guildId">Discord Server *</Label>
+							<Select
+								inputId="edit-guildId"
 								value={formData.config.guildId}
-								onChange={(e) =>
+								onValueChange={(value) =>
 									setFormData({
 										...formData,
-										config: { ...formData.config, guildId: e.target.value },
+										config: { ...formData.config, guildId: value },
 									})
 								}
-								required
+								options={discordServerOptions}
+								searchable
+								placeholder="Select a configured Discord server"
+								emptyText="No configured Discord servers found"
+								getOptionSearchText={(option) => `${option.label} ${option.description ?? ''}`}
 							/>
 						</div>
 						<div>
