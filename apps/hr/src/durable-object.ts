@@ -99,7 +99,8 @@ export class HrDO extends DurableObject<Env> implements Hr {
 		characterId: string,
 		corporationId: string,
 		applicationText: string,
-		characterName: string
+		characterName: string,
+		altCharacterIds: string[] = []
 	): Promise<Application> {
 		// Check total open applications (max 2 across all corporations)
 		const openCount = await this.applicationService.countOpenApplications(userId)
@@ -120,7 +121,8 @@ export class HrDO extends DurableObject<Env> implements Hr {
 			characterId,
 			characterName,
 			corporationId,
-			applicationText
+			applicationText,
+			altCharacterIds
 		)
 	}
 
@@ -130,18 +132,22 @@ export class HrDO extends DurableObject<Env> implements Hr {
 	async listApplications(
 		filters: ApplicationFilters,
 		userId: string,
-		isAdmin: boolean
+		access: { isAdmin: boolean; isAuditor: boolean }
 	): Promise<Application[]> {
 		// Get user's HR corporations for authorization
 		const userHrCorporations = await this.hrRoleService.getUserHrCorporations(userId)
-		const userHrAdminCorporations = isAdmin ? [] : await this.hrRoleService.getUserHrAdminCorporations(userId)
+		const userHrReviewerCorporations =
+			access.isAdmin || access.isAuditor
+				? []
+				: await this.hrRoleService.getUserHrReviewerCorporations(userId)
 
 		return await this.applicationService.listApplications(
 			filters,
 			userId,
-			isAdmin,
+			access.isAdmin,
+			access.isAuditor,
 			userHrCorporations,
-			userHrAdminCorporations
+			userHrReviewerCorporations
 		)
 	}
 
@@ -151,19 +157,23 @@ export class HrDO extends DurableObject<Env> implements Hr {
 	async getApplication(
 		applicationId: string,
 		userId: string,
-		isAdmin: boolean
+		access: { isAdmin: boolean; isAuditor: boolean }
 	): Promise<ApplicationDetail> {
 		// Get user's HR corporations for authorization
 		const userHrCorporations = await this.hrRoleService.getUserHrCorporations(userId)
-		const userHrAdminCorporations = isAdmin ? [] : await this.hrRoleService.getUserHrAdminCorporations(userId)
+		const userHrReviewerCorporations =
+			access.isAdmin || access.isAuditor
+				? []
+				: await this.hrRoleService.getUserHrReviewerCorporations(userId)
 
 		return await this.applicationService.getApplication(
 			applicationId,
 			userId,
-			isAdmin,
+			access.isAdmin,
+			access.isAuditor,
 			userHrCorporations,
 			true, // Include activity log for HR/admin
-			userHrAdminCorporations
+			userHrReviewerCorporations
 		)
 	}
 
@@ -354,7 +364,7 @@ export class HrDO extends DurableObject<Env> implements Hr {
 	async listMessages(
 		applicationId: string,
 		userId: string,
-		isAdmin: boolean
+		access: { isAdmin: boolean; isAuditor: boolean }
 	): Promise<ApplicationMessage[]> {
 		// Get user's HR corporations for authorization
 		const userHrCorporations = await this.hrRoleService.getUserHrCorporations(userId)
@@ -362,7 +372,8 @@ export class HrDO extends DurableObject<Env> implements Hr {
 		return await this.messageService.listMessages(
 			applicationId,
 			userId,
-			isAdmin,
+			access.isAdmin,
+			access.isAuditor,
 			userHrCorporations
 		)
 	}
@@ -370,14 +381,19 @@ export class HrDO extends DurableObject<Env> implements Hr {
 	/**
 	 * Get count of messages for an application (for UI badges)
 	 */
-	async getMessageCount(applicationId: string, userId: string, isAdmin: boolean): Promise<number> {
+	async getMessageCount(
+		applicationId: string,
+		userId: string,
+		access: { isAdmin: boolean; isAuditor: boolean }
+	): Promise<number> {
 		// Get user's HR corporations for authorization
 		const userHrCorporations = await this.hrRoleService.getUserHrCorporations(userId)
 
 		return await this.messageService.getMessageCount(
 			applicationId,
 			userId,
-			isAdmin,
+			access.isAdmin,
+			access.isAuditor,
 			userHrCorporations
 		)
 	}

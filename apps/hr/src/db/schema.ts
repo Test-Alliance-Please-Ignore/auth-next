@@ -354,12 +354,43 @@ export const blacklistEntries = pgTable(
 )
 
 /**
+ * Application alt characters table - Alt characters included in an application
+ *
+ * Stores which alt characters an applicant is also applying with.
+ * Names are resolved at display time via entity name resolution.
+ */
+export const applicationAlts = pgTable(
+	'application_alts',
+	{
+		id: uuid('id').defaultRandom().primaryKey(),
+		/** Application this alt belongs to */
+		applicationId: uuid('application_id')
+			.notNull()
+			.references(() => applications.id, { onDelete: 'cascade' }),
+		/** Character ID of the alt */
+		characterId: text('character_id').notNull(),
+	},
+	(table) => [
+		// Get alts for an application
+		index('idx_application_alts_app').on(table.applicationId),
+	]
+)
+
+/**
  * Relations (for Drizzle ORM query builder)
  * These define the relationships between tables for type-safe joins
  */
 export const applicationsRelations = relations(applications, ({ many }) => ({
 	recommendations: many(applicationRecommendations),
 	activityLog: many(applicationActivityLog),
+	alts: many(applicationAlts),
+}))
+
+export const applicationAltsRelations = relations(applicationAlts, ({ one }) => ({
+	application: one(applications, {
+		fields: [applicationAlts.applicationId],
+		references: [applications.id],
+	}),
 }))
 
 export const recommendationsRelations = relations(applicationRecommendations, ({ one }) => ({
@@ -394,6 +425,7 @@ export const blacklistRelations = relations(blacklistEntries, ({ one, many }) =>
  */
 export const schema = {
 	applications,
+	applicationAlts,
 	applicationMessages,
 	applicationRecommendations,
 	applicationActivityLog,
@@ -401,6 +433,7 @@ export const schema = {
 	hrRoles,
 	blacklistEntries,
 	applicationsRelations,
+	applicationAltsRelations,
 	recommendationsRelations,
 	activityLogRelations,
 	blacklistRelations,

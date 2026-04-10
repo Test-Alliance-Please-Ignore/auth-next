@@ -103,6 +103,7 @@ export class MessageService {
 		applicationId: string,
 		userId: string,
 		isAdmin: boolean,
+		isAuditor: boolean,
 		userHrCorporations: string[] = []
 	): Promise<ApplicationMessage[]> {
 		// Get the application to validate authorization
@@ -116,7 +117,7 @@ export class MessageService {
 
 		// Check authorization: owner or HR with access to corporation
 		const isOwner = application.userId === userId
-		const hasHrAccess = userHrCorporations.includes(application.corporationId)
+		const hasHrAccess = isAuditor || userHrCorporations.includes(application.corporationId)
 
 		if (!isOwner && !hasHrAccess && !isAdmin) {
 			throw new Error('You do not have permission to view messages for this application')
@@ -138,6 +139,7 @@ export class MessageService {
 		applicationId: string,
 		userId: string,
 		isAdmin: boolean,
+		isAuditor: boolean,
 		userHrCorporations: string[] = []
 	): Promise<number> {
 		// Get the application to validate authorization
@@ -151,7 +153,7 @@ export class MessageService {
 
 		// Check authorization: owner or HR with access to corporation
 		const isOwner = application.userId === userId
-		const hasHrAccess = userHrCorporations.includes(application.corporationId)
+		const hasHrAccess = isAuditor || userHrCorporations.includes(application.corporationId)
 
 		if (!isOwner && !hasHrAccess && !isAdmin) {
 			throw new Error('You do not have permission to view message count for this application')
@@ -183,4 +185,3 @@ export class MessageService {
 		}
 	}
 }
-

@@ -45,11 +45,22 @@ function makeDbStub() {
 			},
 			userCharacters: {
 				findMany: vi.fn().mockResolvedValue([]),
+				findFirst: vi.fn().mockResolvedValue({
+					characterId: '2001',
+					characterName: 'Pilot One',
+					userId: 'target-user-1',
+					status: 'active',
+				}),
 			},
 			users: {
 				findMany: vi.fn().mockResolvedValue([]),
 			},
 		},
+		update: vi.fn().mockReturnValue({
+			set: vi.fn().mockReturnValue({
+				where: vi.fn().mockResolvedValue(undefined),
+			}),
+		}),
 	}
 }
 
@@ -85,6 +96,15 @@ describe('corporations members access matrix', () => {
 		checkPermission: ReturnType<typeof vi.fn>
 		checkCharactersBlacklisted: ReturnType<typeof vi.fn>
 	}
+	let corpStub: {
+		getCorporationInfo: ReturnType<typeof vi.fn>
+		getCoreData: ReturnType<typeof vi.fn>
+		getDirectors: ReturnType<typeof vi.fn>
+		fetchCoreData: ReturnType<typeof vi.fn>
+	}
+	let charStub: {
+		getCharacterInfo: ReturnType<typeof vi.fn>
+	}
 
 	beforeEach(() => {
 		vi.clearAllMocks()
@@ -93,22 +113,27 @@ describe('corporations members access matrix', () => {
 			checkPermission: vi.fn().mockResolvedValue(false),
 			checkCharactersBlacklisted: vi.fn().mockResolvedValue({}),
 		}
+		charStub = {
+			getCharacterInfo: vi.fn().mockResolvedValue(null),
+		}
+		corpStub = {
+			getCorporationInfo: vi.fn().mockResolvedValue({ ceoId: '9999', allianceId: null }),
+			getCoreData: vi.fn().mockResolvedValue({
+				members: [{ characterId: '2001', updatedAt: new Date('2026-04-01T00:00:00.000Z') }],
+				memberTracking: [],
+			}),
+			getDirectors: vi.fn().mockResolvedValue([]),
+			fetchCoreData: vi.fn().mockResolvedValue(undefined),
+		}
 
 		getCachedUserPermissionsMock.mockResolvedValue([])
 		getStubMock.mockImplementation((binding: unknown) => {
 			if (binding === env.HR) return hrStub as any
 			if (binding === env.EVE_CHARACTER_DATA) {
-				return { getCharacterInfo: vi.fn().mockResolvedValue(null) } as any
+				return charStub as any
 			}
 			if (binding === env.EVE_CORPORATION_DATA) {
-				return {
-					getCorporationInfo: vi.fn().mockResolvedValue({ ceoId: '9999', allianceId: null }),
-					getCoreData: vi.fn().mockResolvedValue({
-						members: [{ characterId: '2001', updatedAt: new Date('2026-04-01T00:00:00.000Z') }],
-						memberTracking: [],
-					}),
-					getDirectors: vi.fn().mockResolvedValue([]),
-				} as any
+				return corpStub as any
 			}
 			if (binding === env.EVE_TOKEN_STORE) {
 				return {
@@ -158,5 +183,57 @@ describe('corporations members access matrix', () => {
 			characterName: 'Pilot One',
 		})
 		expect(hrStub.checkCharactersBlacklisted).toHaveBeenCalledWith(['2001'])
+	})
+
+	it('denies members refresh for HR-only access (no CEO/director/admin leadership)', async () => {
+		hrStub.checkPermission.mockResolvedValue(true)
+
+		const app = createApp({ user: makeUser(), db: dbStub })
+		const res = await app.request('/api/corporations/1001/members/refresh', { method: 'POST' }, env)
+
+		expect(res.status).toBe(403)
+		expect(await res.json()).toEqual({
+			error: 'Access denied. Corporation CEO, Director, or site admin access required.',
+		})
+	})
+
+	it('allows members refresh for director leadership access', async () => {
+		const app = createApp({
+			user: makeUser({
+				characters: [
+					{
+						id: 'uc-1',
+						characterOwnerHash: 'owner-1',
+						characterId: '1001',
+						characterName: 'Director Pilot',
+						is_primary: true,
+						hasValidToken: true,
+					},
+				],
+			}),
+			db: dbStub,
+		})
+
+		dbStub.query.userCharacters.findMany.mockResolvedValue([
+			{
+				id: 'uc-1',
+				userId: 'user-1',
+				characterId: '1001',
+				characterName: 'Director Pilot',
+				corporationId: '1001',
+				isDeleted: false,
+			},
+		])
+		charStub.getCharacterInfo.mockResolvedValue({
+			characterId: '1001',
+			corporationId: '1001',
+			characterName: 'Director Pilot',
+		})
+		corpStub.getDirectors.mockResolvedValue([{ characterId: '1001', characterName: 'Director Pilot' }])
+
+		const res = await app.request('/api/corporations/1001/members/refresh', { method: 'POST' }, env)
+
+		expect(res.status).toBe(200)
+		expect(corpStub.fetchCoreData).toHaveBeenCalledWith('1001', true)
 	})
 })

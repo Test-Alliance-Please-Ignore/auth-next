@@ -1,7 +1,7 @@
 import { and, desc, eq, inArray, or, sql } from '@repo/db-utils'
 import { isApplicationStatus } from '@repo/hr'
 
-import { applicationActivityLog, applicationRecommendations, applications } from '../db/schema'
+import { applicationActivityLog, applicationAlts, applicationRecommendations, applications } from '../db/schema'
 
 import type {
 	Application,
@@ -43,7 +43,8 @@ export class ApplicationService {
 		characterId: string,
 		characterName: string,
 		corporationId: string,
-		applicationText: string
+		applicationText: string,
+		altCharacterIds: string[] = []
 	): Promise<Application> {
 		// Create the application
 		const [application] = await this.ctx.db
@@ -60,6 +61,16 @@ export class ApplicationService {
 
 		if (!application) {
 			throw new Error('Failed to create application')
+		}
+
+		// Insert alt characters if provided
+		if (altCharacterIds.length > 0) {
+			await this.ctx.db.insert(applicationAlts).values(
+				altCharacterIds.map((altCharId) => ({
+					applicationId: application.id,
+					characterId: altCharId,
+				}))
+			)
 		}
 
 		// Log the submission
@@ -82,8 +93,9 @@ export class ApplicationService {
 		filters: ApplicationFilters,
 		userId: string,
 		isAdmin: boolean,
+		isAuditor: boolean,
 		userHrCorporations: string[] = [],
-		userHrAdminCorporations: string[] = []
+		userHrReviewerCorporations: string[] = []
 	): Promise<Application[]> {
 		const conditions: ReturnType<typeof and>[] = []
 
@@ -109,29 +121,33 @@ export class ApplicationService {
 			// User can see: their own applications OR applications for corps they have HR access to
 			const authConditions = [eq(applications.userId, userId)]
 
-			if (userHrCorporations.length > 0) {
-				// Non-admin HR corps (viewer/reviewer) can only see pending/under_review
-				const nonAdminHrCorps = userHrCorporations.filter(
-					(corpId) => !userHrAdminCorporations.includes(corpId)
+			if (isAuditor) {
+				// Auditors are global viewer-equivalent: read-only active queue visibility
+				const auditorCondition = inArray(applications.status, ['pending', 'under_review'])
+				authConditions.push(auditorCondition)
+			} else if (userHrCorporations.length > 0) {
+				// Viewer-only corps can only see pending/under_review
+				const viewerOnlyCorps = userHrCorporations.filter(
+					(corpId) => !userHrReviewerCorporations.includes(corpId)
 				)
 
 				const corpConditions = []
 
-				// HR admin corps: see all statuses
-				if (userHrAdminCorporations.length > 0) {
+				// HR reviewer+ corps: see all statuses
+				if (userHrReviewerCorporations.length > 0) {
 					corpConditions.push(
-						inArray(applications.corporationId, userHrAdminCorporations)
+						inArray(applications.corporationId, userHrReviewerCorporations)
 					)
 				}
 
-				// Non-admin HR corps: only pending/under_review
-				if (nonAdminHrCorps.length > 0) {
-					const nonAdminCondition = and(
-						inArray(applications.corporationId, nonAdminHrCorps),
+				// Viewer-only corps: only pending/under_review
+				if (viewerOnlyCorps.length > 0) {
+					const viewerCondition = and(
+						inArray(applications.corporationId, viewerOnlyCorps),
 						inArray(applications.status, ['pending', 'under_review'])
 					)
-					if (nonAdminCondition) {
-						corpConditions.push(nonAdminCondition)
+					if (viewerCondition) {
+						corpConditions.push(viewerCondition)
 					}
 				}
 
@@ -163,9 +179,10 @@ export class ApplicationService {
 		applicationId: string,
 		userId: string,
 		isAdmin: boolean,
+		isAuditor: boolean,
 		userHrCorporations: string[] = [],
 		includeActivityLog = false,
-		userHrAdminCorporations: string[] = []
+		userHrReviewerCorporations: string[] = []
 	): Promise<ApplicationDetail> {
 		// Get the application
 		const application = await this.ctx.db.query.applications.findFirst({
@@ -178,16 +195,16 @@ export class ApplicationService {
 
 		// Check authorization
 		const isOwner = application.userId === userId
-		const hasHrAccess = userHrCorporations.includes(application.corporationId)
-		const isHrAdmin = userHrAdminCorporations.includes(application.corporationId)
+		const hasHrAccess = isAuditor || userHrCorporations.includes(application.corporationId)
+		const isReviewerOrAbove = userHrReviewerCorporations.includes(application.corporationId)
 
 		if (!isOwner && !hasHrAccess && !isAdmin) {
 			throw new Error('You do not have permission to view this application')
 		}
 
-		// Non-admin HR (viewer/reviewer) can only see pending/under_review applications
+		// Viewer-only HR can only see pending/under_review applications
 		const activeStatuses = ['pending', 'under_review']
-		if (hasHrAccess && !isHrAdmin && !isAdmin && !isOwner) {
+		if (hasHrAccess && !isReviewerOrAbove && !isAdmin && !isOwner) {
 			if (!activeStatuses.includes(application.status)) {
 				throw new Error('You do not have permission to view this application')
 			}
@@ -197,6 +214,11 @@ export class ApplicationService {
 		const recommendations = await this.ctx.db.query.applicationRecommendations.findMany({
 			where: eq(applicationRecommendations.applicationId, applicationId),
 			orderBy: [desc(applicationRecommendations.createdAt)],
+		})
+
+		// Get alt characters
+		const alts = await this.ctx.db.query.applicationAlts.findMany({
+			where: eq(applicationAlts.applicationId, applicationId),
 		})
 
 		// Get activity log if requested (HR, admin, or application owner)
@@ -211,6 +233,7 @@ export class ApplicationService {
 
 		return {
 			...this.mapToApplication(application),
+			altCharacterIds: alts.map((alt) => alt.characterId),
 			recommendations: recommendations.map((rec) => ({
 				id: rec.id,
 				applicationId: rec.applicationId,
@@ -261,15 +284,15 @@ export class ApplicationService {
 
 		const previousStatus = application.status
 
-		// Only set reviewer info on final decisions
-		const isFinalDecision = status === 'accepted' || status === 'rejected'
+		// Set reviewer info for any status change that involves review
+		const isReviewAction = status === 'accepted' || status === 'rejected' || status === 'under_review'
 
 		// Update the application
 		await this.ctx.db
 			.update(applications)
 			.set({
 				status: status as ApplicationStatus,
-				...(isFinalDecision
+				...(isReviewAction
 					? {
 						reviewedBy: userId,
 						reviewedAt: new Date(),

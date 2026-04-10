@@ -40,6 +40,7 @@ export interface Application {
 	createdAt: string
 	updatedAt: string
 	recommendationCount?: number
+	altCharacterIds?: string[]
 }
 
 /**
@@ -185,6 +186,7 @@ export interface SubmitApplicationRequest {
 	corporationId: string
 	characterId: string
 	applicationText: string
+	altCharacterIds?: string[]
 }
 
 /**

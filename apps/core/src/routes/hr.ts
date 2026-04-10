@@ -128,11 +128,11 @@ async function enrichHrNotesWithAuthorSource(
 }
 
 /**
- * Check if the current user has the urn:hr:auditor group permission (or is a site admin).
+ * Check if the current user has the urn:hr:auditor group permission.
+ * This does NOT include site-admin bypass.
  */
-async function isHrAuditor(c: Context<App>): Promise<boolean> {
+async function hasHrAuditorPermission(c: Context<App>): Promise<boolean> {
 	const user = c.get('user')!
-	if (user.is_admin) return true
 	const permissions = await getCachedUserPermissions(c.env, user.id)
 	return permissions.some((p) => p.urn === 'urn:hr:auditor')
 }
@@ -148,8 +148,7 @@ async function hasAnyHrAccess(c: Context<App>): Promise<boolean> {
 	if (user.is_admin) return true
 
 	// Alliance-level HR auditors have cross-corp read access
-	const permissions = await getCachedUserPermissions(c.env, user.id)
-	if (permissions.some((p) => p.urn === 'urn:hr:auditor')) return true
+	if (await hasHrAuditorPermission(c)) return true
 
 	// Single RPC call returns all corps where user has any HR role
 	const hr = getHrStub(c)
@@ -241,12 +240,25 @@ async function getHrRoleManagementAccess(
  */
 app.post('/applications', requireAuth(), async (c) => {
 	const user = c.get('user')!
-	const { characterId, corporationId, applicationText } = await c.req.json()
+	const { characterId, corporationId, applicationText, altCharacterIds } = await c.req.json()
 
 	// Validate character ownership
 	const ownsCharacter = user.characters.some((char) => char.characterId === characterId)
 	if (!ownsCharacter) {
 		return c.json({ error: 'Character not found or not owned by you' }, 403)
+	}
+
+	// Validate alt character ownership
+	const validAltIds: string[] = []
+	if (Array.isArray(altCharacterIds)) {
+		for (const altId of altCharacterIds) {
+			if (typeof altId === 'string' && altId !== characterId) {
+				const ownsAlt = user.characters.some((char) => char.characterId === altId)
+				if (ownsAlt) {
+					validAltIds.push(altId)
+				}
+			}
+		}
 	}
 
 	const characterName = getCharacterName(user, characterId)
@@ -258,12 +270,15 @@ app.post('/applications', requireAuth(), async (c) => {
 			characterId,
 			corporationId,
 			applicationText,
-			characterName
+			characterName,
+			validAltIds
 		)
 
 		return c.json(application, 201)
 	} catch (error) {
-		captureException(error as Error, { tags: { action: 'submit-application', userId: user.id, characterId, corporationId } })
+		captureException(error as Error, {
+			tags: { action: 'submit-application', userId: user.id, characterId, corporationId },
+		})
 		return c.json(
 			{ error: error instanceof Error ? error.message : 'Failed to submit application' },
 			400
@@ -290,8 +305,11 @@ app.get('/applications', requireAuth(), async (c) => {
 
 	try {
 		const hr = getHrStub(c)
-		const auditor = user.is_admin || (await isHrAuditor(c))
-		const applications = await hr.listApplications(filters, user.id, auditor)
+		const isAuditor = await hasHrAuditorPermission(c)
+		const applications = await hr.listApplications(filters, user.id, {
+			isAdmin: user.is_admin,
+			isAuditor,
+		})
 
 		const resolver = getStub<EsiTypeResolver>(c.env.ESI_TYPE_RESOLVER, 'global')
 		const db = c.get('db')!
@@ -316,7 +334,11 @@ app.get('/applications/:id', requireAuth(), async (c) => {
 
 	try {
 		const hr = getHrStub(c)
-		const application = await hr.getApplication(applicationId, user.id, user.is_admin)
+		const isAuditor = await hasHrAuditorPermission(c)
+		const application = await hr.getApplication(applicationId, user.id, {
+			isAdmin: user.is_admin,
+			isAuditor,
+		})
 
 		const resolver = getStub<EsiTypeResolver>(c.env.ESI_TYPE_RESOLVER, 'global')
 		const db = c.get('db')!
@@ -364,7 +386,9 @@ app.patch('/applications/:id', requireAuth(), async (c) => {
 			message.includes('forbidden')
 
 		if (!isForbidden) {
-			captureException(error as Error, { tags: { action: 'update-application-status', userId: user.id, applicationId, status } })
+			captureException(error as Error, {
+				tags: { action: 'update-application-status', userId: user.id, applicationId, status },
+			})
 		}
 		return c.json({ error: message }, isForbidden ? 403 : 400)
 	}
@@ -430,7 +454,9 @@ app.get('/recommendations/pending', requireAuth(), async (c) => {
 	const userChars = await db.query.userCharacters.findMany({
 		where: and(eq(userCharacters.userId, user.id), eq(userCharacters.isDeleted, false)),
 	})
-	const corporationIds = [...new Set(userChars.map((ch) => ch.corporationId).filter(Boolean))] as string[]
+	const corporationIds = [
+		...new Set(userChars.map((ch) => ch.corporationId).filter(Boolean)),
+	] as string[]
 
 	if (corporationIds.length === 0) {
 		return c.json([])
@@ -462,11 +488,17 @@ app.get('/recommendations/applications/:id', requireAuth(), async (c) => {
 	const userChars = await db.query.userCharacters.findMany({
 		where: and(eq(userCharacters.userId, user.id), eq(userCharacters.isDeleted, false)),
 	})
-	const corporationIds = [...new Set(userChars.map((ch) => ch.corporationId).filter(Boolean))] as string[]
+	const corporationIds = [
+		...new Set(userChars.map((ch) => ch.corporationId).filter(Boolean)),
+	] as string[]
 
 	try {
 		const hr = getHrStub(c)
-		const application = await hr.getApplicationForRecommender(applicationId, user.id, corporationIds)
+		const application = await hr.getApplicationForRecommender(
+			applicationId,
+			user.id,
+			corporationIds
+		)
 		return c.json(application)
 	} catch (error) {
 		return c.json(
@@ -507,7 +539,9 @@ app.post('/applications/:applicationId/recommendations', requireAuth(), async (c
 
 		return c.json(recommendation, 201)
 	} catch (error) {
-		captureException(error as Error, { tags: { action: 'add-recommendation', userId: user.id, applicationId } })
+		captureException(error as Error, {
+			tags: { action: 'add-recommendation', userId: user.id, applicationId },
+		})
 		return c.json(
 			{ error: error instanceof Error ? error.message : 'Failed to add recommendation' },
 			400
@@ -538,7 +572,9 @@ app.patch('/applications/:applicationId/recommendations/:id', requireAuth(), asy
 
 		return c.json({ success: true })
 	} catch (error) {
-		captureException(error as Error, { tags: { action: 'update-recommendation', userId: user.id, recommendationId } })
+		captureException(error as Error, {
+			tags: { action: 'update-recommendation', userId: user.id, recommendationId },
+		})
 		return c.json(
 			{ error: error instanceof Error ? error.message : 'Failed to update recommendation' },
 			400
@@ -564,7 +600,9 @@ app.delete('/applications/:applicationId/recommendations/:id', requireAuth(), as
 
 		return c.json({ success: true })
 	} catch (error) {
-		captureException(error as Error, { tags: { action: 'delete-recommendation', userId: user.id, recommendationId } })
+		captureException(error as Error, {
+			tags: { action: 'delete-recommendation', userId: user.id, recommendationId },
+		})
 		return c.json(
 			{ error: error instanceof Error ? error.message : 'Failed to delete recommendation' },
 			400
@@ -589,11 +627,18 @@ app.post('/applications/:applicationId/messages', requireAuth(), async (c) => {
 		const hr = getHrStub(c)
 
 		// Check if sender is the applicant — if not, require hr_reviewer
-		const application = await hr.getApplication(applicationId, user.id, user.is_admin)
+		const application = await hr.getApplication(applicationId, user.id, {
+			isAdmin: user.is_admin,
+			isAuditor: false,
+		})
 		const isApplicant = application.userId === user.id
 
 		if (!isApplicant && !user.is_admin) {
-			const hasPermission = await hr.checkPermission(user.id, application.corporationId, 'hr_reviewer')
+			const hasPermission = await hr.checkPermission(
+				user.id,
+				application.corporationId,
+				'hr_reviewer'
+			)
 			if (!hasPermission) {
 				return c.json({ error: 'HR reviewer or admin role required to send messages' }, 403)
 			}
@@ -617,7 +662,9 @@ app.post('/applications/:applicationId/messages', requireAuth(), async (c) => {
 
 		return c.json({ ...result, senderCharacterName: senderName }, 201)
 	} catch (error) {
-		captureException(error as Error, { tags: { action: 'send-message', userId: user.id, applicationId } })
+		captureException(error as Error, {
+			tags: { action: 'send-message', userId: user.id, applicationId },
+		})
 		return c.json({ error: error instanceof Error ? error.message : 'Failed to send message' }, 400)
 	}
 })
@@ -632,7 +679,11 @@ app.get('/applications/:applicationId/messages', requireAuth(), async (c) => {
 
 	try {
 		const hr = getHrStub(c)
-		const messages = await hr.listMessages(applicationId, user.id, user.is_admin)
+		const isAuditor = await hasHrAuditorPermission(c)
+		const messages = await hr.listMessages(applicationId, user.id, {
+			isAdmin: user.is_admin,
+			isAuditor,
+		})
 
 		// Resolve sender character names
 		const db = c.get('db')!
@@ -663,7 +714,11 @@ app.get('/applications/:applicationId/messages/count', requireAuth(), async (c) 
 
 	try {
 		const hr = getHrStub(c)
-		const count = await hr.getMessageCount(applicationId, user.id, user.is_admin)
+		const isAuditor = await hasHrAuditorPermission(c)
+		const count = await hr.getMessageCount(applicationId, user.id, {
+			isAdmin: user.is_admin,
+			isAuditor,
+		})
 
 		return c.json({ count })
 	} catch (error) {
@@ -722,7 +777,7 @@ app.get('/corporations', requireAuth(), async (c) => {
 			)
 		}
 
-		if (await isHrAuditor(c)) {
+		if (await hasHrAuditorPermission(c)) {
 			const corporations = await allCorpsQuery()
 			return c.json(
 				corporations
@@ -924,15 +979,11 @@ app.patch('/templates/:templateId', requireAuth(), async (c) => {
 			return c.json({ error: 'Template not found' }, 404)
 		}
 
-		// Check HR permission (reviewer or admin required to edit)
-		const hasPermission = await hr.checkPermission(
-			user.id,
-			template.ownerCorporationId,
-			'hr_reviewer'
-		)
+		// Check HR permission (admin required to edit)
+		const hasPermission = await hr.checkPermission(user.id, template.ownerCorporationId, 'hr_admin')
 
 		if (!hasPermission && !user.is_admin) {
-			return c.json({ error: 'HR reviewer or admin role required' }, 403)
+			return c.json({ error: 'HR admin role required' }, 403)
 		}
 
 		const updated = await hr.updateTemplate(templateId, updates)
@@ -1035,7 +1086,9 @@ app.post('/notes', requireAuth(), async (c) => {
 
 		return c.json(note, 201)
 	} catch (error) {
-		captureException(error as Error, { tags: { action: 'create-note', userId: user.id, subjectUserId } })
+		captureException(error as Error, {
+			tags: { action: 'create-note', userId: user.id, subjectUserId },
+		})
 		return c.json({ error: error instanceof Error ? error.message : 'Failed to create note' }, 400)
 	}
 })
@@ -1316,7 +1369,7 @@ app.get('/roles/check', requireAuth(), async (c) => {
 
 		if (activeRoles.length === 0) {
 			// HR auditors have cross-corp read-only access equivalent to hr_viewer
-			if (await isHrAuditor(c)) {
+			if (await hasHrAuditorPermission(c)) {
 				return c.json({ hasPermission: true, currentRole: 'hr_viewer' })
 			}
 			return c.json({ hasPermission: false, currentRole: null })
@@ -1450,11 +1503,11 @@ app.delete('/:corporationId/roles/:roleId', requireAuth(), async (c) => {
  * Search users across all corporations — requires urn:hr:auditor permission or site admin
  */
 app.get('/audit/users', requireAuth(), async (c) => {
-	if (!(await isHrAuditor(c))) {
+	const user = c.get('user')!
+	if (!user.is_admin && !(await hasHrAuditorPermission(c))) {
 		return c.json({ error: 'Forbidden' }, 403)
 	}
 
-	const user = c.get('user')!
 	const search = c.req.query('search')
 	const limit = c.req.query('limit') ? parseInt(c.req.query('limit')!) : 25
 	const offset = c.req.query('offset') ? parseInt(c.req.query('offset')!) : 0
@@ -1476,11 +1529,11 @@ app.get('/audit/users', requireAuth(), async (c) => {
  * Get detailed user info — requires urn:hr:auditor permission or site admin
  */
 app.get('/audit/users/:userId', requireAuth(), async (c) => {
-	if (!(await isHrAuditor(c))) {
+	const user = c.get('user')!
+	if (!user.is_admin && !(await hasHrAuditorPermission(c))) {
 		return c.json({ error: 'Forbidden' }, 403)
 	}
 
-	const user = c.get('user')!
 	const targetUserId = c.req.param('userId')
 
 	try {
@@ -1495,7 +1548,10 @@ app.get('/audit/users/:userId', requireAuth(), async (c) => {
 			targetUserId,
 			error: error instanceof Error ? error.message : String(error),
 		})
-		return c.json({ error: error instanceof Error ? error.message : 'Failed to get user details' }, 500)
+		return c.json(
+			{ error: error instanceof Error ? error.message : 'Failed to get user details' },
+			500
+		)
 	}
 })
 
