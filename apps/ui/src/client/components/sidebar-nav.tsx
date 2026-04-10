@@ -48,6 +48,7 @@ interface SidebarNavItem {
 	icon?: any
 	badge?: number
 	external?: boolean
+	isActive?: boolean
 	children?: SidebarNavItem[]
 }
 
@@ -146,10 +147,22 @@ export function SidebarNav({ onNavigate }: SidebarNavProps) {
 			},
 		]
 
-		if ((hrCorporations?.length ?? 0) > 0) {
+		const isAuditor = hasAnyPermission('urn:hr:auditor')
+		const isHrOnlyUser = !corporationAccess?.hasAccess && ((hrCorporations?.length ?? 0) > 0 || isAuditor)
+		const isOnCorpHrRoute = /^\/corporations\/[^/]+\/hr/.test(location.pathname)
+
+		if ((hrCorporations?.length ?? 0) > 0 || isAuditor) {
 			hrItems.push({
 				label: 'HR Corporations',
 				href: '/hr',
+				isActive: location.pathname === '/hr' || (isOnCorpHrRoute && isHrOnlyUser),
+			})
+		}
+
+		if (isAuditor || isSiteAdmin) {
+			hrItems.push({
+				label: 'User Search',
+				href: '/hr/auditor/users',
 			})
 		}
 
@@ -378,11 +391,12 @@ export function SidebarNav({ onNavigate }: SidebarNavProps) {
 									<div className="ml-6 space-y-1 border-l border-border/60 pl-2">
 										{item.children.map((child) => {
 											const childIsActive =
-												!child.external &&
-												(child.href === item.href
-													? location.pathname === child.href
-													: location.pathname === child.href ||
-													location.pathname.startsWith(child.href + '/'))
+												child.isActive ??
+												(!child.external &&
+													(child.href === item.href
+														? location.pathname === child.href
+														: location.pathname === child.href ||
+														location.pathname.startsWith(child.href + '/')))
 
 											if (child.external) {
 												const ChildIcon = child.icon

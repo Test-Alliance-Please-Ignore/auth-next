@@ -1,5 +1,5 @@
 import type { NeonHttpDatabase } from 'drizzle-orm/neon-http'
-import { and, eq, lt } from 'drizzle-orm'
+import { and, eq, inArray, lt } from 'drizzle-orm'
 import { characterReports, schema } from './schema'
 
 export type DbClient = NeonHttpDatabase<typeof schema>
@@ -112,6 +112,20 @@ export async function createCharacterReport(
 ) {
 	const values = buildCreateReportQuery(params)
 	await db.insert(characterReports).values(values)
+}
+
+// Get an existing in-progress report for a character (pending or processing)
+export async function getInProgressReportForCharacter(
+	db: DbClient,
+	characterId: string,
+) {
+	return await db.query.characterReports.findFirst({
+		where: and(
+			eq(characterReports.characterId, characterId),
+			inArray(characterReports.status, ['pending', 'processing']),
+		),
+		orderBy: (reports, { desc }) => [desc(reports.createdAt)],
+	})
 }
 
 // Get reports with filters

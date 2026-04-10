@@ -126,8 +126,10 @@ export default function HrApplicationReview() {
 	}
 
 	const useMyCorporationsRoot = user?.is_admin || hasCorporationAccess
+	const showMembersNavigation = user?.is_admin || hasCorporationAccess
 	const rootCorporationsPath = useMyCorporationsRoot ? '/my-corporations' : '/hr'
 	const rootCorporationsLabel = useMyCorporationsRoot ? 'My Corporations' : 'HR Corporations'
+	const membersPath = `/my-corporations/${corporationId}/members`
 
 	// Check authentication
 	if (!authLoading && !isAuthenticated) {
@@ -219,18 +221,20 @@ export default function HrApplicationReview() {
 			<div className="mb-6 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
 				<Breadcrumb>
 					<BreadcrumbList>
-						<BreadcrumbItem>
-							<BreadcrumbLink to={rootCorporationsPath}>{rootCorporationsLabel}</BreadcrumbLink>
-						</BreadcrumbItem>
-						<BreadcrumbSeparator />
-						<BreadcrumbItem>
-							<BreadcrumbLink to={`/my-corporations/${corporationId}/members`}>
-								Members
-							</BreadcrumbLink>
-						</BreadcrumbItem>
-						<BreadcrumbSeparator />
-						<BreadcrumbItem>
-							<BreadcrumbLink to={`/corporations/${corporationId}/hr/applications`}>
+					<BreadcrumbItem>
+						<BreadcrumbLink to={rootCorporationsPath}>{rootCorporationsLabel}</BreadcrumbLink>
+					</BreadcrumbItem>
+					{showMembersNavigation && (
+						<>
+							<BreadcrumbSeparator />
+							<BreadcrumbItem>
+								<BreadcrumbLink to={membersPath}>Members</BreadcrumbLink>
+							</BreadcrumbItem>
+						</>
+					)}
+					<BreadcrumbSeparator />
+					<BreadcrumbItem>
+						<BreadcrumbLink to={`/corporations/${corporationId}/hr/applications`}>
 								Applications
 							</BreadcrumbLink>
 						</BreadcrumbItem>

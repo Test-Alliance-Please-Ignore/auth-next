@@ -1,4 +1,4 @@
-import { and, desc, eq } from '@repo/db-utils'
+import { and, eq, sql } from '@repo/db-utils'
 import { getStub } from '@repo/do-utils'
 import { ResourceType, RoleAttachmentType } from '@repo/groups'
 import { logger } from '@repo/hono-helpers'
@@ -7,6 +7,7 @@ import { HR_ROLES, ROLE_HR_ADMIN, ROLE_HR_REVIEWER, ROLE_HR_VIEWER, SERVICE_HR }
 import { hrRoles } from '../db/schema'
 
 import type { CreateRoleRequest, Groups, Role } from '@repo/groups'
+import type { EveCorporationData } from '@repo/eve-corporation-data'
 import type { HrRole, HrRoleType, HrRoleUrn } from '@repo/hr'
 import type { ServiceContext } from './context'
 
@@ -20,6 +21,11 @@ export class HrRoleService {
 	private readonly logger = logger.withTags({ service: 'hr-role' })
 	private readonly roleIdCache = new Map<HrRoleType, string>()
 	private readonly roleTypeCache = new Map<HrRoleUrn, Role>()
+	private readonly roleHierarchy: Record<HrRoleType, number> = {
+		hr_admin: 3,
+		hr_reviewer: 2,
+		hr_viewer: 1,
+	}
 
 	constructor(private ctx: ServiceContext) {}
 
@@ -198,6 +204,107 @@ export class HrRoleService {
 		}
 	}
 
+	private async getUserCharacterIdsInCorporation(
+		userId: string,
+		corporationId: string
+	): Promise<string[]> {
+		const result = await this.ctx.db.execute(
+			sql`
+				select character_id
+				from user_characters
+				where user_id = ${userId}
+					and deleted = false
+					and corporation_id = ${corporationId}
+			`
+		)
+		const rows = (result as { rows?: Array<{ character_id?: unknown }> }).rows ?? []
+		return rows
+			.map((row) => row.character_id)
+			.filter((value): value is string => typeof value === 'string' && value.length > 0)
+	}
+
+	private async getLeadershipRoleForCorporation(
+		userId: string,
+		corporationId: string
+	): Promise<HrRoleType | null> {
+		const userCharacterIds = await this.getUserCharacterIdsInCorporation(userId, corporationId)
+		if (userCharacterIds.length === 0) {
+			return null
+		}
+
+		try {
+			const corpStub = getStub<EveCorporationData>(this.ctx.env.EVE_CORPORATION_DATA, corporationId)
+			const [corpInfo, directors] = await Promise.all([
+				corpStub.getCorporationInfo(corporationId),
+				corpStub.getDirectors(corporationId),
+			])
+
+			const userCharacterSet = new Set(userCharacterIds)
+			if (corpInfo && userCharacterSet.has(String(corpInfo.ceoId))) {
+				return 'hr_admin'
+			}
+
+			const directorIds = new Set(directors.map((director) => director.characterId))
+			for (const characterId of userCharacterSet) {
+				if (directorIds.has(characterId)) {
+					return 'hr_reviewer'
+				}
+			}
+		} catch (error) {
+			this.logger.warn('[HrRoleService.getLeadershipRoleForCorporation] leadership check failed', {
+				userId,
+				corporationId,
+				error: error instanceof Error ? error.message : String(error),
+			})
+		}
+
+		return null
+	}
+
+	private buildSyntheticLeadershipRole(
+		userId: string,
+		corporationId: string,
+		role: HrRoleType
+	): HrRole {
+		const now = new Date()
+		return {
+			id: `leadership:${corporationId}:${userId}:${role}`,
+			corporationId,
+			userId,
+			characterId: userId,
+			characterName: userId,
+			role,
+			grantedBy: 'leadership-inference',
+			grantedAt: now,
+			expiresAt: null,
+			isActive: true,
+			createdAt: now,
+			updatedAt: now,
+		}
+	}
+
+	private async appendLeadershipRoleIfNeeded(
+		userId: string,
+		corporationId: string,
+		roles: HrRole[]
+	): Promise<HrRole[]> {
+		const leadershipRole = await this.getLeadershipRoleForCorporation(userId, corporationId)
+		if (!leadershipRole) {
+			return roles
+		}
+
+		const highestExplicitLevel = roles.reduce((highest, role) => {
+			const level = this.roleHierarchy[role.role]
+			return level > highest ? level : highest
+		}, 0)
+		const leadershipLevel = this.roleHierarchy[leadershipRole]
+		if (highestExplicitLevel >= leadershipLevel) {
+			return roles
+		}
+
+		return [...roles, this.buildSyntheticLeadershipRole(userId, corporationId, leadershipRole)]
+	}
+
 	/**
 	 * Get HR roles for a user
 	 */
@@ -216,7 +323,7 @@ export class HrRoleService {
 			roleIds: [viewerRole.id, reviewerRole.id, adminRole.id],
 		})
 		try {
-			return roleAttachments.map((roleAttachment) => {
+			const mappedRoles = roleAttachments.map((roleAttachment) => {
 				return {
 					id: roleAttachment.id,
 					corporationId: corporationId,
@@ -232,6 +339,10 @@ export class HrRoleService {
 					updatedAt: roleAttachment.updatedAt,
 				} as HrRole
 			})
+			if (!corporationId) {
+				return mappedRoles
+			}
+			return await this.appendLeadershipRoleIfNeeded(userId, corporationId, mappedRoles)
 		} catch (error) {
 			this.logger.error('[HrRoleService.getCorporationRoles] failed to get corporation roles', {
 				error: error instanceof Error ? error.message : String(error),
@@ -301,15 +412,9 @@ export class HrRoleService {
 		const roles = await this.getUserRoles(userId, corporationId)
 		if (roles.length === 0) return false
 
-		const roleHierarchy: Record<HrRoleType, number> = {
-			hr_admin: 3,
-			hr_reviewer: 2,
-			hr_viewer: 1,
-		}
-
-		const requiredLevel = roleHierarchy[requiredRole]
+		const requiredLevel = this.roleHierarchy[requiredRole]
 		const highestUserLevel = roles.reduce((highest, role) => {
-			const level = roleHierarchy[role.role]
+			const level = this.roleHierarchy[role.role]
 			return level > highest ? level : highest
 		}, 0)
 
@@ -332,7 +437,32 @@ export class HrRoleService {
 			roleIds: [viewerRole.id, reviewerRole.id, adminRole.id],
 		})
 
-		return roleAttachments.map((roleAttachment) => roleAttachment.resourceId as string)
+		const corporationIds = new Set(
+			roleAttachments.map((roleAttachment) => roleAttachment.resourceId as string)
+		)
+
+		const result = await this.ctx.db.execute(
+			sql`
+				select distinct corporation_id
+				from user_characters
+				where user_id = ${userId}
+					and deleted = false
+					and corporation_id is not null
+			`
+		)
+		const rows = (result as { rows?: Array<{ corporation_id?: unknown }> }).rows ?? []
+		const candidateCorporationIds = rows
+			.map((row) => row.corporation_id)
+			.filter((value): value is string => typeof value === 'string' && value.length > 0)
+
+		for (const corporationId of candidateCorporationIds) {
+			const leadershipRole = await this.getLeadershipRoleForCorporation(userId, corporationId)
+			if (leadershipRole) {
+				corporationIds.add(corporationId)
+			}
+		}
+
+		return [...corporationIds]
 	}
 
 	/**
@@ -349,7 +479,32 @@ export class HrRoleService {
 			roleIds: [adminRole.id],
 		})
 
-		return roleAttachments.map((roleAttachment) => roleAttachment.resourceId as string)
+		const corporationIds = new Set(
+			roleAttachments.map((roleAttachment) => roleAttachment.resourceId as string)
+		)
+
+		const result = await this.ctx.db.execute(
+			sql`
+				select distinct corporation_id
+				from user_characters
+				where user_id = ${userId}
+					and deleted = false
+					and corporation_id is not null
+			`
+		)
+		const rows = (result as { rows?: Array<{ corporation_id?: unknown }> }).rows ?? []
+		const candidateCorporationIds = rows
+			.map((row) => row.corporation_id)
+			.filter((value): value is string => typeof value === 'string' && value.length > 0)
+
+		for (const corporationId of candidateCorporationIds) {
+			const leadershipRole = await this.getLeadershipRoleForCorporation(userId, corporationId)
+			if (leadershipRole === 'hr_admin') {
+				corporationIds.add(corporationId)
+			}
+		}
+
+		return [...corporationIds]
 	}
 
 	/**

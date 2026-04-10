@@ -379,6 +379,7 @@ export class EveCharacterDataDO extends DurableObject<Env> implements EveCharact
 		await Promise.all([
 			this.fetchAndStoreSkills(characterId, forceRefresh),
 			this.fetchAndStoreAttributes(characterId, forceRefresh),
+			this.fetchAndStoreWallet(characterId, forceRefresh),
 		])
 	}
 
@@ -868,6 +869,46 @@ export class EveCharacterDataDO extends DurableObject<Env> implements EveCharact
 			createdAt: result!.createdAt,
 			updatedAt: result!.updatedAt,
 		}
+	}
+
+	/**
+	 * Fetch and store wallet journal entries
+	 */
+	private async fetchAndStoreWallet(
+		characterId: string,
+		_forceRefresh = false
+	): Promise<{ characterId: string; balance: string; createdAt: Date; updatedAt: Date }> {
+		const tokenStoreStub = getStub<EveTokenStore>(this.env.EVE_TOKEN_STORE, 'default')
+		const response = await tokenStoreStub.fetchEsi<number>(
+			`/characters/${String(characterId)}/wallet`,
+			String(characterId)
+		)
+
+		const balance = String(response.data)
+		await this.db
+			.insert(characterWallet)
+			.values({
+				characterId,
+				balance,
+				updatedAt: new Date(),
+			})
+			.onConflictDoUpdate({
+				target: characterWallet.characterId,
+				set: {
+					balance,
+					updatedAt: new Date(),
+				},
+			})
+
+		const result = await this.db.query.characterWallet.findFirst({
+			where: eq(characterWallet.characterId, characterId),
+		})
+
+		if (!result) {
+			throw new Error(`Failed to store wallet balance for character ${characterId}`)
+		}
+
+		return result
 	}
 
 	/**

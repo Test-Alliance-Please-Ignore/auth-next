@@ -1,0 +1,225 @@
+import { Hono } from 'hono'
+import { beforeEach, describe, expect, it, vi } from 'vitest'
+
+import { getStub } from '@repo/do-utils'
+
+import { getCachedUserPermissions } from '../../lib/groups-cache'
+import fulcrumRoutes from '../fulcrum'
+
+import type { SessionUser } from '../../context'
+
+vi.mock('@repo/do-utils', () => ({
+	getStub: vi.fn(),
+}))
+
+vi.mock('../../lib/groups-cache', () => ({
+	getCachedUserPermissions: vi.fn(),
+}))
+
+const getStubMock = vi.mocked(getStub)
+const getCachedUserPermissionsMock = vi.mocked(getCachedUserPermissions)
+
+function makeUser(overrides: Partial<SessionUser> = {}): SessionUser {
+	return {
+		id: 'user-1',
+		mainCharacterId: '1001',
+		sessionId: 'session-1',
+		characters: [
+			{
+				id: 'uc-1',
+				characterOwnerHash: 'owner-1',
+				characterId: '1001',
+				characterName: 'Main Pilot',
+				is_primary: true,
+				hasValidToken: true,
+			},
+		],
+		is_admin: false,
+		roles: [],
+		discordUserId: null,
+		...overrides,
+	}
+}
+
+function makeHrStub() {
+	return {
+		checkPermission: vi.fn().mockResolvedValue(false),
+	}
+}
+
+function makeFulcrumStub() {
+	return {
+		listReports: vi.fn().mockResolvedValue([]),
+		createCharacterReport: vi.fn().mockResolvedValue('report-1'),
+		getReportStatus: vi.fn(),
+		getReportHtml: vi.fn(),
+		getSectionManifest: vi.fn(),
+		getSectionData: vi.fn(),
+	}
+}
+
+function makeCoreStub() {
+	return {
+		getUserCharacters: vi.fn().mockResolvedValue([
+			{
+				characterId: '3001',
+				characterName: 'Alt Pilot',
+				corporationId: null,
+				corporationName: null,
+				allianceId: null,
+				allianceName: null,
+			},
+		]),
+	}
+}
+
+function createApp(user?: SessionUser) {
+	const app = new Hono<{
+		Bindings: any
+		Variables: { user?: SessionUser }
+	}>()
+
+	if (user) {
+		app.use('*', async (c, next) => {
+			c.set('user', user)
+			await next()
+		})
+	}
+
+	app.route('/api/fulcrum', fulcrumRoutes)
+	return app
+}
+
+describe('fulcrum route access matrix', () => {
+	const env = {
+		FULCRUM: { name: 'FULCRUM' },
+		HR: { name: 'HR' },
+		CORE: { name: 'CORE' },
+		EVE_CORPORATION_DATA: { name: 'EVE_CORPORATION_DATA' },
+	} as any
+
+	let hrStub: ReturnType<typeof makeHrStub>
+	let fulcrumStub: ReturnType<typeof makeFulcrumStub>
+	let coreStub: ReturnType<typeof makeCoreStub>
+
+	beforeEach(() => {
+		vi.clearAllMocks()
+		hrStub = makeHrStub()
+		fulcrumStub = makeFulcrumStub()
+		coreStub = makeCoreStub()
+
+		getCachedUserPermissionsMock.mockResolvedValue([])
+		getStubMock.mockImplementation((binding: unknown) => {
+			if (binding === env.HR) return hrStub as any
+			if (binding === env.FULCRUM) return fulcrumStub as any
+			if (binding === env.CORE) return coreStub as any
+			if (binding === env.EVE_CORPORATION_DATA) {
+				return {
+					getCorporationInfo: vi.fn(),
+					getDirectors: vi.fn().mockResolvedValue([]),
+					getMemberTracking: vi.fn().mockResolvedValue([]),
+				} as any
+			}
+			throw new Error('Unexpected binding')
+		})
+	})
+
+	it('returns 401 for unauthenticated requests', async () => {
+		const app = createApp()
+		const res = await app.request('/api/fulcrum/users/target-1/characters', {}, env)
+		expect(res.status).toBe(401)
+	})
+
+	it('requires corporationId for non-auditor user character report listing', async () => {
+		const app = createApp(makeUser())
+		const res = await app.request('/api/fulcrum/users/target-1/characters', {}, env)
+		expect(res.status).toBe(400)
+		expect(await res.json()).toEqual({ error: 'corporationId query parameter is required' })
+	})
+
+	it('allows auditor to list user characters without corporationId', async () => {
+		getCachedUserPermissionsMock.mockResolvedValue([
+			{
+				permissionId: 'perm-auditor',
+				urn: 'urn:hr:auditor',
+				name: 'HR Auditor',
+				description: null,
+				category: null,
+				groupId: 'g-1',
+				groupName: 'HR',
+				targetType: 'all_members',
+				source: 'global',
+			},
+		] as any)
+
+		const app = createApp(makeUser())
+		const res = await app.request('/api/fulcrum/users/target-1/characters', {}, env)
+
+		expect(res.status).toBe(200)
+		expect(hrStub.checkPermission).not.toHaveBeenCalled()
+		expect(coreStub.getUserCharacters).toHaveBeenCalledWith('target-1', false)
+		expect(fulcrumStub.listReports).toHaveBeenCalledWith({ characterId: '3001' }, 50)
+	})
+
+	it('blocks report creation for non-auditor without hr_reviewer+', async () => {
+		const app = createApp(makeUser())
+		const res = await app.request(
+			'/api/fulcrum/characters/3001/reports',
+			{
+				method: 'POST',
+				headers: { 'content-type': 'application/json' },
+				body: JSON.stringify({
+					corporationId: '1001',
+					requestSource: 'hr',
+					userId: 'target-1',
+				}),
+			},
+			env
+		)
+
+		expect(res.status).toBe(403)
+		expect(await res.json()).toEqual({ error: 'HR reviewer or admin role required' })
+		expect(fulcrumStub.createCharacterReport).not.toHaveBeenCalled()
+	})
+
+	it('allows auditor to create reports without hr role check', async () => {
+		getCachedUserPermissionsMock.mockResolvedValue([
+			{
+				permissionId: 'perm-auditor',
+				urn: 'urn:hr:auditor',
+				name: 'HR Auditor',
+				description: null,
+				category: null,
+				groupId: 'g-1',
+				groupName: 'HR',
+				targetType: 'all_members',
+				source: 'global',
+			},
+		] as any)
+
+		const app = createApp(makeUser())
+		const res = await app.request(
+			'/api/fulcrum/characters/3001/reports',
+			{
+				method: 'POST',
+				headers: { 'content-type': 'application/json' },
+				body: JSON.stringify({
+					corporationId: '1001',
+					requestSource: 'hr',
+					userId: 'target-1',
+				}),
+			},
+			env
+		)
+
+		expect(res.status).toBe(201)
+		expect(hrStub.checkPermission).not.toHaveBeenCalled()
+		expect(fulcrumStub.createCharacterReport).toHaveBeenCalledWith({
+			characterId: '3001',
+			requestorUserId: 'user-1',
+			requestorCorporationId: '1001',
+			requestSource: 'hr',
+			applicationId: undefined,
+		})
+	})
+})

@@ -14,14 +14,16 @@ import { usePageTitle } from '@/hooks/usePageTitle'
 
 import { applicationsApi } from '../api'
 import { Button } from '@/components/ui/button'
+import { useCorporationAccess } from '../../my-corporations/hooks'
 
 export default function HrCorporationsPage() {
-	const { isAuthenticated, isLoading: authLoading } = useAuth()
+	const { user, isAuthenticated, isLoading: authLoading } = useAuth()
 	const {
 		data: corporations = [],
 		isLoading: corporationsLoading,
 		error,
 	} = useHrAccessibleCorporations()
+	const { data: corporationAccess } = useCorporationAccess()
 	const applicationQueries = useQueries({
 		queries: corporations.map((corporation) => ({
 			queryKey: ['hr', 'corporation-application-counts', corporation.corporationId],
@@ -85,6 +87,10 @@ export default function HrCorporationsPage() {
 		)
 	}
 
+	const accessibleCorporationIds = new Set(
+		(corporationAccess?.corporations ?? []).map((corp) => corp.corporationId)
+	)
+
 	return (
 		<div className="container mx-auto max-w-7xl px-4 py-8">
 			<PageHeader
@@ -96,6 +102,8 @@ export default function HrCorporationsPage() {
 				{corporations.map((corporation, index) => {
 					const applicationQuery = applicationQueries[index]
 					const applications = applicationQuery?.data ?? []
+					const canAccessMembers =
+						user?.is_admin === true || accessibleCorporationIds.has(corporation.corporationId)
 					const pendingCount = applications.filter(
 						(application) => application.status === 'pending'
 					).length
@@ -118,13 +126,15 @@ export default function HrCorporationsPage() {
 							</CardHeader>
 							<CardContent className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
 								<div className="flex flex-wrap gap-2">
-									<Button variant="primary" asChild>
-										<Link to={`/corporations/${corporation.corporationId}/hr/dashboard`}>
-											<LayoutDashboard className="mr-2 h-4 w-4" />
-											Dashboard
-										</Link>
-									</Button>
-									<Button variant="ghost" asChild>
+									{canAccessMembers && (
+										<Button variant="ghost" asChild>
+											<Link to={`/corporations/${corporation.corporationId}/hr/dashboard`}>
+												<LayoutDashboard className="mr-2 h-4 w-4" />
+												Dashboard
+											</Link>
+										</Button>
+									)}
+									<Button variant={canAccessMembers ? 'ghost' : 'primary'} asChild>
 										<Link to={`/corporations/${corporation.corporationId}/hr/applications`}>
 											<FileText className="mr-2 h-4 w-4" />
 											Applications

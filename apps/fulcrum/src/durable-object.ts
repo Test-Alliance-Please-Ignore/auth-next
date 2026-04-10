@@ -58,6 +58,19 @@ export class FulcrumDO extends DurableObject<Env, {}> implements Fulcrum {
 		const { characterId, requestorUserId, requestorCorporationId, requestSource, applicationId } = options
 		const db = this.getDb()
 
+		// Prevent duplicate concurrent reports for the same character across all requestors.
+		// Reuse the existing in-progress report so HR and auditors share a single workflow state.
+		const existingInProgress = await queries.getInProgressReportForCharacter(db, characterId)
+		if (existingInProgress) {
+			this.logger.info('Reusing existing in-progress report', {
+				characterId,
+				reportId: existingInProgress.id,
+				status: existingInProgress.status,
+				requestorUserId,
+			})
+			return existingInProgress.id
+		}
+
 		// Generate unique report ID
 		const reportId = crypto.randomUUID()
 

@@ -132,8 +132,10 @@ export default function HrApplicationsList() {
 	}
 
 	const useMyCorporationsRoot = user?.is_admin || hasCorporationAccess
+	const showMembersNavigation = user?.is_admin || hasCorporationAccess
 	const rootCorporationsPath = useMyCorporationsRoot ? '/my-corporations' : '/hr'
 	const rootCorporationsLabel = useMyCorporationsRoot ? 'My Corporations' : 'HR Corporations'
+	const membersPath = `/my-corporations/${corporationId}/members`
 
 	// Check authentication
 	if (!authLoading && !isAuthenticated) {
@@ -214,12 +216,14 @@ export default function HrApplicationsList() {
 					<BreadcrumbItem>
 						<BreadcrumbLink to={rootCorporationsPath}>{rootCorporationsLabel}</BreadcrumbLink>
 					</BreadcrumbItem>
-					<BreadcrumbSeparator />
-					<BreadcrumbItem>
-						<BreadcrumbLink to={`/my-corporations/${corporationId}/members`}>
-							Members
-						</BreadcrumbLink>
-					</BreadcrumbItem>
+					{showMembersNavigation && (
+						<>
+							<BreadcrumbSeparator />
+							<BreadcrumbItem>
+								<BreadcrumbLink to={membersPath}>Members</BreadcrumbLink>
+							</BreadcrumbItem>
+						</>
+					)}
 					<BreadcrumbSeparator />
 					<BreadcrumbItem>
 						<BreadcrumbPage>Applications</BreadcrumbPage>
@@ -232,9 +236,12 @@ export default function HrApplicationsList() {
 				title="HR Applications"
 				description="Review and manage job applications to your corporation"
 				action={
-					<Button variant="ghost" onClick={() => navigate(`/my-corporations/${corporationId}/members`)}>
+					<Button
+						variant="ghost"
+						onClick={() => navigate(showMembersNavigation ? membersPath : '/hr')}
+					>
 						<ArrowLeft className="mr-2 h-4 w-4" />
-						Back to Members
+						{showMembersNavigation ? 'Back to Members' : 'Back to HR Corporations'}
 					</Button>
 				}
 			/>

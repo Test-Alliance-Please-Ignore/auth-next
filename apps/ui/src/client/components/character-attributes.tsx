@@ -1,4 +1,5 @@
 import { Card, CardContent, CardHeader, CardTitle } from './ui/card'
+import { formatISK } from '../lib/format-utils'
 
 interface CharacterAttributesProps {
 	attributes: {
@@ -11,6 +12,7 @@ interface CharacterAttributesProps {
 		bonusRemaps?: number
 		lastRemapDate?: string
 	}
+	walletBalance?: string
 }
 
 /** EVE Online implant type IDs used as attribute icons (Basic attribute implants) */
@@ -22,7 +24,7 @@ const attributeTypeIds: Record<string, number> = {
 	willpower: 9942, // Neural Boost - Basic
 }
 
-export function CharacterAttributes({ attributes }: CharacterAttributesProps) {
+export function CharacterAttributes({ attributes, walletBalance }: CharacterAttributesProps) {
 	return (
 		<Card>
 			<CardHeader>
@@ -64,6 +66,12 @@ export function CharacterAttributes({ attributes }: CharacterAttributesProps) {
 						<p className="text-xs text-muted-foreground">
 							Bonus remaps available: {attributes.bonusRemaps}
 						</p>
+					)}
+					{walletBalance && (
+						<div className="pt-3 mt-3 border-t">
+							<p className="text-xs text-muted-foreground">Wallet Balance</p>
+							<p className="text-sm font-bold">{formatISK(walletBalance)}</p>
+						</div>
 					)}
 				</div>
 			</CardContent>

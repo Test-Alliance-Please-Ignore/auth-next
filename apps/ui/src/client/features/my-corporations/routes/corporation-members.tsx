@@ -54,7 +54,8 @@ export default function CorporationMembers() {
 	const { showSuccess, showError } = useMessage()
 
 	const { user, isAuthenticated, isLoading: authLoading } = useAuth()
-	const { canAccess, userRole, corporation: accessCorp } = useCanAccessCorporation(corporationId!)
+	const { canAccess: hasCorpAccess, userRole, corporation: accessCorp } = useCanAccessCorporation(corporationId!)
+	const canAccess = hasCorpAccess
 	const { data: corporation, isLoading: corpLoading } = useMyCorporation(corporationId!)
 	const { data: members, isLoading: membersLoading, error } = useCorporationMembers(corporationId!)
 	const { data: hrRoles, isLoading: hrRolesLoading } = useHrRoles(corporationId!)
@@ -327,7 +328,7 @@ export default function CorporationMembers() {
 							</Button>
 						)}
 						<Button variant="ghost" asChild>
-							<Link to="/my-corporations">
+							<Link to={isHrOnly && !isLeadership ? '/hr' : '/my-corporations'}>
 								<ArrowLeft className="mr-2 h-4 w-4" />
 								Back
 							</Link>

@@ -44,6 +44,7 @@ import { Separator } from '@/components/ui/separator'
 import { cn } from '@/lib/utils'
 import { useAuth } from '@/hooks/useAuth'
 import { usePageTitle } from '@/hooks/usePageTitle'
+import { useUserPermissions } from '@/hooks/useUserPermissions'
 
 import { useHrPermissionCheck } from '../../hr/hooks'
 import { useCanAccessCorporation, useCorporationMembers } from '../../my-corporations/hooks'
@@ -279,6 +280,8 @@ export default function HrMemberProfile() {
 	const [searchParams] = useSearchParams()
 	const navigate = useNavigate()
 	const { user, isAuthenticated, isLoading: authLoading } = useAuth()
+	const { hasAnyPermission } = useUserPermissions()
+	const isAuditor = hasAnyPermission('urn:hr:auditor')
 	const { canAccess: hasCorporationAccess } = useCanAccessCorporation(corporationId ?? '')
 	const [addNoteOpen, setAddNoteOpen] = useState(false)
 
@@ -304,9 +307,11 @@ export default function HrMemberProfile() {
 		return permission?.currentRole === 'hr_admin'
 	}, [user, permission])
 
-	// HR notes
+	const canAddNote = isAdmin && !isAuditor
+
+	// HR notes — admins and auditors can view
 	const { data: notes, isLoading: notesLoading } = useHRNotes(
-		isAdmin && authUserId ? { subjectUserId: authUserId } : undefined,
+		(isAdmin || isAuditor) && authUserId ? { subjectUserId: authUserId } : undefined,
 	)
 
 	// Fulcrum data – all HR viewers can access this, not just admins
@@ -368,6 +373,7 @@ export default function HrMemberProfile() {
 
 	// Navigation helpers
 	const useMyCorporationsRoot = user?.is_admin || hasCorporationAccess
+	const hasSupersedingCorpAccess = user?.is_admin || hasCorporationAccess
 	const rootCorporationsPath = useMyCorporationsRoot ? '/my-corporations' : '/hr'
 	const rootCorporationsLabel = useMyCorporationsRoot ? 'My Corporations' : 'HR Corporations'
 
@@ -389,7 +395,7 @@ export default function HrMemberProfile() {
 		)
 	}
 
-	if (!permission?.hasPermission && !user?.is_admin) {
+	if (!permission?.hasPermission && !user?.is_admin && !isAuditor) {
 		return (
 			<div className="container mx-auto max-w-6xl px-4 py-8">
 				<Card className="max-w-2xl mx-auto border-red-200 bg-red-50 dark:border-red-800 dark:bg-red-950">
@@ -409,6 +415,32 @@ export default function HrMemberProfile() {
 					</CardContent>
 				</Card>
 			</div>
+		)
+	}
+
+	if (!hasSupersedingCorpAccess) {
+		const queryReturnTo = searchParams.get('returnTo')
+		const source =
+			searchParams.get('from') === 'applications' ||
+			searchParams.get('source') === 'applications' ||
+			queryReturnTo?.includes('/hr/applications')
+				? 'applications'
+				: 'members'
+		const returnTo =
+			queryReturnTo ??
+			(source === 'applications' && corporationId
+				? `/corporations/${corporationId}/hr/applications`
+				: '/hr/auditor/users')
+		return (
+			<Navigate
+				to={`/hr/auditor/users/${accountId}`}
+				replace
+				state={{
+					source,
+					returnTo,
+					corporationId,
+				}}
+			/>
 		)
 	}
 
@@ -604,8 +636,8 @@ export default function HrMemberProfile() {
 						</CardContent>
 					</Card>
 
-					{/* HR Notes (Admin) */}
-					{isAdmin && authUserId && (
+					{/* HR Notes (Admin + Auditor) */}
+					{(isAdmin || isAuditor) && authUserId && (
 						<Card>
 							<CardHeader>
 								<div className="flex items-center justify-between">
@@ -613,14 +645,16 @@ export default function HrMemberProfile() {
 										<FileText className="h-4 w-4" />
 										HR Notes
 									</CardTitle>
-									<Button
-										variant="ghost"
-										size="sm"
-										onClick={() => setAddNoteOpen(true)}
-									>
-										<MessageSquarePlus className="h-3.5 w-3.5 mr-1.5" />
-										Add Note
-									</Button>
+									{canAddNote && (
+										<Button
+											variant="ghost"
+											size="sm"
+											onClick={() => setAddNoteOpen(true)}
+										>
+											<MessageSquarePlus className="h-3.5 w-3.5 mr-1.5" />
+											Add Note
+										</Button>
+									)}
 								</div>
 							</CardHeader>
 							<CardContent>
@@ -705,7 +739,7 @@ export default function HrMemberProfile() {
 			</div>
 
 			{/* Add HR Note Dialog */}
-			{isAdmin && authUserId && (
+			{canAddNote && authUserId && (
 				<AddHRNoteDialog
 					open={addNoteOpen}
 					onOpenChange={setAddNoteOpen}

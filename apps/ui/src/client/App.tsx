@@ -55,6 +55,15 @@ const FulcrumReport = lazy(() => import('./features/applications/routes/fulcrum-
 const RecommendationsList = lazy(
 	() => import('./features/applications/routes/recommendations-list')
 )
+const HrAuditorUsersPage = lazy(
+	() => import('./features/applications/routes/hr-auditor-users')
+)
+const HrAuditorUserProfilePage = lazy(
+	() => import('./features/applications/routes/hr-auditor-user-profile')
+)
+const HrAuditorUserGroupsPage = lazy(
+	() => import('./features/applications/routes/hr-auditor-user-groups')
+)
 
 
 // Lazy load the Skill Plans feature for code splitting
@@ -277,6 +286,30 @@ export default function App() {
 								element={
 									<Suspense fallback={<LoadingPage />}>
 										<FulcrumReport />
+									</Suspense>
+								}
+							/>
+							<Route
+								path="/hr/auditor/users"
+								element={
+									<Suspense fallback={<LoadingPage />}>
+										<HrAuditorUsersPage />
+									</Suspense>
+								}
+							/>
+							<Route
+								path="/hr/auditor/users/:userId"
+								element={
+									<Suspense fallback={<LoadingPage />}>
+										<HrAuditorUserProfilePage />
+									</Suspense>
+								}
+							/>
+							<Route
+								path="/hr/auditor/users/:userId/groups"
+								element={
+									<Suspense fallback={<LoadingPage />}>
+										<HrAuditorUserGroupsPage />
 									</Suspense>
 								}
 							/>
