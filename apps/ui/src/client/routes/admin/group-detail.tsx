@@ -62,6 +62,7 @@ import {
 } from '@/hooks/useDiscord'
 import { useGroupMembers, useRemoveMember, useToggleAdmin } from '@/hooks/useGroupMembers'
 import {
+	groupPermissionKeys,
 	useAttachPermission,
 	useCreateGroupScopedPermission,
 	useGroupPermissions,
@@ -85,6 +86,7 @@ export default function GroupDetailPage() {
 	const navigate = useNavigate()
 	const { setCustomLabel, clearCustomLabel } = useBreadcrumb()
 	const { user } = useAuth()
+	const queryClient = useQueryClient()
 	const { data: group, isLoading: groupLoading } = useGroup(groupId!)
 	const { data: categories = [] } = useCategories()
 	const updateGroup = useUpdateGroup()
@@ -449,6 +451,16 @@ export default function GroupDetailPage() {
 			setMessage({ type: 'success', text: 'Permission attached successfully!' })
 			setTimeout(() => setMessage(null), 3000)
 		} catch (error) {
+			if (groupId) {
+				await Promise.all([
+					queryClient.invalidateQueries({
+						queryKey: groupPermissionKeys.list(groupId),
+					}),
+					queryClient.invalidateQueries({
+						queryKey: groupPermissionKeys.memberPermissions(groupId),
+					}),
+				])
+			}
 			setMessage({
 				type: 'error',
 				text: error instanceof Error ? error.message : 'Failed to attach permission',
