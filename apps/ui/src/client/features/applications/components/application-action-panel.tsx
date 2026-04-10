@@ -10,6 +10,7 @@ import { useState } from 'react'
 
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
+import { ConfirmationDialog } from '@/components/ui/confirmation-dialog'
 import {
 	Dialog,
 	DialogContent,
@@ -25,9 +26,10 @@ import { cn } from '@/lib/utils'
 
 import { canReviewApplication } from '../api'
 import { useUpdateApplicationStatus } from '../hooks'
+import { TemplateSelector } from './template-selector'
 
 import type { HrRoleType } from '../../hr/api'
-import type { Application, ApplicationStatus } from '../api'
+import type { Application, ApplicationStatus, MessageTemplate } from '../api'
 
 // ============================================================================
 // Types
@@ -72,6 +74,7 @@ export function ApplicationActionPanel({
 	const [reviewNotesError, setReviewNotesError] = useState('')
 	const [showAcceptDialog, setShowAcceptDialog] = useState(false)
 	const [showRejectDialog, setShowRejectDialog] = useState(false)
+	const [pendingTemplate, setPendingTemplate] = useState<MessageTemplate | null>(null)
 
 	// Check if application can be reviewed
 	const canReview = canReviewApplication(application)
@@ -80,6 +83,22 @@ export function ApplicationActionPanel({
 	const canMarkUnderReview = userRole && ['hr_admin', 'hr_reviewer'].includes(userRole)
 	const canAccept = userRole && ['hr_admin', 'hr_reviewer'].includes(userRole)
 	const canReject = userRole && ['hr_admin', 'hr_reviewer'].includes(userRole)
+
+	// Handle template selection - confirm if text already exists
+	const handleSelectTemplate = (template: MessageTemplate) => {
+		if (reviewNotes.trim().length > 0) {
+			setPendingTemplate(template)
+		} else {
+			setReviewNotes(template.messageTemplate)
+		}
+	}
+
+	const handleConfirmTemplate = () => {
+		if (pendingTemplate) {
+			setReviewNotes(pendingTemplate.messageTemplate)
+			setPendingTemplate(null)
+		}
+	}
 
 	// Validate review notes (required for accept/reject)
 	const validateReviewNotes = (): boolean => {
@@ -222,15 +241,21 @@ export function ApplicationActionPanel({
 			<CardContent className="space-y-4">
 				{/* Review Notes Textarea */}
 				<div className="space-y-2">
-					<Label htmlFor="review-notes">
-						{userRole === 'hr_admin' ? (
-							<>
-								Review Notes <span className="text-destructive">*</span>
-							</>
-						) : (
-							'Advisory Notes'
-						)}
-					</Label>
+					<div className="flex items-center justify-between">
+						<Label htmlFor="review-notes">
+							{userRole === 'hr_admin' ? (
+								<>
+									Review Notes <span className="text-destructive">*</span>
+								</>
+							) : (
+								'Advisory Notes'
+							)}
+						</Label>
+					</div>
+					<TemplateSelector
+						corporationId={application.corporationId}
+						onSelectTemplate={handleSelectTemplate}
+					/>
 					<Textarea
 						id="review-notes"
 						placeholder={
@@ -373,6 +398,17 @@ export function ApplicationActionPanel({
 					</DialogFooter>
 				</DialogContent>
 			</Dialog>
+
+			{/* Template overwrite confirmation */}
+			<ConfirmationDialog
+				open={pendingTemplate !== null}
+				title="Replace review notes?"
+				description="Your current review notes will be replaced with the template content. This cannot be undone."
+				confirmLabel="Replace"
+				intent="secondary"
+				onCancel={() => setPendingTemplate(null)}
+				onConfirm={handleConfirmTemplate}
+			/>
 		</Card>
 	)
 }
