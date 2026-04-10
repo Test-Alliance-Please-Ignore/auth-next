@@ -11,7 +11,7 @@ export interface RefreshAuthenticatedDataResult {
 }
 
 /**
- * Refresh authenticated character data (skills, attributes)
+ * Refresh authenticated character data (skills, attributes, wallet balance)
  * Creates its own Durable Object stubs to avoid sharing invalidated stubs
  * Returns success: false if token is invalid/missing (non-fatal)
  */
@@ -37,7 +37,7 @@ export async function refreshAuthenticatedData(
 			}
 		}
 
-		// Fetch and store authenticated data (skills, attributes)
+		// Fetch and store authenticated data (skills, attributes, wallet balance)
 		await characterData.fetchAuthenticatedData(true)
 
 		logger.info('[refreshAuthenticatedData] Authenticated data refreshed', {
@@ -69,4 +69,3 @@ export async function refreshAuthenticatedData(
 		throw error
 	}
 }
-

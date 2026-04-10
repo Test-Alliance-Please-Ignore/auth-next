@@ -15,7 +15,7 @@
 		"APP_BASE_URL": "https://pleaseignore.app"
 	},
 	"triggers": {
-		"crons": ["0 0 * * *"]
+		"crons": ["*/15 * * * *", "0 0 * * *"]
 	},
 	"durable_objects": {
 		"bindings": [

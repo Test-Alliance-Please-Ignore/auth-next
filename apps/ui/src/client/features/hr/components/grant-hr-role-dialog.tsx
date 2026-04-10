@@ -1,5 +1,5 @@
 import { Shield } from 'lucide-react'
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 
 import {
 	Dialog,
@@ -14,7 +14,7 @@ import { Select } from '@/components/ui/select'
 import { HR_ROLE_DESCRIPTIONS, HR_ROLE_NAMES } from '../api'
 import { HrRoleBadge } from './hr-role-badge'
 
-import type { CorporationMember } from '../../my-corporations/api'
+import type { CorporationMember } from '../../corporations/api'
 import type { GrantHrRoleRequest, HrRoleType } from '../api'
 import { Button } from '@/components/ui/button'
 
@@ -25,6 +25,7 @@ interface GrantHrRoleDialogProps {
 	onOpenChange: (open: boolean) => void
 	onSubmit: (request: GrantHrRoleRequest) => Promise<void>
 	isSubmitting?: boolean
+	allowedRoles?: HrRoleType[]
 }
 
 const HR_ROLES: HrRoleType[] = ['hr_admin', 'hr_reviewer', 'hr_viewer']
@@ -36,8 +37,17 @@ export function GrantHrRoleDialog({
 	onOpenChange,
 	onSubmit,
 	isSubmitting,
+	allowedRoles = HR_ROLES,
 }: GrantHrRoleDialogProps) {
-	const [selectedRole, setSelectedRole] = useState<HrRoleType>('hr_reviewer')
+	const [selectedRole, setSelectedRole] = useState<HrRoleType>(
+		allowedRoles.includes('hr_reviewer') ? 'hr_reviewer' : allowedRoles[0]
+	)
+
+	useEffect(() => {
+		if (!allowedRoles.includes(selectedRole)) {
+			setSelectedRole(allowedRoles.includes('hr_reviewer') ? 'hr_reviewer' : allowedRoles[0])
+		}
+	}, [allowedRoles, selectedRole])
 
 	const handleSubmit = async (e: React.FormEvent) => {
 		e.preventDefault()
@@ -57,14 +67,14 @@ export function GrantHrRoleDialog({
 			})
 
 			// Reset form
-			setSelectedRole('hr_reviewer')
+			setSelectedRole(allowedRoles.includes('hr_reviewer') ? 'hr_reviewer' : allowedRoles[0])
 		} catch (error) {
 			console.error('Failed to grant HR role:', error)
 		}
 	}
 
 	const handleCancel = () => {
-		setSelectedRole('hr_reviewer')
+		setSelectedRole(allowedRoles.includes('hr_reviewer') ? 'hr_reviewer' : allowedRoles[0])
 		onOpenChange(false)
 	}
 
@@ -105,7 +115,7 @@ export function GrantHrRoleDialog({
 							value={selectedRole}
 							onValueChange={(value) => setSelectedRole(value as HrRoleType)}
 							inputId="hr-role"
-							options={HR_ROLES.map((role) => ({ value: role,
+							options={allowedRoles.map((role) => ({ value: role,
 								label: HR_ROLE_NAMES[role],
 							}))}
 						/>

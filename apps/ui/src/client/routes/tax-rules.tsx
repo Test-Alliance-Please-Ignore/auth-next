@@ -9,7 +9,7 @@ import { Card, CardDescription, CardHeader, CardTitle } from '@/components/ui/ca
 import { Container } from '@/components/ui/container'
 import { PageHeader } from '@/components/ui/page-header'
 import { Section } from '@/components/ui/section'
-import { useCorporationAccess } from '@/features/my-corporations'
+import { useCorporationAccess } from '@/features/corporations'
 import {
 	useAttachCorporationToRuleGroup,
 	useCreateTaxRuleGroup,

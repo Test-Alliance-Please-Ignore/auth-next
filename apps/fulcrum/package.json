@@ -18,6 +18,8 @@
 		"preview": "run-vite-preview",
 		"tail": "run-wrangler-tail",
 		"test": "run-vitest"
+		,
+		"test:unit": "run-vitest --config vitest.unit.config.ts"
 	},
 	"dependencies": {
 		"@hono/zod-validator": "0.7.4",

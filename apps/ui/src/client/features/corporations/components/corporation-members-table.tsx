@@ -58,6 +58,7 @@ import {
 import { EmeritusConfirmationDialog } from './emeritus-confirmation-dialog'
 
 import type { CorporationMember } from '../api'
+import type { HrRoleType } from '../../hr'
 
 interface CorporationMembersTableProps {
 	members: CorporationMember[]
@@ -66,6 +67,8 @@ interface CorporationMembersTableProps {
 	onLinkAccount?: (member: CorporationMember) => void
 	showActions?: boolean
 	canManageHrRoles?: boolean
+	grantableHrRoles?: HrRoleType[]
+	canRevokeHrAdmin?: boolean
 	canManageEmeritus?: boolean
 	corporationId?: string
 }
@@ -138,6 +141,8 @@ export default function CorporationMembersTable({
 	onLinkAccount,
 	showActions = true,
 	canManageHrRoles = false,
+	grantableHrRoles = ['hr_admin', 'hr_reviewer', 'hr_viewer'],
+	canRevokeHrAdmin = true,
 	canManageEmeritus = false,
 	corporationId,
 }: CorporationMembersTableProps) {
@@ -596,7 +601,10 @@ export default function CorporationMembersTable({
 												{
 													label: 'Revoke HR Role',
 													intent: 'destructive',
-													hidden: !canManageHrRoles || !member.hrRole,
+													hidden:
+														!canManageHrRoles ||
+														!member.hrRole ||
+														(!canRevokeHrAdmin && member.hrRole.role === 'hr_admin'),
 													onClick: () => setRevokeDialogMember(member),
 												},
 												{
@@ -695,6 +703,7 @@ export default function CorporationMembersTable({
 						onOpenChange={(open) => !open && setGrantDialogMember(null)}
 						onSubmit={handleGrantHrRole}
 						isSubmitting={grantMutation.isPending}
+						allowedRoles={grantableHrRoles}
 					/>
 					<RevokeHrRoleDialog
 						member={revokeDialogMember}
@@ -708,7 +717,7 @@ export default function CorporationMembersTable({
 			)}
 
 			{/* Emeritus Status Dialog */}
-			{canManageHrRoles && (
+			{canManageEmeritus && (
 				<EmeritusConfirmationDialog
 					member={emeritusDialogMember}
 					action={emeritusAction}

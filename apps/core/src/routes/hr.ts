@@ -7,12 +7,13 @@ import { captureException, logger } from '@repo/hono-helpers'
 import { APPLICATION_STATUSES } from '@repo/hr'
 
 import { managedCorporations, userCharacters, users } from '../db/schema'
+import { getCachedUserPermissions } from '../lib/groups-cache'
 import { requireAdmin, requireAuth } from '../middleware/session'
 
 import type { Context } from 'hono'
 import type { Core } from '@repo/core'
 import type { Esi, EsiTypeResolver } from '@repo/esi'
-import type { ApplicationFilters, Hr, NoteFilters, RoleFilters } from '@repo/hr'
+import type { ApplicationFilters, Hr, HrNote, NoteFilters, RoleFilters } from '@repo/hr'
 import type { App } from '../context'
 
 const app = new Hono<App>()
@@ -99,8 +100,46 @@ async function enrichApplications<T extends { corporationId: string; reviewedBy:
 }
 
 /**
+ * Enrich HR notes with author source classification.
+ * - `admin`: note authored by a site admin
+ * - `hr`: note authored by a non-admin HR user
+ */
+async function enrichHrNotesWithAuthorSource(
+	db: NonNullable<Context<App>['var']['db']>,
+	notes: HrNote[]
+): Promise<Array<HrNote & { authorIsAdmin: boolean; source: 'admin' | 'hr' }>> {
+	if (notes.length === 0) return []
+
+	const authorIds = [...new Set(notes.map((note) => note.authorId))]
+	const authorRows = await db.query.users.findMany({
+		where: inArray(users.id, authorIds),
+		columns: { id: true, is_admin: true },
+	})
+	const authorAdminMap = new Map(authorRows.map((row) => [row.id, row.is_admin]))
+
+	return notes.map((note) => {
+		const authorIsAdmin = authorAdminMap.get(note.authorId) ?? false
+		return {
+			...note,
+			authorIsAdmin,
+			source: authorIsAdmin ? 'admin' : 'hr',
+		}
+	})
+}
+
+/**
+ * Check if the current user has the urn:hr:auditor group permission (or is a site admin).
+ */
+async function isHrAuditor(c: Context<App>): Promise<boolean> {
+	const user = c.get('user')!
+	if (user.is_admin) return true
+	const permissions = await getCachedUserPermissions(c.env, user.id)
+	return permissions.some((p) => p.urn === 'urn:hr:auditor')
+}
+
+/**
  * Check if the current user has any active HR role across any corporation.
- * Returns true for site admins, corp CEOs, HR admins, and HR reviewers.
+ * Returns true for site admins, HR auditors, and users with any corp-scoped HR role.
  */
 async function hasAnyHrAccess(c: Context<App>): Promise<boolean> {
 	const user = c.get('user')!
@@ -108,17 +147,26 @@ async function hasAnyHrAccess(c: Context<App>): Promise<boolean> {
 	// Site admins always have access
 	if (user.is_admin) return true
 
+	// Alliance-level HR auditors have cross-corp read access
+	const permissions = await getCachedUserPermissions(c.env, user.id)
+	if (permissions.some((p) => p.urn === 'urn:hr:auditor')) return true
+
 	// Single RPC call returns all corps where user has any HR role
 	const hr = getHrStub(c)
 	const hrCorps = await hr.getUserHrCorporations(user.id)
 	return hrCorps.length > 0
 }
 
+type HrRoleManagementAccess = 'site_admin' | 'ceo' | 'hr_admin' | null
+
 /**
- * Check if the current user has CEO or site admin access to manage HR roles
- * Throws an error with 403 status if user is neither admin nor CEO
+ * Resolve role-management access level for the current user in a corporation.
+ * Priority: site_admin > ceo > hr_admin > none
  */
-async function checkCeoOrAdminAccess(c: Context<App>, corporationId: string): Promise<void> {
+async function getHrRoleManagementAccess(
+	c: Context<App>,
+	corporationId: string
+): Promise<HrRoleManagementAccess> {
 	const user = c.get('user')!
 	const db = c.get('db')
 
@@ -133,7 +181,7 @@ async function checkCeoOrAdminAccess(c: Context<App>, corporationId: string): Pr
 			userId: user.id,
 			reason: 'site_admin',
 		})
-		return // Access granted via admin
+		return 'site_admin'
 	}
 
 	// Get user's characters to check CEO status
@@ -160,18 +208,29 @@ async function checkCeoOrAdminAccess(c: Context<App>, corporationId: string): Pr
 			ceoId: corporationInfo.ceo_id,
 			reason: 'corporation_ceo',
 		})
-		return // Access granted via CEO
+		return 'ceo'
 	}
 
-	// No character found with CEO access
+	// HR admins can manage lower HR roles (reviewer/viewer)
+	const hr = getHrStub(c)
+	const hasHrAdmin = await hr.checkPermission(user.id, corporationId, 'hr_admin')
+	if (hasHrAdmin) {
+		logger.info('[HR Auth] HR admin access granted', {
+			corporationId,
+			userId: user.id,
+			reason: 'hr_admin_role',
+		})
+		return 'hr_admin'
+	}
+
+	// No role-management access
 	logger.warn('[HR Auth] Access denied', {
 		corporationId,
 		userId: user.id,
 		isAdmin: user.is_admin,
 		checkedCharacters: userChars.length,
 	})
-
-	throw new Error('Access denied. Only corporation CEOs or site admins can manage HR roles.')
+	return null
 }
 
 // ==================== Application Routes ====================
@@ -231,7 +290,8 @@ app.get('/applications', requireAuth(), async (c) => {
 
 	try {
 		const hr = getHrStub(c)
-		const applications = await hr.listApplications(filters, user.id, user.is_admin)
+		const auditor = user.is_admin || (await isHrAuditor(c))
+		const applications = await hr.listApplications(filters, user.id, auditor)
 
 		const resolver = getStub<EsiTypeResolver>(c.env.ESI_TYPE_RESOLVER, 'global')
 		const db = c.get('db')!
@@ -630,7 +690,7 @@ app.get('/corporations', requireAuth(), async (c) => {
 	}
 
 	try {
-		if (user.is_admin) {
+		const allCorpsQuery = async () => {
 			const corporations = await db.query.managedCorporations.findMany({
 				where: and(
 					eq(managedCorporations.isActive, true),
@@ -645,7 +705,11 @@ app.get('/corporations', requireAuth(), async (c) => {
 					ticker: true,
 				},
 			})
+			return corporations
+		}
 
+		if (user.is_admin) {
+			const corporations = await allCorpsQuery()
 			return c.json(
 				corporations
 					.map((corp) => ({
@@ -653,6 +717,20 @@ app.get('/corporations', requireAuth(), async (c) => {
 						name: corp.name,
 						ticker: corp.ticker,
 						currentRole: 'hr_admin' as const,
+					}))
+					.sort((a, b) => a.name.localeCompare(b.name))
+			)
+		}
+
+		if (await isHrAuditor(c)) {
+			const corporations = await allCorpsQuery()
+			return c.json(
+				corporations
+					.map((corp) => ({
+						corporationId: corp.corporationId,
+						name: corp.name,
+						ticker: corp.ticker,
+						currentRole: 'hr_viewer' as const,
 					}))
 					.sort((a, b) => a.name.localeCompare(b.name))
 			)
@@ -984,8 +1062,10 @@ app.get('/notes', requireAuth(), async (c) => {
 	try {
 		const hr = getHrStub(c)
 		const notes = await hr.listNotes(filters)
-
-		return c.json(notes)
+		const db = c.get('db')
+		if (!db) return c.json(notes)
+		const enriched = await enrichHrNotesWithAuthorSource(db, notes)
+		return c.json(enriched)
 	} catch (error) {
 		return c.json({ error: error instanceof Error ? error.message : 'Failed to list notes' }, 500)
 	}
@@ -1006,8 +1086,10 @@ app.get('/notes/user/:userId', requireAuth(), async (c) => {
 	try {
 		const hr = getHrStub(c)
 		const notes = await hr.getUserNotes(subjectUserId)
-
-		return c.json(notes)
+		const db = c.get('db')
+		if (!db) return c.json(notes)
+		const enriched = await enrichHrNotesWithAuthorSource(db, notes)
+		return c.json(enriched)
 	} catch (error) {
 		return c.json(
 			{ error: error instanceof Error ? error.message : 'Failed to get user notes' },
@@ -1075,18 +1157,30 @@ app.delete('/notes/:id', requireAuth(), async (c) => {
 /**
  * POST /api/hr/:corporationId/roles
  * Grant an HR role to a user for a corporation
- * REQUIRES: CEO access to the corporation OR site admin
+ * REQUIRES: CEO, site admin, or HR admin access
+ * CONSTRAINTS:
+ *   - Only CEOs can grant hr_admin
+ *   - HR admins can grant only hr_reviewer/hr_viewer
  */
 app.post('/:corporationId/roles', requireAuth(), async (c) => {
 	const user = c.get('user')!
 	const corporationId = c.req.param('corporationId')
 	const { userId, characterId, role, expiresAt } = await c.req.json()
 
-	// Authorization check - user must be CEO or site admin
-	try {
-		await checkCeoOrAdminAccess(c, corporationId)
-	} catch (error) {
-		return c.json({ error: error instanceof Error ? error.message : 'Access denied' }, 403)
+	// Authorization check
+	const managementAccess = await getHrRoleManagementAccess(c, corporationId)
+	if (!managementAccess) {
+		return c.json({ error: 'Access denied. CEO, HR admin, or site admin access is required.' }, 403)
+	}
+
+	// Only CEOs can grant HR admin
+	if (role === 'hr_admin' && managementAccess !== 'ceo') {
+		return c.json({ error: 'Access denied. Only corporation CEOs can grant HR admin.' }, 403)
+	}
+
+	// HR admins can only grant lower roles
+	if (managementAccess === 'hr_admin' && role === 'hr_admin') {
+		return c.json({ error: 'Access denied. HR admins can only grant reviewer/viewer roles.' }, 403)
 	}
 
 	// Get character name
@@ -1137,7 +1231,10 @@ app.get('/:corporationId/roles', requireAuth(), async (c) => {
 	const corporationId = c.req.param('corporationId')
 	const userId = c.req.query('userId')
 
-	await checkCeoOrAdminAccess(c, corporationId)
+	const managementAccess = await getHrRoleManagementAccess(c, corporationId)
+	if (!managementAccess) {
+		return c.json({ error: 'Access denied. CEO, HR admin, or site admin access is required.' }, 403)
+	}
 
 	try {
 		const hr = getHrStub(c)
@@ -1218,6 +1315,10 @@ app.get('/roles/check', requireAuth(), async (c) => {
 		const activeRoles = roles.filter((r) => r.isActive)
 
 		if (activeRoles.length === 0) {
+			// HR auditors have cross-corp read-only access equivalent to hr_viewer
+			if (await isHrAuditor(c)) {
+				return c.json({ hasPermission: true, currentRole: 'hr_viewer' })
+			}
 			return c.json({ hasPermission: false, currentRole: null })
 		}
 
@@ -1286,18 +1387,19 @@ app.patch('/roles/:id', requireAuth(), async (c) => {
 /**
  * DELETE /api/hr/:corporationId/roles/:roleId
  * Revoke an HR role
- * REQUIRES: CEO access to the corporation OR site admin
+ * REQUIRES: CEO, site admin, or HR admin access
+ * CONSTRAINTS:
+ *   - HR admins cannot revoke other hr_admin roles
  */
 app.delete('/:corporationId/roles/:roleId', requireAuth(), async (c) => {
 	const user = c.get('user')!
 	const corporationId = c.req.param('corporationId')
 	const roleId = c.req.param('roleId')
 
-	// Authorization check - user must be CEO or site admin
-	try {
-		await checkCeoOrAdminAccess(c, corporationId)
-	} catch (error) {
-		return c.json({ error: error instanceof Error ? error.message : 'Access denied' }, 403)
+	// Authorization check
+	const managementAccess = await getHrRoleManagementAccess(c, corporationId)
+	if (!managementAccess) {
+		return c.json({ error: 'Access denied. CEO, HR admin, or site admin access is required.' }, 403)
 	}
 
 	try {
@@ -1317,6 +1419,10 @@ app.delete('/:corporationId/roles/:roleId', requireAuth(), async (c) => {
 			return c.json({ error: 'Role does not belong to this corporation' }, 400)
 		}
 
+		if (managementAccess === 'hr_admin' && role.role === 'hr_admin') {
+			return c.json({ error: 'Access denied. HR admins cannot revoke other HR admins.' }, 403)
+		}
+
 		// Proceed with revoking the role
 		await hr.revokeRole(roleId)
 
@@ -1334,6 +1440,62 @@ app.delete('/:corporationId/roles/:roleId', requireAuth(), async (c) => {
 			error: error instanceof Error ? error.message : String(error),
 		})
 		return c.json({ error: error instanceof Error ? error.message : 'Failed to revoke role' }, 500)
+	}
+})
+
+// ==================== Auditor Routes ====================
+
+/**
+ * GET /api/hr/audit/users
+ * Search users across all corporations — requires urn:hr:auditor permission or site admin
+ */
+app.get('/audit/users', requireAuth(), async (c) => {
+	if (!(await isHrAuditor(c))) {
+		return c.json({ error: 'Forbidden' }, 403)
+	}
+
+	const user = c.get('user')!
+	const search = c.req.query('search')
+	const limit = c.req.query('limit') ? parseInt(c.req.query('limit')!) : 25
+	const offset = c.req.query('offset') ? parseInt(c.req.query('offset')!) : 0
+
+	try {
+		const result = await c.env.ADMIN.searchUsers({ search, limit, offset }, user.id)
+		return c.json(result)
+	} catch (error) {
+		logger.error('[HR Audit] Failed to search users', {
+			userId: user.id,
+			error: error instanceof Error ? error.message : String(error),
+		})
+		return c.json({ error: error instanceof Error ? error.message : 'Failed to search users' }, 500)
+	}
+})
+
+/**
+ * GET /api/hr/audit/users/:userId
+ * Get detailed user info — requires urn:hr:auditor permission or site admin
+ */
+app.get('/audit/users/:userId', requireAuth(), async (c) => {
+	if (!(await isHrAuditor(c))) {
+		return c.json({ error: 'Forbidden' }, 403)
+	}
+
+	const user = c.get('user')!
+	const targetUserId = c.req.param('userId')
+
+	try {
+		const details = await c.env.ADMIN.getUserDetails(targetUserId, user.id)
+		if (!details) {
+			return c.json({ error: 'User not found' }, 404)
+		}
+		return c.json(details)
+	} catch (error) {
+		logger.error('[HR Audit] Failed to get user details', {
+			userId: user.id,
+			targetUserId,
+			error: error instanceof Error ? error.message : String(error),
+		})
+		return c.json({ error: error instanceof Error ? error.message : 'Failed to get user details' }, 500)
 	}
 })
 

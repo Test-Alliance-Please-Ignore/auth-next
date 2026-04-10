@@ -1,5 +1,5 @@
 /**
- * My Corporations List Page
+ * Corporations List Page
  *
  * Main page showing all corporations where the user has CEO/director access.
  */
@@ -25,10 +25,10 @@ import { useCorporationAccess, useCorporationManager, useMyCorporations } from '
 import { Button } from '@/components/ui/button'
 
 /**
- * Main My Corporations List Component
+ * Main Corporations List Component
  */
-export default function MyCorporationsList() {
-	usePageTitle('My Corporations')
+export default function CorporationsList() {
+	usePageTitle('Corporations')
 
 	const { user, isAuthenticated, isLoading: authLoading } = useAuth()
 	const { data: access, isLoading: accessLoading } = useCorporationAccess()
@@ -110,7 +110,7 @@ export default function MyCorporationsList() {
 				<div className="mb-8">
 					<h1 className="text-3xl font-bold flex items-center gap-3">
 						<Building2 className="h-8 w-8" />
-						My Corporations
+						Corporations
 					</h1>
 					<p className="text-muted-foreground mt-2">Loading your corporation data...</p>
 				</div>
@@ -170,7 +170,7 @@ export default function MyCorporationsList() {
 			<div className="mb-8">
 				<h1 className="text-3xl font-bold flex items-center gap-3">
 					<Building2 className="h-8 w-8" />
-					My Corporations
+					Corporations
 				</h1>
 				<p className="text-muted-foreground mt-2">
 					Manage corporations where you have leadership or HR access
@@ -274,7 +274,7 @@ export default function MyCorporationsList() {
 													asChild
 													className="w-full bg-[hsl(220_10%_40%)] text-white border-2 border-[hsl(220_10%_40%)]/70 shadow-lg shadow-[hsl(220_10%_40%)]/25 hover:bg-[hsl(220_10%_32%)] hover:shadow-xl hover:shadow-[hsl(220_10%_32%)]/40 hover:border-[hsl(220_10%_32%)]/70 focus-visible:ring-2 focus-visible:ring-[hsl(220_10%_40%)] focus-visible:ring-offset-2 transition-all duration-200"
 												>
-													<Link to={`/my-corporations/${corporation.corporationId}/members`}>
+													<Link to={`/corporations/${corporation.corporationId}/members`}>
 														<Settings className="mr-2 h-4 w-4" />
 														Manage Corporation
 													</Link>
@@ -311,7 +311,7 @@ export default function MyCorporationsList() {
 								</CardHeader>
 								<CardContent>
 									<Button variant="primary" asChild className="w-full">
-										<Link to={`/my-corporations/${corp.corporationId}/members`}>
+										<Link to={`/corporations/${corp.corporationId}/members`}>
 											<Users className="mr-2 h-4 w-4" />
 											View Members
 										</Link>

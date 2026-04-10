@@ -16,7 +16,7 @@ import {
 	TableHeader,
 	TableRow,
 } from '@/components/ui/table'
-import { useCorporationAccess } from '@/features/my-corporations'
+import { useCorporationAccess } from '@/features/corporations'
 import {
 	useDeleteTaxExclusion,
 	useTaxCapabilities,

@@ -10,7 +10,7 @@ import {
 
 import { HrRoleBadge } from './hr-role-badge'
 
-import type { CorporationMember } from '../../my-corporations/api'
+import type { CorporationMember } from '../../corporations/api'
 import type { HrRoleGrant, RevokeHrRoleRequest } from '../api'
 import { Button } from '@/components/ui/button'
 

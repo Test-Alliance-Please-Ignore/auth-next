@@ -192,15 +192,14 @@ export function FulcrumPanel({ userId, corporationId, applicationId }: FulcrumPa
 
 	const handleViewReport = (reportId: string, characterName: string) => {
 		const params = new URLSearchParams({ char: characterName })
-		if (applicationId) {
-			navigate(
-				`/corporations/${routeCorporationId}/hr/applications/${applicationId}/report/${reportId}?${params}`,
-			)
-		} else {
-			navigate(
-				`/corporations/${routeCorporationId}/hr/report/${reportId}?${params}`,
-			)
-		}
+		params.set('userId', userId)
+		params.set('corporationId', corporationId)
+		params.set('returnTo', `/corporations/${routeCorporationId}/members/${userId}`)
+		params.set('backLabel', 'Back to User Profile')
+		params.set('breadcrumb', 'User Profile')
+		navigate(
+			`/fulcrum/reports/${reportId}?${params}`,
+		)
 	}
 
 	if (isLoading) {

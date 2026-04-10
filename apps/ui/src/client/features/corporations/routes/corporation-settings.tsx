@@ -128,7 +128,7 @@ export default function CorporationSettings() {
 
 	// Check corporation ID
 	if (!corporationId) {
-		return <Navigate to="/my-corporations" replace />
+		return <Navigate to="/corporations" replace />
 	}
 
 	// Loading state
@@ -158,9 +158,9 @@ export default function CorporationSettings() {
 						</CardDescription>
 					</CardHeader>
 					<CardContent className="text-center">
-						<Button variant="ghost" onClick={() => navigate('/my-corporations')}>
+						<Button variant="ghost" onClick={() => navigate('/corporations')}>
 							<ArrowLeft className="mr-2 h-4 w-4" />
-							Back to My Corporations
+							Back to Corporations
 						</Button>
 					</CardContent>
 				</Card>
@@ -178,11 +178,11 @@ export default function CorporationSettings() {
 			<Breadcrumb className="mb-6">
 				<BreadcrumbList>
 					<BreadcrumbItem>
-						<BreadcrumbLink to="/my-corporations">My Corporations</BreadcrumbLink>
+						<BreadcrumbLink to="/corporations">Corporations</BreadcrumbLink>
 					</BreadcrumbItem>
 					<BreadcrumbSeparator />
 					<BreadcrumbItem>
-						<BreadcrumbLink to={`/my-corporations/${corporationId}/members`}>
+						<BreadcrumbLink to={`/corporations/${corporationId}/members`}>
 							{corporation.name}
 						</BreadcrumbLink>
 					</BreadcrumbItem>
@@ -198,7 +198,7 @@ export default function CorporationSettings() {
 				title="Recruiting Settings"
 				description={`Configure how ${corporation.name} appears to applicants`}
 				action={
-					<Button variant="ghost" onClick={() => navigate(`/my-corporations/${corporationId}/members`)}>
+					<Button variant="ghost" onClick={() => navigate(`/corporations/${corporationId}/members`)}>
 						<ArrowLeft className="mr-2 h-4 w-4" />
 						Back to Manage Corporation
 					</Button>
@@ -309,7 +309,7 @@ export default function CorporationSettings() {
 					</Button>
 					<Button variant="ghost"
 						type="button"
-						onClick={() => navigate(`/my-corporations/${corporationId}/members`)}
+						onClick={() => navigate(`/corporations/${corporationId}/members`)}
 					>
 						Cancel
 					</Button>

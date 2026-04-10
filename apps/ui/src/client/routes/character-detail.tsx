@@ -237,7 +237,10 @@ export default function CharacterDetailPage() {
 			<div className="grid gap-6 lg:grid-cols-2">
 				{/* Character Attributes */}
 				{character.public.attributes && (
-					<CharacterAttributes attributes={character.public.attributes} />
+					<CharacterAttributes
+						attributes={character.public.attributes}
+						walletBalance={character.private?.wallet?.balance}
+					/>
 				)}
 
 				{/* Corporation History */}

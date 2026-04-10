@@ -27,15 +27,11 @@ import MyGroupsPage from './routes/my-groups'
 import { adminRouteElements } from './routes/route-groups/admin-routes'
 import { taxRouteElements } from './routes/route-groups/tax-routes'
 
-// Lazy load the My Corporations feature for code splitting
-const MyCorporationsList = lazy(
-	() => import('./features/my-corporations/routes/my-corporations-list')
-)
 const CorporationMembers = lazy(
-	() => import('./features/my-corporations/routes/corporation-members')
+	() => import('./features/corporations/routes/corporation-members')
 )
 const CorporationSettings = lazy(
-	() => import('./features/my-corporations/routes/corporation-settings')
+	() => import('./features/corporations/routes/corporation-settings')
 )
 
 // Lazy load public corporation pages
@@ -48,12 +44,21 @@ const HrApplicationsList = lazy(() => import('./features/applications/routes/hr-
 const HrApplicationReview = lazy(
 	() => import('./features/applications/routes/hr-application-review')
 )
-const HrCorporationsPage = lazy(() => import('./features/applications/routes/hr-corporations'))
+const CorporationsPage = lazy(() => import('./features/applications/routes/corporations'))
 const HrRolesManagement = lazy(() => import('./features/applications/routes/hr-roles-management'))
 const HrMemberProfile = lazy(() => import('./features/applications/routes/hr-member-profile'))
 const FulcrumReport = lazy(() => import('./features/applications/routes/fulcrum-report'))
 const RecommendationsList = lazy(
 	() => import('./features/applications/routes/recommendations-list')
+)
+const HrAuditorUsersPage = lazy(
+	() => import('./features/applications/routes/hr-auditor-users')
+)
+const HrAuditorUserProfilePage = lazy(
+	() => import('./features/applications/routes/hr-auditor-user-profile')
+)
+const HrAuditorUserGroupsPage = lazy(
+	() => import('./features/applications/routes/hr-auditor-user-groups')
 )
 
 
@@ -123,7 +128,17 @@ function SessionSyncWrapper({ children }: { children: React.ReactNode }) {
  */
 function HrDashboardRedirect() {
 	const { corporationId } = useParams<{ corporationId: string }>()
-	return <Navigate to={`/my-corporations/${corporationId}/members`} replace />
+	return <Navigate to={`/corporations/${corporationId}/members`} replace />
+}
+
+function NavigateToCorporationMembers() {
+	const { corporationId } = useParams<{ corporationId: string }>()
+	return <Navigate to={`/corporations/${corporationId}/members`} replace />
+}
+
+function NavigateToCorporationSettings() {
+	const { corporationId } = useParams<{ corporationId: string }>()
+	return <Navigate to={`/corporations/${corporationId}/settings`} replace />
 }
 
 export default function App() {
@@ -165,17 +180,17 @@ export default function App() {
 								}
 							/>
 
-							{/* My Corporations routes (lazy loaded) */}
+							{/* Corporations routes (canonical + management detail routes) */}
 							<Route
-								path="/my-corporations"
+								path="/corporations"
 								element={
 									<Suspense fallback={<LoadingPage />}>
-										<MyCorporationsList />
+										<CorporationsPage />
 									</Suspense>
 								}
 							/>
 							<Route
-								path="/my-corporations/:corporationId/members"
+								path="/corporations/:corporationId/members"
 								element={
 									<Suspense fallback={<LoadingPage />}>
 										<CorporationMembers />
@@ -183,12 +198,22 @@ export default function App() {
 								}
 							/>
 							<Route
-								path="/my-corporations/:corporationId/settings"
+								path="/corporations/:corporationId/settings"
 								element={
 									<Suspense fallback={<LoadingPage />}>
 										<CorporationSettings />
 									</Suspense>
 								}
+							/>
+							{/* Legacy route redirects */}
+							<Route path="/my-corporations" element={<Navigate to="/corporations" replace />} />
+							<Route
+								path="/my-corporations/:corporationId/members"
+								element={<NavigateToCorporationMembers />}
+							/>
+							<Route
+								path="/my-corporations/:corporationId/settings"
+								element={<NavigateToCorporationSettings />}
 							/>
 
 							{/* Application routes - User views (lazy loaded) */}
@@ -219,22 +244,13 @@ export default function App() {
 								}
 							/>
 
-
 							{/* Application routes - HR views (lazy loaded) */}
-							<Route
-								path="/hr"
-								element={
-									<Suspense fallback={<LoadingPage />}>
-										<HrCorporationsPage />
-									</Suspense>
-								}
-							/>
 							<Route
 								path="/corporations/:corporationId/hr/dashboard"
 								element={<HrDashboardRedirect />}
 							/>
 							<Route
-								path="/corporations/:corporationId/hr/applications"
+								path="/corporations/:corporationId/applications"
 								element={
 									<Suspense fallback={<LoadingPage />}>
 										<HrApplicationsList />
@@ -242,7 +258,7 @@ export default function App() {
 								}
 							/>
 							<Route
-								path="/corporations/:corporationId/hr/applications/:applicationId"
+								path="/corporations/:corporationId/applications/:applicationId"
 								element={
 									<Suspense fallback={<LoadingPage />}>
 										<HrApplicationReview />
@@ -258,7 +274,7 @@ export default function App() {
 								}
 							/>
 							<Route
-								path="/corporations/:corporationId/hr/members/:accountId"
+								path="/corporations/:corporationId/members/:accountId"
 								element={
 									<Suspense fallback={<LoadingPage />}>
 										<HrMemberProfile />
@@ -266,17 +282,34 @@ export default function App() {
 								}
 							/>
 							<Route
-								path="/corporations/:corporationId/hr/applications/:applicationId/report/:reportId"
+								path="/fulcrum/reports/:reportId"
 								element={
 									<Suspense fallback={<LoadingPage />}>
 										<FulcrumReport />
 									</Suspense>
 								}
-							/>							<Route
-								path="/corporations/:corporationId/hr/fulcrum/:reportId"
+							/>
+							<Route
+								path="/hr/auditor/users"
 								element={
 									<Suspense fallback={<LoadingPage />}>
-										<FulcrumReport />
+										<HrAuditorUsersPage />
+									</Suspense>
+								}
+							/>
+							<Route
+								path="/hr/auditor/users/:userId"
+								element={
+									<Suspense fallback={<LoadingPage />}>
+										<HrAuditorUserProfilePage />
+									</Suspense>
+								}
+							/>
+							<Route
+								path="/hr/auditor/users/:userId/groups"
+								element={
+									<Suspense fallback={<LoadingPage />}>
+										<HrAuditorUserGroupsPage />
 									</Suspense>
 								}
 							/>

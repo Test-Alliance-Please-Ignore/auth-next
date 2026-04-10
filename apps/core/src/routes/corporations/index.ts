@@ -5,6 +5,7 @@ import { getStub } from '@repo/do-utils'
 import { logger } from '@repo/hono-helpers'
 
 import { managedCorporations, userCharacters, users } from '../../db/schema'
+import { getCachedUserPermissions } from '../../lib/groups-cache'
 import { requireAdmin, requireAuth } from '../../middleware/session'
 import corporationsDirectorsRoutes from './directors-routes'
 import corporationsDiscordRoutes from './discord-routes'
@@ -190,6 +191,13 @@ async function checkCorporationAccess(
 	})
 
 	throw new Error('Access denied. Corporation CEO, Director, or site admin access required.')
+}
+
+async function isHrAuditorUser(c: Context<App>): Promise<boolean> {
+	const user = c.get('user')!
+	if (user.is_admin) return true
+	const permissions = await getCachedUserPermissions(c.env, user.id)
+	return permissions.some((p) => p.urn === 'urn:hr:auditor')
 }
 
 /**
@@ -1169,22 +1177,30 @@ app.get('/:corporationId/members', requireAuth(), async (c) => {
 			return c.json({ error: 'Corporation not found or not managed' }, 404)
 		}
 
-		// Check if user has CEO/Director/Admin access or an HR role
+		// Check if user has CEO/Director/Admin access, an HR role, or HR auditor permission
 		let userRole: 'admin' | 'CEO' | 'Director' | 'hr_admin' | 'hr_reviewer' | 'hr_viewer'
 		try {
 			const access = await checkCorporationAccess(c, corporationId)
 			userRole = access.role
 		} catch {
-			// CEO/Director/Admin check failed — fall back to HR role check
+			// CEO/Director/Admin check failed — fall back to HR role / auditor check
 			const hr = getStub<Hr>(c.env.HR, 'default')
 			const hasHrAccess = await hr.checkPermission(user.id, corporationId, 'hr_viewer')
-			if (!hasHrAccess) {
-				return c.json({ error: 'Access denied. Corporation CEO, Director, site admin, or HR role required.' }, 403)
+			const isAuditor = !hasHrAccess && await isHrAuditorUser(c)
+			if (!hasHrAccess && !isAuditor) {
+				return c.json(
+					{ error: 'Access denied. Corporation CEO, Director, site admin, HR role, or HR auditor permission required.' },
+					403
+				)
 			}
-			// Determine the specific HR role for logging
-			const isHrAdmin = await hr.checkPermission(user.id, corporationId, 'hr_admin')
-			const isHrReviewer = !isHrAdmin && await hr.checkPermission(user.id, corporationId, 'hr_reviewer')
-			userRole = isHrAdmin ? 'hr_admin' : isHrReviewer ? 'hr_reviewer' : 'hr_viewer'
+			if (isAuditor) {
+				userRole = 'hr_viewer'
+			} else {
+				// Determine the specific HR role for logging
+				const isHrAdmin = await hr.checkPermission(user.id, corporationId, 'hr_admin')
+				const isHrReviewer = !isHrAdmin && await hr.checkPermission(user.id, corporationId, 'hr_reviewer')
+				userRole = isHrAdmin ? 'hr_admin' : isHrReviewer ? 'hr_reviewer' : 'hr_viewer'
+			}
 		}
 
 		logger.info('[Corporations] User has access', { corporationId, userId: user.id, userRole })

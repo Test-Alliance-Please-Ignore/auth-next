@@ -1,24 +1,14 @@
-import { ExternalLink, Search, Users } from 'lucide-react'
+import { Search } from 'lucide-react'
 import { useEffect, useState } from 'react'
-import { Link } from 'react-router-dom'
 
-import { Badge } from '@/components/ui/badge'
+import { UserSearchResultsTable } from '@/components/user-search-results-table'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Input } from '@/components/ui/input'
 import { Select } from '@/components/ui/select'
-import {
-	Table,
-	TableBody,
-	TableCell,
-	TableHead,
-	TableHeader,
-	TableRow,
-} from '@/components/ui/table'
 import { UserSearchDialog } from '@/components/user-search-dialog'
 import { useAdminUsers } from '@/hooks/useAdminUsers'
 import { usePageTitle } from '@/hooks/usePageTitle'
 import { api } from '@/lib/api'
-import { formatDateTime, formatRelativeTime } from '@/lib/date-utils'
 import { Button } from '@/components/ui/button'
 
 export default function UsersPage() {
@@ -207,122 +197,12 @@ export default function UsersPage() {
 						<div className="text-center py-8 text-muted-foreground">No users found</div>
 					) : (
 						<>
-							<Table>
-								<TableHeader>
-									<TableRow>
-										<TableHead>User</TableHead>
-										<TableHead>Characters</TableHead>
-										<TableHead>Discord</TableHead>
-										<TableHead>Status</TableHead>
-										<TableHead>Last Updated</TableHead>
-										<TableHead>Created</TableHead>
-										<TableHead className="text-right">Actions</TableHead>
-									</TableRow>
-								</TableHeader>
-								<TableBody>
-									{users.map((user) => (
-										<TableRow key={user.id}>
-											<TableCell>
-												<div className="flex items-center gap-3">
-													{(() => {
-														const portraitCharacterId =
-															user.matchedCharacterId || user.mainCharacterId
-														const isAltMatch =
-															!!user.matchedCharacterId &&
-															user.matchedCharacterId !== user.mainCharacterId &&
-															!!user.matchedCharacterName
-														const displayName = isAltMatch
-															? `${user.matchedCharacterName}${user.mainCharacterName ? ` (${user.mainCharacterName})` : ''}`
-															: user.mainCharacterName ||
-																user.matchedCharacterName ||
-																'Unknown Character'
-
-														return (
-															<>
-																<img
-																	src={`/images/characters/${portraitCharacterId}/portrait?size=64`}
-																	alt={displayName}
-																	className="h-10 w-10 rounded-full"
-																/>
-																<div>
-																	<Link
-																		to={`/admin/users/${user.id}`}
-																		className="inline-flex items-center gap-2 font-medium hover:text-primary transition-colors"
-																	>
-																		{displayName}
-																		{isAltMatch && (
-																			<Badge
-																				variant="default">
-																				Alt
-																			</Badge>
-																		)}
-																	</Link>
-																	<div className="text-xs text-muted-foreground">
-																		ID: {user.id.slice(0, 8)}...
-																	</div>
-																</div>
-															</>
-														)
-													})()}
-												</div>
-											</TableCell>
-											<TableCell>
-												<div className="text-sm">
-													{user.characterCount} character{user.characterCount !== 1 ? 's' : ''}
-												</div>
-											</TableCell>
-											<TableCell>
-												{user.discordUserId ? (
-													<div className="flex items-center justify-between gap-2">
-														<div className="min-w-0">
-															<div className="text-sm font-medium truncate">
-																{user.discordUsername || 'Discord Linked'}
-															</div>
-															<div className="font-mono text-xs text-muted-foreground truncate">
-																{user.discordUserId}
-															</div>
-														</div>
-														<Button variant="ghost"
-															size="sm"
-															onClick={() => handleDiscordJoin(user.id)}
-															disabled={joiningUserId === user.id}
-															title="Refresh Discord roles"
-														>
-															<Users className="h-4 w-4" />
-														</Button>
-													</div>
-												) : (
-													<span className="text-sm text-muted-foreground">Not linked</span>
-												)}
-											</TableCell>
-											<TableCell>
-												{user.is_admin && (
-													<Badge variant="default">
-														Admin
-													</Badge>
-												)}
-											</TableCell>
-											<TableCell>
-												<div className="text-sm" title={formatDateTime(user.updatedAt)}>
-													{formatRelativeTime(user.updatedAt)}
-												</div>
-											</TableCell>
-											<TableCell>
-												<div className="text-sm" title={formatDateTime(user.createdAt)}>
-													{formatRelativeTime(user.createdAt)}
-												</div>
-											</TableCell>
-											<TableCell className="text-right">
-												<Link to={`/admin/users/${user.id}`}>
-													<Button variant="ghost" size="sm">
-														<ExternalLink className="h-4 w-4" />
-													</Button>
-												</Link>
-											</TableCell>
-										</TableRow>
-									))}
-								</TableBody>
-							</Table>
+							<UserSearchResultsTable
+								users={users}
+								userDetailsPath={(userId) => `/admin/users/${userId}`}
+								onRefreshDiscordAccess={handleDiscordJoin}
+								refreshingDiscordUserId={joiningUserId}
+							/>
 
 							{/* Pagination */}
 							{pagination && pagination.totalPages > 1 && (

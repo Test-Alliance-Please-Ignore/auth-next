@@ -70,7 +70,7 @@ export function ApplicationHistoryPanel({ characterId, applicationId }: Applicat
 	const { data: history, isLoading, error } = useCharacterApplicationHistory(characterId, applicationId)
 
 	const handleNavigate = (targetApplicationId: string) => {
-		navigate(`/corporations/${corporationId}/hr/applications/${targetApplicationId}`)
+		navigate(`/corporations/${corporationId}/applications/${targetApplicationId}`)
 	}
 
 	if (isLoading) {

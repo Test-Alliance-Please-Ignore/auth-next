@@ -3,13 +3,16 @@ import { Hono } from 'hono'
 import { getStub } from '@repo/do-utils'
 import { logger } from '@repo/hono-helpers'
 
+import { getCachedUserPermissions } from '../lib/groups-cache'
 import { requireAuth } from '../middleware/session'
 
 import type { Context } from 'hono'
 import type { Core } from '@repo/core'
+import type { EveCorporationData } from '@repo/eve-corporation-data'
 import type { Fulcrum, ReportRequestSource, ReportSectionName } from '@repo/fulcrum'
 import type { Hr } from '@repo/hr'
 import type { App } from '../context'
+import type { SessionUser } from '../context'
 
 const app = new Hono<App>()
 
@@ -27,6 +30,15 @@ function getHrStub(c: Context<App>): Hr {
 
 function getCoreStub(c: Context<App>): Core {
 	return getStub<Core>(c.env.CORE, 'default')
+}
+
+/**
+ * Check if a user has the urn:hr:auditor group permission (or is a site admin).
+ */
+async function isHrAuditorUser(c: Context<App>, user: SessionUser): Promise<boolean> {
+	if (user.is_admin) return true
+	const permissions = await getCachedUserPermissions(c.env, user.id)
+	return permissions.some((p) => p.urn === 'urn:hr:auditor')
 }
 
 /**
@@ -68,31 +80,95 @@ app.get('/users/:userId/characters', requireAuth(), async (c) => {
 	const corporationId = c.req.query('corporationId')
 
 	try {
-		if (!corporationId) {
+		const auditor = await isHrAuditorUser(c, user)
+
+		if (!corporationId && !auditor) {
 			return c.json({ error: 'corporationId query parameter is required' }, 400)
 		}
 
-		// Check HR permission
-		const hr = getHrStub(c)
-		const hasPermission = await hr.checkPermission(user.id, corporationId, 'hr_viewer')
-		if (!hasPermission && !user.is_admin) {
-			return c.json({ error: 'HR role required' }, 403)
+		// Check HR permission (auditors bypass corp-scoped check)
+		if (!auditor) {
+			const hr = getHrStub(c)
+			const hasPermission = await hr.checkPermission(user.id, corporationId!, 'hr_viewer')
+			if (!hasPermission) {
+				return c.json({ error: 'HR role required' }, 403)
+			}
 		}
 
 		// Get all linked characters from Core DO
 		const core = getCoreStub(c)
 		const characters = await core.getUserCharacters(userId, false)
+		const corporationSnapshotCache = new Map<
+			string,
+			Promise<{
+				ceoId: string | null
+				directorIds: Set<string>
+				lastLogonByCharacterId: Map<string, Date | null>
+			}>
+		>()
+
+		const getCorporationSnapshot = async (corpId: string) => {
+			if (!corporationSnapshotCache.has(corpId)) {
+				const snapshotPromise = (async () => {
+					const corpStub = getStub<EveCorporationData>(c.env.EVE_CORPORATION_DATA, corpId)
+					const [corpInfo, directors, memberTracking] = await Promise.all([
+						corpStub.getCorporationInfo(corpId),
+						corpStub.getDirectors(corpId),
+						corpStub.getMemberTracking(corpId),
+					])
+
+					return {
+						ceoId: corpInfo ? String(corpInfo.ceoId) : null,
+						directorIds: new Set(directors.map((d) => d.characterId)),
+						lastLogonByCharacterId: new Map(
+							memberTracking.map((tracking) => [tracking.characterId, tracking.logonDate])
+						),
+					}
+				})()
+				corporationSnapshotCache.set(corpId, snapshotPromise)
+			}
+			return corporationSnapshotCache.get(corpId)!
+		}
 
 		// For each character, fetch their Fulcrum reports
 		const fulcrum = getFulcrumStub(c)
 		const results = await Promise.all(
 			characters.map(async (char) => {
 				const reports = await fulcrum.listReports({ characterId: char.characterId }, 50)
+				let role: 'CEO' | 'Director' | 'Member' | null = null
+				let activityStatus: 'active' | 'inactive' | 'unknown' | null = null
+
+				if (char.corporationId) {
+					const snapshot = await getCorporationSnapshot(String(char.corporationId))
+					if (snapshot.ceoId === char.characterId) {
+						role = 'CEO'
+					} else if (snapshot.directorIds.has(char.characterId)) {
+						role = 'Director'
+					} else {
+						role = 'Member'
+					}
+
+					const lastLogon = snapshot.lastLogonByCharacterId.get(char.characterId)
+					if (!lastLogon) {
+						activityStatus = 'unknown'
+					} else {
+						const activeThresholdMs = 7 * 24 * 60 * 60 * 1000
+						activityStatus =
+							new Date().getTime() - lastLogon.getTime() < activeThresholdMs
+								? 'active'
+								: 'inactive'
+					}
+				}
+
 				return {
 					characterId: char.characterId,
 					characterName: char.characterName,
 					corporationId: char.corporationId ?? null,
 					corporationName: char.corporationName ?? null,
+					allianceId: char.allianceId ?? null,
+					allianceName: char.allianceName ?? null,
+					role,
+					activityStatus,
 					reports,
 				}
 			}),
@@ -126,16 +202,20 @@ app.get('/characters/:characterId/reports', requireAuth(), async (c) => {
 	const corporationId = c.req.query('corporationId')
 
 	try {
-		// Require corporationId for scoping permission checks
-		if (!corporationId) {
+		const auditor = await isHrAuditorUser(c, user)
+
+		// Require corporationId for scoping permission checks unless auditor
+		if (!corporationId && !auditor) {
 			return c.json({ error: 'corporationId query parameter is required' }, 400)
 		}
 
-		// Check HR permission for the corporation
-		const hr = getHrStub(c)
-		const hasPermission = await hr.checkPermission(user.id, corporationId, 'hr_viewer')
-		if (!hasPermission && !user.is_admin) {
-			return c.json({ error: 'HR role required' }, 403)
+		// Check HR permission for the corporation (auditors bypass)
+		if (!auditor && corporationId) {
+			const hr = getHrStub(c)
+			const hasPermission = await hr.checkPermission(user.id, corporationId, 'hr_viewer')
+			if (!hasPermission) {
+				return c.json({ error: 'HR role required' }, 403)
+			}
 		}
 
 		const fulcrum = getFulcrumStub(c)
@@ -177,11 +257,15 @@ app.post('/characters/:characterId/reports', requireAuth(), async (c) => {
 	}
 
 	try {
-		// Check HR admin permission for creating reports
-		const hr = getHrStub(c)
-		const hasPermission = await hr.checkPermission(user.id, body.corporationId, 'hr_reviewer')
-		if (!hasPermission && !user.is_admin) {
-			return c.json({ error: 'HR reviewer or admin role required' }, 403)
+		const auditor = await isHrAuditorUser(c, user)
+
+		// Check HR permission for creating reports (auditors can request)
+		if (!auditor) {
+			const hr = getHrStub(c)
+			const hasPermission = await hr.checkPermission(user.id, body.corporationId, 'hr_reviewer')
+			if (!hasPermission) {
+				return c.json({ error: 'HR reviewer or admin role required' }, 403)
+			}
 		}
 
 		const fulcrum = getFulcrumStub(c)
@@ -243,15 +327,17 @@ app.get('/reports/:reportId/html', requireAuth(), async (c) => {
 			return c.json({ error: 'Report not ready', status: report.status }, 400)
 		}
 
-		// Check HR permission for the report's corporation
-		const hr = getHrStub(c)
-		const hasPermission = await hr.checkPermission(
-			user.id,
-			report.requestorCorporationId,
-			'hr_viewer',
-		)
-		if (!hasPermission && !user.is_admin) {
-			return c.json({ error: 'HR role required' }, 403)
+		// Check HR permission for the report's corporation (auditors bypass)
+		if (!(await isHrAuditorUser(c, user))) {
+			const hr = getHrStub(c)
+			const hasPermission = await hr.checkPermission(
+				user.id,
+				report.requestorCorporationId,
+				'hr_viewer',
+			)
+			if (!hasPermission) {
+				return c.json({ error: 'HR role required' }, 403)
+			}
 		}
 
 		const html = await fulcrum.getReportHtml(reportId)
@@ -289,14 +375,16 @@ app.get('/reports/:reportId/sections', requireAuth(), async (c) => {
 			return c.json({ error: 'Report not ready', status: report.status }, 400)
 		}
 
-		const hr = getHrStub(c)
-		const hasPermission = await hr.checkPermission(
-			user.id,
-			report.requestorCorporationId,
-			'hr_viewer',
-		)
-		if (!hasPermission && !user.is_admin) {
-			return c.json({ error: 'HR role required' }, 403)
+		if (!(await isHrAuditorUser(c, user))) {
+			const hr = getHrStub(c)
+			const hasPermission = await hr.checkPermission(
+				user.id,
+				report.requestorCorporationId,
+				'hr_viewer',
+			)
+			if (!hasPermission) {
+				return c.json({ error: 'HR role required' }, 403)
+			}
 		}
 
 		const manifest = await fulcrum.getReportSections(reportId)
@@ -340,14 +428,16 @@ app.get('/reports/:reportId/sections/:section', requireAuth(), async (c) => {
 			return c.json({ error: 'Report not ready', status: report.status }, 400)
 		}
 
-		const hr = getHrStub(c)
-		const hasPermission = await hr.checkPermission(
-			user.id,
-			report.requestorCorporationId,
-			'hr_viewer',
-		)
-		if (!hasPermission && !user.is_admin) {
-			return c.json({ error: 'HR role required' }, 403)
+		if (!(await isHrAuditorUser(c, user))) {
+			const hr = getHrStub(c)
+			const hasPermission = await hr.checkPermission(
+				user.id,
+				report.requestorCorporationId,
+				'hr_viewer',
+			)
+			if (!hasPermission) {
+				return c.json({ error: 'HR role required' }, 403)
+			}
 		}
 
 		const data = await fulcrum.getReportSectionData(reportId, section)
@@ -386,14 +476,16 @@ app.get('/reports/:reportId/mails/:mailId/content', requireAuth(), async (c) => 
 			return c.json({ error: 'Report not ready', status: report.status }, 400)
 		}
 
-		const hr = getHrStub(c)
-		const hasPermission = await hr.checkPermission(
-			user.id,
-			report.requestorCorporationId,
-			'hr_viewer',
-		)
-		if (!hasPermission && !user.is_admin) {
-			return c.json({ error: 'HR role required' }, 403)
+		if (!(await isHrAuditorUser(c, user))) {
+			const hr = getHrStub(c)
+			const hasPermission = await hr.checkPermission(
+				user.id,
+				report.requestorCorporationId,
+				'hr_viewer',
+			)
+			if (!hasPermission) {
+				return c.json({ error: 'HR role required' }, 403)
+			}
 		}
 
 		const body = await fulcrum.fetchMailContent(reportId, mailId)

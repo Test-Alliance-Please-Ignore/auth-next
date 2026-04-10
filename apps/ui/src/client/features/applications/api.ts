@@ -160,6 +160,8 @@ export interface HRNote {
 	noteType: HRNoteType
 	priority: HRNotePriority
 	metadata?: Record<string, unknown>
+	authorIsAdmin?: boolean
+	source?: 'admin' | 'hr'
 	createdAt: string
 	updatedAt: string
 }
@@ -630,6 +632,10 @@ export interface FulcrumCharacterData {
 	characterName: string
 	corporationId?: string | null
 	corporationName?: string | null
+	allianceId?: string | null
+	allianceName?: string | null
+	role?: 'CEO' | 'Director' | 'Member' | null
+	activityStatus?: 'active' | 'inactive' | 'unknown' | null
 	reports: CharacterReportMetadata[]
 }
 

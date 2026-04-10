@@ -17,7 +17,6 @@ import {
 	Radio,
 	Receipt,
 	Scale,
-	Settings,
 	Shield,
 	Timer,
 	Truck,
@@ -27,7 +26,7 @@ import { useEffect, useState } from 'react'
 import { Link, useLocation } from 'react-router-dom'
 
 import { useHrAccessibleCorporations } from '@/features/hr'
-import { useHasCorporationAccess } from '@/features/my-corporations'
+import { useHasCorporationAccess } from '@/features/corporations'
 import { useTaxAlerts } from '@/hooks/corporation-tax'
 import { useAuth, useLogout } from '@/hooks/useAuth'
 import { usePendingInvitations } from '@/hooks/useGroups'
@@ -48,6 +47,7 @@ interface SidebarNavItem {
 	icon?: any
 	badge?: number
 	external?: boolean
+	isActive?: boolean
 	children?: SidebarNavItem[]
 }
 
@@ -71,7 +71,9 @@ export function SidebarNav({ onNavigate }: SidebarNavProps) {
 		location.pathname.startsWith('/my-applications/') ||
 		location.pathname === '/join' ||
 		location.pathname.startsWith('/join/') ||
-		location.pathname === '/hr' ||
+		location.pathname === '/corporations' ||
+		/^\/corporations\/[^/]+\/members/.test(location.pathname) ||
+		/^\/corporations\/[^/]+\/settings/.test(location.pathname) ||
 		location.pathname.startsWith('/hr/') ||
 		location.pathname === '/recommendations' ||
 		location.pathname.startsWith('/recommendations/') ||
@@ -146,10 +148,26 @@ export function SidebarNav({ onNavigate }: SidebarNavProps) {
 			},
 		]
 
-		if ((hrCorporations?.length ?? 0) > 0) {
+		const isAuditor = hasAnyPermission('urn:hr:auditor')
+		const isHrOnlyUser = !corporationAccess?.hasAccess && ((hrCorporations?.length ?? 0) > 0 || isAuditor)
+		const isOnCorpHrRoute = /^\/corporations\/[^/]+\/hr/.test(location.pathname)
+
+		if ((hrCorporations?.length ?? 0) > 0 || isAuditor) {
 			hrItems.push({
-				label: 'HR Corporations',
-				href: '/hr',
+				label: 'Corporations',
+				href: '/corporations',
+				isActive:
+					location.pathname === '/corporations' ||
+					(isOnCorpHrRoute && isHrOnlyUser) ||
+					/^\/corporations\/[^/]+\/members/.test(location.pathname) ||
+					/^\/corporations\/[^/]+\/settings/.test(location.pathname),
+			})
+		}
+
+		if (isAuditor || isSiteAdmin) {
+			hrItems.push({
+				label: 'User Search',
+				href: '/hr/auditor/users',
 			})
 		}
 
@@ -301,15 +319,6 @@ export function SidebarNav({ onNavigate }: SidebarNavProps) {
 		})
 	}
 
-	// Add Manage Corporation nav item if user has CEO/director access (second from bottom)
-	if (corporationAccess?.hasAccess) {
-		navItems.push({
-			label: 'Manage Corporation',
-			href: '/my-corporations',
-			icon: Settings,
-		})
-	}
-
 	// Add admin nav item if user is admin (bottom)
 	if (user?.is_admin) {
 		navItems.push({
@@ -378,11 +387,12 @@ export function SidebarNav({ onNavigate }: SidebarNavProps) {
 									<div className="ml-6 space-y-1 border-l border-border/60 pl-2">
 										{item.children.map((child) => {
 											const childIsActive =
-												!child.external &&
-												(child.href === item.href
-													? location.pathname === child.href
-													: location.pathname === child.href ||
-													location.pathname.startsWith(child.href + '/'))
+												child.isActive ??
+												(!child.external &&
+													(child.href === item.href
+														? location.pathname === child.href
+														: location.pathname === child.href ||
+														location.pathname.startsWith(child.href + '/')))
 
 											if (child.external) {
 												const ChildIcon = child.icon

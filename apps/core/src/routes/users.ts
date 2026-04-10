@@ -422,38 +422,16 @@ users.get('/corporation-access', async (c) => {
 	logger.info('[Corporation Access] Checking access for user', { userId: user.id })
 
 	try {
-		// Site admins have access to ALL corporations (member and special purpose only)
-		if (user.is_admin) {
-			const managedCorps = await db.query.managedCorporations.findMany({
-				where: and(
-					eq(managedCorporations.isActive, true),
-					or(
-						eq(managedCorporations.isMemberCorporation, true),
-						eq(managedCorporations.isSpecialPurpose, true)
-					)
-				),
-			})
-
-			const adminCorps = managedCorps.map((corp) => ({
-				corporationId: corp.corporationId,
-				name: corp.name,
-				ticker: corp.ticker,
-				userRole: 'admin' as const,
-				characterId: null,
-				characterName: null,
-			}))
-
-			logger.info('[Corporation Access] Admin access granted', {
-				userId: user.id,
-				reason: 'site_admin',
-				corporationCount: adminCorps.length,
-			})
-
-			return c.json({
-				hasAccess: adminCorps.length > 0,
-				corporations: adminCorps,
-			})
-		}
+		// Get all managed corporations (member and special purpose only)
+		const managedCorps = await db.query.managedCorporations.findMany({
+			where: and(
+				eq(managedCorporations.isActive, true),
+				or(
+					eq(managedCorporations.isMemberCorporation, true),
+					eq(managedCorporations.isSpecialPurpose, true)
+				)
+			),
+		})
 
 		// Get all user's characters
 		const characters = await db.query.userCharacters.findMany({
@@ -466,149 +444,11 @@ users.get('/corporation-access', async (c) => {
 			characterIds: characters.map((c) => c.characterId),
 		})
 
-		if (!characters.length) {
-			return c.json({ hasAccess: false, corporations: [] })
-		}
-
-		// Get all managed corporations (member and special purpose only)
-		const managedCorps = await db.query.managedCorporations.findMany({
-			where: and(
-				eq(managedCorporations.isActive, true),
-				or(
-					eq(managedCorporations.isMemberCorporation, true),
-					eq(managedCorporations.isSpecialPurpose, true)
-				)
-			),
-		})
-
 		logger.info('[Corporation Access] Found managed corporations', {
 			corpCount: managedCorps.length,
 			corpIds: managedCorps.map((c) => c.corporationId),
 		})
 
-		// OPTIMIZATION: First, fetch all character corporation IDs to reduce checks
-		const characterCorpMap = new Map<string, string>() // characterId -> corporationId
-
-		logger.info('[Corporation Access] Fetching character corporation IDs...')
-
-		// Create single character stub (reuse for all calls)
-		const charStub = getStub<EveCharacterData>(c.env.EVE_CHARACTER_DATA, 'default')
-
-		// Fetch character data in parallel to get corporation IDs
-		const charDataPromises = characters.map(async (character) => {
-			try {
-				const charData = await charStub.getCharacterInfo(character.characterId)
-				if (charData?.corporationId) {
-					const corpId = String(charData.corporationId)
-					characterCorpMap.set(character.characterId, corpId)
-					return { characterId: character.characterId, corporationId: corpId }
-				}
-			} catch (error) {
-				logger.warn('[Corporation Access] Error fetching character data', {
-					characterId: character.characterId,
-					error: error instanceof Error ? error.message : String(error),
-				})
-			}
-			return null
-		})
-
-		await Promise.all(charDataPromises)
-
-		logger.info('[Corporation Access] Character corporations mapped', {
-			mappedCount: characterCorpMap.size,
-			corporationIds: Array.from(new Set(characterCorpMap.values())),
-		})
-
-		// Use Set for O(1) lookups instead of O(n) includes
-		const characterCorpIds = new Set(characterCorpMap.values())
-		const relevantCorps = managedCorps.filter((corp) => characterCorpIds.has(corp.corporationId))
-
-		logger.info('[Corporation Access] Checking relevant corporations', {
-			relevantCount: relevantCorps.length,
-			relevantCorpIds: relevantCorps.map((c) => c.corporationId),
-		})
-
-		// Pre-group characters by corporation for faster lookups
-		const charactersByCorpId = new Map<string, typeof characters>()
-		for (const [charId, corpId] of characterCorpMap.entries()) {
-			if (!charactersByCorpId.has(corpId)) {
-				charactersByCorpId.set(corpId, [])
-			}
-			const char = characters.find((c) => c.characterId === charId)
-			if (char) {
-				charactersByCorpId.get(corpId)!.push(char)
-			}
-		}
-
-		// Process corporations in parallel instead of sequential loop
-		const corpCheckPromises = relevantCorps.map(async (corp) => {
-			try {
-				const corpStub = getStub<EveCorporationData>(c.env.EVE_CORPORATION_DATA, corp.corporationId)
-
-				// Get corporation info and directors in parallel
-				const [corpInfo, directors] = await Promise.all([
-					corpStub.getCorporationInfo(corp.corporationId),
-					corpStub.getDirectors(corp.corporationId),
-				])
-
-				// Create director lookup Set for O(1) checks
-				const directorIds = new Set(directors.map((d) => d.characterId))
-
-				// Only check characters IN this corporation
-				const corpCharacters = charactersByCorpId.get(corp.corporationId) || []
-
-				// Find highest priority role for this corporation
-				let bestRole: { role: 'CEO' | 'Director'; character: (typeof characters)[0] } | null = null
-
-				for (const character of corpCharacters) {
-					let role: 'CEO' | 'Director' | null = null
-
-					// Check if character is CEO
-					if (corpInfo && String(corpInfo.ceoId) === character.characterId) {
-						role = 'CEO'
-					} else if (directorIds.has(character.characterId)) {
-						role = 'Director'
-					}
-
-					if (role) {
-						logger.info('[Corporation Access] Found role for character', {
-							characterId: character.characterId,
-							characterName: character.characterName,
-							corporationId: corp.corporationId,
-							corporationName: corp.name,
-							role,
-						})
-
-						// CEO takes precedence over Director
-						if (role === 'CEO' || !bestRole) {
-							bestRole = { role, character }
-							if (role === 'CEO') break // No need to check further
-						}
-					}
-				}
-
-				// Return result for this corporation
-				if (bestRole) {
-					return {
-						corporationId: corp.corporationId,
-						name: corp.name,
-						ticker: corp.ticker,
-						userRole: bestRole.role,
-						characterId: bestRole.character.characterId,
-						characterName: bestRole.character.characterName,
-					}
-				}
-			} catch (error) {
-				logger.error('[Corporation Access] Error checking corporation', {
-					corporationId: corp.corporationId,
-					error: error instanceof Error ? error.message : String(error),
-				})
-			}
-			return null
-		})
-
-		// Wait for all corporation checks in parallel
-		const corpResults = await Promise.all(corpCheckPromises)
 		const accessibleCorporations: Array<{
 			corporationId: string
 			name: string
@@ -616,57 +456,205 @@ users.get('/corporation-access', async (c) => {
 			userRole: 'CEO' | 'Director' | 'admin' | 'hr_admin' | 'hr_reviewer' | 'hr_viewer'
 			characterId: string | null
 			characterName: string | null
-		}> = corpResults.filter((result) => result !== null)
+		}> = []
 
-		// Also check HR roles across all managed corporations
-		const accessibleCorpIds = new Set(accessibleCorporations.map((c) => c.corporationId))
-		const hrStub = getStub<Hr>(c.env.HR, 'default')
-		const hrCorpIds = await hrStub.getUserHrCorporations(user.id)
-		const uniqueHrCorpIds = [...new Set(hrCorpIds)].filter((id) => !accessibleCorpIds.has(id))
+		if (characters.length > 0 && managedCorps.length > 0) {
+			// OPTIMIZATION: First, fetch all character corporation IDs to reduce checks
+			const characterCorpMap = new Map<string, string>() // characterId -> corporationId
 
-		if (uniqueHrCorpIds.length > 0) {
-			const roleHierarchy: Record<string, number> = {
-				hr_admin: 3,
-				hr_reviewer: 2,
-				hr_viewer: 1,
+			logger.info('[Corporation Access] Fetching character corporation IDs...')
+
+			// Create single character stub (reuse for all calls)
+			const charStub = getStub<EveCharacterData>(c.env.EVE_CHARACTER_DATA, 'default')
+
+			// Fetch character data in parallel to get corporation IDs
+			const charDataPromises = characters.map(async (character) => {
+				try {
+					const charData = await charStub.getCharacterInfo(character.characterId)
+					if (charData?.corporationId) {
+						const corpId = String(charData.corporationId)
+						characterCorpMap.set(character.characterId, corpId)
+						return { characterId: character.characterId, corporationId: corpId }
+					}
+				} catch (error) {
+					logger.warn('[Corporation Access] Error fetching character data', {
+						characterId: character.characterId,
+						error: error instanceof Error ? error.message : String(error),
+					})
+				}
+				return null
+			})
+
+			await Promise.all(charDataPromises)
+
+			logger.info('[Corporation Access] Character corporations mapped', {
+				mappedCount: characterCorpMap.size,
+				corporationIds: Array.from(new Set(characterCorpMap.values())),
+			})
+
+			// Use Set for O(1) lookups instead of O(n) includes
+			const characterCorpIds = new Set(characterCorpMap.values())
+			const relevantCorps = managedCorps.filter((corp) => characterCorpIds.has(corp.corporationId))
+
+			logger.info('[Corporation Access] Checking relevant corporations', {
+				relevantCount: relevantCorps.length,
+				relevantCorpIds: relevantCorps.map((c) => c.corporationId),
+			})
+
+			// Pre-group characters by corporation for faster lookups
+			const charactersByCorpId = new Map<string, typeof characters>()
+			for (const [charId, corpId] of characterCorpMap.entries()) {
+				if (!charactersByCorpId.has(corpId)) {
+					charactersByCorpId.set(corpId, [])
+				}
+				const char = characters.find((c) => c.characterId === charId)
+				if (char) {
+					charactersByCorpId.get(corpId)!.push(char)
+				}
 			}
 
-			const hrCorpResults = await Promise.all(
-				uniqueHrCorpIds.map(async (corpId) => {
-					try {
-						const roles = await hrStub.getUserRoles(user.id, corpId)
-						const activeRoles = roles.filter((r) => r.isActive)
-						if (activeRoles.length === 0) return null
+			// Process corporations in parallel instead of sequential loop
+			const corpCheckPromises = relevantCorps.map(async (corp) => {
+				try {
+					const corpStub = getStub<EveCorporationData>(c.env.EVE_CORPORATION_DATA, corp.corporationId)
 
-						const highestRole = activeRoles.reduce((highest, role) => {
-							const highestLevel = roleHierarchy[highest.role] ?? 0
-							const currentLevel = roleHierarchy[role.role] ?? 0
-							return currentLevel > highestLevel ? role : highest
-						}, activeRoles[0])
+					// Get corporation info and directors in parallel
+					const [corpInfo, directors] = await Promise.all([
+						corpStub.getCorporationInfo(corp.corporationId),
+						corpStub.getDirectors(corp.corporationId),
+					])
 
-						const corp = managedCorps.find((mc) => mc.corporationId === corpId)
-						if (!corp) return null
+					// Create director lookup Set for O(1) checks
+					const directorIds = new Set(directors.map((d) => d.characterId))
 
+					// Only check characters IN this corporation
+					const corpCharacters = charactersByCorpId.get(corp.corporationId) || []
+
+					// Find highest priority role for this corporation
+					let bestRole: { role: 'CEO' | 'Director'; character: (typeof characters)[0] } | null = null
+
+					for (const character of corpCharacters) {
+						let role: 'CEO' | 'Director' | null = null
+
+						// Check if character is CEO
+						if (corpInfo && String(corpInfo.ceoId) === character.characterId) {
+							role = 'CEO'
+						} else if (directorIds.has(character.characterId)) {
+							role = 'Director'
+						}
+
+						if (role) {
+							logger.info('[Corporation Access] Found role for character', {
+								characterId: character.characterId,
+								characterName: character.characterName,
+								corporationId: corp.corporationId,
+								corporationName: corp.name,
+								role,
+							})
+
+							// CEO takes precedence over Director
+							if (role === 'CEO' || !bestRole) {
+								bestRole = { role, character }
+								if (role === 'CEO') break // No need to check further
+							}
+						}
+					}
+
+					// Return result for this corporation
+					if (bestRole) {
 						return {
-							corporationId: corpId,
+							corporationId: corp.corporationId,
 							name: corp.name,
 							ticker: corp.ticker,
-							userRole: highestRole.role as 'hr_admin' | 'hr_reviewer' | 'hr_viewer',
-							characterId: null,
-							characterName: null,
+							userRole: bestRole.role,
+							characterId: bestRole.character.characterId,
+							characterName: bestRole.character.characterName,
 						}
-					} catch (error) {
-						logger.error('[Corporation Access] Error checking HR roles for corporation', {
-							corporationId: corpId,
-							error: error instanceof Error ? error.message : String(error),
-						})
-						return null
 					}
-				})
-			)
+				} catch (error) {
+					logger.error('[Corporation Access] Error checking corporation', {
+						corporationId: corp.corporationId,
+						error: error instanceof Error ? error.message : String(error),
+					})
+				}
+				return null
+			})
 
-			for (const result of hrCorpResults) {
-				if (result) accessibleCorporations.push(result)
+			// Wait for all corporation checks in parallel
+			const corpResults = await Promise.all(corpCheckPromises)
+			accessibleCorporations.push(
+				...corpResults.filter((result) => result !== null)
+			)
+		}
+
+		// Site admins have access to all managed corporations, but leadership roles
+		// should take precedence in corporations where they are CEO/Director.
+		if (user.is_admin) {
+			const accessibleCorpIds = new Set(accessibleCorporations.map((corp) => corp.corporationId))
+			for (const corp of managedCorps) {
+				if (accessibleCorpIds.has(corp.corporationId)) continue
+				accessibleCorporations.push({
+					corporationId: corp.corporationId,
+					name: corp.name,
+					ticker: corp.ticker,
+					userRole: 'admin',
+					characterId: null,
+					characterName: null,
+				})
+			}
+		}
+
+		// Also check HR roles across all managed corporations (non-admin users only)
+		if (!user.is_admin) {
+			const accessibleCorpIds = new Set(accessibleCorporations.map((c) => c.corporationId))
+			const hrStub = getStub<Hr>(c.env.HR, 'default')
+			const hrCorpIds = await hrStub.getUserHrCorporations(user.id)
+			const uniqueHrCorpIds = [...new Set(hrCorpIds)].filter((id) => !accessibleCorpIds.has(id))
+
+			if (uniqueHrCorpIds.length > 0) {
+				const roleHierarchy: Record<string, number> = {
+					hr_admin: 3,
+					hr_reviewer: 2,
+					hr_viewer: 1,
+				}
+
+				const hrCorpResults = await Promise.all(
+					uniqueHrCorpIds.map(async (corpId) => {
+						try {
+							const roles = await hrStub.getUserRoles(user.id, corpId)
+							const activeRoles = roles.filter((r) => r.isActive)
+							if (activeRoles.length === 0) return null
+
+							const highestRole = activeRoles.reduce((highest, role) => {
+								const highestLevel = roleHierarchy[highest.role] ?? 0
+								const currentLevel = roleHierarchy[role.role] ?? 0
+								return currentLevel > highestLevel ? role : highest
+							}, activeRoles[0])
+
+							const corp = managedCorps.find((mc) => mc.corporationId === corpId)
+							if (!corp) return null
+
+							return {
+								corporationId: corpId,
+								name: corp.name,
+								ticker: corp.ticker,
+								userRole: highestRole.role as 'hr_admin' | 'hr_reviewer' | 'hr_viewer',
+								characterId: null,
+								characterName: null,
+							}
+						} catch (error) {
+							logger.error('[Corporation Access] Error checking HR roles for corporation', {
+								corporationId: corpId,
+								error: error instanceof Error ? error.message : String(error),
+							})
+							return null
+						}
+					})
+				)
+
+				for (const result of hrCorpResults) {
+					if (result) accessibleCorporations.push(result)
+				}
 			}
 		}
 

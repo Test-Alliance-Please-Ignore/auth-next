@@ -1,5 +1,5 @@
 /**
- * My Corporations Feature API Client
+ * Corporations Feature API Client
  *
  * Provides typed API methods and interfaces for corporation management
  * functionality, including member lists and access control.
@@ -78,7 +78,7 @@ export interface QuickAccessResult {
 // ============================================================================
 
 /**
- * My Corporations API methods
+ * Corporations API methods
  */
 export const myCorporationsApi = {
 	/**

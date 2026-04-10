@@ -2,7 +2,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { useMemo } from 'react'
 
 import { isTaxDemoModeEnabled, taxDemoApi } from '@/dev/tax-demo-mode'
-import { useCorporationAccess } from '@/features/my-corporations'
+import { useCorporationAccess } from '@/features/corporations'
 import { useAuth } from '@/hooks/useAuth'
 import { corporationTaxApi } from '@/lib/tax-api'
 import { getScopedViewerCorporationIdsFromUrns } from '@/lib/tax-permissions'

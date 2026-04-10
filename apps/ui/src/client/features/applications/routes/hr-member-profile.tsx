@@ -44,15 +44,16 @@ import { Separator } from '@/components/ui/separator'
 import { cn } from '@/lib/utils'
 import { useAuth } from '@/hooks/useAuth'
 import { usePageTitle } from '@/hooks/usePageTitle'
+import { useUserPermissions } from '@/hooks/useUserPermissions'
 
 import { useHrPermissionCheck } from '../../hr/hooks'
-import { useCanAccessCorporation, useCorporationMembers } from '../../my-corporations/hooks'
+import { useCanAccessCorporation, useCorporationMembers } from '../../corporations/hooks'
 import { AddHRNoteDialog } from '../components/add-hr-note-dialog'
 import { ApplicationStatusBadge } from '../components/application-status-badge'
 import { useApplicationFulcrum, useApplications, useHRNotes, useRequestFulcrumReport } from '../hooks'
 import { groupByAccount } from '../components/hr-members-table'
 
-import type { CorporationMember } from '../../my-corporations/api'
+import type { CorporationMember } from '../../corporations/api'
 import type { CharacterReportMetadata, FulcrumCharacterData, HRNote } from '../api'
 
 // ============================================================================
@@ -279,6 +280,8 @@ export default function HrMemberProfile() {
 	const [searchParams] = useSearchParams()
 	const navigate = useNavigate()
 	const { user, isAuthenticated, isLoading: authLoading } = useAuth()
+	const { hasAnyPermission } = useUserPermissions()
+	const isAuditor = hasAnyPermission('urn:hr:auditor')
 	const { canAccess: hasCorporationAccess } = useCanAccessCorporation(corporationId ?? '')
 	const [addNoteOpen, setAddNoteOpen] = useState(false)
 
@@ -304,9 +307,11 @@ export default function HrMemberProfile() {
 		return permission?.currentRole === 'hr_admin'
 	}, [user, permission])
 
-	// HR notes
+	const canAddNote = isAdmin && !isAuditor
+
+	// HR notes — admins and auditors can view
 	const { data: notes, isLoading: notesLoading } = useHRNotes(
-		isAdmin && authUserId ? { subjectUserId: authUserId } : undefined,
+		(isAdmin || isAuditor) && authUserId ? { subjectUserId: authUserId } : undefined,
 	)
 
 	// Fulcrum data – all HR viewers can access this, not just admins
@@ -367,16 +372,16 @@ export default function HrMemberProfile() {
 	usePageTitle(accountName)
 
 	// Navigation helpers
-	const useMyCorporationsRoot = user?.is_admin || hasCorporationAccess
-	const rootCorporationsPath = useMyCorporationsRoot ? '/my-corporations' : '/hr'
-	const rootCorporationsLabel = useMyCorporationsRoot ? 'My Corporations' : 'HR Corporations'
+	const hasSupersedingCorpAccess = user?.is_admin || hasCorporationAccess
+	const rootCorporationsPath = '/corporations'
+	const rootCorporationsLabel = 'Corporations'
 
 	if (!authLoading && !isAuthenticated) {
 		return <Navigate to="/login" replace />
 	}
 
 	if (!corporationId || !accountId) {
-		return <Navigate to="/hr" replace />
+		return <Navigate to="/corporations" replace />
 	}
 
 	if (authLoading || permissionLoading || membersLoading) {
@@ -389,7 +394,7 @@ export default function HrMemberProfile() {
 		)
 	}
 
-	if (!permission?.hasPermission && !user?.is_admin) {
+	if (!permission?.hasPermission && !user?.is_admin && !isAuditor) {
 		return (
 			<div className="container mx-auto max-w-6xl px-4 py-8">
 				<Card className="max-w-2xl mx-auto border-red-200 bg-red-50 dark:border-red-800 dark:bg-red-950">
@@ -412,6 +417,32 @@ export default function HrMemberProfile() {
 		)
 	}
 
+	if (!hasSupersedingCorpAccess) {
+		const queryReturnTo = searchParams.get('returnTo')
+		const source =
+			searchParams.get('from') === 'applications' ||
+			searchParams.get('source') === 'applications' ||
+			queryReturnTo?.includes('/applications')
+				? 'applications'
+				: 'members'
+		const returnTo =
+			queryReturnTo ??
+			(source === 'applications' && corporationId
+				? `/corporations/${corporationId}/applications`
+				: '/hr/auditor/users')
+		return (
+			<Navigate
+				to={`/hr/auditor/users/${accountId}`}
+				replace
+				state={{
+					source,
+					returnTo,
+					corporationId,
+				}}
+			/>
+		)
+	}
+
 	if (!account || !representative) {
 		return (
 			<div className="container mx-auto max-w-6xl px-4 py-8">
@@ -425,7 +456,7 @@ export default function HrMemberProfile() {
 						</p>
 						<Button
 							variant="ghost"
-							onClick={() => navigate(`/my-corporations/${corporationId}/members`)}
+							onClick={() => navigate(`/corporations/${corporationId}/members`)}
 						>
 							<ArrowLeft className="mr-2 h-4 w-4" />
 							Back to Members
@@ -449,7 +480,7 @@ export default function HrMemberProfile() {
 						</BreadcrumbItem>
 						<BreadcrumbSeparator />
 						<BreadcrumbItem>
-							<BreadcrumbLink to={`/my-corporations/${corporationId}/members`}>
+							<BreadcrumbLink to={`/corporations/${corporationId}/members`}>
 								Members
 							</BreadcrumbLink>
 						</BreadcrumbItem>
@@ -461,7 +492,7 @@ export default function HrMemberProfile() {
 				</Breadcrumb>
 				<Button
 					variant="ghost"
-					onClick={() => navigate(`/my-corporations/${corporationId}/members`)}
+					onClick={() => navigate(`/corporations/${corporationId}/members`)}
 				>
 					<ArrowLeft className="mr-2 h-4 w-4" />
 					Back
@@ -590,7 +621,7 @@ export default function HrMemberProfile() {
 									onRequestReport={requestReport}
 									onViewReport={(reportId, characterName) =>
 										navigate(
-											`/corporations/${corporationId}/hr/fulcrum/${reportId}?name=${encodeURIComponent(characterName)}`,
+											`/fulcrum/reports/${reportId}?name=${encodeURIComponent(characterName)}&userId=${encodeURIComponent(accountId)}&corporationId=${encodeURIComponent(corporationId)}&returnTo=${encodeURIComponent(`/corporations/${corporationId}/members/${accountId}`)}&backLabel=${encodeURIComponent('Back to User Profile')}&breadcrumb=${encodeURIComponent('User Profile')}`,
 										)
 									}
 								/>
@@ -604,8 +635,8 @@ export default function HrMemberProfile() {
 						</CardContent>
 					</Card>
 
-					{/* HR Notes (Admin) */}
-					{isAdmin && authUserId && (
+					{/* HR Notes (Admin + Auditor) */}
+					{(isAdmin || isAuditor) && authUserId && (
 						<Card>
 							<CardHeader>
 								<div className="flex items-center justify-between">
@@ -613,14 +644,16 @@ export default function HrMemberProfile() {
 										<FileText className="h-4 w-4" />
 										HR Notes
 									</CardTitle>
-									<Button
-										variant="ghost"
-										size="sm"
-										onClick={() => setAddNoteOpen(true)}
-									>
-										<MessageSquarePlus className="h-3.5 w-3.5 mr-1.5" />
-										Add Note
-									</Button>
+									{canAddNote && (
+										<Button
+											variant="ghost"
+											size="sm"
+											onClick={() => setAddNoteOpen(true)}
+										>
+											<MessageSquarePlus className="h-3.5 w-3.5 mr-1.5" />
+											Add Note
+										</Button>
+									)}
 								</div>
 							</CardHeader>
 							<CardContent>
@@ -668,7 +701,7 @@ export default function HrMemberProfile() {
 											className="flex items-center justify-between p-3 rounded-lg border cursor-pointer hover:bg-muted/50 transition-colors"
 											onClick={() =>
 												navigate(
-													`/corporations/${corporationId}/hr/applications/${app.id}`,
+													`/corporations/${corporationId}/applications/${app.id}`,
 												)
 											}
 										>
@@ -705,7 +738,7 @@ export default function HrMemberProfile() {
 			</div>
 
 			{/* Add HR Note Dialog */}
-			{isAdmin && authUserId && (
+			{canAddNote && authUserId && (
 				<AddHRNoteDialog
 					open={addNoteOpen}
 					onOpenChange={setAddNoteOpen}

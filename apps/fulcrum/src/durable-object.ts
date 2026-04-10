@@ -58,6 +58,19 @@ export class FulcrumDO extends DurableObject<Env, {}> implements Fulcrum {
 		const { characterId, requestorUserId, requestorCorporationId, requestSource, applicationId } = options
 		const db = this.getDb()
 
+		// Prevent duplicate concurrent reports for the same character across all requestors.
+		// Reuse the existing in-progress report so HR and auditors share a single workflow state.
+		const existingInProgress = await queries.getInProgressReportForCharacter(db, characterId)
+		if (existingInProgress) {
+			this.logger.info('Reusing existing in-progress report', {
+				characterId,
+				reportId: existingInProgress.id,
+				status: existingInProgress.status,
+				requestorUserId,
+			})
+			return existingInProgress.id
+		}
+
 		// Generate unique report ID
 		const reportId = crypto.randomUUID()
 
@@ -106,9 +119,12 @@ export class FulcrumDO extends DurableObject<Env, {}> implements Fulcrum {
 			characterId,
 		}
 		try {
-			await this.env.CHARACTER_REPORT_WORKFLOW.create({
+			const workflowInstance = await this.env.CHARACTER_REPORT_WORKFLOW.create({
 				id: `${characterId}-${reportId}-${Date.now()}`,
 				params: workflowParams,
+			})
+			await queries.updateReportStatus(db, reportId, 'pending', {
+				workflowInstanceId: workflowInstance.id,
 			})
 		} catch (error) {
 			// Mark report as failed so it doesn't stay stuck as "pending"
@@ -117,7 +133,6 @@ export class FulcrumDO extends DurableObject<Env, {}> implements Fulcrum {
 				characterId,
 				error: error instanceof Error ? error.message : String(error),
 			})
-			const db = this.getDb()
 			await queries.updateReportStatus(db, reportId, 'failed', {
 				errorMessage: `Failed to start workflow: ${error instanceof Error ? error.message : String(error)}`,
 			})

@@ -69,9 +69,12 @@ export async function handleCharacterReportsQueue(
 				characterId,
 			}
 
-			await env.CHARACTER_REPORT_WORKFLOW.create({
+			const workflowInstance = await env.CHARACTER_REPORT_WORKFLOW.create({
 				id: `${characterId}-${reportId}-${Date.now()}`,
 				params: workflowParams,
+			})
+			await queries.updateReportStatus(db, reportId, 'pending', {
+				workflowInstanceId: workflowInstance.id,
 			})
 
 			queueLogger.info('Workflow started', {
