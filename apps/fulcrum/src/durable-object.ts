@@ -119,9 +119,12 @@ export class FulcrumDO extends DurableObject<Env, {}> implements Fulcrum {
 			characterId,
 		}
 		try {
-			await this.env.CHARACTER_REPORT_WORKFLOW.create({
+			const workflowInstance = await this.env.CHARACTER_REPORT_WORKFLOW.create({
 				id: `${characterId}-${reportId}-${Date.now()}`,
 				params: workflowParams,
+			})
+			await queries.updateReportStatus(db, reportId, 'pending', {
+				workflowInstanceId: workflowInstance.id,
 			})
 		} catch (error) {
 			// Mark report as failed so it doesn't stay stuck as "pending"
@@ -130,7 +133,6 @@ export class FulcrumDO extends DurableObject<Env, {}> implements Fulcrum {
 				characterId,
 				error: error instanceof Error ? error.message : String(error),
 			})
-			const db = this.getDb()
 			await queries.updateReportStatus(db, reportId, 'failed', {
 				errorMessage: `Failed to start workflow: ${error instanceof Error ? error.message : String(error)}`,
 			})

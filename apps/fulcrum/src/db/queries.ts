@@ -128,6 +128,22 @@ export async function getInProgressReportForCharacter(
 	})
 }
 
+// Get stale in-progress reports (pending/processing older than cutoff)
+export async function getStaleInProgressReports(
+	db: DbClient,
+	cutoff: Date,
+	limit = 200,
+) {
+	return await db.query.characterReports.findMany({
+		where: and(
+			inArray(characterReports.status, ['pending', 'processing']),
+			lt(characterReports.updatedAt, cutoff),
+		),
+		orderBy: (reports, { asc }) => [asc(reports.updatedAt)],
+		limit,
+	})
+}
+
 // Get reports with filters
 export async function listReports(
 	db: DbClient,
