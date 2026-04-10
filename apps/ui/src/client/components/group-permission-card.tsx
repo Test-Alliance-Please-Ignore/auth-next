@@ -21,12 +21,23 @@ export function GroupPermissionCard({
 }: GroupPermissionCardProps) {
 	const isGlobalPermission = !!permission.permission
 	const isCustomPermission = !!permission.customUrn
+	const hasDanglingGlobalReference = !permission.permission && !!permission.permissionId && !permission.customUrn
 
 	// Resolve display values
-	const urn = isGlobalPermission ? permission.permission?.urn : permission.customUrn
-	const name = isGlobalPermission ? permission.permission?.name : permission.customName
+	const urn = isGlobalPermission
+		? permission.permission?.urn
+		: hasDanglingGlobalReference
+			? `missing:${permission.permissionId}`
+			: permission.customUrn
+	const name = isGlobalPermission
+		? permission.permission?.name
+		: hasDanglingGlobalReference
+			? 'Missing Global Permission'
+			: permission.customName
 	const description = isGlobalPermission
 		? permission.permission?.description
+		: hasDanglingGlobalReference
+			? 'This attachment references a global permission that could not be resolved.'
 		: permission.customDescription
 
 	return (
@@ -46,6 +57,11 @@ export function GroupPermissionCard({
 						{isCustomPermission && (
 							<Badge variant="secondary" className="text-xs">
 								Custom
+							</Badge>
+						)}
+						{hasDanglingGlobalReference && (
+							<Badge variant="destructive" className="text-xs">
+								Missing
 							</Badge>
 						)}
 						{isGlobalPermission && permission.permission?.category && (
