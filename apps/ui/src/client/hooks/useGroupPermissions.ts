@@ -96,7 +96,13 @@ export function useAttachPermission() {
 				groupPermissionKeys.list(variables.groupId),
 				(old) => {
 					if (!old) return [newGroupPermission]
-					return [...old, newGroupPermission]
+					const existingIndex = old.findIndex((permission) => permission.id === newGroupPermission.id)
+					if (existingIndex === -1) {
+						return [...old, newGroupPermission]
+					}
+					return old.map((permission) =>
+						permission.id === newGroupPermission.id ? newGroupPermission : permission
+					)
 				}
 			)
 		},

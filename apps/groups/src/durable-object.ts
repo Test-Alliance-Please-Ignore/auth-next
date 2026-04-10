@@ -2432,7 +2432,19 @@ export class GroupsDO extends DurableObject<Env> implements Groups {
 		})
 
 		if (existing) {
-			throw new Error('Permission already attached to this group')
+			const creatorNames = await bulkFindMainCharactersByUserIds([existing.createdBy], this.db)
+			return {
+				...this.mapGroupPermission(existing),
+				createdByName: creatorNames.get(existing.createdBy),
+				permission: {
+					...this.mapPermission(perm),
+					category: perm.category ? this.mapPermissionCategory(perm.category) : null,
+				},
+				group: {
+					id: group.id,
+					name: group.name,
+				},
+			}
 		}
 
 		const [permission] = await this.db
