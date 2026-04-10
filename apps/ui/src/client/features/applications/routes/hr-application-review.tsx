@@ -507,17 +507,19 @@ export default function HrApplicationReview() {
 			</Tabs>
 
 			{/* HR Notes Dialogs */}
+			{(user?.is_admin || permission?.hasPermission) && (
+				<AddHRNoteDialog
+					open={addNoteDialogOpen}
+					onOpenChange={setAddNoteDialogOpen}
+					subjectUserId={application.userId}
+					subjectCharacterId={application.characterId}
+					subjectCharacterName={application.characterName}
+					onSuccess={handleNoteDialogSuccess}
+				/>
+			)}
+
 			{user?.is_admin && (
 				<>
-					<AddHRNoteDialog
-						open={addNoteDialogOpen}
-						onOpenChange={setAddNoteDialogOpen}
-						subjectUserId={application.userId}
-						subjectCharacterId={application.characterId}
-						subjectCharacterName={application.characterName}
-						onSuccess={handleNoteDialogSuccess}
-					/>
-
 					<AddHRNoteDialog
 						open={editNoteDialogOpen}
 						onOpenChange={setEditNoteDialogOpen}
