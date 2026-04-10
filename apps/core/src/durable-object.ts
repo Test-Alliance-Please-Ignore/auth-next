@@ -367,12 +367,28 @@ export class CoreDO extends DurableObject<Env> implements Core {
 		}
 
 		const userIds = candidates.map((candidate) => candidate.id)
+		const activeCharacterRows = await this.getDb().query.userCharacters.findMany({
+			where: and(
+				inArray(userCharacters.userId, userIds),
+				eq(userCharacters.isDeleted, false)
+			),
+			columns: {
+				userId: true,
+			},
+		})
+		const usersWithActiveCharacters = new Set(activeCharacterRows.map((row) => row.userId))
+		const filteredUserIds = userIds.filter((userId) => usersWithActiveCharacters.has(userId))
+
+		if (filteredUserIds.length === 0) {
+			return []
+		}
+
 		await this.getDb()
 			.update(users)
 			.set({ lastRefreshWorkflowAttempt: new Date() })
-			.where(inArray(users.id, userIds))
+			.where(inArray(users.id, filteredUserIds))
 
-		return userIds
+		return filteredUserIds
 	}
 
 	/**

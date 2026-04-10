@@ -66,6 +66,18 @@ export async function updateCharacterPublicInfo(
 			/character .* has been deleted/i.test(errorMessage)
 
 		if (isDeletedCharacterError) {
+			await ctx.db
+				.update(userCharacters)
+				.set({
+					isDeleted: true,
+					updatedAt: new Date(),
+				})
+				.where(eq(userCharacters.characterId, characterId))
+
+			logger.info('[Workflow] Character marked as deleted during public info refresh', {
+				characterId,
+			})
+
 			return {
 				characterId: characterId,
 				characterName: '',
