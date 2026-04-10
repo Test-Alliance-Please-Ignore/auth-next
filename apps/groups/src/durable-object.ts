@@ -2526,36 +2526,56 @@ export class GroupsDO extends DurableObject<Env> implements Groups {
 
 		const groupPerms = await this.db.query.groupPermissions.findMany({
 			where: eq(groupPermissions.groupId, groupId),
-			with: {
-				permission: {
-					with: {
-						category: true,
-					},
-				},
-				group: true,
-			},
 			orderBy: (groupPermissions, { desc }) => [desc(groupPermissions.createdAt)],
 		})
+
+		const group = await this.db.query.groups.findFirst({
+			where: eq(groups.id, groupId),
+		})
+		if (!group) {
+			throw new Error('Group not found')
+		}
+
+		const permissionIds = [
+			...new Set(
+				groupPerms
+					.map((gp) => gp.permissionId)
+					.filter((id): id is string => typeof id === 'string' && id.length > 0)
+			),
+		]
+		const permissionRows =
+			permissionIds.length > 0
+				? await this.db.query.permissions.findMany({
+						where: inArray(permissions.id, permissionIds),
+						with: {
+							category: true,
+						},
+					})
+				: []
+		const permissionById = new Map(permissionRows.map((permission) => [permission.id, permission]))
 
 		const creatorIds = [...new Set(groupPerms.map((gp) => gp.createdBy))]
 		const creatorNames = await bulkFindMainCharactersByUserIds(creatorIds, this.db)
 
-		return groupPerms.map((gp) => ({
-			...this.mapGroupPermission(gp),
-			createdByName: creatorNames.get(gp.createdBy),
-			permission: gp.permission
-				? {
-						...this.mapPermission(gp.permission),
-						category: gp.permission.category
-							? this.mapPermissionCategory(gp.permission.category)
-							: null,
-					}
-				: null,
-			group: {
-				id: gp.group.id,
-				name: gp.group.name,
-			},
-		}))
+		return groupPerms.map((gp) => {
+			const permissionRow = gp.permissionId ? permissionById.get(gp.permissionId) : undefined
+			return {
+				...this.mapGroupPermission(gp),
+				createdByName: creatorNames.get(gp.createdBy),
+				permission: permissionRow
+					? {
+							...this.mapPermission(permissionRow),
+							category: permissionRow.category
+								? this.mapPermissionCategory(permissionRow.category)
+								: null,
+						}
+					: null,
+				group: {
+					id: group.id,
+					name: group.name,
+				},
+			}
+		})
 	}
 
 	async updateGroupPermission(
