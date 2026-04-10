@@ -1079,6 +1079,12 @@ export interface CreateBroadcastRequest {
 	scheduledFor?: string
 }
 
+export interface UpdateBroadcastRequest {
+	title?: string
+	content?: Record<string, unknown>
+	scheduledFor?: string | null
+}
+
 export interface SendBroadcastResponse {
 	broadcast: Broadcast
 	delivery: {
@@ -2344,6 +2350,10 @@ export class ApiClient {
 
 	async createBroadcast(data: CreateBroadcastRequest): Promise<Broadcast> {
 		return this.post('/broadcasts', data)
+	}
+
+	async updateBroadcast(id: string, data: UpdateBroadcastRequest): Promise<Broadcast> {
+		return this.patch(`/broadcasts/${id}`, data)
 	}
 
 	async sendBroadcast(id: string): Promise<SendBroadcastResponse> {

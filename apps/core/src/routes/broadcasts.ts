@@ -753,6 +753,49 @@ broadcasts.post('/', async (c) => {
 })
 
 /**
+ * Update a draft broadcast
+ * PATCH /api/broadcasts/:id
+ */
+broadcasts.patch('/:id', async (c) => {
+	const user = c.get('user')!
+	const broadcastId = c.req.param('id')
+	const data = await c.req.json()
+
+	const broadcastsStub = getStub<Broadcasts>(c.env.BROADCASTS, 'default')
+	const broadcast = await broadcastsStub.getBroadcast(broadcastId, user.id)
+
+	if (!broadcast) {
+		return c.json({ error: 'Broadcast not found' }, 404)
+	}
+
+	if (broadcast.status !== 'draft') {
+		return c.json({ error: 'Only draft broadcasts can be edited' }, 409)
+	}
+
+	const allowed = user.is_admin
+		? true
+		: canAccessBroadcastTargetByAction(
+				broadcast.target,
+				'send',
+				await getUserBroadcastPermissionContext(c.env, user.id)
+			)
+
+	if (!allowed) {
+		return c.json({ error: 'Permission denied' }, 403)
+	}
+
+	try {
+		const updated = await broadcastsStub.updateBroadcast(broadcastId, data, user.id)
+		return c.json(updated)
+	} catch (error) {
+		if (error instanceof Error) {
+			return c.json({ error: error.message }, 400)
+		}
+		throw error
+	}
+})
+
+/**
  * Send a broadcast immediately
  * POST /api/broadcasts/:id/send
  */

@@ -20,6 +20,7 @@ import type {
 	CreateBroadcastTargetRequest,
 	CreateBroadcastTemplateRequest,
 	SendBroadcastResult,
+	UpdateBroadcastRequest,
 	UpdateBroadcastTargetRequest,
 	UpdateBroadcastTemplateRequest,
 } from '@repo/broadcasts'
@@ -623,6 +624,58 @@ export class BroadcastsDO extends DurableObject<Env> implements Broadcasts {
 					createdAt: delivery.createdAt.toISOString(),
 				},
 			}
+		}
+	}
+
+	async updateBroadcast(
+		broadcastId: string,
+		data: UpdateBroadcastRequest,
+		userId: string
+	): Promise<Broadcast> {
+		const existing = await this.db.query.broadcasts.findFirst({
+			where: eq(broadcasts.id, broadcastId),
+		})
+
+		if (!existing) {
+			throw new Error('Broadcast not found')
+		}
+
+		if (existing.status !== 'draft') {
+			throw new Error('Only draft broadcasts can be edited')
+		}
+
+		const nextScheduledFor =
+			data.scheduledFor !== undefined
+				? data.scheduledFor
+					? new Date(data.scheduledFor)
+					: null
+				: existing.scheduledFor
+		const nextStatus: BroadcastStatus = nextScheduledFor ? 'scheduled' : 'draft'
+
+		const [updated] = await this.db
+			.update(broadcasts)
+			.set({
+				title: data.title ?? existing.title,
+				content: data.content ?? existing.content,
+				scheduledFor: nextScheduledFor,
+				status: nextStatus,
+				errorMessage: null,
+				updatedAt: new Date(),
+			})
+			.where(eq(broadcasts.id, broadcastId))
+			.returning()
+
+		if (!updated) {
+			throw new Error('Failed to update broadcast')
+		}
+
+		return {
+			...updated,
+			content: updated.content as Record<string, unknown>,
+			scheduledFor: updated.scheduledFor ? updated.scheduledFor.toISOString() : null,
+			sentAt: updated.sentAt ? updated.sentAt.toISOString() : null,
+			createdAt: updated.createdAt.toISOString(),
+			updatedAt: updated.updatedAt.toISOString(),
 		}
 	}
 
