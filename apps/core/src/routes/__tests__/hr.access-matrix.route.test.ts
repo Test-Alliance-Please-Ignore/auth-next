@@ -47,6 +47,26 @@ function makeHrStub() {
 		getUserHrCorporations: vi.fn().mockResolvedValue([]),
 		checkPermission: vi.fn().mockResolvedValue(false),
 		listApplications: vi.fn().mockResolvedValue([]),
+		getApplication: vi.fn().mockResolvedValue({
+			id: 'app-1',
+			userId: 'target-user-1',
+			characterId: '2001',
+			characterName: 'Target Pilot',
+			corporationId: '1001',
+			corporationName: 'Alpha Corp',
+			applicationText: 'Test application',
+			status: 'pending',
+			reviewedBy: null,
+			reviewedAt: null,
+			reviewNotes: null,
+			altCharacterIds: [],
+			recommendations: [],
+			recommendationCount: 0,
+			createdAt: new Date().toISOString(),
+			updatedAt: new Date().toISOString(),
+		}),
+		listMessages: vi.fn().mockResolvedValue([]),
+		getMessageCount: vi.fn().mockResolvedValue(0),
 		grantRole: vi.fn().mockResolvedValue({
 			id: 'role-1',
 			corporationId: '1001',
@@ -290,8 +310,83 @@ describe('hr route access matrix', () => {
 		expect(hrStub.listApplications).toHaveBeenCalledWith(
 			expect.objectContaining({ corporationId: '1001' }),
 			'user-1',
-			true
+			{ isAdmin: false, isAuditor: true }
 		)
+	})
+
+	it('allows /applications/:id read for auditor and passes elevated access flag', async () => {
+		getCachedUserPermissionsMock.mockResolvedValue([
+			{
+				permissionId: 'perm-auditor',
+				urn: 'urn:hr:auditor',
+				name: 'HR Auditor',
+				description: null,
+				category: null,
+				groupId: 'g-1',
+				groupName: 'HR',
+				targetType: 'all_members',
+				source: 'global',
+			},
+		] as any)
+
+		const app = createApp({ user: makeUser(), db: dbStub })
+		const res = await app.request('/api/hr/applications/app-1', {}, env)
+
+		expect(res.status).toBe(200)
+		expect(hrStub.getApplication).toHaveBeenCalledWith('app-1', 'user-1', {
+			isAdmin: false,
+			isAuditor: true,
+		})
+	})
+
+	it('allows /applications/:id/messages read for auditor', async () => {
+		getCachedUserPermissionsMock.mockResolvedValue([
+			{
+				permissionId: 'perm-auditor',
+				urn: 'urn:hr:auditor',
+				name: 'HR Auditor',
+				description: null,
+				category: null,
+				groupId: 'g-1',
+				groupName: 'HR',
+				targetType: 'all_members',
+				source: 'global',
+			},
+		] as any)
+
+		const app = createApp({ user: makeUser(), db: dbStub })
+		const res = await app.request('/api/hr/applications/app-1/messages', {}, env)
+
+		expect(res.status).toBe(200)
+		expect(hrStub.listMessages).toHaveBeenCalledWith('app-1', 'user-1', {
+			isAdmin: false,
+			isAuditor: true,
+		})
+	})
+
+	it('allows /applications/:id/messages/count read for auditor', async () => {
+		getCachedUserPermissionsMock.mockResolvedValue([
+			{
+				permissionId: 'perm-auditor',
+				urn: 'urn:hr:auditor',
+				name: 'HR Auditor',
+				description: null,
+				category: null,
+				groupId: 'g-1',
+				groupName: 'HR',
+				targetType: 'all_members',
+				source: 'global',
+			},
+		] as any)
+
+		const app = createApp({ user: makeUser(), db: dbStub })
+		const res = await app.request('/api/hr/applications/app-1/messages/count', {}, env)
+
+		expect(res.status).toBe(200)
+		expect(hrStub.getMessageCount).toHaveBeenCalledWith('app-1', 'user-1', {
+			isAdmin: false,
+			isAuditor: true,
+		})
 	})
 
 	it('denies /audit/users for non-auditor non-admin', async () => {

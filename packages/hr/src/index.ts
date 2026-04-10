@@ -327,6 +327,15 @@ export interface RoleFilters {
 }
 
 /**
+ * Access context for HR read operations.
+ * Keeps admin bypass distinct from auditor permission.
+ */
+export interface HrAccessContext {
+	isAdmin: boolean
+	isAuditor: boolean
+}
+
+/**
  * Public RPC interface for Hr Durable Object
  *
  * All public methods defined here will be available to call via RPC
@@ -367,26 +376,26 @@ export interface Hr extends DurableObject {
 	 * List applications with optional filters
 	 * @param filters - Filter criteria for applications
 	 * @param userId - ID of the requesting user
-	 * @param isAdmin - Whether the requesting user is a site admin
+	 * @param access - Access context for authorization behavior
 	 * @returns Array of applications (filtered by authorization)
 	 */
 	listApplications(
 		filters: ApplicationFilters,
 		userId: string,
-		isAdmin: boolean
+		access: HrAccessContext
 	): Promise<Application[]>
 
 	/**
 	 * Get a single application with recommendations
 	 * @param applicationId - Application ID to retrieve
 	 * @param userId - ID of the requesting user
-	 * @param isAdmin - Whether the requesting user is a site admin
+	 * @param access - Access context for authorization behavior
 	 * @returns Application detail with recommendations
 	 */
 	getApplication(
 		applicationId: string,
 		userId: string,
-		isAdmin: boolean
+		access: HrAccessContext
 	): Promise<ApplicationDetail>
 
 	/**
@@ -520,23 +529,23 @@ export interface Hr extends DurableObject {
 	 * List all messages for an application
 	 * @param applicationId - Application ID to get messages for
 	 * @param userId - ID of the requesting user
-	 * @param isAdmin - Whether the requesting user is a site admin
+	 * @param access - Access context for authorization behavior
 	 * @returns Array of messages ordered by creation time
 	 */
 	listMessages(
 		applicationId: string,
 		userId: string,
-		isAdmin: boolean
+		access: HrAccessContext
 	): Promise<ApplicationMessage[]>
 
 	/**
 	 * Get count of messages for an application (for UI badges)
 	 * @param applicationId - Application ID to get message count for
 	 * @param userId - ID of the requesting user
-	 * @param isAdmin - Whether the requesting user is a site admin
+	 * @param access - Access context for authorization behavior
 	 * @returns Number of messages for the application
 	 */
-	getMessageCount(applicationId: string, userId: string, isAdmin: boolean): Promise<number>
+	getMessageCount(applicationId: string, userId: string, access: HrAccessContext): Promise<number>
 
 	// ==================== Message Template Methods ====================
 

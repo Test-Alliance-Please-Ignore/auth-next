@@ -93,6 +93,7 @@ export class ApplicationService {
 		filters: ApplicationFilters,
 		userId: string,
 		isAdmin: boolean,
+		isAuditor: boolean,
 		userHrCorporations: string[] = [],
 		userHrReviewerCorporations: string[] = []
 	): Promise<Application[]> {
@@ -120,7 +121,11 @@ export class ApplicationService {
 			// User can see: their own applications OR applications for corps they have HR access to
 			const authConditions = [eq(applications.userId, userId)]
 
-			if (userHrCorporations.length > 0) {
+			if (isAuditor) {
+				// Auditors are global viewer-equivalent: read-only active queue visibility
+				const auditorCondition = inArray(applications.status, ['pending', 'under_review'])
+				authConditions.push(auditorCondition)
+			} else if (userHrCorporations.length > 0) {
 				// Viewer-only corps can only see pending/under_review
 				const viewerOnlyCorps = userHrCorporations.filter(
 					(corpId) => !userHrReviewerCorporations.includes(corpId)
@@ -174,6 +179,7 @@ export class ApplicationService {
 		applicationId: string,
 		userId: string,
 		isAdmin: boolean,
+		isAuditor: boolean,
 		userHrCorporations: string[] = [],
 		includeActivityLog = false,
 		userHrReviewerCorporations: string[] = []
@@ -189,7 +195,7 @@ export class ApplicationService {
 
 		// Check authorization
 		const isOwner = application.userId === userId
-		const hasHrAccess = userHrCorporations.includes(application.corporationId)
+		const hasHrAccess = isAuditor || userHrCorporations.includes(application.corporationId)
 		const isReviewerOrAbove = userHrReviewerCorporations.includes(application.corporationId)
 
 		if (!isOwner && !hasHrAccess && !isAdmin) {
