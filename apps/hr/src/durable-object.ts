@@ -99,7 +99,8 @@ export class HrDO extends DurableObject<Env> implements Hr {
 		characterId: string,
 		corporationId: string,
 		applicationText: string,
-		characterName: string
+		characterName: string,
+		altCharacterIds: string[] = []
 	): Promise<Application> {
 		// Check total open applications (max 2 across all corporations)
 		const openCount = await this.applicationService.countOpenApplications(userId)
@@ -120,7 +121,8 @@ export class HrDO extends DurableObject<Env> implements Hr {
 			characterId,
 			characterName,
 			corporationId,
-			applicationText
+			applicationText,
+			altCharacterIds
 		)
 	}
 

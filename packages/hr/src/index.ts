@@ -93,6 +93,7 @@ export interface Application {
  * Application detail with related data
  */
 export interface ApplicationDetail extends Application {
+	altCharacterIds: string[]
 	recommendations: Recommendation[]
 	recommendationCount: number
 	activityLog?: ActivityLogEntry[]
@@ -350,6 +351,7 @@ export interface Hr extends DurableObject {
 	 * @param corporationId - Corporation ID to apply to
 	 * @param applicationText - Application text from the user
 	 * @param characterName - Character name (cached for display)
+	 * @param altCharacterIds - Optional array of alt character IDs
 	 * @returns The created application
 	 */
 	submitApplication(
@@ -357,7 +359,8 @@ export interface Hr extends DurableObject {
 		characterId: string,
 		corporationId: string,
 		applicationText: string,
-		characterName: string
+		characterName: string,
+		altCharacterIds?: string[]
 	): Promise<Application>
 
 	/**

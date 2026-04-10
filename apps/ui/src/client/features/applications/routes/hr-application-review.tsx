@@ -6,6 +6,7 @@
  * Requires HR Viewer role minimum.
  */
 
+import { useQueries } from '@tanstack/react-query'
 import { formatDistanceToNow } from 'date-fns'
 import { ArrowLeft, Briefcase, Lock } from 'lucide-react'
 import { useState } from 'react'
@@ -26,7 +27,10 @@ import { LoadingSpinner } from '@/components/ui/loading'
 import { Separator } from '@/components/ui/separator'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { useAuth } from '@/hooks/useAuth'
+import { useEntityNames } from '@/hooks/useEntityNames'
 import { usePageTitle } from '@/hooks/usePageTitle'
+import { apiClient } from '@/lib/api'
+import { formatSkillPoints } from '@repo/eve-types'
 
 import { useHrPermissionCheck } from '../../hr/hooks'
 import { useCanAccessCorporation } from '../../corporations/hooks'
@@ -95,6 +99,30 @@ export default function HrApplicationReview() {
 
 	// Fetch selected HR note for edit/delete
 	const { data: selectedNote } = useHRNote(selectedNoteId)
+
+	// Resolve alt character names
+	const altCharacterIds = application?.altCharacterIds ?? []
+	const { data: altCharacterNames = {} } = useEntityNames(altCharacterIds, {
+		enabled: altCharacterIds.length > 0,
+	})
+
+	// Fetch total SP for main character + alts
+	const allCharacterIds = application
+		? [application.characterId, ...altCharacterIds]
+		: []
+	const spQueries = useQueries({
+		queries: allCharacterIds.map((charId) => ({
+			queryKey: ['character', charId],
+			queryFn: () => apiClient.getCharacterDetail(charId),
+			enabled: !!application,
+			staleTime: 5 * 60 * 1000,
+		})),
+	})
+	const spByCharacterId: Record<string, number | null> = {}
+	for (let i = 0; i < allCharacterIds.length; i++) {
+		const query = spQueries[i]
+		spByCharacterId[allCharacterIds[i]] = query?.data?.public?.skills?.totalSp ?? null
+	}
 
 	// Set page title
 	usePageTitle(
@@ -289,6 +317,12 @@ export default function HrApplicationReview() {
 					<TabsTrigger value="details" className="flex-1 sm:flex-none">
 						Details
 					</TabsTrigger>
+				<TabsTrigger value="alts" className="flex-1 sm:flex-none">
+						Characters
+						{altCharacterIds.length > 0 && (
+							<span className="ml-1.5 text-xs opacity-70">({altCharacterIds.length})</span>
+						)}
+					</TabsTrigger>
 					<TabsTrigger value="recommendations" className="flex-1 sm:flex-none">
 						Recommendations
 						{recommendations && recommendations.length > 0 && (
@@ -404,6 +438,75 @@ export default function HrApplicationReview() {
 					/>
 				</TabsContent>
 
+				{/* Alt Characters Tab */}
+				<TabsContent value="alts" className="space-y-6">
+					{/* Main Character */}
+					<Card>
+						<CardHeader>
+							<CardTitle>Main Character</CardTitle>
+							<CardDescription>
+								The primary character for this application
+							</CardDescription>
+						</CardHeader>
+						<CardContent>
+							<div className="flex items-center gap-3 rounded-md border p-3">
+								<MemberAvatar
+									characterId={application.characterId}
+									characterName={application.characterName}
+									size="md"
+								/>
+								<div>
+									<p className="text-sm font-medium">
+										{application.characterName}
+									</p>
+									<p className="text-xs text-muted-foreground">
+										{spByCharacterId[application.characterId] != null
+											? formatSkillPoints(spByCharacterId[application.characterId]!)
+											: 'SP unavailable'}
+									</p>
+								</div>
+							</div>
+						</CardContent>
+					</Card>
+
+					{/* Alt Characters */}
+					<Card>
+						<CardHeader>
+							<CardTitle>Alt Characters</CardTitle>
+							<CardDescription>
+								Additional characters the applicant is applying with.
+							</CardDescription>
+						</CardHeader>
+						<CardContent>
+							{altCharacterIds.length > 0 ? (
+								<div className="space-y-3">
+									{altCharacterIds.map((charId) => (
+										<div key={charId} className="flex items-center gap-3 rounded-md border p-3">
+											<MemberAvatar
+												characterId={charId}
+												characterName={altCharacterNames[charId] ?? charId}
+												size="md"
+											/>
+											<div className="flex-1 min-w-0">
+												<p className="text-sm font-medium">
+													{altCharacterNames[charId] ?? charId}
+												</p>
+												<p className="text-xs text-muted-foreground">
+													{spByCharacterId[charId] != null
+														? formatSkillPoints(spByCharacterId[charId]!)
+														: 'SP unavailable'}
+												</p>
+											</div>
+										</div>
+									))}
+								</div>
+							) : (
+								<p className="text-sm text-muted-foreground">No alt characters were included with this application.</p>
+							)}
+						</CardContent>
+					</Card>
+				</TabsContent>
+
 				{/* Recommendations Tab */}
 				<TabsContent value="recommendations">
 					<Card>
@@ -499,6 +602,8 @@ export default function HrApplicationReview() {
 									userId={application.userId}
 									corporationId={application.corporationId}
 									applicationId={applicationId!}
+									mainCharacterId={application.characterId}
+									altCharacterIds={altCharacterIds}
 								/>
 							</CardContent>
 						</Card>

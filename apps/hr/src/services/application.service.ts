@@ -1,7 +1,7 @@
 import { and, desc, eq, inArray, or, sql } from '@repo/db-utils'
 import { isApplicationStatus } from '@repo/hr'
 
-import { applicationActivityLog, applicationRecommendations, applications } from '../db/schema'
+import { applicationActivityLog, applicationAlts, applicationRecommendations, applications } from '../db/schema'
 
 import type {
 	Application,
@@ -43,7 +43,8 @@ export class ApplicationService {
 		characterId: string,
 		characterName: string,
 		corporationId: string,
-		applicationText: string
+		applicationText: string,
+		altCharacterIds: string[] = []
 	): Promise<Application> {
 		// Create the application
 		const [application] = await this.ctx.db
@@ -60,6 +61,16 @@ export class ApplicationService {
 
 		if (!application) {
 			throw new Error('Failed to create application')
+		}
+
+		// Insert alt characters if provided
+		if (altCharacterIds.length > 0) {
+			await this.ctx.db.insert(applicationAlts).values(
+				altCharacterIds.map((altCharId) => ({
+					applicationId: application.id,
+					characterId: altCharId,
+				}))
+			)
 		}
 
 		// Log the submission
@@ -199,6 +210,11 @@ export class ApplicationService {
 			orderBy: [desc(applicationRecommendations.createdAt)],
 		})
 
+		// Get alt characters
+		const alts = await this.ctx.db.query.applicationAlts.findMany({
+			where: eq(applicationAlts.applicationId, applicationId),
+		})
+
 		// Get activity log if requested (HR, admin, or application owner)
 		let activityLog: (typeof applicationActivityLog.$inferSelect)[] | undefined
 
@@ -211,6 +227,7 @@ export class ApplicationService {
 
 		return {
 			...this.mapToApplication(application),
+			altCharacterIds: alts.map((alt) => alt.characterId),
 			recommendations: recommendations.map((rec) => ({
 				id: rec.id,
 				applicationId: rec.applicationId,

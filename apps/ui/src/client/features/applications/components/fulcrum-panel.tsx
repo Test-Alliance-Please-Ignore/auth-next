@@ -14,6 +14,7 @@ import { MemberAvatar } from '@/components/member-avatar'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { LoadingSpinner } from '@/components/ui/loading'
+import { Separator } from '@/components/ui/separator'
 
 import { useApplicationFulcrum, useRequestFulcrumReport } from '../hooks'
 
@@ -172,9 +173,11 @@ interface FulcrumPanelProps {
 	userId: string
 	corporationId: string
 	applicationId?: string
+	mainCharacterId?: string
+	altCharacterIds?: string[]
 }
 
-export function FulcrumPanel({ userId, corporationId, applicationId }: FulcrumPanelProps) {
+export function FulcrumPanel({ userId, corporationId, applicationId, mainCharacterId, altCharacterIds = [] }: FulcrumPanelProps) {
 	const { corporationId: routeCorporationId } = useParams<{ corporationId: string }>()
 	const navigate = useNavigate()
 	const { data: characters, isLoading, error } = useApplicationFulcrum(userId, corporationId)
@@ -241,6 +244,33 @@ export function FulcrumPanel({ userId, corporationId, applicationId }: FulcrumPa
 		}
 	}
 
+	// Split characters into application chars (main + alts) and other chars
+	const applicationCharacterIds = mainCharacterId
+		? new Set([mainCharacterId, ...altCharacterIds])
+		: null
+	const applicationCharacters = applicationCharacterIds
+		? characters.filter((c) => applicationCharacterIds.has(c.characterId))
+		: []
+	const otherCharacters = applicationCharacterIds
+		? characters.filter((c) => !applicationCharacterIds.has(c.characterId))
+		: characters
+
+	const renderCharacterCards = (chars: FulcrumCharacterData[]) =>
+		chars.map((character) => (
+			<CharacterReportCard
+				key={character.characterId}
+				character={character}
+				onRequest={handleRequest}
+				onViewReport={handleViewReport}
+				isRequesting={requestReport.isPending}
+				requestingCharacterId={
+					requestReport.isPending
+						? (requestReport.variables?.characterId ?? null)
+						: null
+				}
+			/>
+		))
+
 	return (
 		<div className="space-y-3">
 			{requestableCharacters.length > 1 && (
@@ -260,20 +290,26 @@ export function FulcrumPanel({ userId, corporationId, applicationId }: FulcrumPa
 					</Button>
 				</div>
 			)}
-			{characters.map((character) => (
-				<CharacterReportCard
-					key={character.characterId}
-					character={character}
-					onRequest={handleRequest}
-					onViewReport={handleViewReport}
-					isRequesting={requestReport.isPending}
-					requestingCharacterId={
-						requestReport.isPending
-							? (requestReport.variables?.characterId ?? null)
-							: null
-					}
-				/>
-			))}
+
+			{applicationCharacters.length > 0 && (
+				<>
+					<h4 className="text-sm font-medium text-muted-foreground">Application Characters</h4>
+					{renderCharacterCards(applicationCharacters)}
+				</>
+			)}
+
+			{applicationCharacters.length > 0 && otherCharacters.length > 0 && (
+				<Separator />
+			)}
+
+			{otherCharacters.length > 0 && (
+				<>
+					{applicationCharacters.length > 0 && (
+						<h4 className="text-sm font-medium text-muted-foreground">Other Characters</h4>
+					)}
+					{renderCharacterCards(otherCharacters)}
+				</>
+			)}
 		</div>
 	)
 }

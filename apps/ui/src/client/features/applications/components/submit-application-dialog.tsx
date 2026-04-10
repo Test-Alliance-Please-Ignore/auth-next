@@ -10,6 +10,7 @@ import { useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 
 import { Card, CardContent } from '@/components/ui/card'
+import { Checkbox } from '@/components/ui/checkbox'
 import {
 	Dialog,
 	DialogContent,
@@ -76,6 +77,7 @@ export function SubmitApplicationDialog({
 
 	// Form state
 	const [selectedCharacterId, setSelectedCharacterId] = useState<string>('')
+	const [selectedAltIds, setSelectedAltIds] = useState<Set<string>>(new Set())
 	const [applicationText, setApplicationText] = useState('')
 
 	// Derived state
@@ -89,6 +91,23 @@ export function SubmitApplicationDialog({
 	// Get user's characters
 	const characters = user?.characters || []
 
+	// Alt characters = all characters except the selected main
+	const altCharacters = characters.filter(
+		(char: { characterId: string }) => char.characterId !== selectedCharacterId
+	)
+
+	const toggleAlt = (characterId: string) => {
+		setSelectedAltIds((prev) => {
+			const next = new Set(prev)
+			if (next.has(characterId)) {
+				next.delete(characterId)
+			} else {
+				next.add(characterId)
+			}
+			return next
+		})
+	}
+
 	// Handlers
 	const handleSubmit = async () => {
 		if (!isFormValid) return
@@ -99,15 +118,15 @@ export function SubmitApplicationDialog({
 				corporationId,
 				characterId: selectedCharacterId,
 				applicationText,
+				altCharacterIds: selectedAltIds.size > 0 ? [...selectedAltIds] : undefined,
 			})
 
 			onOpenChange(false)
 
 			// Reset form
 			setSelectedCharacterId('')
+			setSelectedAltIds(new Set())
 			setApplicationText('')
-
-			// Navigate to My Applications page
 			navigate('/my-applications')
 		} catch (error) {
 			showError(error instanceof Error ? error.message : 'Failed to submit application')
@@ -119,6 +138,7 @@ export function SubmitApplicationDialog({
 		// Reset form after dialog closes
 		setTimeout(() => {
 			setSelectedCharacterId('')
+			setSelectedAltIds(new Set())
 			setApplicationText('')
 			clearMessage()
 		}, 200)
@@ -144,15 +164,23 @@ export function SubmitApplicationDialog({
 				)}
 
 				<div className="space-y-4 py-4">
-					{/* Character Selection */}
+					{/* Main Character Selection */}
 					<div className="space-y-2">
 						<Label htmlFor="character" className="text-sm font-medium">
-							Character <span className="text-destructive">*</span>
+							Main Character <span className="text-destructive">*</span>
 						</Label>
 						<Select
 							inputId="character"
 							value={selectedCharacterId}
-							onValueChange={setSelectedCharacterId}
+							onValueChange={(value) => {
+								setSelectedCharacterId(value)
+								// Remove the new main from alts if it was selected
+								setSelectedAltIds((prev) => {
+									const next = new Set(prev)
+									next.delete(value)
+									return next
+								})
+							}}
 							options={characters.map(
 								(char: { characterId: string; characterName: string; hasValidToken: boolean }) => ({ value: char.characterId,
 									label: `${char.characterName}${!char.hasValidToken ? ' (No valid token)' : ''}`,
@@ -166,6 +194,35 @@ export function SubmitApplicationDialog({
 							</p>
 						)}
 					</div>
+
+					{/* Alt Characters */}
+					{selectedCharacterId && altCharacters.length > 0 && (
+						<div className="space-y-2">
+							<Label className="text-sm font-medium">Alt Characters</Label>
+							<p className="text-xs text-muted-foreground">
+								Select any alt characters you are also applying with.
+							</p>
+							<div className="max-h-40 space-y-2 overflow-y-auto rounded-md border p-3">
+								{altCharacters.map((char: { characterId: string; characterName: string; hasValidToken: boolean }) => (
+									<label
+										key={char.characterId}
+										className="flex items-center gap-2 cursor-pointer"
+									>
+										<Checkbox
+											checked={selectedAltIds.has(char.characterId)}
+											onCheckedChange={() => toggleAlt(char.characterId)}
+										/>
+										<span className="text-sm">
+											{char.characterName}
+											{!char.hasValidToken && (
+												<span className="text-muted-foreground"> (No valid token)</span>
+											)}
+										</span>
+									</label>
+								))}
+							</div>
+						</div>
+					)}
 
 					{/* Application Text */}
 					<div className="space-y-2">

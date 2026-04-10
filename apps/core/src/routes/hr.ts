@@ -241,12 +241,25 @@ async function getHrRoleManagementAccess(
  */
 app.post('/applications', requireAuth(), async (c) => {
 	const user = c.get('user')!
-	const { characterId, corporationId, applicationText } = await c.req.json()
+	const { characterId, corporationId, applicationText, altCharacterIds } = await c.req.json()
 
 	// Validate character ownership
 	const ownsCharacter = user.characters.some((char) => char.characterId === characterId)
 	if (!ownsCharacter) {
 		return c.json({ error: 'Character not found or not owned by you' }, 403)
+	}
+
+	// Validate alt character ownership
+	const validAltIds: string[] = []
+	if (Array.isArray(altCharacterIds)) {
+		for (const altId of altCharacterIds) {
+			if (typeof altId === 'string' && altId !== characterId) {
+				const ownsAlt = user.characters.some((char) => char.characterId === altId)
+				if (ownsAlt) {
+					validAltIds.push(altId)
+				}
+			}
+		}
 	}
 
 	const characterName = getCharacterName(user, characterId)
@@ -258,7 +271,8 @@ app.post('/applications', requireAuth(), async (c) => {
 			characterId,
 			corporationId,
 			applicationText,
-			characterName
+			characterName,
+			validAltIds
 		)
 
 		return c.json(application, 201)
