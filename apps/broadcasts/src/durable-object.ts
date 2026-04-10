@@ -294,6 +294,38 @@ export class BroadcastsDO extends DurableObject<Env> implements Broadcasts {
 	}
 
 	async deleteTemplate(templateId: string, userId: string): Promise<void> {
+		const template = await this.db.query.broadcastTemplates.findFirst({
+			where: eq(broadcastTemplates.id, templateId),
+		})
+
+		if (!template) {
+			return
+		}
+
+		// Evacuate template-backed draft broadcasts to custom message drafts before delete.
+		// This prevents drafts from depending on a template that no longer exists.
+		const draftBroadcastsUsingTemplate = await this.db.query.broadcasts.findMany({
+			where: and(eq(broadcasts.templateId, templateId), eq(broadcasts.status, 'draft')),
+		})
+
+		await Promise.all(
+			draftBroadcastsUsingTemplate.map((broadcast) => {
+				const existingContent = broadcast.content as Record<string, unknown>
+				const renderedMessage = this.renderTemplate(template.messageTemplate, existingContent)
+				return this.db
+					.update(broadcasts)
+					.set({
+						templateId: null,
+						content: {
+							...existingContent,
+							message: renderedMessage,
+						},
+						updatedAt: new Date(),
+					})
+					.where(eq(broadcasts.id, broadcast.id))
+			})
+		)
+
 		await this.db.delete(broadcastTemplates).where(eq(broadcastTemplates.id, templateId))
 	}
 
@@ -655,7 +687,6 @@ export class BroadcastsDO extends DurableObject<Env> implements Broadcasts {
 		const [updated] = await this.db
 			.update(broadcasts)
 			.set({
-				title: data.title ?? existing.title,
 				content: data.content ?? existing.content,
 				scheduledFor: nextScheduledFor,
 				status: nextStatus,

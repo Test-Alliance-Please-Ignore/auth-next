@@ -1080,7 +1080,6 @@ export interface CreateBroadcastRequest {
 }
 
 export interface UpdateBroadcastRequest {
-	title?: string
 	content?: Record<string, unknown>
 	scheduledFor?: string | null
 }
