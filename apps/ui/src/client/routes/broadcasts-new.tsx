@@ -209,6 +209,11 @@ function buildTemplatePreviewSegments(
 	return segments
 }
 
+function autoResizeTextarea(element: HTMLTextAreaElement): void {
+	element.style.height = '0px'
+	element.style.height = `${element.scrollHeight}px`
+}
+
 export default function NewBroadcastPage() {
 	const [searchParams] = useSearchParams()
 	const draftId = searchParams.get('draftId') ?? ''
@@ -311,6 +316,16 @@ export default function NewBroadcastPage() {
 			setTemplateFields(initialFields)
 		}
 	}
+
+	useEffect(() => {
+		if (!selectedTemplate) return
+		for (const field of selectedTemplate.fieldSchema) {
+			const element = document.getElementById(field.name)
+			if (element instanceof HTMLTextAreaElement) {
+				autoResizeTextarea(element)
+			}
+		}
+	}, [selectedTemplate, templateFields])
 
 	const buildBroadcastData = () => {
 		if (!selectedTarget) throw new Error('No target selected')
@@ -491,6 +506,7 @@ export default function NewBroadcastPage() {
 									inputId="target"
 									value={selectedTargetId}
 									onValueChange={setSelectedTargetId}
+									searchable
 									options={
 										targets?.map((target) => ({
 											value: target.id,
@@ -636,34 +652,21 @@ export default function NewBroadcastPage() {
 													{field.label}
 													{field.required && ' *'}
 												</Label>
-												{field.type === 'text' &&
-												field.name.toLowerCase() !== 'message' ? (
-													<Input
-														id={field.name}
-														value={templateFields[field.name] || ''}
-														onChange={(e) =>
-															setTemplateFields({
-																...templateFields,
-																[field.name]: e.target.value,
-															})
-														}
-														required={field.required}
-													/>
-												) : (
-													<Textarea
-														id={field.name}
-														value={templateFields[field.name] || ''}
-														onChange={(e) =>
-															setTemplateFields({
-																...templateFields,
-																[field.name]: e.target.value,
-															})
-														}
-														rows={6}
-														required={field.required}
-														className="resize-none"
-													/>
-												)}
+												<Textarea
+													id={field.name}
+													value={templateFields[field.name] || ''}
+													onChange={(e) => {
+														autoResizeTextarea(e.currentTarget)
+														setTemplateFields({
+															...templateFields,
+															[field.name]: e.target.value,
+														})
+													}}
+													rows={1}
+													required={field.required}
+													className="resize-none overflow-hidden"
+													style={{ minHeight: '2.5rem' }}
+												/>
 											</div>
 										))}
 									</div>
