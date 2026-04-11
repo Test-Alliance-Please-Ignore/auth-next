@@ -22,6 +22,84 @@ import type { App } from '../context'
 const BROADCAST_PERMISSION_CATEGORY_NAME = 'broadcasts'
 const BROADCAST_SEGMENT_PATTERN = /^[a-z0-9_-]+$/
 const BROADCAST_GLOBAL_MANAGE_URN = 'urn:broadcasts:manage'
+const BROADCAST_TEMPLATE_FIELD_NAME_PATTERN = /^[a-zA-Z0-9_-]+$/
+
+function extractTemplateTagBlocks(messageTemplate: string): string[] {
+	return [...messageTemplate.matchAll(/\{\{([^}]*)\}\}/g)].map((match) => (match[1] ?? '').trim())
+}
+
+function getInvalidTemplateTagNames(messageTemplate: string): string[] {
+	const tags = extractTemplateTagBlocks(messageTemplate)
+	const invalid = tags.filter((tag) => !BROADCAST_TEMPLATE_FIELD_NAME_PATTERN.test(tag))
+	return [...new Set(invalid)]
+}
+
+function getTemplateFieldSchemaNames(fieldSchema: unknown): string[] {
+	if (!Array.isArray(fieldSchema)) return []
+	return fieldSchema
+		.map((field) => (typeof field === 'object' && field !== null ? (field as { name?: unknown }).name : null))
+		.filter((name): name is string => typeof name === 'string')
+}
+
+function toTemplateFieldLabel(name: string): string {
+	const normalized = name
+		.replace(/[_-]+/g, ' ')
+		.replace(/([a-z0-9])([A-Z])/g, '$1 $2')
+		.replace(/\s+/g, ' ')
+		.trim()
+	if (!normalized) return name
+	return normalized
+		.split(' ')
+		.filter(Boolean)
+		.map((part) => part.charAt(0).toUpperCase() + part.slice(1).toLowerCase())
+		.join(' ')
+}
+
+function deriveTemplateFieldSchema(
+	messageTemplate: string,
+	existingFieldSchema: unknown
+): Array<{
+	name: string
+	label: string
+	type: 'text' | 'textarea'
+	required: boolean
+}> {
+	const tags = [...new Set(extractTemplateTagBlocks(messageTemplate))]
+	const existingByName = new Map<
+		string,
+		{ label?: string; type?: string; required?: boolean }
+	>()
+
+	if (Array.isArray(existingFieldSchema)) {
+		for (const field of existingFieldSchema) {
+			if (!field || typeof field !== 'object') continue
+			const typed = field as { name?: unknown; label?: unknown; type?: unknown; required?: unknown }
+			if (typeof typed.name !== 'string') continue
+			existingByName.set(typed.name, {
+				label: typeof typed.label === 'string' ? typed.label : undefined,
+				type: typeof typed.type === 'string' ? typed.type : undefined,
+				required: typeof typed.required === 'boolean' ? typed.required : undefined,
+			})
+		}
+	}
+
+	return tags.map((name) => {
+		const existing = existingByName.get(name)
+		const type: 'text' | 'textarea' =
+			existing?.type === 'textarea' || existing?.type === 'text'
+				? existing.type
+				: name.toLowerCase() === 'message'
+					? 'textarea'
+					: 'text'
+
+		return {
+			name,
+			label: existing?.label ?? toTemplateFieldLabel(name),
+			type,
+			required: existing?.required ?? true,
+		}
+	})
+}
 
 /**
  * Resolve user's effective permission URNs.
@@ -520,6 +598,18 @@ broadcasts.get('/templates/:id', async (c) => {
 broadcasts.post('/templates', async (c) => {
 	const user = c.get('user')!
 	const data = await c.req.json()
+	if (typeof data.messageTemplate !== 'string') {
+		return c.json({ error: 'messageTemplate is required' }, 400)
+	}
+	const invalidTagNames = getInvalidTemplateTagNames(data.messageTemplate)
+	if (invalidTagNames.length > 0) {
+		return c.json(
+			{
+				error: `Invalid template tag name(s): ${invalidTagNames.join(', ')}. Tag names must be alphanumeric and may include "_" or "-".`,
+			},
+			400
+		)
+	}
 
 	const broadcastsStub = getStub<Broadcasts>(c.env.BROADCASTS, 'default')
 	const target = await broadcastsStub.getTarget(data.targetId, user.id)
@@ -540,7 +630,13 @@ broadcasts.post('/templates', async (c) => {
 		return c.json({ error: 'Permission denied' }, 403)
 	}
 
-	const template = await broadcastsStub.createTemplate(data, user.id)
+	const template = await broadcastsStub.createTemplate(
+		{
+			...data,
+			fieldSchema: deriveTemplateFieldSchema(data.messageTemplate, data.fieldSchema),
+		},
+		user.id
+	)
 
 	return c.json(template, 201)
 })
@@ -580,7 +676,34 @@ broadcasts.patch('/templates/:id', async (c) => {
 		return c.json({ error: 'Permission denied' }, 403)
 	}
 
-	const updated = await broadcastsStub.updateTemplate(templateId, data, user.id)
+	const nextMessageTemplate =
+		typeof data.messageTemplate === 'string' ? data.messageTemplate : template.messageTemplate
+	const invalidTagNames = getInvalidTemplateTagNames(nextMessageTemplate)
+	if (invalidTagNames.length > 0) {
+		return c.json(
+			{
+				error: `Invalid template tag name(s): ${invalidTagNames.join(', ')}. Tag names must be alphanumeric and may include "_" or "-".`,
+			},
+			400
+		)
+	}
+
+	const shouldNormalizeFieldSchema =
+		data.messageTemplate !== undefined || data.fieldSchema !== undefined
+
+	const updated = await broadcastsStub.updateTemplate(
+		templateId,
+		shouldNormalizeFieldSchema
+			? {
+					...data,
+					fieldSchema: deriveTemplateFieldSchema(
+						nextMessageTemplate,
+						data.fieldSchema ?? template.fieldSchema
+					),
+				}
+			: data,
+		user.id
+	)
 	return c.json(updated)
 })
 

@@ -35,6 +35,67 @@ import { usePageTitle } from '@/hooks/usePageTitle'
 
 import type { BroadcastTemplate, CreateBroadcastTemplateRequest } from '@/lib/api'
 
+const TEMPLATE_PLACEHOLDER_REGEX = /\{\{\s*([a-zA-Z0-9_-]+)\s*\}\}/g
+const TEMPLATE_TAG_BLOCK_REGEX = /\{\{([^}]*)\}\}/g
+const TEMPLATE_FIELD_NAME_PATTERN = /^[a-zA-Z0-9_-]+$/
+
+function toFieldLabel(name: string): string {
+	const normalized = name
+		.replace(/[_-]+/g, ' ')
+		.replace(/([a-z0-9])([A-Z])/g, '$1 $2')
+		.replace(/\s+/g, ' ')
+		.trim()
+
+	if (!normalized) return ''
+
+	return normalized
+		.split(' ')
+		.filter(Boolean)
+		.map((part) => part.charAt(0).toUpperCase() + part.slice(1).toLowerCase())
+		.join(' ')
+}
+
+function deriveFieldSchemaFromTemplate(
+	messageTemplate: string,
+	existing: CreateBroadcastTemplateRequest['fieldSchema']
+): CreateBroadcastTemplateRequest['fieldSchema'] {
+	const existingByName = new Map(existing.map((field) => [field.name, field]))
+	const tags: string[] = []
+	const seen = new Set<string>()
+
+	for (const match of messageTemplate.matchAll(TEMPLATE_PLACEHOLDER_REGEX)) {
+		const tag = (match[1] ?? '').trim()
+		if (!tag || seen.has(tag)) continue
+		seen.add(tag)
+		tags.push(tag)
+	}
+
+	return tags.map((tag) => {
+		const prior = existingByName.get(tag)
+		if (prior) return prior
+
+		return {
+			name: tag,
+			label: toFieldLabel(tag),
+			type: tag.toLowerCase() === 'message' ? 'textarea' : 'text',
+			required: true,
+		}
+	})
+}
+
+function getInvalidTemplateTags(messageTemplate: string): string[] {
+	const invalid: string[] = []
+	const seen = new Set<string>()
+	for (const match of messageTemplate.matchAll(TEMPLATE_TAG_BLOCK_REGEX)) {
+		const tag = (match[1] ?? '').trim()
+		if (TEMPLATE_FIELD_NAME_PATTERN.test(tag)) continue
+		if (seen.has(tag)) continue
+		seen.add(tag)
+		invalid.push(tag)
+	}
+	return invalid
+}
+
 export default function BroadcastTemplatesPage() {
 	usePageTitle('Admin - Broadcast Templates')
 	const { data: templates, isLoading } = useBroadcastTemplates()
@@ -73,8 +134,25 @@ export default function BroadcastTemplatesPage() {
 		})
 	}
 
+	const handleMessageTemplateChange = (value: string) => {
+		setFormData((current) => ({
+			...current,
+			messageTemplate: value,
+			fieldSchema: deriveFieldSchemaFromTemplate(value, current.fieldSchema),
+		}))
+	}
+
 	const handleCreate = async (e: React.FormEvent) => {
 		e.preventDefault()
+		const invalidTags = getInvalidTemplateTags(formData.messageTemplate)
+		if (invalidTags.length > 0) {
+			setMessage({
+				type: 'error',
+				text: `Invalid template tag name(s): ${invalidTags.join(', ')}. Use only letters, numbers, "_" or "-".`,
+			})
+			setTimeout(() => setMessage(null), 5000)
+			return
+		}
 		try {
 			await createTemplate.mutateAsync(formData)
 			setCreateDialogOpen(false)
@@ -106,6 +184,15 @@ export default function BroadcastTemplatesPage() {
 	const handleUpdate = async (e: React.FormEvent) => {
 		e.preventDefault()
 		if (!selectedTemplate) return
+		const invalidTags = getInvalidTemplateTags(formData.messageTemplate)
+		if (invalidTags.length > 0) {
+			setMessage({
+				type: 'error',
+				text: `Invalid template tag name(s): ${invalidTags.join(', ')}. Use only letters, numbers, "_" or "-".`,
+			})
+			setTimeout(() => setMessage(null), 5000)
+			return
+		}
 
 		try {
 			await updateTemplate.mutateAsync({
@@ -278,6 +365,7 @@ export default function BroadcastTemplatesPage() {
 										targetType: target?.type ?? formData.targetType,
 									})
 								}}
+								searchable
 								placeholder="Select a target"
 								options={targets.map((target) => ({
 									value: target.id,
@@ -290,12 +378,12 @@ export default function BroadcastTemplatesPage() {
 							<Textarea
 								id="messageTemplate"
 								value={formData.messageTemplate}
-								onChange={(e) => setFormData({ ...formData, messageTemplate: e.target.value })}
+								onChange={(e) => handleMessageTemplateChange(e.target.value)}
 								rows={4}
 								placeholder="Use {{fieldName}} for dynamic fields"
 							/>
 							<p className="text-xs text-muted-foreground mt-1">
-								Use placeholders like {'{{message}}'} that match field names below
+								Each placeholder like {'{{message}}'} becomes a template field automatically.
 							</p>
 							<div className="mt-2 rounded-md border border-border bg-muted/20 p-3 text-sm overflow-y-auto min-h-[120px]">
 								{formData.messageTemplate.trim() ? (
@@ -354,12 +442,12 @@ export default function BroadcastTemplatesPage() {
 							<Textarea
 								id="edit-messageTemplate"
 								value={formData.messageTemplate}
-								onChange={(e) => setFormData({ ...formData, messageTemplate: e.target.value })}
+								onChange={(e) => handleMessageTemplateChange(e.target.value)}
 								rows={4}
 								placeholder="Use {{fieldName}} for dynamic fields"
 							/>
 							<p className="text-xs text-muted-foreground mt-1">
-								Use placeholders like {'{{message}}'} that match field names
+								Each placeholder like {'{{message}}'} becomes a template field automatically.
 							</p>
 							<div className="mt-2 rounded-md border border-border bg-muted/20 p-3 text-sm overflow-y-auto min-h-[120px]">
 								{formData.messageTemplate.trim() ? (
