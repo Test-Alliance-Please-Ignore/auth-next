@@ -244,6 +244,15 @@ export class BlacklistService {
 	 * - Character blacklists with metadata.triggeredByUserBlacklist pointing to this entry
 	 */
 	async findTriggeredEntries(blacklistId: string): Promise<BlacklistEntry[]> {
+		const entry = await this.ctx.db.query.blacklistEntries.findFirst({
+			where: eq(blacklistEntries.id, blacklistId),
+			columns: {
+				id: true,
+				targetType: true,
+				userId: true,
+			},
+		})
+
 		// Find user blacklists triggered by this entry (via triggeredBy)
 		const triggeredUsers = await this.ctx.db.query.blacklistEntries.findMany({
 			where: eq(blacklistEntries.triggeredBy, blacklistId),
@@ -256,10 +265,23 @@ export class BlacklistService {
 			where: eq(blacklistEntries.targetType, 'character'),
 		})
 
-		const triggeredChars = allCharBlacklists.filter((entry) => {
-			if (!entry.metadata) return false
-			const metadata = entry.metadata as Record<string, unknown>
-			return metadata.triggeredByUserBlacklist === blacklistId
+		const triggeredChars = allCharBlacklists.filter((charEntry) => {
+			if (!charEntry.metadata) return false
+			const metadata = charEntry.metadata as Record<string, unknown>
+
+			// Current linkage (correct): character metadata references the user-blacklist entry ID.
+			if (metadata.triggeredByUserBlacklist === blacklistId) return true
+
+			// Backward compatibility for older rows that stored userId instead of blacklist entry ID.
+			if (
+				entry?.targetType === 'user' &&
+				typeof entry.userId === 'string' &&
+				metadata.triggeredByUserBlacklist === entry.userId
+			) {
+				return true
+			}
+
+			return false
 		})
 
 		const allTriggered = [...triggeredUsers, ...triggeredChars]
