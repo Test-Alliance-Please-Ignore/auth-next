@@ -636,7 +636,8 @@ export class EveTokenStoreDO extends DurableObject<Env> implements EveTokenStore
 	/**
 	 * Mark a character as deleted (soft delete).
 	 * Called when ESI returns "Character has been deleted!" (biomassed or removed by CCP).
-	 * Unlike revokeToken, this preserves the record for audit purposes.
+	 * Unlike revokeToken, this preserves the character record for audit purposes.
+	 * Token rows are removed so deleted characters can no longer be treated as having valid auth.
 	 * @param characterId - EVE character ID
 	 * @returns true if character was marked, false if not found
 	 */
@@ -653,22 +654,19 @@ export class EveTokenStoreDO extends DurableObject<Env> implements EveTokenStore
 				return false
 			}
 
-			// Already marked as deleted?
-			if (character.deletedAt) {
-				logger
-					.withTags({ operation: 'markCharacterDeleted', characterId })
-					.info('Character already marked as deleted')
-				return true
-			}
+			// Ensure no token remains for deleted characters.
+			await this.db.delete(eveTokens).where(eq(eveTokens.characterId, character.id))
 
+			// Always enforce deleted marker (handles first mark and legacy rows where deletedAt
+			// may already be set but token rows still exist from prior behavior).
 			await this.db
 				.update(eveCharacters)
-				.set({ deletedAt: new Date(), updatedAt: new Date() })
+				.set({ deletedAt: character.deletedAt ?? new Date(), updatedAt: new Date() })
 				.where(eq(eveCharacters.id, character.id))
 
 			logger
 				.withTags({ operation: 'markCharacterDeleted', characterId })
-				.info('Character marked as deleted')
+				.info('Character marked as deleted and token invalidated')
 			return true
 		} catch (error) {
 			logger

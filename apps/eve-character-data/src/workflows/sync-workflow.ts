@@ -39,6 +39,7 @@ export interface EveCharacterSyncParams {
 export class EveCharacterSyncWorkflow extends WorkflowEntrypoint<Env, EveCharacterSyncParams> {
 	async run(event: WorkflowEvent<EveCharacterSyncParams>, step: WorkflowStep) {
 		const { characterId, dataTypes, trigger, jitterDelaySeconds } = event.payload
+		let characterMarkedDeleted = false
 
 		// Helper to check if a data type should be synced
 		const requestedTypes = dataTypes ? new Set<EveCharacterSyncDataType>(dataTypes) : null
@@ -99,29 +100,54 @@ export class EveCharacterSyncWorkflow extends WorkflowEntrypoint<Env, EveCharact
 		// Step 1: Fetch & store public info
 		let publicInfoResult: refreshHelpers.RefreshPublicInfoResult | null = null
 		if (shouldSync('public-info')) {
-			publicInfoResult = await step.do(
-				'fetch-public-info',
-				{
-					...esiRetryOptions,
-					timeout: '1 minute',
-				},
-				() =>
-					withEsiRetryClassification('fetch-public-info', async () => {
-						logger.debug('[Step] Fetching public info', { characterId })
-						return await refreshHelpers.refreshPublicInfo(this.env, characterId)
-					})
-			)
-			logger.info('[Step] Public info fetched', {
-				characterId,
-				characterName: publicInfoResult.characterName,
-			})
+			try {
+				publicInfoResult = await step.do(
+					'fetch-public-info',
+					{
+						...esiRetryOptions,
+						timeout: '1 minute',
+					},
+					() =>
+						withEsiRetryClassification('fetch-public-info', async () => {
+							logger.debug('[Step] Fetching public info', { characterId })
+							return await refreshHelpers.refreshPublicInfo(this.env, characterId)
+						})
+				)
+				logger.info('[Step] Public info fetched', {
+					characterId,
+					characterName: publicInfoResult.characterName,
+				})
+			} catch (error) {
+				const message = error instanceof Error ? error.message : String(error)
+				const lowerMessage = message.toLowerCase()
+				const isDeletedCharacterError =
+					lowerMessage.includes('has been deleted') ||
+					lowerMessage.includes('character deleted') ||
+					lowerMessage.includes('character_deleted') ||
+					lowerMessage.includes('esi request failed: 404')
+
+				if (!isDeletedCharacterError) {
+					throw error
+				}
+
+				await step.do('mark-character-deleted', async () => {
+					const tokenStoreStub = getStub<EveTokenStore>(this.env.EVE_TOKEN_STORE, 'default')
+					await tokenStoreStub.markCharacterDeleted(characterId)
+				})
+				characterMarkedDeleted = true
+
+				logger.info('[EveCharacterSyncWorkflow] Character marked deleted after non-retryable public info error', {
+					characterId,
+					error: message,
+				})
+			}
 		} else {
 			logger.debug('[Step] Skipping public info sync (filtered)', { characterId })
 		}
 
 		// Step 2: Fetch & store authenticated data
 		let authenticatedDataResult: refreshAuthenticatedData.RefreshAuthenticatedDataResult | null = null
-		if (shouldSync('authenticated')) {
+		if (shouldSync('authenticated') && !characterMarkedDeleted) {
 			if (!tokenValidation.hasValidToken) {
 				logger.info('[Step] Skipping authenticated data (no valid token)', {
 					characterId,
@@ -157,6 +183,7 @@ export class EveCharacterSyncWorkflow extends WorkflowEntrypoint<Env, EveCharact
 		logger.info('[EveCharacterSyncWorkflow] Character sync completed successfully', {
 			characterId,
 			trigger,
+			characterMarkedDeleted,
 			tokenStatus: tokenValidation.status,
 			stats: {
 				characterName: publicInfoResult?.characterName,
@@ -169,16 +196,18 @@ export class EveCharacterSyncWorkflow extends WorkflowEntrypoint<Env, EveCharact
 		await step.do('mark-completed', async () => {
 			const updater = createWorkflowInstanceUpdater(event.instanceId, this.env.DATABASE_URL)
 			const tokenStoreStub = getStub<EveTokenStore>(this.env.EVE_TOKEN_STORE, 'default')
-			await Promise.all([
-				updater.markCompleted(),
-				tokenStoreStub.markCharacterDataSyncComplete(characterId),
-			])
+			const completionTasks = [updater.markCompleted()]
+			if (!characterMarkedDeleted) {
+				completionTasks.push(tokenStoreStub.markCharacterDataSyncComplete(characterId))
+			}
+			await Promise.all(completionTasks)
 		})
 
 		return {
 			success: true,
 			characterId,
 			trigger,
+			characterMarkedDeleted,
 			tokenStatus: tokenValidation.status,
 			stats: {
 				characterName: publicInfoResult?.characterName,
