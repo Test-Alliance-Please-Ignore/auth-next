@@ -11,6 +11,7 @@ import { userCharacters } from '../../../db/schema'
 import { getWorkflowLogger } from '../../context'
 
 import type { EveCharacterData } from '@repo/eve-character-data'
+import type { EveTokenStore } from '@repo/eve-token-store'
 import type { CharacterPublicInfo, EsiTypeResolver } from '@repo/esi'
 import type { WorkflowContext } from '../../context'
 
@@ -70,9 +71,24 @@ export async function updateCharacterPublicInfo(
 				.update(userCharacters)
 				.set({
 					isDeleted: true,
+					hasValidToken: false,
 					updatedAt: new Date(),
 				})
 				.where(eq(userCharacters.characterId, characterId))
+
+			// Keep eve-token-store in sync: deleted characters should not retain usable tokens.
+			try {
+				const tokenStore = getStub<EveTokenStore>(ctx.env.EVE_TOKEN_STORE, 'default')
+				await tokenStore.markCharacterDeleted(characterId)
+			} catch (tokenStoreError) {
+				logger.warn('[Workflow] Failed to mark deleted character in token store', {
+					characterId,
+					error:
+						tokenStoreError instanceof Error
+							? tokenStoreError.message
+							: String(tokenStoreError),
+				})
+			}
 
 			logger.info('[Workflow] Character marked as deleted during public info refresh', {
 				characterId,

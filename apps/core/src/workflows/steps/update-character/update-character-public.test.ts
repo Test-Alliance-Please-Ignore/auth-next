@@ -8,6 +8,13 @@ import type { WorkflowContext } from '../../context'
 const fetchCharacterPublicInfo = vi.fn()
 const fetchCharacterAffiliation = vi.fn()
 const resolveIds = vi.fn()
+const markCharacterDeleted = vi.fn()
+const storePublicInfo = vi.fn()
+const fetchCorporationHistory = vi.fn()
+
+const ESI_TYPE_RESOLVER_NS = Symbol('ESI_TYPE_RESOLVER')
+const EVE_CHARACTER_DATA_NS = Symbol('EVE_CHARACTER_DATA')
+const EVE_TOKEN_STORE_NS = Symbol('EVE_TOKEN_STORE')
 
 vi.mock('@repo/esi', () => ({
 	CharacterDeletedError: class CharacterDeletedError extends Error {
@@ -22,11 +29,21 @@ vi.mock('@repo/esi', () => ({
 }))
 
 vi.mock('@repo/do-utils', () => ({
-	getStub: vi.fn(() => ({
-		resolveIds,
-		storePublicInfo: vi.fn().mockResolvedValue(undefined),
-		fetchCorporationHistory: vi.fn().mockResolvedValue(undefined),
-	})),
+	getStub: vi.fn((namespace: symbol) => {
+		if (namespace === ESI_TYPE_RESOLVER_NS) {
+			return { resolveIds }
+		}
+		if (namespace === EVE_CHARACTER_DATA_NS) {
+			return {
+				storePublicInfo,
+				fetchCorporationHistory,
+			}
+		}
+		if (namespace === EVE_TOKEN_STORE_NS) {
+			return { markCharacterDeleted }
+		}
+		return {}
+	}),
 }))
 
 function createDbRecorder() {
@@ -52,8 +69,9 @@ function createCtx(db: WorkflowContext['db']): WorkflowContext {
 		db,
 		env: {
 			ESI: {} as DurableObjectNamespace,
-			ESI_TYPE_RESOLVER: {} as DurableObjectNamespace,
-			EVE_CHARACTER_DATA: {} as DurableObjectNamespace,
+			ESI_TYPE_RESOLVER: ESI_TYPE_RESOLVER_NS as unknown as DurableObjectNamespace,
+			EVE_CHARACTER_DATA: EVE_CHARACTER_DATA_NS as unknown as DurableObjectNamespace,
+			EVE_TOKEN_STORE: EVE_TOKEN_STORE_NS as unknown as DurableObjectNamespace,
 		} as WorkflowContext['env'],
 		userId: 'user-1',
 		workflowInstanceId: 'workflow-1',
@@ -64,6 +82,9 @@ function createCtx(db: WorkflowContext['db']): WorkflowContext {
 describe('updateCharacterPublicInfo', () => {
 	beforeEach(() => {
 		vi.clearAllMocks()
+		storePublicInfo.mockResolvedValue(undefined)
+		fetchCorporationHistory.mockResolvedValue(undefined)
+		markCharacterDeleted.mockResolvedValue(true)
 	})
 
 	it('returns isDeleted true only for explicit deleted-character responses', async () => {
@@ -81,7 +102,9 @@ describe('updateCharacterPublicInfo', () => {
 		expect(recorder.update).toHaveBeenCalledTimes(1)
 		expect(recorder.updates[0]).toMatchObject({
 			isDeleted: true,
+			hasValidToken: false,
 		})
+		expect(markCharacterDeleted).toHaveBeenCalledWith('123')
 	})
 
 	it('returns isDeleted true for CharacterDeletedError (non-retryable 404)', async () => {
@@ -99,7 +122,9 @@ describe('updateCharacterPublicInfo', () => {
 		expect(recorder.update).toHaveBeenCalledTimes(1)
 		expect(recorder.updates[0]).toMatchObject({
 			isDeleted: true,
+			hasValidToken: false,
 		})
+		expect(markCharacterDeleted).toHaveBeenCalledWith('123')
 	})
 
 	it('resets deleted status on successful refresh persistence', async () => {
@@ -140,6 +165,7 @@ describe('updateCharacterPublicInfo', () => {
 		).rejects.toThrow('upstream timeout')
 
 		expect(recorder.update).not.toHaveBeenCalled()
+		expect(markCharacterDeleted).not.toHaveBeenCalled()
 	})
 
 	it('persists affiliation ids even if name resolution fails', async () => {
