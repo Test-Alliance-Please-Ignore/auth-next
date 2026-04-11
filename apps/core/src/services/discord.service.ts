@@ -1089,20 +1089,9 @@ export async function updateUserDiscordRoles(
 		}
 	}
 
-	// Get all user's characters
-	const userChars = await db.query.userCharacters.findMany({
-		where: eq(userCharacters.userId, userId),
-	})
-
-	const characterIds = userChars.map((char) => char.characterId)
-
-	if (characterIds.length === 0) {
-		return {
-			results: [],
-			totalUpdated: 0,
-			totalFailed: 0,
-		}
-	}
+	const discordStub = getDiscordStub(env)
+	const discordStatus = await discordStub.getDiscordUserStatus(userId)
+	const isAuthorizationRevoked = discordStatus?.authRevoked ?? false
 
 	// === DETERMINE WHICH SERVERS TO UPDATE ===
 
@@ -1122,7 +1111,6 @@ export async function updateUserDiscordRoles(
 
 		if (knownGuildIds.length > 0) {
 			// Use bot token to check which guilds the user is a member of
-			const discordStub = getDiscordStub(env)
 			serversToUpdate = await discordStub.checkGuildMembershipWithBot(userId, knownGuildIds)
 		} else {
 			serversToUpdate = []
@@ -1159,169 +1147,186 @@ export async function updateUserDiscordRoles(
 		})
 	}
 
-	// === CHECK CORPORATION ROLES (all attachments, not just auto-invite) ===
-	// Get user's corporation IDs first to filter efficiently
-	const userCorporationIds = await getUserCorporationIds(env, characterIds)
+	if (!isAuthorizationRevoked) {
+		// Get all user's characters
+		const userChars = await db.query.userCharacters.findMany({
+			where: eq(userCharacters.userId, userId),
+		})
 
-	// Only fetch attachments for corporations the user is actually in
-	const corpAttachments =
-		userCorporationIds.size > 0
-			? await db.query.corporationDiscordServers.findMany({
-					where: inArray(corporationDiscordServers.corporationId, Array.from(userCorporationIds)),
-					with: {
-						corporation: true,
-						discordServer: true,
-						roles: {
-							with: {
-								discordRole: true,
-							},
-						},
-					},
-				})
-			: []
+		const characterIds = userChars.map((char) => char.characterId)
 
-	// Filter to only active Discord servers in the servers we're updating
-	const relevantCorpAttachments = corpAttachments.filter(
-		(attachment) =>
-			attachment.discordServer.isActive &&
-			serversToUpdate.includes(attachment.discordServer.guildId)
-	)
-
-	for (const attachment of relevantCorpAttachments) {
-		// User is definitely a member since we filtered attachments by their corporation IDs
-		if (attachment.autoAssignRoles) {
-			const roleIds = attachment.roles
-				.filter((r) => r.discordRole.isActive) // SECURITY: Only active roles
-				.map((r) => r.discordRole.roleId)
-
-			const guildData = rolesByGuild.get(attachment.discordServer.guildId)
-			if (guildData) {
-				guildData.expectedRoleIds.push(...roleIds)
-				guildData.sources.push({
-					type: 'corporation',
-					name: attachment.corporation.name,
-				})
-				guildData.guildName = attachment.discordServer.guildName
+		if (characterIds.length === 0) {
+			return {
+				results: [],
+				totalUpdated: 0,
+				totalFailed: 0,
 			}
 		}
-	}
 
-	// Track guilds where this user has valid corp/alliance entitlement
-	const userEntitledGuildIds = new Set<string>(
-		relevantCorpAttachments.map((a) => a.discordServer.guildId)
-	)
+		// === CHECK CORPORATION ROLES (all attachments, not just auto-invite) ===
+		// Get user's corporation IDs first to filter efficiently
+		const userCorporationIds = await getUserCorporationIds(env, characterIds)
 
-	// Determine which of the target guilds are corp-gated (have ANY corp attachment, not just the user's).
-	// Group roles are not granted on corp-gated guilds where the user has no corp/alliance entitlement —
-	// losing corp access should also remove group roles on that guild.
-	const targetServerRecords = await db.query.discordServers.findMany({
-		where: and(inArray(discordServers.guildId, serversToUpdate), eq(discordServers.isActive, true)),
-		columns: { id: true, guildId: true },
-	})
-	const dbIdToGuildId = new Map(targetServerRecords.map((s) => [s.id, s.guildId]))
-	const targetServerDbIds = targetServerRecords.map((s) => s.id)
+		// Only fetch attachments for corporations the user is actually in
+		const corpAttachments =
+			userCorporationIds.size > 0
+				? await db.query.corporationDiscordServers.findMany({
+						where: inArray(corporationDiscordServers.corporationId, Array.from(userCorporationIds)),
+						with: {
+							corporation: true,
+							discordServer: true,
+							roles: {
+								with: {
+									discordRole: true,
+								},
+							},
+						},
+					})
+				: []
 
-	const corpGatedGuildIds = new Set<string>()
-	if (targetServerDbIds.length > 0) {
-		const corpGatedRecords = await db.query.corporationDiscordServers.findMany({
-			where: inArray(corporationDiscordServers.discordServerId, targetServerDbIds),
-			columns: { discordServerId: true },
-		})
-		for (const record of corpGatedRecords) {
-			const guildId = dbIdToGuildId.get(record.discordServerId)
-			if (guildId) corpGatedGuildIds.add(guildId)
+		// Filter to only active Discord servers in the servers we're updating
+		const relevantCorpAttachments = corpAttachments.filter(
+			(attachment) =>
+				attachment.discordServer.isActive &&
+				serversToUpdate.includes(attachment.discordServer.guildId)
+		)
+
+		for (const attachment of relevantCorpAttachments) {
+			// User is definitely a member since we filtered attachments by their corporation IDs
+			if (attachment.autoAssignRoles) {
+				const roleIds = attachment.roles
+					.filter((r) => r.discordRole.isActive) // SECURITY: Only active roles
+					.map((r) => r.discordRole.roleId)
+
+				const guildData = rolesByGuild.get(attachment.discordServer.guildId)
+				if (guildData) {
+					guildData.expectedRoleIds.push(...roleIds)
+					guildData.sources.push({
+						type: 'corporation',
+						name: attachment.corporation.name,
+					})
+					guildData.guildName = attachment.discordServer.guildName
+				}
+			}
 		}
-	}
 
-	// === CHECK GROUP ROLES (all attachments, not just auto-invite) ===
+		// Track guilds where this user has valid corp/alliance entitlement
+		const userEntitledGuildIds = new Set<string>(
+			relevantCorpAttachments.map((a) => a.discordServer.guildId)
+		)
 
-	try {
-		const groupsStub = getStub<Groups>(env.GROUPS, 'default')
-		const groupsWithDiscord = await groupsStub.getGroupsWithDiscordAutoInvite()
+		// Determine which of the target guilds are corp-gated (have ANY corp attachment, not just the user's).
+		// Group roles are not granted on corp-gated guilds where the user has no corp/alliance entitlement —
+		// losing corp access should also remove group roles on that guild.
+		const targetServerRecords = await db.query.discordServers.findMany({
+			where: and(inArray(discordServers.guildId, serversToUpdate), eq(discordServers.isActive, true)),
+			columns: { id: true, guildId: true },
+		})
+		const dbIdToGuildId = new Map(targetServerRecords.map((s) => [s.id, s.guildId]))
+		const targetServerDbIds = targetServerRecords.map((s) => s.id)
 
-		for (const group of groupsWithDiscord) {
-			try {
-				const memberUserIds = await groupsStub.getGroupMemberUserIds(group.groupId)
-				const isMember = memberUserIds.includes(userId)
+		const corpGatedGuildIds = new Set<string>()
+		if (targetServerDbIds.length > 0) {
+			const corpGatedRecords = await db.query.corporationDiscordServers.findMany({
+				where: inArray(corporationDiscordServers.discordServerId, targetServerDbIds),
+				columns: { discordServerId: true },
+			})
+			for (const record of corpGatedRecords) {
+				const guildId = dbIdToGuildId.get(record.discordServerId)
+				if (guildId) corpGatedGuildIds.add(guildId)
+			}
+		}
 
-				if (isMember) {
-					for (const discordServer of group.discordServers) {
-						// Check ALL servers, not just auto-invite
-						const serverInfo = await db.query.discordServers.findFirst({
-							where: and(
-								eq(discordServers.id, discordServer.discordServerId),
-								eq(discordServers.isActive, true)
-							),
-						})
+		// === CHECK GROUP ROLES (all attachments, not just auto-invite) ===
 
-						// Don't grant group roles on corp-gated guilds where user has no corp/alliance entitlement.
-						// Losing corp access should also revoke group roles on that guild.
-						const isCorpGatedWithoutEntitlement =
-							!!serverInfo &&
-							corpGatedGuildIds.has(serverInfo.guildId) &&
-							!userEntitledGuildIds.has(serverInfo.guildId)
+		try {
+			const groupsStub = getStub<Groups>(env.GROUPS, 'default')
+			const groupsWithDiscord = await groupsStub.getGroupsWithDiscordAutoInvite()
 
-						if (
-							serverInfo &&
-							serversToUpdate.includes(serverInfo.guildId) &&
-							discordServer.autoAssignRoles &&
-							!isCorpGatedWithoutEntitlement
-						) {
-							let actualRoleIds: string[] = []
+			for (const group of groupsWithDiscord) {
+				try {
+					const memberUserIds = await groupsStub.getGroupMemberUserIds(group.groupId)
+					const isMember = memberUserIds.includes(userId)
 
-							if (discordServer.roleIds && discordServer.roleIds.length > 0) {
-								const roleRecords = await db.query.discordRoles.findMany({
-									where: and(
-										inArray(discordRoles.id, discordServer.roleIds),
-										eq(discordRoles.isActive, true)
-									),
-								})
-								actualRoleIds = roleRecords.map((r) => r.roleId)
-							}
+					if (isMember) {
+						for (const discordServer of group.discordServers) {
+							// Check ALL servers, not just auto-invite
+							const serverInfo = await db.query.discordServers.findFirst({
+								where: and(
+									eq(discordServers.id, discordServer.discordServerId),
+									eq(discordServers.isActive, true)
+								),
+							})
 
-							const guildData = rolesByGuild.get(serverInfo.guildId)
-							if (guildData) {
-								guildData.expectedRoleIds.push(...actualRoleIds)
-								guildData.sources.push({
-									type: 'group',
-									name: group.groupName,
-								})
-								guildData.guildName = serverInfo.guildName
+							// Don't grant group roles on corp-gated guilds where user has no corp/alliance entitlement.
+							// Losing corp access should also revoke group roles on that guild.
+							const isCorpGatedWithoutEntitlement =
+								!!serverInfo &&
+								corpGatedGuildIds.has(serverInfo.guildId) &&
+								!userEntitledGuildIds.has(serverInfo.guildId)
+
+							if (
+								serverInfo &&
+								serversToUpdate.includes(serverInfo.guildId) &&
+								discordServer.autoAssignRoles &&
+								!isCorpGatedWithoutEntitlement
+							) {
+								let actualRoleIds: string[] = []
+
+								if (discordServer.roleIds && discordServer.roleIds.length > 0) {
+									const roleRecords = await db.query.discordRoles.findMany({
+										where: and(
+											inArray(discordRoles.id, discordServer.roleIds),
+											eq(discordRoles.isActive, true)
+										),
+									})
+									actualRoleIds = roleRecords.map((r) => r.roleId)
+								}
+
+								const guildData = rolesByGuild.get(serverInfo.guildId)
+								if (guildData) {
+									guildData.expectedRoleIds.push(...actualRoleIds)
+									guildData.sources.push({
+										type: 'group',
+										name: group.groupName,
+									})
+									guildData.guildName = serverInfo.guildName
+								}
 							}
 						}
 					}
+				} catch (error) {
+					logger.error('[Discord] Error checking group members for role update', {
+						groupId: group.groupId,
+						error: String(error),
+					})
 				}
-			} catch (error) {
-				logger.error('[Discord] Error checking group members for role update', {
-					groupId: group.groupId,
-					error: String(error),
-				})
 			}
+		} catch (error) {
+			logger.error('[Discord] Error fetching groups for role update', {
+				error: String(error),
+			})
 		}
-	} catch (error) {
-		logger.error('[Discord] Error fetching groups for role update', {
-			error: String(error),
+
+		// === ADD AUTO-APPLY ROLES ===
+
+		const autoApplyRoles = await db.query.discordRoles.findMany({
+			where: and(eq(discordRoles.autoApply, true), eq(discordRoles.isActive, true)),
+			with: {
+				discordServer: true,
+			},
 		})
-	}
 
-	// === ADD AUTO-APPLY ROLES ===
-
-	const autoApplyRoles = await db.query.discordRoles.findMany({
-		where: and(eq(discordRoles.autoApply, true), eq(discordRoles.isActive, true)),
-		with: {
-			discordServer: true,
-		},
-	})
-
-	for (const role of autoApplyRoles) {
-		if (role.discordServer.isActive && serversToUpdate.includes(role.discordServer.guildId)) {
-			const guildData = rolesByGuild.get(role.discordServer.guildId)
-			if (guildData) {
-				guildData.expectedRoleIds.push(role.roleId)
-				guildData.sources.push({
-					type: 'auto-apply',
-					name: role.roleName,
-				})
+		for (const role of autoApplyRoles) {
+			if (role.discordServer.isActive && serversToUpdate.includes(role.discordServer.guildId)) {
+				const guildData = rolesByGuild.get(role.discordServer.guildId)
+				if (guildData) {
+					guildData.expectedRoleIds.push(role.roleId)
+					guildData.sources.push({
+						type: 'auto-apply',
+						name: role.roleName,
+					})
+				}
 			}
 		}
 	}
@@ -1361,7 +1366,6 @@ export async function updateUserDiscordRoles(
 
 	// === CALL DISCORD DO - UPDATE ROLES ONLY ===
 
-	const discordStub = getDiscordStub(env)
 	const updateResults = await discordStub.updateUserRoles(userId, updateRequests, allowRemoval)
 
 	// Build final results
@@ -1443,6 +1447,12 @@ export async function inspectUserDiscordAccess(
 		throw new Error('Discord account not linked')
 	}
 
+	const hrStub = getStub<Hr>(env.HR, 'default')
+	const isBlacklisted = await hrStub.isUserBlacklisted(userId)
+	const discordStub = getDiscordStub(env)
+	const discordStatus = await discordStub.getDiscordUserStatus(userId)
+	const isAuthorizationRevoked = discordStatus?.authRevoked ?? false
+
 	const knownServers = await db.query.discordServers.findMany({
 		where: eq(discordServers.isActive, true),
 		columns: { id: true, guildId: true, guildName: true },
@@ -1470,7 +1480,6 @@ export async function inspectUserDiscordAccess(
 	const serverByDbId = new Map(knownServers.map((server) => [server.id, server]))
 	const serverByGuildId = new Map(knownServers.map((server) => [server.guildId, server]))
 
-	const discordStub = getDiscordStub(env)
 	const membershipDetails = await discordStub.getUserGuildMembershipDetails(userId, knownGuildIds)
 	const membershipByGuild = new Map(
 		membershipDetails.map((detail) => [detail.guildId, detail] as const)
@@ -1485,139 +1494,144 @@ export async function inspectUserDiscordAccess(
 		return created
 	}
 
-	// Get all user's characters to determine corp entitlement for gating.
-	const userChars = await db.query.userCharacters.findMany({
-		where: eq(userCharacters.userId, userId),
-		columns: { characterId: true },
-	})
-	const characterIds = userChars.map((char) => char.characterId)
-	const userCorporationIds = await getUserCorporationIds(env, characterIds)
+	if (!isBlacklisted && !isAuthorizationRevoked) {
+		// Get all user's characters to determine corp entitlement for gating.
+		const userChars = await db.query.userCharacters.findMany({
+			where: eq(userCharacters.userId, userId),
+			columns: { characterId: true },
+		})
+		const characterIds = userChars.map((char) => char.characterId)
+		const userCorporationIds = await getUserCorporationIds(env, characterIds)
 
-	// Expected corporation-managed roles.
-	const corpAttachments =
-		userCorporationIds.size > 0 && knownServerDbIds.length > 0
-			? await db.query.corporationDiscordServers.findMany({
-					where: and(
-						inArray(corporationDiscordServers.corporationId, Array.from(userCorporationIds)),
-						inArray(corporationDiscordServers.discordServerId, knownServerDbIds)
-					),
-					with: {
-						discordServer: true,
-						roles: {
-							with: {
-								discordRole: true,
+		// Expected corporation-managed roles.
+		const corpAttachments =
+			userCorporationIds.size > 0 && knownServerDbIds.length > 0
+				? await db.query.corporationDiscordServers.findMany({
+						where: and(
+							inArray(corporationDiscordServers.corporationId, Array.from(userCorporationIds)),
+							inArray(corporationDiscordServers.discordServerId, knownServerDbIds)
+						),
+						with: {
+							discordServer: true,
+							roles: {
+								with: {
+									discordRole: true,
+								},
 							},
 						},
-					},
-				})
-			: []
+					})
+				: []
 
-	const userEntitledGuildIds = new Set<string>()
-	for (const attachment of corpAttachments) {
-		if (!attachment.discordServer.isActive) continue
+		const userEntitledGuildIds = new Set<string>()
+		for (const attachment of corpAttachments) {
+			if (!attachment.discordServer.isActive) continue
 
-		const guildId = attachment.discordServer.guildId
-		userEntitledGuildIds.add(guildId)
+			const guildId = attachment.discordServer.guildId
+			userEntitledGuildIds.add(guildId)
 
-		if (!attachment.autoAssignRoles) continue
+			if (!attachment.autoAssignRoles) continue
 
-		const expectedSet = ensureExpectedSet(guildId)
-		for (const roleAssignment of attachment.roles) {
-			if (roleAssignment.discordRole.isActive) {
-				expectedSet.add(roleAssignment.discordRole.roleId)
-			}
-		}
-	}
-
-	// Corp-gated guilds: any guild with at least one corp attachment configured.
-	const corpGatedGuildIds = new Set<string>()
-	if (knownServerDbIds.length > 0) {
-		const corpGatedRecords = await db.query.corporationDiscordServers.findMany({
-			where: inArray(corporationDiscordServers.discordServerId, knownServerDbIds),
-			columns: { discordServerId: true },
-		})
-		for (const record of corpGatedRecords) {
-			const server = serverByDbId.get(record.discordServerId)
-			if (server) {
-				corpGatedGuildIds.add(server.guildId)
-			}
-		}
-	}
-
-	// Expected group-managed roles.
-	try {
-		const groupsStub = getStub<Groups>(env.GROUPS, 'default')
-		const groupsWithDiscord = await groupsStub.getGroupsWithDiscordAutoInvite()
-
-		const pendingGroupRoleLookups: Array<{ guildId: string; roleDbIds: string[] }> = []
-		const groupRoleDbIds = new Set<string>()
-
-		for (const group of groupsWithDiscord) {
-			const memberUserIds = await groupsStub.getGroupMemberUserIds(group.groupId)
-			const isMember = memberUserIds.includes(userId)
-			if (!isMember) continue
-
-			for (const attachment of group.discordServers) {
-				if (!attachment.autoAssignRoles) continue
-
-				const server = serverByDbId.get(attachment.discordServerId)
-				if (!server) continue
-
-				const isCorpGatedWithoutEntitlement =
-					corpGatedGuildIds.has(server.guildId) && !userEntitledGuildIds.has(server.guildId)
-				if (isCorpGatedWithoutEntitlement) continue
-
-				const roleDbIds = attachment.roleIds ?? []
-				pendingGroupRoleLookups.push({
-					guildId: server.guildId,
-					roleDbIds,
-				})
-				for (const roleDbId of roleDbIds) {
-					groupRoleDbIds.add(roleDbId)
+			const expectedSet = ensureExpectedSet(guildId)
+			for (const roleAssignment of attachment.roles) {
+				if (roleAssignment.discordRole.isActive) {
+					expectedSet.add(roleAssignment.discordRole.roleId)
 				}
 			}
 		}
 
-		let roleIdByDbId = new Map<string, string>()
-		const uniqueGroupRoleDbIds = Array.from(groupRoleDbIds)
-		if (uniqueGroupRoleDbIds.length > 0) {
-			const roleRows = await db.query.discordRoles.findMany({
-				where: and(inArray(discordRoles.id, uniqueGroupRoleDbIds), eq(discordRoles.isActive, true)),
-				columns: { id: true, roleId: true },
+		// Corp-gated guilds: any guild with at least one corp attachment configured.
+		const corpGatedGuildIds = new Set<string>()
+		if (knownServerDbIds.length > 0) {
+			const corpGatedRecords = await db.query.corporationDiscordServers.findMany({
+				where: inArray(corporationDiscordServers.discordServerId, knownServerDbIds),
+				columns: { discordServerId: true },
 			})
-			roleIdByDbId = new Map(roleRows.map((row) => [row.id, row.roleId]))
-		}
-
-		for (const lookup of pendingGroupRoleLookups) {
-			const expectedSet = ensureExpectedSet(lookup.guildId)
-			for (const roleDbId of lookup.roleDbIds) {
-				const resolvedRoleId = roleIdByDbId.get(roleDbId)
-				if (resolvedRoleId) {
-					expectedSet.add(resolvedRoleId)
+			for (const record of corpGatedRecords) {
+				const server = serverByDbId.get(record.discordServerId)
+				if (server) {
+					corpGatedGuildIds.add(server.guildId)
 				}
 			}
 		}
-	} catch (error) {
-		logger.error('[Discord] Error resolving group roles for Discord access inspection', {
-			userId,
-			error: String(error),
-		})
-	}
 
-	// Expected auto-apply roles.
-	if (knownServerDbIds.length > 0) {
-		const autoApplyRoles = await db.query.discordRoles.findMany({
-			where: and(
-				eq(discordRoles.autoApply, true),
-				eq(discordRoles.isActive, true),
-				inArray(discordRoles.discordServerId, knownServerDbIds)
-			),
-			columns: { roleId: true, discordServerId: true },
-		})
-		for (const role of autoApplyRoles) {
-			const server = serverByDbId.get(role.discordServerId)
-			if (server) {
-				ensureExpectedSet(server.guildId).add(role.roleId)
+		// Expected group-managed roles.
+		try {
+			const groupsStub = getStub<Groups>(env.GROUPS, 'default')
+			const groupsWithDiscord = await groupsStub.getGroupsWithDiscordAutoInvite()
+
+			const pendingGroupRoleLookups: Array<{ guildId: string; roleDbIds: string[] }> = []
+			const groupRoleDbIds = new Set<string>()
+
+			for (const group of groupsWithDiscord) {
+				const memberUserIds = await groupsStub.getGroupMemberUserIds(group.groupId)
+				const isMember = memberUserIds.includes(userId)
+				if (!isMember) continue
+
+				for (const attachment of group.discordServers) {
+					if (!attachment.autoAssignRoles) continue
+
+					const server = serverByDbId.get(attachment.discordServerId)
+					if (!server) continue
+
+					const isCorpGatedWithoutEntitlement =
+						corpGatedGuildIds.has(server.guildId) && !userEntitledGuildIds.has(server.guildId)
+					if (isCorpGatedWithoutEntitlement) continue
+
+					const roleDbIds = attachment.roleIds ?? []
+					pendingGroupRoleLookups.push({
+						guildId: server.guildId,
+						roleDbIds,
+					})
+					for (const roleDbId of roleDbIds) {
+						groupRoleDbIds.add(roleDbId)
+					}
+				}
+			}
+
+			let roleIdByDbId = new Map<string, string>()
+			const uniqueGroupRoleDbIds = Array.from(groupRoleDbIds)
+			if (uniqueGroupRoleDbIds.length > 0) {
+				const roleRows = await db.query.discordRoles.findMany({
+					where: and(
+						inArray(discordRoles.id, uniqueGroupRoleDbIds),
+						eq(discordRoles.isActive, true)
+					),
+					columns: { id: true, roleId: true },
+				})
+				roleIdByDbId = new Map(roleRows.map((row) => [row.id, row.roleId]))
+			}
+
+			for (const lookup of pendingGroupRoleLookups) {
+				const expectedSet = ensureExpectedSet(lookup.guildId)
+				for (const roleDbId of lookup.roleDbIds) {
+					const resolvedRoleId = roleIdByDbId.get(roleDbId)
+					if (resolvedRoleId) {
+						expectedSet.add(resolvedRoleId)
+					}
+				}
+			}
+		} catch (error) {
+			logger.error('[Discord] Error resolving group roles for Discord access inspection', {
+				userId,
+				error: String(error),
+			})
+		}
+
+		// Expected auto-apply roles.
+		if (knownServerDbIds.length > 0) {
+			const autoApplyRoles = await db.query.discordRoles.findMany({
+				where: and(
+					eq(discordRoles.autoApply, true),
+					eq(discordRoles.isActive, true),
+					inArray(discordRoles.discordServerId, knownServerDbIds)
+				),
+				columns: { roleId: true, discordServerId: true },
+			})
+			for (const role of autoApplyRoles) {
+				const server = serverByDbId.get(role.discordServerId)
+				if (server) {
+					ensureExpectedSet(server.guildId).add(role.roleId)
+				}
 			}
 		}
 	}
@@ -1789,7 +1803,7 @@ export async function syncUserDiscordAccess(
 		errorMessage?: string
 		alreadyMember?: boolean
 		type?: 'corporation' | 'group'
-		operation?: 'invite' | 'update'
+		operation?: 'invite' | 'update' | 'revoke-ban'
 	}>
 	totalInvited: number
 	totalUpdated: number
@@ -1800,15 +1814,10 @@ export async function syncUserDiscordAccess(
 	const isBlacklisted = await hrStub.isUserBlacklisted(userId)
 
 	if (isBlacklisted) {
-		logger.warn('[Discord] Blocked Discord sync for blacklisted user', {
+		logger.warn('[Discord] Enforcing Discord access revocation for blacklisted user', {
 			userId,
 		})
-		return {
-			results: [],
-			totalInvited: 0,
-			totalUpdated: 0,
-			totalFailed: 0,
-		}
+		return enforceBlacklistedDiscordAccess(env, userId, 'User is blacklisted')
 	}
 
 	// Check if refresh is needed (15-minute minimum interval)
@@ -1875,6 +1884,108 @@ export async function syncUserDiscordAccess(
 		totalUpdated: updateResult.totalUpdated,
 		totalFailed: inviteResult.totalFailed + updateResult.totalFailed,
 	}
+}
+
+/**
+ * Enforce Discord revocation for blacklisted users across all active managed guilds.
+ * Clears roles and bans via Discord DO.
+ */
+export async function enforceBlacklistedDiscordAccess(
+	env: Env,
+	userId: string,
+	reason?: string
+): Promise<{
+	results: Array<{
+		guildId: string
+		guildName: string
+		success: boolean
+		errorMessage?: string
+		operation?: 'revoke-ban'
+	}>
+	totalInvited: number
+	totalUpdated: number
+	totalFailed: number
+}> {
+	const db = createDb(env.DATABASE_URL)
+	const user = await db.query.users.findFirst({
+		where: eq(users.id, userId),
+		columns: { discordUserId: true },
+	})
+
+	if (!user?.discordUserId) {
+		return {
+			results: [],
+			totalInvited: 0,
+			totalUpdated: 0,
+			totalFailed: 0,
+		}
+	}
+
+	const servers = await db.query.discordServers.findMany({
+		where: eq(discordServers.isActive, true),
+		columns: { guildId: true, guildName: true },
+	})
+	const guildIds = servers.map((s) => s.guildId)
+
+	if (guildIds.length === 0) {
+		return {
+			results: [],
+			totalInvited: 0,
+			totalUpdated: 0,
+			totalFailed: 0,
+		}
+	}
+
+	const discordStub = getDiscordStub(env)
+	const membershipGuildIds = await discordStub.checkGuildMembershipWithBot(userId, guildIds)
+	if (membershipGuildIds.length === 0) {
+		return {
+			results: [],
+			totalInvited: 0,
+			totalUpdated: 0,
+			totalFailed: 0,
+		}
+	}
+
+	const guildNameById = new Map(servers.map((s) => [s.guildId, s.guildName]))
+	const revokeResults = await discordStub.revokeAccessAndBan(userId, membershipGuildIds, reason)
+
+	const results = revokeResults.map((item) => ({
+		guildId: item.guildId,
+		guildName: guildNameById.get(item.guildId) ?? item.guildId,
+		success: item.success,
+		errorMessage: item.errorMessage,
+		operation: 'revoke-ban' as const,
+	}))
+
+	return {
+		results,
+		totalInvited: 0,
+		totalUpdated: revokeResults.filter((r) => r.success).length,
+		totalFailed: revokeResults.filter((r) => !r.success).length,
+	}
+}
+
+/**
+ * Enforce Discord role stripping for users with revoked Discord authorization.
+ * Removes managed roles across all active managed guilds but does not ban.
+ */
+export async function enforceRevokedAuthorizationDiscordAccess(
+	env: Env,
+	userId: string
+): Promise<{
+	results: Array<{
+		guildId: string
+		guildName: string
+		rolesAdded: string[]
+		rolesRemoved: string[]
+		success: boolean
+		errorMessage?: string
+	}>
+	totalUpdated: number
+	totalFailed: number
+}> {
+	return updateUserDiscordRoles(env, userId, undefined, true)
 }
 
 /**
@@ -1952,6 +2063,17 @@ async function calculateUserRolesForServer(
 	userId: string,
 	serverId: string
 ): Promise<string[]> {
+	const hrStub = getStub<Hr>(env.HR, 'default')
+	const isBlacklisted = await hrStub.isUserBlacklisted(userId)
+	if (isBlacklisted) {
+		return []
+	}
+	const discordStub = getDiscordStub(env)
+	const discordStatus = await discordStub.getDiscordUserStatus(userId)
+	if (discordStatus?.authRevoked) {
+		return []
+	}
+
 	const roleIds = new Set<string>()
 
 	// Get user's characters

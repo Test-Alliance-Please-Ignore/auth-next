@@ -1098,6 +1098,75 @@ export class DiscordDO extends DurableObject<Env> implements Discord {
 	}
 
 	/**
+	 * Security enforcement path: clear roles and ban user from specified guilds.
+	 * Uses bot-token endpoints only (does not require user OAuth token).
+	 */
+	async revokeAccessAndBan(
+		coreUserId: string,
+		guildIds: string[],
+		reason?: string
+	): Promise<
+		Array<{
+			guildId: string
+			success: boolean
+			rolesCleared: boolean
+			banned: boolean
+			errorMessage?: string
+		}>
+	> {
+		const user = await this.getUserByCoreUserId(coreUserId)
+		if (!user) {
+			return guildIds.map((guildId) => ({
+				guildId,
+				success: false,
+				rolesCleared: false,
+				banned: false,
+				errorMessage: 'Discord account not linked',
+			}))
+		}
+
+		const botService = new DiscordBotService(this.env)
+
+		const results = await Promise.all(
+			guildIds.map(async (guildId) => {
+				let rolesCleared = false
+				try {
+					const member = await botService.getGuildMember(guildId, user.userId)
+					if (member) {
+						const clearResult = await botService.updateGuildMemberRoles(guildId, user.userId, [])
+						rolesCleared = clearResult.success
+					}
+
+					const banResult = await botService.banGuildMember(guildId, user.userId, reason)
+					return {
+						guildId,
+						success: banResult.success,
+						rolesCleared,
+						banned: banResult.success,
+						errorMessage: banResult.errorMessage,
+					}
+				} catch (error) {
+					return {
+						guildId,
+						success: false,
+						rolesCleared,
+						banned: false,
+						errorMessage: error instanceof Error ? error.message : String(error),
+					}
+				}
+			})
+		)
+
+		logger.info('[DiscordDO] revokeAccessAndBan completed', {
+			coreUserId,
+			guildCount: guildIds.length,
+			successCount: results.filter((r) => r.success).length,
+		})
+
+		return results
+	}
+
+	/**
 	 * Send a message to a Discord channel using the bot token
 	 */
 	async sendMessage(

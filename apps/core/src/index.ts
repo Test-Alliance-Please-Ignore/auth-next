@@ -333,7 +333,7 @@ export class CoreWorker extends WorkerEntrypoint<Env> {
 				errorMessage?: string
 				alreadyMember?: boolean
 				type?: 'corporation' | 'group'
-				operation?: 'invite' | 'update'
+				operation?: 'invite' | 'update' | 'revoke-ban'
 			}>
 			totalInvited: number
 			totalUpdated: number

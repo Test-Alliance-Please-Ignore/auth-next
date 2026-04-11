@@ -24,6 +24,7 @@ import { UserService } from '../services/user.service'
 import type { Core } from '@repo/core'
 import type { Discord } from '@repo/discord'
 import type { EveTokenStore } from '@repo/eve-token-store'
+import type { Groups } from '@repo/groups'
 import type { Hr } from '@repo/hr'
 import type { App } from '../context'
 
@@ -507,7 +508,7 @@ app.get('/users/:userId/discord/inspect', requireAuth(), requireAdmin(), async (
  * POST /admin/users/:userId/discord/revoke
  * Manually revoke a user's Discord authorization (admin action)
  *
- * Marks the user's Discord authorization as revoked without actually unlinking
+ * Marks authorization revoked and strips managed Discord roles without unlinking
  */
 app.post('/users/:userId/discord/revoke', requireAuth(), requireAdmin(), async (c) => {
 	const user = c.get('user')
@@ -539,9 +540,18 @@ app.post('/users/:userId/discord/revoke', requireAuth(), requireAdmin(), async (
 			return c.json({ error: 'Failed to revoke Discord authorization' }, 500)
 		}
 
+		// Authorization revoked now supersedes role attachments.
+		// Apply a managed-role strip pass immediately (no bans in this path).
+		const stripResult = await discordService.enforceRevokedAuthorizationDiscordAccess(
+			c.env,
+			userId
+		)
+
 		logger.info('[Admin] Discord authorization revoked by admin', {
 			adminUserId: user.id,
 			targetUserId: userId,
+			rolesStrippedFromGuilds: stripResult.totalUpdated,
+			roleStripFailures: stripResult.totalFailed,
 		})
 
 		return c.json({ success: true })
@@ -762,6 +772,36 @@ app.post('/blacklist/user', requireAuth(), requireAdmin(), async (c) => {
 		const processedUsers = new Set<string>()
 		const processedCharacters = new Set<string>()
 
+		const removeUserFromAllGroups = async (targetUserId: string): Promise<void> => {
+			try {
+				const groupsStub = getStub<Groups>(c.env.GROUPS, 'default')
+				const memberships = await groupsStub.getUserMemberships(targetUserId)
+				if (memberships.length === 0) return
+
+				const removalResults = await Promise.allSettled(
+					memberships.map((membership) =>
+						groupsStub.removeMember(membership.groupId, blacklistedByUserId, targetUserId)
+					)
+				)
+
+				const failedRemovals = removalResults.filter(
+					(result) => result.status === 'rejected'
+				).length
+				if (failedRemovals > 0) {
+					logger.warn('[Admin] Some group membership removals failed during blacklist', {
+						targetUserId,
+						totalMemberships: memberships.length,
+						failedRemovals,
+					})
+				}
+			} catch (error) {
+				logger.error('[Admin] Failed to remove user from groups during blacklist', {
+					targetUserId,
+					error: error instanceof Error ? error.message : String(error),
+				})
+			}
+		}
+
 		// Helper function to cascade blacklists with depth limiting
 		async function cascadeBlacklist(
 			targetUserId: string,
@@ -800,6 +840,21 @@ app.post('/blacklist/user', requireAuth(), requireAdmin(), async (c) => {
 
 			// 2. Invalidate sessions
 			await sessionService.invalidateAllUserSessions(targetUserId)
+			await removeUserFromAllGroups(targetUserId)
+
+			// 2b. Immediately enforce Discord revocation/ban for blacklisted users
+			try {
+				await discordService.enforceBlacklistedDiscordAccess(
+					c.env,
+					targetUserId,
+					`Blacklisted by admin ${blacklistedByUserId}`
+				)
+			} catch (error) {
+				logger.error('[Admin] Failed Discord blacklist enforcement during user cascade', {
+					targetUserId,
+					error: error instanceof Error ? error.message : String(error),
+				})
+			}
 
 			// 3. Get all characters for this user
 			const userChars = await db.query.userCharacters.findMany({
@@ -938,6 +993,36 @@ app.post('/blacklist/character', requireAuth(), requireAdmin(), async (c) => {
 
 			// Invalidate all sessions
 			await sessionService.invalidateAllUserSessions(char.userId)
+			try {
+				const groupsStub = getStub<Groups>(c.env.GROUPS, 'default')
+				const memberships = await groupsStub.getUserMemberships(char.userId)
+				if (memberships.length > 0) {
+					await Promise.allSettled(
+						memberships.map((membership) =>
+							groupsStub.removeMember(membership.groupId, user.id, char.userId)
+						)
+					)
+				}
+			} catch (error) {
+				logger.error('[Admin] Failed to remove character-linked user from groups during blacklist', {
+					characterId,
+					userId: char.userId,
+					error: error instanceof Error ? error.message : String(error),
+				})
+			}
+			try {
+				await discordService.enforceBlacklistedDiscordAccess(
+					c.env,
+					char.userId,
+					`Blacklisted via character ${characterId}`
+				)
+			} catch (error) {
+				logger.error('[Admin] Failed Discord blacklist enforcement for character-linked user', {
+					characterId,
+					userId: char.userId,
+					error: error instanceof Error ? error.message : String(error),
+				})
+			}
 			autoBlacklistedUsers.push(char.userId)
 		}
 
