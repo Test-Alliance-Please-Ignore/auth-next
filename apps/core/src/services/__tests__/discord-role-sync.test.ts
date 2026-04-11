@@ -31,6 +31,8 @@ const discordStubMethods = {
 	updateUserRoles: vi.fn(),
 	checkGuildMembershipWithBot: vi.fn(),
 	getUserGuildMembershipDetails: vi.fn(),
+	getDiscordUserStatus: vi.fn(),
+	revokeAccessAndBan: vi.fn(),
 	updateLastRefreshed: vi.fn(),
 }
 
@@ -262,6 +264,10 @@ beforeEach(() => {
 	discordStubMethods.joinUserToServers.mockResolvedValue([])
 	discordStubMethods.checkGuildMembershipWithBot.mockResolvedValue([])
 	discordStubMethods.getUserGuildMembershipDetails.mockResolvedValue([])
+	discordStubMethods.getDiscordUserStatus.mockResolvedValue({
+		authRevoked: false,
+	})
+	discordStubMethods.revokeAccessAndBan.mockResolvedValue([])
 	discordStubMethods.updateLastRefreshed.mockResolvedValue(undefined)
 	// Default: corp attachments empty
 	dbQueryMocks.corporationDiscordServers.findMany.mockResolvedValue([])
@@ -914,6 +920,56 @@ describe('updateUserDiscordRoles', () => {
 		})
 	})
 
+	describe('Authorization revoked users', () => {
+		it('should strip managed roles by setting expected roles to [] when allowRemoval=true', async () => {
+			discordStubMethods.getDiscordUserStatus.mockResolvedValue({
+				authRevoked: true,
+			})
+			discordStubMethods.checkGuildMembershipWithBot.mockResolvedValue(['guild-1'])
+			dbQueryMocks.discordServers.findMany.mockResolvedValue([
+				makeDiscordServer({ id: 'ds-1', guildId: 'guild-1', guildName: 'Guild One' }),
+			])
+			dbQueryMocks.corporationDiscordServers.findMany.mockResolvedValueOnce([
+				makeCorpAttachment({
+					corporationId: 'corp-1',
+					discordServerId: 'ds-1',
+					guildId: 'guild-1',
+					roleIds: ['managed-role-1'],
+				}),
+			])
+			dbQueryMocks.discordServers.findFirst.mockResolvedValue(
+				makeDiscordServer({ id: 'ds-1', guildId: 'guild-1' })
+			)
+			dbQueryMocks.discordRoles.findMany.mockResolvedValue([])
+			groupsStubMethods.getGroupsByDiscordServer.mockResolvedValue([])
+			discordStubMethods.updateUserRoles.mockResolvedValue([
+				{
+					guildId: 'guild-1',
+					success: true,
+					rolesAdded: [],
+					rolesRemoved: ['managed-role-1'],
+				},
+			])
+
+			const result = await updateUserDiscordRoles(mockEnv, 'user-1', undefined, true)
+
+			expect(discordStubMethods.updateUserRoles).toHaveBeenCalledTimes(1)
+			expect(discordStubMethods.updateUserRoles).toHaveBeenCalledWith(
+				'user-1',
+				[
+					expect.objectContaining({
+						guildId: 'guild-1',
+						roleIds: [],
+						managedRoleIds: expect.arrayContaining(['managed-role-1']),
+					}),
+				],
+				true
+			)
+			expect(dbQueryMocks.userCharacters.findMany).not.toHaveBeenCalled()
+			expect(result.totalUpdated).toBe(1)
+		})
+	})
+
 	describe('User with no characters', () => {
 		it('should return empty results when user has no characters', async () => {
 			dbQueryMocks.userCharacters.findMany.mockResolvedValue([])
@@ -1290,6 +1346,33 @@ describe('inviteUserToDiscordServers', () => {
 })
 
 describe('syncUserDiscordAccess', () => {
+	it('should enforce blacklist revocation+ban on manual/admin refresh path', async () => {
+		hrStubMethods.isUserBlacklisted.mockResolvedValue(true)
+		dbQueryMocks.discordServers.findMany.mockResolvedValue([
+			makeDiscordServer({ id: 'ds-1', guildId: 'guild-1' }),
+			makeDiscordServer({ id: 'ds-2', guildId: 'guild-2' }),
+		])
+		discordStubMethods.checkGuildMembershipWithBot.mockResolvedValue(['guild-1', 'guild-2'])
+		discordStubMethods.revokeAccessAndBan.mockResolvedValue([
+			{ guildId: 'guild-1', success: true, rolesCleared: true, banned: true },
+			{ guildId: 'guild-2', success: true, rolesCleared: true, banned: true },
+		])
+
+		const result = await syncUserDiscordAccess(mockEnv, 'user-1', true)
+
+		expect(discordStubMethods.joinUserToServers).not.toHaveBeenCalled()
+		expect(discordStubMethods.updateUserRoles).not.toHaveBeenCalled()
+		expect(discordStubMethods.revokeAccessAndBan).toHaveBeenCalledWith(
+			'user-1',
+			['guild-1', 'guild-2'],
+			'User is blacklisted'
+		)
+		expect(result.totalInvited).toBe(0)
+		expect(result.totalUpdated).toBe(2)
+		expect(result.totalFailed).toBe(0)
+		expect(result.results.map((r) => r.operation)).toEqual(['revoke-ban', 'revoke-ban'])
+	})
+
 	it('should run invite then role sync and pass allowRemoval through to role updates', async () => {
 		dbQueryMocks.discordServers.findMany.mockResolvedValue([
 			makeDiscordServer({ id: 'ds-1', guildId: 'guild-1' }),
@@ -1410,5 +1493,96 @@ describe('inspectUserDiscordAccess', () => {
 		expect(guild.currentUnmanagedRoles.map((r) => r.roleId)).toEqual(
 			expect.arrayContaining(['managed-unconfigured', 'manual-role'])
 		)
+	})
+
+	it('should expect no roles when user is blacklisted', async () => {
+		hrStubMethods.isUserBlacklisted.mockResolvedValue(true)
+		dbQueryMocks.discordServers.findMany.mockResolvedValue([
+			makeDiscordServer({ id: 'ds-1', guildId: 'guild-1', guildName: 'Guild One' }),
+		])
+		discordStubMethods.getUserGuildMembershipDetails.mockResolvedValue([
+			{
+				guildId: 'guild-1',
+				isMember: true,
+				currentRoleIds: ['managed-configured'],
+				currentRoles: [{ roleId: 'managed-configured', roleName: 'Managed Configured' }],
+			},
+		])
+
+		dbQueryMocks.corporationDiscordServers.findMany.mockResolvedValue([
+			makeCorpAttachment({
+				corporationId: 'corp-managed',
+				discordServerId: 'ds-1',
+				guildId: 'guild-1',
+				roleIds: ['managed-configured'],
+			}),
+		])
+		dbQueryMocks.discordServers.findFirst.mockResolvedValue(
+			makeDiscordServer({ id: 'ds-1', guildId: 'guild-1' })
+		)
+		dbQueryMocks.discordRoles.findMany.mockResolvedValue([
+			{
+				discordServerId: 'ds-1',
+				roleId: 'managed-configured',
+				roleName: 'Managed Configured',
+				isActive: true,
+			},
+		] as any)
+		groupsStubMethods.getGroupsWithDiscordAutoInvite.mockResolvedValue([])
+		groupsStubMethods.getGroupsByDiscordServer.mockResolvedValue([])
+
+		const result = await inspectUserDiscordAccess(mockEnv, 'user-1')
+		expect(result.guilds).toHaveLength(1)
+
+		const guild = result.guilds[0]
+		expect(guild.expectedManagedRoles).toEqual([])
+		expect(guild.missingExpectedManagedRoles).toEqual([])
+		expect(guild.unexpectedManagedRoles.map((r) => r.roleId)).toEqual(['managed-configured'])
+	})
+
+	it('should expect no roles when Discord authorization is revoked', async () => {
+		discordStubMethods.getDiscordUserStatus.mockResolvedValue({
+			authRevoked: true,
+		})
+		dbQueryMocks.discordServers.findMany.mockResolvedValue([
+			makeDiscordServer({ id: 'ds-1', guildId: 'guild-1', guildName: 'Guild One' }),
+		])
+		discordStubMethods.getUserGuildMembershipDetails.mockResolvedValue([
+			{
+				guildId: 'guild-1',
+				isMember: true,
+				currentRoleIds: ['managed-configured'],
+				currentRoles: [{ roleId: 'managed-configured', roleName: 'Managed Configured' }],
+			},
+		])
+		dbQueryMocks.corporationDiscordServers.findMany.mockResolvedValue([
+			makeCorpAttachment({
+				corporationId: 'corp-managed',
+				discordServerId: 'ds-1',
+				guildId: 'guild-1',
+				roleIds: ['managed-configured'],
+			}),
+		])
+		dbQueryMocks.discordServers.findFirst.mockResolvedValue(
+			makeDiscordServer({ id: 'ds-1', guildId: 'guild-1' })
+		)
+		dbQueryMocks.discordRoles.findMany.mockResolvedValue([
+			{
+				discordServerId: 'ds-1',
+				roleId: 'managed-configured',
+				roleName: 'Managed Configured',
+				isActive: true,
+			},
+		] as any)
+		groupsStubMethods.getGroupsWithDiscordAutoInvite.mockResolvedValue([])
+		groupsStubMethods.getGroupsByDiscordServer.mockResolvedValue([])
+
+		const result = await inspectUserDiscordAccess(mockEnv, 'user-1')
+		expect(result.guilds).toHaveLength(1)
+
+		const guild = result.guilds[0]
+		expect(guild.expectedManagedRoles).toEqual([])
+		expect(guild.missingExpectedManagedRoles).toEqual([])
+		expect(guild.unexpectedManagedRoles.map((r) => r.roleId)).toEqual(['managed-configured'])
 	})
 })

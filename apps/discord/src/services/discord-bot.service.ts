@@ -274,6 +274,83 @@ export class DiscordBotService {
 	}
 
 	/**
+	 * Ban a user from a Discord guild/server
+	 * Uses the "Create Guild Ban" endpoint
+	 *
+	 * @param guildId - Discord guild/server ID
+	 * @param userId - Discord user ID
+	 * @param reason - Optional audit log reason
+	 * @returns Success status
+	 */
+	async banGuildMember(
+		guildId: string,
+		userId: string,
+		reason?: string
+	): Promise<{
+		success: boolean
+		errorMessage?: string
+	}> {
+		try {
+			const proxyUrl = getDiscordProxyUrl(this.env)
+
+			const url = `${this.baseUrl}/guilds/${guildId}/bans/${userId}`
+			const response = await fetchWithRetry(url, {
+				method: 'PUT',
+				headers: {
+					Authorization: `Bot ${this.env.DISCORD_BOT_TOKEN}`,
+					...(reason ? { 'X-Audit-Log-Reason': encodeURIComponent(reason.slice(0, 512)) } : {}),
+				},
+				...(proxyUrl ? { proxy: proxyUrl } : {}),
+			})
+
+			if (response.status === 204 || response.status === 201) {
+				return { success: true }
+			}
+
+			if (!response.ok) {
+				const errorData = await response.json().catch(() => ({}))
+				throw new DiscordAPIError(response.status, errorData)
+			}
+
+			return { success: true }
+		} catch (error) {
+			if (error instanceof DiscordAPIError) {
+				logger.error('[DiscordBot] Discord API error banning member', {
+					guildId,
+					userId,
+					status: error.status,
+					code: error.code,
+					message: error.message,
+				})
+
+				if (error.status === 403) {
+					return {
+						success: false,
+						errorMessage: 'Bot lacks BAN_MEMBERS permission',
+					}
+				}
+
+				return {
+					success: false,
+					errorMessage: `Discord API error: ${error.data?.message ?? error.message}`,
+				}
+			}
+
+			const errorMessage = error instanceof Error ? error.message : String(error)
+			logger.error('[DiscordBot] Unexpected error banning member', {
+				guildId,
+				userId,
+				error: errorMessage,
+			})
+
+			return {
+				success: false,
+				errorMessage: `Failed to ban member: ${errorMessage}`,
+			}
+		}
+	}
+
+	/**
 	 * Update guild member roles and/or nickname
 	 * Uses the "Modify Guild Member" endpoint
 	 *

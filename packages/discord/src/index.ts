@@ -462,6 +462,27 @@ export interface Discord {
 	updateUserNickname(coreUserId: string, guildIds: string[], nickname: string): Promise<void>
 
 	/**
+	 * Forcibly remove a user from access across guilds by clearing roles and banning.
+	 * Intended for blacklist/security enforcement.
+	 * @param coreUserId - Core user ID
+	 * @param guildIds - Guild IDs to enforce on
+	 * @param reason - Optional ban reason
+	 */
+	revokeAccessAndBan(
+		coreUserId: string,
+		guildIds: string[],
+		reason?: string
+	): Promise<
+		Array<{
+			guildId: string
+			success: boolean
+			rolesCleared: boolean
+			banned: boolean
+			errorMessage?: string
+		}>
+	>
+
+	/**
 	 * Send a direct message to a user by their core user ID
 	 * Creates or gets a DM channel and sends the message
 	 * @param coreUserId - Core user ID
