@@ -212,4 +212,47 @@ describe('admin blacklist cleanup hooks', () => {
 			'Blacklisted via character 9001'
 		)
 	})
+
+	it('links auto-created character blacklist metadata to created user blacklist entry id', async () => {
+		const app = createApp(makeUser())
+		hrStub.createUserBlacklist.mockResolvedValue({ id: 'user-blacklist-entry-1' })
+		hrStub.createCharacterBlacklist.mockResolvedValue({ id: 'char-blacklist-entry-1' })
+		dbQueryMocks.userCharacters.findMany
+			.mockResolvedValueOnce([
+				{
+					userId: '11111111-1111-4111-8111-111111111111',
+					characterId: '9002',
+					characterName: 'Pilot Two',
+				},
+			])
+			.mockResolvedValueOnce([
+				{
+					userId: '11111111-1111-4111-8111-111111111111',
+					characterId: '9002',
+					characterName: 'Pilot Two',
+				},
+			])
+
+		const response = await app.request(
+			'/api/admin/blacklist/user',
+			{
+				method: 'POST',
+				body: JSON.stringify({
+					userId: '11111111-1111-4111-8111-111111111111',
+					reason: 'policy violation',
+				}),
+			},
+			env
+		)
+
+		expect(response.status).toBe(200)
+		expect(hrStub.createCharacterBlacklist).toHaveBeenCalledWith(
+			expect.objectContaining({
+				characterId: '9002',
+				metadata: expect.objectContaining({
+					triggeredByUserBlacklist: 'user-blacklist-entry-1',
+				}),
+			})
+		)
+	})
 })

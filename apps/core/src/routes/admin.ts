@@ -827,7 +827,7 @@ app.post('/blacklist/user', requireAuth(), requireAdmin(), async (c) => {
 			const sessionService = new SessionService(db)
 
 			// 1. Create user blacklist
-			await hrStub.createUserBlacklist({
+			const userBlacklistEntry = await hrStub.createUserBlacklist({
 				userId: targetUserId,
 				reason: cascadeReason,
 				blacklistedBy: blacklistedByUserId,
@@ -874,7 +874,7 @@ app.post('/blacklist/user', requireAuth(), requireAdmin(), async (c) => {
 					characterId: char.characterId,
 					reason: `Auto-blacklisted: owned by blacklisted user ${targetUserId}`,
 					blacklistedBy: blacklistedByUserId,
-					metadata: { triggeredByUserBlacklist: triggeredBy || userId },
+					metadata: { triggeredByUserBlacklist: userBlacklistEntry.id },
 				})
 				blacklistedCharacters.push(char.characterId)
 
