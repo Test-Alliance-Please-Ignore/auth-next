@@ -333,9 +333,7 @@ app.get('/my-bills/:billId', requireAuth(), requireBillingViewer(), async (c) =>
 	try {
 		logger.info('[bills-user] Fetching single bill for user', { userId: user.id, billId })
 		const stub = getStub<Bills>(c.env.BILLS, 'default')
-		const bill = user.is_admin
-			? await stub.getBillIntegrationView(billId)
-			: await stub.getBill(user.id, billId)
+		const bill = await stub.getBillIntegrationView(billId)
 
 		if (!bill) {
 			return c.json({ error: 'Bill not found' }, 404)
@@ -358,7 +356,7 @@ app.get('/my-bills/:billId', requireAuth(), requireBillingViewer(), async (c) =>
 					billId,
 					issuerId: bill.issuerId,
 				})
-				return c.json({ error: 'Bill not found' }, 404)
+				return c.json({ error: 'Forbidden' }, 403)
 			}
 		}
 
@@ -424,6 +422,9 @@ app.get('/my-bills/:billId', requireAuth(), requireBillingViewer(), async (c) =>
 
 		return c.json(bill)
 	} catch (error) {
+		if (error instanceof Error && error.message.includes('Not authorized to view this bill')) {
+			return c.json({ error: 'Forbidden' }, 403)
+		}
 		logger.error('[bills-user] Error fetching bill:', {
 			error: error instanceof Error ? error.message : String(error),
 			stack: error instanceof Error ? error.stack : undefined,
