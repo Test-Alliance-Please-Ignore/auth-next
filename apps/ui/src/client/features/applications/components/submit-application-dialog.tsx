@@ -182,7 +182,8 @@ export function SubmitApplicationDialog({
 								})
 							}}
 							options={characters.map(
-								(char: { characterId: string; characterName: string; hasValidToken: boolean }) => ({ value: char.characterId,
+								(char: { characterId: string; characterName: string; hasValidToken: boolean }) => ({
+									value: char.characterId,
 									label: `${char.characterName}${!char.hasValidToken ? ' (No valid token)' : ''}`,
 								})
 							)}
