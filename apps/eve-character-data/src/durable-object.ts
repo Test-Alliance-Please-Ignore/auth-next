@@ -376,6 +376,16 @@ export class EveCharacterDataDO extends DurableObject<Env> implements EveCharact
 	 * Fetch and store authenticated character data
 	 */
 	async fetchAuthenticatedData(characterId: string, forceRefresh = false): Promise<void> {
+		// Authenticated tables reference character_public_info via FK.
+		// Ensure the parent row exists for authenticated-only sync runs.
+		const existingPublicInfo = await this.db.query.characterPublicInfo.findFirst({
+			where: eq(characterPublicInfo.characterId, characterId),
+			columns: { characterId: true },
+		})
+		if (!existingPublicInfo) {
+			await this.fetchAndStorePublicInfo(characterId, forceRefresh)
+		}
+
 		await Promise.all([
 			this.fetchAndStoreSkills(characterId, forceRefresh),
 			this.fetchAndStoreAttributes(characterId, forceRefresh),
