@@ -184,7 +184,7 @@ describe('bills-user routes access matrix', () => {
 			status: 'issued',
 			payments: [],
 		}
-		billsStub.getBill.mockResolvedValueOnce(bill)
+		billsStub.getBillIntegrationView.mockResolvedValueOnce(bill)
 		getStubMock.mockImplementation((binding: any) => {
 			if (binding === env.BILLS) return billsStub as any
 			if (binding === env.ESI_TYPE_RESOLVER) return makeResolverStub() as any
@@ -198,7 +198,7 @@ describe('bills-user routes access matrix', () => {
 		expect(response.status).toBe(200)
 	})
 
-	it('denies non-owner non-party bill detail with 404', async () => {
+	it('denies non-owner non-party bill detail with 403', async () => {
 		const app = createApp(makeUser({ id: 'user-1', is_admin: false }))
 		const bill = {
 			id: 'bill-1',
@@ -210,7 +210,7 @@ describe('bills-user routes access matrix', () => {
 			status: 'issued',
 			payments: [],
 		}
-		billsStub.getBill.mockResolvedValueOnce(bill)
+		billsStub.getBillIntegrationView.mockResolvedValueOnce(bill)
 		getStubMock.mockImplementation((binding: any) => {
 			if (binding === env.BILLS) return billsStub as any
 			if (binding === env.ESI_TYPE_RESOLVER) return makeResolverStub() as any
@@ -221,8 +221,28 @@ describe('bills-user routes access matrix', () => {
 		})
 
 		const response = await app.request('/api/bills/my-bills/bill-1', {}, env)
-		expect(response.status).toBe(404)
-		expect(await response.json()).toEqual({ error: 'Bill not found' })
+		expect(response.status).toBe(403)
+		expect(await response.json()).toEqual({ error: 'Forbidden' })
+	})
+
+	it('allows non-admin payer access when bill payerId matches user character id', async () => {
+		const app = createApp(makeUser({ id: 'user-1', is_admin: false }))
+		const bill = {
+			id: 'bill-1',
+			issuerId: 'issuer-2',
+			payerId: '7001',
+			payerType: 'character',
+			payeeId: '416584095',
+			payeeType: 'corporation',
+			status: 'issued',
+			payments: [],
+			externalMetadata: { groupId: 'group-1' },
+			groupBillId: 'group-bill-1',
+		}
+		billsStub.getBillIntegrationView.mockResolvedValueOnce(bill)
+
+		const response = await app.request('/api/bills/my-bills/bill-1', {}, env)
+		expect(response.status).toBe(200)
 	})
 
 	it('keeps draft hidden for non-admin non-issuer even if party-linked', async () => {
@@ -237,7 +257,7 @@ describe('bills-user routes access matrix', () => {
 			status: 'draft',
 			payments: [],
 		}
-		billsStub.getBill.mockResolvedValueOnce(bill)
+		billsStub.getBillIntegrationView.mockResolvedValueOnce(bill)
 		getStubMock.mockImplementation((binding: any) => {
 			if (binding === env.BILLS) return billsStub as any
 			if (binding === env.ESI_TYPE_RESOLVER) return makeResolverStub() as any
