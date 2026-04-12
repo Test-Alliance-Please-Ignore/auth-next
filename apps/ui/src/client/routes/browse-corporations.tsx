@@ -38,7 +38,10 @@ interface CorporationCardProps {
 
 function CorporationCard({ corporation, onClick }: CorporationCardProps) {
 	return (
-		<Card variant="elevated" className="transition-all hover:border-primary/50 hover:shadow-lg">
+		<Card
+			variant="elevated"
+			className="h-full transition-all hover:border-primary/50 hover:shadow-lg flex flex-col"
+		>
 			<CardHeader className="pb-4">
 				<div className="flex items-start gap-4">
 					<img
@@ -56,7 +59,7 @@ function CorporationCard({ corporation, onClick }: CorporationCardProps) {
 					</div>
 				</div>
 			</CardHeader>
-			<CardContent className="space-y-4">
+			<CardContent className="flex flex-1 flex-col gap-4">
 				{/* Corporation Info */}
 				<div className="flex items-center gap-2 text-sm text-muted-foreground">
 					<Users className="h-4 w-4" />
@@ -69,6 +72,8 @@ function CorporationCard({ corporation, onClick }: CorporationCardProps) {
 						{corporation.shortDescription}
 					</p>
 				)}
+
+				<div className="flex-1" />
 
 				{/* View Details Button */}
 				<Button className="w-full" onClick={() => onClick(corporation.corporationId)}>

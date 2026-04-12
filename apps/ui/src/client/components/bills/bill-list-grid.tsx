@@ -132,7 +132,7 @@ export function BillListGrid(props: {
 				id: 'dueDate',
 				header: 'Due',
 				enableSorting: true,
-				Cell: ({ row }) => formatDueDate(row.original.dueDate),
+				Cell: ({ row }) => formatDueDate(row.original.dueDate, row.original.status),
 			}),
 			columnHelper.accessor('createdAt', {
 				id: 'createdAt',
@@ -146,8 +146,15 @@ export function BillListGrid(props: {
 							id: 'actions',
 							header: 'Actions',
 							enableSorting: false,
-							mantineTableHeadCellProps: { style: { textAlign: 'right' } },
-							mantineTableBodyCellProps: { style: { textAlign: 'right' } },
+							size: 96,
+							minSize: 88,
+							maxSize: 120,
+							mantineTableHeadCellProps: {
+								style: { textAlign: 'center', whiteSpace: 'nowrap' },
+							},
+							mantineTableBodyCellProps: {
+								style: { textAlign: 'right', whiteSpace: 'nowrap' },
+							},
 							Cell: ({ row }) => props.renderActions!(row.original, row),
 						}),
 					]

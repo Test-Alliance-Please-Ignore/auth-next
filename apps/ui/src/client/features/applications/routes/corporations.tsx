@@ -44,7 +44,7 @@ export default function CorporationsPage() {
 
 	if (authLoading || corporationsLoading) {
 		return (
-			<div className="container mx-auto max-w-7xl px-4 py-8">
+			<div className="container mx-auto max-w-full px-4 py-8">
 				<div className="flex items-center justify-center min-h-[320px]">
 					<LoadingSpinner size="lg" />
 				</div>
@@ -54,7 +54,7 @@ export default function CorporationsPage() {
 
 	if (error) {
 		return (
-			<div className="container mx-auto max-w-6xl px-4 py-8">
+			<div className="container mx-auto max-w-full px-4 py-8">
 				<Card className="max-w-2xl mx-auto border-red-200 bg-red-50 dark:border-red-800 dark:bg-red-950">
 					<CardHeader className="text-center">
 						<AlertCircle className="h-16 w-16 mx-auto text-red-500 mb-4" />
@@ -75,7 +75,7 @@ export default function CorporationsPage() {
 
 	if (corporations.length === 0) {
 		return (
-			<div className="container mx-auto max-w-6xl px-4 py-8">
+			<div className="container mx-auto max-w-full px-4 py-8">
 				<Card className="max-w-2xl mx-auto">
 					<CardHeader className="text-center">
 						<Building2 className="h-16 w-16 mx-auto text-muted-foreground mb-4" />
@@ -94,7 +94,7 @@ export default function CorporationsPage() {
 	)
 
 	return (
-		<div className="container mx-auto max-w-7xl px-4 py-8">
+		<div className="container mx-auto max-w-full px-4 py-8">
 			<PageHeader
 				title="Corporations"
 				description="Select a corporation to access members and application review tools"

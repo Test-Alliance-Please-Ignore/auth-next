@@ -123,7 +123,7 @@ export default function DevComponentsPage() {
 	const [asyncValue, setAsyncValue] = useState<string>('')
 
 	return (
-		<div className="container mx-auto py-8 space-y-10 max-w-5xl">
+		<div className="container mx-auto py-8 space-y-10 max-w-full">
 			<div>
 				<h1 className="text-2xl font-bold text-foreground">Component Showcase</h1>
 				<p className="text-muted-foreground text-sm mt-1">

@@ -144,7 +144,7 @@ export default function HrAuditorUserProfilePage() {
 
 	if (authLoading || userLoading) {
 		return (
-			<div className="container mx-auto max-w-7xl px-4 py-8">
+			<div className="container mx-auto max-w-full px-4 py-8">
 				<div className="flex items-center justify-center min-h-[320px]">
 					<LoadingSpinner size="lg" />
 				</div>
@@ -154,7 +154,7 @@ export default function HrAuditorUserProfilePage() {
 
 	if (!isAuditor && !user?.is_admin) {
 		return (
-			<div className="container mx-auto max-w-6xl px-4 py-8">
+			<div className="container mx-auto max-w-full px-4 py-8">
 				<Card className="max-w-2xl mx-auto border-red-200 bg-red-50 dark:border-red-800 dark:bg-red-950">
 					<CardHeader className="text-center">
 						<CardTitle className="text-2xl text-red-900 dark:text-red-100">Access Denied</CardTitle>
@@ -166,7 +166,7 @@ export default function HrAuditorUserProfilePage() {
 
 	if (!userDetails) {
 		return (
-			<div className="container mx-auto max-w-6xl px-4 py-8">
+			<div className="container mx-auto max-w-full px-4 py-8">
 				<Card className="max-w-2xl mx-auto">
 					<CardHeader className="text-center">
 						<CardTitle>User Not Found</CardTitle>
@@ -242,7 +242,7 @@ export default function HrAuditorUserProfilePage() {
 	}
 
 	return (
-		<div className="container mx-auto max-w-7xl px-4 py-8">
+		<div className="container mx-auto max-w-full px-4 py-8">
 			<div className="flex items-center justify-between mb-6">
 				<Breadcrumb>
 					<BreadcrumbList>

@@ -49,7 +49,7 @@ export default function CharacterDetailPage() {
 
 	if (isLoading) {
 		return (
-			<div className="container mx-auto p-8">
+			<div className="container mx-auto max-w-full p-8">
 				<div className="space-y-4">
 					<Card>
 						<CardHeader>
@@ -76,7 +76,7 @@ export default function CharacterDetailPage() {
 			error && typeof error === 'object' && 'status' in error && error.status === 404
 
 		return (
-			<div className="container mx-auto p-8">
+			<div className="container mx-auto max-w-full p-8">
 				<Card>
 					<CardHeader>
 						<CardTitle>{isForbidden ? 'Access Denied' : 'Error'}</CardTitle>
@@ -100,7 +100,7 @@ export default function CharacterDetailPage() {
 		: 'Never updated'
 
 	return (
-		<div className="container mx-auto p-8 space-y-6">
+		<div className="container mx-auto max-w-full p-8 space-y-6">
 			{/* Admin View Alert */}
 			{character.viewedAsAdmin && (
 				<Card className="border-amber-500/50 bg-amber-500/10">

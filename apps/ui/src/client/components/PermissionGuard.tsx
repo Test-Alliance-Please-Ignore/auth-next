@@ -95,7 +95,7 @@ export function PermissionGuard({
 	// If showError is true, show error message
 	if (showError) {
 		return (
-			<div className="container mx-auto py-8">
+			<div className="container mx-auto max-w-full py-8">
 				<Card className="border-red-500 bg-red-50 dark:bg-red-950/20">
 					<CardHeader>
 						<CardTitle className="flex items-center gap-2 text-red-600 dark:text-red-400">

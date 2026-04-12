@@ -53,7 +53,7 @@ export default function FulcrumReportPage() {
 	}
 
 	return (
-		<div className="container mx-auto max-w-6xl px-4 py-8">
+		<div className="container mx-auto max-w-full px-4 py-8">
 			{/* Breadcrumb */}
 			<div className="mb-6 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
 				<Breadcrumb>

@@ -162,7 +162,7 @@ export default function AdminFreightRoutesEditPage() {
 
 	if (isLoading) {
 		return (
-			<div className="space-y-6 max-w-4xl">
+			<div className="space-y-6 max-w-full">
 				<Skeleton className="h-12 w-64" />
 				<Card>
 					<CardHeader>
@@ -181,7 +181,7 @@ export default function AdminFreightRoutesEditPage() {
 
 	if (!route) {
 		return (
-			<div className="space-y-6 max-w-4xl">
+			<div className="space-y-6 max-w-full">
 				<Card>
 					<CardContent className="pt-6">
 						<p className="text-destructive">Freight route not found</p>
@@ -195,7 +195,7 @@ export default function AdminFreightRoutesEditPage() {
 	}
 
 	return (
-		<div className="space-y-6 max-w-4xl">
+		<div className="space-y-6 max-w-full">
 			{/* Page Header */}
 			<div>
 				<h1 className="text-3xl font-bold gradient-text">Edit Freight Route</h1>

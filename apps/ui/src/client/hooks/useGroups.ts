@@ -67,17 +67,18 @@ export function useCreateGroup() {
 	return useApiMutation({
 		mutationFn: (data: CreateGroupRequest) => api.createGroup(data),
 		successMessage: (group) => `Group "${group.name}" created successfully`,
-		onSuccess: (_newGroup) => {
+		onSuccess: async () => {
 			// Invalidate all group lists (they may have different filters)
-			void queryClient.invalidateQueries({ queryKey: groupKeys.lists() })
+			await Promise.all([
+				queryClient.invalidateQueries({ queryKey: groupKeys.all }),
+				// Legacy user-route group caches still use this prefix in a few places.
+				queryClient.invalidateQueries({ queryKey: ['groups'] }),
+			])
 
-			// Optimistically add to cache (for unfiltered lists)
-			queryClient.setQueriesData<GroupWithDetails[]>({ queryKey: groupKeys.lists() }, (old) => {
-				if (!old) return old
-				// Note: We can't reliably add it to all filtered caches since we don't know
-				// which filters would include it, so we just invalidate
-				return old
-			})
+			await Promise.all([
+				queryClient.refetchQueries({ queryKey: groupKeys.all, type: 'active' }),
+				queryClient.refetchQueries({ queryKey: ['groups'], type: 'active' }),
+			])
 		},
 	})
 }

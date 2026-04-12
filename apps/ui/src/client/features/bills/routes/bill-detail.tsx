@@ -26,7 +26,7 @@ export default function BillDetailPage() {
 	const { billId } = useParams<{ billId: string }>()
 	const { user } = useAuth()
 	const { data: bill, isLoading, error } = useBill(billId!)
-	const [copiedToken, setCopiedToken] = useState(false)
+	const [copiedField, setCopiedField] = useState<'amount' | 'payee' | 'token' | null>(null)
 
 	usePageTitle(bill ? `Bill - ${bill.title}` : 'Bill Details')
 
@@ -108,14 +108,26 @@ export default function BillDetailPage() {
 	const remaining = Math.max(0, totalDue - totalPaid)
 	const paymentProgress = totalDue > 0 ? Math.min(100, Math.floor((totalPaid / totalDue) * 100)) : 0
 
-	const copyPaymentToken = async () => {
+	const copyField = async (field: 'amount' | 'payee' | 'token') => {
+		const payeeValue = bill.payeeName || (bill.payeeId && bill.payeeType ? bill.payeeId : '')
+		const value = field === 'amount' ? bill.amount : field === 'payee' ? payeeValue : bill.paymentToken
+		const successMessage =
+			field === 'amount'
+				? 'Amount copied to clipboard'
+				: field === 'payee'
+					? 'Payee copied to clipboard'
+					: 'Payment token copied to clipboard'
+		if (!value) {
+			toast.error('No value to copy')
+			return
+		}
 		try {
-			await navigator.clipboard.writeText(bill.paymentToken)
-			setCopiedToken(true)
-			toast.success('Payment token copied to clipboard')
-			setTimeout(() => setCopiedToken(false), 700)
+			await navigator.clipboard.writeText(value)
+			setCopiedField(field)
+			toast.success(successMessage)
+			setTimeout(() => setCopiedField((current) => (current === field ? null : current)), 700)
 		} catch {
-			toast.error('Failed to copy payment token')
+			toast.error('Failed to copy value')
 		}
 	}
 
@@ -147,43 +159,81 @@ export default function BillDetailPage() {
 					<CardDescription>Information about this bill</CardDescription>
 				</CardHeader>
 				<CardContent className="space-y-4">
-					<div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-						<div>
-							<h3 className="text-sm font-medium text-muted-foreground mb-1">Amount</h3>
-							<p className="text-2xl font-bold">{formatAmount(bill.amount)} ISK</p>
-							{Number(bill.lateFee) > 0 && (
-								<p className="text-sm text-orange-500">
-									+{formatAmount(bill.lateFee)} ISK late fee
-								</p>
-							)}
-						</div>
-
-						<div>
-							<h3 className="text-sm font-medium text-muted-foreground mb-1">Due Date</h3>
-							<p className="text-lg">{formatDate(bill.dueDate)}</p>
-						</div>
-
+					<div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
 						<div>
 							<h3 className="text-sm font-medium text-muted-foreground mb-1">Payer</h3>
-							<p className="text-lg">
+							<p className="text-base leading-6 font-semibold">
 								{bill.payerName ||
 									`${bill.payerType.charAt(0).toUpperCase() + bill.payerType.slice(1)} ${bill.payerId}`}
 							</p>
 						</div>
 
 						<div>
-							<h3 className="text-sm font-medium text-muted-foreground mb-1">Payee</h3>
-							<p className="text-lg">
-								{bill.payeeName ||
-									(bill.payeeId && bill.payeeType
-										? `${bill.payeeType.charAt(0).toUpperCase() + bill.payeeType.slice(1)} ${bill.payeeId}`
-										: '-')}
-							</p>
+							<h3 className="text-sm font-medium text-muted-foreground mb-1">Issuer</h3>
+							<p className="text-base leading-6 font-semibold">{bill.issuerName || bill.issuerId}</p>
 						</div>
 
 						<div>
-							<h3 className="text-sm font-medium text-muted-foreground mb-1">Issuer</h3>
-							<p className="text-lg">{bill.issuerName || bill.issuerId}</p>
+							<h3 className="text-sm font-medium text-muted-foreground mb-1">Due Date</h3>
+							<p className="text-base leading-6 font-semibold">{formatDate(bill.dueDate)}</p>
+						</div>
+
+						<div>
+							<h3 className="text-sm font-medium text-muted-foreground mb-1">Payee</h3>
+							<div
+								role="button"
+								tabIndex={0}
+								onClick={() => void copyField('payee')}
+								onKeyDown={(event) => {
+									if (event.key === 'Enter' || event.key === ' ') {
+										event.preventDefault()
+										void copyField('payee')
+									}
+								}}
+								className={`rounded-md border p-3 text-left cursor-pointer transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 ${
+									copiedField === 'payee'
+										? 'border-teal-500/60 bg-teal-500/20'
+										: 'border-border bg-muted/50 hover:bg-muted'
+								}`}
+								title="Copy payee"
+							>
+								<p className="text-base leading-6 font-semibold">
+									{bill.payeeName ||
+										(bill.payeeId && bill.payeeType
+											? `${bill.payeeType.charAt(0).toUpperCase() + bill.payeeType.slice(1)} ${bill.payeeId}`
+											: '-')}
+								</p>
+								<p className="mt-1 text-xs text-muted-foreground">Click to copy</p>
+							</div>
+						</div>
+
+						<div>
+							<h3 className="text-sm font-medium text-muted-foreground mb-1">Amount</h3>
+							<div
+								role="button"
+								tabIndex={0}
+								onClick={() => void copyField('amount')}
+								onKeyDown={(event) => {
+									if (event.key === 'Enter' || event.key === ' ') {
+										event.preventDefault()
+										void copyField('amount')
+									}
+								}}
+								className={`rounded-md border p-3 text-left cursor-pointer transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 ${
+									copiedField === 'amount'
+										? 'border-teal-500/60 bg-teal-500/20'
+										: 'border-border bg-muted/50 hover:bg-muted'
+								}`}
+								title="Copy amount"
+							>
+								<p className="text-xl font-semibold">{formatAmount(bill.amount)} ISK</p>
+								{Number(bill.lateFee) > 0 && (
+									<p className="text-xs text-orange-500 mt-1">
+										+{formatAmount(bill.lateFee)} ISK late fee
+									</p>
+								)}
+								<p className="mt-1 text-xs text-muted-foreground">Click to copy</p>
+							</div>
 						</div>
 
 						<div>
@@ -191,43 +241,43 @@ export default function BillDetailPage() {
 							<div
 								role="button"
 								tabIndex={0}
-								onClick={copyPaymentToken}
+								onClick={() => void copyField('token')}
 								onKeyDown={(event) => {
 									if (event.key === 'Enter' || event.key === ' ') {
 										event.preventDefault()
-										void copyPaymentToken()
+										void copyField('token')
 									}
 								}}
-								className={`inline-block max-w-sm rounded-md border p-4 text-left cursor-pointer transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 ${
-									copiedToken
+								className={`rounded-md border p-3 text-left cursor-pointer transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 ${
+									copiedField === 'token'
 										? 'border-teal-500/60 bg-teal-500/20'
 										: 'border-border bg-muted/50 hover:bg-muted'
 								}`}
 								title="Copy payment token"
 							>
-								<p className="text-2xl font-mono font-semibold break-all">{bill.paymentToken}</p>
-								<p className="mt-2 text-sm text-muted-foreground">
-									Click token to copy to clipboard
-								</p>
+								<p className="text-xl font-mono font-semibold break-all">{bill.paymentToken}</p>
+								<p className="mt-1 text-xs text-muted-foreground">Click to copy</p>
 							</div>
 						</div>
+					</div>
 
+					<div className="grid grid-cols-1 md:grid-cols-2 gap-4">
 						{bill.description && (
 							<div className="md:col-span-2">
 								<h3 className="text-sm font-medium text-muted-foreground mb-1">Description</h3>
-								<p className="text-lg">{bill.description}</p>
+								<p className="text-base leading-6">{bill.description}</p>
 							</div>
 						)}
 
 						<div>
 							<h3 className="text-sm font-medium text-muted-foreground mb-1">Created</h3>
-							<p className="text-lg">{formatDate(bill.createdAt)}</p>
+							<p className="text-base leading-6">{formatDate(bill.createdAt)}</p>
 						</div>
 
 						{bill.paidAt && (
 							<div>
 								<h3 className="text-sm font-medium text-muted-foreground mb-1">Paid At</h3>
-								<p className="text-lg">{formatDate(bill.paidAt)}</p>
+								<p className="text-base leading-6">{formatDate(bill.paidAt)}</p>
 							</div>
 						)}
 					</div>
