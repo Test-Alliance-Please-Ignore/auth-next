@@ -137,7 +137,7 @@ function AdminLayoutContent() {
 				</header>
 
 				<main className="flex-1 relative z-10 p-4 md:p-6 lg:p-8">
-					<div className="w-full mx-auto max-w-full">
+					<div className="w-full mx-auto max-w-[120rem]">
 						<Outlet />
 					</div>
 				</main>

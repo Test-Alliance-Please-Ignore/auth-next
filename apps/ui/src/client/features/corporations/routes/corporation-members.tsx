@@ -25,6 +25,7 @@ import {
 	BreadcrumbSeparator,
 } from '@/components/ui/breadcrumb'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
+import { Container } from '@/components/ui/container'
 import { LoadingSpinner } from '@/components/ui/loading'
 import { useAuth } from '@/hooks/useAuth'
 import { useMessage } from '@/hooks/useMessage'
@@ -227,18 +228,18 @@ export default function CorporationMembers() {
 	// Loading state
 	if (corpLoading || membersLoading || hrRolesLoading) {
 		return (
-			<div className="container mx-auto max-w-full px-4 py-8">
+			<Container>
 				<div className="flex items-center justify-center min-h-[400px]">
 					<LoadingSpinner size="lg" />
 				</div>
-			</div>
+			</Container>
 		)
 	}
 
 	// Access denied
 	if (!canAccess) {
 		return (
-			<div className="container mx-auto max-w-full px-4 py-8">
+			<Container>
 				<Card className="max-w-2xl mx-auto border-red-200 bg-red-50 dark:border-red-800 dark:bg-red-950">
 					<CardHeader className="text-center">
 						<AlertCircle className="h-16 w-16 mx-auto text-red-500 mb-4" />
@@ -257,14 +258,14 @@ export default function CorporationMembers() {
 						</Button>
 					</CardContent>
 				</Card>
-			</div>
+			</Container>
 		)
 	}
 
 	// Error state
 	if (error) {
 		return (
-			<div className="container mx-auto max-w-full px-4 py-8">
+			<Container>
 				<Card className="max-w-2xl mx-auto border-red-200 bg-red-50 dark:border-red-800 dark:bg-red-950">
 					<CardHeader className="text-center">
 						<AlertCircle className="h-16 w-16 mx-auto text-red-500 mb-4" />
@@ -290,13 +291,13 @@ export default function CorporationMembers() {
 						</div>
 					</CardContent>
 				</Card>
-			</div>
+			</Container>
 		)
 	}
 
 	// Main content
 	return (
-		<div className="container mx-auto max-w-full px-4 py-8">
+		<Container>
 			{/* Breadcrumb Navigation */}
 			<Breadcrumb className="mb-6">
 				<BreadcrumbList>
@@ -460,6 +461,6 @@ export default function CorporationMembers() {
 					Members highlighted in yellow need their auth accounts linked.
 				</p>
 			</div>
-		</div>
+		</Container>
 	)
 }

@@ -17,6 +17,7 @@ import {
 	BreadcrumbSeparator,
 } from '@/components/ui/breadcrumb'
 import { Button } from '@/components/ui/button'
+import { Container } from '@/components/ui/container'
 import { usePageTitle } from '@/hooks/usePageTitle'
 import { useUserPermissions } from '@/hooks/useUserPermissions'
 
@@ -53,7 +54,7 @@ export default function FulcrumReportPage() {
 	}
 
 	return (
-		<div className="container mx-auto max-w-full px-4 py-8">
+		<Container>
 			{/* Breadcrumb */}
 			<div className="mb-6 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
 				<Breadcrumb>
@@ -78,6 +79,6 @@ export default function FulcrumReportPage() {
 
 			{/* Report Viewer */}
 			<FulcrumReportViewer reportId={reportId} />
-		</div>
+		</Container>
 	)
 }

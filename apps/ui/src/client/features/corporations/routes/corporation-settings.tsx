@@ -19,6 +19,7 @@ import {
 	BreadcrumbSeparator,
 } from '@/components/ui/breadcrumb'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
+import { Container } from '@/components/ui/container'
 import { Label } from '@/components/ui/label'
 import { LoadingSpinner } from '@/components/ui/loading'
 import { PageHeader } from '@/components/ui/page-header'
@@ -134,18 +135,18 @@ export default function CorporationSettings() {
 	// Loading state
 	if (authLoading || corpLoading) {
 		return (
-			<div className="container mx-auto max-w-full px-4 py-8">
+			<Container>
 				<div className="flex items-center justify-center min-h-[400px]">
 					<LoadingSpinner size="lg" />
 				</div>
-			</div>
+			</Container>
 		)
 	}
 
 	// Error state
 	if (corpError || !corporation) {
 		return (
-			<div className="container mx-auto max-w-full px-4 py-8">
+			<Container>
 				<Card className="max-w-2xl mx-auto border-red-200 bg-red-50 dark:border-red-800 dark:bg-red-950">
 					<CardHeader className="text-center">
 						<AlertCircle className="h-16 w-16 mx-auto text-red-500 mb-4" />
@@ -164,7 +165,7 @@ export default function CorporationSettings() {
 						</Button>
 					</CardContent>
 				</Card>
-			</div>
+			</Container>
 		)
 	}
 
@@ -173,7 +174,7 @@ export default function CorporationSettings() {
 	const shortDescRemaining = 250 - shortDescLength
 
 	return (
-		<div className="container mx-auto max-w-full px-4 py-8">
+		<Container>
 			{/* Breadcrumbs */}
 			<Breadcrumb className="mb-6">
 				<BreadcrumbList>
@@ -315,6 +316,6 @@ export default function CorporationSettings() {
 					</Button>
 				</div>
 			</form>
-		</div>
+		</Container>
 	)
 }

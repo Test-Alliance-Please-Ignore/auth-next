@@ -16,6 +16,7 @@ import {
 } from '@/components/ui/breadcrumb'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
+import { Container } from '@/components/ui/container'
 import { LoadingSpinner } from '@/components/ui/loading'
 import { Separator } from '@/components/ui/separator'
 import { useAuth } from '@/hooks/useAuth'
@@ -144,29 +145,29 @@ export default function HrAuditorUserProfilePage() {
 
 	if (authLoading || userLoading) {
 		return (
-			<div className="container mx-auto max-w-full px-4 py-8">
+			<Container>
 				<div className="flex items-center justify-center min-h-[320px]">
 					<LoadingSpinner size="lg" />
 				</div>
-			</div>
+			</Container>
 		)
 	}
 
 	if (!isAuditor && !user?.is_admin) {
 		return (
-			<div className="container mx-auto max-w-full px-4 py-8">
+			<Container>
 				<Card className="max-w-2xl mx-auto border-red-200 bg-red-50 dark:border-red-800 dark:bg-red-950">
 					<CardHeader className="text-center">
 						<CardTitle className="text-2xl text-red-900 dark:text-red-100">Access Denied</CardTitle>
 					</CardHeader>
 				</Card>
-			</div>
+			</Container>
 		)
 	}
 
 	if (!userDetails) {
 		return (
-			<div className="container mx-auto max-w-full px-4 py-8">
+			<Container>
 				<Card className="max-w-2xl mx-auto">
 					<CardHeader className="text-center">
 						<CardTitle>User Not Found</CardTitle>
@@ -180,7 +181,7 @@ export default function HrAuditorUserProfilePage() {
 						</Button>
 					</CardContent>
 				</Card>
-			</div>
+			</Container>
 		)
 	}
 
@@ -242,7 +243,7 @@ export default function HrAuditorUserProfilePage() {
 	}
 
 	return (
-		<div className="container mx-auto max-w-full px-4 py-8">
+		<Container>
 			<div className="flex items-center justify-between mb-6">
 				<Breadcrumb>
 					<BreadcrumbList>
@@ -627,6 +628,6 @@ export default function HrAuditorUserProfilePage() {
 					}}
 				/>
 			)}
-		</div>
+		</Container>
 	)
 }

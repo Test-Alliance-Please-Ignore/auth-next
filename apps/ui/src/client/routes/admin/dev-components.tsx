@@ -15,6 +15,7 @@ import { renderDiscordContentValue } from '@/components/discord-content-renderer
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
+import { Container } from '@/components/ui/container'
 import { Select } from '@/components/ui/select'
 import { usePageTitle } from '@/hooks/usePageTitle'
 
@@ -123,7 +124,7 @@ export default function DevComponentsPage() {
 	const [asyncValue, setAsyncValue] = useState<string>('')
 
 	return (
-		<div className="container mx-auto py-8 space-y-10 max-w-full">
+		<Container className="space-y-10">
 			<div>
 				<h1 className="text-2xl font-bold text-foreground">Component Showcase</h1>
 				<p className="text-muted-foreground text-sm mt-1">
@@ -422,6 +423,6 @@ export default function DevComponentsPage() {
 					</div>
 				</CardContent>
 			</Card>
-		</div>
+		</Container>
 	)
 }

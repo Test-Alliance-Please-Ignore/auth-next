@@ -11,6 +11,7 @@ import { Navigate, useNavigate } from 'react-router-dom'
 
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
+import { Container } from '@/components/ui/container'
 import { LoadingSpinner } from '@/components/ui/loading'
 import { useAuth } from '@/hooks/useAuth'
 import { usePageTitle } from '@/hooks/usePageTitle'
@@ -111,18 +112,18 @@ export default function MyApplicationsList() {
 	// Loading state
 	if (authLoading || applicationsLoading) {
 		return (
-			<div className="container mx-auto max-w-full px-4 py-8">
+			<Container>
 				<div className="flex items-center justify-center min-h-[400px]">
 					<LoadingSpinner size="lg" />
 				</div>
-			</div>
+			</Container>
 		)
 	}
 
 	// Error state
 	if (error) {
 		return (
-			<div className="container mx-auto max-w-full px-4 py-8">
+			<Container>
 				<Card className="max-w-2xl mx-auto border-red-200 bg-red-50 dark:border-red-800 dark:bg-red-950">
 					<CardHeader className="text-center">
 						<AlertCircle className="h-16 w-16 mx-auto text-red-500 mb-4" />
@@ -139,13 +140,13 @@ export default function MyApplicationsList() {
 						</Button>
 					</CardContent>
 				</Card>
-			</div>
+			</Container>
 		)
 	}
 
 	// Main content
 	return (
-		<div className="container mx-auto max-w-full px-4 py-8">
+		<Container>
 			{/* Header */}
 			<div className="mb-8">
 				<h1 className="text-3xl font-bold flex items-center gap-3">
@@ -241,6 +242,6 @@ export default function MyApplicationsList() {
 					</p>
 				</div>
 			)}
-		</div>
+		</Container>
 	)
 }

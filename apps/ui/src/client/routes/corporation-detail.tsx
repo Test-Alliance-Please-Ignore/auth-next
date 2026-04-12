@@ -20,6 +20,7 @@ import {
 } from '@/components/ui/breadcrumb'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
+import { Container } from '@/components/ui/container'
 import { LoadingSpinner } from '@/components/ui/loading'
 import { Separator } from '@/components/ui/separator'
 import { SubmitApplicationDialog } from '@/features/applications'
@@ -64,18 +65,18 @@ export default function CorporationDetail() {
 	// Loading state
 	if (authLoading || corpLoading) {
 		return (
-			<div className="container mx-auto max-w-full px-4 py-8">
+			<Container>
 				<div className="flex items-center justify-center min-h-[400px]">
 					<LoadingSpinner size="lg" />
 				</div>
-			</div>
+			</Container>
 		)
 	}
 
 	// Error state
 	if (corpError || !corporation) {
 		return (
-			<div className="container mx-auto max-w-full px-4 py-8">
+			<Container>
 				<Card className="max-w-2xl mx-auto border-red-200 bg-red-50 dark:border-red-800 dark:bg-red-950">
 					<CardHeader className="text-center">
 						<AlertCircle className="h-16 w-16 mx-auto text-red-500 mb-4" />
@@ -92,12 +93,12 @@ export default function CorporationDetail() {
 						</Button>
 					</CardContent>
 				</Card>
-			</div>
+			</Container>
 		)
 	}
 
 	return (
-		<div className="container mx-auto max-w-full px-4 py-8">
+		<Container>
 			{/* Breadcrumbs */}
 			<Breadcrumb className="mb-6">
 				<BreadcrumbList>
@@ -189,6 +190,6 @@ export default function CorporationDetail() {
 				corporationId={corporation.corporationId}
 				corporationName={corporation.name}
 			/>
-		</div>
+		</Container>
 	)
 }
