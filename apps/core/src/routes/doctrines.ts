@@ -5,7 +5,7 @@ import { getEsiInstanceForCharacter } from '@repo/esi'
 import { TimeCache } from '@repo/hono-helpers'
 
 import { getCachedCharacterPermissions, getCachedUserPermissions } from '../lib/groups-cache'
-import { requireAuth } from '../middleware/session'
+import { requireAllianceMember, requireAuth } from '../middleware/session'
 
 import type { Doctrines } from '@repo/doctrines'
 import { SLOT_FLAGS } from '@repo/doctrines'
@@ -56,6 +56,7 @@ async function isDoctrineManager(
 const doctrines = new Hono<App>()
 
 doctrines.use('*', requireAuth())
+doctrines.use('*', requireAllianceMember())
 
 // =============================================================================
 // DOCTRINES
