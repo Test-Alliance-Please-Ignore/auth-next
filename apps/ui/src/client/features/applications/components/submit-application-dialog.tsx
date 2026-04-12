@@ -20,7 +20,6 @@ import {
 	DialogTitle,
 } from '@/components/ui/dialog'
 import { Label } from '@/components/ui/label'
-import { Select } from '@/components/ui/select'
 import { Textarea } from '@/components/ui/textarea'
 import { useAuth } from '@/hooks/useAuth'
 import { useMessage } from '@/hooks/useMessage'
@@ -76,24 +75,27 @@ export function SubmitApplicationDialog({
 	const submitMutation = useSubmitApplication()
 
 	// Form state
-	const [selectedCharacterId, setSelectedCharacterId] = useState<string>('')
 	const [selectedAltIds, setSelectedAltIds] = useState<Set<string>>(new Set())
 	const [applicationText, setApplicationText] = useState('')
+
+	// Main character is always the user's main
+	const mainCharacterId = user?.mainCharacterId ?? ''
+	const characters = user?.characters || []
+	const mainCharacter = characters.find(
+		(char: { characterId: string }) => char.characterId === mainCharacterId
+	)
 
 	// Derived state
 	const characterCount = applicationText.length
 	const isTextValid =
 		characterCount >= MIN_APPLICATION_LENGTH && characterCount <= MAX_APPLICATION_LENGTH
-	const isFormValid = selectedCharacterId && isTextValid
+	const isFormValid = mainCharacterId && isTextValid
 	const charactersRemaining = MAX_APPLICATION_LENGTH - characterCount
 	const isCharacterCountLow = charactersRemaining < 100
 
-	// Get user's characters
-	const characters = user?.characters || []
-
-	// Alt characters = all characters except the selected main
+	// Alt characters = all characters except the main
 	const altCharacters = characters.filter(
-		(char: { characterId: string }) => char.characterId !== selectedCharacterId
+		(char: { characterId: string }) => char.characterId !== mainCharacterId
 	)
 
 	const toggleAlt = (characterId: string) => {
@@ -116,7 +118,7 @@ export function SubmitApplicationDialog({
 			clearMessage()
 			const newApplication = await submitMutation.mutateAsync({
 				corporationId,
-				characterId: selectedCharacterId,
+				characterId: mainCharacterId,
 				applicationText,
 				altCharacterIds: selectedAltIds.size > 0 ? [...selectedAltIds] : undefined,
 			})
@@ -124,7 +126,6 @@ export function SubmitApplicationDialog({
 			onOpenChange(false)
 
 			// Reset form
-			setSelectedCharacterId('')
 			setSelectedAltIds(new Set())
 			setApplicationText('')
 			navigate('/my-applications')
@@ -137,7 +138,6 @@ export function SubmitApplicationDialog({
 		onOpenChange(false)
 		// Reset form after dialog closes
 		setTimeout(() => {
-			setSelectedCharacterId('')
 			setSelectedAltIds(new Set())
 			setApplicationText('')
 			clearMessage()
@@ -164,40 +164,25 @@ export function SubmitApplicationDialog({
 				)}
 
 				<div className="space-y-4 py-4">
-					{/* Main Character Selection */}
+					{/* Main Character (read-only) */}
 					<div className="space-y-2">
-						<Label htmlFor="character" className="text-sm font-medium">
-							Main Character <span className="text-destructive">*</span>
-						</Label>
-						<Select
-							inputId="character"
-							value={selectedCharacterId}
-							onValueChange={(value) => {
-								setSelectedCharacterId(value)
-								// Remove the new main from alts if it was selected
-								setSelectedAltIds((prev) => {
-									const next = new Set(prev)
-									next.delete(value)
-									return next
-								})
-							}}
-							options={characters.map(
-								(char: { characterId: string; characterName: string; hasValidToken: boolean }) => ({
-									value: char.characterId,
-									label: `${char.characterName}${!char.hasValidToken ? ' (No valid token)' : ''}`,
-								})
+						<Label className="text-sm font-medium">Main Character</Label>
+						<div className="flex items-center gap-2 rounded-md border px-3 py-2 text-sm">
+							{mainCharacter ? (
+								<>
+									<span className="font-medium">{mainCharacter.characterName}</span>
+									{!mainCharacter.hasValidToken && (
+										<span className="text-muted-foreground">(No valid token)</span>
+									)}
+								</>
+							) : (
+								<span className="text-muted-foreground">No main character found</span>
 							)}
-							placeholder="Select a character"
-						/>
-						{characters.length === 0 && (
-							<p className="text-xs text-muted-foreground">
-								You don't have any characters linked to your account.
-							</p>
-						)}
+						</div>
 					</div>
 
 					{/* Alt Characters */}
-					{selectedCharacterId && altCharacters.length > 0 && (
+					{mainCharacterId && altCharacters.length > 0 && (
 						<div className="space-y-2">
 							<Label className="text-sm font-medium">Alt Characters</Label>
 							<p className="text-xs text-muted-foreground">
