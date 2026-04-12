@@ -165,6 +165,11 @@ export default function BillDetailPage() {
 							<p className="text-lg">{bill.issuerName || bill.issuerId}</p>
 						</div>
 
+						<div className="md:col-span-2">
+							<h3 className="text-sm font-medium text-muted-foreground mb-1">Payment Token</h3>
+							<p className="text-lg font-mono break-all">{bill.paymentToken}</p>
+						</div>
+
 						{bill.description && (
 							<div className="md:col-span-2">
 								<h3 className="text-sm font-medium text-muted-foreground mb-1">Description</h3>
