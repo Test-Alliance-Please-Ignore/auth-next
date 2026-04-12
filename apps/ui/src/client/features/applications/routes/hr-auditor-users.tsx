@@ -4,6 +4,7 @@ import { Navigate } from 'react-router-dom'
 
 import { UserSearchResultsTable } from '@/components/user-search-results-table'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
+import { Container } from '@/components/ui/container'
 import { Input } from '@/components/ui/input'
 import { LoadingSpinner } from '@/components/ui/loading'
 import { PageHeader } from '@/components/ui/page-header'
@@ -47,17 +48,17 @@ export default function HrAuditorUsersPage() {
 
 	if (authLoading) {
 		return (
-			<div className="container mx-auto max-w-full px-4 py-8">
+			<Container>
 				<div className="flex items-center justify-center min-h-[320px]">
 					<LoadingSpinner size="lg" />
 				</div>
-			</div>
+			</Container>
 		)
 	}
 
 	if (!isAuditor && !user?.is_admin) {
 		return (
-			<div className="container mx-auto max-w-full px-4 py-8">
+			<Container>
 				<Card className="max-w-2xl mx-auto border-red-200 bg-red-50 dark:border-red-800 dark:bg-red-950">
 					<CardHeader className="text-center">
 						<CardTitle className="text-2xl text-red-900 dark:text-red-100">Access Denied</CardTitle>
@@ -66,7 +67,7 @@ export default function HrAuditorUsersPage() {
 						</CardDescription>
 					</CardHeader>
 				</Card>
-			</div>
+			</Container>
 		)
 	}
 
@@ -77,7 +78,7 @@ export default function HrAuditorUsersPage() {
 	const end = Math.min(offset + PAGE_SIZE, total)
 
 	return (
-		<div className="container mx-auto max-w-full px-4 py-8">
+		<Container>
 			<PageHeader
 				title="Auditor Search"
 				description="Search all users for HR audit purposes"
@@ -161,6 +162,6 @@ export default function HrAuditorUsersPage() {
 					</CardContent>
 				</Card>
 			</div>
-		</div>
+		</Container>
 	)
 }

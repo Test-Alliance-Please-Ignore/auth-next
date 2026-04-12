@@ -16,6 +16,7 @@ import {
 } from '@/components/ui/accordion'
 import { Badge } from '@/components/ui/badge'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
+import { Container } from '@/components/ui/container'
 import { Progress } from '@/components/ui/progress'
 import { Skeleton } from '@/components/ui/skeleton'
 import { useAuth } from '@/hooks/useAuth'
@@ -62,7 +63,7 @@ export default function CorporationsList() {
 	// Check if user has access
 	if (!accessLoading && access && !access.hasAccess) {
 		return (
-			<div className="container mx-auto max-w-full px-4 py-8">
+			<Container>
 				<Card className="max-w-2xl mx-auto">
 					<CardHeader className="text-center">
 						<Building2 className="h-16 w-16 mx-auto text-muted-foreground mb-4" />
@@ -99,14 +100,14 @@ export default function CorporationsList() {
 						</div>
 					</CardContent>
 				</Card>
-			</div>
+			</Container>
 		)
 	}
 
 	// Loading state
 	if (accessLoading || corporationsLoading) {
 		return (
-			<div className="container mx-auto max-w-full px-4 py-8">
+			<Container>
 				<div className="mb-8">
 					<h1 className="text-3xl font-bold flex items-center gap-3">
 						<Building2 className="h-8 w-8" />
@@ -120,14 +121,14 @@ export default function CorporationsList() {
 						<Skeleton className="h-4 w-32 mx-auto" />
 					</CardContent>
 				</Card>
-			</div>
+			</Container>
 		)
 	}
 
 	// Error state
 	if (error) {
 		return (
-			<div className="container mx-auto max-w-full px-4 py-8">
+			<Container>
 				<Card className="max-w-2xl mx-auto border-red-200 bg-red-50 dark:border-red-800 dark:bg-red-950">
 					<CardHeader className="text-center">
 						<AlertCircle className="h-16 w-16 mx-auto text-red-500 mb-4" />
@@ -142,14 +143,14 @@ export default function CorporationsList() {
 						<Button variant="ghost" onClick={() => window.location.reload()}>Try Again</Button>
 					</CardContent>
 				</Card>
-			</div>
+			</Container>
 		)
 	}
 
 	// No corporations (shouldn't happen if access check passed, but just in case)
 	if ((!corporations || corporations.length === 0) && hrOnlyCorporations.length === 0) {
 		return (
-			<div className="container mx-auto max-w-full px-4 py-8">
+			<Container>
 				<Card className="max-w-2xl mx-auto">
 					<CardHeader className="text-center">
 						<Building2 className="h-16 w-16 mx-auto text-muted-foreground mb-4" />
@@ -159,13 +160,13 @@ export default function CorporationsList() {
 						</CardDescription>
 					</CardHeader>
 				</Card>
-			</div>
+			</Container>
 		)
 	}
 
 	// Main content
 	return (
-		<div className="container mx-auto max-w-full px-4 py-8">
+		<Container>
 			{/* Header */}
 			<div className="mb-8">
 				<h1 className="text-3xl font-bold flex items-center gap-3">
@@ -329,6 +330,6 @@ export default function CorporationsList() {
 					Showing managed corporations where you have leadership or HR roles.
 				</p>
 			</div>
-		</div>
+		</Container>
 	)
 }

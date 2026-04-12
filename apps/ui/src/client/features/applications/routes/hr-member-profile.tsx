@@ -39,6 +39,7 @@ import {
 } from '@/components/ui/breadcrumb'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
+import { Container } from '@/components/ui/container'
 import { LoadingSpinner } from '@/components/ui/loading'
 import { Separator } from '@/components/ui/separator'
 import { cn } from '@/lib/utils'
@@ -386,17 +387,17 @@ export default function HrMemberProfile() {
 
 	if (authLoading || permissionLoading || membersLoading) {
 		return (
-			<div className="container mx-auto max-w-full px-4 py-8">
+			<Container>
 				<div className="flex items-center justify-center min-h-[400px]">
 					<LoadingSpinner size="lg" />
 				</div>
-			</div>
+			</Container>
 		)
 	}
 
 	if (!permission?.hasPermission && !user?.is_admin && !isAuditor) {
 		return (
-			<div className="container mx-auto max-w-full px-4 py-8">
+			<Container>
 				<Card className="max-w-2xl mx-auto border-red-200 bg-red-50 dark:border-red-800 dark:bg-red-950">
 					<CardHeader className="text-center">
 						<CardTitle className="text-2xl text-red-900 dark:text-red-100">
@@ -413,7 +414,7 @@ export default function HrMemberProfile() {
 						</Button>
 					</CardContent>
 				</Card>
-			</div>
+			</Container>
 		)
 	}
 
@@ -445,7 +446,7 @@ export default function HrMemberProfile() {
 
 	if (!account || !representative) {
 		return (
-			<div className="container mx-auto max-w-full px-4 py-8">
+			<Container>
 				<Card className="max-w-2xl mx-auto">
 					<CardHeader className="text-center">
 						<CardTitle>Member Not Found</CardTitle>
@@ -463,12 +464,12 @@ export default function HrMemberProfile() {
 						</Button>
 					</CardContent>
 				</Card>
-			</div>
+			</Container>
 		)
 	}
 
 	return (
-		<div className="container mx-auto max-w-full px-4 py-8">
+		<Container>
 			{/* Breadcrumbs + Back */}
 			<div className="flex items-center justify-between mb-6">
 				<Breadcrumb>
@@ -747,6 +748,6 @@ export default function HrMemberProfile() {
 					subjectCharacterName={accountName}
 				/>
 			)}
-		</div>
+		</Container>
 	)
 }

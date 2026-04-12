@@ -20,6 +20,7 @@ import {
 } from '@/components/ui/breadcrumb'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
+import { Container } from '@/components/ui/container'
 import { LoadingSpinner } from '@/components/ui/loading'
 import { useAuth } from '@/hooks/useAuth'
 import { usePageTitle } from '@/hooks/usePageTitle'
@@ -97,7 +98,7 @@ export default function UserHrNotes() {
 	// Check admin access
 	if (!authLoading && !user?.is_admin) {
 		return (
-			<div className="container mx-auto max-w-full px-4 py-8">
+			<Container>
 				<Card className="max-w-2xl mx-auto border-red-200 bg-red-50 dark:border-red-800 dark:bg-red-950">
 					<CardHeader className="text-center">
 						<AlertCircle className="h-16 w-16 mx-auto text-red-500 mb-4" />
@@ -112,7 +113,7 @@ export default function UserHrNotes() {
 						</Button>
 					</CardContent>
 				</Card>
-			</div>
+			</Container>
 		)
 	}
 
@@ -124,17 +125,17 @@ export default function UserHrNotes() {
 	// Loading state
 	if (authLoading || notesLoading) {
 		return (
-			<div className="container mx-auto max-w-full px-4 py-8">
+			<Container>
 				<div className="flex items-center justify-center min-h-[400px]">
 					<LoadingSpinner size="lg" />
 				</div>
-			</div>
+			</Container>
 		)
 	}
 
 	// Main content
 	return (
-		<div className="container mx-auto max-w-full px-4 py-8">
+		<Container>
 			{/* Breadcrumb Navigation */}
 			<Breadcrumb className="mb-6">
 				<BreadcrumbList>
@@ -236,6 +237,6 @@ export default function UserHrNotes() {
 				note={selectedNote || null}
 				onSuccess={handleDialogSuccess}
 			/>
-		</div>
+		</Container>
 	)
 }

@@ -1,5 +1,6 @@
 import { Navigate } from 'react-router-dom'
 import { Card, CardContent, CardHeader, CardTitle } from './ui/card'
+import { Container } from './ui/container'
 import { AlertCircle } from 'lucide-react'
 import { useUserPermissions } from '../hooks/useUserPermissions'
 import { LoadingPage } from './ui/loading'
@@ -95,7 +96,7 @@ export function PermissionGuard({
 	// If showError is true, show error message
 	if (showError) {
 		return (
-			<div className="container mx-auto max-w-full py-8">
+			<Container>
 				<Card className="border-red-500 bg-red-50 dark:bg-red-950/20">
 					<CardHeader>
 						<CardTitle className="flex items-center gap-2 text-red-600 dark:text-red-400">
@@ -109,7 +110,7 @@ export function PermissionGuard({
 						</p>
 					</CardContent>
 				</Card>
-			</div>
+			</Container>
 		)
 	}
 

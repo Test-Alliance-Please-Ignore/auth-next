@@ -10,6 +10,7 @@ import { CharacterSkillQueue } from '../components/character-skill-queue'
 import { CharacterSkills } from '../components/character-skills'
 import { Button } from '../components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '../components/ui/card'
+import { Container } from '../components/ui/container'
 import { useRefreshCharacter } from '../hooks/useCharacters'
 import { usePageTitle } from '../hooks/usePageTitle'
 import { api } from '../lib/api'
@@ -49,7 +50,7 @@ export default function CharacterDetailPage() {
 
 	if (isLoading) {
 		return (
-			<div className="container mx-auto max-w-full p-8">
+			<Container className="p-8">
 				<div className="space-y-4">
 					<Card>
 						<CardHeader>
@@ -64,7 +65,7 @@ export default function CharacterDetailPage() {
 						</CardContent>
 					</Card>
 				</div>
-			</div>
+			</Container>
 		)
 	}
 
@@ -76,7 +77,7 @@ export default function CharacterDetailPage() {
 			error && typeof error === 'object' && 'status' in error && error.status === 404
 
 		return (
-			<div className="container mx-auto max-w-full p-8">
+			<Container className="p-8">
 				<Card>
 					<CardHeader>
 						<CardTitle>{isForbidden ? 'Access Denied' : 'Error'}</CardTitle>
@@ -91,7 +92,7 @@ export default function CharacterDetailPage() {
 						</p>
 					</CardContent>
 				</Card>
-			</div>
+			</Container>
 		)
 	}
 
@@ -100,7 +101,7 @@ export default function CharacterDetailPage() {
 		: 'Never updated'
 
 	return (
-		<div className="container mx-auto max-w-full p-8 space-y-6">
+		<Container className="p-8 space-y-6">
 			{/* Admin View Alert */}
 			{character.viewedAsAdmin && (
 				<Card className="border-amber-500/50 bg-amber-500/10">
@@ -300,6 +301,6 @@ export default function CharacterDetailPage() {
 					</CardContent>
 				</Card>
 			)}
-		</div>
+		</Container>
 	)
 }

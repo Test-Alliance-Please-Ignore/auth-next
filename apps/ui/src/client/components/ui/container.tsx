@@ -10,7 +10,7 @@ export function Container({ size: _size = 'default', className, ...props }: Cont
 
 	return (
 		<div
-			className={cn('container mx-auto max-w-full px-4 py-page', className)}
+			className={cn('container mx-auto max-w-[120rem] px-4 py-page', className)}
 			{...props}
 		/>
 	)
