@@ -44,7 +44,7 @@ export interface SubmitApplicationDialogProps {
 // Constants
 // ============================================================================
 
-const MIN_APPLICATION_LENGTH = 100
+const MIN_APPLICATION_LENGTH = 25
 const MAX_APPLICATION_LENGTH = 2000
 
 // ============================================================================
