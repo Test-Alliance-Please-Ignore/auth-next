@@ -272,7 +272,7 @@ describe('bills-user routes access matrix', () => {
 		expect(await response.json()).toEqual({ error: 'Bill not found' })
 	})
 
-	it('allows site-admin to view bill detail via integration view override', async () => {
+	it('returns 403 for site-admin when bill is outside my-bills scope', async () => {
 		const app = createApp(makeUser({ is_admin: true, roles: [] }))
 		const bill = {
 			id: 'bill-1',
@@ -295,7 +295,8 @@ describe('bills-user routes access matrix', () => {
 		})
 
 		const response = await app.request('/api/bills/my-bills/bill-1', {}, env)
-		expect(response.status).toBe(200)
+		expect(response.status).toBe(403)
+		expect(await response.json()).toEqual({ error: 'Forbidden' })
 		expect(billsStub.getBillIntegrationView).toHaveBeenCalledWith('bill-1')
 		expect(billsStub.getBill).not.toHaveBeenCalled()
 	})
