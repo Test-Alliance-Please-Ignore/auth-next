@@ -192,7 +192,12 @@ export class DoctrinesDO extends DurableObject<Env> implements Doctrines {
 			throw new Error('Failed to create doctrine')
 		}
 
-		return newDoctrine
+		return {
+			...newDoctrine,
+			categoryName: null,
+			categorySortOrder: null,
+			stagingSystems: [],
+		}
 	}
 
 	async getDoctrines(filters: ListDoctrinesFilters): Promise<Doctrine[]> {
@@ -253,6 +258,8 @@ export class DoctrinesDO extends DurableObject<Env> implements Doctrines {
 
 		return {
 			...doctrine,
+			categoryName: doctrine.category?.name ?? null,
+			categorySortOrder: doctrine.category?.sortOrder ?? null,
 			fittings: doctrine.doctrineFittings.map((df) => ({
 				fitting: df.fitting,
 				fittingCategory: df.fittingCategory,
@@ -287,7 +294,26 @@ export class DoctrinesDO extends DurableObject<Env> implements Doctrines {
 			throw new Error('Doctrine not found or failed to update')
 		}
 
-		return updatedDoctrine
+		// Re-fetch with category to get categoryName/categorySortOrder/stagingSystems
+		const full = await this.db.query.doctrinesDoctrines.findFirst({
+			where: eq(schema.doctrinesDoctrines.id, updatedDoctrine.id),
+			with: {
+				category: true,
+				doctrineStagingSystems: {
+					with: { stagingSystem: true },
+				},
+			},
+		})
+
+		return {
+			...updatedDoctrine,
+			categoryName: full?.category?.name ?? null,
+			categorySortOrder: full?.category?.sortOrder ?? null,
+			stagingSystems: (full?.doctrineStagingSystems || []).map((ds) => ({
+				stagingSystem: ds.stagingSystem,
+				note: ds.note,
+			})),
+		}
 	}
 
 	async deleteDoctrine(id: string): Promise<void> {
