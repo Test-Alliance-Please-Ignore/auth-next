@@ -80,6 +80,8 @@ export const applicationKeys = {
 	// Character application history
 	characterHistory: (characterId: string) =>
 		[...applicationKeys.all, 'character-history', characterId] as const,
+	userHistory: (userId: string) =>
+		[...applicationKeys.all, 'user-history', userId] as const,
 }
 
 // ============================================================================
@@ -128,6 +130,22 @@ export function useCharacterApplicationHistory(characterId: string, excludeAppli
 		staleTime: 1000 * 60 * 5,
 		gcTime: 1000 * 60 * 10,
 		enabled: !!characterId,
+	})
+}
+
+/**
+ * Hook to fetch prior applications for a user account, excluding the current application
+ */
+export function useUserApplicationHistory(userId: string, excludeApplicationId: string) {
+	return useQuery<Application[]>({
+		queryKey: applicationKeys.userHistory(userId),
+		queryFn: async () => {
+			const apps = await applicationsApi.getApplications({ userId })
+			return apps.filter((a) => a.id !== excludeApplicationId)
+		},
+		staleTime: 1000 * 60 * 5,
+		gcTime: 1000 * 60 * 10,
+		enabled: !!userId,
 	})
 }
 

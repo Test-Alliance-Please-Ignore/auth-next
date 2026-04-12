@@ -575,12 +575,13 @@ export default function HrApplicationReview() {
 						<CardHeader>
 							<CardTitle>Prior Applications</CardTitle>
 							<CardDescription>
-								Other applications submitted by this character, including when owned by different accounts
+								Applications by this character (across all accounts) and other characters on this account
 							</CardDescription>
 						</CardHeader>
 						<CardContent>
 							<ApplicationHistoryPanel
 								characterId={application.characterId}
+								userId={application.userId}
 								applicationId={applicationId!}
 							/>
 						</CardContent>
