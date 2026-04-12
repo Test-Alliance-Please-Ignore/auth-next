@@ -1134,6 +1134,7 @@ export interface Doctrine {
 export interface Fitting {
 	id: string
 	name: string
+	description: string | null
 	shipTypeId: string
 	shipName: string
 	fitting: string

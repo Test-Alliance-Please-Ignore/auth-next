@@ -295,13 +295,13 @@ export default function DoctrineDetailPage() {
 					<div className="flex gap-2">
 						{canManage && (
 							<>
-								<Button asChild variant="outline">
+								<Button asChild variant="ghost">
 									<Link to={`/doctrines/fittings/create?doctrineId=${id}`}>
 										<Plus className="h-4 w-4 mr-2" />
 										Create Fitting
 									</Link>
 								</Button>
-								<Button variant="outline" onClick={() => setAddFittingOpen(true)}>
+								<Button variant="ghost" onClick={() => setAddFittingOpen(true)}>
 									<Plus className="h-4 w-4 mr-2" />
 									Link Existing
 								</Button>
@@ -405,13 +405,13 @@ export default function DoctrineDetailPage() {
 								<p className="text-muted-foreground mb-4">No fittings added yet.</p>
 								{canManage && (
 									<div className="flex justify-center gap-2">
-										<Button asChild variant="outline">
+										<Button asChild variant="ghost">
 											<Link to={`/doctrines/fittings/create?doctrineId=${id}`}>
 												<Plus className="h-4 w-4 mr-2" />
 												Create Fitting
 											</Link>
 										</Button>
-										<Button variant="outline" onClick={() => setAddFittingOpen(true)}>
+										<Button variant="ghost" onClick={() => setAddFittingOpen(true)}>
 											<Plus className="h-4 w-4 mr-2" />
 											Link Existing
 										</Button>
