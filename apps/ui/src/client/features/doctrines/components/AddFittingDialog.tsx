@@ -87,7 +87,7 @@ export function AddFittingDialog({
 
 	return (
 		<Dialog open={open} onOpenChange={onOpenChange}>
-			<DialogContent className="max-w-md">
+			<DialogContent className="max-w-lg">
 				<DialogHeader>
 					<DialogTitle>Add Fitting</DialogTitle>
 					<DialogDescription>Select a fitting to add to this doctrine.</DialogDescription>
@@ -124,10 +124,11 @@ export function AddFittingDialog({
 						) : (
 							<div className="divide-y">
 								{availableFittings.map((fitting) => (
-									<button
+									<Button
 										key={fitting.id}
 										type="button"
-										className={`w-full flex items-center gap-3 px-3 py-2 text-left text-sm transition-colors hover:bg-accent/50 ${selectedFittingId === fitting.id ? 'bg-accent' : ''
+										variant="ghost"
+										className={`w-full flex items-center gap-3 px-3 py-2 text-left text-sm h-auto rounded-none justify-start overflow-hidden ${selectedFittingId === fitting.id ? 'bg-accent' : ''
 											}`}
 										onClick={() => handleSelectFitting(fitting.id)}
 									>
@@ -145,7 +146,7 @@ export function AddFittingDialog({
 												{fitting.shipName} &middot; {fitting.category}
 											</span>
 										</div>
-									</button>
+									</Button>
 								))}
 							</div>
 						)}
