@@ -58,6 +58,7 @@ import type {
 	MailContent,
 	MailingList,
 	MailLabelsResponse,
+	SaveFittingResponse,
 	StructureInfo,
 } from './types'
 
@@ -117,6 +118,10 @@ export interface Esi {
 	fetchCharacterContracts(characterId: string): Promise<CharacterContract[]>
 	fetchContractItems(characterId: string, contractId: string): Promise<CharacterContractItem[]>
 	fetchCharacterFittings(characterId: string): Promise<CharacterFitting[]>
+	saveCharacterFitting(
+		characterId: string,
+		fitting: { name: string; description: string; shipTypeId: string; items: Array<{ typeId: string; flag: string; quantity: number }> }
+	): Promise<SaveFittingResponse>
 	fetchCharacterLocation(characterId: string): Promise<CharacterLocation>
 	fetchCharacterMail(characterId: string): Promise<CharacterMail[]>
 	fetchCharacterMailPage(characterId: string, lastMailId?: string): Promise<CharacterMail[]>

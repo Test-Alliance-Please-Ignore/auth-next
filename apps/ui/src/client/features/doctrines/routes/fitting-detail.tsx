@@ -1,57 +1,61 @@
 /**
  * Fitting Detail Page
  *
- * View a single fitting with full item list
+ * EVE-style circular fitting display with info sidebar and slot list.
  */
 
-import { ArrowLeft, CheckCircle2, DollarSign, Edit, Ship, Trash2 } from 'lucide-react'
-import { Link, useNavigate, useParams } from 'react-router-dom'
+import { ArrowLeft, CheckCircle2, ClipboardCopy, Edit, Gamepad2 } from 'lucide-react'
+import { useState } from 'react'
+import { Link, useParams, useSearchParams } from 'react-router-dom'
 
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
+import { Card, CardContent } from '@/components/ui/card'
 import { Container } from '@/components/ui/container'
 import { LoadingSpinner } from '@/components/ui/loading'
 import { PageHeader } from '@/components/ui/page-header'
-import { Section } from '@/components/ui/section'
-import {
-	Table,
-	TableBody,
-	TableCell,
-	TableHead,
-	TableHeader,
-	TableRow,
-} from '@/components/ui/table'
+import { Select } from '@/components/ui/select'
 import { useAuth } from '@/hooks/useAuth'
 import { usePageTitle } from '@/hooks/usePageTitle'
+import toast from '@/lib/toast'
 
-import { EftPreview } from '../components/EftPreview'
-import { useDeleteFitting, useFitting } from '../hooks'
+import { FittingPanel } from '../components/FittingPanel'
+import { FittingSlotList } from '../components/FittingSlotList'
+import { useFitting, useSaveFittingIngame } from '../hooks'
 import { formatISK } from '../utils'
 
 export default function FittingDetailPage() {
 	const { id } = useParams<{ id: string }>()
-	const navigate = useNavigate()
+	const [searchParams] = useSearchParams()
+	const doctrineId = searchParams.get('doctrineId')
 	const { user } = useAuth()
 	const { data: fitting, isLoading, error } = useFitting(id)
-	const deleteMutation = useDeleteFitting()
+	const saveMutation = useSaveFittingIngame()
+	const [copied, setCopied] = useState(false)
+	const [selectedCharacterId, setSelectedCharacterId] = useState(user?.mainCharacterId ?? '')
 
 	usePageTitle(fitting ? `${fitting.shipName} Fitting` : 'Fitting Details')
 
-	// Check permissions
-	const canEdit =
-		user?.permissions?.some((p) => p.urn === 'urn:doctrines:edit_fitting') || user?.is_admin
-	const canDelete =
-		user?.permissions?.some((p) => p.urn === 'urn:doctrines:delete_fitting') || user?.is_admin
+	const canManage =
+		user?.permissions?.some((p) => p.urn === 'urn:doctrines:manager') || user?.is_admin
 
-	const handleDelete = async () => {
-		if (!id || !confirm('Are you sure you want to delete this fitting?')) return
+	const validTokenChars = user?.characters.filter((ch) => ch.hasValidToken) ?? []
 
+	const handleCopyEft = async () => {
+		if (!fitting) return
+		await navigator.clipboard.writeText(fitting.fitting)
+		setCopied(true)
+		toast.success('EFT copied to clipboard')
+		setTimeout(() => setCopied(false), 2000)
+	}
+
+	const handleSaveIngame = async () => {
+		if (!id || !selectedCharacterId) return
 		try {
-			await deleteMutation.mutateAsync(id)
-			navigate('/doctrines')
-		} catch (error) {
-			console.error('Failed to delete fitting:', error)
+			await saveMutation.mutateAsync({ fittingId: id, characterId: selectedCharacterId })
+			toast.success('Fitting saved in-game')
+		} catch (err) {
+			toast.error(err instanceof Error ? err.message : 'Failed to save fitting in-game')
 		}
 	}
 
@@ -67,19 +71,21 @@ export default function FittingDetailPage() {
 		return (
 			<Container>
 				<PageHeader title="Fitting Not Found" />
-				<Section>
-					<div className="text-center">
-						<p className="text-muted-foreground mb-4">
-							The fitting you're looking for doesn't exist or you don't have permission to view it.
-						</p>
-						<Button asChild variant="ghost">
-							<Link to="/doctrines">
-								<ArrowLeft className="h-4 w-4 mr-2" />
-								Back to Doctrines
-							</Link>
-						</Button>
-					</div>
-				</Section>
+				<Card>
+					<CardContent className="pt-6">
+						<div className="text-center">
+							<p className="text-muted-foreground mb-4">
+								The fitting you're looking for doesn't exist or you don't have permission to view it.
+							</p>
+							<Button asChild variant="ghost">
+								<Link to="/doctrines">
+									<ArrowLeft className="h-4 w-4 mr-2" />
+									Back to Doctrines
+								</Link>
+							</Button>
+						</div>
+					</CardContent>
+				</Card>
 			</Container>
 		)
 	}
@@ -87,104 +93,118 @@ export default function FittingDetailPage() {
 	return (
 		<Container>
 			<Button asChild variant="ghost" size="sm" className="mb-4">
-				<Link to="/doctrines">
+				<Link to={doctrineId ? `/doctrines/${doctrineId}` : '/doctrines'}>
 					<ArrowLeft className="h-4 w-4 mr-2" />
-					Back to Doctrines
+					{doctrineId ? 'Back to Doctrine' : 'Back to Doctrines'}
 				</Link>
 			</Button>
 
 			<PageHeader
-				title={fitting.shipName}
-				description={
-					<div className="flex items-center gap-4 flex-wrap">
-						<span>Category: {fitting.category}</span>
-						<span>•</span>
-						<span>Maintained by {fitting.maintainer}</span>
-						{fitting.srpEligible && (
-							<>
-								<span>•</span>
-								<Badge variant="default" className="flex items-center gap-1">
-									<CheckCircle2 className="h-3 w-3" />
-									SRP Eligible: {formatISK(fitting.srpValue)}
-								</Badge>
-							</>
-						)}
-					</div>
-				}
+				title={fitting.name}
+				description={fitting.shipName}
 				action={
-					<div className="flex gap-2">
-						{canEdit && (
-							<Button asChild variant="ghost">
-								<Link to={`/doctrines/fittings/${id}/edit`}>
-									<Edit className="h-4 w-4 mr-2" />
-									Edit
-								</Link>
-							</Button>
-						)}
-						{canDelete && (
-							<Button variant="destructive"
-								onClick={handleDelete}
-								loading={deleteMutation.isPending}
-								loadingText="Deleting..."
-							>
-								<Trash2 className="h-4 w-4 mr-2" />
-								Delete
-							</Button>
-						)}
-					</div>
+					canManage && (
+						<Button asChild variant="ghost">
+							<Link to={`/doctrines/fittings/${id}/edit${doctrineId ? `?doctrineId=${doctrineId}` : ''}`}>
+								<Edit className="h-4 w-4 mr-2" />
+								Edit
+							</Link>
+						</Button>
+					)
 				}
 			/>
 
-			<div className="grid gap-6 lg:grid-cols-2">
-				{/* EFT Preview */}
-				<Section title="Fitting Preview" description="Parsed from EFT format">
-					<EftPreview eftString={fitting.fitting} />
-				</Section>
-
-				{/* Full Item List */}
-				<Section title="Full Item List" description="All modules and cargo">
-					<Card>
-						<CardHeader>
-							<CardTitle className="text-base">Items ({fitting.fittingItems.length})</CardTitle>
-						</CardHeader>
-						<CardContent>
-							<div className="overflow-x-auto">
-								<Table>
-									<TableHeader>
-										<TableRow>
-											<TableHead>Item</TableHead>
-											<TableHead>Group</TableHead>
-											<TableHead className="text-right">Quantity</TableHead>
-										</TableRow>
-									</TableHeader>
-									<TableBody>
-										{fitting.fittingItems.map((item) => (
-											<TableRow key={item.id}>
-												<TableCell className="font-medium">{item.typeName}</TableCell>
-												<TableCell className="text-muted-foreground">{item.groupName}</TableCell>
-												<TableCell className="text-right">
-													{parseInt(item.quantity).toLocaleString()}
-												</TableCell>
-											</TableRow>
-										))}
-									</TableBody>
-								</Table>
-							</div>
-						</CardContent>
-					</Card>
-				</Section>
-			</div>
-
-			{/* Raw EFT String */}
-			<Section title="EFT Format" description="Copy this to import in-game">
+			{/* Top row: Info left, Circular panel right */}
+			<div className="grid gap-6 lg:grid-cols-2 mb-6">
+				{/* Left — Fitting Information */}
 				<Card>
-					<CardContent className="pt-6">
-						<pre className="p-4 bg-muted rounded-md overflow-x-auto text-sm font-mono whitespace-pre">
-							{fitting.fitting}
-						</pre>
+					<CardContent className="pt-6 space-y-4">
+						<div className="grid grid-cols-[auto_1fr] gap-x-4 gap-y-3 text-sm">
+							<span className="text-muted-foreground">Name</span>
+							<span className="font-medium">{fitting.name}</span>
+
+							<span className="text-muted-foreground">Ship</span>
+							<span>{fitting.shipName}</span>
+
+							<span className="text-muted-foreground">Category</span>
+							<span>{fitting.category}</span>
+
+							<span className="text-muted-foreground">SRP</span>
+							<span>
+								{fitting.srpEligible ? (
+									<Badge variant="default" className="inline-flex items-center gap-1">
+										<CheckCircle2 className="h-3 w-3" />
+										{formatISK(fitting.srpValue)}
+									</Badge>
+								) : (
+									<span className="text-muted-foreground">Not eligible</span>
+								)}
+							</span>
+						</div>
+
+						{fitting.description && (
+							<div className="pt-2 border-t">
+								<p className="text-sm text-muted-foreground mb-1">Description</p>
+								<p className="text-sm whitespace-pre-wrap">{fitting.description}</p>
+							</div>
+						)}
+
+						<div className="pt-2 space-y-2">
+							<div>
+								<Button variant="ghost" size="sm" onClick={handleCopyEft}>
+									<ClipboardCopy className="h-4 w-4 mr-2" />
+									{copied ? 'Copied!' : 'Copy EFT'}
+								</Button>
+							</div>
+							{validTokenChars.length > 0 && (
+								<div className="flex items-center gap-2">
+									{validTokenChars.length > 1 && (
+										<Select
+											options={validTokenChars.map((ch) => ({
+												value: ch.characterId,
+												label: ch.characterName,
+											}))}
+											value={selectedCharacterId}
+											onValueChange={setSelectedCharacterId}
+											placeholder="Character..."
+										/>
+									)}
+									<Button
+										variant="ghost"
+										size="sm"
+										onClick={handleSaveIngame}
+										disabled={!selectedCharacterId}
+										loading={saveMutation.isPending}
+										loadingText="Saving..."
+									>
+										<Gamepad2 className="h-4 w-4 mr-2" />
+										Save In-Game
+									</Button>
+								</div>
+							)}
+						</div>
 					</CardContent>
 				</Card>
-			</Section>
+
+				{/* Right — Circular Fitting Panel */}
+				<Card>
+					<CardContent className="pt-6 flex items-center justify-center">
+						<FittingPanel
+							fittingItems={fitting.fittingItems}
+							shipTypeId={fitting.shipTypeId}
+							shipName={fitting.shipName}
+						/>
+					</CardContent>
+				</Card>
+			</div>
+
+			{/* Bottom — Slot List (full width) */}
+			<Card>
+				<CardContent className="pt-6">
+					<h3 className="text-sm font-semibold mb-3">Fitting Details</h3>
+					<FittingSlotList fittingItems={fitting.fittingItems} />
+				</CardContent>
+			</Card>
 		</Container>
 	)
 }

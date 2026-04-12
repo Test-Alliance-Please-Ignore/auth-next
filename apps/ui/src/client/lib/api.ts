@@ -770,14 +770,14 @@ export interface AdminUser {
 	matchedCharacterId: string | null
 	matchedCharacterName: string | null
 	matchedBy:
-		| 'main_character_name'
-		| 'character_name'
-		| 'character_id'
-		| 'user_id'
-		| 'discord_user_id'
-		| 'discord_username'
-		| 'legacy_auth_username'
-		| null
+	| 'main_character_name'
+	| 'character_name'
+	| 'character_id'
+	| 'user_id'
+	| 'discord_user_id'
+	| 'discord_username'
+	| 'legacy_auth_username'
+	| null
 	createdAt: string
 	updatedAt: string
 }
@@ -1098,22 +1098,46 @@ export interface SendBroadcastResponse {
  * Doctrines API Types
  */
 
+export interface DoctrineCategory {
+	id: string
+	name: string
+	sortOrder: number
+}
+
+export interface StagingSystem {
+	id: string
+	solarSystemId: string
+	solarSystemName: string
+	sortOrder: number
+}
+
+export interface DoctrineStagingEntry {
+	stagingSystem: StagingSystem
+	note: string
+}
+
 export interface Doctrine {
 	id: string
 	name: string
-	category: string
-	maintainer: string
+	description: string | null
+	shipTypeId: string | null
+	categoryId: string | null
+	categoryName: string | null
+	categorySortOrder: number | null
+	sortOrder: number
+	updatedBy: string | null
 	createdAt: string
 	updatedAt: string
+	stagingSystems: DoctrineStagingEntry[]
 }
 
 export interface Fitting {
 	id: string
+	name: string
 	shipTypeId: string
 	shipName: string
 	fitting: string
 	category: string
-	maintainer: string
 	srpEligible: boolean
 	srpValue: string
 	createdAt: string
@@ -1133,30 +1157,57 @@ export interface FittingItem {
 	categoryId: string
 }
 
+export interface DoctrineFittingEntry {
+	fitting: Fitting
+	fittingCategory: string
+	sortOrder: number
+}
+
 export interface DoctrineWithFittings extends Doctrine {
-	fittings: Fitting[]
+	fittings: DoctrineFittingEntry[]
+	stagingSystems: DoctrineStagingEntry[]
+	category: DoctrineCategory | null
 }
 
 export interface FittingWithItems extends Fitting {
 	fittingItems: FittingItem[]
 }
 
+export interface FittingWithDoctrines extends Fitting {
+	doctrines: Array<{ id: string; name: string }>
+}
+
+export interface SaveFittingIngameResponse {
+	fitting_id: number
+}
+
+export interface ParsedFittingPreview {
+	shipName: string
+	shipTypeId: string
+	fittingName: string
+	items: FittingItem[]
+	unresolvedItems: string[]
+}
+
 export interface CreateDoctrineRequest {
 	name: string
-	category: string
-	maintainer: string
+	description?: string
+	shipTypeId?: string
+	categoryId?: string
+	sortOrder?: number
 }
 
 export interface UpdateDoctrineRequest {
 	name?: string
-	category?: string
-	maintainer?: string
+	description?: string
+	shipTypeId?: string
+	categoryId?: string
+	sortOrder?: number
 }
 
 export interface CreateFittingRequest {
 	fitting: string
 	category: string
-	maintainer: string
 	srpEligible: boolean
 	srpValue: string
 	fittingItems: Array<Omit<FittingItem, 'id' | 'fittingId'>>
@@ -1165,22 +1216,29 @@ export interface CreateFittingRequest {
 export interface UpdateFittingRequest {
 	fitting?: string
 	category?: string
-	maintainer?: string
 	srpEligible?: boolean
 	srpValue?: string
 	fittingItems?: Array<Omit<FittingItem, 'id' | 'fittingId'>>
 }
 
+export interface AddFittingToDoctrineRequest {
+	fittingId: string
+	fittingCategory?: string
+	sortOrder?: number
+}
+
+export interface UpdateDoctrineFittingRequest {
+	fittingCategory?: string
+	sortOrder?: number
+}
+
 export interface ListDoctrinesFilters {
-	category?: string
-	maintainer?: string
 	search?: string
 }
 
 export interface ListFittingsFilters {
 	shipTypeId?: string
 	category?: string
-	maintainer?: string
 	srpEligible?: boolean
 	search?: string
 }
@@ -2641,8 +2699,6 @@ export class ApiClient {
 	// Doctrines
 	async getDoctrines(filters?: ListDoctrinesFilters): Promise<Doctrine[]> {
 		const params = new URLSearchParams()
-		if (filters?.category) params.set('category', filters.category)
-		if (filters?.maintainer) params.set('maintainer', filters.maintainer)
 		if (filters?.search) params.set('search', filters.search)
 
 		const query = params.toString()
@@ -2665,12 +2721,69 @@ export class ApiClient {
 		return this.delete(`/doctrines/${id}`)
 	}
 
-	async addFittingToDoctrine(doctrineId: string, fittingId: string): Promise<void> {
-		return this.post(`/doctrines/${doctrineId}/fittings`, { fittingId })
+	async addFittingToDoctrine(doctrineId: string, data: AddFittingToDoctrineRequest): Promise<void> {
+		return this.post(`/doctrines/${doctrineId}/fittings`, data)
+	}
+
+	async updateDoctrineFitting(
+		doctrineId: string,
+		fittingId: string,
+		data: UpdateDoctrineFittingRequest
+	): Promise<void> {
+		return this.patch(`/doctrines/${doctrineId}/fittings/${fittingId}`, data)
 	}
 
 	async removeFittingFromDoctrine(doctrineId: string, fittingId: string): Promise<void> {
 		return this.delete(`/doctrines/${doctrineId}/fittings/${fittingId}`)
+	}
+
+	// Ship Type Search
+	async searchShipTypes(query: string): Promise<Array<{ typeId: string; typeName: string }>> {
+		const params = new URLSearchParams({ q: query })
+		return this.get(`/doctrines/search/types?${params.toString()}`)
+	}
+
+	// Categories
+	async getDoctrineCategories(): Promise<DoctrineCategory[]> {
+		return this.get('/doctrines/categories')
+	}
+
+	async createDoctrineCategory(data: { name: string; sortOrder?: number }): Promise<DoctrineCategory> {
+		return this.post('/doctrines/categories', data)
+	}
+
+	async updateDoctrineCategory(id: string, data: { name?: string; sortOrder?: number }): Promise<DoctrineCategory> {
+		return this.patch(`/doctrines/categories/${id}`, data)
+	}
+
+	async deleteDoctrineCategory(id: string): Promise<void> {
+		return this.delete(`/doctrines/categories/${id}`)
+	}
+
+	// Staging Systems
+	async getStagingSystems(): Promise<StagingSystem[]> {
+		return this.get('/doctrines/staging-systems')
+	}
+
+	async createStagingSystem(data: { solarSystemId: string; solarSystemName: string; sortOrder?: number }): Promise<StagingSystem> {
+		return this.post('/doctrines/staging-systems', data)
+	}
+
+	async updateStagingSystem(id: string, data: { solarSystemId?: string; solarSystemName?: string; sortOrder?: number }): Promise<StagingSystem> {
+		return this.patch(`/doctrines/staging-systems/${id}`, data)
+	}
+
+	async deleteStagingSystem(id: string): Promise<void> {
+		return this.delete(`/doctrines/staging-systems/${id}`)
+	}
+
+	// Doctrine-Staging
+	async setDoctrineStagingSystem(doctrineId: string, data: { stagingSystemId: string; note: string }): Promise<void> {
+		return this.put(`/doctrines/${doctrineId}/staging-systems`, data)
+	}
+
+	async removeDoctrineStagingSystem(doctrineId: string, stagingSystemId: string): Promise<void> {
+		return this.delete(`/doctrines/${doctrineId}/staging-systems/${stagingSystemId}`)
 	}
 
 	// Fittings
@@ -2678,7 +2791,6 @@ export class ApiClient {
 		const params = new URLSearchParams()
 		if (filters?.shipTypeId) params.set('shipTypeId', filters.shipTypeId)
 		if (filters?.category) params.set('category', filters.category)
-		if (filters?.maintainer) params.set('maintainer', filters.maintainer)
 		if (filters?.srpEligible !== undefined) params.set('srpEligible', String(filters.srpEligible))
 		if (filters?.search) params.set('search', filters.search)
 
@@ -2700,6 +2812,18 @@ export class ApiClient {
 
 	async deleteFitting(id: string): Promise<void> {
 		return this.delete(`/doctrines/fittings/${id}`)
+	}
+
+	async getFittingsWithDoctrines(): Promise<FittingWithDoctrines[]> {
+		return this.get('/doctrines/fittings/with-doctrines')
+	}
+
+	async saveFittingIngame(fittingId: string, characterId: string): Promise<SaveFittingIngameResponse> {
+		return this.post(`/doctrines/fittings/${fittingId}/save-ingame`, { characterId })
+	}
+
+	async previewEft(eftString: string): Promise<ParsedFittingPreview> {
+		return this.post('/doctrines/fittings/preview', { eftString })
 	}
 
 	// ===== Industry Admin API Methods =====

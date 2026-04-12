@@ -1,6 +1,6 @@
 import { DurableObject } from 'cloudflare:workers'
 
-import { eq, inArray } from '@repo/db-utils'
+import { and, eq, ilike, inArray, like } from '@repo/db-utils'
 import { getStub, LRUCache } from '@repo/do-utils'
 import { logger } from '@repo/hono-helpers'
 import {
@@ -526,6 +526,22 @@ export class UniverseDO extends DurableObject<Env, {}> implements Universe {
 			console.error('Failed to resolve type details', error)
 			throw error
 		}
+	}
+
+	/**
+	 * Search for types by name (partial LIKE match)
+	 * Only returns published types. Results ordered by name.
+	 */
+	async searchTypes(query: string, limit: number = 20): Promise<InvType[]> {
+		if (!query || query.trim().length < 2) return []
+
+		const results = await this.db
+			.select()
+			.from(invTypes)
+			.where(and(ilike(invTypes.typeName, `%${query}%`), eq(invTypes.published, true)))
+			.limit(limit)
+
+		return results.map((r) => ({ ...r }))
 	}
 
 	// ========================================================================

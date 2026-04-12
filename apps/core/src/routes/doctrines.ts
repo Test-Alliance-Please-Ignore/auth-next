@@ -1,78 +1,48 @@
 import { Hono } from 'hono'
 
 import { getStub } from '@repo/do-utils'
+import { getEsiInstanceForCharacter } from '@repo/esi'
 import { TimeCache } from '@repo/hono-helpers'
 
 import { getCachedCharacterPermissions, getCachedUserPermissions } from '../lib/groups-cache'
 import { requireAuth } from '../middleware/session'
 
 import type { Doctrines } from '@repo/doctrines'
+import { SLOT_FLAGS } from '@repo/doctrines'
 import type { App } from '../context'
 
 /**
  * Permission check cache - 15 second TTL
- * Caches the boolean result of permission checks (userId:permissionUrn:characterIds)
  */
 const permissionCache = new TimeCache<boolean>(15000)
 
 /**
- * Helper function to check if a user has a specific permission
- * Checks both group permissions and corporation permissions
- * Results are cached for 15 seconds to reduce load on Groups DO
+ * Check if a user has the doctrine manager permission.
+ * Admins bypass permission checks.
  */
-async function hasPermission(
+async function isDoctrineManager(
 	env: { GROUPS: DurableObjectNamespace },
 	userId: string,
-	permissionUrn: string,
 	isAdmin: boolean,
 	characterIds: string[]
 ): Promise<boolean> {
-	console.log('[hasPermission] Checking permission', {
-		userId,
-		permissionUrn,
-		isAdmin,
-		characterIds,
-	})
+	if (isAdmin) return true
 
-	// Admins bypass permission checks
-	if (isAdmin) {
-		console.log('[hasPermission] User is admin, granting access')
-		return true
-	}
-
-	// Check cache or fetch permissions
+	const permissionUrn = 'urn:doctrines:manager'
 	const cacheKey = `${userId}:${permissionUrn}:${characterIds.join(',')}`
 	return permissionCache.getOrSet(cacheKey, async () => {
-		// Check user group permissions (cached)
 		const groupPermissions = await getCachedUserPermissions(env, userId)
-		console.log('[hasPermission] User group permissions', {
-			userId,
-			groupPermissions: groupPermissions.map((p) => p.urn),
-		})
-
 		if (groupPermissions.some((p) => p.urn === permissionUrn)) {
-			console.log('[hasPermission] Permission found in group permissions', { permissionUrn })
 			return true
 		}
 
-		// Check corporation permissions for all user's characters (cached)
 		for (const characterId of characterIds) {
 			const characterPermissions = await getCachedCharacterPermissions(env, characterId)
-			console.log('[hasPermission] Character permissions', {
-				characterId,
-				permissions: characterPermissions.map((p) => p.urn),
-			})
-
 			if (characterPermissions.some((p) => p.urn === permissionUrn)) {
-				console.log('[hasPermission] Permission found in character permissions', {
-					characterId,
-					permissionUrn,
-				})
 				return true
 			}
 		}
 
-		console.log('[hasPermission] Permission not found, denying access', { permissionUrn })
 		return false
 	})
 }
@@ -80,12 +50,11 @@ async function hasPermission(
 /**
  * Doctrines routes
  *
- * Provides API endpoints for managing doctrines and fittings.
- * All requests are authenticated before being forwarded to the Doctrines Durable Object.
+ * Read endpoints: all authenticated users can access.
+ * Write endpoints: require urn:doctrines:manager permission.
  */
 const doctrines = new Hono<App>()
 
-// Apply authentication middleware to all routes
 doctrines.use('*', requireAuth())
 
 // =============================================================================
@@ -93,36 +62,447 @@ doctrines.use('*', requireAuth())
 // =============================================================================
 
 /**
- * Get all doctrines with optional filters
- * GET /api/doctrines?category=xxx&maintainer=xxx&search=xxx
+ * Helper to get the current user's main character name.
+ */
+function getUserCharacterName(user: { characters: Array<{ characterName: string; is_primary: boolean }> }): string {
+	const primary = user.characters.find((ch) => ch.is_primary)
+	return primary?.characterName ?? user.characters[0]?.characterName ?? 'Unknown'
+}
+
+/**
+ * Get all doctrines
+ * GET /api/doctrines?search=xxx
  */
 doctrines.get('/', async (c) => {
-	const user = c.get('user')!
-	const characterIds = user.characters.map((ch) => ch.characterId)
-
 	const filters = {
-		category: c.req.query('category'),
-		maintainer: c.req.query('maintainer'),
 		search: c.req.query('search'),
 	}
 
 	const doctrinesStub = getStub<Doctrines>(c.env.DOCTRINES, 'default')
-	const doctrinesList = await doctrinesStub.getDoctrines(filters, user.id, characterIds, user.is_admin)
+	const doctrinesList = await doctrinesStub.getDoctrines(filters)
 
 	return c.json(doctrinesList)
 })
+
+/**
+ * Search ship types for doctrine icons
+ * GET /api/doctrines/search/types?q=xxx
+ */
+doctrines.get('/search/types', async (c) => {
+	const q = c.req.query('q')
+	if (!q || q.trim().length < 2) {
+		return c.json([])
+	}
+
+	const doctrinesStub = getStub<Doctrines>(c.env.DOCTRINES, 'default')
+	const results = await doctrinesStub.searchShipTypes(q.trim())
+
+	return c.json(results)
+})
+
+/**
+ * Create a new doctrine
+ * POST /api/doctrines
+ */
+doctrines.post('/', async (c) => {
+	const user = c.get('user')!
+	const body = await c.req.json()
+
+	const characterIds = user.characters.map((ch) => ch.characterId)
+	const allowed = await isDoctrineManager(c.env, user.id, user.is_admin, characterIds)
+
+	if (!allowed) {
+		return c.json({ error: 'Requires doctrines:manager permission' }, 403)
+	}
+
+	const doctrinesStub = getStub<Doctrines>(c.env.DOCTRINES, 'default')
+	const doctrine = await doctrinesStub.createDoctrine({
+		...body,
+		updatedBy: getUserCharacterName(user),
+	})
+
+	return c.json(doctrine, 201)
+})
+
+// =============================================================================
+// CATEGORIES (must be before /:id routes to avoid path collision)
+// =============================================================================
+
+/**
+ * Get all doctrine categories
+ * GET /api/doctrines/categories
+ */
+doctrines.get('/categories', async (c) => {
+	const doctrinesStub = getStub<Doctrines>(c.env.DOCTRINES, 'default')
+	const categories = await doctrinesStub.getCategories()
+	return c.json(categories)
+})
+
+/**
+ * Create a doctrine category
+ * POST /api/doctrines/categories
+ */
+doctrines.post('/categories', async (c) => {
+	const user = c.get('user')!
+	const body = await c.req.json()
+
+	const characterIds = user.characters.map((ch) => ch.characterId)
+	const allowed = await isDoctrineManager(c.env, user.id, user.is_admin, characterIds)
+
+	if (!allowed) {
+		return c.json({ error: 'Requires doctrines:manager permission' }, 403)
+	}
+
+	const doctrinesStub = getStub<Doctrines>(c.env.DOCTRINES, 'default')
+	const category = await doctrinesStub.createCategory(body)
+
+	return c.json(category, 201)
+})
+
+/**
+ * Update a doctrine category
+ * PATCH /api/doctrines/categories/:categoryId
+ */
+doctrines.patch('/categories/:categoryId', async (c) => {
+	const user = c.get('user')!
+	const categoryId = c.req.param('categoryId')
+	const body = await c.req.json()
+
+	const characterIds = user.characters.map((ch) => ch.characterId)
+	const allowed = await isDoctrineManager(c.env, user.id, user.is_admin, characterIds)
+
+	if (!allowed) {
+		return c.json({ error: 'Requires doctrines:manager permission' }, 403)
+	}
+
+	const doctrinesStub = getStub<Doctrines>(c.env.DOCTRINES, 'default')
+	const category = await doctrinesStub.updateCategory(categoryId, body)
+
+	return c.json(category)
+})
+
+/**
+ * Delete a doctrine category
+ * DELETE /api/doctrines/categories/:categoryId
+ */
+doctrines.delete('/categories/:categoryId', async (c) => {
+	const user = c.get('user')!
+	const categoryId = c.req.param('categoryId')
+
+	const characterIds = user.characters.map((ch) => ch.characterId)
+	const allowed = await isDoctrineManager(c.env, user.id, user.is_admin, characterIds)
+
+	if (!allowed) {
+		return c.json({ error: 'Requires doctrines:manager permission' }, 403)
+	}
+
+	const doctrinesStub = getStub<Doctrines>(c.env.DOCTRINES, 'default')
+	await doctrinesStub.deleteCategory(categoryId)
+
+	return c.json({ success: true })
+})
+
+// =============================================================================
+// STAGING SYSTEMS (must be before /:id routes to avoid path collision)
+// =============================================================================
+
+/**
+ * Get all staging systems
+ * GET /api/doctrines/staging-systems
+ */
+doctrines.get('/staging-systems', async (c) => {
+	const doctrinesStub = getStub<Doctrines>(c.env.DOCTRINES, 'default')
+	const systems = await doctrinesStub.getStagingSystems()
+	return c.json(systems)
+})
+
+/**
+ * Create a staging system
+ * POST /api/doctrines/staging-systems
+ */
+doctrines.post('/staging-systems', async (c) => {
+	const user = c.get('user')!
+	const body = await c.req.json()
+
+	const characterIds = user.characters.map((ch) => ch.characterId)
+	const allowed = await isDoctrineManager(c.env, user.id, user.is_admin, characterIds)
+
+	if (!allowed) {
+		return c.json({ error: 'Requires doctrines:manager permission' }, 403)
+	}
+
+	const doctrinesStub = getStub<Doctrines>(c.env.DOCTRINES, 'default')
+	const system = await doctrinesStub.createStagingSystem(body)
+
+	return c.json(system, 201)
+})
+
+/**
+ * Update a staging system
+ * PATCH /api/doctrines/staging-systems/:systemId
+ */
+doctrines.patch('/staging-systems/:systemId', async (c) => {
+	const user = c.get('user')!
+	const systemId = c.req.param('systemId')
+	const body = await c.req.json()
+
+	const characterIds = user.characters.map((ch) => ch.characterId)
+	const allowed = await isDoctrineManager(c.env, user.id, user.is_admin, characterIds)
+
+	if (!allowed) {
+		return c.json({ error: 'Requires doctrines:manager permission' }, 403)
+	}
+
+	const doctrinesStub = getStub<Doctrines>(c.env.DOCTRINES, 'default')
+	const system = await doctrinesStub.updateStagingSystem(systemId, body)
+
+	return c.json(system)
+})
+
+/**
+ * Delete a staging system
+ * DELETE /api/doctrines/staging-systems/:systemId
+ */
+doctrines.delete('/staging-systems/:systemId', async (c) => {
+	const user = c.get('user')!
+	const systemId = c.req.param('systemId')
+
+	const characterIds = user.characters.map((ch) => ch.characterId)
+	const allowed = await isDoctrineManager(c.env, user.id, user.is_admin, characterIds)
+
+	if (!allowed) {
+		return c.json({ error: 'Requires doctrines:manager permission' }, 403)
+	}
+
+	const doctrinesStub = getStub<Doctrines>(c.env.DOCTRINES, 'default')
+	await doctrinesStub.deleteStagingSystem(systemId)
+
+	return c.json({ success: true })
+})
+
+// =============================================================================
+// FITTINGS (must be before /:id routes to avoid path collision)
+// =============================================================================
+
+/**
+ * Get all fittings
+ * GET /api/doctrines/fittings?shipTypeId=xxx&category=xxx&srpEligible=true&search=xxx
+ */
+doctrines.get('/fittings', async (c) => {
+	const filters = {
+		shipTypeId: c.req.query('shipTypeId'),
+		category: c.req.query('category'),
+		srpEligible: c.req.query('srpEligible') === 'true' ? true : undefined,
+		search: c.req.query('search'),
+	}
+
+	const doctrinesStub = getStub<Doctrines>(c.env.DOCTRINES, 'default')
+	const fittingsList = await doctrinesStub.getFittings(filters)
+
+	return c.json(fittingsList)
+})
+
+/**
+ * Get all fittings with doctrine associations
+ * GET /api/doctrines/fittings/with-doctrines
+ */
+doctrines.get('/fittings/with-doctrines', async (c) => {
+	const user = c.get('user')!
+	const characterIds = user.characters.map((ch) => ch.characterId)
+	const allowed = await isDoctrineManager(c.env, user.id, user.is_admin, characterIds)
+
+	if (!allowed) {
+		return c.json({ error: 'Requires doctrines:manager permission' }, 403)
+	}
+
+	const doctrinesStub = getStub<Doctrines>(c.env.DOCTRINES, 'default')
+	const fittings = await doctrinesStub.getFittingsWithDoctrines()
+
+	return c.json(fittings)
+})
+
+/**
+ * Get a single fitting with its items
+ * GET /api/doctrines/fittings/:id
+ */
+doctrines.get('/fittings/:id', async (c) => {
+	const fittingId = c.req.param('id')
+
+	const doctrinesStub = getStub<Doctrines>(c.env.DOCTRINES, 'default')
+	const fitting = await doctrinesStub.getFitting(fittingId)
+
+	if (!fitting) {
+		return c.json({ error: 'Fitting not found' }, 404)
+	}
+
+	return c.json(fitting)
+})
+
+/**
+ * Preview-parse an EFT string (returns parsed items without saving)
+ * POST /api/doctrines/fittings/preview
+ */
+doctrines.post('/fittings/preview', async (c) => {
+	const { eftString } = await c.req.json<{ eftString: string }>()
+	if (!eftString || typeof eftString !== 'string') {
+		return c.json({ error: 'eftString is required' }, 400)
+	}
+
+	const doctrinesStub = getStub<Doctrines>(c.env.DOCTRINES, 'default')
+
+	try {
+		const preview = await doctrinesStub.parseEft(eftString)
+		return c.json(preview)
+	} catch (err) {
+		const message = err instanceof Error ? err.message : 'Failed to parse EFT'
+		return c.json({ error: message }, 422)
+	}
+})
+
+/**
+ * Create a new fitting
+ * POST /api/doctrines/fittings
+ */
+doctrines.post('/fittings', async (c) => {
+	const user = c.get('user')!
+	const body = await c.req.json()
+
+	const characterIds = user.characters.map((ch) => ch.characterId)
+	const allowed = await isDoctrineManager(c.env, user.id, user.is_admin, characterIds)
+
+	if (!allowed) {
+		return c.json({ error: 'Requires doctrines:manager permission' }, 403)
+	}
+
+	const doctrinesStub = getStub<Doctrines>(c.env.DOCTRINES, 'default')
+
+	try {
+		const fitting = await doctrinesStub.createFitting(body)
+		return c.json(fitting, 201)
+	} catch (err) {
+		const message = err instanceof Error ? err.message : 'Failed to create fitting'
+		return c.json({ error: message }, 422)
+	}
+})
+
+/**
+ * Update a fitting
+ * PATCH /api/doctrines/fittings/:id
+ */
+doctrines.patch('/fittings/:id', async (c) => {
+	const user = c.get('user')!
+	const fittingId = c.req.param('id')
+	const body = await c.req.json()
+
+	const characterIds = user.characters.map((ch) => ch.characterId)
+	const allowed = await isDoctrineManager(c.env, user.id, user.is_admin, characterIds)
+
+	if (!allowed) {
+		return c.json({ error: 'Requires doctrines:manager permission' }, 403)
+	}
+
+	const doctrinesStub = getStub<Doctrines>(c.env.DOCTRINES, 'default')
+	const fitting = await doctrinesStub.updateFitting(fittingId, body)
+
+	return c.json(fitting)
+})
+
+/**
+ * Delete a fitting
+ * DELETE /api/doctrines/fittings/:id
+ */
+doctrines.delete('/fittings/:id', async (c) => {
+	const user = c.get('user')!
+	const fittingId = c.req.param('id')
+
+	const characterIds = user.characters.map((ch) => ch.characterId)
+	const allowed = await isDoctrineManager(c.env, user.id, user.is_admin, characterIds)
+
+	if (!allowed) {
+		return c.json({ error: 'Requires doctrines:manager permission' }, 403)
+	}
+
+	const doctrinesStub = getStub<Doctrines>(c.env.DOCTRINES, 'default')
+	await doctrinesStub.deleteFitting(fittingId)
+
+	return c.json({ success: true })
+})
+
+/**
+ * Save a fitting to a character's in-game fitting list via ESI
+ * POST /api/doctrines/fittings/:id/save-ingame
+ */
+doctrines.post('/fittings/:id/save-ingame', async (c) => {
+	const user = c.get('user')!
+	const fittingId = c.req.param('id')
+	const { characterId } = await c.req.json<{ characterId: string }>()
+
+	// Verify the character belongs to the user
+	const userChar = user.characters.find((ch) => ch.characterId === characterId)
+	if (!userChar) {
+		return c.json({ error: 'Character not found' }, 404)
+	}
+	if (!userChar.hasValidToken) {
+		return c.json({ error: 'Character does not have a valid ESI token' }, 400)
+	}
+
+	// Get the fitting from doctrines DO
+	const doctrinesStub = getStub<Doctrines>(c.env.DOCTRINES, 'default')
+	const fitting = await doctrinesStub.getFitting(fittingId)
+	if (!fitting) {
+		return c.json({ error: 'Fitting not found' }, 404)
+	}
+
+	// Save via ESI — use shared SLOT_FLAGS for flag mapping
+	const slotCounters: Record<string, number> = {}
+	const esiItems = fitting.fittingItems
+		.filter((item) => {
+			// Filter out items that can't be saved to ESI (e.g. implants)
+			const flag = SLOT_FLAGS[item.flagId]
+			return flag?.esiPrefix !== null
+		})
+		.map((item) => {
+			const flag = SLOT_FLAGS[item.flagId]
+			const prefix = flag?.esiPrefix ?? 'Cargo'
+			let esiFlag: string
+			if (!flag?.indexed) {
+				esiFlag = prefix
+			} else {
+				const count = slotCounters[prefix] ?? 0
+				esiFlag = `${prefix}${count}`
+				slotCounters[prefix] = count + 1
+			}
+			return {
+				typeId: item.typeId,
+				flag: esiFlag,
+				quantity: parseInt(item.quantity),
+			}
+		})
+
+	const esiStub = getEsiInstanceForCharacter(c.env.ESI, characterId)
+	const result = await esiStub.saveCharacterFitting(characterId, {
+		name: fitting.name.slice(0, 50),
+		description: (fitting.description || '').slice(0, 500),
+		shipTypeId: fitting.shipTypeId,
+		items: esiItems,
+	})
+
+	return c.json(result, 201)
+})
+
+// =============================================================================
+// SINGLE DOCTRINE ROUTES (/:id wildcard - must be after all specific paths)
+// =============================================================================
 
 /**
  * Get a single doctrine with its fittings
  * GET /api/doctrines/:id
  */
 doctrines.get('/:id', async (c) => {
-	const user = c.get('user')!
-	const characterIds = user.characters.map((ch) => ch.characterId)
 	const doctrineId = c.req.param('id')
 
 	const doctrinesStub = getStub<Doctrines>(c.env.DOCTRINES, 'default')
-	const doctrine = await doctrinesStub.getDoctrine(doctrineId, user.id, characterIds, user.is_admin)
+	const doctrine = await doctrinesStub.getDoctrine(doctrineId)
 
 	if (!doctrine) {
 		return c.json({ error: 'Doctrine not found' }, 404)
@@ -132,62 +512,26 @@ doctrines.get('/:id', async (c) => {
 })
 
 /**
- * Create a new doctrine
- * POST /api/doctrines
- *
- * Requires urn:doctrines:create permission
- */
-doctrines.post('/', async (c) => {
-	const user = c.get('user')!
-	const body = await c.req.json()
-
-	// Check create permission
-	const characterIds = user.characters.map((ch) => ch.characterId)
-	const allowed = await hasPermission(
-		c.env,
-		user.id,
-		'urn:doctrines:create',
-		user.is_admin,
-		characterIds
-	)
-
-	if (!allowed) {
-		return c.json({ error: 'Requires doctrines:create permission' }, 403)
-	}
-
-	const doctrinesStub = getStub<Doctrines>(c.env.DOCTRINES, 'default')
-	const doctrine = await doctrinesStub.createDoctrine(body, user.id, characterIds)
-
-	return c.json(doctrine, 201)
-})
-
-/**
  * Update a doctrine
  * PATCH /api/doctrines/:id
- *
- * Requires urn:doctrines:edit permission
  */
 doctrines.patch('/:id', async (c) => {
 	const user = c.get('user')!
 	const doctrineId = c.req.param('id')
 	const body = await c.req.json()
 
-	// Check edit permission
 	const characterIds = user.characters.map((ch) => ch.characterId)
-	const allowed = await hasPermission(
-		c.env,
-		user.id,
-		'urn:doctrines:edit',
-		user.is_admin,
-		characterIds
-	)
+	const allowed = await isDoctrineManager(c.env, user.id, user.is_admin, characterIds)
 
 	if (!allowed) {
-		return c.json({ error: 'Requires doctrines:edit permission' }, 403)
+		return c.json({ error: 'Requires doctrines:manager permission' }, 403)
 	}
 
 	const doctrinesStub = getStub<Doctrines>(c.env.DOCTRINES, 'default')
-	const doctrine = await doctrinesStub.updateDoctrine(doctrineId, body, user.id, characterIds, user.is_admin)
+	const doctrine = await doctrinesStub.updateDoctrine(doctrineId, {
+		...body,
+		updatedBy: getUserCharacterName(user),
+	})
 
 	return c.json(doctrine)
 })
@@ -195,29 +539,20 @@ doctrines.patch('/:id', async (c) => {
 /**
  * Delete a doctrine
  * DELETE /api/doctrines/:id
- *
- * Requires urn:doctrines:delete permission
  */
 doctrines.delete('/:id', async (c) => {
 	const user = c.get('user')!
 	const doctrineId = c.req.param('id')
 
-	// Check delete permission
 	const characterIds = user.characters.map((ch) => ch.characterId)
-	const allowed = await hasPermission(
-		c.env,
-		user.id,
-		'urn:doctrines:delete',
-		user.is_admin,
-		characterIds
-	)
+	const allowed = await isDoctrineManager(c.env, user.id, user.is_admin, characterIds)
 
 	if (!allowed) {
-		return c.json({ error: 'Requires doctrines:delete permission' }, 403)
+		return c.json({ error: 'Requires doctrines:manager permission' }, 403)
 	}
 
 	const doctrinesStub = getStub<Doctrines>(c.env.DOCTRINES, 'default')
-	await doctrinesStub.deleteDoctrine(doctrineId, user.id, characterIds, user.is_admin)
+	await doctrinesStub.deleteDoctrine(doctrineId)
 
 	return c.json({ success: true })
 })
@@ -225,10 +560,6 @@ doctrines.delete('/:id', async (c) => {
 /**
  * Add a fitting to a doctrine
  * POST /api/doctrines/:id/fittings
- *
- * Body: { fittingId: string }
- *
- * Requires urn:doctrines:edit permission
  */
 doctrines.post('/:id/fittings', async (c) => {
 	const user = c.get('user')!
@@ -239,22 +570,42 @@ doctrines.post('/:id/fittings', async (c) => {
 		return c.json({ error: 'fittingId is required' }, 400)
 	}
 
-	// Check edit permission
 	const characterIds = user.characters.map((ch) => ch.characterId)
-	const allowed = await hasPermission(
-		c.env,
-		user.id,
-		'urn:doctrines:edit',
-		user.is_admin,
-		characterIds
-	)
+	const allowed = await isDoctrineManager(c.env, user.id, user.is_admin, characterIds)
 
 	if (!allowed) {
-		return c.json({ error: 'Requires doctrines:edit permission' }, 403)
+		return c.json({ error: 'Requires doctrines:manager permission' }, 403)
 	}
 
 	const doctrinesStub = getStub<Doctrines>(c.env.DOCTRINES, 'default')
-	await doctrinesStub.addFittingToDoctrine(doctrineId, body.fittingId, user.id, characterIds, user.is_admin)
+	await doctrinesStub.addFittingToDoctrine(doctrineId, {
+		fittingId: body.fittingId,
+		fittingCategory: body.fittingCategory,
+		sortOrder: body.sortOrder,
+	})
+
+	return c.json({ success: true })
+})
+
+/**
+ * Update a fitting's category/sort within a doctrine
+ * PATCH /api/doctrines/:id/fittings/:fittingId
+ */
+doctrines.patch('/:id/fittings/:fittingId', async (c) => {
+	const user = c.get('user')!
+	const doctrineId = c.req.param('id')
+	const fittingId = c.req.param('fittingId')
+	const body = await c.req.json()
+
+	const characterIds = user.characters.map((ch) => ch.characterId)
+	const allowed = await isDoctrineManager(c.env, user.id, user.is_admin, characterIds)
+
+	if (!allowed) {
+		return c.json({ error: 'Requires doctrines:manager permission' }, 403)
+	}
+
+	const doctrinesStub = getStub<Doctrines>(c.env.DOCTRINES, 'default')
+	await doctrinesStub.updateDoctrineFitting(doctrineId, fittingId, body)
 
 	return c.json({ success: true })
 })
@@ -262,191 +613,65 @@ doctrines.post('/:id/fittings', async (c) => {
 /**
  * Remove a fitting from a doctrine
  * DELETE /api/doctrines/:id/fittings/:fittingId
- *
- * Requires urn:doctrines:edit permission
  */
 doctrines.delete('/:id/fittings/:fittingId', async (c) => {
 	const user = c.get('user')!
 	const doctrineId = c.req.param('id')
 	const fittingId = c.req.param('fittingId')
 
-	// Check edit permission
 	const characterIds = user.characters.map((ch) => ch.characterId)
-	const allowed = await hasPermission(
-		c.env,
-		user.id,
-		'urn:doctrines:edit',
-		user.is_admin,
-		characterIds
-	)
+	const allowed = await isDoctrineManager(c.env, user.id, user.is_admin, characterIds)
 
 	if (!allowed) {
-		return c.json({ error: 'Requires doctrines:edit permission' }, 403)
+		return c.json({ error: 'Requires doctrines:manager permission' }, 403)
 	}
 
 	const doctrinesStub = getStub<Doctrines>(c.env.DOCTRINES, 'default')
-	await doctrinesStub.removeFittingFromDoctrine(doctrineId, fittingId, user.id, characterIds, user.is_admin)
+	await doctrinesStub.removeFittingFromDoctrine(doctrineId, fittingId)
 
 	return c.json({ success: true })
 })
 
-// =============================================================================
-// FITTINGS
-// =============================================================================
-
 /**
- * Get all fittings with optional filters
- * GET /api/doctrines/fittings?shipTypeId=xxx&category=xxx&maintainer=xxx&srpEligible=true&search=xxx
+ * Set/update a doctrine's staging system entry
+ * PUT /api/doctrines/:id/staging-systems
  */
-doctrines.get('/fittings', async (c) => {
+doctrines.put('/:id/staging-systems', async (c) => {
 	const user = c.get('user')!
-	const characterIds = user.characters.map((ch) => ch.characterId)
-
-	console.log('[GET /fittings] Fetching fittings list', {
-		userId: user.id,
-		characterIds,
-		isAdmin: user.is_admin,
-	})
-
-	const filters = {
-		shipTypeId: c.req.query('shipTypeId'),
-		category: c.req.query('category'),
-		maintainer: c.req.query('maintainer'),
-		srpEligible: c.req.query('srpEligible') === 'true' ? true : undefined,
-		search: c.req.query('search'),
-	}
-
-	const doctrinesStub = getStub<Doctrines>(c.env.DOCTRINES, 'default')
-	const fittingsList = await doctrinesStub.getFittings(filters, user.id, characterIds, user.is_admin)
-
-	console.log('[GET /fittings] Fetched fittings', {
-		count: fittingsList.length,
-		userId: user.id,
-	})
-
-	return c.json(fittingsList)
-})
-
-/**
- * Get a single fitting with its items
- * GET /api/doctrines/fittings/:id
- */
-doctrines.get('/fittings/:id', async (c) => {
-	const user = c.get('user')!
-	const characterIds = user.characters.map((ch) => ch.characterId)
-	const fittingId = c.req.param('id')
-
-	console.log('[GET /fittings/:id] Fetching fitting', {
-		fittingId,
-		userId: user.id,
-		characterIds,
-		isAdmin: user.is_admin,
-	})
-
-	const doctrinesStub = getStub<Doctrines>(c.env.DOCTRINES, 'default')
-	const fitting = await doctrinesStub.getFitting(fittingId, user.id, characterIds, user.is_admin)
-
-	if (!fitting) {
-		console.log('[GET /fittings/:id] Fitting not found', { fittingId, userId: user.id })
-		return c.json({ error: 'Fitting not found' }, 404)
-	}
-
-	console.log('[GET /fittings/:id] Fetched fitting', {
-		fittingId: fitting.id,
-		shipName: fitting.shipName,
-		userId: user.id,
-	})
-
-	return c.json(fitting)
-})
-
-/**
- * Create a new fitting
- * POST /api/doctrines/fittings
- *
- * Requires urn:doctrines:create_fitting permission
- */
-doctrines.post('/fittings', async (c) => {
-	const user = c.get('user')!
+	const doctrineId = c.req.param('id')
 	const body = await c.req.json()
 
-	// Check create permission
 	const characterIds = user.characters.map((ch) => ch.characterId)
-	const allowed = await hasPermission(
-		c.env,
-		user.id,
-		'urn:doctrines:create_fitting',
-		user.is_admin,
-		characterIds
-	)
+	const allowed = await isDoctrineManager(c.env, user.id, user.is_admin, characterIds)
 
 	if (!allowed) {
-		return c.json({ error: 'Requires doctrines:create_fitting permission' }, 403)
+		return c.json({ error: 'Requires doctrines:manager permission' }, 403)
 	}
 
 	const doctrinesStub = getStub<Doctrines>(c.env.DOCTRINES, 'default')
-	const fitting = await doctrinesStub.createFitting(body, user.id, characterIds)
+	await doctrinesStub.setDoctrineStagingSystem(doctrineId, body)
 
-	return c.json(fitting, 201)
+	return c.json({ success: true })
 })
 
 /**
- * Update a fitting
- * PATCH /api/doctrines/fittings/:id
- *
- * Requires urn:doctrines:edit_fitting permission
+ * Remove a staging system from a doctrine
+ * DELETE /api/doctrines/:id/staging-systems/:systemId
  */
-doctrines.patch('/fittings/:id', async (c) => {
+doctrines.delete('/:id/staging-systems/:systemId', async (c) => {
 	const user = c.get('user')!
-	const fittingId = c.req.param('id')
-	const body = await c.req.json()
+	const doctrineId = c.req.param('id')
+	const systemId = c.req.param('systemId')
 
-	// Check edit permission
 	const characterIds = user.characters.map((ch) => ch.characterId)
-	const allowed = await hasPermission(
-		c.env,
-		user.id,
-		'urn:doctrines:edit_fitting',
-		user.is_admin,
-		characterIds
-	)
+	const allowed = await isDoctrineManager(c.env, user.id, user.is_admin, characterIds)
 
 	if (!allowed) {
-		return c.json({ error: 'Requires doctrines:edit_fitting permission' }, 403)
+		return c.json({ error: 'Requires doctrines:manager permission' }, 403)
 	}
 
 	const doctrinesStub = getStub<Doctrines>(c.env.DOCTRINES, 'default')
-	const fitting = await doctrinesStub.updateFitting(fittingId, body, user.id, characterIds, user.is_admin)
-
-	return c.json(fitting)
-})
-
-/**
- * Delete a fitting
- * DELETE /api/doctrines/fittings/:id
- *
- * Requires urn:doctrines:delete_fitting permission
- */
-doctrines.delete('/fittings/:id', async (c) => {
-	const user = c.get('user')!
-	const fittingId = c.req.param('id')
-
-	// Check delete permission
-	const characterIds = user.characters.map((ch) => ch.characterId)
-	const allowed = await hasPermission(
-		c.env,
-		user.id,
-		'urn:doctrines:delete_fitting',
-		user.is_admin,
-		characterIds
-	)
-
-	if (!allowed) {
-		return c.json({ error: 'Requires doctrines:delete_fitting permission' }, 403)
-	}
-
-	const doctrinesStub = getStub<Doctrines>(c.env.DOCTRINES, 'default')
-	await doctrinesStub.deleteFitting(fittingId, user.id, characterIds, user.is_admin)
+	await doctrinesStub.removeDoctrineStagingSystem(doctrineId, systemId)
 
 	return c.json({ success: true })
 })

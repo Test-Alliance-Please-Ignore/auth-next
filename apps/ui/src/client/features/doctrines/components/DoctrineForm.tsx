@@ -6,12 +6,22 @@
 
 import { useState } from 'react'
 
+import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
+import { Select } from '@/components/ui/select'
 import { Textarea } from '@/components/ui/textarea'
+import { api } from '@/lib/api'
 
+import { useDoctrineCategories } from '../hooks'
+
+import type { SelectOption } from '@/components/ui/select'
 import type { CreateDoctrineRequest, Doctrine, UpdateDoctrineRequest } from '../types'
-import { Button } from '@/components/ui/button'
+
+interface ShipOption extends SelectOption {
+	value: string
+	label: string
+}
 
 interface DoctrineFormProps {
 	doctrine?: Doctrine
@@ -22,22 +32,32 @@ interface DoctrineFormProps {
 
 export function DoctrineForm({ doctrine, onSubmit, onCancel, isSubmitting }: DoctrineFormProps) {
 	const [name, setName] = useState(doctrine?.name || '')
-	const [category, setCategory] = useState(doctrine?.category || '')
-	const [maintainer, setMaintainer] = useState(doctrine?.maintainer || '')
+	const [description, setDescription] = useState(doctrine?.description || '')
+	const [sortOrder, setSortOrder] = useState(doctrine?.sortOrder ?? 0)
+	const [shipTypeId, setShipTypeId] = useState(doctrine?.shipTypeId || '')
+	const [categoryId, setCategoryId] = useState(doctrine?.categoryId || '')
+	const { data: categories } = useDoctrineCategories()
 
 	const handleSubmit = (e: React.FormEvent) => {
 		e.preventDefault()
 
-		const data = {
+		const data: CreateDoctrineRequest = {
 			name,
-			category,
-			maintainer,
+			description: description || undefined,
+			shipTypeId: shipTypeId || undefined,
+			categoryId: categoryId || undefined,
+			sortOrder,
 		}
 
 		onSubmit(data)
 	}
 
-	const canSubmit = name.trim() !== '' && category.trim() !== '' && maintainer.trim() !== ''
+	const searchShipTypes = async (query: string): Promise<ShipOption[]> => {
+		const results = await api.searchShipTypes(query)
+		return results.map((r) => ({ value: r.typeId, label: r.typeName }))
+	}
+
+	const canSubmit = name.trim() !== ''
 
 	return (
 		<form onSubmit={handleSubmit} className="space-y-6">
@@ -54,33 +74,92 @@ export function DoctrineForm({ doctrine, onSubmit, onCancel, isSubmitting }: Doc
 				<p className="text-sm text-muted-foreground">A descriptive name for this doctrine</p>
 			</div>
 
-			{/* Category */}
+			{/* Description */}
 			<div className="space-y-2">
-				<Label htmlFor="category">Category *</Label>
-				<Input
-					id="category"
-					value={category}
-					onChange={(e) => setCategory(e.target.value)}
-					placeholder="e.g., Shield Fleets, Armor Fleets, Black Ops"
-					required
+				<Label htmlFor="description">Description</Label>
+				<Textarea
+					id="description"
+					value={description}
+					onChange={(e) => setDescription(e.target.value)}
+					placeholder="Describe the purpose, composition, or usage of this doctrine..."
+					className="min-h-[100px]"
 				/>
 				<p className="text-sm text-muted-foreground">
-					Group this doctrine under a category for organization
+					A short description shown on the doctrine card
 				</p>
 			</div>
 
-			{/* Maintainer */}
+			{/* Category */}
 			<div className="space-y-2">
-				<Label htmlFor="maintainer">Maintainer *</Label>
-				<Input
-					id="maintainer"
-					value={maintainer}
-					onChange={(e) => setMaintainer(e.target.value)}
-					placeholder="Character name or group responsible"
-					required
+				<Label>Category</Label>
+				<Select
+					options={[
+						{ value: '', label: 'No category' },
+						...(categories || []).map((c) => ({ value: c.id, label: c.name })),
+					]}
+					value={categoryId}
+					onValueChange={(val) => setCategoryId(val)}
+					placeholder="Select a category..."
 				/>
 				<p className="text-sm text-muted-foreground">
-					Who is responsible for maintaining this doctrine?
+					Group this doctrine under a category
+				</p>
+			</div>
+
+			{/* Ship Icon */}
+			<div className="space-y-2">
+				<Label>Ship Icon</Label>
+				<div className="flex items-center gap-3">
+					{shipTypeId && (
+						<img
+							src={`https://images.evetech.net/types/${shipTypeId}/icon?size=64`}
+							alt="Ship icon"
+							className="h-10 w-10 rounded"
+						/>
+					)}
+					<div className="flex-1">
+						<Select<ShipOption>
+							options={[]}
+							value={shipTypeId}
+							onValueChange={(val) => setShipTypeId(val)}
+							searchable
+							searchDelegate={searchShipTypes}
+							minQueryLength={2}
+							debounceMs={300}
+							placeholder="Search for a ship..."
+							emptyText="No ships found"
+							queryHintText="Type at least 2 characters to search"
+							renderOption={(option) => (
+								<div className="flex items-center gap-2">
+									<img
+										src={`https://images.evetech.net/types/${option.value}/icon?size=32`}
+										alt=""
+										className="h-5 w-5 rounded"
+									/>
+									<span>{option.label}</span>
+								</div>
+							)}
+						/>
+					</div>
+				</div>
+				<p className="text-sm text-muted-foreground">
+					Search for a ship to use as the doctrine icon
+				</p>
+			</div>
+
+			{/* Sort Order */}
+			<div className="space-y-2">
+				<Label htmlFor="sortOrder">Sort Order</Label>
+				<Input
+					id="sortOrder"
+					type="number"
+					value={sortOrder}
+					onChange={(e) => setSortOrder(parseInt(e.target.value) || 0)}
+					min="0"
+					className="w-32"
+				/>
+				<p className="text-sm text-muted-foreground">
+					Lower numbers appear first on the doctrines page
 				</p>
 			</div>
 
@@ -89,7 +168,8 @@ export function DoctrineForm({ doctrine, onSubmit, onCancel, isSubmitting }: Doc
 				<Button variant="cancel" onClick={onCancel} type="button">
 					Cancel
 				</Button>
-				<Button variant="confirm"
+				<Button
+					variant="confirm"
 					type="submit"
 					loading={isSubmitting}
 					loadingText={doctrine ? 'Updating...' : 'Creating...'}
@@ -101,3 +181,4 @@ export function DoctrineForm({ doctrine, onSubmit, onCancel, isSubmitting }: Doc
 		</form>
 	)
 }
+

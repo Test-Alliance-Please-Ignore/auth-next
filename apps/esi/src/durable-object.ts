@@ -130,6 +130,8 @@ import type {
 	EsiCharacterContract,
 	EsiContractItem,
 	EsiCharacterFitting,
+	EsiSaveFittingRequest,
+	SaveFittingResponse,
 	EsiCharacterKillmail,
 	EsiCharacterLocation,
 	EsiCharacterMail,
@@ -386,6 +388,34 @@ export class EsiDO extends DurableObject<Env> implements Esi {
 			`/characters/${characterId}/fittings`
 		)
 		return transformCharacterFitting(result.data)
+	}
+
+	@UseCharacterAuth
+	async saveCharacterFitting(
+		characterId: string,
+		fitting: {
+			name: string
+			description: string
+			shipTypeId: string
+			items: Array<{ typeId: string; flag: string; quantity: number }>
+		}
+	): Promise<SaveFittingResponse> {
+		const body: EsiSaveFittingRequest = {
+			name: fitting.name,
+			description: fitting.description || '',
+			ship_type_id: parseInt(fitting.shipTypeId),
+			items: fitting.items.map((item) => ({
+				type_id: parseInt(item.typeId),
+				flag: item.flag,
+				quantity: item.quantity,
+			})),
+		}
+
+		const result = await this.esiFetcher.fetchEsi<SaveFittingResponse, EsiSaveFittingRequest>(
+			`/characters/${characterId}/fittings`,
+			{ method: 'POST', body }
+		)
+		return result.data
 	}
 
 	@UseCharacterAuth

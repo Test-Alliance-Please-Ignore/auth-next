@@ -4,22 +4,9 @@
 
 import { formatISK } from '@/lib/format-utils'
 
-import type { Doctrine, DoctrinesByCategory, ParsedEFT } from './types'
+import type { ParsedEFT } from './types'
 
 export { formatISK }
-
-/**
- * Group doctrines by category
- */
-export function groupDoctrinesByCategory(doctrines: Doctrine[]): DoctrinesByCategory {
-	return doctrines.reduce((acc, doctrine) => {
-		if (!acc[doctrine.category]) {
-			acc[doctrine.category] = []
-		}
-		acc[doctrine.category].push(doctrine)
-		return acc
-	}, {} as DoctrinesByCategory)
-}
 
 /**
  * Parse EFT (EVE Fitting Tool) format string
