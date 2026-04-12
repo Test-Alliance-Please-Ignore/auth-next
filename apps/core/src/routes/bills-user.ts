@@ -339,25 +339,23 @@ app.get('/my-bills/:billId', requireAuth(), requireBillingViewer(), async (c) =>
 			return c.json({ error: 'Bill not found' }, 404)
 		}
 
-		if (!user.is_admin) {
-			const scope = await getUserBillScope(c.env, user.id)
-			const allowedPartyKeys = new Set(
-				scope.partyEntities.map((party) => `${party.entityType}:${party.entityId}`)
-			)
-			const hasIssuerAccess = bill.issuerId === user.id
-			const payerKey = `${bill.payerType}:${bill.payerId}`
-			const payeeKey = bill.payeeId && bill.payeeType ? `${bill.payeeType}:${bill.payeeId}` : null
-			const hasPayerAccess = allowedPartyKeys.has(payerKey)
-			const hasPayeeAccess = payeeKey ? allowedPartyKeys.has(payeeKey) : false
-			const hasPartyAccess = hasPayerAccess || hasPayeeAccess
-			if (!hasIssuerAccess && !hasPartyAccess) {
-				logger.warn('[bills-user] User not authorized to view bill', {
-					userId: user.id,
-					billId,
-					issuerId: bill.issuerId,
-				})
-				return c.json({ error: 'Forbidden' }, 403)
-			}
+		const scope = await getUserBillScope(c.env, user.id)
+		const allowedPartyKeys = new Set(
+			scope.partyEntities.map((party) => `${party.entityType}:${party.entityId}`)
+		)
+		const hasIssuerAccess = bill.issuerId === user.id
+		const payerKey = `${bill.payerType}:${bill.payerId}`
+		const payeeKey = bill.payeeId && bill.payeeType ? `${bill.payeeType}:${bill.payeeId}` : null
+		const hasPayerAccess = allowedPartyKeys.has(payerKey)
+		const hasPayeeAccess = payeeKey ? allowedPartyKeys.has(payeeKey) : false
+		const hasPartyAccess = hasPayerAccess || hasPayeeAccess
+		if (!hasIssuerAccess && !hasPartyAccess) {
+			logger.warn('[bills-user] User not authorized to view bill', {
+				userId: user.id,
+				billId,
+				issuerId: bill.issuerId,
+			})
+			return c.json({ error: 'Forbidden' }, 403)
 		}
 
 		// Keep draft visibility limited to issuer.

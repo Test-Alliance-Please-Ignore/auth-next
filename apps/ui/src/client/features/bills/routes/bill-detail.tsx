@@ -1,5 +1,7 @@
 import { FileText } from 'lucide-react'
+import { useState } from 'react'
 import { Link, Navigate, useParams } from 'react-router-dom'
+import { toast } from 'sonner'
 
 import { BillStatusBadge } from '@/components/bills/bill-status-badge'
 import { Button } from '@/components/ui/button'
@@ -24,10 +26,18 @@ export default function BillDetailPage() {
 	const { billId } = useParams<{ billId: string }>()
 	const { user } = useAuth()
 	const { data: bill, isLoading, error } = useBill(billId!)
+	const [copiedToken, setCopiedToken] = useState(false)
 
 	usePageTitle(bill ? `Bill - ${bill.title}` : 'Bill Details')
 
-	if (user?.is_admin && billId) {
+	if (
+		user?.is_admin &&
+		billId &&
+		!isLoading &&
+		!bill &&
+		error instanceof Error &&
+		error.message === 'Forbidden'
+	) {
 		return <Navigate to={`/admin/bills/${billId}`} replace />
 	}
 
@@ -98,6 +108,17 @@ export default function BillDetailPage() {
 	const remaining = Math.max(0, totalDue - totalPaid)
 	const paymentProgress = totalDue > 0 ? Math.min(100, Math.floor((totalPaid / totalDue) * 100)) : 0
 
+	const copyPaymentToken = async () => {
+		try {
+			await navigator.clipboard.writeText(bill.paymentToken)
+			setCopiedToken(true)
+			toast.success('Payment token copied to clipboard')
+			setTimeout(() => setCopiedToken(false), 700)
+		} catch {
+			toast.error('Failed to copy payment token')
+		}
+	}
+
 	return (
 		<Container>
 			{/* Page Header */}
@@ -165,9 +186,30 @@ export default function BillDetailPage() {
 							<p className="text-lg">{bill.issuerName || bill.issuerId}</p>
 						</div>
 
-						<div className="md:col-span-2">
+						<div>
 							<h3 className="text-sm font-medium text-muted-foreground mb-1">Payment Token</h3>
-							<p className="text-lg font-mono break-all">{bill.paymentToken}</p>
+							<div
+								role="button"
+								tabIndex={0}
+								onClick={copyPaymentToken}
+								onKeyDown={(event) => {
+									if (event.key === 'Enter' || event.key === ' ') {
+										event.preventDefault()
+										void copyPaymentToken()
+									}
+								}}
+								className={`inline-block max-w-sm rounded-md border p-4 text-left cursor-pointer transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 ${
+									copiedToken
+										? 'border-teal-500/60 bg-teal-500/20'
+										: 'border-border bg-muted/50 hover:bg-muted'
+								}`}
+								title="Copy payment token"
+							>
+								<p className="text-2xl font-mono font-semibold break-all">{bill.paymentToken}</p>
+								<p className="mt-2 text-sm text-muted-foreground">
+									Click token to copy to clipboard
+								</p>
+							</div>
 						</div>
 
 						{bill.description && (
