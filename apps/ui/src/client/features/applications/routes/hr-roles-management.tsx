@@ -108,7 +108,7 @@ export default function HrRolesManagement() {
 	// Loading state
 	if (corpLoading || hrRolesLoading || membersLoading) {
 		return (
-			<div className="container mx-auto max-w-7xl px-4 py-8">
+			<div className="container mx-auto max-w-full px-4 py-8">
 				<div className="flex items-center justify-center min-h-[400px]">
 					<LoadingSpinner size="lg" />
 				</div>
@@ -119,7 +119,7 @@ export default function HrRolesManagement() {
 	// Access denied
 	if (!canAccess || !canManageHrRoles) {
 		return (
-			<div className="container mx-auto max-w-6xl px-4 py-8">
+			<div className="container mx-auto max-w-full px-4 py-8">
 				<Card className="max-w-2xl mx-auto border-red-200 bg-red-50 dark:border-red-800 dark:bg-red-950">
 					<CardHeader className="text-center">
 						<AlertCircle className="h-16 w-16 mx-auto text-red-500 mb-4" />
@@ -145,7 +145,7 @@ export default function HrRolesManagement() {
 	// Error state
 	if (error) {
 		return (
-			<div className="container mx-auto max-w-6xl px-4 py-8">
+			<div className="container mx-auto max-w-full px-4 py-8">
 				<Card className="max-w-2xl mx-auto border-red-200 bg-red-50 dark:border-red-800 dark:bg-red-950">
 					<CardHeader className="text-center">
 						<AlertCircle className="h-16 w-16 mx-auto text-red-500 mb-4" />
@@ -222,7 +222,7 @@ export default function HrRolesManagement() {
 
 	// Main content
 	return (
-		<div className="container mx-auto max-w-7xl px-4 py-8">
+		<div className="container mx-auto max-w-full px-4 py-8">
 			{/* Breadcrumb Navigation */}
 			<Breadcrumb className="mb-6">
 				<BreadcrumbList>

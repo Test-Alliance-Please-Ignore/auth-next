@@ -107,7 +107,7 @@ export function formatBillStatus(status: BillStatus): string {
 /**
  * Format due date with overdue indicator
  */
-export function formatDueDate(dueDate: Date | string): string {
+export function formatDueDate(dueDate: Date | string, status?: BillStatus): string {
 	const date = typeof dueDate === 'string' ? new Date(dueDate) : dueDate
 	const now = new Date()
 	const diffMs = date.getTime() - now.getTime()
@@ -118,6 +118,10 @@ export function formatDueDate(dueDate: Date | string): string {
 		month: 'short',
 		day: 'numeric',
 	})
+
+	if (status === 'paid') {
+		return formatted
+	}
 
 	if (diffDays < 0) {
 		return `${formatted} (${Math.abs(diffDays)} days overdue)`
