@@ -105,9 +105,15 @@ export function useDeleteCategory() {
 
 	return useMutation({
 		mutationFn: (id: string) => api.deleteCategory(id),
-		onSuccess: (_, deletedId) => {
+		onSuccess: async (_, deletedId) => {
 			// Invalidate categories list
-			void queryClient.invalidateQueries({ queryKey: categoryKeys.lists() })
+			await Promise.all([
+				queryClient.invalidateQueries({ queryKey: categoryKeys.all }),
+				// Keep legacy/fallback keys in sync if any views still rely on them.
+				queryClient.invalidateQueries({ queryKey: ['categories'] }),
+				// Group UIs consume categories for filters/forms; refresh those views too.
+				queryClient.invalidateQueries({ queryKey: ['admin', 'groups'] }),
+			])
 
 			// Remove from cache
 			queryClient.removeQueries({ queryKey: categoryKeys.detail(deletedId) })
@@ -117,6 +123,11 @@ export function useDeleteCategory() {
 				if (!old) return []
 				return old.filter((cat) => cat.id !== deletedId)
 			})
+
+			await Promise.all([
+				queryClient.refetchQueries({ queryKey: categoryKeys.all, type: 'active' }),
+				queryClient.refetchQueries({ queryKey: ['admin', 'groups'], type: 'active' }),
+			])
 		},
 	})
 }

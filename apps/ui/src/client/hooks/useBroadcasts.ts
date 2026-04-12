@@ -1,6 +1,7 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 
 import { api } from '@/lib/api'
+import { permissionKeys } from '@/hooks/usePermissions'
 
 import type {
 	BroadcastStatus,
@@ -81,9 +82,21 @@ export function useCreateBroadcastTarget() {
 
 	return useMutation({
 		mutationFn: (data: CreateBroadcastTargetRequest) => api.createBroadcastTarget(data),
-		onSuccess: (_, variables) => {
+		onSuccess: async () => {
 			// Invalidate all targets lists
-			queryClient.invalidateQueries({ queryKey: broadcastKeys.targets() })
+			await Promise.all([
+				queryClient.invalidateQueries({ queryKey: broadcastKeys.targets() }),
+				// Creating a target creates/updates related broadcast permissions; refresh those immediately.
+				queryClient.invalidateQueries({ queryKey: permissionKeys.lists() }),
+				// Refresh session-scoped permissions used across non-admin UX gates.
+				queryClient.invalidateQueries({ queryKey: ['auth', 'session'] }),
+			])
+
+			await Promise.all([
+				queryClient.refetchQueries({ queryKey: broadcastKeys.targets(), type: 'active' }),
+				queryClient.refetchQueries({ queryKey: permissionKeys.lists(), type: 'active' }),
+				queryClient.refetchQueries({ queryKey: ['auth', 'session'], type: 'active' }),
+			])
 		},
 	})
 }
