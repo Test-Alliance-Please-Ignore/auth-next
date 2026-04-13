@@ -5,8 +5,11 @@
  * and imports inventory-related data into the database.
  */
 
+import { execFile } from 'node:child_process'
 import { promises as fs } from 'node:fs'
-import { join, resolve } from 'node:path'
+import { tmpdir } from 'node:os'
+import { dirname, join } from 'node:path'
+import { promisify } from 'node:util'
 import { config } from 'dotenv'
 import { eq, sql } from 'drizzle-orm'
 
@@ -19,40 +22,41 @@ config({ path: join(process.cwd(), '.env') }) // Try current working directory
 config({ path: join(process.cwd(), '../../.env') }) // Try repository root from app directory
 config({ path: '/Users/ozzeh/src/tapi-workers/.env' }) // Try absolute path as fallback
 
-// SDE data directory - absolute path
-const SDE_DATA_DIR = '/Users/ozzeh/src/tapi-workers/tmp/sde-data'
+const CCP_SDE_JSONL_URL =
+	'https://developers.eveonline.com/static-data/eve-online-static-data-latest-jsonl.zip'
+const execFileAsync = promisify(execFile)
 
 interface SDECategory {
-	categoryID: number
-	categoryName: string
+	_key: number
+	name: string | Record<string, string>
 	iconID?: number | null
-	published: number
+	published: boolean
 }
 
 interface SDEGroup {
-	groupID: number
+	_key: number
 	categoryID: number
-	groupName: string
+	name: string | Record<string, string>
 	iconID?: number | null
-	useBasePrice: number
-	anchored: number
-	anchorable: number
-	fittableNonSingleton: number
-	published: number
+	useBasePrice: boolean
+	anchored: boolean
+	anchorable: boolean
+	fittableNonSingleton: boolean
+	published: boolean
 }
 
 interface SDEType {
-	typeID: number
+	_key: number
 	groupID: number
-	typeName: string
-	description?: string | null
-	mass: number
-	volume: number
+	name: string | Record<string, string>
+	description?: string | Record<string, string> | null
+	mass?: number
+	volume?: number
 	capacity?: number
 	portionSize?: number
 	raceID?: number | null
 	basePrice?: number | null
-	published: number
+	published: boolean
 	marketGroupID?: number | null
 	iconID?: number | null
 	soundID?: number | null
@@ -60,35 +64,183 @@ interface SDEType {
 }
 
 interface SDEMarketGroup {
-	marketGroupID: number
+	_key: number
 	parentGroupID?: number | null
-	marketGroupName: string
-	description?: string | null
+	name: string | Record<string, string>
+	description?: string | Record<string, string> | null
 	iconID?: number | null
-	hasTypes: number
+	hasTypes: boolean
 }
 
-async function readJSONFile<T>(filename: string): Promise<T> {
-	const filepath = join(SDE_DATA_DIR, filename)
-	const content = await fs.readFile(filepath, 'utf-8')
-	return JSON.parse(content)
+interface SDEMetadata {
+	_key: string
+	buildNumber?: number
+	releaseDate?: string
 }
 
-async function importCategories(db: any) {
+function toBoolean(value: number | boolean | null | undefined): boolean {
+	return value === true || value === 1
+}
+
+function getEnglishName(
+	name: string | Record<string, string> | null | undefined,
+	fallback = ''
+): string {
+	if (typeof name === 'string') {
+		return name
+	}
+	if (name && typeof name === 'object') {
+		return name.en ?? Object.values(name)[0] ?? fallback
+	}
+	return fallback
+}
+
+function getOptionalEnglishText(value: string | Record<string, string> | null | undefined): string | null {
+	if (!value) {
+		return null
+	}
+	return getEnglishName(value, '')
+}
+
+async function fileExists(path: string): Promise<boolean> {
+	try {
+		await fs.access(path)
+		return true
+	} catch {
+		return false
+	}
+}
+
+async function readSdeJsonlTable<T>(sdeDataDir: string, jsonlName: string): Promise<T[]> {
+	const jsonlPath = join(sdeDataDir, jsonlName)
+	if (!(await fileExists(jsonlPath))) {
+		throw new Error(`Could not find required JSONL file ${jsonlName} in ${sdeDataDir}`)
+	}
+
+	const content = await fs.readFile(jsonlPath, 'utf-8')
+	return content
+		.split('\n')
+		.map((line) => line.trim())
+		.filter((line) => line.length > 0)
+		.map((line) => JSON.parse(line) as T)
+}
+
+async function downloadFile(url: string, destinationPath: string): Promise<void> {
+	const response = await fetch(url)
+	if (!response.ok) {
+		throw new Error(`Failed to download ${url}: ${response.status} ${response.statusText}`)
+	}
+
+	await fs.mkdir(dirname(destinationPath), { recursive: true })
+	const fileBytes = Buffer.from(await response.arrayBuffer())
+	await fs.writeFile(destinationPath, fileBytes)
+}
+
+async function extractZip(zipPath: string, outputDir: string): Promise<void> {
+	await fs.mkdir(outputDir, { recursive: true })
+	try {
+		await execFileAsync('unzip', ['-o', zipPath, '-d', outputDir])
+	} catch (error) {
+		throw new Error(
+			`Failed to unzip ${zipPath}. Ensure 'unzip' is installed. ` +
+				`${error instanceof Error ? error.message : String(error)}`
+		)
+	}
+}
+
+async function findSdeDataDirectory(rootDir: string, maxDepth = 4): Promise<string | null> {
+	const requiredFiles = ['_sde.jsonl', 'categories.jsonl', 'groups.jsonl', 'marketGroups.jsonl', 'types.jsonl']
+	const hasRequiredFiles = await Promise.all(requiredFiles.map((name) => fileExists(join(rootDir, name))))
+	if (hasRequiredFiles.every(Boolean)) {
+		return rootDir
+	}
+
+	if (maxDepth <= 0) {
+		return null
+	}
+
+	const entries = await fs.readdir(rootDir, { withFileTypes: true })
+	for (const entry of entries) {
+		if (!entry.isDirectory()) {
+			continue
+		}
+		const candidate = await findSdeDataDirectory(join(rootDir, entry.name), maxDepth - 1)
+		if (candidate) {
+			return candidate
+		}
+	}
+
+	return null
+}
+
+async function prepareSdeDataDir(): Promise<string> {
+	const configuredDir = process.env.SDE_DATA_DIR
+	if (configuredDir) {
+		return configuredDir
+	}
+
+	const tempRoot = join(tmpdir(), 'eve-sde-jsonl-latest')
+	const zipPath = join(tempRoot, 'eve-online-static-data-latest-jsonl.zip')
+	const extractRoot = join(tempRoot, 'extract')
+
+	console.log(`SDE_DATA_DIR not set; downloading latest CCP JSONL SDE from ${CCP_SDE_JSONL_URL}`)
+	await fs.mkdir(tempRoot, { recursive: true })
+	await downloadFile(CCP_SDE_JSONL_URL, zipPath)
+
+	await fs.rm(extractRoot, { recursive: true, force: true })
+	await extractZip(zipPath, extractRoot)
+
+	const detectedDir = await findSdeDataDirectory(extractRoot)
+	if (!detectedDir) {
+		throw new Error(
+			`Unable to locate extracted SDE JSONL directory under ${extractRoot}. ` +
+				`Expected files: _sde.jsonl, categories.jsonl, groups.jsonl, marketGroups.jsonl, types.jsonl`
+		)
+	}
+
+	return detectedDir
+}
+
+async function resolveSdeVersionLabel(sdeDataDir: string): Promise<string> {
+	const metadataPath = join(sdeDataDir, '_sde.jsonl')
+	if (!(await fileExists(metadataPath))) {
+		return 'sde-unknown-version'
+	}
+
+	const content = await fs.readFile(metadataPath, 'utf-8')
+	const firstLine = content
+		.split('\n')
+		.map((line) => line.trim())
+		.find((line) => line.length > 0)
+
+	if (!firstLine) {
+		return 'sde-unknown-version'
+	}
+
+	const metadata = JSON.parse(firstLine) as SDEMetadata
+	const buildNumber = metadata.buildNumber ?? 'unknown-build'
+	const releaseDate = metadata.releaseDate ? metadata.releaseDate.slice(0, 10) : 'unknown-date'
+	return `ccp-sde-build-${buildNumber}-${releaseDate}`
+}
+
+async function importCategories(db: any, sdeDataDir: string) {
 	console.log('Importing inventory categories...')
-	const categories = await readJSONFile<SDECategory[]>('invCategories.json')
+	const categories = await readSdeJsonlTable<SDECategory>(sdeDataDir, 'categories.jsonl')
 
 	let count = 0
 	const batchSize = 100
 	const batches = []
 
 	for (let i = 0; i < categories.length; i += batchSize) {
-		const batch = categories.slice(i, i + batchSize).map((cat) => ({
-			categoryId: cat.categoryID.toString(),
-			categoryName: cat.categoryName,
-			iconId: cat.iconID || null,
-			published: cat.published === 1,
-		}))
+		const batch = categories.slice(i, i + batchSize).map((cat) => {
+			const categoryId = String(cat._key)
+			return {
+				categoryId,
+				categoryName: getEnglishName(cat.name, `Unknown Category (${categoryId})`),
+				iconId: cat.iconID || null,
+				published: toBoolean(cat.published),
+			}
+		})
 		batches.push(batch)
 	}
 
@@ -110,26 +262,29 @@ async function importCategories(db: any) {
 	console.log(`  Imported ${count} categories`)
 }
 
-async function importGroups(db: any) {
+async function importGroups(db: any, sdeDataDir: string) {
 	console.log('Importing inventory groups...')
-	const groups = await readJSONFile<SDEGroup[]>('invGroups.json')
+	const groups = await readSdeJsonlTable<SDEGroup>(sdeDataDir, 'groups.jsonl')
 
 	let count = 0
 	const batchSize = 100
 	const batches = []
 
 	for (let i = 0; i < groups.length; i += batchSize) {
-		const batch = groups.slice(i, i + batchSize).map((grp) => ({
-			groupId: grp.groupID.toString(),
-			categoryId: grp.categoryID.toString(),
-			groupName: grp.groupName,
-			iconId: grp.iconID || null,
-			useBasePrice: grp.useBasePrice === 1,
-			anchored: grp.anchored === 1,
-			anchorable: grp.anchorable === 1,
-			fittableNonSingleton: grp.fittableNonSingleton === 1,
-			published: grp.published === 1,
-		}))
+		const batch = groups.slice(i, i + batchSize).map((grp) => {
+			const groupId = String(grp._key)
+			return {
+				groupId,
+				categoryId: String(grp.categoryID),
+				groupName: getEnglishName(grp.name, `Unknown Group (${groupId})`),
+				iconId: grp.iconID || null,
+				useBasePrice: toBoolean(grp.useBasePrice),
+				anchored: toBoolean(grp.anchored),
+				anchorable: toBoolean(grp.anchorable),
+				fittableNonSingleton: toBoolean(grp.fittableNonSingleton),
+				published: toBoolean(grp.published),
+			}
+		})
 		batches.push(batch)
 	}
 
@@ -156,23 +311,26 @@ async function importGroups(db: any) {
 	console.log(`  Imported ${count} groups`)
 }
 
-async function importMarketGroups(db: any) {
+async function importMarketGroups(db: any, sdeDataDir: string) {
 	console.log('Importing market groups...')
-	const marketGroupsData = await readJSONFile<SDEMarketGroup[]>('invMarketGroups.json')
+	const marketGroupsData = await readSdeJsonlTable<SDEMarketGroup>(sdeDataDir, 'marketGroups.jsonl')
 
 	let count = 0
 	const batchSize = 100
 	const batches = []
 
 	for (let i = 0; i < marketGroupsData.length; i += batchSize) {
-		const batch = marketGroupsData.slice(i, i + batchSize).map((mg) => ({
-			marketGroupId: mg.marketGroupID.toString(),
-			parentGroupId: mg.parentGroupID?.toString() || null,
-			marketGroupName: mg.marketGroupName,
-			description: mg.description || null,
-			iconId: mg.iconID || null,
-			hasTypes: mg.hasTypes === 1,
-		}))
+		const batch = marketGroupsData.slice(i, i + batchSize).map((mg) => {
+			const marketGroupId = String(mg._key)
+			return {
+				marketGroupId,
+				parentGroupId: mg.parentGroupID?.toString() || null,
+				marketGroupName: getEnglishName(mg.name, `Unknown Market Group (${marketGroupId})`),
+				description: getOptionalEnglishText(mg.description),
+				iconId: mg.iconID || null,
+				hasTypes: toBoolean(mg.hasTypes),
+			}
+		})
 		batches.push(batch)
 	}
 
@@ -196,35 +354,38 @@ async function importMarketGroups(db: any) {
 	console.log(`  Imported ${count} market groups`)
 }
 
-async function importTypes(db: any) {
+async function importTypes(db: any, sdeDataDir: string) {
 	console.log('Importing inventory types...')
-	const types = await readJSONFile<SDEType[]>('invTypes.json')
+	const types = await readSdeJsonlTable<SDEType>(sdeDataDir, 'types.jsonl')
 
 	let count = 0
 	const batchSize = 100
 	const batches = []
 
 	// Filter to only import published types to reduce dataset size
-	const publishedTypes = types.filter((t) => t.published === 1)
+	const publishedTypes = types.filter((t) => toBoolean(t.published))
 
 	for (let i = 0; i < publishedTypes.length; i += batchSize) {
-		const batch = publishedTypes.slice(i, i + batchSize).map((type) => ({
-			typeId: type.typeID.toString(),
-			groupId: type.groupID.toString(),
-			typeName: type.typeName,
-			description: type.description || null,
-			mass: type.mass || 0,
-			volume: type.volume || 0,
-			capacity: type.capacity || 0,
-			portionSize: type.portionSize || 1,
-			raceId: type.raceID || null,
-			basePrice: type.basePrice ? type.basePrice.toString() : null,
-			published: type.published === 1,
-			marketGroupId: type.marketGroupID?.toString() || null,
-			iconId: type.iconID || null,
-			soundId: type.soundID || null,
-			graphicId: type.graphicID || null,
-		}))
+		const batch = publishedTypes.slice(i, i + batchSize).map((type) => {
+			const typeId = String(type._key)
+			return {
+				typeId,
+				groupId: String(type.groupID),
+				typeName: getEnglishName(type.name, `Unknown Type (${typeId})`),
+				description: getOptionalEnglishText(type.description),
+				mass: type.mass || 0,
+				volume: type.volume || 0,
+				capacity: type.capacity || 0,
+				portionSize: type.portionSize || 1,
+				raceId: type.raceID || null,
+				basePrice: type.basePrice ? type.basePrice.toString() : null,
+				published: toBoolean(type.published),
+				marketGroupId: type.marketGroupID?.toString() || null,
+				iconId: type.iconID || null,
+				soundId: type.soundID || null,
+				graphicId: type.graphicID || null,
+			}
+		})
 		batches.push(batch)
 	}
 
@@ -296,20 +457,24 @@ async function main() {
 	}
 
 	console.log('Starting SDE inventory data import...')
-	console.log(`Reading from: ${SDE_DATA_DIR}`)
 
 	// Create database client
 	const db = createDbClient(dbUrl, schema)
 
 	try {
+		const sdeDataDir = await prepareSdeDataDir()
+		console.log(`Reading SDE data from: ${sdeDataDir}`)
+		const versionLabel = await resolveSdeVersionLabel(sdeDataDir)
+		console.log(`Detected SDE version label: ${versionLabel}`)
+
 		// Import data in dependency order
-		await importCategories(db)
-		await importGroups(db)
-		await importMarketGroups(db)
-		await importTypes(db)
+		await importCategories(db, sdeDataDir)
+		await importGroups(db, sdeDataDir)
+		await importMarketGroups(db, sdeDataDir)
+		await importTypes(db, sdeDataDir)
 
 		// Update SDE version
-		await updateSDEVersion(db, 'fuzzwork-latest-2024')
+		await updateSDEVersion(db, versionLabel)
 
 		console.log('\n✅ SDE inventory data import completed successfully!')
 	} catch (error) {
