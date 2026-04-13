@@ -58,6 +58,7 @@ export default function FittingCreatePage() {
 					doctrineId,
 					fittingId: result.id,
 					fittingCategory: (data as CreateFittingRequest).category || undefined,
+					sortOrder: 0,
 				})
 				toast.success('Fitting created and added to doctrine')
 				navigate(`/doctrines/${doctrineId}`)
