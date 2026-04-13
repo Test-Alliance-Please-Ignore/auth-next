@@ -1,10 +1,12 @@
 import { dirname, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { config } from 'dotenv'
+import { sql } from 'drizzle-orm'
 import { z } from 'zod'
 
 import { createDb } from '../db'
 import { invTypes } from '../db/schema'
+import { getEnglishName, prepareSdeDataDir, readSdeJsonlTable, toBoolean } from './sde-jsonl'
 
 // Load .env from monorepo root
 const __dirname = dirname(fileURLToPath(import.meta.url))
@@ -13,67 +15,70 @@ config({ path: resolve(__dirname, '../../../../.env') })
 /**
  * Zod schema for validating invTypes data from SDE
  */
+const localizedTextSchema = z.record(z.string(), z.string())
 const invTypeSchema = z.object({
-	typeID: z.number(),
+	_key: z.number(),
 	groupID: z.number(),
-	typeName: z.string(),
-	description: z.string(),
-	mass: z.number(),
-	volume: z.number(),
-	capacity: z.number(),
-	portionSize: z.number(),
-	raceID: z.number().nullable(),
-	basePrice: z.number().nullable(),
-	published: z.number().transform((val) => val === 1),
-	marketGroupID: z.number().nullable(),
-	iconID: z.number().nullable(),
-	soundID: z.number().nullable(),
-	graphicID: z.number(),
+	name: z.union([z.string(), localizedTextSchema]),
+	description: z.union([z.string(), localizedTextSchema]).nullable().optional(),
+	mass: z.number().optional(),
+	volume: z.number().optional(),
+	capacity: z.number().optional(),
+	portionSize: z.number().optional(),
+	raceID: z.number().nullable().optional(),
+	basePrice: z.number().nullable().optional(),
+	published: z.union([z.number(), z.boolean()]),
+	marketGroupID: z.number().nullable().optional(),
+	iconID: z.number().nullable().optional(),
+	soundID: z.number().nullable().optional(),
+	graphicID: z.number().nullable().optional(),
 })
 
 const invTypesArraySchema = z.array(invTypeSchema)
 
 type InvTypeSDE = z.input<typeof invTypeSchema>
-type InvTypeTransformed = z.output<typeof invTypeSchema>
+type InvType = z.output<typeof invTypeSchema>
+
+function getOptionalEnglishText(
+	value: string | Record<string, string> | null | undefined
+): string {
+	if (!value) {
+		return ''
+	}
+	return getEnglishName(value, '')
+}
 
 /**
  * Transform SDE data to database schema
  */
-function transformToDbSchema(type: InvTypeTransformed) {
+function transformToDbSchema(type: InvType) {
+	const typeId = type._key.toString()
 	return {
-		typeId: type.typeID.toString(),
+		typeId,
 		groupId: type.groupID.toString(),
-		typeName: type.typeName,
-		description: type.description,
-		mass: type.mass.toString(),
-		volume: type.volume.toString(),
-		capacity: type.capacity.toString(),
-		portionSize: type.portionSize,
+		typeName: getEnglishName(type.name, `Unknown Type (${typeId})`),
+		description: getOptionalEnglishText(type.description),
+		mass: (type.mass ?? 0).toString(),
+		volume: (type.volume ?? 0).toString(),
+		capacity: (type.capacity ?? 0).toString(),
+		portionSize: type.portionSize ?? 1,
 		raceId: type.raceID?.toString() ?? null,
 		basePrice: type.basePrice?.toString() ?? null,
-		published: type.published,
+		published: toBoolean(type.published),
 		marketGroupId: type.marketGroupID?.toString() ?? null,
 		iconId: type.iconID?.toString() ?? null,
 		soundId: type.soundID?.toString() ?? null,
-		graphicId: type.graphicID.toString(),
+		graphicId: type.graphicID?.toString() ?? '0',
 	}
 }
 
 /**
- * Fetch invTypes data from EVE SDE
+ * Fetch invTypes data from CCP JSONL SDE
  */
 async function fetchInvTypes(): Promise<InvTypeSDE[]> {
-	const url = 'https://sde.zzeve.com/invTypes.json'
-	console.log(`Fetching invTypes from ${url}...`)
-
-	const response = await fetch(url)
-
-	if (!response.ok) {
-		throw new Error(`Failed to fetch invTypes: ${response.status} ${response.statusText}`)
-	}
-
-	const data = await response.json()
-	return data as InvTypeSDE[]
+	const sdeDataDir = await prepareSdeDataDir()
+	console.log(`Reading invTypes from ${sdeDataDir}/types.jsonl...`)
+	return readSdeJsonlTable<InvTypeSDE>(sdeDataDir, 'types.jsonl')
 }
 
 /**
@@ -117,20 +122,20 @@ async function main() {
 			.onConflictDoUpdate({
 				target: invTypes.typeId,
 				set: {
-					groupId: batch[0].groupId, // This will be overridden by SQL
-					typeName: batch[0].typeName,
-					description: batch[0].description,
-					mass: batch[0].mass,
-					volume: batch[0].volume,
-					capacity: batch[0].capacity,
-					portionSize: batch[0].portionSize,
-					raceId: batch[0].raceId,
-					basePrice: batch[0].basePrice,
-					published: batch[0].published,
-					marketGroupId: batch[0].marketGroupId,
-					iconId: batch[0].iconId,
-					soundId: batch[0].soundId,
-					graphicId: batch[0].graphicId,
+					groupId: sql`excluded.group_id`,
+					typeName: sql`excluded.type_name`,
+					description: sql`excluded.description`,
+					mass: sql`excluded.mass`,
+					volume: sql`excluded.volume`,
+					capacity: sql`excluded.capacity`,
+					portionSize: sql`excluded.portion_size`,
+					raceId: sql`excluded.race_id`,
+					basePrice: sql`excluded.base_price`,
+					published: sql`excluded.published`,
+					marketGroupId: sql`excluded.market_group_id`,
+					iconId: sql`excluded.icon_id`,
+					soundId: sql`excluded.sound_id`,
+					graphicId: sql`excluded.graphic_id`,
 				},
 			})
 

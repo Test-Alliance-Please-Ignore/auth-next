@@ -16,6 +16,7 @@
 		"dev": "run-vite-dev",
 		"fix:workers-types": "run-wrangler-types",
 		"import:inv-categories": "tsx ./src/scripts/import-inv-categories.ts",
+		"import:inv-all": "pnpm run import:inv-categories && pnpm run import:inv-groups && pnpm run import:inv-types && pnpm run import:inv-flags",
 		"import:inv-flags": "tsx ./src/scripts/import-inv-flags.ts",
 		"import:inv-groups": "tsx ./src/scripts/import-inv-groups.ts",
 		"import:inv-types": "tsx ./src/scripts/import-inv-types.ts",
