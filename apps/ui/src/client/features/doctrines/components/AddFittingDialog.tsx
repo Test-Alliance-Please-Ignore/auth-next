@@ -18,9 +18,10 @@ import {
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { LoadingSpinner } from '@/components/ui/loading'
+import { Select } from '@/components/ui/select'
 import toast from '@/lib/toast'
 
-import { useAddFittingToDoctrine, useFittings } from '../hooks'
+import { useAddFittingToDoctrine, useDoctrineCategories, useFittings } from '../hooks'
 import { FittingListItem } from './FittingListItem'
 
 interface AddFittingDialogProps {
@@ -37,10 +38,12 @@ export function AddFittingDialog({
 	existingFittingIds,
 }: AddFittingDialogProps) {
 	const { data: allFittings, isLoading } = useFittings()
+	const { data: categories } = useDoctrineCategories()
 	const addMutation = useAddFittingToDoctrine()
 
 	const [selectedFittingId, setSelectedFittingId] = useState<string | null>(null)
 	const [sortOrder, setSortOrder] = useState(0)
+	const [categoryOverride, setCategoryOverride] = useState('')
 	const [search, setSearch] = useState('')
 
 	const allAvailable = allFittings
@@ -58,24 +61,27 @@ export function AddFittingDialog({
 
 	const handleSelectFitting = (fittingId: string) => {
 		setSelectedFittingId(fittingId)
+		const fitting = allFittings?.find((f) => f.id === fittingId)
+		if (fitting) {
+			setCategoryOverride(fitting.category)
+		}
 	}
 
 	const handleAdd = async () => {
 		if (!selectedFittingId) return
 
-		const selectedFitting = allFittings?.find((f) => f.id === selectedFittingId)
-
 		try {
 			await addMutation.mutateAsync({
 				doctrineId,
 				fittingId: selectedFittingId,
-				fittingCategory: selectedFitting?.category,
+				fittingCategory: categoryOverride || undefined,
 				sortOrder,
 			})
 			toast.success('Fitting added to doctrine')
 			// Reset state
 			setSelectedFittingId(null)
 			setSortOrder(0)
+			setCategoryOverride('')
 			setSearch('')
 			onOpenChange(false)
 		} catch (err) {
@@ -136,16 +142,30 @@ export function AddFittingDialog({
 						)}
 					</div>
 
-					{/* Sort order once fitting is selected */}
+					{/* Category override & sort order once fitting is selected */}
 					{selectedFittingId && (
-						<div className="w-32">
-							<Label htmlFor="fitting-sort">Sort Order</Label>
-							<Input
-								id="fitting-sort"
-								type="number"
-								value={sortOrder}
-								onChange={(e) => setSortOrder(parseInt(e.target.value) || 0)}
-							/>
+						<div className="flex gap-4">
+							<div className="flex-1">
+								<Label htmlFor="fitting-category">Category</Label>
+								<Select
+									options={(categories || []).map((c) => ({
+										value: c.name,
+										label: c.name,
+									}))}
+									value={categoryOverride}
+									onValueChange={(val) => setCategoryOverride(val)}
+									placeholder="Select category..."
+								/>
+							</div>
+							<div className="w-32">
+								<Label htmlFor="fitting-sort">Sort Order</Label>
+								<Input
+									id="fitting-sort"
+									type="number"
+									value={sortOrder}
+									onChange={(e) => setSortOrder(parseInt(e.target.value) || 0)}
+								/>
+							</div>
 						</div>
 					)}
 

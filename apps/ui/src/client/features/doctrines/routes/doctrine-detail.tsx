@@ -4,7 +4,7 @@
  * View a single doctrine with its fittings grouped by category
  */
 
-import { ArrowLeft, ChevronDown, ChevronRight, Edit, Plus, Trash2 } from 'lucide-react'
+import { ArrowLeft, ChevronDown, ChevronRight, Edit, Plus, Settings, Trash2 } from 'lucide-react'
 import { useMemo, useState } from 'react'
 import { Link, useNavigate, useParams } from 'react-router-dom'
 
@@ -30,6 +30,7 @@ import { useUserPermissions } from '@/hooks/useUserPermissions'
 import toast from '@/lib/toast'
 
 import { AddFittingDialog } from '../components/AddFittingDialog'
+import { EditDoctrineFittingDialog } from '../components/EditDoctrineFittingDialog'
 import { FittingCard } from '../components/FittingCard'
 import {
 	useDeleteDoctrine,
@@ -178,6 +179,7 @@ export default function DoctrineDetailPage() {
 	const removeFittingMutation = useRemoveFittingFromDoctrine()
 	const removeStagingMutation = useRemoveDoctrineStagingSystem()
 	const [addFittingOpen, setAddFittingOpen] = useState(false)
+	const [editingFittingEntry, setEditingFittingEntry] = useState<DoctrineFittingEntry | null>(null)
 	const [collapsedCategories, setCollapsedCategories] = useState<Set<string>>(new Set())
 	const [stagingDialogOpen, setStagingDialogOpen] = useState(false)
 	const [editingStaging, setEditingStaging] = useState<DoctrineStagingEntry | undefined>()
@@ -454,6 +456,19 @@ export default function DoctrineDetailPage() {
 													{canManage && (
 														<div className="absolute top-1/2 -translate-y-1/2 right-2 z-10 flex gap-1">
 															<Button
+																variant="ghost"
+																size="icon"
+																className="h-7 w-7"
+																onClick={(e) => {
+																	e.preventDefault()
+																	e.stopPropagation()
+																	setEditingFittingEntry(entry)
+																}}
+																title="Edit link settings"
+															>
+																<Settings className="h-3.5 w-3.5" />
+															</Button>
+															<Button
 																asChild
 																variant="ghost"
 																size="icon"
@@ -511,6 +526,19 @@ export default function DoctrineDetailPage() {
 					onOpenChange={setStagingDialogOpen}
 					doctrineId={id}
 					existing={editingStaging}
+				/>
+			)}
+
+			{/* Edit doctrine-fitting link dialog */}
+			{canManage && id && editingFittingEntry && (
+				<EditDoctrineFittingDialog
+					key={editingFittingEntry.fitting.id}
+					open={!!editingFittingEntry}
+					onOpenChange={(open) => {
+						if (!open) setEditingFittingEntry(null)
+					}}
+					doctrineId={id}
+					entry={editingFittingEntry}
 				/>
 			)}
 		</Container>
