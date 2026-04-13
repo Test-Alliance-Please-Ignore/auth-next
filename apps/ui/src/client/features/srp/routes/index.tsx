@@ -4,17 +4,16 @@ import { Button } from '@/components/ui/button'
 import { Container } from '@/components/ui/container'
 import { PageHeader } from '@/components/ui/page-header'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
-import { useAuth } from '@/hooks/useAuth'
+import { useUserPermissions } from '@/hooks/useUserPermissions'
 
 import { LossTable } from '../components/LossTable'
 import { RequestTable } from '../components/RequestTable'
 import { useMyRequests, useRecentLosses } from '../hooks'
-import { isSRPPayer, isSRPReviewer } from '../utils'
 
 import type { LossWithSRPStatus } from '../types'
 
 export default function SRPIndex() {
-	const { user } = useAuth()
+	const { hasPermission, isAdmin } = useUserPermissions()
 
 	// Get recent losses for all user's characters
 	const { data: losses, isLoading: lossesLoading, error: lossesError } = useRecentLosses(30)
@@ -26,8 +25,8 @@ export default function SRPIndex() {
 		error: requestsError,
 	} = useMyRequests({ limit: 10 })
 
-	const isReviewer = isSRPReviewer(user)
-	const isPayer = isSRPPayer(user)
+	const isReviewer = isAdmin || hasPermission('urn:srp:reviewer')
+	const isPayer = hasPermission('urn:srp:payer')
 
 	return (
 		<Container>

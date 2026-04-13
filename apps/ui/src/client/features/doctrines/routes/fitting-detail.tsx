@@ -17,6 +17,7 @@ import { PageHeader } from '@/components/ui/page-header'
 import { Select } from '@/components/ui/select'
 import { useAuth } from '@/hooks/useAuth'
 import { usePageTitle } from '@/hooks/usePageTitle'
+import { useUserPermissions } from '@/hooks/useUserPermissions'
 import toast from '@/lib/toast'
 
 import { FittingPanel } from '../components/FittingPanel'
@@ -29,6 +30,7 @@ export default function FittingDetailPage() {
 	const [searchParams] = useSearchParams()
 	const doctrineId = searchParams.get('doctrineId')
 	const { user } = useAuth()
+	const { hasPermission, isAdmin } = useUserPermissions()
 	const { data: fitting, isLoading, error } = useFitting(id)
 	const saveMutation = useSaveFittingIngame()
 	const [copied, setCopied] = useState(false)
@@ -36,8 +38,7 @@ export default function FittingDetailPage() {
 
 	usePageTitle(fitting ? `${fitting.shipName} Fitting` : 'Fitting Details')
 
-	const canManage =
-		user?.permissions?.some((p) => p.urn === 'urn:doctrines:manager') || user?.is_admin
+	const canManage = isAdmin || hasPermission('urn:doctrines:manager')
 
 	const validTokenChars = user?.characters.filter((ch) => ch.hasValidToken) ?? []
 

@@ -24,9 +24,9 @@ import { Label } from '@/components/ui/label'
 import { LoadingSpinner } from '@/components/ui/loading'
 import { PageHeader } from '@/components/ui/page-header'
 import { Select } from '@/components/ui/select'
-import { useAuth } from '@/hooks/useAuth'
 import { useConfirmationDialog } from '@/hooks/useConfirmationDialog'
 import { usePageTitle } from '@/hooks/usePageTitle'
+import { useUserPermissions } from '@/hooks/useUserPermissions'
 import toast from '@/lib/toast'
 
 import { AddFittingDialog } from '../components/AddFittingDialog'
@@ -171,7 +171,7 @@ function StagingDialog({
 export default function DoctrineDetailPage() {
 	const { id } = useParams<{ id: string }>()
 	const navigate = useNavigate()
-	const { user } = useAuth()
+	const { hasPermission, isAdmin } = useUserPermissions()
 	const { data: doctrine, isLoading, error } = useDoctrine(id)
 	const { data: categories } = useDoctrineCategories()
 	const deleteMutation = useDeleteDoctrine()
@@ -185,8 +185,7 @@ export default function DoctrineDetailPage() {
 
 	usePageTitle(doctrine?.name || 'Doctrine Details')
 
-	const canManage =
-		user?.permissions?.some((p) => p.urn === 'urn:doctrines:manager') || user?.is_admin
+	const canManage = isAdmin || hasPermission('urn:doctrines:manager')
 
 	const groupedFittings = useMemo(
 		() => (doctrine ? groupFittingsByCategory(doctrine.fittings, categories || []) : []),
