@@ -59,7 +59,7 @@ export function SidebarNav({ onNavigate }: SidebarNavProps) {
 	const { data: invitations } = usePendingInvitations()
 	const { data: corporationAccess } = useHasCorporationAccess()
 	const { data: hrCorporations } = useHrAccessibleCorporations()
-	const { hasAnyPermission } = useUserPermissions()
+	const { permissions, hasAnyPermission } = useUserPermissions()
 
 	const pendingCount = invitations?.length || 0
 	const mainCharacter = user?.characters.find((c) => c.characterId === user.mainCharacterId)
@@ -261,7 +261,7 @@ export function SidebarNav({ onNavigate }: SidebarNavProps) {
 
 	const canReadTaxFeature =
 		isSiteAdmin ||
-		(user?.permissions ?? []).some(
+		permissions.some(
 			(permission) => extractCorporationIdFromTaxViewerScopedUrn(permission.urn) !== null
 		) ||
 		hasAnyPermission('urn:tax:auditor', 'urn:tax:admin') ||

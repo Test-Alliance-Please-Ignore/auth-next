@@ -3,18 +3,17 @@ import { Link, Navigate } from 'react-router-dom'
 import { Button } from '@/components/ui/button'
 import { Container } from '@/components/ui/container'
 import { PageHeader } from '@/components/ui/page-header'
-import { useAuth } from '@/hooks/useAuth'
+import { useUserPermissions } from '@/hooks/useUserPermissions'
 
 import { RequestTable } from '../components/RequestTable'
 import { usePendingRequests } from '../hooks'
-import { isSRPReviewer } from '../utils'
 
 export default function ReviewQueue() {
-	const { user } = useAuth()
+	const { hasPermission, isAdmin } = useUserPermissions()
 	const { data, isLoading, error, refetch } = usePendingRequests({ limit: 50 })
 
 	// Check permissions
-	if (!isSRPReviewer(user)) {
+	if (!(isAdmin || hasPermission('urn:srp:reviewer'))) {
 		return <Navigate to="/srp" replace />
 	}
 

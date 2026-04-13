@@ -49,8 +49,16 @@ export function useAuth() {
 		staleTime: 1000 * 60 * 5, // 5 minutes
 	})
 
+	const user =
+		data?.user == null
+			? null
+			: {
+					...data.user,
+					permissions: data.permissions ?? [],
+			  }
+
 	return {
-		user: data?.user ?? null,
+		user,
 		permissions: data?.permissions ?? [],
 		isAuthenticated: data?.authenticated ?? false,
 		isLoading,

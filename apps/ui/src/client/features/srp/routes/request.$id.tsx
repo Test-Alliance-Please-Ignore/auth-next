@@ -8,7 +8,7 @@ import { Container } from '@/components/ui/container'
 import { PageHeader } from '@/components/ui/page-header'
 import { Separator } from '@/components/ui/separator'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
-import { useAuth } from '@/hooks/useAuth'
+import { useUserPermissions } from '@/hooks/useUserPermissions'
 
 import { CommentForm } from '../components/CommentForm'
 import { CommentsList } from '../components/CommentsList'
@@ -16,15 +16,16 @@ import { PaymentStatusBadge } from '../components/PaymentStatusBadge'
 import { RequestHistory } from '../components/RequestHistory'
 import { RequestStatusBadge } from '../components/RequestStatusBadge'
 import { useRequest, useRequestComments } from '../hooks'
-import { canSeeInternalComments, formatFullDate, formatISK, getKillmailUrl } from '../utils'
+import { formatFullDate, formatISK, getKillmailUrl } from '../utils'
 
 export default function RequestDetails() {
 	const { id } = useParams<{ id: string }>()
-	const { user } = useAuth()
+	const { hasPermission, isAdmin } = useUserPermissions()
 
 	const { data: request, isLoading, error } = useRequest(id)
 
-	const canSeeInternal = canSeeInternalComments(user)
+	const canSeeInternal =
+		isAdmin || hasPermission('urn:srp:reviewer') || hasPermission('urn:srp:payer')
 	const {
 		data: comments = [],
 		refetch: refetchComments,

@@ -21,8 +21,8 @@ import {
 	TableHeader,
 	TableRow,
 } from '@/components/ui/table'
-import { useAuth } from '@/hooks/useAuth'
 import { usePageTitle } from '@/hooks/usePageTitle'
+import { useUserPermissions } from '@/hooks/useUserPermissions'
 
 import { useDoctrines, useStagingSystems } from '../hooks'
 
@@ -69,12 +69,11 @@ function getStagingNote(doctrine: Doctrine, stagingSystemId: string): string | n
 
 export default function DoctrinesPage() {
 	usePageTitle('Doctrines')
-	const { user } = useAuth()
+	const { hasPermission, isAdmin } = useUserPermissions()
 	const { data: doctrines, isLoading, error } = useDoctrines()
 	const { data: stagingSystems } = useStagingSystems()
 
-	const canManage =
-		user?.permissions?.some((p) => p.urn === 'urn:doctrines:manager') || user?.is_admin
+	const canManage = isAdmin || hasPermission('urn:doctrines:manager')
 
 	const sortedStagingSystems = useMemo(
 		() => [...(stagingSystems || [])].sort((a, b) => a.sortOrder - b.sortOrder),

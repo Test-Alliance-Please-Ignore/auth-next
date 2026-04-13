@@ -127,34 +127,6 @@ export function getKillmailUrl(killmailId: string): string {
 }
 
 /**
- * Check if user has specific permission
- */
-export function hasPermission(user: any, permission: string): boolean {
-	return user?.permissions?.includes(permission) ?? false
-}
-
-/**
- * Check if user is SRP reviewer
- */
-export function isSRPReviewer(user: any): boolean {
-	return hasPermission(user, 'urn:srp:reviewer') || user?.is_admin
-}
-
-/**
- * Check if user is SRP payer
- */
-export function isSRPPayer(user: any): boolean {
-	return hasPermission(user, 'urn:srp:payer')
-}
-
-/**
- * Check if user can see internal comments
- */
-export function canSeeInternalComments(user: any): boolean {
-	return isSRPReviewer(user) || isSRPPayer(user)
-}
-
-/**
  * Calculate difference between two ISK amounts
  */
 export function calculateDifference(
