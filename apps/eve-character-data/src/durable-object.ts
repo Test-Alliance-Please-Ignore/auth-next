@@ -62,6 +62,44 @@ import type { Env } from './context'
  */
 export class EveCharacterDataDO extends DurableObject<Env> implements EveCharacterData {
 	private db: ReturnType<typeof createDb>
+
+	private extractDbErrorDetails(error: unknown): Record<string, unknown> {
+		if (!error || typeof error !== 'object') {
+			return { rawError: String(error) }
+		}
+
+		const e = error as Record<string, unknown>
+		return {
+			name: e.name,
+			message: e.message,
+			code: e.code,
+			detail: e.detail,
+			hint: e.hint,
+			constraint: e.constraint,
+			table: e.table,
+			column: e.column,
+			schema: e.schema,
+			severity: e.severity,
+			where: e.where,
+			routine: e.routine,
+			stack: e.stack,
+			cause: e.cause,
+		}
+	}
+
+	private logDbOperationError(
+		operation: string,
+		characterId: string,
+		error: unknown,
+		context?: Record<string, unknown>
+	): void {
+		console.error('[EveCharacterDataDO] Database operation failed', {
+			operation,
+			characterId,
+			...context,
+			error: this.extractDbErrorDetails(error),
+		})
+	}
 	/**
 	 * Initialize the Durable Object
 	 */
@@ -378,12 +416,23 @@ export class EveCharacterDataDO extends DurableObject<Env> implements EveCharact
 	async fetchAuthenticatedData(characterId: string, forceRefresh = false): Promise<void> {
 		// Authenticated tables reference character_public_info via FK.
 		// Ensure the parent row exists for authenticated-only sync runs.
-		const existingPublicInfo = await this.db.query.characterPublicInfo.findFirst({
-			where: eq(characterPublicInfo.characterId, characterId),
-			columns: { characterId: true },
-		})
+		let existingPublicInfo: { characterId: string } | undefined
+		try {
+			existingPublicInfo = await this.db.query.characterPublicInfo.findFirst({
+				where: eq(characterPublicInfo.characterId, characterId),
+				columns: { characterId: true },
+			})
+		} catch (error) {
+			this.logDbOperationError('fetchAuthenticatedData.lookupPublicInfo', characterId, error)
+			throw error
+		}
 		if (!existingPublicInfo) {
-			await this.fetchAndStorePublicInfo(characterId, forceRefresh)
+			try {
+				await this.fetchAndStorePublicInfo(characterId, forceRefresh)
+			} catch (error) {
+				this.logDbOperationError('fetchAuthenticatedData.bootstrapPublicInfo', characterId, error)
+				throw error
+			}
 		}
 
 		await Promise.all([
@@ -778,21 +827,11 @@ export class EveCharacterDataDO extends DurableObject<Env> implements EveCharact
 		const data: EsiCharacterSkills = rawData
 
 		// Upsert to database (convert skill_id to string for storage)
-		await this.db
-			.insert(characterSkills)
-			.values({
-				characterId,
-				totalSp: data.total_sp,
-				unallocatedSp: data.unallocated_sp,
-				skills: data.skills.map((skill) => ({
-					...skill,
-					skill_id: String(skill.skill_id),
-				})),
-				updatedAt: new Date(),
-			})
-			.onConflictDoUpdate({
-				target: characterSkills.characterId,
-				set: {
+		try {
+			await this.db
+				.insert(characterSkills)
+				.values({
+					characterId,
 					totalSp: data.total_sp,
 					unallocatedSp: data.unallocated_sp,
 					skills: data.skills.map((skill) => ({
@@ -800,12 +839,37 @@ export class EveCharacterDataDO extends DurableObject<Env> implements EveCharact
 						skill_id: String(skill.skill_id),
 					})),
 					updatedAt: new Date(),
-				},
+				})
+				.onConflictDoUpdate({
+					target: characterSkills.characterId,
+					set: {
+						totalSp: data.total_sp,
+						unallocatedSp: data.unallocated_sp,
+						skills: data.skills.map((skill) => ({
+							...skill,
+							skill_id: String(skill.skill_id),
+						})),
+						updatedAt: new Date(),
+					},
+				})
+		} catch (error) {
+			this.logDbOperationError('fetchAndStoreSkills.upsert', characterId, error, {
+				totalSp: data.total_sp,
+				unallocatedSp: data.unallocated_sp,
+				skillCount: data.skills.length,
 			})
+			throw error
+		}
 
-		const result = await this.db.query.characterSkills.findFirst({
-			where: eq(characterSkills.characterId, characterId),
-		})
+		let result
+		try {
+			result = await this.db.query.characterSkills.findFirst({
+				where: eq(characterSkills.characterId, characterId),
+			})
+		} catch (error) {
+			this.logDbOperationError('fetchAndStoreSkills.lookupAfterUpsert', characterId, error)
+			throw error
+		}
 
 		return {
 			characterId: createEveCharacterId(result!.characterId),
@@ -833,23 +897,11 @@ export class EveCharacterDataDO extends DurableObject<Env> implements EveCharact
 		const data = response.data
 
 		// Upsert to database
-		await this.db
-			.insert(characterAttributes)
-			.values({
-				characterId,
-				intelligence: data.intelligence,
-				perception: data.perception,
-				memory: data.memory,
-				willpower: data.willpower,
-				charisma: data.charisma,
-				accruedRemapCooldownDate: data.accrued_remap_cooldown_date,
-				bonusRemaps: data.bonus_remaps,
-				lastRemapDate: data.last_remap_date,
-				updatedAt: new Date(),
-			})
-			.onConflictDoUpdate({
-				target: characterAttributes.characterId,
-				set: {
+		try {
+			await this.db
+				.insert(characterAttributes)
+				.values({
+					characterId,
 					intelligence: data.intelligence,
 					perception: data.perception,
 					memory: data.memory,
@@ -859,12 +911,35 @@ export class EveCharacterDataDO extends DurableObject<Env> implements EveCharact
 					bonusRemaps: data.bonus_remaps,
 					lastRemapDate: data.last_remap_date,
 					updatedAt: new Date(),
-				},
-			})
+				})
+				.onConflictDoUpdate({
+					target: characterAttributes.characterId,
+					set: {
+						intelligence: data.intelligence,
+						perception: data.perception,
+						memory: data.memory,
+						willpower: data.willpower,
+						charisma: data.charisma,
+						accruedRemapCooldownDate: data.accrued_remap_cooldown_date,
+						bonusRemaps: data.bonus_remaps,
+						lastRemapDate: data.last_remap_date,
+						updatedAt: new Date(),
+					},
+				})
+		} catch (error) {
+			this.logDbOperationError('fetchAndStoreAttributes.upsert', characterId, error)
+			throw error
+		}
 
-		const result = await this.db.query.characterAttributes.findFirst({
-			where: eq(characterAttributes.characterId, characterId),
-		})
+		let result
+		try {
+			result = await this.db.query.characterAttributes.findFirst({
+				where: eq(characterAttributes.characterId, characterId),
+			})
+		} catch (error) {
+			this.logDbOperationError('fetchAndStoreAttributes.lookupAfterUpsert', characterId, error)
+			throw error
+		}
 
 		return {
 			characterId: createEveCharacterId(result!.characterId),
@@ -895,24 +970,35 @@ export class EveCharacterDataDO extends DurableObject<Env> implements EveCharact
 		)
 
 		const balance = String(response.data)
-		await this.db
-			.insert(characterWallet)
-			.values({
-				characterId,
-				balance,
-				updatedAt: new Date(),
-			})
-			.onConflictDoUpdate({
-				target: characterWallet.characterId,
-				set: {
+		try {
+			await this.db
+				.insert(characterWallet)
+				.values({
+					characterId,
 					balance,
 					updatedAt: new Date(),
-				},
-			})
+				})
+				.onConflictDoUpdate({
+					target: characterWallet.characterId,
+					set: {
+						balance,
+						updatedAt: new Date(),
+					},
+				})
+		} catch (error) {
+			this.logDbOperationError('fetchAndStoreWallet.upsert', characterId, error, { balance })
+			throw error
+		}
 
-		const result = await this.db.query.characterWallet.findFirst({
-			where: eq(characterWallet.characterId, characterId),
-		})
+		let result
+		try {
+			result = await this.db.query.characterWallet.findFirst({
+				where: eq(characterWallet.characterId, characterId),
+			})
+		} catch (error) {
+			this.logDbOperationError('fetchAndStoreWallet.lookupAfterUpsert', characterId, error)
+			throw error
+		}
 
 		if (!result) {
 			throw new Error(`Failed to store wallet balance for character ${characterId}`)

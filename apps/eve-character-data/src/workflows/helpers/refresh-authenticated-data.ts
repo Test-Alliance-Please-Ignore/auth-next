@@ -19,17 +19,18 @@ export async function refreshAuthenticatedData(
 	env: Env,
 	characterId: string
 ): Promise<RefreshAuthenticatedDataResult> {
+	const normalizedCharacterId = String(characterId)
+
 	// Create fresh stubs for this operation
-	const characterDataStub = getStub<EveCharacterData>(env.EVE_CHARACTER_DATA, characterId)
+	const characterDataStub = getStub<EveCharacterData>(env.EVE_CHARACTER_DATA, normalizedCharacterId)
 	const tokenStoreStub = getStub<EveTokenStore>(env.EVE_TOKEN_STORE, 'default')
-	const characterData = await characterDataStub.getInstance(characterId)
 
 	try {
 		// Check if token exists and is valid
-		const tokenInfo = await tokenStoreStub.getTokenInfo(characterId)
+		const tokenInfo = await tokenStoreStub.getTokenInfo(normalizedCharacterId)
 		if (!tokenInfo || tokenInfo.isExpired) {
 			logger.info('[refreshAuthenticatedData] No valid token, skipping', {
-				characterId,
+				characterId: normalizedCharacterId,
 			})
 			return {
 				success: false,
@@ -38,10 +39,10 @@ export async function refreshAuthenticatedData(
 		}
 
 		// Fetch and store authenticated data (skills, attributes, wallet balance)
-		await characterData.fetchAuthenticatedData(true)
+		await characterDataStub.fetchAuthenticatedData(normalizedCharacterId, true)
 
 		logger.info('[refreshAuthenticatedData] Authenticated data refreshed', {
-			characterId,
+			characterId: normalizedCharacterId,
 		})
 
 		return {
@@ -53,7 +54,7 @@ export async function refreshAuthenticatedData(
 		const errorMessage = error instanceof Error ? error.message : String(error)
 		if (errorMessage.includes('token') || errorMessage.includes('unauthorized')) {
 			logger.info('[refreshAuthenticatedData] Token error, skipping', {
-				characterId,
+				characterId: normalizedCharacterId,
 				error: errorMessage,
 			})
 			return {
@@ -63,7 +64,7 @@ export async function refreshAuthenticatedData(
 		}
 
 		logger.error('[refreshAuthenticatedData] Failed to refresh authenticated data', {
-			characterId,
+			characterId: normalizedCharacterId,
 			error: errorMessage,
 		})
 		throw error

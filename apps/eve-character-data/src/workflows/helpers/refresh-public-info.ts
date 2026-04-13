@@ -17,20 +17,21 @@ export async function refreshPublicInfo(
 	env: Env,
 	characterId: string
 ): Promise<RefreshPublicInfoResult> {
+	const normalizedCharacterId = String(characterId)
+
 	// Create fresh stubs for this operation
-	const characterDataStub = getStub<EveCharacterData>(env.EVE_CHARACTER_DATA, characterId)
-	const characterData = await characterDataStub.getInstance(characterId)
+	const characterDataStub = getStub<EveCharacterData>(env.EVE_CHARACTER_DATA, normalizedCharacterId)
 
 	try {
 		// Fetch and store public data (public info, portrait, corporation history)
-		await characterData.fetchCharacterData(true)
+		await characterDataStub.fetchCharacterData(normalizedCharacterId, true)
 
 		// Get character info to return name
-		const characterInfo = await characterData.getCharacterInfo()
+		const characterInfo = await characterDataStub.getCharacterInfo(normalizedCharacterId)
 		const characterName = characterInfo?.name
 
 		logger.info('[refreshPublicInfo] Public info refreshed', {
-			characterId,
+			characterId: normalizedCharacterId,
 			characterName,
 		})
 
@@ -40,7 +41,7 @@ export async function refreshPublicInfo(
 		}
 	} catch (error) {
 		logger.error('[refreshPublicInfo] Failed to refresh public info', {
-			characterId,
+			characterId: normalizedCharacterId,
 			error: error instanceof Error ? error.message : String(error),
 		})
 		throw error
