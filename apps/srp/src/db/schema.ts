@@ -71,7 +71,7 @@ export const srpRequests = pgTable(
 		killmailHash: varchar('killmail_hash', { length: 255 }).notNull(),
 		/** Ship type ID from killmail */
 		shipTypeId: text('ship_type_id').notNull(),
-		/** Ship type name (cached from eve-static-data) */
+		/** Ship type name (cached from universe static data) */
 		shipTypeName: varchar('ship_type_name', { length: 255 }).notNull(),
 		/** Total ship value from killmail (ISK as text) */
 		shipValue: text('ship_value').notNull(),

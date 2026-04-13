@@ -1,1 +1,0 @@
-ALTER TABLE "dgm_type_attributes" ADD CONSTRAINT "dgm_type_attributes_type_id_attribute_id_pk" PRIMARY KEY("type_id","attribute_id");

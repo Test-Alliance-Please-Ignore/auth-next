@@ -30,6 +30,7 @@
 		"@repo/esi": "workspace:*",
 		"@repo/fulcrum": "workspace:*",
 		"@repo/hono-helpers": "workspace:*",
+		"@repo/universe": "workspace:*",
 		"@repo/workflow-utils": "workspace:*",
 		"drizzle-orm": "0.44.7",
 		"hono": "4.10.6",

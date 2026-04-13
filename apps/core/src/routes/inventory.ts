@@ -1,17 +1,18 @@
 /**
- * Inventory routes - Proxy to eve-static-data worker for inventory parsing
+ * Inventory routes.
  *
  * All endpoints require authentication.
- * These endpoints proxy to the eve-static-data worker's REST API.
  */
 
 import { Hono } from 'hono'
 
+import { getStub } from '@repo/do-utils'
 import { logger } from '@repo/hono-helpers'
 
 import { requireAuth } from '../middleware/session'
 
 import type { InventoryParseResult } from '@repo/eve-types'
+import type { Universe } from '@repo/universe'
 import type { App } from '../context'
 
 const app = new Hono<App>()
@@ -36,22 +37,8 @@ app.post('/parse', async (c) => {
 			return c.json({ error: 'Missing or invalid inventoryText' }, 400)
 		}
 
-		// Call the eve-static-data worker via service binding
-		const response = await c.env.EVE_STATIC_DATA.fetch('http://internal/inventory/parse', {
-			method: 'POST',
-			headers: {
-				'Content-Type': 'application/json',
-			},
-			body: JSON.stringify({ inventoryText: body.inventoryText }),
-		})
-
-		if (!response.ok) {
-			const errorText = await response.text()
-			logger.error('Eve-static-data parse failed:', { status: response.status, error: errorText })
-			return c.json({ error: 'Failed to parse inventory' }, 500)
-		}
-
-		const result: InventoryParseResult = await response.json()
+		const universe = getStub<Universe>(c.env.UNIVERSE, 'default')
+		const result: InventoryParseResult = await universe.parseInventoryText(body.inventoryText)
 		return c.json(result)
 	} catch (error) {
 		logger.error('Error parsing inventory:', error)

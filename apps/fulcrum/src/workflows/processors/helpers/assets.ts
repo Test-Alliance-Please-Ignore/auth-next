@@ -9,6 +9,7 @@ import { isStructureId } from '@repo/esi'
 import { isRateLimitError, retryWithBackoff } from '../../utils/retry'
 
 import type { CharacterAsset, Esi, EsiTypeResolver } from '@repo/esi'
+import type { Universe } from '@repo/universe'
 
 /**
  * Enriched character asset with resolved names
@@ -47,7 +48,7 @@ export async function enrichAssets(
 	env: {
 		ESI_TYPE_RESOLVER: DurableObjectNamespace
 		ESI: DurableObjectNamespace
-		EVE_STATIC_DATA: Fetcher
+		UNIVERSE: DurableObjectNamespace
 	},
 	assets: CharacterAsset[],
 	characterId: string
@@ -126,35 +127,14 @@ export async function enrichAssets(
 	> = {}
 	if (uniqueTypeIds.length > 0) {
 		try {
+			const universeStub = getStub<Universe>(env.UNIVERSE, 'default')
+
 			// Batch fetch metadata in chunks of 1000 (API limit)
 			const BATCH_SIZE = 1000
 			for (let i = 0; i < uniqueTypeIds.length; i += BATCH_SIZE) {
 				const batch = uniqueTypeIds.slice(i, i + BATCH_SIZE)
-				const response = await env.EVE_STATIC_DATA.fetch('http://internal/types/metadata', {
-					method: 'POST',
-					headers: {
-						'Content-Type': 'application/json',
-					},
-					body: JSON.stringify({ typeIds: batch }),
-				})
-
-				if (response.ok) {
-					const batchMetadata = await response.json<
-						Record<
-							string,
-							{
-								marketGroupName: string | null
-								categoryName: string
-							}
-						>
-					>()
-					Object.assign(typeMetadataMap, batchMetadata)
-				} else {
-					console.warn('[enrichAssets] Failed to fetch type metadata', {
-						status: response.status,
-						batchSize: batch.length,
-					})
-				}
+				const batchMetadata = await universeStub.resolveTypeMetadataByIds(batch)
+				Object.assign(typeMetadataMap, batchMetadata)
 			}
 		} catch (error) {
 			console.error('[enrichAssets] Error fetching type metadata:', {
