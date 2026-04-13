@@ -38,7 +38,8 @@ export interface EveCharacterSyncParams {
  */
 export class EveCharacterSyncWorkflow extends WorkflowEntrypoint<Env, EveCharacterSyncParams> {
 	async run(event: WorkflowEvent<EveCharacterSyncParams>, step: WorkflowStep) {
-		const { characterId, dataTypes, trigger, jitterDelaySeconds } = event.payload
+		const { dataTypes, trigger, jitterDelaySeconds } = event.payload
+		const characterId = String(event.payload.characterId)
 		let characterMarkedDeleted = false
 
 		// Helper to check if a data type should be synced
