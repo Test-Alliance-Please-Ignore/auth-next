@@ -82,7 +82,10 @@ export interface CreateDoctrineRequest {
 }
 export type UpdateDoctrineRequest = Partial<CreateDoctrineRequest>
 
-export type CreateFittingRequest = Omit<Fitting, 'id' | 'createdAt' | 'updatedAt'> & {
+export type CreateFittingRequest = Omit<Fitting, 'id' | 'name' | 'shipTypeId' | 'shipName' | 'createdAt' | 'updatedAt'> & {
+	name?: string
+	shipTypeId?: string
+	shipName?: string
 	fittingItems: Array<Omit<FittingItem, 'id' | 'fittingId'>>
 }
 export type UpdateFittingRequest = Partial<CreateFittingRequest>
