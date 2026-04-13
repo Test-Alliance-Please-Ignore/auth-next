@@ -190,10 +190,10 @@ export const UpdateDoctrineSchema = z.object({
 })
 
 export const CreateFittingSchema = z.object({
-	name: z.string().min(1).max(200),
+	name: z.string().min(1).max(200).optional(),
 	description: z.string().max(2000).nullable().optional().default(null),
-	shipTypeId: z.string().min(1),
-	shipName: z.string().min(1).max(200),
+	shipTypeId: z.string().min(1).optional(),
+	shipName: z.string().min(1).max(200).optional(),
 	fitting: z.string().min(1).max(50000),
 	category: z.string().min(1).max(200),
 	srpEligible: z.boolean().optional().default(false),
