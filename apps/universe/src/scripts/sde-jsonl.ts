@@ -8,6 +8,17 @@ const CCP_SDE_JSONL_URL =
 	'https://developers.eveonline.com/static-data/eve-online-static-data-latest-jsonl.zip'
 const execFileAsync = promisify(execFile)
 
+type RawSdeMetadata = {
+	buildNumber?: unknown
+	releaseDate?: unknown
+}
+
+export type SdeMetadata = {
+	version: string
+	buildNumber: number | null
+	releaseDate: string | null
+}
+
 export function toBoolean(value: number | boolean | null | undefined): boolean {
 	return value === true || value === 1
 }
@@ -48,6 +59,35 @@ export async function readSdeJsonlTable<T>(sdeDataDir: string, jsonlName: string
 		.map((line) => JSON.parse(line) as T)
 }
 
+export async function readSdeMetadata(sdeDataDir: string): Promise<SdeMetadata | null> {
+	const rows = await readSdeJsonlTable<unknown>(sdeDataDir, '_sde.jsonl')
+	const first = rows[0]
+
+	if (!first || typeof first !== 'object') {
+		return null
+	}
+
+	const metadata = first as RawSdeMetadata
+	const buildNumber =
+		typeof metadata.buildNumber === 'number' && Number.isFinite(metadata.buildNumber)
+			? metadata.buildNumber
+			: null
+	const releaseDate =
+		typeof metadata.releaseDate === 'string' && metadata.releaseDate.trim().length > 0
+			? metadata.releaseDate
+			: null
+
+	if (buildNumber === null && releaseDate === null) {
+		return null
+	}
+
+	return {
+		version: buildNumber !== null ? String(buildNumber) : releaseDate!,
+		buildNumber,
+		releaseDate,
+	}
+}
+
 async function downloadFile(url: string, destinationPath: string): Promise<void> {
 	const response = await fetch(url)
 	if (!response.ok) {
@@ -72,7 +112,13 @@ async function extractZip(zipPath: string, outputDir: string): Promise<void> {
 }
 
 async function findSdeDataDirectory(rootDir: string, maxDepth = 4): Promise<string | null> {
-	const requiredFiles = ['_sde.jsonl', 'categories.jsonl', 'groups.jsonl', 'types.jsonl']
+	const requiredFiles = [
+		'_sde.jsonl',
+		'categories.jsonl',
+		'groups.jsonl',
+		'marketGroups.jsonl',
+		'types.jsonl',
+	]
 	const hasRequiredFiles = await Promise.all(requiredFiles.map((name) => fileExists(join(rootDir, name))))
 	if (hasRequiredFiles.every(Boolean)) {
 		return rootDir
@@ -131,7 +177,7 @@ export async function prepareSdeDataDir(): Promise<string> {
 	if (!detectedDir) {
 		throw new Error(
 			`Unable to locate extracted SDE JSONL directory under ${extractRoot}. ` +
-				`Expected files: _sde.jsonl, categories.jsonl, groups.jsonl, types.jsonl`
+				`Expected files: _sde.jsonl, categories.jsonl, groups.jsonl, marketGroups.jsonl, types.jsonl`
 		)
 	}
 

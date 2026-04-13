@@ -485,6 +485,7 @@ just db-studio <app-name>
 - **NEVER** run `just db-push` or `pnpm db:push` - not even in development
 - **NEVER** run `drizzle-kit push` directly
 - **ALWAYS** use migrations via `db:generate` and `db:migrate`
+- **NEVER** run `db:generate` (or `just db-generate*`) automatically without an explicit user request in the current task
 - Schema changes must be tracked in version control as migration files
 - Using push bypasses migration history and can cause data loss
 

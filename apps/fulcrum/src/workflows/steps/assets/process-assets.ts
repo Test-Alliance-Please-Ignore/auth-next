@@ -26,7 +26,7 @@ export async function processAssets(
 	env: {
 		ESI_TYPE_RESOLVER: DurableObjectNamespace
 		ESI: DurableObjectNamespace
-		EVE_STATIC_DATA: Fetcher
+		UNIVERSE: DurableObjectNamespace
 	},
 	getBucket: (name: string) => R2Bucket,
 	bucket: R2Bucket,

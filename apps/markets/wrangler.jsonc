@@ -14,12 +14,6 @@
 		// Maximum number of snapshots to retain per location (default: 168 = 1 week of hourly snapshots)
 		"MAX_SNAPSHOTS_PER_LOCATION": 168
 	},
-	"services": [
-		{
-			"binding": "EVE_STATIC_DATA",
-			"service": "eve-static-data"
-		}
-	],
 	"durable_objects": {
 		"bindings": [
 			{
@@ -30,6 +24,11 @@
 				"name": "EVE_TOKEN_STORE",
 				"class_name": "EveTokenStore",
 				"script_name": "eve-token-store"
+			},
+			{
+				"name": "UNIVERSE",
+				"class_name": "Universe",
+				"script_name": "universe"
 			}
 		]
 	},

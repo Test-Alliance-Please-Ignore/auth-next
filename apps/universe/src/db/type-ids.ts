@@ -91,6 +91,24 @@ export const invCategories = pgTable(
 	]
 )
 
+export const invMarketGroups = pgTable(
+	'universe_eve_market_groups',
+	{
+		marketGroupId: text('market_group_id').primaryKey(),
+		parentGroupId: text('parent_group_id'),
+		marketGroupName: text('market_group_name').notNull(),
+		description: text('description'),
+		iconId: text('icon_id'),
+		hasTypes: boolean('has_types').notNull().default(false),
+	},
+	(table) => [
+		index('universe_eve_market_groups_market_group_id_idx').on(table.marketGroupId),
+		index('universe_eve_market_groups_parent_group_id_idx').on(table.parentGroupId),
+		index('universe_eve_market_groups_market_group_name_idx').on(table.marketGroupName),
+		index('universe_eve_market_groups_has_types_idx').on(table.hasTypes),
+	]
+)
+
 export const invTypes = pgTable(
 	'universe_eve_inv_types',
 	{

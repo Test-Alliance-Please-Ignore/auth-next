@@ -34,6 +34,11 @@
 				"script_name": "esi"
 			},
 			{
+				"name": "UNIVERSE",
+				"class_name": "Universe",
+				"script_name": "universe"
+			},
+			{
 				"name": "DISCORD",
 				"class_name": "Discord",
 				"script_name": "discord"
@@ -80,10 +85,6 @@
 			"binding": "CORE",
 			"service": "core",
 			"entrypoint": "CoreWorker"
-		},
-		{
-			"binding": "EVE_STATIC_DATA",
-			"service": "eve-static-data"
 		}
 	]
 }

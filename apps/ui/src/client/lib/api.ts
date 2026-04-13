@@ -1510,7 +1510,7 @@ export class ApiClient {
 	}
 
 	async getSkillMetadata(skillIds: string): Promise<any[]> {
-		// Call through core API which proxies to eve-static-data service
+		// Call through core API which resolves skill metadata via Universe.
 		return this.get(`/skills?ids=${skillIds}`)
 	}
 

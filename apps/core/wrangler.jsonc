@@ -117,6 +117,11 @@
 				"script_name": "esi"
 			},
 			{
+				"name": "UNIVERSE",
+				"class_name": "Universe",
+				"script_name": "universe"
+			},
+			{
 				"name": "CORE",
 				"class_name": "Core",
 				"script_name": "core"
@@ -137,10 +142,6 @@
 		{
 			"binding": "ADMIN",
 			"service": "admin"
-		},
-		{
-			"binding": "EVE_STATIC_DATA",
-			"service": "eve-static-data"
 		}
 	],
 	"migrations": [

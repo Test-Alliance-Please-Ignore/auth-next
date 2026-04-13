@@ -1,4 +1,4 @@
-import { EveTypeId } from '@repo/eve-types'
+import type { InventoryParseResult } from '@repo/eve-types'
 
 import type { InvFlag } from './inv-flags'
 import type { InvGroup } from './inv-groups'
@@ -8,11 +8,20 @@ import type { InvType } from './inv-types'
 import type { Killmail, KillmailDetail } from './killmails'
 import type { EveMoonId, UniverseMoon, UniverseMoonWithResources } from './moons'
 import type {
+	UniverseNpcStation,
+	UniversePlanet,
+	UniverseRegion,
+	UniverseSolarSystem,
+	UniverseStargate,
+	UniverseStaticMoon,
+} from './geography'
+import type {
 	EsiGetStructureMarketDataResponse,
 	EsiGetStructureResponse,
 	EveCharacterId,
 	EveStructureId,
 } from './structure'
+import type { TypeMetadata } from './type-metadata'
 
 /**
  * @repo/universe
@@ -44,6 +53,12 @@ export * from './inv-items'
 
 // Export inventory name types
 export * from './inv-names'
+
+// Export inventory type metadata types
+export * from './type-metadata'
+
+// Export geography types
+export * from './geography'
 
 /**
  * Public RPC interface for Universe Durable Object
@@ -132,6 +147,108 @@ export interface Universe {
 	 * @returns Record mapping type IDs to their full type data (null if not found)
 	 */
 	resolveTypeNamesByIds(typeIds: string[]): Promise<Record<string, InvType | null>>
+
+	/**
+	 * Resolve type metadata (market group and category) by type IDs.
+	 * @param typeIds - Array of type IDs to resolve
+	 * @returns Record mapping type IDs to metadata
+	 */
+	resolveTypeMetadataByIds(typeIds: string[]): Promise<Record<string, TypeMetadata>>
+
+	/**
+	 * Parse inventory text and return structured item metadata.
+	 * @param inventoryText - Raw inventory text export
+	 * @returns Parsed inventory result
+	 */
+	parseInventoryText(inventoryText: string): Promise<InventoryParseResult>
+
+	/**
+	 * Resolve regions by IDs.
+	 * @param regionIds - Array of region IDs to resolve
+	 */
+	resolveRegionsByIds(regionIds: string[]): Promise<Record<string, UniverseRegion | null>>
+
+	/**
+	 * Resolve regions by names.
+	 * @param regionNames - Array of region names to resolve
+	 */
+	resolveRegionsByNames(regionNames: string[]): Promise<Record<string, UniverseRegion | null>>
+
+	/**
+	 * Resolve solar systems by IDs.
+	 * @param solarSystemIds - Array of solar system IDs to resolve
+	 */
+	resolveSolarSystemsByIds(
+		solarSystemIds: string[]
+	): Promise<Record<string, UniverseSolarSystem | null>>
+
+	/**
+	 * Resolve solar systems by names.
+	 * @param solarSystemNames - Array of solar system names to resolve
+	 */
+	resolveSolarSystemsByNames(
+		solarSystemNames: string[]
+	): Promise<Record<string, UniverseSolarSystem | null>>
+
+	/**
+	 * Resolve planets by IDs.
+	 * @param planetIds - Array of planet IDs to resolve
+	 */
+	resolvePlanetsByIds(planetIds: string[]): Promise<Record<string, UniversePlanet | null>>
+
+	/**
+	 * Resolve planets by names.
+	 * @param planetNames - Array of planet names to resolve
+	 */
+	resolvePlanetsByNames(planetNames: string[]): Promise<Record<string, UniversePlanet | null>>
+
+	/**
+	 * Resolve static moons by IDs.
+	 * @param moonIds - Array of moon IDs to resolve
+	 */
+	resolveStaticMoonsByIds(
+		moonIds: string[]
+	): Promise<Record<string, UniverseStaticMoon | null>>
+
+	/**
+	 * Resolve static moons by names.
+	 * @param moonNames - Array of moon names to resolve
+	 */
+	resolveStaticMoonsByNames(
+		moonNames: string[]
+	): Promise<Record<string, UniverseStaticMoon | null>>
+
+	/**
+	 * Resolve stargates by IDs.
+	 * @param stargateIds - Array of stargate IDs to resolve
+	 */
+	resolveStargatesByIds(
+		stargateIds: string[]
+	): Promise<Record<string, UniverseStargate | null>>
+
+	/**
+	 * Resolve stargates by names.
+	 * @param stargateNames - Array of stargate names to resolve
+	 */
+	resolveStargatesByNames(
+		stargateNames: string[]
+	): Promise<Record<string, UniverseStargate | null>>
+
+	/**
+	 * Resolve NPC stations by IDs.
+	 * @param stationIds - Array of NPC station IDs to resolve
+	 */
+	resolveNpcStationsByIds(
+		stationIds: string[]
+	): Promise<Record<string, UniverseNpcStation | null>>
+
+	/**
+	 * Resolve NPC stations by names.
+	 * @param stationNames - Array of NPC station names to resolve
+	 */
+	resolveNpcStationsByNames(
+		stationNames: string[]
+	): Promise<Record<string, UniverseNpcStation | null>>
 
 	/**
 	 * Store killmail data, resolving all entity names

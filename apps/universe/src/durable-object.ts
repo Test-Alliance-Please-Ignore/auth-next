@@ -1,6 +1,6 @@
 import { DurableObject } from 'cloudflare:workers'
 
-import { and, eq, ilike, inArray, like } from '@repo/db-utils'
+import { and, eq, ilike, inArray } from '@repo/db-utils'
 import { getStub, LRUCache } from '@repo/do-utils'
 import { logger } from '@repo/hono-helpers'
 import {
@@ -12,9 +12,24 @@ import {
 } from '@repo/universe'
 
 import { createDb } from './db'
-import { invFlags, invGroups, invTypes, moonResources, moons } from './db/schema'
+import {
+	invCategories,
+	invFlags,
+	invGroups,
+	invMarketGroups,
+	invTypes,
+	moonResources,
+	moons,
+	universeNpcStations,
+	universePlanets,
+	universeRegions,
+	universeSolarSystems,
+	universeStargates,
+} from './db/schema'
 import { KillmailService } from './services/killmail.service'
+import { parseInventory } from './utils/inventory-parser'
 
+import type { InventoryParseResult } from '@repo/eve-types'
 import type { EsiResponse, EveTokenStore } from '@repo/eve-token-store'
 import type {
 	EsiGetStructureMarketDataResponse,
@@ -28,6 +43,13 @@ import type {
 	InvType,
 	Killmail,
 	KillmailDetail,
+	UniverseNpcStation,
+	UniversePlanet,
+	UniverseRegion,
+	UniverseSolarSystem,
+	UniverseStargate,
+	UniverseStaticMoon,
+	TypeMetadata,
 	Universe,
 	UniverseMoon,
 	UniverseMoonResource,
@@ -50,6 +72,18 @@ export class UniverseDO extends DurableObject<Env, {}> implements Universe {
 	private invGroupsCache: LRUCache<InvGroup>
 	private typeIdsCache: LRUCache<InvType> // Cache for type name -> full InvType object
 	private typeNamesCache: LRUCache<InvType> // Cache for type ID -> full InvType object
+	private regionIdsCache: LRUCache<UniverseRegion>
+	private regionNamesCache: LRUCache<UniverseRegion>
+	private solarSystemIdsCache: LRUCache<UniverseSolarSystem>
+	private solarSystemNamesCache: LRUCache<UniverseSolarSystem>
+	private planetIdsCache: LRUCache<UniversePlanet>
+	private planetNamesCache: LRUCache<UniversePlanet>
+	private moonIdsCache: LRUCache<UniverseStaticMoon>
+	private moonNamesCache: LRUCache<UniverseStaticMoon>
+	private stargateIdsCache: LRUCache<UniverseStargate>
+	private stargateNamesCache: LRUCache<UniverseStargate>
+	private npcStationIdsCache: LRUCache<UniverseNpcStation>
+	private npcStationNamesCache: LRUCache<UniverseNpcStation>
 	private killmailService: KillmailService
 
 	/**
@@ -61,10 +95,22 @@ export class UniverseDO extends DurableObject<Env, {}> implements Universe {
 	) {
 		super(state, env)
 		this.db = createDb(env.DATABASE_URL)
-		this.invFlagsCache = new LRUCache<InvFlag>(1000)
-		this.invGroupsCache = new LRUCache<InvGroup>(1000)
-		this.typeIdsCache = new LRUCache<InvType>(10000) // Cache for type name -> full InvType object
-		this.typeNamesCache = new LRUCache<InvType>(10000) // Cache for type ID -> full InvType object
+		this.invFlagsCache = new LRUCache<InvFlag>(200)
+		this.invGroupsCache = new LRUCache<InvGroup>(200)
+		this.typeIdsCache = new LRUCache<InvType>(2000) // Cache for type name -> full InvType object
+		this.typeNamesCache = new LRUCache<InvType>(2000) // Cache for type ID -> full InvType object
+		this.regionIdsCache = new LRUCache<UniverseRegion>(100)
+		this.regionNamesCache = new LRUCache<UniverseRegion>(100)
+		this.solarSystemIdsCache = new LRUCache<UniverseSolarSystem>(1000)
+		this.solarSystemNamesCache = new LRUCache<UniverseSolarSystem>(1000)
+		this.planetIdsCache = new LRUCache<UniversePlanet>(2000)
+		this.planetNamesCache = new LRUCache<UniversePlanet>(2000)
+		this.moonIdsCache = new LRUCache<UniverseStaticMoon>(3000)
+		this.moonNamesCache = new LRUCache<UniverseStaticMoon>(3000)
+		this.stargateIdsCache = new LRUCache<UniverseStargate>(1000)
+		this.stargateNamesCache = new LRUCache<UniverseStargate>(1000)
+		this.npcStationIdsCache = new LRUCache<UniverseNpcStation>(1000)
+		this.npcStationNamesCache = new LRUCache<UniverseNpcStation>(1000)
 		this.killmailService = new KillmailService(this.db, this.env)
 	}
 
@@ -524,6 +570,684 @@ export class UniverseDO extends DurableObject<Env, {}> implements Universe {
 			return result
 		} catch (error) {
 			console.error('Failed to resolve type details', error)
+			throw error
+		}
+	}
+
+	/**
+	 * Resolve type metadata (market group and category names) by type IDs.
+	 */
+	async resolveTypeMetadataByIds(typeIds: string[]): Promise<Record<string, TypeMetadata>> {
+		if (typeIds.length === 0) {
+			return {}
+		}
+
+		if (typeIds.length > 1000) {
+			throw new Error('Maximum 1000 typeIds allowed per request')
+		}
+
+		try {
+			const results = await this.db
+				.select({
+					typeId: invTypes.typeId,
+					marketGroupName: invMarketGroups.marketGroupName,
+					categoryName: invCategories.categoryName,
+				})
+				.from(invTypes)
+				.innerJoin(invGroups, eq(invTypes.groupId, invGroups.groupId))
+				.innerJoin(invCategories, eq(invGroups.categoryId, invCategories.categoryId))
+				.leftJoin(invMarketGroups, eq(invTypes.marketGroupId, invMarketGroups.marketGroupId))
+				.where(inArray(invTypes.typeId, typeIds))
+
+			const metadataMap: Record<string, TypeMetadata> = {}
+			for (const row of results) {
+				metadataMap[row.typeId] = {
+					marketGroupName: row.marketGroupName ?? null,
+					categoryName: row.categoryName,
+				}
+			}
+
+			return metadataMap
+		} catch (error) {
+			console.error('Failed to resolve type metadata', error)
+			throw error
+		}
+	}
+
+	/**
+	 * Parse inventory export text into structured item metadata.
+	 */
+	async parseInventoryText(inventoryText: string): Promise<InventoryParseResult> {
+		if (typeof inventoryText !== 'string') {
+			throw new Error('inventoryText must be a string')
+		}
+
+		if (inventoryText.length > 1024 * 1024) {
+			throw new Error('Input text too large (max 1MB)')
+		}
+
+		try {
+			return await parseInventory(this.db, inventoryText)
+		} catch (error) {
+			console.error('Failed to parse inventory text', error)
+			throw error
+		}
+	}
+
+	/**
+	 * Resolve regions by IDs.
+	 */
+	async resolveRegionsByIds(regionIds: string[]): Promise<Record<string, UniverseRegion | null>> {
+		try {
+			const result: Record<string, UniverseRegion | null> = {}
+			const cacheMisses: string[] = []
+
+			for (const regionId of regionIds) {
+				const cached = this.regionIdsCache.get(regionId)
+				if (cached !== undefined) {
+					result[regionId] = cached
+				} else {
+					cacheMisses.push(regionId)
+				}
+			}
+
+			if (cacheMisses.length > 0) {
+				const regions = await this.db
+					.select()
+					.from(universeRegions)
+					.where(inArray(universeRegions.regionId, cacheMisses))
+
+				for (const region of regions) {
+					const regionData: UniverseRegion = {
+						regionId: region.regionId,
+						regionName: region.regionName,
+					}
+					this.regionIdsCache.set(region.regionId, regionData)
+					this.regionNamesCache.set(region.regionName, regionData)
+					result[region.regionId] = regionData
+				}
+
+				for (const missedId of cacheMisses) {
+					if (!(missedId in result)) {
+						result[missedId] = null
+					}
+				}
+			}
+
+			return result
+		} catch (error) {
+			console.error('Failed to resolve regions by IDs', error)
+			throw error
+		}
+	}
+
+	/**
+	 * Resolve regions by names.
+	 */
+	async resolveRegionsByNames(regionNames: string[]): Promise<Record<string, UniverseRegion | null>> {
+		try {
+			const result: Record<string, UniverseRegion | null> = {}
+			const cacheMisses: string[] = []
+
+			for (const regionName of regionNames) {
+				const cached = this.regionNamesCache.get(regionName)
+				if (cached !== undefined) {
+					result[regionName] = cached
+				} else {
+					cacheMisses.push(regionName)
+				}
+			}
+
+			if (cacheMisses.length > 0) {
+				const regions = await this.db
+					.select()
+					.from(universeRegions)
+					.where(inArray(universeRegions.regionName, cacheMisses))
+
+				for (const region of regions) {
+					const regionData: UniverseRegion = {
+						regionId: region.regionId,
+						regionName: region.regionName,
+					}
+					this.regionIdsCache.set(region.regionId, regionData)
+					this.regionNamesCache.set(region.regionName, regionData)
+					result[region.regionName] = regionData
+				}
+
+				for (const missedName of cacheMisses) {
+					if (!(missedName in result)) {
+						result[missedName] = null
+					}
+				}
+			}
+
+			return result
+		} catch (error) {
+			console.error('Failed to resolve regions by names', error)
+			throw error
+		}
+	}
+
+	/**
+	 * Resolve solar systems by IDs.
+	 */
+	async resolveSolarSystemsByIds(
+		solarSystemIds: string[]
+	): Promise<Record<string, UniverseSolarSystem | null>> {
+		try {
+			const result: Record<string, UniverseSolarSystem | null> = {}
+			const cacheMisses: string[] = []
+
+			for (const solarSystemId of solarSystemIds) {
+				const cached = this.solarSystemIdsCache.get(solarSystemId)
+				if (cached !== undefined) {
+					result[solarSystemId] = cached
+				} else {
+					cacheMisses.push(solarSystemId)
+				}
+			}
+
+			if (cacheMisses.length > 0) {
+				const systems = await this.db
+					.select()
+					.from(universeSolarSystems)
+					.where(inArray(universeSolarSystems.solarSystemId, cacheMisses))
+
+				for (const system of systems) {
+					const systemData: UniverseSolarSystem = {
+						solarSystemId: system.solarSystemId,
+						solarSystemName: system.solarSystemName,
+						regionId: system.regionId,
+						constellationId: system.constellationId,
+						securityStatus: system.securityStatus,
+					}
+					this.solarSystemIdsCache.set(system.solarSystemId, systemData)
+					this.solarSystemNamesCache.set(system.solarSystemName, systemData)
+					result[system.solarSystemId] = systemData
+				}
+
+				for (const missedId of cacheMisses) {
+					if (!(missedId in result)) {
+						result[missedId] = null
+					}
+				}
+			}
+
+			return result
+		} catch (error) {
+			console.error('Failed to resolve solar systems by IDs', error)
+			throw error
+		}
+	}
+
+	/**
+	 * Resolve solar systems by names.
+	 */
+	async resolveSolarSystemsByNames(
+		solarSystemNames: string[]
+	): Promise<Record<string, UniverseSolarSystem | null>> {
+		try {
+			const result: Record<string, UniverseSolarSystem | null> = {}
+			const cacheMisses: string[] = []
+
+			for (const solarSystemName of solarSystemNames) {
+				const cached = this.solarSystemNamesCache.get(solarSystemName)
+				if (cached !== undefined) {
+					result[solarSystemName] = cached
+				} else {
+					cacheMisses.push(solarSystemName)
+				}
+			}
+
+			if (cacheMisses.length > 0) {
+				const systems = await this.db
+					.select()
+					.from(universeSolarSystems)
+					.where(inArray(universeSolarSystems.solarSystemName, cacheMisses))
+
+				for (const system of systems) {
+					const systemData: UniverseSolarSystem = {
+						solarSystemId: system.solarSystemId,
+						solarSystemName: system.solarSystemName,
+						regionId: system.regionId,
+						constellationId: system.constellationId,
+						securityStatus: system.securityStatus,
+					}
+					this.solarSystemIdsCache.set(system.solarSystemId, systemData)
+					this.solarSystemNamesCache.set(system.solarSystemName, systemData)
+					result[system.solarSystemName] = systemData
+				}
+
+				for (const missedName of cacheMisses) {
+					if (!(missedName in result)) {
+						result[missedName] = null
+					}
+				}
+			}
+
+			return result
+		} catch (error) {
+			console.error('Failed to resolve solar systems by names', error)
+			throw error
+		}
+	}
+
+	/**
+	 * Resolve planets by IDs.
+	 */
+	async resolvePlanetsByIds(planetIds: string[]): Promise<Record<string, UniversePlanet | null>> {
+		try {
+			const result: Record<string, UniversePlanet | null> = {}
+			const cacheMisses: string[] = []
+
+			for (const planetId of planetIds) {
+				const cached = this.planetIdsCache.get(planetId)
+				if (cached !== undefined) {
+					result[planetId] = cached
+				} else {
+					cacheMisses.push(planetId)
+				}
+			}
+
+			if (cacheMisses.length > 0) {
+				const planets = await this.db
+					.select()
+					.from(universePlanets)
+					.where(inArray(universePlanets.planetId, cacheMisses))
+
+				for (const planet of planets) {
+					const planetData: UniversePlanet = {
+						planetId: planet.planetId,
+						planetName: planet.planetName,
+						solarSystemId: planet.solarSystemId,
+						celestialIndex: planet.celestialIndex,
+						typeId: planet.typeId,
+					}
+					this.planetIdsCache.set(planet.planetId, planetData)
+					this.planetNamesCache.set(planet.planetName, planetData)
+					result[planet.planetId] = planetData
+				}
+
+				for (const missedId of cacheMisses) {
+					if (!(missedId in result)) {
+						result[missedId] = null
+					}
+				}
+			}
+
+			return result
+		} catch (error) {
+			console.error('Failed to resolve planets by IDs', error)
+			throw error
+		}
+	}
+
+	/**
+	 * Resolve planets by names.
+	 */
+	async resolvePlanetsByNames(
+		planetNames: string[]
+	): Promise<Record<string, UniversePlanet | null>> {
+		try {
+			const result: Record<string, UniversePlanet | null> = {}
+			const cacheMisses: string[] = []
+
+			for (const planetName of planetNames) {
+				const cached = this.planetNamesCache.get(planetName)
+				if (cached !== undefined) {
+					result[planetName] = cached
+				} else {
+					cacheMisses.push(planetName)
+				}
+			}
+
+			if (cacheMisses.length > 0) {
+				const planets = await this.db
+					.select()
+					.from(universePlanets)
+					.where(inArray(universePlanets.planetName, cacheMisses))
+
+				for (const planet of planets) {
+					const planetData: UniversePlanet = {
+						planetId: planet.planetId,
+						planetName: planet.planetName,
+						solarSystemId: planet.solarSystemId,
+						celestialIndex: planet.celestialIndex,
+						typeId: planet.typeId,
+					}
+					this.planetIdsCache.set(planet.planetId, planetData)
+					this.planetNamesCache.set(planet.planetName, planetData)
+					result[planet.planetName] = planetData
+				}
+
+				for (const missedName of cacheMisses) {
+					if (!(missedName in result)) {
+						result[missedName] = null
+					}
+				}
+			}
+
+			return result
+		} catch (error) {
+			console.error('Failed to resolve planets by names', error)
+			throw error
+		}
+	}
+
+	/**
+	 * Resolve static moons by IDs.
+	 */
+	async resolveStaticMoonsByIds(
+		moonIds: string[]
+	): Promise<Record<string, UniverseStaticMoon | null>> {
+		try {
+			const result: Record<string, UniverseStaticMoon | null> = {}
+			const cacheMisses: string[] = []
+
+			for (const moonId of moonIds) {
+				const cached = this.moonIdsCache.get(moonId)
+				if (cached !== undefined) {
+					result[moonId] = cached
+				} else {
+					cacheMisses.push(moonId)
+				}
+			}
+
+			if (cacheMisses.length > 0) {
+				const moonsRows = await this.db
+					.select()
+					.from(moons)
+					.where(inArray(moons.moonId, cacheMisses))
+
+				for (const moon of moonsRows) {
+					const moonData: UniverseStaticMoon = {
+						moonId: moon.moonId,
+						moonName: moon.name,
+						planetId: moon.planetId,
+						solarSystemId: moon.solarSystemId,
+					}
+					this.moonIdsCache.set(moon.moonId, moonData)
+					this.moonNamesCache.set(moon.name, moonData)
+					result[moon.moonId] = moonData
+				}
+
+				for (const missedId of cacheMisses) {
+					if (!(missedId in result)) {
+						result[missedId] = null
+					}
+				}
+			}
+
+			return result
+		} catch (error) {
+			console.error('Failed to resolve static moons by IDs', error)
+			throw error
+		}
+	}
+
+	/**
+	 * Resolve static moons by names.
+	 */
+	async resolveStaticMoonsByNames(
+		moonNames: string[]
+	): Promise<Record<string, UniverseStaticMoon | null>> {
+		try {
+			const result: Record<string, UniverseStaticMoon | null> = {}
+			const cacheMisses: string[] = []
+
+			for (const moonName of moonNames) {
+				const cached = this.moonNamesCache.get(moonName)
+				if (cached !== undefined) {
+					result[moonName] = cached
+				} else {
+					cacheMisses.push(moonName)
+				}
+			}
+
+			if (cacheMisses.length > 0) {
+				const moonsRows = await this.db
+					.select()
+					.from(moons)
+					.where(inArray(moons.name, cacheMisses))
+
+				for (const moon of moonsRows) {
+					const moonData: UniverseStaticMoon = {
+						moonId: moon.moonId,
+						moonName: moon.name,
+						planetId: moon.planetId,
+						solarSystemId: moon.solarSystemId,
+					}
+					this.moonIdsCache.set(moon.moonId, moonData)
+					this.moonNamesCache.set(moon.name, moonData)
+					result[moon.name] = moonData
+				}
+
+				for (const missedName of cacheMisses) {
+					if (!(missedName in result)) {
+						result[missedName] = null
+					}
+				}
+			}
+
+			return result
+		} catch (error) {
+			console.error('Failed to resolve static moons by names', error)
+			throw error
+		}
+	}
+
+	/**
+	 * Resolve stargates by IDs.
+	 */
+	async resolveStargatesByIds(
+		stargateIds: string[]
+	): Promise<Record<string, UniverseStargate | null>> {
+		try {
+			const result: Record<string, UniverseStargate | null> = {}
+			const cacheMisses: string[] = []
+
+			for (const stargateId of stargateIds) {
+				const cached = this.stargateIdsCache.get(stargateId)
+				if (cached !== undefined) {
+					result[stargateId] = cached
+				} else {
+					cacheMisses.push(stargateId)
+				}
+			}
+
+			if (cacheMisses.length > 0) {
+				const stargates = await this.db
+					.select()
+					.from(universeStargates)
+					.where(inArray(universeStargates.stargateId, cacheMisses))
+
+				for (const stargate of stargates) {
+					const stargateData: UniverseStargate = {
+						stargateId: stargate.stargateId,
+						stargateName: stargate.stargateName,
+						solarSystemId: stargate.solarSystemId,
+						destinationSolarSystemId: stargate.destinationSolarSystemId,
+						destinationStargateId: stargate.destinationStargateId,
+						typeId: stargate.typeId,
+					}
+					this.stargateIdsCache.set(stargate.stargateId, stargateData)
+					this.stargateNamesCache.set(stargate.stargateName, stargateData)
+					result[stargate.stargateId] = stargateData
+				}
+
+				for (const missedId of cacheMisses) {
+					if (!(missedId in result)) {
+						result[missedId] = null
+					}
+				}
+			}
+
+			return result
+		} catch (error) {
+			console.error('Failed to resolve stargates by IDs', error)
+			throw error
+		}
+	}
+
+	/**
+	 * Resolve stargates by names.
+	 */
+	async resolveStargatesByNames(
+		stargateNames: string[]
+	): Promise<Record<string, UniverseStargate | null>> {
+		try {
+			const result: Record<string, UniverseStargate | null> = {}
+			const cacheMisses: string[] = []
+
+			for (const stargateName of stargateNames) {
+				const cached = this.stargateNamesCache.get(stargateName)
+				if (cached !== undefined) {
+					result[stargateName] = cached
+				} else {
+					cacheMisses.push(stargateName)
+				}
+			}
+
+			if (cacheMisses.length > 0) {
+				const stargates = await this.db
+					.select()
+					.from(universeStargates)
+					.where(inArray(universeStargates.stargateName, cacheMisses))
+
+				for (const stargate of stargates) {
+					const stargateData: UniverseStargate = {
+						stargateId: stargate.stargateId,
+						stargateName: stargate.stargateName,
+						solarSystemId: stargate.solarSystemId,
+						destinationSolarSystemId: stargate.destinationSolarSystemId,
+						destinationStargateId: stargate.destinationStargateId,
+						typeId: stargate.typeId,
+					}
+					this.stargateIdsCache.set(stargate.stargateId, stargateData)
+					this.stargateNamesCache.set(stargate.stargateName, stargateData)
+					result[stargate.stargateName] = stargateData
+				}
+
+				for (const missedName of cacheMisses) {
+					if (!(missedName in result)) {
+						result[missedName] = null
+					}
+				}
+			}
+
+			return result
+		} catch (error) {
+			console.error('Failed to resolve stargates by names', error)
+			throw error
+		}
+	}
+
+	/**
+	 * Resolve NPC stations by IDs.
+	 */
+	async resolveNpcStationsByIds(
+		stationIds: string[]
+	): Promise<Record<string, UniverseNpcStation | null>> {
+		try {
+			const result: Record<string, UniverseNpcStation | null> = {}
+			const cacheMisses: string[] = []
+
+			for (const stationId of stationIds) {
+				const cached = this.npcStationIdsCache.get(stationId)
+				if (cached !== undefined) {
+					result[stationId] = cached
+				} else {
+					cacheMisses.push(stationId)
+				}
+			}
+
+			if (cacheMisses.length > 0) {
+				const stations = await this.db
+					.select()
+					.from(universeNpcStations)
+					.where(inArray(universeNpcStations.stationId, cacheMisses))
+
+				for (const station of stations) {
+					const stationData: UniverseNpcStation = {
+						stationId: station.stationId,
+						stationName: station.stationName,
+						solarSystemId: station.solarSystemId,
+						orbitId: station.orbitId,
+						ownerId: station.ownerId,
+						operationId: station.operationId,
+						typeId: station.typeId,
+						useOperationName: station.useOperationName,
+					}
+					this.npcStationIdsCache.set(station.stationId, stationData)
+					this.npcStationNamesCache.set(station.stationName, stationData)
+					result[station.stationId] = stationData
+				}
+
+				for (const missedId of cacheMisses) {
+					if (!(missedId in result)) {
+						result[missedId] = null
+					}
+				}
+			}
+
+			return result
+		} catch (error) {
+			console.error('Failed to resolve NPC stations by IDs', error)
+			throw error
+		}
+	}
+
+	/**
+	 * Resolve NPC stations by names.
+	 */
+	async resolveNpcStationsByNames(
+		stationNames: string[]
+	): Promise<Record<string, UniverseNpcStation | null>> {
+		try {
+			const result: Record<string, UniverseNpcStation | null> = {}
+			const cacheMisses: string[] = []
+
+			for (const stationName of stationNames) {
+				const cached = this.npcStationNamesCache.get(stationName)
+				if (cached !== undefined) {
+					result[stationName] = cached
+				} else {
+					cacheMisses.push(stationName)
+				}
+			}
+
+			if (cacheMisses.length > 0) {
+				const stations = await this.db
+					.select()
+					.from(universeNpcStations)
+					.where(inArray(universeNpcStations.stationName, cacheMisses))
+
+				for (const station of stations) {
+					const stationData: UniverseNpcStation = {
+						stationId: station.stationId,
+						stationName: station.stationName,
+						solarSystemId: station.solarSystemId,
+						orbitId: station.orbitId,
+						ownerId: station.ownerId,
+						operationId: station.operationId,
+						typeId: station.typeId,
+						useOperationName: station.useOperationName,
+					}
+					this.npcStationIdsCache.set(station.stationId, stationData)
+					this.npcStationNamesCache.set(station.stationName, stationData)
+					result[station.stationName] = stationData
+				}
+
+				for (const missedName of cacheMisses) {
+					if (!(missedName in result)) {
+						result[missedName] = null
+					}
+				}
+			}
+
+			return result
+		} catch (error) {
+			console.error('Failed to resolve NPC stations by names', error)
 			throw error
 		}
 	}

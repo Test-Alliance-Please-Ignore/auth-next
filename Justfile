@@ -110,7 +110,6 @@ db-generate-all:
   cd apps/mumble && bun run db:generate
   cd apps/eve-corporation-data && bun run db:generate
   cd apps/eve-character-data && bun run db:generate
-  cd apps/eve-static-data && bun run db:generate
   cd apps/eve-token-store && bun run db:generate
 
 # Push schema changes to database (for development)
@@ -143,7 +142,6 @@ db-push-all:
   cd apps/mumble && bun run db:push
   cd apps/eve-corporation-data && bun run db:push
   cd apps/eve-character-data && bun run db:push
-  cd apps/eve-static-data && bun run db:push
   cd apps/eve-token-store && bun run db:push
 
 # Run migrations for all apps
@@ -177,7 +175,6 @@ db-migrate-all:
   cd apps/mumble && bun run db:migrate
   cd apps/eve-corporation-data && bun run db:migrate
   cd apps/eve-character-data && bun run db:migrate
-  cd apps/eve-static-data && bun run db:migrate
   cd apps/eve-token-store && bun run db:migrate
 
 # Open Drizzle Studio for a specific app

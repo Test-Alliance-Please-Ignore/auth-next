@@ -10,7 +10,7 @@ export type Env = SharedHonoEnv & {
 	FULCRUM: DurableObjectNamespace
 	ESI: DurableObjectNamespace
 	ESI_TYPE_RESOLVER: DurableObjectNamespace
-	EVE_STATIC_DATA: Fetcher
+	UNIVERSE: DurableObjectNamespace
 	CORE: Service<CoreWorker>
 	CHARACTER_REPORTS: R2Bucket
 	CHARACTER_REPORT_WORKFLOW: Workflow<WorkflowParams>

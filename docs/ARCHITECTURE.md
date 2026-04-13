@@ -133,7 +133,6 @@ Each worker is a microservice with a single responsibility:
 
 - **core**: Authentication, user management, API orchestration, HTTP + RPC endpoints
 - **eve-token-store**: EVE Online OAuth token lifecycle, callback handling
-- **eve-static-data**: EVE static database (SDE) API, KV-cached lookups
 - **ui**: React SPA static asset server with intelligent caching
 
 **RPC Workers (Service Bindings Only):**
@@ -155,6 +154,7 @@ Each worker is a microservice with a single responsibility:
 - **markets**: Market orders and trading (per-user DO, PostgreSQL)
 - **features**: Feature flag management (singleton DO, PostgreSQL)
 - **orchestrator**: Workflow orchestration using Cloudflare Workflows (singleton DO, durable execution)
+- **universe**: Canonical EVE static data resolver and SDE import pipeline (singleton DO, PostgreSQL + KV)
 
 **Benefits:**
 
@@ -780,7 +780,7 @@ await this.sql.exec(`
 - **Use case:** Frequently accessed, rarely changing data
 - **Pattern:** Cache-aside with TTL
 - **Invalidation:** Manual on mutations
-- **Used by:** eve-static-data (EVE SDE lookups), groups (category cache)
+- **Used by:** universe (EVE SDE lookups), groups (category cache)
 
 **Example:**
 
@@ -1898,7 +1898,7 @@ tapi-workers/
 │   ├── discord/               # Discord OAuth DO worker (per-user)
 │   ├── eve-character-data/    # EVE character data DO worker (singleton)
 │   ├── eve-corporation-data/  # EVE corp data DO worker (per-corp, queues)
-│   ├── eve-static-data/       # EVE SDE API worker (KV cache)
+│   ├── universe/              # EVE static-data resolver + SDE import worker
 │   ├── eve-token-store/       # EVE token DO worker (singleton, SQLite)
 │   ├── features/              # Feature flag management DO worker (singleton)
 │   ├── fleets/                # Fleet operations DO worker (per-user, WebSocket)
@@ -1971,18 +1971,17 @@ tapi-workers/
 
 ## Complete Worker Inventory
 
-### HTTP Workers (4)
+### HTTP Workers (3)
 
 1. **core** - Main API gateway, authentication, session management
 2. **eve-token-store** - OAuth callbacks, token management
-3. **eve-static-data** - EVE SDE lookups with KV caching
-4. **ui** - React SPA static asset serving
+3. **ui** - React SPA static asset serving
 
 ### RPC-Only Workers (1)
 
 1. **admin** - Administrative operations, audit logging
 
-### Durable Object Workers (14)
+### Durable Object Workers (15)
 
 **Per-User DOs:**
 
@@ -2005,5 +2004,6 @@ tapi-workers/
 1. **eve-character-data** - Character wallet/assets/orders
 2. **features** - Feature flag management
 3. **orchestrator** - Workflow orchestration (Cloudflare Workflows)
+4. **universe** - Canonical static-data lookup + SDE import orchestration
 
 ### Total: 19 Workers
