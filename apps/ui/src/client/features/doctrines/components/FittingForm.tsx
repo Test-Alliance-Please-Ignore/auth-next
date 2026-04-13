@@ -6,37 +6,43 @@
 
 import { useState } from 'react'
 
+import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
+import { NumberInput } from '@/components/ui/number-input'
+import { Select } from '@/components/ui/select'
 import { Switch } from '@/components/ui/switch'
 import { Textarea } from '@/components/ui/textarea'
 
+import { useDoctrineCategories } from '../hooks'
 import { validateEFT } from '../utils'
 import { EftPreview } from './EftPreview'
 
 import type { CreateFittingRequest, Fitting, UpdateFittingRequest } from '../types'
-import { Button } from '@/components/ui/button'
 
 interface FittingFormProps {
 	fitting?: Fitting
 	onSubmit: (data: CreateFittingRequest | UpdateFittingRequest) => void | Promise<void>
 	onCancel: () => void
 	isSubmitting?: boolean
+	onPreviewChange?: (eftString: string | null) => void
 }
 
-export function FittingForm({ fitting, onSubmit, onCancel, isSubmitting }: FittingFormProps) {
+export function FittingForm({ fitting, onSubmit, onCancel, isSubmitting, onPreviewChange }: FittingFormProps) {
 	const [eftString, setEftString] = useState(fitting?.fitting || '')
+	const [description, setDescription] = useState(fitting?.description || '')
 	const [category, setCategory] = useState(fitting?.category || '')
-	const [maintainer, setMaintainer] = useState(fitting?.maintainer || '')
 	const [srpEligible, setSrpEligible] = useState(fitting?.srpEligible || false)
 	const [srpValue, setSrpValue] = useState(fitting?.srpValue || '0')
 	const [showPreview, setShowPreview] = useState(false)
 	const [eftError, setEftError] = useState<string | null>(null)
+	const { data: categories } = useDoctrineCategories()
 
 	const handleEftChange = (value: string) => {
 		setEftString(value)
 		setEftError(null)
 		setShowPreview(false)
+		onPreviewChange?.(null)
 	}
 
 	const handleEftBlur = () => {
@@ -44,8 +50,10 @@ export function FittingForm({ fitting, onSubmit, onCancel, isSubmitting }: Fitti
 			const validation = validateEFT(eftString)
 			if (validation.valid) {
 				setShowPreview(true)
+				onPreviewChange?.(eftString)
 			} else {
 				setEftError(validation.error || 'Invalid EFT format')
+				onPreviewChange?.(null)
 			}
 		}
 	}
@@ -62,8 +70,8 @@ export function FittingForm({ fitting, onSubmit, onCancel, isSubmitting }: Fitti
 
 		const data = {
 			fitting: eftString,
+			description: description || undefined,
 			category,
-			maintainer,
 			srpEligible,
 			srpValue,
 			fittingItems: [], // Server will parse and populate this
@@ -73,7 +81,7 @@ export function FittingForm({ fitting, onSubmit, onCancel, isSubmitting }: Fitti
 	}
 
 	const canSubmit =
-		eftString.trim() !== '' && category.trim() !== '' && maintainer.trim() !== '' && !eftError
+		eftString.trim() !== '' && category.trim() !== '' && !eftError
 
 	return (
 		<form onSubmit={handleSubmit} className="space-y-6">
@@ -95,8 +103,8 @@ export function FittingForm({ fitting, onSubmit, onCancel, isSubmitting }: Fitti
 				</p>
 			</div>
 
-			{/* Preview */}
-			{showPreview && eftString.trim() && (
+			{/* Inline Preview (only when no external handler) */}
+			{!onPreviewChange && showPreview && eftString.trim() && (
 				<div>
 					<Label className="mb-2 block">Preview</Label>
 					<EftPreview eftString={eftString} />
@@ -105,32 +113,28 @@ export function FittingForm({ fitting, onSubmit, onCancel, isSubmitting }: Fitti
 
 			{/* Category */}
 			<div className="space-y-2">
-				<Label htmlFor="category">Category *</Label>
-				<Input
-					id="category"
+				<Label>Category *</Label>
+				<Select
+					options={(categories || []).map((c) => ({ value: c.name, label: c.name }))}
 					value={category}
-					onChange={(e) => setCategory(e.target.value)}
-					placeholder="e.g., Shield Fleets, Armor Fleets, Black Ops"
-					required
+					onValueChange={(val) => setCategory(val)}
+					placeholder="Select a category..."
 				/>
 				<p className="text-sm text-muted-foreground">
 					Group this fitting under a category for organization
 				</p>
 			</div>
 
-			{/* Maintainer */}
+			{/* Description */}
 			<div className="space-y-2">
-				<Label htmlFor="maintainer">Maintainer *</Label>
-				<Input
-					id="maintainer"
-					value={maintainer}
-					onChange={(e) => setMaintainer(e.target.value)}
-					placeholder="Character name or group responsible"
-					required
+				<Label htmlFor="description">Description</Label>
+				<Textarea
+					id="description"
+					value={description}
+					onChange={(e) => setDescription(e.target.value)}
+					placeholder="Describe the fitting's purpose, usage notes, etc."
+					className="min-h-[80px]"
 				/>
-				<p className="text-sm text-muted-foreground">
-					Who is responsible for maintaining this fitting?
-				</p>
 			</div>
 
 			{/* SRP Eligible */}
@@ -148,14 +152,12 @@ export function FittingForm({ fitting, onSubmit, onCancel, isSubmitting }: Fitti
 			{srpEligible && (
 				<div className="space-y-2">
 					<Label htmlFor="srp-value">SRP Value (ISK)</Label>
-					<Input
+					<NumberInput
 						id="srp-value"
-						type="number"
+						suffix=" ISK"
+						placeholder="350,000,000 ISK"
 						value={srpValue}
-						onChange={(e) => setSrpValue(e.target.value)}
-						placeholder="0"
-						min="0"
-						step="1000000"
+						onChange={(val) => setSrpValue(val)}
 					/>
 					<p className="text-sm text-muted-foreground">
 						The amount reimbursed if this ship is lost (in ISK)

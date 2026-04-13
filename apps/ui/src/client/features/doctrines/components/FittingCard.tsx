@@ -1,22 +1,14 @@
 /**
  * Fitting Card Component
  *
- * Displays a fitting in card format with ship info and SRP status
+ * Displays a fitting in card format with ship icon and SRP status
  */
 
-import { CheckCircle2, DollarSign, Ship, User } from 'lucide-react'
+import { CheckCircle2 } from 'lucide-react'
 import { Link } from 'react-router-dom'
 
 import { Badge } from '@/components/ui/badge'
-import { Button } from '@/components/ui/button'
-import {
-	Card,
-	CardContent,
-	CardDescription,
-	CardFooter,
-	CardHeader,
-	CardTitle,
-} from '@/components/ui/card'
+import { Card, CardContent } from '@/components/ui/card'
 
 import { formatISK } from '../utils'
 
@@ -24,47 +16,40 @@ import type { Fitting } from '../types'
 
 interface FittingCardProps {
 	fitting: Fitting
+	doctrineId?: string
 }
 
-export function FittingCard({ fitting }: FittingCardProps) {
+export function FittingCard({ fitting, doctrineId }: FittingCardProps) {
+	const linkTo = doctrineId
+		? `/doctrines/fittings/${fitting.id}?doctrineId=${doctrineId}`
+		: `/doctrines/fittings/${fitting.id}`
+
 	return (
-		<Card>
-			<CardHeader>
-				<div className="flex items-start justify-between">
-					<div className="flex-1">
-						<CardTitle className="flex items-center gap-2">
-							<Ship className="h-5 w-5 text-primary" />
-							{fitting.shipName}
-						</CardTitle>
-						<CardDescription className="mt-1">{fitting.category}</CardDescription>
-					</div>
-					{fitting.srpEligible && (
-						<Badge variant="default" className="flex items-center gap-1">
-							<CheckCircle2 className="h-3 w-3" />
-							SRP
-						</Badge>
-					)}
-				</div>
-			</CardHeader>
-			<CardContent>
-				<div className="space-y-2 text-sm">
-					<div className="flex items-center gap-2 text-muted-foreground">
-						<User className="h-4 w-4" />
-						<span>{fitting.maintainer}</span>
-					</div>
-					{fitting.srpEligible && (
-						<div className="flex items-center gap-2 text-muted-foreground">
-							<DollarSign className="h-4 w-4" />
-							<span>{formatISK(fitting.srpValue)}</span>
+		<Link to={linkTo} className="block group">
+			<Card className="transition-colors hover:bg-accent/50 h-full">
+				<CardContent className="flex items-center gap-3 py-3">
+					{/* Ship icon from EVE image server */}
+					<img
+						src={`https://images.evetech.net/types/${fitting.shipTypeId}/icon?size=64`}
+						alt={fitting.shipName}
+						className="h-10 w-10 rounded shrink-0"
+						loading="lazy"
+					/>
+
+					<div className="flex-1 min-w-0">
+						<div className="flex items-center gap-2">
+							<span className="font-medium text-sm truncate">{fitting.name}</span>
+							{fitting.srpEligible && (
+								<Badge variant="default" className="flex items-center gap-1 shrink-0 text-xs">
+									<CheckCircle2 className="h-3 w-3" />
+									SRP {formatISK(fitting.srpValue)}
+								</Badge>
+							)}
 						</div>
-					)}
-				</div>
-			</CardContent>
-			<CardFooter>
-				<Button variant="ghost" size="sm" asChild className="w-full">
-					<Link to={`/doctrines/fittings/${fitting.id}`}>View Details</Link>
-				</Button>
-			</CardFooter>
-		</Card>
+						<p className="text-xs text-muted-foreground truncate">{fitting.shipName} &middot; {fitting.category}</p>
+					</div>
+				</CardContent>
+			</Card>
+		</Link>
 	)
 }

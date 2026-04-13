@@ -119,6 +119,14 @@ export interface Universe {
 	resolveTypeIdsByNames(typeNames: string[]): Promise<Record<string, InvType | null>>
 
 	/**
+	 * Search for types by name (partial match)
+	 * @param query - Partial type name to search for
+	 * @param limit - Maximum number of results (default 20)
+	 * @returns Array of matching InvType records
+	 */
+	searchTypes(query: string, limit?: number): Promise<InvType[]>
+
+	/**
 	 * Resolve multiple type details by their IDs
 	 * @param typeIds - Array of type IDs to resolve
 	 * @returns Record mapping type IDs to their full type data (null if not found)

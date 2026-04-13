@@ -1,22 +1,14 @@
 /**
  * Doctrine Card Component
  *
- * Displays a doctrine in card format with action buttons
+ * Full-width card displaying a doctrine with metadata
  */
 
-import { BookMarked, Calendar, User } from 'lucide-react'
+import { Calendar, ChevronRight, Ship, User } from 'lucide-react'
 import { Link } from 'react-router-dom'
 
 import { Badge } from '@/components/ui/badge'
-import { Button } from '@/components/ui/button'
-import {
-	Card,
-	CardContent,
-	CardDescription,
-	CardFooter,
-	CardHeader,
-	CardTitle,
-} from '@/components/ui/card'
+import { Card, CardContent } from '@/components/ui/card'
 
 import type { Doctrine } from '../types'
 
@@ -33,36 +25,55 @@ export function DoctrineCard({ doctrine, fittingCount }: DoctrineCardProps) {
 	})
 
 	return (
-		<Card>
-			<CardHeader>
-				<div className="flex items-start justify-between">
-					<div className="flex-1">
-						<CardTitle className="flex items-center gap-2">
-							<BookMarked className="h-5 w-5" />
-							{doctrine.name}
-						</CardTitle>
-						<CardDescription className="mt-1">{doctrine.category}</CardDescription>
+		<Link to={`/doctrines/${doctrine.id}`} className="block group">
+			<Card className="transition-colors hover:bg-accent/50">
+				<CardContent className="flex items-center gap-4 py-4">
+{/* Ship icon */}
+				<div className="flex h-14 w-14 shrink-0 items-center justify-center rounded-lg bg-primary/10">
+					{doctrine.shipTypeId ? (
+						<img
+							src={`https://images.evetech.net/types/${doctrine.shipTypeId}/icon?size=64`}
+							alt=""
+							className="h-14 w-14 rounded-lg"
+						/>
+					) : (
+						<Ship className="h-7 w-7 text-primary" />
+					)}
 					</div>
-					{fittingCount !== undefined && <Badge variant="secondary">{fittingCount} fittings</Badge>}
-				</div>
-			</CardHeader>
-			<CardContent>
-				<div className="space-y-2 text-sm">
-					<div className="flex items-center gap-2 text-muted-foreground">
-						<User className="h-4 w-4" />
-						<span>Maintained by {doctrine.maintainer}</span>
+
+					{/* Main content */}
+					<div className="flex-1 min-w-0">
+						<div className="flex items-center gap-2">
+							<h3 className="font-semibold text-base truncate">{doctrine.name}</h3>
+							{fittingCount !== undefined && (
+								<Badge variant="secondary" className="shrink-0">
+									{fittingCount} {fittingCount === 1 ? 'fit' : 'fits'}
+								</Badge>
+							)}
+						</div>
+						{doctrine.description && (
+							<p className="text-sm text-muted-foreground mt-0.5 line-clamp-1">
+								{doctrine.description}
+							</p>
+						)}
+						<div className="flex items-center gap-3 mt-1.5 text-xs text-muted-foreground">
+							{doctrine.updatedBy && (
+								<span className="flex items-center gap-1">
+									<User className="h-3 w-3" />
+									{doctrine.updatedBy}
+								</span>
+							)}
+							<span className="flex items-center gap-1">
+								<Calendar className="h-3 w-3" />
+								{formattedDate}
+							</span>
+						</div>
 					</div>
-					<div className="flex items-center gap-2 text-muted-foreground">
-						<Calendar className="h-4 w-4" />
-						<span>Updated {formattedDate}</span>
-					</div>
-				</div>
-			</CardContent>
-			<CardFooter>
-				<Button variant="ghost" size="sm" asChild className="w-full">
-					<Link to={`/doctrines/${doctrine.id}`}>View Details</Link>
-				</Button>
-			</CardFooter>
-		</Card>
+
+					{/* Arrow */}
+					<ChevronRight className="h-5 w-5 text-muted-foreground shrink-0 transition-transform group-hover:translate-x-0.5" />
+				</CardContent>
+			</Card>
+		</Link>
 	)
 }

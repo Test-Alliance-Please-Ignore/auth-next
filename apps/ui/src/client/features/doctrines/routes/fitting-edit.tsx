@@ -5,16 +5,19 @@
  */
 
 import { ArrowLeft } from 'lucide-react'
-import { Link, useNavigate, useParams } from 'react-router-dom'
+import { Link, useNavigate, useParams, useSearchParams } from 'react-router-dom'
 
 import { Button } from '@/components/ui/button'
+import { Card, CardContent } from '@/components/ui/card'
 import { Container } from '@/components/ui/container'
 import { LoadingSpinner } from '@/components/ui/loading'
 import { PageHeader } from '@/components/ui/page-header'
-import { Section } from '@/components/ui/section'
 import { usePageTitle } from '@/hooks/usePageTitle'
+import toast from '@/lib/toast'
 
 import { FittingForm } from '../components/FittingForm'
+import { FittingPanel } from '../components/FittingPanel'
+import { FittingSlotList } from '../components/FittingSlotList'
 import { useFitting, useUpdateFitting } from '../hooks'
 
 import type { UpdateFittingRequest } from '../types'
@@ -22,6 +25,8 @@ import type { UpdateFittingRequest } from '../types'
 export default function FittingEditPage() {
 	const { id } = useParams<{ id: string }>()
 	const navigate = useNavigate()
+	const [searchParams] = useSearchParams()
+	const doctrineId = searchParams.get('doctrineId')
 	const { data: fitting, isLoading } = useFitting(id)
 	const updateMutation = useUpdateFitting()
 
@@ -32,14 +37,15 @@ export default function FittingEditPage() {
 
 		try {
 			await updateMutation.mutateAsync({ id, data })
-			navigate(`/doctrines/fittings/${id}`)
+			toast.success('Fitting updated')
+			navigate(`/doctrines/fittings/${id}${doctrineId ? `?doctrineId=${doctrineId}` : ''}`)
 		} catch (error) {
-			console.error('Failed to update fitting:', error)
+			toast.error(error instanceof Error ? error.message : 'Failed to update fitting')
 		}
 	}
 
 	const handleCancel = () => {
-		navigate(`/doctrines/fittings/${id}`)
+		navigate(`/doctrines/fittings/${id}${doctrineId ? `?doctrineId=${doctrineId}` : ''}`)
 	}
 
 	if (isLoading) {
@@ -54,19 +60,21 @@ export default function FittingEditPage() {
 		return (
 			<Container>
 				<PageHeader title="Fitting Not Found" />
-				<Section>
-					<div className="text-center">
-						<p className="text-muted-foreground mb-4">
-							The fitting you're trying to edit doesn't exist.
-						</p>
-						<Button asChild variant="ghost">
-							<Link to="/doctrines">
-								<ArrowLeft className="h-4 w-4 mr-2" />
-								Back to Doctrines
-							</Link>
-						</Button>
-					</div>
-				</Section>
+				<Card>
+					<CardContent className="pt-6">
+						<div className="text-center">
+							<p className="text-muted-foreground mb-4">
+								The fitting you're trying to edit doesn't exist.
+							</p>
+							<Button asChild variant="ghost">
+								<Link to="/doctrines">
+									<ArrowLeft className="h-4 w-4 mr-2" />
+									Back to Doctrines
+								</Link>
+							</Button>
+						</div>
+					</CardContent>
+				</Card>
 			</Container>
 		)
 	}
@@ -74,7 +82,7 @@ export default function FittingEditPage() {
 	return (
 		<Container>
 			<Button asChild variant="ghost" size="sm" className="mb-4">
-				<Link to={`/doctrines/fittings/${id}`}>
+				<Link to={`/doctrines/fittings/${id}${doctrineId ? `?doctrineId=${doctrineId}` : ''}`}>
 					<ArrowLeft className="h-4 w-4 mr-2" />
 					Back to Fitting
 				</Link>
@@ -85,16 +93,39 @@ export default function FittingEditPage() {
 				description="Update fitting details and EFT format"
 			/>
 
-			<Section>
-				<div className="max-w-2xl">
-					<FittingForm
-						fitting={fitting}
-						onSubmit={handleSubmit}
-						onCancel={handleCancel}
-						isSubmitting={updateMutation.isPending}
-					/>
-				</div>
-			</Section>
+			<div className="grid gap-6 lg:grid-cols-2">
+				{/* Left — Form */}
+				<Card>
+					<CardContent className="pt-6">
+						<FittingForm
+							fitting={fitting}
+							onSubmit={handleSubmit}
+							onCancel={handleCancel}
+							isSubmitting={updateMutation.isPending}
+						/>
+					</CardContent>
+				</Card>
+
+				{/* Right — Visual Preview */}
+				{fitting.fittingItems && fitting.fittingItems.length > 0 && (
+					<div className="space-y-6">
+						<Card>
+							<CardContent className="pt-6">
+								<FittingPanel
+									fittingItems={fitting.fittingItems}
+									shipTypeId={fitting.shipTypeId}
+									shipName={fitting.shipName}
+								/>
+							</CardContent>
+						</Card>
+						<Card>
+							<CardContent className="pt-6">
+								<FittingSlotList fittingItems={fitting.fittingItems} />
+							</CardContent>
+						</Card>
+					</div>
+				)}
+			</div>
 		</Container>
 	)
 }

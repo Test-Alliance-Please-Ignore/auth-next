@@ -1,0 +1,1 @@
+ALTER TABLE "doctrines_doctrines" ADD COLUMN "ship_type_id" text;

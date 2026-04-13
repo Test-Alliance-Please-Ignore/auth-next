@@ -1,0 +1,1 @@
+ALTER TABLE "doctrines_fittings" ADD COLUMN "description" text;

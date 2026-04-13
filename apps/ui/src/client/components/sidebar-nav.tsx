@@ -18,6 +18,7 @@ import {
 	Receipt,
 	Scale,
 	Shield,
+	Swords,
 	Timer,
 	Truck,
 	Users,
@@ -184,6 +185,11 @@ export function SidebarNav({ onNavigate }: SidebarNavProps) {
 			label: 'Skill Plans',
 			href: '/skill-plans',
 			icon: BookOpen,
+		},
+		{
+			label: 'Doctrines',
+			href: '/doctrines',
+			icon: Swords,
 		},
 		{
 			label: 'SRP',

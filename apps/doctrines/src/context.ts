@@ -4,9 +4,7 @@ import type { SharedHonoEnv, SharedHonoVariables } from '@repo/hono-helpers/src/
 export type Env = SharedHonoEnv & {
 	DATABASE_URL: string
 	DOCTRINES: DurableObjectNamespace
-	GROUPS: DurableObjectNamespace
 	EVE_CHARACTER_DATA: DurableObjectNamespace
-	EVE_STATIC_DATA: DurableObjectNamespace
 	UNIVERSE: DurableObjectNamespace
 }
 

@@ -18,6 +18,15 @@ export const fittingKeys = {
 	all: ['fittings'] as const,
 	lists: () => [...fittingKeys.all, 'list'] as const,
 	list: (filters?: ListFittingsFilters) => [...fittingKeys.lists(), filters] as const,
+	withDoctrines: () => [...fittingKeys.all, 'with-doctrines'] as const,
 	details: () => [...fittingKeys.all, 'detail'] as const,
 	detail: (id: string) => [...fittingKeys.details(), id] as const,
+}
+
+export const doctrineCategoryKeys = {
+	all: ['doctrine-categories'] as const,
+}
+
+export const stagingSystemKeys = {
+	all: ['staging-systems'] as const,
 }

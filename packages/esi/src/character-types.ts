@@ -643,6 +643,25 @@ export interface CharacterFitting {
 	ship_type_id: string
 }
 
+/**
+ * Save fitting request for ESI
+ * POST /characters/{character_id}/fittings
+ */
+export interface EsiSaveFittingRequest {
+	name: string
+	description: string
+	ship_type_id: number
+	items: Array<{
+		type_id: number
+		flag: string
+		quantity: number
+	}>
+}
+
+export interface SaveFittingResponse {
+	fitting_id: number
+}
+
 export interface CharacterLocation {
 	solar_system_id: string
 	station_id?: string

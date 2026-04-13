@@ -37,7 +37,7 @@ Republic Fleet Fusion S x1000
 Republic Fleet Phased Plasma S x1000
 Republic Fleet Titanium Sabot S x1000`
 
-// Mock UNIVERSE Durable Object
+// Mock Universe stub with the methods EftParser calls
 const mockUniverseStub = {
 	resolveTypeIdsByNames: vi.fn((typeNames: string[]) => {
 		const mockTypes: Record<string, InvType> = {}
@@ -79,19 +79,21 @@ const mockUniverseStub = {
 		}
 		return Promise.resolve(mockGroups)
 	}),
-	[Symbol.dispose]: () => {},
 }
 
-vi.mock('@repo/do-utils', () => ({
-	getStub: vi.fn(() => mockUniverseStub),
-}))
+/**
+ * Fake DurableObjectNamespace that satisfies getStub() in the Workers test pool.
+ * getStub calls namespace.idFromName(id) then namespace.get(durableObjectId),
+ * so we provide both methods and return our mock stub from get().
+ */
+const fakeUniverseNs = {
+	idFromName: () => ({}),
+	get: () => mockUniverseStub,
+} as unknown as DurableObjectNamespace
 
 describe('EftParser', () => {
 	it('should parse a valid EFT fitting', async () => {
-		const mockEnv = {
-			UNIVERSE: {} as DurableObjectNamespace,
-		}
-		const parser = new EftParser(mockEnv)
+		const parser = new EftParser(fakeUniverseNs)
 
 		const result = await parser.parse(validFitting)
 
@@ -130,10 +132,7 @@ describe('EftParser', () => {
 	})
 
 	it('should throw error for invalid EFT format', async () => {
-		const mockEnv = {
-			UNIVERSE: {} as DurableObjectNamespace,
-		}
-		const parser = new EftParser(mockEnv)
+		const parser = new EftParser(fakeUniverseNs)
 
 		const invalidFitting = 'This is not a valid EFT format'
 
@@ -141,10 +140,7 @@ describe('EftParser', () => {
 	})
 
 	it('should handle items without quantity', async () => {
-		const mockEnv = {
-			UNIVERSE: {} as DurableObjectNamespace,
-		}
-		const parser = new EftParser(mockEnv)
+		const parser = new EftParser(fakeUniverseNs)
 
 		const singleItemFitting = `[Svipul, Single Item Test]
 
@@ -158,10 +154,7 @@ Counterbalanced Compact Gyrostabilizer`
 	})
 
 	it('should skip empty slots', async () => {
-		const mockEnv = {
-			UNIVERSE: {} as DurableObjectNamespace,
-		}
-		const parser = new EftParser(mockEnv)
+		const parser = new EftParser(fakeUniverseNs)
 
 		const emptySlotFitting = `[Svipul, Empty Slot Test]
 

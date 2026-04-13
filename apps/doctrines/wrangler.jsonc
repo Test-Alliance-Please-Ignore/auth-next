@@ -18,11 +18,6 @@
 				"class_name": "Doctrines"
 			},
 			{
-				"name": "GROUPS",
-				"class_name": "Groups",
-				"script_name": "groups"
-			},
-			{
 				"name": "EVE_CHARACTER_DATA",
 				"class_name": "EveCharacterData",
 				"script_name": "eve-character-data"

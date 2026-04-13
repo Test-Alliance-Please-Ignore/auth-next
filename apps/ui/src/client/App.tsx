@@ -93,6 +93,7 @@ const DoctrineEdit = lazy(() => import('./features/doctrines/routes/doctrine-edi
 const FittingCreate = lazy(() => import('./features/doctrines/routes/fitting-create'))
 const FittingDetail = lazy(() => import('./features/doctrines/routes/fitting-detail'))
 const FittingEdit = lazy(() => import('./features/doctrines/routes/fitting-edit'))
+const DoctrinesAdmin = lazy(() => import('./features/doctrines/routes/admin'))
 
 // Lazy load the Freight Calculator feature for code splitting
 const FreightCalculator = lazy(() => import('./features/freight/routes/index'))
@@ -462,6 +463,14 @@ export default function App() {
 								element={
 									<Suspense fallback={<LoadingPage />}>
 										<DoctrinesIndex />
+									</Suspense>
+								}
+							/>
+							<Route
+								path="/doctrines/admin"
+								element={
+									<Suspense fallback={<LoadingPage />}>
+										<DoctrinesAdmin />
 									</Suspense>
 								}
 							/>

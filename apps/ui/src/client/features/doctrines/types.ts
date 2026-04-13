@@ -5,31 +5,41 @@
  */
 
 import type {
+	AddFittingToDoctrineRequest,
+	CreateDoctrineRequest,
+	CreateFittingRequest,
 	Doctrine,
+	DoctrineCategory,
+	DoctrineFittingEntry,
+	DoctrineStagingEntry,
 	Fitting,
 	FittingItem,
-	DoctrineWithFittings,
-	FittingWithItems,
-	CreateDoctrineRequest,
-	UpdateDoctrineRequest,
-	CreateFittingRequest,
-	UpdateFittingRequest,
 	ListDoctrinesFilters,
 	ListFittingsFilters,
+	ParsedFittingPreview,
+	StagingSystem,
+	UpdateDoctrineRequest,
+	UpdateDoctrineFittingRequest,
+	UpdateFittingRequest,
 } from '@/lib/api'
 
 export type {
+	AddFittingToDoctrineRequest,
+	CreateDoctrineRequest,
+	CreateFittingRequest,
 	Doctrine,
+	DoctrineCategory,
+	DoctrineFittingEntry,
+	DoctrineStagingEntry,
 	Fitting,
 	FittingItem,
-	DoctrineWithFittings,
-	FittingWithItems,
-	CreateDoctrineRequest,
-	UpdateDoctrineRequest,
-	CreateFittingRequest,
-	UpdateFittingRequest,
 	ListDoctrinesFilters,
 	ListFittingsFilters,
+	ParsedFittingPreview,
+	StagingSystem,
+	UpdateDoctrineRequest,
+	UpdateDoctrineFittingRequest,
+	UpdateFittingRequest,
 }
 
 /**
@@ -43,11 +53,4 @@ export interface ParsedEFT {
 		name: string
 		quantity: number
 	}>
-}
-
-/**
- * Grouped doctrines by category
- */
-export interface DoctrinesByCategory {
-	[category: string]: Doctrine[]
 }

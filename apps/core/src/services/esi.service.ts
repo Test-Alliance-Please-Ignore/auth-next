@@ -7,6 +7,13 @@ import type { Env } from '../context'
 const AUTH_CHARACTER_ID = '2114114257' // Test Auth character
 
 /**
+ * Module-level cache for all solar system names.
+ * Loaded lazily on first search, persists for the Worker instance lifetime.
+ */
+let systemNamesCache: { id: number; name: string }[] | null = null
+let systemNamesCacheExpiry = 0
+
+/**
  * ESI Location Search Result
  */
 export interface EsiLocationSearchResult {
@@ -88,52 +95,36 @@ export class EsiService {
 	}
 
 	/**
-	 * Search for solar systems by name
+	 * Search for solar systems by name using a locally cached system name index.
+	 * Loads all ~8500 system names from public ESI endpoints on first call,
+	 * then filters locally for reliable substring matching.
 	 */
 	async searchSystems(query: string): Promise<EsiLocationSearchResult[]> {
 		logger.info('searchSystems called', { query })
 
 		if (!query || query.length < 2) {
-			logger.info('searchSystems: query too short', { query })
 			return []
 		}
 
 		try {
-			// Search for systems using ESI character search endpoint
-			const searchPath = `/latest/characters/${AUTH_CHARACTER_ID}/search/?categories=solar_system&search=${encodeURIComponent(query)}&strict=false`
-			logger.info('searchSystems: calling fetchEsi', { searchPath, characterId: AUTH_CHARACTER_ID })
+			const allSystems = await this.getAllSystemNames()
+			const lowerQuery = query.toLowerCase()
 
-			const searchResult = await this.tokenStore.fetchEsi<EsiSearchResponse>(
-				searchPath,
-				AUTH_CHARACTER_ID
-			)
-			logger.info('searchSystems: got response', {
-				cached: searchResult.cached,
-				hasData: !!searchResult.data,
-				solarSystemCount: searchResult.data.solar_system?.length || 0,
-			})
+			// Filter by substring match, limit to 20
+			const matched = allSystems
+				.filter((s) => s.name.toLowerCase().includes(lowerQuery))
+				.slice(0, 20)
 
-			const searchResponse = searchResult.data
-
-			if (!searchResponse.solar_system || searchResponse.solar_system.length === 0) {
-				logger.info('searchSystems: no results found')
+			if (matched.length === 0) {
 				return []
 			}
 
-			// Get details for each system (batched)
-			const systemIds = searchResponse.solar_system.slice(0, 20) // Limit to 20 results
-			logger.info('searchSystems: fetching system details', { systemIdCount: systemIds.length })
-
+			// Enrich matched systems with constellation/region info
 			const systemDetails = await Promise.all(
-				systemIds.map((id) => this.getSystemDetails(id.toString()))
+				matched.map((s) => this.getSystemDetails(s.id.toString()))
 			)
 
-			// Get constellation details to map to regions
 			const constellationIds = [...new Set(systemDetails.map((s) => s.constellation_id.toString()))]
-			logger.info('searchSystems: fetching constellation details', {
-				constellationIdCount: constellationIds.length,
-			})
-
 			const constellationDetails = await Promise.all(
 				constellationIds.map((id) => this.getConstellationDetails(id))
 			)
@@ -141,13 +132,10 @@ export class EsiService {
 				constellationDetails.map((c) => [c.constellation_id, c])
 			)
 
-			// Get region names
 			const regionIds = [...new Set(constellationDetails.map((c) => c.region_id.toString()))]
-			logger.info('searchSystems: resolving region names', { regionIdCount: regionIds.length })
-
 			const regionNames = await this.getNames(regionIds.map((id) => parseInt(id)))
 
-			const results = systemDetails.map((system) => {
+			return systemDetails.map((system) => {
 				const constellation = constellationMap[system.constellation_id]
 				return {
 					id: system.system_id.toString(),
@@ -159,17 +147,53 @@ export class EsiService {
 					type: 'system' as const,
 				}
 			})
-
-			logger.info('searchSystems: returning results', { resultCount: results.length })
-			return results
 		} catch (error) {
 			logger.error('Error searching systems:', {
 				error,
 				message: error instanceof Error ? error.message : String(error),
-				stack: error instanceof Error ? error.stack : undefined,
 			})
 			return []
 		}
+	}
+
+	/**
+	 * Load all solar system names from ESI public endpoints.
+	 * Caches in module-level variable for the Worker instance lifetime (1 hour refresh).
+	 */
+	private async getAllSystemNames(): Promise<{ id: number; name: string }[]> {
+		if (systemNamesCache && systemNamesCacheExpiry > Date.now()) {
+			return systemNamesCache
+		}
+
+		logger.info('Loading all system names from ESI...')
+
+		// Step 1: Get all system IDs (public endpoint, no auth)
+		const idsResult = await this.tokenStore.fetchPublicEsi<number[]>(
+			'/latest/universe/systems/'
+		)
+		const allIds = idsResult.data
+		logger.info('Loaded system IDs', { count: allIds.length })
+
+		// Step 2: Resolve names in batches of 1000 via resolveIds
+		const BATCH_SIZE = 1000
+		const systems: { id: number; name: string }[] = []
+
+		for (let i = 0; i < allIds.length; i += BATCH_SIZE) {
+			const batch = allIds.slice(i, i + BATCH_SIZE)
+			const nameMap = await this.tokenStore.resolveIds(batch.map(String))
+
+			for (const [id, name] of Object.entries(nameMap)) {
+				systems.push({ id: parseInt(id), name })
+			}
+		}
+
+		logger.info('Loaded all system names', { count: systems.length })
+
+		// Cache for 1 hour
+		systemNamesCache = systems
+		systemNamesCacheExpiry = Date.now() + 60 * 60 * 1000
+
+		return systems
 	}
 
 	/**

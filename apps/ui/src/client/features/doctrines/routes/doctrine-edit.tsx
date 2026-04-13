@@ -8,11 +8,12 @@ import { ArrowLeft } from 'lucide-react'
 import { Link, useNavigate, useParams } from 'react-router-dom'
 
 import { Button } from '@/components/ui/button'
+import { Card, CardContent } from '@/components/ui/card'
 import { Container } from '@/components/ui/container'
 import { LoadingSpinner } from '@/components/ui/loading'
 import { PageHeader } from '@/components/ui/page-header'
-import { Section } from '@/components/ui/section'
 import { usePageTitle } from '@/hooks/usePageTitle'
+import toast from '@/lib/toast'
 
 import { DoctrineForm } from '../components/DoctrineForm'
 import { useDoctrine, useUpdateDoctrine } from '../hooks'
@@ -32,9 +33,10 @@ export default function DoctrineEditPage() {
 
 		try {
 			await updateMutation.mutateAsync({ id, data })
+			toast.success('Doctrine updated')
 			navigate(`/doctrines/${id}`)
 		} catch (error) {
-			console.error('Failed to update doctrine:', error)
+			toast.error(error instanceof Error ? error.message : 'Failed to update doctrine')
 		}
 	}
 
@@ -54,19 +56,21 @@ export default function DoctrineEditPage() {
 		return (
 			<Container>
 				<PageHeader title="Doctrine Not Found" />
-				<Section>
-					<div className="text-center">
-						<p className="text-muted-foreground mb-4">
-							The doctrine you're trying to edit doesn't exist.
-						</p>
-						<Button asChild variant="ghost">
-							<Link to="/doctrines">
-								<ArrowLeft className="h-4 w-4 mr-2" />
-								Back to Doctrines
-							</Link>
-						</Button>
-					</div>
-				</Section>
+				<Card>
+					<CardContent className="pt-6">
+						<div className="text-center">
+							<p className="text-muted-foreground mb-4">
+								The doctrine you're trying to edit doesn't exist.
+							</p>
+							<Button asChild variant="ghost">
+								<Link to="/doctrines">
+									<ArrowLeft className="h-4 w-4 mr-2" />
+									Back to Doctrines
+								</Link>
+							</Button>
+						</div>
+					</CardContent>
+				</Card>
 			</Container>
 		)
 	}
@@ -82,16 +86,18 @@ export default function DoctrineEditPage() {
 
 			<PageHeader title={`Edit ${doctrine.name}`} description="Update doctrine details" />
 
-			<Section>
-				<div className="max-w-2xl">
-					<DoctrineForm
-						doctrine={doctrine}
-						onSubmit={handleSubmit}
-						onCancel={handleCancel}
-						isSubmitting={updateMutation.isPending}
-					/>
-				</div>
-			</Section>
+			<Card>
+				<CardContent className="pt-6">
+					<div className="max-w-2xl">
+						<DoctrineForm
+							doctrine={doctrine}
+							onSubmit={handleSubmit}
+							onCancel={handleCancel}
+							isSubmitting={updateMutation.isPending}
+						/>
+					</div>
+				</CardContent>
+			</Card>
 		</Container>
 	)
 }

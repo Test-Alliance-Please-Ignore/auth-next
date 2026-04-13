@@ -1,5 +1,5 @@
 import { DurableObject } from 'cloudflare:workers'
-import { and, eq, like, sql } from 'drizzle-orm'
+import { and, asc, eq, ilike, like, or } from 'drizzle-orm'
 
 import { getStub } from '@repo/do-utils'
 import { EftParser } from '@repo/eve-parsers'
@@ -8,220 +8,166 @@ import { createDb } from './db'
 import * as schema from './db/schema'
 
 import type {
+	AddFittingToDoctrineRequest,
+	CreateCategoryRequest,
 	CreateDoctrineRequest,
 	CreateFittingRequest,
+	CreateStagingSystemRequest,
 	Doctrine,
+	DoctrineCategory,
 	Doctrines,
 	DoctrineWithFittings,
 	Fitting,
+	FittingWithDoctrines,
 	FittingWithItems,
 	ListDoctrinesFilters,
 	ListFittingsFilters,
+	ParsedFittingPreview,
+	SetDoctrineStagingRequest,
+	StagingSystem,
+	UpdateCategoryRequest,
 	UpdateDoctrineRequest,
+	UpdateDoctrineFittingRequest,
 	UpdateFittingRequest,
+	UpdateStagingSystemRequest,
 } from '@repo/doctrines'
-import type { Groups } from '@repo/groups'
+import type { Universe } from '@repo/universe'
 import type { Env } from './context'
 
 /**
  * Doctrines Durable Object
  *
- * This Durable Object uses SQLite storage and implements:
- * - RPC methods for remote calls
- * - WebSocket hibernation API
- * - Alarm handler for scheduled tasks
- * - SQLite storage via sql.exec()
+ * Permission checks are handled at the Core route level.
+ * This DO only handles data operations.
  */
 export class DoctrinesDO extends DurableObject<Env> implements Doctrines {
 	private db: ReturnType<typeof createDb>
-	private eftParser: EftParser<Env>
+	private eftParser: EftParser
 
-	/**
-	 * Initialize the Durable Object
-	 */
 	constructor(
 		public state: DurableObjectState,
 		public env: Env
 	) {
 		super(state, env)
-		console.log('[DoctrinesDO] Constructor called, initializing...')
 		this.db = createDb(env.DATABASE_URL)
-		this.eftParser = new EftParser(env)
-		console.log('[DoctrinesDO] Initialized successfully')
+		this.eftParser = new EftParser(env.UNIVERSE)
 	}
 
-	/**
-	 * Helper to check user permissions using the Groups Durable Object.
-	 * Checks both user-level (group) permissions and corporation-level (character) permissions.
-	 * @param userId The ID of the user to check permissions for.
-	 * @param characterIds The character IDs associated with the user.
-	 * @param permissionUrn The URN of the permission to check.
-	 * @returns True if the user has the permission, false otherwise.
-	 */
-	private async checkPermission(
-		userId: string,
-		characterIds: string[],
-		permissionUrn: string
-	): Promise<boolean> {
-		const startTime = Date.now()
-		console.log('[DoctrinesDO.checkPermission] START - Checking permission', {
-			userId,
-			characterIds,
-			characterCount: characterIds?.length || 0,
-			permissionUrn,
-			timestamp: new Date().toISOString(),
+	// ============================================
+	// CATEGORY MANAGEMENT
+	// ============================================
+
+	async createCategory(data: CreateCategoryRequest): Promise<DoctrineCategory> {
+		const [newCategory] = await this.db
+			.insert(schema.doctrinesCategories)
+			.values({
+				name: data.name,
+				sortOrder: data.sortOrder ?? 0,
+			})
+			.returning()
+
+		if (!newCategory) {
+			throw new Error('Failed to create category')
+		}
+
+		return newCategory
+	}
+
+	async getCategories(): Promise<DoctrineCategory[]> {
+		return await this.db.query.doctrinesCategories.findMany({
+			orderBy: [asc(schema.doctrinesCategories.sortOrder), asc(schema.doctrinesCategories.name)],
 		})
+	}
 
-		try {
-			// Validate inputs
-			if (!userId) {
-				console.error('[DoctrinesDO.checkPermission] ERROR - Invalid userId', { userId })
-				return false
-			}
+	async updateCategory(id: string, data: UpdateCategoryRequest): Promise<DoctrineCategory> {
+		const updates: Partial<typeof schema.doctrinesCategories.$inferInsert> = {}
+		if (data.name !== undefined) updates.name = data.name
+		if (data.sortOrder !== undefined) updates.sortOrder = data.sortOrder
 
-			if (!permissionUrn) {
-				console.error('[DoctrinesDO.checkPermission] ERROR - Invalid permissionUrn', {
-					permissionUrn,
-				})
-				return false
-			}
+		const [updated] = await this.db
+			.update(schema.doctrinesCategories)
+			.set(updates)
+			.where(eq(schema.doctrinesCategories.id, id))
+			.returning()
 
-			if (!Array.isArray(characterIds)) {
-				console.error('[DoctrinesDO.checkPermission] ERROR - characterIds is not an array', {
-					characterIds,
-					type: typeof characterIds,
-				})
-				return false
-			}
+		if (!updated) {
+			throw new Error('Category not found or failed to update')
+		}
 
-			// Check if GROUPS binding exists
-			if (!this.env.GROUPS) {
-				console.error('[DoctrinesDO.checkPermission] ERROR - GROUPS binding is undefined', {
-					env: Object.keys(this.env),
-				})
-				throw new Error('GROUPS Durable Object binding is not configured')
-			}
+		return updated
+	}
 
-			console.log('[DoctrinesDO.checkPermission] Creating Groups stub', {
-				binding: 'GROUPS',
-				id: 'default',
+	async deleteCategory(id: string): Promise<void> {
+		// Clear categoryId on any doctrines using this category
+		await this.db
+			.update(schema.doctrinesDoctrines)
+			.set({ categoryId: null })
+			.where(eq(schema.doctrinesDoctrines.categoryId, id))
+
+		const [deleted] = await this.db
+			.delete(schema.doctrinesCategories)
+			.where(eq(schema.doctrinesCategories.id, id))
+			.returning({ id: schema.doctrinesCategories.id })
+
+		if (!deleted) {
+			throw new Error('Category not found or failed to delete')
+		}
+	}
+
+	// ============================================
+	// STAGING SYSTEM MANAGEMENT
+	// ============================================
+
+	async createStagingSystem(data: CreateStagingSystemRequest): Promise<StagingSystem> {
+		const [newSystem] = await this.db
+			.insert(schema.doctrinesStagingSystems)
+			.values({
+				solarSystemId: data.solarSystemId,
+				solarSystemName: data.solarSystemName,
+				sortOrder: data.sortOrder ?? 0,
 			})
+			.returning()
 
-			const groupsStub = getStub<Groups>(this.env.GROUPS, 'default')
+		if (!newSystem) {
+			throw new Error('Failed to create staging system')
+		}
 
-			if (!groupsStub) {
-				console.error('[DoctrinesDO.checkPermission] ERROR - Failed to create Groups stub')
-				throw new Error('Failed to create Groups Durable Object stub')
-			}
+		return newSystem
+	}
 
-			// Check user-level (group) permissions
-			console.log('[DoctrinesDO.checkPermission] Fetching user permissions', { userId })
-			let userPermissions
-			try {
-				// Use cached permissions - import from core worker
-				const { getCachedUserPermissions } = await import('../../core/src/lib/groups-cache')
-				userPermissions = await getCachedUserPermissions(this.env, userId)
-			} catch (error) {
-				console.error('[DoctrinesDO.checkPermission] ERROR - Failed to get user permissions', {
-					userId,
-					error: error instanceof Error ? error.message : String(error),
-					stack: error instanceof Error ? error.stack : undefined,
-				})
-				throw new Error(`Failed to fetch user permissions: ${error}`)
-			}
+	async getStagingSystems(): Promise<StagingSystem[]> {
+		return await this.db.query.doctrinesStagingSystems.findMany({
+			orderBy: [asc(schema.doctrinesStagingSystems.sortOrder), asc(schema.doctrinesStagingSystems.solarSystemName)],
+		})
+	}
 
-			console.log('[DoctrinesDO.checkPermission] User permissions retrieved', {
-				userId,
-				permissionCount: userPermissions?.length || 0,
-				permissions: userPermissions?.map((p) => p.urn) || [],
-			})
+	async updateStagingSystem(id: string, data: UpdateStagingSystemRequest): Promise<StagingSystem> {
+		const updates: Partial<typeof schema.doctrinesStagingSystems.$inferInsert> = {}
+		if (data.solarSystemId !== undefined) updates.solarSystemId = data.solarSystemId
+		if (data.solarSystemName !== undefined) updates.solarSystemName = data.solarSystemName
+		if (data.sortOrder !== undefined) updates.sortOrder = data.sortOrder
 
-			if (userPermissions?.some((permission) => permission.urn === permissionUrn)) {
-				const elapsed = Date.now() - startTime
-				console.log(
-					'[DoctrinesDO.checkPermission] SUCCESS - Permission granted via user-level permissions',
-					{
-						userId,
-						permissionUrn,
-						elapsed: `${elapsed}ms`,
-					}
-				)
-				return true
-			}
+		const [updated] = await this.db
+			.update(schema.doctrinesStagingSystems)
+			.set(updates)
+			.where(eq(schema.doctrinesStagingSystems.id, id))
+			.returning()
 
-			// Check corporation-level (character) permissions
-			console.log('[DoctrinesDO.checkPermission] Checking corporation-level permissions', {
-				characterCount: characterIds.length,
-			})
+		if (!updated) {
+			throw new Error('Staging system not found or failed to update')
+		}
 
-			for (let i = 0; i < characterIds.length; i++) {
-				const characterId = characterIds[i]
-				console.log('[DoctrinesDO.checkPermission] Fetching character permissions', {
-					characterId,
-					index: i + 1,
-					total: characterIds.length,
-				})
+		return updated
+	}
 
-				let characterPermissions
-				try {
-					// Use cached character permissions - import from core worker
-					const { getCachedCharacterPermissions } = await import('../../core/src/lib/groups-cache')
-					characterPermissions = await getCachedCharacterPermissions(this.env, characterId)
-				} catch (error) {
-					console.error(
-						'[DoctrinesDO.checkPermission] ERROR - Failed to get character permissions',
-						{
-							characterId,
-							index: i + 1,
-							error: error instanceof Error ? error.message : String(error),
-							stack: error instanceof Error ? error.stack : undefined,
-						}
-					)
-					// Continue checking other characters instead of failing completely
-					continue
-				}
+	async deleteStagingSystem(id: string): Promise<void> {
+		const [deleted] = await this.db
+			.delete(schema.doctrinesStagingSystems)
+			.where(eq(schema.doctrinesStagingSystems.id, id))
+			.returning({ id: schema.doctrinesStagingSystems.id })
 
-				console.log('[DoctrinesDO.checkPermission] Character permissions retrieved', {
-					characterId,
-					permissionCount: characterPermissions?.length || 0,
-					permissions: characterPermissions?.map((p) => p.urn) || [],
-				})
-
-				if (characterPermissions?.some((permission) => permission.urn === permissionUrn)) {
-					const elapsed = Date.now() - startTime
-					console.log(
-						'[DoctrinesDO.checkPermission] SUCCESS - Permission granted via corporation-level permissions',
-						{
-							characterId,
-							permissionUrn,
-							elapsed: `${elapsed}ms`,
-						}
-					)
-					return true
-				}
-			}
-
-			const elapsed = Date.now() - startTime
-			console.log('[DoctrinesDO.checkPermission] DENIED - Permission not found', {
-				userId,
-				characterIds,
-				permissionUrn,
-				elapsed: `${elapsed}ms`,
-			})
-
-			return false
-		} catch (error) {
-			const elapsed = Date.now() - startTime
-			console.error('[DoctrinesDO.checkPermission] FATAL ERROR - Permission check failed', {
-				userId,
-				characterIds,
-				permissionUrn,
-				error: error instanceof Error ? error.message : String(error),
-				stack: error instanceof Error ? error.stack : undefined,
-				elapsed: `${elapsed}ms`,
-			})
-			// Return false on error to fail-secure
-			return false
+		if (!deleted) {
+			throw new Error('Staging system not found or failed to delete')
 		}
 	}
 
@@ -229,22 +175,16 @@ export class DoctrinesDO extends DurableObject<Env> implements Doctrines {
 	// DOCTRINE MANAGEMENT
 	// ============================================
 
-	async createDoctrine(
-		data: CreateDoctrineRequest,
-		userId: string,
-		characterIds: string[]
-	): Promise<Doctrine> {
-		// Permission check: User must have permission to create doctrines
-		const hasPermission = await this.checkPermission(userId, characterIds, 'urn:doctrines:create')
-		if (!hasPermission) {
-			throw new Error('Unauthorized to create doctrines')
-		}
-
+	async createDoctrine(data: CreateDoctrineRequest & { updatedBy?: string }): Promise<Doctrine> {
 		const [newDoctrine] = await this.db
 			.insert(schema.doctrinesDoctrines)
 			.values({
-				...data,
-				maintainer: data.maintainer || userId, // Default maintainer to creator if not provided
+				name: data.name,
+				description: data.description ?? null,
+				shipTypeId: data.shipTypeId ?? null,
+				categoryId: data.categoryId ?? null,
+				sortOrder: data.sortOrder ?? 0,
+				updatedBy: data.updatedBy ?? null,
 			})
 			.returning()
 
@@ -252,61 +192,63 @@ export class DoctrinesDO extends DurableObject<Env> implements Doctrines {
 			throw new Error('Failed to create doctrine')
 		}
 
-		return newDoctrine
+		return {
+			...newDoctrine,
+			categoryName: null,
+			categorySortOrder: null,
+			stagingSystems: [],
+		}
 	}
 
-	async getDoctrines(
-		filters: ListDoctrinesFilters,
-		userId: string,
-		characterIds: string[],
-		isAdmin: boolean
-	): Promise<Doctrine[]> {
-		console.log('[DoctrinesDO] getDoctrines called', { userId, characterIds, isAdmin, filters })
-		// Permission check: User must have permission to view doctrines
-		// const hasPermission = await this.checkPermission(userId, characterIds, 'urn:doctrines:view')
-		// if (!hasPermission && !isAdmin) {
-		// 	throw new Error('Unauthorized to view doctrines')
-		// }
-
+	async getDoctrines(filters: ListDoctrinesFilters): Promise<Doctrine[]> {
 		const conditions = []
-		if (filters.category) {
-			conditions.push(eq(schema.doctrinesDoctrines.category, filters.category))
-		}
-		if (filters.maintainer) {
-			conditions.push(eq(schema.doctrinesDoctrines.maintainer, filters.maintainer))
-		}
 		if (filters.search) {
 			conditions.push(like(schema.doctrinesDoctrines.name, `%${filters.search}%`))
 		}
 
 		const whereClause = conditions.length > 0 ? and(...conditions) : undefined
 
-		const doctrines = await this.db.query.doctrinesDoctrines.findMany({
+		const results = await this.db.query.doctrinesDoctrines.findMany({
 			where: whereClause,
-			orderBy: (tbl, { asc }) => [asc(tbl.name)],
+			with: {
+				category: true,
+				doctrineStagingSystems: {
+					with: { stagingSystem: true },
+				},
+			},
+			orderBy: [asc(schema.doctrinesDoctrines.sortOrder), asc(schema.doctrinesDoctrines.name)],
 		})
 
-		return doctrines
+		return results.map((r) => ({
+			...r,
+			categoryName: r.category?.name ?? null,
+			categorySortOrder: r.category?.sortOrder ?? null,
+			category: undefined,
+			stagingSystems: (r.doctrineStagingSystems || []).map((ds) => ({
+				stagingSystem: ds.stagingSystem,
+				note: ds.note,
+			})),
+			doctrineStagingSystems: undefined,
+		})) as Doctrine[]
 	}
 
-	async getDoctrine(
-		id: string,
-		userId: string,
-		characterIds: string[],
-		isAdmin: boolean
-	): Promise<DoctrineWithFittings | null> {
-		// Permission check: User must have permission to view doctrines
-		const hasPermission = await this.checkPermission(userId, characterIds, 'urn:doctrines:view')
-		if (!hasPermission && !isAdmin) {
-			throw new Error('Unauthorized to view doctrines')
-		}
-
+	async getDoctrine(id: string): Promise<DoctrineWithFittings | null> {
 		const doctrine = await this.db.query.doctrinesDoctrines.findFirst({
 			where: eq(schema.doctrinesDoctrines.id, id),
 			with: {
+				category: true,
 				doctrineFittings: {
 					with: {
 						fitting: true,
+					},
+					orderBy: [
+						asc(schema.doctrinesDoctrineFittings.fittingCategory),
+						asc(schema.doctrinesDoctrineFittings.sortOrder),
+					],
+				},
+				doctrineStagingSystems: {
+					with: {
+						stagingSystem: true,
 					},
 				},
 			},
@@ -316,29 +258,31 @@ export class DoctrinesDO extends DurableObject<Env> implements Doctrines {
 
 		return {
 			...doctrine,
-			fittings: doctrine.doctrineFittings.map((df) => df.fitting),
+			categoryName: doctrine.category?.name ?? null,
+			categorySortOrder: doctrine.category?.sortOrder ?? null,
+			fittings: doctrine.doctrineFittings.map((df) => ({
+				fitting: df.fitting,
+				fittingCategory: df.fittingCategory,
+				sortOrder: df.sortOrder,
+			})),
+			stagingSystems: doctrine.doctrineStagingSystems.map((ds) => ({
+				stagingSystem: ds.stagingSystem,
+				note: ds.note,
+			})),
+			category: doctrine.category ?? null,
 		}
 	}
 
-	async updateDoctrine(
-		id: string,
-		data: UpdateDoctrineRequest,
-		userId: string,
-		characterIds: string[],
-		isAdmin: boolean
-	): Promise<Doctrine> {
-		// Permission check: User must have permission to edit doctrines or be an admin
-		const hasPermission = await this.checkPermission(userId, characterIds, 'urn:doctrines:edit')
-		if (!hasPermission && !isAdmin) {
-			throw new Error('Unauthorized to update doctrines')
-		}
-
+	async updateDoctrine(id: string, data: UpdateDoctrineRequest & { updatedBy?: string }): Promise<Doctrine> {
 		const updates: Partial<typeof schema.doctrinesDoctrines.$inferInsert> = {
 			updatedAt: new Date(),
 		}
 		if (data.name !== undefined) updates.name = data.name
-		if (data.category !== undefined) updates.category = data.category
-		if (data.maintainer !== undefined) updates.maintainer = data.maintainer
+		if (data.description !== undefined) updates.description = data.description ?? null
+		if (data.shipTypeId !== undefined) updates.shipTypeId = data.shipTypeId ?? null
+		if (data.categoryId !== undefined) updates.categoryId = data.categoryId ?? null
+		if (data.sortOrder !== undefined) updates.sortOrder = data.sortOrder
+		if (data.updatedBy !== undefined) updates.updatedBy = data.updatedBy
 
 		const [updatedDoctrine] = await this.db
 			.update(schema.doctrinesDoctrines)
@@ -350,21 +294,29 @@ export class DoctrinesDO extends DurableObject<Env> implements Doctrines {
 			throw new Error('Doctrine not found or failed to update')
 		}
 
-		return updatedDoctrine
+		// Re-fetch with category to get categoryName/categorySortOrder/stagingSystems
+		const full = await this.db.query.doctrinesDoctrines.findFirst({
+			where: eq(schema.doctrinesDoctrines.id, updatedDoctrine.id),
+			with: {
+				category: true,
+				doctrineStagingSystems: {
+					with: { stagingSystem: true },
+				},
+			},
+		})
+
+		return {
+			...updatedDoctrine,
+			categoryName: full?.category?.name ?? null,
+			categorySortOrder: full?.category?.sortOrder ?? null,
+			stagingSystems: (full?.doctrineStagingSystems || []).map((ds) => ({
+				stagingSystem: ds.stagingSystem,
+				note: ds.note,
+			})),
+		}
 	}
 
-	async deleteDoctrine(
-		id: string,
-		userId: string,
-		characterIds: string[],
-		isAdmin: boolean
-	): Promise<void> {
-		// Permission check: User must have permission to delete doctrines or be an admin
-		const hasPermission = await this.checkPermission(userId, characterIds, 'urn:doctrines:delete')
-		if (!hasPermission && !isAdmin) {
-			throw new Error('Unauthorized to delete doctrines')
-		}
-
+	async deleteDoctrine(id: string): Promise<void> {
 		const [deleted] = await this.db
 			.delete(schema.doctrinesDoctrines)
 			.where(eq(schema.doctrinesDoctrines.id, id))
@@ -379,21 +331,7 @@ export class DoctrinesDO extends DurableObject<Env> implements Doctrines {
 	// FITTING MANAGEMENT
 	// ============================================
 
-	async createFitting(
-		data: CreateFittingRequest,
-		userId: string,
-		characterIds: string[]
-	): Promise<Fitting> {
-		// Permission check: User must have permission to create fittings
-		const hasPermission = await this.checkPermission(
-			userId,
-			characterIds,
-			'urn:doctrines:create_fitting'
-		)
-		if (!hasPermission) {
-			throw new Error('Unauthorized to create fittings')
-		}
-
+	async createFitting(data: CreateFittingRequest): Promise<Fitting> {
 		// Parse the EFT string to get ship details and items
 		const parsedFitting = await this.eftParser.parse(data.fitting)
 
@@ -401,10 +339,14 @@ export class DoctrinesDO extends DurableObject<Env> implements Doctrines {
 		const [newFitting] = await this.db
 			.insert(schema.doctrinesFittings)
 			.values({
-				...data,
+				name: parsedFitting.fittingName,
+				description: data.description ?? null,
+				fitting: data.fitting,
+				category: data.category,
+				srpEligible: data.srpEligible,
+				srpValue: data.srpValue,
 				shipTypeId: parsedFitting.shipTypeId,
 				shipName: parsedFitting.shipName,
-				maintainer: data.maintainer || userId, // Default maintainer to creator if not provided
 			})
 			.returning()
 
@@ -425,41 +367,7 @@ export class DoctrinesDO extends DurableObject<Env> implements Doctrines {
 		return newFitting
 	}
 
-	async getFittings(
-		filters: ListFittingsFilters,
-		userId: string,
-		characterIds: string[],
-		isAdmin: boolean
-	): Promise<Fitting[]> {
-		console.log('[DoctrinesDO.getFittings] Fetching fittings', {
-			userId,
-			characterIds,
-			isAdmin,
-			filters,
-		})
-
-		// Permission check: User must have permission to view fittings
-		// const hasPermission = await this.checkPermission(
-		// 	userId,
-		// 	characterIds,
-		// 	'urn:doctrines:view_fitting'
-		// )
-		console.log('[DoctrinesDO.getFittings] Permission check result', {
-			userId,
-			characterIds,
-			isAdmin,
-			// hasPermission,
-		})
-
-		// if (!hasPermission && !isAdmin) {
-		// 	console.log('[DoctrinesDO.getFittings] Access denied - insufficient permissions', {
-		// 		userId,
-		// 		characterIds,
-		// 		isAdmin,
-		// 	})
-		// 	throw new Error('Unauthorized to view fittings')
-		// }
-
+	async getFittings(filters: ListFittingsFilters): Promise<Fitting[]> {
 		const conditions = []
 		if (filters.shipTypeId) {
 			conditions.push(eq(schema.doctrinesFittings.shipTypeId, filters.shipTypeId))
@@ -467,63 +375,58 @@ export class DoctrinesDO extends DurableObject<Env> implements Doctrines {
 		if (filters.category) {
 			conditions.push(eq(schema.doctrinesFittings.category, filters.category))
 		}
-		if (filters.maintainer) {
-			conditions.push(eq(schema.doctrinesFittings.maintainer, filters.maintainer))
-		}
 		if (filters.srpEligible !== undefined) {
 			conditions.push(eq(schema.doctrinesFittings.srpEligible, filters.srpEligible))
 		}
 		if (filters.search) {
-			conditions.push(like(schema.doctrinesFittings.shipName, `%${filters.search}%`))
+			conditions.push(
+				or(
+					ilike(schema.doctrinesFittings.name, `%${filters.search}%`),
+					ilike(schema.doctrinesFittings.shipName, `%${filters.search}%`)
+				)
+			)
 		}
 
 		const whereClause = conditions.length > 0 ? and(...conditions) : undefined
 
-		const fittings = await this.db.query.doctrinesFittings.findMany({
+		return await this.db.query.doctrinesFittings.findMany({
 			where: whereClause,
-			orderBy: (tbl, { asc }) => [asc(tbl.shipName)],
+			orderBy: (tbl, { asc }) => [asc(tbl.name)],
 		})
-
-		return fittings
 	}
 
-	async getFitting(
-		id: string,
-		userId: string,
-		characterIds: string[],
-		isAdmin: boolean
-	): Promise<FittingWithItems | null> {
-		console.log('[DoctrinesDO.getFitting] Fetching fitting', {
-			fittingId: id,
-			userId,
-			characterIds,
-			isAdmin,
+	async getFittingsWithDoctrines(): Promise<FittingWithDoctrines[]> {
+		const fittings = await this.db.query.doctrinesFittings.findMany({
+			orderBy: (tbl, { desc }) => [desc(tbl.updatedAt)],
+			with: {
+				doctrineFittings: {
+					with: {
+						doctrine: true,
+					},
+				},
+			},
 		})
 
-		// Permission check: User must have permission to view fittings
-		const hasPermission = await this.checkPermission(
-			userId,
-			characterIds,
-			'urn:doctrines:view_fitting'
-		)
-		console.log('[DoctrinesDO.getFitting] Permission check result', {
-			fittingId: id,
-			userId,
-			characterIds,
-			isAdmin,
-			hasPermission,
-		})
+		return fittings.map((f) => ({
+			id: f.id,
+			name: f.name,
+			description: f.description,
+			shipTypeId: f.shipTypeId,
+			shipName: f.shipName,
+			fitting: f.fitting,
+			category: f.category,
+			srpEligible: f.srpEligible,
+			srpValue: f.srpValue,
+			createdAt: f.createdAt,
+			updatedAt: f.updatedAt,
+			doctrines: f.doctrineFittings.map((df) => ({
+				id: df.doctrine.id,
+				name: df.doctrine.name,
+			})),
+		}))
+	}
 
-		if (!hasPermission && !isAdmin) {
-			console.log('[DoctrinesDO.getFitting] Access denied - insufficient permissions', {
-				fittingId: id,
-				userId,
-				characterIds,
-				isAdmin,
-			})
-			throw new Error('Unauthorized to view fittings')
-		}
-
+	async getFitting(id: string): Promise<FittingWithItems | null> {
 		const fitting = await this.db.query.doctrinesFittings.findFirst({
 			where: eq(schema.doctrinesFittings.id, id),
 			with: {
@@ -531,48 +434,22 @@ export class DoctrinesDO extends DurableObject<Env> implements Doctrines {
 			},
 		})
 
-		if (!fitting) {
-			console.log('[DoctrinesDO.getFitting] Fitting not found', { fittingId: id, userId })
-			return null
-		}
-
-		console.log('[DoctrinesDO.getFitting] Fitting found', {
-			fittingId: id,
-			shipName: fitting.shipName,
-			userId,
-		})
-
-		return fitting
+		return fitting ?? null
 	}
 
-	async updateFitting(
-		id: string,
-		data: UpdateFittingRequest,
-		userId: string,
-		characterIds: string[],
-		isAdmin: boolean
-	): Promise<Fitting> {
-		// Permission check: User must have permission to edit fittings or be an admin
-		const hasPermission = await this.checkPermission(
-			userId,
-			characterIds,
-			'urn:doctrines:edit_fitting'
-		)
-		if (!hasPermission && !isAdmin) {
-			throw new Error('Unauthorized to update fittings')
-		}
-
+	async updateFitting(id: string, data: UpdateFittingRequest): Promise<Fitting> {
 		const updates: Partial<typeof schema.doctrinesFittings.$inferInsert> = {
 			updatedAt: new Date(),
 		}
 		if (data.category !== undefined) updates.category = data.category
-		if (data.maintainer !== undefined) updates.maintainer = data.maintainer
+		if (data.description !== undefined) updates.description = data.description ?? null
 		if (data.srpEligible !== undefined) updates.srpEligible = data.srpEligible
 		if (data.srpValue !== undefined) updates.srpValue = data.srpValue
 
 		// If fitting string is updated, re-parse and update items
 		if (data.fitting) {
 			const parsedFitting = await this.eftParser.parse(data.fitting)
+			updates.name = parsedFitting.fittingName
 			updates.shipTypeId = parsedFitting.shipTypeId
 			updates.shipName = parsedFitting.shipName
 			updates.fitting = data.fitting
@@ -604,22 +481,7 @@ export class DoctrinesDO extends DurableObject<Env> implements Doctrines {
 		return updatedFitting
 	}
 
-	async deleteFitting(
-		id: string,
-		userId: string,
-		characterIds: string[],
-		isAdmin: boolean
-	): Promise<void> {
-		// Permission check: User must have permission to delete fittings or be an admin
-		const hasPermission = await this.checkPermission(
-			userId,
-			characterIds,
-			'urn:doctrines:delete_fitting'
-		)
-		if (!hasPermission && !isAdmin) {
-			throw new Error('Unauthorized to delete fittings')
-		}
-
+	async deleteFitting(id: string): Promise<void> {
 		const [deleted] = await this.db
 			.delete(schema.doctrinesFittings)
 			.where(eq(schema.doctrinesFittings.id, id))
@@ -634,50 +496,48 @@ export class DoctrinesDO extends DurableObject<Env> implements Doctrines {
 	// DOCTRINE-FITTING RELATIONSHIP
 	// ============================================
 
-	async addFittingToDoctrine(
-		doctrineId: string,
-		fittingId: string,
-		userId: string,
-		characterIds: string[],
-		isAdmin: boolean
-	): Promise<void> {
-		// Permission check: User must have permission to edit doctrines or be an admin
-		const hasPermission = await this.checkPermission(userId, characterIds, 'urn:doctrines:edit')
-		if (!hasPermission && !isAdmin) {
-			throw new Error('Unauthorized to add fitting to doctrine')
-		}
-
+	async addFittingToDoctrine(doctrineId: string, data: AddFittingToDoctrineRequest): Promise<void> {
 		// Check if the relationship already exists
 		const existing = await this.db.query.doctrinesDoctrineFittings.findFirst({
 			where: and(
 				eq(schema.doctrinesDoctrineFittings.doctrineId, doctrineId),
-				eq(schema.doctrinesDoctrineFittings.fittingId, fittingId)
+				eq(schema.doctrinesDoctrineFittings.fittingId, data.fittingId)
 			),
 		})
 
 		if (existing) {
-			return // Relationship already exists, do nothing
+			return // Relationship already exists
 		}
 
 		await this.db.insert(schema.doctrinesDoctrineFittings).values({
 			doctrineId,
-			fittingId,
+			fittingId: data.fittingId,
+			fittingCategory: data.fittingCategory ?? 'Uncategorized',
+			sortOrder: data.sortOrder ?? 0,
 		})
 	}
 
-	async removeFittingFromDoctrine(
+	async updateDoctrineFitting(
 		doctrineId: string,
 		fittingId: string,
-		userId: string,
-		characterIds: string[],
-		isAdmin: boolean
+		data: UpdateDoctrineFittingRequest
 	): Promise<void> {
-		// Permission check: User must have permission to edit doctrines or be an admin
-		const hasPermission = await this.checkPermission(userId, characterIds, 'urn:doctrines:edit')
-		if (!hasPermission && !isAdmin) {
-			throw new Error('Unauthorized to remove fitting from doctrine')
-		}
+		const updates: Partial<typeof schema.doctrinesDoctrineFittings.$inferInsert> = {}
+		if (data.fittingCategory !== undefined) updates.fittingCategory = data.fittingCategory
+		if (data.sortOrder !== undefined) updates.sortOrder = data.sortOrder
 
+		await this.db
+			.update(schema.doctrinesDoctrineFittings)
+			.set(updates)
+			.where(
+				and(
+					eq(schema.doctrinesDoctrineFittings.doctrineId, doctrineId),
+					eq(schema.doctrinesDoctrineFittings.fittingId, fittingId)
+				)
+			)
+	}
+
+	async removeFittingFromDoctrine(doctrineId: string, fittingId: string): Promise<void> {
 		await this.db
 			.delete(schema.doctrinesDoctrineFittings)
 			.where(
@@ -688,63 +548,58 @@ export class DoctrinesDO extends DurableObject<Env> implements Doctrines {
 			)
 	}
 
-	/**
-	 * WebSocket message handler (Hibernation API)
-	 * Called when a WebSocket message is received
-	 */
-	async webSocketMessage(ws: WebSocket, message: ArrayBuffer | string): Promise<void> {
-		// TODO: Implement WebSocket message handling
-	}
+	// ============================================
+	// DOCTRINE-STAGING RELATIONSHIP
+	// ============================================
 
-	/**
-	 * WebSocket close handler (Hibernation API)
-	 * Called when a WebSocket connection is closed
-	 */
-	async webSocketClose(
-		ws: WebSocket,
-		code: number,
-		reason: string,
-		wasClean: boolean
-	): Promise<void> {
-		// TODO: Implement cleanup logic
-	}
-
-	/**
-	 * WebSocket error handler (Hibernation API)
-	 * Called when a WebSocket error occurs
-	 */
-	async webSocketError(ws: WebSocket, error: unknown): Promise<void> {
-		console.error('WebSocket error:', error)
-	}
-
-	/**
-	 * Alarm handler
-	 * Called when a scheduled alarm triggers
-	 */
-	async alarm(): Promise<void> {
-		// TODO: Implement alarm logic
-	}
-
-	/**
-	 * Fetch handler for HTTP requests to the Durable Object
-	 */
-	async fetch(request: Request): Promise<Response> {
-		const url = new URL(request.url)
-
-		// WebSocket upgrade handling
-		if (request.headers.get('Upgrade') === 'websocket') {
-			const pair = new WebSocketPair()
-			const [client, server] = Object.values(pair)
-
-			// Accept the WebSocket connection using hibernation API
-			this.ctx.acceptWebSocket(server)
-
-			return new Response(null, {
-				status: 101,
-				webSocket: client,
+	async setDoctrineStagingSystem(doctrineId: string, data: SetDoctrineStagingRequest): Promise<void> {
+		await this.db
+			.insert(schema.doctrinesDoctrineStagingSystems)
+			.values({
+				doctrineId,
+				stagingSystemId: data.stagingSystemId,
+				note: data.note,
 			})
-		}
-
-		return new Response('Doctrines Durable Object', { status: 200 })
+			.onConflictDoUpdate({
+				target: [schema.doctrinesDoctrineStagingSystems.doctrineId, schema.doctrinesDoctrineStagingSystems.stagingSystemId],
+				set: { note: data.note },
+			})
 	}
+
+	async removeDoctrineStagingSystem(doctrineId: string, stagingSystemId: string): Promise<void> {
+		await this.db
+			.delete(schema.doctrinesDoctrineStagingSystems)
+			.where(
+				and(
+					eq(schema.doctrinesDoctrineStagingSystems.doctrineId, doctrineId),
+					eq(schema.doctrinesDoctrineStagingSystems.stagingSystemId, stagingSystemId)
+				)
+			)
+	}
+
+	// ============================================
+	// TYPE SEARCH
+	// ============================================
+
+	async searchShipTypes(query: string): Promise<Array<{ typeId: string; typeName: string }>> {
+		const universeStub = getStub<Universe>(this.env.UNIVERSE, 'default')
+		const results = await universeStub.searchTypes(query, 20)
+		return results.map((r) => ({ typeId: r.typeId, typeName: r.typeName }))
+	}
+
+	// ============================================
+	// EFT PREVIEW
+	// ============================================
+
+	async parseEft(eftString: string): Promise<ParsedFittingPreview> {
+		const parsed = await this.eftParser.parse(eftString)
+		return {
+			shipName: parsed.shipName,
+			shipTypeId: parsed.shipTypeId,
+			fittingName: parsed.fittingName,
+			items: parsed.items,
+			unresolvedItems: parsed.unresolvedItems,
+		}
+	}
+
 }
