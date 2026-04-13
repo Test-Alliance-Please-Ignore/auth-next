@@ -1,10 +1,12 @@
 import { dirname, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { config } from 'dotenv'
+import { sql } from 'drizzle-orm'
 import { z } from 'zod'
 
 import { createDb } from '../db'
 import { invGroups } from '../db/type-ids'
+import { getEnglishName, prepareSdeDataDir, readSdeJsonlTable, toBoolean } from './sde-jsonl'
 
 // Load .env from monorepo root
 const __dirname = dirname(fileURLToPath(import.meta.url))
@@ -13,55 +15,49 @@ config({ path: resolve(__dirname, '../../../../.env') })
 /**
  * Zod schema for validating invGroups data from SDE
  */
+const localizedNameSchema = z.record(z.string(), z.string())
 const invGroupSchema = z.object({
-	groupID: z.number(),
+	_key: z.number(),
 	categoryID: z.number(),
-	groupName: z.string(),
-	iconID: z.number().nullable(),
-	useBasePrice: z.number().transform((val) => val === 1),
-	anchored: z.number().transform((val) => val === 1),
-	anchorable: z.number().transform((val) => val === 1),
-	fittableNonSingleton: z.number().transform((val) => val === 1),
-	published: z.number().transform((val) => val === 1),
+	name: z.union([z.string(), localizedNameSchema]),
+	iconID: z.number().nullable().optional(),
+	useBasePrice: z.union([z.number(), z.boolean()]),
+	anchored: z.union([z.number(), z.boolean()]),
+	anchorable: z.union([z.number(), z.boolean()]),
+	fittableNonSingleton: z.union([z.number(), z.boolean()]),
+	published: z.union([z.number(), z.boolean()]),
 })
 
 const invGroupsArraySchema = z.array(invGroupSchema)
 
 type InvGroupSDE = z.input<typeof invGroupSchema>
-type InvGroupTransformed = z.output<typeof invGroupSchema>
+type InvGroup = z.output<typeof invGroupSchema>
 
 /**
  * Transform SDE data to database schema
  */
-function transformToDbSchema(group: InvGroupTransformed) {
+function transformToDbSchema(group: InvGroup) {
+	const groupId = group._key.toString()
 	return {
-		groupId: group.groupID.toString(),
+		groupId,
 		categoryId: group.categoryID.toString(),
-		groupName: group.groupName,
+		groupName: getEnglishName(group.name, `Unknown Group (${groupId})`),
 		iconId: group.iconID?.toString() ?? null,
-		useBasePrice: group.useBasePrice,
-		anchored: group.anchored,
-		anchorable: group.anchorable,
-		fittableNonSingleton: group.fittableNonSingleton,
-		published: group.published,
+		useBasePrice: toBoolean(group.useBasePrice),
+		anchored: toBoolean(group.anchored),
+		anchorable: toBoolean(group.anchorable),
+		fittableNonSingleton: toBoolean(group.fittableNonSingleton),
+		published: toBoolean(group.published),
 	}
 }
 
 /**
- * Fetch invGroups data from EVE SDE
+ * Fetch invGroups data from CCP JSONL SDE
  */
 async function fetchInvGroups(): Promise<InvGroupSDE[]> {
-	const url = 'https://sde.zzeve.com/invGroups.json'
-	console.log(`Fetching invGroups from ${url}...`)
-
-	const response = await fetch(url)
-
-	if (!response.ok) {
-		throw new Error(`Failed to fetch invGroups: ${response.status} ${response.statusText}`)
-	}
-
-	const data = await response.json()
-	return data as InvGroupSDE[]
+	const sdeDataDir = await prepareSdeDataDir()
+	console.log(`Reading invGroups from ${sdeDataDir}/groups.jsonl...`)
+	return readSdeJsonlTable<InvGroupSDE>(sdeDataDir, 'groups.jsonl')
 }
 
 /**
@@ -106,14 +102,14 @@ async function main() {
 			.onConflictDoUpdate({
 				target: invGroups.groupId,
 				set: {
-					categoryId: batch[0].categoryId, // This will be overridden by SQL
-					groupName: batch[0].groupName,
-					iconId: batch[0].iconId,
-					useBasePrice: batch[0].useBasePrice,
-					anchored: batch[0].anchored,
-					anchorable: batch[0].anchorable,
-					fittableNonSingleton: batch[0].fittableNonSingleton,
-					published: batch[0].published,
+					categoryId: sql`excluded.category_id`,
+					groupName: sql`excluded.group_name`,
+					iconId: sql`excluded.icon_id`,
+					useBasePrice: sql`excluded.use_base_price`,
+					anchored: sql`excluded.anchored`,
+					anchorable: sql`excluded.anchorable`,
+					fittableNonSingleton: sql`excluded.fittable_non_singleton`,
+					published: sql`excluded.published`,
 				},
 			})
 

@@ -1,10 +1,12 @@
 import { dirname, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { config } from 'dotenv'
+import { sql } from 'drizzle-orm'
 import { z } from 'zod'
 
 import { createDb } from '../db'
 import { invCategories } from '../db/schema'
+import { getEnglishName, prepareSdeDataDir, readSdeJsonlTable, toBoolean } from './sde-jsonl'
 
 // Load .env from monorepo root
 const __dirname = dirname(fileURLToPath(import.meta.url))
@@ -13,45 +15,39 @@ config({ path: resolve(__dirname, '../../../../.env') })
 /**
  * Zod schema for validating invCategories data from SDE
  */
+const localizedNameSchema = z.record(z.string(), z.string())
 const invCategorySchema = z.object({
-	categoryID: z.number(),
-	categoryName: z.string(),
-	iconID: z.number().nullable(),
-	published: z.number().transform((val) => val === 1),
+	_key: z.number(),
+	name: z.union([z.string(), localizedNameSchema]),
+	iconID: z.number().nullable().optional(),
+	published: z.union([z.number(), z.boolean()]),
 })
 
 const invCategoriesArraySchema = z.array(invCategorySchema)
 
 type InvCategorySDE = z.input<typeof invCategorySchema>
-type InvCategoryTransformed = z.output<typeof invCategorySchema>
+type InvCategory = z.output<typeof invCategorySchema>
 
 /**
  * Transform SDE data to database schema
  */
-function transformToDbSchema(category: InvCategoryTransformed) {
+function transformToDbSchema(category: InvCategory) {
+	const categoryId = category._key.toString()
 	return {
-		categoryId: category.categoryID.toString(),
-		categoryName: category.categoryName,
+		categoryId,
+		categoryName: getEnglishName(category.name, `Unknown Category (${categoryId})`),
 		iconId: category.iconID?.toString() ?? null,
-		published: category.published,
+		published: toBoolean(category.published),
 	}
 }
 
 /**
- * Fetch invCategories data from EVE SDE
+ * Fetch invCategories data from CCP JSONL SDE
  */
 async function fetchInvCategories(): Promise<InvCategorySDE[]> {
-	const url = 'https://sde.zzeve.com/invCategories.json'
-	console.log(`Fetching invCategories from ${url}...`)
-
-	const response = await fetch(url)
-
-	if (!response.ok) {
-		throw new Error(`Failed to fetch invCategories: ${response.status} ${response.statusText}`)
-	}
-
-	const data = await response.json()
-	return data as InvCategorySDE[]
+	const sdeDataDir = await prepareSdeDataDir()
+	console.log(`Reading invCategories from ${sdeDataDir}/categories.jsonl...`)
+	return readSdeJsonlTable<InvCategorySDE>(sdeDataDir, 'categories.jsonl')
 }
 
 /**
@@ -88,9 +84,9 @@ async function main() {
 		.onConflictDoUpdate({
 			target: invCategories.categoryId,
 			set: {
-				categoryName: transformedData[0].categoryName, // This will be overridden by SQL
-				iconId: transformedData[0].iconId,
-				published: transformedData[0].published,
+				categoryName: sql`excluded.category_name`,
+				iconId: sql`excluded.icon_id`,
+				published: sql`excluded.published`,
 			},
 		})
 

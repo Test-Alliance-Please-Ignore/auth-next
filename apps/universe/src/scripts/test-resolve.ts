@@ -28,7 +28,7 @@ async function main() {
 
 	// Test invFlags
 	console.log('Testing invFlags resolution:')
-	const testFlagIds = ['1', '87', '4', '999999'] // Last one doesn't exist
+	const testFlagIds = ['11', '19', '27', '87', '5', '999999'] // Last one doesn't exist
 
 	const flagResults = await db.select().from(invFlags).where(inArray(invFlags.flagId, testFlagIds))
 
