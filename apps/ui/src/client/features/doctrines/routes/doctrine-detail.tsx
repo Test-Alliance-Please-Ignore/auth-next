@@ -295,13 +295,13 @@ export default function DoctrineDetailPage() {
 					<div className="flex gap-2">
 						{canManage && (
 							<>
-								<Button asChild variant="ghost">
+								<Button asChild>
 									<Link to={`/doctrines/fittings/create?doctrineId=${id}`}>
 										<Plus className="h-4 w-4 mr-2" />
 										Create Fitting
 									</Link>
 								</Button>
-								<Button variant="ghost" onClick={() => setAddFittingOpen(true)}>
+								<Button variant="secondary" onClick={() => setAddFittingOpen(true)}>
 									<Plus className="h-4 w-4 mr-2" />
 									Link Existing
 								</Button>
@@ -405,13 +405,13 @@ export default function DoctrineDetailPage() {
 								<p className="text-muted-foreground mb-4">No fittings added yet.</p>
 								{canManage && (
 									<div className="flex justify-center gap-2">
-										<Button asChild variant="ghost">
+										<Button asChild>
 											<Link to={`/doctrines/fittings/create?doctrineId=${id}`}>
 												<Plus className="h-4 w-4 mr-2" />
 												Create Fitting
 											</Link>
 										</Button>
-										<Button variant="ghost" onClick={() => setAddFittingOpen(true)}>
+										<Button variant="secondary" onClick={() => setAddFittingOpen(true)}>
 											<Plus className="h-4 w-4 mr-2" />
 											Link Existing
 										</Button>
@@ -453,19 +453,31 @@ export default function DoctrineDetailPage() {
 														doctrineId={doctrine.id}
 													/>
 													{canManage && (
-														<Button
-															variant="ghost"
-															size="sm"
-															className="absolute top-1/2 -translate-y-1/2 right-2 z-10 text-destructive hover:text-destructive hover:bg-destructive/10"
-															onClick={(e) => {
-																e.preventDefault()
-																e.stopPropagation()
-																handleRemoveFitting(entry.fitting.id)
-															}}
-														>
-															<Trash2 className="h-4 w-4 mr-1" />
-															Remove
-														</Button>
+														<div className="absolute top-1/2 -translate-y-1/2 right-2 z-10 flex gap-1">
+															<Button
+																asChild
+																variant="ghost"
+																size="icon"
+																className="h-7 w-7"
+																onClick={(e) => e.stopPropagation()}
+															>
+																<Link to={`/doctrines/fittings/${entry.fitting.id}/edit`}>
+																	<Edit className="h-3.5 w-3.5" />
+																</Link>
+															</Button>
+															<Button
+																variant="ghost"
+																size="icon"
+																className="h-7 w-7 text-destructive hover:text-destructive"
+																onClick={(e) => {
+																	e.preventDefault()
+																	e.stopPropagation()
+																	handleRemoveFitting(entry.fitting.id)
+																}}
+															>
+																<Trash2 className="h-3.5 w-3.5" />
+															</Button>
+														</div>
 													)}
 												</div>
 											))}

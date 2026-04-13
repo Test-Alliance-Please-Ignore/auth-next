@@ -262,6 +262,8 @@ export function FittingPanel({ fittingItems, shipTypeId, shipName }: FittingPane
 
 	return (
 		<div className="flex justify-center">
+			{/* Inline styles below are intentional: pixel values are computed from geometry constants
+			    and cannot be expressed as static Tailwind classes. */}
 			<div className="relative" style={{ width: P, height: P }}>
 				{/* Ship render — behind the ring */}
 				<img

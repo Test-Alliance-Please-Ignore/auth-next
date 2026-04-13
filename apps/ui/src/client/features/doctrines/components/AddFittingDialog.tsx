@@ -21,6 +21,7 @@ import { LoadingSpinner } from '@/components/ui/loading'
 import toast from '@/lib/toast'
 
 import { useAddFittingToDoctrine, useFittings } from '../hooks'
+import { FittingListItem } from './FittingListItem'
 
 interface AddFittingDialogProps {
 	doctrineId: string
@@ -50,13 +51,10 @@ export function AddFittingDialog({
 					f.name.toLowerCase().includes(search.toLowerCase()) ||
 					f.shipName.toLowerCase().includes(search.toLowerCase()))
 		)
-		.sort(
-			(a, b) => new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime()
-		)
+		.sort((a, b) => new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime())
 
 	const totalAvailable = allAvailable?.length ?? 0
-	const availableFittings =
-		search === '' ? allAvailable?.slice(0, 10) : allAvailable
+	const availableFittings = search === '' ? allAvailable?.slice(0, 10) : allAvailable
 
 	const handleSelectFitting = (fittingId: string) => {
 		setSelectedFittingId(fittingId)
@@ -124,29 +122,15 @@ export function AddFittingDialog({
 						) : (
 							<div className="divide-y">
 								{availableFittings.map((fitting) => (
-									<Button
+									<FittingListItem
 										key={fitting.id}
-										type="button"
-										variant="ghost"
-										className={`w-full flex items-center gap-3 px-3 py-2 text-left text-sm h-auto rounded-none justify-start overflow-hidden ${selectedFittingId === fitting.id ? 'bg-accent' : ''
-											}`}
+										shipTypeId={fitting.shipTypeId}
+										shipName={fitting.shipName}
+										name={fitting.name}
+										category={fitting.category}
+										selected={selectedFittingId === fitting.id}
 										onClick={() => handleSelectFitting(fitting.id)}
-									>
-										<img
-											src={`https://images.evetech.net/types/${fitting.shipTypeId}/icon?size=64`}
-											alt={fitting.shipName}
-											className="h-8 w-8 rounded shrink-0"
-											loading="lazy"
-										/>
-										<div className="min-w-0">
-											<span className="font-medium truncate block">
-												{fitting.name}
-											</span>
-											<span className="text-xs text-muted-foreground truncate block">
-												{fitting.shipName} &middot; {fitting.category}
-											</span>
-										</div>
-									</Button>
+									/>
 								))}
 							</div>
 						)}

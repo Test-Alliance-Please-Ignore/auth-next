@@ -5,12 +5,9 @@
  * This package allows other workers to interact with the Durable Object via RPC.
  */
 
-export {
-	CATEGORY_SLOT_OVERRIDES,
-	CATEGORY_SUBSYSTEM,
-	EFT_SECTION_ORDER,
-	SLOT_FLAGS,
-} from './flags'
+import { z } from 'zod'
+
+export { CATEGORY_SLOT_OVERRIDES, CATEGORY_SUBSYSTEM, EFT_SECTION_ORDER, SLOT_FLAGS } from './flags'
 export type { SlotFlag } from './flags'
 
 // --- Database Models ---
@@ -152,6 +149,121 @@ export interface SetDoctrineStagingRequest {
 	note: string
 }
 
+// --- Validation Schemas ---
+
+export const CreateCategorySchema = z.object({
+	name: z.string().min(1).max(200),
+	sortOrder: z.number().int().min(0).optional(),
+})
+
+export const UpdateCategorySchema = z.object({
+	name: z.string().min(1).max(200).optional(),
+	sortOrder: z.number().int().min(0).optional(),
+})
+
+export const CreateStagingSystemSchema = z.object({
+	solarSystemId: z.string().min(1),
+	solarSystemName: z.string().min(1).max(200),
+	sortOrder: z.number().int().min(0).optional(),
+})
+
+export const UpdateStagingSystemSchema = z.object({
+	solarSystemId: z.string().min(1).optional(),
+	solarSystemName: z.string().min(1).max(200).optional(),
+	sortOrder: z.number().int().min(0).optional(),
+})
+
+export const CreateDoctrineSchema = z.object({
+	name: z.string().min(1).max(200),
+	description: z.string().max(2000).optional(),
+	shipTypeId: z.string().optional(),
+	categoryId: z.string().optional(),
+	sortOrder: z.number().int().min(0).optional(),
+})
+
+export const UpdateDoctrineSchema = z.object({
+	name: z.string().min(1).max(200).optional(),
+	description: z.string().max(2000).optional(),
+	shipTypeId: z.string().optional(),
+	categoryId: z.string().optional(),
+	sortOrder: z.number().int().min(0).optional(),
+})
+
+export const CreateFittingSchema = z.object({
+	name: z.string().min(1).max(200),
+	description: z.string().max(2000).nullable().optional().default(null),
+	shipTypeId: z.string().min(1),
+	shipName: z.string().min(1).max(200),
+	fitting: z.string().min(1).max(50000),
+	category: z.string().min(1).max(200),
+	srpEligible: z.boolean().optional().default(false),
+	srpValue: z.string().optional().default('0'),
+	fittingItems: z
+		.array(
+			z.object({
+				typeId: z.string(),
+				typeName: z.string(),
+				quantity: z.string(),
+				flagId: z.string(),
+				flagName: z.string(),
+				groupId: z.string(),
+				groupName: z.string(),
+				categoryId: z.string(),
+			})
+		)
+		.optional()
+		.default([]),
+})
+
+export const UpdateFittingSchema = z.object({
+	name: z.string().min(1).max(200).optional(),
+	description: z.string().max(2000).nullable().optional(),
+	shipTypeId: z.string().min(1).optional(),
+	shipName: z.string().min(1).max(200).optional(),
+	fitting: z.string().min(1).max(50000).optional(),
+	category: z.string().min(1).max(200).optional(),
+	srpEligible: z.boolean().optional(),
+	srpValue: z.string().optional(),
+	fittingItems: z
+		.array(
+			z.object({
+				typeId: z.string(),
+				typeName: z.string(),
+				quantity: z.string(),
+				flagId: z.string(),
+				flagName: z.string(),
+				groupId: z.string(),
+				groupName: z.string(),
+				categoryId: z.string(),
+			})
+		)
+		.optional(),
+})
+
+export const AddFittingToDoctrineSchema = z.object({
+	fittingId: z.string().min(1),
+	fittingCategory: z.string().max(200).optional(),
+	sortOrder: z.number().int().min(0).optional(),
+})
+
+export const UpdateDoctrineFittingSchema = z.object({
+	fittingCategory: z.string().max(200).optional(),
+	sortOrder: z.number().int().min(0).optional(),
+})
+
+export const SetDoctrineStagingSchema = z.object({
+	stagingSystemId: z.string().min(1),
+	note: z.string().max(500),
+})
+
+export const PreviewEftSchema = z.object({
+	eftString: z.string().min(1).max(50000),
+})
+
+export const SaveIngameSchema = z.object({
+	characterId: z.string().min(1),
+})
+
 /**
  * Public RPC interface for Doctrines Durable Object
  *
@@ -192,7 +304,10 @@ export interface Doctrines {
 	createDoctrine(data: CreateDoctrineRequest & { updatedBy?: string }): Promise<Doctrine>
 	getDoctrines(filters: ListDoctrinesFilters): Promise<Doctrine[]>
 	getDoctrine(id: string): Promise<DoctrineWithFittings | null>
-	updateDoctrine(id: string, data: UpdateDoctrineRequest & { updatedBy?: string }): Promise<Doctrine>
+	updateDoctrine(
+		id: string,
+		data: UpdateDoctrineRequest & { updatedBy?: string }
+	): Promise<Doctrine>
 	deleteDoctrine(id: string): Promise<void>
 
 	// Doctrine-Staging Relationship
@@ -209,7 +324,11 @@ export interface Doctrines {
 
 	// Doctrine-Fitting Relationship
 	addFittingToDoctrine(doctrineId: string, data: AddFittingToDoctrineRequest): Promise<void>
-	updateDoctrineFitting(doctrineId: string, fittingId: string, data: UpdateDoctrineFittingRequest): Promise<void>
+	updateDoctrineFitting(
+		doctrineId: string,
+		fittingId: string,
+		data: UpdateDoctrineFittingRequest
+	): Promise<void>
 	removeFittingFromDoctrine(doctrineId: string, fittingId: string): Promise<void>
 
 	// Type Search
