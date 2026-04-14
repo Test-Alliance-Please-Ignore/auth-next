@@ -50,6 +50,30 @@ export interface EveTokenResponse {
 }
 
 /**
+ * Response from the EVE OAuth metadata well-known endpoint
+ */
+type EveMetadata = {
+	issuer: string
+	jwks_uri: string
+}
+
+/**
+ * EVE OAuth Metadata Cache
+ */
+type EveMetadataCache = EveMetadata & {
+	fetchedAt: number
+	expiresAt: number
+}
+
+/**
+ * EVE OAuth JWKS config
+ */
+type EveJwksResult = {
+	metadata: CachedMetadata
+	jwks: ReturnType<typeof createRemoteJWKSet>
+}
+
+/**
  * Authorization URL response for starting OAuth flow
  */
 export interface AuthorizationUrlResponse {
