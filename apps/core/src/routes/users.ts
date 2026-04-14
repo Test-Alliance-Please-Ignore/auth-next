@@ -6,6 +6,7 @@ import { logger } from '@repo/hono-helpers'
 
 import { createDb } from '../db'
 import { managedCorporations, userCharacters } from '../db/schema'
+import { isNpcCorporationId } from '../lib/corporation-id'
 import { getDiscordStatus } from '../lib/discord-helpers'
 import { triggerUserRefreshWorkflow } from '../lib/workflow-triggers'
 import { requireAuth } from '../middleware/session'
@@ -22,6 +23,10 @@ import type { RequestMetadata, UserPreferencesDTO } from '@repo/core'
  * Cache duration for user corporation data (5 minutes)
  */
 const CACHE_TTL = 5 * 60 // 5 minutes in seconds
+
+function filterManagedNonNpcCorps<T extends { corporationId: string }>(rows: T[]): T[] {
+	return rows.filter((row) => !isNpcCorporationId(row.corporationId))
+}
 
 /**
  * Helper to get cache instance
@@ -331,7 +336,7 @@ users.get('/has-corporation-access', async (c) => {
 		}
 
 		// Get all active managed corporations (member and special purpose only)
-		const managedCorps = await db.query.managedCorporations.findMany({
+		const managedCorps = filterManagedNonNpcCorps(await db.query.managedCorporations.findMany({
 			where: and(
 				eq(managedCorporations.isActive, true),
 				or(
@@ -339,7 +344,7 @@ users.get('/has-corporation-access', async (c) => {
 					eq(managedCorporations.isSpecialPurpose, true)
 				)
 			),
-		})
+		}))
 
 		if (!managedCorps.length) {
 			return c.json({ hasAccess: false })
@@ -423,7 +428,7 @@ users.get('/corporation-access', async (c) => {
 
 	try {
 		// Get all managed corporations (member and special purpose only)
-		const managedCorps = await db.query.managedCorporations.findMany({
+		const managedCorps = filterManagedNonNpcCorps(await db.query.managedCorporations.findMany({
 			where: and(
 				eq(managedCorporations.isActive, true),
 				or(
@@ -431,7 +436,7 @@ users.get('/corporation-access', async (c) => {
 					eq(managedCorporations.isSpecialPurpose, true)
 				)
 			),
-		})
+		}))
 
 		// Get all user's characters
 		const characters = await db.query.userCharacters.findMany({
@@ -715,7 +720,7 @@ users.get('/my-corporations', async (c) => {
 
 		// Site admins have access to ALL corporations (member and special purpose only)
 		if (user.is_admin) {
-			const managedCorps = await db.query.managedCorporations.findMany({
+			const managedCorps = filterManagedNonNpcCorps(await db.query.managedCorporations.findMany({
 				where: and(
 					eq(managedCorporations.isActive, true),
 					or(
@@ -723,7 +728,7 @@ users.get('/my-corporations', async (c) => {
 						eq(managedCorporations.isSpecialPurpose, true)
 					)
 				),
-			})
+			}))
 
 			// Fetch all corporation data in parallel
 			const corpDataPromises = managedCorps.map(async (corp) => {
@@ -790,7 +795,7 @@ users.get('/my-corporations', async (c) => {
 		}
 
 		// STEP 1: Parallel initial data fetch
-		const [characters, managedCorps] = await Promise.all([
+		const [characters, managedCorpsRaw] = await Promise.all([
 			db.query.userCharacters.findMany({
 				where: eq(userCharacters.userId, user.id),
 			}),
@@ -804,6 +809,7 @@ users.get('/my-corporations', async (c) => {
 				),
 			}),
 		])
+		const managedCorps = filterManagedNonNpcCorps(managedCorpsRaw)
 
 		if (!characters.length || !managedCorps.length) {
 			return c.json([])

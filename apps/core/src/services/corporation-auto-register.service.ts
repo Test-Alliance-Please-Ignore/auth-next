@@ -3,6 +3,7 @@ import { getStub } from '@repo/do-utils'
 import { logger } from '@repo/hono-helpers'
 
 import { managedCorporations } from '../db/schema'
+import { isNpcCorporationId } from '../lib/corporation-id'
 
 import type { EveCharacterData } from '@repo/eve-character-data'
 import type { EveCorporationData } from '@repo/eve-corporation-data'
@@ -155,6 +156,17 @@ export async function autoRegisterDirectorCorporation(
 		}
 
 		// Step 6: Check if corporation already managed
+		if (isNpcCorporationId(corporationId)) {
+			logger.info('[AutoReg] Skipping NPC corporation auto-registration', {
+				characterId,
+				corporationId,
+			})
+			return {
+				success: false,
+				reason: 'npc_corporation',
+			}
+		}
+
 		const existingCorp = await db.query.managedCorporations.findFirst({
 			where: eq(managedCorporations.corporationId, corporationId),
 		})
