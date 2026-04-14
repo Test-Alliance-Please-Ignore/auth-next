@@ -727,26 +727,11 @@ export class EveCharacterDataDO extends DurableObject<Env> implements EveCharact
 		}
 
 		// Upsert to database
-		await this.db
-			.insert(characterPublicInfo)
-			.values({
-				characterId,
-				name: data.name,
-				corporationId,
-				allianceId,
-				birthday: data.birthday,
-				raceId: String(data.race_id),
-				bloodlineId: String(data.bloodline_id),
-				securityStatus: data.security_status ? Number(data.security_status) : undefined,
-				description: data.description,
-				gender: data.gender,
-				factionId: data.faction_id ? String(data.faction_id) : null,
-				title: data.title,
-				updatedAt: new Date(),
-			})
-			.onConflictDoUpdate({
-				target: characterPublicInfo.characterId,
-				set: {
+		try {
+			await this.db
+				.insert(characterPublicInfo)
+				.values({
+					characterId,
 					name: data.name,
 					corporationId,
 					allianceId,
@@ -759,8 +744,32 @@ export class EveCharacterDataDO extends DurableObject<Env> implements EveCharact
 					factionId: data.faction_id ? String(data.faction_id) : null,
 					title: data.title,
 					updatedAt: new Date(),
-				},
+				})
+				.onConflictDoUpdate({
+					target: characterPublicInfo.characterId,
+					set: {
+						name: data.name,
+						corporationId,
+						allianceId,
+						birthday: data.birthday,
+						raceId: String(data.race_id),
+						bloodlineId: String(data.bloodline_id),
+						securityStatus: data.security_status ? Number(data.security_status) : undefined,
+						description: data.description,
+						gender: data.gender,
+						factionId: data.faction_id ? String(data.faction_id) : null,
+						title: data.title,
+						updatedAt: new Date(),
+					},
+				})
+		} catch (error) {
+			this.logDbOperationError('fetchAndStorePublicInfo.upsert', characterId, error, {
+				name: data.name,
+				corporationId,
+				allianceId,
 			})
+			throw error
+		}
 
 		return (await this.getCharacterInfo(characterId))!
 	}

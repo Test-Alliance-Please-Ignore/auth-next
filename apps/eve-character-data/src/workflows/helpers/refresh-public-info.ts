@@ -9,6 +9,30 @@ export interface RefreshPublicInfoResult {
 	characterName?: string
 }
 
+function extractErrorDetails(error: unknown): Record<string, unknown> {
+	if (!error || typeof error !== 'object') {
+		return { rawError: String(error) }
+	}
+
+	const e = error as Record<string, unknown>
+	return {
+		name: e.name,
+		message: e.message,
+		code: e.code,
+		detail: e.detail,
+		hint: e.hint,
+		constraint: e.constraint,
+		table: e.table,
+		column: e.column,
+		schema: e.schema,
+		severity: e.severity,
+		where: e.where,
+		routine: e.routine,
+		stack: e.stack,
+		cause: e.cause,
+	}
+}
+
 /**
  * Refresh public character data (public info, portrait, corporation history)
  * Creates its own Durable Object stubs to avoid sharing invalidated stubs
@@ -43,6 +67,7 @@ export async function refreshPublicInfo(
 		logger.error('[refreshPublicInfo] Failed to refresh public info', {
 			characterId: normalizedCharacterId,
 			error: error instanceof Error ? error.message : String(error),
+			errorDetails: extractErrorDetails(error),
 		})
 		throw error
 	}
