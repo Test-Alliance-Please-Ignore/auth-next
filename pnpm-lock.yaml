@@ -1068,6 +1068,9 @@ importers:
       hono:
         specifier: 4.10.6
         version: 4.10.6
+      jose:
+        specifier: 6.2.2
+        version: 6.2.2
       workers-tagged-logger:
         specifier: 0.13.7
         version: 0.13.7
@@ -2664,6 +2667,9 @@ importers:
       '@repo/eve-types':
         specifier: workspace:*
         version: link:../eve-types
+      jose:
+        specifier: 6.2.2
+        version: 6.2.2
       zod:
         specifier: 4.1.12
         version: 4.1.12
@@ -7167,6 +7173,9 @@ packages:
   jiti@2.6.1:
     resolution: {integrity: sha512-ekilCSN1jwRvIbgeg/57YFh8qQDNbwDb9xT/qu2DAHbFFZUicIl4ygVaAvzveMhMVr3LnpSKTNnwt8PoOfmKhQ==}
     hasBin: true
+
+  jose@6.2.2:
+    resolution: {integrity: sha512-d7kPDd34KO/YnzaDOlikGpOurfF0ByC2sEV4cANCtdqLlTfBlw2p14O/5d/zv40gJPbIQxfES3nSx1/oYNyuZQ==}
 
   js-tokens@4.0.0:
     resolution: {integrity: sha512-RdJUflcE3cUzKiMqQgsCu06FPu9UdIJO0beYbPhHN4k6apgJtifcoCtT9bcxOpYBtpD2kCM6Sbzg4CausW/PKQ==}
@@ -12341,6 +12350,8 @@ snapshots:
       set-function-name: 2.0.2
 
   jiti@2.6.1: {}
+
+  jose@6.2.2: {}
 
   js-tokens@4.0.0: {}
 

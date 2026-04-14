@@ -1,4 +1,5 @@
 import { DurableObject } from 'cloudflare:workers'
+import { createRemoteJWKSet, jwtVerify } from 'jose'
 import * as z4 from 'zod/v4/core'
 
 import { and, asc, eq, gt, gte, inArray, isNull, lt, lte, or } from '@repo/db-utils'
@@ -9,10 +10,12 @@ import { eveCharacters, eveTokens } from './db/schema'
 
 import type {
 	AuthorizationUrlResponse,
+	CachedEveMetadata,
 	CallbackResult,
 	EsiAlliance,
 	EsiCorporation,
 	EsiResponse,
+	EveMetadata,
 	EveTokenResponse,
 	EveTokenStore,
 	EveVerifyResponse,
@@ -27,7 +30,9 @@ import type { Env } from './context'
  */
 const EVE_SSO_AUTHORIZE_URL = 'https://login.eveonline.com/v2/oauth/authorize'
 const EVE_SSO_TOKEN_URL = 'https://login.eveonline.com/v2/oauth/token'
-const EVE_SSO_VERIFY_URL = 'https://login.eveonline.com/oauth/verify'
+const EVE_METADATA_URL = 'https://login.eveonline.com/.well-known/oauth-authorization-server'
+const EVE_SSO_JWKS_FALLBACK_URL = 'https://login.eveonline.com/oauth/jwks'
+const METADATA_TTL_MS = 5 * 60 * 1000
 const TWENTY_FOUR_HOURS_MS = 24 * 60 * 60 * 1000
 
 /**
@@ -112,6 +117,9 @@ const EVE_SCOPES_ALL = [
  */
 export class EveTokenStoreDO extends DurableObject<Env> implements EveTokenStore {
 	private db: ReturnType<typeof createDb>
+	private jwks: ReturnType<typeof createRemoteJWKSet> | null = null
+	private jwksUri: string | null = null
+	private metadata: CachedEveMetadata | null = null
 
 	/**
 	 * Initialize the Durable Object
@@ -126,11 +134,130 @@ export class EveTokenStoreDO extends DurableObject<Env> implements EveTokenStore
 		const useWebSocket = env.ENVIRONMENT !== 'development'
 		this.db = createDb(env.DATABASE_URL, useWebSocket)
 
+		// Load cached metadata from DO storage once on startup.
+		state.blockConcurrencyWhile(async () => {
+			this.metadata = (await state.storage.get<CachedEveMetadata>('eve:oauth:metadata')) ?? null
+
+			if (this.metadata) {
+				this.jwksUri = this.metadata.jwks_uri
+				this.jwks = createRemoteJWKSet(new URL(this.metadata.jwks_uri))
+			}
+		})
+
 		// Initialize SQLite cache table for ESI responses
 		void this.initializeEsiCache()
 
 		// Schedule alarm for token refresh (check every 5 minutes)
 		void this.state.storage.setAlarm(Date.now() + 5 * 60 * 1000)
+	}
+
+	/**
+	 * Returns EVE OAuth authorization server metadata, using a two-layer cache.
+	 *
+	 * Resolution order:
+	 * 1. Reuse the warm in-memory cache on the current Durable Object instance.
+	 * 2. Reuse the cached value persisted in Durable Object storage.
+	 * 3. Fetch fresh metadata from EVE's OAuth metadata endpoint.
+	 * 4. Fall back to hardcoded metadata if discovery fails.
+	 *
+	 * When cached metadata is loaded from storage and its `jwks_uri` differs from the
+	 * currently initialized JWKS resolver, this method rebuilds the remote JWK set so
+	 * future token verification uses the discovered key endpoint.
+	 *
+	 * @returns {Promise<CachedMetadata>} Cached or freshly fetched EVE OAuth metadata.
+	 */
+	private async getEveMetadata(): Promise<CachedEveMetadata> {
+		const now = Date.now()
+
+		// Fast path: warm in-memory cache
+		if (this.metadata && now < this.metadata.expiresAt) {
+			return this.metadata
+		}
+
+		// Second chance: durable cache from storage
+		const stored = await this.state.storage.get<CachedEveMetadata>('eve:oauth:metadata')
+		if (stored && now < stored.expiresAt) {
+			this.metadata = stored
+
+			if (this.jwksUri !== stored.jwks_uri) {
+				this.jwksUri = stored.jwks_uri
+				this.jwks = createRemoteJWKSet(new URL(stored.jwks_uri))
+			}
+
+			return stored
+		}
+
+		// Refresh from EVE
+		try {
+			const res = await fetch(EVE_METADATA_URL, {
+				headers: { accept: 'application/json' },
+			})
+
+			if (!res.ok) {
+				throw new Error(`metadata fetch failed: ${res.status}`)
+			}
+
+			const json = (await res.json()) as EveMetadata
+
+			if (!json.issuer || !json.jwks_uri) {
+				throw new Error('metadata missing issuer or jwks_uri')
+			}
+
+			const fresh: CachedEveMetadata = {
+				issuer: json.issuer,
+				jwks_uri: json.jwks_uri,
+				fetchedAt: now,
+				expiresAt: now + METADATA_TTL_MS,
+			}
+
+			await this.state.storage.put('eve:oauth:metadata', fresh)
+			this.metadata = fresh
+			if (this.jwksUri !== fresh.jwks_uri) {
+				this.jwksUri = fresh.jwks_uri
+				this.jwks = createRemoteJWKSet(new URL(fresh.jwks_uri))
+			}
+			return fresh
+		} catch (error) {
+			logger
+				.withTags({ operation: 'getEveMetadta' })
+				.error('Failed to fetch EVE OAuth metadata, falling back to hardcoded url', error)
+
+			// fallback path
+			const fallback: CachedEveMetadata = {
+				issuer: 'https://login.eveonline.com',
+				jwks_uri: EVE_SSO_JWKS_FALLBACK_URL,
+				fetchedAt: now,
+				expiresAt: now + METADATA_TTL_MS,
+			}
+
+			this.metadata = fallback
+			if (this.jwksUri !== fallback.jwks_uri) {
+				this.jwksUri = fallback.jwks_uri
+				this.jwks = createRemoteJWKSet(new URL(fallback.jwks_uri))
+			}
+			return fallback
+		}
+	}
+
+	/**
+	 * Returns the current EVE OAuth metadata together with a remote JWKS resolver.
+	 *
+	 * This method ensures metadata has been loaded first, then lazily initializes the
+	 * `jose` remote JWK set resolver from the discovered `jwks_uri` if one has not
+	 * already been created for the current Durable Object instance.
+	 *
+	 * @returns An object containing the resolved OAuth metadata and the initialized
+	 * remote JWKS set used for JWT verification.
+	 */
+	private async getJwks() {
+		const metadata = await this.getEveMetadata()
+
+		if (!this.jwks) {
+			this.jwksUri = metadata.jwks_uri
+			this.jwks = createRemoteJWKSet(new URL(metadata.jwks_uri))
+		}
+
+		return { metadata, jwks: this.jwks }
 	}
 
 	/**
@@ -1957,21 +2084,60 @@ export class EveTokenStoreDO extends DurableObject<Env> implements EveTokenStore
 	}
 
 	/**
-	 * Verify access token with EVE SSO
+	 * Verify access token locally using CCP's JWKS public keys.
+	 * Validates iss, aud (our client ID), and cryptographic signature.
 	 */
 	private async verifyToken(accessToken: string): Promise<EveVerifyResponse> {
-		const response = await fetch(EVE_SSO_VERIFY_URL, {
-			headers: {
-				Authorization: `Bearer ${accessToken}`,
-			},
+		const { metadata, jwks } = await this.getJwks()
+
+		const clientId = this.env.EVE_SSO_CLIENT_ID
+		const acceptedIssuers = Array.from(
+			new Set([metadata.issuer, `${metadata.issuer}/`, 'login.eveonline.com'])
+		)
+
+		const { payload } = await jwtVerify(accessToken, jwks, {
+			issuer: acceptedIssuers,
+			audience: clientId,
 		})
 
-		if (!response.ok) {
-			const error = await response.text()
-			throw new Error(`Token verification failed (status: ${response.status}): ${error}`)
+		// sub must be "CHARACTER:EVE:<characterId>"
+		const sub = payload.sub ?? ''
+		const subMatch = /^CHARACTER:EVE:(\d+)$/.exec(sub)
+		if (!subMatch) {
+			logger
+				.withTags({ operation: 'verifyToken' })
+				.error('Invalid "sub" claim value', { sub })
+			throw new Error('Invalid claim value')
+		}
+		const characterId = subMatch[1]
+
+		// scp may be a single string (one scope) or an array (multiple scopes)
+		const scp = payload['scp']
+		const scopes = Array.isArray(scp) ? scp.join(' ') : ((scp as string) ?? '')
+
+		const exp = payload.exp ?? 0
+		const expiresOn = new Date(exp * 1000).toISOString()
+
+		const aud = Array.isArray(payload.aud) ? payload.aud : [payload.aud]
+		const hasExpectedAudience =
+			aud.length === 2 && aud.includes(clientId) && aud.includes('EVE Online')
+
+		if (!hasExpectedAudience) {
+			logger
+				.withTags({ operation: 'verifyToken' })
+				.error('Invalid "aud" claim value', { aud, expectedClientId: clientId })
+			throw new Error('Invalid claim value')
 		}
 
-		return response.json<EveVerifyResponse>()
+		return {
+			CharacterID: characterId,
+			CharacterName: (payload['name'] as string) ?? '',
+			CharacterOwnerHash: (payload['owner'] as string) ?? '',
+			Scopes: scopes,
+			ExpiresOn: expiresOn,
+			TokenType: 'Character',
+			IntellectualProperty: 'EVE',
+		}
 	}
 
 	private classifySsoError(errorMessage: string): TokenValidationResult['status'] {

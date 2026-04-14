@@ -12,6 +12,7 @@
 	},
 	"dependencies": {
 		"@repo/eve-types": "workspace:*",
+		"jose": "6.2.2",
 		"zod": "4.1.12"
 	},
 	"devDependencies": {
