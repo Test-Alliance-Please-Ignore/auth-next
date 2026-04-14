@@ -3,6 +3,7 @@ import { useState } from 'react'
 import { Link } from 'react-router-dom'
 
 import { Button } from '@/components/ui/button'
+import { Badge } from '@/components/ui/badge'
 import { Card, CardContent } from '@/components/ui/card'
 import {
 	Dialog,
@@ -181,8 +182,8 @@ export default function AdminDiscordServersPage() {
 			) : (
 				<div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
 					{discordServers.map((server) => (
-						<Card key={server.id} className="border border-border/70">
-							<CardContent className="space-y-4 pt-4">
+						<Card key={server.id} className="flex h-full flex-col border border-border/70">
+							<CardContent className="flex h-full flex-col gap-4 pt-4">
 								<div className="space-y-1">
 									<div className="flex items-center justify-between gap-2">
 										<div className="flex items-center gap-2">
@@ -214,12 +215,16 @@ export default function AdminDiscordServersPage() {
 									)}
 								</div>
 
-								<div className="text-xs text-muted-foreground">
-									Roles: {server.roles?.length ?? 0} • Manage nicknames:{' '}
-									{server.manageNicknames ? 'Enabled' : 'Disabled'}
-								</div>
-
-								<div className="grid grid-cols-2 gap-2">
+								<div className="mt-auto space-y-2 pt-1">
+									<div className="flex items-center justify-between gap-2">
+										<div className="text-sm font-semibold text-foreground">
+											Roles: <span className="text-primary">{server.roles?.length ?? 0}</span>
+										</div>
+										<Badge variant={server.manageNicknames ? 'success' : 'warning'}>
+											Nicknames {server.manageNicknames ? 'Enabled' : 'Disabled'}
+										</Badge>
+									</div>
+									<div className="grid grid-cols-2 gap-2">
 									<Button asChild variant="ghost" size="sm">
 										<Link to={`/admin/discord-servers/${server.id}/roles`}>
 											<Settings2 className="h-4 w-4" />
@@ -232,6 +237,7 @@ export default function AdminDiscordServersPage() {
 											Commands
 										</Link>
 									</Button>
+									</div>
 								</div>
 							</CardContent>
 						</Card>

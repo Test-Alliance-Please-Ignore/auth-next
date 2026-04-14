@@ -241,7 +241,9 @@ export default function AdminBillsDetailPage() {
 					<CardHeader>
 						<CardTitle>Group Payment Progress</CardTitle>
 						<CardDescription>
-							{groupAggregate.paidBills} of {groupAggregate.totalBills} members paid
+							<span className="font-semibold text-foreground">{groupAggregate.paidBills}</span> of{' '}
+							<span className="font-semibold text-foreground">{groupAggregate.totalBills}</span>{' '}
+							members paid
 						</CardDescription>
 					</CardHeader>
 					<CardContent className="space-y-4">
@@ -250,7 +252,7 @@ export default function AdminBillsDetailPage() {
 								<span className="text-muted-foreground">Overall Progress</span>
 								<span className="font-medium">{groupProgress}%</span>
 							</div>
-							<Progress value={groupProgress} className="h-2" />
+							<Progress value={groupProgress} className="h-2 bg-warning/70" />
 						</div>
 
 						<Table>
@@ -494,7 +496,7 @@ export default function AdminBillsDetailPage() {
 								<span className="text-muted-foreground">Payment Progress</span>
 								<span className="font-medium">{paymentProgress.toFixed(1)}%</span>
 							</div>
-							<Progress value={paymentProgress} className="h-2" />
+							<Progress value={paymentProgress} className="h-2 bg-warning/70" />
 						</div>
 					</CardContent>
 				</Card>
