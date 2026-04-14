@@ -10,7 +10,7 @@ import { useQueries } from '@tanstack/react-query'
 import { formatDistanceToNow } from 'date-fns'
 import { ArrowLeft, Briefcase, Lock } from 'lucide-react'
 import { useState } from 'react'
-import { Navigate, useNavigate, useParams, useSearchParams } from 'react-router-dom'
+import { Link, Navigate, useNavigate, useParams, useSearchParams } from 'react-router-dom'
 
 import { MemberAvatar } from '@/components/member-avatar'
 import {
@@ -129,10 +129,7 @@ export default function HrApplicationReview() {
 		application ? `Review Application - ${application.characterName}` : 'Review Application'
 	)
 
-	// Handlers
-	const handleBackClick = () => {
-		navigate(`/corporations/${corporationId}/applications`)
-	}
+	const applicationsPath = `/corporations/${corporationId}/applications`
 
 	const handleAddNote = () => {
 		setAddNoteDialogOpen(true)
@@ -201,7 +198,7 @@ export default function HrApplicationReview() {
 					title="Failed to Load Application"
 					message={applicationError instanceof Error ? applicationError.message : 'An unexpected error occurred'}
 					backLabel="Back to Applications"
-					onBack={handleBackClick}
+					backHref={applicationsPath}
 				/>
 			</Container>
 		)
@@ -218,8 +215,10 @@ export default function HrApplicationReview() {
 						<CardDescription>This application doesn't exist or has been removed.</CardDescription>
 					</CardHeader>
 					<CardContent className="text-center">
-						<Button variant="ghost" onClick={handleBackClick}>
-							Back to Applications
+						<Button asChild variant="ghost">
+							<Link to={applicationsPath}>
+								Back to Applications
+							</Link>
 						</Button>
 					</CardContent>
 				</Card>
@@ -235,7 +234,7 @@ export default function HrApplicationReview() {
 					title="Invalid Application"
 					message="This application does not belong to the specified corporation."
 					backLabel="Back to Applications"
-					onBack={handleBackClick}
+					backHref={applicationsPath}
 				/>
 			</Container>
 		)
@@ -272,9 +271,11 @@ export default function HrApplicationReview() {
 					</BreadcrumbList>
 				</Breadcrumb>
 
-				<Button variant="ghost" onClick={handleBackClick}>
-					<ArrowLeft className="h-4 w-4" />
-					Back to Applications
+				<Button asChild variant="ghost">
+					<Link to={applicationsPath}>
+						<ArrowLeft className="h-4 w-4" />
+						Back to Applications
+					</Link>
 				</Button>
 			</div>
 
