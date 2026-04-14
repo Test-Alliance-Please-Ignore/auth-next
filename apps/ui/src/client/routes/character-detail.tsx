@@ -230,7 +230,6 @@ export default function CharacterDetailPage() {
 				<CharacterPrivateInfo
 					location={character.private.location}
 					wallet={character.private.wallet}
-					assets={character.private.assets}
 					status={character.private.status}
 				/>
 			)}
@@ -238,10 +237,7 @@ export default function CharacterDetailPage() {
 			<div className="grid gap-6 lg:grid-cols-2">
 				{/* Character Attributes */}
 				{character.public.attributes && (
-					<CharacterAttributes
-						attributes={character.public.attributes}
-						walletBalance={character.private?.wallet?.balance}
-					/>
+					<CharacterAttributes attributes={character.public.attributes} />
 				)}
 
 				{/* Corporation History */}

@@ -464,6 +464,89 @@ export class EveCharacterDataDO extends DurableObject<Env> implements EveCharact
 	}
 
 	/**
+	 * Fetch and store character location on-demand (requires token)
+	 * Called when the character detail page loads, not during daily sync
+	 */
+	async fetchLocation(characterId: string): Promise<void> {
+		const tokenStoreStub = getStub<EveTokenStore>(this.env.EVE_TOKEN_STORE, 'default')
+		const response = await tokenStoreStub.fetchEsi<{
+			solar_system_id: number
+			station_id?: number
+			structure_id?: number
+		}>(`/characters/${String(characterId)}/location`, String(characterId))
+
+		const solarSystemId = String(response.data.solar_system_id)
+		const stationId = response.data.station_id ? String(response.data.station_id) : null
+		const structureId = response.data.structure_id ? String(response.data.structure_id) : null
+
+		try {
+			await this.db
+				.insert(characterLocation)
+				.values({
+					characterId,
+					solarSystemId,
+					stationId,
+					structureId,
+					updatedAt: new Date(),
+				})
+				.onConflictDoUpdate({
+					target: characterLocation.characterId,
+					set: {
+						solarSystemId,
+						stationId,
+						structureId,
+						updatedAt: new Date(),
+					},
+				})
+		} catch (error) {
+			this.logDbOperationError('fetchLocation.upsert', characterId, error)
+			throw error
+		}
+	}
+
+	/**
+	 * Fetch and store character online status on-demand (requires token)
+	 * Called when the character detail page loads, not during daily sync
+	 */
+	async fetchStatus(characterId: string): Promise<void> {
+		const tokenStoreStub = getStub<EveTokenStore>(this.env.EVE_TOKEN_STORE, 'default')
+		const response = await tokenStoreStub.fetchEsi<{
+			last_login?: string
+			last_logout?: string
+			logins?: number
+			online: boolean
+		}>(`/characters/${String(characterId)}/online`, String(characterId))
+
+		const { online, last_login, last_logout, logins } = response.data
+
+		try {
+			await this.db
+				.insert(characterStatus)
+				.values({
+					characterId,
+					online,
+					lastLogin: last_login ? new Date(last_login) : null,
+					lastLogout: last_logout ? new Date(last_logout) : null,
+					loginsCount: logins ?? 0,
+					updatedAt: new Date(),
+				})
+				.onConflictDoUpdate({
+					target: characterStatus.characterId,
+					set: {
+						online,
+						lastLogin: last_login ? new Date(last_login) : null,
+						lastLogout: last_logout ? new Date(last_logout) : null,
+						loginsCount: logins ?? 0,
+						updatedAt: new Date(),
+					},
+				})
+		} catch (error) {
+			this.logDbOperationError('fetchStatus.upsert', characterId, error)
+			throw error
+		}
+	}
+
+	/**
 	 * Fetch character corporation roles
 	 * Returns null if the character doesn't have the required scope or an error occurs
 	 */

@@ -515,8 +515,22 @@ app.get('/:characterId', requireAuth(), async (c) => {
 
 		// Add sensitive data if user owns the character
 		if (isOwner) {
-			// Fetch sensitive data from DO (location, wallet, etc.)
-			// These would be fetched via authenticated ESI calls
+			// Fetch live location and status on-demand (volatile ESI data, not stored in daily sync)
+			await Promise.all([
+				eveCharacterData.fetchLocation().catch((err: unknown) => {
+					logger.warn('[Character Detail] Failed to fetch live location', {
+						characterId: characterIdStr,
+						error: err instanceof Error ? err.message : String(err),
+					})
+				}),
+				eveCharacterData.fetchStatus().catch((err: unknown) => {
+					logger.warn('[Character Detail] Failed to fetch live status', {
+						characterId: characterIdStr,
+						error: err instanceof Error ? err.message : String(err),
+					})
+				}),
+			])
+
 			const sensitiveData = await eveCharacterData.getSensitiveData()
 
 			if (sensitiveData) {
