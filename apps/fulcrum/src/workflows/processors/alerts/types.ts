@@ -11,6 +11,7 @@ export type AlertType =
     | 'large-isk-transfer'
     | 'data-fetch-failure'
     | 'corp-hopper'
+    | 'blacklist-association'
 
 export interface ReportAlert {
     id: string

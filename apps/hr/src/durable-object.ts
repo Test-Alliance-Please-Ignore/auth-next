@@ -653,6 +653,14 @@ export class HrDO extends DurableObject<Env> implements Hr {
 		return await this.blacklistService.getAllBlacklists(filters)
 	}
 
+	/**
+	 * Get all blacklisted character IDs
+	 * Used by Fulcrum for blacklist association alerts
+	 */
+	async getAllBlacklistedCharacterIds(): Promise<string[]> {
+		return await this.blacklistService.getAllBlacklistedCharacterIds()
+	}
+
 	// ==================== Message Template Methods ====================
 
 	/**
