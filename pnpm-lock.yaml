@@ -1345,6 +1345,9 @@ importers:
       '@repo/hono-helpers':
         specifier: workspace:*
         version: link:../../packages/hono-helpers
+      '@repo/hr':
+        specifier: workspace:*
+        version: link:../../packages/hr
       '@repo/universe':
         specifier: workspace:*
         version: link:../../packages/universe
