@@ -40,7 +40,7 @@ export default function AdminBillsDetailPage() {
 					</div>
 					<Button variant="ghost" asChild>
 						<Link to="/admin/bills">
-							<ArrowLeft className="mr-2 h-4 w-4" />
+							<ArrowLeft className="h-4 w-4" />
 							Back to Bills
 						</Link>
 					</Button>
@@ -61,7 +61,7 @@ export default function AdminBillsDetailPage() {
 					</div>
 					<Button variant="ghost" asChild>
 						<Link to="/admin/bills">
-							<ArrowLeft className="mr-2 h-4 w-4" />
+							<ArrowLeft className="h-4 w-4" />
 							Back to Bills
 						</Link>
 					</Button>
@@ -149,7 +149,7 @@ export default function AdminBillsDetailPage() {
 						</div>
 						<Button variant="ghost" asChild>
 							<Link to="/admin/bills">
-								<ArrowLeft className="mr-2 h-4 w-4" />
+								<ArrowLeft className="h-4 w-4" />
 								Back to Bills
 							</Link>
 						</Button>
@@ -176,13 +176,13 @@ export default function AdminBillsDetailPage() {
 					<div className="flex gap-2">
 						<Button variant="ghost" asChild>
 							<Link to={`/admin/bills/group/${bill.groupBillId}/edit`}>
-								<Edit className="mr-2 h-4 w-4" />
+								<Edit className="h-4 w-4" />
 								Edit Group
 							</Link>
 						</Button>
 						<Button variant="ghost" asChild>
 							<Link to="/admin/bills">
-								<ArrowLeft className="mr-2 h-4 w-4" />
+								<ArrowLeft className="h-4 w-4" />
 								Back to Bills
 							</Link>
 						</Button>
@@ -307,14 +307,14 @@ export default function AdminBillsDetailPage() {
 					{bill.status === 'draft' && (
 						<Button variant="ghost" asChild>
 							<Link to={`/admin/bills/${bill.id}/edit`}>
-								<Edit className="mr-2 h-4 w-4" />
+								<Edit className="h-4 w-4" />
 								Edit
 							</Link>
 						</Button>
 					)}
 					<Button variant="ghost" asChild>
 						<Link to="/admin/bills">
-							<ArrowLeft className="mr-2 h-4 w-4" />
+							<ArrowLeft className="h-4 w-4" />
 							Back to Bills
 						</Link>
 					</Button>

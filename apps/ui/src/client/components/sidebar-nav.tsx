@@ -416,7 +416,7 @@ export function SidebarNav({ onNavigate }: SidebarNavProps) {
 															'text-muted-foreground'
 														)}
 													>
-														{ChildIcon ? <ChildIcon className="h-4 w-4 flex-shrink-0" /> : null}
+														{ChildIcon ? <ChildIcon className="h-5 w-5 flex-shrink-0" /> : null}
 														<span className="flex-1">{child.label}</span>
 														<ExternalLink className="h-3 w-3 text-muted-foreground" />
 													</a>

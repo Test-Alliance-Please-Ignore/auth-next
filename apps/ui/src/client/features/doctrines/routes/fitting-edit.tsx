@@ -68,7 +68,7 @@ export default function FittingEditPage() {
 							</p>
 							<Button asChild variant="ghost">
 								<Link to="/doctrines">
-									<ArrowLeft className="h-4 w-4 mr-2" />
+									<ArrowLeft className="h-4 w-4" />
 									Back to Doctrines
 								</Link>
 							</Button>
@@ -83,7 +83,7 @@ export default function FittingEditPage() {
 		<Container>
 			<Button asChild variant="ghost" size="sm" className="mb-4">
 				<Link to={`/doctrines/fittings/${id}${doctrineId ? `?doctrineId=${doctrineId}` : ''}`}>
-					<ArrowLeft className="h-4 w-4 mr-2" />
+					<ArrowLeft className="h-4 w-4" />
 					Back to Fitting
 				</Link>
 			</Button>

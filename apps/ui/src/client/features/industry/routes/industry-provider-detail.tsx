@@ -185,7 +185,7 @@ export default function IndustryProviderDetailPage() {
 			<div className="space-y-6">
 				<div className="flex items-center gap-4">
 					<Button variant="ghost" onClick={() => navigate('/admin/industry-providers')}>
-						<ArrowLeft className="h-4 w-4 mr-2" />
+						<ArrowLeft className="h-4 w-4" />
 						Back
 					</Button>
 				</div>
@@ -199,7 +199,7 @@ export default function IndustryProviderDetailPage() {
 			<div className="space-y-6">
 				<div className="flex items-center gap-4">
 					<Button variant="ghost" onClick={() => navigate('/admin/industry-providers')}>
-						<ArrowLeft className="h-4 w-4 mr-2" />
+						<ArrowLeft className="h-4 w-4" />
 						Back
 					</Button>
 				</div>
@@ -214,7 +214,7 @@ export default function IndustryProviderDetailPage() {
 			<div className="flex items-center justify-between">
 				<div className="flex items-center gap-4">
 					<Button variant="ghost" onClick={() => navigate('/admin/industry-providers')}>
-						<ArrowLeft className="h-4 w-4 mr-2" />
+						<ArrowLeft className="h-4 w-4" />
 						Back
 					</Button>
 					<Button variant="ghost" size="sm" onClick={() => refetch()}>
@@ -224,12 +224,12 @@ export default function IndustryProviderDetailPage() {
 				<div className="flex items-center gap-2">
 					<Button variant="ghost" asChild>
 						<Link to={`/admin/industry-providers/${provider.id}/edit`}>
-							<Edit className="h-4 w-4 mr-2" />
+							<Edit className="h-4 w-4" />
 							Edit
 						</Link>
 					</Button>
 					<Button variant="destructive" onClick={() => setDeleteDialogOpen(true)}>
-						<Trash2 className="h-4 w-4 mr-2" />
+						<Trash2 className="h-4 w-4" />
 						Delete
 					</Button>
 				</div>
@@ -269,12 +269,12 @@ export default function IndustryProviderDetailPage() {
 						>
 							{provider.acceptingOrders ? (
 								<>
-									<PowerOff className="h-4 w-4 mr-2" />
+									<PowerOff className="h-4 w-4" />
 									Stop Accepting Orders
 								</>
 							) : (
 								<>
-									<Power className="h-4 w-4 mr-2" />
+									<Power className="h-4 w-4" />
 									Start Accepting Orders
 								</>
 							)}
@@ -331,7 +331,7 @@ export default function IndustryProviderDetailPage() {
 							onClick={() => setAddServiceDialogOpen(true)}
 							disabled={availableServiceTypes.length === 0}
 						>
-							<Plus className="h-4 w-4 mr-2" />
+							<Plus className="h-4 w-4" />
 							Add Service
 						</Button>
 					</div>
@@ -347,7 +347,7 @@ export default function IndustryProviderDetailPage() {
 						<div className="text-center py-8">
 							<p className="text-muted-foreground mb-4">No services added yet</p>
 							<Button onClick={() => setAddServiceDialogOpen(true)}>
-								<Plus className="h-4 w-4 mr-2" />
+								<Plus className="h-4 w-4" />
 								Add First Service
 							</Button>
 						</div>

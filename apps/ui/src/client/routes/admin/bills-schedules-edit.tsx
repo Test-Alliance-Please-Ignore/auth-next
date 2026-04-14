@@ -339,12 +339,12 @@ export default function AdminBillsSchedulesEditPage() {
 							onClick={() => setPauseDialogOpen(true)}
 							loading={pauseSchedule.isPending}
 						>
-							<Pause className="mr-2 h-4 w-4" />
+							<Pause className="h-4 w-4" />
 							Pause Schedule
 						</Button>
 					) : (
 						<Button variant="ghost" size="sm" onClick={() => setResumeDialogOpen(true)}>
-							<Play className="mr-2 h-4 w-4" />
+							<Play className="h-4 w-4" />
 							Resume Schedule
 						</Button>
 					)}
@@ -353,12 +353,12 @@ export default function AdminBillsSchedulesEditPage() {
 						onClick={() => setDeleteDialogOpen(true)}
 						loading={deleteSchedule.isPending}
 					>
-						<Trash2 className="mr-2 h-4 w-4" />
+						<Trash2 className="h-4 w-4" />
 						Delete
 					</Button>
 					<Button variant="ghost" asChild>
 						<Link to="/admin/bills/schedules">
-							<Calendar className="mr-2 h-4 w-4" />
+							<Calendar className="h-4 w-4" />
 							Back to Schedules
 						</Link>
 					</Button>

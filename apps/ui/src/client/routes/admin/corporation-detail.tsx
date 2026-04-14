@@ -336,7 +336,7 @@ export default function CorporationDetailPage() {
 				<p className="text-muted-foreground mt-2">This corporation may have been removed.</p>
 				<Button asChild className="mt-4">
 					<Link to="/admin/corporations">
-						<ArrowLeft className="mr-2 h-4 w-4" />
+						<ArrowLeft className="h-4 w-4" />
 						Back to Corporations
 					</Link>
 				</Button>
@@ -350,7 +350,7 @@ export default function CorporationDetailPage() {
 			{/* Back Button */}
 			<Button variant="ghost" asChild>
 				<Link to="/admin/corporations">
-					<ArrowLeft className="mr-2 h-4 w-4" />
+					<ArrowLeft className="h-4 w-4" />
 					Back to Corporations
 				</Link>
 			</Button>
@@ -364,7 +364,7 @@ export default function CorporationDetailPage() {
 				<div className="flex gap-2">
 					{corporation.assignedCharacterId && (
 						<Button onClick={handleVerify} disabled={verifyAccess.isPending}>
-							<Shield className="mr-2 h-4 w-4" />
+							<Shield className="h-4 w-4" />
 							{verifyAccess.isPending ? 'Verifying...' : 'Verify Access'}
 						</Button>
 					)}
@@ -599,7 +599,7 @@ export default function CorporationDetailPage() {
 										}}
 									>
 										<RefreshCw
-											className={`mr-2 h-4 w-4 ${refreshCorporationDiscord.isPending ? 'animate-spin' : ''}`}
+											className={`h-4 w-4 ${refreshCorporationDiscord.isPending ? 'animate-spin' : ''}`}
 										/>
 										Refresh All Members
 									</Button>
@@ -608,7 +608,7 @@ export default function CorporationDetailPage() {
 										disabled={discordServers.length === 0}
 										size="sm"
 									>
-										<Plus className="mr-2 h-4 w-4" />
+										<Plus className="h-4 w-4" />
 										Attach Server
 									</Button>
 								</div>
@@ -840,7 +840,7 @@ export default function CorporationDetailPage() {
 											disabled={!selectedServerId}
 											showIcon={false}
 										>
-											<Plus className="mr-2 h-4 w-4" />
+											<Plus className="h-4 w-4" />
 											Attach
 										</Button>
 									</DialogFooter>
@@ -948,7 +948,7 @@ export default function CorporationDetailPage() {
 									disabled={fetchData.isPending || !corporation.assignedCharacterId}
 									className="w-full justify-start"
 								>
-									<Database className="mr-2 h-4 w-4" />
+									<Database className="h-4 w-4" />
 									Fetch All Data
 								</Button>
 								<Button
@@ -957,7 +957,7 @@ export default function CorporationDetailPage() {
 									disabled={fetchData.isPending}
 									className="w-full justify-start"
 								>
-									<Building2 className="mr-2 h-4 w-4" />
+									<Building2 className="h-4 w-4" />
 									Fetch Public Data
 								</Button>
 								<Button
@@ -966,7 +966,7 @@ export default function CorporationDetailPage() {
 									disabled={fetchData.isPending || !corporation.assignedCharacterId}
 									className="w-full justify-start"
 								>
-									<Users className="mr-2 h-4 w-4" />
+									<Users className="h-4 w-4" />
 									Fetch Members & Tracking
 								</Button>
 								<Button
@@ -975,7 +975,7 @@ export default function CorporationDetailPage() {
 									disabled={fetchData.isPending || !corporation.assignedCharacterId}
 									className="w-full justify-start"
 								>
-									<Wallet className="mr-2 h-4 w-4" />
+									<Wallet className="h-4 w-4" />
 									Fetch Financial Data
 								</Button>
 								<Button
@@ -984,7 +984,7 @@ export default function CorporationDetailPage() {
 									disabled={fetchData.isPending || !corporation.assignedCharacterId}
 									className="w-full justify-start"
 								>
-									<Package className="mr-2 h-4 w-4" />
+									<Package className="h-4 w-4" />
 									Fetch Assets & Structures
 								</Button>
 								<Button
@@ -993,7 +993,7 @@ export default function CorporationDetailPage() {
 									disabled={fetchData.isPending || !corporation.assignedCharacterId}
 									className="w-full justify-start"
 								>
-									<TrendingUp className="mr-2 h-4 w-4" />
+									<TrendingUp className="h-4 w-4" />
 									Fetch Market Data
 								</Button>
 								<Button
@@ -1002,7 +1002,7 @@ export default function CorporationDetailPage() {
 									disabled={fetchData.isPending || !corporation.assignedCharacterId}
 									className="w-full justify-start"
 								>
-									<Skull className="mr-2 h-4 w-4" />
+									<Skull className="h-4 w-4" />
 									Fetch Killmails
 								</Button>
 							</div>
@@ -1023,7 +1023,7 @@ export default function CorporationDetailPage() {
 									</CardDescription>
 								</div>
 								<Button onClick={() => setShowAttachPermissionDialog(true)}>
-									<Plus className="mr-2 h-4 w-4" />
+									<Plus className="h-4 w-4" />
 									Attach Permission
 								</Button>
 							</div>

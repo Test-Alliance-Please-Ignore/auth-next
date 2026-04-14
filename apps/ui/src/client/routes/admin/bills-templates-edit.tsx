@@ -251,7 +251,7 @@ export default function AdminBillsTemplatesEditPage() {
 							setCloneDialogOpen(true)
 						}}
 					>
-						<Copy className="mr-2 h-4 w-4" />
+						<Copy className="h-4 w-4" />
 						Clone
 					</Button>
 					<Button variant="destructive"
@@ -259,12 +259,12 @@ export default function AdminBillsTemplatesEditPage() {
 						onClick={() => setDeleteDialogOpen(true)}
 						loading={deleteTemplate.isPending}
 					>
-						<Trash2 className="mr-2 h-4 w-4" />
+						<Trash2 className="h-4 w-4" />
 						Delete
 					</Button>
 					<Button variant="ghost" asChild>
 						<Link to="/admin/bills/templates">
-							<FileText className="mr-2 h-4 w-4" />
+							<FileText className="h-4 w-4" />
 							Back to Templates
 						</Link>
 					</Button>

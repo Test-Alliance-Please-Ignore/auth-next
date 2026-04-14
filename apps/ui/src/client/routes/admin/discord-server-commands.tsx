@@ -145,12 +145,12 @@ export default function AdminDiscordServerCommandsPage() {
 				<div className="flex items-center gap-2">
 					<Button asChild variant="ghost">
 						<Link to="/admin/discord-servers">
-							<ArrowLeft className="mr-2 h-4 w-4" />
+							<ArrowLeft className="h-4 w-4" />
 							Back to Servers
 						</Link>
 					</Button>
 					<Button variant="ghost" onClick={handleResyncCommands} disabled={resyncing}>
-						<RefreshCw className={`mr-2 h-4 w-4 ${resyncing ? 'animate-spin' : ''}`} />
+						<RefreshCw className={`h-4 w-4 ${resyncing ? 'animate-spin' : ''}`} />
 						Resync Commands
 					</Button>
 					<Button
@@ -161,7 +161,7 @@ export default function AdminDiscordServerCommandsPage() {
 						}}
 						disabled={availableCommands.length === 0}
 					>
-						<Plus className="mr-2 h-4 w-4" />
+						<Plus className="h-4 w-4" />
 						Add Command
 					</Button>
 				</div>

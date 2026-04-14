@@ -133,7 +133,7 @@ export default function HrRolesManagement() {
 					<CardContent className="text-center">
 						<Button variant="ghost" asChild>
 							<Link to="/corporations">
-								<ArrowLeft className="mr-2 h-4 w-4" />
+								<ArrowLeft className="h-4 w-4" />
 								Return to Corporations
 							</Link>
 						</Button>
@@ -160,7 +160,7 @@ export default function HrRolesManagement() {
 					<CardContent className="text-center">
 						<Button variant="ghost" asChild>
 							<Link to={`/corporations/${corporationId}/members`}>
-								<ArrowLeft className="mr-2 h-4 w-4" />
+								<ArrowLeft className="h-4 w-4" />
 								Return to Manage Corporation
 							</Link>
 						</Button>
@@ -263,7 +263,7 @@ export default function HrRolesManagement() {
 					</div>
 					<Button variant="ghost" asChild>
 						<Link to={`/corporations/${corporationId}/members`}>
-							<ArrowLeft className="mr-2 h-4 w-4" />
+							<ArrowLeft className="h-4 w-4" />
 							Back to Manage Corporation
 						</Link>
 					</Button>

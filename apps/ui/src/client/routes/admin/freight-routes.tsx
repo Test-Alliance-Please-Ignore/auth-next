@@ -77,7 +77,7 @@ export default function AdminFreightRoutesPage() {
 				</div>
 				<Button asChild>
 					<Link to="/admin/freight-routes/new">
-						<Plus className="mr-2 h-4 w-4" />
+						<Plus className="h-4 w-4" />
 						Create Route
 					</Link>
 				</Button>
@@ -134,7 +134,7 @@ export default function AdminFreightRoutesPage() {
 							<p className="text-muted-foreground mb-4">No freight routes found</p>
 							<Button asChild>
 								<Link to="/admin/freight-routes/new">
-									<Plus className="mr-2 h-4 w-4" />
+									<Plus className="h-4 w-4" />
 									Create Your First Route
 								</Link>
 							</Button>

@@ -216,7 +216,7 @@ export default function CorporationsPage() {
 					</p>
 				</div>
 				<Button onClick={() => setCreateDialogOpen(true)}>
-					<Plus className="mr-2 h-4 w-4" />
+					<Plus className="h-4 w-4" />
 					Add Corporation
 				</Button>
 			</div>
@@ -250,7 +250,7 @@ export default function CorporationsPage() {
 						</div>
 						{hasActiveFilters && (
 							<Button variant="ghost" size="sm" onClick={clearFilters}>
-								<X className="mr-2 h-4 w-4" />
+								<X className="h-4 w-4" />
 								Clear Filters
 							</Button>
 						)}

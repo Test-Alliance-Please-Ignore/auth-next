@@ -239,7 +239,7 @@ export default function AdminBillsSchedulesNewPage() {
 				</div>
 				<Button variant="ghost" asChild>
 					<Link to="/admin/bills/schedules">
-						<Calendar className="mr-2 h-4 w-4" />
+						<Calendar className="h-4 w-4" />
 						Back to Schedules
 					</Link>
 				</Button>

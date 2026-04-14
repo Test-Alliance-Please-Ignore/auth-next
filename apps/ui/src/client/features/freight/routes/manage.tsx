@@ -102,7 +102,7 @@ export default function FreightManagePage() {
 				<div className="flex gap-2">
 					<Button variant="primary" asChild>
 						<Link to="/freight/manage/new">
-							<Plus className="mr-2 h-4 w-4" />
+							<Plus className="h-4 w-4" />
 							Create Route
 						</Link>
 					</Button>
@@ -160,7 +160,7 @@ export default function FreightManagePage() {
 							<p className="text-muted-foreground mb-4">No freight routes found</p>
 							<Button asChild>
 								<Link to="/freight/manage/new">
-									<Plus className="mr-2 h-4 w-4" />
+									<Plus className="h-4 w-4" />
 									Create Your First Route
 								</Link>
 							</Button>

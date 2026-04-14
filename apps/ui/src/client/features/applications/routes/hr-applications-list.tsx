@@ -174,7 +174,7 @@ export default function HrApplicationsList() {
 					</CardHeader>
 					<CardContent className="text-center">
 						<Button variant="ghost" onClick={() => navigate(rootCorporationsPath)}>
-							<ArrowLeft className="mr-2 h-4 w-4" />
+							<ArrowLeft className="h-4 w-4" />
 							Back to {rootCorporationsLabel}
 						</Button>
 					</CardContent>
@@ -240,7 +240,7 @@ export default function HrApplicationsList() {
 						variant="ghost"
 						onClick={() => navigate(showMembersNavigation ? membersPath : '/corporations')}
 					>
-						<ArrowLeft className="mr-2 h-4 w-4" />
+						<ArrowLeft className="h-4 w-4" />
 						{showMembersNavigation ? 'Back to Members' : 'Back to Corporations'}
 					</Button>
 				}

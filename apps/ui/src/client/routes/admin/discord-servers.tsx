@@ -143,7 +143,7 @@ export default function AdminDiscordServersPage() {
 					</p>
 				</div>
 				<Button onClick={() => setCreateServerDialogOpen(true)}>
-					<Plus className="mr-2 h-4 w-4" />
+					<Plus className="h-4 w-4" />
 					Add Server
 				</Button>
 			</div>
@@ -173,7 +173,7 @@ export default function AdminDiscordServersPage() {
 							Add a Discord server to the registry to get started.
 						</p>
 						<Button onClick={() => setCreateServerDialogOpen(true)} className="mt-4">
-							<Plus className="mr-2 h-4 w-4" />
+							<Plus className="h-4 w-4" />
 							Add Server
 						</Button>
 					</CardContent>
@@ -222,13 +222,13 @@ export default function AdminDiscordServersPage() {
 								<div className="grid grid-cols-2 gap-2">
 									<Button asChild variant="ghost" size="sm">
 										<Link to={`/admin/discord-servers/${server.id}/roles`}>
-											<Settings2 className="mr-2 h-4 w-4" />
+											<Settings2 className="h-4 w-4" />
 											Roles
 										</Link>
 									</Button>
 									<Button asChild variant="ghost" size="sm">
 										<Link to={`/admin/discord-servers/${server.id}/commands`}>
-											<MessageSquare className="mr-2 h-4 w-4" />
+											<MessageSquare className="h-4 w-4" />
 											Commands
 										</Link>
 									</Button>

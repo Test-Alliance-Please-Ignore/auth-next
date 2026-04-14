@@ -147,7 +147,7 @@ export function TransferOwnershipDialog({
 						loadingText="Transferring..."
 						showIcon={false}
 					>
-						<UserCog className="mr-2 h-4 w-4" />
+						<UserCog className="h-4 w-4" />
 						Transfer Ownership
 					</Button>
 				</DialogFooter>

@@ -88,7 +88,7 @@ export default function BroadcastDetailPage() {
 						<p className="text-destructive font-medium">Broadcast not found</p>
 						<Button variant="ghost" className="mt-4" asChild>
 							<Link to="/broadcasts">
-								<ArrowLeft className="mr-2 h-4 w-4" />
+								<ArrowLeft className="h-4 w-4" />
 								Back to Broadcasts
 							</Link>
 						</Button>
@@ -145,7 +145,7 @@ export default function BroadcastDetailPage() {
 					<div className="flex items-center justify-between gap-3">
 						<Button variant="ghost" size="sm" asChild>
 							<Link to="/broadcasts">
-								<ArrowLeft className="mr-2 h-4 w-4" />
+								<ArrowLeft className="h-4 w-4" />
 								Back to Broadcasts
 							</Link>
 						</Button>
@@ -168,7 +168,7 @@ export default function BroadcastDetailPage() {
 									loadingText="Sending..."
 									showIcon={false}
 								>
-									<Send className="mr-2 h-4 w-4" />
+									<Send className="h-4 w-4" />
 									Send Now
 								</Button>
 							)}
@@ -179,7 +179,7 @@ export default function BroadcastDetailPage() {
 									onClick={() => navigate(`/broadcasts/new?draftId=${broadcast.id}`)}
 									showIcon={false}
 								>
-									<Edit3 className="mr-2 h-4 w-4" />
+									<Edit3 className="h-4 w-4" />
 									Edit Draft
 								</Button>
 							)}
@@ -190,7 +190,7 @@ export default function BroadcastDetailPage() {
 									onClick={() => setRescindDialogOpen(true)}
 									showIcon={false}
 								>
-									<Ban className="mr-2 h-4 w-4" />
+									<Ban className="h-4 w-4" />
 									Rescind
 								</Button>
 							)}
@@ -202,7 +202,7 @@ export default function BroadcastDetailPage() {
 									disabled={deleteBroadcast.isPending}
 									showIcon={false}
 								>
-									<Trash2 className="mr-2 h-4 w-4" />
+									<Trash2 className="h-4 w-4" />
 									Delete
 								</Button>
 							)}
@@ -355,7 +355,7 @@ export default function BroadcastDetailPage() {
 										loadingText="Deleting..."
 										showIcon={false}
 									>
-										<Trash2 className="mr-2 h-4 w-4" />
+										<Trash2 className="h-4 w-4" />
 										Delete
 									</Button>
 								</DialogFooter>

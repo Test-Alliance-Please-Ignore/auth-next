@@ -55,7 +55,7 @@ export function LeaveButton({ group, onSuccess }: LeaveButtonProps) {
 	return (
 		<>
 			<Button variant="destructive" onClick={() => setConfirmOpen(true)}>
-				<LogOut className="mr-2 h-4 w-4" />
+				<LogOut className="h-4 w-4" />
 				Leave Group
 			</Button>
 

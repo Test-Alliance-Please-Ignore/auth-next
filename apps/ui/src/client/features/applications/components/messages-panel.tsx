@@ -216,7 +216,7 @@ export function MessagesPanel({
 									{sendMutation.isPending ? (
 										<LoadingSpinner size="sm" className="mr-2" />
 									) : (
-										<Send className="h-4 w-4 mr-2" />
+										<Send className="h-4 w-4" />
 									)}
 									Send Message
 								</Button>

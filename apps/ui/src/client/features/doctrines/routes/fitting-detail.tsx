@@ -80,7 +80,7 @@ export default function FittingDetailPage() {
 							</p>
 							<Button asChild variant="ghost">
 								<Link to="/doctrines">
-									<ArrowLeft className="h-4 w-4 mr-2" />
+									<ArrowLeft className="h-4 w-4" />
 									Back to Doctrines
 								</Link>
 							</Button>
@@ -95,7 +95,7 @@ export default function FittingDetailPage() {
 		<Container>
 			<Button asChild variant="ghost" size="sm" className="mb-4">
 				<Link to={doctrineId ? `/doctrines/${doctrineId}` : '/doctrines'}>
-					<ArrowLeft className="h-4 w-4 mr-2" />
+					<ArrowLeft className="h-4 w-4" />
 					{doctrineId ? 'Back to Doctrine' : 'Back to Doctrines'}
 				</Link>
 			</Button>
@@ -107,7 +107,7 @@ export default function FittingDetailPage() {
 					canManage && (
 						<Button asChild variant="ghost">
 							<Link to={`/doctrines/fittings/${id}/edit${doctrineId ? `?doctrineId=${doctrineId}` : ''}`}>
-								<Edit className="h-4 w-4 mr-2" />
+								<Edit className="h-4 w-4" />
 								Edit
 							</Link>
 						</Button>
@@ -153,7 +153,7 @@ export default function FittingDetailPage() {
 						<div className="pt-2 space-y-2">
 							<div>
 								<Button variant="ghost" size="sm" onClick={handleCopyEft}>
-									<ClipboardCopy className="h-4 w-4 mr-2" />
+									<ClipboardCopy className="h-4 w-4" />
 									{copied ? 'Copied!' : 'Copy EFT'}
 								</Button>
 							</div>
@@ -178,7 +178,7 @@ export default function FittingDetailPage() {
 										loading={saveMutation.isPending}
 										loadingText="Saving..."
 									>
-										<Gamepad2 className="h-4 w-4 mr-2" />
+										<Gamepad2 className="h-4 w-4" />
 										Save In-Game
 									</Button>
 								</div>

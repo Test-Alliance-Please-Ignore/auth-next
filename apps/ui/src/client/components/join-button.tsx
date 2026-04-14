@@ -68,7 +68,7 @@ export function JoinButton({ group, onSuccess }: JoinButtonProps) {
 	if (group.hasPendingJoinRequest) {
 		return (
 			<Button disabled variant="ghost">
-				<Clock className="mr-2 h-4 w-4" />
+				<Clock className="h-4 w-4" />
 				Request Pending
 			</Button>
 		)
@@ -85,7 +85,7 @@ export function JoinButton({ group, onSuccess }: JoinButtonProps) {
 	return (
 		<>
 			<Button onClick={handleJoinOpen} disabled={isLoading}>
-				<UserPlus className="mr-2 h-4 w-4" />
+				<UserPlus className="h-4 w-4" />
 				{group.joinMode === 'open' ? 'Join Group' : 'Request to Join'}
 			</Button>
 
@@ -121,7 +121,7 @@ export function JoinButton({ group, onSuccess }: JoinButtonProps) {
 							loadingText="Sending..."
 							showIcon={false}
 						>
-							<Send className="mr-2 h-4 w-4" />
+							<Send className="h-4 w-4" />
 							Send Request
 						</Button>
 					</DialogFooter>

@@ -572,7 +572,7 @@ export default function GroupDetailPage() {
 					<p className="text-destructive font-medium">Group not found</p>
 					<Button variant="ghost" className="mt-4" asChild>
 						<Link to="/admin/groups">
-							<ArrowLeft className="mr-2 h-4 w-4" />
+							<ArrowLeft className="h-4 w-4" />
 							Back to Groups
 						</Link>
 					</Button>
@@ -590,7 +590,7 @@ export default function GroupDetailPage() {
 			{/* Back Button */}
 			<Button variant="ghost" size="sm" asChild>
 				<Link to="/admin/groups">
-					<ArrowLeft className="mr-2 h-4 w-4" />
+					<ArrowLeft className="h-4 w-4" />
 					Back to Groups
 				</Link>
 			</Button>
@@ -624,19 +624,19 @@ export default function GroupDetailPage() {
 				<CardContent>
 					<div className="flex flex-wrap gap-2">
 						<Button variant="primary" size="sm" onClick={() => setEditGroupDialogOpen(true)}>
-							<Settings className="mr-2 h-4 w-4" />
+							<Settings className="h-4 w-4" />
 							Edit Group
 						</Button>
 						<Button variant="ghost" size="sm" onClick={() => setEditNameDialogOpen(true)}>
-							<Pencil className="mr-2 h-4 w-4" />
+							<Pencil className="h-4 w-4" />
 							Edit Name
 						</Button>
 						<Button variant="ghost" size="sm" onClick={() => setEditDescriptionDialogOpen(true)}>
-							<Pencil className="mr-2 h-4 w-4" />
+							<Pencil className="h-4 w-4" />
 							Edit Description
 						</Button>
 						<Button variant="ghost" size="sm" onClick={() => setReassignCategoryDialogOpen(true)}>
-							<FolderEdit className="mr-2 h-4 w-4" />
+							<FolderEdit className="h-4 w-4" />
 							Reassign Category
 						</Button>
 					</div>
@@ -690,7 +690,7 @@ export default function GroupDetailPage() {
 							</CardDescription>
 						</div>
 						<Button onClick={() => setShowCreateInviteCodeDialog(true)} size="sm">
-							<Plus className="mr-2 h-4 w-4" />
+							<Plus className="h-4 w-4" />
 							Create Code
 						</Button>
 					</div>
@@ -876,7 +876,7 @@ export default function GroupDetailPage() {
 							disabled={discordServers.length === 0}
 							size="sm"
 						>
-							<Plus className="mr-2 h-4 w-4" />
+							<Plus className="h-4 w-4" />
 							Attach Server
 						</Button>
 					</div>
@@ -1107,7 +1107,7 @@ export default function GroupDetailPage() {
 									disabled={!selectedServerId}
 									showIcon={false}
 								>
-									<Plus className="mr-2 h-4 w-4" />
+									<Plus className="h-4 w-4" />
 									Attach
 								</Button>
 							</DialogFooter>
@@ -1135,11 +1135,11 @@ export default function GroupDetailPage() {
 								size="sm"
 								variant="ghost"
 							>
-								<Plus className="mr-2 h-4 w-4" />
+								<Plus className="h-4 w-4" />
 								Custom
 							</Button>
 							<Button onClick={() => setShowAttachPermissionDialog(true)} size="sm">
-								<Plus className="mr-2 h-4 w-4" />
+								<Plus className="h-4 w-4" />
 								Attach Global
 							</Button>
 						</div>
@@ -1290,7 +1290,7 @@ export default function GroupDetailPage() {
 								}}
 								size="sm"
 							>
-								<Trash2 className="mr-2 h-4 w-4" />
+								<Trash2 className="h-4 w-4" />
 								Delete Group
 							</Button>
 						</div>
@@ -1326,7 +1326,7 @@ export default function GroupDetailPage() {
 							loadingText="Removing..."
 							showIcon={false}
 						>
-							<UserMinus className="mr-2 h-4 w-4" />
+							<UserMinus className="h-4 w-4" />
 							Remove Member
 						</Button>
 					</DialogFooter>
@@ -1363,7 +1363,7 @@ export default function GroupDetailPage() {
 								loadingText="Removing..."
 								showIcon={false}
 							>
-								<ShieldOff className="mr-2 h-4 w-4" />
+								<ShieldOff className="h-4 w-4" />
 								Remove Admin
 							</Button>
 						) : (
@@ -1374,7 +1374,7 @@ export default function GroupDetailPage() {
 								loadingText="Promoting..."
 								showIcon={false}
 							>
-								<Shield className="mr-2 h-4 w-4" />
+								<Shield className="h-4 w-4" />
 								Make Admin
 							</Button>
 						)}

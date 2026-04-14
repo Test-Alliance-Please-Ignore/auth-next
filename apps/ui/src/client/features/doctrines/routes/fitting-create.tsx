@@ -83,7 +83,7 @@ export default function FittingCreatePage() {
 		<Container>
 			<Button asChild variant="ghost" size="sm" className="mb-4">
 				<Link to={doctrineId ? `/doctrines/${doctrineId}` : '/doctrines'}>
-					<ArrowLeft className="h-4 w-4 mr-2" />
+					<ArrowLeft className="h-4 w-4" />
 					{doctrineId ? 'Back to Doctrine' : 'Back to Doctrines'}
 				</Link>
 			</Button>

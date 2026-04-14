@@ -175,7 +175,7 @@ export default function HrAuditorUserProfilePage() {
 					<CardContent className="text-center">
 						<Button variant="ghost" asChild>
 							<Link to={backTarget}>
-								<ArrowLeft className="mr-2 h-4 w-4" />
+								<ArrowLeft className="h-4 w-4" />
 								{backLabel}
 							</Link>
 						</Button>
@@ -262,7 +262,7 @@ export default function HrAuditorUserProfilePage() {
 				</Breadcrumb>
 				<Button variant="ghost" asChild>
 					<Link to={backTarget}>
-						<ArrowLeft className="mr-2 h-4 w-4" />
+						<ArrowLeft className="h-4 w-4" />
 						{backLabel}
 					</Link>
 				</Button>
@@ -331,7 +331,7 @@ export default function HrAuditorUserProfilePage() {
 
 					<Button variant="ghost" asChild className="w-full">
 						<Link to={`/hr/auditor/users/${userDetails.id}/groups`}>
-							<Users className="mr-2 h-4 w-4" />
+							<Users className="h-4 w-4" />
 							View Group Memberships
 						</Link>
 					</Button>

@@ -409,7 +409,7 @@ export default function HrMemberProfile() {
 							You don't have HR permissions for this corporation.
 						</p>
 						<Button variant="ghost" onClick={() => navigate(rootCorporationsPath)}>
-							<ArrowLeft className="mr-2 h-4 w-4" />
+							<ArrowLeft className="h-4 w-4" />
 							Back to {rootCorporationsLabel}
 						</Button>
 					</CardContent>
@@ -459,7 +459,7 @@ export default function HrMemberProfile() {
 							variant="ghost"
 							onClick={() => navigate(`/corporations/${corporationId}/members`)}
 						>
-							<ArrowLeft className="mr-2 h-4 w-4" />
+							<ArrowLeft className="h-4 w-4" />
 							Back to Members
 						</Button>
 					</CardContent>
@@ -495,7 +495,7 @@ export default function HrMemberProfile() {
 					variant="ghost"
 					onClick={() => navigate(`/corporations/${corporationId}/members`)}
 				>
-					<ArrowLeft className="mr-2 h-4 w-4" />
+					<ArrowLeft className="h-4 w-4" />
 					Back
 				</Button>
 			</div>

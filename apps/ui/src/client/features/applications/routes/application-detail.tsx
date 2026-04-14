@@ -212,7 +212,7 @@ export default function ApplicationDetail() {
 					</CardHeader>
 					<CardContent className="text-center">
 						<Button variant="ghost" onClick={handleBackClick}>
-							<ArrowLeft className="mr-2 h-4 w-4" />
+							<ArrowLeft className="h-4 w-4" />
 							Back to My Applications
 						</Button>
 					</CardContent>

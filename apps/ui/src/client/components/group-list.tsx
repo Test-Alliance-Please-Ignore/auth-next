@@ -77,7 +77,7 @@ const GroupRow = memo(
 					<div className="flex items-center justify-end gap-2">
 						{group.joinMode === 'open' && !group.isMember && (
 							<Button variant="primary" size="sm" disabled={isJoining} onClick={handleJoinClick}>
-								<UserPlus className="mr-2 h-4 w-4" />
+								<UserPlus className="h-4 w-4" />
 								{isJoining ? 'Joining...' : 'Quick Join'}
 							</Button>
 						)}
@@ -205,7 +205,7 @@ export const GroupList = memo(function GroupList({
 													})
 												}}
 											>
-												<UserPlus className="mr-2 h-4 w-4" />
+												<UserPlus className="h-4 w-4" />
 												{joinGroup.isPending ? 'Joining...' : 'Quick Join'}
 											</Button>
 										) : (

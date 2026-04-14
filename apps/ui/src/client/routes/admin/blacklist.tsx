@@ -220,7 +220,7 @@ export default function BlacklistPage() {
 					</p>
 				</div>
 				<Button onClick={() => setAddDialogOpen(true)}>
-					<Plus className="mr-2 h-4 w-4" />
+					<Plus className="h-4 w-4" />
 					Add to Blacklist
 				</Button>
 			</div>
@@ -307,7 +307,7 @@ export default function BlacklistPage() {
 						<div className="mt-4 flex items-center justify-between">
 							<p className="text-sm text-muted-foreground">Active filters applied</p>
 							<Button variant="ghost" size="sm" onClick={clearFilters}>
-								<X className="mr-2 h-4 w-4" />
+								<X className="h-4 w-4" />
 								Clear Filters
 							</Button>
 						</div>
@@ -351,7 +351,7 @@ export default function BlacklistPage() {
 							</p>
 							{!hasActiveFilters && (
 								<Button className="mt-4" onClick={() => setAddDialogOpen(true)}>
-									<Plus className="mr-2 h-4 w-4" />
+									<Plus className="h-4 w-4" />
 									Add First Entry
 								</Button>
 							)}

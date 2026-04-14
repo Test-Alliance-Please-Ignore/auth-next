@@ -169,7 +169,7 @@ export default function SkillPlanEdit() {
 				<div className="flex justify-between items-center mb-6">
 					<Button variant="ghost" asChild>
 						<Link to={`/skill-plans/${id}`}>
-							<ArrowLeft className="h-4 w-4 mr-2" />
+							<ArrowLeft className="h-4 w-4" />
 							Back to Plan
 						</Link>
 					</Button>
@@ -218,7 +218,7 @@ export default function SkillPlanEdit() {
 										onClick={() => setShowImporter(true)}
 										disabled={addSkill.isPending}
 									>
-										<Upload className="h-4 w-4 mr-2" />
+										<Upload className="h-4 w-4" />
 										Import from EVEMon
 									</Button>
 								</CardHeader>

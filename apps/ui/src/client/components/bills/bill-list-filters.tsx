@@ -201,12 +201,12 @@ export function BillListFilters(props: {
 							>
 								{props.coalesced ? (
 									<>
-										<LayoutList className="mr-2 h-4 w-4" />
+										<LayoutList className="h-4 w-4" />
 										Uncoalesced
 									</>
 								) : (
 									<>
-										<Layers className="mr-2 h-4 w-4" />
+										<Layers className="h-4 w-4" />
 										Coalesced
 									</>
 								)}

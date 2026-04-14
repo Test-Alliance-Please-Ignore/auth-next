@@ -67,7 +67,7 @@ export default function MySkillPlans() {
 						{user?.is_admin && (
 							<Button variant="ghost" asChild>
 								<Link to="/skill-plans/categories/manage">
-									<Settings className="h-4 w-4 mr-2" />
+									<Settings className="h-4 w-4" />
 									Manage Categories
 								</Link>
 							</Button>
@@ -77,7 +77,7 @@ export default function MySkillPlans() {
 						</Button>
 						<Button asChild>
 							<Link to="/skill-plans/create">
-								<Plus className="h-4 w-4 mr-2" />
+								<Plus className="h-4 w-4" />
 								Create New Plan
 							</Link>
 						</Button>
@@ -107,7 +107,7 @@ export default function MySkillPlans() {
 							<p className="text-muted-foreground mb-4">You haven't created any skill plans yet.</p>
 							<Button asChild>
 								<Link to="/skill-plans/create">
-									<Plus className="h-4 w-4 mr-2" />
+									<Plus className="h-4 w-4" />
 									Create Your First Plan
 								</Link>
 							</Button>

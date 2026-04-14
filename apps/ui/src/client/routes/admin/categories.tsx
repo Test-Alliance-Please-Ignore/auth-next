@@ -110,7 +110,7 @@ export default function CategoriesPage() {
 					<p className="text-muted-foreground mt-1">Organize groups into categories</p>
 				</div>
 				<Button onClick={() => setCreateDialogOpen(true)}>
-					<Plus className="mr-2 h-4 w-4" />
+					<Plus className="h-4 w-4" />
 					Create Category
 				</Button>
 			</div>
@@ -208,7 +208,7 @@ export default function CategoriesPage() {
 							loadingText="Deleting..."
 							showIcon={false}
 						>
-							<Trash2 className="mr-2 h-4 w-4" />
+							<Trash2 className="h-4 w-4" />
 							Delete
 						</Button>
 					</DialogFooter>

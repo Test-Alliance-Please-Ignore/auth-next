@@ -198,7 +198,7 @@ export default function CharacterDetailPage() {
 								disabled={refreshCharacter.isPending}
 							>
 								<RefreshCw
-									className={`h-4 w-4 mr-2 ${refreshCharacter.isPending ? 'animate-spin' : ''}`}
+									className={`h-4 w-4 ${refreshCharacter.isPending ? 'animate-spin' : ''}`}
 								/>
 								{refreshCharacter.isPending ? 'Refreshing...' : 'Refresh'}
 							</Button>
@@ -281,7 +281,7 @@ export default function CharacterDetailPage() {
 								disabled={refreshCharacter.isPending}
 							>
 								<RefreshCw
-									className={`h-4 w-4 mr-2 ${refreshCharacter.isPending ? 'animate-spin' : ''}`}
+									className={`h-4 w-4 ${refreshCharacter.isPending ? 'animate-spin' : ''}`}
 								/>
 								{refreshCharacter.isPending ? 'Refreshing...' : 'Refresh Character Data'}
 							</Button>

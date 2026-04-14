@@ -232,7 +232,7 @@ export default function TaxAlertsPage() {
 							onClick={() => retryMutation.mutate(100)}
 							disabled={retryMutation.isPending}
 						>
-							<RefreshCcw className="mr-2 h-4 w-4" />
+							<RefreshCcw className="h-4 w-4" />
 							Retry Failed Deliveries
 						</Button>
 					) : undefined

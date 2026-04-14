@@ -123,7 +123,7 @@ export default function CategoriesManagement() {
 				<div className="flex justify-between items-center mb-6">
 					<h2 className="text-xl font-semibold">Categories ({sortedCategories.length})</h2>
 					<Button onClick={() => setShowCreateDialog(true)}>
-						<Plus className="h-4 w-4 mr-2" />
+						<Plus className="h-4 w-4" />
 						New Category
 					</Button>
 				</div>
@@ -182,7 +182,7 @@ export default function CategoriesManagement() {
 								<Settings className="h-12 w-12 mx-auto mb-4 opacity-20" />
 								<p>No categories have been created yet.</p>
 								<Button className="mt-4" onClick={() => setShowCreateDialog(true)}>
-									<Plus className="h-4 w-4 mr-2" />
+									<Plus className="h-4 w-4" />
 									Create First Category
 								</Button>
 							</div>

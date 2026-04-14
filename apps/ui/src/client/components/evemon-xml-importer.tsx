@@ -176,7 +176,7 @@ export function EvemonXmlImporter({
 						Cancel
 					</Button>
 					<Button type="button" onClick={handleParse} disabled={!xmlContent.trim() || isLoading}>
-						<Upload className="h-4 w-4 mr-2" />
+						<Upload className="h-4 w-4" />
 						Parse XML
 					</Button>
 				</div>
