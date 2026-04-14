@@ -8,7 +8,7 @@
 
 import { formatDistanceToNow } from 'date-fns'
 import { AlertCircle, Clock, ExternalLink, FileText, Loader2, RefreshCw, Users } from 'lucide-react'
-import { useNavigate, useParams } from 'react-router-dom'
+import { Link, useParams } from 'react-router-dom'
 
 import { MemberAvatar } from '@/components/member-avatar'
 import { Badge } from '@/components/ui/badge'
@@ -60,7 +60,7 @@ function canRequestNewReport(reports: CharacterReportMetadata[]): boolean {
 interface CharacterReportCardProps {
 	character: FulcrumCharacterData
 	onRequest: (characterId: string) => void
-	onViewReport: (reportId: string, characterName: string) => void
+	getReportHref: (reportId: string, characterName: string) => string
 	isRequesting: boolean
 	requestingCharacterId: string | null
 }
@@ -68,7 +68,7 @@ interface CharacterReportCardProps {
 function CharacterReportCard({
 	character,
 	onRequest,
-	onViewReport,
+	getReportHref,
 	isRequesting,
 	requestingCharacterId,
 }: CharacterReportCardProps) {
@@ -133,13 +133,11 @@ function CharacterReportCard({
 			{/* Actions */}
 			<div className="flex flex-col gap-2">
 				{latestReport?.status === 'completed' && (
-					<Button
-						variant="ghost"
-						size="sm"
-						onClick={() => onViewReport(latestReport.id, character.characterName)}
-					>
-						<ExternalLink className="mr-1.5 h-3.5 w-3.5" />
-						View
+					<Button asChild variant="ghost" size="sm">
+						<Link to={getReportHref(latestReport.id, character.characterName)}>
+							<ExternalLink className="mr-1.5 h-3.5 w-3.5" />
+							View
+						</Link>
 					</Button>
 				)}
 
@@ -179,7 +177,6 @@ interface FulcrumPanelProps {
 
 export function FulcrumPanel({ userId, corporationId, applicationId, mainCharacterId, altCharacterIds = [] }: FulcrumPanelProps) {
 	const { corporationId: routeCorporationId } = useParams<{ corporationId: string }>()
-	const navigate = useNavigate()
 	const { data: characters, isLoading, error } = useApplicationFulcrum(userId, corporationId)
 	const requestReport = useRequestFulcrumReport()
 
@@ -193,7 +190,7 @@ export function FulcrumPanel({ userId, corporationId, applicationId, mainCharact
 		})
 	}
 
-	const handleViewReport = (reportId: string, characterName: string) => {
+	const getReportHref = (reportId: string, characterName: string) => {
 		const params = new URLSearchParams({ char: characterName })
 		params.set('userId', userId)
 		params.set('corporationId', corporationId)
@@ -205,9 +202,7 @@ export function FulcrumPanel({ userId, corporationId, applicationId, mainCharact
 		params.set('returnTo', returnTo)
 		params.set('backLabel', backLabel)
 		params.set('breadcrumb', breadcrumb)
-		navigate(
-			`/fulcrum/reports/${reportId}?${params}`,
-		)
+		return `/fulcrum/reports/${reportId}?${params}`
 	}
 
 	if (isLoading) {
@@ -266,7 +261,7 @@ export function FulcrumPanel({ userId, corporationId, applicationId, mainCharact
 				key={character.characterId}
 				character={character}
 				onRequest={handleRequest}
-				onViewReport={handleViewReport}
+				getReportHref={getReportHref}
 				isRequesting={requestReport.isPending}
 				requestingCharacterId={
 					requestReport.isPending

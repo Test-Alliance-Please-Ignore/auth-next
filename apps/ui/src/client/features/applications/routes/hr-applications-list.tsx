@@ -7,7 +7,7 @@
 
 import { AlertCircle, ArrowLeft, Users } from 'lucide-react'
 import { useMemo, useState } from 'react'
-import { Navigate, useNavigate, useParams } from 'react-router-dom'
+import { Link, Navigate, useNavigate, useParams } from 'react-router-dom'
 
 import {
 	Breadcrumb,
@@ -173,9 +173,11 @@ export default function HrApplicationsList() {
 						</CardDescription>
 					</CardHeader>
 					<CardContent className="text-center">
-						<Button variant="ghost" onClick={() => navigate(rootCorporationsPath)}>
-							<ArrowLeft className="h-4 w-4" />
-							Back to {rootCorporationsLabel}
+						<Button asChild variant="ghost">
+							<Link to={rootCorporationsPath}>
+								<ArrowLeft className="h-4 w-4" />
+								Back to {rootCorporationsLabel}
+							</Link>
 						</Button>
 					</CardContent>
 				</Card>
@@ -236,12 +238,11 @@ export default function HrApplicationsList() {
 				title="HR Applications"
 				description="Review and manage job applications to your corporation"
 				action={
-					<Button
-						variant="ghost"
-						onClick={() => navigate(showMembersNavigation ? membersPath : '/corporations')}
-					>
-						<ArrowLeft className="h-4 w-4" />
-						{showMembersNavigation ? 'Back to Members' : 'Back to Corporations'}
+					<Button asChild variant="ghost">
+						<Link to={showMembersNavigation ? membersPath : '/corporations'}>
+							<ArrowLeft className="h-4 w-4" />
+							{showMembersNavigation ? 'Back to Members' : 'Back to Corporations'}
+						</Link>
 					</Button>
 				}
 			/>
@@ -284,6 +285,7 @@ export default function HrApplicationsList() {
 			<ApplicationsTable
 				applications={applications || []}
 				loading={applicationsLoading}
+				getApplicationHref={(app) => `/corporations/${corporationId}/applications/${app.id}`}
 				onApplicationClick={(app) => handleApplicationClick(app.id)}
 				filters={tableFilters}
 				onFilterChange={handleFilterChange}

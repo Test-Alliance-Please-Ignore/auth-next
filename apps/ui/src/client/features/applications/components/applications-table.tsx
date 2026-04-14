@@ -10,6 +10,8 @@ import { MessageSquare } from 'lucide-react'
 import { MantineReactTable, createMRTColumnHelper, useMantineReactTable } from 'mantine-react-table'
 import { useMemo } from 'react'
 
+import { Link } from 'react-router-dom'
+
 import { MemberAvatar } from '@/components/member-avatar'
 import { Button } from '@/components/ui/button'
 
@@ -25,6 +27,8 @@ import type { Application, ApplicationStatus } from '../api'
 export interface ApplicationsTableProps {
 	applications: Application[]
 	loading?: boolean
+	/** Build the href for an application row. Enables right-click "Open in new tab". */
+	getApplicationHref?: (app: Application) => string
 	onApplicationClick?: (app: Application) => void
 	filters?: {
 		status?: ApplicationStatus[]
@@ -42,6 +46,7 @@ const col = createMRTColumnHelper<Application>()
 
 function buildColumns(
 	onApplicationClick?: (app: Application) => void,
+	getApplicationHref?: (app: Application) => string,
 	canManage?: boolean,
 ): MRT_ColumnDef<Application>[] {
 	const base: MRT_ColumnDef<Application>[] = [
@@ -107,18 +112,28 @@ function buildColumns(
 				id: 'actions',
 				header: 'Actions',
 				size: 80,
-				Cell: ({ row }) => (
-					<Button
-						variant="ghost"
-						size="sm"
-						onClick={(e) => {
-							e.stopPropagation()
-							onApplicationClick?.(row.original)
-						}}
-					>
-						View
-					</Button>
-				),
+				Cell: ({ row }) => {
+					const href = getApplicationHref?.(row.original)
+					if (href) {
+						return (
+							<Button asChild variant="ghost" size="sm">
+								<Link to={href} onClick={(e) => e.stopPropagation()}>View</Link>
+							</Button>
+						)
+					}
+					return (
+						<Button
+							variant="ghost"
+							size="sm"
+							onClick={(e) => {
+								e.stopPropagation()
+								onApplicationClick?.(row.original)
+							}}
+						>
+							View
+						</Button>
+					)
+				},
 			}),
 		)
 	}
@@ -133,6 +148,7 @@ function buildColumns(
 export function ApplicationsTable({
 	applications,
 	loading = false,
+	getApplicationHref,
 	onApplicationClick,
 	filters,
 	onFilterChange,
@@ -145,8 +161,8 @@ export function ApplicationsTable({
 	}, [applications, filters?.status])
 
 	const columns = useMemo(
-		() => buildColumns(onApplicationClick, canManage),
-		[onApplicationClick, canManage],
+		() => buildColumns(onApplicationClick, getApplicationHref, canManage),
+		[onApplicationClick, getApplicationHref, canManage],
 	)
 
 	const table = useMantineReactTable({
@@ -221,10 +237,30 @@ export function ApplicationsTable({
 				color: 'hsl(var(--foreground))',
 			},
 		},
-		mantineTableBodyRowProps: ({ row }) => ({
-			onClick: onApplicationClick ? () => onApplicationClick(row.original) : undefined,
-			style: onApplicationClick ? { cursor: 'pointer' } : undefined,
-		}),
+		mantineTableBodyRowProps: ({ row }) => {
+			const href = getApplicationHref?.(row.original)
+			const isClickable = href || onApplicationClick
+			return {
+				onClick: isClickable
+					? (e: React.MouseEvent) => {
+							if (href && (e.ctrlKey || e.metaKey || e.button === 1)) {
+								window.open(href, '_blank')
+								return
+							}
+							onApplicationClick?.(row.original)
+						}
+					: undefined,
+				onAuxClick: href
+					? (e: React.MouseEvent) => {
+							if (e.button === 1) {
+								e.preventDefault()
+								window.open(href, '_blank')
+							}
+						}
+					: undefined,
+				style: isClickable ? { cursor: 'pointer' } : undefined,
+			}
+		},
 		mantineSearchTextInputProps: {
 			placeholder: 'Search by character name...',
 			style: {

@@ -10,7 +10,7 @@
 import { formatDistanceToNow } from 'date-fns'
 import { ArrowLeft, Briefcase } from 'lucide-react'
 import { useState } from 'react'
-import { Navigate, useNavigate, useParams } from 'react-router-dom'
+import { Link, Navigate, useNavigate, useParams } from 'react-router-dom'
 
 import { MemberAvatar } from '@/components/member-avatar'
 import {
@@ -121,9 +121,7 @@ export default function ApplicationDetail() {
 		}
 	}
 
-	const handleBackClick = () => {
-		navigate('/my-applications')
-	}
+	const myApplicationsPath = '/my-applications'
 
 	const handleAddRecommendation = () => {
 		setEditingRecommendation(undefined)
@@ -181,7 +179,7 @@ export default function ApplicationDetail() {
 					title="Failed to Load Application"
 					message={applicationError instanceof Error ? applicationError.message : 'An unexpected error occurred'}
 					backLabel="Back to My Applications"
-					onBack={handleBackClick}
+					backHref={myApplicationsPath}
 				/>
 			</Container>
 		)
@@ -194,7 +192,7 @@ export default function ApplicationDetail() {
 				<AccessDeniedCard
 					message="You don't have permission to view this application."
 					backLabel="Back to My Applications"
-					onBack={handleBackClick}
+					backHref={myApplicationsPath}
 				/>
 			</Container>
 		)
@@ -211,9 +209,11 @@ export default function ApplicationDetail() {
 						<CardDescription>This application doesn't exist or has been removed.</CardDescription>
 					</CardHeader>
 					<CardContent className="text-center">
-						<Button variant="ghost" onClick={handleBackClick}>
-							<ArrowLeft className="h-4 w-4" />
-							Back to My Applications
+						<Button asChild variant="ghost">
+							<Link to={myApplicationsPath}>
+								<ArrowLeft className="h-4 w-4" />
+								Back to My Applications
+							</Link>
 						</Button>
 					</CardContent>
 				</Card>
