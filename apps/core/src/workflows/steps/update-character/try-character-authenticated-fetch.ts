@@ -15,6 +15,30 @@ import type { WorkflowContext } from '../../context'
 
 const NON_DEGRADING_TOKEN_STATUSES: TokenValidationStatus[] = ['transient_error']
 
+function extractErrorDetails(error: unknown): Record<string, unknown> {
+	if (!error || typeof error !== 'object') {
+		return { rawError: String(error) }
+	}
+
+	const e = error as Record<string, unknown>
+	return {
+		name: e.name,
+		message: e.message,
+		code: e.code,
+		detail: e.detail,
+		hint: e.hint,
+		constraint: e.constraint,
+		table: e.table,
+		column: e.column,
+		schema: e.schema,
+		severity: e.severity,
+		where: e.where,
+		routine: e.routine,
+		stack: e.stack,
+		cause: e.cause,
+	}
+}
+
 /**
  * Update database to mark workflow as completed
  *
@@ -75,6 +99,7 @@ export async function tryCharacterAuthenticatedFetch(
 			logger.error('[Workflow] Failed to refresh authenticated character data', {
 				characterId,
 				error: errorMessage,
+				errorDetails: extractErrorDetails(error),
 			})
 			return {
 				characterId,

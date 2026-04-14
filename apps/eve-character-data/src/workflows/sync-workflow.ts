@@ -26,6 +26,30 @@ export interface EveCharacterSyncParams {
 	jitterDelaySeconds?: number
 }
 
+function extractErrorDetails(error: unknown): Record<string, unknown> {
+	if (!error || typeof error !== 'object') {
+		return { rawError: String(error) }
+	}
+
+	const e = error as Record<string, unknown>
+	return {
+		name: e.name,
+		message: e.message,
+		code: e.code,
+		detail: e.detail,
+		hint: e.hint,
+		constraint: e.constraint,
+		table: e.table,
+		column: e.column,
+		schema: e.schema,
+		severity: e.severity,
+		where: e.where,
+		routine: e.routine,
+		stack: e.stack,
+		cause: e.cause,
+	}
+}
+
 /**
  * EveCharacterSyncWorkflow
  *
@@ -128,6 +152,11 @@ export class EveCharacterSyncWorkflow extends WorkflowEntrypoint<Env, EveCharact
 					lowerMessage.includes('esi request failed: 404')
 
 				if (!isDeletedCharacterError) {
+					logger.error('[EveCharacterSyncWorkflow] fetch-public-info step failed', {
+						characterId,
+						error: message,
+						errorDetails: extractErrorDetails(error),
+					})
 					throw error
 				}
 
@@ -140,6 +169,7 @@ export class EveCharacterSyncWorkflow extends WorkflowEntrypoint<Env, EveCharact
 				logger.info('[EveCharacterSyncWorkflow] Character marked deleted after non-retryable public info error', {
 					characterId,
 					error: message,
+					errorDetails: extractErrorDetails(error),
 				})
 			}
 		} else {
