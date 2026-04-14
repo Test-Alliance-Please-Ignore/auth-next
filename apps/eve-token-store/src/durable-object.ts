@@ -1967,9 +1967,12 @@ export class EveTokenStoreDO extends DurableObject<Env> implements EveTokenStore
 			this.jwks = createRemoteJWKSet(new URL(EVE_SSO_JWKS_URL))
 		}
 
+		const clientId = this.env.EVE_SSO_CLIENT_ID
+		const acceptedIssuers = ['https://login.eveonline.com/', 'login.eveonline.com']
+
 		const { payload } = await jwtVerify(accessToken, this.jwks, {
-			issuer: 'login.eveonline.com',
-			audience: this.env.EVE_SSO_CLIENT_ID,
+			issuer: acceptedIssuers,
+			audience: clientId,
 		})
 
 		// sub = "CHARACTER:EVE:12345678" — extract the numeric character ID
@@ -1982,6 +1985,15 @@ export class EveTokenStoreDO extends DurableObject<Env> implements EveTokenStore
 
 		const exp = payload.exp ?? 0
 		const expiresOn = new Date(exp * 1000).toISOString()
+
+		const aud = Array.isArray(payload.aud) ? payload.aud : [payload.aud]
+		const hasExpectedAudience =
+			aud.length === 2 && aud.includes(clientId) && aud.includes('EVE Online')
+
+		if (!hasExpectedAudience) {
+			logger.withTags({ operation: 'verifyToken' }).error('Invalid "aud" claim value')
+			throw new Error('Invalid claim value')
+		}
 
 		return {
 			CharacterID: characterId,
