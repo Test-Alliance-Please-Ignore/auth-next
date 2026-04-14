@@ -1102,12 +1102,15 @@ export default function CorporationDetailPage() {
 										inputId="permission"
 										value={selectedPermissionId}
 										onValueChange={setSelectedPermissionId}
+										searchable
 										options={globalPermissions
 											.filter(
 												(gp) => !corporationPermissions.some((cp) => cp.permissionId === gp.id)
 											)
-											.map((perm) => ({ value: perm.id,
-												label: `${perm.name} (${perm.urn})`,
+											.map((perm) => ({
+												value: perm.id,
+												label: perm.name,
+												description: perm.urn,
 											}))}
 										placeholder="Select a permission..."
 										className="mt-1.5 w-full"

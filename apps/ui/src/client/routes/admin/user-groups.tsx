@@ -40,7 +40,7 @@ export default function AdminUserGroupsPage() {
 				</p>
 			</div>
 
-			<Card variant="interactive">
+			<Card>
 				<CardHeader>
 					<CardTitle>Memberships</CardTitle>
 					<CardDescription>Group-level access and join dates</CardDescription>

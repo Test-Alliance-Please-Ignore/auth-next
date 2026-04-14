@@ -39,7 +39,6 @@ export function SkillPlanCard({ plan }: SkillPlanCardProps) {
 	return (
 		<Card
 			className="hover:shadow-lg transition-shadow cursor-pointer"
-			variant="interactive"
 			onClick={handleCardClick}
 		>
 			<CardHeader>

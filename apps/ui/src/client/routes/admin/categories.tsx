@@ -133,7 +133,7 @@ export default function CategoriesPage() {
 			)}
 
 			{/* Categories List */}
-			<Card variant="interactive">
+			<Card>
 				<CardHeader>
 					<CardTitle>Categories</CardTitle>
 					<CardDescription>Manage category settings and permissions</CardDescription>

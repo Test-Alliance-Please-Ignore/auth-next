@@ -201,7 +201,7 @@ export default function AdminBillsDetailPage() {
 				</div>
 
 				{/* Bill Details */}
-				<Card variant="interactive">
+				<Card>
 					<CardHeader>
 						<CardTitle>Bill Details</CardTitle>
 						<CardDescription>Shared details for all members of this group bill</CardDescription>
@@ -237,7 +237,7 @@ export default function AdminBillsDetailPage() {
 				</Card>
 
 				{/* Group Payment Progress */}
-				<Card variant="interactive">
+				<Card>
 					<CardHeader>
 						<CardTitle>Group Payment Progress</CardTitle>
 						<CardDescription>
@@ -333,7 +333,7 @@ export default function AdminBillsDetailPage() {
 			</div>
 
 			{/* Bill Details */}
-			<Card variant="interactive">
+			<Card>
 				<CardHeader>
 					<CardTitle>Bill Details</CardTitle>
 					<CardDescription>Information about this bill</CardDescription>
@@ -462,7 +462,7 @@ export default function AdminBillsDetailPage() {
 
 			{/* Payment Summary */}
 			{bill.status !== 'draft' && (
-				<Card variant="interactive">
+				<Card>
 					<CardHeader>
 						<CardTitle>Payment Summary</CardTitle>
 						<CardDescription>Payment progress for this bill</CardDescription>
@@ -504,7 +504,7 @@ export default function AdminBillsDetailPage() {
 
 			{/* Late Fee Information */}
 			{bill.lateFeeType !== 'none' && (
-				<Card variant="interactive">
+				<Card>
 					<CardHeader>
 						<CardTitle>Late Fee Information</CardTitle>
 						<CardDescription>Penalties for late payment</CardDescription>
@@ -554,7 +554,7 @@ export default function AdminBillsDetailPage() {
 
 			{/* Payment History */}
 			{bill.status !== 'draft' && (
-				<Card variant="interactive">
+				<Card>
 					<CardHeader>
 						<CardTitle>Payment History</CardTitle>
 						<CardDescription>

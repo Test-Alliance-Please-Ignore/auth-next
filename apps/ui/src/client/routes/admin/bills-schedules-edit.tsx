@@ -383,7 +383,7 @@ export default function AdminBillsSchedulesEditPage() {
 			)}
 
 			{/* Schedule Status */}
-			<Card variant="interactive">
+			<Card>
 				<CardHeader>
 					<CardTitle>Schedule Status</CardTitle>
 					<CardDescription>Current schedule information and status</CardDescription>
@@ -464,7 +464,7 @@ export default function AdminBillsSchedulesEditPage() {
 
 			<form onSubmit={handleSubmit}>
 				{/* Schedule Configuration */}
-				<Card variant="interactive" className="mb-6">
+				<Card className="mb-6">
 					<CardHeader>
 						<CardTitle>Schedule Configuration</CardTitle>
 						<CardDescription>Modify schedule settings</CardDescription>
@@ -630,7 +630,7 @@ export default function AdminBillsSchedulesEditPage() {
 			</form>
 
 			{/* Execution Logs */}
-			<Card variant="interactive">
+			<Card>
 				<CardHeader>
 					<CardTitle>Execution History</CardTitle>
 					<CardDescription>Recent schedule executions and generated bills</CardDescription>

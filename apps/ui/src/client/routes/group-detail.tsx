@@ -178,7 +178,7 @@ export default function GroupDetailPage() {
 
 				{/* Actions - Hide for owners */}
 				{!group.isOwner && (
-					<Card variant="interactive">
+					<Card>
 						<CardHeader>
 							<CardTitle>Actions</CardTitle>
 							<CardDescription>Manage your membership in this group</CardDescription>
@@ -202,7 +202,7 @@ export default function GroupDetailPage() {
 
 				{/* Members List - Only show to group owners and admins */}
 				{(group.isOwner || group.isAdmin) && (
-					<Card variant="interactive">
+					<Card>
 						<CardHeader>
 							<CardTitle className="flex items-center gap-2">
 								<Users className="h-5 w-5" />
@@ -232,7 +232,7 @@ export default function GroupDetailPage() {
 
 				{/* Invite Codes - Owner/Admin Only */}
 				{(group.isOwner || group.isAdmin) && (
-					<Card variant="interactive">
+					<Card>
 						<CardHeader>
 							<div className="flex items-center justify-between">
 								<div>
@@ -422,7 +422,7 @@ export default function GroupDetailPage() {
 
 				{/* Transfer Ownership - Owner Only */}
 				{group.isOwner && (
-					<Card variant="interactive" className="border-amber-500/50">
+					<Card className="border-amber-500/50">
 						<CardHeader>
 							<CardTitle className="flex items-center gap-2">
 								<UserCog className="h-5 w-5" />

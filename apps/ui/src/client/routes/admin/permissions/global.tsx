@@ -219,7 +219,7 @@ export default function GlobalPermissionsPage() {
 			</Card>
 
 			{/* Permissions List */}
-			<Card variant="interactive">
+			<Card>
 				<CardHeader>
 					<CardTitle>
 						Permissions{' '}

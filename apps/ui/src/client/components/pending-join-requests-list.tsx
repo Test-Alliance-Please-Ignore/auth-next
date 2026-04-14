@@ -48,7 +48,7 @@ export function PendingJoinRequestsList({ groupId }: PendingJoinRequestsListProp
 
 	if (isLoading) {
 		return (
-			<Card variant="interactive">
+			<Card>
 				<CardHeader>
 					<CardTitle>Pending Join Requests</CardTitle>
 				</CardHeader>
@@ -61,7 +61,7 @@ export function PendingJoinRequestsList({ groupId }: PendingJoinRequestsListProp
 
 	if (error) {
 		return (
-			<Card variant="interactive">
+			<Card>
 				<CardHeader>
 					<CardTitle>Pending Join Requests</CardTitle>
 				</CardHeader>
@@ -77,7 +77,7 @@ export function PendingJoinRequestsList({ groupId }: PendingJoinRequestsListProp
 
 	if (pendingRequests.length === 0) {
 		return (
-			<Card variant="interactive">
+			<Card>
 				<CardHeader>
 					<CardTitle>Pending Join Requests</CardTitle>
 				</CardHeader>
@@ -89,7 +89,7 @@ export function PendingJoinRequestsList({ groupId }: PendingJoinRequestsListProp
 	}
 
 	return (
-		<Card variant="interactive">
+		<Card>
 			<CardHeader>
 				<div className="flex items-center justify-between">
 					<CardTitle>Pending Join Requests</CardTitle>

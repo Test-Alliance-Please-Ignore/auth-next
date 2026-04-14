@@ -11,7 +11,7 @@ const cardVariants = cva('rounded-lg relative z-10', {
 			default: 'card-gradient bg-card text-card-foreground border border-border/50 shadow-elevated',
 			elevated:
 				'card-gradient bg-card text-card-foreground border border-border/50 shadow-elevated',
-			interactive:
+		interactive:
 				'card-gradient bg-card text-card-foreground border border-border/50 shadow-elevated cursor-pointer hover:border-primary/50 transition-colors',
 			flat: 'bg-card text-card-foreground border border-border/30 shadow-flat',
 		},

@@ -13,7 +13,6 @@ interface ServiceItemCardProps {
 export function ServiceItemCard({ service, onClick }: ServiceItemCardProps) {
 	return (
 		<Card
-			variant="interactive"
 			className="group relative cursor-pointer"
 			onClick={onClick}
 			title={`Manage ${service.service.name}`}

@@ -136,7 +136,7 @@ export default function AdminUserDiscordAccessPage() {
 								guild.unexpectedManagedRoles.length > 0
 
 							return (
-								<Card key={guild.guildId} variant="interactive">
+								<Card key={guild.guildId}>
 									<CardHeader>
 										<div className="flex items-center justify-between gap-3">
 											<div>

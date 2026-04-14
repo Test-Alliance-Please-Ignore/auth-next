@@ -27,7 +27,7 @@ export function GroupCard({ group }: GroupCardProps) {
 	}
 
 	return (
-		<Card variant="interactive">
+		<Card>
 			<CardHeader>
 				<div className="flex items-start justify-between">
 					<div className="space-y-1">

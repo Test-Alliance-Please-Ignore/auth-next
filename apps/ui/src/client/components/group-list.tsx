@@ -130,7 +130,7 @@ export const GroupList = memo(function GroupList({
 
 	if (groups.length === 0) {
 		return (
-			<Card variant="interactive">
+			<Card>
 				<CardContent className="py-12 text-center">
 					<div className="inline-flex items-center justify-center w-16 h-16 rounded-full bg-muted mb-4">
 						<Users className="h-8 w-8 text-muted-foreground" />

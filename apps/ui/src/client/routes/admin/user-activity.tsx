@@ -46,7 +46,7 @@ export default function AdminUserActivityPage() {
 				</p>
 			</div>
 
-			<Card variant="interactive">
+			<Card>
 				<CardHeader>
 					<CardTitle>Activity Entries</CardTitle>
 					<CardDescription>Last 100 entries for this user</CardDescription>

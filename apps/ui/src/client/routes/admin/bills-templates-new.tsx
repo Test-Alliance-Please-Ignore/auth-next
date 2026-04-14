@@ -170,7 +170,7 @@ export default function AdminBillsTemplatesNewPage() {
 
 			<form onSubmit={handleSubmit}>
 				{/* Template Information */}
-				<Card variant="interactive" className="mb-6">
+				<Card className="mb-6">
 					<CardHeader>
 						<CardTitle>Template Information</CardTitle>
 						<CardDescription>Basic information about this template</CardDescription>
@@ -207,7 +207,7 @@ export default function AdminBillsTemplatesNewPage() {
 				</Card>
 
 				{/* Template Content */}
-				<Card variant="interactive" className="mb-6">
+				<Card className="mb-6">
 					<CardHeader>
 						<CardTitle>Template Content</CardTitle>
 						<CardDescription>Define the bill structure using placeholders</CardDescription>
@@ -304,7 +304,7 @@ export default function AdminBillsTemplatesNewPage() {
 				</Card>
 
 				{/* Late Fee Settings */}
-				<Card variant="interactive" className="mb-6">
+				<Card className="mb-6">
 					<CardHeader>
 						<CardTitle>Late Fee Settings</CardTitle>
 						<CardDescription>Configure default penalties for late payment</CardDescription>
