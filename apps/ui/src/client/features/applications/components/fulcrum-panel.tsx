@@ -197,9 +197,14 @@ export function FulcrumPanel({ userId, corporationId, applicationId, mainCharact
 		const params = new URLSearchParams({ char: characterName })
 		params.set('userId', userId)
 		params.set('corporationId', corporationId)
-		params.set('returnTo', `/corporations/${routeCorporationId}/members/${userId}`)
-		params.set('backLabel', 'Back to User Profile')
-		params.set('breadcrumb', 'User Profile')
+		const returnTo = applicationId
+			? `/corporations/${routeCorporationId}/applications/${applicationId}`
+			: `/corporations/${routeCorporationId}/members/${userId}`
+		const backLabel = applicationId ? 'Back to Application' : 'Back to User Profile'
+		const breadcrumb = applicationId ? 'Application' : 'User Profile'
+		params.set('returnTo', returnTo)
+		params.set('backLabel', backLabel)
+		params.set('breadcrumb', breadcrumb)
 		navigate(
 			`/fulcrum/reports/${reportId}?${params}`,
 		)
