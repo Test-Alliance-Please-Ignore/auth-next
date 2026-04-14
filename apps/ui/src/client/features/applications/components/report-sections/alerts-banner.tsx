@@ -123,6 +123,8 @@ function AlertDetails({ alert }: { alert: ReportAlert }) {
             return <DataFetchFailureDetails details={alert.details} />
         case 'corp-hopper':
             return <CorpHopperDetails details={alert.details} />
+        case 'blacklist-association':
+            return <BlacklistAssociationDetails details={alert.details} />
         default:
             return (
                 <pre className="overflow-x-auto text-xs text-muted-foreground">
@@ -294,6 +296,66 @@ function CorpHopperDetails({ details }: { details: Record<string, unknown> }) {
                     </div>
                 ))}
             </div>
+        </div>
+    )
+}
+
+function BlacklistAssociationDetails({ details }: { details: Record<string, unknown> }) {
+    const associations = details.associations as Array<{
+        characterId: string
+        characterName?: string
+        matches: Array<{ source: string; detail: string }>
+    }> | undefined
+
+    if (!associations || associations.length === 0) return null
+
+    const SOURCE_LABELS: Record<string, string> = {
+        'wallet-journal': 'Wallet Journal',
+        'wallet-transactions': 'Wallet Transactions',
+        'contracts': 'Contracts',
+        'contacts': 'Contacts',
+        'mails': 'Mails',
+        'ship-names': 'Ship Names',
+    }
+
+    const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec']
+    /** Replace ISO 8601 timestamps in a string with "Mon DD, YYYY HH:MM" */
+    const humanizeDates = (text: string): string =>
+        text.replace(/\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}Z/g, (iso) => {
+            const d = new Date(iso)
+            if (Number.isNaN(d.getTime())) return iso
+            const hh = String(d.getUTCHours()).padStart(2, '0')
+            const mm = String(d.getUTCMinutes()).padStart(2, '0')
+            return `${MONTHS[d.getUTCMonth()]} ${d.getUTCDate()}, ${d.getUTCFullYear()} ${hh}:${mm}`
+        })
+
+    return (
+        <div className="space-y-3 text-sm">
+            {associations.map((assoc) => (
+                <div key={assoc.characterId} className="space-y-1">
+                    <div className="flex items-center gap-2">
+                        <span className="font-medium text-destructive">
+                            {assoc.characterName ?? assoc.characterId}
+                        </span>
+                        {assoc.characterName && (
+                            <span className="text-xs text-muted-foreground">
+                                ({assoc.characterId})
+                            </span>
+                        )}
+                        <Badge variant="destructive" className="text-[10px]">
+                            {assoc.matches.length} hit{assoc.matches.length !== 1 ? 's' : ''}
+                        </Badge>
+                    </div>
+                    <ul className="list-inside list-disc space-y-0.5 pl-1">
+                        {assoc.matches.map((match, i) => (
+                            <li key={i}>
+                                <span className="text-xs font-medium">{SOURCE_LABELS[match.source] ?? match.source}</span>
+                                <span className="text-xs text-muted-foreground"> — {humanizeDates(match.detail)}</span>
+                            </li>
+                        ))}
+                    </ul>
+                </div>
+            ))}
         </div>
     )
 }

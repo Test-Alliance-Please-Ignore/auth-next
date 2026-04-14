@@ -13,6 +13,7 @@ import {
     checkLargeIskTransfer,
     checkDataFetchFailures,
     checkCorpHopper,
+    checkBlacklistAssociation,
     collectCustomShipNames,
     extractCandidateCharacterNames,
 } from '../../processors/alerts'
@@ -23,9 +24,11 @@ import type { ProcessedPublicInfo } from '../../processors/helpers/public-info'
 import type { ProcessedSkillsData } from '../../processors/helpers/skills'
 import type { ProcessedWalletTransaction } from '../../processors/helpers/wallet-transactions'
 import type { ProcessedContract } from '../../processors/helpers/contracts'
+import type { ProcessedContact } from '../../processors/helpers/contacts'
 import type { FittedShip } from '../../processors/helpers/ships'
 import type { ProcessedCorpHistoryEntry } from '../../processors/helpers/corp-history'
 import type { ProcessedWalletJournalEntry } from '../../processors/helpers/wallet-journal'
+import type { EnrichedMailData } from '../../processors/helpers/mails'
 import type { AssetNameMap } from '../assets/fetch-asset-names'
 import type { ReportAlert, ReportAlerts, ResolvedCharacter } from '../../processors/alerts'
 
@@ -37,6 +40,11 @@ interface CoreBinding {
     getUserDetails(
         userId: string,
     ): Promise<{ characters: Array<{ characterName: string }> } | null>
+}
+
+/** Narrow interface for the HR DO methods we need */
+interface HrBinding {
+    getAllBlacklistedCharacterIds(): Promise<string[]>
 }
 
 interface UniverseIdsResponse {
@@ -109,6 +117,7 @@ async function getSiblingCharacterNames(
 
 export async function generateAlerts(
     core: CoreBinding,
+    hr: HrBinding,
     getBucket: (name: string) => R2Bucket,
     bucket: R2Bucket,
     bucketName: string,
@@ -143,7 +152,7 @@ export async function generateAlerts(
             }
         }
 
-        const [publicInfo, skills, rawTransactions, contracts, fittedShips, assetNameMap, corpHistory, walletJournal] =
+        const [publicInfo, skills, rawTransactions, contracts, fittedShips, assetNameMap, corpHistory, walletJournal, contacts, enrichedMails] =
             await Promise.all([
                 safeRetrieve<ProcessedPublicInfo>('process-public-info'),
                 safeRetrieve<ProcessedSkillsData>('process-skills'),
@@ -153,6 +162,8 @@ export async function generateAlerts(
                 safeRetrieve<AssetNameMap>('fetch-asset-names'),
                 safeRetrieve<ProcessedCorpHistoryEntry[]>('process-corp-history'),
                 safeRetrieve<ProcessedWalletJournalEntry[]>('process-wallet-journal'),
+                safeRetrieve<ProcessedContact[]>('process-contacts'),
+                safeRetrieve<EnrichedMailData>('process-mails'),
             ])
 
         if (Object.keys(retrievalErrors).length > 0) {
@@ -219,6 +230,48 @@ export async function generateAlerts(
         if (walletJournal) {
             const iskAlert = checkLargeIskTransfer(walletJournal)
             if (iskAlert) alerts.push(iskAlert)
+        }
+
+        // Alert 6: Blacklist Association
+        try {
+            const blacklistedCharIds = await hr.getAllBlacklistedCharacterIds()
+            if (blacklistedCharIds.length > 0) {
+                const blacklistedSet = new Set(blacklistedCharIds)
+                const mails = enrichedMails?.mails ?? null
+
+                // Build ship name → character ID map from resolved characters (if available)
+                let shipNameCharIds: Map<string, { customName: string; characterName: string }> | null = null
+                if (publicInfo && fittedShips) {
+                    const nameMap = assetNameMap ?? {}
+                    const customNames = collectCustomShipNames(nameMap, fittedShips)
+                    if (customNames.size > 0) {
+                        const { namesToResolve } = extractCandidateCharacterNames(customNames)
+                        if (namesToResolve.length > 0) {
+                            const resolved = await resolveNamesToCharacters(namesToResolve)
+                            shipNameCharIds = new Map(
+                                resolved.map((r) => {
+                                    const entry = customNames.get(r.name.toLowerCase())
+                                    return [String(r.characterId), { customName: entry?.customName ?? r.name, characterName: r.name }] as const
+                                }),
+                            )
+                        }
+                    }
+                }
+
+                const blacklistAlert = checkBlacklistAssociation(
+                    blacklistedSet,
+                    walletJournal,
+                    transactions,
+                    contracts,
+                    contacts,
+                    mails,
+                    shipNameCharIds,
+                    characterId,
+                )
+                if (blacklistAlert) alerts.push(blacklistAlert)
+            }
+        } catch (error) {
+            console.warn('[generate-alerts] Blacklist association check failed:', error)
         }
 
         const result = {

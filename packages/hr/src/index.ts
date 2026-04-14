@@ -815,6 +815,13 @@ export interface Hr extends DurableObject {
 	 * @returns Paginated blacklist results
 	 */
 	getAllBlacklists(filters: BlacklistFilters): Promise<BlacklistResults>
+
+	/**
+	 * Get all blacklisted character IDs
+	 * Used by Fulcrum for blacklist association alerts
+	 * @returns Array of all blacklisted character IDs
+	 */
+	getAllBlacklistedCharacterIds(): Promise<string[]>
 }
 
 /**

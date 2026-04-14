@@ -23,8 +23,10 @@ import { fetchWalletJournal, processWalletJournal } from './steps/wallet-journal
 import { fetchWalletTransactions, processWalletTransactions } from './steps/wallet-transactions'
 import { fetchClones, processClones } from './steps/clones'
 
+import { getStub } from '@repo/do-utils'
 import { esiFetchStepConfig, esiProcessingStepConfig } from '@repo/workflow-utils'
 
+import type { Hr } from '@repo/hr'
 import type { WorkflowEvent, WorkflowStep, WorkflowStepConfig } from 'cloudflare:workers'
 import type { Env } from '../context'
 import type { StepResult } from './utils/storage'
@@ -419,9 +421,11 @@ export class CharacterReportWorkflow extends WorkflowEntrypoint<Env, WorkflowPar
 			}
 
 			// Generate alerts from all processed data
+			const hrStub = getStub<Hr>(this.env.HR, 'default')
 			const generateAlertsResult = await doStep('generate-alerts', STEP, () =>
 				generateAlerts(
 					this.env.CORE,
+					hrStub,
 					getBucket,
 					this.env.CHARACTER_REPORTS,
 					'CHARACTER_REPORTS',

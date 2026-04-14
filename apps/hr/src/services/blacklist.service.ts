@@ -96,6 +96,24 @@ export class BlacklistService {
 	}
 
 	/**
+	 * Get all blacklisted character IDs.
+	 * Returns character IDs from both direct character blacklists
+	 * and characters linked to blacklisted users (via CORE).
+	 */
+	async getAllBlacklistedCharacterIds(): Promise<string[]> {
+		const entries = await this.ctx.db
+			.select({
+				characterId: blacklistEntries.characterId,
+			})
+			.from(blacklistEntries)
+			.where(eq(blacklistEntries.targetType, 'character'))
+
+		return entries
+			.map((e) => e.characterId)
+			.filter((id): id is string => id !== null)
+	}
+
+	/**
 	 * Create a user blacklist entry
 	 * Used for both manual blacklists and auto-blacklists triggered by characters
 	 */

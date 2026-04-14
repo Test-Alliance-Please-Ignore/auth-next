@@ -17,8 +17,7 @@
 		"fix:workers-types": "run-wrangler-types",
 		"preview": "run-vite-preview",
 		"tail": "run-wrangler-tail",
-		"test": "run-vitest"
-		,
+		"test": "run-vitest",
 		"test:unit": "run-vitest --config vitest.unit.config.ts"
 	},
 	"dependencies": {
@@ -30,6 +29,7 @@
 		"@repo/esi": "workspace:*",
 		"@repo/fulcrum": "workspace:*",
 		"@repo/hono-helpers": "workspace:*",
+		"@repo/hr": "workspace:*",
 		"@repo/universe": "workspace:*",
 		"@repo/workflow-utils": "workspace:*",
 		"drizzle-orm": "0.44.7",

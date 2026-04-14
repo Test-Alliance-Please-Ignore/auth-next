@@ -16,6 +16,7 @@ export type Env = SharedHonoEnv & {
 	CHARACTER_REPORT_WORKFLOW: Workflow<WorkflowParams>
 	CHARACTER_REPORTS_QUEUE: Queue
 	DISCORD: DurableObjectNamespace
+	HR: DurableObjectNamespace
 }
 
 /** Variables can be extended */
