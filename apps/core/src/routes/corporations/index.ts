@@ -5,6 +5,7 @@ import { getStub } from '@repo/do-utils'
 import { logger } from '@repo/hono-helpers'
 
 import { managedCorporations, userCharacters, users } from '../../db/schema'
+import { isNpcCorporationId } from '../../lib/corporation-id'
 import { getCachedUserPermissions } from '../../lib/groups-cache'
 import { requireAdmin, requireAuth } from '../../middleware/session'
 import corporationsDirectorsRoutes from './directors-routes'
@@ -246,7 +247,8 @@ app.get('/', requireAuth(), requireAdmin(), async (c) => {
 			orderBy: desc(managedCorporations.updatedAt),
 		})
 
-		return c.json(corporations)
+		// Safety filter: never expose NPC corporations as managed corporations in admin views.
+		return c.json(corporations.filter((corp) => !isNpcCorporationId(corp.corporationId)))
 	} catch (error) {
 		logger.error('Error fetching corporations:', error)
 		return c.json({ error: 'Failed to fetch corporations' }, 500)
@@ -550,6 +552,9 @@ app.post('/', requireAuth(), requireAdmin(), async (c) => {
 		if (!corporationId || !name || !ticker) {
 			return c.json({ error: 'corporationId, name, and ticker are required' }, 400)
 		}
+		if (isNpcCorporationId(corporationId)) {
+			return c.json({ error: 'NPC corporations cannot be managed' }, 400)
+		}
 
 		// Check if corporation already exists
 		const existing = await db.query.managedCorporations.findFirst({
@@ -628,6 +633,10 @@ app.get('/:corporationId', requireAuth(), requireAdmin(), async (c) => {
 	}
 
 	try {
+		if (isNpcCorporationId(corporationId)) {
+			return c.json({ error: 'Corporation not found' }, 404)
+		}
+
 		const corporation = await db.query.managedCorporations.findFirst({
 			where: eq(managedCorporations.corporationId, corporationId),
 		})

@@ -83,6 +83,8 @@ function minutesAgo(minutes: number): Date {
 const REQUIRED_CORPORATION_WALLET_SCOPE = 'esi-wallet.read_corporation_wallets.v1'
 const CHARACTER_WALLET_SCOPE = 'esi-wallet.read_character_wallet.v1'
 const CORPORATION_MEMBERSHIP_SCOPE = 'esi-corporations.read_corporation_membership.v1'
+const NPC_CORPORATION_ID_MIN = 1_000_000
+const NPC_CORPORATION_ID_MAX = 1_999_999
 
 /**
  * EveCorporationData Durable Object
@@ -95,6 +97,18 @@ const CORPORATION_MEMBERSHIP_SCOPE = 'esi-corporations.read_corporation_membersh
  */
 export class EveCorporationDataDO extends DurableObject<Env> implements EveCorporationData {
 	private readonly DIRECTORS_CACHE_TTL = 30 * 60 // 30 minutes in seconds (KV expirationTtl)
+
+	private isNpcCorporationId(corporationId: string): boolean {
+		const parsed = Number(corporationId)
+		if (!Number.isFinite(parsed)) return false
+		const id = Math.trunc(parsed)
+		return id >= NPC_CORPORATION_ID_MIN && id <= NPC_CORPORATION_ID_MAX
+	}
+
+	private assertNonNpcCorporation(corporationId: string): void {
+		if (!this.isNpcCorporationId(corporationId)) return
+		throw new Error(`NPC corporation ${corporationId} is not supported by eve-corporation-data`)
+	}
 
 	/**
 	 * Initialize the Durable Object with database connection
@@ -299,6 +313,8 @@ export class EveCorporationDataDO extends DurableObject<Env> implements EveCorpo
 		corporationId: string,
 		updates: { includeInBackgroundRefresh?: boolean }
 	): Promise<void> {
+		this.assertNonNpcCorporation(corporationId)
+
 		// Ensure corporation config exists
 		const config = await this.getDb().query.corporationConfig.findFirst({
 			where: eq(corporationConfig.corporationId, corporationId),
@@ -430,6 +446,8 @@ export class EveCorporationDataDO extends DurableObject<Env> implements EveCorpo
 		characterId: string,
 		characterName: string
 	): Promise<void> {
+		this.assertNonNpcCorporation(corporationId)
+
 		// Ensure corporation config exists
 		const config = await this.getDb().query.corporationConfig.findFirst({
 			where: eq(corporationConfig.corporationId, corporationId),
@@ -598,6 +616,8 @@ export class EveCorporationDataDO extends DurableObject<Env> implements EveCorpo
 		characterName: string,
 		priority = 100
 	): Promise<void> {
+		this.assertNonNpcCorporation(corporationId)
+
 		const config = await this.getDb().query.corporationConfig.findFirst({
 			where: eq(corporationConfig.corporationId, corporationId),
 		})
@@ -626,6 +646,8 @@ export class EveCorporationDataDO extends DurableObject<Env> implements EveCorpo
 	 * Remove a director character from this corporation
 	 */
 	async removeDirector(corporationId: string, characterId: string): Promise<void> {
+		this.assertNonNpcCorporation(corporationId)
+
 		const tokenStoreStub = getStub<EveTokenStore>(this.env.EVE_TOKEN_STORE, 'default')
 		const directorManager = new DirectorManager(this.getDb(), corporationId, tokenStoreStub)
 		await directorManager.removeDirector(characterId)
@@ -642,6 +664,8 @@ export class EveCorporationDataDO extends DurableObject<Env> implements EveCorpo
 		characterId: string,
 		priority: number
 	): Promise<void> {
+		this.assertNonNpcCorporation(corporationId)
+
 		const tokenStoreStub = getStub<EveTokenStore>(this.env.EVE_TOKEN_STORE, 'default')
 		const directorManager = new DirectorManager(this.getDb(), corporationId, tokenStoreStub)
 		await directorManager.updateDirectorPriority(characterId, priority)
@@ -2292,6 +2316,8 @@ export class EveCorporationDataDO extends DurableObject<Env> implements EveCorpo
 	 * Fetch all accessible corporation data in parallel
 	 */
 	async fetchAllCorporationData(corporationId: string, forceRefresh = false): Promise<void> {
+		this.assertNonNpcCorporation(corporationId)
+
 		logger.debug('[EveCorporationData] fetchAllCorporationData: Starting', {
 			corporationId,
 			forceRefresh,
@@ -2333,6 +2359,7 @@ export class EveCorporationDataDO extends DurableObject<Env> implements EveCorpo
 	 * Fetch public corporation data
 	 */
 	async fetchPublicData(corporationId: string, forceRefresh = false): Promise<void> {
+		this.assertNonNpcCorporation(corporationId)
 		await this.fetchAndStorePublicInfo(corporationId, forceRefresh)
 	}
 
@@ -2340,6 +2367,7 @@ export class EveCorporationDataDO extends DurableObject<Env> implements EveCorpo
 	 * Fetch core corporation data (members, tracking)
 	 */
 	async fetchCoreData(corporationId: string, forceRefresh = false): Promise<void> {
+		this.assertNonNpcCorporation(corporationId)
 		await Promise.all([
 			this.fetchAndStoreMembers(corporationId, forceRefresh),
 			this.fetchAndStoreMemberTracking(corporationId, forceRefresh).catch((e) =>
@@ -2356,6 +2384,8 @@ export class EveCorporationDataDO extends DurableObject<Env> implements EveCorpo
 		division?: number,
 		forceRefresh = false
 	): Promise<void> {
+		this.assertNonNpcCorporation(corporationId)
+
 		// Fetch wallets first
 		await this.fetchAndStoreWallets(corporationId, forceRefresh)
 
@@ -2422,6 +2452,7 @@ export class EveCorporationDataDO extends DurableObject<Env> implements EveCorpo
 	 * Fetch assets and structures
 	 */
 	async fetchAssetsData(corporationId: string, forceRefresh = false): Promise<void> {
+		this.assertNonNpcCorporation(corporationId)
 		await Promise.all([
 			this.fetchAndStoreAssets(corporationId, forceRefresh).catch((e) =>
 				logger.error('Assets fetch failed:', e.message)
@@ -2436,6 +2467,7 @@ export class EveCorporationDataDO extends DurableObject<Env> implements EveCorpo
 	 * Fetch market and industry data
 	 */
 	async fetchMarketData(corporationId: string, forceRefresh = false): Promise<void> {
+		this.assertNonNpcCorporation(corporationId)
 		await Promise.all([
 			this.fetchAndStoreOrders(corporationId, forceRefresh).catch((e) =>
 				logger.error('Orders fetch failed:', e)
@@ -2453,6 +2485,7 @@ export class EveCorporationDataDO extends DurableObject<Env> implements EveCorpo
 	 * Fetch killmails
 	 */
 	async fetchKillmails(corporationId: string, forceRefresh = false): Promise<void> {
+		this.assertNonNpcCorporation(corporationId)
 		await this.fetchAndStoreKillmails(corporationId, forceRefresh)
 	}
 
