@@ -239,7 +239,7 @@ export default function CorporationsPage() {
 			)}
 
 			{/* Search and Filters */}
-			<Card variant="interactive">
+			<Card>
 				<CardHeader>
 					<div className="flex items-center justify-between">
 						<div>

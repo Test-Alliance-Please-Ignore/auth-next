@@ -292,7 +292,7 @@ export default function AdminBillsNewPage() {
 
 			<form onSubmit={handleSubmit}>
 				{/* Payer Information */}
-				<Card variant="interactive" className="mb-6">
+				<Card className="mb-6">
 					<CardHeader>
 						<CardTitle>Payer Information</CardTitle>
 						<CardDescription>Who is responsible for paying this bill?</CardDescription>
@@ -322,7 +322,7 @@ export default function AdminBillsNewPage() {
 
 				{/* Group Bill Options — shown only when payer type is group */}
 				{formData.payerType === 'group' && (
-					<Card variant="interactive" className="mb-6">
+					<Card className="mb-6">
 						<CardHeader>
 							<CardTitle>Group Bill Options</CardTitle>
 							<CardDescription>
@@ -379,7 +379,7 @@ export default function AdminBillsNewPage() {
 				)}
 
 				{/* Payee Information */}
-				<Card variant="interactive" className="mb-6">
+				<Card className="mb-6">
 					<CardHeader>
 						<CardTitle>Payee Information</CardTitle>
 						<CardDescription>Who will receive the payment?</CardDescription>
@@ -408,7 +408,7 @@ export default function AdminBillsNewPage() {
 				</Card>
 
 				{/* Bill Details */}
-				<Card variant="interactive" className="mb-6">
+				<Card className="mb-6">
 					<CardHeader>
 						<CardTitle>Bill Details</CardTitle>
 						<CardDescription>Enter the amount and description for this bill</CardDescription>
@@ -477,7 +477,7 @@ export default function AdminBillsNewPage() {
 				</Card>
 
 				{/* Late Fee Settings */}
-				<Card variant="interactive" className="mb-6">
+				<Card className="mb-6">
 					<CardHeader>
 						<CardTitle>Late Fee Settings</CardTitle>
 						<CardDescription>Configure penalties for late payment (optional)</CardDescription>

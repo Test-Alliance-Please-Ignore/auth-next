@@ -232,7 +232,7 @@ export default function BroadcastTargetsPage() {
 			)}
 
 			{/* Targets List */}
-			<Card variant="interactive">
+			<Card>
 				<CardHeader>
 					<CardTitle>Targets</CardTitle>
 					<CardDescription>Configure broadcast destinations</CardDescription>

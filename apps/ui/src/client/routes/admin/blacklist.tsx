@@ -243,7 +243,7 @@ export default function BlacklistPage() {
 			)}
 
 			{/* Filters */}
-			<Card variant="interactive">
+			<Card>
 				<CardContent className="pt-6">
 					<div className="grid grid-cols-1 md:grid-cols-4 gap-4">
 						<div className="space-y-2">

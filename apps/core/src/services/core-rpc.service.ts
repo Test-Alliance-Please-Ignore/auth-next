@@ -345,6 +345,8 @@ export class CoreRpcService {
 					characterId: char.characterId,
 					characterName: char.characterName,
 					characterOwnerHash: char.characterOwnerHash,
+					corporationId: char.corporationId,
+					corporationName: char.corporationName,
 					is_primary: char.is_primary,
 					linkedAt: char.linkedAt,
 					hasValidToken,

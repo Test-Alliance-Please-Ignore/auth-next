@@ -20,7 +20,6 @@ export function LegacyCharacterCard({ character, onLink, isLinking }: LegacyChar
 
 	return (
 		<Card
-			variant="interactive"
 			className="group relative cursor-pointer opacity-50 hover:opacity-75 transition-opacity border-dashed"
 			onClick={handleClick}
 			title="This character needs to be linked to your account. Click to start the linking process."

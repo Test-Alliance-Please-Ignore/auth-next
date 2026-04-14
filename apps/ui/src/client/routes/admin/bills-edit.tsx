@@ -230,7 +230,7 @@ export default function AdminBillsEditPage() {
 			)}
 
 			<form onSubmit={handleSubmit}>
-				<Card variant="interactive" className="mb-6">
+				<Card className="mb-6">
 					<CardHeader>
 						<CardTitle>Bill Details</CardTitle>
 						<CardDescription>Update the bill title, amount, and due date</CardDescription>
@@ -292,7 +292,7 @@ export default function AdminBillsEditPage() {
 					</CardContent>
 				</Card>
 
-				<Card variant="interactive" className="mb-6">
+				<Card className="mb-6">
 					<CardHeader>
 						<CardTitle>Late Fee Settings</CardTitle>
 						<CardDescription>Configure penalties for late payment (optional)</CardDescription>

@@ -56,6 +56,7 @@ import {
 	useUnlinkDiscordAccount,
 	useUpdateDiscordAccess,
 } from '@/hooks/useAdminUsers'
+import { useCorporations } from '@/hooks/useCorporations'
 import { usePageTitle } from '@/hooks/usePageTitle'
 import { api } from '@/lib/api'
 import { formatDateTime, formatRelativeTime } from '@/lib/date-utils'
@@ -76,6 +77,8 @@ export default function UserDetailPage() {
 	const clearSessions = useClearUserSessions()
 	const syncUser = useSyncUser()
 	const updateDiscordAccess = useUpdateDiscordAccess()
+	const { data: managedCorporations = [] } = useCorporations()
+	const managedCorporationIds = new Set(managedCorporations.map((corp) => corp.corporationId))
 
 	// Blacklist data
 	const { data: blacklistEntries = [] } = useQuery({
@@ -454,7 +457,7 @@ export default function UserDetailPage() {
 			)}
 
 			{/* User Header */}
-			<Card variant="interactive">
+			<Card>
 				<CardContent className="pt-6">
 					<div className="flex items-start gap-6">
 						<img
@@ -588,7 +591,7 @@ export default function UserDetailPage() {
 			</Card>
 
 			{/* Admin Notes */}
-			<Card variant="interactive">
+			<Card>
 				<CardHeader>
 					<div className="flex items-center justify-between">
 						<div>
@@ -620,7 +623,7 @@ export default function UserDetailPage() {
 
 			{/* Discord Information */}
 			{user.discord && (
-				<Card variant="interactive">
+				<Card>
 					<CardHeader>
 						<div className="flex items-center justify-between">
 							<div>
@@ -729,7 +732,7 @@ export default function UserDetailPage() {
 
 			{/* Blacklist Information */}
 			{activeBlacklist && (
-				<Card variant="interactive" className="border-red-500/20 bg-red-500/5">
+				<Card className="border-red-500/20 bg-red-500/5">
 					<CardHeader>
 						<CardTitle className="text-red-500">Blacklist Status</CardTitle>
 						<CardDescription>This user has been blacklisted</CardDescription>
@@ -798,7 +801,7 @@ export default function UserDetailPage() {
 			)}
 
 			{/* Characters */}
-			<Card variant="interactive">
+			<Card>
 				<CardHeader>
 					<CardTitle>Characters</CardTitle>
 					<CardDescription>All characters associated with this user account</CardDescription>
@@ -808,7 +811,7 @@ export default function UserDetailPage() {
 						<TableHeader>
 							<TableRow>
 								<TableHead>Character</TableHead>
-								<TableHead>Status</TableHead>
+								<TableHead>Corporation</TableHead>
 								<TableHead>Token Status</TableHead>
 								<TableHead>Added</TableHead>
 								<TableHead className="text-right">Actions</TableHead>
@@ -816,35 +819,57 @@ export default function UserDetailPage() {
 						</TableHeader>
 						<TableBody>
 							{user.characters.map((character) => (
-								<TableRow key={character.characterId}>
-									<TableCell>
-										<div className="flex items-center gap-3">
-											<img
+								<TableRow
+									key={character.characterId}
+									className="cursor-pointer"
+									onClick={() => navigate(`/character/${character.characterId}`)}
+								>
+										<TableCell>
+											<div className="flex items-center gap-3">
+												<img
 												src={`/images/characters/${character.characterId}/portrait?size=64`}
 												alt={character.characterName}
 												className="h-10 w-10 rounded-full"
 											/>
-											<div>
-												<div className="font-medium">{character.characterName}</div>
-												<div className="text-xs text-muted-foreground">{character.characterId}</div>
+												<div>
+													<div className="font-medium">{character.characterName}</div>
+													<div className="text-xs text-muted-foreground">{character.characterId}</div>
+													<div className="mt-1 flex gap-2">
+														{character.is_primary && (
+															<Badge variant="default">Primary</Badge>
+														)}
+														{character.isBlacklisted && (
+															<Badge variant="destructive">
+																<ShieldBan className="h-3 w-3 mr-1" />
+																Blacklisted
+															</Badge>
+														)}
+													</div>
+												</div>
 											</div>
-										</div>
-									</TableCell>
-									<TableCell>
-										<div className="flex gap-2">
-											{character.is_primary && (
-												<Badge variant="default">
-													Primary
-												</Badge>
-											)}
-											{character.isBlacklisted && (
-												<Badge variant="destructive">
-													<ShieldBan className="h-3 w-3 mr-1" />
-													Blacklisted
-												</Badge>
-											)}
-										</div>
-									</TableCell>
+										</TableCell>
+										<TableCell>
+											<div className="text-sm">
+												{character.corporationId &&
+												managedCorporationIds.has(character.corporationId) ? (
+													<Link
+														to={`/admin/corporations/${character.corporationId}`}
+														className="font-medium underline-offset-2 hover:underline"
+													>
+														{character.corporationName || 'Unknown'}
+													</Link>
+												) : (
+													<div className="font-medium">
+														{character.corporationName || 'Unknown'}
+													</div>
+												)}
+												{character.corporationId && (
+													<div className="text-xs text-muted-foreground">
+														{character.corporationId}
+													</div>
+												)}
+											</div>
+										</TableCell>
 									<TableCell>
 										<div className="text-sm">
 											{character.hasValidToken ? (
@@ -864,7 +889,10 @@ export default function UserDetailPage() {
 										</div>
 									</TableCell>
 									<TableCell className="text-right">
-										<div className="flex items-center justify-end gap-2">
+										<div
+											className="flex items-center justify-end gap-2"
+											onClick={(event) => event.stopPropagation()}
+										>
 											<Link to={`/character/${character.characterId}`}>
 												<Button variant="ghost" size="sm">
 													<ExternalLink className="h-4 w-4" />

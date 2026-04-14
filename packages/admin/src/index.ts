@@ -90,6 +90,8 @@ export interface CharacterSummary {
 	characterId: string
 	characterName: string
 	characterOwnerHash: string
+	corporationId?: string | null
+	corporationName?: string | null
 	is_primary: boolean
 	linkedAt: Date
 	hasValidToken: boolean

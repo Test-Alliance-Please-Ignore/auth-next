@@ -616,7 +616,7 @@ export default function GroupDetailPage() {
 			<GroupCard group={group} />
 
 			{/* Group Management Actions */}
-			<Card variant="interactive">
+			<Card>
 				<CardHeader>
 					<CardTitle>Group Management</CardTitle>
 					<CardDescription>Administrative actions for this group</CardDescription>
@@ -645,7 +645,7 @@ export default function GroupDetailPage() {
 
 			{/* Stats Section */}
 			<div className="grid gap-4 md:grid-cols-2">
-				<Card variant="interactive">
+				<Card>
 					<CardHeader>
 						<CardTitle>Members</CardTitle>
 						<CardDescription>Total group members</CardDescription>
@@ -655,7 +655,7 @@ export default function GroupDetailPage() {
 					</CardContent>
 				</Card>
 
-				<Card variant="interactive">
+				<Card>
 					<CardHeader>
 						<CardTitle>Admins</CardTitle>
 						<CardDescription>Users with admin privileges</CardDescription>
@@ -676,7 +676,7 @@ export default function GroupDetailPage() {
 			<PendingJoinRequestsList groupId={groupId!} />
 
 			{/* Invite Codes */}
-			<Card variant="interactive">
+			<Card>
 				<CardHeader>
 					<div className="flex items-center justify-between">
 						<div>
@@ -859,7 +859,7 @@ export default function GroupDetailPage() {
 			</Card>
 
 			{/* Discord Servers */}
-			<Card variant="interactive">
+			<Card>
 				<CardHeader>
 					<div className="flex items-center justify-between">
 						<div>
@@ -1117,7 +1117,7 @@ export default function GroupDetailPage() {
 			</Card>
 
 			{/* Permissions */}
-			<Card variant="interactive">
+			<Card>
 				<CardHeader>
 					<div className="flex items-center justify-between">
 						<div>
@@ -1234,7 +1234,7 @@ export default function GroupDetailPage() {
 			</Card>
 
 			{/* Members List */}
-			<Card variant="interactive">
+			<Card>
 				<CardHeader>
 					<CardTitle>Member Management</CardTitle>
 					<CardDescription>View and manage group members</CardDescription>
@@ -1254,7 +1254,7 @@ export default function GroupDetailPage() {
 			</Card>
 
 			{/* Danger Zone */}
-			<Card variant="interactive" className="border-destructive">
+			<Card className="border-destructive">
 				<CardHeader>
 					<CardTitle className="text-destructive">Danger Zone</CardTitle>
 					<CardDescription>

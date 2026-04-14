@@ -204,7 +204,7 @@ export default function AdminBillsGroupEditPage() {
 			)}
 
 			<form onSubmit={handleSubmit}>
-				<Card variant="interactive" className="mb-6">
+				<Card className="mb-6">
 					<CardHeader>
 						<CardTitle>Bill Details</CardTitle>
 						<CardDescription>Leave blank to keep current values on each bill</CardDescription>
@@ -259,7 +259,7 @@ export default function AdminBillsGroupEditPage() {
 					</CardContent>
 				</Card>
 
-				<Card variant="interactive" className="mb-6">
+				<Card className="mb-6">
 					<CardHeader>
 						<CardTitle>Late Fee Settings</CardTitle>
 						<CardDescription>Override late fee settings for all eligible bills</CardDescription>

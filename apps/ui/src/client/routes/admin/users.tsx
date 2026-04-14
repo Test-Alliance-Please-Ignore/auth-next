@@ -123,7 +123,7 @@ export default function UsersPage() {
 			)}
 
 			{/* Filters */}
-			<Card variant="interactive">
+			<Card>
 				<CardContent className="pt-6">
 					<div className="flex flex-col md:flex-row gap-4">
 						{/* Search Input */}
@@ -161,7 +161,7 @@ export default function UsersPage() {
 			</Card>
 
 			{/* Users Table */}
-			<Card variant="interactive">
+			<Card>
 				<CardHeader>
 					<div className="flex items-center justify-between">
 						<div>

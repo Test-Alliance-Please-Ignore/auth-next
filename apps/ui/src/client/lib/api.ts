@@ -786,6 +786,8 @@ export interface AdminUserCharacter {
 	characterId: string
 	characterName: string
 	characterOwnerHash: string
+	corporationId?: string | null
+	corporationName?: string | null
 	is_primary: boolean
 	linkedAt: string
 	hasValidToken: boolean

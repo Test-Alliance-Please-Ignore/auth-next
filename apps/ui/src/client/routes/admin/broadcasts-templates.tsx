@@ -273,7 +273,7 @@ export default function BroadcastTemplatesPage() {
 			)}
 
 			{/* Templates List */}
-			<Card variant="interactive">
+			<Card>
 				<CardHeader>
 					<CardTitle>Templates</CardTitle>
 					<CardDescription>Manage broadcast message templates</CardDescription>

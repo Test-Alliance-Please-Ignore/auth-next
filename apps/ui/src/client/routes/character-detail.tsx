@@ -1,7 +1,7 @@
 import { useQuery } from '@tanstack/react-query'
 import { formatDistanceToNow } from 'date-fns'
 import { RefreshCw, Shield, User } from 'lucide-react'
-import { Navigate, useParams } from 'react-router-dom'
+import { Link, Navigate, useParams } from 'react-router-dom'
 
 import { CharacterAttributes } from '../components/character-attributes'
 import { CharacterCorporationHistory } from '../components/character-corporation-history'
@@ -11,12 +11,14 @@ import { CharacterSkills } from '../components/character-skills'
 import { Button } from '../components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '../components/ui/card'
 import { Container } from '../components/ui/container'
+import { useAuth } from '../hooks/useAuth'
 import { useRefreshCharacter } from '../hooks/useCharacters'
 import { usePageTitle } from '../hooks/usePageTitle'
 import { api } from '../lib/api'
 
 export default function CharacterDetailPage() {
 	const { characterId } = useParams<{ characterId: string }>()
+	const { user } = useAuth()
 
 	if (!characterId) {
 		return <Navigate to="/dashboard" replace />
@@ -31,6 +33,34 @@ export default function CharacterDetailPage() {
 		queryKey: ['character', characterId],
 		queryFn: () => api.getCharacterDetail(characterId),
 		enabled: !!characterId,
+	})
+
+	const corporationIdForAdminLink = character?.public.info?.corporationId
+		? String(character.public.info.corporationId)
+		: null
+
+	const { data: isManagedCorporation = false } = useQuery({
+		queryKey: ['admin-corporation-exists', corporationIdForAdminLink],
+		enabled: Boolean(user?.is_admin && corporationIdForAdminLink),
+		queryFn: async () => {
+			if (!corporationIdForAdminLink) return false
+			try {
+				await api.getCorporation(corporationIdForAdminLink)
+				return true
+			} catch (queryError) {
+				if (
+					queryError &&
+					typeof queryError === 'object' &&
+					'status' in queryError &&
+					queryError.status === 404
+				) {
+					return false
+				}
+				throw queryError
+			}
+		},
+		retry: false,
+		staleTime: 1000 * 60,
 	})
 
 	// Set page title based on character name
@@ -99,6 +129,9 @@ export default function CharacterDetailPage() {
 	const lastUpdatedText = character.lastUpdated
 		? `Updated ${formatDistanceToNow(new Date(character.lastUpdated), { addSuffix: true })}`
 		: 'Never updated'
+	const canLinkToAdminCorporation = Boolean(
+		user?.is_admin && corporationIdForAdminLink && isManagedCorporation
+	)
 
 	return (
 		<Container className="p-8 space-y-6">
@@ -159,13 +192,24 @@ export default function CharacterDetailPage() {
 											alt=""
 											className="h-4 w-4 rounded"
 										/>
-										<span
-											className="text-sm font-medium"
-											title={`Corporation ID: ${character.public.info.corporationId}`}
-										>
-											{character.public.info.corporationName ||
-												`Corporation #${character.public.info.corporationId}`}
-										</span>
+										{canLinkToAdminCorporation ? (
+											<Link
+												to={`/admin/corporations/${character.public.info.corporationId}`}
+												className="text-sm font-medium underline-offset-2 hover:underline"
+												title={`Corporation ID: ${character.public.info.corporationId}`}
+											>
+												{character.public.info.corporationName ||
+													`Corporation #${character.public.info.corporationId}`}
+											</Link>
+										) : (
+											<span
+												className="text-sm font-medium"
+												title={`Corporation ID: ${character.public.info.corporationId}`}
+											>
+												{character.public.info.corporationName ||
+													`Corporation #${character.public.info.corporationId}`}
+											</span>
+										)}
 									</div>
 								)}
 								{(character.public.info?.allianceName ||
@@ -177,7 +221,7 @@ export default function CharacterDetailPage() {
 											className="h-4 w-4 rounded"
 										/>
 										<span
-											className="text-sm text-muted-foreground"
+											className="text-sm"
 											title={`Alliance ID: ${character.public.info.allianceId}`}
 										>
 											{character.public.info.allianceName ||

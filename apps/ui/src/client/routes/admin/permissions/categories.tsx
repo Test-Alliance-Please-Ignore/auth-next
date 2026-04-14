@@ -157,7 +157,7 @@ export default function PermissionCategoriesPage() {
 			)}
 
 			{/* Categories List */}
-			<Card variant="interactive">
+			<Card>
 				<CardHeader>
 					<CardTitle>
 						Categories{' '}

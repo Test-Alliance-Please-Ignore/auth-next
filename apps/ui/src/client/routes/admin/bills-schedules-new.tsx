@@ -264,7 +264,7 @@ export default function AdminBillsSchedulesNewPage() {
 
 			<form onSubmit={handleSubmit}>
 				{/* Schedule Configuration */}
-				<Card variant="interactive" className="mb-6">
+				<Card className="mb-6">
 					<CardHeader>
 						<CardTitle>Schedule Configuration</CardTitle>
 						<CardDescription>Configure how and when bills should be generated</CardDescription>
@@ -363,7 +363,7 @@ export default function AdminBillsSchedulesNewPage() {
 				</Card>
 
 				{/* Payer/Payee Information */}
-				<Card variant="interactive" className="mb-6">
+				<Card className="mb-6">
 					<CardHeader>
 						<CardTitle>Parties</CardTitle>
 						<CardDescription>Set payer and payee for generated schedule bills</CardDescription>
@@ -412,7 +412,7 @@ export default function AdminBillsSchedulesNewPage() {
 
 				{/* Group Bill Options */}
 				{formData.payerType === 'group' && (
-					<Card variant="interactive" className="mb-6">
+					<Card className="mb-6">
 						<CardHeader>
 							<CardTitle>Group Bill Options</CardTitle>
 							<CardDescription>
@@ -469,7 +469,7 @@ export default function AdminBillsSchedulesNewPage() {
 				)}
 
 				{/* Bill Amount */}
-				<Card variant="interactive" className="mb-6">
+				<Card className="mb-6">
 					<CardHeader>
 						<CardTitle>Bill Amount</CardTitle>
 						<CardDescription>The amount to charge for each generated bill</CardDescription>

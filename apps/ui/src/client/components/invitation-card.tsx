@@ -40,7 +40,7 @@ export function InvitationCard({ invitation, onActionComplete }: InvitationCardP
 	const daysUntilExpiry = Math.ceil((expiresAt.getTime() - Date.now()) / (1000 * 60 * 60 * 24))
 
 	return (
-		<Card variant="interactive">
+		<Card>
 			<CardHeader>
 				<div className="flex items-start justify-between">
 					<div className="space-y-1">

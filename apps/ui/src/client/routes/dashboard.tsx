@@ -499,7 +499,7 @@ export default function DashboardPage() {
 					<CardContent>
 						<div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
 							{user.characters.map((character) => (
-								<Card key={character.characterId} variant="interactive" className="group relative">
+								<Card key={character.characterId} className="group relative">
 									<CardContent className="p-4">
 										<Link to={`/character/${character.characterId}`} className="block">
 											<div className="flex items-center gap-3">

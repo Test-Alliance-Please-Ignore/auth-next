@@ -117,7 +117,7 @@ export default function ActivityLogPage() {
 			</div>
 
 			{/* Filters */}
-			<Card variant="interactive">
+			<Card>
 				<CardHeader>
 					<div className="flex items-center justify-between">
 						<div>
@@ -188,7 +188,7 @@ export default function ActivityLogPage() {
 			</Card>
 
 			{/* Activity Logs Table */}
-			<Card variant="interactive">
+			<Card>
 				<CardHeader>
 					<div className="flex items-center justify-between">
 						<div>
