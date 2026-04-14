@@ -2667,6 +2667,9 @@ importers:
       '@repo/eve-types':
         specifier: workspace:*
         version: link:../eve-types
+      jose:
+        specifier: 6.2.2
+        version: 6.2.2
       zod:
         specifier: 4.1.12
         version: 4.1.12

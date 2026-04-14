@@ -10,13 +10,12 @@ import { eveCharacters, eveTokens } from './db/schema'
 
 import type {
 	AuthorizationUrlResponse,
-	CachedMetadata,
+	CachedEveMetadata,
 	CallbackResult,
 	EsiAlliance,
 	EsiCorporation,
 	EsiResponse,
 	EveMetadata,
-	EveMetadataCache,
 	EveTokenResponse,
 	EveTokenStore,
 	EveVerifyResponse,
@@ -120,7 +119,7 @@ export class EveTokenStoreDO extends DurableObject<Env> implements EveTokenStore
 	private db: ReturnType<typeof createDb>
 	private jwks: ReturnType<typeof createRemoteJWKSet> | null = null
 	private jwksUri: string | null = null
-	private metadata: EveMetadataCache | null = null
+	private metadata: CachedEveMetadata | null = null
 
 	/**
 	 * Initialize the Durable Object
@@ -137,7 +136,7 @@ export class EveTokenStoreDO extends DurableObject<Env> implements EveTokenStore
 
 		// Load cached metadata from DO storage once on startup.
 		state.blockConcurrencyWhile(async () => {
-			this.metadata = (await state.storage.get<CachedMetadata>('eve:oauth:metadata')) ?? null
+			this.metadata = (await state.storage.get<CachedEveMetadata>('eve:oauth:metadata')) ?? null
 
 			if (this.metadata) {
 				this.jwksUri = this.metadata.jwks_uri
@@ -167,7 +166,7 @@ export class EveTokenStoreDO extends DurableObject<Env> implements EveTokenStore
 	 *
 	 * @returns {Promise<CachedMetadata>} Cached or freshly fetched EVE OAuth metadata.
 	 */
-	private async getEveMetadata(): Promise<CachedMetadata> {
+	private async getEveMetadata(): Promise<CachedEveMetadata> {
 		const now = Date.now()
 
 		// Fast path: warm in-memory cache
@@ -176,7 +175,7 @@ export class EveTokenStoreDO extends DurableObject<Env> implements EveTokenStore
 		}
 
 		// Second chance: durable cache from storage
-		const stored = await this.state.storage.get<CachedMetadata>('eve:oauth:metadata')
+		const stored = await this.state.storage.get<CachedEveMetadata>('eve:oauth:metadata')
 		if (stored && now < stored.expiresAt) {
 			this.metadata = stored
 
@@ -204,9 +203,10 @@ export class EveTokenStoreDO extends DurableObject<Env> implements EveTokenStore
 				throw new Error('metadata missing issuer or jwks_uri')
 			}
 
-			const fresh: CachedMetadata = {
+			const fresh: CachedEveMetadata = {
 				issuer: json.issuer,
 				jwks_uri: json.jwks_uri,
+				fetchedAt: now,
 				expiresAt: now + METADATA_TTL_MS,
 			}
 
@@ -219,9 +219,10 @@ export class EveTokenStoreDO extends DurableObject<Env> implements EveTokenStore
 				.error('Failed to fetch EVE OAuth metadata, falling back to hardcoded url', error)
 
 			// fallback path
-			const fallback: CachedMetadata = {
+			const fallback: CachedEveMetadata = {
 				issuer: 'https://login.eveonline.com',
 				jwks_uri: EVE_SSO_JWKS_FALLBACK_URL,
+				fetchedAt: now,
 				expiresAt: now + METADATA_TTL_MS,
 			}
 

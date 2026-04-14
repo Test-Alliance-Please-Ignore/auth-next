@@ -5,6 +5,7 @@
  * This package allows other workers to interact with the Durable Object via RPC.
  */
 
+import { createRemoteJWKSet } from 'jose'
 import * as z4 from 'zod/v4/core'
 
 import type { EveCharacterId } from '@repo/eve-types'
@@ -52,7 +53,7 @@ export interface EveTokenResponse {
 /**
  * Response from the EVE OAuth metadata well-known endpoint
  */
-type EveMetadata = {
+export type EveMetadata = {
 	issuer: string
 	jwks_uri: string
 }
@@ -60,7 +61,7 @@ type EveMetadata = {
 /**
  * EVE OAuth Metadata Cache
  */
-type EveMetadataCache = EveMetadata & {
+export type CachedEveMetadata = EveMetadata & {
 	fetchedAt: number
 	expiresAt: number
 }
@@ -68,8 +69,8 @@ type EveMetadataCache = EveMetadata & {
 /**
  * EVE OAuth JWKS config
  */
-type EveJwksResult = {
-	metadata: CachedMetadata
+export type EveJwksResult = {
+	metadata: CachedEveMetadata
 	jwks: ReturnType<typeof createRemoteJWKSet>
 }
 
