@@ -1,4 +1,5 @@
 import { DurableObject } from 'cloudflare:workers'
+import { createRemoteJWKSet, jwtVerify } from 'jose'
 import * as z4 from 'zod/v4/core'
 
 import { and, asc, eq, gt, gte, inArray, isNull, lt, lte, or } from '@repo/db-utils'
@@ -27,7 +28,7 @@ import type { Env } from './context'
  */
 const EVE_SSO_AUTHORIZE_URL = 'https://login.eveonline.com/v2/oauth/authorize'
 const EVE_SSO_TOKEN_URL = 'https://login.eveonline.com/v2/oauth/token'
-const EVE_SSO_VERIFY_URL = 'https://login.eveonline.com/oauth/verify'
+const EVE_SSO_JWKS_URL = 'https://login.eveonline.com/oauth/jwks'
 const TWENTY_FOUR_HOURS_MS = 24 * 60 * 60 * 1000
 
 /**
@@ -112,6 +113,7 @@ const EVE_SCOPES_ALL = [
  */
 export class EveTokenStoreDO extends DurableObject<Env> implements EveTokenStore {
 	private db: ReturnType<typeof createDb>
+	private jwks: ReturnType<typeof createRemoteJWKSet> | null = null
 
 	/**
 	 * Initialize the Durable Object
@@ -1957,21 +1959,39 @@ export class EveTokenStoreDO extends DurableObject<Env> implements EveTokenStore
 	}
 
 	/**
-	 * Verify access token with EVE SSO
+	 * Verify access token locally using CCP's JWKS public keys.
+	 * Validates iss, aud (our client ID), and cryptographic signature.
 	 */
 	private async verifyToken(accessToken: string): Promise<EveVerifyResponse> {
-		const response = await fetch(EVE_SSO_VERIFY_URL, {
-			headers: {
-				Authorization: `Bearer ${accessToken}`,
-			},
-		})
-
-		if (!response.ok) {
-			const error = await response.text()
-			throw new Error(`Token verification failed (status: ${response.status}): ${error}`)
+		if (!this.jwks) {
+			this.jwks = createRemoteJWKSet(new URL(EVE_SSO_JWKS_URL))
 		}
 
-		return response.json<EveVerifyResponse>()
+		const { payload } = await jwtVerify(accessToken, this.jwks, {
+			issuer: 'login.eveonline.com',
+			audience: this.env.EVE_SSO_CLIENT_ID,
+		})
+
+		// sub = "CHARACTER:EVE:12345678" — extract the numeric character ID
+		const sub = payload.sub ?? ''
+		const characterId = sub.split(':').pop() ?? ''
+
+		// scp may be a single string (one scope) or an array (multiple scopes)
+		const scp = payload['scp']
+		const scopes = Array.isArray(scp) ? scp.join(' ') : ((scp as string) ?? '')
+
+		const exp = payload.exp ?? 0
+		const expiresOn = new Date(exp * 1000).toISOString()
+
+		return {
+			CharacterID: characterId,
+			CharacterName: (payload['name'] as string) ?? '',
+			CharacterOwnerHash: (payload['owner'] as string) ?? '',
+			Scopes: scopes,
+			ExpiresOn: expiresOn,
+			TokenType: 'Character',
+			IntellectualProperty: 'EVE',
+		}
 	}
 
 	private classifySsoError(errorMessage: string): TokenValidationResult['status'] {
