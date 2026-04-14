@@ -212,6 +212,10 @@ export class EveTokenStoreDO extends DurableObject<Env> implements EveTokenStore
 
 			await this.state.storage.put('eve:oauth:metadata', fresh)
 			this.metadata = fresh
+			if (this.jwksUri !== fresh.jwks_uri) {
+				this.jwksUri = fresh.jwks_uri
+				this.jwks = createRemoteJWKSet(new URL(fresh.jwks_uri))
+			}
 			return fresh
 		} catch (error) {
 			logger
@@ -227,6 +231,10 @@ export class EveTokenStoreDO extends DurableObject<Env> implements EveTokenStore
 			}
 
 			this.metadata = fallback
+			if (this.jwksUri !== fallback.jwks_uri) {
+				this.jwksUri = fallback.jwks_uri
+				this.jwks = createRemoteJWKSet(new URL(fallback.jwks_uri))
+			}
 			return fallback
 		}
 	}
@@ -2092,9 +2100,16 @@ export class EveTokenStoreDO extends DurableObject<Env> implements EveTokenStore
 			audience: clientId,
 		})
 
-		// sub = "CHARACTER:EVE:12345678" — extract the numeric character ID
+		// sub must be "CHARACTER:EVE:<characterId>"
 		const sub = payload.sub ?? ''
-		const characterId = sub.split(':').pop() ?? ''
+		const subMatch = /^CHARACTER:EVE:(\d+)$/.exec(sub)
+		if (!subMatch) {
+			logger
+				.withTags({ operation: 'verifyToken' })
+				.error('Invalid "sub" claim value', { sub })
+			throw new Error('Invalid claim value')
+		}
+		const characterId = subMatch[1]
 
 		// scp may be a single string (one scope) or an array (multiple scopes)
 		const scp = payload['scp']
@@ -2108,7 +2123,9 @@ export class EveTokenStoreDO extends DurableObject<Env> implements EveTokenStore
 			aud.length === 2 && aud.includes(clientId) && aud.includes('EVE Online')
 
 		if (!hasExpectedAudience) {
-			logger.withTags({ operation: 'verifyToken' }).error('Invalid "aud" claim value')
+			logger
+				.withTags({ operation: 'verifyToken' })
+				.error('Invalid "aud" claim value', { aud, expectedClientId: clientId })
 			throw new Error('Invalid claim value')
 		}
 
