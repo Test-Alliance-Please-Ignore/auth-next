@@ -80,7 +80,7 @@ export function MemberList({
 													onClick={() => onTransferOwnership(member.userId)}
 													title="Transfer ownership to this member"
 												>
-													<UserCog className="mr-2 h-4 w-4" />
+													<UserCog className="h-4 w-4" />
 													Make Owner
 												</Button>
 											)}
@@ -92,12 +92,12 @@ export function MemberList({
 											>
 												{isAdmin ? (
 													<>
-														<ShieldOff className="mr-2 h-4 w-4" />
+														<ShieldOff className="h-4 w-4" />
 														Remove Admin
 													</>
 												) : (
 													<>
-														<Shield className="mr-2 h-4 w-4" />
+														<Shield className="h-4 w-4" />
 														Make Admin
 													</>
 												)}
@@ -110,7 +110,7 @@ export function MemberList({
 												title={cannotRemove ? 'Cannot remove owner' : 'Remove member'}
 												className="text-destructive hover:text-destructive disabled:text-muted-foreground"
 											>
-												<UserMinus className="mr-2 h-4 w-4" />
+												<UserMinus className="h-4 w-4" />
 												Remove
 											</Button>
 										</div>

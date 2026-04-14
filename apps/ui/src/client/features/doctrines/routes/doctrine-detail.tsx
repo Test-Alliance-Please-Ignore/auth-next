@@ -270,7 +270,7 @@ export default function DoctrineDetailPage() {
 							</p>
 							<Button asChild variant="ghost">
 								<Link to="/doctrines">
-									<ArrowLeft className="h-4 w-4 mr-2" />
+									<ArrowLeft className="h-4 w-4" />
 									Back to Doctrines
 								</Link>
 							</Button>
@@ -285,7 +285,7 @@ export default function DoctrineDetailPage() {
 		<Container>
 			<Button asChild variant="ghost" size="sm" className="mb-4">
 				<Link to="/doctrines">
-					<ArrowLeft className="h-4 w-4 mr-2" />
+					<ArrowLeft className="h-4 w-4" />
 					Back to Doctrines
 				</Link>
 			</Button>
@@ -296,19 +296,17 @@ export default function DoctrineDetailPage() {
 					<div className="flex gap-2">
 						{canManage && (
 							<>
-								<Button asChild>
-									<Link to={`/doctrines/fittings/create?doctrineId=${id}`}>
-										<Plus className="h-4 w-4 mr-2" />
-										Create Fitting
-									</Link>
+								<Button onClick={() => navigate(`/doctrines/fittings/create?doctrineId=${id}`)}>
+									<Plus className="h-4 w-4" />
+									Create Fitting
 								</Button>
 								<Button variant="secondary" onClick={() => setAddFittingOpen(true)}>
-									<Plus className="h-4 w-4 mr-2" />
+									<Plus className="h-4 w-4" />
 									Link Existing
 								</Button>
 								<Button asChild variant="ghost">
 									<Link to={`/doctrines/${id}/edit`}>
-										<Edit className="h-4 w-4 mr-2" />
+										<Edit className="h-4 w-4" />
 										Edit
 									</Link>
 								</Button>
@@ -318,7 +316,7 @@ export default function DoctrineDetailPage() {
 									loading={deleteMutation.isPending}
 									loadingText="Deleting..."
 								>
-									<Trash2 className="h-4 w-4 mr-2" />
+									<Trash2 className="h-4 w-4" />
 									Delete
 								</Button>
 							</>
@@ -406,14 +404,12 @@ export default function DoctrineDetailPage() {
 								<p className="text-muted-foreground mb-4">No fittings added yet.</p>
 								{canManage && (
 									<div className="flex justify-center gap-2">
-										<Button asChild>
-											<Link to={`/doctrines/fittings/create?doctrineId=${id}`}>
-												<Plus className="h-4 w-4 mr-2" />
-												Create Fitting
-											</Link>
+										<Button onClick={() => navigate(`/doctrines/fittings/create?doctrineId=${id}`)}>
+											<Plus className="h-4 w-4" />
+											Create Fitting
 										</Button>
 										<Button variant="secondary" onClick={() => setAddFittingOpen(true)}>
-											<Plus className="h-4 w-4 mr-2" />
+											<Plus className="h-4 w-4" />
 											Link Existing
 										</Button>
 									</div>

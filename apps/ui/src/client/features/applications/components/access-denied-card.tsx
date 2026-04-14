@@ -26,7 +26,7 @@ export function AccessDeniedCard({
 			{onBack && (
 				<CardContent className="text-center">
 					<Button variant="ghost" onClick={onBack}>
-						<ArrowLeft className="mr-2 h-4 w-4" />
+						<ArrowLeft className="h-4 w-4" />
 						{backLabel}
 					</Button>
 				</CardContent>
@@ -34,7 +34,7 @@ export function AccessDeniedCard({
 			{!onBack && (
 				<CardFooter className="justify-center">
 					<Button variant="ghost" onClick={() => window.history.back()}>
-						<ArrowLeft className="mr-2 h-4 w-4" />
+						<ArrowLeft className="h-4 w-4" />
 						{backLabel}
 					</Button>
 				</CardFooter>

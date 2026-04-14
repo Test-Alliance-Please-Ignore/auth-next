@@ -134,7 +134,7 @@ export default function BroadcastsPage() {
 				description="View and manage your broadcasts"
 				action={
 					<Button onClick={() => navigate('/broadcasts/new')}>
-						<Plus className="mr-2 h-4 w-4" />
+						<Plus className="h-4 w-4" />
 						New Broadcast
 					</Button>
 				}
@@ -197,7 +197,7 @@ export default function BroadcastsPage() {
 								message.
 							</p>
 							<Button onClick={() => navigate('/broadcasts/new')} size="lg">
-								<Plus className="mr-2 h-4 w-4" />
+								<Plus className="h-4 w-4" />
 								Create Your First Broadcast
 							</Button>
 						</CardContent>
@@ -353,7 +353,7 @@ export default function BroadcastsPage() {
 							loadingText="Deleting..."
 							showIcon={false}
 						>
-							<Trash2 className="mr-2 h-4 w-4" />
+							<Trash2 className="h-4 w-4" />
 							Delete
 						</Button>
 					</DialogFooter>

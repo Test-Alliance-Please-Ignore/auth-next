@@ -154,13 +154,13 @@ export function DirectorList({ corporationId }: DirectorListProps) {
 							disabled={verifyAllDirectors.isPending}
 						>
 							<RefreshCw
-								className={`mr-2 h-4 w-4 ${verifyAllDirectors.isPending ? 'animate-spin' : ''}`}
+								className={`h-4 w-4 ${verifyAllDirectors.isPending ? 'animate-spin' : ''}`}
 							/>
 							Verify All
 						</Button>
 					)}
 					<Button variant="primary" size="sm" onClick={() => setAddDialogOpen(true)}>
-						<Plus className="mr-2 h-4 w-4" />
+						<Plus className="h-4 w-4" />
 						Add Director
 					</Button>
 				</div>
@@ -173,7 +173,7 @@ export function DirectorList({ corporationId }: DirectorListProps) {
 						No directors assigned. Add a director character to manage corporation data.
 					</p>
 					<Button variant="ghost" onClick={() => setAddDialogOpen(true)}>
-						<Plus className="mr-2 h-4 w-4" />
+						<Plus className="h-4 w-4" />
 						Add First Director
 					</Button>
 				</div>

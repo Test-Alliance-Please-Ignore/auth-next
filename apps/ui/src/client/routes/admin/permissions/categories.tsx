@@ -117,7 +117,7 @@ export default function PermissionCategoriesPage() {
 						</p>
 					</div>
 					<Button onClick={() => setCreateDialogOpen(true)}>
-						<Plus className="mr-2 h-4 w-4" />
+						<Plus className="h-4 w-4" />
 						New Category
 					</Button>
 				</div>
@@ -126,13 +126,13 @@ export default function PermissionCategoriesPage() {
 				<div className="flex gap-2">
 					<Button variant="primary" asChild>
 						<Link to="/admin/permissions/categories">
-							<FolderOpen className="mr-2 h-4 w-4" />
+							<FolderOpen className="h-4 w-4" />
 							Categories
 						</Link>
 					</Button>
 					<Button variant="ghost" asChild>
 						<Link to="/admin/permissions/global">
-							<FileKey className="mr-2 h-4 w-4" />
+							<FileKey className="h-4 w-4" />
 							Global Permissions
 						</Link>
 					</Button>

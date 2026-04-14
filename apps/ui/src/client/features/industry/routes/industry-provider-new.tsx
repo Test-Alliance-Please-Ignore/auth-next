@@ -159,7 +159,7 @@ export default function IndustryProviderNewPage() {
 					onClick={() => navigate('/admin/industry-providers')}
 					disabled={isProcessing}
 				>
-					<ArrowLeft className="h-4 w-4 mr-2" />
+					<ArrowLeft className="h-4 w-4" />
 					Back
 				</Button>
 				<div>
@@ -211,7 +211,7 @@ export default function IndustryProviderNewPage() {
 							<Button onClick={handleNextStep} disabled={isProcessing}>
 								{creationStatus === 'creating-provider' ? (
 									<>
-										<Loader2 className="h-4 w-4 mr-2 animate-spin" />
+										<Loader2 className="h-4 w-4 animate-spin" />
 										Creating...
 									</>
 								) : (
@@ -278,12 +278,12 @@ export default function IndustryProviderNewPage() {
 									<Button onClick={handleFinish} disabled={isProcessing}>
 										{creationStatus === 'adding-services' ? (
 											<>
-												<Loader2 className="h-4 w-4 mr-2 animate-spin" />
+												<Loader2 className="h-4 w-4 animate-spin" />
 												Adding Services...
 											</>
 										) : (
 											<>
-												<Check className="h-4 w-4 mr-2" />
+												<Check className="h-4 w-4" />
 												{selectedServices.length > 0
 													? `Finish (${selectedServices.length} services)`
 													: 'Finish'}

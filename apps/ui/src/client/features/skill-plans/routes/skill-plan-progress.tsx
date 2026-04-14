@@ -33,7 +33,7 @@ export default function SkillPlanProgress() {
 			<div className="mb-4">
 				<Button variant="ghost" size="sm" asChild>
 					<Link to={`/skill-plans/${id}`}>
-						<ArrowLeft className="h-4 w-4 mr-2" />
+						<ArrowLeft className="h-4 w-4" />
 						Back to Plan
 					</Link>
 				</Button>

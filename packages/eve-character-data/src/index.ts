@@ -498,6 +498,20 @@ export interface EveCharacterData {
 	fetchMarketOrders(characterId: string, forceRefresh?: boolean): Promise<void>
 
 	/**
+	 * Fetch and store character location on-demand (requires token)
+	 * Called when the character detail page loads, not during daily sync
+	 * @param characterId - EVE character ID
+	 */
+	fetchLocation(characterId: string): Promise<void>
+
+	/**
+	 * Fetch and store character online status on-demand (requires token)
+	 * Called when the character detail page loads, not during daily sync
+	 * @param characterId - EVE character ID
+	 */
+	fetchStatus(characterId: string): Promise<void>
+
+	/**
 	 * Fetch and store killmails (requires token)
 	 * @param characterId - EVE character ID
 	 */
@@ -729,6 +743,14 @@ export class EveCharacterDataInstance extends RpcTarget {
 
 	async fetchMarketOrders(forceRefresh?: boolean): Promise<void> {
 		await this.characterDataObject.fetchMarketOrders(this.characterId, forceRefresh)
+	}
+
+	async fetchLocation(): Promise<void> {
+		await this.characterDataObject.fetchLocation(this.characterId)
+	}
+
+	async fetchStatus(): Promise<void> {
+		await this.characterDataObject.fetchStatus(this.characterId)
 	}
 
 	async fetchKillmails(): Promise<void> {

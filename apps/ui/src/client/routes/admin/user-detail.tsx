@@ -143,7 +143,7 @@ export default function UserDetailPage() {
 			<div className="space-y-6">
 				<div className="flex items-center gap-4">
 					<Button variant="ghost" onClick={() => navigate('/admin/users')}>
-						<ArrowLeft className="h-4 w-4 mr-2" />
+						<ArrowLeft className="h-4 w-4" />
 						Back
 					</Button>
 				</div>
@@ -157,7 +157,7 @@ export default function UserDetailPage() {
 			<div className="space-y-6">
 				<div className="flex items-center gap-4">
 					<Button variant="ghost" onClick={() => navigate('/admin/users')}>
-						<ArrowLeft className="h-4 w-4 mr-2" />
+						<ArrowLeft className="h-4 w-4" />
 						Back
 					</Button>
 				</div>
@@ -401,7 +401,7 @@ export default function UserDetailPage() {
 			<div className="flex items-center justify-between">
 				<div className="flex items-center gap-4">
 					<Button variant="ghost" onClick={() => navigate('/admin/users')}>
-						<ArrowLeft className="h-4 w-4 mr-2" />
+						<ArrowLeft className="h-4 w-4" />
 						Back to Users
 					</Button>
 					<Button variant="ghost" size="sm" onClick={() => refetch()}>
@@ -411,19 +411,19 @@ export default function UserDetailPage() {
 				<div className="flex gap-2">
 					<Button variant="ghost" asChild>
 						<Link to={`/admin/users/${user.id}/discord-access`}>
-							<Bot className="mr-2 h-4 w-4" />
+							<Bot className="h-4 w-4" />
 							Discord Access
 						</Link>
 					</Button>
 					<Button variant="ghost" asChild>
 						<Link to={`/admin/users/${user.id}/groups`}>
-							<Users className="mr-2 h-4 w-4" />
+							<Users className="h-4 w-4" />
 							Group Memberships
 						</Link>
 					</Button>
 					<Button variant="ghost" asChild>
 						<Link to={`/admin/users/${user.id}/activity`}>
-							<History className="mr-2 h-4 w-4" />
+							<History className="h-4 w-4" />
 							Activity Log
 						</Link>
 					</Button>
@@ -492,7 +492,7 @@ export default function UserDetailPage() {
 											size="sm"
 											showIcon={false}
 										>
-											<ShieldOff className="h-4 w-4 mr-2" />
+											<ShieldOff className="h-4 w-4" />
 											Revoke Admin
 										</Button>
 									) : (
@@ -502,18 +502,17 @@ export default function UserDetailPage() {
 											size="sm"
 											showIcon={false}
 										>
-											<Shield className="h-4 w-4 mr-2" />
+											<Shield className="h-4 w-4" />
 											Grant Admin
 										</Button>
 									)}
 									{activeBlacklist ? (
 										<Button
-											variant="ghost"
+											variant="cancel"
 											size="sm"
 											onClick={() => setRemoveBlacklistDialogOpen(true)}
 											disabled={removeBlacklist.isPending}
 										>
-											<ShieldBan className="h-4 w-4 mr-2" />
 											Remove from Blacklist
 										</Button>
 									) : (
@@ -549,7 +548,7 @@ export default function UserDetailPage() {
 										size="sm"
 										showIcon={false}
 									>
-										<LogOut className="h-4 w-4 mr-2" />
+										<LogOut className="h-4 w-4" />
 										Clear Sessions
 									</Button>
 									<Button variant="primary"
@@ -558,7 +557,7 @@ export default function UserDetailPage() {
 										size="sm"
 									>
 										<RefreshCw
-											className={cn('h-4 w-4 mr-2', syncUser.isPending && 'animate-spin')}
+											className={cn('h-4 w-4', syncUser.isPending && 'animate-spin')}
 										/>
 										Sync User
 									</Button>
@@ -597,7 +596,7 @@ export default function UserDetailPage() {
 							<CardDescription>Private notes about this user (admin only)</CardDescription>
 						</div>
 						<Button onClick={() => setAddNoteDialogOpen(true)} size="sm">
-							<Plus className="h-4 w-4 mr-2" />
+							<Plus className="h-4 w-4" />
 							Add Note
 						</Button>
 					</div>
@@ -638,7 +637,7 @@ export default function UserDetailPage() {
 										>
 											<RefreshCw
 												className={cn(
-													'h-4 w-4 mr-2',
+													'h-4 w-4',
 													updateDiscordAccess.isPending && 'animate-spin'
 												)}
 											/>
@@ -650,7 +649,7 @@ export default function UserDetailPage() {
 											size="sm"
 											showIcon={false}
 										>
-											<XCircle className="h-4 w-4 mr-2" />
+											<XCircle className="h-4 w-4" />
 											Revoke Authorization
 										</Button>
 									</>
@@ -661,7 +660,7 @@ export default function UserDetailPage() {
 									size="sm"
 									showIcon={false}
 								>
-									<Trash2 className="h-4 w-4 mr-2" />
+									<Trash2 className="h-4 w-4" />
 									Unlink Discord Account
 								</Button>
 							</div>
@@ -929,7 +928,7 @@ export default function UserDetailPage() {
 								showIcon={false}
 								loadingText="Revoking..."
 							>
-								<ShieldOff className="mr-2 h-4 w-4" />
+								<ShieldOff className="h-4 w-4" />
 								Revoke Admin
 							</Button>
 						) : (
@@ -939,7 +938,7 @@ export default function UserDetailPage() {
 								loadingText="Granting..."
 								showIcon={false}
 							>
-								<Shield className="mr-2 h-4 w-4" />
+								<Shield className="h-4 w-4" />
 								Grant Admin
 							</Button>
 						)}
@@ -971,7 +970,7 @@ export default function UserDetailPage() {
 							loadingText="Revoking..."
 							showIcon={false}
 						>
-							<XCircle className="mr-2 h-4 w-4" />
+							<XCircle className="h-4 w-4" />
 							Revoke Authorization
 						</Button>
 					</DialogFooter>
@@ -1010,7 +1009,7 @@ export default function UserDetailPage() {
 							loadingText="Unlinking..."
 							showIcon={false}
 						>
-							<Trash2 className="mr-2 h-4 w-4" />
+							<Trash2 className="h-4 w-4" />
 							Unlink Discord Account
 						</Button>
 					</DialogFooter>
@@ -1041,7 +1040,7 @@ export default function UserDetailPage() {
 							loadingText="Clearing..."
 							showIcon={false}
 						>
-							<LogOut className="mr-2 h-4 w-4" />
+							<LogOut className="h-4 w-4" />
 							Clear Sessions
 						</Button>
 					</DialogFooter>
@@ -1073,7 +1072,7 @@ export default function UserDetailPage() {
 							loadingText="Triggering..."
 							showIcon={false}
 						>
-							<RefreshCw className="mr-2 h-4 w-4" />
+							<RefreshCw className="h-4 w-4" />
 							Sync User
 						</Button>
 					</DialogFooter>
@@ -1112,7 +1111,7 @@ export default function UserDetailPage() {
 							loadingText="Deleting..."
 							showIcon={false}
 						>
-							<Trash2 className="mr-2 h-4 w-4" />
+							<Trash2 className="h-4 w-4" />
 							Delete Character
 						</Button>
 					</DialogFooter>
@@ -1147,7 +1146,7 @@ export default function UserDetailPage() {
 							loadingText="Setting..."
 							showIcon={false}
 						>
-							<CheckCircle className="mr-2 h-4 w-4" />
+							<CheckCircle className="h-4 w-4" />
 							Set as Primary
 						</Button>
 					</DialogFooter>
@@ -1281,7 +1280,7 @@ export default function UserDetailPage() {
 							loadingText="Blacklisting..."
 							showIcon={false}
 						>
-							<ShieldBan className="mr-2 h-4 w-4" />
+							<ShieldBan className="h-4 w-4" />
 							Blacklist User
 						</Button>
 					</DialogFooter>
@@ -1318,7 +1317,7 @@ export default function UserDetailPage() {
 							loadingText="Removing..."
 							showIcon={false}
 						>
-							<ShieldBan className="mr-2 h-4 w-4" />
+							<ShieldBan className="h-4 w-4" />
 							Remove from Blacklist
 						</Button>
 					</DialogFooter>

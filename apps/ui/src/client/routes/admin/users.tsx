@@ -100,7 +100,7 @@ export default function UsersPage() {
 					</p>
 				</div>
 				<Button variant="primary" onClick={() => setSearchDialogOpen(true)}>
-					<Search className="mr-2 h-4 w-4" />
+					<Search className="h-4 w-4" />
 					Quick Search
 				</Button>
 			</div>

@@ -122,7 +122,7 @@ export function EmeritusConfirmationDialog({
 							}
 							showIcon={false}
 						>
-							<Heart className="mr-2 h-4 w-4" />
+							<Heart className="h-4 w-4" />
 							{isMarkingEmeritus ? 'Mark as Emeritus' : 'Remove Emeritus Status'}
 						</Button>
 					</div>

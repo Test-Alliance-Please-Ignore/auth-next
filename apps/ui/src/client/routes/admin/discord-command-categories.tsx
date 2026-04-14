@@ -141,7 +141,7 @@ export default function AdminDiscordCommandCategoriesPage() {
 				<div className="flex items-center gap-2">
 					<Button asChild variant="ghost">
 						<Link to="/admin/discord-commands">
-							<ArrowLeft className="mr-2 h-4 w-4" />
+							<ArrowLeft className="h-4 w-4" />
 							Back To Commands
 						</Link>
 					</Button>
@@ -152,7 +152,7 @@ export default function AdminDiscordCommandCategoriesPage() {
 							setCreateCategoryOpen(true)
 						}}
 					>
-						<Plus className="mr-2 h-4 w-4" />
+						<Plus className="h-4 w-4" />
 						New Category
 					</Button>
 				</div>

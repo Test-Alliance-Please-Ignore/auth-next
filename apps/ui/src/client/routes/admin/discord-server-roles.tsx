@@ -164,16 +164,16 @@ export default function AdminDiscordServerRolesPage() {
 				<div className="flex items-center gap-2">
 					<Button asChild variant="ghost">
 						<Link to="/admin/discord-servers">
-							<ArrowLeft className="mr-2 h-4 w-4" />
+							<ArrowLeft className="h-4 w-4" />
 							Back to Servers
 						</Link>
 					</Button>
 					<Button variant="ghost" onClick={handleRefreshMembers} disabled={refreshing}>
-						<RefreshCw className={`mr-2 h-4 w-4 ${refreshing ? 'animate-spin' : ''}`} />
+						<RefreshCw className={`h-4 w-4 ${refreshing ? 'animate-spin' : ''}`} />
 						Refresh All Members
 					</Button>
 					<Button variant="primary" onClick={() => setCreateRoleDialogOpen(true)}>
-						<Plus className="mr-2 h-4 w-4" />
+						<Plus className="h-4 w-4" />
 						Add Role
 					</Button>
 				</div>

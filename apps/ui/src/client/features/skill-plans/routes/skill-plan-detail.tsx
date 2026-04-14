@@ -114,7 +114,7 @@ export default function SkillPlanDetail() {
 				<div className="flex justify-between items-center mb-6">
 					<Button variant="ghost" asChild>
 						<Link to="/skill-plans">
-							<ArrowLeft className="h-4 w-4 mr-2" />
+							<ArrowLeft className="h-4 w-4" />
 							Back to Plans
 						</Link>
 					</Button>
@@ -125,19 +125,19 @@ export default function SkillPlanDetail() {
 								<Button variant="ghost" onClick={handlePublish}>
 									{plan.isPublished ? (
 										<>
-											<Lock className="h-4 w-4 mr-2" />
+											<Lock className="h-4 w-4" />
 											Unpublish
 										</>
 									) : (
 										<>
-											<Globe className="h-4 w-4 mr-2" />
+											<Globe className="h-4 w-4" />
 											Publish
 										</>
 									)}
 								</Button>
 								<Button variant="ghost" asChild>
 									<Link to={`/skill-plans/${id}/edit`}>
-										<Edit2 className="h-4 w-4 mr-2" />
+										<Edit2 className="h-4 w-4" />
 										Edit
 									</Link>
 								</Button>
@@ -145,7 +145,7 @@ export default function SkillPlanDetail() {
 						)}
 						{plan.canDelete && (
 							<Button variant="destructive" onClick={handleDelete}>
-								<Trash2 className="h-4 w-4 mr-2" />
+								<Trash2 className="h-4 w-4" />
 								Delete
 							</Button>
 						)}
@@ -229,7 +229,7 @@ export default function SkillPlanDetail() {
 								{plan.canModify && (
 									<Button asChild>
 										<Link to={`/skill-plans/${id}/edit`}>
-											<Plus className="h-4 w-4 mr-2" />
+											<Plus className="h-4 w-4" />
 											Manage Skills
 										</Link>
 									</Button>
@@ -279,7 +279,7 @@ export default function SkillPlanDetail() {
 										{plan.canModify && (
 											<Button className="mt-4" asChild>
 												<Link to={`/skill-plans/${id}/edit`}>
-													<Plus className="h-4 w-4 mr-2" />
+													<Plus className="h-4 w-4" />
 													Add First Skill
 												</Link>
 											</Button>

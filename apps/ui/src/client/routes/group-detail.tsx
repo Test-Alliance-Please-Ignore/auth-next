@@ -157,7 +157,7 @@ export default function GroupDetailPage() {
 			<div className="flex flex-col items-center justify-center min-h-[400px] space-y-4">
 				<p className="text-muted-foreground">Group not found</p>
 				<Button onClick={() => navigate('/groups')}>
-					<ArrowLeft className="mr-2 h-4 w-4" />
+					<ArrowLeft className="h-4 w-4" />
 					Back to Groups
 				</Button>
 			</div>
@@ -169,7 +169,7 @@ export default function GroupDetailPage() {
 			<Section>
 				{/* Back Button */}
 				<Button variant="ghost" onClick={() => navigate('/groups')}>
-					<ArrowLeft className="mr-2 h-4 w-4" />
+					<ArrowLeft className="h-4 w-4" />
 					Back to Groups
 				</Button>
 
@@ -246,7 +246,7 @@ export default function GroupDetailPage() {
 									</CardDescription>
 								</div>
 								<Button onClick={() => setShowCreateInviteCodeDialog(true)} size="sm">
-									<Plus className="mr-2 h-4 w-4" />
+									<Plus className="h-4 w-4" />
 									Create Code
 								</Button>
 							</div>
@@ -435,7 +435,7 @@ export default function GroupDetailPage() {
 						</CardHeader>
 						<CardContent>
 							<Button variant="ghost" onClick={() => setTransferDialogOpen(true)}>
-								<UserCog className="mr-2 h-4 w-4" />
+								<UserCog className="h-4 w-4" />
 								Transfer Ownership
 							</Button>
 						</CardContent>

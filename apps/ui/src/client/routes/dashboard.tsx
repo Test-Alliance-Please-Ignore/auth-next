@@ -485,7 +485,14 @@ export default function DashboardPage() {
 								onClick={handleLinkCharacter}
 								disabled={isLinkingCharacter}
 							>
-								{isLinkingCharacter ? 'Redirecting...' : 'Link Character'}
+								{isLinkingCharacter ? (
+									'Redirecting...'
+								) : (
+									<>
+										<UserPlus className="h-4 w-4" />
+										Link Character
+									</>
+								)}
 							</Button>
 						</div>
 					</CardHeader>

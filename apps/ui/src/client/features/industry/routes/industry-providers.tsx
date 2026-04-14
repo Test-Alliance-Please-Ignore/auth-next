@@ -77,7 +77,7 @@ export default function IndustryProvidersPage() {
 				</div>
 				<Button asChild>
 					<Link to="/admin/industry-providers/new">
-						<Plus className="mr-2 h-4 w-4" />
+						<Plus className="h-4 w-4" />
 						Create Provider
 					</Link>
 				</Button>
@@ -155,7 +155,7 @@ export default function IndustryProvidersPage() {
 							<p className="text-muted-foreground mb-4">No providers found</p>
 							<Button asChild>
 								<Link to="/admin/industry-providers/new">
-									<Plus className="mr-2 h-4 w-4" />
+									<Plus className="h-4 w-4" />
 									Create Your First Provider
 								</Link>
 							</Button>

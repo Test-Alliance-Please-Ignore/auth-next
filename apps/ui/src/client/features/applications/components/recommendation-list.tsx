@@ -84,7 +84,7 @@ function EmptyState({ onAddRecommendation }: EmptyStateProps) {
 			</p>
 			{onAddRecommendation && (
 				<Button onClick={onAddRecommendation} size="sm">
-					<Plus className="h-4 w-4 mr-2" />
+					<Plus className="h-4 w-4" />
 					Add Recommendation
 				</Button>
 			)}
@@ -203,7 +203,7 @@ export function RecommendationList({
 				</h3>
 				{canAddRecommendation && (
 					<Button onClick={onAddRecommendation} size="sm" variant="ghost">
-						<Plus className="h-4 w-4 mr-2" />
+						<Plus className="h-4 w-4" />
 						Add Recommendation
 					</Button>
 				)}

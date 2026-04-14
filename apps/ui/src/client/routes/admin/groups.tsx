@@ -101,7 +101,7 @@ export default function GroupsPage() {
 					<p className="text-muted-foreground mt-1">View and manage all groups</p>
 				</div>
 				<Button onClick={() => setCreateDialogOpen(true)}>
-					<Plus className="mr-2 h-4 w-4" />
+					<Plus className="h-4 w-4" />
 					Create Group
 				</Button>
 			</div>
@@ -135,7 +135,7 @@ export default function GroupsPage() {
 						</div>
 						{hasActiveFilters && (
 							<Button variant="ghost" size="sm" onClick={clearFilters}>
-								<X className="mr-2 h-4 w-4" />
+								<X className="h-4 w-4" />
 								Clear Filters
 							</Button>
 						)}

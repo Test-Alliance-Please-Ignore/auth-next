@@ -106,14 +106,14 @@ export function TaxReportWorkspace({
 							onClick={() => setExportModalOpen(true)}
 							disabled={!canExport || !activeReportIsExportable}
 						>
-							<Download className="mr-2 h-4 w-4" />
+							<Download className="h-4 w-4" />
 							Export
 						</Button>
 						<Button variant="ghost"
 							onClick={() => setScheduleModalOpen(true)}
 							disabled={!canCreateSchedule || !activeReportIsExportable}
 						>
-							<CalendarClock className="mr-2 h-4 w-4" />
+							<CalendarClock className="h-4 w-4" />
 							Schedule
 						</Button>
 					</>

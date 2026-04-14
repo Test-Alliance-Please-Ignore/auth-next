@@ -50,7 +50,7 @@ export default function BillDetailPage() {
 					</div>
 					<Button variant="ghost" asChild>
 						<Link to="/my-bills">
-							<FileText className="mr-2 h-4 w-4" />
+							<FileText className="h-4 w-4" />
 							Back to My Bills
 						</Link>
 					</Button>
@@ -71,7 +71,7 @@ export default function BillDetailPage() {
 					</div>
 					<Button variant="ghost" asChild>
 						<Link to="/my-bills">
-							<FileText className="mr-2 h-4 w-4" />
+							<FileText className="h-4 w-4" />
 							Back to My Bills
 						</Link>
 					</Button>
@@ -140,7 +140,7 @@ export default function BillDetailPage() {
 				action={
 					<Button variant="ghost" asChild>
 						<Link to="/my-bills">
-							<FileText className="mr-2 h-4 w-4" />
+							<FileText className="h-4 w-4" />
 							Back to My Bills
 						</Link>
 					</Button>

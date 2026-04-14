@@ -92,7 +92,7 @@ export default function GroupsPage() {
 							</div>
 							{hasActiveFilters && (
 								<Button variant="ghost" size="sm" onClick={clearFilters}>
-									<X className="mr-2 h-4 w-4" />
+									<X className="h-4 w-4" />
 									Clear Filters
 								</Button>
 							)}

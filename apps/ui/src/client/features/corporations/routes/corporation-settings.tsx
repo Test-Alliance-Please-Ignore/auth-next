@@ -160,7 +160,7 @@ export default function CorporationSettings() {
 					</CardHeader>
 					<CardContent className="text-center">
 						<Button variant="ghost" onClick={() => navigate('/corporations')}>
-							<ArrowLeft className="mr-2 h-4 w-4" />
+							<ArrowLeft className="h-4 w-4" />
 							Back to Corporations
 						</Button>
 					</CardContent>
@@ -200,7 +200,7 @@ export default function CorporationSettings() {
 				description={`Configure how ${corporation.name} appears to applicants`}
 				action={
 					<Button variant="ghost" onClick={() => navigate(`/corporations/${corporationId}/members`)}>
-						<ArrowLeft className="mr-2 h-4 w-4" />
+						<ArrowLeft className="h-4 w-4" />
 						Back to Manage Corporation
 					</Button>
 				}
@@ -303,7 +303,7 @@ export default function CorporationSettings() {
 							</>
 						) : (
 							<>
-								<Save className="mr-2 h-4 w-4" />
+								<Save className="h-4 w-4" />
 								Save Settings
 							</>
 						)}

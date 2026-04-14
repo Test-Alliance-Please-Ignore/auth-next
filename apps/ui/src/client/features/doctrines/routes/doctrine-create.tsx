@@ -42,7 +42,7 @@ export default function DoctrineCreatePage() {
 		<Container>
 			<Button asChild variant="ghost" size="sm" className="mb-4">
 				<Link to="/doctrines">
-					<ArrowLeft className="h-4 w-4 mr-2" />
+					<ArrowLeft className="h-4 w-4" />
 					Back to Doctrines
 				</Link>
 			</Button>

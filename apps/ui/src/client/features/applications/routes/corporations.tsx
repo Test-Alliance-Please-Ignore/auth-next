@@ -152,14 +152,14 @@ export default function CorporationsPage() {
 										{canAccessMembers && (
 											<Button variant="ghost" asChild>
 												<Link to={`/corporations/${corporation.corporationId}/members`}>
-													<Users className="mr-2 h-4 w-4" />
+													<Users className="h-4 w-4" />
 													Members
 												</Link>
 											</Button>
 										)}
 										<Button variant={canAccessMembers ? 'ghost' : 'primary'} asChild>
 											<Link to={`/corporations/${corporation.corporationId}/applications`}>
-												<FileText className="mr-2 h-4 w-4" />
+												<FileText className="h-4 w-4" />
 												Applications
 											</Link>
 										</Button>

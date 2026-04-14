@@ -226,7 +226,7 @@ export default function AdminDiscordCommandsPage() {
 				<div className="flex items-center gap-2">
 					<Button asChild variant="ghost">
 						<Link to="/admin/discord-commands/categories">
-							<FolderKanban className="mr-2 h-4 w-4" />
+							<FolderKanban className="h-4 w-4" />
 							Categories
 						</Link>
 					</Button>
@@ -237,7 +237,7 @@ export default function AdminDiscordCommandsPage() {
 							setCreateCommandOpen(true)
 						}}
 					>
-						<Plus className="mr-2 h-4 w-4" />
+						<Plus className="h-4 w-4" />
 						New Command
 					</Button>
 				</div>

@@ -100,7 +100,7 @@ export default function SkillPlansList() {
 							{user.is_admin && (
 								<Button variant="ghost" asChild>
 									<Link to="/skill-plans/categories/manage">
-										<Settings className="h-4 w-4 mr-2" />
+										<Settings className="h-4 w-4" />
 										Manage Categories
 									</Link>
 								</Button>
@@ -110,7 +110,7 @@ export default function SkillPlansList() {
 							</Button>
 							<Button asChild>
 								<Link to="/skill-plans/create">
-									<Plus className="h-4 w-4 mr-2" />
+									<Plus className="h-4 w-4" />
 									Create Plan
 								</Link>
 							</Button>
@@ -251,7 +251,7 @@ export default function SkillPlansList() {
 									<div className="mt-4">
 										<Button asChild>
 											<Link to="/skill-plans/create">
-												<Plus className="h-4 w-4 mr-2" />
+												<Plus className="h-4 w-4" />
 												Create your first plan
 											</Link>
 										</Button>

@@ -219,7 +219,7 @@ export default function RequestDetails() {
 									{request.paymentToken}
 								</div>
 								<Button variant="ghost" size="sm" className="w-full" onClick={copyToken}>
-									<Copy className="mr-2 h-4 w-4" />
+									<Copy className="h-4 w-4" />
 									Copy Token
 								</Button>
 								<p className="text-xs text-muted-foreground">

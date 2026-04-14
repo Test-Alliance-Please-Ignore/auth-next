@@ -80,13 +80,13 @@ export default function BillsTemplatesPage() {
 				<div className="flex gap-2">
 					<Button variant="ghost" asChild>
 						<Link to="/admin/bills">
-							<ArrowLeft className="mr-2 h-4 w-4" />
+							<ArrowLeft className="h-4 w-4" />
 							Back to Bills
 						</Link>
 					</Button>
 					<Button variant="primary" asChild>
 						<Link to="/admin/bills/templates/new">
-							<Plus className="mr-2 h-4 w-4" />
+							<Plus className="h-4 w-4" />
 							Create Template
 						</Link>
 					</Button>
@@ -126,7 +126,7 @@ export default function BillsTemplatesPage() {
 							</p>
 							<Button variant="primary" asChild>
 								<Link to="/admin/bills/templates/new">
-									<Plus className="mr-2 h-4 w-4" />
+									<Plus className="h-4 w-4" />
 									Create Template
 								</Link>
 							</Button>

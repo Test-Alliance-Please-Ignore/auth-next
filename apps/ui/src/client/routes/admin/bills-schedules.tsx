@@ -90,13 +90,13 @@ export default function BillsSchedulesPage() {
 				<div className="flex gap-2">
 					<Button variant="ghost" asChild>
 						<Link to="/admin/bills">
-							<ArrowLeft className="mr-2 h-4 w-4" />
+							<ArrowLeft className="h-4 w-4" />
 							Back to Bills
 						</Link>
 					</Button>
 					<Button variant="primary" asChild>
 						<Link to="/admin/bills/schedules/new">
-							<Plus className="mr-2 h-4 w-4" />
+							<Plus className="h-4 w-4" />
 							Create Schedule
 						</Link>
 					</Button>
@@ -140,7 +140,7 @@ export default function BillsSchedulesPage() {
 							</p>
 							<Button variant="primary" asChild>
 								<Link to="/admin/bills/schedules/new">
-									<Plus className="mr-2 h-4 w-4" />
+									<Plus className="h-4 w-4" />
 									Create Schedule
 								</Link>
 							</Button>
@@ -212,7 +212,7 @@ export default function BillsSchedulesPage() {
 															onClick={() => handlePause(schedule.id)}
 															loading={pauseSchedule.isPending}
 														>
-															<Pause className="h-4 w-4 mr-2" />
+															<Pause className="h-4 w-4" />
 															Pause
 														</Button>
 													) : (
@@ -222,7 +222,7 @@ export default function BillsSchedulesPage() {
 															onClick={() => handleResume(schedule.id)}
 															loading={resumeSchedule.isPending}
 														>
-															<Play className="h-4 w-4 mr-2" />
+															<Play className="h-4 w-4" />
 															Resume
 														</Button>
 													)}

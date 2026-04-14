@@ -27,7 +27,7 @@ export default function AdminUserGroupsPage() {
 		<div className="space-y-6">
 			<div className="flex items-center gap-4">
 				<Button variant="ghost" onClick={() => navigate(`/admin/users/${userId}`)}>
-					<ArrowLeft className="h-4 w-4 mr-2" />
+					<ArrowLeft className="h-4 w-4" />
 					Back to User
 				</Button>
 			</div>

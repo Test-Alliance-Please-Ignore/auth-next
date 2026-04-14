@@ -291,7 +291,7 @@ export function ManageTemplatesDialog({
 								Close
 							</Button>
 							<Button onClick={handleCreate}>
-								<Plus className="h-4 w-4 mr-2" />
+								<Plus className="h-4 w-4" />
 								Create Template
 							</Button>
 						</DialogFooter>

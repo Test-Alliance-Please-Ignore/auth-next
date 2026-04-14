@@ -127,7 +127,7 @@ export default function AdminBillsGroupEditPage() {
 					<h1 className="text-3xl font-bold gradient-text">Loading...</h1>
 					<Button variant="ghost" asChild>
 						<Link to="/admin/bills">
-							<ArrowLeft className="mr-2 h-4 w-4" />
+							<ArrowLeft className="h-4 w-4" />
 							Back to Bills
 						</Link>
 					</Button>
@@ -149,7 +149,7 @@ export default function AdminBillsGroupEditPage() {
 					</div>
 					<Button variant="ghost" asChild>
 						<Link to="/admin/bills">
-							<ArrowLeft className="mr-2 h-4 w-4" />
+							<ArrowLeft className="h-4 w-4" />
 							Back to Bills
 						</Link>
 					</Button>
@@ -174,7 +174,7 @@ export default function AdminBillsGroupEditPage() {
 				</div>
 				<Button variant="ghost" asChild>
 					<Link to="/admin/bills">
-						<ArrowLeft className="mr-2 h-4 w-4" />
+						<ArrowLeft className="h-4 w-4" />
 						Back to Bills
 					</Link>
 				</Button>

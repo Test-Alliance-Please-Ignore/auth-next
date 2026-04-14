@@ -93,7 +93,7 @@ export default function CorporationsList() {
 						<div className="mt-6">
 							<Button variant="ghost" asChild>
 								<Link to="/dashboard">
-									<ArrowLeft className="mr-2 h-4 w-4" />
+									<ArrowLeft className="h-4 w-4" />
 									Return to Dashboard
 								</Link>
 							</Button>
@@ -276,7 +276,7 @@ export default function CorporationsList() {
 													className="w-full bg-[hsl(220_10%_40%)] text-white border-2 border-[hsl(220_10%_40%)]/70 shadow-lg shadow-[hsl(220_10%_40%)]/25 hover:bg-[hsl(220_10%_32%)] hover:shadow-xl hover:shadow-[hsl(220_10%_32%)]/40 hover:border-[hsl(220_10%_32%)]/70 focus-visible:ring-2 focus-visible:ring-[hsl(220_10%_40%)] focus-visible:ring-offset-2 transition-all duration-200"
 												>
 													<Link to={`/corporations/${corporation.corporationId}/members`}>
-														<Settings className="mr-2 h-4 w-4" />
+														<Settings className="h-4 w-4" />
 														Manage Corporation
 													</Link>
 												</Button>
@@ -313,7 +313,7 @@ export default function CorporationsList() {
 								<CardContent>
 									<Button variant="primary" asChild className="w-full">
 										<Link to={`/corporations/${corp.corporationId}/members`}>
-											<Users className="mr-2 h-4 w-4" />
+											<Users className="h-4 w-4" />
 											View Members
 										</Link>
 									</Button>

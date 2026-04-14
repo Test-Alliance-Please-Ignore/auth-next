@@ -155,7 +155,7 @@ export function AdminNav({ onNavigate }: AdminNavProps) {
 											: 'text-muted-foreground border-l-4 border-transparent'
 									)}
 								>
-									<Icon className="h-4 w-4" />
+									<Icon className="h-5 w-5 flex-shrink-0" />
 									<span className="flex-1 text-left">{item.label}</span>
 									{openMenus[item.href] ? (
 										<ChevronDown className="h-4 w-4 opacity-70" />
@@ -205,7 +205,7 @@ export function AdminNav({ onNavigate }: AdminNavProps) {
 									: 'text-muted-foreground border-l-4 border-transparent'
 							)}
 						>
-							<Icon className="h-4 w-4" />
+							<Icon className="h-5 w-5 flex-shrink-0" />
 							{item.label}
 						</Link>
 					)

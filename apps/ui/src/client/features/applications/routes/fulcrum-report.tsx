@@ -72,7 +72,7 @@ export default function FulcrumReportPage() {
 				</Breadcrumb>
 
 				<Button variant="ghost" onClick={() => navigate(backPath)}>
-					<ArrowLeft className="mr-2 h-4 w-4" />
+					<ArrowLeft className="h-4 w-4" />
 					{backLabel}
 				</Button>
 			</div>

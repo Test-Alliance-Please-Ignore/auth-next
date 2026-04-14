@@ -313,19 +313,19 @@ export default function AdminBillsPage() {
 				<div className="flex gap-2">
 					<Button variant="ghost" asChild>
 						<Link to="/admin/bills/templates">
-							<FileText className="mr-2 h-4 w-4" />
+							<FileText className="h-4 w-4" />
 							Templates
 						</Link>
 					</Button>
 					<Button variant="ghost" asChild>
 						<Link to="/admin/bills/schedules">
-							<Calendar className="mr-2 h-4 w-4" />
+							<Calendar className="h-4 w-4" />
 							Schedules
 						</Link>
 					</Button>
 					<Button variant="primary" asChild>
 						<Link to="/admin/bills/new">
-							<Plus className="mr-2 h-4 w-4" />
+							<Plus className="h-4 w-4" />
 							Create Bill
 						</Link>
 					</Button>

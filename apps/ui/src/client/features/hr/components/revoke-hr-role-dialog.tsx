@@ -103,7 +103,7 @@ export function RevokeHrRoleDialog({
 							loadingText="Revoking Role..."
 							showIcon={false}
 						>
-							<ShieldOff className="mr-2 h-4 w-4" />
+							<ShieldOff className="h-4 w-4" />
 							Revoke Role
 						</Button>
 					</div>

@@ -252,7 +252,7 @@ export default function CorporationMembers() {
 					<CardContent className="text-center">
 						<Button variant="ghost" asChild>
 							<Link to="/corporations">
-								<ArrowLeft className="mr-2 h-4 w-4" />
+								<ArrowLeft className="h-4 w-4" />
 								Return to Corporations
 							</Link>
 						</Button>
@@ -278,13 +278,13 @@ export default function CorporationMembers() {
 					</CardHeader>
 					<CardContent className="text-center space-y-4">
 						<Button variant="ghost" onClick={handleRefresh} disabled={isRefreshing}>
-							<RefreshCw className={`mr-2 h-4 w-4 ${isRefreshing ? 'animate-spin' : ''}`} />
+							<RefreshCw className={`h-4 w-4 ${isRefreshing ? 'animate-spin' : ''}`} />
 							{isRefreshing ? 'Refreshing...' : 'Try Again'}
 						</Button>
 						<div>
 							<Button variant="ghost" asChild>
 								<Link to="/corporations">
-									<ArrowLeft className="mr-2 h-4 w-4" />
+									<ArrowLeft className="h-4 w-4" />
 									Return to Corporations
 								</Link>
 							</Button>
@@ -337,7 +337,7 @@ export default function CorporationMembers() {
 					<div className="flex gap-2">
 						{canRefresh && (
 							<Button variant="ghost" onClick={handleRefresh} disabled={isRefreshing}>
-								<RefreshCw className={`mr-2 h-4 w-4 ${isRefreshing ? 'animate-spin' : ''}`} />
+								<RefreshCw className={`h-4 w-4 ${isRefreshing ? 'animate-spin' : ''}`} />
 								{isRefreshing ? 'Refreshing...' : 'Refresh'}
 							</Button>
 						)}
@@ -346,13 +346,13 @@ export default function CorporationMembers() {
 								onClick={handleExport}
 								disabled={!membersWithHrRoles || membersWithHrRoles.length === 0}
 							>
-								<Download className="mr-2 h-4 w-4" />
+								<Download className="h-4 w-4" />
 								Export CSV
 							</Button>
 						)}
 						<Button variant="ghost" asChild>
 							<Link to="/corporations">
-								<ArrowLeft className="mr-2 h-4 w-4" />
+								<ArrowLeft className="h-4 w-4" />
 								Back
 							</Link>
 						</Button>
@@ -380,14 +380,14 @@ export default function CorporationMembers() {
 						<div className="flex flex-wrap gap-2">
 							<Button variant="primary" asChild>
 								<Link to={`/corporations/${corporationId}/applications`}>
-									<FileText className="mr-2 h-4 w-4" />
+									<FileText className="h-4 w-4" />
 									Review Applications
 								</Link>
 							</Button>
 							{canManageHrRoles && (
 								<Button variant="ghost" asChild>
 									<Link to={`/corporations/${corporationId}/hr/roles`}>
-										<Settings className="mr-2 h-4 w-4" />
+										<Settings className="h-4 w-4" />
 										Manage HR Roles
 									</Link>
 								</Button>
@@ -395,7 +395,7 @@ export default function CorporationMembers() {
 							{canAccessSettings && (
 								<Button variant="ghost" asChild>
 									<Link to={`/corporations/${corporationId}/settings`}>
-										<Settings className="mr-2 h-4 w-4" />
+										<Settings className="h-4 w-4" />
 										Corporation Settings
 									</Link>
 								</Button>
@@ -443,7 +443,7 @@ export default function CorporationMembers() {
 							</p>
 							{canRefresh && (
 								<Button variant="primary" onClick={handleRefresh} disabled={isRefreshing}>
-									<RefreshCw className={`mr-2 h-4 w-4 ${isRefreshing ? 'animate-spin' : ''}`} />
+									<RefreshCw className={`h-4 w-4 ${isRefreshing ? 'animate-spin' : ''}`} />
 									{isRefreshing ? 'Refreshing...' : 'Refresh Data'}
 								</Button>
 							)}

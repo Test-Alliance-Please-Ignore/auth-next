@@ -47,7 +47,7 @@ export default function DkpDashboard() {
 				<div className="flex gap-2">
 					<Button asChild>
 						<Link to="/admin/dkp/awards">
-							<Award className="mr-2 h-4 w-4" />
+							<Award className="h-4 w-4" />
 							Award DKP
 						</Link>
 					</Button>
@@ -304,19 +304,19 @@ export default function DkpDashboard() {
 					<div className="grid gap-2 md:grid-cols-3">
 						<Button variant="ghost" className="justify-start" asChild>
 							<Link to="/admin/dkp/awards">
-								<Award className="mr-2 h-4 w-4" />
+								<Award className="h-4 w-4" />
 								Award DKP
 							</Link>
 						</Button>
 						<Button variant="ghost" className="justify-start" asChild>
 							<Link to="/admin/dkp/leaderboards">
-								<TrendingUp className="mr-2 h-4 w-4" />
+								<TrendingUp className="h-4 w-4" />
 								View Leaderboards
 							</Link>
 						</Button>
 						<Button variant="ghost" className="justify-start" asChild>
 							<Link to="/admin/dkp/history">
-								<Coins className="mr-2 h-4 w-4" />
+								<Coins className="h-4 w-4" />
 								Transaction History
 							</Link>
 						</Button>

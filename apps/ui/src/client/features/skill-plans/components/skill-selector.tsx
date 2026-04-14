@@ -240,7 +240,7 @@ export function SkillSelector({
 
 							{/* Add button */}
 							<Button onClick={handleAddSkill} disabled={isSubmitting} className="w-full">
-								<Plus className="h-4 w-4 mr-2" />
+								<Plus className="h-4 w-4" />
 								Add {selectedSkill.name} to Plan
 							</Button>
 						</>

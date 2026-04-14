@@ -67,7 +67,7 @@ export function InvitationCard({ invitation, onActionComplete }: InvitationCardP
 						className="flex-1"
 						showIcon={false}
 					>
-						<Check className="mr-2 h-4 w-4" />
+						<Check className="h-4 w-4" />
 						Accept
 					</Button>
 					<Button variant="cancel"
@@ -78,7 +78,7 @@ export function InvitationCard({ invitation, onActionComplete }: InvitationCardP
 						className="flex-1"
 						showIcon={false}
 					>
-						<X className="mr-2 h-4 w-4" />
+						<X className="h-4 w-4" />
 						Decline
 					</Button>
 				</div>

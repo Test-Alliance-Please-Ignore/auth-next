@@ -198,7 +198,7 @@ export default function CharacterDetailPage() {
 								disabled={refreshCharacter.isPending}
 							>
 								<RefreshCw
-									className={`h-4 w-4 mr-2 ${refreshCharacter.isPending ? 'animate-spin' : ''}`}
+									className={`h-4 w-4 ${refreshCharacter.isPending ? 'animate-spin' : ''}`}
 								/>
 								{refreshCharacter.isPending ? 'Refreshing...' : 'Refresh'}
 							</Button>
@@ -230,7 +230,6 @@ export default function CharacterDetailPage() {
 				<CharacterPrivateInfo
 					location={character.private.location}
 					wallet={character.private.wallet}
-					assets={character.private.assets}
 					status={character.private.status}
 				/>
 			)}
@@ -238,10 +237,7 @@ export default function CharacterDetailPage() {
 			<div className="grid gap-6 lg:grid-cols-2">
 				{/* Character Attributes */}
 				{character.public.attributes && (
-					<CharacterAttributes
-						attributes={character.public.attributes}
-						walletBalance={character.private?.wallet?.balance}
-					/>
+					<CharacterAttributes attributes={character.public.attributes} />
 				)}
 
 				{/* Corporation History */}
@@ -281,7 +277,7 @@ export default function CharacterDetailPage() {
 								disabled={refreshCharacter.isPending}
 							>
 								<RefreshCw
-									className={`h-4 w-4 mr-2 ${refreshCharacter.isPending ? 'animate-spin' : ''}`}
+									className={`h-4 w-4 ${refreshCharacter.isPending ? 'animate-spin' : ''}`}
 								/>
 								{refreshCharacter.isPending ? 'Refreshing...' : 'Refresh Character Data'}
 							</Button>

@@ -119,7 +119,7 @@ export function ServiceDialog({
 						variant="destructive"
 						className="w-full"
 					>
-						<RefreshCw className={`mr-2 h-4 w-4 ${isResetting ? 'animate-spin' : ''}`} />
+						<RefreshCw className={`h-4 w-4 ${isResetting ? 'animate-spin' : ''}`} />
 						{isResetting ? 'Resetting Password...' : 'Reset Password'}
 					</Button>
 

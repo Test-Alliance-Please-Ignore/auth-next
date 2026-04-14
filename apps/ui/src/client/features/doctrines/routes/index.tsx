@@ -125,13 +125,13 @@ export default function DoctrinesPage() {
 						<div className="flex gap-2">
 							<Button asChild variant="ghost">
 								<Link to="/doctrines/admin">
-									<Settings className="h-4 w-4 mr-2" />
+									<Settings className="h-4 w-4" />
 									Admin
 								</Link>
 							</Button>
 							<Button asChild>
 								<Link to="/doctrines/create">
-									<Plus className="h-4 w-4 mr-2" />
+									<Plus className="h-4 w-4" />
 									New Doctrine
 								</Link>
 							</Button>
@@ -148,7 +148,7 @@ export default function DoctrinesPage() {
 							{canManage && (
 								<Button asChild>
 									<Link to="/doctrines/create">
-										<Plus className="h-4 w-4 mr-2" />
+										<Plus className="h-4 w-4" />
 										Create First Doctrine
 									</Link>
 								</Button>

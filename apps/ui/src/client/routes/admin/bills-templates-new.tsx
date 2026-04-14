@@ -145,7 +145,7 @@ export default function AdminBillsTemplatesNewPage() {
 				</div>
 				<Button variant="ghost" asChild>
 					<Link to="/admin/bills/templates">
-						<FileText className="mr-2 h-4 w-4" />
+						<FileText className="h-4 w-4" />
 						Back to Templates
 					</Link>
 				</Button>

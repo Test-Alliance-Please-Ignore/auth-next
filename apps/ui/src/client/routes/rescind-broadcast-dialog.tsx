@@ -86,7 +86,7 @@ export function RescindBroadcastDialog({
 						loadingText="Rescinding..."
 						showIcon={false}
 					>
-						<Ban className="mr-2 h-4 w-4" />
+						<Ban className="h-4 w-4" />
 						Rescind
 					</Button>
 				</DialogFooter>

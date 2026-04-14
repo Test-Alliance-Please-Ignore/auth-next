@@ -113,7 +113,7 @@ export function AttachPermissionDialog({
 							disabled={!selectedPermissionId}
 							showIcon={false}
 						>
-							<Plus className="mr-2 h-4 w-4" />
+							<Plus className="h-4 w-4" />
 							Attach Permission
 						</Button>
 					</div>

@@ -180,7 +180,7 @@ export default function ActivityLogPage() {
 
 					<div className="flex justify-end">
 						<Button onClick={handleApplyFilters}>
-							<Filter className="h-4 w-4 mr-2" />
+							<Filter className="h-4 w-4" />
 							Apply Filters
 						</Button>
 					</div>
