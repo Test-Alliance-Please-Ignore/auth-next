@@ -71,6 +71,20 @@
       "when": 1775821816093,
       "tag": "0009_red_hawkeye",
       "breakpoints": true
+    },
+    {
+      "idx": 10,
+      "version": "7",
+      "when": 1776360538618,
+      "tag": "0010_far_gambit",
+      "breakpoints": true
+    },
+    {
+      "idx": 11,
+      "version": "7",
+      "when": 1776361631433,
+      "tag": "0011_neat_zaladane",
+      "breakpoints": true
     }
   ]
 }

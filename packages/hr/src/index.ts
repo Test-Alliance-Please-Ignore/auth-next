@@ -68,7 +68,15 @@ export type MessageTemplateStatus = 'draft' | 'active' | 'inactive' | 'deleted'
 /**
  * Blacklist target types
  */
-export type BlacklistTargetType = 'user' | 'character'
+export type BlacklistTargetType =
+	| 'user'
+	| 'character_id'
+	| 'character_name'
+	| 'discord_id'
+	| 'corporation_id'
+	| 'corporation_name'
+	| 'alliance_id'
+	| 'alliance_name'
 
 /**
  * Application data transfer object
@@ -238,8 +246,7 @@ export interface HrRole {
 export interface BlacklistEntry {
 	id: string
 	targetType: BlacklistTargetType
-	userId: string | null
-	characterId: string | null
+	targetValue: string
 	reason: string
 	blacklistedBy: string
 	triggeredBy: string | null
@@ -253,6 +260,7 @@ export interface BlacklistEntry {
  */
 export interface CreateUserBlacklistParams {
 	userId: string
+	discordUserId?: string
 	reason: string
 	blacklistedBy: string
 	triggeredBy?: string
@@ -265,9 +273,27 @@ export interface CreateUserBlacklistParams {
  */
 export interface CreateCharacterBlacklistParams {
 	characterId: string
+	characterName?: string
 	reason: string
 	blacklistedBy: string
+	triggeredBy?: string
 	metadata?: Record<string, unknown>
+}
+
+/**
+ * Character identity pair for blacklist lookups.
+ */
+export interface CharacterIdNamePair {
+	characterId: string
+	characterName?: string
+}
+
+/**
+ * Result for bulk ID/name pair blacklist checks.
+ */
+export interface CharacterIdNameBlacklistResult extends CharacterIdNamePair {
+	isBlacklisted: boolean
+	matchedBy: 'id' | 'name' | 'both' | 'none'
 }
 
 /**
@@ -276,8 +302,7 @@ export interface CreateCharacterBlacklistParams {
 export interface BlacklistFilters {
 	targetType?: BlacklistTargetType
 	isAutoBlacklist?: boolean
-	userId?: string
-	characterId?: string
+	targetValue?: string
 	limit?: number
 	offset?: number
 }
@@ -735,6 +760,14 @@ export interface Hr extends DurableObject {
 	isUserBlacklisted(userId: string): Promise<boolean>
 
 	/**
+	 * Check if a Discord account is blacklisted
+	 * Fast lookup - used during Discord account linking
+	 * @param discordUserId - Discord user ID to check
+	 * @returns Whether the Discord account is blacklisted
+	 */
+	isDiscordUserBlacklisted(discordUserId: string): Promise<boolean>
+
+	/**
 	 * Check if a character is blacklisted
 	 * Fast lookup - used on login and character linking
 	 * @param characterId - Character ID to check
@@ -743,12 +776,47 @@ export interface Hr extends DurableObject {
 	isCharacterBlacklisted(characterId: string): Promise<boolean>
 
 	/**
+	 * Check if a character name is blacklisted
+	 * Fast lookup - used on login and character linking
+	 * @param characterName - Character name to check
+	 * @returns Whether the character name is blacklisted
+	 */
+	isCharacterNameBlacklisted(characterName: string): Promise<boolean>
+
+	/**
+	 * Check if either a character ID or character name is blacklisted.
+	 * Uses OR semantics and is intended for places where both identity forms may be available.
+	 * @param characterId - Character ID to check
+	 * @param characterName - Optional character name to check
+	 * @returns Whether either identifier is blacklisted
+	 */
+	isCharacterIdOrNameBlacklisted(characterId: string, characterName?: string): Promise<boolean>
+
+	/**
 	 * Bulk check if multiple characters are blacklisted
 	 * Optimized for checking many characters at once (e.g., displaying member lists)
 	 * @param characterIds - Array of character IDs to check
 	 * @returns Object mapping character ID to blacklist status
 	 */
 	checkCharactersBlacklisted(characterIds: string[]): Promise<Record<string, boolean>>
+
+	/**
+	 * Bulk check if multiple character names are blacklisted
+	 * Optimized for checking many names at once
+	 * @param characterNames - Array of character names to check
+	 * @returns Object mapping original character name to blacklist status
+	 */
+	checkCharacterNamesBlacklisted(characterNames: string[]): Promise<Record<string, boolean>>
+
+	/**
+	 * Bulk check character ID/name pairs using OR semantics per pair.
+	 * A pair is blacklisted if either the ID or name is blacklisted.
+	 * @param pairs - Character ID/name pairs to check
+	 * @returns Result rows with match details
+	 */
+	checkCharacterIdOrNamePairsBlacklisted(
+		pairs: CharacterIdNamePair[]
+	): Promise<CharacterIdNameBlacklistResult[]>
 
 	/**
 	 * Create a user blacklist entry
@@ -781,11 +849,25 @@ export interface Hr extends DurableObject {
 	getBlacklistsForUser(userId: string): Promise<BlacklistEntry[]>
 
 	/**
+	 * Get all blacklist entries for a Discord user ID
+	 * @param discordUserId - Discord user ID to get blacklists for
+	 * @returns Array of blacklist entries for the Discord user ID
+	 */
+	getBlacklistsForDiscordUser(discordUserId: string): Promise<BlacklistEntry[]>
+
+	/**
 	 * Get all blacklist entries for a character
 	 * @param characterId - Character ID to get blacklists for
 	 * @returns Array of blacklist entries for the character
 	 */
 	getBlacklistsForCharacter(characterId: string): Promise<BlacklistEntry[]>
+
+	/**
+	 * Get all blacklist entries for a character name
+	 * @param characterName - Character name to get blacklists for
+	 * @returns Array of blacklist entries for the character name
+	 */
+	getBlacklistsForCharacterName(characterName: string): Promise<BlacklistEntry[]>
 
 	/**
 	 * Get a specific blacklist entry by ID

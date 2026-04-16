@@ -55,7 +55,7 @@ export default function BlacklistPage() {
 
 	// Form state
 	const [formData, setFormData] = useState({
-		targetType: 'user' as 'user' | 'character',
+		targetType: 'user' as 'user' | 'character_id',
 		userId: '',
 		characterId: '',
 		reason: '',
@@ -203,8 +203,8 @@ export default function BlacklistPage() {
 			const search = debouncedSearch.toLowerCase()
 			return (
 				entry.reason.toLowerCase().includes(search) ||
-				entry.userId?.toLowerCase().includes(search) ||
-				entry.characterId?.toLowerCase().includes(search) ||
+				entry.targetValue.toLowerCase().includes(search) ||
+				entry.targetType.toLowerCase().includes(search) ||
 				entry.id.toLowerCase().includes(search)
 			)
 		}) || []
@@ -269,7 +269,13 @@ export default function BlacklistPage() {
 								options={[
 									{ value: 'all', label: 'All Types' },
 									{ value: 'user', label: 'User' },
-									{ value: 'character', label: 'Character' },
+									{ value: 'character_id', label: 'Character ID' },
+									{ value: 'character_name', label: 'Character Name' },
+									{ value: 'discord_id', label: 'Discord ID' },
+									{ value: 'corporation_id', label: 'Corporation ID' },
+									{ value: 'corporation_name', label: 'Corporation Name' },
+									{ value: 'alliance_id', label: 'Alliance ID' },
+									{ value: 'alliance_name', label: 'Alliance Name' },
 								]}
 							/>
 						</div>
@@ -373,20 +379,27 @@ export default function BlacklistPage() {
 									{filteredData.map((entry) => (
 										<TableRow key={entry.id}>
 											<TableCell>
-												<Badge variant={entry.targetType === 'character' ? 'default' : 'secondary'}>
+												<Badge
+													variant={
+														entry.targetType === 'character_id' ||
+														entry.targetType === 'character_name'
+															? 'default'
+															: 'secondary'
+													}
+												>
 													{entry.targetType}
 												</Badge>
 											</TableCell>
 											<TableCell className="font-mono text-sm">
 												{entry.targetType === 'user' ? (
 													<Link
-														to={`/admin/users/${entry.userId}`}
+														to={`/admin/users/${entry.targetValue}`}
 														className="text-primary hover:underline"
 													>
-														{entry.userId?.substring(0, 8)}...
+														{entry.targetValue.substring(0, 8)}...
 													</Link>
 												) : (
-													entry.characterId
+													entry.targetValue
 												)}
 											</TableCell>
 											<TableCell className="max-w-md truncate" title={entry.reason}>
@@ -471,12 +484,12 @@ export default function BlacklistPage() {
 								<Select
 									value={formData.targetType}
 									onValueChange={(v) =>
-										setFormData({ ...formData, targetType: v as 'user' | 'character' })
+										setFormData({ ...formData, targetType: v as 'user' | 'character_id' })
 									}
 									inputId="targetType"
 									options={[
 										{ value: 'user', label: 'User' },
-										{ value: 'character',
+										{ value: 'character_id',
 											label: 'Character (Auto-blacklists linked users)',
 										},
 									]}

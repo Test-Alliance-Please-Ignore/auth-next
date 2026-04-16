@@ -44,7 +44,16 @@ interface CoreBinding {
 
 /** Narrow interface for the HR DO methods we need */
 interface HrBinding {
-    getAllBlacklistedCharacterIds(): Promise<string[]>
+    checkCharactersBlacklisted(characterIds: string[]): Promise<Record<string, boolean>>
+    checkCharacterNamesBlacklisted(characterNames: string[]): Promise<Record<string, boolean>>
+    checkCharacterIdOrNamePairsBlacklisted(
+        pairs: Array<{ characterId: string; characterName?: string }>,
+    ): Promise<Array<{
+        characterId: string
+        characterName?: string
+        isBlacklisted: boolean
+        matchedBy: 'id' | 'name' | 'both' | 'none'
+    }>>
 }
 
 interface UniverseIdsResponse {
@@ -112,6 +121,83 @@ async function getSiblingCharacterNames(
     } catch (error) {
         console.warn('[generate-alerts] Failed to get sibling characters:', error)
         return []
+    }
+}
+
+function normalizeName(name: string): string {
+    return name.trim().toLowerCase()
+}
+
+function collectBlacklistCandidates(
+    walletJournal: ProcessedWalletJournalEntry[] | null,
+    walletTransactions: ProcessedWalletTransaction[] | null,
+    contracts: ProcessedContract[] | null,
+    contacts: ProcessedContact[] | null,
+    mails: EnrichedMailData | null,
+    shipNameCharIds: Map<string, { customName: string; characterName: string }> | null,
+): {
+    idsOnly: string[]
+    namesOnly: string[]
+    pairs: Array<{ characterId: string; characterName: string }>
+} {
+    const idsOnly = new Set<string>()
+    const namesOnly = new Set<string>()
+    const pairMap = new Map<string, { characterId: string; characterName: string }>()
+
+    const pushCandidate = (id?: string | null, name?: string | null) => {
+        const trimmedId = id?.trim()
+        const trimmedName = name?.trim()
+
+        if (trimmedId && trimmedName) {
+            pairMap.set(`${trimmedId}:${normalizeName(trimmedName)}`, {
+                characterId: trimmedId,
+                characterName: trimmedName,
+            })
+            return
+        }
+
+        if (trimmedId) idsOnly.add(trimmedId)
+        if (trimmedName) namesOnly.add(trimmedName)
+    }
+
+    for (const entry of walletJournal ?? []) {
+        pushCandidate(entry.first_party_id, entry.firstPartyName)
+        pushCandidate(entry.second_party_id, entry.secondPartyName)
+    }
+
+    for (const tx of walletTransactions ?? []) {
+        pushCandidate(tx.client_id, tx.clientName)
+    }
+
+    for (const contract of contracts ?? []) {
+        pushCandidate(contract.issuer_id, contract.issuerName)
+        pushCandidate(contract.acceptor_id, contract.acceptorName)
+        pushCandidate(contract.assignee_id, contract.assigneeName)
+    }
+
+    for (const contact of contacts ?? []) {
+        if (contact.contact_type === 'character') {
+            pushCandidate(contact.contact_id, contact.contactName)
+        }
+    }
+
+    for (const mail of mails?.mails ?? []) {
+        pushCandidate(mail.from, mail.fromName)
+        for (const recipient of mail.recipients ?? []) {
+            if (recipient.recipient_type === 'character') {
+                pushCandidate(recipient.recipient_id, recipient.recipientName)
+            }
+        }
+    }
+
+    for (const [charId, { characterName }] of shipNameCharIds ?? []) {
+        pushCandidate(charId, characterName)
+    }
+
+    return {
+        idsOnly: Array.from(idsOnly),
+        namesOnly: Array.from(namesOnly),
+        pairs: Array.from(pairMap.values()),
     }
 }
 
@@ -234,32 +320,72 @@ export async function generateAlerts(
 
         // Alert 6: Blacklist Association
         try {
-            const blacklistedCharIds = await hr.getAllBlacklistedCharacterIds()
-            if (blacklistedCharIds.length > 0) {
-                const blacklistedSet = new Set(blacklistedCharIds)
-                const mails = enrichedMails?.mails ?? null
+            const mails = enrichedMails?.mails ?? null
 
-                // Build ship name → character ID map from resolved characters (if available)
-                let shipNameCharIds: Map<string, { customName: string; characterName: string }> | null = null
-                if (publicInfo && fittedShips) {
-                    const nameMap = assetNameMap ?? {}
-                    const customNames = collectCustomShipNames(nameMap, fittedShips)
-                    if (customNames.size > 0) {
-                        const { namesToResolve } = extractCandidateCharacterNames(customNames)
-                        if (namesToResolve.length > 0) {
-                            const resolved = await resolveNamesToCharacters(namesToResolve)
-                            shipNameCharIds = new Map(
-                                resolved.map((r) => {
-                                    const entry = customNames.get(r.name.toLowerCase())
-                                    return [String(r.characterId), { customName: entry?.customName ?? r.name, characterName: r.name }] as const
-                                }),
-                            )
-                        }
+            // Build ship name → character ID map from resolved characters (if available)
+            let shipNameCharIds: Map<string, { customName: string; characterName: string }> | null = null
+            if (publicInfo && fittedShips) {
+                const nameMap = assetNameMap ?? {}
+                const customNames = collectCustomShipNames(nameMap, fittedShips)
+                if (customNames.size > 0) {
+                    const { namesToResolve } = extractCandidateCharacterNames(customNames)
+                    if (namesToResolve.length > 0) {
+                        const resolved = await resolveNamesToCharacters(namesToResolve)
+                        shipNameCharIds = new Map(
+                            resolved.map((r) => {
+                                const entry = customNames.get(r.name.toLowerCase())
+                                return [String(r.characterId), { customName: entry?.customName ?? r.name, characterName: r.name }] as const
+                            }),
+                        )
                     }
                 }
+            }
 
+            const candidates = collectBlacklistCandidates(
+                walletJournal,
+                transactions,
+                contracts,
+                contacts,
+                enrichedMails ?? null,
+                shipNameCharIds,
+            )
+
+            const [idsResult, namesResult, pairResults] = await Promise.all([
+                candidates.idsOnly.length > 0
+                    ? hr.checkCharactersBlacklisted(candidates.idsOnly)
+                    : Promise.resolve<Record<string, boolean>>({}),
+                candidates.namesOnly.length > 0
+                    ? hr.checkCharacterNamesBlacklisted(candidates.namesOnly)
+                    : Promise.resolve<Record<string, boolean>>({}),
+                candidates.pairs.length > 0
+                    ? hr.checkCharacterIdOrNamePairsBlacklisted(candidates.pairs)
+                    : Promise.resolve([]),
+            ])
+
+            const blacklistedSet = new Set<string>()
+            for (const [id, matched] of Object.entries(idsResult)) {
+                if (matched) blacklistedSet.add(id)
+            }
+
+            const blacklistedNameSet = new Set<string>()
+            for (const [name, matched] of Object.entries(namesResult)) {
+                if (matched) blacklistedNameSet.add(normalizeName(name))
+            }
+
+            for (const pair of pairResults) {
+                if (!pair.isBlacklisted) continue
+                if (pair.matchedBy === 'id' || pair.matchedBy === 'both') {
+                    blacklistedSet.add(pair.characterId)
+                }
+                if ((pair.matchedBy === 'name' || pair.matchedBy === 'both') && pair.characterName) {
+                    blacklistedNameSet.add(normalizeName(pair.characterName))
+                }
+            }
+
+            if (blacklistedSet.size > 0 || blacklistedNameSet.size > 0) {
                 const blacklistAlert = checkBlacklistAssociation(
                     blacklistedSet,
+                    blacklistedNameSet,
                     walletJournal,
                     transactions,
                     contracts,

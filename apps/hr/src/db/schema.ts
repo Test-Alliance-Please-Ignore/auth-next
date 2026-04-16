@@ -3,6 +3,7 @@ import {
 	boolean,
 	index,
 	jsonb,
+	pgEnum,
 	pgTable,
 	text,
 	timestamp,
@@ -10,6 +11,17 @@ import {
 	uuid,
 	varchar,
 } from 'drizzle-orm/pg-core'
+
+export const blacklistTargetType = pgEnum('blacklist_target_type', [
+	'user',
+	'character_id',
+	'character_name',
+	'discord_id',
+	'corporation_id',
+	'corporation_name',
+	'alliance_id',
+	'alliance_name',
+])
 
 /**
  * Applications table - Corporation membership applications
@@ -316,12 +328,10 @@ export const blacklistEntries = pgTable(
 	'blacklist_entries',
 	{
 		id: uuid('id').defaultRandom().primaryKey(),
-		/** Type of blacklist: 'user' or 'character' */
-		targetType: varchar('target_type', { length: 20 }).notNull(),
-		/** User ID (set when targetType='user') */
-		userId: uuid('user_id'),
-		/** Character ID (set when targetType='character') */
-		characterId: text('character_id'),
+		/** Type of blacklist target (user, character_id, discord_id, etc.) */
+		targetType: blacklistTargetType('target_type').notNull(),
+		/** Target value interpreted by targetType */
+		targetValue: text('target_value').notNull(),
 		/** Reason for blacklist */
 		reason: text('reason').notNull(),
 		/** Admin who created this blacklist entry */
@@ -335,12 +345,8 @@ export const blacklistEntries = pgTable(
 		createdAt: timestamp('created_at').defaultNow().notNull(),
 	},
 	(table) => [
-		// Fast user blacklist lookups (checked on every auth)
-		// Used for: "is this user blacklisted?" (most critical query)
-		index('idx_blacklist_user').on(table.userId),
-		// Fast character blacklist lookups (checked on login/link)
-		// Used for: "is this character blacklisted?"
-		index('idx_blacklist_character').on(table.characterId),
+		// Fast target lookups by type+value (checked in auth/linking paths)
+		index('idx_blacklist_target').on(table.targetType, table.targetValue),
 		// Triggered-by relationship tracking
 		// Used for: "show all users auto-blacklisted from this character"
 		index('idx_blacklist_triggered_by').on(table.triggeredBy),

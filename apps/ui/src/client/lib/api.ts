@@ -899,13 +899,20 @@ export interface AdminActivityLogFilters {
  * Admin Blacklist Management API Types
  */
 
-export type BlacklistTargetType = 'user' | 'character'
+export type BlacklistTargetType =
+	| 'user'
+	| 'character_id'
+	| 'character_name'
+	| 'discord_id'
+	| 'corporation_id'
+	| 'corporation_name'
+	| 'alliance_id'
+	| 'alliance_name'
 
 export interface BlacklistEntry {
 	id: string
 	targetType: BlacklistTargetType
-	userId: string | null
-	characterId: string | null
+	targetValue: string
 	reason: string
 	blacklistedBy: string
 	triggeredBy: string | null

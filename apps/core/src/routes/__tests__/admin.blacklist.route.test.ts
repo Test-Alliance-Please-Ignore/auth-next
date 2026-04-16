@@ -52,6 +52,10 @@ const groupsStub = {
 const dbQueryMocks = {
 	userCharacters: {
 		findMany: vi.fn(),
+		findFirst: vi.fn(),
+	},
+	users: {
+		findFirst: vi.fn(),
 	},
 }
 
@@ -96,6 +100,8 @@ describe('admin blacklist cleanup hooks', () => {
 		invalidateAllUserSessionsMock.mockResolvedValue(undefined)
 		enforceBlacklistedDiscordAccessMock.mockResolvedValue(undefined)
 		dbQueryMocks.userCharacters.findMany.mockResolvedValue([])
+		dbQueryMocks.userCharacters.findFirst.mockResolvedValue(undefined)
+		dbQueryMocks.users.findFirst.mockResolvedValue({ discordUserId: null })
 
 		vi.mocked(getStub).mockImplementation((namespace: any) => {
 			if (namespace === env.HR) return hrStub as any
@@ -106,6 +112,7 @@ describe('admin blacklist cleanup hooks', () => {
 
 	it('removes blacklisted user from all groups and enforces Discord revocation on /blacklist/user', async () => {
 		const app = createApp(makeUser())
+		dbQueryMocks.users.findFirst.mockResolvedValue({ discordUserId: 'discord-blacklisted-1' })
 		groupsStub.getUserMemberships.mockResolvedValue([
 			{
 				groupId: 'group-1',
@@ -159,6 +166,12 @@ describe('admin blacklist cleanup hooks', () => {
 			'11111111-1111-4111-8111-111111111111',
 			'Blacklisted by admin 00000000-0000-0000-0000-000000000001'
 		)
+		expect(hrStub.createUserBlacklist).toHaveBeenCalledWith(
+			expect.objectContaining({
+				userId: '11111111-1111-4111-8111-111111111111',
+				discordUserId: 'discord-blacklisted-1',
+			})
+		)
 	})
 
 	it('removes character-linked auto-blacklisted users from groups on /blacklist/character', async () => {
@@ -166,6 +179,7 @@ describe('admin blacklist cleanup hooks', () => {
 		dbQueryMocks.userCharacters.findMany.mockResolvedValue([
 			{ userId: '22222222-2222-2222-2222-222222222222', characterId: '9001' },
 		])
+		dbQueryMocks.users.findFirst.mockResolvedValue({ discordUserId: 'discord-user-2222' })
 		groupsStub.getUserMemberships.mockResolvedValue([
 			{
 				groupId: 'group-3',
@@ -193,6 +207,7 @@ describe('admin blacklist cleanup hooks', () => {
 		expect(hrStub.createUserBlacklist).toHaveBeenCalledWith(
 			expect.objectContaining({
 				userId: '22222222-2222-2222-2222-222222222222',
+				discordUserId: 'discord-user-2222',
 			})
 		)
 		expect(invalidateAllUserSessionsMock).toHaveBeenCalledWith(

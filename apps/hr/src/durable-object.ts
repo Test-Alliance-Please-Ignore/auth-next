@@ -18,6 +18,8 @@ import type {
 	BlacklistEntry,
 	BlacklistFilters,
 	BlacklistResults,
+	CharacterIdNameBlacklistResult,
+	CharacterIdNamePair,
 	CreateCharacterBlacklistParams,
 	CreateUserBlacklistParams,
 	Hr,
@@ -571,6 +573,14 @@ export class HrDO extends DurableObject<Env> implements Hr {
 	}
 
 	/**
+	 * Check if a Discord user is blacklisted
+	 * Fast lookup - used during Discord linking
+	 */
+	async isDiscordUserBlacklisted(discordUserId: string): Promise<boolean> {
+		return await this.blacklistService.isDiscordUserBlacklisted(discordUserId)
+	}
+
+	/**
 	 * Check if a character is blacklisted
 	 * Fast lookup - used on login and character linking
 	 */
@@ -579,11 +589,42 @@ export class HrDO extends DurableObject<Env> implements Hr {
 	}
 
 	/**
+	 * Check if a character name is blacklisted
+	 * Fast lookup - used on login and character linking
+	 */
+	async isCharacterNameBlacklisted(characterName: string): Promise<boolean> {
+		return await this.blacklistService.isCharacterNameBlacklisted(characterName)
+	}
+
+	/**
+	 * Check if either character ID or name is blacklisted.
+	 */
+	async isCharacterIdOrNameBlacklisted(characterId: string, characterName?: string): Promise<boolean> {
+		return await this.blacklistService.isCharacterIdOrNameBlacklisted(characterId, characterName)
+	}
+
+	/**
 	 * Bulk check if multiple characters are blacklisted
 	 * Optimized for checking many characters at once (e.g., displaying member lists)
 	 */
 	async checkCharactersBlacklisted(characterIds: string[]): Promise<Record<string, boolean>> {
 		return await this.blacklistService.checkCharactersBlacklisted(characterIds)
+	}
+
+	/**
+	 * Bulk check if multiple character names are blacklisted
+	 */
+	async checkCharacterNamesBlacklisted(characterNames: string[]): Promise<Record<string, boolean>> {
+		return await this.blacklistService.checkCharacterNamesBlacklisted(characterNames)
+	}
+
+	/**
+	 * Bulk check character ID/name pairs using OR semantics.
+	 */
+	async checkCharacterIdOrNamePairsBlacklisted(
+		pairs: CharacterIdNamePair[]
+	): Promise<CharacterIdNameBlacklistResult[]> {
+		return await this.blacklistService.checkCharacterIdOrNamePairsBlacklisted(pairs)
 	}
 
 	/**
@@ -618,10 +659,24 @@ export class HrDO extends DurableObject<Env> implements Hr {
 	}
 
 	/**
+	 * Get all blacklist entries for a Discord user ID
+	 */
+	async getBlacklistsForDiscordUser(discordUserId: string): Promise<BlacklistEntry[]> {
+		return await this.blacklistService.getBlacklistsForDiscordUser(discordUserId)
+	}
+
+	/**
 	 * Get all blacklist entries for a character
 	 */
 	async getBlacklistsForCharacter(characterId: string): Promise<BlacklistEntry[]> {
 		return await this.blacklistService.getBlacklistsForCharacter(characterId)
+	}
+
+	/**
+	 * Get all blacklist entries for a character name
+	 */
+	async getBlacklistsForCharacterName(characterName: string): Promise<BlacklistEntry[]> {
+		return await this.blacklistService.getBlacklistsForCharacterName(characterName)
 	}
 
 	/**

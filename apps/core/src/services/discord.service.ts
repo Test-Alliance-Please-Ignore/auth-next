@@ -50,6 +50,32 @@ export async function startLinkFlow(env: Env, userId: string): Promise<string> {
 	return state
 }
 
+async function blacklistLinkedCharacterTargetsForUser(
+	db: ReturnType<typeof createDb>,
+	hrStub: Hr,
+	userId: string,
+	blacklistedBy: string,
+	userBlacklistEntryId: string
+): Promise<void> {
+	const linkedCharacters = await db.query.userCharacters.findMany({
+		where: eq(userCharacters.userId, userId),
+		columns: { characterId: true, characterName: true },
+	})
+
+	for (const linkedCharacter of linkedCharacters) {
+		await hrStub.createCharacterBlacklist({
+			characterId: linkedCharacter.characterId,
+			characterName: linkedCharacter.characterName,
+			reason: `Auto-blacklisted: owned by blacklisted user ${userId}`,
+			blacklistedBy,
+			triggeredBy: userBlacklistEntryId,
+			metadata: {
+				triggeredByUserBlacklist: userBlacklistEntryId,
+			},
+		})
+	}
+}
+
 /**
  * Handle Discord tokens from client (PKCE flow)
  * @param env - Worker environment
@@ -140,6 +166,40 @@ export async function handleTokens(
 		}
 
 		const discordUserId = linkResult.discordUserId!
+		const hrStub = getStub<Hr>(env.HR, 'default')
+
+		// SECURITY: If this Discord account is blacklisted, suspend this core user instead of linking.
+		const isDiscordBlacklisted = await hrStub.isDiscordUserBlacklisted(discordUserId)
+		if (isDiscordBlacklisted) {
+			const discordBlacklists = await hrStub.getBlacklistsForDiscordUser(discordUserId)
+			const sourceBlacklist = discordBlacklists[0]
+			const blacklistedBy = sourceBlacklist?.blacklistedBy ?? coreUserId
+			const userBlacklistEntry = await hrStub.createUserBlacklist({
+				userId: coreUserId,
+				discordUserId,
+				reason: `Auto-blacklisted: attempted to link blacklisted Discord account ${discordUserId}`,
+				blacklistedBy,
+				triggeredBy: sourceBlacklist?.id,
+				isAutoBlacklist: true,
+				metadata: {
+					triggeredByDiscordUserId: discordUserId,
+				},
+			})
+			await blacklistLinkedCharacterTargetsForUser(
+				db,
+				hrStub,
+				coreUserId,
+				blacklistedBy,
+				userBlacklistEntry.id
+			)
+
+			await db.delete(oauthStates).where(eq(oauthStates.state, state))
+
+			return {
+				success: false,
+				error: 'Account suspended',
+			}
+		}
 
 		logger.info('Got Discord user info', {
 			discordUserId,
