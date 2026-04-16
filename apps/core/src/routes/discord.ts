@@ -92,7 +92,8 @@ discord.post('/callback/tokens', requireAuth(), async (c) => {
 		logger.info('Token handling result', { success: result.success, error: result.error })
 
 		if (!result.success) {
-			return c.json({ error: result.error || 'Failed to link Discord' }, 400)
+			const status = result.error === 'Account suspended' ? 403 : 400
+			return c.json({ error: result.error || 'Failed to link Discord' }, status)
 		}
 
 		return c.json({ success: true })

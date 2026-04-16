@@ -25,7 +25,7 @@ import type { Context } from 'hono'
 import type { RequestMetadata } from '@repo/core'
 import type { EveCharacterData } from '@repo/eve-character-data'
 import type { EveTokenStore } from '@repo/eve-token-store'
-import type { Hr } from '@repo/hr'
+import type { BlacklistEntry, Hr } from '@repo/hr'
 import type { App } from '../context'
 
 /**
@@ -106,6 +106,54 @@ async function hydrateAndReconcileUserRoles(
 			userId,
 			characterId,
 			error: toErrorMessage(error),
+		})
+	}
+}
+
+async function findBlacklistedCharacterTrigger(
+	hrStub: Hr,
+	characterId: string,
+	characterName?: string
+): Promise<BlacklistEntry | null> {
+	const isIdBlacklisted = await hrStub.isCharacterBlacklisted(characterId)
+	if (isIdBlacklisted) {
+		const idEntries = await hrStub.getBlacklistsForCharacter(characterId)
+		if (idEntries.length > 0) return idEntries[0]
+	}
+
+	if (characterName?.trim()) {
+		const isNameBlacklisted = await hrStub.isCharacterNameBlacklisted(characterName)
+		if (isNameBlacklisted) {
+			const nameEntries = await hrStub.getBlacklistsForCharacterName(characterName)
+			if (nameEntries.length > 0) return nameEntries[0]
+		}
+	}
+
+	return null
+}
+
+async function blacklistUserLinkedTargets(
+	db: ReturnType<typeof createDb>,
+	hrStub: Hr,
+	userId: string,
+	blacklistedBy: string,
+	userBlacklistEntryId: string
+): Promise<void> {
+	const linkedChars = await db.query.userCharacters.findMany({
+		where: eq(userCharacters.userId, userId),
+		columns: { characterId: true, characterName: true },
+	})
+
+	for (const linkedChar of linkedChars) {
+		await hrStub.createCharacterBlacklist({
+			characterId: linkedChar.characterId,
+			characterName: linkedChar.characterName,
+			reason: `Auto-blacklisted: owned by blacklisted user ${userId}`,
+			blacklistedBy,
+			triggeredBy: userBlacklistEntryId,
+			metadata: {
+				triggeredByUserBlacklist: userBlacklistEntryId,
+			},
 		})
 	}
 }
@@ -288,22 +336,31 @@ auth.get('/callback', async (c) => {
 			}
 		}
 
-		// SECURITY: Check if character is blacklisted
+		// SECURITY: Check if character ID or character name is blacklisted
 		const hrStub = getStub<Hr>(c.env.HR, 'default')
-		const isCharBlacklisted = await hrStub.isCharacterBlacklisted(characterId)
+		const charBlacklistTrigger = await findBlacklistedCharacterTrigger(
+			hrStub,
+			characterId,
+			characterInfo.characterName
+		)
 
-		if (isCharBlacklisted) {
+		if (charBlacklistTrigger) {
 			// Character is blacklisted - auto-blacklist the user
-			const charBlacklists = await hrStub.getBlacklistsForCharacter(characterId)
-			if (charBlacklists.length > 0) {
-				await hrStub.createUserBlacklist({
-					userId: stateUserId,
-					reason: `Auto-blacklisted: attempted to link blacklisted character ${characterId}`,
-					blacklistedBy: charBlacklists[0].blacklistedBy,
-					triggeredBy: charBlacklists[0].id,
-					isAutoBlacklist: true,
-				})
-			}
+			const userBlacklistEntry = await hrStub.createUserBlacklist({
+				userId: stateUserId,
+				discordUserId: user.discordUserId ?? undefined,
+				reason: `Auto-blacklisted: attempted to link blacklisted character ${characterId}`,
+				blacklistedBy: charBlacklistTrigger.blacklistedBy,
+				triggeredBy: charBlacklistTrigger.id,
+				isAutoBlacklist: true,
+			})
+			await blacklistUserLinkedTargets(
+				db,
+				hrStub,
+				stateUserId,
+				charBlacklistTrigger.blacklistedBy,
+				userBlacklistEntry.id
+			)
 
 			// Invalidate all sessions for this user
 			const sessionService = new SessionService(db)
@@ -397,25 +454,32 @@ auth.get('/callback', async (c) => {
 	const user = await userService.getUserByCharacterId(characterId)
 
 	if (user) {
-		// SECURITY: Check if character or user is blacklisted
+		// SECURITY: Check if character ID/name or user is blacklisted
 		const hrStub = getStub<Hr>(c.env.HR, 'default')
-		const isCharBlacklisted = await hrStub.isCharacterBlacklisted(characterId)
+		const charBlacklistTrigger = await findBlacklistedCharacterTrigger(
+			hrStub,
+			characterId,
+			characterInfo.characterName
+		)
 		const isUserBlacklisted = await hrStub.isUserBlacklisted(user.id)
 
-		if (isCharBlacklisted) {
-			// Character is blacklisted - auto-blacklist the user if not already blacklisted
-			if (!isUserBlacklisted) {
-				const charBlacklists = await hrStub.getBlacklistsForCharacter(characterId)
-				if (charBlacklists.length > 0) {
-					await hrStub.createUserBlacklist({
-						userId: user.id,
-						reason: `Auto-blacklisted: attempted login with blacklisted character ${characterId}`,
-						blacklistedBy: charBlacklists[0].blacklistedBy,
-						triggeredBy: charBlacklists[0].id,
-						isAutoBlacklist: true,
-					})
-				}
-			}
+		if (charBlacklistTrigger) {
+			// Character is blacklisted - auto-blacklist user and linked targets.
+			const userBlacklistEntry = await hrStub.createUserBlacklist({
+				userId: user.id,
+				discordUserId: user.discordUserId ?? undefined,
+				reason: `Auto-blacklisted: attempted login with blacklisted character ${characterId}`,
+				blacklistedBy: charBlacklistTrigger.blacklistedBy,
+				triggeredBy: charBlacklistTrigger.id,
+				isAutoBlacklist: true,
+			})
+			await blacklistUserLinkedTargets(
+				db,
+				hrStub,
+				user.id,
+				charBlacklistTrigger.blacklistedBy,
+				userBlacklistEntry.id
+			)
 
 			// Invalidate all sessions for this user
 			const sessionService = new SessionService(db)
@@ -533,11 +597,15 @@ auth.get('/callback', async (c) => {
 		})
 	}
 
-	// New user - check if character is blacklisted before allowing claim-main
+	// New user - check if character ID/name is blacklisted before allowing claim-main
 	const hrStub = getStub<Hr>(c.env.HR, 'default')
-	const isCharBlacklisted = await hrStub.isCharacterBlacklisted(characterId)
+	const charBlacklistTrigger = await findBlacklistedCharacterTrigger(
+		hrStub,
+		characterId,
+		characterInfo.characterName
+	)
 
-	if (isCharBlacklisted) {
+	if (charBlacklistTrigger) {
 		// Character is blacklisted - prevent new user creation
 		return c.json({ error: 'Account suspended' }, 403)
 	}
@@ -583,11 +651,15 @@ auth.post('/claim-main', async (c) => {
 		return c.json({ error: 'Character not authenticated. Please login first.' }, 400)
 	}
 
-	// SECURITY: Check if character is blacklisted before creating user
+	// SECURITY: Check if character ID/name is blacklisted before creating user
 	const hrStub = getStub<Hr>(c.env.HR, 'default')
-	const isCharBlacklisted = await hrStub.isCharacterBlacklisted(tokenInfo.characterId)
+	const charBlacklistTrigger = await findBlacklistedCharacterTrigger(
+		hrStub,
+		tokenInfo.characterId,
+		tokenInfo.characterName
+	)
 
-	if (isCharBlacklisted) {
+	if (charBlacklistTrigger) {
 		// Character is blacklisted - prevent user creation
 		return c.json({ error: 'Account suspended' }, 403)
 	}
@@ -724,22 +796,31 @@ auth.post('/link-character', requireAuth(), async (c) => {
 		)
 	}
 
-	// SECURITY: Check if character is blacklisted
+	// SECURITY: Check if character ID or name is blacklisted
 	const hrStub = getStub<Hr>(c.env.HR, 'default')
-	const isCharBlacklisted = await hrStub.isCharacterBlacklisted(tokenInfo.characterId)
+	const charBlacklistTrigger = await findBlacklistedCharacterTrigger(
+		hrStub,
+		tokenInfo.characterId,
+		tokenInfo.characterName
+	)
 
-	if (isCharBlacklisted) {
+	if (charBlacklistTrigger) {
 		// Character is blacklisted - auto-blacklist the user
-		const charBlacklists = await hrStub.getBlacklistsForCharacter(tokenInfo.characterId)
-		if (charBlacklists.length > 0) {
-			await hrStub.createUserBlacklist({
-				userId: user.id,
-				reason: `Auto-blacklisted: attempted to link blacklisted character ${tokenInfo.characterId}`,
-				blacklistedBy: charBlacklists[0].blacklistedBy,
-				triggeredBy: charBlacklists[0].id,
-				isAutoBlacklist: true,
-			})
-		}
+		const userBlacklistEntry = await hrStub.createUserBlacklist({
+			userId: user.id,
+			discordUserId: user.discordUserId ?? undefined,
+			reason: `Auto-blacklisted: attempted to link blacklisted character ${tokenInfo.characterId}`,
+			blacklistedBy: charBlacklistTrigger.blacklistedBy,
+			triggeredBy: charBlacklistTrigger.id,
+			isAutoBlacklist: true,
+		})
+		await blacklistUserLinkedTargets(
+			db,
+			hrStub,
+			user.id,
+			charBlacklistTrigger.blacklistedBy,
+			userBlacklistEntry.id
+		)
 
 		// Invalidate all sessions for this user
 		const sessionService = new SessionService(db)

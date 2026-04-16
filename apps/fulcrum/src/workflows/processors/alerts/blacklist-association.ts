@@ -46,6 +46,7 @@ export interface BlacklistAssociationGroup {
  * Check all report data for references to blacklisted character IDs.
  *
  * @param blacklistedIds - Set of all blacklisted character IDs
+ * @param blacklistedNames - Set of blacklisted character names (lowercased), used only as fallback
  * @param walletJournal - Processed wallet journal entries
  * @param walletTransactions - Processed wallet transactions
  * @param contracts - Processed contracts
@@ -56,6 +57,7 @@ export interface BlacklistAssociationGroup {
  */
 export function checkBlacklistAssociation(
 	blacklistedIds: Set<string>,
+	blacklistedNames: Set<string>,
 	walletJournal: ProcessedWalletJournalEntry[] | null,
 	walletTransactions: ProcessedWalletTransaction[] | null,
 	contracts: ProcessedContract[] | null,
@@ -64,7 +66,7 @@ export function checkBlacklistAssociation(
 	shipNameCharacterIds: Map<string, { customName: string; characterName: string }> | null,
 	reportCharacterId: string,
 ): ReportAlert | null {
-	if (blacklistedIds.size === 0) return null
+	if (blacklistedIds.size === 0 && blacklistedNames.size === 0) return null
 
 	const matches: BlacklistMatch[] = []
 
@@ -86,6 +88,20 @@ export function checkBlacklistAssociation(
 		return blacklistedIds.has(id)
 	}
 
+	// Fallback: only use character-name matching when ID did not match.
+	const isBlacklistedByName = (
+		idMatched: boolean,
+		name: string | undefined | null,
+		reportCharacterName?: string | null,
+	): boolean => {
+		if (idMatched) return false
+		if (!name) return false
+		const normalized = name.trim().toLowerCase()
+		if (!normalized) return false
+		if (reportCharacterName && normalized === reportCharacterName.trim().toLowerCase()) return false
+		return blacklistedNames.has(normalized)
+	}
+
 	// Scan wallet journal
 	if (walletJournal) {
 		for (const entry of walletJournal) {
@@ -96,10 +112,24 @@ export function checkBlacklistAssociation(
 					source: 'wallet-journal',
 					detail: `${entry.refTypeLabel} on ${fmtDate(entry.date)} for ${entry.amountFormatted}`,
 				})
+			} else if (isBlacklistedByName(false, entry.firstPartyName)) {
+				matches.push({
+					characterId: entry.first_party_id ?? `name:${entry.firstPartyName}`,
+					characterName: entry.firstPartyName,
+					source: 'wallet-journal',
+					detail: `${entry.refTypeLabel} on ${fmtDate(entry.date)} for ${entry.amountFormatted}`,
+				})
 			}
 			if (isBlacklisted(entry.second_party_id)) {
 				matches.push({
 					characterId: entry.second_party_id,
+					characterName: entry.secondPartyName,
+					source: 'wallet-journal',
+					detail: `${entry.refTypeLabel} on ${fmtDate(entry.date)} for ${entry.amountFormatted}`,
+				})
+			} else if (isBlacklistedByName(false, entry.secondPartyName)) {
+				matches.push({
+					characterId: entry.second_party_id ?? `name:${entry.secondPartyName}`,
 					characterName: entry.secondPartyName,
 					source: 'wallet-journal',
 					detail: `${entry.refTypeLabel} on ${fmtDate(entry.date)} for ${entry.amountFormatted}`,
@@ -118,6 +148,13 @@ export function checkBlacklistAssociation(
 					source: 'wallet-transactions',
 					detail: `${tx.is_buy ? 'Bought' : 'Sold'} ${tx.quantity}x ${tx.typeName ?? tx.type_id} on ${fmtDate(tx.date)}`,
 				})
+			} else if (isBlacklistedByName(false, tx.clientName)) {
+				matches.push({
+					characterId: tx.client_id ?? `name:${tx.clientName}`,
+					characterName: tx.clientName,
+					source: 'wallet-transactions',
+					detail: `${tx.is_buy ? 'Bought' : 'Sold'} ${tx.quantity}x ${tx.typeName ?? tx.type_id} on ${fmtDate(tx.date)}`,
+				})
 			}
 		}
 	}
@@ -132,6 +169,13 @@ export function checkBlacklistAssociation(
 					source: 'contracts',
 					detail: `Issuer of ${contract.type} contract (${contract.status}) issued ${fmtDate(contract.date_issued)}`,
 				})
+			} else if (isBlacklistedByName(false, contract.issuerName)) {
+				matches.push({
+					characterId: contract.issuer_id ?? `name:${contract.issuerName}`,
+					characterName: contract.issuerName,
+					source: 'contracts',
+					detail: `Issuer of ${contract.type} contract (${contract.status}) issued ${fmtDate(contract.date_issued)}`,
+				})
 			}
 			if (isBlacklisted(contract.acceptor_id)) {
 				matches.push({
@@ -140,10 +184,27 @@ export function checkBlacklistAssociation(
 					source: 'contracts',
 					detail: `Acceptor of ${contract.type} contract (${contract.status}) issued ${fmtDate(contract.date_issued)}`,
 				})
+			} else if (isBlacklistedByName(false, contract.acceptorName)) {
+				matches.push({
+					characterId: contract.acceptor_id ?? `name:${contract.acceptorName}`,
+					characterName: contract.acceptorName,
+					source: 'contracts',
+					detail: `Acceptor of ${contract.type} contract (${contract.status}) issued ${fmtDate(contract.date_issued)}`,
+				})
 			}
 			if (isBlacklisted(contract.assignee_id) && contract.assignee_id !== contract.issuer_id) {
 				matches.push({
 					characterId: contract.assignee_id,
+					characterName: contract.assigneeName,
+					source: 'contracts',
+					detail: `Assignee of ${contract.type} contract (${contract.status}) issued ${fmtDate(contract.date_issued)}`,
+				})
+			} else if (
+				contract.assignee_id !== contract.issuer_id &&
+				isBlacklistedByName(false, contract.assigneeName)
+			) {
+				matches.push({
+					characterId: contract.assignee_id ?? `name:${contract.assigneeName}`,
 					characterName: contract.assigneeName,
 					source: 'contracts',
 					detail: `Assignee of ${contract.type} contract (${contract.status}) issued ${fmtDate(contract.date_issued)}`,
@@ -162,6 +223,16 @@ export function checkBlacklistAssociation(
 					source: 'contacts',
 					detail: `In contacts with standing ${contact.standingFormatted ?? String(contact.standing)}`,
 				})
+			} else if (
+				contact.contact_type === 'character' &&
+				isBlacklistedByName(false, contact.contactName)
+			) {
+				matches.push({
+					characterId: contact.contact_id ?? `name:${contact.contactName}`,
+					characterName: contact.contactName,
+					source: 'contacts',
+					detail: `In contacts with standing ${contact.standingFormatted ?? String(contact.standing)}`,
+				})
 			}
 		}
 	}
@@ -176,12 +247,29 @@ export function checkBlacklistAssociation(
 					source: 'mails',
 					detail: `Sent mail "${mail.subject ?? '(no subject)'}" on ${fmtDate(mail.timestamp)}`,
 				})
+			} else if (isBlacklistedByName(false, mail.fromName)) {
+				matches.push({
+					characterId: mail.from ?? `name:${mail.fromName}`,
+					characterName: mail.fromName,
+					source: 'mails',
+					detail: `Sent mail "${mail.subject ?? '(no subject)'}" on ${fmtDate(mail.timestamp)}`,
+				})
 			}
 			if (mail.recipients) {
 				for (const recipient of mail.recipients) {
 					if (recipient.recipient_type === 'character' && isBlacklisted(recipient.recipient_id)) {
 						matches.push({
 							characterId: recipient.recipient_id,
+							characterName: recipient.recipientName,
+							source: 'mails',
+							detail: `Received mail "${mail.subject ?? '(no subject)'}" on ${fmtDate(mail.timestamp)}`,
+						})
+					} else if (
+						recipient.recipient_type === 'character' &&
+						isBlacklistedByName(false, recipient.recipientName)
+					) {
+						matches.push({
+							characterId: recipient.recipient_id ?? `name:${recipient.recipientName}`,
 							characterName: recipient.recipientName,
 							source: 'mails',
 							detail: `Received mail "${mail.subject ?? '(no subject)'}" on ${fmtDate(mail.timestamp)}`,

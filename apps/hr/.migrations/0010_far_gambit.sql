@@ -1,0 +1,4 @@
+CREATE TYPE "public"."blacklist_target_type" AS ENUM('user', 'character', 'character_id', 'character_name', 'discord_id', 'corporation_id', 'corporation_name', 'alliance_id', 'alliance_name');--> statement-breakpoint
+ALTER TABLE "blacklist_entries" ALTER COLUMN "target_type" SET DATA TYPE "public"."blacklist_target_type" USING "target_type"::"public"."blacklist_target_type";--> statement-breakpoint
+ALTER TABLE "blacklist_entries" ADD COLUMN "target_value" text DEFAULT '' NOT NULL;--> statement-breakpoint
+CREATE INDEX "idx_blacklist_target" ON "blacklist_entries" USING btree ("target_type","target_value");

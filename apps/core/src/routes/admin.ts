@@ -808,7 +808,8 @@ app.post('/blacklist/user', requireAuth(), requireAdmin(), async (c) => {
 			cascadeReason: string,
 			triggeredBy: string | undefined,
 			isAuto: boolean,
-			depth: number
+			depth: number,
+			extraMetadata?: Record<string, unknown>
 		): Promise<void> {
 			// Max depth limit to prevent infinite recursion
 			if (depth > 10) {
@@ -825,14 +826,26 @@ app.post('/blacklist/user', requireAuth(), requireAdmin(), async (c) => {
 			const db = createDb(c.env.DATABASE_URL)
 			const hrStub = getStub<Hr>(c.env.HR, 'default')
 			const sessionService = new SessionService(db)
+			const targetUser = await db.query.users.findFirst({
+				where: eq(users.id, targetUserId),
+				columns: { discordUserId: true },
+			})
+			const mergedMetadata = {
+				...(extraMetadata ?? {}),
+				...(targetUser?.discordUserId ? { discordUserId: targetUser.discordUserId } : {}),
+			}
+			const metadataForEntry =
+				Object.keys(mergedMetadata).length > 0 ? mergedMetadata : undefined
 
 			// 1. Create user blacklist
 			const userBlacklistEntry = await hrStub.createUserBlacklist({
 				userId: targetUserId,
+				discordUserId: targetUser?.discordUserId ?? undefined,
 				reason: cascadeReason,
 				blacklistedBy: blacklistedByUserId,
 				isAutoBlacklist: isAuto,
 				triggeredBy,
+				metadata: metadataForEntry,
 			})
 			if (isAuto) {
 				blacklistedUsers.push(targetUserId)
@@ -872,9 +885,16 @@ app.post('/blacklist/user', requireAuth(), requireAdmin(), async (c) => {
 				// Create character blacklist
 				const charEntry = await hrStub.createCharacterBlacklist({
 					characterId: char.characterId,
+					characterName: char.characterName,
 					reason: `Auto-blacklisted: owned by blacklisted user ${targetUserId}`,
 					blacklistedBy: blacklistedByUserId,
-					metadata: { triggeredByUserBlacklist: userBlacklistEntry.id },
+					triggeredBy: userBlacklistEntry.id,
+					metadata: {
+						triggeredByUserBlacklist: userBlacklistEntry.id,
+						...(targetUser?.discordUserId
+							? { discordUserId: targetUser.discordUserId }
+							: {}),
+					},
 				})
 				blacklistedCharacters.push(char.characterId)
 
@@ -891,7 +911,8 @@ app.post('/blacklist/user', requireAuth(), requireAdmin(), async (c) => {
 							`Auto-blacklisted: linked to blacklisted character ${char.characterId}`,
 							charEntry.id,
 							true,
-							depth + 1
+							depth + 1,
+							undefined
 						)
 					}
 				}
@@ -899,7 +920,7 @@ app.post('/blacklist/user', requireAuth(), requireAdmin(), async (c) => {
 		}
 
 		// Start the cascade with the initial user
-		await cascadeBlacklist(userId, reason, undefined, false, 0)
+		await cascadeBlacklist(userId, reason, undefined, false, 0, metadata)
 
 		logger.info('[Admin] User blacklisted with cascade', {
 			adminUserId: user.id,
@@ -943,9 +964,13 @@ app.post('/blacklist/character', requireAuth(), requireAdmin(), async (c) => {
 
 	try {
 		const bodySchema = z.object({
-			characterId: z.string(),
+			characterId: z.string().optional(),
+			characterName: z.string().min(1).optional(),
 			reason: z.string().min(1),
 			metadata: z.record(z.string(), z.unknown()).optional(),
+		}).refine((data) => Boolean(data.characterId || data.characterName), {
+			message: 'Either characterId or characterName is required',
+			path: ['characterId'],
 		})
 
 		const body = await c.req.json()
@@ -961,34 +986,76 @@ app.post('/blacklist/character', requireAuth(), requireAdmin(), async (c) => {
 			)
 		}
 
-		const { characterId, reason, metadata } = validation.data
+		const { characterId: inputCharacterId, characterName: inputCharacterName, reason, metadata } = validation.data
+
+		const db = createDb(c.env.DATABASE_URL)
+		let characterId = inputCharacterId
+		let characterName = inputCharacterName
+
+		if (!characterId && characterName) {
+			const matchedCharacter = await db.query.userCharacters.findFirst({
+				where: eq(userCharacters.characterName, characterName),
+				columns: { characterId: true, characterName: true },
+			})
+			if (!matchedCharacter) {
+				return c.json(
+					{
+						error:
+							'Character name is not currently linked to any user. Provide characterId to create a paired ID+name blacklist.',
+					},
+					400
+				)
+			}
+			characterId = matchedCharacter.characterId
+			characterName = matchedCharacter.characterName
+		}
+
+		if (!characterName && characterId) {
+			const matchedCharacter = await db.query.userCharacters.findFirst({
+				where: eq(userCharacters.characterId, characterId),
+				columns: { characterName: true },
+			})
+			characterName = matchedCharacter?.characterName
+		}
+
+		if (!characterId) {
+			return c.json({ error: 'characterId could not be resolved' }, 400)
+		}
 
 		// Call HR DO via RPC
 		const hrStub = getStub<Hr>(c.env.HR, 'default')
 		const entry = await hrStub.createCharacterBlacklist({
 			characterId,
+			characterName,
 			reason,
 			blacklistedBy: user.id,
 			metadata,
 		})
 
 		// Find all users with this character and auto-blacklist them
-		const db = createDb(c.env.DATABASE_URL)
 		const usersWithChar = await db.query.userCharacters.findMany({
 			where: eq(userCharacters.characterId, characterId),
 		})
-
 		const sessionService = new SessionService(db)
 		const autoBlacklistedUsers: string[] = []
 
 		for (const char of usersWithChar) {
+			const linkedUser = await db.query.users.findFirst({
+				where: eq(users.id, char.userId),
+				columns: { discordUserId: true },
+			})
+
 			// Auto-blacklist each user
 			await hrStub.createUserBlacklist({
 				userId: char.userId,
+				discordUserId: linkedUser?.discordUserId ?? undefined,
 				reason: `Auto-blacklisted: linked to blacklisted character ${characterId}`,
 				blacklistedBy: user.id,
 				triggeredBy: entry.id,
 				isAutoBlacklist: true,
+				metadata: linkedUser?.discordUserId
+					? { discordUserId: linkedUser.discordUserId }
+					: undefined,
 			})
 
 			// Invalidate all sessions
@@ -1049,7 +1116,7 @@ app.post('/blacklist/character', requireAuth(), requireAdmin(), async (c) => {
  * List all blacklist entries with filters and pagination
  *
  * Query params:
- * - targetType?: 'user' | 'character' - Filter by target type
+ * - targetType?: blacklist target type - Filter by target type
  * - isAutoBlacklist?: boolean - Filter by auto-blacklist status
  * - limit?: number - Results per page (default 50)
  * - offset?: number - Pagination offset (default 0)
@@ -1068,7 +1135,20 @@ app.get('/blacklist', requireAuth(), requireAdmin(), async (c) => {
 			return c.json({ error: pagination.error }, pagination.status)
 		}
 
-		const targetType = c.req.query('targetType') as 'user' | 'character' | undefined
+		const targetTypeParam = c.req.query('targetType')
+		const targetType =
+			targetTypeParam === 'character'
+				? 'character_id'
+				: (targetTypeParam as
+						| 'user'
+						| 'character_id'
+						| 'character_name'
+						| 'discord_id'
+						| 'corporation_id'
+						| 'corporation_name'
+						| 'alliance_id'
+						| 'alliance_name'
+						| undefined)
 		const isAutoBlacklistParam = c.req.query('isAutoBlacklist')
 		const isAutoBlacklist =
 			isAutoBlacklistParam === 'true' ? true : isAutoBlacklistParam === 'false' ? false : undefined
