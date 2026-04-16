@@ -314,6 +314,22 @@ export function useCancelBill() {
 }
 
 /**
+ * Mark a bill as paid
+ */
+export function useMarkBillPaid() {
+	const queryClient = useQueryClient()
+
+	return useMutation({
+		mutationFn: (id: string) => billsApi.markBillPaid(id),
+		onSuccess: (updatedBill) => {
+			void queryClient.invalidateQueries({ queryKey: billKeys.lists() })
+			void queryClient.invalidateQueries({ queryKey: billKeys.statistics() })
+			queryClient.setQueryData(billKeys.detail(updatedBill.id), updatedBill)
+		},
+	})
+}
+
+/**
  * Revert a bill back to draft
  */
 export function useRevertBillToDraft() {

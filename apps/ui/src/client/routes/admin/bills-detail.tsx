@@ -1,6 +1,6 @@
 import { ArrowLeft, Edit, Users } from 'lucide-react'
 import { useState } from 'react'
-import { Link, useParams, useSearchParams } from 'react-router-dom'
+import { Link, useNavigate, useParams, useSearchParams } from 'react-router-dom'
 import { toast } from 'sonner'
 
 import { Button } from '@/components/ui/button'
@@ -14,14 +14,30 @@ import {
 	TableHeader,
 	TableRow,
 } from '@/components/ui/table'
-import { useBill, useGroupBillAggregate } from '@/hooks/useBills'
+import {
+	useBill,
+	useCancelBill,
+	useDeleteBill,
+	useGroupBillAggregate,
+	useIssueBill,
+	useMarkBillPaid,
+	useRevertBillToDraft,
+} from '@/hooks/useBills'
+import { useConfirmationDialog } from '@/hooks/useConfirmationDialog'
 import { usePageTitle } from '@/hooks/usePageTitle'
 
 export default function AdminBillsDetailPage() {
 	const { billId } = useParams<{ billId: string }>()
+	const navigate = useNavigate()
 	const [searchParams] = useSearchParams()
 	const [copiedField, setCopiedField] = useState<'amount' | 'payee' | 'token' | null>(null)
 	const forceIndividual = searchParams.get('view') === 'individual'
+	const issueBill = useIssueBill()
+	const cancelBill = useCancelBill()
+	const markBillPaid = useMarkBillPaid()
+	const deleteBill = useDeleteBill()
+	const revertBillToDraft = useRevertBillToDraft()
+	const { requestConfirmation, confirmationDialog } = useConfirmationDialog()
 
 	const { data: bill, isLoading, error } = useBill(billId!)
 	const isGroupBillAggregate = Boolean(bill?.groupBillId) && !forceIndividual
@@ -138,6 +154,63 @@ export default function AdminBillsDetailPage() {
 		}
 	}
 
+	const handleIssue = async () => {
+		try {
+			await issueBill.mutateAsync(bill.id)
+		} catch (error) {
+			console.error('Failed to issue bill:', error)
+		}
+	}
+
+	const handleCancel = () => {
+		requestConfirmation({
+			title: 'Cancel Bill',
+			description: 'Are you sure you want to cancel this bill?',
+			confirmLabel: 'Cancel Bill',
+			intent: 'confirm',
+			onConfirm: async () => {
+				await cancelBill.mutateAsync(bill.id)
+			},
+		})
+	}
+
+	const handleMarkPaid = () => {
+		requestConfirmation({
+			title: 'Mark Bill Paid',
+			description: 'Mark this bill as paid?',
+			confirmLabel: 'Mark Paid',
+			intent: 'confirm',
+			onConfirm: async () => {
+				await markBillPaid.mutateAsync(bill.id)
+			},
+		})
+	}
+
+	const handleRevertToDraft = () => {
+		requestConfirmation({
+			title: 'Move Bill To Draft',
+			description: 'Move this bill back to draft?',
+			confirmLabel: 'To Draft',
+			intent: 'secondary',
+			onConfirm: async () => {
+				await revertBillToDraft.mutateAsync(bill.id)
+			},
+		})
+	}
+
+	const handleDelete = () => {
+		requestConfirmation({
+			title: 'Delete Bill',
+			description: 'Are you sure you want to delete this bill? This action cannot be undone.',
+			confirmLabel: 'Delete Bill',
+			intent: 'destructive',
+			onConfirm: async () => {
+				await deleteBill.mutateAsync(bill.id)
+				void navigate('/admin/bills')
+			},
+		})
+	}
+
 	// --- Group bill aggregate view ---
 	if (isGroupBillAggregate) {
 		if (isGroupLoading || !groupAggregate) {
@@ -175,15 +248,15 @@ export default function AdminBillsDetailPage() {
 					</div>
 					<div className="flex gap-2">
 						<Button variant="ghost" asChild>
-							<Link to={`/admin/bills/group/${bill.groupBillId}/edit`}>
-								<Edit className="h-4 w-4" />
-								Edit Group
-							</Link>
-						</Button>
-						<Button variant="ghost" asChild>
 							<Link to="/admin/bills">
 								<ArrowLeft className="h-4 w-4" />
 								Back to Bills
+							</Link>
+						</Button>
+						<Button variant="ghost" asChild>
+							<Link to={`/admin/bills/group/${bill.groupBillId}/edit`}>
+								<Edit className="h-4 w-4" />
+								Edit Group
 							</Link>
 						</Button>
 					</div>
@@ -299,6 +372,7 @@ export default function AdminBillsDetailPage() {
 
 	return (
 		<div className="space-y-6">
+			{confirmationDialog}
 			{/* Page Header */}
 			<div className="flex items-center justify-between">
 				<div>
@@ -306,6 +380,37 @@ export default function AdminBillsDetailPage() {
 					<p className="text-muted-foreground mt-2">Bill ID: {bill.id}</p>
 				</div>
 				<div className="flex gap-2">
+					<Button variant="ghost" asChild>
+						<Link to="/admin/bills">
+							<ArrowLeft className="h-4 w-4" />
+							Back to Bills
+						</Link>
+					</Button>
+					{bill.status === 'draft' && (
+						<Button variant="confirm" onClick={() => void handleIssue()}>
+							Issue
+						</Button>
+					)}
+					{bill.status !== 'draft' && bill.status !== 'paid' && bill.status !== 'cancelled' && (
+						<Button variant="confirm" onClick={handleMarkPaid}>
+							Mark Paid
+						</Button>
+					)}
+					{bill.status !== 'draft' && bill.status !== 'paid' && (
+						<Button variant="secondary" onClick={handleRevertToDraft}>
+							To Draft
+						</Button>
+					)}
+					{bill.status !== 'paid' && bill.status !== 'cancelled' && (
+						<Button variant="cancel" onClick={handleCancel}>
+							Cancel
+						</Button>
+					)}
+					{bill.status === 'draft' && (
+						<Button variant="destructive" onClick={handleDelete}>
+							Delete
+						</Button>
+					)}
 					{bill.status === 'draft' && (
 						<Button variant="ghost" asChild>
 							<Link to={`/admin/bills/${bill.id}/edit`}>
@@ -314,12 +419,6 @@ export default function AdminBillsDetailPage() {
 							</Link>
 						</Button>
 					)}
-					<Button variant="ghost" asChild>
-						<Link to="/admin/bills">
-							<ArrowLeft className="h-4 w-4" />
-							Back to Bills
-						</Link>
-					</Button>
 				</div>
 			</div>
 
@@ -370,20 +469,22 @@ export default function AdminBillsDetailPage() {
 										void copyField('payee')
 									}
 								}}
-								className={`rounded-md border p-3 text-left cursor-pointer transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 ${
+								className={`min-h-[88px] rounded-md border-2 p-3 text-left cursor-pointer transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 flex flex-col justify-between ${
 									copiedField === 'payee'
-										? 'border-teal-500/60 bg-teal-500/20'
-										: 'border-border bg-muted/50 hover:bg-muted'
+										? 'border-teal-500 bg-teal-500/30 shadow-[inset_0_0_0_1px_rgba(255,255,255,0.18)]'
+										: 'border-zinc-500/50 bg-zinc-500/20 shadow-sm hover:border-zinc-500/70 hover:bg-zinc-500/30 hover:shadow-md'
 								}`}
 								title="Copy payee"
 							>
-								<p className="text-base leading-6 font-semibold">
+								<p className="text-xl leading-6 font-semibold break-words">
 									{bill.payeeName ||
 										(bill.payeeId && bill.payeeType
 											? `${bill.payeeType.charAt(0).toUpperCase() + bill.payeeType.slice(1)} ${bill.payeeId}`
 											: '-')}
 								</p>
-								<p className="mt-1 text-xs text-muted-foreground">Click to copy</p>
+								<p className="mt-1 text-[11px] font-semibold uppercase tracking-wide text-foreground/90">
+									Click to copy
+								</p>
 							</div>
 						</div>
 
@@ -399,15 +500,17 @@ export default function AdminBillsDetailPage() {
 										void copyField('amount')
 									}
 								}}
-								className={`rounded-md border p-3 text-left cursor-pointer transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 ${
+								className={`min-h-[88px] rounded-md border-2 p-3 text-left cursor-pointer transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 flex flex-col justify-between ${
 									copiedField === 'amount'
-										? 'border-teal-500/60 bg-teal-500/20'
-										: 'border-border bg-muted/50 hover:bg-muted'
+										? 'border-teal-500 bg-teal-500/30 shadow-[inset_0_0_0_1px_rgba(255,255,255,0.18)]'
+										: 'border-zinc-500/50 bg-zinc-500/20 shadow-sm hover:border-zinc-500/70 hover:bg-zinc-500/30 hover:shadow-md'
 								}`}
 								title="Copy amount"
 							>
 								<p className="text-xl font-semibold">{formatAmount(bill.amount)} ISK</p>
-								<p className="mt-1 text-xs text-muted-foreground">Click to copy</p>
+								<p className="mt-1 text-[11px] font-semibold uppercase tracking-wide text-foreground/90">
+									Click to copy
+								</p>
 							</div>
 						</div>
 
@@ -423,15 +526,22 @@ export default function AdminBillsDetailPage() {
 										void copyField('token')
 									}
 								}}
-								className={`rounded-md border p-3 text-left cursor-pointer transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 ${
+								className={`min-h-[88px] rounded-md border-2 p-3 text-left cursor-pointer transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 flex flex-col justify-between ${
 									copiedField === 'token'
-										? 'border-teal-500/60 bg-teal-500/20'
-										: 'border-border bg-muted/50 hover:bg-muted'
+										? 'border-teal-500 bg-teal-500/30 shadow-[inset_0_0_0_1px_rgba(255,255,255,0.18)]'
+										: 'border-zinc-500/60 bg-zinc-500/25 shadow-sm hover:border-zinc-500/80 hover:bg-zinc-500/35 hover:shadow-md'
 								}`}
 								title="Copy payment token"
 							>
-								<p className="text-xl font-mono font-semibold break-all">{bill.paymentToken}</p>
-								<p className="mt-1 text-xs text-muted-foreground">Click to copy</p>
+								<p
+									className="text-xl font-mono font-semibold break-all tracking-[0.2em]"
+									style={{ fontVariantNumeric: 'slashed-zero tabular-nums' }}
+								>
+									{bill.paymentToken}
+								</p>
+								<p className="mt-1 text-[11px] font-semibold uppercase tracking-wide text-foreground/90">
+									Click to copy
+								</p>
 							</div>
 						</div>
 					</div>

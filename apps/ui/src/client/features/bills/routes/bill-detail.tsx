@@ -190,20 +190,22 @@ export default function BillDetailPage() {
 										void copyField('payee')
 									}
 								}}
-								className={`rounded-md border p-3 text-left cursor-pointer transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 ${
+								className={`min-h-[88px] rounded-md border-2 p-3 text-left cursor-pointer transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 flex flex-col justify-between ${
 									copiedField === 'payee'
-										? 'border-teal-500/60 bg-teal-500/20'
-										: 'border-border bg-muted/50 hover:bg-muted'
+										? 'border-teal-500 bg-teal-500/30 shadow-[inset_0_0_0_1px_rgba(255,255,255,0.18)]'
+										: 'border-zinc-500/50 bg-zinc-500/20 shadow-sm hover:border-zinc-500/70 hover:bg-zinc-500/30 hover:shadow-md'
 								}`}
 								title="Copy payee"
 							>
-								<p className="text-base leading-6 font-semibold">
+								<p className="text-xl leading-6 font-semibold break-words">
 									{bill.payeeName ||
 										(bill.payeeId && bill.payeeType
 											? `${bill.payeeType.charAt(0).toUpperCase() + bill.payeeType.slice(1)} ${bill.payeeId}`
 											: '-')}
 								</p>
-								<p className="mt-1 text-xs text-muted-foreground">Click to copy</p>
+								<p className="mt-1 text-[11px] font-semibold uppercase tracking-wide text-foreground/90">
+									Click to copy
+								</p>
 							</div>
 						</div>
 
@@ -219,10 +221,10 @@ export default function BillDetailPage() {
 										void copyField('amount')
 									}
 								}}
-								className={`rounded-md border p-3 text-left cursor-pointer transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 ${
+								className={`min-h-[88px] rounded-md border-2 p-3 text-left cursor-pointer transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 flex flex-col justify-between ${
 									copiedField === 'amount'
-										? 'border-teal-500/60 bg-teal-500/20'
-										: 'border-border bg-muted/50 hover:bg-muted'
+										? 'border-teal-500 bg-teal-500/30 shadow-[inset_0_0_0_1px_rgba(255,255,255,0.18)]'
+										: 'border-zinc-500/50 bg-zinc-500/20 shadow-sm hover:border-zinc-500/70 hover:bg-zinc-500/30 hover:shadow-md'
 								}`}
 								title="Copy amount"
 							>
@@ -232,7 +234,9 @@ export default function BillDetailPage() {
 										+{formatAmount(bill.lateFee)} ISK late fee
 									</p>
 								)}
-								<p className="mt-1 text-xs text-muted-foreground">Click to copy</p>
+								<p className="mt-1 text-[11px] font-semibold uppercase tracking-wide text-foreground/90">
+									Click to copy
+								</p>
 							</div>
 						</div>
 
@@ -248,15 +252,22 @@ export default function BillDetailPage() {
 										void copyField('token')
 									}
 								}}
-								className={`rounded-md border p-3 text-left cursor-pointer transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 ${
+								className={`min-h-[88px] rounded-md border-2 p-3 text-left cursor-pointer transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 flex flex-col justify-between ${
 									copiedField === 'token'
-										? 'border-teal-500/60 bg-teal-500/20'
-										: 'border-border bg-muted/50 hover:bg-muted'
+										? 'border-teal-500 bg-teal-500/30 shadow-[inset_0_0_0_1px_rgba(255,255,255,0.18)]'
+										: 'border-zinc-500/60 bg-zinc-500/25 shadow-sm hover:border-zinc-500/80 hover:bg-zinc-500/35 hover:shadow-md'
 								}`}
 								title="Copy payment token"
 							>
-								<p className="text-xl font-mono font-semibold break-all">{bill.paymentToken}</p>
-								<p className="mt-1 text-xs text-muted-foreground">Click to copy</p>
+								<p
+									className="text-xl font-mono font-semibold break-all tracking-[0.2em]"
+									style={{ fontVariantNumeric: 'slashed-zero tabular-nums' }}
+								>
+									{bill.paymentToken}
+								</p>
+								<p className="mt-1 text-[11px] font-semibold uppercase tracking-wide text-foreground/90">
+									Click to copy
+								</p>
 							</div>
 						</div>
 					</div>

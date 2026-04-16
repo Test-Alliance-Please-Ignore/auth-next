@@ -425,6 +425,65 @@ describe('coalesced bill list (GET / with coalesced=true)', () => {
 		expect(rep.groupBillPaidCount).toBe(2)
 	})
 
+	it('includes coalesced group rows when filtering payerType=group', async () => {
+		const rows = [
+			makeSubBill({ id: 'bill-1', payerId: 'char-101', status: 'issued' }),
+			makeSubBill({ id: 'bill-2', payerId: 'char-102', status: 'paid' }),
+		]
+		billsStub.listBillsPage.mockResolvedValueOnce({ rows, rowCount: 2 })
+		groupsStub.getGroupMetadataByIds.mockResolvedValueOnce([
+			{ id: 'group-1', name: 'Alpha Squadron' },
+		])
+
+		const app = createApp(makeAdmin())
+		const response = await app.request(
+			'/api/admin/bills?limit=25&offset=0&coalesced=true&payerType=group',
+			{},
+			env
+		)
+
+		expect(response.status).toBe(200)
+		const body = await response.json() as any
+		expect(body.rowCount).toBe(1)
+		expect(body.rows).toHaveLength(1)
+		expect(body.rows[0].groupBillId).toBe('gbill-1')
+		expect(billsStub.listBillsPage).toHaveBeenCalledWith(
+			expect.objectContaining({
+				filters: expect.not.objectContaining({ payerType: 'group' }),
+			})
+		)
+	})
+
+	it('paginates by coalesced rows and returns coalesced rowCount', async () => {
+		const rows = [
+			makeSubBill({ id: 'bill-1', payerId: 'char-101', status: 'issued' }),
+			makeSubBill({ id: 'bill-2', payerId: 'char-102', status: 'paid' }),
+			{
+				...makeSubBill({ id: 'bill-3' }),
+				groupBillId: null,
+				payerId: 'char-999',
+				externalMetadata: null,
+			},
+		]
+		billsStub.listBillsPage.mockResolvedValueOnce({ rows, rowCount: 3 })
+		groupsStub.getGroupMetadataByIds.mockResolvedValueOnce([
+			{ id: 'group-1', name: 'Alpha Squadron' },
+		])
+
+		const app = createApp(makeAdmin())
+		const response = await app.request(
+			'/api/admin/bills?limit=1&offset=1&coalesced=true',
+			{},
+			env
+		)
+
+		expect(response.status).toBe(200)
+		const body = await response.json() as any
+		expect(body.rowCount).toBe(2)
+		expect(body.rows).toHaveLength(1)
+		expect(body.rows[0].groupBillId).toBeNull()
+	})
+
 	it('returns individual rows when coalesced=false', async () => {
 		const rows = [
 			makeSubBill({ id: 'bill-1', payerId: 'char-101', status: 'issued' }),

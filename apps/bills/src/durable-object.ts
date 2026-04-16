@@ -187,6 +187,10 @@ export class BillsDO extends DurableObject<Env> implements Bills {
 		return this.billService.cancelBill(actorUserId, billId)
 	}
 
+	async markBillPaid(actorUserId: string, billId: string): Promise<Bill> {
+		return this.billService.markBillPaid(actorUserId, billId)
+	}
+
 	async revertBillToDraft(actorUserId: string, billId: string): Promise<Bill> {
 		return this.billService.revertBillToDraft(actorUserId, billId)
 	}

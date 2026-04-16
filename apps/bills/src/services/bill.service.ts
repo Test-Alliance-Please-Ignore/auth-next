@@ -608,6 +608,13 @@ export class BillService {
 	}
 
 	/**
+	 * Mark bill as paid from an admin action.
+	 */
+	async markBillPaid(actorUserId: string, billId: string): Promise<Bill> {
+		return this.markBillAsPaid(billId, actorUserId)
+	}
+
+	/**
 	 * Revert a bill to draft (permissions enforced by caller route; blocked when paid or when payments exist)
 	 */
 	async revertBillToDraft(actorUserId: string, billId: string): Promise<Bill> {
@@ -940,7 +947,7 @@ export class BillService {
 		return paidAmount >= totalAmount ? true : false
 	}
 
-	async markBillAsPaid(billId: string): Promise<void> {
+	async markBillAsPaid(billId: string, actorUserId: string | null = null): Promise<Bill> {
 		const existingBill = await this.db.query.bills.findFirst({
 			where: eq(bills.id, billId),
 		})
@@ -948,7 +955,13 @@ export class BillService {
 			throw new Error('Bill not found')
 		}
 		if (existingBill.status === 'paid') {
-			return
+			return this.toBillResponse(existingBill)
+		}
+		if (existingBill.status === 'draft') {
+			throw new Error('Cannot mark a draft bill as paid')
+		}
+		if (existingBill.status === 'cancelled') {
+			throw new Error('Cannot mark a cancelled bill as paid')
 		}
 
 		const transitioned = await this.applyStatusTransitionAtomic({
@@ -956,18 +969,27 @@ export class BillService {
 			fromStatus: existingBill.status,
 			toStatus: 'paid',
 			eventType: 'paid',
-			actorUserId: null,
+			actorUserId,
 			paidAt: new Date(),
+			metadata: actorUserId ? { reason: 'admin_marked_paid' } : null,
 		})
 		if (!transitioned) {
 			const currentBill = await this.db.query.bills.findFirst({
 				where: eq(bills.id, billId),
 			})
 			if (currentBill?.status === 'paid') {
-				return
+				return this.toBillResponse(currentBill)
 			}
 			throw new Error('Bill status changed during payment finalization; please retry')
 		}
+
+		const updatedBill = await this.db.query.bills.findFirst({
+			where: eq(bills.id, billId),
+		})
+		if (!updatedBill) {
+			throw new Error('Bill not found after payment finalization')
+		}
+		return this.toBillResponse(updatedBill)
 	}
 
 	/**

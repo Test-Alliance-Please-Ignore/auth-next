@@ -230,31 +230,7 @@ export function DirectorList({ corporationId }: DirectorListProps) {
 										</Button>
 									</TableCell>
 									<TableCell>
-										<div>
-											<DirectorHealthBadge director={director} />
-											{!director.isHealthy && (director.unhealthyReason?.summary || director.lastFailureReason) ? (
-												<div className="mt-1 space-y-0.5">
-													<div
-														className="max-w-[28rem] truncate text-xs text-muted-foreground"
-														title={director.lastFailureReason ?? undefined}
-													>
-														{director.unhealthyReason?.summary || director.lastFailureReason}
-													</div>
-													{director.unhealthyReason?.status || director.unhealthyReason?.path ? (
-														<div className="max-w-[28rem] truncate text-[11px] text-muted-foreground/80">
-															{director.unhealthyReason?.status
-																? `HTTP ${director.unhealthyReason.status}`
-																: null}
-															{director.unhealthyReason?.status &&
-															director.unhealthyReason?.path
-																? ' · '
-																: null}
-															{director.unhealthyReason?.path ?? null}
-														</div>
-													) : null}
-												</div>
-											) : null}
-										</div>
+										<DirectorHealthBadge director={director} />
 									</TableCell>
 									<TableCell className="text-sm text-muted-foreground">
 										{formatDate(director.lastUsed)}
