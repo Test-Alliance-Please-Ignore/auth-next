@@ -21,10 +21,12 @@ import {
 	corporationWallets,
 	corporationWalletTransactions,
 } from './db/schema'
+import { syncAssetsPaged } from './services/assets-paging-sync'
 import { DirectorManager } from './services/director-manager'
 import * as esiFetch from './services/esi-fetch'
 
 import type { SQL } from 'drizzle-orm'
+import type { RawEsiAsset } from './services/assets-paging-sync'
 import type {
 	CharacterCorporationRolesData,
 	CorporationAccessVerification,
@@ -1346,6 +1348,20 @@ export class EveCorporationDataDO extends DurableObject<Env> implements EveCorpo
 	}
 
 	/**
+	 * Fetch and store assets using a specific director character.
+	 * This avoids transferring large asset arrays across RPC boundaries.
+	 */
+	async syncAssetsWithDirector(
+		corporationId: string,
+		directorCharacterId: string
+	): Promise<{ assetsCount: number }> {
+		this.assertNonNpcCorporation(corporationId)
+		await this.verifyRole(directorCharacterId, ['Director'])
+		const assetsCount = await this.fetchAndStoreAssetsByCharacter(corporationId, directorCharacterId)
+		return { assetsCount }
+	}
+
+	/**
 	 * Store structures (workflow-friendly)
 	 */
 	async storeStructures(corporationId: string, structures: any[]): Promise<void> {
@@ -2124,78 +2140,22 @@ export class EveCorporationDataDO extends DurableObject<Env> implements EveCorpo
 			characterId,
 		})
 
-		const tokenStore = getStub<EveTokenStore>(this.env.EVE_TOKEN_STORE, 'default')
-		const assets: EsiCorporationAsset[] = await esiFetch.fetchAssets(
-			tokenStore,
-			corporationId,
-			characterId
-		)
-
-		logger.debug('[fetchAndStoreAssets] Fetched assets from ESI', {
-			corporationId,
-			totalAssets: assets.length,
-		})
-
-		// Batch insert to avoid hitting Cloudflare's subrequest limits and prevent timeouts
-		// Insert 25 assets at a time (conservative to stay well below the 50 subrequest limit)
-		const BATCH_SIZE = 25
-		let insertedCount = 0
-
 		try {
-			for (let i = 0; i < assets.length; i += BATCH_SIZE) {
-				const batch = assets.slice(i, i + BATCH_SIZE)
-				const valuesToInsert = batch.map((asset) => ({
-					corporationId: String(corporationId),
-					itemId: asset.item_id,
-					isSingleton: asset.is_singleton,
-					locationFlag: asset.location_flag,
-					locationId: asset.location_id,
-					locationType: asset.location_type,
-					quantity: asset.quantity,
-					typeId: asset.type_id,
-					isBlueprintCopy: asset.is_blueprint_copy,
-					updatedAt: new Date(),
-				}))
-
-				await this.getDb()
-					.insert(corporationAssets)
-					.values(valuesToInsert)
-					.onConflictDoUpdate({
-						target: [corporationAssets.corporationId, corporationAssets.itemId],
-						set: {
-							isSingleton: sql`excluded.is_singleton`,
-							locationFlag: sql`excluded.location_flag`,
-							locationId: sql`excluded.location_id`,
-							locationType: sql`excluded.location_type`,
-							quantity: sql`excluded.quantity`,
-							typeId: sql`excluded.type_id`,
-							isBlueprintCopy: sql`excluded.is_blueprint_copy`,
-							updatedAt: sql`excluded.updated_at`,
-						},
-					})
-
-				insertedCount += batch.length
-
-				// Log progress for large datasets
-				if (insertedCount % 100 === 0 || insertedCount === assets.length) {
-					logger.debug('[fetchAndStoreAssets] Insert progress', {
-						corporationId,
-						inserted: insertedCount,
-						total: assets.length,
-						percentage: Math.round((insertedCount / assets.length) * 100),
-					})
-				}
-			}
+			const insertedCount = await this.fetchAndStoreAssetsByCharacter(corporationId, characterId)
+			logger.debug('[fetchAndStoreAssets] Completed asset fetch and store', {
+				corporationId,
+				totalInserted: insertedCount,
+				totalAssets: insertedCount,
+			})
 		} catch (error) {
 			logger.error('[fetchAndStoreAssets] Failed to insert assets', {
 				corporationId,
-				insertedSoFar: insertedCount,
-				totalAssets: assets.length,
 				error: error instanceof Error ? error.message : String(error),
 				errorStack: error instanceof Error ? error.stack : undefined,
 			})
 
 			// Clear cache for this endpoint so next attempt fetches fresh data
+			const tokenStore = getStub<EveTokenStore>(this.env.EVE_TOKEN_STORE, 'default')
 			const path = `/corporations/${corporationId}/assets`
 			try {
 				await tokenStore.clearEsiCache(path, characterId)
@@ -2208,12 +2168,33 @@ export class EveCorporationDataDO extends DurableObject<Env> implements EveCorpo
 
 			throw error
 		}
+	}
 
-		logger.debug('[fetchAndStoreAssets] Completed asset fetch and store', {
-			corporationId,
-			totalInserted: insertedCount,
-			totalAssets: assets.length,
+	private async fetchAndStoreAssetsByCharacter(
+		corporationId: string,
+		characterId: string
+	): Promise<number> {
+		const tokenStore = getStub<EveTokenStore>(this.env.EVE_TOKEN_STORE, 'default')
+		const basePath = `/corporations/${corporationId}/assets`
+		const result = await syncAssetsPaged({
+			fetchPage: (page) =>
+				tokenStore.fetchEsi(`${basePath}?page=${page}`, characterId) as Promise<
+					EsiResponse<RawEsiAsset[]>
+				>,
+			storeAssets: (assets) => this.storeAssets(corporationId, assets),
+			onProgress: ({ page, totalPages, totalAssets }) => {
+				if (page % 10 === 0 || page === totalPages) {
+					logger.debug('[fetchAndStoreAssets] Page progress', {
+						corporationId,
+						page,
+						totalPages,
+						totalAssets,
+					})
+				}
+			},
 		})
+
+		return result.assetsCount
 	}
 
 	/**
