@@ -46,6 +46,10 @@ export interface WorkflowParams {
 
 const ESI_STEP = esiFetchStepConfig
 const STEP = esiProcessingStepConfig
+export const NOTIFICATIONS_PROCESS_STEP: WorkflowStepConfig = {
+	...STEP,
+	timeout: '5 minutes',
+}
 
 /**
  * Character Report Workflow
@@ -347,7 +351,7 @@ export class CharacterReportWorkflow extends WorkflowEntrypoint<Env, WorkflowPar
 			)
 
 			// Step 22: Process notifications
-			const processNotificationsResult = await doStep('process-notifications', STEP, () =>
+			const processNotificationsResult = await doStep('process-notifications', NOTIFICATIONS_PROCESS_STEP, () =>
 				processNotifications(
 					this.env,
 					getBucket,
