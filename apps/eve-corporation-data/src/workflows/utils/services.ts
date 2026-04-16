@@ -1,4 +1,5 @@
 import { getStub } from '@repo/do-utils'
+import { logger } from '@repo/hono-helpers'
 
 import { createDb } from '../../db'
 import { DirectorManager } from '../../services/director-manager'
@@ -21,7 +22,36 @@ export function createTokenStore(env: Env): EveTokenStore {
 export function createDirectorManager(env: Env, corporationId: string): DirectorManager {
 	const db = createDb(env.DATABASE_URL)
 	const tokenStore = createTokenStore(env)
-	return new DirectorManager(db, corporationId, tokenStore)
+	return new DirectorManager(
+		db,
+		corporationId,
+		tokenStore,
+		async (characterId, expectedCorporationId, actualCorporationId) => {
+			try {
+				await env.CORE.handleCharacterAffiliationChanges([characterId], {
+					source: `director-affiliation-mismatch:${expectedCorporationId}:${actualCorporationId ?? 'unknown'}`,
+					bypassThrottle: true,
+				})
+			} catch (error) {
+				logger.warn('[DirectorManager] Failed to propagate affiliation mismatch to Core', {
+					corporationId: expectedCorporationId,
+					characterId,
+					actualCorporationId,
+					error: error instanceof Error ? error.message : String(error),
+				})
+			}
+		},
+		async (_characterId, prunedCorporationId) => {
+			try {
+				await env.CACHE.delete(`directors:${prunedCorporationId}`)
+			} catch (error) {
+				logger.warn('[DirectorManager] Failed to invalidate directors cache after prune', {
+					corporationId: prunedCorporationId,
+					error: error instanceof Error ? error.message : String(error),
+				})
+			}
+		}
+	)
 }
 
 /**

@@ -62,6 +62,11 @@ export class DirectorManager {
 			characterId: string,
 			expectedCorporationId: string,
 			actualCorporationId: string | null
+		) => Promise<void>,
+		private readonly onDirectorPruned?: (
+			characterId: string,
+			corporationId: string,
+			reason: string
 		) => Promise<void>
 	) {}
 
@@ -228,25 +233,12 @@ export class DirectorManager {
 
 					const affiliationCheck = await this.checkAffiliation(candidate.characterId)
 					if (!affiliationCheck.matches) {
-						if (this.onAffiliationMismatch) {
-							try {
-								await this.onAffiliationMismatch(
-									candidate.characterId,
-									this.corporationId,
-									affiliationCheck.corporationId
-								)
-							} catch (error) {
-								console.error('[DirectorManager] Affiliation mismatch callback failed', {
-									corporationId: this.corporationId,
-									characterId: candidate.characterId,
-									error: error instanceof Error ? error.message : String(error),
-								})
-							}
-						}
-						await this.safeRecordFailure(
-							candidate.directorId,
-							`Director affiliation mismatch: expected corporation ${this.corporationId}, got ${affiliationCheck.corporationId ?? 'unknown'}`
-						)
+						await this.handleAffiliationMismatch({
+							directorId: candidate.directorId,
+							characterId: candidate.characterId,
+							actualCorporationId: affiliationCheck.corporationId,
+							context: 'select-director',
+						})
 						continue
 					}
 
@@ -341,6 +333,66 @@ export class DirectorManager {
 		return {
 			matches: corporationId === this.corporationId,
 			corporationId,
+		}
+	}
+
+	private async handleAffiliationMismatch(params: {
+		directorId: string
+		characterId: string
+		actualCorporationId: string | null
+		context: 'select-director' | 'verify-director-health'
+	}): Promise<void> {
+		const reason = `Director affiliation mismatch: expected corporation ${this.corporationId}, got ${params.actualCorporationId ?? 'unknown'}`
+
+		if (this.onAffiliationMismatch) {
+			try {
+				await this.onAffiliationMismatch(
+					params.characterId,
+					this.corporationId,
+					params.actualCorporationId
+				)
+			} catch (error) {
+				console.error('[DirectorManager] Affiliation mismatch callback failed', {
+					corporationId: this.corporationId,
+					characterId: params.characterId,
+					context: params.context,
+					error: error instanceof Error ? error.message : String(error),
+				})
+			}
+		}
+
+		await this.safeRecordFailure(params.directorId, reason, { forceUnhealthy: true })
+
+		try {
+			await this.removeDirector(params.characterId)
+			console.warn('[DirectorManager] Auto-pruned director due to affiliation mismatch', {
+				corporationId: this.corporationId,
+				directorId: params.directorId,
+				characterId: params.characterId,
+				actualCorporationId: params.actualCorporationId,
+				context: params.context,
+			})
+		} catch (error) {
+			console.error('[DirectorManager] Failed to auto-prune mismatched director', {
+				corporationId: this.corporationId,
+				directorId: params.directorId,
+				characterId: params.characterId,
+				context: params.context,
+				error: error instanceof Error ? error.message : String(error),
+			})
+		}
+
+		if (this.onDirectorPruned) {
+			try {
+				await this.onDirectorPruned(params.characterId, this.corporationId, reason)
+			} catch (error) {
+				console.error('[DirectorManager] Director pruned callback failed', {
+					corporationId: this.corporationId,
+					characterId: params.characterId,
+					context: params.context,
+					error: error instanceof Error ? error.message : String(error),
+				})
+			}
 		}
 	}
 
@@ -566,6 +618,17 @@ export class DirectorManager {
 				directorId,
 				characterId: director.characterId,
 			})
+
+			const affiliationCheck = await this.checkAffiliation(String(director.characterId))
+			if (!affiliationCheck.matches) {
+				await this.handleAffiliationMismatch({
+					directorId,
+					characterId: String(director.characterId),
+					actualCorporationId: affiliationCheck.corporationId,
+					context: 'verify-director-health',
+				})
+				return false
+			}
 
 			// Fetch character roles from ESI
 			const response: EsiResponse<EsiCharacterRoles> = await this.tokenStore.fetchEsi(

@@ -1,6 +1,6 @@
 import { logger } from '@repo/hono-helpers'
 
-import { createDirectorManager } from '../../utils/services'
+import { createDirectorManager, createTokenStore, getCorporationDataStub } from '../../utils/services'
 
 import type { Env } from '../../../context'
 import type { DirectorInfo } from '../../types'
@@ -71,4 +71,119 @@ export async function verifyAllDirectorsHealth(
 ): Promise<{ verified: number; failed: number }> {
 	const directorManager = createDirectorManager(env, corporationId)
 	return await directorManager.verifyAllDirectorsHealth()
+}
+
+type EsiCorporationMemberRole = {
+	character_id: number
+	roles?: string[]
+	roles_at_hq?: string[]
+	roles_at_base?: string[]
+	roles_at_other?: string[]
+}
+
+function hasDirectorAuthority(role: EsiCorporationMemberRole): boolean {
+	const allRoles = [
+		...(role.roles ?? []),
+		...(role.roles_at_hq ?? []),
+		...(role.roles_at_base ?? []),
+		...(role.roles_at_other ?? []),
+	]
+	return allRoles.includes('Director') || allRoles.includes('CEO')
+}
+
+async function resolveCharacterName(env: Env, characterId: string): Promise<string> {
+	const tokenStore = createTokenStore(env)
+	try {
+		const result = await tokenStore.fetchPublicEsi<{ name?: string }>(`/characters/${characterId}`)
+		return result.data?.name?.trim() || characterId
+	} catch (error) {
+		logger.warn('[DirectorStep] Failed to resolve character name while auto-adding director', {
+			characterId,
+			error: error instanceof Error ? error.message : String(error),
+		})
+		return characterId
+	}
+}
+
+async function isCharacterLinkedToUser(env: Env, characterId: string): Promise<boolean> {
+	try {
+		const owner = await env.CORE.getCharacterOwner(characterId)
+		return owner !== null
+	} catch (error) {
+		logger.warn(
+			'[DirectorStep] Failed to verify character ownership while reconciling directors',
+			{
+				characterId,
+				error: error instanceof Error ? error.message : String(error),
+			}
+		)
+		return false
+	}
+}
+
+/**
+ * Reconcile configured directors against authoritative corp role roster.
+ *
+ * Ensures promotions to Director/CEO are auto-added and demotions are pruned.
+ */
+export async function reconcileDirectorsFromCorporationRoles(
+	env: Env,
+	corporationId: string,
+	directorCharacterId: string
+): Promise<{ added: number; removed: number; discovered: number; skippedUnlinked: number }> {
+	const tokenStore = createTokenStore(env)
+	const corpData = getCorporationDataStub(env, corporationId)
+	const rolesResponse = await tokenStore.fetchEsi<EsiCorporationMemberRole[]>(
+		`/corporations/${corporationId}/roles`,
+		directorCharacterId
+	)
+
+	const authoritativeDirectorIds = new Set(
+		rolesResponse.data.filter(hasDirectorAuthority).map((row) => String(row.character_id))
+	)
+	const existingDirectors = await corpData.getDirectors(corporationId)
+	const existingDirectorIds = new Set(existingDirectors.map((d) => d.characterId))
+
+	const toAdd = [...authoritativeDirectorIds].filter((characterId) => !existingDirectorIds.has(characterId))
+	const toRemove = existingDirectors
+		.filter((d) => !authoritativeDirectorIds.has(d.characterId))
+		.map((d) => d.characterId)
+	let skippedUnlinked = 0
+
+	for (const characterId of toAdd) {
+		const isLinked = await isCharacterLinkedToUser(env, characterId)
+		if (!isLinked) {
+			skippedUnlinked++
+			logger.info(
+				'[DirectorStep] Skipping auto-add for director candidate without linked user',
+				{
+					corporationId,
+					characterId,
+				}
+			)
+			continue
+		}
+
+		const characterName = await resolveCharacterName(env, characterId)
+		await corpData.addDirector(corporationId, characterId, characterName, 100)
+	}
+
+	for (const characterId of toRemove) {
+		await corpData.removeDirector(corporationId, characterId)
+	}
+
+	logger.info('[DirectorStep] Reconciled directors from corporation roles', {
+		corporationId,
+		discovered: authoritativeDirectorIds.size,
+		added: toAdd.length - skippedUnlinked,
+		removed: toRemove.length,
+		skippedUnlinked,
+	})
+
+	return {
+		added: toAdd.length - skippedUnlinked,
+		removed: toRemove.length,
+		discovered: authoritativeDirectorIds.size,
+		skippedUnlinked,
+	}
 }
