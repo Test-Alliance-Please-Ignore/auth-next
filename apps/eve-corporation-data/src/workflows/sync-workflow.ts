@@ -22,6 +22,7 @@ import { fetchContracts, storeContracts } from './steps/contracts'
 import {
 	recordDirectorFailure,
 	recordDirectorSuccess,
+	reconcileDirectorsFromCorporationRoles,
 	selectDirector,
 	verifyAllDirectorsHealth,
 } from './steps/directors'
@@ -169,6 +170,21 @@ export class EveCorporationSyncWorkflow extends WorkflowEntrypoint<Env, EveCorpo
 			logger.warn(
 				'[EveCorporationSyncWorkflow] No director available, skipping director-dependent steps',
 				{ corporationId }
+			)
+		}
+
+		if (director) {
+			await step.do(
+				'reconcile-directors-from-roles',
+				{
+					retries: { limit: 2, delay: '5 seconds', backoff: 'exponential' },
+					timeout: '1 minute',
+				},
+				async () => {
+					return await withEsiRetryClassification('reconcile-directors-from-roles', () =>
+						reconcileDirectorsFromCorporationRoles(this.env, corporationId, director!.characterId)
+					)
+				}
 			)
 		}
 

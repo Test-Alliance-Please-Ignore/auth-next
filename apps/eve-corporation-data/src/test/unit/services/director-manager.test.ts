@@ -60,8 +60,7 @@ describe('DirectorManager.selectDirector', () => {
 		expect(onAffiliationMismatch).toHaveBeenCalledWith('111', '98000001', '98000002')
 		expect(safeRecordFailure).toHaveBeenCalledWith(
 			'dir-1',
-			'Director affiliation mismatch: expected corporation 98000001, got 98000002'
-			,
+			'Director affiliation mismatch: expected corporation 98000001, got 98000002',
 			{ forceUnhealthy: true }
 		)
 		expect(removeDirector).toHaveBeenCalledWith('111')
