@@ -85,6 +85,7 @@ const CHARACTER_WALLET_SCOPE = 'esi-wallet.read_character_wallet.v1'
 const CORPORATION_MEMBERSHIP_SCOPE = 'esi-corporations.read_corporation_membership.v1'
 const NPC_CORPORATION_ID_MIN = 1_000_000
 const NPC_CORPORATION_ID_MAX = 1_999_999
+const ASSETS_FETCH_ENABLED = false
 
 /**
  * EveCorporationData Durable Object
@@ -2644,6 +2645,12 @@ export class EveCorporationDataDO extends DurableObject<Env> implements EveCorpo
 	 */
 	async fetchAssetsData(corporationId: string, forceRefresh = false): Promise<void> {
 		this.assertNonNpcCorporation(corporationId)
+		if (!ASSETS_FETCH_ENABLED) {
+			logger.warn('[EveCorporationData] Assets fetch is temporarily disabled; skipping', {
+				corporationId,
+			})
+			return
+		}
 		await Promise.all([
 			this.fetchAndStoreAssets(corporationId, forceRefresh).catch((e) =>
 				logger.error('Assets fetch failed:', e.message)

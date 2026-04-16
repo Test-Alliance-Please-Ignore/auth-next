@@ -53,6 +53,7 @@ import type {
 } from './types'
 
 const STEP_RETRY_OPTIONS = esiRetryOptions
+const ASSETS_SYNC_ENABLED = false
 
 const ROLE_REQUIREMENTS_BY_DATA_TYPE: Partial<Record<EveCorporationSyncDataType, CorporationRole[]>> =
 	{
@@ -69,14 +70,14 @@ const ROLE_REQUIREMENTS_BY_DATA_TYPE: Partial<Record<EveCorporationSyncDataType,
 		killmails: ['Director'],
 	}
 
-function getRequiredRoleSets(dataTypes?: EveCorporationSyncDataType[]): CorporationRole[][] {
-	const targetTypes =
-		dataTypes && dataTypes.length > 0
-			? dataTypes
-			: (Object.keys(ROLE_REQUIREMENTS_BY_DATA_TYPE) as EveCorporationSyncDataType[])
+function getRequiredRoleSets(
+	shouldSync: (type: EveCorporationSyncDataType) => boolean
+): CorporationRole[][] {
+	const targetTypes = Object.keys(ROLE_REQUIREMENTS_BY_DATA_TYPE) as EveCorporationSyncDataType[]
 
 	const deduped = new Map<string, CorporationRole[]>()
 	for (const type of targetTypes) {
+		if (!shouldSync(type)) continue
 		const anyOf = ROLE_REQUIREMENTS_BY_DATA_TYPE[type]
 		if (!anyOf || anyOf.length === 0) continue
 		const key = [...anyOf].sort().join('|')
@@ -111,8 +112,19 @@ export class EveCorporationSyncWorkflow extends WorkflowEntrypoint<Env, EveCorpo
 
 		this.validateEnv()
 
-		const shouldSync = createShouldSyncPredicate(dataTypes)
-		const requiredRoleSets = getRequiredRoleSets(dataTypes)
+		const shouldSync = createShouldSyncPredicate(dataTypes, {
+			disabledDataTypes: ASSETS_SYNC_ENABLED ? [] : ['assets'],
+		})
+		const requiredRoleSets = getRequiredRoleSets(shouldSync)
+
+		const wantsAssets =
+			!dataTypes || dataTypes.length === 0 || dataTypes.includes('assets')
+		if (!ASSETS_SYNC_ENABLED && wantsAssets) {
+			logger.warn('[EveCorporationSyncWorkflow] Asset sync is temporarily disabled', {
+				corporationId,
+				requestedDataTypes: dataTypes ?? 'all',
+			})
+		}
 
 		await step.do(
 			'verify-all-directors-health',
