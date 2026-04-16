@@ -165,6 +165,9 @@ export default function MyBillsPage() {
 					onPaginationChange={setPagination}
 					pageCount={pageCount}
 					rowCount={billPage.data?.rowCount ?? 0}
+					onRowClick={(bill) => {
+						void navigate(`/my-bills/${bill.id}`)
+					}}
 					renderActions={(bill) => (
 						<Button variant="primary" size="sm" type="button" onClick={() => navigate(`/my-bills/${bill.id}`)}>
 							View

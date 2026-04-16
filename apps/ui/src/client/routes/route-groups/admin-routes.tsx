@@ -7,6 +7,7 @@ import DevComponentsPage from '@/routes/admin/dev-components'
 import AdminBillsPage from '@/routes/admin/bills'
 import AdminBillsDashboardPage from '@/routes/admin/bills-dashboard'
 import AdminBillsDetailPage from '@/routes/admin/bills-detail'
+import AdminBillsGroupDetailPage from '@/routes/admin/bills-group-detail'
 import AdminBillsEditPage from '@/routes/admin/bills-edit'
 import AdminBillsGroupEditPage from '@/routes/admin/bills-group-edit'
 import AdminBillsNewPage from '@/routes/admin/bills-new'
@@ -97,6 +98,7 @@ export const adminRouteElements = (
 		<Route path="bills/schedules" element={<AdminBillsSchedulesPage />} />
 		<Route path="bills/schedules/new" element={<AdminBillsSchedulesNewPage />} />
 		<Route path="bills/schedules/:id" element={<AdminBillsSchedulesEditPage />} />
+		<Route path="bills/group/:groupBillId" element={<AdminBillsGroupDetailPage />} />
 		<Route path="bills/group/:groupBillId/edit" element={<AdminBillsGroupEditPage />} />
 		<Route path="bills/:billId/edit" element={<AdminBillsEditPage />} />
 		<Route path="bills/:billId" element={<AdminBillsDetailPage />} />

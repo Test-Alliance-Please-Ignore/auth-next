@@ -324,7 +324,12 @@ export function useMarkBillPaid() {
 		onSuccess: (updatedBill) => {
 			void queryClient.invalidateQueries({ queryKey: billKeys.lists() })
 			void queryClient.invalidateQueries({ queryKey: billKeys.statistics() })
-			queryClient.setQueryData(billKeys.detail(updatedBill.id), updatedBill)
+			// Mark-paid response can be a partial bill shape without full payment relation data.
+			// Trigger an immediate detail refetch so payment history appears without manual reload.
+			void queryClient.invalidateQueries({
+				queryKey: billKeys.detail(updatedBill.id),
+				refetchType: 'active',
+			})
 		},
 	})
 }

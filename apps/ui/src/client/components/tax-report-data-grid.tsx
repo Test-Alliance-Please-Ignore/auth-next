@@ -28,6 +28,7 @@ interface TaxReportDataGridProps<Row extends object> {
 	pinnedLeftColumnIds?: string[]
 	renderDetailPanel?: (props: { row: MRT_Row<Row>; table: MRT_TableInstance<Row> }) => ReactNode
 	mantineExpandButtonProps?: MRT_TableOptions<Row>['mantineExpandButtonProps']
+	onRowClick?: (row: MRT_Row<Row>) => void
 }
 
 export function TaxReportDataGrid<Row extends object>({
@@ -46,6 +47,7 @@ export function TaxReportDataGrid<Row extends object>({
 	pinnedLeftColumnIds,
 	renderDetailPanel,
 	mantineExpandButtonProps,
+	onRowClick,
 }: TaxReportDataGridProps<Row>) {
 	const isServerSorted = Boolean(onSortingChange)
 	const isServerPaginated = Boolean(onPaginationChange && pagination)
@@ -127,9 +129,21 @@ export function TaxReportDataGrid<Row extends object>({
 				color: 'hsl(var(--foreground))',
 			},
 		},
-		mantineTableBodyRowProps: {
-			className: 'tax-report-grid__row',
-		},
+		mantineTableBodyRowProps: ({ row }) => ({
+			className: onRowClick ? 'tax-report-grid__row cursor-pointer' : 'tax-report-grid__row',
+			onClick: (event) => {
+				if (!onRowClick) return
+				const target = event.target as HTMLElement | null
+				if (
+					target?.closest(
+						'button, a, input, textarea, select, [role="button"], [data-no-row-click]'
+					)
+				) {
+					return
+				}
+				onRowClick(row)
+			},
+		}),
 		renderEmptyRowsFallback: () => (
 			<div className="flex min-h-40 items-center justify-center px-6 py-8 text-center text-sm text-muted-foreground">
 				{emptyMessage}

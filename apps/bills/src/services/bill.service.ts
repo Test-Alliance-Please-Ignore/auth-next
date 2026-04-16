@@ -964,14 +964,19 @@ export class BillService {
 			throw new Error('Cannot mark a cancelled bill as paid')
 		}
 
+		const existingPayments = await this.db.query.billPayments.findMany({
+			where: eq(billPayments.billId, billId),
+		})
+		const paidAt = new Date()
+
 		const transitioned = await this.applyStatusTransitionAtomic({
 			billId,
 			fromStatus: existingBill.status,
 			toStatus: 'paid',
 			eventType: 'paid',
 			actorUserId,
-			paidAt: new Date(),
-			metadata: actorUserId ? { reason: 'admin_marked_paid' } : null,
+			paidAt,
+			metadata: actorUserId ? { source: 'admin_mark_paid' } : { source: 'system_mark_paid' },
 		})
 		if (!transitioned) {
 			const currentBill = await this.db.query.bills.findFirst({
@@ -982,6 +987,31 @@ export class BillService {
 			}
 			throw new Error('Bill status changed during payment finalization; please retry')
 		}
+
+		// Ensure manual/system mark-paid operations leave an explicit status-only payment-history marker.
+		const manualTransactionId = `manual-status-paid:${billId}:${generateUuidV7()}`
+		await this.db.insert(billPayments).values({
+			billId,
+			paymentToken: existingBill.paymentToken,
+			esiTransactionId: manualTransactionId,
+			amount: '0',
+			paidById: actorUserId ?? 'system',
+			paidByType: 'character',
+			paidAt,
+		})
+		await this.createStatusEvent({
+			billId,
+			eventType: 'payment_recorded',
+			fromStatus: null,
+			toStatus: null,
+			actorUserId,
+			metadata: {
+				amount: '0',
+				source: actorUserId ? 'admin_mark_paid' : 'system_mark_paid',
+				manual: true,
+				statusOnly: true,
+			},
+		})
 
 		const updatedBill = await this.db.query.bills.findFirst({
 			where: eq(bills.id, billId),
