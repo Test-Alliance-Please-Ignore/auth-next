@@ -24,4 +24,13 @@ describe('workflow utilities', () => {
 		expect(shouldSync('members')).toBe(true)
 		expect(shouldSync('wallets')).toBe(true)
 	})
+
+	it('excludes disabled data types from shouldSync', () => {
+		const shouldSync = createShouldSyncPredicate(undefined, {
+			disabledDataTypes: ['assets'],
+		})
+
+		expect(shouldSync('members')).toBe(true)
+		expect(shouldSync('assets')).toBe(false)
+	})
 })

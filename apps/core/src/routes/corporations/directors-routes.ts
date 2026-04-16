@@ -18,6 +18,8 @@ function toAdminUnhealthyReason(lastFailureReason: string | null | undefined): {
 	step: string | null
 	path: string | null
 	hint: string | null
+	reasonCode: string | null
+	detailCode: string | null
 	requiredRoles: string[] | null
 	missingRoles: string[] | null
 } | null {
@@ -29,6 +31,8 @@ function toAdminUnhealthyReason(lastFailureReason: string | null | undefined): {
 	const statusMatch = lastFailureReason.match(/status=(\d{3})/)
 	const pathMatch = lastFailureReason.match(/path=([^,)\s]+)/)
 	const hintMatch = lastFailureReason.match(/hint=([^,)\s]+)/)
+	const reasonCodeMatch = lastFailureReason.match(/reasonCode=([^,)\s]+)/)
+	const detailCodeMatch = lastFailureReason.match(/detailCode=([^,)\s]+)/)
 	const requiredRolesMatch = lastFailureReason.match(/requiredRoles=([^,)\s]+)/)
 	const missingRolesMatch = lastFailureReason.match(/missingRoles=([^,)\s]+)/)
 
@@ -36,6 +40,8 @@ function toAdminUnhealthyReason(lastFailureReason: string | null | undefined): {
 	const status = statusMatch ? Number.parseInt(statusMatch[1], 10) : null
 	const path = pathMatch?.[1] ?? null
 	const hint = hintMatch?.[1] ?? null
+	const reasonCode = reasonCodeMatch?.[1] ?? null
+	const detailCode = detailCodeMatch?.[1] ?? null
 	const requiredRoles = requiredRolesMatch?.[1]
 		? requiredRolesMatch[1].split('|').filter(Boolean)
 		: null
@@ -43,30 +49,46 @@ function toAdminUnhealthyReason(lastFailureReason: string | null | undefined): {
 		? missingRolesMatch[1].split('|').filter(Boolean)
 		: null
 
-	if (!step && !status && !path && !hint && !requiredRoles && !missingRoles) {
+	if (!step && !status && !path && !hint && !reasonCode && !detailCode && !requiredRoles && !missingRoles) {
+		const lower = lastFailureReason.toLowerCase()
+		let summary = 'Director authentication failed'
+		if (lower.includes('no token')) {
+			summary = 'Director token is missing. Re-authenticate this character.'
+		} else if (lower.includes('expired')) {
+			summary = 'Director token expired. Re-authenticate this character.'
+		} else if (lower.includes('required role')) {
+			summary = 'Director is missing required corporation roles.'
+		} else if (lower.includes('forbidden') || lower.includes('403')) {
+			summary = 'Director is not permitted to access required corporation endpoints.'
+		} else if (lower.includes('unauthorized') || lower.includes('401')) {
+			summary = 'Director token is unauthorized. Re-authenticate this character.'
+		}
 		return {
-			summary: lastFailureReason,
+			summary,
 			status: null,
 			step: null,
 			path: null,
 			hint: null,
+			reasonCode: null,
+			detailCode: null,
 			requiredRoles: null,
 			missingRoles: null,
 		}
 	}
 
 	let summary = 'Director authentication failed'
-	if (hint === 'required_roles_missing') {
+	if (detailCode === 'no_token_provided') {
+		summary = 'Director token is missing. Re-authenticate this character.'
+	} else if (detailCode === 'token_expired') {
+		summary = 'Director token expired and could not be refreshed. Re-authenticate this character.'
+	} else if (reasonCode === 'required_roles_missing' || hint === 'required_roles_missing') {
 		summary = 'Director is missing required corporation roles'
-	} else if (status === 403) {
+	} else if (reasonCode === 'forbidden' || status === 403) {
 		summary = 'Director is forbidden from accessing required endpoint'
-	} else if (status === 401) {
+	} else if (reasonCode === 'unauthorized' || status === 401) {
 		summary = 'Director token is unauthorized or expired'
 	}
 
-	if (step) {
-		summary = `${step}: ${summary}`
-	}
 	if (requiredRoles && requiredRoles.length > 0) {
 		summary = `${summary} (requires: ${requiredRoles.join(', ')})`
 	}
@@ -77,6 +99,8 @@ function toAdminUnhealthyReason(lastFailureReason: string | null | undefined): {
 		step,
 		path,
 		hint,
+		reasonCode,
+		detailCode,
 		requiredRoles,
 		missingRoles,
 	}

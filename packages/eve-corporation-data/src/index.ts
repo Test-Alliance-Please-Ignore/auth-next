@@ -1002,6 +1002,19 @@ export interface EveCorporationData {
 	storeAssets(corporationId: string, assets: any[]): Promise<void>
 
 	/**
+	 * Fetch and store corporation assets using a specific director character.
+	 * Designed for workflow usage to avoid large asset payloads crossing RPC boundaries.
+	 *
+	 * @param corporationId - The corporation ID
+	 * @param directorCharacterId - Character ID to authenticate ESI requests
+	 * @returns Count of assets fetched/stored
+	 */
+	syncAssetsWithDirector(
+		corporationId: string,
+		directorCharacterId: string
+	): Promise<{ assetsCount: number }>
+
+	/**
 	 * Store structures (workflow-friendly)
 	 * @param corporationId - The corporation ID
 	 * @param structures - Pre-fetched structures from ESI

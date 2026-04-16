@@ -726,6 +726,8 @@ export interface DirectorHealth {
 		step: string | null
 		path: string | null
 		hint: string | null
+		reasonCode: string | null
+		detailCode: string | null
 		requiredRoles: string[] | null
 		missingRoles: string[] | null
 	} | null

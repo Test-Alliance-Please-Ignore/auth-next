@@ -31,7 +31,7 @@ import {
 } from '@/hooks/useCorporations'
 
 import { AddDirectorDialog } from './AddDirectorDialog'
-import { DirectorStatusBadge } from './DirectorStatusBadge'
+import { DirectorHealthBadge } from './DirectorHealthBadge'
 
 interface DirectorListProps {
 	corporationId: string
@@ -231,7 +231,7 @@ export function DirectorList({ corporationId }: DirectorListProps) {
 									</TableCell>
 									<TableCell>
 										<div>
-											<DirectorStatusBadge director={director} />
+											<DirectorHealthBadge director={director} />
 											{!director.isHealthy && (director.unhealthyReason?.summary || director.lastFailureReason) ? (
 												<div className="mt-1 space-y-0.5">
 													<div

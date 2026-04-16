@@ -1,7 +1,6 @@
 import { logger } from '@repo/hono-helpers'
 
-import * as esiFetch from '../../../services/esi-fetch'
-import { createTokenStore, getCorporationDataStub } from '../../utils/services'
+import { getCorporationDataStub } from '../../utils/services'
 
 import type { Env } from '../../../context'
 
@@ -14,19 +13,12 @@ export async function syncAssets(
 	corporationId: string,
 	directorCharacterId: string
 ): Promise<AssetsSyncResult> {
-	const tokenStore = createTokenStore(env)
 	const corpData = getCorporationDataStub(env, corporationId)
 
-	const assets = await esiFetch.fetchAssets(tokenStore, corporationId, directorCharacterId)
-
-	logger.debug('[AssetsStep] Fetched assets', { corporationId, count: assets.length })
-
-	await corpData.storeAssets(corporationId, assets)
-
-	logger.info('[AssetsStep] Stored assets', { corporationId, count: assets.length })
+	const result = await corpData.syncAssetsWithDirector(corporationId, directorCharacterId)
+	logger.info('[AssetsStep] Synced assets', { corporationId, count: result.assetsCount })
 
 	return {
-		assetsCount: assets.length,
+		assetsCount: result.assetsCount,
 	}
 }
-
