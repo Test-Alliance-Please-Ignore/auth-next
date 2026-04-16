@@ -2348,6 +2348,10 @@ export class ApiClient {
 		return this.get(`/admin/blacklist/character/${characterId}`)
 	}
 
+	async getBlacklistEntry(id: string): Promise<BlacklistEntry | null> {
+		return this.get(`/admin/blacklist/${id}`)
+	}
+
 	async removeBlacklistEntry(id: string): Promise<{ success: boolean; removedCount: number }> {
 		return this.delete(`/admin/blacklist/${id}`)
 	}

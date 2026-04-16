@@ -315,6 +315,15 @@ export function checkBlacklistAssociation(
 		}
 	}
 
+	const SOURCE_DISPLAY_NAMES: Record<BlacklistMatch['source'], string> = {
+		'wallet-journal': 'Wallet Journal',
+		'wallet-transactions': 'Wallet Transactions',
+		'contracts': 'Contracts',
+		'contacts': 'Contacts',
+		'mails': 'Mails',
+		'ship-names': 'Ship Names',
+	}
+
 	const associations = [...grouped.values()]
 	const uniqueCharacters = associations.length
 	const totalHits = matches.length
@@ -336,7 +345,7 @@ export function checkBlacklistAssociation(
 		type: 'blacklist-association',
 		severity: 'critical',
 		title: 'Blacklisted Character Associations',
-		description: `${uniqueCharacters} blacklisted character${uniqueCharacters !== 1 ? 's' : ''} found across ${sources.join(', ')}: ${charSummaries}${suffix}. Total ${totalHits} reference${totalHits !== 1 ? 's' : ''}.`,
+		description: `${uniqueCharacters} blacklisted character${uniqueCharacters !== 1 ? 's' : ''} found across ${sources.map((s) => SOURCE_DISPLAY_NAMES[s]).join(', ')}: ${charSummaries}${suffix}. Total ${totalHits} reference${totalHits !== 1 ? 's' : ''}.`,
 		details: {
 			associations,
 			totalHits,

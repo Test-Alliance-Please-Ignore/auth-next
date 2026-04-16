@@ -62,6 +62,19 @@ import { api } from '@/lib/api'
 import { formatDateTime, formatRelativeTime } from '@/lib/date-utils'
 import { cn } from '@/lib/utils'
 
+import type { BlacklistTargetType } from '@/lib/api'
+
+const TARGET_TYPE_LABELS: Record<BlacklistTargetType, string> = {
+	user: 'User',
+	character_id: 'Character ID',
+	character_name: 'Character Name',
+	discord_id: 'Discord ID',
+	corporation_id: 'Corporation ID',
+	corporation_name: 'Corporation Name',
+	alliance_id: 'Alliance ID',
+	alliance_name: 'Alliance Name',
+}
+
 export default function UserDetailPage() {
 	usePageTitle('Admin - User Details')
 	const { userId } = useParams<{ userId: string }>()
@@ -105,6 +118,14 @@ export default function UserDetailPage() {
 	})
 
 	const activeBlacklist = blacklistEntries.find((entry) => entry.targetType === 'user')
+	const activeDiscordBlacklist = blacklistEntries.find((entry) => entry.targetType === 'discord_id')
+
+	// Fetch the entry that triggered this blacklist (for contextual display)
+	const { data: triggeringEntry } = useQuery({
+		queryKey: ['blacklistEntry', activeBlacklist?.triggeredBy],
+		queryFn: () => api.getBlacklistEntry(activeBlacklist!.triggeredBy!),
+		enabled: !!activeBlacklist?.triggeredBy,
+	})
 
 	// Dialog state
 	const [adminDialogOpen, setAdminDialogOpen] = useState(false)
@@ -676,13 +697,38 @@ export default function UserDetailPage() {
 									<MessageSquare className="h-6 w-6 text-white" />
 								</div>
 								<div>
-									<p className="font-semibold text-lg">
-										{user.discord.username}
-										{user.discord.discriminator !== '0' && `#${user.discord.discriminator}`}
-									</p>
+									<div className="flex items-center gap-2">
+										<p className="font-semibold text-lg">
+											{user.discord.username}
+											{user.discord.discriminator !== '0' && `#${user.discord.discriminator}`}
+										</p>
+										{activeDiscordBlacklist && (
+											<Badge variant="destructive" className="gap-1">
+												<ShieldBan className="h-3 w-3" />
+												Blacklisted
+											</Badge>
+										)}
+									</div>
 									<p className="text-sm text-muted-foreground">Discord ID: {user.discord.userId}</p>
 								</div>
 							</div>
+
+							{activeDiscordBlacklist && (
+								<div className="bg-destructive/10 border border-destructive/20 rounded-lg p-3">
+									<div className="flex items-start gap-2">
+										<ShieldBan className="h-4 w-4 text-destructive mt-0.5 flex-shrink-0" />
+										<div>
+											<p className="text-sm text-destructive font-medium">Discord Account Blacklisted</p>
+											<p className="text-sm text-destructive/90 mt-1">
+												This Discord account is blocked from accessing the platform.
+												{activeDiscordBlacklist.isAutoBlacklist && (
+													<span> Auto-blocked due to associated user blacklist.</span>
+												)}
+											</p>
+										</div>
+									</div>
+								</div>
+							)}
 
 							{user.discord.authRevoked && (
 								<div className="bg-destructive/10 border border-destructive/20 rounded-lg p-3">
@@ -779,18 +825,33 @@ export default function UserDetailPage() {
 								<div className="bg-orange-500/10 border border-orange-500/20 rounded-lg p-3">
 									<div className="flex items-start gap-2">
 										<AlertTriangle className="h-4 w-4 text-orange-500 mt-0.5 flex-shrink-0" />
-										<div>
+										<div className="space-y-1">
 											<p className="text-sm text-orange-500 font-medium">
 												Automatically Blacklisted
 											</p>
-											<p className="text-sm text-orange-500/90 mt-1">
-												This user was automatically blacklisted due to a character blacklist. View
-												the{' '}
-												<Link to="/admin/blacklist" className="underline hover:text-orange-400">
-													blacklist page
-												</Link>{' '}
-												for more details.
-											</p>
+											{triggeringEntry ? (
+												<p className="text-sm text-orange-500/90">
+													Triggered by a{' '}
+													<span className="font-medium">
+														{TARGET_TYPE_LABELS[triggeringEntry.targetType]}
+													</span>{' '}
+													blacklist on{' '}
+													<span className="font-mono">
+														{triggeringEntry.targetValue}
+													</span>
+													.{' '}
+													<Link to="/admin/blacklist" className="underline hover:text-orange-400">
+														View blacklist
+													</Link>
+												</p>
+											) : (
+												<p className="text-sm text-orange-500/90">
+													This user was automatically blacklisted due to a linked blacklist entry.{' '}
+													<Link to="/admin/blacklist" className="underline hover:text-orange-400">
+														View blacklist
+													</Link>
+												</p>
+											)}
 										</div>
 									</div>
 								</div>

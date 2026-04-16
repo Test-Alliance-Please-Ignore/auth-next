@@ -1190,11 +1190,23 @@ app.get('/blacklist/user/:userId', requireAuth(), requireAdmin(), async (c) => {
 	}
 
 	try {
-		// Call HR DO via RPC
+		const db = createDb(c.env.DATABASE_URL)
 		const hrStub = getStub<Hr>(c.env.HR, 'default')
-		const entries = await hrStub.getBlacklistsForUser(userId)
 
-		return c.json(entries)
+		// Fetch user-type entries and discord_id entries in parallel
+		const [userEntries, linkedUser] = await Promise.all([
+			hrStub.getBlacklistsForUser(userId),
+			db.query.users.findFirst({
+				where: eq(users.id, userId),
+				columns: { discordUserId: true },
+			}),
+		])
+
+		const discordEntries = linkedUser?.discordUserId
+			? await hrStub.getBlacklistsForDiscordUser(linkedUser.discordUserId)
+			: []
+
+		return c.json([...userEntries, ...discordEntries])
 	} catch (error) {
 		logger.error('Error fetching user blacklists:', error)
 		return c.json({ error: 'Failed to fetch user blacklists' }, 500)
@@ -1222,6 +1234,38 @@ app.get('/blacklist/character/:characterId', requireAuth(), requireAdmin(), asyn
 	} catch (error) {
 		logger.error('Error fetching character blacklists:', error)
 		return c.json({ error: 'Failed to fetch character blacklists' }, 500)
+	}
+})
+
+/**
+ * GET /admin/blacklist/:id
+ * Get a single blacklist entry by ID
+ */
+app.get('/blacklist/:id', requireAuth(), requireAdmin(), async (c) => {
+	const user = c.get('user')
+	const id = c.req.param('id')
+
+	if (!user) {
+		return c.json({ error: 'Unauthorized' }, 401)
+	}
+
+	const uuidSchema = z.string().uuid()
+	if (!uuidSchema.safeParse(id).success) {
+		return c.json({ error: 'Invalid blacklist entry ID format' }, 400)
+	}
+
+	try {
+		const hrStub = getStub<Hr>(c.env.HR, 'default')
+		const entry = await hrStub.getBlacklistEntry(id)
+
+		if (!entry) {
+			return c.json({ error: 'Blacklist entry not found' }, 404)
+		}
+
+		return c.json(entry)
+	} catch (error) {
+		logger.error('Error fetching blacklist entry:', error)
+		return c.json({ error: 'Failed to fetch blacklist entry' }, 500)
 	}
 })
 
