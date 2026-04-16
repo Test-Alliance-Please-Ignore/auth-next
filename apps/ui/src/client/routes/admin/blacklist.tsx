@@ -35,6 +35,17 @@ import { formatDateTime, formatRelativeTime } from '@/lib/date-utils'
 
 import type { BlacklistEntry, BlacklistTargetType } from '@/lib/api'
 
+const TARGET_TYPE_LABELS: Record<BlacklistTargetType, string> = {
+	user: 'User',
+	character_id: 'Character ID',
+	character_name: 'Character Name',
+	discord_id: 'Discord ID',
+	corporation_id: 'Corporation ID',
+	corporation_name: 'Corporation Name',
+	alliance_id: 'Alliance ID',
+	alliance_name: 'Alliance Name',
+}
+
 export default function BlacklistPage() {
 	usePageTitle('Blacklist Management')
 
@@ -368,7 +379,7 @@ export default function BlacklistPage() {
 								<TableHeader>
 									<TableRow>
 										<TableHead>Type</TableHead>
-										<TableHead>Target ID</TableHead>
+										<TableHead>Target Value</TableHead>
 										<TableHead>Reason</TableHead>
 										<TableHead>Added</TableHead>
 										<TableHead>Status</TableHead>
@@ -387,7 +398,7 @@ export default function BlacklistPage() {
 															: 'secondary'
 													}
 												>
-													{entry.targetType}
+													{TARGET_TYPE_LABELS[entry.targetType] ?? entry.targetType}
 												</Badge>
 											</TableCell>
 											<TableCell className="font-mono text-sm">
@@ -411,14 +422,24 @@ export default function BlacklistPage() {
 												</span>
 											</TableCell>
 											<TableCell>
-												{entry.isAutoBlacklist ? (
-													<Badge variant="ghost" className="gap-1">
-														<AlertTriangle className="h-3 w-3" />
-														Auto
-													</Badge>
-												) : (
-													<Badge variant="default">Manual</Badge>
-												)}
+												<div className="flex flex-col gap-1">
+													{entry.isAutoBlacklist ? (
+														<Badge variant="ghost" className="gap-1 w-fit">
+															<AlertTriangle className="h-3 w-3" />
+															Auto
+														</Badge>
+													) : (
+														<Badge variant="default" className="w-fit">Manual</Badge>
+													)}
+													{entry.triggeredBy && (
+														<span
+															className="text-xs text-muted-foreground font-mono"
+															title={`Triggered by entry: ${entry.triggeredBy}`}
+														>
+															via {entry.triggeredBy.substring(0, 8)}...
+														</span>
+													)}
+												</div>
 											</TableCell>
 											<TableCell className="text-right">
 												<Button
@@ -557,7 +578,8 @@ export default function BlacklistPage() {
 					<DialogHeader>
 						<DialogTitle>Remove from Blacklist</DialogTitle>
 						<DialogDescription>
-							Are you sure you want to remove this {selectedEntry?.targetType} from the blacklist?
+							Are you sure you want to remove this{' '}
+					{selectedEntry ? TARGET_TYPE_LABELS[selectedEntry.targetType] : ''} from the blacklist?
 							{selectedEntry?.isAutoBlacklist && (
 								<span className="block mt-2 text-orange-500">
 									Warning: This is an auto-blacklist entry. The user may still be blocked if the
