@@ -274,17 +274,6 @@ export interface EsiCharacterPlanet {
 }
 
 /**
- * Character portrait URLs from ESI
- * GET /characters/{character_id}/portrait
- */
-export interface EsiCharacterPortrait {
-	px64x64?: string
-	px128x128?: string
-	px256x256?: string
-	px512x512?: string
-}
-
-/**
  * Character public information from ESI
  * GET /characters/{character_id}
  */
@@ -722,13 +711,6 @@ export interface CharacterPlanet {
 	planet_type: 'temperate' | 'barren' | 'oceanic' | 'ice' | 'gas' | 'lava' | 'storm' | 'plasma'
 	solar_system_id: string
 	upgrade_level: number
-}
-
-export interface CharacterPortrait {
-	px64x64?: string
-	px128x128?: string
-	px256x256?: string
-	px512x512?: string
 }
 
 export interface CharacterRoles {

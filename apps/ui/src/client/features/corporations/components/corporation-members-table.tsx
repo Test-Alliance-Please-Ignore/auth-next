@@ -40,6 +40,7 @@ import {
 	TableRow,
 } from '@/components/ui/table'
 import { useMessage } from '@/hooks/useMessage'
+import { characterPortraitUrl } from '@/lib/eve-images'
 import { cn } from '@/lib/utils'
 
 import {
@@ -498,7 +499,7 @@ export default function CorporationMembersTable({
 								<TableCell>
 									<div className="flex items-center gap-3">
 										<img
-											src={`/images/characters/${member.characterId}/portrait?size=64`}
+											src={characterPortraitUrl(member.characterId, 64)}
 											alt={`${member.characterName}'s portrait`}
 											loading="lazy"
 											onError={(e) => {

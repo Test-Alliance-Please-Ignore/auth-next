@@ -1,3 +1,5 @@
+import { typeIconUrl } from '@/lib/eve-images'
+
 import { Card, CardContent, CardHeader, CardTitle } from './ui/card'
 
 interface CharacterAttributesProps {
@@ -42,7 +44,7 @@ export function CharacterAttributes({ attributes }: CharacterAttributesProps) {
 							<div key={name} className="flex items-center justify-between">
 								<div className="flex items-center gap-2">
 									<img
-										src={`https://images.evetech.net/types/${typeId}/icon?size=32`}
+										src={typeIconUrl(typeId, 32)}
 										alt={name}
 										className="h-5 w-5"
 									/>

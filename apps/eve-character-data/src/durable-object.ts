@@ -14,7 +14,6 @@ import {
 	characterLocation,
 	characterMarketOrders,
 	characterMarketTransactions,
-	characterPortraits,
 	characterPublicInfo,
 	characterSkillQueue,
 	characterSkills,
@@ -31,7 +30,6 @@ import type {
 	CharacterMarketOrderData,
 	CharacterMarketTransactionData,
 	CharacterMarketTransactionsWindowFilters,
-	CharacterPortraitData,
 	CharacterPublicData,
 	CharacterSensitiveData,
 	CharacterSkillsData,
@@ -40,7 +38,6 @@ import type {
 	CharacterWalletJournalWindowFilters,
 	CharacterWalletSyncHealth,
 	EsiCharacterAttributes,
-	EsiCharacterPortrait,
 	EsiCharacterPublicInfo,
 	EsiCharacterRoles,
 	EsiCharacterSkills,
@@ -360,14 +357,8 @@ export class EveCharacterDataDO extends DurableObject<Env> implements EveCharact
 			forceRefresh
 		)
 		try {
-			// Fetch public info first (required for foreign key constraint on portraits)
 			await this.fetchAndStorePublicInfo(characterId, forceRefresh)
-
-			// Then fetch portrait and corporation history in parallel
-			await Promise.all([
-				this.fetchAndStorePortrait(characterId, forceRefresh),
-				this.fetchAndStoreCorporationHistory(characterId, forceRefresh),
-			])
+			await this.fetchAndStoreCorporationHistory(characterId, forceRefresh)
 			console.log('EveCharacterData.fetchCharacterData completed successfully')
 		} catch (error) {
 			console.error('EveCharacterData.fetchCharacterData failed:', error)
@@ -765,58 +756,6 @@ export class EveCharacterDataDO extends DurableObject<Env> implements EveCharact
 		}
 
 		return (await this.getCharacterInfo(characterId))!
-	}
-
-	/**
-	 * Fetch and store character portrait
-	 */
-	private async fetchAndStorePortrait(
-		characterId: string,
-		_forceRefresh = false
-	): Promise<CharacterPortraitData> {
-		const tokenStoreStub = getStub<EveTokenStore>(this.env.EVE_TOKEN_STORE, 'default')
-		const response: EsiResponse<EsiCharacterPortrait> = await tokenStoreStub.fetchEsi(
-			`/characters/${String(characterId)}/portrait`,
-			String(characterId)
-		)
-
-		const data = response.data
-
-		// Upsert to database
-		await this.db
-			.insert(characterPortraits)
-			.values({
-				characterId,
-				px64x64: data.px64x64,
-				px128x128: data.px128x128,
-				px256x256: data.px256x256,
-				px512x512: data.px512x512,
-				updatedAt: new Date(),
-			})
-			.onConflictDoUpdate({
-				target: characterPortraits.characterId,
-				set: {
-					px64x64: data.px64x64,
-					px128x128: data.px128x128,
-					px256x256: data.px256x256,
-					px512x512: data.px512x512,
-					updatedAt: new Date(),
-				},
-			})
-
-		const result = await this.db.query.characterPortraits.findFirst({
-			where: eq(characterPortraits.characterId, characterId),
-		})
-
-		return {
-			characterId: createEveCharacterId(result!.characterId),
-			px64x64: result!.px64x64 ?? undefined,
-			px128x128: result!.px128x128 ?? undefined,
-			px256x256: result!.px256x256 ?? undefined,
-			px512x512: result!.px512x512 ?? undefined,
-			createdAt: result!.createdAt,
-			updatedAt: result!.updatedAt,
-		}
 	}
 
 	/**
@@ -1522,25 +1461,6 @@ export class EveCharacterDataDO extends DurableObject<Env> implements EveCharact
 	 */
 	async fetchKillmails(characterId: string): Promise<void> {
 		await this.fetchAndStoreKillmails(characterId)
-	}
-
-	/**
-	 * Get character portrait data
-	 */
-	async getPortrait(characterId: string) {
-		const result = await this.db.query.characterPortraits.findFirst({
-			where: eq(characterPortraits.characterId, characterId),
-		})
-
-		if (!result) return null
-
-		return {
-			characterId: createEveCharacterId(result.characterId),
-			px64x64: result.px64x64 ?? undefined,
-			px128x128: result.px128x128 ?? undefined,
-			px256x256: result.px256x256 ?? undefined,
-			px512x512: result.px512x512 ?? undefined,
-		}
 	}
 
 	/**

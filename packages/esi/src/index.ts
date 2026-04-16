@@ -23,7 +23,6 @@ import type {
 	CharacterMiningLedger,
 	CharacterNotification,
 	CharacterPlanet,
-	CharacterPortrait,
 	CharacterPublicInfo,
 	CharacterRoles,
 	CharacterShip,
@@ -130,7 +129,6 @@ export interface Esi {
 	fetchMailLabels(characterId: string): Promise<MailLabelsResponse>
 	fetchCharacterMiningLedger(characterId: string): Promise<CharacterMiningLedger[]>
 	fetchCharacterPlanets(characterId: string): Promise<CharacterPlanet[]>
-	fetchCharacterPortrait(characterId: string): Promise<CharacterPortrait>
 	fetchCharacterRoles(characterId: string): Promise<CharacterRoles>
 	fetchCharacterShip(characterId: string): Promise<CharacterShip>
 	fetchCharacterSkillQueue(characterId: string): Promise<CharacterSkillQueue[]>

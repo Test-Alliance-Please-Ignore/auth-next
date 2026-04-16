@@ -3,6 +3,7 @@
  */
 
 import { Badge } from '@/components/ui/badge'
+import { corporationLogoUrl } from '@/lib/eve-images'
 
 interface ProcessedCorpHistoryEntry {
 	corporation_id: string
@@ -15,7 +16,7 @@ interface ProcessedCorpHistoryEntry {
 function CorpIcon({ corporationId }: { corporationId: string }) {
 	return (
 		<img
-			src={`https://images.evetech.net/corporations/${corporationId}/logo?size=32`}
+			src={corporationLogoUrl(corporationId, 32)}
 			alt=""
 			className="h-5 w-5 rounded"
 			loading="lazy"

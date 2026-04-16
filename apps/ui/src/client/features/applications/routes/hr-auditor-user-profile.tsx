@@ -22,6 +22,7 @@ import { Separator } from '@/components/ui/separator'
 import { useAuth } from '@/hooks/useAuth'
 import { usePageTitle } from '@/hooks/usePageTitle'
 import { useUserPermissions } from '@/hooks/useUserPermissions'
+import { allianceLogoUrl, corporationLogoUrl } from '@/lib/eve-images'
 import { cn } from '@/lib/utils'
 
 import { ApplicationStatusBadge } from '../components/application-status-badge'
@@ -422,7 +423,7 @@ export default function HrAuditorUserProfilePage() {
 													{character.corporationId && character.corporationName ? (
 														<div className="inline-flex items-center gap-1.5 rounded-md px-2 py-1 text-xs text-muted-foreground">
 															<img
-																src={`https://images.evetech.net/corporations/${character.corporationId}/logo?size=32`}
+																src={corporationLogoUrl(character.corporationId, 32)}
 																alt={character.corporationName}
 																className="h-3.5 w-3.5 rounded"
 															/>
@@ -434,7 +435,7 @@ export default function HrAuditorUserProfilePage() {
 													{character.allianceId && character.allianceName && (
 														<div className="inline-flex items-center gap-1.5 rounded-md px-2 py-1 text-xs text-muted-foreground">
 															<img
-																src={`https://images.evetech.net/alliances/${character.allianceId}/logo?size=32`}
+																src={allianceLogoUrl(character.allianceId, 32)}
 																alt={character.allianceName}
 																className="h-3.5 w-3.5 rounded"
 															/>

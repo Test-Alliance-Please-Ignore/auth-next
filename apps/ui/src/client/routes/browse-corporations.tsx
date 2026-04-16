@@ -20,6 +20,7 @@ import { useAuth } from '@/hooks/useAuth'
 import { usePublicCorporations } from '@/hooks/useCorporations'
 import { usePageTitle } from '@/hooks/usePageTitle'
 import { api } from '@/lib/api'
+import { corporationLogoUrl } from '@/lib/eve-images'
 
 import type { ManagedCorporation } from '@/lib/api'
 
@@ -45,7 +46,7 @@ function CorporationCard({ corporation, onClick }: CorporationCardProps) {
 			<CardHeader className="pb-4">
 				<div className="flex items-start gap-4">
 					<img
-						src={`https://images.evetech.net/corporations/${corporation.corporationId}/logo?size=64`}
+						src={corporationLogoUrl(corporation.corporationId, 64)}
 						alt={corporation.name}
 						className="h-16 w-16 rounded-lg bg-muted/30"
 					/>

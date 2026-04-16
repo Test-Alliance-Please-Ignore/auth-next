@@ -15,6 +15,7 @@ import { useAuth } from '../hooks/useAuth'
 import { useRefreshCharacter } from '../hooks/useCharacters'
 import { usePageTitle } from '../hooks/usePageTitle'
 import { api } from '../lib/api'
+import { allianceLogoUrl, characterPortraitUrl, corporationLogoUrl } from '../lib/eve-images'
 
 export default function CharacterDetailPage() {
 	const { characterId } = useParams<{ characterId: string }>()
@@ -177,7 +178,7 @@ export default function CharacterDetailPage() {
 				<CardHeader className="flex flex-row items-center justify-between">
 					<div className="flex items-center gap-4">
 						<img
-							src={`https://images.evetech.net/characters/${characterId}/portrait?size=128`}
+							src={characterPortraitUrl(characterId, 128)}
 							alt={character.public.info?.name}
 							className="w-24 h-24 rounded"
 						/>
@@ -188,7 +189,7 @@ export default function CharacterDetailPage() {
 									character.public.info?.corporationId) && (
 									<div className="flex items-center gap-1.5">
 										<img
-											src={`https://images.evetech.net/corporations/${character.public.info.corporationId}/logo?size=32`}
+											src={corporationLogoUrl(character.public.info.corporationId, 32)}
 											alt=""
 											className="h-4 w-4 rounded"
 										/>
@@ -216,7 +217,7 @@ export default function CharacterDetailPage() {
 									character.public.info?.allianceId) && (
 									<div className="flex items-center gap-1.5">
 										<img
-											src={`https://images.evetech.net/alliances/${character.public.info.allianceId}/logo?size=32`}
+											src={allianceLogoUrl(character.public.info.allianceId, 32)}
 											alt=""
 											className="h-4 w-4 rounded"
 										/>

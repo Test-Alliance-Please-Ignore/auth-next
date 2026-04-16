@@ -55,17 +55,6 @@ export interface EsiCharacterPublicInfo {
 }
 
 /**
- * Character portrait URLs from ESI
- * GET /characters/{character_id}/portrait
- */
-export interface EsiCharacterPortrait {
-	px64x64?: string
-	px128x128?: string
-	px256x256?: string
-	px512x512?: string
-}
-
-/**
  * Single corporation history entry from ESI
  * GET /characters/{character_id}/corporationhistory
  */
@@ -212,19 +201,6 @@ export interface CharacterPublicData {
 	gender: 'male' | 'female'
 	factionId?: string
 	title?: string
-	createdAt: Date
-	updatedAt: Date
-}
-
-/**
- * Character portrait data stored in database
- */
-export interface CharacterPortraitData {
-	characterId: EveCharacterId
-	px64x64?: string
-	px128x128?: string
-	px256x256?: string
-	px512x512?: string
 	createdAt: Date
 	updatedAt: Date
 }
@@ -545,19 +521,6 @@ export interface EveCharacterData {
 	searchCharacterByName(characterName: string, exact?: boolean): Promise<string | null>
 
 	/**
-	 * Get character portrait data
-	 * @param characterId - EVE character ID
-	 * @returns Character portrait URLs or null if not found
-	 */
-	getPortrait(characterId: string): Promise<{
-		characterId: EveCharacterId
-		px64x64?: string
-		px128x128?: string
-		px256x256?: string
-		px512x512?: string
-	} | null>
-
-	/**
 	 * Get character corporation history
 	 * @param characterId - EVE character ID
 	 * @returns Array of corporation history entries
@@ -771,16 +734,6 @@ export class EveCharacterDataInstance extends RpcTarget {
 
 	async getLastUpdated(): Promise<Date | null> {
 		return await this.characterDataObject.getLastUpdated(this.characterId)
-	}
-
-	async getPortrait(): Promise<{
-		characterId: EveCharacterId
-		px64x64?: string
-		px128x128?: string
-		px256x256?: string
-		px512x512?: string
-	} | null> {
-		return await this.characterDataObject.getPortrait(this.characterId)
 	}
 
 	async getCorporationHistory(): Promise<

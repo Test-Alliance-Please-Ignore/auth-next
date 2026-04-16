@@ -32,6 +32,7 @@ import { useTaxAlerts } from '@/hooks/corporation-tax'
 import { useAuth, useLogout } from '@/hooks/useAuth'
 import { usePendingInvitations } from '@/hooks/useGroups'
 import { useUserPermissions } from '@/hooks/useUserPermissions'
+import { characterPortraitUrl } from '@/lib/eve-images'
 import { extractCorporationIdFromTaxViewerScopedUrn } from '@/lib/tax-permissions'
 import { cn } from '@/lib/utils'
 
@@ -512,7 +513,7 @@ export function SidebarNav({ onNavigate }: SidebarNavProps) {
 				{mainCharacter && (
 					<div className="flex items-center gap-3 px-3 py-2 rounded-lg bg-accent/30">
 						<img
-							src={`/images/characters/${mainCharacter.characterId}/portrait?size=64`}
+							src={characterPortraitUrl(mainCharacter.characterId, 64)}
 							alt={`${mainCharacter.characterName}'s portrait`}
 							loading="lazy"
 							onError={(e) => {

@@ -7,6 +7,7 @@ import { useMemo, useState } from 'react'
 
 import { Badge } from '@/components/ui/badge'
 import { Input } from '@/components/ui/input'
+import { typeIconUrl, typeImageUrl } from '@/lib/eve-images'
 import { cn } from '@/lib/utils'
 
 interface FittedShipItem {
@@ -58,7 +59,7 @@ function formatIsk(value: number): string {
 function ShipIcon({ typeId }: { typeId: string }) {
 	return (
 		<img
-			src={`https://images.evetech.net/types/${typeId}/icon?size=64`}
+			src={typeIconUrl(typeId, 64)}
 			alt=""
 			className="h-10 w-10 rounded"
 			loading="lazy"
@@ -85,7 +86,7 @@ function SlotItemIcon({ typeId, typeName }: { typeId: string; typeName: string }
 
 	return (
 		<img
-			src={`https://images.evetech.net/types/${typeId}/${variant}?size=32`}
+			src={typeImageUrl(typeId, variant, 32)}
 			alt=""
 			className="h-4 w-4 shrink-0 rounded"
 			loading="lazy"

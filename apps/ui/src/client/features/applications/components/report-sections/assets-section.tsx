@@ -5,6 +5,7 @@
 import { ChevronDown, ChevronRight, Package, Search } from 'lucide-react'
 import { useCallback, useMemo, useState } from 'react'
 
+import { typeImageUrl } from '@/lib/eve-images'
 import { Input } from '@/components/ui/input'
 import {
 	Table,
@@ -75,7 +76,7 @@ function ItemIcon({ typeId, categoryName, isBpc }: { typeId: string; categoryNam
 
 	return (
 		<img
-			src={`https://images.evetech.net/types/${typeId}/${variant}?size=32`}
+			src={typeImageUrl(typeId, variant, 32)}
 			alt=""
 			className="h-6 w-6 shrink-0 rounded"
 			loading="lazy"

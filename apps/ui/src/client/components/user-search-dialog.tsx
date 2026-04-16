@@ -11,6 +11,7 @@ import {
 } from '@/components/ui/dialog'
 import { Input } from '@/components/ui/input'
 import { useAdminUsers } from '@/hooks/useAdminUsers'
+import { characterPortraitUrl } from '@/lib/eve-images'
 import { cn } from '@/lib/utils'
 
 interface UserSearchDialogProps {
@@ -112,7 +113,7 @@ export function UserSearchDialog({ open, onOpenChange }: UserSearchDialogProps) 
 									return (
 										<>
 											<img
-												src={`/images/characters/${portraitCharacterId}/portrait?size=64`}
+												src={characterPortraitUrl(portraitCharacterId, 64)}
 												alt={displayName}
 												className="h-10 w-10 rounded-full"
 											/>

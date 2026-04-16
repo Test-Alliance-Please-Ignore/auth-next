@@ -5,6 +5,7 @@ import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { usePageTitle } from '@/hooks/usePageTitle'
 import { apiClient } from '@/lib/api'
+import { characterPortraitUrl } from '@/lib/eve-images'
 
 interface CharacterInfo {
 	characterOwnerHash: string
@@ -75,7 +76,7 @@ export default function ClaimMainPage() {
 					{/* Character Display */}
 					<div className="flex items-center gap-4 p-4 bg-muted rounded-lg">
 						<img
-							src={`/images/characters/${characterInfo.characterId}/portrait?size=128`}
+							src={characterPortraitUrl(characterInfo.characterId, 128)}
 							alt={characterInfo.characterName}
 							className="w-16 h-16 rounded-full border-2 border-primary"
 						/>

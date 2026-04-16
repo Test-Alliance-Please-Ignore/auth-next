@@ -14,6 +14,7 @@ import { HrRoleBadge } from '@/features/hr/components/hr-role-badge'
 import { useAuth } from '@/hooks/useAuth'
 import { usePageTitle } from '@/hooks/usePageTitle'
 
+import { corporationLogoUrl } from '@/lib/eve-images'
 import { applicationsApi } from '../api'
 import { Button } from '@/components/ui/button'
 import { useCorporationAccess, useMyCorporations } from '../../corporations/hooks'
@@ -125,7 +126,7 @@ export default function CorporationsPage() {
 								<div className="min-w-0 self-start">
 									<CardTitle className="flex items-center gap-2">
 										<img
-											src={`https://images.evetech.net/corporations/${corporation.corporationId}/logo?size=64`}
+											src={corporationLogoUrl(corporation.corporationId, 64)}
 											alt={corporation.name}
 											className="h-5 w-5 shrink-0 rounded"
 										/>

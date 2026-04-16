@@ -1,5 +1,7 @@
 import { Link2 } from 'lucide-react'
 
+import { characterPortraitUrl } from '@/lib/eve-images'
+
 import { Badge } from '@/components/ui/badge'
 import { Card, CardContent } from '@/components/ui/card'
 
@@ -27,7 +29,7 @@ export function LegacyCharacterCard({ character, onLink, isLinking }: LegacyChar
 			<CardContent className="p-4">
 				<div className="flex items-center gap-3">
 					<img
-						src={`/images/characters/${character.characterId}/portrait?size=64`}
+						src={characterPortraitUrl(character.characterId, 64)}
 						alt={`${character.characterName}'s portrait`}
 						loading="lazy"
 						onError={(e) => {

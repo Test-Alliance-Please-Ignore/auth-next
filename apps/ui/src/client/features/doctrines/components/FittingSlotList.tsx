@@ -4,10 +4,11 @@
  * Full-width item list grouped by slot type with EVE item icons.
  */
 
+import { typeIconUrl } from '@/lib/eve-images'
+
 import type { FittingItem } from '../types'
 
-const getTypeIconUrl = (typeId: string) =>
-	`https://images.evetech.net/types/${typeId}/icon?size=32`
+const getTypeIconUrl = (typeId: string) => typeIconUrl(typeId, 32)
 
 /** Ordered slot sections for UI display. Canonical source: SLOT_FLAGS in @repo/doctrines */
 const SLOT_SECTIONS = [

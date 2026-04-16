@@ -27,7 +27,6 @@ import {
 	transformCharacterMiningLedger,
 	transformCharacterNotifications,
 	transformCharacterPlanet,
-	transformCharacterPortrait,
 	transformCharacterPublicInfo,
 	transformCharacterRoles,
 	transformCharacterShip,
@@ -87,7 +86,6 @@ import type {
 	CharacterMiningLedger,
 	CharacterNotification,
 	CharacterPlanet,
-	CharacterPortrait,
 	CharacterPublicInfo,
 	CharacterRoles,
 	CharacterShip,
@@ -143,7 +141,6 @@ import type {
 	EsiCharacterMiningLedger,
 	EsiCharacterNotification,
 	EsiCharacterPlanet,
-	EsiCharacterPortrait,
 	EsiCharacterPublicInfo,
 	EsiCharacterRoles,
 	EsiCharacterShip,
@@ -484,18 +481,6 @@ export class EsiDO extends DurableObject<Env> implements Esi {
 			`/characters/${characterId}/planets`
 		)
 		return transformCharacterPlanet(result.data)
-	}
-
-	@UseCharacterAuth
-	async fetchCharacterPortrait(characterId: string): Promise<CharacterPortrait> {
-		const result = await this.esiFetcher.fetchEsi<EsiCharacterPortrait>(
-			`/characters/${characterId}/portrait`,
-			{ maxLocalCacheTtl: REVALIDATE_15_MIN }
-		)
-		if (!result.data) {
-			throw new Error(`No character portrait found for character ID: ${characterId}`)
-		}
-		return transformCharacterPortrait(result.data)
 	}
 
 	@UseCharacterAuth

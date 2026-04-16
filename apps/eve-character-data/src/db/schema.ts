@@ -35,21 +35,6 @@ export const characterPublicInfo = pgTable('character_public_info', {
 })
 
 /**
- * Character portrait URLs
- */
-export const characterPortraits = pgTable('character_portraits', {
-	characterId: text('character_id')
-		.primaryKey()
-		.references(() => characterPublicInfo.characterId),
-	px64x64: text('px64x64'),
-	px128x128: text('px128x128'),
-	px256x256: text('px256x256'),
-	px512x512: text('px512x512'),
-	createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
-	updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow().notNull(),
-})
-
-/**
  * Character corporation history
  */
 export const characterCorporationHistory = pgTable(
@@ -309,7 +294,6 @@ export const characterKillmails = pgTable(
  */
 export const schema = {
 	characterPublicInfo,
-	characterPortraits,
 	characterCorporationHistory,
 	characterSkills,
 	characterAttributes,

@@ -209,23 +209,11 @@ app.get('/quick-join/:token/validate', async (c) => {
 				// Check if character has valid ESI token
 				const hasValidToken = (await tokenStore.getAccessToken(characterId)) !== null
 
-				// Get character info and portrait
-				const [info, portrait] = await Promise.all([
-					characterData.getCharacterInfo(characterId),
-					characterData.getPortrait(characterId),
-				])
+				const info = await characterData.getCharacterInfo(characterId)
 
 				return {
 					characterId,
 					characterName: info?.name || char.characterName,
-					portrait: portrait
-						? {
-								px64x64: portrait.px64x64 || '',
-								px128x128: portrait.px128x128 || '',
-								px256x256: portrait.px256x256 || '',
-								px512x512: portrait.px512x512 || '',
-							}
-						: undefined,
 					hasValidToken,
 					corporationId: info?.corporationId?.toString(),
 					corporationName: undefined, // Will be resolved if needed

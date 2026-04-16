@@ -12,6 +12,7 @@ import {
 	TableRow,
 } from '@/components/ui/table'
 import { formatDateTime, formatRelativeTime } from '@/lib/date-utils'
+import { characterPortraitUrl } from '@/lib/eve-images'
 
 type SearchResultUser = {
 	id: string
@@ -69,7 +70,7 @@ export function UserSearchResultsTable({
 							<TableCell>
 								<div className="flex items-center gap-3">
 									<img
-										src={`/images/characters/${portraitCharacterId}/portrait?size=64`}
+										src={characterPortraitUrl(portraitCharacterId, 64)}
 										alt={displayName}
 										className="h-10 w-10 rounded-full"
 									/>
