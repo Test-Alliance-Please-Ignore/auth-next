@@ -3,8 +3,8 @@ import { logger } from '@repo/hono-helpers'
 
 import { characterCorporationRoles, corporationConfig, corporationDirectors } from '../db/schema'
 
-import type { EsiCharacterRoles } from '@repo/eve-corporation-data'
-import type { EsiResponse, EveTokenStore } from '@repo/eve-token-store'
+import type { CorporationRole, EsiCharacterRoles } from '@repo/eve-corporation-data'
+import type { EsiCharacterAffiliation, EsiResponse, EveTokenStore } from '@repo/eve-token-store'
 import type { createDb } from '../db'
 
 /**
@@ -41,6 +41,14 @@ const FAILURE_THRESHOLD = 3
  */
 const _RECOVERY_THRESHOLD = 3
 
+const FULL_SYNC_REQUIRED_ROLE_SETS: CorporationRole[][] = [
+	['Director'],
+	['Accountant', 'Junior_Accountant'],
+	['Station_Manager'],
+	['Accountant', 'Junior_Accountant', 'Trader'],
+	['Factory_Manager'],
+]
+
 /**
  * DirectorManager handles director selection, health tracking, and failover logic
  */
@@ -67,10 +75,12 @@ export class DirectorManager {
 				characterId,
 				characterName,
 				priority,
-				isHealthy: true,
+				// Never assume health at insert-time; require explicit verification.
+				isHealthy: false,
 				failureCount: 0,
 				lastHealthCheck: null,
 				lastUsed: null,
+				lastFailureReason: 'Pending health verification',
 				updatedAt: new Date(),
 			})
 			.onConflictDoNothing({
@@ -182,7 +192,7 @@ export class DirectorManager {
 	 * Select the next healthy director using round-robin with priority
 	 * Returns null if no healthy directors available
 	 */
-	async selectDirector(): Promise<SelectedDirector | null> {
+	async selectDirector(options?: { requiredRoleSets?: CorporationRole[][] }): Promise<SelectedDirector | null> {
 		try {
 			const healthyDirectors = await this.getHealthyDirectors()
 
@@ -237,6 +247,23 @@ export class DirectorManager {
 							`Director affiliation mismatch: expected corporation ${this.corporationId}, got ${affiliationCheck.corporationId ?? 'unknown'}`
 						)
 						continue
+					}
+
+					if (options?.requiredRoleSets && options.requiredRoleSets.length > 0) {
+						const rolesResponse: EsiResponse<EsiCharacterRoles> = await this.tokenStore.fetchEsi(
+							`/characters/${candidate.characterId}/roles`,
+							candidate.characterId
+						)
+						const roleSet = this.buildEffectiveRoleSet(rolesResponse.data)
+						const missingRoleSets = this.getMissingRoleSets(roleSet, options.requiredRoleSets)
+						if (missingRoleSets.length > 0) {
+							await this.safeRecordFailure(
+								candidate.directorId,
+								`Director missing required roles for selection: ${missingRoleSets.map((set) => `[${set.join('|')}]`).join(', ')}`,
+								{ forceUnhealthy: true }
+							)
+							continue
+						}
 					}
 
 					await this.safeMarkSelected(candidate.directorId)
@@ -299,24 +326,9 @@ export class DirectorManager {
 			return { matches: false, corporationId: null }
 		}
 
-		const response = await fetch('https://esi.evetech.net/latest/characters/affiliation/', {
-			method: 'POST',
-			headers: {
-				'Content-Type': 'application/json',
-				Accept: 'application/json',
-				'X-Compatibility-Date': '2025-09-30',
-			},
-			body: JSON.stringify([numericCharacterId]),
-		})
-
-		if (!response.ok) {
-			throw new Error(`Affiliation check failed: ${response.status} ${response.statusText}`)
-		}
-
-		const affiliations = (await response.json()) as Array<{
-			character_id: number
-			corporation_id: number
-		}>
+		const affiliationResponse: EsiResponse<EsiCharacterAffiliation[]> =
+			await this.tokenStore.fetchCharacterAffiliations([characterId])
+		const affiliations = affiliationResponse.data
 		const affiliation = affiliations.find((entry) => entry.character_id === numericCharacterId)
 		if (!affiliation) {
 			return { matches: false, corporationId: null }
@@ -329,9 +341,40 @@ export class DirectorManager {
 		}
 	}
 
-	private async safeRecordFailure(directorId: string, reason: string): Promise<void> {
+	private buildEffectiveRoleSet(roles: EsiCharacterRoles): Set<string> {
+		return new Set([
+			...(roles.roles || []),
+			...(roles.roles_at_hq || []),
+			...(roles.roles_at_base || []),
+			...(roles.roles_at_other || []),
+		])
+	}
+
+	private hasHierarchyOverride(roleSet: Set<string>): boolean {
+		return roleSet.has('CEO') || roleSet.has('Director')
+	}
+
+	private satisfiesAnyRequiredRoles(roleSet: Set<string>, anyOf: CorporationRole[]): boolean {
+		if (this.hasHierarchyOverride(roleSet)) {
+			return true
+		}
+		return anyOf.some((role) => roleSet.has(role))
+	}
+
+	private getMissingRoleSets(
+		roleSet: Set<string>,
+		requiredRoleSets: CorporationRole[][]
+	): CorporationRole[][] {
+		return requiredRoleSets.filter((anyOf) => !this.satisfiesAnyRequiredRoles(roleSet, anyOf))
+	}
+
+	private async safeRecordFailure(
+		directorId: string,
+		reason: string,
+		options?: { forceUnhealthy?: boolean }
+	): Promise<void> {
 		try {
-			await this.recordFailure(directorId, reason)
+			await this.recordFailure(directorId, reason, options)
 		} catch (error) {
 			console.error('[DirectorManager] Failed to record director failure', {
 				corporationId: this.corporationId,
@@ -447,7 +490,10 @@ export class DirectorManager {
 	/**
 	 * Verify director health by checking token and roles
 	 */
-	async verifyDirectorHealth(directorId: string): Promise<boolean> {
+	async verifyDirectorHealth(
+		directorId: string,
+		options?: { requiredRoleSets?: CorporationRole[][] }
+	): Promise<boolean> {
 		const director = await this.db.query.corporationDirectors.findFirst({
 			where: eq(corporationDirectors.id, directorId),
 		})
@@ -469,6 +515,9 @@ export class DirectorManager {
 			)
 
 			const roles = response.data
+			const roleSet = this.buildEffectiveRoleSet(roles)
+			const requiredRoleSets = options?.requiredRoleSets ?? FULL_SYNC_REQUIRED_ROLE_SETS
+			const missingRoleSets = this.getMissingRoleSets(roleSet, requiredRoleSets)
 
 			// Store roles in database
 			await this.db
@@ -504,6 +553,19 @@ export class DirectorManager {
 					updatedAt: new Date(),
 				})
 				.where(eq(corporationDirectors.id, directorId))
+
+			if (missingRoleSets.length > 0) {
+				const reason = `Director missing required roles: ${missingRoleSets
+					.map((set) => `[${set.join('|')}]`)
+					.join(', ')}`
+				await this.recordFailure(directorId, reason, { forceUnhealthy: true })
+				console.warn('[DirectorManager] Director missing required roles', {
+					directorId,
+					characterId: director.characterId,
+					missingRoleSets,
+				})
+				return false
+			}
 
 			console.log('[DirectorManager] Director health verified successfully', {
 				directorId,

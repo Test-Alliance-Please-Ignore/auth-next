@@ -260,6 +260,21 @@ export interface EsiAlliance {
 }
 
 /**
+ * ESI Character Affiliation response entry
+ * https://esi.evetech.net/ui/#/Character/post_characters_affiliation
+ */
+export interface EsiCharacterAffiliation {
+	/** Character ID */
+	character_id: number
+	/** Corporation ID */
+	corporation_id: number
+	/** Alliance ID (if in alliance) */
+	alliance_id?: number
+	/** Faction ID (if in faction warfare) */
+	faction_id?: number
+}
+
+/**
  * Entity name/ID pair for bulk resolution
  */
 export interface EntityNameInfo {
@@ -424,6 +439,15 @@ export interface EveTokenStore {
 	 * ```
 	 */
 	fetchPublicEsi<T>(path: string): Promise<EsiResponse<T>>
+
+	/**
+	 * Fetch character affiliation data from ESI.
+	 * Uses POST /characters/affiliation with token-store caching and ETag support.
+	 *
+	 * @param characterIds - One or more EVE character IDs
+	 * @returns ESI response with affiliation entries for provided character IDs
+	 */
+	fetchCharacterAffiliations(characterIds: string[]): Promise<EsiResponse<EsiCharacterAffiliation[]>>
 
 	/**
 	 * Fetch public data from ESI with a schema

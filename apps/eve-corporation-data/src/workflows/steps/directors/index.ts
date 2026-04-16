@@ -4,17 +4,19 @@ import { createDirectorManager } from '../../utils/services'
 
 import type { Env } from '../../../context'
 import type { DirectorInfo } from '../../types'
+import type { CorporationRole } from '@repo/eve-corporation-data'
 
 /**
  * Select a healthy director for the corporation
  */
 export async function selectDirector(
 	env: Env,
-	corporationId: string
+	corporationId: string,
+	options?: { requiredRoleSets?: CorporationRole[][] }
 ): Promise<DirectorInfo | null> {
 	try {
 		const directorManager = createDirectorManager(env, corporationId)
-		const selected = await directorManager.selectDirector()
+		const selected = await directorManager.selectDirector(options)
 
 		if (!selected) {
 			logger.error('[DirectorStep] No healthy directors available', { corporationId })
@@ -61,4 +63,12 @@ export async function recordDirectorFailure(
 ): Promise<void> {
 	const directorManager = createDirectorManager(env, corporationId)
 	await directorManager.recordFailure(directorId, reason, options)
+}
+
+export async function verifyAllDirectorsHealth(
+	env: Env,
+	corporationId: string
+): Promise<{ verified: number; failed: number }> {
+	const directorManager = createDirectorManager(env, corporationId)
+	return await directorManager.verifyAllDirectorsHealth()
 }

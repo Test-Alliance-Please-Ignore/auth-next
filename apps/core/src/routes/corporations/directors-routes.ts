@@ -12,6 +12,76 @@ import type { App } from '../../context'
 
 const app = new Hono<App>()
 
+function toAdminUnhealthyReason(lastFailureReason: string | null | undefined): {
+	summary: string
+	status: number | null
+	step: string | null
+	path: string | null
+	hint: string | null
+	requiredRoles: string[] | null
+	missingRoles: string[] | null
+} | null {
+	if (!lastFailureReason) {
+		return null
+	}
+
+	const stepMatch = lastFailureReason.match(/step=([^,)\s]+)/)
+	const statusMatch = lastFailureReason.match(/status=(\d{3})/)
+	const pathMatch = lastFailureReason.match(/path=([^,)\s]+)/)
+	const hintMatch = lastFailureReason.match(/hint=([^,)\s]+)/)
+	const requiredRolesMatch = lastFailureReason.match(/requiredRoles=([^,)\s]+)/)
+	const missingRolesMatch = lastFailureReason.match(/missingRoles=([^,)\s]+)/)
+
+	const step = stepMatch?.[1] ?? null
+	const status = statusMatch ? Number.parseInt(statusMatch[1], 10) : null
+	const path = pathMatch?.[1] ?? null
+	const hint = hintMatch?.[1] ?? null
+	const requiredRoles = requiredRolesMatch?.[1]
+		? requiredRolesMatch[1].split('|').filter(Boolean)
+		: null
+	const missingRoles = missingRolesMatch?.[1]
+		? missingRolesMatch[1].split('|').filter(Boolean)
+		: null
+
+	if (!step && !status && !path && !hint && !requiredRoles && !missingRoles) {
+		return {
+			summary: lastFailureReason,
+			status: null,
+			step: null,
+			path: null,
+			hint: null,
+			requiredRoles: null,
+			missingRoles: null,
+		}
+	}
+
+	let summary = 'Director authentication failed'
+	if (hint === 'required_roles_missing') {
+		summary = 'Director is missing required corporation roles'
+	} else if (status === 403) {
+		summary = 'Director is forbidden from accessing required endpoint'
+	} else if (status === 401) {
+		summary = 'Director token is unauthorized or expired'
+	}
+
+	if (step) {
+		summary = `${step}: ${summary}`
+	}
+	if (requiredRoles && requiredRoles.length > 0) {
+		summary = `${summary} (requires: ${requiredRoles.join(', ')})`
+	}
+
+	return {
+		summary,
+		status,
+		step,
+		path,
+		hint,
+		requiredRoles,
+		missingRoles,
+	}
+}
+
 /**
  * GET /corporations/:corporationId/directors
  * Get all directors for a corporation
@@ -47,6 +117,7 @@ app.get('/:corporationId/directors', requireAuth(), requireAdmin(), async (c) =>
 		const directorsWithOwner = directors.map((director) => ({
 			...director,
 			userId: ownerByCharacterId.get(director.characterId) ?? null,
+			unhealthyReason: toAdminUnhealthyReason(director.lastFailureReason),
 		}))
 
 		return c.json(directorsWithOwner)

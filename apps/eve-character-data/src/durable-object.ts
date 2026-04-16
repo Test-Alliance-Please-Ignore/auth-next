@@ -51,7 +51,7 @@ import type {
 	EveCharacterData,
 	Killmails,
 } from '@repo/eve-character-data'
-import type { EsiResponse, EveTokenStore } from '@repo/eve-token-store'
+import type { EsiCharacterAffiliation, EsiResponse, EveTokenStore } from '@repo/eve-token-store'
 import type { Env } from './context'
 
 /**
@@ -687,15 +687,7 @@ export class EveCharacterDataDO extends DurableObject<Env> implements EveCharact
 				security_status?: number
 				title?: string
 			}>(`/characters/${String(characterId)}`, String(characterId)),
-			fetch('https://esi.evetech.net/latest/characters/affiliation/', {
-				method: 'POST',
-				headers: { 'Content-Type': 'application/json' },
-				body: JSON.stringify([parseInt(characterId, 10)]),
-			}).then((r) =>
-				r.ok
-					? (r.json() as Promise<Array<{ character_id: number; corporation_id: number; alliance_id?: number }>>)
-					: Promise.reject(new Error(`Affiliation fetch failed: ${r.status}`))
-			),
+			tokenStoreStub.fetchCharacterAffiliations([characterId]),
 		])
 
 		if (publicInfoResponse.status === 'rejected') {
@@ -719,7 +711,8 @@ export class EveCharacterDataDO extends DurableObject<Env> implements EveCharact
 		let allianceId = data.alliance_id ? String(data.alliance_id) : null
 
 		if (affiliationResponse.status === 'fulfilled') {
-			const affiliation = affiliationResponse.value.find((a) => a.character_id === parseInt(characterId, 10))
+			const affiliations = (affiliationResponse.value as EsiResponse<EsiCharacterAffiliation[]>).data
+			const affiliation = affiliations.find((a) => a.character_id === parseInt(characterId, 10))
 			if (affiliation) {
 				corporationId = String(affiliation.corporation_id)
 				allianceId = affiliation.alliance_id ? String(affiliation.alliance_id) : null

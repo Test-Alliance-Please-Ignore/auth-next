@@ -720,6 +720,15 @@ export interface DirectorHealth {
 	lastUsed: string | null
 	failureCount: number
 	lastFailureReason: string | null
+	unhealthyReason?: {
+		summary: string
+		status: number | null
+		step: string | null
+		path: string | null
+		hint: string | null
+		requiredRoles: string[] | null
+		missingRoles: string[] | null
+	} | null
 	priority: number
 }
 

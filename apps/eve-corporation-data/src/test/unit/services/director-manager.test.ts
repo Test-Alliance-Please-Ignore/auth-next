@@ -68,6 +68,101 @@ describe('DirectorManager.selectDirector', () => {
 		})
 		expect(safeMarkSelected).toHaveBeenCalledWith('dir-2')
 	})
+
+	it('prefilters by required roles and honors CEO override', async () => {
+		const tokenStore = {
+			getTokenInfo: vi.fn().mockResolvedValue({ isExpired: false }),
+			refreshToken: vi.fn().mockResolvedValue(true),
+			fetchEsi: vi
+				.fn()
+				.mockResolvedValueOnce({
+					data: { roles: ['Trader'] },
+				})
+				.mockResolvedValueOnce({
+					data: { roles: ['CEO'] },
+				}),
+		}
+		const manager = new DirectorManager(
+			{} as never,
+			'98000001',
+			tokenStore as never
+		)
+
+		vi.spyOn(manager as any, 'getHealthyDirectors').mockResolvedValue([
+			{
+				directorId: 'dir-1',
+				characterId: '111',
+				characterName: 'Trader Only',
+				isHealthy: true,
+				lastHealthCheck: null,
+				lastUsed: null,
+				failureCount: 0,
+				lastFailureReason: null,
+				priority: 1,
+			},
+			{
+				directorId: 'dir-2',
+				characterId: '222',
+				characterName: 'CEO Director',
+				isHealthy: true,
+				lastHealthCheck: null,
+				lastUsed: null,
+				failureCount: 0,
+				lastFailureReason: null,
+				priority: 2,
+			},
+		])
+		vi.spyOn(manager as any, 'checkAffiliation').mockResolvedValue({
+			matches: true,
+			corporationId: '98000001',
+		})
+		const safeRecordFailure = vi
+			.spyOn(manager as any, 'safeRecordFailure')
+			.mockResolvedValue(undefined)
+		const safeMarkSelected = vi
+			.spyOn(manager as any, 'safeMarkSelected')
+			.mockResolvedValue(undefined)
+
+		const selected = await manager.selectDirector({
+			requiredRoleSets: [['Director'], ['Accountant', 'Junior_Accountant']],
+		})
+
+		expect(safeRecordFailure).toHaveBeenCalledWith(
+			'dir-1',
+			expect.stringContaining('Director missing required roles for selection'),
+			{ forceUnhealthy: true }
+		)
+		expect(selected).toEqual({
+			directorId: 'dir-2',
+			characterId: '222',
+			characterName: 'CEO Director',
+		})
+		expect(safeMarkSelected).toHaveBeenCalledWith('dir-2')
+	})
+})
+
+describe('DirectorManager.checkAffiliation', () => {
+	beforeEach(() => {
+		vi.clearAllMocks()
+	})
+
+	it('uses token store affiliation RPC and matches corporation', async () => {
+		const tokenStore = {
+			fetchCharacterAffiliations: vi.fn().mockResolvedValue({
+				data: [{ character_id: 111, corporation_id: 98000001 }],
+			}),
+		}
+		const manager = new DirectorManager(
+			{} as never,
+			'98000001',
+			tokenStore as never
+		)
+
+		const result = await (manager as any).checkAffiliation('111')
+
+		expect(tokenStore.fetchCharacterAffiliations).toHaveBeenCalledWith(['111'])
+		expect(result).toEqual({ matches: true, corporationId: '98000001' })
+	})
 })
 
 describe('DirectorManager.recordFailure', () => {
@@ -110,5 +205,228 @@ describe('DirectorManager.recordFailure', () => {
 			})
 		)
 		expect(set.mock.calls[0][0].failureCount).toBeGreaterThanOrEqual(3)
+	})
+})
+
+describe('DirectorManager.verifyDirectorHealth', () => {
+	beforeEach(() => {
+		vi.clearAllMocks()
+	})
+
+	it('stores roles and marks director healthy when required roles are satisfied', async () => {
+		const rolesUpsert = vi.fn().mockResolvedValue(undefined)
+		const rolesValues = vi.fn().mockReturnValue({ onConflictDoUpdate: rolesUpsert })
+		const insert = vi.fn().mockReturnValue({ values: rolesValues })
+		const where = vi.fn().mockResolvedValue(undefined)
+		const set = vi.fn().mockReturnValue({ where })
+		const update = vi.fn().mockReturnValue({ set })
+		const db = {
+			query: {
+				corporationDirectors: {
+					findFirst: vi.fn().mockResolvedValue({
+						id: 'dir-1',
+						characterId: '111',
+					}),
+				},
+			},
+			insert,
+			update,
+		}
+		const tokenStore = {
+			fetchEsi: vi.fn().mockResolvedValue({
+				data: {
+					roles: ['Trader'],
+					roles_at_hq: ['Station_Manager'],
+				},
+			}),
+		}
+		const manager = new DirectorManager(
+			db as never,
+			'98000001',
+			tokenStore as never
+		)
+
+		const result = await manager.verifyDirectorHealth('dir-1', {
+			requiredRoleSets: [['Station_Manager'], ['Trader', 'Accountant']],
+		})
+
+		expect(result).toBe(true)
+		expect(tokenStore.fetchEsi).toHaveBeenCalledWith('/characters/111/roles', '111')
+		expect(rolesValues).toHaveBeenCalledWith(
+			expect.objectContaining({
+				corporationId: '98000001',
+				characterId: '111',
+				roles: ['Trader'],
+				rolesAtHq: ['Station_Manager'],
+			})
+		)
+		expect(set).toHaveBeenCalledWith(
+			expect.objectContaining({
+				isHealthy: true,
+				failureCount: 0,
+				lastFailureReason: null,
+			})
+		)
+	})
+
+	it('marks unhealthy when required role sets are missing', async () => {
+		const rolesUpsert = vi.fn().mockResolvedValue(undefined)
+		const rolesValues = vi.fn().mockReturnValue({ onConflictDoUpdate: rolesUpsert })
+		const insert = vi.fn().mockReturnValue({ values: rolesValues })
+		const where = vi.fn().mockResolvedValue(undefined)
+		const set = vi.fn().mockReturnValue({ where })
+		const update = vi.fn().mockReturnValue({ set })
+		const db = {
+			query: {
+				corporationDirectors: {
+					findFirst: vi.fn().mockResolvedValue({
+						id: 'dir-1',
+						characterId: '111',
+					}),
+				},
+			},
+			insert,
+			update,
+		}
+		const tokenStore = {
+			fetchEsi: vi.fn().mockResolvedValue({
+				data: {
+					roles: ['Trader'],
+				},
+			}),
+		}
+		const manager = new DirectorManager(
+			db as never,
+			'98000001',
+			tokenStore as never
+		)
+		const recordFailure = vi.spyOn(manager, 'recordFailure').mockResolvedValue(undefined)
+
+		const result = await manager.verifyDirectorHealth('dir-1', {
+			requiredRoleSets: [['Factory_Manager']],
+		})
+
+		expect(result).toBe(false)
+		expect(recordFailure).toHaveBeenCalledWith(
+			'dir-1',
+			expect.stringContaining('Director missing required roles'),
+			{ forceUnhealthy: true }
+		)
+	})
+
+	it('records failure when ESI role fetch throws', async () => {
+		const db = {
+			query: {
+				corporationDirectors: {
+					findFirst: vi.fn().mockResolvedValue({
+						id: 'dir-1',
+						characterId: '111',
+					}),
+				},
+			},
+		}
+		const tokenStore = {
+			fetchEsi: vi.fn().mockRejectedValue(new Error('ESI request failed: 403 Forbidden')),
+		}
+		const manager = new DirectorManager(
+			db as never,
+			'98000001',
+			tokenStore as never
+		)
+		const recordFailure = vi.spyOn(manager, 'recordFailure').mockResolvedValue(undefined)
+
+		const result = await manager.verifyDirectorHealth('dir-1')
+
+		expect(result).toBe(false)
+		expect(recordFailure).toHaveBeenCalledWith('dir-1', 'ESI request failed: 403 Forbidden')
+	})
+})
+
+describe('DirectorManager.verifyAllDirectorsHealth', () => {
+	beforeEach(() => {
+		vi.clearAllMocks()
+	})
+
+	it('aggregates verification results and marks corporation verified when any director passes', async () => {
+		const where = vi.fn().mockResolvedValue(undefined)
+		const set = vi.fn().mockReturnValue({ where })
+		const update = vi.fn().mockReturnValue({ set })
+		const manager = new DirectorManager(
+			{ update } as never,
+			'98000001',
+			{} as never
+		)
+
+		vi.spyOn(manager, 'getAllDirectors').mockResolvedValue([
+			{
+				directorId: 'dir-1',
+				characterId: '111',
+				characterName: 'A',
+				isHealthy: true,
+				lastHealthCheck: null,
+				lastUsed: null,
+				failureCount: 0,
+				lastFailureReason: null,
+				priority: 1,
+			},
+			{
+				directorId: 'dir-2',
+				characterId: '222',
+				characterName: 'B',
+				isHealthy: false,
+				lastHealthCheck: null,
+				lastUsed: null,
+				failureCount: 2,
+				lastFailureReason: 'bad',
+				priority: 2,
+			},
+		])
+		vi.spyOn(manager, 'verifyDirectorHealth')
+			.mockResolvedValueOnce(true)
+			.mockResolvedValueOnce(false)
+
+		const result = await manager.verifyAllDirectorsHealth()
+
+		expect(result).toEqual({ verified: 1, failed: 1 })
+		expect(set).toHaveBeenCalledWith(
+			expect.objectContaining({
+				isVerified: true,
+			})
+		)
+	})
+
+	it('marks corporation unverified when all director checks fail', async () => {
+		const where = vi.fn().mockResolvedValue(undefined)
+		const set = vi.fn().mockReturnValue({ where })
+		const update = vi.fn().mockReturnValue({ set })
+		const manager = new DirectorManager(
+			{ update } as never,
+			'98000001',
+			{} as never
+		)
+
+		vi.spyOn(manager, 'getAllDirectors').mockResolvedValue([
+			{
+				directorId: 'dir-1',
+				characterId: '111',
+				characterName: 'A',
+				isHealthy: false,
+				lastHealthCheck: null,
+				lastUsed: null,
+				failureCount: 3,
+				lastFailureReason: 'bad',
+				priority: 1,
+			},
+		])
+		vi.spyOn(manager, 'verifyDirectorHealth').mockResolvedValue(false)
+
+		const result = await manager.verifyAllDirectorsHealth()
+
+		expect(result).toEqual({ verified: 0, failed: 1 })
+		expect(set).toHaveBeenCalledWith(
+			expect.objectContaining({
+				isVerified: false,
+			})
+		)
 	})
 })
