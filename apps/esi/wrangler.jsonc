@@ -42,6 +42,11 @@
 				"script_name": "eve-corporation-data"
 			},
 			{
+				"name": "UNIVERSE",
+				"class_name": "Universe",
+				"script_name": "universe"
+			},
+			{
 				"name": "ESI_TYPE_RESOLVER",
 				"class_name": "EsiTypeResolver",
 				"script_name": "esi"
