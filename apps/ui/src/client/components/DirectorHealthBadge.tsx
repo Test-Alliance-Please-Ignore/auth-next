@@ -1,4 +1,4 @@
-import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover'
+import { HoverPopover } from '@/components/ui/hover-popover'
 import { DirectorStatusBadge } from '@/components/DirectorStatusBadge'
 
 import type { DirectorHealth } from '@/lib/api'
@@ -16,13 +16,15 @@ export function DirectorHealthBadge({ director }: DirectorHealthBadgeProps) {
 	}
 
 	return (
-		<Popover>
-			<PopoverTrigger asChild>
+		<HoverPopover
+			align="start"
+			className="w-[28rem] space-y-2"
+			trigger={
 				<div className="inline-block cursor-help">
 					<DirectorStatusBadge director={director} />
 				</div>
-			</PopoverTrigger>
-			<PopoverContent align="start" className="w-[28rem] space-y-2">
+			}
+		>
 				<div className="text-sm font-medium">Director Health Issues</div>
 				<div className="text-sm text-muted-foreground">
 					{director.unhealthyReason?.summary || director.lastFailureReason}
@@ -38,7 +40,6 @@ export function DirectorHealthBadge({ director }: DirectorHealthBadgeProps) {
 						Missing Roles: {director.unhealthyReason.missingRoles.join(', ')}
 					</div>
 				) : null}
-			</PopoverContent>
-		</Popover>
+		</HoverPopover>
 	)
 }

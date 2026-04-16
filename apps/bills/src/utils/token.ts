@@ -7,9 +7,12 @@
  */
 
 /**
- * Base62 character set (0-9, a-z, A-Z) for URL-safe encoding
+ * URL-safe alphanumeric character set excluding ambiguous glyphs:
+ * - lowercase l
+ * - uppercase O
+ * - uppercase I
  */
-const BASE62_CHARS = '0123456789abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ'
+const TOKEN_CHARS = '0123456789abcdefghijkmnopqrstuvwxyzABCDEFGHJKLMNPQRSTUVWXYZ'
 
 /**
  * Generate a secure 12-character payment token
@@ -27,7 +30,7 @@ export function generatePaymentToken(): string {
 	// Map each byte to a base62 character using modulo
 	// This ensures uniform distribution across the character set
 	const token = Array.from(bytes)
-		.map((byte) => BASE62_CHARS[byte % BASE62_CHARS.length])
+		.map((byte) => TOKEN_CHARS[byte % TOKEN_CHARS.length])
 		.join('')
 
 	return token

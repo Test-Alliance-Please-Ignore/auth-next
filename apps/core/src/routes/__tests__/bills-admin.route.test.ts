@@ -53,6 +53,7 @@ function makeBillsStub() {
 		deleteBill: vi.fn().mockResolvedValue(undefined),
 		issueBill: vi.fn().mockResolvedValue({ id: 'bill-1', status: 'issued' }),
 		cancelBill: vi.fn().mockResolvedValue({ id: 'bill-1', status: 'cancelled' }),
+		markBillPaid: vi.fn().mockResolvedValue({ id: 'bill-1', status: 'paid' }),
 		revertBillToDraft: vi.fn().mockResolvedValue({ id: 'bill-1', status: 'draft' }),
 		regeneratePaymentToken: vi.fn().mockResolvedValue({ token: 'abc123', billId: 'bill-1' }),
 		createTemplate: vi.fn().mockResolvedValue({ id: 'template-1' }),
@@ -99,6 +100,7 @@ describe('bills-admin routes action access matrix', () => {
 		{ method: 'DELETE', path: '/api/admin/bills/bill-1' },
 		{ method: 'POST', path: '/api/admin/bills/bill-1/issue' },
 		{ method: 'POST', path: '/api/admin/bills/bill-1/cancel' },
+		{ method: 'POST', path: '/api/admin/bills/bill-1/mark-paid' },
 		{ method: 'POST', path: '/api/admin/bills/bill-1/revert-to-draft' },
 		{ method: 'POST', path: '/api/admin/bills/bill-1/regenerate-token' },
 		{ method: 'POST', path: '/api/admin/bills/templates', body: { name: 'x' } },
@@ -162,6 +164,14 @@ describe('bills-admin routes action access matrix', () => {
 		)
 		expect(cancelResponse.status).toBe(200)
 		expect(billsStub.cancelBill).toHaveBeenCalledWith('admin-1', 'bill-1')
+
+		const markPaidResponse = await app.request(
+			'/api/admin/bills/bill-1/mark-paid',
+			{ method: 'POST' },
+			env
+		)
+		expect(markPaidResponse.status).toBe(200)
+		expect(billsStub.markBillPaid).toHaveBeenCalledWith('admin-1', 'bill-1')
 
 		const revertResponse = await app.request(
 			'/api/admin/bills/bill-1/revert-to-draft',

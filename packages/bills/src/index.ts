@@ -526,6 +526,9 @@ export interface Bills {
 	/** Cancel a bill (permissions enforced by caller route) */
 	cancelBill(actorUserId: string, billId: string): Promise<Bill>
 
+	/** Mark a bill as paid (permissions enforced by caller route) */
+	markBillPaid(actorUserId: string, billId: string): Promise<Bill>
+
 	/** Revert a bill to draft (permissions enforced by caller route; blocked when paid or any payments exist) */
 	revertBillToDraft(actorUserId: string, billId: string): Promise<Bill>
 

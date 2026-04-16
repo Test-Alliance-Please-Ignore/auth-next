@@ -20,6 +20,7 @@ import {
 	useGroupBillAggregate,
 	useIssueBill,
 	useIssueGroupBill,
+	useMarkBillPaid,
 	useRevertBillToDraft,
 	useRevertGroupBillToDraft,
 } from '@/hooks/useBills'
@@ -65,12 +66,12 @@ export default function AdminBillsPage() {
 	const [dueAfter, setDueAfter] = useState(() => getDefaultDueAfter())
 	const [dueBefore, setDueBefore] = useState('')
 	const [pagination, setPagination] = useState({ pageIndex: 0, pageSize: 25 })
-	const [sorting, setSorting] = useState<MRT_SortingState>([{ id: 'dueDate', desc: false }])
+	const [sorting, setSorting] = useState<MRT_SortingState>([{ id: 'createdAt', desc: true }])
 	const [coalesced, setCoalesced] = useState(true)
 	const debouncedPayerQuery = useDebounce(payerQuery, 300)
 	const debouncedPayeeQuery = useDebounce(payeeQuery, 300)
 	const debouncedIssuerQuery = useDebounce(issuerQuery, 300)
-	const sortBy = (sorting[0]?.id ?? 'dueDate') as BillListSortField
+	const sortBy = (sorting[0]?.id ?? 'createdAt') as BillListSortField
 	const sortDir: BillListSortDirection = sorting[0]?.desc ? 'desc' : 'asc'
 	const billsPage = useBills({
 		status,
@@ -149,6 +150,7 @@ export default function AdminBillsPage() {
 	)
 	const issueBill = useIssueBill()
 	const cancelBill = useCancelBill()
+	const markBillPaid = useMarkBillPaid()
 	const deleteBill = useDeleteBill()
 	const revertBillToDraft = useRevertBillToDraft()
 	const issueGroupBill = useIssueGroupBill()
@@ -194,6 +196,23 @@ export default function AdminBillsPage() {
 					await deleteBill.mutateAsync(billId)
 				} catch (error) {
 					console.error('Failed to delete bill:', error)
+					throw error
+				}
+			},
+		})
+	}
+
+	const handleMarkPaid = async (billId: string) => {
+		requestConfirmation({
+			title: 'Mark Bill Paid',
+			description: 'Mark this bill as paid?',
+			confirmLabel: 'Mark Paid',
+			intent: 'confirm',
+			onConfirm: async () => {
+				try {
+					await markBillPaid.mutateAsync(billId)
+				} catch (error) {
+					console.error('Failed to mark bill paid:', error)
 					throw error
 				}
 			},
@@ -464,7 +483,9 @@ export default function AdminBillsPage() {
 								{
 									label: 'View',
 									intent: 'primary',
-									href: `/admin/bills/${bill.id}`,
+									href: bill.groupBillId
+										? `/admin/bills/${bill.id}?view=individual`
+										: `/admin/bills/${bill.id}`,
 								},
 								{
 									label: 'Edit',
@@ -494,6 +515,13 @@ export default function AdminBillsPage() {
 									onClick: () => void handleCancel(bill.id),
 								},
 								{
+									label: 'Mark Paid',
+									intent: 'confirm',
+									hidden: bill.status === 'draft' || bill.status === 'paid' || bill.status === 'cancelled',
+									loading: markBillPaid.isPending,
+									onClick: () => void handleMarkPaid(bill.id),
+								},
+								{
 									label: 'Delete',
 									intent: 'destructive',
 									hidden: bill.status !== 'draft',
@@ -518,6 +546,7 @@ function GroupBillSubRows(props: { groupBillId: string }) {
 	const queryClient = useQueryClient()
 	const issueBill = useIssueBill()
 	const cancelBill = useCancelBill()
+	const markBillPaid = useMarkBillPaid()
 	const deleteBill = useDeleteBill()
 	const revertBillToDraft = useRevertBillToDraft()
 	const { requestConfirmation, confirmationDialog } = useConfirmationDialog()
@@ -566,7 +595,7 @@ function GroupBillSubRows(props: { groupBillId: string }) {
 										{
 											label: 'View',
 											intent: 'primary',
-											href: `/admin/bills/${subBill.billId}`,
+											href: `/admin/bills/${subBill.billId}?view=individual`,
 										},
 										{
 											label: 'Edit',
@@ -623,6 +652,27 @@ function GroupBillSubRows(props: { groupBillId: string }) {
 													intent: 'confirm',
 													onConfirm: async () => {
 														await cancelBill.mutateAsync(subBill.billId)
+														invalidateAggregate()
+													},
+												})
+											},
+										},
+										{
+											label: 'Mark Paid',
+											intent: 'confirm',
+											hidden:
+												subBill.status === 'draft' ||
+												subBill.status === 'paid' ||
+												subBill.status === 'cancelled',
+											loading: markBillPaid.isPending,
+											onClick: () => {
+												requestConfirmation({
+													title: 'Mark Bill Paid',
+													description: 'Mark this bill as paid?',
+													confirmLabel: 'Mark Paid',
+													intent: 'confirm',
+													onConfirm: async () => {
+														await markBillPaid.mutateAsync(subBill.billId)
 														invalidateAggregate()
 													},
 												})

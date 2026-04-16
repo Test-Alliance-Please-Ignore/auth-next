@@ -62,7 +62,7 @@ async function findPaymentTransactionsForCorporationFromDb(
 		throw new Error('Corporation ID is required')
 	}
 
-	const tokenNeedle = `%${billData.paymentToken.toLowerCase()}%`
+	const tokenNeedle = `%${billData.paymentToken}%`
 	const results = await ctx.db.execute<CorporationWalletPaymentRow>(
 		sql`select
 			journal_id::text as "journalId",
@@ -74,7 +74,7 @@ async function findPaymentTransactionsForCorporationFromDb(
 			and date >= ${billData.createdAt}
 			and amount::numeric > 0
 			and reason is not null
-			and lower(reason) like ${tokenNeedle}
+			and reason like ${tokenNeedle}
 		order by date asc
 		limit 500`
 	)
@@ -101,7 +101,7 @@ async function findPaymentTransactionsForCharacterFromDb(
 		throw new Error('Character ID is required')
 	}
 
-	const tokenNeedle = `%${billData.paymentToken.toLowerCase()}%`
+	const tokenNeedle = `%${billData.paymentToken}%`
 	const results = await ctx.db.execute<CharacterWalletPaymentRow>(
 		sql`select
 			journal_id::text as "journalId",
@@ -113,7 +113,7 @@ async function findPaymentTransactionsForCharacterFromDb(
 			and date >= ${billData.createdAt}
 			and amount::numeric > 0
 			and reason is not null
-			and lower(reason) like ${tokenNeedle}
+			and reason like ${tokenNeedle}
 		order by date asc
 		limit 500`
 	)

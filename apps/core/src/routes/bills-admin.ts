@@ -115,8 +115,10 @@ app.get('/', requireAuth(), requireAdmin(), async (c) => {
 		const coalesced = c.req.query('coalesced') !== 'false'
 		const sortByQuery = c.req.query('sortBy')?.trim() as BillListSortField | undefined
 		const sortDirQuery = c.req.query('sortDir')?.trim() as BillListSortDirection | undefined
-		const sortBy = sortByQuery && BILL_SORT_FIELDS.has(sortByQuery) ? sortByQuery : 'dueDate'
-		const sortDir: BillListSortDirection = sortDirQuery === 'desc' ? 'desc' : 'asc'
+		const sortBy = sortByQuery && BILL_SORT_FIELDS.has(sortByQuery) ? sortByQuery : 'createdAt'
+		const sortDir: BillListSortDirection =
+			sortDirQuery === 'desc' || (!sortDirQuery && !sortByQuery) ? 'desc' : 'asc'
+		const requestedPayerType = filters.payerType
 
 		logger.info('[bills-admin] Fetching bills', {
 			userId: user.id,
@@ -128,26 +130,108 @@ app.get('/', requireAuth(), requireAdmin(), async (c) => {
 		})
 
 		const stub = getStub<Bills>(c.env.BILLS, 'default')
-		const page = await stub.listBillsPage({
-			scope: { mode: 'all' },
-			filters,
-			limit: pagination.data.limit,
-			offset: pagination.data.offset,
-			sortBy,
-			sortDir,
-		})
+		const filtersForFetch: BillFilters = { ...filters }
+		if (coalesced && requestedPayerType === 'group') {
+			// Group sub-bills are stored as payerType='character' and only linked via groupBillId/group metadata.
+			// Fetch broadly and apply payerType='group' filtering after coalescing.
+			delete filtersForFetch.payerType
+		}
+		const fetchPage = (limit: number, offset: number) =>
+			stub.listBillsPage({
+				scope: { mode: 'all' },
+				filters: filtersForFetch,
+				limit,
+				offset,
+				sortBy,
+				sortDir,
+			})
+		const firstFetchLimit = coalesced ? Math.max(100, pagination.data.limit) : pagination.data.limit
+		const firstFetchOffset = coalesced ? 0 : pagination.data.offset
+		const firstPage = await fetchPage(firstFetchLimit, firstFetchOffset)
+		let rowsToRender = firstPage.rows
+		let totalRowCount = firstPage.rowCount
+		if (coalesced) {
+			const fullRows = [...firstPage.rows]
+			const chunkSize = firstFetchLimit
+			let nextOffset = firstPage.rows.length
+			let lastBatchSize = firstPage.rows.length
+			while (fullRows.length < firstPage.rowCount && lastBatchSize > 0) {
+				const chunk = await fetchPage(chunkSize, nextOffset)
+				fullRows.push(...chunk.rows)
+				lastBatchSize = chunk.rows.length
+				nextOffset += chunk.rows.length
+			}
+
+			// Coalesce group sub-bills: keep one representative per groupBillId with aggregate counts
+			// while preserving the original sorted order by first encounter.
+			const groupBillMap = new Map<
+				string,
+				{
+					representative: (typeof fullRows)[number]
+					statuses: Set<string>
+				}
+			>()
+			const coalescedRows: (typeof fullRows)[number][] = []
+			for (const row of fullRows) {
+				if (!row.groupBillId) {
+					coalescedRows.push(row)
+					continue
+				}
+
+				let entry = groupBillMap.get(row.groupBillId)
+				if (!entry) {
+					const metaGroupId =
+						row.externalMetadata &&
+						typeof (row.externalMetadata as Record<string, unknown>).groupId === 'string'
+							? ((row.externalMetadata as Record<string, unknown>).groupId as string)
+							: null
+					const representative = {
+						...row,
+						...(metaGroupId && {
+							payerId: metaGroupId,
+							payerType: 'group' as const,
+						}),
+						groupBillTotalCount: 0,
+						groupBillPaidCount: 0,
+					}
+					entry = { representative, statuses: new Set<string>() }
+					groupBillMap.set(row.groupBillId, entry)
+					coalescedRows.push(representative)
+				}
+
+				entry.representative.groupBillTotalCount = (entry.representative.groupBillTotalCount ?? 0) + 1
+				if (row.status === 'paid') {
+					entry.representative.groupBillPaidCount =
+						(entry.representative.groupBillPaidCount ?? 0) + 1
+				}
+				entry.statuses.add(row.status)
+			}
+			for (const { representative, statuses } of groupBillMap.values()) {
+				if (statuses.size > 1) representative.groupBillMixed = true
+			}
+
+			const postFilteredRows =
+				requestedPayerType === 'group'
+					? coalescedRows.filter((row) => row.payerType === 'group' || Boolean(row.groupBillId))
+					: coalescedRows
+			totalRowCount = postFilteredRows.length
+			rowsToRender = postFilteredRows.slice(
+				pagination.data.offset,
+				pagination.data.offset + pagination.data.limit
+			)
+		}
 		const db = createDb(c.env.DATABASE_URL)
-		const issuerIds = [...new Set(page.rows.map((row) => row.issuerId).filter(Boolean))]
+		const issuerIds = [...new Set(rowsToRender.map((row) => row.issuerId).filter(Boolean))]
 		const payerAndPayeeEsiIds = [
 			...new Set(
-				page.rows.flatMap((row) =>
+				rowsToRender.flatMap((row) =>
 					[row.payerType !== 'group' ? row.payerId : null, row.payeeId].filter(Boolean)
 				)
 			),
 		] as string[]
 		const groupIds = [
 			...new Set(
-				page.rows.flatMap((row) => {
+				rowsToRender.flatMap((row) => {
 					const ids: string[] = []
 					if (row.payerType === 'group') ids.push(row.payerId)
 					// Sub-bills from group schedules have payerType='character' but store groupId in externalMetadata
@@ -183,7 +267,7 @@ app.get('/', requireAuth(), requireAdmin(), async (c) => {
 		const resolver = getStub<EsiTypeResolver>(c.env.ESI_TYPE_RESOLVER, 'global')
 		const names = resolverIds.length > 0 ? await resolver.resolveIds(resolverIds) : {}
 		const groupNames = await resolveGroupNames(c.env, groupIds)
-		const rows = page.rows.map((row) => {
+		const rows = rowsToRender.map((row) => {
 			const issuerMainCharacterId = issuerMainCharacterByUserId.get(row.issuerId)
 			return {
 				...row,
@@ -198,60 +282,13 @@ app.get('/', requireAuth(), requireAdmin(), async (c) => {
 			}
 		})
 
-		if (!coalesced) {
-			logger.info('[bills-admin] Bills fetched successfully (uncoalesced)', {
-				count: rows.length,
-				rowCount: page.rowCount,
-				userId: user.id,
-			})
-			return c.json({ rows, rowCount: page.rowCount })
-		}
-
-		// Coalesce group sub-bills: keep one representative per groupBillId with aggregate counts
-		// For sub-bills created from a group schedule, override payer with the originating group
-		const groupBillMap = new Map<string, (typeof rows)[0]>()
-		const groupBillStatuses = new Map<string, Set<string>>()
-		const nonGroupRows: (typeof rows)[0][] = []
-		for (const row of rows) {
-			if (row.groupBillId) {
-				if (!groupBillMap.has(row.groupBillId)) {
-					const metaGroupId =
-						row.externalMetadata &&
-						typeof (row.externalMetadata as Record<string, unknown>).groupId === 'string'
-							? ((row.externalMetadata as Record<string, unknown>).groupId as string)
-							: null
-					groupBillMap.set(row.groupBillId, {
-						...row,
-						...(metaGroupId && {
-							payerId: metaGroupId,
-							payerType: 'group' as const,
-							payerName: groupNames.get(metaGroupId),
-						}),
-						groupBillTotalCount: 0,
-						groupBillPaidCount: 0,
-					})
-					groupBillStatuses.set(row.groupBillId, new Set())
-				}
-				const rep = groupBillMap.get(row.groupBillId)!
-				rep.groupBillTotalCount = (rep.groupBillTotalCount ?? 0) + 1
-				if (row.status === 'paid') rep.groupBillPaidCount = (rep.groupBillPaidCount ?? 0) + 1
-				groupBillStatuses.get(row.groupBillId)!.add(row.status)
-			} else {
-				nonGroupRows.push(row)
-			}
-		}
-		for (const [groupBillId, rep] of groupBillMap) {
-			const statuses = groupBillStatuses.get(groupBillId)!
-			if (statuses.size > 1) rep.groupBillMixed = true
-		}
-		const coalescedRows = [...nonGroupRows, ...groupBillMap.values()]
-
 		logger.info('[bills-admin] Bills fetched successfully', {
-			count: coalescedRows.length,
-			rowCount: page.rowCount,
+			count: rows.length,
+			rowCount: totalRowCount,
 			userId: user.id,
+			coalesced,
 		})
-		return c.json({ rows: coalescedRows, rowCount: page.rowCount })
+		return c.json({ rows, rowCount: totalRowCount })
 	} catch (error) {
 		const cause = (error as { cause?: unknown })?.cause as
 			| { message?: string; code?: string; detail?: string; hint?: string }
@@ -1294,6 +1331,39 @@ app.post('/:billId/cancel', requireAuth(), requireAdmin(), async (c) => {
 	} catch (error) {
 		logger.error('Error cancelling bill:', error)
 		return c.json({ error: 'Failed to cancel bill' }, 500)
+	}
+})
+
+/**
+ * POST /bills/:billId/mark-paid
+ * Mark a bill as paid (admin-only)
+ */
+app.post('/:billId/mark-paid', requireAuth(), requireAdmin(), async (c) => {
+	const user = c.get('user')
+	const billId = c.req.param('billId')
+
+	if (!user) {
+		return c.json({ error: 'Unauthorized' }, 401)
+	}
+
+	try {
+		const stub = getStub<Bills>(c.env.BILLS, 'default')
+		const billRecord = await stub.getBillIntegrationView(billId)
+		if (!billRecord) {
+			return c.json({ error: 'Bill not found' }, 404)
+		}
+		const bill = await stub.markBillPaid(user.id, billId)
+		return c.json(bill)
+	} catch (error) {
+		const message = error instanceof Error ? error.message : String(error)
+		logger.error('Error marking bill as paid:', error)
+		if (
+			message.includes('Cannot mark a draft bill as paid') ||
+			message.includes('Cannot mark a cancelled bill as paid')
+		) {
+			return c.json({ error: message }, 400)
+		}
+		return c.json({ error: 'Failed to mark bill as paid' }, 500)
 	}
 })
 
