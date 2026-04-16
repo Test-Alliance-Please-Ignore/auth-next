@@ -668,6 +668,7 @@ export interface DirectorHealth {
 	directorId: string
 	characterId: string
 	characterName: string
+	userId?: string | null
 	isHealthy: boolean
 	lastHealthCheck: Date | null
 	lastUsed: Date | null
@@ -922,6 +923,24 @@ export interface EveCorporationData {
 		corporationId: string,
 		memberIds: string[]
 	): Promise<{ departedMemberIds: string[]; addedMemberIds: string[] }>
+
+	/**
+	 * Reconcile one character's membership rows using authoritative affiliation.
+	 *
+	 * Removes stale memberships from any corporation that no longer matches
+	 * the provided corporation ID, and opportunistically inserts membership for
+	 * the provided corporation when that corporation is configured.
+	 *
+	 * @param characterId - Character ID to reconcile
+	 * @param corporationId - Authoritative corporation ID, or null when unknown/deleted
+	 */
+	reconcileCharacterCorporationMembership(
+		characterId: string,
+		corporationId: string | null
+	): Promise<{
+		removedFromCorporationIds: string[]
+		addedToCorporationId: string | null
+	}>
 
 	/**
 	 * Store member tracking data (workflow-friendly)

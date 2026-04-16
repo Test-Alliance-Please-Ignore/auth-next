@@ -714,6 +714,7 @@ export interface DirectorHealth {
 	directorId: string
 	characterId: string
 	characterName: string
+	userId?: string | null
 	isHealthy: boolean
 	lastHealthCheck: string | null
 	lastUsed: string | null

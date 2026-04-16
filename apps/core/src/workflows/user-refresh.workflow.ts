@@ -7,7 +7,11 @@ import { esiRetryOptions } from '@repo/workflow-utils'
 import { createDb } from '../db'
 import { userCharacters } from '../db/schema'
 import { checkUserBlacklisted, disableBlacklistedUser } from './steps/check-user-blacklisted'
-import { tryCharacterAuthenticatedFetch, updateCharacterPublicInfo } from './steps/update-character'
+import {
+	reconcileCharacterCorporationMembership,
+	tryCharacterAuthenticatedFetch,
+	updateCharacterPublicInfo,
+} from './steps/update-character'
 import { updateCompletionTimestamp } from './steps/update-completion-timestamp'
 import { attachUserRoles, getUserRoleAttachments } from './steps/user-roles'
 
@@ -221,11 +225,33 @@ export class UserRefreshWorkflow extends WorkflowEntrypoint<Env, UserRefreshWork
 			)
 
 			if (updateCharacterPublicInfoResult.isDeleted) {
+				await step.do(
+					`reconcile-corporation-membership-${characterId}`,
+					CHARACTER_STEP_OPTIONS,
+					async () => {
+						const ctx = this.createContext(userId, workflowInstanceId, refreshMode)
+						return reconcileCharacterCorporationMembership(ctx, characterId, null)
+					}
+				)
+
 				return {
 					characterId,
 					status: 'deleted',
 				}
 			}
+
+			await step.do(
+				`reconcile-corporation-membership-${characterId}`,
+				CHARACTER_STEP_OPTIONS,
+				async () => {
+					const ctx = this.createContext(userId, workflowInstanceId, refreshMode)
+					return reconcileCharacterCorporationMembership(
+						ctx,
+						characterId,
+						updateCharacterPublicInfoResult.corporationId
+					)
+				}
+			)
 
 			const authenticatedFetchResult = await step.do(
 				`validate-character-token-${characterId}`,

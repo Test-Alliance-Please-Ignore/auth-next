@@ -6,6 +6,11 @@ const hoisted = vi.hoisted(() => ({
 	mocks: {
 		fetchCharacterPublicInfo: vi.fn(),
 		resolveIds: vi.fn(),
+		reconcileCharacterCorporationMembership: vi.fn(),
+	},
+	namespaces: {
+		esiTypeResolver: Symbol('ESI_TYPE_RESOLVER'),
+		eveCorporationData: Symbol('EVE_CORPORATION_DATA'),
 	},
 }))
 
@@ -16,9 +21,20 @@ vi.mock('@repo/esi', () => ({
 }))
 
 vi.mock('@repo/do-utils', () => ({
-	getStub: vi.fn(() => ({
-		resolveIds: hoisted.mocks.resolveIds,
-	})),
+	getStub: vi.fn((namespace: symbol) => {
+		if (namespace === hoisted.namespaces.esiTypeResolver) {
+			return {
+				resolveIds: hoisted.mocks.resolveIds,
+			}
+		}
+		if (namespace === hoisted.namespaces.eveCorporationData) {
+			return {
+				reconcileCharacterCorporationMembership:
+					hoisted.mocks.reconcileCharacterCorporationMembership,
+			}
+		}
+		return {}
+	}),
 }))
 
 function createDbRecorder() {
@@ -40,6 +56,10 @@ function createDbRecorder() {
 describe('hydrateCharacterAffiliation', () => {
 	beforeEach(() => {
 		vi.clearAllMocks()
+		hoisted.mocks.reconcileCharacterCorporationMembership.mockResolvedValue({
+			removedFromCorporationIds: [],
+			addedToCorporationId: null,
+		})
 	})
 
 	it('persists affiliation IDs immediately and resolves names in background', async () => {
@@ -59,7 +79,9 @@ describe('hydrateCharacterAffiliation', () => {
 			db: recorder.db as never,
 			env: {
 				ESI: {} as DurableObjectNamespace,
-				ESI_TYPE_RESOLVER: {} as DurableObjectNamespace,
+				ESI_TYPE_RESOLVER: hoisted.namespaces.esiTypeResolver as unknown as DurableObjectNamespace,
+				EVE_CORPORATION_DATA:
+					hoisted.namespaces.eveCorporationData as unknown as DurableObjectNamespace,
 			},
 			characterId: '93705729',
 			cacheMode: 'no-store',
@@ -78,6 +100,10 @@ describe('hydrateCharacterAffiliation', () => {
 			allianceId: '498125261',
 			isDeleted: false,
 		})
+		expect(hoisted.mocks.reconcileCharacterCorporationMembership).toHaveBeenCalledWith(
+			'93705729',
+			'1000165'
+		)
 
 		expect(waitUntil).toHaveBeenCalledTimes(1)
 		await waitUntil.mock.calls[0][0]
@@ -99,7 +125,7 @@ describe('hydrateCharacterAffiliation', () => {
 			db: recorder.db as never,
 			env: {
 				ESI: {} as DurableObjectNamespace,
-				ESI_TYPE_RESOLVER: {} as DurableObjectNamespace,
+				ESI_TYPE_RESOLVER: hoisted.namespaces.esiTypeResolver as unknown as DurableObjectNamespace,
 			},
 			characterId: '93705729',
 			cacheMode: 'no-store',
@@ -107,5 +133,6 @@ describe('hydrateCharacterAffiliation', () => {
 
 		expect(recorder.update).toHaveBeenCalledTimes(1)
 		expect(hoisted.mocks.resolveIds).not.toHaveBeenCalled()
+		expect(hoisted.mocks.reconcileCharacterCorporationMembership).not.toHaveBeenCalled()
 	})
 })

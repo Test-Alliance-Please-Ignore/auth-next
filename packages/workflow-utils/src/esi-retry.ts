@@ -41,11 +41,20 @@ export function parseEsiErrorMetadata(message: string): Record<string, unknown> 
 	}
 }
 
+function getEsiStatusFromError(error: unknown): number | null {
+	if (!(error instanceof Error)) return null
+	const metadata = parseEsiErrorMetadata(error.message)
+	const status = metadata?.status
+	return typeof status === 'number' ? status : null
+}
+
 /**
  * Check if an error is a retriable ESI rate limit (420 or 429).
  */
 export function isEsiRateLimitError(error: unknown): boolean {
 	if (!(error instanceof Error)) return false
+	const status = getEsiStatusFromError(error)
+	if (status === 420 || status === 429) return true
 	const msg = error.message.toLowerCase()
 	return msg.includes('420') || msg.includes('429') || msg.includes('rate limit')
 }
@@ -56,6 +65,9 @@ export function isEsiRateLimitError(error: unknown): boolean {
  */
 export function isPermanentEsiFailure(error: unknown): boolean {
 	if (!(error instanceof Error)) return false
+	const status = getEsiStatusFromError(error)
+	if (status === 404) return true
+	if (status === 400 || status === 401 || status === 403) return true
 
 	// CharacterDeletedError by class name (avoids cross-package instanceof issues)
 	if (error.name === 'CharacterDeletedError') return true

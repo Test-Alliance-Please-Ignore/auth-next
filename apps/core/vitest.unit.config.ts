@@ -9,6 +9,11 @@ export default defineConfig({
 	},
 	test: {
 		environment: 'node',
-		include: ['src/routes/__tests__/**/*.test.ts'],
+		include: [
+			'src/routes/__tests__/**/*.test.ts',
+			'src/services/__tests__/**/*.test.ts',
+			'src/workflows/**/*.test.ts',
+			'src/__tests__/**/*.test.ts',
+		],
 	},
 })

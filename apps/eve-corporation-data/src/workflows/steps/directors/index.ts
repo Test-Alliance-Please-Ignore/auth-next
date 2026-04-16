@@ -51,3 +51,14 @@ export async function recordDirectorSuccess(
 	const directorManager = createDirectorManager(env, corporationId)
 	await directorManager.recordSuccess(directorId)
 }
+
+export async function recordDirectorFailure(
+	env: Env,
+	corporationId: string,
+	directorId: string,
+	reason: string,
+	options?: { forceUnhealthy?: boolean }
+): Promise<void> {
+	const directorManager = createDirectorManager(env, corporationId)
+	await directorManager.recordFailure(directorId, reason, options)
+}

@@ -5,12 +5,13 @@ import { getEsiInstanceForCharacter } from '@repo/esi'
 import { userCharacters } from '../db/schema'
 
 import type { EsiTypeResolver } from '@repo/esi'
+import type { EveCorporationData } from '@repo/eve-corporation-data'
 import type { Env } from '../context'
 import type { createDb } from '../db'
 
 type CharacterAffiliationHydrationParams = {
 	db: ReturnType<typeof createDb>
-	env: Pick<Env, 'ESI' | 'ESI_TYPE_RESOLVER'>
+	env: Pick<Env, 'ESI' | 'ESI_TYPE_RESOLVER'> & Partial<Pick<Env, 'EVE_CORPORATION_DATA'>>
 	characterId: string
 	cacheMode?: 'default' | 'no-store'
 	executionCtx?: ExecutionContext
@@ -53,6 +54,19 @@ export async function hydrateCharacterAffiliation(
 			updatedAt: new Date(),
 		})
 		.where(eq(userCharacters.characterId, characterId))
+
+	if (env.EVE_CORPORATION_DATA) {
+		try {
+			const corporationData = getStub<EveCorporationData>(env.EVE_CORPORATION_DATA, 'default')
+			await corporationData.reconcileCharacterCorporationMembership(characterId, corporationId)
+		} catch (error) {
+			console.warn('[Auth] Failed to reconcile corporation membership after hydration', {
+				characterId,
+				corporationId,
+				error: error instanceof Error ? error.message : String(error),
+			})
+		}
+	}
 
 	if (executionCtx) {
 		executionCtx.waitUntil(
