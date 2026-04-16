@@ -391,6 +391,68 @@ export class CoreDO extends DurableObject<Env> implements Core {
 		return filteredUserIds
 	}
 
+	private async resolveUserIdsForCharacterIds(characterIds: string[]): Promise<string[]> {
+		if (characterIds.length === 0) {
+			return []
+		}
+
+		const mappings = await this.getDb()
+			.select({ userId: userCharacters.userId })
+			.from(userCharacters)
+			.where(inArray(userCharacters.characterId, characterIds))
+
+		return [...new Set(mappings.map((m) => m.userId))]
+	}
+
+	async handleCharacterAffiliationChange(
+		characterId: string,
+		options?: { source?: string; bypassThrottle?: boolean }
+	): Promise<{
+		usersMatched: number
+		workflowsTriggered: number
+		discordUsersQueued: number
+	}> {
+		return this.handleCharacterAffiliationChanges([characterId], options)
+	}
+
+	async handleCharacterAffiliationChanges(
+		characterIds: string[],
+		options?: { source?: string; bypassThrottle?: boolean }
+	): Promise<{
+		usersMatched: number
+		workflowsTriggered: number
+		discordUsersQueued: number
+	}> {
+		const normalizedCharacterIds = [...new Set(characterIds.map((id) => String(id)))]
+		const uniqueUserIds = await this.resolveUserIdsForCharacterIds(normalizedCharacterIds)
+		const db = this.getDb()
+		let workflowsTriggered = 0
+
+		for (const userId of uniqueUserIds) {
+			const result = await triggerUserRefreshWorkflow({
+				db,
+				env: this.env,
+				userId,
+				source: options?.source ?? 'character-affiliation-changed',
+				bypassThrottle: options?.bypassThrottle ?? true,
+				refreshMode: 'event',
+			})
+			if (result.triggered) {
+				workflowsTriggered++
+			}
+		}
+
+		await this.addPendingDiscordRefreshes(uniqueUserIds, {
+			source: options?.source ?? 'character-affiliation-changed',
+		})
+
+		return {
+			usersMatched: uniqueUserIds.length,
+			workflowsTriggered,
+			discordUsersQueued: uniqueUserIds.length,
+		}
+	}
+
 	/**
 	 * Add userIds to the pending Discord refresh map.
 	 * If a userId already has a non-expired entry (processed or not), it is skipped —

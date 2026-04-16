@@ -4,7 +4,10 @@ import {
 	calculateJsonSize,
 	generateCleanupPrefix,
 	generateR2Key,
+	isEsiRateLimitError,
+	isPermanentEsiFailure,
 	jsonReplacer,
+	parseEsiErrorMetadata,
 	safeJsonParse,
 	safeJsonStringify,
 	shouldStoreInR2,
@@ -136,6 +139,32 @@ describe('workflow-utils', () => {
 				const prefix = generateCleanupPrefix('', 'instance-123')
 				expect(prefix).toBe('instance-123/')
 			})
+		})
+	})
+
+	describe('ESI retry classification', () => {
+		it('parses ESI metadata from error text', () => {
+			const metadata = parseEsiErrorMetadata(
+				'ESI request failed: 403 Forbidden - {"error":"Forbidden"} | metadata={"status":403,"path":"/corporations/1/members"}'
+			)
+			expect(metadata).toMatchObject({
+				status: 403,
+				path: '/corporations/1/members',
+			})
+		})
+
+		it('classifies permanent failures by numeric metadata status', () => {
+			const error = new Error(
+				'ESI request failed: Forbidden-ish text | metadata={"status":403,"path":"/x"}'
+			)
+			expect(isPermanentEsiFailure(error)).toBe(true)
+		})
+
+		it('classifies rate limits by numeric metadata status', () => {
+			const error = new Error(
+				'request failed without explicit 429 text | metadata={"status":429,"path":"/x"}'
+			)
+			expect(isEsiRateLimitError(error)).toBe(true)
 		})
 	})
 })

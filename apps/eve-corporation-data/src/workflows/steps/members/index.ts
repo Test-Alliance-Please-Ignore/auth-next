@@ -60,10 +60,12 @@ export async function sendMembershipChangedMessages(
 		return
 	}
 
-	await env.CORE.addPendingDiscordRefreshesForCharacters(memberIds)
+	await env.CORE.handleCharacterAffiliationChanges(memberIds, {
+		source: 'corp-membership-changed',
+		bypassThrottle: true,
+	})
 
-	logger.info('[MembersStep] Members sent to Core for Discord refresh', {
+	logger.info('[MembersStep] Membership changes sent to Core for unified affiliation handling', {
 		count: memberIds.length,
 	})
 }
-

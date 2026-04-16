@@ -1,5 +1,6 @@
 import { AlertCircle, Plus, RefreshCw, Trash2 } from 'lucide-react'
 import { useMemo, useState } from 'react'
+import { Link } from 'react-router-dom'
 
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
@@ -195,7 +196,18 @@ export function DirectorList({ corporationId }: DirectorListProps) {
 								<TableRow key={director.directorId}>
 									<TableCell>
 										<div>
-											<div className="font-medium">{director.characterName}</div>
+											<div className="font-medium">
+												{director.userId ? (
+													<Link
+														to={`/admin/users/${director.userId}`}
+														className="text-primary hover:underline"
+													>
+														{director.characterName}
+													</Link>
+												) : (
+													director.characterName
+												)}
+											</div>
 											<div className="text-xs text-muted-foreground">
 												ID: {director.characterId}
 											</div>

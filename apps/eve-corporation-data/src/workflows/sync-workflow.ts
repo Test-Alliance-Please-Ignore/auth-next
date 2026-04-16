@@ -1,7 +1,12 @@
 import { WorkflowEntrypoint } from 'cloudflare:workers'
 
 import { logger } from '@repo/hono-helpers'
-import { NonRetryableError, esiRetryOptions, withEsiRetryClassification } from '@repo/workflow-utils'
+import {
+	NonRetryableError,
+	esiRetryOptions,
+	parseEsiErrorMetadata,
+	withEsiRetryClassification,
+} from '@repo/workflow-utils'
 
 import { syncAssets } from './steps/assets'
 import {
@@ -14,7 +19,7 @@ import {
 	updateSyncTimestamps,
 } from './steps/common'
 import { fetchContracts, storeContracts } from './steps/contracts'
-import { recordDirectorSuccess, selectDirector } from './steps/directors'
+import { recordDirectorFailure, recordDirectorSuccess, selectDirector } from './steps/directors'
 import { fetchIndustryJobs, storeIndustryJobs } from './steps/industry-jobs'
 import { fetchKillmails, storeKillmails } from './steps/killmails'
 import { fetchMemberTracking, storeMemberTracking } from './steps/member-tracking'
@@ -69,7 +74,7 @@ export class EveCorporationSyncWorkflow extends WorkflowEntrypoint<Env, EveCorpo
 
 		const shouldSync = createShouldSyncPredicate(dataTypes)
 
-		const director: DirectorInfo | null = await step.do(
+		let director: DirectorInfo | null = await step.do(
 			'select-director',
 			{
 				retries: { limit: 3, delay: '2 seconds', backoff: 'exponential' },
@@ -98,12 +103,25 @@ export class EveCorporationSyncWorkflow extends WorkflowEntrypoint<Env, EveCorpo
 			)
 		}
 
-		const directorId = director?.directorId ?? null
-		const directorCharacterId = director?.characterId ?? null
-		const directorCharacterName = director?.characterName ?? null
-
 		const shouldSyncAuthenticated = (type: EveCorporationSyncDataType) =>
-			directorCharacterId !== null && shouldSync(type)
+			director !== null && shouldSync(type)
+
+		const isDirectorAuthFailure = (error: unknown): boolean => {
+			if (error instanceof Error) {
+				const metadata = parseEsiErrorMetadata(error.message)
+				const status = metadata?.status
+				if (status === 401 || status === 403) {
+					return true
+				}
+			}
+			const message = error instanceof Error ? error.message.toLowerCase() : String(error).toLowerCase()
+			return (
+				message.includes('esi request failed: 403') ||
+				message.includes('esi request failed: 401') ||
+				message.includes('forbidden') ||
+				message.includes('unauthorized')
+			)
+		}
 
 		// All step results - state is exclusively derived from step.do() returns
 		// to survive workflow hibernation
@@ -140,14 +158,58 @@ export class EveCorporationSyncWorkflow extends WorkflowEntrypoint<Env, EveCorpo
 		}
 
 		if (shouldSyncAuthenticated('members')) {
-			const members = await step.do(
-				'fetch-members',
-				{ ...STEP_RETRY_OPTIONS, timeout: '1 minute' },
-				() =>
-					withEsiRetryClassification('fetch-members', () =>
-						fetchMembers(this.env, corporationId, directorCharacterId!)
-					)
-			)
+			let members: Awaited<ReturnType<typeof fetchMembers>>
+			try {
+				members = await step.do(
+					'fetch-members',
+					{ ...STEP_RETRY_OPTIONS, timeout: '1 minute' },
+					() =>
+						withEsiRetryClassification('fetch-members', () =>
+							fetchMembers(this.env, corporationId, director!.characterId)
+						)
+				)
+			} catch (error) {
+				if (!director || !isDirectorAuthFailure(error)) {
+					throw error
+				}
+
+				const errorMessage = error instanceof Error ? error.message : String(error)
+				logger.warn('[EveCorporationSyncWorkflow] Director auth failure on fetch-members, failing over', {
+					corporationId,
+					directorId: director.directorId,
+					directorCharacterId: director.characterId,
+					error: errorMessage,
+				})
+
+				await step.do('record-director-failure-fetch-members', {}, () =>
+					recordDirectorFailure(this.env, corporationId, director!.directorId, errorMessage, {
+						forceUnhealthy: true,
+					})
+				)
+
+				const replacementDirector = await step.do(
+					'reselect-director-after-fetch-members-auth-failure',
+					{
+						retries: { limit: 3, delay: '2 seconds', backoff: 'exponential' },
+						timeout: '30 seconds',
+					},
+					() => selectDirector(this.env, corporationId)
+				)
+
+				if (!replacementDirector) {
+					throw error
+				}
+
+				director = replacementDirector
+				members = await step.do(
+					'fetch-members-with-failover-director',
+					{ ...STEP_RETRY_OPTIONS, timeout: '1 minute' },
+					() =>
+						withEsiRetryClassification('fetch-members-with-failover-director', () =>
+							fetchMembers(this.env, corporationId, director!.characterId)
+						)
+				)
+			}
 
 			membersSync = await step.do('store-members', {}, async () => {
 				const memberResult = await storeMembers(this.env, corporationId, members)
@@ -182,7 +244,7 @@ export class EveCorporationSyncWorkflow extends WorkflowEntrypoint<Env, EveCorpo
 				{ ...STEP_RETRY_OPTIONS, timeout: '1 minute' },
 				() =>
 					withEsiRetryClassification('fetch-member-tracking', () =>
-						fetchMemberTracking(this.env, corporationId, directorCharacterId!)
+						fetchMemberTracking(this.env, corporationId, director!.characterId)
 					)
 			)
 
@@ -201,7 +263,7 @@ export class EveCorporationSyncWorkflow extends WorkflowEntrypoint<Env, EveCorpo
 				{ ...STEP_RETRY_OPTIONS, timeout: '1 minute' },
 				() =>
 					withEsiRetryClassification('fetch-wallets', () =>
-						fetchWallets(this.env, corporationId, directorCharacterId!)
+						fetchWallets(this.env, corporationId, director!.characterId)
 					)
 			)
 
@@ -221,7 +283,7 @@ export class EveCorporationSyncWorkflow extends WorkflowEntrypoint<Env, EveCorpo
 				async () => {
 					const walletJournalResult = await withEsiRetryClassification(
 						'sync-wallet-journal',
-						() => syncWalletJournal(this.env, corporationId, directorCharacterId!)
+						() => syncWalletJournal(this.env, corporationId, director!.characterId)
 					)
 					return {
 						dataType: 'wallet-journal' as const,
@@ -243,7 +305,7 @@ export class EveCorporationSyncWorkflow extends WorkflowEntrypoint<Env, EveCorpo
 				async () => {
 					const walletTransactionsResult = await withEsiRetryClassification(
 						'sync-wallet-transactions',
-						() => syncWalletTransactions(this.env, corporationId, directorCharacterId!)
+						() => syncWalletTransactions(this.env, corporationId, director!.characterId)
 					)
 					return {
 						dataType: 'wallet-transactions' as const,
@@ -264,7 +326,7 @@ export class EveCorporationSyncWorkflow extends WorkflowEntrypoint<Env, EveCorpo
 				{ ...STEP_RETRY_OPTIONS, timeout: '10 minutes' },
 				async () => {
 					const result = await withEsiRetryClassification('sync-assets', () =>
-						syncAssets(this.env, corporationId, directorCharacterId!)
+						syncAssets(this.env, corporationId, director!.characterId)
 					)
 					return {
 						dataType: 'assets' as const,
@@ -280,7 +342,7 @@ export class EveCorporationSyncWorkflow extends WorkflowEntrypoint<Env, EveCorpo
 				{ ...STEP_RETRY_OPTIONS, timeout: '1 minute' },
 				() =>
 					withEsiRetryClassification('fetch-structures', () =>
-						fetchStructures(this.env, corporationId, directorCharacterId!)
+						fetchStructures(this.env, corporationId, director!.characterId)
 					)
 			)
 
@@ -299,7 +361,7 @@ export class EveCorporationSyncWorkflow extends WorkflowEntrypoint<Env, EveCorpo
 				{ ...STEP_RETRY_OPTIONS, timeout: '1 minute' },
 				() =>
 					withEsiRetryClassification('fetch-orders', () =>
-						fetchOrders(this.env, corporationId, directorCharacterId!)
+						fetchOrders(this.env, corporationId, director!.characterId)
 					)
 			)
 
@@ -318,7 +380,7 @@ export class EveCorporationSyncWorkflow extends WorkflowEntrypoint<Env, EveCorpo
 				{ ...STEP_RETRY_OPTIONS, timeout: '1 minute' },
 				() =>
 					withEsiRetryClassification('fetch-contracts', () =>
-						fetchContracts(this.env, corporationId, directorCharacterId!)
+						fetchContracts(this.env, corporationId, director!.characterId)
 					)
 			)
 
@@ -337,7 +399,7 @@ export class EveCorporationSyncWorkflow extends WorkflowEntrypoint<Env, EveCorpo
 				{ ...STEP_RETRY_OPTIONS, timeout: '1 minute' },
 				() =>
 					withEsiRetryClassification('fetch-industry-jobs', () =>
-						fetchIndustryJobs(this.env, corporationId, directorCharacterId!)
+						fetchIndustryJobs(this.env, corporationId, director!.characterId)
 					)
 			)
 
@@ -356,7 +418,7 @@ export class EveCorporationSyncWorkflow extends WorkflowEntrypoint<Env, EveCorpo
 				{ ...STEP_RETRY_OPTIONS, timeout: '1 minute' },
 				() =>
 					withEsiRetryClassification('fetch-killmails', () =>
-						fetchKillmails(this.env, corporationId, directorCharacterId!)
+						fetchKillmails(this.env, corporationId, director!.characterId)
 					)
 			)
 
@@ -433,9 +495,9 @@ export class EveCorporationSyncWorkflow extends WorkflowEntrypoint<Env, EveCorpo
 
 		await step.do('update-last-sync', {}, () => updateCoreLastSync(this.env, corporationId))
 
-		if (directorId) {
+		if (director?.directorId) {
 			await step.do('record-director-success', {}, () =>
-				recordDirectorSuccess(this.env, corporationId, directorId)
+				recordDirectorSuccess(this.env, corporationId, director!.directorId)
 			)
 		}
 
@@ -453,7 +515,7 @@ export class EveCorporationSyncWorkflow extends WorkflowEntrypoint<Env, EveCorpo
 			return replay
 		})
 
-		if ((walletJournalSync || walletTransactionsSync) && directorId) {
+		if ((walletJournalSync || walletTransactionsSync) && director?.directorId) {
 			const taxProjectionDispatch = await dispatchTaxProjectionRefresh({
 				deps: {
 					trigger: async () => {
@@ -463,7 +525,8 @@ export class EveCorporationSyncWorkflow extends WorkflowEntrypoint<Env, EveCorpo
 								retries: { limit: 3, delay: '10 seconds', backoff: 'exponential' },
 								timeout: '1 minute',
 							},
-							() => triggerTaxProjectionRefresh(this.env, directorId, taxProjectionInput)
+							() =>
+								triggerTaxProjectionRefresh(this.env, director!.directorId, taxProjectionInput)
 						)
 					},
 					clearRetryIntent: () =>
@@ -475,7 +538,7 @@ export class EveCorporationSyncWorkflow extends WorkflowEntrypoint<Env, EveCorpo
 							recordTaxProjectionRetryIntent(
 								this.env,
 								corporationId,
-								directorId,
+								director!.directorId,
 								taxProjectionInput,
 								errorMessage
 							)
@@ -508,9 +571,9 @@ export class EveCorporationSyncWorkflow extends WorkflowEntrypoint<Env, EveCorpo
 			trigger,
 			director: director
 				? {
-						directorId,
-						characterId: directorCharacterId,
-						characterName: directorCharacterName,
+						directorId: director.directorId,
+						characterId: director.characterId,
+						characterName: director.characterName,
 					}
 				: null,
 			syncedDataTypes,

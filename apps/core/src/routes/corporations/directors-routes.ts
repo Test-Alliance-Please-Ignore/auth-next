@@ -1,10 +1,10 @@
 import { Hono } from 'hono'
 
-import { eq } from '@repo/db-utils'
+import { eq, inArray } from '@repo/db-utils'
 import { getStub } from '@repo/do-utils'
 import { logger } from '@repo/hono-helpers'
 
-import { managedCorporations } from '../../db/schema'
+import { managedCorporations, userCharacters } from '../../db/schema'
 import { requireAdmin, requireAuth } from '../../middleware/session'
 
 import type { EveCorporationData } from '@repo/eve-corporation-data'
@@ -18,12 +18,38 @@ const app = new Hono<App>()
  */
 app.get('/:corporationId/directors', requireAuth(), requireAdmin(), async (c) => {
 	const corporationId = c.req.param('corporationId')
+	const db = c.get('db')
+
+	if (!db) {
+		return c.json({ error: 'Database not available' }, 500)
+	}
 
 	try {
 		const stub = getStub<EveCorporationData>(c.env.EVE_CORPORATION_DATA, corporationId)
 		const directors = await stub.getDirectors(corporationId)
 
-		return c.json(directors)
+		const characterIds = directors.map((director) => director.characterId)
+		if (characterIds.length === 0) {
+			return c.json(directors)
+		}
+
+		const ownerRows = await db.query.userCharacters.findMany({
+			where: inArray(userCharacters.characterId, characterIds),
+			columns: {
+				characterId: true,
+				userId: true,
+			},
+		})
+		const ownerByCharacterId = new Map(
+			ownerRows.map((row) => [row.characterId, row.userId] as const)
+		)
+
+		const directorsWithOwner = directors.map((director) => ({
+			...director,
+			userId: ownerByCharacterId.get(director.characterId) ?? null,
+		}))
+
+		return c.json(directorsWithOwner)
 	} catch (error) {
 		logger.error('Error fetching directors:', error)
 		return c.json({ error: 'Failed to fetch directors' }, 500)

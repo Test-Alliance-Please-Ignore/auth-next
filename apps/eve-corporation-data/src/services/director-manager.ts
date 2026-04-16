@@ -48,7 +48,12 @@ export class DirectorManager {
 	constructor(
 		private readonly db: ReturnType<typeof createDb>,
 		private readonly corporationId: string,
-		private readonly tokenStore: EveTokenStore
+		private readonly tokenStore: EveTokenStore,
+		private readonly onAffiliationMismatch?: (
+			characterId: string,
+			expectedCorporationId: string,
+			actualCorporationId: string | null
+		) => Promise<void>
 	) {}
 
 	/**
@@ -210,6 +215,32 @@ export class DirectorManager {
 						}
 					}
 
+					const affiliationCheck = await this.checkAffiliation(candidate.characterId)
+					if (!affiliationCheck.matches) {
+						if (this.onAffiliationMismatch) {
+							try {
+								await this.onAffiliationMismatch(
+									candidate.characterId,
+									this.corporationId,
+									affiliationCheck.corporationId
+								)
+							} catch (error) {
+								console.error('[DirectorManager] Affiliation mismatch callback failed', {
+									corporationId: this.corporationId,
+									characterId: candidate.characterId,
+									error: error instanceof Error ? error.message : String(error),
+								})
+							}
+						}
+						await this.safeRecordFailure(
+							candidate.directorId,
+							`Director affiliation mismatch: expected corporation ${this.corporationId}, got ${affiliationCheck.corporationId ?? 'unknown'}`
+						)
+						continue
+					}
+
+					await this.safeMarkSelected(candidate.directorId)
+
 					return {
 						directorId: candidate.directorId,
 						characterId: String(candidate.characterId),
@@ -235,6 +266,66 @@ export class DirectorManager {
 				}
 			)
 			return null
+		}
+	}
+
+	private async markSelected(directorId: string): Promise<void> {
+		await this.db
+			.update(corporationDirectors)
+			.set({
+				lastUsed: new Date(),
+				updatedAt: new Date(),
+			})
+			.where(eq(corporationDirectors.id, directorId))
+	}
+
+	private async safeMarkSelected(directorId: string): Promise<void> {
+		try {
+			await this.markSelected(directorId)
+		} catch (error) {
+			console.error('[DirectorManager] Failed to update director lastUsed on selection', {
+				corporationId: this.corporationId,
+				directorId,
+				error: error instanceof Error ? error.message : String(error),
+			})
+		}
+	}
+
+	private async checkAffiliation(
+		characterId: string
+	): Promise<{ matches: boolean; corporationId: string | null }> {
+		const numericCharacterId = Number.parseInt(characterId, 10)
+		if (!Number.isFinite(numericCharacterId)) {
+			return { matches: false, corporationId: null }
+		}
+
+		const response = await fetch('https://esi.evetech.net/latest/characters/affiliation/', {
+			method: 'POST',
+			headers: {
+				'Content-Type': 'application/json',
+				Accept: 'application/json',
+				'X-Compatibility-Date': '2025-09-30',
+			},
+			body: JSON.stringify([numericCharacterId]),
+		})
+
+		if (!response.ok) {
+			throw new Error(`Affiliation check failed: ${response.status} ${response.statusText}`)
+		}
+
+		const affiliations = (await response.json()) as Array<{
+			character_id: number
+			corporation_id: number
+		}>
+		const affiliation = affiliations.find((entry) => entry.character_id === numericCharacterId)
+		if (!affiliation) {
+			return { matches: false, corporationId: null }
+		}
+
+		const corporationId = String(affiliation.corporation_id)
+		return {
+			matches: corporationId === this.corporationId,
+			corporationId,
 		}
 	}
 
@@ -292,7 +383,11 @@ export class DirectorManager {
 	/**
 	 * Record director failure and potentially mark as unhealthy
 	 */
-	async recordFailure(directorId: string, reason: string): Promise<void> {
+	async recordFailure(
+		directorId: string,
+		reason: string,
+		options?: { forceUnhealthy?: boolean }
+	): Promise<void> {
 		const now = new Date()
 
 		// Get current failure count
@@ -304,8 +399,13 @@ export class DirectorManager {
 			return
 		}
 
-		const newFailureCount = director.failureCount + 1
-		const shouldMarkUnhealthy = newFailureCount >= FAILURE_THRESHOLD
+		let newFailureCount = director.failureCount + 1
+		const shouldMarkUnhealthy = options?.forceUnhealthy
+			? true
+			: newFailureCount >= FAILURE_THRESHOLD
+		if (options?.forceUnhealthy) {
+			newFailureCount = Math.max(newFailureCount, FAILURE_THRESHOLD)
+		}
 
 		await this.db
 			.update(corporationDirectors)

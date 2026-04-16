@@ -34,6 +34,22 @@ export interface Core {
 		userIds: string[],
 		options?: { source?: string }
 	): Promise<{ pendingCount: number }>
+	handleCharacterAffiliationChange(
+		characterId: string,
+		options?: { source?: string; bypassThrottle?: boolean }
+	): Promise<{
+		usersMatched: number
+		workflowsTriggered: number
+		discordUsersQueued: number
+	}>
+	handleCharacterAffiliationChanges(
+		characterIds: string[],
+		options?: { source?: string; bypassThrottle?: boolean }
+	): Promise<{
+		usersMatched: number
+		workflowsTriggered: number
+		discordUsersQueued: number
+	}>
 	processPendingDiscordRefreshes(): Promise<{
 		processed: number
 		triggered: number

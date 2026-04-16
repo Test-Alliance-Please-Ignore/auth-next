@@ -10,6 +10,28 @@ export interface CoreWorker {
 	addPendingDiscordRefreshesForCharacters(
 		characterIds: string[]
 	): Promise<{ usersQueued: number; pendingCount: number }>
+	handleCharacterAffiliationChange(
+		characterId: string,
+		options?: {
+			source?: string
+			bypassThrottle?: boolean
+		}
+	): Promise<{
+		usersMatched: number
+		workflowsTriggered: number
+		discordUsersQueued: number
+	}>
+	handleCharacterAffiliationChanges(
+		characterIds: string[],
+		options?: {
+			source?: string
+			bypassThrottle?: boolean
+		}
+	): Promise<{
+		usersMatched: number
+		workflowsTriggered: number
+		discordUsersQueued: number
+	}>
 }
 
 export type Env = SharedHonoEnv & {

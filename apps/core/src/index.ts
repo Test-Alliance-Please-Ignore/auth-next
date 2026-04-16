@@ -603,6 +603,88 @@ export class CoreWorker extends WorkerEntrypoint<Env> {
 
 		return { usersQueued: uniqueUserIds.length, pendingCount: result.pendingCount }
 	}
+
+	private async resolveUserIdsForCharacterIds(characterIds: string[]): Promise<string[]> {
+		if (characterIds.length === 0) {
+			return []
+		}
+
+		const db = createDb(this.env.DATABASE_URL)
+		const mappings = await db
+			.select({ userId: userCharacters.userId })
+			.from(userCharacters)
+			.where(inArray(userCharacters.characterId, characterIds))
+
+		return [...new Set(mappings.map((m) => m.userId))]
+	}
+
+	/**
+	 * Handle an observed character affiliation change signal from external workers.
+	 *
+	 * This triggers the same downstream consistency path used for normal corp-change
+	 * detection: user refresh workflow (affiliation persistence + role attachments)
+	 * and pending Discord refresh queue updates.
+	 */
+	async handleCharacterAffiliationChange(
+		characterId: string,
+		options?: {
+			source?: string
+			bypassThrottle?: boolean
+		}
+	): Promise<{
+		usersMatched: number
+		workflowsTriggered: number
+		discordUsersQueued: number
+	}> {
+		return this.handleCharacterAffiliationChanges([characterId], options)
+	}
+
+	/**
+	 * Batch variant of affiliation change handling.
+	 *
+	 * Unified path used by director-affiliation mismatch signals and corporation
+	 * membership diff signals so all sources converge on the same outcomes.
+	 */
+	async handleCharacterAffiliationChanges(
+		characterIds: string[],
+		options?: {
+			source?: string
+			bypassThrottle?: boolean
+		}
+	): Promise<{
+		usersMatched: number
+		workflowsTriggered: number
+		discordUsersQueued: number
+	}> {
+		const normalizedCharacterIds = [...new Set(characterIds.map((id) => String(id)))]
+		const uniqueUserIds = await this.resolveUserIdsForCharacterIds(normalizedCharacterIds)
+		let workflowsTriggered = 0
+		const db = createDb(this.env.DATABASE_URL)
+
+		for (const userId of uniqueUserIds) {
+			const result = await triggerUserRefreshWorkflow({
+				db,
+				env: this.env,
+				userId,
+				source: options?.source ?? 'character-affiliation-changed',
+				bypassThrottle: options?.bypassThrottle ?? true,
+				refreshMode: 'event',
+			})
+			if (result.triggered) {
+				workflowsTriggered++
+			}
+		}
+
+		const discordQueueResult = await this.addPendingDiscordRefreshesForCharacters(
+			normalizedCharacterIds
+		)
+
+		return {
+			usersMatched: uniqueUserIds.length,
+			workflowsTriggered,
+			discordUsersQueued: discordQueueResult.usersQueued,
+		}
+	}
 }
 
 // Export Durable Object class
