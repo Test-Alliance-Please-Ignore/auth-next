@@ -964,14 +964,25 @@ export class BillService {
 			throw new Error('Cannot mark a cancelled bill as paid')
 		}
 
+		const existingPayments = await this.db.query.billPayments.findMany({
+			where: eq(billPayments.billId, billId),
+		})
+		const totalDue = BigInt(existingBill.amount) + BigInt(existingBill.lateFee)
+		const totalPaid = existingPayments.reduce(
+			(acc, payment) => acc + BigInt(payment.amount),
+			BigInt(0)
+		)
+		const remaining = totalDue > totalPaid ? totalDue - totalPaid : BigInt(0)
+		const paidAt = new Date()
+
 		const transitioned = await this.applyStatusTransitionAtomic({
 			billId,
 			fromStatus: existingBill.status,
 			toStatus: 'paid',
 			eventType: 'paid',
 			actorUserId,
-			paidAt: new Date(),
-			metadata: actorUserId ? { reason: 'admin_marked_paid' } : null,
+			paidAt,
+			metadata: actorUserId ? { source: 'admin_mark_paid' } : { source: 'system_mark_paid' },
 		})
 		if (!transitioned) {
 			const currentBill = await this.db.query.bills.findFirst({
@@ -981,6 +992,32 @@ export class BillService {
 				return this.toBillResponse(currentBill)
 			}
 			throw new Error('Bill status changed during payment finalization; please retry')
+		}
+
+		// Ensure manual/system mark-paid operations leave a payment-history trail.
+		if (remaining > BigInt(0)) {
+			const manualTransactionId = `manual-paid:${billId}:${generateUuidV7()}`
+			await this.db.insert(billPayments).values({
+				billId,
+				paymentToken: existingBill.paymentToken,
+				esiTransactionId: manualTransactionId,
+				amount: remaining.toString(),
+				paidById: actorUserId ?? 'system',
+				paidByType: 'character',
+				paidAt,
+			})
+			await this.createStatusEvent({
+				billId,
+				eventType: 'payment_recorded',
+				fromStatus: null,
+				toStatus: null,
+				actorUserId,
+				metadata: {
+					amount: remaining.toString(),
+					source: actorUserId ? 'admin_mark_paid' : 'system_mark_paid',
+					manual: true,
+				},
+			})
 		}
 
 		const updatedBill = await this.db.query.bills.findFirst({

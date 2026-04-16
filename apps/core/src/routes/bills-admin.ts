@@ -1080,17 +1080,29 @@ app.get('/:billId', requireAuth(), requireAdmin(), async (c) => {
 		// Resolve entity names (issuer user, EVE entities, and auth groups).
 		const resolver = getStub<EsiTypeResolver>(c.env.ESI_TYPE_RESOLVER, 'global')
 		const db = createDb(c.env.DATABASE_URL)
-		const issuerUser = await db.query.users.findFirst({
-			where: eq(users.id, bill.issuerId),
-			columns: { mainCharacterId: true },
-		})
+		const paymentPaidByIds = bill.payments?.map((payment) => payment.paidById) ?? []
+		const relatedUserIds = [...new Set([bill.issuerId, ...paymentPaidByIds].filter(Boolean))]
+		const relatedUsers =
+			relatedUserIds.length > 0
+				? await db.query.users.findMany({
+						where: inArray(users.id, relatedUserIds),
+						columns: { id: true, mainCharacterId: true },
+					})
+				: []
+		const userMainCharacterByUserId = new Map(
+			relatedUsers
+				.map((entry) => [entry.id, entry.mainCharacterId] as const)
+				.filter((entry): entry is readonly [string, string] => Boolean(entry[1]))
+		)
+		const issuerMainCharacterId = userMainCharacterByUserId.get(bill.issuerId)
 		const esiIdsToResolve = [
 			bill.payerType !== 'group' ? bill.payerId : null,
 			bill.payeeId,
-			issuerUser?.mainCharacterId ?? null,
+			issuerMainCharacterId ?? null,
 			...(bill.payments?.map((payment) =>
 				payment.paidByType !== 'group' ? payment.paidById : null
 			) ?? []),
+			...paymentPaidByIds.map((paidById) => userMainCharacterByUserId.get(paidById) ?? null),
 		].filter(Boolean) as string[]
 		const groupIdsToResolve = [
 			bill.payerType === 'group' ? bill.payerId : null,
@@ -1102,8 +1114,8 @@ app.get('/:billId', requireAuth(), requireAdmin(), async (c) => {
 			esiIdsToResolve.length > 0 ? await resolver.resolveIds([...new Set(esiIdsToResolve)]) : {}
 		const groupNames = await resolveGroupNames(c.env, groupIdsToResolve)
 
-		bill.issuerName = issuerUser?.mainCharacterId
-			? (nameMap[issuerUser.mainCharacterId] ?? undefined)
+		bill.issuerName = issuerMainCharacterId
+			? (nameMap[issuerMainCharacterId] ?? undefined)
 			: undefined
 		bill.payerName =
 			bill.payerType === 'group'
@@ -1118,7 +1130,11 @@ app.get('/:billId', requireAuth(), requireAdmin(), async (c) => {
 				paidByName:
 					payment.paidByType === 'group'
 						? (groupNames.get(payment.paidById) ?? undefined)
-						: (nameMap[payment.paidById] ?? undefined),
+						: (nameMap[payment.paidById] ??
+							(userMainCharacterByUserId.get(payment.paidById)
+								? nameMap[userMainCharacterByUserId.get(payment.paidById)!]
+								: undefined) ??
+							undefined),
 			}))
 		}
 
