@@ -10,6 +10,7 @@ import {
 	corporationAssets,
 	corporationConfig,
 	corporationContracts,
+	corporationDirectors,
 	corporationIndustryJobs,
 	corporationKillmails,
 	corporationMembers,
@@ -1026,8 +1027,18 @@ export class EveCorporationDataDO extends DurableObject<Env> implements EveCorpo
 					)
 				)
 
+			await this.getDb()
+				.delete(corporationDirectors)
+				.where(
+					and(
+						eq(corporationDirectors.characterId, normalizedCharacterId),
+						inArray(corporationDirectors.corporationId, removedFromCorporationIds)
+					)
+				)
+
 			for (const removedCorporationId of removedFromCorporationIds) {
 				await this.invalidateMembersCache(removedCorporationId)
+				await this.invalidateDirectorsCache(removedCorporationId)
 			}
 
 			const departedMessages = removedFromCorporationIds.map((removedCorporationId) => ({

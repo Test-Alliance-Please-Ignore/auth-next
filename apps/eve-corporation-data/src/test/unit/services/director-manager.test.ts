@@ -53,6 +53,7 @@ describe('DirectorManager.selectDirector', () => {
 		const safeMarkSelected = vi
 			.spyOn(manager as any, 'safeMarkSelected')
 			.mockResolvedValue(undefined)
+		const removeDirector = vi.spyOn(manager, 'removeDirector').mockResolvedValue(undefined)
 
 		const selected = await manager.selectDirector()
 
@@ -60,7 +61,10 @@ describe('DirectorManager.selectDirector', () => {
 		expect(safeRecordFailure).toHaveBeenCalledWith(
 			'dir-1',
 			'Director affiliation mismatch: expected corporation 98000001, got 98000002'
+			,
+			{ forceUnhealthy: true }
 		)
+		expect(removeDirector).toHaveBeenCalledWith('111')
 		expect(selected).toEqual({
 			directorId: 'dir-2',
 			characterId: '222',
@@ -233,6 +237,9 @@ describe('DirectorManager.verifyDirectorHealth', () => {
 			update,
 		}
 		const tokenStore = {
+			fetchCharacterAffiliations: vi.fn().mockResolvedValue({
+				data: [{ character_id: 111, corporation_id: 98000001 }],
+			}),
 			fetchEsi: vi.fn().mockResolvedValue({
 				data: {
 					roles: ['Trader'],
@@ -251,6 +258,7 @@ describe('DirectorManager.verifyDirectorHealth', () => {
 		})
 
 		expect(result).toBe(true)
+		expect(tokenStore.fetchCharacterAffiliations).toHaveBeenCalledWith(['111'])
 		expect(tokenStore.fetchEsi).toHaveBeenCalledWith('/characters/111/roles', '111')
 		expect(rolesValues).toHaveBeenCalledWith(
 			expect.objectContaining({
@@ -289,6 +297,9 @@ describe('DirectorManager.verifyDirectorHealth', () => {
 			update,
 		}
 		const tokenStore = {
+			fetchCharacterAffiliations: vi.fn().mockResolvedValue({
+				data: [{ character_id: 111, corporation_id: 98000001 }],
+			}),
 			fetchEsi: vi.fn().mockResolvedValue({
 				data: {
 					roles: ['Trader'],
@@ -326,6 +337,9 @@ describe('DirectorManager.verifyDirectorHealth', () => {
 			},
 		}
 		const tokenStore = {
+			fetchCharacterAffiliations: vi.fn().mockResolvedValue({
+				data: [{ character_id: 111, corporation_id: 98000001 }],
+			}),
 			fetchEsi: vi.fn().mockRejectedValue(new Error('ESI request failed: 403 Forbidden')),
 		}
 		const manager = new DirectorManager(
@@ -339,6 +353,46 @@ describe('DirectorManager.verifyDirectorHealth', () => {
 
 		expect(result).toBe(false)
 		expect(recordFailure).toHaveBeenCalledWith('dir-1', 'ESI request failed: 403 Forbidden')
+	})
+
+	it('auto-prunes director when affiliation check fails during verify health', async () => {
+		const db = {
+			query: {
+				corporationDirectors: {
+					findFirst: vi.fn().mockResolvedValue({
+						id: 'dir-1',
+						characterId: '111',
+					}),
+				},
+			},
+		}
+		const onAffiliationMismatch = vi.fn().mockResolvedValue(undefined)
+		const tokenStore = {
+			fetchCharacterAffiliations: vi.fn().mockResolvedValue({
+				data: [{ character_id: 111, corporation_id: 98000002 }],
+			}),
+			fetchEsi: vi.fn(),
+		}
+		const manager = new DirectorManager(
+			db as never,
+			'98000001',
+			tokenStore as never,
+			onAffiliationMismatch
+		)
+		const removeDirector = vi.spyOn(manager, 'removeDirector').mockResolvedValue(undefined)
+		const recordFailure = vi.spyOn(manager, 'recordFailure').mockResolvedValue(undefined)
+
+		const result = await manager.verifyDirectorHealth('dir-1')
+
+		expect(result).toBe(false)
+		expect(onAffiliationMismatch).toHaveBeenCalledWith('111', '98000001', '98000002')
+		expect(recordFailure).toHaveBeenCalledWith(
+			'dir-1',
+			'Director affiliation mismatch: expected corporation 98000001, got 98000002',
+			{ forceUnhealthy: true }
+		)
+		expect(removeDirector).toHaveBeenCalledWith('111')
+		expect(tokenStore.fetchEsi).not.toHaveBeenCalled()
 	})
 })
 
