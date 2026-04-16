@@ -230,7 +230,7 @@ export default function AdminBillsNewPage() {
 
 			const result = await createBill.mutateAsync(input)
 
-			// Group bill returns { groupBillId, bills, billCount }; navigate to first bill
+			// Group bill returns { groupBillId, bills, billCount }; navigate to group aggregate view
 			if ('bills' in result) {
 				const groupResult = result as { groupBillId: string; bills: Bill[]; billCount: number }
 				setMessage({
@@ -238,7 +238,7 @@ export default function AdminBillsNewPage() {
 					text: `Group bill created — ${groupResult.billCount} individual bills issued.`,
 				})
 				setTimeout(() => {
-					navigate(`/admin/bills/${groupResult.bills[0].id}`)
+					navigate(`/admin/bills/group/${encodeURIComponent(groupResult.groupBillId)}`)
 				}, 1500)
 			} else {
 				setMessage({ type: 'success', text: 'Bill created successfully!' })

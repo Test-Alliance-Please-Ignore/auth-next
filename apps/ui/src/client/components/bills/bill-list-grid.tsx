@@ -45,6 +45,7 @@ export function BillListGrid(props: {
 	renderActions?: (bill: BillWithDetails, row: MRT_Row<BillWithDetails>) => ReactNode
 	renderExpandedGroupBill?: (bill: BillWithDetails) => ReactNode
 	emptyMessage?: string
+	onRowClick?: (bill: BillWithDetails, row: MRT_Row<BillWithDetails>) => void
 }) {
 	const columnHelper = createMRTColumnHelper<BillWithDetails>()
 	const columns = useMemo<Array<MRT_ColumnDef<BillWithDetails>>>(
@@ -193,6 +194,9 @@ export function BillListGrid(props: {
 			pinnedRightColumnIds={props.renderActions ? ['actions'] : undefined}
 			renderDetailPanel={renderDetailPanel}
 			mantineExpandButtonProps={mantineExpandButtonProps}
+			onRowClick={
+				props.onRowClick ? (row) => props.onRowClick!(row.original, row) : undefined
+			}
 		/>
 	)
 }

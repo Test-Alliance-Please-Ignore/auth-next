@@ -1,6 +1,6 @@
-import { ArrowLeft, Edit, Users } from 'lucide-react'
+import { ArrowLeft, Edit } from 'lucide-react'
 import { useState } from 'react'
-import { Link, useNavigate, useParams, useSearchParams } from 'react-router-dom'
+import { Link, useNavigate, useParams } from 'react-router-dom'
 import { toast } from 'sonner'
 
 import { Button } from '@/components/ui/button'
@@ -18,7 +18,6 @@ import {
 	useBill,
 	useCancelBill,
 	useDeleteBill,
-	useGroupBillAggregate,
 	useIssueBill,
 	useMarkBillPaid,
 	useRevertBillToDraft,
@@ -29,9 +28,7 @@ import { usePageTitle } from '@/hooks/usePageTitle'
 export default function AdminBillsDetailPage() {
 	const { billId } = useParams<{ billId: string }>()
 	const navigate = useNavigate()
-	const [searchParams] = useSearchParams()
 	const [copiedField, setCopiedField] = useState<'amount' | 'payee' | 'token' | null>(null)
-	const forceIndividual = searchParams.get('view') === 'individual'
 	const issueBill = useIssueBill()
 	const cancelBill = useCancelBill()
 	const markBillPaid = useMarkBillPaid()
@@ -40,11 +37,6 @@ export default function AdminBillsDetailPage() {
 	const { requestConfirmation, confirmationDialog } = useConfirmationDialog()
 
 	const { data: bill, isLoading, error } = useBill(billId!)
-	const isGroupBillAggregate = Boolean(bill?.groupBillId) && !forceIndividual
-	const { data: groupAggregate, isLoading: isGroupLoading } = useGroupBillAggregate(
-		isGroupBillAggregate ? bill!.groupBillId! : undefined
-	)
-
 	usePageTitle(bill ? `Bill - ${bill.title}` : 'Bill Details')
 
 	if (isLoading) {
@@ -109,12 +101,16 @@ export default function AdminBillsDetailPage() {
 	}
 
 	// Calculate payment summary
-	const totalDue = Number(bill.amount) + Number(bill.lateFee)
-	const totalPaid = bill.payments?.reduce((sum, p) => sum + Number(p.amount), 0) ?? 0
+	const totalDue = bill ? Number(bill.amount) + Number(bill.lateFee) : 0
+	const totalPaid = bill?.payments?.reduce((sum, p) => sum + Number(p.amount), 0) ?? 0
 	const remaining = Math.max(0, totalDue - totalPaid)
 	const paymentProgress = totalDue > 0 ? Math.min(100, Math.floor((totalPaid / totalDue) * 100)) : 0
 
 	const copyField = async (field: 'amount' | 'payee' | 'token') => {
+		if (!bill) {
+			toast.error('No value to copy')
+			return
+		}
 		const payeeValue = bill.payeeName || (bill.payeeId && bill.payeeType ? bill.payeeId : '')
 		const value = field === 'amount' ? bill.amount : field === 'payee' ? payeeValue : bill.paymentToken
 		const successMessage =
@@ -155,6 +151,7 @@ export default function AdminBillsDetailPage() {
 	}
 
 	const handleIssue = async () => {
+		if (!bill) return
 		try {
 			await issueBill.mutateAsync(bill.id)
 		} catch (error) {
@@ -163,6 +160,7 @@ export default function AdminBillsDetailPage() {
 	}
 
 	const handleCancel = () => {
+		if (!bill) return
 		requestConfirmation({
 			title: 'Cancel Bill',
 			description: 'Are you sure you want to cancel this bill?',
@@ -175,6 +173,7 @@ export default function AdminBillsDetailPage() {
 	}
 
 	const handleMarkPaid = () => {
+		if (!bill) return
 		requestConfirmation({
 			title: 'Mark Bill Paid',
 			description: 'Mark this bill as paid?',
@@ -187,6 +186,7 @@ export default function AdminBillsDetailPage() {
 	}
 
 	const handleRevertToDraft = () => {
+		if (!bill) return
 		requestConfirmation({
 			title: 'Move Bill To Draft',
 			description: 'Move this bill back to draft?',
@@ -199,6 +199,7 @@ export default function AdminBillsDetailPage() {
 	}
 
 	const handleDelete = () => {
+		if (!bill) return
 		requestConfirmation({
 			title: 'Delete Bill',
 			description: 'Are you sure you want to delete this bill? This action cannot be undone.',
@@ -209,165 +210,6 @@ export default function AdminBillsDetailPage() {
 				void navigate('/admin/bills')
 			},
 		})
-	}
-
-	// --- Group bill aggregate view ---
-	if (isGroupBillAggregate) {
-		if (isGroupLoading || !groupAggregate) {
-			return (
-				<div className="space-y-6">
-					<div className="flex items-center justify-between">
-						<div>
-							<h1 className="text-3xl font-bold gradient-text">Loading Group Bill...</h1>
-						</div>
-						<Button variant="ghost" asChild>
-							<Link to="/admin/bills">
-								<ArrowLeft className="h-4 w-4" />
-								Back to Bills
-							</Link>
-						</Button>
-					</div>
-				</div>
-			)
-		}
-
-		const groupProgress =
-			groupAggregate.totalBills > 0
-				? Math.min(100, Math.floor((groupAggregate.paidBills / groupAggregate.totalBills) * 100))
-				: 0
-
-		return (
-			<div className="space-y-6">
-				{/* Page Header */}
-				<div className="flex items-center justify-between">
-					<div>
-						<h1 className="text-3xl font-bold gradient-text">{groupAggregate.title}</h1>
-						<p className="text-muted-foreground mt-2">
-							Group Bill · {groupAggregate.groupName ?? groupAggregate.groupId}
-						</p>
-					</div>
-					<div className="flex gap-2">
-						<Button variant="ghost" asChild>
-							<Link to="/admin/bills">
-								<ArrowLeft className="h-4 w-4" />
-								Back to Bills
-							</Link>
-						</Button>
-						<Button variant="ghost" asChild>
-							<Link to={`/admin/bills/group/${bill.groupBillId}/edit`}>
-								<Edit className="h-4 w-4" />
-								Edit Group
-							</Link>
-						</Button>
-					</div>
-				</div>
-
-				{/* Group Bill Badge */}
-				<div className="flex items-center gap-2">
-					<span className="inline-flex items-center gap-1.5 rounded-full bg-blue-500/10 px-3 py-1 text-sm font-medium text-blue-500">
-						<Users className="h-3.5 w-3.5" />
-						Group Bill
-					</span>
-					<span className="text-sm text-muted-foreground">
-						Issued by {groupAggregate.issuerName ?? groupAggregate.issuerId}
-					</span>
-				</div>
-
-				{/* Bill Details */}
-				<Card>
-					<CardHeader>
-						<CardTitle>Bill Details</CardTitle>
-						<CardDescription>Shared details for all members of this group bill</CardDescription>
-					</CardHeader>
-					<CardContent className="space-y-4">
-						<div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-							<div>
-								<h3 className="text-sm font-medium text-muted-foreground mb-1">
-									Amount (per member)
-								</h3>
-								<p className="text-2xl font-bold">{formatAmount(groupAggregate.amount)} ISK</p>
-							</div>
-							<div>
-								<h3 className="text-sm font-medium text-muted-foreground mb-1">Due Date</h3>
-								<p className="text-lg">{formatDate(groupAggregate.dueDate)}</p>
-							</div>
-							<div>
-								<h3 className="text-sm font-medium text-muted-foreground mb-1">Group</h3>
-								<p className="text-lg">{groupAggregate.groupName ?? groupAggregate.groupId}</p>
-							</div>
-							<div>
-								<h3 className="text-sm font-medium text-muted-foreground mb-1">Created</h3>
-								<p className="text-lg">{formatDate(groupAggregate.createdAt)}</p>
-							</div>
-							{groupAggregate.description && (
-								<div className="md:col-span-2">
-									<h3 className="text-sm font-medium text-muted-foreground mb-1">Description</h3>
-									<p className="text-lg">{groupAggregate.description}</p>
-								</div>
-							)}
-						</div>
-					</CardContent>
-				</Card>
-
-				{/* Group Payment Progress */}
-				<Card>
-					<CardHeader>
-						<CardTitle>Group Payment Progress</CardTitle>
-						<CardDescription>
-							<span className="font-semibold text-foreground">{groupAggregate.paidBills}</span> of{' '}
-							<span className="font-semibold text-foreground">{groupAggregate.totalBills}</span>{' '}
-							members paid
-						</CardDescription>
-					</CardHeader>
-					<CardContent className="space-y-4">
-						<div className="space-y-2">
-							<div className="flex justify-between text-sm">
-								<span className="text-muted-foreground">Overall Progress</span>
-								<span className="font-medium">{groupProgress}%</span>
-							</div>
-							<Progress value={groupProgress} className="h-2 bg-warning/70" />
-						</div>
-
-						<Table>
-							<TableHeader>
-								<TableRow>
-									<TableHead>Member</TableHead>
-									<TableHead>Status</TableHead>
-									<TableHead>Amount Due</TableHead>
-									<TableHead>Amount Paid</TableHead>
-									<TableHead>Paid At</TableHead>
-									<TableHead>Actions</TableHead>
-								</TableRow>
-							</TableHeader>
-							<TableBody>
-								{groupAggregate.bills.map((entry) => (
-									<TableRow key={entry.billId}>
-										<TableCell>{entry.payerName ?? entry.payerId}</TableCell>
-										<TableCell>
-											<span
-												className={`inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium ${getStatusBadgeClass(entry.status)}`}
-											>
-												{entry.status.charAt(0).toUpperCase() + entry.status.slice(1)}
-											</span>
-										</TableCell>
-										<TableCell>{formatAmount(entry.totalDue)} ISK</TableCell>
-										<TableCell className="text-green-500">
-											{formatAmount(entry.totalPaid)} ISK
-										</TableCell>
-										<TableCell>{entry.paidAt ? formatDateTime(entry.paidAt) : '—'}</TableCell>
-										<TableCell>
-											<Button variant="ghost" asChild>
-												<Link to={`/admin/bills/${entry.billId}?view=individual`}>View Bill</Link>
-											</Button>
-										</TableCell>
-									</TableRow>
-								))}
-							</TableBody>
-						</Table>
-					</CardContent>
-				</Card>
-			</div>
-		)
 	}
 
 	return (

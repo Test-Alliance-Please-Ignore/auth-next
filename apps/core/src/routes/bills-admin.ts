@@ -41,6 +41,11 @@ const BILL_SORT_FIELDS = new Set<BillListSortField>([
 const ENTITY_TYPES = new Set<EntityType>(['character', 'corporation', 'group'])
 const PAYEE_ENTITY_TYPES = new Set<EntityType>(['character', 'corporation'])
 const ENTITY_SEARCH_TYPES = new Set<EntitySearchType>(['character', 'corporation', 'group', 'user'])
+const UUID_REGEX = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i
+
+function isUuid(value: string | null | undefined): value is string {
+	return Boolean(value && UUID_REGEX.test(value))
+}
 
 async function resolveGroupNames(
 	c: App['Bindings'],
@@ -1081,7 +1086,7 @@ app.get('/:billId', requireAuth(), requireAdmin(), async (c) => {
 		const resolver = getStub<EsiTypeResolver>(c.env.ESI_TYPE_RESOLVER, 'global')
 		const db = createDb(c.env.DATABASE_URL)
 		const paymentPaidByIds = bill.payments?.map((payment) => payment.paidById) ?? []
-		const relatedUserIds = [...new Set([bill.issuerId, ...paymentPaidByIds].filter(Boolean))]
+		const relatedUserIds = [...new Set([bill.issuerId, ...paymentPaidByIds].filter(isUuid))]
 		const relatedUsers =
 			relatedUserIds.length > 0
 				? await db.query.users.findMany({

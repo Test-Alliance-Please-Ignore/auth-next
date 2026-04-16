@@ -54,6 +54,7 @@ function getDefaultDueAfter(): string {
 
 export default function AdminBillsPage() {
 	usePageTitle('Admin - Bills Management')
+	const navigate = useNavigate()
 	const [status, setStatus] = useState<BillStatus | undefined>(undefined)
 	const [issuerId, setIssuerId] = useState<string | undefined>(undefined)
 	const [issuerQuery, setIssuerQuery] = useState('')
@@ -158,6 +159,9 @@ export default function AdminBillsPage() {
 	const deleteGroupBill = useDeleteGroupBill()
 	const revertGroupBillToDraft = useRevertGroupBillToDraft()
 	const { requestConfirmation, confirmationDialog } = useConfirmationDialog()
+
+	const toGroupViewHref = (groupBillId: string) =>
+		`/admin/bills/group/${encodeURIComponent(groupBillId)}`
 
 	// Individual bill action handlers
 	const handleIssue = async (billId: string) => {
@@ -435,7 +439,7 @@ export default function AdminBillsPage() {
 									{
 										label: 'View',
 										intent: 'primary',
-										href: `/admin/bills/${bill.id}`,
+										href: toGroupViewHref(groupBillId),
 									},
 									{
 										label: 'Edit',
@@ -483,9 +487,7 @@ export default function AdminBillsPage() {
 								{
 									label: 'View',
 									intent: 'primary',
-									href: bill.groupBillId
-										? `/admin/bills/${bill.id}?view=individual`
-										: `/admin/bills/${bill.id}`,
+									href: `/admin/bills/${bill.id}`,
 								},
 								{
 									label: 'Edit',
@@ -533,6 +535,13 @@ export default function AdminBillsPage() {
 					)
 				}}
 				renderExpandedGroupBill={coalesced ? renderExpandedGroupBill : undefined}
+				onRowClick={(bill) => {
+					const target =
+						bill.groupBillTotalCount != null && bill.groupBillId
+							? toGroupViewHref(bill.groupBillId)
+							: `/admin/bills/${bill.id}`
+					void navigate(target)
+				}}
 				emptyMessage="No bills found for the current filters."
 			/>
 			{confirmationDialog}
@@ -595,7 +604,7 @@ function GroupBillSubRows(props: { groupBillId: string }) {
 										{
 											label: 'View',
 											intent: 'primary',
-											href: `/admin/bills/${subBill.billId}?view=individual`,
+											href: `/admin/bills/${subBill.billId}`,
 										},
 										{
 											label: 'Edit',

@@ -57,6 +57,7 @@ function createApp(user?: SessionUser) {
 function makeBillsStub() {
 	return {
 		createBill: vi.fn().mockResolvedValue({ id: 'bill-1' }),
+		getBillIntegrationView: vi.fn().mockResolvedValue(null),
 		listBillsPage: vi.fn().mockResolvedValue({ rows: [], rowCount: 0 }),
 		getGroupBillAggregate: vi.fn().mockResolvedValue(null),
 		issueGroupBill: vi.fn().mockResolvedValue({ issued: 1 }),
@@ -632,5 +633,93 @@ describe('group bill bulk action endpoints', () => {
 		const app = createApp(makeAdmin({ is_admin: false }))
 		const response = await app.request(path, { method }, env)
 		expect(response.status).toBe(403)
+	})
+})
+
+describe('bill detail resolution (GET /:billId)', () => {
+	let billsStub: ReturnType<typeof makeBillsStub>
+	let groupsStub: ReturnType<typeof makeGroupsStub>
+	let resolverStub: ReturnType<typeof makeResolverStub>
+	let dbStub: ReturnType<typeof makeDbStub>
+
+	beforeEach(() => {
+		vi.clearAllMocks()
+		billsStub = makeBillsStub()
+		groupsStub = makeGroupsStub()
+		resolverStub = makeResolverStub()
+		dbStub = makeDbStub()
+		createDbMock.mockReturnValue(dbStub as any)
+		getStubMock.mockImplementation((binding: any) => {
+			if (binding === env.BILLS) return billsStub as any
+			if (binding === env.GROUPS) return groupsStub as any
+			if (binding === env.ESI_TYPE_RESOLVER) return resolverStub as any
+			throw new Error(`Unexpected binding: ${binding?.name}`)
+		})
+	})
+
+	it('handles mixed payment actor IDs without querying users by non-UUID IDs', async () => {
+		const issuerId = '6e1ff02b-e3fc-4d26-97bd-63104af1c871'
+		const bill = {
+			id: 'bill-1',
+			issuerId,
+			payerId: '94965564',
+			payerType: 'character',
+			payeeId: '98589727',
+			payeeType: 'corporation',
+			title: 'Dues',
+			description: null,
+			amount: '1000000',
+			dueDate: new Date('2026-04-01T00:00:00.000Z'),
+			lateFeeType: 'none',
+			lateFeeAmount: '0',
+			lateFeeCompounding: 'none',
+			lateFee: '0',
+			status: 'paid',
+			paymentToken: 'PAY-123',
+			templateId: null,
+			scheduleId: null,
+			groupBillId: null,
+			externalMetadata: null,
+			issuedAt: new Date('2026-03-01T00:00:00.000Z'),
+			paidAt: new Date('2026-03-02T00:00:00.000Z'),
+			cancelledAt: null,
+			createdAt: new Date('2026-03-01T00:00:00.000Z'),
+			updatedAt: new Date('2026-03-02T00:00:00.000Z'),
+			template: null,
+			schedule: null,
+			payments: [
+				{
+					id: 'payment-1',
+					billId: 'bill-1',
+					paymentToken: 'PAY-123',
+					esiTransactionId: 'tx-1',
+					amount: '1000000',
+					paidById: '94965564',
+					paidByType: 'character',
+					paidAt: new Date('2026-03-02T00:00:00.000Z'),
+					createdAt: new Date('2026-03-02T00:00:00.000Z'),
+				},
+			],
+		}
+		billsStub.getBillIntegrationView.mockResolvedValueOnce(bill as any)
+		;(dbStub.query.users.findMany as any).mockResolvedValueOnce([
+			{ id: issuerId, mainCharacterId: '2114648607' },
+		])
+		resolverStub.resolveIds.mockResolvedValueOnce({
+			'2114648607': 'Admin Character',
+			'94965564': 'Payer Character',
+			'98589727': 'Target Corporation',
+		})
+
+		const app = createApp(makeAdmin())
+		const response = await app.request('/api/admin/bills/bill-1', {}, env)
+
+		expect(response.status).toBe(200)
+		const body = (await response.json()) as any
+		expect(body.issuerName).toBe('Admin Character')
+		expect(body.payerName).toBe('Payer Character')
+		expect(body.payeeName).toBe('Target Corporation')
+		expect(body.payments?.[0]?.paidByName).toBe('Payer Character')
+		expect(dbStub.query.users.findMany).toHaveBeenCalledTimes(1)
 	})
 })
