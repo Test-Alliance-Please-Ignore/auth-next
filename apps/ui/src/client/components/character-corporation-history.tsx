@@ -1,4 +1,6 @@
 import { formatDistanceToNow } from 'date-fns'
+
+import { corporationLogoUrl } from '@/lib/eve-images'
 import { Calendar } from 'lucide-react'
 
 import { Card, CardContent, CardHeader, CardTitle } from './ui/card'
@@ -38,7 +40,7 @@ export function CharacterCorporationHistory({ history }: CharacterCorporationHis
 							>
 								<div className="flex items-start gap-2">
 									<img
-										src={`https://images.evetech.net/corporations/${entry.corporationId}/logo?size=32`}
+										src={corporationLogoUrl(entry.corporationId, 32)}
 										alt={entry.corporationName || `Corporation #${entry.corporationId}`}
 										className="h-6 w-6 rounded mt-0.5"
 									/>

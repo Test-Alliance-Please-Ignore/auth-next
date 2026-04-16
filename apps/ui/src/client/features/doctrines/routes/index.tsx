@@ -24,6 +24,7 @@ import {
 import { usePageTitle } from '@/hooks/usePageTitle'
 import { useUserPermissions } from '@/hooks/useUserPermissions'
 
+import { typeIconUrl } from '@/lib/eve-images'
 import { useDoctrines, useStagingSystems } from '../hooks'
 
 import type { Doctrine, StagingSystem } from '../types'
@@ -218,7 +219,7 @@ function CategoryRows({
 							<div className="flex h-8 w-8 shrink-0 items-center justify-center rounded bg-primary/10">
 								{doctrine.shipTypeId ? (
 									<img
-										src={`https://images.evetech.net/types/${doctrine.shipTypeId}/icon?size=64`}
+										src={typeIconUrl(doctrine.shipTypeId, 64)}
 										alt=""
 										className="h-8 w-8 rounded"
 									/>

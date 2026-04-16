@@ -353,9 +353,8 @@ app.get('/:characterId', requireAuth(), async (c) => {
 
 	try {
 		// Fetch all public character data pieces
-		let [info, portrait, corporationHistory, skills, attributes, lastUpdated] = await Promise.all([
+		let [info, corporationHistory, skills, attributes, lastUpdated] = await Promise.all([
 			eveCharacterData.getCharacterInfo(),
-			eveCharacterData.getPortrait(),
 			eveCharacterData.getCorporationHistory(),
 			eveCharacterData.getSkills(),
 			eveCharacterData.getAttributes(),
@@ -373,16 +372,14 @@ app.get('/:characterId', requireAuth(), async (c) => {
 				await eveCharacterData.fetchCharacterData()
 
 				// Retry fetching from database after auto-fetch
-				const [newInfo, newPortrait, newCorporationHistory] = await Promise.all([
+				const [newInfo, newCorporationHistory] = await Promise.all([
 					eveCharacterData.getCharacterInfo(),
-					eveCharacterData.getPortrait(),
 					eveCharacterData.getCorporationHistory(),
 				])
 
 				if (newInfo) {
 					// Successfully fetched and stored - update variables
 					info = newInfo
-					portrait = newPortrait
 					corporationHistory = newCorporationHistory
 
 					logger.info('[Character Detail] Auto-fetch successful', {
@@ -496,7 +493,6 @@ app.get('/:characterId', requireAuth(), async (c) => {
 			viewerRole,
 			public: {
 				info: enrichedInfo,
-				portrait,
 				corporationHistory: enrichedCorporationHistory,
 				skills: enrichedSkills,
 				allSkills,

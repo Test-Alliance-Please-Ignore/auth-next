@@ -1,6 +1,7 @@
 import { Link } from 'react-router-dom'
 
 import { Button } from '@/components/ui/button'
+import { typeIconUrl } from '@/lib/eve-images'
 import {
 	Table,
 	TableBody,
@@ -70,7 +71,7 @@ export function LossTable({ losses, isLoading }: LossTableProps) {
 						>
 							<TableCell className="w-20 py-2">
 								<img
-									src={`https://images.evetech.net/types/${loss.shipTypeId}/icon?size=64`}
+									src={typeIconUrl(loss.shipTypeId, 64)}
 									alt={loss.shipTypeName || `Ship ${loss.shipTypeId}`}
 									className="h-12 w-12 rounded-md border border-border/50 object-contain"
 									loading="lazy"

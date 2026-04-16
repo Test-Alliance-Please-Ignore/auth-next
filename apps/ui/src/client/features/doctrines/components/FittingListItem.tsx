@@ -1,3 +1,5 @@
+import { typeIconUrl } from '@/lib/eve-images'
+
 import type { ReactNode } from 'react'
 
 interface FittingListItemProps {
@@ -30,7 +32,7 @@ export function FittingListItem({
 		<div className={`${baseClass} ${interactiveClass}`} onClick={onClick}>
 			<div className="flex items-center gap-3 min-w-0">
 				<img
-					src={`https://images.evetech.net/types/${shipTypeId}/icon?size=64`}
+					src={typeIconUrl(shipTypeId, 64)}
 					alt={shipName}
 					className="h-8 w-8 rounded shrink-0"
 					loading="lazy"

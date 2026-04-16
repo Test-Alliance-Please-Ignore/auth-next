@@ -9,6 +9,7 @@ import { Link } from 'react-router-dom'
 
 import { Badge } from '@/components/ui/badge'
 import { Card, CardContent } from '@/components/ui/card'
+import { typeIconUrl } from '@/lib/eve-images'
 
 import type { Doctrine } from '../types'
 
@@ -32,7 +33,7 @@ export function DoctrineCard({ doctrine, fittingCount }: DoctrineCardProps) {
 				<div className="flex h-14 w-14 shrink-0 items-center justify-center rounded-lg bg-primary/10">
 					{doctrine.shipTypeId ? (
 						<img
-							src={`https://images.evetech.net/types/${doctrine.shipTypeId}/icon?size=64`}
+							src={typeIconUrl(doctrine.shipTypeId, 64)}
 							alt=""
 							className="h-14 w-14 rounded-lg"
 						/>

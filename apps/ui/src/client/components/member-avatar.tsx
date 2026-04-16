@@ -1,3 +1,5 @@
+import { characterPortraitUrl } from '@/lib/eve-images'
+
 interface MemberAvatarProps {
 	characterId?: string | number
 	characterName?: string | null
@@ -21,7 +23,7 @@ export function MemberAvatar({ characterId, characterName, size = 'md' }: Member
 		<div className={`${sizeClass} flex-shrink-0`}>
 			{characterId ? (
 				<img
-					src={`/images/characters/${characterId}/portrait?size=64`}
+					src={characterPortraitUrl(characterId, 64)}
 					alt={characterName || 'Character portrait'}
 					className="h-full w-full rounded object-cover"
 					loading="lazy"

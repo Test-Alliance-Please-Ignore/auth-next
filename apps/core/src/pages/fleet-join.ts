@@ -40,21 +40,11 @@ export async function renderFleetJoinPage(
 				// Check if character has valid ESI token
 				const hasValidToken = (await tokenStore.getAccessToken(characterId)) !== null
 
-				// Get character info and portrait
-				const [info, portrait] = await Promise.all([
-					characterData.getCharacterInfo(characterId),
-					characterData.getPortrait(characterId),
-				])
+				const info = await characterData.getCharacterInfo(characterId)
 
 				return {
 					characterId,
 					characterName: info?.name || char.characterName,
-					portrait: portrait
-						? {
-								px64x64: portrait.px64x64 || '',
-								px128x128: portrait.px128x128 || '',
-							}
-						: undefined,
 					hasValidToken,
 				}
 			})
@@ -367,7 +357,7 @@ export async function renderFleetJoinPage(
 							(char) => `
 					<div class="character-card ${!char.hasValidToken ? 'disabled' : ''}" data-character-id="${char.characterId}">
 						<img
-							src="${char.portrait?.px64x64 || '/default-portrait.png'}"
+							src="https://images.evetech.net/characters/${char.characterId}/portrait?size=64"
 							alt="${escapeHtml(char.characterName)}"
 							class="character-portrait"
 						/>

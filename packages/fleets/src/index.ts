@@ -50,12 +50,6 @@ export interface QuickJoinValidationResult {
 export interface CharacterForFleetJoin {
 	characterId: string
 	characterName: string
-	portrait?: {
-		px64x64: string
-		px128x128: string
-		px256x256: string
-		px512x512: string
-	}
 	hasValidToken: boolean
 	corporationId?: string
 	corporationName?: string

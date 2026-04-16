@@ -1499,7 +1499,6 @@ export class ApiClient {
 		viewerRole: 'CEO' | 'Director' | null
 		public: {
 			info: any
-			portrait: any
 			corporationHistory: any[]
 			skills: any
 			allSkills: any

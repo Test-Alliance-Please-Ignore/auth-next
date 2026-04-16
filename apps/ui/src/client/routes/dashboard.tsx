@@ -16,6 +16,7 @@ import { useAuth } from '@/hooks/useAuth'
 import { useLegacyCharacters } from '@/hooks/useLegacyCharacters'
 import { usePageTitle } from '@/hooks/usePageTitle'
 import { apiClient } from '@/lib/api'
+import { characterPortraitUrl } from '@/lib/eve-images'
 
 export default function DashboardPage() {
 	usePageTitle('Dashboard')
@@ -293,7 +294,7 @@ export default function DashboardPage() {
 									<>
 										<div className="flex items-center gap-4">
 											<img
-												src={`/images/characters/${mainCharacter.characterId}/portrait?size=128`}
+												src={characterPortraitUrl(mainCharacter.characterId, 128)}
 												alt={`${mainCharacter.characterName}'s portrait`}
 												loading="lazy"
 												onError={(e) => {
@@ -504,7 +505,7 @@ export default function DashboardPage() {
 										<Link to={`/character/${character.characterId}`} className="block">
 											<div className="flex items-center gap-3">
 												<img
-													src={`/images/characters/${character.characterId}/portrait?size=64`}
+													src={characterPortraitUrl(character.characterId, 64)}
 													alt={`${character.characterName}'s portrait`}
 													loading="lazy"
 													onError={(e) => {

@@ -9,14 +9,13 @@
  * to ensure perfectly consistent alignment and rotation.
  */
 
+import { typeIconUrl, typeRenderUrl } from '@/lib/eve-images'
+
 import type { FittingItem } from '../types'
 
 // ── EVE image helpers ───────────────────────────────────────────
-const eveIcon = (typeId: string, size: 32 | 64 = 32) =>
-	`https://images.evetech.net/types/${typeId}/icon?size=${size}`
-
-const eveRender = (typeId: string, size: 64 | 128 | 256 | 512 = 512) =>
-	`https://images.evetech.net/types/${typeId}/render?size=${size}`
+const eveIcon = (typeId: string, size: 32 | 64 = 32) => typeIconUrl(typeId, size)
+const eveRender = (typeId: string, size: 64 | 128 | 256 | 512 = 512) => typeRenderUrl(typeId, size)
 
 // ── Core geometry ───────────────────────────────────────────────
 const P = 398 // panel size

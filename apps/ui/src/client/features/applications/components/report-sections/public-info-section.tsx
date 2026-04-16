@@ -6,6 +6,7 @@ import { ExternalLink } from 'lucide-react'
 
 import { MemberAvatar } from '@/components/member-avatar'
 import { Card, CardContent } from '@/components/ui/card'
+import { allianceLogoUrl, corporationLogoUrl } from '@/lib/eve-images'
 
 interface ProcessedPublicInfo {
 	characterId: string
@@ -76,7 +77,7 @@ export function PublicInfoCard({ data }: { data: ProcessedPublicInfo }) {
 					{data.corporationId && (
 						<InfoRow label="Corporation">
 							<img
-								src={`https://images.evetech.net/corporations/${data.corporationId}/logo?size=32`}
+								src={corporationLogoUrl(data.corporationId, 32)}
 								alt=""
 								className="h-5 w-5 rounded"
 							/>
@@ -88,7 +89,7 @@ export function PublicInfoCard({ data }: { data: ProcessedPublicInfo }) {
 					{data.allianceId && (
 						<InfoRow label="Alliance">
 							<img
-								src={`https://images.evetech.net/alliances/${data.allianceId}/logo?size=32`}
+								src={allianceLogoUrl(data.allianceId, 32)}
 								alt=""
 								className="h-5 w-5 rounded"
 							/>

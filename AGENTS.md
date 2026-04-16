@@ -942,6 +942,43 @@ const queries = useQueries({
 4. Refactor the code to follow React's rules
 5. Only proceed when the lint error is genuinely resolved, not silenced
 
+### EVE Online Image URLs
+
+**CRITICAL: NEVER hardcode `images.evetech.net` URLs directly in UI components.**
+
+All EVE image URLs must be constructed using the utility functions in `apps/ui/src/client/lib/eve-images.ts`. These route through the local proxy (`/images/...`) which provides 30-day Cloudflare edge caching for all image types.
+
+**Available functions:**
+```typescript
+import {
+  characterPortraitUrl,  // /images/characters/:id/portrait?size=N
+  corporationLogoUrl,    // /images/corporations/:id/logo?size=N
+  allianceLogoUrl,       // /images/alliances/:id/logo?size=N
+  typeIconUrl,           // /images/types/:id/icon?size=N
+  typeRenderUrl,         // /images/types/:id/render?size=N
+  typeImageUrl,          // /images/types/:id/:variant?size=N  (for dynamic variants: bp, bpc)
+} from '@/lib/eve-images'
+```
+
+**Correct:**
+```tsx
+<img src={characterPortraitUrl(characterId, 64)} />
+<img src={corporationLogoUrl(corporationId, 32)} />
+<img src={allianceLogoUrl(allianceId, 32)} />
+<img src={typeIconUrl(typeId, 32)} />
+<img src={typeRenderUrl(typeId, 512)} />
+```
+
+**Incorrect (DO NOT USE):**
+```tsx
+// ❌ Direct EVE image server URL
+<img src={`https://images.evetech.net/characters/${id}/portrait?size=64`} />
+// ❌ Inline proxy path string — use the function instead
+<img src={`/images/characters/${id}/portrait?size=64`} />
+```
+
+The proxy routes are defined in `apps/core/src/routes/images.ts`.
+
 ### Form Controls And Dropdown UX
 
 - **Do not use native `<select>` in UI routes/components** unless explicitly requested for a very specific platform behavior.

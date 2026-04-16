@@ -59,6 +59,7 @@ import {
 import { useCorporations } from '@/hooks/useCorporations'
 import { usePageTitle } from '@/hooks/usePageTitle'
 import { api } from '@/lib/api'
+import { characterPortraitUrl } from '@/lib/eve-images'
 import { formatDateTime, formatRelativeTime } from '@/lib/date-utils'
 import { cn } from '@/lib/utils'
 
@@ -482,7 +483,7 @@ export default function UserDetailPage() {
 				<CardContent className="pt-6">
 					<div className="flex items-start gap-6">
 						<img
-							src={`/images/characters/${user.mainCharacterId}/portrait?size=128`}
+							src={characterPortraitUrl(user.mainCharacterId, 128)}
 							alt={user.characters.find((c) => c.is_primary)?.characterName || 'Unknown'}
 							className="h-24 w-24 rounded-full"
 						/>
@@ -888,7 +889,7 @@ export default function UserDetailPage() {
 										<TableCell>
 											<div className="flex items-center gap-3">
 												<img
-												src={`/images/characters/${character.characterId}/portrait?size=64`}
+												src={characterPortraitUrl(character.characterId, 64)}
 												alt={character.characterName}
 												className="h-10 w-10 rounded-full"
 											/>

@@ -23,7 +23,6 @@ import type {
 	CharacterMiningLedger,
 	CharacterNotification,
 	CharacterPlanet,
-	CharacterPortrait,
 	CharacterPublicInfo,
 	CharacterRoles,
 	CharacterShip,
@@ -78,7 +77,6 @@ import type {
 	EsiCharacterMiningLedger,
 	EsiCharacterNotification,
 	EsiCharacterPlanet,
-	EsiCharacterPortrait,
 	EsiCharacterPublicInfo,
 	EsiCharacterRoles,
 	EsiCharacterShip,
@@ -543,10 +541,6 @@ export function transformCharacterPlanet(planets: EsiCharacterPlanet[]): Charact
 		planet_id: String(planet.planet_id),
 		solar_system_id: String(planet.solar_system_id),
 	}))
-}
-
-export function transformCharacterPortrait(data: EsiCharacterPortrait): CharacterPortrait {
-	return { ...data }
 }
 
 export function transformCharacterRoles(data: EsiCharacterRoles): CharacterRoles {

@@ -10,6 +10,7 @@ import { Link } from 'react-router-dom'
 import { Badge } from '@/components/ui/badge'
 import { Card, CardContent } from '@/components/ui/card'
 
+import { typeIconUrl } from '@/lib/eve-images'
 import { formatISK } from '../utils'
 
 import type { Fitting } from '../types'
@@ -30,7 +31,7 @@ export function FittingCard({ fitting, doctrineId }: FittingCardProps) {
 				<CardContent className="flex items-center gap-3 py-3">
 					{/* Ship icon from EVE image server */}
 					<img
-						src={`https://images.evetech.net/types/${fitting.shipTypeId}/icon?size=64`}
+						src={typeIconUrl(fitting.shipTypeId, 64)}
 						alt={fitting.shipName}
 						className="h-10 w-10 rounded shrink-0"
 						loading="lazy"

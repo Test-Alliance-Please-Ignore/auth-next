@@ -12,6 +12,7 @@ import { Label } from '@/components/ui/label'
 import { Select } from '@/components/ui/select'
 import { Textarea } from '@/components/ui/textarea'
 import { api } from '@/lib/api'
+import { typeIconUrl } from '@/lib/eve-images'
 
 import { useDoctrineCategories } from '../hooks'
 
@@ -112,7 +113,7 @@ export function DoctrineForm({ doctrine, onSubmit, onCancel, isSubmitting }: Doc
 				<div className="flex items-center gap-3">
 					{shipTypeId && (
 						<img
-							src={`https://images.evetech.net/types/${shipTypeId}/icon?size=64`}
+							src={typeIconUrl(shipTypeId, 64)}
 							alt="Ship icon"
 							className="h-10 w-10 rounded"
 						/>
@@ -132,7 +133,7 @@ export function DoctrineForm({ doctrine, onSubmit, onCancel, isSubmitting }: Doc
 							renderOption={(option) => (
 								<div className="flex items-center gap-2">
 									<img
-										src={`https://images.evetech.net/types/${option.value}/icon?size=32`}
+										src={typeIconUrl(option.value, 32)}
 										alt=""
 										className="h-5 w-5 rounded"
 									/>
