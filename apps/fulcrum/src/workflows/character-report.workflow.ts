@@ -2,7 +2,9 @@ import { WorkflowEntrypoint } from 'cloudflare:workers'
 
 import { createDb } from '../db'
 import { characterReports } from '../db/schema'
-import { buildUpdateReportStatusQuery } from '../db/queries'
+import { buildUpdateReportStatusQuery, getReport } from '../db/queries'
+import { sendReportFailedDM } from '../lib/discord-webhook'
+import { resolveReportMetadata } from '../lib/report-metadata'
 import { fetchAssets, processAssets, fetchAssetNames, applyAssetCustomNames, applyMarketPrices } from './steps/assets'
 import { generateAlerts } from './steps/alerts'
 import {
@@ -48,7 +50,7 @@ const ESI_STEP = esiFetchStepConfig
 const STEP = esiProcessingStepConfig
 export const NOTIFICATIONS_PROCESS_STEP: WorkflowStepConfig = {
 	...STEP,
-	timeout: '5 minutes',
+	timeout: '10 minutes',
 }
 
 function serializeError(error: unknown): {
@@ -586,6 +588,63 @@ export class CharacterReportWorkflow extends WorkflowEntrypoint<Env, WorkflowPar
 						errorMessage: errorMsg.slice(0, 500),
 					})
 					await db.update(characterReports).set(query.set).where(query.where)
+				})
+
+				// Send failed notification DM once per failed workflow execution.
+				// This step is replay-safe under workflow step semantics.
+				await doStep('send-failed-dm', STEP, async () => {
+					try {
+						const db = createDb(this.env.DATABASE_URL)
+						const report = await getReport(db, reportId)
+						if (!report) {
+							console.warn('[Workflow] send-failed-dm skipped: report not found', {
+								...logCtx,
+								failedStep,
+							})
+							return { sent: false, reason: 'report-not-found' as const }
+						}
+
+						const metadata = await resolveReportMetadata(
+							this.env,
+							reportId,
+							report.requestorUserId,
+							report.characterId,
+							report.characterName,
+							report.requestorCorporationId
+						)
+
+						const fallbackMetadata = {
+							reportId,
+							requestorMainCharacterName: `User ${report.requestorUserId}`,
+							subjectCharacterName: report.characterName ?? `Character ${report.characterId}`,
+							subjectCharacterId: report.characterId,
+							corporationTicker: `Corp ${report.requestorCorporationId}`,
+						}
+
+						await sendReportFailedDM(
+							this.env,
+							report.requestorUserId,
+							metadata ?? fallbackMetadata,
+							errorMsg.slice(0, 500)
+						)
+
+						return {
+							sent: true,
+							requestorUserId: report.requestorUserId,
+							usedFallbackMetadata: metadata === null,
+						}
+					} catch (notifyError) {
+						console.error('[Workflow] Failed to send report failed DM', {
+							...logCtx,
+							failedStep,
+							error: serializeError(notifyError),
+						})
+						return {
+							sent: false,
+							reason: 'notification-error' as const,
+							error: serializeError(notifyError).message,
+						}
+					}
 				})
 			} catch (markError) {
 				console.error('[CharacterReportWorkflow] Failed to mark report as failed:', {

@@ -4,12 +4,12 @@ import { resolve } from 'node:path'
 import { describe, expect, it } from 'vitest'
 
 describe('CharacterReportWorkflow notifications step config', () => {
-	it('uses a 5 minute timeout override for process-notifications', () => {
+	it('uses a 10 minute timeout override for process-notifications', () => {
 		const workflowPath = resolve(process.cwd(), 'src/workflows/character-report.workflow.ts')
 		const source = readFileSync(workflowPath, 'utf8')
 
 		expect(source).toContain("const NOTIFICATIONS_PROCESS_STEP: WorkflowStepConfig = {")
-		expect(source).toContain("timeout: '5 minutes'")
+		expect(source).toContain("timeout: '10 minutes'")
 		expect(source).toContain(
 			"doStep('process-notifications', NOTIFICATIONS_PROCESS_STEP, () =>"
 		)
