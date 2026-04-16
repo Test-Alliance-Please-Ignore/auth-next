@@ -19,7 +19,12 @@ import {
 	updateSyncTimestamps,
 } from './steps/common'
 import { fetchContracts, storeContracts } from './steps/contracts'
-import { recordDirectorFailure, recordDirectorSuccess, selectDirector } from './steps/directors'
+import {
+	recordDirectorFailure,
+	recordDirectorSuccess,
+	selectDirector,
+	verifyAllDirectorsHealth,
+} from './steps/directors'
 import { fetchIndustryJobs, storeIndustryJobs } from './steps/industry-jobs'
 import { fetchKillmails, storeKillmails } from './steps/killmails'
 import { fetchMemberTracking, storeMemberTracking } from './steps/member-tracking'
@@ -38,7 +43,7 @@ import {
 } from './utils/tax-projection-trigger'
 
 import type { WorkflowEvent, WorkflowStep } from 'cloudflare:workers'
-import type { EveCorporationSyncDataType } from '@repo/eve-corporation-data'
+import type { CorporationRole, EveCorporationSyncDataType } from '@repo/eve-corporation-data'
 import type { Env } from '../context'
 import type {
 	DirectorInfo,
@@ -48,6 +53,40 @@ import type {
 } from './types'
 
 const STEP_RETRY_OPTIONS = esiRetryOptions
+
+const ROLE_REQUIREMENTS_BY_DATA_TYPE: Partial<Record<EveCorporationSyncDataType, CorporationRole[]>> =
+	{
+		members: ['Director'],
+		'member-tracking': ['Director'],
+		wallets: ['Accountant', 'Junior_Accountant'],
+		'wallet-journal': ['Accountant', 'Junior_Accountant'],
+		'wallet-transactions': ['Accountant', 'Junior_Accountant'],
+		assets: ['Director'],
+		structures: ['Station_Manager'],
+		orders: ['Accountant', 'Junior_Accountant', 'Trader'],
+		contracts: ['Director'],
+		'industry-jobs': ['Factory_Manager'],
+		killmails: ['Director'],
+	}
+
+function getRequiredRoleSets(dataTypes?: EveCorporationSyncDataType[]): CorporationRole[][] {
+	const targetTypes =
+		dataTypes && dataTypes.length > 0
+			? dataTypes
+			: (Object.keys(ROLE_REQUIREMENTS_BY_DATA_TYPE) as EveCorporationSyncDataType[])
+
+	const deduped = new Map<string, CorporationRole[]>()
+	for (const type of targetTypes) {
+		const anyOf = ROLE_REQUIREMENTS_BY_DATA_TYPE[type]
+		if (!anyOf || anyOf.length === 0) continue
+		const key = [...anyOf].sort().join('|')
+		if (!deduped.has(key)) {
+			deduped.set(key, anyOf)
+		}
+	}
+
+	return [...deduped.values()]
+}
 
 /**
  * Result type for sync steps that tracks both the data type synced and any stats
@@ -73,6 +112,24 @@ export class EveCorporationSyncWorkflow extends WorkflowEntrypoint<Env, EveCorpo
 		this.validateEnv()
 
 		const shouldSync = createShouldSyncPredicate(dataTypes)
+		const requiredRoleSets = getRequiredRoleSets(dataTypes)
+
+		await step.do(
+			'verify-all-directors-health',
+			{
+				retries: { limit: 2, delay: '3 seconds', backoff: 'exponential' },
+				timeout: '1 minute',
+			},
+			async () => {
+				const verification = await verifyAllDirectorsHealth(this.env, corporationId)
+				logger.info('[EveCorporationSyncWorkflow] Director health verification complete', {
+					corporationId,
+					verified: verification.verified,
+					failed: verification.failed,
+				})
+				return verification
+			}
+		)
 
 		let director: DirectorInfo | null = await step.do(
 			'select-director',
@@ -82,7 +139,7 @@ export class EveCorporationSyncWorkflow extends WorkflowEntrypoint<Env, EveCorpo
 			},
 			async () => {
 				try {
-					return await selectDirector(this.env, corporationId)
+					return await selectDirector(this.env, corporationId, { requiredRoleSets })
 				} catch (error) {
 					logger.error(
 						'[EveCorporationSyncWorkflow] select-director step failed; continuing without director',
@@ -121,6 +178,107 @@ export class EveCorporationSyncWorkflow extends WorkflowEntrypoint<Env, EveCorpo
 				message.includes('forbidden') ||
 				message.includes('unauthorized')
 			)
+		}
+
+		const buildDirectorFailureReason = (
+			stepName: string,
+			error: unknown,
+			requiredRoles?: string[]
+		): string => {
+			const rawMessage = error instanceof Error ? error.message : String(error)
+			const metadata = error instanceof Error ? parseEsiErrorMetadata(error.message) : null
+			const status = typeof metadata?.status === 'number' ? metadata.status : null
+			const path = typeof metadata?.path === 'string' ? metadata.path : null
+			const lower = rawMessage.toLowerCase()
+			const roleHint = lower.includes('required role') ? 'required_roles_missing' : null
+			const parts = [
+				`step=${stepName}`,
+				status !== null ? `status=${status}` : null,
+				path ? `path=${path}` : null,
+				roleHint ? `hint=${roleHint}` : null,
+				requiredRoles && requiredRoles.length > 0
+					? `requiredRoles=${requiredRoles.join('|')}`
+					: null,
+				roleHint && requiredRoles && requiredRoles.length > 0
+					? `missingRoles=unknown_from_esi`
+					: null,
+				`error=${rawMessage}`,
+			].filter((part): part is string => Boolean(part))
+			return `Director auth failure (${parts.join(', ')})`
+		}
+
+		const runDirectorStepWithFailover = async <T>(params: {
+			stepName: string
+			timeout: '1 minute' | '5 minutes' | '10 minutes'
+			requiredRoles?: string[]
+			run: (directorCharacterId: string) => Promise<T>
+		}): Promise<T> => {
+			if (!director) {
+				throw new Error(
+					`No director available for authenticated step: ${params.stepName}`
+				)
+			}
+
+			const stepOptions = { ...STEP_RETRY_OPTIONS, timeout: params.timeout }
+			try {
+				return (await step.do(params.stepName, stepOptions, async () =>
+					(await withEsiRetryClassification(params.stepName, () =>
+						params.run(director!.characterId)
+					)) as any
+				)) as T
+			} catch (error) {
+				if (!isDirectorAuthFailure(error)) {
+					throw error
+				}
+
+				const errorMessage = error instanceof Error ? error.message : String(error)
+				const failureReason = buildDirectorFailureReason(
+					params.stepName,
+					error,
+					params.requiredRoles
+				)
+				logger.warn(
+					'[EveCorporationSyncWorkflow] Director auth failure on authenticated step, failing over',
+					{
+						corporationId,
+						stepName: params.stepName,
+						directorId: director.directorId,
+						directorCharacterId: director.characterId,
+						error: errorMessage,
+						failureReason,
+					}
+				)
+
+				await step.do(`record-director-failure-${params.stepName}`, {}, () =>
+					recordDirectorFailure(this.env, corporationId, director!.directorId, failureReason, {
+						forceUnhealthy: true,
+					})
+				)
+
+				const replacementDirector = await step.do(
+					`reselect-director-after-${params.stepName}-auth-failure`,
+					{
+						retries: { limit: 3, delay: '2 seconds', backoff: 'exponential' },
+						timeout: '30 seconds',
+					},
+					() => selectDirector(this.env, corporationId, { requiredRoleSets })
+				)
+
+				if (!replacementDirector) {
+					throw error
+				}
+
+				director = replacementDirector
+				return (await step.do(
+					`${params.stepName}-with-failover-director`,
+					stepOptions,
+					async () =>
+						(await withEsiRetryClassification(
+							`${params.stepName}-with-failover-director`,
+							() => params.run(director!.characterId)
+						)) as any
+				)) as T
+			}
 		}
 
 		// All step results - state is exclusively derived from step.do() returns
@@ -174,15 +332,17 @@ export class EveCorporationSyncWorkflow extends WorkflowEntrypoint<Env, EveCorpo
 				}
 
 				const errorMessage = error instanceof Error ? error.message : String(error)
+				const failureReason = buildDirectorFailureReason('fetch-members', error, ['Director'])
 				logger.warn('[EveCorporationSyncWorkflow] Director auth failure on fetch-members, failing over', {
 					corporationId,
 					directorId: director.directorId,
 					directorCharacterId: director.characterId,
 					error: errorMessage,
+					failureReason,
 				})
 
 				await step.do('record-director-failure-fetch-members', {}, () =>
-					recordDirectorFailure(this.env, corporationId, director!.directorId, errorMessage, {
+					recordDirectorFailure(this.env, corporationId, director!.directorId, failureReason, {
 						forceUnhealthy: true,
 					})
 				)
@@ -193,7 +353,7 @@ export class EveCorporationSyncWorkflow extends WorkflowEntrypoint<Env, EveCorpo
 						retries: { limit: 3, delay: '2 seconds', backoff: 'exponential' },
 						timeout: '30 seconds',
 					},
-					() => selectDirector(this.env, corporationId)
+					() => selectDirector(this.env, corporationId, { requiredRoleSets })
 				)
 
 				if (!replacementDirector) {
@@ -239,14 +399,65 @@ export class EveCorporationSyncWorkflow extends WorkflowEntrypoint<Env, EveCorpo
 		}
 
 		if (shouldSyncAuthenticated('member-tracking')) {
-			const trackingData = await step.do(
-				'fetch-member-tracking',
-				{ ...STEP_RETRY_OPTIONS, timeout: '1 minute' },
-				() =>
-					withEsiRetryClassification('fetch-member-tracking', () =>
-						fetchMemberTracking(this.env, corporationId, director!.characterId)
-					)
-			)
+			let trackingData: Awaited<ReturnType<typeof fetchMemberTracking>>
+			try {
+				trackingData = await step.do(
+					'fetch-member-tracking',
+					{ ...STEP_RETRY_OPTIONS, timeout: '1 minute' },
+					() =>
+						withEsiRetryClassification('fetch-member-tracking', () =>
+							fetchMemberTracking(this.env, corporationId, director!.characterId)
+						)
+				)
+			} catch (error) {
+				if (!director || !isDirectorAuthFailure(error)) {
+					throw error
+				}
+
+				const errorMessage = error instanceof Error ? error.message : String(error)
+				const failureReason = buildDirectorFailureReason('fetch-member-tracking', error, [
+					'Director',
+				])
+				logger.warn(
+					'[EveCorporationSyncWorkflow] Director auth failure on fetch-member-tracking, failing over',
+					{
+						corporationId,
+						directorId: director.directorId,
+						directorCharacterId: director.characterId,
+						error: errorMessage,
+						failureReason,
+					}
+				)
+
+				await step.do('record-director-failure-fetch-member-tracking', {}, () =>
+					recordDirectorFailure(this.env, corporationId, director!.directorId, failureReason, {
+						forceUnhealthy: true,
+					})
+				)
+
+				const replacementDirector = await step.do(
+					'reselect-director-after-fetch-member-tracking-auth-failure',
+					{
+						retries: { limit: 3, delay: '2 seconds', backoff: 'exponential' },
+						timeout: '30 seconds',
+					},
+					() => selectDirector(this.env, corporationId)
+				)
+
+				if (!replacementDirector) {
+					throw error
+				}
+
+				director = replacementDirector
+				trackingData = await step.do(
+					'fetch-member-tracking-with-failover-director',
+					{ ...STEP_RETRY_OPTIONS, timeout: '1 minute' },
+					() =>
+						withEsiRetryClassification('fetch-member-tracking-with-failover-director', () =>
+							fetchMemberTracking(this.env, corporationId, director!.characterId)
+						)
+				)
+			}
 
 			memberTrackingSync = await step.do('store-member-tracking', {}, async () => {
 				await storeMemberTracking(this.env, corporationId, trackingData)
@@ -258,14 +469,13 @@ export class EveCorporationSyncWorkflow extends WorkflowEntrypoint<Env, EveCorpo
 		}
 
 		if (shouldSyncAuthenticated('wallets')) {
-			const wallets = await step.do(
-				'fetch-wallets',
-				{ ...STEP_RETRY_OPTIONS, timeout: '1 minute' },
-				() =>
-					withEsiRetryClassification('fetch-wallets', () =>
-						fetchWallets(this.env, corporationId, director!.characterId)
-					)
-			)
+			const wallets = await runDirectorStepWithFailover({
+				stepName: 'fetch-wallets',
+				timeout: '1 minute',
+				requiredRoles: ['Accountant', 'Junior_Accountant'],
+				run: (directorCharacterId) =>
+					fetchWallets(this.env, corporationId, directorCharacterId),
+			})
 
 			walletsSync = await step.do('store-wallets', {}, async () => {
 				await storeWallets(this.env, corporationId, wallets)
@@ -281,10 +491,13 @@ export class EveCorporationSyncWorkflow extends WorkflowEntrypoint<Env, EveCorpo
 				'sync-wallet-journal',
 				{ ...STEP_RETRY_OPTIONS, timeout: '5 minutes' },
 				async () => {
-					const walletJournalResult = await withEsiRetryClassification(
-						'sync-wallet-journal',
-						() => syncWalletJournal(this.env, corporationId, director!.characterId)
-					)
+					const walletJournalResult = await runDirectorStepWithFailover({
+						stepName: 'sync-wallet-journal',
+						timeout: '5 minutes',
+						requiredRoles: ['Accountant', 'Junior_Accountant'],
+						run: (directorCharacterId) =>
+							syncWalletJournal(this.env, corporationId, directorCharacterId),
+					})
 					return {
 						dataType: 'wallet-journal' as const,
 						stats: {
@@ -303,10 +516,13 @@ export class EveCorporationSyncWorkflow extends WorkflowEntrypoint<Env, EveCorpo
 				'sync-wallet-transactions',
 				{ ...STEP_RETRY_OPTIONS, timeout: '5 minutes' },
 				async () => {
-					const walletTransactionsResult = await withEsiRetryClassification(
-						'sync-wallet-transactions',
-						() => syncWalletTransactions(this.env, corporationId, director!.characterId)
-					)
+					const walletTransactionsResult = await runDirectorStepWithFailover({
+						stepName: 'sync-wallet-transactions',
+						timeout: '5 minutes',
+						requiredRoles: ['Accountant', 'Junior_Accountant'],
+						run: (directorCharacterId) =>
+							syncWalletTransactions(this.env, corporationId, directorCharacterId),
+					})
 					return {
 						dataType: 'wallet-transactions' as const,
 						stats: {
@@ -325,9 +541,13 @@ export class EveCorporationSyncWorkflow extends WorkflowEntrypoint<Env, EveCorpo
 				'sync-assets',
 				{ ...STEP_RETRY_OPTIONS, timeout: '10 minutes' },
 				async () => {
-					const result = await withEsiRetryClassification('sync-assets', () =>
-						syncAssets(this.env, corporationId, director!.characterId)
-					)
+					const result = await runDirectorStepWithFailover({
+						stepName: 'sync-assets',
+						timeout: '10 minutes',
+						requiredRoles: ['Director'],
+						run: (directorCharacterId) =>
+							syncAssets(this.env, corporationId, directorCharacterId),
+					})
 					return {
 						dataType: 'assets' as const,
 						stats: { assetsCount: result.assetsCount },
@@ -337,14 +557,13 @@ export class EveCorporationSyncWorkflow extends WorkflowEntrypoint<Env, EveCorpo
 		}
 
 		if (shouldSyncAuthenticated('structures')) {
-			const structures = await step.do(
-				'fetch-structures',
-				{ ...STEP_RETRY_OPTIONS, timeout: '1 minute' },
-				() =>
-					withEsiRetryClassification('fetch-structures', () =>
-						fetchStructures(this.env, corporationId, director!.characterId)
-					)
-			)
+			const structures = await runDirectorStepWithFailover({
+				stepName: 'fetch-structures',
+				timeout: '1 minute',
+				requiredRoles: ['Station_Manager'],
+				run: (directorCharacterId) =>
+					fetchStructures(this.env, corporationId, directorCharacterId),
+			})
 
 			structuresSync = await step.do('store-structures', {}, async () => {
 				await storeStructures(this.env, corporationId, structures)
@@ -356,14 +575,12 @@ export class EveCorporationSyncWorkflow extends WorkflowEntrypoint<Env, EveCorpo
 		}
 
 		if (shouldSyncAuthenticated('orders')) {
-			const orders = await step.do(
-				'fetch-orders',
-				{ ...STEP_RETRY_OPTIONS, timeout: '1 minute' },
-				() =>
-					withEsiRetryClassification('fetch-orders', () =>
-						fetchOrders(this.env, corporationId, director!.characterId)
-					)
-			)
+			const orders = await runDirectorStepWithFailover({
+				stepName: 'fetch-orders',
+				timeout: '1 minute',
+				run: (directorCharacterId) =>
+					fetchOrders(this.env, corporationId, directorCharacterId),
+			})
 
 			ordersSync = await step.do('store-orders', {}, async () => {
 				await storeOrders(this.env, corporationId, orders)
@@ -375,14 +592,13 @@ export class EveCorporationSyncWorkflow extends WorkflowEntrypoint<Env, EveCorpo
 		}
 
 		if (shouldSyncAuthenticated('contracts')) {
-			const contracts = await step.do(
-				'fetch-contracts',
-				{ ...STEP_RETRY_OPTIONS, timeout: '1 minute' },
-				() =>
-					withEsiRetryClassification('fetch-contracts', () =>
-						fetchContracts(this.env, corporationId, director!.characterId)
-					)
-			)
+			const contracts = await runDirectorStepWithFailover({
+				stepName: 'fetch-contracts',
+				timeout: '1 minute',
+				requiredRoles: ['Director'],
+				run: (directorCharacterId) =>
+					fetchContracts(this.env, corporationId, directorCharacterId),
+			})
 
 			contractsSync = await step.do('store-contracts', {}, async () => {
 				await storeContracts(this.env, corporationId, contracts)
@@ -394,14 +610,12 @@ export class EveCorporationSyncWorkflow extends WorkflowEntrypoint<Env, EveCorpo
 		}
 
 		if (shouldSyncAuthenticated('industry-jobs')) {
-			const industryJobs = await step.do(
-				'fetch-industry-jobs',
-				{ ...STEP_RETRY_OPTIONS, timeout: '1 minute' },
-				() =>
-					withEsiRetryClassification('fetch-industry-jobs', () =>
-						fetchIndustryJobs(this.env, corporationId, director!.characterId)
-					)
-			)
+			const industryJobs = await runDirectorStepWithFailover({
+				stepName: 'fetch-industry-jobs',
+				timeout: '1 minute',
+				run: (directorCharacterId) =>
+					fetchIndustryJobs(this.env, corporationId, directorCharacterId),
+			})
 
 			industryJobsSync = await step.do('store-industry-jobs', {}, async () => {
 				await storeIndustryJobs(this.env, corporationId, industryJobs)
@@ -413,14 +627,13 @@ export class EveCorporationSyncWorkflow extends WorkflowEntrypoint<Env, EveCorpo
 		}
 
 		if (shouldSyncAuthenticated('killmails')) {
-			const killmails = await step.do(
-				'fetch-killmails',
-				{ ...STEP_RETRY_OPTIONS, timeout: '1 minute' },
-				() =>
-					withEsiRetryClassification('fetch-killmails', () =>
-						fetchKillmails(this.env, corporationId, director!.characterId)
-					)
-			)
+			const killmails = await runDirectorStepWithFailover({
+				stepName: 'fetch-killmails',
+				timeout: '1 minute',
+				requiredRoles: ['Director'],
+				run: (directorCharacterId) =>
+					fetchKillmails(this.env, corporationId, directorCharacterId),
+			})
 
 			killmailsSync = await step.do('store-killmails', {}, async () => {
 				await storeKillmails(this.env, corporationId, killmails)

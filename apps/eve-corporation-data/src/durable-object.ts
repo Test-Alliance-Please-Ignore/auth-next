@@ -504,6 +504,13 @@ export class EveCorporationDataDO extends DurableObject<Env> implements EveCorpo
 
 		if (!existingDirector) {
 			await directorManager.addDirector(characterId, characterName, 100)
+
+			const inserted = (await directorManager.getAllDirectors()).find(
+				(d) => d.characterId === characterId
+			)
+			if (inserted) {
+				await directorManager.verifyDirectorHealth(inserted.directorId)
+			}
 		}
 	}
 
@@ -688,6 +695,13 @@ export class EveCorporationDataDO extends DurableObject<Env> implements EveCorpo
 			this.onDirectorAffiliationMismatch.bind(this)
 		)
 		await directorManager.addDirector(characterId, characterName, priority)
+
+		const inserted = (await directorManager.getAllDirectors()).find(
+			(d) => d.characterId === characterId
+		)
+		if (inserted) {
+			await directorManager.verifyDirectorHealth(inserted.directorId)
+		}
 
 		// Invalidate directors cache
 		await this.invalidateDirectorsCache(corporationId)

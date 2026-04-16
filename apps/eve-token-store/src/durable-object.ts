@@ -13,6 +13,7 @@ import type {
 	CachedEveMetadata,
 	CallbackResult,
 	EsiAlliance,
+	EsiCharacterAffiliation,
 	EsiCorporation,
 	EsiResponse,
 	EveMetadata,
@@ -864,6 +865,12 @@ export class EveTokenStoreDO extends DurableObject<Env> implements EveTokenStore
 		return parsed
 	}
 
+	private normalizeCharacterIds(characterIds: string[]): number[] {
+		return [...new Set(characterIds.map((id) => Number.parseInt(id, 10)).filter(Number.isFinite))].sort(
+			(a, b) => a - b
+		)
+	}
+
 	private buildEsiRequestError(path: string, response: Response, errorText: string): Error {
 		// For 429, Retry-After is the canonical ESI retry window. Some routes may still expose
 		// legacy error-limit windows via X-ESI-Error-Limit-Reset.
@@ -1145,6 +1152,104 @@ export class EveTokenStoreDO extends DurableObject<Env> implements EveTokenStore
 			etag: etag || undefined,
 			pages,
 			page,
+		}
+	}
+
+	async fetchCharacterAffiliations(
+		characterIds: string[]
+	): Promise<EsiResponse<EsiCharacterAffiliation[]>> {
+		const normalizedIds = this.normalizeCharacterIds(characterIds)
+		if (normalizedIds.length === 0) {
+			throw new Error('fetchCharacterAffiliations requires at least one valid character ID')
+		}
+
+		const cacheSuffix = normalizedIds.join(',')
+		const cacheKey = `public:/characters/affiliation:${cacheSuffix}`
+		const cachedCursor = await this.state.storage.sql.exec<{
+			response_data: string
+			expires_at: number
+			etag: string | null
+			last_modified: string | null
+		}>(
+			`SELECT response_data, expires_at, etag, last_modified FROM esi_cache WHERE cache_key = ?`,
+			cacheKey
+		)
+
+		const cached = [...cachedCursor]
+		if (cached.length > 0) {
+			const now = Date.now()
+			const lastModified = cached[0].last_modified
+				? new Date(cached[0].last_modified).getTime()
+				: null
+			const cacheAge = lastModified ? now - lastModified : Infinity
+
+			if (cached[0].expires_at > now && cacheAge <= EveTokenStoreDO.MAX_CACHE_TTL_MS) {
+				return {
+					data: JSON.parse(cached[0].response_data) as EsiCharacterAffiliation[],
+					cached: true,
+					expiresAt: new Date(cached[0].expires_at),
+					etag: cached[0].etag || undefined,
+				}
+			}
+		}
+
+		const headers: Record<string, string> = {
+			'X-Compatibility-Date': '2025-09-30',
+			Accept: 'application/json',
+			'Content-Type': 'application/json',
+		}
+		if (cached.length > 0 && cached[0].etag) {
+			headers['If-None-Match'] = cached[0].etag
+		}
+
+		const response = await fetch('https://esi.evetech.net/latest/characters/affiliation/', {
+			method: 'POST',
+			headers,
+			body: JSON.stringify(normalizedIds),
+		})
+
+		if (response.status === 304 && cached.length > 0) {
+			const newExpiresAt = this.parseEsiCacheExpiry(response.headers)
+			await this.state.storage.sql.exec(
+				`UPDATE esi_cache SET expires_at = ?, last_modified = ? WHERE cache_key = ?`,
+				newExpiresAt.getTime(),
+				new Date().toISOString(),
+				cacheKey
+			)
+			return {
+				data: JSON.parse(cached[0].response_data) as EsiCharacterAffiliation[],
+				cached: true,
+				expiresAt: newExpiresAt,
+				etag: cached[0].etag || undefined,
+			}
+		}
+
+		if (!response.ok) {
+			const errorText = await response.text()
+			throw this.buildEsiRequestError('/characters/affiliation', response, errorText)
+		}
+
+		const data = (await response.json()) as EsiCharacterAffiliation[]
+		const expiresAt = this.parseEsiCacheExpiry(response.headers)
+		const etag = response.headers.get('ETag')
+
+		await this.state.storage.sql.exec(
+			`INSERT OR REPLACE INTO esi_cache (cache_key, response_data, expires_at, etag, pages, page, last_modified)
+			 VALUES (?, ?, ?, ?, ?, ?, ?)`,
+			cacheKey,
+			JSON.stringify(data),
+			expiresAt.getTime(),
+			etag,
+			null,
+			null,
+			new Date().toISOString()
+		)
+
+		return {
+			data,
+			cached: false,
+			expiresAt,
+			etag: etag || undefined,
 		}
 	}
 
