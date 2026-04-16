@@ -42,6 +42,11 @@
 				"name": "DISCORD",
 				"class_name": "Discord",
 				"script_name": "discord"
+			},
+			{
+				"name": "HR",
+				"class_name": "Hr",
+				"script_name": "hr"
 			}
 		]
 	},

@@ -51,6 +51,35 @@ export const NOTIFICATIONS_PROCESS_STEP: WorkflowStepConfig = {
 	timeout: '5 minutes',
 }
 
+function serializeError(error: unknown): {
+	message: string
+	name?: string
+	stack?: string
+	cause?: string
+} {
+	if (error instanceof Error) {
+		const cause =
+			error.cause instanceof Error
+				? error.cause.message
+				: error.cause
+					? String(error.cause)
+					: undefined
+		return {
+			message: error.message,
+			name: error.name,
+			stack: error.stack,
+			cause,
+		}
+	}
+	return { message: String(error) }
+}
+
+function assertRequiredBinding(name: string, value: unknown): void {
+	if (value === undefined || value === null) {
+		throw new Error(`Missing required Fulcrum workflow binding: ${name}`)
+	}
+}
+
 /**
  * Character Report Workflow
  * Fetches and processes character data, persists per-section JSON to R2
@@ -65,23 +94,49 @@ export class CharacterReportWorkflow extends WorkflowEntrypoint<Env, WorkflowPar
 
 		const startedAt = Date.now()
 		const logCtx = { characterId, reportId, workflowInstanceId }
+		const stepDurationsMs: Record<string, number> = {}
+		let failedStep: string | null = null
+
+		assertRequiredBinding('DATABASE_URL', this.env.DATABASE_URL)
+		assertRequiredBinding('CHARACTER_REPORTS', this.env.CHARACTER_REPORTS)
+		assertRequiredBinding('ESI', this.env.ESI)
+		assertRequiredBinding('ESI_TYPE_RESOLVER', this.env.ESI_TYPE_RESOLVER)
+		assertRequiredBinding('CORE', this.env.CORE)
+		assertRequiredBinding('HR', this.env.HR)
 
 		// Wrap step.do() with structured start/completion logging.
 		// Logs run outside the callback so they fire on replay too, making it easy
 		// to see how far a replayed workflow has progressed.
 		const doStep = async <T>(name: string, config: WorkflowStepConfig, fn: () => Promise<T>): Promise<T> => {
-			console.log('[Workflow] step:start', { step: name, ...logCtx })
-			// eslint-disable-next-line @typescript-eslint/no-explicit-any
-			const result = await step.do(name, config, fn as () => Promise<any>) as T
-			const logFields: Record<string, unknown> = { step: name, ...logCtx }
-			if (result !== null && typeof result === 'object' && 'success' in result && 'source' in result) {
-				const r = result as unknown as StepResult
-				logFields.success = r.success
-				logFields.source = r.source
-				if (!r.success) logFields.error = r.error
+			const stepStartedAt = Date.now()
+			console.log('[Workflow] step:start', { step: name, config, ...logCtx })
+			try {
+				// eslint-disable-next-line @typescript-eslint/no-explicit-any
+				const result = await step.do(name, config, fn as () => Promise<any>) as T
+				const logFields: Record<string, unknown> = { step: name, ...logCtx }
+				if (result !== null && typeof result === 'object' && 'success' in result && 'source' in result) {
+					const r = result as unknown as StepResult
+					logFields.success = r.success
+					logFields.source = r.source
+					if (!r.success) logFields.error = r.error
+				}
+				stepDurationsMs[name] = Date.now() - stepStartedAt
+				logFields.durationMs = stepDurationsMs[name]
+				console.log('[Workflow] step:done', logFields)
+				return result
+			} catch (error) {
+				failedStep = name
+				const serializedError = serializeError(error)
+				stepDurationsMs[name] = Date.now() - stepStartedAt
+				console.error('[Workflow] step:error', {
+					step: name,
+					durationMs: stepDurationsMs[name],
+					config,
+					error: serializedError,
+					...logCtx,
+				})
+				throw error
 			}
-			console.log('[Workflow] step:done', logFields)
-			return result
 		}
 
 		console.log('[Workflow] started', logCtx)
@@ -506,17 +561,26 @@ export class CharacterReportWorkflow extends WorkflowEntrypoint<Env, WorkflowPar
 				),
 			)
 
-			console.log('[Workflow] completed', { ...logCtx, durationMs: Date.now() - startedAt })
+			console.log('[Workflow] completed', {
+				...logCtx,
+				durationMs: Date.now() - startedAt,
+				stepDurationsMs,
+			})
 		} catch (error) {
+			const serializedError = serializeError(error)
+			const errorMsgBase = serializedError.message
+			const errorMsg = failedStep ? `[${failedStep}] ${errorMsgBase}` : errorMsgBase
+			console.error('[Workflow] failed', {
+				...logCtx,
+				failedStep,
+				durationMs: Date.now() - startedAt,
+				stepDurationsMs,
+				error: serializedError,
+			})
+
 			// Mark report as failed in DB so it doesn't stay stuck as "pending"
 			try {
 				await doStep('mark-failed', STEP, async () => {
-					const errorMsg = error instanceof Error ? error.message : String(error)
-					console.error('[Workflow] failed', {
-						...logCtx,
-						durationMs: Date.now() - startedAt,
-						error: errorMsg,
-					})
 					const db = createDb(this.env.DATABASE_URL)
 					const query = buildUpdateReportStatusQuery(reportId, 'failed', {
 						errorMessage: errorMsg.slice(0, 500),
@@ -527,8 +591,9 @@ export class CharacterReportWorkflow extends WorkflowEntrypoint<Env, WorkflowPar
 				console.error('[CharacterReportWorkflow] Failed to mark report as failed:', {
 					reportId,
 					characterId,
-					originalError: error instanceof Error ? error.message : String(error),
-					markError: markError instanceof Error ? markError.message : String(markError),
+					failedStep,
+					originalError: serializedError,
+					markError: serializeError(markError),
 				})
 			}
 			throw error
