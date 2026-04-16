@@ -1,5 +1,6 @@
 import { and, asc, eq } from '@repo/db-utils'
 import { logger } from '@repo/hono-helpers'
+import { parseEsiErrorMetadata } from '@repo/workflow-utils'
 
 import { characterCorporationRoles, corporationConfig, corporationDirectors } from '../db/schema'
 
@@ -274,8 +275,10 @@ export class DirectorManager {
 						characterName: candidate.characterName,
 					}
 				} catch (error) {
-					const message = error instanceof Error ? error.message : String(error)
-					await this.safeRecordFailure(candidate.directorId, `Token validation failed: ${message}`)
+					await this.safeRecordFailure(
+						candidate.directorId,
+						this.buildDirectorAuthFailureReason('select-director', error)
+					)
 				}
 			}
 
@@ -383,6 +386,62 @@ export class DirectorManager {
 				error: error instanceof Error ? error.message : String(error),
 			})
 		}
+	}
+
+	private buildDirectorAuthFailureReason(
+		stepName: string,
+		error: unknown,
+		requiredRoles?: CorporationRole[]
+	): string {
+		const rawMessage = error instanceof Error ? error.message : String(error)
+		const metadata = error instanceof Error ? parseEsiErrorMetadata(error.message) : null
+		const status = typeof metadata?.status === 'number' ? metadata.status : null
+		const path = typeof metadata?.path === 'string' ? metadata.path : null
+		const lower = rawMessage.toLowerCase()
+		const roleHint = lower.includes('required role') ? 'required_roles_missing' : null
+		const classifyDetailCode = (): string => {
+			if (status === 401 && lower.includes('no token')) {
+				return 'no_token_provided'
+			}
+			if (status === 401 && lower.includes('expired')) {
+				return 'token_expired'
+			}
+			if (status === 403 && lower.includes('required role')) {
+				return 'required_roles_missing'
+			}
+			if (status === 403) {
+				return 'forbidden'
+			}
+			if (status === 401) {
+				return 'unauthorized'
+			}
+			return 'auth_failure'
+		}
+		const classifyReasonCode = (): string => {
+			if (roleHint === 'required_roles_missing') {
+				return 'required_roles_missing'
+			}
+			if (status === 401) {
+				return 'unauthorized'
+			}
+			if (status === 403) {
+				return 'forbidden'
+			}
+			return 'auth_failure'
+		}
+		const detailCode = classifyDetailCode()
+		const reasonCode = classifyReasonCode()
+		const parts = [
+			`step=${stepName}`,
+			status !== null ? `status=${status}` : null,
+			path ? `path=${path}` : null,
+			`reasonCode=${reasonCode}`,
+			detailCode ? `detailCode=${detailCode}` : null,
+			roleHint ? `hint=${roleHint}` : null,
+			requiredRoles && requiredRoles.length > 0 ? `requiredRoles=${requiredRoles.join('|')}` : null,
+			roleHint && requiredRoles && requiredRoles.length > 0 ? `missingRoles=unknown_from_esi` : null,
+		].filter((part): part is string => Boolean(part))
+		return `Director auth failure (${parts.join(', ')})`
 	}
 
 	/**

@@ -203,10 +203,44 @@ export class EveCorporationSyncWorkflow extends WorkflowEntrypoint<Env, EveCorpo
 			const path = typeof metadata?.path === 'string' ? metadata.path : null
 			const lower = rawMessage.toLowerCase()
 			const roleHint = lower.includes('required role') ? 'required_roles_missing' : null
+			const classifyDetailCode = (): string => {
+				if (status === 401 && lower.includes('no token')) {
+					return 'no_token_provided'
+				}
+				if (status === 401 && lower.includes('expired')) {
+					return 'token_expired'
+				}
+				if (status === 403 && lower.includes('required role')) {
+					return 'required_roles_missing'
+				}
+				if (status === 403) {
+					return 'forbidden'
+				}
+				if (status === 401) {
+					return 'unauthorized'
+				}
+				return 'auth_failure'
+			}
+			const classifyReasonCode = (): string => {
+				if (roleHint === 'required_roles_missing') {
+					return 'required_roles_missing'
+				}
+				if (status === 401) {
+					return 'unauthorized'
+				}
+				if (status === 403) {
+					return 'forbidden'
+				}
+				return 'auth_failure'
+			}
+			const detailCode = classifyDetailCode()
+			const reasonCode = classifyReasonCode()
 			const parts = [
 				`step=${stepName}`,
 				status !== null ? `status=${status}` : null,
 				path ? `path=${path}` : null,
+				`reasonCode=${reasonCode}`,
+				detailCode ? `detailCode=${detailCode}` : null,
 				roleHint ? `hint=${roleHint}` : null,
 				requiredRoles && requiredRoles.length > 0
 					? `requiredRoles=${requiredRoles.join('|')}`
@@ -214,7 +248,6 @@ export class EveCorporationSyncWorkflow extends WorkflowEntrypoint<Env, EveCorpo
 				roleHint && requiredRoles && requiredRoles.length > 0
 					? `missingRoles=unknown_from_esi`
 					: null,
-				`error=${rawMessage}`,
 			].filter((part): part is string => Boolean(part))
 			return `Director auth failure (${parts.join(', ')})`
 		}
