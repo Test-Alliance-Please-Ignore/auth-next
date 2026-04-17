@@ -8,10 +8,11 @@
 import { formatDistanceToNow } from 'date-fns'
 import { MessageSquare } from 'lucide-react'
 
-import { MemberAvatar } from '@/components/member-avatar'
+import { useEntityNames } from '@/hooks/useEntityNames'
 import { Card, CardContent } from '@/components/ui/card'
 import { cn } from '@/lib/utils'
 
+import { ApplicationCharacterStack } from './application-character-stack'
 import { ApplicationStatusBadge } from './application-status-badge'
 
 import type { Application } from '../api'
@@ -50,6 +51,11 @@ export function ApplicationCard({ application, onClick, className }: Application
 
 	const isInteractive = !!onClick
 
+	const altCharacterIds = application.altCharacterIds ?? []
+	const { data: altCharacterNames = {} } = useEntityNames(altCharacterIds, {
+		enabled: altCharacterIds.length > 0,
+	})
+
 	return (
 		<Card
 			variant={isInteractive ? 'interactive' : 'default'}
@@ -63,9 +69,11 @@ export function ApplicationCard({ application, onClick, className }: Application
 			<CardContent className="p-4">
 				<div className="flex items-start gap-4">
 					{/* Character Portrait */}
-					<MemberAvatar
-						characterId={application.characterId}
-						characterName={application.characterName}
+					<ApplicationCharacterStack
+						mainCharacterId={application.characterId}
+						mainCharacterName={application.characterName}
+						altCharacterIds={altCharacterIds}
+						altCharacterNames={altCharacterNames}
 						size="md"
 					/>
 
@@ -76,6 +84,11 @@ export function ApplicationCard({ application, onClick, className }: Application
 							<div className="flex-1 min-w-0">
 								<h3 className="text-base font-semibold text-foreground truncate">
 									{application.characterName}
+									{altCharacterIds.length > 0 && (
+										<span className="ml-1.5 text-sm font-normal text-muted-foreground">
+											(+{altCharacterIds.length} {altCharacterIds.length === 1 ? 'Alt' : 'Alts'})
+										</span>
+									)}
 								</h3>
 								{application.corporationName && (
 									<p className="text-sm text-muted-foreground truncate">

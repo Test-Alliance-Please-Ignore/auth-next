@@ -1,0 +1,1 @@
+ALTER TABLE "application_activity_log" ADD COLUMN "character_name" varchar(255);

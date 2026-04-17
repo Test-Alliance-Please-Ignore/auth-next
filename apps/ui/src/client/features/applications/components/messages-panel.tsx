@@ -164,7 +164,6 @@ export function MessagesPanel({
 								key={msg.id}
 								message={msg}
 								currentUserId={currentUserId}
-
 							/>
 						))}
 						<div ref={messagesEndRef} />
@@ -206,26 +205,12 @@ export function MessagesPanel({
 						/>
 
 						{/* Character counter and send button */}
-						<div className="flex items-center justify-between">
-							<div className="flex items-center gap-2">
-								<Button
-									onClick={handleSend}
-									disabled={!canSubmit}
-									size="sm"
-								>
-									{sendMutation.isPending ? (
-										<LoadingSpinner size="sm" className="mr-2" />
-									) : (
-										<Send className="h-4 w-4" />
-									)}
-									Send Message
-								</Button>
-								{sendMutation.isError && (
-									<span className="text-xs text-destructive">
-										Failed to send. Try again.
-									</span>
-								)}
-							</div>
+						<div className="flex items-center justify-end gap-3">
+							{sendMutation.isError && (
+								<span className="text-xs text-destructive">
+									Failed to send. Try again.
+								</span>
+							)}
 							<div className="flex items-center gap-2 text-xs">
 								{messageText.length > 0 && messageText.length < MIN_MESSAGE_LENGTH && (
 									<span className="text-muted-foreground">
@@ -243,6 +228,18 @@ export function MessagesPanel({
 									{messageText.length} / {MAX_MESSAGE_LENGTH}
 								</span>
 							</div>
+							<Button
+								onClick={handleSend}
+								disabled={!canSubmit}
+								size="sm"
+							>
+								{sendMutation.isPending ? (
+									<LoadingSpinner size="sm" className="mr-2" />
+								) : (
+									<Send className="h-4 w-4" />
+								)}
+								Send Message
+							</Button>
 						</div>
 					</div>
 				</>

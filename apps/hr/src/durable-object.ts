@@ -187,6 +187,7 @@ export class HrDO extends DurableObject<Env> implements Hr {
 		status: ApplicationStatus,
 		userId: string,
 		characterId: string,
+		characterName: string,
 		reviewNotes?: string
 	): Promise<void> {
 		const application = await this.applicationService.getApplicationById(applicationId)
@@ -213,6 +214,7 @@ export class HrDO extends DurableObject<Env> implements Hr {
 			status,
 			userId,
 			characterId,
+			characterName,
 			reviewNotes
 		)
 	}
@@ -223,9 +225,37 @@ export class HrDO extends DurableObject<Env> implements Hr {
 	async withdrawApplication(
 		applicationId: string,
 		userId: string,
-		characterId: string
+		characterId: string,
+		characterName: string
 	): Promise<void> {
-		await this.applicationService.withdrawApplication(applicationId, userId, characterId)
+		await this.applicationService.withdrawApplication(applicationId, userId, characterId, characterName)
+	}
+
+	/**
+	 * Add an alt character to a pending application
+	 */
+	async addApplicationAlts(
+		applicationId: string,
+		userId: string,
+		characterId: string,
+		characterName: string,
+		alts: Array<{ characterId: string; characterName?: string }>
+	): Promise<void> {
+		await this.applicationService.addApplicationAlts(applicationId, userId, characterId, characterName, alts)
+	}
+
+	/**
+	 * Remove an alt character from a pending application
+	 */
+	async removeApplicationAlt(
+		applicationId: string,
+		userId: string,
+		characterId: string,
+		characterName: string,
+		altCharacterId: string,
+		altCharacterName?: string
+	): Promise<void> {
+		await this.applicationService.removeApplicationAlt(applicationId, userId, characterId, characterName, altCharacterId, altCharacterName)
 	}
 
 	/**

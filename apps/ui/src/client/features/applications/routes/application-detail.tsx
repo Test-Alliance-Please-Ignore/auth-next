@@ -8,11 +8,12 @@
  */
 
 import { formatDistanceToNow } from 'date-fns'
-import { ArrowLeft, Briefcase } from 'lucide-react'
+import { ArrowLeft, Briefcase, Plus, X } from 'lucide-react'
 import { useState } from 'react'
 import { Link, Navigate, useNavigate, useParams } from 'react-router-dom'
 
 import { MemberAvatar } from '@/components/member-avatar'
+import { useEntityNames } from '@/hooks/useEntityNames'
 import {
 	Breadcrumb,
 	BreadcrumbItem,
@@ -23,6 +24,7 @@ import {
 } from '@/components/ui/breadcrumb'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
+import { Checkbox } from '@/components/ui/checkbox'
 import { Container } from '@/components/ui/container'
 import {
 	Dialog,
@@ -32,10 +34,13 @@ import {
 	DialogHeader,
 	DialogTitle,
 } from '@/components/ui/dialog'
+import { Input } from '@/components/ui/input'
+import { Label } from '@/components/ui/label'
 import { LoadingSpinner } from '@/components/ui/loading'
 import { Separator } from '@/components/ui/separator'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { useAuth } from '@/hooks/useAuth'
+import { useConfirmationDialog } from '@/hooks/useConfirmationDialog'
 import { useMessage } from '@/hooks/useMessage'
 import { usePageTitle } from '@/hooks/usePageTitle'
 
@@ -45,13 +50,16 @@ import { AddRecommendationDialog } from '../components/add-recommendation-dialog
 import { ApplicationStatusBadge } from '../components/application-status-badge'
 import { ApplicationTimeline } from '../components/application-timeline'
 import { DeleteRecommendationDialog } from '../components/delete-recommendation-dialog'
+import { ApplicationCharacterStack } from '../components/application-character-stack'
 import { MessagesPanel } from '../components/messages-panel'
 import { RecommendationList } from '../components/recommendation-list'
 import {
+	useAddApplicationAlt,
 	useApplication,
 	useApplicationActivity,
 	useMessageCount,
 	useRecommendations,
+	useRemoveApplicationAlt,
 	useWithdrawApplication,
 } from '../hooks'
 
@@ -72,6 +80,9 @@ export default function ApplicationDetail() {
 
 	// State
 	const [showWithdrawDialog, setShowWithdrawDialog] = useState(false)
+	const [showAddAltDialog, setShowAddAltDialog] = useState(false)
+	const [altSearch, setAltSearch] = useState('')
+	const [selectedAltIds, setSelectedAltIds] = useState<Set<string>>(new Set())
 	const [showAddRecommendationDialog, setShowAddRecommendationDialog] = useState(false)
 	const [editingRecommendation, setEditingRecommendation] = useState<Recommendation | undefined>(
 		undefined
@@ -88,8 +99,16 @@ export default function ApplicationDetail() {
 	const { data: recommendations } = useRecommendations(applicationId!)
 	const { data: messageCount = 0 } = useMessageCount(applicationId!)
 
+	const altCharacterIds = application?.altCharacterIds ?? []
+	const { data: altCharacterNames = {} } = useEntityNames(altCharacterIds, {
+		enabled: altCharacterIds.length > 0,
+	})
+
 	// Mutations
 	const withdrawMutation = useWithdrawApplication()
+	const addAltMutation = useAddApplicationAlt()
+	const removeAltMutation = useRemoveApplicationAlt()
+	const { requestConfirmation, confirmationDialog } = useConfirmationDialog()
 
 	// Set page title
 	usePageTitle(
@@ -103,6 +122,13 @@ export default function ApplicationDetail() {
 
 	// Check if application can be withdrawn
 	const canWithdraw = application ? canWithdrawApplication(application) : false
+
+	// Alt characters the user could still add (their chars minus main minus already-added)
+	const addableAlts = (user?.characters ?? []).filter(
+		(ch: { characterId: string }) =>
+			ch.characterId !== application?.characterId &&
+			!altCharacterIds.includes(ch.characterId)
+	)
 
 	// Handlers
 	const handleWithdrawClick = () => {
@@ -241,17 +267,23 @@ export default function ApplicationDetail() {
 			<Card className="mb-6">
 				<CardContent className="pt-6">
 					<div className="flex items-start gap-4">
-						{/* Character Portrait */}
-						<MemberAvatar
-							characterId={application.characterId}
-							characterName={application.characterName}
-							size="lg"
+						{/* Character Portrait (with alt stack if applicable) */}
+						<ApplicationCharacterStack
+							mainCharacterId={application.characterId}
+							mainCharacterName={application.characterName}
+							altCharacterIds={altCharacterIds}
+							altCharacterNames={altCharacterNames}
 						/>
 
 						{/* Application Header Info */}
 						<div className="flex-1 min-w-0">
 							<h1 className="text-2xl font-bold text-foreground mb-1">
 								{application.characterName}
+								{altCharacterIds.length > 0 && (
+									<span className="ml-2 text-lg font-normal text-muted-foreground">
+										(+{altCharacterIds.length} {altCharacterIds.length === 1 ? 'Alt' : 'Alts'})
+									</span>
+								)}
 							</h1>
 							{application.corporationName && (
 								<p className="text-lg text-muted-foreground mb-3">
@@ -295,19 +327,111 @@ export default function ApplicationDetail() {
 
 				{/* Details Tab */}
 				<TabsContent value="details" className="space-y-6">
-					<Card>
-						<CardHeader>
-							<CardTitle>Application Text</CardTitle>
-							<CardDescription>
-								Your message to the corporation explaining why you want to join
-							</CardDescription>
-						</CardHeader>
-						<CardContent>
-							<p className="text-foreground whitespace-pre-wrap break-words leading-relaxed">
-								{application.applicationText}
-							</p>
-						</CardContent>
-					</Card>
+					<div className="grid grid-cols-1 lg:grid-cols-2 gap-6 items-start">
+						{/* Application Text */}
+						<Card>
+							<CardHeader>
+								<CardTitle>Application Text</CardTitle>
+								<CardDescription>
+									Your message to the corporation explaining why you want to join
+								</CardDescription>
+							</CardHeader>
+							<CardContent>
+								<p className="text-foreground whitespace-pre-wrap break-words leading-relaxed">
+									{application.applicationText}
+								</p>
+							</CardContent>
+						</Card>
+
+						{/* Alt Characters */}
+						{canWithdraw && isOwner ? (
+							<Card>
+								<CardHeader>
+									<div className="flex items-start justify-between gap-4">
+										<div>
+											<CardTitle>Alt Characters</CardTitle>
+											<CardDescription>
+												Additional characters included with this application
+											</CardDescription>
+										</div>
+										{addableAlts.length > 0 && (
+											<Button
+												size="sm"
+												onClick={() => { setAltSearch(''); setSelectedAltIds(new Set()); setShowAddAltDialog(true) }}
+											>
+												<Plus className="h-4 w-4" />
+												Add Alt
+											</Button>
+										)}
+									</div>
+								</CardHeader>
+								<CardContent>
+									{altCharacterIds.length > 0 ? (
+										<div className="space-y-2">
+											{altCharacterIds.map((altId) => (
+												<div key={altId} className="flex items-center justify-between gap-3 rounded-md border px-3 py-2">
+													<div className="flex items-center gap-2">
+														<MemberAvatar characterId={altId} characterName={altCharacterNames[altId] ?? altId} size="sm" />
+														<span className="text-sm font-medium">
+															{altCharacterNames[altId] ?? altId}
+														</span>
+													</div>
+													<Button
+														variant="ghost"
+														size="sm"
+														className="h-7 w-7 p-0 text-muted-foreground hover:text-destructive"
+														disabled={removeAltMutation.isPending}
+														onClick={() =>
+															requestConfirmation({
+																title: 'Remove Alt Character',
+																description: `Remove ${altCharacterNames[altId] ?? altId} from this application?`,
+																confirmLabel: 'Remove',
+																intent: 'destructive',
+																onConfirm: async () => {
+																	await removeAltMutation.mutateAsync({
+																		applicationId: applicationId!,
+																		altCharacterId: altId,
+																		altCharacterName: altCharacterNames[altId],
+																		actorCharacterId: application.characterId,
+																		actorCharacterName: application.characterName,
+																	}).catch((e) => showError(e instanceof Error ? e.message : 'Failed to remove alt'))
+																},
+															})
+														}
+													>
+														<X className="h-4 w-4" />
+													</Button>
+												</div>
+											))}
+										</div>
+									) : (
+										<p className="text-sm text-muted-foreground">No alt characters added.</p>
+									)}
+								</CardContent>
+							</Card>
+						) : altCharacterIds.length > 0 ? (
+							<Card>
+								<CardHeader>
+									<CardTitle>Alt Characters</CardTitle>
+									<CardDescription>
+										Additional characters included with this application
+									</CardDescription>
+								</CardHeader>
+								<CardContent>
+									<div className="space-y-2">
+										{altCharacterIds.map((altId) => (
+											<div key={altId} className="flex items-center gap-2 rounded-md border px-3 py-2">
+												<MemberAvatar characterId={altId} characterName={altCharacterNames[altId] ?? altId} size="sm" />
+												<span className="text-sm font-medium">
+													{altCharacterNames[altId] ?? altId}
+												</span>
+											</div>
+										))}
+									</div>
+								</CardContent>
+							</Card>
+						) : null}
+					</div>
 
 					{/* Review Information (only for final decisions) */}
 					{application.reviewedAt &&
@@ -344,6 +468,83 @@ export default function ApplicationDetail() {
 								</CardContent>
 							</Card>
 						)}
+
+					{/* Add Alt Dialog */}
+					<Dialog open={showAddAltDialog} onOpenChange={setShowAddAltDialog}>
+						<DialogContent className="sm:max-w-[400px]">
+							<DialogHeader>
+								<DialogTitle>Add Alt Characters</DialogTitle>
+								<DialogDescription>
+									Select one or more alt characters to include with this application.
+								</DialogDescription>
+							</DialogHeader>
+							<div className="space-y-3 py-2">
+								<Input
+									placeholder="Search characters..."
+									value={altSearch}
+									onChange={(e) => setAltSearch(e.target.value)}
+									autoFocus
+								/>
+								<div className="max-h-64 overflow-y-auto rounded-md border p-3 space-y-2">
+									{(() => {
+										const filtered = addableAlts.filter((ch: { characterId: string; characterName: string }) =>
+											ch.characterName.toLowerCase().includes(altSearch.toLowerCase())
+										)
+										return filtered.length > 0 ? filtered.map((ch: { characterId: string; characterName: string }) => (
+											<label
+												key={ch.characterId}
+												className="flex items-center gap-3 cursor-pointer"
+											>
+												<Checkbox
+													checked={selectedAltIds.has(ch.characterId)}
+													onCheckedChange={() => {
+														setSelectedAltIds((prev) => {
+															const next = new Set(prev)
+															if (next.has(ch.characterId)) next.delete(ch.characterId)
+															else next.add(ch.characterId)
+															return next
+														})
+													}}
+												/>
+												<MemberAvatar characterId={ch.characterId} characterName={ch.characterName} size="sm" />
+												<Label className="text-sm cursor-pointer">{ch.characterName}</Label>
+											</label>
+										)) : (
+											<p className="text-sm text-muted-foreground text-center py-4">No characters found.</p>
+										)
+									})()}
+								</div>
+							</div>
+							<DialogFooter>
+								<Button variant="ghost" onClick={() => setShowAddAltDialog(false)}>
+									Cancel
+								</Button>
+								<Button
+									disabled={selectedAltIds.size === 0 || addAltMutation.isPending}
+									loading={addAltMutation.isPending}
+									loadingText="Adding..."
+									onClick={() => {
+										const alts = [...selectedAltIds].map((id) => {
+											const ch = addableAlts.find((c: { characterId: string; characterName: string }) => c.characterId === id)
+											return { characterId: id, characterName: ch?.characterName }
+										})
+										addAltMutation.mutate(
+											{
+												applicationId: applicationId!,
+												alts,
+												actorCharacterId: application.characterId,
+												actorCharacterName: application.characterName,
+											},
+											{ onError: (e) => showError(e instanceof Error ? e.message : 'Failed to add alts') }
+										)
+										setShowAddAltDialog(false)
+									}}
+								>
+									Add Selected ({selectedAltIds.size})
+								</Button>
+							</DialogFooter>
+						</DialogContent>
+					</Dialog>
 
 					{/* Withdraw Button */}
 					{canWithdraw && (
@@ -413,7 +614,6 @@ export default function ApplicationDetail() {
 								applicationId={applicationId!}
 								currentUserId={user!.id}
 								canSend={canWithdraw}
-
 							/>
 						</CardContent>
 					</Card>
@@ -467,6 +667,8 @@ export default function ApplicationDetail() {
 				recommendation={deletingRecommendation}
 				onSuccess={handleDeleteSuccess}
 			/>
+
+			{confirmationDialog}
 	</Container>
 	)
 }

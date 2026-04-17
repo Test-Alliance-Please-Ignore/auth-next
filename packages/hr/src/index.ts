@@ -95,6 +95,7 @@ export interface Application {
 	reviewNotes: string | null
 	createdAt: Date
 	updatedAt: Date
+	altCharacterIds?: string[]
 }
 
 /**
@@ -436,6 +437,7 @@ export interface Hr extends DurableObject {
 		status: ApplicationStatus,
 		userId: string,
 		characterId: string,
+		characterName: string,
 		reviewNotes?: string
 	): Promise<void>
 
@@ -444,8 +446,32 @@ export interface Hr extends DurableObject {
 	 * @param applicationId - Application ID to withdraw
 	 * @param userId - ID of the user withdrawing (must be applicant)
 	 * @param characterId - Character ID of user withdrawing
+	 * @param characterName - Character name for activity log
 	 */
-	withdrawApplication(applicationId: string, userId: string, characterId: string): Promise<void>
+	withdrawApplication(applicationId: string, userId: string, characterId: string, characterName: string): Promise<void>
+
+	/**
+	 * Add an alt character to a pending application (applicant only)
+	 */
+	addApplicationAlts(
+		applicationId: string,
+		userId: string,
+		characterId: string,
+		characterName: string,
+		alts: Array<{ characterId: string; characterName?: string }>
+	): Promise<void>
+
+	/**
+	 * Remove an alt character from a pending application (applicant only)
+	 */
+	removeApplicationAlt(
+		applicationId: string,
+		userId: string,
+		characterId: string,
+		characterName: string,
+		altCharacterId: string,
+		altCharacterName?: string
+	): Promise<void>
 
 	/**
 	 * Permanently delete an application (admin only)
