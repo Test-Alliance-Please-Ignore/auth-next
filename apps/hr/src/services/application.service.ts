@@ -1,5 +1,5 @@
 import { and, desc, eq, inArray, or, sql } from '@repo/db-utils'
-import { isApplicationStatus } from '@repo/hr'
+import { isActiveApplicationStatus, isApplicationStatus } from '@repo/hr'
 
 import { applicationActivityLog, applicationAlts, applicationRecommendations, applications } from '../db/schema'
 
@@ -74,7 +74,7 @@ export class ApplicationService {
 		}
 
 		// Log the submission
-		await this.logActivity(application.id, userId, characterId, 'submitted', null, 'pending')
+		await this.logActivity(application.id, userId, characterId, characterName, 'submitted', null, 'pending')
 
 		console.log('[HR] application submitted', {
 			applicationId: application.id,
@@ -160,16 +160,15 @@ export class ApplicationService {
 		}
 
 		// Build query
-		const query = this.ctx.db.query.applications.findMany({
+		const results = await this.ctx.db.query.applications.findMany({
 			where: conditions.length > 0 ? and(...conditions) : undefined,
 			orderBy: [desc(applications.createdAt)],
 			limit: filters.limit || 50,
 			offset: filters.offset || 0,
+			with: { alts: true },
 		})
 
-		const results = await query
-
-		return results.map((app) => this.mapToApplication(app))
+		return results.map((app) => this.mapToApplication(app, app.alts.map((a) => a.characterId)))
 	}
 
 	/**
@@ -252,6 +251,7 @@ export class ApplicationService {
 				applicationId: log.applicationId,
 				userId: log.userId,
 				characterId: log.characterId,
+				characterName: log.characterName ?? undefined,
 				action: log.action,
 				previousValue: log.previousValue,
 				newValue: log.newValue,
@@ -269,6 +269,7 @@ export class ApplicationService {
 		status: ApplicationStatus,
 		userId: string,
 		characterId: string,
+		characterName: string,
 		reviewNotes?: string
 	): Promise<void> {
 		if (!isApplicationStatus(status)) {
@@ -308,6 +309,7 @@ export class ApplicationService {
 			applicationId,
 			userId,
 			characterId,
+			characterName,
 			'status_changed',
 			previousStatus,
 			status,
@@ -328,7 +330,8 @@ export class ApplicationService {
 	async withdrawApplication(
 		applicationId: string,
 		userId: string,
-		characterId: string
+		characterId: string,
+		characterName: string
 	): Promise<void> {
 		// Get current application
 		const application = await this.ctx.db.query.applications.findFirst({
@@ -360,10 +363,77 @@ export class ApplicationService {
 			applicationId,
 			userId,
 			characterId,
+			characterName,
 			'withdrawn',
 			previousStatus,
 			'withdrawn'
 		)
+	}
+
+	/**
+	 * Add one or more alt characters to a pending application
+	 */
+	async addApplicationAlts(
+		applicationId: string,
+		userId: string,
+		characterId: string,
+		characterName: string,
+		alts: Array<{ characterId: string; characterName?: string }>
+	): Promise<void> {
+		if (alts.length === 0) return
+
+		const application = await this.getApplicationById(applicationId)
+		if (!application) throw new Error('Application not found')
+		if (application.userId !== userId) throw new Error('You can only modify your own applications')
+		if (!isActiveApplicationStatus(application.status)) throw new Error('You can only modify alts on active applications')
+
+		// Filter out already-existing alts
+		const altIds = alts.map((a) => a.characterId)
+		const existing = await this.ctx.db.query.applicationAlts.findMany({
+			where: and(
+				eq(applicationAlts.applicationId, applicationId),
+				inArray(applicationAlts.characterId, altIds)
+			),
+		})
+		const existingIds = new Set(existing.map((e) => e.characterId))
+		const newAlts = alts.filter((a) => !existingIds.has(a.characterId))
+		if (newAlts.length === 0) return
+
+		await this.ctx.db.insert(applicationAlts).values(
+			newAlts.map((a) => ({ applicationId, characterId: a.characterId }))
+		)
+
+		for (const alt of newAlts) {
+			await this.logActivity(applicationId, userId, characterId, characterName, 'alt_added', null, alt.characterId, { altCharacterName: alt.characterName })
+		}
+	}
+
+	/**
+	 * Remove an alt character from a pending application
+	 */
+	async removeApplicationAlt(
+		applicationId: string,
+		userId: string,
+		characterId: string,
+		characterName: string,
+		altCharacterId: string,
+		altCharacterName?: string
+	): Promise<void> {
+		const application = await this.getApplicationById(applicationId)
+		if (!application) throw new Error('Application not found')
+		if (application.userId !== userId) throw new Error('You can only modify your own applications')
+		if (!isActiveApplicationStatus(application.status)) throw new Error('You can only modify alts on active applications')
+
+		await this.ctx.db
+			.delete(applicationAlts)
+			.where(
+				and(
+					eq(applicationAlts.applicationId, applicationId),
+					eq(applicationAlts.characterId, altCharacterId)
+				)
+			)
+
+		await this.logActivity(applicationId, userId, characterId, characterName, 'alt_removed', altCharacterId, null, { altCharacterName })
 	}
 
 	/**
@@ -552,6 +622,7 @@ export class ApplicationService {
 		applicationId: string,
 		userId: string,
 		characterId: string,
+		characterName: string,
 		action: string,
 		previousValue: string | null,
 		newValue: string | null,
@@ -561,6 +632,7 @@ export class ApplicationService {
 			applicationId,
 			userId,
 			characterId,
+			characterName,
 			action,
 			previousValue,
 			newValue,
@@ -571,7 +643,7 @@ export class ApplicationService {
 	/**
 	 * Map database record to Application DTO
 	 */
-	private mapToApplication(app: typeof applications.$inferSelect): Application {
+	private mapToApplication(app: typeof applications.$inferSelect, altCharacterIds?: string[]): Application {
 		return {
 			id: app.id,
 			corporationId: app.corporationId,
@@ -586,6 +658,7 @@ export class ApplicationService {
 			reviewNotes: app.reviewNotes,
 			createdAt: app.createdAt,
 			updatedAt: app.updatedAt,
+			altCharacterIds,
 		}
 	}
 }

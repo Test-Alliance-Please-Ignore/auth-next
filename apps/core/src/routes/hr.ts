@@ -372,10 +372,11 @@ app.patch('/applications/:id', requireAuth(), async (c) => {
 	// Get primary character for logging
 	const primaryCharacter = user.characters.find((c) => c.is_primary)
 	const characterId = primaryCharacter?.characterId || user.mainCharacterId
+	const characterName = getCharacterName(user, characterId)
 
 	try {
 		const hr = getHrStub(c)
-		await hr.updateApplicationStatus(applicationId, status, user.id, characterId, reviewNotes)
+		await hr.updateApplicationStatus(applicationId, status, user.id, characterId, characterName, reviewNotes)
 
 		return c.json({ success: true })
 	} catch (error) {
@@ -405,15 +406,83 @@ app.post('/applications/:id/withdraw', requireAuth(), async (c) => {
 	// Get primary character for logging
 	const primaryCharacter = user.characters.find((c) => c.is_primary)
 	const characterId = primaryCharacter?.characterId || user.mainCharacterId
+	const characterName = getCharacterName(user, characterId)
 
 	try {
 		const hr = getHrStub(c)
-		await hr.withdrawApplication(applicationId, user.id, characterId)
+		await hr.withdrawApplication(applicationId, user.id, characterId, characterName)
 
 		return c.json({ success: true })
 	} catch (error) {
 		return c.json(
 			{ error: error instanceof Error ? error.message : 'Failed to withdraw application' },
+			400
+		)
+	}
+})
+
+/**
+ * POST /api/hr/applications/:id/alts
+ * Add an alt character to a pending application (applicant only)
+ */
+app.post('/applications/:id/alts', requireAuth(), async (c) => {
+	const user = c.get('user')!
+	const applicationId = c.req.param('id')
+
+	const primaryCharacter = user.characters.find((ch) => ch.is_primary)
+	const characterId = primaryCharacter?.characterId || user.mainCharacterId
+	const characterName = getCharacterName(user, characterId)
+
+	let body: { altCharacterIds: string[] }
+	try {
+		body = await c.req.json()
+	} catch {
+		return c.json({ error: 'Invalid request body' }, 400)
+	}
+
+	if (!Array.isArray(body.altCharacterIds) || body.altCharacterIds.length === 0) {
+		return c.json({ error: 'altCharacterIds must be a non-empty array' }, 400)
+	}
+
+	const alts = body.altCharacterIds.map((id) => ({
+		characterId: id,
+		characterName: getCharacterName(user, id),
+	}))
+
+	try {
+		const hr = getHrStub(c)
+		await hr.addApplicationAlts(applicationId, user.id, characterId, characterName, alts)
+		return c.json({ success: true })
+	} catch (error) {
+		return c.json(
+			{ error: error instanceof Error ? error.message : 'Failed to add alt character' },
+			400
+		)
+	}
+})
+
+/**
+ * DELETE /api/hr/applications/:id/alts/:altCharacterId
+ * Remove an alt character from a pending application (applicant only)
+ */
+app.delete('/applications/:id/alts/:altCharacterId', requireAuth(), async (c) => {
+	const user = c.get('user')!
+	const applicationId = c.req.param('id')
+	const altCharacterId = c.req.param('altCharacterId')
+
+	const primaryCharacter = user.characters.find((ch) => ch.is_primary)
+	const characterId = primaryCharacter?.characterId || user.mainCharacterId
+	const characterName = getCharacterName(user, characterId)
+
+	const altCharacterName = getCharacterName(user, altCharacterId)
+
+	try {
+		const hr = getHrStub(c)
+		await hr.removeApplicationAlt(applicationId, user.id, characterId, characterName, altCharacterId, altCharacterName)
+		return c.json({ success: true })
+	} catch (error) {
+		return c.json(
+			{ error: error instanceof Error ? error.message : 'Failed to remove alt character' },
 			400
 		)
 	}

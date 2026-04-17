@@ -8,6 +8,7 @@
 import { formatDistanceToNow } from 'date-fns'
 import { CheckCircle, Clock, Eye, Minus, User, XCircle } from 'lucide-react'
 
+import { MemberAvatar } from '@/components/member-avatar'
 import { cn } from '@/lib/utils'
 
 import type { LucideIcon } from 'lucide-react'
@@ -163,7 +164,7 @@ export function ApplicationTimeline({
 						{/* Timeline Line */}
 						{!isLast && <div className="absolute left-[15px] top-8 bottom-0 w-px bg-border" />}
 
-						{/* Timeline Dot */}
+						{/* Status Dot */}
 						<div className="relative flex-shrink-0">
 							<div
 								className={cn(
@@ -177,17 +178,26 @@ export function ApplicationTimeline({
 
 						{/* Timeline Content */}
 						<div className="flex-1 pt-0.5 pb-4">
-							<div className="flex items-start justify-between gap-2">
+							<div className="flex items-start justify-between gap-4">
 								<div className="flex-1 space-y-1">
 									{/* Action Label */}
 									<p className="text-sm font-medium text-foreground">{config.label}</p>
 
-									{/* Actor (if shown and available) */}
-									{showActors && entry.characterName ? (
-										<p className="text-xs text-muted-foreground">by {entry.characterName}</p>
-									) : null}
+									{/* Alt character for alt_added / alt_removed */}
+									{(entry.action === 'alt_added' || entry.action === 'alt_removed') ? (() => {
+										const altId = entry.action === 'alt_added' ? entry.newValue : entry.previousValue
+										const altName = entry.metadata?.altCharacterName ? String(entry.metadata.altCharacterName) : undefined
+										if (!altId) return null
+										return (
+											<div className="flex items-center gap-1.5 text-xs text-muted-foreground">
+												<span>{entry.action === 'alt_added' ? 'Added' : 'Removed'}:</span>
+												<MemberAvatar characterId={altId} characterName={altName} size="sm" />
+												{altName && <span className="font-medium">{altName}</span>}
+											</div>
+										)
+									})() : null}
 
-									{/* Additional Metadata */}
+									{/* Status change metadata */}
 									{entry.newValue && entry.action.startsWith('status_changed_') ? (
 										<p className="text-xs text-muted-foreground">
 											{entry.previousValue ? (
@@ -208,10 +218,25 @@ export function ApplicationTimeline({
 									) : null}
 								</div>
 
-								{/* Timestamp */}
-								<time className="text-xs text-muted-foreground whitespace-nowrap">
-									{formatDistanceToNow(new Date(entry.timestamp), { addSuffix: true })}
-								</time>
+								{/* Timestamp + Actor */}
+								<div className="flex items-center gap-1.5 whitespace-nowrap flex-shrink-0">
+									<time className="text-xs text-muted-foreground">
+										{formatDistanceToNow(new Date(entry.timestamp), { addSuffix: true })}
+									</time>
+									{showActors && entry.characterId && (
+										<>
+											<span className="text-xs text-muted-foreground">by</span>
+											<MemberAvatar
+												characterId={entry.characterId}
+												characterName={entry.characterName ?? undefined}
+												size="sm"
+											/>
+											{entry.characterName && (
+												<span className="text-xs text-muted-foreground">{entry.characterName}</span>
+											)}
+										</>
+									)}
+								</div>
 							</div>
 						</div>
 					</div>

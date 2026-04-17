@@ -249,8 +249,12 @@ export function useSubmitApplication() {
 				queryKey: applicationKeys.lists(),
 			})
 
-			// Optionally pre-populate the cache with the new application
+			// Pre-populate the cache so the detail page renders immediately, then mark
+			// it stale so it refetches the authoritative response (which includes altCharacterIds)
 			queryClient.setQueryData(applicationKeys.detail(newApplication.id), newApplication)
+			queryClient.invalidateQueries({
+				queryKey: applicationKeys.detail(newApplication.id),
+			})
 		},
 	})
 }
@@ -313,6 +317,141 @@ export function useWithdrawApplication() {
 			queryClient.invalidateQueries({
 				queryKey: applicationKeys.activity(applicationId),
 			})
+		},
+	})
+}
+
+interface AddAltMutationVars {
+	applicationId: string
+	alts: Array<{ characterId: string; characterName?: string }>
+	actorCharacterId?: string
+	actorCharacterName?: string
+}
+
+interface RemoveAltMutationVars {
+	applicationId: string
+	altCharacterId: string
+	altCharacterName?: string
+	actorCharacterId?: string
+	actorCharacterName?: string
+}
+
+function makeOptimisticAltEntry(
+	applicationId: string,
+	action: 'alt_added' | 'alt_removed',
+	actorCharacterId: string,
+	actorCharacterName: string | undefined,
+	altCharacterId: string,
+	altCharacterName: string | undefined,
+	index = 0
+): ApplicationActivityLogEntry {
+	return {
+		id: `optimistic-${Date.now()}-${index}`,
+		applicationId,
+		action,
+		characterId: actorCharacterId,
+		characterName: actorCharacterName,
+		previousValue: action === 'alt_removed' ? altCharacterId : undefined,
+		newValue: action === 'alt_added' ? altCharacterId : undefined,
+		metadata: altCharacterName ? { altCharacterName } : undefined,
+		timestamp: new Date().toISOString(),
+	}
+}
+
+/**
+ * Hook to add one or more alt characters to a pending application
+ */
+export function useAddApplicationAlt() {
+	const queryClient = useQueryClient()
+
+	return useMutation({
+		mutationFn: ({ applicationId, alts }: AddAltMutationVars) =>
+			applicationsApi.addApplicationAlts(applicationId, alts.map((a) => a.characterId)),
+		onMutate: (vars) => {
+			const detailKey = applicationKeys.detail(vars.applicationId)
+			const activityKey = applicationKeys.activity(vars.applicationId)
+
+			const prevDetail = queryClient.getQueryData<Application>(detailKey)
+			const prevActivity = queryClient.getQueryData<ApplicationActivityLogEntry[]>(activityKey)
+
+			queryClient.setQueryData<Application>(detailKey, (old) =>
+				old
+					? { ...old, altCharacterIds: [...(old.altCharacterIds ?? []), ...vars.alts.map((a) => a.characterId)] }
+					: old
+			)
+			queryClient.setQueryData<ApplicationActivityLogEntry[]>(activityKey, (old) => [
+				...vars.alts.map((alt, i) =>
+					makeOptimisticAltEntry(
+						vars.applicationId, 'alt_added',
+						vars.actorCharacterId ?? '', vars.actorCharacterName,
+						alt.characterId, alt.characterName, i
+					)
+				),
+				...(old ?? []),
+			])
+
+			return { prevDetail, prevActivity }
+		},
+		onError: (_err, vars, ctx) => {
+			if (ctx?.prevDetail !== undefined) {
+				queryClient.setQueryData(applicationKeys.detail(vars.applicationId), ctx.prevDetail)
+			}
+			if (ctx?.prevActivity !== undefined) {
+				queryClient.setQueryData(applicationKeys.activity(vars.applicationId), ctx.prevActivity)
+			}
+		},
+		onSettled: (_, __, { applicationId }) => {
+			queryClient.invalidateQueries({ queryKey: applicationKeys.detail(applicationId) })
+			queryClient.invalidateQueries({ queryKey: applicationKeys.lists() })
+			queryClient.invalidateQueries({ queryKey: applicationKeys.activity(applicationId) })
+		},
+	})
+}
+
+/**
+ * Hook to remove an alt character from a pending application
+ */
+export function useRemoveApplicationAlt() {
+	const queryClient = useQueryClient()
+
+	return useMutation({
+		mutationFn: ({ applicationId, altCharacterId }: RemoveAltMutationVars) =>
+			applicationsApi.removeApplicationAlt(applicationId, altCharacterId),
+		onMutate: (vars) => {
+			const detailKey = applicationKeys.detail(vars.applicationId)
+			const activityKey = applicationKeys.activity(vars.applicationId)
+
+			const prevDetail = queryClient.getQueryData<Application>(detailKey)
+			const prevActivity = queryClient.getQueryData<ApplicationActivityLogEntry[]>(activityKey)
+
+			queryClient.setQueryData<Application>(detailKey, (old) =>
+				old
+					? { ...old, altCharacterIds: (old.altCharacterIds ?? []).filter((id) => id !== vars.altCharacterId) }
+					: old
+			)
+			queryClient.setQueryData<ApplicationActivityLogEntry[]>(activityKey, (old) => [
+				makeOptimisticAltEntry(
+					vars.applicationId, 'alt_removed',
+					vars.actorCharacterId ?? '', vars.actorCharacterName,
+					vars.altCharacterId, vars.altCharacterName
+				),
+				...(old ?? []),
+			])
+
+			return { prevDetail, prevActivity }
+		},
+		onError: (_err, vars, ctx) => {
+			if (ctx?.prevDetail !== undefined) {
+				queryClient.setQueryData(applicationKeys.detail(vars.applicationId), ctx.prevDetail)
+			}
+			if (ctx?.prevActivity !== undefined) {
+				queryClient.setQueryData(applicationKeys.activity(vars.applicationId), ctx.prevActivity)
+			}
+		},
+		onSettled: (_, __, { applicationId }) => {
+			queryClient.invalidateQueries({ queryKey: applicationKeys.detail(applicationId) })
+			queryClient.invalidateQueries({ queryKey: applicationKeys.lists() })
+			queryClient.invalidateQueries({ queryKey: applicationKeys.activity(applicationId) })
 		},
 	})
 }

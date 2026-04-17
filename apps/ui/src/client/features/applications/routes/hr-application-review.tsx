@@ -41,6 +41,7 @@ import { ApplicationActionPanel } from '../components/application-action-panel'
 import { ApplicationHistoryPanel } from '../components/application-history-panel'
 import { ApplicationStatusBadge } from '../components/application-status-badge'
 import { ApplicationTimeline } from '../components/application-timeline'
+import { ApplicationCharacterStack } from '../components/application-character-stack'
 import { DeleteHRNoteDialog } from '../components/delete-hr-note-dialog'
 import { FulcrumPanel } from '../components/fulcrum-panel'
 import { HRNotesList } from '../components/hr-notes-list'
@@ -284,9 +285,11 @@ export default function HrApplicationReview() {
 				<CardContent className="pt-6">
 					<div className="flex items-start gap-4">
 						{/* Character Portrait */}
-						<MemberAvatar
-							characterId={application.characterId}
-							characterName={application.characterName}
+						<ApplicationCharacterStack
+							mainCharacterId={application.characterId}
+							mainCharacterName={application.characterName}
+							altCharacterIds={altCharacterIds}
+							altCharacterNames={altCharacterNames}
 							size="lg"
 						/>
 
@@ -294,6 +297,11 @@ export default function HrApplicationReview() {
 						<div className="flex-1 min-w-0">
 							<h1 className="text-2xl font-bold text-foreground mb-1">
 								{application.characterName}
+								{altCharacterIds.length > 0 && (
+									<span className="ml-2 text-lg font-normal text-muted-foreground">
+										(+{altCharacterIds.length} {altCharacterIds.length === 1 ? 'Alt' : 'Alts'})
+									</span>
+								)}
 							</h1>
 							{application.corporationName && (
 								<p className="text-lg text-muted-foreground mb-3">

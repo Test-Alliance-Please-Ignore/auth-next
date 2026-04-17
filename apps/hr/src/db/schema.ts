@@ -141,6 +141,8 @@ export const applicationActivityLog = pgTable(
 		userId: uuid('user_id').notNull(),
 		/** Character ID used for the action */
 		characterId: text('character_id').notNull(),
+		/** Character name (cached for display) */
+		characterName: varchar('character_name', { length: 255 }),
 		/** Action type: submitted, status_changed, reviewed, recommendation_added, withdrawn */
 		action: varchar('action', { length: 100 }).notNull(),
 		/** Previous value (for updates) */

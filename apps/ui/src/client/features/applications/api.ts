@@ -351,6 +351,26 @@ export const applicationsApi = {
 		return apiClient.delete(`/hr/applications/${applicationId}`)
 	},
 
+	/**
+	 * Add an alt character to a pending application
+	 */
+	async addApplicationAlts(
+		applicationId: string,
+		altCharacterIds: string[]
+	): Promise<{ success: boolean }> {
+		return apiClient.post(`/hr/applications/${applicationId}/alts`, { altCharacterIds })
+	},
+
+	/**
+	 * Remove an alt character from a pending application
+	 */
+	async removeApplicationAlt(
+		applicationId: string,
+		altCharacterId: string
+	): Promise<{ success: boolean }> {
+		return apiClient.delete(`/hr/applications/${applicationId}/alts/${altCharacterId}`)
+	},
+
 	// ==================== Recommendations ====================
 
 	/**
