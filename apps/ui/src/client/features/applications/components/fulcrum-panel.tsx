@@ -60,7 +60,17 @@ function canRequestNewReport(reports: CharacterReportMetadata[]): boolean {
 interface CharacterReportCardProps {
 	character: FulcrumCharacterData
 	onRequest: (characterId: string) => void
-	getReportHref: (reportId: string, characterName: string) => string
+	getReportTarget: (reportId: string, characterName: string) => {
+		pathname: string
+		state: {
+			characterName: string
+			userId: string
+			corporationId: string
+			returnTo: string
+			backLabel: string
+			breadcrumbParentLabel: string
+		}
+	}
 	isRequesting: boolean
 	requestingCharacterId: string | null
 }
@@ -68,7 +78,7 @@ interface CharacterReportCardProps {
 function CharacterReportCard({
 	character,
 	onRequest,
-	getReportHref,
+	getReportTarget,
 	isRequesting,
 	requestingCharacterId,
 }: CharacterReportCardProps) {
@@ -134,7 +144,7 @@ function CharacterReportCard({
 			<div className="flex flex-col gap-2">
 				{latestReport?.status === 'completed' && (
 					<Button asChild variant="ghost" size="sm">
-						<Link to={getReportHref(latestReport.id, character.characterName)}>
+						<Link to={getReportTarget(latestReport.id, character.characterName)}>
 							<ExternalLink className="mr-1.5 h-3.5 w-3.5" />
 							View
 						</Link>
@@ -190,19 +200,24 @@ export function FulcrumPanel({ userId, corporationId, applicationId, mainCharact
 		})
 	}
 
-	const getReportHref = (reportId: string, characterName: string) => {
-		const params = new URLSearchParams({ char: characterName })
-		params.set('userId', userId)
-		params.set('corporationId', corporationId)
+	const getReportTarget = (reportId: string, characterName: string) => {
+		const resolvedCorporationId = routeCorporationId ?? corporationId
 		const returnTo = applicationId
-			? `/corporations/${routeCorporationId}/applications/${applicationId}`
-			: `/corporations/${routeCorporationId}/members/${userId}`
+			? `/corporations/${resolvedCorporationId}/applications/${applicationId}`
+			: `/corporations/${resolvedCorporationId}/members/${userId}`
 		const backLabel = applicationId ? 'Back to Application' : 'Back to User Profile'
-		const breadcrumb = applicationId ? 'Application' : 'User Profile'
-		params.set('returnTo', returnTo)
-		params.set('backLabel', backLabel)
-		params.set('breadcrumb', breadcrumb)
-		return `/fulcrum/reports/${reportId}?${params}`
+		const breadcrumbParentLabel = applicationId ? 'Application' : 'User Profile'
+		return {
+			pathname: `/fulcrum/reports/${reportId}`,
+			state: {
+				characterName,
+				userId,
+				corporationId,
+				returnTo,
+				backLabel,
+				breadcrumbParentLabel,
+			},
+		}
 	}
 
 	if (isLoading) {
@@ -261,7 +276,7 @@ export function FulcrumPanel({ userId, corporationId, applicationId, mainCharact
 				key={character.characterId}
 				character={character}
 				onRequest={handleRequest}
-				getReportHref={getReportHref}
+				getReportTarget={getReportTarget}
 				isRequesting={requestReport.isPending}
 				requestingCharacterId={
 					requestReport.isPending

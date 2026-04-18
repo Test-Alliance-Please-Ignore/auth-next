@@ -6,7 +6,7 @@
  */
 
 import { ArrowLeft } from 'lucide-react'
-import { useNavigate, useParams, useSearchParams } from 'react-router-dom'
+import { useLocation, useNavigate, useParams } from 'react-router-dom'
 
 import {
 	Breadcrumb,
@@ -27,14 +27,25 @@ export default function FulcrumReportPage() {
 	const { reportId } = useParams<{
 		reportId: string
 	}>()
+	const location = useLocation()
 	const navigate = useNavigate()
-	const [searchParams] = useSearchParams()
 	const { hasAnyPermission } = useUserPermissions()
 	const isAuditor = hasAnyPermission('urn:hr:auditor')
-	const characterName = searchParams.get('char') ?? searchParams.get('name')
-	const returnTo = searchParams.get('returnTo')
-	const userId = searchParams.get('userId')
-	const corporationId = searchParams.get('corporationId')
+
+	const state = location.state as
+		| {
+			characterName?: string
+			returnTo?: string
+			userId?: string
+			corporationId?: string
+			backLabel?: string
+			breadcrumbParentLabel?: string
+		}
+		| null
+	const characterName = state?.characterName
+	const returnTo = state?.returnTo
+	const userId = state?.userId
+	const corporationId = state?.corporationId
 
 	const roleBasedBackPath = isAuditor && userId
 		? `/hr/auditor/users/${userId}`
@@ -44,8 +55,8 @@ export default function FulcrumReportPage() {
 
 	const backPath = returnTo ?? roleBasedBackPath
 	const isUserProfileBackPath = backPath.includes('/members/') || backPath.includes('/hr/auditor/users/')
-	const backLabel = searchParams.get('backLabel') ?? (isUserProfileBackPath ? 'Back to User Profile' : 'Back to Corporations')
-	const breadcrumbParentLabel = searchParams.get('breadcrumb') ?? (isUserProfileBackPath ? 'User Profile' : 'Reports')
+	const backLabel = state?.backLabel ?? (isUserProfileBackPath ? 'Back to User Profile' : 'Back to Corporations')
+	const breadcrumbParentLabel = state?.breadcrumbParentLabel ?? (isUserProfileBackPath ? 'User Profile' : 'Reports')
 
 	usePageTitle(characterName ? `Report - ${characterName}` : 'Character Report')
 

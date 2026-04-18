@@ -214,9 +214,16 @@ export default function HrAuditorUserProfilePage() {
 	const handleViewLatestReport = (character: AuditorCharacterRow) => {
 		if (character.latestReport?.status !== 'completed' || !character.corporationId) return
 		const returnTo = `${location.pathname}${location.search}`
-		navigate(
-			`/fulcrum/reports/${character.latestReport.id}?char=${encodeURIComponent(character.characterName)}&userId=${encodeURIComponent(userId ?? '')}&corporationId=${encodeURIComponent(character.corporationId)}&returnTo=${encodeURIComponent(returnTo)}&backLabel=${encodeURIComponent('Back to User Profile')}&breadcrumb=${encodeURIComponent('User Profile')}`
-		)
+		navigate(`/fulcrum/reports/${character.latestReport.id}`, {
+			state: {
+				characterName: character.characterName,
+				userId: userId ?? undefined,
+				corporationId: character.corporationId,
+				returnTo,
+				backLabel: 'Back to User Profile',
+				breadcrumbParentLabel: 'User Profile',
+			},
+		})
 	}
 
 	const scanEligibleCharacters = rows.filter(
