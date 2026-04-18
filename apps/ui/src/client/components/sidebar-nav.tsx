@@ -3,6 +3,7 @@ import {
 	BookOpen,
 	Briefcase,
 	Building2,
+	ChevronLeft,
 	ChevronDown,
 	ChevronRight,
 	CircleDollarSign,
@@ -41,6 +42,8 @@ import { Button } from './ui/button'
 
 interface SidebarNavProps {
 	onNavigate?: () => void
+	isSidebarOpen?: boolean
+	onToggleSidebar?: () => void
 }
 
 interface SidebarNavItem {
@@ -53,7 +56,7 @@ interface SidebarNavItem {
 	children?: SidebarNavItem[]
 }
 
-export function SidebarNav({ onNavigate }: SidebarNavProps) {
+export function SidebarNav({ onNavigate, isSidebarOpen = true, onToggleSidebar }: SidebarNavProps) {
 	const location = useLocation()
 	const { user } = useAuth()
 	const logout = useLogout()
@@ -339,13 +342,27 @@ export function SidebarNav({ onNavigate }: SidebarNavProps) {
 		<div className="flex flex-col h-full">
 			{/* Logo/Brand */}
 			<div className="p-6 border-b border-border/50">
-				<Link
-					to="/dashboard"
-					onClick={onNavigate}
-					className="text-xl font-bold gradient-text block focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 rounded-sm"
-				>
-					TANG
-				</Link>
+				<div className="flex items-center justify-between gap-2">
+					<Link
+						to="/dashboard"
+						onClick={onNavigate}
+						className="text-xl font-bold gradient-text block focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 rounded-sm"
+					>
+						TANG
+					</Link>
+					{isSidebarOpen ? (
+						<Button
+							type="button"
+							variant="ghost"
+							size="icon"
+							onClick={onToggleSidebar}
+							aria-label="Collapse navigation"
+							className="h-8 w-8"
+						>
+							<ChevronLeft className="h-4 w-4" />
+						</Button>
+					) : null}
+				</div>
 				<p className="text-xs text-muted-foreground mt-1">Test Auth Next Gen</p>
 			</div>
 
