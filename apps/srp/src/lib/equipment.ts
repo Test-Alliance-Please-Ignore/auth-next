@@ -1,8 +1,8 @@
 import { isEquippedSlot } from './slot-flags'
 
 interface KillmailItem {
-	flag: number
-	item_type_id: number
+	flag?: number
+	item_type_id?: number
 	quantity_destroyed?: number
 	quantity_dropped?: number
 }
