@@ -134,9 +134,7 @@ export class EsiTypeResolverDO extends DurableObject<Env> implements EsiTypeReso
 
 		// Single ID failed — it's unresolvable, skip it
 		if (ids.length === 1) {
-			logger
-				.withTags({ id: ids[0], status: response.status })
-				.debug('Skipping unresolvable ID')
+			logger.withTags({ id: ids[0], status: response.status }).debug('Skipping unresolvable ID')
 			return []
 		}
 
@@ -651,7 +649,10 @@ export class EsiTypeResolverDO extends DurableObject<Env> implements EsiTypeReso
 		Object.assign(result, fetched)
 
 		// Resolve structure names
-		const structureNames = await this.resolveStructureNames(Array.from(structureIds), withCharacterId)
+		const structureNames = await this.resolveStructureNames(
+			Array.from(structureIds),
+			withCharacterId
+		)
 		Object.assign(result, structureNames)
 
 		return result

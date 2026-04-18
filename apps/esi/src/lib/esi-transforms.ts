@@ -15,9 +15,6 @@ import type {
 	CharacterKillmailBasic,
 	CharacterLocation,
 	CharacterMail,
-	MailContent,
-	MailingList,
-	MailLabelsResponse,
 	CharacterMarketOrder,
 	CharacterMarketTransaction,
 	CharacterMiningLedger,
@@ -63,15 +60,11 @@ import type {
 	EsiCharacterClones,
 	EsiCharacterContact,
 	EsiCharacterContract,
-	EsiContractItem,
 	EsiCharacterFitting,
 	EsiCharacterImplants,
 	EsiCharacterKillmail,
 	EsiCharacterLocation,
 	EsiCharacterMail,
-	EsiMailContent,
-	EsiMailingList,
-	EsiMailLabelsResponse,
 	EsiCharacterMarketOrder,
 	EsiCharacterMarketTransaction,
 	EsiCharacterMiningLedger,
@@ -85,6 +78,7 @@ import type {
 	EsiCharacterStanding,
 	EsiCharacterTitle,
 	EsiCharacterWalletJournalEntry,
+	EsiContractItem,
 	EsiCorporationAsset,
 	EsiCorporationContact,
 	EsiCorporationContract,
@@ -107,7 +101,13 @@ import type {
 	EsiCorporationWallet,
 	EsiCorporationWalletJournalEntry,
 	EsiCorporationWalletTransaction,
+	EsiMailContent,
+	EsiMailingList,
+	EsiMailLabelsResponse,
 	EsiStructureInfo,
+	MailContent,
+	MailingList,
+	MailLabelsResponse,
 	StructureInfo,
 } from '@repo/esi'
 
@@ -403,9 +403,7 @@ export function transformCharacterAsset(assets: EsiCharacterAsset[]): CharacterA
 	}))
 }
 
-export function transformCharacterAssetNames(
-	names: EsiCharacterAssetName[]
-): CharacterAssetName[] {
+export function transformCharacterAssetNames(names: EsiCharacterAssetName[]): CharacterAssetName[] {
 	return names.map((entry) => ({
 		item_id: String(entry.item_id),
 		name: entry.name,
@@ -652,9 +650,9 @@ export function transformCharacterClones(data: EsiCharacterClones): CharacterClo
 	return {
 		home_location: data.home_location
 			? {
-				location_id: String(data.home_location.location_id),
-				location_type: data.home_location.location_type,
-			}
+					location_id: String(data.home_location.location_id),
+					location_type: data.home_location.location_type,
+				}
 			: undefined,
 		jump_clones: data.jump_clones.map((clone) => ({
 			implants: clone.implants.map(String),

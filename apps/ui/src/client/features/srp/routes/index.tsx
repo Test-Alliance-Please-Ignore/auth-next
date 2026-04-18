@@ -8,15 +8,18 @@ import { useUserPermissions } from '@/hooks/useUserPermissions'
 
 import { LossTable } from '../components/LossTable'
 import { RequestTable } from '../components/RequestTable'
-import { useMyRequests, useRecentLosses } from '../hooks'
+import { useMyRequests, useRecentLosses, useRefreshKillmails, useSRPConfig } from '../hooks'
 
 import type { LossWithSRPStatus } from '../types'
 
 export default function SRPIndex() {
 	const { hasPermission, isAdmin } = useUserPermissions()
 
-	// Get recent losses for all user's characters
-	const { data: losses, isLoading: lossesLoading, error: lossesError } = useRecentLosses(30)
+	// Get recent losses for all user's characters (60-day window)
+	const { data: losses, isLoading: lossesLoading, error: lossesError } = useRecentLosses(60)
+
+	const refreshMutation = useRefreshKillmails()
+	const { data: config } = useSRPConfig()
 
 	// Get user's recent requests
 	const {
@@ -57,7 +60,13 @@ export default function SRPIndex() {
 							</p>
 						</div>
 					) : (
-						<LossTable losses={(losses || []) as LossWithSRPStatus[]} isLoading={lossesLoading} />
+						<LossTable
+							losses={(losses || []) as LossWithSRPStatus[]}
+							isLoading={lossesLoading}
+							isRefreshing={refreshMutation.isPending}
+							onRefresh={() => refreshMutation.mutate()}
+							config={config}
+						/>
 					)}
 				</TabsContent>
 

@@ -1,24 +1,40 @@
 import { Hono } from 'hono'
+import { z } from 'zod'
 
 import { getStub } from '@repo/do-utils'
 import { TimeCache } from '@repo/hono-helpers'
 import {
-	ApproveRequestSchema,
 	CreateCommentSchema,
+	CreateSRPPolicySchema,
 	CreateSRPRequestSchema,
 	EditCommentSchema,
-	MarkPaidSchema,
-	MarkPartiallyPaidSchema,
-	PartiallyApproveRequestSchema,
-	RejectRequestSchema,
+	SRPReviewSubmissionSchema,
+	UpdateReviewStateSchema,
 	UpdateSRPConfigSchema,
 } from '@repo/srp'
 
 import { getCachedUserPermissions } from '../lib/groups-cache'
 import { requireAllianceMember } from '../middleware/session'
 
+import type { EveCharacterData } from '@repo/eve-character-data'
 import type { Srp } from '@repo/srp'
 import type { App } from '../context'
+
+const ApproveRequestSchema = z.object({
+	approvedAmount: z.string(),
+	reviewNotes: z.string().max(2000).optional(),
+})
+
+const PartiallyApproveRequestSchema = z.object({
+	approvedAmount: z.string(),
+	rejectionReason: z.string().min(10).max(2000),
+	reviewNotes: z.string().max(2000).optional(),
+})
+
+const RejectRequestSchema = z.object({
+	rejectionReason: z.string().min(10).max(2000),
+	reviewNotes: z.string().max(2000).optional(),
+})
 
 /**
  * Permission check cache - 15 second TTL
@@ -32,6 +48,11 @@ const permissionCache = new TimeCache<boolean>(15000)
  */
 function getRequestId(c: any): string {
 	return c.req.header('cf-ray') || crypto.randomUUID()
+}
+
+/** Get the primary character name for the session user */
+function getPrimaryCharacterName(user: any): string {
+	return user.characters.find((c: any) => c.is_primary)?.characterName ?? 'Unknown'
 }
 
 /**
@@ -89,6 +110,25 @@ srp.get('/losses', async (c) => {
 	const losses = await srpStub.getRecentLosses(characterIds, user.id, daysBack)
 
 	return c.json(losses)
+})
+
+/**
+ * Trigger killmail refresh for all of the user's characters
+ * POST /api/srp/losses/refresh
+ */
+srp.post('/losses/refresh', async (c) => {
+	const user = c.get('user')!
+
+	await Promise.allSettled(
+		user.characters.map(async (char: any) => {
+			const stub = getStub<EveCharacterData>(c.env.EVE_CHARACTER_DATA, char.characterId)
+			const instance = await stub.getInstance(char.characterId)
+			using charInstance = instance
+			await charInstance.fetchKillmails()
+		})
+	)
+
+	return c.json({ ok: true })
 })
 
 // =============================================================================
@@ -302,6 +342,88 @@ srp.post('/requests/:id/reject', async (c) => {
 	return c.json(request)
 })
 
+/**
+ * Submit a full review for a request
+ * POST /api/srp/requests/:id/review
+ */
+srp.post('/requests/:id/review', async (c) => {
+	const user = c.get('user')!
+	const requestId = c.req.param('id')
+	const body = await c.req.json()
+
+	const validation = SRPReviewSubmissionSchema.safeParse(body)
+	if (!validation.success) {
+		return c.json({ error: 'Invalid review data', details: validation.error }, 400)
+	}
+
+	const allowed = await hasPermission(c.env, user.id, 'urn:srp:reviewer', user.is_admin)
+	if (!allowed) return c.json({ error: 'Requires reviewer permissions' }, 403)
+
+	const srpStub = getStub<Srp>(c.env.SRP, getRequestId(c))
+	try {
+		const request = await srpStub.submitReview(
+			requestId,
+			user.id,
+			getPrimaryCharacterName(user),
+			validation.data
+		)
+		return c.json(request)
+	} catch (err: any) {
+		if (err?.status === 422) return c.json({ error: err.message }, 422)
+		throw err
+	}
+})
+
+/**
+ * Change the state of a request
+ * PATCH /api/srp/requests/:id/state
+ */
+srp.patch('/requests/:id/state', async (c) => {
+	const user = c.get('user')!
+	const requestId = c.req.param('id')
+	const body = await c.req.json()
+
+	const validation = UpdateReviewStateSchema.safeParse(body)
+	if (!validation.success) {
+		return c.json({ error: 'Invalid state data', details: validation.error }, 400)
+	}
+
+	const { newState, notes } = validation.data
+
+	// paid transition requires payer or manager; others require reviewer
+	const requiredPerm = newState === 'paid' ? 'urn:srp:payer' : 'urn:srp:reviewer'
+	const allowed = await hasPermission(c.env, user.id, requiredPerm, user.is_admin)
+	if (!allowed) return c.json({ error: `Requires ${requiredPerm} permissions` }, 403)
+
+	const srpStub = getStub<Srp>(c.env.SRP, getRequestId(c))
+	const request = await srpStub.updateReviewState(
+		requestId,
+		user.id,
+		getPrimaryCharacterName(user),
+		newState,
+		notes
+	)
+	return c.json(request)
+})
+
+/**
+ * Get requests by status (reviewer queue)
+ * GET /api/srp/requests/by-status?status=pending&limit=50&offset=0
+ */
+srp.get('/requests/by-status', async (c) => {
+	const user = c.get('user')!
+	const status = c.req.query('status') as any
+	const limit = c.req.query('limit') ? Number.parseInt(c.req.query('limit')!, 10) : 50
+	const offset = c.req.query('offset') ? Number.parseInt(c.req.query('offset')!, 10) : 0
+
+	const allowed = await hasPermission(c.env, user.id, 'urn:srp:reviewer', user.is_admin)
+	if (!allowed) return c.json({ error: 'Requires reviewer permissions' }, 403)
+
+	const srpStub = getStub<Srp>(c.env.SRP, getRequestId(c))
+	const requests = await srpStub.getRequestsByStatus(status, { limit, offset })
+	return c.json({ requests, total: requests.length, limit, offset })
+})
+
 // =============================================================================
 // COMMENTS
 // =============================================================================
@@ -457,58 +579,19 @@ srp.post('/requests/:id/mark-paid', async (c) => {
 	const requestId = c.req.param('id')
 	const body = await c.req.json()
 
-	// Validate request body
-	const validation = MarkPaidSchema.safeParse(body)
-	if (!validation.success) {
-		return c.json({ error: 'Invalid payment data', details: validation.error }, 400)
-	}
-
 	// Check payer permissions (admins do NOT bypass)
 	const allowed = await hasPermission(c.env, user.id, 'urn:srp:payer', false)
+	if (!allowed) return c.json({ error: 'Requires payer permissions' }, 403)
 
-	if (!allowed) {
-		return c.json({ error: 'Requires payer permissions' }, 403)
-	}
-
-	const { paidAmount, paymentToken } = validation.data
+	const paymentToken: string = body?.paymentToken
+	if (!paymentToken) return c.json({ error: 'paymentToken required' }, 400)
 
 	const srpStub = getStub<Srp>(c.env.SRP, getRequestId(c))
-	const request = await srpStub.markPaid(requestId, user.id, paidAmount, paymentToken)
-
-	return c.json(request)
-})
-
-/**
- * Mark a request as partially paid
- * POST /api/srp/requests/:id/mark-partially-paid
- */
-srp.post('/requests/:id/mark-partially-paid', async (c) => {
-	const user = c.get('user')!
-	const requestId = c.req.param('id')
-	const body = await c.req.json()
-
-	// Validate request body
-	const validation = MarkPartiallyPaidSchema.safeParse(body)
-	if (!validation.success) {
-		return c.json({ error: 'Invalid payment data', details: validation.error }, 400)
-	}
-
-	// Check payer permissions (admins do NOT bypass)
-	const allowed = await hasPermission(c.env, user.id, 'urn:srp:payer', false)
-
-	if (!allowed) {
-		return c.json({ error: 'Requires payer permissions' }, 403)
-	}
-
-	const { paidAmount, paymentToken, notes } = validation.data
-
-	const srpStub = getStub<Srp>(c.env.SRP, getRequestId(c))
-	const request = await srpStub.markPartiallyPaid(
+	const request = await srpStub.markPaid(
 		requestId,
 		user.id,
-		paidAmount,
-		paymentToken,
-		notes
+		getPrimaryCharacterName(user),
+		paymentToken
 	)
 
 	return c.json(request)
@@ -523,8 +606,6 @@ srp.post('/requests/:id/mark-partially-paid', async (c) => {
  * GET /api/srp/config
  */
 srp.get('/config', async (c) => {
-	const user = c.get('user')!
-
 	const srpStub = getStub<Srp>(c.env.SRP, getRequestId(c))
 	const config = await srpStub.getConfig()
 
@@ -583,6 +664,75 @@ srp.get('/stats', async (c) => {
 	const stats = await srpStub.getStats(startDate, endDate, corporationId)
 
 	return c.json(stats)
+})
+
+// =============================================================================
+// POLICIES
+// =============================================================================
+
+/**
+ * List active policies (all reviewer+ roles)
+ * GET /api/srp/policies
+ */
+srp.get('/policies', async (c) => {
+	const user = c.get('user')!
+	const allowed = await hasPermission(c.env, user.id, 'urn:srp:reviewer', user.is_admin)
+	if (!allowed) return c.json({ error: 'Requires reviewer permissions' }, 403)
+
+	const srpStub = getStub<Srp>(c.env.SRP, getRequestId(c))
+	return c.json(await srpStub.listPolicies())
+})
+
+/**
+ * Create a policy (manager only)
+ * POST /api/srp/policies
+ */
+srp.post('/policies', async (c) => {
+	const user = c.get('user')!
+	const allowed = await hasPermission(c.env, user.id, 'urn:srp:manager', user.is_admin)
+	if (!allowed) return c.json({ error: 'Requires manager permissions' }, 403)
+
+	const body = await c.req.json()
+	const validation = CreateSRPPolicySchema.safeParse(body)
+	if (!validation.success)
+		return c.json({ error: 'Invalid policy data', details: validation.error }, 400)
+
+	const srpStub = getStub<Srp>(c.env.SRP, getRequestId(c))
+	return c.json(await srpStub.createPolicy(user.id, validation.data), 201)
+})
+
+/**
+ * Update a policy (manager only)
+ * PATCH /api/srp/policies/:id
+ */
+srp.patch('/policies/:id', async (c) => {
+	const user = c.get('user')!
+	const allowed = await hasPermission(c.env, user.id, 'urn:srp:manager', user.is_admin)
+	if (!allowed) return c.json({ error: 'Requires manager permissions' }, 403)
+
+	const id = c.req.param('id')
+	const body = await c.req.json()
+	const validation = CreateSRPPolicySchema.partial().safeParse(body)
+	if (!validation.success)
+		return c.json({ error: 'Invalid policy data', details: validation.error }, 400)
+
+	const srpStub = getStub<Srp>(c.env.SRP, getRequestId(c))
+	return c.json(await srpStub.updatePolicy(id, user.id, validation.data))
+})
+
+/**
+ * Delete (soft-delete) a policy (manager only)
+ * DELETE /api/srp/policies/:id
+ */
+srp.delete('/policies/:id', async (c) => {
+	const user = c.get('user')!
+	const allowed = await hasPermission(c.env, user.id, 'urn:srp:manager', user.is_admin)
+	if (!allowed) return c.json({ error: 'Requires manager permissions' }, 403)
+
+	const id = c.req.param('id')
+	const srpStub = getStub<Srp>(c.env.SRP, getRequestId(c))
+	await srpStub.deletePolicy(id, user.id)
+	return c.json({ ok: true })
 })
 
 export default srp

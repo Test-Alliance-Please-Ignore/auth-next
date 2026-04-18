@@ -3,22 +3,19 @@ import type { RequestStatus, SRPRequestResponse } from '@repo/srp'
 
 // Re-export types from @repo/srp package
 export type {
+	AppliedModifier,
 	CommentVisibility,
-	CreateCommentSchema,
-	CreateSRPRequestSchema,
-	EditCommentSchema,
+	CreateSRPPolicy,
 	LossWithSRPStatus,
-	MarkPaidSchema,
-	MarkPartiallyPaidSchema,
-	PaymentStatus,
-	RejectRequestSchema,
 	RequestStatus,
 	SRPCommentResponse,
 	SRPConfigResponse,
 	SRPHistoryResponse,
+	SRPPolicy,
 	SRPRequestResponse,
+	SRPReviewSubmission,
 	SRPStatsResponse,
-	UpdateSRPConfigSchema,
+	UpdateSRPConfig,
 } from '@repo/srp'
 
 // UI-specific types

@@ -1,11 +1,13 @@
 import {
 	boolean,
+	date,
 	index,
 	integer,
 	pgTable,
 	text,
 	timestamp,
 	unique,
+	uniqueIndex,
 	uuid,
 } from 'drizzle-orm/pg-core'
 
@@ -195,6 +197,86 @@ export const latestMarketPrices = pgTable(
 		// Unique constraint to prevent duplicates
 		unique('latest_prices_location_type_unique').on(table.locationId, table.typeId),
 	]
+)
+
+// ============================================================================
+// DAILY PRICE AGGREGATES
+// ============================================================================
+
+/**
+ * Daily price aggregates - Pre-rolled best-price averages per item per day
+ *
+ * Populated during cleanupOldSnapshots: before raw market_orders are deleted,
+ * any complete days (DATE(snapshotTime) < CURRENT_DATE) are rolled up into
+ * this table as the average of each snapshot's best-sell/buy across the day.
+ *
+ * Retention controlled by MAX_DAILY_PRICE_HISTORY_DAYS (default: 60 days).
+ * Used by getBatchMarketDataAtTime for SRP valuation of losses older than
+ * the raw snapshot window.
+ */
+export const marketDailyPrices = pgTable(
+	'market_daily_prices',
+	{
+		id: uuid('id').defaultRandom().primaryKey(),
+		locationId: text('location_id').notNull(),
+		locationType: text('location_type').notNull().$type<'region' | 'structure'>(),
+		/** UTC date these prices were valid */
+		priceDate: date('price_date').notNull(),
+		typeId: text('type_id').notNull(),
+		/** Average of each snapshot's best-sell price across the day (null = no sell orders) */
+		avgSellPrice: text('avg_sell_price'),
+		/** Average of each snapshot's best-buy price across the day (null = no buy orders) */
+		avgBuyPrice: text('avg_buy_price'),
+		/** Lowest best-sell price seen across all snapshots that day */
+		minSellPrice: text('min_sell_price'),
+		/** Highest best-sell price seen across all snapshots that day */
+		maxSellPrice: text('max_sell_price'),
+		/** Number of hourly snapshots that contributed to this day's average */
+		snapshotCount: integer('snapshot_count').default(0).notNull(),
+		createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
+		updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow().notNull(),
+	},
+	(table) => [
+		// Primary SRP query: price for a type on a specific date
+		index('daily_prices_location_type_date_idx').on(
+			table.locationId,
+			table.typeId,
+			table.priceDate
+		),
+		// For finding available date range for a location
+		index('daily_prices_location_date_idx').on(table.locationId, table.priceDate),
+		// Prevent duplicate rollup entries
+		unique('daily_prices_location_type_date_unique').on(
+			table.locationId,
+			table.typeId,
+			table.priceDate
+		),
+	]
+)
+
+// ============================================================================
+// INSURANCE DAILY PRICES
+// ============================================================================
+
+/**
+ * Insurance daily prices - Snapshotted platinum insurance rates per ship type per day
+ * Captured via the scheduled handler from ESI /insurance/prices.
+ * Used by SRP to compute the insurance delta for losses using the rate at the day of loss.
+ */
+export const insuranceDailyPrices = pgTable(
+	'insurance_daily_prices',
+	{
+		id: uuid('id').primaryKey().defaultRandom(),
+		typeId: text('type_id').notNull(),
+		/** UTC date these prices were valid (YYYY-MM-DD) */
+		priceDate: text('price_date').notNull(),
+		/** Platinum insurance premium cost in ISK (null if no platinum tier) */
+		platinumCost: text('platinum_cost'),
+		/** Platinum insurance payout in ISK (null if no platinum tier) */
+		platinumPayout: text('platinum_payout'),
+		createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
+	},
+	(t) => [uniqueIndex('insurance_daily_prices_type_date_idx').on(t.typeId, t.priceDate)]
 )
 
 // ============================================================================

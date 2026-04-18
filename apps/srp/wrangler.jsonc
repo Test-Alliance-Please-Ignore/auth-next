@@ -19,6 +19,11 @@
 				"class_name": "Srp"
 			},
 			{
+				"name": "MARKETS",
+				"class_name": "Markets",
+				"script_name": "markets"
+			},
+			{
 				"name": "EVE_CHARACTER_DATA",
 				"class_name": "EveCharacterData",
 				"script_name": "eve-character-data"

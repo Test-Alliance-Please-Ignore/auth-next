@@ -6,81 +6,71 @@ import { srpKeys } from './query-keys'
 
 import type {
 	CommentVisibility,
-	LossWithSRPStatus,
-	PaymentStatus,
 	RequestStatus,
-	SRPCommentResponse,
 	SRPConfigResponse,
-	SRPRequestResponse,
+	SRPReviewSubmission,
 } from './types'
 
 // ===== Query Hooks =====
 
-/**
- * Get recent losses for all user's characters
- */
 export function useRecentLosses(daysBack: number = 30) {
 	return useQuery({
 		queryKey: srpKeys.losses(daysBack),
 		queryFn: () => api.getRecentLosses(daysBack),
-		staleTime: 1000 * 60 * 5, // 5 minutes
+		staleTime: 1000 * 60 * 5,
 	})
 }
 
-/**
- * Get user's own SRP requests
- */
 export function useMyRequests(
 	params: { limit?: number; offset?: number; status?: RequestStatus } = {}
 ) {
 	return useQuery({
 		queryKey: srpKeys.myRequests(params),
 		queryFn: () => api.getMyRequests(params),
-		staleTime: 1000 * 60, // 1 minute
+		staleTime: 1000 * 60,
 	})
 }
 
-/**
- * Get single SRP request by ID
- */
 export function useRequest(id: string | undefined) {
 	return useQuery({
 		queryKey: srpKeys.request(id!),
 		queryFn: () => api.getRequest(id!),
 		enabled: !!id,
-		staleTime: 1000 * 30, // 30 seconds
+		staleTime: 1000 * 30,
 	})
 }
 
-/**
- * Get pending requests for review (requires reviewer permission)
- */
 export function usePendingRequests(
 	params: { corporationId?: string; limit?: number; offset?: number } = {}
 ) {
 	return useQuery({
 		queryKey: srpKeys.pendingRequests(params),
 		queryFn: () => api.getPendingRequests(params),
-		staleTime: 1000 * 30, // 30 seconds
+		staleTime: 1000 * 30,
 	})
 }
 
-/**
- * Get pending payments (requires payer permission)
- */
+export function useRequestsByStatus(
+	status: RequestStatus,
+	params: { limit?: number; offset?: number } = {}
+) {
+	return useQuery({
+		queryKey: srpKeys.requestsByStatus(status, params),
+		queryFn: () => api.getRequestsByStatus({ status, ...params }),
+		staleTime: 1000 * 30,
+	})
+}
+
 export function usePendingPayments(
 	params: { corporationId?: string; limit?: number; offset?: number } = {}
 ) {
 	return useQuery({
 		queryKey: srpKeys.pendingPayments(params),
 		queryFn: () => api.getPendingPayments(params),
-		staleTime: 1000 * 30, // 30 seconds
+		staleTime: 1000 * 30,
 	})
 }
 
-/**
- * Get comments for a request
- */
 export function useRequestComments(
 	requestId: string | undefined,
 	includeInternal: boolean = false
@@ -93,20 +83,22 @@ export function useRequestComments(
 	})
 }
 
-/**
- * Get active SRP configuration
- */
 export function useSRPConfig() {
 	return useQuery({
 		queryKey: srpKeys.config(),
 		queryFn: () => api.getSRPConfig(),
-		staleTime: 1000 * 60 * 10, // 10 minutes
+		staleTime: 1000 * 60 * 10,
 	})
 }
 
-/**
- * Get SRP statistics (admin only)
- */
+export function useSRPPolicies() {
+	return useQuery({
+		queryKey: srpKeys.policies(),
+		queryFn: () => api.getSRPPolicies(),
+		staleTime: 1000 * 60 * 5,
+	})
+}
+
 export function useSRPStats(params?: {
 	startDate?: string
 	endDate?: string
@@ -115,18 +107,24 @@ export function useSRPStats(params?: {
 	return useQuery({
 		queryKey: srpKeys.stats(params),
 		queryFn: () => api.getSRPStats(params),
-		staleTime: 1000 * 60 * 5, // 5 minutes
+		staleTime: 1000 * 60 * 5,
 	})
 }
 
 // ===== Mutation Hooks =====
 
-/**
- * Create a new SRP request
- */
+export function useRefreshKillmails() {
+	const queryClient = useQueryClient()
+	return useMutation({
+		mutationFn: () => api.refreshLosses(),
+		onSuccess: () => {
+			void queryClient.invalidateQueries({ queryKey: srpKeys.losses() })
+		},
+	})
+}
+
 export function useCreateRequest() {
 	const queryClient = useQueryClient()
-
 	return useMutation({
 		mutationFn: (data: {
 			characterId: string
@@ -135,19 +133,47 @@ export function useCreateRequest() {
 			requestedAmount?: string
 		}) => api.createSRPRequest(data),
 		onSuccess: () => {
-			// Invalidate relevant queries
-			queryClient.invalidateQueries({ queryKey: srpKeys.requests() })
-			queryClient.invalidateQueries({ queryKey: srpKeys.losses() })
+			void queryClient.invalidateQueries({ queryKey: srpKeys.requests() })
+			void queryClient.invalidateQueries({ queryKey: srpKeys.losses() })
 		},
 	})
 }
 
-/**
- * Approve an SRP request
- */
+export function useSubmitReview() {
+	const queryClient = useQueryClient()
+	return useMutation({
+		mutationFn: ({ id, data }: { id: string; data: SRPReviewSubmission }) =>
+			api.submitReview(id, data),
+		onSuccess: (_data: any, variables: { id: string; data: SRPReviewSubmission }) => {
+			void queryClient.invalidateQueries({ queryKey: srpKeys.request(variables.id) })
+			void queryClient.invalidateQueries({ queryKey: srpKeys.allRequests() })
+			void queryClient.invalidateQueries({ queryKey: srpKeys.payments() })
+		},
+	})
+}
+
+export function useUpdateReviewState() {
+	const queryClient = useQueryClient()
+	return useMutation({
+		mutationFn: ({
+			id,
+			newState,
+			notes,
+		}: {
+			id: string
+			newState: RequestStatus
+			notes?: string
+		}) => api.updateReviewState(id, { newState, notes }),
+		onSuccess: (_data: any, variables: { id: string; newState: RequestStatus; notes?: string }) => {
+			void queryClient.invalidateQueries({ queryKey: srpKeys.request(variables.id) })
+			void queryClient.invalidateQueries({ queryKey: srpKeys.allRequests() })
+			void queryClient.invalidateQueries({ queryKey: srpKeys.payments() })
+		},
+	})
+}
+
 export function useApproveRequest() {
 	const queryClient = useQueryClient()
-
 	return useMutation({
 		mutationFn: ({
 			id,
@@ -160,48 +186,15 @@ export function useApproveRequest() {
 			_data: any,
 			variables: { id: string; data: { approvedAmount: string; reviewNotes?: string } }
 		) => {
-			// Invalidate relevant queries
-			queryClient.invalidateQueries({ queryKey: srpKeys.request(variables.id) })
-			queryClient.invalidateQueries({ queryKey: srpKeys.pending() })
-			queryClient.invalidateQueries({ queryKey: srpKeys.payments() })
+			void queryClient.invalidateQueries({ queryKey: srpKeys.request(variables.id) })
+			void queryClient.invalidateQueries({ queryKey: srpKeys.pending() })
+			void queryClient.invalidateQueries({ queryKey: srpKeys.payments() })
 		},
 	})
 }
 
-/**
- * Partially approve an SRP request
- */
-export function usePartiallyApproveRequest() {
-	const queryClient = useQueryClient()
-
-	return useMutation({
-		mutationFn: ({
-			id,
-			data,
-		}: {
-			id: string
-			data: { approvedAmount: string; rejectionReason: string; reviewNotes?: string }
-		}) => api.partiallyApproveRequest(id, data),
-		onSuccess: (
-			_data: any,
-			variables: {
-				id: string
-				data: { approvedAmount: string; rejectionReason: string; reviewNotes?: string }
-			}
-		) => {
-			queryClient.invalidateQueries({ queryKey: srpKeys.request(variables.id) })
-			queryClient.invalidateQueries({ queryKey: srpKeys.pending() })
-			queryClient.invalidateQueries({ queryKey: srpKeys.payments() })
-		},
-	})
-}
-
-/**
- * Reject an SRP request
- */
 export function useRejectRequest() {
 	const queryClient = useQueryClient()
-
 	return useMutation({
 		mutationFn: ({
 			id,
@@ -214,18 +207,14 @@ export function useRejectRequest() {
 			_data: any,
 			variables: { id: string; data: { rejectionReason: string; reviewNotes?: string } }
 		) => {
-			queryClient.invalidateQueries({ queryKey: srpKeys.request(variables.id) })
-			queryClient.invalidateQueries({ queryKey: srpKeys.pending() })
+			void queryClient.invalidateQueries({ queryKey: srpKeys.request(variables.id) })
+			void queryClient.invalidateQueries({ queryKey: srpKeys.pending() })
 		},
 	})
 }
 
-/**
- * Add a comment to a request
- */
 export function useAddComment() {
 	const queryClient = useQueryClient()
-
 	return useMutation({
 		mutationFn: ({
 			requestId,
@@ -238,101 +227,82 @@ export function useAddComment() {
 			_data: any,
 			variables: { requestId: string; data: { content: string; visibility: CommentVisibility } }
 		) => {
-			// Invalidate both public and internal comments
-			queryClient.invalidateQueries({ queryKey: srpKeys.comments(variables.requestId, false) })
-			queryClient.invalidateQueries({ queryKey: srpKeys.comments(variables.requestId, true) })
+			void queryClient.invalidateQueries({ queryKey: srpKeys.comments(variables.requestId, false) })
+			void queryClient.invalidateQueries({ queryKey: srpKeys.comments(variables.requestId, true) })
 		},
 	})
 }
 
-/**
- * Update a comment
- */
 export function useUpdateComment() {
 	const queryClient = useQueryClient()
-
 	return useMutation({
 		mutationFn: ({ id, content }: { id: string; content: string }) =>
 			api.updateComment(id, content),
 		onSuccess: () => {
-			// Invalidate all comment queries
-			queryClient.invalidateQueries({ queryKey: srpKeys.all })
+			void queryClient.invalidateQueries({ queryKey: srpKeys.all })
 		},
 	})
 }
 
-/**
- * Delete a comment
- */
 export function useDeleteComment() {
 	const queryClient = useQueryClient()
-
 	return useMutation({
 		mutationFn: (id: string) => api.deleteComment(id),
 		onSuccess: () => {
-			queryClient.invalidateQueries({ queryKey: srpKeys.all })
+			void queryClient.invalidateQueries({ queryKey: srpKeys.all })
 		},
 	})
 }
 
-/**
- * Mark request as fully paid
- */
 export function useMarkPaid() {
 	const queryClient = useQueryClient()
-
 	return useMutation({
-		mutationFn: ({
-			id,
-			data,
-		}: {
-			id: string
-			data: { paidAmount: string; paymentToken: string }
-		}) => api.markPaid(id, data),
-		onSuccess: (
-			_data: any,
-			variables: { id: string; data: { paidAmount: string; paymentToken: string } }
-		) => {
-			queryClient.invalidateQueries({ queryKey: srpKeys.request(variables.id) })
-			queryClient.invalidateQueries({ queryKey: srpKeys.payments() })
+		mutationFn: ({ id, paymentToken }: { id: string; paymentToken: string }) =>
+			api.markPaid(id, { paymentToken }),
+		onSuccess: (_data: any, variables: { id: string; paymentToken: string }) => {
+			void queryClient.invalidateQueries({ queryKey: srpKeys.request(variables.id) })
+			void queryClient.invalidateQueries({ queryKey: srpKeys.payments() })
+			void queryClient.invalidateQueries({ queryKey: srpKeys.allRequests() })
 		},
 	})
 }
 
-/**
- * Mark request as partially paid
- */
-export function useMarkPartiallyPaid() {
-	const queryClient = useQueryClient()
-
-	return useMutation({
-		mutationFn: ({
-			id,
-			data,
-		}: {
-			id: string
-			data: { paidAmount: string; paymentToken: string; notes?: string }
-		}) => api.markPartiallyPaid(id, data),
-		onSuccess: (
-			_data: any,
-			variables: { id: string; data: { paidAmount: string; paymentToken: string; notes?: string } }
-		) => {
-			queryClient.invalidateQueries({ queryKey: srpKeys.request(variables.id) })
-			queryClient.invalidateQueries({ queryKey: srpKeys.payments() })
-		},
-	})
-}
-
-/**
- * Update SRP configuration (admin only)
- */
 export function useUpdateSRPConfig() {
 	const queryClient = useQueryClient()
-
 	return useMutation({
 		mutationFn: (data: Partial<SRPConfigResponse>) => api.updateSRPConfig(data),
 		onSuccess: () => {
-			queryClient.invalidateQueries({ queryKey: srpKeys.config() })
+			void queryClient.invalidateQueries({ queryKey: srpKeys.config() })
+		},
+	})
+}
+
+export function useCreatePolicy() {
+	const queryClient = useQueryClient()
+	return useMutation({
+		mutationFn: (data: any) => api.createSRPPolicy(data),
+		onSuccess: () => {
+			void queryClient.invalidateQueries({ queryKey: srpKeys.policies() })
+		},
+	})
+}
+
+export function useUpdatePolicy() {
+	const queryClient = useQueryClient()
+	return useMutation({
+		mutationFn: ({ id, data }: { id: string; data: any }) => api.updateSRPPolicy(id, data),
+		onSuccess: () => {
+			void queryClient.invalidateQueries({ queryKey: srpKeys.policies() })
+		},
+	})
+}
+
+export function useDeletePolicy() {
+	const queryClient = useQueryClient()
+	return useMutation({
+		mutationFn: (id: string) => api.deleteSRPPolicy(id),
+		onSuccess: () => {
+			void queryClient.invalidateQueries({ queryKey: srpKeys.policies() })
 		},
 	})
 }

@@ -9,7 +9,6 @@ import { Button } from '@/components/ui/button'
 import { Card } from '@/components/ui/card'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
-import { Textarea } from '@/components/ui/textarea'
 
 import { useCreateRequest } from '../hooks'
 import { formatISK, getKillmailUrl } from '../utils'
@@ -64,7 +63,7 @@ export function CreateRequestForm({
 				description: `Your payment token is: ${result.paymentToken}`,
 			})
 
-			navigate(`/srp/request/${result.id}`)
+			void navigate(`/srp/request/${result.id}`)
 		} catch (error: any) {
 			toast.error('Failed to create request', {
 				description: error.message || 'Please try again',
@@ -73,7 +72,7 @@ export function CreateRequestForm({
 	})
 
 	return (
-		<form onSubmit={onSubmit} className="space-y-6">
+		<form onSubmit={(e) => void onSubmit(e)} className="space-y-6">
 			{/* Loss Details Card */}
 			<Card className="p-6">
 				<h3 className="mb-4 font-semibold">Ship Loss Summary</h3>

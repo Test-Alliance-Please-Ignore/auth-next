@@ -11,7 +11,6 @@ import {
 } from '@/components/ui/table'
 
 import { formatISK, formatRelativeTime } from '../utils'
-import { PaymentStatusBadge } from './PaymentStatusBadge'
 import { RequestStatusBadge } from './RequestStatusBadge'
 
 import type { SRPRequestResponse } from '../types'
@@ -22,7 +21,7 @@ interface RequestTableProps {
 	showPagination?: boolean
 }
 
-export function RequestTable({ requests, isLoading, showPagination }: RequestTableProps) {
+export function RequestTable({ requests, isLoading }: RequestTableProps) {
 	if (isLoading) {
 		return (
 			<div className="space-y-4">
@@ -52,7 +51,6 @@ export function RequestTable({ requests, isLoading, showPagination }: RequestTab
 						<TableHead className="text-right font-bold text-foreground">Requested</TableHead>
 						<TableHead className="text-right font-bold text-foreground">Approved</TableHead>
 						<TableHead className="font-bold text-foreground">Status</TableHead>
-						<TableHead className="font-bold text-foreground">Payment</TableHead>
 						<TableHead className="text-right font-bold text-foreground">Actions</TableHead>
 					</TableRow>
 				</TableHeader>
@@ -78,9 +76,6 @@ export function RequestTable({ requests, isLoading, showPagination }: RequestTab
 							</TableCell>
 							<TableCell>
 								<RequestStatusBadge status={request.requestStatus} />
-							</TableCell>
-							<TableCell>
-								<PaymentStatusBadge status={request.paymentStatus} />
 							</TableCell>
 							<TableCell className="text-right">
 								<Button variant="ghost" size="sm" asChild>

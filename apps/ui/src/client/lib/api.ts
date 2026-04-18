@@ -2667,7 +2667,6 @@ export class ApiClient {
 	async markPaid(
 		id: string,
 		data: {
-			paidAmount: string
 			paymentToken: string
 		}
 	): Promise<any> {
@@ -2717,6 +2716,55 @@ export class ApiClient {
 
 		const query = searchParams.toString()
 		return this.get(`/srp/stats${query ? `?${query}` : ''}`)
+	}
+
+	async refreshLosses(): Promise<{ ok: boolean }> {
+		return this.post('/srp/losses/refresh', {})
+	}
+
+	async getRequestsByStatus(params: {
+		status: string
+		limit?: number
+		offset?: number
+	}): Promise<any> {
+		const searchParams = new URLSearchParams()
+		searchParams.set('status', params.status)
+		if (params.limit !== undefined) searchParams.set('limit', String(params.limit))
+		if (params.offset !== undefined) searchParams.set('offset', String(params.offset))
+		return this.get(`/srp/requests/by-status?${searchParams.toString()}`)
+	}
+
+	async submitReview(id: string, data: any): Promise<any> {
+		return this.post(`/srp/requests/${id}/review`, data)
+	}
+
+	async updateReviewState(
+		id: string,
+		data: { newState: string; notes?: string }
+	): Promise<any> {
+		return this.patch(`/srp/requests/${id}/state`, data)
+	}
+
+	async getSRPPolicies(): Promise<any[]> {
+		return this.get('/srp/policies')
+	}
+
+	async createSRPPolicy(data: any): Promise<any> {
+		return this.post('/srp/policies', data)
+	}
+
+	async updateSRPPolicy(id: string, data: any): Promise<any> {
+		return this.patch(`/srp/policies/${id}`, data)
+	}
+
+	async deleteSRPPolicy(id: string): Promise<void> {
+		return this.delete(`/srp/policies/${id}`)
+	}
+
+	// ===== Feature Flags =====
+
+	async getFeatureFlags(): Promise<Record<string, boolean>> {
+		return this.get('/flags')
 	}
 
 	// ===== Doctrines API Methods =====

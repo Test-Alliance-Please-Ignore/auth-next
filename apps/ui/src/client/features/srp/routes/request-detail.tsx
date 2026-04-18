@@ -12,7 +12,6 @@ import { useUserPermissions } from '@/hooks/useUserPermissions'
 
 import { CommentForm } from '../components/CommentForm'
 import { CommentsList } from '../components/CommentsList'
-import { PaymentStatusBadge } from '../components/PaymentStatusBadge'
 import { RequestHistory } from '../components/RequestHistory'
 import { RequestStatusBadge } from '../components/RequestStatusBadge'
 import { useRequest, useRequestComments } from '../hooks'
@@ -26,11 +25,7 @@ export default function RequestDetails() {
 
 	const canSeeInternal =
 		isAdmin || hasPermission('urn:srp:reviewer') || hasPermission('urn:srp:payer')
-	const {
-		data: comments = [],
-		refetch: refetchComments,
-		isLoading: commentsLoading,
-	} = useRequestComments(id, canSeeInternal)
+	const { data: comments = [], refetch: refetchComments } = useRequestComments(id, canSeeInternal)
 
 	if (!id) {
 		return <Navigate to="/srp" replace />
@@ -68,7 +63,7 @@ export default function RequestDetails() {
 
 	const copyToken = () => {
 		if (request.paymentToken) {
-			navigator.clipboard.writeText(request.paymentToken)
+			void navigator.clipboard.writeText(request.paymentToken)
 			toast.success('Payment token copied to clipboard')
 		}
 	}
@@ -179,10 +174,6 @@ export default function RequestDetails() {
 							<div>
 								<div className="text-sm text-muted-foreground">Request Status</div>
 								<RequestStatusBadge status={request.requestStatus} />
-							</div>
-							<div>
-								<div className="text-sm text-muted-foreground">Payment Status</div>
-								<PaymentStatusBadge status={request.paymentStatus} />
 							</div>
 						</div>
 					</Card>

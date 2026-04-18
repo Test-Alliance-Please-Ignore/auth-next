@@ -3,14 +3,12 @@ import { Link, Navigate, useSearchParams } from 'react-router-dom'
 import { Button } from '@/components/ui/button'
 import { Container } from '@/components/ui/container'
 import { PageHeader } from '@/components/ui/page-header'
-import { useAuth } from '@/hooks/useAuth'
 
 import { CreateRequestForm } from '../components/CreateRequestForm'
 import { useRecentLosses } from '../hooks'
 
 export default function CreateRequest() {
 	const [searchParams] = useSearchParams()
-	const { user } = useAuth()
 
 	const killmailId = searchParams.get('killmailId')
 	const killmailHash = searchParams.get('killmailHash')

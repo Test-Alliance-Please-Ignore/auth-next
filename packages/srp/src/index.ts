@@ -36,7 +36,7 @@ export interface Srp {
 		excludeNonSrpEligible?: boolean
 	): Promise<LossWithSRPStatus[]>
 
-	// Review Management
+	// Legacy review methods (kept for backward compat)
 	getPendingRequests(
 		corporationId: string,
 		limit?: number,
@@ -60,6 +60,29 @@ export interface Srp {
 		reviewerUserId: string,
 		rejectionReason: string,
 		reviewNotes?: string
+	): Promise<SRPRequestResponse>
+
+	// Review Queue
+	getRequestsByStatus(
+		status: RequestStatus,
+		options?: { limit?: number; offset?: number }
+	): Promise<SRPRequestResponse[]>
+
+	// Review Submission
+	submitReview(
+		requestId: string,
+		reviewerUserId: string,
+		reviewerCharacterName: string,
+		data: SRPReviewSubmission
+	): Promise<SRPRequestResponse>
+
+	// State Change (post-review, role-validated)
+	updateReviewState(
+		requestId: string,
+		actorUserId: string,
+		actorCharacterName: string,
+		newState: RequestStatus,
+		notes?: string
 	): Promise<SRPRequestResponse>
 
 	// Comments
@@ -86,16 +109,15 @@ export interface Srp {
 	markPaid(
 		requestId: string,
 		payerUserId: string,
-		paidAmount: string,
+		payerCharacterName: string,
 		paymentToken: string
 	): Promise<SRPRequestResponse>
-	markPartiallyPaid(
-		requestId: string,
-		payerUserId: string,
-		paidAmount: string,
-		paymentToken: string,
-		notes?: string
-	): Promise<SRPRequestResponse>
+
+	// Policy Management (manager-only create/update/delete; all roles can list)
+	listPolicies(): Promise<SRPPolicy[]>
+	createPolicy(userId: string, data: CreateSRPPolicy): Promise<SRPPolicy>
+	updatePolicy(id: string, userId: string, data: Partial<CreateSRPPolicy>): Promise<SRPPolicy>
+	deletePolicy(id: string, userId: string): Promise<void>
 
 	// Configuration
 	getConfig(): Promise<SRPConfigResponse | null>
@@ -103,6 +125,13 @@ export interface Srp {
 
 	// Statistics
 	getStats(startDate?: string, endDate?: string, corporationId?: string): Promise<SRPStatsResponse>
+
+	// Valuation preview — computes SRP value for any killmail without creating a request
+	previewValuation(
+		characterId: string,
+		killmailId: string,
+		killmailHash: string
+	): Promise<SRPValuationPreview | null>
 }
 
 /**
@@ -113,18 +142,74 @@ export interface Srp {
 
 export const REQUEST_STATUSES = [
 	'pending',
-	'in_review',
+	'needs_context',
 	'approved',
-	'partially_approved',
 	'rejected',
+	'paid',
 ] as const
 export type RequestStatus = (typeof REQUEST_STATUSES)[number]
 
-export const PAYMENT_STATUSES = ['n/a', 'pending', 'paid_in_full', 'partial_payment'] as const
-export type PaymentStatus = (typeof PAYMENT_STATUSES)[number]
-
 export const COMMENT_VISIBILITY = ['public', 'internal'] as const
 export type CommentVisibility = (typeof COMMENT_VISIBILITY)[number]
+
+/**
+ * ============================================================================
+ * POLICY TYPES
+ * ============================================================================
+ */
+
+/** Config shape for payout_modifier policies */
+export interface PayoutModifierConfig {
+	rate: string // e.g. "0.80", "1.00", "1.10"
+	applyInsuranceDelta: boolean // false for logistics blanket (no insurance deduction)
+}
+
+/** Config shape for cap policies */
+export interface CapConfig {
+	maxPayoutMillions: number // stored as millions integer (300 = 300M, 1500 = 1.5B)
+}
+
+export type SRPPolicyConfig = PayoutModifierConfig | CapConfig
+
+export interface SRPPolicy {
+	id: string
+	name: string
+	description?: string
+	effect: 'payout_modifier' | 'cap'
+	config: SRPPolicyConfig
+	isActive: boolean
+	displayOrder: number
+	createdBy: string
+	createdAt: string
+	updatedAt: string
+}
+
+/**
+ * Ad-hoc modifier applied by a reviewer at review time.
+ * Not predefined — the reviewer creates them inline.
+ * A mandatory reason is required for each.
+ */
+export interface AppliedModifier {
+	id: string // client-generated UUID for stable React key
+	modifierType: 'deduction' | 'bonus'
+	mode: 'percentage' | 'value' // percentage of current subtotal, or N × 1,000,000 ISK
+	amount: number // percentage (e.g. 10 = 10%) or millions integer
+	reason: string // mandatory
+	computedAmountISK: string // ISK impact computed at submission time
+}
+
+/**
+ * Input for submitReview RPC method
+ */
+export interface SRPReviewSubmission {
+	outcome: 'approved' | 'needs_context' | 'rejected'
+	appliedModifierPolicyId: string | null
+	appliedCapPolicyId: string | null
+	appliedModifiers: AppliedModifier[]
+	reviewerOverrideMillions: number | null
+	feedbackText: string | null // auto-posted as public comment if non-empty
+	reviewNotes: string | null // auto-posted as internal comment if non-empty
+}
 
 /**
  * ============================================================================
@@ -139,56 +224,9 @@ export const CreateSRPRequestSchema = z.object({
 	characterId: z.string(),
 	killmailId: z.string(),
 	killmailHash: z.string(),
-	requestedAmount: z.string().optional(), // ISK amount as string, optional
+	requestedAmount: z.string().optional(),
 })
 export type CreateSRPRequest = z.infer<typeof CreateSRPRequestSchema>
-
-/**
- * Schema for approving a request
- */
-export const ApproveRequestSchema = z.object({
-	approvedAmount: z.string(), // ISK as string
-	reviewNotes: z.string().max(2000).optional(),
-})
-export type ApproveRequest = z.infer<typeof ApproveRequestSchema>
-
-/**
- * Schema for partially approving a request
- */
-export const PartiallyApproveRequestSchema = z.object({
-	approvedAmount: z.string(),
-	rejectionReason: z.string().min(10).max(2000),
-	reviewNotes: z.string().max(2000).optional(),
-})
-export type PartiallyApproveRequest = z.infer<typeof PartiallyApproveRequestSchema>
-
-/**
- * Schema for rejecting a request
- */
-export const RejectRequestSchema = z.object({
-	rejectionReason: z.string().min(10).max(2000),
-	reviewNotes: z.string().max(2000).optional(),
-})
-export type RejectRequest = z.infer<typeof RejectRequestSchema>
-
-/**
- * Schema for marking a request as paid
- */
-export const MarkPaidSchema = z.object({
-	paidAmount: z.string(),
-	paymentToken: z.string().length(16),
-})
-export type MarkPaid = z.infer<typeof MarkPaidSchema>
-
-/**
- * Schema for marking a request as partially paid
- */
-export const MarkPartiallyPaidSchema = z.object({
-	paidAmount: z.string(),
-	paymentToken: z.string().length(16),
-	notes: z.string().max(2000).optional(),
-})
-export type MarkPartiallyPaid = z.infer<typeof MarkPartiallyPaidSchema>
 
 /**
  * Schema for creating a comment
@@ -208,12 +246,58 @@ export const EditCommentSchema = z.object({
 export type EditComment = z.infer<typeof EditCommentSchema>
 
 /**
+ * Schema for an ad-hoc modifier
+ */
+export const AppliedModifierSchema = z.object({
+	id: z.string().uuid(),
+	modifierType: z.enum(['deduction', 'bonus']),
+	mode: z.enum(['percentage', 'value']),
+	amount: z.number().positive(),
+	reason: z.string().min(1).max(500),
+	computedAmountISK: z.string(),
+})
+
+/**
+ * Schema for submitting a review
+ */
+export const SRPReviewSubmissionSchema = z.object({
+	outcome: z.enum(['approved', 'needs_context', 'rejected']),
+	appliedModifierPolicyId: z.string().uuid().nullable(),
+	appliedCapPolicyId: z.string().uuid().nullable(),
+	appliedModifiers: z.array(AppliedModifierSchema),
+	reviewerOverrideMillions: z.number().int().positive().nullable(),
+	feedbackText: z.string().max(5000).nullable(),
+	reviewNotes: z.string().max(5000).nullable(),
+})
+
+/**
+ * Schema for changing request state
+ */
+export const UpdateReviewStateSchema = z.object({
+	newState: z.enum(['pending', 'needs_context', 'approved', 'rejected', 'paid']),
+	notes: z.string().max(2000).optional(),
+})
+
+/**
+ * Schema for creating a policy
+ */
+export const CreateSRPPolicySchema = z.object({
+	name: z.string().min(1).max(200),
+	description: z.string().max(1000).optional(),
+	effect: z.enum(['payout_modifier', 'cap']),
+	config: z.record(z.string(), z.unknown()),
+	displayOrder: z.number().int().optional(),
+})
+export type CreateSRPPolicy = z.infer<typeof CreateSRPPolicySchema>
+
+/**
  * Schema for updating SRP configuration
  */
 export const UpdateSRPConfigSchema = z.object({
 	defaultCoverageRate: z.string().optional(),
 	maxPayoutAmount: z.string().nullable().optional(),
 	minShipValue: z.string().optional(),
+	maxLossAgeDays: z.number().int().positive().optional(),
 	autoApprovalEnabled: z.boolean().optional(),
 	autoApprovalThreshold: z.string().nullable().optional(),
 	eligibleCorporationIds: z.array(z.string()).optional(),
@@ -257,10 +341,34 @@ export interface SRPRequestResponse {
 	reviewedAt?: string
 	reviewNotes?: string // Only visible to reviewers
 
-	paymentStatus: PaymentStatus
 	paymentToken?: string
 	paymentDate?: string
 	paymentCharacterName?: string
+
+	// Applied policy tracking (set at review time)
+	appliedModifierPolicyId?: string
+	appliedModifierPolicyName?: string
+	appliedCapPolicyId?: string
+	appliedCapPolicyName?: string
+	appliedModifiers?: AppliedModifier[]
+	reviewerOverrideMillions?: number
+	fleetId?: string
+
+	// SRP Valuation — computed at request creation from Jita market prices at loss time.
+	// Null for requests created before this feature was deployed.
+	srpEquipmentValue?: string
+	srpInsurancePremium?: string
+	srpInsurancePayout?: string
+	srpNetInsurance?: string
+	srpCalculatedValue?: string
+	srpFinalValue?: string
+	srpPriceSnapshotTime?: string
+	srpItemPrices?: Array<{
+		typeId: string
+		quantity: number
+		unitPrice: string
+		lineTotal: string
+	}>
 
 	createdAt: string
 	updatedAt: string
@@ -296,11 +404,10 @@ export interface SRPHistoryResponse {
 	action: string
 	previousRequestStatus?: RequestStatus
 	newRequestStatus?: RequestStatus
-	previousPaymentStatus?: PaymentStatus
-	newPaymentStatus?: PaymentStatus
 	previousApprovedAmount?: string
 	newApprovedAmount?: string
 	metadata?: Record<string, unknown>
+	visibility: CommentVisibility
 	timestamp: string
 }
 
@@ -313,6 +420,7 @@ export interface SRPConfigResponse {
 	defaultCoverageRate: string
 	maxPayoutAmount?: string
 	minShipValue: string
+	maxLossAgeDays: number
 	autoApprovalEnabled: boolean
 	autoApprovalThreshold?: string
 	eligibleCorporationIds?: string[]
@@ -330,13 +438,32 @@ export interface SRPConfigResponse {
 export interface SRPStatsResponse {
 	totalRequests: number
 	totalRequestsByStatus: Record<RequestStatus, number>
-	totalRequestsByPaymentStatus: Record<PaymentStatus, number>
-	totalIskRequested: string
 	totalIskApproved: string
 	totalIskPaid: string
 	averageApprovalTime: number // milliseconds
 	topShipTypes: Array<{ shipTypeId: string; shipTypeName: string; count: number }>
 	requestsByCorporation: Array<{ corporationId: string; corporationName: string; count: number }>
+}
+
+/**
+ * Valuation preview — returned by previewValuation() without creating a request.
+ * Null when the killmail has no equipped items to price.
+ */
+export interface SRPValuationPreview {
+	equipmentValue: string
+	insurancePremium: string | null
+	insurancePayout: string | null
+	netInsurance: string
+	calculatedValue: string
+	finalValue: string
+	priceSnapshotTime: string | null
+	/** Whether item prices came from stored daily history or live ESI cache fallback. */
+	pricingSource: 'historic' | 'fallback'
+	/** Whether insurance prices came from stored daily history or live ESI cache fallback. Absent for pod losses. */
+	insuranceSource?: 'historic' | 'fallback'
+	itemPrices: Array<{ typeId: string; quantity: number; unitPrice: string; lineTotal: string }>
+	/** Type IDs that had no market data at the loss date (priced at 0). */
+	missingPriceTypeIds: string[]
 }
 
 /**
@@ -366,7 +493,6 @@ export interface LossWithSRPStatus {
 
 /**
  * Generate a random 16-character ASCII payment token
- * @returns 16 character random string
  */
 export function generatePaymentToken(): string {
 	const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789'
@@ -378,60 +504,50 @@ export function generatePaymentToken(): string {
 }
 
 /**
- * Check if a status transition is allowed
- * @param from Current status
- * @param to New status
- * @returns True if transition is allowed
+ * Check if a status transition is allowed for a given role.
+ * Roles: 'reviewer' | 'payer' | 'manager'
  */
-export function isValidStatusTransition(from: RequestStatus, to: RequestStatus): boolean {
-	const ALLOWED_TRANSITIONS: Record<RequestStatus, RequestStatus[]> = {
-		pending: ['in_review', 'approved', 'partially_approved', 'rejected'],
-		in_review: ['pending', 'approved', 'partially_approved', 'rejected'],
-		approved: [],
-		partially_approved: [],
-		rejected: [],
+export function isValidStatusTransition(
+	from: RequestStatus,
+	to: RequestStatus,
+	role: 'reviewer' | 'payer' | 'manager'
+): boolean {
+	// Managers can do anything
+	if (role === 'manager') return from !== to
+
+	const REVIEWER_TRANSITIONS: Partial<Record<RequestStatus, RequestStatus[]>> = {
+		pending: ['needs_context', 'approved', 'rejected'],
+		needs_context: ['pending', 'approved', 'rejected'],
+		approved: ['pending', 'needs_context', 'rejected'],
+		rejected: ['pending', 'needs_context', 'approved'],
 	}
 
-	return ALLOWED_TRANSITIONS[from]?.includes(to) ?? false
-}
-
-/**
- * Check if a payment status transition is allowed
- * @param from Current payment status
- * @param to New payment status
- * @returns True if transition is allowed
- */
-export function isValidPaymentStatusTransition(from: PaymentStatus, to: PaymentStatus): boolean {
-	const ALLOWED_TRANSITIONS: Record<PaymentStatus, PaymentStatus[]> = {
-		'n/a': ['pending'],
-		pending: ['paid_in_full', 'partial_payment'],
-		paid_in_full: [],
-		partial_payment: ['paid_in_full'], // Can pay remainder
+	const PAYER_TRANSITIONS: Partial<Record<RequestStatus, RequestStatus[]>> = {
+		...REVIEWER_TRANSITIONS,
+		approved: ['paid', 'pending', 'needs_context', 'rejected'],
 	}
 
-	return ALLOWED_TRANSITIONS[from]?.includes(to) ?? false
+	const allowed = role === 'payer' ? PAYER_TRANSITIONS[from] : REVIEWER_TRANSITIONS[from]
+	return allowed?.includes(to) ?? false
 }
 
 /**
  * Generate zKillboard URL for a killmail
- * @param killmailId Killmail ID
- * @returns zKillboard URL
  */
 export function generateKillmailUrl(killmailId: string): string {
 	return `https://zkillboard.com/kill/${killmailId}/`
 }
 
 /**
- * Calculate the default payout amount based on ship value and coverage rate
- * @param shipValue Ship value as string
- * @param coverageRate Coverage rate as string (e.g., "0.80" for 80%)
- * @returns Calculated payout amount as string
+ * Round an ISK value (as string integer) down to the nearest 1,000,000 ISK.
+ * Used as the final step in SRP payout calculation.
+ * @param value ISK amount as string integer (e.g. "123456789")
+ * @returns ISK rounded down to nearest million (e.g. "123000000")
  */
-export function calculateDefaultPayout(shipValue: string, coverageRate: string): string {
-	const value = BigInt(shipValue)
-	const rate = Number.parseFloat(coverageRate)
-	const payout = Number(value) * rate
-	return Math.floor(payout).toString()
+export function roundDownToMillionISK(value: string): string {
+	const n = BigInt(value)
+	const million = 1_000_000n
+	return String((n / million) * million)
 }
 
 /**
@@ -440,23 +556,18 @@ export function calculateDefaultPayout(shipValue: string, coverageRate: string):
  * ============================================================================
  */
 
-/**
- * Check if a string is a valid request status
- */
 export function isRequestStatus(value: string): value is RequestStatus {
 	return (REQUEST_STATUSES as readonly string[]).includes(value)
 }
 
-/**
- * Check if a string is a valid payment status
- */
-export function isPaymentStatus(value: string): value is PaymentStatus {
-	return (PAYMENT_STATUSES as readonly string[]).includes(value)
-}
-
-/**
- * Check if a string is a valid comment visibility
- */
 export function isCommentVisibility(value: string): value is CommentVisibility {
 	return (COMMENT_VISIBILITY as readonly string[]).includes(value)
+}
+
+export function isPayoutModifierConfig(config: SRPPolicyConfig): config is PayoutModifierConfig {
+	return 'rate' in config && 'applyInsuranceDelta' in config
+}
+
+export function isCapConfig(config: SRPPolicyConfig): config is CapConfig {
+	return 'maxPayoutMillions' in config
 }

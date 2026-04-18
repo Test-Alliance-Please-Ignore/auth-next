@@ -2,12 +2,10 @@ import {
 	BookMarked,
 	BookOpen,
 	Briefcase,
-	Building2,
 	ChevronDown,
 	ChevronRight,
 	CircleDollarSign,
 	ExternalLink,
-	FileText,
 	FolderHeart,
 	Globe,
 	LayoutDashboard,
@@ -30,6 +28,7 @@ import { useHrAccessibleCorporations } from '@/features/hr'
 import { useHasCorporationAccess } from '@/features/corporations'
 import { useTaxAlerts } from '@/hooks/corporation-tax'
 import { useAuth, useLogout } from '@/hooks/useAuth'
+import { useFeatureFlag } from '@/hooks/useFeatureFlags'
 import { usePendingInvitations } from '@/hooks/useGroups'
 import { useUserPermissions } from '@/hooks/useUserPermissions'
 import { characterPortraitUrl } from '@/lib/eve-images'
@@ -61,6 +60,7 @@ export function SidebarNav({ onNavigate }: SidebarNavProps) {
 	const { data: corporationAccess } = useHasCorporationAccess()
 	const { data: hrCorporations } = useHrAccessibleCorporations()
 	const { permissions, hasAnyPermission } = useUserPermissions()
+	const srpEnabled = useFeatureFlag('srp.enabled')
 
 	const pendingCount = invitations?.length || 0
 	const mainCharacter = user?.characters.find((c) => c.characterId === user.mainCharacterId)
@@ -68,6 +68,7 @@ export function SidebarNav({ onNavigate }: SidebarNavProps) {
 	const isTaxRoute = location.pathname === '/tax' || location.pathname.startsWith('/tax/')
 	const isFreightRoute =
 		location.pathname === '/freight' || location.pathname.startsWith('/freight/')
+	const isSrpRoute = location.pathname === '/srp' || location.pathname.startsWith('/srp/')
 	const isHrRoute =
 		location.pathname === '/my-applications' ||
 		location.pathname.startsWith('/my-applications/') ||
@@ -83,6 +84,7 @@ export function SidebarNav({ onNavigate }: SidebarNavProps) {
 	const [openMenus, setOpenMenus] = useState<Record<string, boolean>>({
 		'/tax': isTaxRoute,
 		'/freight': isFreightRoute,
+		'/srp': isSrpRoute,
 		'#hr': isHrRoute,
 		'#external': true,
 	})
@@ -102,6 +104,12 @@ export function SidebarNav({ onNavigate }: SidebarNavProps) {
 			setOpenMenus((prev) => ({ ...prev, '/freight': true }))
 		}
 	}, [isFreightRoute])
+
+	useEffect(() => {
+		if (isSrpRoute) {
+			setOpenMenus((prev) => ({ ...prev, '/srp': true }))
+		}
+	}, [isSrpRoute])
 
 	useEffect(() => {
 		if (isHrRoute) {
@@ -192,12 +200,30 @@ export function SidebarNav({ onNavigate }: SidebarNavProps) {
 			href: '/doctrines',
 			icon: Swords,
 		},
-		{
-			label: 'SRP',
-			href: 'https://reimbursement.pleaseignore.com/',
-			icon: CircleDollarSign,
-			external: true,
-		},
+		srpEnabled
+			? {
+					label: 'SRP',
+					href: '/srp',
+					icon: CircleDollarSign,
+					children: [
+						{ label: 'My Requests', href: '/srp' },
+						...(isSiteAdmin || hasAnyPermission('urn:srp:reviewer')
+							? [{ label: 'Review Queue', href: '/srp/review' }]
+							: []),
+						...(isSiteAdmin || hasAnyPermission('urn:srp:payer')
+							? [{ label: 'Payment Queue', href: '/srp/payments' }]
+							: []),
+						...(isSiteAdmin || hasAnyPermission('urn:srp:manager')
+							? [{ label: 'Configuration', href: '/srp/policies' }]
+							: []),
+					],
+				}
+			: {
+					label: 'SRP',
+					href: 'https://reimbursement.pleaseignore.com/',
+					icon: CircleDollarSign,
+					external: true,
+				},
 		{
 			label: 'My Bills',
 			href: '/my-bills',

@@ -121,16 +121,16 @@ export interface EsiCharacterContract {
 	reward?: number
 	start_location_id?: number
 	status:
-	| 'outstanding'
-	| 'in_progress'
-	| 'finished_issuer'
-	| 'finished_contractor'
-	| 'finished'
-	| 'cancelled'
-	| 'rejected'
-	| 'failed'
-	| 'deleted'
-	| 'reversed'
+		| 'outstanding'
+		| 'in_progress'
+		| 'finished_issuer'
+		| 'finished_contractor'
+		| 'finished'
+		| 'cancelled'
+		| 'rejected'
+		| 'failed'
+		| 'deleted'
+		| 'reversed'
 	title?: string
 	type: 'unknown' | 'item_exchange' | 'auction' | 'courier' | 'loan'
 	volume?: number
@@ -596,16 +596,16 @@ export interface CharacterContract {
 	reward?: number
 	start_location_id?: string
 	status:
-	| 'outstanding'
-	| 'in_progress'
-	| 'finished_issuer'
-	| 'finished_contractor'
-	| 'finished'
-	| 'cancelled'
-	| 'rejected'
-	| 'failed'
-	| 'deleted'
-	| 'reversed'
+		| 'outstanding'
+		| 'in_progress'
+		| 'finished_issuer'
+		| 'finished_contractor'
+		| 'finished'
+		| 'cancelled'
+		| 'rejected'
+		| 'failed'
+		| 'deleted'
+		| 'reversed'
 	title?: string
 	type: 'unknown' | 'item_exchange' | 'auction' | 'courier' | 'loan'
 	volume?: number

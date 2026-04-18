@@ -10,7 +10,7 @@ import { Textarea } from '@/components/ui/textarea'
 
 import { useAddComment, useUpdateComment } from '../hooks'
 
-import type { CommentVisibility, SRPCommentResponse } from '../types'
+import type { SRPCommentResponse } from '../types'
 
 const commentSchema = z.object({
 	content: z.string().min(1, 'Comment cannot be empty').max(5000, 'Comment too long'),

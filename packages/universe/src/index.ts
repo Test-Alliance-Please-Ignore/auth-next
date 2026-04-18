@@ -251,6 +251,19 @@ export interface Universe {
 	): Promise<Record<string, UniverseNpcStation | null>>
 
 	/**
+	 * Returns all published type IDs eligible for daily market price tracking.
+	 *
+	 * Includes:
+	 * - Ships (category 6)
+	 * - Modules / Ship Equipment (category 7)
+	 * - Subsystems (category 32)
+	 * - Rigs (category 66)
+	 * - Implants (category 20) filtered to attribute enhancers and skill hardwirings only
+	 *   (excludes boosters and cerebral accelerators via market group hierarchy traversal)
+	 */
+	getMarketPriceWhitelist(): Promise<string[]>
+
+	/**
 	 * Store killmail data, resolving all entity names
 	 * @param killmailId - Killmail ID
 	 * @param killmailHash - Killmail hash

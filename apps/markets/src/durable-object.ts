@@ -5,9 +5,17 @@ import { getStub } from '@repo/do-utils'
 import { GetRegionMarketDataResponseObjectSchema } from '@repo/markets'
 
 import { createDb } from './db'
-import { apiKeys, latestMarketPrices, marketOrders, marketSnapshots } from './db/schema'
+import {
+	apiKeys,
+	insuranceDailyPrices,
+	latestMarketPrices,
+	marketDailyPrices,
+	marketOrders,
+	marketSnapshots,
+} from './db/schema'
 
 import type { DbClientWs } from '@repo/db-utils'
+import type { Esi } from '@repo/esi'
 import type { EveTokenStore } from '@repo/eve-token-store'
 import type {
 	GetBatchMarketDataInput,
@@ -20,7 +28,14 @@ import type {
 } from '@repo/markets'
 import type { Env } from './context'
 
-const schema = { apiKeys, latestMarketPrices, marketOrders, marketSnapshots }
+const schema = {
+	apiKeys,
+	insuranceDailyPrices,
+	latestMarketPrices,
+	marketDailyPrices,
+	marketOrders,
+	marketSnapshots,
+}
 
 /**
  * Markets Durable Object
@@ -52,9 +67,18 @@ export class MarketsDO extends DurableObject<Env, {}> implements Markets {
 				location_type TEXT,
 				character_id TEXT,
 				alarm_enabled INTEGER DEFAULT 0,
-				max_snapshots INTEGER DEFAULT NULL
+				max_snapshots INTEGER DEFAULT NULL,
+				max_daily_price_history_days INTEGER DEFAULT NULL
 			)
 		`)
+		// Add column if upgrading from an older schema that didn't have it
+		try {
+			this.state.storage.sql.exec(
+				`ALTER TABLE config ADD COLUMN max_daily_price_history_days INTEGER DEFAULT NULL`
+			)
+		} catch {
+			// Column already exists — ignore
+		}
 	}
 
 	// ========================================================================
@@ -78,6 +102,27 @@ export class MarketsDO extends DurableObject<Env, {}> implements Markets {
 
 		// Fall back to environment variable (default is 168 = 1 week)
 		return this.env.MAX_SNAPSHOTS_PER_LOCATION ?? 168
+	}
+
+	/**
+	 * Get the maximum number of days to retain daily price aggregates
+	 * Checks SQLite config first, falls back to environment variable
+	 */
+	private getMaxDailyPriceHistoryDays(): number {
+		const config = this.state.storage.sql
+			.exec<{
+				max_daily_price_history_days: number | null
+			}>('SELECT max_daily_price_history_days FROM config WHERE id = 1')
+			.toArray()[0]
+
+		if (
+			config?.max_daily_price_history_days !== null &&
+			config?.max_daily_price_history_days !== undefined
+		) {
+			return config.max_daily_price_history_days
+		}
+
+		return this.env.MAX_DAILY_PRICE_HISTORY_DAYS ?? 60
 	}
 
 	/**
@@ -158,13 +203,67 @@ export class MarketsDO extends DurableObject<Env, {}> implements Markets {
 				`[cleanupOldSnapshots] Deleting ${snapshotIds.length} snapshots from ${oldestTime} to ${newestTime}`
 			)
 
+			// Roll up complete days into market_daily_prices before deleting raw orders.
+			// Only rolls up days that are fully in the past (DATE < CURRENT_DATE) to avoid
+			// partial-day averages from still-in-progress snapshot windows.
+			console.log(`[cleanupOldSnapshots] Rolling up daily price aggregates`)
+			await this.db.execute(sql`
+				INSERT INTO market_daily_prices
+					(location_id, location_type, price_date, type_id,
+					 avg_sell_price, avg_buy_price, min_sell_price, max_sell_price, snapshot_count)
+				WITH snapshot_bests AS (
+					SELECT
+						source_location_id,
+						source_location_type,
+						DATE(snapshot_time AT TIME ZONE 'UTC') AS price_date,
+						type_id,
+						snapshot_id,
+						MIN(CASE WHEN is_buy_order = false THEN price::numeric END) AS best_sell,
+						MAX(CASE WHEN is_buy_order = true  THEN price::numeric END) AS best_buy
+					FROM market_orders
+					WHERE snapshot_id = ANY(${snapshotIds})
+					  AND DATE(snapshot_time AT TIME ZONE 'UTC') < CURRENT_DATE
+					GROUP BY source_location_id, source_location_type,
+					         DATE(snapshot_time AT TIME ZONE 'UTC'), type_id, snapshot_id
+				)
+				SELECT
+					source_location_id,
+					source_location_type,
+					price_date,
+					type_id,
+					AVG(best_sell)::text,
+					AVG(best_buy)::text,
+					MIN(best_sell)::text,
+					MAX(best_sell)::text,
+					COUNT(*)::integer
+				FROM snapshot_bests
+				GROUP BY source_location_id, source_location_type, price_date, type_id
+				ON CONFLICT (location_id, type_id, price_date) DO UPDATE SET
+					avg_sell_price = EXCLUDED.avg_sell_price,
+					avg_buy_price  = EXCLUDED.avg_buy_price,
+					min_sell_price = EXCLUDED.min_sell_price,
+					max_sell_price = EXCLUDED.max_sell_price,
+					snapshot_count = EXCLUDED.snapshot_count,
+					updated_at     = NOW()
+			`)
+			console.log(`[cleanupOldSnapshots] Daily rollup complete`)
+
 			// Delete the snapshots (CASCADE will handle market_orders)
 			await this.db.delete(marketSnapshots).where(inArray(marketSnapshots.id, snapshotIds))
 
 			// Cleanup orphaned latest_market_prices records
-			const deletedPrices = await this.db
+			await this.db
 				.delete(latestMarketPrices)
 				.where(inArray(latestMarketPrices.snapshotId, snapshotIds))
+
+			// Trim daily price history beyond retention limit
+			const maxDailyDays = this.getMaxDailyPriceHistoryDays()
+			await this.db.execute(sql`
+				DELETE FROM market_daily_prices
+				WHERE location_id = ${locationId}
+				  AND price_date < (CURRENT_DATE - (${maxDailyDays} || ' days')::interval)::date
+			`)
+			console.log(`[cleanupOldSnapshots] Trimmed daily prices older than ${maxDailyDays} days`)
 
 			console.log(
 				`[cleanupOldSnapshots] SUCCESS - Deleted ${snapshotIds.length} snapshots and associated data`
@@ -359,6 +458,90 @@ export class MarketsDO extends DurableObject<Env, {}> implements Markets {
 		return {
 			prices: transformedPrices,
 			missingTypeIds,
+		}
+	}
+
+	/**
+	 * Get prices for multiple items at a specific point in time (up to 500 items)
+	 *
+	 * Queries market_daily_prices for the nearest available daily record at or
+	 * before atTime. Returns empty prices + all typeIds as missingTypeIds if no
+	 * daily history has been populated yet.
+	 */
+	async getBatchMarketDataAtTime(
+		input: import('@repo/markets').GetBatchMarketDataAtTimeInput
+	): Promise<GetBatchMarketDataResponse> {
+		const { regionId, typeIds, atTime } = input
+
+		if (typeIds.length > 500) {
+			throw new Error(`Batch size ${typeIds.length} exceeds maximum of 500`)
+		}
+
+		const uniqueTypeIds = [...new Set(typeIds)]
+		if (uniqueTypeIds.length === 0) {
+			return { prices: [], missingTypeIds: [] }
+		}
+
+		// Find the closest available price_date at or before atTime
+		const targetDate = atTime.toISOString().slice(0, 10) // 'YYYY-MM-DD'
+
+		const [nearestDay] = await this.db
+			.select({ priceDate: marketDailyPrices.priceDate })
+			.from(marketDailyPrices)
+			.where(
+				and(
+					eq(marketDailyPrices.locationId, regionId),
+					sql`${marketDailyPrices.priceDate} <= ${targetDate}::date`
+				)
+			)
+			.orderBy(sql`${marketDailyPrices.priceDate} DESC`)
+			.limit(1)
+
+		if (!nearestDay) {
+			// No daily history yet — return graceful empty result
+			return { prices: [], missingTypeIds: uniqueTypeIds }
+		}
+
+		const rows = await this.db
+			.select()
+			.from(marketDailyPrices)
+			.where(
+				and(
+					eq(marketDailyPrices.locationId, regionId),
+					eq(marketDailyPrices.priceDate, nearestDay.priceDate),
+					inArray(marketDailyPrices.typeId, uniqueTypeIds)
+				)
+			)
+
+		// Represent the daily record as midnight UTC of that date
+		const snapshotTime = new Date(`${nearestDay.priceDate}T00:00:00Z`)
+
+		const foundTypeIds = new Set<string>()
+		const prices: LatestMarketPrice[] = rows.map((row) => {
+			foundTypeIds.add(row.typeId)
+			return {
+				typeId: row.typeId,
+				snapshotTime,
+				bestSellPrice: row.avgSellPrice,
+				bestSellOrderId: null,
+				bestSellLocation: null,
+				bestSellVolume: null,
+				totalSellVolume: '0',
+				sellOrderCount: row.snapshotCount,
+				bestBuyPrice: row.avgBuyPrice,
+				bestBuyOrderId: null,
+				bestBuyLocation: null,
+				bestBuyVolume: null,
+				totalBuyVolume: '0',
+				buyOrderCount: row.snapshotCount,
+				spreadAmount: null,
+				spreadPercent: null,
+			}
+		})
+
+		return {
+			prices,
+			missingTypeIds: uniqueTypeIds.filter((id) => !foundTypeIds.has(id)),
 		}
 	}
 
@@ -863,18 +1046,20 @@ export class MarketsDO extends DurableObject<Env, {}> implements Markets {
 	async alarm(): Promise<void> {
 		console.log(`[alarm] Triggered at ${new Date().toISOString()}`)
 
+		// Check config before entering try/finally so a disabled alarm
+		// doesn't reschedule itself (the finally would fire even on early return).
+		const config = this.getConfig()
+		console.log(`[alarm] Config:`, config)
+
+		if (!config?.locationId || !config.alarmEnabled) {
+			console.warn(
+				`[alarm] Snapshot system disabled — deleting alarm. locationId: ${config?.locationId}, enabled: ${config?.alarmEnabled}`
+			)
+			await this.state.storage.deleteAlarm()
+			return
+		}
+
 		try {
-			// Get configuration from SQLite storage
-			const config = this.getConfig()
-			console.log(`[alarm] Config:`, config)
-
-			if (!config?.locationId || !config.alarmEnabled) {
-				console.warn(
-					`[alarm] No location configured or alarm disabled - locationId: ${config?.locationId}, enabled: ${config?.alarmEnabled}`
-				)
-				return
-			}
-
 			console.log(`[alarm] Fetching snapshot for ${config.locationType} ${config.locationId}`)
 
 			// Fetch and store new snapshot based on location type
@@ -1179,6 +1364,144 @@ export class MarketsDO extends DurableObject<Env, {}> implements Markets {
 			console.error(`[getActiveMonitors] Database query failed:`, error)
 			throw error
 		}
+	}
+
+	async getMarketPricesForTypes(
+		typeIds: string[],
+		priceDate: string
+	): Promise<
+		Array<{
+			typeId: string
+			averagePrice: number | null
+			adjustedPrice: number | null
+			source: 'historic' | 'fallback'
+		}>
+	> {
+		// DB-first: find rows stored by the hourly workflow for the exact date
+		const dbRows = await this.db
+			.select({
+				typeId: marketDailyPrices.typeId,
+				avgSellPrice: marketDailyPrices.avgSellPrice,
+			})
+			.from(marketDailyPrices)
+			.where(
+				and(
+					eq(marketDailyPrices.locationId, 'universe'),
+					eq(marketDailyPrices.priceDate, priceDate),
+					inArray(marketDailyPrices.typeId, typeIds)
+				)
+			)
+
+		const dbMap = new Map(dbRows.map((r) => [r.typeId, r]))
+		const missing = typeIds.filter((id) => !dbMap.has(id))
+
+		const result: Array<{
+			typeId: string
+			averagePrice: number | null
+			adjustedPrice: number | null
+			source: 'historic' | 'fallback'
+		}> = []
+
+		for (const [typeId, row] of dbMap) {
+			result.push({
+				typeId,
+				averagePrice: row.avgSellPrice ? Number(row.avgSellPrice) : null,
+				adjustedPrice: null,
+				source: 'historic',
+			})
+		}
+
+		if (missing.length > 0) {
+			console.warn(
+				`[getMarketPricesForTypes] no historic data for ${missing.length} type(s) on ${priceDate}, using ESI cache`
+			)
+			const esiStub = getStub<Esi>(this.env.ESI, 'global')
+			const all = await esiStub.fetchMarketPrices()
+			const esiMap = new Map(all.map((p) => [p.typeId, p]))
+			for (const typeId of missing) {
+				const p = esiMap.get(typeId)
+				result.push({
+					typeId,
+					averagePrice: p?.averagePrice ?? null,
+					adjustedPrice: p?.adjustedPrice ?? null,
+					source: 'fallback',
+				})
+			}
+		}
+
+		return result
+	}
+
+	async getInsurancePricesForTypes(
+		typeIds: string[],
+		priceDate: string
+	): Promise<
+		Array<{
+			typeId: string
+			platinumCost: number | null
+			platinumPayout: number | null
+			source: 'historic' | 'fallback'
+		}>
+	> {
+		// DB-first: find nearest snapshot on or before priceDate for each type (single batch query)
+		const dbRows = await this.db
+			.select({
+				typeId: insuranceDailyPrices.typeId,
+				platinumCost: insuranceDailyPrices.platinumCost,
+				platinumPayout: insuranceDailyPrices.platinumPayout,
+			})
+			.from(insuranceDailyPrices)
+			.where(
+				and(
+					inArray(insuranceDailyPrices.typeId, typeIds),
+					sql`${insuranceDailyPrices.priceDate} <= ${priceDate}`
+				)
+			)
+			.orderBy(desc(insuranceDailyPrices.priceDate))
+
+		// Keep only the most-recent row per typeId
+		const dbMap = new Map<string, (typeof dbRows)[0]>()
+		for (const row of dbRows) {
+			if (!dbMap.has(row.typeId)) dbMap.set(row.typeId, row)
+		}
+
+		const missing = typeIds.filter((id) => !dbMap.has(id))
+
+		const result: Array<{
+			typeId: string
+			platinumCost: number | null
+			platinumPayout: number | null
+			source: 'historic' | 'fallback'
+		}> = []
+
+		for (const [typeId, row] of dbMap) {
+			result.push({
+				typeId,
+				platinumCost: row.platinumCost ? Number(row.platinumCost) : null,
+				platinumPayout: row.platinumPayout ? Number(row.platinumPayout) : null,
+				source: 'historic',
+			})
+		}
+
+		if (missing.length > 0) {
+			console.warn(
+				`[getInsurancePricesForTypes] no historic insurance data for ${missing.length} type(s) on/before ${priceDate}, using ESI cache`
+			)
+			const esiStub = getStub<Esi>(this.env.ESI, 'global')
+			const all = await esiStub.fetchInsurancePrices()
+			const esiMap = new Map(all.map((p) => [p.typeId, p]))
+			for (const typeId of missing) {
+				const p = esiMap.get(typeId)
+				result.push({
+					typeId,
+					platinumCost: p?.platinumCost ?? null,
+					platinumPayout: p?.platinumPayout ?? null,
+					source: 'fallback',
+				})
+			}
+		}
+
+		return result
 	}
 
 	async fetch(request: Request): Promise<Response> {

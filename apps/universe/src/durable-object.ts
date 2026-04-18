@@ -1,6 +1,6 @@
 import { DurableObject } from 'cloudflare:workers'
 
-import { and, eq, ilike, inArray } from '@repo/db-utils'
+import { and, eq, ilike, inArray, sql } from '@repo/db-utils'
 import { getStub, LRUCache } from '@repo/do-utils'
 import { logger } from '@repo/hono-helpers'
 import {
@@ -612,6 +612,55 @@ export class UniverseDO extends DurableObject<Env, {}> implements Universe {
 			console.error('Failed to resolve type metadata', error)
 			throw error
 		}
+	}
+
+	/**
+	 * Returns all published type IDs eligible for daily market price tracking.
+	 *
+	 * Covers categories 6 (Ships), 7 (Modules), 32 (Subsystems), 66 (Rigs) via a
+	 * direct category join, plus category 20 (Implants) filtered to the
+	 * Attribute Enhancers (market group 24) and Hardwirings (market group 300)
+	 * subtrees via a recursive CTE — excluding boosters and cerebral accelerators.
+	 */
+	async getMarketPriceWhitelist(): Promise<string[]> {
+		// Direct category join for ships, modules, subsystems, rigs
+		const directRows = await this.db
+			.select({ typeId: invTypes.typeId })
+			.from(invTypes)
+			.innerJoin(invGroups, eq(invTypes.groupId, invGroups.groupId))
+			.where(
+				and(
+					eq(invTypes.published, true),
+					inArray(invGroups.categoryId, ['6', '7', '32', '66'])
+				)
+			)
+
+		// Implants (category 20) filtered to attribute enhancers + skill hardwirings
+		// via recursive market group hierarchy. Group 24 = Attribute Enhancers,
+		// Group 300 = Hardwirings — both are stable SDE values.
+		// Safe degradation: wrong group IDs → empty implant set, no crash.
+		const implantResult = await this.db.execute<{ type_id: string }>(sql`
+			WITH RECURSIVE allowed_groups AS (
+				SELECT market_group_id
+				FROM universe_eve_market_groups
+				WHERE market_group_id IN ('24', '300')
+				UNION ALL
+				SELECT mg.market_group_id
+				FROM universe_eve_market_groups mg
+				INNER JOIN allowed_groups ag ON mg.parent_group_id = ag.market_group_id
+			)
+			SELECT t.type_id
+			FROM universe_eve_inv_types t
+			INNER JOIN universe_eve_inv_groups g ON t.group_id = g.group_id
+			WHERE t.published = true
+			  AND g.category_id = '20'
+			  AND t.market_group_id IN (SELECT market_group_id FROM allowed_groups)
+		`)
+
+		const directTypeIds = directRows.map((r) => r.typeId)
+		const implantTypeIds = implantResult.rows.map((r) => r.type_id)
+
+		return [...new Set([...directTypeIds, ...implantTypeIds])]
 	}
 
 	/**

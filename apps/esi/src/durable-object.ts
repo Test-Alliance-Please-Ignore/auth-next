@@ -173,6 +173,10 @@ import type {
 	EsiCorporationWalletTransaction,
 	EsiStructureInfo,
 	StructureInfo,
+	EsiInsurancePrices,
+	InsurancePlatinumValues,
+	EsiMarketPrice,
+	MarketPrice,
 	EsiCorporationMemberRole,
 	CorporationMemberRole,
 	CharacterAffiliation,
@@ -314,14 +318,14 @@ export class EsiDO extends DurableObject<Env> implements Esi {
 
 		for (let i = 0; i < itemIds.length; i += BATCH_SIZE) {
 			const batch = itemIds.slice(i, i + BATCH_SIZE)
-			const result = await this.esiFetcher.fetchEsi<
-				EsiCharacterAssetName[],
-				number[]
-			>(`/characters/${characterId}/assets/names/`, {
-				method: 'POST',
-				body: batch.map((id) => parseInt(id, 10)),
-				persistGlobalCache: false,
-			})
+			const result = await this.esiFetcher.fetchEsi<EsiCharacterAssetName[], number[]>(
+				`/characters/${characterId}/assets/names/`,
+				{
+					method: 'POST',
+					body: batch.map((id) => parseInt(id, 10)),
+					persistGlobalCache: false,
+				}
+			)
 			allNames.push(...transformCharacterAssetNames(result.data))
 		}
 
@@ -372,7 +376,10 @@ export class EsiDO extends DurableObject<Env> implements Esi {
 	}
 
 	@UseCharacterAuth
-	async fetchContractItems(characterId: string, contractId: string): Promise<CharacterContractItem[]> {
+	async fetchContractItems(
+		characterId: string,
+		contractId: string
+	): Promise<CharacterContractItem[]> {
 		const result = await this.esiFetcher.fetchEsi<EsiContractItem[]>(
 			`/characters/${characterId}/contracts/${contractId}/items`
 		)
@@ -955,6 +962,40 @@ export class EsiDO extends DurableObject<Env> implements Esi {
 	 * @returns Structure name or null if not found/no access
 	 */
 	@UseCharacterAuth
+	/**
+	 * Fetch platinum-tier insurance values for all insurable ship types.
+	 * Public ESI endpoint — no authentication required.
+	 * Cached for 24 hours since insurance prices rarely change.
+	 */
+	async fetchInsurancePrices(): Promise<InsurancePlatinumValues[]> {
+		const result = await this.esiFetcher.fetchEsi<EsiInsurancePrices[]>('/insurance/prices', {
+			cacheScopeOverride: { scope: 'global', scopeId: 'global' },
+			maxLocalCacheTtl: 86400, // 24h — outlasts missed hourly fetches
+		})
+
+		return (result.data ?? []).map((entry) => {
+			const platinum = entry.levels.find((l) => l.name.toLowerCase() === 'platinum')
+			return {
+				typeId: String(entry.type_id),
+				platinumCost: platinum?.cost ?? null,
+				platinumPayout: platinum?.payout ?? null,
+			}
+		})
+	}
+
+	async fetchMarketPrices(): Promise<MarketPrice[]> {
+		const result = await this.esiFetcher.fetchEsi<EsiMarketPrice[]>('/markets/prices', {
+			cacheScopeOverride: { scope: 'global', scopeId: 'global' },
+			maxLocalCacheTtl: 86400, // 24h — outlasts missed hourly fetches
+		})
+
+		return (result.data ?? []).map((entry) => ({
+			typeId: String(entry.type_id),
+			averagePrice: entry.average_price ?? null,
+			adjustedPrice: entry.adjusted_price ?? null,
+		}))
+	}
+
 	async fetchStructureInfo(
 		characterId: string,
 		structureId: string

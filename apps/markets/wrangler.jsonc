@@ -10,9 +10,21 @@
 	"observability": {
 		"enabled": true
 	},
+	"triggers": {
+		"crons": ["0 * * * *"]
+	},
+	"workflows": [
+		{
+			"name": "markets-daily-price-batch",
+			"binding": "DAILY_PRICE_BATCH_WORKFLOW",
+			"class_name": "DailyPriceBatchWorkflow"
+		}
+	],
 	"vars": {
-		// Maximum number of snapshots to retain per location (default: 168 = 1 week of hourly snapshots)
-		"MAX_SNAPSHOTS_PER_LOCATION": 168
+		// Maximum number of hourly snapshots to retain per location (default: 168 = 1 week)
+		"MAX_SNAPSHOTS_PER_LOCATION": 168,
+		// Maximum number of days to retain daily price aggregates (default: 60 days)
+		"MAX_DAILY_PRICE_HISTORY_DAYS": 60
 	},
 	"durable_objects": {
 		"bindings": [
@@ -29,6 +41,16 @@
 				"name": "UNIVERSE",
 				"class_name": "Universe",
 				"script_name": "universe"
+			},
+			{
+				"name": "ESI",
+				"class_name": "Esi",
+				"script_name": "esi"
+			},
+			{
+				"name": "FEATURES",
+				"class_name": "Features",
+				"script_name": "features"
 			}
 		]
 	},

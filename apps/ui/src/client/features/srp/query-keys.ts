@@ -1,9 +1,5 @@
-import type { PaymentStatus, RequestStatus } from './types'
+import type { RequestStatus } from './types'
 
-/**
- * Query key factory for SRP feature
- * Provides consistent, type-safe query keys for React Query
- */
 export const srpKeys = {
 	all: ['srp'] as const,
 
@@ -12,9 +8,12 @@ export const srpKeys = {
 
 	// Requests
 	requests: () => [...srpKeys.all, 'requests'] as const,
+	allRequests: () => [...srpKeys.all, 'requests'] as const,
 	myRequests: (params: { limit?: number; offset?: number; status?: RequestStatus }) =>
 		[...srpKeys.requests(), 'my', params] as const,
 	request: (id: string) => [...srpKeys.requests(), id] as const,
+	requestsByStatus: (status: RequestStatus, params: { limit?: number; offset?: number }) =>
+		[...srpKeys.requests(), 'by-status', status, params] as const,
 
 	// Pending reviews
 	pending: () => [...srpKeys.all, 'pending'] as const,
@@ -32,6 +31,9 @@ export const srpKeys = {
 
 	// Config
 	config: () => [...srpKeys.all, 'config'] as const,
+
+	// Policies
+	policies: () => [...srpKeys.all, 'policies'] as const,
 
 	// Stats
 	stats: (params?: { startDate?: string; endDate?: string; corporationId?: string }) =>

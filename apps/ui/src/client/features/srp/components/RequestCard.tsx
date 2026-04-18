@@ -4,7 +4,6 @@ import { Button } from '@/components/ui/button'
 import { Card } from '@/components/ui/card'
 
 import { calculateDifference, formatISK, formatRelativeTime, getKillmailUrl } from '../utils'
-import { PaymentStatusBadge } from './PaymentStatusBadge'
 import { RequestStatusBadge } from './RequestStatusBadge'
 
 import type { SRPRequestResponse } from '../types'
@@ -29,7 +28,6 @@ export function RequestCard({ request, showActions = true }: RequestCardProps) {
 					</div>
 					<div className="flex flex-col items-end gap-1">
 						<RequestStatusBadge status={request.requestStatus} />
-						<PaymentStatusBadge status={request.paymentStatus} />
 					</div>
 				</div>
 
@@ -41,9 +39,7 @@ export function RequestCard({ request, showActions = true }: RequestCardProps) {
 					{request.requestedAmount && (
 						<div>
 							<div className="text-muted-foreground">Requested</div>
-							<div className="font-medium tabular-nums">
-								{formatISK(request.requestedAmount)}
-							</div>
+							<div className="font-medium tabular-nums">{formatISK(request.requestedAmount)}</div>
 						</div>
 					)}
 					{request.approvedAmount && (
