@@ -11,7 +11,7 @@ import { CommentsList } from '../components/CommentsList'
 import { RequestHistory } from '../components/RequestHistory'
 import { RequestStatusBadge } from '../components/RequestStatusBadge'
 import { ReviewRequestForm } from '../components/ReviewRequestForm'
-import { useRequest, useRequestComments } from '../hooks'
+import { useRequest, useRequestComments, useUpdateReviewState } from '../hooks'
 import { formatFullDate, formatISK, getKillmailUrl } from '../utils'
 
 export default function ReviewRequestDetail() {
@@ -27,6 +27,7 @@ export default function ReviewRequestDetail() {
 	const { data: request, isLoading, error } = useRequest(id)
 	const canSeeInternal = isReviewer || hasPermission('urn:srp:payer')
 	const { data: comments = [], refetch: refetchComments } = useRequestComments(id, canSeeInternal)
+	const updateState = useUpdateReviewState()
 
 	if (isLoading) {
 		return (
@@ -82,55 +83,130 @@ export default function ReviewRequestDetail() {
 				}
 			/>
 
-			<div className="space-y-2 mb-6 flex items-center gap-3">
+			<div className="mb-6 flex items-center gap-3">
 				<RequestStatusBadge status={request.requestStatus as any} />
 				{request.approvedAmount && (
-					<span className="text-sm font-mono font-semibold text-primary">
+					<span className="font-mono font-semibold text-success">
 						{formatISK(request.approvedAmount)}
-					</span>
-				)}
-				{request.srpEquipmentValue && (
-					<span className="text-xs text-muted-foreground">
-						Equipment value: {formatISK(request.srpEquipmentValue)}
 					</span>
 				)}
 			</div>
 
 			{/* Review form (shown for non-paid, reviewable states) */}
 			{!isPaid && (
-				<div className="mb-8">
-					<ReviewRequestForm request={request} onSuccess={() => navigate('/srp/review')} />
-				</div>
-			)}
-
-			{/* History + comments below */}
-			<div className="grid gap-6 lg:grid-cols-2">
-				{request.history && request.history.length > 0 && (
-					<Card className="p-6">
-						<h3 className="mb-4 font-semibold">History</h3>
-						<RequestHistory history={request.history} />
-					</Card>
-				)}
-
-				<Card className="p-6">
-					<h3 className="mb-4 font-semibold">Comments</h3>
-					<CommentsList
-						comments={comments}
-						requestId={id}
-						canAddInternal={canSeeInternal}
-						onCommentAdded={refetchComments}
-					/>
-					{!isPaid && (
-						<div className="mt-4">
+				<ReviewRequestForm
+					request={request}
+					onSuccess={() => navigate('/srp/review')}
+					commentSlot={
+						<Card className="p-4">
+							<h4 className="mb-3 text-sm font-semibold">Comment</h4>
 							<CommentForm
 								requestId={id}
 								canAddInternal={canSeeInternal}
 								onSuccess={refetchComments}
 							/>
-						</div>
-					)}
-				</Card>
-			</div>
+						</Card>
+					}
+					rightAppend={
+						<>
+							<Card className="p-6">
+								<h3 className="mb-4 font-semibold">Comments</h3>
+								<CommentsList
+									comments={comments}
+									requestId={id}
+									canAddInternal={canSeeInternal}
+									onCommentAdded={refetchComments}
+								/>
+							</Card>
+
+							{request.history && request.history.length > 0 && (
+								<Card className="p-6">
+									<h3 className="mb-4 font-semibold">History</h3>
+									<RequestHistory history={request.history} />
+								</Card>
+							)}
+						</>
+					}
+				/>
+			)}
+
+			{/* Loss details + revert + comments for paid requests (no review form) */}
+			{isPaid && (
+				<div className="grid gap-6 lg:grid-cols-3">
+					<div className="space-y-6 lg:col-span-2">
+						<Card className="p-6">
+							<h3 className="mb-4 font-semibold">Comments</h3>
+							<CommentsList
+								comments={comments}
+								requestId={id}
+								canAddInternal={canSeeInternal}
+								onCommentAdded={refetchComments}
+							/>
+							<div className="mt-4 border-t border-border/40 pt-4">
+								<CommentForm
+									requestId={id}
+									canAddInternal={canSeeInternal}
+									onSuccess={refetchComments}
+								/>
+							</div>
+						</Card>
+
+						{request.history && request.history.length > 0 && (
+							<Card className="p-6">
+								<h3 className="mb-4 font-semibold">History</h3>
+								<RequestHistory history={request.history} />
+							</Card>
+						)}
+					</div>
+
+					<div className="space-y-6">
+						<Card className="p-6">
+							<h3 className="mb-4 font-semibold">Loss Details</h3>
+							<div className="space-y-3 text-sm">
+								<div>
+									<div className="text-muted-foreground">Ship</div>
+									<div className="font-medium">{request.shipTypeName}</div>
+								</div>
+								<div>
+									<div className="text-muted-foreground">Character</div>
+									<div className="font-medium">{request.characterName}</div>
+								</div>
+								<div>
+									<div className="text-muted-foreground">Corporation</div>
+									<div className="font-medium">{request.corporationName}</div>
+								</div>
+								<div>
+									<div className="text-muted-foreground">Loss Date</div>
+									<div className="font-medium">{formatFullDate(request.lossDate)}</div>
+								</div>
+								{request.approvedAmount && (
+									<div>
+										<div className="text-muted-foreground">Paid Amount</div>
+										<div className="font-medium tabular-nums text-success">
+											{formatISK(request.approvedAmount)}
+										</div>
+									</div>
+								)}
+							</div>
+						</Card>
+
+						<Card className="p-6">
+							<Button
+								variant="ghost"
+								className="w-full"
+								loading={updateState.isPending}
+								onClick={() =>
+									void updateState.mutateAsync({ id, newState: 'pending' }).then(() =>
+										navigate('/srp/review')
+									)
+								}
+							>
+								Revert to Pending
+							</Button>
+						</Card>
+					</div>
+				</div>
+			)}
 		</Container>
 	)
 }

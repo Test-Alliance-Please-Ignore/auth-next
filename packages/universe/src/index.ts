@@ -8,6 +8,7 @@ import type { InvType } from './inv-types'
 import type { Killmail, KillmailDetail } from './killmails'
 import type { EveMoonId, UniverseMoon, UniverseMoonWithResources } from './moons'
 import type {
+	UniverseConstellation,
 	UniverseNpcStation,
 	UniversePlanet,
 	UniverseRegion,
@@ -167,6 +168,9 @@ export interface Universe {
 	 * @param regionIds - Array of region IDs to resolve
 	 */
 	resolveRegionsByIds(regionIds: string[]): Promise<Record<string, UniverseRegion | null>>
+	resolveConstellationsByIds(
+		constellationIds: string[]
+	): Promise<Record<string, UniverseConstellation | null>>
 
 	/**
 	 * Resolve regions by names.

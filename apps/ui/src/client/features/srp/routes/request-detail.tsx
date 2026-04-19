@@ -1,4 +1,3 @@
-import { Copy } from 'lucide-react'
 import { Link, Navigate, useParams } from 'react-router-dom'
 import { toast } from 'sonner'
 
@@ -14,7 +13,7 @@ import { CommentForm } from '../components/CommentForm'
 import { CommentsList } from '../components/CommentsList'
 import { RequestHistory } from '../components/RequestHistory'
 import { RequestStatusBadge } from '../components/RequestStatusBadge'
-import { useRequest, useRequestComments } from '../hooks'
+import { useRequest, useRequestComments, useUpdateReviewState } from '../hooks'
 import { formatFullDate, formatISK, getKillmailUrl } from '../utils'
 
 export default function RequestDetails() {
@@ -22,6 +21,21 @@ export default function RequestDetails() {
 	const { hasPermission, isAdmin } = useUserPermissions()
 
 	const { data: request, isLoading, error } = useRequest(id)
+	const updateState = useUpdateReviewState()
+
+	const canRevert =
+		(isAdmin || hasPermission('urn:srp:reviewer') || hasPermission('urn:srp:payer')) &&
+		(request?.requestStatus === 'paid' || request?.requestStatus === 'rejected')
+
+	const handleRevertToPending = async () => {
+		if (!id) return
+		try {
+			await updateState.mutateAsync({ id, newState: 'pending' })
+			toast.success('Request reverted to pending')
+		} catch (e: any) {
+			toast.error('Failed to revert request', { description: e.message })
+		}
+	}
 
 	const canSeeInternal =
 		isAdmin || hasPermission('urn:srp:reviewer') || hasPermission('urn:srp:payer')
@@ -61,12 +75,6 @@ export default function RequestDetails() {
 		)
 	}
 
-	const copyToken = () => {
-		if (request.paymentToken) {
-			void navigator.clipboard.writeText(request.paymentToken)
-			toast.success('Payment token copied to clipboard')
-		}
-	}
 
 	return (
 		<Container>
@@ -175,47 +183,33 @@ export default function RequestDetails() {
 								<div className="text-sm text-muted-foreground">Request Status</div>
 								<RequestStatusBadge status={request.requestStatus} />
 							</div>
+							{canRevert && (
+								<Button
+									variant="ghost"
+									size="sm"
+									onClick={handleRevertToPending}
+									loading={updateState.isPending}
+									className="w-full"
+								>
+									Revert to Pending
+								</Button>
+							)}
 						</div>
 					</Card>
 
 					{/* Amounts */}
-					<Card className="p-6">
-						<h3 className="mb-4 font-semibold">Amounts</h3>
-						<div className="space-y-3">
-							{request.requestedAmount && (
+					{request.approvedAmount && (
+						<Card className="p-6">
+							<h3 className="mb-4 font-semibold">Amounts</h3>
+							<div className="space-y-3">
 								<div>
-									<div className="text-sm text-muted-foreground">Requested</div>
-									<div className="font-medium tabular-nums">
-										{formatISK(request.requestedAmount)}
+									<div className="text-sm text-muted-foreground">
+										{request.requestStatus === 'paid' ? 'Paid' : 'Approved'}
 									</div>
-								</div>
-							)}
-							{request.approvedAmount && (
-								<div>
-									<div className="text-sm text-muted-foreground">Approved</div>
-									<div className="font-medium tabular-nums">
+									<div className="font-medium tabular-nums text-success">
 										{formatISK(request.approvedAmount)}
 									</div>
 								</div>
-							)}
-						</div>
-					</Card>
-
-					{/* Payment Token */}
-					{request.paymentToken && (
-						<Card className="p-6">
-							<h3 className="mb-4 font-semibold">Payment Token</h3>
-							<div className="space-y-2">
-								<div className="rounded-md border bg-muted/50 p-3 font-mono text-sm">
-									{request.paymentToken}
-								</div>
-								<Button variant="ghost" size="sm" className="w-full" onClick={copyToken}>
-									<Copy className="h-4 w-4" />
-									Copy Token
-								</Button>
-								<p className="text-xs text-muted-foreground">
-									Provide this token to the payer to confirm payment receipt.
-								</p>
 							</div>
 						</Card>
 					)}

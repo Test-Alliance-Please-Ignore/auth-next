@@ -197,12 +197,14 @@ export default function UsersPage() {
 						<div className="text-center py-8 text-muted-foreground">No users found</div>
 					) : (
 						<>
-							<UserSearchResultsTable
-								users={users}
-								userDetailsPath={(userId) => `/admin/users/${userId}`}
-								onRefreshDiscordAccess={handleDiscordJoin}
-								refreshingDiscordUserId={joiningUserId}
-							/>
+							<div className="rounded-md border bg-card">
+								<UserSearchResultsTable
+									users={users}
+									userDetailsPath={(userId) => `/admin/users/${userId}`}
+									onRefreshDiscordAccess={handleDiscordJoin}
+									refreshingDiscordUserId={joiningUserId}
+								/>
+							</div>
 
 							{/* Pagination */}
 							{pagination && pagination.totalPages > 1 && (

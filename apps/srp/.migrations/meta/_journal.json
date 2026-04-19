@@ -15,6 +15,20 @@
       "when": 1776486122895,
       "tag": "0001_lean_impossible_man",
       "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "7",
+      "when": 1776493180493,
+      "tag": "0002_dizzy_klaw",
+      "breakpoints": true
+    },
+    {
+      "idx": 3,
+      "version": "7",
+      "when": 1776534284481,
+      "tag": "0003_eminent_the_stranger",
+      "breakpoints": true
     }
   ]
 }

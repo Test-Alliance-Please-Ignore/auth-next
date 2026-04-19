@@ -198,7 +198,7 @@ export default function AdminBroadcastsPage() {
 					) : broadcasts.length === 0 ? (
 						<p className="text-muted-foreground">No broadcasts found.</p>
 					) : (
-						<>
+						<div className="rounded-md border bg-card">
 							<Table>
 								<TableHeader>
 									<TableRow>
@@ -208,7 +208,7 @@ export default function AdminBroadcastsPage() {
 										<TableHead>Created By</TableHead>
 										<TableHead>Created</TableHead>
 										<TableHead>Scheduled</TableHead>
-										<TableHead className="sticky right-0 z-20 bg-card border-l border-border/50 text-right">
+										<TableHead className="sticky right-0 z-20 bg-primary/5 border-l border-border/50 text-right">
 											Actions
 										</TableHead>
 									</TableRow>
@@ -272,7 +272,7 @@ export default function AdminBroadcastsPage() {
 									})}
 								</TableBody>
 							</Table>
-							<div className="mt-4 flex items-center justify-between gap-2">
+							<div className="mt-4 flex items-center justify-between gap-2 px-4 pb-4">
 								<p className="text-sm text-muted-foreground">
 									Showing {Math.min(page * pageSize + 1, rowCount)}-
 									{Math.min((page + 1) * pageSize, rowCount)} of {rowCount}
@@ -293,7 +293,7 @@ export default function AdminBroadcastsPage() {
 									</Button>
 								</div>
 							</div>
-						</>
+						</div>
 					)}
 				</CardContent>
 			</Card>

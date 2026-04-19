@@ -200,7 +200,9 @@ export function SidebarNav({ onNavigate }: SidebarNavProps) {
 			href: '/doctrines',
 			icon: Swords,
 		},
-		srpEnabled
+		srpEnabled &&
+		(isSiteAdmin ||
+			hasAnyPermission('urn:srp:reviewer', 'urn:srp:payer', 'urn:srp:manager'))
 			? {
 					label: 'SRP',
 					href: '/srp',

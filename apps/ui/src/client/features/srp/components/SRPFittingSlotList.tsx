@@ -65,7 +65,11 @@ export function SRPFittingSlotList({ shipTypeId, items }: SRPFittingSlotListProp
 }
 
 function SlotSection({ label, items }: { label: string; items: SRPFittingItem[] }) {
-	const sectionTotal = items.reduce((sum, i) => sum + parseFloat(i.lineTotal || '0'), 0)
+	// Section total excludes consumables (ammo/charges not valued)
+	const sectionTotal = items.reduce(
+		(sum, i) => sum + (i.isConsumable ? 0 : parseFloat(i.lineTotal || '0')),
+		0
+	)
 
 	return (
 		<div>
@@ -86,7 +90,7 @@ function SlotSection({ label, items }: { label: string; items: SRPFittingItem[] 
 
 function ItemRow({ item }: { item: SRPFittingItem }) {
 	return (
-		<div className="flex items-center gap-2 rounded px-1 py-0.5 hover:bg-muted/20">
+		<div className={`flex items-center gap-2 rounded px-1 py-0.5 hover:bg-muted/20 ${item.isConsumable ? 'opacity-50' : ''}`}>
 			<img
 				src={typeIconUrl(item.typeId, 32)}
 				alt={item.typeName}
@@ -96,9 +100,14 @@ function ItemRow({ item }: { item: SRPFittingItem }) {
 			<div className="min-w-0 flex-1">
 				<p className="truncate text-sm font-medium leading-tight">{item.typeName}</p>
 				{item.quantity > 1 && <p className="text-xs text-muted-foreground">×{item.quantity}</p>}
+				{item.isConsumable && (
+					<p className="text-xs text-muted-foreground/60">consumable — not included</p>
+				)}
 			</div>
 			<div className="text-right">
-				<p className="font-mono text-xs tabular-nums">{formatISK(item.lineTotal)}</p>
+				<p className={`font-mono text-xs tabular-nums ${item.isConsumable ? 'line-through text-muted-foreground/50' : ''}`}>
+					{formatISK(item.lineTotal)}
+				</p>
 				{item.quantity > 1 && (
 					<p className="font-mono text-xs text-muted-foreground tabular-nums">
 						{formatISK(item.unitPrice)} ea

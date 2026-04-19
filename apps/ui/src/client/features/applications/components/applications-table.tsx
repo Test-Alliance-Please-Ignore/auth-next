@@ -8,6 +8,16 @@
 import { formatDistanceToNow } from 'date-fns'
 import { MessageSquare } from 'lucide-react'
 import { MantineReactTable, createMRTColumnHelper, useMantineReactTable } from 'mantine-react-table'
+
+import {
+	mrtPaperProps,
+	mrtPaginationProps,
+	mrtRowStyle,
+	mrtTableBodyCellProps,
+	mrtTableHeadCellProps,
+	mrtTableHeadProps,
+	mrtTableProps,
+} from '@/lib/mrt-theme'
 import { useMemo } from 'react'
 
 import { Link } from 'react-router-dom'
@@ -196,58 +206,17 @@ export function ApplicationsTable({
 			showRowsPerPage: true,
 			rowsPerPageOptions: ['25', '50', '100', '200'],
 		},
-		mantinePaperProps: {
-			shadow: 'none',
-			radius: 'md',
-			withBorder: true,
-			style: {
-				background: 'hsl(var(--card))',
-				borderColor: 'hsl(var(--border))',
-				color: 'hsl(var(--foreground))',
-				overflow: 'hidden',
-			},
-		},
-		mantineTableContainerProps: {
-			style: {
-				maxHeight: 'calc(100vh - 16rem)',
-			},
-		},
-		mantineTableProps: {
-			striped: false,
-			highlightOnHover: false,
-			withColumnBorders: false,
-			withRowBorders: true,
-			style: {
-				background: 'transparent',
-				color: 'hsl(var(--foreground))',
-			},
-		},
-		mantineTableHeadProps: {
-			style: {
-				background: 'hsl(var(--background-elevated))',
-			},
-		},
-		mantineTableHeadCellProps: {
-			style: {
-				background: 'hsl(var(--background-elevated))',
-				borderBottom: '1px solid hsl(var(--border))',
-				color: 'hsl(var(--muted-foreground))',
-				fontSize: '0.75rem',
-				fontWeight: 700,
-				letterSpacing: '0.03em',
-				textTransform: 'uppercase' as const,
-			},
-		},
-		mantineTableBodyCellProps: {
-			style: {
-				borderBottom: '1px solid hsl(var(--border) / 0.7)',
-				color: 'hsl(var(--foreground))',
-			},
-		},
+		mantinePaperProps: mrtPaperProps,
+		mantineTableContainerProps: { style: { maxHeight: 'calc(100vh - 16rem)' } },
+		mantineTableProps: mrtTableProps,
+		mantineTableHeadProps: mrtTableHeadProps,
+		mantineTableHeadCellProps: mrtTableHeadCellProps,
+		mantineTableBodyCellProps: mrtTableBodyCellProps,
 		mantineTableBodyRowProps: ({ row }) => {
 			const href = getApplicationHref?.(row.original)
 			const isClickable = href || onApplicationClick
 			return {
+				className: 'mrt-grid__row',
 				onClick: isClickable
 					? (e: React.MouseEvent) => {
 							if (href && (e.ctrlKey || e.metaKey || e.button === 1)) {
@@ -265,7 +234,7 @@ export function ApplicationsTable({
 							}
 						}
 					: undefined,
-				style: isClickable ? { cursor: 'pointer' } : undefined,
+				style: { ...mrtRowStyle(row.index), ...(isClickable ? { cursor: 'pointer' } : {}) },
 			}
 		},
 		mantineSearchTextInputProps: {

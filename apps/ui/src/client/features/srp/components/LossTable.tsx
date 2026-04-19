@@ -1,4 +1,4 @@
-import { RefreshCw } from 'lucide-react'
+import { ExternalLink, RefreshCw } from 'lucide-react'
 import { Link } from 'react-router-dom'
 
 import { Button } from '@/components/ui/button'
@@ -17,15 +17,24 @@ import { RequestStatusBadge } from './RequestStatusBadge'
 
 import type { LossWithSRPStatus, SRPConfigResponse } from '../types'
 
+export interface CharacterRefreshResult {
+	characterId: string
+	characterName: string
+	success: boolean
+	reason?: 'invalid_token' | 'fetch_failed'
+	error?: string
+}
+
 interface LossTableProps {
 	losses: LossWithSRPStatus[]
 	isLoading?: boolean
 	isRefreshing?: boolean
 	onRefresh?: () => void
 	config?: SRPConfigResponse | null
+	refreshResults?: CharacterRefreshResult[]
 }
 
-export function LossTable({ losses, isLoading, isRefreshing, onRefresh, config }: LossTableProps) {
+export function LossTable({ losses, isLoading, isRefreshing, onRefresh, config, refreshResults }: LossTableProps) {
 	const maxLossAgeDays = config?.maxLossAgeDays ?? 60
 
 	if (isLoading) {
@@ -48,10 +57,30 @@ export function LossTable({ losses, isLoading, isRefreshing, onRefresh, config }
 		<div className="space-y-3">
 			{onRefresh && (
 				<div className="flex justify-end">
-					<Button variant="secondary" size="sm" onClick={onRefresh} disabled={isRefreshing}>
+					<Button size="sm" onClick={onRefresh} disabled={isRefreshing}>
 						<RefreshCw className={`mr-2 h-4 w-4 ${isRefreshing ? 'animate-spin' : ''}`} />
 						{isRefreshing ? 'Refreshing…' : 'Refresh Losses'}
 					</Button>
+				</div>
+			)}
+
+			{refreshResults && refreshResults.some((r) => !r.success) && (
+				<div className="rounded-md border border-amber-500/40 bg-amber-500/10 px-4 py-3 text-sm">
+					<p className="mb-1 font-medium text-amber-400">Some characters could not be refreshed</p>
+					<ul className="space-y-0.5">
+						{refreshResults
+							.filter((r) => !r.success)
+							.map((r) => (
+								<li key={r.characterId} className="flex items-center gap-2 text-xs text-muted-foreground">
+									<span className="font-medium text-foreground">{r.characterName}</span>
+									{r.reason === 'invalid_token'
+										? '— token expired or invalid (re-auth required)'
+										: r.error
+											? `— ${r.error}`
+											: '— fetch failed'}
+								</li>
+							))}
+					</ul>
 				</div>
 			)}
 
@@ -60,38 +89,32 @@ export function LossTable({ losses, isLoading, isRefreshing, onRefresh, config }
 					<p className="text-sm text-muted-foreground">No recent losses found. Fly safe! o7</p>
 				</div>
 			) : (
-				<div className="overflow-hidden rounded-lg border-2 border-primary/30 bg-card shadow-lg">
+				<div className="rounded-md border">
 					<Table>
 						<TableHeader>
-							<TableRow className="border-b-2 border-primary/40 bg-primary/30 hover:bg-primary/30">
-								<TableHead className="w-20 font-bold text-foreground"></TableHead>
-								<TableHead className="font-bold text-foreground">Ship</TableHead>
-								<TableHead className="text-right font-bold text-foreground">Value (ISK)</TableHead>
-								<TableHead className="font-bold text-foreground">Date/Time</TableHead>
-								<TableHead className="font-bold text-foreground">Location</TableHead>
-								<TableHead className="font-bold text-foreground">SRP Status</TableHead>
-								<TableHead className="text-right font-bold text-foreground">Actions</TableHead>
+							<TableRow>
+								<TableHead className="w-16" />
+								<TableHead>Ship</TableHead>
+								<TableHead className="text-right">Value (ISK)</TableHead>
+								<TableHead>Date/Time</TableHead>
+								<TableHead>Location</TableHead>
+								<TableHead>SRP Status</TableHead>
+								<TableHead className="text-right">Actions</TableHead>
 							</TableRow>
 						</TableHeader>
 						<TableBody>
-							{losses.map((loss, index) => {
+							{losses.map((loss) => {
 								const lossAgeMs = Date.now() - new Date(loss.killmailTime).getTime()
 								const lossAgeDays = lossAgeMs / (1000 * 60 * 60 * 24)
 								const isTooOld = lossAgeDays > maxLossAgeDays
 
 								return (
-									<TableRow
-										key={loss.killmailId}
-										className="border-b border-border/50 transition-colors hover:bg-primary/15"
-										style={{
-											background: index % 2 === 0 ? 'hsl(var(--card))' : 'hsl(var(--muted) / 0.5)',
-										}}
-									>
-										<TableCell className="w-20 py-2">
+									<TableRow key={loss.killmailId}>
+										<TableCell className="py-2">
 											<img
 												src={typeIconUrl(loss.shipTypeId, 64)}
 												alt={loss.shipTypeName || `Ship ${loss.shipTypeId}`}
-												className="h-12 w-12 rounded-md border border-border/50 object-contain"
+												className="h-10 w-10 rounded border border-border/50 object-contain"
 												loading="lazy"
 											/>
 										</TableCell>
@@ -118,17 +141,18 @@ export function LossTable({ losses, isLoading, isRefreshing, onRefresh, config }
 										</TableCell>
 										<TableCell className="text-right">
 											<div className="flex items-center justify-end gap-2">
-												<Button variant="ghost" size="sm" asChild>
+												<Button variant="ghost" size="icon" className="h-8 w-8" asChild>
 													<a
 														href={getKillmailUrl(loss.killmailId)}
 														target="_blank"
 														rel="noopener noreferrer"
+														title="View on zKillboard"
 													>
-														View Killmail
+														<ExternalLink className="h-4 w-4" />
 													</a>
 												</Button>
 												{loss.hasSRPRequest && loss.srpRequestId ? (
-													<Button variant="ghost" size="sm" asChild>
+													<Button variant="secondary" size="sm" asChild>
 														<Link to={`/srp/request/${loss.srpRequestId}`}>View Request</Link>
 													</Button>
 												) : isTooOld ? (

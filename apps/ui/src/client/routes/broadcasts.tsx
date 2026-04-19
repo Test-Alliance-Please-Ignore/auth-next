@@ -209,6 +209,7 @@ export default function BroadcastsPage() {
 							<CardDescription>Your broadcast history</CardDescription>
 						</CardHeader>
 						<CardContent>
+							<div className="rounded-md border bg-card">
 							<Table>
 								<TableHeader>
 									<TableRow>
@@ -218,7 +219,7 @@ export default function BroadcastsPage() {
 										<TableHead>Template</TableHead>
 										<TableHead>Created</TableHead>
 										<TableHead>Scheduled</TableHead>
-										<TableHead className="sticky right-0 z-20 bg-card border-l border-border/50 text-right">
+										<TableHead className="sticky right-0 z-20 bg-primary/5 border-l border-border/50 text-right">
 											Actions
 										</TableHead>
 									</TableRow>
@@ -302,6 +303,7 @@ export default function BroadcastsPage() {
 									})}
 								</TableBody>
 							</Table>
+							</div>
 							<div className="mt-4 flex items-center justify-between gap-2">
 								<p className="text-sm text-muted-foreground">
 									Showing {Math.min(page * pageSize + 1, rowCount)}-

@@ -123,6 +123,19 @@ export function useRefreshKillmails() {
 	})
 }
 
+export function useKillmailPreview(
+	killmailId: string | null,
+	killmailHash: string | null,
+	characterId: string | null
+) {
+	return useQuery({
+		queryKey: ['srp', 'killmail-preview', killmailId, killmailHash, characterId],
+		queryFn: () => api.getKillmailPreview(killmailId!, killmailHash!, characterId!),
+		enabled: !!killmailId && !!killmailHash && !!characterId,
+		staleTime: 1000 * 60 * 10,
+	})
+}
+
 export function useCreateRequest() {
 	const queryClient = useQueryClient()
 	return useMutation({
@@ -130,7 +143,7 @@ export function useCreateRequest() {
 			characterId: string
 			killmailId: string
 			killmailHash: string
-			requestedAmount?: string
+			contextText?: string
 		}) => api.createSRPRequest(data),
 		onSuccess: () => {
 			void queryClient.invalidateQueries({ queryKey: srpKeys.requests() })
@@ -257,10 +270,9 @@ export function useDeleteComment() {
 export function useMarkPaid() {
 	const queryClient = useQueryClient()
 	return useMutation({
-		mutationFn: ({ id, paymentToken }: { id: string; paymentToken: string }) =>
-			api.markPaid(id, { paymentToken }),
-		onSuccess: (_data: any, variables: { id: string; paymentToken: string }) => {
-			void queryClient.invalidateQueries({ queryKey: srpKeys.request(variables.id) })
+		mutationFn: (id: string) => api.markPaid(id),
+		onSuccess: (_data: any, id: string) => {
+			void queryClient.invalidateQueries({ queryKey: srpKeys.request(id) })
 			void queryClient.invalidateQueries({ queryKey: srpKeys.payments() })
 			void queryClient.invalidateQueries({ queryKey: srpKeys.allRequests() })
 		},

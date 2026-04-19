@@ -1,7 +1,16 @@
 import { Navigate, useNavigate } from 'react-router-dom'
 
+import { Card, CardContent } from '@/components/ui/card'
 import { Container } from '@/components/ui/container'
 import { PageHeader } from '@/components/ui/page-header'
+import {
+	Table,
+	TableBody,
+	TableCell,
+	TableHead,
+	TableHeader,
+	TableRow,
+} from '@/components/ui/table'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { useUserPermissions } from '@/hooks/useUserPermissions'
 import { typeIconUrl } from '@/lib/eve-images'
@@ -31,21 +40,25 @@ export default function ReviewQueue() {
 		<Container>
 			<PageHeader title="Review Queue" description="Review and process ship replacement requests" />
 
-			<Tabs defaultValue="pending" className="mt-section">
-				<TabsList className="w-full">
-					{TABS.map((tab) => (
-						<TabsTrigger key={tab.value} value={tab.value}>
-							{tab.label}
-						</TabsTrigger>
-					))}
-				</TabsList>
+			<Card className="mt-section">
+				<CardContent className="p-4">
+					<Tabs defaultValue="pending">
+						<TabsList className="w-full">
+							{TABS.map((tab) => (
+								<TabsTrigger key={tab.value} value={tab.value}>
+									{tab.label}
+								</TabsTrigger>
+							))}
+						</TabsList>
 
-				{TABS.map((tab) => (
-					<TabsContent key={tab.value} value={tab.value}>
-						<ReviewTabContent status={tab.value} />
-					</TabsContent>
-				))}
-			</Tabs>
+						{TABS.map((tab) => (
+							<TabsContent key={tab.value} value={tab.value}>
+								<ReviewTabContent status={tab.value} />
+							</TabsContent>
+						))}
+					</Tabs>
+				</CardContent>
+			</Card>
 		</Container>
 	)
 }
@@ -83,64 +96,79 @@ function ReviewTabContent({ status }: { status: RequestStatus }) {
 	}
 
 	return (
-		<div className="mt-4 overflow-hidden rounded-lg border-2 border-primary/30 bg-card shadow-lg">
-			<table className="w-full">
-				<thead>
-					<tr className="border-b-2 border-primary/40 bg-primary/30">
-						<th className="w-14 p-3" />
-						<th className="p-3 text-left text-sm font-bold">Ship</th>
-						<th className="p-3 text-left text-sm font-bold">Pilot</th>
-						<th className="p-3 text-right text-sm font-bold">Value</th>
-						<th className="p-3 text-left text-sm font-bold">Lost</th>
-						<th className="p-3 text-left text-sm font-bold">Submitted</th>
-						<th className="p-3 text-left text-sm font-bold">Status</th>
-					</tr>
-				</thead>
-				<tbody>
-					{requests.map((req, idx) => (
-						<tr
-							key={req.id}
-							className="cursor-pointer border-b border-border/50 transition-colors hover:bg-primary/15"
-							style={{ background: idx % 2 === 0 ? 'hsl(var(--card))' : 'hsl(var(--muted) / 0.5)' }}
-							onClick={() => navigate(`/srp/review/${req.id}`)}
-						>
-							<td className="p-2">
-								{req.shipTypeId && (
-									<img
-										src={typeIconUrl(req.shipTypeId, 32)}
-										alt={req.shipTypeName ?? ''}
-										className="h-10 w-10 rounded border border-border/50 object-contain"
-										loading="lazy"
-									/>
-								)}
-							</td>
-							<td className="p-3 font-semibold">{req.shipTypeName ?? '—'}</td>
-							<td className="p-3 text-sm">
-								<div>{req.characterName}</div>
-								{req.corporationName && (
-									<div className="text-xs text-muted-foreground">{req.corporationName}</div>
-								)}
-							</td>
-							<td className="p-3 text-right font-mono text-sm tabular-nums">
-								{formatISK(req.srpEquipmentValue ?? req.shipValue)}
-							</td>
-							<td className="p-3 text-sm text-muted-foreground">
-								{formatRelativeTime(req.lossDate)}
-							</td>
-							<td className="p-3 text-sm text-muted-foreground">
-								{formatRelativeTime(req.createdAt)}
-							</td>
-							<td className="p-3">
-								<RequestStatusBadge status={req.requestStatus as any} />
-							</td>
-						</tr>
-					))}
-				</tbody>
-			</table>
+		<div className="mt-4">
+			<div className="rounded-md border">
+				<Table>
+					<TableHeader>
+						<TableRow>
+							<TableHead className="w-14" />
+							<TableHead>Ship</TableHead>
+							<TableHead>Pilot</TableHead>
+							<TableHead className="text-right">Payout / Value</TableHead>
+							<TableHead>System</TableHead>
+							<TableHead>Lost</TableHead>
+							<TableHead>Submitted</TableHead>
+							<TableHead>Status</TableHead>
+						</TableRow>
+					</TableHeader>
+					<TableBody>
+						{requests.map((req) => (
+							<TableRow
+								key={req.id}
+								className="cursor-pointer"
+								onClick={() => navigate(`/srp/review/${req.id}`)}
+							>
+								<TableCell className="py-2">
+									{req.shipTypeId && (
+										<img
+											src={typeIconUrl(req.shipTypeId, 32)}
+											alt={req.shipTypeName ?? ''}
+											className="h-10 w-10 rounded border border-border/50 object-contain"
+											loading="lazy"
+										/>
+									)}
+								</TableCell>
+								<TableCell className="font-semibold">{req.shipTypeName ?? '—'}</TableCell>
+								<TableCell className="text-sm">
+									<div>{req.characterName}</div>
+									{req.corporationName && req.corporationName !== 'Unknown' && (
+										<div className="text-xs text-muted-foreground">{req.corporationName}</div>
+									)}
+								</TableCell>
+								<TableCell className="text-right font-mono text-sm tabular-nums">
+									{formatISK(req.approvedAmount ?? req.srpEquipmentValue ?? req.shipValue)}
+								</TableCell>
+								<TableCell className="text-sm text-muted-foreground">
+									{req.solarSystemName ?? '—'}
+								</TableCell>
+								<TableCell className="text-sm text-muted-foreground">
+									{req.lossDate
+										? new Date(req.lossDate).toLocaleString(undefined, {
+												timeZone: 'UTC',
+												year: 'numeric',
+												month: 'long',
+												day: 'numeric',
+												hour: '2-digit',
+												minute: '2-digit',
+												hour12: false,
+											}) + ' EVE Time'
+										: '—'}
+								</TableCell>
+								<TableCell className="text-sm text-muted-foreground">
+									{formatRelativeTime(req.createdAt)}
+								</TableCell>
+								<TableCell>
+									<RequestStatusBadge status={req.requestStatus as any} />
+								</TableCell>
+							</TableRow>
+						))}
+					</TableBody>
+				</Table>
+			</div>
 			{data && data.total > requests.length && (
-				<div className="border-t border-border/30 p-3 text-center text-sm text-muted-foreground">
+				<p className="mt-2 text-center text-sm text-muted-foreground">
 					Showing {requests.length} of {data.total}
-				</div>
+				</p>
 			)}
 		</div>
 	)

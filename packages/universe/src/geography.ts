@@ -7,6 +7,15 @@ export interface UniverseRegion {
 }
 
 /**
+ * Constellation metadata from SDE geography import.
+ */
+export interface UniverseConstellation {
+	constellationId: string
+	constellationName: string
+	regionId: string
+}
+
+/**
  * Solar system metadata from SDE geography import.
  */
 export interface UniverseSolarSystem {

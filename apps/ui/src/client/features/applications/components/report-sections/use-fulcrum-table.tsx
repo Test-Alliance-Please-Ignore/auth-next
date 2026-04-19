@@ -5,6 +5,17 @@
 
 import { useMantineReactTable } from 'mantine-react-table'
 
+import {
+	mrtPaperProps,
+	mrtPaginationProps,
+	mrtRowStyle,
+	mrtTableBodyCellProps,
+	mrtTableContainerProps,
+	mrtTableHeadCellProps,
+	mrtTableHeadProps,
+	mrtTableProps,
+} from '@/lib/mrt-theme'
+
 import type { MRT_ColumnDef, MRT_RowData, MRT_TableOptions } from 'mantine-react-table'
 
 interface UseFulcrumTableOptions<Row extends MRT_RowData> {
@@ -56,65 +67,14 @@ export function useFulcrumTable<Row extends MRT_RowData>({
 			style: { minWidth: '280px' },
 		},
 		paginationDisplayMode: 'pages',
-		mantinePaginationProps: {
-			showRowsPerPage: true,
-			rowsPerPageOptions: ['25', '50', '100', '200'],
-		},
-		mantinePaperProps: {
-			shadow: 'none',
-			radius: 'md',
-			withBorder: true,
-			className: 'tax-report-grid__paper',
-			style: {
-				background: 'hsl(var(--card))',
-				borderColor: 'hsl(var(--border))',
-				color: 'hsl(var(--foreground))',
-				overflow: 'hidden',
-			},
-		},
-		mantineTableContainerProps: {
-			className: 'tax-report-grid__container',
-		},
-		mantineTableProps: {
-			striped: false,
-			highlightOnHover: false,
-			withColumnBorders: false,
-			withRowBorders: true,
-			className: 'tax-report-grid__table',
-			style: {
-				background: 'transparent',
-				color: 'hsl(var(--foreground))',
-				tableLayout: 'auto',
-			},
-		},
-		mantineTableHeadProps: {
-			className: 'tax-report-grid__head',
-			style: {
-				background: 'hsl(var(--background-elevated))',
-			},
-		},
-		mantineTableHeadCellProps: {
-			className: 'tax-report-grid__head-cell',
-			style: {
-				background: 'hsl(var(--background-elevated))',
-				borderBottom: '1px solid hsl(var(--border))',
-				color: 'hsl(var(--muted-foreground))',
-				fontSize: '0.75rem',
-				fontWeight: 700,
-				letterSpacing: '0.03em',
-				textTransform: 'uppercase',
-			},
-		},
-		mantineTableBodyCellProps: {
-			className: 'tax-report-grid__body-cell',
-			style: {
-				borderBottom: '1px solid hsl(var(--border) / 0.7)',
-				color: 'hsl(var(--foreground))',
-			},
-		},
-		mantineTableBodyRowProps: {
-			className: 'tax-report-grid__row',
-		},
+		mantinePaginationProps: mrtPaginationProps,
+		mantinePaperProps: mrtPaperProps,
+		mantineTableContainerProps: mrtTableContainerProps,
+		mantineTableProps: { ...mrtTableProps, style: { ...mrtTableProps.style, tableLayout: 'auto' } },
+		mantineTableHeadProps: mrtTableHeadProps,
+		mantineTableHeadCellProps: mrtTableHeadCellProps,
+		mantineTableBodyCellProps: mrtTableBodyCellProps,
+		mantineTableBodyRowProps: ({ row }) => ({ className: 'mrt-grid__row', style: mrtRowStyle(row.index) }),
 		renderEmptyRowsFallback: () => (
 			<div className="flex min-h-40 items-center justify-center px-6 py-8 text-center text-sm text-muted-foreground">
 				{emptyMessage}

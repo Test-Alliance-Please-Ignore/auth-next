@@ -2509,11 +2509,20 @@ export class ApiClient {
 	/**
 	 * Create a new SRP request
 	 */
+	async getKillmailPreview(
+		killmailId: string,
+		killmailHash: string,
+		characterId: string
+	): Promise<any> {
+		const params = new URLSearchParams({ killmailId, killmailHash, characterId })
+		return this.get(`/srp/losses/preview?${params}`)
+	}
+
 	async createSRPRequest(data: {
 		characterId: string
 		killmailId: string
 		killmailHash: string
-		requestedAmount?: string
+		contextText?: string
 	}): Promise<any> {
 		return this.post('/srp/requests', data)
 	}
@@ -2664,27 +2673,8 @@ export class ApiClient {
 	/**
 	 * Mark request as fully paid
 	 */
-	async markPaid(
-		id: string,
-		data: {
-			paymentToken: string
-		}
-	): Promise<any> {
-		return this.post(`/srp/requests/${id}/mark-paid`, data)
-	}
-
-	/**
-	 * Mark request as partially paid
-	 */
-	async markPartiallyPaid(
-		id: string,
-		data: {
-			paidAmount: string
-			paymentToken: string
-			notes?: string
-		}
-	): Promise<any> {
-		return this.post(`/srp/requests/${id}/mark-partially-paid`, data)
+	async markPaid(id: string): Promise<any> {
+		return this.post(`/srp/requests/${id}/mark-paid`, {})
 	}
 
 	/**
@@ -2718,7 +2708,15 @@ export class ApiClient {
 		return this.get(`/srp/stats${query ? `?${query}` : ''}`)
 	}
 
-	async refreshLosses(): Promise<{ ok: boolean }> {
+	async refreshLosses(): Promise<{
+		results: Array<{
+			characterId: string
+			characterName: string
+			success: boolean
+			reason?: 'invalid_token' | 'fetch_failed'
+			error?: string
+		}>
+	}> {
 		return this.post('/srp/losses/refresh', {})
 	}
 

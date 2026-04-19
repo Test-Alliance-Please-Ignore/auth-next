@@ -625,11 +625,13 @@ export class EsiDO extends DurableObject<Env> implements Esi {
 		)
 		const killmails = await Promise.all(
 			result.data.map(async (km) => {
-				return this.fetchCharacterKillmailDetail(
+				const detail = await this.fetchCharacterKillmailDetail(
 					characterId,
 					String(km.killmail_id),
 					km.killmail_hash
 				)
+				if (!detail) return null
+				return { ...detail, killmail_hash: km.killmail_hash }
 			})
 		)
 		return killmails.filter((km): km is KillmailDetail => km !== null)
@@ -954,15 +956,6 @@ export class EsiDO extends DurableObject<Env> implements Esi {
 	}
 
 	/**
-	 * Fetch structure information by ID
-	 * Requires authentication via character with access to the structure
-	 *
-	 * @param characterId - Character ID with access to the structure
-	 * @param structureId - Structure ID to fetch
-	 * @returns Structure name or null if not found/no access
-	 */
-	@UseCharacterAuth
-	/**
 	 * Fetch platinum-tier insurance values for all insurable ship types.
 	 * Public ESI endpoint — no authentication required.
 	 * Cached for 24 hours since insurance prices rarely change.
@@ -996,6 +989,7 @@ export class EsiDO extends DurableObject<Env> implements Esi {
 		}))
 	}
 
+	@UseCharacterAuth
 	async fetchStructureInfo(
 		characterId: string,
 		structureId: string

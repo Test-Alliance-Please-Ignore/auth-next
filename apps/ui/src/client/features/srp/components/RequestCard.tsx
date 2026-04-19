@@ -3,7 +3,7 @@ import { Link } from 'react-router-dom'
 import { Button } from '@/components/ui/button'
 import { Card } from '@/components/ui/card'
 
-import { calculateDifference, formatISK, formatRelativeTime, getKillmailUrl } from '../utils'
+import { formatISK, formatRelativeTime, getKillmailUrl } from '../utils'
 import { RequestStatusBadge } from './RequestStatusBadge'
 
 import type { SRPRequestResponse } from '../types'
@@ -14,8 +14,6 @@ interface RequestCardProps {
 }
 
 export function RequestCard({ request, showActions = true }: RequestCardProps) {
-	const difference = calculateDifference(request.requestedAmount, request.approvedAmount)
-
 	return (
 		<Card className="p-4">
 			<div className="space-y-3">
@@ -32,30 +30,24 @@ export function RequestCard({ request, showActions = true }: RequestCardProps) {
 				</div>
 
 				<div className="grid grid-cols-2 gap-4 text-sm">
-					<div>
-						<div className="text-muted-foreground">Ship Value</div>
-						<div className="font-medium tabular-nums">{formatISK(request.shipValue)}</div>
-					</div>
-					{request.requestedAmount && (
+					{request.requestStatus === 'paid' ? (
 						<div>
-							<div className="text-muted-foreground">Requested</div>
-							<div className="font-medium tabular-nums">{formatISK(request.requestedAmount)}</div>
+							<div className="text-muted-foreground">Paid Amount</div>
+							<div className="font-medium tabular-nums text-success">{formatISK(request.approvedAmount ?? '0')}</div>
 						</div>
-					)}
-					{request.approvedAmount && (
-						<div>
-							<div className="text-muted-foreground">Approved</div>
-							<div className="font-medium tabular-nums">
-								{formatISK(request.approvedAmount)}
-								{difference !== 0 && (
-									<span className={difference > 0 ? 'text-green-500' : 'text-red-500'}>
-										{' '}
-										({difference > 0 ? '+' : ''}
-										{formatISK(Math.abs(difference))})
-									</span>
-								)}
+					) : (
+						<>
+							<div>
+								<div className="text-muted-foreground">Ship Value</div>
+								<div className="font-medium tabular-nums">{formatISK(request.shipValue)}</div>
 							</div>
-						</div>
+							{request.approvedAmount && (
+								<div>
+									<div className="text-muted-foreground">Approved</div>
+									<div className="font-medium tabular-nums text-success">{formatISK(request.approvedAmount)}</div>
+								</div>
+							)}
+						</>
 					)}
 				</div>
 
@@ -70,7 +62,7 @@ export function RequestCard({ request, showActions = true }: RequestCardProps) {
 								target="_blank"
 								rel="noopener noreferrer"
 							>
-								Killmail
+								View on zKillboard
 							</a>
 						</Button>
 					</div>

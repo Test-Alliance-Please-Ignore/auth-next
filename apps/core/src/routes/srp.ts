@@ -1,6 +1,7 @@
 import { Hono } from 'hono'
 import { z } from 'zod'
 
+import { and, eq, inArray } from '@repo/db-utils'
 import { getStub } from '@repo/do-utils'
 import { TimeCache } from '@repo/hono-helpers'
 import {
@@ -13,11 +14,13 @@ import {
 	UpdateSRPConfigSchema,
 } from '@repo/srp'
 
+import { createDb } from '../db'
+import { userCharacters } from '../db/schema'
 import { getCachedUserPermissions } from '../lib/groups-cache'
 import { requireAllianceMember } from '../middleware/session'
 
 import type { EveCharacterData } from '@repo/eve-character-data'
-import type { Srp } from '@repo/srp'
+import type { SRPCommentResponse, Srp } from '@repo/srp'
 import type { App } from '../context'
 
 const ApproveRequestSchema = z.object({
@@ -53,6 +56,55 @@ function getRequestId(c: any): string {
 /** Get the primary character name for the session user */
 function getPrimaryCharacterName(user: any): string {
 	return user.characters.find((c: any) => c.is_primary)?.characterName ?? 'Unknown'
+}
+
+const SRP_ROLE_URNS = ['urn:srp:reviewer', 'urn:srp:payer', 'urn:srp:manager']
+
+/** Hydrate authorCharacterName, authorCharacterId, and authorRole on comments */
+async function hydrateCommentAuthors(
+	comments: SRPCommentResponse[],
+	databaseUrl: string,
+	env: { GROUPS: DurableObjectNamespace },
+	requestUserId: string
+): Promise<SRPCommentResponse[]> {
+	if (comments.length === 0) return comments
+	const userIds = [...new Set(comments.map((c) => c.authorUserId))]
+	const db = createDb(databaseUrl)
+	const rows = await db
+		.select({
+			userId: userCharacters.userId,
+			characterName: userCharacters.characterName,
+			characterId: userCharacters.characterId,
+		})
+		.from(userCharacters)
+		.where(and(eq(userCharacters.is_primary, true), inArray(userCharacters.userId, userIds)))
+	const charMap = Object.fromEntries(
+		rows.map((r) => [r.userId, { name: r.characterName, characterId: r.characterId }])
+	)
+
+	// Determine SRP staff role for each non-requestor author
+	const nonRequestorIds = userIds.filter((id) => id !== requestUserId)
+	const staffSet = new Set<string>()
+	await Promise.all(
+		nonRequestorIds.map(async (userId) => {
+			const perms = await getCachedUserPermissions(env, userId)
+			if (perms.some((p) => SRP_ROLE_URNS.includes(p.urn))) {
+				staffSet.add(userId)
+			}
+		})
+	)
+
+	return comments.map((c) => ({
+		...c,
+		authorCharacterName: charMap[c.authorUserId]?.name ?? c.authorCharacterName,
+		authorCharacterId: charMap[c.authorUserId]?.characterId,
+		authorRole:
+			c.authorUserId === requestUserId
+				? 'requestor'
+				: staffSet.has(c.authorUserId)
+					? 'staff'
+					: undefined,
+	}))
 }
 
 /**
@@ -115,20 +167,71 @@ srp.get('/losses', async (c) => {
 /**
  * Trigger killmail refresh for all of the user's characters
  * POST /api/srp/losses/refresh
+ * Returns per-character results so the UI can show partial failures.
  */
 srp.post('/losses/refresh', async (c) => {
 	const user = c.get('user')!
 
-	await Promise.allSettled(
-		user.characters.map(async (char: any) => {
-			const stub = getStub<EveCharacterData>(c.env.EVE_CHARACTER_DATA, char.characterId)
-			const instance = await stub.getInstance(char.characterId)
-			using charInstance = instance
-			await charInstance.fetchKillmails()
+	const settled = await Promise.allSettled(
+		user.characters.map(async (char) => {
+			if (!char.hasValidToken) {
+				return { characterId: char.characterId, characterName: char.characterName, success: false, reason: 'invalid_token' as const }
+			}
+			try {
+				const stub = getStub<EveCharacterData>(c.env.EVE_CHARACTER_DATA, char.characterId)
+				const instance = await stub.getInstance(char.characterId)
+				using charInstance = instance
+				await charInstance.fetchKillmails()
+				return { characterId: char.characterId, characterName: char.characterName, success: true }
+			} catch (err) {
+				return {
+					characterId: char.characterId,
+					characterName: char.characterName,
+					success: false,
+					reason: 'fetch_failed' as const,
+					error: err instanceof Error ? err.message : String(err),
+				}
+			}
 		})
 	)
 
-	return c.json({ ok: true })
+	const results = settled.map((s) =>
+		s.status === 'fulfilled'
+			? s.value
+			: { characterId: '', characterName: 'Unknown', success: false, reason: 'fetch_failed' as const, error: String(s.reason) }
+	)
+
+	return c.json({ results })
+})
+
+// =============================================================================
+// KILLMAIL PREVIEW
+// =============================================================================
+
+/**
+ * GET /api/srp/losses/preview?killmailId=...&killmailHash=...&characterId=...
+ * Returns valuation + raw victim items for the fitting panel without creating a request.
+ */
+srp.get('/losses/preview', async (c) => {
+	const user = c.get('user')!
+	const killmailId = c.req.query('killmailId')
+	const killmailHash = c.req.query('killmailHash')
+	const characterId = c.req.query('characterId')
+
+	if (!killmailId || !killmailHash || !characterId) {
+		return c.json({ error: 'killmailId, killmailHash, and characterId are required' }, 400)
+	}
+
+	const ownsCharacter = user.characters.some((ch) => ch.characterId === characterId)
+	if (!ownsCharacter) {
+		return c.json({ error: 'Not authorized' }, 403)
+	}
+
+	const srpStub = getStub<Srp>(c.env.SRP, getRequestId(c))
+	const preview = await srpStub.previewValuation(characterId, killmailId, killmailHash)
+
+	if (!preview) return c.json(null)
+	return c.json(preview)
 })
 
 // =============================================================================
@@ -149,7 +252,7 @@ srp.post('/requests', async (c) => {
 		return c.json({ error: 'Invalid request data', details: validation.error }, 400)
 	}
 
-	const { characterId, killmailId, killmailHash, requestedAmount } = validation.data
+	const { characterId, killmailId, killmailHash, contextText } = validation.data
 
 	// Verify user owns this character
 	const ownsCharacter = user.characters.some((char) => char.characterId === characterId)
@@ -163,7 +266,7 @@ srp.post('/requests', async (c) => {
 		characterId,
 		killmailId,
 		killmailHash,
-		requestedAmount
+		contextText
 	)
 
 	return c.json(request, 201)
@@ -190,6 +293,24 @@ srp.get('/requests', async (c) => {
 })
 
 /**
+ * Get requests by status (reviewer queue)
+ * GET /api/srp/requests/by-status?status=pending&limit=50&offset=0
+ */
+srp.get('/requests/by-status', async (c) => {
+	const user = c.get('user')!
+	const status = c.req.query('status') as any
+	const limit = c.req.query('limit') ? Number.parseInt(c.req.query('limit')!, 10) : 50
+	const offset = c.req.query('offset') ? Number.parseInt(c.req.query('offset')!, 10) : 0
+
+	const allowed = await hasPermission(c.env, user.id, 'urn:srp:reviewer', user.is_admin)
+	if (!allowed) return c.json({ error: 'Requires reviewer permissions' }, 403)
+
+	const srpStub = getStub<Srp>(c.env.SRP, getRequestId(c))
+	const requests = await srpStub.getRequestsByStatus(status, { limit, offset })
+	return c.json({ requests, total: requests.length, limit, offset })
+})
+
+/**
  * Get a single SRP request
  * GET /api/srp/requests/:id
  */
@@ -207,6 +328,15 @@ srp.get('/requests/:id', async (c) => {
 	// Verify user owns this request or is admin
 	if (request.userId !== user.id && !user.is_admin) {
 		return c.json({ error: 'Not authorized to view this request' }, 403)
+	}
+
+	if (request.comments && request.comments.length > 0) {
+		request.comments = await hydrateCommentAuthors(
+			request.comments,
+			c.env.DATABASE_URL,
+			c.env,
+			request.userId
+		)
 	}
 
 	return c.json(request)
@@ -406,24 +536,6 @@ srp.patch('/requests/:id/state', async (c) => {
 	return c.json(request)
 })
 
-/**
- * Get requests by status (reviewer queue)
- * GET /api/srp/requests/by-status?status=pending&limit=50&offset=0
- */
-srp.get('/requests/by-status', async (c) => {
-	const user = c.get('user')!
-	const status = c.req.query('status') as any
-	const limit = c.req.query('limit') ? Number.parseInt(c.req.query('limit')!, 10) : 50
-	const offset = c.req.query('offset') ? Number.parseInt(c.req.query('offset')!, 10) : 0
-
-	const allowed = await hasPermission(c.env, user.id, 'urn:srp:reviewer', user.is_admin)
-	if (!allowed) return c.json({ error: 'Requires reviewer permissions' }, 403)
-
-	const srpStub = getStub<Srp>(c.env.SRP, getRequestId(c))
-	const requests = await srpStub.getRequestsByStatus(status, { limit, offset })
-	return c.json({ requests, total: requests.length, limit, offset })
-})
-
 // =============================================================================
 // COMMENTS
 // =============================================================================
@@ -451,7 +563,8 @@ srp.get('/requests/:id/comments', async (c) => {
 
 	// Only admins/reviewers can see internal comments
 	const canSeeInternal = await hasPermission(c.env, user.id, 'urn:srp:reviewer', user.is_admin)
-	const comments = await srpStub.getComments(requestId, user.id, canSeeInternal && includeInternal)
+	const rawComments = await srpStub.getComments(requestId, user.id, canSeeInternal && includeInternal)
+	const comments = await hydrateCommentAuthors(rawComments, c.env.DATABASE_URL, c.env, request.userId)
 
 	return c.json(comments)
 })
@@ -494,7 +607,8 @@ srp.post('/requests/:id/comments', async (c) => {
 		}
 	}
 
-	const comment = await srpStub.addComment(requestId, user.id, content, visibility)
+	const characterName = getPrimaryCharacterName(user)
+	const comment = await srpStub.addComment(requestId, user.id, characterName, content, visibility)
 
 	return c.json(comment, 201)
 })
@@ -583,15 +697,11 @@ srp.post('/requests/:id/mark-paid', async (c) => {
 	const allowed = await hasPermission(c.env, user.id, 'urn:srp:payer', false)
 	if (!allowed) return c.json({ error: 'Requires payer permissions' }, 403)
 
-	const paymentToken: string = body?.paymentToken
-	if (!paymentToken) return c.json({ error: 'paymentToken required' }, 400)
-
 	const srpStub = getStub<Srp>(c.env.SRP, getRequestId(c))
 	const request = await srpStub.markPaid(
 		requestId,
 		user.id,
-		getPrimaryCharacterName(user),
-		paymentToken
+		getPrimaryCharacterName(user)
 	)
 
 	return c.json(request)

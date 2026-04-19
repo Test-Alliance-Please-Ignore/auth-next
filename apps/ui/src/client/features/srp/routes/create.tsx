@@ -5,7 +5,7 @@ import { Container } from '@/components/ui/container'
 import { PageHeader } from '@/components/ui/page-header'
 
 import { CreateRequestForm } from '../components/CreateRequestForm'
-import { useRecentLosses } from '../hooks'
+import { useKillmailPreview, useRecentLosses } from '../hooks'
 
 export default function CreateRequest() {
 	const [searchParams] = useSearchParams()
@@ -13,18 +13,20 @@ export default function CreateRequest() {
 	const killmailId = searchParams.get('killmailId')
 	const killmailHash = searchParams.get('killmailHash')
 
-	// Fetch recent losses to find the killmail details
-	const { data: losses, isLoading } = useRecentLosses(30)
+	const { data: losses, isLoading: lossesLoading } = useRecentLosses(60)
+	const loss = losses?.find((l: any) => l.killmailId === killmailId)
 
-	// If missing required params, redirect to dashboard
+	const { data: preview, isLoading: previewLoading } = useKillmailPreview(
+		killmailId,
+		killmailHash,
+		loss?.victimCharacterId ?? null
+	)
+
 	if (!killmailId || !killmailHash) {
 		return <Navigate to="/srp" replace />
 	}
 
-	// Find the specific loss
-	const loss = losses?.find((l: any) => l.killmailId === killmailId)
-
-	if (isLoading) {
+	if (lossesLoading) {
 		return (
 			<Container>
 				<div className="flex min-h-[400px] items-center justify-center">
@@ -55,7 +57,6 @@ export default function CreateRequest() {
 		)
 	}
 
-	// Check if already has a request
 	if (loss.hasSRPRequest) {
 		return (
 			<Container>
@@ -80,9 +81,11 @@ export default function CreateRequest() {
 				killmailId={killmailId}
 				killmailHash={killmailHash}
 				characterId={loss.victimCharacterId}
-				shipValue={loss.totalValue}
+				shipTypeId={loss.shipTypeId}
 				shipTypeName={loss.shipTypeName || `Ship ${loss.shipTypeId}`}
 				lossDate={loss.killmailTime}
+				preview={preview ?? null}
+				previewLoading={previewLoading}
 			/>
 		</Container>
 	)

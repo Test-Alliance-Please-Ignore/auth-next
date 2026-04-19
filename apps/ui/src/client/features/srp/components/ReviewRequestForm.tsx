@@ -1,5 +1,5 @@
 import { Plus, X } from 'lucide-react'
-import { useState } from 'react'
+import { type ReactNode, useState } from 'react'
 import { toast } from 'sonner'
 
 import { Button } from '@/components/ui/button'
@@ -7,7 +7,7 @@ import { Card } from '@/components/ui/card'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Select } from '@/components/ui/select'
-import { Textarea } from '@/components/ui/textarea'
+
 
 import { useSRPPolicies, useSubmitReview } from '../hooks'
 import { formatISK } from '../utils'
@@ -21,6 +21,8 @@ import type { AppliedModifier, SRPPolicy, SRPRequestResponse } from '../types'
 interface ReviewRequestFormProps {
 	request: SRPRequestResponse
 	onSuccess: () => void
+	commentSlot?: ReactNode
+	rightAppend?: ReactNode
 }
 
 function isPayoutModifierConfig(c: unknown): c is PayoutModifierConfig {
@@ -50,11 +52,16 @@ function computePayout(
 
 	let base = equipmentValue
 
-	// Apply insurance delta
+	// Insurance delta: applied by default unless a policy explicitly disables it
+	const applyInsuranceDelta =
+		modifierPolicy && isPayoutModifierConfig(modifierPolicy.config)
+			? modifierPolicy.config.applyInsuranceDelta
+			: true
+	if (applyInsuranceDelta) {
+		base = Math.max(0, base - netInsurance)
+	}
+
 	if (modifierPolicy && isPayoutModifierConfig(modifierPolicy.config)) {
-		if (modifierPolicy.config.applyInsuranceDelta) {
-			base = Math.max(0, base - netInsurance)
-		}
 		base = base * parseFloat(modifierPolicy.config.rate)
 	}
 
@@ -79,7 +86,7 @@ function computePayout(
 	return roundDownToMillion(base)
 }
 
-export function ReviewRequestForm({ request, onSuccess }: ReviewRequestFormProps) {
+export function ReviewRequestForm({ request, onSuccess, commentSlot, rightAppend }: ReviewRequestFormProps) {
 	const { data: policies = [] } = useSRPPolicies()
 	const submitMutation = useSubmitReview()
 
@@ -91,8 +98,6 @@ export function ReviewRequestForm({ request, onSuccess }: ReviewRequestFormProps
 	const [modifiers, setModifiers] = useState<AppliedModifier[]>([])
 	const [overrideMillions, setOverrideMillions] = useState<number | null>(null)
 	const [outcome, setOutcome] = useState<'approved' | 'needs_context' | 'rejected'>('approved')
-	const [feedbackText, setFeedbackText] = useState('')
-	const [reviewNotes, setReviewNotes] = useState('')
 	const [showConfirm, setShowConfirm] = useState(false)
 
 	const selectedModifierPolicy =
@@ -104,6 +109,11 @@ export function ReviewRequestForm({ request, onSuccess }: ReviewRequestFormProps
 	const insurancePremium = parseFloat(request.srpInsurancePremium ?? '0')
 	const insurancePayout = parseFloat(request.srpInsurancePayout ?? '0')
 
+	// Hull is the ship itself — find it in srpItemPrices by shipTypeId
+	const hullPriceEntry = (request.srpItemPrices ?? []).find((p) => p.typeId === request.shipTypeId)
+	const hullValue = hullPriceEntry ? parseFloat(hullPriceEntry.lineTotal) : 0
+	const modulesValue = equipmentValue - hullValue
+
 	const computedPayout = computePayout(
 		equipmentValue,
 		netInsurance,
@@ -114,18 +124,19 @@ export function ReviewRequestForm({ request, onSuccess }: ReviewRequestFormProps
 	)
 	const isZeroPayout = computedPayout === 0
 
-	// Build fitting items from srpItemPrices if available
-	const fittingItems = request.srpItemPrices
-		? transformKillmailToFittingItems(
-				[],
-				request.srpItemPrices.map((p) => ({ typeId: p.typeId, price: p.unitPrice }))
-			)
-		: []
+	const itemNames = Object.fromEntries(
+		(request.srpItemPrices ?? []).map((p) => [p.typeId, p.typeName])
+	)
+	const fittingItems = transformKillmailToFittingItems(
+		request.killmailItems ?? [],
+		(request.srpItemPrices ?? []).map((p) => ({ typeId: p.typeId, price: p.unitPrice, isConsumable: p.isConsumable })),
+		itemNames
+	)
 
 	const applyInsurance =
 		selectedModifierPolicy && isPayoutModifierConfig(selectedModifierPolicy.config)
 			? selectedModifierPolicy.config.applyInsuranceDelta
-			: false
+			: true
 
 	// Compute intermediate values for the math breakdown
 	const afterInsurance = applyInsurance
@@ -182,12 +193,6 @@ export function ReviewRequestForm({ request, onSuccess }: ReviewRequestFormProps
 	}
 
 	const handleSubmit = async () => {
-		if (outcome === 'needs_context' || outcome === 'rejected') {
-			if (!feedbackText.trim()) {
-				toast.error(`Feedback is required for "${outcome.replace('_', ' ')}" outcome`)
-				return
-			}
-		}
 
 		if (!showConfirm) {
 			setShowConfirm(true)
@@ -219,8 +224,8 @@ export function ReviewRequestForm({ request, onSuccess }: ReviewRequestFormProps
 					appliedCapPolicyId: selectedCapPolicyId,
 					appliedModifiers: finalModifiers,
 					reviewerOverrideMillions: overrideMillions,
-					feedbackText: feedbackText.trim() || null,
-					reviewNotes: reviewNotes.trim() || null,
+					feedbackText: null,
+					reviewNotes: null,
 				},
 			})
 			toast.success('Review submitted successfully')
@@ -232,9 +237,9 @@ export function ReviewRequestForm({ request, onSuccess }: ReviewRequestFormProps
 	}
 
 	return (
-		<div className="grid gap-6 lg:grid-cols-2">
+		<div className="flex flex-col gap-6 lg:flex-row lg:items-start">
 			{/* Left: Fitting display */}
-			<div className="space-y-4">
+			<div className="flex flex-col gap-4 lg:w-1/2">
 				{request.shipTypeId && (
 					<SRPFittingPanel
 						shipTypeId={request.shipTypeId}
@@ -251,17 +256,35 @@ export function ReviewRequestForm({ request, onSuccess }: ReviewRequestFormProps
 			</div>
 
 			{/* Right: Review form */}
-			<div className="space-y-4">
+			<div className="flex flex-col gap-4 lg:w-1/2">
 				{/* Math breakdown */}
 				<Card className="p-4">
 					<h4 className="mb-3 font-semibold text-sm">Payout Calculation</h4>
 					<div className="space-y-1 font-mono text-sm">
-						<MathRow label="Equipment Value" value={equipmentValue} />
-						{applyInsurance && (
+						<MathRow label={`Hull (${request.shipTypeName ?? 'Ship'})`} value={hullValue} />
+						{modulesValue > 0 && <MathRow label="+ Modules" value={modulesValue} dim />}
+						<div className="my-1 border-t border-border/50" />
+						<MathRow label="Equipment Value" value={equipmentValue} bold />
+						{insurancePremium > 0 || insurancePayout > 0 ? (
 							<>
-								<MathRow label="+ Insurance Cost" value={insurancePremium} dim />
-								<MathRow label="− Insurance Payout" value={-insurancePayout} dim />
+								<MathRow label="+ Insurance Premium" value={insurancePremium} dim />
+								<MathRow
+									label="− Insurance Payout"
+									value={-insurancePayout}
+									dim
+									muted={!applyInsurance}
+								/>
+								{!applyInsurance && (
+									<div className="text-right text-xs text-muted-foreground/60">
+										(not applied — overridden by selected policy)
+									</div>
+								)}
 							</>
+						) : (
+							<div className="flex justify-between text-xs text-muted-foreground/60 italic">
+								<span>− Insurance (no data)</span>
+								<span>0.00 ISK</span>
+							</div>
 						)}
 						<div className="my-1 border-t border-border/50" />
 						<MathRow
@@ -317,14 +340,14 @@ export function ReviewRequestForm({ request, onSuccess }: ReviewRequestFormProps
 										? 'line-through text-muted-foreground'
 										: isZeroPayout
 											? 'text-destructive'
-											: 'text-primary'
+											: 'text-green-400'
 								}
 							>
 								{formatISK(String(computedPayout))}
 							</span>
 						</div>
 						{overrideMillions !== null && (
-							<div className="flex justify-between font-bold text-primary">
+							<div className="flex justify-between font-bold text-green-400">
 								<span>Override</span>
 								<span>{formatISK(String(overrideMillions * 1_000_000))}</span>
 							</div>
@@ -476,43 +499,8 @@ export function ReviewRequestForm({ request, onSuccess }: ReviewRequestFormProps
 					</div>
 				</Card>
 
-				{/* Feedback text */}
-				<Card className="p-4">
-					<Label htmlFor="feedbackText" className="mb-2 block text-sm font-semibold">
-						Feedback to Pilot
-						{outcome === 'needs_context' || outcome === 'rejected' ? ' *' : ' (optional)'}
-					</Label>
-					<Textarea
-						id="feedbackText"
-						value={feedbackText}
-						onChange={(e) => setFeedbackText(e.target.value)}
-						placeholder={
-							outcome === 'needs_context'
-								? 'What additional information is needed?'
-								: outcome === 'rejected'
-									? 'Explain the reason for rejection...'
-									: 'Add a note to the pilot (optional)...'
-						}
-						rows={3}
-					/>
-					<p className="mt-1 text-xs text-muted-foreground">
-						Posted as a public comment on the request
-					</p>
-				</Card>
-
-				{/* Internal notes */}
-				<Card className="p-4">
-					<Label htmlFor="reviewNotes" className="mb-2 block text-sm font-semibold">
-						Internal Notes (optional)
-					</Label>
-					<Textarea
-						id="reviewNotes"
-						value={reviewNotes}
-						onChange={(e) => setReviewNotes(e.target.value)}
-						placeholder="Notes for other reviewers (not visible to pilot)..."
-						rows={3}
-					/>
-				</Card>
+				{/* Comment slot — passed in from parent */}
+				{commentSlot}
 
 				{/* Outcome + Submit */}
 				<Card className="p-4">
@@ -556,7 +544,7 @@ export function ReviewRequestForm({ request, onSuccess }: ReviewRequestFormProps
 
 					<div className="flex gap-2">
 						{showConfirm && (
-							<Button variant="secondary" size="sm" onClick={() => setShowConfirm(false)}>
+							<Button variant="secondary" onClick={() => setShowConfirm(false)}>
 								Back
 							</Button>
 						)}
@@ -576,6 +564,9 @@ export function ReviewRequestForm({ request, onSuccess }: ReviewRequestFormProps
 						</Button>
 					</div>
 				</Card>
+
+				{/* Appended content (comments + history injected from parent) */}
+				{rightAppend}
 			</div>
 		</div>
 	)
@@ -586,15 +577,23 @@ function MathRow({
 	value,
 	bold,
 	dim,
+	muted,
 	sign,
 }: {
 	label: string
 	value: number
 	bold?: boolean
 	dim?: boolean
+	muted?: boolean
 	sign?: '+' | '-'
 }) {
-	const cls = dim ? 'text-muted-foreground text-xs' : bold ? 'font-semibold' : ''
+	const cls = muted
+		? 'text-muted-foreground/50 text-xs line-through'
+		: dim
+			? 'text-muted-foreground text-xs'
+			: bold
+				? 'font-semibold'
+				: ''
 	return (
 		<div className={`flex justify-between ${cls}`}>
 			<span>{label}</span>

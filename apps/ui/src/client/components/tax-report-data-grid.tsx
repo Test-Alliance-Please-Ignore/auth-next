@@ -1,5 +1,16 @@
 import { MantineReactTable, useMantineReactTable } from 'mantine-react-table'
 
+import {
+	mrtPaperProps,
+	mrtPaginationProps,
+	mrtRowStyle,
+	mrtTableBodyCellProps,
+	mrtTableContainerProps,
+	mrtTableHeadCellProps,
+	mrtTableHeadProps,
+	mrtTableProps,
+} from '@/lib/mrt-theme'
+
 import type {
 	MRT_ColumnDef,
 	MRT_Row,
@@ -71,66 +82,19 @@ export function TaxReportDataGrid<Row extends object>({
 		pageCount: isServerPaginated ? pageCount : undefined,
 		rowCount: isServerPaginated ? rowCount : undefined,
 		paginationDisplayMode: 'pages',
-		mantinePaginationProps: {
-			showRowsPerPage: true,
-			rowsPerPageOptions: ['25', '50', '100', '200'],
-		},
-		mantinePaperProps: {
-			shadow: 'none',
-			radius: 'md',
-			withBorder: true,
-			className: 'tax-report-grid__paper',
-			style: {
-				background: 'hsl(var(--card))',
-				borderColor: 'hsl(var(--border))',
-				color: 'hsl(var(--foreground))',
-				overflow: 'hidden',
-			},
-		},
+		mantinePaginationProps: mrtPaginationProps,
+		mantinePaperProps: mrtPaperProps,
 		mantineTableContainerProps: {
-			className: 'tax-report-grid__container',
-			style: {
-				maxHeight: 'calc(100vh - 16rem)',
-			},
+			...mrtTableContainerProps,
+			style: { maxHeight: 'calc(100vh - 16rem)' },
 		},
-		mantineTableProps: {
-			striped: false,
-			highlightOnHover: false,
-			withColumnBorders: false,
-			withRowBorders: true,
-			className: 'tax-report-grid__table',
-			style: {
-				background: 'transparent',
-				color: 'hsl(var(--foreground))',
-			},
-		},
-		mantineTableHeadProps: {
-			className: 'tax-report-grid__head',
-			style: {
-				background: 'hsl(var(--background-elevated))',
-			},
-		},
-		mantineTableHeadCellProps: {
-			className: 'tax-report-grid__head-cell',
-			style: {
-				background: 'hsl(var(--background-elevated))',
-				borderBottom: '1px solid hsl(var(--border))',
-				color: 'hsl(var(--muted-foreground))',
-				fontSize: '0.75rem',
-				fontWeight: 700,
-				letterSpacing: '0.03em',
-				textTransform: 'uppercase',
-			},
-		},
-		mantineTableBodyCellProps: {
-			className: 'tax-report-grid__body-cell',
-			style: {
-				borderBottom: '1px solid hsl(var(--border) / 0.7)',
-				color: 'hsl(var(--foreground))',
-			},
-		},
+		mantineTableProps: mrtTableProps,
+		mantineTableHeadProps: mrtTableHeadProps,
+		mantineTableHeadCellProps: mrtTableHeadCellProps,
+		mantineTableBodyCellProps: mrtTableBodyCellProps,
 		mantineTableBodyRowProps: ({ row }) => ({
-			className: onRowClick ? 'tax-report-grid__row cursor-pointer' : 'tax-report-grid__row',
+			className: onRowClick ? 'mrt-grid__row cursor-pointer' : 'mrt-grid__row',
+			style: mrtRowStyle(row.index),
 			onClick: (event) => {
 				if (!onRowClick) return
 				const target = event.target as HTMLElement | null
@@ -198,7 +162,7 @@ export function TaxReportDataGrid<Row extends object>({
 	})
 
 	return (
-		<div className="tax-report-grid space-y-3">
+		<div className="space-y-3">
 			{error ? (
 				<div className="rounded-md border border-destructive/30 bg-destructive/5 px-3 py-2 text-sm text-destructive">
 					{error instanceof Error ? error.message : 'Failed to load report'}

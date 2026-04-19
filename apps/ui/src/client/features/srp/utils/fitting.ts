@@ -9,6 +9,7 @@ export interface SRPFittingItem {
 	slotIndex: number
 	unitPrice: string
 	lineTotal: string
+	isConsumable?: boolean
 }
 
 // Flags for equipped slots only (not cargo, drones in bay, etc.)
@@ -43,15 +44,19 @@ interface KillmailItem {
 interface SRPItemPrice {
 	typeId: string
 	price: string
+	isConsumable?: boolean
 }
 
 export function transformKillmailToFittingItems(
 	killmailItems: KillmailItem[],
-	srpItemPrices: SRPItemPrice[]
+	srpItemPrices: SRPItemPrice[],
+	itemNames: Record<string, string> = {}
 ): SRPFittingItem[] {
 	const priceMap = new Map<string, string>()
+	const consumableSet = new Set<string>()
 	for (const p of srpItemPrices) {
 		priceMap.set(p.typeId, p.price)
+		if (p.isConsumable) consumableSet.add(p.typeId)
 	}
 
 	const result: SRPFittingItem[] = []
@@ -67,13 +72,14 @@ export function transformKillmailToFittingItems(
 
 		result.push({
 			typeId,
-			typeName: typeId,
+			typeName: itemNames[typeId] ?? typeId,
 			quantity,
 			flag: item.flag,
 			slotType: slot.slotType,
 			slotIndex: slot.slotIndex,
 			unitPrice,
 			lineTotal,
+			...(consumableSet.has(typeId) ? { isConsumable: true } : {}),
 		})
 	}
 

@@ -25,7 +25,7 @@ export interface Srp {
 		characterId: string,
 		killmailId: string,
 		killmailHash: string,
-		requestedAmount?: string
+		contextText?: string
 	): Promise<SRPRequestResponse>
 	getRequest(requestId: string, userId: string): Promise<SRPRequestResponse | null>
 	getUserRequests(userId: string, limit?: number, offset?: number): Promise<SRPRequestResponse[]>
@@ -94,6 +94,7 @@ export interface Srp {
 	addComment(
 		requestId: string,
 		userId: string,
+		characterName: string,
 		content: string,
 		visibility?: 'public' | 'internal'
 	): Promise<SRPCommentResponse>
@@ -109,8 +110,7 @@ export interface Srp {
 	markPaid(
 		requestId: string,
 		payerUserId: string,
-		payerCharacterName: string,
-		paymentToken: string
+		payerCharacterName: string
 	): Promise<SRPRequestResponse>
 
 	// Policy Management (manager-only create/update/delete; all roles can list)
@@ -122,6 +122,7 @@ export interface Srp {
 	// Configuration
 	getConfig(): Promise<SRPConfigResponse | null>
 	updateConfig(userId: string, updates: UpdateSRPConfig): Promise<SRPConfigResponse>
+
 
 	// Statistics
 	getStats(startDate?: string, endDate?: string, corporationId?: string): Promise<SRPStatsResponse>
@@ -224,7 +225,7 @@ export const CreateSRPRequestSchema = z.object({
 	characterId: z.string(),
 	killmailId: z.string(),
 	killmailHash: z.string(),
-	requestedAmount: z.string().optional(),
+	contextText: z.string().max(2000).optional(),
 })
 export type CreateSRPRequest = z.infer<typeof CreateSRPRequestSchema>
 
@@ -331,8 +332,10 @@ export interface SRPRequestResponse {
 	shipTypeId: string
 	shipTypeName: string
 	shipValue: string // ISK as text
+	solarSystemId?: string
+	solarSystemName?: string
 
-	requestedAmount?: string
+	contextText?: string
 	requestStatus: RequestStatus
 
 	approvedAmount?: string
@@ -341,7 +344,6 @@ export interface SRPRequestResponse {
 	reviewedAt?: string
 	reviewNotes?: string // Only visible to reviewers
 
-	paymentToken?: string
 	paymentDate?: string
 	paymentCharacterName?: string
 
@@ -365,9 +367,17 @@ export interface SRPRequestResponse {
 	srpPriceSnapshotTime?: string
 	srpItemPrices?: Array<{
 		typeId: string
+		typeName: string
 		quantity: number
 		unitPrice: string
 		lineTotal: string
+		isConsumable?: boolean
+	}>
+	killmailItems?: Array<{
+		item_type_id: number
+		flag: number
+		quantity_destroyed?: number
+		quantity_dropped?: number
 	}>
 
 	createdAt: string
@@ -386,6 +396,10 @@ export interface SRPCommentResponse {
 	requestId: string
 	authorUserId: string
 	authorCharacterName: string
+	/** Primary character ID — populated by the HTTP layer for avatar rendering */
+	authorCharacterId?: string
+	/** Commenter's role relative to this request — populated by the HTTP layer */
+	authorRole?: 'requestor' | 'staff'
 	content: string
 	visibility: CommentVisibility
 	isEdited: boolean
@@ -461,7 +475,16 @@ export interface SRPValuationPreview {
 	pricingSource: 'historic' | 'fallback'
 	/** Whether insurance prices came from stored daily history or live ESI cache fallback. Absent for pod losses. */
 	insuranceSource?: 'historic' | 'fallback'
-	itemPrices: Array<{ typeId: string; quantity: number; unitPrice: string; lineTotal: string }>
+	itemPrices: Array<{ typeId: string; typeName: string; quantity: number; unitPrice: string; lineTotal: string; isConsumable?: boolean }>
+	/** Raw victim items from the killmail — used to render the fitting panel. */
+	victimItems: Array<{
+		typeId: string
+		flag: number
+		quantityDestroyed: number
+		quantityDropped: number
+	}>
+	/** Resolved type names for all item and ship type IDs in this killmail. */
+	itemNames: Record<string, string>
 	/** Type IDs that had no market data at the loss date (priced at 0). */
 	missingPriceTypeIds: string[]
 }

@@ -20,6 +20,7 @@ import {
 	invTypes,
 	moonResources,
 	moons,
+	universeConstellations,
 	universeNpcStations,
 	universePlanets,
 	universeRegions,
@@ -30,6 +31,7 @@ import { KillmailService } from './services/killmail.service'
 import { parseInventory } from './utils/inventory-parser'
 
 import type { InventoryParseResult } from '@repo/eve-types'
+import type { EsiTypeResolver } from '@repo/esi'
 import type { EsiResponse, EveTokenStore } from '@repo/eve-token-store'
 import type {
 	EsiGetStructureMarketDataResponse,
@@ -45,6 +47,7 @@ import type {
 	KillmailDetail,
 	UniverseNpcStation,
 	UniversePlanet,
+	UniverseConstellation,
 	UniverseRegion,
 	UniverseSolarSystem,
 	UniverseStargate,
@@ -74,6 +77,7 @@ export class UniverseDO extends DurableObject<Env, {}> implements Universe {
 	private typeNamesCache: LRUCache<InvType> // Cache for type ID -> full InvType object
 	private regionIdsCache: LRUCache<UniverseRegion>
 	private regionNamesCache: LRUCache<UniverseRegion>
+	private constellationIdsCache: LRUCache<UniverseConstellation>
 	private solarSystemIdsCache: LRUCache<UniverseSolarSystem>
 	private solarSystemNamesCache: LRUCache<UniverseSolarSystem>
 	private planetIdsCache: LRUCache<UniversePlanet>
@@ -101,6 +105,7 @@ export class UniverseDO extends DurableObject<Env, {}> implements Universe {
 		this.typeNamesCache = new LRUCache<InvType>(2000) // Cache for type ID -> full InvType object
 		this.regionIdsCache = new LRUCache<UniverseRegion>(100)
 		this.regionNamesCache = new LRUCache<UniverseRegion>(100)
+		this.constellationIdsCache = new LRUCache<UniverseConstellation>(500)
 		this.solarSystemIdsCache = new LRUCache<UniverseSolarSystem>(1000)
 		this.solarSystemNamesCache = new LRUCache<UniverseSolarSystem>(1000)
 		this.planetIdsCache = new LRUCache<UniversePlanet>(2000)
@@ -567,6 +572,52 @@ export class UniverseDO extends DurableObject<Env, {}> implements Universe {
 				}
 			}
 
+			// Fall back to ESI type resolver for any IDs not in the SDE
+			const sdeUnresolved = Object.entries(result)
+				.filter(([, v]) => v === null)
+				.map(([id]) => id)
+
+			if (sdeUnresolved.length > 0) {
+				const resolverStub = getStub<EsiTypeResolver>(this.env.ESI_TYPE_RESOLVER, 'global')
+				const fallbackNames = await resolverStub.resolveIds(sdeUnresolved).catch(() => ({}) as Record<string, string>)
+				const newRows: typeof invTypes.$inferInsert[] = []
+				for (const [id, name] of Object.entries(fallbackNames)) {
+					if (name) {
+						const stub: InvType = {
+							typeId: id,
+							typeName: name,
+							groupId: '',
+							description: '',
+							mass: '0',
+							volume: '0',
+							capacity: '0',
+							portionSize: 1,
+							raceId: null,
+							basePrice: null,
+							published: false,
+							marketGroupId: null,
+							iconId: null,
+							soundId: null,
+							graphicId: '',
+						}
+						result[id] = stub
+						this.typeNamesCache.set(id, stub)
+						this.typeIdsCache.set(name, stub)
+						newRows.push(stub)
+					}
+				}
+				if (newRows.length > 0) {
+					await this.db
+						.insert(invTypes)
+						.values(newRows)
+						.onConflictDoUpdate({
+							target: invTypes.typeId,
+							set: { typeName: sql`EXCLUDED.type_name` },
+						})
+						.catch(() => {})
+				}
+			}
+
 			return result
 		} catch (error) {
 			console.error('Failed to resolve type details', error)
@@ -723,6 +774,35 @@ export class UniverseDO extends DurableObject<Env, {}> implements Universe {
 				}
 			}
 
+			const unresolved = Object.entries(result)
+				.filter(([, v]) => v === null)
+				.map(([id]) => id)
+
+			if (unresolved.length > 0) {
+				const resolverStub = getStub<EsiTypeResolver>(this.env.ESI_TYPE_RESOLVER, 'global')
+				const fallbackNames = await resolverStub.resolveIds(unresolved).catch(() => ({}) as Record<string, string>)
+				const newRows: typeof universeRegions.$inferInsert[] = []
+				for (const [id, name] of Object.entries(fallbackNames)) {
+					if (name) {
+						const regionData: UniverseRegion = { regionId: id, regionName: name }
+						result[id] = regionData
+						this.regionIdsCache.set(id, regionData)
+						this.regionNamesCache.set(name, regionData)
+						newRows.push({ regionId: id, regionName: name })
+					}
+				}
+				if (newRows.length > 0) {
+					await this.db
+						.insert(universeRegions)
+						.values(newRows)
+						.onConflictDoUpdate({
+							target: universeRegions.regionId,
+							set: { regionName: sql`EXCLUDED.region_name` },
+						})
+						.catch(() => {})
+				}
+			}
+
 			return result
 		} catch (error) {
 			console.error('Failed to resolve regions by IDs', error)
@@ -777,6 +857,100 @@ export class UniverseDO extends DurableObject<Env, {}> implements Universe {
 		}
 	}
 
+	async resolveConstellationsByIds(
+		constellationIds: string[]
+	): Promise<Record<string, UniverseConstellation | null>> {
+		try {
+			const result: Record<string, UniverseConstellation | null> = {}
+			const cacheMisses: string[] = []
+
+			for (const id of constellationIds) {
+				const cached = this.constellationIdsCache.get(id)
+				if (cached !== undefined) {
+					result[id] = cached
+				} else {
+					cacheMisses.push(id)
+				}
+			}
+
+			if (cacheMisses.length > 0) {
+				const rows = await this.db
+					.select()
+					.from(universeConstellations)
+					.where(inArray(universeConstellations.constellationId, cacheMisses))
+
+				for (const row of rows) {
+					const data: UniverseConstellation = {
+						constellationId: row.constellationId,
+						constellationName: row.constellationName,
+						regionId: row.regionId,
+					}
+					this.constellationIdsCache.set(row.constellationId, data)
+					result[row.constellationId] = data
+				}
+
+				for (const missedId of cacheMisses) {
+					if (!(missedId in result)) {
+						result[missedId] = null
+					}
+				}
+			}
+
+			const unresolved = Object.entries(result)
+				.filter(([, v]) => v === null)
+				.map(([id]) => id)
+
+			if (unresolved.length > 0) {
+				const fetched = await Promise.allSettled(
+					unresolved.map(async (id) => {
+						const res = await fetch(
+							`https://esi.evetech.net/latest/universe/constellations/${id}/?datasource=tranquility`
+						)
+						if (!res.ok) return null
+						const data = (await res.json()) as {
+							constellation_id: number
+							name: string
+							region_id: number
+						}
+						return {
+							constellationId: String(data.constellation_id),
+							constellationName: data.name,
+							regionId: String(data.region_id),
+						} satisfies UniverseConstellation
+					})
+				)
+
+				const newRows: typeof universeConstellations.$inferInsert[] = []
+				for (const settled of fetched) {
+					if (settled.status === 'fulfilled' && settled.value) {
+						const c = settled.value
+						result[c.constellationId] = c
+						this.constellationIdsCache.set(c.constellationId, c)
+						newRows.push(c)
+					}
+				}
+				if (newRows.length > 0) {
+					await this.db
+						.insert(universeConstellations)
+						.values(newRows)
+						.onConflictDoUpdate({
+							target: universeConstellations.constellationId,
+							set: {
+								constellationName: sql`EXCLUDED.constellation_name`,
+								regionId: sql`EXCLUDED.region_id`,
+							},
+						})
+						.catch(() => {})
+				}
+			}
+
+			return result
+		} catch (error) {
+			console.error('Failed to resolve constellations by IDs', error)
+			throw error
+		}
+	}
+
 	/**
 	 * Resolve solar systems by IDs.
 	 */
@@ -819,6 +993,77 @@ export class UniverseDO extends DurableObject<Env, {}> implements Universe {
 					if (!(missedId in result)) {
 						result[missedId] = null
 					}
+				}
+			}
+
+			const unresolved = Object.entries(result)
+				.filter(([, v]) => v === null)
+				.map(([id]) => id)
+
+			if (unresolved.length > 0) {
+				const fetched = await Promise.allSettled(
+					unresolved.map(async (id) => {
+						const res = await fetch(
+							`https://esi.evetech.net/latest/universe/systems/${id}/?datasource=tranquility`
+						)
+						if (!res.ok) return null
+						const data = (await res.json()) as {
+							system_id: number
+							name: string
+							constellation_id: number
+							security_status: number
+						}
+						return {
+							systemId: String(data.system_id),
+							systemName: data.name,
+							constellationId: String(data.constellation_id),
+							securityStatus: String(data.security_status),
+						}
+					})
+				)
+
+				// Resolve constellations (which also provides regionId) for all fetched systems
+				const constellationIds: string[] = []
+				for (const s of fetched) {
+					if (s.status === 'fulfilled' && s.value) constellationIds.push(s.value.constellationId)
+				}
+				const constellationMap = constellationIds.length > 0
+					? await this.resolveConstellationsByIds([...new Set(constellationIds)])
+					: {}
+
+				const newRows: typeof universeSolarSystems.$inferInsert[] = []
+				for (const settled of fetched) {
+					if (settled.status === 'fulfilled' && settled.value) {
+						const s = settled.value
+						const constellation = constellationMap[s.constellationId]
+						if (!constellation) continue
+						const systemData: UniverseSolarSystem = {
+							solarSystemId: s.systemId,
+							solarSystemName: s.systemName,
+							constellationId: s.constellationId,
+							regionId: constellation.regionId,
+							securityStatus: s.securityStatus,
+						}
+						result[s.systemId] = systemData
+						this.solarSystemIdsCache.set(s.systemId, systemData)
+						this.solarSystemNamesCache.set(s.systemName, systemData)
+						newRows.push(systemData)
+					}
+				}
+				if (newRows.length > 0) {
+					await this.db
+						.insert(universeSolarSystems)
+						.values(newRows)
+						.onConflictDoUpdate({
+							target: universeSolarSystems.solarSystemId,
+							set: {
+								solarSystemName: sql`EXCLUDED.solar_system_name`,
+								constellationId: sql`EXCLUDED.constellation_id`,
+								regionId: sql`EXCLUDED.region_id`,
+								securityStatus: sql`EXCLUDED.security_status`,
+							},
+						})
+						.catch(() => {})
 				}
 			}
 

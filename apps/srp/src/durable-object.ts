@@ -4,7 +4,7 @@ import { and, desc, eq, inArray } from '@repo/db-utils'
 import { getStub } from '@repo/do-utils'
 import { getEsiInstanceForCharacter } from '@repo/esi'
 import { createEveRegionId, createEveTypeId } from '@repo/eve-types'
-import { generateKillmailUrl, generatePaymentToken, roundDownToMillionISK } from '@repo/srp'
+import { generateKillmailUrl, roundDownToMillionISK } from '@repo/srp'
 
 import { createDb } from './db'
 import { srpComments, srpConfig, srpPolicies, srpRequestHistory, srpRequests } from './db/schema'
@@ -16,8 +16,8 @@ import type { srpRequests as srpRequestsTable } from './db/schema'
 
 type KillmailDataJson = NonNullable<typeof srpRequestsTable.$inferInsert.killmailData>
 
-import type { EsiTypeResolver } from '@repo/esi'
 import type { EveCharacterData } from '@repo/eve-character-data'
+import type { EveCorporationData } from '@repo/eve-corporation-data'
 import type { LatestMarketPrice, Markets } from '@repo/markets'
 import type {
 	AppliedModifier,
@@ -35,6 +35,7 @@ import type {
 	SRPValuationPreview,
 	UpdateSRPConfig,
 } from '@repo/srp'
+import type { Universe } from '@repo/universe'
 import type { KillmailDetail } from '@repo/universe'
 import type { Env } from './context'
 
@@ -60,7 +61,7 @@ export class SrpDO extends DurableObject<Env> implements Srp {
 		characterId: string,
 		killmailId: string,
 		killmailHash: string,
-		requestedAmount?: string
+		contextText?: string
 	): Promise<SRPRequestResponse> {
 		// Check if request already exists for this killmail
 		const existing = await this.db.query.srpRequests.findFirst({
@@ -86,11 +87,31 @@ export class SrpDO extends DurableObject<Env> implements Srp {
 			throw new Error('Character not found')
 		}
 
-		// TODO: Fetch ship type name from static data
-		const shipTypeName = `Ship ${killmailData.shipTypeId}`
+		// Resolve corporation name from eve-corporation-data
+		const corpId = characterInfo.corporationId
+		const corpStub = getStub<EveCorporationData>(this.env.EVE_CORPORATION_DATA, String(corpId))
+		const corpInfo = await corpStub.getCorporationInfo(String(corpId)).catch(() => null)
+		const resolvedCorporationName = corpInfo?.name ?? 'Unknown'
 
-		// Generate payment token
-		const paymentToken = generatePaymentToken()
+		const rawSolarSystemId = (killmailData.killmailData as any)?.solar_system_id
+		const solarSystemId = rawSolarSystemId ? String(rawSolarSystemId) : null
+
+		const universeStub = getStub<Universe>(this.env.UNIVERSE, 'default')
+		const [typeMap, systemMap] = await Promise.all([
+			universeStub
+				.resolveTypeNamesByIds([String(killmailData.shipTypeId)])
+				.catch(() => ({}) as Record<string, null>),
+			solarSystemId
+				? universeStub
+						.resolveSolarSystemsByIds([solarSystemId])
+						.catch(() => ({}) as Record<string, null>)
+				: Promise.resolve({} as Record<string, null>),
+		])
+		const shipTypeName =
+			typeMap[String(killmailData.shipTypeId)]?.typeName ?? `Ship ${killmailData.shipTypeId}`
+		const solarSystemName = solarSystemId
+			? (systemMap[solarSystemId]?.solarSystemName ?? null)
+			: null
 
 		// Calculate SRP valuation from Jita prices at time of loss
 		const config = await this.getConfig()
@@ -116,14 +137,15 @@ export class SrpDO extends DurableObject<Env> implements Srp {
 				characterId,
 				characterName: characterInfo.name,
 				corporationId: characterInfo.corporationId,
-				corporationName: characterInfo.corporationName || 'Unknown',
+				corporationName: resolvedCorporationName,
 				killmailId,
 				killmailHash,
 				shipTypeId: killmailData.shipTypeId!,
 				shipTypeName,
 				shipValue: killmailData.totalValue!,
-				requestedAmount: requestedAmount || null,
-				paymentToken,
+				solarSystemId,
+				solarSystemName,
+				contextText: contextText || null,
 				lossDate: killmailData.killmailTime,
 				killmailData: killmailData.killmailData as any,
 				srpEquipmentValue: valuation?.equipmentValue ?? null,
@@ -185,6 +207,29 @@ export class SrpDO extends DurableObject<Env> implements Srp {
 			.filter((item) => item.unitPrice === '0')
 			.map((item) => item.typeId)
 
+		const rawItems = (killmailData.killmailData as any)?.victim?.items ?? []
+		const victimItems = rawItems
+			.filter((i: any) => i.item_type_id != null && i.flag != null)
+			.map((i: any) => ({
+				typeId: String(i.item_type_id),
+				flag: i.flag as number,
+				quantityDestroyed: i.quantity_destroyed ?? 0,
+				quantityDropped: i.quantity_dropped ?? 0,
+			}))
+
+		const allTypeIds = [
+			...new Set([
+				String(killmailData.shipTypeId),
+				...victimItems.map((i: { typeId: string }) => i.typeId),
+			]),
+		]
+		const universeStub = getStub<Universe>(this.env.UNIVERSE, 'default')
+		const typeMap = await universeStub.resolveTypeNamesByIds(allTypeIds).catch(() => ({}) as Record<string, null>)
+		const itemNames: Record<string, string> = {}
+		for (const [id, type] of Object.entries(typeMap)) {
+			if (type?.typeName) itemNames[id] = type.typeName
+		}
+
 		return {
 			equipmentValue: valuation.equipmentValue,
 			insurancePremium: valuation.insurancePremium,
@@ -196,6 +241,8 @@ export class SrpDO extends DurableObject<Env> implements Srp {
 			pricingSource: valuation.pricingSource,
 			insuranceSource: valuation.insuranceSource,
 			itemPrices: valuation.itemPrices,
+			victimItems,
+			itemNames,
 			missingPriceTypeIds,
 		}
 	}
@@ -262,7 +309,7 @@ export class SrpDO extends DurableObject<Env> implements Srp {
 		// Fetch losses from eve-character-data for each character
 		const allLosses: KillmailDetail[] = []
 
-		const typeResolverStub = getStub<EsiTypeResolver>(this.env.ESI_TYPE_RESOLVER, 'global')
+		const universeStub = getStub<Universe>(this.env.UNIVERSE, 'default')
 		for (const characterId of characterIds) {
 			const esiInstance = getEsiInstanceForCharacter(this.env.ESI, characterId)
 			const killmails = await esiInstance.fetchCharacterKillmails(characterId)
@@ -279,10 +326,21 @@ export class SrpDO extends DurableObject<Env> implements Srp {
 			)
 		}
 
-		const resolved = await typeResolverStub.resolveIds([
-			...new Set(allLosses.map((l) => l.victim.ship_type_id)),
-			...new Set(allLosses.map((l) => l.solar_system_id)),
+		const shipTypeIds = [...new Set(allLosses.map((l) => String(l.victim.ship_type_id)))]
+		const systemIds = [...new Set(allLosses.map((l) => String(l.solar_system_id)))]
+
+		const [typeMap, systemMap] = await Promise.all([
+			universeStub.resolveTypeNamesByIds(shipTypeIds),
+			universeStub.resolveSolarSystemsByIds(systemIds),
 		])
+
+		const resolved: Record<string, string | undefined> = {}
+		for (const [id, type] of Object.entries(typeMap)) {
+			if (type?.typeName) resolved[id] = type.typeName
+		}
+		for (const [id, system] of Object.entries(systemMap)) {
+			if (system?.solarSystemName) resolved[id] = system.solarSystemName
+		}
 		// Get existing SRP requests for these losses
 		const killmailIds = allLosses.map((l) => l.killmail_id)
 
@@ -304,7 +362,7 @@ export class SrpDO extends DurableObject<Env> implements Srp {
 				const request = requestMap.get(loss.killmail_id)
 				return {
 					killmailId: loss.killmail_id,
-					killmailHash: 'buttes',
+					killmailHash: loss.killmail_hash ?? '',
 					killmailTime: loss.killmail_time,
 					shipTypeId: loss.victim.ship_type_id,
 					shipTypeName: resolved[loss.victim.ship_type_id],
@@ -521,6 +579,7 @@ export class SrpDO extends DurableObject<Env> implements Srp {
 	async addComment(
 		requestId: string,
 		userId: string,
+		characterName: string,
 		content: string,
 		visibility: 'public' | 'internal' = 'public'
 	): Promise<SRPCommentResponse> {
@@ -529,9 +588,6 @@ export class SrpDO extends DurableObject<Env> implements Srp {
 		})
 
 		if (!request) throw new Error('Request not found')
-
-		// TODO: Get character name from user
-		const characterName = 'User'
 
 		const result = await this.db
 			.insert(srpComments)
@@ -641,8 +697,7 @@ export class SrpDO extends DurableObject<Env> implements Srp {
 	async markPaid(
 		requestId: string,
 		payerUserId: string,
-		payerCharacterName: string,
-		paymentToken: string
+		payerCharacterName: string
 	): Promise<SRPRequestResponse> {
 		const request = await this.db.query.srpRequests.findFirst({
 			where: eq(srpRequests.id, requestId),
@@ -650,7 +705,6 @@ export class SrpDO extends DurableObject<Env> implements Srp {
 
 		if (!request) throw new Error('Request not found')
 		if (request.requestStatus !== 'approved') throw new Error('Request is not in approved state')
-		if (request.paymentToken !== paymentToken) throw new Error('Invalid payment token')
 
 		const updated = await this.db
 			.update(srpRequests)
@@ -809,13 +863,12 @@ export class SrpDO extends DurableObject<Env> implements Srp {
 		priceSnapshotTime: Date | null
 		pricingSource: 'historic' | 'fallback'
 		insuranceSource?: 'historic' | 'fallback'
-		itemPrices: Array<{ typeId: string; quantity: number; unitPrice: string; lineTotal: string }>
+		itemPrices: Array<{ typeId: string; typeName: string; quantity: number; unitPrice: string; lineTotal: string; isConsumable?: boolean }>
 	} | null> {
 		const equippedByType = buildEquippedByType(killmailData?.victim?.items ?? [])
 
-		if (equippedByType.size === 0) {
-			return null
-		}
+		// Always include the ship hull itself (qty 1)
+		equippedByType.set(shipTypeId, (equippedByType.get(shipTypeId) ?? 0) + 1)
 
 		// Fetch CCP universe average prices at time of loss from Markets DO
 		const priceDate = lossDate.toISOString().slice(0, 10)
@@ -849,12 +902,22 @@ export class SrpDO extends DurableObject<Env> implements Srp {
 			}
 		}
 
+		// Resolve type names and category metadata for all items
+		const universeStub = getStub<Universe>(this.env.UNIVERSE, 'default')
+		const allTypeIds = [...equippedByType.keys()]
+		const [typeNameMap, typeMetaMap] = await Promise.all([
+			universeStub.resolveTypeNamesByIds(allTypeIds).catch(() => ({}) as Record<string, null>),
+			universeStub.resolveTypeMetadataByIds(allTypeIds).catch(() => ({}) as Record<string, { categoryName: string; marketGroupName: string | null }>),
+		])
+
 		// Build per-item breakdown
 		const itemPrices: Array<{
 			typeId: string
+			typeName: string
 			quantity: number
 			unitPrice: string
 			lineTotal: string
+			isConsumable?: boolean
 		}> = []
 		let equipmentValueCents = 0n // work in integer ISK (prices are already ISK, not fractions)
 
@@ -863,12 +926,18 @@ export class SrpDO extends DurableObject<Env> implements Srp {
 			// Parse price as float then convert to integer ISK (truncate decimals)
 			const unitPriceIsk = rawPrice != null ? BigInt(Math.floor(parseFloat(rawPrice))) : 0n
 			const lineTotalIsk = unitPriceIsk * BigInt(quantity)
-			equipmentValueCents += lineTotalIsk
+			// Charges (ammo, missiles, probes, etc.) are consumables — shown in fitting but not valued
+			const isConsumable = typeMetaMap[typeId]?.categoryName === 'Charge'
+			if (!isConsumable) {
+				equipmentValueCents += lineTotalIsk
+			}
 			itemPrices.push({
 				typeId,
+				typeName: typeNameMap[typeId]?.typeName ?? typeId,
 				quantity,
 				unitPrice: String(unitPriceIsk),
 				lineTotal: String(lineTotalIsk),
+				...(isConsumable ? { isConsumable: true } : {}),
 			})
 		}
 
@@ -889,7 +958,7 @@ export class SrpDO extends DurableObject<Env> implements Srp {
 					const payout = BigInt(Math.floor(ins.platinumPayout))
 					insurancePremium = String(cost)
 					insurancePayout = String(payout)
-					netInsurance = payout > cost ? payout - cost : 0n
+					netInsurance = payout - cost
 					insuranceSource = ins.source
 				}
 			} catch (err) {
@@ -945,14 +1014,15 @@ export class SrpDO extends DurableObject<Env> implements Srp {
 			shipTypeId: request.shipTypeId,
 			shipTypeName: request.shipTypeName,
 			shipValue: request.shipValue,
-			requestedAmount: request.requestedAmount ?? undefined,
+			solarSystemId: request.solarSystemId ?? undefined,
+			solarSystemName: request.solarSystemName ?? undefined,
+			contextText: request.contextText ?? undefined,
 			requestStatus: request.requestStatus,
 			approvedAmount: request.approvedAmount ?? undefined,
 			reviewerId: request.reviewerId ?? undefined,
 			reviewerCharacterName: request.reviewerCharacterName ?? undefined,
 			reviewedAt: request.reviewedAt?.toISOString(),
 			reviewNotes: request.reviewNotes ?? undefined,
-			paymentToken: request.paymentToken,
 			paymentDate: request.paymentDate?.toISOString(),
 			paymentCharacterName: request.paymentCharacterName ?? undefined,
 			appliedModifierPolicyId: request.appliedModifierPolicyId ?? undefined,
@@ -970,6 +1040,7 @@ export class SrpDO extends DurableObject<Env> implements Srp {
 			srpFinalValue: request.srpFinalValue ?? undefined,
 			srpPriceSnapshotTime: request.srpPriceSnapshotTime?.toISOString() ?? undefined,
 			srpItemPrices: (request.srpItemPrices as any) ?? undefined,
+			killmailItems: (request.killmailData as any)?.victim?.items ?? undefined,
 			createdAt: request.createdAt.toISOString(),
 			updatedAt: request.updatedAt.toISOString(),
 			comments: request.comments?.map((c: any) => ({
@@ -1068,24 +1139,25 @@ export class SrpDO extends DurableObject<Env> implements Srp {
 		if (!request) throw new Error('Request not found')
 
 		// Load policies if referenced
-		let modifierPolicyName: string | null = null
-		let capPolicyName: string | null = null
+		let modifierPolicy: typeof srpPolicies.$inferSelect | null = null
+		let capPolicy: typeof srpPolicies.$inferSelect | null = null
 
 		if (data.appliedModifierPolicyId) {
-			const p = await this.db.query.srpPolicies.findFirst({
+			modifierPolicy = await this.db.query.srpPolicies.findFirst({
 				where: eq(srpPolicies.id, data.appliedModifierPolicyId),
-			})
-			if (!p) throw new Error('Modifier policy not found')
-			modifierPolicyName = p.name
+			}) ?? null
+			if (!modifierPolicy) throw new Error('Modifier policy not found')
 		}
 
 		if (data.appliedCapPolicyId) {
-			const p = await this.db.query.srpPolicies.findFirst({
+			capPolicy = await this.db.query.srpPolicies.findFirst({
 				where: eq(srpPolicies.id, data.appliedCapPolicyId),
-			})
-			if (!p) throw new Error('Cap policy not found')
-			capPolicyName = p.name
+			}) ?? null
+			if (!capPolicy) throw new Error('Cap policy not found')
 		}
+
+		const modifierPolicyName = modifierPolicy?.name ?? null
+		const capPolicyName = capPolicy?.name ?? null
 
 		// Compute approved amount
 		let approvedAmount: string
@@ -1096,7 +1168,7 @@ export class SrpDO extends DurableObject<Env> implements Srp {
 				String(BigInt(data.reviewerOverrideMillions) * 1_000_000n)
 			)
 		} else {
-			approvedAmount = this.computeReviewPayout(request, data)
+			approvedAmount = this.computeReviewPayout(request, data, modifierPolicy, capPolicy)
 		}
 
 		if (approvedAmount === '0' && data.outcome === 'approved') {
@@ -1164,73 +1236,63 @@ export class SrpDO extends DurableObject<Env> implements Srp {
 
 		// Auto-post feedback as public comment
 		if (data.feedbackText) {
-			await this.addComment(requestId, reviewerUserId, data.feedbackText, 'public')
+			await this.addComment(requestId, reviewerUserId, reviewerCharacterName, data.feedbackText, 'public')
 		}
 
 		// Auto-post review notes as internal comment
 		if (data.reviewNotes) {
-			await this.addComment(requestId, reviewerUserId, data.reviewNotes, 'internal')
+			await this.addComment(requestId, reviewerUserId, reviewerCharacterName, data.reviewNotes, 'internal')
 		}
 
 		return this.formatRequest(updated[0])
 	}
 
 	/** Computes the payout amount from policy + modifiers. Does NOT apply override. */
-	private computeReviewPayout(request: any, data: SRPReviewSubmission): string {
-		const equipmentValue = BigInt(request.srpEquipmentValue ?? '0')
+	private computeReviewPayout(
+		request: any,
+		data: SRPReviewSubmission,
+		modifierPolicy: typeof srpPolicies.$inferSelect | null,
+		capPolicy: typeof srpPolicies.$inferSelect | null
+	): string {
+		// Use floating-point arithmetic to mirror the UI calculation, then convert at the end
+		let current = parseFloat(request.srpEquipmentValue ?? '0')
 
-		// Step 1: Start from equipment value
-		let current = equipmentValue
-
-		// Step 2: Insurance delta (if policy.applyInsuranceDelta is true)
-		if (data.appliedModifierPolicyId && request.srpInsurancePayout && request.srpInsurancePremium) {
-			// Will be applied in step 3 via the policy config — handled below
+		// Step 1: Insurance delta — applied by default unless policy explicitly disables it
+		const modifierConfig = modifierPolicy?.config as { rate?: string; applyInsuranceDelta?: boolean } | null
+		const applyInsuranceDelta = modifierConfig?.applyInsuranceDelta ?? true
+		if (applyInsuranceDelta) {
+			const netInsurance = parseFloat(request.srpNetInsurance ?? '0')
+			current = Math.max(0, current - netInsurance)
 		}
 
-		// Load modifier policy config from DB synchronously is not possible here.
-		// Policies were already validated; we need the config inline.
-		// For now, apply the modifier steps using just numeric inputs:
-		// The actual policy config is not passed in data — we just use the payout delta
-		// that's already stored on the request (srpNetInsurance).
-		// Step 2: insurance delta
-		const netInsurance = BigInt(request.srpNetInsurance ?? '0')
-		if (data.appliedModifierPolicyId) {
-			// Policy applies insurance delta — subtract it
-			current = current > netInsurance ? current - netInsurance : 0n
+		// Step 2: Coverage rate from modifier policy (default 1.0)
+		if (modifierConfig?.rate != null) {
+			current = current * parseFloat(modifierConfig.rate)
 		}
 
-		// Step 3: Coverage rate — not stored here; for now use 1.0 if we don't have the config.
-		// The rate is stored in the policy config (jsonb). Since we need it synchronously,
-		// we skip it here and rely on the caller (submitReview) to pre-load the policy.
-		// For a clean implementation the caller should pass the resolved rate.
-		// This is acceptable because the UI also computes and shows the math.
-
-		// Step 4: Ad-hoc modifiers in order
+		// Step 3: Ad-hoc modifiers in order
 		for (const mod of data.appliedModifiers) {
-			const amount = BigInt(mod.amount)
 			if (mod.mode === 'percentage') {
-				// percentage of current
-				const delta = (current * amount) / 100n
-				if (mod.modifierType === 'deduction') {
-					current = current > delta ? current - delta : 0n
-				} else {
-					current += delta
-				}
+				const factor = mod.modifierType === 'deduction' ? 1 - mod.amount / 100 : 1 + mod.amount / 100
+				current = current * factor
 			} else {
-				// value: N × 1,000,000 ISK
-				const delta = amount * 1_000_000n
-				if (mod.modifierType === 'deduction') {
-					current = current > delta ? current - delta : 0n
-				} else {
-					current += delta
-				}
+				const delta = mod.amount * 1_000_000
+				current = mod.modifierType === 'deduction' ? current - delta : current + delta
 			}
 		}
 
-		// Step 5: Clamp to 0
-		if (current < 0n) current = 0n
+		// Step 4: Clamp to 0
+		current = Math.max(0, current)
 
-		return roundDownToMillionISK(String(current))
+		// Step 5: Cap policy
+		if (capPolicy) {
+			const capConfig = capPolicy.config as { maxPayoutMillions?: number } | null
+			if (capConfig?.maxPayoutMillions != null) {
+				current = Math.min(current, capConfig.maxPayoutMillions * 1_000_000)
+			}
+		}
+
+		return roundDownToMillionISK(String(Math.round(current)))
 	}
 
 	// ========================================================================

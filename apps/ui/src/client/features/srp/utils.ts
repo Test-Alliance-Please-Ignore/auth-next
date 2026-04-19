@@ -69,15 +69,15 @@ export function getRequestStatusVariant(
 ): 'warning' | 'default' | 'success' | 'destructive' | 'ghost' {
 	switch (status) {
 		case 'pending':
-			return 'warning'
+			return 'ghost'
 		case 'needs_context':
-			return 'default'
+			return 'warning'
 		case 'approved':
-			return 'success'
+			return 'default'
 		case 'rejected':
 			return 'destructive'
 		case 'paid':
-			return 'ghost'
+			return 'success'
 		default:
 			return 'ghost'
 	}

@@ -41,35 +41,25 @@ export function RequestTable({ requests, isLoading }: RequestTableProps) {
 	}
 
 	return (
-		<div className="overflow-hidden rounded-lg border-2 border-primary/20 shadow-lg">
+		<div className="rounded-md border">
 			<Table>
 				<TableHeader>
-					<TableRow className="border-b-2 border-primary/30 bg-primary/10 hover:bg-primary/10">
-						<TableHead className="font-bold text-foreground">Ship</TableHead>
-						<TableHead className="font-bold text-foreground">Character</TableHead>
-						<TableHead className="font-bold text-foreground">Date</TableHead>
-						<TableHead className="text-right font-bold text-foreground">Requested</TableHead>
-						<TableHead className="text-right font-bold text-foreground">Approved</TableHead>
-						<TableHead className="font-bold text-foreground">Status</TableHead>
-						<TableHead className="text-right font-bold text-foreground">Actions</TableHead>
+					<TableRow>
+						<TableHead>Ship</TableHead>
+						<TableHead>Character</TableHead>
+						<TableHead>Date</TableHead>
+						<TableHead className="text-right">Approved</TableHead>
+						<TableHead>Status</TableHead>
+						<TableHead className="text-right">Actions</TableHead>
 					</TableRow>
 				</TableHeader>
 				<TableBody>
-					{requests.map((request, index) => (
-						<TableRow
-							key={request.id}
-							className="border-b border-border/40 transition-colors hover:bg-primary/5"
-							style={{
-								background: index % 2 === 0 ? 'transparent' : 'hsl(var(--muted) / 0.15)',
-							}}
-						>
+					{requests.map((request) => (
+						<TableRow key={request.id}>
 							<TableCell className="font-semibold">{request.shipTypeName}</TableCell>
 							<TableCell className="text-sm font-medium">{request.characterName}</TableCell>
 							<TableCell className="text-sm text-muted-foreground">
 								{formatRelativeTime(request.createdAt)}
-							</TableCell>
-							<TableCell className="text-right font-mono text-sm tabular-nums">
-								{request.requestedAmount ? formatISK(request.requestedAmount) : '—'}
 							</TableCell>
 							<TableCell className="text-right font-mono text-sm tabular-nums">
 								{request.approvedAmount ? formatISK(request.approvedAmount) : '—'}

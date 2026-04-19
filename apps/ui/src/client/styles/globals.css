@@ -304,7 +304,7 @@ body {
 		0 2px 6px rgb(0 0 0 / 0.4);
 }
 
-.tax-report-grid .tax-report-grid__paper {
+.mrt-grid__paper {
 	box-shadow:
 		var(--elevation-low),
 		inset 0 1px 0 hsl(0 0% 100% / 0.03);
@@ -312,61 +312,76 @@ body {
 	overflow: hidden;
 }
 
-.tax-report-grid .tax-report-grid__container {
+.mrt-grid__paper .mrt-grid__container {
 	border-top: 1px solid hsl(var(--border) / 0.8);
 	background: linear-gradient(180deg, hsl(var(--card)) 0%, hsl(var(--background-elevated)) 100%);
 	border-radius: inherit;
 }
 
-.tax-report-grid .tax-report-grid__table tbody tr:nth-of-type(odd) {
-	background: hsl(var(--muted) / 0.14);
+/* Solid pre-blended header used by regular shadcn tables */
+.table-header-bg {
+	background: color-mix(in srgb, hsl(var(--primary)) 12%, hsl(var(--card)));
 }
 
-.tax-report-grid .tax-report-grid__table tbody tr:hover {
+.mrt-grid__paper .mrt-grid__head,
+.mrt-grid__paper .mrt-grid__head-cell {
+	background: color-mix(in srgb, hsl(var(--primary)) 8%, hsl(var(--card)));
+}
+
+/* Pinned/sticky header cells need an opaque background so scrolled content doesn't bleed through */
+.mrt-grid__paper .mrt-grid__head-cell[data-pinned] {
+	background: color-mix(in srgb, hsl(var(--primary)) 8%, hsl(var(--card)));
+}
+
+.mrt-grid__paper .mrt-grid__table tbody tr:nth-of-type(odd) {
+	background: hsl(var(--muted));
+}
+
+.mrt-grid__paper .mrt-grid__table tbody tr:hover {
 	background: hsl(var(--accent-muted) / 0.7);
 }
 
-.tax-report-grid .tax-report-grid__table tbody td,
-.tax-report-grid .tax-report-grid__table thead th {
+.mrt-grid__paper .mrt-grid__table tbody td,
+.mrt-grid__paper .mrt-grid__table thead th {
 	font-family: inherit;
 }
 
-.tax-report-grid .tax-report-grid__head-cell button {
+.mrt-grid__paper .mrt-grid__head-cell button {
 	color: hsl(var(--muted-foreground));
 	font-weight: 700;
 }
 
-.tax-report-grid .tax-report-grid__head-cell button:hover,
-.tax-report-grid .tax-report-grid__head-cell button:focus-visible {
+.mrt-grid__paper .mrt-grid__head-cell button:hover,
+.mrt-grid__paper .mrt-grid__head-cell button:focus-visible {
 	background: hsl(var(--accent-muted) / 0.5);
 	color: hsl(var(--foreground));
 }
 
-.tax-report-grid .tax-report-grid__head-cell svg {
+.mrt-grid__paper .mrt-grid__head-cell svg {
 	color: hsl(var(--primary));
 }
 
-.tax-report-grid .tax-report-grid__body-cell {
+.mrt-grid__paper .mrt-grid__body-cell {
 	font-size: 0.875rem;
 }
 
-.tax-report-grid .mantine-Paper-root,
-.tax-report-grid .mantine-ScrollArea-root,
-.tax-report-grid .mantine-Table-root {
+.mrt-grid__paper .mantine-Paper-root,
+.mrt-grid__paper .mantine-ScrollArea-root,
+.mrt-grid__paper .mantine-Table-root {
 	color: hsl(var(--foreground));
 }
 
-.tax-report-grid .mantine-Table-root {
+.mrt-grid__paper .mantine-Table-root {
 	border-radius: inherit;
 }
 
-.tax-report-grid .mantine-Alert-root {
+.mrt-grid__paper .mantine-Alert-root {
 	background: hsl(var(--destructive) / 0.08);
 	border: 1px solid hsl(var(--destructive) / 0.28);
 	color: hsl(var(--foreground));
 }
 
-.tax-report-grid .mantine-Loader-root {
+.mrt-grid__paper .mantine-Loader-root {
 	color: hsl(var(--primary));
 }
 

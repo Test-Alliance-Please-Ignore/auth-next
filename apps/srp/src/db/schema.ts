@@ -86,14 +86,16 @@ export const srpRequests = pgTable(
 		shipTypeName: varchar('ship_type_name', { length: 255 }).notNull(),
 		/** Total ship value from killmail (ISK as text) */
 		shipValue: text('ship_value').notNull(),
-		/** Amount user is requesting (nullable - may not specify) */
-		requestedAmount: text('requested_amount'),
+		/** Solar system ID where the loss occurred */
+		solarSystemId: text('solar_system_id'),
+		/** Solar system name (cached from universe static data) */
+		solarSystemName: varchar('solar_system_name', { length: 255 }),
+		/** Context provided by the requester explaining the loss circumstances */
+		contextText: text('context_text'),
 		/** Amount approved by reviewer (null if not yet reviewed) */
 		approvedAmount: text('approved_amount'),
 		/** Current request status */
 		requestStatus: requestStatusEnum('request_status').notNull().default('pending'),
-		/** 16 character random ASCII string for payment tracking */
-		paymentToken: varchar('payment_token', { length: 16 }).notNull().unique(),
 		/** When payment was made (null if not paid) */
 		paymentDate: timestamp('payment_date', { withTimezone: true }),
 		/** Character name who paid (for audit trail) */
@@ -174,9 +176,11 @@ export const srpRequests = pgTable(
 		srpItemPrices: jsonb('srp_item_prices').$type<
 			Array<{
 				typeId: string
+				typeName: string
 				quantity: number
 				unitPrice: string // ISK as text
 				lineTotal: string // ISK as text
+				isConsumable?: boolean // true for charges/ammo not factored into reimbursement
 			}>
 		>(),
 
@@ -223,8 +227,6 @@ export const srpRequests = pgTable(
 		index('srp_requests_request_status_idx').on(table.requestStatus),
 		// Compound index for reviewer dashboard (pending requests)
 		index('srp_requests_status_created_idx').on(table.requestStatus, table.createdAt.desc()),
-		// Payment tracking
-		index('srp_requests_payment_token_idx').on(table.paymentToken),
 		// Killmail lookup
 		index('srp_requests_killmail_id_idx').on(table.killmailId),
 		// Time-based queries
