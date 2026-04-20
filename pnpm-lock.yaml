@@ -2302,6 +2302,9 @@ importers:
       '@repo/do-utils':
         specifier: workspace:*
         version: link:../../packages/do-utils
+      '@repo/esi':
+        specifier: workspace:*
+        version: link:../../packages/esi
       '@repo/eve-token-store':
         specifier: workspace:*
         version: link:../../packages/eve-token-store
