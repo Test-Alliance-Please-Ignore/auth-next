@@ -1984,6 +1984,9 @@ importers:
       '@neondatabase/serverless':
         specifier: 1.0.2
         version: 1.0.2
+      '@repo/core':
+        specifier: workspace:*
+        version: link:../../packages/core
       '@repo/db-utils':
         specifier: workspace:*
         version: link:../../packages/db-utils
@@ -2166,6 +2169,9 @@ importers:
       '@repo/bills':
         specifier: workspace:*
         version: link:../../packages/bills
+      '@repo/core':
+        specifier: workspace:*
+        version: link:../../packages/core
       '@repo/corporation-tax':
         specifier: workspace:*
         version: link:../../packages/corporation-tax

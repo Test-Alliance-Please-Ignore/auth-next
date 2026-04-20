@@ -2692,6 +2692,14 @@ export class ApiClient {
 		return this.get('/srp/config')
 	}
 
+	async searchSRPPaymentProcessorCorporations(
+		query: string
+	): Promise<Array<{ corporationId: string; name: string }>> {
+		return this.get(
+			`/srp/config/payment-processor-corporations/search?q=${encodeURIComponent(query)}`
+		)
+	}
+
 	/**
 	 * Update SRP configuration (admin only)
 	 */

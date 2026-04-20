@@ -13,6 +13,7 @@ import { PageHeader } from '@/components/ui/page-header'
 import { Select } from '@/components/ui/select'
 import { Textarea } from '@/components/ui/textarea'
 import { useUserPermissions } from '@/hooks/useUserPermissions'
+import { api } from '@/lib/api'
 
 import { useCreatePolicy, useSRPConfig, useSRPPolicies, useUpdatePolicy, useUpdateSRPConfig } from '../hooks'
 import { formatISK } from '../utils'
@@ -88,12 +89,16 @@ function GeneralConfigPanel({ config }: { config?: SRPConfigResponse }) {
 	const [defaultCoverageRatePercent, setDefaultCoverageRatePercent] = useState('100')
 	const [maxPayoutAmount, setMaxPayoutAmount] = useState('')
 	const [maxLossAgeDays, setMaxLossAgeDays] = useState('60')
+	const [paymentProcessorCorporationId, setPaymentProcessorCorporationId] = useState('')
+	const [srpGroupId, setSrpGroupId] = useState('')
 
 	useEffect(() => {
 		if (!config) return
 		setDefaultCoverageRatePercent(String(Math.round(parseFloat(config.defaultCoverageRate) * 100)))
 		setMaxPayoutAmount(config.maxPayoutAmount ?? '')
 		setMaxLossAgeDays(String(config.maxLossAgeDays))
+		setPaymentProcessorCorporationId(config.paymentProcessorCorporationId ?? '')
+		setSrpGroupId(config.srpGroupId ?? '')
 	}, [config])
 
 	const save = async () => {
@@ -102,6 +107,10 @@ function GeneralConfigPanel({ config }: { config?: SRPConfigResponse }) {
 				defaultCoverageRate: String((Number.parseFloat(defaultCoverageRatePercent) || 0) / 100),
 				maxPayoutAmount: maxPayoutAmount.trim() ? maxPayoutAmount.trim() : null,
 				maxLossAgeDays: Math.max(1, Number.parseInt(maxLossAgeDays, 10) || 60),
+				paymentProcessorCorporationId: paymentProcessorCorporationId.trim()
+					? paymentProcessorCorporationId.trim()
+					: null,
+				srpGroupId: srpGroupId.trim() ? srpGroupId.trim() : null,
 			} as any)
 			toast.success('SRP configuration saved')
 		} catch (error: any) {
@@ -154,6 +163,64 @@ function GeneralConfigPanel({ config }: { config?: SRPConfigResponse }) {
 							allowDecimal={false}
 							value={maxLossAgeDays}
 							onChange={setMaxLossAgeDays}
+						/>
+					</div>
+					<div className="sm:col-span-2">
+						<Label htmlFor="paymentProcessorCorporationId">Payment Processor Corporation</Label>
+						<Select
+							inputId="paymentProcessorCorporationId"
+							searchable
+							value={paymentProcessorCorporationId}
+							onValueChange={(next) => setPaymentProcessorCorporationId(next)}
+							options={
+								paymentProcessorCorporationId
+									? [
+											{
+												value: paymentProcessorCorporationId,
+												label: paymentProcessorCorporationId,
+											},
+										]
+									: []
+							}
+							placeholder="Search managed corporations..."
+							queryHintText="Type at least 2 characters to search managed corporations"
+							searchDelegate={(query) =>
+								api.searchSRPPaymentProcessorCorporations(query).then((rows) =>
+									rows.map((row) => ({
+										value: row.corporationId,
+										label: `${row.name} (${row.corporationId})`,
+									}))
+								)
+							}
+						/>
+					</div>
+					<div className="sm:col-span-2">
+						<Label htmlFor="srpGroupId">SRP Group</Label>
+						<Select
+							inputId="srpGroupId"
+							searchable
+							value={srpGroupId}
+							onValueChange={(next) => setSrpGroupId(next)}
+							options={
+								srpGroupId
+									? [
+											{
+												value: srpGroupId,
+												label: srpGroupId,
+											},
+										]
+									: []
+							}
+							placeholder="Search groups..."
+							queryHintText="Type at least 2 characters to search groups"
+							searchDelegate={(query) =>
+								api.getGroups({ search: query, limit: 25 }).then((rows) =>
+									rows.map((row) => ({
+										value: row.id,
+										label: `${row.name} (${row.id})`,
+									}))
+								)
+							}
 						/>
 					</div>
 				</div>

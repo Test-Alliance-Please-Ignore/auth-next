@@ -5,9 +5,11 @@ import { getStub } from '@repo/do-utils'
 import { withNotFound, withOnError } from '@repo/hono-helpers'
 
 import { SrpDO } from './durable-object'
+import { scheduledHandler } from './scheduled'
+import { SrpPaymentStatusCheckWorkflow } from './workflows/srp-payment-status-check'
 
 import type { Srp } from '@repo/srp'
-import type { App } from './context'
+import type { App, Env } from './context'
 
 const app = new Hono<App>()
 	.use(
@@ -48,7 +50,14 @@ const app = new Hono<App>()
 		return c.json(preview)
 	})
 
-export default app
+export default {
+	fetch: app.fetch.bind(app),
+	async scheduled(event: ScheduledEvent, env: Env, ctx: ExecutionContext): Promise<void> {
+		await scheduledHandler(event, env, ctx)
+	},
+}
 
 // Export the Durable Object class
 export { SrpDO as Srp }
+export { SrpPaymentStatusCheckWorkflow }
+export { scheduledHandler }

@@ -332,6 +332,8 @@ export const UpdateSRPConfigSchema = z.object({
 	defaultCoverageRate: z.string().optional(),
 	maxPayoutAmount: z.string().nullable().optional(),
 	maxLossAgeDays: z.number().int().positive().optional(),
+	paymentProcessorCorporationId: z.string().nullable().optional(),
+	srpGroupId: z.string().nullable().optional(),
 	metadata: z.record(z.string(), z.unknown()).optional(),
 	predefinedAdhocModifiers: z.array(PredefinedAdhocModifierSchema).optional(),
 })
@@ -464,6 +466,8 @@ export interface SRPConfigResponse {
 	defaultCoverageRate: string
 	maxPayoutAmount?: string
 	maxLossAgeDays: number
+	paymentProcessorCorporationId?: string
+	srpGroupId?: string
 	metadata?: Record<string, unknown>
 	predefinedAdhocModifiers?: SRPPredefinedAdhocModifier[]
 	createdBy: string

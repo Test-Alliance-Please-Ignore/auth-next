@@ -33,6 +33,7 @@
 		"@radix-ui/react-select": "2.2.6",
 		"@radix-ui/react-switch": "1.2.6",
 		"@repo/bills": "workspace:*",
+		"@repo/core": "workspace:*",
 		"@repo/corporation-tax": "workspace:*",
 		"@repo/eve-types": "workspace:*",
 		"@repo/freight": "workspace:*",

@@ -1,7 +1,7 @@
 import { Hono } from 'hono'
 import { z } from 'zod'
 
-import { and, eq, inArray } from '@repo/db-utils'
+import { and, desc, eq, ilike, inArray, or } from '@repo/db-utils'
 import { getStub } from '@repo/do-utils'
 import { TimeCache } from '@repo/hono-helpers'
 import {
@@ -16,7 +16,7 @@ import {
 } from '@repo/srp'
 
 import { createDb } from '../db'
-import { userCharacters } from '../db/schema'
+import { managedCorporations, userCharacters } from '../db/schema'
 import { getCachedUserPermissions } from '../lib/groups-cache'
 import { requireAllianceMember } from '../middleware/session'
 
@@ -1232,6 +1232,44 @@ srp.post('/requests/:id/mark-paid', async (c) => {
 // =============================================================================
 // CONFIGURATION
 // =============================================================================
+
+/**
+ * Search active managed corporations for SRP payment processor selection
+ * GET /api/srp/config/payment-processor-corporations/search?q=:query
+ */
+srp.get('/config/payment-processor-corporations/search', async (c) => {
+	const user = c.get('user')!
+	const query = c.req.query('q')?.trim()
+	if (!query || query.length < 2) {
+		return c.json({ error: 'q must be at least 2 characters' }, 400)
+	}
+
+	const allowed = await hasPermission(c.env, user.id, 'urn:srp:manager', user.is_admin)
+	if (!allowed) return c.json({ error: 'Requires manager permissions' }, 403)
+
+	const db = c.get('db')
+	if (!db) return c.json({ error: 'Database unavailable' }, 500)
+
+	const isNumeric = /^[0-9]+$/.test(query)
+	const rows = await db.query.managedCorporations.findMany({
+		where: and(
+			eq(managedCorporations.isActive, true),
+			isNumeric
+				? or(
+						eq(managedCorporations.corporationId, query),
+						ilike(managedCorporations.name, `%${query}%`)
+					)
+				: ilike(managedCorporations.name, `%${query}%`)
+		),
+		orderBy: [desc(managedCorporations.updatedAt)],
+		limit: 25,
+		columns: {
+			corporationId: true,
+			name: true,
+		},
+	})
+	return c.json(rows)
+})
 
 /**
  * Get SRP configuration

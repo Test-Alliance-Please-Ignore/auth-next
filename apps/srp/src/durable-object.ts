@@ -780,6 +780,15 @@ export class SrpDO extends DurableObject<Env> implements Srp {
 		const predefinedAdhocModifiers = Array.isArray(metadata.predefinedAdhocModifiers)
 			? (metadata.predefinedAdhocModifiers as SRPConfigResponse['predefinedAdhocModifiers'])
 			: undefined
+		const paymentProcessorCorporationId =
+			typeof metadata.paymentProcessorCorporationId === 'string' &&
+			metadata.paymentProcessorCorporationId.trim().length > 0
+				? metadata.paymentProcessorCorporationId.trim()
+				: undefined
+		const srpGroupId =
+			typeof metadata.srpGroupId === 'string' && metadata.srpGroupId.trim().length > 0
+				? metadata.srpGroupId.trim()
+				: undefined
 
 		return {
 			id: config.id,
@@ -787,6 +796,8 @@ export class SrpDO extends DurableObject<Env> implements Srp {
 			defaultCoverageRate: config.defaultCoverageRate,
 			maxPayoutAmount: config.maxPayoutAmount || undefined,
 			maxLossAgeDays: config.maxLossAgeDays,
+			paymentProcessorCorporationId,
+			srpGroupId,
 			metadata,
 			predefinedAdhocModifiers,
 			createdBy: config.createdBy,
@@ -820,6 +831,20 @@ export class SrpDO extends DurableObject<Env> implements Srp {
 		}
 		if (updates.predefinedAdhocModifiers !== undefined) {
 			mergedMetadata.predefinedAdhocModifiers = updates.predefinedAdhocModifiers
+		}
+		if (updates.paymentProcessorCorporationId !== undefined) {
+			if (updates.paymentProcessorCorporationId && updates.paymentProcessorCorporationId.trim()) {
+				mergedMetadata.paymentProcessorCorporationId = updates.paymentProcessorCorporationId.trim()
+			} else {
+				delete mergedMetadata.paymentProcessorCorporationId
+			}
+		}
+		if (updates.srpGroupId !== undefined) {
+			if (updates.srpGroupId && updates.srpGroupId.trim()) {
+				mergedMetadata.srpGroupId = updates.srpGroupId.trim()
+			} else {
+				delete mergedMetadata.srpGroupId
+			}
 		}
 
 		// Create new config
