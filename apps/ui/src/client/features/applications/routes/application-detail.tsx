@@ -45,6 +45,7 @@ import { useMessage } from '@/hooks/useMessage'
 import { usePageTitle } from '@/hooks/usePageTitle'
 
 import { canWithdrawApplication } from '../api'
+import { useHrPermissionCheck } from '../../hr/hooks'
 import { AccessDeniedCard } from '../components/access-denied-card'
 import { AddRecommendationDialog } from '../components/add-recommendation-dialog'
 import { ApplicationStatusBadge } from '../components/application-status-badge'
@@ -119,6 +120,10 @@ export default function ApplicationDetail() {
 
 	// Check if user owns this application
 	const isOwner = user?.id === application?.userId
+	const { data: hrPermission, isLoading: hrPermissionLoading } = useHrPermissionCheck(
+		application?.corporationId ? { corporationId: application.corporationId } : null
+	)
+	const canViewAsHr = user?.is_admin === true || hrPermission?.hasPermission === true
 
 	// Check if application can be withdrawn
 	const canWithdraw = application ? canWithdrawApplication(application) : false
@@ -211,7 +216,28 @@ export default function ApplicationDetail() {
 		)
 	}
 
-	// Access denied - user doesn't own this application
+	// Non-owner with HR/admin permissions should use HR review route
+	if (application && !isOwner && canViewAsHr) {
+		return (
+			<Navigate
+				to={`/corporations/${application.corporationId}/applications/${application.id}`}
+				replace
+			/>
+		)
+	}
+
+	// Wait for HR permission check before denying non-owner access
+	if (application && !isOwner && !user?.is_admin && hrPermissionLoading) {
+		return (
+			<Container>
+				<div className="flex items-center justify-center min-h-[400px]">
+					<LoadingSpinner size="lg" />
+				</div>
+			</Container>
+		)
+	}
+
+	// Access denied - user doesn't own this application and has no HR/admin access
 	if (application && !isOwner) {
 		return (
 			<Container>

@@ -621,9 +621,16 @@ export default function HrMemberProfile() {
 									isAdmin={isAdmin}
 									onRequestReport={requestReport}
 									onViewReport={(reportId, characterName) =>
-										navigate(
-											`/fulcrum/reports/${reportId}?name=${encodeURIComponent(characterName)}&userId=${encodeURIComponent(accountId)}&corporationId=${encodeURIComponent(corporationId)}&returnTo=${encodeURIComponent(`/corporations/${corporationId}/members/${accountId}`)}&backLabel=${encodeURIComponent('Back to User Profile')}&breadcrumb=${encodeURIComponent('User Profile')}`,
-										)
+										navigate(`/fulcrum/reports/${reportId}`, {
+											state: {
+												characterName,
+												userId: accountId,
+												corporationId,
+												returnTo: `/corporations/${corporationId}/members/${accountId}`,
+												backLabel: 'Back to User Profile',
+												breadcrumbParentLabel: 'User Profile',
+											},
+										})
 									}
 								/>
 							))}

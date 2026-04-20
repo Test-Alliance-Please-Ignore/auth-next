@@ -1,4 +1,4 @@
-import { Menu, X } from 'lucide-react'
+import { Menu } from 'lucide-react'
 import { useEffect, useMemo, useState } from 'react'
 import { Outlet, useLocation } from 'react-router-dom'
 
@@ -9,10 +9,25 @@ import { SidebarNav } from './sidebar-nav'
 import { Button } from './ui/button'
 import { LoadingSpinner } from './ui/loading'
 
+const SIDEBAR_OPEN_STORAGE_KEY = 'ui.sidebar.open'
+
 export default function Layout() {
 	const { isAuthenticated, isLoading } = useAuth()
-	const [sidebarOpen, setSidebarOpen] = useState(false)
+	const [sidebarOpen, setSidebarOpen] = useState(() => {
+		if (typeof window === 'undefined') {
+			return true
+		}
+		const stored = window.localStorage.getItem(SIDEBAR_OPEN_STORAGE_KEY)
+		if (stored === null) {
+			return true
+		}
+		return stored === '1'
+	})
 	const location = useLocation()
+
+	useEffect(() => {
+		window.localStorage.setItem(SIDEBAR_OPEN_STORAGE_KEY, sidebarOpen ? '1' : '0')
+	}, [sidebarOpen])
 
 	// Redirect to login if not authenticated, preserving the intended destination
 	useEffect(() => {
@@ -48,33 +63,45 @@ export default function Layout() {
 			{/* Sidebar */}
 			<aside
 				className={`
-					fixed lg:sticky top-0 left-0 h-screen w-64 z-50
+					fixed top-0 left-0 h-screen w-64 z-50
 					border-r border-border/50
 					bg-background/52
 					transition-transform duration-300 ease-in-out
-					${sidebarOpen ? 'translate-x-0' : '-translate-x-full lg:translate-x-0'}
+					${sidebarOpen ? 'translate-x-0' : '-translate-x-full'}
 				`}
 			>
-				<SidebarNav onNavigate={() => setSidebarOpen(false)} />
+				<SidebarNav
+					isSidebarOpen={sidebarOpen}
+					onToggleSidebar={() => setSidebarOpen((prev) => !prev)}
+					onNavigate={() => {
+						if (window.matchMedia('(max-width: 1023px)').matches) {
+							setSidebarOpen(false)
+						}
+					}}
+				/>
 			</aside>
 
 			{/* Main Content Area */}
-			<div className="relative z-10 flex-1 flex flex-col min-w-0 overflow-auto">
-				{/* Top Bar (Mobile) */}
-				<header className="sticky top-0 z-30 lg:hidden border-b border-border/30 bg-background/95 backdrop-blur-sm shadow-sm">
-					<div className="flex items-center justify-between px-4 py-3">
+			<div
+				className={cn(
+					'relative z-10 flex-1 flex flex-col min-w-0 overflow-auto transition-[padding-left] duration-300 ease-in-out',
+					sidebarOpen ? 'lg:pl-64' : 'lg:pl-0'
+				)}
+			>
+				{!sidebarOpen ? (
+					<div className="fixed top-6 left-2 z-30">
 						<Button
+							type="button"
 							variant="ghost"
-							size="sm"
-							onClick={() => setSidebarOpen(!sidebarOpen)}
-							className="gap-2"
+							size="icon"
+							onClick={() => setSidebarOpen(true)}
+							aria-label="Open navigation"
+							className="h-9 w-9 bg-background/90 backdrop-blur-sm border border-border/50 shadow-sm"
 						>
-							{sidebarOpen ? <X className="h-5 w-5" /> : <Menu className="h-5 w-5" />}
-							<span className="font-semibold">Menu</span>
+							<Menu className="h-4 w-4" />
 						</Button>
-						<span className="text-sm font-bold gradient-text">TANG</span>
 					</div>
-				</header>
+				) : null}
 
 				{/* Page Content */}
 				<main className="flex-1 relative z-10 p-4 md:p-6 lg:p-8">
