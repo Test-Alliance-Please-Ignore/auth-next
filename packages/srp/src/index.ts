@@ -138,6 +138,18 @@ export interface Srp {
 	getConfig(): Promise<SRPConfigResponse | null>
 	updateConfig(userId: string, updates: UpdateSRPConfig): Promise<SRPConfigResponse>
 
+	// Payment Alerts
+	listPaymentMismatchAlerts(options?: {
+		includeAcknowledged?: boolean
+		limit?: number
+		offset?: number
+	}): Promise<{ alerts: SRPPaymentMismatchAlert[]; total: number }>
+	acknowledgePaymentMismatchAlert(
+		alertId: string,
+		actorUserId: string,
+		actorCharacterName: string
+	): Promise<SRPPaymentMismatchAlert>
+
 
 	// Statistics
 	getStats(startDate?: string, endDate?: string, corporationId?: string): Promise<SRPStatsResponse>
@@ -474,6 +486,30 @@ export interface SRPConfigResponse {
 	effectiveFrom: string
 	effectiveTo?: string
 	createdAt: string
+}
+
+export interface SRPPaymentMismatchAlert {
+	id: string
+	requestId: string
+	kind: 'payment_mismatch'
+	state: 'open' | 'acknowledged'
+	journalId: string
+	expectedAmount: string
+	observedAmount: string
+	expectedRecipientCharacterId: string
+	expectedRecipientCharacterName?: string
+	actualRecipientCharacterId?: string
+	actualRecipientCharacterName?: string
+	actualPayerId?: string
+	actualPayerName?: string
+	reason?: string
+	paymentProcessorCorporationId?: string
+	metadata?: Record<string, unknown>
+	detectedAt: string
+	lastSeenAt: string
+	acknowledgedAt?: string
+	acknowledgedByUserId?: string
+	acknowledgedByCharacterName?: string
 }
 
 /**

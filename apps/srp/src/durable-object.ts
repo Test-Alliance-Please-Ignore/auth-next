@@ -7,7 +7,14 @@ import { createEveRegionId, createEveTypeId } from '@repo/eve-types'
 import { generateKillmailUrl, roundDownToMillionISK } from '@repo/srp'
 
 import { createDb } from './db'
-import { srpComments, srpConfig, srpPolicies, srpRequestHistory, srpRequests } from './db/schema'
+import {
+	srpComments,
+	srpConfig,
+	srpPaymentAlerts,
+	srpPolicies,
+	srpRequestHistory,
+	srpRequests,
+} from './db/schema'
 import { buildEquippedByType } from './lib/equipment'
 import { computeSrpPayout } from './lib/payout'
 import { isEquippedSlot } from './lib/slot-flags'
@@ -27,6 +34,7 @@ import type {
 	Srp,
 	SRPCommentResponse,
 	SRPConfigResponse,
+	SRPPaymentMismatchAlert,
 	SRPPolicy,
 	SRPPolicyConfig,
 	SRPRequestResponse,
@@ -864,6 +872,77 @@ export class SrpDO extends DurableObject<Env> implements Srp {
 		return this.getConfig() as Promise<SRPConfigResponse>
 	}
 
+	async listPaymentMismatchAlerts(
+		options: { includeAcknowledged?: boolean; limit?: number; offset?: number } = {}
+	): Promise<{ alerts: SRPPaymentMismatchAlert[]; total: number }> {
+		const { includeAcknowledged = false, limit = 50, offset = 0 } = options
+		const whereClause = includeAcknowledged ? undefined : eq(srpPaymentAlerts.state, 'open')
+
+		const [alerts, [{ count }]] = await Promise.all([
+			this.db.query.srpPaymentAlerts.findMany({
+				where: whereClause,
+				orderBy: desc(srpPaymentAlerts.detectedAt),
+				limit,
+				offset,
+			}),
+			this.db
+				.select({ count: sql<number>`cast(count(*) as integer)` })
+				.from(srpPaymentAlerts)
+				.where(whereClause),
+		])
+
+		return {
+			alerts: alerts.map((alert) => this.formatPaymentMismatchAlert(alert)),
+			total: count,
+		}
+	}
+
+	async acknowledgePaymentMismatchAlert(
+		alertId: string,
+		actorUserId: string,
+		actorCharacterName: string
+	): Promise<SRPPaymentMismatchAlert> {
+		const existing = await this.db.query.srpPaymentAlerts.findFirst({
+			where: eq(srpPaymentAlerts.id, alertId),
+		})
+		if (!existing) throw new Error('Payment alert not found')
+
+		if (existing.state !== 'acknowledged' || !existing.acknowledgedAt) {
+			await this.db
+				.update(srpPaymentAlerts)
+				.set({
+					state: 'acknowledged',
+					acknowledgedAt: new Date(),
+					acknowledgedByUserId: actorUserId,
+					acknowledgedByCharacterName: actorCharacterName,
+				})
+				.where(eq(srpPaymentAlerts.id, alertId))
+
+			await this.logHistory(
+				existing.requestId,
+				actorUserId,
+				actorCharacterName,
+				'payment_alert_acknowledged',
+				{
+					metadata: {
+						alertId: existing.id,
+						journalId: existing.journalId,
+						expectedAmount: existing.expectedAmount,
+						observedAmount: existing.observedAmount,
+					},
+				},
+				'internal'
+			)
+		}
+
+		const updated = await this.db.query.srpPaymentAlerts.findFirst({
+			where: eq(srpPaymentAlerts.id, alertId),
+		})
+		if (!updated) throw new Error('Payment alert not found after acknowledge')
+
+		return this.formatPaymentMismatchAlert(updated)
+	}
+
 	/**
 	 * Get SRP statistics
 	 */
@@ -1130,6 +1209,32 @@ export class SrpDO extends DurableObject<Env> implements Srp {
 				visibility: h.visibility,
 				timestamp: h.timestamp.toISOString(),
 			})),
+		}
+	}
+
+	private formatPaymentMismatchAlert(alert: any): SRPPaymentMismatchAlert {
+		return {
+			id: alert.id,
+			requestId: alert.requestId,
+			kind: 'payment_mismatch',
+			state: alert.state === 'acknowledged' ? 'acknowledged' : 'open',
+			journalId: alert.journalId,
+			expectedAmount: alert.expectedAmount,
+			observedAmount: alert.observedAmount,
+			expectedRecipientCharacterId: alert.expectedRecipientCharacterId,
+			expectedRecipientCharacterName: alert.expectedRecipientCharacterName ?? undefined,
+			actualRecipientCharacterId: alert.actualRecipientCharacterId ?? undefined,
+			actualRecipientCharacterName: alert.actualRecipientCharacterName ?? undefined,
+			actualPayerId: alert.actualPayerId ?? undefined,
+			actualPayerName: alert.actualPayerName ?? undefined,
+			reason: alert.reason ?? undefined,
+			paymentProcessorCorporationId: alert.paymentProcessorCorporationId ?? undefined,
+			metadata: (alert.metadata as Record<string, unknown>) ?? undefined,
+			detectedAt: alert.detectedAt.toISOString(),
+			lastSeenAt: alert.lastSeenAt.toISOString(),
+			acknowledgedAt: alert.acknowledgedAt?.toISOString(),
+			acknowledgedByUserId: alert.acknowledgedByUserId ?? undefined,
+			acknowledgedByCharacterName: alert.acknowledgedByCharacterName ?? undefined,
 		}
 	}
 

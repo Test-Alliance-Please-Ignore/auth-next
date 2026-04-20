@@ -19,6 +19,7 @@ import { useCreatePolicy, useSRPConfig, useSRPPolicies, useUpdatePolicy, useUpda
 import { formatISK } from '../utils'
 
 import type { CapConfig, PayoutModifierConfig } from '@repo/srp'
+import type { SelectOption } from '@/components/ui/select'
 import type { SRPConfigResponse, SRPPolicy, SRPPredefinedAdhocModifier } from '../types'
 
 function isPayoutModifierConfig(c: unknown): c is PayoutModifierConfig {
@@ -27,6 +28,15 @@ function isPayoutModifierConfig(c: unknown): c is PayoutModifierConfig {
 
 function isCapConfig(c: unknown): c is CapConfig {
 	return typeof c === 'object' && c !== null && 'maxPayoutMillions' in c
+}
+
+function upsertSelectOption(
+	current: SelectOption[],
+	next: SelectOption,
+	limit = 50
+): SelectOption[] {
+	const without = current.filter((option) => option.value !== next.value)
+	return [next, ...without].slice(0, limit)
 }
 
 export default function PoliciesPage() {
@@ -91,6 +101,10 @@ function GeneralConfigPanel({ config }: { config?: SRPConfigResponse }) {
 	const [maxLossAgeDays, setMaxLossAgeDays] = useState('60')
 	const [paymentProcessorCorporationId, setPaymentProcessorCorporationId] = useState('')
 	const [srpGroupId, setSrpGroupId] = useState('')
+	const [paymentProcessorCorporationOptions, setPaymentProcessorCorporationOptions] = useState<
+		SelectOption[]
+	>([])
+	const [srpGroupOptions, setSrpGroupOptions] = useState<SelectOption[]>([])
 
 	useEffect(() => {
 		if (!config) return
@@ -100,6 +114,77 @@ function GeneralConfigPanel({ config }: { config?: SRPConfigResponse }) {
 		setPaymentProcessorCorporationId(config.paymentProcessorCorporationId ?? '')
 		setSrpGroupId(config.srpGroupId ?? '')
 	}, [config])
+
+	useEffect(() => {
+		if (!paymentProcessorCorporationId) {
+			return
+		}
+
+		let cancelled = false
+		void api
+			.searchSRPPaymentProcessorCorporations(paymentProcessorCorporationId)
+			.then((rows) => {
+				if (cancelled) return
+				const matched = rows.find((row) => row.corporationId === paymentProcessorCorporationId)
+				const option = matched
+					? ({
+							value: matched.corporationId,
+							label: `${matched.name} (${matched.corporationId})`,
+						} satisfies SelectOption)
+					: ({
+							value: paymentProcessorCorporationId,
+							label: paymentProcessorCorporationId,
+						} satisfies SelectOption)
+				setPaymentProcessorCorporationOptions((current) => upsertSelectOption(current, option))
+			})
+			.catch(() => {
+				if (!cancelled) {
+					setPaymentProcessorCorporationOptions((current) =>
+						upsertSelectOption(current, {
+							value: paymentProcessorCorporationId,
+							label: paymentProcessorCorporationId,
+						})
+					)
+				}
+			})
+
+		return () => {
+			cancelled = true
+		}
+	}, [paymentProcessorCorporationId])
+
+	useEffect(() => {
+		if (!srpGroupId) {
+			return
+		}
+
+		let cancelled = false
+		void api
+			.getGroup(srpGroupId)
+			.then((group) => {
+				if (cancelled) return
+				setSrpGroupOptions((current) =>
+					upsertSelectOption(current, {
+						value: group.id,
+						label: `${group.name} (${group.id})`,
+					})
+				)
+			})
+			.catch(() => {
+				if (!cancelled) {
+					setSrpGroupOptions((current) =>
+						upsertSelectOption(current, {
+							value: srpGroupId,
+							label: srpGroupId,
+						})
+					)
+				}
+			})
+
+		return () => {
+			cancelled = true
+		}
+	}, [srpGroupId])
 
 	const save = async () => {
 		try {
@@ -171,17 +256,15 @@ function GeneralConfigPanel({ config }: { config?: SRPConfigResponse }) {
 							inputId="paymentProcessorCorporationId"
 							searchable
 							value={paymentProcessorCorporationId}
-							onValueChange={(next) => setPaymentProcessorCorporationId(next)}
-							options={
-								paymentProcessorCorporationId
-									? [
-											{
-												value: paymentProcessorCorporationId,
-												label: paymentProcessorCorporationId,
-											},
-										]
-									: []
-							}
+							onValueChange={(next, option) => {
+								setPaymentProcessorCorporationId(next)
+								if (option) {
+									setPaymentProcessorCorporationOptions((current) =>
+										upsertSelectOption(current, { value: option.value, label: option.label })
+									)
+								}
+							}}
+							options={paymentProcessorCorporationOptions}
 							placeholder="Search managed corporations..."
 							queryHintText="Type at least 2 characters to search managed corporations"
 							searchDelegate={(query) =>
@@ -200,17 +283,15 @@ function GeneralConfigPanel({ config }: { config?: SRPConfigResponse }) {
 							inputId="srpGroupId"
 							searchable
 							value={srpGroupId}
-							onValueChange={(next) => setSrpGroupId(next)}
-							options={
-								srpGroupId
-									? [
-											{
-												value: srpGroupId,
-												label: srpGroupId,
-											},
-										]
-									: []
-							}
+							onValueChange={(next, option) => {
+								setSrpGroupId(next)
+								if (option) {
+									setSrpGroupOptions((current) =>
+										upsertSelectOption(current, { value: option.value, label: option.label })
+									)
+								}
+							}}
+							options={srpGroupOptions}
 							placeholder="Search groups..."
 							queryHintText="Type at least 2 characters to search groups"
 							searchDelegate={(query) =>

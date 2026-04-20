@@ -11,6 +11,7 @@ export type {
 	SRPCommentResponse,
 	SRPConfigResponse,
 	SRPHistoryResponse,
+	SRPPaymentMismatchAlert,
 	SRPPredefinedAdhocModifier,
 	SRPPolicy,
 	SRPRequestResponse,

@@ -37,6 +37,8 @@ export const srpKeys = {
 		[...srpKeys.payments(), 'pending', params] as const,
 	pendingPayoutTotal: (params?: { corporationId?: string }) =>
 		[...srpKeys.payments(), 'pending-total', params] as const,
+	paymentAlerts: (params?: { includeAcknowledged?: boolean; limit?: number; offset?: number }) =>
+		[...srpKeys.payments(), 'alerts', params] as const,
 
 	// Comments
 	comments: (requestId: string, includeInternal: boolean) =>

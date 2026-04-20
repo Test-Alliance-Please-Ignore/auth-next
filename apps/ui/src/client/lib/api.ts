@@ -2678,6 +2678,26 @@ export class ApiClient {
 		return this.get(`/srp/payments/pending-total${query ? `?${query}` : ''}`)
 	}
 
+	async getSrpPaymentMismatchAlerts(params?: {
+		includeAcknowledged?: boolean
+		limit?: number
+		offset?: number
+	}): Promise<{ alerts: any[]; total: number }> {
+		const searchParams = new URLSearchParams()
+		if (params?.includeAcknowledged !== undefined) {
+			searchParams.set('includeAcknowledged', String(params.includeAcknowledged))
+		}
+		if (params?.limit !== undefined) searchParams.set('limit', String(params.limit))
+		if (params?.offset !== undefined) searchParams.set('offset', String(params.offset))
+
+		const query = searchParams.toString()
+		return this.get(`/srp/alerts/payment-mismatches${query ? `?${query}` : ''}`)
+	}
+
+	async acknowledgeSrpPaymentMismatchAlert(alertId: string): Promise<any> {
+		return this.post(`/srp/alerts/payment-mismatches/${alertId}/acknowledge`, {})
+	}
+
 	/**
 	 * Mark request as fully paid
 	 */

@@ -26,7 +26,7 @@ import { Link, useLocation } from 'react-router-dom'
 
 import { useHrAccessibleCorporations } from '@/features/hr'
 import { useHasCorporationAccess } from '@/features/corporations'
-import { useRequestsByStatus } from '@/features/srp/hooks'
+import { useRequestsByStatus, useSrpPaymentMismatchAlerts } from '@/features/srp/hooks'
 import { useTaxAlerts } from '@/hooks/corporation-tax'
 import { useAuth, useLogout } from '@/hooks/useAuth'
 import { useFeatureFlag } from '@/hooks/useFeatureFlags'
@@ -65,6 +65,8 @@ export function SidebarNav({ onNavigate }: SidebarNavProps) {
 	const srpEnabled = useFeatureFlag('srp.enabled')
 	const canSeeSrpReviewQueue = isSiteAdmin || hasAnyPermission('urn:srp:reviewer')
 	const canSeeSrpPaymentQueue = isSiteAdmin || hasAnyPermission('urn:srp:payer')
+	const canSeeSrpAlerts =
+		isSiteAdmin || hasAnyPermission('urn:srp:payer', 'urn:srp:manager')
 	const { data: reviewQueueData } = useRequestsByStatus(
 		'pending',
 		{ limit: 1 },
@@ -75,8 +77,14 @@ export function SidebarNav({ onNavigate }: SidebarNavProps) {
 		{ limit: 1 },
 		{ enabled: srpEnabled && canSeeSrpPaymentQueue }
 	)
+	const { data: srpAlertData } = useSrpPaymentMismatchAlerts({
+		includeAcknowledged: false,
+		limit: 1,
+		offset: 0,
+	}, { enabled: srpEnabled && canSeeSrpAlerts })
 	const reviewQueueCount = reviewQueueData?.total ?? 0
 	const paymentQueueCount = paymentQueueData?.total ?? 0
+	const srpAlertCount = srpEnabled && canSeeSrpAlerts ? (srpAlertData?.total ?? 0) : 0
 
 	const pendingCount = invitations?.length || 0
 	const mainCharacter = user?.characters.find((c) => c.characterId === user.mainCharacterId)
@@ -241,6 +249,13 @@ export function SidebarNav({ onNavigate }: SidebarNavProps) {
 										badge: paymentQueueCount > 0 ? paymentQueueCount : undefined,
 									},
 								]
+							: []),
+						...(canSeeSrpAlerts
+							? [{
+									label: 'Alerts',
+									href: '/srp/alerts',
+									badge: srpAlertCount > 0 ? srpAlertCount : undefined,
+								}]
 							: []),
 						...(isSiteAdmin || hasAnyPermission('urn:srp:manager')
 							? [{ label: 'Configuration', href: '/srp/policies' }]

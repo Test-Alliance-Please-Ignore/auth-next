@@ -80,6 +80,7 @@ const SRPRequestDetails = lazy(() => import('./features/srp/routes/request-detai
 const SRPReview = lazy(() => import('./features/srp/routes/review'))
 const SRPReviewDetail = lazy(() => import('./features/srp/routes/review-detail'))
 const SRPPayments = lazy(() => import('./features/srp/routes/payments'))
+const SRPAlerts = lazy(() => import('./features/srp/routes/alerts'))
 const SRPPolicies = lazy(() => import('./features/srp/routes/policies'))
 
 // Lazy load the Doctrines feature for code splitting
@@ -431,6 +432,14 @@ export default function App() {
 								element={
 									<Suspense fallback={<LoadingPage />}>
 										<SRPPayments />
+									</Suspense>
+								}
+							/>
+							<Route
+								path="/srp/alerts"
+								element={
+									<Suspense fallback={<LoadingPage />}>
+										<SRPAlerts />
 									</Suspense>
 								}
 							/>

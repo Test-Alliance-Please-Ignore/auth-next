@@ -22,7 +22,6 @@
 	},
 	"dependencies": {
 		"@neondatabase/serverless": "1.0.2",
-		"@repo/core": "workspace:*",
 		"@repo/db-utils": "workspace:*",
 		"@repo/do-utils": "workspace:*",
 		"@repo/esi": "workspace:*",

@@ -1207,6 +1207,58 @@ srp.get('/payments/pending-total', async (c) => {
 })
 
 /**
+ * List payment mismatch alerts
+ * GET /api/srp/alerts/payment-mismatches?includeAcknowledged=false&limit=50&offset=0
+ */
+srp.get('/alerts/payment-mismatches', async (c) => {
+	const user = c.get('user')!
+	const includeAcknowledged = c.req.query('includeAcknowledged') === 'true'
+	const limit = c.req.query('limit') ? Number.parseInt(c.req.query('limit')!, 10) : 50
+	const offset = c.req.query('offset') ? Number.parseInt(c.req.query('offset')!, 10) : 0
+
+	const allowed = await hasAnyPermission(
+		c.env,
+		user.id,
+		['urn:srp:payer', 'urn:srp:manager'],
+		user.is_admin
+	)
+	if (!allowed) return c.json({ error: 'Requires SRP staff permissions' }, 403)
+
+	const srpStub = getStub<Srp>(c.env.SRP, getRequestId(c))
+	const result = await srpStub.listPaymentMismatchAlerts({
+		includeAcknowledged,
+		limit,
+		offset,
+	})
+	return c.json(result)
+})
+
+/**
+ * Acknowledge payment mismatch alert
+ * POST /api/srp/alerts/payment-mismatches/:id/acknowledge
+ */
+srp.post('/alerts/payment-mismatches/:id/acknowledge', async (c) => {
+	const user = c.get('user')!
+	const alertId = c.req.param('id')
+
+	const allowed = await hasAnyPermission(
+		c.env,
+		user.id,
+		['urn:srp:payer', 'urn:srp:manager'],
+		user.is_admin
+	)
+	if (!allowed) return c.json({ error: 'Requires SRP staff permissions' }, 403)
+
+	const srpStub = getStub<Srp>(c.env.SRP, getRequestId(c))
+	const alert = await srpStub.acknowledgePaymentMismatchAlert(
+		alertId,
+		user.id,
+		getPrimaryCharacterName(user)
+	)
+	return c.json(alert)
+})
+
+/**
  * Mark a request as paid
  * POST /api/srp/requests/:id/mark-paid
  */

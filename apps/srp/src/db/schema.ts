@@ -8,6 +8,7 @@ import {
 	pgTable,
 	text,
 	timestamp,
+	uniqueIndex,
 	uuid,
 	varchar,
 } from 'drizzle-orm/pg-core'
@@ -332,6 +333,48 @@ export const srpComments = pgTable(
 )
 
 /**
+ * SRP Payment Alerts table - Payment workflow anomalies requiring staff attention
+ */
+export const srpPaymentAlerts = pgTable(
+	'srp_payment_alerts',
+	{
+		id: uuid('id').defaultRandom().primaryKey(),
+		requestId: uuid('request_id')
+			.notNull()
+			.references(() => srpRequests.id, { onDelete: 'cascade' }),
+		kind: varchar('kind', { length: 64 }).notNull().default('payment_mismatch'),
+		state: varchar('state', { length: 32 }).notNull().default('open'),
+		journalId: text('journal_id').notNull(),
+		expectedAmount: text('expected_amount').notNull(),
+		observedAmount: text('observed_amount').notNull(),
+		expectedRecipientCharacterId: text('expected_recipient_character_id').notNull(),
+		expectedRecipientCharacterName: varchar('expected_recipient_character_name', { length: 255 }),
+		actualRecipientCharacterId: text('actual_recipient_character_id'),
+		actualRecipientCharacterName: varchar('actual_recipient_character_name', { length: 255 }),
+		actualPayerId: text('actual_payer_id'),
+		actualPayerName: varchar('actual_payer_name', { length: 255 }),
+		reason: text('reason'),
+		paymentProcessorCorporationId: text('payment_processor_corporation_id'),
+		metadata: jsonb('metadata').$type<Record<string, unknown>>(),
+		detectedAt: timestamp('detected_at', { withTimezone: true }).defaultNow().notNull(),
+		lastSeenAt: timestamp('last_seen_at', { withTimezone: true }).defaultNow().notNull(),
+		acknowledgedAt: timestamp('acknowledged_at', { withTimezone: true }),
+		acknowledgedByUserId: uuid('acknowledged_by_user_id'),
+		acknowledgedByCharacterName: varchar('acknowledged_by_character_name', { length: 255 }),
+	},
+	(table) => [
+		uniqueIndex('srp_payment_alerts_request_journal_observed_uq').on(
+			table.requestId,
+			table.journalId,
+			table.observedAmount
+		),
+		index('srp_payment_alerts_state_detected_idx').on(table.state, table.detectedAt.desc()),
+		index('srp_payment_alerts_request_state_idx').on(table.requestId, table.state),
+		index('srp_payment_alerts_detected_at_idx').on(table.detectedAt.desc()),
+	]
+)
+
+/**
  * SRP Configuration table - Global settings
  *
  * Stores system-wide configuration for the SRP system.
@@ -400,6 +443,13 @@ export const srpCommentsRelations = relations(srpComments, ({ one }) => ({
 	}),
 }))
 
+export const srpPaymentAlertsRelations = relations(srpPaymentAlerts, ({ one }) => ({
+	request: one(srpRequests, {
+		fields: [srpPaymentAlerts.requestId],
+		references: [srpRequests.id],
+	}),
+}))
+
 /**
  * Export schema for Drizzle queries
  */
@@ -408,8 +458,10 @@ export const schema = {
 	srpRequests,
 	srpRequestHistory,
 	srpComments,
+	srpPaymentAlerts,
 	srpConfig,
 	srpRequestsRelations,
 	srpRequestHistoryRelations,
 	srpCommentsRelations,
+	srpPaymentAlertsRelations,
 }

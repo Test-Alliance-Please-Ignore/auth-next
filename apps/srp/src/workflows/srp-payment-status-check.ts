@@ -1,6 +1,5 @@
 import { WorkflowEntrypoint, WorkflowEvent, WorkflowStep } from 'cloudflare:workers'
 
-import { formatISK } from '@repo/core'
 import { sql } from '@repo/db-utils'
 import { getStub } from '@repo/do-utils'
 
@@ -34,6 +33,10 @@ type ExistingMismatchHistoryRow = {
 	id: string
 }
 
+type ExistingPaymentAlertRow = {
+	id: string
+}
+
 type DiscordDirectMessenger = {
 	sendDirectMessage(
 		coreUserId: string,
@@ -44,6 +47,23 @@ type DiscordDirectMessenger = {
 const SYSTEM_ACTOR_USER_ID = '00000000-0000-0000-0000-000000000000'
 const SYSTEM_ACTOR_CHARACTER_NAME = 'SRP Payment Monitor'
 const PAYMENT_MISMATCH_HISTORY_ACTION = 'payment_amount_mismatch_detected'
+
+function formatISK(value: string | number, options?: { showDecimals?: boolean }): string {
+	const num = typeof value === 'string' ? Number.parseFloat(value) : value
+	const showDecimals = options?.showDecimals ?? true
+	const fractionDigits = showDecimals ? 2 : 0
+
+	if (!Number.isFinite(num)) {
+		return `${(0).toFixed(fractionDigits)} ISK`
+	}
+
+	return (
+		new Intl.NumberFormat('en-US', {
+			minimumFractionDigits: fractionDigits,
+			maximumFractionDigits: fractionDigits,
+		}).format(num) + ' ISK'
+	)
+}
 
 function buildMismatchDiscordAlertContent(input: {
 	requestId: string
@@ -211,6 +231,93 @@ export class SrpPaymentStatusCheckWorkflow extends WorkflowEntrypoint<
 				resolvedNames = await resolver.resolveIds(uniqueResolvedIds).catch(() => ({}))
 			}
 
+			const [existingAlert] = (
+				await db.execute<ExistingPaymentAlertRow>(
+					sql`select id::text as "id"
+						from srp_payment_alerts
+						where request_id = ${request.id}::uuid
+							and journal_id = ${anomalyEntry.journalId}
+							and observed_amount = ${anomalyEntry.amount}
+						limit 1`
+				)
+			).rows
+
+			let paymentAlertId: string
+			if (existingAlert) {
+				await db.execute(
+					sql`update srp_payment_alerts
+						set
+							state = 'open',
+							kind = 'payment_mismatch',
+							expected_amount = ${request.approvedAmount ?? '0'},
+							observed_amount = ${anomalyEntry.amount},
+							expected_recipient_character_id = ${request.characterId},
+							expected_recipient_character_name = ${request.characterName},
+							actual_recipient_character_id = ${anomalyEntry.secondPartyId},
+							actual_recipient_character_name = ${anomalyEntry.secondPartyId ? (resolvedNames[anomalyEntry.secondPartyId] ?? null) : null},
+							actual_payer_id = ${anomalyEntry.firstPartyId},
+							actual_payer_name = ${anomalyEntry.firstPartyId ? (resolvedNames[anomalyEntry.firstPartyId] ?? null) : null},
+							reason = ${mismatchReason},
+							payment_processor_corporation_id = ${processorCorporationId},
+							metadata = ${JSON.stringify({
+								isRecipientMismatch,
+								expectedRecipientCharacterId: request.characterId,
+								actualRecipientCharacterId: anomalyEntry.secondPartyId ?? null,
+							})}::jsonb,
+							last_seen_at = now(),
+							acknowledged_at = null,
+							acknowledged_by_user_id = null,
+							acknowledged_by_character_name = null
+						where id = ${existingAlert.id}::uuid`
+				)
+				paymentAlertId = existingAlert.id
+			} else {
+				const [insertedAlert] = (
+					await db.execute<ExistingPaymentAlertRow>(
+						sql`insert into srp_payment_alerts (
+								request_id,
+								kind,
+								state,
+								journal_id,
+								expected_amount,
+								observed_amount,
+								expected_recipient_character_id,
+								expected_recipient_character_name,
+								actual_recipient_character_id,
+								actual_recipient_character_name,
+								actual_payer_id,
+								actual_payer_name,
+								reason,
+								payment_processor_corporation_id,
+								metadata
+							) values (
+								${request.id}::uuid,
+								'payment_mismatch',
+								'open',
+								${anomalyEntry.journalId},
+								${request.approvedAmount ?? '0'},
+								${anomalyEntry.amount},
+								${request.characterId},
+								${request.characterName},
+								${anomalyEntry.secondPartyId},
+								${anomalyEntry.secondPartyId ? (resolvedNames[anomalyEntry.secondPartyId] ?? null) : null},
+								${anomalyEntry.firstPartyId},
+								${anomalyEntry.firstPartyId ? (resolvedNames[anomalyEntry.firstPartyId] ?? null) : null},
+								${mismatchReason},
+								${processorCorporationId},
+								${JSON.stringify({
+									isRecipientMismatch,
+									expectedRecipientCharacterId: request.characterId,
+									actualRecipientCharacterId: anomalyEntry.secondPartyId ?? null,
+								})}::jsonb
+							)
+							returning id::text as "id"`
+					)
+				).rows
+				if (!insertedAlert) throw new Error('Failed to persist SRP payment mismatch alert')
+				paymentAlertId = insertedAlert.id
+			}
+
 			const [existingEvent] = (
 				await db.execute<ExistingMismatchHistoryRow>(
 					sql`select id::text as "id"
@@ -301,6 +408,7 @@ export class SrpPaymentStatusCheckWorkflow extends WorkflowEntrypoint<
 					srpGroupOwnerUserId,
 					discordAlertSent,
 					discordAlertError,
+					paymentAlertId,
 					detectedAt: new Date().toISOString(),
 				}
 				await db.execute(

@@ -8,6 +8,7 @@ import type {
 	CommentVisibility,
 	RequestStatus,
 	SRPConfigResponse,
+	SRPPaymentMismatchAlert,
 	SRPReviewSubmission,
 } from './types'
 import type { FittingWithItems } from '@/lib/api'
@@ -105,6 +106,18 @@ export function usePendingPayoutTotal(params: { corporationId?: string } = {}) {
 		queryKey: srpKeys.pendingPayoutTotal(params),
 		queryFn: () => api.getPendingPayoutTotal(params),
 		staleTime: 1000 * 30,
+	})
+}
+
+export function useSrpPaymentMismatchAlerts(
+	params: { includeAcknowledged?: boolean; limit?: number; offset?: number } = {},
+	options?: { enabled?: boolean }
+) {
+	return useQuery({
+		queryKey: srpKeys.paymentAlerts(params),
+		queryFn: () => api.getSrpPaymentMismatchAlerts(params),
+		staleTime: 1000 * 30,
+		enabled: options?.enabled ?? true,
 	})
 }
 
@@ -332,6 +345,17 @@ export function useMarkPaid() {
 			void queryClient.invalidateQueries({ queryKey: srpKeys.payments() })
 			void queryClient.invalidateQueries({ queryKey: srpKeys.allRequests() })
 			invalidateSrpQueueBadgeQueries(queryClient)
+		},
+	})
+}
+
+export function useAcknowledgeSrpPaymentMismatchAlert() {
+	const queryClient = useQueryClient()
+	return useMutation({
+		mutationFn: (alertId: string) => api.acknowledgeSrpPaymentMismatchAlert(alertId),
+		onSuccess: (alert: SRPPaymentMismatchAlert) => {
+			void queryClient.invalidateQueries({ queryKey: srpKeys.paymentAlerts() })
+			void queryClient.invalidateQueries({ queryKey: srpKeys.request(alert.requestId) })
 		},
 	})
 }
