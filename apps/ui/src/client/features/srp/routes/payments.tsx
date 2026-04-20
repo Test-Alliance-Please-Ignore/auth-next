@@ -9,8 +9,8 @@ import { Container } from '@/components/ui/container'
 import { PageHeader } from '@/components/ui/page-header'
 import { useUserPermissions } from '@/hooks/useUserPermissions'
 
-import { useMarkPaid, useRequestsByStatus } from '../hooks'
-import { formatISK, formatRelativeTime } from '../utils'
+import { useMarkPaid, usePendingPayoutTotal, useRequestsByStatus } from '../hooks'
+import { formatISK, formatISKShort, formatRelativeTime } from '../utils'
 
 import type { SRPRequestResponse } from '../types'
 
@@ -33,6 +33,7 @@ export default function PaymentsQueue() {
 
 function PaymentStack() {
 	const { data, isLoading, error } = useRequestsByStatus('approved', { limit: 100 })
+	const { data: payoutTotalData } = usePendingPayoutTotal()
 	const [dismissing, setDismissing] = useState<Set<string>>(new Set())
 	const markPaid = useMarkPaid()
 
@@ -55,6 +56,7 @@ function PaymentStack() {
 	}
 
 	const requests = (data?.requests ?? [] as SRPRequestResponse[]).filter((r: SRPRequestResponse) => !dismissing.has(r.id))
+	const pendingPayoutTotal = payoutTotalData?.pendingPayoutTotal ?? '0'
 
 	if (requests.length === 0) {
 		return (
@@ -82,6 +84,12 @@ function PaymentStack() {
 
 	return (
 		<div className="mt-4 space-y-3">
+			<Card className="p-4">
+				<div className="text-sm text-muted-foreground">Pending Payout Total</div>
+				<div className="mt-1 font-mono text-2xl font-semibold tabular-nums text-success">
+					{formatISKShort(pendingPayoutTotal)}
+				</div>
+			</Card>
 			{requests.map((req: SRPRequestResponse) => (
 				<PaymentCard key={req.id} request={req} onMarkPaid={handleMarkPaid} />
 			))}
@@ -186,4 +194,3 @@ function CopyRow({
 		</div>
 	)
 }
-

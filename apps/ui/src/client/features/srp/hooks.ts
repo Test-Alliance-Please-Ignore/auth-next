@@ -11,6 +11,22 @@ import type {
 	SRPReviewSubmission,
 } from './types'
 
+function invalidateSrpQueueBadgeQueries(queryClient: ReturnType<typeof useQueryClient>) {
+	void queryClient.invalidateQueries({
+		predicate: (query) => {
+			const key = query.queryKey
+			return (
+				Array.isArray(key) &&
+				key[0] === 'srp' &&
+				key[1] === 'requests' &&
+				key[2] === 'by-status' &&
+				(key[3] === 'pending' || key[3] === 'approved')
+			)
+		},
+	})
+	void queryClient.invalidateQueries({ queryKey: srpKeys.pendingPayoutTotal() })
+}
+
 // ===== Query Hooks =====
 
 export function useRecentLosses(daysBack: number = 30) {
@@ -52,12 +68,24 @@ export function usePendingRequests(
 
 export function useRequestsByStatus(
 	status: RequestStatus,
-	params: { limit?: number; offset?: number } = {}
+	params: {
+		limit?: number
+		offset?: number
+		characterName?: string
+		shipTypeName?: string
+		solarSystemName?: string
+		dateFrom?: string
+		dateTo?: string
+	} = {},
+	options?: {
+		enabled?: boolean
+	}
 ) {
 	return useQuery({
 		queryKey: srpKeys.requestsByStatus(status, params),
 		queryFn: () => api.getRequestsByStatus({ status, ...params }),
 		staleTime: 1000 * 30,
+		enabled: options?.enabled ?? true,
 	})
 }
 
@@ -67,6 +95,14 @@ export function usePendingPayments(
 	return useQuery({
 		queryKey: srpKeys.pendingPayments(params),
 		queryFn: () => api.getPendingPayments(params),
+		staleTime: 1000 * 30,
+	})
+}
+
+export function usePendingPayoutTotal(params: { corporationId?: string } = {}) {
+	return useQuery({
+		queryKey: srpKeys.pendingPayoutTotal(params),
+		queryFn: () => api.getPendingPayoutTotal(params),
 		staleTime: 1000 * 30,
 	})
 }
@@ -161,6 +197,7 @@ export function useSubmitReview() {
 			void queryClient.invalidateQueries({ queryKey: srpKeys.request(variables.id) })
 			void queryClient.invalidateQueries({ queryKey: srpKeys.allRequests() })
 			void queryClient.invalidateQueries({ queryKey: srpKeys.payments() })
+			invalidateSrpQueueBadgeQueries(queryClient)
 		},
 	})
 }
@@ -181,6 +218,7 @@ export function useUpdateReviewState() {
 			void queryClient.invalidateQueries({ queryKey: srpKeys.request(variables.id) })
 			void queryClient.invalidateQueries({ queryKey: srpKeys.allRequests() })
 			void queryClient.invalidateQueries({ queryKey: srpKeys.payments() })
+			invalidateSrpQueueBadgeQueries(queryClient)
 		},
 	})
 }
@@ -202,6 +240,7 @@ export function useApproveRequest() {
 			void queryClient.invalidateQueries({ queryKey: srpKeys.request(variables.id) })
 			void queryClient.invalidateQueries({ queryKey: srpKeys.pending() })
 			void queryClient.invalidateQueries({ queryKey: srpKeys.payments() })
+			invalidateSrpQueueBadgeQueries(queryClient)
 		},
 	})
 }
@@ -222,6 +261,7 @@ export function useRejectRequest() {
 		) => {
 			void queryClient.invalidateQueries({ queryKey: srpKeys.request(variables.id) })
 			void queryClient.invalidateQueries({ queryKey: srpKeys.pending() })
+			invalidateSrpQueueBadgeQueries(queryClient)
 		},
 	})
 }
@@ -275,6 +315,7 @@ export function useMarkPaid() {
 			void queryClient.invalidateQueries({ queryKey: srpKeys.request(id) })
 			void queryClient.invalidateQueries({ queryKey: srpKeys.payments() })
 			void queryClient.invalidateQueries({ queryKey: srpKeys.allRequests() })
+			invalidateSrpQueueBadgeQueries(queryClient)
 		},
 	})
 }

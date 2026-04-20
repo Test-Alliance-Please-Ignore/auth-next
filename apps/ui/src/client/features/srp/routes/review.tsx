@@ -1,8 +1,12 @@
+import { useState } from 'react'
 import { Navigate, useNavigate } from 'react-router-dom'
 
+import { DateRangeInput } from '@/components/ui/date-range-input'
 import { Card, CardContent } from '@/components/ui/card'
 import { Container } from '@/components/ui/container'
+import { EveTimeDisplay } from '@/components/ui/eve-time-display'
 import { PageHeader } from '@/components/ui/page-header'
+import { Select } from '@/components/ui/select'
 import {
 	Table,
 	TableBody,
@@ -11,13 +15,15 @@ import {
 	TableHeader,
 	TableRow,
 } from '@/components/ui/table'
-import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
+import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { useUserPermissions } from '@/hooks/useUserPermissions'
+import { api } from '@/lib/api'
 import { typeIconUrl } from '@/lib/eve-images'
 
 import { RequestStatusBadge } from '../components/RequestStatusBadge'
+import { CharacterRoleBadge } from '../components/CharacterRoleBadge'
 import { useRequestsByStatus } from '../hooks'
-import { formatISK, formatRelativeTime } from '../utils'
+import { formatISK, formatRelativeTime, getRequestCharacterRole } from '../utils'
 
 import type { RequestStatus, SRPRequestResponse } from '../types'
 
@@ -29,8 +35,18 @@ const TABS: Array<{ value: RequestStatus; label: string }> = [
 	{ value: 'paid', label: 'Paid' },
 ]
 
+type ReviewQueueFilters = {
+	characterName?: string
+	shipTypeName?: string
+	solarSystemName?: string
+	dateFrom?: string
+	dateTo?: string
+}
+
 export default function ReviewQueue() {
 	const { hasPermission, isAdmin } = useUserPermissions()
+	const [activeTab, setActiveTab] = useState<RequestStatus>('pending')
+	const [filters, setFilters] = useState<ReviewQueueFilters>({})
 
 	if (!(isAdmin || hasPermission('urn:srp:reviewer'))) {
 		return <Navigate to="/srp" replace />
@@ -41,8 +57,110 @@ export default function ReviewQueue() {
 			<PageHeader title="Review Queue" description="Review and process ship replacement requests" />
 
 			<Card className="mt-section">
-				<CardContent className="p-4">
-					<Tabs defaultValue="pending">
+				<CardContent className="space-y-4 p-4">
+					<div className="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
+						<Select
+							options={[]}
+							value={filters.characterName ?? ''}
+							onValueChange={(value) =>
+								setFilters((prev) => ({
+									...prev,
+									characterName: value || undefined,
+								}))
+							}
+							searchable
+							searchDelegate={async (query) => {
+								const values = await api.getSrpReviewSearchValues({
+									status: activeTab,
+									field: 'character',
+									query,
+								})
+
+								return values.map((entry) => ({
+									value: entry.value,
+									label: entry.value,
+								}))
+							}}
+							placeholder="Character"
+							minQueryLength={2}
+							queryHintText="Type at least 2 characters"
+							emptyText="No character names found"
+							selectAllOption={{ value: '', label: 'All Characters' }}
+						/>
+						<Select
+							options={[]}
+							value={filters.shipTypeName ?? ''}
+							onValueChange={(value) =>
+								setFilters((prev) => ({
+									...prev,
+									shipTypeName: value || undefined,
+								}))
+							}
+							searchable
+							searchDelegate={async (query) => {
+								const values = await api.getSrpReviewSearchValues({
+									status: activeTab,
+									field: 'ship',
+									query,
+								})
+
+								return values.map((entry) => ({
+									value: entry.value,
+									label: entry.value,
+								}))
+							}}
+							placeholder="Ship"
+							minQueryLength={2}
+							queryHintText="Type at least 2 characters"
+							emptyText="No ships found"
+							selectAllOption={{ value: '', label: 'All Ships' }}
+						/>
+						<Select
+							options={[]}
+							value={filters.solarSystemName ?? ''}
+							onValueChange={(value) =>
+								setFilters((prev) => ({
+									...prev,
+									solarSystemName: value || undefined,
+								}))
+							}
+							searchable
+							searchDelegate={async (query) => {
+								const values = await api.getSrpReviewSearchValues({
+									status: activeTab,
+									field: 'system',
+									query,
+								})
+
+								return values.map((entry) => ({
+									value: entry.value,
+									label: entry.value,
+								}))
+							}}
+							placeholder="System"
+							minQueryLength={2}
+							queryHintText="Type at least 2 characters"
+							emptyText="No systems found"
+							selectAllOption={{ value: '', label: 'All Systems' }}
+						/>
+						<DateRangeInput
+							value={{
+								fromDate: filters.dateFrom ?? '',
+								toDate: filters.dateTo ?? '',
+							}}
+							onChange={({ fromDate, toDate }) =>
+								setFilters((prev) => ({
+									...prev,
+									dateFrom: fromDate || undefined,
+									dateTo: toDate || undefined,
+								}))
+							}
+							placeholder="Loss date range"
+							className="[&_.themed-date-picker__input]:h-10"
+						/>
+					</div>
+
+					<Tabs value={activeTab} onValueChange={(value) => setActiveTab(value as RequestStatus)}>
 						<TabsList className="w-full">
 							{TABS.map((tab) => (
 								<TabsTrigger key={tab.value} value={tab.value}>
@@ -50,26 +168,29 @@ export default function ReviewQueue() {
 								</TabsTrigger>
 							))}
 						</TabsList>
-
-						{TABS.map((tab) => (
-							<TabsContent key={tab.value} value={tab.value}>
-								<ReviewTabContent status={tab.value} />
-							</TabsContent>
-						))}
 					</Tabs>
+
+					<ReviewTabContent status={activeTab} filters={filters} />
 				</CardContent>
 			</Card>
 		</Container>
 	)
 }
 
-function ReviewTabContent({ status }: { status: RequestStatus }) {
-	const { data, isLoading, error } = useRequestsByStatus(status, { limit: 50 })
+function ReviewTabContent({ status, filters }: { status: RequestStatus; filters: ReviewQueueFilters }) {
+	const { data, isLoading, error } = useRequestsByStatus(status, { limit: 50, ...filters })
 	const navigate = useNavigate()
+	const hasActiveFilters = Boolean(
+		filters.characterName ||
+			filters.shipTypeName ||
+			filters.solarSystemName ||
+			filters.dateFrom ||
+			filters.dateTo
+	)
 
 	if (isLoading) {
 		return (
-			<div className="space-y-2 pt-4">
+			<div className="space-y-2">
 				{[...Array(3)].map((_, i) => (
 					<div key={i} className="h-16 animate-pulse rounded-md bg-muted/30" />
 				))}
@@ -79,7 +200,7 @@ function ReviewTabContent({ status }: { status: RequestStatus }) {
 
 	if (error) {
 		return (
-			<div className="mt-4 rounded-lg border border-red-500/50 bg-red-500/10 p-6 text-center">
+			<div className="rounded-lg border border-red-500/50 bg-red-500/10 p-6 text-center">
 				<p className="text-sm text-red-500">Failed to load requests</p>
 			</div>
 		)
@@ -89,14 +210,18 @@ function ReviewTabContent({ status }: { status: RequestStatus }) {
 
 	if (requests.length === 0) {
 		return (
-			<div className="mt-4 rounded-lg border border-dashed p-12 text-center">
-				<p className="text-muted-foreground">No {status.replace('_', ' ')} requests</p>
+			<div className="rounded-lg border border-dashed p-12 text-center">
+				<p className="text-muted-foreground">
+					{hasActiveFilters
+						? 'No requests match the current filters'
+						: `No ${status.replace('_', ' ')} requests`}
+				</p>
 			</div>
 		)
 	}
 
 	return (
-		<div className="mt-4">
+		<div>
 			<div className="rounded-md border">
 				<Table>
 					<TableHeader>
@@ -130,7 +255,10 @@ function ReviewTabContent({ status }: { status: RequestStatus }) {
 								</TableCell>
 								<TableCell className="font-semibold">{req.shipTypeName ?? '—'}</TableCell>
 								<TableCell className="text-sm">
-									<div>{req.characterName}</div>
+									<div className="inline-flex items-center gap-2">
+										<span>{req.characterName}</span>
+										<CharacterRoleBadge role={getRequestCharacterRole(req)} />
+									</div>
 									{req.corporationName && req.corporationName !== 'Unknown' && (
 										<div className="text-xs text-muted-foreground">{req.corporationName}</div>
 									)}
@@ -142,17 +270,14 @@ function ReviewTabContent({ status }: { status: RequestStatus }) {
 									{req.solarSystemName ?? '—'}
 								</TableCell>
 								<TableCell className="text-sm text-muted-foreground">
-									{req.lossDate
-										? new Date(req.lossDate).toLocaleString(undefined, {
-												timeZone: 'UTC',
-												year: 'numeric',
-												month: 'long',
-												day: 'numeric',
-												hour: '2-digit',
-												minute: '2-digit',
-												hour12: false,
-											}) + ' EVE Time'
-										: '—'}
+									{req.lossDate ? (
+										<EveTimeDisplay
+											dateStr={req.lossDate}
+											className="text-sm text-muted-foreground"
+										/>
+									) : (
+										'—'
+									)}
 								</TableCell>
 								<TableCell className="text-sm text-muted-foreground">
 									{formatRelativeTime(req.createdAt)}

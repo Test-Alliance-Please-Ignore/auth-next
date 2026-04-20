@@ -6,6 +6,7 @@ import { z } from 'zod'
 
 import { Button } from '@/components/ui/button'
 import { Card } from '@/components/ui/card'
+import { EveTimeDisplay } from '@/components/ui/eve-time-display'
 import { Label } from '@/components/ui/label'
 import { Textarea } from '@/components/ui/textarea'
 
@@ -97,9 +98,7 @@ export function CreateRequestForm({
 				<div className="mb-4 flex items-center justify-between">
 					<div>
 						<h3 className="font-semibold">{shipTypeName}</h3>
-						<p className="text-sm text-muted-foreground">
-							{new Date(lossDate).toLocaleString()}
-						</p>
+						<EveTimeDisplay dateStr={lossDate} className="text-sm text-muted-foreground" />
 					</div>
 					<Button variant="ghost" size="sm" asChild>
 						<a href={getKillmailUrl(killmailId)} target="_blank" rel="noopener noreferrer">

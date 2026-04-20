@@ -26,6 +26,7 @@ import { Link, useLocation } from 'react-router-dom'
 
 import { useHrAccessibleCorporations } from '@/features/hr'
 import { useHasCorporationAccess } from '@/features/corporations'
+import { useRequestsByStatus } from '@/features/srp/hooks'
 import { useTaxAlerts } from '@/hooks/corporation-tax'
 import { useAuth, useLogout } from '@/hooks/useAuth'
 import { useFeatureFlag } from '@/hooks/useFeatureFlags'
@@ -60,11 +61,25 @@ export function SidebarNav({ onNavigate }: SidebarNavProps) {
 	const { data: corporationAccess } = useHasCorporationAccess()
 	const { data: hrCorporations } = useHrAccessibleCorporations()
 	const { permissions, hasAnyPermission } = useUserPermissions()
+	const isSiteAdmin = user?.is_admin === true
 	const srpEnabled = useFeatureFlag('srp.enabled')
+	const canSeeSrpReviewQueue = isSiteAdmin || hasAnyPermission('urn:srp:reviewer')
+	const canSeeSrpPaymentQueue = isSiteAdmin || hasAnyPermission('urn:srp:payer')
+	const { data: reviewQueueData } = useRequestsByStatus(
+		'pending',
+		{ limit: 1 },
+		{ enabled: srpEnabled && canSeeSrpReviewQueue }
+	)
+	const { data: paymentQueueData } = useRequestsByStatus(
+		'approved',
+		{ limit: 1 },
+		{ enabled: srpEnabled && canSeeSrpPaymentQueue }
+	)
+	const reviewQueueCount = reviewQueueData?.total ?? 0
+	const paymentQueueCount = paymentQueueData?.total ?? 0
 
 	const pendingCount = invitations?.length || 0
 	const mainCharacter = user?.characters.find((c) => c.characterId === user.mainCharacterId)
-	const isSiteAdmin = user?.is_admin === true
 	const isTaxRoute = location.pathname === '/tax' || location.pathname.startsWith('/tax/')
 	const isFreightRoute =
 		location.pathname === '/freight' || location.pathname.startsWith('/freight/')
@@ -209,11 +224,23 @@ export function SidebarNav({ onNavigate }: SidebarNavProps) {
 					icon: CircleDollarSign,
 					children: [
 						{ label: 'My Requests', href: '/srp' },
-						...(isSiteAdmin || hasAnyPermission('urn:srp:reviewer')
-							? [{ label: 'Review Queue', href: '/srp/review' }]
+						...(canSeeSrpReviewQueue
+							? [
+									{
+										label: 'Review Queue',
+										href: '/srp/review',
+										badge: reviewQueueCount > 0 ? reviewQueueCount : undefined,
+									},
+								]
 							: []),
-						...(isSiteAdmin || hasAnyPermission('urn:srp:payer')
-							? [{ label: 'Payment Queue', href: '/srp/payments' }]
+						...(canSeeSrpPaymentQueue
+							? [
+									{
+										label: 'Payment Queue',
+										href: '/srp/payments',
+										badge: paymentQueueCount > 0 ? paymentQueueCount : undefined,
+									},
+								]
 							: []),
 						...(isSiteAdmin || hasAnyPermission('urn:srp:manager')
 							? [{ label: 'Configuration', href: '/srp/policies' }]

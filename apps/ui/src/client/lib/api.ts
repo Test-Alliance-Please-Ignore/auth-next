@@ -2670,6 +2670,14 @@ export class ApiClient {
 		return this.get(`/srp/payments/pending${query ? `?${query}` : ''}`)
 	}
 
+	async getPendingPayoutTotal(params?: { corporationId?: string }): Promise<{ pendingPayoutTotal: string }> {
+		const searchParams = new URLSearchParams()
+		if (params?.corporationId) searchParams.set('corporationId', params.corporationId)
+
+		const query = searchParams.toString()
+		return this.get(`/srp/payments/pending-total${query ? `?${query}` : ''}`)
+	}
+
 	/**
 	 * Mark request as fully paid
 	 */
@@ -2724,12 +2732,34 @@ export class ApiClient {
 		status: string
 		limit?: number
 		offset?: number
+		characterName?: string
+		shipTypeName?: string
+		solarSystemName?: string
+		dateFrom?: string
+		dateTo?: string
 	}): Promise<any> {
 		const searchParams = new URLSearchParams()
 		searchParams.set('status', params.status)
 		if (params.limit !== undefined) searchParams.set('limit', String(params.limit))
 		if (params.offset !== undefined) searchParams.set('offset', String(params.offset))
+		if (params.characterName) searchParams.set('characterName', params.characterName)
+		if (params.shipTypeName) searchParams.set('shipTypeName', params.shipTypeName)
+		if (params.solarSystemName) searchParams.set('solarSystemName', params.solarSystemName)
+		if (params.dateFrom) searchParams.set('dateFrom', params.dateFrom)
+		if (params.dateTo) searchParams.set('dateTo', params.dateTo)
 		return this.get(`/srp/requests/by-status?${searchParams.toString()}`)
+	}
+
+	async getSrpReviewSearchValues(params: {
+		status: string
+		field: 'character' | 'ship' | 'system'
+		query: string
+	}): Promise<Array<{ value: string }>> {
+		const searchParams = new URLSearchParams()
+		searchParams.set('status', params.status)
+		searchParams.set('field', params.field)
+		searchParams.set('query', params.query)
+		return this.get(`/srp/requests/search-values?${searchParams.toString()}`)
 	}
 
 	async submitReview(id: string, data: any): Promise<any> {

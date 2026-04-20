@@ -9,6 +9,7 @@ import {
 	CreateSRPPolicySchema,
 	CreateSRPRequestSchema,
 	EditCommentSchema,
+	REQUEST_STATUSES,
 	SRPReviewSubmissionSchema,
 	UpdateReviewStateSchema,
 	UpdateSRPConfigSchema,
@@ -20,7 +21,7 @@ import { getCachedUserPermissions } from '../lib/groups-cache'
 import { requireAllianceMember } from '../middleware/session'
 
 import type { EveCharacterData } from '@repo/eve-character-data'
-import type { SRPCommentResponse, Srp } from '@repo/srp'
+import type { SRPCommentResponse, SRPRequestResponse, Srp } from '@repo/srp'
 import type { App } from '../context'
 
 const ApproveRequestSchema = z.object({
@@ -38,6 +39,9 @@ const RejectRequestSchema = z.object({
 	rejectionReason: z.string().min(10).max(2000),
 	reviewNotes: z.string().max(2000).optional(),
 })
+
+const RequestStatusQuerySchema = z.enum(REQUEST_STATUSES)
+const RequestSearchFieldQuerySchema = z.enum(['character', 'ship', 'system'])
 
 /**
  * Permission check cache - 15 second TTL
@@ -105,6 +109,36 @@ async function hydrateCommentAuthors(
 					? 'staff'
 					: undefined,
 	}))
+}
+
+type RequestWithCharacterRole = SRPRequestResponse & { characterRole?: 'main' | 'alt' }
+
+async function hydrateRequestCharacterRoles(
+	requests: RequestWithCharacterRole[],
+	databaseUrl: string
+): Promise<RequestWithCharacterRole[]> {
+	if (requests.length === 0) return requests
+
+	const userIds = [...new Set(requests.map((request) => request.userId))]
+	const db = createDb(databaseUrl)
+	const rows = await db
+		.select({
+			userId: userCharacters.userId,
+			characterId: userCharacters.characterId,
+		})
+		.from(userCharacters)
+		.where(and(eq(userCharacters.is_primary, true), inArray(userCharacters.userId, userIds)))
+
+	const mainCharacterByUserId = new Map(rows.map((row) => [row.userId, row.characterId]))
+
+	return requests.map((request) => {
+		const mainCharacterId = mainCharacterByUserId.get(request.userId)
+		if (!mainCharacterId) return request
+		return {
+			...request,
+			characterRole: request.characterId === mainCharacterId ? 'main' : 'alt',
+		}
+	})
 }
 
 /**
@@ -282,7 +316,11 @@ srp.get('/requests', async (c) => {
 	const offset = c.req.query('offset') ? Number.parseInt(c.req.query('offset')!, 10) : 0
 
 	const srpStub = getStub<Srp>(c.env.SRP, getRequestId(c))
-	const requests = await srpStub.getUserRequests(user.id, limit, offset)
+	const requestsRaw = await srpStub.getUserRequests(user.id, limit, offset)
+	const requests = await hydrateRequestCharacterRoles(
+		requestsRaw as RequestWithCharacterRole[],
+		c.env.DATABASE_URL
+	)
 
 	return c.json({
 		requests,
@@ -298,16 +336,67 @@ srp.get('/requests', async (c) => {
  */
 srp.get('/requests/by-status', async (c) => {
 	const user = c.get('user')!
-	const status = c.req.query('status') as any
+	const statusParsed = RequestStatusQuerySchema.safeParse(c.req.query('status'))
+	if (!statusParsed.success) {
+		return c.json({ error: 'Invalid status' }, 400)
+	}
+
+	const status = statusParsed.data
 	const limit = c.req.query('limit') ? Number.parseInt(c.req.query('limit')!, 10) : 50
 	const offset = c.req.query('offset') ? Number.parseInt(c.req.query('offset')!, 10) : 0
+	const characterName = c.req.query('characterName')?.trim() || undefined
+	const shipTypeName = c.req.query('shipTypeName')?.trim() || undefined
+	const solarSystemName = c.req.query('solarSystemName')?.trim() || undefined
+	const dateFrom = c.req.query('dateFrom')?.trim() || undefined
+	const dateTo = c.req.query('dateTo')?.trim() || undefined
 
 	const allowed = await hasPermission(c.env, user.id, 'urn:srp:reviewer', user.is_admin)
 	if (!allowed) return c.json({ error: 'Requires reviewer permissions' }, 403)
 
 	const srpStub = getStub<Srp>(c.env.SRP, getRequestId(c))
-	const requests = await srpStub.getRequestsByStatus(status, { limit, offset })
-	return c.json({ requests, total: requests.length, limit, offset })
+	const result = await srpStub.getRequestsByStatus(status, {
+		limit,
+		offset,
+		characterName,
+		shipTypeName,
+		solarSystemName,
+		dateFrom,
+		dateTo,
+	})
+	const requests = await hydrateRequestCharacterRoles(
+		result.requests as RequestWithCharacterRole[],
+		c.env.DATABASE_URL
+	)
+	return c.json({
+		requests,
+		total: result.total,
+		limit,
+		offset,
+	})
+})
+
+/**
+ * Get search values for review queue filters
+ * GET /api/srp/requests/search-values?status=pending&field=character&query=ab
+ */
+srp.get('/requests/search-values', async (c) => {
+	const user = c.get('user')!
+	const statusParsed = RequestStatusQuerySchema.safeParse(c.req.query('status'))
+	if (!statusParsed.success) {
+		return c.json({ error: 'Invalid status' }, 400)
+	}
+	const fieldParsed = RequestSearchFieldQuerySchema.safeParse(c.req.query('field'))
+	if (!fieldParsed.success) {
+		return c.json({ error: 'Invalid field' }, 400)
+	}
+
+	const query = c.req.query('query')?.trim() ?? ''
+	const allowed = await hasPermission(c.env, user.id, 'urn:srp:reviewer', user.is_admin)
+	if (!allowed) return c.json({ error: 'Requires reviewer permissions' }, 403)
+
+	const srpStub = getStub<Srp>(c.env.SRP, getRequestId(c))
+	const values = await srpStub.getSearchValues(statusParsed.data, fieldParsed.data, query)
+	return c.json(values)
 })
 
 /**
@@ -339,7 +428,12 @@ srp.get('/requests/:id', async (c) => {
 		)
 	}
 
-	return c.json(request)
+	const [requestWithCharacterRole] = await hydrateRequestCharacterRoles(
+		[request as RequestWithCharacterRole],
+		c.env.DATABASE_URL
+	)
+
+	return c.json(requestWithCharacterRole)
 })
 
 // =============================================================================
@@ -682,6 +776,26 @@ srp.get('/payments/pending', async (c) => {
 		limit,
 		offset,
 	})
+})
+
+/**
+ * Get pending payout total for all unpaid approved requests
+ * GET /api/srp/payments/pending-total?corporationId=xxx
+ *
+ * Requires payer permissions (admins do NOT bypass)
+ */
+srp.get('/payments/pending-total', async (c) => {
+	const user = c.get('user')!
+	const corporationId = c.req.query('corporationId')
+
+	// Check payer permissions (admins do NOT bypass)
+	const allowed = await hasPermission(c.env, user.id, 'urn:srp:payer', false)
+	if (!allowed) return c.json({ error: 'Requires payer permissions' }, 403)
+
+	const srpStub = getStub<Srp>(c.env.SRP, getRequestId(c))
+	const pendingPayoutTotal = await srpStub.getPendingPayoutTotal(corporationId)
+
+	return c.json({ pendingPayoutTotal })
 })
 
 /**

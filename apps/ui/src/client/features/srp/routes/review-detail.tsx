@@ -3,16 +3,18 @@ import { Link, Navigate, useNavigate, useParams } from 'react-router-dom'
 import { Button } from '@/components/ui/button'
 import { Card } from '@/components/ui/card'
 import { Container } from '@/components/ui/container'
+import { EveTimeDisplay } from '@/components/ui/eve-time-display'
 import { PageHeader } from '@/components/ui/page-header'
 import { useUserPermissions } from '@/hooks/useUserPermissions'
 
 import { CommentForm } from '../components/CommentForm'
 import { CommentsList } from '../components/CommentsList'
+import { CharacterRoleBadge } from '../components/CharacterRoleBadge'
 import { RequestHistory } from '../components/RequestHistory'
 import { RequestStatusBadge } from '../components/RequestStatusBadge'
 import { ReviewRequestForm } from '../components/ReviewRequestForm'
 import { useRequest, useRequestComments, useUpdateReviewState } from '../hooks'
-import { formatFullDate, formatISK, getKillmailUrl } from '../utils'
+import { formatISK, getKillmailUrl, getRequestCharacterRole } from '../utils'
 
 export default function ReviewRequestDetail() {
 	const { id } = useParams<{ id: string }>()
@@ -64,7 +66,14 @@ export default function ReviewRequestDetail() {
 		<Container>
 			<PageHeader
 				title={`Review: ${request.shipTypeName ?? 'Ship'}`}
-				description={`${request.characterName} · ${request.corporationName} · ${formatFullDate(request.lossDate)}`}
+				description={
+					<span className="inline-flex items-center gap-2 flex-wrap">
+						<span>{request.characterName}</span>
+						<CharacterRoleBadge role={getRequestCharacterRole(request)} />
+						<span>· {request.corporationName} ·</span>
+						<EveTimeDisplay dateStr={request.lossDate} />
+					</span>
+				}
 				action={
 					<div className="flex gap-2">
 						<Button variant="ghost" size="sm" asChild>
@@ -76,7 +85,7 @@ export default function ReviewRequestDetail() {
 								View on zKillboard
 							</a>
 						</Button>
-						<Button variant="secondary" size="sm" asChild>
+						<Button variant="ghost" size="sm" asChild>
 							<Link to="/srp/review">← Back to Queue</Link>
 						</Button>
 					</div>
@@ -169,7 +178,10 @@ export default function ReviewRequestDetail() {
 								</div>
 								<div>
 									<div className="text-muted-foreground">Character</div>
-									<div className="font-medium">{request.characterName}</div>
+									<div className="inline-flex items-center gap-2 font-medium">
+										<span>{request.characterName}</span>
+										<CharacterRoleBadge role={getRequestCharacterRole(request)} />
+									</div>
 								</div>
 								<div>
 									<div className="text-muted-foreground">Corporation</div>
@@ -177,7 +189,7 @@ export default function ReviewRequestDetail() {
 								</div>
 								<div>
 									<div className="text-muted-foreground">Loss Date</div>
-									<div className="font-medium">{formatFullDate(request.lossDate)}</div>
+									<EveTimeDisplay dateStr={request.lossDate} className="font-medium no-underline" />
 								</div>
 								{request.approvedAmount && (
 									<div>

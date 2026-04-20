@@ -1,6 +1,6 @@
 import { DurableObject } from 'cloudflare:workers'
 
-import { and, desc, eq, inArray } from '@repo/db-utils'
+import { and, desc, eq, gte, ilike, inArray, lte, sql } from '@repo/db-utils'
 import { getStub } from '@repo/do-utils'
 import { getEsiInstanceForCharacter } from '@repo/esi'
 import { createEveRegionId, createEveTypeId } from '@repo/eve-types'
@@ -691,6 +691,22 @@ export class SrpDO extends DurableObject<Env> implements Srp {
 		return requests.map((r) => this.formatRequest(r))
 	}
 
+	async getPendingPayoutTotal(corporationId?: string): Promise<string> {
+		const [result] = await this.db
+			.select({
+				total: sql<string>`coalesce(sum(coalesce(nullif(${srpRequests.approvedAmount}, ''), '0')::numeric), 0)::text`,
+			})
+			.from(srpRequests)
+			.where(
+				and(
+					corporationId ? eq(srpRequests.corporationId, corporationId) : undefined,
+					eq(srpRequests.requestStatus, 'approved')
+				)
+			)
+
+		return result?.total ?? '0'
+	}
+
 	/**
 	 * Mark a request as paid (moves from 'approved' to 'paid')
 	 */
@@ -1108,18 +1124,84 @@ export class SrpDO extends DurableObject<Env> implements Srp {
 
 	async getRequestsByStatus(
 		status: RequestStatus,
-		options: { limit?: number; offset?: number } = {}
-	): Promise<SRPRequestResponse[]> {
-		const { limit = 50, offset = 0 } = options
-		// Pending/needs_context: oldest-first. Others: newest-first.
+		options: {
+			limit?: number
+			offset?: number
+			characterName?: string
+			shipTypeName?: string
+			solarSystemName?: string
+			dateFrom?: string
+			dateTo?: string
+		} = {}
+	): Promise<{ requests: SRPRequestResponse[]; total: number }> {
+		const { limit = 25, offset = 0, characterName, shipTypeName, solarSystemName, dateFrom, dateTo } = options
+
+		const startDate = dateFrom
+			? (dateFrom.includes('T')
+				? new Date(dateFrom)
+				: new Date(`${dateFrom}T00:00:00.000Z`))
+			: null
+		const endDate = dateTo
+			? (dateTo.includes('T')
+				? new Date(dateTo)
+				: new Date(`${dateTo}T23:59:59.999Z`))
+			: null
+
+		const conditions = [eq(srpRequests.requestStatus, status)]
+		if (characterName) conditions.push(ilike(srpRequests.characterName, `%${characterName}%`))
+		if (shipTypeName) conditions.push(ilike(srpRequests.shipTypeName, `%${shipTypeName}%`))
+		if (solarSystemName) conditions.push(ilike(srpRequests.solarSystemName, `%${solarSystemName}%`))
+		if (startDate) conditions.push(gte(srpRequests.lossDate, startDate))
+		if (endDate) conditions.push(lte(srpRequests.lossDate, endDate))
+
+		const where = and(...conditions)
 		const oldestFirst = status === 'pending' || status === 'needs_context'
-		const requests = await this.db.query.srpRequests.findMany({
-			where: eq(srpRequests.requestStatus, status),
-			orderBy: oldestFirst ? srpRequests.createdAt : desc(srpRequests.createdAt),
-			limit,
-			offset,
-		})
-		return requests.map((r) => this.formatRequest(r))
+
+		const [requests, [{ count }]] = await Promise.all([
+			this.db.query.srpRequests.findMany({
+				where,
+				orderBy: oldestFirst ? srpRequests.createdAt : desc(srpRequests.createdAt),
+				limit,
+				offset,
+			}),
+			this.db.select({ count: sql<number>`count(*)::int` }).from(srpRequests).where(where),
+		])
+
+		return { requests: requests.map((r) => this.formatRequest(r)), total: count }
+	}
+
+	async getSearchValues(
+		status: RequestStatus,
+		field: 'character' | 'ship' | 'system',
+		query: string
+	): Promise<Array<{ value: string }>> {
+		const statusCond = eq(srpRequests.requestStatus, status)
+
+		if (field === 'character') {
+			const rows = await this.db
+				.selectDistinct({ characterName: srpRequests.characterName })
+				.from(srpRequests)
+				.where(and(statusCond, ilike(srpRequests.characterName, `%${query}%`)))
+				.limit(20)
+			return rows.map((r) => ({ value: r.characterName }))
+		}
+
+		if (field === 'ship') {
+			const rows = await this.db
+				.selectDistinct({ shipTypeName: srpRequests.shipTypeName })
+				.from(srpRequests)
+				.where(and(statusCond, ilike(srpRequests.shipTypeName, `%${query}%`)))
+				.limit(20)
+			return rows.map((r) => ({ value: r.shipTypeName }))
+		}
+
+		// system
+		const rows = await this.db
+			.selectDistinct({ solarSystemName: srpRequests.solarSystemName })
+			.from(srpRequests)
+			.where(and(statusCond, ilike(srpRequests.solarSystemName!, `%${query}%`), sql`${srpRequests.solarSystemName} is not null`))
+			.limit(20)
+		return rows.map((r) => ({ value: r.solarSystemName! }))
 	}
 
 	// ========================================================================

@@ -9,7 +9,7 @@ import { Label } from '@/components/ui/label'
 import { Select } from '@/components/ui/select'
 
 
-import { useSRPPolicies, useSubmitReview } from '../hooks'
+import { useSRPPolicies, useSubmitReview, useUpdateReviewState } from '../hooks'
 import { formatISK } from '../utils'
 import { transformKillmailToFittingItems } from '../utils/fitting'
 import { SRPFittingPanel } from './SRPFittingPanel'
@@ -89,6 +89,7 @@ function computePayout(
 export function ReviewRequestForm({ request, onSuccess, commentSlot, rightAppend }: ReviewRequestFormProps) {
 	const { data: policies = [] } = useSRPPolicies()
 	const submitMutation = useSubmitReview()
+	const updateStateMutation = useUpdateReviewState()
 
 	const modifierPolicies = policies.filter((p) => p.effect === 'payout_modifier' && p.isActive)
 	const capPolicies = policies.filter((p) => p.effect === 'cap' && p.isActive)
@@ -97,7 +98,9 @@ export function ReviewRequestForm({ request, onSuccess, commentSlot, rightAppend
 	const [selectedCapPolicyId, setSelectedCapPolicyId] = useState<string | null>(null)
 	const [modifiers, setModifiers] = useState<AppliedModifier[]>([])
 	const [overrideMillions, setOverrideMillions] = useState<number | null>(null)
-	const [outcome, setOutcome] = useState<'approved' | 'needs_context' | 'rejected'>('approved')
+	const [outcome, setOutcome] = useState<'pending' | 'approved' | 'needs_context' | 'rejected'>(
+		'approved'
+	)
 	const [showConfirm, setShowConfirm] = useState(false)
 
 	const selectedModifierPolicy =
@@ -216,22 +219,33 @@ export function ReviewRequestForm({ request, onSuccess, commentSlot, rightAppend
 		})
 
 		try {
-			await submitMutation.mutateAsync({
-				id: request.id,
-				data: {
-					outcome,
-					appliedModifierPolicyId: selectedModifierPolicyId,
-					appliedCapPolicyId: selectedCapPolicyId,
-					appliedModifiers: finalModifiers,
-					reviewerOverrideMillions: overrideMillions,
-					feedbackText: null,
-					reviewNotes: null,
-				},
-			})
-			toast.success('Review submitted successfully')
+			if (outcome === 'pending') {
+				await updateStateMutation.mutateAsync({
+					id: request.id,
+					newState: 'pending',
+				})
+				toast.success('Request moved to pending')
+			} else {
+				await submitMutation.mutateAsync({
+					id: request.id,
+					data: {
+						outcome,
+						appliedModifierPolicyId: selectedModifierPolicyId,
+						appliedCapPolicyId: selectedCapPolicyId,
+						appliedModifiers: finalModifiers,
+						reviewerOverrideMillions: overrideMillions,
+						feedbackText: null,
+						reviewNotes: null,
+					},
+				})
+				toast.success('Review submitted successfully')
+			}
 			onSuccess()
 		} catch (error: any) {
-			toast.error('Failed to submit review', { description: error.message })
+			toast.error(
+				outcome === 'pending' ? 'Failed to move request to pending' : 'Failed to submit review',
+				{ description: error.message }
+			)
 			setShowConfirm(false)
 		}
 	}
@@ -514,6 +528,7 @@ export function ReviewRequestForm({ request, onSuccess, commentSlot, rightAppend
 									setShowConfirm(false)
 								}}
 								options={[
+									{ value: 'pending', label: 'Pending' },
 									{
 										value: 'approved',
 										label:
@@ -534,11 +549,15 @@ export function ReviewRequestForm({ request, onSuccess, commentSlot, rightAppend
 						<div className="mb-4 rounded-md border border-amber-500/50 bg-amber-500/10 p-3 text-sm text-amber-600">
 							Confirm submission: <strong>{outcome.replace('_', ' ')}</strong> for{' '}
 							{request.shipTypeName}? Payout:{' '}
-							<strong>
-								{overrideMillions !== null
-									? formatISK(String(overrideMillions * 1_000_000))
-									: formatISK(String(computedPayout))}
-							</strong>
+							{outcome === 'pending' ? (
+								<strong>unchanged</strong>
+							) : (
+								<strong>
+									{overrideMillions !== null
+										? formatISK(String(overrideMillions * 1_000_000))
+										: formatISK(String(computedPayout))}
+								</strong>
+							)}
 						</div>
 					)}
 
@@ -553,10 +572,11 @@ export function ReviewRequestForm({ request, onSuccess, commentSlot, rightAppend
 							onClick={handleSubmit}
 							disabled={
 								submitMutation.isPending ||
+								updateStateMutation.isPending ||
 								(isZeroPayout && outcome === 'approved' && overrideMillions === null)
 							}
 						>
-							{submitMutation.isPending
+							{submitMutation.isPending || updateStateMutation.isPending
 								? 'Submitting…'
 								: showConfirm
 									? 'Confirm Submit'

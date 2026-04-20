@@ -1,6 +1,6 @@
 import { formatISK, formatISKShort } from '@/lib/format-utils'
 
-import type { RequestStatus } from './types'
+import type { RequestStatus, SRPRequestResponse } from './types'
 
 export { formatISK, formatISKShort }
 
@@ -66,12 +66,12 @@ export function getRequestStatusText(status: RequestStatus): string {
  */
 export function getRequestStatusVariant(
 	status: RequestStatus
-): 'warning' | 'default' | 'success' | 'destructive' | 'ghost' {
+): 'warning' | 'secondary' | 'default' | 'success' | 'destructive' | 'ghost' {
 	switch (status) {
 		case 'pending':
-			return 'ghost'
-		case 'needs_context':
 			return 'warning'
+		case 'needs_context':
+			return 'secondary'
 		case 'approved':
 			return 'default'
 		case 'rejected':
@@ -131,4 +131,14 @@ export function getPaginationRange(
 	}
 
 	return rangeWithDots
+}
+
+export function getRequestCharacterRole(
+	request: SRPRequestResponse
+): 'main' | 'alt' | undefined {
+	const role = (request as SRPRequestResponse & { characterRole?: unknown }).characterRole
+	if (role === 'main' || role === 'alt') {
+		return role
+	}
+	return undefined
 }

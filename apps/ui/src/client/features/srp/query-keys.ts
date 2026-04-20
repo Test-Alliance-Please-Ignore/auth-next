@@ -12,7 +12,18 @@ export const srpKeys = {
 	myRequests: (params: { limit?: number; offset?: number; status?: RequestStatus }) =>
 		[...srpKeys.requests(), 'my', params] as const,
 	request: (id: string) => [...srpKeys.requests(), id] as const,
-	requestsByStatus: (status: RequestStatus, params: { limit?: number; offset?: number }) =>
+	requestsByStatus: (
+		status: RequestStatus,
+		params: {
+			limit?: number
+			offset?: number
+			characterName?: string
+			shipTypeName?: string
+			solarSystemName?: string
+			dateFrom?: string
+			dateTo?: string
+		}
+	) =>
 		[...srpKeys.requests(), 'by-status', status, params] as const,
 
 	// Pending reviews
@@ -24,6 +35,8 @@ export const srpKeys = {
 	payments: () => [...srpKeys.all, 'payments'] as const,
 	pendingPayments: (params: { corporationId?: string; limit?: number; offset?: number }) =>
 		[...srpKeys.payments(), 'pending', params] as const,
+	pendingPayoutTotal: (params?: { corporationId?: string }) =>
+		[...srpKeys.payments(), 'pending-total', params] as const,
 
 	// Comments
 	comments: (requestId: string, includeInternal: boolean) =>

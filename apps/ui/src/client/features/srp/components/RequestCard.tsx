@@ -3,7 +3,8 @@ import { Link } from 'react-router-dom'
 import { Button } from '@/components/ui/button'
 import { Card } from '@/components/ui/card'
 
-import { formatISK, formatRelativeTime, getKillmailUrl } from '../utils'
+import { formatISK, formatRelativeTime, getKillmailUrl, getRequestCharacterRole } from '../utils'
+import { CharacterRoleBadge } from './CharacterRoleBadge'
 import { RequestStatusBadge } from './RequestStatusBadge'
 
 import type { SRPRequestResponse } from '../types'
@@ -20,9 +21,11 @@ export function RequestCard({ request, showActions = true }: RequestCardProps) {
 				<div className="flex items-start justify-between">
 					<div>
 						<h3 className="font-semibold">{request.shipTypeName}</h3>
-						<p className="text-sm text-muted-foreground">
-							{request.characterName} · {formatRelativeTime(request.createdAt)}
-						</p>
+						<div className="flex items-center gap-2 text-sm text-muted-foreground">
+							<span>{request.characterName}</span>
+							<CharacterRoleBadge role={getRequestCharacterRole(request)} />
+							<span>· {formatRelativeTime(request.createdAt)}</span>
+						</div>
 					</div>
 					<div className="flex flex-col items-end gap-1">
 						<RequestStatusBadge status={request.requestStatus} />

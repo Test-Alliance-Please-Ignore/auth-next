@@ -4,6 +4,7 @@ import { toast } from 'sonner'
 import { Button } from '@/components/ui/button'
 import { Card } from '@/components/ui/card'
 import { Container } from '@/components/ui/container'
+import { EveTimeDisplay } from '@/components/ui/eve-time-display'
 import { PageHeader } from '@/components/ui/page-header'
 import { Separator } from '@/components/ui/separator'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
@@ -11,10 +12,11 @@ import { useUserPermissions } from '@/hooks/useUserPermissions'
 
 import { CommentForm } from '../components/CommentForm'
 import { CommentsList } from '../components/CommentsList'
+import { CharacterRoleBadge } from '../components/CharacterRoleBadge'
 import { RequestHistory } from '../components/RequestHistory'
 import { RequestStatusBadge } from '../components/RequestStatusBadge'
 import { useRequest, useRequestComments, useUpdateReviewState } from '../hooks'
-import { formatFullDate, formatISK, getKillmailUrl } from '../utils'
+import { formatFullDate, formatISK, getKillmailUrl, getRequestCharacterRole } from '../utils'
 
 export default function RequestDetails() {
 	const { id } = useParams<{ id: string }>()
@@ -100,7 +102,10 @@ export default function RequestDetails() {
 							</div>
 							<div>
 								<div className="text-sm text-muted-foreground">Character</div>
-								<div className="font-medium">{request.characterName}</div>
+								<div className="inline-flex items-center gap-2 font-medium">
+									<span>{request.characterName}</span>
+									<CharacterRoleBadge role={getRequestCharacterRole(request)} />
+								</div>
 							</div>
 							<div>
 								<div className="text-sm text-muted-foreground">Corporation</div>
@@ -108,7 +113,7 @@ export default function RequestDetails() {
 							</div>
 							<div>
 								<div className="text-sm text-muted-foreground">Loss Date</div>
-								<div className="font-medium">{formatFullDate(request.lossDate)}</div>
+								<EveTimeDisplay dateStr={request.lossDate} className="font-medium no-underline" />
 							</div>
 							<div>
 								<Button variant="ghost" size="sm" asChild>

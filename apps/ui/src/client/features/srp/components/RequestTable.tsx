@@ -11,6 +11,8 @@ import {
 } from '@/components/ui/table'
 
 import { formatISK, formatRelativeTime } from '../utils'
+import { getRequestCharacterRole } from '../utils'
+import { CharacterRoleBadge } from './CharacterRoleBadge'
 import { RequestStatusBadge } from './RequestStatusBadge'
 
 import type { SRPRequestResponse } from '../types'
@@ -57,7 +59,12 @@ export function RequestTable({ requests, isLoading }: RequestTableProps) {
 					{requests.map((request) => (
 						<TableRow key={request.id}>
 							<TableCell className="font-semibold">{request.shipTypeName}</TableCell>
-							<TableCell className="text-sm font-medium">{request.characterName}</TableCell>
+							<TableCell className="text-sm font-medium">
+								<div className="inline-flex items-center gap-2">
+									<span>{request.characterName}</span>
+									<CharacterRoleBadge role={getRequestCharacterRole(request)} />
+								</div>
+							</TableCell>
 							<TableCell className="text-sm text-muted-foreground">
 								{formatRelativeTime(request.createdAt)}
 							</TableCell>

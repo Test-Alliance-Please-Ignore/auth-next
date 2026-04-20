@@ -65,8 +65,22 @@ export interface Srp {
 	// Review Queue
 	getRequestsByStatus(
 		status: RequestStatus,
-		options?: { limit?: number; offset?: number }
-	): Promise<SRPRequestResponse[]>
+		options?: {
+			limit?: number
+			offset?: number
+			characterName?: string
+			shipTypeName?: string
+			solarSystemName?: string
+			dateFrom?: string
+			dateTo?: string
+		}
+	): Promise<{ requests: SRPRequestResponse[]; total: number }>
+
+	getSearchValues(
+		status: RequestStatus,
+		field: 'character' | 'ship' | 'system',
+		query: string
+	): Promise<Array<{ value: string }>>
 
 	// Review Submission
 	submitReview(
@@ -107,6 +121,7 @@ export interface Srp {
 		limit?: number,
 		offset?: number
 	): Promise<SRPRequestResponse[]>
+	getPendingPayoutTotal(corporationId?: string): Promise<string>
 	markPaid(
 		requestId: string,
 		payerUserId: string,
