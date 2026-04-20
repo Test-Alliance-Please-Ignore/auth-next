@@ -1,7 +1,7 @@
 import { Card } from '@/components/ui/card'
 import { cn } from '@/lib/utils'
 
-import { formatFullDate } from '../utils'
+import { formatFullDate, formatISK } from '../utils'
 import { RequestStatusBadge } from './RequestStatusBadge'
 
 import type { SRPHistoryResponse } from '../types'
@@ -9,9 +9,10 @@ import type { SRPHistoryResponse } from '../types'
 interface RequestHistoryProps {
 	history: SRPHistoryResponse[]
 	className?: string
+	showFinancialAudit?: boolean
 }
 
-export function RequestHistory({ history, className }: RequestHistoryProps) {
+export function RequestHistory({ history, className, showFinancialAudit = false }: RequestHistoryProps) {
 	if (history.length === 0) {
 		return (
 			<Card className={cn('p-6', className)}>
@@ -59,6 +60,12 @@ export function RequestHistory({ history, className }: RequestHistoryProps) {
 									) : null}
 								</div>
 							)}
+							{showFinancialAudit && entry.previousApprovedAmount ? (
+								<div className="mt-2 rounded-md bg-muted/50 p-2 text-xs">
+									<span className="font-medium">Previous Approved Amount: </span>
+									<span className="tabular-nums">{formatISK(entry.previousApprovedAmount)}</span>
+								</div>
+							) : null}
 						</div>
 					</div>
 				))}

@@ -87,14 +87,12 @@ function GeneralConfigPanel({ config }: { config?: SRPConfigResponse }) {
 	const updateConfigMutation = useUpdateSRPConfig()
 	const [defaultCoverageRatePercent, setDefaultCoverageRatePercent] = useState('100')
 	const [maxPayoutAmount, setMaxPayoutAmount] = useState('')
-	const [minShipValue, setMinShipValue] = useState('0')
 	const [maxLossAgeDays, setMaxLossAgeDays] = useState('60')
 
 	useEffect(() => {
 		if (!config) return
 		setDefaultCoverageRatePercent(String(Math.round(parseFloat(config.defaultCoverageRate) * 100)))
 		setMaxPayoutAmount(config.maxPayoutAmount ?? '')
-		setMinShipValue(config.minShipValue)
 		setMaxLossAgeDays(String(config.maxLossAgeDays))
 	}, [config])
 
@@ -103,7 +101,6 @@ function GeneralConfigPanel({ config }: { config?: SRPConfigResponse }) {
 			await updateConfigMutation.mutateAsync({
 				defaultCoverageRate: String((Number.parseFloat(defaultCoverageRatePercent) || 0) / 100),
 				maxPayoutAmount: maxPayoutAmount.trim() ? maxPayoutAmount.trim() : null,
-				minShipValue: minShipValue.trim() || '0',
 				maxLossAgeDays: Math.max(1, Number.parseInt(maxLossAgeDays, 10) || 60),
 			} as any)
 			toast.success('SRP configuration saved')
@@ -146,18 +143,6 @@ function GeneralConfigPanel({ config }: { config?: SRPConfigResponse }) {
 							value={maxPayoutAmount}
 							onChange={setMaxPayoutAmount}
 							placeholder="e.g. 1,000,000,000 ISK"
-						/>
-					</div>
-					<div>
-						<Label htmlFor="minShipValue">Minimum Ship Value (ISK)</Label>
-						<NumberInput
-							id="minShipValue"
-							min={0}
-							step={1}
-							allowDecimal={false}
-							suffix=" ISK"
-							value={minShipValue}
-							onChange={setMinShipValue}
 						/>
 					</div>
 					<div>

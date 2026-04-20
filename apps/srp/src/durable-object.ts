@@ -116,6 +116,11 @@ export class SrpDO extends DurableObject<Env> implements Srp {
 		// Calculate SRP valuation from Jita prices at time of loss
 		const config = await this.getConfig()
 		const lossDate = new Date(killmailData.killmailTime)
+		const maxLossAgeDays = config?.maxLossAgeDays ?? 60
+		const maxLossAgeMs = maxLossAgeDays * 24 * 60 * 60 * 1000
+		if (Date.now() - lossDate.getTime() > maxLossAgeMs) {
+			throw new Error(`Loss is older than the maximum allowed age of ${maxLossAgeDays} days`)
+		}
 		let valuation: Awaited<ReturnType<typeof this.calculateSrpValuation>> = null
 		try {
 			valuation = await this.calculateSrpValuation(
@@ -303,9 +308,14 @@ export class SrpDO extends DurableObject<Env> implements Srp {
 	async getRecentLosses(
 		characterIds: string[],
 		userId: string,
-		_daysBack = 30,
+		daysBack = 30,
 		_excludeNonSrpEligible = true
 	): Promise<LossWithSRPStatus[]> {
+		const config = await this.getConfig()
+		const maxLossAgeDays = config?.maxLossAgeDays ?? daysBack
+		const effectiveDaysBack = Math.max(1, Math.min(daysBack, maxLossAgeDays))
+		const cutoffMs = Date.now() - effectiveDaysBack * 24 * 60 * 60 * 1000
+
 		// Fetch losses from eve-character-data for each character
 		const allLosses: KillmailDetail[] = []
 
@@ -314,7 +324,12 @@ export class SrpDO extends DurableObject<Env> implements Srp {
 			const esiInstance = getEsiInstanceForCharacter(this.env.ESI, characterId)
 			const killmails = await esiInstance.fetchCharacterKillmails(characterId)
 
-			const losses = killmails.filter((km) => km.victim.character_id === characterId)
+			const losses = killmails.filter((km) => {
+				if (km.victim.character_id !== characterId) return false
+				const killmailMs = new Date(km.killmail_time).getTime()
+				if (!Number.isFinite(killmailMs)) return false
+				return killmailMs >= cutoffMs
+			})
 
 			// Convert losses to the format we need (with string timestamps)
 			// Note: Date objects are serialized to ISO strings over RPC
@@ -438,6 +453,7 @@ export class SrpDO extends DurableObject<Env> implements Srp {
 			'request_approved',
 			{
 				previousRequestStatus: request.requestStatus,
+				previousApprovedAmount: request.approvedAmount ?? undefined,
 				newRequestStatus: 'approved',
 				newApprovedAmount: approvedAmount,
 			},
@@ -484,6 +500,7 @@ export class SrpDO extends DurableObject<Env> implements Srp {
 			'request_approved',
 			{
 				previousRequestStatus: request.requestStatus,
+				previousApprovedAmount: request.approvedAmount ?? undefined,
 				newRequestStatus: 'approved',
 				newApprovedAmount: approvedAmount,
 				metadata: { rejectionReason },
@@ -529,6 +546,7 @@ export class SrpDO extends DurableObject<Env> implements Srp {
 			'request_rejected',
 			{
 				previousRequestStatus: request.requestStatus,
+				previousApprovedAmount: request.approvedAmount ?? undefined,
 				newRequestStatus: 'rejected',
 				metadata: { rejectionReason },
 			},
@@ -768,9 +786,7 @@ export class SrpDO extends DurableObject<Env> implements Srp {
 			isActive: config.isActive,
 			defaultCoverageRate: config.defaultCoverageRate,
 			maxPayoutAmount: config.maxPayoutAmount || undefined,
-			minShipValue: config.minShipValue,
 			maxLossAgeDays: config.maxLossAgeDays,
-			eligibleCorporationIds: config.eligibleCorporationIds || undefined,
 			metadata,
 			predefinedAdhocModifiers,
 			createdBy: config.createdBy,
@@ -813,9 +829,7 @@ export class SrpDO extends DurableObject<Env> implements Srp {
 				isActive: true,
 				defaultCoverageRate: updates.defaultCoverageRate || current?.defaultCoverageRate || '1.0',
 				maxPayoutAmount: updates.maxPayoutAmount || current?.maxPayoutAmount || null,
-				minShipValue: updates.minShipValue || current?.minShipValue || '0',
-				eligibleCorporationIds:
-					updates.eligibleCorporationIds || current?.eligibleCorporationIds || null,
+				maxLossAgeDays: updates.maxLossAgeDays || current?.maxLossAgeDays || 60,
 				metadata: mergedMetadata,
 				createdBy: userId,
 				effectiveFrom: new Date(),
@@ -1292,6 +1306,7 @@ export class SrpDO extends DurableObject<Env> implements Srp {
 			'review_submitted',
 			{
 				previousRequestStatus: request.requestStatus,
+				previousApprovedAmount: request.approvedAmount ?? undefined,
 				newRequestStatus: data.outcome,
 				newApprovedAmount: approvedAmount,
 			},

@@ -346,18 +346,8 @@ export const srpConfig = pgTable(
 		defaultCoverageRate: text('default_coverage_rate').notNull().default('1.0'),
 		/** Maximum SRP payout per request (ISK as text, null = no limit) */
 		maxPayoutAmount: text('max_payout_amount'),
-		/** Minimum ship value to be eligible for SRP (ISK as text) */
-		minShipValue: text('min_ship_value').notNull().default('0'),
-		/** Whether to auto-approve requests under a certain value */
-		autoApprovalEnabled: boolean('auto_approval_enabled').default(false).notNull(),
-		/** Auto-approve if ship value is under this amount (ISK as text) */
-		autoApprovalThreshold: text('auto_approval_threshold'),
 		/** Maximum age of a loss (in days) eligible for SRP submission */
 		maxLossAgeDays: integer('max_loss_age_days').default(60).notNull(),
-		/** Array of corporation IDs eligible for SRP */
-		eligibleCorporationIds: text('eligible_corporation_ids').array(),
-		/** Custom rejection reasons (for dropdown) */
-		rejectionReasons: jsonb('rejection_reasons').$type<string[]>().default([]),
 		/** Additional configuration metadata */
 		metadata: jsonb('metadata').$type<{
 			requiresReviewNotes?: boolean

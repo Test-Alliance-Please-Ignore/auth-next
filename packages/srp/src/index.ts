@@ -330,9 +330,7 @@ export type CreateSRPPolicy = z.infer<typeof CreateSRPPolicySchema>
 export const UpdateSRPConfigSchema = z.object({
 	defaultCoverageRate: z.string().optional(),
 	maxPayoutAmount: z.string().nullable().optional(),
-	minShipValue: z.string().optional(),
 	maxLossAgeDays: z.number().int().positive().optional(),
-	eligibleCorporationIds: z.array(z.string()).optional(),
 	metadata: z.record(z.string(), z.unknown()).optional(),
 	predefinedAdhocModifiers: z.array(PredefinedAdhocModifierSchema).optional(),
 })
@@ -464,9 +462,7 @@ export interface SRPConfigResponse {
 	isActive: boolean
 	defaultCoverageRate: string
 	maxPayoutAmount?: string
-	minShipValue: string
 	maxLossAgeDays: number
-	eligibleCorporationIds?: string[]
 	metadata?: Record<string, unknown>
 	predefinedAdhocModifiers?: SRPPredefinedAdhocModifier[]
 	createdBy: string

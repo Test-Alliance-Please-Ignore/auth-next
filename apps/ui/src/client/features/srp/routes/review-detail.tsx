@@ -127,7 +127,7 @@ export default function ReviewRequestDetail() {
 							{request.history && request.history.length > 0 && (
 								<Card className="p-6">
 									<h3 className="mb-4 font-semibold">History</h3>
-									<RequestHistory history={request.history} />
+									<RequestHistory history={request.history} showFinancialAudit={canSeeInternal} />
 								</Card>
 							)}
 						</>
@@ -159,7 +159,7 @@ export default function ReviewRequestDetail() {
 						{request.history && request.history.length > 0 && (
 							<Card className="p-6">
 								<h3 className="mb-4 font-semibold">History</h3>
-								<RequestHistory history={request.history} />
+								<RequestHistory history={request.history} showFinancialAudit={canSeeInternal} />
 							</Card>
 						)}
 					</div>

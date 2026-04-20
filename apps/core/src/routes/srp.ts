@@ -527,6 +527,17 @@ async function hasPermission(
 	})
 }
 
+async function hasAnyPermission(
+	env: { GROUPS: DurableObjectNamespace },
+	userId: string,
+	permissionUrns: string[],
+	isAdmin: boolean
+): Promise<boolean> {
+	if (isAdmin) return true
+	const permissions = await getCachedUserPermissions(env, userId)
+	return permissionUrns.some((urn) => permissions.some((p) => p.urn === urn))
+}
+
 /**
  * SRP (Ship Replacement Program) routes
  *
@@ -660,13 +671,22 @@ srp.post('/requests', async (c) => {
 	}
 
 	const srpStub = getStub<Srp>(c.env.SRP, getRequestId(c))
-	const request = await srpStub.createRequest(
-		user.id,
-		characterId,
-		killmailId,
-		killmailHash,
-		contextText
-	)
+	let request: Awaited<ReturnType<Srp['createRequest']>>
+	try {
+		request = await srpStub.createRequest(
+			user.id,
+			characterId,
+			killmailId,
+			killmailHash,
+			contextText
+		)
+	} catch (err) {
+		const message = err instanceof Error ? err.message : String(err)
+		if (message.includes('maximum allowed age')) {
+			return c.json({ error: message }, 422)
+		}
+		throw err
+	}
 
 	return c.json(request, 201)
 })
@@ -793,6 +813,14 @@ srp.get('/requests/:id', async (c) => {
 			c.env,
 			request.userId
 		)
+	}
+
+	const canSeeFinancialAuditHistory = await hasAnyPermission(c.env, user.id, SRP_ROLE_URNS, user.is_admin)
+	if (request.history && !canSeeFinancialAuditHistory) {
+		request.history = request.history.map((entry) => ({
+			...entry,
+			previousApprovedAmount: undefined,
+		}))
 	}
 
 	const [requestWithCharacterRole] = await hydrateRequestCharacterRoles(

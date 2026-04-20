@@ -127,7 +127,7 @@ export default function RequestDetails() {
 
 					{/* Timeline */}
 					{request.history && request.history.length > 0 && (
-						<RequestHistory history={request.history} />
+						<RequestHistory history={request.history} showFinancialAudit={canSeeInternal} />
 					)}
 
 					{/* Comments */}
