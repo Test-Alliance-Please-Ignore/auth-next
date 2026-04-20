@@ -23,7 +23,7 @@ export default function PaymentsQueue() {
 
 	return (
 		<Container>
-			<PageHeader title="Payment Queue" description="Process approved ship replacement payments" />
+			<PageHeader title="Payment Queue" description="Submit approved SRP payouts for payment validation" />
 			<div className="mt-section">
 				<PaymentStack />
 			</div>
@@ -62,7 +62,7 @@ function PaymentStack() {
 		return (
 			<div className="mt-4 rounded-lg border border-dashed p-12 text-center">
 				<h3 className="mb-2 font-semibold">All caught up!</h3>
-				<p className="text-sm text-muted-foreground">No approved requests awaiting payment.</p>
+				<p className="text-sm text-muted-foreground">No approved requests awaiting payment submission.</p>
 			</div>
 		)
 	}
@@ -71,7 +71,7 @@ function PaymentStack() {
 		setDismissing((prev) => new Set([...prev, request.id]))
 		try {
 			await markPaid.mutateAsync(request.id)
-			toast.success(`Marked as paid: ${request.shipTypeName}`)
+			toast.success(`Marked as payment pending: ${request.shipTypeName}`)
 		} catch (e: any) {
 			setDismissing((prev) => {
 				const next = new Set(prev)

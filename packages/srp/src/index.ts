@@ -160,6 +160,7 @@ export const REQUEST_STATUSES = [
 	'pending',
 	'needs_context',
 	'approved',
+	'payment_pending',
 	'rejected',
 	'paid',
 ] as const
@@ -308,7 +309,7 @@ export const SRPReviewSubmissionSchema = z.object({
  * Schema for changing request state
  */
 export const UpdateReviewStateSchema = z.object({
-	newState: z.enum(['pending', 'needs_context', 'approved', 'rejected', 'paid']),
+	newState: z.enum(['pending', 'needs_context', 'approved', 'payment_pending', 'rejected', 'paid']),
 	notes: z.string().max(2000).optional(),
 })
 
@@ -567,12 +568,14 @@ export function isValidStatusTransition(
 		pending: ['needs_context', 'approved', 'rejected'],
 		needs_context: ['pending', 'approved', 'rejected'],
 		approved: ['pending', 'needs_context', 'rejected'],
+		payment_pending: [],
 		rejected: ['pending', 'needs_context', 'approved'],
 	}
 
 	const PAYER_TRANSITIONS: Partial<Record<RequestStatus, RequestStatus[]>> = {
 		...REVIEWER_TRANSITIONS,
-		approved: ['paid', 'pending', 'needs_context', 'rejected'],
+		approved: ['payment_pending', 'pending', 'needs_context', 'rejected'],
+		payment_pending: ['paid', 'pending', 'needs_context', 'rejected'],
 	}
 
 	const allowed = role === 'payer' ? PAYER_TRANSITIONS[from] : REVIEWER_TRANSITIONS[from]

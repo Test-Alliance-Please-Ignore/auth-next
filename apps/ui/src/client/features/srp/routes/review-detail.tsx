@@ -56,7 +56,7 @@ export default function ReviewRequestDetail() {
 		)
 	}
 
-	const isPaid = request.requestStatus === 'paid'
+	const isPaid = request.requestStatus === 'paid' || request.requestStatus === 'payment_pending'
 
 	return (
 		<Container>

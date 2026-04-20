@@ -258,7 +258,7 @@ function scoreFittingOverlap(
 	return score
 }
 
-function computeDoctrineConformityFindings(
+export function computeDoctrineConformityFindings(
 	fitting: FittingWithItems,
 	killmailItemsForConformity: LossKillmailItem[],
 	killmailItemsForAmmoCheck: LossKillmailItem[],

@@ -726,7 +726,7 @@ export class SrpDO extends DurableObject<Env> implements Srp {
 	}
 
 	/**
-	 * Mark a request as paid (moves from 'approved' to 'paid')
+	 * Mark a request as payment pending (moves from 'approved' to 'payment_pending')
 	 */
 	async markPaid(
 		requestId: string,
@@ -743,7 +743,7 @@ export class SrpDO extends DurableObject<Env> implements Srp {
 		const updated = await this.db
 			.update(srpRequests)
 			.set({
-				requestStatus: 'paid',
+				requestStatus: 'payment_pending',
 				paymentDate: new Date(),
 				paymentCharacterName: payerCharacterName,
 				updatedAt: new Date(),
@@ -755,10 +755,10 @@ export class SrpDO extends DurableObject<Env> implements Srp {
 			requestId,
 			payerUserId,
 			payerCharacterName,
-			'payment_completed',
+			'payment_submitted',
 			{
 				previousRequestStatus: 'approved',
-				newRequestStatus: 'paid',
+				newRequestStatus: 'payment_pending',
 			},
 			'public'
 		)
@@ -853,6 +853,7 @@ export class SrpDO extends DurableObject<Env> implements Srp {
 				pending: 0,
 				needs_context: 0,
 				approved: 0,
+				payment_pending: 0,
 				rejected: 0,
 				paid: 0,
 			},
@@ -1167,7 +1168,10 @@ export class SrpDO extends DurableObject<Env> implements Srp {
 				: new Date(`${dateTo}T23:59:59.999Z`))
 			: null
 
-		const conditions = [eq(srpRequests.requestStatus, status)]
+		const conditions =
+			status === 'paid'
+				? [inArray(srpRequests.requestStatus, ['payment_pending', 'paid'])]
+				: [eq(srpRequests.requestStatus, status)]
 		if (characterName) conditions.push(ilike(srpRequests.characterName, `%${characterName}%`))
 		if (shipTypeName) conditions.push(ilike(srpRequests.shipTypeName, `%${shipTypeName}%`))
 		if (solarSystemName) conditions.push(ilike(srpRequests.solarSystemName, `%${solarSystemName}%`))
@@ -1195,7 +1199,10 @@ export class SrpDO extends DurableObject<Env> implements Srp {
 		field: 'character' | 'ship' | 'system',
 		query: string
 	): Promise<Array<{ value: string }>> {
-		const statusCond = eq(srpRequests.requestStatus, status)
+		const statusCond =
+			status === 'paid'
+				? inArray(srpRequests.requestStatus, ['payment_pending', 'paid'])
+				: eq(srpRequests.requestStatus, status)
 
 		if (field === 'character') {
 			const rows = await this.db
@@ -1419,7 +1426,7 @@ export class SrpDO extends DurableObject<Env> implements Srp {
 			.update(srpRequests)
 			.set({
 				requestStatus: newState,
-				...(newState === 'paid'
+				...(newState === 'payment_pending'
 					? { paymentDate: new Date(), paymentCharacterName: actorCharacterName }
 					: {}),
 				updatedAt: new Date(),

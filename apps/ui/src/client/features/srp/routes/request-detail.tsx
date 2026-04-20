@@ -28,7 +28,9 @@ export default function RequestDetails() {
 
 	const canRevert =
 		(isAdmin || hasPermission('urn:srp:reviewer') || hasPermission('urn:srp:payer')) &&
-		(request?.requestStatus === 'paid' || request?.requestStatus === 'rejected')
+		(request?.requestStatus === 'paid' ||
+			request?.requestStatus === 'payment_pending' ||
+			request?.requestStatus === 'rejected')
 
 	const handleRevertToPending = async () => {
 		if (!id) return
@@ -205,7 +207,11 @@ export default function RequestDetails() {
 							<div className="space-y-3">
 								<div>
 									<div className="text-sm text-muted-foreground">
-										{request.requestStatus === 'paid' ? 'Paid' : 'Approved'}
+										{request.requestStatus === 'paid'
+											? 'Paid'
+											: request.requestStatus === 'payment_pending'
+												? 'Payment Pending'
+												: 'Approved'}
 									</div>
 									<div className="font-medium tabular-nums text-success">
 										{formatISK(request.approvedAmount)}

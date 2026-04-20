@@ -1017,8 +1017,9 @@ srp.patch('/requests/:id/state', async (c) => {
 
 	const { newState, notes } = validation.data
 
-	// paid transition requires payer or manager; others require reviewer
-	const requiredPerm = newState === 'paid' ? 'urn:srp:payer' : 'urn:srp:reviewer'
+	// payment transitions require payer; others require reviewer
+	const requiredPerm =
+		newState === 'paid' || newState === 'payment_pending' ? 'urn:srp:payer' : 'urn:srp:reviewer'
 	const allowed = await hasPermission(c.env, user.id, requiredPerm, user.is_admin)
 	if (!allowed) return c.json({ error: `Requires ${requiredPerm} permissions` }, 403)
 

@@ -56,6 +56,8 @@ export function getRequestStatusText(status: RequestStatus): string {
 			return 'Needs Context'
 		case 'approved':
 			return 'Approved'
+		case 'payment_pending':
+			return 'Payment Pending'
 		case 'rejected':
 			return 'Rejected'
 		case 'paid':
@@ -78,6 +80,8 @@ export function getRequestStatusVariant(
 			return 'secondary'
 		case 'approved':
 			return 'default'
+		case 'payment_pending':
+			return 'secondary'
 		case 'rejected':
 			return 'destructive'
 		case 'paid':

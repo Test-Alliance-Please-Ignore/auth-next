@@ -33,9 +33,11 @@ export function RequestCard({ request, showActions = true }: RequestCardProps) {
 				</div>
 
 				<div className="grid grid-cols-2 gap-4 text-sm">
-					{request.requestStatus === 'paid' ? (
+					{request.requestStatus === 'paid' || request.requestStatus === 'payment_pending' ? (
 						<div>
-							<div className="text-muted-foreground">Paid Amount</div>
+							<div className="text-muted-foreground">
+								{request.requestStatus === 'paid' ? 'Paid Amount' : 'Payment Pending'}
+							</div>
 							<div className="font-medium tabular-nums text-success">{formatISK(request.approvedAmount ?? '0')}</div>
 						</div>
 					) : (

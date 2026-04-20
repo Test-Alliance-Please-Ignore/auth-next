@@ -88,6 +88,7 @@ function getActionLabel(action: string): string {
 		request_approved: 'Approved',
 		request_partially_approved: 'Partially Approved',
 		request_rejected: 'Rejected',
+		payment_submitted: 'Payment Pending',
 		payment_completed: 'Payment Completed',
 		partial_payment_completed: 'Partial Payment',
 	}
