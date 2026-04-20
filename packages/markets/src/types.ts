@@ -1,6 +1,6 @@
 import * as z from 'zod'
 
-import { EveRegionId, EveTypeId } from '@repo/eve-types'
+import type { EveRegionId, EveTypeId } from '@repo/eve-types'
 
 // ============================================================================
 // Single/Filtered Market Data Query
@@ -21,6 +21,12 @@ export interface GetBatchMarketDataInput {
 	regionId: EveRegionId
 	typeIds: EveTypeId[] // Max 500 items
 	useCachedData?: boolean
+}
+
+export interface GetBatchMarketDataAtTimeInput {
+	regionId: EveRegionId
+	typeIds: EveTypeId[] // Max 500 items
+	atTime: Date // Returns closest snapshot data at or before this timestamp
 }
 
 export const GetRegionMarketDataResponseObjectSchema = z.object({

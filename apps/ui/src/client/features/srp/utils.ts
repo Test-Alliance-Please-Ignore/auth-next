@@ -1,8 +1,12 @@
-import { formatISK, formatISKShort } from '@/lib/format-utils'
+import { formatISK as formatISKBase, formatISKShort } from '@/lib/format-utils'
 
-import type { PaymentStatus, RequestStatus } from './types'
+import type { RequestStatus, SRPRequestResponse } from './types'
 
-export { formatISK, formatISKShort }
+export { formatISKShort }
+
+export function formatISK(value: string | number): string {
+	return formatISKBase(value, { showDecimals: false })
+}
 
 /**
  * Format date as relative time (2h ago, 3 days ago)
@@ -48,32 +52,16 @@ export function getRequestStatusText(status: RequestStatus): string {
 	switch (status) {
 		case 'pending':
 			return 'Pending Review'
-		case 'in_review':
-			return 'In Review'
+		case 'needs_context':
+			return 'Needs Context'
 		case 'approved':
 			return 'Approved'
-		case 'partially_approved':
-			return 'Partially Approved'
+		case 'payment_pending':
+			return 'Payment Pending'
 		case 'rejected':
 			return 'Rejected'
-		default:
-			return status
-	}
-}
-
-/**
- * Get display text for payment status
- */
-export function getPaymentStatusText(status: PaymentStatus): string {
-	switch (status) {
-		case 'n/a':
-			return 'N/A'
-		case 'pending':
-			return 'Payment Pending'
-		case 'paid_in_full':
-			return 'Paid in Full'
-		case 'partial_payment':
-			return 'Partially Paid'
+		case 'paid':
+			return 'Paid'
 		default:
 			return status
 	}
@@ -84,38 +72,22 @@ export function getPaymentStatusText(status: PaymentStatus): string {
  */
 export function getRequestStatusVariant(
 	status: RequestStatus
-): 'warning' | 'default' | 'success' | 'destructive' | 'ghost' {
+): 'warning' | 'secondary' | 'default' | 'success' | 'destructive' | 'ghost' {
 	switch (status) {
 		case 'pending':
 			return 'warning'
-		case 'in_review':
-			return 'default'
+		case 'needs_context':
+			return 'secondary'
 		case 'approved':
-			return 'success'
-		case 'partially_approved':
-			return 'success'
+			return 'default'
+		case 'payment_pending':
+			return 'secondary'
 		case 'rejected':
 			return 'destructive'
+		case 'paid':
+			return 'success'
 		default:
 			return 'ghost'
-	}
-}
-
-/**
- * Get color class for payment status badge
- */
-export function getPaymentStatusColor(status: PaymentStatus): string {
-	switch (status) {
-		case 'n/a':
-			return 'bg-muted/50 text-muted-foreground border-muted'
-		case 'pending':
-			return 'bg-yellow-500/20 text-yellow-500 border-yellow-500/50'
-		case 'paid_in_full':
-			return 'bg-primary/20 text-primary border-primary/50'
-		case 'partial_payment':
-			return 'bg-primary/20 text-primary/80 border-primary/50'
-		default:
-			return 'bg-muted/50 text-muted-foreground border-muted'
 	}
 }
 
@@ -147,9 +119,9 @@ export function getPaginationRange(
 	current: number,
 	total: number,
 	delta: number = 2
-): (number | string)[] {
+): Array<number | string> {
 	const range: number[] = []
-	const rangeWithDots: (number | string)[] = []
+	const rangeWithDots: Array<number | string> = []
 
 	for (let i = 1; i <= total; i++) {
 		if (i === 1 || i === total || (i >= current - delta && i <= current + delta)) {
@@ -167,4 +139,14 @@ export function getPaginationRange(
 	}
 
 	return rangeWithDots
+}
+
+export function getRequestCharacterRole(
+	request: SRPRequestResponse
+): 'main' | 'alt' | undefined {
+	const role = (request as SRPRequestResponse & { characterRole?: unknown }).characterRole
+	if (role === 'main' || role === 'alt') {
+		return role
+	}
+	return undefined
 }

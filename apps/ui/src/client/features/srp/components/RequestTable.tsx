@@ -11,7 +11,8 @@ import {
 } from '@/components/ui/table'
 
 import { formatISK, formatRelativeTime } from '../utils'
-import { PaymentStatusBadge } from './PaymentStatusBadge'
+import { getRequestCharacterRole } from '../utils'
+import { CharacterRoleBadge } from './CharacterRoleBadge'
 import { RequestStatusBadge } from './RequestStatusBadge'
 
 import type { SRPRequestResponse } from '../types'
@@ -22,7 +23,7 @@ interface RequestTableProps {
 	showPagination?: boolean
 }
 
-export function RequestTable({ requests, isLoading, showPagination }: RequestTableProps) {
+export function RequestTable({ requests, isLoading }: RequestTableProps) {
 	if (isLoading) {
 		return (
 			<div className="space-y-4">
@@ -42,45 +43,36 @@ export function RequestTable({ requests, isLoading, showPagination }: RequestTab
 	}
 
 	return (
-		<div className="overflow-hidden rounded-lg border-2 border-primary/20 shadow-lg">
+		<div className="rounded-md border">
 			<Table>
 				<TableHeader>
-					<TableRow className="border-b-2 border-primary/30 bg-primary/10 hover:bg-primary/10">
-						<TableHead className="font-bold text-foreground">Ship</TableHead>
-						<TableHead className="font-bold text-foreground">Character</TableHead>
-						<TableHead className="font-bold text-foreground">Date</TableHead>
-						<TableHead className="text-right font-bold text-foreground">Requested</TableHead>
-						<TableHead className="text-right font-bold text-foreground">Approved</TableHead>
-						<TableHead className="font-bold text-foreground">Status</TableHead>
-						<TableHead className="font-bold text-foreground">Payment</TableHead>
-						<TableHead className="text-right font-bold text-foreground">Actions</TableHead>
+					<TableRow>
+						<TableHead>Ship</TableHead>
+						<TableHead>Character</TableHead>
+						<TableHead>Date</TableHead>
+						<TableHead className="text-right">Approved</TableHead>
+						<TableHead>Status</TableHead>
+						<TableHead className="text-right">Actions</TableHead>
 					</TableRow>
 				</TableHeader>
 				<TableBody>
-					{requests.map((request, index) => (
-						<TableRow
-							key={request.id}
-							className="border-b border-border/40 transition-colors hover:bg-primary/5"
-							style={{
-								background: index % 2 === 0 ? 'transparent' : 'hsl(var(--muted) / 0.15)',
-							}}
-						>
+					{requests.map((request) => (
+						<TableRow key={request.id}>
 							<TableCell className="font-semibold">{request.shipTypeName}</TableCell>
-							<TableCell className="text-sm font-medium">{request.characterName}</TableCell>
+							<TableCell className="text-sm font-medium">
+								<div className="inline-flex items-center gap-2">
+									<span>{request.characterName}</span>
+									<CharacterRoleBadge role={getRequestCharacterRole(request)} />
+								</div>
+							</TableCell>
 							<TableCell className="text-sm text-muted-foreground">
 								{formatRelativeTime(request.createdAt)}
-							</TableCell>
-							<TableCell className="text-right font-mono text-sm tabular-nums">
-								{request.requestedAmount ? formatISK(request.requestedAmount) : '—'}
 							</TableCell>
 							<TableCell className="text-right font-mono text-sm tabular-nums">
 								{request.approvedAmount ? formatISK(request.approvedAmount) : '—'}
 							</TableCell>
 							<TableCell>
 								<RequestStatusBadge status={request.requestStatus} />
-							</TableCell>
-							<TableCell>
-								<PaymentStatusBadge status={request.paymentStatus} />
 							</TableCell>
 							<TableCell className="text-right">
 								<Button variant="ghost" size="sm" asChild>

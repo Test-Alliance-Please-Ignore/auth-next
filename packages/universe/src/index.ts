@@ -8,6 +8,7 @@ import type { InvType } from './inv-types'
 import type { Killmail, KillmailDetail } from './killmails'
 import type { EveMoonId, UniverseMoon, UniverseMoonWithResources } from './moons'
 import type {
+	UniverseConstellation,
 	UniverseNpcStation,
 	UniversePlanet,
 	UniverseRegion,
@@ -167,6 +168,9 @@ export interface Universe {
 	 * @param regionIds - Array of region IDs to resolve
 	 */
 	resolveRegionsByIds(regionIds: string[]): Promise<Record<string, UniverseRegion | null>>
+	resolveConstellationsByIds(
+		constellationIds: string[]
+	): Promise<Record<string, UniverseConstellation | null>>
 
 	/**
 	 * Resolve regions by names.
@@ -249,6 +253,19 @@ export interface Universe {
 	resolveNpcStationsByNames(
 		stationNames: string[]
 	): Promise<Record<string, UniverseNpcStation | null>>
+
+	/**
+	 * Returns all published type IDs eligible for daily market price tracking.
+	 *
+	 * Includes:
+	 * - Ships (category 6)
+	 * - Modules / Ship Equipment (category 7)
+	 * - Subsystems (category 32)
+	 * - Rigs (category 66)
+	 * - Implants (category 20) filtered to attribute enhancers and skill hardwirings only
+	 *   (excludes boosters and cerebral accelerators via market group hierarchy traversal)
+	 */
+	getMarketPriceWhitelist(): Promise<string[]>
 
 	/**
 	 * Store killmail data, resolving all entity names

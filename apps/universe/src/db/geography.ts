@@ -12,6 +12,19 @@ export const universeRegions = pgTable(
 	]
 )
 
+export const universeConstellations = pgTable(
+	'universe_eve_constellations',
+	{
+		constellationId: text('constellation_id').primaryKey(),
+		constellationName: text('constellation_name').notNull(),
+		regionId: text('region_id').notNull(),
+	},
+	(table) => [
+		index('universe_eve_constellations_constellation_id_idx').on(table.constellationId),
+		index('universe_eve_constellations_region_id_idx').on(table.regionId),
+	]
+)
+
 export const universeSolarSystems = pgTable(
 	'universe_eve_solar_systems',
 	{

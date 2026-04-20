@@ -7,6 +7,16 @@
 
 import { Link2, ShieldAlert, XCircle } from 'lucide-react'
 import { MantineReactTable, createMRTColumnHelper, useMantineReactTable } from 'mantine-react-table'
+
+import {
+	mrtPaperProps,
+	mrtPaginationProps,
+	mrtRowStyle,
+	mrtTableBodyCellProps,
+	mrtTableHeadCellProps,
+	mrtTableHeadProps,
+	mrtTableProps,
+} from '@/lib/mrt-theme'
 import { useMemo } from 'react'
 import { useNavigate } from 'react-router-dom'
 
@@ -286,64 +296,20 @@ export function HrMembersTable({ members, corporationId }: HrMembersTableProps) 
 			)
 		}) as any,
 		paginationDisplayMode: 'pages',
-		mantinePaginationProps: {
-			showRowsPerPage: true,
-			rowsPerPageOptions: ['25', '50', '100', '200'],
-		},
-		mantinePaperProps: {
-			shadow: 'none',
-			radius: 'md',
-			withBorder: true,
-			style: {
-				background: 'hsl(var(--card))',
-				borderColor: 'hsl(var(--border))',
-				color: 'hsl(var(--foreground))',
-				overflow: 'hidden',
-			},
-		},
-		mantineTableContainerProps: {
-			style: {
-				maxHeight: 'calc(100vh - 16rem)',
-			},
-		},
-		mantineTableProps: {
-			striped: false,
-			highlightOnHover: false,
-			withColumnBorders: false,
-			withRowBorders: true,
-			style: {
-				background: 'transparent',
-				color: 'hsl(var(--foreground))',
-			},
-		},
-		mantineTableHeadProps: {
-			style: {
-				background: 'hsl(var(--background-elevated))',
-			},
-		},
-		mantineTableHeadCellProps: {
-			style: {
-				background: 'hsl(var(--background-elevated))',
-				borderBottom: '1px solid hsl(var(--border))',
-				color: 'hsl(var(--muted-foreground))',
-				fontSize: '0.75rem',
-				fontWeight: 700,
-				letterSpacing: '0.03em',
-				textTransform: 'uppercase' as const,
-			},
-		},
-		mantineTableBodyCellProps: {
-			style: {
-				borderBottom: '1px solid hsl(var(--border) / 0.7)',
-				color: 'hsl(var(--foreground))',
-			},
-		},
+		mantinePaginationProps: mrtPaginationProps,
+		mantinePaperProps: mrtPaperProps,
+		mantineTableContainerProps: { style: { maxHeight: 'calc(100vh - 16rem)' } },
+		mantineTableProps: mrtTableProps,
+		mantineTableHeadProps: mrtTableHeadProps,
+		mantineTableHeadCellProps: mrtTableHeadCellProps,
+		mantineTableBodyCellProps: mrtTableBodyCellProps,
 		mantineTableBodyRowProps: ({ row }) => ({
+			className: 'mrt-grid__row',
 			onClick: () =>
 				navigate(
 					`/corporations/${corporationId}/members/${row.original.accountId}?name=${encodeURIComponent(row.original.mainName)}`,
 				),
-			style: { cursor: 'pointer' },
+			style: { ...mrtRowStyle(row.index), cursor: 'pointer' },
 		}),
 		mantineSearchTextInputProps: {
 			placeholder: 'Search characters...',

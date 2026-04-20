@@ -1,10 +1,10 @@
-import { Copy } from 'lucide-react'
 import { Link, Navigate, useParams } from 'react-router-dom'
 import { toast } from 'sonner'
 
 import { Button } from '@/components/ui/button'
 import { Card } from '@/components/ui/card'
 import { Container } from '@/components/ui/container'
+import { EveTimeDisplay } from '@/components/ui/eve-time-display'
 import { PageHeader } from '@/components/ui/page-header'
 import { Separator } from '@/components/ui/separator'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
@@ -12,25 +12,39 @@ import { useUserPermissions } from '@/hooks/useUserPermissions'
 
 import { CommentForm } from '../components/CommentForm'
 import { CommentsList } from '../components/CommentsList'
-import { PaymentStatusBadge } from '../components/PaymentStatusBadge'
+import { CharacterRoleBadge } from '../components/CharacterRoleBadge'
 import { RequestHistory } from '../components/RequestHistory'
+import { SRPRequestDetailSkeleton } from '../components/SRPRequestDetailSkeleton'
 import { RequestStatusBadge } from '../components/RequestStatusBadge'
-import { useRequest, useRequestComments } from '../hooks'
-import { formatFullDate, formatISK, getKillmailUrl } from '../utils'
+import { useRequest, useRequestComments, useUpdateReviewState } from '../hooks'
+import { formatFullDate, formatISK, getKillmailUrl, getRequestCharacterRole } from '../utils'
 
 export default function RequestDetails() {
 	const { id } = useParams<{ id: string }>()
 	const { hasPermission, isAdmin } = useUserPermissions()
 
 	const { data: request, isLoading, error } = useRequest(id)
+	const updateState = useUpdateReviewState()
+
+	const canRevert =
+		(isAdmin || hasPermission('urn:srp:reviewer') || hasPermission('urn:srp:payer')) &&
+		(request?.requestStatus === 'paid' ||
+			request?.requestStatus === 'payment_pending' ||
+			request?.requestStatus === 'rejected')
+
+	const handleRevertToPending = async () => {
+		if (!id) return
+		try {
+			await updateState.mutateAsync({ id, newState: 'pending' })
+			toast.success('Request reverted to pending')
+		} catch (e: any) {
+			toast.error('Failed to revert request', { description: e.message })
+		}
+	}
 
 	const canSeeInternal =
 		isAdmin || hasPermission('urn:srp:reviewer') || hasPermission('urn:srp:payer')
-	const {
-		data: comments = [],
-		refetch: refetchComments,
-		isLoading: commentsLoading,
-	} = useRequestComments(id, canSeeInternal)
+	const { data: comments = [], refetch: refetchComments } = useRequestComments(id, canSeeInternal)
 
 	if (!id) {
 		return <Navigate to="/srp" replace />
@@ -39,12 +53,7 @@ export default function RequestDetails() {
 	if (isLoading) {
 		return (
 			<Container>
-				<div className="flex min-h-[400px] items-center justify-center">
-					<div className="text-center">
-						<div className="mb-2 h-8 w-8 animate-spin rounded-full border-4 border-primary border-t-transparent" />
-						<p className="text-sm text-muted-foreground">Loading request...</p>
-					</div>
-				</div>
+				<SRPRequestDetailSkeleton mode="request" />
 			</Container>
 		)
 	}
@@ -66,12 +75,6 @@ export default function RequestDetails() {
 		)
 	}
 
-	const copyToken = () => {
-		if (request.paymentToken) {
-			navigator.clipboard.writeText(request.paymentToken)
-			toast.success('Payment token copied to clipboard')
-		}
-	}
 
 	return (
 		<Container>
@@ -97,7 +100,10 @@ export default function RequestDetails() {
 							</div>
 							<div>
 								<div className="text-sm text-muted-foreground">Character</div>
-								<div className="font-medium">{request.characterName}</div>
+								<div className="inline-flex items-center gap-2 font-medium">
+									<span>{request.characterName}</span>
+									<CharacterRoleBadge role={getRequestCharacterRole(request)} />
+								</div>
 							</div>
 							<div>
 								<div className="text-sm text-muted-foreground">Corporation</div>
@@ -105,7 +111,7 @@ export default function RequestDetails() {
 							</div>
 							<div>
 								<div className="text-sm text-muted-foreground">Loss Date</div>
-								<div className="font-medium">{formatFullDate(request.lossDate)}</div>
+								<EveTimeDisplay dateStr={request.lossDate} className="font-medium no-underline" />
 							</div>
 							<div>
 								<Button variant="ghost" size="sm" asChild>
@@ -123,7 +129,7 @@ export default function RequestDetails() {
 
 					{/* Timeline */}
 					{request.history && request.history.length > 0 && (
-						<RequestHistory history={request.history} />
+						<RequestHistory history={request.history} showFinancialAudit={canSeeInternal} />
 					)}
 
 					{/* Comments */}
@@ -180,51 +186,37 @@ export default function RequestDetails() {
 								<div className="text-sm text-muted-foreground">Request Status</div>
 								<RequestStatusBadge status={request.requestStatus} />
 							</div>
-							<div>
-								<div className="text-sm text-muted-foreground">Payment Status</div>
-								<PaymentStatusBadge status={request.paymentStatus} />
-							</div>
+							{canRevert && (
+								<Button
+									variant="ghost"
+									size="sm"
+									onClick={handleRevertToPending}
+									loading={updateState.isPending}
+									className="w-full"
+								>
+									Revert to Pending
+								</Button>
+							)}
 						</div>
 					</Card>
 
 					{/* Amounts */}
-					<Card className="p-6">
-						<h3 className="mb-4 font-semibold">Amounts</h3>
-						<div className="space-y-3">
-							{request.requestedAmount && (
+					{request.approvedAmount && (
+						<Card className="p-6">
+							<h3 className="mb-4 font-semibold">Amounts</h3>
+							<div className="space-y-3">
 								<div>
-									<div className="text-sm text-muted-foreground">Requested</div>
-									<div className="font-medium tabular-nums">
-										{formatISK(request.requestedAmount)}
+									<div className="text-sm text-muted-foreground">
+										{request.requestStatus === 'paid'
+											? 'Paid'
+											: request.requestStatus === 'payment_pending'
+												? 'Payment Pending'
+												: 'Approved'}
 									</div>
-								</div>
-							)}
-							{request.approvedAmount && (
-								<div>
-									<div className="text-sm text-muted-foreground">Approved</div>
-									<div className="font-medium tabular-nums">
+									<div className="font-medium tabular-nums text-success">
 										{formatISK(request.approvedAmount)}
 									</div>
 								</div>
-							)}
-						</div>
-					</Card>
-
-					{/* Payment Token */}
-					{request.paymentToken && (
-						<Card className="p-6">
-							<h3 className="mb-4 font-semibold">Payment Token</h3>
-							<div className="space-y-2">
-								<div className="rounded-md border bg-muted/50 p-3 font-mono text-sm">
-									{request.paymentToken}
-								</div>
-								<Button variant="ghost" size="sm" className="w-full" onClick={copyToken}>
-									<Copy className="h-4 w-4" />
-									Copy Token
-								</Button>
-								<p className="text-xs text-muted-foreground">
-									Provide this token to the payer to confirm payment receipt.
-								</p>
 							</div>
 						</Card>
 					)}

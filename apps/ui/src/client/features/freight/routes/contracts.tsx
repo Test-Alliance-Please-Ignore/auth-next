@@ -3,6 +3,16 @@ import { useMemo } from 'react'
 import { MantineReactTable, useMantineReactTable } from 'mantine-react-table'
 
 import { Container } from '@/components/ui/container'
+import {
+    mrtPaperProps,
+    mrtPaginationProps,
+    mrtRowStyle,
+    mrtTableBodyCellProps,
+    mrtTableContainerProps,
+    mrtTableHeadCellProps,
+    mrtTableHeadProps,
+    mrtTableProps,
+} from '@/lib/mrt-theme'
 import { useFreightContracts } from '@/hooks/useFreightContracts'
 import { usePageTitle } from '@/hooks/usePageTitle'
 
@@ -111,58 +121,20 @@ export default function FreightContractsPage() {
         },
         enableStickyHeader: true,
         paginationDisplayMode: 'pages',
-        mantinePaginationProps: {
-            showRowsPerPage: true,
-            rowsPerPageOptions: ['25', '50', '100'],
-        },
-        mantinePaperProps: {
-            shadow: 'none',
-            radius: 'md',
-            withBorder: true,
-            style: {
-                background: 'hsl(var(--card))',
-                borderColor: 'hsl(var(--border))',
-                color: 'hsl(var(--foreground))',
-                overflow: 'hidden',
-            },
-        },
+        mantinePaginationProps: mrtPaginationProps,
+        mantinePaperProps: mrtPaperProps,
         mantineTableContainerProps: {
-            style: {
-                maxHeight: 'calc(100vh - 16rem)',
-            },
+            ...mrtTableContainerProps,
+            style: { maxHeight: 'calc(100vh - 16rem)' },
         },
-        mantineTableProps: {
-            striped: false,
-            highlightOnHover: true,
-            withColumnBorders: false,
-            withRowBorders: true,
-            style: {
-                background: 'transparent',
-                color: 'hsl(var(--foreground))',
-            },
-        },
-        mantineTableHeadProps: {
-            style: {
-                background: 'hsl(var(--background-elevated))',
-            },
-        },
-        mantineTableHeadCellProps: {
-            style: {
-                background: 'hsl(var(--background-elevated))',
-                borderBottom: '1px solid hsl(var(--border))',
-                color: 'hsl(var(--muted-foreground))',
-                fontSize: '0.75rem',
-                fontWeight: 700,
-                letterSpacing: '0.03em',
-                textTransform: 'uppercase',
-            },
-        },
-        mantineTableBodyCellProps: {
-            style: {
-                borderBottom: '1px solid hsl(var(--border) / 0.7)',
-                color: 'hsl(var(--foreground))',
-            },
-        },
+        mantineTableProps: mrtTableProps,
+        mantineTableHeadProps: mrtTableHeadProps,
+        mantineTableHeadCellProps: mrtTableHeadCellProps,
+        mantineTableBodyCellProps: mrtTableBodyCellProps,
+        mantineTableBodyRowProps: ({ row }) => ({
+            className: 'mrt-grid__row',
+            style: mrtRowStyle(row.index),
+        }),
         renderEmptyRowsFallback: () => (
             <div className="flex min-h-40 items-center justify-center px-6 py-8 text-center text-sm text-muted-foreground">
                 <div>

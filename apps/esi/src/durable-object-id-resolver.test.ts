@@ -4,17 +4,14 @@ import { getStub } from '@repo/do-utils'
 
 import type { Env } from './context'
 
-vi.mock(
-	'cloudflare:workers',
-	() => ({
-		DurableObject: class DurableObject {
-			constructor(
-				public state: DurableObjectState,
-				public env: Env
-			) {}
-		},
-	})
-)
+vi.mock('cloudflare:workers', () => ({
+	DurableObject: class DurableObject {
+		constructor(
+			public state: DurableObjectState,
+			public env: Env
+		) {}
+	},
+}))
 
 vi.mock('@repo/do-utils', () => ({
 	getStub: vi.fn(),
@@ -132,14 +129,14 @@ describe('EsiTypeResolverDO local-first resolution', () => {
 			throw new Error('Unexpected binding in test')
 		})
 
-		const fetchSpy = vi.spyOn(globalThis, 'fetch').mockResolvedValue(
-			new Response(
-				JSON.stringify([
-					{ id: 10000002, name: 'The Forge', category: 'region' },
-				]),
-				{ status: 200, headers: { 'Content-Type': 'application/json' } }
+		const fetchSpy = vi
+			.spyOn(globalThis, 'fetch')
+			.mockResolvedValue(
+				new Response(JSON.stringify([{ id: 10000002, name: 'The Forge', category: 'region' }]), {
+					status: 200,
+					headers: { 'Content-Type': 'application/json' },
+				})
 			)
-		)
 
 		const result = await resolver.resolveIds(['10000002'])
 

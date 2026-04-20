@@ -1,4 +1,4 @@
-import { FileKey, FolderOpen, Plus, Search, Trash2 } from 'lucide-react'
+import { Edit2, FileKey, FolderOpen, Plus, Search, Trash2 } from 'lucide-react'
 import { useState } from 'react'
 import { Link } from 'react-router-dom'
 
@@ -17,6 +17,14 @@ import {
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Select } from '@/components/ui/select'
+import {
+	Table,
+	TableBody,
+	TableCell,
+	TableHead,
+	TableHeader,
+	TableRow,
+} from '@/components/ui/table'
 import { usePageTitle } from '@/hooks/usePageTitle'
 import { usePermissionCategories } from '@/hooks/usePermissionCategories'
 import {
@@ -226,7 +234,7 @@ export default function GlobalPermissionsPage() {
 						{filteredPermissions && (
 							<span className="text-muted-foreground font-normal">
 								({filteredPermissions.length}
-								{searchQuery || selectedCategoryId ? ` filtered` : ''})
+								{searchQuery || selectedCategoryId ? ' filtered' : ''})
 							</span>
 						)}
 					</CardTitle>
@@ -235,86 +243,76 @@ export default function GlobalPermissionsPage() {
 					</CardDescription>
 				</CardHeader>
 				<CardContent>
-					{isLoading && (
+					{isLoading ? (
 						<div className="space-y-3">
 							{[1, 2, 3].map((i) => (
-								<Card key={i} className="p-4 animate-pulse">
-									<div className="h-5 bg-muted rounded w-1/3 mb-2" />
-									<div className="h-4 bg-muted rounded w-2/3 mb-2" />
-									<div className="h-4 bg-muted rounded w-1/2" />
-								</Card>
+								<div key={i} className="h-12 animate-pulse rounded-md bg-muted/30" />
 							))}
 						</div>
-					)}
-
-					{!isLoading &&
-						filteredPermissions.length === 0 &&
-						!searchQuery &&
-						!selectedCategoryId && (
-							<Card className="p-8 text-center">
-								<FileKey className="w-12 h-12 mx-auto text-muted-foreground mb-4" />
-								<h3 className="text-lg font-medium mb-2">No permissions yet</h3>
-								<p className="text-muted-foreground mb-4">
-									Create your first global permission to get started
-								</p>
-								<Button onClick={() => setCreateDialogOpen(true)}>
-									<Plus className="w-4 h-4 mr-2" />
-									Create Permission
-								</Button>
-							</Card>
-						)}
-
-					{!isLoading &&
-						filteredPermissions.length === 0 &&
-						(searchQuery || selectedCategoryId) && (
-							<Card className="p-8 text-center">
-								<Search className="w-12 h-12 mx-auto text-muted-foreground mb-4" />
-								<h3 className="text-lg font-medium mb-2">No permissions found</h3>
-								<p className="text-muted-foreground mb-4">
-									Try adjusting your search or filter criteria
-								</p>
-								<Button
-									variant="ghost"
-									onClick={() => {
-										setSearchQuery('')
-										setSelectedCategoryId(undefined)
-									}}
-								>
-									Clear filters
-								</Button>
-							</Card>
-						)}
-
-					{!isLoading && filteredPermissions.length > 0 && (
-						<div className="space-y-3">
-							{filteredPermissions.map((permission) => (
-								<Card key={permission.id} className="p-4 hover:bg-accent/50 transition-colors">
-									<div className="flex items-start justify-between">
-										<div className="flex-1 space-y-2">
-											<div className="flex items-center gap-2">
-												<h3 className="font-medium text-lg">{permission.name}</h3>
-												{permission.category && (
-													<Badge variant="secondary" className="text-xs">
-														{permission.category.name}
-													</Badge>
+					) : filteredPermissions.length === 0 ? (
+						<div className="rounded-lg border border-dashed p-8 text-center">
+							{searchQuery || selectedCategoryId ? (
+								<>
+									<Search className="w-12 h-12 mx-auto text-muted-foreground mb-4" />
+									<h3 className="text-lg font-medium mb-2">No permissions found</h3>
+									<p className="text-muted-foreground mb-4">Try adjusting your search or filter criteria</p>
+									<Button variant="ghost" onClick={() => { setSearchQuery(''); setSelectedCategoryId(undefined) }}>
+										Clear filters
+									</Button>
+								</>
+							) : (
+								<>
+									<FileKey className="w-12 h-12 mx-auto text-muted-foreground mb-4" />
+									<h3 className="text-lg font-medium mb-2">No permissions yet</h3>
+									<p className="text-muted-foreground mb-4">Create your first global permission to get started</p>
+									<Button onClick={() => setCreateDialogOpen(true)}>
+										<Plus className="w-4 h-4 mr-2" />
+										Create Permission
+									</Button>
+								</>
+							)}
+						</div>
+					) : (
+						<div className="rounded-md border bg-card">
+							<Table>
+								<TableHeader>
+									<TableRow>
+										<TableHead>Name</TableHead>
+										<TableHead>URN</TableHead>
+										<TableHead>Category</TableHead>
+										<TableHead>Description</TableHead>
+										<TableHead className="text-right">Actions</TableHead>
+									</TableRow>
+								</TableHeader>
+								<TableBody>
+									{filteredPermissions.map((permission) => (
+										<TableRow key={permission.id}>
+											<TableCell className="font-medium">{permission.name}</TableCell>
+											<TableCell className="font-mono text-xs text-muted-foreground">{permission.urn}</TableCell>
+											<TableCell>
+												{permission.category ? (
+													<Badge variant="secondary" className="text-xs">{permission.category.name}</Badge>
+												) : (
+													<span className="text-xs text-muted-foreground">—</span>
 												)}
-											</div>
-											<p className="font-mono text-sm text-muted-foreground">{permission.urn}</p>
-											{permission.description && (
-												<p className="text-sm text-muted-foreground">{permission.description}</p>
-											)}
-										</div>
-										<div className="flex items-center gap-2 ml-4">
-											<Button variant="ghost" size="sm" onClick={() => openEditDialog(permission)}>
-												Edit
-											</Button>
-											<Button variant="destructive" size="sm" onClick={() => openDeleteDialog(permission)}>
-												<Trash2 className="h-4 w-4" />
-											</Button>
-										</div>
-									</div>
-								</Card>
-							))}
+											</TableCell>
+											<TableCell className="text-sm text-muted-foreground max-w-sm">
+												<div className="truncate">{permission.description || '—'}</div>
+											</TableCell>
+											<TableCell className="text-right">
+												<div className="flex items-center justify-end gap-2">
+													<Button variant="ghost" size="icon" onClick={() => openEditDialog(permission)} title="Edit permission">
+														<Edit2 className="h-4 w-4" />
+													</Button>
+													<Button variant="ghost" size="icon" onClick={() => openDeleteDialog(permission)} title="Delete permission">
+														<Trash2 className="h-4 w-4 text-destructive" />
+													</Button>
+												</div>
+											</TableCell>
+										</TableRow>
+									))}
+								</TableBody>
+							</Table>
 						</div>
 					)}
 				</CardContent>

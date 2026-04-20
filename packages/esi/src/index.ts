@@ -119,7 +119,12 @@ export interface Esi {
 	fetchCharacterFittings(characterId: string): Promise<CharacterFitting[]>
 	saveCharacterFitting(
 		characterId: string,
-		fitting: { name: string; description: string; shipTypeId: string; items: Array<{ typeId: string; flag: string; quantity: number }> }
+		fitting: {
+			name: string
+			description: string
+			shipTypeId: string
+			items: Array<{ typeId: string; flag: string; quantity: number }>
+		}
 	): Promise<SaveFittingResponse>
 	fetchCharacterLocation(characterId: string): Promise<CharacterLocation>
 	fetchCharacterMail(characterId: string): Promise<CharacterMail[]>
@@ -185,6 +190,22 @@ export interface Esi {
 
 	// Universe endpoints
 	fetchStructureInfo(characterId: string, structureId: string): Promise<StructureInfo | null>
+
+	/**
+	 * Fetch insurance prices for all insurable ship types.
+	 * Public ESI endpoint — no authentication required.
+	 * Returns platinum-tier cost and payout for each ship type.
+	 * Cached for 24 hours (insurance prices rarely change).
+	 */
+	fetchInsurancePrices(): Promise<import('./universe-types').InsurancePlatinumValues[]>
+
+	/**
+	 * Fetch CCP's universe-wide average and adjusted prices for all tradeable types.
+	 * Public ESI endpoint — no authentication required.
+	 * Cached for 24 hours. Returns ~14k entries covering all tradeable items.
+	 */
+	fetchMarketPrices(): Promise<import('./universe-types').MarketPrice[]>
+
 }
 
 export interface EsiTypeResolver {

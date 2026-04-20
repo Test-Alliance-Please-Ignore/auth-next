@@ -27,9 +27,7 @@ import MyGroupsPage from './routes/my-groups'
 import { adminRouteElements } from './routes/route-groups/admin-routes'
 import { taxRouteElements } from './routes/route-groups/tax-routes'
 
-const CorporationMembers = lazy(
-	() => import('./features/corporations/routes/corporation-members')
-)
+const CorporationMembers = lazy(() => import('./features/corporations/routes/corporation-members'))
 const CorporationSettings = lazy(
 	() => import('./features/corporations/routes/corporation-settings')
 )
@@ -51,16 +49,13 @@ const FulcrumReport = lazy(() => import('./features/applications/routes/fulcrum-
 const RecommendationsList = lazy(
 	() => import('./features/applications/routes/recommendations-list')
 )
-const HrAuditorUsersPage = lazy(
-	() => import('./features/applications/routes/hr-auditor-users')
-)
+const HrAuditorUsersPage = lazy(() => import('./features/applications/routes/hr-auditor-users'))
 const HrAuditorUserProfilePage = lazy(
 	() => import('./features/applications/routes/hr-auditor-user-profile')
 )
 const HrAuditorUserGroupsPage = lazy(
 	() => import('./features/applications/routes/hr-auditor-user-groups')
 )
-
 
 // Lazy load the Skill Plans feature for code splitting
 const SkillPlansList = lazy(() => import('./features/skill-plans/routes/skill-plans-list'))
@@ -81,9 +76,12 @@ const BillDetailPage = lazy(() => import('./features/bills/routes/bill-detail'))
 const SRPIndex = lazy(() => import('./features/srp/routes/index'))
 const SRPMyRequests = lazy(() => import('./features/srp/routes/my-requests'))
 const SRPCreate = lazy(() => import('./features/srp/routes/create'))
-const SRPRequestDetails = lazy(() => import('./features/srp/routes/request.$id'))
+const SRPRequestDetails = lazy(() => import('./features/srp/routes/request-detail'))
 const SRPReview = lazy(() => import('./features/srp/routes/review'))
+const SRPReviewDetail = lazy(() => import('./features/srp/routes/review-detail'))
 const SRPPayments = lazy(() => import('./features/srp/routes/payments'))
+const SRPAlerts = lazy(() => import('./features/srp/routes/alerts'))
+const SRPPolicies = lazy(() => import('./features/srp/routes/policies'))
 
 // Lazy load the Doctrines feature for code splitting
 const DoctrinesIndex = lazy(() => import('./features/doctrines/routes/index'))
@@ -434,6 +432,30 @@ export default function App() {
 								element={
 									<Suspense fallback={<LoadingPage />}>
 										<SRPPayments />
+									</Suspense>
+								}
+							/>
+							<Route
+								path="/srp/alerts"
+								element={
+									<Suspense fallback={<LoadingPage />}>
+										<SRPAlerts />
+									</Suspense>
+								}
+							/>
+							<Route
+								path="/srp/review/:id"
+								element={
+									<Suspense fallback={<LoadingPage />}>
+										<SRPReviewDetail />
+									</Suspense>
+								}
+							/>
+							<Route
+								path="/srp/policies"
+								element={
+									<Suspense fallback={<LoadingPage />}>
+										<SRPPolicies />
 									</Suspense>
 								}
 							/>

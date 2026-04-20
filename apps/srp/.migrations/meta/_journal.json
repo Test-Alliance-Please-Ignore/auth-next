@@ -1,13 +1,55 @@
 {
-	"version": "7",
-	"dialect": "postgresql",
-	"entries": [
-		{
-			"idx": 0,
-			"version": "7",
-			"when": 1762836795696,
-			"tag": "0000_salty_purifiers",
-			"breakpoints": true
-		}
-	]
+  "version": "7",
+  "dialect": "postgresql",
+  "entries": [
+    {
+      "idx": 0,
+      "version": "7",
+      "when": 1762836795696,
+      "tag": "0000_salty_purifiers",
+      "breakpoints": true
+    },
+    {
+      "idx": 1,
+      "version": "7",
+      "when": 1776486122895,
+      "tag": "0001_lean_impossible_man",
+      "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "7",
+      "when": 1776493180493,
+      "tag": "0002_dizzy_klaw",
+      "breakpoints": true
+    },
+    {
+      "idx": 3,
+      "version": "7",
+      "when": 1776534284481,
+      "tag": "0003_eminent_the_stranger",
+      "breakpoints": true
+    },
+    {
+      "idx": 4,
+      "version": "7",
+      "when": 1776669810887,
+      "tag": "0004_sticky_amphibian",
+      "breakpoints": true
+    },
+    {
+      "idx": 5,
+      "version": "7",
+      "when": 1776701838568,
+      "tag": "0005_kind_william_stryker",
+      "breakpoints": true
+    },
+    {
+      "idx": 6,
+      "version": "7",
+      "when": 1776704373764,
+      "tag": "0006_exotic_tana_nile",
+      "breakpoints": true
+    }
+  ]
 }

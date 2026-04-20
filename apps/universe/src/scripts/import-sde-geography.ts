@@ -9,6 +9,7 @@ import { z } from 'zod'
 import { createDb } from '../db'
 import {
 	moons,
+	universeConstellations,
 	universeNpcStations,
 	universePlanets,
 	universeRegions,
@@ -34,6 +35,12 @@ const localizedTextSchema = z.record(z.string(), z.string())
 const regionSchema = z.object({
 	_key: z.number(),
 	name: z.union([z.string(), localizedTextSchema]),
+})
+
+const constellationSchema = z.object({
+	_key: z.number(),
+	name: z.union([z.string(), localizedTextSchema]),
+	regionID: z.number(),
 })
 
 const solarSystemSchema = z.object({
@@ -192,6 +199,48 @@ async function importRegions(db: ReturnType<typeof createDb>, sdeDataDir: string
 	}
 
 	console.log(`  ✓ ${rows.length} regions`)
+}
+
+async function importConstellations(
+	db: ReturnType<typeof createDb>,
+	sdeDataDir: string
+): Promise<void> {
+	console.log('Importing constellations...')
+	const raw = await readSdeJsonlTable<z.input<typeof constellationSchema>>(
+		sdeDataDir,
+		'mapConstellations.jsonl'
+	)
+	const constellations = raw.map((entry) => constellationSchema.parse(entry))
+
+	const rows = constellations.map((c) => {
+		const constellationId = c._key.toString()
+		return {
+			constellationId,
+			constellationName: getEnglishName(c.name, `Unknown Constellation (${constellationId})`),
+			regionId: c.regionID.toString(),
+		}
+	})
+
+	const reportProgress = createProgressReporter('constellations', rows.length)
+	const BATCH_SIZE = 1000
+	let processed = 0
+	for (let i = 0; i < rows.length; i += BATCH_SIZE) {
+		const batch = rows.slice(i, i + BATCH_SIZE)
+		await db
+			.insert(universeConstellations)
+			.values(batch)
+			.onConflictDoUpdate({
+				target: universeConstellations.constellationId,
+				set: {
+					constellationName: sql`excluded.constellation_name`,
+					regionId: sql`excluded.region_id`,
+				},
+			})
+		processed += batch.length
+		reportProgress(processed)
+	}
+
+	console.log(`  ✓ ${rows.length} constellations`)
 }
 
 async function importSolarSystems(
@@ -639,6 +688,7 @@ async function main() {
 	)
 
 	await importRegions(db, sdeDataDir)
+	await importConstellations(db, sdeDataDir)
 	const systemNameById = await importSolarSystems(db, sdeDataDir)
 
 	const orbitNameById = new Map<string, string>()

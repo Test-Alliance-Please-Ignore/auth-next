@@ -5,6 +5,7 @@ import { toast } from 'sonner'
 import { Button } from '@/components/ui/button'
 import { Card } from '@/components/ui/card'
 import { useAuth } from '@/hooks/useAuth'
+import { characterPortraitUrl } from '@/lib/eve-images'
 
 import { useDeleteComment } from '../hooks'
 import { formatRelativeTime } from '../utils'
@@ -50,7 +51,7 @@ export function CommentsList({
 	if (comments.length === 0) {
 		return (
 			<Card className="p-6 text-center">
-				<p className="text-sm text-muted-foreground">No comments yet. Be the first to comment!</p>
+				<p className="text-sm text-muted-foreground">No comments.</p>
 			</Card>
 		)
 	}
@@ -73,21 +74,42 @@ export function CommentsList({
 					) : (
 						<>
 							<div className="mb-2 flex items-start justify-between">
-								<div>
-									<div className="flex items-center gap-2">
-										<span className="font-medium">{comment.authorCharacterName}</span>
-										{comment.visibility === 'internal' && (
-											<span className="inline-flex items-center gap-1 rounded-full bg-muted px-2 py-0.5 text-xs text-muted-foreground">
-												<Lock className="h-3 w-3" />
-												Internal
-											</span>
-										)}
-										{comment.isEdited && (
-											<span className="text-xs text-muted-foreground">(edited)</span>
-										)}
-									</div>
-									<div className="text-xs text-muted-foreground">
-										{formatRelativeTime(comment.createdAt)}
+								<div className="flex items-start gap-3">
+									{comment.authorCharacterId ? (
+										<img
+											src={characterPortraitUrl(comment.authorCharacterId, 32)}
+											alt={comment.authorCharacterName}
+											className="h-8 w-8 rounded-full shrink-0 mt-0.5"
+										/>
+									) : (
+										<div className="h-8 w-8 rounded-full bg-muted shrink-0 mt-0.5" />
+									)}
+									<div>
+										<div className="flex items-center gap-2 flex-wrap">
+											<span className="font-medium">{comment.authorCharacterName}</span>
+											{comment.authorRole === 'requestor' && (
+												<span className="inline-flex items-center rounded-full bg-blue-500/15 px-2 py-0.5 text-xs font-medium text-blue-400">
+													Requestor
+												</span>
+											)}
+											{comment.authorRole === 'staff' && (
+												<span className="inline-flex items-center rounded-full bg-amber-500/15 px-2 py-0.5 text-xs font-medium text-amber-400">
+													SRP Staff
+												</span>
+											)}
+											{comment.visibility === 'internal' && (
+												<span className="inline-flex items-center gap-1 rounded-full bg-muted px-2 py-0.5 text-xs text-muted-foreground">
+													<Lock className="h-3 w-3" />
+													Internal
+												</span>
+											)}
+											{comment.isEdited && (
+												<span className="text-xs text-muted-foreground">(edited)</span>
+											)}
+										</div>
+										<div className="text-xs text-muted-foreground">
+											{formatRelativeTime(comment.createdAt)}
+										</div>
 									</div>
 								</div>
 								{(canEdit(comment) || canDelete(comment)) && (

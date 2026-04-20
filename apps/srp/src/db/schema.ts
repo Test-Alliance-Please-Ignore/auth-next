@@ -2,12 +2,13 @@ import { relations } from 'drizzle-orm'
 import {
 	boolean,
 	index,
+	integer,
 	jsonb,
 	pgEnum,
 	pgTable,
 	text,
 	timestamp,
-	unique,
+	uniqueIndex,
 	uuid,
 	varchar,
 } from 'drizzle-orm/pg-core'
@@ -20,22 +21,18 @@ import {
  * Request status enum - Overall status of the SRP request
  */
 export const requestStatusEnum = pgEnum('srp_request_status', [
-	'pending', // Initial state, awaiting review
-	'in_review', // Being actively reviewed by an admin
-	'approved', // Fully approved
-	'partially_approved', // Approved but for less than requested amount
-	'rejected', // Request denied
+	'pending',
+	'needs_context',
+	'approved',
+	'payment_pending',
+	'rejected',
+	'paid',
 ])
 
 /**
- * Payment status enum - Whether ISK has been paid out
+ * Policy effect enum - What kind of policy this is
  */
-export const paymentStatusEnum = pgEnum('srp_payment_status', [
-	'n/a', // Not applicable (rejected requests)
-	'pending', // Approved but not yet paid
-	'paid_in_full', // Full approved amount paid
-	'partial_payment', // Only part of approved amount paid
-])
+export const srpPolicyEffectEnum = pgEnum('srp_policy_effect', ['payout_modifier', 'cap'])
 
 /**
  * Comment visibility enum - Who can see the comment
@@ -44,6 +41,22 @@ export const commentVisibilityEnum = pgEnum('srp_comment_visibility', [
 	'public', // Visible to requestor and reviewers
 	'internal', // Only visible to reviewers/admins
 ])
+
+/**
+ * SRP Policies table - Admin-configured payout modifier and cap policies
+ */
+export const srpPolicies = pgTable('srp_policies', {
+	id: uuid('id').defaultRandom().primaryKey(),
+	name: text('name').notNull(),
+	description: text('description'),
+	effect: srpPolicyEffectEnum('effect').notNull(),
+	config: jsonb('config').notNull(),
+	isActive: boolean('is_active').default(true).notNull(),
+	displayOrder: integer('display_order').default(0).notNull(),
+	createdBy: uuid('created_by').notNull(),
+	createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
+	updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow().notNull(),
+})
 
 /**
  * SRP Requests table - Main request entity
@@ -75,16 +88,16 @@ export const srpRequests = pgTable(
 		shipTypeName: varchar('ship_type_name', { length: 255 }).notNull(),
 		/** Total ship value from killmail (ISK as text) */
 		shipValue: text('ship_value').notNull(),
-		/** Amount user is requesting (nullable - may not specify) */
-		requestedAmount: text('requested_amount'),
+		/** Solar system ID where the loss occurred */
+		solarSystemId: text('solar_system_id'),
+		/** Solar system name (cached from universe static data) */
+		solarSystemName: varchar('solar_system_name', { length: 255 }),
+		/** Context provided by the requester explaining the loss circumstances */
+		contextText: text('context_text'),
 		/** Amount approved by reviewer (null if not yet reviewed) */
 		approvedAmount: text('approved_amount'),
 		/** Current request status */
 		requestStatus: requestStatusEnum('request_status').notNull().default('pending'),
-		/** Current payment status */
-		paymentStatus: paymentStatusEnum('payment_status').notNull().default('n/a'),
-		/** 16 character random ASCII string for payment tracking */
-		paymentToken: varchar('payment_token', { length: 16 }).notNull().unique(),
 		/** When payment was made (null if not paid) */
 		paymentDate: timestamp('payment_date', { withTimezone: true }),
 		/** Character name who paid (for audit trail) */
@@ -140,6 +153,68 @@ export const srpRequests = pgTable(
 		}>(),
 		/** When the loss occurred (from killmail) */
 		lossDate: timestamp('loss_date', { withTimezone: true }).notNull(),
+
+		// -----------------------------------------------------------------------
+		// SRP Valuation Fields
+		// Computed at request creation time from Jita market prices at loss date.
+		// All nullable — legacy requests created before this feature have no values.
+		// -----------------------------------------------------------------------
+
+		/** Sum of Jita best-sell prices for all equipped items (Low/Mid/High/Rig/Subsystem/Implant) */
+		srpEquipmentValue: text('srp_equipment_value'),
+		/** Platinum insurance premium ISK cost (null for pods or uninsurable ships) */
+		srpInsurancePremium: text('srp_insurance_premium'),
+		/** Platinum insurance payout ISK (null for pods or uninsurable ships) */
+		srpInsurancePayout: text('srp_insurance_payout'),
+		/** Effective insurance credit: max(0, payout - premium). 0 for pods. */
+		srpNetInsurance: text('srp_net_insurance'),
+		/** Pre-modifier replacement cost: max(0, equipmentValue - netInsurance) */
+		srpCalculatedValue: text('srp_calculated_value'),
+		/** Final payout after coverage rate, cap, and floor to nearest 1M ISK */
+		srpFinalValue: text('srp_final_value'),
+		/** Timestamp of the market snapshot (or daily average date) used for pricing */
+		srpPriceSnapshotTime: timestamp('srp_price_snapshot_time', { withTimezone: true }),
+		/** Per-item price breakdown used in the valuation */
+		srpItemPrices: jsonb('srp_item_prices').$type<
+			Array<{
+				typeId: string
+				typeName: string
+				quantity: number
+				unitPrice: string // ISK as text
+				lineTotal: string // ISK as text
+				isConsumable?: boolean // true for charges/ammo not factored into reimbursement
+			}>
+		>(),
+
+		// -----------------------------------------------------------------------
+		// Review / Policy Fields
+		// Set at review time by the reviewer.
+		// -----------------------------------------------------------------------
+
+		/** FK to the payout modifier policy applied at review time (nullable) */
+		appliedModifierPolicyId: uuid('applied_modifier_policy_id'),
+		/** Snapshotted name of the modifier policy at review time (durable after policy rename/delete) */
+		appliedModifierPolicyName: text('applied_modifier_policy_name'),
+		/** FK to the cap policy applied at review time (nullable) */
+		appliedCapPolicyId: uuid('applied_cap_policy_id'),
+		/** Snapshotted name of the cap policy at review time */
+		appliedCapPolicyName: text('applied_cap_policy_name'),
+		/** Ad-hoc modifiers entered by the reviewer at review time */
+		appliedModifiers: jsonb('applied_modifiers').$type<
+			Array<{
+				id: string
+				modifierType: 'deduction' | 'bonus'
+				mode: 'percentage' | 'value'
+				amount: number
+				reason: string
+				computedAmountISK: string
+			}>
+		>(),
+		/** Reviewer manual override — final approved amount = this × 1,000,000 ISK (replaces calculation) */
+		reviewerOverrideMillions: integer('reviewer_override_millions'),
+		/** Fleet association placeholder for future use */
+		fleetId: text('fleet_id'),
+
 		/** When the request was submitted */
 		createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
 		/** Last update timestamp */
@@ -152,11 +227,8 @@ export const srpRequests = pgTable(
 		index('srp_requests_corporation_id_idx').on(table.corporationId),
 		// Status-based queries for reviewers
 		index('srp_requests_request_status_idx').on(table.requestStatus),
-		index('srp_requests_payment_status_idx').on(table.paymentStatus),
 		// Compound index for reviewer dashboard (pending requests)
 		index('srp_requests_status_created_idx').on(table.requestStatus, table.createdAt.desc()),
-		// Payment tracking
-		index('srp_requests_payment_token_idx').on(table.paymentToken),
 		// Killmail lookup
 		index('srp_requests_killmail_id_idx').on(table.killmailId),
 		// Time-based queries
@@ -191,10 +263,6 @@ export const srpRequestHistory = pgTable(
 		previousRequestStatus: requestStatusEnum('previous_request_status'),
 		/** New request status (null if status didn't change) */
 		newRequestStatus: requestStatusEnum('new_request_status'),
-		/** Previous payment status (null for new requests) */
-		previousPaymentStatus: paymentStatusEnum('previous_payment_status'),
-		/** New payment status (null if payment status didn't change) */
-		newPaymentStatus: paymentStatusEnum('new_payment_status'),
 		/** Previous approved amount (null if not set) */
 		previousApprovedAmount: text('previous_approved_amount'),
 		/** New approved amount (null if not changed) */
@@ -206,6 +274,8 @@ export const srpRequestHistory = pgTable(
 			paymentCharacterName?: string
 			[key: string]: unknown
 		}>(),
+		/** Visibility: public = visible to requestor; internal = SRP staff only */
+		visibility: commentVisibilityEnum('visibility').default('public').notNull(),
 		/** When the change occurred */
 		timestamp: timestamp('timestamp', { withTimezone: true }).defaultNow().notNull(),
 	},
@@ -263,6 +333,48 @@ export const srpComments = pgTable(
 )
 
 /**
+ * SRP Payment Alerts table - Payment workflow anomalies requiring staff attention
+ */
+export const srpPaymentAlerts = pgTable(
+	'srp_payment_alerts',
+	{
+		id: uuid('id').defaultRandom().primaryKey(),
+		requestId: uuid('request_id')
+			.notNull()
+			.references(() => srpRequests.id, { onDelete: 'cascade' }),
+		kind: varchar('kind', { length: 64 }).notNull().default('payment_mismatch'),
+		state: varchar('state', { length: 32 }).notNull().default('open'),
+		journalId: text('journal_id').notNull(),
+		expectedAmount: text('expected_amount').notNull(),
+		observedAmount: text('observed_amount').notNull(),
+		expectedRecipientCharacterId: text('expected_recipient_character_id').notNull(),
+		expectedRecipientCharacterName: varchar('expected_recipient_character_name', { length: 255 }),
+		actualRecipientCharacterId: text('actual_recipient_character_id'),
+		actualRecipientCharacterName: varchar('actual_recipient_character_name', { length: 255 }),
+		actualPayerId: text('actual_payer_id'),
+		actualPayerName: varchar('actual_payer_name', { length: 255 }),
+		reason: text('reason'),
+		paymentProcessorCorporationId: text('payment_processor_corporation_id'),
+		metadata: jsonb('metadata').$type<Record<string, unknown>>(),
+		detectedAt: timestamp('detected_at', { withTimezone: true }).defaultNow().notNull(),
+		lastSeenAt: timestamp('last_seen_at', { withTimezone: true }).defaultNow().notNull(),
+		acknowledgedAt: timestamp('acknowledged_at', { withTimezone: true }),
+		acknowledgedByUserId: uuid('acknowledged_by_user_id'),
+		acknowledgedByCharacterName: varchar('acknowledged_by_character_name', { length: 255 }),
+	},
+	(table) => [
+		uniqueIndex('srp_payment_alerts_request_journal_observed_uq').on(
+			table.requestId,
+			table.journalId,
+			table.observedAmount
+		),
+		index('srp_payment_alerts_state_detected_idx').on(table.state, table.detectedAt.desc()),
+		index('srp_payment_alerts_request_state_idx').on(table.requestId, table.state),
+		index('srp_payment_alerts_detected_at_idx').on(table.detectedAt.desc()),
+	]
+)
+
+/**
  * SRP Configuration table - Global settings
  *
  * Stores system-wide configuration for the SRP system.
@@ -278,21 +390,19 @@ export const srpConfig = pgTable(
 		defaultCoverageRate: text('default_coverage_rate').notNull().default('1.0'),
 		/** Maximum SRP payout per request (ISK as text, null = no limit) */
 		maxPayoutAmount: text('max_payout_amount'),
-		/** Minimum ship value to be eligible for SRP (ISK as text) */
-		minShipValue: text('min_ship_value').notNull().default('0'),
-		/** Whether to auto-approve requests under a certain value */
-		autoApprovalEnabled: boolean('auto_approval_enabled').default(false).notNull(),
-		/** Auto-approve if ship value is under this amount (ISK as text) */
-		autoApprovalThreshold: text('auto_approval_threshold'),
-		/** Array of corporation IDs eligible for SRP */
-		eligibleCorporationIds: text('eligible_corporation_ids').array(),
-		/** Custom rejection reasons (for dropdown) */
-		rejectionReasons: jsonb('rejection_reasons').$type<string[]>().default([]),
+		/** Maximum age of a loss (in days) eligible for SRP submission */
+		maxLossAgeDays: integer('max_loss_age_days').default(60).notNull(),
 		/** Additional configuration metadata */
 		metadata: jsonb('metadata').$type<{
 			requiresReviewNotes?: boolean
 			allowPartialApproval?: boolean
 			paymentInstructions?: string
+			predefinedAdhocModifiers?: Array<{
+				modifierType: 'deduction' | 'bonus'
+				mode: 'percentage' | 'value'
+				amount: number
+				reason: string
+			}>
 			[key: string]: unknown
 		}>(),
 		/** User ID who created this configuration */
@@ -333,15 +443,25 @@ export const srpCommentsRelations = relations(srpComments, ({ one }) => ({
 	}),
 }))
 
+export const srpPaymentAlertsRelations = relations(srpPaymentAlerts, ({ one }) => ({
+	request: one(srpRequests, {
+		fields: [srpPaymentAlerts.requestId],
+		references: [srpRequests.id],
+	}),
+}))
+
 /**
  * Export schema for Drizzle queries
  */
 export const schema = {
+	srpPolicies,
 	srpRequests,
 	srpRequestHistory,
 	srpComments,
+	srpPaymentAlerts,
 	srpConfig,
 	srpRequestsRelations,
 	srpRequestHistoryRelations,
 	srpCommentsRelations,
+	srpPaymentAlertsRelations,
 }

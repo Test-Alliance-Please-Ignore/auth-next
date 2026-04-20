@@ -1,4 +1,4 @@
-import { FileKey, FolderOpen, Plus, Trash2 } from 'lucide-react'
+import { Edit2, FileKey, FolderOpen, Plus, Trash2 } from 'lucide-react'
 import { useState } from 'react'
 import { Link } from 'react-router-dom'
 
@@ -13,6 +13,14 @@ import {
 	DialogHeader,
 	DialogTitle,
 } from '@/components/ui/dialog'
+import {
+	Table,
+	TableBody,
+	TableCell,
+	TableHead,
+	TableHeader,
+	TableRow,
+} from '@/components/ui/table'
 import { usePageTitle } from '@/hooks/usePageTitle'
 import {
 	useCreatePermissionCategory,
@@ -168,19 +176,14 @@ export default function PermissionCategoriesPage() {
 					<CardDescription>Create and manage permission categories</CardDescription>
 				</CardHeader>
 				<CardContent>
-					{isLoading && (
+					{isLoading ? (
 						<div className="space-y-3">
 							{[1, 2, 3].map((i) => (
-								<Card key={i} className="p-4 animate-pulse">
-									<div className="h-5 bg-muted rounded w-1/3 mb-2" />
-									<div className="h-4 bg-muted rounded w-2/3" />
-								</Card>
+								<div key={i} className="h-12 animate-pulse rounded-md bg-muted/30" />
 							))}
 						</div>
-					)}
-
-					{!isLoading && categories && categories.length === 0 && (
-						<Card className="p-8 text-center">
+					) : !categories || categories.length === 0 ? (
+						<div className="rounded-lg border border-dashed p-8 text-center">
 							<FolderOpen className="w-12 h-12 mx-auto text-muted-foreground mb-4" />
 							<h3 className="text-lg font-medium mb-2">No categories yet</h3>
 							<p className="text-muted-foreground mb-4">
@@ -190,31 +193,38 @@ export default function PermissionCategoriesPage() {
 								<Plus className="w-4 h-4 mr-2" />
 								Create Category
 							</Button>
-						</Card>
-					)}
-
-					{!isLoading && categories && categories.length > 0 && (
-						<div className="space-y-3">
-							{categories.map((category) => (
-								<Card key={category.id} className="p-4 hover:bg-accent/50 transition-colors">
-									<div className="flex items-start justify-between">
-										<div className="flex-1">
-											<h3 className="font-medium text-lg mb-1">{category.name}</h3>
-											{category.description && (
-												<p className="text-sm text-muted-foreground">{category.description}</p>
-											)}
-										</div>
-										<div className="flex items-center gap-2 ml-4">
-											<Button variant="ghost" size="sm" onClick={() => openEditDialog(category)}>
-												Edit
-											</Button>
-											<Button variant="destructive" size="sm" onClick={() => openDeleteDialog(category)}>
-												<Trash2 className="h-4 w-4" />
-											</Button>
-										</div>
-									</div>
-								</Card>
-							))}
+						</div>
+					) : (
+						<div className="rounded-md border bg-card">
+							<Table>
+								<TableHeader>
+									<TableRow>
+										<TableHead>Name</TableHead>
+										<TableHead>Description</TableHead>
+										<TableHead className="text-right">Actions</TableHead>
+									</TableRow>
+								</TableHeader>
+								<TableBody>
+									{categories.map((category) => (
+										<TableRow key={category.id}>
+											<TableCell className="font-medium">{category.name}</TableCell>
+											<TableCell className="text-sm text-muted-foreground max-w-sm">
+												<div className="truncate">{category.description || '—'}</div>
+											</TableCell>
+											<TableCell className="text-right">
+												<div className="flex items-center justify-end gap-2">
+													<Button variant="ghost" size="icon" onClick={() => openEditDialog(category)} title="Edit category">
+														<Edit2 className="h-4 w-4" />
+													</Button>
+													<Button variant="ghost" size="icon" onClick={() => openDeleteDialog(category)} title="Delete category">
+														<Trash2 className="h-4 w-4 text-destructive" />
+													</Button>
+												</div>
+											</TableCell>
+										</TableRow>
+									))}
+								</TableBody>
+							</Table>
 						</div>
 					)}
 				</CardContent>

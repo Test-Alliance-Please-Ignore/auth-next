@@ -140,16 +140,24 @@ export default function DoctrinesAdminPage() {
 
 				{/* All Fittings Tab */}
 				<TabsContent value="fittings">
-					<Card>
-						<CardHeader className="flex flex-row items-center justify-between space-y-0 pb-4">
-							<CardTitle className="text-lg">All Fittings</CardTitle>
-							<Input
-								placeholder="Search by ship or fitting name..."
-								value={fittingSearch}
-								onChange={(e) => setFittingSearch(e.target.value)}
-								className="max-w-xs"
-							/>
-						</CardHeader>
+						<Card>
+							<CardHeader className="flex flex-row items-center justify-between space-y-0 pb-4">
+								<CardTitle className="text-lg">All Fittings</CardTitle>
+								<div className="flex items-center gap-2">
+									<Input
+										placeholder="Search by ship or fitting name..."
+										value={fittingSearch}
+										onChange={(e) => setFittingSearch(e.target.value)}
+										className="max-w-xs"
+									/>
+									<Button asChild size="sm">
+										<Link to="/doctrines/fittings/create">
+											<Plus className="h-4 w-4 mr-1" />
+											Create Fitting
+										</Link>
+									</Button>
+								</div>
+							</CardHeader>
 						<CardContent>
 							{fittingsLoading ? (
 								<LoadingSpinner />

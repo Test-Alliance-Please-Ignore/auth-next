@@ -8,7 +8,6 @@ import {
 	ChevronRight,
 	CircleDollarSign,
 	ExternalLink,
-	FileText,
 	FolderHeart,
 	Globe,
 	LayoutDashboard,
@@ -29,8 +28,10 @@ import { Link, useLocation } from 'react-router-dom'
 
 import { useHrAccessibleCorporations } from '@/features/hr'
 import { useHasCorporationAccess } from '@/features/corporations'
+import { useRequestsByStatus, useSrpPaymentMismatchAlerts } from '@/features/srp/hooks'
 import { useTaxAlerts } from '@/hooks/corporation-tax'
 import { useAuth, useLogout } from '@/hooks/useAuth'
+import { useFeatureFlag } from '@/hooks/useFeatureFlags'
 import { usePendingInvitations } from '@/hooks/useGroups'
 import { useUserPermissions } from '@/hooks/useUserPermissions'
 import { characterPortraitUrl } from '@/lib/eve-images'
@@ -64,13 +65,37 @@ export function SidebarNav({ onNavigate, isSidebarOpen = true, onToggleSidebar }
 	const { data: corporationAccess } = useHasCorporationAccess()
 	const { data: hrCorporations } = useHrAccessibleCorporations()
 	const { permissions, hasAnyPermission } = useUserPermissions()
+	const isSiteAdmin = user?.is_admin === true
+	const srpEnabled = useFeatureFlag('srp.enabled', false)
+	const canSeeSrpReviewQueue = isSiteAdmin || hasAnyPermission('urn:srp:reviewer')
+	const canSeeSrpPaymentQueue = isSiteAdmin || hasAnyPermission('urn:srp:payer')
+	const canSeeSrpAlerts =
+		isSiteAdmin || hasAnyPermission('urn:srp:payer', 'urn:srp:manager')
+	const { data: reviewQueueData } = useRequestsByStatus(
+		'pending',
+		{ limit: 1 },
+		{ enabled: srpEnabled && canSeeSrpReviewQueue }
+	)
+	const { data: paymentQueueData } = useRequestsByStatus(
+		'approved',
+		{ limit: 1 },
+		{ enabled: srpEnabled && canSeeSrpPaymentQueue }
+	)
+	const { data: srpAlertData } = useSrpPaymentMismatchAlerts({
+		includeAcknowledged: false,
+		limit: 1,
+		offset: 0,
+	}, { enabled: srpEnabled && canSeeSrpAlerts })
+	const reviewQueueCount = reviewQueueData?.total ?? 0
+	const paymentQueueCount = paymentQueueData?.total ?? 0
+	const srpAlertCount = srpEnabled && canSeeSrpAlerts ? (srpAlertData?.total ?? 0) : 0
 
 	const pendingCount = invitations?.length || 0
 	const mainCharacter = user?.characters.find((c) => c.characterId === user.mainCharacterId)
-	const isSiteAdmin = user?.is_admin === true
 	const isTaxRoute = location.pathname === '/tax' || location.pathname.startsWith('/tax/')
 	const isFreightRoute =
 		location.pathname === '/freight' || location.pathname.startsWith('/freight/')
+	const isSrpRoute = location.pathname === '/srp' || location.pathname.startsWith('/srp/')
 	const isHrRoute =
 		location.pathname === '/my-applications' ||
 		location.pathname.startsWith('/my-applications/') ||
@@ -86,6 +111,7 @@ export function SidebarNav({ onNavigate, isSidebarOpen = true, onToggleSidebar }
 	const [openMenus, setOpenMenus] = useState<Record<string, boolean>>({
 		'/tax': isTaxRoute,
 		'/freight': isFreightRoute,
+		'/srp': isSrpRoute,
 		'#hr': isHrRoute,
 		'#external': true,
 	})
@@ -105,6 +131,12 @@ export function SidebarNav({ onNavigate, isSidebarOpen = true, onToggleSidebar }
 			setOpenMenus((prev) => ({ ...prev, '/freight': true }))
 		}
 	}, [isFreightRoute])
+
+	useEffect(() => {
+		if (isSrpRoute) {
+			setOpenMenus((prev) => ({ ...prev, '/srp': true }))
+		}
+	}, [isSrpRoute])
 
 	useEffect(() => {
 		if (isHrRoute) {
@@ -195,12 +227,51 @@ export function SidebarNav({ onNavigate, isSidebarOpen = true, onToggleSidebar }
 			href: '/doctrines',
 			icon: Swords,
 		},
-		{
-			label: 'SRP',
-			href: 'https://reimbursement.pleaseignore.com/',
-			icon: CircleDollarSign,
-			external: true,
-		},
+		srpEnabled &&
+		(isSiteAdmin ||
+			hasAnyPermission('urn:srp:reviewer', 'urn:srp:payer', 'urn:srp:manager'))
+			? {
+					label: 'SRP',
+					href: '/srp',
+					icon: CircleDollarSign,
+					children: [
+						{ label: 'My Requests', href: '/srp' },
+						...(canSeeSrpReviewQueue
+							? [
+									{
+										label: 'Review Queue',
+										href: '/srp/review',
+										badge: reviewQueueCount > 0 ? reviewQueueCount : undefined,
+									},
+								]
+							: []),
+						...(canSeeSrpPaymentQueue
+							? [
+									{
+										label: 'Payment Queue',
+										href: '/srp/payments',
+										badge: paymentQueueCount > 0 ? paymentQueueCount : undefined,
+									},
+								]
+							: []),
+						...(canSeeSrpAlerts
+							? [{
+									label: 'Alerts',
+									href: '/srp/alerts',
+									badge: srpAlertCount > 0 ? srpAlertCount : undefined,
+								}]
+							: []),
+						...(isSiteAdmin || hasAnyPermission('urn:srp:manager')
+							? [{ label: 'Configuration', href: '/srp/policies' }]
+							: []),
+					],
+				}
+			: {
+					label: 'SRP',
+					href: 'https://reimbursement.pleaseignore.com/',
+					icon: CircleDollarSign,
+					external: true,
+				},
 		{
 			label: 'My Bills',
 			href: '/my-bills',

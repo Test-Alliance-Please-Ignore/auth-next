@@ -3,8 +3,8 @@ import { Link } from 'react-router-dom'
 import { Button } from '@/components/ui/button'
 import { Card } from '@/components/ui/card'
 
-import { calculateDifference, formatISK, formatRelativeTime, getKillmailUrl } from '../utils'
-import { PaymentStatusBadge } from './PaymentStatusBadge'
+import { formatISK, formatRelativeTime, getKillmailUrl, getRequestCharacterRole } from '../utils'
+import { CharacterRoleBadge } from './CharacterRoleBadge'
 import { RequestStatusBadge } from './RequestStatusBadge'
 
 import type { SRPRequestResponse } from '../types'
@@ -15,51 +15,44 @@ interface RequestCardProps {
 }
 
 export function RequestCard({ request, showActions = true }: RequestCardProps) {
-	const difference = calculateDifference(request.requestedAmount, request.approvedAmount)
-
 	return (
 		<Card className="p-4">
 			<div className="space-y-3">
 				<div className="flex items-start justify-between">
 					<div>
 						<h3 className="font-semibold">{request.shipTypeName}</h3>
-						<p className="text-sm text-muted-foreground">
-							{request.characterName} · {formatRelativeTime(request.createdAt)}
-						</p>
+						<div className="flex items-center gap-2 text-sm text-muted-foreground">
+							<span>{request.characterName}</span>
+							<CharacterRoleBadge role={getRequestCharacterRole(request)} />
+							<span>· {formatRelativeTime(request.createdAt)}</span>
+						</div>
 					</div>
 					<div className="flex flex-col items-end gap-1">
 						<RequestStatusBadge status={request.requestStatus} />
-						<PaymentStatusBadge status={request.paymentStatus} />
 					</div>
 				</div>
 
 				<div className="grid grid-cols-2 gap-4 text-sm">
-					<div>
-						<div className="text-muted-foreground">Ship Value</div>
-						<div className="font-medium tabular-nums">{formatISK(request.shipValue)}</div>
-					</div>
-					{request.requestedAmount && (
+					{request.requestStatus === 'paid' || request.requestStatus === 'payment_pending' ? (
 						<div>
-							<div className="text-muted-foreground">Requested</div>
-							<div className="font-medium tabular-nums">
-								{formatISK(request.requestedAmount)}
+							<div className="text-muted-foreground">
+								{request.requestStatus === 'paid' ? 'Paid Amount' : 'Payment Pending'}
 							</div>
+							<div className="font-medium tabular-nums text-success">{formatISK(request.approvedAmount ?? '0')}</div>
 						</div>
-					)}
-					{request.approvedAmount && (
-						<div>
-							<div className="text-muted-foreground">Approved</div>
-							<div className="font-medium tabular-nums">
-								{formatISK(request.approvedAmount)}
-								{difference !== 0 && (
-									<span className={difference > 0 ? 'text-green-500' : 'text-red-500'}>
-										{' '}
-										({difference > 0 ? '+' : ''}
-										{formatISK(Math.abs(difference))})
-									</span>
-								)}
+					) : (
+						<>
+							<div>
+								<div className="text-muted-foreground">Ship Value</div>
+								<div className="font-medium tabular-nums">{formatISK(request.shipValue)}</div>
 							</div>
-						</div>
+							{request.approvedAmount && (
+								<div>
+									<div className="text-muted-foreground">Approved</div>
+									<div className="font-medium tabular-nums text-success">{formatISK(request.approvedAmount)}</div>
+								</div>
+							)}
+						</>
 					)}
 				</div>
 
@@ -74,7 +67,7 @@ export function RequestCard({ request, showActions = true }: RequestCardProps) {
 								target="_blank"
 								rel="noopener noreferrer"
 							>
-								Killmail
+								View on zKillboard
 							</a>
 						</Button>
 					</div>

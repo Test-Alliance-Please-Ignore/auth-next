@@ -11,12 +11,20 @@
 		"enabled": true,
 		"head_sampling_rate": 1
 	},
+	"triggers": {
+		"crons": ["*/30 * * * *"]
+	},
 	"vars": {},
 	"durable_objects": {
 		"bindings": [
 			{
 				"name": "SRP",
 				"class_name": "Srp"
+			},
+			{
+				"name": "MARKETS",
+				"class_name": "Markets",
+				"script_name": "markets"
 			},
 			{
 				"name": "EVE_CHARACTER_DATA",
@@ -42,9 +50,26 @@
 				"name": "ESI_TYPE_RESOLVER",
 				"class_name": "EsiTypeResolver",
 				"script_name": "esi"
+			},
+			{
+				"name": "UNIVERSE",
+				"class_name": "Universe",
+				"script_name": "universe"
+			},
+			{
+				"name": "DISCORD",
+				"class_name": "Discord",
+				"script_name": "discord"
 			}
 		]
 	},
+	"workflows": [
+		{
+			"name": "srp-payment-status-check",
+			"binding": "SRP_PAYMENT_STATUS_CHECK",
+			"class_name": "SrpPaymentStatusCheckWorkflow"
+		}
+	],
 	"migrations": [
 		{
 			"tag": "v1",

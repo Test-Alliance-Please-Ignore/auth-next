@@ -45,3 +45,69 @@ export interface StructureInfo {
 	type_id: string
 }
 
+// ============================================================================
+// MARKET PRICE TYPES - ESI
+// ============================================================================
+
+/**
+ * Market price entry from ESI
+ * GET /v1/markets/prices/
+ * Returns CCP's universe-wide average and adjusted prices for all tradeable types.
+ * Cached for 1 hour by ESI.
+ */
+export interface EsiMarketPrice {
+	type_id: number
+	/** Universe-wide volume-weighted average price across all regions */
+	average_price?: number
+	/** CCP-adjusted price used for industry calculations */
+	adjusted_price?: number
+}
+
+/**
+ * Market price for a type (transformed)
+ */
+export interface MarketPrice {
+	typeId: string
+	/** Universe-wide average price in ISK, or null if not available */
+	averagePrice: number | null
+	/** CCP-adjusted price in ISK, or null if not available */
+	adjustedPrice: number | null
+}
+
+// ============================================================================
+// INSURANCE TYPES - ESI
+// ============================================================================
+
+/**
+ * A single insurance tier level from ESI
+ * GET /v1/insurance/prices/
+ */
+export interface EsiInsuranceLevel {
+	/** Tier name: "Basic" | "Standard" | "Bronze" | "Silver" | "Gold" | "Platinum" */
+	name: string
+	/** ISK cost of the insurance premium */
+	cost: number
+	/** ISK payout if the ship is destroyed while insured at this tier */
+	payout: number
+}
+
+/**
+ * Insurance prices for a single ship type from ESI
+ * GET /v1/insurance/prices/
+ */
+export interface EsiInsurancePrices {
+	type_id: number
+	levels: EsiInsuranceLevel[]
+}
+
+/**
+ * Platinum insurance tier values for a ship type (transformed)
+ * Null values indicate the ship type has no insurance (e.g. pods)
+ */
+export interface InsurancePlatinumValues {
+	typeId: string
+	/** ISK premium cost for Platinum tier, or null if uninsurable */
+	platinumCost: number | null
+	/** ISK payout for Platinum tier, or null if uninsurable */
+	platinumPayout: number | null
+}

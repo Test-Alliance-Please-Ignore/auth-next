@@ -70,6 +70,7 @@ export const killmailAttackerSchema = z.object({
 export const killmailDetailSchema = z.object({
 	attackers: z.array(killmailAttackerSchema),
 	killmail_id: z.coerce.string(), // int64 -> string
+	killmail_hash: z.string().optional(),
 	killmail_time: z.string(), // ISO 8601 datetime
 	moon_id: z.coerce.string().optional(), // int64 -> string
 	solar_system_id: z.coerce.string(), // int64 -> string

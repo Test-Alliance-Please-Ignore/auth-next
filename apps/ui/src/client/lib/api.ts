@@ -2509,11 +2509,20 @@ export class ApiClient {
 	/**
 	 * Create a new SRP request
 	 */
+	async getKillmailPreview(
+		killmailId: string,
+		killmailHash: string,
+		characterId: string
+	): Promise<any> {
+		const params = new URLSearchParams({ killmailId, killmailHash, characterId })
+		return this.get(`/srp/losses/preview?${params}`)
+	}
+
 	async createSRPRequest(data: {
 		characterId: string
 		killmailId: string
 		killmailHash: string
-		requestedAmount?: string
+		contextText?: string
 	}): Promise<any> {
 		return this.post('/srp/requests', data)
 	}
@@ -2661,31 +2670,39 @@ export class ApiClient {
 		return this.get(`/srp/payments/pending${query ? `?${query}` : ''}`)
 	}
 
-	/**
-	 * Mark request as fully paid
-	 */
-	async markPaid(
-		id: string,
-		data: {
-			paidAmount: string
-			paymentToken: string
+	async getPendingPayoutTotal(params?: { corporationId?: string }): Promise<{ pendingPayoutTotal: string }> {
+		const searchParams = new URLSearchParams()
+		if (params?.corporationId) searchParams.set('corporationId', params.corporationId)
+
+		const query = searchParams.toString()
+		return this.get(`/srp/payments/pending-total${query ? `?${query}` : ''}`)
+	}
+
+	async getSrpPaymentMismatchAlerts(params?: {
+		includeAcknowledged?: boolean
+		limit?: number
+		offset?: number
+	}): Promise<{ alerts: any[]; total: number }> {
+		const searchParams = new URLSearchParams()
+		if (params?.includeAcknowledged !== undefined) {
+			searchParams.set('includeAcknowledged', String(params.includeAcknowledged))
 		}
-	): Promise<any> {
-		return this.post(`/srp/requests/${id}/mark-paid`, data)
+		if (params?.limit !== undefined) searchParams.set('limit', String(params.limit))
+		if (params?.offset !== undefined) searchParams.set('offset', String(params.offset))
+
+		const query = searchParams.toString()
+		return this.get(`/srp/alerts/payment-mismatches${query ? `?${query}` : ''}`)
+	}
+
+	async acknowledgeSrpPaymentMismatchAlert(alertId: string): Promise<any> {
+		return this.post(`/srp/alerts/payment-mismatches/${alertId}/acknowledge`, {})
 	}
 
 	/**
-	 * Mark request as partially paid
+	 * Mark request as fully paid
 	 */
-	async markPartiallyPaid(
-		id: string,
-		data: {
-			paidAmount: string
-			paymentToken: string
-			notes?: string
-		}
-	): Promise<any> {
-		return this.post(`/srp/requests/${id}/mark-partially-paid`, data)
+	async markPaid(id: string): Promise<any> {
+		return this.post(`/srp/requests/${id}/mark-paid`, {})
 	}
 
 	/**
@@ -2693,6 +2710,14 @@ export class ApiClient {
 	 */
 	async getSRPConfig(): Promise<any> {
 		return this.get('/srp/config')
+	}
+
+	async searchSRPPaymentProcessorCorporations(
+		query: string
+	): Promise<Array<{ corporationId: string; name: string }>> {
+		return this.get(
+			`/srp/config/payment-processor-corporations/search?q=${encodeURIComponent(query)}`
+		)
 	}
 
 	/**
@@ -2717,6 +2742,85 @@ export class ApiClient {
 
 		const query = searchParams.toString()
 		return this.get(`/srp/stats${query ? `?${query}` : ''}`)
+	}
+
+	async refreshLosses(): Promise<{
+		results: Array<{
+			characterId: string
+			characterName: string
+			success: boolean
+			reason?: 'invalid_token' | 'fetch_failed'
+			error?: string
+		}>
+	}> {
+		return this.post('/srp/losses/refresh', {})
+	}
+
+	async getRequestsByStatus(params: {
+		status: string
+		limit?: number
+		offset?: number
+		characterName?: string
+		shipTypeName?: string
+		solarSystemName?: string
+		dateFrom?: string
+		dateTo?: string
+	}): Promise<any> {
+		const searchParams = new URLSearchParams()
+		searchParams.set('status', params.status)
+		if (params.limit !== undefined) searchParams.set('limit', String(params.limit))
+		if (params.offset !== undefined) searchParams.set('offset', String(params.offset))
+		if (params.characterName) searchParams.set('characterName', params.characterName)
+		if (params.shipTypeName) searchParams.set('shipTypeName', params.shipTypeName)
+		if (params.solarSystemName) searchParams.set('solarSystemName', params.solarSystemName)
+		if (params.dateFrom) searchParams.set('dateFrom', params.dateFrom)
+		if (params.dateTo) searchParams.set('dateTo', params.dateTo)
+		return this.get(`/srp/requests/by-status?${searchParams.toString()}`)
+	}
+
+	async getSrpReviewSearchValues(params: {
+		status: string
+		field: 'character' | 'ship' | 'system'
+		query: string
+	}): Promise<Array<{ value: string }>> {
+		const searchParams = new URLSearchParams()
+		searchParams.set('status', params.status)
+		searchParams.set('field', params.field)
+		searchParams.set('query', params.query)
+		return this.get(`/srp/requests/search-values?${searchParams.toString()}`)
+	}
+
+	async submitReview(id: string, data: any): Promise<any> {
+		return this.post(`/srp/requests/${id}/review`, data)
+	}
+
+	async updateReviewState(
+		id: string,
+		data: { newState: string; notes?: string }
+	): Promise<any> {
+		return this.patch(`/srp/requests/${id}/state`, data)
+	}
+
+	async getSRPPolicies(): Promise<any[]> {
+		return this.get('/srp/policies')
+	}
+
+	async createSRPPolicy(data: any): Promise<any> {
+		return this.post('/srp/policies', data)
+	}
+
+	async updateSRPPolicy(id: string, data: any): Promise<any> {
+		return this.patch(`/srp/policies/${id}`, data)
+	}
+
+	async deleteSRPPolicy(id: string): Promise<void> {
+		return this.delete(`/srp/policies/${id}`)
+	}
+
+	// ===== Feature Flags =====
+
+	async getFeatureFlags(): Promise<Record<string, boolean>> {
+		return this.get('/flags')
 	}
 
 	// ===== Doctrines API Methods =====
