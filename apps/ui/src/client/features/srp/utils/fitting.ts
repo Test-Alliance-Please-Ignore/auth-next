@@ -41,6 +41,13 @@ interface KillmailItem {
 	quantity_dropped?: number
 }
 
+export interface SRPCargoItem {
+	typeId: string
+	typeName: string
+	quantity: number
+	flag: number
+}
+
 interface SRPItemPrice {
 	typeId: string
 	price: string
@@ -90,6 +97,32 @@ export function transformKillmailToFittingItems(
 		if (ta !== tb) return ta - tb
 		return a.slotIndex - b.slotIndex
 	})
+}
+
+export function transformKillmailToCargoItems(
+	killmailItems: KillmailItem[],
+	itemNames: Record<string, string> = {}
+): SRPCargoItem[] {
+	const byType = new Map<string, SRPCargoItem>()
+
+	for (const item of killmailItems) {
+		if (item.flag !== 5) continue
+		const typeId = String(item.item_type_id)
+		const quantity = (item.quantity_destroyed ?? 0) + (item.quantity_dropped ?? 0) || 1
+		const existing = byType.get(typeId)
+		if (existing) {
+			existing.quantity += quantity
+			continue
+		}
+		byType.set(typeId, {
+			typeId,
+			typeName: itemNames[typeId] ?? typeId,
+			quantity,
+			flag: item.flag,
+		})
+	}
+
+	return [...byType.values()].sort((left, right) => left.typeName.localeCompare(right.typeName))
 }
 
 export const POD_TYPE_IDS = new Set(['670', '33328'])

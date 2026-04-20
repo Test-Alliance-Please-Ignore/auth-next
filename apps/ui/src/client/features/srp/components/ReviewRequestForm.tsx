@@ -1,5 +1,5 @@
 import { Plus, X } from 'lucide-react'
-import { type ReactNode, useState } from 'react'
+import { type ReactNode, useMemo, useState } from 'react'
 import { toast } from 'sonner'
 
 import { Button } from '@/components/ui/button'
@@ -7,22 +7,304 @@ import { Card } from '@/components/ui/card'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Select } from '@/components/ui/select'
+import { Switch } from '@/components/ui/switch'
+import { typeIconUrl } from '@/lib/eve-images'
 
 
-import { useSRPPolicies, useSubmitReview, useUpdateReviewState } from '../hooks'
+import { useDoctrineFittingsForShip, useSRPConfig, useSRPPolicies, useSubmitReview, useUpdateReviewState } from '../hooks'
 import { formatISK } from '../utils'
-import { transformKillmailToFittingItems } from '../utils/fitting'
+import { transformKillmailToCargoItems, transformKillmailToFittingItems } from '../utils/fitting'
 import { SRPFittingPanel } from './SRPFittingPanel'
 import { SRPFittingSlotList } from './SRPFittingSlotList'
 
 import type { CapConfig, PayoutModifierConfig } from '@repo/srp'
-import type { AppliedModifier, SRPPolicy, SRPRequestResponse } from '../types'
+import type { AppliedModifier, SRPPolicy, SRPPredefinedAdhocModifier, SRPRequestWithKillmailItemNames } from '../types'
+import type { FittingWithItems } from '@/lib/api'
 
 interface ReviewRequestFormProps {
-	request: SRPRequestResponse
+	request: SRPRequestWithKillmailItemNames
 	onSuccess: () => void
 	commentSlot?: ReactNode
 	rightAppend?: ReactNode
+}
+
+type DoctrineSlot = 'high' | 'mid' | 'low' | 'rig' | 'sub'
+type ConformitySeverity = 'destructive' | 'warning' | 'secondary'
+interface LossKillmailItem {
+	item_type_id?: number
+	flag?: number
+	quantity_destroyed?: number
+	quantity_dropped?: number
+	items?: LossKillmailItem[]
+}
+
+interface ConformityFinding {
+	severity: ConformitySeverity
+	message: string
+	expectedModule?: string
+	lossModule?: string
+}
+
+function slotFromDoctrineFlag(flagId: string): DoctrineSlot | null {
+	const flag = Number.parseInt(flagId, 10)
+	if (flag >= 27 && flag <= 34) return 'high'
+	if (flag >= 19 && flag <= 26) return 'mid'
+	if (flag >= 11 && flag <= 18) return 'low'
+	if (flag >= 92 && flag <= 99) return 'rig'
+	if (flag >= 125 && flag <= 132) return 'sub'
+	return null
+}
+
+function slotFromLossFlag(flag: number): DoctrineSlot | null {
+	if (flag >= 27 && flag <= 34) return 'high'
+	if (flag >= 19 && flag <= 26) return 'mid'
+	if (flag >= 11 && flag <= 18) return 'low'
+	if (flag >= 92 && flag <= 99) return 'rig'
+	if (flag >= 125 && flag <= 132) return 'sub'
+	return null
+}
+
+function killmailQuantity(item: {
+	quantity_destroyed?: number
+	quantity_dropped?: number
+}): number {
+	const quantity = (item.quantity_destroyed ?? 0) + (item.quantity_dropped ?? 0)
+	return quantity > 0 ? quantity : 1
+}
+
+function doctrineQuantity(quantity: string): number {
+	const parsed = Number.parseInt(quantity, 10)
+	return Number.isFinite(parsed) && parsed > 0 ? parsed : 1
+}
+
+function predefinedModifierOptionLabel(modifier: SRPPredefinedAdhocModifier): string {
+	const sign = modifier.modifierType === 'deduction' ? '−' : '+'
+	const unit = modifier.mode === 'percentage' ? '%' : 'M ISK'
+	return `${modifier.reason} (${sign}${modifier.amount}${unit})`
+}
+
+function buildDoctrineCountsBySlot(
+	fitting: FittingWithItems
+): Map<DoctrineSlot, Map<string, number>> {
+	const bySlot = new Map<DoctrineSlot, Map<string, number>>()
+	for (const item of fitting.fittingItems) {
+		const slot = slotFromDoctrineFlag(item.flagId)
+		if (!slot) continue
+		const slotMap = bySlot.get(slot) ?? new Map<string, number>()
+		slotMap.set(item.typeId, (slotMap.get(item.typeId) ?? 0) + doctrineQuantity(item.quantity))
+		bySlot.set(slot, slotMap)
+	}
+	return bySlot
+}
+
+function buildLossCountsBySlot(
+	killmailItems: LossKillmailItem[]
+): Map<DoctrineSlot, Map<string, number>> {
+	const bySlot = new Map<DoctrineSlot, Map<string, number>>()
+	for (const item of killmailItems) {
+		if (item.item_type_id == null || item.flag == null) continue
+		const slot = slotFromLossFlag(item.flag)
+		if (!slot) continue
+		const typeId = String(item.item_type_id)
+		const slotMap = bySlot.get(slot) ?? new Map<string, number>()
+		slotMap.set(typeId, (slotMap.get(typeId) ?? 0) + killmailQuantity(item))
+		bySlot.set(slot, slotMap)
+	}
+	return bySlot
+}
+
+function collectConsumableChildrenForHighModule(
+	items: LossKillmailItem[] | undefined,
+	consumableTypeIds: Set<string>,
+	ammoByType: Map<string, number>
+): boolean {
+	if (!items || items.length === 0) return false
+	let found = false
+	for (const child of items) {
+		if (child.item_type_id != null) {
+			const typeId = String(child.item_type_id)
+			if (consumableTypeIds.has(typeId)) {
+				ammoByType.set(typeId, (ammoByType.get(typeId) ?? 0) + killmailQuantity(child))
+				found = true
+			}
+		}
+		if (collectConsumableChildrenForHighModule(child.items, consumableTypeIds, ammoByType)) {
+			found = true
+		}
+	}
+	return found
+}
+
+function collectDirectHighSlotConsumables(
+	items: LossKillmailItem[],
+	consumableTypeIds: Set<string>,
+	ammoByType: Map<string, number>,
+	parentFlag?: number
+): void {
+	for (const item of items) {
+		const effectiveFlag = item.flag ?? parentFlag
+		if (effectiveFlag != null && slotFromLossFlag(effectiveFlag) === 'high' && item.item_type_id != null) {
+			const typeId = String(item.item_type_id)
+			if (consumableTypeIds.has(typeId)) {
+				ammoByType.set(typeId, (ammoByType.get(typeId) ?? 0) + killmailQuantity(item))
+			}
+		}
+		if (item.items?.length) {
+			collectDirectHighSlotConsumables(item.items, consumableTypeIds, ammoByType, effectiveFlag)
+		}
+	}
+}
+
+function analyzeHighSlotAmmoDistribution(
+	killmailItems: LossKillmailItem[],
+	consumableTypeIds: Set<string>,
+	itemNames: Record<string, string>
+): {
+	weaponModuleCount: number
+	totalAmmoQuantity: number
+	ammoTypeCount: number
+	ammoTypeNames: string[]
+} {
+	const ammoByType = new Map<string, number>()
+	let weaponModuleCount = 0
+
+	for (const item of killmailItems) {
+		if (item.item_type_id == null || item.flag == null) continue
+		if (slotFromLossFlag(item.flag) !== 'high') continue
+		if (consumableTypeIds.has(String(item.item_type_id))) continue
+		const hasLoadedAmmo = collectConsumableChildrenForHighModule(item.items, consumableTypeIds, ammoByType)
+		if (hasLoadedAmmo) weaponModuleCount += 1
+	}
+
+	if (weaponModuleCount === 0) {
+		collectDirectHighSlotConsumables(killmailItems, consumableTypeIds, ammoByType)
+		let fallbackHighModuleCount = 0
+		for (const item of killmailItems) {
+			if (item.item_type_id == null || item.flag == null) continue
+			if (slotFromLossFlag(item.flag) !== 'high') continue
+			if (consumableTypeIds.has(String(item.item_type_id))) continue
+			fallbackHighModuleCount += killmailQuantity(item)
+		}
+		weaponModuleCount = fallbackHighModuleCount
+	}
+
+	const totalAmmoQuantity = [...ammoByType.values()].reduce((sum, quantity) => sum + quantity, 0)
+	const ammoTypeNames = [...ammoByType.keys()].map((typeId) => itemNames[typeId] ?? `Type ${typeId}`)
+
+	return {
+		weaponModuleCount,
+		totalAmmoQuantity,
+		ammoTypeCount: ammoByType.size,
+		ammoTypeNames,
+	}
+}
+
+function scoreFittingOverlap(
+	fitting: FittingWithItems,
+	killmailItems: LossKillmailItem[]
+): number {
+	const doctrine = buildDoctrineCountsBySlot(fitting)
+	const loss = buildLossCountsBySlot(killmailItems)
+	let score = 0
+	for (const [slot, expected] of doctrine) {
+		const actual = loss.get(slot)
+		if (!actual) continue
+		for (const [typeId, quantity] of expected) {
+			score += Math.min(quantity, actual.get(typeId) ?? 0)
+		}
+	}
+	return score
+}
+
+function computeDoctrineConformityFindings(
+	fitting: FittingWithItems,
+	killmailItems: LossKillmailItem[],
+	doctrineCargoTypeIds: Set<string>,
+	consumableTypeIds: Set<string>,
+	itemNames: Record<string, string>
+): ConformityFinding[] {
+	const findings: ConformityFinding[] = []
+	const doctrineBySlot = buildDoctrineCountsBySlot(fitting)
+	const lossBySlot = buildLossCountsBySlot(killmailItems)
+
+	const expectedRigCount = [...(doctrineBySlot.get('rig')?.values() ?? [])].reduce(
+		(sum, quantity) => sum + quantity,
+		0
+	)
+	const actualRigCount = [...(lossBySlot.get('rig')?.values() ?? [])].reduce(
+		(sum, quantity) => sum + quantity,
+		0
+	)
+	const missingRigs = Math.max(0, expectedRigCount - actualRigCount)
+	if (missingRigs > 0) {
+		findings.push({
+			severity: 'destructive',
+			message: `Missing ${missingRigs} rig module${missingRigs === 1 ? '' : 's'}`,
+		})
+	}
+
+	for (const [slot, expectedTypes] of doctrineBySlot) {
+		const actualTypes = lossBySlot.get(slot) ?? new Map<string, number>()
+		for (const [expectedTypeId, expectedQty] of expectedTypes) {
+			const actualQty = actualTypes.get(expectedTypeId) ?? 0
+			if (actualQty >= expectedQty) continue
+
+			const expectedItem = fitting.fittingItems.find(
+				(item) => item.typeId === expectedTypeId && slotFromDoctrineFlag(item.flagId) === slot
+			)
+			const expectedName = expectedItem?.typeName ?? expectedTypeId
+			const lossTypeId = [...actualTypes.keys()].find(
+				(typeId) => typeId !== expectedTypeId && (actualTypes.get(typeId) ?? 0) > 0
+			)
+			const lossNameFromFitting = fitting.fittingItems.find((item) => item.typeId === lossTypeId)?.typeName
+			const lossName = lossTypeId
+				? lossNameFromFitting ?? `Type ${lossTypeId}`
+				: undefined
+
+			if (!lossTypeId) {
+				findings.push({
+					severity: 'destructive',
+					message: `Missing module in ${slot} slot`,
+					expectedModule: expectedName,
+				})
+				continue
+			}
+
+			const likelyVariation = lossTypeId ? doctrineCargoTypeIds.has(lossTypeId) : false
+			findings.push({
+				severity: likelyVariation ? 'secondary' : 'warning',
+				message: likelyVariation
+					? 'Likely doctrine variation'
+					: 'Module differs from doctrine expectation',
+				expectedModule: expectedName,
+				lossModule: lossName,
+			})
+		}
+	}
+
+	const ammoCheck = analyzeHighSlotAmmoDistribution(killmailItems, consumableTypeIds, itemNames)
+	const hasUnevenAmmoDistribution =
+		ammoCheck.weaponModuleCount > 0 &&
+		ammoCheck.totalAmmoQuantity > 0 &&
+		ammoCheck.totalAmmoQuantity % ammoCheck.weaponModuleCount !== 0
+	const hasMultipleAmmoTypes = ammoCheck.ammoTypeCount > 1
+	if (hasUnevenAmmoDistribution || hasMultipleAmmoTypes) {
+		const reasons: string[] = []
+		if (hasUnevenAmmoDistribution) {
+			reasons.push(
+				`ammo qty ${ammoCheck.totalAmmoQuantity} is not evenly divisible by ${ammoCheck.weaponModuleCount} weapon module${ammoCheck.weaponModuleCount === 1 ? '' : 's'}`
+			)
+		}
+		if (hasMultipleAmmoTypes) {
+			reasons.push(`multiple ammo types loaded (${ammoCheck.ammoTypeNames.join(', ')})`)
+		}
+		findings.push({
+			severity: 'warning',
+			message: `Split weapons variant detected: ${reasons.join('; ')}.`,
+		})
+	}
+
+	return findings
 }
 
 function isPayoutModifierConfig(c: unknown): c is PayoutModifierConfig {
@@ -88,6 +370,7 @@ function computePayout(
 
 export function ReviewRequestForm({ request, onSuccess, commentSlot, rightAppend }: ReviewRequestFormProps) {
 	const { data: policies = [] } = useSRPPolicies()
+	const { data: srpConfig } = useSRPConfig()
 	const submitMutation = useSubmitReview()
 	const updateStateMutation = useUpdateReviewState()
 
@@ -102,6 +385,15 @@ export function ReviewRequestForm({ request, onSuccess, commentSlot, rightAppend
 		'approved'
 	)
 	const [showConfirm, setShowConfirm] = useState(false)
+	const [showDoctrineConformity, setShowDoctrineConformity] = useState(false)
+	const [selectedDoctrineFittingId, setSelectedDoctrineFittingId] = useState('')
+	const [selectedPredefinedModifierValue, setSelectedPredefinedModifierValue] = useState('')
+	const { data: doctrineFittings = [] } = useDoctrineFittingsForShip(request.shipTypeId)
+	const predefinedAdhocModifiers: SRPPredefinedAdhocModifier[] = Array.isArray(
+		srpConfig?.predefinedAdhocModifiers
+	)
+		? (srpConfig.predefinedAdhocModifiers as SRPPredefinedAdhocModifier[])
+		: []
 
 	const selectedModifierPolicy =
 		modifierPolicies.find((p) => p.id === selectedModifierPolicyId) ?? null
@@ -127,13 +419,73 @@ export function ReviewRequestForm({ request, onSuccess, commentSlot, rightAppend
 	)
 	const isZeroPayout = computedPayout === 0
 
-	const itemNames = Object.fromEntries(
-		(request.srpItemPrices ?? []).map((p) => [p.typeId, p.typeName])
+	const itemNames = useMemo(
+		() => ({
+			...Object.fromEntries((request.srpItemPrices ?? []).map((p) => [p.typeId, p.typeName])),
+			...(request.killmailItemNames ?? {}),
+		}),
+		[request.killmailItemNames, request.srpItemPrices]
+	)
+	const consumableTypeIds = useMemo(
+		() =>
+			new Set(
+				(request.srpItemPrices ?? [])
+					.filter((item) => item.isConsumable)
+					.map((item) => item.typeId)
+			),
+		[request.srpItemPrices]
 	)
 	const fittingItems = transformKillmailToFittingItems(
 		request.killmailItems ?? [],
 		(request.srpItemPrices ?? []).map((p) => ({ typeId: p.typeId, price: p.unitPrice, isConsumable: p.isConsumable })),
 		itemNames
+	)
+	const cargoItems = transformKillmailToCargoItems(request.killmailItems ?? [], itemNames)
+
+	const sortedDoctrineFittings = useMemo(
+		() =>
+			[...doctrineFittings].sort(
+				(left, right) =>
+					scoreFittingOverlap(right, request.killmailItems ?? []) -
+					scoreFittingOverlap(left, request.killmailItems ?? [])
+			),
+		[doctrineFittings, request.killmailItems]
+	)
+
+	const activeDoctrineFitting =
+		sortedDoctrineFittings.find((fitting) => fitting.id === selectedDoctrineFittingId) ??
+		sortedDoctrineFittings[0] ??
+		null
+
+	const doctrineCargoTypeIds = useMemo(
+		() =>
+			new Set(
+				(activeDoctrineFitting?.fittingItems ?? [])
+					.filter((item) => item.flagId === '5')
+					.map((item) => item.typeId)
+			),
+		[activeDoctrineFitting]
+	)
+
+	const doctrineFindings = useMemo(
+		() =>
+			activeDoctrineFitting && showDoctrineConformity
+				? computeDoctrineConformityFindings(
+						activeDoctrineFitting,
+						request.killmailItems ?? [],
+						doctrineCargoTypeIds,
+						consumableTypeIds,
+						itemNames
+					)
+				: [],
+		[
+			activeDoctrineFitting,
+			consumableTypeIds,
+			doctrineCargoTypeIds,
+			itemNames,
+			request.killmailItems,
+			showDoctrineConformity,
+		]
 	)
 
 	const applyInsurance =
@@ -172,6 +524,10 @@ export function ReviewRequestForm({ request, onSuccess, commentSlot, rightAppend
 		selectedCapPolicy && isCapConfig(selectedCapPolicy.config) ? selectedCapPolicy.config : null
 	const isCapped = capPolicy !== null && afterModifiers > capPolicy.maxPayoutMillions * 1_000_000
 	const beforeCapAmount = afterModifiers
+	const predefinedModifierOptions = predefinedAdhocModifiers.map((modifier, index) => ({
+		value: String(index),
+		label: predefinedModifierOptionLabel(modifier),
+	}))
 
 	const addModifier = () => {
 		setModifiers((prev) => [
@@ -185,6 +541,24 @@ export function ReviewRequestForm({ request, onSuccess, commentSlot, rightAppend
 				computedAmountISK: '0',
 			},
 		])
+	}
+
+	const addPredefinedModifier = (value: string) => {
+		const index = Number.parseInt(value, 10)
+		const template = Number.isFinite(index) ? predefinedAdhocModifiers[index] : undefined
+		if (!template) return
+		setModifiers((prev) => [
+			...prev,
+			{
+				id: crypto.randomUUID(),
+				modifierType: template.modifierType,
+				mode: template.mode,
+				amount: template.amount,
+				reason: template.reason,
+				computedAmountISK: '0',
+			},
+		])
+		setSelectedPredefinedModifierValue('')
 	}
 
 	const updateModifier = (id: string, updates: Partial<AppliedModifier>) => {
@@ -261,12 +635,95 @@ export function ReviewRequestForm({ request, onSuccess, commentSlot, rightAppend
 						items={fittingItems}
 					/>
 				)}
+				{sortedDoctrineFittings.length > 0 && (
+					<Card className="p-4">
+						<div className="space-y-3">
+							<div className="flex items-center justify-between gap-3">
+								<div>
+									<h4 className="text-sm font-semibold">Show Doctrine Conformity</h4>
+									<p className="text-xs text-muted-foreground">
+										Compare this loss against doctrine fittings for this hull
+									</p>
+								</div>
+								<Switch checked={showDoctrineConformity} onCheckedChange={setShowDoctrineConformity} />
+							</div>
+							{showDoctrineConformity && (
+								<>
+									<Select
+										value={activeDoctrineFitting?.id ?? ''}
+										onValueChange={setSelectedDoctrineFittingId}
+										options={sortedDoctrineFittings.map((fitting) => ({
+											value: fitting.id,
+											label: fitting.name,
+										}))}
+										placeholder="Select doctrine fitting"
+									/>
+									{doctrineFindings.length === 0 ? (
+										<p className="text-sm text-success">No invariant issues for selected fitting.</p>
+									) : (
+										<ul className="space-y-2">
+											{doctrineFindings.map((finding, index) => (
+												<li
+													key={`${finding.message}-${index}`}
+													className={
+														finding.severity === 'destructive'
+															? 'rounded-md border border-destructive/40 bg-destructive/10 px-3 py-2'
+															: finding.severity === 'warning'
+																? 'rounded-md border border-warning/40 bg-warning/10 px-3 py-2'
+																: 'rounded-md border border-secondary/40 bg-secondary/10 px-3 py-2'
+													}
+												>
+													<div className="text-sm font-medium">{finding.message}</div>
+													{(finding.expectedModule || finding.lossModule) && (
+														<div className="mt-1 text-xs text-muted-foreground">
+															Expected:{' '}
+															<span className="font-medium text-foreground">
+																{finding.expectedModule ?? '—'}
+															</span>{' '}
+															| Loss:{' '}
+															<span className="font-medium text-foreground">
+																{finding.lossModule ?? '—'}
+															</span>
+														</div>
+													)}
+												</li>
+											))}
+										</ul>
+									)}
+								</>
+							)}
+						</div>
+					</Card>
+				)}
 				{request.srpItemPrices && request.srpItemPrices.length > 0 && (
 					<Card className="p-4">
 						<h4 className="mb-3 font-semibold text-sm">Fitting</h4>
 						<SRPFittingSlotList shipTypeId={request.shipTypeId} items={fittingItems} />
 					</Card>
 				)}
+				<Card className="p-4">
+					<h4 className="mb-3 font-semibold text-sm">Cargo</h4>
+					{cargoItems.length === 0 ? (
+						<p className="text-sm text-muted-foreground">No cargo recorded on lossmail.</p>
+					) : (
+						<div className="space-y-1 rounded-md border border-border/40 bg-muted/10 p-1">
+							{cargoItems.map((item) => (
+								<div key={item.typeId} className="flex items-center gap-2 rounded px-1 py-0.5 hover:bg-muted/20">
+									<img
+										src={typeIconUrl(item.typeId, 32)}
+										alt={item.typeName}
+										className="h-8 w-8 flex-shrink-0 rounded border border-border/40 object-contain"
+										loading="lazy"
+									/>
+									<div className="min-w-0 flex-1">
+										<p className="truncate text-sm font-medium leading-tight">{item.typeName}</p>
+									</div>
+									<div className="text-xs text-muted-foreground">×{item.quantity}</div>
+								</div>
+							))}
+						</div>
+					)}
+				</Card>
 			</div>
 
 			{/* Right: Review form */}
@@ -433,6 +890,19 @@ export function ReviewRequestForm({ request, onSuccess, commentSlot, rightAppend
 				<Card className="p-4">
 					<h4 className="mb-3 text-sm font-semibold">Ad-hoc Modifiers</h4>
 					<div className="space-y-2">
+						{predefinedModifierOptions.length > 0 && (
+							<Select
+								value={selectedPredefinedModifierValue}
+								onValueChange={(value) => {
+									setSelectedPredefinedModifierValue(value)
+									addPredefinedModifier(value)
+								}}
+								options={predefinedModifierOptions}
+								placeholder="Add predefined modifier suggestion"
+								searchable
+								emptyText="No predefined modifiers"
+							/>
+						)}
 						{modifiers.map((mod) => (
 							<div
 								key={mod.id}
@@ -483,7 +953,7 @@ export function ReviewRequestForm({ request, onSuccess, commentSlot, rightAppend
 								</Button>
 							</div>
 						))}
-						<Button variant="secondary" size="sm" onClick={addModifier}>
+						<Button variant="primary" size="sm" onClick={addModifier}>
 							<Plus className="mr-1 h-4 w-4" /> Add Modifier
 						</Button>
 					</div>

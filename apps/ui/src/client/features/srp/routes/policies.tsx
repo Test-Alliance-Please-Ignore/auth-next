@@ -1,22 +1,24 @@
 import { Edit2, Plus, Power, PowerOff } from 'lucide-react'
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { Navigate } from 'react-router-dom'
 import { toast } from 'sonner'
 
 import { Button } from '@/components/ui/button'
-import { Card } from '@/components/ui/card'
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Container } from '@/components/ui/container'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
+import { NumberInput } from '@/components/ui/number-input'
 import { PageHeader } from '@/components/ui/page-header'
+import { Select } from '@/components/ui/select'
 import { Textarea } from '@/components/ui/textarea'
 import { useUserPermissions } from '@/hooks/useUserPermissions'
 
-import { useCreatePolicy, useSRPPolicies, useUpdatePolicy } from '../hooks'
+import { useCreatePolicy, useSRPConfig, useSRPPolicies, useUpdatePolicy, useUpdateSRPConfig } from '../hooks'
 import { formatISK } from '../utils'
 
 import type { CapConfig, PayoutModifierConfig } from '@repo/srp'
-import type { SRPPolicy } from '../types'
+import type { SRPConfigResponse, SRPPolicy, SRPPredefinedAdhocModifier } from '../types'
 
 function isPayoutModifierConfig(c: unknown): c is PayoutModifierConfig {
 	return typeof c === 'object' && c !== null && 'rate' in c
@@ -34,6 +36,7 @@ export default function PoliciesPage() {
 	}
 
 	const { data: policies = [], isLoading } = useSRPPolicies()
+	const { data: config } = useSRPConfig()
 
 	const modifierPolicies = policies.filter((p) => p.effect === 'payout_modifier')
 	const capPolicies = policies.filter((p) => p.effect === 'cap')
@@ -59,6 +62,7 @@ export default function PoliciesPage() {
 			/>
 
 			<div className="space-y-8">
+				<GeneralConfigPanel config={config} />
 				<PolicySection
 					title="Payout Modifier Policies"
 					description="Control coverage rate and insurance handling"
@@ -71,8 +75,370 @@ export default function PoliciesPage() {
 					effect="cap"
 					policies={capPolicies}
 				/>
+				<PredefinedAdhocModifiersSection
+					initialModifiers={config?.predefinedAdhocModifiers ?? []}
+				/>
 			</div>
 		</Container>
+	)
+}
+
+function GeneralConfigPanel({ config }: { config?: SRPConfigResponse }) {
+	const updateConfigMutation = useUpdateSRPConfig()
+	const [defaultCoverageRatePercent, setDefaultCoverageRatePercent] = useState('100')
+	const [maxPayoutAmount, setMaxPayoutAmount] = useState('')
+	const [minShipValue, setMinShipValue] = useState('0')
+	const [maxLossAgeDays, setMaxLossAgeDays] = useState('60')
+
+	useEffect(() => {
+		if (!config) return
+		setDefaultCoverageRatePercent(String(Math.round(parseFloat(config.defaultCoverageRate) * 100)))
+		setMaxPayoutAmount(config.maxPayoutAmount ?? '')
+		setMinShipValue(config.minShipValue)
+		setMaxLossAgeDays(String(config.maxLossAgeDays))
+	}, [config])
+
+	const save = async () => {
+		try {
+			await updateConfigMutation.mutateAsync({
+				defaultCoverageRate: String((Number.parseFloat(defaultCoverageRatePercent) || 0) / 100),
+				maxPayoutAmount: maxPayoutAmount.trim() ? maxPayoutAmount.trim() : null,
+				minShipValue: minShipValue.trim() || '0',
+				maxLossAgeDays: Math.max(1, Number.parseInt(maxLossAgeDays, 10) || 60),
+			} as any)
+			toast.success('SRP configuration saved')
+		} catch (error: any) {
+			toast.error('Failed to save SRP configuration', { description: error.message })
+		}
+	}
+
+	return (
+		<Card>
+			<CardHeader>
+				<CardTitle className="text-lg">General Configuration</CardTitle>
+				<CardDescription>
+					Edit SRP baseline configuration values used across request handling and review.
+				</CardDescription>
+			</CardHeader>
+			<CardContent className="space-y-4">
+				<div className="grid gap-4 sm:grid-cols-2">
+					<div>
+						<Label htmlFor="defaultCoverageRatePercent">Default Coverage Rate (%)</Label>
+						<NumberInput
+							id="defaultCoverageRatePercent"
+							min={0}
+							max={200}
+							step={1}
+							allowDecimal={false}
+							suffix="%"
+							value={defaultCoverageRatePercent}
+							onChange={setDefaultCoverageRatePercent}
+						/>
+					</div>
+					<div>
+						<Label htmlFor="maxPayoutAmount">Max Payout Amount (ISK, optional)</Label>
+						<NumberInput
+							id="maxPayoutAmount"
+							min={0}
+							step={1}
+							allowDecimal={false}
+							suffix=" ISK"
+							value={maxPayoutAmount}
+							onChange={setMaxPayoutAmount}
+							placeholder="e.g. 1,000,000,000 ISK"
+						/>
+					</div>
+					<div>
+						<Label htmlFor="minShipValue">Minimum Ship Value (ISK)</Label>
+						<NumberInput
+							id="minShipValue"
+							min={0}
+							step={1}
+							allowDecimal={false}
+							suffix=" ISK"
+							value={minShipValue}
+							onChange={setMinShipValue}
+						/>
+					</div>
+					<div>
+						<Label htmlFor="maxLossAgeDays">Max Loss Age (days)</Label>
+						<NumberInput
+							id="maxLossAgeDays"
+							min={1}
+							step={1}
+							allowDecimal={false}
+							value={maxLossAgeDays}
+							onChange={setMaxLossAgeDays}
+						/>
+					</div>
+				</div>
+
+				<div className="flex justify-end">
+					<Button onClick={save} disabled={updateConfigMutation.isPending}>
+						{updateConfigMutation.isPending ? 'Saving…' : 'Save Configuration'}
+					</Button>
+				</div>
+			</CardContent>
+		</Card>
+	)
+}
+
+function PredefinedAdhocModifiersSection({
+	initialModifiers,
+}: {
+	initialModifiers: SRPPredefinedAdhocModifier[]
+}) {
+	const updateConfigMutation = useUpdateSRPConfig()
+	const [modifiers, setModifiers] = useState<SRPPredefinedAdhocModifier[]>(initialModifiers)
+	const [editingIndex, setEditingIndex] = useState<number | null>(null)
+	const [isCreating, setIsCreating] = useState(false)
+	const [draftModifier, setDraftModifier] = useState<SRPPredefinedAdhocModifier | null>(null)
+
+	useEffect(() => {
+		setModifiers(initialModifiers)
+		setEditingIndex(null)
+		setIsCreating(false)
+		setDraftModifier(null)
+	}, [initialModifiers])
+
+	const persistModifiers = async (nextModifiers: SRPPredefinedAdhocModifier[]) => {
+		try {
+			await updateConfigMutation.mutateAsync({
+				predefinedAdhocModifiers: nextModifiers.map((modifier) => ({
+					...modifier,
+					reason: modifier.reason.trim(),
+				})),
+			} as any)
+		} catch (error: any) {
+			toast.error('Failed to save predefined modifiers', { description: error.message })
+		}
+	}
+
+	const addModifier = () => {
+		setEditingIndex(modifiers.length)
+		setIsCreating(true)
+		setDraftModifier({
+			modifierType: 'deduction',
+			mode: 'percentage',
+			amount: 10,
+			reason: '',
+		})
+	}
+
+	const startEdit = (index: number) => {
+		setEditingIndex(index)
+		setIsCreating(false)
+		setDraftModifier({ ...modifiers[index] })
+	}
+
+	const cancelEdit = () => {
+		setEditingIndex(null)
+		setIsCreating(false)
+		setDraftModifier(null)
+	}
+
+	const saveEdit = async () => {
+		if (editingIndex === null || !draftModifier) return
+		if (draftModifier.reason.trim().length === 0) {
+			toast.error('Reason is required')
+			return
+		}
+
+		const cleaned = { ...draftModifier, reason: draftModifier.reason.trim() }
+		const next = isCreating
+			? [...modifiers, cleaned]
+			: modifiers.map((modifier, index) => (index === editingIndex ? cleaned : modifier))
+
+		setModifiers(next)
+		setEditingIndex(null)
+		setIsCreating(false)
+		setDraftModifier(null)
+		await persistModifiers(next)
+	}
+
+	const removeModifier = (index: number) => {
+		const next = modifiers.filter((_, currentIndex) => currentIndex !== index)
+		setModifiers(next)
+		void persistModifiers(next)
+	}
+
+	return (
+		<Card>
+			<CardHeader className="flex flex-row items-start justify-between space-y-0 gap-3">
+				<div>
+					<CardTitle className="text-lg">Predefined Ad-hoc Modifiers</CardTitle>
+					<CardDescription>
+						Optional suggestion templates shown in review form ad-hoc modifiers.
+					</CardDescription>
+				</div>
+				<Button size="sm" onClick={addModifier} disabled={updateConfigMutation.isPending}>
+					<Plus className="mr-1 h-4 w-4" />
+					Add Template
+				</Button>
+			</CardHeader>
+			<CardContent className="space-y-4">
+				<div className="overflow-hidden rounded-lg border border-border/50 bg-card">
+				{modifiers.length === 0 ? (
+					<div className="p-8 text-center text-sm text-muted-foreground">No modifiers yet</div>
+				) : (
+					<div className="space-y-2 p-3">
+						{modifiers.map((modifier, index) => (
+							<div
+								key={index}
+								className="grid gap-2 rounded-md border border-border/40 p-3 sm:grid-cols-[150px_140px_120px_1fr_auto]"
+							>
+								{editingIndex === index && !isCreating && draftModifier ? (
+									<>
+										<Select
+											value={draftModifier.modifierType}
+											onValueChange={(value) =>
+												setDraftModifier({
+													...draftModifier,
+													modifierType: value as SRPPredefinedAdhocModifier['modifierType'],
+												})
+											}
+											options={[
+												{ value: 'deduction', label: 'Deduction' },
+												{ value: 'bonus', label: 'Bonus' },
+											]}
+										/>
+										<Select
+											value={draftModifier.mode}
+											onValueChange={(value) =>
+												setDraftModifier({
+													...draftModifier,
+													mode: value as SRPPredefinedAdhocModifier['mode'],
+												})
+											}
+											options={[
+												{ value: 'percentage', label: 'Percentage' },
+												{ value: 'value', label: 'M ISK' },
+											]}
+										/>
+										<NumberInput
+											min={0}
+											step={0.01}
+											value={draftModifier.amount}
+											onChange={(value) =>
+												setDraftModifier({
+													...draftModifier,
+													amount: Number.parseFloat(value) || 0,
+												})
+											}
+											placeholder="Amount"
+										/>
+										<Input
+											value={draftModifier.reason}
+											onChange={(e) =>
+												setDraftModifier({
+													...draftModifier,
+													reason: e.target.value,
+												})
+											}
+											placeholder="Reason"
+										/>
+										<div className="flex gap-1">
+											<Button variant="primary" size="sm" onClick={() => void saveEdit()}>
+												Save
+											</Button>
+											<Button variant="ghost" size="sm" onClick={cancelEdit}>
+												Cancel
+											</Button>
+										</div>
+									</>
+								) : (
+									<>
+										<div className="text-sm">{modifier.modifierType === 'deduction' ? 'Deduction' : 'Bonus'}</div>
+										<div className="text-sm">{modifier.mode === 'percentage' ? 'Percentage' : 'M ISK'}</div>
+										<div className="text-sm">{modifier.amount}</div>
+										<div className="text-sm">{modifier.reason}</div>
+										<div className="flex gap-1">
+											<Button
+												variant="ghost"
+												size="sm"
+												onClick={() => startEdit(index)}
+												disabled={updateConfigMutation.isPending}
+											>
+												Edit
+											</Button>
+											<Button
+												variant="ghost"
+												size="sm"
+												onClick={() => removeModifier(index)}
+												disabled={updateConfigMutation.isPending}
+											>
+												Remove
+											</Button>
+										</div>
+									</>
+								)}
+							</div>
+						))}
+						{isCreating && draftModifier && editingIndex === modifiers.length && (
+							<div className="grid gap-2 rounded-md border border-border/40 p-3 sm:grid-cols-[150px_140px_120px_1fr_auto]">
+								<Select
+									value={draftModifier.modifierType}
+									onValueChange={(value) =>
+										setDraftModifier({
+											...draftModifier,
+											modifierType: value as SRPPredefinedAdhocModifier['modifierType'],
+										})
+									}
+									options={[
+										{ value: 'deduction', label: 'Deduction' },
+										{ value: 'bonus', label: 'Bonus' },
+									]}
+								/>
+								<Select
+									value={draftModifier.mode}
+									onValueChange={(value) =>
+										setDraftModifier({
+											...draftModifier,
+											mode: value as SRPPredefinedAdhocModifier['mode'],
+										})
+									}
+									options={[
+										{ value: 'percentage', label: 'Percentage' },
+										{ value: 'value', label: 'M ISK' },
+									]}
+								/>
+								<NumberInput
+									min={0}
+									step={0.01}
+									value={draftModifier.amount}
+									onChange={(value) =>
+										setDraftModifier({
+											...draftModifier,
+											amount: Number.parseFloat(value) || 0,
+										})
+									}
+									placeholder="Amount"
+								/>
+								<Input
+									value={draftModifier.reason}
+									onChange={(e) =>
+										setDraftModifier({
+											...draftModifier,
+											reason: e.target.value,
+										})
+									}
+									placeholder="Reason"
+								/>
+								<div className="flex gap-1">
+									<Button variant="primary" size="sm" onClick={() => void saveEdit()}>
+										Save
+									</Button>
+									<Button variant="ghost" size="sm" onClick={cancelEdit}>
+										Cancel
+									</Button>
+								</div>
+							</div>
+						)}
+					</div>
+				)}
+				</div>
+			</CardContent>
+		</Card>
 	)
 }
 
@@ -87,29 +453,29 @@ function PolicySection({ title, description, effect, policies }: PolicySectionPr
 	const [showAddForm, setShowAddForm] = useState(false)
 
 	return (
-		<div>
-			<div className="mb-4 flex items-start justify-between">
+		<Card>
+			<CardHeader className="flex flex-row items-start justify-between space-y-0 gap-3">
 				<div>
-					<h2 className="text-lg font-semibold">{title}</h2>
-					<p className="text-sm text-muted-foreground">{description}</p>
+					<CardTitle className="text-lg">{title}</CardTitle>
+					<CardDescription>{description}</CardDescription>
 				</div>
 				<Button size="sm" onClick={() => setShowAddForm((v) => !v)}>
 					<Plus className="mr-1 h-4 w-4" />
 					Add Policy
 				</Button>
-			</div>
+			</CardHeader>
+			<CardContent className="space-y-4">
+				{showAddForm && (
+					<Card className="p-4">
+						<PolicyForm
+							effect={effect}
+							onCancel={() => setShowAddForm(false)}
+							onSaved={() => setShowAddForm(false)}
+						/>
+					</Card>
+				)}
 
-			{showAddForm && (
-				<Card className="mb-4 p-4">
-					<PolicyForm
-						effect={effect}
-						onCancel={() => setShowAddForm(false)}
-						onSaved={() => setShowAddForm(false)}
-					/>
-				</Card>
-			)}
-
-			<div className="overflow-hidden rounded-lg border border-border/50 bg-card">
+				<div className="overflow-hidden rounded-lg border border-border/50 bg-card">
 				{policies.length === 0 ? (
 					<div className="p-8 text-center text-sm text-muted-foreground">No policies yet</div>
 				) : (
@@ -150,7 +516,8 @@ function PolicySection({ title, description, effect, policies }: PolicySectionPr
 					</table>
 				)}
 			</div>
-		</div>
+			</CardContent>
+		</Card>
 	)
 }
 
@@ -322,11 +689,12 @@ function PolicyForm({ effect, existing, onCancel, onSaved }: PolicyFormProps) {
 				</div>
 				<div>
 					<Label htmlFor="policyOrder">Display Order</Label>
-					<Input
+					<NumberInput
 						id="policyOrder"
-						type="number"
+						step={1}
+						allowDecimal={false}
 						value={displayOrder}
-						onChange={(e) => setDisplayOrder(e.target.value)}
+						onChange={setDisplayOrder}
 					/>
 				</div>
 				<div className="sm:col-span-2">
@@ -343,13 +711,15 @@ function PolicyForm({ effect, existing, onCancel, onSaved }: PolicyFormProps) {
 					<>
 						<div>
 							<Label htmlFor="policyRate">Coverage Rate (%)</Label>
-							<Input
+							<NumberInput
 								id="policyRate"
-								type="number"
 								min={0}
 								max={200}
+								step={1}
+								allowDecimal={false}
+								suffix="%"
 								value={rate}
-								onChange={(e) => setRate(e.target.value)}
+								onChange={setRate}
 								placeholder="100"
 							/>
 							<p className="mt-1 text-xs text-muted-foreground">
@@ -370,12 +740,13 @@ function PolicyForm({ effect, existing, onCancel, onSaved }: PolicyFormProps) {
 				) : (
 					<div>
 						<Label htmlFor="maxPayout">Max Payout (millions ISK)</Label>
-						<Input
+						<NumberInput
 							id="maxPayout"
-							type="number"
 							min={0}
+							step={1}
+							allowDecimal={false}
 							value={maxPayoutMillions}
-							onChange={(e) => setMaxPayoutMillions(e.target.value)}
+							onChange={setMaxPayoutMillions}
 							placeholder="300"
 						/>
 						<p className="mt-1 text-xs text-muted-foreground">

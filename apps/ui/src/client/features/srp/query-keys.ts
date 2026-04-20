@@ -51,4 +51,8 @@ export const srpKeys = {
 	// Stats
 	stats: (params?: { startDate?: string; endDate?: string; corporationId?: string }) =>
 		[...srpKeys.all, 'stats', params] as const,
+
+	// Doctrine conformity
+	doctrineFittingsByShip: (shipTypeId: string) =>
+		[...srpKeys.all, 'doctrine-fittings', shipTypeId] as const,
 }

@@ -51,7 +51,7 @@ export function CommentsList({
 	if (comments.length === 0) {
 		return (
 			<Card className="p-6 text-center">
-				<p className="text-sm text-muted-foreground">No comments yet. Be the first to comment!</p>
+				<p className="text-sm text-muted-foreground">No comments.</p>
 			</Card>
 		)
 	}

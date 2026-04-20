@@ -758,6 +758,10 @@ export class SrpDO extends DurableObject<Env> implements Srp {
 		})
 
 		if (!config) return null
+		const metadata = (config.metadata as Record<string, unknown>) || {}
+		const predefinedAdhocModifiers = Array.isArray(metadata.predefinedAdhocModifiers)
+			? (metadata.predefinedAdhocModifiers as SRPConfigResponse['predefinedAdhocModifiers'])
+			: undefined
 
 		return {
 			id: config.id,
@@ -766,11 +770,9 @@ export class SrpDO extends DurableObject<Env> implements Srp {
 			maxPayoutAmount: config.maxPayoutAmount || undefined,
 			minShipValue: config.minShipValue,
 			maxLossAgeDays: config.maxLossAgeDays,
-			autoApprovalEnabled: config.autoApprovalEnabled,
-			autoApprovalThreshold: config.autoApprovalThreshold || undefined,
 			eligibleCorporationIds: config.eligibleCorporationIds || undefined,
-			rejectionReasons: (config.rejectionReasons as string[]) || [],
-			metadata: (config.metadata as Record<string, unknown>) || undefined,
+			metadata,
+			predefinedAdhocModifiers,
 			createdBy: config.createdBy,
 			effectiveFrom: config.effectiveFrom.toISOString(),
 			effectiveTo: config.effectiveTo?.toISOString(),
@@ -796,6 +798,14 @@ export class SrpDO extends DurableObject<Env> implements Srp {
 				.where(eq(srpConfig.id, current.id))
 		}
 
+		const mergedMetadata = {
+			...((current?.metadata as Record<string, unknown> | undefined) ?? {}),
+			...(updates.metadata ?? {}),
+		}
+		if (updates.predefinedAdhocModifiers !== undefined) {
+			mergedMetadata.predefinedAdhocModifiers = updates.predefinedAdhocModifiers
+		}
+
 		// Create new config
 		await this.db
 			.insert(srpConfig)
@@ -804,13 +814,9 @@ export class SrpDO extends DurableObject<Env> implements Srp {
 				defaultCoverageRate: updates.defaultCoverageRate || current?.defaultCoverageRate || '1.0',
 				maxPayoutAmount: updates.maxPayoutAmount || current?.maxPayoutAmount || null,
 				minShipValue: updates.minShipValue || current?.minShipValue || '0',
-				autoApprovalEnabled: updates.autoApprovalEnabled ?? current?.autoApprovalEnabled ?? false,
-				autoApprovalThreshold:
-					updates.autoApprovalThreshold || current?.autoApprovalThreshold || null,
 				eligibleCorporationIds:
 					updates.eligibleCorporationIds || current?.eligibleCorporationIds || null,
-				rejectionReasons: updates.rejectionReasons || current?.rejectionReasons || [],
-				metadata: updates.metadata || current?.metadata || {},
+				metadata: mergedMetadata,
 				createdBy: userId,
 				effectiveFrom: new Date(),
 			})

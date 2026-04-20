@@ -10,6 +10,7 @@ import type {
 	SRPConfigResponse,
 	SRPReviewSubmission,
 } from './types'
+import type { FittingWithItems } from '@/lib/api'
 
 function invalidateSrpQueueBadgeQueries(queryClient: ReturnType<typeof useQueryClient>) {
 	void queryClient.invalidateQueries({
@@ -169,6 +170,21 @@ export function useKillmailPreview(
 		queryFn: () => api.getKillmailPreview(killmailId!, killmailHash!, characterId!),
 		enabled: !!killmailId && !!killmailHash && !!characterId,
 		staleTime: 1000 * 60 * 10,
+	})
+}
+
+export function useDoctrineFittingsForShip(shipTypeId: string | undefined) {
+	return useQuery<FittingWithItems[]>({
+		queryKey: srpKeys.doctrineFittingsByShip(shipTypeId ?? ''),
+		enabled: Boolean(shipTypeId),
+		staleTime: 1000 * 60 * 5,
+		queryFn: async () => {
+			if (!shipTypeId) return []
+			const candidates = await api.getFittings({ shipTypeId, srpEligible: true })
+			if (candidates.length === 0) return []
+			const full = await Promise.all(candidates.map((fitting) => api.getFitting(fitting.id)))
+			return full
+		},
 	})
 }
 

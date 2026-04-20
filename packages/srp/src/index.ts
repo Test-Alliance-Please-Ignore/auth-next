@@ -215,6 +215,17 @@ export interface AppliedModifier {
 }
 
 /**
+ * Predefined ad-hoc modifier template configured by SRP admins.
+ * Used as reviewer suggestion shortcuts in the review form.
+ */
+export interface SRPPredefinedAdhocModifier {
+	modifierType: 'deduction' | 'bonus'
+	mode: 'percentage' | 'value'
+	amount: number
+	reason: string
+}
+
+/**
  * Input for submitReview RPC method
  */
 export interface SRPReviewSubmission {
@@ -273,6 +284,13 @@ export const AppliedModifierSchema = z.object({
 	computedAmountISK: z.string(),
 })
 
+export const PredefinedAdhocModifierSchema = z.object({
+	modifierType: z.enum(['deduction', 'bonus']),
+	mode: z.enum(['percentage', 'value']),
+	amount: z.number().positive(),
+	reason: z.string().min(1).max(500),
+})
+
 /**
  * Schema for submitting a review
  */
@@ -314,11 +332,9 @@ export const UpdateSRPConfigSchema = z.object({
 	maxPayoutAmount: z.string().nullable().optional(),
 	minShipValue: z.string().optional(),
 	maxLossAgeDays: z.number().int().positive().optional(),
-	autoApprovalEnabled: z.boolean().optional(),
-	autoApprovalThreshold: z.string().nullable().optional(),
 	eligibleCorporationIds: z.array(z.string()).optional(),
-	rejectionReasons: z.array(z.string()).optional(),
 	metadata: z.record(z.string(), z.unknown()).optional(),
+	predefinedAdhocModifiers: z.array(PredefinedAdhocModifierSchema).optional(),
 })
 export type UpdateSRPConfig = z.infer<typeof UpdateSRPConfigSchema>
 
@@ -450,11 +466,9 @@ export interface SRPConfigResponse {
 	maxPayoutAmount?: string
 	minShipValue: string
 	maxLossAgeDays: number
-	autoApprovalEnabled: boolean
-	autoApprovalThreshold?: string
 	eligibleCorporationIds?: string[]
-	rejectionReasons: string[]
 	metadata?: Record<string, unknown>
+	predefinedAdhocModifiers?: SRPPredefinedAdhocModifier[]
 	createdBy: string
 	effectiveFrom: string
 	effectiveTo?: string

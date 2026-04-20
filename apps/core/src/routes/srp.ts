@@ -20,8 +20,10 @@ import { userCharacters } from '../db/schema'
 import { getCachedUserPermissions } from '../lib/groups-cache'
 import { requireAllianceMember } from '../middleware/session'
 
+import type { Doctrines, FittingWithItems } from '@repo/doctrines'
 import type { EveCharacterData } from '@repo/eve-character-data'
 import type { SRPCommentResponse, SRPRequestResponse, Srp } from '@repo/srp'
+import type { Universe } from '@repo/universe'
 import type { App } from '../context'
 
 const ApproveRequestSchema = z.object({
@@ -112,6 +114,369 @@ async function hydrateCommentAuthors(
 }
 
 type RequestWithCharacterRole = SRPRequestResponse & { characterRole?: 'main' | 'alt' }
+type DoctrineSlot = 'high' | 'mid' | 'low' | 'rig' | 'sub'
+type MilitarySrpFindingCode =
+	| 'missing_rigs'
+	| 'module_missing'
+	| 'module_variant_mismatch'
+
+interface MilitarySrpFinding {
+	code: MilitarySrpFindingCode
+	slot?: DoctrineSlot
+	message: string
+	suggestedPenaltyPercent?: number
+	doctrineTypeId?: string
+	doctrineTypeName?: string
+	actualTypeId?: string
+	actualTypeName?: string
+	groupName?: string
+	quantity?: number
+}
+
+interface MilitarySrpAssessment {
+	isMilitary: boolean
+	doctrineFittingId?: string
+	doctrineFittingName?: string
+	doctrineCategory?: string
+	hasConformityIssues: boolean
+	suggestedPenaltyPercent: number
+	findings: MilitarySrpFinding[]
+}
+
+type RequestWithMilitarySrp = RequestWithCharacterRole & { militarySrp?: MilitarySrpAssessment }
+type RequestWithKillmailItemNames = RequestWithMilitarySrp & {
+	killmailItemNames?: Record<string, string>
+}
+
+const MISSING_RIG_PENALTY_PERCENT = 10
+
+function classifyDoctrineSlot(flagId: string): DoctrineSlot | null {
+	const flag = Number.parseInt(flagId, 10)
+	if (!Number.isFinite(flag)) return null
+	if (flag >= 27 && flag <= 34) return 'high'
+	if (flag >= 19 && flag <= 26) return 'mid'
+	if (flag >= 11 && flag <= 18) return 'low'
+	if (flag >= 92 && flag <= 99) return 'rig'
+	if (flag >= 125 && flag <= 132) return 'sub'
+	return null
+}
+
+function classifyLossSlot(flag: number): DoctrineSlot | null {
+	if (flag >= 27 && flag <= 34) return 'high'
+	if (flag >= 19 && flag <= 26) return 'mid'
+	if (flag >= 11 && flag <= 18) return 'low'
+	if (flag >= 92 && flag <= 99) return 'rig'
+	if (flag >= 125 && flag <= 132) return 'sub'
+	return null
+}
+
+function sumLossQuantity(item: {
+	quantity_destroyed?: number
+	quantity_dropped?: number
+}): number {
+	const total = (item.quantity_destroyed ?? 0) + (item.quantity_dropped ?? 0)
+	return total > 0 ? total : 1
+}
+
+function normalizeDoctrineQuantity(qty: string): number {
+	const parsed = Number.parseInt(qty, 10)
+	return Number.isFinite(parsed) && parsed > 0 ? parsed : 1
+}
+
+function buildDoctrineTypeCounts(
+	fitting: FittingWithItems
+): Map<DoctrineSlot, Map<string, number>> {
+	const bySlot = new Map<DoctrineSlot, Map<string, number>>()
+	for (const item of fitting.fittingItems) {
+		const slot = classifyDoctrineSlot(item.flagId)
+		if (!slot) continue
+		const slotMap = bySlot.get(slot) ?? new Map<string, number>()
+		slotMap.set(item.typeId, (slotMap.get(item.typeId) ?? 0) + normalizeDoctrineQuantity(item.quantity))
+		bySlot.set(slot, slotMap)
+	}
+	return bySlot
+}
+
+function buildLossTypeCounts(
+	lossItems: Array<{
+		item_type_id?: number
+		flag?: number
+		quantity_destroyed?: number
+		quantity_dropped?: number
+	}>
+): Map<DoctrineSlot, Map<string, number>> {
+	const bySlot = new Map<DoctrineSlot, Map<string, number>>()
+	for (const item of lossItems) {
+		if (item.item_type_id == null || item.flag == null) continue
+		const slot = classifyLossSlot(item.flag)
+		if (!slot) continue
+		const typeId = String(item.item_type_id)
+		const slotMap = bySlot.get(slot) ?? new Map<string, number>()
+		slotMap.set(typeId, (slotMap.get(typeId) ?? 0) + sumLossQuantity(item))
+		bySlot.set(slot, slotMap)
+	}
+	return bySlot
+}
+
+function scoreFittingMatch(
+	fitting: FittingWithItems,
+	lossItems: Array<{
+		item_type_id?: number
+		flag?: number
+		quantity_destroyed?: number
+		quantity_dropped?: number
+	}>
+): number {
+	const doctrineCounts = buildDoctrineTypeCounts(fitting)
+	const lossCounts = buildLossTypeCounts(lossItems)
+	let score = 0
+	for (const [slot, docTypes] of doctrineCounts) {
+		const lossTypes = lossCounts.get(slot)
+		if (!lossTypes) continue
+		for (const [typeId, expectedQty] of docTypes) {
+			score += Math.min(expectedQty, lossTypes.get(typeId) ?? 0)
+		}
+	}
+	return score
+}
+
+async function enrichRequestsWithMilitarySrp(
+	requests: RequestWithCharacterRole[],
+	env: {
+		DOCTRINES: DurableObjectNamespace
+		UNIVERSE: DurableObjectNamespace
+	}
+): Promise<RequestWithMilitarySrp[]> {
+	if (requests.length === 0) return requests
+
+	const doctrinesStub = getStub<Doctrines>(env.DOCTRINES, 'default')
+	const universeStub = getStub<Universe>(env.UNIVERSE, 'default')
+	const fittingsByShip = new Map<string, FittingWithItems[]>()
+
+	async function getCandidateFittings(shipTypeId: string): Promise<FittingWithItems[]> {
+		const cached = fittingsByShip.get(shipTypeId)
+		if (cached) return cached
+
+		const eligible = await doctrinesStub.getFittings({ shipTypeId, srpEligible: true })
+		const fallback = eligible.length > 0 ? eligible : await doctrinesStub.getFittings({ shipTypeId })
+		if (fallback.length === 0) {
+			fittingsByShip.set(shipTypeId, [])
+			return []
+		}
+
+		const full = (await Promise.all(fallback.map((f) => doctrinesStub.getFitting(f.id)))).filter(
+			(f): f is FittingWithItems => f !== null
+		)
+		fittingsByShip.set(shipTypeId, full)
+		return full
+	}
+
+	return Promise.all(
+		requests.map(async (request) => {
+			const shipTypeId = request.shipTypeId
+			const lossItems = (request.killmailItems as any[] | undefined) ?? []
+			if (!shipTypeId || lossItems.length === 0) {
+				return {
+					...request,
+					militarySrp: {
+						isMilitary: false,
+						hasConformityIssues: false,
+						suggestedPenaltyPercent: 0,
+						findings: [],
+					},
+				}
+			}
+
+			const candidates = await getCandidateFittings(shipTypeId)
+			if (candidates.length === 0) {
+				return {
+					...request,
+					militarySrp: {
+						isMilitary: false,
+						hasConformityIssues: false,
+						suggestedPenaltyPercent: 0,
+						findings: [],
+					},
+				}
+			}
+
+			const best = candidates
+				.map((fitting) => ({
+					fitting,
+					score: scoreFittingMatch(fitting, lossItems),
+				}))
+				.sort((left, right) => right.score - left.score)[0]?.fitting
+
+			if (!best) {
+				return {
+					...request,
+					militarySrp: {
+						isMilitary: false,
+						hasConformityIssues: false,
+						suggestedPenaltyPercent: 0,
+						findings: [],
+					},
+				}
+			}
+
+			const findings: MilitarySrpFinding[] = []
+			const doctrineBySlot = buildDoctrineTypeCounts(best)
+			const lossBySlot = buildLossTypeCounts(lossItems)
+			const comparedTypeIds = new Set<string>()
+
+			for (const item of best.fittingItems) {
+				comparedTypeIds.add(item.typeId)
+			}
+			for (const item of lossItems) {
+				if (item?.item_type_id != null) comparedTypeIds.add(String(item.item_type_id))
+			}
+
+			const typeMap = await universeStub
+				.resolveTypeNamesByIds([...comparedTypeIds])
+				.catch(() => ({} as Record<string, null>))
+			const doctrineGroupIds = [...new Set(best.fittingItems.map((item) => item.groupId).filter(Boolean))]
+			const lossGroupIds = [
+				...new Set(
+					[...comparedTypeIds]
+						.map((typeId) => typeMap[typeId]?.groupId)
+						.filter((groupId): groupId is string => Boolean(groupId))
+				),
+			]
+			const groupMap = await universeStub
+				.resolveInvGroups([...new Set([...doctrineGroupIds, ...lossGroupIds])])
+				.catch(() => ({} as Record<string, null>))
+
+			const expectedRigCount = [...(doctrineBySlot.get('rig')?.values() ?? [])].reduce(
+				(acc, qty) => acc + qty,
+				0
+			)
+			const actualRigCount = [...(lossBySlot.get('rig')?.values() ?? [])].reduce(
+				(acc, qty) => acc + qty,
+				0
+			)
+			const missingRigs = Math.max(0, expectedRigCount - actualRigCount)
+			if (missingRigs > 0) {
+				findings.push({
+					code: 'missing_rigs',
+					slot: 'rig',
+					quantity: missingRigs,
+					message: `Missing ${missingRigs} rig module${missingRigs > 1 ? 's' : ''} from doctrine fit`,
+					suggestedPenaltyPercent: missingRigs * MISSING_RIG_PENALTY_PERCENT,
+				})
+			}
+
+			const lossGroupCounts = new Map<string, Map<string, number>>()
+			for (const lossItem of lossItems) {
+				if (lossItem?.item_type_id == null || lossItem.flag == null) continue
+				const slot = classifyLossSlot(lossItem.flag)
+				if (!slot) continue
+				const typeId = String(lossItem.item_type_id)
+				const groupId = typeMap[typeId]?.groupId
+				if (!groupId) continue
+				const key = `${slot}:${groupId}`
+				const groupTypes = lossGroupCounts.get(key) ?? new Map<string, number>()
+				groupTypes.set(typeId, (groupTypes.get(typeId) ?? 0) + sumLossQuantity(lossItem))
+				lossGroupCounts.set(key, groupTypes)
+			}
+
+			for (const [slot, doctrineTypes] of doctrineBySlot) {
+				const actualTypes = lossBySlot.get(slot) ?? new Map<string, number>()
+
+				for (const [typeId, expectedQty] of doctrineTypes) {
+					const actualQty = actualTypes.get(typeId) ?? 0
+					if (actualQty >= expectedQty) continue
+
+					const doctrineItem = best.fittingItems.find(
+						(item) => item.typeId === typeId && classifyDoctrineSlot(item.flagId) === slot
+					)
+					const doctrineTypeName = doctrineItem?.typeName ?? typeMap[typeId]?.typeName ?? typeId
+					const groupId = doctrineItem?.groupId
+					const groupName = groupId ? (groupMap[groupId]?.groupName ?? undefined) : undefined
+					const key = groupId ? `${slot}:${groupId}` : null
+					const sameGroupActual = key ? lossGroupCounts.get(key) : undefined
+					const swappedType = sameGroupActual
+						? [...sameGroupActual.keys()].find((candidateTypeId) => candidateTypeId !== typeId)
+						: undefined
+
+					if (swappedType) {
+						findings.push({
+							code: 'module_variant_mismatch',
+							slot,
+							quantity: expectedQty - actualQty,
+							message: `Doctrine expects ${doctrineTypeName}, but loss fit uses ${typeMap[swappedType]?.typeName ?? swappedType}`,
+							doctrineTypeId: typeId,
+							doctrineTypeName,
+							actualTypeId: swappedType,
+							actualTypeName: typeMap[swappedType]?.typeName ?? swappedType,
+							groupName,
+						})
+					} else {
+						findings.push({
+							code: 'module_missing',
+							slot,
+							quantity: expectedQty - actualQty,
+							message: `Missing ${expectedQty - actualQty}x ${doctrineTypeName} (${slot} slot)`,
+							doctrineTypeId: typeId,
+							doctrineTypeName,
+							groupName,
+						})
+					}
+				}
+			}
+
+			const suggestedPenaltyPercent = findings.reduce(
+				(acc, finding) => acc + (finding.suggestedPenaltyPercent ?? 0),
+				0
+			)
+
+			return {
+				...request,
+				militarySrp: {
+					isMilitary: true,
+					doctrineFittingId: best.id,
+					doctrineFittingName: best.name,
+					doctrineCategory: best.category,
+					hasConformityIssues: findings.length > 0,
+					suggestedPenaltyPercent,
+					findings,
+				},
+			}
+		})
+	)
+}
+
+async function enrichRequestWithKillmailItemNames(
+	request: RequestWithMilitarySrp,
+	env: { UNIVERSE: DurableObjectNamespace }
+): Promise<RequestWithKillmailItemNames> {
+	const killmailItems = (request.killmailItems as any[] | undefined) ?? []
+	if (killmailItems.length === 0) return request
+
+	const typeIds = [
+		...new Set(
+			killmailItems
+				.map((item) => item?.item_type_id)
+				.filter((itemTypeId): itemTypeId is number => typeof itemTypeId === 'number')
+				.map(String)
+		),
+	]
+	if (typeIds.length === 0) return request
+
+	const universeStub = getStub<Universe>(env.UNIVERSE, 'default')
+	const typeMap = await universeStub
+		.resolveTypeNamesByIds(typeIds)
+		.catch(() => ({} as Record<string, null>))
+	const killmailItemNames: Record<string, string> = {}
+	for (const typeId of typeIds) {
+		const typeName = typeMap[typeId]?.typeName
+		if (typeName) killmailItemNames[typeId] = typeName
+	}
+
+	return {
+		...request,
+		killmailItemNames,
+	}
+}
 
 async function hydrateRequestCharacterRoles(
 	requests: RequestWithCharacterRole[],
@@ -317,10 +682,11 @@ srp.get('/requests', async (c) => {
 
 	const srpStub = getStub<Srp>(c.env.SRP, getRequestId(c))
 	const requestsRaw = await srpStub.getUserRequests(user.id, limit, offset)
-	const requests = await hydrateRequestCharacterRoles(
+	const withCharacterRoles = await hydrateRequestCharacterRoles(
 		requestsRaw as RequestWithCharacterRole[],
 		c.env.DATABASE_URL
 	)
+	const requests = await enrichRequestsWithMilitarySrp(withCharacterRoles, c.env)
 
 	return c.json({
 		requests,
@@ -363,10 +729,11 @@ srp.get('/requests/by-status', async (c) => {
 		dateFrom,
 		dateTo,
 	})
-	const requests = await hydrateRequestCharacterRoles(
+	const withCharacterRoles = await hydrateRequestCharacterRoles(
 		result.requests as RequestWithCharacterRole[],
 		c.env.DATABASE_URL
 	)
+	const requests = await enrichRequestsWithMilitarySrp(withCharacterRoles, c.env)
 	return c.json({
 		requests,
 		total: result.total,
@@ -432,8 +799,12 @@ srp.get('/requests/:id', async (c) => {
 		[request as RequestWithCharacterRole],
 		c.env.DATABASE_URL
 	)
-
-	return c.json(requestWithCharacterRole)
+	const [militaryEnrichedRequest] = await enrichRequestsWithMilitarySrp([requestWithCharacterRole], c.env)
+	const requestWithKillmailNames = await enrichRequestWithKillmailItemNames(
+		militaryEnrichedRequest,
+		c.env
+	)
+	return c.json(requestWithKillmailNames)
 })
 
 // =============================================================================
@@ -460,7 +831,11 @@ srp.get('/pending', async (c) => {
 	}
 
 	const srpStub = getStub<Srp>(c.env.SRP, getRequestId(c))
-	const requests = await srpStub.getPendingRequests(corporationId || '', limit, offset)
+	const requestsRaw = await srpStub.getPendingRequests(corporationId || '', limit, offset)
+	const requests = await enrichRequestsWithMilitarySrp(
+		requestsRaw as RequestWithCharacterRole[],
+		c.env
+	)
 
 	return c.json({
 		requests,
@@ -768,7 +1143,11 @@ srp.get('/payments/pending', async (c) => {
 	}
 
 	const srpStub = getStub<Srp>(c.env.SRP, getRequestId(c))
-	const requests = await srpStub.getPendingPayments(corporationId, limit, offset)
+	const requestsRaw = await srpStub.getPendingPayments(corporationId, limit, offset)
+	const requests = await enrichRequestsWithMilitarySrp(
+		requestsRaw as RequestWithCharacterRole[],
+		c.env
+	)
 
 	return c.json({
 		requests,

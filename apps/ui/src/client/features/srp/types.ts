@@ -11,6 +11,7 @@ export type {
 	SRPCommentResponse,
 	SRPConfigResponse,
 	SRPHistoryResponse,
+	SRPPredefinedAdhocModifier,
 	SRPPolicy,
 	SRPRequestResponse,
 	SRPReviewSubmission,
@@ -34,4 +35,41 @@ export interface RequestListResponse {
 	total: number
 	limit: number
 	offset: number
+}
+
+export type SRPRequestWithKillmailItemNames = SRPRequestResponse & {
+	killmailItemNames?: Record<string, string>
+}
+
+export type DoctrineSlot = 'high' | 'mid' | 'low' | 'rig' | 'sub'
+export type MilitarySrpFindingCode =
+	| 'missing_rigs'
+	| 'module_missing'
+	| 'module_variant_mismatch'
+
+export interface MilitarySrpFinding {
+	code: MilitarySrpFindingCode
+	slot?: DoctrineSlot
+	message: string
+	suggestedPenaltyPercent?: number
+	doctrineTypeId?: string
+	doctrineTypeName?: string
+	actualTypeId?: string
+	actualTypeName?: string
+	groupName?: string
+	quantity?: number
+}
+
+export interface MilitarySrpAssessment {
+	isMilitary: boolean
+	doctrineFittingId?: string
+	doctrineFittingName?: string
+	doctrineCategory?: string
+	hasConformityIssues: boolean
+	suggestedPenaltyPercent: number
+	findings: MilitarySrpFinding[]
+}
+
+export type SRPRequestWithMilitary = SRPRequestResponse & {
+	militarySrp?: MilitarySrpAssessment
 }

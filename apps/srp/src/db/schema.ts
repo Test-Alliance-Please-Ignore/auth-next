@@ -363,6 +363,12 @@ export const srpConfig = pgTable(
 			requiresReviewNotes?: boolean
 			allowPartialApproval?: boolean
 			paymentInstructions?: string
+			predefinedAdhocModifiers?: Array<{
+				modifierType: 'deduction' | 'bonus'
+				mode: 'percentage' | 'value'
+				amount: number
+				reason: string
+			}>
 			[key: string]: unknown
 		}>(),
 		/** User ID who created this configuration */
