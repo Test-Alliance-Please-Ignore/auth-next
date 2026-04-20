@@ -634,7 +634,9 @@ export class EsiDO extends DurableObject<Env> implements Esi {
 				return { ...detail, killmail_hash: km.killmail_hash }
 			})
 		)
-		return killmails.filter((km): km is KillmailDetail => km !== null)
+		return killmails.filter(
+			(km): km is Exclude<(typeof killmails)[number], null> => km !== null
+		)
 	}
 
 	@UseCharacterAuth

@@ -1390,29 +1390,79 @@ export class EveCharacterDataDO extends DurableObject<Env> implements EveCharact
 		console.log(`[fetchAndStoreKillmails] Starting fetch for character ${characterId}`)
 
 		const tokenStoreStub = getStub<EveTokenStore>(this.env.EVE_TOKEN_STORE, 'default')
+		const isMissingPageError = (error: unknown): boolean => {
+			if (!(error instanceof Error)) return false
+			const message = error.message
+			return (
+				message.includes('Requested page does not exist') ||
+				(message.includes('metadata=') && message.includes('"status":404'))
+			)
+		}
 
 		console.log(
 			`[fetchAndStoreKillmails] Fetching recent killmails from ESI for character ${characterId}`
 		)
-		const response = await tokenStoreStub.fetchEsiAllPages<{
-			killmail_id: number
-			killmail_hash: string
-		}>(`/characters/${characterId}/killmails/recent`, String(characterId))
+		const newKillmails: Array<{ killmailId: string; killmailHash: string }> = []
+		let page = 1
+		let totalPages = 1
+		let stoppedAtCursor = false
+
+		while (page <= totalPages && !stoppedAtCursor) {
+			const path = `/characters/${characterId}/killmails/recent?page=${page}`
+			let response: EsiResponse<
+				Array<{
+					killmail_id: number
+					killmail_hash: string
+				}>
+			>
+			try {
+				response = await tokenStoreStub.fetchEsi<
+					Array<{
+						killmail_id: number
+						killmail_hash: string
+					}>
+				>(path, String(characterId))
+			} catch (error) {
+				if (isMissingPageError(error)) break
+				throw error
+			}
+
+			totalPages = response.pages ?? 1
+			const pageData = response.data ?? []
+			if (pageData.length === 0) {
+				break
+			}
+
+			const pageKillmailIds = pageData.map((km) => String(km.killmail_id))
+			const existingRows = await this.db
+				.select({ killmailId: characterKillmails.killmailId })
+				.from(characterKillmails)
+				.where(
+					and(
+						eq(characterKillmails.characterId, characterId),
+						inArray(characterKillmails.killmailId, pageKillmailIds)
+					)
+				)
+			const existingKillmailIds = new Set(existingRows.map((row) => row.killmailId))
+
+			for (const km of pageData) {
+				const killmailId = String(km.killmail_id)
+				if (existingKillmailIds.has(killmailId)) continue
+				newKillmails.push({
+					killmailId,
+					killmailHash: km.killmail_hash,
+				})
+			}
+			if (existingKillmailIds.size > 0) stoppedAtCursor = true
+
+			page += 1
+		}
 
 		console.log(
-			`[fetchAndStoreKillmails] ESI response pages: ${response.pages}, data length: ${response.data?.length || 0}`
+			`[fetchAndStoreKillmails] Fetched ${newKillmails.length} new killmail headers (pages scanned: ${Math.min(page - 1, totalPages)}/${totalPages}, cursorHit: ${stoppedAtCursor})`
 		)
-		console.log(`[fetchAndStoreKillmails] Raw response data:`, JSON.stringify(response.data))
 
-		// Transform ESI response (snake_case) to match schema (camelCase)
-		const transformedData = response.data.map((km) => ({
-			killmailId: String(km.killmail_id),
-			killmailHash: km.killmail_hash,
-		}))
-
-		console.log(`[fetchAndStoreKillmails] Transformed data:`, JSON.stringify(transformedData))
-
-		const killmails = killmailsSchema.parse(transformedData)
+		const killmails = killmailsSchema.parse(newKillmails)
 		console.log(
 			`[fetchAndStoreKillmails] Parsed ${killmails.length} killmails for character ${characterId}`
 		)

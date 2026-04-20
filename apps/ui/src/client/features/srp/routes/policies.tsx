@@ -307,9 +307,11 @@ function GeneralConfigPanel({ config }: { config?: SRPConfigResponse }) {
 				</div>
 
 				<div className="flex justify-end">
-					<Button onClick={save} disabled={updateConfigMutation.isPending}>
+					<div className="flex items-center gap-2">
+						<Button onClick={save} disabled={updateConfigMutation.isPending}>
 						{updateConfigMutation.isPending ? 'Saving…' : 'Save Configuration'}
-					</Button>
+						</Button>
+					</div>
 				</div>
 			</CardContent>
 		</Card>

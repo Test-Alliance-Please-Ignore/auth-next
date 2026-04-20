@@ -22,6 +22,7 @@ import { requireAllianceMember } from '../middleware/session'
 
 import type { Doctrines, FittingWithItems } from '@repo/doctrines'
 import type { EveCharacterData } from '@repo/eve-character-data'
+import type { EveTokenStore } from '@repo/eve-token-store'
 import type { SRPCommentResponse, SRPRequestResponse, Srp } from '@repo/srp'
 import type { Universe } from '@repo/universe'
 import type { App } from '../context'
@@ -65,6 +66,7 @@ function getPrimaryCharacterName(user: any): string {
 }
 
 const SRP_ROLE_URNS = ['urn:srp:reviewer', 'urn:srp:payer', 'urn:srp:manager']
+const SRP_REQUIRED_KILLMAIL_SCOPES = ['esi-killmails.read_killmails.v1'] as const
 
 /** Hydrate authorCharacterName, authorCharacterId, and authorRole on comments */
 async function hydrateCommentAuthors(
@@ -581,11 +583,23 @@ srp.get('/losses', async (c) => {
  */
 srp.post('/losses/refresh', async (c) => {
 	const user = c.get('user')!
+	const tokenStore = getStub<EveTokenStore>(c.env.EVE_TOKEN_STORE, 'default')
 
 	const settled = await Promise.allSettled(
 		user.characters.map(async (char) => {
-			if (!char.hasValidToken) {
-				return { characterId: char.characterId, characterName: char.characterName, success: false, reason: 'invalid_token' as const }
+			const tokenValidation = await tokenStore.validateToken(
+				char.characterId,
+				SRP_REQUIRED_KILLMAIL_SCOPES
+			)
+			if (!tokenValidation.isValid) {
+				return {
+					characterId: char.characterId,
+					characterName: char.characterName,
+					success: false,
+					reason: 'invalid_token' as const,
+					tokenStatus: tokenValidation.status,
+					tokenError: tokenValidation.error,
+				}
 			}
 			try {
 				const stub = getStub<EveCharacterData>(c.env.EVE_CHARACTER_DATA, char.characterId)
