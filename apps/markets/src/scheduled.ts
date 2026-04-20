@@ -10,13 +10,13 @@ import type { Env } from './context'
 const PRICING_INGEST_FLAG_KEY = 'markets.pricing.ingest.enabled'
 
 async function isPricingIngestEnabled(env: Env): Promise<boolean> {
-	if (!env.FEATURES) return true
+	if (!env.FEATURES) return false
 	try {
 		const stub = getStub<Features>(env.FEATURES, 'default')
 		const value = await stub.checkFlag(PRICING_INGEST_FLAG_KEY)
-		return value === null ? true : value === true
+		return value === null ? false : value === true
 	} catch {
-		return true
+		return false
 	}
 }
 

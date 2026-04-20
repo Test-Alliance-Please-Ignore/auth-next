@@ -62,7 +62,7 @@ export function SidebarNav({ onNavigate }: SidebarNavProps) {
 	const { data: hrCorporations } = useHrAccessibleCorporations()
 	const { permissions, hasAnyPermission } = useUserPermissions()
 	const isSiteAdmin = user?.is_admin === true
-	const srpEnabled = useFeatureFlag('srp.enabled')
+	const srpEnabled = useFeatureFlag('srp.enabled', false)
 	const canSeeSrpReviewQueue = isSiteAdmin || hasAnyPermission('urn:srp:reviewer')
 	const canSeeSrpPaymentQueue = isSiteAdmin || hasAnyPermission('urn:srp:payer')
 	const canSeeSrpAlerts =

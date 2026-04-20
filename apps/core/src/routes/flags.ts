@@ -15,7 +15,7 @@ const UI_FLAGS = [SRP_FEATURE_FLAG_KEY] as const
 async function resolveFlag(
 	featuresNamespace: DurableObjectNamespace | undefined,
 	key: string,
-	defaultValue = true
+	defaultValue = false
 ): Promise<boolean> {
 	if (!featuresNamespace) return defaultValue
 	try {
@@ -30,7 +30,7 @@ async function resolveFlag(
 /**
  * GET /api/flags
  * Returns boolean values for all UI-facing feature flags.
- * Defaults to true (enabled) when a flag is not registered.
+ * Defaults to false (disabled) when a flag is not registered.
  */
 app.get('/', async (c) => {
 	const results = await Promise.all(
