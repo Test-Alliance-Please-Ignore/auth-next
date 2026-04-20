@@ -8,7 +8,11 @@ import { typeIconUrl, typeRenderUrl } from '@/lib/eve-images'
 
 import { isPodLoss } from '../utils/fitting'
 
-import type { SRPFittingItem } from '../utils/fitting'
+import type {
+	SRPFittingItem,
+	SRPShipSlotCapacities,
+	SRPSlotHighlightMap,
+} from '../utils/fitting'
 
 const eveIcon = (typeId: string) => typeIconUrl(typeId, 32)
 const eveRender = (typeId: string, size: 512 | 256 = 512) => typeRenderUrl(typeId, size)
@@ -217,11 +221,34 @@ function ImplantSlotIcon() {
 	)
 }
 
-function SlotMarker({ pos, icon }: { pos: SlotPos; icon: () => React.JSX.Element }) {
+function slotSeverityFill(severity?: 'destructive' | 'warning' | 'secondary'): string {
+	if (severity === 'destructive') return 'rgba(220, 38, 38, 0.28)'
+	if (severity === 'warning') return 'rgba(245, 158, 11, 0.28)'
+	if (severity === 'secondary') return 'rgba(20, 184, 166, 0.28)'
+	return 'none'
+}
+
+function SlotMarker({
+	pos,
+	icon,
+	severity,
+}: {
+	pos: SlotPos
+	icon: () => React.JSX.Element
+	severity?: 'destructive' | 'warning' | 'secondary'
+}) {
 	const Icon = icon
 	return (
 		<g transform={`translate(${pos.cx},${pos.cy}) rotate(${pos.rot}) translate(-16,-16)`}>
-			<rect width={SS} height={SS} rx={2} ry={2} fill="none" stroke={SLOT_STROKE} strokeWidth={1} />
+			<rect
+				width={SS}
+				height={SS}
+				rx={2}
+				ry={2}
+				fill={slotSeverityFill(severity)}
+				stroke={SLOT_STROKE}
+				strokeWidth={1}
+			/>
 			<Icon />
 		</g>
 	)
@@ -232,19 +259,49 @@ interface SRPFittingPanelProps {
 	shipTypeId: string
 	shipTypeName?: string
 	items: SRPFittingItem[]
+	slotHighlights?: SRPSlotHighlightMap
+	slotCapacities?: SRPShipSlotCapacities
 }
 
-export function SRPFittingPanel({ shipTypeId, shipTypeName, items }: SRPFittingPanelProps) {
+export function SRPFittingPanel({
+	shipTypeId,
+	shipTypeName,
+	items,
+	slotHighlights = {},
+	slotCapacities = {},
+}: SRPFittingPanelProps) {
 	const isPod = isPodLoss(shipTypeId)
 
 	if (isPod) {
-		return <PodFittingPanel shipTypeId={shipTypeId} shipTypeName={shipTypeName} items={items} />
+		return (
+			<PodFittingPanel
+				shipTypeId={shipTypeId}
+				shipTypeName={shipTypeName}
+				items={items}
+				slotHighlights={slotHighlights}
+				slotCapacities={slotCapacities}
+			/>
+		)
 	}
 
-	return <ShipFittingPanel shipTypeId={shipTypeId} shipTypeName={shipTypeName} items={items} />
+	return (
+		<ShipFittingPanel
+			shipTypeId={shipTypeId}
+			shipTypeName={shipTypeName}
+			items={items}
+			slotHighlights={slotHighlights}
+			slotCapacities={slotCapacities}
+		/>
+	)
 }
 
-function ShipFittingPanel({ shipTypeId, shipTypeName, items }: SRPFittingPanelProps) {
+function ShipFittingPanel({
+	shipTypeId,
+	shipTypeName,
+	items,
+	slotHighlights = {},
+	slotCapacities = {},
+}: SRPFittingPanelProps) {
 	const groups: Record<ShipSlotType, SRPFittingItem[]> = {
 		high: [],
 		mid: [],
@@ -254,11 +311,25 @@ function ShipFittingPanel({ shipTypeId, shipTypeName, items }: SRPFittingPanelPr
 	}
 	for (const item of items) {
 		if (item.slotType === 'implant') continue
+		if (item.isConsumable) continue
 		if (item.slotType in groups) groups[item.slotType as ShipSlotType].push(item)
+	}
+	for (const type of Object.keys(groups) as ShipSlotType[]) {
+		groups[type].sort((left, right) => left.slotIndex - right.slotIndex)
 	}
 
 	const counts = (Object.keys(groups) as ShipSlotType[]).reduce(
-		(acc, t) => ({ ...acc, [t]: Math.min(groups[t].length, SHIP_ARCS[t].n) }),
+		(acc, t) => {
+			const inferred = groups[t].reduce((max, item) => Math.max(max, item.slotIndex), -1) + 1
+			const requested = slotCapacities[t]
+			return {
+				...acc,
+				[t]: Math.min(
+					SHIP_ARCS[t].n,
+					Math.max(0, typeof requested === 'number' ? requested : inferred)
+				),
+			}
+		},
 		{} as Record<ShipSlotType, number>
 	)
 
@@ -297,24 +368,33 @@ function ShipFittingPanel({ shipTypeId, shipTypeName, items }: SRPFittingPanelPr
 					<path d={PATHS.ring} fill={RING_FILL} fillRule="evenodd" />
 					<path d={PATHS.outer} fill="none" stroke="#9a9a9a" strokeWidth={BEVEL} />
 					<path d={PATHS.inner} fill="none" stroke="#9a9a9a" strokeWidth={BEVEL} />
+						{(Object.keys(SHIP_ARCS) as ShipSlotType[]).flatMap((type) =>
+							SHIP_SLOT_POS[type].slice(0, counts[type]).map((pos, i) => {
+								const slotKey = `${type}:${i}`
+								return (
+									<SlotMarker
+										key={`${type}${i}`}
+										pos={pos}
+										icon={slotIcons[type]}
+										severity={slotHighlights[slotKey]}
+									/>
+								)
+							})
+						)}
+					</svg>
 					{(Object.keys(SHIP_ARCS) as ShipSlotType[]).flatMap((type) =>
-						SHIP_SLOT_POS[type]
-							.slice(0, counts[type])
-							.map((pos, i) => <SlotMarker key={`${type}${i}`} pos={pos} icon={slotIcons[type]} />)
-					)}
-				</svg>
-				{(Object.keys(SHIP_ARCS) as ShipSlotType[]).flatMap((type) =>
-					groups[type].slice(0, counts[type]).map((item, i) => {
-						const pos = SHIP_SLOT_POS[type][i]
-						if (!pos) return null
-						return (
-							<img
-								key={`mod-${type}${i}`}
-								src={eveIcon(item.typeId)}
-								alt={item.typeName}
-								title={`${item.typeName}${item.quantity > 1 ? ` ×${item.quantity}` : ''}`}
-								className="absolute rounded"
-								style={{ width: SS, height: SS, left: pos.left, top: pos.top, zIndex: 4 }}
+						groups[type].map((item) => {
+							if (item.slotIndex >= counts[type]) return null
+							const pos = SHIP_SLOT_POS[type][item.slotIndex]
+							if (!pos) return null
+							return (
+								<img
+									key={`mod-${type}${item.slotIndex}-${item.typeId}`}
+									src={eveIcon(item.typeId)}
+									alt={item.typeName}
+									title={`${item.typeName}${item.quantity > 1 ? ` ×${item.quantity}` : ''}`}
+									className="absolute rounded"
+									style={{ width: SS, height: SS, left: pos.left, top: pos.top, zIndex: 4 }}
 							/>
 						)
 					})
@@ -324,7 +404,7 @@ function ShipFittingPanel({ shipTypeId, shipTypeName, items }: SRPFittingPanelPr
 	)
 }
 
-function PodFittingPanel({ shipTypeId, shipTypeName, items }: SRPFittingPanelProps) {
+function PodFittingPanel({ shipTypeId, shipTypeName, items, slotHighlights = {} }: SRPFittingPanelProps) {
 	// Implant slots 0-4 → top arc; 5-9 → bottom arc
 	const topImplants = items.filter((i) => i.slotType === 'implant' && i.slotIndex < 5)
 	const bottomImplants = items.filter((i) => i.slotType === 'implant' && i.slotIndex >= 5)
@@ -359,13 +439,31 @@ function PodFittingPanel({ shipTypeId, shipTypeName, items }: SRPFittingPanelPro
 					<path d={PATHS.ring} fill={RING_FILL} fillRule="evenodd" />
 					<path d={PATHS.outer} fill="none" stroke="#9a9a9a" strokeWidth={BEVEL} />
 					<path d={PATHS.inner} fill="none" stroke="#9a9a9a" strokeWidth={BEVEL} />
-					{POD_SLOT_POS.implant_top.slice(0, topCount).map((pos, i) => (
-						<SlotMarker key={`top${i}`} pos={pos} icon={ImplantSlotIcon} />
-					))}
-					{POD_SLOT_POS.implant_bottom.slice(0, bottomCount).map((pos, i) => (
-						<SlotMarker key={`bot${i}`} pos={pos} icon={ImplantSlotIcon} />
-					))}
-				</svg>
+						{POD_SLOT_POS.implant_top.slice(0, topCount).map((pos, i) => {
+							const item = topImplants[i]
+							const slotKey = item ? `${item.slotType}:${item.slotIndex}` : ''
+							return (
+								<SlotMarker
+									key={`top${i}`}
+									pos={pos}
+									icon={ImplantSlotIcon}
+									severity={slotKey ? slotHighlights[slotKey] : undefined}
+								/>
+							)
+						})}
+						{POD_SLOT_POS.implant_bottom.slice(0, bottomCount).map((pos, i) => {
+							const item = bottomImplants[i]
+							const slotKey = item ? `${item.slotType}:${item.slotIndex}` : ''
+							return (
+								<SlotMarker
+									key={`bot${i}`}
+									pos={pos}
+									icon={ImplantSlotIcon}
+									severity={slotKey ? slotHighlights[slotKey] : undefined}
+								/>
+							)
+						})}
+					</svg>
 				{topImplants.slice(0, topCount).map((item, i) => {
 					const pos = POD_SLOT_POS.implant_top[i]
 					if (!pos) return null

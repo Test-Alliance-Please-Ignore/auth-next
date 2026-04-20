@@ -8,18 +8,22 @@ import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Select } from '@/components/ui/select'
 import { Switch } from '@/components/ui/switch'
-import { typeIconUrl } from '@/lib/eve-images'
 
 
 import { useDoctrineFittingsForShip, useSRPConfig, useSRPPolicies, useSubmitReview, useUpdateReviewState } from '../hooks'
 import { formatISK } from '../utils'
 import { transformKillmailToCargoItems, transformKillmailToFittingItems } from '../utils/fitting'
-import { SRPFittingPanel } from './SRPFittingPanel'
-import { SRPFittingSlotList } from './SRPFittingSlotList'
+import { SRPFittingDisplay } from './SRPFittingDisplay'
 
 import type { CapConfig, PayoutModifierConfig } from '@repo/srp'
 import type { AppliedModifier, SRPPolicy, SRPPredefinedAdhocModifier, SRPRequestWithKillmailItemNames } from '../types'
 import type { FittingWithItems } from '@/lib/api'
+import type {
+	SRPFittingItem,
+	SRPShipSlotCapacities,
+	SRPShipSlotType,
+	SRPSlotHighlightMap,
+} from '../utils/fitting'
 
 interface ReviewRequestFormProps {
 	request: SRPRequestWithKillmailItemNames
@@ -30,6 +34,14 @@ interface ReviewRequestFormProps {
 
 type DoctrineSlot = 'high' | 'mid' | 'low' | 'rig' | 'sub'
 type ConformitySeverity = 'destructive' | 'warning' | 'secondary'
+const SHIP_SLOT_TYPES: SRPShipSlotType[] = ['high', 'mid', 'low', 'rig', 'sub']
+const SHIP_SLOT_ARC_MAX: Record<SRPShipSlotType, number> = {
+	high: 8,
+	mid: 8,
+	low: 8,
+	rig: 3,
+	sub: 4,
+}
 interface LossKillmailItem {
 	item_type_id?: number
 	flag?: number
@@ -41,8 +53,18 @@ interface LossKillmailItem {
 interface ConformityFinding {
 	severity: ConformitySeverity
 	message: string
+	slot?: DoctrineSlot
+	quantity?: number
 	expectedModule?: string
+	lossTypeId?: string
 	lossModule?: string
+	highlightWholeSlotType?: boolean
+}
+
+const SEVERITY_RANK: Record<ConformitySeverity, number> = {
+	secondary: 1,
+	warning: 2,
+	destructive: 3,
 }
 
 function slotFromDoctrineFlag(flagId: string): DoctrineSlot | null {
@@ -111,6 +133,26 @@ function buildLossCountsBySlot(
 		bySlot.set(slot, slotMap)
 	}
 	return bySlot
+}
+
+function stripConsumablesFromDoctrineFitting(
+	fitting: FittingWithItems,
+	consumableTypeIds: Set<string>
+): FittingWithItems {
+	return {
+		...fitting,
+		fittingItems: fitting.fittingItems.filter((item) => !consumableTypeIds.has(item.typeId)),
+	}
+}
+
+function filterKillmailForConformity(
+	killmailItems: LossKillmailItem[],
+	consumableTypeIds: Set<string>
+): LossKillmailItem[] {
+	return killmailItems.filter(
+		(item) =>
+			item.item_type_id == null || !consumableTypeIds.has(String(item.item_type_id))
+	)
 }
 
 function collectConsumableChildrenForHighModule(
@@ -201,10 +243,10 @@ function analyzeHighSlotAmmoDistribution(
 
 function scoreFittingOverlap(
 	fitting: FittingWithItems,
-	killmailItems: LossKillmailItem[]
+	killmailItemsForConformity: LossKillmailItem[]
 ): number {
 	const doctrine = buildDoctrineCountsBySlot(fitting)
-	const loss = buildLossCountsBySlot(killmailItems)
+	const loss = buildLossCountsBySlot(killmailItemsForConformity)
 	let score = 0
 	for (const [slot, expected] of doctrine) {
 		const actual = loss.get(slot)
@@ -218,14 +260,21 @@ function scoreFittingOverlap(
 
 function computeDoctrineConformityFindings(
 	fitting: FittingWithItems,
-	killmailItems: LossKillmailItem[],
+	killmailItemsForConformity: LossKillmailItem[],
+	killmailItemsForAmmoCheck: LossKillmailItem[],
 	doctrineCargoTypeIds: Set<string>,
 	consumableTypeIds: Set<string>,
 	itemNames: Record<string, string>
 ): ConformityFinding[] {
 	const findings: ConformityFinding[] = []
 	const doctrineBySlot = buildDoctrineCountsBySlot(fitting)
-	const lossBySlot = buildLossCountsBySlot(killmailItems)
+	const lossBySlot = buildLossCountsBySlot(killmailItemsForConformity)
+	const doctrineTypeNames = new Map<string, string>()
+	for (const item of fitting.fittingItems) {
+		if (!doctrineTypeNames.has(item.typeId)) doctrineTypeNames.set(item.typeId, item.typeName)
+	}
+	const typeName = (typeId: string) =>
+		doctrineTypeNames.get(typeId) ?? itemNames[typeId] ?? `Type ${typeId}`
 
 	const expectedRigCount = [...(doctrineBySlot.get('rig')?.values() ?? [])].reduce(
 		(sum, quantity) => sum + quantity,
@@ -239,50 +288,84 @@ function computeDoctrineConformityFindings(
 	if (missingRigs > 0) {
 		findings.push({
 			severity: 'destructive',
+			slot: 'rig',
 			message: `Missing ${missingRigs} rig module${missingRigs === 1 ? '' : 's'}`,
+			quantity: missingRigs,
 		})
 	}
 
 	for (const [slot, expectedTypes] of doctrineBySlot) {
-		const actualTypes = lossBySlot.get(slot) ?? new Map<string, number>()
+		const actualAll = new Map(lossBySlot.get(slot) ?? [])
+		const deficits = new Map<string, number>()
+
+		// Order-independent matching: consume exact type matches first.
 		for (const [expectedTypeId, expectedQty] of expectedTypes) {
-			const actualQty = actualTypes.get(expectedTypeId) ?? 0
-			if (actualQty >= expectedQty) continue
+			const actualQty = actualAll.get(expectedTypeId) ?? 0
+			const matchedQty = Math.min(expectedQty, actualQty)
+			const remainingExpected = expectedQty - matchedQty
+			if (remainingExpected > 0) deficits.set(expectedTypeId, remainingExpected)
+			if (actualQty > matchedQty) {
+				actualAll.set(expectedTypeId, actualQty - matchedQty)
+			} else {
+				actualAll.delete(expectedTypeId)
+			}
+		}
 
-			const expectedItem = fitting.fittingItems.find(
-				(item) => item.typeId === expectedTypeId && slotFromDoctrineFlag(item.flagId) === slot
-			)
-			const expectedName = expectedItem?.typeName ?? expectedTypeId
-			const lossTypeId = [...actualTypes.keys()].find(
-				(typeId) => typeId !== expectedTypeId && (actualTypes.get(typeId) ?? 0) > 0
-			)
-			const lossNameFromFitting = fitting.fittingItems.find((item) => item.typeId === lossTypeId)?.typeName
-			const lossName = lossTypeId
-				? lossNameFromFitting ?? `Type ${lossTypeId}`
-				: undefined
+		// Extras must include surplus copies of expected types too (not only totally unknown types),
+		// otherwise duplicate modules can hide real mismatches.
+		const extras = [...actualAll.entries()]
+			.filter(([, qty]) => qty > 0)
+			.map(([typeId, qty]) => ({ typeId, qty }))
 
-			if (!lossTypeId) {
+		for (const [expectedTypeId, expectedQtyMissing] of deficits) {
+			let remaining = expectedQtyMissing
+			while (remaining > 0) {
+				const extra = extras.find((entry) => entry.qty > 0)
+				if (!extra) break
+				const pairQty = Math.min(remaining, extra.qty)
+				const likelyVariation = doctrineCargoTypeIds.has(extra.typeId)
 				findings.push({
-					severity: 'destructive',
-					message: `Missing module in ${slot} slot`,
-					expectedModule: expectedName,
+					severity: likelyVariation ? 'secondary' : 'warning',
+					slot,
+					quantity: pairQty,
+					message: `${likelyVariation ? 'Likely doctrine variation' : 'Module differs from doctrine expectation'}${pairQty > 1 ? ` ×${pairQty}` : ''}`,
+					expectedModule: typeName(expectedTypeId),
+					lossTypeId: extra.typeId,
+					lossModule: typeName(extra.typeId),
 				})
-				continue
+				remaining -= pairQty
+				extra.qty -= pairQty
 			}
 
-			const likelyVariation = lossTypeId ? doctrineCargoTypeIds.has(lossTypeId) : false
+			if (remaining > 0) {
+				findings.push({
+					severity: 'destructive',
+					slot,
+					quantity: remaining,
+					message: `Missing module in ${slot} slot${remaining > 1 ? ` ×${remaining}` : ''}`,
+					expectedModule: typeName(expectedTypeId),
+				})
+			}
+		}
+
+		// Leftover extras are additional modules vs doctrine baseline (including doctrine-intended empties).
+		for (const extra of extras.filter((entry) => entry.qty > 0)) {
 			findings.push({
-				severity: likelyVariation ? 'secondary' : 'warning',
-				message: likelyVariation
-					? 'Likely doctrine variation'
-					: 'Module differs from doctrine expectation',
-				expectedModule: expectedName,
-				lossModule: lossName,
+				severity: 'secondary',
+				slot,
+				quantity: extra.qty,
+				message: `Additional module not in doctrine expectation${extra.qty > 1 ? ` ×${extra.qty}` : ''}`,
+				lossTypeId: extra.typeId,
+				lossModule: typeName(extra.typeId),
 			})
 		}
 	}
 
-	const ammoCheck = analyzeHighSlotAmmoDistribution(killmailItems, consumableTypeIds, itemNames)
+	const ammoCheck = analyzeHighSlotAmmoDistribution(
+		killmailItemsForAmmoCheck,
+		consumableTypeIds,
+		itemNames
+	)
 	const hasUnevenAmmoDistribution =
 		ammoCheck.weaponModuleCount > 0 &&
 		ammoCheck.totalAmmoQuantity > 0 &&
@@ -300,11 +383,88 @@ function computeDoctrineConformityFindings(
 		}
 		findings.push({
 			severity: 'warning',
+			slot: 'high',
 			message: `Split weapons variant detected: ${reasons.join('; ')}.`,
+			highlightWholeSlotType: true,
 		})
 	}
 
 	return findings
+}
+
+function setSlotSeverity(
+	highlights: SRPSlotHighlightMap,
+	slotKey: string,
+	severity: ConformitySeverity
+): void {
+	const current = highlights[slotKey]
+	if (!current || SEVERITY_RANK[severity] > SEVERITY_RANK[current]) {
+		highlights[slotKey] = severity
+	}
+}
+
+function buildConformitySlotHighlights(
+	findings: ConformityFinding[],
+	fittingItems: SRPFittingItem[]
+): SRPSlotHighlightMap {
+	const highlights: SRPSlotHighlightMap = {}
+	for (const finding of findings) {
+		if (!finding.slot) continue
+		if (finding.highlightWholeSlotType) {
+			for (const item of fittingItems) {
+				if (item.isConsumable) continue
+				if (item.slotType !== finding.slot) continue
+				setSlotSeverity(highlights, `${item.slotType}:${item.slotIndex}`, finding.severity)
+			}
+			continue
+		}
+
+		if (finding.lossTypeId) {
+			const matches = fittingItems.filter(
+				(item) =>
+					item.slotType === finding.slot &&
+					item.typeId === finding.lossTypeId &&
+					!item.isConsumable
+			)
+			for (const item of matches) {
+				setSlotSeverity(highlights, `${item.slotType}:${item.slotIndex}`, finding.severity)
+			}
+		}
+	}
+	return highlights
+}
+
+function addEmptySlotDeviationHighlights(
+	baseHighlights: SRPSlotHighlightMap,
+	fittingItems: SRPFittingItem[],
+	slotCapacities: SRPShipSlotCapacities,
+	doctrineExpectedCounts: Partial<Record<SRPShipSlotType, number>> | null
+): SRPSlotHighlightMap {
+	const next: SRPSlotHighlightMap = { ...baseHighlights }
+	for (const slot of SHIP_SLOT_TYPES) {
+		const capacity = Math.max(0, Math.min(SHIP_SLOT_ARC_MAX[slot], slotCapacities[slot] ?? 0))
+		if (capacity <= 0) continue
+		const occupied = new Set(
+			fittingItems
+				.filter((item) => item.slotType === slot && !item.isConsumable)
+				.map((item) => item.slotIndex)
+		)
+		const emptyIndices: number[] = []
+		for (let slotIndex = 0; slotIndex < capacity; slotIndex += 1) {
+			if (!occupied.has(slotIndex)) emptyIndices.push(slotIndex)
+		}
+		if (emptyIndices.length === 0) continue
+
+		const expected = doctrineExpectedCounts ? (doctrineExpectedCounts[slot] ?? 0) : null
+		const intentionalEmptyCount = expected === null ? 0 : Math.max(0, capacity - expected)
+		const criticalEmptyCount = Math.max(0, emptyIndices.length - intentionalEmptyCount)
+
+		for (let i = 0; i < criticalEmptyCount; i += 1) {
+			const slotIndex = emptyIndices[i]
+			setSlotSeverity(next, `${slot}:${slotIndex}`, 'destructive')
+		}
+	}
+	return next
 }
 
 function isPayoutModifierConfig(c: unknown): c is PayoutModifierConfig {
@@ -435,6 +595,20 @@ export function ReviewRequestForm({ request, onSuccess, commentSlot, rightAppend
 			),
 		[request.srpItemPrices]
 	)
+	const killmailItemsForConformity = useMemo(
+		() => filterKillmailForConformity(request.killmailItems ?? [], consumableTypeIds),
+		[consumableTypeIds, request.killmailItems]
+	)
+	const doctrineFittingsForConformity = useMemo(
+		() =>
+			new Map(
+				doctrineFittings.map((fitting) => [
+					fitting.id,
+					stripConsumablesFromDoctrineFitting(fitting, consumableTypeIds),
+				])
+			),
+		[consumableTypeIds, doctrineFittings]
+	)
 	const fittingItems = transformKillmailToFittingItems(
 		request.killmailItems ?? [],
 		(request.srpItemPrices ?? []).map((p) => ({ typeId: p.typeId, price: p.unitPrice, isConsumable: p.isConsumable })),
@@ -446,10 +620,16 @@ export function ReviewRequestForm({ request, onSuccess, commentSlot, rightAppend
 		() =>
 			[...doctrineFittings].sort(
 				(left, right) =>
-					scoreFittingOverlap(right, request.killmailItems ?? []) -
-					scoreFittingOverlap(left, request.killmailItems ?? [])
+					scoreFittingOverlap(
+						doctrineFittingsForConformity.get(right.id) ?? right,
+						killmailItemsForConformity
+					) -
+					scoreFittingOverlap(
+						doctrineFittingsForConformity.get(left.id) ?? left,
+						killmailItemsForConformity
+					)
 			),
-		[doctrineFittings, request.killmailItems]
+		[doctrineFittings, doctrineFittingsForConformity, killmailItemsForConformity]
 	)
 
 	const activeDoctrineFitting =
@@ -466,12 +646,39 @@ export function ReviewRequestForm({ request, onSuccess, commentSlot, rightAppend
 			),
 		[activeDoctrineFitting]
 	)
+	const doctrineExpectedSlotCounts = useMemo(() => {
+		if (!(activeDoctrineFitting && showDoctrineConformity)) return null
+		const counts: Partial<Record<SRPShipSlotType, number>> = {}
+		for (const item of activeDoctrineFitting.fittingItems) {
+			const slot = slotFromDoctrineFlag(item.flagId)
+			if (!slot) continue
+			counts[slot] = (counts[slot] ?? 0) + doctrineQuantity(item.quantity)
+		}
+		return counts
+	}, [activeDoctrineFitting, showDoctrineConformity])
+	const slotCapacities = useMemo(() => {
+		const capacities: SRPShipSlotCapacities = {}
+		for (const slot of SHIP_SLOT_TYPES) {
+			const slotItems = fittingItems.filter(
+				(item) => item.slotType === slot && !item.isConsumable
+			)
+			const observedMaxIndex = slotItems.reduce((max, item) => Math.max(max, item.slotIndex), -1)
+			const observedCapacity = observedMaxIndex + 1
+			const doctrineCapacity = doctrineExpectedSlotCounts?.[slot] ?? 0
+			capacities[slot] = Math.max(
+				0,
+				Math.min(SHIP_SLOT_ARC_MAX[slot], Math.max(observedCapacity, doctrineCapacity))
+			)
+		}
+		return capacities
+	}, [doctrineExpectedSlotCounts, fittingItems])
 
 	const doctrineFindings = useMemo(
 		() =>
 			activeDoctrineFitting && showDoctrineConformity
 				? computeDoctrineConformityFindings(
-						activeDoctrineFitting,
+						doctrineFittingsForConformity.get(activeDoctrineFitting.id) ?? activeDoctrineFitting,
+						killmailItemsForConformity,
 						request.killmailItems ?? [],
 						doctrineCargoTypeIds,
 						consumableTypeIds,
@@ -481,11 +688,30 @@ export function ReviewRequestForm({ request, onSuccess, commentSlot, rightAppend
 		[
 			activeDoctrineFitting,
 			consumableTypeIds,
+			doctrineFittingsForConformity,
 			doctrineCargoTypeIds,
 			itemNames,
+			killmailItemsForConformity,
 			request.killmailItems,
 			showDoctrineConformity,
 		]
+	)
+	const conformitySlotHighlights = useMemo(
+		() =>
+			showDoctrineConformity && doctrineFindings.length > 0
+				? buildConformitySlotHighlights(doctrineFindings, fittingItems)
+				: {},
+		[doctrineFindings, fittingItems, showDoctrineConformity]
+	)
+	const slotHighlights = useMemo(
+		() =>
+			addEmptySlotDeviationHighlights(
+				conformitySlotHighlights,
+				fittingItems,
+				slotCapacities,
+				doctrineExpectedSlotCounts
+			),
+		[conformitySlotHighlights, doctrineExpectedSlotCounts, fittingItems, slotCapacities]
 	)
 
 	const applyInsurance =
@@ -628,102 +854,77 @@ export function ReviewRequestForm({ request, onSuccess, commentSlot, rightAppend
 		<div className="flex flex-col gap-6 lg:flex-row lg:items-start">
 			{/* Left: Fitting display */}
 			<div className="flex flex-col gap-4 lg:w-1/2">
-				{request.shipTypeId && (
-					<SRPFittingPanel
-						shipTypeId={request.shipTypeId}
-						shipTypeName={request.shipTypeName}
-						items={fittingItems}
-					/>
-				)}
-				{sortedDoctrineFittings.length > 0 && (
-					<Card className="p-4">
-						<div className="space-y-3">
-							<div className="flex items-center justify-between gap-3">
-								<div>
-									<h4 className="text-sm font-semibold">Show Doctrine Conformity</h4>
-									<p className="text-xs text-muted-foreground">
-										Compare this loss against doctrine fittings for this hull
-									</p>
-								</div>
-								<Switch checked={showDoctrineConformity} onCheckedChange={setShowDoctrineConformity} />
-							</div>
-							{showDoctrineConformity && (
-								<>
-									<Select
-										value={activeDoctrineFitting?.id ?? ''}
-										onValueChange={setSelectedDoctrineFittingId}
-										options={sortedDoctrineFittings.map((fitting) => ({
-											value: fitting.id,
-											label: fitting.name,
-										}))}
-										placeholder="Select doctrine fitting"
-									/>
-									{doctrineFindings.length === 0 ? (
-										<p className="text-sm text-success">No invariant issues for selected fitting.</p>
-									) : (
-										<ul className="space-y-2">
-											{doctrineFindings.map((finding, index) => (
-												<li
-													key={`${finding.message}-${index}`}
-													className={
-														finding.severity === 'destructive'
-															? 'rounded-md border border-destructive/40 bg-destructive/10 px-3 py-2'
-															: finding.severity === 'warning'
-																? 'rounded-md border border-warning/40 bg-warning/10 px-3 py-2'
-																: 'rounded-md border border-secondary/40 bg-secondary/10 px-3 py-2'
-													}
-												>
-													<div className="text-sm font-medium">{finding.message}</div>
-													{(finding.expectedModule || finding.lossModule) && (
-														<div className="mt-1 text-xs text-muted-foreground">
-															Expected:{' '}
-															<span className="font-medium text-foreground">
-																{finding.expectedModule ?? '—'}
-															</span>{' '}
-															| Loss:{' '}
-															<span className="font-medium text-foreground">
-																{finding.lossModule ?? '—'}
-															</span>
-														</div>
-													)}
-												</li>
-											))}
-										</ul>
-									)}
-								</>
-							)}
-						</div>
-					</Card>
-				)}
-				{request.srpItemPrices && request.srpItemPrices.length > 0 && (
-					<Card className="p-4">
-						<h4 className="mb-3 font-semibold text-sm">Fitting</h4>
-						<SRPFittingSlotList shipTypeId={request.shipTypeId} items={fittingItems} />
-					</Card>
-				)}
-				<Card className="p-4">
-					<h4 className="mb-3 font-semibold text-sm">Cargo</h4>
-					{cargoItems.length === 0 ? (
-						<p className="text-sm text-muted-foreground">No cargo recorded on lossmail.</p>
-					) : (
-						<div className="space-y-1 rounded-md border border-border/40 bg-muted/10 p-1">
-							{cargoItems.map((item) => (
-								<div key={item.typeId} className="flex items-center gap-2 rounded px-1 py-0.5 hover:bg-muted/20">
-									<img
-										src={typeIconUrl(item.typeId, 32)}
-										alt={item.typeName}
-										className="h-8 w-8 flex-shrink-0 rounded border border-border/40 object-contain"
-										loading="lazy"
-									/>
-									<div className="min-w-0 flex-1">
-										<p className="truncate text-sm font-medium leading-tight">{item.typeName}</p>
+				<SRPFittingDisplay
+					shipTypeId={request.shipTypeId}
+					shipTypeName={request.shipTypeName}
+					fittingItems={fittingItems}
+					cargoItems={cargoItems}
+					slotHighlights={slotHighlights}
+					slotCapacities={slotCapacities}
+					middleContent={
+						sortedDoctrineFittings.length > 0 ? (
+							<Card className="p-4">
+								<div className="space-y-3">
+									<div className="flex items-center justify-between gap-3">
+										<div>
+											<h4 className="text-sm font-semibold">Show Doctrine Conformity</h4>
+											<p className="text-xs text-muted-foreground">
+												Compare this loss against doctrine fittings for this hull
+											</p>
+										</div>
+										<Switch checked={showDoctrineConformity} onCheckedChange={setShowDoctrineConformity} />
 									</div>
-									<div className="text-xs text-muted-foreground">×{item.quantity}</div>
+									{showDoctrineConformity && (
+										<>
+											<Select
+												value={activeDoctrineFitting?.id ?? ''}
+												onValueChange={setSelectedDoctrineFittingId}
+												options={sortedDoctrineFittings.map((fitting) => ({
+													value: fitting.id,
+													label: fitting.name,
+												}))}
+												placeholder="Select doctrine fitting"
+											/>
+											{doctrineFindings.length === 0 ? (
+												<p className="text-sm text-success">No invariant issues for selected fitting.</p>
+											) : (
+												<ul className="space-y-2">
+													{doctrineFindings.map((finding, index) => (
+														<li
+															key={`${finding.message}-${index}`}
+															className={
+																finding.severity === 'destructive'
+																	? 'rounded-md border border-destructive/40 bg-destructive/10 px-3 py-2'
+																	: finding.severity === 'warning'
+																		? 'rounded-md border border-warning/40 bg-warning/10 px-3 py-2'
+																		: 'rounded-md border border-secondary/40 bg-secondary/10 px-3 py-2'
+															}
+														>
+															<div className="text-sm font-medium">{finding.message}</div>
+															{(finding.expectedModule || finding.lossModule) && (
+																<div className="mt-1 text-xs text-muted-foreground">
+																	Expected:{' '}
+																	<span className="font-medium text-foreground">
+																		{finding.expectedModule ?? '—'}
+																	</span>{' '}
+																	| Loss:{' '}
+																	<span className="font-medium text-foreground">
+																		{finding.lossModule ?? '—'}
+																		{finding.quantity && finding.quantity > 1 ? ` ×${finding.quantity}` : ''}
+																	</span>
+																</div>
+															)}
+														</li>
+													))}
+												</ul>
+											)}
+										</>
+									)}
 								</div>
-							))}
-						</div>
-					)}
-				</Card>
+							</Card>
+						) : null
+					}
+				/>
 			</div>
 
 			{/* Right: Review form */}
@@ -754,7 +955,7 @@ export function ReviewRequestForm({ request, onSuccess, commentSlot, rightAppend
 						) : (
 							<div className="flex justify-between text-xs text-muted-foreground/60 italic">
 								<span>− Insurance (no data)</span>
-								<span>0.00 ISK</span>
+								<span>{formatISK(0)}</span>
 							</div>
 						)}
 						<div className="my-1 border-t border-border/50" />

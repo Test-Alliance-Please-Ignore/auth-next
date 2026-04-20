@@ -3,15 +3,24 @@ import { typeIconUrl } from '@/lib/eve-images'
 import { formatISK } from '../utils'
 import { isPodLoss } from '../utils/fitting'
 
-import type { SlotType, SRPFittingItem } from '../utils/fitting'
+import type {
+	SlotType,
+	SRPFittingItem,
+	SRPShipSlotCapacities,
+	SRPShipSlotType,
+	SRPSlotHighlightMap,
+} from '../utils/fitting'
 
 interface SRPFittingSlotListProps {
 	shipTypeId: string
 	items: SRPFittingItem[]
+	slotHighlights?: SRPSlotHighlightMap
+	slotCapacities?: SRPShipSlotCapacities
+	showPricing?: boolean
 }
 
-const SHIP_SECTION_ORDER: SlotType[] = ['high', 'mid', 'low', 'rig', 'sub']
-const SHIP_SECTION_LABELS: Record<string, string> = {
+const SHIP_SECTION_ORDER: SRPShipSlotType[] = ['high', 'mid', 'low', 'rig', 'sub']
+const SHIP_SECTION_LABELS: Record<SRPShipSlotType, string> = {
 	high: 'High Slots',
 	mid: 'Mid Slots',
 	low: 'Low Slots',
@@ -19,7 +28,13 @@ const SHIP_SECTION_LABELS: Record<string, string> = {
 	sub: 'Subsystems',
 }
 
-export function SRPFittingSlotList({ shipTypeId, items }: SRPFittingSlotListProps) {
+export function SRPFittingSlotList({
+	shipTypeId,
+	items,
+	slotHighlights = {},
+	slotCapacities = {},
+	showPricing = true,
+}: SRPFittingSlotListProps) {
 	const isPod = isPodLoss(shipTypeId)
 
 	if (isPod) {
@@ -32,8 +47,8 @@ export function SRPFittingSlotList({ shipTypeId, items }: SRPFittingSlotListProp
 
 		return (
 			<div className="space-y-3">
-				{top.length > 0 && <SlotSection label="Implants 1–5" items={top} />}
-				{bottom.length > 0 && <SlotSection label="Implants 6–10" items={bottom} />}
+				{top.length > 0 && <SlotSection label="Implants 1–5" items={top} slotHighlights={slotHighlights} />}
+				{bottom.length > 0 && <SlotSection label="Implants 6–10" items={bottom} slotHighlights={slotHighlights} />}
 				{top.length === 0 && bottom.length === 0 && (
 					<p className="text-sm text-muted-foreground">No implants recorded</p>
 				)}
@@ -58,13 +73,35 @@ export function SRPFittingSlotList({ shipTypeId, items }: SRPFittingSlotListProp
 				<p className="text-sm text-muted-foreground">No fitting data available</p>
 			)}
 			{sections.map((type) => (
-				<SlotSection key={type} label={SHIP_SECTION_LABELS[type] ?? type} items={groups[type]} />
+				<SlotSection
+					key={type}
+					label={SHIP_SECTION_LABELS[type] ?? type}
+					items={groups[type]}
+					slotHighlights={slotHighlights}
+					slotType={type}
+					slotCapacity={slotCapacities[type]}
+					showPricing={showPricing}
+				/>
 			))}
 		</div>
 	)
 }
 
-function SlotSection({ label, items }: { label: string; items: SRPFittingItem[] }) {
+function SlotSection({
+	label,
+	items,
+	slotHighlights = {},
+	slotType,
+	slotCapacity,
+	showPricing = true,
+}: {
+	label: string
+	items: SRPFittingItem[]
+	slotHighlights?: SRPSlotHighlightMap
+	slotType?: Exclude<SlotType, 'implant'>
+	slotCapacity?: number
+	showPricing?: boolean
+}) {
 	// Section total excludes consumables (ammo/charges not valued)
 	const sectionTotal = items.reduce(
 		(sum, i) => sum + (i.isConsumable ? 0 : parseFloat(i.lineTotal || '0')),
@@ -77,20 +114,70 @@ function SlotSection({ label, items }: { label: string; items: SRPFittingItem[] 
 				<h4 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
 					{label}
 				</h4>
-				<span className="text-xs text-muted-foreground">{formatISK(String(sectionTotal))}</span>
+				{showPricing && (
+					<span className="text-xs text-muted-foreground">
+						{formatISK(String(sectionTotal))}
+					</span>
+				)}
 			</div>
 			<div className="space-y-1 rounded-md border border-border/40 bg-muted/10 p-1">
 				{items.map((item, i) => (
-					<ItemRow key={`${item.typeId}-${item.slotIndex}-${i}`} item={item} />
+					<ItemRow
+						key={`${item.typeId}-${item.slotIndex}-${i}`}
+						item={item}
+						severity={slotHighlights[`${item.slotType}:${item.slotIndex}`]}
+						showPricing={showPricing}
+					/>
 				))}
+				{slotType && typeof slotCapacity === 'number' && slotCapacity > 0 && (
+					<>
+						{Array.from({ length: slotCapacity }, (_, slotIndex) => slotIndex)
+							.filter((slotIndex) =>
+								!items.some(
+									(item) =>
+										item.slotType === slotType &&
+										item.slotIndex === slotIndex &&
+										!item.isConsumable
+								)
+							)
+							.map((slotIndex) => {
+								const severity = slotHighlights[`${slotType}:${slotIndex}`]
+								if (!severity) return null
+								return (
+									<EmptyItemRow
+										key={`empty-${slotType}-${slotIndex}`}
+										slotType={slotType}
+										slotIndex={slotIndex}
+										severity={severity}
+									/>
+								)
+							})}
+					</>
+				)}
 			</div>
 		</div>
 	)
 }
 
-function ItemRow({ item }: { item: SRPFittingItem }) {
+function ItemRow({
+	item,
+	severity,
+	showPricing = true,
+}: {
+	item: SRPFittingItem
+	severity?: 'destructive' | 'warning' | 'secondary'
+	showPricing?: boolean
+}) {
+	const severityClass =
+		severity === 'destructive'
+			? 'bg-destructive/12'
+			: severity === 'warning'
+				? 'bg-warning/12'
+				: severity === 'secondary'
+					? 'bg-secondary/12'
+					: 'hover:bg-muted/20'
 	return (
-		<div className={`flex items-center gap-2 rounded px-1 py-0.5 hover:bg-muted/20 ${item.isConsumable ? 'opacity-50' : ''}`}>
+		<div className={`flex items-center gap-2 rounded px-1 py-0.5 ${severityClass} ${item.isConsumable ? 'opacity-50' : ''}`}>
 			<img
 				src={typeIconUrl(item.typeId, 32)}
 				alt={item.typeName}
@@ -98,21 +185,56 @@ function ItemRow({ item }: { item: SRPFittingItem }) {
 				loading="lazy"
 			/>
 			<div className="min-w-0 flex-1">
-				<p className="truncate text-sm font-medium leading-tight">{item.typeName}</p>
-				{item.quantity > 1 && <p className="text-xs text-muted-foreground">×{item.quantity}</p>}
+				<p className="truncate text-sm font-medium leading-tight">
+					{item.typeName}
+					{item.quantity > 1 && (
+						<span className="ml-1.5 text-primary">x{item.quantity.toLocaleString()}</span>
+					)}
+				</p>
 				{item.isConsumable && (
 					<p className="text-xs text-muted-foreground/60">consumable — not included</p>
 				)}
 			</div>
-			<div className="text-right">
-				<p className={`font-mono text-xs tabular-nums ${item.isConsumable ? 'line-through text-muted-foreground/50' : ''}`}>
-					{formatISK(item.lineTotal)}
-				</p>
-				{item.quantity > 1 && (
-					<p className="font-mono text-xs text-muted-foreground tabular-nums">
-						{formatISK(item.unitPrice)} ea
+			{showPricing && (
+				<div className="text-right">
+					<p className={`font-mono text-xs tabular-nums ${item.isConsumable ? 'line-through text-muted-foreground/50' : ''}`}>
+						{formatISK(item.lineTotal)}
 					</p>
-				)}
+					{item.quantity > 1 && (
+						<p className="font-mono text-xs text-muted-foreground tabular-nums">
+							{formatISK(item.unitPrice)} ea
+						</p>
+					)}
+				</div>
+			)}
+		</div>
+	)
+}
+
+function EmptyItemRow({
+	slotType,
+	slotIndex,
+	severity,
+}: {
+	slotType: Exclude<SlotType, 'implant'>
+	slotIndex: number
+	severity: 'destructive' | 'warning' | 'secondary'
+}) {
+	const severityClass =
+		severity === 'destructive'
+			? 'bg-destructive/12'
+			: severity === 'warning'
+				? 'bg-warning/12'
+				: 'bg-secondary/12'
+	return (
+		<div className={`flex items-center gap-2 rounded px-1 py-0.5 ${severityClass}`}>
+			<div className="h-8 w-8 flex-shrink-0 rounded border border-border/40 bg-muted/20" />
+			<div className="min-w-0 flex-1">
+				<p className="truncate text-sm font-medium leading-tight">Empty {slotType} slot</p>
+				<p className="text-xs text-muted-foreground">Slot {slotIndex + 1}</p>
+			</div>
+			<div className="text-right">
+				<p className="font-mono text-xs tabular-nums text-muted-foreground">—</p>
 			</div>
 		</div>
 	)

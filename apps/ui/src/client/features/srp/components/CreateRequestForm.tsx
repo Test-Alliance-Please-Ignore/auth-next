@@ -12,9 +12,8 @@ import { Textarea } from '@/components/ui/textarea'
 
 import { useCreateRequest } from '../hooks'
 import { getKillmailUrl } from '../utils'
-import { transformKillmailToFittingItems } from '../utils/fitting'
-import { SRPFittingPanel } from './SRPFittingPanel'
-import { SRPFittingSlotList } from './SRPFittingSlotList'
+import { transformKillmailToCargoItems, transformKillmailToFittingItems } from '../utils/fitting'
+import { SRPFittingDisplay } from './SRPFittingDisplay'
 
 const createRequestSchema = z.object({
 	killmailId: z.string().min(1),
@@ -32,7 +31,13 @@ interface KillmailPreview {
 		quantityDestroyed: number
 		quantityDropped: number
 	}>
-	itemPrices: Array<{ typeId: string; quantity: number; unitPrice: string; lineTotal: string }>
+	itemPrices: Array<{
+		typeId: string
+		quantity: number
+		unitPrice: string
+		lineTotal: string
+		isConsumable?: boolean
+	}>
 	itemNames: Record<string, string>
 }
 
@@ -73,7 +78,22 @@ export function CreateRequestForm({
 					quantity_destroyed: i.quantityDestroyed,
 					quantity_dropped: i.quantityDropped,
 				})),
-				preview.itemPrices.map((p) => ({ typeId: p.typeId, price: p.unitPrice })),
+				preview.itemPrices.map((p) => ({
+					typeId: p.typeId,
+					price: p.unitPrice,
+					isConsumable: p.isConsumable,
+				})),
+				preview.itemNames
+			)
+		: []
+	const cargoItems = preview
+		? transformKillmailToCargoItems(
+				preview.victimItems.map((i) => ({
+					item_type_id: Number(i.typeId),
+					flag: i.flag,
+					quantity_destroyed: i.quantityDestroyed,
+					quantity_dropped: i.quantityDropped,
+				})),
 				preview.itemNames
 			)
 		: []
@@ -140,18 +160,14 @@ export function CreateRequestForm({
 			</Card>
 
 			{/* Right: fitting display (moves below on small screens) */}
-			<div className="flex flex-col gap-6">
-				<div className="flex justify-center">
-					{previewLoading ? (
-						<div className="flex h-[398px] w-[398px] items-center justify-center rounded-full border border-border/40">
-							<div className="h-8 w-8 animate-spin rounded-full border-4 border-primary border-t-transparent" />
-						</div>
-					) : (
-						<SRPFittingPanel shipTypeId={shipTypeId} items={fittingItems} />
-					)}
-				</div>
-				<SRPFittingSlotList shipTypeId={shipTypeId} items={fittingItems} />
-			</div>
+			<SRPFittingDisplay
+				shipTypeId={shipTypeId}
+				shipTypeName={shipTypeName}
+				fittingItems={fittingItems}
+				cargoItems={cargoItems}
+				showPricing={false}
+				panelLoading={previewLoading}
+			/>
 		</form>
 	)
 }

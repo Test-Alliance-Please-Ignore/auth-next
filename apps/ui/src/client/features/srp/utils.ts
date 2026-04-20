@@ -1,8 +1,12 @@
-import { formatISK, formatISKShort } from '@/lib/format-utils'
+import { formatISK as formatISKBase, formatISKShort } from '@/lib/format-utils'
 
 import type { RequestStatus, SRPRequestResponse } from './types'
 
-export { formatISK, formatISKShort }
+export { formatISKShort }
+
+export function formatISK(value: string | number): string {
+	return formatISKBase(value, { showDecimals: false })
+}
 
 /**
  * Format date as relative time (2h ago, 3 days ago)

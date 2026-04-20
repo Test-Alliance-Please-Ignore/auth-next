@@ -130,6 +130,12 @@ export default function DoctrinesPage() {
 									Admin
 								</Link>
 							</Button>
+							<Button asChild variant="secondary">
+								<Link to="/doctrines/fittings/create">
+									<Plus className="h-4 w-4" />
+									New Fitting
+								</Link>
+							</Button>
 							<Button asChild>
 								<Link to="/doctrines/create">
 									<Plus className="h-4 w-4" />

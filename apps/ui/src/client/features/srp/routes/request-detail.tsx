@@ -14,6 +14,7 @@ import { CommentForm } from '../components/CommentForm'
 import { CommentsList } from '../components/CommentsList'
 import { CharacterRoleBadge } from '../components/CharacterRoleBadge'
 import { RequestHistory } from '../components/RequestHistory'
+import { SRPRequestDetailSkeleton } from '../components/SRPRequestDetailSkeleton'
 import { RequestStatusBadge } from '../components/RequestStatusBadge'
 import { useRequest, useRequestComments, useUpdateReviewState } from '../hooks'
 import { formatFullDate, formatISK, getKillmailUrl, getRequestCharacterRole } from '../utils'
@@ -50,12 +51,7 @@ export default function RequestDetails() {
 	if (isLoading) {
 		return (
 			<Container>
-				<div className="flex min-h-[400px] items-center justify-center">
-					<div className="text-center">
-						<div className="mb-2 h-8 w-8 animate-spin rounded-full border-4 border-primary border-t-transparent" />
-						<p className="text-sm text-muted-foreground">Loading request...</p>
-					</div>
-				</div>
+				<SRPRequestDetailSkeleton mode="request" />
 			</Container>
 		)
 	}
