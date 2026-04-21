@@ -808,6 +808,8 @@ export function ReviewRequestForm({
 			: null
 
 	const afterCoverage = coverageRate !== null ? afterInsurance * coverageRate : afterInsurance
+	const coverageReduction =
+		coverageRate !== null && coverageRate < 1 ? Math.max(0, afterInsurance - afterCoverage) : 0
 
 	let afterModifiers = afterCoverage
 	const modifierLines: Array<{
@@ -1075,6 +1077,9 @@ export function ReviewRequestForm({
 										<span>× Coverage Rate</span>
 										<span>{Math.round(coverageRate * 100)}%</span>
 									</div>
+									{coverageReduction > 0 && (
+										<MathRow label="− Coverage Reduction" value={-coverageReduction} dim />
+									)}
 									<div className="my-1 border-t border-border/50" />
 									<MathRow label="After Coverage" value={afterCoverage} bold />
 								</>

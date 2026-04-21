@@ -69,7 +69,7 @@ export class SrpDO extends DurableObject<Env> implements Srp {
 		characterId: string,
 		killmailId: string,
 		killmailHash: string,
-		contextText?: string
+		contextText: string
 	): Promise<SRPRequestResponse> {
 		// Check if request already exists for this killmail
 		const existing = await this.db.query.srpRequests.findFirst({
@@ -158,7 +158,7 @@ export class SrpDO extends DurableObject<Env> implements Srp {
 				shipValue: killmailData.totalValue!,
 				solarSystemId,
 				solarSystemName,
-				contextText: contextText || null,
+				contextText,
 				lossDate: killmailData.killmailTime,
 				killmailData: killmailData.killmailData as any,
 				srpEquipmentValue: valuation?.equipmentValue ?? null,

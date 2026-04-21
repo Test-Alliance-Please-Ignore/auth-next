@@ -208,7 +208,7 @@ export function useCreateRequest() {
 			characterId: string
 			killmailId: string
 			killmailHash: string
-			contextText?: string
+			contextText: string
 		}) => api.createSRPRequest(data),
 		onSuccess: () => {
 			void queryClient.invalidateQueries({ queryKey: srpKeys.requests() })

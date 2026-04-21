@@ -25,7 +25,7 @@ export interface Srp {
 		characterId: string,
 		killmailId: string,
 		killmailHash: string,
-		contextText?: string
+		contextText: string
 	): Promise<SRPRequestResponse>
 	getRequest(requestId: string, userId: string): Promise<SRPRequestResponse | null>
 	getUserRequests(userId: string, limit?: number, offset?: number): Promise<SRPRequestResponse[]>
@@ -264,7 +264,7 @@ export const CreateSRPRequestSchema = z.object({
 	characterId: z.string(),
 	killmailId: z.string(),
 	killmailHash: z.string(),
-	contextText: z.string().max(2000).optional(),
+	contextText: z.string().trim().min(1).max(2000),
 })
 export type CreateSRPRequest = z.infer<typeof CreateSRPRequestSchema>
 
