@@ -4,7 +4,7 @@ import { and, desc, eq, gte, ilike, inArray, lte, sql } from '@repo/db-utils'
 import { getStub } from '@repo/do-utils'
 import { getEsiInstanceForCharacter } from '@repo/esi'
 import { createEveRegionId, createEveTypeId } from '@repo/eve-types'
-import { generateKillmailUrl, roundDownToMillionISK } from '@repo/srp'
+import { generateKillmailUrl, roundToMillion } from '@repo/srp'
 
 import { createDb } from './db'
 import {
@@ -1121,7 +1121,7 @@ export class SrpDO extends DurableObject<Env> implements Srp {
 			if (finalIsk > cap) finalIsk = cap
 		}
 
-		const finalValue = roundDownToMillionISK(String(finalIsk))
+		const finalValue = roundToMillion(String(finalIsk))
 
 		return {
 			equipmentValue,
@@ -1403,7 +1403,7 @@ export class SrpDO extends DurableObject<Env> implements Srp {
 
 		if (data.reviewerOverrideMillions != null) {
 			// Override replaces the entire calculation
-			approvedAmount = roundDownToMillionISK(
+			approvedAmount = roundToMillion(
 				String(BigInt(data.reviewerOverrideMillions) * 1_000_000n)
 			)
 		} else {
@@ -1532,7 +1532,7 @@ export class SrpDO extends DurableObject<Env> implements Srp {
 			}
 		}
 
-		return roundDownToMillionISK(String(Math.round(current)))
+		return roundToMillion(String(Math.round(current)))
 	}
 
 	// ========================================================================

@@ -630,15 +630,17 @@ export function generateKillmailUrl(killmailId: string): string {
 }
 
 /**
- * Round an ISK value (as string integer) down to the nearest 1,000,000 ISK.
+ * Round an ISK value (as string integer) to the nearest 1,000,000 ISK.
  * Used as the final step in SRP payout calculation.
  * @param value ISK amount as string integer (e.g. "123456789")
- * @returns ISK rounded down to nearest million (e.g. "123000000")
+ * @returns ISK rounded to nearest million (e.g. "123000000")
  */
-export function roundDownToMillionISK(value: string): string {
+export function roundToMillion(value: string): string {
 	const n = BigInt(value)
 	const million = 1_000_000n
-	return String((n / million) * million)
+	if (n > 0n && n < million) return String(million)
+	const rounded = ((n + 500_000n) / million) * million
+	return String(rounded)
 }
 
 /**

@@ -1,7 +1,8 @@
 import { Plus, X } from 'lucide-react'
-import { type ReactNode, useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { toast } from 'sonner'
 
+import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Card } from '@/components/ui/card'
 import { Input } from '@/components/ui/input'
@@ -9,15 +10,26 @@ import { Label } from '@/components/ui/label'
 import { Select } from '@/components/ui/select'
 import { Switch } from '@/components/ui/switch'
 
-
-import { useDoctrineFittingsForShip, useSRPConfig, useSRPPolicies, useSubmitReview, useUpdateReviewState } from '../hooks'
+import {
+	useDoctrineFittingsForShip,
+	useSRPConfig,
+	useSRPPolicies,
+	useSubmitReview,
+	useUpdateReviewState,
+} from '../hooks'
 import { formatISK } from '../utils'
 import { transformKillmailToCargoItems, transformKillmailToFittingItems } from '../utils/fitting'
 import { SRPFittingDisplay } from './SRPFittingDisplay'
 
+import type { ReactNode } from 'react'
 import type { CapConfig, PayoutModifierConfig } from '@repo/srp'
-import type { AppliedModifier, SRPPolicy, SRPPredefinedAdhocModifier, SRPRequestWithKillmailItemNames } from '../types'
 import type { FittingWithItems } from '@/lib/api'
+import type {
+	AppliedModifier,
+	SRPPolicy,
+	SRPPredefinedAdhocModifier,
+	SRPRequestWithKillmailItemNames,
+} from '../types'
 import type {
 	SRPFittingItem,
 	SRPShipSlotCapacities,
@@ -150,8 +162,7 @@ function filterKillmailForConformity(
 	consumableTypeIds: Set<string>
 ): LossKillmailItem[] {
 	return killmailItems.filter(
-		(item) =>
-			item.item_type_id == null || !consumableTypeIds.has(String(item.item_type_id))
+		(item) => item.item_type_id == null || !consumableTypeIds.has(String(item.item_type_id))
 	)
 }
 
@@ -185,7 +196,11 @@ function collectDirectHighSlotConsumables(
 ): void {
 	for (const item of items) {
 		const effectiveFlag = item.flag ?? parentFlag
-		if (effectiveFlag != null && slotFromLossFlag(effectiveFlag) === 'high' && item.item_type_id != null) {
+		if (
+			effectiveFlag != null &&
+			slotFromLossFlag(effectiveFlag) === 'high' &&
+			item.item_type_id != null
+		) {
 			const typeId = String(item.item_type_id)
 			if (consumableTypeIds.has(typeId)) {
 				ammoByType.set(typeId, (ammoByType.get(typeId) ?? 0) + killmailQuantity(item))
@@ -214,7 +229,11 @@ function analyzeHighSlotAmmoDistribution(
 		if (item.item_type_id == null || item.flag == null) continue
 		if (slotFromLossFlag(item.flag) !== 'high') continue
 		if (consumableTypeIds.has(String(item.item_type_id))) continue
-		const hasLoadedAmmo = collectConsumableChildrenForHighModule(item.items, consumableTypeIds, ammoByType)
+		const hasLoadedAmmo = collectConsumableChildrenForHighModule(
+			item.items,
+			consumableTypeIds,
+			ammoByType
+		)
 		if (hasLoadedAmmo) weaponModuleCount += 1
 	}
 
@@ -231,7 +250,9 @@ function analyzeHighSlotAmmoDistribution(
 	}
 
 	const totalAmmoQuantity = [...ammoByType.values()].reduce((sum, quantity) => sum + quantity, 0)
-	const ammoTypeNames = [...ammoByType.keys()].map((typeId) => itemNames[typeId] ?? `Type ${typeId}`)
+	const ammoTypeNames = [...ammoByType.keys()].map(
+		(typeId) => itemNames[typeId] ?? `Type ${typeId}`
+	)
 
 	return {
 		weaponModuleCount,
@@ -422,9 +443,7 @@ function buildConformitySlotHighlights(
 		if (finding.lossTypeId) {
 			const matches = fittingItems.filter(
 				(item) =>
-					item.slotType === finding.slot &&
-					item.typeId === finding.lossTypeId &&
-					!item.isConsumable
+					item.slotType === finding.slot && item.typeId === finding.lossTypeId && !item.isConsumable
 			)
 			for (const item of matches) {
 				setSlotSeverity(highlights, `${item.slotType}:${item.slotIndex}`, finding.severity)
@@ -475,8 +494,9 @@ function isCapConfig(c: unknown): c is CapConfig {
 	return typeof c === 'object' && c !== null && 'maxPayoutMillions' in c
 }
 
-function roundDownToMillion(isk: number): number {
-	return Math.floor(isk / 1_000_000) * 1_000_000
+function roundToNearestMillion(isk: number): number {
+	if (isk > 0 && isk < 1_000_000) return 1_000_000
+	return Math.round(isk / 1_000_000) * 1_000_000
 }
 
 // Payout computation — mirrors the backend logic
@@ -525,17 +545,34 @@ function computePayout(
 		base = Math.min(base, capPolicy.config.maxPayoutMillions * 1_000_000)
 	}
 
-	return roundDownToMillion(base)
+	return roundToNearestMillion(base)
 }
 
-export function ReviewRequestForm({ request, onSuccess, commentSlot, rightAppend }: ReviewRequestFormProps) {
+export function ReviewRequestForm({
+	request,
+	onSuccess,
+	commentSlot,
+	rightAppend,
+}: ReviewRequestFormProps) {
 	const { data: policies = [] } = useSRPPolicies()
 	const { data: srpConfig } = useSRPConfig()
 	const submitMutation = useSubmitReview()
 	const updateStateMutation = useUpdateReviewState()
 
-	const modifierPolicies = policies.filter((p) => p.effect === 'payout_modifier' && p.isActive)
-	const capPolicies = policies.filter((p) => p.effect === 'cap' && p.isActive)
+	const modifierPolicies = useMemo(
+		() =>
+			policies
+				.filter((p) => p.effect === 'payout_modifier' && p.isActive)
+				.sort((left, right) => left.displayOrder - right.displayOrder),
+		[policies]
+	)
+	const capPolicies = useMemo(
+		() =>
+			policies
+				.filter((p) => p.effect === 'cap' && p.isActive)
+				.sort((left, right) => left.displayOrder - right.displayOrder),
+		[policies]
+	)
 
 	const [selectedModifierPolicyId, setSelectedModifierPolicyId] = useState<string | null>(null)
 	const [selectedCapPolicyId, setSelectedCapPolicyId] = useState<string | null>(null)
@@ -548,6 +585,8 @@ export function ReviewRequestForm({ request, onSuccess, commentSlot, rightAppend
 	const [showDoctrineConformity, setShowDoctrineConformity] = useState(false)
 	const [selectedDoctrineFittingId, setSelectedDoctrineFittingId] = useState('')
 	const [selectedPredefinedModifierValue, setSelectedPredefinedModifierValue] = useState('')
+	const hasInitializedModifierPolicyDefault = useRef(false)
+	const hasInitializedCapPolicyDefault = useRef(false)
 	const { data: doctrineFittings = [] } = useDoctrineFittingsForShip(request.shipTypeId)
 	const predefinedAdhocModifiers: SRPPredefinedAdhocModifier[] = Array.isArray(
 		srpConfig?.predefinedAdhocModifiers
@@ -558,6 +597,45 @@ export function ReviewRequestForm({ request, onSuccess, commentSlot, rightAppend
 	const selectedModifierPolicy =
 		modifierPolicies.find((p) => p.id === selectedModifierPolicyId) ?? null
 	const selectedCapPolicy = capPolicies.find((p) => p.id === selectedCapPolicyId) ?? null
+
+	useEffect(() => {
+		if (modifierPolicies.length === 0) {
+			if (selectedModifierPolicyId !== null) setSelectedModifierPolicyId(null)
+			return
+		}
+		const hasSelected =
+			selectedModifierPolicyId !== null &&
+			modifierPolicies.some((policy) => policy.id === selectedModifierPolicyId)
+
+		if (!hasInitializedModifierPolicyDefault.current && selectedModifierPolicyId === null) {
+			setSelectedModifierPolicyId(modifierPolicies[0].id)
+			hasInitializedModifierPolicyDefault.current = true
+			return
+		}
+
+		if (selectedModifierPolicyId !== null && !hasSelected) {
+			setSelectedModifierPolicyId(modifierPolicies[0].id)
+		}
+	}, [modifierPolicies, selectedModifierPolicyId])
+
+	useEffect(() => {
+		if (capPolicies.length === 0) {
+			if (selectedCapPolicyId !== null) setSelectedCapPolicyId(null)
+			return
+		}
+		const hasSelected =
+			selectedCapPolicyId !== null && capPolicies.some((policy) => policy.id === selectedCapPolicyId)
+
+		if (!hasInitializedCapPolicyDefault.current && selectedCapPolicyId === null) {
+			setSelectedCapPolicyId(capPolicies[0].id)
+			hasInitializedCapPolicyDefault.current = true
+			return
+		}
+
+		if (selectedCapPolicyId !== null && !hasSelected) {
+			setSelectedCapPolicyId(capPolicies[0].id)
+		}
+	}, [capPolicies, selectedCapPolicyId])
 
 	const equipmentValue = parseFloat(request.srpEquipmentValue ?? request.shipValue ?? '0')
 	const netInsurance = parseFloat(request.srpNetInsurance ?? '0')
@@ -589,9 +667,7 @@ export function ReviewRequestForm({ request, onSuccess, commentSlot, rightAppend
 	const consumableTypeIds = useMemo(
 		() =>
 			new Set(
-				(request.srpItemPrices ?? [])
-					.filter((item) => item.isConsumable)
-					.map((item) => item.typeId)
+				(request.srpItemPrices ?? []).filter((item) => item.isConsumable).map((item) => item.typeId)
 			),
 		[request.srpItemPrices]
 	)
@@ -611,7 +687,11 @@ export function ReviewRequestForm({ request, onSuccess, commentSlot, rightAppend
 	)
 	const fittingItems = transformKillmailToFittingItems(
 		request.killmailItems ?? [],
-		(request.srpItemPrices ?? []).map((p) => ({ typeId: p.typeId, price: p.unitPrice, isConsumable: p.isConsumable })),
+		(request.srpItemPrices ?? []).map((p) => ({
+			typeId: p.typeId,
+			price: p.unitPrice,
+			isConsumable: p.isConsumable,
+		})),
 		itemNames
 	)
 	const cargoItems = transformKillmailToCargoItems(request.killmailItems ?? [], itemNames)
@@ -659,9 +739,7 @@ export function ReviewRequestForm({ request, onSuccess, commentSlot, rightAppend
 	const slotCapacities = useMemo(() => {
 		const capacities: SRPShipSlotCapacities = {}
 		for (const slot of SHIP_SLOT_TYPES) {
-			const slotItems = fittingItems.filter(
-				(item) => item.slotType === slot && !item.isConsumable
-			)
+			const slotItems = fittingItems.filter((item) => item.slotType === slot && !item.isConsumable)
 			const observedMaxIndex = slotItems.reduce((max, item) => Math.max(max, item.slotIndex), -1)
 			const observedCapacity = observedMaxIndex + 1
 			const doctrineCapacity = doctrineExpectedSlotCounts?.[slot] ?? 0
@@ -732,7 +810,12 @@ export function ReviewRequestForm({ request, onSuccess, commentSlot, rightAppend
 	const afterCoverage = coverageRate !== null ? afterInsurance * coverageRate : afterInsurance
 
 	let afterModifiers = afterCoverage
-	const modifierLines: Array<{ label: string; amount: number }> = []
+	const modifierLines: Array<{
+		label: string
+		percentSuffix?: string
+		amount: number
+		modifierType: 'deduction' | 'bonus'
+	}> = []
 	for (const mod of modifiers) {
 		let delta: number
 		if (mod.mode === 'percentage') {
@@ -741,7 +824,16 @@ export function ReviewRequestForm({ request, onSuccess, commentSlot, rightAppend
 			delta = mod.amount * 1_000_000
 		}
 		const signed = mod.modifierType === 'deduction' ? -delta : delta
-		modifierLines.push({ label: mod.reason, amount: signed })
+			const percentSuffix =
+				mod.mode === 'percentage'
+					? ` (${new Intl.NumberFormat('en-US', { maximumFractionDigits: 2 }).format(mod.amount)}%)`
+					: ''
+			modifierLines.push({
+				label: mod.reason,
+				percentSuffix: percentSuffix || undefined,
+				amount: signed,
+				modifierType: mod.modifierType,
+			})
 		afterModifiers = afterModifiers + signed
 	}
 	afterModifiers = Math.max(0, afterModifiers)
@@ -796,7 +888,6 @@ export function ReviewRequestForm({ request, onSuccess, commentSlot, rightAppend
 	}
 
 	const handleSubmit = async () => {
-
 		if (!showConfirm) {
 			setShowConfirm(true)
 			return
@@ -866,13 +957,23 @@ export function ReviewRequestForm({ request, onSuccess, commentSlot, rightAppend
 							<Card className="p-4">
 								<div className="space-y-3">
 									<div className="flex items-center justify-between gap-3">
+										<Badge variant="secondary">Military Doctrine Fittings Available</Badge>
+										<span className="text-xs text-muted-foreground">
+											{sortedDoctrineFittings.length} fitting
+											{sortedDoctrineFittings.length === 1 ? '' : 's'}
+										</span>
+									</div>
+									<div className="flex items-center justify-between gap-3">
 										<div>
 											<h4 className="text-sm font-semibold">Show Doctrine Conformity</h4>
 											<p className="text-xs text-muted-foreground">
 												Compare this loss against doctrine fittings for this hull
 											</p>
 										</div>
-										<Switch checked={showDoctrineConformity} onCheckedChange={setShowDoctrineConformity} />
+										<Switch
+											checked={showDoctrineConformity}
+											onCheckedChange={setShowDoctrineConformity}
+										/>
 									</div>
 									{showDoctrineConformity && (
 										<>
@@ -886,7 +987,9 @@ export function ReviewRequestForm({ request, onSuccess, commentSlot, rightAppend
 												placeholder="Select doctrine fitting"
 											/>
 											{doctrineFindings.length === 0 ? (
-												<p className="text-sm text-success">No invariant issues for selected fitting.</p>
+												<p className="text-sm text-success">
+													No invariant issues for selected fitting.
+												</p>
 											) : (
 												<ul className="space-y-2">
 													{doctrineFindings.map((finding, index) => (
@@ -910,7 +1013,9 @@ export function ReviewRequestForm({ request, onSuccess, commentSlot, rightAppend
 																	| Loss:{' '}
 																	<span className="font-medium text-foreground">
 																		{finding.lossModule ?? '—'}
-																		{finding.quantity && finding.quantity > 1 ? ` ×${finding.quantity}` : ''}
+																		{finding.quantity && finding.quantity > 1
+																			? ` ×${finding.quantity}`
+																			: ''}
 																	</span>
 																</div>
 															)}
@@ -964,24 +1069,39 @@ export function ReviewRequestForm({ request, onSuccess, commentSlot, rightAppend
 							value={applyInsurance ? afterInsurance : equipmentValue}
 							bold
 						/>
-						{coverageRate !== null && (
-							<>
-								<div className="flex justify-between text-xs text-muted-foreground">
-									<span>× Coverage Rate</span>
-									<span>{Math.round(coverageRate * 100)}%</span>
-								</div>
-								<div className="my-1 border-t border-border/50" />
-								<MathRow label="After Coverage" value={afterCoverage} bold />
-							</>
-						)}
+							{coverageRate !== null && (
+								<>
+									<div className="flex justify-between text-xs text-muted-foreground">
+										<span>× Coverage Rate</span>
+										<span>{Math.round(coverageRate * 100)}%</span>
+									</div>
+									<div className="my-1 border-t border-border/50" />
+									<MathRow label="After Coverage" value={afterCoverage} bold />
+								</>
+							)}
 						{modifierLines.map((line, i) => (
-							<MathRow
-								key={i}
-								label={`${line.amount >= 0 ? '+' : '−'} ${line.label}`}
-								value={Math.abs(line.amount)}
-								dim
-								sign={line.amount >= 0 ? '+' : '-'}
-							/>
+							<div key={i} className="flex justify-between text-xs text-muted-foreground">
+								<span className="inline-flex items-center gap-2">
+									<Badge
+										variant={line.modifierType === 'deduction' ? 'destructive' : 'default'}
+										className={
+											line.modifierType === 'bonus' ? 'bg-green-600 text-white' : undefined
+										}
+									>
+										{line.modifierType === 'deduction' ? 'Deduction' : 'Bonus'}
+									</Badge>
+										<span>
+											{line.label}
+											{line.percentSuffix && (
+												<span className="font-semibold">{line.percentSuffix}</span>
+											)}
+										</span>
+									</span>
+								<span className={line.amount >= 0 ? 'text-green-400' : 'text-destructive'}>
+									{line.amount >= 0 ? '+' : '-'}
+									{formatISK(String(Math.round(Math.abs(line.amount))))}
+								</span>
+							</div>
 						))}
 						{modifierLines.length > 0 && (
 							<>
@@ -992,13 +1112,13 @@ export function ReviewRequestForm({ request, onSuccess, commentSlot, rightAppend
 						{capPolicy && (
 							<div className="flex justify-between text-xs text-muted-foreground">
 								<span>Cap ({selectedCapPolicy?.name})</span>
-								<span className={isCapped ? 'text-amber-500' : ''}>
-									{isCapped
-										? `→ ${formatISK(String(capPolicy.maxPayoutMillions * 1_000_000))}`
-										: 'none'}
-								</span>
-							</div>
-						)}
+									<span className={isCapped ? 'text-amber-500' : ''}>
+										{isCapped
+											? `→ ${formatISK(String(capPolicy.maxPayoutMillions * 1_000_000))}`
+											: 'not applicable'}
+									</span>
+								</div>
+							)}
 						<div className="my-1 border-t-2 border-border" />
 						<div className="flex justify-between font-bold">
 							<span
@@ -1032,12 +1152,12 @@ export function ReviewRequestForm({ request, onSuccess, commentSlot, rightAppend
 					<Card className="p-4">
 						<h4 className="mb-3 text-sm font-semibold">Payout Modifier Policy</h4>
 						<div className="space-y-2">
-							<PolicyRadio
-								label="None / Custom"
-								selected={selectedModifierPolicyId === null}
-								onSelect={() => setSelectedModifierPolicyId(null)}
-								detail="No policy applied"
-							/>
+								<PolicyRadio
+									label="No Modifier Policy"
+									selected={selectedModifierPolicyId === null}
+									onSelect={() => setSelectedModifierPolicyId(null)}
+									detail="No policy applied"
+								/>
 							{modifierPolicies.map((p) => {
 								const cfg = isPayoutModifierConfig(p.config) ? p.config : null
 								return (
@@ -1092,32 +1212,32 @@ export function ReviewRequestForm({ request, onSuccess, commentSlot, rightAppend
 					<h4 className="mb-3 text-sm font-semibold">Ad-hoc Modifiers</h4>
 					<div className="space-y-2">
 						{predefinedModifierOptions.length > 0 && (
-							<Select
-								value={selectedPredefinedModifierValue}
-								onValueChange={(value) => {
-									setSelectedPredefinedModifierValue(value)
-									addPredefinedModifier(value)
-								}}
-								options={predefinedModifierOptions}
-								placeholder="Add predefined modifier suggestion"
-								searchable
-								emptyText="No predefined modifiers"
-							/>
-						)}
+								<Select
+									value={selectedPredefinedModifierValue}
+									onValueChange={(value) => {
+										setSelectedPredefinedModifierValue(value)
+										addPredefinedModifier(value)
+									}}
+									options={predefinedModifierOptions}
+									placeholder="Apply modifier template"
+									searchable
+									emptyText="No predefined modifiers"
+								/>
+							)}
 						{modifiers.map((mod) => (
 							<div
 								key={mod.id}
 								className="flex items-center gap-2 rounded-md border border-border/40 p-2"
 							>
 								<div className="w-32">
-									<Select
-										value={mod.modifierType}
-										onValueChange={(v) => updateModifier(mod.id, { modifierType: v as any })}
-										options={[
-											{ value: 'deduction', label: '− Deduction' },
-											{ value: 'bonus', label: '+ Bonus' },
-										]}
-									/>
+										<Select
+											value={mod.modifierType}
+											onValueChange={(v) => updateModifier(mod.id, { modifierType: v as any })}
+											options={[
+												{ value: 'deduction', label: 'Deduction' },
+												{ value: 'bonus', label: 'Bonus' },
+											]}
+										/>
 								</div>
 								<div className="w-24">
 									<Select
@@ -1285,10 +1405,17 @@ function MathRow({
 			: bold
 				? 'font-semibold'
 				: ''
+	const valueTone = muted
+		? 'text-muted-foreground/50'
+		: value > 0
+			? 'text-green-400'
+			: value < 0
+				? 'text-destructive'
+				: ''
 	return (
 		<div className={`flex justify-between ${cls}`}>
 			<span>{label}</span>
-			<span>
+			<span className={valueTone}>
 				{sign}
 				{formatISK(String(Math.round(value)))}
 			</span>
