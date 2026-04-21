@@ -1,7 +1,8 @@
-import { Plus, Trash2 } from 'lucide-react'
+import { CircleHelp, Plus, Trash2, X } from 'lucide-react'
 import { useState } from 'react'
 
 import { renderDiscordContentValue } from '@/components/discord-content-renderer'
+import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import {
@@ -14,7 +15,9 @@ import {
 } from '@/components/ui/dialog'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
+import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover'
 import { Select } from '@/components/ui/select'
+import { Switch } from '@/components/ui/switch'
 import {
 	Table,
 	TableBody,
@@ -32,12 +35,16 @@ import {
 	useUpdateBroadcastTemplate,
 } from '@/hooks/useBroadcasts'
 import { usePageTitle } from '@/hooks/usePageTitle'
+import {
+	BROADCAST_SYSTEM_TEMPLATE_TOKENS,
+	getBroadcastSystemTemplateToken,
+} from '@/features/broadcasts/template-tokens'
 
 import type { BroadcastTemplate, CreateBroadcastTemplateRequest } from '@/lib/api'
 
-const TEMPLATE_PLACEHOLDER_REGEX = /\{\{\s*([a-zA-Z0-9_-]+)\s*\}\}/g
 const TEMPLATE_TAG_BLOCK_REGEX = /\{\{([^}]*)\}\}/g
 const TEMPLATE_FIELD_NAME_PATTERN = /^[a-zA-Z0-9_-]+$/
+const TEMPLATE_SELECT_LABEL_PATTERN = /^[a-zA-Z0-9_-]+$/
 
 function toFieldLabel(name: string): string {
 	const normalized = name
@@ -60,27 +67,109 @@ function deriveFieldSchemaFromTemplate(
 	existing: CreateBroadcastTemplateRequest['fieldSchema']
 ): CreateBroadcastTemplateRequest['fieldSchema'] {
 	const existingByName = new Map(existing.map((field) => [field.name, field]))
-	const tags: string[] = []
 	const seen = new Set<string>()
+	const fields: CreateBroadcastTemplateRequest['fieldSchema'] = []
 
-	for (const match of messageTemplate.matchAll(TEMPLATE_PLACEHOLDER_REGEX)) {
-		const tag = (match[1] ?? '').trim()
-		if (!tag || seen.has(tag)) continue
-		seen.add(tag)
-		tags.push(tag)
+	for (const match of messageTemplate.matchAll(TEMPLATE_TAG_BLOCK_REGEX)) {
+		const rawToken = (match[1] ?? '').trim()
+		const wrappedToken =
+			rawToken.startsWith('<') && rawToken.endsWith('>')
+				? rawToken.slice(1, -1).trim()
+				: rawToken
+		if (!wrappedToken) continue
+
+		const systemToken = getBroadcastSystemTemplateToken(wrappedToken)
+		if (systemToken) {
+			const key = systemToken.name
+			if (seen.has(key)) continue
+			seen.add(key)
+			fields.push({
+				name: key,
+				label: systemToken.label,
+				type: systemToken.fieldType,
+				required: systemToken.required,
+				allowCustom: systemToken.allowCustom,
+			})
+			continue
+		}
+
+		if (wrappedToken.startsWith('select:')) {
+			const selectBody = wrappedToken.slice('select:'.length)
+			const separator = selectBody.indexOf(':')
+			if (separator <= 0) {
+				const labelName = selectBody.trim()
+				if (!TEMPLATE_SELECT_LABEL_PATTERN.test(labelName)) {
+					continue
+				}
+				const key = `select:${labelName}`
+				if (seen.has(key)) continue
+				seen.add(key)
+				const prior = existingByName.get(key)
+				fields.push({
+					name: key,
+					label: prior?.label ?? toFieldLabel(labelName),
+					type: 'select',
+					required: prior?.required ?? true,
+					options: prior?.options ?? [],
+				})
+				continue
+			}
+			const labelName = selectBody.slice(0, separator).trim()
+			const options = selectBody
+				.slice(separator + 1)
+				.split('|')
+				.map((option) => toFieldLabel(option.trim()))
+				.filter(Boolean)
+			if (!TEMPLATE_SELECT_LABEL_PATTERN.test(labelName) || options.length === 0) {
+				continue
+			}
+			const key = `select:${labelName}`
+			if (seen.has(key)) continue
+			seen.add(key)
+			const prior = existingByName.get(key)
+			fields.push({
+				name: key,
+				label: prior?.label ?? toFieldLabel(labelName),
+				type: 'select',
+				required: prior?.required ?? true,
+				options,
+			})
+			continue
+		}
+
+		if (!TEMPLATE_FIELD_NAME_PATTERN.test(wrappedToken)) {
+			continue
+		}
+
+		const key = wrappedToken
+		if (seen.has(key)) continue
+		seen.add(key)
+		const prior = existingByName.get(key)
+		if (prior) {
+			fields.push(prior)
+			continue
+		}
+		fields.push({
+			name: key,
+			label: toFieldLabel(key),
+			type: key.toLowerCase() === 'message' ? 'textarea' : 'text',
+			required: true,
+		})
 	}
 
-	return tags.map((tag) => {
-		const prior = existingByName.get(tag)
-		if (prior) return prior
+	const frogsirenField = existing.find(
+		(field) => field.type === 'system_frogsiren' && field.name === '__frogsirenEnabled'
+	)
+	if (frogsirenField) {
+		fields.push({
+			name: '__frogsirenEnabled',
+			label: 'FrogSiren',
+			type: 'system_frogsiren',
+			required: false,
+		})
+	}
 
-		return {
-			name: tag,
-			label: toFieldLabel(tag),
-			type: tag.toLowerCase() === 'message' ? 'textarea' : 'text',
-			required: true,
-		}
-	})
+	return fields
 }
 
 function getInvalidTemplateTags(messageTemplate: string): string[] {
@@ -88,12 +177,80 @@ function getInvalidTemplateTags(messageTemplate: string): string[] {
 	const seen = new Set<string>()
 	for (const match of messageTemplate.matchAll(TEMPLATE_TAG_BLOCK_REGEX)) {
 		const tag = (match[1] ?? '').trim()
-		if (TEMPLATE_FIELD_NAME_PATTERN.test(tag)) continue
+		const wrappedToken =
+			tag.startsWith('<') && tag.endsWith('>')
+				? tag.slice(1, -1).trim()
+				: tag
+		if (TEMPLATE_FIELD_NAME_PATTERN.test(wrappedToken)) continue
+		if (getBroadcastSystemTemplateToken(wrappedToken)) continue
+		if (wrappedToken.startsWith('select:')) {
+			const selectBody = wrappedToken.slice('select:'.length)
+			const separator = selectBody.indexOf(':')
+			if (separator <= 0) {
+				if (TEMPLATE_SELECT_LABEL_PATTERN.test(selectBody.trim())) {
+					continue
+				}
+			} else {
+				const labelName = selectBody.slice(0, separator).trim()
+				const options = selectBody
+					.slice(separator + 1)
+					.split('|')
+					.map((option) => option.trim())
+					.filter(Boolean)
+				if (TEMPLATE_SELECT_LABEL_PATTERN.test(labelName) && options.length > 0) {
+					continue
+				}
+			}
+		}
 		if (seen.has(tag)) continue
 		seen.add(tag)
 		invalid.push(tag)
 	}
 	return invalid
+}
+
+function TemplateTokenHelpPopover() {
+	return (
+		<Popover>
+			<PopoverTrigger asChild>
+				<Button type="button" size="sm" variant="ghost" className="h-7 px-2 text-xs">
+					<CircleHelp className="h-4 w-4" />
+					Token help
+				</Button>
+			</PopoverTrigger>
+			<PopoverContent align="end" className="w-[36rem] max-w-[90vw] p-3 space-y-3 text-sm">
+				<div>
+					<p className="font-semibold">Template Tokens</p>
+					<p className="text-xs text-muted-foreground">
+						Default placeholders use <code>{'{{inputName}}'}</code>. They create text fields
+						automatically.
+					</p>
+				</div>
+				<div>
+					<p className="font-medium">Custom select token</p>
+					<p className="font-mono text-xs rounded bg-muted/40 px-2 py-1 mt-1">
+						{'{{<select:labelName:option 1|option 2|option 3>}}'}
+					</p>
+					<p className="text-xs text-muted-foreground mt-1">
+						Creates a searchable select field and renders the chosen option.
+					</p>
+				</div>
+				<div className="space-y-2">
+					<p className="font-medium">System tokens</p>
+					{BROADCAST_SYSTEM_TEMPLATE_TOKENS.map((token) => (
+						<div key={token.name} className="rounded border border-border/60 px-2 py-1.5">
+							<div className="flex items-center justify-between gap-3">
+								<span className="font-medium">{token.label}</span>
+								<code className="text-xs">{token.tagSyntax}</code>
+							</div>
+							<p className="text-xs text-muted-foreground mt-1">{token.description}</p>
+							<p className="text-xs text-muted-foreground">{token.renderBehavior}</p>
+						</div>
+					))}
+				</div>
+			</PopoverContent>
+		</Popover>
+	)
 }
 
 export default function BroadcastTemplatesPage() {
@@ -115,23 +272,50 @@ export default function BroadcastTemplatesPage() {
 		name: '',
 		description: '',
 		targetType: 'discord_channel',
-		targetId: '',
+		targetIds: [],
 		fieldSchema: [{ name: 'message', label: 'Message', type: 'text', required: true }],
 		messageTemplate: '{{message}}',
 	})
 
 	// Message state
 	const [message, setMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null)
+	const [targetToAttach, setTargetToAttach] = useState('')
+
+	const frogsirenEnabled = formData.fieldSchema.some(
+		(field) => field.type === 'system_frogsiren' && field.name === '__frogsirenEnabled'
+	)
 
 	const resetForm = () => {
 		setFormData({
 			name: '',
 			description: '',
 			targetType: 'discord_channel',
-			targetId: '',
+			targetIds: [],
 			fieldSchema: [{ name: 'message', label: 'Message', type: 'text', required: true }],
 			messageTemplate: '{{message}}',
 		})
+		setTargetToAttach('')
+	}
+
+	const addTargetSelection = (targetId: string) => {
+		if (!targetId) return
+		setFormData((current) => {
+			if (current.targetIds.includes(targetId)) {
+				return current
+			}
+			return {
+				...current,
+				targetIds: [...current.targetIds, targetId],
+			}
+		})
+		setTargetToAttach('')
+	}
+
+	const removeTargetSelection = (targetId: string) => {
+		setFormData((current) => ({
+			...current,
+			targetIds: current.targetIds.filter((id) => id !== targetId),
+		}))
 	}
 
 	const handleMessageTemplateChange = (value: string) => {
@@ -140,6 +324,28 @@ export default function BroadcastTemplatesPage() {
 			messageTemplate: value,
 			fieldSchema: deriveFieldSchemaFromTemplate(value, current.fieldSchema),
 		}))
+	}
+
+	const setFrogsirenEnabled = (enabled: boolean) => {
+		setFormData((current) => {
+			const without = current.fieldSchema.filter(
+				(field) => !(field.type === 'system_frogsiren' && field.name === '__frogsirenEnabled')
+			)
+			return {
+				...current,
+				fieldSchema: enabled
+					? [
+							...without,
+							{
+								name: '__frogsirenEnabled',
+								label: 'FrogSiren',
+								type: 'system_frogsiren',
+								required: false,
+							},
+						]
+					: without,
+			}
+		})
 	}
 
 	const handleCreate = async (e: React.FormEvent) => {
@@ -174,7 +380,7 @@ export default function BroadcastTemplatesPage() {
 			name: template.name,
 			description: template.description || '',
 			targetType: template.targetType,
-			targetId: template.targetId,
+			targetIds: template.targetIds,
 			fieldSchema: template.fieldSchema,
 			messageTemplate: template.messageTemplate,
 		})
@@ -296,12 +502,14 @@ export default function BroadcastTemplatesPage() {
 							</TableHeader>
 							<TableBody>
 								{templates.map((template) => {
-									const target = targets.find((t) => t.id === template.targetId)
+									const targetNames = template.targetIds
+										.map((targetId) => targets.find((t) => t.id === targetId)?.name ?? targetId)
+										.join(', ')
 									return (
 										<TableRow key={template.id}>
 											<TableCell className="font-medium">{template.name}</TableCell>
 											<TableCell>{template.targetType}</TableCell>
-											<TableCell>{target?.name || template.targetId}</TableCell>
+											<TableCell>{targetNames}</TableCell>
 											<TableCell className="text-sm text-muted-foreground">
 												{template.fieldSchema.length} field(s)
 											</TableCell>
@@ -352,29 +560,73 @@ export default function BroadcastTemplatesPage() {
 								rows={2}
 							/>
 						</div>
-						<div>
-							<Label htmlFor="target">Target *</Label>
-							<Select
-								inputId="target"
-								value={formData.targetId}
-								onValueChange={(value) => {
-									const target = targets.find((t) => t.id === value)
-									setFormData({
-										...formData,
-										targetId: value,
-										targetType: target?.type ?? formData.targetType,
-									})
-								}}
-								searchable
-								placeholder="Select a target"
-								options={targets.map((target) => ({
-									value: target.id,
-									label: target.name,
-								}))}
-							/>
+						<div className="rounded-md border border-border/60 px-3 py-2">
+							<div className="flex items-center justify-between gap-3">
+								<div className="space-y-0.5">
+									<Label htmlFor="template-frogsiren">Enable FrogSiren</Label>
+									<p className="text-xs text-muted-foreground">
+										Adds an optional FrogSiren toggle when composing broadcasts with this template.
+									</p>
+								</div>
+								<Switch
+									id="template-frogsiren"
+									checked={frogsirenEnabled}
+									onCheckedChange={setFrogsirenEnabled}
+								/>
+							</div>
 						</div>
 						<div>
-							<Label htmlFor="messageTemplate">Message Template *</Label>
+							<Label>Targets *</Label>
+							<div className="mt-2 space-y-2">
+								<Select
+									value={targetToAttach}
+									onValueChange={(value) => {
+										setTargetToAttach(value)
+										addTargetSelection(value)
+									}}
+									options={targets
+										.filter((target) => !formData.targetIds.includes(target.id))
+										.map((target) => ({
+											value: target.id,
+											label: target.name,
+										}))}
+									placeholder="Search and attach a target"
+									searchable
+								/>
+								<div className="flex flex-wrap gap-2 rounded-md border border-border bg-background p-2 min-h-10">
+									{formData.targetIds.length === 0 ? (
+										<span className="text-xs text-muted-foreground">No targets attached</span>
+									) : (
+										formData.targetIds.map((targetId) => {
+											const target = targets.find((item) => item.id === targetId)
+											return (
+												<Badge
+													key={targetId}
+													variant="secondary"
+													className="flex items-center gap-1 pr-1"
+												>
+													{target?.name ?? targetId}
+													<Button
+														type="button"
+														variant="ghost"
+														size="sm"
+														className="h-5 w-5 p-0"
+														onClick={() => removeTargetSelection(targetId)}
+													>
+														<X className="h-3 w-3" />
+													</Button>
+												</Badge>
+											)
+										})
+									)}
+								</div>
+							</div>
+						</div>
+						<div>
+							<div className="flex items-center justify-between gap-3">
+								<Label htmlFor="messageTemplate">Message Template *</Label>
+								<TemplateTokenHelpPopover />
+							</div>
 							<Textarea
 								id="messageTemplate"
 								value={formData.messageTemplate}
@@ -438,7 +690,10 @@ export default function BroadcastTemplatesPage() {
 							/>
 						</div>
 						<div>
-							<Label htmlFor="edit-messageTemplate">Message Template *</Label>
+							<div className="flex items-center justify-between gap-3">
+								<Label htmlFor="edit-messageTemplate">Message Template *</Label>
+								<TemplateTokenHelpPopover />
+							</div>
 							<Textarea
 								id="edit-messageTemplate"
 								value={formData.messageTemplate}
@@ -457,6 +712,68 @@ export default function BroadcastTemplatesPage() {
 										Preview will appear here…
 									</span>
 								)}
+							</div>
+						</div>
+						<div className="rounded-md border border-border/60 px-3 py-2">
+							<div className="flex items-center justify-between gap-3">
+								<div className="space-y-0.5">
+									<Label htmlFor="template-frogsiren-edit">Enable FrogSiren</Label>
+									<p className="text-xs text-muted-foreground">
+										Adds an optional FrogSiren toggle when composing broadcasts with this template.
+									</p>
+								</div>
+								<Switch
+									id="template-frogsiren-edit"
+									checked={frogsirenEnabled}
+									onCheckedChange={setFrogsirenEnabled}
+								/>
+							</div>
+						</div>
+						<div>
+							<Label>Targets *</Label>
+							<div className="mt-2 space-y-2">
+								<Select
+									value={targetToAttach}
+									onValueChange={(value) => {
+										setTargetToAttach(value)
+										addTargetSelection(value)
+									}}
+									options={targets
+										.filter((target) => !formData.targetIds.includes(target.id))
+										.map((target) => ({
+											value: target.id,
+											label: target.name,
+										}))}
+									placeholder="Search and attach a target"
+									searchable
+								/>
+								<div className="flex flex-wrap gap-2 rounded-md border border-border bg-background p-2 min-h-10">
+									{formData.targetIds.length === 0 ? (
+										<span className="text-xs text-muted-foreground">No targets attached</span>
+									) : (
+										formData.targetIds.map((targetId) => {
+											const target = targets.find((item) => item.id === targetId)
+											return (
+												<Badge
+													key={targetId}
+													variant="secondary"
+													className="flex items-center gap-1 pr-1"
+												>
+													{target?.name ?? targetId}
+													<Button
+														type="button"
+														variant="ghost"
+														size="sm"
+														className="h-5 w-5 p-0"
+														onClick={() => removeTargetSelection(targetId)}
+													>
+														<X className="h-3 w-3" />
+													</Button>
+												</Badge>
+											)
+										})
+									)}
+								</div>
 							</div>
 						</div>
 						<DialogFooter>

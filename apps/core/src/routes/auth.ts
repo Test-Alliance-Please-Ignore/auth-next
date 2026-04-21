@@ -966,6 +966,7 @@ auth.get('/session', async (c) => {
 			legacyAuth,
 		},
 		permissions: permissions.map((p) => ({
+			permissionId: p.permissionId ?? null,
 			urn: p.urn,
 			name: p.name,
 			description: p.description,

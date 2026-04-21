@@ -80,6 +80,7 @@ function makeBroadcast(overrides: Partial<BroadcastWithDetails> = {}): Broadcast
 			type: 'discord_channel',
 			sendPermissionId: 'perm-target-send',
 			managePermissionId: 'perm-target-manage',
+			displayOrder: 0,
 			config: { guildId: 'g', channelId: 'c' },
 			createdBy: 'creator-1',
 			createdAt: now,

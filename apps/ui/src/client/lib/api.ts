@@ -972,6 +972,7 @@ export interface BroadcastTarget {
 	type: TargetType
 	sendPermissionId: string
 	managePermissionId: string
+	displayOrder: number
 	config: Record<string, unknown> // { guildId, channelId } for Discord
 	createdBy: string
 	createdAt: string
@@ -983,13 +984,15 @@ export interface BroadcastTemplate {
 	name: string
 	description: string | null
 	targetType: string
-	targetId: string
+	targetIds: string[]
 	fieldSchema: Array<{
 		name: string
 		label: string
 		type: string
 		required?: boolean
 		placeholder?: string
+		options?: string[]
+		allowCustom?: boolean
 	}>
 	messageTemplate: string
 	createdBy: string
@@ -1043,6 +1046,7 @@ export interface CreateBroadcastTargetRequest {
 	type: TargetType
 	permissionEntityNamespace: string
 	permissionTargetName: string
+	displayOrder?: number
 	sendPermissionId?: string
 	managePermissionId?: string
 	config: {
@@ -1054,6 +1058,7 @@ export interface CreateBroadcastTargetRequest {
 export interface UpdateBroadcastTargetRequest {
 	name?: string
 	description?: string
+	displayOrder?: number
 	sendPermissionId?: string
 	managePermissionId?: string
 	sendPermissionUrn?: string
@@ -1068,13 +1073,15 @@ export interface CreateBroadcastTemplateRequest {
 	name: string
 	description?: string
 	targetType: string
-	targetId: string
+	targetIds: string[]
 	fieldSchema: Array<{
 		name: string
 		label: string
 		type: string
 		required?: boolean
 		placeholder?: string
+		options?: string[]
+		allowCustom?: boolean
 	}>
 	messageTemplate: string
 }
@@ -1082,12 +1089,15 @@ export interface CreateBroadcastTemplateRequest {
 export interface UpdateBroadcastTemplateRequest {
 	name?: string
 	description?: string
+	targetIds?: string[]
 	fieldSchema?: Array<{
 		name: string
 		label: string
 		type: string
 		required?: boolean
 		placeholder?: string
+		options?: string[]
+		allowCustom?: boolean
 	}>
 	messageTemplate?: string
 }

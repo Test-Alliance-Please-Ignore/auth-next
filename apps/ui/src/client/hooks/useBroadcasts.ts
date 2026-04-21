@@ -170,9 +170,9 @@ export function useCreateBroadcastTemplate() {
 			// Invalidate all templates lists
 			queryClient.invalidateQueries({ queryKey: broadcastKeys.templates() })
 			// Invalidate target-specific list
-			if (variables.targetId) {
+			for (const targetId of variables.targetIds ?? []) {
 				queryClient.invalidateQueries({
-					queryKey: broadcastKeys.templatesByTarget(variables.targetId),
+					queryKey: broadcastKeys.templatesByTarget(targetId),
 				})
 			}
 		},

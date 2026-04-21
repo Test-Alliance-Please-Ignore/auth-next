@@ -19,6 +19,7 @@ import { Label } from '@/components/ui/label'
 import { PageHeader } from '@/components/ui/page-header'
 import { Section } from '@/components/ui/section'
 import { Select } from '@/components/ui/select'
+import { Switch } from '@/components/ui/switch'
 import { Textarea } from '@/components/ui/textarea'
 import {
 	useBroadcastTargets,
@@ -28,7 +29,9 @@ import {
 	useSendBroadcast,
 	useUpdateBroadcast,
 } from '@/hooks/useBroadcasts'
+import { useConfirmationDialog } from '@/hooks/useConfirmationDialog'
 import { usePageTitle } from '@/hooks/usePageTitle'
+import { useDoctrines, useStagingSystems } from '@/features/doctrines/hooks'
 
 import type { BroadcastTemplate } from '@/lib/api'
 
@@ -170,44 +173,60 @@ function renderTemplateMessage(
 	fields: Record<string, string | undefined>,
 	includeEmptyMissing = false
 ): string {
-	return template.replace(/\{\{\s*([a-zA-Z0-9_-]+)\s*\}\}/g, (_, rawKey: string) => {
-		const key = rawKey.trim()
+	return template.replace(/\{\{\s*([^}]+?)\s*\}\}/g, (_, rawToken: string) => {
+		const token = String(rawToken ?? '').trim()
+		const wrappedToken =
+			token.startsWith('<') && token.endsWith('>') ? token.slice(1, -1).trim() : token
+		let key = wrappedToken
+		if (wrappedToken.startsWith('select:')) {
+			const selectBody = wrappedToken.slice('select:'.length)
+			const separator = selectBody.indexOf(':')
+			if (separator > 0) {
+				const labelName = selectBody.slice(0, separator).trim()
+				key = `select:${labelName}`
+			}
+		}
 		const value = fields[key]
+		if (key === 'srp') {
+			const enabled = parseBooleanField(value, true)
+			return enabled
+				? '**SRP:** Yes\n**SRP Token:** (generated on send)'
+				: '**SRP:** No'
+		}
 		if (typeof value === 'string') return value
-		return includeEmptyMissing ? '' : `{{${key}}}`
+		if (wrappedToken === 'doctrine' || wrappedToken === 'staging' || wrappedToken === 'srp') {
+			return includeEmptyMissing ? '' : `{{<${wrappedToken}>}}`
+		}
+		if (wrappedToken.startsWith('select:')) {
+			return includeEmptyMissing ? '' : `{{<${key || wrappedToken}>}}`
+		}
+		return includeEmptyMissing ? '' : `{{${key || token}}}`
 	})
 }
 
-function buildTemplatePreviewSegments(
-	template: string,
-	fields: Record<string, string | undefined>
-): Array<{ text: string; staticText: boolean }> {
-	const segments: Array<{ text: string; staticText: boolean }> = []
-	const placeholderRegex = /\{\{\s*([a-zA-Z0-9_-]+)\s*\}\}/g
-	let cursor = 0
-
-	for (const match of template.matchAll(placeholderRegex)) {
-		const fullMatch = match[0] ?? ''
-		const key = (match[1] ?? '').trim()
-		const index = match.index ?? 0
-		if (index > cursor) {
-			segments.push({ text: template.slice(cursor, index), staticText: true })
-		}
-
-		const value = fields[key]
-		segments.push({
-			text: typeof value === 'string' && value.length > 0 ? value : fullMatch,
-			staticText: false,
-		})
-		cursor = index + fullMatch.length
-	}
-
-	if (cursor < template.length) {
-		segments.push({ text: template.slice(cursor), staticText: true })
-	}
-
-	return segments
+function parseBooleanField(value: string | undefined, defaultValue: boolean): boolean {
+	if (typeof value !== 'string') return defaultValue
+	const normalized = value.trim().toLowerCase()
+	if (!normalized) return defaultValue
+	if (['true', '1', 'yes', 'enabled', 'on'].includes(normalized)) return true
+	if (['false', '0', 'no', 'disabled', 'off'].includes(normalized)) return false
+	return defaultValue
 }
+
+function isSwitchControlClick(target: EventTarget | null): boolean {
+	if (!(target instanceof Element)) return false
+	return Boolean(target.closest('label,button,[role="switch"]'))
+}
+
+function toggleSwitchById(id: string): void {
+	const element = document.getElementById(id)
+	if (element instanceof HTMLButtonElement) {
+		element.click()
+	}
+}
+
+const SPECIAL_DOCTRINE_READ_MOTD_VALUE = '__doctrine_read_motd'
+const SPECIAL_CUSTOM_VALUE = '__custom'
 
 function autoResizeTextarea(element: HTMLTextAreaElement): void {
 	element.style.height = '0px'
@@ -223,6 +242,7 @@ export default function NewBroadcastPage() {
 	const createBroadcast = useCreateBroadcast()
 	const sendBroadcast = useSendBroadcast()
 	const updateBroadcast = useUpdateBroadcast()
+	const { requestConfirmation, confirmationDialog } = useConfirmationDialog()
 	const { data: draftBroadcast, isLoading: draftLoading } = useBroadcast(draftId)
 
 	// Form state
@@ -230,6 +250,9 @@ export default function NewBroadcastPage() {
 	const [selectedTemplateId, setSelectedTemplateId] = useState<string>('custom')
 	const [customMessage, setCustomMessage] = useState<string>('')
 	const [templateFields, setTemplateFields] = useState<Record<string, string>>({})
+	const [templateFieldSelections, setTemplateFieldSelections] = useState<Record<string, string>>({})
+	const [templatePrefixText, setTemplatePrefixText] = useState<string>('')
+	const [templateDefaultText, setTemplateDefaultText] = useState<string>('')
 	const [mentionLevel, setMentionLevel] = useState<'none' | 'here' | 'everyone'>('none')
 	const [isSending, setIsSending] = useState(false)
 	const [isSavingDraft, setIsSavingDraft] = useState(false)
@@ -251,6 +274,8 @@ export default function NewBroadcastPage() {
 
 	// Fetch templates scoped to the selected target/type
 	const { data: templates } = useBroadcastTemplates(selectedTarget?.type, selectedTargetId || undefined)
+	const { data: doctrines = [] } = useDoctrines()
+	const { data: stagingSystems = [] } = useStagingSystems()
 
 	// Message state
 	const [message, setMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null)
@@ -275,15 +300,29 @@ export default function NewBroadcastPage() {
 		if (draftBroadcast.templateId) {
 			const nextTemplateFields: Record<string, string> = {}
 			for (const [key, value] of Object.entries(draftBroadcast.content)) {
-				if (key === 'mentionLevel') continue
+				if (key === 'mentionLevel' || key === '__defaultText' || key === '__prefixText') continue
 				nextTemplateFields[key] = typeof value === 'string' ? value : JSON.stringify(value, null, 2)
 			}
 			setTemplateFields(nextTemplateFields)
+			setTemplatePrefixText(
+				typeof draftBroadcast.content.__prefixText === 'string'
+					? draftBroadcast.content.__prefixText
+					: ''
+			)
+			setTemplateDefaultText(
+				typeof draftBroadcast.content.__defaultText === 'string'
+					? draftBroadcast.content.__defaultText
+					: ''
+			)
+			setTemplateFieldSelections({})
 			setCustomMessage('')
 		} else {
 			const messageValue = draftBroadcast.content.message
 			setCustomMessage(typeof messageValue === 'string' ? messageValue : '')
 			setTemplateFields({})
+			setTemplatePrefixText('')
+			setTemplateDefaultText('')
+			setTemplateFieldSelections({})
 		}
 
 		setIsDraftInitialized(true)
@@ -293,28 +332,94 @@ export default function NewBroadcastPage() {
 	const selectedTemplate =
 		selectedTemplateId === 'custom' ? null : templates?.find((t) => t.id === selectedTemplateId)
 	const selectedTemplatePreview = selectedTemplate
-		? renderTemplateMessage(selectedTemplate.messageTemplate, templateFields, false)
+		? [
+				templatePrefixText.trim(),
+				renderTemplateMessage(selectedTemplate.messageTemplate, templateFields, false),
+				templateDefaultText.trim(),
+			]
+				.filter(Boolean)
+				.join('\n\n')
 		: ''
-	const selectedTemplatePreviewSegments = selectedTemplate
-		? buildTemplatePreviewSegments(selectedTemplate.messageTemplate, templateFields)
-		: []
+	const doctrineFieldOptions = [
+		{ value: SPECIAL_DOCTRINE_READ_MOTD_VALUE, label: 'Read MOTD' },
+		{ value: SPECIAL_CUSTOM_VALUE, label: 'Custom' },
+		...doctrines.map((doctrine) => ({ value: doctrine.name, label: doctrine.name })),
+	]
+	const stagingFieldOptions = [
+		{ value: SPECIAL_CUSTOM_VALUE, label: 'Custom' },
+		...stagingSystems.map((stagingSystem) => ({
+			value: stagingSystem.solarSystemName,
+			label: stagingSystem.solarSystemName,
+		})),
+	]
 
 	// Initialize template fields when template is selected
 	const handleTemplateChange = (templateId: string) => {
 		setSelectedTemplateId(templateId)
 		if (templateId === 'custom') {
 			setTemplateFields({})
+			setTemplatePrefixText('')
+			setTemplateDefaultText('')
+			setTemplateFieldSelections({})
 			return
 		}
 		const template = templates?.find((t) => t.id === templateId)
 		if (template) {
 			// Initialize fields with empty values
 			const initialFields: Record<string, string> = {}
+			const initialSelections: Record<string, string> = {}
 			template.fieldSchema.forEach((field) => {
+				if (field.type === 'system_doctrine') {
+					initialSelections[field.name] = SPECIAL_DOCTRINE_READ_MOTD_VALUE
+					initialFields[field.name] = 'Read MOTD'
+					return
+				}
+
+				if (field.type === 'system_staging') {
+					const defaultStaging = stagingSystems[0]?.solarSystemName ?? ''
+					initialSelections[field.name] = defaultStaging ? defaultStaging : SPECIAL_CUSTOM_VALUE
+					initialFields[field.name] = defaultStaging
+					return
+				}
+
+				if (field.type === 'select') {
+					const firstOption = field.options?.[0] ?? ''
+					initialSelections[field.name] = firstOption
+					initialFields[field.name] = firstOption
+					return
+				}
+
+				if (field.type === 'system_srp') {
+					initialFields[field.name] = 'true'
+					return
+				}
+
+				if (field.type === 'system_frogsiren') {
+					initialFields[field.name] = 'false'
+					return
+				}
+
 				initialFields[field.name] = ''
 			})
 			setTemplateFields(initialFields)
+			setTemplateFieldSelections(initialSelections)
+			setTemplatePrefixText('')
+			setTemplateDefaultText('')
 		}
+	}
+
+	const updateTemplateField = (fieldName: string, value: string) => {
+		setTemplateFields((current) => ({
+			...current,
+			[fieldName]: value,
+		}))
+	}
+
+	const updateTemplateFieldSelection = (fieldName: string, value: string) => {
+		setTemplateFieldSelections((current) => ({
+			...current,
+			[fieldName]: value,
+		}))
 	}
 
 	useEffect(() => {
@@ -325,7 +430,87 @@ export default function NewBroadcastPage() {
 				autoResizeTextarea(element)
 			}
 		}
+		const prefix = document.getElementById('template-prefix-text')
+		if (prefix instanceof HTMLTextAreaElement) {
+			autoResizeTextarea(prefix)
+		}
+		const suffix = document.getElementById('template-default-text')
+		if (suffix instanceof HTMLTextAreaElement) {
+			autoResizeTextarea(suffix)
+		}
 	}, [selectedTemplate, templateFields])
+
+	useEffect(() => {
+		if (selectedTemplateId !== 'custom') {
+			setShowPreview(true)
+		}
+	}, [selectedTemplateId])
+
+	useEffect(() => {
+		if (!selectedTemplate) return
+
+		const nextSelections: Record<string, string> = { ...templateFieldSelections }
+		let changed = false
+		for (const field of selectedTemplate.fieldSchema) {
+			if (nextSelections[field.name]) continue
+
+			if (field.type === 'system_doctrine') {
+				if ((templateFields[field.name] ?? '').trim() === 'Read MOTD') {
+					nextSelections[field.name] = SPECIAL_DOCTRINE_READ_MOTD_VALUE
+				} else if ((templateFields[field.name] ?? '').trim().length > 0) {
+					nextSelections[field.name] = SPECIAL_CUSTOM_VALUE
+				} else {
+					nextSelections[field.name] = SPECIAL_DOCTRINE_READ_MOTD_VALUE
+					updateTemplateField(field.name, 'Read MOTD')
+				}
+				changed = true
+				continue
+			}
+
+			if (field.type === 'system_staging') {
+				const currentValue = (templateFields[field.name] ?? '').trim()
+				if (currentValue.length > 0) {
+					nextSelections[field.name] = currentValue
+				} else {
+					nextSelections[field.name] = SPECIAL_CUSTOM_VALUE
+				}
+				changed = true
+				continue
+			}
+
+			if (field.type === 'select') {
+				const currentValue = (templateFields[field.name] ?? '').trim()
+				const firstOption = field.options?.[0] ?? ''
+				nextSelections[field.name] = currentValue.length > 0 ? currentValue : firstOption
+				if (!currentValue && firstOption) {
+					updateTemplateField(field.name, firstOption)
+				}
+				changed = true
+				continue
+			}
+
+			if (field.type === 'system_srp') {
+				const currentValue = templateFields[field.name]
+				if (currentValue === undefined || currentValue.trim().length === 0) {
+					updateTemplateField(field.name, 'true')
+					changed = true
+				}
+				continue
+			}
+
+			if (field.type === 'system_frogsiren') {
+				const currentValue = templateFields[field.name]
+				if (currentValue === undefined || currentValue.trim().length === 0) {
+					updateTemplateField(field.name, 'false')
+					changed = true
+				}
+			}
+		}
+
+		if (changed) {
+			setTemplateFieldSelections(nextSelections)
+		}
+	}, [selectedTemplate, templateFieldSelections, templateFields])
 
 	const buildBroadcastData = () => {
 		if (!selectedTarget) throw new Error('No target selected')
@@ -336,7 +521,12 @@ export default function NewBroadcastPage() {
 			content:
 				selectedTemplateId === 'custom'
 					? { message: customMessage, mentionLevel }
-					: { ...templateFields, mentionLevel },
+					: {
+							...templateFields,
+							__prefixText: templatePrefixText,
+							__defaultText: templateDefaultText,
+							mentionLevel,
+						},
 		}
 	}
 
@@ -628,16 +818,9 @@ export default function NewBroadcastPage() {
 										</Button>
 									</div>
 									{showPreview && (
-										<div className="rounded-md border border-border bg-muted/20 p-3 text-sm overflow-y-auto min-h-[160px] whitespace-pre-wrap break-words">
+										<div className="rounded-md border border-border bg-muted/20 p-3 text-sm overflow-y-auto min-h-[160px]">
 											{selectedTemplatePreview.trim() ? (
-												selectedTemplatePreviewSegments.map((segment, index) => (
-													<span
-														key={`template-preview-segment-${index}`}
-														className={segment.staticText ? 'text-muted-foreground' : ''}
-													>
-														{segment.text}
-													</span>
-												))
+												renderDiscordContentValue(selectedTemplatePreview, 'preview')
 											) : (
 												<span className="text-muted-foreground italic">
 													Preview will appear here…
@@ -648,27 +831,225 @@ export default function NewBroadcastPage() {
 									<div className="space-y-4">
 										{selectedTemplate.fieldSchema.map((field) => (
 											<div key={field.name} className="space-y-2">
-												<Label htmlFor={field.name}>
-													{field.label}
-													{field.required && ' *'}
-												</Label>
-												<Textarea
-													id={field.name}
-													value={templateFields[field.name] || ''}
-													onChange={(e) => {
-														autoResizeTextarea(e.currentTarget)
-														setTemplateFields({
-															...templateFields,
-															[field.name]: e.target.value,
-														})
-													}}
-													rows={1}
-													required={field.required}
-													className="resize-none overflow-hidden"
-													style={{ minHeight: '2.5rem' }}
-												/>
+												{field.type === 'system_frogsiren' ? (
+													<div className="max-w-xl">
+														<div
+															className={`frogsiren-hoverable flex items-center justify-between rounded-md border border-border/60 px-3 py-2 cursor-pointer transition-colors ${
+																parseBooleanField(templateFields[field.name], false)
+																	? 'bg-slate-500/15'
+																	: 'bg-transparent'
+															}`}
+															onClick={(event) => {
+																if (isSwitchControlClick(event.target)) return
+																toggleSwitchById(field.name)
+															}}
+														>
+															<Label
+																htmlFor={field.name}
+																className="text-2xl font-black frogsiren-hover-gradient cursor-pointer"
+															>
+																Sound the Frogsiren
+															</Label>
+															<Switch
+																id={field.name}
+																checked={parseBooleanField(templateFields[field.name], false)}
+																onClick={(event) => event.stopPropagation()}
+																onCheckedChange={(checked) => {
+																	if (!checked) {
+																		updateTemplateField(field.name, 'false')
+																		return
+																	}
+																	requestConfirmation({
+																		title: 'Sound the Frogsiren?',
+																		description:
+																			'Are you really fucking sure you want to sound the frogsiren? Is the happening status: its? Is it UALX all over again?',
+																		confirmLabel: 'Sound It',
+																		intent: 'destructive',
+																		onConfirm: () => {
+																			updateTemplateField(field.name, 'true')
+																		},
+																	})
+																}}
+															/>
+														</div>
+													</div>
+												) : field.type === 'system_srp' ? (
+													<div className="max-w-xl">
+														<div
+															className={`flex items-center justify-between rounded-md border border-border/60 px-3 py-2 cursor-pointer transition-colors ${
+																parseBooleanField(templateFields[field.name], true)
+																	? 'bg-slate-500/15'
+																	: 'bg-transparent'
+															}`}
+															onClick={(event) => {
+																if (isSwitchControlClick(event.target)) return
+																toggleSwitchById(field.name)
+															}}
+														>
+														<div className="space-y-0.5">
+															<Label htmlFor={field.name} className="cursor-pointer">
+																{field.label}
+																{field.required && ' *'}
+															</Label>
+															<p className="text-xs text-muted-foreground">
+																When enabled, a unique SRP token is included at send time.
+															</p>
+														</div>
+														<Switch
+															id={field.name}
+															checked={parseBooleanField(templateFields[field.name], true)}
+															onClick={(event) => event.stopPropagation()}
+															onCheckedChange={(checked) =>
+																updateTemplateField(field.name, checked ? 'true' : 'false')
+															}
+														/>
+														</div>
+													</div>
+												) : (
+													<Label htmlFor={field.name}>
+														{field.label}
+														{field.required && ' *'}
+													</Label>
+												)}
+												{field.type === 'system_srp' || field.type === 'system_frogsiren' ? null : field.type === 'system_doctrine' ? (
+													<div className="max-w-xl space-y-2">
+														<Select
+															inputId={field.name}
+															value={
+																templateFieldSelections[field.name] ??
+																SPECIAL_DOCTRINE_READ_MOTD_VALUE
+															}
+															onValueChange={(value) => {
+																updateTemplateFieldSelection(field.name, value)
+																if (value === SPECIAL_DOCTRINE_READ_MOTD_VALUE) {
+																	updateTemplateField(field.name, 'Read MOTD')
+																	return
+																}
+																if (value === SPECIAL_CUSTOM_VALUE) {
+																	updateTemplateField(field.name, '')
+																	return
+																}
+																updateTemplateField(field.name, value)
+															}}
+															options={doctrineFieldOptions}
+															searchable
+														/>
+														{templateFieldSelections[field.name] === SPECIAL_CUSTOM_VALUE && (
+															<Input
+																id={`${field.name}-custom`}
+																value={templateFields[field.name] ?? ''}
+																onChange={(e) =>
+																	updateTemplateField(field.name, e.target.value)
+																}
+																required={field.required}
+																placeholder="Enter doctrine"
+															/>
+														)}
+													</div>
+												) : field.type === 'system_staging' ? (
+													<div className="max-w-xl space-y-2">
+														<Select
+															inputId={field.name}
+															value={
+																templateFieldSelections[field.name] ??
+																SPECIAL_CUSTOM_VALUE
+															}
+															onValueChange={(value) => {
+																updateTemplateFieldSelection(field.name, value)
+																if (value === SPECIAL_CUSTOM_VALUE) {
+																	updateTemplateField(field.name, '')
+																	return
+																}
+																updateTemplateField(field.name, value)
+															}}
+															options={stagingFieldOptions}
+															searchable
+														/>
+														{templateFieldSelections[field.name] === SPECIAL_CUSTOM_VALUE && (
+															<Input
+																id={`${field.name}-custom`}
+																value={templateFields[field.name] ?? ''}
+																onChange={(e) =>
+																	updateTemplateField(field.name, e.target.value)
+																}
+																required={field.required}
+																placeholder="Enter staging system"
+															/>
+														)}
+													</div>
+												) : field.type === 'select' ? (
+													<div className="max-w-xl">
+														<Select
+															inputId={field.name}
+															value={
+																templateFieldSelections[field.name] ??
+																templateFields[field.name] ??
+																''
+															}
+															onValueChange={(value) => {
+																updateTemplateFieldSelection(field.name, value)
+																updateTemplateField(field.name, value)
+															}}
+															options={(field.options ?? []).map((option) => ({
+																value: option,
+																label: option,
+															}))}
+															searchable
+														/>
+													</div>
+												) : field.type === 'textarea' ? (
+													<Textarea
+														id={field.name}
+														value={templateFields[field.name] || ''}
+														onChange={(e) => {
+															autoResizeTextarea(e.currentTarget)
+															updateTemplateField(field.name, e.target.value)
+														}}
+														rows={1}
+														required={field.required}
+														className="resize-none overflow-hidden"
+														style={{ minHeight: '2.5rem' }}
+													/>
+												) : (
+													<Input
+														id={field.name}
+														value={templateFields[field.name] || ''}
+														onChange={(e) => updateTemplateField(field.name, e.target.value)}
+														required={field.required}
+													/>
+												)}
 											</div>
 										))}
+										<div className="space-y-2">
+											<Label htmlFor="template-prefix-text">Text before (optional)</Label>
+											<Textarea
+												id="template-prefix-text"
+												value={templatePrefixText}
+												onChange={(e) => {
+													autoResizeTextarea(e.currentTarget)
+													setTemplatePrefixText(e.target.value)
+												}}
+												rows={1}
+												placeholder="Optional text prepended before the template message"
+												className="resize-none overflow-hidden"
+												style={{ minHeight: '2.5rem' }}
+											/>
+										</div>
+										<div className="space-y-2">
+											<Label htmlFor="template-default-text">Text after (optional)</Label>
+											<Textarea
+												id="template-default-text"
+												value={templateDefaultText}
+												onChange={(e) => {
+													autoResizeTextarea(e.currentTarget)
+													setTemplateDefaultText(e.target.value)
+												}}
+												rows={1}
+												placeholder="Optional text appended after the template message"
+												className="resize-none overflow-hidden"
+												style={{ minHeight: '2.5rem' }}
+											/>
+										</div>
 									</div>
 								</div>
 							) : null}
@@ -808,6 +1189,7 @@ export default function NewBroadcastPage() {
 					</DialogFooter>
 				</DialogContent>
 			</Dialog>
+			{confirmationDialog}
 		</Container>
 	)
 }
