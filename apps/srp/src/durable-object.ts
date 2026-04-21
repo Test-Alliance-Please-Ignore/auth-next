@@ -1586,7 +1586,6 @@ export class SrpDO extends DurableObject<Env> implements Srp {
 
 	async listPolicies(): Promise<SRPPolicy[]> {
 		const rows = await this.db.query.srpPolicies.findMany({
-			where: eq(srpPolicies.isActive, true),
 			orderBy: srpPolicies.displayOrder,
 		})
 		return rows.map(this.formatPolicy)
@@ -1604,6 +1603,7 @@ export class SrpDO extends DurableObject<Env> implements Srp {
 				effect: data.effect,
 				config: data.config,
 				displayOrder: data.displayOrder ?? 0,
+				...(data.isActive !== undefined ? { isActive: data.isActive } : {}),
 				createdBy: userId,
 			})
 			.returning()
@@ -1627,6 +1627,7 @@ export class SrpDO extends DurableObject<Env> implements Srp {
 				...(data.description !== undefined ? { description: data.description } : {}),
 				...(data.config !== undefined ? { config: data.config } : {}),
 				...(data.displayOrder !== undefined ? { displayOrder: data.displayOrder } : {}),
+				...(data.isActive !== undefined ? { isActive: data.isActive } : {}),
 				updatedAt: new Date(),
 			})
 			.where(eq(srpPolicies.id, id))

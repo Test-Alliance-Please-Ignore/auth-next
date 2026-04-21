@@ -1,4 +1,4 @@
-import { Edit2, Pencil, Plus, Power, PowerOff, Trash2 } from 'lucide-react'
+import { Edit2, Pencil, Plus, Trash2 } from 'lucide-react'
 import { useEffect, useState } from 'react'
 import { Navigate } from 'react-router-dom'
 import { toast } from 'sonner'
@@ -12,11 +12,19 @@ import { Label } from '@/components/ui/label'
 import { NumberInput } from '@/components/ui/number-input'
 import { PageHeader } from '@/components/ui/page-header'
 import { Select } from '@/components/ui/select'
+import { Switch } from '@/components/ui/switch'
 import { Textarea } from '@/components/ui/textarea'
 import { useUserPermissions } from '@/hooks/useUserPermissions'
 import { api } from '@/lib/api'
 
-import { useCreatePolicy, useSRPConfig, useSRPPolicies, useUpdatePolicy, useUpdateSRPConfig } from '../hooks'
+import {
+	useCreatePolicy,
+	useDeletePolicy,
+	useSRPConfig,
+	useSRPPolicies,
+	useUpdatePolicy,
+	useUpdateSRPConfig,
+} from '../hooks'
 import { formatISK } from '../utils'
 
 import type { CapConfig, PayoutModifierConfig } from '@repo/srp'
@@ -530,6 +538,7 @@ function PredefinedAdhocModifiersSection({
 												onClick={() => removeModifier(index)}
 												disabled={updateConfigMutation.isPending}
 												aria-label="Remove template"
+												className="text-destructive hover:text-destructive"
 											>
 												<Trash2 className="h-4 w-4" />
 											</Button>
@@ -688,6 +697,7 @@ function PolicySection({ title, description, effect, policies }: PolicySectionPr
 function PolicyRow({ policy }: { policy: SRPPolicy }) {
 	const [editing, setEditing] = useState(false)
 	const updateMutation = useUpdatePolicy()
+	const deleteMutation = useDeletePolicy()
 
 	const toggleActive = async () => {
 		try {
@@ -698,6 +708,17 @@ function PolicyRow({ policy }: { policy: SRPPolicy }) {
 			toast.success(policy.isActive ? 'Policy deactivated' : 'Policy activated')
 		} catch (e: any) {
 			toast.error('Failed to update policy', { description: e.message })
+		}
+	}
+
+	const removePolicy = async () => {
+		if (!confirm('Delete this policy? This action cannot be undone.')) return
+
+		try {
+			await deleteMutation.mutateAsync(policy.id)
+			toast.success('Policy deleted')
+		} catch (e: any) {
+			toast.error('Failed to delete policy', { description: e.message })
 		}
 	}
 
@@ -723,12 +744,17 @@ function PolicyRow({ policy }: { policy: SRPPolicy }) {
 					</td>
 				) : null}
 				<td className="p-3 text-center text-sm">{policy.displayOrder}</td>
-				<td className="p-3 text-center">
-					<span
-						className={`inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium ${policy.isActive ? 'bg-green-500/20 text-green-600' : 'bg-muted/40 text-muted-foreground'}`}
-					>
-						{policy.isActive ? 'Active' : 'Inactive'}
-					</span>
+				<td className="p-3">
+					<div className="flex items-center justify-center gap-2">
+						<Switch
+							checked={policy.isActive}
+							onCheckedChange={() => void toggleActive()}
+							disabled={updateMutation.isPending}
+						/>
+						<span className="text-xs text-muted-foreground">
+							{policy.isActive ? 'Active' : 'Inactive'}
+						</span>
+					</div>
 				</td>
 				<td className="p-3 text-right">
 					<div className="flex items-center justify-end gap-1">
@@ -737,21 +763,19 @@ function PolicyRow({ policy }: { policy: SRPPolicy }) {
 							size="sm"
 							className="h-8 w-8 p-0"
 							onClick={() => setEditing((v) => !v)}
+							disabled={deleteMutation.isPending}
 						>
 							<Edit2 className="h-4 w-4" />
 						</Button>
 						<Button
 							variant="ghost"
 							size="sm"
-							className="h-8 w-8 p-0"
-							onClick={toggleActive}
-							disabled={updateMutation.isPending}
+							className="h-8 w-8 p-0 text-destructive hover:text-destructive"
+							onClick={() => void removePolicy()}
+							disabled={deleteMutation.isPending || updateMutation.isPending}
+							aria-label="Delete policy"
 						>
-							{policy.isActive ? (
-								<PowerOff className="h-4 w-4 text-muted-foreground" />
-							) : (
-								<Power className="h-4 w-4 text-green-500" />
-							)}
+							<Trash2 className="h-4 w-4" />
 						</Button>
 					</div>
 				</td>
@@ -922,8 +946,8 @@ function PolicyForm({ effect, existing, onCancel, onSaved }: PolicyFormProps) {
 				)}
 			</div>
 
-			<div className="flex gap-2">
-				<Button variant="secondary" size="sm" onClick={onCancel}>
+			<div className="flex justify-end gap-2">
+				<Button variant="cancel" size="sm" onClick={onCancel}>
 					Cancel
 				</Button>
 				<Button size="sm" onClick={handleSave} disabled={isPending}>
