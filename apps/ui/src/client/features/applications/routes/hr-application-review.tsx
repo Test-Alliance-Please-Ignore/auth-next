@@ -191,6 +191,7 @@ export default function HrApplicationReview() {
 	const rootCorporationsPath = '/corporations'
 	const rootCorporationsLabel = 'Corporations'
 	const membersPath = `/corporations/${corporationId}/members`
+	const reviewTabTriggerClassName = 'flex-1 sm:flex-none'
 
 	// Check authentication
 	if (!authLoading && !isAuthenticated) {
@@ -359,32 +360,50 @@ export default function HrApplicationReview() {
 			{/* Tabbed Content */}
 			<Tabs defaultValue={initialTab} className="space-y-6">
 				<TabsList className="w-full sm:w-auto">
-					<TabsTrigger value="details" className="flex-1 sm:flex-none">
+					<TabsTrigger
+						value="details"
+						className={reviewTabTriggerClassName}
+					>
 						Details
 					</TabsTrigger>
-				<TabsTrigger value="alts" className="flex-1 sm:flex-none">
+					<TabsTrigger
+						value="alts"
+						className={reviewTabTriggerClassName}
+					>
 						Characters
 						{altCharacterIds.length > 0 && (
 							<span className="ml-1.5 text-xs opacity-70">({altCharacterIds.length})</span>
 						)}
 					</TabsTrigger>
-					<TabsTrigger value="recommendations" className="flex-1 sm:flex-none">
+					<TabsTrigger
+						value="recommendations"
+						className={reviewTabTriggerClassName}
+					>
 						Recommendations
 						{recommendations && recommendations.length > 0 && (
 							<span className="ml-1.5 text-xs opacity-70">({recommendations.length})</span>
 						)}
 					</TabsTrigger>
-					<TabsTrigger value="history" className="flex-1 sm:flex-none">
+					<TabsTrigger
+						value="history"
+						className={reviewTabTriggerClassName}
+					>
 						History
 					</TabsTrigger>
-					<TabsTrigger value="messages" className="flex-1 sm:flex-none">
+					<TabsTrigger
+						value="messages"
+						className={reviewTabTriggerClassName}
+					>
 						Messages
 						{messageCount > 0 && (
 							<span className="ml-1.5 text-xs opacity-70">({messageCount})</span>
 						)}
 					</TabsTrigger>
 					{(user?.is_admin || permission?.hasPermission) && (
-						<TabsTrigger value="staff-notes" className="flex-1 sm:flex-none">
+						<TabsTrigger
+							value="staff-notes"
+							className={reviewTabTriggerClassName}
+						>
 							Application Notes
 							{staffNotesCount > 0 && (
 								<span className="ml-1.5 text-xs opacity-70">({staffNotesCount})</span>
@@ -392,16 +411,25 @@ export default function HrApplicationReview() {
 						</TabsTrigger>
 					)}
 					{(user?.is_admin || permission?.hasPermission) && (
-						<TabsTrigger value="global-notes" className="flex-1 sm:flex-none">
+						<TabsTrigger
+							value="global-notes"
+							className={reviewTabTriggerClassName}
+						>
 							Global User Notes
 							<span className="ml-1.5 text-xs opacity-70">({globalUserNotesCount})</span>
 						</TabsTrigger>
 					)}
-					<TabsTrigger value="prior-apps" className="flex-1 sm:flex-none">
+					<TabsTrigger
+						value="prior-apps"
+						className={reviewTabTriggerClassName}
+					>
 						Prior Apps
 					</TabsTrigger>
 					{permission?.currentRole && ['hr_admin', 'hr_reviewer'].includes(permission.currentRole) && application && ACTIVE_APPLICATION_STATUSES.includes(application.status) && (
-						<TabsTrigger value="fulcrum" className="flex-1 sm:flex-none">
+						<TabsTrigger
+							value="fulcrum"
+							className={reviewTabTriggerClassName}
+						>
 							Fulcrum
 						</TabsTrigger>
 					)}
