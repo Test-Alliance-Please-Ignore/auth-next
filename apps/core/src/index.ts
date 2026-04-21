@@ -216,6 +216,21 @@ export class CoreWorker extends WorkerEntrypoint<Env> {
 	}
 
 	/**
+	 * Back-compat RPC alias used by service-bound workers (e.g. eve-corporation-data).
+	 * Returns the compact ownership shape expected by @repo/core Core interface.
+	 */
+	async getCharacterOwner(
+		characterId: string
+	): Promise<{ userId: string; isPrimary: boolean } | null> {
+		const ownership = await this.getService().getCharacterOwnership(characterId)
+		if (!ownership) return null
+		return {
+			userId: ownership.userId,
+			isPrimary: ownership.isPrimary,
+		}
+	}
+
+	/**
 	 * Get corporations that should be included in background refresh
 	 */
 	async getCorporationsForBackgroundRefresh(): Promise<

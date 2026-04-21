@@ -234,21 +234,11 @@ export class HrRoleService {
 
 		try {
 			const corpStub = getStub<EveCorporationData>(this.ctx.env.EVE_CORPORATION_DATA, corporationId)
-			const [corpInfo, directors] = await Promise.all([
-				corpStub.getCorporationInfo(corporationId),
-				corpStub.getDirectors(corporationId),
-			])
+			const corpInfo = await corpStub.getCorporationInfo(corporationId)
 
 			const userCharacterSet = new Set(userCharacterIds)
 			if (corpInfo && userCharacterSet.has(String(corpInfo.ceoId))) {
 				return 'hr_admin'
-			}
-
-			const directorIds = new Set(directors.map((director) => director.characterId))
-			for (const characterId of userCharacterSet) {
-				if (directorIds.has(characterId)) {
-					return 'hr_reviewer'
-				}
 			}
 		} catch (error) {
 			this.logger.warn('[HrRoleService.getLeadershipRoleForCorporation] leadership check failed', {
@@ -523,7 +513,7 @@ export class HrRoleService {
 			const leadershipRole = await this.getLeadershipRoleForCorporation(userId, corporationId)
 			if (minRole === 'hr_admin' && leadershipRole === 'hr_admin') {
 				corporationIds.add(corporationId)
-			} else if (minRole === 'hr_reviewer' && (leadershipRole === 'hr_admin' || leadershipRole === 'hr_reviewer')) {
+			} else if (minRole === 'hr_reviewer' && leadershipRole === 'hr_admin') {
 				corporationIds.add(corporationId)
 			}
 		}
