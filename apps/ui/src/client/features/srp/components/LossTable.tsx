@@ -1,4 +1,5 @@
 import { ExternalLink, RefreshCw } from 'lucide-react'
+import { useEffect, useState } from 'react'
 import { Link } from 'react-router-dom'
 
 import { Button } from '@/components/ui/button'
@@ -34,8 +35,46 @@ interface LossTableProps {
 	refreshResults?: CharacterRefreshResult[]
 }
 
+const REFRESH_COOLDOWN_MS = 60_000
+const REFRESH_COOLDOWN_STORAGE_KEY = 'srp.losses.refresh.cooldown_until'
+
 export function LossTable({ losses, isLoading, isRefreshing, onRefresh, config, refreshResults }: LossTableProps) {
 	const maxLossAgeDays = config?.maxLossAgeDays ?? 60
+	const [nowMs, setNowMs] = useState(() => Date.now())
+	const [cooldownUntilMs, setCooldownUntilMs] = useState(() => {
+		if (typeof window === 'undefined') return 0
+		const raw = window.localStorage.getItem(REFRESH_COOLDOWN_STORAGE_KEY)
+		const parsed = Number(raw)
+		return Number.isFinite(parsed) ? parsed : 0
+	})
+
+	useEffect(() => {
+		if (cooldownUntilMs <= Date.now()) return
+		const intervalId = window.setInterval(() => setNowMs(Date.now()), 1000)
+		return () => window.clearInterval(intervalId)
+	}, [cooldownUntilMs])
+
+	useEffect(() => {
+		if (typeof window === 'undefined') return
+		if (cooldownUntilMs > Date.now()) {
+			window.localStorage.setItem(REFRESH_COOLDOWN_STORAGE_KEY, String(cooldownUntilMs))
+		} else {
+			window.localStorage.removeItem(REFRESH_COOLDOWN_STORAGE_KEY)
+		}
+	}, [cooldownUntilMs])
+
+	const cooldownRemainingMs = Math.max(0, cooldownUntilMs - nowMs)
+	const isCooldownActive = cooldownRemainingMs > 0
+	const refreshDisabled = Boolean(isRefreshing || isCooldownActive)
+	const remainingSeconds = Math.ceil(cooldownRemainingMs / 1000)
+	const remainingMinutesPart = String(Math.floor(remainingSeconds / 60)).padStart(2, '0')
+	const remainingSecondsPart = String(remainingSeconds % 60).padStart(2, '0')
+
+	const handleRefreshClick = () => {
+		if (!onRefresh || refreshDisabled) return
+		setCooldownUntilMs(Date.now() + REFRESH_COOLDOWN_MS)
+		onRefresh()
+	}
 
 	if (isLoading) {
 		return (
@@ -57,9 +96,22 @@ export function LossTable({ losses, isLoading, isRefreshing, onRefresh, config, 
 		<div className="space-y-3">
 			{onRefresh && (
 				<div className="flex justify-end">
-					<Button size="sm" onClick={onRefresh} disabled={isRefreshing}>
+					<Button
+						size="sm"
+						onClick={handleRefreshClick}
+						disabled={refreshDisabled}
+						title={
+							isCooldownActive
+								? `Refresh available in ${remainingMinutesPart}:${remainingSecondsPart}`
+								: undefined
+						}
+					>
 						<RefreshCw className={`mr-2 h-4 w-4 ${isRefreshing ? 'animate-spin' : ''}`} />
-						{isRefreshing ? 'Refreshing…' : 'Refresh Losses'}
+						{isRefreshing
+							? 'Refreshing…'
+							: isCooldownActive
+								? `Refresh in ${remainingMinutesPart}:${remainingSecondsPart}`
+								: 'Refresh Losses'}
 					</Button>
 				</div>
 			)}

@@ -1,6 +1,7 @@
 import { asc, eq } from '@repo/db-utils'
 
 import { applicationActivityLog, applicationMessages, applications } from '../db/schema'
+import { touchApplicationStaffInteraction } from './application-interaction'
 
 import type { ApplicationMessage } from '@repo/hr'
 import type { ServiceContext } from './context'
@@ -92,6 +93,11 @@ export class MessageService {
 			newValue: null,
 			metadata: { messageId: messageRecord.id, senderId, recipientId: effectiveRecipientId },
 		})
+
+		// HR-originated message counts as staff interaction.
+		if (!isSenderApplicant) {
+			await touchApplicationStaffInteraction(this.ctx.db, applicationId)
+		}
 
 		return this.mapToApplicationMessage(messageRecord)
 	}

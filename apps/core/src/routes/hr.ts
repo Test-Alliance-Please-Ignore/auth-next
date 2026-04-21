@@ -23,6 +23,10 @@ const updateApplicationSchema = z.object({
 	reviewNotes: z.string().trim().max(5000).optional(),
 })
 
+const upsertApplicationStaffNoteSchema = z.object({
+	noteText: z.string().trim().min(1).max(5000),
+})
+
 /**
  * Helper to get HR Durable Object stub
  */
@@ -795,6 +799,209 @@ app.get('/applications/:applicationId/messages/count', requireAuth(), async (c) 
 			{ error: error instanceof Error ? error.message : 'Failed to get message count' },
 			error instanceof Error && error.message.includes('permission') ? 403 : 500
 		)
+	}
+})
+
+// ==================== Application Staff Notes Routes ====================
+
+/**
+ * GET /api/hr/applications/:applicationId/staff-notes
+ * List HR staff notes scoped to a specific application.
+ * Access: HR viewer/reviewer/admin for the application's corporation, or HR auditor.
+ */
+app.get('/applications/:applicationId/staff-notes', requireAuth(), async (c) => {
+	const user = c.get('user')!
+	const applicationId = c.req.param('applicationId')
+
+	try {
+		const hr = getHrStub(c)
+		const isAuditor = await hasHrAuditorPermission(c)
+		const application = await hr.getApplication(applicationId, user.id, {
+			isAdmin: user.is_admin,
+			isAuditor,
+		})
+
+		const hasHrPermission =
+			user.is_admin ||
+			isAuditor ||
+			(await hr.checkPermission(user.id, application.corporationId, 'hr_viewer'))
+		if (!hasHrPermission) {
+			return c.json({ error: 'HR staff access required' }, 403)
+		}
+
+		const notes = await hr.listApplicationStaffNotes(applicationId)
+		return c.json(notes)
+	} catch (error) {
+		const message = error instanceof Error ? error.message : 'Failed to list application staff notes'
+		const status = message.includes('permission') ? 403 : 400
+		return c.json({ error: message }, status)
+	}
+})
+
+/**
+ * POST /api/hr/applications/:applicationId/staff-notes
+ * Add an HR staff note for a specific application.
+ * Access: HR reviewer/admin for the application's corporation.
+ */
+app.post('/applications/:applicationId/staff-notes', requireAuth(), async (c) => {
+	const user = c.get('user')!
+	const applicationId = c.req.param('applicationId')
+	const parseResult = upsertApplicationStaffNoteSchema.safeParse(await c.req.json())
+
+	if (!parseResult.success) {
+		const firstIssue = parseResult.error.issues[0]
+		return c.json({ error: firstIssue?.message || 'Invalid request body' }, 400)
+	}
+
+	try {
+		const hr = getHrStub(c)
+		const isAuditor = await hasHrAuditorPermission(c)
+		const application = await hr.getApplication(applicationId, user.id, {
+			isAdmin: user.is_admin,
+			isAuditor,
+		})
+
+		const managementAccess = await getHrRoleManagementAccess(c, application.corporationId)
+		const hasHrStaffPermission = await hr.checkPermission(user.id, application.corporationId, 'hr_viewer')
+		const hasWritePermission =
+			user.is_admin ||
+			managementAccess === 'ceo' ||
+			hasHrStaffPermission
+		if (!hasWritePermission) {
+			return c.json({ error: 'HR staff, CEO, or admin access required' }, 403)
+		}
+
+		const primaryCharacter = user.characters.find((char) => char.is_primary)
+		const authorCharacterId = primaryCharacter?.characterId ?? user.mainCharacterId
+		const authorCharacterName = getCharacterName(user, authorCharacterId)
+
+		const note = await hr.addApplicationStaffNote(
+			applicationId,
+			user.id,
+			authorCharacterId,
+			authorCharacterName,
+			parseResult.data.noteText
+		)
+		return c.json(note, 201)
+	} catch (error) {
+		const message = error instanceof Error ? error.message : 'Failed to add application staff note'
+		const status = message.includes('permission') ? 403 : 400
+		return c.json({ error: message }, status)
+	}
+})
+
+/**
+ * PATCH /api/hr/applications/:applicationId/staff-notes/:noteId
+ * Update an application staff note.
+ * Access: HR reviewer/admin for the application's corporation.
+ */
+app.patch('/applications/:applicationId/staff-notes/:noteId', requireAuth(), async (c) => {
+	const user = c.get('user')!
+	const applicationId = c.req.param('applicationId')
+	const noteId = c.req.param('noteId')
+	const parseResult = upsertApplicationStaffNoteSchema.safeParse(await c.req.json())
+
+	if (!parseResult.success) {
+		const firstIssue = parseResult.error.issues[0]
+		return c.json({ error: firstIssue?.message || 'Invalid request body' }, 400)
+	}
+
+	try {
+		const hr = getHrStub(c)
+		const isAuditor = await hasHrAuditorPermission(c)
+		const application = await hr.getApplication(applicationId, user.id, {
+			isAdmin: user.is_admin,
+			isAuditor,
+		})
+
+		const managementAccess = await getHrRoleManagementAccess(c, application.corporationId)
+		const hasHrStaffPermission = await hr.checkPermission(user.id, application.corporationId, 'hr_viewer')
+		const hasWritePermission =
+			user.is_admin ||
+			managementAccess === 'ceo' ||
+			hasHrStaffPermission
+		if (!hasWritePermission) {
+			return c.json({ error: 'HR staff, CEO, or admin access required' }, 403)
+		}
+
+		const existing = await hr.listApplicationStaffNotes(applicationId)
+		const note = existing.find((candidate) => candidate.id === noteId)
+		if (!note) {
+			return c.json({ error: 'Application staff note not found' }, 404)
+		}
+		if (note.authorId !== user.id) {
+			return c.json({ error: 'You can only edit your own application notes' }, 403)
+		}
+
+		const primaryCharacter = user.characters.find((char) => char.is_primary)
+		const actorCharacterId = primaryCharacter?.characterId ?? user.mainCharacterId
+		const actorCharacterName = getCharacterName(user, actorCharacterId)
+
+		const updated = await hr.updateApplicationStaffNote(
+			noteId,
+			parseResult.data.noteText,
+			user.id,
+			actorCharacterId,
+			actorCharacterName
+		)
+		if (updated.applicationId !== applicationId) {
+			return c.json({ error: 'Application staff note not found' }, 404)
+		}
+		return c.json(updated)
+	} catch (error) {
+		const message = error instanceof Error ? error.message : 'Failed to update application staff note'
+		const status = message.includes('permission') ? 403 : 400
+		return c.json({ error: message }, status)
+	}
+})
+
+/**
+ * DELETE /api/hr/applications/:applicationId/staff-notes/:noteId
+ * Delete an application staff note.
+ * Access: HR reviewer/admin for the application's corporation.
+ */
+app.delete('/applications/:applicationId/staff-notes/:noteId', requireAuth(), async (c) => {
+	const user = c.get('user')!
+	const applicationId = c.req.param('applicationId')
+	const noteId = c.req.param('noteId')
+
+	try {
+		const hr = getHrStub(c)
+		const isAuditor = await hasHrAuditorPermission(c)
+		const application = await hr.getApplication(applicationId, user.id, {
+			isAdmin: user.is_admin,
+			isAuditor,
+		})
+
+		const managementAccess = await getHrRoleManagementAccess(c, application.corporationId)
+		const hasHrStaffPermission = await hr.checkPermission(user.id, application.corporationId, 'hr_viewer')
+		const hasWritePermission =
+			user.is_admin ||
+			managementAccess === 'ceo' ||
+			hasHrStaffPermission
+		if (!hasWritePermission) {
+			return c.json({ error: 'HR staff, CEO, or admin access required' }, 403)
+		}
+
+		const existing = await hr.listApplicationStaffNotes(applicationId)
+		const note = existing.find((candidate) => candidate.id === noteId)
+		if (!note) {
+			return c.json({ error: 'Application staff note not found' }, 404)
+		}
+		if (note.authorId !== user.id) {
+			return c.json({ error: 'You can only delete your own application notes' }, 403)
+		}
+
+		const primaryCharacter = user.characters.find((char) => char.is_primary)
+		const actorCharacterId = primaryCharacter?.characterId ?? user.mainCharacterId
+		const actorCharacterName = getCharacterName(user, actorCharacterId)
+
+		await hr.deleteApplicationStaffNote(noteId, user.id, actorCharacterId, actorCharacterName)
+		return c.json({ success: true })
+	} catch (error) {
+		const message = error instanceof Error ? error.message : 'Failed to delete application staff note'
+		const status = message.includes('permission') ? 403 : 400
+		return c.json({ error: message }, status)
 	}
 })
 

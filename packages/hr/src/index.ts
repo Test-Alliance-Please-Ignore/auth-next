@@ -95,6 +95,7 @@ export interface Application {
 	reviewNotes: string | null
 	createdAt: Date
 	updatedAt: Date
+	lastStaffInteractionAt: Date | null
 	altCharacterIds?: string[]
 }
 
@@ -219,6 +220,20 @@ export interface HrNote {
 	noteType: HrNoteType
 	priority: HrNotePriority
 	metadata: Record<string, unknown> | null
+	createdAt: Date
+	updatedAt: Date
+}
+
+/**
+ * Application-scoped staff note (HR-visible only)
+ */
+export interface ApplicationStaffNote {
+	id: string
+	applicationId: string
+	authorId: string
+	authorCharacterId: string | null
+	authorCharacterName: string | null
+	noteText: string
 	createdAt: Date
 	updatedAt: Date
 }
@@ -597,6 +612,45 @@ export interface Hr extends DurableObject {
 	 * @returns Number of messages for the application
 	 */
 	getMessageCount(applicationId: string, userId: string, access: HrAccessContext): Promise<number>
+
+	// ==================== Application Staff Notes ====================
+
+	/**
+	 * List all staff notes for an application
+	 */
+	listApplicationStaffNotes(applicationId: string): Promise<ApplicationStaffNote[]>
+
+	/**
+	 * Add a new staff note for an application
+	 */
+	addApplicationStaffNote(
+		applicationId: string,
+		authorId: string,
+		authorCharacterId: string | null,
+		authorCharacterName: string | null,
+		noteText: string
+	): Promise<ApplicationStaffNote>
+
+	/**
+	 * Update an application staff note
+	 */
+	updateApplicationStaffNote(
+		noteId: string,
+		noteText: string,
+		actorId: string,
+		actorCharacterId: string | null,
+		actorCharacterName: string | null
+	): Promise<ApplicationStaffNote>
+
+	/**
+	 * Delete an application staff note
+	 */
+	deleteApplicationStaffNote(
+		noteId: string,
+		actorId: string,
+		actorCharacterId: string | null,
+		actorCharacterName: string | null
+	): Promise<void>
 
 	// ==================== Message Template Methods ====================
 

@@ -293,6 +293,7 @@ export class ApplicationService {
 			.update(applications)
 			.set({
 				status: status as ApplicationStatus,
+				lastStaffInteractionAt: new Date(),
 				...(isReviewAction
 					? {
 						reviewedBy: userId,
@@ -658,6 +659,7 @@ export class ApplicationService {
 			reviewNotes: app.reviewNotes,
 			createdAt: app.createdAt,
 			updatedAt: app.updatedAt,
+			lastStaffInteractionAt: app.lastStaffInteractionAt,
 			altCharacterIds,
 		}
 	}

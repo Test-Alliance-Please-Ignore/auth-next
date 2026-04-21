@@ -162,30 +162,35 @@ export default function DoctrinesPage() {
 							)}
 						</div>
 					) : (
-						<Table>
-							<TableHeader>
-								<TableRow>
-									<TableHead className="min-w-[200px]">Doctrine</TableHead>
+						<div className="rounded-md border">
+							<Table>
+								<TableHeader>
+									<TableRow>
+										<TableHead className="min-w-[200px] text-xs font-semibold">Doctrine</TableHead>
 									{sortedStagingSystems.map((ss) => (
-										<TableHead key={ss.id} className="text-center whitespace-nowrap">
+											<TableHead
+												key={ss.id}
+												className="text-center whitespace-nowrap text-xs font-semibold"
+											>
 											{ss.solarSystemName}
 										</TableHead>
 									))}
-								</TableRow>
-							</TableHeader>
-							<TableBody>
-								{categories.map((cat) => (
-									<CategoryRows
-										key={cat.categoryId}
-										categoryName={cat.categoryName}
-										doctrines={cat.doctrines}
-										stagingSystems={sortedStagingSystems}
-										totalCols={totalCols}
-										showCategoryHeader={categories.length > 1}
-									/>
-								))}
-							</TableBody>
-						</Table>
+									</TableRow>
+								</TableHeader>
+								<TableBody>
+									{categories.map((cat) => (
+										<CategoryRows
+											key={cat.categoryId}
+											categoryName={cat.categoryName}
+											doctrines={cat.doctrines}
+											stagingSystems={sortedStagingSystems}
+											totalCols={totalCols}
+											showCategoryHeader={categories.length > 1}
+										/>
+									))}
+								</TableBody>
+							</Table>
+						</div>
 					)}
 				</CardContent>
 			</Card>

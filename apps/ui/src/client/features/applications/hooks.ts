@@ -15,6 +15,7 @@ import type {
 	Application,
 	ApplicationActivityLogEntry,
 	ApplicationMessage,
+	ApplicationStaffNote,
 	ApplicationsParams,
 	CharacterReportMetadata,
 	CreateTemplateRequest,
@@ -31,6 +32,7 @@ import type {
 	ReportSectionName,
 	SendMessageRequest,
 	SubmitApplicationRequest,
+	UpsertApplicationStaffNoteRequest,
 	UpdateApplicationStatusRequest,
 	UpdateHRNoteRequest,
 	UpdateRecommendationRequest,
@@ -55,6 +57,7 @@ export const applicationKeys = {
 	activity: (id: string) => [...applicationKeys.detail(id), 'activity'] as const,
 	messages: (id: string) => [...applicationKeys.detail(id), 'messages'] as const,
 	messageCount: (id: string) => [...applicationKeys.detail(id), 'message-count'] as const,
+	staffNotes: (id: string) => [...applicationKeys.detail(id), 'staff-notes'] as const,
 	hrNotes: () => [...applicationKeys.all, 'hr-notes'] as const,
 	hrNotesList: (filters: string) => [...applicationKeys.hrNotes(), filters] as const,
 	hrNoteDetail: (noteId: string) => [...applicationKeys.hrNotes(), noteId] as const,
@@ -605,6 +608,86 @@ export function useSendMessage() {
 			queryClient.invalidateQueries({
 				queryKey: applicationKeys.activity(variables.applicationId),
 			})
+
+			// Invalidate detail and lists to refresh last HR activity timestamp.
+			queryClient.invalidateQueries({
+				queryKey: applicationKeys.detail(variables.applicationId),
+			})
+			queryClient.invalidateQueries({
+				queryKey: applicationKeys.lists(),
+			})
+		},
+	})
+}
+
+export function useApplicationStaffNotes(applicationId: string) {
+	return useQuery<ApplicationStaffNote[]>({
+		queryKey: applicationKeys.staffNotes(applicationId),
+		queryFn: () => applicationsApi.getApplicationStaffNotes(applicationId),
+		staleTime: 1000 * 60,
+		gcTime: 1000 * 60 * 3,
+		enabled: !!applicationId,
+	})
+}
+
+export function useAddApplicationStaffNote() {
+	const queryClient = useQueryClient()
+
+	return useMutation({
+		mutationFn: ({
+			applicationId,
+			data,
+		}: {
+			applicationId: string
+			data: UpsertApplicationStaffNoteRequest
+		}) => applicationsApi.addApplicationStaffNote(applicationId, data),
+		onSuccess: (_, variables) => {
+			queryClient.invalidateQueries({ queryKey: applicationKeys.staffNotes(variables.applicationId) })
+			queryClient.invalidateQueries({ queryKey: applicationKeys.detail(variables.applicationId) })
+			queryClient.invalidateQueries({ queryKey: applicationKeys.activity(variables.applicationId) })
+			queryClient.invalidateQueries({ queryKey: applicationKeys.lists() })
+		},
+	})
+}
+
+export function useUpdateApplicationStaffNote() {
+	const queryClient = useQueryClient()
+
+	return useMutation({
+		mutationFn: ({
+			applicationId,
+			noteId,
+			data,
+		}: {
+			applicationId: string
+			noteId: string
+			data: UpsertApplicationStaffNoteRequest
+		}) => applicationsApi.updateApplicationStaffNote(applicationId, noteId, data),
+		onSuccess: (_, variables) => {
+			queryClient.invalidateQueries({ queryKey: applicationKeys.staffNotes(variables.applicationId) })
+			queryClient.invalidateQueries({ queryKey: applicationKeys.detail(variables.applicationId) })
+			queryClient.invalidateQueries({ queryKey: applicationKeys.activity(variables.applicationId) })
+			queryClient.invalidateQueries({ queryKey: applicationKeys.lists() })
+		},
+	})
+}
+
+export function useDeleteApplicationStaffNote() {
+	const queryClient = useQueryClient()
+
+	return useMutation({
+		mutationFn: ({
+			applicationId,
+			noteId,
+		}: {
+			applicationId: string
+			noteId: string
+		}) => applicationsApi.deleteApplicationStaffNote(applicationId, noteId),
+		onSuccess: (_, variables) => {
+			queryClient.invalidateQueries({ queryKey: applicationKeys.staffNotes(variables.applicationId) })
+			queryClient.invalidateQueries({ queryKey: applicationKeys.detail(variables.applicationId) })
+			queryClient.invalidateQueries({ queryKey: applicationKeys.activity(variables.applicationId) })
+			queryClient.invalidateQueries({ queryKey: applicationKeys.lists() })
 		},
 	})
 }
@@ -619,7 +702,7 @@ export function useSendMessage() {
  * Hook to fetch HR notes with optional filters (ADMIN ONLY)
  * @param params - Query parameters for filtering HR notes
  */
-export function useHRNotes(params?: HRNotesParams) {
+export function useHRNotes(params?: HRNotesParams, options?: { enabled?: boolean }) {
 	const filterKey = params ? JSON.stringify(params) : 'all'
 
 	return useQuery<HRNote[]>({
@@ -627,6 +710,7 @@ export function useHRNotes(params?: HRNotesParams) {
 		queryFn: () => applicationsApi.getHRNotes(params),
 		staleTime: 1000 * 60, // 1 minute
 		gcTime: 1000 * 60 * 5, // 5 minutes
+		enabled: options?.enabled ?? true,
 	})
 }
 
