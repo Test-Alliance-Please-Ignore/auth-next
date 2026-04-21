@@ -37,10 +37,8 @@ const TabsTrigger = React.forwardRef<
 			setIsActive(element.getAttribute('data-state') === 'active')
 		}
 
-		// Check immediately
 		checkActive()
 
-		// Use MutationObserver to watch for data-state changes
 		const observer = new MutationObserver(checkActive)
 		observer.observe(element, {
 			attributes: true,
@@ -54,8 +52,8 @@ const TabsTrigger = React.forwardRef<
 		<TabsPrimitive.Trigger
 			ref={triggerRef}
 			className={cn(
-				'relative inline-flex items-center justify-center whitespace-nowrap px-6 py-3 text-sm transition-all duration-200',
-				'border-b-[3px] -mb-px',
+				'relative inline-flex cursor-pointer items-center justify-center whitespace-nowrap px-3 py-1.5 text-sm transition-all duration-200',
+				'border-b-[3px] -mb-px border-b-transparent text-muted-foreground/70',
 				'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2 focus-visible:rounded-sm',
 				'disabled:pointer-events-none disabled:opacity-50',
 				className
