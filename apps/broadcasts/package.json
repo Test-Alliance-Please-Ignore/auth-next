@@ -20,7 +20,7 @@
 		"test": "run-vitest"
 	},
 	"dependencies": {
-		"@marianmeres/random-human-readable": "^1.9.0",
+		"@marianmeres/random-human-readable": "1.9.0",
 		"@neondatabase/serverless": "1.0.2",
 		"@repo/broadcasts": "workspace:*",
 		"@repo/db-utils": "workspace:*",
