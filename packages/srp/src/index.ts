@@ -334,6 +334,7 @@ export const CreateSRPPolicySchema = z.object({
 	effect: z.enum(['payout_modifier', 'cap']),
 	config: z.record(z.string(), z.unknown()),
 	displayOrder: z.number().int().optional(),
+	isActive: z.boolean().optional(),
 })
 export type CreateSRPPolicy = z.infer<typeof CreateSRPPolicySchema>
 
