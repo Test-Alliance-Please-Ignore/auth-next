@@ -1,5 +1,5 @@
 import { Menu } from 'lucide-react'
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { Outlet, useLocation } from 'react-router-dom'
 
 import { useAuth } from '@/hooks/useAuth'
@@ -10,12 +10,18 @@ import { Button } from './ui/button'
 import { LoadingSpinner } from './ui/loading'
 
 const SIDEBAR_OPEN_STORAGE_KEY = 'ui.sidebar.open'
+const DESKTOP_MEDIA_QUERY = '(min-width: 1024px)'
 
 export default function Layout() {
 	const { isAuthenticated, isLoading } = useAuth()
+	const sidebarStateBeforeMobileRef = useRef<boolean | null>(null)
 	const [sidebarOpen, setSidebarOpen] = useState(() => {
 		if (typeof window === 'undefined') {
 			return true
+		}
+		const isDesktopViewport = window.matchMedia(DESKTOP_MEDIA_QUERY).matches
+		if (!isDesktopViewport) {
+			return false
 		}
 		const stored = window.localStorage.getItem(SIDEBAR_OPEN_STORAGE_KEY)
 		if (stored === null) {
@@ -23,11 +29,45 @@ export default function Layout() {
 		}
 		return stored === '1'
 	})
+	const sidebarOpenRef = useRef(sidebarOpen)
 	const location = useLocation()
 
 	useEffect(() => {
 		window.localStorage.setItem(SIDEBAR_OPEN_STORAGE_KEY, sidebarOpen ? '1' : '0')
 	}, [sidebarOpen])
+
+	useEffect(() => {
+		sidebarOpenRef.current = sidebarOpen
+	}, [sidebarOpen])
+
+	useEffect(() => {
+		if (typeof window === 'undefined') {
+			return
+		}
+		const mediaQuery = window.matchMedia(DESKTOP_MEDIA_QUERY)
+		const onMediaChange = (event: MediaQueryListEvent) => {
+			if (!event.matches) {
+				if (sidebarStateBeforeMobileRef.current === null) {
+					sidebarStateBeforeMobileRef.current = sidebarOpenRef.current
+				}
+				setSidebarOpen(false)
+				return
+			}
+
+			if (sidebarStateBeforeMobileRef.current !== null) {
+				setSidebarOpen(sidebarStateBeforeMobileRef.current)
+				sidebarStateBeforeMobileRef.current = null
+			}
+		}
+		if (!mediaQuery.matches) {
+			if (sidebarStateBeforeMobileRef.current === null) {
+				sidebarStateBeforeMobileRef.current = sidebarOpenRef.current
+			}
+			setSidebarOpen(false)
+		}
+		mediaQuery.addEventListener('change', onMediaChange)
+		return () => mediaQuery.removeEventListener('change', onMediaChange)
+	}, [])
 
 	// Redirect to login if not authenticated, preserving the intended destination
 	useEffect(() => {
@@ -48,14 +88,14 @@ export default function Layout() {
 	}
 
 	return (
-		<div className="relative min-h-screen flex">
+		<div className="relative min-h-screen flex overflow-x-hidden">
 			{/* Starfield Background */}
 			<Starfield />
 
 			{/* Mobile Overlay */}
 			{sidebarOpen && (
 				<div
-					className="fixed inset-0 bg-background/70 backdrop-blur-sm z-40 lg:hidden"
+					className="fixed inset-0 z-40 lg:hidden"
 					onClick={() => setSidebarOpen(false)}
 				/>
 			)}
@@ -65,7 +105,7 @@ export default function Layout() {
 				className={`
 					fixed top-0 left-0 h-screen w-64 z-50
 					border-r border-border/50
-					bg-background/52
+					bg-background/52 backdrop-blur-sm
 					transition-transform duration-300 ease-in-out
 					${sidebarOpen ? 'translate-x-0' : '-translate-x-full'}
 				`}
@@ -82,12 +122,12 @@ export default function Layout() {
 			</aside>
 
 			{/* Main Content Area */}
-			<div
-				className={cn(
-					'relative z-10 flex-1 flex flex-col min-w-0 overflow-auto transition-[padding-left] duration-300 ease-in-out',
-					sidebarOpen ? 'lg:pl-64' : 'lg:pl-0'
-				)}
-			>
+				<div
+					className={cn(
+						'relative z-10 flex-1 flex flex-col min-w-0 overflow-x-hidden overflow-y-auto transition-[padding-left] duration-300 ease-in-out',
+						sidebarOpen ? 'lg:pl-64' : 'lg:pl-0'
+					)}
+				>
 				{!sidebarOpen ? (
 					<div className="fixed top-6 left-2 z-30">
 						<Button
