@@ -6,6 +6,7 @@ import { Container } from '@/components/ui/container'
 import { EveTimeDisplay } from '@/components/ui/eve-time-display'
 import { PageHeader } from '@/components/ui/page-header'
 import { useUserPermissions } from '@/hooks/useUserPermissions'
+import { characterPortraitUrl, corporationLogoUrl } from '@/lib/eve-images'
 
 import { CommentForm } from '../components/CommentForm'
 import { CommentsList } from '../components/CommentsList'
@@ -64,9 +65,30 @@ export default function ReviewRequestDetail() {
 				title={`Review: ${request.shipTypeName ?? 'Ship'}`}
 				description={
 					<span className="inline-flex items-center gap-2 flex-wrap">
-						<span>{request.characterName}</span>
+						<span className="inline-flex items-center gap-2">
+							<img
+								src={characterPortraitUrl(request.characterId, 32)}
+								alt={request.characterName}
+								className="h-5 w-5 rounded-full border border-border/50 object-cover"
+								loading="lazy"
+							/>
+							<span className="font-semibold">{request.characterName}</span>
+						</span>
 						<CharacterRoleBadge role={getRequestCharacterRole(request)} />
-						<span>· {request.corporationName} ·</span>
+						<span>·</span>
+						<span className="inline-flex items-center gap-2">
+							{request.corporationId ? (
+								<img
+									src={corporationLogoUrl(request.corporationId, 32)}
+									alt={request.corporationName}
+									className="h-5 w-5 rounded object-cover"
+									loading="lazy"
+								/>
+							) : null}
+							<span className="font-semibold">{request.corporationName}</span>
+						</span>
+						{request.solarSystemName ? <span>· {request.solarSystemName}</span> : null}
+						<span>·</span>
 						<EveTimeDisplay dateStr={request.lossDate} />
 					</span>
 				}
@@ -174,14 +196,34 @@ export default function ReviewRequestDetail() {
 								</div>
 								<div>
 									<div className="text-muted-foreground">Character</div>
-									<div className="inline-flex items-center gap-2 font-medium">
+									<div className="inline-flex items-center gap-2 font-semibold">
+										<img
+											src={characterPortraitUrl(request.characterId, 32)}
+											alt={request.characterName}
+											className="h-5 w-5 rounded-full border border-border/50 object-cover"
+											loading="lazy"
+										/>
 										<span>{request.characterName}</span>
 										<CharacterRoleBadge role={getRequestCharacterRole(request)} />
 									</div>
 								</div>
 								<div>
 									<div className="text-muted-foreground">Corporation</div>
-									<div className="font-medium">{request.corporationName}</div>
+									<div className="inline-flex items-center gap-2 font-semibold">
+										{request.corporationId ? (
+											<img
+												src={corporationLogoUrl(request.corporationId, 32)}
+												alt={request.corporationName}
+												className="h-5 w-5 rounded object-cover"
+												loading="lazy"
+											/>
+										) : null}
+										<span>{request.corporationName}</span>
+									</div>
+								</div>
+								<div>
+									<div className="text-muted-foreground">System</div>
+									<div className="font-medium">{request.solarSystemName ?? '—'}</div>
 								</div>
 								<div>
 									<div className="text-muted-foreground">Loss Date</div>

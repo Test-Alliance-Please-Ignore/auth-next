@@ -2522,7 +2522,7 @@ export class ApiClient {
 		characterId: string
 		killmailId: string
 		killmailHash: string
-		contextText?: string
+		contextText: string
 	}): Promise<any> {
 		return this.post('/srp/requests', data)
 	}

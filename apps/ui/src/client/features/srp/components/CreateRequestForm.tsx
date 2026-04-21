@@ -19,7 +19,7 @@ const createRequestSchema = z.object({
 	killmailId: z.string().min(1),
 	killmailHash: z.string().min(1),
 	characterId: z.string().min(1),
-	contextText: z.string().max(2000).optional(),
+	contextText: z.string().trim().min(1, 'Context is required').max(2000),
 })
 
 type CreateRequestFormData = z.infer<typeof createRequestSchema>
@@ -100,10 +100,7 @@ export function CreateRequestForm({
 
 	const onSubmit = form.handleSubmit(async (data) => {
 		try {
-			const result = await createMutation.mutateAsync({
-				...data,
-				contextText: data.contextText || undefined,
-			})
+			const result = await createMutation.mutateAsync(data)
 			toast.success('SRP request submitted')
 			void navigate(`/srp/request/${result.id}`)
 		} catch (error: any) {
@@ -129,7 +126,7 @@ export function CreateRequestForm({
 
 				<div className="space-y-4">
 					<div>
-						<Label htmlFor="contextText">Context (Optional)</Label>
+						<Label htmlFor="contextText">Context *</Label>
 						<Textarea
 							id="contextText"
 							placeholder="Describe the circumstances — fleet doctrine, FC name, what happened, etc."
