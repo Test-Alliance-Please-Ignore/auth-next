@@ -1,0 +1,2 @@
+ALTER TABLE "broadcast_templates" ADD COLUMN "display_order" integer DEFAULT 0 NOT NULL;--> statement-breakpoint
+CREATE INDEX "broadcast_templates_display_order_idx" ON "broadcast_templates" USING btree ("display_order");

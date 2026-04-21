@@ -74,7 +74,7 @@ function AdminLayoutContent() {
 			{/* Mobile Overlay */}
 			{sidebarOpen && (
 				<div
-					className="fixed inset-0 bg-background/70 backdrop-blur-sm z-40 lg:hidden"
+					className="fixed inset-0 z-40 lg:hidden"
 					onClick={() => setSidebarOpen(false)}
 				/>
 			)}
@@ -82,7 +82,7 @@ function AdminLayoutContent() {
 			{/* Sidebar */}
 			<aside
 				className={cn(
-					'fixed lg:sticky top-0 left-0 h-screen w-64 z-50 border-r border-border/50 bg-background/52 transition-transform duration-300 ease-in-out',
+					'fixed lg:sticky top-0 left-0 h-screen w-64 z-50 border-r border-border/50 bg-background/52 backdrop-blur-sm transition-transform duration-300 ease-in-out',
 					sidebarOpen ? 'translate-x-0' : '-translate-x-full lg:translate-x-0'
 				)}
 			>

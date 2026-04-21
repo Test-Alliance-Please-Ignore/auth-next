@@ -62,6 +62,7 @@ function makeTemplate(overrides: Partial<BroadcastTemplate> = {}): BroadcastTemp
 		name: 'Template 1',
 		description: null,
 		targetType: 'discord_channel',
+		displayOrder: 0,
 		targetIds: ['target-1'],
 		fieldSchema: [{ name: 'message', label: 'Message', type: 'textarea', required: true }],
 		messageTemplate: '{{message}}',

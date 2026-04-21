@@ -74,6 +74,8 @@ export const broadcastTemplates = pgTable(
 		description: text('description'),
 		/** Target type this template is designed for */
 		targetType: varchar('target_type', { length: 100 }).notNull(),
+		/** Sort order for presenting templates in UI (ascending) */
+		displayOrder: integer('display_order').notNull().default(0),
 		/** Field schema (JSON array) - defines what fields need to be filled */
 		fieldSchema: jsonb('field_schema').notNull(),
 		/** Message template with {{placeholder}} syntax */
@@ -85,6 +87,7 @@ export const broadcastTemplates = pgTable(
 	},
 	(table) => [
 		index('broadcast_templates_target_type_idx').on(table.targetType),
+		index('broadcast_templates_display_order_idx').on(table.displayOrder),
 	]
 )
 

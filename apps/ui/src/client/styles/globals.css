@@ -191,15 +191,6 @@ body {
 	}
 }
 
-@keyframes frogsiren-gradient-shift {
-	0% {
-		background-position: 0% 50%;
-	}
-	100% {
-		background-position: 100% 50%;
-	}
-}
-
 .starfield {
 	position: fixed;
 	top: 0;
@@ -246,26 +237,6 @@ body {
 /* Gradient text effect - monochrome with depth (improved contrast) */
 .gradient-text {
 	background: linear-gradient(135deg, hsl(0 0% 100%) 0%, hsl(0 0% 90%) 50%, hsl(0 0% 80%) 100%);
-	-webkit-background-clip: text;
-	-webkit-text-fill-color: transparent;
-	background-clip: text;
-}
-
-.frogsiren-hoverable:hover .frogsiren-hover-gradient {
-	background-image: linear-gradient(
-		90deg,
-		#ff0000 0%,
-		#ff4d4d 12.5%,
-		#2f6dff 25%,
-		#4d8dff 37.5%,
-		#ff0000 50%,
-		#ff4d4d 62.5%,
-		#2f6dff 75%,
-		#4d8dff 87.5%,
-		#ff0000 100%
-	);
-	background-size: 200% 100%;
-	animation: frogsiren-gradient-shift 1s linear infinite;
 	-webkit-background-clip: text;
 	-webkit-text-fill-color: transparent;
 	background-clip: text;
