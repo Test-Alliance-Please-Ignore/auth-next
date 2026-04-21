@@ -12,7 +12,7 @@ import {
 } from '@/components/ui/table'
 import { typeIconUrl } from '@/lib/eve-images'
 
-import { formatISK, formatRelativeTime, getKillmailUrl } from '../utils'
+import { formatRelativeTime, getKillmailUrl } from '../utils'
 import { RequestStatusBadge } from './RequestStatusBadge'
 
 import type { LossWithSRPStatus, SRPConfigResponse } from '../types'
@@ -95,7 +95,6 @@ export function LossTable({ losses, isLoading, isRefreshing, onRefresh, config, 
 							<TableRow>
 								<TableHead className="w-16" />
 								<TableHead>Ship</TableHead>
-								<TableHead className="text-right">Value (ISK)</TableHead>
 								<TableHead>Date/Time</TableHead>
 								<TableHead>Location</TableHead>
 								<TableHead>SRP Status</TableHead>
@@ -111,18 +110,17 @@ export function LossTable({ losses, isLoading, isRefreshing, onRefresh, config, 
 								return (
 									<TableRow key={loss.killmailId}>
 										<TableCell className="py-2">
-											<img
-												src={typeIconUrl(loss.shipTypeId, 64)}
-												alt={loss.shipTypeName || `Ship ${loss.shipTypeId}`}
-												className="h-10 w-10 rounded border border-border/50 object-contain"
-												loading="lazy"
-											/>
+											<div className="h-10 w-10 overflow-hidden rounded border border-border/50">
+												<img
+													src={typeIconUrl(loss.shipTypeId, 64)}
+													alt={loss.shipTypeName || `Ship ${loss.shipTypeId}`}
+													className="h-full w-full object-contain"
+													loading="lazy"
+												/>
+											</div>
 										</TableCell>
 										<TableCell className="font-semibold">
 											{loss.shipTypeName || `Ship ${loss.shipTypeId}`}
-										</TableCell>
-										<TableCell className="text-right font-mono text-sm tabular-nums">
-											{formatISK(loss.totalValue)}
 										</TableCell>
 										<TableCell className="text-sm text-muted-foreground">
 											{formatRelativeTime(loss.killmailTime)}
