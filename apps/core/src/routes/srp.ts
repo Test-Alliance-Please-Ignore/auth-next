@@ -550,6 +550,15 @@ const srp = new Hono<App>()
 
 // Apply authentication middleware to all routes
 srp.use('*', requireAllianceMember())
+srp.use('*', async (c, next) => {
+	const srpBinding = c.env.SRP as Partial<DurableObjectNamespace> | undefined
+	const hasValidBinding =
+		typeof srpBinding?.idFromName === 'function' && typeof srpBinding?.get === 'function'
+	if (!hasValidBinding) {
+		return c.json({ error: 'SRP is currently disabled' }, 503)
+	}
+	return next()
+})
 
 // =============================================================================
 // LOSSES

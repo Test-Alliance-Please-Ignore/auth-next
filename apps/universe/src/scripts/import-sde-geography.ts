@@ -3,7 +3,7 @@ import { dirname, join, resolve } from 'node:path'
 import { createInterface } from 'node:readline'
 import { fileURLToPath } from 'node:url'
 import { config } from 'dotenv'
-import { inArray, sql } from 'drizzle-orm'
+import { eq, inArray, sql } from 'drizzle-orm'
 import { z } from 'zod'
 
 import { createDb } from '../db'
@@ -379,7 +379,25 @@ async function importMoons(
 	let batch: Array<typeof moons.$inferInsert> = []
 	let processed = 0
 	let invalid = 0
+	let nameConflictsResolved = 0
+	const nameConflictKeys = new Set<string>()
+	const nameConflicts: Array<{
+		name: string
+		existingMoonId: string
+		incomingMoonId: string
+		source: 'existing_db' | 'same_import'
+	}> = []
 	const reportProgress = createProgressReporter('moons')
+	const existingMoonNameToId = new Map<string, string>()
+	const seenMoonNameToId = new Map<string, string>()
+
+	const existingMoonRows = await db
+		.select({ name: moons.name, moonId: moons.moonId })
+		.from(moons)
+	for (const row of existingMoonRows) {
+		existingMoonNameToId.set(row.name, row.moonId)
+		seenMoonNameToId.set(row.name, row.moonId)
+	}
 
 	const flush = async () => {
 		if (batch.length === 0) return
@@ -414,6 +432,31 @@ async function importMoons(
 		const moonName =
 			moonIndex > 0 ? `${planetName} - Moon ${moonIndex}` : `${planetName} - Moon (${moonId})`
 
+		const seenMoonId = seenMoonNameToId.get(moonName)
+		if (seenMoonId && seenMoonId !== moonId) {
+			nameConflictsResolved++
+			const source = existingMoonNameToId.has(moonName) ? 'existing_db' : 'same_import'
+			const conflictKey = `${moonName}|${seenMoonId}|${moonId}|${source}`
+			if (!nameConflictKeys.has(conflictKey)) {
+				nameConflictKeys.add(conflictKey)
+				nameConflicts.push({
+					name: moonName,
+					existingMoonId: seenMoonId,
+					incomingMoonId: moonId,
+					source,
+					})
+				}
+
+			// Replace policy: old entry is considered stale; remove it and keep incoming.
+			await db.delete(moons).where(eq(moons.moonId, seenMoonId)).catch(() => {})
+			const existingIndex = batch.findIndex((row) => row.name === moonName)
+			if (existingIndex >= 0) {
+				batch.splice(existingIndex, 1)
+			}
+			existingMoonNameToId.delete(moonName)
+		}
+		seenMoonNameToId.set(moonName, moonId)
+
 		if (stationOrbitIds.has(moonId)) {
 			orbitNameById.set(moonId, moonName)
 		}
@@ -433,7 +476,20 @@ async function importMoons(
 	})
 
 	await flush()
-	console.log(`  ✓ ${processed} moons${invalid > 0 ? ` (${invalid} skipped)` : ''}`)
+	const skippedNotes: string[] = []
+	if (invalid > 0) skippedNotes.push(`${invalid} invalid`)
+	if (nameConflictsResolved > 0) skippedNotes.push(`${nameConflictsResolved} name conflicts resolved`)
+	console.log(
+		`  ✓ ${processed} moons${skippedNotes.length > 0 ? ` (${skippedNotes.join(', ')})` : ''}`
+	)
+	if (nameConflicts.length > 0) {
+		console.log(`  ! Moon name conflicts encountered (${nameConflicts.length}):`)
+		for (const conflict of nameConflicts) {
+			console.log(
+				`    - ${conflict.name} :: existing=${conflict.existingMoonId} incoming=${conflict.incomingMoonId} source=${conflict.source}`
+			)
+		}
+	}
 }
 
 async function importStargates(

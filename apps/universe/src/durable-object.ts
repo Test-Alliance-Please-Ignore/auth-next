@@ -873,11 +873,19 @@ export class UniverseDO extends DurableObject<Env, {}> implements Universe {
 				}
 			}
 
-			if (cacheMisses.length > 0) {
-				const rows = await this.db
-					.select()
-					.from(universeConstellations)
-					.where(inArray(universeConstellations.constellationId, cacheMisses))
+				if (cacheMisses.length > 0) {
+					let rows: typeof universeConstellations.$inferSelect[] = []
+					try {
+						rows = await this.db
+							.select()
+							.from(universeConstellations)
+							.where(inArray(universeConstellations.constellationId, cacheMisses))
+					} catch (error) {
+						console.warn(
+							'Constellation DB lookup failed; falling back to ESI for unresolved IDs',
+							error
+						)
+					}
 
 				for (const row of rows) {
 					const data: UniverseConstellation = {
@@ -970,11 +978,19 @@ export class UniverseDO extends DurableObject<Env, {}> implements Universe {
 				}
 			}
 
-			if (cacheMisses.length > 0) {
-				const systems = await this.db
-					.select()
-					.from(universeSolarSystems)
-					.where(inArray(universeSolarSystems.solarSystemId, cacheMisses))
+				if (cacheMisses.length > 0) {
+					let systems: typeof universeSolarSystems.$inferSelect[] = []
+					try {
+						systems = await this.db
+							.select()
+							.from(universeSolarSystems)
+							.where(inArray(universeSolarSystems.solarSystemId, cacheMisses))
+					} catch (error) {
+						console.warn(
+							'Solar system DB lookup failed; falling back to ESI for unresolved IDs',
+							error
+						)
+					}
 
 				for (const system of systems) {
 					const systemData: UniverseSolarSystem = {
