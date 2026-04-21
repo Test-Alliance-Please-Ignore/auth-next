@@ -984,6 +984,7 @@ export interface BroadcastTemplate {
 	name: string
 	description: string | null
 	targetType: string
+	displayOrder: number
 	targetIds: string[]
 	fieldSchema: Array<{
 		name: string
@@ -1073,6 +1074,7 @@ export interface CreateBroadcastTemplateRequest {
 	name: string
 	description?: string
 	targetType: string
+	displayOrder?: number
 	targetIds: string[]
 	fieldSchema: Array<{
 		name: string
@@ -1089,6 +1091,7 @@ export interface CreateBroadcastTemplateRequest {
 export interface UpdateBroadcastTemplateRequest {
 	name?: string
 	description?: string
+	displayOrder?: number
 	targetIds?: string[]
 	fieldSchema?: Array<{
 		name: string
@@ -1116,12 +1119,12 @@ export interface UpdateBroadcastRequest {
 }
 
 export interface SendBroadcastResponse {
+	success: boolean
 	broadcast: Broadcast
 	delivery: {
-		success: boolean
-		messageId?: string
-		error?: string
-		retryAfter?: number
+		status?: string
+		discordMessageId?: string | null
+		errorMessage?: string | null
 	}
 }
 

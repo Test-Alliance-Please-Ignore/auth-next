@@ -42,6 +42,7 @@ export interface BroadcastTemplate {
 	name: string
 	description: string | null
 	targetType: string
+	displayOrder: number
 	targetIds: string[]
 	fieldSchema: TemplateFieldSchema[]
 	messageTemplate: string
@@ -165,6 +166,7 @@ export interface CreateBroadcastTemplateRequest {
 	name: string
 	description?: string
 	targetType: string
+	displayOrder?: number
 	targetIds: string[]
 	fieldSchema: TemplateFieldSchema[]
 	messageTemplate: string
@@ -176,6 +178,7 @@ export interface CreateBroadcastTemplateRequest {
 export interface UpdateBroadcastTemplateRequest {
 	name?: string
 	description?: string
+	displayOrder?: number
 	targetIds?: string[]
 	fieldSchema?: TemplateFieldSchema[]
 	messageTemplate?: string

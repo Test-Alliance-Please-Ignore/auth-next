@@ -40,7 +40,7 @@ import {
 	getBroadcastSystemTemplateToken,
 } from '@/features/broadcasts/template-tokens'
 
-import type { BroadcastTemplate, CreateBroadcastTemplateRequest } from '@/lib/api'
+import type { BroadcastTarget, BroadcastTemplate, CreateBroadcastTemplateRequest } from '@/lib/api'
 
 const TEMPLATE_TAG_BLOCK_REGEX = /\{\{([^}]*)\}\}/g
 const TEMPLATE_FIELD_NAME_PATTERN = /^[a-zA-Z0-9_-]+$/
@@ -253,6 +253,203 @@ function TemplateTokenHelpPopover() {
 	)
 }
 
+type TemplateDialogMode = 'create' | 'edit'
+
+type TemplateDialogProps = {
+	mode: TemplateDialogMode
+	open: boolean
+	onOpenChange: (open: boolean) => void
+	onSubmit: (event: React.FormEvent) => Promise<void>
+	onCancel: () => void
+	formData: CreateBroadcastTemplateRequest
+	setFormData: (data: CreateBroadcastTemplateRequest) => void
+	frogsirenEnabled: boolean
+	setFrogsirenEnabled: (enabled: boolean) => void
+	targets: BroadcastTarget[]
+	targetToAttach: string
+	setTargetToAttach: (value: string) => void
+	addTargetSelection: (targetId: string) => void
+	removeTargetSelection: (targetId: string) => void
+	handleMessageTemplateChange: (value: string) => void
+	isPending: boolean
+}
+
+function TemplateDialog({
+	mode,
+	open,
+	onOpenChange,
+	onSubmit,
+	onCancel,
+	formData,
+	setFormData,
+	frogsirenEnabled,
+	setFrogsirenEnabled,
+	targets,
+	targetToAttach,
+	setTargetToAttach,
+	addTargetSelection,
+	removeTargetSelection,
+	handleMessageTemplateChange,
+	isPending,
+}: TemplateDialogProps) {
+	const isCreate = mode === 'create'
+	const idPrefix = isCreate ? 'create' : 'edit'
+
+	return (
+		<Dialog open={open} onOpenChange={onOpenChange}>
+			<DialogContent className="max-w-2xl">
+				<DialogHeader>
+					<DialogTitle>
+						{isCreate ? 'Create Broadcast Template' : 'Edit Broadcast Template'}
+					</DialogTitle>
+					<DialogDescription>
+						{isCreate
+							? 'Create a reusable template for broadcasts'
+							: 'Update template settings'}
+					</DialogDescription>
+				</DialogHeader>
+				<form onSubmit={(event) => void onSubmit(event)} className="space-y-4">
+					<div>
+						<Label htmlFor={`${idPrefix}-name`}>Name *</Label>
+						<Input
+							id={`${idPrefix}-name`}
+							value={formData.name}
+							onChange={(e) => setFormData({ ...formData, name: e.target.value })}
+							required
+						/>
+					</div>
+					<div>
+						<Label htmlFor={`${idPrefix}-description`}>Description</Label>
+						<Textarea
+							id={`${idPrefix}-description`}
+							value={formData.description}
+							onChange={(e) => setFormData({ ...formData, description: e.target.value })}
+							rows={2}
+						/>
+					</div>
+					<div>
+						<Label htmlFor={`${idPrefix}-display-order`}>Display Order</Label>
+						<Input
+							id={`${idPrefix}-display-order`}
+							type="number"
+							value={formData.displayOrder ?? 0}
+							onChange={(e) =>
+								setFormData({
+									...formData,
+									displayOrder: Number.isFinite(e.target.valueAsNumber)
+										? Math.trunc(e.target.valueAsNumber)
+										: 0,
+								})
+							}
+						/>
+					</div>
+					<div className="rounded-md border border-border/60 px-3 py-2">
+						<div className="flex items-center justify-between gap-3">
+							<div className="space-y-0.5">
+								<Label htmlFor={`${idPrefix}-template-frogsiren`}>Enable FrogSiren</Label>
+								<p className="text-xs text-muted-foreground">
+									Adds an optional FrogSiren toggle when composing broadcasts with this template.
+								</p>
+							</div>
+							<Switch
+								id={`${idPrefix}-template-frogsiren`}
+								checked={frogsirenEnabled}
+								onCheckedChange={setFrogsirenEnabled}
+							/>
+						</div>
+					</div>
+					<div>
+						<Label>Targets *</Label>
+						<div className="mt-2 space-y-2">
+							<Select
+								value={targetToAttach}
+								onValueChange={(value) => {
+									setTargetToAttach(value)
+									addTargetSelection(value)
+								}}
+								options={targets
+									.filter((target) => !formData.targetIds.includes(target.id))
+									.map((target) => ({
+										value: target.id,
+										label: target.name,
+									}))}
+								placeholder="Search and attach a target"
+								searchable
+							/>
+							<div className="flex flex-wrap gap-2 rounded-md border border-border bg-background p-2 min-h-10">
+								{formData.targetIds.length === 0 ? (
+									<span className="text-xs text-muted-foreground">No targets attached</span>
+								) : (
+									formData.targetIds.map((targetId) => {
+										const target = targets.find((item) => item.id === targetId)
+										return (
+											<Badge
+												key={targetId}
+												variant="secondary"
+												className="flex items-center gap-1 pr-1"
+											>
+												{target?.name ?? targetId}
+												<Button
+													type="button"
+													variant="ghost"
+													size="sm"
+													className="h-5 w-5 p-0"
+													onClick={() => removeTargetSelection(targetId)}
+												>
+													<X className="h-3 w-3" />
+												</Button>
+											</Badge>
+										)
+									})
+								)}
+							</div>
+						</div>
+					</div>
+					<div>
+						<div className="flex items-center justify-between gap-3">
+							<Label htmlFor={`${idPrefix}-message-template`}>Message Template *</Label>
+							<TemplateTokenHelpPopover />
+						</div>
+						<Textarea
+							id={`${idPrefix}-message-template`}
+							value={formData.messageTemplate}
+							onChange={(e) => handleMessageTemplateChange(e.target.value)}
+							rows={4}
+							placeholder="Use {{fieldName}} for dynamic fields"
+						/>
+						<p className="text-xs text-muted-foreground mt-1">
+							Each placeholder like {'{{message}}'} becomes a template field automatically.
+						</p>
+						<div className="mt-2 rounded-md border border-border bg-muted/20 p-3 text-sm overflow-y-auto min-h-[120px]">
+							{formData.messageTemplate.trim() ? (
+								renderDiscordContentValue(
+									formData.messageTemplate,
+									`${idPrefix}-template-preview`
+								)
+							) : (
+								<span className="text-muted-foreground italic">Preview will appear here…</span>
+							)}
+						</div>
+					</div>
+					<DialogFooter>
+						<Button variant="cancel" onClick={onCancel} type="button">
+							Cancel
+						</Button>
+						<Button
+							variant="confirm"
+							type="submit"
+							loading={isPending}
+							loadingText={isCreate ? 'Creating...' : 'Updating...'}
+						>
+							{isCreate ? 'Create Template' : 'Update Template'}
+						</Button>
+					</DialogFooter>
+				</form>
+			</DialogContent>
+		</Dialog>
+	)
+}
+
 export default function BroadcastTemplatesPage() {
 	usePageTitle('Admin - Broadcast Templates')
 	const { data: templates, isLoading } = useBroadcastTemplates()
@@ -272,6 +469,7 @@ export default function BroadcastTemplatesPage() {
 		name: '',
 		description: '',
 		targetType: 'discord_channel',
+		displayOrder: 0,
 		targetIds: [],
 		fieldSchema: [{ name: 'message', label: 'Message', type: 'text', required: true }],
 		messageTemplate: '{{message}}',
@@ -290,6 +488,7 @@ export default function BroadcastTemplatesPage() {
 			name: '',
 			description: '',
 			targetType: 'discord_channel',
+			displayOrder: 0,
 			targetIds: [],
 			fieldSchema: [{ name: 'message', label: 'Message', type: 'text', required: true }],
 			messageTemplate: '{{message}}',
@@ -380,6 +579,7 @@ export default function BroadcastTemplatesPage() {
 			name: template.name,
 			description: template.description || '',
 			targetType: template.targetType,
+			displayOrder: template.displayOrder,
 			targetIds: template.targetIds,
 			fieldSchema: template.fieldSchema,
 			messageTemplate: template.messageTemplate,
@@ -406,6 +606,8 @@ export default function BroadcastTemplatesPage() {
 				data: {
 					name: formData.name,
 					description: formData.description,
+					displayOrder: formData.displayOrder ?? 0,
+					targetIds: formData.targetIds,
 					fieldSchema: formData.fieldSchema,
 					messageTemplate: formData.messageTemplate,
 				},
@@ -494,6 +696,7 @@ export default function BroadcastTemplatesPage() {
 							<TableHeader>
 								<TableRow>
 									<TableHead>Name</TableHead>
+									<TableHead>Order</TableHead>
 									<TableHead>Target Type</TableHead>
 									<TableHead>Target</TableHead>
 									<TableHead>Fields</TableHead>
@@ -508,6 +711,7 @@ export default function BroadcastTemplatesPage() {
 									return (
 										<TableRow key={template.id}>
 											<TableCell className="font-medium">{template.name}</TableCell>
+											<TableCell>{template.displayOrder}</TableCell>
 											<TableCell>{template.targetType}</TableCell>
 											<TableCell>{targetNames}</TableCell>
 											<TableCell className="text-sm text-muted-foreground">
@@ -534,270 +738,47 @@ export default function BroadcastTemplatesPage() {
 				</CardContent>
 			</Card>
 
-			{/* Create Dialog */}
-			<Dialog open={createDialogOpen} onOpenChange={setCreateDialogOpen}>
-				<DialogContent className="max-w-2xl">
-					<DialogHeader>
-						<DialogTitle>Create Broadcast Template</DialogTitle>
-						<DialogDescription>Create a reusable template for broadcasts</DialogDescription>
-					</DialogHeader>
-					<form onSubmit={handleCreate} className="space-y-4">
-						<div>
-							<Label htmlFor="name">Name *</Label>
-							<Input
-								id="name"
-								value={formData.name}
-								onChange={(e) => setFormData({ ...formData, name: e.target.value })}
-								required
-							/>
-						</div>
-						<div>
-							<Label htmlFor="description">Description</Label>
-							<Textarea
-								id="description"
-								value={formData.description}
-								onChange={(e) => setFormData({ ...formData, description: e.target.value })}
-								rows={2}
-							/>
-						</div>
-						<div className="rounded-md border border-border/60 px-3 py-2">
-							<div className="flex items-center justify-between gap-3">
-								<div className="space-y-0.5">
-									<Label htmlFor="template-frogsiren">Enable FrogSiren</Label>
-									<p className="text-xs text-muted-foreground">
-										Adds an optional FrogSiren toggle when composing broadcasts with this template.
-									</p>
-								</div>
-								<Switch
-									id="template-frogsiren"
-									checked={frogsirenEnabled}
-									onCheckedChange={setFrogsirenEnabled}
-								/>
-							</div>
-						</div>
-						<div>
-							<Label>Targets *</Label>
-							<div className="mt-2 space-y-2">
-								<Select
-									value={targetToAttach}
-									onValueChange={(value) => {
-										setTargetToAttach(value)
-										addTargetSelection(value)
-									}}
-									options={targets
-										.filter((target) => !formData.targetIds.includes(target.id))
-										.map((target) => ({
-											value: target.id,
-											label: target.name,
-										}))}
-									placeholder="Search and attach a target"
-									searchable
-								/>
-								<div className="flex flex-wrap gap-2 rounded-md border border-border bg-background p-2 min-h-10">
-									{formData.targetIds.length === 0 ? (
-										<span className="text-xs text-muted-foreground">No targets attached</span>
-									) : (
-										formData.targetIds.map((targetId) => {
-											const target = targets.find((item) => item.id === targetId)
-											return (
-												<Badge
-													key={targetId}
-													variant="secondary"
-													className="flex items-center gap-1 pr-1"
-												>
-													{target?.name ?? targetId}
-													<Button
-														type="button"
-														variant="ghost"
-														size="sm"
-														className="h-5 w-5 p-0"
-														onClick={() => removeTargetSelection(targetId)}
-													>
-														<X className="h-3 w-3" />
-													</Button>
-												</Badge>
-											)
-										})
-									)}
-								</div>
-							</div>
-						</div>
-						<div>
-							<div className="flex items-center justify-between gap-3">
-								<Label htmlFor="messageTemplate">Message Template *</Label>
-								<TemplateTokenHelpPopover />
-							</div>
-							<Textarea
-								id="messageTemplate"
-								value={formData.messageTemplate}
-								onChange={(e) => handleMessageTemplateChange(e.target.value)}
-								rows={4}
-								placeholder="Use {{fieldName}} for dynamic fields"
-							/>
-							<p className="text-xs text-muted-foreground mt-1">
-								Each placeholder like {'{{message}}'} becomes a template field automatically.
-							</p>
-							<div className="mt-2 rounded-md border border-border bg-muted/20 p-3 text-sm overflow-y-auto min-h-[120px]">
-								{formData.messageTemplate.trim() ? (
-									renderDiscordContentValue(formData.messageTemplate, 'create-template-preview')
-								) : (
-									<span className="text-muted-foreground italic">
-										Preview will appear here…
-									</span>
-								)}
-							</div>
-						</div>
-						<DialogFooter>
-							<Button variant="cancel" onClick={() => setCreateDialogOpen(false)} type="button">
-								Cancel
-							</Button>
-							<Button variant="confirm"
-								type="submit"
-								loading={createTemplate.isPending}
-								loadingText="Creating..."
-							>
-								Create Template
-							</Button>
-						</DialogFooter>
-					</form>
-				</DialogContent>
-			</Dialog>
+			<TemplateDialog
+				mode="create"
+				open={createDialogOpen}
+				onOpenChange={setCreateDialogOpen}
+				onSubmit={handleCreate}
+				onCancel={() => setCreateDialogOpen(false)}
+				formData={formData}
+				setFormData={setFormData}
+				frogsirenEnabled={frogsirenEnabled}
+				setFrogsirenEnabled={setFrogsirenEnabled}
+				targets={targets}
+				targetToAttach={targetToAttach}
+				setTargetToAttach={setTargetToAttach}
+				addTargetSelection={addTargetSelection}
+				removeTargetSelection={removeTargetSelection}
+				handleMessageTemplateChange={handleMessageTemplateChange}
+				isPending={createTemplate.isPending}
+			/>
 
-			{/* Edit Dialog */}
-			<Dialog open={editDialogOpen} onOpenChange={setEditDialogOpen}>
-				<DialogContent className="max-w-2xl">
-					<DialogHeader>
-						<DialogTitle>Edit Broadcast Template</DialogTitle>
-						<DialogDescription>Update template settings</DialogDescription>
-					</DialogHeader>
-					<form onSubmit={handleUpdate} className="space-y-4">
-						<div>
-							<Label htmlFor="edit-name">Name *</Label>
-							<Input
-								id="edit-name"
-								value={formData.name}
-								onChange={(e) => setFormData({ ...formData, name: e.target.value })}
-								required
-							/>
-						</div>
-						<div>
-							<Label htmlFor="edit-description">Description</Label>
-							<Textarea
-								id="edit-description"
-								value={formData.description}
-								onChange={(e) => setFormData({ ...formData, description: e.target.value })}
-								rows={2}
-							/>
-						</div>
-						<div>
-							<div className="flex items-center justify-between gap-3">
-								<Label htmlFor="edit-messageTemplate">Message Template *</Label>
-								<TemplateTokenHelpPopover />
-							</div>
-							<Textarea
-								id="edit-messageTemplate"
-								value={formData.messageTemplate}
-								onChange={(e) => handleMessageTemplateChange(e.target.value)}
-								rows={4}
-								placeholder="Use {{fieldName}} for dynamic fields"
-							/>
-							<p className="text-xs text-muted-foreground mt-1">
-								Each placeholder like {'{{message}}'} becomes a template field automatically.
-							</p>
-							<div className="mt-2 rounded-md border border-border bg-muted/20 p-3 text-sm overflow-y-auto min-h-[120px]">
-								{formData.messageTemplate.trim() ? (
-									renderDiscordContentValue(formData.messageTemplate, 'edit-template-preview')
-								) : (
-									<span className="text-muted-foreground italic">
-										Preview will appear here…
-									</span>
-								)}
-							</div>
-						</div>
-						<div className="rounded-md border border-border/60 px-3 py-2">
-							<div className="flex items-center justify-between gap-3">
-								<div className="space-y-0.5">
-									<Label htmlFor="template-frogsiren-edit">Enable FrogSiren</Label>
-									<p className="text-xs text-muted-foreground">
-										Adds an optional FrogSiren toggle when composing broadcasts with this template.
-									</p>
-								</div>
-								<Switch
-									id="template-frogsiren-edit"
-									checked={frogsirenEnabled}
-									onCheckedChange={setFrogsirenEnabled}
-								/>
-							</div>
-						</div>
-						<div>
-							<Label>Targets *</Label>
-							<div className="mt-2 space-y-2">
-								<Select
-									value={targetToAttach}
-									onValueChange={(value) => {
-										setTargetToAttach(value)
-										addTargetSelection(value)
-									}}
-									options={targets
-										.filter((target) => !formData.targetIds.includes(target.id))
-										.map((target) => ({
-											value: target.id,
-											label: target.name,
-										}))}
-									placeholder="Search and attach a target"
-									searchable
-								/>
-								<div className="flex flex-wrap gap-2 rounded-md border border-border bg-background p-2 min-h-10">
-									{formData.targetIds.length === 0 ? (
-										<span className="text-xs text-muted-foreground">No targets attached</span>
-									) : (
-										formData.targetIds.map((targetId) => {
-											const target = targets.find((item) => item.id === targetId)
-											return (
-												<Badge
-													key={targetId}
-													variant="secondary"
-													className="flex items-center gap-1 pr-1"
-												>
-													{target?.name ?? targetId}
-													<Button
-														type="button"
-														variant="ghost"
-														size="sm"
-														className="h-5 w-5 p-0"
-														onClick={() => removeTargetSelection(targetId)}
-													>
-														<X className="h-3 w-3" />
-													</Button>
-												</Badge>
-											)
-										})
-									)}
-								</div>
-							</div>
-						</div>
-						<DialogFooter>
-							<Button variant="cancel"
-								onClick={() => {
-									setEditDialogOpen(false)
-									setSelectedTemplate(null)
-									resetForm()
-								}}
-								type="button"
-							>
-								Cancel
-							</Button>
-							<Button variant="confirm"
-								type="submit"
-								loading={updateTemplate.isPending}
-								loadingText="Updating..."
-							>
-								Update Template
-							</Button>
-						</DialogFooter>
-					</form>
-				</DialogContent>
-			</Dialog>
+			<TemplateDialog
+				mode="edit"
+				open={editDialogOpen}
+				onOpenChange={setEditDialogOpen}
+				onSubmit={handleUpdate}
+				onCancel={() => {
+					setEditDialogOpen(false)
+					setSelectedTemplate(null)
+					resetForm()
+				}}
+				formData={formData}
+				setFormData={setFormData}
+				frogsirenEnabled={frogsirenEnabled}
+				setFrogsirenEnabled={setFrogsirenEnabled}
+				targets={targets}
+				targetToAttach={targetToAttach}
+				setTargetToAttach={setTargetToAttach}
+				addTargetSelection={addTargetSelection}
+				removeTargetSelection={removeTargetSelection}
+				handleMessageTemplateChange={handleMessageTemplateChange}
+				isPending={updateTemplate.isPending}
+			/>
 
 			{/* Delete Confirmation Dialog */}
 			<Dialog open={deleteDialogOpen} onOpenChange={setDeleteDialogOpen}>

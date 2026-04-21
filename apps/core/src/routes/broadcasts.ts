@@ -876,6 +876,15 @@ broadcasts.post('/templates', async (c) => {
 		return c.json({ error: 'messageTemplate is required' }, 400)
 	}
 	const parsedCreateTemplate = parseTemplateMessage(data.messageTemplate)
+	const displayOrder =
+		typeof data.displayOrder === 'number' && Number.isFinite(data.displayOrder)
+			? Math.trunc(data.displayOrder)
+			: data.displayOrder === undefined
+				? 0
+				: Number.NaN
+	if (Number.isNaN(displayOrder)) {
+		return c.json({ error: 'displayOrder must be a finite number' }, 400)
+	}
 	const targetIds = normalizeTemplateTargetIds(data)
 	if (targetIds.length === 0) {
 		return c.json({ error: 'At least one target is required' }, 400)
@@ -920,6 +929,7 @@ broadcasts.post('/templates', async (c) => {
 			name: data.name.trim(),
 			description: typeof data.description === 'string' ? data.description : undefined,
 			targetType,
+			displayOrder,
 			targetIds,
 			fieldSchema: deriveTemplateFieldSchema(
 				data.messageTemplate,
@@ -941,6 +951,16 @@ broadcasts.patch('/templates/:id', async (c) => {
 	const user = c.get('user')!
 	const templateId = c.req.param('id')
 	const data = (await c.req.json()) as Record<string, unknown>
+	if (data.displayOrder !== undefined) {
+		const parsedDisplayOrder =
+			typeof data.displayOrder === 'number' && Number.isFinite(data.displayOrder)
+				? Math.trunc(data.displayOrder)
+				: Number.NaN
+		if (Number.isNaN(parsedDisplayOrder)) {
+			return c.json({ error: 'displayOrder must be a finite number' }, 400)
+		}
+		data.displayOrder = parsedDisplayOrder
+	}
 
 	// Get template to check group ownership
 	const broadcastsStub = getStub<Broadcasts>(c.env.BROADCASTS, 'default')
@@ -1013,6 +1033,9 @@ broadcasts.patch('/templates/:id', async (c) => {
 	}
 	if (typeof data.description === 'string' || data.description === null) {
 		updatePayload.description = data.description ?? undefined
+	}
+	if (typeof data.displayOrder === 'number') {
+		updatePayload.displayOrder = data.displayOrder
 	}
 	if (typeof data.messageTemplate === 'string') {
 		updatePayload.messageTemplate = data.messageTemplate

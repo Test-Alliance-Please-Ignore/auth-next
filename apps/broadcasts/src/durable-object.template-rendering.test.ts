@@ -29,7 +29,7 @@ describe('BroadcastsDO template token rendering', () => {
 		})
 		const disabled = subject.renderTemplate('{{srp}}', { srp: 'false' })
 
-		expect(enabled).toBe('**SRP:** Yes\n**SRP Token:** FleetStagingSystemFrontLine')
+		expect(enabled).toBe('**SRP:** Blanket\n**SRP Token:** FleetStagingSystemFrontLine')
 		expect(disabled).toBe('**SRP:** No')
 	})
 
@@ -62,5 +62,14 @@ describe('BroadcastsDO template token rendering', () => {
 		expect(top).toBe(bottom)
 		expect(top?.split(' ')).toHaveLength(16)
 		expect(top?.split(' ').every((entry: string) => entry === emote)).toBe(true)
+	})
+
+	it('rejects outbound messages exceeding discord content max length', () => {
+		const subject = createSubject()
+
+		expect(() => subject.ensureDiscordContentLimit('a'.repeat(2000))).not.toThrow()
+		expect(() => subject.ensureDiscordContentLimit('a'.repeat(2001))).toThrow(
+			'Discord maximum content length is 2000.'
+		)
 	})
 })

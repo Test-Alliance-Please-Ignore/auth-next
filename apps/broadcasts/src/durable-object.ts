@@ -34,6 +34,8 @@ import type {
 import type { Discord } from '@repo/discord'
 import type { Env } from './context'
 
+const DISCORD_MESSAGE_MAX_LENGTH = 2000
+
 /**
  * Broadcasts Durable Object
  *
@@ -200,7 +202,11 @@ export class BroadcastsDO extends DurableObject<Env> implements Broadcasts {
 		}
 		const templates = await this.db.query.broadcastTemplates.findMany({
 			where: whereConditions.length > 0 ? and(...whereConditions) : undefined,
-			orderBy: desc(broadcastTemplates.createdAt),
+			orderBy: [
+				asc(broadcastTemplates.displayOrder),
+				asc(broadcastTemplates.name),
+				desc(broadcastTemplates.createdAt),
+			],
 		})
 		const templateIds = templates.map((template) => template.id)
 		const templateTargetIds = await this.getTemplateTargetIds(templateIds)
@@ -216,6 +222,7 @@ export class BroadcastsDO extends DurableObject<Env> implements Broadcasts {
 			name: t.name,
 			description: t.description,
 			targetType: t.targetType,
+			displayOrder: t.displayOrder,
 			targetIds: templateTargetIds.get(t.id) ?? [],
 			fieldSchema: t.fieldSchema as any,
 			messageTemplate: t.messageTemplate,
@@ -238,6 +245,7 @@ export class BroadcastsDO extends DurableObject<Env> implements Broadcasts {
 			name: template.name,
 			description: template.description,
 			targetType: template.targetType,
+			displayOrder: template.displayOrder,
 			targetIds: templateTargetIds.get(template.id) ?? [],
 			fieldSchema: template.fieldSchema as any,
 			messageTemplate: template.messageTemplate,
@@ -274,6 +282,7 @@ export class BroadcastsDO extends DurableObject<Env> implements Broadcasts {
 				name: data.name,
 				description: data.description || null,
 				targetType: data.targetType,
+				displayOrder: data.displayOrder ?? 0,
 				fieldSchema: data.fieldSchema,
 				messageTemplate: data.messageTemplate,
 				createdBy: userId,
@@ -295,6 +304,7 @@ export class BroadcastsDO extends DurableObject<Env> implements Broadcasts {
 			name: template.name,
 			description: template.description,
 			targetType: template.targetType,
+			displayOrder: template.displayOrder,
 			targetIds: normalizedTargetIds,
 			fieldSchema: template.fieldSchema as any,
 			messageTemplate: template.messageTemplate,
@@ -336,6 +346,7 @@ export class BroadcastsDO extends DurableObject<Env> implements Broadcasts {
 			.set({
 				name: data.name ?? existing.name,
 				description: data.description !== undefined ? data.description : existing.description,
+				displayOrder: data.displayOrder ?? existing.displayOrder,
 				fieldSchema: data.fieldSchema ?? existing.fieldSchema,
 				messageTemplate: data.messageTemplate ?? existing.messageTemplate,
 				updatedAt: new Date(),
@@ -359,6 +370,7 @@ export class BroadcastsDO extends DurableObject<Env> implements Broadcasts {
 			name: updated.name,
 			description: updated.description,
 			targetType: updated.targetType,
+			displayOrder: updated.displayOrder,
 			targetIds: nextTargetIds,
 			fieldSchema: updated.fieldSchema as any,
 			messageTemplate: updated.messageTemplate,
@@ -514,6 +526,7 @@ export class BroadcastsDO extends DurableObject<Env> implements Broadcasts {
 						name: template.name,
 						description: template.description,
 						targetType: template.targetType,
+						displayOrder: template.displayOrder,
 						targetIds: (await this.getTemplateTargetIds([template.id])).get(template.id) ?? [],
 						fieldSchema: template.fieldSchema as any,
 						messageTemplate: template.messageTemplate,
@@ -650,6 +663,7 @@ export class BroadcastsDO extends DurableObject<Env> implements Broadcasts {
 				const unixTimestamp = Math.floor(sendTime.getTime() / 1000)
 				const footer = `\n\n#### SENT BY ${broadcastDetails.createdByCharacterName} to ${broadcastDetails.target.name} @ <t:${unixTimestamp}:F> ####`
 				message = message + footer
+				this.ensureDiscordContentLimit(message)
 
 				// Get Discord DO stub and send message
 				const discordStub = getStub<Discord>(this.env.DISCORD, 'default')
@@ -965,13 +979,13 @@ export class BroadcastsDO extends DurableObject<Env> implements Broadcasts {
 				}
 			}
 			if (fieldName === 'srp') {
-				const enabled = this.isSrpEnabled(content.srp)
-				if (!enabled) {
+				const mode = this.parseSrpMode(content.srp)
+				if (mode === 'disabled') {
 					return '**SRP:** No'
 				}
 
 				const token = this.resolveSrpToken(content)
-				return `**SRP:** Yes\n**SRP Token:** ${token}`
+				return `**SRP:** ${this.getSrpModeLabel(mode)}\n**SRP Token:** ${token}`
 			}
 			const value = content[fieldName]
 			return value === undefined || value === null ? '' : String(value)
@@ -988,8 +1002,8 @@ export class BroadcastsDO extends DurableObject<Env> implements Broadcasts {
 
 		const nextContent = { ...content }
 		let changed = false
-		const enabled = this.isSrpEnabled(nextContent.srp)
-		if (!enabled) {
+		const mode = this.parseSrpMode(nextContent.srp)
+		if (mode === 'disabled') {
 			if ('__srpToken' in nextContent) {
 				delete nextContent.__srpToken
 				changed = true
@@ -1006,15 +1020,30 @@ export class BroadcastsDO extends DurableObject<Env> implements Broadcasts {
 		return { content: nextContent, changed: true }
 	}
 
-	private isSrpEnabled(value: unknown): boolean {
-		if (typeof value === 'boolean') return value
-		if (typeof value === 'number') return value !== 0
+	private parseSrpMode(value: unknown): 'blanket' | 'military' | 'disabled' {
+		if (typeof value === 'boolean') return value ? 'blanket' : 'disabled'
+		if (typeof value === 'number') return value !== 0 ? 'blanket' : 'disabled'
 		if (typeof value === 'string') {
 			const normalized = value.trim().toLowerCase()
-			if (!normalized) return true
-			return ['true', '1', 'yes', 'enabled', 'on'].includes(normalized)
+			if (!normalized) return 'blanket'
+			if (normalized === 'military') return 'military'
+			if (
+				['disabled', 'false', '0', 'no', 'off'].includes(normalized)
+			) {
+				return 'disabled'
+			}
+			if (['blanket', 'true', '1', 'yes', 'enabled', 'on'].includes(normalized)) {
+				return 'blanket'
+			}
+			return 'blanket'
 		}
-		return true
+		return 'blanket'
+	}
+
+	private getSrpModeLabel(mode: 'blanket' | 'military' | 'disabled'): string {
+		if (mode === 'military') return 'Military'
+		if (mode === 'blanket') return 'Blanket'
+		return 'No'
 	}
 
 	private isFrogsirenEnabled(value: unknown): boolean {
@@ -1055,5 +1084,13 @@ export class BroadcastsDO extends DurableObject<Env> implements Broadcasts {
 			() => '<:fs:1496199804470952080>'
 		).join(' ')
 		return `${frogsirenBanner}\n\n${message}\n\n${frogsirenBanner}`
+	}
+
+	private ensureDiscordContentLimit(message: string): void {
+		if (message.length <= DISCORD_MESSAGE_MAX_LENGTH) return
+
+		throw new Error(
+			`Rendered broadcast message is ${message.length} characters. Discord maximum content length is ${DISCORD_MESSAGE_MAX_LENGTH}.`
+		)
 	}
 }

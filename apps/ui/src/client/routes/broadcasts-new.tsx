@@ -1,5 +1,5 @@
 import { Copy } from 'lucide-react'
-import { useEffect, useMemo, useRef, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useNavigate, useSearchParams } from 'react-router-dom'
 
 import { renderDiscordContentValue } from '@/components/discord-content-renderer'
@@ -29,6 +29,7 @@ import {
 	useSendBroadcast,
 	useUpdateBroadcast,
 } from '@/hooks/useBroadcasts'
+import { useAuth } from '@/hooks/useAuth'
 import { useConfirmationDialog } from '@/hooks/useConfirmationDialog'
 import { usePageTitle } from '@/hooks/usePageTitle'
 import { useDoctrines, useStagingSystems } from '@/features/doctrines/hooks'
@@ -37,6 +38,8 @@ import type { BroadcastTemplate } from '@/lib/api'
 
 type TimeMode = 'local' | 'eve'
 type TimestampFormat = 't' | 'T' | 'd' | 'D' | 'f' | 'F' | 'R'
+const DISCORD_MESSAGE_MAX_LENGTH = 2000
+const FROGSIREN_EMOTE = '<:fs:1496199804470952080>'
 
 const DISCORD_TIMESTAMP_FORMATS: Array<{ code: TimestampFormat; label: string }> = [
 	{ code: 't', label: 'Short Time' },
@@ -188,9 +191,9 @@ function renderTemplateMessage(
 		}
 		const value = fields[key]
 		if (key === 'srp') {
-			const enabled = parseBooleanField(value, true)
-			return enabled
-				? '**SRP:** Yes\n**SRP Token:** (generated on send)'
+			const mode = parseSrpMode(value)
+			return mode !== 'disabled'
+				? `**SRP:** ${srpModeLabel(mode)}\n**SRP Token:** ${fields.__srpToken ?? ''}`
 				: '**SRP:** No'
 		}
 		if (typeof value === 'string') return value
@@ -211,6 +214,93 @@ function parseBooleanField(value: string | undefined, defaultValue: boolean): bo
 	if (['true', '1', 'yes', 'enabled', 'on'].includes(normalized)) return true
 	if (['false', '0', 'no', 'disabled', 'off'].includes(normalized)) return false
 	return defaultValue
+}
+
+type SrpMode = 'blanket' | 'military' | 'disabled'
+
+function parseSrpMode(value: string | undefined): SrpMode {
+	const normalized = (value ?? '').trim().toLowerCase()
+	if (normalized === 'military') return 'military'
+	if (normalized === 'disabled' || normalized === 'false' || normalized === '0' || normalized === 'off') {
+		return 'disabled'
+	}
+	if (normalized === 'blanket' || normalized === 'true' || normalized === '1' || normalized === 'on') {
+		return 'blanket'
+	}
+	return 'blanket'
+}
+
+function srpModeLabel(mode: SrpMode): string {
+	if (mode === 'military') return 'Military'
+	if (mode === 'blanket') return 'Blanket'
+	return 'No'
+}
+
+function toPascalCaseWord(word: string): string {
+	const cleaned = word.replace(/[^a-zA-Z0-9]+/g, ' ').trim()
+	if (!cleaned) return ''
+	return cleaned
+		.split(/\s+/)
+		.filter(Boolean)
+		.map((part) => part.charAt(0).toUpperCase() + part.slice(1).toLowerCase())
+		.join('')
+}
+
+function randomItem(list: readonly string[]): string {
+	if (list.length === 0) return 'Token'
+	const random = crypto.getRandomValues(new Uint32Array(1))[0] ?? 0
+	return list[random % list.length] ?? 'Token'
+}
+
+function generateSrpTokenAtFormLoad(): string {
+	const adjectives = [
+		'fleet',
+		'rapid',
+		'brave',
+		'silent',
+		'steady',
+		'iron',
+		'solar',
+		'storm',
+		'ember',
+		'aurora',
+	] as const
+	const nouns = [
+		'staging',
+		'vanguard',
+		'sentinel',
+		'citadel',
+		'anchor',
+		'convoy',
+		'doctrine',
+		'beacon',
+		'horizon',
+		'relay',
+	] as const
+
+	return [
+		toPascalCaseWord(randomItem(adjectives)),
+		toPascalCaseWord(randomItem(nouns)),
+		toPascalCaseWord(randomItem(nouns)),
+	].join('')
+}
+
+function wrapWithFrogsirenBanner(message: string): string {
+	const banner = Array.from({ length: 16 }, () => FROGSIREN_EMOTE).join(' ')
+	return `${banner}\n\n${message}\n\n${banner}`
+}
+
+function convertUnixTimestampsForPreview(message: string, format: string = 'f'): string {
+	const timestampPattern = /(?<!\d)(\d{10}|\d{13})(?!\d)/g
+	const minTimestamp = 946684800
+	const maxTimestamp = 4102444800
+
+	return message.replace(timestampPattern, (match) => {
+		const numeric = Number.parseInt(match, 10)
+		const timestamp = match.length === 13 ? Math.floor(numeric / 1000) : numeric
+		if (timestamp < minTimestamp || timestamp > maxTimestamp) return match
+		return `<t:${timestamp}:${format}>`
+	})
 }
 
 function isSwitchControlClick(target: EventTarget | null): boolean {
@@ -242,6 +332,7 @@ export default function NewBroadcastPage() {
 	const createBroadcast = useCreateBroadcast()
 	const sendBroadcast = useSendBroadcast()
 	const updateBroadcast = useUpdateBroadcast()
+	const { user } = useAuth()
 	const { requestConfirmation, confirmationDialog } = useConfirmationDialog()
 	const { data: draftBroadcast, isLoading: draftLoading } = useBroadcast(draftId)
 
@@ -253,10 +344,9 @@ export default function NewBroadcastPage() {
 	const [templateFieldSelections, setTemplateFieldSelections] = useState<Record<string, string>>({})
 	const [templatePrefixText, setTemplatePrefixText] = useState<string>('')
 	const [templateDefaultText, setTemplateDefaultText] = useState<string>('')
-	const [mentionLevel, setMentionLevel] = useState<'none' | 'here' | 'everyone'>('none')
+	const [mentionLevel, setMentionLevel] = useState<'none' | 'here' | 'everyone'>('here')
 	const [isSending, setIsSending] = useState(false)
 	const [isSavingDraft, setIsSavingDraft] = useState(false)
-	const [showPreview, setShowPreview] = useState(false)
 	const [timestampHelperOpen, setTimestampHelperOpen] = useState(false)
 	const [timeMode, setTimeMode] = useState<TimeMode>('local')
 	const [timestampInput, setTimestampInput] = useState<string>(() =>
@@ -292,9 +382,11 @@ export default function NewBroadcastPage() {
 		setSelectedTargetId(draftBroadcast.targetId)
 		setSelectedTemplateId(draftBroadcast.templateId ?? 'custom')
 		const nextMentionLevel =
-			draftBroadcast.content.mentionLevel === 'here' || draftBroadcast.content.mentionLevel === 'everyone'
-				? (draftBroadcast.content.mentionLevel as 'here' | 'everyone')
-				: 'none'
+			draftBroadcast.content.mentionLevel === 'here' ||
+			draftBroadcast.content.mentionLevel === 'everyone' ||
+			draftBroadcast.content.mentionLevel === 'none'
+				? (draftBroadcast.content.mentionLevel as 'here' | 'everyone' | 'none')
+				: 'here'
 		setMentionLevel(nextMentionLevel)
 
 		if (draftBroadcast.templateId) {
@@ -340,6 +432,52 @@ export default function NewBroadcastPage() {
 				.filter(Boolean)
 				.join('\n\n')
 		: ''
+	const senderCharacterName =
+		user?.characters.find((character) => character.characterId === user.mainCharacterId)?.characterName ??
+		'Unknown Sender'
+	const renderedOutboundMessage = useMemo(() => {
+		if (!selectedTarget) return ''
+
+		let message = ''
+		if (selectedTemplate) {
+			message = [
+				templatePrefixText.trim(),
+				renderTemplateMessage(selectedTemplate.messageTemplate, templateFields, true),
+				templateDefaultText.trim(),
+			]
+				.filter(Boolean)
+				.join('\n\n')
+		} else {
+			message = customMessage
+		}
+
+		message = convertUnixTimestampsForPreview(message)
+
+		if (mentionLevel === 'here') {
+			message = `@here\n\n${message}`
+		} else if (mentionLevel === 'everyone') {
+			message = `@everyone\n\n${message}`
+		}
+
+		if (parseBooleanField(templateFields.__frogsirenEnabled, false)) {
+			message = wrapWithFrogsirenBanner(message)
+		}
+
+		const unixTimestamp = Math.floor(Date.now() / 1000)
+		const footer = `\n\n#### SENT BY ${senderCharacterName} to ${selectedTarget.name} @ <t:${unixTimestamp}:F> ####`
+		return `${message}${footer}`
+	}, [
+		customMessage,
+		mentionLevel,
+		selectedTarget,
+		selectedTemplate,
+		senderCharacterName,
+		templateDefaultText,
+		templateFields,
+		templatePrefixText,
+	])
+	const renderedOutboundLength = renderedOutboundMessage.length
+	const isOverRenderedMessageLimit = renderedOutboundLength > DISCORD_MESSAGE_MAX_LENGTH
 	const doctrineFieldOptions = [
 		{ value: SPECIAL_DOCTRINE_READ_MOTD_VALUE, label: 'Read MOTD' },
 		{ value: SPECIAL_CUSTOM_VALUE, label: 'Custom' },
@@ -354,7 +492,7 @@ export default function NewBroadcastPage() {
 	]
 
 	// Initialize template fields when template is selected
-	const handleTemplateChange = (templateId: string) => {
+	const handleTemplateChange = useCallback((templateId: string) => {
 		setSelectedTemplateId(templateId)
 		if (templateId === 'custom') {
 			setTemplateFields({})
@@ -390,7 +528,8 @@ export default function NewBroadcastPage() {
 				}
 
 				if (field.type === 'system_srp') {
-					initialFields[field.name] = 'true'
+					initialFields[field.name] = 'blanket'
+					initialFields.__srpToken = generateSrpTokenAtFormLoad()
 					return
 				}
 
@@ -406,7 +545,7 @@ export default function NewBroadcastPage() {
 			setTemplatePrefixText('')
 			setTemplateDefaultText('')
 		}
-	}
+	}, [stagingSystems, templates])
 
 	const updateTemplateField = (fieldName: string, value: string) => {
 		setTemplateFields((current) => ({
@@ -439,12 +578,6 @@ export default function NewBroadcastPage() {
 			autoResizeTextarea(suffix)
 		}
 	}, [selectedTemplate, templateFields])
-
-	useEffect(() => {
-		if (selectedTemplateId !== 'custom') {
-			setShowPreview(true)
-		}
-	}, [selectedTemplateId])
 
 	useEffect(() => {
 		if (!selectedTemplate) return
@@ -492,7 +625,17 @@ export default function NewBroadcastPage() {
 			if (field.type === 'system_srp') {
 				const currentValue = templateFields[field.name]
 				if (currentValue === undefined || currentValue.trim().length === 0) {
-					updateTemplateField(field.name, 'true')
+					updateTemplateField(field.name, 'blanket')
+					changed = true
+				}
+				const mode = parseSrpMode(currentValue)
+				const currentToken = (templateFields.__srpToken ?? '').trim()
+				if (mode !== 'disabled' && currentToken.length === 0) {
+					updateTemplateField('__srpToken', generateSrpTokenAtFormLoad())
+					changed = true
+				}
+				if (mode === 'disabled' && currentToken.length > 0) {
+					updateTemplateField('__srpToken', '')
 					changed = true
 				}
 				continue
@@ -511,6 +654,17 @@ export default function NewBroadcastPage() {
 			setTemplateFieldSelections(nextSelections)
 		}
 	}, [selectedTemplate, templateFieldSelections, templateFields])
+
+	useEffect(() => {
+		if (isEditMode || !selectedTargetId || !templates || templates.length === 0) return
+
+		const hasValidSelection =
+			selectedTemplateId !== 'custom' &&
+			templates.some((template) => template.id === selectedTemplateId)
+		if (hasValidSelection) return
+
+		handleTemplateChange(templates[0]!.id)
+	}, [handleTemplateChange, isEditMode, selectedTargetId, selectedTemplateId, templates])
 
 	const buildBroadcastData = () => {
 		if (!selectedTarget) throw new Error('No target selected')
@@ -532,6 +686,13 @@ export default function NewBroadcastPage() {
 
 	const handleSend = async (e: React.FormEvent) => {
 		e.preventDefault()
+		if (isOverRenderedMessageLimit) {
+			setMessage({
+				type: 'error',
+				text: `Rendered broadcast is ${renderedOutboundLength} characters. Discord maximum is ${DISCORD_MESSAGE_MAX_LENGTH}.`,
+			})
+			return
+		}
 		if (isEditMode && draftBroadcast?.status !== 'draft') {
 			setMessage({ type: 'error', text: 'Only draft broadcasts can be edited.' })
 			return
@@ -547,7 +708,12 @@ export default function NewBroadcastPage() {
 						},
 					})
 				: await createBroadcast.mutateAsync(payload)
-			await sendBroadcast.mutateAsync(isEditMode ? draftId : broadcast.id)
+			const sendResult = await sendBroadcast.mutateAsync(isEditMode ? draftId : broadcast.id)
+			if (!sendResult.success) {
+				const errorText =
+					sendResult.delivery.errorMessage || 'Failed to send broadcast'
+				throw new Error(errorText)
+			}
 			setMessage({ type: 'success', text: 'Broadcast sent successfully!' })
 			setTimeout(() => navigate('/broadcasts'), 2000)
 		} catch (error) {
@@ -689,70 +855,72 @@ export default function NewBroadcastPage() {
 					</CardHeader>
 					<CardContent>
 						<form onSubmit={handleSend} className="space-y-6">
-							{/* Target Selection */}
-							<div className="space-y-2">
-								<Label htmlFor="target">Target *</Label>
-								<Select
-									inputId="target"
-									value={selectedTargetId}
-									onValueChange={setSelectedTargetId}
-									searchable
-									options={
-										targets?.map((target) => ({
-											value: target.id,
-											label: `${target.name}${
-												target.description ? ` - ${target.description}` : ''
-											}`,
-										})) ?? []
-									}
-									placeholder="Select a broadcast target"
-									disabled={isEditMode}
-								/>
-								<p className="text-xs text-muted-foreground">
-									Choose where this broadcast should be sent
-								</p>
-							</div>
+							<div className="grid gap-4 lg:grid-cols-3">
+								{/* Target Selection */}
+								<div className="space-y-2">
+									<Label htmlFor="target">Target *</Label>
+									<Select
+										inputId="target"
+										value={selectedTargetId}
+										onValueChange={setSelectedTargetId}
+										searchable
+										options={
+											targets?.map((target) => ({
+												value: target.id,
+												label: `${target.name}${
+													target.description ? ` - ${target.description}` : ''
+												}`,
+											})) ?? []
+										}
+										placeholder="Select a broadcast target"
+										disabled={isEditMode}
+									/>
+									<p className="text-xs text-muted-foreground">
+										Choose where this broadcast should be sent
+									</p>
+								</div>
 
-							{/* Template Selection */}
-							<div className="space-y-2">
-								<Label htmlFor="template">Template</Label>
-								<Select
-									value={selectedTemplateId}
-									onValueChange={handleTemplateChange}
-									inputId="template"
-									options={[
-										{ value: 'custom', label: 'Custom Message' },
-										...(templates?.map((template) => ({
-											value: template.id,
-											label: template.name,
-										})) ?? []),
-									]}
-									placeholder="Custom message"
-									disabled={!selectedTargetId || isEditMode}
-								/>
-								<p className="text-xs text-muted-foreground">
-									{!selectedTargetId
-										? 'Select a target first'
-										: 'Use a pre-configured template or write a custom message'}
-								</p>
-							</div>
+								{/* Template Selection */}
+								<div className="space-y-2">
+									<Label htmlFor="template">Template</Label>
+									<Select
+										value={selectedTemplateId}
+										onValueChange={handleTemplateChange}
+										inputId="template"
+										options={[
+											{ value: 'custom', label: 'Custom Message' },
+											...(templates?.map((template) => ({
+												value: template.id,
+												label: template.name,
+											})) ?? []),
+										]}
+										placeholder="Custom message"
+										disabled={!selectedTargetId || isEditMode}
+									/>
+									<p className="text-xs text-muted-foreground">
+										{!selectedTargetId
+											? 'Select a target first'
+											: 'Use a pre-configured template or write a custom message'}
+									</p>
+								</div>
 
-							{/* Mention Level Selection */}
-							<div className="space-y-2">
-								<Label htmlFor="mentions">Mentions</Label>
-								<Select
-									inputId="mentions"
-									value={mentionLevel}
-									onValueChange={(value) => setMentionLevel(value as typeof mentionLevel)}
-									options={[
-										{ value: 'none', label: 'No mention' },
-										{ value: 'here', label: '@here' },
-										{ value: 'everyone', label: '@everyone' },
-									]}
-								/>
-								<p className="text-xs text-muted-foreground">
-									Add a mention to the beginning of the broadcast
-								</p>
+								{/* Mention Level Selection */}
+								<div className="space-y-2">
+									<Label htmlFor="mentions">Mentions</Label>
+									<Select
+										inputId="mentions"
+										value={mentionLevel}
+										onValueChange={(value) => setMentionLevel(value as typeof mentionLevel)}
+										options={[
+											{ value: 'none', label: 'No mention' },
+											{ value: 'here', label: '@here' },
+											{ value: 'everyone', label: '@everyone' },
+										]}
+									/>
+									<p className="text-xs text-muted-foreground">
+										Add a mention to the beginning of the broadcast
+									</p>
+								</div>
 							</div>
 
 							<div>
@@ -768,20 +936,10 @@ export default function NewBroadcastPage() {
 
 							{/* Custom Message or Template Fields */}
 							{selectedTemplateId === 'custom' ? (
-								<div className="space-y-2">
-									<div className="flex items-center justify-between">
-										<Label htmlFor="message">Message *</Label>
-										<Button
-											type="button"
-											variant="ghost"
-											size="sm"
-											onClick={() => setShowPreview((v) => !v)}
-										>
-											{showPreview ? 'Hide Preview' : 'Show Preview'}
-										</Button>
-									</div>
-									{showPreview && (
-										<div className="rounded-md border border-border bg-muted/20 p-3 text-sm overflow-y-auto min-h-[160px]">
+								<div className="grid gap-4 [grid-template-areas:'preview''form'] lg:[grid-template-areas:'form_preview'] lg:grid-cols-2 lg:items-start">
+									<div className="[grid-area:preview] space-y-2 lg:sticky lg:top-4">
+										<Label className="text-sm font-medium">Preview</Label>
+										<div className="rounded-md border border-border bg-muted/20 p-3 text-sm overflow-y-auto h-[16rem]">
 											{customMessage.trim() ? (
 												renderDiscordContentValue(customMessage, 'preview')
 											) : (
@@ -790,35 +948,28 @@ export default function NewBroadcastPage() {
 												</span>
 											)}
 										</div>
-									)}
-									<Textarea
-										id="message"
-										value={customMessage}
-										onChange={(e) => setCustomMessage(e.target.value)}
-										rows={showPreview ? 10 : 6}
-										placeholder="Enter your broadcast message..."
-										required
-										className={showPreview ? 'resize-none' : undefined}
-									/>
-									<p className="text-xs text-muted-foreground">
-										Write your custom message. Supports Discord markdown formatting.
-									</p>
+									</div>
+									<div className="[grid-area:form] space-y-2">
+										<Label htmlFor="message">Message *</Label>
+										<Textarea
+											id="message"
+											value={customMessage}
+											onChange={(e) => setCustomMessage(e.target.value)}
+											rows={10}
+											placeholder="Enter your broadcast message..."
+											required
+											className="resize-none h-[16rem]"
+										/>
+										<p className="text-xs text-muted-foreground">
+											Write your custom message. Supports Discord markdown formatting.
+										</p>
+									</div>
 								</div>
 							) : selectedTemplate ? (
-								<div className="space-y-4">
-									<div className="flex items-center justify-between">
-										<Label className="text-sm font-medium">Template Fields</Label>
-										<Button
-											type="button"
-											variant="ghost"
-											size="sm"
-											onClick={() => setShowPreview((v) => !v)}
-										>
-											{showPreview ? 'Hide Preview' : 'Show Preview'}
-										</Button>
-									</div>
-									{showPreview && (
-										<div className="rounded-md border border-border bg-muted/20 p-3 text-sm overflow-y-auto min-h-[160px]">
+								<div className="grid gap-4 [grid-template-areas:'preview''form'] lg:[grid-template-areas:'form_preview'] lg:grid-cols-2 lg:items-start">
+									<div className="[grid-area:preview] space-y-2 lg:sticky lg:top-4">
+										<Label className="text-sm font-medium">Preview</Label>
+										<div className="rounded-md border border-border bg-muted/20 p-3 text-sm overflow-y-auto h-[16rem]">
 											{selectedTemplatePreview.trim() ? (
 												renderDiscordContentValue(selectedTemplatePreview, 'preview')
 											) : (
@@ -827,14 +978,16 @@ export default function NewBroadcastPage() {
 												</span>
 											)}
 										</div>
-									)}
-									<div className="space-y-4">
+									</div>
+									<div className="[grid-area:form] space-y-4">
+										<Label className="text-sm font-medium">Template Fields</Label>
+										<div className="grid gap-4 md:grid-cols-2">
 										{selectedTemplate.fieldSchema.map((field) => (
-											<div key={field.name} className="space-y-2">
+											<div key={field.name} className="space-y-2 min-w-0">
 												{field.type === 'system_frogsiren' ? (
-													<div className="max-w-xl">
+													<div className="w-full">
 														<div
-															className={`frogsiren-hoverable flex items-center justify-between rounded-md border border-border/60 px-3 py-2 cursor-pointer transition-colors ${
+															className={`flex items-center justify-between rounded-md border border-border/60 px-3 py-2 cursor-pointer transition-colors ${
 																parseBooleanField(templateFields[field.name], false)
 																	? 'bg-slate-500/15'
 																	: 'bg-transparent'
@@ -846,7 +999,7 @@ export default function NewBroadcastPage() {
 														>
 															<Label
 																htmlFor={field.name}
-																className="text-2xl font-black frogsiren-hover-gradient cursor-pointer"
+																className="text-2xl font-black cursor-pointer"
 															>
 																Sound the Frogsiren
 															</Label>
@@ -874,36 +1027,36 @@ export default function NewBroadcastPage() {
 														</div>
 													</div>
 												) : field.type === 'system_srp' ? (
-													<div className="max-w-xl">
-														<div
-															className={`flex items-center justify-between rounded-md border border-border/60 px-3 py-2 cursor-pointer transition-colors ${
-																parseBooleanField(templateFields[field.name], true)
-																	? 'bg-slate-500/15'
-																	: 'bg-transparent'
-															}`}
-															onClick={(event) => {
-																if (isSwitchControlClick(event.target)) return
-																toggleSwitchById(field.name)
-															}}
-														>
+													<div className="w-full space-y-2">
 														<div className="space-y-0.5">
-															<Label htmlFor={field.name} className="cursor-pointer">
+															<Label htmlFor={field.name}>
 																{field.label}
 																{field.required && ' *'}
 															</Label>
 															<p className="text-xs text-muted-foreground">
-																When enabled, a unique SRP token is included at send time.
+																Choose SRP mode. Token is generated at form load for enabled modes.
 															</p>
 														</div>
-														<Switch
-															id={field.name}
-															checked={parseBooleanField(templateFields[field.name], true)}
-															onClick={(event) => event.stopPropagation()}
-															onCheckedChange={(checked) =>
-																updateTemplateField(field.name, checked ? 'true' : 'false')
-															}
+														<Select
+															inputId={field.name}
+															value={parseSrpMode(templateFields[field.name])}
+															onValueChange={(value) => {
+																const mode = value as SrpMode
+																updateTemplateField(field.name, mode)
+																if (mode === 'disabled') {
+																	updateTemplateField('__srpToken', '')
+																	return
+																}
+																if ((templateFields.__srpToken ?? '').trim().length === 0) {
+																	updateTemplateField('__srpToken', generateSrpTokenAtFormLoad())
+																}
+															}}
+															options={[
+																{ value: 'blanket', label: 'Blanket SRP' },
+																{ value: 'military', label: 'Military SRP' },
+																{ value: 'disabled', label: 'No SRP' },
+															]}
 														/>
-														</div>
 													</div>
 												) : (
 													<Label htmlFor={field.name}>
@@ -912,7 +1065,7 @@ export default function NewBroadcastPage() {
 													</Label>
 												)}
 												{field.type === 'system_srp' || field.type === 'system_frogsiren' ? null : field.type === 'system_doctrine' ? (
-													<div className="max-w-xl space-y-2">
+													<div className="w-full space-y-2">
 														<Select
 															inputId={field.name}
 															value={
@@ -947,7 +1100,7 @@ export default function NewBroadcastPage() {
 														)}
 													</div>
 												) : field.type === 'system_staging' ? (
-													<div className="max-w-xl space-y-2">
+													<div className="w-full space-y-2">
 														<Select
 															inputId={field.name}
 															value={
@@ -978,7 +1131,7 @@ export default function NewBroadcastPage() {
 														)}
 													</div>
 												) : field.type === 'select' ? (
-													<div className="max-w-xl">
+													<div className="w-full">
 														<Select
 															inputId={field.name}
 															value={
@@ -1020,9 +1173,9 @@ export default function NewBroadcastPage() {
 												)}
 											</div>
 										))}
-										<div className="space-y-2">
-											<Label htmlFor="template-prefix-text">Text before (optional)</Label>
-											<Textarea
+											<div className="max-w-xl space-y-2">
+												<Label htmlFor="template-prefix-text">Text before (optional)</Label>
+												<Textarea
 												id="template-prefix-text"
 												value={templatePrefixText}
 												onChange={(e) => {
@@ -1035,9 +1188,9 @@ export default function NewBroadcastPage() {
 												style={{ minHeight: '2.5rem' }}
 											/>
 										</div>
-										<div className="space-y-2">
-											<Label htmlFor="template-default-text">Text after (optional)</Label>
-											<Textarea
+											<div className="max-w-xl space-y-2">
+												<Label htmlFor="template-default-text">Text after (optional)</Label>
+												<Textarea
 												id="template-default-text"
 												value={templateDefaultText}
 												onChange={(e) => {
@@ -1048,13 +1201,25 @@ export default function NewBroadcastPage() {
 												placeholder="Optional text appended after the template message"
 												className="resize-none overflow-hidden"
 												style={{ minHeight: '2.5rem' }}
-											/>
+												/>
+											</div>
+											</div>
 										</div>
 									</div>
-								</div>
-							) : null}
+								) : null}
 
 							{/* Submit Buttons */}
+							<div className="text-sm">
+								<span
+									className={
+										isOverRenderedMessageLimit
+											? 'text-destructive font-bold'
+											: 'text-primary font-semibold'
+									}
+								>
+									Rendered length: {renderedOutboundLength}/{DISCORD_MESSAGE_MAX_LENGTH}
+								</span>
+							</div>
 							<div className="flex justify-end gap-3 pt-4">
 								<Button variant="cancel" type="button" onClick={() => navigate('/broadcasts')} disabled={isSubmitting}>
 									Cancel
@@ -1073,7 +1238,7 @@ export default function NewBroadcastPage() {
 								<Button
 									variant="confirm"
 									type="submit"
-									disabled={!canSubmit || isSubmitting}
+									disabled={!canSubmit || isSubmitting || isOverRenderedMessageLimit}
 									loading={isSending}
 									loadingText="Sending..."
 									showIcon={false}
