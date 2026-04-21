@@ -304,7 +304,7 @@ importers:
   apps/broadcasts:
     dependencies:
       '@marianmeres/random-human-readable':
-        specifier: ^1.9.0
+        specifier: 1.9.0
         version: 1.9.0
       '@neondatabase/serverless':
         specifier: 1.0.2
