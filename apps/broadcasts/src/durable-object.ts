@@ -1052,7 +1052,7 @@ export class BroadcastsDO extends DurableObject<Env> implements Broadcasts {
 	private wrapWithFrogsirenBanner(message: string): string {
 		const frogsirenBanner = Array.from(
 			{ length: 16 },
-			() => '<:frogsiren-2:306267577095553039>'
+			() => '<:fs:1496199804470952080>'
 		).join(' ')
 		return `${frogsirenBanner}\n\n${message}\n\n${frogsirenBanner}`
 	}

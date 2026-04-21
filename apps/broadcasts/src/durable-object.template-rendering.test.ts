@@ -56,7 +56,7 @@ describe('BroadcastsDO template token rendering', () => {
 		const subject = createSubject()
 		const wrapped = subject.wrapWithFrogsirenBanner('Broadcast body')
 		const [top, body, bottom] = wrapped.split('\n\n')
-		const emote = '<:frogsiren-2:306267577095553039>'
+		const emote = '<:fs:1496199804470952080>'
 
 		expect(body).toBe('Broadcast body')
 		expect(top).toBe(bottom)
