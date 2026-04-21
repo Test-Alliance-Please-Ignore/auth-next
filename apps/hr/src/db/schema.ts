@@ -59,6 +59,7 @@ export const applications = pgTable(
 		reviewNotes: text('review_notes'),
 		createdAt: timestamp('created_at').defaultNow().notNull(),
 		updatedAt: timestamp('updated_at').defaultNow().notNull(),
+		lastStaffInteractionAt: timestamp('last_staff_interaction_at'),
 	},
 	(table) => [
 		// Composite index: corp + status + time (covers 80% of queries)
@@ -185,6 +186,25 @@ export const applicationMessages = pgTable(
 		),
 		index('idx_messages_sender_recipient').on(table.senderId, table.recipientId),
 		index('idx_messages_recipient_sender').on(table.recipientId, table.senderId),
+	]
+)
+
+export const applicationStaffNotes = pgTable(
+	'application_staff_notes',
+	{
+		id: uuid('id').defaultRandom().primaryKey(),
+		applicationId: uuid('application_id')
+			.notNull()
+			.references(() => applications.id, { onDelete: 'cascade' }),
+		authorId: uuid('author_id').notNull(),
+		authorCharacterId: text('author_character_id'),
+		authorCharacterName: varchar('author_character_name', { length: 255 }),
+		noteText: text('note_text').notNull(),
+		createdAt: timestamp('created_at').defaultNow().notNull(),
+		updatedAt: timestamp('updated_at').defaultNow().notNull(),
+	},
+	(table) => [
+		index('idx_application_staff_notes_app_created').on(table.applicationId, table.createdAt.desc()),
 	]
 )
 
@@ -392,6 +412,7 @@ export const applicationsRelations = relations(applications, ({ many }) => ({
 	recommendations: many(applicationRecommendations),
 	activityLog: many(applicationActivityLog),
 	alts: many(applicationAlts),
+	staffNotes: many(applicationStaffNotes),
 }))
 
 export const applicationAltsRelations = relations(applicationAlts, ({ one }) => ({
@@ -411,6 +432,13 @@ export const recommendationsRelations = relations(applicationRecommendations, ({
 export const activityLogRelations = relations(applicationActivityLog, ({ one }) => ({
 	application: one(applications, {
 		fields: [applicationActivityLog.applicationId],
+		references: [applications.id],
+	}),
+}))
+
+export const applicationStaffNotesRelations = relations(applicationStaffNotes, ({ one }) => ({
+	application: one(applications, {
+		fields: [applicationStaffNotes.applicationId],
 		references: [applications.id],
 	}),
 }))
@@ -435,6 +463,7 @@ export const schema = {
 	applications,
 	applicationAlts,
 	applicationMessages,
+	applicationStaffNotes,
 	applicationRecommendations,
 	applicationActivityLog,
 	hrNotes,
@@ -444,5 +473,6 @@ export const schema = {
 	applicationAltsRelations,
 	recommendationsRelations,
 	activityLogRelations,
+	applicationStaffNotesRelations,
 	blacklistRelations,
 }

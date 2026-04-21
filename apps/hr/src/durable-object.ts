@@ -2,6 +2,7 @@ import { DurableObject } from 'cloudflare:workers'
 
 import { createDb } from './db'
 import { ApplicationService } from './services/application.service'
+import { ApplicationStaffNotesService } from './services/application-staff-notes.service'
 import { BlacklistService } from './services/blacklist.service'
 import { HrNotesService } from './services/hr-notes.service'
 import { HrRoleService } from './services/hr-role.service'
@@ -15,6 +16,7 @@ import type {
 	ApplicationFilters,
 	ApplicationMessage,
 	ApplicationStatus,
+	ApplicationStaffNote,
 	BlacklistEntry,
 	BlacklistFilters,
 	BlacklistResults,
@@ -47,6 +49,7 @@ export class HrDO extends DurableObject<Env> implements Hr {
 	private db: ReturnType<typeof createDb>
 	private applicationService: ApplicationService
 	private recommendationService: RecommendationService
+	private applicationStaffNotesService: ApplicationStaffNotesService
 	private hrNotesService: HrNotesService
 	private hrRoleService: HrRoleService
 	private blacklistService: BlacklistService
@@ -71,6 +74,7 @@ export class HrDO extends DurableObject<Env> implements Hr {
 
 		// Initialize services
 		this.applicationService = new ApplicationService({ db: this.db, env })
+		this.applicationStaffNotesService = new ApplicationStaffNotesService({ db: this.db, env })
 		this.recommendationService = new RecommendationService({ db: this.db, env })
 		this.hrNotesService = new HrNotesService({ db: this.db, env })
 		this.hrRoleService = new HrRoleService({ db: this.db, env })
@@ -427,6 +431,58 @@ export class HrDO extends DurableObject<Env> implements Hr {
 			access.isAdmin,
 			access.isAuditor,
 			userHrCorporations
+		)
+	}
+
+	// ==================== Application Staff Notes ====================
+
+	async listApplicationStaffNotes(applicationId: string): Promise<ApplicationStaffNote[]> {
+		return await this.applicationStaffNotesService.listByApplication(applicationId)
+	}
+
+	async addApplicationStaffNote(
+		applicationId: string,
+		authorId: string,
+		authorCharacterId: string | null,
+		authorCharacterName: string | null,
+		noteText: string
+	): Promise<ApplicationStaffNote> {
+		return await this.applicationStaffNotesService.create(
+			applicationId,
+			authorId,
+			authorCharacterId,
+			authorCharacterName,
+			noteText
+		)
+	}
+
+	async updateApplicationStaffNote(
+		noteId: string,
+		noteText: string,
+		actorId: string,
+		actorCharacterId: string | null,
+		actorCharacterName: string | null
+	): Promise<ApplicationStaffNote> {
+		return await this.applicationStaffNotesService.update(
+			noteId,
+			noteText,
+			actorId,
+			actorCharacterId,
+			actorCharacterName
+		)
+	}
+
+	async deleteApplicationStaffNote(
+		noteId: string,
+		actorId: string,
+		actorCharacterId: string | null,
+		actorCharacterName: string | null
+	): Promise<void> {
+		await this.applicationStaffNotesService.delete(
+			noteId,
+			actorId,
+			actorCharacterId,
+			actorCharacterName
 		)
 	}
 

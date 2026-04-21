@@ -39,8 +39,20 @@ export interface Application {
 	reviewNotes?: string
 	createdAt: string
 	updatedAt: string
+	lastStaffInteractionAt?: string | null
 	recommendationCount?: number
 	altCharacterIds?: string[]
+}
+
+export interface ApplicationStaffNote {
+	id: string
+	applicationId: string
+	authorId: string
+	authorCharacterId: string | null
+	authorCharacterName: string | null
+	noteText: string
+	createdAt: string
+	updatedAt: string
 }
 
 /**
@@ -95,6 +107,10 @@ export interface ApplicationMessage {
 export interface SendMessageRequest {
 	recipientId?: string
 	message: string
+}
+
+export interface UpsertApplicationStaffNoteRequest {
+	noteText: string
 }
 
 /**
@@ -458,6 +474,34 @@ export const applicationsApi = {
 			`/hr/applications/${applicationId}/messages/count`
 		)
 		return result.count
+	},
+
+	// ==================== Application Staff Notes ====================
+
+	async getApplicationStaffNotes(applicationId: string): Promise<ApplicationStaffNote[]> {
+		return apiClient.get(`/hr/applications/${applicationId}/staff-notes`)
+	},
+
+	async addApplicationStaffNote(
+		applicationId: string,
+		data: UpsertApplicationStaffNoteRequest
+	): Promise<ApplicationStaffNote> {
+		return apiClient.post(`/hr/applications/${applicationId}/staff-notes`, data)
+	},
+
+	async updateApplicationStaffNote(
+		applicationId: string,
+		noteId: string,
+		data: UpsertApplicationStaffNoteRequest
+	): Promise<ApplicationStaffNote> {
+		return apiClient.patch(`/hr/applications/${applicationId}/staff-notes/${noteId}`, data)
+	},
+
+	async deleteApplicationStaffNote(
+		applicationId: string,
+		noteId: string
+	): Promise<{ success: boolean }> {
+		return apiClient.delete(`/hr/applications/${applicationId}/staff-notes/${noteId}`)
 	},
 
 	// ==================== HR Notes (ADMIN ONLY) ====================

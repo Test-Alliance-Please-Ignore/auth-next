@@ -106,6 +106,21 @@ function buildColumns(
 				</span>
 			),
 		}),
+		col.accessor('lastStaffInteractionAt', {
+			header: 'Last HR Activity',
+			size: 160,
+			Cell: ({ row }) => {
+				const value = row.original.lastStaffInteractionAt
+				if (!value) {
+					return <span className="text-sm text-muted-foreground">-</span>
+				}
+				return (
+					<span className="text-sm text-muted-foreground">
+						{formatDistanceToNow(new Date(value), { addSuffix: true })}
+					</span>
+				)
+			},
+		}),
 		col.accessor('recommendationCount', {
 			header: 'Recs',
 			size: 80,
@@ -189,12 +204,12 @@ export function ApplicationsTable({
 		enableColumnFilters: false,
 		enableDensityToggle: false,
 		enableFullScreenToggle: false,
-		enableGlobalFilter: true,
+		enableGlobalFilter: false,
 		enableGlobalFilterModes: false,
 		enableHiding: false,
 		enablePagination: true,
 		enableStickyHeader: true,
-		enableTopToolbar: true,
+		enableTopToolbar: false,
 		enableToolbarInternalActions: false,
 		globalFilterFn: ((row: any, _columnId: string, filterValue: string) => {
 			if (!filterValue) return true
@@ -237,12 +252,6 @@ export function ApplicationsTable({
 				style: { ...mrtRowStyle(row.index), ...(isClickable ? { cursor: 'pointer' } : {}) },
 			}
 		},
-		mantineSearchTextInputProps: {
-			placeholder: 'Search by character name...',
-			style: {
-				minWidth: '240px',
-			},
-		},
 		renderEmptyRowsFallback: () => (
 			<div className="flex min-h-40 items-center justify-center px-6 py-8 text-center text-sm text-muted-foreground">
 				No applications match the current filters
@@ -251,13 +260,6 @@ export function ApplicationsTable({
 		state: {
 			isLoading: loading,
 			showProgressBars: loading,
-			globalFilter: filters?.search || '',
-		},
-		onGlobalFilterChange: (value) => {
-			onFilterChange?.({
-				...filters,
-				search: typeof value === 'string' ? value : '',
-			})
 		},
 		initialState: {
 			sorting: [{ id: 'createdAt', desc: true }],

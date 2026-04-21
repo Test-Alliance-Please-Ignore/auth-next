@@ -27,9 +27,12 @@ import { LoadingSpinner } from '@/components/ui/loading'
 import { Separator } from '@/components/ui/separator'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { useAuth } from '@/hooks/useAuth'
+import { useConfirmationDialog } from '@/hooks/useConfirmationDialog'
 import { useEntityNames } from '@/hooks/useEntityNames'
+import { useMessage } from '@/hooks/useMessage'
 import { usePageTitle } from '@/hooks/usePageTitle'
 import { apiClient } from '@/lib/api'
+import { formatISKShort } from '@/lib/format-utils'
 import { formatSkillPoints } from '@repo/eve-types'
 
 import { useHrPermissionCheck } from '../../hr/hooks'
@@ -39,10 +42,10 @@ import { AccessDeniedCard } from '../components/access-denied-card'
 import { AddHRNoteDialog } from '../components/add-hr-note-dialog'
 import { ApplicationActionPanel } from '../components/application-action-panel'
 import { ApplicationHistoryPanel } from '../components/application-history-panel'
+import { ApplicationStaffNotesPanel } from '../components/application-staff-notes-panel'
 import { ApplicationStatusBadge } from '../components/application-status-badge'
 import { ApplicationTimeline } from '../components/application-timeline'
 import { ApplicationCharacterStack } from '../components/application-character-stack'
-import { DeleteHRNoteDialog } from '../components/delete-hr-note-dialog'
 import { FulcrumPanel } from '../components/fulcrum-panel'
 import { HRNotesList } from '../components/hr-notes-list'
 import { MessagesPanel } from '../components/messages-panel'
@@ -51,6 +54,9 @@ import { RecommendationList } from '../components/recommendation-list'
 import {
 	useApplication,
 	useApplicationActivity,
+	useApplicationStaffNotes,
+	useDeleteHRNote,
+	useHRNotes,
 	useHRNote,
 	useMessageCount,
 	useRecommendations,
@@ -78,8 +84,10 @@ export default function HrApplicationReview() {
 	// Dialog state for HR Notes
 	const [addNoteDialogOpen, setAddNoteDialogOpen] = useState(false)
 	const [editNoteDialogOpen, setEditNoteDialogOpen] = useState(false)
-	const [deleteNoteDialogOpen, setDeleteNoteDialogOpen] = useState(false)
 	const [selectedNoteId, setSelectedNoteId] = useState<string | null>(null)
+	const { showSuccess, showError } = useMessage()
+	const { requestConfirmation, confirmationDialog } = useConfirmationDialog()
+	const deleteHrNote = useDeleteHRNote()
 
 	// Check HR permission (userId derived from authenticated session)
 	const { data: permission, isLoading: permissionLoading } = useHrPermissionCheck(
@@ -97,6 +105,13 @@ export default function HrApplicationReview() {
 	const { data: activityLog, isLoading: activityLoading } = useApplicationActivity(applicationId!)
 	const { data: recommendations } = useRecommendations(applicationId!)
 	const { data: messageCount = 0 } = useMessageCount(applicationId!)
+	const { data: staffNotes = [] } = useApplicationStaffNotes(applicationId!)
+	const staffNotesCount = staffNotes.length
+	const { data: globalUserNotes = [] } = useHRNotes(
+		{ subjectUserId: application?.userId },
+		{ enabled: !!application?.userId && (!!user?.is_admin || !!permission?.hasPermission) }
+	)
+	const globalUserNotesCount = globalUserNotes.length
 
 	// Fetch selected HR note for edit/delete
 	const { data: selectedNote } = useHRNote(selectedNoteId)
@@ -120,9 +135,11 @@ export default function HrApplicationReview() {
 		})),
 	})
 	const spByCharacterId: Record<string, number | null> = {}
+	const walletByCharacterId: Record<string, string | null> = {}
 	for (let i = 0; i < allCharacterIds.length; i++) {
 		const query = spQueries[i]
 		spByCharacterId[allCharacterIds[i]] = query?.data?.public?.skills?.totalSp ?? null
+		walletByCharacterId[allCharacterIds[i]] = query?.data?.private?.wallet?.balance ?? null
 	}
 
 	// Set page title
@@ -142,8 +159,27 @@ export default function HrApplicationReview() {
 	}
 
 	const handleDeleteNote = (noteId: string) => {
-		setSelectedNoteId(noteId)
-		setDeleteNoteDialogOpen(true)
+		const note = globalUserNotes.find((candidate) => candidate.id === noteId)
+		if (!note) return
+
+		requestConfirmation({
+			title: 'Delete HR Note',
+			description: 'Are you sure you want to delete this HR note? This action cannot be undone.',
+			confirmLabel: 'Delete Note',
+			intent: 'destructive',
+			onConfirm: async () => {
+				try {
+					await deleteHrNote.mutateAsync({
+						noteId: note.id,
+						subjectUserId: note.subjectUserId,
+					})
+					showSuccess('HR note deleted successfully')
+					setSelectedNoteId(null)
+				} catch (error) {
+					showError(error instanceof Error ? error.message : 'Failed to delete HR note')
+				}
+			},
+		})
 	}
 
 	const handleNoteDialogSuccess = () => {
@@ -347,6 +383,20 @@ export default function HrApplicationReview() {
 							<span className="ml-1.5 text-xs opacity-70">({messageCount})</span>
 						)}
 					</TabsTrigger>
+					{(user?.is_admin || permission?.hasPermission) && (
+						<TabsTrigger value="staff-notes" className="flex-1 sm:flex-none">
+							Application Notes
+							{staffNotesCount > 0 && (
+								<span className="ml-1.5 text-xs opacity-70">({staffNotesCount})</span>
+							)}
+						</TabsTrigger>
+					)}
+					{(user?.is_admin || permission?.hasPermission) && (
+						<TabsTrigger value="global-notes" className="flex-1 sm:flex-none">
+							Global User Notes
+							<span className="ml-1.5 text-xs opacity-70">({globalUserNotesCount})</span>
+						</TabsTrigger>
+					)}
 					<TabsTrigger value="prior-apps" className="flex-1 sm:flex-none">
 						Prior Apps
 					</TabsTrigger>
@@ -411,31 +461,6 @@ export default function HrApplicationReview() {
 							</Card>
 						)}
 
-					{/* HR Notes Section */}
-					{(user?.is_admin || permission?.hasPermission) && (
-						<Card className="border-warning/30 bg-warning/5">
-							<CardHeader>
-								<div className="flex items-center gap-2">
-									<Lock className="h-4 w-4 text-warning" />
-									<CardTitle className="text-lg">Global HR Notes</CardTitle>
-								</div>
-								<CardDescription>
-									Private internal notes about this user across all applications. Only visible to HR staff.
-								</CardDescription>
-							</CardHeader>
-							<CardContent>
-								<HRNotesList
-									subjectUserId={application.userId}
-									subjectCharacterName={application.characterName}
-									onAddNote={handleAddNote}
-									onEditNote={user?.is_admin ? handleEditNote : undefined}
-									onDeleteNote={user?.is_admin ? handleDeleteNote : undefined}
-									hasAccess
-								/>
-							</CardContent>
-						</Card>
-					)}
-
 					{/* HR Action Panel */}
 					<ApplicationActionPanel
 						application={application}
@@ -469,9 +494,17 @@ export default function HrApplicationReview() {
 										{application.characterName}
 									</p>
 									<p className="text-xs text-muted-foreground">
-										{spByCharacterId[application.characterId] != null
-											? formatSkillPoints(spByCharacterId[application.characterId]!)
-											: 'SP unavailable'}
+										<span className="font-mono tabular-nums">
+											{spByCharacterId[application.characterId] != null
+												? formatSkillPoints(spByCharacterId[application.characterId]!)
+												: 'SP unavailable'}
+										</span>
+										<span className="mx-2">—</span>
+										<span className="font-mono tabular-nums">
+											{walletByCharacterId[application.characterId] != null
+												? formatISKShort(walletByCharacterId[application.characterId]!)
+												: 'Wallet unavailable'}
+										</span>
 									</p>
 								</div>
 							</div>
@@ -501,9 +534,17 @@ export default function HrApplicationReview() {
 													{altCharacterNames[charId] ?? charId}
 												</p>
 												<p className="text-xs text-muted-foreground">
-													{spByCharacterId[charId] != null
-														? formatSkillPoints(spByCharacterId[charId]!)
-														: 'SP unavailable'}
+													<span className="font-mono tabular-nums">
+														{spByCharacterId[charId] != null
+															? formatSkillPoints(spByCharacterId[charId]!)
+															: 'SP unavailable'}
+													</span>
+													<span className="mx-2">—</span>
+													<span className="font-mono tabular-nums">
+														{walletByCharacterId[charId] != null
+															? formatISKShort(walletByCharacterId[charId]!)
+															: 'Wallet unavailable'}
+													</span>
 												</p>
 											</div>
 										</div>
@@ -578,6 +619,57 @@ export default function HrApplicationReview() {
 					</Card>
 				</TabsContent>
 
+				{/* Staff Notes Tab */}
+				{(user?.is_admin || permission?.hasPermission) && (
+					<TabsContent value="staff-notes">
+						<Card className="border-warning/30 bg-warning/5">
+							<CardHeader>
+								<div className="flex items-center gap-2">
+									<Lock className="h-4 w-4 text-warning" />
+									<CardTitle>Application Staff Notes</CardTitle>
+								</div>
+								<CardDescription>
+									Private notes scoped to this application. Only visible to HR staff.
+								</CardDescription>
+							</CardHeader>
+							<CardContent>
+								<ApplicationStaffNotesPanel
+									applicationId={applicationId!}
+									canWrite={!!user?.is_admin || !!permission?.hasPermission}
+									currentUserId={user?.id ?? null}
+								/>
+							</CardContent>
+						</Card>
+					</TabsContent>
+				)}
+
+				{/* Global Notes Tab */}
+				{(user?.is_admin || permission?.hasPermission) && (
+					<TabsContent value="global-notes">
+						<Card className="border-warning/30 bg-warning/5">
+							<CardHeader>
+								<div className="flex items-center gap-2">
+									<Lock className="h-4 w-4 text-warning" />
+									<CardTitle>Global HR Notes</CardTitle>
+								</div>
+								<CardDescription>
+									Private internal notes about this user across all applications. Only visible to HR staff.
+								</CardDescription>
+							</CardHeader>
+							<CardContent>
+								<HRNotesList
+									subjectUserId={application.userId}
+									subjectCharacterName={application.characterName}
+									onAddNote={handleAddNote}
+									onEditNote={user?.is_admin ? handleEditNote : undefined}
+									onDeleteNote={user?.is_admin ? handleDeleteNote : undefined}
+									hasAccess
+								/>
+							</CardContent>
+						</Card>
+					</TabsContent>
+				)}
+
 				{/* Prior Applications Tab */}
 				<TabsContent value="prior-apps">
 					<Card>
@@ -634,25 +726,17 @@ export default function HrApplicationReview() {
 			)}
 
 			{user?.is_admin && (
-				<>
-					<AddHRNoteDialog
-						open={editNoteDialogOpen}
-						onOpenChange={setEditNoteDialogOpen}
-						subjectUserId={application.userId}
-						subjectCharacterId={selectedNote?.subjectCharacterId || application.characterId}
-						subjectCharacterName={selectedNote?.subjectCharacterName || application.characterName}
-						existingNote={selectedNote}
-						onSuccess={handleNoteDialogSuccess}
-					/>
-
-					<DeleteHRNoteDialog
-						open={deleteNoteDialogOpen}
-						onOpenChange={setDeleteNoteDialogOpen}
-						note={selectedNote || null}
-						onSuccess={handleNoteDialogSuccess}
-					/>
-				</>
+				<AddHRNoteDialog
+					open={editNoteDialogOpen}
+					onOpenChange={setEditNoteDialogOpen}
+					subjectUserId={application.userId}
+					subjectCharacterId={selectedNote?.subjectCharacterId || application.characterId}
+					subjectCharacterName={selectedNote?.subjectCharacterName || application.characterName}
+					existingNote={selectedNote}
+					onSuccess={handleNoteDialogSuccess}
+				/>
 			)}
+			{confirmationDialog}
 		</Container>
 	)
 }

@@ -67,6 +67,39 @@ function makeHrStub() {
 		}),
 		listMessages: vi.fn().mockResolvedValue([]),
 		getMessageCount: vi.fn().mockResolvedValue(0),
+		listApplicationStaffNotes: vi.fn().mockResolvedValue([
+			{
+				id: 'staff-note-1',
+				applicationId: 'app-1',
+				authorId: 'user-1',
+				authorCharacterId: '1001',
+				authorCharacterName: 'Main Pilot',
+				noteText: 'Check history',
+				createdAt: new Date().toISOString(),
+				updatedAt: new Date().toISOString(),
+			},
+		]),
+		addApplicationStaffNote: vi.fn().mockResolvedValue({
+			id: 'staff-note-2',
+			applicationId: 'app-1',
+			authorId: 'user-1',
+			authorCharacterId: '1001',
+			authorCharacterName: 'Main Pilot',
+			noteText: 'New note',
+			createdAt: new Date().toISOString(),
+			updatedAt: new Date().toISOString(),
+		}),
+		updateApplicationStaffNote: vi.fn().mockResolvedValue({
+			id: 'staff-note-1',
+			applicationId: 'app-1',
+			authorId: 'user-1',
+			authorCharacterId: '1001',
+			authorCharacterName: 'Main Pilot',
+			noteText: 'Updated note',
+			createdAt: new Date().toISOString(),
+			updatedAt: new Date().toISOString(),
+		}),
+		deleteApplicationStaffNote: vi.fn().mockResolvedValue(undefined),
 		grantRole: vi.fn().mockResolvedValue({
 			id: 'role-1',
 			corporationId: '1001',
@@ -387,6 +420,198 @@ describe('hr route access matrix', () => {
 			isAdmin: false,
 			isAuditor: true,
 		})
+	})
+
+	it('allows /applications/:id/staff-notes read for auditor', async () => {
+		getCachedUserPermissionsMock.mockResolvedValue([
+			{
+				permissionId: 'perm-auditor',
+				urn: 'urn:hr:auditor',
+				name: 'HR Auditor',
+				description: null,
+				category: null,
+				groupId: 'g-1',
+				groupName: 'HR',
+				targetType: 'all_members',
+				source: 'global',
+			},
+		] as any)
+
+		const app = createApp({ user: makeUser(), db: dbStub })
+		const res = await app.request('/api/hr/applications/app-1/staff-notes', {}, env)
+
+		expect(res.status).toBe(200)
+		expect(hrStub.listApplicationStaffNotes).toHaveBeenCalledWith('app-1')
+	})
+
+	it('denies /applications/:id/staff-notes read for non-HR non-auditor', async () => {
+		hrStub.checkPermission.mockResolvedValue(false)
+		const app = createApp({ user: makeUser(), db: dbStub })
+		const res = await app.request('/api/hr/applications/app-1/staff-notes', {}, env)
+
+		expect(res.status).toBe(403)
+		expect(hrStub.listApplicationStaffNotes).not.toHaveBeenCalled()
+	})
+
+	it('allows viewer-level HR to add application staff note', async () => {
+		hrStub.checkPermission.mockResolvedValue(true)
+		const app = createApp({ user: makeUser(), db: dbStub })
+		const res = await app.request(
+			'/api/hr/applications/app-1/staff-notes',
+			{
+				method: 'POST',
+				body: JSON.stringify({ noteText: 'New note' }),
+				headers: { 'content-type': 'application/json' },
+			},
+			env
+		)
+
+		expect(res.status).toBe(201)
+		expect(hrStub.addApplicationStaffNote).toHaveBeenCalledWith(
+			'app-1',
+			'user-1',
+			'1001',
+			'Main Pilot',
+			'New note'
+		)
+	})
+
+	it('denies non-HR from adding application staff note', async () => {
+		hrStub.checkPermission.mockResolvedValue(false)
+		esiStub.fetchCorporationPublicInfo.mockResolvedValue({ ceo_id: 'someone-else' })
+		const app = createApp({ user: makeUser(), db: dbStub })
+		const res = await app.request(
+			'/api/hr/applications/app-1/staff-notes',
+			{
+				method: 'POST',
+				body: JSON.stringify({ noteText: 'Nope' }),
+				headers: { 'content-type': 'application/json' },
+			},
+			env
+		)
+
+		expect(res.status).toBe(403)
+		expect(hrStub.addApplicationStaffNote).not.toHaveBeenCalled()
+	})
+
+	it('allows author to update own application staff note', async () => {
+		hrStub.checkPermission.mockResolvedValue(true)
+		hrStub.listApplicationStaffNotes.mockResolvedValue([
+			{
+				id: 'staff-note-1',
+				applicationId: 'app-1',
+				authorId: 'user-1',
+				authorCharacterId: '1001',
+				authorCharacterName: 'Main Pilot',
+				noteText: 'Mine',
+				createdAt: new Date().toISOString(),
+				updatedAt: new Date().toISOString(),
+			},
+		])
+		const app = createApp({ user: makeUser(), db: dbStub })
+		const res = await app.request(
+			'/api/hr/applications/app-1/staff-notes/staff-note-1',
+			{
+				method: 'PATCH',
+				body: JSON.stringify({ noteText: 'Updated note' }),
+				headers: { 'content-type': 'application/json' },
+			},
+			env
+		)
+
+		expect(res.status).toBe(200)
+		expect(hrStub.updateApplicationStaffNote).toHaveBeenCalledWith(
+			'staff-note-1',
+			'Updated note',
+			'user-1',
+			'1001',
+			'Main Pilot'
+		)
+	})
+
+	it('denies updating application staff note when user is not author', async () => {
+		hrStub.checkPermission.mockResolvedValue(true)
+		hrStub.listApplicationStaffNotes.mockResolvedValue([
+			{
+				id: 'staff-note-1',
+				applicationId: 'app-1',
+				authorId: 'other-user',
+				authorCharacterId: '2002',
+				authorCharacterName: 'Other Pilot',
+				noteText: 'Not mine',
+				createdAt: new Date().toISOString(),
+				updatedAt: new Date().toISOString(),
+			},
+		])
+		const app = createApp({ user: makeUser(), db: dbStub })
+		const res = await app.request(
+			'/api/hr/applications/app-1/staff-notes/staff-note-1',
+			{
+				method: 'PATCH',
+				body: JSON.stringify({ noteText: 'Blocked' }),
+				headers: { 'content-type': 'application/json' },
+			},
+			env
+		)
+
+		expect(res.status).toBe(403)
+		expect(hrStub.updateApplicationStaffNote).not.toHaveBeenCalled()
+	})
+
+	it('allows author to delete own application staff note', async () => {
+		hrStub.checkPermission.mockResolvedValue(true)
+		hrStub.listApplicationStaffNotes.mockResolvedValue([
+			{
+				id: 'staff-note-1',
+				applicationId: 'app-1',
+				authorId: 'user-1',
+				authorCharacterId: '1001',
+				authorCharacterName: 'Main Pilot',
+				noteText: 'Check history',
+				createdAt: new Date().toISOString(),
+				updatedAt: new Date().toISOString(),
+			},
+		])
+
+		const app = createApp({ user: makeUser(), db: dbStub })
+		const res = await app.request(
+			'/api/hr/applications/app-1/staff-notes/staff-note-1',
+			{ method: 'DELETE' },
+			env
+		)
+
+		expect(res.status).toBe(200)
+		expect(hrStub.deleteApplicationStaffNote).toHaveBeenCalledWith(
+			'staff-note-1',
+			'user-1',
+			'1001',
+			'Main Pilot'
+		)
+	})
+
+	it('denies deleting application staff note when user is not author', async () => {
+		hrStub.checkPermission.mockResolvedValue(true)
+		hrStub.listApplicationStaffNotes.mockResolvedValue([
+			{
+				id: 'staff-note-1',
+				applicationId: 'app-1',
+				authorId: 'other-user',
+				authorCharacterId: '2002',
+				authorCharacterName: 'Other Pilot',
+				noteText: 'Not mine',
+				createdAt: new Date().toISOString(),
+				updatedAt: new Date().toISOString(),
+			},
+		])
+		const app = createApp({ user: makeUser(), db: dbStub })
+		const res = await app.request(
+			'/api/hr/applications/app-1/staff-notes/staff-note-1',
+			{ method: 'DELETE' },
+			env
+		)
+
+		expect(res.status).toBe(403)
+		expect(hrStub.deleteApplicationStaffNote).not.toHaveBeenCalled()
 	})
 
 	it('denies /audit/users for non-auditor non-admin', async () => {
