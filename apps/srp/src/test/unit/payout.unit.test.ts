@@ -92,8 +92,8 @@ describe('baseline — no policy, no modifiers, no insurance', () => {
 		expect(computeSrpPayout(base())).toBe('500000000')
 	})
 
-	it('rounds down a non-million value', () => {
-		expect(computeSrpPayout(base({ equipmentValue: '500600000' }))).toBe('500000000')
+	it('rounds to nearest million for non-million values', () => {
+		expect(computeSrpPayout(base({ equipmentValue: '500600000' }))).toBe('501000000')
 	})
 })
 
@@ -326,7 +326,7 @@ describe('reviewer override', () => {
 		expect(computeSrpPayout(base({ overrideMillions: 0 }))).toBe('0')
 	})
 
-	it('override is rounded down to nearest million', () => {
+	it('override is rounded to nearest million', () => {
 		// overrideMillions=42 → 42,000,000 (already a million multiple, passes through)
 		expect(computeSrpPayout(base({ overrideMillions: 42 }))).toBe('42000000')
 	})

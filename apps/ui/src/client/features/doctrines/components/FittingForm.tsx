@@ -9,7 +9,6 @@ import { useState } from 'react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
-import { NumberInput } from '@/components/ui/number-input'
 import { Select } from '@/components/ui/select'
 import { Switch } from '@/components/ui/switch'
 import { Textarea } from '@/components/ui/textarea'
@@ -147,23 +146,6 @@ export function FittingForm({ fitting, onSubmit, onCancel, isSubmitting, onPrevi
 				</div>
 				<Switch id="srp-eligible" checked={srpEligible} onCheckedChange={setSrpEligible} />
 			</div>
-
-			{/* SRP Value (only if eligible) */}
-			{srpEligible && (
-				<div className="space-y-2">
-					<Label htmlFor="srp-value">SRP Value (ISK)</Label>
-					<NumberInput
-						id="srp-value"
-						suffix=" ISK"
-						placeholder="350,000,000 ISK"
-						value={srpValue}
-						onChange={(val) => setSrpValue(val)}
-					/>
-					<p className="text-sm text-muted-foreground">
-						The amount reimbursed if this ship is lost (in ISK)
-					</p>
-				</div>
-			)}
 
 			{/* Actions */}
 			<div className="flex justify-end gap-2">

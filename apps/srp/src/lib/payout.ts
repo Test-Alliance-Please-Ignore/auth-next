@@ -1,4 +1,4 @@
-import { roundDownToMillionISK } from '@repo/srp'
+import { roundToMillion } from '@repo/srp'
 
 import type { AppliedModifier, CapConfig, PayoutModifierConfig } from '@repo/srp'
 
@@ -24,13 +24,13 @@ export interface ComputeSrpPayoutInput {
  * 5. Clamp to minimum 0
  * 6. Cap: min(result, cap.maxPayoutMillions × 1_000_000)
  * 7. Override: if set, replaces steps 1–6 entirely
- * 8. roundDownToMillionISK
+ * 8. roundToMillion (nearest million rounding)
  */
 export function computeSrpPayout(input: ComputeSrpPayoutInput): string {
 	// Step 7: override replaces everything
 	if (input.overrideMillions != null) {
 		const raw = BigInt(input.overrideMillions) * 1_000_000n
-		return roundDownToMillionISK(String(raw < 0n ? 0n : raw))
+		return roundToMillion(String(raw < 0n ? 0n : raw))
 	}
 
 	let base = BigInt(input.equipmentValue)
@@ -74,6 +74,6 @@ export function computeSrpPayout(input: ComputeSrpPayoutInput): string {
 		if (current > cap) current = cap
 	}
 
-	// Step 8: round down to nearest million
-	return roundDownToMillionISK(String(current))
+	// Step 8: round to nearest million
+	return roundToMillion(String(current))
 }

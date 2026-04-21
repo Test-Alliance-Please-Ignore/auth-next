@@ -1,9 +1,10 @@
-import { Edit2, Plus, Power, PowerOff } from 'lucide-react'
+import { Edit2, Pencil, Plus, Power, PowerOff, Trash2 } from 'lucide-react'
 import { useEffect, useState } from 'react'
 import { Navigate } from 'react-router-dom'
 import { toast } from 'sonner'
 
 import { Button } from '@/components/ui/button'
+import { Badge } from '@/components/ui/badge'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Container } from '@/components/ui/container'
 import { Input } from '@/components/ui/input'
@@ -37,6 +38,14 @@ function upsertSelectOption(
 ): SelectOption[] {
 	const without = current.filter((option) => option.value !== next.value)
 	return [next, ...without].slice(0, limit)
+}
+
+function formatTemplateAmount(modifier: SRPPredefinedAdhocModifier): string {
+	if (modifier.mode === 'percentage') {
+		return `${new Intl.NumberFormat('en-US', { maximumFractionDigits: 2 }).format(modifier.amount)}%`
+	}
+
+	return formatISK(String(Math.round(modifier.amount * 1_000_000)))
 }
 
 export default function PoliciesPage() {
@@ -401,7 +410,7 @@ function PredefinedAdhocModifiersSection({
 		<Card>
 			<CardHeader className="flex flex-row items-start justify-between space-y-0 gap-3">
 				<div>
-					<CardTitle className="text-lg">Predefined Ad-hoc Modifiers</CardTitle>
+					<CardTitle className="text-lg">Modifier Templates</CardTitle>
 					<CardDescription>
 						Optional suggestion templates shown in review form ad-hoc modifiers.
 					</CardDescription>
@@ -413,14 +422,21 @@ function PredefinedAdhocModifiersSection({
 			</CardHeader>
 			<CardContent className="space-y-4">
 				<div className="overflow-hidden rounded-lg border border-border/50 bg-card">
-				{modifiers.length === 0 ? (
+				{modifiers.length === 0 && !(isCreating && draftModifier && editingIndex === modifiers.length) ? (
 					<div className="p-8 text-center text-sm text-muted-foreground">No modifiers yet</div>
 				) : (
 					<div className="space-y-2 p-3">
+						<div className="grid items-center gap-2 px-2 text-xs font-medium text-muted-foreground sm:grid-cols-[150px_140px_140px_1fr_auto]">
+							<div>Type</div>
+							<div>Mode</div>
+							<div>Amount</div>
+							<div>Reason</div>
+							<div className="text-right">Actions</div>
+						</div>
 						{modifiers.map((modifier, index) => (
 							<div
 								key={index}
-								className="grid gap-2 rounded-md border border-border/40 p-3 sm:grid-cols-[150px_140px_120px_1fr_auto]"
+								className="grid items-center gap-2 rounded-md border border-border/40 p-3 sm:grid-cols-[150px_140px_140px_1fr_auto]"
 							>
 								{editingIndex === index && !isCreating && draftModifier ? (
 									<>
@@ -483,26 +499,39 @@ function PredefinedAdhocModifiersSection({
 									</>
 								) : (
 									<>
-										<div className="text-sm">{modifier.modifierType === 'deduction' ? 'Deduction' : 'Bonus'}</div>
-										<div className="text-sm">{modifier.mode === 'percentage' ? 'Percentage' : 'M ISK'}</div>
-										<div className="text-sm">{modifier.amount}</div>
+										<div className="text-sm">
+											<Badge
+												variant={modifier.modifierType === 'deduction' ? 'destructive' : 'default'}
+												className={modifier.modifierType === 'bonus' ? 'bg-green-600 text-white' : undefined}
+											>
+												{modifier.modifierType === 'deduction' ? 'Deduction' : 'Bonus'}
+											</Badge>
+										</div>
+										<div className="text-sm font-semibold">
+											{modifier.mode === 'percentage' ? 'Percentage' : 'M ISK'}
+										</div>
+										<div className="font-mono font-semibold text-sm tabular-nums">
+											{formatTemplateAmount(modifier)}
+										</div>
 										<div className="text-sm">{modifier.reason}</div>
-										<div className="flex gap-1">
+										<div className="flex justify-end gap-1">
 											<Button
 												variant="ghost"
 												size="sm"
 												onClick={() => startEdit(index)}
 												disabled={updateConfigMutation.isPending}
+												aria-label="Edit template"
 											>
-												Edit
+												<Pencil className="h-4 w-4" />
 											</Button>
 											<Button
 												variant="ghost"
 												size="sm"
 												onClick={() => removeModifier(index)}
 												disabled={updateConfigMutation.isPending}
+												aria-label="Remove template"
 											>
-												Remove
+												<Trash2 className="h-4 w-4" />
 											</Button>
 										</div>
 									</>
@@ -510,7 +539,7 @@ function PredefinedAdhocModifiersSection({
 							</div>
 						))}
 						{isCreating && draftModifier && editingIndex === modifiers.length && (
-							<div className="grid gap-2 rounded-md border border-border/40 p-3 sm:grid-cols-[150px_140px_120px_1fr_auto]">
+							<div className="grid items-center gap-2 rounded-md border border-border/40 p-3 sm:grid-cols-[150px_140px_140px_1fr_auto]">
 								<Select
 									value={draftModifier.modifierType}
 									onValueChange={(value) =>
