@@ -11,7 +11,6 @@ import { Badge } from '@/components/ui/badge'
 import { Card, CardContent } from '@/components/ui/card'
 
 import { typeIconUrl } from '@/lib/eve-images'
-import { formatISK } from '../utils'
 
 import type { Fitting } from '../types'
 
@@ -43,7 +42,7 @@ export function FittingCard({ fitting, doctrineId }: FittingCardProps) {
 							{fitting.srpEligible && (
 								<Badge variant="default" className="flex items-center gap-1 shrink-0 text-xs">
 									<CheckCircle2 className="h-3 w-3" />
-									SRP {formatISK(fitting.srpValue)}
+									SRP Eligible
 								</Badge>
 							)}
 						</div>

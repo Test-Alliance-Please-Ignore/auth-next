@@ -193,7 +193,7 @@ export function useDoctrineFittingsForShip(shipTypeId: string | undefined) {
 		staleTime: 1000 * 60 * 5,
 		queryFn: async () => {
 			if (!shipTypeId) return []
-			const candidates = await api.getFittings({ shipTypeId, srpEligible: true })
+			const candidates = await api.getFittings({ shipTypeId })
 			if (candidates.length === 0) return []
 			const full = await Promise.all(candidates.map((fitting) => api.getFitting(fitting.id)))
 			return full

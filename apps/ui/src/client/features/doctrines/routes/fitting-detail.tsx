@@ -23,7 +23,6 @@ import toast from '@/lib/toast'
 import { FittingPanel } from '../components/FittingPanel'
 import { FittingSlotList } from '../components/FittingSlotList'
 import { useFitting, useSaveFittingIngame } from '../hooks'
-import { formatISK } from '../utils'
 
 export default function FittingDetailPage() {
 	const { id } = useParams<{ id: string }>()
@@ -76,7 +75,8 @@ export default function FittingDetailPage() {
 					<CardContent className="pt-6">
 						<div className="text-center">
 							<p className="text-muted-foreground mb-4">
-								The fitting you're looking for doesn't exist or you don't have permission to view it.
+								The fitting you're looking for doesn't exist or you don't have permission to view
+								it.
 							</p>
 							<Button asChild variant="ghost">
 								<Link to="/doctrines">
@@ -106,7 +106,9 @@ export default function FittingDetailPage() {
 				action={
 					canManage && (
 						<Button asChild variant="ghost">
-							<Link to={`/doctrines/fittings/${id}/edit${doctrineId ? `?doctrineId=${doctrineId}` : ''}`}>
+							<Link
+								to={`/doctrines/fittings/${id}/edit${doctrineId ? `?doctrineId=${doctrineId}` : ''}`}
+							>
 								<Edit className="h-4 w-4" />
 								Edit
 							</Link>
@@ -135,7 +137,7 @@ export default function FittingDetailPage() {
 								{fitting.srpEligible ? (
 									<Badge variant="default" className="inline-flex items-center gap-1">
 										<CheckCircle2 className="h-3 w-3" />
-										{formatISK(fitting.srpValue)}
+										SRP Eligible
 									</Badge>
 								) : (
 									<span className="text-muted-foreground">Not eligible</span>

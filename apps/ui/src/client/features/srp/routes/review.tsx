@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { Navigate, useNavigate } from 'react-router-dom'
+import { Link, Navigate, useNavigate } from 'react-router-dom'
 
 import { DateRangeInput } from '@/components/ui/date-range-input'
 import { Card, CardContent } from '@/components/ui/card'
@@ -253,7 +253,14 @@ function ReviewTabContent({ status, filters }: { status: RequestStatus; filters:
 										/>
 									)}
 								</TableCell>
-								<TableCell className="font-semibold">{req.shipTypeName ?? '—'}</TableCell>
+								<TableCell className="font-semibold">
+									<Link
+										to={`/srp/review/${req.id}`}
+										className="underline-offset-4 hover:underline focus-visible:underline"
+									>
+										{req.shipTypeName ?? '—'}
+									</Link>
+								</TableCell>
 								<TableCell className="text-sm">
 									<div className="inline-flex items-center gap-2">
 										<span>{req.characterName}</span>
