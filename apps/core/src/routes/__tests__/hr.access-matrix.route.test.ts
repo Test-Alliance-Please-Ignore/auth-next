@@ -531,7 +531,7 @@ describe('hr route access matrix', () => {
 		expect(hrStub.revokeRole).not.toHaveBeenCalled()
 	})
 
-	it('blocks site admin from granting hr_admin (ceo-only)', async () => {
+	it('allows site admin to grant hr_admin', async () => {
 		const app = createApp({ user: makeUser({ is_admin: true }), db: dbStub })
 		const res = await app.request(
 			'/api/hr/1001/roles',
@@ -547,7 +547,7 @@ describe('hr route access matrix', () => {
 			env
 		)
 
-		expect(res.status).toBe(403)
-		expect(hrStub.grantRole).not.toHaveBeenCalled()
+		expect(res.status).toBe(201)
+		expect(hrStub.grantRole).toHaveBeenCalledWith('1001', 'target-user-1', 'hr_admin', 'user-1', undefined)
 	})
 })

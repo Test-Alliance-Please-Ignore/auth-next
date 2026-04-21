@@ -1281,7 +1281,7 @@ app.delete('/notes/:id', requireAuth(), async (c) => {
  * Grant an HR role to a user for a corporation
  * REQUIRES: CEO, site admin, or HR admin access
  * CONSTRAINTS:
- *   - Only CEOs can grant hr_admin
+ *   - Only CEOs and site admins can grant hr_admin
  *   - HR admins can grant only hr_reviewer/hr_viewer
  */
 app.post('/:corporationId/roles', requireAuth(), async (c) => {
@@ -1295,9 +1295,9 @@ app.post('/:corporationId/roles', requireAuth(), async (c) => {
 		return c.json({ error: 'Access denied. CEO, HR admin, or site admin access is required.' }, 403)
 	}
 
-	// Only CEOs can grant HR admin
-	if (role === 'hr_admin' && managementAccess !== 'ceo') {
-		return c.json({ error: 'Access denied. Only corporation CEOs can grant HR admin.' }, 403)
+	// Only CEOs and site admins can grant HR admin
+	if (role === 'hr_admin' && managementAccess !== 'ceo' && managementAccess !== 'site_admin') {
+		return c.json({ error: 'Access denied. Only corporation CEOs or site admins can grant HR admin.' }, 403)
 	}
 
 	// HR admins can only grant lower roles
