@@ -355,6 +355,7 @@ export default function NewBroadcastPage() {
 	const [copiedFormat, setCopiedFormat] = useState<TimestampFormat | null>(null)
 	const timestampInputRef = useRef<HTMLInputElement | null>(null)
 	const [isDraftInitialized, setIsDraftInitialized] = useState(false)
+	const autoSelectedTemplateTargetsRef = useRef<Set<string>>(new Set())
 
 	// Fetch all broadcast targets available to the user
 	const { data: targets } = useBroadcastTargets()
@@ -658,8 +659,17 @@ export default function NewBroadcastPage() {
 	useEffect(() => {
 		if (isEditMode || !selectedTargetId || !templates || templates.length === 0) return
 
+		if (
+			selectedTemplateId === 'custom' &&
+			!autoSelectedTemplateTargetsRef.current.has(selectedTargetId)
+		) {
+			autoSelectedTemplateTargetsRef.current.add(selectedTargetId)
+			handleTemplateChange(templates[0]!.id)
+			return
+		}
+
 		const hasValidSelection =
-			selectedTemplateId !== 'custom' &&
+			selectedTemplateId === 'custom' ||
 			templates.some((template) => template.id === selectedTemplateId)
 		if (hasValidSelection) return
 
