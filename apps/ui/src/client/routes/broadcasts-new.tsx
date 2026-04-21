@@ -1028,15 +1028,7 @@ export default function NewBroadcastPage() {
 													</div>
 												) : field.type === 'system_srp' ? (
 													<div className="w-full space-y-2">
-														<div className="space-y-0.5">
-															<Label htmlFor={field.name}>
-																{field.label}
-																{field.required && ' *'}
-															</Label>
-															<p className="text-xs text-muted-foreground">
-																Choose SRP mode. Token is generated at form load for enabled modes.
-															</p>
-														</div>
+														<Label htmlFor={field.name}>SRP</Label>
 														<Select
 															inputId={field.name}
 															value={parseSrpMode(templateFields[field.name])}
