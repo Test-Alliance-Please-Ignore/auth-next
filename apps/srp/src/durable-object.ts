@@ -336,7 +336,13 @@ export class SrpDO extends DurableObject<Env> implements Srp {
 				if (km.victim.character_id !== characterId) return false
 				const killmailMs = new Date(km.killmail_time).getTime()
 				if (!Number.isFinite(killmailMs)) return false
-				return killmailMs >= cutoffMs
+				if (killmailMs < cutoffMs) return false
+				// Hide empty pod losses from requestable list:
+				// keep capsule losses only when at least one implant is fitted.
+				if (this.isPodShipTypeId(String(km.victim.ship_type_id)) && !this.hasImplantFitted(km)) {
+					return false
+				}
+				return true
 			})
 
 			// Convert losses to the format we need (with string timestamps)
@@ -378,9 +384,41 @@ export class SrpDO extends DurableObject<Env> implements Srp {
 		const requestMap = new Map(
 			existingRequests.map((r) => [r.killmailId, { id: r.id, status: r.requestStatus }])
 		)
+		const legacyPaidKillmailIds = new Set<string>()
+		const paymentProcessorCorporationId = config?.paymentProcessorCorporationId?.trim()
+		if (paymentProcessorCorporationId) {
+			const oldestLossTimeMs = allLosses.reduce((oldest, loss) => {
+				const lossMs = new Date(loss.killmail_time).getTime()
+				if (!Number.isFinite(lossMs)) return oldest
+				return Math.min(oldest, lossMs)
+			}, Number.POSITIVE_INFINITY)
+			const fromDate = Number.isFinite(oldestLossTimeMs)
+				? new Date(oldestLossTimeMs)
+				: new Date(cutoffMs)
+
+			const legacyRows = await this.db.execute<{ reason: string | null }>(
+				sql`select reason
+					from corporation_wallet_journal
+					where corporation_id = ${paymentProcessorCorporationId}
+						and date >= ${fromDate}
+						and reason is not null
+						and reason like 'Payment for %'
+					order by date desc
+					limit 10000`
+			)
+
+			const killmailIdSet = new Set(killmailIds)
+			for (const row of legacyRows.rows ?? []) {
+				const legacyKillmailId = this.extractLegacyPaidKillmailId(row.reason)
+				if (!legacyKillmailId) continue
+				if (!killmailIdSet.has(legacyKillmailId)) continue
+				legacyPaidKillmailIds.add(legacyKillmailId)
+			}
+		}
 
 		// Annotate losses with SRP status and sort by time descending
 		return allLosses
+			.filter((loss) => !legacyPaidKillmailIds.has(loss.killmail_id))
 			.map((loss) => {
 				const request = requestMap.get(loss.killmail_id)
 				return {
@@ -399,6 +437,27 @@ export class SrpDO extends DurableObject<Env> implements Srp {
 				}
 			})
 			.sort((a, b) => new Date(b.killmailTime).getTime() - new Date(a.killmailTime).getTime())
+	}
+
+	private extractLegacyPaidKillmailId(reason: string | null | undefined): string | null {
+		if (!reason) return null
+		const match = reason.match(/\bPayment for (\d+)\b/i)
+		if (!match) return null
+		return match[1] ?? null
+	}
+
+	private isPodShipTypeId(shipTypeId: string): boolean {
+		return this.POD_TYPE_IDS.has(shipTypeId)
+	}
+
+	private hasImplantFitted(killmail: KillmailDetail): boolean {
+		const items = killmail.victim?.items ?? []
+		return items.some((item: any) => {
+			const flag = Number(item?.flag)
+			if (!Number.isFinite(flag)) return false
+			// Implant flags in killmails are in 89-98 range.
+			return flag >= 89 && flag <= 98
+		})
 	}
 
 	/**

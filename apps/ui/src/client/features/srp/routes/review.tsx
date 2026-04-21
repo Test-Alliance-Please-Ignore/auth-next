@@ -245,12 +245,14 @@ function ReviewTabContent({ status, filters }: { status: RequestStatus; filters:
 							>
 								<TableCell className="py-2">
 									{req.shipTypeId && (
-										<img
-											src={typeIconUrl(req.shipTypeId, 32)}
-											alt={req.shipTypeName ?? ''}
-											className="h-10 w-10 rounded border border-border/50 object-contain"
-											loading="lazy"
-										/>
+										<div className="h-10 w-10 overflow-hidden rounded border border-border/50">
+											<img
+												src={typeIconUrl(req.shipTypeId, 32)}
+												alt={req.shipTypeName ?? ''}
+												className="h-full w-full object-contain"
+												loading="lazy"
+											/>
+										</div>
 									)}
 								</TableCell>
 								<TableCell className="font-semibold">
