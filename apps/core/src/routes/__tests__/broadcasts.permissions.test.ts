@@ -41,6 +41,7 @@ function makeTarget(
 		type: 'discord_channel',
 		sendPermissionId,
 		managePermissionId,
+		displayOrder: 0,
 		config: { guildId: 'g', channelId: 'c' },
 		createdBy: 'user-1',
 		createdAt: new Date().toISOString(),

@@ -27,6 +27,7 @@ export interface BroadcastTarget {
 	type: TargetType
 	sendPermissionId: string
 	managePermissionId: string
+	displayOrder: number
 	config: Record<string, unknown> // { guildId: string, channelId: string } for Discord
 	createdBy: string
 	createdAt: string
@@ -41,7 +42,7 @@ export interface BroadcastTemplate {
 	name: string
 	description: string | null
 	targetType: string
-	targetId: string
+	targetIds: string[]
 	fieldSchema: TemplateFieldSchema[]
 	messageTemplate: string
 	createdBy: string
@@ -55,9 +56,18 @@ export interface BroadcastTemplate {
 export interface TemplateFieldSchema {
 	name: string
 	label: string
-	type: 'text' | 'textarea'
+	type:
+		| 'text'
+		| 'textarea'
+		| 'select'
+		| 'system_doctrine'
+		| 'system_staging'
+		| 'system_srp'
+		| 'system_frogsiren'
 	required?: boolean
 	placeholder?: string
+	options?: string[]
+	allowCustom?: boolean
 }
 
 /**
@@ -121,6 +131,7 @@ export interface CreateBroadcastTargetRequest {
 	type: TargetType
 	permissionEntityNamespace: string
 	permissionTargetName: string
+	displayOrder?: number
 	/** Internal/server-resolved IDs used when creating targets */
 	sendPermissionId?: string
 	managePermissionId?: string
@@ -136,6 +147,7 @@ export interface CreateBroadcastTargetRequest {
 export interface UpdateBroadcastTargetRequest {
 	name?: string
 	description?: string
+	displayOrder?: number
 	sendPermissionId?: string
 	managePermissionId?: string
 	sendPermissionUrn?: string
@@ -153,7 +165,7 @@ export interface CreateBroadcastTemplateRequest {
 	name: string
 	description?: string
 	targetType: string
-	targetId: string
+	targetIds: string[]
 	fieldSchema: TemplateFieldSchema[]
 	messageTemplate: string
 }
@@ -164,6 +176,7 @@ export interface CreateBroadcastTemplateRequest {
 export interface UpdateBroadcastTemplateRequest {
 	name?: string
 	description?: string
+	targetIds?: string[]
 	fieldSchema?: TemplateFieldSchema[]
 	messageTemplate?: string
 }
@@ -194,6 +207,14 @@ export interface SendBroadcastResult {
 	broadcast: Broadcast
 	delivery: BroadcastDelivery
 }
+
+export {
+	BROADCAST_SYSTEM_TEMPLATE_TOKENS,
+	BROADCAST_SYSTEM_TEMPLATE_TOKEN_NAMES,
+	getBroadcastSystemTemplateToken,
+	type BroadcastSystemTemplateFieldType,
+	type BroadcastSystemTemplateTokenDefinition,
+} from './template-tokens'
 
 // =============================================================================
 // RPC INTERFACE

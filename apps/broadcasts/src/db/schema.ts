@@ -1,5 +1,5 @@
 import { relations } from 'drizzle-orm'
-import { index, jsonb, pgEnum, pgTable, text, timestamp, uuid, varchar } from 'drizzle-orm/pg-core'
+import { index, integer, jsonb, pgEnum, pgTable, primaryKey, text, timestamp, uuid, varchar } from 'drizzle-orm/pg-core'
 
 /**
  * Enums
@@ -41,6 +41,8 @@ export const broadcastTargets = pgTable(
 		sendPermissionId: uuid('send_permission_id').notNull(),
 		/** Global permission ID required to manage this target */
 		managePermissionId: uuid('manage_permission_id').notNull(),
+		/** Sort order for presenting targets in UI (ascending) */
+		displayOrder: integer('display_order').notNull().default(0),
 		/** Configuration data (JSON) - e.g., { guildId, channelId } for Discord */
 		config: jsonb('config').notNull(),
 		/** User ID who created this target */
@@ -52,6 +54,7 @@ export const broadcastTargets = pgTable(
 		index('broadcast_targets_send_permission_id_idx').on(table.sendPermissionId),
 		index('broadcast_targets_manage_permission_id_idx').on(table.managePermissionId),
 		index('broadcast_targets_type_idx').on(table.type),
+		index('broadcast_targets_display_order_idx').on(table.displayOrder),
 	]
 )
 
@@ -71,10 +74,6 @@ export const broadcastTemplates = pgTable(
 		description: text('description'),
 		/** Target type this template is designed for */
 		targetType: varchar('target_type', { length: 100 }).notNull(),
-		/** Target this template belongs to */
-		targetId: uuid('target_id')
-			.notNull()
-			.references(() => broadcastTargets.id, { onDelete: 'cascade' }),
 		/** Field schema (JSON array) - defines what fields need to be filled */
 		fieldSchema: jsonb('field_schema').notNull(),
 		/** Message template with {{placeholder}} syntax */
@@ -85,8 +84,30 @@ export const broadcastTemplates = pgTable(
 		updatedAt: timestamp('updated_at').defaultNow().notNull(),
 	},
 	(table) => [
-		index('broadcast_templates_target_id_idx').on(table.targetId),
 		index('broadcast_templates_target_type_idx').on(table.targetType),
+	]
+)
+
+/**
+ * Broadcast Template Targets table - Template to target attachments
+ *
+ * A template can be attached to multiple targets of the same target type.
+ */
+export const broadcastTemplateTargets = pgTable(
+	'broadcast_template_targets',
+	{
+		templateId: uuid('template_id')
+			.notNull()
+			.references(() => broadcastTemplates.id, { onDelete: 'cascade' }),
+		targetId: uuid('target_id')
+			.notNull()
+			.references(() => broadcastTargets.id, { onDelete: 'cascade' }),
+		createdAt: timestamp('created_at').defaultNow().notNull(),
+	},
+	(table) => [
+		primaryKey({ columns: [table.templateId, table.targetId] }),
+		index('broadcast_template_targets_template_id_idx').on(table.templateId),
+		index('broadcast_template_targets_target_id_idx').on(table.targetId),
 	]
 )
 
@@ -178,11 +199,24 @@ export const broadcastDeliveries = pgTable(
 
 export const broadcastTemplatesRelations = relations(broadcastTemplates, ({ many }) => ({
 	broadcasts: many(broadcasts),
+	targetAttachments: many(broadcastTemplateTargets),
 }))
 
 export const broadcastTargetsRelations = relations(broadcastTargets, ({ many }) => ({
 	broadcasts: many(broadcasts),
 	deliveries: many(broadcastDeliveries),
+	templateAttachments: many(broadcastTemplateTargets),
+}))
+
+export const broadcastTemplateTargetsRelations = relations(broadcastTemplateTargets, ({ one }) => ({
+	template: one(broadcastTemplates, {
+		fields: [broadcastTemplateTargets.templateId],
+		references: [broadcastTemplates.id],
+	}),
+	target: one(broadcastTargets, {
+		fields: [broadcastTemplateTargets.targetId],
+		references: [broadcastTargets.id],
+	}),
 }))
 
 export const broadcastsRelations = relations(broadcasts, ({ one, many }) => ({
@@ -214,10 +248,12 @@ export const broadcastDeliveriesRelations = relations(broadcastDeliveries, ({ on
 export const schema = {
 	broadcastTargets,
 	broadcastTemplates,
+	broadcastTemplateTargets,
 	broadcasts,
 	broadcastDeliveries,
 	broadcastTemplatesRelations,
 	broadcastTargetsRelations,
+	broadcastTemplateTargetsRelations,
 	broadcastsRelations,
 	broadcastDeliveriesRelations,
 }

@@ -241,10 +241,6 @@ export default function BroadcastDetailPage() {
 								<div className="font-medium">{broadcast.title}</div>
 							</div>
 							<div>
-								<div className="text-sm text-muted-foreground">Permission</div>
-								<div className="font-medium font-mono text-xs">{broadcast.permissionId}</div>
-							</div>
-							<div>
 								<div className="text-sm text-muted-foreground">Target</div>
 								<div className="font-medium">{targetName}</div>
 							</div>

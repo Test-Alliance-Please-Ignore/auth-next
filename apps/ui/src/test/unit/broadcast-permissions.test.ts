@@ -60,6 +60,7 @@ function makeTarget(overrides: Partial<BroadcastTarget> = {}): BroadcastTarget {
 		type: 'discord_channel',
 		sendPermissionId: 'perm-target-send',
 		managePermissionId: 'perm-target-manage',
+		displayOrder: 0,
 		config: { guildId: 'g', channelId: 'c' },
 		createdBy: 'user-1',
 		createdAt: now,

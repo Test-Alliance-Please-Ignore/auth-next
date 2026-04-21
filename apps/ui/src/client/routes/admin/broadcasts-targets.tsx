@@ -81,6 +81,7 @@ export default function BroadcastTargetsPage() {
 		type: 'discord_channel',
 		permissionEntityNamespace: '',
 		permissionTargetName: '',
+		displayOrder: 0,
 		config: {
 			guildId: '',
 			channelId: '',
@@ -97,6 +98,7 @@ export default function BroadcastTargetsPage() {
 			type: 'discord_channel',
 			permissionEntityNamespace: '',
 			permissionTargetName: '',
+			displayOrder: 0,
 			config: {
 				guildId: '',
 				channelId: '',
@@ -139,6 +141,7 @@ export default function BroadcastTargetsPage() {
 			type: target.type,
 			permissionEntityNamespace: '',
 			permissionTargetName: '',
+			displayOrder: target.displayOrder,
 			config: target.config as { guildId: string; channelId: string },
 		})
 		setEditPermissionUrns({ send: sendPermissionUrn, manage: managePermissionUrn })
@@ -155,6 +158,7 @@ export default function BroadcastTargetsPage() {
 				data: {
 					name: formData.name,
 					description: formData.description,
+					displayOrder: formData.displayOrder,
 					sendPermissionUrn: editPermissionUrns.send.trim() || undefined,
 					managePermissionUrn: editPermissionUrns.manage.trim() || undefined,
 					config: formData.config,
@@ -250,6 +254,7 @@ export default function BroadcastTargetsPage() {
 						<Table>
 							<TableHeader>
 								<TableRow>
+									<TableHead>Order</TableHead>
 									<TableHead>Name</TableHead>
 									<TableHead>Description</TableHead>
 									<TableHead>Type</TableHead>
@@ -262,6 +267,7 @@ export default function BroadcastTargetsPage() {
 									const config = target.config as { guildId?: string; channelId?: string }
 									return (
 										<TableRow key={target.id}>
+											<TableCell className="font-mono tabular-nums">{target.displayOrder}</TableCell>
 											<TableCell className="font-medium">{target.name}</TableCell>
 											<TableCell className="text-sm text-muted-foreground">
 												{target.description || '-'}
@@ -362,6 +368,22 @@ export default function BroadcastTargetsPage() {
 							/>
 						</div>
 						<div>
+							<Label htmlFor="displayOrder">Display Order</Label>
+							<Input
+								id="displayOrder"
+								type="number"
+								value={formData.displayOrder ?? 0}
+								onChange={(e) =>
+									setFormData({
+										...formData,
+										displayOrder: Number.isFinite(Number(e.target.value))
+											? Math.trunc(Number(e.target.value))
+											: 0,
+									})
+								}
+							/>
+						</div>
+						<div>
 							<Label htmlFor="guildId">Discord Server *</Label>
 							<Select
 								inputId="guildId"
@@ -440,6 +462,22 @@ export default function BroadcastTargetsPage() {
 								value={formData.description}
 								onChange={(e) => setFormData({ ...formData, description: e.target.value })}
 								rows={2}
+							/>
+						</div>
+						<div>
+							<Label htmlFor="edit-displayOrder">Display Order</Label>
+							<Input
+								id="edit-displayOrder"
+								type="number"
+								value={formData.displayOrder ?? 0}
+								onChange={(e) =>
+									setFormData({
+										...formData,
+										displayOrder: Number.isFinite(Number(e.target.value))
+											? Math.trunc(Number(e.target.value))
+											: 0,
+									})
+								}
 							/>
 						</div>
 						<div>

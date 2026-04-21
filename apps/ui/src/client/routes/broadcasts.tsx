@@ -214,7 +214,6 @@ export default function BroadcastsPage() {
 								<TableHeader>
 									<TableRow>
 										<TableHead>Status</TableHead>
-										<TableHead>Permission</TableHead>
 										<TableHead>Target</TableHead>
 										<TableHead>Template</TableHead>
 										<TableHead>Created</TableHead>
@@ -243,9 +242,6 @@ export default function BroadcastsPage() {
 													<Badge variant={statusVariants[broadcast.status]}>
 														{statusLabels[broadcast.status]}
 													</Badge>
-												</TableCell>
-												<TableCell className="font-mono text-xs">
-													{broadcast.permissionId}
 												</TableCell>
 												<TableCell className="font-medium">
 													{target?.name || broadcast.targetId}

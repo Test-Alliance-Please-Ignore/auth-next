@@ -1,10 +1,17 @@
 import { DurableObject } from 'cloudflare:workers'
 
-import { and, desc, eq, inArray, or, sql } from '@repo/db-utils'
+import { and, asc, desc, eq, inArray, or, sql } from '@repo/db-utils'
 import { getStub } from '@repo/do-utils'
 
 import { createDb } from './db'
-import { broadcastDeliveries, broadcasts, broadcastTargets, broadcastTemplates } from './db/schema'
+import {
+	broadcastDeliveries,
+	broadcasts,
+	broadcastTargets,
+	broadcastTemplateTargets,
+	broadcastTemplates,
+} from './db/schema'
+import { generateSrpFriendlyToken } from './utils/srp-token'
 import { convertUnixTimestamps } from './utils/timestamp-converter'
 
 import type {
@@ -60,7 +67,7 @@ export class BroadcastsDO extends DurableObject<Env> implements Broadcasts {
 						inArray(broadcastTargets.managePermissionId, sendPermissionIds)
 					)
 				: undefined,
-			orderBy: desc(broadcastTargets.createdAt),
+			orderBy: [asc(broadcastTargets.displayOrder), desc(broadcastTargets.createdAt)],
 		})
 
 		return targets.map((t) => ({
@@ -104,6 +111,7 @@ export class BroadcastsDO extends DurableObject<Env> implements Broadcasts {
 				type: data.type,
 				sendPermissionId,
 				managePermissionId,
+				displayOrder: data.displayOrder ?? 0,
 				config: data.config,
 				createdBy: userId,
 				createdAt: now,
@@ -136,6 +144,7 @@ export class BroadcastsDO extends DurableObject<Env> implements Broadcasts {
 				description: data.description !== undefined ? data.description : existing.description,
 				sendPermissionId: data.sendPermissionId ?? existing.sendPermissionId,
 				managePermissionId: data.managePermissionId ?? existing.managePermissionId,
+				displayOrder: data.displayOrder ?? existing.displayOrder,
 				config: data.config ? { ...existing.config, ...data.config } : existing.config,
 				updatedAt: new Date(),
 			})
@@ -158,37 +167,62 @@ export class BroadcastsDO extends DurableObject<Env> implements Broadcasts {
 	// BROADCAST TEMPLATES
 	// =========================================================================
 
+	private async getTemplateTargetIds(templateIds: string[]): Promise<Map<string, string[]>> {
+		if (templateIds.length === 0) {
+			return new Map()
+		}
+
+		const rows = await this.db.query.broadcastTemplateTargets.findMany({
+			where: inArray(broadcastTemplateTargets.templateId, templateIds),
+		})
+
+		const idsByTemplateId = new Map<string, string[]>()
+		for (const row of rows) {
+			const existing = idsByTemplateId.get(row.templateId)
+			if (existing) {
+				existing.push(row.targetId)
+			} else {
+				idsByTemplateId.set(row.templateId, [row.targetId])
+			}
+		}
+
+		return idsByTemplateId
+	}
+
 	async listTemplates(
 		userId: string,
 		filters?: { targetType?: string; targetId?: string }
 	): Promise<BroadcastTemplate[]> {
-		let whereConditions = []
+		const whereConditions = []
 
 		if (filters?.targetType) {
 			whereConditions.push(eq(broadcastTemplates.targetType, filters.targetType))
 		}
-
-		if (filters?.targetId) {
-			whereConditions.push(eq(broadcastTemplates.targetId, filters.targetId))
-		}
-
 		const templates = await this.db.query.broadcastTemplates.findMany({
 			where: whereConditions.length > 0 ? and(...whereConditions) : undefined,
 			orderBy: desc(broadcastTemplates.createdAt),
 		})
+		const templateIds = templates.map((template) => template.id)
+		const templateTargetIds = await this.getTemplateTargetIds(templateIds)
 
-		return templates.map((t) => ({
+		return templates
+			.filter((template) => {
+				if (!filters?.targetId) return true
+				const targetIds = templateTargetIds.get(template.id) ?? []
+				return targetIds.includes(filters.targetId)
+			})
+			.map((t) => ({
 			id: t.id,
 			name: t.name,
 			description: t.description,
 			targetType: t.targetType,
-			targetId: t.targetId,
+			targetIds: templateTargetIds.get(t.id) ?? [],
 			fieldSchema: t.fieldSchema as any,
 			messageTemplate: t.messageTemplate,
 			createdBy: t.createdBy,
 			createdAt: t.createdAt.toISOString(),
 			updatedAt: t.updatedAt.toISOString(),
-		}))
+			}))
 	}
 
 	async getTemplate(templateId: string, userId: string): Promise<BroadcastTemplate | null> {
@@ -197,13 +231,14 @@ export class BroadcastsDO extends DurableObject<Env> implements Broadcasts {
 		})
 
 		if (!template) return null
+		const templateTargetIds = await this.getTemplateTargetIds([templateId])
 
 		return {
 			id: template.id,
 			name: template.name,
 			description: template.description,
 			targetType: template.targetType,
-			targetId: template.targetId,
+			targetIds: templateTargetIds.get(template.id) ?? [],
 			fieldSchema: template.fieldSchema as any,
 			messageTemplate: template.messageTemplate,
 			createdBy: template.createdBy,
@@ -216,13 +251,18 @@ export class BroadcastsDO extends DurableObject<Env> implements Broadcasts {
 		data: CreateBroadcastTemplateRequest,
 		userId: string
 	): Promise<BroadcastTemplate> {
-		const target = await this.db.query.broadcastTargets.findFirst({
-			where: eq(broadcastTargets.id, data.targetId),
-		})
-		if (!target) {
-			throw new Error('Target not found')
+		const normalizedTargetIds = [...new Set(data.targetIds.filter(Boolean))]
+		if (normalizedTargetIds.length === 0) {
+			throw new Error('Template must include at least one target')
 		}
-		if (target.type !== data.targetType) {
+
+		const targets = await this.db.query.broadcastTargets.findMany({
+			where: inArray(broadcastTargets.id, normalizedTargetIds),
+		})
+		if (targets.length !== normalizedTargetIds.length) {
+			throw new Error('One or more targets not found')
+		}
+		if (targets.some((target) => target.type !== data.targetType)) {
 			throw new Error('Template targetType must match target type')
 		}
 
@@ -234,7 +274,6 @@ export class BroadcastsDO extends DurableObject<Env> implements Broadcasts {
 				name: data.name,
 				description: data.description || null,
 				targetType: data.targetType,
-				targetId: data.targetId,
 				fieldSchema: data.fieldSchema,
 				messageTemplate: data.messageTemplate,
 				createdBy: userId,
@@ -243,12 +282,20 @@ export class BroadcastsDO extends DurableObject<Env> implements Broadcasts {
 			})
 			.returning()
 
+		await this.db.insert(broadcastTemplateTargets).values(
+			normalizedTargetIds.map((targetId) => ({
+				templateId: template.id,
+				targetId,
+				createdAt: now,
+			}))
+		)
+
 		return {
 			id: template.id,
 			name: template.name,
 			description: template.description,
 			targetType: template.targetType,
-			targetId: template.targetId,
+			targetIds: normalizedTargetIds,
 			fieldSchema: template.fieldSchema as any,
 			messageTemplate: template.messageTemplate,
 			createdBy: template.createdBy,
@@ -267,6 +314,23 @@ export class BroadcastsDO extends DurableObject<Env> implements Broadcasts {
 			throw new Error('Template not found')
 		}
 
+		const nextTargetIds = data.targetIds
+			? [...new Set(data.targetIds.filter(Boolean))]
+			: existing.targetIds
+		if (nextTargetIds.length === 0) {
+			throw new Error('Template must include at least one target')
+		}
+
+		const targets = await this.db.query.broadcastTargets.findMany({
+			where: inArray(broadcastTargets.id, nextTargetIds),
+		})
+		if (targets.length !== nextTargetIds.length) {
+			throw new Error('One or more targets not found')
+		}
+		if (targets.some((target) => target.type !== existing.targetType)) {
+			throw new Error('Template targetType must match target type')
+		}
+
 		const [updated] = await this.db
 			.update(broadcastTemplates)
 			.set({
@@ -279,12 +343,23 @@ export class BroadcastsDO extends DurableObject<Env> implements Broadcasts {
 			.where(eq(broadcastTemplates.id, templateId))
 			.returning()
 
+		await this.db
+			.delete(broadcastTemplateTargets)
+			.where(eq(broadcastTemplateTargets.templateId, templateId))
+		await this.db.insert(broadcastTemplateTargets).values(
+			nextTargetIds.map((targetId) => ({
+				templateId,
+				targetId,
+				createdAt: new Date(),
+			}))
+		)
+
 		return {
 			id: updated.id,
 			name: updated.name,
 			description: updated.description,
 			targetType: updated.targetType,
-			targetId: updated.targetId,
+			targetIds: nextTargetIds,
 			fieldSchema: updated.fieldSchema as any,
 			messageTemplate: updated.messageTemplate,
 			createdBy: updated.createdBy,
@@ -311,7 +386,10 @@ export class BroadcastsDO extends DurableObject<Env> implements Broadcasts {
 		await Promise.all(
 			draftBroadcastsUsingTemplate.map((broadcast) => {
 				const existingContent = broadcast.content as Record<string, unknown>
-				const renderedMessage = this.renderTemplate(template.messageTemplate, existingContent)
+				const renderedMessage = this.renderTemplateMessageWithDefaultText(
+					template.messageTemplate,
+					existingContent
+				)
 				return this.db
 					.update(broadcasts)
 					.set({
@@ -436,7 +514,7 @@ export class BroadcastsDO extends DurableObject<Env> implements Broadcasts {
 						name: template.name,
 						description: template.description,
 						targetType: template.targetType,
-						targetId: template.targetId,
+						targetIds: (await this.getTemplateTargetIds([template.id])).get(template.id) ?? [],
 						fieldSchema: template.fieldSchema as any,
 						messageTemplate: template.messageTemplate,
 						createdBy: template.createdBy,
@@ -512,6 +590,27 @@ export class BroadcastsDO extends DurableObject<Env> implements Broadcasts {
 			.where(eq(broadcasts.id, broadcastId))
 
 		try {
+			let renderedContent = broadcastDetails.content
+			if (broadcastDetails.template) {
+				const prepared = this.prepareTemplateContentForSend(
+					broadcastDetails.template.messageTemplate,
+					broadcastDetails.content
+				)
+				if (prepared.changed) {
+					const [updatedContent] = await this.db
+						.update(broadcasts)
+						.set({
+							content: prepared.content,
+							updatedAt: new Date(),
+						})
+						.where(eq(broadcasts.id, broadcastId))
+						.returning()
+					renderedContent = updatedContent.content as Record<string, unknown>
+				} else {
+					renderedContent = prepared.content
+				}
+			}
+
 			// Send based on target type
 			if (broadcastDetails.target.type === 'discord_channel') {
 				const config = broadcastDetails.target.config as {
@@ -522,13 +621,13 @@ export class BroadcastsDO extends DurableObject<Env> implements Broadcasts {
 				// Render message from template if available
 				let message: string
 				if (broadcastDetails.template) {
-					message = this.renderTemplate(
+					message = this.renderTemplateMessageWithDefaultText(
 						broadcastDetails.template.messageTemplate,
-						broadcastDetails.content
+						renderedContent
 					)
 				} else {
 					// If no template, use content as-is (expect a 'message' field)
-					message = (broadcastDetails.content.message as string) || broadcastDetails.title
+					message = (renderedContent.message as string) || broadcastDetails.title
 				}
 
 				// Convert any UNIX timestamps in the message to Discord format
@@ -540,6 +639,10 @@ export class BroadcastsDO extends DurableObject<Env> implements Broadcasts {
 					message = '@here\n\n' + message
 				} else if (mentionLevel === 'everyone') {
 					message = '@everyone\n\n' + message
+				}
+
+				if (this.isFrogsirenEnabled(renderedContent.__frogsirenEnabled)) {
+					message = this.wrapWithFrogsirenBanner(message)
 				}
 
 				// Add footer with sender, target, and timestamp
@@ -776,7 +879,7 @@ export class BroadcastsDO extends DurableObject<Env> implements Broadcasts {
 				// Render the original content (without footer)
 				let baseMessage: string
 				if (broadcastDetails.template) {
-					baseMessage = this.renderTemplate(
+					baseMessage = this.renderTemplateMessageWithDefaultText(
 						broadcastDetails.template.messageTemplate,
 						broadcastDetails.content
 					)
@@ -848,13 +951,109 @@ export class BroadcastsDO extends DurableObject<Env> implements Broadcasts {
 	 * Simple template rendering - replaces {{fieldName}} with content values
 	 */
 	private renderTemplate(template: string, content: Record<string, unknown>): string {
-		let result = template
+		return template.replace(/\{\{\s*([^}]+?)\s*\}\}/g, (_match, rawFieldName) => {
+			const token = String(rawFieldName ?? '').trim()
+			const wrappedToken =
+				token.startsWith('<') && token.endsWith('>') ? token.slice(1, -1).trim() : token
+			let fieldName = wrappedToken
+			if (wrappedToken.startsWith('select:')) {
+				const selectBody = wrappedToken.slice('select:'.length)
+				const separator = selectBody.indexOf(':')
+				if (separator > 0) {
+					const labelName = selectBody.slice(0, separator).trim()
+					fieldName = `select:${labelName}`
+				}
+			}
+			if (fieldName === 'srp') {
+				const enabled = this.isSrpEnabled(content.srp)
+				if (!enabled) {
+					return '**SRP:** No'
+				}
 
-		for (const [key, value] of Object.entries(content)) {
-			const placeholder = `{{${key}}}`
-			result = result.replace(new RegExp(placeholder, 'g'), String(value))
+				const token = this.resolveSrpToken(content)
+				return `**SRP:** Yes\n**SRP Token:** ${token}`
+			}
+			const value = content[fieldName]
+			return value === undefined || value === null ? '' : String(value)
+		})
+	}
+
+	private prepareTemplateContentForSend(
+		template: string,
+		content: Record<string, unknown>
+	): { content: Record<string, unknown>; changed: boolean } {
+		if (!/\{\{\s*srp\s*\}\}/.test(template)) {
+			return { content, changed: false }
 		}
 
-		return result
+		const nextContent = { ...content }
+		let changed = false
+		const enabled = this.isSrpEnabled(nextContent.srp)
+		if (!enabled) {
+			if ('__srpToken' in nextContent) {
+				delete nextContent.__srpToken
+				changed = true
+			}
+			return { content: nextContent, changed }
+		}
+
+		const existingToken = nextContent.__srpToken
+		if (typeof existingToken === 'string' && existingToken.trim().length > 0) {
+			return { content: nextContent, changed }
+		}
+
+		nextContent.__srpToken = this.generateSrpFriendlyToken()
+		return { content: nextContent, changed: true }
+	}
+
+	private isSrpEnabled(value: unknown): boolean {
+		if (typeof value === 'boolean') return value
+		if (typeof value === 'number') return value !== 0
+		if (typeof value === 'string') {
+			const normalized = value.trim().toLowerCase()
+			if (!normalized) return true
+			return ['true', '1', 'yes', 'enabled', 'on'].includes(normalized)
+		}
+		return true
+	}
+
+	private isFrogsirenEnabled(value: unknown): boolean {
+		if (typeof value === 'boolean') return value
+		if (typeof value === 'number') return value !== 0
+		if (typeof value === 'string') {
+			const normalized = value.trim().toLowerCase()
+			return ['true', '1', 'yes', 'enabled', 'on'].includes(normalized)
+		}
+		return false
+	}
+
+	private resolveSrpToken(content: Record<string, unknown>): string {
+		const existing = content.__srpToken
+		if (typeof existing === 'string' && existing.trim().length > 0) {
+			return existing.trim()
+		}
+		return this.generateSrpFriendlyToken()
+	}
+
+	private generateSrpFriendlyToken(): string {
+		return generateSrpFriendlyToken()
+	}
+
+	private renderTemplateMessageWithDefaultText(
+		template: string,
+		content: Record<string, unknown>
+	): string {
+		const renderedTemplate = this.renderTemplate(template, content)
+		const prefixText = String(content.__prefixText ?? '').trim()
+		const defaultText = String(content.__defaultText ?? '').trim()
+		return [prefixText, renderedTemplate, defaultText].filter(Boolean).join('\n\n')
+	}
+
+	private wrapWithFrogsirenBanner(message: string): string {
+		const frogsirenBanner = Array.from(
+			{ length: 16 },
+			() => '<:frogsiren:416057308376989697>'
+		).join(' ')
+		return `${frogsirenBanner}\n\n${message}\n\n${frogsirenBanner}`
 	}
 }
