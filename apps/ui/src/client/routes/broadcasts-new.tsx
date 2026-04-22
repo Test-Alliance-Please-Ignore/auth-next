@@ -216,11 +216,12 @@ function parseBooleanField(value: string | undefined, defaultValue: boolean): bo
 	return defaultValue
 }
 
-type SrpMode = 'blanket' | 'military' | 'disabled'
+type SrpMode = 'blanket' | 'military' | 'coalition' | 'disabled'
 
 function parseSrpMode(value: string | undefined): SrpMode {
 	const normalized = (value ?? '').trim().toLowerCase()
 	if (normalized === 'military') return 'military'
+	if (normalized === 'coalition') return 'coalition'
 	if (normalized === 'disabled' || normalized === 'false' || normalized === '0' || normalized === 'off') {
 		return 'disabled'
 	}
@@ -232,6 +233,7 @@ function parseSrpMode(value: string | undefined): SrpMode {
 
 function srpModeLabel(mode: SrpMode): string {
 	if (mode === 'military') return 'Military'
+	if (mode === 'coalition') return 'Coalition'
 	if (mode === 'blanket') return 'Blanket'
 	return 'No'
 }
@@ -1014,7 +1016,7 @@ export default function NewBroadcastPage() {
 												<div key={field.name} className="space-y-2 min-w-0">
 													{field.type === 'system_srp' ? (
 														<div className="w-full space-y-2">
-															<Label htmlFor={field.name}>SRP</Label>
+															<Label htmlFor={field.name}>SRP Type</Label>
 															<Select
 															inputId={field.name}
 															value={parseSrpMode(templateFields[field.name])}
@@ -1032,6 +1034,7 @@ export default function NewBroadcastPage() {
 															options={[
 																{ value: 'blanket', label: 'Blanket SRP' },
 																{ value: 'military', label: 'Military SRP' },
+																{ value: 'coalition', label: 'Coalition SRP' },
 																{ value: 'disabled', label: 'No SRP' },
 															]}
 														/>
