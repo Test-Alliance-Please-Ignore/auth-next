@@ -1007,55 +1007,15 @@ export default function NewBroadcastPage() {
 										</div>
 
 										<Label className="text-sm font-medium">Template Fields</Label>
-										<div className="grid gap-4 md:grid-cols-2">
-										{selectedTemplate.fieldSchema.map((field) => (
-											<div key={field.name} className="space-y-2 min-w-0">
-												{field.type === 'system_frogsiren' ? (
-													<div className="w-full">
-														<div
-															className={`flex items-center justify-between rounded-md border border-border/60 px-3 py-2 cursor-pointer transition-colors ${
-																parseBooleanField(templateFields[field.name], false)
-																	? 'bg-slate-500/15'
-																	: 'bg-transparent'
-															}`}
-															onClick={(event) => {
-																if (isSwitchControlClick(event.target)) return
-																toggleSwitchById(field.name)
-															}}
-														>
-															<Label
-																htmlFor={field.name}
-																className="text-2xl font-black cursor-pointer"
-															>
-																Sound the Frogsiren
-															</Label>
-															<Switch
-																id={field.name}
-																checked={parseBooleanField(templateFields[field.name], false)}
-																onClick={(event) => event.stopPropagation()}
-																onCheckedChange={(checked) => {
-																	if (!checked) {
-																		updateTemplateField(field.name, 'false')
-																		return
-																	}
-																	requestConfirmation({
-																		title: 'Sound the Frogsiren?',
-																		description:
-																			'Are you really fucking sure you want to sound the frogsiren? Is the happening status: its? Is it UALX all over again?',
-																		confirmLabel: 'Sound It',
-																		intent: 'destructive',
-																		onConfirm: () => {
-																			updateTemplateField(field.name, 'true')
-																		},
-																	})
-																}}
-															/>
-														</div>
-													</div>
-												) : field.type === 'system_srp' ? (
-													<div className="w-full space-y-2">
-														<Label htmlFor={field.name}>SRP</Label>
-														<Select
+											<div className="grid gap-4 md:grid-cols-2">
+											{selectedTemplate.fieldSchema
+												.filter((field) => field.type !== 'system_frogsiren')
+												.map((field) => (
+												<div key={field.name} className="space-y-2 min-w-0">
+													{field.type === 'system_srp' ? (
+														<div className="w-full space-y-2">
+															<Label htmlFor={field.name}>SRP</Label>
+															<Select
 															inputId={field.name}
 															value={parseSrpMode(templateFields[field.name])}
 															onValueChange={(value) => {
@@ -1076,15 +1036,15 @@ export default function NewBroadcastPage() {
 															]}
 														/>
 													</div>
-												) : (
-													<Label htmlFor={field.name}>
-														{field.label}
+													) : (
+														<Label htmlFor={field.name}>
+															{field.label}
 														{field.required && ' *'}
 													</Label>
-												)}
-												{field.type === 'system_srp' || field.type === 'system_frogsiren' ? null : field.type === 'system_doctrine' ? (
-													<div className="w-full space-y-2">
-														<Select
+													)}
+													{field.type === 'system_srp' ? null : field.type === 'system_doctrine' ? (
+														<div className="w-full space-y-2">
+															<Select
 															inputId={field.name}
 															value={
 																templateFieldSelections[field.name] ??
@@ -1190,10 +1150,10 @@ export default function NewBroadcastPage() {
 													/>
 												)}
 											</div>
-											))}
-										</div>
-										<div className="max-w-xl space-y-2">
-											<Label htmlFor="template-default-text">Text after (optional)</Label>
+												))}
+											</div>
+											<div className="max-w-xl space-y-2">
+												<Label htmlFor="template-default-text">Text after (optional)</Label>
 											<Textarea
 												id="template-default-text"
 												value={templateDefaultText}
@@ -1204,12 +1164,57 @@ export default function NewBroadcastPage() {
 												rows={1}
 												placeholder="Optional text appended after the template message"
 												className="resize-none overflow-hidden"
-												style={{ minHeight: '2.5rem' }}
-											/>
-										</div>
+													style={{ minHeight: '2.5rem' }}
+												/>
 											</div>
-										</div>
-									) : null}
+											{selectedTemplate.fieldSchema
+												.filter((field) => field.type === 'system_frogsiren')
+												.map((field) => (
+													<div key={field.name} className="max-w-xl">
+														<div
+															className={`flex items-center justify-between rounded-md border border-border/60 px-3 py-2 cursor-pointer transition-colors ${
+																parseBooleanField(templateFields[field.name], false)
+																	? 'bg-slate-500/15'
+																	: 'bg-transparent'
+															}`}
+															onClick={(event) => {
+																if (isSwitchControlClick(event.target)) return
+																toggleSwitchById(field.name)
+															}}
+														>
+															<Label
+																htmlFor={field.name}
+																className="text-2xl font-black cursor-pointer"
+															>
+																Sound the Frogsiren
+															</Label>
+															<Switch
+																id={field.name}
+																checked={parseBooleanField(templateFields[field.name], false)}
+																onClick={(event) => event.stopPropagation()}
+																onCheckedChange={(checked) => {
+																	if (!checked) {
+																		updateTemplateField(field.name, 'false')
+																		return
+																	}
+																	requestConfirmation({
+																		title: 'Sound the Frogsiren?',
+																		description:
+																			'Are you really fucking sure you want to sound the frogsiren? Is the happening status: its? Is it UALX all over again?',
+																		confirmLabel: 'Sound It',
+																		intent: 'destructive',
+																		onConfirm: () => {
+																			updateTemplateField(field.name, 'true')
+																		},
+																	})
+																}}
+															/>
+														</div>
+													</div>
+												))}
+												</div>
+											</div>
+										) : null}
 
 							{/* Submit Buttons */}
 							<div className="text-sm">
