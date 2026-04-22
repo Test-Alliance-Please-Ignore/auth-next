@@ -990,6 +990,22 @@ export default function NewBroadcastPage() {
 										</div>
 									</div>
 									<div className="[grid-area:form] space-y-4">
+										<div className="max-w-xl space-y-2">
+											<Label htmlFor="template-prefix-text">Text before (optional)</Label>
+											<Textarea
+												id="template-prefix-text"
+												value={templatePrefixText}
+												onChange={(e) => {
+													autoResizeTextarea(e.currentTarget)
+													setTemplatePrefixText(e.target.value)
+												}}
+												rows={1}
+												placeholder="Optional text prepended before the template message"
+												className="resize-none overflow-hidden"
+												style={{ minHeight: '2.5rem' }}
+											/>
+										</div>
+
 										<Label className="text-sm font-medium">Template Fields</Label>
 										<div className="grid gap-4 md:grid-cols-2">
 										{selectedTemplate.fieldSchema.map((field) => (
@@ -1174,25 +1190,11 @@ export default function NewBroadcastPage() {
 													/>
 												)}
 											</div>
-										))}
-											<div className="max-w-xl space-y-2">
-												<Label htmlFor="template-prefix-text">Text before (optional)</Label>
-												<Textarea
-												id="template-prefix-text"
-												value={templatePrefixText}
-												onChange={(e) => {
-													autoResizeTextarea(e.currentTarget)
-													setTemplatePrefixText(e.target.value)
-												}}
-												rows={1}
-												placeholder="Optional text prepended before the template message"
-												className="resize-none overflow-hidden"
-												style={{ minHeight: '2.5rem' }}
-											/>
+											))}
 										</div>
-											<div className="max-w-xl space-y-2">
-												<Label htmlFor="template-default-text">Text after (optional)</Label>
-												<Textarea
+										<div className="max-w-xl space-y-2">
+											<Label htmlFor="template-default-text">Text after (optional)</Label>
+											<Textarea
 												id="template-default-text"
 												value={templateDefaultText}
 												onChange={(e) => {
@@ -1203,12 +1205,11 @@ export default function NewBroadcastPage() {
 												placeholder="Optional text appended after the template message"
 												className="resize-none overflow-hidden"
 												style={{ minHeight: '2.5rem' }}
-												/>
-											</div>
+											/>
+										</div>
 											</div>
 										</div>
-									</div>
-								) : null}
+									) : null}
 
 							{/* Submit Buttons */}
 							<div className="text-sm">
