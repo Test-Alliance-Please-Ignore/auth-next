@@ -824,8 +824,9 @@ srp.get('/requests/:id', async (c) => {
 		return c.json({ error: 'Request not found' }, 404)
 	}
 
-	// Verify user owns this request or is admin
-	if (request.userId !== user.id && !user.is_admin) {
+	const canSeeInternalHistory = await hasAnyPermission(c.env, user.id, SRP_ROLE_URNS, user.is_admin)
+	const canViewRequest = request.userId === user.id || canSeeInternalHistory
+	if (!canViewRequest) {
 		return c.json({ error: 'Not authorized to view this request' }, 403)
 	}
 
@@ -838,12 +839,13 @@ srp.get('/requests/:id', async (c) => {
 		)
 	}
 
-	const canSeeFinancialAuditHistory = await hasAnyPermission(c.env, user.id, SRP_ROLE_URNS, user.is_admin)
-	if (request.history && !canSeeFinancialAuditHistory) {
-		request.history = request.history.map((entry) => ({
-			...entry,
-			previousApprovedAmount: undefined,
-		}))
+	if (request.history && !canSeeInternalHistory) {
+		request.history = request.history
+			.filter((entry) => entry.visibility === 'public')
+			.map((entry) => ({
+				...entry,
+				previousApprovedAmount: undefined,
+			}))
 	}
 
 	const [requestWithCharacterRole] = await hydrateRequestCharacterRoles(
@@ -1078,13 +1080,16 @@ srp.get('/requests/:id/comments', async (c) => {
 		return c.json({ error: 'Request not found' }, 404)
 	}
 
-	if (request.userId !== user.id && !user.is_admin) {
+	const hasSrpStaffPermission = await hasAnyPermission(c.env, user.id, SRP_ROLE_URNS, user.is_admin)
+	if (request.userId !== user.id && !hasSrpStaffPermission) {
 		return c.json({ error: 'Not authorized to view this request' }, 403)
 	}
 
-	// Only admins/reviewers can see internal comments
-	const canSeeInternal = await hasPermission(c.env, user.id, 'urn:srp:reviewer', user.is_admin)
-	const rawComments = await srpStub.getComments(requestId, user.id, canSeeInternal && includeInternal)
+	const rawComments = await srpStub.getComments(
+		requestId,
+		user.id,
+		hasSrpStaffPermission && includeInternal
+	)
 	const comments = await hydrateCommentAuthors(rawComments, c.env.DATABASE_URL, c.env, request.userId)
 
 	return c.json(comments)
@@ -1113,17 +1118,15 @@ srp.post('/requests/:id/comments', async (c) => {
 		return c.json({ error: 'Request not found' }, 404)
 	}
 
-	if (request.userId !== user.id && !user.is_admin) {
+	const hasSrpStaffPermission = await hasAnyPermission(c.env, user.id, SRP_ROLE_URNS, user.is_admin)
+	if (request.userId !== user.id && !hasSrpStaffPermission) {
 		return c.json({ error: 'Not authorized to comment on this request' }, 403)
 	}
 
 	const { content, visibility } = validation.data
 
-	// Only admins/reviewers can create internal comments
 	if (visibility === 'internal') {
-		const canCreateInternal = await hasPermission(c.env, user.id, 'urn:srp:reviewer', user.is_admin)
-
-		if (!canCreateInternal) {
+		if (!hasSrpStaffPermission) {
 			return c.json({ error: 'Not authorized to create internal comments' }, 403)
 		}
 	}

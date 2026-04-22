@@ -23,13 +23,18 @@ export default function ReviewRequestDetail() {
 	const { hasPermission, isAdmin } = useUserPermissions()
 	const navigate = useNavigate()
 
-	const isReviewer = isAdmin || hasPermission('urn:srp:reviewer')
+	const canReview = isAdmin || hasPermission('urn:srp:reviewer')
+	const isSrpStaff =
+		isAdmin ||
+		hasPermission('urn:srp:reviewer') ||
+		hasPermission('urn:srp:payer') ||
+		hasPermission('urn:srp:manager')
 
-	if (!isReviewer) return <Navigate to="/srp" replace />
+	if (!isSrpStaff) return <Navigate to="/srp" replace />
 	if (!id) return <Navigate to="/srp/review" replace />
 
 	const { data: request, isLoading, error } = useRequest(id)
-	const canSeeInternal = isReviewer || hasPermission('urn:srp:payer')
+	const canSeeInternal = isSrpStaff
 	const { data: comments = [], refetch: refetchComments } = useRequestComments(id, canSeeInternal)
 	const updateState = useUpdateReviewState()
 
@@ -119,8 +124,8 @@ export default function ReviewRequestDetail() {
 				)}
 			</div>
 
-			{/* Review form (shown for non-paid, reviewable states) */}
-			{!isPaid && (
+			{/* Review form (shown for reviewers/admins and non-paid states) */}
+			{!isPaid && canReview && (
 				<ReviewRequestForm
 					request={request}
 					onSuccess={() => navigate('/srp/review')}
@@ -149,7 +154,7 @@ export default function ReviewRequestDetail() {
 							{request.history && request.history.length > 0 && (
 								<Card className="p-6">
 									<h3 className="mb-4 font-semibold">History</h3>
-									<RequestHistory history={request.history} showFinancialAudit={canSeeInternal} />
+									<RequestHistory history={request.history} />
 								</Card>
 							)}
 						</>
@@ -157,8 +162,8 @@ export default function ReviewRequestDetail() {
 				/>
 			)}
 
-			{/* Loss details + revert + comments for paid requests (no review form) */}
-			{isPaid && (
+			{/* Read-only details + comments + history when review actions are unavailable */}
+			{(isPaid || !canReview) && (
 				<div className="grid gap-6 lg:grid-cols-3">
 					<div className="space-y-6 lg:col-span-2">
 						<Card className="p-6">
@@ -181,7 +186,7 @@ export default function ReviewRequestDetail() {
 						{request.history && request.history.length > 0 && (
 							<Card className="p-6">
 								<h3 className="mb-4 font-semibold">History</h3>
-								<RequestHistory history={request.history} showFinancialAudit={canSeeInternal} />
+								<RequestHistory history={request.history} />
 							</Card>
 						)}
 					</div>
@@ -227,7 +232,7 @@ export default function ReviewRequestDetail() {
 								</div>
 								<div>
 									<div className="text-muted-foreground">Loss Date</div>
-									<EveTimeDisplay dateStr={request.lossDate} className="font-medium no-underline" />
+									<EveTimeDisplay dateStr={request.lossDate} className="font-medium" />
 								</div>
 								{request.approvedAmount && (
 									<div>
@@ -240,20 +245,22 @@ export default function ReviewRequestDetail() {
 							</div>
 						</Card>
 
-						<Card className="p-6">
-							<Button
-								variant="ghost"
-								className="w-full"
-								loading={updateState.isPending}
-								onClick={() =>
-									void updateState.mutateAsync({ id, newState: 'pending' }).then(() =>
-										navigate('/srp/review')
-									)
-								}
-							>
-								Revert to Pending
-							</Button>
-						</Card>
+						{canReview && (
+							<Card className="p-6">
+								<Button
+									variant="ghost"
+									className="w-full"
+									loading={updateState.isPending}
+									onClick={() =>
+										void updateState.mutateAsync({ id, newState: 'pending' }).then(() =>
+											navigate('/srp/review')
+										)
+									}
+								>
+									Revert to Pending
+								</Button>
+							</Card>
+						)}
 					</div>
 				</div>
 			)}

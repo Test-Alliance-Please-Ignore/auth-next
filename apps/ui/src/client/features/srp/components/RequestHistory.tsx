@@ -9,10 +9,9 @@ import type { SRPHistoryResponse } from '../types'
 interface RequestHistoryProps {
 	history: SRPHistoryResponse[]
 	className?: string
-	showFinancialAudit?: boolean
 }
 
-export function RequestHistory({ history, className, showFinancialAudit = false }: RequestHistoryProps) {
+export function RequestHistory({ history, className }: RequestHistoryProps) {
 	if (history.length === 0) {
 		return (
 			<Card className={cn('p-6', className)}>
@@ -25,53 +24,79 @@ export function RequestHistory({ history, className, showFinancialAudit = false 
 		<Card className={cn('p-6', className)}>
 			<h3 className="mb-4 font-semibold">Request Timeline</h3>
 			<div className="relative space-y-6 before:absolute before:left-[7px] before:top-2 before:h-[calc(100%-1rem)] before:w-[2px] before:bg-border">
-				{history.map((entry) => (
-					<div key={entry.id} className="relative pl-8">
-						{/* Timeline dot */}
-						<div
-							className={cn(
-								'absolute left-0 top-1.5 h-4 w-4 rounded-full border-2 border-background',
-								getActionColor(entry.action)
-							)}
-						/>
+				{history.map((entry) => {
+					const detailLines = getDetailLines(entry.metadata)
 
-						{/* Content */}
-						<div className="space-y-1">
-							<div className="flex items-center gap-2">
-								<span className="text-sm font-medium">{getActionLabel(entry.action)}</span>
-								{entry.newRequestStatus && <RequestStatusBadge status={entry.newRequestStatus} />}
-							</div>
-							<div className="text-xs text-muted-foreground">
-								{entry.actorCharacterName} · {formatFullDate(entry.timestamp)}
-							</div>
-							{entry.metadata && Object.keys(entry.metadata).length > 0 && (
-								<div className="mt-2 rounded-md bg-muted/50 p-2 text-xs">
-									{entry.metadata.rejectionReason ? (
-										<div>
-											<span className="font-medium">Reason: </span>
-											{String(entry.metadata.rejectionReason)}
-										</div>
-									) : null}
-									{entry.metadata.notes ? (
-										<div>
-											<span className="font-medium">Notes: </span>
-											{String(entry.metadata.notes)}
-										</div>
-									) : null}
+					return (
+						<div key={entry.id} className="relative pl-8">
+							{/* Timeline dot */}
+							<div
+								className={cn(
+									'absolute left-0 top-1.5 h-4 w-4 rounded-full border-2 border-background',
+									getActionColor(entry.action)
+								)}
+							/>
+
+							{/* Content */}
+							<div className="space-y-1">
+								<div className="flex items-center gap-2">
+									<span className="text-sm font-medium">{getActionLabel(entry.action)}</span>
+									{entry.newRequestStatus && <RequestStatusBadge status={entry.newRequestStatus} />}
 								</div>
-							)}
-							{showFinancialAudit && entry.previousApprovedAmount ? (
-								<div className="mt-2 rounded-md bg-muted/50 p-2 text-xs">
-									<span className="font-medium">Previous Approved Amount: </span>
-									<span className="tabular-nums">{formatISK(entry.previousApprovedAmount)}</span>
+								<div className="text-xs text-muted-foreground">
+									{entry.actorCharacterName} · {formatFullDate(entry.timestamp)}
 								</div>
-							) : null}
+								{detailLines.length > 0 && (
+									<div className="mt-2 rounded-md bg-muted/50 p-2 text-xs">
+										{detailLines.map((line) => (
+											<div key={line.label}>
+												<span className="font-medium">{line.label}: </span>
+												{line.value}
+											</div>
+										))}
+									</div>
+								)}
+								{entry.previousApprovedAmount ? (
+									<div className="mt-2 rounded-md bg-muted/50 p-2 text-xs">
+										<span className="font-medium">Previous Approved Amount: </span>
+										<span className="tabular-nums">{formatISK(entry.previousApprovedAmount)}</span>
+									</div>
+								) : null}
+							</div>
 						</div>
-					</div>
-				))}
+					)
+				})}
 			</div>
 		</Card>
 	)
+}
+
+function getDetailLines(
+	metadata?: Record<string, unknown>
+): Array<{ label: string; value: string }> {
+	if (!metadata) return []
+
+	const rejectionReason = asNonEmptyString(metadata.rejectionReason)
+	const notes = asNonEmptyString(metadata.notes)
+	const message = asNonEmptyString(metadata.message)
+
+	const lines: Array<{ label: string; value: string }> = []
+	if (rejectionReason) {
+		lines.push({ label: 'Reason', value: rejectionReason })
+	}
+	if (notes) {
+		lines.push({ label: 'Notes', value: notes })
+	}
+	if (message) {
+		lines.push({ label: 'Message', value: message })
+	}
+	return lines
+}
+
+function asNonEmptyString(value: unknown): string | null {
+	if (typeof value !== 'string') return null
+	const trimmed = value.trim()
+	return trimmed.length > 0 ? trimmed : null
 }
 
 function getActionColor(action: string): string {
@@ -85,12 +110,16 @@ function getActionColor(action: string): string {
 function getActionLabel(action: string): string {
 	const labels: Record<string, string> = {
 		request_created: 'Request Created',
+		review_submitted: 'Review Submitted',
+		review_details: 'Review Details',
 		request_approved: 'Approved',
 		request_partially_approved: 'Partially Approved',
 		request_rejected: 'Rejected',
+		state_changed: 'Status Updated',
 		payment_submitted: 'Payment Pending',
 		payment_completed: 'Payment Completed',
 		partial_payment_completed: 'Partial Payment',
+		payment_alert_acknowledged: 'Payment Alert Acknowledged',
 	}
 	return labels[action] || action
 }
