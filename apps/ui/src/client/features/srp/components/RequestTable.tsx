@@ -75,7 +75,7 @@ export function RequestTable({ requests, isLoading }: RequestTableProps) {
 								<RequestStatusBadge status={request.requestStatus} />
 							</TableCell>
 							<TableCell className="text-right">
-								<Button variant="ghost" size="sm" asChild>
+								<Button variant="secondary" size="sm" asChild>
 									<Link to={`/srp/request/${request.id}`}>View</Link>
 								</Button>
 							</TableCell>

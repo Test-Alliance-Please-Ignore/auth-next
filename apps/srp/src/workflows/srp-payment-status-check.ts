@@ -153,7 +153,7 @@ export class SrpPaymentStatusCheckWorkflow extends WorkflowEntrypoint<
 		}
 
 		const approvedAmount = parseAmountToBigInt(request.approvedAmount)
-		const reasonNeedle = buildKillmailReasonNeedle(request.killmailId)
+		const reasonNeedle = buildKillmailReasonNeedle(request.id)
 
 		const walletMatches = await step.do(
 			'find-wallet-journal-matches',
@@ -235,7 +235,7 @@ export class SrpPaymentStatusCheckWorkflow extends WorkflowEntrypoint<
 				await db.execute<ExistingPaymentAlertRow>(
 					sql`select id::text as "id"
 						from srp_payment_alerts
-						where request_id = ${request.id}::uuid
+						where request_id = ${request.id}
 							and journal_id = ${anomalyEntry.journalId}
 							and observed_amount = ${anomalyEntry.amount}
 						limit 1`
@@ -291,7 +291,7 @@ export class SrpPaymentStatusCheckWorkflow extends WorkflowEntrypoint<
 								payment_processor_corporation_id,
 								metadata
 							) values (
-								${request.id}::uuid,
+								${request.id},
 								'payment_mismatch',
 								'open',
 								${anomalyEntry.journalId},
@@ -322,7 +322,7 @@ export class SrpPaymentStatusCheckWorkflow extends WorkflowEntrypoint<
 				await db.execute<ExistingMismatchHistoryRow>(
 					sql`select id::text as "id"
 						from srp_request_history
-						where request_id = ${request.id}::uuid
+						where request_id = ${request.id}
 							and action = ${PAYMENT_MISMATCH_HISTORY_ACTION}
 							and metadata->>'journalId' = ${anomalyEntry.journalId}
 							and metadata->>'observedAmount' = ${anomalyEntry.amount}
@@ -420,7 +420,7 @@ export class SrpPaymentStatusCheckWorkflow extends WorkflowEntrypoint<
 							visibility,
 							metadata
 						) values (
-							${request.id}::uuid,
+							${request.id},
 							${SYSTEM_ACTOR_USER_ID}::uuid,
 							${SYSTEM_ACTOR_CHARACTER_NAME},
 							${PAYMENT_MISMATCH_HISTORY_ACTION},
@@ -461,7 +461,7 @@ export class SrpPaymentStatusCheckWorkflow extends WorkflowEntrypoint<
 				requestId,
 				workflowInstanceId,
 				processorCorporationId,
-				killmailId: request.killmailId,
+				lossId: request.id,
 				expectedReason: reasonNeedle,
 				expectedAmount: request.approvedAmount,
 				candidateCount: walletMatches.length,

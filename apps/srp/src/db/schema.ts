@@ -67,7 +67,7 @@ export const srpPolicies = pgTable('srp_policies', {
 export const srpRequests = pgTable(
 	'srp_requests',
 	{
-		id: uuid('id').defaultRandom().primaryKey(),
+		id: text('id').primaryKey(),
 		/** User ID who submitted the request */
 		userId: uuid('user_id').notNull(),
 		/** EVE character ID who lost the ship (text to avoid BigInt) */
@@ -78,8 +78,6 @@ export const srpRequests = pgTable(
 		corporationId: text('corporation_id').notNull(),
 		/** Cached corporation name for display */
 		corporationName: varchar('corporation_name', { length: 255 }).notNull(),
-		/** EVE killmail ID (text to avoid BigInt) */
-		killmailId: text('killmail_id').notNull().unique(),
 		/** Killmail hash from ESI API (required for fetching killmail) */
 		killmailHash: varchar('killmail_hash', { length: 255 }).notNull(),
 		/** Ship type ID from killmail */
@@ -229,8 +227,6 @@ export const srpRequests = pgTable(
 		index('srp_requests_request_status_idx').on(table.requestStatus),
 		// Compound index for reviewer dashboard (pending requests)
 		index('srp_requests_status_created_idx').on(table.requestStatus, table.createdAt.desc()),
-		// Killmail lookup
-		index('srp_requests_killmail_id_idx').on(table.killmailId),
 		// Time-based queries
 		index('srp_requests_loss_date_idx').on(table.lossDate.desc()),
 		index('srp_requests_created_at_idx').on(table.createdAt.desc()),
@@ -250,7 +246,7 @@ export const srpRequestHistory = pgTable(
 	{
 		id: uuid('id').defaultRandom().primaryKey(),
 		/** Which request this history entry belongs to */
-		requestId: uuid('request_id')
+		requestId: text('request_id')
 			.notNull()
 			.references(() => srpRequests.id, { onDelete: 'cascade' }),
 		/** User ID who made the change */
@@ -302,7 +298,7 @@ export const srpComments = pgTable(
 	{
 		id: uuid('id').defaultRandom().primaryKey(),
 		/** Which request this comment belongs to */
-		requestId: uuid('request_id')
+		requestId: text('request_id')
 			.notNull()
 			.references(() => srpRequests.id, { onDelete: 'cascade' }),
 		/** User ID of comment author */
@@ -339,7 +335,7 @@ export const srpPaymentAlerts = pgTable(
 	'srp_payment_alerts',
 	{
 		id: uuid('id').defaultRandom().primaryKey(),
-		requestId: uuid('request_id')
+		requestId: text('request_id')
 			.notNull()
 			.references(() => srpRequests.id, { onDelete: 'cascade' }),
 		kind: varchar('kind', { length: 64 }).notNull().default('payment_mismatch'),

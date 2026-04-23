@@ -63,7 +63,7 @@ export function RequestCard({ request, showActions = true }: RequestCardProps) {
 						</Button>
 						<Button variant="ghost" size="sm" asChild>
 							<a
-								href={getKillmailUrl(request.killmailId)}
+								href={getKillmailUrl(request.id)}
 								target="_blank"
 								rel="noopener noreferrer"
 							>

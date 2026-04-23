@@ -262,7 +262,7 @@ export interface SRPReviewSubmission {
  */
 export const CreateSRPRequestSchema = z.object({
 	characterId: z.string(),
-	killmailId: z.string(),
+	killmailId: z.string().regex(/^\d+$/, 'killmailId must be a numeric EVE killmail id'),
 	killmailHash: z.string(),
 	contextText: z.string().trim().min(1).max(2000),
 })
@@ -369,9 +369,8 @@ export interface SRPRequestResponse {
 	corporationId: string
 	corporationName: string
 
-	killmailId: string
 	killmailHash: string
-	killmailUrl: string // Generated: https://zkillboard.com/kill/{killmailId}/
+	killmailUrl: string // Generated: https://zkillboard.com/kill/{id}/
 	lossDate: string
 
 	shipTypeId: string

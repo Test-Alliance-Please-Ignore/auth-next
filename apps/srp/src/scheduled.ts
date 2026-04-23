@@ -104,4 +104,3 @@ export async function scheduledHandler(
 ): Promise<void> {
 	await refreshPendingPaymentChecks(env, { scheduledTimeMs: Date.now() })
 }
-
