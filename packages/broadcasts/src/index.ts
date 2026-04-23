@@ -218,6 +218,12 @@ export {
 	type BroadcastSystemTemplateFieldType,
 	type BroadcastSystemTemplateTokenDefinition,
 } from './template-tokens'
+export {
+	getBroadcastSrpModeLabel,
+	parseBroadcastSrpMode,
+	renderBroadcastSrpSection,
+	type BroadcastSrpMode,
+} from './srp-render'
 
 // =============================================================================
 // RPC INTERFACE

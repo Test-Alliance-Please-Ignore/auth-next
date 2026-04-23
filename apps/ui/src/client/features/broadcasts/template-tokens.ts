@@ -40,9 +40,9 @@ export const BROADCAST_SYSTEM_TEMPLATE_TOKENS: BroadcastSystemTemplateTokenDefin
 		fieldType: 'system_srp',
 		required: true,
 		tagSyntax: '{{<srp>}}',
-		description: 'Toggle switch (defaults to enabled) for SRP availability in the message.',
+		description: 'Select SRP type for the broadcast message.',
 		renderBehavior:
-			'Enabled sends "SRP: Yes" with a generated 3-word token. Disabled sends "SRP: No".',
+			'Renders "SRP: **Blanket|Military|Coalition|No**". Non-"No" modes include an SRP token line.',
 	},
 ]
 

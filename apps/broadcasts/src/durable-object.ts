@@ -2,6 +2,7 @@ import { DurableObject } from 'cloudflare:workers'
 
 import { and, asc, desc, eq, inArray, or, sql } from '@repo/db-utils'
 import { getStub } from '@repo/do-utils'
+import { parseBroadcastSrpMode, renderBroadcastSrpSection } from '@repo/broadcasts'
 
 import { createDb } from './db'
 import {
@@ -979,13 +980,9 @@ export class BroadcastsDO extends DurableObject<Env> implements Broadcasts {
 				}
 			}
 			if (fieldName === 'srp') {
-				const mode = this.parseSrpMode(content.srp)
-				if (mode === 'disabled') {
-					return '**SRP:** No'
-				}
-
+				const mode = parseBroadcastSrpMode(content.srp)
 				const token = this.resolveSrpToken(content)
-				return `**SRP:** ${this.getSrpModeLabel(mode)}\n**SRP Token:** ${token}`
+				return renderBroadcastSrpSection(mode, token)
 			}
 			const value = content[fieldName]
 			return value === undefined || value === null ? '' : String(value)
@@ -1002,7 +999,7 @@ export class BroadcastsDO extends DurableObject<Env> implements Broadcasts {
 
 		const nextContent = { ...content }
 		let changed = false
-		const mode = this.parseSrpMode(nextContent.srp)
+		const mode = parseBroadcastSrpMode(nextContent.srp)
 		if (mode === 'disabled') {
 			if ('__srpToken' in nextContent) {
 				delete nextContent.__srpToken
@@ -1018,32 +1015,6 @@ export class BroadcastsDO extends DurableObject<Env> implements Broadcasts {
 
 		nextContent.__srpToken = this.generateSrpFriendlyToken()
 		return { content: nextContent, changed: true }
-	}
-
-	private parseSrpMode(value: unknown): 'blanket' | 'military' | 'disabled' {
-		if (typeof value === 'boolean') return value ? 'blanket' : 'disabled'
-		if (typeof value === 'number') return value !== 0 ? 'blanket' : 'disabled'
-		if (typeof value === 'string') {
-			const normalized = value.trim().toLowerCase()
-			if (!normalized) return 'blanket'
-			if (normalized === 'military') return 'military'
-			if (
-				['disabled', 'false', '0', 'no', 'off'].includes(normalized)
-			) {
-				return 'disabled'
-			}
-			if (['blanket', 'true', '1', 'yes', 'enabled', 'on'].includes(normalized)) {
-				return 'blanket'
-			}
-			return 'blanket'
-		}
-		return 'blanket'
-	}
-
-	private getSrpModeLabel(mode: 'blanket' | 'military' | 'disabled'): string {
-		if (mode === 'military') return 'Military'
-		if (mode === 'blanket') return 'Blanket'
-		return 'No'
 	}
 
 	private isFrogsirenEnabled(value: unknown): boolean {
