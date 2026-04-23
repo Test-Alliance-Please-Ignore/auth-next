@@ -1,6 +1,7 @@
 import { Copy } from 'lucide-react'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useNavigate, useSearchParams } from 'react-router-dom'
+import { parseBroadcastSrpMode } from '@repo/broadcasts'
 
 import { renderDiscordContentValue } from '@/components/discord-content-renderer'
 import { Button } from '@/components/ui/button'
@@ -19,7 +20,6 @@ import { Label } from '@/components/ui/label'
 import { PageHeader } from '@/components/ui/page-header'
 import { Section } from '@/components/ui/section'
 import { Select } from '@/components/ui/select'
-import { Switch } from '@/components/ui/switch'
 import { Textarea } from '@/components/ui/textarea'
 import {
 	useBroadcastTargets,
@@ -33,6 +33,21 @@ import { useAuth } from '@/hooks/useAuth'
 import { useConfirmationDialog } from '@/hooks/useConfirmationDialog'
 import { usePageTitle } from '@/hooks/usePageTitle'
 import { useDoctrines, useStagingSystems } from '@/features/doctrines/hooks'
+import {
+	DOCTRINE_READ_MOTD_VALUE,
+	getInitialDoctrineFieldState,
+	resolveDoctrineSelectionFromValue,
+	SystemDoctrineField,
+} from '@/features/broadcasts/components/system-doctrine-field'
+import { SystemFrogsirenField } from '@/features/broadcasts/components/system-frogsiren-field'
+import { SystemSrpField } from '@/features/broadcasts/components/system-srp-field'
+import {
+	getInitialStagingFieldState,
+	resolveStagingSelectionFromValue,
+	STAGING_CUSTOM_VALUE,
+	SystemStagingField,
+} from '@/features/broadcasts/components/system-staging-field'
+import { renderBroadcastTemplateMessage } from '@/features/broadcasts/message-template-renderer'
 
 import type { BroadcastTemplate } from '@/lib/api'
 
@@ -171,42 +186,6 @@ function getFormatPreview(date: Date, format: TimestampFormat): string {
 	}
 }
 
-function renderTemplateMessage(
-	template: string,
-	fields: Record<string, string | undefined>,
-	includeEmptyMissing = false
-): string {
-	return template.replace(/\{\{\s*([^}]+?)\s*\}\}/g, (_, rawToken: string) => {
-		const token = String(rawToken ?? '').trim()
-		const wrappedToken =
-			token.startsWith('<') && token.endsWith('>') ? token.slice(1, -1).trim() : token
-		let key = wrappedToken
-		if (wrappedToken.startsWith('select:')) {
-			const selectBody = wrappedToken.slice('select:'.length)
-			const separator = selectBody.indexOf(':')
-			if (separator > 0) {
-				const labelName = selectBody.slice(0, separator).trim()
-				key = `select:${labelName}`
-			}
-		}
-		const value = fields[key]
-		if (key === 'srp') {
-			const mode = parseSrpMode(value)
-			return mode !== 'disabled'
-				? `**SRP:** ${srpModeLabel(mode)}\n**SRP Token:** ${fields.__srpToken ?? ''}`
-				: '**SRP:** No'
-		}
-		if (typeof value === 'string') return value
-		if (wrappedToken === 'doctrine' || wrappedToken === 'staging' || wrappedToken === 'srp') {
-			return includeEmptyMissing ? '' : `{{<${wrappedToken}>}}`
-		}
-		if (wrappedToken.startsWith('select:')) {
-			return includeEmptyMissing ? '' : `{{<${key || wrappedToken}>}}`
-		}
-		return includeEmptyMissing ? '' : `{{${key || token}}}`
-	})
-}
-
 function parseBooleanField(value: string | undefined, defaultValue: boolean): boolean {
 	if (typeof value !== 'string') return defaultValue
 	const normalized = value.trim().toLowerCase()
@@ -214,28 +193,6 @@ function parseBooleanField(value: string | undefined, defaultValue: boolean): bo
 	if (['true', '1', 'yes', 'enabled', 'on'].includes(normalized)) return true
 	if (['false', '0', 'no', 'disabled', 'off'].includes(normalized)) return false
 	return defaultValue
-}
-
-type SrpMode = 'blanket' | 'military' | 'coalition' | 'disabled'
-
-function parseSrpMode(value: string | undefined): SrpMode {
-	const normalized = (value ?? '').trim().toLowerCase()
-	if (normalized === 'military') return 'military'
-	if (normalized === 'coalition') return 'coalition'
-	if (normalized === 'disabled' || normalized === 'false' || normalized === '0' || normalized === 'off') {
-		return 'disabled'
-	}
-	if (normalized === 'blanket' || normalized === 'true' || normalized === '1' || normalized === 'on') {
-		return 'blanket'
-	}
-	return 'blanket'
-}
-
-function srpModeLabel(mode: SrpMode): string {
-	if (mode === 'military') return 'Military'
-	if (mode === 'coalition') return 'Coalition'
-	if (mode === 'blanket') return 'Blanket'
-	return 'No'
 }
 
 function toPascalCaseWord(word: string): string {
@@ -304,21 +261,6 @@ function convertUnixTimestampsForPreview(message: string, format: string = 'f'):
 		return `<t:${timestamp}:${format}>`
 	})
 }
-
-function isSwitchControlClick(target: EventTarget | null): boolean {
-	if (!(target instanceof Element)) return false
-	return Boolean(target.closest('label,button,[role="switch"]'))
-}
-
-function toggleSwitchById(id: string): void {
-	const element = document.getElementById(id)
-	if (element instanceof HTMLButtonElement) {
-		element.click()
-	}
-}
-
-const SPECIAL_DOCTRINE_READ_MOTD_VALUE = '__doctrine_read_motd'
-const SPECIAL_CUSTOM_VALUE = '__custom'
 
 function autoResizeTextarea(element: HTMLTextAreaElement): void {
 	element.style.height = '0px'
@@ -429,7 +371,7 @@ export default function NewBroadcastPage() {
 	const selectedTemplatePreview = selectedTemplate
 		? [
 				templatePrefixText.trim(),
-				renderTemplateMessage(selectedTemplate.messageTemplate, templateFields, false),
+				renderBroadcastTemplateMessage(selectedTemplate.messageTemplate, templateFields, false),
 				templateDefaultText.trim(),
 			]
 				.filter(Boolean)
@@ -445,7 +387,7 @@ export default function NewBroadcastPage() {
 		if (selectedTemplate) {
 			message = [
 				templatePrefixText.trim(),
-				renderTemplateMessage(selectedTemplate.messageTemplate, templateFields, true),
+				renderBroadcastTemplateMessage(selectedTemplate.messageTemplate, templateFields, true),
 				templateDefaultText.trim(),
 			]
 				.filter(Boolean)
@@ -481,19 +423,6 @@ export default function NewBroadcastPage() {
 	])
 	const renderedOutboundLength = renderedOutboundMessage.length
 	const isOverRenderedMessageLimit = renderedOutboundLength > DISCORD_MESSAGE_MAX_LENGTH
-	const doctrineFieldOptions = [
-		{ value: SPECIAL_DOCTRINE_READ_MOTD_VALUE, label: 'Read MOTD' },
-		{ value: SPECIAL_CUSTOM_VALUE, label: 'Custom' },
-		...doctrines.map((doctrine) => ({ value: doctrine.name, label: doctrine.name })),
-	]
-	const stagingFieldOptions = [
-		{ value: SPECIAL_CUSTOM_VALUE, label: 'Custom' },
-		...stagingSystems.map((stagingSystem) => ({
-			value: stagingSystem.solarSystemName,
-			label: stagingSystem.solarSystemName,
-		})),
-	]
-
 	// Initialize template fields when template is selected
 	const handleTemplateChange = useCallback((templateId: string) => {
 		setSelectedTemplateId(templateId)
@@ -511,15 +440,16 @@ export default function NewBroadcastPage() {
 			const initialSelections: Record<string, string> = {}
 			template.fieldSchema.forEach((field) => {
 				if (field.type === 'system_doctrine') {
-					initialSelections[field.name] = SPECIAL_DOCTRINE_READ_MOTD_VALUE
-					initialFields[field.name] = 'Read MOTD'
+					const doctrineState = getInitialDoctrineFieldState()
+					initialSelections[field.name] = doctrineState.selection
+					initialFields[field.name] = doctrineState.value
 					return
 				}
 
 				if (field.type === 'system_staging') {
-					const defaultStaging = stagingSystems[0]?.solarSystemName ?? ''
-					initialSelections[field.name] = defaultStaging ? defaultStaging : SPECIAL_CUSTOM_VALUE
-					initialFields[field.name] = defaultStaging
+					const stagingState = getInitialStagingFieldState(stagingSystems)
+					initialSelections[field.name] = stagingState.selection
+					initialFields[field.name] = stagingState.value
 					return
 				}
 
@@ -591,24 +521,20 @@ export default function NewBroadcastPage() {
 			if (nextSelections[field.name]) continue
 
 			if (field.type === 'system_doctrine') {
-				if ((templateFields[field.name] ?? '').trim() === 'Read MOTD') {
-					nextSelections[field.name] = SPECIAL_DOCTRINE_READ_MOTD_VALUE
-				} else if ((templateFields[field.name] ?? '').trim().length > 0) {
-					nextSelections[field.name] = SPECIAL_CUSTOM_VALUE
-				} else {
-					nextSelections[field.name] = SPECIAL_DOCTRINE_READ_MOTD_VALUE
-					updateTemplateField(field.name, 'Read MOTD')
+				const doctrineState = resolveDoctrineSelectionFromValue(templateFields[field.name])
+				nextSelections[field.name] = doctrineState.selection
+				if ((templateFields[field.name] ?? '') !== doctrineState.value) {
+					updateTemplateField(field.name, doctrineState.value)
 				}
 				changed = true
 				continue
 			}
 
 			if (field.type === 'system_staging') {
-				const currentValue = (templateFields[field.name] ?? '').trim()
-				if (currentValue.length > 0) {
-					nextSelections[field.name] = currentValue
-				} else {
-					nextSelections[field.name] = SPECIAL_CUSTOM_VALUE
+				const stagingState = resolveStagingSelectionFromValue(templateFields[field.name])
+				nextSelections[field.name] = stagingState.selection
+				if ((templateFields[field.name] ?? '') !== stagingState.value) {
+					updateTemplateField(field.name, stagingState.value)
 				}
 				changed = true
 				continue
@@ -625,13 +551,13 @@ export default function NewBroadcastPage() {
 				continue
 			}
 
-			if (field.type === 'system_srp') {
-				const currentValue = templateFields[field.name]
-				if (currentValue === undefined || currentValue.trim().length === 0) {
-					updateTemplateField(field.name, 'blanket')
-					changed = true
-				}
-				const mode = parseSrpMode(currentValue)
+				if (field.type === 'system_srp') {
+					const currentValue = templateFields[field.name]
+					if (currentValue === undefined || currentValue.trim().length === 0) {
+						updateTemplateField(field.name, 'blanket')
+						changed = true
+					}
+					const mode = parseBroadcastSrpMode(currentValue)
 				const currentToken = (templateFields.__srpToken ?? '').trim()
 				if (mode !== 'disabled' && currentToken.length === 0) {
 					updateTemplateField('__srpToken', generateSrpTokenAtFormLoad())
@@ -1009,154 +935,123 @@ export default function NewBroadcastPage() {
 										</div>
 
 										<Label className="text-sm font-medium">Template Fields</Label>
-											<div className="grid gap-4 md:grid-cols-2">
+										<div className="grid gap-4 md:grid-cols-2">
 											{selectedTemplate.fieldSchema
 												.filter((field) => field.type !== 'system_frogsiren')
 												.map((field) => (
-												<div key={field.name} className="space-y-2 min-w-0">
-													{field.type === 'system_srp' ? (
-														<div className="w-full space-y-2">
-															<Label htmlFor={field.name}>SRP Type</Label>
-															<Select
-															inputId={field.name}
-															value={parseSrpMode(templateFields[field.name])}
-															onValueChange={(value) => {
-																const mode = value as SrpMode
-																updateTemplateField(field.name, mode)
-																if (mode === 'disabled') {
-																	updateTemplateField('__srpToken', '')
-																	return
-																}
-																if ((templateFields.__srpToken ?? '').trim().length === 0) {
-																	updateTemplateField('__srpToken', generateSrpTokenAtFormLoad())
-																}
-															}}
-															options={[
-																{ value: 'blanket', label: 'Blanket SRP' },
-																{ value: 'military', label: 'Military SRP' },
-																{ value: 'coalition', label: 'Coalition SRP' },
-																{ value: 'disabled', label: 'No SRP' },
-															]}
-														/>
-													</div>
-													) : (
-														<Label htmlFor={field.name}>
-															{field.label}
-														{field.required && ' *'}
-													</Label>
-													)}
-													{field.type === 'system_srp' ? null : field.type === 'system_doctrine' ? (
-														<div className="w-full space-y-2">
-															<Select
-															inputId={field.name}
-															value={
-																templateFieldSelections[field.name] ??
-																SPECIAL_DOCTRINE_READ_MOTD_VALUE
-															}
-															onValueChange={(value) => {
-																updateTemplateFieldSelection(field.name, value)
-																if (value === SPECIAL_DOCTRINE_READ_MOTD_VALUE) {
-																	updateTemplateField(field.name, 'Read MOTD')
-																	return
-																}
-																if (value === SPECIAL_CUSTOM_VALUE) {
-																	updateTemplateField(field.name, '')
-																	return
-																}
-																updateTemplateField(field.name, value)
-															}}
-															options={doctrineFieldOptions}
-															searchable
-														/>
-														{templateFieldSelections[field.name] === SPECIAL_CUSTOM_VALUE && (
-															<Input
-																id={`${field.name}-custom`}
-																value={templateFields[field.name] ?? ''}
-																onChange={(e) =>
-																	updateTemplateField(field.name, e.target.value)
-																}
-																required={field.required}
-																placeholder="Enter doctrine"
+													<div key={field.name} className="space-y-2 min-w-0">
+														{field.type === 'system_srp' ? (
+															<SystemSrpField
+																fieldName={field.name}
+																value={templateFields[field.name]}
+																onModeChange={(mode) => {
+																	updateTemplateField(field.name, mode)
+																	if (mode === 'disabled') {
+																		updateTemplateField('__srpToken', '')
+																		return
+																	}
+																	if (
+																		(templateFields.__srpToken ?? '').trim().length === 0
+																	) {
+																		updateTemplateField(
+																			'__srpToken',
+																			generateSrpTokenAtFormLoad()
+																		)
+																	}
+																}}
 															/>
+														) : field.type === 'system_doctrine' ? (
+															<SystemDoctrineField
+																fieldName={field.name}
+																fieldLabel={field.label}
+																required={field.required}
+																selection={
+																	templateFieldSelections[field.name] ??
+																	DOCTRINE_READ_MOTD_VALUE
+																}
+																value={templateFields[field.name]}
+																doctrines={doctrines}
+																onSelectionChange={(value) =>
+																	updateTemplateFieldSelection(field.name, value)
+																}
+																onValueChange={(value) =>
+																	updateTemplateField(field.name, value)
+																}
+															/>
+														) : field.type === 'system_staging' ? (
+															<SystemStagingField
+																fieldName={field.name}
+																fieldLabel={field.label}
+																required={field.required}
+																selection={
+																	templateFieldSelections[field.name] ??
+																	STAGING_CUSTOM_VALUE
+																}
+																value={templateFields[field.name]}
+																stagingSystems={stagingSystems}
+																onSelectionChange={(value) =>
+																	updateTemplateFieldSelection(field.name, value)
+																}
+																onValueChange={(value) =>
+																	updateTemplateField(field.name, value)
+																}
+															/>
+														) : (
+															<>
+																<Label htmlFor={field.name}>
+																	{field.label}
+																	{field.required && ' *'}
+																</Label>
+																{field.type === 'select' ? (
+																	<div className="w-full">
+																		<Select
+																			inputId={field.name}
+																			value={
+																				templateFieldSelections[field.name] ??
+																				templateFields[field.name] ??
+																				''
+																			}
+																			onValueChange={(value) => {
+																				updateTemplateFieldSelection(field.name, value)
+																				updateTemplateField(field.name, value)
+																			}}
+																			options={(field.options ?? []).map((option) => ({
+																				value: option,
+																				label: option,
+																			}))}
+																			searchable
+																		/>
+																	</div>
+																) : field.type === 'textarea' ? (
+																	<Textarea
+																		id={field.name}
+																		value={templateFields[field.name] || ''}
+																		onChange={(e) => {
+																			autoResizeTextarea(e.currentTarget)
+																			updateTemplateField(field.name, e.target.value)
+																		}}
+																		rows={1}
+																		required={field.required}
+																		className="resize-none overflow-hidden"
+																		style={{ minHeight: '2.5rem' }}
+																	/>
+																) : (
+																	<Input
+																		id={field.name}
+																		value={templateFields[field.name] || ''}
+																		onChange={(e) =>
+																			updateTemplateField(field.name, e.target.value)
+																		}
+																		required={field.required}
+																	/>
+																)}
+															</>
 														)}
 													</div>
-												) : field.type === 'system_staging' ? (
-													<div className="w-full space-y-2">
-														<Select
-															inputId={field.name}
-															value={
-																templateFieldSelections[field.name] ??
-																SPECIAL_CUSTOM_VALUE
-															}
-															onValueChange={(value) => {
-																updateTemplateFieldSelection(field.name, value)
-																if (value === SPECIAL_CUSTOM_VALUE) {
-																	updateTemplateField(field.name, '')
-																	return
-																}
-																updateTemplateField(field.name, value)
-															}}
-															options={stagingFieldOptions}
-															searchable
-														/>
-														{templateFieldSelections[field.name] === SPECIAL_CUSTOM_VALUE && (
-															<Input
-																id={`${field.name}-custom`}
-																value={templateFields[field.name] ?? ''}
-																onChange={(e) =>
-																	updateTemplateField(field.name, e.target.value)
-																}
-																required={field.required}
-																placeholder="Enter staging system"
-															/>
-														)}
-													</div>
-												) : field.type === 'select' ? (
-													<div className="w-full">
-														<Select
-															inputId={field.name}
-															value={
-																templateFieldSelections[field.name] ??
-																templateFields[field.name] ??
-																''
-															}
-															onValueChange={(value) => {
-																updateTemplateFieldSelection(field.name, value)
-																updateTemplateField(field.name, value)
-															}}
-															options={(field.options ?? []).map((option) => ({
-																value: option,
-																label: option,
-															}))}
-															searchable
-														/>
-													</div>
-												) : field.type === 'textarea' ? (
-													<Textarea
-														id={field.name}
-														value={templateFields[field.name] || ''}
-														onChange={(e) => {
-															autoResizeTextarea(e.currentTarget)
-															updateTemplateField(field.name, e.target.value)
-														}}
-														rows={1}
-														required={field.required}
-														className="resize-none overflow-hidden"
-														style={{ minHeight: '2.5rem' }}
-													/>
-												) : (
-													<Input
-														id={field.name}
-														value={templateFields[field.name] || ''}
-														onChange={(e) => updateTemplateField(field.name, e.target.value)}
-														required={field.required}
-													/>
-												)}
-											</div>
 												))}
-											</div>
-											<div className="max-w-xl space-y-2">
-												<Label htmlFor="template-default-text">Text after (optional)</Label>
+										</div>
+										<div className="max-w-xl space-y-2">
+											<Label htmlFor="template-default-text">Text after (optional)</Label>
 											<Textarea
 												id="template-default-text"
 												value={templateDefaultText}
@@ -1167,57 +1062,34 @@ export default function NewBroadcastPage() {
 												rows={1}
 												placeholder="Optional text appended after the template message"
 												className="resize-none overflow-hidden"
-													style={{ minHeight: '2.5rem' }}
+												style={{ minHeight: '2.5rem' }}
+											/>
+										</div>
+										{selectedTemplate.fieldSchema
+											.filter((field) => field.type === 'system_frogsiren')
+											.map((field) => (
+												<SystemFrogsirenField
+													key={field.name}
+													fieldName={field.name}
+													checked={parseBooleanField(templateFields[field.name], false)}
+													onDisable={() => updateTemplateField(field.name, 'false')}
+													onConfirmEnable={() => {
+														requestConfirmation({
+															title: 'Sound the Frogsiren?',
+															description:
+																'Are you really fucking sure you want to sound the frogsiren? Is the happening status: its? Is it UALX all over again?',
+															confirmLabel: 'Sound It',
+															intent: 'destructive',
+															onConfirm: () => {
+																updateTemplateField(field.name, 'true')
+															},
+														})
+													}}
 												/>
-											</div>
-											{selectedTemplate.fieldSchema
-												.filter((field) => field.type === 'system_frogsiren')
-												.map((field) => (
-													<div key={field.name} className="max-w-xl">
-														<div
-															className={`flex items-center justify-between rounded-md border border-border/60 px-3 py-2 cursor-pointer transition-colors ${
-																parseBooleanField(templateFields[field.name], false)
-																	? 'bg-slate-500/15'
-																	: 'bg-transparent'
-															}`}
-															onClick={(event) => {
-																if (isSwitchControlClick(event.target)) return
-																toggleSwitchById(field.name)
-															}}
-														>
-															<Label
-																htmlFor={field.name}
-																className="text-2xl font-black cursor-pointer"
-															>
-																Sound the Frogsiren
-															</Label>
-															<Switch
-																id={field.name}
-																checked={parseBooleanField(templateFields[field.name], false)}
-																onClick={(event) => event.stopPropagation()}
-																onCheckedChange={(checked) => {
-																	if (!checked) {
-																		updateTemplateField(field.name, 'false')
-																		return
-																	}
-																	requestConfirmation({
-																		title: 'Sound the Frogsiren?',
-																		description:
-																			'Are you really fucking sure you want to sound the frogsiren? Is the happening status: its? Is it UALX all over again?',
-																		confirmLabel: 'Sound It',
-																		intent: 'destructive',
-																		onConfirm: () => {
-																			updateTemplateField(field.name, 'true')
-																		},
-																	})
-																}}
-															/>
-														</div>
-													</div>
-												))}
-												</div>
-											</div>
-										) : null}
+											))}
+									</div>
+								</div>
+							) : null}
 
 							{/* Submit Buttons */}
 							<div className="text-sm">

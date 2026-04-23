@@ -2169,6 +2169,9 @@ importers:
       '@repo/bills':
         specifier: workspace:*
         version: link:../../packages/bills
+      '@repo/broadcasts':
+        specifier: workspace:*
+        version: link:../../packages/broadcasts
       '@repo/corporation-tax':
         specifier: workspace:*
         version: link:../../packages/corporation-tax
