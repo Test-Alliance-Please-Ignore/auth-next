@@ -67,10 +67,15 @@ export function SidebarNav({ onNavigate, isSidebarOpen = true, onToggleSidebar }
 	const { permissions, hasAnyPermission } = useUserPermissions()
 	const isSiteAdmin = user?.is_admin === true
 	const srpEnabled = useFeatureFlag('srp.enabled', false)
-	const canSeeSrpReviewQueue = isSiteAdmin || hasAnyPermission('urn:srp:reviewer')
-	const canSeeSrpPaymentQueue = isSiteAdmin || hasAnyPermission('urn:srp:payer')
-	const canSeeSrpAlerts =
-		isSiteAdmin || hasAnyPermission('urn:srp:payer', 'urn:srp:manager')
+	const hasSrpManagerPermission = hasAnyPermission('urn:srp:manager')
+	const hasSrpPayerPermission = hasAnyPermission('urn:srp:payer')
+	const hasSrpReviewerPermission = hasAnyPermission('urn:srp:reviewer')
+	const canSeeSrpReviewQueue =
+		isSiteAdmin || hasSrpManagerPermission || hasSrpPayerPermission || hasSrpReviewerPermission
+	const canSeeSrpPaymentQueue = isSiteAdmin || hasSrpManagerPermission || hasSrpPayerPermission
+	const canSeeSrpAlerts = isSiteAdmin || hasSrpManagerPermission
+	const canSeeSrpConfiguration = isSiteAdmin || hasSrpManagerPermission
+	const hasSrpStaffAccess = canSeeSrpReviewQueue
 	const { data: reviewQueueData } = useRequestsByStatus(
 		'pending',
 		{ limit: 1 },
@@ -227,45 +232,51 @@ export function SidebarNav({ onNavigate, isSidebarOpen = true, onToggleSidebar }
 			href: '/doctrines',
 			icon: Swords,
 		},
-		srpEnabled &&
-		(isSiteAdmin ||
-			hasAnyPermission('urn:srp:reviewer', 'urn:srp:payer', 'urn:srp:manager'))
-			? {
-					label: 'SRP',
-					href: '/srp',
-					icon: CircleDollarSign,
-					children: [
-						{ label: 'My Requests', href: '/srp' },
-						...(canSeeSrpReviewQueue
-							? [
-									{
-										label: 'Review Queue',
-										href: '/srp/review',
-										badge: reviewQueueCount > 0 ? reviewQueueCount : undefined,
-									},
-								]
-							: []),
-						...(canSeeSrpPaymentQueue
-							? [
-									{
-										label: 'Payment Queue',
-										href: '/srp/payments',
-										badge: paymentQueueCount > 0 ? paymentQueueCount : undefined,
-									},
-								]
-							: []),
-						...(canSeeSrpAlerts
-							? [{
-									label: 'Alerts',
-									href: '/srp/alerts',
-									badge: srpAlertCount > 0 ? srpAlertCount : undefined,
-								}]
-							: []),
-						...(isSiteAdmin || hasAnyPermission('urn:srp:manager')
-							? [{ label: 'Configuration', href: '/srp/policies' }]
-							: []),
-					],
-				}
+		srpEnabled
+			? hasSrpStaffAccess
+				? {
+						label: 'SRP',
+						href: '/srp/my-requests',
+						icon: CircleDollarSign,
+						children: [
+							{ label: 'My Requests', href: '/srp/my-requests' },
+							...(canSeeSrpReviewQueue
+								? [
+										{
+											label: 'Review Queue',
+											href: '/srp/review',
+											badge: reviewQueueCount > 0 ? reviewQueueCount : undefined,
+										},
+									]
+								: []),
+							...(canSeeSrpPaymentQueue
+								? [
+										{
+											label: 'Payment Queue',
+											href: '/srp/payments',
+											badge: paymentQueueCount > 0 ? paymentQueueCount : undefined,
+										},
+									]
+								: []),
+							...(canSeeSrpAlerts
+								? [
+										{
+											label: 'Alerts',
+											href: '/srp/alerts',
+											badge: srpAlertCount > 0 ? srpAlertCount : undefined,
+										},
+									]
+								: []),
+							...(canSeeSrpConfiguration
+								? [{ label: 'Configuration', href: '/srp/policies' }]
+								: []),
+						],
+					}
+				: {
+						label: 'SRP',
+						href: '/srp/my-requests',
+						icon: CircleDollarSign,
+					}
 			: {
 					label: 'SRP',
 					href: 'https://reimbursement.pleaseignore.com/',
