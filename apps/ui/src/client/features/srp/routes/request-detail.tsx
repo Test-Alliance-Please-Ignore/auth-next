@@ -132,7 +132,7 @@ export default function RequestDetails() {
 						<div>
 							<Button variant="ghost" size="sm" asChild>
 								<a
-									href={getKillmailUrl(request.killmailId)}
+									href={getKillmailUrl(request.id)}
 									target="_blank"
 									rel="noopener noreferrer"
 								>

@@ -116,7 +116,7 @@ function PaymentCard({
 
 	const recipient = request.characterName
 	const amount = request.approvedAmount ?? '0'
-	const reason = `SRP - KM#${request.killmailId}`
+	const reason = `SRP - KM#${request.id}`
 
 	return (
 		<Card className="p-4">

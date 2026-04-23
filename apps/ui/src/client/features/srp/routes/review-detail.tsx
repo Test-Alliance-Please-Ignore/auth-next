@@ -101,7 +101,7 @@ export default function ReviewRequestDetail() {
 					<div className="flex gap-2">
 						<Button variant="ghost" size="sm" asChild>
 							<a
-								href={getKillmailUrl(request.killmailId)}
+								href={getKillmailUrl(request.id)}
 								target="_blank"
 								rel="noopener noreferrer"
 							>

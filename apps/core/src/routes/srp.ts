@@ -67,6 +67,11 @@ function getPrimaryCharacterName(user: any): string {
 
 const SRP_ROLE_URNS = ['urn:srp:reviewer', 'urn:srp:payer', 'urn:srp:manager']
 const SRP_REQUIRED_KILLMAIL_SCOPES = ['esi-killmails.read_killmails.v1'] as const
+const SRP_REQUEST_ID_PATTERN = /^\d+$/
+
+function isValidSrpRequestId(requestId: string): boolean {
+	return SRP_REQUEST_ID_PATTERN.test(requestId)
+}
 
 /** Hydrate authorCharacterName, authorCharacterId, and authorRole on comments */
 async function hydrateCommentAuthors(
@@ -816,6 +821,9 @@ srp.get('/requests/search-values', async (c) => {
 srp.get('/requests/:id', async (c) => {
 	const user = c.get('user')!
 	const requestId = c.req.param('id')
+	if (!isValidSrpRequestId(requestId)) {
+		return c.json({ error: 'Invalid request id' }, 400)
+	}
 
 	const srpStub = getStub<Srp>(c.env.SRP, getRequestId(c))
 	const request = await srpStub.getRequest(requestId, user.id)
@@ -905,6 +913,9 @@ srp.get('/pending', async (c) => {
 srp.post('/requests/:id/approve', async (c) => {
 	const user = c.get('user')!
 	const requestId = c.req.param('id')
+	if (!isValidSrpRequestId(requestId)) {
+		return c.json({ error: 'Invalid request id' }, 400)
+	}
 	const body = await c.req.json()
 
 	// Validate request body
@@ -923,7 +934,9 @@ srp.post('/requests/:id/approve', async (c) => {
 	const { approvedAmount, reviewNotes } = validation.data
 
 	const srpStub = getStub<Srp>(c.env.SRP, getRequestId(c))
-	const request = await srpStub.approveRequest(requestId, user.id, approvedAmount, reviewNotes)
+	const existingRequest = await srpStub.getRequest(requestId, user.id)
+	if (!existingRequest) return c.json({ error: 'Request not found' }, 404)
+	const request = await srpStub.approveRequest(existingRequest.id, user.id, approvedAmount, reviewNotes)
 
 	return c.json(request)
 })
@@ -935,6 +948,9 @@ srp.post('/requests/:id/approve', async (c) => {
 srp.post('/requests/:id/partially-approve', async (c) => {
 	const user = c.get('user')!
 	const requestId = c.req.param('id')
+	if (!isValidSrpRequestId(requestId)) {
+		return c.json({ error: 'Invalid request id' }, 400)
+	}
 	const body = await c.req.json()
 
 	// Validate request body
@@ -953,8 +969,10 @@ srp.post('/requests/:id/partially-approve', async (c) => {
 	const { approvedAmount, rejectionReason, reviewNotes } = validation.data
 
 	const srpStub = getStub<Srp>(c.env.SRP, getRequestId(c))
+	const existingRequest = await srpStub.getRequest(requestId, user.id)
+	if (!existingRequest) return c.json({ error: 'Request not found' }, 404)
 	const request = await srpStub.partiallyApproveRequest(
-		requestId,
+		existingRequest.id,
 		user.id,
 		approvedAmount,
 		rejectionReason,
@@ -971,6 +989,9 @@ srp.post('/requests/:id/partially-approve', async (c) => {
 srp.post('/requests/:id/reject', async (c) => {
 	const user = c.get('user')!
 	const requestId = c.req.param('id')
+	if (!isValidSrpRequestId(requestId)) {
+		return c.json({ error: 'Invalid request id' }, 400)
+	}
 	const body = await c.req.json()
 
 	// Validate request body
@@ -989,7 +1010,14 @@ srp.post('/requests/:id/reject', async (c) => {
 	const { rejectionReason, reviewNotes } = validation.data
 
 	const srpStub = getStub<Srp>(c.env.SRP, getRequestId(c))
-	const request = await srpStub.rejectRequest(requestId, user.id, rejectionReason, reviewNotes)
+	const existingRequest = await srpStub.getRequest(requestId, user.id)
+	if (!existingRequest) return c.json({ error: 'Request not found' }, 404)
+	const request = await srpStub.rejectRequest(
+		existingRequest.id,
+		user.id,
+		rejectionReason,
+		reviewNotes
+	)
 
 	return c.json(request)
 })
@@ -1001,6 +1029,9 @@ srp.post('/requests/:id/reject', async (c) => {
 srp.post('/requests/:id/review', async (c) => {
 	const user = c.get('user')!
 	const requestId = c.req.param('id')
+	if (!isValidSrpRequestId(requestId)) {
+		return c.json({ error: 'Invalid request id' }, 400)
+	}
 	const body = await c.req.json()
 
 	const validation = SRPReviewSubmissionSchema.safeParse(body)
@@ -1012,9 +1043,11 @@ srp.post('/requests/:id/review', async (c) => {
 	if (!allowed) return c.json({ error: 'Requires reviewer permissions' }, 403)
 
 	const srpStub = getStub<Srp>(c.env.SRP, getRequestId(c))
+	const existingRequest = await srpStub.getRequest(requestId, user.id)
+	if (!existingRequest) return c.json({ error: 'Request not found' }, 404)
 	try {
 		const request = await srpStub.submitReview(
-			requestId,
+			existingRequest.id,
 			user.id,
 			getPrimaryCharacterName(user),
 			validation.data
@@ -1033,6 +1066,9 @@ srp.post('/requests/:id/review', async (c) => {
 srp.patch('/requests/:id/state', async (c) => {
 	const user = c.get('user')!
 	const requestId = c.req.param('id')
+	if (!isValidSrpRequestId(requestId)) {
+		return c.json({ error: 'Invalid request id' }, 400)
+	}
 	const body = await c.req.json()
 
 	const validation = UpdateReviewStateSchema.safeParse(body)
@@ -1049,8 +1085,10 @@ srp.patch('/requests/:id/state', async (c) => {
 	if (!allowed) return c.json({ error: `Requires ${requiredPerm} permissions` }, 403)
 
 	const srpStub = getStub<Srp>(c.env.SRP, getRequestId(c))
+	const existingRequest = await srpStub.getRequest(requestId, user.id)
+	if (!existingRequest) return c.json({ error: 'Request not found' }, 404)
 	const request = await srpStub.updateReviewState(
-		requestId,
+		existingRequest.id,
 		user.id,
 		getPrimaryCharacterName(user),
 		newState,
@@ -1070,6 +1108,9 @@ srp.patch('/requests/:id/state', async (c) => {
 srp.get('/requests/:id/comments', async (c) => {
 	const user = c.get('user')!
 	const requestId = c.req.param('id')
+	if (!isValidSrpRequestId(requestId)) {
+		return c.json({ error: 'Invalid request id' }, 400)
+	}
 	const includeInternal = c.req.query('includeInternal') === 'true'
 
 	// Verify access to request
@@ -1086,13 +1127,17 @@ srp.get('/requests/:id/comments', async (c) => {
 	}
 
 	const rawComments = await srpStub.getComments(
-		requestId,
+		request.id,
 		user.id,
 		hasSrpStaffPermission && includeInternal
 	)
 	const comments = await hydrateCommentAuthors(rawComments, c.env.DATABASE_URL, c.env, request.userId)
-
-	return c.json(comments)
+	return c.json(
+		comments.map((comment) => ({
+			...comment,
+			requestId: request.id,
+		}))
+	)
 })
 
 /**
@@ -1102,6 +1147,9 @@ srp.get('/requests/:id/comments', async (c) => {
 srp.post('/requests/:id/comments', async (c) => {
 	const user = c.get('user')!
 	const requestId = c.req.param('id')
+	if (!isValidSrpRequestId(requestId)) {
+		return c.json({ error: 'Invalid request id' }, 400)
+	}
 	const body = await c.req.json()
 
 	// Validate request body
@@ -1132,9 +1180,15 @@ srp.post('/requests/:id/comments', async (c) => {
 	}
 
 	const characterName = getPrimaryCharacterName(user)
-	const comment = await srpStub.addComment(requestId, user.id, characterName, content, visibility)
+	const comment = await srpStub.addComment(request.id, user.id, characterName, content, visibility)
 
-	return c.json(comment, 201)
+	return c.json(
+		{
+			...comment,
+			requestId: request.id,
+		},
+		201
+	)
 })
 
 /**
@@ -1256,7 +1310,10 @@ srp.get('/alerts/payment-mismatches', async (c) => {
 		limit,
 		offset,
 	})
-	return c.json(result)
+	return c.json({
+		...result,
+		alerts: result.alerts,
+	})
 })
 
 /**
@@ -1291,15 +1348,20 @@ srp.post('/alerts/payment-mismatches/:id/acknowledge', async (c) => {
 srp.post('/requests/:id/mark-paid', async (c) => {
 	const user = c.get('user')!
 	const requestId = c.req.param('id')
-	const body = await c.req.json()
+	if (!isValidSrpRequestId(requestId)) {
+		return c.json({ error: 'Invalid request id' }, 400)
+	}
+	await c.req.json().catch(() => ({}))
 
 	// Check payer permissions (admins do NOT bypass)
 	const allowed = await hasPermission(c.env, user.id, 'urn:srp:payer', false)
 	if (!allowed) return c.json({ error: 'Requires payer permissions' }, 403)
 
 	const srpStub = getStub<Srp>(c.env.SRP, getRequestId(c))
+	const existingRequest = await srpStub.getRequest(requestId, user.id)
+	if (!existingRequest) return c.json({ error: 'Request not found' }, 404)
 	const request = await srpStub.markPaid(
-		requestId,
+		existingRequest.id,
 		user.id,
 		getPrimaryCharacterName(user)
 	)

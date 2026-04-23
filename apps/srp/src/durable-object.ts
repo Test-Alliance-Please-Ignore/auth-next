@@ -71,9 +71,14 @@ export class SrpDO extends DurableObject<Env> implements Srp {
 		killmailHash: string,
 		contextText: string
 	): Promise<SRPRequestResponse> {
+		const normalizedKillmailId = killmailId.trim()
+		if (!/^\d+$/.test(normalizedKillmailId)) {
+			throw new Error('Invalid killmail id')
+		}
+
 		// Check if request already exists for this killmail
 		const existing = await this.db.query.srpRequests.findFirst({
-			where: eq(srpRequests.killmailId, killmailId),
+			where: eq(srpRequests.id, normalizedKillmailId),
 		})
 
 		if (existing) {
@@ -83,7 +88,7 @@ export class SrpDO extends DurableObject<Env> implements Srp {
 		// Fetch killmail details from eve-character-data using instance pattern
 		const charStub = getStub<EveCharacterData>(this.env.EVE_CHARACTER_DATA, characterId)
 		const charInstance = await charStub.getInstance(characterId)
-		const killmailData = await charInstance.fetchKillmailDetails(killmailId, killmailHash)
+		const killmailData = await charInstance.fetchKillmailDetails(normalizedKillmailId, killmailHash)
 
 		if (!killmailData || !killmailData.isLoss) {
 			throw new Error('Killmail not found or is not a loss')
@@ -146,12 +151,12 @@ export class SrpDO extends DurableObject<Env> implements Srp {
 		const result = await this.db
 			.insert(srpRequests)
 			.values({
+				id: normalizedKillmailId,
 				userId,
 				characterId,
 				characterName: characterInfo.name,
 				corporationId: characterInfo.corporationId,
 				corporationName: resolvedCorporationName,
-				killmailId,
 				killmailHash,
 				shipTypeId: killmailData.shipTypeId!,
 				shipTypeName,
@@ -378,11 +383,11 @@ export class SrpDO extends DurableObject<Env> implements Srp {
 		}
 
 		const existingRequests = await this.db.query.srpRequests.findMany({
-			where: and(eq(srpRequests.userId, userId), inArray(srpRequests.killmailId, killmailIds)),
+			where: and(eq(srpRequests.userId, userId), inArray(srpRequests.id, killmailIds)),
 		})
 
 		const requestMap = new Map(
-			existingRequests.map((r) => [r.killmailId, { id: r.id, status: r.requestStatus }])
+			existingRequests.map((r) => [r.id, { id: r.id, status: r.requestStatus }])
 		)
 		const legacyPaidKillmailIds = new Set<string>()
 		const paymentProcessorCorporationId = config?.paymentProcessorCorporationId?.trim()
@@ -1207,9 +1212,8 @@ export class SrpDO extends DurableObject<Env> implements Srp {
 			characterName: request.characterName,
 			corporationId: request.corporationId,
 			corporationName: request.corporationName,
-			killmailId: request.killmailId,
 			killmailHash: request.killmailHash,
-			killmailUrl: generateKillmailUrl(request.killmailId),
+			killmailUrl: generateKillmailUrl(request.id),
 			lossDate: request.lossDate.toISOString(),
 			shipTypeId: request.shipTypeId,
 			shipTypeName: request.shipTypeName,

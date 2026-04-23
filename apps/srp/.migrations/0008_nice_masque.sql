@@ -1,0 +1,3 @@
+ALTER TABLE "srp_comments" ADD CONSTRAINT "srp_comments_request_id_srp_requests_id_fk" FOREIGN KEY ("request_id") REFERENCES "public"."srp_requests"("id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
+ALTER TABLE "srp_payment_alerts" ADD CONSTRAINT "srp_payment_alerts_request_id_srp_requests_id_fk" FOREIGN KEY ("request_id") REFERENCES "public"."srp_requests"("id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
+ALTER TABLE "srp_request_history" ADD CONSTRAINT "srp_request_history_request_id_srp_requests_id_fk" FOREIGN KEY ("request_id") REFERENCES "public"."srp_requests"("id") ON DELETE cascade ON UPDATE no action;

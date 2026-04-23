@@ -83,18 +83,18 @@ function makeSrpStub() {
 		getRequest: vi.fn(),
 		getComments: vi.fn().mockResolvedValue([]),
 		addComment: vi.fn(),
+		approveRequest: vi.fn(),
 	}
 }
 
 function makeRequest(overrides: Record<string, unknown> = {}) {
 	const now = new Date().toISOString()
 	return {
-		id: 'req-1',
+		id: '100001',
 		userId: 'owner-1',
 		characterId: '7002',
 		characterName: 'Owner Character',
 		corporationName: 'Corp',
-		killmailId: '123',
 		shipTypeName: 'Drake',
 		requestStatus: 'pending',
 		lossDate: now,
@@ -154,7 +154,7 @@ describe('srp routes - permissions', () => {
 		const app = createApp(makeUser({ id: 'outsider-request-view' }))
 		srpStub.getRequest.mockResolvedValue(makeRequest({ userId: 'owner-1' }))
 
-		const response = await app.request('/api/srp/requests/req-1', {}, env)
+		const response = await app.request('/api/srp/requests/100001', {}, env)
 
 		expect(response.status).toBe(403)
 		expect(await response.json()).toEqual({ error: 'Not authorized to view this request' })
@@ -168,10 +168,34 @@ describe('srp routes - permissions', () => {
 		)
 		mockDbPrimaryCharacterRows([{ userId: 'owner-1', characterId: '7002' }])
 
-		const response = await app.request('/api/srp/requests/req-1', {}, env)
+		const response = await app.request('/api/srp/requests/100001', {}, env)
 
 		expect(response.status).toBe(200)
-		expect(srpStub.getRequest).toHaveBeenCalledWith('req-1', 'staff-request-view')
+		expect(srpStub.getRequest).toHaveBeenCalledWith('100001', 'staff-request-view')
+	})
+
+	it('rejects non-killmail request ids on request detail routes', async () => {
+		const app = createApp(makeUser({ id: 'owner-1' }))
+		const response = await app.request('/api/srp/requests/req-legacy', {}, env)
+
+		expect(response.status).toBe(400)
+		expect(await response.json()).toEqual({ error: 'Invalid request id' })
+		expect(srpStub.getRequest).not.toHaveBeenCalled()
+	})
+
+	it('returns killmail id as external request id in request detail responses', async () => {
+		const app = createApp(makeUser({ id: 'owner-1' }))
+		srpStub.getRequest.mockResolvedValue(
+			makeRequest({ id: '654321', userId: 'owner-1' })
+		)
+		mockDbPrimaryCharacterRows([{ userId: 'owner-1', characterId: '7002' }])
+
+		const response = await app.request('/api/srp/requests/654321', {}, env)
+		const body = await response.json<any>()
+
+		expect(response.status).toBe(200)
+		expect(srpStub.getRequest).toHaveBeenCalledWith('654321', 'owner-1')
+		expect(body.id).toBe('654321')
 	})
 
 	it('filters internal history for owner without srp staff permissions', async () => {
@@ -201,7 +225,7 @@ describe('srp routes - permissions', () => {
 		)
 		mockDbPrimaryCharacterRows([{ userId: 'owner-history-view', characterId: '7002' }])
 
-		const response = await app.request('/api/srp/requests/req-1', {}, env)
+		const response = await app.request('/api/srp/requests/100001', {}, env)
 		const body = await response.json<any>()
 
 		expect(response.status).toBe(200)
@@ -240,7 +264,7 @@ describe('srp routes - permissions', () => {
 		)
 		mockDbPrimaryCharacterRows([{ userId: 'owner-1', characterId: '7002' }])
 
-		const response = await app.request('/api/srp/requests/req-1', {}, env)
+		const response = await app.request('/api/srp/requests/100001', {}, env)
 		const body = await response.json<any>()
 
 		expect(response.status).toBe(200)
@@ -252,7 +276,7 @@ describe('srp routes - permissions', () => {
 		const app = createApp(makeUser({ id: 'outsider-comments-read' }))
 		srpStub.getRequest.mockResolvedValue(makeRequest({ userId: 'owner-1' }))
 
-		const response = await app.request('/api/srp/requests/req-1/comments?includeInternal=true', {}, env)
+		const response = await app.request('/api/srp/requests/100001/comments?includeInternal=true', {}, env)
 
 		expect(response.status).toBe(403)
 		expect(srpStub.getComments).not.toHaveBeenCalled()
@@ -265,10 +289,10 @@ describe('srp routes - permissions', () => {
 			userId === 'staff-comments-read' ? ([{ urn: 'urn:srp:manager' }] as any) : []
 		)
 
-		const response = await app.request('/api/srp/requests/req-1/comments?includeInternal=true', {}, env)
+		const response = await app.request('/api/srp/requests/100001/comments?includeInternal=true', {}, env)
 
 		expect(response.status).toBe(200)
-		expect(srpStub.getComments).toHaveBeenCalledWith('req-1', 'staff-comments-read', true)
+		expect(srpStub.getComments).toHaveBeenCalledWith('100001', 'staff-comments-read', true)
 	})
 
 	it('allows srp staff to add internal comments for another request', async () => {
@@ -280,7 +304,7 @@ describe('srp routes - permissions', () => {
 		)
 
 		const response = await app.request(
-			'/api/srp/requests/req-1/comments',
+			'/api/srp/requests/100001/comments',
 			{
 				method: 'POST',
 				body: JSON.stringify({ content: 'Internal note', visibility: 'internal' }),
@@ -291,11 +315,44 @@ describe('srp routes - permissions', () => {
 
 		expect(response.status).toBe(201)
 		expect(srpStub.addComment).toHaveBeenCalledWith(
-			'req-1',
+			'100001',
 			'staff-comments-write',
 			'Pilot One',
 			'Internal note',
 			'internal'
 		)
+	})
+
+	it('approves requests using killmail id request keys', async () => {
+		const app = createApp(makeUser({ id: 'staff-approve' }))
+		srpStub.getRequest
+			.mockResolvedValueOnce(makeRequest({ id: '777888', userId: 'owner-1' }))
+			.mockResolvedValueOnce(makeRequest({ id: '777888', userId: 'owner-1' }))
+		srpStub.approveRequest.mockResolvedValue(
+			makeRequest({ id: '777888', userId: 'owner-1', requestStatus: 'approved' })
+		)
+		getCachedUserPermissionsMock.mockImplementation(async (_env, userId) =>
+			userId === 'staff-approve' ? ([{ urn: 'urn:srp:reviewer' }] as any) : []
+		)
+
+		const response = await app.request(
+			'/api/srp/requests/777888/approve',
+			{
+				method: 'POST',
+				body: JSON.stringify({ approvedAmount: '1000000' }),
+				headers: { 'content-type': 'application/json' },
+			},
+			env
+		)
+		const body = await response.json<any>()
+
+		expect(response.status).toBe(200)
+		expect(srpStub.approveRequest).toHaveBeenCalledWith(
+			'777888',
+			'staff-approve',
+			'1000000',
+			undefined
+		)
+		expect(body.id).toBe('777888')
 	})
 })
