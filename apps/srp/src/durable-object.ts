@@ -376,7 +376,7 @@ export class SrpDO extends DurableObject<Env> implements Srp {
 			if (system?.solarSystemName) resolved[id] = system.solarSystemName
 		}
 		// Get existing SRP requests for these losses
-		const killmailIds = allLosses.map((l) => l.killmail_id)
+		const killmailIds = allLosses.map((l) => String(l.killmail_id))
 
 		if (killmailIds.length === 0) {
 			return []
@@ -423,11 +423,12 @@ export class SrpDO extends DurableObject<Env> implements Srp {
 
 		// Annotate losses with SRP status and sort by time descending
 		return allLosses
-			.filter((loss) => !legacyPaidKillmailIds.has(loss.killmail_id))
+			.filter((loss) => !legacyPaidKillmailIds.has(String(loss.killmail_id)))
 			.map((loss) => {
-				const request = requestMap.get(loss.killmail_id)
+				const lossKillmailId = String(loss.killmail_id)
+				const request = requestMap.get(lossKillmailId)
 				return {
-					killmailId: loss.killmail_id,
+					killmailId: lossKillmailId,
 					killmailHash: loss.killmail_hash ?? '',
 					killmailTime: loss.killmail_time,
 					shipTypeId: loss.victim.ship_type_id,
