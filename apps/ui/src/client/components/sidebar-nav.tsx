@@ -40,6 +40,7 @@ import { cn } from '@/lib/utils'
 
 import { Badge } from './ui/badge'
 import { Button } from './ui/button'
+import { resolveSrpNavState } from './sidebar-nav.srp'
 
 interface SidebarNavProps {
 	onNavigate?: () => void
@@ -70,30 +71,47 @@ export function SidebarNav({ onNavigate, isSidebarOpen = true, onToggleSidebar }
 	const hasSrpManagerPermission = hasAnyPermission('urn:srp:manager')
 	const hasSrpPayerPermission = hasAnyPermission('urn:srp:payer')
 	const hasSrpReviewerPermission = hasAnyPermission('urn:srp:reviewer')
-	const canSeeSrpReviewQueue =
-		isSiteAdmin || hasSrpManagerPermission || hasSrpPayerPermission || hasSrpReviewerPermission
-	const canSeeSrpPaymentQueue = isSiteAdmin || hasSrpManagerPermission || hasSrpPayerPermission
-	const canSeeSrpAlerts = isSiteAdmin || hasSrpManagerPermission
-	const canSeeSrpConfiguration = isSiteAdmin || hasSrpManagerPermission
-	const hasSrpStaffAccess = canSeeSrpReviewQueue
+	const previewSrpState = resolveSrpNavState({
+		srpEnabled,
+		isSiteAdmin,
+		hasSrpReviewerPermission,
+		hasSrpPayerPermission,
+		hasSrpManagerPermission,
+		reviewQueueCount: 0,
+		paymentQueueCount: 0,
+		srpAlertCount: 0,
+	})
+	const shouldFetchSrpReviewCount = previewSrpState.shouldFetchSrpReviewCount
+	const shouldFetchSrpPaymentCount = previewSrpState.shouldFetchSrpPaymentCount
+	const shouldFetchSrpAlertCount = previewSrpState.shouldFetchSrpAlertCount
 	const { data: reviewQueueData } = useRequestsByStatus(
 		'pending',
 		{ limit: 1 },
-		{ enabled: srpEnabled && canSeeSrpReviewQueue }
+		{ enabled: shouldFetchSrpReviewCount }
 	)
 	const { data: paymentQueueData } = useRequestsByStatus(
 		'approved',
 		{ limit: 1 },
-		{ enabled: srpEnabled && canSeeSrpPaymentQueue }
+		{ enabled: shouldFetchSrpPaymentCount }
 	)
 	const { data: srpAlertData } = useSrpPaymentMismatchAlerts({
 		includeAcknowledged: false,
 		limit: 1,
 		offset: 0,
-	}, { enabled: srpEnabled && canSeeSrpAlerts })
+	}, { enabled: shouldFetchSrpAlertCount })
 	const reviewQueueCount = reviewQueueData?.total ?? 0
 	const paymentQueueCount = paymentQueueData?.total ?? 0
-	const srpAlertCount = srpEnabled && canSeeSrpAlerts ? (srpAlertData?.total ?? 0) : 0
+	const srpAlertCount = shouldFetchSrpAlertCount ? (srpAlertData?.total ?? 0) : 0
+	const srpNavState = resolveSrpNavState({
+		srpEnabled,
+		isSiteAdmin,
+		hasSrpReviewerPermission,
+		hasSrpPayerPermission,
+		hasSrpManagerPermission,
+		reviewQueueCount,
+		paymentQueueCount,
+		srpAlertCount,
+	})
 
 	const pendingCount = invitations?.length || 0
 	const mainCharacter = user?.characters.find((c) => c.characterId === user.mainCharacterId)
@@ -232,57 +250,10 @@ export function SidebarNav({ onNavigate, isSidebarOpen = true, onToggleSidebar }
 			href: '/doctrines',
 			icon: Swords,
 		},
-		srpEnabled
-			? hasSrpStaffAccess
-				? {
-						label: 'SRP',
-						href: '/srp/my-requests',
-						icon: CircleDollarSign,
-						children: [
-							{ label: 'My Requests', href: '/srp/my-requests' },
-							...(canSeeSrpReviewQueue
-								? [
-										{
-											label: 'Review Queue',
-											href: '/srp/review',
-											badge: reviewQueueCount > 0 ? reviewQueueCount : undefined,
-										},
-									]
-								: []),
-							...(canSeeSrpPaymentQueue
-								? [
-										{
-											label: 'Payment Queue',
-											href: '/srp/payments',
-											badge: paymentQueueCount > 0 ? paymentQueueCount : undefined,
-										},
-									]
-								: []),
-							...(canSeeSrpAlerts
-								? [
-										{
-											label: 'Alerts',
-											href: '/srp/alerts',
-											badge: srpAlertCount > 0 ? srpAlertCount : undefined,
-										},
-									]
-								: []),
-							...(canSeeSrpConfiguration
-								? [{ label: 'Configuration', href: '/srp/policies' }]
-								: []),
-						],
-					}
-				: {
-						label: 'SRP',
-						href: '/srp/my-requests',
-						icon: CircleDollarSign,
-					}
-			: {
-					label: 'SRP',
-					href: 'https://reimbursement.pleaseignore.com/',
-					icon: CircleDollarSign,
-					external: true,
-				},
+		{
+			...srpNavState.navItem,
+			icon: CircleDollarSign,
+		},
 		{
 			label: 'My Bills',
 			href: '/my-bills',

@@ -23,7 +23,11 @@ export default function ReviewRequestDetail() {
 	const { hasPermission, isAdmin } = useUserPermissions()
 	const navigate = useNavigate()
 
-	const canReview = isAdmin || hasPermission('urn:srp:reviewer')
+	const canReview =
+		isAdmin ||
+		hasPermission('urn:srp:reviewer') ||
+		hasPermission('urn:srp:payer') ||
+		hasPermission('urn:srp:manager')
 	const isSrpStaff =
 		isAdmin ||
 		hasPermission('urn:srp:reviewer') ||

@@ -15,9 +15,9 @@ import { formatISK, formatISKShort, formatRelativeTime } from '../utils'
 import type { SRPRequestResponse } from '../types'
 
 export default function PaymentsQueue() {
-	const { hasPermission } = useUserPermissions()
+	const { hasAnyPermission } = useUserPermissions()
 
-	if (!hasPermission('urn:srp:payer')) {
+	if (!hasAnyPermission('urn:srp:payer', 'urn:srp:manager')) {
 		return <Navigate to="/srp" replace />
 	}
 

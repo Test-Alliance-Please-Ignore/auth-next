@@ -48,7 +48,13 @@ export default function ReviewQueue() {
 	const [activeTab, setActiveTab] = useState<RequestStatus>('pending')
 	const [filters, setFilters] = useState<ReviewQueueFilters>({})
 
-	if (!(isAdmin || hasPermission('urn:srp:reviewer'))) {
+	const canAccessReviewQueue =
+		isAdmin ||
+		hasPermission('urn:srp:reviewer') ||
+		hasPermission('urn:srp:payer') ||
+		hasPermission('urn:srp:manager')
+
+	if (!canAccessReviewQueue) {
 		return <Navigate to="/srp" replace />
 	}
 

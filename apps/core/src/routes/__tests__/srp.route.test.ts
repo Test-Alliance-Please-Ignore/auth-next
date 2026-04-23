@@ -81,6 +81,9 @@ function makeSrpStub() {
 	return {
 		getUserRequests: vi.fn().mockResolvedValue([]),
 		getRequest: vi.fn(),
+		getRequestsByStatus: vi.fn().mockResolvedValue({ requests: [], total: 0 }),
+		getPendingPayments: vi.fn().mockResolvedValue([]),
+		markPaid: vi.fn(),
 		getComments: vi.fn().mockResolvedValue([]),
 		addComment: vi.fn(),
 		approveRequest: vi.fn(),
@@ -354,5 +357,84 @@ describe('srp routes - permissions', () => {
 			undefined
 		)
 		expect(body.id).toBe('777888')
+	})
+
+	it('allows payer role to perform reviewer approval actions', async () => {
+		const app = createApp(makeUser({ id: 'payer-approve' }))
+		srpStub.getRequest.mockResolvedValue(makeRequest({ id: '888999', userId: 'owner-1' }))
+		srpStub.approveRequest.mockResolvedValue(
+			makeRequest({ id: '888999', userId: 'owner-1', requestStatus: 'approved' })
+		)
+		getCachedUserPermissionsMock.mockImplementation(async (_env, userId) =>
+			userId === 'payer-approve' ? ([{ urn: 'urn:srp:payer' }] as any) : []
+		)
+
+		const response = await app.request(
+			'/api/srp/requests/888999/approve',
+			{
+				method: 'POST',
+				body: JSON.stringify({ approvedAmount: '2500000' }),
+				headers: { 'content-type': 'application/json' },
+			},
+			env
+		)
+
+		expect(response.status).toBe(200)
+		expect(srpStub.approveRequest).toHaveBeenCalledWith(
+			'888999',
+			'payer-approve',
+			'2500000',
+			undefined
+		)
+	})
+
+	it('allows payer-only users to access review queue listing', async () => {
+		const app = createApp(makeUser({ id: 'payer-review-list' }))
+		getCachedUserPermissionsMock.mockImplementation(async (_env, userId) =>
+			userId === 'payer-review-list' ? ([{ urn: 'urn:srp:payer' }] as any) : []
+		)
+
+		const response = await app.request('/api/srp/requests/by-status?status=pending', {}, env)
+
+		expect(response.status).toBe(200)
+		expect(srpStub.getRequestsByStatus).toHaveBeenCalledWith('pending', {
+			limit: 50,
+			offset: 0,
+			characterName: undefined,
+			shipTypeName: undefined,
+			solarSystemName: undefined,
+			dateFrom: undefined,
+			dateTo: undefined,
+		})
+	})
+
+	it('allows manager role to access payer queue endpoints', async () => {
+		const app = createApp(makeUser({ id: 'manager-payments' }))
+		getCachedUserPermissionsMock.mockImplementation(async (_env, userId) =>
+			userId === 'manager-payments' ? ([{ urn: 'urn:srp:manager' }] as any) : []
+		)
+
+		const response = await app.request('/api/srp/payments/pending', {}, env)
+
+		expect(response.status).toBe(200)
+		expect(srpStub.getPendingPayments).toHaveBeenCalledWith(undefined, 50, 0)
+	})
+
+	it('does not allow admin bypass on mark-paid mutation without payer-tier permission', async () => {
+		const app = createApp(makeUser({ id: 'admin-no-payer', is_admin: true }))
+
+		const response = await app.request(
+			'/api/srp/requests/100001/mark-paid',
+			{
+				method: 'POST',
+				body: JSON.stringify({}),
+				headers: { 'content-type': 'application/json' },
+			},
+			env
+		)
+
+		expect(response.status).toBe(403)
+		expect(await response.json()).toEqual({ error: 'Requires payer-or-higher permissions' })
+		expect(srpStub.markPaid).not.toHaveBeenCalled()
 	})
 })
