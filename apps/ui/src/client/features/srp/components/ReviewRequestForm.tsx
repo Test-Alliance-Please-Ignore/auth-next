@@ -711,7 +711,6 @@ export function ReviewRequestForm({
 
 	useEffect(() => {
 		if (modifierPolicies.length === 0) {
-			if (selectedModifierPolicyId !== null) setSelectedModifierPolicyId(null)
 			return
 		}
 		const hasSelected =
@@ -731,7 +730,6 @@ export function ReviewRequestForm({
 
 	useEffect(() => {
 		if (capPolicies.length === 0) {
-			if (selectedCapPolicyId !== null) setSelectedCapPolicyId(null)
 			return
 		}
 		const hasSelected =
