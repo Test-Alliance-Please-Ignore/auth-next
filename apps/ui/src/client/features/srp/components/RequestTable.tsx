@@ -9,6 +9,7 @@ import {
 	TableHeader,
 	TableRow,
 } from '@/components/ui/table'
+import { typeIconUrl } from '@/lib/eve-images'
 
 import { formatISK, formatRelativeTime } from '../utils'
 import { getRequestCharacterRole } from '../utils'
@@ -47,10 +48,12 @@ export function RequestTable({ requests, isLoading }: RequestTableProps) {
 			<Table>
 				<TableHeader>
 					<TableRow>
+						<TableHead className="w-16" />
 						<TableHead>Ship</TableHead>
 						<TableHead>Character</TableHead>
-						<TableHead>Date</TableHead>
-						<TableHead className="text-right">Approved</TableHead>
+						<TableHead>Location</TableHead>
+						<TableHead>Requested</TableHead>
+						<TableHead className="text-right">Payout</TableHead>
 						<TableHead>Status</TableHead>
 						<TableHead className="text-right">Actions</TableHead>
 					</TableRow>
@@ -58,12 +61,34 @@ export function RequestTable({ requests, isLoading }: RequestTableProps) {
 				<TableBody>
 					{requests.map((request) => (
 						<TableRow key={request.id}>
-							<TableCell className="font-semibold">{request.shipTypeName}</TableCell>
+							<TableCell className="py-2">
+								{request.shipTypeId && (
+									<div className="h-10 w-10 overflow-hidden rounded border border-border/50">
+										<img
+											src={typeIconUrl(request.shipTypeId, 64)}
+											alt={request.shipTypeName || `Ship ${request.shipTypeId}`}
+											className="h-full w-full object-contain"
+											loading="lazy"
+										/>
+									</div>
+								)}
+							</TableCell>
+							<TableCell className="font-semibold">
+								<Link
+									to={`/srp/request/${request.id}`}
+									className="underline-offset-4 hover:underline focus-visible:underline"
+								>
+									{request.shipTypeName}
+								</Link>
+							</TableCell>
 							<TableCell className="text-sm font-medium">
 								<div className="inline-flex items-center gap-2">
 									<span>{request.characterName}</span>
 									<CharacterRoleBadge role={getRequestCharacterRole(request)} />
 								</div>
+							</TableCell>
+							<TableCell className="text-sm text-muted-foreground">
+								{request.solarSystemName ?? '—'}
 							</TableCell>
 							<TableCell className="text-sm text-muted-foreground">
 								{formatRelativeTime(request.createdAt)}

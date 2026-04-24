@@ -20,13 +20,21 @@ export function formatISK(value: string | number, options?: { showDecimals?: boo
  * Format an ISK amount in abbreviated form with " ISK" suffix.
  * e.g. 1500000000 → "1.50B ISK"
  */
-export function formatISKShort(value: string | number): string {
+export function formatISKShort(
+	value: string | number,
+	options?: { showDecimals?: boolean }
+): string {
 	const num = typeof value === 'string' ? parseFloat(value) : value
 	if (isNaN(num)) return '0 ISK'
+	const showDecimals = options?.showDecimals ?? true
+	const formatAmount = (amount: number) =>
+		showDecimals
+			? amount.toFixed(2)
+			: new Intl.NumberFormat('en-US', { maximumFractionDigits: 0 }).format(amount)
 
-	if (num >= 1_000_000_000_000) return `${(num / 1_000_000_000_000).toFixed(2)}T ISK`
-	if (num >= 1_000_000_000) return `${(num / 1_000_000_000).toFixed(2)}B ISK`
-	if (num >= 1_000_000) return `${(num / 1_000_000).toFixed(2)}M ISK`
-	if (num >= 1_000) return `${(num / 1_000).toFixed(2)}K ISK`
-	return `${num.toFixed(2)} ISK`
+	if (num >= 1_000_000_000_000) return `${formatAmount(num / 1_000_000_000_000)}T ISK`
+	if (num >= 1_000_000_000) return `${formatAmount(num / 1_000_000_000)}B ISK`
+	if (num >= 1_000_000) return `${formatAmount(num / 1_000_000)}M ISK`
+	if (num >= 1_000) return `${formatAmount(num / 1_000)}K ISK`
+	return `${formatAmount(num)} ISK`
 }

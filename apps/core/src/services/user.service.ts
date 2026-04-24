@@ -1,4 +1,4 @@
-import { and, eq } from '@repo/db-utils'
+import { and, asc, eq } from '@repo/db-utils'
 
 import { userCharacters, userPreferences, users } from '../db/schema'
 
@@ -119,6 +119,7 @@ export class UserService {
 				}),
 				this.db.query.userCharacters.findMany({
 					where: eq(userCharacters.userId, userId),
+					orderBy: [asc(userCharacters.linkedAt)],
 					columns: {
 						id: true,
 						userId: true,

@@ -7,6 +7,7 @@ import { Popover, PopoverAnchor, PopoverContent } from './popover'
 interface EveTimeDisplayProps {
 	dateStr: string
 	className?: string
+	format?: 'full' | 'compact'
 }
 
 function formatLocalDateTime(dateStr: string): string {
@@ -20,7 +21,20 @@ function formatLocalDateTime(dateStr: string): string {
 	}).format(new Date(dateStr))
 }
 
-function formatEveDateTime(dateStr: string): string {
+function formatEveDateTime(dateStr: string, format: 'full' | 'compact'): string {
+	if (format === 'compact') {
+		const formatted = new Intl.DateTimeFormat('en-US', {
+			year: '2-digit',
+			month: 'short',
+			day: '2-digit',
+			hour: '2-digit',
+			minute: '2-digit',
+			hour12: false,
+			timeZone: 'UTC',
+		}).format(new Date(dateStr))
+		return `${formatted} EVE`
+	}
+
 	const formatted = new Intl.DateTimeFormat('en-US', {
 		year: 'numeric',
 		month: 'long',
@@ -34,7 +48,7 @@ function formatEveDateTime(dateStr: string): string {
 	return `${formatted} EVE Time`
 }
 
-export function EveTimeDisplay({ dateStr, className }: EveTimeDisplayProps) {
+export function EveTimeDisplay({ dateStr, className, format = 'full' }: EveTimeDisplayProps) {
 	const [open, setOpen] = useState(false)
 	const closeTimeoutRef = useRef<number | null>(null)
 
@@ -67,7 +81,7 @@ export function EveTimeDisplay({ dateStr, className }: EveTimeDisplayProps) {
 					onFocus={openPopover}
 					onBlur={closePopoverSoon}
 				>
-					{formatEveDateTime(dateStr)}
+					{formatEveDateTime(dateStr, format)}
 				</span>
 			</PopoverAnchor>
 			<PopoverContent

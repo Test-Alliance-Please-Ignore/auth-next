@@ -24,7 +24,7 @@ import { typeIconUrl } from '@/lib/eve-images'
 import { RequestStatusBadge } from '../components/RequestStatusBadge'
 import { CharacterRoleBadge } from '../components/CharacterRoleBadge'
 import { useRequestsByStatus } from '../hooks'
-import { formatISK, formatRelativeTime, getRequestCharacterRole } from '../utils'
+import { formatISKShort, formatRelativeTime, getRequestCharacterRole } from '../utils'
 
 import type { RequestStatus, SRPRequestResponse } from '../types'
 
@@ -276,7 +276,10 @@ function ReviewTabContent({ status, filters }: { status: RequestStatus; filters:
 									)}
 								</TableCell>
 								<TableCell className="text-right font-mono text-sm tabular-nums">
-									{formatISK(req.approvedAmount ?? req.srpEquipmentValue ?? req.shipValue)}
+									{formatISKShort(
+										req.approvedAmount ?? req.srpEquipmentValue ?? req.shipValue,
+										{ showDecimals: false }
+									)}
 								</TableCell>
 								<TableCell className="text-sm text-muted-foreground">
 									{req.solarSystemName ?? '—'}
@@ -285,7 +288,8 @@ function ReviewTabContent({ status, filters }: { status: RequestStatus; filters:
 									{req.lossDate ? (
 										<EveTimeDisplay
 											dateStr={req.lossDate}
-											className="text-sm text-muted-foreground"
+											format="compact"
+											className="whitespace-nowrap text-sm text-muted-foreground"
 										/>
 									) : (
 										'—'
