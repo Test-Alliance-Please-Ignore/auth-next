@@ -68,14 +68,14 @@ export function resolveSrpNavState(input: ResolveSrpNavStateInput): ResolveSrpNa
 	} else if (!hasSrpStaffAccess) {
 		navItem = {
 			label: 'SRP',
-			href: '/srp/my-requests',
+			href: '/srp',
 		}
 	} else {
 		navItem = {
 			label: 'SRP',
-			href: '/srp/my-requests',
+			href: '/srp',
 			children: [
-				{ label: 'My Requests', href: '/srp/my-requests' },
+				{ label: 'My Requests', href: '/srp' },
 				...(canSeeSrpReviewQueue
 					? [
 							{

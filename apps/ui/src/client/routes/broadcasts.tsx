@@ -1,4 +1,4 @@
-import { Ban, ExternalLink, Plus, Send, Trash2 } from 'lucide-react'
+import { Ban, ExternalLink, Pencil, Plus, Send, Trash2 } from 'lucide-react'
 import { useEffect, useState } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
 
@@ -260,6 +260,16 @@ export default function BroadcastsPage() {
 																<ExternalLink className="h-4 w-4" />
 															</Button>
 														</Link>
+														{broadcast.status === 'draft' && (
+															<Button
+																variant="ghost"
+																size="sm"
+																onClick={() => navigate(`/broadcasts/new?draftId=${broadcast.id}`)}
+																title="Edit draft"
+															>
+																<Pencil className="h-4 w-4" />
+															</Button>
+														)}
 														{['draft', 'scheduled', 'failed'].includes(broadcast.status) && (
 															<Button
 																variant="ghost"

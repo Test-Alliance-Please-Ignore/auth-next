@@ -74,7 +74,6 @@ const BillDetailPage = lazy(() => import('./features/bills/routes/bill-detail'))
 
 // Lazy load the SRP (Ship Replacement Program) feature for code splitting
 const SRPIndex = lazy(() => import('./features/srp/routes/index'))
-const SRPMyRequests = lazy(() => import('./features/srp/routes/my-requests'))
 const SRPCreate = lazy(() => import('./features/srp/routes/create'))
 const SRPRequestDetails = lazy(() => import('./features/srp/routes/request-detail'))
 const SRPReview = lazy(() => import('./features/srp/routes/review'))
@@ -392,14 +391,6 @@ export default function App() {
 								element={
 									<Suspense fallback={<LoadingPage />}>
 										<SRPIndex />
-									</Suspense>
-								}
-							/>
-							<Route
-								path="/srp/my-requests"
-								element={
-									<Suspense fallback={<LoadingPage />}>
-										<SRPMyRequests />
 									</Suspense>
 								}
 							/>
