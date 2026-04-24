@@ -641,6 +641,7 @@ export class UniverseDO extends DurableObject<Env, {}> implements Universe {
 			const results = await this.db
 				.select({
 					typeId: invTypes.typeId,
+					marketGroupId: invTypes.marketGroupId,
 					marketGroupName: invMarketGroups.marketGroupName,
 					categoryName: invCategories.categoryName,
 				})
@@ -653,6 +654,7 @@ export class UniverseDO extends DurableObject<Env, {}> implements Universe {
 			const metadataMap: Record<string, TypeMetadata> = {}
 			for (const row of results) {
 				metadataMap[row.typeId] = {
+					marketGroupId: row.marketGroupId ?? null,
 					marketGroupName: row.marketGroupName ?? null,
 					categoryName: row.categoryName,
 				}

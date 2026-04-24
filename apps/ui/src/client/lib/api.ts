@@ -2511,6 +2511,7 @@ export class ApiClient {
 			solarSystemId: string
 			solarSystemName?: string
 			victimCharacterId: string
+			victimCharacterName?: string
 			hasSRPRequest: boolean
 			srpRequestId?: string
 			srpRequestStatus?: string

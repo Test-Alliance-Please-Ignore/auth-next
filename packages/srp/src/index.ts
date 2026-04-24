@@ -568,6 +568,7 @@ export interface LossWithSRPStatus {
 	solarSystemId: string
 	solarSystemName?: string
 	victimCharacterId: string // Character who lost the ship
+	victimCharacterName?: string
 	// SRP status
 	hasSRPRequest: boolean
 	srpRequestId?: string

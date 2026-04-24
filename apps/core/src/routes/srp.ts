@@ -603,8 +603,15 @@ srp.get('/losses', async (c) => {
 
 	const srpStub = getStub<Srp>(c.env.SRP, getRequestId(c))
 	const losses = await srpStub.getRecentLosses(characterIds, user.id, daysBack)
+	const characterNameById = new Map(
+		user.characters.map((character) => [character.characterId, character.characterName])
+	)
+	const lossesWithCharacterNames = losses.map((loss) => ({
+		...loss,
+		victimCharacterName: characterNameById.get(loss.victimCharacterId) ?? undefined,
+	}))
 
-	return c.json(losses)
+	return c.json(lossesWithCharacterNames)
 })
 
 /**
