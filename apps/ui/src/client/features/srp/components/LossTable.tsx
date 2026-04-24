@@ -147,6 +147,7 @@ export function LossTable({ losses, isLoading, isRefreshing, onRefresh, config, 
 							<TableRow>
 								<TableHead className="w-16" />
 								<TableHead>Ship</TableHead>
+								<TableHead>Character</TableHead>
 								<TableHead>Date/Time</TableHead>
 								<TableHead>Location</TableHead>
 								<TableHead>SRP Status</TableHead>
@@ -173,6 +174,9 @@ export function LossTable({ losses, isLoading, isRefreshing, onRefresh, config, 
 										</TableCell>
 										<TableCell className="font-semibold">
 											{loss.shipTypeName || `Ship ${loss.shipTypeId}`}
+										</TableCell>
+										<TableCell className="text-sm font-medium">
+											{loss.victimCharacterName || loss.victimCharacterId || '—'}
 										</TableCell>
 										<TableCell className="text-sm text-muted-foreground">
 											{formatRelativeTime(loss.killmailTime)}

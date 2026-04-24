@@ -363,9 +363,18 @@ export class SrpDO extends DurableObject<Env> implements Srp {
 		const shipTypeIds = [...new Set(allLosses.map((l) => String(l.victim.ship_type_id)))]
 		const systemIds = [...new Set(allLosses.map((l) => String(l.solar_system_id)))]
 
-		const [typeMap, systemMap] = await Promise.all([
+		const [typeMap, systemMap, typeMetaMap] = await Promise.all([
 			universeStub.resolveTypeNamesByIds(shipTypeIds),
 			universeStub.resolveSolarSystemsByIds(systemIds),
+			universeStub
+				.resolveTypeMetadataByIds(shipTypeIds)
+				.catch(
+					() =>
+						({}) as Record<
+							string,
+							{ categoryName: string; marketGroupId: string | null; marketGroupName: string | null }
+						>
+				),
 		])
 
 		const resolved: Record<string, string | undefined> = {}
@@ -424,6 +433,13 @@ export class SrpDO extends DurableObject<Env> implements Srp {
 		// Annotate losses with SRP status and sort by time descending
 		return allLosses
 			.filter((loss) => !legacyPaidKillmailIds.has(String(loss.killmail_id)))
+			.filter((loss) => {
+				const shipTypeId = String(loss.victim.ship_type_id)
+				const marketGroupId = typeMetaMap[shipTypeId]?.marketGroupId ?? null
+				const shipTypeName = resolved[shipTypeId] ?? ''
+				const looksLikeShuttleByName = shipTypeName.toLowerCase().includes('shuttle')
+				return !(this.isShuttleMarketGroupId(marketGroupId) || looksLikeShuttleByName)
+			})
 			.map((loss) => {
 				const lossKillmailId = String(loss.killmail_id)
 				const request = requestMap.get(lossKillmailId)
@@ -454,6 +470,11 @@ export class SrpDO extends DurableObject<Env> implements Srp {
 
 	private isPodShipTypeId(shipTypeId: string): boolean {
 		return this.POD_TYPE_IDS.has(shipTypeId)
+	}
+
+	private isShuttleMarketGroupId(marketGroupId: string | null): boolean {
+		if (!marketGroupId) return false
+		return this.SHUTTLE_MARKET_GROUP_IDS.has(marketGroupId)
 	}
 
 	private hasImplantFitted(killmail: KillmailDetail): boolean {
@@ -1042,6 +1063,21 @@ export class SrpDO extends DurableObject<Env> implements Srp {
 	 * Pod type IDs — pods have no insurance so we skip the insurance lookup.
 	 */
 	private readonly POD_TYPE_IDS = new Set(['670', '33328'])
+	/**
+	 * Shuttle market group IDs from SDE marketGroups.jsonl.
+	 * Includes direct shuttle groups used by ship hull types:
+	 * 393, 394, 395, 396 (empire shuttles), 1618 (special edition), 1631 (faction),
+	 * plus 391 top-level shuttle group.
+	 */
+	private readonly SHUTTLE_MARKET_GROUP_IDS = new Set([
+		'391',
+		'393',
+		'394',
+		'395',
+		'396',
+		'1618',
+		'1631',
+	])
 
 	/**
 	 * Calculate the SRP valuation for a loss using Jita prices at the time of loss.
@@ -1113,7 +1149,13 @@ export class SrpDO extends DurableObject<Env> implements Srp {
 		const allTypeIds = [...equippedByType.keys()]
 		const [typeNameMap, typeMetaMap] = await Promise.all([
 			universeStub.resolveTypeNamesByIds(allTypeIds).catch(() => ({}) as Record<string, null>),
-			universeStub.resolveTypeMetadataByIds(allTypeIds).catch(() => ({}) as Record<string, { categoryName: string; marketGroupName: string | null }>),
+			universeStub.resolveTypeMetadataByIds(allTypeIds).catch(
+				() =>
+					({}) as Record<
+						string,
+						{ categoryName: string; marketGroupId: string | null; marketGroupName: string | null }
+					>
+			),
 		])
 
 		// Build per-item breakdown
