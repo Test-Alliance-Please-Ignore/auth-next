@@ -51,7 +51,7 @@ export function formatFullDate(dateStr: string): string {
 export function getRequestStatusText(status: RequestStatus): string {
 	switch (status) {
 		case 'pending':
-			return 'Pending Review'
+			return 'Pending'
 		case 'needs_context':
 			return 'Needs Context'
 		case 'approved':

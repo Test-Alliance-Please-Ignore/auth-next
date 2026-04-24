@@ -3,6 +3,7 @@ import { useEffect, useRef, useState } from 'react'
 import { Link } from 'react-router-dom'
 
 import { Button } from '@/components/ui/button'
+import { EveTimeDisplay } from '@/components/ui/eve-time-display'
 import {
 	Table,
 	TableBody,
@@ -19,7 +20,7 @@ import {
 	persistRefreshCooldownUntilMs,
 	readRefreshCooldownUntilMs,
 } from '../state/refresh-cooldown'
-import { formatRelativeTime, getKillmailUrl } from '../utils'
+import { getKillmailUrl } from '../utils'
 import { RequestStatusBadge } from './RequestStatusBadge'
 
 import type { LossWithSRPStatus, SRPConfigResponse } from '../types'
@@ -190,13 +191,33 @@ export function LossTable({ losses, isLoading, isRefreshing, onRefresh, config, 
 											</div>
 										</TableCell>
 										<TableCell className="font-semibold">
-											{loss.shipTypeName || `Ship ${loss.shipTypeId}`}
+											{loss.hasSRPRequest && loss.srpRequestId ? (
+												<Link
+													to={`/srp/request/${loss.srpRequestId}`}
+													className="underline-offset-4 hover:underline focus-visible:underline"
+												>
+													{loss.shipTypeName || `Ship ${loss.shipTypeId}`}
+												</Link>
+											) : isTooOld ? (
+												loss.shipTypeName || `Ship ${loss.shipTypeId}`
+											) : (
+												<Link
+													to={`/srp/create?killmailId=${loss.killmailId}&killmailHash=${loss.killmailHash}`}
+													className="underline-offset-4 hover:underline focus-visible:underline"
+												>
+													{loss.shipTypeName || `Ship ${loss.shipTypeId}`}
+												</Link>
+											)}
 										</TableCell>
 										<TableCell className="text-sm font-medium">
 											{loss.victimCharacterName || loss.victimCharacterId || '—'}
 										</TableCell>
 										<TableCell className="text-sm text-muted-foreground">
-											{formatRelativeTime(loss.killmailTime)}
+											<EveTimeDisplay
+												dateStr={loss.killmailTime}
+												format="compact"
+												className="whitespace-nowrap text-sm text-muted-foreground"
+											/>
 										</TableCell>
 										<TableCell className="text-sm font-medium">
 											{loss.solarSystemName || loss.solarSystemId}

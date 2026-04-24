@@ -668,6 +668,48 @@ export function ReviewRequestForm({
 	const selectedCapPolicy = capPolicies.find((p) => p.id === selectedCapPolicyId) ?? null
 
 	useEffect(() => {
+		const hasPersistedReviewData =
+			!!request.reviewedAt ||
+			request.appliedModifierPolicyId !== undefined ||
+			request.appliedCapPolicyId !== undefined ||
+			(request.appliedModifiers?.length ?? 0) > 0 ||
+			request.reviewerOverrideMillions !== undefined
+
+		if (!hasPersistedReviewData) {
+			return
+		}
+
+		setSelectedModifierPolicyId(request.appliedModifierPolicyId ?? null)
+		setSelectedCapPolicyId(request.appliedCapPolicyId ?? null)
+		setModifiers(
+			(request.appliedModifiers ?? []).map((modifier) => ({
+				...modifier,
+				id: modifier.id || crypto.randomUUID(),
+			}))
+		)
+		setOverrideMillions(request.reviewerOverrideMillions ?? null)
+		setOutcome(
+			request.requestStatus === 'pending' ||
+				request.requestStatus === 'needs_context' ||
+				request.requestStatus === 'rejected'
+				? request.requestStatus
+				: 'approved'
+		)
+
+		// Do not auto-select defaults when displaying previously reviewed requests.
+		hasInitializedModifierPolicyDefault.current = true
+		hasInitializedCapPolicyDefault.current = true
+	}, [
+		request.id,
+		request.reviewedAt,
+		request.requestStatus,
+		request.appliedModifierPolicyId,
+		request.appliedCapPolicyId,
+		request.appliedModifiers,
+		request.reviewerOverrideMillions,
+	])
+
+	useEffect(() => {
 		if (modifierPolicies.length === 0) {
 			if (selectedModifierPolicyId !== null) setSelectedModifierPolicyId(null)
 			return
@@ -1390,9 +1432,6 @@ export function ReviewRequestForm({
 					</div>
 				</Card>
 
-				{/* Comment slot — passed in from parent */}
-				{commentSlot}
-
 				{/* Outcome + Submit */}
 				<Card className="p-4">
 					<div className="mb-4 flex items-center gap-3">
@@ -1422,22 +1461,6 @@ export function ReviewRequestForm({
 						</div>
 					</div>
 
-					{showConfirm && (
-						<div className="mb-4 rounded-md border border-amber-500/50 bg-amber-500/10 p-3 text-sm text-amber-600">
-							Confirm submission: <strong>{outcome.replace('_', ' ')}</strong> for{' '}
-							{request.shipTypeName}? Payout:{' '}
-							{outcome === 'pending' ? (
-								<strong>unchanged</strong>
-							) : (
-								<strong>
-									{overrideMillions !== null
-										? formatISK(String(overrideMillions * 1_000_000))
-										: formatISK(String(computedPayout))}
-								</strong>
-							)}
-						</div>
-					)}
-
 					<div className="flex gap-2">
 						{showConfirm && (
 							<Button variant="secondary" onClick={() => setShowConfirm(false)}>
@@ -1460,7 +1483,26 @@ export function ReviewRequestForm({
 									: 'Submit Review'}
 						</Button>
 					</div>
+
+					{showConfirm && (
+						<div className="mt-4 rounded-md border border-amber-500/50 bg-amber-500/10 p-3 text-sm text-amber-600">
+							Confirm submission: <strong>{outcome.replace('_', ' ')}</strong> for{' '}
+							{request.shipTypeName}? Payout:{' '}
+							{outcome === 'pending' ? (
+								<strong>unchanged</strong>
+							) : (
+								<strong>
+									{overrideMillions !== null
+										? formatISK(String(overrideMillions * 1_000_000))
+										: formatISK(String(computedPayout))}
+								</strong>
+							)}
+						</div>
+					)}
 				</Card>
+
+				{/* Comment slot — passed in from parent */}
+				{commentSlot}
 
 				{/* Appended content (comments + history injected from parent) */}
 				{rightAppend}

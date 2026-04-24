@@ -133,20 +133,16 @@ export default function ReviewRequestDetail() {
 				<ReviewRequestForm
 					request={request}
 					onSuccess={() => navigate('/srp/review')}
-					commentSlot={
-						<Card className="p-4">
-							<h4 className="mb-3 text-sm font-semibold">Comment</h4>
-							<CommentForm
-								requestId={id}
-								canAddInternal={canSeeInternal}
-								onSuccess={refetchComments}
-							/>
-						</Card>
-					}
 					rightAppend={
 						<>
 							<Card className="p-6">
 								<h3 className="mb-4 font-semibold">Comments</h3>
+								<CommentForm
+									requestId={id}
+									canAddInternal={canSeeInternal}
+									onSuccess={refetchComments}
+								/>
+								<div className="my-4 border-t border-border/40" />
 								<CommentsList
 									comments={comments}
 									requestId={id}
