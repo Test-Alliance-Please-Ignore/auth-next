@@ -1,3 +1,4 @@
+import { ArrowLeft } from 'lucide-react'
 import { Link, Navigate, useParams } from 'react-router-dom'
 
 import { Button } from '@/components/ui/button'
@@ -92,6 +93,14 @@ export default function RequestDetails() {
 							className="px-3 py-1 text-base font-semibold"
 						/>
 					</span>
+				}
+				action={
+					<Button variant="ghost" size="sm" asChild>
+						<Link to="/srp">
+							<ArrowLeft className="mr-2 h-4 w-4" />
+							Back to SRP Dashboard
+						</Link>
+					</Button>
 				}
 			/>
 

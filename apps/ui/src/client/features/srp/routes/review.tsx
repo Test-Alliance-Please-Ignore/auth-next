@@ -1,6 +1,7 @@
 import { useState } from 'react'
-import { Link, Navigate, useNavigate } from 'react-router-dom'
+import { Link, Navigate } from 'react-router-dom'
 
+import { Button } from '@/components/ui/button'
 import { DateRangeInput } from '@/components/ui/date-range-input'
 import { Card, CardContent } from '@/components/ui/card'
 import { Container } from '@/components/ui/container'
@@ -185,7 +186,6 @@ export default function ReviewQueue() {
 
 function ReviewTabContent({ status, filters }: { status: RequestStatus; filters: ReviewQueueFilters }) {
 	const { data, isLoading, error } = useRequestsByStatus(status, { limit: 50, ...filters })
-	const navigate = useNavigate()
 	const hasActiveFilters = Boolean(
 		filters.characterName ||
 			filters.shipTypeName ||
@@ -240,15 +240,12 @@ function ReviewTabContent({ status, filters }: { status: RequestStatus; filters:
 							<TableHead>Lost</TableHead>
 							<TableHead>Submitted</TableHead>
 							<TableHead>Status</TableHead>
+							<TableHead className="text-right">Actions</TableHead>
 						</TableRow>
 					</TableHeader>
 					<TableBody>
 						{requests.map((req) => (
-							<TableRow
-								key={req.id}
-								className="cursor-pointer"
-								onClick={() => navigate(`/srp/review/${req.id}`)}
-							>
+							<TableRow key={req.id}>
 								<TableCell className="py-2">
 									{req.shipTypeId && (
 										<div className="h-10 w-10 overflow-hidden rounded border border-border/50">
@@ -299,6 +296,11 @@ function ReviewTabContent({ status, filters }: { status: RequestStatus; filters:
 								</TableCell>
 								<TableCell>
 									<RequestStatusBadge status={req.requestStatus as any} />
+								</TableCell>
+								<TableCell className="text-right">
+									<Button size="sm" variant="secondary" asChild>
+										<Link to={`/srp/review/${req.id}`}>View</Link>
+									</Button>
 								</TableCell>
 							</TableRow>
 						))}

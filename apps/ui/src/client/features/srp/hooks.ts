@@ -14,6 +14,20 @@ import type {
 import type { FittingWithItems } from '@/lib/api'
 
 function invalidateSrpQueueBadgeQueries(queryClient: ReturnType<typeof useQueryClient>) {
+	// Queue pages use requests/by-status with arbitrary status + filter objects.
+	// Remove all cached variants so navigating back always fetches fresh queue data.
+	queryClient.removeQueries({
+		predicate: (query) => {
+			const key = query.queryKey
+			return (
+				Array.isArray(key) &&
+				key[0] === 'srp' &&
+				key[1] === 'requests' &&
+				key[2] === 'by-status'
+			)
+		},
+	})
+
 	void queryClient.invalidateQueries({
 		predicate: (query) => {
 			const key = query.queryKey
@@ -26,6 +40,8 @@ function invalidateSrpQueueBadgeQueries(queryClient: ReturnType<typeof useQueryC
 			)
 		},
 	})
+	void queryClient.invalidateQueries({ queryKey: srpKeys.pending() })
+	void queryClient.invalidateQueries({ queryKey: srpKeys.payments() })
 	void queryClient.invalidateQueries({ queryKey: srpKeys.pendingPayoutTotal() })
 }
 
@@ -195,8 +211,10 @@ export function useDoctrineFittingsForShip(shipTypeId: string | undefined) {
 			if (!shipTypeId) return []
 			const candidates = await api.getFittings({ shipTypeId })
 			if (candidates.length === 0) return []
-			const full = await Promise.all(candidates.map((fitting) => api.getFitting(fitting.id)))
-			return full
+			const uniqueCandidateIds = [...new Set(candidates.map((fitting) => fitting.id))]
+			const full = await Promise.all(uniqueCandidateIds.map((fittingId) => api.getFitting(fittingId)))
+			const uniqueById = new Map(full.map((fitting) => [fitting.id, fitting]))
+			return [...uniqueById.values()]
 		},
 	})
 }

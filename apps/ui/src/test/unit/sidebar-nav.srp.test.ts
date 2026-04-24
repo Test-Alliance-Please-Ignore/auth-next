@@ -33,7 +33,7 @@ describe('resolveSrpNavState', () => {
 		const state = resolve()
 		expect(state.navItem).toEqual({
 			label: 'SRP',
-			href: '/srp/my-requests',
+			href: '/srp',
 		})
 		expect(state.shouldFetchSrpReviewCount).toBe(false)
 		expect(state.shouldFetchSrpPaymentCount).toBe(false)
@@ -46,6 +46,7 @@ describe('resolveSrpNavState', () => {
 			'My Requests',
 			'Review Queue',
 		])
+		expect(state.navItem.children?.find((child) => child.label === 'My Requests')?.href).toBe('/srp')
 		expect(state.navItem.children?.find((child) => child.label === 'Review Queue')?.badge).toBe(4)
 		expect(state.shouldFetchSrpReviewCount).toBe(true)
 		expect(state.shouldFetchSrpPaymentCount).toBe(false)
