@@ -324,10 +324,7 @@ function ShipFittingPanel({
 			const requested = slotCapacities[t]
 			return {
 				...acc,
-				[t]: Math.min(
-					SHIP_ARCS[t].n,
-					Math.max(0, typeof requested === 'number' ? requested : inferred)
-				),
+				[t]: Math.min(SHIP_ARCS[t].n, Math.max(0, typeof requested === 'number' ? requested : inferred)),
 			}
 		},
 		{} as Record<ShipSlotType, number>
@@ -404,13 +401,22 @@ function ShipFittingPanel({
 	)
 }
 
-function PodFittingPanel({ shipTypeId, shipTypeName, items, slotHighlights = {} }: SRPFittingPanelProps) {
+function PodFittingPanel({
+	shipTypeId,
+	shipTypeName,
+	items,
+	slotHighlights = {},
+	slotCapacities = {},
+}: SRPFittingPanelProps) {
 	// Implant slots 0-4 → top arc; 5-9 → bottom arc
-	const topImplants = items.filter((i) => i.slotType === 'implant' && i.slotIndex < 5)
-	const bottomImplants = items.filter((i) => i.slotType === 'implant' && i.slotIndex >= 5)
-
-	const topCount = Math.min(topImplants.length, POD_ARCS.implant_top.n)
-	const bottomCount = Math.min(bottomImplants.length, POD_ARCS.implant_bottom.n)
+	const implantCapacity = Math.max(0, Math.min(10, Math.trunc(slotCapacities.implant ?? 10)))
+	const topCount = Math.min(POD_ARCS.implant_top.n, implantCapacity)
+	const bottomCount = Math.min(POD_ARCS.implant_bottom.n, Math.max(0, implantCapacity - topCount))
+	const implantByIndex = new Map(
+		items
+			.filter((i) => i.slotType === 'implant')
+			.map((i) => [i.slotIndex, i] as const)
+	)
 
 	return (
 		<div className="flex justify-center">
@@ -440,36 +446,36 @@ function PodFittingPanel({ shipTypeId, shipTypeName, items, slotHighlights = {} 
 					<path d={PATHS.outer} fill="none" stroke="#9a9a9a" strokeWidth={BEVEL} />
 					<path d={PATHS.inner} fill="none" stroke="#9a9a9a" strokeWidth={BEVEL} />
 						{POD_SLOT_POS.implant_top.slice(0, topCount).map((pos, i) => {
-							const item = topImplants[i]
-							const slotKey = item ? `${item.slotType}:${item.slotIndex}` : ''
+							const slotKey = `implant:${i}`
 							return (
 								<SlotMarker
 									key={`top${i}`}
 									pos={pos}
 									icon={ImplantSlotIcon}
-									severity={slotKey ? slotHighlights[slotKey] : undefined}
+									severity={slotHighlights[slotKey]}
 								/>
 							)
 						})}
 						{POD_SLOT_POS.implant_bottom.slice(0, bottomCount).map((pos, i) => {
-							const item = bottomImplants[i]
-							const slotKey = item ? `${item.slotType}:${item.slotIndex}` : ''
+							const absoluteSlotIndex = i + 5
+							const slotKey = `implant:${absoluteSlotIndex}`
 							return (
 								<SlotMarker
 									key={`bot${i}`}
 									pos={pos}
 									icon={ImplantSlotIcon}
-									severity={slotKey ? slotHighlights[slotKey] : undefined}
+									severity={slotHighlights[slotKey]}
 								/>
 							)
 						})}
 					</svg>
-				{topImplants.slice(0, topCount).map((item, i) => {
-					const pos = POD_SLOT_POS.implant_top[i]
+				{POD_SLOT_POS.implant_top.slice(0, topCount).map((pos, i) => {
+					const item = implantByIndex.get(i)
+					if (!item) return null
 					if (!pos) return null
 					return (
 						<img
-							key={`ti${i}`}
+							key={`ti${i}-${item.typeId}`}
 							src={eveIcon(item.typeId)}
 							alt={item.typeName}
 							title={item.typeName}
@@ -478,12 +484,14 @@ function PodFittingPanel({ shipTypeId, shipTypeName, items, slotHighlights = {} 
 						/>
 					)
 				})}
-				{bottomImplants.slice(0, bottomCount).map((item, i) => {
-					const pos = POD_SLOT_POS.implant_bottom[i]
+				{POD_SLOT_POS.implant_bottom.slice(0, bottomCount).map((pos, i) => {
+					const absoluteSlotIndex = i + 5
+					const item = implantByIndex.get(absoluteSlotIndex)
+					if (!item) return null
 					if (!pos) return null
 					return (
 						<img
-							key={`bi${i}`}
+							key={`bi${i}-${item.typeId}`}
 							src={eveIcon(item.typeId)}
 							alt={item.typeName}
 							title={item.typeName}

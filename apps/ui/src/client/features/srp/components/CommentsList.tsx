@@ -18,6 +18,12 @@ interface CommentsListProps {
 	requestId: string
 	canAddInternal: boolean
 	onCommentAdded: () => void
+	initialContext?: {
+		content: string
+		authorCharacterName: string
+		authorCharacterId?: string
+		createdAt: string
+	}
 }
 
 export function CommentsList({
@@ -25,6 +31,7 @@ export function CommentsList({
 	requestId,
 	canAddInternal,
 	onCommentAdded,
+	initialContext,
 }: CommentsListProps) {
 	const { user } = useAuth()
 	const [editingId, setEditingId] = useState<string | null>(null)
@@ -48,7 +55,7 @@ export function CommentsList({
 	const canDelete = (comment: SRPCommentResponse) =>
 		user?.id === comment.authorUserId || user?.is_admin
 
-	if (comments.length === 0) {
+	if (!initialContext && comments.length === 0) {
 		return (
 			<Card className="p-6 text-center">
 				<p className="text-sm text-muted-foreground">No comments.</p>
@@ -58,6 +65,40 @@ export function CommentsList({
 
 	return (
 		<div className="space-y-4">
+			{initialContext && (
+				<Card className="p-4">
+					<div className="mb-2 flex items-start justify-between">
+						<div className="flex items-start gap-3">
+							{initialContext.authorCharacterId ? (
+								<img
+									src={characterPortraitUrl(initialContext.authorCharacterId, 32)}
+									alt={initialContext.authorCharacterName}
+									className="h-8 w-8 rounded-full shrink-0 mt-0.5"
+								/>
+							) : (
+								<div className="h-8 w-8 rounded-full bg-muted shrink-0 mt-0.5" />
+							)}
+							<div>
+								<div className="flex items-center gap-2 flex-wrap">
+									<span className="font-medium">
+										{initialContext.authorCharacterName}
+									</span>
+									<span className="inline-flex items-center rounded-full bg-blue-500/15 px-2 py-0.5 text-xs font-medium text-blue-400">
+										Requestor
+									</span>
+									<span className="inline-flex items-center rounded-full bg-primary/15 px-2 py-0.5 text-xs font-medium text-primary">
+										Initial Context
+									</span>
+								</div>
+								<div className="text-xs text-muted-foreground">
+									{formatRelativeTime(initialContext.createdAt)}
+								</div>
+							</div>
+						</div>
+					</div>
+					<div className="whitespace-pre-wrap text-sm">{initialContext.content}</div>
+				</Card>
+			)}
 			{comments.map((comment) => (
 				<Card key={comment.id} className="p-4">
 					{editingId === comment.id ? (

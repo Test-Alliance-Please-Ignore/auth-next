@@ -8,6 +8,7 @@ import type {
 	SRPFittingItem,
 	SRPShipSlotCapacities,
 	SRPShipSlotType,
+	SRPSlotCapacityType,
 	SRPSlotHighlightMap,
 } from '../utils/fitting'
 
@@ -44,14 +45,30 @@ export function SRPFittingSlotList({
 		const bottom = items
 			.filter((i) => i.slotType === 'implant' && i.slotIndex >= 5)
 			.sort((a, b) => a.slotIndex - b.slotIndex)
+		const implantCapacity = Math.max(0, Math.min(10, Math.trunc(slotCapacities.implant ?? 10)))
+		const topCapacity = Math.min(5, implantCapacity)
+		const bottomCapacity = Math.min(5, Math.max(0, implantCapacity - topCapacity))
 
 		return (
 			<div className="space-y-3">
-				{top.length > 0 && <SlotSection label="Implants 1–5" items={top} slotHighlights={slotHighlights} />}
-				{bottom.length > 0 && <SlotSection label="Implants 6–10" items={bottom} slotHighlights={slotHighlights} />}
-				{top.length === 0 && bottom.length === 0 && (
-					<p className="text-sm text-muted-foreground">No implants recorded</p>
-				)}
+				<SlotSection
+					label="Implants 1–5"
+					items={top}
+					slotHighlights={slotHighlights}
+					slotType="implant"
+					slotCapacity={topCapacity}
+					slotOffset={0}
+					showPricing={showPricing}
+				/>
+				<SlotSection
+					label="Implants 6–10"
+					items={bottom}
+					slotHighlights={slotHighlights}
+					slotType="implant"
+					slotCapacity={bottomCapacity}
+					slotOffset={5}
+					showPricing={showPricing}
+				/>
 			</div>
 		)
 	}
@@ -65,7 +82,7 @@ export function SRPFittingSlotList({
 		groups[key].sort((a, b) => a.slotIndex - b.slotIndex)
 	}
 
-	const sections = SHIP_SECTION_ORDER.filter((t) => groups[t]?.length)
+	const sections = SHIP_SECTION_ORDER.filter((t) => (slotCapacities[t] ?? 0) > 0 || groups[t]?.length)
 
 	return (
 		<div className="space-y-3">
@@ -80,6 +97,7 @@ export function SRPFittingSlotList({
 					slotHighlights={slotHighlights}
 					slotType={type}
 					slotCapacity={slotCapacities[type]}
+					slotOffset={0}
 					showPricing={showPricing}
 				/>
 			))}
@@ -93,13 +111,15 @@ function SlotSection({
 	slotHighlights = {},
 	slotType,
 	slotCapacity,
+	slotOffset = 0,
 	showPricing = true,
 }: {
 	label: string
 	items: SRPFittingItem[]
 	slotHighlights?: SRPSlotHighlightMap
-	slotType?: Exclude<SlotType, 'implant'>
+	slotType?: SRPSlotCapacityType
 	slotCapacity?: number
+	slotOffset?: number
 	showPricing?: boolean
 }) {
 	// Section total excludes consumables (ammo/charges not valued)
@@ -136,18 +156,18 @@ function SlotSection({
 								!items.some(
 									(item) =>
 										item.slotType === slotType &&
-										item.slotIndex === slotIndex &&
+										item.slotIndex === slotIndex + slotOffset &&
 										!item.isConsumable
 								)
 							)
 							.map((slotIndex) => {
-								const severity = slotHighlights[`${slotType}:${slotIndex}`]
-								if (!severity) return null
+								const absoluteSlotIndex = slotIndex + slotOffset
+								const severity = slotHighlights[`${slotType}:${absoluteSlotIndex}`]
 								return (
 									<EmptyItemRow
-										key={`empty-${slotType}-${slotIndex}`}
+										key={`empty-${slotType}-${absoluteSlotIndex}`}
 										slotType={slotType}
-										slotIndex={slotIndex}
+										slotIndex={absoluteSlotIndex}
 										severity={severity}
 									/>
 								)
@@ -216,16 +236,18 @@ function EmptyItemRow({
 	slotIndex,
 	severity,
 }: {
-	slotType: Exclude<SlotType, 'implant'>
+	slotType: SlotType
 	slotIndex: number
-	severity: 'destructive' | 'warning' | 'secondary'
+	severity?: 'destructive' | 'warning' | 'secondary'
 }) {
 	const severityClass =
 		severity === 'destructive'
 			? 'bg-destructive/12'
 			: severity === 'warning'
 				? 'bg-warning/12'
-				: 'bg-secondary/12'
+				: severity === 'secondary'
+					? 'bg-secondary/12'
+					: 'bg-muted/10'
 	return (
 		<div className={`flex items-center gap-2 rounded px-1 py-0.5 ${severityClass}`}>
 			<div className="h-8 w-8 flex-shrink-0 rounded border border-border/40 bg-muted/20" />

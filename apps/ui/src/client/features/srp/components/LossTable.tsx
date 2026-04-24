@@ -1,5 +1,5 @@
 import { ExternalLink, RefreshCw } from 'lucide-react'
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { Link } from 'react-router-dom'
 
 import { Button } from '@/components/ui/button'
@@ -13,6 +13,12 @@ import {
 } from '@/components/ui/table'
 import { typeIconUrl } from '@/lib/eve-images'
 
+import {
+	REFRESH_COOLDOWN_MS,
+	REFRESH_COOLDOWN_STORAGE_KEY,
+	persistRefreshCooldownUntilMs,
+	readRefreshCooldownUntilMs,
+} from '../state/refresh-cooldown'
 import { formatRelativeTime, getKillmailUrl } from '../utils'
 import { RequestStatusBadge } from './RequestStatusBadge'
 
@@ -35,18 +41,28 @@ interface LossTableProps {
 	refreshResults?: CharacterRefreshResult[]
 }
 
-const REFRESH_COOLDOWN_MS = 60_000
-const REFRESH_COOLDOWN_STORAGE_KEY = 'srp.losses.refresh.cooldown_until'
-
 export function LossTable({ losses, isLoading, isRefreshing, onRefresh, config, refreshResults }: LossTableProps) {
 	const maxLossAgeDays = config?.maxLossAgeDays ?? 60
 	const [nowMs, setNowMs] = useState(() => Date.now())
+	const initialFetchCooldownAppliedRef = useRef(false)
 	const [cooldownUntilMs, setCooldownUntilMs] = useState(() => {
 		if (typeof window === 'undefined') return 0
-		const raw = window.localStorage.getItem(REFRESH_COOLDOWN_STORAGE_KEY)
-		const parsed = Number(raw)
-		return Number.isFinite(parsed) ? parsed : 0
+		return readRefreshCooldownUntilMs(window.localStorage)
 	})
+
+	useEffect(() => {
+		if (!isLoading) {
+			initialFetchCooldownAppliedRef.current = false
+			return
+		}
+		if (initialFetchCooldownAppliedRef.current) return
+		initialFetchCooldownAppliedRef.current = true
+		const nextCooldownUntilMs = Date.now() + REFRESH_COOLDOWN_MS
+		if (typeof window !== 'undefined') {
+			persistRefreshCooldownUntilMs(window.localStorage, nextCooldownUntilMs)
+		}
+		setCooldownUntilMs((current) => Math.max(current, nextCooldownUntilMs))
+	}, [isLoading])
 
 	useEffect(() => {
 		if (cooldownUntilMs <= Date.now()) return
@@ -56,11 +72,7 @@ export function LossTable({ losses, isLoading, isRefreshing, onRefresh, config, 
 
 	useEffect(() => {
 		if (typeof window === 'undefined') return
-		if (cooldownUntilMs > Date.now()) {
-			window.localStorage.setItem(REFRESH_COOLDOWN_STORAGE_KEY, String(cooldownUntilMs))
-		} else {
-			window.localStorage.removeItem(REFRESH_COOLDOWN_STORAGE_KEY)
-		}
+		persistRefreshCooldownUntilMs(window.localStorage, cooldownUntilMs)
 	}, [cooldownUntilMs])
 
 	const cooldownRemainingMs = Math.max(0, cooldownUntilMs - nowMs)
@@ -72,7 +84,12 @@ export function LossTable({ losses, isLoading, isRefreshing, onRefresh, config, 
 
 	const handleRefreshClick = () => {
 		if (!onRefresh || refreshDisabled) return
-		setCooldownUntilMs(Date.now() + REFRESH_COOLDOWN_MS)
+		const nextCooldownUntilMs = Date.now() + REFRESH_COOLDOWN_MS
+		if (typeof window !== 'undefined') {
+			// Persist immediately so a hard refresh right after click cannot bypass cooldown.
+			persistRefreshCooldownUntilMs(window.localStorage, nextCooldownUntilMs)
+		}
+		setCooldownUntilMs(nextCooldownUntilMs)
 		onRefresh()
 	}
 

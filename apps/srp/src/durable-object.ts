@@ -17,6 +17,11 @@ import {
 } from './db/schema'
 import { buildEquippedByType } from './lib/equipment'
 import { computeSrpPayout } from './lib/payout'
+import {
+	DEFAULT_NON_POD_SLOT_CAPACITIES,
+	DEFAULT_POD_SLOT_CAPACITIES,
+	parseShipSlotCapacitiesFromDogmaAttributes,
+} from './lib/ship-slot-capacities'
 import { isEquippedSlot } from './lib/slot-flags'
 
 import type { srpRequests as srpRequestsTable } from './db/schema'
@@ -55,6 +60,13 @@ import type { Env } from './context'
  */
 export class SrpDO extends DurableObject<Env> implements Srp {
 	private db: ReturnType<typeof createDb>
+	private readonly shipSlotCapacityCache = new Map<
+		string,
+		{
+			value: typeof DEFAULT_NON_POD_SLOT_CAPACITIES
+			expiresAt: number
+		}
+	>()
 
 	constructor(state: DurableObjectState, env: Env) {
 		super(state, env)
@@ -189,7 +201,7 @@ export class SrpDO extends DurableObject<Env> implements Srp {
 			'public'
 		)
 
-		return this.formatRequest(request)
+		return await this.formatRequestWithShipSlotCapacities(request)
 	}
 
 	/**
@@ -290,7 +302,7 @@ export class SrpDO extends DurableObject<Env> implements Srp {
 			request.comments = request.comments?.filter((c) => c.visibility === 'public')
 		}
 
-		return this.formatRequest(request)
+		return await this.formatRequestWithShipSlotCapacities(request)
 	}
 
 	/**
@@ -554,7 +566,7 @@ export class SrpDO extends DurableObject<Env> implements Srp {
 			'public'
 		)
 
-		return this.formatRequest(updated[0])
+		return await this.formatRequestWithShipSlotCapacities(updated[0])
 	}
 
 	/**
@@ -602,7 +614,7 @@ export class SrpDO extends DurableObject<Env> implements Srp {
 			'public'
 		)
 
-		return this.formatRequest(updated[0])
+		return await this.formatRequestWithShipSlotCapacities(updated[0])
 	}
 
 	/**
@@ -647,7 +659,7 @@ export class SrpDO extends DurableObject<Env> implements Srp {
 			'public'
 		)
 
-		return this.formatRequest(updated[0])
+		return await this.formatRequestWithShipSlotCapacities(updated[0])
 	}
 
 	/**
@@ -857,7 +869,7 @@ export class SrpDO extends DurableObject<Env> implements Srp {
 			'public'
 		)
 
-		return this.formatRequest(updated[0])
+		return await this.formatRequestWithShipSlotCapacities(updated[0])
 	}
 
 	/**
@@ -1318,6 +1330,67 @@ export class SrpDO extends DurableObject<Env> implements Srp {
 		}
 	}
 
+	private async formatRequestWithShipSlotCapacities(request: any): Promise<SRPRequestResponse> {
+		const formatted = this.formatRequest(request)
+		formatted.shipSlotCapacities = await this.resolveShipSlotCapacities(formatted.shipTypeId)
+		return formatted
+	}
+
+	private async resolveShipSlotCapacities(shipTypeId: string): Promise<{
+		high: number
+		mid: number
+		low: number
+		rig: number
+		sub: number
+		implant: number
+	}> {
+		if (!shipTypeId) {
+			return DEFAULT_NON_POD_SLOT_CAPACITIES
+		}
+		if (this.POD_TYPE_IDS.has(shipTypeId)) {
+			return DEFAULT_POD_SLOT_CAPACITIES
+		}
+
+		const now = Date.now()
+		const cached = this.shipSlotCapacityCache.get(shipTypeId)
+		if (cached && cached.expiresAt > now) {
+			return cached.value
+		}
+
+		const fallback = DEFAULT_NON_POD_SLOT_CAPACITIES
+
+		try {
+			const response = await fetch(
+				`https://esi.evetech.net/latest/universe/types/${encodeURIComponent(shipTypeId)}/?datasource=tranquility&language=en`,
+				{ signal: AbortSignal.timeout(10_000) }
+			)
+			if (!response.ok) {
+				this.shipSlotCapacityCache.set(shipTypeId, {
+					value: fallback,
+					expiresAt: now + 10 * 60 * 1000,
+				})
+				return fallback
+			}
+
+			const data = (await response.json()) as {
+				dogma_attributes?: Array<{ attribute_id?: number; value?: number }>
+			}
+			const resolved = parseShipSlotCapacitiesFromDogmaAttributes(data.dogma_attributes)
+
+			this.shipSlotCapacityCache.set(shipTypeId, {
+				value: resolved,
+				expiresAt: now + 24 * 60 * 60 * 1000,
+			})
+			return resolved
+		} catch {
+			this.shipSlotCapacityCache.set(shipTypeId, {
+				value: fallback,
+				expiresAt: now + 10 * 60 * 1000,
+			})
+			return fallback
+		}
+	}
+
 	private formatPaymentMismatchAlert(alert: any): SRPPaymentMismatchAlert {
 		return {
 			id: alert.id,
@@ -1590,7 +1663,7 @@ export class SrpDO extends DurableObject<Env> implements Srp {
 			await this.addComment(requestId, reviewerUserId, reviewerCharacterName, data.reviewNotes, 'internal')
 		}
 
-		return this.formatRequest(updated[0])
+		return await this.formatRequestWithShipSlotCapacities(updated[0])
 	}
 
 	/** Computes the payout amount from policy + modifiers. Does NOT apply override. */
@@ -1683,7 +1756,7 @@ export class SrpDO extends DurableObject<Env> implements Srp {
 			'public'
 		)
 
-		return this.formatRequest(updated[0])
+		return await this.formatRequestWithShipSlotCapacities(updated[0])
 	}
 
 	// ========================================================================
