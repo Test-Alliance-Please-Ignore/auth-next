@@ -218,23 +218,57 @@ function analyzeHighSlotAmmoDistribution(
 	itemNames: Record<string, string>
 ): {
 	weaponModuleCount: number
+	moduleSystemCount: number
 	totalAmmoQuantity: number
 	ammoTypeCount: number
 	ammoTypeNames: string[]
+	hasMixedAmmoWithinSameWeaponSystem: boolean
+	mixedWeaponSystemNames: string[]
+	unevenAmmoByType: Array<{
+		ammoTypeId: string
+		ammoTypeName: string
+		ammoQuantity: number
+		matchingWeaponCount: number
+	}>
 } {
 	const ammoByType = new Map<string, number>()
+	const matchingWeaponCountByAmmoType = new Map<string, number>()
+	const ammoTypesByWeaponSystem = new Map<string, Set<string>>()
+	const weaponSystemNames = new Map<string, string>()
+	const weaponSystemCountByType = new Map<string, number>()
 	let weaponModuleCount = 0
 
 	for (const item of killmailItems) {
 		if (item.item_type_id == null || item.flag == null) continue
 		if (slotFromLossFlag(item.flag) !== 'high') continue
 		if (consumableTypeIds.has(String(item.item_type_id))) continue
+		const moduleTypeId = String(item.item_type_id)
+		const moduleCount = killmailQuantity(item)
+		const moduleAmmoByType = new Map<string, number>()
 		const hasLoadedAmmo = collectConsumableChildrenForHighModule(
 			item.items,
 			consumableTypeIds,
-			ammoByType
+			moduleAmmoByType
 		)
-		if (hasLoadedAmmo) weaponModuleCount += 1
+		if (!hasLoadedAmmo) continue
+
+		weaponModuleCount += moduleCount
+		weaponSystemCountByType.set(
+			moduleTypeId,
+			(weaponSystemCountByType.get(moduleTypeId) ?? 0) + moduleCount
+		)
+		weaponSystemNames.set(moduleTypeId, itemNames[moduleTypeId] ?? `Type ${moduleTypeId}`)
+
+		const systemAmmoTypes = ammoTypesByWeaponSystem.get(moduleTypeId) ?? new Set<string>()
+		for (const [ammoTypeId, ammoQty] of moduleAmmoByType) {
+			systemAmmoTypes.add(ammoTypeId)
+			ammoByType.set(ammoTypeId, (ammoByType.get(ammoTypeId) ?? 0) + ammoQty)
+			matchingWeaponCountByAmmoType.set(
+				ammoTypeId,
+				(matchingWeaponCountByAmmoType.get(ammoTypeId) ?? 0) + moduleCount
+			)
+		}
+		ammoTypesByWeaponSystem.set(moduleTypeId, systemAmmoTypes)
 	}
 
 	if (weaponModuleCount === 0) {
@@ -247,18 +281,46 @@ function analyzeHighSlotAmmoDistribution(
 			fallbackHighModuleCount += killmailQuantity(item)
 		}
 		weaponModuleCount = fallbackHighModuleCount
+		for (const ammoTypeId of ammoByType.keys()) {
+			matchingWeaponCountByAmmoType.set(ammoTypeId, fallbackHighModuleCount)
+		}
 	}
 
 	const totalAmmoQuantity = [...ammoByType.values()].reduce((sum, quantity) => sum + quantity, 0)
 	const ammoTypeNames = [...ammoByType.keys()].map(
 		(typeId) => itemNames[typeId] ?? `Type ${typeId}`
 	)
+	const mixedWeaponSystemNames = [...ammoTypesByWeaponSystem.entries()]
+		.filter(([, ammoTypes]) => ammoTypes.size > 1)
+		.map(([moduleTypeId]) => weaponSystemNames.get(moduleTypeId) ?? `Type ${moduleTypeId}`)
+	const unevenAmmoByType = [...ammoByType.entries()]
+		.map(([ammoTypeId, ammoQuantity]) => {
+			const matchingWeaponCount = matchingWeaponCountByAmmoType.get(ammoTypeId) ?? 0
+			if (
+				matchingWeaponCount <= 0 ||
+				ammoQuantity <= 0 ||
+				ammoQuantity % matchingWeaponCount === 0
+			) {
+				return null
+			}
+			return {
+				ammoTypeId,
+				ammoTypeName: itemNames[ammoTypeId] ?? `Type ${ammoTypeId}`,
+				ammoQuantity,
+				matchingWeaponCount,
+			}
+		})
+		.filter((entry): entry is NonNullable<typeof entry> => entry !== null)
 
 	return {
 		weaponModuleCount,
+		moduleSystemCount: weaponSystemCountByType.size,
 		totalAmmoQuantity,
 		ammoTypeCount: ammoByType.size,
 		ammoTypeNames,
+		hasMixedAmmoWithinSameWeaponSystem: mixedWeaponSystemNames.length > 0,
+		mixedWeaponSystemNames,
+		unevenAmmoByType,
 	}
 }
 
@@ -387,19 +449,33 @@ export function computeDoctrineConformityFindings(
 		consumableTypeIds,
 		itemNames
 	)
-	const hasUnevenAmmoDistribution =
-		ammoCheck.weaponModuleCount > 0 &&
-		ammoCheck.totalAmmoQuantity > 0 &&
-		ammoCheck.totalAmmoQuantity % ammoCheck.weaponModuleCount !== 0
 	const hasMultipleAmmoTypes = ammoCheck.ammoTypeCount > 1
-	if (hasUnevenAmmoDistribution || hasMultipleAmmoTypes) {
+	const hasUnevenAmmoDistribution = ammoCheck.unevenAmmoByType.length > 0
+	const hasPlausibleSplitAcrossDistinctWeaponSystems =
+		hasMultipleAmmoTypes &&
+		ammoCheck.moduleSystemCount > 0 &&
+		ammoCheck.ammoTypeCount === ammoCheck.moduleSystemCount &&
+		!ammoCheck.hasMixedAmmoWithinSameWeaponSystem
+	const shouldWarnSplitWeapons =
+		ammoCheck.hasMixedAmmoWithinSameWeaponSystem ||
+		hasUnevenAmmoDistribution ||
+		(hasMultipleAmmoTypes && !hasPlausibleSplitAcrossDistinctWeaponSystems)
+	if (shouldWarnSplitWeapons) {
 		const reasons: string[] = []
-		if (hasUnevenAmmoDistribution) {
+		if (ammoCheck.hasMixedAmmoWithinSameWeaponSystem) {
 			reasons.push(
-				`ammo qty ${ammoCheck.totalAmmoQuantity} is not evenly divisible by ${ammoCheck.weaponModuleCount} weapon module${ammoCheck.weaponModuleCount === 1 ? '' : 's'}`
+				`multiple ammo types loaded within the same weapon system (${ammoCheck.mixedWeaponSystemNames.join(', ')})`
 			)
 		}
-		if (hasMultipleAmmoTypes) {
+		if (hasUnevenAmmoDistribution) {
+			reasons.push(
+				...ammoCheck.unevenAmmoByType.map(
+					(entry) =>
+						`${entry.ammoTypeName} qty ${entry.ammoQuantity} is not evenly divisible by matching weapon count ${entry.matchingWeaponCount}`
+				)
+			)
+		}
+		if (hasMultipleAmmoTypes && !hasPlausibleSplitAcrossDistinctWeaponSystems) {
 			reasons.push(`multiple ammo types loaded (${ammoCheck.ammoTypeNames.join(', ')})`)
 		}
 		findings.push({
@@ -453,7 +529,7 @@ function buildConformitySlotHighlights(
 	return highlights
 }
 
-function addEmptySlotDeviationHighlights(
+export function addEmptySlotDeviationHighlights(
 	baseHighlights: SRPSlotHighlightMap,
 	fittingItems: SRPFittingItem[],
 	slotCapacities: SRPShipSlotCapacities,
@@ -481,6 +557,10 @@ function addEmptySlotDeviationHighlights(
 		for (let i = 0; i < criticalEmptyCount; i += 1) {
 			const slotIndex = emptyIndices[i]
 			setSlotSeverity(next, `${slot}:${slotIndex}`, 'destructive')
+		}
+		for (let i = criticalEmptyCount; i < emptyIndices.length; i += 1) {
+			const slotIndex = emptyIndices[i]
+			setSlotSeverity(next, `${slot}:${slotIndex}`, 'secondary')
 		}
 	}
 	return next
@@ -737,19 +817,29 @@ export function ReviewRequestForm({
 		return counts
 	}, [activeDoctrineFitting, showDoctrineConformity])
 	const slotCapacities = useMemo(() => {
+		const requestCapacities = request.shipSlotCapacities
 		const capacities: SRPShipSlotCapacities = {}
 		for (const slot of SHIP_SLOT_TYPES) {
 			const slotItems = fittingItems.filter((item) => item.slotType === slot && !item.isConsumable)
 			const observedMaxIndex = slotItems.reduce((max, item) => Math.max(max, item.slotIndex), -1)
 			const observedCapacity = observedMaxIndex + 1
 			const doctrineCapacity = doctrineExpectedSlotCounts?.[slot] ?? 0
+			const requestedCapacity = requestCapacities?.[slot] ?? 0
 			capacities[slot] = Math.max(
 				0,
-				Math.min(SHIP_SLOT_ARC_MAX[slot], Math.max(observedCapacity, doctrineCapacity))
+				Math.min(
+					SHIP_SLOT_ARC_MAX[slot],
+					requestedCapacity > 0
+						? requestedCapacity
+						: Math.max(observedCapacity, doctrineCapacity)
+				)
 			)
 		}
+		if (requestCapacities?.implant != null) {
+			capacities.implant = Math.max(0, Math.min(10, Math.trunc(requestCapacities.implant)))
+		}
 		return capacities
-	}, [doctrineExpectedSlotCounts, fittingItems])
+	}, [doctrineExpectedSlotCounts, fittingItems, request.shipSlotCapacities])
 
 	const doctrineFindings = useMemo(
 		() =>

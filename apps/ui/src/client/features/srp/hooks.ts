@@ -1,17 +1,79 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
+import { useEffect, useMemo } from 'react'
 
-import { api } from '@/lib/api'
+import { NotFoundError, api } from '@/lib/api'
 
 import { srpKeys } from './query-keys'
+import {
+	isSrpLossesQueryKey,
+	isSrpMyRequestsQueryKey,
+	patchLossesByRequestStatus,
+	patchLossesForRequest,
+	patchMyRequestsStatus,
+	prependMyRequest,
+} from './state/cache-updates'
+import {
+	mergeLossesWithOverlay,
+	mergeRequestsWithOverlay,
+	reconcileOverlayFromServerLosses,
+	removeOverlayByRequestId,
+	updateOverlayRequestStatus,
+	upsertLossRequestOverlay,
+	useLossRequestOverlaySnapshot,
+} from './state/loss-request-overlay-store'
 
 import type {
 	CommentVisibility,
 	RequestStatus,
 	SRPConfigResponse,
+	SRPRequestResponse,
 	SRPPaymentMismatchAlert,
 	SRPReviewSubmission,
 } from './types'
 import type { FittingWithItems } from '@/lib/api'
+import type { LossListEntry, MyRequestsQueryData } from './state/cache-updates'
+
+function setLossStateAcrossCaches(
+	queryClient: ReturnType<typeof useQueryClient>,
+	request: { killmailId: string; requestId: string; requestStatus: string }
+): void {
+	queryClient.setQueriesData(
+		{
+			predicate: (query) => isSrpLossesQueryKey(query.queryKey),
+		},
+		(old) => patchLossesForRequest(old as LossListEntry[] | undefined, request)
+	)
+}
+
+function setRequestStatusAcrossCaches(
+	queryClient: ReturnType<typeof useQueryClient>,
+	request: SRPRequestResponse
+): void {
+	queryClient.setQueryData(srpKeys.request(request.id), request)
+	queryClient.setQueriesData(
+		{
+			predicate: (query) => isSrpLossesQueryKey(query.queryKey),
+		},
+		(old) =>
+			patchLossesByRequestStatus(
+				old as LossListEntry[] | undefined,
+				request.id,
+				request.requestStatus
+			)
+	)
+	queryClient.setQueriesData(
+		{
+			predicate: (query) => isSrpMyRequestsQueryKey(query.queryKey),
+		},
+		(old) => patchMyRequestsStatus(old as MyRequestsQueryData | undefined, request)
+	)
+}
+
+function invalidateLossQueries(queryClient: ReturnType<typeof useQueryClient>) {
+	void queryClient.invalidateQueries({
+		predicate: (query) => isSrpLossesQueryKey(query.queryKey),
+	})
+}
 
 function invalidateSrpQueueBadgeQueries(queryClient: ReturnType<typeof useQueryClient>) {
 	// Queue pages use requests/by-status with arbitrary status + filter objects.
@@ -48,30 +110,58 @@ function invalidateSrpQueueBadgeQueries(queryClient: ReturnType<typeof useQueryC
 // ===== Query Hooks =====
 
 export function useRecentLosses(daysBack: number = 30) {
-	return useQuery({
+	const overlay = useLossRequestOverlaySnapshot()
+	const query = useQuery({
 		queryKey: srpKeys.losses(daysBack),
 		queryFn: () => api.getRecentLosses(daysBack),
 		staleTime: 1000 * 60 * 5,
 	})
+	useEffect(() => {
+		if (!query.data) return
+		reconcileOverlayFromServerLosses(query.data)
+	}, [query.data])
+	const mergedData = useMemo(() => mergeLossesWithOverlay(query.data), [query.data, overlay])
+	return {
+		...query,
+		data: mergedData,
+	}
 }
 
 export function useMyRequests(
 	params: { limit?: number; offset?: number; status?: RequestStatus } = {}
 ) {
-	return useQuery({
+	const overlay = useLossRequestOverlaySnapshot()
+	const query = useQuery({
 		queryKey: srpKeys.myRequests(params),
 		queryFn: () => api.getMyRequests(params),
 		staleTime: 1000 * 60,
 	})
+	const mergedData = useMemo(() => {
+		if (!query.data) return query.data
+		return {
+			...query.data,
+			requests: mergeRequestsWithOverlay(query.data.requests),
+		}
+	}, [query.data, overlay])
+	return {
+		...query,
+		data: mergedData,
+	}
 }
 
 export function useRequest(id: string | undefined) {
-	return useQuery({
+	const query = useQuery({
 		queryKey: srpKeys.request(id!),
 		queryFn: () => api.getRequest(id!),
 		enabled: !!id,
 		staleTime: 1000 * 30,
 	})
+	useEffect(() => {
+		if (!id) return
+		if (!(query.error instanceof NotFoundError)) return
+		removeOverlayByRequestId(id)
+	}, [id, query.error])
+	return query
 }
 
 export function usePendingRequests(
@@ -184,7 +274,7 @@ export function useRefreshKillmails() {
 	return useMutation({
 		mutationFn: () => api.refreshLosses(),
 		onSuccess: () => {
-			void queryClient.invalidateQueries({ queryKey: srpKeys.losses() })
+			invalidateLossQueries(queryClient)
 		},
 	})
 }
@@ -228,9 +318,26 @@ export function useCreateRequest() {
 			killmailHash: string
 			contextText: string
 		}) => api.createSRPRequest(data),
-		onSuccess: () => {
+		onSuccess: (request: SRPRequestResponse) => {
+			upsertLossRequestOverlay({
+				killmailId: request.id,
+				requestId: request.id,
+				requestStatus: request.requestStatus,
+			})
+			setLossStateAcrossCaches(queryClient, {
+				killmailId: request.id,
+				requestId: request.id,
+				requestStatus: request.requestStatus,
+			})
+			queryClient.setQueryData(srpKeys.request(request.id), request)
+			queryClient.setQueriesData(
+				{
+					predicate: (query) => isSrpMyRequestsQueryKey(query.queryKey),
+				},
+				(old) => prependMyRequest(old as MyRequestsQueryData | undefined, request)
+			)
 			void queryClient.invalidateQueries({ queryKey: srpKeys.requests() })
-			void queryClient.invalidateQueries({ queryKey: srpKeys.losses() })
+			invalidateLossQueries(queryClient)
 		},
 	})
 }
@@ -240,8 +347,12 @@ export function useSubmitReview() {
 	return useMutation({
 		mutationFn: ({ id, data }: { id: string; data: SRPReviewSubmission }) =>
 			api.submitReview(id, data),
-		onSuccess: (_data: any, variables: { id: string; data: SRPReviewSubmission }) => {
-			void queryClient.invalidateQueries({ queryKey: srpKeys.request(variables.id) })
+		onSuccess: (request: SRPRequestResponse) => {
+			updateOverlayRequestStatus({
+				requestId: request.id,
+				requestStatus: request.requestStatus,
+			})
+			setRequestStatusAcrossCaches(queryClient, request)
 			void queryClient.invalidateQueries({ queryKey: srpKeys.allRequests() })
 			void queryClient.invalidateQueries({ queryKey: srpKeys.payments() })
 			invalidateSrpQueueBadgeQueries(queryClient)
@@ -261,8 +372,12 @@ export function useUpdateReviewState() {
 			newState: RequestStatus
 			notes?: string
 		}) => api.updateReviewState(id, { newState, notes }),
-		onSuccess: (_data: any, variables: { id: string; newState: RequestStatus; notes?: string }) => {
-			void queryClient.invalidateQueries({ queryKey: srpKeys.request(variables.id) })
+		onSuccess: (request: SRPRequestResponse) => {
+			updateOverlayRequestStatus({
+				requestId: request.id,
+				requestStatus: request.requestStatus,
+			})
+			setRequestStatusAcrossCaches(queryClient, request)
 			void queryClient.invalidateQueries({ queryKey: srpKeys.allRequests() })
 			void queryClient.invalidateQueries({ queryKey: srpKeys.payments() })
 			invalidateSrpQueueBadgeQueries(queryClient)
@@ -358,8 +473,12 @@ export function useMarkPaid() {
 	const queryClient = useQueryClient()
 	return useMutation({
 		mutationFn: (id: string) => api.markPaid(id),
-		onSuccess: (_data: any, id: string) => {
-			void queryClient.invalidateQueries({ queryKey: srpKeys.request(id) })
+		onSuccess: (request: SRPRequestResponse) => {
+			updateOverlayRequestStatus({
+				requestId: request.id,
+				requestStatus: request.requestStatus,
+			})
+			setRequestStatusAcrossCaches(queryClient, request)
 			void queryClient.invalidateQueries({ queryKey: srpKeys.payments() })
 			void queryClient.invalidateQueries({ queryKey: srpKeys.allRequests() })
 			invalidateSrpQueueBadgeQueries(queryClient)

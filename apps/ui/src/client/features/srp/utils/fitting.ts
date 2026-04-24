@@ -2,7 +2,8 @@ export type SlotType = 'high' | 'mid' | 'low' | 'rig' | 'sub' | 'implant'
 export type SRPSlotHighlightSeverity = 'destructive' | 'warning' | 'secondary'
 export type SRPSlotHighlightMap = Record<string, SRPSlotHighlightSeverity>
 export type SRPShipSlotType = Exclude<SlotType, 'implant'>
-export type SRPShipSlotCapacities = Partial<Record<SRPShipSlotType, number>>
+export type SRPSlotCapacityType = SRPShipSlotType | 'implant'
+export type SRPShipSlotCapacities = Partial<Record<SRPSlotCapacityType, number>>
 
 export interface SRPFittingItem {
 	typeId: string

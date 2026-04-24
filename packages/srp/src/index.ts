@@ -423,6 +423,14 @@ export interface SRPRequestResponse {
 		quantity_destroyed?: number
 		quantity_dropped?: number
 	}>
+	shipSlotCapacities?: Partial<{
+		high: number
+		mid: number
+		low: number
+		rig: number
+		sub: number
+		implant: number
+	}>
 
 	createdAt: string
 	updatedAt: string

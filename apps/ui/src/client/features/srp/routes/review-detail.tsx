@@ -151,6 +151,16 @@ export default function ReviewRequestDetail() {
 									comments={comments}
 									requestId={id}
 									canAddInternal={canSeeInternal}
+									initialContext={
+										request.contextText
+											? {
+													content: request.contextText,
+													authorCharacterName: request.characterName,
+													authorCharacterId: request.characterId,
+													createdAt: request.createdAt,
+												}
+											: undefined
+									}
 									onCommentAdded={refetchComments}
 								/>
 							</Card>
@@ -176,6 +186,16 @@ export default function ReviewRequestDetail() {
 								comments={comments}
 								requestId={id}
 								canAddInternal={canSeeInternal}
+								initialContext={
+									request.contextText
+										? {
+												content: request.contextText,
+												authorCharacterName: request.characterName,
+												authorCharacterId: request.characterId,
+												createdAt: request.createdAt,
+											}
+										: undefined
+								}
 								onCommentAdded={refetchComments}
 							/>
 							<div className="mt-4 border-t border-border/40 pt-4">

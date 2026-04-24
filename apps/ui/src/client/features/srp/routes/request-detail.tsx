@@ -164,6 +164,16 @@ export default function RequestDetails() {
 						comments={comments.filter((c: any) => c.visibility === 'public')}
 						requestId={id}
 						canAddInternal={false}
+						initialContext={
+							request.contextText
+								? {
+										content: request.contextText,
+										authorCharacterName: request.characterName,
+										authorCharacterId: request.characterId,
+										createdAt: request.createdAt,
+									}
+								: undefined
+						}
 						onCommentAdded={() => refetchComments()}
 					/>
 					<div className="mt-4 border-t border-border/40 pt-4">
