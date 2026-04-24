@@ -60,6 +60,29 @@ async function resolveMaintainerName(
 	}
 }
 
+async function canAssignMaintainer(
+	maintainerId: string | null | undefined,
+	user: { id: string; is_admin?: boolean },
+	env: { GROUPS: DurableObjectNamespace }
+): Promise<boolean> {
+	if (!maintainerId) {
+		return true
+	}
+
+	if (user.is_admin) {
+		return true
+	}
+
+	if (maintainerId.startsWith('group:')) {
+		const groupId = maintainerId.replace('group:', '')
+		if (!groupId) return false
+		const memberships = await getCachedUserMemberships(env, user.id)
+		return memberships.some((membership) => membership.groupId === groupId)
+	}
+
+	return maintainerId === user.id
+}
+
 const skillPlansRoutes = new Hono<App>()
 	// All routes require alliance membership
 	.use('*', requireAllianceMember())
@@ -647,6 +670,12 @@ const skillPlansRoutes = new Hono<App>()
 			data.maintainerId = user.id
 		}
 
+		// Non-admins can only assign themselves or groups they belong to.
+		const canAssign = await canAssignMaintainer(data.maintainerId, user, c.env)
+		if (!canAssign) {
+			return c.json({ error: 'Invalid maintainer selection' }, 403)
+		}
+
 		// Create the plan
 		const skillsStub = getStub<Skills>(c.env.SKILLS, 'default')
 		try {
@@ -697,6 +726,13 @@ const skillPlansRoutes = new Hono<App>()
 		}
 		if (data.description !== undefined && data.description.trim().length === 0) {
 			return c.json({ error: 'Plan description cannot be empty' }, 400)
+		}
+
+		if (data.maintainerId !== undefined) {
+			const canAssign = await canAssignMaintainer(data.maintainerId, user, c.env)
+			if (!canAssign) {
+				return c.json({ error: 'Invalid maintainer selection' }, 403)
+			}
 		}
 
 		// Update the plan

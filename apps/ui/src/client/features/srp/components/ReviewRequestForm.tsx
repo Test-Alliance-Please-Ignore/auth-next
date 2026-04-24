@@ -54,6 +54,29 @@ const SHIP_SLOT_ARC_MAX: Record<SRPShipSlotType, number> = {
 	rig: 3,
 	sub: 4,
 }
+const SPLIT_AMMO_WEAPON_GROUP_IDS = new Set<string>([
+	// Turrets
+	'53', // Energy Weapon
+	'55', // Projectile Weapon
+	'74', // Hybrid Weapon
+	'1986', // Precursor Weapon
+	'4060', // Vorton Projector
+	// Launchers (missile weapon groups)
+	'56', // Missile Launcher (legacy)
+	'506', // Missile Launcher Cruise
+	'507', // Missile Launcher Rocket
+	'508', // Missile Launcher Torpedo
+	'509', // Missile Launcher Light
+	'510', // Missile Launcher Heavy
+	'511', // Missile Launcher Rapid Light
+	'512', // Missile Launcher Defender
+	'524', // Missile Launcher XL Torpedo
+	'771', // Missile Launcher Heavy Assault
+	'862', // Missile Launcher Bomb
+	'1245', // Missile Launcher Rapid Heavy
+	'1673', // Missile Launcher Rapid Torpedo
+	'1674', // Missile Launcher XL Cruise
+])
 interface LossKillmailItem {
 	item_type_id?: number
 	flag?: number
@@ -188,34 +211,11 @@ function collectConsumableChildrenForHighModule(
 	return found
 }
 
-function collectDirectHighSlotConsumables(
-	items: LossKillmailItem[],
-	consumableTypeIds: Set<string>,
-	ammoByType: Map<string, number>,
-	parentFlag?: number
-): void {
-	for (const item of items) {
-		const effectiveFlag = item.flag ?? parentFlag
-		if (
-			effectiveFlag != null &&
-			slotFromLossFlag(effectiveFlag) === 'high' &&
-			item.item_type_id != null
-		) {
-			const typeId = String(item.item_type_id)
-			if (consumableTypeIds.has(typeId)) {
-				ammoByType.set(typeId, (ammoByType.get(typeId) ?? 0) + killmailQuantity(item))
-			}
-		}
-		if (item.items?.length) {
-			collectDirectHighSlotConsumables(item.items, consumableTypeIds, ammoByType, effectiveFlag)
-		}
-	}
-}
-
 function analyzeHighSlotAmmoDistribution(
 	killmailItems: LossKillmailItem[],
 	consumableTypeIds: Set<string>,
-	itemNames: Record<string, string>
+	itemNames: Record<string, string>,
+	itemGroupIds: Record<string, string>
 ): {
 	weaponModuleCount: number
 	moduleSystemCount: number
@@ -243,6 +243,8 @@ function analyzeHighSlotAmmoDistribution(
 		if (slotFromLossFlag(item.flag) !== 'high') continue
 		if (consumableTypeIds.has(String(item.item_type_id))) continue
 		const moduleTypeId = String(item.item_type_id)
+		const groupId = itemGroupIds[moduleTypeId]
+		if (!groupId || !SPLIT_AMMO_WEAPON_GROUP_IDS.has(groupId)) continue
 		const moduleCount = killmailQuantity(item)
 		const moduleAmmoByType = new Map<string, number>()
 		const hasLoadedAmmo = collectConsumableChildrenForHighModule(
@@ -269,21 +271,6 @@ function analyzeHighSlotAmmoDistribution(
 			)
 		}
 		ammoTypesByWeaponSystem.set(moduleTypeId, systemAmmoTypes)
-	}
-
-	if (weaponModuleCount === 0) {
-		collectDirectHighSlotConsumables(killmailItems, consumableTypeIds, ammoByType)
-		let fallbackHighModuleCount = 0
-		for (const item of killmailItems) {
-			if (item.item_type_id == null || item.flag == null) continue
-			if (slotFromLossFlag(item.flag) !== 'high') continue
-			if (consumableTypeIds.has(String(item.item_type_id))) continue
-			fallbackHighModuleCount += killmailQuantity(item)
-		}
-		weaponModuleCount = fallbackHighModuleCount
-		for (const ammoTypeId of ammoByType.keys()) {
-			matchingWeaponCountByAmmoType.set(ammoTypeId, fallbackHighModuleCount)
-		}
 	}
 
 	const totalAmmoQuantity = [...ammoByType.values()].reduce((sum, quantity) => sum + quantity, 0)
@@ -347,7 +334,8 @@ export function computeDoctrineConformityFindings(
 	killmailItemsForAmmoCheck: LossKillmailItem[],
 	doctrineCargoTypeIds: Set<string>,
 	consumableTypeIds: Set<string>,
-	itemNames: Record<string, string>
+	itemNames: Record<string, string>,
+	killmailItemGroupIds: Record<string, string> = {}
 ): ConformityFinding[] {
 	const findings: ConformityFinding[] = []
 	const doctrineBySlot = buildDoctrineCountsBySlot(fitting)
@@ -447,7 +435,8 @@ export function computeDoctrineConformityFindings(
 	const ammoCheck = analyzeHighSlotAmmoDistribution(
 		killmailItemsForAmmoCheck,
 		consumableTypeIds,
-		itemNames
+		itemNames,
+		killmailItemGroupIds
 	)
 	const hasMultipleAmmoTypes = ammoCheck.ammoTypeCount > 1
 	const hasUnevenAmmoDistribution = ammoCheck.unevenAmmoByType.length > 0
@@ -850,7 +839,8 @@ export function ReviewRequestForm({
 						request.killmailItems ?? [],
 						doctrineCargoTypeIds,
 						consumableTypeIds,
-						itemNames
+						itemNames,
+						request.killmailItemGroupIds ?? {}
 					)
 				: [],
 		[
@@ -860,6 +850,7 @@ export function ReviewRequestForm({
 			doctrineCargoTypeIds,
 			itemNames,
 			killmailItemsForConformity,
+			request.killmailItemGroupIds,
 			request.killmailItems,
 			showDoctrineConformity,
 		]
