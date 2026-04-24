@@ -89,6 +89,10 @@ describe('computeDoctrineConformityFindings', () => {
 			{
 				'8001': 'Tremor S',
 				'9001': 'Defender Missile',
+			},
+			{
+				'7001': '55',
+				'7100': '512',
 			}
 		)
 
@@ -128,6 +132,9 @@ describe('computeDoctrineConformityFindings', () => {
 				'7001': 'Heavy Missile Launcher II',
 				'8001': 'Mjolnir Rage Heavy Missile',
 				'8002': 'Scourge Rage Heavy Missile',
+			},
+			{
+				'7001': '510',
 			}
 		)
 
@@ -139,6 +146,43 @@ describe('computeDoctrineConformityFindings', () => {
 					f.message.includes('Split weapons variant detected')
 			)
 		).toBe(true)
+	})
+
+	it('does not classify command burst modules as split-weapon systems', () => {
+		const fitting = {
+			fittingItems: [{ flagId: '27', typeId: '7200', typeName: 'Skirmish Command Burst II', quantity: '1' }],
+		} as any
+
+		const ammoTypeIds = new Set(['9200', '9201'])
+		const killmailItems = [
+			{
+				item_type_id: 7200,
+				flag: 27,
+				quantity_destroyed: 1,
+				items: [
+					{ item_type_id: 9200, quantity_destroyed: 1 },
+					{ item_type_id: 9201, quantity_destroyed: 1 },
+				],
+			},
+		] as any
+
+		const findings = computeDoctrineConformityFindings(
+			fitting,
+			killmailItems,
+			killmailItems,
+			new Set<string>(),
+			ammoTypeIds,
+			{
+				'7200': 'Skirmish Command Burst II',
+				'9200': 'Rapid Deployment Charge',
+				'9201': 'Interdiction Maneuvers Charge',
+			},
+			{
+				'7200': '1770',
+			}
+		)
+
+		expect(findings.some((f) => f.message.includes('Split weapons variant detected'))).toBe(false)
 	})
 })
 

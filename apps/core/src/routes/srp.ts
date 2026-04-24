@@ -153,6 +153,7 @@ interface MilitarySrpAssessment {
 type RequestWithMilitarySrp = RequestWithCharacterRole & { militarySrp?: MilitarySrpAssessment }
 type RequestWithKillmailItemNames = RequestWithMilitarySrp & {
 	killmailItemNames?: Record<string, string>
+	killmailItemGroupIds?: Record<string, string>
 }
 
 const MISSING_RIG_PENALTY_PERCENT = 10
@@ -474,14 +475,18 @@ async function enrichRequestWithKillmailItemNames(
 		.resolveTypeNamesByIds(typeIds)
 		.catch(() => ({} as Record<string, null>))
 	const killmailItemNames: Record<string, string> = {}
+	const killmailItemGroupIds: Record<string, string> = {}
 	for (const typeId of typeIds) {
-		const typeName = typeMap[typeId]?.typeName
+		const type = typeMap[typeId]
+		const typeName = type?.typeName
 		if (typeName) killmailItemNames[typeId] = typeName
+		if (type?.groupId) killmailItemGroupIds[typeId] = type.groupId
 	}
 
 	return {
 		...request,
 		killmailItemNames,
+		killmailItemGroupIds,
 	}
 }
 

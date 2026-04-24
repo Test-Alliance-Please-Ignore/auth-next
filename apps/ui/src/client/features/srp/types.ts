@@ -40,6 +40,7 @@ export interface RequestListResponse {
 
 export type SRPRequestWithKillmailItemNames = SRPRequestResponse & {
 	killmailItemNames?: Record<string, string>
+	killmailItemGroupIds?: Record<string, string>
 }
 
 export type DoctrineSlot = 'high' | 'mid' | 'low' | 'rig' | 'sub'

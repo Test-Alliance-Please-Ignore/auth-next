@@ -1,9 +1,9 @@
-import { useEffect, useState } from 'react'
+import { useMemo } from 'react'
 
 import { Label } from '../../../components/ui/label'
 import { Select } from '../../../components/ui/select'
 import { useAuth } from '../../../hooks/useAuth'
-import { useGroups } from '../../../hooks/useGroups'
+import { useUserMemberships } from '../../../hooks/useGroups'
 
 import type { MaintainerOption } from '../types'
 
@@ -21,13 +21,10 @@ export function MaintainerSelector({
 	required = false,
 }: MaintainerSelectorProps) {
 	const { user } = useAuth()
-	const { data: groups, isLoading: groupsLoading } = useGroups()
-	const [options, setOptions] = useState<MaintainerOption[]>([])
-
-	useEffect(() => {
+	const { data: memberships, isLoading: membershipsLoading } = useUserMemberships()
+	const options = useMemo<MaintainerOption[]>(() => {
 		const maintainerOptions: MaintainerOption[] = []
 
-		// Add current user as an option
 		if (user) {
 			const primaryChar = user.characters.find((c) => c.characterId === user.mainCharacterId)
 			maintainerOptions.push({
@@ -37,32 +34,32 @@ export function MaintainerSelector({
 			})
 		}
 
-		// Add groups the user is a member of
-		if (groups) {
-			// Filter to groups where user is a member
-			// In a real app, we'd need to check membership through another API
-			// For now, we'll show all groups
-			groups.forEach((group) => {
+		if (memberships) {
+			memberships.forEach((membership) => {
 				maintainerOptions.push({
-					id: `group:${group.id}`,
-					name: group.name,
+					id: `group:${membership.groupId}`,
+					name: membership.groupName,
 					type: 'group',
 				})
 			})
 		}
 
-		setOptions(maintainerOptions)
-	}, [user, groups])
+		return maintainerOptions
+	}, [memberships, user])
 
 	return (
-		<div className="space-y-2">
+		<div className="space-y-2" data-component="searchable-maintainer-selector">
 			<Label htmlFor="maintainer">
 				Maintainer {required && <span className="text-destructive">*</span>}
 			</Label>
+			<p className="text-sm text-muted-foreground">
+				Choose yourself or one of your groups. The selected maintainer can edit and delete this plan.
+			</p>
 			<Select
 				value={value || 'none'}
 				onValueChange={(val) => onChange(val === 'none' ? null : val)}
 				inputId="maintainer"
+				searchable
 				options={[
 					...(!required ? [{ value: 'none', label: 'No maintainer' }] : []),
 					...options.map((option) => ({
@@ -72,11 +69,8 @@ export function MaintainerSelector({
 					})),
 				]}
 				placeholder="Select maintainer..."
-				disabled={disabled || groupsLoading}
+				disabled={disabled || membershipsLoading}
 			/>
-			<p className="text-sm text-muted-foreground">
-				The maintainer can edit and delete this plan. Groups allow any member to maintain the plan.
-			</p>
 		</div>
 	)
 }

@@ -93,7 +93,7 @@ export function SRPFittingSlotList({
 				<SlotSection
 					key={type}
 					label={SHIP_SECTION_LABELS[type] ?? type}
-					items={groups[type]}
+					items={groups[type] ?? []}
 					slotHighlights={slotHighlights}
 					slotType={type}
 					slotCapacity={slotCapacities[type]}
