@@ -7,6 +7,12 @@ export interface CharacterSkillLevels {
 }
 
 export type ReadinessStatus = 'completed' | 'meets_requirements' | 'incomplete' | 'no_skills'
+export interface CharacterReadinessSummary {
+	completed: number
+	meetsRequirements: number
+	incomplete: number
+	total: number
+}
 
 interface CalculateCharacterProgressInput {
 	planId: string
@@ -39,6 +45,39 @@ export function deriveReadinessStatus(readiness: {
 	}
 
 	return 'incomplete'
+}
+
+export function summarizeReadinessStatuses(
+	statuses: ReadinessStatus[]
+): CharacterReadinessSummary {
+	let completed = 0
+	let meetsRequirements = 0
+	let incomplete = 0
+	let total = 0
+
+	for (const status of statuses) {
+		if (status === 'completed') {
+			completed += 1
+			total += 1
+			continue
+		}
+		if (status === 'meets_requirements') {
+			meetsRequirements += 1
+			total += 1
+			continue
+		}
+		if (status === 'incomplete') {
+			incomplete += 1
+			total += 1
+		}
+	}
+
+	return {
+		completed,
+		meetsRequirements,
+		incomplete,
+		total,
+	}
 }
 
 export function calculateCharacterProgress({

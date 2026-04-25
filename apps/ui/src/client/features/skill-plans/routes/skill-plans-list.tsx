@@ -20,11 +20,15 @@ import { SkillPlanCard } from '../components/skill-plan-card'
 import {
 	skillPlanKeys,
 	useDeleteSkillPlan,
-	useCharacterSkillLevels,
+	useCharacterSkillLevelsForCharacters,
 	useSkillPlanCategories,
 	useSkillPlans,
 } from '../hooks'
-import { calculateCharacterProgress } from '../utils/readiness'
+import {
+	calculateCharacterProgress,
+	deriveReadinessStatus,
+	summarizeReadinessStatuses,
+} from '../utils/readiness'
 import { groupPlansByCategory } from '../utils/group-by-category'
 
 import type { SkillPlansFilter } from '../types'
@@ -89,28 +93,24 @@ export default function SkillPlansList() {
 		return groupPlansByCategory(filteredPlans)
 	}, [filteredPlans])
 
-	const mainCharacter = useMemo(
-		() => user?.characters.find((character) => character.characterId === user.mainCharacterId),
-		[user]
-	)
-
-	const { data: mainCharacterSkills, isLoading: mainCharacterSkillsLoading } = useCharacterSkillLevels(
-		mainCharacter?.characterId
-	)
+	const characterSkillQueries = useCharacterSkillLevelsForCharacters(user?.characters ?? [])
 
 	const planSkillsQueries = useQueries({
 		queries: filteredPlans.map((plan) => ({
 			queryKey: skillPlanKeys.skills(plan.id),
 			queryFn: () => skillPlansApi.getPlanSkills(plan.id),
-			enabled: !!mainCharacter?.characterId && !plan.skills,
+			enabled: !!user && !plan.skills,
 			staleTime: 1000 * 60 * 5,
 		})),
 	})
 
 	const readinessByPlanId = useMemo(() => {
-		const result = new Map<string, ReturnType<typeof calculateCharacterProgress>>()
+		const result = new Map<
+			string,
+			ReturnType<typeof summarizeReadinessStatuses> & { hasNoSkills: boolean }
+		>()
 
-		if (!mainCharacter || !mainCharacterSkills) {
+		if (!user?.characters?.length) {
 			return result
 		}
 
@@ -122,32 +122,68 @@ export default function SkillPlansList() {
 				continue
 			}
 
-			result.set(
-				plan.id,
-				calculateCharacterProgress({
+			if (planSkills.length === 0) {
+				result.set(plan.id, {
+					completed: 0,
+					meetsRequirements: 0,
+					incomplete: 0,
+					total: 0,
+					hasNoSkills: true,
+				})
+				continue
+			}
+
+			const statuses = user.characters.map((character, characterIndex) => {
+				if (!character.hasValidToken) {
+					return 'incomplete' as const
+				}
+
+				const characterSkills = characterSkillQueries[characterIndex]?.data
+				if (!characterSkills) {
+					return 'incomplete' as const
+				}
+
+				const progress = calculateCharacterProgress({
 					planId: plan.id,
 					planName: plan.name,
-					characterId: mainCharacter.characterId,
-					characterName: mainCharacter.characterName,
+					characterId: character.characterId,
+					characterName: character.characterName,
 					planSkills,
-					characterSkillLevels: mainCharacterSkills.levels,
+					characterSkillLevels: characterSkills.levels,
 				})
+
+				return deriveReadinessStatus({
+					percentageRequired: progress.percentageRequired,
+					percentageRecommended: progress.percentageRecommended,
+					totalSkills: progress.totalSkills,
+				})
+			})
+
+			result.set(
+				plan.id,
+				{
+					...summarizeReadinessStatuses(statuses),
+					hasNoSkills: false,
+				}
 			)
 		}
 
 		return result
-	}, [filteredPlans, mainCharacter, mainCharacterSkills, planSkillsQueries])
+	}, [characterSkillQueries, filteredPlans, planSkillsQueries, user])
 
 	const readinessLoadingByPlanId = useMemo(() => {
 		const loading = new Map<string, boolean>()
 		for (let index = 0; index < filteredPlans.length; index++) {
 			const plan = filteredPlans[index]
 			const query = planSkillsQueries[index]
-			const isLoading = !plan.skills && !!mainCharacter && (query?.isPending ?? false)
-			loading.set(plan.id, mainCharacterSkillsLoading || isLoading)
+			const areCharacterSkillsLoading = characterSkillQueries.some(
+				(characterQuery) => characterQuery.isPending
+			)
+			const isLoading = !plan.skills && !!user && (query?.isPending ?? false)
+			loading.set(plan.id, areCharacterSkillsLoading || isLoading)
 		}
 		return loading
-	}, [filteredPlans, mainCharacter, mainCharacterSkillsLoading, planSkillsQueries])
+	}, [characterSkillQueries, filteredPlans, planSkillsQueries, user])
 
 	if (plansLoading || categoriesLoading) {
 		return <LoadingPage />
@@ -305,7 +341,8 @@ export default function SkillPlansList() {
 												<SkillPlanCard
 													key={`${group.category?.id || 'uncategorized'}-${plan.id}`}
 													plan={plan}
-													readiness={readinessByPlanId.get(plan.id)}
+													characterReadiness={readinessByPlanId.get(plan.id)}
+													hasNoSkills={readinessByPlanId.get(plan.id)?.hasNoSkills || false}
 													isReadinessLoading={readinessLoadingByPlanId.get(plan.id) || false}
 												/>
 											))}

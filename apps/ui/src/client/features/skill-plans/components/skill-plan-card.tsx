@@ -9,25 +9,22 @@ import {
 	CardHeader,
 	CardTitle,
 } from '../../../components/ui/card'
-import { Progress } from '../../../components/ui/progress'
-import { deriveReadinessStatus } from '../utils/readiness'
 
 import type { SkillPlan } from '../types'
+import type { CharacterReadinessSummary } from '../utils/readiness'
 
 interface SkillPlanCardProps {
 	plan: SkillPlan
-	readiness?: {
-		percentageRequired: number
-		percentageRecommended: number
-		totalSkills: number
-	}
+	characterReadiness?: CharacterReadinessSummary
 	isReadinessLoading?: boolean
+	hasNoSkills?: boolean
 }
 
 export function SkillPlanCard({
 	plan,
-	readiness,
+	characterReadiness,
 	isReadinessLoading = false,
+	hasNoSkills = false,
 }: SkillPlanCardProps) {
 	const navigate = useNavigate()
 
@@ -48,35 +45,18 @@ export function SkillPlanCard({
 		navigate(`/skill-plans/${plan.id}`)
 	}
 
-	const getReadinessDisplay = () => {
-		if (!readiness) return null
-		const status = deriveReadinessStatus(readiness)
-		switch (status) {
-			case 'completed':
-				return {
-					label: 'Completed',
-					variant: 'success' as const,
-				}
-			case 'meets_requirements':
-				return {
-					label: 'Meets Requirements',
-					variant: 'warning' as const,
-				}
-			case 'no_skills':
-				return {
-					label: 'No Skills',
-					variant: 'secondary' as const,
-				}
-			case 'incomplete':
-			default:
-				return {
-					label: 'Incomplete',
-					variant: 'destructive' as const,
-				}
-		}
-	}
-
-	const readinessDisplay = getReadinessDisplay()
+	const completedPct =
+		characterReadiness && characterReadiness.total > 0
+			? (characterReadiness.completed / characterReadiness.total) * 100
+			: 0
+	const meetsPct =
+		characterReadiness && characterReadiness.total > 0
+			? (characterReadiness.meetsRequirements / characterReadiness.total) * 100
+			: 0
+	const incompletePct =
+		characterReadiness && characterReadiness.total > 0
+			? (characterReadiness.incomplete / characterReadiness.total) * 100
+			: 0
 
 	return (
 		<Card
@@ -114,33 +94,44 @@ export function SkillPlanCard({
 					<div className="mt-auto pt-3">
 						<Badge variant="secondary">Checking readiness...</Badge>
 					</div>
-				) : readiness && readinessDisplay ? (
+				) : hasNoSkills ? (
+					<div className="mt-auto pt-3">
+						<Badge variant="secondary">No Skills</Badge>
+					</div>
+				) : characterReadiness && characterReadiness.total > 0 ? (
 					<div className="mt-auto pt-3 space-y-2">
-						<div className="flex items-center gap-2">
-							<Badge variant={readinessDisplay.variant}>{readinessDisplay.label}</Badge>
+						<div className="flex items-center justify-between text-xs text-muted-foreground">
+							<span>Character Readiness</span>
+							<span>{characterReadiness.total} characters</span>
 						</div>
-						<div className="space-y-1.5">
-							<div className="flex items-center justify-between text-xs text-muted-foreground">
-								<span>Required</span>
-								<span>{Math.round(readiness.percentageRequired)}%</span>
-							</div>
-							<Progress
-								value={readiness.percentageRequired}
-								className="h-1.5 bg-warning [&>div]:bg-primary"
-							/>
+						<div className="flex h-2 w-full overflow-hidden rounded-full bg-muted">
+							<div className="bg-success" style={{ width: `${completedPct}%` }} />
+							<div className="bg-warning" style={{ width: `${meetsPct}%` }} />
+							<div className="bg-destructive" style={{ width: `${incompletePct}%` }} />
 						</div>
-						<div className="space-y-1.5">
-							<div className="flex items-center justify-between text-xs text-muted-foreground">
-								<span>Recommended</span>
-								<span>{Math.round(readiness.percentageRecommended)}%</span>
-							</div>
-							<Progress
-								value={readiness.percentageRecommended}
-								className="h-1.5 bg-warning [&>div]:bg-primary"
-							/>
+						<div className="flex flex-wrap items-center gap-2 text-xs">
+							{characterReadiness.completed > 0 && (
+								<Badge variant="success" className="px-2 py-0">
+									Completed {characterReadiness.completed}
+								</Badge>
+							)}
+							{characterReadiness.meetsRequirements > 0 && (
+								<Badge variant="warning" className="px-2 py-0">
+									Meets Required {characterReadiness.meetsRequirements}
+								</Badge>
+							)}
+							{characterReadiness.incomplete > 0 && (
+								<Badge variant="destructive" className="px-2 py-0">
+									Incomplete {characterReadiness.incomplete}
+								</Badge>
+							)}
 						</div>
 					</div>
-				) : null}
+				) : (
+					<div className="mt-auto pt-3">
+						<Badge variant="secondary">No character data</Badge>
+					</div>
+				)}
 			</CardContent>
 		</Card>
 	)
