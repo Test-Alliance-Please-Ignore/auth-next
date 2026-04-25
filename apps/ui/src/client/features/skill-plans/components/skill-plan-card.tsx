@@ -9,14 +9,26 @@ import {
 	CardHeader,
 	CardTitle,
 } from '../../../components/ui/card'
+import { Progress } from '../../../components/ui/progress'
+import { deriveReadinessStatus } from '../utils/readiness'
 
 import type { SkillPlan } from '../types'
 
 interface SkillPlanCardProps {
 	plan: SkillPlan
+	readiness?: {
+		percentageRequired: number
+		percentageRecommended: number
+		totalSkills: number
+	}
+	isReadinessLoading?: boolean
 }
 
-export function SkillPlanCard({ plan }: SkillPlanCardProps) {
+export function SkillPlanCard({
+	plan,
+	readiness,
+	isReadinessLoading = false,
+}: SkillPlanCardProps) {
 	const navigate = useNavigate()
 
 	const getStatusIcon = () => {
@@ -36,9 +48,39 @@ export function SkillPlanCard({ plan }: SkillPlanCardProps) {
 		navigate(`/skill-plans/${plan.id}`)
 	}
 
+	const getReadinessDisplay = () => {
+		if (!readiness) return null
+		const status = deriveReadinessStatus(readiness)
+		switch (status) {
+			case 'completed':
+				return {
+					label: 'Completed',
+					variant: 'success' as const,
+				}
+			case 'meets_requirements':
+				return {
+					label: 'Meets Requirements',
+					variant: 'warning' as const,
+				}
+			case 'no_skills':
+				return {
+					label: 'No Skills',
+					variant: 'secondary' as const,
+				}
+			case 'incomplete':
+			default:
+				return {
+					label: 'Incomplete',
+					variant: 'destructive' as const,
+				}
+		}
+	}
+
+	const readinessDisplay = getReadinessDisplay()
+
 	return (
 		<Card
-			className="hover:shadow-lg transition-shadow cursor-pointer"
+			className="flex h-full flex-col hover:shadow-lg transition-shadow cursor-pointer"
 			onClick={handleCardClick}
 		>
 			<CardHeader>
@@ -60,13 +102,45 @@ export function SkillPlanCard({ plan }: SkillPlanCardProps) {
 				</div>
 			</CardHeader>
 
-			<CardContent>
+			<CardContent className="flex flex-1 flex-col">
 				{/* Skills count */}
 				{plan.skills && (
 					<div className="text-sm text-muted-foreground">
 						{plan.skills.length} skill{plan.skills.length !== 1 ? 's' : ''} in this plan
 					</div>
 				)}
+
+				{isReadinessLoading ? (
+					<div className="mt-auto pt-3">
+						<Badge variant="secondary">Checking readiness...</Badge>
+					</div>
+				) : readiness && readinessDisplay ? (
+					<div className="mt-auto pt-3 space-y-2">
+						<div className="flex items-center gap-2">
+							<Badge variant={readinessDisplay.variant}>{readinessDisplay.label}</Badge>
+						</div>
+						<div className="space-y-1.5">
+							<div className="flex items-center justify-between text-xs text-muted-foreground">
+								<span>Required</span>
+								<span>{Math.round(readiness.percentageRequired)}%</span>
+							</div>
+							<Progress
+								value={readiness.percentageRequired}
+								className="h-1.5 bg-warning [&>div]:bg-primary"
+							/>
+						</div>
+						<div className="space-y-1.5">
+							<div className="flex items-center justify-between text-xs text-muted-foreground">
+								<span>Recommended</span>
+								<span>{Math.round(readiness.percentageRecommended)}%</span>
+							</div>
+							<Progress
+								value={readiness.percentageRecommended}
+								className="h-1.5 bg-warning [&>div]:bg-primary"
+							/>
+						</div>
+					</div>
+				) : null}
 			</CardContent>
 		</Card>
 	)

@@ -1,3 +1,4 @@
+import { useQueries } from '@tanstack/react-query'
 import { Plus, Search, Settings } from 'lucide-react'
 import { useMemo, useState } from 'react'
 import { Link } from 'react-router-dom'
@@ -13,9 +14,17 @@ import { Select } from '../../../components/ui/select'
 import { Section } from '../../../components/ui/section'
 import { useAuth } from '../../../hooks/useAuth'
 import { usePageTitle } from '../../../hooks/usePageTitle'
+import { skillPlansApi } from '../api'
 import { CategorySectionHeader } from '../components/category-section-header'
 import { SkillPlanCard } from '../components/skill-plan-card'
-import { useDeleteSkillPlan, useSkillPlanCategories, useSkillPlans } from '../hooks'
+import {
+	skillPlanKeys,
+	useDeleteSkillPlan,
+	useCharacterSkillLevels,
+	useSkillPlanCategories,
+	useSkillPlans,
+} from '../hooks'
+import { calculateCharacterProgress } from '../utils/readiness'
 import { groupPlansByCategory } from '../utils/group-by-category'
 
 import type { SkillPlansFilter } from '../types'
@@ -79,6 +88,66 @@ export default function SkillPlansList() {
 	const groupedPlans = useMemo(() => {
 		return groupPlansByCategory(filteredPlans)
 	}, [filteredPlans])
+
+	const mainCharacter = useMemo(
+		() => user?.characters.find((character) => character.characterId === user.mainCharacterId),
+		[user]
+	)
+
+	const { data: mainCharacterSkills, isLoading: mainCharacterSkillsLoading } = useCharacterSkillLevels(
+		mainCharacter?.characterId
+	)
+
+	const planSkillsQueries = useQueries({
+		queries: filteredPlans.map((plan) => ({
+			queryKey: skillPlanKeys.skills(plan.id),
+			queryFn: () => skillPlansApi.getPlanSkills(plan.id),
+			enabled: !!mainCharacter?.characterId && !plan.skills,
+			staleTime: 1000 * 60 * 5,
+		})),
+	})
+
+	const readinessByPlanId = useMemo(() => {
+		const result = new Map<string, ReturnType<typeof calculateCharacterProgress>>()
+
+		if (!mainCharacter || !mainCharacterSkills) {
+			return result
+		}
+
+		for (let index = 0; index < filteredPlans.length; index++) {
+			const plan = filteredPlans[index]
+			const planSkills = plan.skills ?? planSkillsQueries[index]?.data
+
+			if (!planSkills) {
+				continue
+			}
+
+			result.set(
+				plan.id,
+				calculateCharacterProgress({
+					planId: plan.id,
+					planName: plan.name,
+					characterId: mainCharacter.characterId,
+					characterName: mainCharacter.characterName,
+					planSkills,
+					characterSkillLevels: mainCharacterSkills.levels,
+				})
+			)
+		}
+
+		return result
+	}, [filteredPlans, mainCharacter, mainCharacterSkills, planSkillsQueries])
+
+	const readinessLoadingByPlanId = useMemo(() => {
+		const loading = new Map<string, boolean>()
+		for (let index = 0; index < filteredPlans.length; index++) {
+			const plan = filteredPlans[index]
+			const query = planSkillsQueries[index]
+			const isLoading = !plan.skills && !!mainCharacter && (query?.isPending ?? false)
+			loading.set(plan.id, mainCharacterSkillsLoading || isLoading)
+		}
+		return loading
+	}, [filteredPlans, mainCharacter, mainCharacterSkillsLoading, planSkillsQueries])
 
 	if (plansLoading || categoriesLoading) {
 		return <LoadingPage />
@@ -236,6 +305,8 @@ export default function SkillPlansList() {
 												<SkillPlanCard
 													key={`${group.category?.id || 'uncategorized'}-${plan.id}`}
 													plan={plan}
+													readiness={readinessByPlanId.get(plan.id)}
+													isReadinessLoading={readinessLoadingByPlanId.get(plan.id) || false}
 												/>
 											))}
 										</div>

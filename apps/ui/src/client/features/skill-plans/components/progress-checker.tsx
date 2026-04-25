@@ -1,5 +1,5 @@
 import { AlertCircle, CheckCircle2, ClipboardCopy, Filter, XCircle } from 'lucide-react'
-import { useState } from 'react'
+import { useMemo, useState } from 'react'
 
 import { Badge } from '../../../components/ui/badge'
 import { Button } from '../../../components/ui/button'
@@ -16,7 +16,8 @@ import {
 } from '../../../components/ui/table'
 import { useAuth } from '../../../hooks/useAuth'
 import { cn } from '../../../lib/utils'
-import { useCharacterProgress } from '../hooks'
+import { useCharacterSkillLevels, usePlanSkills } from '../hooks'
+import { calculateCharacterProgress } from '../utils/readiness'
 
 import type { CharacterSkillProgress } from '../types'
 
@@ -72,8 +73,8 @@ export function ProgressChecker({ planId, planName, initialCharacterId }: Progre
 		'all'
 	)
 
-	const { data: progress, isLoading } = useCharacterProgress(
-		planId,
+	const { data: planSkills, isLoading: isPlanSkillsLoading } = usePlanSkills(planId)
+	const { data: selectedCharacterSkills, isLoading: isCharacterSkillsLoading } = useCharacterSkillLevels(
 		selectedCharacterId || undefined
 	)
 
@@ -88,6 +89,21 @@ export function ProgressChecker({ planId, planName, initialCharacterId }: Progre
 	}
 
 	const selectedCharacter = user.characters.find((c) => c.characterId === selectedCharacterId)
+	const progress = useMemo(() => {
+		if (!selectedCharacter || !planSkills || !selectedCharacterSkills) {
+			return undefined
+		}
+
+		return calculateCharacterProgress({
+			planId,
+			planName: planName || 'Skill Plan',
+			characterId: selectedCharacter.characterId,
+			characterName: selectedCharacter.characterName,
+			planSkills,
+			characterSkillLevels: selectedCharacterSkills.levels,
+		})
+	}, [planId, planName, planSkills, selectedCharacter, selectedCharacterSkills])
+	const isLoading = isPlanSkillsLoading || isCharacterSkillsLoading
 
 	return (
 		<div className="space-y-4">
@@ -128,7 +144,10 @@ export function ProgressChecker({ planId, planName, initialCharacterId }: Progre
 											)}
 										</div>
 									</div>
-									<Progress value={progress.percentageRequired || 0} className="h-2" />
+									<Progress
+										value={progress.percentageRequired || 0}
+										className="h-2 bg-warning [&>div]:bg-primary"
+									/>
 									<p className="text-xs text-muted-foreground">
 										{(progress.percentageRequired || 0).toFixed(1)}% of required skills met
 									</p>
@@ -157,7 +176,10 @@ export function ProgressChecker({ planId, planName, initialCharacterId }: Progre
 											)}
 										</div>
 									</div>
-									<Progress value={progress.percentageRecommended || 0} className="h-2" />
+									<Progress
+										value={progress.percentageRecommended || 0}
+										className="h-2 bg-warning [&>div]:bg-primary"
+									/>
 									<p className="text-xs text-muted-foreground">
 										{(progress.percentageRecommended || 0).toFixed(1)}% of recommended skills met
 									</p>

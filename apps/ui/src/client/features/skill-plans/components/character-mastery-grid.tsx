@@ -1,14 +1,11 @@
-import { useQueries } from '@tanstack/react-query'
 import { AlertCircle } from 'lucide-react'
 
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { useAuth } from '@/hooks/useAuth'
 
-import { skillPlansApi } from '../api'
-import { skillPlanKeys } from '../hooks'
+import { useCharacterSkillLevelsForCharacters, usePlanSkills } from '../hooks'
+import { calculateCharacterProgress } from '../utils/readiness'
 import { CharacterMasteryCard } from './character-mastery-card'
-
-import type { MasteryStatus } from '../types'
 
 interface CharacterMasteryGridProps {
 	planId: string
@@ -25,21 +22,9 @@ export function CharacterMasteryGrid({
 
 	// Get all user characters
 	const characters = user?.characters || []
+	const { data: planSkills, isLoading: planSkillsLoading } = usePlanSkills(planId)
 
-	// Use useQueries to fetch data for all characters in parallel
-	// This is the proper way to handle dynamic arrays of queries
-	const queries = useQueries({
-		queries: characters.map((char) => ({
-			queryKey: skillPlanKeys.progress(planId, char.characterId),
-			queryFn: () => skillPlansApi.checkCharacterProgress(planId, char.characterId),
-			staleTime: 1000 * 60 * 1, // 1 minute
-			enabled: !!planId && !!char.characterId,
-			// Disable cache to ensure loading states always show
-			gcTime: 0,
-			// Notify only when status changes to reduce re-renders
-			notifyOnChangeProps: ['data', 'error', 'status'],
-		})),
-	})
+	const queries = useCharacterSkillLevelsForCharacters(characters)
 
 	if (!user) {
 		return (
@@ -79,23 +64,23 @@ export function CharacterMasteryGrid({
 				<div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4">
 					{characters.map((character, index) => {
 						const query = queries[index]
-						const progress = query.data
+						const progress =
+							query.data && planSkills
+								? calculateCharacterProgress({
+										planId,
+										planName: title,
+										characterId: character.characterId,
+										characterName: character.characterName,
+										planSkills,
+										characterSkillLevels: query.data.levels,
+									})
+								: undefined
 
 						// Determine loading state - show skeleton until we have data or an error
-						const isLoading = query.isPending || (!progress && !query.error)
-
-						// Debug logging
-						console.log(`[CharacterMasteryGrid] ${character.characterName}:`, {
-							isPending: query.isPending,
-							isFetching: query.isFetching,
-							hasData: !!progress,
-							hasError: !!query.error,
-							isLoading,
-							hasValidToken: character.hasValidToken,
-						})
+						const isLoading = planSkillsLoading || query.isPending || (!progress && !query.error)
 
 						// Determine error state
-						const hasError = !character.hasValidToken || query.error !== null
+						const hasError = !character.hasValidToken || query.error != null
 
 						return (
 							<CharacterMasteryCard
