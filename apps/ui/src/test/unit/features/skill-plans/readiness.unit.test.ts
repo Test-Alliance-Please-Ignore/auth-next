@@ -3,6 +3,7 @@ import { describe, expect, it } from 'vitest'
 import {
 	calculateCharacterProgress,
 	deriveReadinessStatus,
+	summarizeReadinessStatuses,
 } from '@/features/skill-plans/utils/readiness'
 
 describe('skill plan readiness calculator', () => {
@@ -197,5 +198,34 @@ describe('deriveReadinessStatus', () => {
 				totalSkills: 3,
 			})
 		).toBe('incomplete')
+	})
+})
+
+describe('summarizeReadinessStatuses', () => {
+	it('counts completed, meets requirements, and incomplete statuses', () => {
+		const summary = summarizeReadinessStatuses([
+			'completed',
+			'completed',
+			'meets_requirements',
+			'incomplete',
+		])
+
+		expect(summary).toEqual({
+			completed: 2,
+			meetsRequirements: 1,
+			incomplete: 1,
+			total: 4,
+		})
+	})
+
+	it('ignores no_skills in totals for character readiness segments', () => {
+		const summary = summarizeReadinessStatuses(['no_skills', 'completed', 'incomplete'])
+
+		expect(summary).toEqual({
+			completed: 1,
+			meetsRequirements: 0,
+			incomplete: 1,
+			total: 2,
+		})
 	})
 })
