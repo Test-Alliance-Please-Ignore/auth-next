@@ -1,6 +1,8 @@
-import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
+import { useMutation, useQueries, useQuery, useQueryClient } from '@tanstack/react-query'
 
+import { apiClient } from '../../lib/api'
 import { skillPlansApi } from './api'
+import { type CharacterSkillLevels } from './utils/readiness'
 
 import type {
 	AddSkillRequest,
@@ -30,6 +32,8 @@ export const skillPlanKeys = {
 	categories: () => [...skillPlanKeys.all, 'categories'] as const,
 	progress: (planId: string, characterId?: string) =>
 		[...skillPlanKeys.all, 'progress', planId, characterId] as const,
+	characterSkills: (characterId: string) =>
+		[...skillPlanKeys.all, 'character-skills', characterId] as const,
 	availableSkills: () => ['available-skills'] as const,
 	searchSkills: (query: string) => ['available-skills', 'search', query] as const,
 }
@@ -273,6 +277,60 @@ export function useCharacterProgress(planId: string, characterId?: string) {
 		queryFn: () => skillPlansApi.checkCharacterProgress(planId, characterId),
 		staleTime: 1000 * 60 * 1, // 1 minute - progress can change quickly
 		enabled: !!planId,
+	})
+}
+
+export function useCharacterSkillLevels(characterId?: string) {
+	return useQuery<CharacterSkillLevels>({
+		queryKey: skillPlanKeys.characterSkills(characterId ?? ''),
+		queryFn: async () => {
+			if (!characterId) {
+				throw new Error('Character ID is required')
+			}
+
+			const detail = await apiClient.getCharacterDetail(characterId)
+			const trainedSkills = detail.public.skills?.skills ?? []
+
+			const levels: Record<string, number> = {}
+			for (const skill of trainedSkills) {
+				levels[String(skill.skillId)] = Number(skill.trainedSkillLevel ?? 0)
+			}
+
+			return {
+				characterId,
+				characterName: detail.public.info?.name ?? characterId,
+				levels,
+			}
+		},
+		enabled: !!characterId,
+		staleTime: 1000 * 60 * 5,
+	})
+}
+
+export function useCharacterSkillLevelsForCharacters(
+	characters: Array<{ characterId: string; hasValidToken: boolean }>
+) {
+	return useQueries({
+		queries: characters.map((character) => ({
+			queryKey: skillPlanKeys.characterSkills(character.characterId),
+			queryFn: async () => {
+				const detail = await apiClient.getCharacterDetail(character.characterId)
+				const trainedSkills = detail.public.skills?.skills ?? []
+
+				const levels: Record<string, number> = {}
+				for (const skill of trainedSkills) {
+					levels[String(skill.skillId)] = Number(skill.trainedSkillLevel ?? 0)
+				}
+
+				return {
+					characterId: character.characterId,
+					characterName: detail.public.info?.name ?? character.characterId,
+					levels,
+				} satisfies CharacterSkillLevels
+			},
+			enabled: character.hasValidToken,
+			staleTime: 1000 * 60 * 5,
+		})),
 	})
 }
 
