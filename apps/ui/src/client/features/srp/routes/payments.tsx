@@ -1,11 +1,12 @@
 import { Check, Copy } from 'lucide-react'
 import { useState } from 'react'
-import { Navigate } from 'react-router-dom'
+import { Link, Navigate } from 'react-router-dom'
 import { toast } from 'sonner'
 
 import { Button } from '@/components/ui/button'
 import { Card } from '@/components/ui/card'
 import { Container } from '@/components/ui/container'
+import { EveTimeDisplay } from '@/components/ui/eve-time-display'
 import { PageHeader } from '@/components/ui/page-header'
 import { useUserPermissions } from '@/hooks/useUserPermissions'
 
@@ -146,15 +147,23 @@ function PaymentCard({
 				<Button size="sm" onClick={() => onMarkPaid(request)} className="shrink-0 gap-1">
 					<Check className="h-4 w-4" /> Mark Paid
 				</Button>
-				<div className="text-xs text-muted-foreground">
-					<span className="font-medium">{request.shipTypeName}</span>
-					{request.corporationName && (
-						<span className="ml-2">· {request.corporationName}</span>
-					)}
-					<span className="ml-2">· Lost {formatRelativeTime(request.lossDate)}</span>
-					{request.reviewedAt && (
-						<span className="ml-2">· Reviewed {formatRelativeTime(request.reviewedAt)}</span>
-					)}
+				<div className="text-sm text-muted-foreground">
+					<Link
+						to={`/srp/review/${request.id}`}
+						target="_blank"
+						rel="noopener noreferrer"
+						className="inline-flex items-center gap-2 underline-offset-4 hover:underline focus-visible:underline"
+					>
+						<span className="font-medium">{request.shipTypeName}</span>
+						{request.corporationName && <span>· {request.corporationName}</span>}
+						<span className="inline-flex items-center gap-1">
+							<span>· Lost</span>
+							<EveTimeDisplay dateStr={request.lossDate} format="compact" className="text-sm" />
+						</span>
+						{request.reviewedAt && (
+							<span>· Reviewed {formatRelativeTime(request.reviewedAt)}</span>
+						)}
+					</Link>
 				</div>
 			</div>
 		</Card>
