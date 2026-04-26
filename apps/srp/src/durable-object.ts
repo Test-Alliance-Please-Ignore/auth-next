@@ -94,7 +94,50 @@ export class SrpDO extends DurableObject<Env> implements Srp {
 		})
 
 		if (existing) {
-			throw new Error('SRP request already exists for this killmail')
+			if (existing.requestStatus !== 'withdrawn') {
+				throw new Error('SRP request already exists for this killmail')
+			}
+			if (existing.userId !== userId) {
+				throw new Error('SRP request already exists for this killmail')
+			}
+
+			const reactivated = await this.db
+				.update(srpRequests)
+				.set({
+					requestStatus: 'pending',
+					contextText,
+					killmailHash,
+					approvedAmount: null,
+					reviewerId: null,
+					reviewerCharacterName: null,
+					reviewedAt: null,
+					reviewNotes: null,
+					appliedModifierPolicyId: null,
+					appliedModifierPolicyName: null,
+					appliedCapPolicyId: null,
+					appliedCapPolicyName: null,
+					appliedModifiers: null,
+					reviewerOverrideMillions: null,
+					paymentDate: null,
+					paymentCharacterName: null,
+					updatedAt: new Date(),
+				})
+				.where(eq(srpRequests.id, normalizedKillmailId))
+				.returning()
+
+			await this.logHistory(
+				existing.id,
+				userId,
+				(existing.characterName ?? 'Unknown') as string,
+				'request_reopened',
+				{
+					previousRequestStatus: existing.requestStatus,
+					newRequestStatus: 'pending',
+				},
+				'public'
+			)
+
+			return await this.formatRequestWithShipSlotCapacities(reactivated[0])
 		}
 
 		// Fetch killmail details from eve-character-data using instance pattern
@@ -1058,6 +1101,7 @@ export class SrpDO extends DurableObject<Env> implements Srp {
 				payment_pending: 0,
 				rejected: 0,
 				paid: 0,
+				withdrawn: 0,
 			},
 			totalIskApproved: '0',
 			totalIskPaid: '0',
@@ -1751,6 +1795,47 @@ export class SrpDO extends DurableObject<Env> implements Srp {
 			{
 				previousRequestStatus: request.requestStatus,
 				newRequestStatus: newState,
+				metadata: notes ? { notes } : undefined,
+			},
+			'public'
+		)
+
+		return await this.formatRequestWithShipSlotCapacities(updated[0])
+	}
+
+	async withdrawRequest(
+		requestId: string,
+		userId: string,
+		actorCharacterName: string,
+		notes?: string
+	): Promise<SRPRequestResponse> {
+		const request = await this.db.query.srpRequests.findFirst({
+			where: eq(srpRequests.id, requestId),
+		})
+
+		if (!request) throw new Error('Request not found')
+		if (request.userId !== userId) throw new Error('Not authorized to withdraw this request')
+		if (!['pending', 'needs_context'].includes(request.requestStatus)) {
+			throw new Error('Only pending or needs_context requests can be withdrawn')
+		}
+
+		const updated = await this.db
+			.update(srpRequests)
+			.set({
+				requestStatus: 'withdrawn',
+				updatedAt: new Date(),
+			})
+			.where(eq(srpRequests.id, requestId))
+			.returning()
+
+		await this.logHistory(
+			requestId,
+			userId,
+			actorCharacterName,
+			'request_withdrawn',
+			{
+				previousRequestStatus: request.requestStatus,
+				newRequestStatus: 'withdrawn',
 				metadata: notes ? { notes } : undefined,
 			},
 			'public'

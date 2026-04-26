@@ -5,6 +5,7 @@ import {
 	isSrpMyRequestsQueryKey,
 	patchLossesByRequestStatus,
 	patchLossesForRequest,
+	patchMyRequestsStatus,
 	prependMyRequest,
 } from '@/features/srp/state/cache-updates'
 
@@ -72,6 +73,24 @@ describe('srp cache updates', () => {
 		expect(patched?.[0]?.srpRequestStatus).toBe('approved')
 	})
 
+	it('preserves loss request linkage when status becomes withdrawn', () => {
+		const losses = [
+			{
+				killmailId: '111',
+				hasSRPRequest: true,
+				srpRequestId: '111',
+				srpRequestStatus: 'pending',
+			},
+		]
+		const patched = patchLossesByRequestStatus(losses, '111', 'withdrawn')
+		expect(patched?.[0]).toMatchObject({
+			killmailId: '111',
+			hasSRPRequest: true,
+			srpRequestId: '111',
+			srpRequestStatus: 'withdrawn',
+		})
+	})
+
 	it('prepends created request to my-requests cache and increments total', () => {
 		const data = {
 			requests: [makeRequest('101', 'pending')],
@@ -81,6 +100,20 @@ describe('srp cache updates', () => {
 		}
 		const next = prependMyRequest(data, makeRequest('202', 'pending'))
 		expect(next?.requests[0]?.id).toBe('202')
+		expect(next?.total).toBe(2)
+	})
+
+	it('keeps withdrawn request in my-requests cache with updated status', () => {
+		const data = {
+			requests: [makeRequest('101', 'pending'), makeRequest('202', 'approved')],
+			total: 2,
+			limit: 10,
+			offset: 0,
+		}
+		const withdrawn = makeRequest('101', 'withdrawn')
+		const next = patchMyRequestsStatus(data, withdrawn)
+		expect(next?.requests.map((row) => row.id)).toEqual(['101', '202'])
+		expect(next?.requests.find((row) => row.id === '101')?.requestStatus).toBe('withdrawn')
 		expect(next?.total).toBe(2)
 	})
 

@@ -27,6 +27,12 @@ export interface Srp {
 		killmailHash: string,
 		contextText: string
 	): Promise<SRPRequestResponse>
+	withdrawRequest(
+		requestId: string,
+		userId: string,
+		actorCharacterName: string,
+		notes?: string
+	): Promise<SRPRequestResponse>
 	getRequest(requestId: string, userId: string): Promise<SRPRequestResponse | null>
 	getUserRequests(userId: string, limit?: number, offset?: number): Promise<SRPRequestResponse[]>
 	getRecentLosses(
@@ -175,6 +181,7 @@ export const REQUEST_STATUSES = [
 	'payment_pending',
 	'rejected',
 	'paid',
+	'withdrawn',
 ] as const
 export type RequestStatus = (typeof REQUEST_STATUSES)[number]
 
@@ -321,7 +328,18 @@ export const SRPReviewSubmissionSchema = z.object({
  * Schema for changing request state
  */
 export const UpdateReviewStateSchema = z.object({
-	newState: z.enum(['pending', 'needs_context', 'approved', 'payment_pending', 'rejected', 'paid']),
+	newState: z.enum([
+		'pending',
+		'needs_context',
+		'approved',
+		'payment_pending',
+		'rejected',
+		'paid',
+	]),
+	notes: z.string().max(2000).optional(),
+})
+
+export const WithdrawSRPRequestSchema = z.object({
 	notes: z.string().max(2000).optional(),
 })
 
@@ -619,12 +637,14 @@ export function isValidStatusTransition(
 		approved: ['pending', 'needs_context', 'rejected'],
 		payment_pending: [],
 		rejected: ['pending', 'needs_context', 'approved'],
+		withdrawn: [],
 	}
 
 	const PAYER_TRANSITIONS: Partial<Record<RequestStatus, RequestStatus[]>> = {
 		...REVIEWER_TRANSITIONS,
 		approved: ['payment_pending', 'pending', 'needs_context', 'rejected'],
 		payment_pending: ['paid', 'pending', 'needs_context', 'rejected'],
+		withdrawn: [],
 	}
 
 	const allowed = role === 'payer' ? PAYER_TRANSITIONS[from] : REVIEWER_TRANSITIONS[from]

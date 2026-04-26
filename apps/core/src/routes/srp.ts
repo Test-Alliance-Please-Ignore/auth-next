@@ -9,10 +9,10 @@ import {
 	CreateSRPPolicySchema,
 	CreateSRPRequestSchema,
 	EditCommentSchema,
-	REQUEST_STATUSES,
 	SRPReviewSubmissionSchema,
 	UpdateReviewStateSchema,
 	UpdateSRPConfigSchema,
+	WithdrawSRPRequestSchema,
 } from '@repo/srp'
 
 import { createDb } from '../db'
@@ -43,7 +43,14 @@ const RejectRequestSchema = z.object({
 	reviewNotes: z.string().max(2000).optional(),
 })
 
-const RequestStatusQuerySchema = z.enum(REQUEST_STATUSES)
+const ReviewQueueStatusQuerySchema = z.enum([
+	'pending',
+	'needs_context',
+	'approved',
+	'payment_pending',
+	'rejected',
+	'paid',
+])
 const RequestSearchFieldQuerySchema = z.enum(['character', 'ship', 'system'])
 
 /**
@@ -779,7 +786,7 @@ srp.get('/requests', async (c) => {
  */
 srp.get('/requests/by-status', async (c) => {
 	const user = c.get('user')!
-	const statusParsed = RequestStatusQuerySchema.safeParse(c.req.query('status'))
+	const statusParsed = ReviewQueueStatusQuerySchema.safeParse(c.req.query('status'))
 	if (!statusParsed.success) {
 		return c.json({ error: 'Invalid status' }, 400)
 	}
@@ -825,7 +832,7 @@ srp.get('/requests/by-status', async (c) => {
  */
 srp.get('/requests/search-values', async (c) => {
 	const user = c.get('user')!
-	const statusParsed = RequestStatusQuerySchema.safeParse(c.req.query('status'))
+	const statusParsed = ReviewQueueStatusQuerySchema.safeParse(c.req.query('status'))
 	if (!statusParsed.success) {
 		return c.json({ error: 'Invalid status' }, 400)
 	}
@@ -1130,6 +1137,47 @@ srp.patch('/requests/:id/state', async (c) => {
 		notes
 	)
 	return c.json(request)
+})
+
+/**
+ * Withdraw a request (requestor only)
+ * POST /api/srp/requests/:id/withdraw
+ */
+srp.post('/requests/:id/withdraw', async (c) => {
+	const user = c.get('user')!
+	const requestId = c.req.param('id')
+	if (!isValidSrpRequestId(requestId)) {
+		return c.json({ error: 'Invalid request id' }, 400)
+	}
+	const body = await c.req.json().catch(() => ({}))
+
+	const validation = WithdrawSRPRequestSchema.safeParse(body)
+	if (!validation.success) {
+		return c.json({ error: 'Invalid request data', details: validation.error }, 400)
+	}
+
+	const srpStub = getStub<Srp>(c.env.SRP, getRequestId(c))
+	const existingRequest = await srpStub.getRequest(requestId, user.id)
+	if (!existingRequest) return c.json({ error: 'Request not found' }, 404)
+	if (existingRequest.userId !== user.id) {
+		return c.json({ error: 'Not authorized to withdraw this request' }, 403)
+	}
+
+	try {
+		const request = await srpStub.withdrawRequest(
+			existingRequest.id,
+			user.id,
+			getPrimaryCharacterName(user),
+			validation.data.notes
+		)
+		return c.json(request)
+	} catch (error) {
+		const message = error instanceof Error ? error.message : String(error)
+		if (message.includes('Only pending or needs_context requests can be withdrawn')) {
+			return c.json({ error: message }, 422)
+		}
+		throw error
+	}
 })
 
 // =============================================================================

@@ -27,6 +27,7 @@ export const requestStatusEnum = pgEnum('srp_request_status', [
 	'payment_pending',
 	'rejected',
 	'paid',
+	'withdrawn',
 ])
 
 /**

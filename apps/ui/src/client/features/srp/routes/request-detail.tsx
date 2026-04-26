@@ -1,5 +1,5 @@
 import { ArrowLeft } from 'lucide-react'
-import { Link, Navigate, useParams } from 'react-router-dom'
+import { Link, Navigate, useNavigate, useParams } from 'react-router-dom'
 
 import { roundToMillion } from '@repo/srp'
 import { Badge } from '@/components/ui/badge'
@@ -9,6 +9,7 @@ import { Container } from '@/components/ui/container'
 import { EveTimeDisplay } from '@/components/ui/eve-time-display'
 import { PageHeader } from '@/components/ui/page-header'
 import { useAuth } from '@/hooks/useAuth'
+import { useConfirmationDialog } from '@/hooks/useConfirmationDialog'
 import { useUserPermissions } from '@/hooks/useUserPermissions'
 
 import { CommentForm } from '../components/CommentForm'
@@ -17,7 +18,7 @@ import { CharacterRoleBadge } from '../components/CharacterRoleBadge'
 import { RequestHistory } from '../components/RequestHistory'
 import { SRPRequestDetailSkeleton } from '../components/SRPRequestDetailSkeleton'
 import { RequestStatusBadge } from '../components/RequestStatusBadge'
-import { useRequest, useRequestComments } from '../hooks'
+import { useCreateRequest, useRequest, useRequestComments, useWithdrawRequest } from '../hooks'
 import { formatISK, getKillmailUrl, getRequestCharacterRole } from '../utils'
 
 function formatAppliedModifierValue(modifier: {
@@ -41,11 +42,15 @@ function formatAppliedModifierValue(modifier: {
 
 export default function RequestDetails() {
 	const { id } = useParams<{ id: string }>()
+	const navigate = useNavigate()
 	const { user } = useAuth()
 	const { hasPermission, isAdmin } = useUserPermissions()
+	const { requestConfirmation, confirmationDialog } = useConfirmationDialog()
 
 	const { data: request, isLoading, error } = useRequest(id)
 	const { data: comments = [], refetch: refetchComments } = useRequestComments(id, false)
+	const createRequest = useCreateRequest()
+	const withdrawRequest = useWithdrawRequest()
 
 	if (!id) {
 		return <Navigate to="/srp" replace />
@@ -81,6 +86,45 @@ export default function RequestDetails() {
 		hasPermission('urn:srp:reviewer') ||
 		hasPermission('urn:srp:payer') ||
 		hasPermission('urn:srp:manager')
+	const canWithdraw =
+		user?.id === request.userId &&
+		(request.requestStatus === 'pending' || request.requestStatus === 'needs_context')
+	const canReopen = user?.id === request.userId && request.requestStatus === 'withdrawn'
+
+	const handleWithdraw = async () => {
+		if (!id) return
+		requestConfirmation({
+			title: 'Withdraw SRP Request',
+			description:
+				'Withdraw this SRP request? You can re-submit it later from Recent Losses.',
+			confirmLabel: 'Withdraw Request',
+			intent: 'destructive',
+			onConfirm: async () => {
+				await withdrawRequest.mutateAsync({ id })
+				navigate('/srp')
+			},
+		})
+	}
+
+	const handleReopen = async () => {
+		if (!id) return
+		requestConfirmation({
+			title: 'Reopen SRP Request',
+			description:
+				'Reopen this withdrawn SRP request? This will move it back to pending review.',
+			confirmLabel: 'Reopen Request',
+			intent: 'confirm',
+			onConfirm: async () => {
+				await createRequest.mutateAsync({
+					characterId: request.characterId,
+					killmailId: request.id,
+					killmailHash: request.killmailHash,
+					contextText: request.contextText?.trim() || 'Reopened SRP request',
+				})
+				navigate(`/srp/request/${id}`)
+			},
+		})
+	}
 
 	if (user?.id && request.userId !== user.id) {
 		if (isSrpStaff) {
@@ -116,12 +160,34 @@ export default function RequestDetails() {
 					</span>
 				}
 				action={
-					<Button variant="ghost" size="sm" asChild>
-						<Link to="/srp">
-							<ArrowLeft className="mr-2 h-4 w-4" />
-							Back to SRP Dashboard
-						</Link>
-					</Button>
+					<div className="flex items-center gap-2">
+						{canWithdraw && (
+							<Button
+								variant="destructive"
+								size="sm"
+								onClick={handleWithdraw}
+								disabled={withdrawRequest.isPending || createRequest.isPending}
+							>
+								Withdraw Request
+							</Button>
+						)}
+						{canReopen && (
+							<Button
+								variant="primary"
+								size="sm"
+								onClick={handleReopen}
+								disabled={createRequest.isPending || withdrawRequest.isPending}
+							>
+								Reopen Request
+							</Button>
+						)}
+						<Button variant="ghost" size="sm" asChild>
+							<Link to="/srp">
+								<ArrowLeft className="mr-2 h-4 w-4" />
+								Back to SRP Dashboard
+							</Link>
+						</Button>
+					</div>
 				}
 			/>
 
@@ -260,6 +326,7 @@ export default function RequestDetails() {
 					</div>
 				</Card>
 			</div>
+			{confirmationDialog}
 		</Container>
 	)
 }

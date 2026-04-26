@@ -62,6 +62,8 @@ export function getRequestStatusText(status: RequestStatus): string {
 			return 'Rejected'
 		case 'paid':
 			return 'Paid'
+		case 'withdrawn':
+			return 'Withdrawn'
 		default:
 			return status
 	}
@@ -86,6 +88,8 @@ export function getRequestStatusVariant(
 			return 'destructive'
 		case 'paid':
 			return 'success'
+		case 'withdrawn':
+			return 'ghost'
 		default:
 			return 'ghost'
 	}
