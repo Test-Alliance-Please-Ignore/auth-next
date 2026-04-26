@@ -102,6 +102,8 @@ function asNonEmptyString(value: unknown): string | null {
 function getActionColor(action: string): string {
 	if (action.includes('approved')) return 'bg-green-500'
 	if (action.includes('rejected')) return 'bg-red-500'
+	if (action.includes('withdrawn')) return 'bg-red-500'
+	if (action.includes('reopened')) return 'bg-blue-500'
 	if (action.includes('payment')) return 'bg-primary'
 	if (action.includes('created')) return 'bg-blue-500'
 	return 'bg-muted-foreground'
@@ -115,6 +117,8 @@ function getActionLabel(action: string): string {
 		request_approved: 'Approved',
 		request_partially_approved: 'Partially Approved',
 		request_rejected: 'Rejected',
+		request_withdrawn: 'Withdrawn',
+		request_reopened: 'Reopened',
 		state_changed: 'Status Updated',
 		payment_submitted: 'Payment Pending',
 		payment_completed: 'Payment Completed',

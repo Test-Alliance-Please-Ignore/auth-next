@@ -1,0 +1,1 @@
+ALTER TYPE "public"."srp_request_status" ADD VALUE 'withdrawn';

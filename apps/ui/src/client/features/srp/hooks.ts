@@ -385,6 +385,23 @@ export function useUpdateReviewState() {
 	})
 }
 
+export function useWithdrawRequest() {
+	const queryClient = useQueryClient()
+	return useMutation({
+		mutationFn: ({ id, notes }: { id: string; notes?: string }) =>
+			api.withdrawSRPRequest(id, notes ? { notes } : undefined),
+		onSuccess: (request: SRPRequestResponse) => {
+			updateOverlayRequestStatus({
+				requestId: request.id,
+				requestStatus: request.requestStatus,
+			})
+			setRequestStatusAcrossCaches(queryClient, request)
+			void queryClient.invalidateQueries({ queryKey: srpKeys.requests() })
+			invalidateLossQueries(queryClient)
+		},
+	})
+}
+
 export function useApproveRequest() {
 	const queryClient = useQueryClient()
 	return useMutation({

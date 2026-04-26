@@ -64,6 +64,13 @@
       "when": 1776971261809,
       "tag": "0008_nice_masque",
       "breakpoints": true
+    },
+    {
+      "idx": 9,
+      "version": "7",
+      "when": 1777184321879,
+      "tag": "0009_aberrant_nova",
+      "breakpoints": true
     }
   ]
 }

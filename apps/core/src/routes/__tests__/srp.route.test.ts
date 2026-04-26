@@ -84,6 +84,7 @@ function makeSrpStub() {
 		getRequestsByStatus: vi.fn().mockResolvedValue({ requests: [], total: 0 }),
 		getPendingPayments: vi.fn().mockResolvedValue([]),
 		markPaid: vi.fn(),
+		withdrawRequest: vi.fn(),
 		getComments: vi.fn().mockResolvedValue([]),
 		addComment: vi.fn(),
 		approveRequest: vi.fn(),
@@ -275,6 +276,22 @@ describe('srp routes - permissions', () => {
 		expect(body.history.find((entry: any) => entry.id === 'h-internal')).toBeTruthy()
 	})
 
+	it('allows requestor to view withdrawn request detail', async () => {
+		const app = createApp(makeUser({ id: 'owner-withdrawn-hidden' }))
+		srpStub.getRequest.mockResolvedValue(
+			makeRequest({
+				id: '100009',
+				userId: 'owner-withdrawn-hidden',
+				requestStatus: 'withdrawn',
+			})
+		)
+		mockDbPrimaryCharacterRows([{ userId: 'owner-withdrawn-hidden', characterId: '7002' }])
+
+		const response = await app.request('/api/srp/requests/100009', {}, env)
+
+		expect(response.status).toBe(200)
+	})
+
 	it('denies non-owner non-staff from reading comments for another request', async () => {
 		const app = createApp(makeUser({ id: 'outsider-comments-read' }))
 		srpStub.getRequest.mockResolvedValue(makeRequest({ userId: 'owner-1' }))
@@ -436,5 +453,79 @@ describe('srp routes - permissions', () => {
 		expect(response.status).toBe(403)
 		expect(await response.json()).toEqual({ error: 'Requires payer-or-higher permissions' })
 		expect(srpStub.markPaid).not.toHaveBeenCalled()
+	})
+
+	it('allows request owner to withdraw pending request', async () => {
+		const app = createApp(makeUser({ id: 'owner-withdraw' }))
+		srpStub.getRequest.mockResolvedValue(
+			makeRequest({ id: '999001', userId: 'owner-withdraw', requestStatus: 'pending' })
+		)
+		srpStub.withdrawRequest.mockResolvedValue(
+			makeRequest({ id: '999001', userId: 'owner-withdraw', requestStatus: 'withdrawn' })
+		)
+
+		const response = await app.request(
+			'/api/srp/requests/999001/withdraw',
+			{
+				method: 'POST',
+				body: JSON.stringify({ notes: 'withdrawing for now' }),
+				headers: { 'content-type': 'application/json' },
+			},
+			env
+		)
+
+		expect(response.status).toBe(200)
+		expect(srpStub.withdrawRequest).toHaveBeenCalledWith(
+			'999001',
+			'owner-withdraw',
+			'Pilot One',
+			'withdrawing for now'
+		)
+	})
+
+	it('denies withdraw for non-owner', async () => {
+		const app = createApp(makeUser({ id: 'not-owner-withdraw' }))
+		srpStub.getRequest.mockResolvedValue(
+			makeRequest({ id: '999002', userId: 'owner-1', requestStatus: 'pending' })
+		)
+
+		const response = await app.request(
+			'/api/srp/requests/999002/withdraw',
+			{
+				method: 'POST',
+				body: JSON.stringify({}),
+				headers: { 'content-type': 'application/json' },
+			},
+			env
+		)
+
+		expect(response.status).toBe(403)
+		expect(await response.json()).toEqual({ error: 'Not authorized to withdraw this request' })
+		expect(srpStub.withdrawRequest).not.toHaveBeenCalled()
+	})
+
+	it('returns 422 when withdraw is attempted for non-withdrawable state', async () => {
+		const app = createApp(makeUser({ id: 'owner-withdraw-422' }))
+		srpStub.getRequest.mockResolvedValue(
+			makeRequest({ id: '999003', userId: 'owner-withdraw-422', requestStatus: 'approved' })
+		)
+		srpStub.withdrawRequest.mockRejectedValue(
+			new Error('Only pending or needs_context requests can be withdrawn')
+		)
+
+		const response = await app.request(
+			'/api/srp/requests/999003/withdraw',
+			{
+				method: 'POST',
+				body: JSON.stringify({}),
+				headers: { 'content-type': 'application/json' },
+			},
+			env
+		)
+
+		expect(response.status).toBe(422)
+		expect(await response.json()).toEqual({
+			error: 'Only pending or needs_context requests can be withdrawn',
+		})
 	})
 })

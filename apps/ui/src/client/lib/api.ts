@@ -2815,6 +2815,10 @@ export class ApiClient {
 		return this.patch(`/srp/requests/${id}/state`, data)
 	}
 
+	async withdrawSRPRequest(id: string, data?: { notes?: string }): Promise<any> {
+		return this.post(`/srp/requests/${id}/withdraw`, data ?? {})
+	}
+
 	async getSRPPolicies(): Promise<any[]> {
 		return this.get('/srp/policies')
 	}
