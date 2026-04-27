@@ -35,6 +35,8 @@ const TABS: Array<{ value: RequestStatus; label: string }> = [
 	{ value: 'approved', label: 'Approved' },
 	{ value: 'paid', label: 'Paid' },
 ]
+const REVIEW_QUEUE_ACTIVE_TAB_STORAGE_KEY = 'srp:review-queue:active-tab'
+const REVIEW_QUEUE_TAB_VALUES = new Set(TABS.map((tab) => tab.value))
 
 type ReviewQueueFilters = {
 	characterName?: string
@@ -46,7 +48,16 @@ type ReviewQueueFilters = {
 
 export default function ReviewQueue() {
 	const { hasPermission, isAdmin } = useUserPermissions()
-	const [activeTab, setActiveTab] = useState<RequestStatus>('pending')
+	const [activeTab, setActiveTab] = useState<RequestStatus>(() => {
+		if (typeof window === 'undefined') return 'pending'
+
+		const stored = window.sessionStorage.getItem(REVIEW_QUEUE_ACTIVE_TAB_STORAGE_KEY)
+		if (stored && REVIEW_QUEUE_TAB_VALUES.has(stored as RequestStatus)) {
+			return stored as RequestStatus
+		}
+
+		return 'pending'
+	})
 	const [filters, setFilters] = useState<ReviewQueueFilters>({})
 
 	const canAccessReviewQueue =
@@ -57,6 +68,14 @@ export default function ReviewQueue() {
 
 	if (!canAccessReviewQueue) {
 		return <Navigate to="/srp" replace />
+	}
+
+	const handleTabChange = (value: string) => {
+		const nextTab = value as RequestStatus
+		setActiveTab(nextTab)
+		if (typeof window !== 'undefined') {
+			window.sessionStorage.setItem(REVIEW_QUEUE_ACTIVE_TAB_STORAGE_KEY, nextTab)
+		}
 	}
 
 	return (
@@ -167,7 +186,7 @@ export default function ReviewQueue() {
 						/>
 					</div>
 
-					<Tabs value={activeTab} onValueChange={(value) => setActiveTab(value as RequestStatus)}>
+					<Tabs value={activeTab} onValueChange={handleTabChange}>
 						<TabsList className="w-full">
 							{TABS.map((tab) => (
 								<TabsTrigger key={tab.value} value={tab.value}>

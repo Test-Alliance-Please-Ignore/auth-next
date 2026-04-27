@@ -57,9 +57,14 @@ function PaymentStack() {
 	}
 
 	const requests = (data?.requests ?? [] as SRPRequestResponse[]).filter((r: SRPRequestResponse) => !dismissing.has(r.id))
+	const sortedRequests = [...requests].sort((a, b) => {
+		const aTime = Date.parse(a.reviewedAt ?? a.createdAt ?? a.lossDate)
+		const bTime = Date.parse(b.reviewedAt ?? b.createdAt ?? b.lossDate)
+		return aTime - bTime
+	})
 	const pendingPayoutTotal = payoutTotalData?.pendingPayoutTotal ?? '0'
 
-	if (requests.length === 0) {
+	if (sortedRequests.length === 0) {
 		return (
 			<div className="mt-4 rounded-lg border border-dashed p-12 text-center">
 				<h3 className="mb-2 font-semibold">All caught up!</h3>
@@ -91,7 +96,7 @@ function PaymentStack() {
 					{formatISKShort(pendingPayoutTotal)}
 				</div>
 			</Card>
-			{requests.map((req: SRPRequestResponse) => (
+			{sortedRequests.map((req: SRPRequestResponse) => (
 				<PaymentCard key={req.id} request={req} onMarkPaid={handleMarkPaid} />
 			))}
 		</div>
