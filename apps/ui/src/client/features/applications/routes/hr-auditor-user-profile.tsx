@@ -1,4 +1,4 @@
-import { useQueryClient } from '@tanstack/react-query'
+import { useQueries, useQueryClient } from '@tanstack/react-query'
 import { formatDistanceToNow } from 'date-fns'
 import { ArrowLeft, ExternalLink, FileText, Plus, Scan, Shield, User, Users } from 'lucide-react'
 import { useMemo, useState } from 'react'
@@ -31,11 +31,12 @@ import { Separator } from '@/components/ui/separator'
 import { useAuth } from '@/hooks/useAuth'
 import { usePageTitle } from '@/hooks/usePageTitle'
 import { useUserPermissions } from '@/hooks/useUserPermissions'
-import { allianceLogoUrl, corporationLogoUrl } from '@/lib/eve-images'
+import { apiClient } from '@/lib/api'
 import { cn } from '@/lib/utils'
 
 import { ApplicationStatusBadge } from '../components/application-status-badge'
 import { AddHRNoteDialog } from '../components/add-hr-note-dialog'
+import { CharacterIdentitySummary } from '../components/character-identity-summary'
 import { useApplications, useHRNotes, useRequestFulcrumReport, useRequestFulcrumReportBatch } from '../hooks'
 import { auditorUserKeys, useAuditorFulcrum, useAuditorUser } from '../../../hooks/useAuditorUsers'
 
@@ -57,6 +58,7 @@ interface AuditorCharacterRow {
 	allianceName: string | null
 	role: 'CEO' | 'Director' | 'Member' | null
 	activityStatus: 'active' | 'inactive' | 'unknown' | null
+	hasValidToken: boolean | null
 	latestReport: CharacterReportMetadata | null
 	hasPendingReport: boolean
 }
@@ -74,14 +76,6 @@ function getLatestReport(character: FulcrumCharacterData): CharacterReportMetada
 	return character.reports.reduce((latest, report) =>
 		new Date(report.createdAt) > new Date(latest.createdAt) ? report : latest
 	)
-}
-
-function isNpcCorporation(corporationId: string | null | undefined): boolean {
-	if (!corporationId) return false
-	const parsed = Number(corporationId)
-	if (!Number.isFinite(parsed)) return false
-	const id = Math.trunc(parsed)
-	return id >= 1_000_000 && id <= 1_999_999
 }
 
 export default function HrAuditorUserProfilePage() {
@@ -134,7 +128,7 @@ export default function HrAuditorUserProfilePage() {
 	const returnTo = navigationState?.returnTo
 	const fromApplications = source === 'applications' || returnTo?.includes('/applications')
 	const fromMembers = source === 'members' || returnTo?.includes('/members')
-	const backTarget = returnTo ?? '/hr/auditor/users'
+	const backTarget = returnTo ?? '/hr/users'
 	const breadcrumbMidLabel = fromApplications ? 'Applications' : fromMembers ? 'Members' : 'User Search'
 	const backLabel = fromApplications ? 'Back to Applications' : fromMembers ? 'Back to Members' : 'Back to User Search'
 
@@ -160,6 +154,7 @@ export default function HrAuditorUserProfilePage() {
 					activityStatus: fulcrum?.activityStatus ?? null,
 					latestReport,
 					hasPendingReport,
+					hasValidToken: fulcrum?.hasValidToken ?? null,
 				}
 			})
 			.sort((a, b) => {
@@ -168,6 +163,28 @@ export default function HrAuditorUserProfilePage() {
 				return a.characterName.localeCompare(b.characterName)
 			})
 	}, [fulcrumCharacters, userDetails])
+
+	const characterDetailQueries = useQueries({
+		queries: rows.map((character) => ({
+			queryKey: ['character', character.characterId, 'auditor-profile', character.corporationId],
+			queryFn: () => apiClient.getCharacterDetail(character.characterId, character.corporationId ?? undefined),
+			enabled: !!character.corporationId,
+			staleTime: 5 * 60 * 1000,
+		})),
+	})
+	const spByCharacterId = new Map<string, number | null>()
+	const walletByCharacterId = new Map<string, string | null>()
+	const metricsLoadingByCharacterId = new Map<string, boolean>()
+	rows.forEach((character, index) => {
+		const query = characterDetailQueries[index]
+		const detail = query?.data
+		spByCharacterId.set(character.characterId, detail?.public?.skills?.totalSp ?? null)
+		walletByCharacterId.set(character.characterId, detail?.private?.wallet?.balance ?? null)
+		metricsLoadingByCharacterId.set(
+			character.characterId,
+			!!character.corporationId && (query?.isPending ?? false) && detail == null
+		)
+	})
 
 	if (!authLoading && !isAuthenticated) {
 		return <Navigate to="/login" replace />
@@ -231,6 +248,7 @@ export default function HrAuditorUserProfilePage() {
 				characterId: character.characterId,
 				corporationId: character.corporationId,
 				requestSource: 'hr',
+				targetUserId: userId,
 				userId,
 				sendDm,
 			},
@@ -252,7 +270,7 @@ export default function HrAuditorUserProfilePage() {
 	const handleViewLatestReport = (character: AuditorCharacterRow) => {
 		if (character.latestReport?.status !== 'completed' || !character.corporationId) return
 		const returnTo = `${location.pathname}${location.search}`
-		navigate(`/fulcrum/reports/${character.latestReport.id}`, {
+		navigate(`/hr/users/${userId}/reports/${character.latestReport.id}`, {
 			state: {
 				characterName: character.characterName,
 				userId: userId ?? undefined,
@@ -292,6 +310,7 @@ export default function HrAuditorUserProfilePage() {
 					corporationId,
 					requestSource: 'hr',
 					userId,
+					targetUserId: userId,
 					sendDm: sendDmForBatch,
 				})
 				if (sendDmForBatch) {
@@ -422,7 +441,7 @@ export default function HrAuditorUserProfilePage() {
 					</Card>
 
 					<Button variant="ghost" asChild className="w-full">
-						<Link to={`/hr/auditor/users/${userDetails.id}/groups`}>
+						<Link to={`/hr/users/${userDetails.id}/groups`}>
 							<Users className="h-4 w-4" />
 							View Group Memberships
 						</Link>
@@ -467,15 +486,19 @@ export default function HrAuditorUserProfilePage() {
 										key={character.characterId}
 										className="rounded-lg border px-3 py-2 space-y-2"
 									>
-										<div className="flex min-w-0 items-start gap-3">
-											<MemberAvatar
-												characterId={character.characterId}
-												characterName={character.characterName}
-												size="sm"
-											/>
-											<div className="min-w-0">
-												<div className="flex items-center gap-2">
-													<p className="truncate text-lg font-semibold text-foreground">{character.characterName}</p>
+										<CharacterIdentitySummary
+											characterId={character.characterId}
+											characterName={character.characterName}
+											hasValidToken={character.hasValidToken}
+											corporationId={character.corporationId}
+											corporationName={character.corporationName}
+											allianceId={character.allianceId}
+											allianceName={character.allianceName}
+											skillPoints={spByCharacterId.get(character.characterId)}
+											walletBalance={walletByCharacterId.get(character.characterId)}
+											isMetricsLoading={metricsLoadingByCharacterId.get(character.characterId)}
+											nameBadges={
+												<>
 													{character.isPrimary && (
 														<Badge
 															variant="default"
@@ -509,49 +532,9 @@ export default function HrAuditorUserProfilePage() {
 															{character.activityStatus}
 														</Badge>
 													)}
-												</div>
-												<div className="mt-1 flex flex-wrap items-center gap-2">
-													{character.corporationId && character.corporationName ? (
-														<div className="inline-flex items-center gap-1.5">
-															<img
-																src={corporationLogoUrl(character.corporationId, 32)}
-																alt={character.corporationName}
-																className="size-5 rounded-sm border border-border/60 object-cover"
-															/>
-															<span
-																className={
-																	isNpcCorporation(character.corporationId)
-																		? 'truncate max-w-[220px] text-base text-muted-foreground'
-																		: 'truncate max-w-[220px] text-base text-white'
-																}
-															>
-																{character.corporationName}
-															</span>
-															{isNpcCorporation(character.corporationId) && (
-																<Badge variant="ghost" className="h-5 px-1.5 text-[10px]">
-																	NPC Corp
-																</Badge>
-															)}
-														</div>
-													) : (
-														<span className="text-xs text-muted-foreground">Corporation unknown</span>
-													)}
-													{character.allianceId && character.allianceName && (
-														<div className="inline-flex items-center gap-1.5">
-															<span className="text-muted-foreground">•</span>
-															<img
-																src={allianceLogoUrl(character.allianceId, 32)}
-																alt={character.allianceName}
-																className="size-5 rounded-sm border border-border/60 object-cover"
-															/>
-															<span className="truncate max-w-[220px] text-base text-muted-foreground">
-																{character.allianceName}
-															</span>
-														</div>
-													)}
-												</div>
-											</div>
-										</div>
+												</>
+											}
+										/>
 										<div className="flex items-center gap-2 pl-11">
 											<div
 												className={cn(

@@ -465,6 +465,15 @@ export class CoreWorker extends WorkerEntrypoint<Env> {
 	}
 
 	/**
+	 * Get user's main character id/name by user ID.
+	 */
+	async getUserMainCharacter(
+		userId: string,
+	): Promise<{ characterId: string; characterName: string } | null> {
+		return this.getService().getUserMainCharacter(userId)
+	}
+
+	/**
 	 * Trigger a Discord refresh workflow for a single user.
 	 * Used by event-driven callers (group join/leave/remove, invitation acceptance, etc.)
 	 * to sync Discord roles without blocking the request.

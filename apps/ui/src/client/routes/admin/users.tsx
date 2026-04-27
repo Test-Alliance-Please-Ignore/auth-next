@@ -1,11 +1,11 @@
 import { Search } from 'lucide-react'
 import { useEffect, useState } from 'react'
 
+import { UserSearchPaginationControls } from '@/components/user-search-pagination-controls'
 import { UserSearchResultsTable } from '@/components/user-search-results-table'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Input } from '@/components/ui/input'
 import { Select } from '@/components/ui/select'
-import { UserSearchDialog } from '@/components/user-search-dialog'
 import { useAdminUsers } from '@/hooks/useAdminUsers'
 import { usePageTitle } from '@/hooks/usePageTitle'
 import { api } from '@/lib/api'
@@ -13,7 +13,6 @@ import { Button } from '@/components/ui/button'
 
 export default function UsersPage() {
 	usePageTitle('Admin - Users')
-	const [searchDialogOpen, setSearchDialogOpen] = useState(false)
 	const [searchQuery, setSearchQuery] = useState('')
 	const [debouncedQuery, setDebouncedQuery] = useState('')
 	const [adminFilter, setAdminFilter] = useState<string>('all')
@@ -52,6 +51,10 @@ export default function UsersPage() {
 		setPageSize(newSize)
 		setPage(1) // Reset to first page
 	}
+
+	const totalCount = pagination?.totalCount ?? 0
+	const totalPages = pagination?.totalPages ?? 0
+	const hasPagination = totalPages > 1
 
 	const handleDiscordJoin = async (userId: string) => {
 		setJoiningUserId(userId)
@@ -92,17 +95,11 @@ export default function UsersPage() {
 	return (
 		<div className="space-y-6">
 			{/* Page Header */}
-			<div className="flex items-center justify-between">
-				<div>
-					<h1 className="text-3xl font-bold gradient-text">User Management</h1>
-					<p className="text-muted-foreground mt-1">
-						Search by character/user/discord identity and manage account access
-					</p>
-				</div>
-				<Button variant="primary" onClick={() => setSearchDialogOpen(true)}>
-					<Search className="h-4 w-4" />
-					Quick Search
-				</Button>
+			<div>
+				<h1 className="text-3xl font-bold gradient-text">User Management</h1>
+				<p className="text-muted-foreground mt-1">
+					Search by character/user/discord identity and manage account access
+				</p>
 			</div>
 
 			{/* Success/Error Message */}
@@ -163,31 +160,20 @@ export default function UsersPage() {
 			{/* Users Table */}
 			<Card>
 				<CardHeader>
-					<div className="flex items-center justify-between">
+					<div className="space-y-4">
 						<div>
 							<CardTitle>Users</CardTitle>
 							<CardDescription>
-								{pagination
-									? `Showing ${(pagination.page - 1) * pagination.pageSize + 1}-${Math.min(pagination.page * pagination.pageSize, pagination.totalCount)} of ${pagination.totalCount} users`
-									: 'Loading users...'}
+								{isLoading ? 'Loading users...' : debouncedQuery ? 'Search results' : 'All users'}
 							</CardDescription>
 						</div>
-
-						{/* Page Size Selector */}
-						<div className="flex items-center gap-2">
-							<span className="text-sm text-muted-foreground">Show:</span>
-							<Select
-								value={String(pageSize)}
-								onValueChange={(value) => handlePageSizeChange(Number(value))}
-								options={[
-									{ value: '25', label: '25' },
-									{ value: '50', label: '50' },
-									{ value: '100', label: '100' },
-								]}
-								className="h-9 w-20"
-								inputClassName="h-9"
-							/>
-						</div>
+						<UserSearchPaginationControls
+							totalCount={totalCount}
+							page={page}
+							pageSize={pageSize}
+							onPageChange={setPage}
+							onPageSizeChange={handlePageSizeChange}
+						/>
 					</div>
 				</CardHeader>
 				<CardContent>
@@ -206,28 +192,15 @@ export default function UsersPage() {
 								/>
 							</div>
 
-							{/* Pagination */}
-							{pagination && pagination.totalPages > 1 && (
-								<div className="flex items-center justify-between mt-4 pt-4 border-t border-border">
-									<div className="text-sm text-muted-foreground">
-										Page {pagination.page} of {pagination.totalPages}
-									</div>
-									<div className="flex gap-2">
-										<Button variant="ghost"
-											size="sm"
-											disabled={pagination.page === 1}
-											onClick={() => setPage(page - 1)}
-										>
-											Previous
-										</Button>
-										<Button variant="ghost"
-											size="sm"
-											disabled={pagination.page === pagination.totalPages}
-											onClick={() => setPage(page + 1)}
-										>
-											Next
-										</Button>
-									</div>
+							{hasPagination && (
+								<div className="mt-4 border-t border-border pt-4">
+									<UserSearchPaginationControls
+										totalCount={totalCount}
+										page={page}
+										pageSize={pageSize}
+										onPageChange={setPage}
+										onPageSizeChange={handlePageSizeChange}
+									/>
 								</div>
 							)}
 						</>
@@ -235,8 +208,6 @@ export default function UsersPage() {
 				</CardContent>
 			</Card>
 
-			{/* Quick Search Dialog */}
-			<UserSearchDialog open={searchDialogOpen} onOpenChange={setSearchDialogOpen} />
 		</div>
 	)
 }

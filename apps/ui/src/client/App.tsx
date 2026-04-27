@@ -139,6 +139,20 @@ function NavigateToCorporationSettings() {
 	return <Navigate to={`/corporations/${corporationId}/settings`} replace />
 }
 
+function NavigateHrAuditorUsersToHrUsers() {
+	return <Navigate to="/hr/users" replace />
+}
+
+function NavigateHrAuditorUserProfileToHrUsers() {
+	const { userId } = useParams<{ userId: string }>()
+	return <Navigate to={`/hr/users/${userId}`} replace />
+}
+
+function NavigateHrAuditorUserGroupsToHrUsers() {
+	const { userId } = useParams<{ userId: string }>()
+	return <Navigate to={`/hr/users/${userId}/groups`} replace />
+}
+
 export default function App() {
 	return (
 		<QueryClientProvider client={queryClient}>
@@ -264,6 +278,14 @@ export default function App() {
 								}
 							/>
 							<Route
+								path="/corporations/:corporationId/applications/:applicationId/reports/:reportId"
+								element={
+									<Suspense fallback={<LoadingPage />}>
+										<FulcrumReport />
+									</Suspense>
+								}
+							/>
+							<Route
 								path="/corporations/:corporationId/hr/roles"
 								element={
 									<Suspense fallback={<LoadingPage />}>
@@ -288,7 +310,7 @@ export default function App() {
 								}
 							/>
 							<Route
-								path="/hr/auditor/users"
+								path="/hr/users"
 								element={
 									<Suspense fallback={<LoadingPage />}>
 										<HrAuditorUsersPage />
@@ -296,7 +318,7 @@ export default function App() {
 								}
 							/>
 							<Route
-								path="/hr/auditor/users/:userId"
+								path="/hr/users/:userId"
 								element={
 									<Suspense fallback={<LoadingPage />}>
 										<HrAuditorUserProfilePage />
@@ -304,12 +326,29 @@ export default function App() {
 								}
 							/>
 							<Route
-								path="/hr/auditor/users/:userId/groups"
+								path="/hr/users/:userId/reports/:reportId"
+								element={
+									<Suspense fallback={<LoadingPage />}>
+										<FulcrumReport />
+									</Suspense>
+								}
+							/>
+							<Route
+								path="/hr/users/:userId/groups"
 								element={
 									<Suspense fallback={<LoadingPage />}>
 										<HrAuditorUserGroupsPage />
 									</Suspense>
 								}
+							/>
+							<Route path="/hr/auditor/users" element={<NavigateHrAuditorUsersToHrUsers />} />
+							<Route
+								path="/hr/auditor/users/:userId"
+								element={<NavigateHrAuditorUserProfileToHrUsers />}
+							/>
+							<Route
+								path="/hr/auditor/users/:userId/groups"
+								element={<NavigateHrAuditorUserGroupsToHrUsers />}
 							/>
 							<Route path="/invitations" element={<InvitationsPage />} />
 							<Route path="/broadcasts" element={<BroadcastsPage />} />

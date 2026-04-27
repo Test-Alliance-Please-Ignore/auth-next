@@ -35,6 +35,7 @@ export interface CreateReportOptions {
 	requestorCorporationId: string
 	requestSource: ReportRequestSource
 	applicationId?: string
+	targetUserId?: string
 	sendDm?: boolean
 }
 
@@ -45,6 +46,7 @@ export interface CreateBulkReportOptions {
 	requestSource: ReportRequestSource
 	applicationId?: string
 	sendDm?: boolean
+	targetUserId?: string
 }
 
 /**

@@ -24,8 +24,11 @@ import { useUserPermissions } from '@/hooks/useUserPermissions'
 import { FulcrumReportViewer } from '../components/fulcrum-report-viewer'
 
 export default function FulcrumReportPage() {
-	const { reportId } = useParams<{
+	const { reportId, userId: routeUserId, corporationId: routeCorporationId, applicationId: routeApplicationId } = useParams<{
 		reportId: string
+		userId?: string
+		corporationId?: string
+		applicationId?: string
 	}>()
 	const location = useLocation()
 	const navigate = useNavigate()
@@ -42,21 +45,42 @@ export default function FulcrumReportPage() {
 			breadcrumbParentLabel?: string
 		}
 		| null
-	const characterName = state?.characterName
-	const returnTo = state?.returnTo
-	const userId = state?.userId
-	const corporationId = state?.corporationId
+	const query = new URLSearchParams(location.search)
+	const characterName = state?.characterName ?? query.get('characterName') ?? undefined
+	const returnTo = state?.returnTo ?? query.get('returnTo') ?? undefined
+	const userId = routeUserId ?? state?.userId ?? query.get('userId') ?? undefined
+	const corporationId = routeCorporationId ?? state?.corporationId ?? query.get('corporationId') ?? undefined
+	const applicationId = routeApplicationId ?? query.get('applicationId') ?? undefined
+
+	const routeScopedBackPath = applicationId && corporationId
+		? `/corporations/${corporationId}/applications/${applicationId}`
+		: userId
+			? `/hr/users/${userId}`
+			: undefined
 
 	const roleBasedBackPath = isAuditor && userId
-		? `/hr/auditor/users/${userId}`
+		? `/hr/users/${userId}`
 		: corporationId && userId
 			? `/corporations/${corporationId}/members/${userId}`
 			: '/corporations'
 
-	const backPath = returnTo ?? roleBasedBackPath
-	const isUserProfileBackPath = backPath.includes('/members/') || backPath.includes('/hr/auditor/users/')
-	const backLabel = state?.backLabel ?? (isUserProfileBackPath ? 'Back to User Profile' : 'Back to Corporations')
-	const breadcrumbParentLabel = state?.breadcrumbParentLabel ?? (isUserProfileBackPath ? 'User Profile' : 'Reports')
+	const backPath = returnTo ?? routeScopedBackPath ?? roleBasedBackPath
+	const isUserProfileBackPath = backPath.includes('/members/')
+		|| backPath.includes('/hr/users/')
+		|| backPath.includes('/hr/auditor/users/')
+	const isApplicationBackPath = backPath.includes('/applications/')
+	const backLabel =
+		state?.backLabel
+		?? query.get('backLabel')
+		?? (isApplicationBackPath
+			? 'Back to Application'
+			: isUserProfileBackPath
+				? 'Back to User Profile'
+				: 'Back to Corporations')
+	const breadcrumbParentLabel =
+		state?.breadcrumbParentLabel
+		?? query.get('breadcrumbParentLabel')
+		?? (isApplicationBackPath ? 'Application' : isUserProfileBackPath ? 'User Profile' : 'Reports')
 
 	usePageTitle(characterName ? `Report - ${characterName}` : 'Character Report')
 

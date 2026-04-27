@@ -44,6 +44,7 @@ import type { StepResult } from './utils/storage'
 export interface WorkflowParams {
 	reportId: string
 	characterId: string
+	targetUserId?: string
 	sendDm?: boolean
 }
 
@@ -89,7 +90,7 @@ function assertRequiredBinding(name: string, value: unknown): void {
  */
 export class CharacterReportWorkflow extends WorkflowEntrypoint<Env, WorkflowParams> {
 	async run(event: WorkflowEvent<WorkflowParams>, step: WorkflowStep) {
-		const { reportId, characterId, sendDm = true } = event.payload
+		const { reportId, characterId, targetUserId, sendDm = true } = event.payload
 		const workflowInstanceId = event.instanceId
 
 		// Helper: Get R2 bucket by name (for retrieveData calls)
@@ -561,6 +562,7 @@ export class CharacterReportWorkflow extends WorkflowEntrypoint<Env, WorkflowPar
 					reportId,
 					finalResult.bucket,
 					finalResult.key,
+					targetUserId,
 					sendDm,
 				),
 			)

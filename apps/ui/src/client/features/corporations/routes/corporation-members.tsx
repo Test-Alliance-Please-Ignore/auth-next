@@ -171,7 +171,7 @@ export default function CorporationMembers() {
 			// Navigate to HR member profile if user has an auth account
 			if (member.hasAuthAccount && member.authUserId) {
 				if (isAuditor && !hasCorpAccess && !user?.is_admin) {
-					navigate(`/hr/auditor/users/${member.authUserId}`, {
+					navigate(`/hr/users/${member.authUserId}`, {
 						state: {
 							source: 'members',
 							returnTo: `/corporations/${corporationId}/members`,

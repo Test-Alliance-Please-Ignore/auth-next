@@ -2,6 +2,7 @@ import { Search, Users } from 'lucide-react'
 import { useEffect, useState } from 'react'
 import { Navigate } from 'react-router-dom'
 
+import { UserSearchPaginationControls } from '@/components/user-search-pagination-controls'
 import { UserSearchResultsTable } from '@/components/user-search-results-table'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Container } from '@/components/ui/container'
@@ -14,8 +15,6 @@ import { useUserPermissions } from '@/hooks/useUserPermissions'
 
 import { useAuditorUsers } from '../../../hooks/useAuditorUsers'
 
-const PAGE_SIZE = 25
-
 export default function HrAuditorUsersPage() {
 	const { user, isAuthenticated, isLoading: authLoading } = useAuth()
 	const { hasAnyPermission } = useUserPermissions()
@@ -24,8 +23,9 @@ export default function HrAuditorUsersPage() {
 	const [searchQuery, setSearchQuery] = useState('')
 	const [debouncedQuery, setDebouncedQuery] = useState('')
 	const [page, setPage] = useState(1)
+	const [pageSize, setPageSize] = useState<number>(25)
 
-	usePageTitle('HR Auditor Search')
+	usePageTitle('User Search')
 
 	useEffect(() => {
 		const timer = setTimeout(() => {
@@ -35,10 +35,10 @@ export default function HrAuditorUsersPage() {
 		return () => clearTimeout(timer)
 	}, [searchQuery])
 
-	const offset = (page - 1) * PAGE_SIZE
+	const offset = (page - 1) * pageSize
 	const { data, isLoading } = useAuditorUsers({
 		search: debouncedQuery || undefined,
-		limit: PAGE_SIZE,
+		limit: pageSize,
 		offset,
 	})
 
@@ -73,14 +73,13 @@ export default function HrAuditorUsersPage() {
 
 	const users = data?.users ?? []
 	const total = data?.total ?? 0
-	const totalPages = Math.ceil(total / PAGE_SIZE)
-	const start = total === 0 ? 0 : offset + 1
-	const end = Math.min(offset + PAGE_SIZE, total)
+	const totalPages = Math.ceil(total / pageSize)
+	const hasPagination = totalPages > 1
 
 	return (
 		<Container>
 			<PageHeader
-				title="Auditor Search"
+				title="User Search"
 				description="Search all users for HR audit purposes"
 			/>
 
@@ -103,45 +102,30 @@ export default function HrAuditorUsersPage() {
 				{/* Results */}
 				<Card>
 					<CardHeader>
-						<div className="flex items-center justify-between">
+						<div className="space-y-4">
 							<div>
 								<CardTitle className="flex items-center gap-2">
 									<Users className="h-5 w-5" />
 									Users
 								</CardTitle>
-								<CardDescription>
+							<CardDescription>
 									{isLoading
 										? 'Searching...'
-										: total > 0
-											? `Showing ${start}-${end} of ${total} users`
-											: debouncedQuery
-												? 'No users found'
-												: 'Enter a search term to find users'}
+										: debouncedQuery
+											? 'Search results'
+											: 'All users'}
 								</CardDescription>
 							</div>
-							{totalPages > 1 && (
-								<div className="flex items-center gap-2 text-sm text-muted-foreground">
-									<button
-										type="button"
-										disabled={page <= 1}
-										onClick={() => setPage((p) => p - 1)}
-										className="disabled:opacity-40 hover:text-foreground"
-									>
-										Prev
-									</button>
-									<span>
-										{page} / {totalPages}
-									</span>
-									<button
-										type="button"
-										disabled={page >= totalPages}
-										onClick={() => setPage((p) => p + 1)}
-										className="disabled:opacity-40 hover:text-foreground"
-									>
-										Next
-									</button>
-								</div>
-							)}
+							<UserSearchPaginationControls
+								totalCount={total}
+								page={page}
+								pageSize={pageSize}
+								onPageChange={setPage}
+								onPageSizeChange={(nextPageSize) => {
+									setPageSize(nextPageSize)
+									setPage(1)
+								}}
+							/>
 						</div>
 					</CardHeader>
 					<CardContent>
@@ -156,8 +140,22 @@ export default function HrAuditorUsersPage() {
 						) : (
 							<UserSearchResultsTable
 								users={users}
-								userDetailsPath={(userId) => `/hr/auditor/users/${userId}`}
+								userDetailsPath={(userId) => `/hr/users/${userId}`}
 							/>
+						)}
+						{!isLoading && users.length > 0 && hasPagination && (
+							<div className="mt-4 border-t border-border pt-4">
+								<UserSearchPaginationControls
+									totalCount={total}
+									page={page}
+									pageSize={pageSize}
+									onPageChange={setPage}
+									onPageSizeChange={(nextPageSize) => {
+										setPageSize(nextPageSize)
+										setPage(1)
+									}}
+								/>
+							</div>
 						)}
 					</CardContent>
 				</Card>

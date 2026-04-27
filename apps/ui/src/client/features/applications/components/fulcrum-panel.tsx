@@ -11,8 +11,6 @@ import { AlertCircle, Clock, ExternalLink, FileText, Loader2, RefreshCw, Users }
 import { useState } from 'react'
 import { Link, useParams } from 'react-router-dom'
 
-import { MemberAvatar } from '@/components/member-avatar'
-import { EsiStatusBadge } from '@/components/esi-status-badge'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Checkbox } from '@/components/ui/checkbox'
@@ -26,7 +24,7 @@ import {
 } from '@/components/ui/dialog'
 import { LoadingSpinner } from '@/components/ui/loading'
 import { Separator } from '@/components/ui/separator'
-import { allianceLogoUrl, corporationLogoUrl } from '@/lib/eve-images'
+import { CharacterIdentitySummary } from './character-identity-summary'
 
 import { useApplicationFulcrum, useRequestFulcrumReport, useRequestFulcrumReportBatch } from '../hooks'
 
@@ -73,14 +71,6 @@ function canRequestNewReport(reports: CharacterReportMetadata[]): boolean {
 	return !reports.some((r) => r.status === 'pending' || r.status === 'processing')
 }
 
-function isNpcCorporation(corporationId: string | null | undefined): boolean {
-	if (!corporationId) return false
-	const parsed = Number(corporationId)
-	if (!Number.isFinite(parsed)) return false
-	const id = Math.trunc(parsed)
-	return id >= 1_000_000 && id <= 1_999_999
-}
-
 // ============================================================================
 // Sub-Components
 // ============================================================================
@@ -90,6 +80,7 @@ interface CharacterReportCardProps {
 	onRequest: () => void
 	getReportTarget: (reportId: string, characterName: string) => {
 		pathname: string
+		search: string
 		state: {
 			characterName: string
 			userId: string
@@ -117,62 +108,17 @@ function CharacterReportCard({
 
 	return (
 		<div className="flex items-start gap-4 rounded-lg border p-4">
-			<MemberAvatar
-				characterId={character.characterId}
-				characterName={character.characterName}
-				size="lg"
-			/>
-
 			<div className="min-w-0 flex-1 space-y-2">
-				{/* Character Info */}
-				<div>
-					<div className="flex items-center gap-2">
-						<h4 className="text-lg font-semibold text-foreground">{character.characterName}</h4>
-						<EsiStatusBadge
-							hasAuthAccount
-							hasValidToken={character.hasValidToken}
-							className="text-[10px] px-1.5 py-0"
-						/>
-					</div>
-					{character.corporationName && (
-						<div className="mt-1 flex flex-wrap items-center gap-2">
-							{character.corporationId && (
-								<img
-									src={corporationLogoUrl(character.corporationId, 32)}
-									alt={`${character.corporationName} logo`}
-									className="size-5 rounded-sm border border-border/60 object-cover"
-									loading="lazy"
-								/>
-							)}
-							<p
-								className={
-									isNpcCorporation(character.corporationId)
-										? 'text-base text-muted-foreground'
-										: 'text-base text-white'
-								}
-							>
-								{character.corporationName}
-							</p>
-							{isNpcCorporation(character.corporationId) && (
-								<Badge variant="ghost" className="h-5 px-1.5 text-[10px]">
-									NPC Corp
-								</Badge>
-							)}
-							{character.allianceId && character.allianceName && (
-								<>
-									<span className="text-muted-foreground">•</span>
-									<img
-										src={allianceLogoUrl(character.allianceId, 32)}
-										alt={`${character.allianceName} logo`}
-										className="size-5 rounded-sm border border-border/60 object-cover"
-										loading="lazy"
-									/>
-									<p className="text-base text-muted-foreground">{character.allianceName}</p>
-								</>
-							)}
-						</div>
-					)}
-				</div>
+				<CharacterIdentitySummary
+					characterId={character.characterId}
+					characterName={character.characterName}
+					hasValidToken={character.hasValidToken}
+					corporationId={character.corporationId}
+					corporationName={character.corporationName}
+					allianceId={character.allianceId}
+					allianceName={character.allianceName}
+					showMetrics={false}
+				/>
 
 				{/* Report Status */}
 				{latestReport ? (
@@ -290,8 +236,19 @@ export function FulcrumPanel({ userId, corporationId, applicationId, mainCharact
 			: `/corporations/${resolvedCorporationId}/members/${userId}`
 		const backLabel = applicationId ? 'Back to Application' : 'Back to User Profile'
 		const breadcrumbParentLabel = applicationId ? 'Application' : 'User Profile'
+		const search = new URLSearchParams({
+			characterName,
+			userId,
+			corporationId,
+			returnTo,
+			backLabel,
+			breadcrumbParentLabel,
+		}).toString()
 		return {
-			pathname: `/fulcrum/reports/${reportId}`,
+			pathname: applicationId
+				? `/corporations/${resolvedCorporationId}/applications/${applicationId}/reports/${reportId}`
+				: `/fulcrum/reports/${reportId}`,
+			search: `?${search}`,
 			state: {
 				characterName,
 				userId,
@@ -350,6 +307,7 @@ export function FulcrumPanel({ userId, corporationId, applicationId, mainCharact
 				requestSource: 'hr',
 				applicationId,
 				userId,
+				targetUserId: userId,
 				sendDm: sendDmForScanRequests,
 			})
 		} finally {

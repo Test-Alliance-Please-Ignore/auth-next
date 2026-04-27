@@ -328,6 +328,30 @@ export function AssetsSection({ data }: { data: ProcessedAsset[] }) {
 						className="pl-9 h-9"
 					/>
 				</div>
+				<div className="flex items-center gap-1.5">
+					<button
+						type="button"
+						onClick={() => {
+							setExpandedLocations(new Set(groups.map((group) => group.locationName)))
+							setExpandedContainers(
+								new Set(groups.flatMap((group) => group.containers.map((container) => container.containerItemId)))
+							)
+						}}
+						className="rounded border border-border px-2.5 py-1.5 text-xs text-muted-foreground hover:text-foreground"
+					>
+						Expand all
+					</button>
+					<button
+						type="button"
+						onClick={() => {
+							setExpandedLocations(new Set())
+							setExpandedContainers(new Set())
+						}}
+						className="rounded border border-border px-2.5 py-1.5 text-xs text-muted-foreground hover:text-foreground"
+					>
+						Collapse all
+					</button>
+				</div>
 			</div>
 
 			<div className="space-y-1">

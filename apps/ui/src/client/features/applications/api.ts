@@ -781,12 +781,14 @@ export const fulcrumApi = {
 		corporationId: string,
 		requestSource: ReportRequestSource,
 		applicationId?: string,
+		targetUserId?: string,
 		sendDm = true,
 	): Promise<{ reportId: string; status: string }> {
 		return apiClient.post(`/fulcrum/characters/${characterId}/reports`, {
 			corporationId,
 			requestSource,
 			applicationId,
+			targetUserId,
 			sendDm,
 		})
 	},
@@ -800,6 +802,7 @@ export const fulcrumApi = {
 		requestSource: ReportRequestSource,
 		applicationId?: string,
 		sendDm = true,
+		targetUserId?: string,
 	): Promise<{ batchId: string; status: string }> {
 		return apiClient.post('/fulcrum/reports/batch', {
 			characterIds,
@@ -807,6 +810,7 @@ export const fulcrumApi = {
 			requestSource,
 			applicationId,
 			sendDm,
+			targetUserId,
 		})
 	},
 

@@ -22,6 +22,7 @@ export interface CharacterReportQueueMessage {
 	requestorCorporationId: string
 	requestSource: string
 	applicationId?: string
+	targetUserId?: string
 	expiresAt?: string // ISO date string
 	sendDm?: boolean
 }
@@ -47,6 +48,7 @@ export async function handleCharacterReportsQueue(
 				requestorCorporationId,
 				requestSource,
 				applicationId,
+				targetUserId,
 				expiresAt,
 				sendDm = true,
 			} =
@@ -77,6 +79,7 @@ export async function handleCharacterReportsQueue(
 			const workflowParams: WorkflowParams = {
 				reportId,
 				characterId,
+				targetUserId,
 				sendDm,
 			}
 

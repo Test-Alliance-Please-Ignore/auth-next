@@ -142,6 +142,7 @@ export function WalletTransactionsSection({
 		data,
 		emptyMessage: 'No transactions found.',
 		searchPlaceholder: 'Search transactions...',
+		pageSize: 1000,
 	})
 
 	if (data.length === 0) {

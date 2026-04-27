@@ -10,6 +10,7 @@ import { useState } from 'react'
 import { Card, CardContent } from '@/components/ui/card'
 import { Skeleton } from '@/components/ui/skeleton'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
+import { useEntityNames } from '@/hooks/useEntityNames'
 import { cn } from '@/lib/utils'
 
 import { useReportSectionData, useReportSections } from '../hooks'
@@ -202,12 +203,14 @@ function SectionContent({
 	isActive,
 	availableSections,
 	characterId,
+	highlightedCharacterName,
 }: {
 	reportId: string
 	section: ReportSectionName
 	isActive: boolean
 	availableSections: ReportSectionName[]
 	characterId: string
+	highlightedCharacterName?: string
 }) {
 	// Communications and Overview tabs manage their own data fetching — skip the standard fetch
 	const isCommunications = section === 'mails'
@@ -225,7 +228,10 @@ function SectionContent({
 		return (
 			<Card>
 				<CardContent className="pt-6">
-					<CommunicationsSection reportId={reportId} />
+					<CommunicationsSection
+						reportId={reportId}
+						highlightedCharacterName={highlightedCharacterName}
+					/>
 				</CardContent>
 			</Card>
 		)
@@ -317,6 +323,10 @@ interface FulcrumReportViewerProps {
 export function FulcrumReportViewer({ reportId }: FulcrumReportViewerProps) {
 	const { data: manifest, isLoading, error } = useReportSections(reportId)
 	const [activeTab, setActiveTab] = useState<string>('public-info')
+	const { data: characterNames = {} } = useEntityNames(
+		manifest?.characterId ? [manifest.characterId] : [],
+		{ enabled: !!manifest?.characterId }
+	)
 
 	if (isLoading) {
 		return (
@@ -345,6 +355,7 @@ export function FulcrumReportViewer({ reportId }: FulcrumReportViewerProps) {
 
 	const hasSection = (name: ReportSectionName) => name in manifest.sections
 	const availableSectionNames = Object.keys(manifest.sections) as ReportSectionName[]
+	const highlightedCharacterName = manifest.characterId ? characterNames[manifest.characterId] : undefined
 
 	// Only show tabs for sections present in the manifest
 	// Overview tab shows if public-info, corp-history, or clones is available
@@ -400,6 +411,7 @@ export function FulcrumReportViewer({ reportId }: FulcrumReportViewerProps) {
 						isActive={effectiveTab === tab.name}
 						availableSections={availableSectionNames}
 						characterId={manifest.characterId}
+						highlightedCharacterName={highlightedCharacterName}
 					/>
 				</TabsContent>
 			))}

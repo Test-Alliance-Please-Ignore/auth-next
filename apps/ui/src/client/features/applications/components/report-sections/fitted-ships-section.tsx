@@ -7,6 +7,7 @@ import { useMemo, useState } from 'react'
 
 import { Badge } from '@/components/ui/badge'
 import { Input } from '@/components/ui/input'
+import { Select } from '@/components/ui/select'
 import { typeIconUrl, typeImageUrl } from '@/lib/eve-images'
 import { cn } from '@/lib/utils'
 
@@ -23,8 +24,10 @@ interface FittedShipBay {
 }
 
 interface FittedShip {
+	itemId?: string
 	shipName: string
 	shipTypeId: string
+	shipGroupId?: string
 	customName?: string
 	locationName: string
 	estimatedValue?: number
@@ -49,11 +52,84 @@ interface LocationGroup {
 	estimatedValue: number
 }
 
+type ShipSortMode = 'value' | 'class' | 'name'
+const SHIP_SORT_OPTIONS = [
+	{ value: 'value', label: 'Sort: Value' },
+	{ value: 'class', label: 'Sort: Ship Class' },
+	{ value: 'name', label: 'Sort: Name' },
+] as const
+
 function formatIsk(value: number): string {
 	if (value >= 1_000_000_000) return `${(value / 1_000_000_000).toFixed(2)}B ISK`
 	if (value >= 1_000_000) return `${(value / 1_000_000).toFixed(1)}M ISK`
 	if (value >= 1_000) return `${(value / 1_000).toFixed(0)}K ISK`
 	return `${value.toLocaleString()} ISK`
+}
+
+const SHIP_GROUP_CLASS_RANK: Record<string, number> = {
+	// Titans (100s)
+	'30': 100,
+	// Supercarriers (90s)
+	'659': 90,
+	// Carriers / Dreads / FAX (80s)
+	'547': 80,
+	'485': 80,
+	'4594': 80,
+	'1538': 80,
+	// Freighters / Jump Freighters (70s)
+	'513': 70,
+	'902': 70,
+	// Industrials / Mining / Transport / Industrial Command (60s)
+	'28': 60,
+	'380': 60,
+	'1202': 60,
+	'941': 60,
+	'883': 60,
+	'463': 60,
+	'543': 60,
+	'4902': 60,
+	// Battleships / Elite / Marauder / Black Ops (50s)
+	'27': 50,
+	'381': 50,
+	'900': 50,
+	'898': 50,
+	// Battlecruisers / Attack BC / Command Ships (40s)
+	'419': 40,
+	'1201': 40,
+	'540': 40,
+	// Cruisers (30s)
+	'26': 30,
+	'358': 30,
+	'963': 30,
+	'906': 30,
+	'833': 30,
+	'832': 30,
+	'894': 30,
+	'1972': 30,
+	// Destroyers / Tactical / Command / Interdictor (20s)
+	'420': 20,
+	'1305': 20,
+	'1534': 20,
+	'541': 20,
+	// Frigates / Corvette / Specialty frigate hulls (10s)
+	'25': 10,
+	'324': 10,
+	'831': 10,
+	'830': 10,
+	'834': 10,
+	'893': 10,
+	'1283': 10,
+	'1527': 10,
+	'237': 10,
+	'1022': 10,
+	// Shuttles / yacht class utility hulls (0-10s)
+	'31': 5,
+	'5087': 5,
+}
+
+function getShipClassRank(shipGroupId?: string): number {
+	if (!shipGroupId) return 10
+	return SHIP_GROUP_CLASS_RANK[shipGroupId] ?? 10
 }
 
 function ShipIcon({ typeId }: { typeId: string }) {
@@ -202,6 +278,7 @@ export function FittedShipsSection({ data }: { data: FittedShip[] }) {
 	const [expandedLocations, setExpandedLocations] = useState<Set<string>>(new Set())
 	const [expandedShips, setExpandedShips] = useState<Set<string>>(new Set())
 	const [search, setSearch] = useState('')
+	const [sortMode, setSortMode] = useState<ShipSortMode>('value')
 
 	const groups = useMemo(() => {
 		const filtered = search
@@ -228,14 +305,26 @@ export function FittedShipsSection({ data }: { data: FittedShip[] }) {
 
 		const result: LocationGroup[] = []
 		for (const [locationName, ships] of map) {
+			const sortedShips = [...ships]
+			if (sortMode === 'value') {
+				sortedShips.sort((a, b) => (b.estimatedValue ?? 0) - (a.estimatedValue ?? 0))
+			} else if (sortMode === 'class') {
+				sortedShips.sort((a, b) => {
+					const classDiff = getShipClassRank(b.shipGroupId) - getShipClassRank(a.shipGroupId)
+					if (classDiff !== 0) return classDiff
+					return (b.estimatedValue ?? 0) - (a.estimatedValue ?? 0)
+				})
+			} else {
+				sortedShips.sort((a, b) => a.shipName.localeCompare(b.shipName))
+			}
 			result.push({
 				locationName,
-				ships: ships.sort((a, b) => a.shipName.localeCompare(b.shipName)),
+				ships: sortedShips,
 				estimatedValue: ships.reduce((sum, s) => sum + (s.estimatedValue ?? 0), 0),
 			})
 		}
 		return result.sort((a, b) => b.ships.length - a.ships.length)
-	}, [data, search])
+	}, [data, search, sortMode])
 
 	const toggleLocation = (loc: string) => {
 		setExpandedLocations((prev) => {
@@ -287,6 +376,41 @@ export function FittedShipsSection({ data }: { data: FittedShip[] }) {
 						className="pl-9 h-9"
 					/>
 				</div>
+				<div className="flex items-center gap-2">
+					<Select
+						value={sortMode}
+						onValueChange={(value) => setSortMode(value as ShipSortMode)}
+						options={[...SHIP_SORT_OPTIONS]}
+						placeholder="Sort: Value"
+						className="w-36"
+					/>
+					<button
+						type="button"
+						onClick={() => {
+							setExpandedLocations(new Set(groups.map((group) => group.locationName)))
+							setExpandedShips(
+								new Set(
+									groups.flatMap((group) =>
+										group.ships.map((ship, index) => ship.itemId || `${ship.shipTypeId}-${index}`)
+									)
+								)
+							)
+						}}
+						className="rounded border border-border px-2.5 py-1.5 text-xs text-muted-foreground hover:text-foreground"
+					>
+						Expand all
+					</button>
+					<button
+						type="button"
+						onClick={() => {
+							setExpandedLocations(new Set())
+							setExpandedShips(new Set())
+						}}
+						className="rounded border border-border px-2.5 py-1.5 text-xs text-muted-foreground hover:text-foreground"
+					>
+						Collapse all
+					</button>
+				</div>
 			</div>
 
 			<div className="space-y-1">
@@ -320,7 +444,7 @@ export function FittedShipsSection({ data }: { data: FittedShip[] }) {
 							{isExpanded && (
 								<div className="ml-6 space-y-2 py-1">
 									{group.ships.map((ship, i) => {
-										const shipKey = `${ship.shipTypeId}-${i}`
+										const shipKey = ship.itemId || `${ship.shipTypeId}-${i}`
 										return (
 											<ShipCard
 												key={shipKey}

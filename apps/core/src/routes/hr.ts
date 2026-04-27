@@ -1090,34 +1090,36 @@ app.get('/corporations', requireAuth(), async (c) => {
 			hr_reviewer: 2,
 			hr_viewer: 1,
 		}
+		const explicitUserRoles = await hr.getUserRoles(user.id)
+		const highestExplicitRoleByCorp = new Map<
+			string,
+			typeof explicitUserRoles[number]['role']
+		>()
+		for (const role of explicitUserRoles.filter((r) => r.isActive)) {
+			const corpId = role.corporationId
+			if (!corpId) continue
+			const existing = highestExplicitRoleByCorp.get(corpId)
+			if (!existing || roleHierarchy[role.role] > roleHierarchy[existing]) {
+				highestExplicitRoleByCorp.set(corpId, role.role)
+			}
+		}
 
-		const results = await Promise.all(
-			uniqueCorporationIds.map(async (corporationId) => {
-				const roles = await hr.getUserRoles(user.id, corporationId)
-				const activeRoles = roles.filter((r) => r.isActive)
-				if (activeRoles.length === 0) {
-					return null
-				}
-
-				const highestRole = activeRoles.reduce((highest, role) => {
-					const highestLevel = roleHierarchy[highest.role]
-					const currentLevel = roleHierarchy[role.role]
-					return currentLevel > highestLevel ? role : highest
-				}, activeRoles[0])
-
+		const results = uniqueCorporationIds.map((corporationId) => {
+				const explicitRole = highestExplicitRoleByCorp.get(corporationId)
+				// getUserHrCorporations() also includes inferred leadership access (CEO/Director),
+				// which currently maps to admin-level HR capability.
+				const currentRole = explicitRole ?? 'hr_admin'
 				const corporation = corporationMap.get(corporationId)
 				return {
 					corporationId,
 					name: corporation?.name ?? `Corporation ${corporationId}`,
 					ticker: corporation?.ticker ?? '',
-					currentRole: highestRole.role,
+					currentRole,
 				}
 			})
-		)
 
 		return c.json(
 			results
-				.filter((row): row is NonNullable<typeof row> => row !== null)
 				.sort((a, b) => a.name.localeCompare(b.name))
 		)
 	} catch (error) {

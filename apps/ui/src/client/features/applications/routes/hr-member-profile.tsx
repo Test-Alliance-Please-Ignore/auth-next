@@ -476,10 +476,10 @@ export default function HrMemberProfile() {
 			queryReturnTo ??
 			(source === 'applications' && corporationId
 				? `/corporations/${corporationId}/applications`
-				: '/hr/auditor/users')
+				: '/hr/users')
 		return (
 			<Navigate
-				to={`/hr/auditor/users/${accountId}`}
+				to={`/hr/users/${accountId}`}
 				replace
 				state={{
 					source,

@@ -7,6 +7,7 @@
  */
 
 import { useCallback, useMemo, useState } from 'react'
+import type { ReactNode } from 'react'
 
 import { Badge } from '@/components/ui/badge'
 import { cn } from '@/lib/utils'
@@ -170,7 +171,46 @@ function recipientSummary(recipients?: MailRecipient[]): string {
 // Component
 // ---------------------------------------------------------------------------
 
-export function MailsSection({ data: raw, reportId }: { data: unknown; reportId: string }) {
+function escapeRegExp(value: string): string {
+	return value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
+}
+
+function highlightText(value: string | undefined, needle: string | undefined): ReactNode {
+	if (!value) return ''
+	if (!needle || !needle.trim()) return value
+	const pattern = new RegExp(`(${escapeRegExp(needle.trim())})`, 'ig')
+	const parts = value.split(pattern)
+	return parts.map((part, index) =>
+		part.toLowerCase() === needle.trim().toLowerCase()
+			? (
+				<mark key={`${part}-${index}`} className="rounded bg-amber-400/20 px-0.5 font-semibold text-foreground">
+					{part}
+				</mark>
+			)
+			: part
+	)
+}
+
+function hasCharacterMention(mail: ProcessedMail, highlightedCharacterName?: string): boolean {
+	if (!highlightedCharacterName?.trim()) return false
+	const needle = highlightedCharacterName.toLowerCase()
+	return (
+		(mail.fromName ?? '').toLowerCase().includes(needle)
+		|| (mail.subject ?? '').toLowerCase().includes(needle)
+		|| (mail.bodyPlainText ?? '').toLowerCase().includes(needle)
+		|| (mail.recipients?.some((recipient) => (recipient.recipientName ?? '').toLowerCase().includes(needle)) ?? false)
+	)
+}
+
+export function MailsSection({
+	data: raw,
+	reportId,
+	highlightedCharacterName,
+}: {
+	data: unknown
+	reportId: string
+	highlightedCharacterName?: string
+}) {
 	const { mails, mailingLists } = useMemo(() => normaliseData(raw), [raw])
 
 	const [activeFolder, setActiveFolder] = useState<FolderType>('all')
@@ -231,7 +271,7 @@ export function MailsSection({ data: raw, reportId }: { data: unknown; reportId:
 	}))
 
 	return (
-		<div className="flex h-[700px] overflow-hidden rounded-lg border border-border bg-card/40">
+		<div className="flex h-[75vh] min-h-[760px] max-h-[1400px] resize-y overflow-hidden rounded-lg border border-border bg-card/40">
 			{/* ---- Left sidebar ---- */}
 			<div className="flex w-48 shrink-0 flex-col border-r border-border bg-card/60">
 				<div className="border-b border-border px-3 py-2">
@@ -369,14 +409,14 @@ export function MailsSection({ data: raw, reportId }: { data: unknown; reportId:
 												</span>
 											</div>
 											<div className="mt-0.5 flex items-center gap-2 text-[10px] text-muted-foreground">
-												<span className="truncate">
-													From: {mail.fromName || 'Unknown'}
-												</span>
-												{mail.recipients && mail.recipients.length > 0 && (
-													<span className="truncate">
-														→ {recipientSummary(mail.recipients)}
-													</span>
-												)}
+										<span className={cn(hasCharacterMention(mail, highlightedCharacterName) && 'font-semibold text-foreground')}>
+											From: {highlightText(mail.fromName || 'Unknown', highlightedCharacterName)}
+										</span>
+										{mail.recipients && mail.recipients.length > 0 && (
+											<span className={cn('truncate', hasCharacterMention(mail, highlightedCharacterName) && 'font-semibold text-foreground')}>
+												→ {highlightText(recipientSummary(mail.recipients), highlightedCharacterName)}
+											</span>
+										)}
 											</div>
 										</div>
 									</button>
@@ -395,7 +435,7 @@ export function MailsSection({ data: raw, reportId }: { data: unknown; reportId:
 									{selectedMail.subject || '(No Subject)'}
 								</h3>
 								<div className="mt-1 flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
-									<span>
+									<span className={cn(hasCharacterMention(selectedMail, highlightedCharacterName) && 'font-semibold text-foreground')}>
 										From: <strong>{selectedMail.fromName || 'Unknown'}</strong>
 									</span>
 									{selectedMail.recipients && selectedMail.recipients.length > 0 && (
@@ -403,7 +443,7 @@ export function MailsSection({ data: raw, reportId }: { data: unknown; reportId:
 											To:{' '}
 											{selectedMail.recipients.map((r, i) => (
 												<Badge key={i} variant="secondary" className="text-[10px] py-0">
-													{r.recipientName || `ID: ${r.recipient_id}`}
+													{highlightText(r.recipientName || `ID: ${r.recipient_id}`, highlightedCharacterName)}
 												</Badge>
 											))}
 										</span>
@@ -422,7 +462,7 @@ export function MailsSection({ data: raw, reportId }: { data: unknown; reportId:
 									if (bodyText) {
 										return (
 											<p className="whitespace-pre-wrap text-xs leading-relaxed text-muted-foreground">
-												{bodyText}
+												{highlightText(bodyText, highlightedCharacterName)}
 											</p>
 										)
 									}
