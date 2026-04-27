@@ -51,15 +51,17 @@ import {
 	useRevokeHrRole,
 } from '../../hr'
 import {
-	filterMembersByActivity,
-	filterMembersByAuthStatus,
 	myCorporationsApi,
-	sortMembers,
 } from '../api'
 import { EmeritusConfirmationDialog } from './emeritus-confirmation-dialog'
 
-import type { CorporationMember } from '../api'
+import type {
+	CorporationMember,
+	CorporationMembersQuery,
+	CorporationMembersSortField,
+} from '../api'
 import type { HrRoleType } from '../../hr'
+import type { SetStateAction } from 'react'
 
 interface CorporationMembersTableProps {
 	members: CorporationMember[]
@@ -72,10 +74,57 @@ interface CorporationMembersTableProps {
 	canRevokeHrAdmin?: boolean
 	canManageEmeritus?: boolean
 	corporationId?: string
+	query: CorporationMembersQuery
+	onQueryChange: (value: SetStateAction<CorporationMembersQuery>) => void
+	pagination?: {
+		page: number
+		limit: number
+		totalItems: number
+		totalPages: number
+		hasNextPage: boolean
+		hasPreviousPage: boolean
+	}
+	summary?: {
+		total: number
+		linked: number
+		active: number
+		inactive: number
+		directors: number
+	}
 }
 
-type SortField = 'name' | 'role' | 'auth' | 'activity' | 'lastLogin' | 'joinDate'
-type SortOrder = 'asc' | 'desc'
+type SortField = CorporationMembersSortField
+
+export function getAuthStatusBadge(member: Pick<CorporationMember, 'hasAuthAccount' | 'hasValidToken'>): {
+	variant: 'success' | 'destructive' | 'warning'
+	label: 'ESI Valid' | 'ESI Invalid' | 'ESI Unknown' | 'Unlinked'
+} {
+	if (!member.hasAuthAccount) {
+		return {
+			variant: 'warning',
+			label: 'Unlinked',
+		}
+	}
+
+	if (member.hasValidToken === true) {
+		return {
+			variant: 'success',
+			label: 'ESI Valid',
+		}
+	}
+
+	if (member.hasValidToken === false) {
+		return {
+			variant: 'destructive',
+			label: 'ESI Invalid',
+		}
+	}
+
+	return {
+		variant: 'warning',
+		label: 'ESI Unknown',
+	}
+}
 
 // ─── Actions popover (same pattern as bills page) ────────────────────────────
 
@@ -146,24 +195,22 @@ export default function CorporationMembersTable({
 	canRevokeHrAdmin = true,
 	canManageEmeritus = false,
 	corporationId,
+	query,
+	onQueryChange,
+	pagination,
+	summary,
 }: CorporationMembersTableProps) {
 	const { showSuccess, showError } = useMessage()
 
-	// Filter states
-	const [searchQuery, setSearchQuery] = useState('')
-	const [authFilter, setAuthFilter] = useState<'all' | 'linked' | 'unlinked'>('all')
-	const [activityFilter, setActivityFilter] = useState<'all' | 'active' | 'inactive' | 'unknown'>(
-		'all'
-	)
-	const [roleFilter, setRoleFilter] = useState<'all' | 'CEO' | 'Director' | 'Member'>('all')
-
-	// Sort states
-	const [sortField, setSortField] = useState<SortField>('role')
-	const [sortOrder, setSortOrder] = useState<SortOrder>('asc')
-
-	// Pagination
-	const [currentPage, setCurrentPage] = useState(1)
-	const itemsPerPage = 50
+	const searchQuery = query.search ?? ''
+	const authFilter = query.authFilter ?? 'all'
+	const activityFilter = query.activityFilter ?? 'all'
+	const roleFilter = query.roleFilter ?? 'all'
+	const sortField: SortField = query.sortField ?? 'role'
+	const sortOrder = query.sortOrder ?? 'asc'
+	const currentPage = pagination?.page ?? 1
+	const totalPages = pagination?.totalPages ?? 1
+	const paginatedMembers = members
 
 	// HR dialog states
 	const [grantDialogMember, setGrantDialogMember] = useState<CorporationMember | null>(null)
@@ -191,83 +238,21 @@ export default function CorporationMembersTable({
 			return myCorporationsApi.updateMemberStatus(corporationId, characterId, status)
 		},
 		onSuccess: () => {
-			queryClient.invalidateQueries({ queryKey: ['corporation-members', corporationId] })
+			queryClient.invalidateQueries({ queryKey: ['my-corporations', 'members', corporationId] })
 			queryClient.invalidateQueries({ queryKey: ['my-corporations'] })
 		},
 	})
 
-	// Filter and sort members
-	const filteredAndSortedMembers = useMemo(() => {
-		let filtered = [...members]
-
-		if (searchQuery) {
-			const query = searchQuery.toLowerCase()
-			filtered = filtered.filter(
-				(m) =>
-					m.characterName.toLowerCase().includes(query) ||
-					m.mainCharacterName?.toLowerCase().includes(query) ||
-					m.locationSystem?.toLowerCase().includes(query)
-			)
-		}
-
-		filtered = filterMembersByAuthStatus(filtered, authFilter)
-		filtered = filterMembersByActivity(filtered, activityFilter)
-
-		if (roleFilter !== 'all') {
-			filtered = filtered.filter((m) => m.role === roleFilter)
-		}
-
-		filtered.sort((a, b) => {
-			let comparison = 0
-
-			switch (sortField) {
-				case 'name':
-					comparison = a.characterName.localeCompare(b.characterName)
-					break
-				case 'role': {
-					const roleOrder = { CEO: 0, Director: 1, Member: 2 }
-					comparison = roleOrder[a.role] - roleOrder[b.role]
-					break
-				}
-				case 'auth':
-					comparison = (a.hasAuthAccount ? 0 : 1) - (b.hasAuthAccount ? 0 : 1)
-					break
-				case 'activity': {
-					const activityOrder = { active: 0, inactive: 1, unknown: 2 }
-					comparison = activityOrder[a.activityStatus] - activityOrder[b.activityStatus]
-					break
-				}
-				case 'lastLogin':
-					comparison = (b.lastLogin || '').localeCompare(a.lastLogin || '')
-					break
-				case 'joinDate':
-					comparison = a.joinDate.localeCompare(b.joinDate)
-					break
-			}
-
-			return sortOrder === 'asc' ? comparison : -comparison
-		})
-
-		return filtered
-	}, [members, searchQuery, authFilter, activityFilter, roleFilter, sortField, sortOrder])
-
-	const paginatedMembers = useMemo(() => {
-		const startIndex = (currentPage - 1) * itemsPerPage
-		return filteredAndSortedMembers.slice(startIndex, startIndex + itemsPerPage)
-	}, [filteredAndSortedMembers, currentPage])
-
-	const totalPages = Math.ceil(filteredAndSortedMembers.length / itemsPerPage)
-
 	const handleSort = useCallback(
 		(field: SortField) => {
-			if (sortField === field) {
-				setSortOrder(sortOrder === 'asc' ? 'desc' : 'asc')
-			} else {
-				setSortField(field)
-				setSortOrder('asc')
-			}
+			onQueryChange((prev) => ({
+				...prev,
+				page: 1,
+				sortField: field,
+				sortOrder: prev.sortField === field && prev.sortOrder === 'asc' ? 'desc' : 'asc',
+			}))
 		},
-		[sortField, sortOrder]
+		[onQueryChange]
 	)
 
 	const handleGrantHrRole = useCallback(
@@ -338,15 +323,21 @@ export default function CorporationMembersTable({
 		)
 	}
 
-	const stats = useMemo(() => {
-		return {
-			total: filteredAndSortedMembers.length,
-			linked: filteredAndSortedMembers.filter((m) => m.hasAuthAccount).length,
-			active: filteredAndSortedMembers.filter((m) => m.activityStatus === 'active').length,
-			inactive: filteredAndSortedMembers.filter((m) => m.activityStatus === 'inactive').length,
-			directors: filteredAndSortedMembers.filter((m) => m.role === 'Director').length,
+	const stats = summary ?? {
+		total: members.length,
+		linked: members.filter((m) => m.hasAuthAccount).length,
+		active: members.filter((m) => m.activityStatus === 'active').length,
+		inactive: members.filter((m) => m.activityStatus === 'inactive').length,
+		directors: members.filter((m) => m.role === 'Director').length,
+	}
+	const previewPages = useMemo(() => {
+		const maxVisible = 5
+		if (totalPages <= maxVisible) {
+			return Array.from({ length: totalPages }, (_, i) => i + 1)
 		}
-	}, [filteredAndSortedMembers])
+		const startPage = Math.max(1, Math.min(currentPage - 2, totalPages - (maxVisible - 1)))
+		return Array.from({ length: maxVisible }, (_, i) => startPage + i)
+	}, [currentPage, totalPages])
 
 	if (loading) {
 		return (
@@ -390,16 +381,30 @@ export default function CorporationMembersTable({
 					<Input
 						placeholder="Search members..."
 						value={searchQuery}
-						onChange={(e) => setSearchQuery(e.target.value)}
+						onChange={(e) =>
+							onQueryChange((prev) => ({
+								...prev,
+								page: 1,
+								search: e.target.value,
+							}))
+						}
 						className="flex-1"
 					/>
 
 					<Select
 						value={authFilter}
-						onValueChange={(v) => setAuthFilter(v as typeof authFilter)}
+						onValueChange={(v) =>
+							onQueryChange((prev) => ({
+								...prev,
+								page: 1,
+								authFilter: v as typeof authFilter,
+							}))
+						}
 						options={[
 							{ value: 'all', label: 'All Auth' },
-							{ value: 'linked', label: 'Linked' },
+							{ value: 'linked_valid', label: 'ESI Valid' },
+							{ value: 'linked_invalid', label: 'ESI Invalid' },
+							{ value: 'linked_unknown', label: 'ESI Unknown' },
 							{ value: 'unlinked', label: 'Unlinked' },
 						]}
 						className="w-[140px]"
@@ -407,7 +412,13 @@ export default function CorporationMembersTable({
 
 					<Select
 						value={activityFilter}
-						onValueChange={(v) => setActivityFilter(v as typeof activityFilter)}
+						onValueChange={(v) =>
+							onQueryChange((prev) => ({
+								...prev,
+								page: 1,
+								activityFilter: v as typeof activityFilter,
+							}))
+						}
 						options={[
 							{ value: 'all', label: 'All Activity' },
 							{ value: 'active', label: 'Active' },
@@ -419,7 +430,13 @@ export default function CorporationMembersTable({
 
 					<Select
 						value={roleFilter}
-						onValueChange={(v) => setRoleFilter(v as typeof roleFilter)}
+						onValueChange={(v) =>
+							onQueryChange((prev) => ({
+								...prev,
+								page: 1,
+								roleFilter: v as typeof roleFilter,
+							}))
+						}
 						options={[
 							{ value: 'all', label: 'All Roles' },
 							{ value: 'CEO', label: 'CEOs' },
@@ -525,7 +542,7 @@ export default function CorporationMembersTable({
 											<Badge variant="warning" icon={Shield}>Director</Badge>
 										)}
 										{member.role === 'Member' && (
-											<Badge variant="ghost" icon={User}>Member</Badge>
+											<Badge variant="default" icon={User}>Member</Badge>
 										)}
 										{member.status === 'emeritus' && (
 											<Badge variant="special" icon={Heart}>Emeritus</Badge>
@@ -547,7 +564,24 @@ export default function CorporationMembersTable({
 								<TableCell>
 									{member.hasAuthAccount ? (
 										<div className="space-y-1">
-											<Badge variant="success" icon={CheckCircle}>Linked</Badge>
+											{(() => {
+												const authStatus = getAuthStatusBadge(member)
+												const AuthIcon =
+													authStatus.label === 'ESI Valid'
+														? CheckCircle
+														: authStatus.label === 'ESI Invalid'
+															? XCircle
+															: AlertCircle
+												return (
+													<Badge
+														variant={authStatus.variant}
+														icon={AuthIcon}
+														className="text-[10px]"
+													>
+														{authStatus.label}
+													</Badge>
+												)
+											})()}
 											{member.mainCharacterName && (
 												<div className="text-xs text-muted-foreground">
 													{member.mainCharacterName}
@@ -555,7 +589,9 @@ export default function CorporationMembersTable({
 											)}
 										</div>
 									) : (
-										<Badge variant="warning" icon={AlertCircle}>Not Linked</Badge>
+										<Badge variant="warning" icon={AlertCircle} className="text-[10px]">
+											Unlinked
+										</Badge>
 									)}
 								</TableCell>
 								<TableCell>
@@ -636,6 +672,16 @@ export default function CorporationMembersTable({
 								)}
 							</TableRow>
 						))}
+						{paginatedMembers.length === 0 && (
+							<TableRow>
+								<TableCell
+									colSpan={showActions ? (canManageHrRoles ? 8 : 7) : (canManageHrRoles ? 7 : 6)}
+									className="py-8 text-center text-sm text-muted-foreground"
+								>
+									No members found for the current filters.
+								</TableCell>
+							</TableRow>
+						)}
 					</TableBody>
 				</Table>
 
@@ -643,39 +689,47 @@ export default function CorporationMembersTable({
 				{totalPages > 1 && (
 					<div className="flex items-center justify-between p-4 border-t">
 						<div className="text-sm text-muted-foreground">
-							Showing {(currentPage - 1) * itemsPerPage + 1}-
-							{Math.min(currentPage * itemsPerPage, filteredAndSortedMembers.length)} of{' '}
-							{filteredAndSortedMembers.length} members
+							Showing{' '}
+							{(pagination?.totalItems ?? 0) > 0
+								? `${(currentPage - 1) * (pagination?.limit ?? 50) + 1}-${Math.min(
+										currentPage * (pagination?.limit ?? 50),
+										pagination?.totalItems ?? 0
+									)}`
+								: '0-0'}{' '}
+							of {pagination?.totalItems ?? 0} members
 						</div>
 						<div className="flex gap-2">
 							<Button
 								size="sm"
 								variant="ghost"
 								disabled={currentPage === 1}
-								onClick={() => setCurrentPage((p) => Math.max(1, p - 1))}
+								onClick={() =>
+									onQueryChange((prev) => ({ ...prev, page: Math.max(1, currentPage - 1) }))
+								}
 							>
 								Previous
 							</Button>
 							<div className="flex items-center gap-1">
-								{Array.from({ length: Math.min(5, totalPages) }, (_, i) => {
-									const pageNum = i + 1
+								{previewPages.map((pageNum) => {
 									return (
 										<Button
 											key={pageNum}
 											size="sm"
 											variant={currentPage === pageNum ? 'primary' : 'ghost'}
-											onClick={() => setCurrentPage(pageNum)}
+											onClick={() => onQueryChange((prev) => ({ ...prev, page: pageNum }))}
 										>
 											{pageNum}
 										</Button>
 									)
 								})}
-								{totalPages > 5 && <span className="px-2">...</span>}
-								{totalPages > 5 && (
+								{totalPages > 5 && previewPages[previewPages.length - 1] < totalPages - 1 && (
+									<span className="px-2">...</span>
+								)}
+								{totalPages > 5 && previewPages[previewPages.length - 1] < totalPages && (
 									<Button
 										size="sm"
 										variant={currentPage === totalPages ? 'primary' : 'ghost'}
-										onClick={() => setCurrentPage(totalPages)}
+										onClick={() => onQueryChange((prev) => ({ ...prev, page: totalPages }))}
 									>
 										{totalPages}
 									</Button>
@@ -685,7 +739,12 @@ export default function CorporationMembersTable({
 								size="sm"
 								variant="ghost"
 								disabled={currentPage === totalPages}
-								onClick={() => setCurrentPage((p) => Math.min(totalPages, p + 1))}
+								onClick={() =>
+									onQueryChange((prev) => ({
+										...prev,
+										page: Math.min(totalPages, currentPage + 1),
+									}))
+								}
 							>
 								Next
 							</Button>

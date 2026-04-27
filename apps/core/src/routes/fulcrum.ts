@@ -167,6 +167,7 @@ app.get('/users/:userId/characters', requireAuth(), async (c) => {
 					corporationName: char.corporationName ?? null,
 					allianceId: char.allianceId ?? null,
 					allianceName: char.allianceName ?? null,
+					hasValidToken: char.hasValidToken,
 					role,
 					activityStatus,
 					reports,

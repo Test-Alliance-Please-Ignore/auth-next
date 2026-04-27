@@ -21,6 +21,7 @@ export interface CorporationMember {
 	corporationName: string
 	role: 'CEO' | 'Director' | 'Member'
 	hasAuthAccount: boolean
+	hasValidToken?: boolean | null
 	authUserId?: string
 	mainCharacterName?: string
 	status?: 'active' | 'emeritus'
@@ -34,6 +35,48 @@ export interface CorporationMember {
 	activityStatus: 'active' | 'inactive' | 'unknown'
 	hrRole?: import('../hr/api').HrRoleGrant
 	isBlacklisted: boolean
+}
+
+export type CorporationMembersAuthFilter =
+	| 'all'
+	| 'linked'
+	| 'unlinked'
+	| 'linked_valid'
+	| 'linked_invalid'
+	| 'linked_unknown'
+export type CorporationMembersActivityFilter = 'all' | 'active' | 'inactive' | 'unknown'
+export type CorporationMembersRoleFilter = 'all' | 'CEO' | 'Director' | 'Member'
+export type CorporationMembersSortField = 'name' | 'role' | 'auth' | 'activity' | 'lastLogin' | 'joinDate'
+export type CorporationMembersSortOrder = 'asc' | 'desc'
+
+export interface CorporationMembersQuery {
+	page?: number
+	limit?: number
+	search?: string
+	authFilter?: CorporationMembersAuthFilter
+	activityFilter?: CorporationMembersActivityFilter
+	roleFilter?: CorporationMembersRoleFilter
+	sortField?: CorporationMembersSortField
+	sortOrder?: CorporationMembersSortOrder
+}
+
+export interface CorporationMembersResponse {
+	items: CorporationMember[]
+	pagination: {
+		page: number
+		limit: number
+		totalItems: number
+		totalPages: number
+		hasNextPage: boolean
+		hasPreviousPage: boolean
+	}
+	summary: {
+		total: number
+		linked: number
+		active: number
+		inactive: number
+		directors: number
+	}
 }
 
 /**
@@ -107,8 +150,25 @@ export const myCorporationsApi = {
 	 * Get all members of a specific corporation
 	 * Requires CEO/director access
 	 */
-	async getCorporationMembers(corporationId: string): Promise<CorporationMember[]> {
-		return apiClient.get(`/corporations/${corporationId}/members`)
+	async getCorporationMembers(
+		corporationId: string,
+		query: CorporationMembersQuery = {}
+	): Promise<CorporationMembersResponse> {
+		const params = new URLSearchParams()
+		if (query.page) params.set('page', String(query.page))
+		if (query.limit) params.set('limit', String(query.limit))
+		if (query.search) params.set('search', query.search)
+		if (query.authFilter && query.authFilter !== 'all') params.set('authFilter', query.authFilter)
+		if (query.activityFilter && query.activityFilter !== 'all') {
+			params.set('activityFilter', query.activityFilter)
+		}
+		if (query.roleFilter && query.roleFilter !== 'all') params.set('roleFilter', query.roleFilter)
+		if (query.sortField) params.set('sortField', query.sortField)
+		if (query.sortOrder) params.set('sortOrder', query.sortOrder)
+		const queryString = params.toString()
+		return apiClient.get(
+			`/corporations/${corporationId}/members${queryString ? `?${queryString}` : ''}`
+		)
 	},
 
 	/**

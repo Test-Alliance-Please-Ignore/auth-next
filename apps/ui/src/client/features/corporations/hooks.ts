@@ -9,7 +9,12 @@ import { useCallback, useMemo } from 'react'
 
 import { myCorporationsApi } from './api'
 
-import type { CorporationAccessResult, CorporationMember, MyCorporation } from './api'
+import type {
+	CorporationAccessResult,
+	CorporationMembersQuery,
+	CorporationMembersResponse,
+	MyCorporation,
+} from './api'
 
 // ============================================================================
 // Query Key Factory
@@ -22,7 +27,8 @@ export const corporationKeys = {
 	all: ['my-corporations'] as const,
 	lists: () => [...corporationKeys.all, 'list'] as const,
 	list: () => [...corporationKeys.lists()] as const,
-	members: (corpId: string) => [...corporationKeys.all, 'members', corpId] as const,
+	members: (corpId: string, query: CorporationMembersQuery) =>
+		[...corporationKeys.all, 'members', corpId, query] as const,
 	access: () => [...corporationKeys.all, 'access'] as const,
 }
 
@@ -71,10 +77,11 @@ export function useMyCorporations() {
 /**
  * Hook to fetch corporation members
  */
-export function useCorporationMembers(corporationId: string) {
-	return useQuery<CorporationMember[]>({
-		queryKey: corporationKeys.members(corporationId),
-		queryFn: () => myCorporationsApi.getCorporationMembers(corporationId),
+export function useCorporationMembers(corporationId: string, query: CorporationMembersQuery) {
+	return useQuery<CorporationMembersResponse>({
+		queryKey: corporationKeys.members(corporationId, query),
+		queryFn: () => myCorporationsApi.getCorporationMembers(corporationId, query),
+		placeholderData: (previousData) => previousData,
 		staleTime: 1000 * 60, // 1 minute
 		gcTime: 1000 * 60 * 3, // 3 minutes
 		enabled: !!corporationId,
@@ -102,7 +109,7 @@ export function useCorporationManager() {
 	const invalidateMembers = useCallback(
 		(corporationId: string) => {
 			return queryClient.invalidateQueries({
-				queryKey: corporationKeys.members(corporationId),
+				queryKey: [...corporationKeys.all, 'members', corporationId],
 			})
 		},
 		[queryClient]
@@ -117,8 +124,8 @@ export function useCorporationManager() {
 	const prefetchMembers = useCallback(
 		(corporationId: string) => {
 			return queryClient.prefetchQuery({
-				queryKey: corporationKeys.members(corporationId),
-				queryFn: () => myCorporationsApi.getCorporationMembers(corporationId),
+				queryKey: corporationKeys.members(corporationId, {}),
+				queryFn: () => myCorporationsApi.getCorporationMembers(corporationId, {}),
 				staleTime: 1000 * 60, // 1 minute
 			})
 		},
@@ -159,7 +166,7 @@ export function useMyCorporation(corporationId: string) {
  * Hook to get member statistics for a corporation
  */
 export function useCorporationMemberStats(corporationId: string) {
-	const { data: members, ...query } = useCorporationMembers(corporationId)
+	const { data: members, ...query } = useCorporationMembers(corporationId, {})
 
 	const stats = useMemo(() => {
 		if (!members)
@@ -175,13 +182,13 @@ export function useCorporationMemberStats(corporationId: string) {
 				activePercentage: 0,
 			}
 
-		const total = members.length
-		const linked = members.filter((m) => m.hasAuthAccount).length
+		const total = members.summary.total
+		const linked = members.summary.linked
 		const unlinked = total - linked
-		const active = members.filter((m) => m.activityStatus === 'active').length
-		const inactive = members.filter((m) => m.activityStatus === 'inactive').length
-		const ceos = members.filter((m) => m.role === 'CEO').length
-		const directors = members.filter((m) => m.role === 'Director').length
+		const active = members.summary.active
+		const inactive = members.summary.inactive
+		const ceos = 0
+		const directors = members.summary.directors
 
 		return {
 			total,

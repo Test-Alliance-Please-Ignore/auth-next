@@ -14,6 +14,7 @@ export interface Core {
 		Array<{
 			characterId: string
 			characterName: string
+			hasValidToken: boolean
 			isDeleted: boolean
 			corporationId?: string | null
 			corporationName?: string | null

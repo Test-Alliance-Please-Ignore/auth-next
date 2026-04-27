@@ -700,6 +700,7 @@ export interface FulcrumCharacterData {
 	corporationName?: string | null
 	allianceId?: string | null
 	allianceName?: string | null
+	hasValidToken?: boolean | null
 	role?: 'CEO' | 'Director' | 'Member' | null
 	activityStatus?: 'active' | 'inactive' | 'unknown' | null
 	reports: CharacterReportMetadata[]

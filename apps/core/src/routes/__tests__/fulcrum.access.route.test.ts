@@ -64,6 +64,7 @@ function makeCoreStub() {
 			{
 				characterId: '3001',
 				characterName: 'Alt Pilot',
+				hasValidToken: true,
 				corporationId: null,
 				corporationName: null,
 				allianceId: null,
@@ -159,6 +160,8 @@ describe('fulcrum route access matrix', () => {
 		expect(hrStub.checkPermission).not.toHaveBeenCalled()
 		expect(coreStub.getUserCharacters).toHaveBeenCalledWith('target-1', false)
 		expect(fulcrumStub.listReports).toHaveBeenCalledWith({ characterId: '3001' }, 50)
+		const body = (await res.json()) as Array<{ characterId: string; hasValidToken?: boolean | null }>
+		expect(body[0]).toMatchObject({ characterId: '3001', hasValidToken: true })
 	})
 
 	it('blocks report creation for non-auditor without hr_reviewer+', async () => {

@@ -69,6 +69,31 @@ interface UnifiedCharacter {
 	fulcrum?: FulcrumCharacterData
 }
 
+export function resolveEsiBadgeState({
+	member,
+	fulcrum,
+	isInCorp,
+}: {
+	member?: CorporationMember
+	fulcrum?: FulcrumCharacterData
+	isInCorp: boolean
+}): {
+	show: boolean
+	label: 'ESI Valid' | 'ESI Invalid' | 'ESI Unknown'
+	variant: 'success' | 'destructive' | 'warning'
+} {
+	const tokenState = member?.hasValidToken ?? fulcrum?.hasValidToken ?? null
+	const show = Boolean(member?.hasAuthAccount) || (!isInCorp && !!fulcrum)
+
+	if (tokenState === true) {
+		return { show, label: 'ESI Valid', variant: 'success' }
+	}
+	if (tokenState === false) {
+		return { show, label: 'ESI Invalid', variant: 'destructive' }
+	}
+	return { show, label: 'ESI Unknown', variant: 'warning' }
+}
+
 function CharacterCard({
 	character,
 	corporationId,
@@ -92,6 +117,7 @@ function CharacterCard({
 	const hasPending = fulcrum?.reports.some(
 		(r) => r.status === 'pending' || r.status === 'processing',
 	)
+	const esiBadge = resolveEsiBadgeState({ member, fulcrum, isInCorp })
 
 	return (
 		<div className={cn('rounded-lg border p-3 space-y-2', !isInCorp && 'border-dashed opacity-80')}>
@@ -105,16 +131,18 @@ function CharacterCard({
 					<div className="flex items-center gap-2">
 						<p className="font-medium truncate">{character.characterName}</p>
 						{isInCorp && member ? (
-							<span
-								className={cn(
-									'text-xs shrink-0',
-									member.role === 'CEO' && 'font-bold text-yellow-500',
-									member.role === 'Director' && 'font-semibold text-blue-400',
-									member.role === 'Member' && 'text-muted-foreground',
-								)}
+							<Badge
+								variant={
+									member.role === 'CEO'
+										? 'destructive'
+										: member.role === 'Director'
+											? 'warning'
+											: 'default'
+								}
+								className="text-[10px] px-1.5 py-0 shrink-0"
 							>
 								{member.role}
-							</span>
+							</Badge>
 						) : (
 							<Badge variant="secondary" className="text-[10px] px-1.5 py-0 shrink-0">
 								External
@@ -123,6 +151,11 @@ function CharacterCard({
 					</div>
 					{isInCorp && member ? (
 						<div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-muted-foreground">
+							{esiBadge.show && (
+								<Badge variant={esiBadge.variant} className="text-[10px] px-1.5 py-0">
+									{esiBadge.label}
+								</Badge>
+							)}
 							<Badge
 								variant={
 									member.activityStatus === 'active'
@@ -153,9 +186,16 @@ function CharacterCard({
 								</span>
 							)}
 						</div>
-					) : fulcrum?.corporationName ? (
-						<p className="text-xs text-muted-foreground">{fulcrum.corporationName}</p>
-					) : null}
+					) : (
+						<div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-muted-foreground">
+							{esiBadge.show && (
+								<Badge variant={esiBadge.variant} className="text-[10px] px-1.5 py-0">
+									{esiBadge.label}
+								</Badge>
+							)}
+							{fulcrum?.corporationName && <span>{fulcrum.corporationName}</span>}
+						</div>
+					)}
 				</div>
 				{member?.isBlacklisted && (
 					<Badge variant="destructive" className="shrink-0 gap-1">
@@ -292,10 +332,14 @@ export default function HrMemberProfile() {
 	)
 
 	// Fetch all members and find this account
-	const { data: members, isLoading: membersLoading } = useCorporationMembers(corporationId ?? '')
+	const { data: membersResponse, isLoading: membersLoading } = useCorporationMembers(
+		corporationId ?? '',
+		{}
+	)
+	const members = membersResponse?.items ?? []
 
 	const account = useMemo(() => {
-		if (!members || !accountId) return null
+		if (!accountId) return null
 		const groups = groupByAccount(members)
 		return groups.find((g) => g.accountId === accountId) ?? null
 	}, [members, accountId])
@@ -552,15 +596,18 @@ export default function HrMemberProfile() {
 						<CardContent className="pt-6 space-y-3">
 							<div className="flex justify-between text-sm">
 								<span className="text-muted-foreground">Highest Role</span>
-								<span
-									className={cn(
-										'font-medium',
-										account.highestRole === 'CEO' && 'text-yellow-500',
-										account.highestRole === 'Director' && 'text-blue-400',
-									)}
+								<Badge
+									variant={
+										account.highestRole === 'CEO'
+											? 'destructive'
+											: account.highestRole === 'Director'
+												? 'warning'
+												: 'default'
+									}
+									className="text-[10px]"
 								>
 									{account.highestRole}
-								</span>
+								</Badge>
 							</div>
 							<Separator />
 							<div className="flex justify-between text-sm">

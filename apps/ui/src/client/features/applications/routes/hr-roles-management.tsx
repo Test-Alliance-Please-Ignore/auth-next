@@ -61,7 +61,11 @@ export default function HrRolesManagement() {
 	const { user, isAuthenticated, isLoading: authLoading } = useAuth()
 	const { canAccess, userRole } = useCanAccessCorporation(corporationId!)
 	const { data: corporation, isLoading: corpLoading } = useMyCorporation(corporationId!)
-	const { data: members, isLoading: membersLoading } = useCorporationMembers(corporationId!)
+	const { data: membersResponse, isLoading: membersLoading } = useCorporationMembers(
+		corporationId!,
+		{}
+	)
+	const members = membersResponse?.items ?? []
 	const { data: hrRoles, isLoading: hrRolesLoading, error } = useHrRoles(corporationId!)
 
 	const [grantDialogMember, setGrantDialogMember] = useState<CorporationMember | null>(null)
@@ -79,7 +83,7 @@ export default function HrRolesManagement() {
 
 	const memberByUserId = useMemo(() => {
 		const map = new Map<string, CorporationMember>()
-		for (const member of members || []) {
+		for (const member of members) {
 			if (!member.authUserId) continue
 			const existing = map.get(member.authUserId)
 			if (!existing) {
