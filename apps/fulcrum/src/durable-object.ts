@@ -19,7 +19,7 @@ import * as queries from './db/queries'
 import { sendReportStartedDM } from './lib/discord-webhook'
 import { resolveReportMetadata } from './lib/report-metadata'
 import type { Env } from './context'
-import type { WorkflowParams } from './workflows/character-report.workflow'
+import type { WorkflowParams } from './workflows/character-report.workflow.js'
 
 /**
  * Fulcrum Durable Object

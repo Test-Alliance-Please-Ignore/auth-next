@@ -674,6 +674,7 @@ app.post('/:characterId/refresh', requireAuth(), async (c) => {
 					db,
 					tokenStore: eveTokenStoreStub,
 					characterId: characterIdStr,
+					touchLastCharacterRefresh: true,
 				})
 			: null
 		const fallbackValidation = tokenStatus ? null : await eveTokenStoreStub.validateToken(characterIdStr)

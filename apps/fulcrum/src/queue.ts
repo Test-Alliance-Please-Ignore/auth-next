@@ -10,7 +10,7 @@ import * as queries from './db/queries'
 import { sendReportFailedDM } from './lib/discord-webhook'
 import { resolveReportMetadata } from './lib/report-metadata'
 import type { Env } from './context'
-import type { WorkflowParams } from './workflows/character-report.workflow'
+import type { WorkflowParams } from './workflows/character-report.workflow.js'
 
 /**
  * Message body for CHARACTER_REPORTS_QUEUE

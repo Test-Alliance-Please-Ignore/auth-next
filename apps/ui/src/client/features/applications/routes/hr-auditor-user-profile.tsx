@@ -76,6 +76,14 @@ function getLatestReport(character: FulcrumCharacterData): CharacterReportMetada
 	)
 }
 
+function isNpcCorporation(corporationId: string | null | undefined): boolean {
+	if (!corporationId) return false
+	const parsed = Number(corporationId)
+	if (!Number.isFinite(parsed)) return false
+	const id = Math.trunc(parsed)
+	return id >= 1_000_000 && id <= 1_999_999
+}
+
 export default function HrAuditorUserProfilePage() {
 	const { userId } = useParams<{ userId: string }>()
 	const location = useLocation()
@@ -467,7 +475,7 @@ export default function HrAuditorUserProfilePage() {
 											/>
 											<div className="min-w-0">
 												<div className="flex items-center gap-2">
-													<p className="truncate text-sm font-medium">{character.characterName}</p>
+													<p className="truncate text-lg font-semibold text-foreground">{character.characterName}</p>
 													{character.isPrimary && (
 														<Badge
 															variant="default"
@@ -504,25 +512,41 @@ export default function HrAuditorUserProfilePage() {
 												</div>
 												<div className="mt-1 flex flex-wrap items-center gap-2">
 													{character.corporationId && character.corporationName ? (
-														<div className="inline-flex items-center gap-1.5 rounded-md px-2 py-1 text-xs text-muted-foreground">
+														<div className="inline-flex items-center gap-1.5">
 															<img
 																src={corporationLogoUrl(character.corporationId, 32)}
 																alt={character.corporationName}
-																className="h-3.5 w-3.5 rounded"
+																className="size-5 rounded-sm border border-border/60 object-cover"
 															/>
-															<span className="truncate max-w-[220px]">{character.corporationName}</span>
+															<span
+																className={
+																	isNpcCorporation(character.corporationId)
+																		? 'truncate max-w-[220px] text-base text-muted-foreground'
+																		: 'truncate max-w-[220px] text-base text-white'
+																}
+															>
+																{character.corporationName}
+															</span>
+															{isNpcCorporation(character.corporationId) && (
+																<Badge variant="ghost" className="h-5 px-1.5 text-[10px]">
+																	NPC Corp
+																</Badge>
+															)}
 														</div>
 													) : (
 														<span className="text-xs text-muted-foreground">Corporation unknown</span>
 													)}
 													{character.allianceId && character.allianceName && (
-														<div className="inline-flex items-center gap-1.5 rounded-md px-2 py-1 text-xs text-muted-foreground">
+														<div className="inline-flex items-center gap-1.5">
+															<span className="text-muted-foreground">•</span>
 															<img
 																src={allianceLogoUrl(character.allianceId, 32)}
 																alt={character.allianceName}
-																className="h-3.5 w-3.5 rounded"
+																className="size-5 rounded-sm border border-border/60 object-cover"
 															/>
-															<span className="truncate max-w-[220px]">{character.allianceName}</span>
+															<span className="truncate max-w-[220px] text-base text-muted-foreground">
+																{character.allianceName}
+															</span>
 														</div>
 													)}
 												</div>

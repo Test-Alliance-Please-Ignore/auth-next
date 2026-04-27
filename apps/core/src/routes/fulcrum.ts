@@ -134,7 +134,16 @@ app.get('/users/:userId/characters', requireAuth(), async (c) => {
 		const fulcrum = getFulcrumStub(c)
 		const results = await Promise.all(
 			characters.map(async (char) => {
-				const reports = await fulcrum.listReports({ characterId: char.characterId }, 50)
+				let reports: Awaited<ReturnType<Fulcrum['listReports']>> = []
+				try {
+					reports = await fulcrum.listReports({ characterId: char.characterId }, 50)
+				} catch (error) {
+					logger.warn('[Fulcrum] Failed to list reports for character while building user list', {
+						userId,
+						characterId: char.characterId,
+						error: error instanceof Error ? error.message : String(error),
+					})
+				}
 				let role: 'CEO' | 'Director' | 'Member' | null = null
 				let activityStatus: 'active' | 'inactive' | 'unknown' | null = null
 
