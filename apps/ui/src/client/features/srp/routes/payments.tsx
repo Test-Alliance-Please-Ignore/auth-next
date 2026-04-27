@@ -15,6 +15,10 @@ import { formatISK, formatISKShort, formatRelativeTime } from '../utils'
 
 import type { SRPRequestResponse } from '../types'
 
+type ExitPhase = 'swiping' | 'collapsing'
+const SWIPE_DURATION_MS = 420
+const COLLAPSE_DURATION_MS = 280
+
 export default function PaymentsQueue() {
 	const { hasAnyPermission } = useUserPermissions()
 
@@ -35,9 +39,9 @@ export default function PaymentsQueue() {
 function PaymentStack() {
 	const { data, isLoading, error } = useRequestsByStatus('approved', { limit: 100 })
 	const { data: payoutTotalData } = usePendingPayoutTotal()
-	const [dismissing, setDismissing] = useState<Set<string>>(new Set())
 	const [dismissed, setDismissed] = useState<Set<string>>(new Set())
 	const [exiting, setExiting] = useState<Map<string, SRPRequestResponse>>(new Map())
+	const [exitPhases, setExitPhases] = useState<Map<string, ExitPhase>>(new Map())
 	const markPaid = useMarkPaid()
 
 	if (isLoading) {
@@ -88,15 +92,31 @@ function PaymentStack() {
 	}
 
 	const handleMarkPaid = async (request: SRPRequestResponse) => {
-		setDismissing((prev) => new Set([...prev, request.id]))
 		setExiting((prev) => {
 			const next = new Map(prev)
 			next.set(request.id, request)
 			return next
 		})
+		setExitPhases((prev) => {
+			const next = new Map(prev)
+			next.set(request.id, 'swiping')
+			return next
+		})
 		try {
+			await new Promise<void>((resolve) => {
+				window.setTimeout(resolve, SWIPE_DURATION_MS)
+			})
 			await markPaid.mutateAsync(request.id)
 			toast.success(`Marked as payment pending: ${request.shipTypeName}`)
+
+			setExitPhases((prev) => {
+				const next = new Map(prev)
+				if (next.get(request.id) === 'swiping') {
+					next.set(request.id, 'collapsing')
+				}
+				return next
+			})
+
 			window.setTimeout(() => {
 				setDismissed((prev) => new Set([...prev, request.id]))
 				setExiting((prev) => {
@@ -104,20 +124,20 @@ function PaymentStack() {
 					next.delete(request.id)
 					return next
 				})
-				setDismissing((prev) => {
-					const next = new Set(prev)
-					next.delete(request.id)
-					return next
+				setExitPhases((prev) => {
+					const nextMap = new Map(prev)
+					nextMap.delete(request.id)
+					return nextMap
 				})
-			}, 360)
+			}, COLLAPSE_DURATION_MS)
 		} catch (e: any) {
 			setExiting((prev) => {
 				const next = new Map(prev)
 				next.delete(request.id)
 				return next
 			})
-			setDismissing((prev) => {
-				const next = new Set(prev)
+			setExitPhases((prev) => {
+				const next = new Map(prev)
 				next.delete(request.id)
 				return next
 			})
@@ -138,7 +158,7 @@ function PaymentStack() {
 					key={req.id}
 					request={req}
 					onMarkPaid={handleMarkPaid}
-					isDismissing={dismissing.has(req.id)}
+					exitPhase={exitPhases.get(req.id)}
 				/>
 			))}
 		</div>
@@ -148,13 +168,15 @@ function PaymentStack() {
 function PaymentCard({
 	request,
 	onMarkPaid,
-	isDismissing,
+	exitPhase,
 }: {
 	request: SRPRequestResponse
 	onMarkPaid: (r: SRPRequestResponse) => void
-	isDismissing?: boolean
+	exitPhase?: ExitPhase
 }) {
 	const [copiedField, setCopiedField] = useState<string | null>(null)
+	const isSwiping = exitPhase === 'swiping'
+	const isCollapsing = exitPhase === 'collapsing'
 
 	const copyToClipboard = (text: string, field: string, label: string) => {
 		void navigator.clipboard.writeText(text).then(() => {
@@ -169,61 +191,77 @@ function PaymentCard({
 	const reason = `SRP - KM#${request.id}`
 
 	return (
-		<Card
-			className={`p-4 transition-all duration-300 ${isDismissing ? 'pointer-events-none -translate-y-1 opacity-0' : 'translate-y-0 opacity-100'}`}
+		<div
+			className={`${isSwiping ? 'overflow-visible' : 'overflow-hidden'} transition-[max-height,margin] duration-300 ease-in-out ${isCollapsing ? '!mt-0 max-h-0' : 'max-h-[320px]'}`}
+			style={{
+				transition:
+					'opacity 420ms ease-in, max-height 300ms ease-in-out, margin 300ms ease-in-out',
+				opacity: isSwiping || isCollapsing ? 0 : 1,
+			}}
 		>
-			<div className="space-y-1.5">
-				<CopyRow
-					label="Recipient"
-					value={recipient}
-					copied={copiedField === 'recipient'}
-					onCopy={() => copyToClipboard(recipient, 'recipient', 'Recipient')}
-				/>
-				<CopyRow
-					label="Amount"
-					value={amount}
-					display={formatISK(amount)}
-					copied={copiedField === 'amount'}
-					onCopy={() => copyToClipboard(amount, 'amount', 'Amount')}
-				/>
-				<CopyRow
-					label="Reason"
-					value={reason}
-					copied={copiedField === 'reason'}
-					onCopy={() => copyToClipboard(reason, 'reason', 'Reason')}
-				/>
-			</div>
-
-			<div className="mt-3 flex items-center gap-3 border-t border-border/40 pt-3">
-				<Button
-					type="button"
-					size="sm"
-					onClick={() => onMarkPaid(request)}
-					disabled={isDismissing}
-					className="shrink-0 gap-1"
-				>
-					<Check className="h-4 w-4" /> Mark Paid
-				</Button>
-				<div className="text-sm text-muted-foreground">
-					<Link
-						to={`/srp/review/${request.id}`}
-						target="_blank"
-						rel="noopener noreferrer"
-						className="inline-flex items-center gap-2 underline-offset-4 hover:underline focus-visible:underline"
-					>
-						<span className="font-medium">{request.shipTypeName}</span>
-						{request.corporationName && <span>· {request.corporationName}</span>}
-						<span className="inline-flex items-center gap-1">
-							<span>· Lost</span>
-							<EveTimeDisplay dateStr={request.lossDate} format="compact" className="text-sm" />
-						</span>
-						{request.reviewedAt && (
-							<span>· Reviewed {formatRelativeTime(request.reviewedAt)}</span>
-						)}
-					</Link>
+			<Card
+				className={`p-4 ${isSwiping ? 'pointer-events-none' : ''}`}
+				style={{
+					transition:
+						'transform 420ms cubic-bezier(0.22, 0.61, 0.36, 1), filter 420ms ease-in',
+					willChange: 'transform, filter',
+					transform: isSwiping ? 'translateX(85%)' : 'translateX(0)',
+					filter: isSwiping ? 'blur(1.5px) saturate(85%)' : 'blur(0px) saturate(100%)',
+				}}
+			>
+				<div className="space-y-1.5">
+					<CopyRow
+						label="Recipient"
+						value={recipient}
+						copied={copiedField === 'recipient'}
+						onCopy={() => copyToClipboard(recipient, 'recipient', 'Recipient')}
+					/>
+					<CopyRow
+						label="Amount"
+						value={amount}
+						display={formatISK(amount)}
+						copied={copiedField === 'amount'}
+						onCopy={() => copyToClipboard(amount, 'amount', 'Amount')}
+					/>
+					<CopyRow
+						label="Reason"
+						value={reason}
+						copied={copiedField === 'reason'}
+						onCopy={() => copyToClipboard(reason, 'reason', 'Reason')}
+					/>
 				</div>
-			</div>
-		</Card>
+
+				<div className="mt-3 flex items-center gap-3 border-t border-border/40 pt-3">
+					<Button
+						type="button"
+						size="sm"
+						onClick={() => onMarkPaid(request)}
+						disabled={Boolean(exitPhase)}
+						className="shrink-0 gap-1"
+					>
+						<Check className="h-4 w-4" /> Mark Paid
+					</Button>
+					<div className="text-sm text-muted-foreground">
+						<Link
+							to={`/srp/review/${request.id}`}
+							target="_blank"
+							rel="noopener noreferrer"
+							className="inline-flex items-center gap-2 underline-offset-4 hover:underline focus-visible:underline"
+						>
+							<span className="font-medium">{request.shipTypeName}</span>
+							{request.corporationName && <span>· {request.corporationName}</span>}
+							<span className="inline-flex items-center gap-1">
+								<span>· Lost</span>
+								<EveTimeDisplay dateStr={request.lossDate} format="compact" className="text-sm" />
+							</span>
+							{request.reviewedAt && (
+								<span>· Reviewed {formatRelativeTime(request.reviewedAt)}</span>
+							)}
+						</Link>
+					</div>
+				</div>
+			</Card>
+		</div>
 	)
 }
 

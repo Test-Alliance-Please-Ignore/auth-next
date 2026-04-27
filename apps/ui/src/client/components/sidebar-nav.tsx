@@ -29,6 +29,10 @@ import { Link, useLocation } from 'react-router-dom'
 import { useHrAccessibleCorporations } from '@/features/hr'
 import { useHasCorporationAccess } from '@/features/corporations'
 import { useRequestsByStatus, useSrpPaymentMismatchAlerts } from '@/features/srp/hooks'
+import {
+	updateSrpNavQueueCounts,
+	useSrpNavQueueCountsSnapshot,
+} from '@/features/srp/state/nav-queue-counts-store'
 import { useTaxAlerts } from '@/hooks/corporation-tax'
 import { useAuth, useLogout } from '@/hooks/useAuth'
 import { useFeatureFlag } from '@/hooks/useFeatureFlags'
@@ -99,9 +103,30 @@ export function SidebarNav({ onNavigate, isSidebarOpen = true, onToggleSidebar }
 		limit: 1,
 		offset: 0,
 	}, { enabled: shouldFetchSrpAlertCount })
-	const reviewQueueCount = reviewQueueData?.total ?? 0
-	const paymentQueueCount = paymentQueueData?.total ?? 0
-	const srpAlertCount = shouldFetchSrpAlertCount ? (srpAlertData?.total ?? 0) : 0
+	const {
+		reviewQueueCount: storedReviewQueueCount,
+		paymentQueueCount: storedPaymentQueueCount,
+		srpAlertCount: storedSrpAlertCount,
+	} = useSrpNavQueueCountsSnapshot()
+
+	useEffect(() => {
+		updateSrpNavQueueCounts({
+			reviewQueueCount: shouldFetchSrpReviewCount ? reviewQueueData?.total : 0,
+			paymentQueueCount: shouldFetchSrpPaymentCount ? paymentQueueData?.total : 0,
+			srpAlertCount: shouldFetchSrpAlertCount ? srpAlertData?.total : 0,
+		})
+	}, [
+		shouldFetchSrpReviewCount,
+		shouldFetchSrpPaymentCount,
+		shouldFetchSrpAlertCount,
+		reviewQueueData?.total,
+		paymentQueueData?.total,
+		srpAlertData?.total,
+	])
+
+	const reviewQueueCount = shouldFetchSrpReviewCount ? storedReviewQueueCount : 0
+	const paymentQueueCount = shouldFetchSrpPaymentCount ? storedPaymentQueueCount : 0
+	const srpAlertCount = shouldFetchSrpAlertCount ? storedSrpAlertCount : 0
 	const srpNavState = resolveSrpNavState({
 		srpEnabled,
 		isSiteAdmin,

@@ -4,6 +4,7 @@ import { logger } from '@repo/hono-helpers'
 import { getEsiInstanceForCharacter } from '@repo/esi'
 import type {
 	CharacterReportMetadata,
+	CreateBulkReportOptions,
 	CreateReportOptions,
 	Fulcrum,
 	ListReportsFilters,
@@ -18,7 +19,7 @@ import * as queries from './db/queries'
 import { sendReportStartedDM } from './lib/discord-webhook'
 import { resolveReportMetadata } from './lib/report-metadata'
 import type { Env } from './context'
-import type { WorkflowParams } from './workflows/character-report.workflow'
+import type { WorkflowParams } from './workflows/character-report.workflow.js'
 
 /**
  * Fulcrum Durable Object
@@ -55,7 +56,14 @@ export class FulcrumDO extends DurableObject<Env, {}> implements Fulcrum {
 	 * Creates database record, queues workflow, returns report ID
 	 */
 	async createCharacterReport(options: CreateReportOptions): Promise<string> {
-		const { characterId, requestorUserId, requestorCorporationId, requestSource, applicationId } = options
+		const {
+			characterId,
+			requestorUserId,
+			requestorCorporationId,
+			requestSource,
+			applicationId,
+			sendDm = true,
+		} = options
 		const db = this.getDb()
 
 		// Prevent duplicate concurrent reports for the same character across all requestors.
@@ -92,31 +100,34 @@ export class FulcrumDO extends DurableObject<Env, {}> implements Fulcrum {
 		})
 
 		// Send Discord DM notification (non-blocking)
-		try {
-			const metadata = await resolveReportMetadata(
-				this.env,
-				reportId,
-				requestorUserId,
-				characterId,
-				null, // Character name not yet populated
-				requestorCorporationId
-			)
+		if (sendDm) {
+			try {
+				const metadata = await resolveReportMetadata(
+					this.env,
+					reportId,
+					requestorUserId,
+					characterId,
+					null, // Character name not yet populated
+					requestorCorporationId
+				)
 
-			if (metadata) {
-				await sendReportStartedDM(this.env, requestorUserId, metadata)
+				if (metadata) {
+					await sendReportStartedDM(this.env, requestorUserId, metadata)
+				}
+			} catch (error) {
+				// Log but don't fail - DM failures should not block report creation
+				logger.error('[Fulcrum DO] Failed to send report started DM', {
+					reportId,
+					error: error instanceof Error ? error.message : String(error),
+				})
 			}
-		} catch (error) {
-			// Log but don't fail - DM failures should not block report creation
-			logger.error('[Fulcrum DO] Failed to send report started DM', {
-				reportId,
-				error: error instanceof Error ? error.message : String(error),
-			})
 		}
 
 		// Start workflow
 		const workflowParams: WorkflowParams = {
 			reportId,
 			characterId,
+			sendDm,
 		}
 		try {
 			const workflowInstance = await this.env.CHARACTER_REPORT_WORKFLOW.create({
@@ -140,6 +151,48 @@ export class FulcrumDO extends DurableObject<Env, {}> implements Fulcrum {
 		}
 
 		return reportId
+	}
+
+	/**
+	 * RPC: Create a bulk character report batch.
+	 * Starts a parent batch workflow that fans out child character-report workflows.
+	 */
+	async createBulkCharacterReports(options: CreateBulkReportOptions): Promise<{ batchId: string }> {
+		const {
+			characterIds,
+			requestorUserId,
+			requestorCorporationId,
+			requestSource,
+			applicationId,
+			sendDm = true,
+		} = options
+
+		const dedupedCharacterIds = [...new Set(characterIds.map((id) => id.trim()).filter(Boolean))]
+		if (dedupedCharacterIds.length === 0) {
+			throw new Error('At least one characterId is required for bulk report generation')
+		}
+
+		const workflowInstance = await this.env.BULK_CHARACTER_REPORT_WORKFLOW.create({
+			id: `bulk-${requestorUserId}-${Date.now()}-${crypto.randomUUID()}`,
+			params: {
+				characterIds: dedupedCharacterIds,
+				requestorUserId,
+				requestorCorporationId,
+				requestSource,
+				applicationId,
+				sendDm,
+			},
+		})
+
+		this.logger.info('Started bulk character report workflow', {
+			batchId: workflowInstance.id,
+			requestorUserId,
+			requestorCorporationId,
+			characterCount: dedupedCharacterIds.length,
+			sendDm,
+		})
+
+		return { batchId: workflowInstance.id }
 	}
 
 	/**

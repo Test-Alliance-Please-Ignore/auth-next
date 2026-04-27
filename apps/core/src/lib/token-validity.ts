@@ -1,4 +1,4 @@
-import { eq } from '@repo/db-utils'
+import { eq, inArray } from '@repo/db-utils'
 
 import { userCharacters } from '../db/schema'
 
@@ -83,14 +83,32 @@ export async function validateAndSyncCharacterTokenValidityBatch({
 	tokenStore,
 	characters,
 	maxConcurrency = 10,
+	validityCacheMs = 24 * 60 * 60 * 1000,
+	forceValidate = false,
 }: {
 	db: DbClient<typeof schema>
 	tokenStore: EveTokenStore
 	characters: Array<{ characterId: string; hasValidToken?: boolean | null }>
 	maxConcurrency?: number
+	validityCacheMs?: number
+	forceValidate?: boolean
 }): Promise<Map<string, boolean | null>> {
 	const results = new Map<string, boolean | null>()
 	if (characters.length === 0) return results
+
+	const uniqueCharacterIds = [...new Set(characters.map((character) => character.characterId))]
+	const existingRows =
+		uniqueCharacterIds.length > 0
+			? await db.query.userCharacters.findMany({
+				where: inArray(userCharacters.characterId, uniqueCharacterIds),
+				columns: {
+					characterId: true,
+					hasValidToken: true,
+					lastCharacterRefresh: true,
+				},
+			})
+			: []
+	const existingByCharacterId = new Map(existingRows.map((row) => [row.characterId, row]))
 
 	let cursor = 0
 	const workers = Math.max(1, Math.min(maxConcurrency, characters.length))
@@ -103,16 +121,31 @@ export async function validateAndSyncCharacterTokenValidityBatch({
 				if (index >= characters.length) return
 
 				const character = characters[index]
+				const existing = existingByCharacterId.get(character.characterId)
+				const previousHasValidToken =
+					existing?.hasValidToken ?? character.hasValidToken ?? null
+				const isFresh =
+					!forceValidate &&
+					previousHasValidToken !== null &&
+					existing?.lastCharacterRefresh != null &&
+					Date.now() - existing.lastCharacterRefresh.getTime() <= validityCacheMs
+
+				if (isFresh) {
+					results.set(character.characterId, previousHasValidToken)
+					continue
+				}
+
 				try {
 					const result = await validateAndSyncCharacterTokenValidity({
 						db,
 						tokenStore,
 						characterId: character.characterId,
-						previousHasValidToken: character.hasValidToken ?? null,
+						previousHasValidToken,
+						touchLastCharacterRefresh: true,
 					})
 					results.set(character.characterId, result.nextHasValidToken)
 				} catch {
-					results.set(character.characterId, character.hasValidToken ?? null)
+					results.set(character.characterId, previousHasValidToken)
 				}
 			}
 		})

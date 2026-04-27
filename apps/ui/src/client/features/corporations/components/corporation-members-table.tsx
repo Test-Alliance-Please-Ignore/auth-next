@@ -7,8 +7,6 @@
 
 import { useMutation, useQueryClient } from '@tanstack/react-query'
 import {
-	AlertCircle,
-	CheckCircle,
 	ChevronDown,
 	ChevronUp,
 	ExternalLink,
@@ -20,7 +18,6 @@ import {
 	Star,
 	User,
 	Users,
-	XCircle,
 } from 'lucide-react'
 import { useCallback, useMemo, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
@@ -28,6 +25,7 @@ import { useNavigate } from 'react-router-dom'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Card } from '@/components/ui/card'
+import { EsiStatusBadge, getEsiStatusBadgeState } from '@/components/esi-status-badge'
 import { Input } from '@/components/ui/input'
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover'
 import { Select } from '@/components/ui/select'
@@ -99,31 +97,10 @@ export function getAuthStatusBadge(member: Pick<CorporationMember, 'hasAuthAccou
 	variant: 'success' | 'destructive' | 'warning'
 	label: 'ESI Valid' | 'ESI Invalid' | 'ESI Unknown' | 'Unlinked'
 } {
-	if (!member.hasAuthAccount) {
-		return {
-			variant: 'warning',
-			label: 'Unlinked',
-		}
-	}
-
-	if (member.hasValidToken === true) {
-		return {
-			variant: 'success',
-			label: 'ESI Valid',
-		}
-	}
-
-	if (member.hasValidToken === false) {
-		return {
-			variant: 'destructive',
-			label: 'ESI Invalid',
-		}
-	}
-
-	return {
-		variant: 'warning',
-		label: 'ESI Unknown',
-	}
+	return getEsiStatusBadgeState({
+		hasAuthAccount: member.hasAuthAccount,
+		hasValidToken: member.hasValidToken ?? null,
+	})
 }
 
 // ─── Actions popover (same pattern as bills page) ────────────────────────────
@@ -562,37 +539,18 @@ export default function CorporationMembersTable({
 									</TableCell>
 								)}
 								<TableCell>
-									{member.hasAuthAccount ? (
-										<div className="space-y-1">
-											{(() => {
-												const authStatus = getAuthStatusBadge(member)
-												const AuthIcon =
-													authStatus.label === 'ESI Valid'
-														? CheckCircle
-														: authStatus.label === 'ESI Invalid'
-															? XCircle
-															: AlertCircle
-												return (
-													<Badge
-														variant={authStatus.variant}
-														icon={AuthIcon}
-														className="text-[10px]"
-													>
-														{authStatus.label}
-													</Badge>
-												)
-											})()}
-											{member.mainCharacterName && (
-												<div className="text-xs text-muted-foreground">
-													{member.mainCharacterName}
-												</div>
-											)}
-										</div>
-									) : (
-										<Badge variant="warning" icon={AlertCircle} className="text-[10px]">
-											Unlinked
-										</Badge>
-									)}
+									<div className="space-y-1">
+										<EsiStatusBadge
+											hasAuthAccount={member.hasAuthAccount}
+											hasValidToken={member.hasValidToken}
+											className="text-[10px]"
+										/>
+										{member.mainCharacterName && (
+											<div className="text-xs text-muted-foreground">
+												{member.mainCharacterName}
+											</div>
+										)}
+									</div>
 								</TableCell>
 								<TableCell>
 									{member.activityStatus === 'active' && (

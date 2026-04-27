@@ -30,17 +30,20 @@ function makeDbRecorder(existingHasValidToken: boolean | null = null) {
 	const findFirst = vi.fn().mockResolvedValue({
 		hasValidToken: existingHasValidToken,
 	})
+	const findMany = vi.fn().mockResolvedValue([])
 
 	return {
 		db: {
 			query: {
 				userCharacters: {
 					findFirst,
+					findMany,
 				},
 			},
 			update,
 		},
 		findFirst,
+		findMany,
 		update,
 		set,
 		updates,
@@ -134,6 +137,18 @@ describe('token-validity helper', () => {
 
 	it('batch helper falls back to prior state for validation failures', async () => {
 		const recorder = makeDbRecorder(null)
+		recorder.findMany.mockResolvedValue([
+			{
+				characterId: '2001',
+				hasValidToken: false,
+				lastCharacterRefresh: new Date(Date.now() - 25 * 60 * 60 * 1000),
+			},
+			{
+				characterId: '2002',
+				hasValidToken: true,
+				lastCharacterRefresh: new Date(Date.now() - 25 * 60 * 60 * 1000),
+			},
+		])
 		const tokenStore = {
 			validateToken: vi
 				.fn()
@@ -154,5 +169,52 @@ describe('token-validity helper', () => {
 		expect(results.get('2001')).toBe(true)
 		expect(results.get('2002')).toBe(true)
 	})
-})
 
+	it('batch helper reuses fresh cached token validity without live validation', async () => {
+		const recorder = makeDbRecorder(null)
+		recorder.findMany.mockResolvedValue([
+			{
+				characterId: '2001',
+				hasValidToken: true,
+				lastCharacterRefresh: new Date(Date.now() - 60 * 60 * 1000),
+			},
+		])
+		const tokenStore = {
+			validateToken: vi.fn(),
+		}
+
+		const results = await validateAndSyncCharacterTokenValidityBatch({
+			db: recorder.db as any,
+			tokenStore: tokenStore as any,
+			characters: [{ characterId: '2001', hasValidToken: false }],
+		})
+
+		expect(results.get('2001')).toBe(true)
+		expect(tokenStore.validateToken).not.toHaveBeenCalled()
+		expect(recorder.update).not.toHaveBeenCalled()
+	})
+
+	it('batch helper validates stale entries and touches refresh timestamp', async () => {
+		const recorder = makeDbRecorder(null)
+		recorder.findMany.mockResolvedValue([
+			{
+				characterId: '2001',
+				hasValidToken: true,
+				lastCharacterRefresh: new Date(Date.now() - 25 * 60 * 60 * 1000),
+			},
+		])
+		const tokenStore = {
+			validateToken: vi.fn().mockResolvedValue(makeValidationResult({ characterId: '2001', isValid: false })),
+		}
+
+		const results = await validateAndSyncCharacterTokenValidityBatch({
+			db: recorder.db as any,
+			tokenStore: tokenStore as any,
+			characters: [{ characterId: '2001' }],
+		})
+
+		expect(results.get('2001')).toBe(false)
+		expect(tokenStore.validateToken).toHaveBeenCalledWith('2001')
+		expect(recorder.updates[0]).toHaveProperty('lastCharacterRefresh')
+	})
+})

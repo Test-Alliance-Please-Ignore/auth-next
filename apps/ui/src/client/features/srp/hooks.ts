@@ -79,7 +79,7 @@ function invalidateLossQueries(queryClient: ReturnType<typeof useQueryClient>) {
 	})
 }
 
-function invalidateSrpQueueBadgeQueries(queryClient: ReturnType<typeof useQueryClient>) {
+function refreshQueuePagesHard(queryClient: ReturnType<typeof useQueryClient>) {
 	// Queue pages use requests/by-status with arbitrary status + filter objects.
 	// Remove all cached variants so navigating back always fetches fresh queue data.
 	queryClient.removeQueries({
@@ -102,7 +102,7 @@ function invalidateSrpQueueBadgeQueries(queryClient: ReturnType<typeof useQueryC
 				key[0] === 'srp' &&
 				key[1] === 'requests' &&
 				key[2] === 'by-status' &&
-				(key[3] === 'pending' || key[3] === 'approved')
+				(key[3] === 'pending' || key[3] === 'approved' || key[3] === 'paid')
 			)
 		},
 	})
@@ -111,7 +111,7 @@ function invalidateSrpQueueBadgeQueries(queryClient: ReturnType<typeof useQueryC
 	void queryClient.invalidateQueries({ queryKey: srpKeys.pendingPayoutTotal() })
 }
 
-function invalidateSrpQueueStatusQueries(
+function refreshQueueBadgesSoft(
 	queryClient: ReturnType<typeof useQueryClient>,
 	statuses: RequestStatus[]
 ) {
@@ -379,7 +379,7 @@ export function useSubmitReview() {
 			setRequestStatusAcrossCaches(queryClient, request)
 			void queryClient.invalidateQueries({ queryKey: srpKeys.allRequests() })
 			void queryClient.invalidateQueries({ queryKey: srpKeys.payments() })
-			invalidateSrpQueueBadgeQueries(queryClient)
+			refreshQueuePagesHard(queryClient)
 		},
 	})
 }
@@ -404,7 +404,7 @@ export function useUpdateReviewState() {
 			setRequestStatusAcrossCaches(queryClient, request)
 			void queryClient.invalidateQueries({ queryKey: srpKeys.allRequests() })
 			void queryClient.invalidateQueries({ queryKey: srpKeys.payments() })
-			invalidateSrpQueueBadgeQueries(queryClient)
+			refreshQueuePagesHard(queryClient)
 		},
 	})
 }
@@ -443,7 +443,7 @@ export function useApproveRequest() {
 			void queryClient.invalidateQueries({ queryKey: srpKeys.request(variables.id) })
 			void queryClient.invalidateQueries({ queryKey: srpKeys.pending() })
 			void queryClient.invalidateQueries({ queryKey: srpKeys.payments() })
-			invalidateSrpQueueBadgeQueries(queryClient)
+			refreshQueuePagesHard(queryClient)
 		},
 	})
 }
@@ -464,7 +464,7 @@ export function useRejectRequest() {
 		) => {
 			void queryClient.invalidateQueries({ queryKey: srpKeys.request(variables.id) })
 			void queryClient.invalidateQueries({ queryKey: srpKeys.pending() })
-			invalidateSrpQueueBadgeQueries(queryClient)
+			refreshQueuePagesHard(queryClient)
 		},
 	})
 }
@@ -522,7 +522,7 @@ export function useMarkPaid() {
 			setRequestStatusAcrossCaches(queryClient, request)
 			void queryClient.invalidateQueries({ queryKey: srpKeys.payments() })
 			void queryClient.invalidateQueries({ queryKey: srpKeys.allRequests() })
-			invalidateSrpQueueStatusQueries(queryClient, ['approved', 'pending', 'paid'])
+			refreshQueueBadgesSoft(queryClient, ['approved', 'pending', 'paid'])
 			void queryClient.invalidateQueries({ queryKey: srpKeys.pendingPayoutTotal() })
 		},
 	})

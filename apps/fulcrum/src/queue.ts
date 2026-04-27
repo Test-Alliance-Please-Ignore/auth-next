@@ -10,7 +10,7 @@ import * as queries from './db/queries'
 import { sendReportFailedDM } from './lib/discord-webhook'
 import { resolveReportMetadata } from './lib/report-metadata'
 import type { Env } from './context'
-import type { WorkflowParams } from './workflows/character-report.workflow'
+import type { WorkflowParams } from './workflows/character-report.workflow.js'
 
 /**
  * Message body for CHARACTER_REPORTS_QUEUE
@@ -23,6 +23,7 @@ export interface CharacterReportQueueMessage {
 	requestSource: string
 	applicationId?: string
 	expiresAt?: string // ISO date string
+	sendDm?: boolean
 }
 
 /**
@@ -39,7 +40,16 @@ export async function handleCharacterReportsQueue(
 
 	for (const message of batch.messages) {
 		try {
-			const { reportId, characterId, requestorUserId, requestorCorporationId, requestSource, applicationId, expiresAt } =
+			const {
+				reportId,
+				characterId,
+				requestorUserId,
+				requestorCorporationId,
+				requestSource,
+				applicationId,
+				expiresAt,
+				sendDm = true,
+			} =
 				message.body
 
 			queueLogger.info('Processing report request', {
@@ -67,6 +77,7 @@ export async function handleCharacterReportsQueue(
 			const workflowParams: WorkflowParams = {
 				reportId,
 				characterId,
+				sendDm,
 			}
 
 			const workflowInstance = await env.CHARACTER_REPORT_WORKFLOW.create({
@@ -104,29 +115,31 @@ export async function handleCharacterReportsQueue(
 				})
 
 				// Send Discord DM notification (non-blocking)
-				try {
-					const report = await queries.getReport(db, reportId)
+				if (message.body.sendDm ?? true) {
+					try {
+						const report = await queries.getReport(db, reportId)
 
-					if (report) {
-						const metadata = await resolveReportMetadata(
-							env,
-							reportId,
-							requestorUserId,
-							characterId,
-							report.characterName,
-							requestorCorporationId
-						)
+						if (report) {
+							const metadata = await resolveReportMetadata(
+								env,
+								reportId,
+								requestorUserId,
+								characterId,
+								report.characterName,
+								requestorCorporationId
+							)
 
-						if (metadata) {
-							await sendReportFailedDM(env, requestorUserId, metadata, errorMessage)
+							if (metadata) {
+								await sendReportFailedDM(env, requestorUserId, metadata, errorMessage)
+							}
 						}
+					} catch (dmError) {
+						queueLogger.error('Failed to send report failed DM', {
+							reportId,
+							error:
+								dmError instanceof Error ? dmError.message : String(dmError),
+						})
 					}
-				} catch (dmError) {
-					queueLogger.error('Failed to send report failed DM', {
-						reportId,
-						error:
-							dmError instanceof Error ? dmError.message : String(dmError),
-					})
 				}
 			} catch (updateError) {
 				queueLogger.error('Failed to update report status to failed', {

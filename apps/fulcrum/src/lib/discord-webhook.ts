@@ -12,6 +12,7 @@ const COLORS = {
 	BLUE: 0x3b82f6, // Report started
 	GREEN: 0x10b981, // Report completed
 	RED: 0xef4444, // Report failed
+	AMBER: 0xf59e0b, // Report batch partial success
 }
 
 /**
@@ -23,6 +24,13 @@ export interface WebhookMetadata {
 	subjectCharacterName: string
 	subjectCharacterId: string
 	corporationTicker: string
+}
+
+export interface BatchWebhookMetadata {
+	batchId: string
+	requestorMainCharacterName: string
+	corporationTicker: string
+	totalCharacters: number
 }
 
 /**
@@ -230,6 +238,88 @@ export async function sendReportFailedDM(
 		// Log but don't fail - DM failures should not block workflow
 		logger.error('[Discord DM] Failed to send report failed notification', {
 			reportId: metadata.reportId,
+			requestorUserId,
+			error: error instanceof Error ? error.message : String(error),
+		})
+	}
+}
+
+export async function sendBatchReportStartedDM(
+	env: Env,
+	requestorUserId: string,
+	metadata: BatchWebhookMetadata,
+): Promise<void> {
+	try {
+		const discordStub = getStub<Discord>(env.DISCORD, 'default')
+
+		const message: MessageContent = {
+			content: '',
+			embeds: [
+				{
+					title: 'Bulk Character Report Started',
+					color: COLORS.BLUE,
+					fields: [
+						{ name: 'Requested By', value: metadata.requestorMainCharacterName, inline: true },
+						{ name: 'On behalf of', value: metadata.corporationTicker, inline: true },
+						{ name: 'Characters', value: String(metadata.totalCharacters), inline: true },
+					],
+					footer: { text: `Batch ID: ${metadata.batchId}` },
+					timestamp: new Date().toISOString(),
+				},
+			],
+		}
+
+		await discordStub.sendDirectMessage(requestorUserId, message)
+	} catch (error) {
+		logger.error('[Discord DM] Failed to send bulk report started notification', {
+			batchId: metadata.batchId,
+			requestorUserId,
+			error: error instanceof Error ? error.message : String(error),
+		})
+	}
+}
+
+export async function sendBatchReportFinishedDM(
+	env: Env,
+	requestorUserId: string,
+	metadata: BatchWebhookMetadata,
+	summary: {
+		completed: number
+		failed: number
+		cancelled: number
+		other: number
+	},
+): Promise<void> {
+	try {
+		const discordStub = getStub<Discord>(env.DISCORD, 'default')
+		const allSucceeded = summary.failed === 0 && summary.cancelled === 0 && summary.other === 0
+		const color = allSucceeded ? COLORS.GREEN : COLORS.AMBER
+		const title = allSucceeded ? 'Bulk Character Report Completed' : 'Bulk Character Report Finished'
+
+		const message: MessageContent = {
+			content: '',
+			embeds: [
+				{
+					title,
+					color,
+					fields: [
+						{ name: 'Requested By', value: metadata.requestorMainCharacterName, inline: true },
+						{ name: 'On behalf of', value: metadata.corporationTicker, inline: true },
+						{ name: 'Completed', value: String(summary.completed), inline: true },
+						{ name: 'Failed', value: String(summary.failed), inline: true },
+						{ name: 'Cancelled', value: String(summary.cancelled), inline: true },
+						{ name: 'Other', value: String(summary.other), inline: true },
+					],
+					footer: { text: `Batch ID: ${metadata.batchId}` },
+					timestamp: new Date().toISOString(),
+				},
+			],
+		}
+
+		await discordStub.sendDirectMessage(requestorUserId, message)
+	} catch (error) {
+		logger.error('[Discord DM] Failed to send bulk report finished notification', {
+			batchId: metadata.batchId,
 			requestorUserId,
 			error: error instanceof Error ? error.message : String(error),
 		})

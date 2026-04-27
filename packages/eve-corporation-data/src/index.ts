@@ -363,6 +363,33 @@ export interface CorporationMemberData {
 	updatedAt: Date
 }
 
+export interface CorporationMemberPageItemData {
+	characterId: string
+	role: 'CEO' | 'Director' | 'Member'
+	joinDate: Date | null
+	lastLogin: Date | null
+	lastEsiUpdate: Date
+	activityStatus: 'active' | 'inactive' | 'unknown'
+}
+
+export interface CorporationMembersPageData {
+	items: CorporationMemberPageItemData[]
+	pagination: {
+		page: number
+		limit: number
+		totalItems: number
+		totalPages: number
+		hasNextPage: boolean
+		hasPreviousPage: boolean
+	}
+	summary: {
+		total: number
+		active: number
+		inactive: number
+		directors: number
+	}
+}
+
 /**
  * Corporation member tracking data
  */
@@ -1143,6 +1170,19 @@ export interface EveCorporationData {
 	 * @returns Array of member data
 	 */
 	getMembers(corporationId: string): Promise<CorporationMemberData[]>
+
+	/**
+	 * Get corporation members list as a backend-paginated page
+	 * Ordered by role (CEO, Director, Member) then character ID.
+	 * @param corporationId - The corporation ID
+	 * @param page - 1-indexed page number
+	 * @param limit - Number of members per page
+	 */
+	getMembersPaginated(
+		corporationId: string,
+		page: number,
+		limit: number
+	): Promise<CorporationMembersPageData>
 
 	/**
 	 * Get corporation IDs for a list of character IDs

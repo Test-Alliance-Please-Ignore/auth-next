@@ -781,11 +781,32 @@ export const fulcrumApi = {
 		corporationId: string,
 		requestSource: ReportRequestSource,
 		applicationId?: string,
+		sendDm = true,
 	): Promise<{ reportId: string; status: string }> {
 		return apiClient.post(`/fulcrum/characters/${characterId}/reports`, {
 			corporationId,
 			requestSource,
 			applicationId,
+			sendDm,
+		})
+	},
+
+	/**
+	 * Request a new batch of Fulcrum reports for multiple characters
+	 */
+	async requestBulkReports(
+		characterIds: string[],
+		corporationId: string,
+		requestSource: ReportRequestSource,
+		applicationId?: string,
+		sendDm = true,
+	): Promise<{ batchId: string; status: string }> {
+		return apiClient.post('/fulcrum/reports/batch', {
+			characterIds,
+			corporationId,
+			requestSource,
+			applicationId,
+			sendDm,
 		})
 	},
 

@@ -28,6 +28,7 @@ import { Navigate, useNavigate, useParams, useSearchParams } from 'react-router-
 import { formatDistanceToNow } from 'date-fns'
 
 import { MemberAvatar } from '@/components/member-avatar'
+import { getEsiStatusBadgeState } from '@/components/esi-status-badge'
 import { Badge } from '@/components/ui/badge'
 import {
 	Breadcrumb,
@@ -84,14 +85,15 @@ export function resolveEsiBadgeState({
 } {
 	const tokenState = member?.hasValidToken ?? fulcrum?.hasValidToken ?? null
 	const show = Boolean(member?.hasAuthAccount) || (!isInCorp && !!fulcrum)
-
-	if (tokenState === true) {
-		return { show, label: 'ESI Valid', variant: 'success' }
+	const shared = getEsiStatusBadgeState({
+		hasAuthAccount: show,
+		hasValidToken: tokenState,
+	})
+	return {
+		show,
+		label: shared.label === 'Unlinked' ? 'ESI Unknown' : shared.label,
+		variant: shared.variant,
 	}
-	if (tokenState === false) {
-		return { show, label: 'ESI Invalid', variant: 'destructive' }
-	}
-	return { show, label: 'ESI Unknown', variant: 'warning' }
 }
 
 function CharacterCard({

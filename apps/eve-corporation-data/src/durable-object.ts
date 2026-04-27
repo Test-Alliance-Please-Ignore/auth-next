@@ -1,6 +1,6 @@
 import { DurableObject } from 'cloudflare:workers'
 
-import { and, desc, eq, gte, inArray, lte, sql } from '@repo/db-utils'
+import { and, desc, eq, gt, gte, inArray, lte, sql } from '@repo/db-utils'
 import { getStub } from '@repo/do-utils'
 import { logger } from '@repo/hono-helpers'
 
@@ -43,6 +43,7 @@ import type {
 	CorporationKillmailData,
 	CorporationMarketData,
 	CorporationMemberData,
+	CorporationMembersPageData,
 	CorporationMemberTrackingData,
 	CorporationOrderData,
 	CorporationPublicData,
@@ -2759,6 +2760,203 @@ export class EveCorporationDataDO extends DurableObject<Env> implements EveCorpo
 		}
 
 		return members
+	}
+
+	/**
+	 * Get corporation members list as a backend-paginated page.
+	 * Ordered by role (CEO, Director, Member) then character ID.
+	 */
+	async getMembersPaginated(
+		corporationId: string,
+		page: number,
+		limit: number
+	): Promise<CorporationMembersPageData> {
+		const safePage = Math.max(1, Math.trunc(page))
+		const safeLimit = Math.min(Math.max(1, Math.trunc(limit)), 200)
+
+		const [corpInfo, totalRow] = await Promise.all([
+			this.getDb().query.corporationPublicInfo.findFirst({
+				where: eq(corporationPublicInfo.corporationId, corporationId),
+				columns: {
+					ceoId: true,
+				},
+			}),
+			this.getDb()
+				.select({
+					count: sql<number>`count(*)`.as('count'),
+				})
+				.from(corporationMembers)
+				.where(eq(corporationMembers.corporationId, corporationId))
+				.then((rows) => rows[0] ?? { count: 0 }),
+		])
+
+		const totalItems = Number(totalRow.count ?? 0)
+		const totalPages = Math.max(1, Math.ceil(totalItems / safeLimit))
+		const currentPage = Math.min(safePage, totalPages)
+		const pageOffset = (currentPage - 1) * safeLimit
+
+		if (totalItems === 0) {
+			return {
+				items: [],
+				pagination: {
+					page: currentPage,
+					limit: safeLimit,
+					totalItems,
+					totalPages,
+					hasNextPage: false,
+					hasPreviousPage: false,
+				},
+				summary: {
+					total: 0,
+					active: 0,
+					inactive: 0,
+					directors: 0,
+				},
+			}
+		}
+
+		const sevenDaysAgo = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000)
+		const [activeCountRow, inactiveCountRow, directorCountRow] = await Promise.all([
+			this.getDb()
+				.select({
+					count: sql<number>`count(*)`.as('count'),
+				})
+				.from(corporationMembers)
+				.leftJoin(
+					corporationMemberTracking,
+					and(
+						eq(corporationMemberTracking.corporationId, corporationMembers.corporationId),
+						eq(corporationMemberTracking.characterId, corporationMembers.characterId)
+					)
+				)
+				.where(
+					and(
+						eq(corporationMembers.corporationId, corporationId),
+						gt(corporationMemberTracking.logonDate, sevenDaysAgo)
+					)
+				)
+				.then((rows) => rows[0] ?? { count: 0 }),
+			this.getDb()
+				.select({
+					count: sql<number>`count(*)`.as('count'),
+				})
+				.from(corporationMembers)
+				.leftJoin(
+					corporationMemberTracking,
+					and(
+						eq(corporationMemberTracking.corporationId, corporationMembers.corporationId),
+						eq(corporationMemberTracking.characterId, corporationMembers.characterId)
+					)
+				)
+				.where(
+					and(
+						eq(corporationMembers.corporationId, corporationId),
+						lte(corporationMemberTracking.logonDate, sevenDaysAgo)
+					)
+				)
+				.then((rows) => rows[0] ?? { count: 0 }),
+			this.getDb()
+				.select({
+					count: sql<number>`count(*)`.as('count'),
+				})
+				.from(corporationMembers)
+				.leftJoin(
+					corporationDirectors,
+					and(
+						eq(corporationDirectors.corporationId, corporationMembers.corporationId),
+						eq(corporationDirectors.characterId, corporationMembers.characterId)
+					)
+				)
+				.where(
+					and(
+						eq(corporationMembers.corporationId, corporationId),
+						sql`${corporationDirectors.characterId} is not null`,
+						corpInfo?.ceoId
+							? sql`${corporationMembers.characterId} <> ${corpInfo.ceoId}`
+							: sql`1 = 1`
+					)
+				)
+				.then((rows) => rows[0] ?? { count: 0 }),
+		])
+
+		const memberRows = await this.getDb()
+			.select({
+				characterId: corporationMembers.characterId,
+				lastEsiUpdate: corporationMembers.updatedAt,
+				joinDate: corporationMemberTracking.startDate,
+				lastLogin: corporationMemberTracking.logonDate,
+				directorCharacterId: corporationDirectors.characterId,
+			})
+			.from(corporationMembers)
+			.leftJoin(
+				corporationMemberTracking,
+				and(
+					eq(corporationMemberTracking.corporationId, corporationMembers.corporationId),
+					eq(corporationMemberTracking.characterId, corporationMembers.characterId)
+				)
+			)
+			.leftJoin(
+				corporationDirectors,
+				and(
+					eq(corporationDirectors.corporationId, corporationMembers.corporationId),
+					eq(corporationDirectors.characterId, corporationMembers.characterId)
+				)
+			)
+			.where(eq(corporationMembers.corporationId, corporationId))
+			.orderBy(
+				sql`case
+					when ${corpInfo?.ceoId ?? ''} <> '' and ${corporationMembers.characterId} = ${corpInfo?.ceoId ?? ''} then 0
+					when ${corporationDirectors.characterId} is not null then 1
+					else 2
+				end`,
+				corporationMembers.characterId
+			)
+			.limit(safeLimit)
+			.offset(pageOffset)
+
+		const now = Date.now()
+		const sevenDaysMs = 7 * 24 * 60 * 60 * 1000
+
+		const items = memberRows.map((row) => {
+			const role: 'CEO' | 'Director' | 'Member' =
+				corpInfo?.ceoId && row.characterId === corpInfo.ceoId
+					? 'CEO'
+					: row.directorCharacterId
+						? 'Director'
+						: 'Member'
+			const activityStatus: 'active' | 'inactive' | 'unknown' = row.lastLogin
+				? now - row.lastLogin.getTime() < sevenDaysMs
+					? 'active'
+					: 'inactive'
+				: 'unknown'
+
+			return {
+				characterId: row.characterId,
+				role,
+				joinDate: row.joinDate,
+				lastLogin: row.lastLogin,
+				lastEsiUpdate: row.lastEsiUpdate,
+				activityStatus,
+			}
+		})
+
+		return {
+			items,
+			pagination: {
+				page: currentPage,
+				limit: safeLimit,
+				totalItems,
+				totalPages,
+				hasNextPage: currentPage < totalPages,
+				hasPreviousPage: currentPage > 1,
+			},
+			summary: {
+				total: totalItems,
+				active: Number(activeCountRow.count ?? 0),
+				inactive: Number(inactiveCountRow.count ?? 0),
+				directors: Number(directorCountRow.count ?? 0),
+			},
+		}
 	}
 
 	/**

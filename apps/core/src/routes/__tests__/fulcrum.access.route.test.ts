@@ -51,6 +51,7 @@ function makeFulcrumStub() {
 	return {
 		listReports: vi.fn().mockResolvedValue([]),
 		createCharacterReport: vi.fn().mockResolvedValue('report-1'),
+		createBulkCharacterReports: vi.fn().mockResolvedValue({ batchId: 'batch-1' }),
 		getReportStatus: vi.fn(),
 		getReportHtml: vi.fn(),
 		getSectionManifest: vi.fn(),
@@ -223,6 +224,131 @@ describe('fulcrum route access matrix', () => {
 			requestorCorporationId: '1001',
 			requestSource: 'hr',
 			applicationId: undefined,
+			sendDm: true,
+		})
+	})
+
+	it('passes sendDm=false through to report creation', async () => {
+		getCachedUserPermissionsMock.mockResolvedValue([
+			{
+				permissionId: 'perm-auditor',
+				urn: 'urn:hr:auditor',
+				name: 'HR Auditor',
+				description: null,
+				category: null,
+				groupId: 'g-1',
+				groupName: 'HR',
+				targetType: 'all_members',
+				source: 'global',
+			},
+		] as any)
+
+		const app = createApp(makeUser())
+		const res = await app.request(
+			'/api/fulcrum/characters/3001/reports',
+			{
+				method: 'POST',
+				headers: { 'content-type': 'application/json' },
+				body: JSON.stringify({
+					corporationId: '1001',
+					requestSource: 'hr',
+					sendDm: false,
+				}),
+			},
+			env
+		)
+
+		expect(res.status).toBe(201)
+		expect(fulcrumStub.createCharacterReport).toHaveBeenCalledWith({
+			characterId: '3001',
+			requestorUserId: 'user-1',
+			requestorCorporationId: '1001',
+			requestSource: 'hr',
+			applicationId: undefined,
+			sendDm: false,
+		})
+	})
+
+	it('passes sendDm=false through to bulk report creation', async () => {
+		getCachedUserPermissionsMock.mockResolvedValue([
+			{
+				permissionId: 'perm-auditor',
+				urn: 'urn:hr:auditor',
+				name: 'HR Auditor',
+				description: null,
+				category: null,
+				groupId: 'g-1',
+				groupName: 'HR',
+				targetType: 'all_members',
+				source: 'global',
+			},
+		] as any)
+
+		const app = createApp(makeUser())
+		const res = await app.request(
+			'/api/fulcrum/reports/batch',
+			{
+				method: 'POST',
+				headers: { 'content-type': 'application/json' },
+				body: JSON.stringify({
+					corporationId: '1001',
+					requestSource: 'hr',
+					characterIds: ['3001', '3002'],
+					sendDm: false,
+				}),
+			},
+			env,
+		)
+
+		expect(res.status).toBe(201)
+		expect(fulcrumStub.createBulkCharacterReports).toHaveBeenCalledWith({
+			characterIds: ['3001', '3002'],
+			requestorUserId: 'user-1',
+			requestorCorporationId: '1001',
+			requestSource: 'hr',
+			applicationId: undefined,
+			sendDm: false,
+		})
+	})
+
+	it('defaults sendDm=true for bulk report creation when omitted', async () => {
+		getCachedUserPermissionsMock.mockResolvedValue([
+			{
+				permissionId: 'perm-auditor',
+				urn: 'urn:hr:auditor',
+				name: 'HR Auditor',
+				description: null,
+				category: null,
+				groupId: 'g-1',
+				groupName: 'HR',
+				targetType: 'all_members',
+				source: 'global',
+			},
+		] as any)
+
+		const app = createApp(makeUser())
+		const res = await app.request(
+			'/api/fulcrum/reports/batch',
+			{
+				method: 'POST',
+				headers: { 'content-type': 'application/json' },
+				body: JSON.stringify({
+					corporationId: '1001',
+					requestSource: 'hr',
+					characterIds: ['3001', '3002'],
+				}),
+			},
+			env,
+		)
+
+		expect(res.status).toBe(201)
+		expect(fulcrumStub.createBulkCharacterReports).toHaveBeenCalledWith({
+			characterIds: ['3001', '3002'],
+			requestorUserId: 'user-1',
+			requestorCorporationId: '1001',
+			requestSource: 'hr',
+			applicationId: undefined,
+			sendDm: true,
 		})
 	})
 })

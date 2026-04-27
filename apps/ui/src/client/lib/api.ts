@@ -1504,7 +1504,7 @@ export class ApiClient {
 		})
 	}
 
-	async getCharacterDetail(characterId: string): Promise<{
+	async getCharacterDetail(characterId: string, corporationId?: string): Promise<{
 		characterId: string
 		isOwner: boolean
 		viewedAsAdmin: boolean
@@ -1530,7 +1530,10 @@ export class ApiClient {
 		}
 		lastUpdated: string | null
 	}> {
-		return this.get(`/characters/${characterId}`)
+		const query = corporationId
+			? `?corporationId=${encodeURIComponent(corporationId)}`
+			: ''
+		return this.get(`/characters/${characterId}${query}`)
 	}
 
 	async refreshCharacterById(characterId: string): Promise<{

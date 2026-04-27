@@ -79,3 +79,53 @@ export async function resolveReportMetadata(
 		return null
 	}
 }
+
+export interface BatchReportResolvedMetadata {
+	requestorMainCharacterName: string
+	corporationTicker: string
+}
+
+/**
+ * Resolve metadata needed for bulk/batch webhook notifications.
+ */
+export async function resolveBatchReportMetadata(
+	env: Env,
+	requestorUserId: string,
+	requestorCorporationId: string,
+): Promise<BatchReportResolvedMetadata | null> {
+	try {
+		const requestorMainCharacterName = await env.CORE.getUserMainCharacterName(requestorUserId)
+
+		if (!requestorMainCharacterName) {
+			logger.warn('[Report Metadata] Failed to resolve requestor main character name for batch', {
+				requestorUserId,
+			})
+			return null
+		}
+
+		let corporationTicker = `Corp ${requestorCorporationId}`
+		try {
+			const esiStub = getStub<Esi>(env.ESI, requestorCorporationId)
+			const corpInfo = await esiStub.fetchCorporationPublicInfo(requestorCorporationId)
+			if (corpInfo?.ticker) {
+				corporationTicker = corpInfo.ticker
+			}
+		} catch (error) {
+			logger.warn('[Report Metadata] Failed to resolve corporation ticker for batch', {
+				requestorCorporationId,
+				error: error instanceof Error ? error.message : String(error),
+			})
+		}
+
+		return {
+			requestorMainCharacterName,
+			corporationTicker,
+		}
+	} catch (error) {
+		logger.error('[Report Metadata] Failed to resolve batch metadata', {
+			requestorUserId,
+			error: error instanceof Error ? error.message : String(error),
+		})
+		return null
+	}
+}

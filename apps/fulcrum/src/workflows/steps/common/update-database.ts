@@ -27,6 +27,7 @@ export async function updateDatabase(
 	reportId: string,
 	bucket: string,
 	key: string,
+	sendDm = true,
 ): Promise<void> {
 	const db = createDb(databaseUrl)
 
@@ -38,32 +39,34 @@ export async function updateDatabase(
 	await db.update(characterReports).set(query.set).where(query.where)
 
 	// Send Discord DM notification (non-blocking)
-	try {
-		// Fetch report to get metadata
-		const report = await getReport(db, reportId)
+	if (sendDm) {
+		try {
+			// Fetch report to get metadata
+			const report = await getReport(db, reportId)
 
-		if (report) {
-			const metadata = await resolveReportMetadata(
-				env,
-				reportId,
-				report.requestorUserId,
-				report.characterId,
-				report.characterName,
-				report.requestorCorporationId
-			)
+			if (report) {
+				const metadata = await resolveReportMetadata(
+					env,
+					reportId,
+					report.requestorUserId,
+					report.characterId,
+					report.characterName,
+					report.requestorCorporationId
+				)
 
-			if (metadata) {
-				// Construct report view URL
-				const viewUrl = `${env.APP_BASE_URL}/fulcrum/reports/${reportId}`
+				if (metadata) {
+					// Construct report view URL
+					const viewUrl = `${env.APP_BASE_URL}/fulcrum/reports/${reportId}`
 
-				await sendReportCompletedDM(env, report.requestorUserId, metadata, viewUrl)
+					await sendReportCompletedDM(env, report.requestorUserId, metadata, viewUrl)
+				}
 			}
+		} catch (error) {
+			// Log but don't fail - DM failures should not block workflow
+			logger.error('[Workflow] Failed to send report completed DM', {
+				reportId,
+				error: error instanceof Error ? error.message : String(error),
+			})
 		}
-	} catch (error) {
-		// Log but don't fail - DM failures should not block workflow
-		logger.error('[Workflow] Failed to send report completed DM', {
-			reportId,
-			error: error instanceof Error ? error.message : String(error),
-		})
 	}
 }

@@ -13,6 +13,7 @@ import { EntityResolverService } from '../services/entity-resolver.service'
 
 import type { EveCharacterData } from '@repo/eve-character-data'
 import type { EveCorporationData } from '@repo/eve-corporation-data'
+import type { Hr } from '@repo/hr'
 import type { App } from '../context'
 
 // Helper to transform and enrich skills data
@@ -209,6 +210,7 @@ app.get('/search', requireAuth(), async (c) => {
 app.get('/:characterId', requireAuth(), async (c) => {
 	const characterIdStr = c.req.param('characterId')
 	const characterId = createEveCharacterId(characterIdStr)
+	const hrCorporationId = c.req.query('corporationId')?.trim() || null
 	const user = c.get('user')!
 	const db = c.get('db')
 
@@ -225,8 +227,22 @@ app.get('/:characterId', requireAuth(), async (c) => {
 	// Check if user is CEO/Director of character's corporation
 	let isCeoOrDirector = false
 	let viewerRole: 'CEO' | 'Director' | null = null
+	let hasHrViewerAccess = false
 
 	if (!isActualOwner && !isAdmin) {
+		if (hrCorporationId) {
+			try {
+				const hrStub = getStub<Hr>(c.env.HR, 'default')
+				hasHrViewerAccess = await hrStub.checkPermission(user.id, hrCorporationId, 'hr_viewer')
+			} catch (error) {
+				logger.warn('[Character Detail] Error checking HR viewer access:', {
+					characterId: characterIdStr,
+					hrCorporationId,
+					error: error instanceof Error ? error.message : String(error),
+				})
+			}
+		}
+
 		// Get character's corporation to check CEO/Director access
 		const eveCharacterDataStubForAuth = getStub<EveCharacterData>(
 			c.env.EVE_CHARACTER_DATA,
@@ -315,8 +331,8 @@ app.get('/:characterId', requireAuth(), async (c) => {
 		}
 	}
 
-	// Authorization: Must be owner OR admin OR CEO/Director of same corp
-	if (!isActualOwner && !isAdmin && !isCeoOrDirector) {
+	// Authorization: Must be owner OR admin OR HR viewer (for provided corporation) OR CEO/Director of same corp
+	if (!isActualOwner && !isAdmin && !hasHrViewerAccess && !isCeoOrDirector) {
 		return c.json({ error: 'You do not have permission to view this character' }, 403)
 	}
 
@@ -345,7 +361,8 @@ app.get('/:characterId', requireAuth(), async (c) => {
 		}
 	}
 
-	// Treat admins as owners for data access purposes
+	// Treat admins/HR viewers as privileged for private data access purposes
+	const canViewSensitiveData = isActualOwner || isAdmin || hasHrViewerAccess
 	const isOwner = isActualOwner || isAdmin
 
 	// Get EVE Character Data DO stub
@@ -510,8 +527,8 @@ app.get('/:characterId', requireAuth(), async (c) => {
 			}
 		}
 
-		// Add sensitive data if user owns the character
-		if (isOwner) {
+		// Add sensitive data for owner/admin/authorized HR viewers
+		if (canViewSensitiveData) {
 			// Fetch live location and status on-demand (volatile ESI data, not stored in daily sync)
 			await Promise.all([
 				eveCharacterData.fetchLocation().catch((err: unknown) => {
@@ -657,6 +674,7 @@ app.post('/:characterId/refresh', requireAuth(), async (c) => {
 					db,
 					tokenStore: eveTokenStoreStub,
 					characterId: characterIdStr,
+					touchLastCharacterRefresh: true,
 				})
 			: null
 		const fallbackValidation = tokenStatus ? null : await eveTokenStoreStub.validateToken(characterIdStr)

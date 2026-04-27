@@ -5,7 +5,8 @@ import { logger, withNotFound, withOnError } from '@repo/hono-helpers'
 
 import type { App, Env } from './context'
 import { FulcrumDO } from './durable-object'
-import { CharacterReportWorkflow } from './workflows/character-report.workflow'
+import { BulkCharacterReportWorkflow } from './workflows/bulk-character-report.workflow.js'
+import { CharacterReportWorkflow } from './workflows/character-report.workflow.js'
 import { handleCharacterReportsQueue } from './queue'
 import type { CharacterReportQueueMessage } from './queue'
 import { scheduledHandler } from './scheduled'
@@ -60,3 +61,4 @@ export { FulcrumDO as Fulcrum }
 
 // Export the Workflow class
 export { CharacterReportWorkflow }
+export { BulkCharacterReportWorkflow }

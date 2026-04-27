@@ -35,6 +35,16 @@ export interface CreateReportOptions {
 	requestorCorporationId: string
 	requestSource: ReportRequestSource
 	applicationId?: string
+	sendDm?: boolean
+}
+
+export interface CreateBulkReportOptions {
+	characterIds: string[]
+	requestorUserId: string
+	requestorCorporationId: string
+	requestSource: ReportRequestSource
+	applicationId?: string
+	sendDm?: boolean
 }
 
 /**
@@ -129,6 +139,12 @@ export interface Fulcrum extends DurableObject {
 	 * @returns Report UUID
 	 */
 	createCharacterReport(options: CreateReportOptions): Promise<string>
+
+	/**
+	 * Create a new bulk character report batch.
+	 * Starts child character-report workflows concurrently and returns the batch workflow id.
+	 */
+	createBulkCharacterReports(options: CreateBulkReportOptions): Promise<{ batchId: string }>
 
 	/**
 	 * Get character report status and metadata

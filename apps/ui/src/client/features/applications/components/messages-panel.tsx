@@ -201,7 +201,7 @@ export function MessagesPanel({
 							maxLength={MAX_MESSAGE_LENGTH}
 							rows={3}
 							disabled={sendMutation.isPending}
-							className="resize-none"
+							className="resize-y"
 						/>
 
 						{/* Character counter and send button */}

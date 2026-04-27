@@ -1,6 +1,6 @@
 import { Hono } from 'hono'
 
-import { and, desc, eq, ilike, inArray, or } from '@repo/db-utils'
+import { and, desc, eq, ilike, inArray, or, sql } from '@repo/db-utils'
 import { getStub } from '@repo/do-utils'
 import { logger } from '@repo/hono-helpers'
 
@@ -145,6 +145,17 @@ function parseMembersQuery(c: Context<App>): MembersQuery {
 	}
 }
 
+function canUseBackendPaginatedMembersPath(query: MembersQuery): boolean {
+	return (
+		!query.search &&
+		query.authFilter === 'all' &&
+		query.activityFilter === 'all' &&
+		query.roleFilter === 'all' &&
+		query.sortField === 'role' &&
+		query.sortOrder === 'asc'
+	)
+}
+
 function filterSortAndPaginateMembers(members: CorporationMemberListItem[], query: MembersQuery) {
 	const filtered = [...members]
 		.filter((member) => {
@@ -234,6 +245,52 @@ function filterSortAndPaginateMembers(members: CorporationMemberListItem[], quer
 			inactive: filtered.filter((m) => m.activityStatus === 'inactive').length,
 			directors: filtered.filter((m) => m.role === 'Director').length,
 		},
+	}
+}
+
+async function enrichMembersPageLiveTokenStatus(
+	db: NonNullable<Context<App>['var']['db']>,
+	tokenStore: EveTokenStore,
+	response: ReturnType<typeof filterSortAndPaginateMembers>
+) {
+	const linkedPageItems = response.items.filter((item) => item.hasAuthAccount)
+	if (linkedPageItems.length === 0) {
+		return response
+	}
+
+	try {
+		const liveTokenValidityByCharacterId = await validateAndSyncCharacterTokenValidityBatch({
+			db,
+			tokenStore,
+			characters: linkedPageItems.map((item) => ({
+				characterId: item.characterId,
+				hasValidToken: item.hasValidToken ?? null,
+			})),
+			maxConcurrency: 20,
+		})
+
+		return {
+			...response,
+			items: response.items.map((item) => {
+				if (!item.hasAuthAccount) {
+					return item
+				}
+				const liveStatus = liveTokenValidityByCharacterId.get(item.characterId)
+				if (liveStatus === undefined) {
+					return item
+				}
+				return {
+					...item,
+					hasValidToken: liveStatus,
+				}
+			}),
+		}
+	} catch (error) {
+		logger.warn('[Corporations] Failed live token status enrichment for member page', {
+			error: error instanceof Error ? error.message : String(error),
+			pageSize: response.items.length,
+		})
+		return response
 	}
 }
 
@@ -1424,6 +1481,128 @@ app.get('/:corporationId/members', requireAuth(), async (c) => {
 		// Check cache for member data
 		const cacheKey = getCorpMembersCacheKey(corporationId)
 		const cached = await getCachedJson<CorporationMemberListItem[]>(cacheKey)
+		const corpStub = getStub<EveCorporationData>(c.env.EVE_CORPORATION_DATA, corporationId)
+		const tokenStoreStub = getStub<EveTokenStore>(c.env.EVE_TOKEN_STORE, 'default')
+
+		const useBackendPagination =
+			canUseBackendPaginatedMembersPath(query) &&
+			typeof (corpStub as unknown as { getMembersPaginated?: unknown }).getMembersPaginated ===
+				'function'
+
+		if (useBackendPagination) {
+			const paged = await (
+				corpStub as unknown as {
+					getMembersPaginated: (
+						corporationId: string,
+						page: number,
+						limit: number
+					) => Promise<{
+						items: Array<{
+							characterId: string
+							role: 'CEO' | 'Director' | 'Member'
+							joinDate: Date | null
+							lastLogin: Date | null
+							lastEsiUpdate: Date
+							activityStatus: 'active' | 'inactive' | 'unknown'
+						}>
+						pagination: {
+							page: number
+							limit: number
+							totalItems: number
+							totalPages: number
+							hasNextPage: boolean
+							hasPreviousPage: boolean
+						}
+						summary: {
+							total: number
+							active: number
+							inactive: number
+							directors: number
+						}
+					}>
+				}
+			).getMembersPaginated(corporationId, query.page, query.limit)
+
+			const pageCharacterIds = paged.items.map((item) => item.characterId)
+			const linkedCharacters =
+				pageCharacterIds.length > 0
+					? await db.query.userCharacters.findMany({
+						where: inArray(userCharacters.characterId, pageCharacterIds),
+					})
+					: []
+			const linkedCharacterMap = new Map(linkedCharacters.map((row) => [row.characterId, row]))
+			const characterNameMap =
+				pageCharacterIds.length > 0 ? await tokenStoreStub.resolveIds(pageCharacterIds) : {}
+
+			const linkedUserIds = [...new Set(linkedCharacters.map((row) => row.userId))]
+			const linkedUsers =
+				linkedUserIds.length > 0
+					? await db.query.users.findMany({
+						where: inArray(users.id, linkedUserIds),
+					})
+					: []
+			const mainCharacterIds = linkedUsers.map((u) => u.mainCharacterId)
+			const mainCharacterNameMap =
+				mainCharacterIds.length > 0 ? await tokenStoreStub.resolveIds(mainCharacterIds) : {}
+			const userIdToMainCharacterName = new Map(
+				linkedUsers.map((u) => [u.id, mainCharacterNameMap[u.mainCharacterId] || 'Unknown'])
+			)
+
+			const hrStub = getStub<Hr>(c.env.HR, 'default')
+			const blacklistStatuses =
+				pageCharacterIds.length > 0
+					? await hrStub.checkCharactersBlacklisted(pageCharacterIds)
+					: {}
+
+			const pageMembers: CorporationMemberListItem[] = paged.items.map((item) => {
+				const linkedChar = linkedCharacterMap.get(item.characterId)
+				return {
+					characterId: item.characterId,
+					characterName: characterNameMap[item.characterId] || 'Unknown',
+					corporationId,
+					corporationName: managedCorp.name,
+					role: item.role,
+					hasAuthAccount: !!linkedChar,
+					hasValidToken: linkedChar ? (linkedChar.hasValidToken ?? null) : null,
+					authUserId: linkedChar?.userId,
+					mainCharacterName: linkedChar?.userId
+						? userIdToMainCharacterName.get(linkedChar.userId)
+						: undefined,
+					status: linkedChar?.status,
+					joinDate: item.joinDate?.toISOString() || item.lastEsiUpdate.toISOString(),
+					lastEsiUpdate: item.lastEsiUpdate.toISOString(),
+					lastLogin: item.lastLogin?.toISOString(),
+					allianceId: undefined,
+					allianceName: undefined,
+					locationSystem: undefined,
+					locationRegion: undefined,
+					activityStatus: item.activityStatus,
+					isBlacklisted: blacklistStatuses[item.characterId] || false,
+				}
+			})
+
+			const linkedSummaryRow = await db
+				.select({
+					count: sql<number>`count(*)`.as('count'),
+				})
+				.from(userCharacters)
+				.where(eq(userCharacters.corporationId, corporationId))
+				.then((rows) => rows[0] ?? { count: 0 })
+
+			const enriched = await enrichMembersPageLiveTokenStatus(db, tokenStoreStub, {
+				items: pageMembers,
+				pagination: paged.pagination,
+				summary: {
+					total: paged.summary.total,
+					linked: Number(linkedSummaryRow.count ?? 0),
+					active: paged.summary.active,
+					inactive: paged.summary.inactive,
+					directors: paged.summary.directors,
+				},
+			})
+
+			return c.json(enriched)
+		}
 
 		if (cached) {
 			logger.info('[Corporations] Returning cached member data', {
@@ -1433,11 +1612,12 @@ app.get('/:corporationId/members', requireAuth(), async (c) => {
 				limit: query.limit,
 				search: query.search,
 			})
-			return c.json(filterSortAndPaginateMembers(cached, query))
+			const paginated = filterSortAndPaginateMembers(cached, query)
+			const enriched = await enrichMembersPageLiveTokenStatus(db, tokenStoreStub, paginated)
+			return c.json(enriched)
 		}
 
 		// Get corporation members from DO
-		const corpStub = getStub<EveCorporationData>(c.env.EVE_CORPORATION_DATA, corporationId)
 		const [corpInfo, coreData] = await Promise.all([
 			corpStub.getCorporationInfo(corporationId),
 			corpStub.getCoreData(corporationId),
@@ -1466,16 +1646,6 @@ app.get('/:corporationId/members', requireAuth(), async (c) => {
 
 		// Batch resolve all character names using ESI bulk endpoint
 		// Character ID → name mappings are cached for 1 year (essentially permanent)
-		const tokenStoreStub = getStub<EveTokenStore>(c.env.EVE_TOKEN_STORE, 'default')
-		const liveTokenValidityByCharacterId = await validateAndSyncCharacterTokenValidityBatch({
-			db,
-			tokenStore: tokenStoreStub,
-			characters: linkedCharacters.map((character) => ({
-				characterId: character.characterId,
-				hasValidToken: character.hasValidToken ?? null,
-			})),
-			maxConcurrency: 20,
-		})
 		const characterNameMap = await tokenStoreStub.resolveIds(memberCharacterIds)
 
 		logger.info('[Corporations Members] Resolved character names', {
@@ -1547,9 +1717,7 @@ app.get('/:corporationId/members', requireAuth(), async (c) => {
 					corporationName: managedCorp.name,
 					role,
 					hasAuthAccount,
-					hasValidToken: linkedChar
-						? (liveTokenValidityByCharacterId.get(characterId) ?? linkedChar.hasValidToken ?? null)
-						: null,
+					hasValidToken: linkedChar ? (linkedChar.hasValidToken ?? null) : null,
 					authUserId: linkedChar?.userId,
 					mainCharacterName: linkedChar?.userId
 						? userIdToMainCharacterName.get(linkedChar.userId)
@@ -1588,7 +1756,9 @@ app.get('/:corporationId/members', requireAuth(), async (c) => {
 		// Store in cache for future requests
 		await cacheJson(cacheKey, membersWithDetails, CACHE_TTL)
 
-		return c.json(filterSortAndPaginateMembers(membersWithDetails, query))
+		const paginated = filterSortAndPaginateMembers(membersWithDetails, query)
+		const enriched = await enrichMembersPageLiveTokenStatus(db, tokenStoreStub, paginated)
+		return c.json(enriched)
 	} catch (error) {
 		logger.error('[Corporations] Error fetching corporation members', {
 			corporationId,

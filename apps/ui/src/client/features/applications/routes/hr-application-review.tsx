@@ -13,6 +13,8 @@ import { useState } from 'react'
 import { Link, Navigate, useNavigate, useParams, useSearchParams } from 'react-router-dom'
 
 import { MemberAvatar } from '@/components/member-avatar'
+import { EsiStatusBadge } from '@/components/esi-status-badge'
+import { Badge } from '@/components/ui/badge'
 import {
 	Breadcrumb,
 	BreadcrumbItem,
@@ -32,6 +34,7 @@ import { useEntityNames } from '@/hooks/useEntityNames'
 import { useMessage } from '@/hooks/useMessage'
 import { usePageTitle } from '@/hooks/usePageTitle'
 import { apiClient } from '@/lib/api'
+import { allianceLogoUrl, corporationLogoUrl } from '@/lib/eve-images'
 import { formatISKShort } from '@/lib/format-utils'
 import { formatSkillPoints } from '@repo/eve-types'
 
@@ -53,6 +56,7 @@ import { Button } from '@/components/ui/button'
 import { RecommendationList } from '../components/recommendation-list'
 import {
 	useApplication,
+	useApplicationFulcrum,
 	useApplicationActivity,
 	useApplicationStaffNotes,
 	useDeleteHRNote,
@@ -112,6 +116,11 @@ export default function HrApplicationReview() {
 		{ enabled: !!application?.userId && (!!user?.is_admin || !!permission?.hasPermission) }
 	)
 	const globalUserNotesCount = globalUserNotes.length
+	const { data: fulcrumCharacters = [] } = useApplicationFulcrum(
+		application?.userId ?? '',
+		corporationId ?? '',
+		!!application?.userId && !!corporationId,
+	)
 
 	// Fetch selected HR note for edit/delete
 	const { data: selectedNote } = useHRNote(selectedNoteId)
@@ -128,8 +137,8 @@ export default function HrApplicationReview() {
 		: []
 	const spQueries = useQueries({
 		queries: allCharacterIds.map((charId) => ({
-			queryKey: ['character', charId],
-			queryFn: () => apiClient.getCharacterDetail(charId),
+			queryKey: ['character', charId, 'hr-review', corporationId],
+			queryFn: () => apiClient.getCharacterDetail(charId, corporationId),
 			enabled: !!application,
 			staleTime: 5 * 60 * 1000,
 		})),
@@ -141,6 +150,11 @@ export default function HrApplicationReview() {
 		spByCharacterId[allCharacterIds[i]] = query?.data?.public?.skills?.totalSp ?? null
 		walletByCharacterId[allCharacterIds[i]] = query?.data?.private?.wallet?.balance ?? null
 	}
+	const esiStateByCharacterId: Record<string, boolean | null> = {}
+	for (const character of fulcrumCharacters) {
+		esiStateByCharacterId[character.characterId] = character.hasValidToken ?? null
+	}
+	const fulcrumCharacterById = new Map(fulcrumCharacters.map((character) => [character.characterId, character]))
 
 	// Set page title
 	usePageTitle(
@@ -192,6 +206,14 @@ export default function HrApplicationReview() {
 	const rootCorporationsLabel = 'Corporations'
 	const membersPath = `/corporations/${corporationId}/members`
 	const reviewTabTriggerClassName = 'flex-1 sm:flex-none'
+
+	const isNpcCorporation = (corporationId: string | null | undefined): boolean => {
+		if (!corporationId) return false
+		const parsed = Number(corporationId)
+		if (!Number.isFinite(parsed)) return false
+		const id = Math.trunc(parsed)
+		return id >= 1_000_000 && id <= 1_999_999
+	}
 
 	// Check authentication
 	if (!authLoading && !isAuthenticated) {
@@ -415,7 +437,7 @@ export default function HrApplicationReview() {
 							value="global-notes"
 							className={reviewTabTriggerClassName}
 						>
-							Global User Notes
+							Account Notes
 							<span className="ml-1.5 text-xs opacity-70">({globalUserNotesCount})</span>
 						</TabsTrigger>
 					)}
@@ -518,9 +540,63 @@ export default function HrApplicationReview() {
 									size="md"
 								/>
 								<div>
-									<p className="text-sm font-medium">
-										{application.characterName}
-									</p>
+									<div className="flex items-center gap-2">
+										<p className="text-lg font-semibold text-foreground">
+											{application.characterName}
+										</p>
+										<EsiStatusBadge
+											hasAuthAccount
+											hasValidToken={esiStateByCharacterId[application.characterId]}
+											className="text-[10px] px-1.5 py-0"
+										/>
+									</div>
+									{fulcrumCharacterById.get(application.characterId)?.corporationName && (
+										<div className="mt-1 flex flex-wrap items-center gap-2">
+											{fulcrumCharacterById.get(application.characterId)?.corporationId && (
+												<img
+													src={corporationLogoUrl(
+														fulcrumCharacterById.get(application.characterId)!.corporationId!,
+														32
+													)}
+													alt={`${fulcrumCharacterById.get(application.characterId)!.corporationName} logo`}
+													className="size-5 rounded-sm border border-border/60 object-cover"
+													loading="lazy"
+												/>
+											)}
+											<p
+												className={
+													isNpcCorporation(fulcrumCharacterById.get(application.characterId)?.corporationId)
+														? 'text-base text-muted-foreground'
+														: 'text-base text-white'
+												}
+											>
+												{fulcrumCharacterById.get(application.characterId)!.corporationName}
+											</p>
+											{isNpcCorporation(fulcrumCharacterById.get(application.characterId)?.corporationId) && (
+												<Badge variant="ghost" className="h-5 px-1.5 text-[10px]">
+													NPC Corp
+												</Badge>
+											)}
+											{fulcrumCharacterById.get(application.characterId)?.allianceId &&
+												fulcrumCharacterById.get(application.characterId)?.allianceName && (
+												<>
+													<span className="text-muted-foreground">•</span>
+													<img
+														src={allianceLogoUrl(
+															fulcrumCharacterById.get(application.characterId)!.allianceId!,
+															32
+														)}
+														alt={`${fulcrumCharacterById.get(application.characterId)!.allianceName} logo`}
+														className="size-5 rounded-sm border border-border/60 object-cover"
+														loading="lazy"
+													/>
+													<p className="text-base text-muted-foreground">
+														{fulcrumCharacterById.get(application.characterId)!.allianceName}
+													</p>
+												</>
+											)}
+										</div>
+									)}
 									<p className="text-xs text-muted-foreground">
 										<span className="font-mono tabular-nums">
 											{spByCharacterId[application.characterId] != null
@@ -558,9 +634,63 @@ export default function HrApplicationReview() {
 												size="md"
 											/>
 											<div className="flex-1 min-w-0">
-												<p className="text-sm font-medium">
-													{altCharacterNames[charId] ?? charId}
-												</p>
+												<div className="flex items-center gap-2">
+													<p className="text-lg font-semibold text-foreground">
+														{altCharacterNames[charId] ?? charId}
+													</p>
+													<EsiStatusBadge
+														hasAuthAccount
+														hasValidToken={esiStateByCharacterId[charId]}
+														className="text-[10px] px-1.5 py-0"
+													/>
+												</div>
+												{fulcrumCharacterById.get(charId)?.corporationName && (
+													<div className="mt-1 flex flex-wrap items-center gap-2">
+														{fulcrumCharacterById.get(charId)?.corporationId && (
+															<img
+																src={corporationLogoUrl(
+																	fulcrumCharacterById.get(charId)!.corporationId!,
+																	32
+																)}
+																alt={`${fulcrumCharacterById.get(charId)!.corporationName} logo`}
+																className="size-5 rounded-sm border border-border/60 object-cover"
+																loading="lazy"
+															/>
+														)}
+														<p
+															className={
+																isNpcCorporation(fulcrumCharacterById.get(charId)?.corporationId)
+																	? 'text-base text-muted-foreground'
+																	: 'text-base text-white'
+															}
+														>
+															{fulcrumCharacterById.get(charId)!.corporationName}
+														</p>
+														{isNpcCorporation(fulcrumCharacterById.get(charId)?.corporationId) && (
+															<Badge variant="ghost" className="h-5 px-1.5 text-[10px]">
+																NPC Corp
+															</Badge>
+														)}
+														{fulcrumCharacterById.get(charId)?.allianceId &&
+															fulcrumCharacterById.get(charId)?.allianceName && (
+															<>
+																<span className="text-muted-foreground">•</span>
+																<img
+																	src={allianceLogoUrl(
+																		fulcrumCharacterById.get(charId)!.allianceId!,
+																		32
+																	)}
+																	alt={`${fulcrumCharacterById.get(charId)!.allianceName} logo`}
+																	className="size-5 rounded-sm border border-border/60 object-cover"
+																	loading="lazy"
+																/>
+																<p className="text-base text-muted-foreground">
+																	{fulcrumCharacterById.get(charId)!.allianceName}
+																</p>
+															</>
+														)}
+													</div>
+												)}
 												<p className="text-xs text-muted-foreground">
 													<span className="font-mono tabular-nums">
 														{spByCharacterId[charId] != null
