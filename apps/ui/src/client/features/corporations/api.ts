@@ -37,7 +37,13 @@ export interface CorporationMember {
 	isBlacklisted: boolean
 }
 
-export type CorporationMembersAuthFilter = 'all' | 'linked' | 'unlinked'
+export type CorporationMembersAuthFilter =
+	| 'all'
+	| 'linked'
+	| 'unlinked'
+	| 'linked_valid'
+	| 'linked_invalid'
+	| 'linked_unknown'
 export type CorporationMembersActivityFilter = 'all' | 'active' | 'inactive' | 'unknown'
 export type CorporationMembersRoleFilter = 'all' | 'CEO' | 'Director' | 'Member'
 export type CorporationMembersSortField = 'name' | 'role' | 'auth' | 'activity' | 'lastLogin' | 'joinDate'

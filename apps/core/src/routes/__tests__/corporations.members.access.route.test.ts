@@ -277,6 +277,68 @@ describe('corporations members access matrix', () => {
 		})
 	})
 
+	it('supports authFilter=linked_invalid', async () => {
+		getCachedUserPermissionsMock.mockResolvedValue([
+			{
+				permissionId: 'perm-auditor',
+				urn: 'urn:hr:auditor',
+				name: 'HR Auditor',
+				description: null,
+				category: null,
+				groupId: 'g-1',
+				groupName: 'HR',
+				targetType: 'all_members',
+				source: 'global',
+			},
+		] as any)
+
+		corpStub.getCoreData.mockResolvedValue({
+			members: [
+				{ characterId: '2001', updatedAt: new Date('2026-04-01T00:00:00.000Z') },
+				{ characterId: '2002', updatedAt: new Date('2026-04-01T00:00:00.000Z') },
+			],
+			memberTracking: [],
+		})
+		dbStub.query.userCharacters.findMany.mockResolvedValue([
+			{ characterId: '2001', userId: 'target-user-1', status: 'active', hasValidToken: true },
+			{ characterId: '2002', userId: 'target-user-2', status: 'active', hasValidToken: false },
+		])
+		getStubMock.mockImplementation((binding: unknown) => {
+			if (binding === env.HR) return hrStub as any
+			if (binding === env.EVE_CHARACTER_DATA) return charStub as any
+			if (binding === env.EVE_CORPORATION_DATA) return corpStub as any
+			if (binding === env.EVE_TOKEN_STORE) {
+				return {
+					resolveIds: vi.fn().mockImplementation(async (ids: string[]) =>
+						Object.fromEntries(
+							ids.map((id) => [id, id === '2001' ? 'Pilot One' : id === '2002' ? 'Pilot Two' : id])
+						)
+					),
+				} as any
+			}
+			throw new Error('Unexpected binding')
+		})
+
+		const app = createApp({ user: makeUser(), db: dbStub })
+		const res = await app.request(
+			'/api/corporations/1001/members?authFilter=linked_invalid',
+			{},
+			env
+		)
+
+		expect(res.status).toBe(200)
+		const body = (await res.json()) as {
+			items: Array<{ characterId: string; hasValidToken?: boolean | null }>
+			pagination: { totalItems: number }
+		}
+		expect(body.pagination.totalItems).toBe(1)
+		expect(body.items).toHaveLength(1)
+		expect(body.items[0]).toMatchObject({
+			characterId: '2002',
+			hasValidToken: false,
+		})
+	})
+
 	it('denies members refresh for HR-only access (no CEO/director/admin leadership)', async () => {
 		hrStub.checkPermission.mockResolvedValue(true)
 

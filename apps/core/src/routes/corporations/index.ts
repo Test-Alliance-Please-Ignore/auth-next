@@ -64,7 +64,13 @@ type CorporationMemberListItem = {
 	isBlacklisted: boolean
 }
 
-type MembersAuthFilter = 'all' | 'linked' | 'unlinked'
+type MembersAuthFilter =
+	| 'all'
+	| 'linked'
+	| 'unlinked'
+	| 'linked_valid'
+	| 'linked_invalid'
+	| 'linked_unknown'
 type MembersActivityFilter = 'all' | 'active' | 'inactive' | 'unknown'
 type MembersRoleFilter = 'all' | 'CEO' | 'Director' | 'Member'
 type MembersSortField = 'name' | 'role' | 'auth' | 'activity' | 'lastLogin' | 'joinDate'
@@ -100,7 +106,13 @@ function parseMembersQuery(c: Context<App>): MembersQuery {
 	const sortOrderRaw = c.req.query('sortOrder')
 
 	const authFilter: MembersAuthFilter =
-		authFilterRaw === 'linked' || authFilterRaw === 'unlinked' ? authFilterRaw : 'all'
+		authFilterRaw === 'linked' ||
+		authFilterRaw === 'unlinked' ||
+		authFilterRaw === 'linked_valid' ||
+		authFilterRaw === 'linked_invalid' ||
+		authFilterRaw === 'linked_unknown'
+			? authFilterRaw
+			: 'all'
 	const activityFilter: MembersActivityFilter =
 		activityFilterRaw === 'active' || activityFilterRaw === 'inactive' || activityFilterRaw === 'unknown'
 			? activityFilterRaw
@@ -144,7 +156,18 @@ function filterSortAndPaginateMembers(members: CorporationMemberListItem[], quer
 		})
 		.filter((member) => {
 			if (query.authFilter === 'all') return true
-			return query.authFilter === 'linked' ? member.hasAuthAccount : !member.hasAuthAccount
+			if (query.authFilter === 'linked') return member.hasAuthAccount
+			if (query.authFilter === 'unlinked') return !member.hasAuthAccount
+			if (query.authFilter === 'linked_valid') {
+				return member.hasAuthAccount && member.hasValidToken === true
+			}
+			if (query.authFilter === 'linked_invalid') {
+				return member.hasAuthAccount && member.hasValidToken === false
+			}
+			if (query.authFilter === 'linked_unknown') {
+				return member.hasAuthAccount && member.hasValidToken !== true && member.hasValidToken !== false
+			}
+			return true
 		})
 		.filter((member) => {
 			if (query.activityFilter === 'all') return true

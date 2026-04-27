@@ -8,6 +8,7 @@
 import { useMutation, useQueryClient } from '@tanstack/react-query'
 import {
 	AlertCircle,
+	CheckCircle,
 	ChevronDown,
 	ChevronUp,
 	ExternalLink,
@@ -96,32 +97,32 @@ type SortField = CorporationMembersSortField
 
 export function getAuthStatusBadge(member: Pick<CorporationMember, 'hasAuthAccount' | 'hasValidToken'>): {
 	variant: 'success' | 'destructive' | 'warning'
-	label: 'Linked + ESI Valid' | 'Linked + ESI Invalid' | 'Linked + ESI Unknown' | 'Not Linked'
+	label: 'ESI Valid' | 'ESI Invalid' | 'ESI Unknown' | 'Unlinked'
 } {
 	if (!member.hasAuthAccount) {
 		return {
 			variant: 'warning',
-			label: 'Not Linked',
+			label: 'Unlinked',
 		}
 	}
 
 	if (member.hasValidToken === true) {
 		return {
 			variant: 'success',
-			label: 'Linked + ESI Valid',
+			label: 'ESI Valid',
 		}
 	}
 
 	if (member.hasValidToken === false) {
 		return {
 			variant: 'destructive',
-			label: 'Linked + ESI Invalid',
+			label: 'ESI Invalid',
 		}
 	}
 
 	return {
 		variant: 'warning',
-		label: 'Linked + ESI Unknown',
+		label: 'ESI Unknown',
 	}
 }
 
@@ -401,7 +402,9 @@ export default function CorporationMembersTable({
 						}
 						options={[
 							{ value: 'all', label: 'All Auth' },
-							{ value: 'linked', label: 'Linked' },
+							{ value: 'linked_valid', label: 'ESI Valid' },
+							{ value: 'linked_invalid', label: 'ESI Invalid' },
+							{ value: 'linked_unknown', label: 'ESI Unknown' },
 							{ value: 'unlinked', label: 'Unlinked' },
 						]}
 						className="w-[140px]"
@@ -561,9 +564,24 @@ export default function CorporationMembersTable({
 								<TableCell>
 									{member.hasAuthAccount ? (
 										<div className="space-y-1">
-											<Badge variant={getAuthStatusBadge(member).variant} className="text-[10px]">
-												{getAuthStatusBadge(member).label}
-											</Badge>
+											{(() => {
+												const authStatus = getAuthStatusBadge(member)
+												const AuthIcon =
+													authStatus.label === 'ESI Valid'
+														? CheckCircle
+														: authStatus.label === 'ESI Invalid'
+															? XCircle
+															: AlertCircle
+												return (
+													<Badge
+														variant={authStatus.variant}
+														icon={AuthIcon}
+														className="text-[10px]"
+													>
+														{authStatus.label}
+													</Badge>
+												)
+											})()}
 											{member.mainCharacterName && (
 												<div className="text-xs text-muted-foreground">
 													{member.mainCharacterName}
@@ -572,7 +590,7 @@ export default function CorporationMembersTable({
 										</div>
 									) : (
 										<Badge variant="warning" icon={AlertCircle} className="text-[10px]">
-											Not Linked
+											Unlinked
 										</Badge>
 									)}
 								</TableCell>

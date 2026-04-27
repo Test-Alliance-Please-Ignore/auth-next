@@ -47,6 +47,7 @@ import { Button } from '@/components/ui/button'
 
 // Lazy load the members table for code splitting
 const CorporationMembersTable = lazy(() => import('../components/corporation-members-table'))
+const MEMBERS_SEARCH_DEBOUNCE_MS = 400
 
 /**
  * Main Corporation Members Component
@@ -75,7 +76,7 @@ export default function CorporationMembers() {
 		sortField: 'role',
 		sortOrder: 'asc',
 	})
-	const debouncedSearch = useDebounce(membersQuery.search ?? '', 300)
+	const debouncedSearch = useDebounce(membersQuery.search ?? '', MEMBERS_SEARCH_DEBOUNCE_MS)
 	const effectiveMembersQuery = useMemo(
 		() => ({
 			...membersQuery,
@@ -86,7 +87,6 @@ export default function CorporationMembers() {
 	const {
 		data: membersResponse,
 		isLoading: membersLoading,
-		isFetching: membersFetching,
 		error,
 	} = useCorporationMembers(corporationId!, effectiveMembersQuery)
 
@@ -443,7 +443,7 @@ export default function CorporationMembers() {
 			>
 				<CorporationMembersTable
 					members={membersWithHrRoles ?? []}
-					loading={membersLoading || membersFetching}
+					loading={membersLoading && !membersResponse}
 					onMemberClick={handleMemberClick}
 					onLinkAccount={handleLinkAccount}
 					showActions={true}

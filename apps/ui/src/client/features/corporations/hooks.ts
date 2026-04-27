@@ -81,6 +81,7 @@ export function useCorporationMembers(corporationId: string, query: CorporationM
 	return useQuery<CorporationMembersResponse>({
 		queryKey: corporationKeys.members(corporationId, query),
 		queryFn: () => myCorporationsApi.getCorporationMembers(corporationId, query),
+		placeholderData: (previousData) => previousData,
 		staleTime: 1000 * 60, // 1 minute
 		gcTime: 1000 * 60 * 3, // 3 minutes
 		enabled: !!corporationId,
