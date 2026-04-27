@@ -83,7 +83,11 @@ export default function ReviewRequestDetail() {
 							/>
 							<span className="font-semibold">{request.characterName}</span>
 						</span>
-						<CharacterRoleBadge role={getRequestCharacterRole(request)} />
+						<CharacterRoleBadge
+							role={getRequestCharacterRole(request)}
+							mainCharacterName={request.mainCharacterName}
+							mainCharacterId={request.mainCharacterId}
+						/>
 						<span>·</span>
 						<span className="inline-flex items-center gap-2">
 							{request.corporationId ? (
@@ -153,6 +157,9 @@ export default function ReviewRequestDetail() {
 													content: request.contextText,
 													authorCharacterName: request.characterName,
 													authorCharacterId: request.characterId,
+													authorCharacterRole: getRequestCharacterRole(request),
+													authorMainCharacterName: request.mainCharacterName,
+													authorMainCharacterId: request.mainCharacterId,
 													createdAt: request.createdAt,
 												}
 											: undefined
@@ -188,6 +195,9 @@ export default function ReviewRequestDetail() {
 												content: request.contextText,
 												authorCharacterName: request.characterName,
 												authorCharacterId: request.characterId,
+												authorCharacterRole: getRequestCharacterRole(request),
+												authorMainCharacterName: request.mainCharacterName,
+												authorMainCharacterId: request.mainCharacterId,
 												createdAt: request.createdAt,
 											}
 										: undefined
@@ -229,7 +239,11 @@ export default function ReviewRequestDetail() {
 											loading="lazy"
 										/>
 										<span>{request.characterName}</span>
-										<CharacterRoleBadge role={getRequestCharacterRole(request)} />
+										<CharacterRoleBadge
+											role={getRequestCharacterRole(request)}
+											mainCharacterName={request.mainCharacterName}
+											mainCharacterId={request.mainCharacterId}
+										/>
 									</div>
 								</div>
 								<div>

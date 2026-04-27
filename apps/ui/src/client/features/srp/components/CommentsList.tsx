@@ -9,6 +9,7 @@ import { characterPortraitUrl } from '@/lib/eve-images'
 
 import { useDeleteComment } from '../hooks'
 import { formatRelativeTime } from '../utils'
+import { CharacterRoleBadge } from './CharacterRoleBadge'
 import { CommentForm } from './CommentForm'
 
 import type { SRPCommentResponse } from '../types'
@@ -22,6 +23,9 @@ interface CommentsListProps {
 		content: string
 		authorCharacterName: string
 		authorCharacterId?: string
+		authorCharacterRole?: 'main' | 'alt'
+		authorMainCharacterName?: string
+		authorMainCharacterId?: string
 		createdAt: string
 	}
 }
@@ -83,6 +87,11 @@ export function CommentsList({
 									<span className="font-medium">
 										{initialContext.authorCharacterName}
 									</span>
+									<CharacterRoleBadge
+										role={initialContext.authorCharacterRole}
+										mainCharacterName={initialContext.authorMainCharacterName}
+										mainCharacterId={initialContext.authorMainCharacterId}
+									/>
 									<span className="inline-flex items-center rounded-full bg-blue-500/15 px-2 py-0.5 text-xs font-medium text-blue-400">
 										Requestor
 									</span>
@@ -128,6 +137,11 @@ export function CommentsList({
 									<div>
 										<div className="flex items-center gap-2 flex-wrap">
 											<span className="font-medium">{comment.authorCharacterName}</span>
+											<CharacterRoleBadge
+												role={comment.authorCharacterRole}
+												mainCharacterName={comment.authorMainCharacterName}
+												mainCharacterId={comment.authorMainCharacterId}
+											/>
 											{comment.authorRole === 'requestor' && (
 												<span className="inline-flex items-center rounded-full bg-blue-500/15 px-2 py-0.5 text-xs font-medium text-blue-400">
 													Requestor

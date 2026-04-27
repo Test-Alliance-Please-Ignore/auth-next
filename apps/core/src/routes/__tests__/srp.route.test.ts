@@ -32,6 +32,7 @@ const env = {
 		idFromName: vi.fn(),
 		get: vi.fn(),
 	},
+	EVE_TOKEN_STORE: { name: 'EVE_TOKEN_STORE' },
 	DOCTRINES: { name: 'DOCTRINES' },
 	UNIVERSE: { name: 'UNIVERSE' },
 	GROUPS: { name: 'GROUPS' },
@@ -80,6 +81,7 @@ function createApp(user?: SessionUser) {
 function makeSrpStub() {
 	return {
 		getUserRequests: vi.fn().mockResolvedValue([]),
+		getRecentLosses: vi.fn().mockResolvedValue([]),
 		getRequest: vi.fn(),
 		getRequestsByStatus: vi.fn().mockResolvedValue({ requests: [], total: 0 }),
 		getPendingPayments: vi.fn().mockResolvedValue([]),
@@ -110,7 +112,9 @@ function makeRequest(overrides: Record<string, unknown> = {}) {
 	}
 }
 
-function mockDbPrimaryCharacterRows(rows: Array<{ userId: string; characterId: string }>) {
+function mockDbPrimaryCharacterRows(
+	rows: Array<{ userId: string; characterId: string; characterName?: string }>
+) {
 	const where = vi.fn().mockResolvedValue(rows)
 	const from = vi.fn(() => ({ where }))
 	const select = vi.fn(() => ({ from }))
@@ -119,6 +123,7 @@ function mockDbPrimaryCharacterRows(rows: Array<{ userId: string; characterId: s
 
 describe('srp routes - permissions', () => {
 	let srpStub: ReturnType<typeof makeSrpStub>
+	let tokenStoreStub: { validateToken: ReturnType<typeof vi.fn> }
 	let doctrinesStub: { getFittings: ReturnType<typeof vi.fn>; getFitting: ReturnType<typeof vi.fn> }
 	let universeStub: { resolveTypeNamesByIds: ReturnType<typeof vi.fn> }
 
@@ -126,6 +131,12 @@ describe('srp routes - permissions', () => {
 		vi.clearAllMocks()
 
 		srpStub = makeSrpStub()
+		tokenStoreStub = {
+			validateToken: vi.fn().mockResolvedValue({
+				isValid: true,
+				status: 'valid',
+			}),
+		}
 		doctrinesStub = {
 			getFittings: vi.fn().mockResolvedValue([]),
 			getFitting: vi.fn().mockResolvedValue(null),
@@ -136,6 +147,7 @@ describe('srp routes - permissions', () => {
 
 		getStubMock.mockImplementation((binding: any) => {
 			if (binding === env.SRP) return srpStub as any
+			if (binding === env.EVE_TOKEN_STORE) return tokenStoreStub as any
 			if (binding === env.DOCTRINES) return doctrinesStub as any
 			if (binding === env.UNIVERSE) return universeStub as any
 			throw new Error('Unexpected binding')
@@ -152,6 +164,137 @@ describe('srp routes - permissions', () => {
 
 		expect(response.status).toBe(200)
 		expect(srpStub.getUserRequests).toHaveBeenCalledWith('request-list-user', 50, 0)
+	})
+
+	it('returns partial losses with failedCharacters when one character fetch fails', async () => {
+		const app = createApp(
+			makeUser({
+				id: 'loss-user',
+				characters: [
+					{
+						id: 'char-link-1',
+						characterOwnerHash: 'owner-hash-1',
+						characterId: '7001',
+						characterName: 'Pilot One',
+						is_primary: true,
+						hasValidToken: true,
+					},
+					{
+						id: 'char-link-2',
+						characterOwnerHash: 'owner-hash-2',
+						characterId: '7002',
+						characterName: 'Pilot Two',
+						is_primary: false,
+						hasValidToken: true,
+					},
+				],
+			})
+		)
+
+		srpStub.getRecentLosses.mockImplementation(async (characterIds: string[]) => {
+			if (characterIds[0] === '7002') {
+				throw new Error('killmail fetch failed')
+			}
+			return [
+				{
+					killmailId: '123',
+					killmailHash: 'hash-123',
+					killmailTime: '2026-04-01T00:00:00.000Z',
+					shipTypeId: '587',
+					shipTypeName: 'Rifter',
+					totalValue: '1000000',
+					solarSystemId: '30000142',
+					solarSystemName: 'Jita',
+					victimCharacterId: '7001',
+					hasSRPRequest: false,
+				},
+			]
+		})
+
+		const response = await app.request('/api/srp/losses?daysBack=60', {}, env)
+		const body = await response.json<any>()
+
+		expect(response.status).toBe(200)
+		expect(body.losses).toHaveLength(1)
+		expect(body.losses[0]).toMatchObject({
+			killmailId: '123',
+			victimCharacterId: '7001',
+			victimCharacterName: 'Pilot One',
+		})
+		expect(body.failedCharacters).toEqual([
+			{
+				characterId: '7002',
+				characterName: 'Pilot Two',
+				reason: 'fetch_failed',
+				message: 'Could not load losses right now. Please try again shortly.',
+				error: 'killmail fetch failed',
+			},
+		])
+	})
+
+	it('returns invalid_token reason when a character token is invalid', async () => {
+		const app = createApp(
+			makeUser({
+				id: 'loss-user-invalid-token',
+				characters: [
+					{
+						id: 'char-link-1',
+						characterOwnerHash: 'owner-hash-1',
+						characterId: '7001',
+						characterName: 'Pilot One',
+						is_primary: true,
+						hasValidToken: true,
+					},
+					{
+						id: 'char-link-2',
+						characterOwnerHash: 'owner-hash-2',
+						characterId: '7002',
+						characterName: 'Pilot Two',
+						is_primary: false,
+						hasValidToken: false,
+					},
+				],
+			})
+		)
+
+		tokenStoreStub.validateToken.mockImplementation(async (characterId: string) => {
+			if (characterId === '7002') {
+				return {
+					isValid: false,
+					status: 'invalid',
+					error: 'expired',
+				}
+			}
+			return { isValid: true, status: 'valid' }
+		})
+		srpStub.getRecentLosses.mockResolvedValue([
+			{
+				killmailId: '123',
+				killmailHash: 'hash-123',
+				killmailTime: '2026-04-01T00:00:00.000Z',
+				shipTypeId: '587',
+				shipTypeName: 'Rifter',
+				totalValue: '1000000',
+				solarSystemId: '30000142',
+				solarSystemName: 'Jita',
+				victimCharacterId: '7001',
+				hasSRPRequest: false,
+			},
+		])
+
+		const response = await app.request('/api/srp/losses?daysBack=60', {}, env)
+		const body = await response.json<any>()
+
+		expect(response.status).toBe(200)
+		expect(body.losses).toHaveLength(1)
+		expect(body.failedCharacters).toEqual([
+			{
+				characterId: '7002',
+				characterName: 'Pilot Two',
+				reason: 'invalid_token',
+				message: 'ESI token is invalid or expired. Please re-authenticate this character.',
+			},
+		])
 	})
 
 	it('denies non-owner non-staff from viewing another request', async () => {
@@ -341,6 +484,126 @@ describe('srp routes - permissions', () => {
 			'Internal note',
 			'internal'
 		)
+	})
+
+	it('uses request character when requestor adds a follow-up comment', async () => {
+		const app = createApp(
+			makeUser({
+				id: 'requestor-followup',
+				characters: [
+					{
+						id: 'char-link-main',
+						characterOwnerHash: 'owner-hash-main',
+						characterId: '7001',
+						characterName: 'Main Pilot',
+						is_primary: true,
+						hasValidToken: true,
+					},
+					{
+						id: 'char-link-alt',
+						characterOwnerHash: 'owner-hash-alt',
+						characterId: '7002',
+						characterName: 'Alt Pilot',
+						is_primary: false,
+						hasValidToken: true,
+					},
+				],
+			})
+		)
+		srpStub.getRequest.mockResolvedValue(
+			makeRequest({
+				id: '100010',
+				userId: 'requestor-followup',
+				characterId: '7002',
+				characterName: 'Alt Pilot',
+			})
+		)
+		srpStub.addComment.mockResolvedValue({ id: 'comment-requestor' })
+
+		const response = await app.request(
+			'/api/srp/requests/100010/comments',
+			{
+				method: 'POST',
+				body: JSON.stringify({ content: 'Need to add context', visibility: 'public' }),
+				headers: { 'content-type': 'application/json' },
+			},
+			env
+		)
+
+		expect(response.status).toBe(201)
+		expect(srpStub.addComment).toHaveBeenCalledWith(
+			'100010',
+			'requestor-followup',
+			'Alt Pilot',
+			'Need to add context',
+			'public'
+		)
+	})
+
+	it('hydrates comment author role and main metadata for requestor and staff', async () => {
+		const app = createApp(makeUser({ id: 'staff-hydrate-comments' }))
+		srpStub.getRequest.mockResolvedValue(
+			makeRequest({
+				id: '100011',
+				userId: 'owner-1',
+				characterId: '7002',
+				characterName: 'Owner Alt',
+			})
+		)
+		srpStub.getComments.mockResolvedValue([
+			{
+				id: 'comment-requestor',
+				requestId: '100011',
+				authorUserId: 'owner-1',
+				authorCharacterName: 'Unknown',
+				content: 'Requestor follow-up',
+				visibility: 'public',
+				isEdited: false,
+				createdAt: new Date().toISOString(),
+			},
+			{
+				id: 'comment-staff',
+				requestId: '100011',
+				authorUserId: 'staff-hydrate-comments',
+				authorCharacterName: 'Reviewer',
+				content: 'Internal note',
+				visibility: 'internal',
+				isEdited: false,
+				createdAt: new Date().toISOString(),
+			},
+		] as any)
+		getCachedUserPermissionsMock.mockImplementation(async (_env, userId) =>
+			userId === 'staff-hydrate-comments' ? ([{ urn: 'urn:srp:manager' }] as any) : []
+		)
+		mockDbPrimaryCharacterRows([
+			{ userId: 'owner-1', characterId: '7001', characterName: 'Owner Main' },
+			{
+				userId: 'staff-hydrate-comments',
+				characterId: '9001',
+				characterName: 'Staff Main',
+			},
+		])
+
+		const response = await app.request('/api/srp/requests/100011/comments?includeInternal=true', {}, env)
+		const body = await response.json<any[]>()
+
+		expect(response.status).toBe(200)
+		expect(body).toHaveLength(2)
+		expect(body[0]).toMatchObject({
+			id: 'comment-requestor',
+			authorCharacterName: 'Owner Alt',
+			authorCharacterId: '7002',
+			authorMainCharacterName: 'Owner Main',
+			authorMainCharacterId: '7001',
+			authorCharacterRole: 'alt',
+			authorRole: 'requestor',
+		})
+		expect(body[1]).toMatchObject({
+			id: 'comment-staff',
+			authorMainCharacterName: 'Staff Main',
+			authorMainCharacterId: '9001',
+			authorRole: 'staff',
+		})
 	})
 
 	it('approves requests using killmail id request keys', async () => {

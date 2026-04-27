@@ -85,7 +85,11 @@ async function hydrateCommentAuthors(
 	comments: SRPCommentResponse[],
 	databaseUrl: string,
 	env: { GROUPS: DurableObjectNamespace },
-	requestUserId: string
+	requestDetails: {
+		requestUserId: string
+		requestCharacterId: string
+		requestCharacterName: string
+	}
 ): Promise<SRPCommentResponse[]> {
 	if (comments.length === 0) return comments
 	const userIds = [...new Set(comments.map((c) => c.authorUserId))]
@@ -101,9 +105,14 @@ async function hydrateCommentAuthors(
 	const charMap = Object.fromEntries(
 		rows.map((r) => [r.userId, { name: r.characterName, characterId: r.characterId }])
 	)
+	const requestorMainCharacterId = charMap[requestDetails.requestUserId]?.characterId
+	const requestorCharacterRole =
+		requestorMainCharacterId && requestorMainCharacterId === requestDetails.requestCharacterId
+			? ('main' as const)
+			: ('alt' as const)
 
 	// Determine SRP staff role for each non-requestor author
-	const nonRequestorIds = userIds.filter((id) => id !== requestUserId)
+	const nonRequestorIds = userIds.filter((id) => id !== requestDetails.requestUserId)
 	const staffSet = new Set<string>()
 	await Promise.all(
 		nonRequestorIds.map(async (userId) => {
@@ -116,10 +125,20 @@ async function hydrateCommentAuthors(
 
 	return comments.map((c) => ({
 		...c,
-		authorCharacterName: charMap[c.authorUserId]?.name ?? c.authorCharacterName,
-		authorCharacterId: charMap[c.authorUserId]?.characterId,
+		authorCharacterName:
+			c.authorUserId === requestDetails.requestUserId
+				? requestDetails.requestCharacterName
+				: (charMap[c.authorUserId]?.name ?? c.authorCharacterName),
+		authorCharacterId:
+			c.authorUserId === requestDetails.requestUserId
+				? requestDetails.requestCharacterId
+				: charMap[c.authorUserId]?.characterId,
+		authorMainCharacterName: charMap[c.authorUserId]?.name,
+		authorMainCharacterId: charMap[c.authorUserId]?.characterId,
+		authorCharacterRole:
+			c.authorUserId === requestDetails.requestUserId ? requestorCharacterRole : undefined,
 		authorRole:
-			c.authorUserId === requestUserId
+			c.authorUserId === requestDetails.requestUserId
 				? 'requestor'
 				: staffSet.has(c.authorUserId)
 					? 'staff'
@@ -127,7 +146,11 @@ async function hydrateCommentAuthors(
 	}))
 }
 
-type RequestWithCharacterRole = SRPRequestResponse & { characterRole?: 'main' | 'alt' }
+type RequestWithCharacterRole = SRPRequestResponse & {
+	characterRole?: 'main' | 'alt'
+	mainCharacterId?: string
+	mainCharacterName?: string
+}
 type DoctrineSlot = 'high' | 'mid' | 'low' | 'rig' | 'sub'
 type MilitarySrpFindingCode =
 	| 'missing_rigs'
@@ -509,18 +532,23 @@ async function hydrateRequestCharacterRoles(
 		.select({
 			userId: userCharacters.userId,
 			characterId: userCharacters.characterId,
+			characterName: userCharacters.characterName,
 		})
 		.from(userCharacters)
 		.where(and(eq(userCharacters.is_primary, true), inArray(userCharacters.userId, userIds)))
 
-	const mainCharacterByUserId = new Map(rows.map((row) => [row.userId, row.characterId]))
+	const mainCharacterByUserId = new Map(
+		rows.map((row) => [row.userId, { characterId: row.characterId, characterName: row.characterName }])
+	)
 
 	return requests.map((request) => {
-		const mainCharacterId = mainCharacterByUserId.get(request.userId)
-		if (!mainCharacterId) return request
+		const mainCharacter = mainCharacterByUserId.get(request.userId)
+		if (!mainCharacter) return request
 		return {
 			...request,
-			characterRole: request.characterId === mainCharacterId ? 'main' : 'alt',
+			characterRole: request.characterId === mainCharacter.characterId ? 'main' : 'alt',
+			mainCharacterId: mainCharacter.characterId,
+			mainCharacterName: mainCharacter.characterName,
 		}
 	})
 }
@@ -607,14 +635,66 @@ srp.get('/losses', async (c) => {
 	const daysBack = c.req.query('daysBack') ? Number.parseInt(c.req.query('daysBack')!, 10) : 30
 
 	// Get all character IDs for the user
-	const characterIds = user.characters.map((char) => char.characterId)
+	const characters = user.characters.map((char) => ({
+		characterId: char.characterId,
+		characterName: char.characterName,
+	}))
 
-	if (characterIds.length === 0) {
-		return c.json([])
+	if (characters.length === 0) {
+		return c.json({ losses: [], failedCharacters: [] })
 	}
 
 	const srpStub = getStub<Srp>(c.env.SRP, getRequestId(c))
-	const losses = await srpStub.getRecentLosses(characterIds, user.id, daysBack)
+	const tokenStore = getStub<EveTokenStore>(c.env.EVE_TOKEN_STORE, 'default')
+	const perCharacterResults = await Promise.all(
+		characters.map(async (character) => {
+			const tokenValidation = await tokenStore.validateToken(
+				character.characterId,
+				SRP_REQUIRED_KILLMAIL_SCOPES
+			)
+			if (!tokenValidation.isValid) {
+				return {
+					success: false as const,
+					characterId: character.characterId,
+					characterName: character.characterName,
+					reason: 'invalid_token' as const,
+					message: 'ESI token is invalid or expired. Please re-authenticate this character.',
+				}
+			}
+
+			try {
+				const losses = await srpStub.getRecentLosses([character.characterId], user.id, daysBack)
+				return {
+					success: true as const,
+					characterId: character.characterId,
+					characterName: character.characterName,
+					losses,
+				}
+			} catch (error) {
+				return {
+					success: false as const,
+					characterId: character.characterId,
+					characterName: character.characterName,
+					reason: 'fetch_failed' as const,
+					message: 'Could not load losses right now. Please try again shortly.',
+					error: error instanceof Error ? error.message : String(error),
+				}
+			}
+		})
+	)
+	const losses = perCharacterResults
+		.filter((result) => result.success)
+		.flatMap((result) => result.losses)
+		.sort((a, b) => new Date(b.killmailTime).getTime() - new Date(a.killmailTime).getTime())
+	const failedCharacters = perCharacterResults
+		.filter((result) => !result.success)
+		.map((result) => ({
+			characterId: result.characterId,
+			characterName: result.characterName,
+			reason: result.reason,
+			message: result.message,
+			error: result.error,
+		}))
 	const characterNameById = new Map(
 		user.characters.map((character) => [character.characterId, character.characterName])
 	)
@@ -623,7 +703,10 @@ srp.get('/losses', async (c) => {
 		victimCharacterName: characterNameById.get(loss.victimCharacterId) ?? undefined,
 	}))
 
-	return c.json(lossesWithCharacterNames)
+	return c.json({
+		losses: lossesWithCharacterNames,
+		failedCharacters,
+	})
 })
 
 /**
@@ -884,7 +967,11 @@ srp.get('/requests/:id', async (c) => {
 			request.comments,
 			c.env.DATABASE_URL,
 			c.env,
-			request.userId
+			{
+				requestUserId: request.userId,
+				requestCharacterId: request.characterId,
+				requestCharacterName: request.characterName,
+			}
 		)
 	}
 
@@ -1214,7 +1301,11 @@ srp.get('/requests/:id/comments', async (c) => {
 		user.id,
 		hasSrpStaffPermission && includeInternal
 	)
-	const comments = await hydrateCommentAuthors(rawComments, c.env.DATABASE_URL, c.env, request.userId)
+	const comments = await hydrateCommentAuthors(rawComments, c.env.DATABASE_URL, c.env, {
+		requestUserId: request.userId,
+		requestCharacterId: request.characterId,
+		requestCharacterName: request.characterName,
+	})
 	return c.json(
 		comments.map((comment) => ({
 			...comment,
@@ -1262,7 +1353,8 @@ srp.post('/requests/:id/comments', async (c) => {
 		}
 	}
 
-	const characterName = getPrimaryCharacterName(user)
+	const characterName =
+		request.userId === user.id ? request.characterName : getPrimaryCharacterName(user)
 	const comment = await srpStub.addComment(request.id, user.id, characterName, content, visibility)
 
 	return c.json(

@@ -269,7 +269,11 @@ function ReviewTabContent({ status, filters }: { status: RequestStatus; filters:
 								<TableCell className="text-sm">
 									<div className="inline-flex items-center gap-2">
 										<span>{req.characterName}</span>
-										<CharacterRoleBadge role={getRequestCharacterRole(req)} />
+										<CharacterRoleBadge
+											role={getRequestCharacterRole(req)}
+											mainCharacterName={req.mainCharacterName}
+											mainCharacterId={req.mainCharacterId}
+										/>
 									</div>
 									{req.corporationName && req.corporationName !== 'Unknown' && (
 										<div className="text-xs text-muted-foreground">{req.corporationName}</div>
