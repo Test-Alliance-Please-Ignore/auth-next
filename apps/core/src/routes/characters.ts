@@ -6,6 +6,7 @@ import { createEveCharacterId } from '@repo/eve-types'
 import { logger } from '@repo/hono-helpers'
 
 import { userCharacters } from '../db/schema'
+import { validateAndSyncCharacterTokenValidity } from '../lib/token-validity'
 import { requireAuth } from '../middleware/session'
 import { checkAndUpdateDirectorStatus } from '../services/corporation-auto-register.service'
 import { EntityResolverService } from '../services/entity-resolver.service'
@@ -650,22 +651,34 @@ app.post('/:characterId/refresh', requireAuth(), async (c) => {
 			)
 		}
 
-		// Try to fetch authenticated data - the token store will handle checking if a valid token exists
-		let hasValidToken = false
-		let authError: string | undefined
-		try {
-			await eveCharacterData.fetchAuthenticatedData(true)
-			hasValidToken = true
-		} catch (error) {
-			// If authenticated data fetch fails, token is likely missing or invalid
-			authError =
-				error instanceof Error
-					? error.message
-					: error && typeof error === 'object' && 'remote' in error
-						? 'Durable Object connection failed'
-						: String(error)
-			logger.error('Could not fetch authenticated data:', authError)
-			logger.error('Full error:', error)
+		const db = c.get('db')
+		const tokenStatus = db
+			? await validateAndSyncCharacterTokenValidity({
+					db,
+					tokenStore: eveTokenStoreStub,
+					characterId: characterIdStr,
+				})
+			: null
+		const fallbackValidation = tokenStatus ? null : await eveTokenStoreStub.validateToken(characterIdStr)
+		const hasValidToken = tokenStatus
+			? tokenStatus.nextHasValidToken === true
+			: fallbackValidation?.isValid === true
+		let authError: string | undefined = tokenStatus?.validation.error ?? fallbackValidation?.error
+
+		// Try to fetch authenticated data if token is valid.
+		if (hasValidToken) {
+			try {
+				await eveCharacterData.fetchAuthenticatedData(true)
+			} catch (error) {
+				authError =
+					error instanceof Error
+						? error.message
+						: error && typeof error === 'object' && 'remote' in error
+							? 'Durable Object connection failed'
+							: String(error)
+				logger.error('Could not fetch authenticated data:', authError)
+				logger.error('Full error:', error)
+			}
 		}
 
 		// Try to fetch killmails (requires authentication)
@@ -681,20 +694,6 @@ app.post('/:characterId/refresh', requireAuth(), async (c) => {
 					characterId: characterIdStr,
 					error: error instanceof Error ? error.message : String(error),
 				})
-			}
-		}
-
-		// Cache the token validity status in the database
-		const db = c.get('db')
-		if (db) {
-			try {
-				await db
-					.update(userCharacters)
-					.set({ hasValidToken })
-					.where(eq(userCharacters.characterId, characterIdStr))
-			} catch (error) {
-				logger.error('Failed to update token validity cache:', error)
-				// Don't fail the request if cache update fails
 			}
 		}
 

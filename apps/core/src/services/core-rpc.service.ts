@@ -2,6 +2,7 @@ import { and, desc, eq, ilike, inArray, or, sql } from '@repo/db-utils'
 import { getStub } from '@repo/do-utils'
 
 import { userCharacters, users } from '../db/schema'
+import { validateAndSyncCharacterTokenValidity } from '../lib/token-validity'
 import * as discordService from '../services/discord.service'
 
 import type { SQL } from 'drizzle-orm'
@@ -332,11 +333,15 @@ export class CoreRpcService {
 		// 6. Build character summaries with token validation and blacklist status
 		const characterSummaries = await Promise.all(
 			chars.map(async (char) => {
-				// Check token validity (getAccessToken auto-refreshes if needed)
-				let hasValidToken = false
+				let hasValidToken = char.hasValidToken === true
 				try {
-					const accessToken = await eveTokenStore.getAccessToken(char.characterId)
-					hasValidToken = accessToken !== null
+					const tokenStatus = await validateAndSyncCharacterTokenValidity({
+						db: this.db,
+						tokenStore: eveTokenStore,
+						characterId: char.characterId,
+						previousHasValidToken: char.hasValidToken ?? null,
+					})
+					hasValidToken = tokenStatus.nextHasValidToken === true
 				} catch (error) {
 					console.error(`Failed to check token for character ${char.characterId}:`, error)
 				}
