@@ -214,7 +214,11 @@ export default function RequestDetails() {
 							<div className="text-sm text-muted-foreground">Character</div>
 							<div className="inline-flex items-center gap-2 font-medium">
 								<span>{request.characterName}</span>
-								<CharacterRoleBadge role={getRequestCharacterRole(request)} />
+								<CharacterRoleBadge
+									role={getRequestCharacterRole(request)}
+									mainCharacterName={request.mainCharacterName}
+									mainCharacterId={request.mainCharacterId}
+								/>
 							</div>
 						</div>
 						<div>
@@ -311,6 +315,9 @@ export default function RequestDetails() {
 										content: request.contextText,
 										authorCharacterName: request.characterName,
 										authorCharacterId: request.characterId,
+										authorCharacterRole: getRequestCharacterRole(request),
+										authorMainCharacterName: request.mainCharacterName,
+										authorMainCharacterId: request.mainCharacterId,
 										createdAt: request.createdAt,
 									}
 								: undefined

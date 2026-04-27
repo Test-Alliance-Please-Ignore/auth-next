@@ -2500,8 +2500,8 @@ export class ApiClient {
 	/**
 	 * Get recent losses for all user's characters with SRP status
 	 */
-	async getRecentLosses(daysBack: number = 30): Promise<
-		Array<{
+	async getRecentLosses(daysBack: number = 30): Promise<{
+		losses: Array<{
 			killmailId: string
 			killmailHash: string
 			killmailTime: string
@@ -2516,7 +2516,14 @@ export class ApiClient {
 			srpRequestId?: string
 			srpRequestStatus?: string
 		}>
-	> {
+		failedCharacters: Array<{
+			characterId: string
+			characterName: string
+			reason?: 'invalid_token' | 'fetch_failed'
+			message?: string
+			error?: string
+		}>
+	}> {
 		return this.get(`/srp/losses?daysBack=${daysBack}`)
 	}
 

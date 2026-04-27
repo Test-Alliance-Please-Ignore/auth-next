@@ -10,6 +10,7 @@ import {
 } from '@/features/srp/state/cache-updates'
 
 import type { SRPRequestResponse } from '@/features/srp/types'
+import type { LossListEntry, RecentLossesQueryData } from '@/features/srp/state/cache-updates'
 
 function makeRequest(
 	id: string,
@@ -34,6 +35,13 @@ function makeRequest(
 	}
 }
 
+function asLossArray(
+	value: LossListEntry[] | RecentLossesQueryData | undefined
+): LossListEntry[] | undefined {
+	if (!value) return value
+	return Array.isArray(value) ? value : value.losses
+}
+
 describe('srp cache updates', () => {
 	it('matches SRP losses keys for any daysBack variant', () => {
 		expect(isSrpLossesQueryKey(['srp', 'losses', 60])).toBe(true)
@@ -51,8 +59,9 @@ describe('srp cache updates', () => {
 			requestId: '222',
 			requestStatus: 'pending',
 		})
-		expect(patched?.[0]).toEqual(losses[0])
-		expect(patched?.[1]).toMatchObject({
+		const patchedLosses = asLossArray(patched)
+		expect(patchedLosses?.[0]).toEqual(losses[0])
+		expect(patchedLosses?.[1]).toMatchObject({
 			killmailId: '222',
 			hasSRPRequest: true,
 			srpRequestId: '222',
@@ -70,7 +79,7 @@ describe('srp cache updates', () => {
 			},
 		]
 		const patched = patchLossesByRequestStatus(losses, '111', 'approved')
-		expect(patched?.[0]?.srpRequestStatus).toBe('approved')
+		expect(asLossArray(patched)?.[0]?.srpRequestStatus).toBe('approved')
 	})
 
 	it('preserves loss request linkage when status becomes withdrawn', () => {
@@ -83,12 +92,30 @@ describe('srp cache updates', () => {
 			},
 		]
 		const patched = patchLossesByRequestStatus(losses, '111', 'withdrawn')
-		expect(patched?.[0]).toMatchObject({
+		expect(asLossArray(patched)?.[0]).toMatchObject({
 			killmailId: '111',
 			hasSRPRequest: true,
 			srpRequestId: '111',
 			srpRequestStatus: 'withdrawn',
 		})
+	})
+
+	it('preserves failedCharacters when patching object-shaped losses cache', () => {
+		const data: RecentLossesQueryData = {
+			losses: [
+				{
+					killmailId: '111',
+					hasSRPRequest: true,
+					srpRequestId: '111',
+					srpRequestStatus: 'pending',
+				},
+			],
+			failedCharacters: [{ characterId: 'c1', characterName: 'Char One', error: 'fetch failed' }],
+		}
+		const patched = patchLossesByRequestStatus(data, '111', 'approved')
+		expect(Array.isArray(patched)).toBe(false)
+		expect((patched as RecentLossesQueryData).failedCharacters).toEqual(data.failedCharacters)
+		expect((patched as RecentLossesQueryData).losses[0]?.srpRequestStatus).toBe('approved')
 	})
 
 	it('prepends created request to my-requests cache and increments total', () => {

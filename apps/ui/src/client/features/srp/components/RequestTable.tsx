@@ -84,7 +84,11 @@ export function RequestTable({ requests, isLoading }: RequestTableProps) {
 							<TableCell className="text-sm font-medium">
 								<div className="inline-flex items-center gap-2">
 									<span>{request.characterName}</span>
-									<CharacterRoleBadge role={getRequestCharacterRole(request)} />
+									<CharacterRoleBadge
+										role={getRequestCharacterRole(request)}
+										mainCharacterName={request.mainCharacterName}
+										mainCharacterId={request.mainCharacterId}
+									/>
 								</div>
 							</TableCell>
 							<TableCell className="text-sm text-muted-foreground">

@@ -9,7 +9,12 @@ import { useMyRequests, useRecentLosses, useRefreshKillmails, useSRPConfig } fro
 import type { LossWithSRPStatus } from '../types'
 
 export default function SRPIndex() {
-	const { data: losses, isLoading: lossesLoading, error: lossesError } = useRecentLosses(60)
+	const {
+		data: losses,
+		isLoading: lossesLoading,
+		error: lossesError,
+		failedCharacters: loadFailures,
+	} = useRecentLosses(60)
 	const refreshMutation = useRefreshKillmails()
 	const { data: config } = useSRPConfig()
 	const {
@@ -49,6 +54,7 @@ export default function SRPIndex() {
 									onRefresh={() => refreshMutation.mutate()}
 									config={config}
 									refreshResults={refreshMutation.data?.results}
+									loadFailures={loadFailures}
 								/>
 							)}
 						</TabsContent>

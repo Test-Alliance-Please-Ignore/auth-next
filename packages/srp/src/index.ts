@@ -453,6 +453,12 @@ export interface SRPRequestResponse {
 	createdAt: string
 	updatedAt: string
 
+	/** Character role relative to user main character — populated by HTTP layer */
+	characterRole?: 'main' | 'alt'
+	/** User's main character metadata for hovercard display — populated by HTTP layer */
+	mainCharacterId?: string
+	mainCharacterName?: string
+
 	// Populated relations
 	comments?: SRPCommentResponse[]
 	history?: SRPHistoryResponse[]
@@ -468,6 +474,11 @@ export interface SRPCommentResponse {
 	authorCharacterName: string
 	/** Primary character ID — populated by the HTTP layer for avatar rendering */
 	authorCharacterId?: string
+	/** Author main character metadata — populated by the HTTP layer for role hovercard */
+	authorMainCharacterId?: string
+	authorMainCharacterName?: string
+	/** Author character role relative to their main character — populated by the HTTP layer */
+	authorCharacterRole?: 'main' | 'alt'
 	/** Commenter's role relative to this request — populated by the HTTP layer */
 	authorRole?: 'requestor' | 'staff'
 	content: string

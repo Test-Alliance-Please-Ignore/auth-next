@@ -23,7 +23,11 @@ export function RequestCard({ request, showActions = true }: RequestCardProps) {
 						<h3 className="font-semibold">{request.shipTypeName}</h3>
 						<div className="flex items-center gap-2 text-sm text-muted-foreground">
 							<span>{request.characterName}</span>
-							<CharacterRoleBadge role={getRequestCharacterRole(request)} />
+							<CharacterRoleBadge
+								role={getRequestCharacterRole(request)}
+								mainCharacterName={request.mainCharacterName}
+								mainCharacterId={request.mainCharacterId}
+							/>
 							<span>· {formatRelativeTime(request.createdAt)}</span>
 						</div>
 					</div>

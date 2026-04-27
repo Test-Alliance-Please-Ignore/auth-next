@@ -40,9 +40,24 @@ interface LossTableProps {
 	onRefresh?: () => void
 	config?: SRPConfigResponse | null
 	refreshResults?: CharacterRefreshResult[]
+	loadFailures?: Array<{
+		characterId: string
+		characterName: string
+		reason?: 'invalid_token' | 'fetch_failed'
+		message?: string
+		error?: string
+	}>
 }
 
-export function LossTable({ losses, isLoading, isRefreshing, onRefresh, config, refreshResults }: LossTableProps) {
+export function LossTable({
+	losses,
+	isLoading,
+	isRefreshing,
+	onRefresh,
+	config,
+	refreshResults,
+	loadFailures,
+}: LossTableProps) {
 	const maxLossAgeDays = config?.maxLossAgeDays ?? 60
 	const [nowMs, setNowMs] = useState(() => Date.now())
 	const initialFetchCooldownAppliedRef = useRef(false)
@@ -150,6 +165,29 @@ export function LossTable({ losses, isLoading, isRefreshing, onRefresh, config, 
 											: '— fetch failed'}
 								</li>
 							))}
+					</ul>
+				</div>
+			)}
+
+			{loadFailures && loadFailures.length > 0 && (
+				<div className="rounded-md border border-amber-500/40 bg-amber-500/10 px-4 py-3 text-sm">
+					<p className="mb-1 font-medium text-amber-400">
+						Some character losses could not be loaded
+					</p>
+					<ul className="space-y-0.5">
+						{loadFailures.map((failure) => (
+							<li
+								key={failure.characterId}
+								className="flex items-center gap-2 text-xs text-muted-foreground"
+							>
+								<span className="font-medium text-foreground">{failure.characterName}</span>
+								{failure.message
+									? `— ${failure.message}`
+									: failure.reason === 'invalid_token'
+										? '— ESI token is invalid or expired. Please re-authenticate this character.'
+										: '— Could not load losses right now. Please try again shortly.'}
+							</li>
+						))}
 					</ul>
 				</div>
 			)}

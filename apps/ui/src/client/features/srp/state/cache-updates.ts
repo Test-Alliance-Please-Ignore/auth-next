@@ -7,6 +7,17 @@ export interface LossListEntry {
 	srpRequestStatus?: string
 }
 
+export interface RecentLossesQueryData {
+	losses: LossListEntry[]
+	failedCharacters: Array<{
+		characterId: string
+		characterName: string
+		reason?: 'invalid_token' | 'fetch_failed'
+		message?: string
+		error?: string
+	}>
+}
+
 export interface MyRequestsQueryData {
 	requests: SRPRequestResponse[]
 	total: number
@@ -28,11 +39,12 @@ export function isSrpMyRequestsQueryKey(queryKey: readonly unknown[]): boolean {
 }
 
 export function patchLossesForRequest(
-	losses: LossListEntry[] | undefined,
+	losses: LossListEntry[] | RecentLossesQueryData | undefined,
 	request: { killmailId: string; requestId: string; requestStatus: string }
-): LossListEntry[] | undefined {
+): LossListEntry[] | RecentLossesQueryData | undefined {
 	if (!losses) return losses
-	return losses.map((loss) =>
+	const list = Array.isArray(losses) ? losses : losses.losses
+	const patched = list.map((loss) =>
 		loss.killmailId === request.killmailId
 			? {
 					...loss,
@@ -42,15 +54,21 @@ export function patchLossesForRequest(
 				}
 			: loss
 	)
+	if (Array.isArray(losses)) return patched
+	return {
+		...losses,
+		losses: patched,
+	}
 }
 
 export function patchLossesByRequestStatus(
-	losses: LossListEntry[] | undefined,
+	losses: LossListEntry[] | RecentLossesQueryData | undefined,
 	requestId: string,
 	requestStatus: string
-): LossListEntry[] | undefined {
+): LossListEntry[] | RecentLossesQueryData | undefined {
 	if (!losses) return losses
-	return losses.map((loss) =>
+	const list = Array.isArray(losses) ? losses : losses.losses
+	const patched = list.map((loss) =>
 		loss.srpRequestId === requestId
 			? {
 					...loss,
@@ -58,6 +76,11 @@ export function patchLossesByRequestStatus(
 				}
 			: loss
 	)
+	if (Array.isArray(losses)) return patched
+	return {
+		...losses,
+		losses: patched,
+	}
 }
 
 export function patchMyRequestsStatus(

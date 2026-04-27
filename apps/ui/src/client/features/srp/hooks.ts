@@ -31,7 +31,7 @@ import type {
 	SRPReviewSubmission,
 } from './types'
 import type { FittingWithItems } from '@/lib/api'
-import type { LossListEntry, MyRequestsQueryData } from './state/cache-updates'
+import type { LossListEntry, MyRequestsQueryData, RecentLossesQueryData } from './state/cache-updates'
 
 function setLossStateAcrossCaches(
 	queryClient: ReturnType<typeof useQueryClient>,
@@ -41,7 +41,11 @@ function setLossStateAcrossCaches(
 		{
 			predicate: (query) => isSrpLossesQueryKey(query.queryKey),
 		},
-		(old) => patchLossesForRequest(old as LossListEntry[] | undefined, request)
+		(old) =>
+			patchLossesForRequest(
+				old as LossListEntry[] | RecentLossesQueryData | undefined,
+				request
+			)
 	)
 }
 
@@ -56,7 +60,7 @@ function setRequestStatusAcrossCaches(
 		},
 		(old) =>
 			patchLossesByRequestStatus(
-				old as LossListEntry[] | undefined,
+				old as LossListEntry[] | RecentLossesQueryData | undefined,
 				request.id,
 				request.requestStatus
 			)
@@ -117,13 +121,14 @@ export function useRecentLosses(daysBack: number = 30) {
 		staleTime: 1000 * 60 * 5,
 	})
 	useEffect(() => {
-		if (!query.data) return
-		reconcileOverlayFromServerLosses(query.data)
+		if (!query.data?.losses) return
+		reconcileOverlayFromServerLosses(query.data.losses)
 	}, [query.data])
-	const mergedData = useMemo(() => mergeLossesWithOverlay(query.data), [query.data, overlay])
+	const mergedData = useMemo(() => mergeLossesWithOverlay(query.data?.losses), [query.data, overlay])
 	return {
 		...query,
 		data: mergedData,
+		failedCharacters: query.data?.failedCharacters ?? [],
 	}
 }
 
