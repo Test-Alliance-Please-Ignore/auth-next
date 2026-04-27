@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { Link, Navigate } from 'react-router-dom'
 
 import { Button } from '@/components/ui/button'
@@ -204,7 +204,19 @@ export default function ReviewQueue() {
 }
 
 function ReviewTabContent({ status, filters }: { status: RequestStatus; filters: ReviewQueueFilters }) {
-	const { data, isLoading, error } = useRequestsByStatus(status, { limit: 50, ...filters })
+	const { data, isLoading, isFetching, error, refetch } = useRequestsByStatus(status, {
+		limit: 50,
+		...filters,
+	})
+	const hasMountedRef = useRef(false)
+
+	useEffect(() => {
+		if (!hasMountedRef.current) {
+			hasMountedRef.current = true
+			return
+		}
+		void refetch()
+	}, [status, refetch])
 	const hasActiveFilters = Boolean(
 		filters.characterName ||
 			filters.shipTypeName ||
@@ -213,7 +225,7 @@ function ReviewTabContent({ status, filters }: { status: RequestStatus; filters:
 			filters.dateTo
 	)
 
-	if (isLoading) {
+	if (isLoading || (!data && isFetching)) {
 		return (
 			<div className="space-y-2">
 				{[...Array(3)].map((_, i) => (
