@@ -65,6 +65,39 @@ function makeDbStub() {
 	}
 }
 
+function makeTokenStoreStub(options?: {
+	resolveIds?: (ids: string[]) => Promise<Record<string, string>>
+	validateToken?: (characterId: string) => Promise<{
+		characterId: string
+		isValid: boolean
+		missingScopes: string[]
+		refreshAttempted: boolean
+		refreshSucceeded: boolean
+		scopes: string[]
+		status: string
+		error?: string
+	}>
+}) {
+	return {
+		resolveIds:
+			options?.resolveIds ??
+			vi.fn().mockImplementation(async (ids: string[]) =>
+				Object.fromEntries(ids.map((id) => [id, id === '2001' ? 'Pilot One' : `Character ${id}`]))
+			),
+		validateToken:
+			options?.validateToken ??
+			vi.fn().mockImplementation(async (characterId: string) => ({
+				characterId,
+				isValid: true,
+				missingScopes: [],
+				refreshAttempted: false,
+				refreshSucceeded: false,
+				scopes: ['publicData'],
+				status: 'valid',
+			})),
+	}
+}
+
 function createApp(opts: { user?: SessionUser; db?: ReturnType<typeof makeDbStub> }) {
 	const app = new Hono<{
 		Bindings: any
@@ -106,6 +139,7 @@ describe('corporations members access matrix', () => {
 	let charStub: {
 		getCharacterInfo: ReturnType<typeof vi.fn>
 	}
+	let tokenStoreStub: ReturnType<typeof makeTokenStoreStub>
 
 	beforeEach(() => {
 		vi.clearAllMocks()
@@ -117,6 +151,7 @@ describe('corporations members access matrix', () => {
 		charStub = {
 			getCharacterInfo: vi.fn().mockResolvedValue(null),
 		}
+		tokenStoreStub = makeTokenStoreStub()
 		corpStub = {
 			getCorporationInfo: vi.fn().mockResolvedValue({ ceoId: '9999', allianceId: null }),
 			getCoreData: vi.fn().mockResolvedValue({
@@ -137,11 +172,7 @@ describe('corporations members access matrix', () => {
 				return corpStub as any
 			}
 			if (binding === env.EVE_TOKEN_STORE) {
-				return {
-					resolveIds: vi.fn().mockImplementation(async (ids: string[]) =>
-						Object.fromEntries(ids.map((id) => [id, id === '2001' ? 'Pilot One' : `Character ${id}`]))
-					),
-				} as any
+				return tokenStoreStub as any
 			}
 			throw new Error('Unexpected binding')
 		})
@@ -226,13 +257,13 @@ describe('corporations members access matrix', () => {
 			if (binding === env.EVE_CHARACTER_DATA) return charStub as any
 			if (binding === env.EVE_CORPORATION_DATA) return corpStub as any
 			if (binding === env.EVE_TOKEN_STORE) {
-				return {
+				return makeTokenStoreStub({
 					resolveIds: vi.fn().mockImplementation(async (ids: string[]) =>
 						Object.fromEntries(
 							ids.map((id) => [id, id === '2001' ? 'Pilot One' : id === '2002' ? 'Pilot Two' : id])
 						)
 					),
-				} as any
+				}) as any
 			}
 			throw new Error('Unexpected binding')
 		})
@@ -308,13 +339,22 @@ describe('corporations members access matrix', () => {
 			if (binding === env.EVE_CHARACTER_DATA) return charStub as any
 			if (binding === env.EVE_CORPORATION_DATA) return corpStub as any
 			if (binding === env.EVE_TOKEN_STORE) {
-				return {
+				return makeTokenStoreStub({
 					resolveIds: vi.fn().mockImplementation(async (ids: string[]) =>
 						Object.fromEntries(
 							ids.map((id) => [id, id === '2001' ? 'Pilot One' : id === '2002' ? 'Pilot Two' : id])
 						)
 					),
-				} as any
+					validateToken: vi.fn().mockImplementation(async (characterId: string) => ({
+						characterId,
+						isValid: characterId !== '2002',
+						missingScopes: [],
+						refreshAttempted: false,
+						refreshSucceeded: false,
+						scopes: ['publicData'],
+						status: characterId === '2002' ? 'invalid_token' : 'valid',
+					})),
+				}) as any
 			}
 			throw new Error('Unexpected binding')
 		})
@@ -337,6 +377,59 @@ describe('corporations members access matrix', () => {
 			characterId: '2002',
 			hasValidToken: false,
 		})
+	})
+
+	it('overrides stale linked token cache with live validation result', async () => {
+		getCachedUserPermissionsMock.mockResolvedValue([
+			{
+				permissionId: 'perm-auditor',
+				urn: 'urn:hr:auditor',
+				name: 'HR Auditor',
+				description: null,
+				category: null,
+				groupId: 'g-1',
+				groupName: 'HR',
+				targetType: 'all_members',
+				source: 'global',
+			},
+		] as any)
+
+		dbStub.query.userCharacters.findMany.mockResolvedValue([
+			{ characterId: '2001', userId: 'target-user-1', status: 'active', hasValidToken: true },
+		])
+		getStubMock.mockImplementation((binding: unknown) => {
+			if (binding === env.HR) return hrStub as any
+			if (binding === env.EVE_CHARACTER_DATA) return charStub as any
+			if (binding === env.EVE_CORPORATION_DATA) return corpStub as any
+			if (binding === env.EVE_TOKEN_STORE) {
+				return makeTokenStoreStub({
+					validateToken: vi.fn().mockResolvedValue({
+						characterId: '2001',
+						isValid: false,
+						missingScopes: [],
+						refreshAttempted: false,
+						refreshSucceeded: false,
+						scopes: ['publicData'],
+						status: 'invalid_token',
+						error: 'Token invalid',
+					}),
+				}) as any
+			}
+			throw new Error('Unexpected binding')
+		})
+
+		const app = createApp({ user: makeUser(), db: dbStub })
+		const res = await app.request('/api/corporations/1001/members', {}, env)
+
+		expect(res.status).toBe(200)
+		const body = (await res.json()) as {
+			items: Array<{ characterId: string; hasValidToken?: boolean | null }>
+		}
+		expect(body.items[0]).toMatchObject({
+			characterId: '2001',
+			hasValidToken: false,
+		})
+		expect(dbStub.update).toHaveBeenCalled()
 	})
 
 	it('denies members refresh for HR-only access (no CEO/director/admin leadership)', async () => {

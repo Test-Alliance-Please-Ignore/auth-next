@@ -7,6 +7,7 @@ import { logger } from '@repo/hono-helpers'
 import { managedCorporations, userCharacters, users } from '../../db/schema'
 import { isNpcCorporationId } from '../../lib/corporation-id'
 import { getCachedUserPermissions } from '../../lib/groups-cache'
+import { validateAndSyncCharacterTokenValidityBatch } from '../../lib/token-validity'
 import { requireAdmin, requireAuth } from '../../middleware/session'
 import corporationsDirectorsRoutes from './directors-routes'
 import corporationsDiscordRoutes from './discord-routes'
@@ -1466,6 +1467,15 @@ app.get('/:corporationId/members', requireAuth(), async (c) => {
 		// Batch resolve all character names using ESI bulk endpoint
 		// Character ID → name mappings are cached for 1 year (essentially permanent)
 		const tokenStoreStub = getStub<EveTokenStore>(c.env.EVE_TOKEN_STORE, 'default')
+		const liveTokenValidityByCharacterId = await validateAndSyncCharacterTokenValidityBatch({
+			db,
+			tokenStore: tokenStoreStub,
+			characters: linkedCharacters.map((character) => ({
+				characterId: character.characterId,
+				hasValidToken: character.hasValidToken ?? null,
+			})),
+			maxConcurrency: 20,
+		})
 		const characterNameMap = await tokenStoreStub.resolveIds(memberCharacterIds)
 
 		logger.info('[Corporations Members] Resolved character names', {
@@ -1537,7 +1547,9 @@ app.get('/:corporationId/members', requireAuth(), async (c) => {
 					corporationName: managedCorp.name,
 					role,
 					hasAuthAccount,
-					hasValidToken: linkedChar?.hasValidToken ?? null,
+					hasValidToken: linkedChar
+						? (liveTokenValidityByCharacterId.get(characterId) ?? linkedChar.hasValidToken ?? null)
+						: null,
 					authUserId: linkedChar?.userId,
 					mainCharacterName: linkedChar?.userId
 						? userIdToMainCharacterName.get(linkedChar.userId)

@@ -8,10 +8,12 @@ import { logger } from '@repo/hono-helpers'
 
 import { createDb } from './db'
 import { userCharacters, users } from './db/schema'
+import { validateAndSyncCharacterTokenValidity } from './lib/token-validity'
 import { triggerDiscordRefreshWorkflow, triggerUserRefreshWorkflow } from './lib/workflow-triggers'
 
 import type { Core } from '@repo/core'
 import type { CharacterPublicInfo } from '@repo/esi'
+import type { EveTokenStore } from '@repo/eve-token-store'
 import type { CreateRoleRequest, Groups } from '@repo/groups'
 import type { Env } from './context'
 
@@ -161,16 +163,39 @@ export class CoreDO extends DurableObject<Env> implements Core {
 		const characters = await this.getDb().query.userCharacters.findMany({
 			where: and(eq(userCharacters.isDeleted, includeDeleted), eq(userCharacters.userId, userId)),
 		})
-		return characters.map((c) => ({
-			characterId: c.characterId,
-			characterName: c.characterName,
-			hasValidToken: c.hasValidToken ?? false,
-			isDeleted: c.isDeleted,
-			corporationId: c.corporationId,
-			corporationName: c.corporationName,
-			allianceId: c.allianceId,
-			allianceName: c.allianceName,
-		}))
+		const db = this.getDb()
+		const tokenStore = getStub<EveTokenStore>(this.env.EVE_TOKEN_STORE, 'default')
+		return Promise.all(
+			characters.map(async (c) => {
+				let hasValidToken = c.hasValidToken === true
+				try {
+					const tokenStatus = await validateAndSyncCharacterTokenValidity({
+						db,
+						tokenStore,
+						characterId: c.characterId,
+						previousHasValidToken: c.hasValidToken ?? null,
+					})
+					hasValidToken = tokenStatus.nextHasValidToken === true
+				} catch (error) {
+					this.logger.warn('[CoreDO] Failed to validate token while listing user characters', {
+						userId,
+						characterId: c.characterId,
+						error: error instanceof Error ? error.message : String(error),
+					})
+				}
+
+				return {
+					characterId: c.characterId,
+					characterName: c.characterName,
+					hasValidToken,
+					isDeleted: c.isDeleted,
+					corporationId: c.corporationId,
+					corporationName: c.corporationName,
+					allianceId: c.allianceId,
+					allianceName: c.allianceName,
+				}
+			})
+		)
 	}
 
 	async getUserCorporations(

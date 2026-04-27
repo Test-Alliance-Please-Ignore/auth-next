@@ -38,7 +38,7 @@ export async function renderFleetJoinPage(
 				const characterId = char.characterId.toString()
 
 				// Check if character has valid ESI token
-				const hasValidToken = (await tokenStore.getAccessToken(characterId)) !== null
+				const hasValidToken = (await tokenStore.validateToken(characterId)).isValid
 
 				const info = await characterData.getCharacterInfo(characterId)
 

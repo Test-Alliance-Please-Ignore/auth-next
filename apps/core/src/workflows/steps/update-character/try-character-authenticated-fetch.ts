@@ -7,13 +7,12 @@ import { eq } from 'drizzle-orm'
 import { getStub } from '@repo/do-utils'
 
 import { userCharacters } from '../../../db/schema'
+import { validateAndSyncCharacterTokenValidity } from '../../../lib/token-validity'
 import { getWorkflowLogger } from '../../context'
 
 import type { EveCharacterData } from '@repo/eve-character-data'
 import type { EveTokenStore, TokenValidationStatus } from '@repo/eve-token-store'
 import type { WorkflowContext } from '../../context'
-
-const NON_DEGRADING_TOKEN_STATUSES: TokenValidationStatus[] = ['transient_error']
 
 function extractErrorDetails(error: unknown): Record<string, unknown> {
 	if (!error || typeof error !== 'object') {
@@ -61,11 +60,14 @@ export async function tryCharacterAuthenticatedFetch(
 		where: eq(userCharacters.characterId, characterId),
 	})
 
-	const previousHasValidToken = existingCharacter?.hasValidToken ?? null
-	const validation = await eveTokenStore.validateToken(characterId)
-
-	const shouldPreservePreviousState = NON_DEGRADING_TOKEN_STATUSES.includes(validation.status)
-	const nextHasValidToken = shouldPreservePreviousState ? previousHasValidToken : validation.isValid
+	const { previousHasValidToken, nextHasValidToken, validation } =
+		await validateAndSyncCharacterTokenValidity({
+			db: ctx.db,
+			tokenStore: eveTokenStore,
+			characterId,
+			previousHasValidToken: existingCharacter?.hasValidToken ?? null,
+			touchLastCharacterRefresh: true,
+		})
 
 	logger.info('[Workflow] Evaluated character token validity', {
 		characterId,
@@ -76,15 +78,6 @@ export async function tryCharacterAuthenticatedFetch(
 		scopeCount: validation.scopes.length,
 		status: validation.status,
 	})
-
-	await ctx.db
-		.update(userCharacters)
-		.set({
-			lastCharacterRefresh: new Date(),
-			updatedAt: new Date(),
-			hasValidToken: nextHasValidToken,
-		})
-		.where(eq(userCharacters.characterId, characterId))
 
 	// If token validation succeeded, refresh authenticated character data in EVE_CHARACTER_DATA.
 	// This populates private fields (including wallet balance) used by character detail views.
