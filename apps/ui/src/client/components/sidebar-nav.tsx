@@ -252,7 +252,7 @@ export function SidebarNav({ onNavigate, isSidebarOpen = true, onToggleSidebar }
 		if (isAuditor || isSiteAdmin) {
 			hrItems.push({
 				label: 'User Search',
-				href: '/hr/auditor/users',
+				href: '/hr/users',
 			})
 		}
 

@@ -23,6 +23,7 @@ import type { RequestMetadata, UserPreferencesDTO } from '@repo/core'
  * Cache duration for user corporation data (5 minutes)
  */
 const CACHE_TTL = 5 * 60 // 5 minutes in seconds
+const CORPORATION_ACCESS_CACHE_TTL = 30 // 30 seconds
 
 function filterManagedNonNpcCorps<T extends { corporationId: string }>(rows: T[]): T[] {
 	return rows.filter((row) => !isNpcCorporationId(row.corporationId))
@@ -41,6 +42,10 @@ function getCache() {
  */
 function getUserCorpsCacheKey(userId: string): string {
 	return `https://cache.local/users/${userId}/my-corporations`
+}
+
+function getCorporationAccessCacheKey(userId: string): string {
+	return `https://cache.local/users/${userId}/corporation-access`
 }
 
 /**
@@ -427,6 +432,22 @@ users.get('/corporation-access', async (c) => {
 	logger.info('[Corporation Access] Checking access for user', { userId: user.id })
 
 	try {
+		const cacheKey = getCorporationAccessCacheKey(user.id)
+		const cached = await getCachedJson<{
+			hasAccess: boolean
+			corporations: Array<{
+				corporationId: string
+				name: string
+				ticker: string
+				userRole: 'CEO' | 'Director' | 'admin' | 'hr_admin' | 'hr_reviewer' | 'hr_viewer'
+				characterId: string | null
+				characterName: string | null
+			}>
+		}>(cacheKey)
+		if (cached) {
+			return c.json(cached)
+		}
+
 		// Get all managed corporations (member and special purpose only)
 		const managedCorps = filterManagedNonNpcCorps(await db.query.managedCorporations.findMany({
 			where: and(
@@ -622,40 +643,34 @@ users.get('/corporation-access', async (c) => {
 					hr_reviewer: 2,
 					hr_viewer: 1,
 				}
+				const explicitHrRoles = await hrStub.getUserRoles(user.id)
+				const highestExplicitRoleByCorp = new Map<string, 'hr_admin' | 'hr_reviewer' | 'hr_viewer'>()
+				for (const role of explicitHrRoles.filter((r) => r.isActive)) {
+					const corpId = role.corporationId
+					if (!corpId) continue
+					const existing = highestExplicitRoleByCorp.get(corpId)
+					if (!existing || (roleHierarchy[role.role] ?? 0) > (roleHierarchy[existing] ?? 0)) {
+						highestExplicitRoleByCorp.set(corpId, role.role)
+					}
+				}
 
-				const hrCorpResults = await Promise.all(
-					uniqueHrCorpIds.map(async (corpId) => {
-						try {
-							const roles = await hrStub.getUserRoles(user.id, corpId)
-							const activeRoles = roles.filter((r) => r.isActive)
-							if (activeRoles.length === 0) return null
-
-							const highestRole = activeRoles.reduce((highest, role) => {
-								const highestLevel = roleHierarchy[highest.role] ?? 0
-								const currentLevel = roleHierarchy[role.role] ?? 0
-								return currentLevel > highestLevel ? role : highest
-							}, activeRoles[0])
-
-							const corp = managedCorps.find((mc) => mc.corporationId === corpId)
-							if (!corp) return null
-
-							return {
-								corporationId: corpId,
-								name: corp.name,
-								ticker: corp.ticker,
-								userRole: highestRole.role as 'hr_admin' | 'hr_reviewer' | 'hr_viewer',
-								characterId: null,
-								characterName: null,
-							}
-						} catch (error) {
-							logger.error('[Corporation Access] Error checking HR roles for corporation', {
-								corporationId: corpId,
-								error: error instanceof Error ? error.message : String(error),
-							})
-							return null
-						}
-					})
-				)
+				const managedCorpById = new Map(managedCorps.map((corp) => [corp.corporationId, corp]))
+				const hrCorpResults = uniqueHrCorpIds.map((corpId) => {
+					const corp = managedCorpById.get(corpId)
+					if (!corp) return null
+					// getUserHrCorporations() includes inferred leadership access (CEO/Director),
+					// which maps to admin-level HR access when no explicit attachment exists.
+					const highestRole =
+						highestExplicitRoleByCorp.get(corpId) ?? 'hr_admin'
+					return {
+						corporationId: corpId,
+						name: corp.name,
+						ticker: corp.ticker,
+						userRole: highestRole,
+						characterId: null,
+						characterName: null,
+					}
+				})
 
 				for (const result of hrCorpResults) {
 					if (result) accessibleCorporations.push(result)
@@ -679,6 +694,7 @@ users.get('/corporation-access', async (c) => {
 			})),
 		})
 
+		await cacheJson(cacheKey, result, CORPORATION_ACCESS_CACHE_TTL)
 		return c.json(result)
 	} catch (error) {
 		logger.error('Error checking corporation access:', error)

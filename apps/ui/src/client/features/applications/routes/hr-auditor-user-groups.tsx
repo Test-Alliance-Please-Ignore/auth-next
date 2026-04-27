@@ -11,7 +11,7 @@ import { useUserPermissions } from '@/hooks/useUserPermissions'
 import { useAuditorUser } from '@/hooks/useAuditorUsers'
 
 export default function HrAuditorUserGroupsPage() {
-	usePageTitle('HR Auditor - User Group Memberships')
+	usePageTitle('User Search - Group Memberships')
 	const { userId } = useParams<{ userId: string }>()
 	const navigate = useNavigate()
 	const { user, isAuthenticated, isLoading: authLoading } = useAuth()
@@ -42,7 +42,7 @@ export default function HrAuditorUserGroupsPage() {
 	return (
 		<div className="space-y-6">
 			<div className="flex items-center gap-4">
-				<Button variant="ghost" onClick={() => navigate(`/hr/auditor/users/${userId}`)}>
+				<Button variant="ghost" onClick={() => navigate(`/hr/users/${userId}`)}>
 					<ArrowLeft className="h-4 w-4" />
 					Back to User
 				</Button>

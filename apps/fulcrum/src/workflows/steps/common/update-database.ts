@@ -8,6 +8,7 @@ import { createDb } from '../../../db'
 import { characterReports } from '../../../db/schema'
 import { buildUpdateReportStatusQuery, getReport } from '../../../db/queries'
 import { sendReportCompletedDM } from '../../../lib/discord-webhook'
+import { buildScopedReportViewUrl } from '../../../lib/report-links'
 import { resolveReportMetadata } from '../../../lib/report-metadata'
 
 import type { Env } from '../../../context'
@@ -27,6 +28,7 @@ export async function updateDatabase(
 	reportId: string,
 	bucket: string,
 	key: string,
+	targetUserId: string | undefined,
 	sendDm = true,
 ): Promise<void> {
 	const db = createDb(databaseUrl)
@@ -55,8 +57,13 @@ export async function updateDatabase(
 				)
 
 				if (metadata) {
-					// Construct report view URL
-					const viewUrl = `${env.APP_BASE_URL}/fulcrum/reports/${reportId}`
+					const viewUrl = buildScopedReportViewUrl({
+						baseUrl: env.APP_BASE_URL,
+						reportId,
+						requestorCorporationId: report.requestorCorporationId,
+						applicationId: report.applicationId,
+						targetUserId,
+					})
 
 					await sendReportCompletedDM(env, report.requestorUserId, metadata, viewUrl)
 				}

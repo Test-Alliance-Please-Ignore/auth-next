@@ -322,6 +322,48 @@ describe('hr route access matrix', () => {
 		])
 	})
 
+	it('preserves mixed per-corporation roles for non-admin non-auditor users on /corporations', async () => {
+		dbStub.query.managedCorporations.findMany.mockResolvedValue([
+			{ corporationId: '1001', name: 'Alpha Corp', ticker: 'ALP' },
+			{ corporationId: '2001', name: 'Bravo Corp', ticker: 'BRV' },
+			{ corporationId: '3001', name: 'Charlie Corp', ticker: 'CHR' },
+		])
+		hrStub.getUserHrCorporations.mockResolvedValue(['1001', '2001', '3001'])
+		hrStub.getUserRoles.mockResolvedValue([
+			{
+				id: 'role-viewer',
+				corporationId: '1001',
+				role: 'hr_viewer',
+				isActive: true,
+			},
+			{
+				id: 'role-reviewer',
+				corporationId: '2001',
+				role: 'hr_reviewer',
+				isActive: true,
+			},
+			{
+				id: 'role-admin-inactive',
+				corporationId: '2001',
+				role: 'hr_admin',
+				isActive: false,
+			},
+		] as any)
+
+		const app = createApp({ user: makeUser(), db: dbStub })
+		const res = await app.request('/api/hr/corporations', {}, env)
+
+		expect(res.status).toBe(200)
+		expect(await res.json()).toEqual([
+			{ corporationId: '1001', name: 'Alpha Corp', ticker: 'ALP', currentRole: 'hr_viewer' },
+			{ corporationId: '2001', name: 'Bravo Corp', ticker: 'BRV', currentRole: 'hr_reviewer' },
+			{ corporationId: '3001', name: 'Charlie Corp', ticker: 'CHR', currentRole: 'hr_admin' },
+		])
+		expect(hrStub.getUserRoles).toHaveBeenCalledTimes(1)
+		expect(hrStub.getUserRoles).toHaveBeenCalledWith('user-1')
+		expect(hrStub.getUserRoles).not.toHaveBeenCalledWith('user-1', expect.any(String))
+	})
+
 	it('passes auditor=true into listApplications for auditors', async () => {
 		getCachedUserPermissionsMock.mockResolvedValue([
 			{

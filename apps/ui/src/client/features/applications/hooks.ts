@@ -8,6 +8,7 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 
 import { applicationsApi, fulcrumApi } from './api'
+import { auditorUserKeys } from '@/hooks/useAuditorUsers'
 
 import type {
 	AddHRNoteRequest,
@@ -993,16 +994,72 @@ export function useRequestFulcrumReport() {
 			corporationId,
 			requestSource,
 			applicationId,
+			targetUserId,
 			sendDm,
 		}: {
 			characterId: string
 			corporationId: string
 			requestSource: ReportRequestSource
 			applicationId?: string
+			targetUserId?: string
 			sendDm?: boolean
 			/** Pass userId to invalidate the user-characters query (application Fulcrum panel) */
 			userId?: string
-		}) => fulcrumApi.requestReport(characterId, corporationId, requestSource, applicationId, sendDm),
+		}) =>
+			fulcrumApi.requestReport(
+				characterId,
+				corporationId,
+				requestSource,
+				applicationId,
+				targetUserId,
+				sendDm,
+			),
+		onMutate: ({ characterId, corporationId, userId }) => {
+			if (!userId) return
+			const optimisticPendingReport: CharacterReportMetadata = {
+				id: `pending-local-${characterId}-${Date.now()}`,
+				characterId,
+				status: 'pending',
+				requestorUserId: '',
+				requestorCorporationId: corporationId,
+				requestSource: 'hr',
+				retentionDays: 7,
+				createdAt: new Date().toISOString(),
+				updatedAt: new Date().toISOString(),
+			}
+
+			queryClient.setQueryData<FulcrumCharacterData[]>(
+				applicationKeys.fulcrumUserCharacters(userId, corporationId),
+				(old) =>
+					old?.map((character) =>
+						character.characterId !== characterId
+							? character
+							: {
+								...character,
+								reports: character.reports.some(
+									(report) => report.status === 'pending' || report.status === 'processing',
+								)
+									? character.reports
+									: [optimisticPendingReport, ...character.reports],
+							},
+					),
+			)
+
+			queryClient.setQueryData<FulcrumCharacterData[]>(auditorUserKeys.fulcrum(userId), (old) =>
+				old?.map((character) =>
+					character.characterId !== characterId
+						? character
+						: {
+							...character,
+							reports: character.reports.some(
+								(report) => report.status === 'pending' || report.status === 'processing',
+							)
+								? character.reports
+								: [optimisticPendingReport, ...character.reports],
+						},
+				),
+			)
+		},
 		onSettled: (_, __, variables) => {
 			queryClient.invalidateQueries({
 				queryKey: applicationKeys.fulcrumCharacterReports(
@@ -1034,6 +1091,7 @@ export function useRequestFulcrumReportBatch() {
 			applicationId,
 			sendDm,
 			userId,
+			targetUserId,
 		}: {
 			characterIds: string[]
 			corporationId: string
@@ -1041,6 +1099,7 @@ export function useRequestFulcrumReportBatch() {
 			applicationId?: string
 			sendDm?: boolean
 			userId?: string
+			targetUserId?: string
 		}) =>
 			fulcrumApi.requestBulkReports(
 				characterIds,
@@ -1048,7 +1107,48 @@ export function useRequestFulcrumReportBatch() {
 				requestSource,
 				applicationId,
 				sendDm,
+				targetUserId,
 			),
+		onMutate: ({ characterIds, corporationId, userId }) => {
+			if (!userId || characterIds.length === 0) return
+			const now = new Date().toISOString()
+
+			const applyOptimisticPendingToCharacters = (old: FulcrumCharacterData[] | undefined) =>
+				old?.map((character) => {
+					if (!characterIds.includes(character.characterId)) return character
+					if (
+						character.reports.some(
+							(report) => report.status === 'pending' || report.status === 'processing',
+						)
+					) {
+						return character
+					}
+					const optimisticPendingReport: CharacterReportMetadata = {
+						id: `pending-local-${character.characterId}-${Date.now()}`,
+						characterId: character.characterId,
+						status: 'pending',
+						requestorUserId: '',
+						requestorCorporationId: corporationId,
+						requestSource: 'hr',
+						retentionDays: 7,
+						createdAt: now,
+						updatedAt: now,
+					}
+					return {
+						...character,
+						reports: [optimisticPendingReport, ...character.reports],
+					}
+				})
+
+			queryClient.setQueryData<FulcrumCharacterData[]>(
+				applicationKeys.fulcrumUserCharacters(userId, corporationId),
+				applyOptimisticPendingToCharacters,
+			)
+			queryClient.setQueryData<FulcrumCharacterData[]>(
+				auditorUserKeys.fulcrum(userId),
+				applyOptimisticPendingToCharacters,
+			)
+		},
 		onSettled: (_, __, variables) => {
 			for (const characterId of variables.characterIds) {
 				queryClient.invalidateQueries({

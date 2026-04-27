@@ -2,6 +2,7 @@
  * Wallet Journal Section - MRT data grid with search and pagination
  */
 
+import { useMemo, useState } from 'react'
 import { MantineReactTable } from 'mantine-react-table'
 
 import { useFulcrumTable } from './use-fulcrum-table'
@@ -18,6 +19,21 @@ interface ProcessedWalletJournalEntry {
 	secondPartyName?: string
 	amount?: number
 	description?: string
+}
+
+function normalize(text?: string): string {
+	return (text ?? '').toLowerCase().replace(/[\s_-]+/g, ' ').trim()
+}
+
+function isHighlightedJournalType(entry: ProcessedWalletJournalEntry): boolean {
+	const typeLabel = normalize(entry.refTypeLabel)
+	const description = normalize(entry.description)
+	return (
+		typeLabel.includes('player trading')
+		|| typeLabel.includes('gm cash transfer')
+		|| description.includes('player trading')
+		|| description.includes('gm cash transfer')
+	)
 }
 
 const columns: MRT_ColumnDef<ProcessedWalletJournalEntry>[] = [
@@ -42,13 +58,21 @@ const columns: MRT_ColumnDef<ProcessedWalletJournalEntry>[] = [
 		accessorKey: 'firstPartyName',
 		header: 'From',
 		filterVariant: 'autocomplete',
-		Cell: ({ row }) => row.original.firstPartyName || '-',
+		Cell: ({ row }) => (
+			<span className={isHighlightedJournalType(row.original) ? 'font-semibold text-foreground' : undefined}>
+				{row.original.firstPartyName || '-'}
+			</span>
+		),
 	},
 	{
 		accessorKey: 'secondPartyName',
 		header: 'To',
 		filterVariant: 'autocomplete',
-		Cell: ({ row }) => row.original.secondPartyName || '-',
+		Cell: ({ row }) => (
+			<span className={isHighlightedJournalType(row.original) ? 'font-semibold text-foreground' : undefined}>
+				{row.original.secondPartyName || '-'}
+			</span>
+		),
 	},
 	{
 		accessorKey: 'description',
@@ -89,11 +113,26 @@ const columns: MRT_ColumnDef<ProcessedWalletJournalEntry>[] = [
 ]
 
 export function WalletJournalSection({ data }: { data: ProcessedWalletJournalEntry[] }) {
+	const [refTypeFilter, setRefTypeFilter] = useState<string>('all')
+	const availableRefTypes = useMemo(
+		() => Array.from(new Set(data.map((entry) => entry.refTypeLabel).filter(Boolean))).sort(),
+		[data],
+	)
+	const filteredData = useMemo(
+		() =>
+			refTypeFilter === 'all'
+				? data
+				: data.filter((entry) => (entry.refTypeLabel ?? 'Unknown') === refTypeFilter),
+		[data, refTypeFilter],
+	)
+
 	const table = useFulcrumTable({
 		columns,
-		data,
+		data: filteredData,
 		emptyMessage: 'No journal entries found.',
 		searchPlaceholder: 'Search journal...',
+		pageSize: 1000,
+		getRowClassName: (row) => (isHighlightedJournalType(row) ? 'bg-amber-500/10' : undefined),
 	})
 
 	if (data.length === 0) {
@@ -114,6 +153,27 @@ export function WalletJournalSection({ data }: { data: ProcessedWalletJournalEnt
 			<p className="text-xs text-muted-foreground italic">
 				Note: ESI only returns journal entries from the last 30 days.
 			</p>
+			<div className="flex items-center gap-2">
+				<label htmlFor="journal-ref-type-filter" className="text-xs font-medium text-muted-foreground">
+					Ref Type
+				</label>
+				<select
+					id="journal-ref-type-filter"
+					value={refTypeFilter}
+					onChange={(event) => setRefTypeFilter(event.target.value)}
+					className="h-8 rounded border border-border bg-background px-2 text-xs text-foreground"
+				>
+					<option value="all">All Types</option>
+					{availableRefTypes.map((type) => (
+						<option key={type} value={type}>
+							{type}
+						</option>
+					))}
+				</select>
+				<span className="text-xs text-muted-foreground">
+					{filteredData.length} / {data.length}
+				</span>
+			</div>
 			<div className="tax-report-grid">
 				<MantineReactTable table={table} />
 			</div>

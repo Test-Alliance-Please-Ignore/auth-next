@@ -31,6 +31,8 @@ export interface BatchWebhookMetadata {
 	requestorMainCharacterName: string
 	corporationTicker: string
 	totalCharacters: number
+	targetMainCharacterId?: string
+	targetMainCharacterName?: string
 }
 
 /**
@@ -258,10 +260,20 @@ export async function sendBatchReportStartedDM(
 				{
 					title: 'Bulk Character Report Started',
 					color: COLORS.BLUE,
+					...(metadata.targetMainCharacterId
+						? {
+							thumbnail: {
+								url: `https://images.evetech.net/characters/${metadata.targetMainCharacterId}/portrait?size=256`,
+							},
+						}
+						: {}),
 					fields: [
 						{ name: 'Requested By', value: metadata.requestorMainCharacterName, inline: true },
 						{ name: 'On behalf of', value: metadata.corporationTicker, inline: true },
 						{ name: 'Characters', value: String(metadata.totalCharacters), inline: true },
+						...(metadata.targetMainCharacterName
+							? [{ name: 'Target User', value: metadata.targetMainCharacterName, inline: true }]
+							: []),
 					],
 					footer: { text: `Batch ID: ${metadata.batchId}` },
 					timestamp: new Date().toISOString(),
@@ -302,9 +314,19 @@ export async function sendBatchReportFinishedDM(
 				{
 					title,
 					color,
+					...(metadata.targetMainCharacterId
+						? {
+							thumbnail: {
+								url: `https://images.evetech.net/characters/${metadata.targetMainCharacterId}/portrait?size=256`,
+							},
+						}
+						: {}),
 					fields: [
 						{ name: 'Requested By', value: metadata.requestorMainCharacterName, inline: true },
 						{ name: 'On behalf of', value: metadata.corporationTicker, inline: true },
+						...(metadata.targetMainCharacterName
+							? [{ name: 'Target User', value: metadata.targetMainCharacterName, inline: true }]
+							: []),
 						{ name: 'Completed', value: String(summary.completed), inline: true },
 						{ name: 'Failed', value: String(summary.failed), inline: true },
 						{ name: 'Cancelled', value: String(summary.cancelled), inline: true },

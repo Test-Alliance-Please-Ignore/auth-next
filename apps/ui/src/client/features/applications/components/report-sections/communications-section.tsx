@@ -17,7 +17,13 @@ import { NotificationsSection } from './notifications-section'
 
 type SubTab = 'mails' | 'notifications'
 
-export function CommunicationsSection({ reportId }: { reportId: string }) {
+export function CommunicationsSection({
+	reportId,
+	highlightedCharacterName,
+}: {
+	reportId: string
+	highlightedCharacterName?: string
+}) {
     const [activeTab, setActiveTab] = useState<SubTab>('mails')
 
     return (
@@ -51,7 +57,13 @@ export function CommunicationsSection({ reportId }: { reportId: string }) {
             </div>
 
             {/* Content */}
-            {activeTab === 'mails' && <SubTabContent reportId={reportId} section="mails" />}
+            {activeTab === 'mails' && (
+				<SubTabContent
+					reportId={reportId}
+					section="mails"
+					highlightedCharacterName={highlightedCharacterName}
+				/>
+			)}
             {activeTab === 'notifications' && (
                 <SubTabContent reportId={reportId} section="notifications" />
             )}
@@ -60,36 +72,46 @@ export function CommunicationsSection({ reportId }: { reportId: string }) {
 }
 
 function SubTabContent({
-    reportId,
-    section,
+	reportId,
+	section,
+	highlightedCharacterName,
 }: {
-    reportId: string
-    section: 'mails' | 'notifications'
+	reportId: string
+	section: 'mails' | 'notifications'
+	highlightedCharacterName?: string
 }) {
-    const { data, isLoading, error } = useReportSectionData(reportId, section, true)
+	const { data, isLoading, error } = useReportSectionData(reportId, section, true)
 
-    if (isLoading) {
-        return (
-            <div className="space-y-3">
-                <Skeleton className="h-6 w-48" />
-                <Skeleton className="h-40 w-full" />
-                <Skeleton className="h-20 w-full" />
-            </div>
-        )
-    }
+	if (isLoading) {
+		return (
+			<div className="space-y-3">
+				<Skeleton className="h-6 w-48" />
+				<Skeleton className="h-40 w-full" />
+				<Skeleton className="h-20 w-full" />
+			</div>
+		)
+	}
 
-    if (error) {
-        return (
-            <p className="text-sm text-destructive">
-                Failed to load: {error.message}
-            </p>
-        )
-    }
+	if (error) {
+		return (
+			<p className="text-sm text-destructive">
+				Failed to load: {error.message}
+			</p>
+		)
+	}
 
-    if (!data) {
-        return <p className="text-sm text-muted-foreground">No data available.</p>
-    }
+	if (!data) {
+		return <p className="text-sm text-muted-foreground">No data available.</p>
+	}
 
-    if (section === 'mails') return <MailsSection data={data} reportId={reportId} />
-    return <NotificationsSection data={data} />
+	if (section === 'mails') {
+		return (
+			<MailsSection
+				data={data}
+				reportId={reportId}
+				highlightedCharacterName={highlightedCharacterName}
+			/>
+		)
+	}
+	return <NotificationsSection data={data} />
 }

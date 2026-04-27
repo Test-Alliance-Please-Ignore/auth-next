@@ -256,6 +256,7 @@ app.post('/characters/:characterId/reports', requireAuth(), async (c) => {
 		corporationId: string
 		requestSource: ReportRequestSource
 		applicationId?: string
+		targetUserId?: string
 		sendDm?: boolean
 	}>()
 
@@ -286,6 +287,7 @@ app.post('/characters/:characterId/reports', requireAuth(), async (c) => {
 			requestorCorporationId: body.corporationId,
 			requestSource: body.requestSource,
 			applicationId: body.applicationId,
+			targetUserId: body.targetUserId,
 			sendDm: body.sendDm ?? true,
 		})
 
@@ -294,6 +296,7 @@ app.post('/characters/:characterId/reports', requireAuth(), async (c) => {
 			characterId,
 			requestSource: body.requestSource,
 			applicationId: body.applicationId,
+			targetUserId: body.targetUserId,
 			sendDm: body.sendDm ?? true,
 			requestedBy: user.id,
 		})
@@ -324,6 +327,7 @@ app.post('/reports/batch', requireAuth(), async (c) => {
 		characterIds: string[]
 		applicationId?: string
 		sendDm?: boolean
+		targetUserId?: string
 	}>()
 
 	if (!body.corporationId) {
@@ -356,6 +360,7 @@ app.post('/reports/batch', requireAuth(), async (c) => {
 			requestSource: body.requestSource,
 			applicationId: body.applicationId,
 			sendDm: body.sendDm ?? true,
+			targetUserId: body.targetUserId,
 		})
 
 		logger.info('[Fulcrum] Bulk report batch requested', {
@@ -364,6 +369,7 @@ app.post('/reports/batch', requireAuth(), async (c) => {
 			requestSource: body.requestSource,
 			applicationId: body.applicationId,
 			sendDm: body.sendDm ?? true,
+			targetUserId: body.targetUserId,
 			requestedBy: user.id,
 		})
 

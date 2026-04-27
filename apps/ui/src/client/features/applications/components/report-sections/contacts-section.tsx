@@ -216,7 +216,7 @@ export function ContactsSection({ data }: { data: ProcessedContact[] }) {
 					No contacts match the current filters
 				</p>
 			) : (
-				<div className="max-h-[700px] overflow-auto rounded-md border">
+				<div className="h-[70vh] min-h-[460px] max-h-[1200px] resize-y overflow-auto rounded-md border">
 					<Table>
 						<TableHeader>
 							<TableRow className="bg-muted/50">

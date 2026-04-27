@@ -1,4 +1,5 @@
 import { getStub } from '@repo/do-utils'
+import type { Universe } from '@repo/universe'
 
 import { shipTypeIds } from './ship-types'
 
@@ -20,6 +21,7 @@ export interface FittedShip {
 	itemId: string
 	shipName: string
 	shipTypeId: string
+	shipGroupId?: string
 	customName?: string
 	locationId: string
 	locationName: string
@@ -42,16 +44,27 @@ export interface FittedShip {
 }
 
 export async function findFittedShips(
-	env: { ESI_TYPE_RESOLVER: DurableObjectNamespace },
+	env: { ESI_TYPE_RESOLVER: DurableObjectNamespace; UNIVERSE: DurableObjectNamespace },
 	assets: CharacterAsset[],
 	characterId: string
 ): Promise<FittedShip[]> {
 	const ships = assets.filter(
 		(asset) => asset.is_singleton === true && shipTypeIds.has(asset.type_id)
 	)
+
+	const shipTypeIdsToResolve = Array.from(new Set(ships.map((ship) => ship.type_id)))
+	const universeStub = getStub<Universe>(env.UNIVERSE, 'default')
+	const shipTypeMap = await universeStub.resolveTypeNamesByIds(shipTypeIdsToResolve)
+	const shipGroupIdByTypeId: Record<string, string> = {}
+	for (const [typeId, typeDetails] of Object.entries(shipTypeMap)) {
+		if (typeDetails?.groupId) {
+			shipGroupIdByTypeId[typeId] = typeDetails.groupId
+		}
+	}
+
 	return Promise.all(
 		ships.map(async (ship) => {
-			return await findShipItems(env, ship, assets, characterId)
+			return await findShipItems(env, ship, assets, characterId, shipGroupIdByTypeId)
 		})
 	)
 }
@@ -66,7 +79,8 @@ export async function findShipItems(
 	env: { ESI_TYPE_RESOLVER: DurableObjectNamespace },
 	ship: CharacterAsset,
 	assets: CharacterAsset[],
-	characterId: string
+	characterId: string,
+	shipGroupIdByTypeId: Record<string, string>,
 ): Promise<FittedShip> {
 	const stub = getStub<EsiTypeResolver>(env.ESI_TYPE_RESOLVER, 'global')
 
@@ -189,6 +203,7 @@ export async function findShipItems(
 		itemId: ship.item_id,
 		shipName,
 		shipTypeId: ship.type_id,
+		shipGroupId: shipGroupIdByTypeId[ship.type_id],
 		locationId: ship.location_id,
 		locationName,
 		locationFlag: ship.location_flag,

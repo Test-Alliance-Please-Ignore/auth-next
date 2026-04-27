@@ -755,4 +755,35 @@ export class CoreRpcService {
 
 		return mainCharacter?.characterName ?? null
 	}
+
+	/**
+	 * Get user's main character identity by user ID.
+	 *
+	 * @param userId - User ID
+	 * @returns Main character id/name, or null if user/character not found
+	 */
+	async getUserMainCharacter(
+		userId: string,
+	): Promise<{ characterId: string; characterName: string } | null> {
+		const user = await this.db.query.users.findFirst({
+			where: eq(users.id, userId),
+		})
+
+		if (!user) {
+			return null
+		}
+
+		const mainCharacter = await this.db.query.userCharacters.findFirst({
+			where: eq(userCharacters.characterId, user.mainCharacterId),
+		})
+
+		if (!mainCharacter) {
+			return null
+		}
+
+		return {
+			characterId: mainCharacter.characterId,
+			characterName: mainCharacter.characterName,
+		}
+	}
 }

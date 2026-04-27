@@ -54,6 +54,8 @@ describe('BulkCharacterReportWorkflow', () => {
 		resolveBatchMetadataMock.mockResolvedValue({
 			requestorMainCharacterName: 'Main Pilot',
 			corporationTicker: 'TST',
+			targetMainCharacterId: '9001',
+			targetMainCharacterName: 'Target Main',
 		})
 		getInProgressReportForCharacterMock.mockResolvedValue(undefined as any)
 	})
@@ -161,12 +163,24 @@ describe('BulkCharacterReportWorkflow', () => {
 		)
 
 		expect(sendBatchStartedMock).toHaveBeenCalledTimes(1)
+		expect(sendBatchStartedMock).toHaveBeenCalledWith(
+			expect.anything(),
+			'user-1',
+			expect.objectContaining({
+				batchId: 'batch-2',
+				totalCharacters: 2,
+				targetMainCharacterId: '9001',
+				targetMainCharacterName: 'Target Main',
+			}),
+		)
 		expect(sendBatchFinishedMock).toHaveBeenCalledWith(
 			expect.anything(),
 			'user-1',
 			expect.objectContaining({
 				batchId: 'batch-2',
 				totalCharacters: 2,
+				targetMainCharacterId: '9001',
+				targetMainCharacterName: 'Target Main',
 			}),
 			{
 				completed: 1,

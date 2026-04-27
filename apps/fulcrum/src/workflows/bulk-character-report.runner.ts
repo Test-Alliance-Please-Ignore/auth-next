@@ -18,6 +18,7 @@ export interface BulkCharacterReportWorkflowParams {
 	requestSource: ReportRequestSource
 	applicationId?: string
 	sendDm?: boolean
+	targetUserId?: string
 }
 
 type ChildReportRef = {
@@ -47,7 +48,7 @@ function sleep(ms: number): Promise<void> {
 type StepDo = <T>(name: string, config: unknown, fn: () => Promise<T>) => Promise<T>
 
 type CharacterWorkflowBinding = {
-	create: (input: { id: string; params: { reportId: string; characterId: string; sendDm: boolean } }) => Promise<{ id: string }>
+	create: (input: { id: string; params: { reportId: string; characterId: string; targetUserId?: string; sendDm: boolean } }) => Promise<{ id: string }>
 	get: (id: string) => Promise<{ status: () => Promise<{ status: string }> }>
 }
 
@@ -69,6 +70,7 @@ export async function runBulkCharacterReportWorkflow(
 		requestSource,
 		applicationId,
 		sendDm = true,
+		targetUserId,
 	} = payload
 	const workflowLogger = logger.withTags({ component: 'bulk-character-report-workflow', batchId })
 	const db = createDb(env.DATABASE_URL)
@@ -84,6 +86,7 @@ export async function runBulkCharacterReportWorkflow(
 				env as any,
 				requestorUserId,
 				requestorCorporationId,
+				targetUserId,
 			)
 			if (!metadata) return
 			await sendBatchReportStartedDM(env as any, requestorUserId, {
@@ -91,6 +94,8 @@ export async function runBulkCharacterReportWorkflow(
 				requestorMainCharacterName: metadata.requestorMainCharacterName,
 				corporationTicker: metadata.corporationTicker,
 				totalCharacters: dedupedCharacterIds.length,
+				targetMainCharacterId: metadata.targetMainCharacterId,
+				targetMainCharacterName: metadata.targetMainCharacterName,
 			})
 		})
 	}
@@ -130,6 +135,7 @@ export async function runBulkCharacterReportWorkflow(
 							params: {
 								reportId,
 								characterId,
+								targetUserId,
 								sendDm: false,
 							},
 						})
@@ -274,6 +280,7 @@ export async function runBulkCharacterReportWorkflow(
 				env as any,
 				requestorUserId,
 				requestorCorporationId,
+				targetUserId,
 			)
 			if (!metadata) return
 			await sendBatchReportFinishedDM(
@@ -284,6 +291,8 @@ export async function runBulkCharacterReportWorkflow(
 					requestorMainCharacterName: metadata.requestorMainCharacterName,
 					corporationTicker: metadata.corporationTicker,
 					totalCharacters: dedupedCharacterIds.length,
+					targetMainCharacterId: metadata.targetMainCharacterId,
+					targetMainCharacterName: metadata.targetMainCharacterName,
 				},
 				finalSummary,
 			)

@@ -24,6 +24,7 @@ import type { StepResult } from '../../utils/storage'
 export async function processFittedShips(
 	env: {
 		ESI_TYPE_RESOLVER: DurableObjectNamespace
+		UNIVERSE: DurableObjectNamespace
 	},
 	getBucket: (name: string) => R2Bucket,
 	bucket: R2Bucket,
@@ -122,4 +123,3 @@ export async function processFittedShips(
 		}
 	}
 }
-

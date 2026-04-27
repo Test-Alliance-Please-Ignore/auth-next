@@ -1,7 +1,7 @@
 import { and, eq, sql } from '@repo/db-utils'
 import { getStub } from '@repo/do-utils'
 import { ResourceType, RoleAttachmentType } from '@repo/groups'
-import { logger } from '@repo/hono-helpers'
+import { logger, TimeCache } from '@repo/hono-helpers'
 import { HR_ROLES, ROLE_HR_ADMIN, ROLE_HR_REVIEWER, ROLE_HR_VIEWER, SERVICE_HR } from '@repo/hr'
 
 import { hrRoles } from '../db/schema'
@@ -21,6 +21,10 @@ export class HrRoleService {
 	private readonly logger = logger.withTags({ service: 'hr-role' })
 	private readonly roleIdCache = new Map<HrRoleType, string>()
 	private readonly roleTypeCache = new Map<HrRoleUrn, Role>()
+	private readonly hrCorporationsCache = new TimeCache<string[]>(30_000)
+	private readonly hrReviewerCorporationsCache = new TimeCache<string[]>(30_000)
+	private readonly hrAdminCorporationsCache = new TimeCache<string[]>(30_000)
+	private readonly hrUserRolesCache = new TimeCache<HrRole[]>(30_000)
 	private readonly roleHierarchy: Record<HrRoleType, number> = {
 		hr_admin: 3,
 		hr_reviewer: 2,
@@ -118,6 +122,9 @@ export class HrRoleService {
 			})
 			throw error
 		}
+		finally {
+			this.clearUserAccessCache(userId)
+		}
 	}
 
 	/**
@@ -131,6 +138,13 @@ export class HrRoleService {
 		if (!success) {
 			throw new Error('HR role not found')
 		}
+	}
+
+	clearUserAccessCache(userId: string): void {
+		this.hrCorporationsCache.delete(`hr-corps:${userId}`)
+		this.hrReviewerCorporationsCache.delete(`hr-reviewer-corps:${userId}`)
+		this.hrAdminCorporationsCache.delete(`hr-admin-corps:${userId}`)
+		this.hrUserRolesCache.delete(`hr-user-roles:${userId}`)
 	}
 
 	/**
@@ -300,6 +314,16 @@ export class HrRoleService {
 	 */
 
 	async getUserRoles(userId: string, corporationId?: string): Promise<HrRole[]> {
+		if (!corporationId) {
+			const cacheKey = `hr-user-roles:${userId}`
+			return this.hrUserRolesCache.getOrSet(cacheKey, async () =>
+				this.fetchUserRoles(userId)
+			)
+		}
+		return this.fetchUserRoles(userId, corporationId)
+	}
+
+	private async fetchUserRoles(userId: string, corporationId?: string): Promise<HrRole[]> {
 		const viewerRole = await this.getRoleForType(ROLE_HR_VIEWER)
 		const reviewerRole = await this.getRoleForType(ROLE_HR_REVIEWER)
 		const adminRole = await this.getRoleForType(ROLE_HR_ADMIN)
@@ -314,9 +338,11 @@ export class HrRoleService {
 		})
 		try {
 			const mappedRoles = roleAttachments.map((roleAttachment) => {
+				const resolvedCorporationId =
+					corporationId ?? String(roleAttachment.resourceId ?? '')
 				return {
 					id: roleAttachment.id,
-					corporationId: corporationId,
+					corporationId: resolvedCorporationId,
 					userId: roleAttachment.attachedToId,
 					characterId: roleAttachment.attachedToId,
 					characterName: roleAttachment.attachedToId,
@@ -415,6 +441,8 @@ export class HrRoleService {
 	 * Get corporations where user has HR access
 	 */
 	async getUserHrCorporations(userId: string): Promise<string[]> {
+		const cacheKey = `hr-corps:${userId}`
+		return this.hrCorporationsCache.getOrSet(cacheKey, async () => {
 		const viewerRole = await this.getRoleForType(ROLE_HR_VIEWER)
 		const reviewerRole = await this.getRoleForType(ROLE_HR_REVIEWER)
 		const adminRole = await this.getRoleForType(ROLE_HR_ADMIN)
@@ -453,20 +481,27 @@ export class HrRoleService {
 		}
 
 		return [...corporationIds]
+		})
 	}
 
 	/**
 	 * Get corporations where user has HR admin access
 	 */
 	async getUserHrAdminCorporations(userId: string): Promise<string[]> {
-		return this.getUserHrCorporationsForMinRole(userId, 'hr_admin')
+		const cacheKey = `hr-admin-corps:${userId}`
+		return this.hrAdminCorporationsCache.getOrSet(cacheKey, async () =>
+			this.getUserHrCorporationsForMinRole(userId, 'hr_admin')
+		)
 	}
 
 	/**
 	 * Get corporations where user has HR reviewer or admin access
 	 */
 	async getUserHrReviewerCorporations(userId: string): Promise<string[]> {
-		return this.getUserHrCorporationsForMinRole(userId, 'hr_reviewer')
+		const cacheKey = `hr-reviewer-corps:${userId}`
+		return this.hrReviewerCorporationsCache.getOrSet(cacheKey, async () =>
+			this.getUserHrCorporationsForMinRole(userId, 'hr_reviewer')
+		)
 	}
 
 	/**

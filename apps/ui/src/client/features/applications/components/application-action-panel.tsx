@@ -270,7 +270,7 @@ export function ApplicationActionPanel({
 						}}
 						disabled={disabled || updateStatusMutation.isPending}
 						rows={4}
-						className={cn('resize-none', reviewNotesError && 'border-destructive')}
+						className={cn('resize-y', reviewNotesError && 'border-destructive')}
 					/>
 					{reviewNotesError && (
 						<p className="text-sm text-destructive flex items-center gap-1">

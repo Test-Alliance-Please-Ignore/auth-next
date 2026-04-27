@@ -83,6 +83,8 @@ export async function resolveReportMetadata(
 export interface BatchReportResolvedMetadata {
 	requestorMainCharacterName: string
 	corporationTicker: string
+	targetMainCharacterId?: string
+	targetMainCharacterName?: string
 }
 
 /**
@@ -92,6 +94,7 @@ export async function resolveBatchReportMetadata(
 	env: Env,
 	requestorUserId: string,
 	requestorCorporationId: string,
+	targetUserId?: string,
 ): Promise<BatchReportResolvedMetadata | null> {
 	try {
 		const requestorMainCharacterName = await env.CORE.getUserMainCharacterName(requestorUserId)
@@ -117,9 +120,29 @@ export async function resolveBatchReportMetadata(
 			})
 		}
 
+		const resolvedTargetUserId = targetUserId?.trim()
+		let targetMainCharacterId: string | undefined
+		let targetMainCharacterName: string | undefined
+		if (resolvedTargetUserId) {
+			try {
+				const targetMainCharacter = await env.CORE.getUserMainCharacter(resolvedTargetUserId)
+				if (targetMainCharacter) {
+					targetMainCharacterId = targetMainCharacter.characterId
+					targetMainCharacterName = targetMainCharacter.characterName
+				}
+			} catch (error) {
+				logger.warn('[Report Metadata] Failed to resolve target user main character for batch', {
+					targetUserId: resolvedTargetUserId,
+					error: error instanceof Error ? error.message : String(error),
+				})
+			}
+		}
+
 		return {
 			requestorMainCharacterName,
 			corporationTicker,
+			targetMainCharacterId,
+			targetMainCharacterName,
 		}
 	} catch (error) {
 		logger.error('[Report Metadata] Failed to resolve batch metadata', {

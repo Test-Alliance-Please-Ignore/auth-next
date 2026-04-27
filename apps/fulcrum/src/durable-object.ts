@@ -62,6 +62,7 @@ export class FulcrumDO extends DurableObject<Env, {}> implements Fulcrum {
 			requestorCorporationId,
 			requestSource,
 			applicationId,
+			targetUserId,
 			sendDm = true,
 		} = options
 		const db = this.getDb()
@@ -127,6 +128,7 @@ export class FulcrumDO extends DurableObject<Env, {}> implements Fulcrum {
 		const workflowParams: WorkflowParams = {
 			reportId,
 			characterId,
+			targetUserId,
 			sendDm,
 		}
 		try {
@@ -165,6 +167,7 @@ export class FulcrumDO extends DurableObject<Env, {}> implements Fulcrum {
 			requestSource,
 			applicationId,
 			sendDm = true,
+			targetUserId,
 		} = options
 
 		const dedupedCharacterIds = [...new Set(characterIds.map((id) => id.trim()).filter(Boolean))]
@@ -181,6 +184,7 @@ export class FulcrumDO extends DurableObject<Env, {}> implements Fulcrum {
 				requestSource,
 				applicationId,
 				sendDm,
+				targetUserId,
 			},
 		})
 
@@ -190,6 +194,7 @@ export class FulcrumDO extends DurableObject<Env, {}> implements Fulcrum {
 			requestorCorporationId,
 			characterCount: dedupedCharacterIds.length,
 			sendDm,
+			targetUserId,
 		})
 
 		return { batchId: workflowInstance.id }

@@ -4,6 +4,7 @@
  */
 
 import { useMantineReactTable } from 'mantine-react-table'
+import { cn } from '@/lib/utils'
 
 import {
 	mrtPaperProps,
@@ -26,6 +27,7 @@ interface UseFulcrumTableOptions<Row extends MRT_RowData> {
 	pageSize?: number
 	enableColumnFilters?: boolean
 	renderDetailPanel?: MRT_TableOptions<Row>['renderDetailPanel']
+	getRowClassName?: (row: Row) => string | undefined
 }
 
 export function useFulcrumTable<Row extends MRT_RowData>({
@@ -36,6 +38,7 @@ export function useFulcrumTable<Row extends MRT_RowData>({
 	pageSize = 25,
 	enableColumnFilters = true,
 	renderDetailPanel,
+	getRowClassName,
 }: UseFulcrumTableOptions<Row>) {
 	return useMantineReactTable({
 		columns,
@@ -74,7 +77,10 @@ export function useFulcrumTable<Row extends MRT_RowData>({
 		mantineTableHeadProps: mrtTableHeadProps,
 		mantineTableHeadCellProps: mrtTableHeadCellProps,
 		mantineTableBodyCellProps: mrtTableBodyCellProps,
-		mantineTableBodyRowProps: ({ row }) => ({ className: 'mrt-grid__row', style: mrtRowStyle(row.index) }),
+		mantineTableBodyRowProps: ({ row }) => ({
+			className: cn('mrt-grid__row', getRowClassName?.(row.original as Row)),
+			style: mrtRowStyle(row.index),
+		}),
 		renderEmptyRowsFallback: () => (
 			<div className="flex min-h-40 items-center justify-center px-6 py-8 text-center text-sm text-muted-foreground">
 				{emptyMessage}

@@ -563,6 +563,7 @@ export class HrDO extends DurableObject<Env> implements Hr {
 			grantedBy,
 			expiresAt
 		)
+		this.hrRoleService.clearUserAccessCache(userId)
 
 		// Invalidate cache for this corporation
 		this.invalidateRoleCache(corporationId)
@@ -581,6 +582,7 @@ export class HrDO extends DurableObject<Env> implements Hr {
 
 		// Invalidate cache if role was found
 		if (role) {
+			this.hrRoleService.clearUserAccessCache(role.userId)
 			this.invalidateRoleCache(role.corporationId)
 		}
 	}
