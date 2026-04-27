@@ -8,17 +8,35 @@
 
 import { formatDistanceToNow } from 'date-fns'
 import { AlertCircle, Clock, ExternalLink, FileText, Loader2, RefreshCw, Users } from 'lucide-react'
+import { useState } from 'react'
 import { Link, useParams } from 'react-router-dom'
 
 import { MemberAvatar } from '@/components/member-avatar'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
+import { Checkbox } from '@/components/ui/checkbox'
+import {
+	Dialog,
+	DialogContent,
+	DialogDescription,
+	DialogFooter,
+	DialogHeader,
+	DialogTitle,
+} from '@/components/ui/dialog'
 import { LoadingSpinner } from '@/components/ui/loading'
 import { Separator } from '@/components/ui/separator'
 
-import { useApplicationFulcrum, useRequestFulcrumReport } from '../hooks'
+import { useApplicationFulcrum, useRequestFulcrumReport, useRequestFulcrumReportBatch } from '../hooks'
 
 import type { CharacterReportMetadata, FulcrumCharacterData } from '../api'
+
+const SEND_DM_PREF_KEY = 'fulcrum:scan-all:send-dm'
+
+function getInitialSendDmPreference(): boolean {
+	if (typeof window === 'undefined') return true
+	const raw = window.localStorage.getItem(SEND_DM_PREF_KEY)
+	return raw === null ? true : raw === 'true'
+}
 
 // ============================================================================
 // Report Status Helpers
@@ -59,7 +77,7 @@ function canRequestNewReport(reports: CharacterReportMetadata[]): boolean {
 
 interface CharacterReportCardProps {
 	character: FulcrumCharacterData
-	onRequest: (characterId: string) => void
+	onRequest: () => void
 	getReportTarget: (reportId: string, characterName: string) => {
 		pathname: string
 		state: {
@@ -84,7 +102,8 @@ function CharacterReportCard({
 }: CharacterReportCardProps) {
 	const latestReport = getLatestReport(character.reports)
 	const canRequest = canRequestNewReport(character.reports)
-	const isThisRequesting = isRequesting && requestingCharacterId === character.characterId
+	const isThisRequesting =
+		isRequesting && (requestingCharacterId === null || requestingCharacterId === character.characterId)
 
 	return (
 		<div className="flex items-start gap-4 rounded-lg border p-4">
@@ -155,7 +174,7 @@ function CharacterReportCard({
 					<Button
 						variant={latestReport ? 'ghost' : 'primary'}
 						size="sm"
-						onClick={() => onRequest(character.characterId)}
+						onClick={onRequest}
 						disabled={isThisRequesting}
 					>
 						{isThisRequesting ? (
@@ -189,14 +208,26 @@ export function FulcrumPanel({ userId, corporationId, applicationId, mainCharact
 	const { corporationId: routeCorporationId } = useParams<{ corporationId: string }>()
 	const { data: characters, isLoading, error } = useApplicationFulcrum(userId, corporationId)
 	const requestReport = useRequestFulcrumReport()
+	const requestReportBatch = useRequestFulcrumReportBatch()
+	const [sendDmForScanRequests, setSendDmForScanRequests] = useState(getInitialSendDmPreference)
+	const [scanAllDialogOpen, setScanAllDialogOpen] = useState(false)
+	const [scanSingleDialogCharacter, setScanSingleDialogCharacter] = useState<FulcrumCharacterData | null>(null)
+	const [isRequestingAll, setIsRequestingAll] = useState(false)
 
-	const handleRequest = (characterId: string) => {
+	const persistSendDmPreference = (enabled: boolean) => {
+		if (typeof window !== 'undefined') {
+			window.localStorage.setItem(SEND_DM_PREF_KEY, enabled ? 'true' : 'false')
+		}
+	}
+
+	const requestCharacterReport = (characterId: string, sendDm: boolean) => {
 		requestReport.mutate({
 			characterId,
 			corporationId,
 			requestSource: 'hr',
 			applicationId,
 			userId,
+			sendDm,
 		})
 	}
 
@@ -247,17 +278,58 @@ export function FulcrumPanel({ userId, corporationId, applicationId, mainCharact
 
 	const requestableCharacters = characters.filter((c) => canRequestNewReport(c.reports))
 
-	const handleRequestAll = () => {
-		for (const character of requestableCharacters) {
-			requestReport.mutate({
-				characterId: character.characterId,
+	const handleConfirmSingle = () => {
+		if (!scanSingleDialogCharacter || isRequestingAll || requestReport.isPending || requestReportBatch.isPending) return
+		persistSendDmPreference(sendDmForScanRequests)
+		const characterId = scanSingleDialogCharacter.characterId
+		setScanSingleDialogCharacter(null)
+		requestCharacterReport(characterId, sendDmForScanRequests)
+	}
+
+	const handleConfirmRequestAll = async () => {
+		if (requestableCharacters.length === 0 || isRequestingAll || requestReport.isPending || requestReportBatch.isPending) return
+		persistSendDmPreference(sendDmForScanRequests)
+		setScanAllDialogOpen(false)
+		setIsRequestingAll(true)
+		try {
+			await requestReportBatch.mutateAsync({
+				characterIds: requestableCharacters.map((c) => c.characterId),
 				corporationId,
 				requestSource: 'hr',
 				applicationId,
 				userId,
+				sendDm: sendDmForScanRequests,
 			})
+		} finally {
+			setIsRequestingAll(false)
 		}
 	}
+
+	const handleOpenSingleDialog = (character: FulcrumCharacterData) => {
+		if (
+			isRequestingAll ||
+			requestReport.isPending ||
+			requestReportBatch.isPending ||
+			!canRequestNewReport(character.reports)
+		) {
+			return
+		}
+		setScanSingleDialogCharacter(character)
+	}
+
+	const handleOpenAllDialog = () => {
+		if (
+			isRequestingAll ||
+			requestReport.isPending ||
+			requestReportBatch.isPending ||
+			requestableCharacters.length < 2
+		) {
+			return
+		}
+		setScanAllDialogOpen(true)
+	}
+
+	const isAnyRequestPending = requestReport.isPending || requestReportBatch.isPending || isRequestingAll
 
 	// Split characters into application chars (main + alts) and other chars
 	const applicationCharacterIds = mainCharacterId
@@ -275,9 +347,9 @@ export function FulcrumPanel({ userId, corporationId, applicationId, mainCharact
 			<CharacterReportCard
 				key={character.characterId}
 				character={character}
-				onRequest={handleRequest}
+				onRequest={() => handleOpenSingleDialog(character)}
 				getReportTarget={getReportTarget}
-				isRequesting={requestReport.isPending}
+				isRequesting={isAnyRequestPending}
 				requestingCharacterId={
 					requestReport.isPending
 						? (requestReport.variables?.characterId ?? null)
@@ -293,10 +365,10 @@ export function FulcrumPanel({ userId, corporationId, applicationId, mainCharact
 					<Button
 						variant="ghost"
 						size="sm"
-						onClick={handleRequestAll}
-						disabled={requestReport.isPending}
+						onClick={handleOpenAllDialog}
+						disabled={isAnyRequestPending}
 					>
-						{requestReport.isPending ? (
+						{isAnyRequestPending ? (
 							<Loader2 className="mr-1.5 h-3.5 w-3.5 animate-spin" />
 						) : (
 							<Users className="mr-1.5 h-3.5 w-3.5" />
@@ -325,6 +397,77 @@ export function FulcrumPanel({ userId, corporationId, applicationId, mainCharact
 					{renderCharacterCards(otherCharacters)}
 				</>
 			)}
+
+			<Dialog open={scanAllDialogOpen} onOpenChange={setScanAllDialogOpen}>
+				<DialogContent className="sm:max-w-[500px]">
+					<DialogHeader>
+						<DialogTitle>Generate Reports For All Eligible Characters?</DialogTitle>
+						<DialogDescription>
+							This will queue {requestableCharacters.length} report
+							{requestableCharacters.length === 1 ? '' : 's'}.
+						</DialogDescription>
+					</DialogHeader>
+					<div className="space-y-2">
+						<label
+							htmlFor="fulcrum-panel-scan-all-send-dm"
+							className="flex cursor-pointer items-center gap-2 rounded-md border p-3"
+						>
+							<Checkbox
+								id="fulcrum-panel-scan-all-send-dm"
+								checked={sendDmForScanRequests}
+								onCheckedChange={(checked) => setSendDmForScanRequests(checked === true)}
+							/>
+							<div>
+								<span className="text-sm font-medium leading-none">Send DM for report status</span>
+							</div>
+						</label>
+					</div>
+					<DialogFooter>
+						<Button variant="cancel" onClick={() => setScanAllDialogOpen(false)}>
+							Cancel
+						</Button>
+						<Button variant="confirm" onClick={() => void handleConfirmRequestAll()}>
+							Generate Reports
+						</Button>
+					</DialogFooter>
+				</DialogContent>
+			</Dialog>
+
+			<Dialog open={scanSingleDialogCharacter !== null} onOpenChange={(open) => !open && setScanSingleDialogCharacter(null)}>
+				<DialogContent className="sm:max-w-[500px]">
+					<DialogHeader>
+						<DialogTitle>
+							Generate Report For {scanSingleDialogCharacter?.characterName ?? 'Character'}?
+						</DialogTitle>
+						<DialogDescription>
+							This will queue one character report.
+						</DialogDescription>
+					</DialogHeader>
+					<div className="space-y-2">
+						<label
+							htmlFor="fulcrum-panel-single-send-dm"
+							className="flex cursor-pointer items-center gap-2 rounded-md border p-3"
+						>
+							<Checkbox
+								id="fulcrum-panel-single-send-dm"
+								checked={sendDmForScanRequests}
+								onCheckedChange={(checked) => setSendDmForScanRequests(checked === true)}
+							/>
+							<div>
+								<span className="text-sm font-medium leading-none">Send DM for report status</span>
+							</div>
+						</label>
+					</div>
+					<DialogFooter>
+						<Button variant="cancel" onClick={() => setScanSingleDialogCharacter(null)}>
+							Cancel
+						</Button>
+						<Button variant="confirm" onClick={handleConfirmSingle}>
+							Generate Report
+						</Button>
+					</DialogFooter>
+				</DialogContent>
+			</Dialog>
 		</div>
 	)
 }

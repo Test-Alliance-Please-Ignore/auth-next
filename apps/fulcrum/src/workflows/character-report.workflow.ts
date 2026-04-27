@@ -44,6 +44,7 @@ import type { StepResult } from './utils/storage'
 export interface WorkflowParams {
 	reportId: string
 	characterId: string
+	sendDm?: boolean
 }
 
 const ESI_STEP = esiFetchStepConfig
@@ -88,7 +89,7 @@ function assertRequiredBinding(name: string, value: unknown): void {
  */
 export class CharacterReportWorkflow extends WorkflowEntrypoint<Env, WorkflowParams> {
 	async run(event: WorkflowEvent<WorkflowParams>, step: WorkflowStep) {
-		const { reportId, characterId } = event.payload
+		const { reportId, characterId, sendDm = true } = event.payload
 		const workflowInstanceId = event.instanceId
 
 		// Helper: Get R2 bucket by name (for retrieveData calls)
@@ -560,6 +561,7 @@ export class CharacterReportWorkflow extends WorkflowEntrypoint<Env, WorkflowPar
 					reportId,
 					finalResult.bucket,
 					finalResult.key,
+					sendDm,
 				),
 			)
 
@@ -593,6 +595,10 @@ export class CharacterReportWorkflow extends WorkflowEntrypoint<Env, WorkflowPar
 				// Send failed notification DM once per failed workflow execution.
 				// This step is replay-safe under workflow step semantics.
 				await doStep('send-failed-dm', STEP, async () => {
+					if (!sendDm) {
+						return { sent: false, reason: 'disabled-by-request' as const }
+					}
+
 					try {
 						const db = createDb(this.env.DATABASE_URL)
 						const report = await getReport(db, reportId)

@@ -237,6 +237,52 @@ function filterSortAndPaginateMembers(members: CorporationMemberListItem[], quer
 	}
 }
 
+async function enrichMembersPageLiveTokenStatus(
+	db: NonNullable<Context<App>['var']['db']>,
+	tokenStore: EveTokenStore,
+	response: ReturnType<typeof filterSortAndPaginateMembers>
+) {
+	const linkedPageItems = response.items.filter((item) => item.hasAuthAccount)
+	if (linkedPageItems.length === 0) {
+		return response
+	}
+
+	try {
+		const liveTokenValidityByCharacterId = await validateAndSyncCharacterTokenValidityBatch({
+			db,
+			tokenStore,
+			characters: linkedPageItems.map((item) => ({
+				characterId: item.characterId,
+				hasValidToken: item.hasValidToken ?? null,
+			})),
+			maxConcurrency: 20,
+		})
+
+		return {
+			...response,
+			items: response.items.map((item) => {
+				if (!item.hasAuthAccount) {
+					return item
+				}
+				const liveStatus = liveTokenValidityByCharacterId.get(item.characterId)
+				if (liveStatus === undefined) {
+					return item
+				}
+				return {
+					...item,
+					hasValidToken: liveStatus,
+				}
+			}),
+		}
+	} catch (error) {
+		logger.warn('[Corporations] Failed live token status enrichment for member page', {
+			error: error instanceof Error ? error.message : String(error),
+			pageSize: response.items.length,
+		})
+		return response
+	}
+}
+
 /**
  * Helper to check cache for JSON response
  */
@@ -1433,7 +1479,10 @@ app.get('/:corporationId/members', requireAuth(), async (c) => {
 				limit: query.limit,
 				search: query.search,
 			})
-			return c.json(filterSortAndPaginateMembers(cached, query))
+			const paginated = filterSortAndPaginateMembers(cached, query)
+			const tokenStoreStub = getStub<EveTokenStore>(c.env.EVE_TOKEN_STORE, 'default')
+			const enriched = await enrichMembersPageLiveTokenStatus(db, tokenStoreStub, paginated)
+			return c.json(enriched)
 		}
 
 		// Get corporation members from DO
@@ -1467,15 +1516,6 @@ app.get('/:corporationId/members', requireAuth(), async (c) => {
 		// Batch resolve all character names using ESI bulk endpoint
 		// Character ID → name mappings are cached for 1 year (essentially permanent)
 		const tokenStoreStub = getStub<EveTokenStore>(c.env.EVE_TOKEN_STORE, 'default')
-		const liveTokenValidityByCharacterId = await validateAndSyncCharacterTokenValidityBatch({
-			db,
-			tokenStore: tokenStoreStub,
-			characters: linkedCharacters.map((character) => ({
-				characterId: character.characterId,
-				hasValidToken: character.hasValidToken ?? null,
-			})),
-			maxConcurrency: 20,
-		})
 		const characterNameMap = await tokenStoreStub.resolveIds(memberCharacterIds)
 
 		logger.info('[Corporations Members] Resolved character names', {
@@ -1547,9 +1587,7 @@ app.get('/:corporationId/members', requireAuth(), async (c) => {
 					corporationName: managedCorp.name,
 					role,
 					hasAuthAccount,
-					hasValidToken: linkedChar
-						? (liveTokenValidityByCharacterId.get(characterId) ?? linkedChar.hasValidToken ?? null)
-						: null,
+					hasValidToken: linkedChar ? (linkedChar.hasValidToken ?? null) : null,
 					authUserId: linkedChar?.userId,
 					mainCharacterName: linkedChar?.userId
 						? userIdToMainCharacterName.get(linkedChar.userId)
@@ -1588,7 +1626,9 @@ app.get('/:corporationId/members', requireAuth(), async (c) => {
 		// Store in cache for future requests
 		await cacheJson(cacheKey, membersWithDetails, CACHE_TTL)
 
-		return c.json(filterSortAndPaginateMembers(membersWithDetails, query))
+		const paginated = filterSortAndPaginateMembers(membersWithDetails, query)
+		const enriched = await enrichMembersPageLiveTokenStatus(db, tokenStoreStub, paginated)
+		return c.json(enriched)
 	} catch (error) {
 		logger.error('[Corporations] Error fetching corporation members', {
 			corporationId,

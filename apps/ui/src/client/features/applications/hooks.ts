@@ -993,14 +993,16 @@ export function useRequestFulcrumReport() {
 			corporationId,
 			requestSource,
 			applicationId,
+			sendDm,
 		}: {
 			characterId: string
 			corporationId: string
 			requestSource: ReportRequestSource
 			applicationId?: string
+			sendDm?: boolean
 			/** Pass userId to invalidate the user-characters query (application Fulcrum panel) */
 			userId?: string
-		}) => fulcrumApi.requestReport(characterId, corporationId, requestSource, applicationId),
+		}) => fulcrumApi.requestReport(characterId, corporationId, requestSource, applicationId, sendDm),
 		onSettled: (_, __, variables) => {
 			queryClient.invalidateQueries({
 				queryKey: applicationKeys.fulcrumCharacterReports(
@@ -1009,6 +1011,50 @@ export function useRequestFulcrumReport() {
 				),
 			})
 			// Also invalidate user-characters query if userId is provided
+			if (variables.userId) {
+				queryClient.invalidateQueries({
+					queryKey: applicationKeys.fulcrumUserCharacters(
+						variables.userId,
+						variables.corporationId,
+					),
+				})
+			}
+		},
+	})
+}
+
+export function useRequestFulcrumReportBatch() {
+	const queryClient = useQueryClient()
+
+	return useMutation({
+		mutationFn: ({
+			characterIds,
+			corporationId,
+			requestSource,
+			applicationId,
+			sendDm,
+			userId,
+		}: {
+			characterIds: string[]
+			corporationId: string
+			requestSource: ReportRequestSource
+			applicationId?: string
+			sendDm?: boolean
+			userId?: string
+		}) =>
+			fulcrumApi.requestBulkReports(
+				characterIds,
+				corporationId,
+				requestSource,
+				applicationId,
+				sendDm,
+			),
+		onSettled: (_, __, variables) => {
+			for (const characterId of variables.characterIds) {
+				queryClient.invalidateQueries({
+					queryKey: applicationKeys.fulcrumCharacterReports(characterId, variables.corporationId),
+				})
+			}
 			if (variables.userId) {
 				queryClient.invalidateQueries({
 					queryKey: applicationKeys.fulcrumUserCharacters(

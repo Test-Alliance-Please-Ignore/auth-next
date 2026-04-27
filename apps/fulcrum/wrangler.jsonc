@@ -61,6 +61,11 @@
 			"name": "character-report-workflow",
 			"binding": "CHARACTER_REPORT_WORKFLOW",
 			"class_name": "CharacterReportWorkflow"
+		},
+		{
+			"name": "bulk-character-report-workflow",
+			"binding": "BULK_CHARACTER_REPORT_WORKFLOW",
+			"class_name": "BulkCharacterReportWorkflow"
 		}
 	],
 	"queues": {

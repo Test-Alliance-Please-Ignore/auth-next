@@ -13,6 +13,7 @@ import { useState } from 'react'
 import { Link, Navigate, useNavigate, useParams, useSearchParams } from 'react-router-dom'
 
 import { MemberAvatar } from '@/components/member-avatar'
+import { EsiStatusBadge } from '@/components/esi-status-badge'
 import {
 	Breadcrumb,
 	BreadcrumbItem,
@@ -53,6 +54,7 @@ import { Button } from '@/components/ui/button'
 import { RecommendationList } from '../components/recommendation-list'
 import {
 	useApplication,
+	useApplicationFulcrum,
 	useApplicationActivity,
 	useApplicationStaffNotes,
 	useDeleteHRNote,
@@ -112,6 +114,11 @@ export default function HrApplicationReview() {
 		{ enabled: !!application?.userId && (!!user?.is_admin || !!permission?.hasPermission) }
 	)
 	const globalUserNotesCount = globalUserNotes.length
+	const { data: fulcrumCharacters = [] } = useApplicationFulcrum(
+		application?.userId ?? '',
+		corporationId ?? '',
+		!!application?.userId && !!corporationId,
+	)
 
 	// Fetch selected HR note for edit/delete
 	const { data: selectedNote } = useHRNote(selectedNoteId)
@@ -128,8 +135,8 @@ export default function HrApplicationReview() {
 		: []
 	const spQueries = useQueries({
 		queries: allCharacterIds.map((charId) => ({
-			queryKey: ['character', charId],
-			queryFn: () => apiClient.getCharacterDetail(charId),
+			queryKey: ['character', charId, 'hr-review', corporationId],
+			queryFn: () => apiClient.getCharacterDetail(charId, corporationId),
 			enabled: !!application,
 			staleTime: 5 * 60 * 1000,
 		})),
@@ -140,6 +147,10 @@ export default function HrApplicationReview() {
 		const query = spQueries[i]
 		spByCharacterId[allCharacterIds[i]] = query?.data?.public?.skills?.totalSp ?? null
 		walletByCharacterId[allCharacterIds[i]] = query?.data?.private?.wallet?.balance ?? null
+	}
+	const esiStateByCharacterId: Record<string, boolean | null> = {}
+	for (const character of fulcrumCharacters) {
+		esiStateByCharacterId[character.characterId] = character.hasValidToken ?? null
 	}
 
 	// Set page title
@@ -415,7 +426,7 @@ export default function HrApplicationReview() {
 							value="global-notes"
 							className={reviewTabTriggerClassName}
 						>
-							Global User Notes
+							Account Notes
 							<span className="ml-1.5 text-xs opacity-70">({globalUserNotesCount})</span>
 						</TabsTrigger>
 					)}
@@ -518,9 +529,16 @@ export default function HrApplicationReview() {
 									size="md"
 								/>
 								<div>
-									<p className="text-sm font-medium">
-										{application.characterName}
-									</p>
+									<div className="flex items-center gap-2">
+										<p className="text-sm font-medium">
+											{application.characterName}
+										</p>
+										<EsiStatusBadge
+											hasAuthAccount
+											hasValidToken={esiStateByCharacterId[application.characterId]}
+											className="text-[10px] px-1.5 py-0"
+										/>
+									</div>
 									<p className="text-xs text-muted-foreground">
 										<span className="font-mono tabular-nums">
 											{spByCharacterId[application.characterId] != null
@@ -558,9 +576,16 @@ export default function HrApplicationReview() {
 												size="md"
 											/>
 											<div className="flex-1 min-w-0">
-												<p className="text-sm font-medium">
-													{altCharacterNames[charId] ?? charId}
-												</p>
+												<div className="flex items-center gap-2">
+													<p className="text-sm font-medium">
+														{altCharacterNames[charId] ?? charId}
+													</p>
+													<EsiStatusBadge
+														hasAuthAccount
+														hasValidToken={esiStateByCharacterId[charId]}
+														className="text-[10px] px-1.5 py-0"
+													/>
+												</div>
 												<p className="text-xs text-muted-foreground">
 													<span className="font-mono tabular-nums">
 														{spByCharacterId[charId] != null

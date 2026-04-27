@@ -247,6 +247,7 @@ app.post('/characters/:characterId/reports', requireAuth(), async (c) => {
 		corporationId: string
 		requestSource: ReportRequestSource
 		applicationId?: string
+		sendDm?: boolean
 	}>()
 
 	if (!body.corporationId) {
@@ -276,6 +277,7 @@ app.post('/characters/:characterId/reports', requireAuth(), async (c) => {
 			requestorCorporationId: body.corporationId,
 			requestSource: body.requestSource,
 			applicationId: body.applicationId,
+			sendDm: body.sendDm ?? true,
 		})
 
 		logger.info('[Fulcrum] Report requested', {
@@ -283,6 +285,7 @@ app.post('/characters/:characterId/reports', requireAuth(), async (c) => {
 			characterId,
 			requestSource: body.requestSource,
 			applicationId: body.applicationId,
+			sendDm: body.sendDm ?? true,
 			requestedBy: user.id,
 		})
 
@@ -294,6 +297,75 @@ app.post('/characters/:characterId/reports', requireAuth(), async (c) => {
 		})
 		return c.json(
 			{ error: error instanceof Error ? error.message : 'Failed to request report' },
+			500,
+		)
+	}
+})
+
+/**
+ * POST /api/fulcrum/reports/batch
+ * Request a new batch of Fulcrum reports for multiple characters
+ * REQUIRES: HR admin role for the specified corporation
+ */
+app.post('/reports/batch', requireAuth(), async (c) => {
+	const user = c.get('user')!
+	const body = await c.req.json<{
+		corporationId: string
+		requestSource: ReportRequestSource
+		characterIds: string[]
+		applicationId?: string
+		sendDm?: boolean
+	}>()
+
+	if (!body.corporationId) {
+		return c.json({ error: 'corporationId is required' }, 400)
+	}
+
+	if (!Array.isArray(body.characterIds) || body.characterIds.length === 0) {
+		return c.json({ error: 'characterIds is required' }, 400)
+	}
+
+	if (!body.requestSource || !VALID_REQUEST_SOURCES.includes(body.requestSource)) {
+		return c.json({ error: 'Valid requestSource is required' }, 400)
+	}
+
+	try {
+		const auditor = await isHrAuditorUser(c, user)
+		if (!auditor) {
+			const hr = getHrStub(c)
+			const hasPermission = await hr.checkPermission(user.id, body.corporationId, 'hr_reviewer')
+			if (!hasPermission) {
+				return c.json({ error: 'HR reviewer or admin role required' }, 403)
+			}
+		}
+
+		const fulcrum = getFulcrumStub(c)
+		const result = await fulcrum.createBulkCharacterReports({
+			characterIds: body.characterIds,
+			requestorUserId: user.id,
+			requestorCorporationId: body.corporationId,
+			requestSource: body.requestSource,
+			applicationId: body.applicationId,
+			sendDm: body.sendDm ?? true,
+		})
+
+		logger.info('[Fulcrum] Bulk report batch requested', {
+			batchId: result.batchId,
+			characterCount: body.characterIds.length,
+			requestSource: body.requestSource,
+			applicationId: body.applicationId,
+			sendDm: body.sendDm ?? true,
+			requestedBy: user.id,
+		})
+
+		return c.json({ batchId: result.batchId, status: 'pending' }, 201)
+	} catch (error) {
+		logger.error('[Fulcrum] Failed to request bulk report batch', {
+			characterCount: body.characterIds.length,
+			error: error instanceof Error ? error.message : String(error),
+		})
+		return c.json(
+			{ error: error instanceof Error ? error.message : 'Failed to request bulk reports' },
 			500,
 		)
 	}
