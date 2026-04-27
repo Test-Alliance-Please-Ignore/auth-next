@@ -36,6 +36,7 @@ function PaymentStack() {
 	const { data, isLoading, error } = useRequestsByStatus('approved', { limit: 100 })
 	const { data: payoutTotalData } = usePendingPayoutTotal()
 	const [dismissing, setDismissing] = useState<Set<string>>(new Set())
+	const [dismissed, setDismissed] = useState<Set<string>>(new Set())
 	const markPaid = useMarkPaid()
 
 	if (isLoading) {
@@ -56,7 +57,9 @@ function PaymentStack() {
 		)
 	}
 
-	const requests = (data?.requests ?? [] as SRPRequestResponse[]).filter((r: SRPRequestResponse) => !dismissing.has(r.id))
+	const requests = (data?.requests ?? [] as SRPRequestResponse[]).filter(
+		(r: SRPRequestResponse) => !dismissed.has(r.id)
+	)
 	const sortedRequests = [...requests].sort((a, b) => {
 		const aTime = Date.parse(a.reviewedAt ?? a.createdAt ?? a.lossDate)
 		const bTime = Date.parse(b.reviewedAt ?? b.createdAt ?? b.lossDate)
@@ -78,6 +81,14 @@ function PaymentStack() {
 		try {
 			await markPaid.mutateAsync(request.id)
 			toast.success(`Marked as payment pending: ${request.shipTypeName}`)
+			window.setTimeout(() => {
+				setDismissed((prev) => new Set([...prev, request.id]))
+				setDismissing((prev) => {
+					const next = new Set(prev)
+					next.delete(request.id)
+					return next
+				})
+			}, 220)
 		} catch (e: any) {
 			setDismissing((prev) => {
 				const next = new Set(prev)
@@ -97,7 +108,12 @@ function PaymentStack() {
 				</div>
 			</Card>
 			{sortedRequests.map((req: SRPRequestResponse) => (
-				<PaymentCard key={req.id} request={req} onMarkPaid={handleMarkPaid} />
+				<PaymentCard
+					key={req.id}
+					request={req}
+					onMarkPaid={handleMarkPaid}
+					isDismissing={dismissing.has(req.id)}
+				/>
 			))}
 		</div>
 	)
@@ -106,9 +122,11 @@ function PaymentStack() {
 function PaymentCard({
 	request,
 	onMarkPaid,
+	isDismissing,
 }: {
 	request: SRPRequestResponse
 	onMarkPaid: (r: SRPRequestResponse) => void
+	isDismissing?: boolean
 }) {
 	const [copiedField, setCopiedField] = useState<string | null>(null)
 
@@ -125,7 +143,9 @@ function PaymentCard({
 	const reason = `SRP - KM#${request.id}`
 
 	return (
-		<Card className="p-4">
+		<Card
+			className={`p-4 transition-all duration-200 ${isDismissing ? 'pointer-events-none -translate-y-1 opacity-0' : 'translate-y-0 opacity-100'}`}
+		>
 			<div className="space-y-1.5">
 				<CopyRow
 					label="Recipient"
@@ -149,7 +169,13 @@ function PaymentCard({
 			</div>
 
 			<div className="mt-3 flex items-center gap-3 border-t border-border/40 pt-3">
-				<Button size="sm" onClick={() => onMarkPaid(request)} className="shrink-0 gap-1">
+				<Button
+					type="button"
+					size="sm"
+					onClick={() => onMarkPaid(request)}
+					disabled={isDismissing}
+					className="shrink-0 gap-1"
+				>
 					<Check className="h-4 w-4" /> Mark Paid
 				</Button>
 				<div className="text-sm text-muted-foreground">

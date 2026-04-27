@@ -111,6 +111,25 @@ function invalidateSrpQueueBadgeQueries(queryClient: ReturnType<typeof useQueryC
 	void queryClient.invalidateQueries({ queryKey: srpKeys.pendingPayoutTotal() })
 }
 
+function invalidateSrpQueueStatusQueries(
+	queryClient: ReturnType<typeof useQueryClient>,
+	statuses: RequestStatus[]
+) {
+	void queryClient.invalidateQueries({
+		predicate: (query) => {
+			const key = query.queryKey
+			return (
+				Array.isArray(key) &&
+				key[0] === 'srp' &&
+				key[1] === 'requests' &&
+				key[2] === 'by-status' &&
+				typeof key[3] === 'string' &&
+				statuses.includes(key[3] as RequestStatus)
+			)
+		},
+	})
+}
+
 // ===== Query Hooks =====
 
 export function useRecentLosses(daysBack: number = 30) {
@@ -503,7 +522,8 @@ export function useMarkPaid() {
 			setRequestStatusAcrossCaches(queryClient, request)
 			void queryClient.invalidateQueries({ queryKey: srpKeys.payments() })
 			void queryClient.invalidateQueries({ queryKey: srpKeys.allRequests() })
-			invalidateSrpQueueBadgeQueries(queryClient)
+			invalidateSrpQueueStatusQueries(queryClient, ['approved', 'pending'])
+			void queryClient.invalidateQueries({ queryKey: srpKeys.pendingPayoutTotal() })
 		},
 	})
 }
