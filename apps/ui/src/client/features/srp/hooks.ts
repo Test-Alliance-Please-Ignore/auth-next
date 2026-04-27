@@ -522,7 +522,7 @@ export function useMarkPaid() {
 			setRequestStatusAcrossCaches(queryClient, request)
 			void queryClient.invalidateQueries({ queryKey: srpKeys.payments() })
 			void queryClient.invalidateQueries({ queryKey: srpKeys.allRequests() })
-			invalidateSrpQueueStatusQueries(queryClient, ['approved', 'pending'])
+			invalidateSrpQueueStatusQueries(queryClient, ['approved', 'pending', 'paid'])
 			void queryClient.invalidateQueries({ queryKey: srpKeys.pendingPayoutTotal() })
 		},
 	})
