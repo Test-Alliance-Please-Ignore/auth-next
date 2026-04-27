@@ -120,7 +120,7 @@ function getActionLabel(action: string): string {
 		request_withdrawn: 'Withdrawn',
 		request_reopened: 'Reopened',
 		state_changed: 'Status Updated',
-		payment_submitted: 'Payment Pending',
+		payment_submitted: 'Payment Sent',
 		payment_completed: 'Payment Completed',
 		partial_payment_completed: 'Partial Payment',
 		payment_alert_acknowledged: 'Payment Alert Acknowledged',

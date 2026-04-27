@@ -57,7 +57,7 @@ export function getRequestStatusText(status: RequestStatus): string {
 		case 'approved':
 			return 'Approved'
 		case 'payment_pending':
-			return 'Payment Pending'
+			return 'Payment Sent'
 		case 'rejected':
 			return 'Rejected'
 		case 'paid':

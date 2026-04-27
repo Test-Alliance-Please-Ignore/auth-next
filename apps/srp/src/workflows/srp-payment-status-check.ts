@@ -4,7 +4,10 @@ import { sql } from '@repo/db-utils'
 import { getStub } from '@repo/do-utils'
 
 import { createDb } from '../db'
-import { buildKillmailReasonNeedle, parseAmountToBigInt } from './srp-payment-status-check-utils'
+import {
+	buildKillmailReasonNeedle,
+	parseAmountToBigInt,
+} from './srp-payment-status-check-utils'
 
 import type { EsiTypeResolver } from '@repo/esi'
 import type { Srp } from '@repo/srp'
@@ -163,8 +166,12 @@ export class SrpPaymentStatusCheckWorkflow extends WorkflowEntrypoint<
 			},
 			async () => {
 				const db = createDb(this.env.DATABASE_URL)
-				const fromDate = request.paymentDate ? new Date(request.paymentDate) : new Date(request.createdAt)
-				const reasonPattern = `%${reasonNeedle}%`
+				const paymentDate = request.paymentDate ? new Date(request.paymentDate) : null
+				const paymentDateMs = paymentDate?.getTime()
+				const fromDate =
+					typeof paymentDateMs === 'number' && Number.isFinite(paymentDateMs)
+						? new Date(paymentDateMs - 24 * 60 * 60 * 1000)
+						: new Date(request.createdAt)
 				const result = await db.execute<WalletJournalMatchRow>(
 					sql`select
 						journal_id::text as "journalId",
@@ -177,8 +184,9 @@ export class SrpPaymentStatusCheckWorkflow extends WorkflowEntrypoint<
 					where corporation_id = ${processorCorporationId}
 						and date >= ${fromDate}
 						and amount::numeric <> 0
+						and ref_type = 'corporation_account_withdrawal'
 						and reason is not null
-						and reason like ${reasonPattern}
+						and btrim(reason) = ${reasonNeedle}
 					order by date desc
 					limit 250`
 				)
