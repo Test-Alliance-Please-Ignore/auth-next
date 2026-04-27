@@ -17,4 +17,3 @@ export function parseAmountToBigInt(rawAmount: string | undefined | null): bigin
 export function buildKillmailReasonNeedle(killmailId: string): string {
 	return `${SRP_REASON_PREFIX}${killmailId}`
 }
-

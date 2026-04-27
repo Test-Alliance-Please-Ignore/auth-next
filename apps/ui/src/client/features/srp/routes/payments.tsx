@@ -37,6 +37,7 @@ function PaymentStack() {
 	const { data: payoutTotalData } = usePendingPayoutTotal()
 	const [dismissing, setDismissing] = useState<Set<string>>(new Set())
 	const [dismissed, setDismissed] = useState<Set<string>>(new Set())
+	const [exiting, setExiting] = useState<Map<string, SRPRequestResponse>>(new Map())
 	const markPaid = useMarkPaid()
 
 	if (isLoading) {
@@ -57,9 +58,19 @@ function PaymentStack() {
 		)
 	}
 
-	const requests = (data?.requests ?? [] as SRPRequestResponse[]).filter(
+	const rawRequests: SRPRequestResponse[] = (data?.requests ?? []) as SRPRequestResponse[]
+	const baseRequests = rawRequests.filter(
 		(r: SRPRequestResponse) => !dismissed.has(r.id)
 	)
+	const requestMap = new Map<string, SRPRequestResponse>(
+		baseRequests.map((request) => [request.id, request])
+	)
+	for (const [requestId, request] of exiting.entries()) {
+		if (!dismissed.has(requestId)) {
+			requestMap.set(requestId, request)
+		}
+	}
+	const requests = [...requestMap.values()]
 	const sortedRequests = [...requests].sort((a, b) => {
 		const aTime = Date.parse(a.reviewedAt ?? a.createdAt ?? a.lossDate)
 		const bTime = Date.parse(b.reviewedAt ?? b.createdAt ?? b.lossDate)
@@ -78,18 +89,33 @@ function PaymentStack() {
 
 	const handleMarkPaid = async (request: SRPRequestResponse) => {
 		setDismissing((prev) => new Set([...prev, request.id]))
+		setExiting((prev) => {
+			const next = new Map(prev)
+			next.set(request.id, request)
+			return next
+		})
 		try {
 			await markPaid.mutateAsync(request.id)
 			toast.success(`Marked as payment pending: ${request.shipTypeName}`)
 			window.setTimeout(() => {
 				setDismissed((prev) => new Set([...prev, request.id]))
+				setExiting((prev) => {
+					const next = new Map(prev)
+					next.delete(request.id)
+					return next
+				})
 				setDismissing((prev) => {
 					const next = new Set(prev)
 					next.delete(request.id)
 					return next
 				})
-			}, 220)
+			}, 360)
 		} catch (e: any) {
+			setExiting((prev) => {
+				const next = new Map(prev)
+				next.delete(request.id)
+				return next
+			})
 			setDismissing((prev) => {
 				const next = new Set(prev)
 				next.delete(request.id)
@@ -144,7 +170,7 @@ function PaymentCard({
 
 	return (
 		<Card
-			className={`p-4 transition-all duration-200 ${isDismissing ? 'pointer-events-none -translate-y-1 opacity-0' : 'translate-y-0 opacity-100'}`}
+			className={`p-4 transition-all duration-300 ${isDismissing ? 'pointer-events-none -translate-y-1 opacity-0' : 'translate-y-0 opacity-100'}`}
 		>
 			<div className="space-y-1.5">
 				<CopyRow

@@ -40,7 +40,7 @@ export function RequestCard({ request, showActions = true }: RequestCardProps) {
 					{request.requestStatus === 'paid' || request.requestStatus === 'payment_pending' ? (
 						<div>
 							<div className="text-muted-foreground">
-								{request.requestStatus === 'paid' ? 'Paid Amount' : 'Payment Pending'}
+								{request.requestStatus === 'paid' ? 'Paid Amount' : 'Payment Sent'}
 							</div>
 							<div className="font-medium tabular-nums text-success">{formatISK(request.approvedAmount ?? '0')}</div>
 						</div>
