@@ -5,10 +5,12 @@ import { tryCharacterAuthenticatedFetch } from './try-character-authenticated-fe
 import type { WorkflowContext } from '../../context'
 
 const validateToken = vi.fn()
+const fetchAuthenticatedData = vi.fn().mockResolvedValue(undefined)
 
 vi.mock('@repo/do-utils', () => ({
 	getStub: vi.fn(() => ({
 		validateToken,
+		fetchAuthenticatedData,
 	})),
 }))
 
@@ -58,6 +60,7 @@ function createCtx(db: WorkflowContext['db']): WorkflowContext {
 describe('tryCharacterAuthenticatedFetch', () => {
 	beforeEach(() => {
 		vi.clearAllMocks()
+		fetchAuthenticatedData.mockResolvedValue(undefined)
 	})
 
 	it('marks the character token valid when verification succeeds', async () => {
