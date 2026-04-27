@@ -50,6 +50,7 @@ function makeDbStub() {
 					characterName: 'Pilot One',
 					userId: 'target-user-1',
 					status: 'active',
+					hasValidToken: true,
 				}),
 			},
 			users: {
@@ -176,13 +177,104 @@ describe('corporations members access matrix', () => {
 		const res = await app.request('/api/corporations/1001/members', {}, env)
 
 		expect(res.status).toBe(200)
-		const body = (await res.json()) as Array<{ characterId: string; characterName: string }>
-		expect(body).toHaveLength(1)
-		expect(body[0]).toMatchObject({
+		const body = (await res.json()) as {
+			items: Array<{ characterId: string; characterName: string; hasValidToken?: boolean | null }>
+			pagination: { totalItems: number; totalPages: number }
+		}
+		expect(body.items).toHaveLength(1)
+		expect(body.items[0]).toMatchObject({
 			characterId: '2001',
 			characterName: 'Pilot One',
 		})
+		expect(body.pagination.totalItems).toBe(1)
+		expect(body.pagination.totalPages).toBe(1)
 		expect(hrStub.checkCharactersBlacklisted).toHaveBeenCalledWith(['2001'])
+	})
+
+	it('supports members pagination/search/sort and returns token validity in items', async () => {
+		getCachedUserPermissionsMock.mockResolvedValue([
+			{
+				permissionId: 'perm-auditor',
+				urn: 'urn:hr:auditor',
+				name: 'HR Auditor',
+				description: null,
+				category: null,
+				groupId: 'g-1',
+				groupName: 'HR',
+				targetType: 'all_members',
+				source: 'global',
+			},
+		] as any)
+
+		corpStub.getCoreData.mockResolvedValue({
+			members: [
+				{ characterId: '2001', updatedAt: new Date('2026-04-01T00:00:00.000Z') },
+				{ characterId: '2002', updatedAt: new Date('2026-04-01T00:00:00.000Z') },
+			],
+			memberTracking: [],
+		})
+		dbStub.query.userCharacters.findMany.mockResolvedValue([
+			{
+				characterId: '2001',
+				userId: 'target-user-1',
+				status: 'active',
+				hasValidToken: true,
+			},
+		])
+		getStubMock.mockImplementation((binding: unknown) => {
+			if (binding === env.HR) return hrStub as any
+			if (binding === env.EVE_CHARACTER_DATA) return charStub as any
+			if (binding === env.EVE_CORPORATION_DATA) return corpStub as any
+			if (binding === env.EVE_TOKEN_STORE) {
+				return {
+					resolveIds: vi.fn().mockImplementation(async (ids: string[]) =>
+						Object.fromEntries(
+							ids.map((id) => [id, id === '2001' ? 'Pilot One' : id === '2002' ? 'Pilot Two' : id])
+						)
+					),
+				} as any
+			}
+			throw new Error('Unexpected binding')
+		})
+
+		const app = createApp({ user: makeUser(), db: dbStub })
+		const res = await app.request(
+			'/api/corporations/1001/members?page=1&limit=1&search=pilot&sortField=name&sortOrder=asc',
+			{},
+			env
+		)
+
+		expect(res.status).toBe(200)
+		const body = (await res.json()) as {
+			items: Array<{ characterId: string; characterName: string; hasValidToken?: boolean | null }>
+			pagination: {
+				page: number
+				limit: number
+				totalItems: number
+				totalPages: number
+				hasNextPage: boolean
+				hasPreviousPage: boolean
+			}
+			summary: { total: number; linked: number }
+		}
+		expect(body.items).toHaveLength(1)
+		expect(body.items[0]).toMatchObject({
+			characterId: '2001',
+			characterName: 'Pilot One',
+			hasValidToken: true,
+		})
+		expect(body.pagination).toMatchObject({
+			page: 1,
+			limit: 1,
+			totalItems: 2,
+			totalPages: 2,
+			hasNextPage: true,
+			hasPreviousPage: false,
+		})
+		expect(body.summary).toMatchObject({
+			total: 2,
+			linked: 1,
+		})
 	})
 
 	it('denies members refresh for HR-only access (no CEO/director/admin leadership)', async () => {

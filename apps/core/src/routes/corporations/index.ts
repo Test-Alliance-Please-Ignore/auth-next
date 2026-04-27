@@ -42,6 +42,177 @@ function getCorpMembersCacheKey(corporationId: string): string {
 	return `https://cache.local/corporations/${corporationId}/members`
 }
 
+type CorporationMemberListItem = {
+	characterId: string
+	characterName: string
+	corporationId: string
+	corporationName: string
+	role: 'CEO' | 'Director' | 'Member'
+	hasAuthAccount: boolean
+	hasValidToken?: boolean | null
+	authUserId?: string
+	mainCharacterName?: string
+	status?: 'active' | 'emeritus'
+	joinDate: string
+	lastEsiUpdate: string
+	lastLogin?: string
+	allianceId?: string
+	allianceName?: string
+	locationSystem?: string
+	locationRegion?: string
+	activityStatus: 'active' | 'inactive' | 'unknown'
+	isBlacklisted: boolean
+}
+
+type MembersAuthFilter = 'all' | 'linked' | 'unlinked'
+type MembersActivityFilter = 'all' | 'active' | 'inactive' | 'unknown'
+type MembersRoleFilter = 'all' | 'CEO' | 'Director' | 'Member'
+type MembersSortField = 'name' | 'role' | 'auth' | 'activity' | 'lastLogin' | 'joinDate'
+type MembersSortOrder = 'asc' | 'desc'
+
+type MembersQuery = {
+	page: number
+	limit: number
+	search: string
+	authFilter: MembersAuthFilter
+	activityFilter: MembersActivityFilter
+	roleFilter: MembersRoleFilter
+	sortField: MembersSortField
+	sortOrder: MembersSortOrder
+}
+
+function parsePositiveInt(value: string | undefined, fallback: number): number {
+	const parsed = Number.parseInt(value ?? '', 10)
+	if (!Number.isFinite(parsed) || parsed < 1) {
+		return fallback
+	}
+	return parsed
+}
+
+function parseMembersQuery(c: Context<App>): MembersQuery {
+	const page = parsePositiveInt(c.req.query('page'), 1)
+	const limit = Math.min(parsePositiveInt(c.req.query('limit'), 50), 200)
+	const search = (c.req.query('search') ?? '').trim().toLowerCase()
+	const authFilterRaw = c.req.query('authFilter')
+	const activityFilterRaw = c.req.query('activityFilter')
+	const roleFilterRaw = c.req.query('roleFilter')
+	const sortFieldRaw = c.req.query('sortField')
+	const sortOrderRaw = c.req.query('sortOrder')
+
+	const authFilter: MembersAuthFilter =
+		authFilterRaw === 'linked' || authFilterRaw === 'unlinked' ? authFilterRaw : 'all'
+	const activityFilter: MembersActivityFilter =
+		activityFilterRaw === 'active' || activityFilterRaw === 'inactive' || activityFilterRaw === 'unknown'
+			? activityFilterRaw
+			: 'all'
+	const roleFilter: MembersRoleFilter =
+		roleFilterRaw === 'CEO' || roleFilterRaw === 'Director' || roleFilterRaw === 'Member'
+			? roleFilterRaw
+			: 'all'
+	const sortField: MembersSortField =
+		sortFieldRaw === 'name' ||
+			sortFieldRaw === 'role' ||
+			sortFieldRaw === 'auth' ||
+			sortFieldRaw === 'activity' ||
+			sortFieldRaw === 'lastLogin' ||
+			sortFieldRaw === 'joinDate'
+			? sortFieldRaw
+			: 'role'
+	const sortOrder: MembersSortOrder = sortOrderRaw === 'desc' ? 'desc' : 'asc'
+
+	return {
+		page,
+		limit,
+		search,
+		authFilter,
+		activityFilter,
+		roleFilter,
+		sortField,
+		sortOrder,
+	}
+}
+
+function filterSortAndPaginateMembers(members: CorporationMemberListItem[], query: MembersQuery) {
+	const filtered = [...members]
+		.filter((member) => {
+			if (!query.search) return true
+			return (
+				member.characterName.toLowerCase().includes(query.search) ||
+				member.mainCharacterName?.toLowerCase().includes(query.search) ||
+				member.locationSystem?.toLowerCase().includes(query.search)
+			)
+		})
+		.filter((member) => {
+			if (query.authFilter === 'all') return true
+			return query.authFilter === 'linked' ? member.hasAuthAccount : !member.hasAuthAccount
+		})
+		.filter((member) => {
+			if (query.activityFilter === 'all') return true
+			return member.activityStatus === query.activityFilter
+		})
+		.filter((member) => {
+			if (query.roleFilter === 'all') return true
+			return member.role === query.roleFilter
+		})
+
+	filtered.sort((a, b) => {
+		let comparison = 0
+		switch (query.sortField) {
+			case 'name':
+				comparison = a.characterName.localeCompare(b.characterName)
+				break
+			case 'role': {
+				const roleOrder = { CEO: 0, Director: 1, Member: 2 }
+				comparison = roleOrder[a.role] - roleOrder[b.role]
+				if (comparison === 0) {
+					comparison = a.characterName.localeCompare(b.characterName)
+				}
+				break
+			}
+			case 'auth':
+				comparison = (a.hasAuthAccount ? 0 : 1) - (b.hasAuthAccount ? 0 : 1)
+				break
+			case 'activity': {
+				const activityOrder = { active: 0, inactive: 1, unknown: 2 }
+				comparison = activityOrder[a.activityStatus] - activityOrder[b.activityStatus]
+				break
+			}
+			case 'lastLogin':
+				comparison = (b.lastLogin || '').localeCompare(a.lastLogin || '')
+				break
+			case 'joinDate':
+				comparison = a.joinDate.localeCompare(b.joinDate)
+				break
+		}
+		return query.sortOrder === 'asc' ? comparison : -comparison
+	})
+
+	const totalItems = filtered.length
+	const totalPages = Math.max(1, Math.ceil(totalItems / query.limit))
+	const currentPage = Math.min(query.page, totalPages)
+	const start = (currentPage - 1) * query.limit
+	const items = filtered.slice(start, start + query.limit)
+
+	return {
+		items,
+		pagination: {
+			page: currentPage,
+			limit: query.limit,
+			totalItems,
+			totalPages,
+			hasNextPage: currentPage < totalPages,
+			hasPreviousPage: currentPage > 1,
+		},
+		summary: {
+			total: totalItems,
+			linked: filtered.filter((m) => m.hasAuthAccount).length,
+			active: filtered.filter((m) => m.activityStatus === 'active').length,
+			inactive: filtered.filter((m) => m.activityStatus === 'inactive').length,
+			directors: filtered.filter((m) => m.role === 'Director').length,
+		},
+	}
+}
+
 /**
  * Helper to check cache for JSON response
  */
@@ -1175,6 +1346,7 @@ app.get('/:corporationId/data', requireAuth(), requireAdmin(), async (c) => {
  */
 app.get('/:corporationId/members', requireAuth(), async (c) => {
 	const corporationId = c.req.param('corporationId')
+	const query = parseMembersQuery(c)
 	const user = c.get('user')!
 	const db = c.get('db')
 
@@ -1227,35 +1399,17 @@ app.get('/:corporationId/members', requireAuth(), async (c) => {
 
 		// Check cache for member data
 		const cacheKey = getCorpMembersCacheKey(corporationId)
-		const cached = await getCachedJson<
-			Array<{
-				characterId: string
-				characterName: string
-				corporationId: string
-				corporationName: string
-				role: 'CEO' | 'Director' | 'Member'
-				hasAuthAccount: boolean
-				authUserId?: string
-				authUserName?: string
-				status?: 'active' | 'emeritus'
-				joinDate: string
-				lastEsiUpdate: string
-				lastLogin?: string
-				allianceId?: string
-				allianceName?: string
-				locationSystem?: string
-				locationRegion?: string
-				activityStatus: 'active' | 'inactive' | 'unknown'
-				isBlacklisted: boolean
-			}>
-		>(cacheKey)
+		const cached = await getCachedJson<CorporationMemberListItem[]>(cacheKey)
 
 		if (cached) {
 			logger.info('[Corporations] Returning cached member data', {
 				corporationId,
 				memberCount: cached.length,
+				page: query.page,
+				limit: query.limit,
+				search: query.search,
 			})
-			return c.json(cached)
+			return c.json(filterSortAndPaginateMembers(cached, query))
 		}
 
 		// Get corporation members from DO
@@ -1331,7 +1485,7 @@ app.get('/:corporationId/members', requireAuth(), async (c) => {
 				: {}
 
 		// Process members with comprehensive data
-		const membersWithDetails = await Promise.all(
+		const membersWithDetails: CorporationMemberListItem[] = await Promise.all(
 			coreData.members.map(async (member) => {
 				const characterId = String(member.characterId)
 
@@ -1360,6 +1514,7 @@ app.get('/:corporationId/members', requireAuth(), async (c) => {
 					corporationName: managedCorp.name,
 					role,
 					hasAuthAccount,
+					hasValidToken: linkedChar?.hasValidToken ?? null,
 					authUserId: linkedChar?.userId,
 					mainCharacterName: linkedChar?.userId
 						? userIdToMainCharacterName.get(linkedChar.userId)
@@ -1398,7 +1553,7 @@ app.get('/:corporationId/members', requireAuth(), async (c) => {
 		// Store in cache for future requests
 		await cacheJson(cacheKey, membersWithDetails, CACHE_TTL)
 
-		return c.json(membersWithDetails)
+		return c.json(filterSortAndPaginateMembers(membersWithDetails, query))
 	} catch (error) {
 		logger.error('[Corporations] Error fetching corporation members', {
 			corporationId,

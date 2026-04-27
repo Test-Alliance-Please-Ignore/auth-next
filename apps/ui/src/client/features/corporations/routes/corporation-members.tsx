@@ -28,6 +28,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { Container } from '@/components/ui/container'
 import { LoadingSpinner } from '@/components/ui/loading'
 import { useAuth } from '@/hooks/useAuth'
+import { useDebounce } from '@/hooks/useDebounce'
 import { useMessage } from '@/hooks/useMessage'
 import { usePageTitle } from '@/hooks/usePageTitle'
 import { useUserPermissions } from '@/hooks/useUserPermissions'
@@ -41,7 +42,7 @@ import {
 	useMyCorporation,
 } from '../hooks'
 
-import type { CorporationMember } from '../api'
+import type { CorporationMember, CorporationMembersQuery } from '../api'
 import { Button } from '@/components/ui/button'
 
 // Lazy load the members table for code splitting
@@ -61,10 +62,33 @@ export default function CorporationMembers() {
 	const { canAccess: hasCorpAccess, userRole, corporation: accessCorp } = useCanAccessCorporation(corporationId!)
 	const canAccess = hasCorpAccess || isAuditor
 	const { data: corporation, isLoading: corpLoading } = useMyCorporation(corporationId!)
-	const { data: members, isLoading: membersLoading, error } = useCorporationMembers(corporationId!)
 	const { data: hrRoles, isLoading: hrRolesLoading } = useHrRoles(corporationId!)
 	const { invalidateMembers } = useCorporationManager()
 	const [isRefreshing, setIsRefreshing] = useState(false)
+	const [membersQuery, setMembersQuery] = useState<CorporationMembersQuery>({
+		page: 1,
+		limit: 50,
+		search: '',
+		authFilter: 'all',
+		activityFilter: 'all',
+		roleFilter: 'all',
+		sortField: 'role',
+		sortOrder: 'asc',
+	})
+	const debouncedSearch = useDebounce(membersQuery.search ?? '', 300)
+	const effectiveMembersQuery = useMemo(
+		() => ({
+			...membersQuery,
+			search: debouncedSearch,
+		}),
+		[membersQuery, debouncedSearch]
+	)
+	const {
+		data: membersResponse,
+		isLoading: membersLoading,
+		isFetching: membersFetching,
+		error,
+	} = useCorporationMembers(corporationId!, effectiveMembersQuery)
 
 	// Determine capability flags based on user role
 	const isLeadership = userRole === 'CEO' || userRole === 'Director' || userRole === 'admin'
@@ -105,16 +129,18 @@ export default function CorporationMembers() {
 
 	// Enhance members with HR role data
 	const membersWithHrRoles = useMemo(() => {
-		if (!members || !hrRoles) return members
+		const items = membersResponse?.items
+		if (!items) return items
+		if (!hrRoles) return items
 
-		return members.map((member) => {
+		return items.map((member) => {
 			const hrRole = hrRoles.find((role) => role.userId === member.authUserId)
 			return {
 				...member,
 				hrRole,
 			}
 		})
-	}, [members, hrRoles])
+	}, [membersResponse?.items, hrRoles])
 
 	// Corporation info - use Corporations data with access data as fallback (for HR-only users)
 	const corpName = corporation?.name ?? accessCorp?.name ?? 'Corporation'
@@ -226,7 +252,7 @@ export default function CorporationMembers() {
 	}
 
 	// Loading state
-	if (corpLoading || membersLoading || hrRolesLoading) {
+	if (corpLoading || hrRolesLoading || (membersLoading && !membersResponse)) {
 		return (
 			<Container>
 				<div className="flex items-center justify-center min-h-[400px]">
@@ -415,41 +441,22 @@ export default function CorporationMembers() {
 					</Card>
 				}
 			>
-				{membersWithHrRoles && membersWithHrRoles.length > 0 ? (
-					<CorporationMembersTable
-						members={membersWithHrRoles}
-						loading={membersLoading}
-						onMemberClick={handleMemberClick}
-						onLinkAccount={handleLinkAccount}
-						showActions={true}
-						canManageHrRoles={canManageHrRoles}
-						grantableHrRoles={[...grantableHrRoles]}
-						canRevokeHrAdmin={canRevokeHrAdmin}
-						canManageEmeritus={canManageEmeritus}
-						corporationId={corporationId!}
-					/>
-				) : (
-					<Card>
-						<CardHeader className="text-center">
-							<Building2 className="h-16 w-16 mx-auto text-muted-foreground mb-4" />
-							<CardTitle>No Members Found</CardTitle>
-							<CardDescription>
-								This corporation doesn't have any members in the system yet.
-							</CardDescription>
-						</CardHeader>
-						<CardContent className="text-center">
-							<p className="text-sm text-muted-foreground mb-4">
-								Member data may need to be fetched from ESI.
-							</p>
-							{canRefresh && (
-								<Button variant="primary" onClick={handleRefresh} disabled={isRefreshing}>
-									<RefreshCw className={`h-4 w-4 ${isRefreshing ? 'animate-spin' : ''}`} />
-									{isRefreshing ? 'Refreshing...' : 'Refresh Data'}
-								</Button>
-							)}
-						</CardContent>
-					</Card>
-				)}
+				<CorporationMembersTable
+					members={membersWithHrRoles ?? []}
+					loading={membersLoading || membersFetching}
+					onMemberClick={handleMemberClick}
+					onLinkAccount={handleLinkAccount}
+					showActions={true}
+					canManageHrRoles={canManageHrRoles}
+					grantableHrRoles={[...grantableHrRoles]}
+					canRevokeHrAdmin={canRevokeHrAdmin}
+					canManageEmeritus={canManageEmeritus}
+					corporationId={corporationId!}
+					query={membersQuery}
+					onQueryChange={setMembersQuery}
+					pagination={membersResponse?.pagination}
+					summary={membersResponse?.summary}
+				/>
 			</Suspense>
 
 			{/* Help Text */}

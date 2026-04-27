@@ -22,7 +22,6 @@ import { useNavigate } from 'react-router-dom'
 
 import { MemberAvatar } from '@/components/member-avatar'
 import { Badge } from '@/components/ui/badge'
-import { cn } from '@/lib/utils'
 
 import type { MRT_ColumnDef } from 'mantine-react-table'
 import type { CorporationMember } from '../../corporations/api'
@@ -194,16 +193,12 @@ const columns: MRT_ColumnDef<AccountGroup>[] = [
 		Cell: ({ row }) => {
 			const role = row.original.highestRole
 			return (
-				<span
-					className={cn(
-						'text-xs',
-						role === 'CEO' && 'font-bold text-yellow-500',
-						role === 'Director' && 'font-semibold text-blue-400',
-						role === 'Member' && 'text-muted-foreground',
-					)}
+				<Badge
+					variant={role === 'CEO' ? 'destructive' : role === 'Director' ? 'warning' : 'default'}
+					className="text-[10px]"
 				>
 					{role}
-				</span>
+				</Badge>
 			)
 		},
 	}),
