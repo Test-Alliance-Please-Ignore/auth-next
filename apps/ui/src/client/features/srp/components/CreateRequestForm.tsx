@@ -129,10 +129,14 @@ export function CreateRequestForm({
 						<Label htmlFor="contextText">Context *</Label>
 						<Textarea
 							id="contextText"
-							placeholder="Describe the circumstances — fleet doctrine, FC name, what happened, etc."
+							placeholder="Describe the circumstances —FC name, discord ping, SRP token,  what happened, etc."
 							rows={4}
 							{...form.register('contextText')}
 						/>
+						<p className="mt-1 text-xs text-muted-foreground">
+							If you want full value reimbursement, you must include the fleet ping and/or SRP
+							token.
+						</p>
 						{form.formState.errors.contextText && (
 							<p className="mt-1 text-xs text-red-500">
 								{form.formState.errors.contextText.message}

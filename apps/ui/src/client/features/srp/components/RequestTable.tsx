@@ -92,7 +92,12 @@ export function RequestTable({ requests, isLoading }: RequestTableProps) {
 								</div>
 							</TableCell>
 							<TableCell className="text-sm text-muted-foreground">
-								{request.solarSystemName ?? '—'}
+								<div>{request.solarSystemName ?? '—'}</div>
+								{request.solarSystemRegionName ? (
+									<div className="text-xs text-muted-foreground/80">
+										{request.solarSystemRegionName}
+									</div>
+								) : null}
 							</TableCell>
 							<TableCell className="text-sm text-muted-foreground">
 								{formatRelativeTime(request.createdAt)}

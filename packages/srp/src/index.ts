@@ -396,6 +396,7 @@ export interface SRPRequestResponse {
 	shipValue: string // ISK as text
 	solarSystemId?: string
 	solarSystemName?: string
+	solarSystemRegionName?: string
 
 	contextText?: string
 	requestStatus: RequestStatus
@@ -604,6 +605,7 @@ export interface LossWithSRPStatus {
 	totalValue: string // ISK as text
 	solarSystemId: string
 	solarSystemName?: string
+	solarSystemRegionName?: string
 	victimCharacterId: string // Character who lost the ship
 	victimCharacterName?: string
 	// SRP status

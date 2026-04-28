@@ -23,7 +23,7 @@ import { requireAllianceMember } from '../middleware/session'
 import type { Doctrines, FittingWithItems } from '@repo/doctrines'
 import type { EveCharacterData } from '@repo/eve-character-data'
 import type { EveTokenStore } from '@repo/eve-token-store'
-import type { SRPCommentResponse, SRPRequestResponse, Srp } from '@repo/srp'
+import type { LossWithSRPStatus, SRPCommentResponse, SRPRequestResponse, Srp } from '@repo/srp'
 import type { Universe } from '@repo/universe'
 import type { App } from '../context'
 
@@ -78,6 +78,66 @@ const SRP_REQUEST_ID_PATTERN = /^\d+$/
 
 function isValidSrpRequestId(requestId: string): boolean {
 	return SRP_REQUEST_ID_PATTERN.test(requestId)
+}
+
+async function enrichRequestsWithSystemRegions<T extends SRPRequestResponse>(
+	requests: T[],
+	env: { UNIVERSE: DurableObjectNamespace }
+): Promise<T[]> {
+	if (requests.length === 0) return requests
+	const systemIds = [...new Set(requests.map((request) => request.solarSystemId).filter(Boolean))] as string[]
+	if (systemIds.length === 0) return requests
+
+	const universeStub = getStub<Universe>(env.UNIVERSE, 'default')
+	const systemsById = await universeStub.resolveSolarSystemsByIds(systemIds)
+	const regionIds = [
+		...new Set(
+			Object.values(systemsById)
+				.map((system) => system?.regionId)
+				.filter((value): value is string => Boolean(value))
+		),
+	]
+	const regionsById =
+		regionIds.length > 0 ? await universeStub.resolveRegionsByIds(regionIds) : {}
+
+	return requests.map((request) => {
+		const system = request.solarSystemId ? systemsById[request.solarSystemId] : null
+		const region = system?.regionId ? regionsById[system.regionId] : null
+		return {
+			...request,
+			solarSystemRegionName: region?.regionName ?? undefined,
+		}
+	})
+}
+
+async function enrichLossesWithSystemRegions<T extends LossWithSRPStatus>(
+	losses: T[],
+	env: { UNIVERSE: DurableObjectNamespace }
+): Promise<T[]> {
+	if (losses.length === 0) return losses
+	const systemIds = [...new Set(losses.map((loss) => loss.solarSystemId).filter(Boolean))] as string[]
+	if (systemIds.length === 0) return losses
+
+	const universeStub = getStub<Universe>(env.UNIVERSE, 'default')
+	const systemsById = await universeStub.resolveSolarSystemsByIds(systemIds)
+	const regionIds = [
+		...new Set(
+			Object.values(systemsById)
+				.map((system) => system?.regionId)
+				.filter((value): value is string => Boolean(value))
+		),
+	]
+	const regionsById =
+		regionIds.length > 0 ? await universeStub.resolveRegionsByIds(regionIds) : {}
+
+	return losses.map((loss) => {
+		const system = loss.solarSystemId ? systemsById[loss.solarSystemId] : null
+		const region = system?.regionId ? regionsById[system.regionId] : null
+		return {
+			...loss,
+			solarSystemRegionName: region?.regionName ?? undefined,
+		}
+	})
 }
 
 /** Hydrate authorCharacterName, authorCharacterId, and authorRole on comments */
@@ -702,9 +762,10 @@ srp.get('/losses', async (c) => {
 		...loss,
 		victimCharacterName: characterNameById.get(loss.victimCharacterId) ?? undefined,
 	}))
+	const lossesWithRegions = await enrichLossesWithSystemRegions(lossesWithCharacterNames, c.env)
 
 	return c.json({
-		losses: lossesWithCharacterNames,
+		losses: lossesWithRegions,
 		failedCharacters,
 	})
 })
@@ -853,7 +914,8 @@ srp.get('/requests', async (c) => {
 		requestsRaw as RequestWithCharacterRole[],
 		c.env.DATABASE_URL
 	)
-	const requests = await enrichRequestsWithMilitarySrp(withCharacterRoles, c.env)
+	const withSystemRegions = await enrichRequestsWithSystemRegions(withCharacterRoles, c.env)
+	const requests = await enrichRequestsWithMilitarySrp(withSystemRegions, c.env)
 
 	return c.json({
 		requests,
@@ -900,7 +962,8 @@ srp.get('/requests/by-status', async (c) => {
 		result.requests as RequestWithCharacterRole[],
 		c.env.DATABASE_URL
 	)
-	const requests = await enrichRequestsWithMilitarySrp(withCharacterRoles, c.env)
+	const withSystemRegions = await enrichRequestsWithSystemRegions(withCharacterRoles, c.env)
+	const requests = await enrichRequestsWithMilitarySrp(withSystemRegions, c.env)
 	return c.json({
 		requests,
 		total: result.total,
@@ -988,7 +1051,14 @@ srp.get('/requests/:id', async (c) => {
 		[request as RequestWithCharacterRole],
 		c.env.DATABASE_URL
 	)
-	const [militaryEnrichedRequest] = await enrichRequestsWithMilitarySrp([requestWithCharacterRole], c.env)
+	const [requestWithSystemRegion] = await enrichRequestsWithSystemRegions(
+		[requestWithCharacterRole],
+		c.env
+	)
+	const [militaryEnrichedRequest] = await enrichRequestsWithMilitarySrp(
+		[requestWithSystemRegion],
+		c.env
+	)
 	const requestWithKillmailNames = await enrichRequestWithKillmailItemNames(
 		militaryEnrichedRequest,
 		c.env

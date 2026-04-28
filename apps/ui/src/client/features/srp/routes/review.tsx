@@ -325,7 +325,12 @@ function ReviewTabContent({ status, filters }: { status: RequestStatus; filters:
 									)}
 								</TableCell>
 								<TableCell className="text-sm text-muted-foreground">
-									{req.solarSystemName ?? '—'}
+									<div>{req.solarSystemName ?? '—'}</div>
+									{req.solarSystemRegionName ? (
+										<div className="text-xs text-muted-foreground/80">
+											{req.solarSystemRegionName}
+										</div>
+									) : null}
 								</TableCell>
 								<TableCell className="text-sm text-muted-foreground">
 									{req.lossDate ? (

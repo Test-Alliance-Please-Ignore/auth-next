@@ -209,6 +209,11 @@ export default function RequestDetails() {
 						<div>
 							<div className="text-sm text-muted-foreground">Loss System</div>
 							<div className="font-medium">{request.solarSystemName ?? 'Unknown'}</div>
+							{request.solarSystemRegionName ? (
+								<div className="text-xs text-muted-foreground">
+									{request.solarSystemRegionName}
+								</div>
+							) : null}
 						</div>
 						<div>
 							<div className="text-sm text-muted-foreground">Character</div>
