@@ -1,7 +1,7 @@
 import { useQuery } from '@tanstack/react-query'
 import { formatDistanceToNow } from 'date-fns'
-import { RefreshCw, Shield, User } from 'lucide-react'
-import { Link, Navigate, useParams } from 'react-router-dom'
+import { ArrowLeft, RefreshCw, Shield, User } from 'lucide-react'
+import { Link, Navigate, useLocation, useParams } from 'react-router-dom'
 
 import { CharacterAttributes } from '../components/character-attributes'
 import { CharacterCorporationHistory } from '../components/character-corporation-history'
@@ -19,7 +19,11 @@ import { allianceLogoUrl, characterPortraitUrl, corporationLogoUrl } from '../li
 
 export default function CharacterDetailPage() {
 	const { characterId } = useParams<{ characterId: string }>()
+	const location = useLocation()
 	const { user } = useAuth()
+	const navigationState = location.state as { backTo?: string; backLabel?: string } | null
+	const backTo = navigationState?.backTo
+	const backLabel = navigationState?.backLabel ?? 'Back'
 
 	if (!characterId) {
 		return <Navigate to="/dashboard" replace />
@@ -136,6 +140,16 @@ export default function CharacterDetailPage() {
 
 	return (
 		<Container className="p-8 space-y-6">
+			{backTo && (
+				<div className="flex justify-end">
+					<Button asChild variant="ghost">
+						<Link to={backTo}>
+							<ArrowLeft className="h-4 w-4" />
+							{backLabel}
+						</Link>
+					</Button>
+				</div>
+			)}
 			{/* Admin View Alert */}
 			{character.viewedAsAdmin && (
 				<Card className="border-amber-500/50 bg-amber-500/10">

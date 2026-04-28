@@ -340,9 +340,25 @@ export interface ApplicationFilters {
 	corporationId?: string
 	userId?: string
 	characterId?: string
+	characterIds?: string[]
 	status?: ApplicationStatus
+	search?: string
 	limit?: number
 	offset?: number
+}
+
+export interface ApplicationListResult {
+	items: Application[]
+	total: number
+	limit: number
+	offset: number
+	counts: {
+		pending: number
+		under_review: number
+		accepted: number
+		rejected: number
+		withdrawn: number
+	}
 }
 
 /**
@@ -425,6 +441,15 @@ export interface Hr extends DurableObject {
 		userId: string,
 		access: HrAccessContext
 	): Promise<Application[]>
+
+	/**
+	 * List applications with total count for paginated UI
+	 */
+	listApplicationsPaged(
+		filters: ApplicationFilters,
+		userId: string,
+		access: HrAccessContext
+	): Promise<ApplicationListResult>
 
 	/**
 	 * Get a single application with recommendations

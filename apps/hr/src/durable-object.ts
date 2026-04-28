@@ -14,6 +14,7 @@ import type {
 	Application,
 	ApplicationDetail,
 	ApplicationFilters,
+	ApplicationListResult,
 	ApplicationMessage,
 	ApplicationStatus,
 	ApplicationStaffNote,
@@ -148,6 +149,27 @@ export class HrDO extends DurableObject<Env> implements Hr {
 				: await this.hrRoleService.getUserHrReviewerCorporations(userId)
 
 		return await this.applicationService.listApplications(
+			filters,
+			userId,
+			access.isAdmin,
+			access.isAuditor,
+			userHrCorporations,
+			userHrReviewerCorporations
+		)
+	}
+
+	async listApplicationsPaged(
+		filters: ApplicationFilters,
+		userId: string,
+		access: { isAdmin: boolean; isAuditor: boolean }
+	): Promise<ApplicationListResult> {
+		const userHrCorporations = await this.hrRoleService.getUserHrCorporations(userId)
+		const userHrReviewerCorporations =
+			access.isAdmin || access.isAuditor
+				? []
+				: await this.hrRoleService.getUserHrReviewerCorporations(userId)
+
+		return await this.applicationService.listApplicationsPaged(
 			filters,
 			userId,
 			access.isAdmin,

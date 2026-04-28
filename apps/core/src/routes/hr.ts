@@ -1,13 +1,14 @@
 import { Hono } from 'hono'
 import { z } from 'zod'
 
-import { and, eq, inArray, or } from '@repo/db-utils'
+import { and, eq, ilike, inArray, or } from '@repo/db-utils'
 import { getStub } from '@repo/do-utils'
 import { captureException, logger } from '@repo/hono-helpers'
 import { APPLICATION_STATUSES } from '@repo/hr'
 
 import { managedCorporations, userCharacters, users } from '../db/schema'
 import { getCachedUserPermissions } from '../lib/groups-cache'
+import { validatePagination } from '../lib/validation'
 import { requireAdmin, requireAuth } from '../middleware/session'
 
 import type { Context } from 'hono'
@@ -296,6 +297,18 @@ app.post('/applications', requireAuth(), async (c) => {
  */
 app.get('/applications', requireAuth(), async (c) => {
 	const user = c.get('user')!
+	const searchQuery = c.req.query('search')?.trim() || undefined
+	const db = c.get('db')!
+	const searchCharacterIds =
+		searchQuery && searchQuery.length > 0
+			? (
+				await db.query.userCharacters.findMany({
+					where: ilike(userCharacters.characterName, `%${searchQuery}%`),
+					columns: { characterId: true },
+					limit: 200,
+				})
+			).map((character) => character.characterId)
+			: []
 
 	// Parse query params
 	const filters: ApplicationFilters = {
@@ -303,6 +316,8 @@ app.get('/applications', requireAuth(), async (c) => {
 		userId: c.req.query('userId'),
 		characterId: c.req.query('characterId'),
 		status: c.req.query('status') as ApplicationFilters['status'],
+		search: searchQuery,
+		characterIds: searchCharacterIds.length > 0 ? searchCharacterIds : undefined,
 		limit: c.req.query('limit') ? parseInt(c.req.query('limit')!) : undefined,
 		offset: c.req.query('offset') ? parseInt(c.req.query('offset')!) : undefined,
 	}
@@ -316,10 +331,70 @@ app.get('/applications', requireAuth(), async (c) => {
 		})
 
 		const resolver = getStub<EsiTypeResolver>(c.env.ESI_TYPE_RESOLVER, 'global')
-		const db = c.get('db')!
 		const enriched = await enrichApplications(applications, resolver, db)
 
 		return c.json(enriched)
+	} catch (error) {
+		return c.json(
+			{ error: error instanceof Error ? error.message : 'Failed to list applications' },
+			500
+		)
+	}
+})
+
+/**
+ * GET /api/hr/applications/paged
+ * Paginated list of applications with optional filters
+ */
+app.get('/applications/paged', requireAuth(), async (c) => {
+	const user = c.get('user')!
+	const pagination = validatePagination(c.req.query('limit'), c.req.query('offset'))
+	if (!pagination.success) {
+		return c.json({ error: pagination.error }, pagination.status)
+	}
+
+	const searchQuery = c.req.query('search')?.trim() || undefined
+	const db = c.get('db')!
+	const searchCharacterIds =
+		searchQuery && searchQuery.length > 0
+			? (
+				await db.query.userCharacters.findMany({
+					where: ilike(userCharacters.characterName, `%${searchQuery}%`),
+					columns: { characterId: true },
+					limit: 200,
+				})
+			).map((character) => character.characterId)
+			: []
+
+	const filters: ApplicationFilters = {
+		corporationId: c.req.query('corporationId'),
+		userId: c.req.query('userId'),
+		characterId: c.req.query('characterId'),
+		status: c.req.query('status') as ApplicationFilters['status'],
+		search: searchQuery,
+		characterIds: searchCharacterIds.length > 0 ? searchCharacterIds : undefined,
+		limit: pagination.data.limit,
+		offset: pagination.data.offset,
+	}
+
+	try {
+		const hr = getHrStub(c)
+		const isAuditor = await hasHrAuditorPermission(c)
+		const result = await hr.listApplicationsPaged(filters, user.id, {
+			isAdmin: user.is_admin,
+			isAuditor,
+		})
+
+		const resolver = getStub<EsiTypeResolver>(c.env.ESI_TYPE_RESOLVER, 'global')
+		const enriched = await enrichApplications(result.items, resolver, db)
+
+		return c.json({
+			items: enriched,
+			total: result.total,
+			limit: result.limit,
+			offset: result.offset,
+			counts: result.counts,
+		})
 	} catch (error) {
 		return c.json(
 			{ error: error instanceof Error ? error.message : 'Failed to list applications' },

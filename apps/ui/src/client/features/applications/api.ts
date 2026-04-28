@@ -191,8 +191,23 @@ export interface ApplicationsParams {
 	userId?: string
 	characterId?: string
 	status?: ApplicationStatus
+	search?: string
 	limit?: number
 	offset?: number
+}
+
+export interface ApplicationsListResult {
+	items: Application[]
+	total: number
+	limit: number
+	offset: number
+	counts: {
+		pending: number
+		under_review: number
+		accepted: number
+		rejected: number
+		withdrawn: number
+	}
 }
 
 /**
@@ -322,11 +337,26 @@ export const applicationsApi = {
 		if (params?.userId) searchParams.set('userId', params.userId)
 		if (params?.characterId) searchParams.set('characterId', params.characterId)
 		if (params?.status) searchParams.set('status', params.status)
+		if (params?.search) searchParams.set('search', params.search)
 		if (params?.limit !== undefined) searchParams.set('limit', params.limit.toString())
 		if (params?.offset !== undefined) searchParams.set('offset', params.offset.toString())
 
 		const query = searchParams.toString()
 		return apiClient.get(`/hr/applications${query ? `?${query}` : ''}`)
+	},
+
+	async getApplicationsPaged(params?: ApplicationsParams): Promise<ApplicationsListResult> {
+		const searchParams = new URLSearchParams()
+		if (params?.corporationId) searchParams.set('corporationId', params.corporationId)
+		if (params?.userId) searchParams.set('userId', params.userId)
+		if (params?.characterId) searchParams.set('characterId', params.characterId)
+		if (params?.status) searchParams.set('status', params.status)
+		if (params?.search) searchParams.set('search', params.search)
+		if (params?.limit !== undefined) searchParams.set('limit', params.limit.toString())
+		if (params?.offset !== undefined) searchParams.set('offset', params.offset.toString())
+
+		const query = searchParams.toString()
+		return apiClient.get(`/hr/applications/paged${query ? `?${query}` : ''}`)
 	},
 
 	/**

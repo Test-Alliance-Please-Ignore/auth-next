@@ -18,7 +18,7 @@ import {
 	mrtTableHeadProps,
 	mrtTableProps,
 } from '@/lib/mrt-theme'
-import { useMemo } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 
 import { Link } from 'react-router-dom'
 
@@ -28,7 +28,7 @@ import { Button } from '@/components/ui/button'
 import { ApplicationStatusBadge } from './application-status-badge'
 
 import type { MRT_ColumnDef } from 'mantine-react-table'
-import type { Application, ApplicationStatus } from '../api'
+import type { Application } from '../api'
 
 // ============================================================================
 // Types
@@ -40,12 +40,12 @@ export interface ApplicationsTableProps {
 	/** Build the href for an application row. Enables right-click "Open in new tab". */
 	getApplicationHref?: (app: Application) => string
 	onApplicationClick?: (app: Application) => void
-	filters?: {
-		status?: ApplicationStatus[]
-		search?: string
-	}
-	onFilterChange?: (filters: ApplicationsTableProps['filters']) => void
 	canManage?: boolean
+	totalCount?: number
+	page?: number
+	pageSize?: number
+	onPageChange?: (page: number) => void
+	onPageSizeChange?: (pageSize: number) => void
 }
 
 // ============================================================================
@@ -182,15 +182,26 @@ export function ApplicationsTable({
 	loading = false,
 	getApplicationHref,
 	onApplicationClick,
-	filters,
-	onFilterChange,
 	canManage = false,
+	totalCount,
+	page = 1,
+	pageSize = 10,
+	onPageChange,
+	onPageSizeChange,
 }: ApplicationsTableProps) {
-	// Pre-filter by status (controlled externally via tabs)
-	const rows = useMemo(() => {
-		if (!filters?.status || filters.status.length === 0) return applications
-		return applications.filter((app) => filters.status?.includes(app.status))
-	}, [applications, filters?.status])
+	const [pagination, setPagination] = useState({
+		pageIndex: Math.max(page - 1, 0),
+		pageSize,
+	})
+
+	useEffect(() => {
+		setPagination((prev) => ({
+			pageIndex: Math.max(page - 1, 0),
+			pageSize: pageSize ?? prev.pageSize,
+		}))
+	}, [page, pageSize])
+
+	const rows = applications
 
 	const columns = useMemo(
 		() => buildColumns(onApplicationClick, getApplicationHref, canManage),
@@ -211,15 +222,24 @@ export function ApplicationsTable({
 		enableStickyHeader: true,
 		enableTopToolbar: false,
 		enableToolbarInternalActions: false,
-		globalFilterFn: ((row: any, _columnId: string, filterValue: string) => {
-			if (!filterValue) return true
-			const q = (filterValue as string).toLowerCase()
-			return row.original.characterName.toLowerCase().includes(q)
-		}) as any,
 		paginationDisplayMode: 'pages',
 		mantinePaginationProps: {
 			showRowsPerPage: true,
-			rowsPerPageOptions: ['25', '50', '100', '200'],
+			rowsPerPageOptions: ['10', '25', '50', '100', '200'],
+		},
+		manualPagination: typeof totalCount === 'number',
+		rowCount: totalCount,
+		onPaginationChange: (updater) => {
+			setPagination((prev) => {
+				const next = typeof updater === 'function' ? updater(prev) : updater
+				if (next.pageIndex !== prev.pageIndex) {
+					onPageChange?.(next.pageIndex + 1)
+				}
+				if (next.pageSize !== prev.pageSize) {
+					onPageSizeChange?.(next.pageSize)
+				}
+				return next
+			})
 		},
 		mantinePaperProps: mrtPaperProps,
 		mantineTableContainerProps: { style: { maxHeight: 'calc(100vh - 16rem)' } },
@@ -260,9 +280,11 @@ export function ApplicationsTable({
 		state: {
 			isLoading: loading,
 			showProgressBars: loading,
+			pagination,
 		},
 		initialState: {
 			sorting: [{ id: 'createdAt', desc: true }],
+			pagination: { pageIndex: 0, pageSize: 10 },
 		},
 	})
 
