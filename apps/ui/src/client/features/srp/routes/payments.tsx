@@ -21,6 +21,12 @@ type GhostExitCard = {
 	top: number
 }
 
+function toTimestamp(value: string | null | undefined): number {
+	if (!value) return 0
+	const parsed = Date.parse(value)
+	return Number.isNaN(parsed) ? 0 : parsed
+}
+
 export default function PaymentsQueue() {
 	const { hasAnyPermission } = useUserPermissions()
 
@@ -67,8 +73,8 @@ function PaymentStack() {
 
 	const requests = rawRequests.filter((r: SRPRequestResponse) => !dismissed.has(r.id))
 	const sortedRequests = [...requests].sort((a, b) => {
-		const aTime = Date.parse(a.reviewedAt ?? a.createdAt ?? a.lossDate)
-		const bTime = Date.parse(b.reviewedAt ?? b.createdAt ?? b.lossDate)
+		const aTime = toTimestamp(a.createdAt)
+		const bTime = toTimestamp(b.createdAt)
 		return aTime - bTime
 	})
 	const visibleRequestIds = sortedRequests.map((request) => request.id).join('|')
