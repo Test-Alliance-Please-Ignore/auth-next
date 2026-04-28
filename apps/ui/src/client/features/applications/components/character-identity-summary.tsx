@@ -58,11 +58,11 @@ export function CharacterSpWalletLine({
 }: CharacterSpWalletLineProps) {
 	if (isLoading) {
 		return (
-			<p className={cn('mt-1 flex items-center gap-2 text-sm text-muted-foreground', className)}>
+			<div className={cn('mt-1 flex items-center gap-2 text-sm text-muted-foreground', className)}>
 				<Skeleton className="h-4 w-24" />
 				<span>—</span>
 				<Skeleton className="h-4 w-28" />
-			</p>
+			</div>
 		)
 	}
 
