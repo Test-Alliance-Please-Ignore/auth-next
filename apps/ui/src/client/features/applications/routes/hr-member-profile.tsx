@@ -49,7 +49,17 @@ import {
 	ProfileCharactersSection,
 	ProfileNotesSection,
 } from '../components/user-profile-sections'
-import { useApplicationFulcrum, useApplications, useHRNotes, useRequestFulcrumReport } from '../hooks'
+import {
+	FulcrumBulkScanDialog,
+	useFulcrumScanDmPreference,
+} from '../components/fulcrum-scan-dialogs'
+import {
+	useApplicationFulcrum,
+	useApplications,
+	useHRNotes,
+	useRequestFulcrumReport,
+	useRequestFulcrumReportBatch,
+} from '../hooks'
 
 import type { CorporationMember } from '../../corporations/api'
 import type { FulcrumCharacterData } from '../api'
@@ -65,6 +75,7 @@ interface UnifiedCharacter {
 	member?: CorporationMember
 	fulcrum?: FulcrumCharacterData
 }
+
 
 // Test compatibility helper retained after section-component extraction.
 export function resolveEsiBadgeState({
@@ -107,6 +118,13 @@ export default function HrMemberProfile() {
 	const isAuditor = hasAnyPermission('urn:hr:auditor')
 	const { canAccess: hasCorporationAccess } = useCanAccessCorporation(corporationId ?? '')
 	const [addNoteOpen, setAddNoteOpen] = useState(false)
+	const [scanAllDialogOpen, setScanAllDialogOpen] = useState(false)
+	const [isScanningAll, setIsScanningAll] = useState(false)
+	const {
+		sendDmForScanRequests,
+		setSendDmForScanRequests,
+		persistSendDmPreference,
+	} = useFulcrumScanDmPreference()
 
 	// Permissions
 	const { data: permission, isLoading: permissionLoading } = useHrPermissionCheck(
@@ -143,6 +161,7 @@ export default function HrMemberProfile() {
 	)
 
 	const requestReport = useRequestFulcrumReport()
+	const requestReportBatch = useRequestFulcrumReportBatch()
 
 	// Application history
 	const { data: applications, isLoading: appsLoading } = useApplications(
@@ -216,6 +235,68 @@ export default function HrMemberProfile() {
 		)
 		return inCorpIds.size
 	}, [unifiedCharacters])
+	const scanEligibleCharacters = useMemo(
+		() =>
+			unifiedCharacters.filter((character) => {
+				const hasPending =
+					character.fulcrum?.reports.some(
+						(report) => report.status === 'pending' || report.status === 'processing'
+					) ?? false
+				return Boolean(character.fulcrum?.corporationId) && !hasPending
+			}),
+		[unifiedCharacters]
+	)
+
+	const handleScanAllCharacters = async (sendDm: boolean) => {
+		if (!authUserId || scanEligibleCharacters.length === 0) return
+		setIsScanningAll(true)
+		try {
+			const groups = new Map<string, string[]>()
+			for (const character of scanEligibleCharacters) {
+				const groupCorporationId = character.fulcrum?.corporationId
+				if (!groupCorporationId) continue
+				const existing = groups.get(groupCorporationId)
+				if (existing) {
+					existing.push(character.characterId)
+				} else {
+					groups.set(groupCorporationId, [character.characterId])
+				}
+			}
+			let sentDmForAnyBatch = false
+			for (const [groupCorporationId, characterIds] of groups.entries()) {
+				const sendDmForBatch = sendDm && !sentDmForAnyBatch
+				await requestReportBatch.mutateAsync({
+					characterIds,
+					corporationId: groupCorporationId,
+					requestSource: 'hr',
+					userId: authUserId,
+					targetUserId: authUserId,
+					sendDm: sendDmForBatch,
+				})
+				if (sendDmForBatch) sentDmForAnyBatch = true
+			}
+		} finally {
+			setIsScanningAll(false)
+		}
+	}
+
+	const handleOpenScanAllDialog = () => {
+		if (
+			isScanningAll ||
+			requestReport.isPending ||
+			requestReportBatch.isPending ||
+			scanEligibleCharacters.length === 0
+		) {
+			return
+		}
+		setScanAllDialogOpen(true)
+	}
+
+	const handleConfirmScanAll = () => {
+		persistSendDmPreference(sendDmForScanRequests)
+		setScanAllDialogOpen(false)
+		void handleScanAllCharacters(sendDmForScanRequests)
+	}
 
 	const accountName = account?.mainName ?? searchParams.get('name') ?? 'Member'
 
@@ -481,6 +562,18 @@ export default function HrMemberProfile() {
 						fulcrumLoading={
 							fulcrumLoading && unifiedCharacters.length === account.characters.length
 						}
+						isScanAllVisible
+						isScanningAll={isScanningAll}
+						scanAllLabel={
+							isScanningAll ? 'Scanning All...' : `Scan All (${scanEligibleCharacters.length})`
+						}
+						scanAllDisabled={
+							isScanningAll ||
+							requestReport.isPending ||
+							requestReportBatch.isPending ||
+							scanEligibleCharacters.length === 0
+						}
+						onScanAll={handleOpenScanAllDialog}
 						isScanPendingFor={(characterId) =>
 							requestReport.isPending &&
 							(requestReport.variables as { characterId?: string } | undefined)?.characterId ===
@@ -550,6 +643,14 @@ export default function HrMemberProfile() {
 					subjectCharacterName={accountName}
 				/>
 			)}
+			<FulcrumBulkScanDialog
+				open={scanAllDialogOpen}
+				onOpenChange={setScanAllDialogOpen}
+				eligibleCount={scanEligibleCharacters.length}
+				sendDmForScanRequests={sendDmForScanRequests}
+				setSendDmForScanRequests={setSendDmForScanRequests}
+				onConfirm={handleConfirmScanAll}
+			/>
 		</Container>
 	)
 }

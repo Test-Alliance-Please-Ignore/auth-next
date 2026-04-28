@@ -16,16 +16,7 @@ import {
 } from '@/components/ui/breadcrumb'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
-import { Checkbox } from '@/components/ui/checkbox'
 import { Container } from '@/components/ui/container'
-import {
-	Dialog,
-	DialogContent,
-	DialogDescription,
-	DialogFooter,
-	DialogHeader,
-	DialogTitle,
-} from '@/components/ui/dialog'
 import { LoadingSpinner } from '@/components/ui/loading'
 import { Separator } from '@/components/ui/separator'
 import { useAuth } from '@/hooks/useAuth'
@@ -41,6 +32,11 @@ import {
 	ProfileCharactersSection,
 	ProfileNotesSection,
 } from '../components/user-profile-sections'
+import {
+	FulcrumBulkScanDialog,
+	FulcrumSingleScanDialog,
+	useFulcrumScanDmPreference,
+} from '../components/fulcrum-scan-dialogs'
 import { useApplications, useHRNotes, useRequestFulcrumReport, useRequestFulcrumReportBatch } from '../hooks'
 import { auditorUserKeys, useAuditorFulcrum, useAuditorUser } from '../../../hooks/useAuditorUsers'
 import { myCorporationsApi } from '../../corporations/api'
@@ -68,14 +64,6 @@ interface AuditorCharacterRow {
 	hasPendingReport: boolean
 }
 
-const SCAN_ALL_SEND_DM_PREF_KEY = 'fulcrum:scan-all:send-dm'
-
-function getInitialScanAllSendDm(): boolean {
-	if (typeof window === 'undefined') return true
-	const raw = window.localStorage.getItem(SCAN_ALL_SEND_DM_PREF_KEY)
-	return raw === null ? true : raw === 'true'
-}
-
 function getLatestReport(character: FulcrumCharacterData): CharacterReportMetadata | null {
 	if (character.reports.length === 0) return null
 	return character.reports.reduce((latest, report) =>
@@ -95,8 +83,12 @@ export default function HrAuditorUserProfilePage() {
 	const [isScanningAll, setIsScanningAll] = useState(false)
 	const [scanAllDialogOpen, setScanAllDialogOpen] = useState(false)
 	const [singleScanDialogCharacter, setSingleScanDialogCharacter] = useState<AuditorCharacterRow | null>(null)
-	const [sendDmForScanRequests, setSendDmForScanRequests] = useState(getInitialScanAllSendDm)
 	const [addNoteDialogOpen, setAddNoteDialogOpen] = useState(false)
+	const {
+		sendDmForScanRequests,
+		setSendDmForScanRequests,
+		persistSendDmPreference,
+	} = useFulcrumScanDmPreference()
 
 	const { data: userDetails, isLoading: userLoading } = useAuditorUser(userId ?? '')
 	const { data: fulcrumCharacters, isLoading: fulcrumLoading } = useAuditorFulcrum(userId ?? '', !!userId)
@@ -370,9 +362,7 @@ export default function HrAuditorUserProfilePage() {
 	}
 
 	const handleConfirmScanAll = () => {
-		if (typeof window !== 'undefined') {
-			window.localStorage.setItem(SCAN_ALL_SEND_DM_PREF_KEY, sendDmForScanRequests ? 'true' : 'false')
-		}
+		persistSendDmPreference(sendDmForScanRequests)
 		setScanAllDialogOpen(false)
 		void handleScanAllCharacters(sendDmForScanRequests)
 	}
@@ -384,9 +374,7 @@ export default function HrAuditorUserProfilePage() {
 
 	const handleConfirmSingleScan = () => {
 		if (!singleScanDialogCharacter) return
-		if (typeof window !== 'undefined') {
-			window.localStorage.setItem(SCAN_ALL_SEND_DM_PREF_KEY, sendDmForScanRequests ? 'true' : 'false')
-		}
+		persistSendDmPreference(sendDmForScanRequests)
 		const character = singleScanDialogCharacter
 		setSingleScanDialogCharacter(null)
 		handleRequestReport(character, sendDmForScanRequests)
@@ -577,73 +565,22 @@ export default function HrAuditorUserProfilePage() {
 					}}
 				/>
 			)}
-			<Dialog open={scanAllDialogOpen} onOpenChange={setScanAllDialogOpen}>
-				<DialogContent className="sm:max-w-[500px]">
-					<DialogHeader>
-						<DialogTitle>Generate Reports For All Eligible Characters?</DialogTitle>
-						<DialogDescription>
-							This will queue {scanEligibleCharacters.length} report
-							{scanEligibleCharacters.length === 1 ? '' : 's'}.
-						</DialogDescription>
-					</DialogHeader>
-					<div className="space-y-2">
-						<label
-							htmlFor="scan-all-send-dm"
-							className="flex cursor-pointer items-center gap-2 rounded-md border p-3"
-						>
-							<Checkbox
-								id="scan-all-send-dm"
-								checked={sendDmForScanRequests}
-								onCheckedChange={(checked) => setSendDmForScanRequests(checked === true)}
-							/>
-							<div>
-								<span className="text-sm font-medium leading-none">Send DM for report status</span>
-							</div>
-						</label>
-					</div>
-					<DialogFooter>
-						<Button variant="cancel" onClick={() => setScanAllDialogOpen(false)}>
-							Cancel
-						</Button>
-						<Button variant="confirm" onClick={handleConfirmScanAll}>
-							Generate Reports
-						</Button>
-					</DialogFooter>
-				</DialogContent>
-			</Dialog>
-			<Dialog open={singleScanDialogCharacter !== null} onOpenChange={(open) => !open && setSingleScanDialogCharacter(null)}>
-				<DialogContent className="sm:max-w-[500px]">
-					<DialogHeader>
-						<DialogTitle>Generate Report For {singleScanDialogCharacter?.characterName ?? 'Character'}?</DialogTitle>
-						<DialogDescription>
-							This will queue one character report.
-						</DialogDescription>
-					</DialogHeader>
-					<div className="space-y-2">
-						<label
-							htmlFor="single-scan-send-dm"
-							className="flex cursor-pointer items-center gap-2 rounded-md border p-3"
-						>
-							<Checkbox
-								id="single-scan-send-dm"
-								checked={sendDmForScanRequests}
-								onCheckedChange={(checked) => setSendDmForScanRequests(checked === true)}
-							/>
-							<div>
-								<span className="text-sm font-medium leading-none">Send DM for report status</span>
-							</div>
-						</label>
-					</div>
-					<DialogFooter>
-						<Button variant="cancel" onClick={() => setSingleScanDialogCharacter(null)}>
-							Cancel
-						</Button>
-						<Button variant="confirm" onClick={handleConfirmSingleScan}>
-							Generate Report
-						</Button>
-					</DialogFooter>
-				</DialogContent>
-			</Dialog>
+			<FulcrumBulkScanDialog
+				open={scanAllDialogOpen}
+				onOpenChange={setScanAllDialogOpen}
+				eligibleCount={scanEligibleCharacters.length}
+				sendDmForScanRequests={sendDmForScanRequests}
+				setSendDmForScanRequests={setSendDmForScanRequests}
+				onConfirm={handleConfirmScanAll}
+			/>
+			<FulcrumSingleScanDialog
+				open={singleScanDialogCharacter !== null}
+				onOpenChange={(open) => !open && setSingleScanDialogCharacter(null)}
+				characterName={singleScanDialogCharacter?.characterName ?? 'Character'}
+				sendDmForScanRequests={sendDmForScanRequests}
+				setSendDmForScanRequests={setSendDmForScanRequests}
+				onConfirm={handleConfirmSingleScan}
+			/>
 		</Container>
 	)
 }
