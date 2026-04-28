@@ -46,6 +46,12 @@ type ReviewQueueFilters = {
 	dateTo?: string
 }
 
+function toTimestamp(value: string | null | undefined): number {
+	if (!value) return 0
+	const parsed = Date.parse(value)
+	return Number.isNaN(parsed) ? 0 : parsed
+}
+
 export default function ReviewQueue() {
 	const { hasPermission, isAdmin } = useUserPermissions()
 	const [activeTab, setActiveTab] = useState<RequestStatus>(() => {
@@ -243,7 +249,9 @@ function ReviewTabContent({ status, filters }: { status: RequestStatus; filters:
 		)
 	}
 
-	const requests: SRPRequestResponse[] = data?.requests ?? []
+	const requests: SRPRequestResponse[] = [...(data?.requests ?? [])].sort((a, b) => {
+		return toTimestamp(a.createdAt) - toTimestamp(b.createdAt)
+	})
 
 	if (requests.length === 0) {
 		return (
