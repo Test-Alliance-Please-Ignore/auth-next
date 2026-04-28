@@ -206,7 +206,7 @@ export function NotificationsSection({ data: raw }: { data: unknown }) {
             {/* ---- Left sidebar ---- */}
             <div className="flex w-52 shrink-0 flex-col border-r border-border bg-card/60">
                 <div className="border-b border-border px-3 py-2">
-                    <span className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
+                    <span className="text-sm font-semibold uppercase tracking-wider text-muted-foreground">
                         Types
                     </span>
                 </div>
@@ -215,14 +215,14 @@ export function NotificationsSection({ data: raw }: { data: unknown }) {
                     <button
                         onClick={() => selectType(null)}
                         className={cn(
-                            'flex w-full items-center justify-between px-3 py-1.5 text-left text-xs transition-colors',
+                            'flex w-full items-center justify-between px-3 py-1.5 text-left text-sm transition-colors',
                             activeType === null
                                 ? 'bg-primary/15 text-primary font-medium'
                                 : 'text-muted-foreground hover:bg-muted/40 hover:text-foreground',
                         )}
                     >
                         <span className="truncate">All Notifications</span>
-                        <span className="ml-1 shrink-0 text-[10px] tabular-nums opacity-60">
+                        <span className="ml-1 shrink-0 text-xs tabular-nums opacity-60">
                             {notifications.length}
                         </span>
                     </button>
@@ -233,21 +233,21 @@ export function NotificationsSection({ data: raw }: { data: unknown }) {
                             key={type}
                             onClick={() => selectType(type)}
                             className={cn(
-                                'flex w-full items-center justify-between px-3 py-1.5 text-left text-xs transition-colors',
+                                'flex w-full items-center justify-between px-3 py-1.5 text-left text-sm transition-colors',
                                 activeType === type
                                     ? 'bg-primary/15 text-primary font-medium'
                                     : 'text-muted-foreground hover:bg-muted/40 hover:text-foreground',
                             )}
                         >
                             <span className="truncate">{humanType(type)}</span>
-                            <span className="ml-1 shrink-0 text-[10px] tabular-nums opacity-60">
+                            <span className="ml-1 shrink-0 text-xs tabular-nums opacity-60">
                                 {typeCounts.get(type) ?? 0}
                             </span>
                         </button>
                     ))}
                 </nav>
                 <div className="border-t border-border px-3 py-2">
-                    <span className="text-xs text-muted-foreground">
+                    <span className="text-sm text-muted-foreground">
                         {notifications.length} total
                     </span>
                 </div>
@@ -267,13 +267,13 @@ export function NotificationsSection({ data: raw }: { data: unknown }) {
                                 setPage(0)
                             }}
                             placeholder="Search notifications..."
-                            className="h-6 flex-1 rounded border border-border bg-background/50 px-2 text-xs text-foreground placeholder:text-muted-foreground focus:border-primary focus:outline-none"
+                            className="h-8 flex-1 rounded border border-border bg-background/50 px-2 text-sm text-foreground placeholder:text-muted-foreground focus:border-primary focus:outline-none"
                         />
-                        <span className="shrink-0 text-xs text-muted-foreground">
+                        <span className="shrink-0 text-sm text-muted-foreground">
                             {filtered.length} notification{filtered.length !== 1 ? 's' : ''}
                         </span>
                         {totalPages > 1 && (
-                            <div className="flex shrink-0 items-center gap-1.5 text-xs">
+                            <div className="flex shrink-0 items-center gap-1.5 text-sm">
                                 <button
                                     onClick={() => setPage((p) => Math.max(0, p - 1))}
                                     disabled={page === 0}
@@ -298,7 +298,7 @@ export function NotificationsSection({ data: raw }: { data: unknown }) {
                     {/* Rows */}
                     <div className="flex-1 overflow-y-auto">
                         {pageItems.length === 0 ? (
-                            <p className="px-3 py-4 text-xs text-muted-foreground">
+                            <p className="px-3 py-4 text-sm text-muted-foreground">
                                 {searchQuery
                                     ? 'No notifications match your search.'
                                     : 'No notifications of this type.'}
@@ -323,7 +323,7 @@ export function NotificationsSection({ data: raw }: { data: unknown }) {
                                             <div className="flex items-baseline justify-between gap-2">
                                                 <span
                                                     className={cn(
-                                                        'truncate text-xs',
+                                                        'truncate text-sm',
                                                         isSelected
                                                             ? 'font-semibold text-primary'
                                                             : 'font-medium text-foreground',
@@ -331,11 +331,11 @@ export function NotificationsSection({ data: raw }: { data: unknown }) {
                                                 >
                                                     {humanType(n.type)}
                                                 </span>
-                                                <span className="shrink-0 text-[10px] text-muted-foreground">
+                                                <span className="shrink-0 text-xs text-muted-foreground">
                                                     {formatShortDate(n.timestamp)}
                                                 </span>
                                             </div>
-                                            <div className="mt-0.5 text-[10px] text-muted-foreground">
+                                            <div className="mt-0.5 text-xs text-muted-foreground">
                                                 <span className="truncate">
                                                     From: {n.senderName || n.sender_type || 'Unknown'}
                                                 </span>
@@ -353,10 +353,10 @@ export function NotificationsSection({ data: raw }: { data: unknown }) {
                     {selectedNotification ? (
                         <>
                             <div className="border-b border-border bg-card/80 px-4 py-2">
-                                <h3 className="text-sm font-semibold text-foreground">
+                                <h3 className="text-base font-semibold text-foreground">
                                     {humanType(selectedNotification.type)}
                                 </h3>
-                                <div className="mt-1 flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
+                                <div className="mt-1 flex flex-wrap items-center gap-2 text-sm text-muted-foreground">
                                     <span>
                                         From:{' '}
                                         <strong>
@@ -377,7 +377,7 @@ export function NotificationsSection({ data: raw }: { data: unknown }) {
                             <div className="flex-1 overflow-y-auto px-4 py-3">
                                 {selectedNotification.parsedText &&
                                     Object.keys(selectedNotification.parsedText).length > 0 ? (
-                                    <table className="w-full text-xs">
+                                    <table className="w-full text-sm">
                                         <tbody>
                                             {Object.entries(
                                                 selectedNotification.parsedText,
@@ -397,11 +397,11 @@ export function NotificationsSection({ data: raw }: { data: unknown }) {
                                         </tbody>
                                     </table>
                                 ) : selectedNotification.text ? (
-                                    <p className="whitespace-pre-wrap text-xs leading-relaxed text-muted-foreground">
+                                    <p className="whitespace-pre-wrap text-sm leading-relaxed text-muted-foreground">
                                         {selectedNotification.text}
                                     </p>
                                 ) : (
-                                    <p className="text-xs text-muted-foreground italic">
+                                    <p className="text-sm text-muted-foreground italic">
                                         No content available.
                                     </p>
                                 )}
@@ -409,7 +409,7 @@ export function NotificationsSection({ data: raw }: { data: unknown }) {
                         </>
                     ) : (
                         <div className="flex flex-1 items-center justify-center">
-                            <p className="text-xs text-muted-foreground">
+                            <p className="text-sm text-muted-foreground">
                                 Select a notification to view its content.
                             </p>
                         </div>

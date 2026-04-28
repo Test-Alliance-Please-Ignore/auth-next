@@ -27,6 +27,7 @@ interface UseFulcrumTableOptions<Row extends MRT_RowData> {
 	pageSize?: number
 	enableColumnFilters?: boolean
 	renderDetailPanel?: MRT_TableOptions<Row>['renderDetailPanel']
+	renderTopToolbarCustomActions?: MRT_TableOptions<Row>['renderTopToolbarCustomActions']
 	getRowClassName?: (row: Row) => string | undefined
 }
 
@@ -38,6 +39,7 @@ export function useFulcrumTable<Row extends MRT_RowData>({
 	pageSize = 25,
 	enableColumnFilters = true,
 	renderDetailPanel,
+	renderTopToolbarCustomActions,
 	getRowClassName,
 }: UseFulcrumTableOptions<Row>) {
 	return useMantineReactTable({
@@ -58,6 +60,7 @@ export function useFulcrumTable<Row extends MRT_RowData>({
 		enableTopToolbar: true,
 		enableExpanding: Boolean(renderDetailPanel),
 		renderDetailPanel,
+		renderTopToolbarCustomActions,
 		columnFilterDisplayMode: 'popover',
 		initialState: {
 			pagination: { pageIndex: 0, pageSize },
@@ -70,7 +73,10 @@ export function useFulcrumTable<Row extends MRT_RowData>({
 			style: { minWidth: '280px' },
 		},
 		paginationDisplayMode: 'pages',
-		mantinePaginationProps: mrtPaginationProps,
+		mantinePaginationProps: {
+			...mrtPaginationProps,
+			rowsPerPageOptions: ['25', '50', '100', '200', '500', '1000'],
+		},
 		mantinePaperProps: mrtPaperProps,
 		mantineTableContainerProps: mrtTableContainerProps,
 		mantineTableProps: { ...mrtTableProps, style: { ...mrtTableProps.style, tableLayout: 'auto' } },

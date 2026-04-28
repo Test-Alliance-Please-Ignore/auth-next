@@ -47,6 +47,19 @@ function makeHrStub() {
 		getUserHrCorporations: vi.fn().mockResolvedValue([]),
 		checkPermission: vi.fn().mockResolvedValue(false),
 		listApplications: vi.fn().mockResolvedValue([]),
+		listApplicationsPaged: vi.fn().mockResolvedValue({
+			items: [],
+			total: 0,
+			limit: 10,
+			offset: 0,
+			counts: {
+				pending: 0,
+				under_review: 0,
+				accepted: 0,
+				rejected: 0,
+				withdrawn: 0,
+			},
+		}),
 		getApplication: vi.fn().mockResolvedValue({
 			id: 'app-1',
 			userId: 'target-user-1',
@@ -386,6 +399,67 @@ describe('hr route access matrix', () => {
 			expect.objectContaining({ corporationId: '1001' }),
 			'user-1',
 			{ isAdmin: false, isAuditor: true }
+		)
+	})
+
+	it('passes auditor=true into listApplicationsPaged for auditors', async () => {
+		getCachedUserPermissionsMock.mockResolvedValue([
+			{
+				permissionId: 'perm-auditor',
+				urn: 'urn:hr:auditor',
+				name: 'HR Auditor',
+				description: null,
+				category: null,
+				groupId: 'g-1',
+				groupName: 'HR',
+				targetType: 'all_members',
+				source: 'global',
+			},
+		] as any)
+		const app = createApp({ user: makeUser(), db: dbStub })
+		const res = await app.request('/api/hr/applications/paged?corporationId=1001&limit=10&offset=0', {}, env)
+
+		expect(res.status).toBe(200)
+		expect(hrStub.listApplicationsPaged).toHaveBeenCalledWith(
+			expect.objectContaining({ corporationId: '1001', limit: 10, offset: 0 }),
+			'user-1',
+			{ isAdmin: false, isAuditor: true }
+		)
+	})
+
+	it('passes admin=true into listApplicationsPaged for site admins', async () => {
+		const app = createApp({ user: makeUser({ is_admin: true }), db: dbStub })
+		const res = await app.request('/api/hr/applications/paged?corporationId=1001&limit=10&offset=0', {}, env)
+
+		expect(res.status).toBe(200)
+		expect(hrStub.listApplicationsPaged).toHaveBeenCalledWith(
+			expect.objectContaining({ corporationId: '1001', limit: 10, offset: 0 }),
+			'user-1',
+			{ isAdmin: true, isAuditor: false }
+		)
+	})
+
+	it('allows CEO path to reach listApplicationsPaged with standard access flags', async () => {
+		const ceoUser = makeUser({
+			characters: [
+				{
+					id: 'uc-ceo',
+					characterOwnerHash: 'owner-ceo',
+					characterId: 'ceo-character-id',
+					characterName: 'CEO Pilot',
+					is_primary: true,
+					hasValidToken: true,
+				},
+			],
+		})
+		const app = createApp({ user: ceoUser, db: dbStub })
+		const res = await app.request('/api/hr/applications/paged?corporationId=1001&limit=10&offset=0', {}, env)
+
+		expect(res.status).toBe(200)
+		expect(hrStub.listApplicationsPaged).toHaveBeenCalledWith(
+			expect.objectContaining({ corporationId: '1001', limit: 10, offset: 0 }),
+			'user-1',
+			{ isAdmin: false, isAuditor: false }
 		)
 	})
 

@@ -275,7 +275,7 @@ export function MailsSection({
 			{/* ---- Left sidebar ---- */}
 			<div className="flex w-48 shrink-0 flex-col border-r border-border bg-card/60">
 				<div className="border-b border-border px-3 py-2">
-					<span className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
+					<span className="text-sm font-semibold uppercase tracking-wider text-muted-foreground">
 						Folders
 					</span>
 				</div>
@@ -285,7 +285,7 @@ export function MailsSection({
 							key={f.id}
 							onClick={() => selectFolder(f.id)}
 							className={cn(
-								'flex w-full items-center px-3 py-1.5 text-left text-xs transition-colors',
+								'flex w-full items-center px-3 py-1.5 text-left text-sm transition-colors',
 								activeFolder === f.id
 									? 'bg-primary/15 text-primary font-medium'
 									: 'text-muted-foreground hover:bg-muted/40 hover:text-foreground',
@@ -300,7 +300,7 @@ export function MailsSection({
 						<>
 							<button
 								onClick={() => setMlExpanded((v) => !v)}
-								className="flex w-full items-center gap-1 px-3 py-1.5 text-left text-xs text-muted-foreground hover:text-foreground"
+								className="flex w-full items-center gap-1 px-3 py-1.5 text-left text-sm text-muted-foreground hover:text-foreground"
 							>
 								<span className="text-[10px]">{mlExpanded ? '▾' : '▸'}</span>
 								<span className="font-semibold uppercase tracking-wider text-muted-foreground">
@@ -313,7 +313,7 @@ export function MailsSection({
 										key={f.id}
 										onClick={() => selectFolder(f.id)}
 										className={cn(
-											'flex w-full items-center pl-5 pr-3 py-1.5 text-left text-xs transition-colors',
+											'flex w-full items-center py-1.5 pl-5 pr-3 text-left text-sm transition-colors',
 											activeFolder === f.id
 												? 'bg-primary/15 text-primary font-medium'
 												: 'text-muted-foreground hover:bg-muted/40 hover:text-foreground',
@@ -326,7 +326,7 @@ export function MailsSection({
 					)}
 				</nav>
 				<div className="border-t border-border px-3 py-2">
-					<span className="text-xs text-muted-foreground">
+					<span className="text-sm text-muted-foreground">
 						{mails.length} total
 					</span>
 				</div>
@@ -346,13 +346,13 @@ export function MailsSection({
 								setPage(0)
 							}}
 							placeholder="Search mails..."
-							className="h-6 flex-1 rounded border border-border bg-background/50 px-2 text-xs text-foreground placeholder:text-muted-foreground focus:border-primary focus:outline-none"
+							className="h-8 flex-1 rounded border border-border bg-background/50 px-2 text-sm text-foreground placeholder:text-muted-foreground focus:border-primary focus:outline-none"
 						/>
-						<span className="shrink-0 text-xs text-muted-foreground">
+						<span className="shrink-0 text-sm text-muted-foreground">
 							{filtered.length} mail{filtered.length !== 1 ? 's' : ''}
 						</span>
 						{totalPages > 1 && (
-							<div className="flex shrink-0 items-center gap-1.5 text-xs">
+							<div className="flex shrink-0 items-center gap-1.5 text-sm">
 								<button
 									onClick={() => setPage((p) => Math.max(0, p - 1))}
 									disabled={page === 0}
@@ -377,7 +377,7 @@ export function MailsSection({
 					{/* Rows */}
 					<div className="flex-1 overflow-y-auto">
 						{pageMails.length === 0 ? (
-							<p className="px-3 py-4 text-xs text-muted-foreground">
+							<p className="px-3 py-4 text-sm text-muted-foreground">
 								{searchQuery ? 'No mails match your search.' : 'No mails in this folder.'}
 							</p>
 						) : (
@@ -398,17 +398,17 @@ export function MailsSection({
 											<div className="flex items-baseline justify-between gap-2">
 												<span
 													className={cn(
-														'truncate text-xs',
+														'truncate text-sm',
 														isSelected ? 'font-semibold text-primary' : 'font-medium text-foreground',
 													)}
 												>
 													{mail.subject || '(No Subject)'}
 												</span>
-												<span className="shrink-0 text-[10px] text-muted-foreground">
+												<span className="shrink-0 text-xs text-muted-foreground">
 													{formatShortDate(mail.timestamp)}
 												</span>
 											</div>
-											<div className="mt-0.5 flex items-center gap-2 text-[10px] text-muted-foreground">
+											<div className="mt-0.5 flex items-center gap-2 text-xs text-muted-foreground">
 										<span className={cn(hasCharacterMention(mail, highlightedCharacterName) && 'font-semibold text-foreground')}>
 											From: {highlightText(mail.fromName || 'Unknown', highlightedCharacterName)}
 										</span>
@@ -431,10 +431,10 @@ export function MailsSection({
 					{selectedMail ? (
 						<>
 							<div className="border-b border-border bg-card/80 px-4 py-2">
-								<h3 className="text-sm font-semibold text-foreground">
+								<h3 className="text-base font-semibold text-foreground">
 									{selectedMail.subject || '(No Subject)'}
 								</h3>
-								<div className="mt-1 flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
+								<div className="mt-1 flex flex-wrap items-center gap-2 text-sm text-muted-foreground">
 									<span className={cn(hasCharacterMention(selectedMail, highlightedCharacterName) && 'font-semibold text-foreground')}>
 										From: <strong>{selectedMail.fromName || 'Unknown'}</strong>
 									</span>
@@ -442,7 +442,7 @@ export function MailsSection({
 										<span className="flex flex-wrap items-center gap-1">
 											To:{' '}
 											{selectedMail.recipients.map((r, i) => (
-												<Badge key={i} variant="secondary" className="text-[10px] py-0">
+												<Badge key={i} variant="secondary" className="text-xs py-0">
 													{highlightText(r.recipientName || `ID: ${r.recipient_id}`, highlightedCharacterName)}
 												</Badge>
 											))}
@@ -461,27 +461,27 @@ export function MailsSection({
 									const bodyText = selectedMail.bodyPlainText || (selectedMail.mail_id ? loadedBodies[selectedMail.mail_id] : undefined)
 									if (bodyText) {
 										return (
-											<p className="whitespace-pre-wrap text-xs leading-relaxed text-muted-foreground">
+											<p className="whitespace-pre-wrap text-sm leading-relaxed text-muted-foreground">
 												{highlightText(bodyText, highlightedCharacterName)}
 											</p>
 										)
 									}
 									if (!selectedMail.mail_id) {
 										return (
-											<p className="text-xs text-muted-foreground italic">
+											<p className="text-sm text-muted-foreground italic">
 												No content available.
 											</p>
 										)
 									}
 									return (
 										<div className="flex flex-col items-center justify-center gap-2 py-4">
-											<p className="text-xs text-muted-foreground italic">
+											<p className="text-sm text-muted-foreground italic">
 												Content was not fetched during report generation.
 											</p>
 											<button
 												onClick={() => handleLoadContent(selectedMail.mail_id!)}
 												disabled={loadingMailId === selectedMail.mail_id}
-												className="rounded border border-primary/40 bg-primary/10 px-3 py-1 text-xs font-medium text-primary transition-colors hover:bg-primary/20 disabled:opacity-50"
+												className="rounded border border-primary/40 bg-primary/10 px-3 py-1 text-sm font-medium text-primary transition-colors hover:bg-primary/20 disabled:opacity-50"
 											>
 												{loadingMailId === selectedMail.mail_id
 													? 'Loading...'
@@ -494,7 +494,7 @@ export function MailsSection({
 						</>
 					) : (
 						<div className="flex flex-1 items-center justify-center">
-							<p className="text-xs text-muted-foreground">
+							<p className="text-sm text-muted-foreground">
 								Select a mail to view its content.
 							</p>
 						</div>

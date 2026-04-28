@@ -29,11 +29,11 @@ export function CommunicationsSection({
     return (
         <div className="flex flex-col gap-0">
             {/* Sub-tab bar */}
-            <div className="flex border-b border-border mb-3">
+            <div className="mb-3 flex border-b border-border">
                 <button
                     type="button"
                     className={cn(
-                        'px-4 py-2 text-sm font-medium transition-colors',
+                        'px-4 py-2.5 text-base font-medium transition-colors',
                         activeTab === 'mails'
                             ? 'border-b-2 border-primary text-foreground'
                             : 'text-muted-foreground hover:text-foreground',
@@ -45,7 +45,7 @@ export function CommunicationsSection({
                 <button
                     type="button"
                     className={cn(
-                        'px-4 py-2 text-sm font-medium transition-colors',
+                        'px-4 py-2.5 text-base font-medium transition-colors',
                         activeTab === 'notifications'
                             ? 'border-b-2 border-primary text-foreground'
                             : 'text-muted-foreground hover:text-foreground',

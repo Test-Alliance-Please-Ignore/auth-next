@@ -15,6 +15,7 @@ import type {
 	AddRecommendationRequest,
 	Application,
 	ApplicationActivityLogEntry,
+	ApplicationsListResult,
 	ApplicationMessage,
 	ApplicationStaffNote,
 	ApplicationsParams,
@@ -104,6 +105,17 @@ export function useApplications(params?: ApplicationsParams) {
 		queryFn: () => applicationsApi.getApplications(params),
 		staleTime: 1000 * 60 * 2, // 2 minutes
 		gcTime: 1000 * 60 * 5, // 5 minutes
+	})
+}
+
+export function useApplicationsPaged(params?: ApplicationsParams) {
+	const filterKey = params ? JSON.stringify(params) : 'all'
+
+	return useQuery<ApplicationsListResult>({
+		queryKey: [...applicationKeys.list(filterKey), 'paged'],
+		queryFn: () => applicationsApi.getApplicationsPaged(params),
+		staleTime: 1000 * 60 * 2,
+		gcTime: 1000 * 60 * 5,
 	})
 }
 

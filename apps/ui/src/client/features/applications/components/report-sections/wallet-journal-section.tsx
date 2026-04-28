@@ -5,6 +5,7 @@
 import { useMemo, useState } from 'react'
 import { MantineReactTable } from 'mantine-react-table'
 
+import { Select } from '@/components/ui/select'
 import { useFulcrumTable } from './use-fulcrum-table'
 
 import type { MRT_ColumnDef } from 'mantine-react-table'
@@ -115,8 +116,18 @@ const columns: MRT_ColumnDef<ProcessedWalletJournalEntry>[] = [
 export function WalletJournalSection({ data }: { data: ProcessedWalletJournalEntry[] }) {
 	const [refTypeFilter, setRefTypeFilter] = useState<string>('all')
 	const availableRefTypes = useMemo(
-		() => Array.from(new Set(data.map((entry) => entry.refTypeLabel).filter(Boolean))).sort(),
+		() =>
+			Array.from(
+				new Set(data.map((entry) => entry.refTypeLabel).filter((type): type is string => Boolean(type))),
+			).sort(),
 		[data],
+	)
+	const refTypeOptions = useMemo(
+		() => [
+			{ value: 'all', label: 'All Types' },
+			...availableRefTypes.map((type) => ({ value: type, label: type })),
+		],
+		[availableRefTypes],
 	)
 	const filteredData = useMemo(
 		() =>
@@ -133,6 +144,25 @@ export function WalletJournalSection({ data }: { data: ProcessedWalletJournalEnt
 		searchPlaceholder: 'Search journal...',
 		pageSize: 1000,
 		getRowClassName: (row) => (isHighlightedJournalType(row) ? 'bg-amber-500/10' : undefined),
+		renderTopToolbarCustomActions: () => (
+			<div className="ml-auto flex items-center gap-2">
+				<label htmlFor="journal-ref-type-filter" className="text-xs font-medium text-muted-foreground">
+					Ref Type
+				</label>
+				<Select
+					inputId="journal-ref-type-filter"
+					value={refTypeFilter}
+					onValueChange={(value) => setRefTypeFilter(value)}
+					options={refTypeOptions}
+					searchable
+					placeholder="All Types"
+					className="w-56"
+				/>
+				<span className="text-xs text-muted-foreground">
+					{filteredData.length} / {data.length}
+				</span>
+			</div>
+		),
 	})
 
 	if (data.length === 0) {
@@ -153,27 +183,6 @@ export function WalletJournalSection({ data }: { data: ProcessedWalletJournalEnt
 			<p className="text-xs text-muted-foreground italic">
 				Note: ESI only returns journal entries from the last 30 days.
 			</p>
-			<div className="flex items-center gap-2">
-				<label htmlFor="journal-ref-type-filter" className="text-xs font-medium text-muted-foreground">
-					Ref Type
-				</label>
-				<select
-					id="journal-ref-type-filter"
-					value={refTypeFilter}
-					onChange={(event) => setRefTypeFilter(event.target.value)}
-					className="h-8 rounded border border-border bg-background px-2 text-xs text-foreground"
-				>
-					<option value="all">All Types</option>
-					{availableRefTypes.map((type) => (
-						<option key={type} value={type}>
-							{type}
-						</option>
-					))}
-				</select>
-				<span className="text-xs text-muted-foreground">
-					{filteredData.length} / {data.length}
-				</span>
-			</div>
 			<div className="tax-report-grid">
 				<MantineReactTable table={table} />
 			</div>

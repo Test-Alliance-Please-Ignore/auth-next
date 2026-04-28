@@ -1,4 +1,4 @@
-import { and, desc, eq, inArray, or, sql } from '@repo/db-utils'
+import { and, desc, eq, ilike, inArray, or, sql } from '@repo/db-utils'
 import { isActiveApplicationStatus, isApplicationStatus } from '@repo/hr'
 
 import { applicationActivityLog, applicationAlts, applicationRecommendations, applications } from '../db/schema'
@@ -7,6 +7,7 @@ import type {
 	Application,
 	ApplicationDetail,
 	ApplicationFilters,
+	ApplicationListResult,
 	ApplicationStatus,
 	RecommendableApplication,
 	RecommendationSentiment,
@@ -21,6 +22,95 @@ import type { ServiceContext } from './context'
  */
 export class ApplicationService {
 	constructor(private ctx: ServiceContext) { }
+
+	private buildListApplicationsWhere(
+		filters: ApplicationFilters,
+		userId: string,
+		isAdmin: boolean,
+		isAuditor: boolean,
+		userHrCorporations: string[] = [],
+		userHrReviewerCorporations: string[] = []
+	) {
+		const conditions: ReturnType<typeof and>[] = []
+
+		// Apply filters
+		if (filters.corporationId) {
+			conditions.push(eq(applications.corporationId, filters.corporationId))
+		}
+
+		if (filters.userId) {
+			conditions.push(eq(applications.userId, filters.userId))
+		}
+
+		if (filters.characterId) {
+			conditions.push(eq(applications.characterId, filters.characterId))
+		}
+
+		if (filters.characterIds && filters.characterIds.length > 0) {
+			const mainCharacterMatch = inArray(applications.characterId, filters.characterIds)
+			const altCharacterMatch = sql<boolean>`exists (
+				select 1
+				from ${applicationAlts}
+				where ${applicationAlts.applicationId} = ${applications.id}
+				and ${inArray(applicationAlts.characterId, filters.characterIds)}
+			)`
+			conditions.push(or(mainCharacterMatch, altCharacterMatch))
+		}
+
+		if (filters.status) {
+			conditions.push(eq(applications.status, filters.status))
+		}
+
+		const searchQuery = filters.search?.trim()
+		if (searchQuery) {
+			conditions.push(ilike(applications.characterName, `%${searchQuery}%`))
+		}
+
+		// Authorization filter (if not admin)
+		if (!isAdmin) {
+			// User can see: their own applications OR applications for corps they have HR access to
+			const authConditions = [eq(applications.userId, userId)]
+
+			if (isAuditor) {
+				// Auditors are global viewer-equivalent: read-only active queue visibility
+				const auditorCondition = inArray(applications.status, ['pending', 'under_review'])
+				authConditions.push(auditorCondition)
+			} else if (userHrCorporations.length > 0) {
+				// Viewer-only corps can only see pending/under_review
+				const viewerOnlyCorps = userHrCorporations.filter(
+					(corpId) => !userHrReviewerCorporations.includes(corpId)
+				)
+
+				const corpConditions = []
+
+				// HR reviewer+ corps: see all statuses
+				if (userHrReviewerCorporations.length > 0) {
+					corpConditions.push(
+						inArray(applications.corporationId, userHrReviewerCorporations)
+					)
+				}
+
+				// Viewer-only corps: only pending/under_review
+				if (viewerOnlyCorps.length > 0) {
+					const viewerCondition = and(
+						inArray(applications.corporationId, viewerOnlyCorps),
+						inArray(applications.status, ['pending', 'under_review'])
+					)
+					if (viewerCondition) {
+						corpConditions.push(viewerCondition)
+					}
+				}
+
+				if (corpConditions.length > 0) {
+					authConditions.push(...corpConditions)
+				}
+			}
+
+			conditions.push(or(...authConditions))
+		}
+
+		return conditions.length > 0 ? and(...conditions) : undefined
+	}
 
 	/**
 	 * Get raw application record by ID
@@ -97,71 +187,18 @@ export class ApplicationService {
 		userHrCorporations: string[] = [],
 		userHrReviewerCorporations: string[] = []
 	): Promise<Application[]> {
-		const conditions: ReturnType<typeof and>[] = []
-
-		// Apply filters
-		if (filters.corporationId) {
-			conditions.push(eq(applications.corporationId, filters.corporationId))
-		}
-
-		if (filters.userId) {
-			conditions.push(eq(applications.userId, filters.userId))
-		}
-
-		if (filters.characterId) {
-			conditions.push(eq(applications.characterId, filters.characterId))
-		}
-
-		if (filters.status) {
-			conditions.push(eq(applications.status, filters.status))
-		}
-
-		// Authorization filter (if not admin)
-		if (!isAdmin) {
-			// User can see: their own applications OR applications for corps they have HR access to
-			const authConditions = [eq(applications.userId, userId)]
-
-			if (isAuditor) {
-				// Auditors are global viewer-equivalent: read-only active queue visibility
-				const auditorCondition = inArray(applications.status, ['pending', 'under_review'])
-				authConditions.push(auditorCondition)
-			} else if (userHrCorporations.length > 0) {
-				// Viewer-only corps can only see pending/under_review
-				const viewerOnlyCorps = userHrCorporations.filter(
-					(corpId) => !userHrReviewerCorporations.includes(corpId)
-				)
-
-				const corpConditions = []
-
-				// HR reviewer+ corps: see all statuses
-				if (userHrReviewerCorporations.length > 0) {
-					corpConditions.push(
-						inArray(applications.corporationId, userHrReviewerCorporations)
-					)
-				}
-
-				// Viewer-only corps: only pending/under_review
-				if (viewerOnlyCorps.length > 0) {
-					const viewerCondition = and(
-						inArray(applications.corporationId, viewerOnlyCorps),
-						inArray(applications.status, ['pending', 'under_review'])
-					)
-					if (viewerCondition) {
-						corpConditions.push(viewerCondition)
-					}
-				}
-
-				if (corpConditions.length > 0) {
-					authConditions.push(...corpConditions)
-				}
-			}
-
-			conditions.push(or(...authConditions))
-		}
+		const where = this.buildListApplicationsWhere(
+			filters,
+			userId,
+			isAdmin,
+			isAuditor,
+			userHrCorporations,
+			userHrReviewerCorporations
+		)
 
 		// Build query
 		const results = await this.ctx.db.query.applications.findMany({
-			where: conditions.length > 0 ? and(...conditions) : undefined,
+			where,
 			orderBy: [desc(applications.createdAt)],
 			limit: filters.limit || 50,
 			offset: filters.offset || 0,
@@ -169,6 +206,77 @@ export class ApplicationService {
 		})
 
 		return results.map((app) => this.mapToApplication(app, app.alts.map((a) => a.characterId)))
+	}
+
+	async listApplicationsPaged(
+		filters: ApplicationFilters,
+		userId: string,
+		isAdmin: boolean,
+		isAuditor: boolean,
+		userHrCorporations: string[] = [],
+		userHrReviewerCorporations: string[] = []
+	): Promise<ApplicationListResult> {
+		const where = this.buildListApplicationsWhere(
+			filters,
+			userId,
+			isAdmin,
+			isAuditor,
+			userHrCorporations,
+			userHrReviewerCorporations
+		)
+		const whereWithoutStatus = this.buildListApplicationsWhere(
+			{ ...filters, status: undefined },
+			userId,
+			isAdmin,
+			isAuditor,
+			userHrCorporations,
+			userHrReviewerCorporations
+		)
+		const limit = filters.limit || 50
+		const offset = filters.offset || 0
+
+		const [countRow] = await this.ctx.db
+			.select({ total: sql<number>`count(*)::int` })
+			.from(applications)
+			.where(where)
+
+		const results = await this.ctx.db.query.applications.findMany({
+			where,
+			orderBy: [desc(applications.createdAt)],
+			limit,
+			offset,
+			with: { alts: true },
+		})
+
+		const groupedCounts = await this.ctx.db
+			.select({
+				status: applications.status,
+				total: sql<number>`count(*)::int`,
+			})
+			.from(applications)
+			.where(whereWithoutStatus)
+			.groupBy(applications.status)
+
+		const counts = {
+			pending: 0,
+			under_review: 0,
+			accepted: 0,
+			rejected: 0,
+			withdrawn: 0,
+		}
+		for (const row of groupedCounts) {
+			if (row.status in counts) {
+				counts[row.status as keyof typeof counts] = row.total ?? 0
+			}
+		}
+
+		return {
+			items: results.map((app) => this.mapToApplication(app, app.alts.map((a) => a.characterId))),
+			total: countRow?.total ?? 0,
+			limit,
+			offset,
+			counts,
+		}
 	}
 
 	/**

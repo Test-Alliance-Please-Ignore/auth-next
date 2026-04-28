@@ -5,8 +5,8 @@
  * Requires HR Viewer role minimum.
  */
 
-import { AlertCircle, ArrowLeft, Users } from 'lucide-react'
-import { useMemo, useState } from 'react'
+import { AlertCircle, ArrowLeft } from 'lucide-react'
+import { useEffect, useMemo, useState } from 'react'
 import { Link, Navigate, useNavigate, useParams } from 'react-router-dom'
 
 import {
@@ -19,6 +19,7 @@ import {
 } from '@/components/ui/breadcrumb'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Container } from '@/components/ui/container'
+import { Input } from '@/components/ui/input'
 import { LoadingSpinner } from '@/components/ui/loading'
 import { PageHeader } from '@/components/ui/page-header'
 import { useAuth } from '@/hooks/useAuth'
@@ -29,7 +30,7 @@ import { useHrPermissionCheck } from '../../hr/hooks'
 import { useCanAccessCorporation } from '../../corporations/hooks'
 import { ApplicationStatsCard } from '../components/application-stats-card'
 import { ApplicationsTable } from '../components/applications-table'
-import { useApplications } from '../hooks'
+import { useApplicationsPaged } from '../hooks'
 
 import type { ApplicationStatus } from '../api'
 import { Button } from '@/components/ui/button'
@@ -74,62 +75,61 @@ export default function HrApplicationsList() {
 	// Local state
 	const [activeFilter, setActiveFilter] = useState<FilterTab>('all')
 	const [searchTerm, setSearchTerm] = useState('')
+	const [debouncedSearch, setDebouncedSearch] = useState('')
+	const [page, setPage] = useState(1)
+	const [pageSize, setPageSize] = useState(10)
 
 	// Check HR permission (userId derived from authenticated session)
 	const { data: permission, isLoading: permissionLoading } = useHrPermissionCheck(
 		corporationId ? { corporationId } : null
 	)
 
-	// Fetch applications for this corporation
+	useEffect(() => {
+		const timer = setTimeout(() => {
+			setDebouncedSearch(searchTerm)
+			setPage(1)
+		}, 400)
+		return () => clearTimeout(timer)
+	}, [searchTerm])
+
+	const offset = (page - 1) * pageSize
+
+	// Fetch applications for this corporation (server-side paginated/filterable)
 	const {
-		data: applications,
+		data: applicationsResult,
 		isLoading: applicationsLoading,
 		error: applicationsError,
-	} = useApplications({ corporationId })
+	} = useApplicationsPaged({
+		corporationId,
+		status: activeFilter === 'all' ? undefined : (activeFilter as ApplicationStatus),
+		search: debouncedSearch.trim() || undefined,
+		limit: pageSize,
+		offset,
+	})
 
 	// Set page title
 	usePageTitle('HR Applications')
 
-	// Calculate statistics
-	const stats = useMemo(() => {
-		if (!applications) {
-			return {
-				total: 0,
-				pending: 0,
-				under_review: 0,
-				accepted: 0,
-				rejected: 0,
-				withdrawn: 0,
-			}
-		}
-
-		return {
-			total: applications.length,
-			pending: applications.filter((a) => a.status === 'pending').length,
-			under_review: applications.filter((a) => a.status === 'under_review').length,
-			accepted: applications.filter((a) => a.status === 'accepted').length,
-			rejected: applications.filter((a) => a.status === 'rejected').length,
-			withdrawn: applications.filter((a) => a.status === 'withdrawn').length,
-		}
-	}, [applications])
-
-	// Prepare filter for table
-	const tableFilters = useMemo(() => {
-		return {
-			status: activeFilter === 'all' ? undefined : [activeFilter as ApplicationStatus],
-			search: searchTerm || undefined,
-		}
-	}, [activeFilter, searchTerm])
+	const applications = applicationsResult?.items ?? []
+	const stats = useMemo(
+		() => ({
+			pending: applicationsResult?.counts.pending ?? 0,
+			under_review: applicationsResult?.counts.under_review ?? 0,
+			accepted: applicationsResult?.counts.accepted ?? 0,
+			rejected: applicationsResult?.counts.rejected ?? 0,
+			withdrawn: applicationsResult?.counts.withdrawn ?? 0,
+		}),
+		[applicationsResult]
+	)
 
 	// Handlers
 	const handleApplicationClick = (applicationId: string) => {
 		navigate(`/corporations/${corporationId}/applications/${applicationId}`)
 	}
 
-	const handleFilterChange = (filters?: { status?: ApplicationStatus[]; search?: string }) => {
-		if (filters?.search !== undefined) {
-			setSearchTerm(filters.search)
-		}
+	const handleStatusFilterChange = (status: FilterTab) => {
+		setActiveFilter(status)
+		setPage(1)
 	}
 
 	const showMembersNavigation = user?.is_admin || hasCorporationAccess
@@ -260,40 +260,53 @@ export default function HrApplicationsList() {
 				<ApplicationStatsCard label="Withdrawn" value={stats.withdrawn} variant="withdrawn" />
 			</div>
 
-			{/* Filter Tabs */}
-			<div className="mb-6 overflow-x-auto">
-				<div className="inline-flex items-center gap-2 p-1 bg-muted rounded-lg min-w-full sm:min-w-0">
-					{FILTER_TABS.map((tab) => (
-						<button
-							key={tab.value}
-							onClick={() => setActiveFilter(tab.value)}
-							className={cn(
-								'px-4 py-2 rounded-md text-sm font-medium transition-colors whitespace-nowrap',
-								'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring',
-								activeFilter === tab.value
-									? 'bg-background text-foreground shadow-sm'
-									: 'text-muted-foreground hover:text-foreground hover:bg-background/50'
-							)}
-						>
-							{tab.label}
-						</button>
-					))}
+			<div className="mb-6 flex flex-col gap-3 lg:flex-row lg:items-center">
+				<div className="overflow-x-auto lg:flex-1">
+					<div className="inline-flex items-center gap-2 rounded-lg bg-muted p-1 min-w-full sm:min-w-0">
+						{FILTER_TABS.map((tab) => (
+							<button
+								key={tab.value}
+								onClick={() => handleStatusFilterChange(tab.value)}
+								className={cn(
+									'px-4 py-2 rounded-md text-sm font-medium transition-colors whitespace-nowrap',
+									'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring',
+									activeFilter === tab.value
+										? 'bg-background text-foreground shadow-sm'
+										: 'text-muted-foreground hover:text-foreground hover:bg-background/50'
+								)}
+							>
+								{tab.label}
+							</button>
+						))}
+					</div>
 				</div>
+				<Input
+					value={searchTerm}
+					onChange={(event) => setSearchTerm(event.target.value)}
+					placeholder="Search character or attached alt name..."
+					className="w-full lg:ml-auto lg:max-w-md"
+				/>
 			</div>
 
 			{/* Applications Table */}
 			<ApplicationsTable
-				applications={applications || []}
+				applications={applications}
 				loading={applicationsLoading}
 				getApplicationHref={(app) => `/corporations/${corporationId}/applications/${app.id}`}
 				onApplicationClick={(app) => handleApplicationClick(app.id)}
-				filters={tableFilters}
-				onFilterChange={handleFilterChange}
 				canManage={permission?.hasPermission || false}
+				totalCount={applicationsResult?.total ?? 0}
+				page={page}
+				pageSize={pageSize}
+				onPageChange={setPage}
+				onPageSizeChange={(nextPageSize) => {
+					setPageSize(nextPageSize)
+					setPage(1)
+				}}
 			/>
 
 			{/* Help Text */}
-			{applications && applications.length > 0 && (
+			{(applicationsResult?.total ?? 0) > 0 && (
 				<div className="mt-8 text-center">
 					<p className="text-sm text-muted-foreground">
 						Click on any application to view full details and take action.
