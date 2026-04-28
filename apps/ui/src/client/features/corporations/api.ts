@@ -79,6 +79,18 @@ export interface CorporationMembersResponse {
 	}
 }
 
+export interface CorporationMemberAccountResponse {
+	account: {
+		accountId: string
+		mainName: string
+		representative: CorporationMember
+		characters: CorporationMember[]
+		isLinked: boolean
+		highestRole: 'CEO' | 'Director' | 'Member'
+		hasBlacklisted: boolean
+	}
+}
+
 /**
  * Corporation with user's leadership role and member statistics
  */
@@ -177,6 +189,13 @@ export const myCorporationsApi = {
 	 */
 	async refreshCorporationMembers(corporationId: string): Promise<{ success: boolean }> {
 		return apiClient.post(`/corporations/${corporationId}/members/refresh`)
+	},
+
+	async getCorporationMemberAccount(
+		corporationId: string,
+		accountId: string
+	): Promise<CorporationMemberAccountResponse> {
+		return apiClient.get(`/corporations/${corporationId}/members/${accountId}`)
 	},
 
 	/**
