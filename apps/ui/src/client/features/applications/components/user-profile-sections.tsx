@@ -179,16 +179,17 @@ export function ProfileCharactersSection({
 										}
 									/>
 									<div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-muted-foreground">
+										{character.joinDate && (
+											<span>
+												Joined {formatDistanceToNow(new Date(character.joinDate), { addSuffix: true })}
+											</span>
+										)}
+										{character.joinDate && character.lastLogin && <span>•</span>}
 										{character.lastLogin && (
 											<span
 												title="Last active is based on the most recent ESI member-tracking login timestamp."
 											>
 												Last active {formatDistanceToNow(new Date(character.lastLogin), { addSuffix: true })}
-											</span>
-										)}
-										{character.joinDate && (
-											<span>
-												Joined {formatDistanceToNow(new Date(character.joinDate), { addSuffix: true })}
 											</span>
 										)}
 									</div>
