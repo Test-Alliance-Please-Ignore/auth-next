@@ -157,6 +157,24 @@ function canUseBackendPaginatedMembersPath(query: MembersQuery): boolean {
 }
 
 function filterSortAndPaginateMembers(members: CorporationMemberListItem[], query: MembersQuery) {
+	const AUTH_SORT_RANK: Record<'valid' | 'invalid' | 'unknown' | 'unlinked', number> = {
+		valid: 0,
+		invalid: 1,
+		unknown: 2,
+		unlinked: 3,
+	}
+
+	const getAuthSortRank = (member: CorporationMemberListItem): number => {
+		const key: 'valid' | 'invalid' | 'unknown' | 'unlinked' = !member.hasAuthAccount
+			? 'unlinked'
+			: member.hasValidToken === true
+				? 'valid'
+				: member.hasValidToken === false
+					? 'invalid'
+					: 'unknown'
+		return AUTH_SORT_RANK[key]
+	}
+
 	const filtered = [...members]
 		.filter((member) => {
 			if (!query.search) return true
@@ -205,7 +223,7 @@ function filterSortAndPaginateMembers(members: CorporationMemberListItem[], quer
 				break
 			}
 			case 'auth':
-				comparison = (a.hasAuthAccount ? 0 : 1) - (b.hasAuthAccount ? 0 : 1)
+				comparison = getAuthSortRank(a) - getAuthSortRank(b)
 				break
 			case 'activity': {
 				const activityOrder = { active: 0, inactive: 1, unknown: 2 }
@@ -1766,6 +1784,190 @@ app.get('/:corporationId/members', requireAuth(), async (c) => {
 			stack: error instanceof Error ? error.stack : undefined,
 		})
 		return c.json({ error: 'Failed to fetch corporation members' }, 500)
+	}
+})
+
+/**
+ * GET /corporations/:corporationId/members/:accountId
+ * Get a single linked auth account's in-corp member detail (non-paginated)
+ */
+app.get('/:corporationId/members/:accountId', requireAuth(), async (c) => {
+	const corporationId = c.req.param('corporationId')
+	const accountId = c.req.param('accountId')
+	const user = c.get('user')!
+	const db = c.get('db')
+
+	if (!db) {
+		return c.json({ error: 'Database not available' }, 500)
+	}
+
+	try {
+		const managedCorp = await db.query.managedCorporations.findFirst({
+			where: and(
+				eq(managedCorporations.corporationId, corporationId),
+				eq(managedCorporations.isActive, true)
+			),
+		})
+
+		if (!managedCorp) {
+			return c.json({ error: 'Corporation not found or not managed' }, 404)
+		}
+
+		try {
+			await checkCorporationAccess(c, corporationId)
+		} catch {
+			const hr = getStub<Hr>(c.env.HR, 'default')
+			const hasHrAccess = await hr.checkPermission(user.id, corporationId, 'hr_viewer')
+			const isAuditor = !hasHrAccess && await isHrAuditorUser(c)
+			if (!hasHrAccess && !isAuditor) {
+				return c.json(
+					{ error: 'Access denied. Corporation CEO, Director, site admin, HR role, or HR auditor permission required.' },
+					403
+				)
+			}
+		}
+
+		const linkedCharacters = await db.query.userCharacters.findMany({
+			where: and(
+				eq(userCharacters.corporationId, corporationId),
+				eq(userCharacters.userId, accountId)
+			),
+		})
+		if (linkedCharacters.length === 0) {
+			return c.json({ error: 'Member account not found in corporation' }, 404)
+		}
+
+		const memberCharIdSet = new Set(linkedCharacters.map((row) => row.characterId))
+		const corpStub = getStub<EveCorporationData>(c.env.EVE_CORPORATION_DATA, corporationId)
+		const tokenStoreStub = getStub<EveTokenStore>(c.env.EVE_TOKEN_STORE, 'default')
+		const [corpInfo, coreData, directors] = await Promise.all([
+			corpStub.getCorporationInfo(corporationId),
+			corpStub.getCoreData(corporationId),
+			corpStub.getDirectors(corporationId),
+		])
+		if (!coreData?.members) {
+			return c.json({ error: 'Member account not found in corporation' }, 404)
+		}
+
+		const directorIds = new Set(directors.map((d) => d.characterId))
+		const matchingMembers = coreData.members.filter((member) =>
+			memberCharIdSet.has(String(member.characterId))
+		)
+		if (matchingMembers.length === 0) {
+			return c.json({ error: 'Member account not found in corporation' }, 404)
+		}
+
+		const characterIds = matchingMembers.map((member) => String(member.characterId))
+		const characterNameMap = await tokenStoreStub.resolveIds(characterIds)
+
+		const linkedUser = await db.query.users.findFirst({
+			where: eq(users.id, accountId),
+		})
+		const mainCharacterNameMap =
+			linkedUser?.mainCharacterId
+				? await tokenStoreStub.resolveIds([linkedUser.mainCharacterId])
+				: {}
+		const mainCharacterName = linkedUser?.mainCharacterId
+			? (mainCharacterNameMap[linkedUser.mainCharacterId] ?? undefined)
+			: undefined
+
+		const hrStub = getStub<Hr>(c.env.HR, 'default')
+		const blacklistStatuses =
+			characterIds.length > 0 ? await hrStub.checkCharactersBlacklisted(characterIds) : {}
+
+		const memberRows: CorporationMemberListItem[] = matchingMembers.map((member) => {
+			const characterId = String(member.characterId)
+			const linkedChar = linkedCharacters.find((row) => row.characterId === characterId)
+			const tracking = coreData.memberTracking?.find((row) => row.characterId === characterId)
+			let role: 'CEO' | 'Director' | 'Member' = 'Member'
+			if (corpInfo && String(corpInfo.ceoId) === characterId) {
+				role = 'CEO'
+			} else if (directorIds.has(characterId)) {
+				role = 'Director'
+			}
+
+			return {
+				characterId,
+				characterName: characterNameMap[characterId] || 'Unknown',
+				corporationId,
+				corporationName: managedCorp.name,
+				role,
+				hasAuthAccount: true,
+				hasValidToken: linkedChar ? (linkedChar.hasValidToken ?? null) : null,
+				authUserId: accountId,
+				mainCharacterName,
+				status: linkedChar?.status,
+				joinDate: tracking?.startDate?.toISOString() || member.updatedAt.toISOString(),
+				lastEsiUpdate: member.updatedAt.toISOString(),
+				lastLogin: tracking?.logonDate?.toISOString(),
+				allianceId: corpInfo?.allianceId ? String(corpInfo.allianceId) : undefined,
+				allianceName: undefined,
+				locationSystem: undefined,
+				locationRegion: undefined,
+				activityStatus: tracking?.logonDate
+					? new Date().getTime() - tracking.logonDate.getTime() < 7 * 24 * 60 * 60 * 1000
+						? 'active'
+						: 'inactive'
+					: 'unknown',
+				isBlacklisted: blacklistStatuses[characterId] || false,
+			}
+		})
+
+		const enriched = await enrichMembersPageLiveTokenStatus(db, tokenStoreStub, {
+			items: memberRows,
+			pagination: {
+				page: 1,
+				limit: memberRows.length,
+				totalItems: memberRows.length,
+				totalPages: 1,
+				hasNextPage: false,
+				hasPreviousPage: false,
+			},
+			summary: {
+				total: memberRows.length,
+				linked: memberRows.length,
+				active: memberRows.filter((row) => row.activityStatus === 'active').length,
+				inactive: memberRows.filter((row) => row.activityStatus === 'inactive').length,
+				directors: memberRows.filter((row) => row.role === 'Director').length,
+			},
+		})
+		const rows = enriched.items
+		const mainName =
+			rows.find((row) => row.mainCharacterName)?.mainCharacterName ?? rows[0]?.characterName ?? 'Unknown'
+		const representative =
+			rows.find((row) => row.characterName === mainName) ?? rows[0]
+		const roleRank: Record<'CEO' | 'Director' | 'Member', number> = {
+			CEO: 0,
+			Director: 1,
+			Member: 2,
+		}
+		const highestRole = rows.reduce<'CEO' | 'Director' | 'Member'>((best, row) => {
+			return roleRank[row.role] < roleRank[best] ? row.role : best
+		}, 'Member')
+
+		return c.json({
+			account: {
+				accountId,
+				mainName,
+				representative,
+				characters: [...rows].sort((a, b) => {
+					if (a.characterName === mainName) return -1
+					if (b.characterName === mainName) return 1
+					return a.characterName.localeCompare(b.characterName)
+				}),
+				isLinked: true,
+				highestRole,
+				hasBlacklisted: rows.some((row) => row.isBlacklisted),
+			},
+		})
+	} catch (error) {
+		logger.error('[Corporations] Error fetching member account detail', {
+			corporationId,
+			accountId,
+			error: error instanceof Error ? error.message : String(error),
+			stack: error instanceof Error ? error.stack : undefined,
+		})
+		return c.json({ error: 'Failed to fetch member account detail' }, 500)
 	}
 })
 

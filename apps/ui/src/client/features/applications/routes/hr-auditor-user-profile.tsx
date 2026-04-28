@@ -1,6 +1,6 @@
 import { useQueries, useQueryClient } from '@tanstack/react-query'
 import { formatDistanceToNow } from 'date-fns'
-import { ArrowLeft, ExternalLink, FileText, Plus, Scan, Shield, User, Users } from 'lucide-react'
+import { ArrowLeft, Scan, Shield, Users } from 'lucide-react'
 import { useMemo, useState } from 'react'
 import { Link, Navigate, useLocation, useNavigate, useParams } from 'react-router-dom'
 
@@ -36,9 +36,14 @@ import { cn } from '@/lib/utils'
 
 import { ApplicationStatusBadge } from '../components/application-status-badge'
 import { AddHRNoteDialog } from '../components/add-hr-note-dialog'
-import { CharacterIdentitySummary } from '../components/character-identity-summary'
+import {
+	ProfileApplicationHistorySection,
+	ProfileCharactersSection,
+	ProfileNotesSection,
+} from '../components/user-profile-sections'
 import { useApplications, useHRNotes, useRequestFulcrumReport, useRequestFulcrumReportBatch } from '../hooks'
 import { auditorUserKeys, useAuditorFulcrum, useAuditorUser } from '../../../hooks/useAuditorUsers'
+import { myCorporationsApi } from '../../corporations/api'
 
 import type { CharacterReportMetadata, FulcrumCharacterData } from '../api'
 
@@ -172,6 +177,35 @@ export default function HrAuditorUserProfilePage() {
 			staleTime: 5 * 60 * 1000,
 		})),
 	})
+	const corporationIdsForMemberMeta = useMemo(
+		() =>
+			[...new Set(rows.map((row) => row.corporationId).filter((value): value is string => Boolean(value)))],
+		[rows]
+	)
+	const memberAccountQueries = useQueries({
+		queries: corporationIdsForMemberMeta.map((corporationId) => ({
+			queryKey: ['corporation-member-account', corporationId, userId],
+			queryFn: () => myCorporationsApi.getCorporationMemberAccount(corporationId, userId ?? ''),
+			enabled: Boolean(userId && corporationId),
+			staleTime: 60_000,
+		})),
+	})
+	const memberMetaByCharacterId = useMemo(() => {
+		const map = new Map<string, { joinDate?: string; lastLogin?: string; locationSystem?: string; locationRegion?: string }>()
+		for (const query of memberAccountQueries) {
+			const account = query.data?.account
+			if (!account) continue
+			for (const member of account.characters) {
+				map.set(member.characterId, {
+					joinDate: member.joinDate,
+					lastLogin: member.lastLogin,
+					locationSystem: member.locationSystem,
+					locationRegion: member.locationRegion,
+				})
+			}
+		}
+		return map
+	}, [memberAccountQueries])
 	const spByCharacterId = new Map<string, number | null>()
 	const walletByCharacterId = new Map<string, string | null>()
 	const metricsLoadingByCharacterId = new Map<string, boolean>()
@@ -454,261 +488,79 @@ export default function HrAuditorUserProfilePage() {
 				</div>
 
 				<div className="space-y-6">
-					<Card>
-				<CardHeader>
-					<div className="flex items-center justify-between gap-2">
-						<CardTitle className="flex items-center gap-2 text-base">
-							<Users className="h-4 w-4" />
-							Characters ({rows.length})
-						</CardTitle>
-						<Button
-							variant="ghost"
-							size="sm"
-								onClick={handleOpenScanAllDialog}
-							disabled={isScanningAll || requestReport.isPending || requestReportBatch.isPending || scanEligibleCharacters.length === 0}
-						>
-							<Scan className={`mr-1.5 h-3.5 w-3.5 ${isScanningAll ? 'animate-spin' : ''}`} />
-							{isScanningAll
-								? 'Scanning All...'
-								: `Scan All (${scanEligibleCharacters.length})`}
-						</Button>
-					</div>
-				</CardHeader>
-				<CardContent>
-					{fulcrumLoading ? (
-						<div className="flex justify-center py-6">
-							<LoadingSpinner size="sm" />
-						</div>
-					) : rows.length === 0 ? (
-						<p className="text-sm text-muted-foreground text-center py-6">No linked characters found</p>
-					) : (
-						<div className="space-y-2">
-							{rows.map((character) => {
-								const isRequestingThisCharacter =
-									requestReport.isPending && requestingCharacterId === character.characterId
-								return (
-									<div
-										key={character.characterId}
-										className="rounded-lg border px-3 py-2 space-y-2"
-									>
-										<CharacterIdentitySummary
-											characterId={character.characterId}
-											characterName={character.characterName}
-											hasValidToken={character.hasValidToken}
-											corporationId={character.corporationId}
-											corporationName={character.corporationName}
-											allianceId={character.allianceId}
-											allianceName={character.allianceName}
-											skillPoints={spByCharacterId.get(character.characterId)}
-											walletBalance={walletByCharacterId.get(character.characterId)}
-											isMetricsLoading={metricsLoadingByCharacterId.get(character.characterId)}
-											nameBadges={
-												<>
-													{character.isPrimary && (
-														<Badge
-															variant="default"
-															className="bg-blue-500/20 text-blue-500 text-[10px] px-1.5 py-0"
-														>
-															Primary
-														</Badge>
-													)}
-													{(character.role === 'CEO' || character.role === 'Director') && (
-														<span
-															className={cn(
-																'text-xs',
-																character.role === 'CEO' && 'font-bold text-yellow-500',
-																character.role === 'Director' && 'font-semibold text-blue-400'
-															)}
-														>
-															{character.role}
-														</span>
-													)}
-													{character.activityStatus && character.activityStatus !== 'unknown' && (
-														<Badge
-															variant={
-																character.activityStatus === 'active'
-																	? 'success'
-																	: character.activityStatus === 'inactive'
-																		? 'destructive'
-																		: 'secondary'
-															}
-															className="text-[10px] px-1.5 py-0"
-														>
-															{character.activityStatus}
-														</Badge>
-													)}
-												</>
-											}
-										/>
-										<div className="flex items-center gap-2 pl-11">
-											<div
-												className={cn(
-													'flex items-center gap-2 text-xs px-2.5 py-1.5 rounded-md border min-w-0 flex-1',
-													character.latestReport?.status === 'completed' &&
-														character.corporationId &&
-														'cursor-pointer hover:bg-muted/50 transition-colors'
-												)}
-												onClick={() => handleViewLatestReport(character)}
-											>
-												<Scan className="h-3 w-3 text-muted-foreground shrink-0" />
-												<span className="font-medium text-muted-foreground shrink-0">
-													Fulcrum Report
-												</span>
-												<span className="text-muted-foreground shrink-0">·</span>
-												{character.latestReport ? (
-													character.latestReport.status === 'completed' ? (
-														<>
-															<span className="truncate text-foreground">
-																View latest report (
-																{formatDistanceToNow(new Date(character.latestReport.createdAt), {
-																	addSuffix: true,
-																})}
-																)
-															</span>
-															<ExternalLink className="h-3 w-3 text-muted-foreground shrink-0" />
-														</>
-													) : character.latestReport.status === 'pending' ||
-														character.latestReport.status === 'processing' ? (
-														<span className="truncate text-muted-foreground">
-															Processing... (
-															{formatDistanceToNow(new Date(character.latestReport.createdAt), {
-																addSuffix: true,
-															})}
-															)
-														</span>
-													) : (
-														<span className="truncate text-muted-foreground">
-															Failed (
-															{formatDistanceToNow(new Date(character.latestReport.createdAt), {
-																addSuffix: true,
-															})}
-															)
-														</span>
-													)
-												) : (
-													<span className="truncate text-muted-foreground">No report yet</span>
-												)}
-											</div>
-											<Button
-												variant="ghost"
-												size="sm"
-												onClick={() => handleViewDetails(character)}
-											>
-												<ExternalLink className="mr-1.5 h-3.5 w-3.5" />
-												View Details
-											</Button>
-											<Button
-												variant={character.latestReport ? 'ghost' : 'primary'}
-												size="sm"
-												disabled={
-													isScanningAll ||
-													!character.corporationId ||
-													character.hasPendingReport ||
-													requestReportBatch.isPending ||
-													isRequestingThisCharacter
-												}
-												onClick={() => handleOpenSingleScanDialog(character)}
-											>
-												<Scan className="mr-1.5 h-3.5 w-3.5" />
-												{isRequestingThisCharacter
-													? 'Requesting...'
-													: 'Scan'}
-											</Button>
-										</div>
-									</div>
-								)
-							})}
-						</div>
-					)}
-				</CardContent>
-			</Card>
+					<ProfileCharactersSection
+						characters={rows.map((character) => ({
+							characterId: character.characterId,
+							characterName: character.characterName,
+							hasValidToken: character.hasValidToken,
+							corporationId: character.corporationId,
+							corporationName: character.corporationName,
+							allianceId: character.allianceId,
+							allianceName: character.allianceName,
+							role: character.role,
+							activityStatus: character.activityStatus,
+							isPrimary: character.isPrimary,
+							latestReport: character.latestReport,
+							hasPendingReport: character.hasPendingReport,
+							skillPoints: spByCharacterId.get(character.characterId),
+							walletBalance: walletByCharacterId.get(character.characterId),
+							isMetricsLoading: metricsLoadingByCharacterId.get(character.characterId),
+							joinDate: memberMetaByCharacterId.get(character.characterId)?.joinDate,
+							lastLogin: memberMetaByCharacterId.get(character.characterId)?.lastLogin,
+							locationSystem: memberMetaByCharacterId.get(character.characterId)?.locationSystem,
+							locationRegion: memberMetaByCharacterId.get(character.characterId)?.locationRegion,
+						}))}
+						fulcrumLoading={fulcrumLoading}
+						showViewDetailsButton
+						isScanAllVisible
+						isScanningAll={isScanningAll}
+						scanAllLabel={isScanningAll ? 'Scanning All...' : `Scan All (${scanEligibleCharacters.length})`}
+						scanAllDisabled={
+							isScanningAll ||
+							requestReport.isPending ||
+							requestReportBatch.isPending ||
+							scanEligibleCharacters.length === 0
+						}
+						onScanAll={handleOpenScanAllDialog}
+						isScanPendingFor={(characterId) =>
+							requestReport.isPending && requestingCharacterId === characterId
+						}
+						onViewReport={(character) => {
+							const full = rows.find((row) => row.characterId === character.characterId)
+							if (full) handleViewLatestReport(full)
+						}}
+						onViewDetails={(character) => {
+							const full = rows.find((row) => row.characterId === character.characterId)
+							if (full) handleViewDetails(full)
+						}}
+						onScan={(character) => {
+							const full = rows.find((row) => row.characterId === character.characterId)
+							if (full) handleOpenSingleScanDialog(full)
+						}}
+					/>
 
-			<Card>
-				<CardHeader>
-					<div className="flex items-center justify-between gap-2">
-						<CardTitle className="flex items-center gap-2 text-base">
-							<FileText className="h-4 w-4" />
-							Notes
-						</CardTitle>
-						{canAddNote && (
-							<Button variant="ghost" size="sm" onClick={() => setAddNoteDialogOpen(true)}>
-								<Plus className="mr-1.5 h-3.5 w-3.5" />
-								Add Note
-							</Button>
-						)}
-					</div>
-				</CardHeader>
-				<CardContent>
-					{notesLoading ? (
-						<div className="flex justify-center py-6">
-							<LoadingSpinner size="sm" />
-						</div>
-					) : notes && notes.length > 0 ? (
-						<div className="space-y-3">
-							{notes.map((note) => (
-								<div key={note.id} className="rounded-lg border p-3 space-y-2">
-									<div className="flex items-center justify-between gap-2">
-										<div className="flex items-center gap-2">
-											<Badge variant={note.authorIsAdmin ? 'default' : 'secondary'}>
-												{note.authorIsAdmin || note.source === 'admin' ? 'Admin' : 'HR'}
-											</Badge>
-											<span className="text-xs text-muted-foreground">
-												by {note.authorCharacterName}
-											</span>
-										</div>
-										<span className="text-xs text-muted-foreground">
-											{formatDistanceToNow(new Date(note.createdAt), { addSuffix: true })}
-										</span>
-									</div>
-									<p className="text-sm whitespace-pre-wrap">{note.noteText}</p>
-								</div>
-							))}
-						</div>
-					) : (
-						<p className="text-sm text-muted-foreground text-center py-4">No notes for this user</p>
-					)}
-				</CardContent>
-			</Card>
+					<ProfileNotesSection
+						notes={notes}
+						loading={notesLoading}
+						canAddNote={canAddNote}
+						onAddNote={() => setAddNoteDialogOpen(true)}
+					/>
 
-			<Card>
-				<CardHeader>
-					<CardTitle className="flex items-center gap-2 text-base">
-						<User className="h-4 w-4" />
-						Application History
-					</CardTitle>
-				</CardHeader>
-				<CardContent>
-					{appsLoading ? (
-						<div className="flex justify-center py-6">
-							<LoadingSpinner size="sm" />
-						</div>
-					) : sortedApps.length > 0 ? (
-						<div className="space-y-2">
-							{sortedApps.map((application) => (
-								<div
-									key={application.id}
-									className="flex items-center justify-between rounded-lg border p-3"
-								>
-									<div className="min-w-0">
-										<Link
-											to={`/corporations/${application.corporationId}/applications/${application.id}`}
-											className="font-medium hover:underline text-sm"
-										>
-											{application.corporationName ?? `Corp ${application.corporationId}`}
-										</Link>
-										<p className="text-xs text-muted-foreground">
-											{new Date(application.createdAt).toLocaleDateString()}
-										</p>
-									</div>
-									<ApplicationStatusBadge status={application.status} />
-								</div>
-							))}
-						</div>
-					) : (
-						<p className="text-sm text-muted-foreground text-center py-4">No application history</p>
-					)}
-				</CardContent>
-			</Card>
+					<ProfileApplicationHistorySection
+						applications={sortedApps.map((application) => ({
+							id: application.id,
+							corporationId: application.corporationId,
+							corporationName: application.corporationName,
+							characterId: application.characterId,
+							characterName: application.characterName,
+							status: application.status,
+							createdAt: application.createdAt,
+						}))}
+						loading={appsLoading}
+						onOpenApplication={(application) =>
+							navigate(`/corporations/${application.corporationId}/applications/${application.id}`)
+						}
+					/>
 				</div>
 			</div>
 			{userId && (

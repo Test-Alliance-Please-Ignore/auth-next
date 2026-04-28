@@ -9,20 +9,13 @@
 
 import {
 	ArrowLeft,
-	Calendar,
-	Clock,
-	ExternalLink,
-	FileText,
 	Link2,
 	Loader2,
-	MapPin,
-	MessageSquarePlus,
-	Scan,
 	ShieldAlert,
-	User,
 	Users,
 	XCircle,
 } from 'lucide-react'
+import { useQueries } from '@tanstack/react-query'
 import { useMemo, useState } from 'react'
 import { Navigate, useNavigate, useParams, useSearchParams } from 'react-router-dom'
 import { formatDistanceToNow } from 'date-fns'
@@ -43,20 +36,23 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Container } from '@/components/ui/container'
 import { LoadingSpinner } from '@/components/ui/loading'
 import { Separator } from '@/components/ui/separator'
-import { cn } from '@/lib/utils'
 import { useAuth } from '@/hooks/useAuth'
 import { usePageTitle } from '@/hooks/usePageTitle'
 import { useUserPermissions } from '@/hooks/useUserPermissions'
+import { apiClient } from '@/lib/api'
 
 import { useHrPermissionCheck } from '../../hr/hooks'
-import { useCanAccessCorporation, useCorporationMembers } from '../../corporations/hooks'
+import { useCanAccessCorporation, useCorporationMemberAccount } from '../../corporations/hooks'
 import { AddHRNoteDialog } from '../components/add-hr-note-dialog'
-import { ApplicationStatusBadge } from '../components/application-status-badge'
+import {
+	ProfileApplicationHistorySection,
+	ProfileCharactersSection,
+	ProfileNotesSection,
+} from '../components/user-profile-sections'
 import { useApplicationFulcrum, useApplications, useHRNotes, useRequestFulcrumReport } from '../hooks'
-import { groupByAccount } from '../components/hr-members-table'
 
 import type { CorporationMember } from '../../corporations/api'
-import type { CharacterReportMetadata, FulcrumCharacterData, HRNote } from '../api'
+import type { FulcrumCharacterData } from '../api'
 
 // ============================================================================
 // Types & Sub-Components
@@ -70,6 +66,7 @@ interface UnifiedCharacter {
 	fulcrum?: FulcrumCharacterData
 }
 
+// Test compatibility helper retained after section-component extraction.
 export function resolveEsiBadgeState({
 	member,
 	fulcrum,
@@ -96,223 +93,6 @@ export function resolveEsiBadgeState({
 	}
 }
 
-function CharacterCard({
-	character,
-	corporationId,
-	userId,
-	isAdmin,
-	onRequestReport,
-	onViewReport,
-}: {
-	character: UnifiedCharacter
-	corporationId: string
-	userId: string | undefined
-	isAdmin: boolean
-	onRequestReport: ReturnType<typeof useRequestFulcrumReport>
-	onViewReport: (reportId: string, characterName: string) => void
-}) {
-	const { member, fulcrum, isInCorp } = character
-	const latestReport = fulcrum?.reports[0] as CharacterReportMetadata | undefined
-	const isRequesting =
-		onRequestReport.isPending &&
-		(onRequestReport.variables as { characterId?: string })?.characterId === character.characterId
-	const hasPending = fulcrum?.reports.some(
-		(r) => r.status === 'pending' || r.status === 'processing',
-	)
-	const esiBadge = resolveEsiBadgeState({ member, fulcrum, isInCorp })
-
-	return (
-		<div className={cn('rounded-lg border p-3 space-y-2', !isInCorp && 'border-dashed opacity-80')}>
-			<div className="flex items-start gap-3">
-				<MemberAvatar
-					characterId={character.characterId}
-					characterName={character.characterName}
-					size="md"
-				/>
-				<div className="min-w-0 flex-1 space-y-1">
-					<div className="flex items-center gap-2">
-						<p className="font-medium truncate">{character.characterName}</p>
-						{isInCorp && member ? (
-							<Badge
-								variant={
-									member.role === 'CEO'
-										? 'destructive'
-										: member.role === 'Director'
-											? 'warning'
-											: 'default'
-								}
-								className="text-[10px] px-1.5 py-0 shrink-0"
-							>
-								{member.role}
-							</Badge>
-						) : (
-							<Badge variant="secondary" className="text-[10px] px-1.5 py-0 shrink-0">
-								External
-							</Badge>
-						)}
-					</div>
-					{isInCorp && member ? (
-						<div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-muted-foreground">
-							{esiBadge.show && (
-								<Badge variant={esiBadge.variant} className="text-[10px] px-1.5 py-0">
-									{esiBadge.label}
-								</Badge>
-							)}
-							<Badge
-								variant={
-									member.activityStatus === 'active'
-										? 'success'
-										: member.activityStatus === 'inactive'
-											? 'destructive'
-											: 'secondary'
-								}
-								className="text-[10px] px-1.5 py-0"
-							>
-								{member.activityStatus}
-							</Badge>
-							{member.lastLogin && (
-								<span className="flex items-center gap-1">
-									<Clock className="h-3 w-3" />
-									{formatDistanceToNow(new Date(member.lastLogin), { addSuffix: true })}
-								</span>
-							)}
-							<span className="flex items-center gap-1">
-								<Calendar className="h-3 w-3" />
-								Joined {formatDistanceToNow(new Date(member.joinDate), { addSuffix: true })}
-							</span>
-							{member.locationSystem && (
-								<span className="flex items-center gap-1">
-									<MapPin className="h-3 w-3" />
-									{member.locationSystem}
-									{member.locationRegion && ` (${member.locationRegion})`}
-								</span>
-							)}
-						</div>
-					) : (
-						<div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-muted-foreground">
-							{esiBadge.show && (
-								<Badge variant={esiBadge.variant} className="text-[10px] px-1.5 py-0">
-									{esiBadge.label}
-								</Badge>
-							)}
-							{fulcrum?.corporationName && <span>{fulcrum.corporationName}</span>}
-						</div>
-					)}
-				</div>
-				{member?.isBlacklisted && (
-					<Badge variant="destructive" className="shrink-0 gap-1">
-						<ShieldAlert className="h-3 w-3" />
-						Blacklisted
-					</Badge>
-				)}
-			</div>
-
-			{/* Inline fulcrum row (admin only) */}
-			{isAdmin && userId && fulcrum && (
-				<div className="flex items-center gap-2 pl-11">
-					<div
-						className={cn(
-							'flex items-center gap-2 text-xs px-3 py-1.5 rounded-md border flex-1 min-w-0',
-							latestReport?.status === 'completed' && 'cursor-pointer hover:bg-muted/50 transition-colors',
-						)}
-						onClick={
-							latestReport?.status === 'completed'
-								? () => onViewReport(latestReport.id, character.characterName)
-								: undefined
-						}
-					>
-						<Scan className="h-3 w-3 text-muted-foreground shrink-0" />
-						<span className="font-medium text-muted-foreground shrink-0">Fulcrum Report</span>
-						<span className="text-muted-foreground">·</span>
-						{latestReport ? (
-							latestReport.status === 'completed' ? (
-								<>
-									<span className="text-foreground truncate">
-										View latest report ({formatDistanceToNow(new Date(latestReport.createdAt), { addSuffix: true })})
-									</span>
-									<ExternalLink className="h-3 w-3 text-muted-foreground ml-auto shrink-0" />
-								</>
-							) : latestReport.status === 'pending' || latestReport.status === 'processing' ? (
-								<span className="text-muted-foreground truncate">
-									Processing… ({formatDistanceToNow(new Date(latestReport.createdAt), { addSuffix: true })})
-								</span>
-							) : (
-								<span className="text-muted-foreground truncate">
-									Failed ({formatDistanceToNow(new Date(latestReport.createdAt), { addSuffix: true })})
-								</span>
-							)
-						) : (
-							<span className="text-muted-foreground truncate">No report yet</span>
-						)}
-					</div>
-					{!hasPending && (
-						<Button
-							variant="ghost"
-							size="sm"
-							disabled={isRequesting}
-							onClick={() =>
-								onRequestReport.mutate({
-									characterId: character.characterId,
-									corporationId,
-									requestSource: 'hr',
-									userId,
-								})
-							}
-						>
-							{isRequesting ? (
-								<Loader2 className="h-3.5 w-3.5 animate-spin" />
-							) : (
-								<>
-									<Scan className="h-3.5 w-3.5 mr-1.5" />
-									{latestReport ? 'Rescan' : 'Scan'}
-								</>
-							)}
-						</Button>
-					)}
-				</div>
-			)}
-		</div>
-	)
-}
-
-function NoteCard({ note }: { note: HRNote }) {
-	const typeColors: Record<string, string> = {
-		general: 'text-blue-400',
-		warning: 'text-yellow-400',
-		positive: 'text-green-400',
-		incident: 'text-red-400',
-		background_check: 'text-purple-400',
-	}
-
-	const priorityVariant: Record<string, 'default' | 'warning' | 'destructive'> = {
-		low: 'default',
-		normal: 'default',
-		high: 'warning',
-		critical: 'destructive',
-	}
-
-	return (
-		<div className="rounded-lg border p-4 space-y-2">
-			<div className="flex items-center justify-between">
-				<div className="flex items-center gap-2">
-					<span className={cn('text-xs font-medium capitalize', typeColors[note.noteType])}>
-						{note.noteType.replace('_', ' ')}
-					</span>
-					{note.priority !== 'normal' && (
-						<Badge variant={priorityVariant[note.priority] ?? 'default'} className="text-[10px] px-1.5 py-0">
-							{note.priority}
-						</Badge>
-					)}
-				</div>
-				<span className="text-xs text-muted-foreground">
-					{formatDistanceToNow(new Date(note.createdAt), { addSuffix: true })}
-				</span>
-			</div>
-			<p className="text-sm leading-relaxed">{note.noteText}</p>
-			<p className="text-xs text-muted-foreground">by {note.authorCharacterName}</p>
-		</div>
-	)
-}
 
 // ============================================================================
 // Main Component
@@ -333,18 +113,12 @@ export default function HrMemberProfile() {
 		corporationId ? { corporationId } : null,
 	)
 
-	// Fetch all members and find this account
-	const { data: membersResponse, isLoading: membersLoading } = useCorporationMembers(
+	// Fetch specific linked member account details (non-paginated endpoint)
+	const { data: memberAccountResponse, isLoading: membersLoading } = useCorporationMemberAccount(
 		corporationId ?? '',
-		{}
+		accountId ?? ''
 	)
-	const members = membersResponse?.items ?? []
-
-	const account = useMemo(() => {
-		if (!accountId) return null
-		const groups = groupByAccount(members)
-		return groups.find((g) => g.accountId === accountId) ?? null
-	}, [members, accountId])
+	const account = memberAccountResponse?.account ?? null
 
 	const representative = account?.representative
 	const authUserId = representative?.authUserId
@@ -411,6 +185,27 @@ export default function HrMemberProfile() {
 
 		return [...inCorp, ...external]
 	}, [account, fulcrumCharacters])
+	const characterDetailQueries = useQueries({
+		queries: unifiedCharacters.map((character) => ({
+			queryKey: ['character', character.characterId, 'hr-member-profile', corporationId],
+			queryFn: () => apiClient.getCharacterDetail(character.characterId, corporationId),
+			enabled: Boolean(corporationId),
+			staleTime: 5 * 60 * 1000,
+		})),
+	})
+	const spByCharacterId = new Map<string, number | null>()
+	const walletByCharacterId = new Map<string, string | null>()
+	const metricsLoadingByCharacterId = new Map<string, boolean>()
+	unifiedCharacters.forEach((character, index) => {
+		const query = characterDetailQueries[index]
+		const detail = query?.data
+		spByCharacterId.set(character.characterId, detail?.public?.skills?.totalSp ?? null)
+		walletByCharacterId.set(character.characterId, detail?.private?.wallet?.balance ?? null)
+		metricsLoadingByCharacterId.set(
+			character.characterId,
+			(query?.isPending ?? false) && detail == null
+		)
+	})
 
 	const totalCharacters = unifiedCharacters.length
 
@@ -542,7 +337,7 @@ export default function HrMemberProfile() {
 					onClick={() => navigate(`/corporations/${corporationId}/members`)}
 				>
 					<ArrowLeft className="h-4 w-4" />
-					Back
+					Back to Members
 				</Button>
 			</div>
 
@@ -652,145 +447,88 @@ export default function HrMemberProfile() {
 
 				{/* ── Main Content ── */}
 				<div className="space-y-6">
-					{/* Characters */}
-					<Card>
-						<CardHeader>
-							<CardTitle className="flex items-center gap-2 text-base">
-								<Users className="h-4 w-4" />
-								Characters ({totalCharacters})
-							</CardTitle>
-						</CardHeader>
-						<CardContent className="space-y-2">
-							{unifiedCharacters.map((char) => (
-								<CharacterCard
-									key={char.characterId}
-									character={char}
-									corporationId={corporationId}
-									userId={authUserId}
-									isAdmin={isAdmin}
-									onRequestReport={requestReport}
-									onViewReport={(reportId, characterName) =>
-										navigate(`/fulcrum/reports/${reportId}`, {
-											state: {
-												characterName,
-												userId: accountId,
-												corporationId,
-												returnTo: `/corporations/${corporationId}/members/${accountId}`,
-												backLabel: 'Back to User Profile',
-												breadcrumbParentLabel: 'User Profile',
-											},
-										})
-									}
-								/>
-							))}
-							{fulcrumLoading && unifiedCharacters.length === account.characters.length && (
-								<div className="flex items-center justify-center py-2 text-xs text-muted-foreground gap-2">
-									<Loader2 className="h-3 w-3 animate-spin" />
-									Loading characters…
-								</div>
-							)}
-						</CardContent>
-					</Card>
+					<ProfileCharactersSection
+						characters={unifiedCharacters.map((char) => ({
+							characterId: char.characterId,
+							characterName: char.characterName,
+							hasValidToken: char.member?.hasValidToken ?? char.fulcrum?.hasValidToken ?? null,
+							corporationId: char.member?.corporationId ?? char.fulcrum?.corporationId ?? null,
+							corporationName: char.member?.corporationName ?? char.fulcrum?.corporationName ?? null,
+							allianceId: char.member?.allianceId ?? char.fulcrum?.allianceId ?? null,
+							allianceName: char.member?.allianceName ?? char.fulcrum?.allianceName ?? null,
+							role: char.member?.role ?? char.fulcrum?.role ?? null,
+							activityStatus: char.member?.activityStatus ?? char.fulcrum?.activityStatus ?? null,
+							isExternal: !char.isInCorp,
+							isBlacklisted: char.member?.isBlacklisted,
+							lastLogin: char.member?.lastLogin,
+							joinDate: char.member?.joinDate,
+							skillPoints: spByCharacterId.get(char.characterId),
+							walletBalance: walletByCharacterId.get(char.characterId),
+							isMetricsLoading: metricsLoadingByCharacterId.get(char.characterId),
+							latestReport: char.fulcrum?.reports[0] ?? null,
+							hasPendingReport:
+								char.fulcrum?.reports.some((r) => r.status === 'pending' || r.status === 'processing') ??
+								false,
+						}))}
+						fulcrumLoading={
+							fulcrumLoading && unifiedCharacters.length === account.characters.length
+						}
+						isScanPendingFor={(characterId) =>
+							requestReport.isPending &&
+							(requestReport.variables as { characterId?: string } | undefined)?.characterId ===
+								characterId
+						}
+						onViewReport={(character) => {
+							if (character.latestReport?.status !== 'completed') return
+							navigate(`/fulcrum/reports/${character.latestReport.id}`, {
+								state: {
+									characterName: character.characterName,
+									userId: accountId,
+									corporationId,
+									returnTo: `/corporations/${corporationId}/members/${accountId}`,
+									backLabel: 'Back to User Profile',
+									breadcrumbParentLabel: 'User Profile',
+								},
+							})
+						}}
+						onScan={(character) => {
+							if (!character.corporationId || !authUserId) return
+							requestReport.mutate({
+								characterId: character.characterId,
+								corporationId: character.corporationId,
+								requestSource: 'hr',
+								userId: authUserId,
+							})
+						}}
+					/>
 
-					{/* HR Notes (Admin + Auditor) */}
 					{(isAdmin || isAuditor) && authUserId && (
-						<Card>
-							<CardHeader>
-								<div className="flex items-center justify-between">
-									<CardTitle className="flex items-center gap-2 text-base">
-										<FileText className="h-4 w-4" />
-										HR Notes
-									</CardTitle>
-									{canAddNote && (
-										<Button
-											variant="ghost"
-											size="sm"
-											onClick={() => setAddNoteOpen(true)}
-										>
-											<MessageSquarePlus className="h-3.5 w-3.5 mr-1.5" />
-											Add Note
-										</Button>
-									)}
-								</div>
-							</CardHeader>
-							<CardContent>
-								{notesLoading ? (
-									<div className="flex justify-center py-6">
-										<LoadingSpinner size="sm" />
-									</div>
-								) : notes && notes.length > 0 ? (
-									<div className="space-y-3">
-										{notes.map((note) => (
-											<NoteCard key={note.id} note={note} />
-										))}
-									</div>
-								) : (
-									<p className="text-sm text-muted-foreground text-center py-4">
-										No HR notes for this account
-									</p>
-								)}
-							</CardContent>
-						</Card>
+						<ProfileNotesSection
+							notes={notes}
+							loading={notesLoading}
+							canAddNote={canAddNote}
+							onAddNote={() => setAddNoteOpen(true)}
+							emptyText="No HR notes for this account"
+						/>
 					)}
 
-					{/* Application History */}
-					<Card>
-						<CardHeader>
-							<CardTitle className="flex items-center gap-2 text-base">
-								<User className="h-4 w-4" />
-								Application History
-							</CardTitle>
-						</CardHeader>
-						<CardContent>
-							{!account.isLinked ? (
-								<p className="text-sm text-muted-foreground text-center py-4">
-									Unregistered member — no application data
-								</p>
-							) : appsLoading ? (
-								<div className="flex justify-center py-6">
-									<LoadingSpinner size="sm" />
-								</div>
-							) : sortedApps.length > 0 ? (
-								<div className="space-y-2">
-									{sortedApps.map((app) => (
-										<div
-											key={app.id}
-											className="flex items-center justify-between p-3 rounded-lg border cursor-pointer hover:bg-muted/50 transition-colors"
-											onClick={() =>
-												navigate(
-													`/corporations/${corporationId}/applications/${app.id}`,
-												)
-											}
-										>
-											<div className="flex items-center gap-3">
-												<MemberAvatar
-													characterId={app.characterId}
-													characterName={app.characterName}
-													size="sm"
-												/>
-												<div>
-													<p className="text-sm font-medium">{app.characterName}</p>
-													<p className="text-xs text-muted-foreground">
-														{formatDistanceToNow(new Date(app.createdAt), {
-															addSuffix: true,
-														})}
-													</p>
-												</div>
-											</div>
-											<div className="flex items-center gap-2">
-												<ApplicationStatusBadge status={app.status} size="sm" />
-												<ExternalLink className="h-3.5 w-3.5 text-muted-foreground" />
-											</div>
-										</div>
-									))}
-								</div>
-							) : (
-								<p className="text-sm text-muted-foreground text-center py-4">
-									No applications found
-								</p>
-							)}
-						</CardContent>
-					</Card>
+					<ProfileApplicationHistorySection
+						applications={sortedApps.map((app) => ({
+							id: app.id,
+							corporationId: app.corporationId,
+							corporationName: app.corporationName,
+							characterId: app.characterId,
+							characterName: app.characterName,
+							status: app.status,
+							createdAt: app.createdAt,
+						}))}
+						loading={appsLoading}
+						linked={account.isLinked}
+						emptyText="No applications found"
+						onOpenApplication={(application) =>
+							navigate(`/corporations/${corporationId}/applications/${application.id}`)
+						}
+					/>
 				</div>
 			</div>
 

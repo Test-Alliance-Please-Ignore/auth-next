@@ -10,6 +10,7 @@ import { useCallback, useMemo } from 'react'
 import { myCorporationsApi } from './api'
 
 import type {
+	CorporationMemberAccountResponse,
 	CorporationAccessResult,
 	CorporationMembersQuery,
 	CorporationMembersResponse,
@@ -29,6 +30,8 @@ export const corporationKeys = {
 	list: () => [...corporationKeys.lists()] as const,
 	members: (corpId: string, query: CorporationMembersQuery) =>
 		[...corporationKeys.all, 'members', corpId, query] as const,
+	memberAccount: (corpId: string, accountId: string) =>
+		[...corporationKeys.all, 'member-account', corpId, accountId] as const,
 	access: () => [...corporationKeys.all, 'access'] as const,
 }
 
@@ -85,6 +88,16 @@ export function useCorporationMembers(corporationId: string, query: CorporationM
 		staleTime: 1000 * 60, // 1 minute
 		gcTime: 1000 * 60 * 3, // 3 minutes
 		enabled: !!corporationId,
+	})
+}
+
+export function useCorporationMemberAccount(corporationId: string, accountId: string) {
+	return useQuery<CorporationMemberAccountResponse>({
+		queryKey: corporationKeys.memberAccount(corporationId, accountId),
+		queryFn: () => myCorporationsApi.getCorporationMemberAccount(corporationId, accountId),
+		staleTime: 1000 * 60,
+		gcTime: 1000 * 60 * 3,
+		enabled: Boolean(corporationId && accountId),
 	})
 }
 
