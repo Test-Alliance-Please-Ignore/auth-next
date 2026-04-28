@@ -179,7 +179,7 @@ export default function HrMemberProfile() {
 			.map((fc) => ({
 				characterId: fc.characterId,
 				characterName: fc.characterName,
-				isInCorp: false,
+				isInCorp: fc.corporationId === corporationId,
 				fulcrum: fc,
 			}))
 
@@ -208,6 +208,14 @@ export default function HrMemberProfile() {
 	})
 
 	const totalCharacters = unifiedCharacters.length
+	const inCorpCharacterCount = useMemo(() => {
+		const inCorpIds = new Set(
+			unifiedCharacters
+				.filter((character) => character.isInCorp)
+				.map((character) => character.characterId)
+		)
+		return inCorpIds.size
+	}, [unifiedCharacters])
 
 	const accountName = account?.mainName ?? searchParams.get('name') ?? 'Member'
 
@@ -410,8 +418,8 @@ export default function HrMemberProfile() {
 							<div className="flex justify-between text-sm">
 								<span className="text-muted-foreground">Characters</span>
 								<span className="font-medium">
-									{account.characters.length} in corp
-									{totalCharacters > account.characters.length && (
+									{inCorpCharacterCount} in corp
+									{totalCharacters > inCorpCharacterCount && (
 										<span className="text-muted-foreground font-normal">
 											{' '}/ {totalCharacters} total
 										</span>
