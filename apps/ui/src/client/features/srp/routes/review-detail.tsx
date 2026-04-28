@@ -100,7 +100,12 @@ export default function ReviewRequestDetail() {
 							) : null}
 							<span className="font-semibold">{request.corporationName}</span>
 						</span>
-						{request.solarSystemName ? <span>· {request.solarSystemName}</span> : null}
+						{request.solarSystemName ? (
+							<span>
+								· {request.solarSystemName}
+								{request.solarSystemRegionName ? ` (${request.solarSystemRegionName})` : ''}
+							</span>
+						) : null}
 						<span>·</span>
 						<EveTimeDisplay dateStr={request.lossDate} />
 					</span>
@@ -263,6 +268,11 @@ export default function ReviewRequestDetail() {
 								<div>
 									<div className="text-muted-foreground">System</div>
 									<div className="font-medium">{request.solarSystemName ?? '—'}</div>
+									{request.solarSystemRegionName ? (
+										<div className="text-xs text-muted-foreground">
+											{request.solarSystemRegionName}
+										</div>
+									) : null}
 								</div>
 								<div>
 									<div className="text-muted-foreground">Loss Date</div>

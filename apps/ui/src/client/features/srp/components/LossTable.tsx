@@ -258,7 +258,12 @@ export function LossTable({
 											/>
 										</TableCell>
 										<TableCell className="text-sm font-medium">
-											{loss.solarSystemName || loss.solarSystemId}
+											<div>{loss.solarSystemName || loss.solarSystemId}</div>
+											{loss.solarSystemRegionName ? (
+												<div className="text-xs text-muted-foreground">
+													{loss.solarSystemRegionName}
+												</div>
+											) : null}
 										</TableCell>
 										<TableCell>
 											{loss.hasSRPRequest && loss.srpRequestStatus ? (
