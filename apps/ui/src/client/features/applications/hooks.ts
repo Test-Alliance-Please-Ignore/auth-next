@@ -114,6 +114,7 @@ export function useApplicationsPaged(params?: ApplicationsParams) {
 	return useQuery<ApplicationsListResult>({
 		queryKey: [...applicationKeys.list(filterKey), 'paged'],
 		queryFn: () => applicationsApi.getApplicationsPaged(params),
+		placeholderData: (previousData) => previousData,
 		staleTime: 1000 * 60 * 2,
 		gcTime: 1000 * 60 * 5,
 	})

@@ -1,5 +1,5 @@
 import { Check, Copy } from 'lucide-react'
-import { useState } from 'react'
+import { useEffect, useLayoutEffect, useRef, useState } from 'react'
 import { Link, Navigate } from 'react-router-dom'
 import { toast } from 'sonner'
 
@@ -15,9 +15,11 @@ import { formatISK, formatISKShort, formatRelativeTime } from '../utils'
 
 import type { SRPRequestResponse } from '../types'
 
-type ExitPhase = 'swiping' | 'collapsing'
-const SWIPE_DURATION_MS = 420
-const COLLAPSE_DURATION_MS = 280
+const EXIT_DURATION_MS = 240
+type GhostExitCard = {
+	request: SRPRequestResponse
+	top: number
+}
 
 export default function PaymentsQueue() {
 	const { hasAnyPermission } = useUserPermissions()
@@ -40,9 +42,69 @@ function PaymentStack() {
 	const { data, isLoading, error } = useRequestsByStatus('approved', { limit: 100 })
 	const { data: payoutTotalData } = usePendingPayoutTotal()
 	const [dismissed, setDismissed] = useState<Set<string>>(new Set())
-	const [exiting, setExiting] = useState<Map<string, SRPRequestResponse>>(new Map())
-	const [exitPhases, setExitPhases] = useState<Map<string, ExitPhase>>(new Map())
+	const [ghosts, setGhosts] = useState<Map<string, GhostExitCard>>(new Map())
 	const markPaid = useMarkPaid()
+	const containerRef = useRef<HTMLDivElement>(null)
+	const cardRefs = useRef<Map<string, HTMLDivElement>>(new Map())
+	const previousCardTopsRef = useRef<Map<string, number>>(new Map())
+	const rawRequests: SRPRequestResponse[] = (data?.requests ?? []) as SRPRequestResponse[]
+
+	useEffect(() => {
+		if (dismissed.size === 0) {
+			return
+		}
+		const activeIds = new Set(rawRequests.map((request) => request.id))
+		setDismissed((prev) => {
+			const next = new Set<string>()
+			for (const id of prev) {
+				if (activeIds.has(id)) {
+					next.add(id)
+				}
+			}
+			return next.size === prev.size ? prev : next
+		})
+	}, [rawRequests, dismissed.size])
+
+	const requests = rawRequests.filter((r: SRPRequestResponse) => !dismissed.has(r.id))
+	const sortedRequests = [...requests].sort((a, b) => {
+		const aTime = Date.parse(a.reviewedAt ?? a.createdAt ?? a.lossDate)
+		const bTime = Date.parse(b.reviewedAt ?? b.createdAt ?? b.lossDate)
+		return aTime - bTime
+	})
+	const visibleRequestIds = sortedRequests.map((request) => request.id).join('|')
+	const pendingPayoutTotal = payoutTotalData?.pendingPayoutTotal ?? '0'
+
+	useLayoutEffect(() => {
+		const nextCardTops = new Map<string, number>()
+
+		for (const request of sortedRequests) {
+			const element = cardRefs.current.get(request.id)
+			if (!element) continue
+
+			const nextTop = element.getBoundingClientRect().top
+			nextCardTops.set(request.id, nextTop)
+
+			const previousTop = previousCardTopsRef.current.get(request.id)
+			if (previousTop == null) continue
+
+			const delta = previousTop - nextTop
+			if (Math.abs(delta) < 1) continue
+
+			element.style.transition = 'none'
+			element.style.transform = `translateY(${delta}px)`
+			void element.getBoundingClientRect()
+			element.style.transition = 'transform 220ms ease-out'
+			element.style.transform = 'translateY(0)'
+
+			const handleTransitionEnd = () => {
+				element.style.transition = ''
+				element.removeEventListener('transitionend', handleTransitionEnd)
+			}
+			element.addEventListener('transitionend', handleTransitionEnd)
+		}
+
+		previousCardTopsRef.current = nextCardTops
+	}, [visibleRequestIds])
 
 	if (isLoading) {
 		return (
@@ -62,26 +124,6 @@ function PaymentStack() {
 		)
 	}
 
-	const rawRequests: SRPRequestResponse[] = (data?.requests ?? []) as SRPRequestResponse[]
-	const baseRequests = rawRequests.filter(
-		(r: SRPRequestResponse) => !dismissed.has(r.id)
-	)
-	const requestMap = new Map<string, SRPRequestResponse>(
-		baseRequests.map((request) => [request.id, request])
-	)
-	for (const [requestId, request] of exiting.entries()) {
-		if (!dismissed.has(requestId)) {
-			requestMap.set(requestId, request)
-		}
-	}
-	const requests = [...requestMap.values()]
-	const sortedRequests = [...requests].sort((a, b) => {
-		const aTime = Date.parse(a.reviewedAt ?? a.createdAt ?? a.lossDate)
-		const bTime = Date.parse(b.reviewedAt ?? b.createdAt ?? b.lossDate)
-		return aTime - bTime
-	})
-	const pendingPayoutTotal = payoutTotalData?.pendingPayoutTotal ?? '0'
-
 	if (sortedRequests.length === 0) {
 		return (
 			<div className="mt-4 rounded-lg border border-dashed p-12 text-center">
@@ -92,73 +134,66 @@ function PaymentStack() {
 	}
 
 	const handleMarkPaid = async (request: SRPRequestResponse) => {
-		setExiting((prev) => {
-			const next = new Map(prev)
-			next.set(request.id, request)
-			return next
-		})
-		setExitPhases((prev) => {
-			const next = new Map(prev)
-			next.set(request.id, 'swiping')
-			return next
-		})
-		try {
-			await new Promise<void>((resolve) => {
-				window.setTimeout(resolve, SWIPE_DURATION_MS)
+		const cardElement = cardRefs.current.get(request.id)
+		const containerElement = containerRef.current
+		if (cardElement && containerElement) {
+			const cardRect = cardElement.getBoundingClientRect()
+			const containerRect = containerElement.getBoundingClientRect()
+			const top = cardRect.top - containerRect.top + containerElement.scrollTop
+			setGhosts((prev) => {
+				const next = new Map(prev)
+				next.set(request.id, { request, top })
+				return next
 			})
+		}
+		const finalizeTimeout = window.setTimeout(() => {
+			setGhosts((prev) => {
+				const next = new Map(prev)
+				next.delete(request.id)
+				return next
+			})
+		}, EXIT_DURATION_MS)
+		setDismissed((prev) => new Set([...prev, request.id]))
+
+		try {
 			await markPaid.mutateAsync(request.id)
 			toast.success(`Marked as payment pending: ${request.shipTypeName}`)
-
-			setExitPhases((prev) => {
-				const next = new Map(prev)
-				if (next.get(request.id) === 'swiping') {
-					next.set(request.id, 'collapsing')
-				}
-				return next
-			})
-
-			window.setTimeout(() => {
-				setDismissed((prev) => new Set([...prev, request.id]))
-				setExiting((prev) => {
-					const next = new Map(prev)
-					next.delete(request.id)
-					return next
-				})
-				setExitPhases((prev) => {
-					const nextMap = new Map(prev)
-					nextMap.delete(request.id)
-					return nextMap
-				})
-			}, COLLAPSE_DURATION_MS)
 		} catch (e: any) {
-			setExiting((prev) => {
+			window.clearTimeout(finalizeTimeout)
+			setGhosts((prev) => {
 				const next = new Map(prev)
 				next.delete(request.id)
 				return next
 			})
-			setExitPhases((prev) => {
-				const next = new Map(prev)
-				next.delete(request.id)
-				return next
-			})
+			setDismissed((prev) => new Set([...prev].filter((id) => id !== request.id)))
 			toast.error('Failed to mark as paid', { description: e.message })
 		}
 	}
 
 	return (
-		<div className="mt-4 space-y-3">
+		<div ref={containerRef} className="relative mt-4 space-y-3">
 			<Card className="p-4">
 				<div className="text-sm text-muted-foreground">Pending Payout Total</div>
 				<div className="mt-1 font-mono text-2xl font-semibold tabular-nums text-success">
 					{formatISKShort(pendingPayoutTotal)}
 				</div>
 			</Card>
+			{[...ghosts.values()].map((ghost) => (
+				<GhostPaymentCard key={ghost.request.id} request={ghost.request} top={ghost.top} />
+			))}
 			{sortedRequests.map((req: SRPRequestResponse) => (
 				<PaymentCard
 					key={req.id}
 					request={req}
 					onMarkPaid={handleMarkPaid}
-					exitPhase={exitPhases.get(req.id)}
+					isPendingRemoval={dismissed.has(req.id)}
+					registerCardRef={(el) => {
+						if (!el) {
+							cardRefs.current.delete(req.id)
+							return
+						}
+						cardRefs.current.set(req.id, el)
+					}}
 				/>
 			))}
 		</div>
@@ -168,15 +203,15 @@ function PaymentStack() {
 function PaymentCard({
 	request,
 	onMarkPaid,
-	exitPhase,
+	isPendingRemoval,
+	registerCardRef,
 }: {
 	request: SRPRequestResponse
 	onMarkPaid: (r: SRPRequestResponse) => void
-	exitPhase?: ExitPhase
+	isPendingRemoval?: boolean
+	registerCardRef: (el: HTMLDivElement | null) => void
 }) {
 	const [copiedField, setCopiedField] = useState<string | null>(null)
-	const isSwiping = exitPhase === 'swiping'
-	const isCollapsing = exitPhase === 'collapsing'
 
 	const copyToClipboard = (text: string, field: string, label: string) => {
 		void navigator.clipboard.writeText(text).then(() => {
@@ -191,24 +226,8 @@ function PaymentCard({
 	const reason = `SRP - KM#${request.id}`
 
 	return (
-		<div
-			className={`${isSwiping ? 'overflow-visible' : 'overflow-hidden'} transition-[max-height,margin] duration-300 ease-in-out ${isCollapsing ? '!mt-0 max-h-0' : 'max-h-[320px]'}`}
-			style={{
-				transition:
-					'opacity 420ms ease-in, max-height 300ms ease-in-out, margin 300ms ease-in-out',
-				opacity: isSwiping || isCollapsing ? 0 : 1,
-			}}
-		>
-			<Card
-				className={`p-4 ${isSwiping ? 'pointer-events-none' : ''}`}
-				style={{
-					transition:
-						'transform 420ms cubic-bezier(0.22, 0.61, 0.36, 1), filter 420ms ease-in',
-					willChange: 'transform, filter',
-					transform: isSwiping ? 'translateX(85%)' : 'translateX(0)',
-					filter: isSwiping ? 'blur(1.5px) saturate(85%)' : 'blur(0px) saturate(100%)',
-				}}
-			>
+		<div ref={registerCardRef} className={`transition-opacity ${isPendingRemoval ? 'pointer-events-none opacity-0' : 'opacity-100'}`}>
+			<Card className="p-4">
 				<div className="space-y-1.5">
 					<CopyRow
 						label="Recipient"
@@ -236,7 +255,7 @@ function PaymentCard({
 						type="button"
 						size="sm"
 						onClick={() => onMarkPaid(request)}
-						disabled={Boolean(exitPhase)}
+						disabled={Boolean(isPendingRemoval)}
 						className="shrink-0 gap-1"
 					>
 						<Check className="h-4 w-4" /> Mark Paid
@@ -261,6 +280,55 @@ function PaymentCard({
 					</div>
 				</div>
 			</Card>
+		</div>
+	)
+}
+
+function GhostPaymentCard({
+	request,
+	top,
+}: {
+	request: SRPRequestResponse
+	top: number
+}) {
+	const recipient = request.characterName
+	const amount = request.approvedAmount ?? '0'
+	const reason = `SRP - KM#${request.id}`
+
+	return (
+		<div
+			className="pointer-events-none absolute left-0 right-0 z-20 animate-[srp-pay-exit_240ms_ease-out_forwards]"
+			style={{ top }}
+		>
+			<Card className="p-4">
+				<div className="space-y-1.5">
+					<GhostCopyRow label="Recipient" value={recipient} />
+					<GhostCopyRow label="Amount" value={formatISK(amount)} />
+					<GhostCopyRow label="Reason" value={reason} />
+				</div>
+				<div className="mt-3 flex items-center gap-3 border-t border-border/40 pt-3 text-sm text-muted-foreground">
+					<span className="font-medium">{request.shipTypeName}</span>
+					{request.corporationName && <span>· {request.corporationName}</span>}
+					<span className="inline-flex items-center gap-1">
+						<span>· Lost</span>
+						<EveTimeDisplay dateStr={request.lossDate} format="compact" className="text-sm" />
+					</span>
+					{request.reviewedAt && <span>· Reviewed {formatRelativeTime(request.reviewedAt)}</span>}
+				</div>
+			</Card>
+			<style>{`@keyframes srp-pay-exit { from { transform: translateX(0); opacity: 1; } to { transform: translateX(85%); opacity: 0; } }`}</style>
+		</div>
+	)
+}
+
+function GhostCopyRow({ label, value }: { label: string; value: string }) {
+	return (
+		<div className="flex items-center gap-2">
+			<span className="w-20 shrink-0 text-xs text-muted-foreground">{label}</span>
+			<div className="flex items-center gap-2.5 rounded-md border-2 border-zinc-500/50 bg-zinc-500/20 px-3 py-2 shadow-sm">
+				<Copy className="h-4 w-4 shrink-0 text-muted-foreground" />
+				<span className="font-mono text-base">{value}</span>
+			</div>
 		</div>
 	)
 }

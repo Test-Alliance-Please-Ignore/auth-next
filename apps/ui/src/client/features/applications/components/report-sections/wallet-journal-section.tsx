@@ -147,7 +147,7 @@ export function WalletJournalSection({ data }: { data: ProcessedWalletJournalEnt
 		renderTopToolbarCustomActions: () => (
 			<div className="ml-auto flex items-center gap-2">
 				<label htmlFor="journal-ref-type-filter" className="text-xs font-medium text-muted-foreground">
-					Ref Type
+					Transaction Type
 				</label>
 				<Select
 					inputId="journal-ref-type-filter"

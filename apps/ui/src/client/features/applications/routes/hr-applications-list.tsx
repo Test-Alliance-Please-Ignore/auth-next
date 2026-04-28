@@ -98,6 +98,7 @@ export default function HrApplicationsList() {
 	const {
 		data: applicationsResult,
 		isLoading: applicationsLoading,
+		isFetching: applicationsFetching,
 		error: applicationsError,
 	} = useApplicationsPaged({
 		corporationId,
@@ -148,7 +149,7 @@ export default function HrApplicationsList() {
 	}
 
 	// Loading state
-	if (authLoading || permissionLoading || applicationsLoading || corporationAccessLoading) {
+	if (authLoading || permissionLoading || corporationAccessLoading) {
 		return (
 			<Container>
 				<div className="flex items-center justify-center min-h-[400px]">
@@ -186,7 +187,7 @@ export default function HrApplicationsList() {
 	}
 
 	// Error state
-	if (applicationsError) {
+	if (applicationsError && !applicationsResult) {
 		return (
 			<Container>
 				<Card className="max-w-2xl mx-auto border-red-200 bg-red-50 dark:border-red-800 dark:bg-red-950">
@@ -291,7 +292,7 @@ export default function HrApplicationsList() {
 			{/* Applications Table */}
 			<ApplicationsTable
 				applications={applications}
-				loading={applicationsLoading}
+				loading={applicationsLoading || applicationsFetching}
 				getApplicationHref={(app) => `/corporations/${corporationId}/applications/${app.id}`}
 				onApplicationClick={(app) => handleApplicationClick(app.id)}
 				canManage={permission?.hasPermission || false}
