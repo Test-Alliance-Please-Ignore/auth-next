@@ -12,7 +12,7 @@
 	"dependencies": {
 		"@neondatabase/api-client": "2.2.0",
 		"@neondatabase/serverless": "1.0.2",
-		"drizzle-kit": "0.31.7",
+		"drizzle-kit": "0.31.10",
 		"drizzle-orm": "0.44.7"
 	},
 	"devDependencies": {

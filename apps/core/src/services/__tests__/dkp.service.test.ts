@@ -109,6 +109,10 @@ describe('DkpService', () => {
 
 	describe('awardDkpBulk', () => {
 		it('should process multiple awards', async () => {
+			vi.spyOn(dkpService as any, 'resolveCharacterNames').mockResolvedValue(
+				new Map([['Test Character', { characterId: '12345' }]])
+			)
+
 			// Mock successful transaction creation
 			mockDb.insert.mockReturnValue({
 				values: vi.fn(() => ({

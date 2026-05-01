@@ -368,7 +368,7 @@ describe('broadcast template tag validation and schema normalization', () => {
 					{
 						name: 'message',
 						label: 'Message',
-						type: 'text',
+						type: 'textarea',
 						required: true,
 					},
 					{

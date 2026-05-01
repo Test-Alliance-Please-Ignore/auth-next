@@ -8,6 +8,7 @@
 AGENT.md
 AGENTS.md
 CLAUDE.md
+.mise.toml
 **/dist/**
 *.lock
 /turbo/generators/**/*.hbs

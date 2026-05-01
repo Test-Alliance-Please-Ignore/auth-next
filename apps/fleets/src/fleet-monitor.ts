@@ -1606,7 +1606,7 @@ export class FleetMonitorDO extends DurableObject {
 					ws.send(JSON.stringify({ type: 'pong', payload: Date.now() }))
 					break
 
-				case 'subscribe':
+				case 'subscribe': {
 					// Send current fleet status immediately
 					const currentState = await this.getState()
 					if (currentState?.isInitialized) {
@@ -1623,6 +1623,7 @@ export class FleetMonitorDO extends DurableObject {
 					}
 					ws.send(JSON.stringify({ type: 'subscribed' }))
 					break
+				}
 
 				case 'unsubscribe':
 					ws.send(JSON.stringify({ type: 'unsubscribed' }))

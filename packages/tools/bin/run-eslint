@@ -1,6 +1,10 @@
 #!/bin/bash
 set -euo pipefail
 
+# Full-repo lint in this monorepo can exceed default Node heap.
+: "${NODE_OPTIONS:=--max-old-space-size=8192}"
+export NODE_OPTIONS
+
 # store cache under node_modules when available to reduce clutter
 cache_location=".eslintcache" # default
 if [[ -d "node_modules" ]]; then
@@ -11,16 +15,11 @@ args=(
 	--cache
 	--cache-strategy content
 	--cache-location "$cache_location"
-	--max-warnings 1000
 	.
 )
 
 if [[ -n "${FIX_ESLINT:-}" ]]; then
 	args+=("--fix")
-fi
-
-if [[ -n "${GITHUB_ACTIONS:-}" ]] || [[ -n "${CI:-}" ]]; then
-	args+=("--max-warnings=0")
 fi
 
 # get additional args

@@ -274,7 +274,7 @@ export class EsiFetcher {
 		// Clean up trailing ? or & if they're now at the end
 		cleaned = cleaned.replace(/[?&]$/, '')
 		// If we removed ?page=X and now have & at the start, replace with ?
-		cleaned = cleaned.replace(/^([^?]*)\&/, '$1?')
+		cleaned = cleaned.replace(/^([^?]*)&/, '$1?')
 		return cleaned
 	}
 

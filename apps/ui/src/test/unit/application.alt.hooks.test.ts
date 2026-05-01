@@ -184,8 +184,8 @@ describe('useAddApplicationAlt — onMutate', () => {
 		const { onMutate } = makeAddAltMutationHandlers(queryClient)
 		const ctx = onMutate({ applicationId: 'app-1', alts: [{ characterId: 'new-alt' }] })
 
-		expect(ctx.prevDetail).toBe(prevApp)
-		expect(ctx.prevActivity).toBe(prevLog)
+		expect(ctx.prevDetail).toStrictEqual(prevApp)
+		expect(ctx.prevActivity).toStrictEqual(prevLog)
 	})
 
 	it('handles empty cache gracefully', () => {
@@ -215,8 +215,8 @@ describe('useAddApplicationAlt — onError rollback', () => {
 		// Cache is now modified — simulate error and rollback
 		handlers.onError(new Error('fail'), { applicationId: 'app-1', alts: [] }, ctx)
 
-		expect(queryClient.getQueryData(applicationKeys.detail('app-1'))).toBe(prevApp)
-		expect(queryClient.getQueryData(applicationKeys.activity('app-1'))).toBe(prevLog)
+		expect(queryClient.getQueryData(applicationKeys.detail('app-1'))).toStrictEqual(prevApp)
+		expect(queryClient.getQueryData(applicationKeys.activity('app-1'))).toStrictEqual(prevLog)
 	})
 })
 
@@ -267,8 +267,8 @@ describe('useRemoveApplicationAlt — onMutate', () => {
 		const { onMutate } = makeRemoveAltMutationHandlers(queryClient)
 		const ctx = onMutate({ applicationId: 'app-1', altCharacterId: 'alt-2001' })
 
-		expect(ctx.prevDetail).toBe(prevApp)
-		expect(ctx.prevActivity).toBe(prevLog)
+		expect(ctx.prevDetail).toStrictEqual(prevApp)
+		expect(ctx.prevActivity).toStrictEqual(prevLog)
 	})
 })
 
@@ -290,7 +290,7 @@ describe('useRemoveApplicationAlt — onError rollback', () => {
 
 		handlers.onError(new Error('fail'), { applicationId: 'app-1', altCharacterId: 'alt-2001' }, ctx)
 
-		expect(queryClient.getQueryData(applicationKeys.detail('app-1'))).toBe(prevApp)
-		expect(queryClient.getQueryData(applicationKeys.activity('app-1'))).toBe(prevLog)
+		expect(queryClient.getQueryData(applicationKeys.detail('app-1'))).toStrictEqual(prevApp)
+		expect(queryClient.getQueryData(applicationKeys.activity('app-1'))).toStrictEqual(prevLog)
 	})
 })

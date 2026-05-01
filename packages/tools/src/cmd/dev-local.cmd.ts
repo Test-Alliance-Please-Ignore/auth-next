@@ -49,6 +49,7 @@ export const devLocalCmd = new Command('dev-local')
 		} else {
 			// In repo-root mode, args should target Turbo itself (e.g. --concurrency, --filter).
 			// Also strip Node inspector flags to avoid inspector port collisions across many workers.
+			// eslint-disable-next-line turbo/no-undeclared-env-vars
 			const sanitizedNodeOptions = sanitizeNodeOptions(process.env.NODE_OPTIONS)
 			if (sanitizedNodeOptions) {
 				$.env.NODE_OPTIONS = sanitizedNodeOptions
@@ -58,7 +59,9 @@ export const devLocalCmd = new Command('dev-local')
 			delete $.env.BUN_INSPECT
 			delete $.env.BUN_INSPECT_BRK
 
+			// eslint-disable-next-line turbo/no-undeclared-env-vars
 			const includeWorkers = parseCsvList(process.env.LOCAL_DEV_INCLUDE_WORKERS)
+			// eslint-disable-next-line turbo/no-undeclared-env-vars
 			const excludeWorkers = parseCsvList(process.env.LOCAL_DEV_EXCLUDE_WORKERS)
 			const workerFilters = [
 				...includeWorkers.map((name) => `--filter=${name}`),

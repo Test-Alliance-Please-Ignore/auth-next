@@ -10,7 +10,7 @@
 		"check:types": "run-tsc"
 	},
 	"devDependencies": {
-		"@cloudflare/workers-types": "4.20251118.0",
+		"@cloudflare/workers-types": "4.20260501.1",
 		"@repo/eslint-config": "workspace:*",
 		"@repo/tools": "workspace:*",
 		"@repo/typescript-config": "workspace:*"
