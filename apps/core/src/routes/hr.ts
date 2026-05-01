@@ -84,6 +84,42 @@ async function resolveUserCharacterNames(
 }
 
 /**
+ * Resolve primary character identity for users.
+ * Used to normalize HR role records that only carry user attachment IDs.
+ */
+async function resolveUserPrimaryCharacterIdentity(
+	db: NonNullable<Context<App>['var']['db']>,
+	userIds: string[]
+): Promise<Record<string, { characterId: string; characterName: string }>> {
+	if (userIds.length === 0) return {}
+
+	const uniqueIds = [...new Set(userIds)]
+	const foundUsers = await db.query.users.findMany({
+		where: inArray(users.id, uniqueIds),
+		columns: { id: true, mainCharacterId: true },
+	})
+	if (foundUsers.length === 0) return {}
+
+	const primaryCharacterIds = foundUsers.map((row) => row.mainCharacterId)
+	const chars = await db.query.userCharacters.findMany({
+		where: inArray(userCharacters.characterId, primaryCharacterIds),
+		columns: { characterId: true, characterName: true },
+	})
+	const charMap = new Map(chars.map((char) => [char.characterId, char]))
+
+	const result: Record<string, { characterId: string; characterName: string }> = {}
+	for (const user of foundUsers) {
+		const resolvedChar = charMap.get(user.mainCharacterId)
+		if (!resolvedChar) continue
+		result[user.id] = {
+			characterId: resolvedChar.characterId,
+			characterName: resolvedChar.characterName,
+		}
+	}
+	return result
+}
+
+/**
  * Enrich a list of applications with resolved corporation and reviewer names.
  */
 async function enrichApplications<T extends { corporationId: string; reviewedBy: string | null }>(
@@ -1636,6 +1672,7 @@ app.post('/:corporationId/roles', requireAuth(), async (c) => {
 app.get('/:corporationId/roles', requireAuth(), async (c) => {
 	const corporationId = c.req.param('corporationId')
 	const userId = c.req.query('userId')
+	const db = c.get('db')
 
 	const managementAccess = await getHrRoleManagementAccess(c, corporationId)
 	if (!managementAccess) {
@@ -1643,6 +1680,9 @@ app.get('/:corporationId/roles', requireAuth(), async (c) => {
 	}
 
 	try {
+		if (!db) {
+			return c.json({ error: 'Database not available' }, 500)
+		}
 		const hr = getHrStub(c)
 		let roles
 
@@ -1663,7 +1703,19 @@ app.get('/:corporationId/roles', requireAuth(), async (c) => {
 			})
 		}
 
-		return c.json(roles)
+		const userIds = [...new Set(roles.map((role) => role.userId).filter(Boolean))]
+		const identityByUserId = await resolveUserPrimaryCharacterIdentity(db, userIds)
+		const enrichedRoles = roles.map((role) => {
+			const identity = identityByUserId[role.userId]
+			if (!identity) return role
+			return {
+				...role,
+				characterId: identity.characterId,
+				characterName: identity.characterName,
+			}
+		})
+
+		return c.json(enrichedRoles)
 	} catch (error) {
 		logger.error('[HR Roles] Error fetching roles', {
 			corporationId,

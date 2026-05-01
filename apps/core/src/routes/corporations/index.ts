@@ -89,6 +89,23 @@ type MembersQuery = {
 	sortOrder: MembersSortOrder
 }
 
+function parseBoolean(value: string | undefined): boolean {
+	return value === 'true' || value === '1'
+}
+
+function hasAnyMembersQueryParams(c: Context<App>): boolean {
+	return (
+		typeof c.req.query('page') === 'string' ||
+		typeof c.req.query('limit') === 'string' ||
+		typeof c.req.query('search') === 'string' ||
+		typeof c.req.query('authFilter') === 'string' ||
+		typeof c.req.query('activityFilter') === 'string' ||
+		typeof c.req.query('roleFilter') === 'string' ||
+		typeof c.req.query('sortField') === 'string' ||
+		typeof c.req.query('sortOrder') === 'string'
+	)
+}
+
 function parsePositiveInt(value: string | undefined, fallback: number): number {
 	const parsed = Number.parseInt(value ?? '', 10)
 	if (!Number.isFinite(parsed) || parsed < 1) {
@@ -263,6 +280,27 @@ function filterSortAndPaginateMembers(members: CorporationMemberListItem[], quer
 			active: filtered.filter((m) => m.activityStatus === 'active').length,
 			inactive: filtered.filter((m) => m.activityStatus === 'inactive').length,
 			directors: filtered.filter((m) => m.role === 'Director').length,
+		},
+	}
+}
+
+function buildUnpaginatedMembersResponse(members: CorporationMemberListItem[]) {
+	return {
+		items: members,
+		pagination: {
+			page: 1,
+			limit: members.length,
+			totalItems: members.length,
+			totalPages: 1,
+			hasNextPage: false,
+			hasPreviousPage: false,
+		},
+		summary: {
+			total: members.length,
+			linked: members.filter((m) => m.hasAuthAccount).length,
+			active: members.filter((m) => m.activityStatus === 'active').length,
+			inactive: members.filter((m) => m.activityStatus === 'inactive').length,
+			directors: members.filter((m) => m.role === 'Director').length,
 		},
 	}
 }
@@ -1485,6 +1523,9 @@ app.get('/:corporationId/data', requireAuth(), requireAdmin(), async (c) => {
  */
 app.get('/:corporationId/members', requireAuth(), async (c) => {
 	const corporationId = c.req.param('corporationId')
+	const allMembers = parseBoolean(c.req.query('all'))
+	const hasMembersQuery = hasAnyMembersQueryParams(c)
+	const returnUnpaginated = allMembers || !hasMembersQuery
 	const query = parseMembersQuery(c)
 	const user = c.get('user')!
 	const db = c.get('db')
@@ -1543,6 +1584,7 @@ app.get('/:corporationId/members', requireAuth(), async (c) => {
 		const tokenStoreStub = getStub<EveTokenStore>(c.env.EVE_TOKEN_STORE, 'default')
 
 		const useBackendPagination =
+			!returnUnpaginated &&
 			canUseBackendPaginatedMembersPath(query) &&
 			typeof (corpStub as unknown as { getMembersPaginated?: unknown }).getMembersPaginated ===
 				'function'
@@ -1670,8 +1712,10 @@ app.get('/:corporationId/members', requireAuth(), async (c) => {
 				limit: query.limit,
 				search: query.search,
 			})
-			const paginated = filterSortAndPaginateMembers(cached, query)
-			const enriched = await enrichMembersPageLiveTokenStatus(db, tokenStoreStub, paginated)
+			const response = returnUnpaginated
+				? buildUnpaginatedMembersResponse(cached)
+				: filterSortAndPaginateMembers(cached, query)
+			const enriched = await enrichMembersPageLiveTokenStatus(db, tokenStoreStub, response)
 			return c.json(enriched)
 		}
 
@@ -1814,8 +1858,10 @@ app.get('/:corporationId/members', requireAuth(), async (c) => {
 		// Store in cache for future requests
 		await cacheJson(cacheKey, membersWithDetails, CACHE_TTL)
 
-		const paginated = filterSortAndPaginateMembers(membersWithDetails, query)
-		const enriched = await enrichMembersPageLiveTokenStatus(db, tokenStoreStub, paginated)
+		const response = returnUnpaginated
+			? buildUnpaginatedMembersResponse(membersWithDetails)
+			: filterSortAndPaginateMembers(membersWithDetails, query)
+		const enriched = await enrichMembersPageLiveTokenStatus(db, tokenStoreStub, response)
 		return c.json(enriched)
 	} catch (error) {
 		logger.error('[Corporations] Error fetching corporation members', {
