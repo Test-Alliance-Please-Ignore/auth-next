@@ -20,7 +20,17 @@ import {
 } from '@/components/ui/breadcrumb'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Container } from '@/components/ui/container'
+import {
+	Dialog,
+	DialogContent,
+	DialogDescription,
+	DialogFooter,
+	DialogHeader,
+	DialogTitle,
+} from '@/components/ui/dialog'
+import { Label } from '@/components/ui/label'
 import { LoadingSpinner } from '@/components/ui/loading'
+import { Select } from '@/components/ui/select'
 import {
 	Table,
 	TableBody,
@@ -50,6 +60,7 @@ import {
 import type { GrantHrRoleRequest, HrRoleGrant, RevokeHrRoleRequest } from '@/features/hr'
 import type { CorporationMember } from '../../corporations'
 import { Button } from '@/components/ui/button'
+import type { HrRoleType } from '@/features/hr'
 
 /**
  * Main HR Roles Management Component
@@ -70,6 +81,11 @@ export default function HrRolesManagement() {
 
 	const [grantDialogMember, setGrantDialogMember] = useState<CorporationMember | null>(null)
 	const [revokeDialogMember, setRevokeDialogMember] = useState<CorporationMember | null>(null)
+	const [assignUserDialogOpen, setAssignUserDialogOpen] = useState(false)
+	const [assignUserId, setAssignUserId] = useState('')
+	const [assignRole, setAssignRole] = useState<'hr_admin' | 'hr_reviewer' | 'hr_viewer'>('hr_viewer')
+	const [changeRoleTarget, setChangeRoleTarget] = useState<HrRoleGrant | null>(null)
+	const [changeRoleValue, setChangeRoleValue] = useState<HrRoleType>('hr_viewer')
 
 	// Mutations
 	const grantMutation = useGrantHrRole()
@@ -96,6 +112,52 @@ export default function HrRolesManagement() {
 		}
 		return map
 	}, [members])
+
+	const activeRoleByUserId = useMemo(() => {
+		const map = new Map<string, HrRoleGrant>()
+		for (const role of hrRoles ?? []) {
+			if (!role.isActive) continue
+			if (!map.has(role.userId)) map.set(role.userId, role)
+		}
+		return map
+	}, [hrRoles])
+
+	const assignableMembers = useMemo(
+		() =>
+			members.filter((member) => {
+				if (!member.authUserId) return false
+				if (member.isBlacklisted) return false
+				const existingRole = activeRoleByUserId.get(member.authUserId)
+				if (!existingRole) return true
+				return existingRole.role !== 'hr_admin' || canRevokeHrAdmin
+			}),
+		[members, activeRoleByUserId, canRevokeHrAdmin]
+	)
+
+	const assignUserOptions = useMemo(
+		() =>
+			assignableMembers
+				.filter((member) => member.authUserId)
+				.map((member) => {
+					const existing = member.authUserId ? activeRoleByUserId.get(member.authUserId) : undefined
+					const roleHint = existing ? `Current: ${existing.role.replace('hr_', 'HR ')}` : 'No HR role'
+					return {
+						value: member.authUserId!,
+						label: member.mainCharacterName || member.characterName,
+						description: `${member.characterName} • ${roleHint}`,
+					}
+				}),
+		[assignableMembers, activeRoleByUserId]
+	)
+	const allowedRoleOptions = useMemo(
+		() =>
+			[
+				{ value: 'hr_admin', label: 'HR Admin' },
+				{ value: 'hr_reviewer', label: 'HR Reviewer' },
+				{ value: 'hr_viewer', label: 'HR Viewer' },
+			].filter((entry) => (canRevokeHrAdmin ? true : entry.value !== 'hr_admin')),
+		[canRevokeHrAdmin]
+	)
 
 	// Set page title
 	usePageTitle(corporation ? `${corporation.name} HR Roles | HR Management` : 'HR Roles Management')
@@ -185,6 +247,30 @@ export default function HrRolesManagement() {
 		}
 	}
 
+	const handleAssignUserRole = async () => {
+		if (!assignUserId) {
+			showError('Select a user to assign')
+			return
+		}
+		const member = assignableMembers.find((entry) => entry.authUserId === assignUserId)
+		if (!member || !member.authUserId) {
+			showError('Selected user is invalid')
+			return
+		}
+
+		await handleGrantHrRole({
+			corporationId: corporationId!,
+			userId: member.authUserId,
+			characterId: member.characterId,
+			characterName: member.mainCharacterName || member.characterName,
+			role: assignRole,
+		})
+
+		setAssignUserDialogOpen(false)
+		setAssignUserId('')
+		setAssignRole('hr_viewer')
+	}
+
 	const handleRevokeHrRole = async (request: RevokeHrRoleRequest) => {
 		try {
 			await revokeMutation.mutateAsync(request)
@@ -223,6 +309,54 @@ export default function HrRolesManagement() {
 			isBlacklisted: false, // Not available in HrRoleGrant context
 		}
 		setRevokeDialogMember(member)
+	}
+
+	const canEditRole = (role: HrRoleGrant): boolean => {
+		if (!role.isActive) return false
+		if (role.grantedBy === 'leadership-inference') return false
+		if (role.role === 'hr_admin' && !canRevokeHrAdmin) return false
+		const linkedMember = memberByUserId.get(role.userId)
+		if (linkedMember?.role === 'CEO' && userRole !== 'admin') return false
+		return true
+	}
+
+	const handleOpenChangeRole = (role: HrRoleGrant) => {
+		setChangeRoleTarget(role)
+		setChangeRoleValue(role.role)
+	}
+
+	const handleSubmitChangeRole = async () => {
+		if (!changeRoleTarget) return
+		if (changeRoleValue === changeRoleTarget.role) {
+			setChangeRoleTarget(null)
+			return
+		}
+
+		const linkedMember = memberByUserId.get(changeRoleTarget.userId)
+		const characterId = linkedMember?.characterId || changeRoleTarget.characterId
+		const characterName =
+			linkedMember?.mainCharacterName ||
+			linkedMember?.characterName ||
+			changeRoleTarget.characterName ||
+			changeRoleTarget.userId
+
+		try {
+			await revokeMutation.mutateAsync({
+				roleId: changeRoleTarget.id,
+				corporationId: changeRoleTarget.corporationId,
+			})
+			await grantMutation.mutateAsync({
+				corporationId: changeRoleTarget.corporationId,
+				userId: changeRoleTarget.userId,
+				characterId,
+				characterName,
+				role: changeRoleValue,
+			})
+			showSuccess('HR role updated successfully')
+			setChangeRoleTarget(null)
+		} catch (error) {
+			showError(error instanceof Error ? error.message : 'Failed to change HR role')
+		}
 	}
 
 	// Main content
@@ -265,12 +399,17 @@ export default function HrRolesManagement() {
 							</p>
 						)}
 					</div>
-					<Button variant="ghost" asChild>
-						<Link to={`/corporations/${corporationId}/members`}>
-							<ArrowLeft className="h-4 w-4" />
-							Back to Manage Corporation
-						</Link>
-					</Button>
+					<div className="flex items-center gap-2">
+						<Button onClick={() => setAssignUserDialogOpen(true)}>
+							Assign User
+						</Button>
+						<Button variant="ghost" asChild>
+							<Link to={`/corporations/${corporationId}/members`}>
+								<ArrowLeft className="h-4 w-4" />
+								Back to Manage Corporation
+							</Link>
+						</Button>
+					</div>
 				</div>
 			</div>
 
@@ -345,15 +484,24 @@ export default function HrRolesManagement() {
 											)}
 										</TableCell>
 										<TableCell className="text-right">
-											<Button variant="ghost"
-												size="sm"
-												onClick={() => handleRevokeClick(role)}
-												disabled={
-													!role.isActive || (role.role === 'hr_admin' && !canRevokeHrAdmin)
-												}
-											>
-												Revoke HR Role
-											</Button>
+											<div className="inline-flex items-center gap-2">
+												<Button
+													variant="secondary"
+													size="sm"
+													onClick={() => handleOpenChangeRole(role)}
+													disabled={!canEditRole(role)}
+												>
+													Change Role
+												</Button>
+												<Button
+													variant="ghost"
+													size="sm"
+													onClick={() => handleRevokeClick(role)}
+													disabled={!canEditRole(role)}
+												>
+													Revoke HR Role
+												</Button>
+											</div>
 										</TableCell>
 									</TableRow>
 								))}
@@ -391,6 +539,61 @@ export default function HrRolesManagement() {
 			</div>
 
 			{/* Dialogs */}
+			<Dialog open={assignUserDialogOpen} onOpenChange={setAssignUserDialogOpen}>
+				<DialogContent>
+					<DialogHeader>
+						<DialogTitle>Assign HR Role</DialogTitle>
+						<DialogDescription>
+							Search for a linked user in this corporation and assign an HR role.
+						</DialogDescription>
+					</DialogHeader>
+					<div className="space-y-4">
+						<div className="space-y-2">
+							<Label htmlFor="assign-hr-user">User</Label>
+							<Select
+								inputId="assign-hr-user"
+								value={assignUserId}
+								onValueChange={setAssignUserId}
+								options={assignUserOptions}
+								searchable
+								placeholder="Search user..."
+								className="w-full"
+							/>
+						</div>
+						<div className="space-y-2">
+							<Label htmlFor="assign-hr-role">HR Role</Label>
+							<Select
+								inputId="assign-hr-role"
+								value={assignRole}
+								onValueChange={(value) =>
+									setAssignRole(value as 'hr_admin' | 'hr_reviewer' | 'hr_viewer')
+								}
+								options={[
+									{ value: 'hr_admin', label: 'HR Admin' },
+									{ value: 'hr_reviewer', label: 'HR Reviewer' },
+									{ value: 'hr_viewer', label: 'HR Viewer' },
+								]}
+								searchable
+								placeholder="Select role..."
+								className="w-full"
+							/>
+						</div>
+					</div>
+					<DialogFooter>
+						<Button variant="cancel" onClick={() => setAssignUserDialogOpen(false)}>
+							Cancel
+						</Button>
+						<Button
+							variant="confirm"
+							onClick={handleAssignUserRole}
+							disabled={!assignUserId || grantMutation.isPending}
+						>
+							Assign Role
+						</Button>
+					</DialogFooter>
+				</DialogContent>
+			</Dialog>
+
 			{corporationId && revokeDialogMember && (
 				<RevokeHrRoleDialog
 					member={revokeDialogMember}
@@ -401,6 +604,41 @@ export default function HrRolesManagement() {
 					isSubmitting={revokeMutation.isPending}
 				/>
 			)}
+
+			<Dialog open={!!changeRoleTarget} onOpenChange={(open) => !open && setChangeRoleTarget(null)}>
+				<DialogContent>
+					<DialogHeader>
+						<DialogTitle>Change HR Role</DialogTitle>
+						<DialogDescription>
+							Update role assignment for {changeRoleTarget?.characterName || changeRoleTarget?.userId}.
+						</DialogDescription>
+					</DialogHeader>
+					<div className="space-y-2">
+						<Label htmlFor="change-hr-role">HR Role</Label>
+						<Select
+							inputId="change-hr-role"
+							value={changeRoleValue}
+							onValueChange={(value) => setChangeRoleValue(value as HrRoleType)}
+							options={allowedRoleOptions}
+							searchable
+							placeholder="Select role..."
+							className="w-full"
+						/>
+					</div>
+					<DialogFooter>
+						<Button variant="cancel" onClick={() => setChangeRoleTarget(null)}>
+							Cancel
+						</Button>
+						<Button
+							variant="confirm"
+							onClick={handleSubmitChangeRole}
+							disabled={!changeRoleTarget || grantMutation.isPending || revokeMutation.isPending}
+						>
+							Save Role
+						</Button>
+					</DialogFooter>
+				</DialogContent>
+			</Dialog>
 		</Container>
 	)
 }

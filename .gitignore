@@ -51,6 +51,7 @@ yarn-error.log*
 
 # Agents
 .claude/settings.local.json
+.codex
 
 # Git worktrees (Crystal)
 /worktrees/
