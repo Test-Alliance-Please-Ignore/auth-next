@@ -125,7 +125,10 @@ describe('srp routes - permissions', () => {
 	let srpStub: ReturnType<typeof makeSrpStub>
 	let tokenStoreStub: { validateToken: ReturnType<typeof vi.fn> }
 	let doctrinesStub: { getFittings: ReturnType<typeof vi.fn>; getFitting: ReturnType<typeof vi.fn> }
-	let universeStub: { resolveTypeNamesByIds: ReturnType<typeof vi.fn> }
+	let universeStub: {
+		resolveTypeNamesByIds: ReturnType<typeof vi.fn>
+		resolveSolarSystemsByIds: ReturnType<typeof vi.fn>
+	}
 
 	beforeEach(() => {
 		vi.clearAllMocks()
@@ -143,6 +146,7 @@ describe('srp routes - permissions', () => {
 		}
 		universeStub = {
 			resolveTypeNamesByIds: vi.fn().mockResolvedValue({}),
+			resolveSolarSystemsByIds: vi.fn().mockResolvedValue({}),
 		}
 
 		getStubMock.mockImplementation((binding: any) => {

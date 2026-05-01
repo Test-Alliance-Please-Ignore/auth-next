@@ -190,5 +190,3 @@ export interface Fleets extends DurableObject {
 
 export * from './esi'
 export * from './fleet-monitor'
-// Re-export FleetDetailsResponse for backward compatibility with Fleets interface
-export type { FleetDetailsResponse } from './fleet-monitor'

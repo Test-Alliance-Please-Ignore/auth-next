@@ -11,7 +11,7 @@
 		"test:ci": "run-vitest-ci"
 	},
 	"dependencies": {
-		"drizzle-kit": "0.31.7"
+		"drizzle-kit": "0.31.10"
 	},
 	"devDependencies": {
 		"@changesets/cli": "2.29.7",
@@ -26,17 +26,18 @@
 		"prettier-plugin-packagejson": "2.5.19",
 		"prettier-plugin-toml": "2.0.6",
 		"syncpack": "13.0.4",
-		"turbo": "2.8.16",
+		"turbo": "2.9.7",
 		"typescript": "5.9.3",
 		"vitest": "3.2.4",
-		"wrangler": "4.71.0"
+		"wrangler": "4.87.0"
 	},
 	"pnpm": {
 		"overrides": {
 			"@vitest/runner": "3.2.4",
 			"@vitest/snapshot": "3.2.4",
 			"drizzle-orm": "0.44.7",
-			"workerd": "1.20251106.1"
+			"workerd": "1.20251106.1",
+			"tsx": "4.21.0"
 		}
 	},
 	"packageManager": "pnpm@10.31.0"

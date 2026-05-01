@@ -1,11 +1,18 @@
 {
-	"$schema": "https://turbo.build/schema.json",
+	"$schema": "https://v2-9-7.turborepo.dev/schema.json",
 	"concurrency": "30",
 	"globalDependencies": ["**/.dev.vars"],
 	"globalEnv": [
 		"CI",
 		"GITHUB_ACTIONS",
 		"VITEST",
+		"XDG_CONFIG_HOME",
+		"DEV",
+		"NODE_OPTIONS",
+		"LOCAL_DEV_INCLUDE_WORKERS",
+		"LOCAL_DEV_EXCLUDE_WORKERS",
+		"SDE_DATA_DIR",
+		"VITE_DISCORD_CLIENT_ID",
 		"DATABASE_URL",
 		"DATABASE_URL_MIGRATIONS",
 		"PROD"
@@ -96,7 +103,7 @@
 		"check:lint": {
 			"dependsOn": ["build", "topo"],
 			"outputLogs": "new-only",
-			"env": ["FIX_ESLINT"]
+			"env": ["FIX_ESLINT", "XDG_CONFIG_HOME"]
 		},
 		"//#check:lint:all": {
 			"outputLogs": "new-only",

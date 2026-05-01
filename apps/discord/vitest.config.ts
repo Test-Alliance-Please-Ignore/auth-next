@@ -1,9 +1,5 @@
 import { defineWorkersProject } from '@cloudflare/vitest-pool-workers/config'
 
-if (!process.env.XDG_CONFIG_HOME) {
-	process.env.XDG_CONFIG_HOME = '/tmp'
-}
-
 export default defineWorkersProject({
 	test: {
 		poolOptions: {

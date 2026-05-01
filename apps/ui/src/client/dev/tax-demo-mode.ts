@@ -63,6 +63,7 @@ type TaxReportFilters = TaxRollupReportQueryFilters
 type DemoTaxState = ReturnType<typeof buildDemoState>
 
 function isDevRuntime(): boolean {
+	// eslint-disable-next-line turbo/no-undeclared-env-vars
 	return import.meta.env.DEV && typeof window !== 'undefined'
 }
 

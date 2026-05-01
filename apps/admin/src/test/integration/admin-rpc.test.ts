@@ -187,7 +187,8 @@ describe('Admin Worker RPC', () => {
 			const { userCharacters } = await import('../../../../core/src/db/schema')
 			const { eq } = await import('@repo/db-utils')
 			const chars = await db.select().from(userCharacters).where(eq(userCharacters.userId, userId))
-			const mainCharId = chars[0]?.characterId!
+			const mainCharId = chars[0]?.characterId
+			if (!mainCharId) throw new Error('Expected seeded user to have a main character')
 
 			await expect(
 				worker.transferCharacterOwnership(mainCharId, targetUserId, adminUserId)
@@ -247,7 +248,8 @@ describe('Admin Worker RPC', () => {
 			const { userCharacters } = await import('../../../../core/src/db/schema')
 			const { eq } = await import('@repo/db-utils')
 			const chars = await db.select().from(userCharacters).where(eq(userCharacters.userId, userId))
-			const mainCharId = chars[0]?.characterId!
+			const mainCharId = chars[0]?.characterId
+			if (!mainCharId) throw new Error('Expected seeded user to have a main character')
 
 			await expect(worker.deleteCharacter(mainCharId, adminUserId)).rejects.toThrow(
 				"Cannot delete user's only character"
@@ -299,7 +301,8 @@ describe('Admin Worker RPC', () => {
 			const { userCharacters } = await import('../../../../core/src/db/schema')
 			const { eq } = await import('@repo/db-utils')
 			const chars = await db.select().from(userCharacters).where(eq(userCharacters.userId, userId))
-			const charName = chars[0]?.characterName!
+			const charName = chars[0]?.characterName
+			if (!charName) throw new Error('Expected seeded user to have a character name')
 
 			// Extract unique part of name for search
 			const searchTerm = charName.split(' ')[2] // "Character XXXXXXXX" -> "XXXXXXXX"

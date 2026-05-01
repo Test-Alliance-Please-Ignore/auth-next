@@ -143,6 +143,7 @@ async function findSdeDataDirectory(rootDir: string, maxDepth = 4): Promise<stri
 }
 
 export async function prepareSdeDataDir(): Promise<string> {
+	// eslint-disable-next-line turbo/no-undeclared-env-vars
 	const configuredDir = process.env.SDE_DATA_DIR
 	if (configuredDir) {
 		return configuredDir

@@ -11,4 +11,8 @@ if [ -f "$REPO_ROOT/.env" ]; then
 	set +a
 fi
 
+# Wrangler writes logs under XDG config; default to writable tmp when unset.
+: "${XDG_CONFIG_HOME:=/tmp}"
+export XDG_CONFIG_HOME
+
 exec vite build
