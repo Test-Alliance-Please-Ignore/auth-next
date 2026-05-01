@@ -1105,7 +1105,8 @@ export async function updateUserDiscordRoles(
 	env: Env,
 	userId: string,
 	guildIds?: string[],
-	allowRemoval?: boolean
+	allowRemoval?: boolean,
+	hardStripAllRoles?: boolean
 ): Promise<{
 	results: Array<{
 		guildId: string
@@ -1398,23 +1399,38 @@ export async function updateUserDiscordRoles(
 	}
 
 	// === BUILD ROLE UPDATE REQUESTS ===
+	let updateRequests: Array<{
+		guildId: string
+		roleIds: string[]
+		managedRoleIds: string[]
+		clearAllRoles?: boolean
+	}>
 
-	const updateRequests = await Promise.all(
-		Array.from(rolesByGuild.values())
-			// When removal is allowed, include guilds with no expected roles so managed roles are cleaned up.
-			// Without this, a user who loses all entitlements to a guild would silently retain managed roles.
-			.filter((guild) => guild.expectedRoleIds.length > 0 || allowRemoval === true)
-			.map(async (guild) => {
-				// Get all managed roles for this guild
-				const managedRoleIds = await getAllManagedRolesForGuild(db, env, guild.guildId)
+	if (hardStripAllRoles) {
+		updateRequests = Array.from(rolesByGuild.values()).map((guild) => ({
+			guildId: guild.guildId,
+			roleIds: [],
+			managedRoleIds: [],
+			clearAllRoles: true,
+		}))
+	} else {
+		updateRequests = await Promise.all(
+			Array.from(rolesByGuild.values())
+				// When removal is allowed, include guilds with no expected roles so managed roles are cleaned up.
+				// Without this, a user who loses all entitlements to a guild would silently retain managed roles.
+				.filter((guild) => guild.expectedRoleIds.length > 0 || allowRemoval === true)
+				.map(async (guild) => {
+					// Get all managed roles for this guild
+					const managedRoleIds = await getAllManagedRolesForGuild(db, env, guild.guildId)
 
-				return {
-					guildId: guild.guildId,
-					roleIds: guild.expectedRoleIds,
-					managedRoleIds,
-				}
-			})
-	)
+					return {
+						guildId: guild.guildId,
+						roleIds: guild.expectedRoleIds,
+						managedRoleIds,
+					}
+				})
+		)
+	}
 
 	if (updateRequests.length === 0) {
 		return {
@@ -1852,7 +1868,8 @@ export async function inspectUserDiscordAccess(
 export async function syncUserDiscordAccess(
 	env: Env,
 	userId: string,
-	allowRemoval?: boolean
+	allowRemoval?: boolean,
+	hardStripAllRoles?: boolean
 ): Promise<{
 	results: Array<{
 		guildId: string
@@ -1909,7 +1926,13 @@ export async function syncUserDiscordAccess(
 
 	// Then update roles on all servers
 	logger.info('[Discord] syncUserDiscordAccess: Starting role update process', { userId })
-	const updateResult = await updateUserDiscordRoles(env, userId, undefined, allowRemoval)
+	const updateResult = await updateUserDiscordRoles(
+		env,
+		userId,
+		undefined,
+		allowRemoval,
+		hardStripAllRoles
+	)
 	logger.info('[Discord] syncUserDiscordAccess: Role update process completed', {
 		userId,
 		totalUpdated: updateResult.totalUpdated,

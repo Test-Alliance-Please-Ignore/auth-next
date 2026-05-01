@@ -60,9 +60,10 @@ export default function AuthCallbackPage() {
 				)
 
 				if (response.characterLinked) {
-					// Character was successfully linked. If this was an existing character token update,
-					// flag dashboard to refetch auth/session immediately.
-					const destination = response.tokenUpdated ? '/dashboard?tokenUpdated=1' : '/dashboard'
+					// Character was successfully linked (new link or token refresh).
+					// Always flag dashboard to refetch auth/session immediately so linked characters
+					// and token state are reflected without waiting for stale cache expiry.
+					const destination = '/dashboard?tokenUpdated=1'
 					void navigate(destination)
 				} else if (response.requiresClaimMain && response.characterInfo) {
 					// New user - redirect to claim-main page

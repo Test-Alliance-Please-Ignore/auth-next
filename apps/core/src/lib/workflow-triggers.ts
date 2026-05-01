@@ -43,6 +43,8 @@ export interface TriggerDiscordRefreshOptions {
 	source: string
 	/** Whether Discord role removal is permitted. False for join/add events, true for leave/remove events. */
 	allowRemoval?: boolean
+	/** Whether this refresh should hard-strip all roles on managed guilds. */
+	hardStripAllRoles?: boolean
 	/** Optional jitter delay (seconds) to stagger batch runs. Passed through to the workflow's sleep step. */
 	jitterDelaySeconds?: number
 }
@@ -75,10 +77,17 @@ export async function triggerDiscordRefreshWorkflow({
 	userId,
 	source,
 	allowRemoval = false,
+	hardStripAllRoles = false,
 	jitterDelaySeconds,
 }: TriggerDiscordRefreshOptions): Promise<TriggerDiscordRefreshResult> {
 	try {
-		const params: UserDiscordRefreshWorkflowParams = { userId, source, allowRemoval, jitterDelaySeconds }
+		const params: UserDiscordRefreshWorkflowParams = {
+			userId,
+			source,
+			allowRemoval,
+			hardStripAllRoles,
+			jitterDelaySeconds,
+		}
 		const instance = await env.USER_DISCORD_REFRESH_WORKFLOW.create({
 			id: createDiscordRefreshWorkflowId(source, userId),
 			params,
@@ -88,6 +97,7 @@ export async function triggerDiscordRefreshWorkflow({
 			userId,
 			source,
 			allowRemoval,
+			hardStripAllRoles,
 			workflowInstanceId: instance.id,
 		})
 		return {

@@ -152,12 +152,21 @@ export default function CorporationDetailPage() {
 	}
 
 	const handleDetachServer = async (attachmentId: string) => {
-		try {
-			await detachServer.mutateAsync({ corporationId: corpId, attachmentId })
-			showSuccess('Discord server detached successfully!')
-		} catch (error) {
-			showError(error instanceof Error ? error.message : 'Failed to detach Discord server')
-		}
+		requestConfirmation({
+			title: 'Detach Discord Server?',
+			description:
+				'Detaching this server removes corporation Discord attachment-based access. This may revoke Discord roles for affected users on the next sync.',
+			confirmLabel: 'Detach Server',
+			intent: 'destructive',
+			onConfirm: async () => {
+				try {
+					await detachServer.mutateAsync({ corporationId: corpId, attachmentId })
+					showSuccess('Discord server detached successfully!')
+				} catch (error) {
+					showError(error instanceof Error ? error.message : 'Failed to detach Discord server')
+				}
+			},
+		})
 	}
 
 	const handleToggleAutoInvite = async (attachmentId: string, currentValue: boolean) => {
@@ -280,12 +289,34 @@ export default function CorporationDetailPage() {
 	}
 
 	const handleUpdateMemberCorporation = async (enabled: boolean) => {
+		if (!enabled) {
+			requestConfirmation({
+				title: 'Disable Member Corporation?',
+				description:
+					'Disabling member corporation status removes member-corp alliance access and may revoke associated Discord access/roles for affected users.',
+				confirmLabel: 'Disable Membership',
+				intent: 'destructive',
+				onConfirm: async () => {
+					try {
+						await updateCorporation.mutateAsync({
+							corporationId: corpId,
+							data: { isMemberCorporation: enabled },
+						})
+						showSuccess('Member corporation status disabled')
+					} catch (error) {
+						showError(error instanceof Error ? error.message : 'Failed to update setting')
+					}
+				},
+			})
+			return
+		}
+
 		try {
 			await updateCorporation.mutateAsync({
 				corporationId: corpId,
 				data: { isMemberCorporation: enabled },
 			})
-			showSuccess(`Member corporation status ${enabled ? 'enabled' : 'disabled'}`)
+			showSuccess('Member corporation status enabled')
 		} catch (error) {
 			showError(error instanceof Error ? error.message : 'Failed to update setting')
 		}

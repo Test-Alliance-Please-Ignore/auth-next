@@ -440,6 +440,7 @@ export interface Discord {
 			guildId: string
 			roleIds: string[]
 			managedRoleIds?: string[] // All system-managed role IDs for this guild
+			clearAllRoles?: boolean // When true, clear all roles for this guild (managed + unmanaged)
 		}>,
 		allowRemoval?: boolean // When true, overrides add-only mode and removes managed roles the user no longer qualifies for
 	): Promise<

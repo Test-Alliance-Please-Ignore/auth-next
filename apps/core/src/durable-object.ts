@@ -487,18 +487,21 @@ export class CoreDO extends DurableObject<Env> implements Core {
 	 */
 	async addPendingDiscordRefreshes(
 		userIds: string[],
-		options?: { source?: string }
-	): Promise<{ pendingCount: number }> {
+		options?: { source?: string; force?: boolean }
+	): Promise<{ pendingCount: number; added: number; skipped: number }> {
 		const now = Date.now()
 		const expiresAt = now + CoreDO.PENDING_TTL_MS
 		const source = options?.source ?? 'corp-membership-changed'
+		const force = options?.force === true
 		const toStore: Record<string, { expiresAt: number; processed: boolean; source?: string }> = {}
 		let added = 0
+		let skipped = 0
 
 		for (const userId of userIds) {
 			const existing = this.pendingDiscordRefreshes.get(userId)
-			if (existing && existing.expiresAt > now) {
+			if (!force && existing && existing.expiresAt > now) {
 				// Still within TTL window — skip
+				skipped++
 				continue
 			}
 			const entry = { expiresAt, processed: false, source }
@@ -513,12 +516,17 @@ export class CoreDO extends DurableObject<Env> implements Core {
 
 		this.logger.info('[CoreDO] Added pending Discord refreshes', {
 			added,
-			skipped: userIds.length - added,
+			skipped,
 			source,
+			force,
 			pendingCount: this.pendingDiscordRefreshes.size,
 		})
 
-		return { pendingCount: this.pendingDiscordRefreshes.size }
+		return {
+			pendingCount: this.pendingDiscordRefreshes.size,
+			added,
+			skipped,
+		}
 	}
 
 	private async evictPendingDiscordRefresh(userId: string, reason: string): Promise<void> {
@@ -688,11 +696,17 @@ export class CoreDO extends DurableObject<Env> implements Core {
 				}
 
 				const jitterDelaySeconds = Math.floor(Math.random() * JITTER_MAX_SECONDS)
+				const source = sourceByUserId.get(userId) ?? 'corp-membership-changed'
+				const hardStripAllRoles =
+					source === 'corp-member-flag-disabled' ||
+					source === 'corp-discord-attachment-detached-none-remaining' ||
+					source === 'corp-admin-refresh-no-attachments'
 				const discordResult = await triggerDiscordRefreshWorkflow({
 					env: this.env,
 					userId,
-					source: sourceByUserId.get(userId) ?? 'corp-membership-changed',
+					source,
 					allowRemoval: true,
+					hardStripAllRoles,
 					jitterDelaySeconds,
 				})
 
