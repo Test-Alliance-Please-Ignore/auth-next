@@ -1,6 +1,7 @@
 import { Hono } from 'hono'
 
 import { and, desc, eq } from '@repo/db-utils'
+import { getStub } from '@repo/do-utils'
 import { logger } from '@repo/hono-helpers'
 
 import {
@@ -8,9 +9,11 @@ import {
 	corporationDiscordServers,
 	discordRoles,
 	discordServers,
+	userCharacters,
 } from '../../db/schema'
 import { requireAdmin, requireAuth } from '../../middleware/session'
 
+import type { Core } from '@repo/core'
 import type { App } from '../../context'
 
 const app = new Hono<App>()
@@ -119,6 +122,7 @@ app.get(
 	requireAuth(),
 	requireAdmin(),
 	async (c) => {
+		const corporationId = c.req.param('corporationId')
 		const attachmentId = c.req.param('attachmentId')
 		const db = c.get('db')
 
@@ -164,6 +168,7 @@ app.put(
 	requireAuth(),
 	requireAdmin(),
 	async (c) => {
+		const corporationId = c.req.param('corporationId')
 		const attachmentId = c.req.param('attachmentId')
 		const db = c.get('db')
 
@@ -210,6 +215,7 @@ app.delete(
 	requireAuth(),
 	requireAdmin(),
 	async (c) => {
+		const corporationId = c.req.param('corporationId')
 		const attachmentId = c.req.param('attachmentId')
 		const db = c.get('db')
 
@@ -229,6 +235,29 @@ app.delete(
 			await db
 				.delete(corporationDiscordServers)
 				.where(eq(corporationDiscordServers.id, attachmentId))
+
+			const remainingAttachments = await db.query.corporationDiscordServers.findMany({
+				where: eq(corporationDiscordServers.corporationId, corporationId),
+				columns: { id: true },
+			})
+			const source =
+				remainingAttachments.length === 0
+					? 'corp-discord-attachment-detached-none-remaining'
+					: 'corp-discord-attachment-detached'
+
+			// Force-queue post-detach refresh so corp-ineligible users are stripped promptly.
+			const linkedUsers = await db
+				.select({ userId: userCharacters.userId })
+				.from(userCharacters)
+				.where(eq(userCharacters.corporationId, corporationId))
+			const uniqueUserIds = [...new Set(linkedUsers.map((row) => row.userId))]
+			if (uniqueUserIds.length > 0) {
+				const coreStub = getStub<Core>(c.env.CORE, 'default')
+				await coreStub.addPendingDiscordRefreshes(uniqueUserIds, {
+					source,
+					force: true,
+				})
+			}
 
 			logger.info(`Discord server attachment ${attachmentId} removed`)
 			return c.json({ success: true })

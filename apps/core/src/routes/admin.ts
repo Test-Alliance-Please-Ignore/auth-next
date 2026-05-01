@@ -13,7 +13,7 @@ import { getStub } from '@repo/do-utils'
 import { logger } from '@repo/hono-helpers'
 
 import { createDb } from '../db'
-import { userActivityLog, userCharacters, users } from '../db/schema'
+import { corporationDiscordServers, userActivityLog, userCharacters, users } from '../db/schema'
 import { validatePagination } from '../lib/validation'
 import { triggerUserRefreshWorkflow } from '../lib/workflow-triggers'
 import { requireAdmin, requireAuth } from '../middleware/session'
@@ -1342,6 +1342,7 @@ app.delete('/blacklist/:id', requireAuth(), requireAdmin(), async (c) => {
  *
  * Body: {
  *   allowRemoval?: boolean  - Whether to allow role removal (default: true)
+ *   force?: boolean         - Bypass pending queue dedupe and re-queue users (default: true)
  * }
  */
 const CORP_DISCORD_REFRESH_COOLDOWN_MS = 5 * 60 * 1000 // 5 minutes
@@ -1366,6 +1367,7 @@ app.post(
 		try {
 			const body = await c.req.json().catch(() => ({}))
 			const allowRemoval = body.allowRemoval !== false // default true
+			const force = body.force !== false // default true for explicit admin action
 
 			const db = createDb(c.env.DATABASE_URL)
 
@@ -1425,10 +1427,18 @@ app.post(
 				})
 			}
 
+			const corpAttachments = await db.query.corporationDiscordServers.findMany({
+				where: eq(corporationDiscordServers.corporationId, corporationId),
+				columns: { id: true },
+			})
+			const refreshSource =
+				corpAttachments.length === 0 ? 'corp-admin-refresh-no-attachments' : 'corp-admin-refresh'
+
 			// Add to Core DO's pending Discord refresh set
 			const coreStub = getStub<Core>(c.env.CORE, 'default')
 			const result = await coreStub.addPendingDiscordRefreshes(uniqueUserIds, {
-				source: 'corp-admin-refresh',
+				source: refreshSource,
+				force,
 			})
 
 			// Log the action for throttle tracking
@@ -1438,7 +1448,11 @@ app.post(
 				metadata: {
 					corporationId,
 					allowRemoval,
+					force,
+					source: refreshSource,
 					userCount: uniqueUserIds.length,
+					usersAdded: result.added,
+					usersSkipped: result.skipped,
 				},
 			})
 
@@ -1446,14 +1460,21 @@ app.post(
 				adminUserId: user.id,
 				corporationId,
 				allowRemoval,
+				force,
+				source: refreshSource,
 				userCount: uniqueUserIds.length,
+				usersAdded: result.added,
+				usersSkipped: result.skipped,
 				pendingCount: result.pendingCount,
 			})
 
 			return c.json({
 				success: true,
-				message: `Discord refresh queued for ${uniqueUserIds.length} users`,
-				usersQueued: uniqueUserIds.length,
+				message: `Discord refresh queued for ${result.added} users`,
+				usersMatched: uniqueUserIds.length,
+				usersQueued: result.added,
+				usersSkipped: result.skipped,
+				pendingCount: result.pendingCount,
 			})
 		} catch (error) {
 			logger.error('Error triggering corporation Discord refresh:', error)

@@ -1601,6 +1601,11 @@ export class EveCorporationDataDO extends DurableObject<Env> implements EveCorpo
 		corporationId: string,
 		_forceRefresh = false
 	): Promise<void> {
+		const previousInfo = await this.getDb().query.corporationPublicInfo.findFirst({
+			where: eq(corporationPublicInfo.corporationId, corporationId),
+			columns: { allianceId: true },
+		})
+
 		const tokenStore = getStub<EveTokenStore>(this.env.EVE_TOKEN_STORE, 'default')
 		const data = await esiFetch.fetchPublicInfo(tokenStore, corporationId)
 
@@ -1626,6 +1631,40 @@ export class EveCorporationDataDO extends DurableObject<Env> implements EveCorpo
 					updatedAt: sql`excluded.updated_at`,
 				},
 			})
+
+		const previousAllianceId = previousInfo?.allianceId ?? null
+		const nextAllianceId = data.allianceId ?? null
+		if (previousAllianceId !== nextAllianceId) {
+			const members = await this.getDb()
+				.select({ characterId: corporationMembers.characterId })
+				.from(corporationMembers)
+				.where(eq(corporationMembers.corporationId, corporationId))
+			const characterIds = members.map((row) => row.characterId)
+
+			if (characterIds.length > 0) {
+				try {
+					const result = await this.env.CORE.addPendingDiscordRefreshesForCharacters(characterIds)
+					logger.info('[EveCorporationData] Queued Discord refresh after alliance affiliation change', {
+						corporationId,
+						previousAllianceId,
+						nextAllianceId,
+						charactersMatched: characterIds.length,
+						usersQueued: result.usersQueued,
+						pendingCount: result.pendingCount,
+					})
+				} catch (error) {
+					logger.error(
+						'[EveCorporationData] Failed to queue Discord refresh after alliance affiliation change',
+						{
+							corporationId,
+							previousAllianceId,
+							nextAllianceId,
+							error: error instanceof Error ? error.message : String(error),
+						}
+					)
+				}
+			}
+		}
 	}
 
 	/**

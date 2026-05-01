@@ -876,7 +876,12 @@ export class DiscordDO extends DurableObject<Env> implements Discord {
 	 */
 	async updateUserRoles(
 		coreUserId: string,
-		updateRequests: Array<{ guildId: string; roleIds: string[]; managedRoleIds?: string[] }>,
+		updateRequests: Array<{
+			guildId: string
+			roleIds: string[]
+			managedRoleIds?: string[]
+			clearAllRoles?: boolean
+		}>,
 		allowRemoval?: boolean
 	): Promise<
 		Array<{
@@ -933,15 +938,29 @@ export class DiscordDO extends DurableObject<Env> implements Discord {
 						}
 
 						const currentRoleIds = currentMember.roles || []
-						const managedRoleIds = req.managedRoleIds || []
+						let newRoleIds: string[]
+						let rolesAdded: string[]
+						let rolesRemoved: string[]
 
-						// Calculate role changes using testable helper function
-						const { newRoleIds, rolesAdded, rolesRemoved } = calculateRoleChanges({
-							currentRoleIds,
-							requestedRoleIds: req.roleIds,
-							managedRoleIds,
-							isAddOnlyMode,
-						})
+						if (req.clearAllRoles === true) {
+							// Explicit hard-strip path for corp ineligibility events:
+							// clear all roles, including unmanaged/manual roles.
+							newRoleIds = []
+							rolesAdded = []
+							rolesRemoved = currentRoleIds
+						} else {
+							const managedRoleIds = req.managedRoleIds || []
+							// Calculate role changes using testable helper function
+							const roleChanges = calculateRoleChanges({
+								currentRoleIds,
+								requestedRoleIds: req.roleIds,
+								managedRoleIds,
+								isAddOnlyMode,
+							})
+							newRoleIds = roleChanges.newRoleIds
+							rolesAdded = roleChanges.rolesAdded
+							rolesRemoved = roleChanges.rolesRemoved
+						}
 
 						// Only update if there are changes
 						if (rolesAdded.length === 0 && rolesRemoved.length === 0) {

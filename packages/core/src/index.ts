@@ -33,8 +33,8 @@ export interface Core {
 	listUsersNeedingRefresh(limit: number): Promise<string[]>
 	addPendingDiscordRefreshes(
 		userIds: string[],
-		options?: { source?: string }
-	): Promise<{ pendingCount: number }>
+		options?: { source?: string; force?: boolean }
+	): Promise<{ pendingCount: number; added: number; skipped: number }>
 	handleCharacterAffiliationChange(
 		characterId: string,
 		options?: { source?: string; bypassThrottle?: boolean }

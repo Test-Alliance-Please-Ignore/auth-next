@@ -14,6 +14,7 @@ import corporationsDiscordRoutes from './discord-routes'
 import corporationsPermissionsRoutes from './permissions-routes'
 
 import type { Context } from 'hono'
+import type { Core } from '@repo/core'
 import type { EveCharacterData } from '@repo/eve-character-data'
 import type { EveCorporationData } from '@repo/eve-corporation-data'
 import type { EveTokenStore } from '@repo/eve-token-store'
@@ -983,7 +984,10 @@ app.put('/:corporationId', requireAuth(), requireAdmin(), async (c) => {
 		}
 
 		// Handle TEST alliance permission auto-attachment/detachment
-		if (isMemberCorporation !== undefined && isMemberCorporation !== existing.isMemberCorporation) {
+		const memberCorpStatusChanged =
+			isMemberCorporation !== undefined && isMemberCorporation !== existing.isMemberCorporation
+
+		if (memberCorpStatusChanged) {
 			const user = c.get('user')!
 			const testAllianceUrn = 'urn:eve:alliance:test-alliance'
 
@@ -1072,6 +1076,42 @@ app.put('/:corporationId', requireAuth(), requireAdmin(), async (c) => {
 				})
 				// Continue with the update even if permission management fails
 				// This ensures the corporation status is still updated
+			}
+		}
+
+		// Member-corp status changes affect Discord entitlement scope. Force-queue
+		// refresh for all linked users with characters in this corporation.
+		if (memberCorpStatusChanged) {
+			try {
+				const linkedUsers = await db
+					.select({ userId: userCharacters.userId })
+					.from(userCharacters)
+					.where(eq(userCharacters.corporationId, corporationId))
+				const uniqueUserIds = [...new Set(linkedUsers.map((row) => row.userId))]
+				if (uniqueUserIds.length > 0) {
+					const coreStub = getStub<Core>(c.env.CORE, 'default')
+					const queueResult = await coreStub.addPendingDiscordRefreshes(uniqueUserIds, {
+						source: isMemberCorporation
+							? 'corp-member-flag-enabled'
+							: 'corp-member-flag-disabled',
+						force: true,
+					})
+					logger.info('[Corporations] Queued Discord refresh after member-corp status change', {
+						corporationId,
+						isMemberCorporation,
+						usersMatched: uniqueUserIds.length,
+						usersQueued: queueResult.added,
+						usersSkipped: queueResult.skipped,
+						pendingCount: queueResult.pendingCount,
+					})
+				}
+			} catch (error) {
+				logger.error('[Corporations] Failed to queue Discord refresh after member-corp status change', {
+					corporationId,
+					isMemberCorporation,
+					error: error instanceof Error ? error.message : String(error),
+				})
+				// Non-fatal: setting update should still complete.
 			}
 		}
 

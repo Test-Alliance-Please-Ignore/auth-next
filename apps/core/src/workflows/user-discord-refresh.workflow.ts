@@ -14,6 +14,8 @@ export interface UserDiscordRefreshWorkflowParams {
 	source: string
 	/** Whether Discord role removal is permitted. False for join/add events, true for leave/remove events. */
 	allowRemoval?: boolean
+	/** Whether this run should hard-strip all roles on managed guilds (managed + unmanaged). */
+	hardStripAllRoles?: boolean
 	/** Optional delay before executing the refresh, used to stagger batch runs (0–600 seconds). */
 	jitterDelaySeconds?: number
 }
@@ -56,15 +58,22 @@ export class UserDiscordRefreshWorkflow extends WorkflowEntrypoint<
 		event: WorkflowEvent<UserDiscordRefreshWorkflowParams>,
 		step: WorkflowStep
 	): Promise<UserDiscordRefreshWorkflowResult> {
-		const { userId, source, allowRemoval = false, jitterDelaySeconds = 0 } = event.payload
+		const {
+			userId,
+			source,
+			allowRemoval = false,
+			hardStripAllRoles = false,
+			jitterDelaySeconds = 0,
+		} = event.payload
 		const workflowInstanceId = event.instanceId
 		const steps: Record<string, WorkflowStepStatus> = {}
-		const logContext = { userId, source, allowRemoval, workflowInstanceId }
+		const logContext = { userId, source, allowRemoval, hardStripAllRoles, workflowInstanceId }
 
 		await step.do('init-workflow', async () => ({
 			userId,
 			source,
 			allowRemoval,
+			hardStripAllRoles,
 			workflowInstanceId,
 			startedAt: new Date().toISOString(),
 		}))
@@ -89,7 +98,12 @@ export class UserDiscordRefreshWorkflow extends WorkflowEntrypoint<
 					timeout: '2 minutes',
 				},
 				async () => {
-					return discordService.syncUserDiscordAccess(this.env, userId, allowRemoval)
+					return discordService.syncUserDiscordAccess(
+						this.env,
+						userId,
+						allowRemoval,
+						hardStripAllRoles
+					)
 				}
 			)
 			steps['sync-discord-access'] = 'ok'

@@ -2295,14 +2295,18 @@ export class ApiClient {
 
 	async refreshCorporationDiscord(
 		corporationId: string,
-		options?: { allowRemoval?: boolean }
+		options?: { allowRemoval?: boolean; force?: boolean }
 	): Promise<{
 		success: boolean
 		message: string
+		usersMatched?: number
 		usersQueued: number
+		usersSkipped?: number
+		pendingCount?: number
 	}> {
 		return this.post(`/admin/corporations/${corporationId}/discord/refresh`, {
 			allowRemoval: options?.allowRemoval ?? true,
+			force: options?.force ?? true,
 		})
 	}
 
