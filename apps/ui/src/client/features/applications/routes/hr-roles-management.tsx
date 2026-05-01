@@ -134,20 +134,42 @@ export default function HrRolesManagement() {
 		[members, activeRoleByUserId, canRevokeHrAdmin]
 	)
 
+	const assignableUsers = useMemo(() => {
+		const map = new Map<string, CorporationMember>()
+		for (const member of assignableMembers) {
+			if (!member.authUserId) continue
+			const existing = map.get(member.authUserId)
+			if (!existing) {
+				map.set(member.authUserId, member)
+				continue
+			}
+			const existingName = existing.mainCharacterName || existing.characterName
+			const candidateName = member.mainCharacterName || member.characterName
+			if (member.mainCharacterName && !existing.mainCharacterName) {
+				map.set(member.authUserId, member)
+				continue
+			}
+			if (candidateName.localeCompare(existingName) < 0) {
+				map.set(member.authUserId, member)
+			}
+		}
+		return [...map.values()]
+	}, [assignableMembers])
+
 	const assignUserOptions = useMemo(
 		() =>
-			assignableMembers
-				.filter((member) => member.authUserId)
+			assignableUsers
 				.map((member) => {
 					const existing = member.authUserId ? activeRoleByUserId.get(member.authUserId) : undefined
 					const roleHint = existing ? `Current: ${existing.role.replace('hr_', 'HR ')}` : 'No HR role'
 					return {
 						value: member.authUserId!,
 						label: member.mainCharacterName || member.characterName,
-						description: `${member.characterName} • ${roleHint}`,
+						description: roleHint,
 					}
-				}),
-		[assignableMembers, activeRoleByUserId]
+				})
+				.sort((a, b) => a.label.localeCompare(b.label)),
+		[assignableUsers, activeRoleByUserId]
 	)
 	const allowedRoleOptions = useMemo(
 		() =>
