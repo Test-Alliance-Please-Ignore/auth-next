@@ -16,7 +16,14 @@ import { cn } from '@/lib/utils'
 
 type AuditTab = 'linked' | 'unlinked'
 type CursorValue = string | null
-type AuditFilter = 'all' | 'member_corp' | 'external' | 'roles_without_member_corp' | 'drifted'
+type AuditFilter =
+	| 'all'
+	| 'member_corp'
+	| 'external'
+	| 'roles_without_member_corp'
+	| 'drifted'
+	| 'with_roles'
+	| 'without_roles'
 
 type AuditPageState = {
 	pages: Record<string, Awaited<ReturnType<typeof api.getDiscordGuildAudit>>>
@@ -67,7 +74,7 @@ export default function AdminDiscordAuditPage() {
 	const [auditByServer, setAuditByServer] = useState<Record<string, ServerAuditState>>({})
 	const [selectedUnlinked, setSelectedUnlinked] = useState<Record<string, boolean>>({})
 
-	const { requestConfirmation, confirmationDialog } = useConfirmationDialog()
+	const { requestConfirmation, closeConfirmation, confirmationDialog } = useConfirmationDialog()
 	const stripRoles = useStripDiscordGuildRoles()
 	const startAuditMutation = useStartDiscordGuildAudit()
 
@@ -129,7 +136,12 @@ export default function AdminDiscordAuditPage() {
 		sessionStorage.setItem(SESSION_CACHE_KEY, JSON.stringify(cachePayload))
 	}, [activeServerId, auditByServer, filter, serverId, tab])
 
-	const fetchAuditPage = async (server: string, fetchTab: AuditTab, cursor: CursorValue) => {
+	const fetchAuditPage = async (
+		server: string,
+		fetchTab: AuditTab,
+		cursor: CursorValue,
+		filterOverride?: AuditFilter
+	) => {
 		setAuditByServer((prev) => {
 			const serverState = prev[server] ?? createEmptyServerState()
 			return {
@@ -146,7 +158,7 @@ export default function AdminDiscordAuditPage() {
 
 		const response = await api.getDiscordGuildAudit(server, {
 			tab: fetchTab,
-			filter,
+			filter: filterOverride ?? filter,
 			cursor,
 			limit: 50,
 		})
@@ -216,12 +228,14 @@ export default function AdminDiscordAuditPage() {
 	const onChangeTab = (value: string) => {
 		const nextTab = value as AuditTab
 		setTab(nextTab)
+		setFilter('all')
 		setSelectedUnlinked({})
 		if (effectiveServerId) {
-			const nextState = auditByServer[effectiveServerId]?.[nextTab]
-			if (!nextState?.isLoaded) {
-				void fetchAuditPage(effectiveServerId, nextTab, null)
-			}
+			setAuditByServer((prev) => ({
+				...prev,
+				[effectiveServerId]: createEmptyServerState(),
+			}))
+			void fetchAuditPage(effectiveServerId, nextTab, null, 'all')
 		}
 	}
 
@@ -257,6 +271,7 @@ export default function AdminDiscordAuditPage() {
 			onConfirm: async () => {
 				await stripRoles.mutateAsync({ serverId: effectiveServerId, discordUserIds: [discordUserId] })
 				setSelectedUnlinked((prev) => ({ ...prev, [discordUserId]: false }))
+				closeConfirmation()
 				void fetchAuditPage(effectiveServerId, tab, currentCursor)
 			},
 		})
@@ -278,6 +293,7 @@ export default function AdminDiscordAuditPage() {
 					discordUserIds: selectedIds,
 				})
 				setSelectedUnlinked({})
+				closeConfirmation()
 				void fetchAuditPage(effectiveServerId, tab, currentCursor)
 			},
 		})
@@ -420,13 +436,21 @@ export default function AdminDiscordAuditPage() {
 						<Select
 							value={filter}
 							onValueChange={onChangeFilter}
-							options={[
-								{ value: 'all', label: 'All Rows' },
-								{ value: 'drifted', label: 'Drifted (Unmanaged Roles)' },
-								{ value: 'roles_without_member_corp', label: 'Roles w/o Member Corp' },
-								{ value: 'member_corp', label: 'Member Corp Only' },
-								{ value: 'external', label: 'External Only' },
-							]}
+							options={
+								tab === 'linked'
+									? [
+											{ value: 'all', label: 'All Rows' },
+											{ value: 'drifted', label: 'Drifted (Unmanaged Roles)' },
+											{ value: 'roles_without_member_corp', label: 'Roles w/o Member Corp' },
+											{ value: 'member_corp', label: 'Member Corp Only' },
+											{ value: 'external', label: 'External Only' },
+										]
+									: [
+											{ value: 'all', label: 'All Rows' },
+											{ value: 'with_roles', label: 'With Roles Only' },
+											{ value: 'without_roles', label: 'Without Roles Only' },
+										]
+							}
 							placeholder="Filter"
 						/>
 					</div>

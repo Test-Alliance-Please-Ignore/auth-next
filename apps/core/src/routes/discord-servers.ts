@@ -37,6 +37,8 @@ type DiscordAuditFilter =
 	| 'external'
 	| 'roles_without_member_corp'
 	| 'drifted'
+	| 'with_roles'
+	| 'without_roles'
 
 type DiscordAuditMemberRow = {
 	discordUserId: string
@@ -726,6 +728,8 @@ app.get('/:id/audit', requireAuth(), requireAdmin(), async (c) => {
 		'external',
 		'roles_without_member_corp',
 		'drifted',
+		'with_roles',
+		'without_roles',
 	]
 	if (!allowedFilters.includes(filter)) {
 		return c.json({ error: 'Invalid filter' }, 400)
@@ -777,16 +781,24 @@ app.get('/:id/audit', requireAuth(), requireAdmin(), async (c) => {
 		})
 		const managedRoleIdSet = new Set(managedRoles.map((role) => role.roleId))
 
-		if (filter === 'member_corp' && memberCorporations.length > 0) {
-			whereClauses.push(inArray(discordMemberAuditRows.corporationId, memberCorporations.map((corp) => corp.corporationId)))
-		}
 		const rows = await db.query.discordMemberAuditRows.findMany({
 			where: and(...whereClauses),
 			orderBy: asc(discordMemberAuditRows.discordUserId),
-			limit: filter === 'drifted' || filter === 'roles_without_member_corp' ? 5000 : limit + 1,
+			limit:
+				filter === 'drifted' ||
+				filter === 'roles_without_member_corp' ||
+				filter === 'member_corp' ||
+				filter === 'external' ||
+				filter === 'with_roles' ||
+				filter === 'without_roles'
+					? 5000
+					: limit + 1,
 		})
 
 		let filteredRows = rows
+		if (filter === 'member_corp') {
+			filteredRows = rows.filter((row) => !!row.corporationId && memberCorpIdSet.has(row.corporationId))
+		}
 		if (filter === 'roles_without_member_corp') {
 			filteredRows = rows.filter(
 				(row) => row.roleIds.length > 0 && (!row.corporationId || !memberCorpIdSet.has(row.corporationId))
@@ -799,6 +811,12 @@ app.get('/:id/audit', requireAuth(), requireAdmin(), async (c) => {
 			filteredRows = rows.filter((row) =>
 				row.roleIds.some((roleId) => !managedRoleIdSet.has(roleId))
 			)
+		}
+		if (filter === 'with_roles') {
+			filteredRows = rows.filter((row) => row.roleIds.length > 0)
+		}
+		if (filter === 'without_roles') {
+			filteredRows = rows.filter((row) => row.roleIds.length === 0)
 		}
 		const hasMore = filteredRows.length > limit
 		const visibleRows = hasMore ? filteredRows.slice(0, limit) : filteredRows

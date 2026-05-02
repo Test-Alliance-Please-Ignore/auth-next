@@ -651,7 +651,14 @@ export interface DiscordGuildAuditResponse {
 	linkedCount?: number
 	unlinkedCount?: number
 	runError?: string | null
-	filter?: 'all' | 'member_corp' | 'external' | 'roles_without_member_corp' | 'drifted'
+	filter?:
+		| 'all'
+		| 'member_corp'
+		| 'external'
+		| 'roles_without_member_corp'
+		| 'drifted'
+		| 'with_roles'
+		| 'without_roles'
 }
 
 export interface StartDiscordGuildAuditResponse {
@@ -2112,7 +2119,14 @@ export class ApiClient {
 		serverId: string,
 		params: {
 			tab: 'linked' | 'unlinked'
-			filter?: 'all' | 'member_corp' | 'external' | 'roles_without_member_corp' | 'drifted'
+			filter?:
+				| 'all'
+				| 'member_corp'
+				| 'external'
+				| 'roles_without_member_corp'
+				| 'drifted'
+				| 'with_roles'
+				| 'without_roles'
 			limit?: number
 			cursor?: string | null
 		}
