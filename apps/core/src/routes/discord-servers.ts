@@ -698,6 +698,49 @@ app.post('/:id/audit/runs', requireAuth(), requireAdmin(), async (c) => {
 })
 
 /**
+ * POST /discord-servers/:id/audit/cleanup
+ * Remove old audit runs for this server, keeping only the newest run.
+ */
+app.post('/:id/audit/cleanup', requireAuth(), requireAdmin(), async (c) => {
+	const serverId = c.req.param('id')
+	const db = c.get('db')
+	if (!db) return c.json({ error: 'Database not available' }, 500)
+
+	try {
+		const server = await db.query.discordServers.findFirst({
+			where: eq(discordServers.id, serverId),
+			columns: { id: true },
+		})
+		if (!server) {
+			return c.json({ error: 'Discord server not found' }, 404)
+		}
+
+		const runs = await db.query.discordMemberAuditRuns.findMany({
+			where: eq(discordMemberAuditRuns.discordServerId, server.id),
+			orderBy: desc(discordMemberAuditRuns.startedAt),
+			columns: { id: true },
+		})
+
+		if (runs.length <= 1) {
+			return c.json({ deletedRuns: 0 })
+		}
+
+		const staleRunIds = runs.slice(1).map((run) => run.id)
+		await db
+			.delete(discordMemberAuditRuns)
+			.where(inArray(discordMemberAuditRuns.id, staleRunIds))
+
+		return c.json({ deletedRuns: staleRunIds.length })
+	} catch (error) {
+		logger.error('[Discord] Failed to clean up member audit runs', {
+			serverId,
+			error: String(error),
+		})
+		return c.json({ error: 'Failed to clean up old reports' }, 500)
+	}
+})
+
+/**
  * GET /discord-servers/:id/audit
  * Read latest persisted guild member audit snapshot with pagination.
  *
@@ -891,6 +934,8 @@ app.post('/:id/audit/strip-roles', requireAuth(), requireAdmin(), async (c) => {
 		const discordUserIds = Array.isArray(body?.discordUserIds)
 			? body.discordUserIds.map((id: unknown) => String(id).trim()).filter(Boolean)
 			: []
+		const requestedRunId =
+			typeof body?.runId === 'string' && body.runId.trim().length > 0 ? body.runId.trim() : null
 		if (discordUserIds.length === 0) {
 			return c.json({ error: 'discordUserIds is required' }, 400)
 		}
@@ -910,17 +955,21 @@ app.post('/:id/audit/strip-roles', requireAuth(), requireAdmin(), async (c) => {
 		)
 		const strippedIds = results.filter((result) => result.success).map((result) => result.discordUserId)
 		if (strippedIds.length > 0) {
-			const latestRun = await db.query.discordMemberAuditRuns.findFirst({
-				where: eq(discordMemberAuditRuns.discordServerId, server.id),
-				orderBy: desc(discordMemberAuditRuns.startedAt),
-				columns: { id: true },
-			})
-			if (latestRun) {
+			const targetRunId =
+				requestedRunId ??
+				(
+					await db.query.discordMemberAuditRuns.findFirst({
+						where: eq(discordMemberAuditRuns.discordServerId, server.id),
+						orderBy: desc(discordMemberAuditRuns.startedAt),
+						columns: { id: true },
+					})
+				)?.id
+			if (targetRunId) {
 				await db
 					.delete(discordMemberAuditRows)
 					.where(
 						and(
-							eq(discordMemberAuditRows.runId, latestRun.id),
+							eq(discordMemberAuditRows.runId, targetRunId),
 							inArray(discordMemberAuditRows.discordUserId, strippedIds)
 						)
 					)
@@ -958,6 +1007,8 @@ app.post('/:id/audit/kick-users', requireAuth(), requireAdmin(), async (c) => {
 		const discordUserIds = Array.isArray(body?.discordUserIds)
 			? body.discordUserIds.map((id: unknown) => String(id).trim()).filter(Boolean)
 			: []
+		const requestedRunId =
+			typeof body?.runId === 'string' && body.runId.trim().length > 0 ? body.runId.trim() : null
 		if (discordUserIds.length === 0) {
 			return c.json({ error: 'discordUserIds is required' }, 400)
 		}
@@ -977,17 +1028,21 @@ app.post('/:id/audit/kick-users', requireAuth(), requireAdmin(), async (c) => {
 		)
 		const kickedIds = results.filter((result) => result.success).map((result) => result.discordUserId)
 		if (kickedIds.length > 0) {
-			const latestRun = await db.query.discordMemberAuditRuns.findFirst({
-				where: eq(discordMemberAuditRuns.discordServerId, server.id),
-				orderBy: desc(discordMemberAuditRuns.startedAt),
-				columns: { id: true },
-			})
-			if (latestRun) {
+			const targetRunId =
+				requestedRunId ??
+				(
+					await db.query.discordMemberAuditRuns.findFirst({
+						where: eq(discordMemberAuditRuns.discordServerId, server.id),
+						orderBy: desc(discordMemberAuditRuns.startedAt),
+						columns: { id: true },
+					})
+				)?.id
+			if (targetRunId) {
 				await db
 					.delete(discordMemberAuditRows)
 					.where(
 						and(
-							eq(discordMemberAuditRows.runId, latestRun.id),
+							eq(discordMemberAuditRows.runId, targetRunId),
 							inArray(discordMemberAuditRows.discordUserId, kickedIds)
 						)
 					)
