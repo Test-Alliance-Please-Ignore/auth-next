@@ -15,6 +15,12 @@
 		"crons": ["0 13 * * *"]
 	},
 	"vars": {},
+	"services": [
+		{
+			"binding": "CORE",
+			"service": "core"
+		}
+	],
 	"durable_objects": {
 		"bindings": [
 			{
