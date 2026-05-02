@@ -537,7 +537,10 @@ export class CoreDO extends DurableObject<Env> implements Core {
 
 	private async waitForUserRefreshWorkflowCompletion(
 		workflowInstanceId: string
-	): Promise<'completed' | 'completed_with_errors' | 'failed' | 'unknown'> {
+	): Promise<{
+		status: 'completed' | 'completed_with_errors' | 'failed' | 'unknown'
+		affiliationChanged: boolean
+	}> {
 		const POLL_INTERVAL_MS = 1500
 		const MAX_WAIT_MS = 60 * 1000
 		const startedAt = Date.now()
@@ -556,38 +559,46 @@ export class CoreDO extends DurableObject<Env> implements Core {
 					status.output && typeof status.output === 'object' && 'status' in status.output
 						? (status.output as { status?: string }).status
 						: undefined
+				const outputAffiliationChanged =
+					status.output &&
+					typeof status.output === 'object' &&
+					'summary' in status.output &&
+					(status.output as { summary?: { affiliationChanged?: number } }).summary
+						?.affiliationChanged
+				const affiliationChanged =
+					typeof outputAffiliationChanged === 'number' && outputAffiliationChanged > 0
 
 				if (
 					outputStatus === 'completed' ||
 					outputStatus === 'completed_with_errors' ||
 					outputStatus === 'failed'
 				) {
-					return outputStatus
+					return { status: outputStatus, affiliationChanged }
 				}
 
 				if (runState === 'complete' && outputStatus === undefined) {
-					return 'unknown'
+					return { status: 'unknown', affiliationChanged: false }
 				}
 
 				if (runState === 'errored') {
-					return 'failed'
+					return { status: 'failed', affiliationChanged: false }
 				}
 
-				return 'unknown'
+				return { status: 'unknown', affiliationChanged: false }
 			}
 		} catch (error) {
 			this.logger.warn('[CoreDO] Failed while waiting for user refresh workflow completion', {
 				workflowInstanceId,
 				error: error instanceof Error ? error.message : String(error),
 			})
-			return 'unknown'
+			return { status: 'unknown', affiliationChanged: false }
 		}
 
 		this.logger.warn('[CoreDO] Timed out waiting for user refresh workflow completion', {
 			workflowInstanceId,
 			maxWaitMs: MAX_WAIT_MS,
 		})
-		return 'unknown'
+		return { status: 'unknown', affiliationChanged: false }
 	}
 
 	/**
@@ -669,6 +680,8 @@ export class CoreDO extends DurableObject<Env> implements Core {
 						discordResult: null,
 						skippedNoDiscord: false,
 						precheckedNoDiscord: !hadLinkedDiscordBeforeRefresh,
+						userRefreshCompletionStatus: 'unknown' as const,
+						affiliationChanged: false,
 					}
 				}
 
@@ -677,10 +690,13 @@ export class CoreDO extends DurableObject<Env> implements Core {
 					| 'completed_with_errors'
 					| 'failed'
 					| 'unknown' = 'unknown'
+				let affiliationChanged = false
 				if (userRefreshResult.workflowInstanceId) {
-					userRefreshCompletionStatus = await this.waitForUserRefreshWorkflowCompletion(
+					const completion = await this.waitForUserRefreshWorkflowCompletion(
 						userRefreshResult.workflowInstanceId
 					)
+					userRefreshCompletionStatus = completion.status
+					affiliationChanged = completion.affiliationChanged
 				}
 
 				if (!hadLinkedDiscordBeforeRefresh) {
@@ -692,6 +708,23 @@ export class CoreDO extends DurableObject<Env> implements Core {
 						skippedNoDiscord: true,
 						precheckedNoDiscord: true,
 						userRefreshCompletionStatus,
+						affiliationChanged,
+					}
+				}
+
+				if (!affiliationChanged) {
+					await this.evictPendingDiscordRefresh(
+						userId,
+						'no-core-affiliation-change-after-user-refresh'
+					)
+					return {
+						userId,
+						userRefreshResult,
+						discordResult: null,
+						skippedNoDiscord: false,
+						precheckedNoDiscord: false,
+						userRefreshCompletionStatus,
+						affiliationChanged,
 					}
 				}
 
@@ -717,6 +750,7 @@ export class CoreDO extends DurableObject<Env> implements Core {
 					skippedNoDiscord: false,
 					precheckedNoDiscord: false,
 					userRefreshCompletionStatus,
+					affiliationChanged,
 				}
 			})
 		)
@@ -740,6 +774,7 @@ export class CoreDO extends DurableObject<Env> implements Core {
 				skippedNoDiscord,
 				precheckedNoDiscord,
 				userRefreshCompletionStatus,
+				affiliationChanged,
 			} = result.value
 			const refreshOk = userRefreshResult.triggered
 			const discordOk = !!discordResult?.triggered
@@ -754,6 +789,7 @@ export class CoreDO extends DurableObject<Env> implements Core {
 					skippedNoDiscord,
 					precheckedNoDiscord,
 					userRefreshCompletionStatus,
+					affiliationChanged,
 				})
 			}
 		}
