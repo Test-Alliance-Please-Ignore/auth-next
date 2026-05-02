@@ -495,6 +495,21 @@ export interface Discord {
 	>
 
 	/**
+	 * Remove raw Discord user IDs from a guild.
+	 * Intended for admin tooling on unlinked users.
+	 */
+	removeGuildMembersByDiscordUserIds(
+		guildId: string,
+		discordUserIds: string[]
+	): Promise<
+		Array<{
+			discordUserId: string
+			success: boolean
+			errorMessage?: string
+		}>
+	>
+
+	/**
 	 * Update user's nickname on specified Discord servers
 	 * This is a lightweight operation that only updates the display name
 	 * @param coreUserId - Core user ID

@@ -1086,6 +1086,31 @@ export class DiscordDO extends DurableObject<Env> implements Discord {
 		return results
 	}
 
+	async removeGuildMembersByDiscordUserIds(
+		guildId: string,
+		discordUserIds: string[]
+	): Promise<
+		Array<{
+			discordUserId: string
+			success: boolean
+			errorMessage?: string
+		}>
+	> {
+		const botService = new DiscordBotService(this.env)
+		const uniqueUserIds = [...new Set(discordUserIds.map((id) => id.trim()).filter(Boolean))]
+		const results = await Promise.all(
+			uniqueUserIds.map(async (discordUserId) => {
+				const removeResult = await botService.removeGuildMember(guildId, discordUserId)
+				return {
+					discordUserId,
+					success: removeResult.success,
+					errorMessage: removeResult.errorMessage,
+				}
+			})
+		)
+		return results
+	}
+
 	/**
 	 * Update user's nickname on specified Discord servers
 	 */

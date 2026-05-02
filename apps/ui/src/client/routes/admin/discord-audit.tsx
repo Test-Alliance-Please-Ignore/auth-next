@@ -1,6 +1,8 @@
 import { useEffect, useMemo, useState } from 'react'
 import { Link } from 'react-router-dom'
 
+import { useQueryClient } from '@tanstack/react-query'
+
 import { UserSearchPaginationControls } from '@/components/user-search-pagination-controls'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
@@ -10,7 +12,13 @@ import { LoadingInline, LoadingSpinner } from '@/components/ui/loading'
 import { Select } from '@/components/ui/select'
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
 import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs'
-import { useDiscordServers, useStartDiscordGuildAudit, useStripDiscordGuildRoles } from '@/hooks/useDiscord'
+import {
+	useDiscordServers,
+	discordKeys,
+	useKickDiscordGuildUsers,
+	useStartDiscordGuildAudit,
+	useStripDiscordGuildRoles,
+} from '@/hooks/useDiscord'
 import { useConfirmationDialog } from '@/hooks/useConfirmationDialog'
 import { api } from '@/lib/api'
 
@@ -44,7 +52,9 @@ export default function AdminDiscordAuditPage() {
 	const [selectedUnlinked, setSelectedUnlinked] = useState<Record<string, boolean>>({})
 
 	const { requestConfirmation, closeConfirmation, confirmationDialog } = useConfirmationDialog()
+	const queryClient = useQueryClient()
 	const stripRoles = useStripDiscordGuildRoles()
+	const kickUsers = useKickDiscordGuildUsers()
 	const startAuditMutation = useStartDiscordGuildAudit()
 
 	const effectiveServerId = activeServerId
@@ -205,10 +215,17 @@ export default function AdminDiscordAuditPage() {
 			cancelLabel: 'Cancel',
 			intent: 'destructive',
 			onConfirm: async () => {
-				await stripRoles.mutateAsync({ serverId: effectiveServerId, discordUserIds: [discordUserId] })
-				setSelectedUnlinked((prev) => ({ ...prev, [discordUserId]: false }))
-				closeConfirmation()
-				void fetchAuditPage(effectiveServerId, tab)
+				try {
+					await stripRoles.mutateAsync({ serverId: effectiveServerId, discordUserIds: [discordUserId] })
+					await queryClient.invalidateQueries({
+						queryKey: [...discordKeys.all, 'audit', effectiveServerId],
+						refetchType: 'all',
+					})
+					setSelectedUnlinked((prev) => ({ ...prev, [discordUserId]: false }))
+					void fetchAuditPage(effectiveServerId, tab)
+				} finally {
+					closeConfirmation()
+				}
 			},
 		})
 	}
@@ -224,13 +241,40 @@ export default function AdminDiscordAuditPage() {
 			cancelLabel: 'Cancel',
 			intent: 'destructive',
 			onConfirm: async () => {
-				await stripRoles.mutateAsync({
-					serverId: effectiveServerId,
-					discordUserIds: selectedIds,
-				})
-				setSelectedUnlinked({})
-				closeConfirmation()
-				void fetchAuditPage(effectiveServerId, tab)
+				try {
+					await stripRoles.mutateAsync({
+						serverId: effectiveServerId,
+						discordUserIds: selectedIds,
+					})
+					await queryClient.invalidateQueries({
+						queryKey: [...discordKeys.all, 'audit', effectiveServerId],
+						refetchType: 'all',
+					})
+					setSelectedUnlinked({})
+					void fetchAuditPage(effectiveServerId, tab)
+				} finally {
+					closeConfirmation()
+				}
+			},
+		})
+	}
+
+	const kickSingleUser = async (discordUserId: string) => {
+		requestConfirmation({
+			title: 'Kick this Discord user from the server?',
+			description:
+				'This removes the selected user from the Discord server. They can rejoin later if invited again.',
+			confirmLabel: 'Kick User',
+			cancelLabel: 'Cancel',
+			intent: 'destructive',
+			onConfirm: async () => {
+				try {
+					await kickUsers.mutateAsync({ serverId: effectiveServerId, discordUserIds: [discordUserId] })
+					setSelectedUnlinked((prev) => ({ ...prev, [discordUserId]: false }))
+					void fetchAuditPage(effectiveServerId, tab)
+				} finally {
+					closeConfirmation()
+				}
 			},
 		})
 	}
@@ -539,16 +583,25 @@ export default function AdminDiscordAuditPage() {
 															Strip Roles
 														</Button>
 													</div>
-												) : (
-													<Button
-														variant="destructive"
-														size="sm"
-														onClick={() => void stripSingleUserRoles(item.discordUserId)}
-													>
-														Strip Roles
-													</Button>
-												)}
-											</TableCell>
+													) : (
+														<div className="inline-flex items-center gap-2">
+															<Button
+																variant="destructive"
+																size="sm"
+																onClick={() => void stripSingleUserRoles(item.discordUserId)}
+															>
+																Strip Roles
+															</Button>
+															<Button
+																variant="destructive"
+																size="sm"
+																onClick={() => void kickSingleUser(item.discordUserId)}
+															>
+																Kick User
+															</Button>
+														</div>
+													)}
+												</TableCell>
 										</TableRow>
 									))
 								)}

@@ -582,3 +582,23 @@ export function useStartDiscordGuildAudit() {
 		mutationFn: (serverId: string) => apiClient.startDiscordGuildAudit(serverId),
 	})
 }
+
+export function useKickDiscordGuildUsers() {
+	const queryClient = useQueryClient()
+
+	return useMutation({
+		mutationFn: ({
+			serverId,
+			discordUserIds,
+		}: {
+			serverId: string
+			discordUserIds: string[]
+		}) => apiClient.kickDiscordGuildUsers(serverId, discordUserIds),
+		onSuccess: (_, { serverId }) => {
+			void queryClient.invalidateQueries({
+				queryKey: [...discordKeys.all, 'audit', serverId],
+				refetchType: 'active',
+			})
+		},
+	})
+}
