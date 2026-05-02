@@ -685,6 +685,18 @@ export interface DiscordGuildAuditStripRolesResponse {
 	failureCount: number
 }
 
+export interface DiscordGuildAuditKickUsersResponse {
+	guildId: string
+	guildName: string
+	results: Array<{
+		discordUserId: string
+		success: boolean
+		errorMessage?: string
+	}>
+	successCount: number
+	failureCount: number
+}
+
 export interface DiscordCommandCategory {
 	id: string
 	name: string
@@ -2154,6 +2166,13 @@ export class ApiClient {
 		discordUserIds: string[]
 	): Promise<DiscordGuildAuditStripRolesResponse> {
 		return this.post(`/discord-servers/${serverId}/audit/strip-roles`, { discordUserIds })
+	}
+
+	async kickDiscordGuildUsers(
+		serverId: string,
+		discordUserIds: string[]
+	): Promise<DiscordGuildAuditKickUsersResponse> {
+		return this.post(`/discord-servers/${serverId}/audit/kick-users`, { discordUserIds })
 	}
 
 	// ===== Discord Slash Commands API Methods =====

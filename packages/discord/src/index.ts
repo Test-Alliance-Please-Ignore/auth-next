@@ -182,6 +182,8 @@ export interface DiscordGuildMemberSnapshot {
 	displayName: string
 	/** Role IDs currently assigned in the guild */
 	roleIds: string[]
+	/** Whether this account is a bot user */
+	isBot: boolean
 }
 
 export interface DiscordSlashCommandDefinition {
@@ -484,6 +486,21 @@ export interface Discord {
 	 * Intended for admin tooling on unlinked users.
 	 */
 	clearGuildRolesByDiscordUserIds(
+		guildId: string,
+		discordUserIds: string[]
+	): Promise<
+		Array<{
+			discordUserId: string
+			success: boolean
+			errorMessage?: string
+		}>
+	>
+
+	/**
+	 * Remove raw Discord user IDs from a guild.
+	 * Intended for admin tooling on unlinked users.
+	 */
+	removeGuildMembersByDiscordUserIds(
 		guildId: string,
 		discordUserIds: string[]
 	): Promise<

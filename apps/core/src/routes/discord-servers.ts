@@ -908,6 +908,24 @@ app.post('/:id/audit/strip-roles', requireAuth(), requireAdmin(), async (c) => {
 			server.guildId,
 			discordUserIds
 		)
+		const strippedIds = results.filter((result) => result.success).map((result) => result.discordUserId)
+		if (strippedIds.length > 0) {
+			const latestRun = await db.query.discordMemberAuditRuns.findFirst({
+				where: eq(discordMemberAuditRuns.discordServerId, server.id),
+				orderBy: desc(discordMemberAuditRuns.startedAt),
+				columns: { id: true },
+			})
+			if (latestRun) {
+				await db
+					.delete(discordMemberAuditRows)
+					.where(
+						and(
+							eq(discordMemberAuditRows.runId, latestRun.id),
+							inArray(discordMemberAuditRows.discordUserId, strippedIds)
+						)
+					)
+			}
+		}
 		return c.json({
 			guildId: server.guildId,
 			guildName: server.guildName,
@@ -921,6 +939,74 @@ app.post('/:id/audit/strip-roles', requireAuth(), requireAdmin(), async (c) => {
 			error: String(error),
 		})
 		return c.json({ error: 'Failed to strip roles' }, 500)
+	}
+})
+
+/**
+ * POST /discord-servers/:id/audit/kick-users
+ * Remove provided Discord user IDs from this guild.
+ */
+app.post('/:id/audit/kick-users', requireAuth(), requireAdmin(), async (c) => {
+	const serverId = c.req.param('id')
+	const db = c.get('db')
+	if (!db) {
+		return c.json({ error: 'Database not available' }, 500)
+	}
+
+	try {
+		const body = await c.req.json()
+		const discordUserIds = Array.isArray(body?.discordUserIds)
+			? body.discordUserIds.map((id: unknown) => String(id).trim()).filter(Boolean)
+			: []
+		if (discordUserIds.length === 0) {
+			return c.json({ error: 'discordUserIds is required' }, 400)
+		}
+
+		const server = await db.query.discordServers.findFirst({
+			where: eq(discordServers.id, serverId),
+			columns: { id: true, guildId: true, guildName: true },
+		})
+		if (!server) {
+			return c.json({ error: 'Discord server not found' }, 404)
+		}
+
+		const discordStub = getDiscordStub(c.env)
+		const results = await discordStub.removeGuildMembersByDiscordUserIds(
+			server.guildId,
+			discordUserIds
+		)
+		const kickedIds = results.filter((result) => result.success).map((result) => result.discordUserId)
+		if (kickedIds.length > 0) {
+			const latestRun = await db.query.discordMemberAuditRuns.findFirst({
+				where: eq(discordMemberAuditRuns.discordServerId, server.id),
+				orderBy: desc(discordMemberAuditRuns.startedAt),
+				columns: { id: true },
+			})
+			if (latestRun) {
+				await db
+					.delete(discordMemberAuditRows)
+					.where(
+						and(
+							eq(discordMemberAuditRows.runId, latestRun.id),
+							inArray(discordMemberAuditRows.discordUserId, kickedIds)
+						)
+					)
+			}
+		}
+
+		return c.json({
+			guildId: server.guildId,
+			guildName: server.guildName,
+			results,
+			successCount: results.filter((r) => r.success).length,
+			failureCount: results.filter((r) => !r.success).length,
+		})
+	} catch (error) {
+		logger.error('[Discord] Error kicking guild members in audit tool', {
+			serverId,
+			error: String(error),
+		})
+		return c.json({ error: 'Failed to kick users' }, 500)
 	}
 })
 

@@ -72,6 +72,8 @@ export type Env = SharedHonoEnv & {
 	LEGACY_AUTH_CALLBACK_URL: string
 	/** IP Address Hash Secret */
 	IP_ADDRESS_HASH_SECRET: string
+	/** Optional comma-separated Discord user IDs to exclude from member audits */
+	DISCORD_AUDIT_EXCLUDED_USER_IDS?: string
 }
 
 /** Session user data attached to request context */

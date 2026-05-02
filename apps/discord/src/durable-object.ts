@@ -891,6 +891,7 @@ export class DiscordDO extends DurableObject<Env> implements Discord {
 				discriminator,
 				displayName,
 				roleIds: member.roles ?? [],
+				isBot: member.user?.bot === true || member.user?.system === true,
 			}
 		})
 	}
@@ -1080,6 +1081,31 @@ export class DiscordDO extends DurableObject<Env> implements Discord {
 					discordUserId,
 					success: updateResult.success,
 					errorMessage: updateResult.errorMessage,
+				}
+			})
+		)
+		return results
+	}
+
+	async removeGuildMembersByDiscordUserIds(
+		guildId: string,
+		discordUserIds: string[]
+	): Promise<
+		Array<{
+			discordUserId: string
+			success: boolean
+			errorMessage?: string
+		}>
+	> {
+		const botService = new DiscordBotService(this.env)
+		const uniqueUserIds = [...new Set(discordUserIds.map((id) => id.trim()).filter(Boolean))]
+		const results = await Promise.all(
+			uniqueUserIds.map(async (discordUserId) => {
+				const removeResult = await botService.removeGuildMember(guildId, discordUserId)
+				return {
+					discordUserId,
+					success: removeResult.success,
+					errorMessage: removeResult.errorMessage,
 				}
 			})
 		)
