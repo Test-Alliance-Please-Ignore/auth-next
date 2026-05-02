@@ -627,6 +627,9 @@ export interface DiscordAuditMember {
 	hasValidToken: boolean | null
 	corporationId: string | null
 	corporationName: string | null
+	isInMemberCorporation?: boolean
+	hasRoleAffiliationMismatch?: boolean
+	unmanagedRoleCount?: number
 	roleState?: 'ok' | 'drift' | 'error'
 	roleStateReason?: string
 }
@@ -641,6 +644,19 @@ export interface DiscordGuildAuditResponse {
 	items: DiscordAuditMember[]
 	nextCursor: string | null
 	scanned: number
+	runId?: string | null
+	runStatus?: 'idle' | 'pending' | 'processing' | 'completed' | 'failed' | 'cancelled'
+	runStartedAt?: string | null
+	runCompletedAt?: string | null
+	linkedCount?: number
+	unlinkedCount?: number
+	runError?: string | null
+}
+
+export interface StartDiscordGuildAuditResponse {
+	runId: string
+	workflowInstanceId: string
+	status: 'pending' | 'processing' | 'completed' | 'failed' | 'cancelled'
 }
 
 export interface DiscordGuildAuditStripRolesResponse {
@@ -2104,6 +2120,10 @@ export class ApiClient {
 		if (params.limit) query.set('limit', String(params.limit))
 		if (params.cursor) query.set('cursor', params.cursor)
 		return this.get(`/discord-servers/${serverId}/audit?${query.toString()}`)
+	}
+
+	async startDiscordGuildAudit(serverId: string): Promise<StartDiscordGuildAuditResponse> {
+		return this.post(`/discord-servers/${serverId}/audit/runs`)
 	}
 
 	async stripDiscordGuildRoles(

@@ -1,6 +1,6 @@
 import { Hono } from 'hono'
 
-import { and, desc, eq, ilike, inArray, isNotNull } from '@repo/db-utils'
+import { and, asc, desc, eq, gt, ilike, inArray, isNotNull } from '@repo/db-utils'
 import { getDiscordStub } from '@repo/discord'
 import { getStub } from '@repo/do-utils'
 import { logger } from '@repo/hono-helpers'
@@ -8,8 +8,11 @@ import { logger } from '@repo/hono-helpers'
 import {
 	corporationDiscordServers,
 	discordRoles,
+	discordMemberAuditRows,
+	discordMemberAuditRuns,
 	discordServerCommands,
 	discordServers,
+	managedCorporations,
 	userCharacters,
 	users,
 } from '../db/schema'
@@ -42,6 +45,12 @@ type DiscordAuditMemberRow = {
 	hasValidToken: boolean | null
 	corporationId: string | null
 	corporationName: string | null
+	isInMemberCorporation?: boolean
+	hasRoleAffiliationMismatch?: boolean
+	unmanagedRoleCount?: number
+	runId?: string
+	runStatus?: 'pending' | 'processing' | 'completed' | 'failed' | 'cancelled'
+	runScanned?: number
 	roleState?: 'ok' | 'drift' | 'error'
 	roleStateReason?: string
 }
@@ -620,8 +629,69 @@ app.post('/:id/refresh-members', requireAuth(), requireAdmin(), async (c) => {
 })
 
 /**
+ * POST /discord-servers/:id/audit/runs
+ * Start async persisted guild member audit workflow.
+ */
+app.post('/:id/audit/runs', requireAuth(), requireAdmin(), async (c) => {
+	const serverId = c.req.param('id')
+	const user = c.get('user')
+	const db = c.get('db')
+	if (!db) return c.json({ error: 'Database not available' }, 500)
+	if (!user) return c.json({ error: 'Unauthorized' }, 401)
+
+	try {
+		const server = await db.query.discordServers.findFirst({
+			where: eq(discordServers.id, serverId),
+			columns: { id: true, guildId: true, guildName: true },
+		})
+		if (!server) {
+			return c.json({ error: 'Discord server not found' }, 404)
+		}
+
+		const workflowId = `discord-member-audit-${server.id.replace(/-/g, '').slice(0, 12)}-${Date.now().toString(36)}`
+		const [run] = await db
+			.insert(discordMemberAuditRuns)
+			.values({
+				workflowInstanceId: workflowId,
+				discordServerId: server.id,
+				guildId: server.guildId,
+				guildName: server.guildName,
+				initiatedByUserId: user.id,
+				status: 'pending',
+			})
+			.returning({
+				id: discordMemberAuditRuns.id,
+				workflowInstanceId: discordMemberAuditRuns.workflowInstanceId,
+				status: discordMemberAuditRuns.status,
+			})
+
+		await c.env.DISCORD_MEMBER_AUDIT_WORKFLOW.create({
+			id: workflowId,
+			params: {
+				runId: run.id,
+				discordServerId: server.id,
+				guildId: server.guildId,
+				guildName: server.guildName,
+			},
+		})
+
+		return c.json({
+			runId: run.id,
+			workflowInstanceId: run.workflowInstanceId,
+			status: run.status,
+		})
+	} catch (error) {
+		logger.error('[Discord] Failed to start member audit workflow', {
+			serverId,
+			error: String(error),
+		})
+		return c.json({ error: 'Failed to start audit workflow' }, 500)
+	}
+})
+
+/**
  * GET /discord-servers/:id/audit
- * Audit guild membership and classify linked/unlinked Discord users with pagination.
+ * Read latest persisted guild member audit snapshot with pagination.
  *
  * Query:
  * - tab: linked | unlinked (default linked)
@@ -653,112 +723,79 @@ app.get('/:id/audit', requireAuth(), requireAdmin(), async (c) => {
 			return c.json({ error: 'Discord server not found' }, 404)
 		}
 
-		const discordStub = getDiscordStub(c.env)
-		const results: DiscordAuditMemberRow[] = []
-		let cursor = initialCursor
-		let hasMore = true
-		let scanned = 0
-		const MAX_SCAN_PAGES = 12
-		let scanPages = 0
+		const latestRun = await db.query.discordMemberAuditRuns.findFirst({
+			where: eq(discordMemberAuditRuns.discordServerId, server.id),
+			orderBy: desc(discordMemberAuditRuns.startedAt),
+		})
 
-		while (results.length < limit && hasMore && scanPages < MAX_SCAN_PAGES) {
-			scanPages++
-			const chunk = await discordStub.listGuildMembers(server.guildId, {
-				limit: 200,
-				afterDiscordUserId: cursor ?? undefined,
+		if (!latestRun) {
+			return c.json({
+				server: {
+					id: server.id,
+					guildId: server.guildId,
+					guildName: server.guildName,
+				},
+				tab,
+				items: [],
+				nextCursor: null,
+				scanned: 0,
+				runId: null,
+				runStatus: 'idle',
 			})
-			if (chunk.length === 0) {
-				hasMore = false
-				break
-			}
-
-			scanned += chunk.length
-			cursor = chunk[chunk.length - 1]?.discordUserId ?? cursor
-			if (chunk.length < 200) hasMore = false
-
-			const discordIds = chunk.map((m) => m.discordUserId).filter(Boolean)
-			const linkedUsers =
-				discordIds.length > 0
-					? await db.query.users.findMany({
-							where: inArray(users.discordUserId, discordIds),
-							columns: { id: true, discordUserId: true, mainCharacterId: true },
-						})
-					: []
-			const linkedByDiscordId = new Map(
-				linkedUsers
-					.filter((u) => !!u.discordUserId)
-					.map((u) => [u.discordUserId as string, u])
-			)
-
-			const linkedUserIds = linkedUsers.map((u) => u.id)
-			const primaryChars =
-				linkedUserIds.length > 0
-					? await db.query.userCharacters.findMany({
-							where: and(inArray(userCharacters.userId, linkedUserIds), eq(userCharacters.is_primary, true)),
-							columns: {
-								userId: true,
-								characterId: true,
-								characterName: true,
-								hasValidToken: true,
-								corporationId: true,
-								corporationName: true,
-							},
-						})
-					: []
-			const primaryByUserId = new Map(primaryChars.map((ch) => [ch.userId, ch]))
-
-			const chunkRows: DiscordAuditMemberRow[] = chunk.map((member) => {
-				const linkedUser = linkedByDiscordId.get(member.discordUserId)
-				const primary = linkedUser ? primaryByUserId.get(linkedUser.id) : undefined
-				return {
-					discordUserId: member.discordUserId,
-					username: member.username,
-					discriminator: member.discriminator,
-					displayName: member.displayName,
-					roleIds: member.roleIds,
-					linked: !!linkedUser,
-					coreUserId: linkedUser?.id ?? null,
-					mainCharacterId: primary?.characterId ?? linkedUser?.mainCharacterId ?? null,
-					mainCharacterName: primary?.characterName ?? null,
-					hasValidToken: primary?.hasValidToken ?? null,
-					corporationId: primary?.corporationId ?? null,
-					corporationName: primary?.corporationName ?? null,
-				}
-			})
-
-			for (const row of chunkRows) {
-				if ((tab === 'linked' && row.linked) || (tab === 'unlinked' && !row.linked)) {
-					results.push(row)
-					if (results.length >= limit) break
-				}
-			}
 		}
 
-		// For linked rows, inspect role correctness relative to this guild.
-		if (tab === 'linked') {
-			for (const row of results) {
-				if (!row.coreUserId) continue
-				try {
-					const inspection = await discordService.inspectUserDiscordAccess(c.env, row.coreUserId)
-					const guild = inspection.guilds.find((g) => g.guildId === server.guildId)
-					if (!guild) {
-						row.roleState = 'error'
-						row.roleStateReason = 'Guild membership not found in inspection'
-						continue
-					}
-					const hasDrift =
-						guild.missingExpectedManagedRoles.length > 0 ||
-						guild.unexpectedManagedRoles.length > 0
-					row.roleState = hasDrift ? 'drift' : 'ok'
-					row.roleStateReason = hasDrift
-						? `${guild.missingExpectedManagedRoles.length} missing, ${guild.unexpectedManagedRoles.length} unexpected managed roles`
-						: 'Roles match expected managed set'
-				} catch (error) {
-					row.roleState = 'error'
-					row.roleStateReason = error instanceof Error ? error.message : String(error)
-				}
-			}
+		const whereClauses = [
+			eq(discordMemberAuditRows.runId, latestRun.id),
+			eq(discordMemberAuditRows.linked, tab === 'linked'),
+		]
+		if (initialCursor) {
+			whereClauses.push(gt(discordMemberAuditRows.discordUserId, initialCursor))
 		}
+
+		const rows = await db.query.discordMemberAuditRows.findMany({
+			where: and(...whereClauses),
+			orderBy: asc(discordMemberAuditRows.discordUserId),
+			limit: limit + 1,
+		})
+
+		const memberCorporations = await db.query.managedCorporations.findMany({
+			where: eq(managedCorporations.isMemberCorporation, true),
+			columns: { corporationId: true },
+		})
+		const memberCorpIdSet = new Set(memberCorporations.map((corp) => corp.corporationId))
+		const managedRoles = await db.query.discordRoles.findMany({
+			where: and(eq(discordRoles.discordServerId, server.id), eq(discordRoles.isActive, true)),
+			columns: { roleId: true },
+		})
+		const managedRoleIdSet = new Set(managedRoles.map((role) => role.roleId))
+
+		const hasMore = rows.length > limit
+		const visibleRows = hasMore ? rows.slice(0, limit) : rows
+		const results: DiscordAuditMemberRow[] = visibleRows.map((row) => {
+			const unmanagedRoleCount = row.roleIds.filter((roleId) => !managedRoleIdSet.has(roleId)).length
+			return {
+				isInMemberCorporation: !!row.corporationId && memberCorpIdSet.has(row.corporationId),
+				hasRoleAffiliationMismatch:
+					row.roleIds.length > 0 &&
+					(!row.corporationId || !memberCorpIdSet.has(row.corporationId)),
+				unmanagedRoleCount,
+			discordUserId: row.discordUserId,
+			username: row.username,
+			discriminator: row.discriminator,
+			displayName: row.displayName,
+			roleIds: row.roleIds,
+			linked: row.linked,
+			coreUserId: row.coreUserId,
+			mainCharacterId: row.mainCharacterId,
+			mainCharacterName: row.mainCharacterName,
+			hasValidToken: row.hasValidToken,
+			corporationId: row.corporationId,
+			corporationName: row.corporationName,
+			runId: latestRun.id,
+			runStatus: latestRun.status,
+			runScanned: latestRun.scanned,
+			}
+		})
 
 		return c.json({
 			server: {
@@ -768,8 +805,15 @@ app.get('/:id/audit', requireAuth(), requireAdmin(), async (c) => {
 			},
 			tab,
 			items: results,
-			nextCursor: hasMore ? cursor : null,
-			scanned,
+			nextCursor: hasMore ? visibleRows[visibleRows.length - 1]?.discordUserId ?? null : null,
+			scanned: latestRun.scanned,
+			runId: latestRun.id,
+			runStatus: latestRun.status,
+			runStartedAt: latestRun.startedAt,
+			runCompletedAt: latestRun.completedAt,
+			linkedCount: latestRun.linkedCount,
+			unlinkedCount: latestRun.unlinkedCount,
+			runError: latestRun.errorMessage,
 		})
 	} catch (error) {
 		logger.error('[Discord] Error running guild audit', { serverId, error: String(error) })

@@ -160,6 +160,11 @@
 			"name": "user-discord-refresh-workflow",
 			"binding": "USER_DISCORD_REFRESH_WORKFLOW",
 			"class_name": "UserDiscordRefreshWorkflow"
+		},
+		{
+			"name": "discord-member-audit-workflow",
+			"binding": "DISCORD_MEMBER_AUDIT_WORKFLOW",
+			"class_name": "DiscordMemberAuditWorkflow"
 		}
 	]
 }

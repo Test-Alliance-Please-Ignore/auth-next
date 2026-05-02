@@ -576,3 +576,9 @@ export function useStripDiscordGuildRoles() {
 		},
 	})
 }
+
+export function useStartDiscordGuildAudit() {
+	return useMutation({
+		mutationFn: (serverId: string) => apiClient.startDiscordGuildAudit(serverId),
+	})
+}
