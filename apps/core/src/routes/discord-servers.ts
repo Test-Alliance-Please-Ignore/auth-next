@@ -37,6 +37,8 @@ type DiscordAuditFilter =
 	| 'external'
 	| 'roles_without_member_corp'
 	| 'drifted'
+	| 'with_roles'
+	| 'without_roles'
 
 type DiscordAuditMemberRow = {
 	discordUserId: string
@@ -701,8 +703,8 @@ app.post('/:id/audit/runs', requireAuth(), requireAdmin(), async (c) => {
  *
  * Query:
  * - tab: linked | unlinked (default linked)
- * - limit: page size 1..100 (default 50)
- * - cursor: optional Discord user ID cursor ("after" pagination)
+ * - page: page number (default 1)
+ * - pageSize: page size 1..100 (default 50)
  */
 app.get('/:id/audit', requireAuth(), requireAdmin(), async (c) => {
 	const serverId = c.req.param('id')
@@ -716,9 +718,10 @@ app.get('/:id/audit', requireAuth(), requireAdmin(), async (c) => {
 		return c.json({ error: 'tab must be linked or unlinked' }, 400)
 	}
 
-	const parsedLimit = Number.parseInt(c.req.query('limit') ?? '50', 10)
-	const limit = Number.isFinite(parsedLimit) ? Math.min(Math.max(parsedLimit, 1), 100) : 50
-	const initialCursor = c.req.query('cursor')?.trim() || null
+	const parsedPage = Number.parseInt(c.req.query('page') ?? '1', 10)
+	const page = Number.isFinite(parsedPage) ? Math.max(parsedPage, 1) : 1
+	const parsedPageSize = Number.parseInt(c.req.query('pageSize') ?? '50', 10)
+	const pageSize = Number.isFinite(parsedPageSize) ? Math.min(Math.max(parsedPageSize, 1), 100) : 50
 	const filter = (c.req.query('filter') ?? 'all') as DiscordAuditFilter
 	const allowedFilters: DiscordAuditFilter[] = [
 		'all',
@@ -726,6 +729,8 @@ app.get('/:id/audit', requireAuth(), requireAdmin(), async (c) => {
 		'external',
 		'roles_without_member_corp',
 		'drifted',
+		'with_roles',
+		'without_roles',
 	]
 	if (!allowedFilters.includes(filter)) {
 		return c.json({ error: 'Invalid filter' }, 400)
@@ -758,13 +763,16 @@ app.get('/:id/audit', requireAuth(), requireAdmin(), async (c) => {
 				scanned: 0,
 				runId: null,
 				runStatus: 'idle',
+				pagination: {
+					page,
+					pageSize,
+					totalCount: 0,
+					totalPages: 0,
+				},
 			})
 		}
 
 		const whereClauses = [eq(discordMemberAuditRows.runId, latestRun.id), eq(discordMemberAuditRows.linked, tab === 'linked')]
-		if (initialCursor) {
-			whereClauses.push(gt(discordMemberAuditRows.discordUserId, initialCursor))
-		}
 
 		const memberCorporations = await db.query.managedCorporations.findMany({
 			where: eq(managedCorporations.isMemberCorporation, true),
@@ -777,16 +785,15 @@ app.get('/:id/audit', requireAuth(), requireAdmin(), async (c) => {
 		})
 		const managedRoleIdSet = new Set(managedRoles.map((role) => role.roleId))
 
-		if (filter === 'member_corp' && memberCorporations.length > 0) {
-			whereClauses.push(inArray(discordMemberAuditRows.corporationId, memberCorporations.map((corp) => corp.corporationId)))
-		}
 		const rows = await db.query.discordMemberAuditRows.findMany({
 			where: and(...whereClauses),
 			orderBy: asc(discordMemberAuditRows.discordUserId),
-			limit: filter === 'drifted' || filter === 'roles_without_member_corp' ? 5000 : limit + 1,
 		})
 
 		let filteredRows = rows
+		if (filter === 'member_corp') {
+			filteredRows = rows.filter((row) => !!row.corporationId && memberCorpIdSet.has(row.corporationId))
+		}
 		if (filter === 'roles_without_member_corp') {
 			filteredRows = rows.filter(
 				(row) => row.roleIds.length > 0 && (!row.corporationId || !memberCorpIdSet.has(row.corporationId))
@@ -800,8 +807,17 @@ app.get('/:id/audit', requireAuth(), requireAdmin(), async (c) => {
 				row.roleIds.some((roleId) => !managedRoleIdSet.has(roleId))
 			)
 		}
-		const hasMore = filteredRows.length > limit
-		const visibleRows = hasMore ? filteredRows.slice(0, limit) : filteredRows
+		if (filter === 'with_roles') {
+			filteredRows = rows.filter((row) => row.roleIds.length > 0)
+		}
+		if (filter === 'without_roles') {
+			filteredRows = rows.filter((row) => row.roleIds.length === 0)
+		}
+		const totalCount = filteredRows.length
+		const totalPages = totalCount === 0 ? 0 : Math.ceil(totalCount / pageSize)
+		const safePage = totalPages > 0 ? Math.min(page, totalPages) : 1
+		const offset = (safePage - 1) * pageSize
+		const visibleRows = filteredRows.slice(offset, offset + pageSize)
 		const results: DiscordAuditMemberRow[] = visibleRows.map((row) => {
 			const unmanagedRoleCount = row.roleIds.filter((roleId) => !managedRoleIdSet.has(roleId)).length
 			return {
@@ -836,7 +852,7 @@ app.get('/:id/audit', requireAuth(), requireAdmin(), async (c) => {
 			},
 			tab,
 			items: results,
-			nextCursor: hasMore ? visibleRows[visibleRows.length - 1]?.discordUserId ?? null : null,
+			nextCursor: null,
 			scanned: latestRun.scanned,
 			runId: latestRun.id,
 			runStatus: latestRun.status,
@@ -846,6 +862,12 @@ app.get('/:id/audit', requireAuth(), requireAdmin(), async (c) => {
 			unlinkedCount: latestRun.unlinkedCount,
 			runError: latestRun.errorMessage,
 			filter,
+			pagination: {
+				page: safePage,
+				pageSize,
+				totalCount,
+				totalPages,
+			},
 		})
 	} catch (error) {
 		logger.error('[Discord] Error running guild audit', { serverId, error: String(error) })

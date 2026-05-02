@@ -86,8 +86,8 @@ export function useDiscordLink() {
 export const discordKeys = {
 	all: ['admin', 'discord'] as const,
 	servers: () => [...discordKeys.all, 'servers'] as const,
-	audit: (serverId: string, tab: 'linked' | 'unlinked', cursor: string | null, limit: number) =>
-		[...discordKeys.all, 'audit', serverId, tab, cursor ?? '', limit] as const,
+	audit: (serverId: string, tab: 'linked' | 'unlinked', page: number, pageSize: number) =>
+		[...discordKeys.all, 'audit', serverId, tab, page, pageSize] as const,
 	corporationServers: (corporationId: string) =>
 		['admin', 'corporations', corporationId, 'discord-servers'] as const,
 }
@@ -541,17 +541,17 @@ export function useDiscordGuildAudit(
 	serverId: string,
 	params: {
 		tab: 'linked' | 'unlinked'
-		cursor: string | null
-		limit: number
+		page: number
+		pageSize: number
 	}
 ) {
 	return useQuery({
-		queryKey: discordKeys.audit(serverId, params.tab, params.cursor, params.limit),
+		queryKey: discordKeys.audit(serverId, params.tab, params.page, params.pageSize),
 		queryFn: () =>
 			apiClient.getDiscordGuildAudit(serverId, {
 				tab: params.tab,
-				cursor: params.cursor,
-				limit: params.limit,
+				page: params.page,
+				pageSize: params.pageSize,
 			}),
 		enabled: !!serverId,
 	})

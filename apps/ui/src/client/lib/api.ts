@@ -651,7 +651,20 @@ export interface DiscordGuildAuditResponse {
 	linkedCount?: number
 	unlinkedCount?: number
 	runError?: string | null
-	filter?: 'all' | 'member_corp' | 'external' | 'roles_without_member_corp' | 'drifted'
+	filter?:
+		| 'all'
+		| 'member_corp'
+		| 'external'
+		| 'roles_without_member_corp'
+		| 'drifted'
+		| 'with_roles'
+		| 'without_roles'
+	pagination?: {
+		page: number
+		pageSize: number
+		totalCount: number
+		totalPages: number
+	}
 }
 
 export interface StartDiscordGuildAuditResponse {
@@ -2112,16 +2125,23 @@ export class ApiClient {
 		serverId: string,
 		params: {
 			tab: 'linked' | 'unlinked'
-			filter?: 'all' | 'member_corp' | 'external' | 'roles_without_member_corp' | 'drifted'
-			limit?: number
-			cursor?: string | null
+			filter?:
+				| 'all'
+				| 'member_corp'
+				| 'external'
+				| 'roles_without_member_corp'
+				| 'drifted'
+				| 'with_roles'
+				| 'without_roles'
+			page?: number
+			pageSize?: number
 		}
 	): Promise<DiscordGuildAuditResponse> {
 		const query = new URLSearchParams()
 		query.set('tab', params.tab)
 		if (params.filter) query.set('filter', params.filter)
-		if (params.limit) query.set('limit', String(params.limit))
-		if (params.cursor) query.set('cursor', params.cursor)
+		if (params.page) query.set('page', String(params.page))
+		if (params.pageSize) query.set('pageSize', String(params.pageSize))
 		return this.get(`/discord-servers/${serverId}/audit?${query.toString()}`)
 	}
 
