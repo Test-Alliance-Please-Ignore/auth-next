@@ -31,6 +31,12 @@ import type { App } from '../context'
 const app = new Hono<App>()
 
 type DiscordAuditTab = 'linked' | 'unlinked'
+type DiscordAuditFilter =
+	| 'all'
+	| 'member_corp'
+	| 'external'
+	| 'roles_without_member_corp'
+	| 'drifted'
 
 type DiscordAuditMemberRow = {
 	discordUserId: string
@@ -713,6 +719,17 @@ app.get('/:id/audit', requireAuth(), requireAdmin(), async (c) => {
 	const parsedLimit = Number.parseInt(c.req.query('limit') ?? '50', 10)
 	const limit = Number.isFinite(parsedLimit) ? Math.min(Math.max(parsedLimit, 1), 100) : 50
 	const initialCursor = c.req.query('cursor')?.trim() || null
+	const filter = (c.req.query('filter') ?? 'all') as DiscordAuditFilter
+	const allowedFilters: DiscordAuditFilter[] = [
+		'all',
+		'member_corp',
+		'external',
+		'roles_without_member_corp',
+		'drifted',
+	]
+	if (!allowedFilters.includes(filter)) {
+		return c.json({ error: 'Invalid filter' }, 400)
+	}
 
 	try {
 		const server = await db.query.discordServers.findFirst({
@@ -744,19 +761,10 @@ app.get('/:id/audit', requireAuth(), requireAdmin(), async (c) => {
 			})
 		}
 
-		const whereClauses = [
-			eq(discordMemberAuditRows.runId, latestRun.id),
-			eq(discordMemberAuditRows.linked, tab === 'linked'),
-		]
+		const whereClauses = [eq(discordMemberAuditRows.runId, latestRun.id), eq(discordMemberAuditRows.linked, tab === 'linked')]
 		if (initialCursor) {
 			whereClauses.push(gt(discordMemberAuditRows.discordUserId, initialCursor))
 		}
-
-		const rows = await db.query.discordMemberAuditRows.findMany({
-			where: and(...whereClauses),
-			orderBy: asc(discordMemberAuditRows.discordUserId),
-			limit: limit + 1,
-		})
 
 		const memberCorporations = await db.query.managedCorporations.findMany({
 			where: eq(managedCorporations.isMemberCorporation, true),
@@ -769,8 +777,31 @@ app.get('/:id/audit', requireAuth(), requireAdmin(), async (c) => {
 		})
 		const managedRoleIdSet = new Set(managedRoles.map((role) => role.roleId))
 
-		const hasMore = rows.length > limit
-		const visibleRows = hasMore ? rows.slice(0, limit) : rows
+		if (filter === 'member_corp' && memberCorporations.length > 0) {
+			whereClauses.push(inArray(discordMemberAuditRows.corporationId, memberCorporations.map((corp) => corp.corporationId)))
+		}
+		const rows = await db.query.discordMemberAuditRows.findMany({
+			where: and(...whereClauses),
+			orderBy: asc(discordMemberAuditRows.discordUserId),
+			limit: filter === 'drifted' || filter === 'roles_without_member_corp' ? 5000 : limit + 1,
+		})
+
+		let filteredRows = rows
+		if (filter === 'roles_without_member_corp') {
+			filteredRows = rows.filter(
+				(row) => row.roleIds.length > 0 && (!row.corporationId || !memberCorpIdSet.has(row.corporationId))
+			)
+		}
+		if (filter === 'external') {
+			filteredRows = rows.filter((row) => !row.corporationId || !memberCorpIdSet.has(row.corporationId))
+		}
+		if (filter === 'drifted') {
+			filteredRows = rows.filter((row) =>
+				row.roleIds.some((roleId) => !managedRoleIdSet.has(roleId))
+			)
+		}
+		const hasMore = filteredRows.length > limit
+		const visibleRows = hasMore ? filteredRows.slice(0, limit) : filteredRows
 		const results: DiscordAuditMemberRow[] = visibleRows.map((row) => {
 			const unmanagedRoleCount = row.roleIds.filter((roleId) => !managedRoleIdSet.has(roleId)).length
 			return {
@@ -814,6 +845,7 @@ app.get('/:id/audit', requireAuth(), requireAdmin(), async (c) => {
 			linkedCount: latestRun.linkedCount,
 			unlinkedCount: latestRun.unlinkedCount,
 			runError: latestRun.errorMessage,
+			filter,
 		})
 	} catch (error) {
 		logger.error('[Discord] Error running guild audit', { serverId, error: String(error) })
