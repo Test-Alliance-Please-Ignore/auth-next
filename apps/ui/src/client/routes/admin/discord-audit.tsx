@@ -16,6 +16,7 @@ import { cn } from '@/lib/utils'
 
 type AuditTab = 'linked' | 'unlinked'
 type CursorValue = string | null
+type AuditFilter = 'all' | 'member_corp' | 'external' | 'roles_without_member_corp' | 'drifted'
 
 type AuditPageState = {
 	pages: Record<string, Awaited<ReturnType<typeof api.getDiscordGuildAudit>>>
@@ -62,9 +63,9 @@ export default function AdminDiscordAuditPage() {
 	const [serverId, setServerId] = useState<string>('')
 	const [activeServerId, setActiveServerId] = useState<string>('')
 	const [tab, setTab] = useState<AuditTab>('linked')
+	const [filter, setFilter] = useState<AuditFilter>('all')
 	const [auditByServer, setAuditByServer] = useState<Record<string, ServerAuditState>>({})
 	const [selectedUnlinked, setSelectedUnlinked] = useState<Record<string, boolean>>({})
-	const [rowStatus, setRowStatus] = useState<Record<string, string>>({})
 
 	const { requestConfirmation, confirmationDialog } = useConfirmationDialog()
 	const stripRoles = useStripDiscordGuildRoles()
@@ -79,8 +80,13 @@ export default function AdminDiscordAuditPage() {
 	const isFetching = tabState.isLoading
 	const nextCursor = tabState.nextCursorByCursor[cursorKey(currentCursor)] ?? data?.nextCursor ?? null
 	const runStatus = data?.runStatus
+	const isRunActive = runStatus === 'pending' || runStatus === 'processing'
+	const [nowMs, setNowMs] = useState<number>(Date.now())
+	const [startCooldownUntil, setStartCooldownUntil] = useState<number>(0)
 	const pageNumber = tabState.cursorStack.length + 1
 	const pageCountLabel = data?.nextCursor ? `${pageNumber}+` : `${pageNumber}`
+	const startCooldownRemainingMs = Math.max(0, startCooldownUntil - nowMs)
+	const isStartCooldownActive = startCooldownRemainingMs > 0
 
 	const selectedIds = useMemo(
 		() => Object.entries(selectedUnlinked).filter(([, checked]) => checked).map(([id]) => id),
@@ -99,11 +105,13 @@ export default function AdminDiscordAuditPage() {
 				serverId?: string
 				activeServerId?: string
 				tab?: AuditTab
+				filter?: AuditFilter
 				auditByServer?: Record<string, ServerAuditState>
 			}
 			if (parsed.serverId) setServerId(parsed.serverId)
 			if (parsed.activeServerId) setActiveServerId(parsed.activeServerId)
 			if (parsed.tab) setTab(parsed.tab)
+			if (parsed.filter) setFilter(parsed.filter)
 			if (parsed.auditByServer) setAuditByServer(parsed.auditByServer)
 		} catch {
 			// ignore malformed cache
@@ -115,10 +123,11 @@ export default function AdminDiscordAuditPage() {
 			serverId,
 			activeServerId,
 			tab,
+			filter,
 			auditByServer,
 		}
 		sessionStorage.setItem(SESSION_CACHE_KEY, JSON.stringify(cachePayload))
-	}, [activeServerId, auditByServer, serverId, tab])
+	}, [activeServerId, auditByServer, filter, serverId, tab])
 
 	const fetchAuditPage = async (server: string, fetchTab: AuditTab, cursor: CursorValue) => {
 		setAuditByServer((prev) => {
@@ -137,6 +146,7 @@ export default function AdminDiscordAuditPage() {
 
 		const response = await api.getDiscordGuildAudit(server, {
 			tab: fetchTab,
+			filter,
 			cursor,
 			limit: 50,
 		})
@@ -167,26 +177,32 @@ export default function AdminDiscordAuditPage() {
 	}
 
 	useEffect(() => {
+		if (!isStartCooldownActive) return
+		const timer = window.setInterval(() => setNowMs(Date.now()), 1000)
+		return () => window.clearInterval(timer)
+	}, [isStartCooldownActive])
+
+	useEffect(() => {
 		if (!effectiveServerId) return
 		if (runStatus !== 'pending' && runStatus !== 'processing') return
 		const timer = window.setInterval(() => {
 			void fetchAuditPage(effectiveServerId, tab, currentCursor)
 		}, 5000)
 		return () => window.clearInterval(timer)
-	}, [currentCursor, effectiveServerId, runStatus, tab])
+	}, [currentCursor, effectiveServerId, filter, runStatus, tab])
 
 	const onChangeServer = (value: string) => {
 		setServerId(value)
 		setActiveServerId('')
 		setSelectedUnlinked({})
-		setRowStatus({})
 	}
 
 	const startAudit = () => {
 		if (!serverId) return
+		if (isRunActive || isStartCooldownActive) return
 		setActiveServerId(serverId)
 		setSelectedUnlinked({})
-		setRowStatus({})
+		setStartCooldownUntil(Date.now() + 60_000)
 		void (async () => {
 			await startAuditMutation.mutateAsync(serverId)
 			setAuditByServer((prev) => ({
@@ -201,13 +217,23 @@ export default function AdminDiscordAuditPage() {
 		const nextTab = value as AuditTab
 		setTab(nextTab)
 		setSelectedUnlinked({})
-		setRowStatus({})
 		if (effectiveServerId) {
 			const nextState = auditByServer[effectiveServerId]?.[nextTab]
 			if (!nextState?.isLoaded) {
 				void fetchAuditPage(effectiveServerId, nextTab, null)
 			}
 		}
+	}
+
+	const onChangeFilter = (value: string) => {
+		const nextFilter = value as AuditFilter
+		setFilter(nextFilter)
+		if (!effectiveServerId) return
+		setAuditByServer((prev) => ({
+			...prev,
+			[effectiveServerId]: createEmptyServerState(),
+		}))
+		void fetchAuditPage(effectiveServerId, tab, null)
 	}
 
 	const toggleAllVisibleUnlinked = (checked: boolean) => {
@@ -257,26 +283,8 @@ export default function AdminDiscordAuditPage() {
 		})
 	}
 
-	const inspectLinkedUser = async (coreUserId: string) => {
-		const inspection = await api.inspectDiscordAccess(coreUserId)
-		const guild = inspection.guilds.find((g) => g.guildId === data?.server.guildId)
-		if (!guild) {
-			setRowStatus((prev) => ({ ...prev, [coreUserId]: 'Inspection: guild not found' }))
-			return
-		}
-		const hasDrift =
-			guild.missingExpectedManagedRoles.length > 0 || guild.unexpectedManagedRoles.length > 0
-		setRowStatus((prev) => ({
-			...prev,
-			[coreUserId]: hasDrift
-				? `Inspection drift (${guild.missingExpectedManagedRoles.length} missing / ${guild.unexpectedManagedRoles.length} unexpected)`
-				: 'Inspection OK',
-		}))
-	}
-
 	const refreshLinkedUser = async (coreUserId: string) => {
 		await api.triggerDiscordJoin(coreUserId)
-		setRowStatus((prev) => ({ ...prev, [coreUserId]: 'Refresh triggered' }))
 		void fetchAuditPage(effectiveServerId, tab, currentCursor)
 	}
 
@@ -352,15 +360,12 @@ export default function AdminDiscordAuditPage() {
 		<div className="space-y-6">
 			<Card>
 				<CardHeader>
-					<div className="space-y-4">
-						<div>
-							<CardTitle>Discord Member Audit</CardTitle>
-							<CardDescription>
-								Audit guild members against linked platform users. Linked users can be inspected/refreshed;
-								unlinked users can have roles stripped.
-							</CardDescription>
-						</div>
-						{renderPaginationControls('top')}
+					<div>
+						<CardTitle>Discord Member Audit</CardTitle>
+						<CardDescription>
+							Audit guild members against linked platform users. Linked users can be inspected/refreshed;
+							unlinked users can have roles stripped.
+						</CardDescription>
 					</div>
 				</CardHeader>
 				<CardContent className="space-y-4">
@@ -379,10 +384,20 @@ export default function AdminDiscordAuditPage() {
 							<Button
 								variant="primary"
 								onClick={startAudit}
-								disabled={!serverId || isFetching || startAuditMutation.isPending}
+								disabled={
+									!serverId ||
+									isFetching ||
+									startAuditMutation.isPending ||
+									isRunActive ||
+									isStartCooldownActive
+								}
 							>
 								{isFetching || startAuditMutation.isPending ? <LoadingInline className="mr-2" /> : null}
-								Start Audit
+								{isRunActive
+									? 'Audit Running'
+									: isStartCooldownActive
+										? `Start Audit (${Math.ceil(startCooldownRemainingMs / 1000)}s)`
+										: 'Start Audit'}
 							</Button>
 							<Button
 								variant="secondary"
@@ -391,20 +406,6 @@ export default function AdminDiscordAuditPage() {
 							>
 								{isFetching ? <LoadingInline className="mr-2" /> : null}
 								Refresh
-							</Button>
-							<Button
-								variant="secondary"
-								onClick={goToPreviousPage}
-								disabled={!effectiveServerId || tabState.cursorStack.length === 0}
-							>
-								Previous Page
-							</Button>
-							<Button
-								variant="secondary"
-								onClick={goToNextPage}
-								disabled={!effectiveServerId || !nextCursor}
-							>
-								Next Page
 							</Button>
 						</div>
 					</div>
@@ -415,6 +416,20 @@ export default function AdminDiscordAuditPage() {
 							<TabsTrigger value="unlinked">Unlinked</TabsTrigger>
 						</TabsList>
 					</Tabs>
+					<div className="max-w-sm">
+						<Select
+							value={filter}
+							onValueChange={onChangeFilter}
+							options={[
+								{ value: 'all', label: 'All Rows' },
+								{ value: 'drifted', label: 'Drifted (Unmanaged Roles)' },
+								{ value: 'roles_without_member_corp', label: 'Roles w/o Member Corp' },
+								{ value: 'member_corp', label: 'Member Corp Only' },
+								{ value: 'external', label: 'External Only' },
+							]}
+							placeholder="Filter"
+						/>
+					</div>
 
 					{tab === 'unlinked' && (
 						<div className="flex items-center justify-between gap-2 rounded-md border p-3">
@@ -448,6 +463,7 @@ export default function AdminDiscordAuditPage() {
 					) : null}
 
 					<div className="rounded-md border">
+						<div className="p-3">{renderPaginationControls('top')}</div>
 						{!effectiveServerId && !serversLoading ? (
 							<div className="py-10 text-center text-sm text-muted-foreground">
 								Select a configured Discord server, then click Start Audit.
@@ -465,12 +481,11 @@ export default function AdminDiscordAuditPage() {
 										</TableHead>
 									)}
 									<TableHead>Discord User</TableHead>
-									<TableHead>Link</TableHead>
-									{tab === 'linked' && <TableHead>Token</TableHead>}
 									{tab === 'linked' && <TableHead>Corporation</TableHead>}
 									{tab === 'linked' && <TableHead>Affiliation</TableHead>}
+									<TableHead>Link</TableHead>
+									{tab === 'linked' && <TableHead>Token</TableHead>}
 									<TableHead>Roles</TableHead>
-									{tab === 'linked' && <TableHead>Managed Role State</TableHead>}
 									<TableHead className="text-right">Actions</TableHead>
 								</TableRow>
 							</TableHeader>
@@ -510,42 +525,27 @@ export default function AdminDiscordAuditPage() {
 												</TableCell>
 											)}
 											<TableCell>
-												<div className="font-medium">{item.displayName}</div>
-												<div className="text-xs text-muted-foreground">
-													{formatDiscordHandle(item.username, item.discriminator)} · {item.discordUserId}
-												</div>
-											</TableCell>
-											<TableCell>
 												{item.linked && item.coreUserId ? (
-													<div className="space-y-1">
-														<Badge variant="secondary">Linked</Badge>
+													<Link
+														to={`/admin/users/${item.coreUserId}`}
+														target="_blank"
+														rel="noreferrer"
+														className="block hover:underline"
+													>
+														<div className="font-medium">{item.displayName}</div>
 														<div className="text-xs text-muted-foreground">
-															<Link to={`/admin/users/${item.coreUserId}`} className="hover:underline">
-																{item.mainCharacterName ?? item.coreUserId}
-															</Link>
+															{formatDiscordHandle(item.username, item.discriminator)} · {item.discordUserId}
 														</div>
-													</div>
+													</Link>
 												) : (
-													<Badge variant="destructive">Unlinked</Badge>
+													<>
+														<div className="font-medium">{item.displayName}</div>
+														<div className="text-xs text-muted-foreground">
+															{formatDiscordHandle(item.username, item.discriminator)} · {item.discordUserId}
+														</div>
+													</>
 												)}
 											</TableCell>
-											{tab === 'linked' && (
-												<TableCell>
-													{item.hasValidToken === true ? (
-														<Badge className="text-emerald-400 border-emerald-400/40" variant="secondary">
-															Valid
-														</Badge>
-													) : item.hasValidToken === false ? (
-														<Badge className="text-red-400 border-red-400/40" variant="secondary">
-															Invalid
-														</Badge>
-													) : (
-														<Badge className="text-amber-400 border-amber-400/40" variant="secondary">
-															Unknown
-														</Badge>
-													)}
-												</TableCell>
-											)}
 											{tab === 'linked' && (
 												<TableCell>
 													{item.corporationName ? (
@@ -560,14 +560,7 @@ export default function AdminDiscordAuditPage() {
 											)}
 											{tab === 'linked' && (
 												<TableCell>
-													{item.hasRoleAffiliationMismatch ? (
-														<Badge variant="destructive">
-															Roles w/o Member Corp
-															{(item.unmanagedRoleCount ?? 0) > 0
-																? ` (${item.unmanagedRoleCount} unmanaged)`
-																: ''}
-														</Badge>
-													) : item.isInMemberCorporation ? (
+													{item.isInMemberCorporation ? (
 														<Badge variant="success">Member Corp</Badge>
 													) : (
 														<Badge variant="warning">External</Badge>
@@ -575,43 +568,43 @@ export default function AdminDiscordAuditPage() {
 												</TableCell>
 											)}
 											<TableCell>
-												<div className="text-xs text-muted-foreground">
-													{item.roleIds.length} roles assigned
-												</div>
+												{item.linked && item.coreUserId ? (
+													<Badge variant="secondary">Linked</Badge>
+												) : (
+													<Badge variant="destructive">Unlinked</Badge>
+												)}
 											</TableCell>
 											{tab === 'linked' && (
 												<TableCell>
-													{item.roleState ? (
-														<Badge
-															variant="secondary"
-															className={cn(
-																item.roleState === 'ok' && 'text-emerald-400 border-emerald-400/40',
-																item.roleState === 'drift' && 'text-amber-400 border-amber-400/40',
-																item.roleState === 'error' && 'text-red-400 border-red-400/40'
-															)}
-														>
-															{item.roleState}
-														</Badge>
+													{item.hasValidToken === true ? (
+														<Badge variant="success">Valid</Badge>
+													) : item.hasValidToken === false ? (
+														<Badge variant="destructive">Invalid</Badge>
 													) : (
-														<span className="text-xs text-muted-foreground">Unknown</span>
-													)}
-													{item.roleStateReason && (
-														<div className="mt-1 text-xs text-muted-foreground">{item.roleStateReason}</div>
-													)}
-													{item.coreUserId && rowStatus[item.coreUserId] && (
-														<div className="mt-1 text-xs text-muted-foreground">{rowStatus[item.coreUserId]}</div>
+														<Badge variant="warning">Unknown</Badge>
 													)}
 												</TableCell>
 											)}
+											<TableCell>
+												<div className="text-xs text-muted-foreground space-y-1">
+													{item.roleIds.length} roles assigned
+													{item.hasRoleAffiliationMismatch ? (
+														<div>
+															<Badge variant="destructive">
+																Roles w/o Member Corp
+																{(item.unmanagedRoleCount ?? 0) > 0
+																	? ` (${item.unmanagedRoleCount} unmanaged)`
+																	: ''}
+															</Badge>
+														</div>
+													) : null}
+												</div>
+											</TableCell>
 											<TableCell className="text-right">
 												{item.linked && item.coreUserId ? (
 													<div className="inline-flex items-center gap-2">
-														<Button
-															variant="secondary"
-															size="sm"
-															onClick={() => void inspectLinkedUser(item.coreUserId!)}
-														>
-															Inspect
+														<Button variant="secondary" size="sm" asChild>
+															<Link to={`/admin/users/${item.coreUserId}/discord-access`}>Inspect</Link>
 														</Button>
 														<Button
 															variant="secondary"
@@ -619,6 +612,13 @@ export default function AdminDiscordAuditPage() {
 															onClick={() => void refreshLinkedUser(item.coreUserId!)}
 														>
 															Refresh
+														</Button>
+														<Button
+															variant="destructive"
+															size="sm"
+															onClick={() => void stripSingleUserRoles(item.discordUserId)}
+														>
+															Strip Roles
 														</Button>
 													</div>
 												) : (

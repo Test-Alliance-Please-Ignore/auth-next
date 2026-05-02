@@ -3,6 +3,8 @@ import { useNavigate, useParams } from 'react-router-dom'
 
 import { Badge } from '@/components/ui/badge'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
+import { useDiscordServers, useStripDiscordGuildRoles } from '@/hooks/useDiscord'
+import { useConfirmationDialog } from '@/hooks/useConfirmationDialog'
 import { useAdminDiscordInspection, useAdminUser } from '@/hooks/useAdminUsers'
 import { usePageTitle } from '@/hooks/usePageTitle'
 import { Button } from '@/components/ui/button'
@@ -36,13 +38,39 @@ export default function AdminUserDiscordAccessPage() {
 	usePageTitle('Admin - User Discord Access')
 	const { userId } = useParams<{ userId: string }>()
 	const navigate = useNavigate()
+	const { requestConfirmation, confirmationDialog } = useConfirmationDialog()
+	const { data: discordServers = [] } = useDiscordServers()
+	const stripRoles = useStripDiscordGuildRoles()
 
 	const { data: user, isLoading: userLoading } = useAdminUser(userId!)
 	const {
 		data: inspection,
 		isLoading: inspectionLoading,
 		error,
+		refetch: refetchInspection,
 	} = useAdminDiscordInspection(userId!, !!userId)
+
+	const stripRolesForGuild = async (guildId: string) => {
+		if (!inspection?.discordUserId) return
+		const server = discordServers.find((s) => s.guildId === guildId)
+		if (!server) return
+
+		requestConfirmation({
+			title: 'Strip all roles in this guild?',
+			description:
+				'This will clear all assignable roles for this user in the selected guild. This cannot be undone.',
+			confirmLabel: 'Strip Roles',
+			cancelLabel: 'Cancel',
+			intent: 'destructive',
+			onConfirm: async () => {
+				await stripRoles.mutateAsync({
+					serverId: server.id,
+					discordUserIds: [inspection.discordUserId],
+				})
+				void refetchInspection()
+			},
+		})
+	}
 
 	return (
 		<div className="space-y-6">
@@ -164,6 +192,17 @@ export default function AdminUserDiscordAccessPage() {
 												>
 													{hasDrift ? 'Drift Detected' : 'In Sync'}
 												</Badge>
+												<Button
+													variant="destructive"
+													size="sm"
+													onClick={() => void stripRolesForGuild(guild.guildId)}
+													disabled={
+														!discordServers.some((server) => server.guildId === guild.guildId) ||
+														stripRoles.isPending
+													}
+												>
+													Strip Roles
+												</Button>
 											</div>
 										</div>
 										{guild.membershipError && (
@@ -219,6 +258,7 @@ export default function AdminUserDiscordAccessPage() {
 					</div>
 				</>
 			)}
+			{confirmationDialog}
 		</div>
 	)
 }
