@@ -425,6 +425,37 @@ export interface CharacterWalletSyncHealth {
  * ```
  */
 export interface EveCharacterData {
+	triggerManualCharacterSyncBatch(): Promise<{
+		batchId: string
+		totalWorkflowInstances: number
+		totalCharacters: number
+		ownedUserWorkflows: number
+		unownedCharacterWorkflows: number
+		created: number
+		failed: number
+		workflowInstanceIds: string[]
+		startedAt: string
+	}>
+	getManualCharacterSyncBatchStatus(batchId: string): Promise<{
+		batchId: string
+		startedAt: string
+		total: number
+		statusCounts: {
+			queued: number
+			running: number
+			waiting: number
+			complete: number
+			errored: number
+			terminated: number
+			unknown: number
+		}
+		failedInstances: Array<{
+			id: string
+			status: string
+			error?: string
+		}>
+	}>
+
 	/**
 	 * Fetch and store all public character data (no auth required)
 	 * @param characterId - EVE character ID

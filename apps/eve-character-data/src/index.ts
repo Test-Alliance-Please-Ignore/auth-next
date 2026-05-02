@@ -9,6 +9,7 @@ import { EveCharacterSyncWorkflow } from './workflows/sync-workflow'
 
 import type { EveTokenStore } from '@repo/eve-token-store'
 import type { App, Env } from './context'
+import type { EveCharacterSyncParams } from './workflows/sync-workflow'
 
 const app = new Hono<App>()
 	.use(
@@ -42,17 +43,11 @@ async function scheduledHandler(event: ScheduledEvent, env: Env): Promise<void> 
 		return
 	}
 
-	const total = characterIds.length
-	const JITTER_WINDOW_SECONDS = 7200
-	// Spread jitter proportionally across 2 hours to reduce request bursts and 429 retries.
-	const workflowOptions = characterIds.map((characterId, index) => ({
-		id: `character-sync-${characterId}-${crypto.randomUUID()}`,
-		params: {
-			characterId,
-			trigger: 'cron' as const,
-			jitterDelaySeconds: Math.floor((index / total) * JITTER_WINDOW_SECONDS),
-		},
-	}))
+	const workflowOptions = await buildCharacterSyncWorkflowOptions({
+		characterIds,
+		resolveCharacterOwner: async (characterId) => env.CORE.getCharacterOwner(characterId),
+		trigger: 'cron',
+	})
 
 	const BATCH_SIZE = 75
 	let created = 0
@@ -74,11 +69,72 @@ async function scheduledHandler(event: ScheduledEvent, env: Env): Promise<void> 
 	}
 
 	logger.info('[EveCharacterData] Character data sync batch complete', {
-		total,
+		totalWorkflowInstances: workflowOptions.length,
+		totalCharacters: characterIds.length,
+		ownedUserWorkflows: workflowOptions.filter((workflow) => Boolean(workflow.params.userId)).length,
+		unownedCharacterWorkflows: workflowOptions.filter((workflow) => !workflow.params.userId).length,
 		created,
 		failed,
 		durationMs: Date.now() - batchStartTime,
 	})
+}
+
+export async function buildCharacterSyncWorkflowOptions(params: {
+	characterIds: string[]
+	resolveCharacterOwner: (characterId: string) => Promise<{ userId: string; isPrimary: boolean } | null>
+	trigger: EveCharacterSyncParams['trigger']
+}): Promise<Array<{ id: string; params: EveCharacterSyncParams }>> {
+	const perUserCharacterIds = new Map<string, string[]>()
+	const unownedCharacterIds: string[] = []
+	for (const characterId of params.characterIds) {
+		try {
+			const owner = await params.resolveCharacterOwner(characterId)
+			if (!owner?.userId) {
+				unownedCharacterIds.push(characterId)
+				continue
+			}
+			const bucket = perUserCharacterIds.get(owner.userId) ?? []
+			bucket.push(characterId)
+			perUserCharacterIds.set(owner.userId, bucket)
+		} catch (error) {
+			logger.warn('[EveCharacterData] Failed to resolve character owner; falling back to standalone sync', {
+				characterId,
+				error: error instanceof Error ? error.message : String(error),
+			})
+			unownedCharacterIds.push(characterId)
+		}
+	}
+
+	const perUserEntries = [...perUserCharacterIds.entries()]
+	const total = perUserEntries.length + unownedCharacterIds.length
+	const JITTER_WINDOW_SECONDS = 7200
+
+	return [
+		...perUserEntries.map(([userId, userCharacterIds]) => ({
+			id: `user-character-sync-${userId}-${crypto.randomUUID()}`,
+			params: {
+				userId,
+				characterIds: userCharacterIds,
+				trigger: params.trigger,
+				jitterDelaySeconds: 0,
+			},
+		})),
+		...unownedCharacterIds.map((characterId) => ({
+			id: `character-sync-${characterId}-${crypto.randomUUID()}`,
+			params: {
+				characterIds: [characterId],
+				characterId,
+				trigger: params.trigger,
+				jitterDelaySeconds: 0,
+			},
+		})),
+	].map((workflow, index) => ({
+		...workflow,
+		params: {
+			...workflow.params,
+			jitterDelaySeconds: total > 0 ? Math.floor((index / total) * JITTER_WINDOW_SECONDS) : 0,
+		},
+	}))
 }
 
 export default {

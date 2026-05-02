@@ -35,6 +35,7 @@ type CharacterRefreshStatus =
 interface CharacterRefreshOutcome {
 	characterId: string
 	status: CharacterRefreshStatus
+	affiliationChanged?: boolean
 	authenticatedSuccess?: boolean
 	error?: string
 }
@@ -52,6 +53,7 @@ export interface UserRefreshWorkflowResult {
 		characterCount: number
 		success: number
 		deleted: number
+		affiliationChanged: number
 		transientFailedAfterRetries: number
 		permanentFailed: number
 	}
@@ -237,6 +239,7 @@ export class UserRefreshWorkflow extends WorkflowEntrypoint<Env, UserRefreshWork
 				return {
 					characterId,
 					status: 'deleted',
+					affiliationChanged: updateCharacterPublicInfoResult.affiliationChanged,
 				}
 			}
 
@@ -274,6 +277,7 @@ export class UserRefreshWorkflow extends WorkflowEntrypoint<Env, UserRefreshWork
 			return {
 				characterId,
 				status: 'success',
+				affiliationChanged: updateCharacterPublicInfoResult.affiliationChanged,
 				authenticatedSuccess: authenticatedFetchResult.success,
 				error: authenticatedFetchResult.error,
 			}
@@ -476,6 +480,7 @@ export class UserRefreshWorkflow extends WorkflowEntrypoint<Env, UserRefreshWork
 				characterCount,
 				success: characterOutcomes.filter((outcome) => outcome.status === 'success').length,
 				deleted: characterOutcomes.filter((outcome) => outcome.status === 'deleted').length,
+				affiliationChanged: characterOutcomes.filter((outcome) => outcome.affiliationChanged === true).length,
 				transientFailedAfterRetries: characterOutcomes.filter(
 					(outcome) => outcome.status === 'transient_failed_after_retries'
 				).length,
@@ -516,6 +521,9 @@ export class UserRefreshWorkflow extends WorkflowEntrypoint<Env, UserRefreshWork
 					characterCount,
 					success: characterOutcomes.filter((outcome) => outcome.status === 'success').length,
 					deleted: characterOutcomes.filter((outcome) => outcome.status === 'deleted').length,
+					affiliationChanged: characterOutcomes.filter(
+						(outcome) => outcome.affiliationChanged === true
+					).length,
 					transientFailedAfterRetries: characterOutcomes.filter(
 						(outcome) => outcome.status === 'transient_failed_after_retries'
 					).length,

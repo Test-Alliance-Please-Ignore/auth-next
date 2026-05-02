@@ -5,8 +5,22 @@ import type { createDb } from './db'
 import type { EveCharacterSyncParams } from './workflows/sync-workflow'
 
 interface CoreWorker {
+	getCharacterOwner(
+		characterId: string
+	): Promise<{ userId: string; isPrimary: boolean } | null>
 	handleCharacterAffiliationChange(
 		characterId: string,
+		options?: {
+			source?: string
+			bypassThrottle?: boolean
+		}
+	): Promise<{
+		usersMatched: number
+		workflowsTriggered: number
+		discordUsersQueued: number
+	}>
+	handleCharacterAffiliationChanges(
+		characterIds: string[],
 		options?: {
 			source?: string
 			bypassThrottle?: boolean

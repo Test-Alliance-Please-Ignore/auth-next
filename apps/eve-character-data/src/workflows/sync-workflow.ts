@@ -16,8 +16,12 @@ import type { Env } from '../context'
  * Workflow parameters for character data synchronization
  */
 export interface EveCharacterSyncParams {
-	/** Character ID to sync */
-	characterId: string
+	/** User ID owning the characters to sync (preferred mode) */
+	userId?: string
+	/** Character IDs to sync */
+	characterIds?: string[]
+	/** Legacy single character mode */
+	characterId?: string
 	/** Optional: specific data types to sync (defaults to all) */
 	dataTypes?: EveCharacterSyncDataType[]
 	/** Trigger source (cron or api) */
@@ -62,9 +66,19 @@ function extractErrorDetails(error: unknown): Record<string, unknown> {
  */
 export class EveCharacterSyncWorkflow extends WorkflowEntrypoint<Env, EveCharacterSyncParams> {
 	async run(event: WorkflowEvent<EveCharacterSyncParams>, step: WorkflowStep) {
-		const { dataTypes, trigger, jitterDelaySeconds } = event.payload
-		const characterId = String(event.payload.characterId)
-		let characterMarkedDeleted = false
+		const { dataTypes, trigger, jitterDelaySeconds, userId } = event.payload
+		const requestedCharacterIds = event.payload.characterIds ?? []
+		const legacyCharacterId = event.payload.characterId
+		const characterIds = [
+			...new Set(
+				[...requestedCharacterIds, ...(legacyCharacterId ? [legacyCharacterId] : [])]
+					.map((id) => String(id).trim())
+					.filter(Boolean)
+			),
+		]
+		if (characterIds.length === 0) {
+			throw new Error('EveCharacterSyncWorkflow requires at least one character ID')
+		}
 
 		// Helper to check if a data type should be synced
 		const requestedTypes = dataTypes ? new Set<EveCharacterSyncDataType>(dataTypes) : null
@@ -72,7 +86,9 @@ export class EveCharacterSyncWorkflow extends WorkflowEntrypoint<Env, EveCharact
 			!requestedTypes || requestedTypes.size === 0 || requestedTypes.has(type)
 
 		logger.info('[EveCharacterSyncWorkflow] Starting character sync', {
-			characterId,
+			userId: userId ?? null,
+			characterCount: characterIds.length,
+			characterIds,
 			dataTypes: dataTypes || 'all',
 			trigger,
 			jitterDelaySeconds: jitterDelaySeconds ?? 0,
@@ -91,156 +107,160 @@ export class EveCharacterSyncWorkflow extends WorkflowEntrypoint<Env, EveCharact
 			await updater.markRunning()
 		})
 
-		// Step: Validate token upfront — proactively refreshes if expired, detects revoked/missing tokens
-		const tokenValidation = await step.do(
-			'validate-token',
-			{
-				retries: { limit: 2, delay: '5 seconds', backoff: 'exponential' },
-				timeout: '30 seconds',
-			},
-			async () => {
-				const tokenStoreStub = getStub<EveTokenStore>(this.env.EVE_TOKEN_STORE, 'default')
-				const validation = await tokenStoreStub.validateToken(characterId)
-				// Treat transient errors as retriable — step retries will handle them
-				if (validation.status === 'transient_error') {
-					throw new Error(`Transient token validation error for character ${characterId}`)
-				}
-				return {
-					hasValidToken: validation.isValid,
-					status: validation.status,
-					refreshAttempted: validation.refreshAttempted,
-					refreshSucceeded: validation.refreshSucceeded,
-				}
-			}
-		)
+		const affiliationChangedCharacterIds: string[] = []
+		const syncStats = {
+			deleted: 0,
+			publicInfoSuccess: 0,
+			authenticatedSuccess: 0,
+			authenticatedSkippedNoToken: 0,
+			characterFailures: 0,
+		}
 
-		logger.info('[EveCharacterSyncWorkflow] Token validation complete', {
-			characterId,
-			hasValidToken: tokenValidation.hasValidToken,
-			status: tokenValidation.status,
-			refreshAttempted: tokenValidation.refreshAttempted,
-			refreshSucceeded: tokenValidation.refreshSucceeded,
-		})
-
-		// Step 1: Fetch & store public info
-		let publicInfoResult: refreshHelpers.RefreshPublicInfoResult | null = null
-		if (shouldSync('public-info')) {
+		for (const [index, characterId] of characterIds.entries()) {
+			let characterMarkedDeleted = false
+			const stepSuffix = `${index + 1}-${characterId}`
 			try {
-				publicInfoResult = await step.do(
-					'fetch-public-info',
+				// Sub-step: Validate token per character — attempts refresh when needed.
+				const tokenValidation = await step.do(
+					`validate-token-${stepSuffix}`,
 					{
-						...esiRetryOptions,
-						timeout: '1 minute',
+						retries: { limit: 2, delay: '5 seconds', backoff: 'exponential' },
+						timeout: '30 seconds',
 					},
-					() =>
-						withEsiRetryClassification('fetch-public-info', async () => {
-							logger.debug('[Step] Fetching public info', { characterId })
-							return await refreshHelpers.refreshPublicInfo(this.env, characterId)
-						})
+					async () => {
+						const tokenStoreStub = getStub<EveTokenStore>(this.env.EVE_TOKEN_STORE, 'default')
+						const validation = await tokenStoreStub.validateToken(characterId)
+						if (validation.status === 'transient_error') {
+							throw new Error(`Transient token validation error for character ${characterId}`)
+						}
+						return {
+							hasValidToken: validation.isValid,
+							status: validation.status,
+							refreshAttempted: validation.refreshAttempted,
+							refreshSucceeded: validation.refreshSucceeded,
+						}
+					}
 				)
-				logger.info('[Step] Public info fetched', {
-					characterId,
-					characterName: publicInfoResult.characterName,
-				})
-			} catch (error) {
-				const message = error instanceof Error ? error.message : String(error)
-				const lowerMessage = message.toLowerCase()
-				const isDeletedCharacterError =
-					lowerMessage.includes('has been deleted') ||
-					lowerMessage.includes('character deleted') ||
-					lowerMessage.includes('character_deleted') ||
-					lowerMessage.includes('esi request failed: 404')
 
-				if (!isDeletedCharacterError) {
-					logger.error('[EveCharacterSyncWorkflow] fetch-public-info step failed', {
-						characterId,
-						error: message,
-						errorDetails: extractErrorDetails(error),
-					})
-					throw error
+				let publicInfoResult: refreshHelpers.RefreshPublicInfoResult | null = null
+				if (shouldSync('public-info')) {
+					try {
+						publicInfoResult = await step.do(
+							`fetch-public-info-${stepSuffix}`,
+							{
+								...esiRetryOptions,
+								timeout: '1 minute',
+							},
+							() =>
+								withEsiRetryClassification('fetch-public-info', async () => {
+									logger.debug('[Step] Fetching public info', { characterId, userId: userId ?? null })
+									return await refreshHelpers.refreshPublicInfo(this.env, characterId)
+								})
+						)
+						syncStats.publicInfoSuccess++
+						if (publicInfoResult.affiliationChanged) {
+							affiliationChangedCharacterIds.push(characterId)
+						}
+					} catch (error) {
+						const message = error instanceof Error ? error.message : String(error)
+						const lowerMessage = message.toLowerCase()
+						const isDeletedCharacterError =
+							lowerMessage.includes('has been deleted') ||
+							lowerMessage.includes('character deleted') ||
+							lowerMessage.includes('character_deleted') ||
+							lowerMessage.includes('esi request failed: 404')
+
+						if (!isDeletedCharacterError) {
+							logger.error('[EveCharacterSyncWorkflow] fetch-public-info step failed', {
+								characterId,
+								userId: userId ?? null,
+								error: message,
+								errorDetails: extractErrorDetails(error),
+							})
+							throw error
+						}
+
+						await step.do(`mark-character-deleted-${stepSuffix}`, async () => {
+							const tokenStoreStub = getStub<EveTokenStore>(this.env.EVE_TOKEN_STORE, 'default')
+							await tokenStoreStub.markCharacterDeleted(characterId)
+						})
+						characterMarkedDeleted = true
+						syncStats.deleted++
+					}
 				}
 
-				await step.do('mark-character-deleted', async () => {
-					const tokenStoreStub = getStub<EveTokenStore>(this.env.EVE_TOKEN_STORE, 'default')
-					await tokenStoreStub.markCharacterDeleted(characterId)
-				})
-				characterMarkedDeleted = true
-
-				logger.info('[EveCharacterSyncWorkflow] Character marked deleted after non-retryable public info error', {
+				if (shouldSync('authenticated') && !characterMarkedDeleted) {
+					if (!tokenValidation.hasValidToken) {
+						syncStats.authenticatedSkippedNoToken++
+					} else {
+						const authenticatedDataResult = await step.do(
+							`fetch-authenticated-data-${stepSuffix}`,
+							{
+								...esiRetryOptions,
+								timeout: '1 minute',
+							},
+							() =>
+								withEsiRetryClassification('fetch-authenticated-data', async () => {
+									logger.debug('[Step] Fetching authenticated data', {
+										characterId,
+										userId: userId ?? null,
+									})
+									return await refreshAuthenticatedData.refreshAuthenticatedData(
+										this.env,
+										characterId
+									)
+								})
+						)
+						if (authenticatedDataResult.success) {
+							syncStats.authenticatedSuccess++
+						} else {
+							syncStats.authenticatedSkippedNoToken++
+						}
+					}
+				}
+			} catch (error) {
+				syncStats.characterFailures++
+				logger.error('[EveCharacterSyncWorkflow] Character sync failed; continuing with next character', {
 					characterId,
-					error: message,
+					userId: userId ?? null,
+					error: error instanceof Error ? error.message : String(error),
 					errorDetails: extractErrorDetails(error),
 				})
 			}
-		} else {
-			logger.debug('[Step] Skipping public info sync (filtered)', { characterId })
 		}
 
-		// If public affiliation changed, route to Core so user-character linkage,
-		// role attachments, and Discord entitlement refresh all converge.
-		if (
-			!characterMarkedDeleted &&
-			publicInfoResult?.success &&
-			publicInfoResult.affiliationChanged
-		) {
+		// End-of-user cascade: when any character affiliation changed, reconcile in Core.
+		if (affiliationChangedCharacterIds.length > 0) {
 			await step.do(
-				'notify-core-affiliation-change',
+				'notify-core-affiliation-changes',
 				{
 					retries: { limit: 3, delay: '5 seconds', backoff: 'exponential' },
 					timeout: '30 seconds',
 				},
 				async () => {
-					await this.env.CORE.handleCharacterAffiliationChange(characterId, {
+					const cascadeResult = await this.env.CORE.handleCharacterAffiliationChanges(
+						affiliationChangedCharacterIds,
+						{
 						source: 'eve-character-sync-affiliation-change',
 						bypassThrottle: true,
+						}
+					)
+					logger.info('[EveCharacterSyncWorkflow] Core affiliation cascade result', {
+						userId: userId ?? null,
+						changedCharacterCount: affiliationChangedCharacterIds.length,
+						...cascadeResult,
 					})
 				}
 			)
 		}
 
-		// Step 2: Fetch & store authenticated data
-		let authenticatedDataResult: refreshAuthenticatedData.RefreshAuthenticatedDataResult | null = null
-		if (shouldSync('authenticated') && !characterMarkedDeleted) {
-			if (!tokenValidation.hasValidToken) {
-				logger.info('[Step] Skipping authenticated data (no valid token)', {
-					characterId,
-					tokenStatus: tokenValidation.status,
-				})
-				authenticatedDataResult = { success: false, hasValidToken: false }
-			} else {
-				authenticatedDataResult = await step.do(
-					'fetch-authenticated-data',
-					{
-						...esiRetryOptions,
-						timeout: '1 minute',
-					},
-					() =>
-						withEsiRetryClassification('fetch-authenticated-data', async () => {
-							logger.debug('[Step] Fetching authenticated data', { characterId })
-							return await refreshAuthenticatedData.refreshAuthenticatedData(
-								this.env,
-								characterId
-							)
-						})
-				)
-				if (authenticatedDataResult.success) {
-					logger.info('[Step] Authenticated data fetched', { characterId })
-				} else {
-					logger.info('[Step] Authenticated data skipped (no valid token)', { characterId })
-				}
-			}
-		} else {
-			logger.debug('[Step] Skipping authenticated data sync (filtered)', { characterId })
-		}
-
 		logger.info('[EveCharacterSyncWorkflow] Character sync completed successfully', {
-			characterId,
+			userId: userId ?? null,
+			characterIds,
 			trigger,
-			characterMarkedDeleted,
-			tokenStatus: tokenValidation.status,
+			affiliationChangedCharacterIds,
 			stats: {
-				characterName: publicInfoResult?.characterName,
-				hasAuthenticatedData: authenticatedDataResult?.success,
+				...syncStats,
 			},
 		})
 
@@ -250,7 +270,7 @@ export class EveCharacterSyncWorkflow extends WorkflowEntrypoint<Env, EveCharact
 			const updater = createWorkflowInstanceUpdater(event.instanceId, this.env.DATABASE_URL)
 			const tokenStoreStub = getStub<EveTokenStore>(this.env.EVE_TOKEN_STORE, 'default')
 			const completionTasks = [updater.markCompleted()]
-			if (!characterMarkedDeleted) {
+			for (const characterId of characterIds) {
 				completionTasks.push(tokenStoreStub.markCharacterDataSyncComplete(characterId))
 			}
 			await Promise.all(completionTasks)
@@ -258,13 +278,12 @@ export class EveCharacterSyncWorkflow extends WorkflowEntrypoint<Env, EveCharact
 
 		return {
 			success: true,
-			characterId,
+			userId: userId ?? null,
+			characterIds,
 			trigger,
-			characterMarkedDeleted,
-			tokenStatus: tokenValidation.status,
+			affiliationChangedCharacterIds,
 			stats: {
-				characterName: publicInfoResult?.characterName,
-				hasAuthenticatedData: authenticatedDataResult?.success,
+				...syncStats,
 			},
 		}
 	}

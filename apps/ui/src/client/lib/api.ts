@@ -701,6 +701,38 @@ export interface DiscordGuildAuditKickUsersResponse {
 	failureCount: number
 }
 
+export interface ManualEveCharacterSyncBatchRunResponse {
+	batchId: string
+	totalWorkflowInstances: number
+	totalCharacters: number
+	ownedUserWorkflows: number
+	unownedCharacterWorkflows: number
+	created: number
+	failed: number
+	workflowInstanceIds: string[]
+	startedAt: string
+}
+
+export interface ManualEveCharacterSyncBatchStatusResponse {
+	batchId: string
+	startedAt: string
+	total: number
+	statusCounts: {
+		queued: number
+		running: number
+		waiting: number
+		complete: number
+		errored: number
+		terminated: number
+		unknown: number
+	}
+	failedInstances: Array<{
+		id: string
+		status: string
+		error?: string
+	}>
+}
+
 export interface DiscordCommandCategory {
 	id: string
 	name: string
@@ -2443,6 +2475,16 @@ export class ApiClient {
 			allowRemoval: options?.allowRemoval ?? true,
 			force: options?.force ?? true,
 		})
+	}
+
+	async triggerManualEveCharacterSyncBatch(): Promise<ManualEveCharacterSyncBatchRunResponse> {
+		return this.post('/admin/eve-character-sync/manual-run')
+	}
+
+	async getManualEveCharacterSyncBatchStatus(
+		batchId: string
+	): Promise<ManualEveCharacterSyncBatchStatusResponse> {
+		return this.get(`/admin/eve-character-sync/manual-run/${batchId}`)
 	}
 
 	// ===== Admin Blacklist Management API Methods =====

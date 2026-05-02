@@ -23,6 +23,7 @@ import { UserService } from '../services/user.service'
 
 import type { Core } from '@repo/core'
 import type { Discord } from '@repo/discord'
+import type { EveCharacterData } from '@repo/eve-character-data'
 import type { EveTokenStore } from '@repo/eve-token-store'
 import type { Groups } from '@repo/groups'
 import type { Hr } from '@repo/hr'
@@ -1490,5 +1491,58 @@ app.post(
 		}
 	}
 )
+
+/**
+ * POST /admin/eve-character-sync/manual-run
+ * Manually trigger the same EVE character sync fanout workflow used by scheduled cron.
+ */
+app.post('/eve-character-sync/manual-run', requireAuth(), requireAdmin(), async (c) => {
+	const user = c.get('user')
+	if (!user) {
+		return c.json({ error: 'Unauthorized' }, 401)
+	}
+
+	try {
+		const eveCharacterDataStub = getStub<EveCharacterData>(c.env.EVE_CHARACTER_DATA, 'default')
+		const result = await eveCharacterDataStub.triggerManualCharacterSyncBatch()
+		return c.json(result)
+	} catch (error) {
+		logger.error('[Admin] Failed to trigger manual eve-character-sync batch', {
+			error: error instanceof Error ? error.message : String(error),
+		})
+		return c.json({ error: 'Failed to trigger manual sync batch' }, 500)
+	}
+})
+
+/**
+ * GET /admin/eve-character-sync/manual-run/:batchId
+ * Fetch status for a manual EVE character sync batch run.
+ */
+app.get('/eve-character-sync/manual-run/:batchId', requireAuth(), requireAdmin(), async (c) => {
+	const user = c.get('user')
+	if (!user) {
+		return c.json({ error: 'Unauthorized' }, 401)
+	}
+
+	const batchId = c.req.param('batchId')
+	if (!batchId) {
+		return c.json({ error: 'Batch ID is required' }, 400)
+	}
+
+	try {
+		const eveCharacterDataStub = getStub<EveCharacterData>(c.env.EVE_CHARACTER_DATA, 'default')
+		const status = await eveCharacterDataStub.getManualCharacterSyncBatchStatus(batchId)
+		return c.json(status)
+	} catch (error) {
+		if (error instanceof Error && error.message === 'Manual sync batch not found') {
+			return c.json({ error: 'Batch not found' }, 404)
+		}
+		logger.error('[Admin] Failed to fetch manual eve-character-sync batch status', {
+			error: error instanceof Error ? error.message : String(error),
+			batchId,
+		})
+		return c.json({ error: 'Failed to fetch manual sync batch status' }, 500)
+	}
+})
 
 export default app

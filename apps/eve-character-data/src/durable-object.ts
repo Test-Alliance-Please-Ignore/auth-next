@@ -59,6 +59,7 @@ import type { Env } from './context'
  */
 export class EveCharacterDataDO extends DurableObject<Env> implements EveCharacterData {
 	private db: ReturnType<typeof createDb>
+	private static readonly MANUAL_BATCH_STORAGE_PREFIX = 'manual-sync-batch:'
 
 	private extractDbErrorDetails(error: unknown): Record<string, unknown> {
 		if (!error || typeof error !== 'object') {
@@ -1993,6 +1994,184 @@ export class EveCharacterDataDO extends DurableObject<Env> implements EveCharact
 			createdAt: new Date(r.createdAt),
 			updatedAt: new Date(r.updatedAt),
 		}))
+	}
+
+	async triggerManualCharacterSyncBatch(): Promise<{
+		batchId: string
+		totalWorkflowInstances: number
+		totalCharacters: number
+		ownedUserWorkflows: number
+		unownedCharacterWorkflows: number
+		created: number
+		failed: number
+		workflowInstanceIds: string[]
+		startedAt: string
+	}> {
+		const startedAt = new Date().toISOString()
+		const tokenStoreStub = getStub<EveTokenStore>(this.env.EVE_TOKEN_STORE, 'default')
+		const characterIds = await tokenStoreStub.getCharactersNeedingDataSync()
+		const perUserCharacterIds = new Map<string, string[]>()
+		const unownedCharacterIds: string[] = []
+
+		for (const characterId of characterIds) {
+			try {
+				const owner = await this.env.CORE.getCharacterOwner(characterId)
+				if (!owner?.userId) {
+					unownedCharacterIds.push(characterId)
+					continue
+				}
+				const bucket = perUserCharacterIds.get(owner.userId) ?? []
+				bucket.push(characterId)
+				perUserCharacterIds.set(owner.userId, bucket)
+			} catch {
+				unownedCharacterIds.push(characterId)
+			}
+		}
+
+		const perUserEntries = [...perUserCharacterIds.entries()]
+		const total = perUserEntries.length + unownedCharacterIds.length
+		const JITTER_WINDOW_SECONDS = 7200
+		const workflows = [
+			...perUserEntries.map(([userId, userCharacterIds]) => ({
+				id: `user-character-sync-${userId}-${crypto.randomUUID()}`,
+				params: {
+					userId,
+					characterIds: userCharacterIds,
+					trigger: 'api' as const,
+					jitterDelaySeconds: 0,
+				},
+			})),
+			...unownedCharacterIds.map((characterId) => ({
+				id: `character-sync-${characterId}-${crypto.randomUUID()}`,
+				params: {
+					characterIds: [characterId],
+					characterId,
+					trigger: 'api' as const,
+					jitterDelaySeconds: 0,
+				},
+			})),
+		].map((workflow, index) => ({
+			...workflow,
+			params: {
+				...workflow.params,
+				jitterDelaySeconds: total > 0 ? Math.floor((index / total) * JITTER_WINDOW_SECONDS) : 0,
+			},
+		}))
+
+		const BATCH_SIZE = 75
+		let created = 0
+		let failed = 0
+		const createdIds: string[] = []
+		for (let i = 0; i < workflows.length; i += BATCH_SIZE) {
+			const batch = workflows.slice(i, i + BATCH_SIZE)
+			try {
+				await this.env.EVE_CHARACTER_SYNC.createBatch(batch)
+				created += batch.length
+				createdIds.push(...batch.map((entry) => entry.id))
+			} catch {
+				failed += batch.length
+			}
+		}
+
+		const batchId = crypto.randomUUID()
+		await this.state.storage.put(
+			`${EveCharacterDataDO.MANUAL_BATCH_STORAGE_PREFIX}${batchId}`,
+			{
+				batchId,
+				startedAt,
+				workflowInstanceIds: createdIds,
+			}
+		)
+
+		return {
+			batchId,
+			totalWorkflowInstances: workflows.length,
+			totalCharacters: characterIds.length,
+			ownedUserWorkflows: perUserEntries.length,
+			unownedCharacterWorkflows: unownedCharacterIds.length,
+			created,
+			failed,
+			workflowInstanceIds: createdIds,
+			startedAt,
+		}
+	}
+
+	async getManualCharacterSyncBatchStatus(batchId: string): Promise<{
+		batchId: string
+		startedAt: string
+		total: number
+		statusCounts: {
+			queued: number
+			running: number
+			waiting: number
+			complete: number
+			errored: number
+			terminated: number
+			unknown: number
+		}
+		failedInstances: Array<{
+			id: string
+			status: string
+			error?: string
+		}>
+	}> {
+		const stored = await this.state.storage.get<{
+			batchId: string
+			startedAt: string
+			workflowInstanceIds: string[]
+		}>(`${EveCharacterDataDO.MANUAL_BATCH_STORAGE_PREFIX}${batchId}`)
+		if (!stored) {
+			throw new Error('Manual sync batch not found')
+		}
+
+		const statusCounts = {
+			queued: 0,
+			running: 0,
+			waiting: 0,
+			complete: 0,
+			errored: 0,
+			terminated: 0,
+			unknown: 0,
+		}
+		const failedInstances: Array<{ id: string; status: string; error?: string }> = []
+
+		for (const workflowId of stored.workflowInstanceIds) {
+			try {
+				const instance = await this.env.EVE_CHARACTER_SYNC.get(workflowId)
+				const status = await instance.status()
+				const runStatus = status.status
+				if (runStatus in statusCounts) {
+					statusCounts[runStatus as keyof typeof statusCounts]++
+				} else {
+					statusCounts.unknown++
+				}
+				if (runStatus === 'errored' || runStatus === 'terminated') {
+					failedInstances.push({
+						id: workflowId,
+						status: runStatus,
+						error:
+							status.error && typeof status.error === 'object' && 'message' in status.error
+								? String((status.error as { message?: unknown }).message ?? '')
+								: undefined,
+					})
+				}
+			} catch (error) {
+				statusCounts.unknown++
+				failedInstances.push({
+					id: workflowId,
+					status: 'unknown',
+					error: error instanceof Error ? error.message : String(error),
+				})
+			}
+		}
+
+		return {
+			batchId: stored.batchId,
+			startedAt: stored.startedAt,
+			total: stored.workflowInstanceIds.length,
+			statusCounts,
+			failedInstances,
+		}
 	}
 
 	/**

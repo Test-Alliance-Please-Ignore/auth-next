@@ -39,6 +39,7 @@ export async function updateCharacterPublicInfo(
 	allianceId: string | null
 	allianceName: string | null
 	isDeleted: boolean
+	affiliationChanged: boolean
 }> {
 	const logger = getWorkflowLogger(ctx, 'update-character-public-info')
 
@@ -102,6 +103,7 @@ export async function updateCharacterPublicInfo(
 				allianceId: null,
 				allianceName: null,
 				isDeleted: true,
+				affiliationChanged: true,
 			}
 		}
 
@@ -137,6 +139,15 @@ export async function updateCharacterPublicInfo(
 	}
 
 	const allianceId = affiliationAllianceId ? String(affiliationAllianceId) : null
+	const existingCharacter = await ctx.db.query.userCharacters.findFirst({
+		where: eq(userCharacters.characterId, characterId),
+		columns: { corporationId: true, allianceId: true, isDeleted: true },
+	})
+	const affiliationChanged =
+		!existingCharacter ||
+		existingCharacter.isDeleted === true ||
+		existingCharacter.corporationId !== affiliationCorporationId ||
+		(existingCharacter.allianceId ?? null) !== allianceId
 
 	// Persist the authoritative affiliation IDs before any best-effort name resolution.
 	await ctx.db
@@ -217,5 +228,6 @@ export async function updateCharacterPublicInfo(
 		allianceId,
 		allianceName,
 		isDeleted: false,
+		affiliationChanged,
 	}
 }
