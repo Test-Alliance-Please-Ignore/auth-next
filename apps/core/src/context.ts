@@ -7,6 +7,7 @@ import type { SharedHonoEnv, SharedHonoVariables } from '@repo/hono-helpers/src/
 import type { Skills } from '@repo/skills'
 import type { createDb } from './db'
 import type { UserDiscordRefreshWorkflowParams } from './workflows/user-discord-refresh.workflow'
+import type { DiscordMemberAuditWorkflowParams } from './workflows/discord-member-audit.workflow'
 import type { UserRefreshWorkflowParams } from './workflows/user-refresh.workflow'
 
 export type Env = SharedHonoEnv & {
@@ -55,6 +56,8 @@ export type Env = SharedHonoEnv & {
 	USER_REFRESH_WORKFLOW: Workflow<UserRefreshWorkflowParams>
 	/** User Discord Refresh Workflow binding */
 	USER_DISCORD_REFRESH_WORKFLOW: Workflow<UserDiscordRefreshWorkflowParams>
+	/** Discord Member Audit Workflow binding */
+	DISCORD_MEMBER_AUDIT_WORKFLOW: Workflow<DiscordMemberAuditWorkflowParams>
 	/** ESI Type Resolver Durable Object binding */
 	ESI_TYPE_RESOLVER: DurableObjectNamespace
 	/** Industry Durable Object binding */

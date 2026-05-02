@@ -721,3 +721,4 @@ export { CoreDO as Core }
 // Export Workflow class
 export { UserRefreshWorkflow } from './workflows/user-refresh.workflow'
 export { UserDiscordRefreshWorkflow } from './workflows/user-discord-refresh.workflow'
+export { DiscordMemberAuditWorkflow } from './workflows/discord-member-audit.workflow'

@@ -232,6 +232,13 @@
       "when": 1775635723987,
       "tag": "0032_yellow_sebastian_shaw",
       "breakpoints": true
+    },
+    {
+      "idx": 33,
+      "version": "7",
+      "when": 1777698988442,
+      "tag": "0033_hot_queen_noir",
+      "breakpoints": true
     }
   ]
 }

@@ -653,6 +653,75 @@ export const corporationDiscordInvites = pgTable(
 )
 
 /**
+ * Discord Member Audit Runs
+ *
+ * Persisted async audit snapshots per Discord server.
+ */
+export const discordMemberAuditRuns = pgTable(
+	'discord_member_audit_runs',
+	{
+		id: uuid('id').defaultRandom().primaryKey(),
+		workflowInstanceId: text('workflow_instance_id').notNull().unique(),
+		discordServerId: uuid('discord_server_id')
+			.notNull()
+			.references(() => discordServers.id, { onDelete: 'cascade' }),
+		guildId: text('guild_id').notNull(),
+		guildName: text('guild_name').notNull(),
+		initiatedByUserId: uuid('initiated_by_user_id')
+			.notNull()
+			.references(() => users.id, { onDelete: 'cascade' }),
+		status: text('status', {
+			enum: ['pending', 'processing', 'completed', 'failed', 'cancelled'],
+		})
+			.notNull()
+			.default('pending'),
+		scanned: integer('scanned').notNull().default(0),
+		linkedCount: integer('linked_count').notNull().default(0),
+		unlinkedCount: integer('unlinked_count').notNull().default(0),
+		errorMessage: text('error_message'),
+		startedAt: timestamp('started_at', { withTimezone: true }).defaultNow().notNull(),
+		completedAt: timestamp('completed_at', { withTimezone: true }),
+		updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow().notNull(),
+	},
+	(table) => [
+		index('discord_member_audit_runs_server_started_idx').on(table.discordServerId, table.startedAt),
+		index('discord_member_audit_runs_status_idx').on(table.status),
+	]
+)
+
+/**
+ * Discord Member Audit Rows
+ *
+ * Snapshot of members for a run with linked/unlinked enrichment.
+ */
+export const discordMemberAuditRows = pgTable(
+	'discord_member_audit_rows',
+	{
+		id: uuid('id').defaultRandom().primaryKey(),
+		runId: uuid('run_id')
+			.notNull()
+			.references(() => discordMemberAuditRuns.id, { onDelete: 'cascade' }),
+		discordUserId: text('discord_user_id').notNull(),
+		username: text('username').notNull(),
+		discriminator: text('discriminator').notNull(),
+		displayName: text('display_name').notNull(),
+		roleIds: text('role_ids').array().notNull().default([]),
+		linked: boolean('linked').notNull(),
+		coreUserId: uuid('core_user_id').references(() => users.id, { onDelete: 'set null' }),
+		mainCharacterId: text('main_character_id'),
+		mainCharacterName: text('main_character_name'),
+		hasValidToken: boolean('has_valid_token'),
+		corporationId: text('corporation_id'),
+		corporationName: text('corporation_name'),
+		createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
+	},
+	(table) => [
+		index('discord_member_audit_rows_run_linked_user_idx').on(table.runId, table.linked, table.discordUserId),
+		unique('discord_member_audit_rows_run_discord_user_unique').on(table.runId, table.discordUserId),
+	]
+)
+
+/**
  * DKP Transactions table - Immutable ledger of all DKP activity
  *
  * Tracks all DKP earnings and spending for characters.
@@ -824,6 +893,30 @@ export const discordServersRelations = relations(discordServers, ({ one, many })
 	roles: many(discordRoles),
 	commandAttachments: many(discordServerCommands),
 	corporationAttachments: many(corporationDiscordServers),
+	auditRuns: many(discordMemberAuditRuns),
+}))
+
+export const discordMemberAuditRunsRelations = relations(discordMemberAuditRuns, ({ one, many }) => ({
+	discordServer: one(discordServers, {
+		fields: [discordMemberAuditRuns.discordServerId],
+		references: [discordServers.id],
+	}),
+	initiatedByUser: one(users, {
+		fields: [discordMemberAuditRuns.initiatedByUserId],
+		references: [users.id],
+	}),
+	rows: many(discordMemberAuditRows),
+}))
+
+export const discordMemberAuditRowsRelations = relations(discordMemberAuditRows, ({ one }) => ({
+	run: one(discordMemberAuditRuns, {
+		fields: [discordMemberAuditRows.runId],
+		references: [discordMemberAuditRuns.id],
+	}),
+	coreUser: one(users, {
+		fields: [discordMemberAuditRows.coreUserId],
+		references: [users.id],
+	}),
 }))
 
 export const discordRolesRelations = relations(discordRoles, ({ one }) => ({
@@ -948,6 +1041,8 @@ export const schema = {
 	managedCorporations,
 	discordServers,
 	discordRoles,
+	discordMemberAuditRuns,
+	discordMemberAuditRows,
 	discordCommandCategories,
 	discordCommands,
 	discordCommandPermissions,
@@ -965,6 +1060,8 @@ export const schema = {
 	managedCorporationsRelations,
 	discordServersRelations,
 	discordRolesRelations,
+	discordMemberAuditRunsRelations,
+	discordMemberAuditRowsRelations,
 	discordCommandCategoriesRelations,
 	discordCommandsRelations,
 	discordCommandPermissionsRelations,
