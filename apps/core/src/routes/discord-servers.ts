@@ -39,7 +39,8 @@ type DiscordAuditFilter =
 	| 'drifted'
 	| 'with_roles'
 	| 'without_roles'
-const EXCLUDED_AUDIT_ROLE_IDS = new Set(['585546446120419328'])
+const EXCLUDED_AUDIT_ROLE_IDS = new Set(['585546446120419328']) // Nitro Booster role
+const EXCLUDED_AFFILIATION_MISMATCH_ROLE_IDS = new Set(['1431816436640256060']) // New auth gigachad role
 
 type DiscordAuditMemberRow = {
 	discordUserId: string
@@ -846,7 +847,9 @@ app.get('/:id/audit', requireAuth(), requireAdmin(), async (c) => {
 		}
 		if (filter === 'roles_without_member_corp') {
 			filteredRows = normalizedRows.filter(
-				(row) => row.roleIds.length > 0 && (!row.corporationId || !memberCorpIdSet.has(row.corporationId))
+				(row) =>
+					row.roleIds.filter((roleId) => !EXCLUDED_AFFILIATION_MISMATCH_ROLE_IDS.has(roleId)).length > 0 &&
+					(!row.corporationId || !memberCorpIdSet.has(row.corporationId))
 			)
 		}
 		if (filter === 'external') {
@@ -872,10 +875,13 @@ app.get('/:id/audit', requireAuth(), requireAdmin(), async (c) => {
 		const visibleRows = filteredRows.slice(offset, offset + pageSize)
 		const results: DiscordAuditMemberRow[] = visibleRows.map((row) => {
 			const unmanagedRoleCount = row.roleIds.filter((roleId) => !managedRoleIdSet.has(roleId)).length
+			const relevantAffiliationRoleCount = row.roleIds.filter(
+				(roleId) => !EXCLUDED_AFFILIATION_MISMATCH_ROLE_IDS.has(roleId)
+			).length
 			return {
 				isInMemberCorporation: !!row.corporationId && memberCorpIdSet.has(row.corporationId),
 				hasRoleAffiliationMismatch:
-					row.roleIds.length > 0 &&
+					relevantAffiliationRoleCount > 0 &&
 					(!row.corporationId || !memberCorpIdSet.has(row.corporationId)),
 				unmanagedRoleCount,
 			discordUserId: row.discordUserId,
