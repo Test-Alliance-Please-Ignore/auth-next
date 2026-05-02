@@ -182,6 +182,8 @@ export interface DiscordGuildMemberSnapshot {
 	displayName: string
 	/** Role IDs currently assigned in the guild */
 	roleIds: string[]
+	/** Whether this account is a bot user */
+	isBot: boolean
 }
 
 export interface DiscordSlashCommandDefinition {

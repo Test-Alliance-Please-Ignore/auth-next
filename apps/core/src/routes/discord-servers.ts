@@ -917,10 +917,7 @@ app.post('/:id/audit/strip-roles', requireAuth(), requireAdmin(), async (c) => {
 			})
 			if (latestRun) {
 				await db
-					.update(discordMemberAuditRows)
-					.set({
-						roleIds: [],
-					})
+					.delete(discordMemberAuditRows)
 					.where(
 						and(
 							eq(discordMemberAuditRows.runId, latestRun.id),
@@ -978,6 +975,24 @@ app.post('/:id/audit/kick-users', requireAuth(), requireAdmin(), async (c) => {
 			server.guildId,
 			discordUserIds
 		)
+		const kickedIds = results.filter((result) => result.success).map((result) => result.discordUserId)
+		if (kickedIds.length > 0) {
+			const latestRun = await db.query.discordMemberAuditRuns.findFirst({
+				where: eq(discordMemberAuditRuns.discordServerId, server.id),
+				orderBy: desc(discordMemberAuditRuns.startedAt),
+				columns: { id: true },
+			})
+			if (latestRun) {
+				await db
+					.delete(discordMemberAuditRows)
+					.where(
+						and(
+							eq(discordMemberAuditRows.runId, latestRun.id),
+							inArray(discordMemberAuditRows.discordUserId, kickedIds)
+						)
+					)
+			}
+		}
 
 		return c.json({
 			guildId: server.guildId,

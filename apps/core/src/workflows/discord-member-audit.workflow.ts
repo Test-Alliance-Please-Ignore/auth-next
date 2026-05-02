@@ -18,6 +18,16 @@ export interface DiscordMemberAuditWorkflowParams {
 
 type AuditMemberRowInsert = typeof discordMemberAuditRows.$inferInsert
 
+function parseExcludedDiscordUserIds(raw: string | undefined): Set<string> {
+	if (!raw) return new Set()
+	return new Set(
+		raw
+			.split(',')
+			.map((value) => value.trim())
+			.filter(Boolean)
+	)
+}
+
 export class DiscordMemberAuditWorkflow extends WorkflowEntrypoint<
 	Env,
 	DiscordMemberAuditWorkflowParams
@@ -29,6 +39,7 @@ export class DiscordMemberAuditWorkflow extends WorkflowEntrypoint<
 		const { runId, guildId } = event.payload
 		const db = createDb(this.env.DATABASE_URL)
 		const discordStub = getDiscordStub(this.env)
+		const excludedDiscordUserIds = parseExcludedDiscordUserIds(this.env.DISCORD_AUDIT_EXCLUDED_USER_IDS)
 
 		await step.do('mark-processing', async () => {
 			await db
@@ -64,10 +75,16 @@ export class DiscordMemberAuditWorkflow extends WorkflowEntrypoint<
 				)
 
 				if (chunk.length === 0) break
-				totalScanned += chunk.length
+				const filteredMembers = chunk.filter(
+					(member) =>
+						!member.isBot &&
+						!excludedDiscordUserIds.has(member.discordUserId) &&
+						(member.roleIds?.length ?? 0) > 0
+				)
+				totalScanned += filteredMembers.length
 				cursor = chunk[chunk.length - 1]?.discordUserId
 
-				const discordIds = chunk.map((m) => m.discordUserId).filter(Boolean)
+				const discordIds = filteredMembers.map((m) => m.discordUserId).filter(Boolean)
 				const linkedUsers =
 					discordIds.length > 0
 						? await db.query.users.findMany({
@@ -96,7 +113,7 @@ export class DiscordMemberAuditWorkflow extends WorkflowEntrypoint<
 						: []
 				const primaryByUserId = new Map(primaryChars.map((ch) => [ch.userId, ch]))
 
-				const rows: AuditMemberRowInsert[] = chunk.map((member) => {
+				const rows: AuditMemberRowInsert[] = filteredMembers.map((member) => {
 					const linkedUser = linkedByDiscordId.get(member.discordUserId)
 					const primary = linkedUser ? primaryByUserId.get(linkedUser.id) : undefined
 					const linked = !!linkedUser

@@ -891,6 +891,7 @@ export class DiscordDO extends DurableObject<Env> implements Discord {
 				discriminator,
 				displayName,
 				roleIds: member.roles ?? [],
+				isBot: member.user?.bot === true || member.user?.system === true,
 			}
 		})
 	}
