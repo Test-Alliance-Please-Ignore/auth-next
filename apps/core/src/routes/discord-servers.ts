@@ -39,6 +39,7 @@ type DiscordAuditFilter =
 	| 'drifted'
 	| 'with_roles'
 	| 'without_roles'
+const EXCLUDED_AUDIT_ROLE_IDS = new Set(['585546446120419328'])
 
 type DiscordAuditMemberRow = {
 	discordUserId: string
@@ -833,28 +834,36 @@ app.get('/:id/audit', requireAuth(), requireAdmin(), async (c) => {
 			orderBy: asc(discordMemberAuditRows.discordUserId),
 		})
 
-		let filteredRows = rows
+		const normalizedRows = rows.map((row) => ({
+			...row,
+			roleIds: (row.roleIds ?? []).filter((roleId) => !EXCLUDED_AUDIT_ROLE_IDS.has(roleId)),
+		}))
+		let filteredRows = normalizedRows
 		if (filter === 'member_corp') {
-			filteredRows = rows.filter((row) => !!row.corporationId && memberCorpIdSet.has(row.corporationId))
+			filteredRows = normalizedRows.filter(
+				(row) => !!row.corporationId && memberCorpIdSet.has(row.corporationId)
+			)
 		}
 		if (filter === 'roles_without_member_corp') {
-			filteredRows = rows.filter(
+			filteredRows = normalizedRows.filter(
 				(row) => row.roleIds.length > 0 && (!row.corporationId || !memberCorpIdSet.has(row.corporationId))
 			)
 		}
 		if (filter === 'external') {
-			filteredRows = rows.filter((row) => !row.corporationId || !memberCorpIdSet.has(row.corporationId))
+			filteredRows = normalizedRows.filter(
+				(row) => !row.corporationId || !memberCorpIdSet.has(row.corporationId)
+			)
 		}
 		if (filter === 'drifted') {
-			filteredRows = rows.filter((row) =>
+			filteredRows = normalizedRows.filter((row) =>
 				row.roleIds.some((roleId) => !managedRoleIdSet.has(roleId))
 			)
 		}
 		if (filter === 'with_roles') {
-			filteredRows = rows.filter((row) => row.roleIds.length > 0)
+			filteredRows = normalizedRows.filter((row) => row.roleIds.length > 0)
 		}
 		if (filter === 'without_roles') {
-			filteredRows = rows.filter((row) => row.roleIds.length === 0)
+			filteredRows = normalizedRows.filter((row) => row.roleIds.length === 0)
 		}
 		const totalCount = filteredRows.length
 		const totalPages = totalCount === 0 ? 0 : Math.ceil(totalCount / pageSize)

@@ -406,17 +406,43 @@ export class DiscordBotService {
 	}> {
 		try {
 			const proxyUrl = getDiscordProxyUrl(this.env)
+			let sanitizedRoleIds = roleIds
+
+			try {
+				const guildRoles = await this.fetchGuildRolesRaw(guildId)
+				const blockedRoleIds = new Set(
+					guildRoles
+						.filter((role) => role.managed || Boolean(role.tags?.premium_subscriber))
+						.map((role) => role.id)
+				)
+				if (blockedRoleIds.size > 0) {
+					sanitizedRoleIds = roleIds.filter((roleId) => !blockedRoleIds.has(roleId))
+					if (sanitizedRoleIds.length !== roleIds.length) {
+						logger.warn('[DiscordBot] Filtered unassignable roles from member update payload', {
+							guildId,
+							userId,
+							filteredCount: roleIds.length - sanitizedRoleIds.length,
+						})
+					}
+				}
+			} catch (error) {
+				logger.warn('[DiscordBot] Failed to fetch roles for payload sanitization; continuing', {
+					guildId,
+					userId,
+					error: error instanceof Error ? error.message : String(error),
+				})
+			}
 
 			const url = `${this.baseUrl}/guilds/${guildId}/members/${userId}`
 			const body = {
-				roles: roleIds,
+				roles: sanitizedRoleIds,
 				...(nickname !== undefined && { nick: nickname }),
 			}
 
 			logger.info('[DiscordBot] Updating guild member', {
 				guildId,
 				userId,
-				roleCount: roleIds.length,
+				roleCount: sanitizedRoleIds.length,
 				hasNickname: nickname !== undefined,
 				nickname: nickname ?? null,
 			})
@@ -472,6 +498,25 @@ export class DiscordBotService {
 				errorMessage: `Failed to update member roles: ${errorMessage}`,
 			}
 		}
+	}
+
+	private async fetchGuildRolesRaw(guildId: string): Promise<APIRole[]> {
+		const proxyUrl = getDiscordProxyUrl(this.env)
+		const url = `${this.baseUrl}/guilds/${guildId}/roles`
+		const response = await fetchWithRetry(url, {
+			method: 'GET',
+			headers: {
+				Authorization: `Bot ${this.env.DISCORD_BOT_TOKEN}`,
+			},
+			...(proxyUrl ? { proxy: proxyUrl } : {}),
+		})
+
+		if (!response.ok) {
+			const errorData = await response.json().catch(() => ({}))
+			throw new DiscordAPIError(response.status, errorData)
+		}
+
+		return (await response.json()) as APIRole[]
 	}
 
 	/**
