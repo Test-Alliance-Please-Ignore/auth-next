@@ -4,8 +4,23 @@ import type { SharedHonoEnv, SharedHonoVariables } from '@repo/hono-helpers/src/
 import type { createDb } from './db'
 import type { EveCharacterSyncParams } from './workflows/sync-workflow'
 
+interface CoreWorker {
+	handleCharacterAffiliationChange(
+		characterId: string,
+		options?: {
+			source?: string
+			bypassThrottle?: boolean
+		}
+	): Promise<{
+		usersMatched: number
+		workflowsTriggered: number
+		discordUsersQueued: number
+	}>
+}
+
 export type Env = SharedHonoEnv & {
 	DATABASE_URL: string
+	CORE: CoreWorker
 	EVE_CHARACTER_DATA: DurableObjectNamespace
 	EVE_TOKEN_STORE: DurableObjectNamespace
 	/** Workflow binding for character sync */

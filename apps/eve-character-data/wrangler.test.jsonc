@@ -13,6 +13,12 @@
 	"vars": {
 		"NAME": "eve-character-data"
 	},
+	"services": [
+		{
+			"binding": "CORE",
+			"service": "core"
+		}
+	],
 	"durable_objects": {
 		"bindings": [
 			{

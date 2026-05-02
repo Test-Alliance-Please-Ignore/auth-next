@@ -614,6 +614,47 @@ export interface ResyncDiscordServerCommandsResponse {
 	}>
 }
 
+export interface DiscordAuditMember {
+	discordUserId: string
+	username: string
+	discriminator: string
+	displayName: string
+	roleIds: string[]
+	linked: boolean
+	coreUserId: string | null
+	mainCharacterId: string | null
+	mainCharacterName: string | null
+	hasValidToken: boolean | null
+	corporationId: string | null
+	corporationName: string | null
+	roleState?: 'ok' | 'drift' | 'error'
+	roleStateReason?: string
+}
+
+export interface DiscordGuildAuditResponse {
+	server: {
+		id: string
+		guildId: string
+		guildName: string
+	}
+	tab: 'linked' | 'unlinked'
+	items: DiscordAuditMember[]
+	nextCursor: string | null
+	scanned: number
+}
+
+export interface DiscordGuildAuditStripRolesResponse {
+	guildId: string
+	guildName: string
+	results: Array<{
+		discordUserId: string
+		success: boolean
+		errorMessage?: string
+	}>
+	successCount: number
+	failureCount: number
+}
+
 export interface DiscordCommandCategory {
 	id: string
 	name: string
@@ -2048,6 +2089,28 @@ export class ApiClient {
 		serverId: string
 	): Promise<ResyncDiscordServerCommandsResponse> {
 		return this.post(`/discord-servers/${serverId}/resync-commands`)
+	}
+
+	async getDiscordGuildAudit(
+		serverId: string,
+		params: {
+			tab: 'linked' | 'unlinked'
+			limit?: number
+			cursor?: string | null
+		}
+	): Promise<DiscordGuildAuditResponse> {
+		const query = new URLSearchParams()
+		query.set('tab', params.tab)
+		if (params.limit) query.set('limit', String(params.limit))
+		if (params.cursor) query.set('cursor', params.cursor)
+		return this.get(`/discord-servers/${serverId}/audit?${query.toString()}`)
+	}
+
+	async stripDiscordGuildRoles(
+		serverId: string,
+		discordUserIds: string[]
+	): Promise<DiscordGuildAuditStripRolesResponse> {
+		return this.post(`/discord-servers/${serverId}/audit/strip-roles`, { discordUserIds })
 	}
 
 	// ===== Discord Slash Commands API Methods =====

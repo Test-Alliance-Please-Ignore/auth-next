@@ -12,6 +12,7 @@ import { calculateRoleChanges } from './utils/role-calculation'
 
 import type {
 	Discord,
+	DiscordGuildMemberSnapshot,
 	DiscordGuildMembershipDetail,
 	DiscordRegisteredSlashCommand,
 	DiscordSlashCommandDefinition,
@@ -871,6 +872,29 @@ export class DiscordDO extends DurableObject<Env> implements Discord {
 		}
 	}
 
+	async listGuildMembers(
+		guildId: string,
+		options?: {
+			limit?: number
+			afterDiscordUserId?: string
+		}
+	): Promise<DiscordGuildMemberSnapshot[]> {
+		const botService = new DiscordBotService(this.env)
+		const members = await botService.listGuildMembers(guildId, options)
+		return members.map((member) => {
+			const username = member.user?.username ?? 'unknown'
+			const discriminator = member.user?.discriminator ?? '0'
+			const displayName = member.nick ?? member.user?.global_name ?? username
+			return {
+				discordUserId: member.user?.id ?? '',
+				username,
+				discriminator,
+				displayName,
+				roleIds: member.roles ?? [],
+			}
+		})
+	}
+
 	/**
 	 * Update Discord roles for a user who is already a member of servers
 	 */
@@ -1027,6 +1051,39 @@ export class DiscordDO extends DurableObject<Env> implements Discord {
 				errorMessage: error instanceof Error ? error.message : 'Unknown error occurred',
 			}))
 		}
+	}
+
+	async clearGuildRolesByDiscordUserIds(
+		guildId: string,
+		discordUserIds: string[]
+	): Promise<
+		Array<{
+			discordUserId: string
+			success: boolean
+			errorMessage?: string
+		}>
+	> {
+		const botService = new DiscordBotService(this.env)
+		const uniqueUserIds = [...new Set(discordUserIds.map((id) => id.trim()).filter(Boolean))]
+		const results = await Promise.all(
+			uniqueUserIds.map(async (discordUserId) => {
+				const member = await botService.getGuildMember(guildId, discordUserId)
+				if (!member) {
+					return { discordUserId, success: true }
+				}
+				const updateResult = await botService.updateGuildMemberRoles(
+					guildId,
+					discordUserId,
+					[]
+				)
+				return {
+					discordUserId,
+					success: updateResult.success,
+					errorMessage: updateResult.errorMessage,
+				}
+			})
+		)
+		return results
 	}
 
 	/**

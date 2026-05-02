@@ -27,6 +27,7 @@ import AdminCorporationDetailPage from '@/routes/admin/corporation-detail'
 import AdminCorporationsPage from '@/routes/admin/corporations'
 import AdminDiscordCommandCategoriesPage from '@/routes/admin/discord-command-categories'
 import AdminDiscordCommandsPage from '@/routes/admin/discord-commands'
+import AdminDiscordAuditPage from '@/routes/admin/discord-audit'
 import AdminDiscordServerCommandsPage from '@/routes/admin/discord-server-commands'
 import AdminDiscordServerRolesPage from '@/routes/admin/discord-server-roles'
 import AdminDiscordServersPage from '@/routes/admin/discord-servers'
@@ -66,6 +67,7 @@ export const adminRouteElements = (
 		<Route path="corporations" element={<AdminCorporationsPage />} />
 		<Route path="corporations/:corporationId" element={<AdminCorporationDetailPage />} />
 		<Route path="discord-servers" element={<AdminDiscordServersPage />} />
+		<Route path="discord-audit" element={<AdminDiscordAuditPage />} />
 		<Route path="discord-servers/:serverId/roles" element={<AdminDiscordServerRolesPage />} />
 		<Route path="discord-servers/:serverId/commands" element={<AdminDiscordServerCommandsPage />} />
 		<Route path="discord-commands" element={<AdminDiscordCommandsPage />} />

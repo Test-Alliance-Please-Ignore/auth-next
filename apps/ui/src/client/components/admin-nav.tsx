@@ -74,6 +74,7 @@ export function AdminNav({ onNavigate }: AdminNavProps) {
 			children: [
 				{ label: 'Servers', href: '/admin/discord-servers' },
 				{ label: 'Commands', href: '/admin/discord-commands' },
+				{ label: 'Member Audit', href: '/admin/discord-audit' },
 			],
 		},
 		{

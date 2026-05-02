@@ -176,6 +176,28 @@ export class EveCharacterSyncWorkflow extends WorkflowEntrypoint<Env, EveCharact
 			logger.debug('[Step] Skipping public info sync (filtered)', { characterId })
 		}
 
+		// If public affiliation changed, route to Core so user-character linkage,
+		// role attachments, and Discord entitlement refresh all converge.
+		if (
+			!characterMarkedDeleted &&
+			publicInfoResult?.success &&
+			publicInfoResult.affiliationChanged
+		) {
+			await step.do(
+				'notify-core-affiliation-change',
+				{
+					retries: { limit: 3, delay: '5 seconds', backoff: 'exponential' },
+					timeout: '30 seconds',
+				},
+				async () => {
+					await this.env.CORE.handleCharacterAffiliationChange(characterId, {
+						source: 'eve-character-sync-affiliation-change',
+						bypassThrottle: true,
+					})
+				}
+			)
+		}
+
 		// Step 2: Fetch & store authenticated data
 		let authenticatedDataResult: refreshAuthenticatedData.RefreshAuthenticatedDataResult | null = null
 		if (shouldSync('authenticated') && !characterMarkedDeleted) {
