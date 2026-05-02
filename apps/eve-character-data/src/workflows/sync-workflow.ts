@@ -108,6 +108,7 @@ export class EveCharacterSyncWorkflow extends WorkflowEntrypoint<Env, EveCharact
 		})
 
 		const affiliationChangedCharacterIds: string[] = []
+		const publicInfoRefreshedCharacterIds: string[] = []
 		const syncStats = {
 			deleted: 0,
 			publicInfoSuccess: 0,
@@ -158,6 +159,7 @@ export class EveCharacterSyncWorkflow extends WorkflowEntrypoint<Env, EveCharact
 								})
 						)
 						syncStats.publicInfoSuccess++
+						publicInfoRefreshedCharacterIds.push(characterId)
 						if (publicInfoResult.affiliationChanged) {
 							affiliationChangedCharacterIds.push(characterId)
 						}
@@ -229,8 +231,13 @@ export class EveCharacterSyncWorkflow extends WorkflowEntrypoint<Env, EveCharact
 			}
 		}
 
-		// End-of-user cascade: when any character affiliation changed, reconcile in Core.
-		if (affiliationChangedCharacterIds.length > 0) {
+		// End-of-user cascade:
+		// - cron runs keep change-based behavior
+		// - api/manual runs force reconciliation for all public-info refreshed characters
+		//   to heal existing core affiliation drift even when eve-character-data has no local delta
+		const reconciliationCharacterIds =
+			trigger === 'api' ? publicInfoRefreshedCharacterIds : affiliationChangedCharacterIds
+		if (reconciliationCharacterIds.length > 0) {
 			await step.do(
 				'notify-core-affiliation-changes',
 				{
@@ -239,14 +246,18 @@ export class EveCharacterSyncWorkflow extends WorkflowEntrypoint<Env, EveCharact
 				},
 				async () => {
 					const cascadeResult = await this.env.CORE.handleCharacterAffiliationChanges(
-						affiliationChangedCharacterIds,
+						reconciliationCharacterIds,
 						{
-						source: 'eve-character-sync-affiliation-change',
-						bypassThrottle: true,
+							source:
+								trigger === 'api'
+									? 'eve-character-sync-manual-reconcile'
+									: 'eve-character-sync-affiliation-change',
+							bypassThrottle: true,
 						}
 					)
 					logger.info('[EveCharacterSyncWorkflow] Core affiliation cascade result', {
 						userId: userId ?? null,
+						reconciledCharacterCount: reconciliationCharacterIds.length,
 						changedCharacterCount: affiliationChangedCharacterIds.length,
 						...cascadeResult,
 					})
