@@ -191,6 +191,29 @@ export class CoreWorker extends WorkerEntrypoint<Env> {
 	}
 
 	/**
+	 * List every core user that currently has at least one active linked character.
+	 */
+	async listUsersWithActiveCharacters(): Promise<Array<{ userId: string; characterIds: string[] }>> {
+		const db = createDb(this.env.DATABASE_URL)
+		const rows = await db.query.userCharacters.findMany({
+			columns: {
+				userId: true,
+				characterId: true,
+			},
+			where: (table, { eq }) => eq(table.isDeleted, false),
+		})
+
+		const perUser = new Map<string, string[]>()
+		for (const row of rows) {
+			const bucket = perUser.get(row.userId) ?? []
+			bucket.push(row.characterId)
+			perUser.set(row.userId, bucket)
+		}
+
+		return [...perUser.entries()].map(([userId, characterIds]) => ({ userId, characterIds }))
+	}
+
+	/**
 	 * Get detailed user information
 	 */
 	async getUserDetails(userId: string): Promise<UserDetails | null> {
