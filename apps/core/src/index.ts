@@ -7,7 +7,7 @@ import { getStub } from '@repo/do-utils'
 import { withNotFound, withOnError, withSentry } from '@repo/hono-helpers'
 
 import { createDb } from './db'
-import { userCharacters } from './db/schema'
+import { discordMemberAuditRuns, userCharacters } from './db/schema'
 import { CoreDO } from './durable-object'
 import { triggerDiscordRefreshWorkflow, triggerUserRefreshWorkflow } from './lib/workflow-triggers'
 import { csrfProtection } from './middleware/csrf'
@@ -133,11 +133,24 @@ const sentryApp = withSentry(app)
 
 export default {
 	fetch: sentryApp.fetch.bind(sentryApp),
-	async scheduled(_event: ScheduledEvent, env: Env, _ctx: ExecutionContext): Promise<void> {
+	async scheduled(event: ScheduledEvent, env: Env, _ctx: ExecutionContext): Promise<void> {
 		const coreStub = getStub<Core>(env.CORE, 'default')
 		const result = await coreStub.processPendingDiscordRefreshes()
 		if (result.processed > 0) {
 			console.log('[Core:Scheduled] Processed pending Discord refreshes', result)
+		}
+
+		// Daily full cleanup of Discord member audit history at midnight UTC.
+		if (event.cron === '0 0 * * *') {
+			const db = createDb(env.DATABASE_URL)
+			const deletedRuns = await db
+				.delete(discordMemberAuditRuns)
+				.returning({ id: discordMemberAuditRuns.id })
+			if (deletedRuns.length > 0) {
+				console.log('[Core:Scheduled] Deleted Discord member audit runs', {
+					count: deletedRuns.length,
+				})
+			}
 		}
 	},
 }

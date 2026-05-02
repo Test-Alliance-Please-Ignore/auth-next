@@ -17,6 +17,7 @@ export interface DiscordMemberAuditWorkflowParams {
 }
 
 type AuditMemberRowInsert = typeof discordMemberAuditRows.$inferInsert
+const EXCLUDED_AUDIT_ROLE_IDS = new Set(['585546446120419328'])
 
 function parseExcludedDiscordUserIds(raw: string | undefined): Set<string> {
 	if (!raw) return new Set()
@@ -75,12 +76,13 @@ export class DiscordMemberAuditWorkflow extends WorkflowEntrypoint<
 				)
 
 				if (chunk.length === 0) break
-				const filteredMembers = chunk.filter(
-					(member) =>
-						!member.isBot &&
-						!excludedDiscordUserIds.has(member.discordUserId) &&
-						(member.roleIds?.length ?? 0) > 0
-				)
+				const sanitizedMembers = chunk
+					.filter((member) => !member.isBot && !excludedDiscordUserIds.has(member.discordUserId))
+					.map((member) => ({
+						...member,
+						roleIds: (member.roleIds ?? []).filter((roleId) => !EXCLUDED_AUDIT_ROLE_IDS.has(roleId)),
+					}))
+				const filteredMembers = sanitizedMembers.filter((member) => (member.roleIds?.length ?? 0) > 0)
 				totalScanned += filteredMembers.length
 				cursor = chunk[chunk.length - 1]?.discordUserId
 
