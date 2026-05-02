@@ -86,6 +86,8 @@ export function useDiscordLink() {
 export const discordKeys = {
 	all: ['admin', 'discord'] as const,
 	servers: () => [...discordKeys.all, 'servers'] as const,
+	audit: (serverId: string, tab: 'linked' | 'unlinked', cursor: string | null, limit: number) =>
+		[...discordKeys.all, 'audit', serverId, tab, cursor ?? '', limit] as const,
 	corporationServers: (corporationId: string) =>
 		['admin', 'corporations', corporationId, 'discord-servers'] as const,
 }
@@ -529,6 +531,46 @@ export function useResyncDiscordServerCommands() {
 			})
 			void queryClient.invalidateQueries({
 				queryKey: ['admin', 'discord', 'commands'],
+				refetchType: 'active',
+			})
+		},
+	})
+}
+
+export function useDiscordGuildAudit(
+	serverId: string,
+	params: {
+		tab: 'linked' | 'unlinked'
+		cursor: string | null
+		limit: number
+	}
+) {
+	return useQuery({
+		queryKey: discordKeys.audit(serverId, params.tab, params.cursor, params.limit),
+		queryFn: () =>
+			apiClient.getDiscordGuildAudit(serverId, {
+				tab: params.tab,
+				cursor: params.cursor,
+				limit: params.limit,
+			}),
+		enabled: !!serverId,
+	})
+}
+
+export function useStripDiscordGuildRoles() {
+	const queryClient = useQueryClient()
+
+	return useMutation({
+		mutationFn: ({
+			serverId,
+			discordUserIds,
+		}: {
+			serverId: string
+			discordUserIds: string[]
+		}) => apiClient.stripDiscordGuildRoles(serverId, discordUserIds),
+		onSuccess: (_, { serverId }) => {
+			void queryClient.invalidateQueries({
+				queryKey: [...discordKeys.all, 'audit', serverId],
 				refetchType: 'active',
 			})
 		},

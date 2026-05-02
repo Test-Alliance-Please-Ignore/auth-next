@@ -171,6 +171,19 @@ export interface DiscordGuildMembershipDetail {
 	errorMessage?: string
 }
 
+export interface DiscordGuildMemberSnapshot {
+	/** Discord user ID */
+	discordUserId: string
+	/** Discord username */
+	username: string
+	/** Discord discriminator */
+	discriminator: string
+	/** Best-effort display name (nickname or global display name or username) */
+	displayName: string
+	/** Role IDs currently assigned in the guild */
+	roleIds: string[]
+}
+
 export interface DiscordSlashCommandDefinition {
 	name: string
 	description: string
@@ -428,6 +441,19 @@ export interface Discord {
 	): Promise<DiscordGuildMembershipDetail[]>
 
 	/**
+	 * List guild members using bot access.
+	 * @param guildId - Discord guild/server ID
+	 * @param options - Pagination options
+	 */
+	listGuildMembers(
+		guildId: string,
+		options?: {
+			limit?: number
+			afterDiscordUserId?: string
+		}
+	): Promise<DiscordGuildMemberSnapshot[]>
+
+	/**
 	 * Update Discord roles for a user who is already a member of servers
 	 * Does NOT invite them to new servers
 	 * @param coreUserId - Core user ID
@@ -450,6 +476,21 @@ export interface Discord {
 			errorMessage?: string
 			rolesAdded?: string[]
 			rolesRemoved?: string[]
+		}>
+	>
+
+	/**
+	 * Clear all assignable roles for raw Discord user IDs in a guild.
+	 * Intended for admin tooling on unlinked users.
+	 */
+	clearGuildRolesByDiscordUserIds(
+		guildId: string,
+		discordUserIds: string[]
+	): Promise<
+		Array<{
+			discordUserId: string
+			success: boolean
+			errorMessage?: string
 		}>
 	>
 

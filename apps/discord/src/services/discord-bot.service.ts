@@ -2,6 +2,7 @@ import { generateShardKey } from '@repo/hazmat'
 import { logger } from '@repo/hono-helpers'
 
 import type {
+	APIGuildMember,
 	APIRole,
 	RESTGetAPIGuildMemberResult,
 	RESTPutAPIGuildMemberJSONBody,
@@ -191,6 +192,40 @@ export class DiscordBotService {
 
 		const roles = (await response.json()) as APIRole[]
 		return roles.map((role) => ({ id: role.id, name: role.name }))
+	}
+
+	/**
+	 * List members for a guild (paged).
+	 * Uses GET /guilds/{guildId}/members with bot authorization.
+	 */
+	async listGuildMembers(
+		guildId: string,
+		options?: {
+			limit?: number
+			afterDiscordUserId?: string
+		}
+	): Promise<APIGuildMember[]> {
+		const proxyUrl = getDiscordProxyUrl(this.env)
+		const params = new URLSearchParams()
+		params.set('limit', String(Math.min(Math.max(options?.limit ?? 200, 1), 1000)))
+		if (options?.afterDiscordUserId) {
+			params.set('after', options.afterDiscordUserId)
+		}
+		const url = `${this.baseUrl}/guilds/${guildId}/members?${params.toString()}`
+		const response = await fetchWithRetry(url, {
+			method: 'GET',
+			headers: {
+				Authorization: `Bot ${this.env.DISCORD_BOT_TOKEN}`,
+			},
+			...(proxyUrl ? { proxy: proxyUrl } : {}),
+		})
+
+		if (!response.ok) {
+			const errorData = await response.json().catch(() => ({}))
+			throw new DiscordAPIError(response.status, errorData)
+		}
+
+		return (await response.json()) as APIGuildMember[]
 	}
 
 	/**
