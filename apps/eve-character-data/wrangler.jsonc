@@ -18,7 +18,8 @@
 	"services": [
 		{
 			"binding": "CORE",
-			"service": "core"
+			"service": "core",
+			"entrypoint": "CoreWorker"
 		}
 	],
 	"durable_objects": {
