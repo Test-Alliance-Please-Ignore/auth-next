@@ -613,6 +613,13 @@ export default function AdminDiscordAuditPage() {
 														>
 															Refresh
 														</Button>
+														<Button
+															variant="destructive"
+															size="sm"
+															onClick={() => void stripSingleUserRoles(item.discordUserId)}
+														>
+															Strip Roles
+														</Button>
 													</div>
 												) : (
 													<Button
