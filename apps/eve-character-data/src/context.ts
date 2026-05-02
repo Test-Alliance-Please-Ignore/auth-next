@@ -5,6 +5,7 @@ import type { createDb } from './db'
 import type { EveCharacterSyncParams } from './workflows/sync-workflow'
 
 interface CoreWorker {
+	listUsersWithActiveCharacters(): Promise<Array<{ userId: string; characterIds: string[] }>>
 	getCharacterOwner(
 		characterId: string
 	): Promise<{ userId: string; isPrimary: boolean } | null>

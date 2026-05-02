@@ -2008,44 +2008,15 @@ export class EveCharacterDataDO extends DurableObject<Env> implements EveCharact
 		startedAt: string
 	}> {
 		const startedAt = new Date().toISOString()
-		const tokenStoreStub = getStub<EveTokenStore>(this.env.EVE_TOKEN_STORE, 'default')
-		const characterIds = await tokenStoreStub.getCharactersNeedingDataSync()
-		const perUserCharacterIds = new Map<string, string[]>()
-		const unownedCharacterIds: string[] = []
-
-		for (const characterId of characterIds) {
-			try {
-				const owner = await this.env.CORE.getCharacterOwner(characterId)
-				if (!owner?.userId) {
-					unownedCharacterIds.push(characterId)
-					continue
-				}
-				const bucket = perUserCharacterIds.get(owner.userId) ?? []
-				bucket.push(characterId)
-				perUserCharacterIds.set(owner.userId, bucket)
-			} catch {
-				unownedCharacterIds.push(characterId)
-			}
-		}
-
-		const perUserEntries = [...perUserCharacterIds.entries()]
-		const total = perUserEntries.length + unownedCharacterIds.length
+		const userEntries = await this.env.CORE.listUsersWithActiveCharacters()
+		const total = userEntries.length
 		const JITTER_WINDOW_SECONDS = 7200
 		const workflows = [
-			...perUserEntries.map(([userId, userCharacterIds]) => ({
+			...userEntries.map(({ userId, characterIds }) => ({
 				id: `user-character-sync-${userId}-${crypto.randomUUID()}`,
 				params: {
 					userId,
-					characterIds: userCharacterIds,
-					trigger: 'api' as const,
-					jitterDelaySeconds: 0,
-				},
-			})),
-			...unownedCharacterIds.map((characterId) => ({
-				id: `character-sync-${characterId}-${crypto.randomUUID()}`,
-				params: {
-					characterIds: [characterId],
-					characterId,
+					characterIds,
 					trigger: 'api' as const,
 					jitterDelaySeconds: 0,
 				},
@@ -2086,9 +2057,9 @@ export class EveCharacterDataDO extends DurableObject<Env> implements EveCharact
 		return {
 			batchId,
 			totalWorkflowInstances: workflows.length,
-			totalCharacters: characterIds.length,
-			ownedUserWorkflows: perUserEntries.length,
-			unownedCharacterWorkflows: unownedCharacterIds.length,
+			totalCharacters: userEntries.reduce((sum, entry) => sum + entry.characterIds.length, 0),
+			ownedUserWorkflows: userEntries.length,
+			unownedCharacterWorkflows: 0,
 			created,
 			failed,
 			workflowInstanceIds: createdIds,
