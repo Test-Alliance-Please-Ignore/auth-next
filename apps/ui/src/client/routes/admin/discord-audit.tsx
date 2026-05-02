@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from 'react'
 import { Link } from 'react-router-dom'
 
+import { UserSearchPaginationControls } from '@/components/user-search-pagination-controls'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
@@ -12,10 +13,8 @@ import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { useDiscordServers, useStartDiscordGuildAudit, useStripDiscordGuildRoles } from '@/hooks/useDiscord'
 import { useConfirmationDialog } from '@/hooks/useConfirmationDialog'
 import { api } from '@/lib/api'
-import { cn } from '@/lib/utils'
 
 type AuditTab = 'linked' | 'unlinked'
-type CursorValue = string | null
 type AuditFilter =
 	| 'all'
 	| 'member_corp'
@@ -25,40 +24,7 @@ type AuditFilter =
 	| 'with_roles'
 	| 'without_roles'
 
-type AuditPageState = {
-	pages: Record<string, Awaited<ReturnType<typeof api.getDiscordGuildAudit>>>
-	currentCursor: CursorValue
-	cursorStack: string[]
-	nextCursorByCursor: Record<string, string | null>
-	isLoading: boolean
-	isLoaded: boolean
-}
-
-type ServerAuditState = Record<AuditTab, AuditPageState>
-
 const SESSION_CACHE_KEY = 'discord-member-audit-cache-v1'
-
-function cursorKey(cursor: CursorValue): string {
-	return cursor ?? '__root__'
-}
-
-function createEmptyPageState(): AuditPageState {
-	return {
-		pages: {},
-		currentCursor: null,
-		cursorStack: [],
-		nextCursorByCursor: {},
-		isLoading: false,
-		isLoaded: false,
-	}
-}
-
-function createEmptyServerState(): ServerAuditState {
-	return {
-		linked: createEmptyPageState(),
-		unlinked: createEmptyPageState(),
-	}
-}
 
 function formatDiscordHandle(username: string, discriminator: string): string {
 	if (!discriminator || discriminator === '0') return username
@@ -71,7 +37,10 @@ export default function AdminDiscordAuditPage() {
 	const [activeServerId, setActiveServerId] = useState<string>('')
 	const [tab, setTab] = useState<AuditTab>('linked')
 	const [filter, setFilter] = useState<AuditFilter>('all')
-	const [auditByServer, setAuditByServer] = useState<Record<string, ServerAuditState>>({})
+	const [page, setPage] = useState<number>(1)
+	const [pageSize, setPageSize] = useState<number>(25)
+	const [data, setData] = useState<Awaited<ReturnType<typeof api.getDiscordGuildAudit>> | null>(null)
+	const [isLoading, setIsLoading] = useState<boolean>(false)
 	const [selectedUnlinked, setSelectedUnlinked] = useState<Record<string, boolean>>({})
 
 	const { requestConfirmation, closeConfirmation, confirmationDialog } = useConfirmationDialog()
@@ -79,19 +48,11 @@ export default function AdminDiscordAuditPage() {
 	const startAuditMutation = useStartDiscordGuildAudit()
 
 	const effectiveServerId = activeServerId
-	const tabState =
-		(effectiveServerId ? auditByServer[effectiveServerId]?.[tab] : undefined) ?? createEmptyPageState()
-	const currentCursor = tabState.currentCursor
-	const data = tabState.pages[cursorKey(currentCursor)] ?? null
-	const isLoading = tabState.isLoading
-	const isFetching = tabState.isLoading
-	const nextCursor = tabState.nextCursorByCursor[cursorKey(currentCursor)] ?? data?.nextCursor ?? null
+	const isFetching = isLoading
 	const runStatus = data?.runStatus
 	const isRunActive = runStatus === 'pending' || runStatus === 'processing'
 	const [nowMs, setNowMs] = useState<number>(Date.now())
 	const [startCooldownUntil, setStartCooldownUntil] = useState<number>(0)
-	const pageNumber = tabState.cursorStack.length + 1
-	const pageCountLabel = data?.nextCursor ? `${pageNumber}+` : `${pageNumber}`
 	const startCooldownRemainingMs = Math.max(0, startCooldownUntil - nowMs)
 	const isStartCooldownActive = startCooldownRemainingMs > 0
 
@@ -113,13 +74,15 @@ export default function AdminDiscordAuditPage() {
 				activeServerId?: string
 				tab?: AuditTab
 				filter?: AuditFilter
-				auditByServer?: Record<string, ServerAuditState>
+				page?: number
+				pageSize?: number
 			}
 			if (parsed.serverId) setServerId(parsed.serverId)
 			if (parsed.activeServerId) setActiveServerId(parsed.activeServerId)
 			if (parsed.tab) setTab(parsed.tab)
 			if (parsed.filter) setFilter(parsed.filter)
-			if (parsed.auditByServer) setAuditByServer(parsed.auditByServer)
+			if (typeof parsed.page === 'number') setPage(parsed.page)
+			if (typeof parsed.pageSize === 'number') setPageSize(parsed.pageSize)
 		} catch {
 			// ignore malformed cache
 		}
@@ -131,61 +94,31 @@ export default function AdminDiscordAuditPage() {
 			activeServerId,
 			tab,
 			filter,
-			auditByServer,
+			page,
+			pageSize,
 		}
 		sessionStorage.setItem(SESSION_CACHE_KEY, JSON.stringify(cachePayload))
-	}, [activeServerId, auditByServer, filter, serverId, tab])
+	}, [activeServerId, filter, page, pageSize, serverId, tab])
 
 	const fetchAuditPage = async (
 		server: string,
 		fetchTab: AuditTab,
-		cursor: CursorValue,
-		filterOverride?: AuditFilter
+		pageOverride = page,
+		filterOverride?: AuditFilter,
+		pageSizeOverride = pageSize
 	) => {
-		setAuditByServer((prev) => {
-			const serverState = prev[server] ?? createEmptyServerState()
-			return {
-				...prev,
-				[server]: {
-					...serverState,
-					[fetchTab]: {
-						...serverState[fetchTab],
-						isLoading: true,
-					},
-				},
-			}
-		})
-
-		const response = await api.getDiscordGuildAudit(server, {
-			tab: fetchTab,
-			filter: filterOverride ?? filter,
-			cursor,
-			limit: 50,
-		})
-
-		setAuditByServer((prev) => {
-			const serverState = prev[server] ?? createEmptyServerState()
-			const existingTabState = serverState[fetchTab]
-			return {
-				...prev,
-				[server]: {
-					...serverState,
-					[fetchTab]: {
-						...existingTabState,
-						pages: {
-							...existingTabState.pages,
-							[cursorKey(cursor)]: response,
-						},
-						nextCursorByCursor: {
-							...existingTabState.nextCursorByCursor,
-							[cursorKey(cursor)]: response.nextCursor,
-						},
-						isLoading: false,
-						isLoaded: true,
-					},
-				},
-			}
-		})
+		setIsLoading(true)
+		try {
+			const response = await api.getDiscordGuildAudit(server, {
+				tab: fetchTab,
+				filter: filterOverride ?? filter,
+				page: pageOverride,
+				pageSize: pageSizeOverride,
+			})
+			setData(response)
+		} finally {
+			setIsLoading(false)
+		}
 	}
 
 	useEffect(() => {
@@ -198,14 +131,25 @@ export default function AdminDiscordAuditPage() {
 		if (!effectiveServerId) return
 		if (runStatus !== 'pending' && runStatus !== 'processing') return
 		const timer = window.setInterval(() => {
-			void fetchAuditPage(effectiveServerId, tab, currentCursor)
+			void fetchAuditPage(effectiveServerId, tab)
 		}, 5000)
 		return () => window.clearInterval(timer)
-	}, [currentCursor, effectiveServerId, filter, runStatus, tab])
+	}, [effectiveServerId, filter, page, pageSize, runStatus, tab])
+
+	useEffect(() => {
+		if (!effectiveServerId) return
+		if (isLoading) return
+		if (data && data.tab === tab && data.filter === filter && data.pagination?.page === page && data.pagination?.pageSize === pageSize) {
+			return
+		}
+		void fetchAuditPage(effectiveServerId, tab)
+	}, [data, effectiveServerId, filter, isLoading, page, pageSize, tab])
 
 	const onChangeServer = (value: string) => {
 		setServerId(value)
 		setActiveServerId('')
+		setData(null)
+		setPage(1)
 		setSelectedUnlinked({})
 	}
 
@@ -214,14 +158,12 @@ export default function AdminDiscordAuditPage() {
 		if (isRunActive || isStartCooldownActive) return
 		setActiveServerId(serverId)
 		setSelectedUnlinked({})
+		setPage(1)
+		setData(null)
 		setStartCooldownUntil(Date.now() + 60_000)
 		void (async () => {
 			await startAuditMutation.mutateAsync(serverId)
-			setAuditByServer((prev) => ({
-				...prev,
-				[serverId]: createEmptyServerState(),
-			}))
-			await fetchAuditPage(serverId, tab, null)
+			await fetchAuditPage(serverId, tab, 1)
 		})()
 	}
 
@@ -229,25 +171,19 @@ export default function AdminDiscordAuditPage() {
 		const nextTab = value as AuditTab
 		setTab(nextTab)
 		setFilter('all')
+		setPage(1)
 		setSelectedUnlinked({})
 		if (effectiveServerId) {
-			setAuditByServer((prev) => ({
-				...prev,
-				[effectiveServerId]: createEmptyServerState(),
-			}))
-			void fetchAuditPage(effectiveServerId, nextTab, null, 'all')
+			void fetchAuditPage(effectiveServerId, nextTab, 1, 'all')
 		}
 	}
 
 	const onChangeFilter = (value: string) => {
 		const nextFilter = value as AuditFilter
 		setFilter(nextFilter)
+		setPage(1)
 		if (!effectiveServerId) return
-		setAuditByServer((prev) => ({
-			...prev,
-			[effectiveServerId]: createEmptyServerState(),
-		}))
-		void fetchAuditPage(effectiveServerId, tab, null)
+		void fetchAuditPage(effectiveServerId, tab, 1, nextFilter)
 	}
 
 	const toggleAllVisibleUnlinked = (checked: boolean) => {
@@ -272,7 +208,7 @@ export default function AdminDiscordAuditPage() {
 				await stripRoles.mutateAsync({ serverId: effectiveServerId, discordUserIds: [discordUserId] })
 				setSelectedUnlinked((prev) => ({ ...prev, [discordUserId]: false }))
 				closeConfirmation()
-				void fetchAuditPage(effectiveServerId, tab, currentCursor)
+				void fetchAuditPage(effectiveServerId, tab)
 			},
 		})
 	}
@@ -294,81 +230,39 @@ export default function AdminDiscordAuditPage() {
 				})
 				setSelectedUnlinked({})
 				closeConfirmation()
-				void fetchAuditPage(effectiveServerId, tab, currentCursor)
+				void fetchAuditPage(effectiveServerId, tab)
 			},
 		})
 	}
 
 	const refreshLinkedUser = async (coreUserId: string) => {
 		await api.triggerDiscordJoin(coreUserId)
-		void fetchAuditPage(effectiveServerId, tab, currentCursor)
+		void fetchAuditPage(effectiveServerId, tab)
 	}
 
-	const goToPreviousPage = () => {
-		const currentTabState = auditByServer[effectiveServerId]?.[tab]
-		if (!currentTabState || currentTabState.cursorStack.length === 0) return
-		const nextStack = [...currentTabState.cursorStack]
-		const previousCursor = nextStack.pop() ?? null
-		setAuditByServer((prev) => {
-			const serverState = prev[effectiveServerId]
-			if (!serverState) return prev
-			return {
-				...prev,
-				[effectiveServerId]: {
-					...serverState,
-					[tab]: {
-						...serverState[tab],
-						cursorStack: nextStack,
-						currentCursor: previousCursor,
-					},
-				},
-			}
-		})
-	}
-
-	const goToNextPage = () => {
-		if (!effectiveServerId || !nextCursor) return
-		setAuditByServer((prev) => {
-			const serverState = prev[effectiveServerId] ?? createEmptyServerState()
-			const existingTab = serverState[tab]
-			return {
-				...prev,
-				[effectiveServerId]: {
-					...serverState,
-					[tab]: {
-						...existingTab,
-						cursorStack: [...existingTab.cursorStack, existingTab.currentCursor ?? ''],
-						currentCursor: nextCursor,
-					},
-				},
-			}
-		})
-		const nextKey = cursorKey(nextCursor)
-		const hasPage = auditByServer[effectiveServerId]?.[tab]?.pages[nextKey] !== undefined
-		if (!hasPage) {
-			void fetchAuditPage(effectiveServerId, tab, nextCursor)
-		}
-	}
+	const totalCount = data?.pagination?.totalCount ?? 0
 
 	const renderPaginationControls = (position: 'top' | 'bottom') => (
-		<div
-			className={cn(
-				'flex flex-col gap-3 md:flex-row md:items-center md:justify-between',
-				position === 'bottom' ? 'border-t border-border pt-4' : ''
-			)}
-		>
-			<div className="text-sm text-muted-foreground">
-				Page {pageNumber} of {pageCountLabel}
-				{typeof data?.scanned === 'number' ? ` · Scanned ${data.scanned}` : ''}
-			</div>
-			<div className="flex items-center justify-end gap-2">
-				<Button variant="secondary" onClick={goToPreviousPage} disabled={!effectiveServerId || tabState.cursorStack.length === 0}>
-					Previous
-				</Button>
-				<Button variant="secondary" onClick={goToNextPage} disabled={!effectiveServerId || !nextCursor}>
-					Next
-				</Button>
-			</div>
+		<div className={position === 'bottom' ? 'border-t border-border pt-4' : ''}>
+			<UserSearchPaginationControls
+				totalCount={totalCount}
+				page={page}
+				pageSize={pageSize}
+				pageSizeOptions={[10, 25, 50, 100]}
+				onPageChange={(nextPage) => {
+					setPage(nextPage)
+					if (effectiveServerId) {
+						void fetchAuditPage(effectiveServerId, tab, nextPage)
+					}
+				}}
+				onPageSizeChange={(nextPageSize) => {
+					setPageSize(nextPageSize)
+					setPage(1)
+					if (effectiveServerId) {
+						void fetchAuditPage(effectiveServerId, tab, 1, undefined, nextPageSize)
+					}
+				}}
+			/>
 		</div>
 	)
 
@@ -417,7 +311,7 @@ export default function AdminDiscordAuditPage() {
 							</Button>
 							<Button
 								variant="secondary"
-								onClick={() => void fetchAuditPage(effectiveServerId, tab, currentCursor)}
+								onClick={() => void fetchAuditPage(effectiveServerId, tab)}
 								disabled={!effectiveServerId || isFetching}
 							>
 								{isFetching ? <LoadingInline className="mr-2" /> : null}

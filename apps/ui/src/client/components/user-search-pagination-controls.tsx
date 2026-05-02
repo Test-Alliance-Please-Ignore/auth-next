@@ -25,6 +25,14 @@ export function UserSearchPaginationControls({
 	const end = Math.min(page * pageSize, totalCount)
 	const canGoPrev = page > 1
 	const canGoNext = page < totalPages
+	const maxVisiblePages = 5
+	const startPage = Math.max(1, page - Math.floor(maxVisiblePages / 2))
+	const endPage = Math.min(totalPages, startPage + maxVisiblePages - 1)
+	const adjustedStartPage = Math.max(1, endPage - maxVisiblePages + 1)
+	const visiblePages = Array.from(
+		{ length: Math.max(0, endPage - adjustedStartPage + 1) },
+		(_, index) => adjustedStartPage + index
+	)
 
 	return (
 		<div className="flex items-center justify-between gap-3">
@@ -45,9 +53,6 @@ export function UserSearchPaginationControls({
 						inputClassName="h-9"
 					/>
 				</div>
-				<div className="text-sm text-muted-foreground min-w-[64px] text-right">
-					{totalPages > 0 ? `${page}/${totalPages}` : '0/0'}
-				</div>
 				<Button
 					variant="ghost"
 					size="sm"
@@ -56,6 +61,16 @@ export function UserSearchPaginationControls({
 				>
 					Prev
 				</Button>
+				{visiblePages.map((pageNumber) => (
+					<Button
+						key={pageNumber}
+						variant={pageNumber === page ? 'secondary' : 'ghost'}
+						size="sm"
+						onClick={() => onPageChange(pageNumber)}
+					>
+						{pageNumber}
+					</Button>
+				))}
 				<Button
 					variant="ghost"
 					size="sm"
