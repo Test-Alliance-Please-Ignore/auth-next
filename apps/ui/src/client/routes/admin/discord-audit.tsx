@@ -14,6 +14,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@
 import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import {
 	useDiscordServers,
+	useCleanupDiscordGuildAudit,
 	discordKeys,
 	useKickDiscordGuildUsers,
 	useStartDiscordGuildAudit,
@@ -56,6 +57,7 @@ export default function AdminDiscordAuditPage() {
 	const stripRoles = useStripDiscordGuildRoles()
 	const kickUsers = useKickDiscordGuildUsers()
 	const startAuditMutation = useStartDiscordGuildAudit()
+	const cleanupAuditMutation = useCleanupDiscordGuildAudit()
 
 	const effectiveServerId = activeServerId
 	const isFetching = isLoading
@@ -216,11 +218,29 @@ export default function AdminDiscordAuditPage() {
 			intent: 'destructive',
 			onConfirm: async () => {
 				try {
-					await stripRoles.mutateAsync({ serverId: effectiveServerId, discordUserIds: [discordUserId] })
+					await stripRoles.mutateAsync({
+						serverId: effectiveServerId,
+						discordUserIds: [discordUserId],
+						runId: data?.runId ?? null,
+					})
 					await queryClient.invalidateQueries({
 						queryKey: [...discordKeys.all, 'audit', effectiveServerId],
 						refetchType: 'all',
 					})
+					setData((prev) =>
+						prev
+							? {
+									...prev,
+									items: prev.items.filter((item) => item.discordUserId !== discordUserId),
+									pagination: prev.pagination
+										? {
+												...prev.pagination,
+												totalCount: Math.max(0, prev.pagination.totalCount - 1),
+											}
+										: prev.pagination,
+								}
+							: prev
+					)
 					setSelectedUnlinked((prev) => ({ ...prev, [discordUserId]: false }))
 					void fetchAuditPage(effectiveServerId, tab)
 				} finally {
@@ -245,11 +265,26 @@ export default function AdminDiscordAuditPage() {
 					await stripRoles.mutateAsync({
 						serverId: effectiveServerId,
 						discordUserIds: selectedIds,
+						runId: data?.runId ?? null,
 					})
 					await queryClient.invalidateQueries({
 						queryKey: [...discordKeys.all, 'audit', effectiveServerId],
 						refetchType: 'all',
 					})
+					setData((prev) =>
+						prev
+							? {
+									...prev,
+									items: prev.items.filter((item) => !selectedIds.includes(item.discordUserId)),
+									pagination: prev.pagination
+										? {
+												...prev.pagination,
+												totalCount: Math.max(0, prev.pagination.totalCount - selectedIds.length),
+											}
+										: prev.pagination,
+								}
+							: prev
+					)
 					setSelectedUnlinked({})
 					void fetchAuditPage(effectiveServerId, tab)
 				} finally {
@@ -269,7 +304,29 @@ export default function AdminDiscordAuditPage() {
 			intent: 'destructive',
 			onConfirm: async () => {
 				try {
-					await kickUsers.mutateAsync({ serverId: effectiveServerId, discordUserIds: [discordUserId] })
+					await kickUsers.mutateAsync({
+						serverId: effectiveServerId,
+						discordUserIds: [discordUserId],
+						runId: data?.runId ?? null,
+					})
+					await queryClient.invalidateQueries({
+						queryKey: [...discordKeys.all, 'audit', effectiveServerId],
+						refetchType: 'all',
+					})
+					setData((prev) =>
+						prev
+							? {
+									...prev,
+									items: prev.items.filter((item) => item.discordUserId !== discordUserId),
+									pagination: prev.pagination
+										? {
+												...prev.pagination,
+												totalCount: Math.max(0, prev.pagination.totalCount - 1),
+											}
+										: prev.pagination,
+								}
+							: prev
+					)
 					setSelectedUnlinked((prev) => ({ ...prev, [discordUserId]: false }))
 					void fetchAuditPage(effectiveServerId, tab)
 				} finally {
@@ -282,6 +339,25 @@ export default function AdminDiscordAuditPage() {
 	const refreshLinkedUser = async (coreUserId: string) => {
 		await api.triggerDiscordJoin(coreUserId)
 		void fetchAuditPage(effectiveServerId, tab)
+	}
+
+	const cleanupOldReports = async () => {
+		if (!effectiveServerId) return
+		requestConfirmation({
+			title: 'Clean up old reports?',
+			description: 'This keeps only the newest audit report for this server and deletes older reports.',
+			confirmLabel: 'Clean Up',
+			cancelLabel: 'Cancel',
+			intent: 'destructive',
+			onConfirm: async () => {
+				try {
+					await cleanupAuditMutation.mutateAsync(effectiveServerId)
+					void fetchAuditPage(effectiveServerId, tab, 1)
+				} finally {
+					closeConfirmation()
+				}
+			},
+		})
 	}
 
 	const totalCount = data?.pagination?.totalCount ?? 0
@@ -360,6 +436,14 @@ export default function AdminDiscordAuditPage() {
 							>
 								{isFetching ? <LoadingInline className="mr-2" /> : null}
 								Refresh
+							</Button>
+							<Button
+								variant="destructive"
+								onClick={() => void cleanupOldReports()}
+								disabled={!effectiveServerId || cleanupAuditMutation.isPending || isRunActive}
+							>
+								{cleanupAuditMutation.isPending ? <LoadingInline className="mr-2" /> : null}
+								Clean Up Old Reports
 							</Button>
 						</div>
 					</div>

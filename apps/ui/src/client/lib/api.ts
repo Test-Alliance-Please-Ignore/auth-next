@@ -673,6 +673,10 @@ export interface StartDiscordGuildAuditResponse {
 	status: 'pending' | 'processing' | 'completed' | 'failed' | 'cancelled'
 }
 
+export interface CleanupDiscordGuildAuditResponse {
+	deletedRuns: number
+}
+
 export interface DiscordGuildAuditStripRolesResponse {
 	guildId: string
 	guildName: string
@@ -2161,18 +2165,24 @@ export class ApiClient {
 		return this.post(`/discord-servers/${serverId}/audit/runs`)
 	}
 
+	async cleanupDiscordGuildAudit(serverId: string): Promise<CleanupDiscordGuildAuditResponse> {
+		return this.post(`/discord-servers/${serverId}/audit/cleanup`)
+	}
+
 	async stripDiscordGuildRoles(
 		serverId: string,
-		discordUserIds: string[]
+		discordUserIds: string[],
+		runId?: string | null
 	): Promise<DiscordGuildAuditStripRolesResponse> {
-		return this.post(`/discord-servers/${serverId}/audit/strip-roles`, { discordUserIds })
+		return this.post(`/discord-servers/${serverId}/audit/strip-roles`, { discordUserIds, runId })
 	}
 
 	async kickDiscordGuildUsers(
 		serverId: string,
-		discordUserIds: string[]
+		discordUserIds: string[],
+		runId?: string | null
 	): Promise<DiscordGuildAuditKickUsersResponse> {
-		return this.post(`/discord-servers/${serverId}/audit/kick-users`, { discordUserIds })
+		return this.post(`/discord-servers/${serverId}/audit/kick-users`, { discordUserIds, runId })
 	}
 
 	// ===== Discord Slash Commands API Methods =====

@@ -564,10 +564,12 @@ export function useStripDiscordGuildRoles() {
 		mutationFn: ({
 			serverId,
 			discordUserIds,
+			runId,
 		}: {
 			serverId: string
 			discordUserIds: string[]
-		}) => apiClient.stripDiscordGuildRoles(serverId, discordUserIds),
+			runId?: string | null
+		}) => apiClient.stripDiscordGuildRoles(serverId, discordUserIds, runId),
 		onSuccess: (_, { serverId }) => {
 			void queryClient.invalidateQueries({
 				queryKey: [...discordKeys.all, 'audit', serverId],
@@ -583,6 +585,20 @@ export function useStartDiscordGuildAudit() {
 	})
 }
 
+export function useCleanupDiscordGuildAudit() {
+	const queryClient = useQueryClient()
+
+	return useMutation({
+		mutationFn: (serverId: string) => apiClient.cleanupDiscordGuildAudit(serverId),
+		onSuccess: (_, serverId) => {
+			void queryClient.invalidateQueries({
+				queryKey: [...discordKeys.all, 'audit', serverId],
+				refetchType: 'active',
+			})
+		},
+	})
+}
+
 export function useKickDiscordGuildUsers() {
 	const queryClient = useQueryClient()
 
@@ -590,10 +606,12 @@ export function useKickDiscordGuildUsers() {
 		mutationFn: ({
 			serverId,
 			discordUserIds,
+			runId,
 		}: {
 			serverId: string
 			discordUserIds: string[]
-		}) => apiClient.kickDiscordGuildUsers(serverId, discordUserIds),
+			runId?: string | null
+		}) => apiClient.kickDiscordGuildUsers(serverId, discordUserIds, runId),
 		onSuccess: (_, { serverId }) => {
 			void queryClient.invalidateQueries({
 				queryKey: [...discordKeys.all, 'audit', serverId],
