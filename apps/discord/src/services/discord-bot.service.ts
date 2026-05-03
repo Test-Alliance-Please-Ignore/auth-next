@@ -1,5 +1,6 @@
 import { generateShardKey } from '@repo/hazmat'
 import { logger } from '@repo/hono-helpers'
+import { DISCORD_EXCLUDED_NITRO_BOOSTER_ROLE_ID } from '@repo/discord'
 
 import type {
 	APIGuildMember,
@@ -68,6 +69,7 @@ function sleep(ms: number): Promise<void> {
 }
 
 const MAX_RETRIES = 3
+const EXCLUDED_ROLE_IDS = new Set([DISCORD_EXCLUDED_NITRO_BOOSTER_ROLE_ID]) // Nitro Booster
 
 /**
  * Make a fetch request with automatic rate limit retry handling
@@ -412,16 +414,32 @@ export class DiscordBotService {
 				const guildRoles = await this.fetchGuildRolesRaw(guildId)
 				const blockedRoleIds = new Set(
 					guildRoles
-						.filter((role) => role.managed || Boolean(role.tags?.premium_subscriber))
+						.filter(
+							(role) =>
+								role.managed ||
+								Boolean(role.tags?.premium_subscriber) ||
+								EXCLUDED_ROLE_IDS.has(role.id)
+						)
 						.map((role) => role.id)
 				)
 				if (blockedRoleIds.size > 0) {
-					sanitizedRoleIds = roleIds.filter((roleId) => !blockedRoleIds.has(roleId))
-					if (sanitizedRoleIds.length !== roleIds.length) {
+					// Preserve blocked/unassignable roles from current member role state so we never attempt
+					// to strip them (e.g. Nitro Booster, managed integration roles) during full replacements.
+					const currentMember = await this.getGuildMember(guildId, userId)
+					const preservedBlockedRoles = (currentMember?.roles ?? []).filter((roleId) =>
+						blockedRoleIds.has(roleId)
+					)
+					const requestedAssignableRoles = roleIds.filter((roleId) => !blockedRoleIds.has(roleId))
+					sanitizedRoleIds = [...new Set([...requestedAssignableRoles, ...preservedBlockedRoles])]
+					if (
+						sanitizedRoleIds.length !== roleIds.length ||
+						preservedBlockedRoles.length > 0
+					) {
 						logger.warn('[DiscordBot] Filtered unassignable roles from member update payload', {
 							guildId,
 							userId,
-							filteredCount: roleIds.length - sanitizedRoleIds.length,
+							filteredCount: roleIds.filter((roleId) => blockedRoleIds.has(roleId)).length,
+							preservedBlockedCount: preservedBlockedRoles.length,
 						})
 					}
 				}

@@ -246,6 +246,11 @@ export interface DiscordSlashCommandOption {
 	max_length?: number
 }
 
+/**
+ * Canonical Discord role IDs we intentionally exclude from auth/role-audit logic.
+ */
+export const DISCORD_EXCLUDED_NITRO_BOOSTER_ROLE_ID = '585546446120419328'
+
 export interface DiscordRegisteredSlashCommand {
 	id: string
 	name: string
