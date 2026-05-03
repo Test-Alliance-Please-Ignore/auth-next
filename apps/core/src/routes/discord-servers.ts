@@ -2,7 +2,10 @@ import { Hono } from 'hono'
 
 import { ROLE_CORE_CORP_MEMBER } from '@repo/core'
 import { and, asc, desc, eq, gt, ilike, inArray, isNotNull } from '@repo/db-utils'
-import { getDiscordStub } from '@repo/discord'
+import {
+	DISCORD_EXCLUDED_NITRO_BOOSTER_ROLE_ID,
+	getDiscordStub,
+} from '@repo/discord'
 import { getStub } from '@repo/do-utils'
 import { logger } from '@repo/hono-helpers'
 import { ResourceType, RoleAttachmentType } from '@repo/groups'
@@ -41,8 +44,8 @@ type DiscordAuditFilter =
 	| 'drifted'
 	| 'with_roles'
 	| 'without_roles'
-const EXCLUDED_AUDIT_ROLE_IDS = new Set(['585546446120419328']) // Nitro Booster role
-const EXCLUDED_AFFILIATION_MISMATCH_ROLE_IDS = new Set(['1431816436640256060']) // New auth gigachad role
+const EXCLUDED_AUDIT_ROLE_IDS = new Set([DISCORD_EXCLUDED_NITRO_BOOSTER_ROLE_ID]) // Nitro Booster role
+const EXCLUDED_AFFILIATION_MISMATCH_ROLE_IDS = new Set(['1431816436640256060']) // New auth gigachad role (audit-only exclusion)
 
 type DiscordAuditMemberRow = {
 	discordUserId: string
