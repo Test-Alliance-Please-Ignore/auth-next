@@ -1112,8 +1112,11 @@ export async function updateUserDiscordRoles(
 		guildId: string
 		guildName: string
 		attemptedRoleIds: string[]
+		attemptedRoleNames: string[]
 		rolesAdded: string[]
+		roleNamesAdded: string[]
 		rolesRemoved: string[]
+		roleNamesRemoved: string[]
 		success: boolean
 		errorMessage?: string
 	}>
@@ -1445,15 +1448,45 @@ export async function updateUserDiscordRoles(
 
 	const updateResults = await discordStub.updateUserRoles(userId, updateRequests, allowRemoval)
 
+	// Resolve role names for display/debug output.
+	const serverRecords = await db.query.discordServers.findMany({
+		where: and(inArray(discordServers.guildId, serversToUpdate), eq(discordServers.isActive, true)),
+		columns: { id: true, guildId: true },
+	})
+	const guildIdByServerId = new Map(serverRecords.map((record) => [record.id, record.guildId]))
+	const serverIds = serverRecords.map((record) => record.id)
+	const configuredRoles =
+		serverIds.length > 0
+			? await db.query.discordRoles.findMany({
+					where: inArray(discordRoles.discordServerId, serverIds),
+					columns: { discordServerId: true, roleId: true, roleName: true },
+				})
+			: []
+	const roleNameByGuildAndRoleId = new Map<string, Map<string, string>>()
+	for (const role of configuredRoles) {
+		const guildId = guildIdByServerId.get(role.discordServerId)
+		if (!guildId) continue
+		const guildMap = roleNameByGuildAndRoleId.get(guildId) ?? new Map<string, string>()
+		guildMap.set(role.roleId, role.roleName)
+		roleNameByGuildAndRoleId.set(guildId, guildMap)
+	}
+
 	// Build final results
 	const results = updateResults.map((result: any) => {
 		const guildData = rolesByGuild.get(result.guildId)
+		const roleNameMap = roleNameByGuildAndRoleId.get(result.guildId) ?? new Map<string, string>()
+		const attemptedRoleIds = guildData?.expectedRoleIds ?? []
+		const rolesAdded = result.rolesAdded || []
+		const rolesRemoved = result.rolesRemoved || []
 		return {
 			guildId: result.guildId,
 			guildName: guildData?.guildName ?? result.guildId,
-			attemptedRoleIds: guildData?.expectedRoleIds ?? [],
-			rolesAdded: result.rolesAdded || [],
-			rolesRemoved: result.rolesRemoved || [],
+			attemptedRoleIds,
+			attemptedRoleNames: attemptedRoleIds.map((roleId) => roleNameMap.get(roleId) ?? roleId),
+			rolesAdded,
+			roleNamesAdded: rolesAdded.map((roleId: string) => roleNameMap.get(roleId) ?? roleId),
+			rolesRemoved,
+			roleNamesRemoved: rolesRemoved.map((roleId: string) => roleNameMap.get(roleId) ?? roleId),
 			success: result.success,
 			errorMessage: result.errorMessage,
 		}
@@ -1884,8 +1917,11 @@ export async function syncUserDiscordAccess(
 		type?: 'corporation' | 'group'
 		operation?: 'invite' | 'update' | 'revoke-ban'
 		attemptedRoleIds?: string[]
+		attemptedRoleNames?: string[]
 		rolesAdded?: string[]
+		roleNamesAdded?: string[]
 		rolesRemoved?: string[]
+		roleNamesRemoved?: string[]
 	}>
 	totalInvited: number
 	totalUpdated: number

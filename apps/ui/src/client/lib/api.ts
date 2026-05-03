@@ -2450,8 +2450,11 @@ export class ApiClient {
 			errorMessage?: string
 			alreadyMember?: boolean
 			rolesAdded?: string[]
+			roleNamesAdded?: string[]
 			rolesRemoved?: string[]
+			roleNamesRemoved?: string[]
 			attemptedRoleIds?: string[]
+			attemptedRoleNames?: string[]
 			operation?: 'invite' | 'update' | 'revoke-ban'
 		}>
 		totalInvited: number

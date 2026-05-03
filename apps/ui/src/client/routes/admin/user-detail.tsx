@@ -150,8 +150,11 @@ export default function UserDetailPage() {
 			errorMessage?: string
 			alreadyMember?: boolean
 			rolesAdded?: string[]
+			roleNamesAdded?: string[]
 			rolesRemoved?: string[]
+			roleNamesRemoved?: string[]
 			attemptedRoleIds?: string[]
+			attemptedRoleNames?: string[]
 			operation?: 'invite' | 'update' | 'revoke-ban'
 		}>
 		totalInvited: number
@@ -1313,31 +1316,31 @@ export default function UserDetailPage() {
 															Operation: {result.operation}
 														</div>
 													)}
-													{result.attemptedRoleIds && result.attemptedRoleIds.length > 0 && (
+													{result.attemptedRoleNames && result.attemptedRoleNames.length > 0 && (
 														<div className="mt-2">
 															<div className="text-xs font-medium text-blue-600">
-																Attempted Role IDs
+																Attempted Roles
 															</div>
 															<div className="text-xs font-mono break-all text-muted-foreground">
-																{result.attemptedRoleIds.join(', ')}
+																{result.attemptedRoleNames.join(', ')}
 															</div>
 														</div>
 													)}
-													{result.rolesAdded && result.rolesAdded.length > 0 && (
+													{result.roleNamesAdded && result.roleNamesAdded.length > 0 && (
 														<div className="mt-2">
-															<div className="text-xs font-medium text-green-600">Role IDs Added</div>
+															<div className="text-xs font-medium text-green-600">Roles Added</div>
 															<div className="text-xs font-mono break-all text-muted-foreground">
-																{result.rolesAdded.join(', ')}
+																{result.roleNamesAdded.join(', ')}
 															</div>
 														</div>
 													)}
-													{result.rolesRemoved && result.rolesRemoved.length > 0 && (
+													{result.roleNamesRemoved && result.roleNamesRemoved.length > 0 && (
 														<div className="mt-2">
 															<div className="text-xs font-medium text-amber-600">
-																Role IDs Removed
+																Roles Removed
 															</div>
 															<div className="text-xs font-mono break-all text-muted-foreground">
-																{result.rolesRemoved.join(', ')}
+																{result.roleNamesRemoved.join(', ')}
 															</div>
 														</div>
 													)}
