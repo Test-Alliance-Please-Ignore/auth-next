@@ -1213,6 +1213,7 @@ export class DiscordDO extends DurableObject<Env> implements Discord {
 			success: boolean
 			rolesCleared: boolean
 			banned: boolean
+			kicked?: boolean
 			errorMessage?: string
 		}>
 	> {
@@ -1240,11 +1241,27 @@ export class DiscordDO extends DurableObject<Env> implements Discord {
 					}
 
 					const banResult = await botService.banGuildMember(guildId, user.userId, reason)
+					if (!banResult.success) {
+						// Fallback for cases where ban is not possible (permission/hierarchy):
+						// still remove user from guild membership.
+						const removeResult = await botService.removeGuildMember(guildId, user.userId)
+						return {
+							guildId,
+							success: removeResult.success,
+							rolesCleared,
+							banned: false,
+							kicked: removeResult.success,
+							errorMessage: removeResult.success
+								? banResult.errorMessage
+								: `${banResult.errorMessage ?? 'Ban failed'}; ${removeResult.errorMessage ?? 'Kick failed'}`,
+						}
+					}
 					return {
 						guildId,
 						success: banResult.success,
 						rolesCleared,
 						banned: banResult.success,
+						kicked: false,
 						errorMessage: banResult.errorMessage,
 					}
 				} catch (error) {

@@ -37,7 +37,12 @@ export class CoreDO extends DurableObject<Env> implements Core {
 	 */
 	private pendingDiscordRefreshes = new Map<
 		string,
-		{ expiresAt: number; processed: boolean; source?: string }
+		{
+			expiresAt: number
+			processed: boolean
+			source?: string
+			userRefreshWorkflowInstanceId?: string
+		}
 	>()
 	private static readonly PENDING_TTL_MS = 15 * 60 * 1000 // 15 minutes
 	private static readonly STORAGE_PREFIX = 'pending-discord:'
@@ -58,6 +63,7 @@ export class CoreDO extends DurableObject<Env> implements Core {
 			expiresAt: number
 			processed: boolean
 			source?: string
+			userRefreshWorkflowInstanceId?: string
 		}>({
 			prefix: CoreDO.STORAGE_PREFIX,
 		})
@@ -67,6 +73,7 @@ export class CoreDO extends DurableObject<Env> implements Core {
 				expiresAt: value.expiresAt,
 				processed: value.processed,
 				source: value.source,
+				userRefreshWorkflowInstanceId: value.userRefreshWorkflowInstanceId,
 			})
 		}
 		this.logger.info('[CoreDO] Loaded pending Discord refreshes from storage', {
@@ -454,6 +461,7 @@ export class CoreDO extends DurableObject<Env> implements Core {
 		const uniqueUserIds = await this.resolveUserIdsForCharacterIds(normalizedCharacterIds)
 		const db = this.getDb()
 		let workflowsTriggered = 0
+		const workflowInstanceIdByUserId: Record<string, string> = {}
 
 		for (const userId of uniqueUserIds) {
 			const result = await triggerUserRefreshWorkflow({
@@ -466,11 +474,16 @@ export class CoreDO extends DurableObject<Env> implements Core {
 			})
 			if (result.triggered) {
 				workflowsTriggered++
+				if (result.workflowInstanceId) {
+					workflowInstanceIdByUserId[userId] = result.workflowInstanceId
+				}
 			}
 		}
 
 		await this.addPendingDiscordRefreshes(uniqueUserIds, {
 			source: options?.source ?? 'character-affiliation-changed',
+			force: true,
+			userRefreshWorkflowInstanceIdByUserId: workflowInstanceIdByUserId,
 		})
 
 		return {
@@ -487,13 +500,26 @@ export class CoreDO extends DurableObject<Env> implements Core {
 	 */
 	async addPendingDiscordRefreshes(
 		userIds: string[],
-		options?: { source?: string; force?: boolean }
+		options?: {
+			source?: string
+			force?: boolean
+			userRefreshWorkflowInstanceIdByUserId?: Record<string, string>
+		}
 	): Promise<{ pendingCount: number; added: number; skipped: number }> {
 		const now = Date.now()
 		const expiresAt = now + CoreDO.PENDING_TTL_MS
 		const source = options?.source ?? 'corp-membership-changed'
 		const force = options?.force === true
-		const toStore: Record<string, { expiresAt: number; processed: boolean; source?: string }> = {}
+		const toStore: Record<
+			string,
+			{
+				expiresAt: number
+				processed: boolean
+				source?: string
+				userRefreshWorkflowInstanceId?: string
+			}
+		> = {}
+		const workflowIdByUserId = options?.userRefreshWorkflowInstanceIdByUserId ?? {}
 		let added = 0
 		let skipped = 0
 
@@ -504,7 +530,12 @@ export class CoreDO extends DurableObject<Env> implements Core {
 				skipped++
 				continue
 			}
-			const entry = { expiresAt, processed: false, source }
+			const entry = {
+				expiresAt,
+				processed: false,
+				source,
+				userRefreshWorkflowInstanceId: workflowIdByUserId[userId],
+			}
 			this.pendingDiscordRefreshes.set(userId, entry)
 			toStore[`${CoreDO.STORAGE_PREFIX}${userId}`] = entry
 			added++
@@ -629,7 +660,15 @@ export class CoreDO extends DurableObject<Env> implements Core {
 		// Persist the processed flag to storage first so that if the DO is evicted
 		// mid-run, a cold-start won't re-trigger the same workflows on the next cron.
 		const toProcess: string[] = []
-		const toStore: Record<string, { expiresAt: number; processed: boolean; source?: string }> = {}
+		const toStore: Record<
+			string,
+			{
+				expiresAt: number
+				processed: boolean
+				source?: string
+				userRefreshWorkflowInstanceId?: string
+			}
+		> = {}
 		const sourceByUserId = new Map<string, string>()
 		for (const [userId, entry] of this.pendingDiscordRefreshes) {
 			if (!entry.processed) {
@@ -658,20 +697,29 @@ export class CoreDO extends DurableObject<Env> implements Core {
 
 		const results = await Promise.allSettled(
 			userIds.map(async (userId) => {
+				const pendingEntry = this.pendingDiscordRefreshes.get(userId)
 				const preRefreshUser = await db.query.users.findFirst({
 					where: eq(users.id, userId),
 					columns: { discordUserId: true },
 				})
 				const hadLinkedDiscordBeforeRefresh = !!preRefreshUser?.discordUserId
 
-				const userRefreshResult = await triggerUserRefreshWorkflow({
-					db,
-					env: this.env,
-					userId,
-					source: sourceByUserId.get(userId) ?? 'corp-membership-changed',
-					bypassThrottle: true,
-					refreshMode: 'event',
-				})
+				const preTriggeredWorkflowInstanceId = pendingEntry?.userRefreshWorkflowInstanceId
+				const userRefreshResult = preTriggeredWorkflowInstanceId
+					? {
+							status: 'already-triggered',
+							triggered: true,
+							workflowInstanceId: preTriggeredWorkflowInstanceId,
+							error: undefined,
+						}
+					: await triggerUserRefreshWorkflow({
+							db,
+							env: this.env,
+							userId,
+							source: sourceByUserId.get(userId) ?? 'corp-membership-changed',
+							bypassThrottle: true,
+							refreshMode: 'event',
+						})
 
 				if (userRefreshResult.status === 'failed' || !userRefreshResult.triggered) {
 					return {
