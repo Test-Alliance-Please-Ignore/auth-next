@@ -404,9 +404,9 @@ export class DiscordBotService {
 		success: boolean
 		errorMessage?: string
 	}> {
+		let sanitizedRoleIds = roleIds
 		try {
 			const proxyUrl = getDiscordProxyUrl(this.env)
-			let sanitizedRoleIds = roleIds
 
 			try {
 				const guildRoles = await this.fetchGuildRolesRaw(guildId)
@@ -474,6 +474,70 @@ export class DiscordBotService {
 				})
 
 				if (error.status === 403) {
+					try {
+						const [guildRoles, targetMember, botMember] = await Promise.all([
+							this.fetchGuildRolesRaw(guildId),
+							this.getGuildMember(guildId, userId),
+							this.getGuildMember(guildId, this.env.DISCORD_CLIENT_ID),
+						])
+
+						const roleMap = new Map(guildRoles.map((role) => [role.id, role]))
+						const getTopPosition = (ids: string[]) =>
+							ids.reduce((max, id) => {
+								const role = roleMap.get(id)
+								return role && typeof role.position === 'number' ? Math.max(max, role.position) : max
+							}, -1)
+						const toRoleDiagnostics = (ids: string[]) =>
+							ids.map((id) => {
+								const role = roleMap.get(id)
+								return {
+									id,
+									name: role?.name ?? 'unknown',
+									position: role?.position ?? null,
+									managed: role?.managed ?? null,
+									premiumSubscriber: Boolean(role?.tags?.premium_subscriber),
+								}
+							})
+
+						const botRoleIds = botMember?.roles ?? []
+						const targetRoleIds = targetMember?.roles ?? []
+						const botTopRolePosition = getTopPosition(botRoleIds)
+						const targetTopRolePosition = getTopPosition(targetRoleIds)
+						const attemptedRoleDiagnostics = toRoleDiagnostics(sanitizedRoleIds)
+						const highestAttemptedRolePosition = getTopPosition(sanitizedRoleIds)
+
+						logger.error('[DiscordBot] Role update 403 diagnostics', {
+							guildId,
+							userId,
+							apiCode: error.code,
+							apiMessage: error.data?.message ?? error.message,
+							botUserId: this.env.DISCORD_CLIENT_ID,
+							botRoleIds,
+							botTopRolePosition,
+							targetRoleIds,
+							targetTopRolePosition,
+							requestedRoleIds: roleIds,
+							sanitizedRoleIds,
+							highestAttemptedRolePosition,
+							attemptedRoleDiagnostics,
+							botCanManageTargetMember:
+								botTopRolePosition > -1 && targetTopRolePosition > -1
+									? botTopRolePosition > targetTopRolePosition
+									: null,
+							botCanManageAllAttemptedRoles:
+								botTopRolePosition > -1 && highestAttemptedRolePosition > -1
+									? botTopRolePosition > highestAttemptedRolePosition
+									: null,
+						})
+					} catch (diagnosticError) {
+						logger.warn('[DiscordBot] Failed to gather 403 role diagnostics', {
+							guildId,
+							userId,
+							error:
+								diagnosticError instanceof Error ? diagnosticError.message : String(diagnosticError),
+						})
+					}
+
 					return {
 						success: false,
 						errorMessage: 'Bot lacks MANAGE_ROLES permission',
