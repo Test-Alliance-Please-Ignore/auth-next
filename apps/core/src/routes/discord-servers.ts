@@ -1,9 +1,11 @@
 import { Hono } from 'hono'
 
+import { ROLE_CORE_CORP_MEMBER } from '@repo/core'
 import { and, asc, desc, eq, gt, ilike, inArray, isNotNull } from '@repo/db-utils'
 import { getDiscordStub } from '@repo/discord'
 import { getStub } from '@repo/do-utils'
 import { logger } from '@repo/hono-helpers'
+import { ResourceType, RoleAttachmentType } from '@repo/groups'
 
 import {
 	corporationDiscordServers,
@@ -835,26 +837,59 @@ app.get('/:id/audit', requireAuth(), requireAdmin(), async (c) => {
 			orderBy: asc(discordMemberAuditRows.discordUserId),
 		})
 
+		const linkedCoreUserIds = [...new Set(rows.map((row) => row.coreUserId).filter((id): id is string => !!id))]
+		const hasMemberCorpAttachmentByUserId = new Map<string, boolean>()
+		if (linkedCoreUserIds.length > 0) {
+			const groupsStub = getStub<Groups>(c.env.GROUPS, 'default')
+			await Promise.all(
+				linkedCoreUserIds.map(async (coreUserId) => {
+					try {
+						const attachments = await groupsStub.getRolesFor({
+							attachedToType: RoleAttachmentType.USER,
+							attachedToId: coreUserId,
+						})
+						const hasMemberCorpAttachment = attachments.some(
+							(attachment) =>
+								attachment.role.name === ROLE_CORE_CORP_MEMBER &&
+								attachment.resourceType === ResourceType.CORPORATION &&
+								!!attachment.resourceId &&
+								memberCorpIdSet.has(attachment.resourceId)
+						)
+						hasMemberCorpAttachmentByUserId.set(coreUserId, hasMemberCorpAttachment)
+					} catch (error) {
+						logger.warn('[Discord] Failed to resolve user role attachments for audit row', {
+							coreUserId,
+							error: error instanceof Error ? error.message : String(error),
+						})
+						hasMemberCorpAttachmentByUserId.set(coreUserId, false)
+					}
+				})
+			)
+		}
+
 		const normalizedRows = rows.map((row) => ({
 			...row,
 			roleIds: (row.roleIds ?? []).filter((roleId) => !EXCLUDED_AUDIT_ROLE_IDS.has(roleId)),
+			isInMemberCorporationByAttachments: row.coreUserId
+				? (hasMemberCorpAttachmentByUserId.get(row.coreUserId) ?? false)
+				: false,
 		}))
 		let filteredRows = normalizedRows
 		if (filter === 'member_corp') {
 			filteredRows = normalizedRows.filter(
-				(row) => !!row.corporationId && memberCorpIdSet.has(row.corporationId)
+				(row) => row.isInMemberCorporationByAttachments
 			)
 		}
 		if (filter === 'roles_without_member_corp') {
 			filteredRows = normalizedRows.filter(
 				(row) =>
 					row.roleIds.filter((roleId) => !EXCLUDED_AFFILIATION_MISMATCH_ROLE_IDS.has(roleId)).length > 0 &&
-					(!row.corporationId || !memberCorpIdSet.has(row.corporationId))
+					!row.isInMemberCorporationByAttachments
 			)
 		}
 		if (filter === 'external') {
 			filteredRows = normalizedRows.filter(
-				(row) => !row.corporationId || !memberCorpIdSet.has(row.corporationId)
+				(row) => !row.isInMemberCorporationByAttachments
 			)
 		}
 		if (filter === 'drifted') {
@@ -879,10 +914,10 @@ app.get('/:id/audit', requireAuth(), requireAdmin(), async (c) => {
 				(roleId) => !EXCLUDED_AFFILIATION_MISMATCH_ROLE_IDS.has(roleId)
 			).length
 			return {
-				isInMemberCorporation: !!row.corporationId && memberCorpIdSet.has(row.corporationId),
+				isInMemberCorporation: row.isInMemberCorporationByAttachments,
 				hasRoleAffiliationMismatch:
 					relevantAffiliationRoleCount > 0 &&
-					(!row.corporationId || !memberCorpIdSet.has(row.corporationId)),
+					!row.isInMemberCorporationByAttachments,
 				unmanagedRoleCount,
 			discordUserId: row.discordUserId,
 			username: row.username,
