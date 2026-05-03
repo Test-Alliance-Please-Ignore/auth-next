@@ -407,64 +407,69 @@ export class UserRefreshWorkflow extends WorkflowEntrypoint<Env, UserRefreshWork
 					})),
 			})
 
-			// Step 4: Get user role attachments
-			let getUserRoleAttachmentsResult = {
-				roleAttachments: [] as Awaited<
-					ReturnType<typeof getUserRoleAttachments>
-				>['roleAttachments'],
-			}
-			try {
-				getUserRoleAttachmentsResult = await step.do(
-					'get-user-role-attachments',
-					ROLE_STEP_OPTIONS,
-					() => {
-						const ctx = this.createContext(userId, workflowInstanceId, refreshMode)
-						return getUserRoleAttachments(ctx)
-					}
+			if (checkUserBlacklistedResult.isBlacklisted) {
+				steps['get-user-role-attachments'] = 'skipped'
+				steps['attach-user-roles'] = 'skipped'
+			} else {
+				// Step 4: Get user role attachments
+				let getUserRoleAttachmentsResult = {
+					roleAttachments: [] as Awaited<
+						ReturnType<typeof getUserRoleAttachments>
+					>['roleAttachments'],
+				}
+				try {
+					getUserRoleAttachmentsResult = await step.do(
+						'get-user-role-attachments',
+						ROLE_STEP_OPTIONS,
+						() => {
+							const ctx = this.createContext(userId, workflowInstanceId, refreshMode)
+							return getUserRoleAttachments(ctx)
+						}
+					)
+					steps['get-user-role-attachments'] = 'ok'
+				} catch (error) {
+					steps['get-user-role-attachments'] = 'failed'
+					console.warn(
+						'[Workflow] Failed to fetch user role attachments before reconcile; continuing',
+						{
+							...logContext,
+							error: error instanceof Error ? error.message : String(error),
+						}
+					)
+				}
+
+				console.log('[Workflow] Got user role attachments', {
+					...logContext,
+					roleAttachments: getUserRoleAttachmentsResult.roleAttachments.length,
+					coreRoleAttachments: toCoreAttachmentSummaries(getUserRoleAttachmentsResult.roleAttachments)
+						.length,
+				})
+
+				// Step 5: Attach user roles
+				const attachUserRolesResult = await step.do('attach-user-roles', ROLE_STEP_OPTIONS, () => {
+					const ctx = this.createContext(userId, workflowInstanceId, refreshMode)
+					return attachUserRoles(ctx)
+				})
+				steps['attach-user-roles'] = 'ok'
+
+				console.log('[Workflow] Attached user roles', {
+					...logContext,
+					corporationRoleAttachments: attachUserRolesResult.corporationRoleAttachments.length,
+					allianceRoleAttachments: attachUserRolesResult.allianceRoleAttachments.length,
+				})
+
+				const coreAttachmentDelta = summarizeCoreAttachmentDelta(
+					getUserRoleAttachmentsResult.roleAttachments,
+					[
+						...attachUserRolesResult.corporationRoleAttachments,
+						...attachUserRolesResult.allianceRoleAttachments,
+					]
 				)
-				steps['get-user-role-attachments'] = 'ok'
-			} catch (error) {
-				steps['get-user-role-attachments'] = 'failed'
-				console.warn(
-					'[Workflow] Failed to fetch user role attachments before reconcile; continuing',
-					{
-						...logContext,
-						error: error instanceof Error ? error.message : String(error),
-					}
-				)
+				console.log('[Workflow] Core role attachment reconciliation delta', {
+					...logContext,
+					...coreAttachmentDelta,
+				})
 			}
-
-			console.log('[Workflow] Got user role attachments', {
-				...logContext,
-				roleAttachments: getUserRoleAttachmentsResult.roleAttachments.length,
-				coreRoleAttachments: toCoreAttachmentSummaries(getUserRoleAttachmentsResult.roleAttachments)
-					.length,
-			})
-
-			// Step 5: Attach user roles
-			const attachUserRolesResult = await step.do('attach-user-roles', ROLE_STEP_OPTIONS, () => {
-				const ctx = this.createContext(userId, workflowInstanceId, refreshMode)
-				return attachUserRoles(ctx)
-			})
-			steps['attach-user-roles'] = 'ok'
-
-			console.log('[Workflow] Attached user roles', {
-				...logContext,
-				corporationRoleAttachments: attachUserRolesResult.corporationRoleAttachments.length,
-				allianceRoleAttachments: attachUserRolesResult.allianceRoleAttachments.length,
-			})
-
-			const coreAttachmentDelta = summarizeCoreAttachmentDelta(
-				getUserRoleAttachmentsResult.roleAttachments,
-				[
-					...attachUserRolesResult.corporationRoleAttachments,
-					...attachUserRolesResult.allianceRoleAttachments,
-				]
-			)
-			console.log('[Workflow] Core role attachment reconciliation delta', {
-				...logContext,
-				...coreAttachmentDelta,
-			})
 
 			// Step 6: Update completion timestamp
 			await step.do('update-completion-timestamp', () => {
