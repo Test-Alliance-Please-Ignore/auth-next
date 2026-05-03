@@ -1111,6 +1111,7 @@ export async function updateUserDiscordRoles(
 	results: Array<{
 		guildId: string
 		guildName: string
+		attemptedRoleIds: string[]
 		rolesAdded: string[]
 		rolesRemoved: string[]
 		success: boolean
@@ -1450,6 +1451,7 @@ export async function updateUserDiscordRoles(
 		return {
 			guildId: result.guildId,
 			guildName: guildData?.guildName ?? result.guildId,
+			attemptedRoleIds: guildData?.expectedRoleIds ?? [],
 			rolesAdded: result.rolesAdded || [],
 			rolesRemoved: result.rolesRemoved || [],
 			success: result.success,
@@ -1881,6 +1883,9 @@ export async function syncUserDiscordAccess(
 		alreadyMember?: boolean
 		type?: 'corporation' | 'group'
 		operation?: 'invite' | 'update' | 'revoke-ban'
+		attemptedRoleIds?: string[]
+		rolesAdded?: string[]
+		rolesRemoved?: string[]
 	}>
 	totalInvited: number
 	totalUpdated: number

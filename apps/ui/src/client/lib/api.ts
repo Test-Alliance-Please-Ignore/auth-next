@@ -2449,8 +2449,13 @@ export class ApiClient {
 			success: boolean
 			errorMessage?: string
 			alreadyMember?: boolean
+			rolesAdded?: string[]
+			rolesRemoved?: string[]
+			attemptedRoleIds?: string[]
+			operation?: 'invite' | 'update' | 'revoke-ban'
 		}>
 		totalInvited: number
+		totalUpdated: number
 		totalFailed: number
 	}> {
 		return this.post(`/admin/users/${userId}/discord/join-servers`)

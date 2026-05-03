@@ -149,8 +149,13 @@ export default function UserDetailPage() {
 			success: boolean
 			errorMessage?: string
 			alreadyMember?: boolean
+			rolesAdded?: string[]
+			rolesRemoved?: string[]
+			attemptedRoleIds?: string[]
+			operation?: 'invite' | 'update' | 'revoke-ban'
 		}>
 		totalInvited: number
+		totalUpdated: number
 		totalFailed: number
 	} | null>(null)
 	const [selectedCharacter, setSelectedCharacter] = useState<string | null>(null)
@@ -1262,6 +1267,12 @@ export default function UserDetailPage() {
 										{discordUpdateResults.totalInvited}
 									</div>
 								</div>
+								<div className="bg-blue-500/10 border border-blue-500/20 rounded-lg p-3">
+									<div className="text-sm text-muted-foreground">Servers Updated</div>
+									<div className="text-2xl font-bold text-blue-500">
+										{discordUpdateResults.totalUpdated}
+									</div>
+								</div>
 								<div className="bg-red-500/10 border border-red-500/20 rounded-lg p-3">
 									<div className="text-sm text-muted-foreground">Failed</div>
 									<div className="text-2xl font-bold text-red-500">
@@ -1295,6 +1306,39 @@ export default function UserDetailPage() {
 													{result.alreadyMember && (
 														<div className="text-sm text-muted-foreground mt-1">
 															Already a member
+														</div>
+													)}
+													{result.operation && (
+														<div className="text-xs text-muted-foreground mt-1">
+															Operation: {result.operation}
+														</div>
+													)}
+													{result.attemptedRoleIds && result.attemptedRoleIds.length > 0 && (
+														<div className="mt-2">
+															<div className="text-xs font-medium text-blue-600">
+																Attempted Role IDs
+															</div>
+															<div className="text-xs font-mono break-all text-muted-foreground">
+																{result.attemptedRoleIds.join(', ')}
+															</div>
+														</div>
+													)}
+													{result.rolesAdded && result.rolesAdded.length > 0 && (
+														<div className="mt-2">
+															<div className="text-xs font-medium text-green-600">Role IDs Added</div>
+															<div className="text-xs font-mono break-all text-muted-foreground">
+																{result.rolesAdded.join(', ')}
+															</div>
+														</div>
+													)}
+													{result.rolesRemoved && result.rolesRemoved.length > 0 && (
+														<div className="mt-2">
+															<div className="text-xs font-medium text-amber-600">
+																Role IDs Removed
+															</div>
+															<div className="text-xs font-mono break-all text-muted-foreground">
+																{result.rolesRemoved.join(', ')}
+															</div>
 														</div>
 													)}
 												</div>
