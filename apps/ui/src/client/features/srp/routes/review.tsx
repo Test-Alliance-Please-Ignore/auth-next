@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useState } from 'react'
 import { Link, Navigate } from 'react-router-dom'
 
 import { Button } from '@/components/ui/button'
@@ -214,15 +214,18 @@ function ReviewTabContent({ status, filters }: { status: RequestStatus; filters:
 		limit: 50,
 		...filters,
 	})
-	const hasMountedRef = useRef(false)
+	const [showLoadWarning, setShowLoadWarning] = useState(false)
 
 	useEffect(() => {
-		if (!hasMountedRef.current) {
-			hasMountedRef.current = true
+		if (!isLoading && !isFetching) {
+			setShowLoadWarning(false)
 			return
 		}
-		void refetch()
-	}, [status, refetch])
+		const timeout = window.setTimeout(() => {
+			setShowLoadWarning(true)
+		}, 8000)
+		return () => window.clearTimeout(timeout)
+	}, [isFetching, isLoading])
 	const hasActiveFilters = Boolean(
 		filters.characterName ||
 			filters.shipTypeName ||
@@ -231,7 +234,17 @@ function ReviewTabContent({ status, filters }: { status: RequestStatus; filters:
 			filters.dateTo
 	)
 
-	if (isLoading || (!data && isFetching)) {
+	if (!data && (isLoading || isFetching)) {
+		if (showLoadWarning) {
+			return (
+				<div className="rounded-lg border border-muted p-6 text-center">
+					<p className="text-sm text-muted-foreground">Queue is taking longer than expected.</p>
+					<Button variant="secondary" size="sm" className="mt-3" onClick={() => void refetch()}>
+						Retry loading queue
+					</Button>
+				</div>
+			)
+		}
 		return (
 			<div className="space-y-2">
 				{[...Array(3)].map((_, i) => (

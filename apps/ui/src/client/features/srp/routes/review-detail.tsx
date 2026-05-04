@@ -1,3 +1,4 @@
+import { useState } from 'react'
 import { Link, Navigate, useNavigate, useParams } from 'react-router-dom'
 
 import { Button } from '@/components/ui/button'
@@ -41,6 +42,7 @@ export default function ReviewRequestDetail() {
 	const canSeeInternal = isSrpStaff
 	const { data: comments = [], refetch: refetchComments } = useRequestComments(id, canSeeInternal)
 	const updateState = useUpdateReviewState()
+	const [showRevertConfirm, setShowRevertConfirm] = useState(false)
 
 	if (isLoading) {
 		return (
@@ -291,18 +293,40 @@ export default function ReviewRequestDetail() {
 
 						{canReview && (
 							<Card className="p-6">
-								<Button
-									variant="ghost"
-									className="w-full"
-									loading={updateState.isPending}
-									onClick={() =>
-										void updateState.mutateAsync({ id, newState: 'pending' }).then(() =>
-											navigate('/srp/review')
-										)
-									}
-								>
-									Revert to Pending
-								</Button>
+								<div className="space-y-3">
+									<div className="flex gap-2">
+										{showRevertConfirm && (
+											<Button
+												variant="secondary"
+												onClick={() => setShowRevertConfirm(false)}
+												disabled={updateState.isPending}
+											>
+												Back
+											</Button>
+										)}
+										<Button
+											variant="primary"
+											className="flex-1"
+											loading={updateState.isPending}
+											onClick={() => {
+												if (!showRevertConfirm) {
+													setShowRevertConfirm(true)
+													return
+												}
+												void updateState
+													.mutateAsync({ id, newState: 'pending' })
+													.then(() => navigate('/srp/review'))
+											}}
+										>
+											{showRevertConfirm ? 'Confirm Revert to Pending' : 'Revert to Pending'}
+										</Button>
+									</div>
+									{showRevertConfirm && (
+										<div className="rounded-md border border-amber-500/50 bg-amber-500/10 p-3 text-sm text-amber-600">
+											Confirm state change: <strong>pending</strong> for {request.shipTypeName}?
+										</div>
+									)}
+								</div>
 							</Card>
 						)}
 					</div>
