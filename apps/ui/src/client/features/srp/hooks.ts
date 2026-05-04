@@ -21,6 +21,14 @@ import {
 	upsertLossRequestOverlay,
 	useLossRequestOverlaySnapshot,
 } from './state/loss-request-overlay-store'
+import {
+	getReviewQueueSnapshot,
+	restoreReviewQueueStateFromRollback,
+	snapshotReviewQueueStateForRollback,
+	setReviewQueueSnapshot,
+	transitionRequestStatusAcrossReviewQueueSnapshots,
+	upsertRequestAcrossReviewQueueSnapshots,
+} from './state/review-queue-snapshot-store'
 
 import type {
 	CommentVisibility,
@@ -213,12 +221,29 @@ export function useRequestsByStatus(
 		enabled?: boolean
 	}
 ) {
-	return useQuery({
+	const reviewQueueSnapshotKey = `${status}:${JSON.stringify({
+		limit: params.limit,
+		offset: params.offset,
+		characterName: params.characterName,
+		shipTypeName: params.shipTypeName,
+		solarSystemName: params.solarSystemName,
+		dateFrom: params.dateFrom,
+		dateTo: params.dateTo,
+	})}`
+	const query = useQuery({
 		queryKey: srpKeys.requestsByStatus(status, params),
 		queryFn: () => api.getRequestsByStatus({ status, ...params }),
+		placeholderData: () => getReviewQueueSnapshot(status, params),
 		staleTime: 1000 * 30,
 		enabled: options?.enabled ?? true,
 	})
+
+	useEffect(() => {
+		if (!query.data) return
+		setReviewQueueSnapshot(status, params, query.data)
+	}, [query.data, status, reviewQueueSnapshotKey])
+
+	return query
 }
 
 export function usePendingPayments(
@@ -371,11 +396,35 @@ export function useSubmitReview() {
 	return useMutation({
 		mutationFn: ({ id, data }: { id: string; data: SRPReviewSubmission }) =>
 			api.submitReview(id, data),
+		onMutate: async ({ id, data }) => {
+			const previous = snapshotReviewQueueStateForRollback()
+			const optimisticStatus: RequestStatus =
+				data.outcome === 'approved'
+					? 'approved'
+					: data.outcome === 'needs_context'
+						? 'needs_context'
+						: 'rejected'
+			transitionRequestStatusAcrossReviewQueueSnapshots(id, optimisticStatus)
+			const existing = queryClient.getQueryData<SRPRequestResponse>(srpKeys.request(id))
+			if (existing) {
+				upsertRequestAcrossReviewQueueSnapshots({
+					...existing,
+					requestStatus: optimisticStatus,
+				})
+			}
+			return { previous }
+		},
+		onError: (_error, _variables, context) => {
+			if (context?.previous) {
+				restoreReviewQueueStateFromRollback(context.previous)
+			}
+		},
 		onSuccess: (request: SRPRequestResponse) => {
 			updateOverlayRequestStatus({
 				requestId: request.id,
 				requestStatus: request.requestStatus,
 			})
+			upsertRequestAcrossReviewQueueSnapshots(request)
 			setRequestStatusAcrossCaches(queryClient, request)
 			void queryClient.invalidateQueries({ queryKey: srpKeys.allRequests() })
 			void queryClient.invalidateQueries({ queryKey: srpKeys.payments() })
@@ -396,11 +445,29 @@ export function useUpdateReviewState() {
 			newState: RequestStatus
 			notes?: string
 		}) => api.updateReviewState(id, { newState, notes }),
+		onMutate: async ({ id, newState }) => {
+			const previous = snapshotReviewQueueStateForRollback()
+			transitionRequestStatusAcrossReviewQueueSnapshots(id, newState)
+			const existing = queryClient.getQueryData<SRPRequestResponse>(srpKeys.request(id))
+			if (existing) {
+				upsertRequestAcrossReviewQueueSnapshots({
+					...existing,
+					requestStatus: newState,
+				})
+			}
+			return { previous }
+		},
+		onError: (_error, _variables, context) => {
+			if (context?.previous) {
+				restoreReviewQueueStateFromRollback(context.previous)
+			}
+		},
 		onSuccess: (request: SRPRequestResponse) => {
 			updateOverlayRequestStatus({
 				requestId: request.id,
 				requestStatus: request.requestStatus,
 			})
+			upsertRequestAcrossReviewQueueSnapshots(request)
 			setRequestStatusAcrossCaches(queryClient, request)
 			void queryClient.invalidateQueries({ queryKey: srpKeys.allRequests() })
 			void queryClient.invalidateQueries({ queryKey: srpKeys.payments() })
@@ -514,11 +581,29 @@ export function useMarkPaid() {
 	const queryClient = useQueryClient()
 	return useMutation({
 		mutationFn: (id: string) => api.markPaid(id),
+		onMutate: async (id: string) => {
+			const previous = snapshotReviewQueueStateForRollback()
+			transitionRequestStatusAcrossReviewQueueSnapshots(id, 'paid')
+			const existing = queryClient.getQueryData<SRPRequestResponse>(srpKeys.request(id))
+			if (existing) {
+				upsertRequestAcrossReviewQueueSnapshots({
+					...existing,
+					requestStatus: 'paid',
+				})
+			}
+			return { previous }
+		},
+		onError: (_error, _variables, context) => {
+			if (context?.previous) {
+				restoreReviewQueueStateFromRollback(context.previous)
+			}
+		},
 		onSuccess: (request: SRPRequestResponse) => {
 			updateOverlayRequestStatus({
 				requestId: request.id,
 				requestStatus: request.requestStatus,
 			})
+			upsertRequestAcrossReviewQueueSnapshots(request)
 			setRequestStatusAcrossCaches(queryClient, request)
 			void queryClient.invalidateQueries({ queryKey: srpKeys.payments() })
 			void queryClient.invalidateQueries({ queryKey: srpKeys.allRequests() })
