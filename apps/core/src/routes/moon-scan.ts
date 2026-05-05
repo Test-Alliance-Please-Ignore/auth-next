@@ -47,6 +47,9 @@ const SEC_STATUS_THRESHOLD = 0.6
 
 const permissionCache = new TimeCache<boolean>(15_000)
 
+// Minerals that Metenox does NOT output (only moon goo materials)
+const MINERAL_TYPE_IDS = new Set(['35', '36'])
+
 // ─── Helpers ─────────────────────────────────────────────────────────────────
 
 async function hasMoonPerm(
@@ -371,6 +374,7 @@ moonScanRoutes.get('/moons/verified', async (c) => {
 				const unitVolume = oreData?.volumeM3 ?? 10
 				const oreUnits = oreVolumeM3 / unitVolume
 				for (const output of (oreData?.outputs ?? [])) {
+					if (profile.isPassive && MINERAL_TYPE_IDS.has(output.materialTypeId)) continue
 					const rawUnits = Math.floor(oreUnits / output.batchSize) * output.quantity * reprocessingYield
 					grossIsk += Math.floor(rawUnits) * (priceMap[output.materialTypeId] ?? 0)
 				}
@@ -527,9 +531,10 @@ async function computeProfitability(
 				const oreData = getMoonOreData(ore.oreTypeId)
 				const fraction = parseFloat(ore.quantity)
 				const oreVolumeM3 = totalVolume * fraction
-				const unitVolume = oreData?.volumeM3 ?? 8
+				const unitVolume = oreData?.volumeM3 ?? 10
 				const oreUnits = oreVolumeM3 / unitVolume
 				for (const output of (oreData?.outputs ?? [])) {
+					if (profile.isPassive && MINERAL_TYPE_IDS.has(output.materialTypeId)) continue
 					const rawUnits = Math.floor(oreUnits / output.batchSize) * output.quantity * reprocessingYield
 					const units = Math.floor(rawUnits)
 					grossIsk += units * (priceMap[output.materialTypeId] ?? 0)
@@ -542,7 +547,7 @@ async function computeProfitability(
 
 			structures.push({
 				structureType: profile.id,
-				cycleDays: profile.isPassive ? 1 : cycleDays,
+				cycleDays,
 				grossIsk: String(Math.round(grossIsk)),
 				fuelCost: String(Math.round(fuelCost)),
 				magmaticGasCost: profile.isPassive ? String(Math.round(magmaticGasCost)) : null,
