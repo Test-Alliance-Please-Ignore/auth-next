@@ -10,6 +10,7 @@
 		"check:types": "run-tsc",
 		"db:generate": "drizzle-kit generate",
 		"db:migrate": "tsx ./src/scripts/migrate.ts",
+		"db:seed-moon-permissions": "tsx ./src/scripts/seed-moon-permissions.ts",
 		"db:push": "drizzle-kit push",
 		"db:studio": "drizzle-kit studio",
 		"deploy": "run-wrangler-deploy",

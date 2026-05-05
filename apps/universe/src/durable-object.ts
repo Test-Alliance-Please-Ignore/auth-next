@@ -1,6 +1,8 @@
 import { DurableObject } from 'cloudflare:workers'
 
-import { and, eq, ilike, inArray, sql } from '@repo/db-utils'
+import { alias } from 'drizzle-orm/pg-core'
+
+import { and, eq, ilike, inArray, ne, sql } from '@repo/db-utils'
 import { getStub, LRUCache } from '@repo/do-utils'
 import { logger } from '@repo/hono-helpers'
 import {
@@ -781,7 +783,19 @@ export class UniverseDO extends DurableObject<Env, {}> implements Universe {
 		const directTypeIds = directRows.map((r) => r.typeId)
 		const implantTypeIds = implantResult.rows.map((r) => r.type_id)
 
-		return [...new Set([...directTypeIds, ...implantTypeIds])]
+		// Moon ore reprocessing outputs, fuel blocks, and magmatic gas needed for
+		// moon scan profitability calculations.
+		const moonMaterialTypeIds = [
+			'35', '36', // Pyerite, Mexallon (base minerals in R4/R8/R16 outputs)
+			'16633', '16634', '16635', '16636', '16637', '16638', '16639', '16640', // R4/R8 materials
+			'16641', '16642', '16643', '16644', // R16 materials
+			'16648', '16649', '16650', '16651', // R32 materials
+			'16652', '16653', '16654', '16655', // R64 materials
+			'4247',  // Nitrogen Fuel Block
+			'81143', // Magmatic Gas
+		]
+
+		return [...new Set([...directTypeIds, ...implantTypeIds, ...moonMaterialTypeIds])]
 	}
 
 	/**
@@ -1630,6 +1644,147 @@ export class UniverseDO extends DurableObject<Env, {}> implements Universe {
 			console.error('Failed to resolve NPC stations by names', error)
 			throw error
 		}
+	}
+
+	/**
+	 * Get all solar systems in a region.
+	 */
+	async getSystemsByRegionId(regionId: string): Promise<UniverseSolarSystem[]> {
+		const rows = await this.db
+			.select()
+			.from(universeSolarSystems)
+			.where(eq(universeSolarSystems.regionId, regionId))
+		return rows.map((r) => ({
+			solarSystemId: r.solarSystemId,
+			solarSystemName: r.solarSystemName,
+			regionId: r.regionId,
+			constellationId: r.constellationId,
+			securityStatus: r.securityStatus,
+		}))
+	}
+
+	/**
+	 * Get all moons in a solar system.
+	 */
+	async getMoonsBySystemId(systemId: string): Promise<UniverseStaticMoon[]> {
+		const rows = await this.db
+			.select()
+			.from(moons)
+			.where(eq(moons.solarSystemId, systemId))
+		return rows.map((r) => ({
+			moonId: r.moonId,
+			moonName: r.name,
+			planetId: r.planetId,
+			solarSystemId: r.solarSystemId,
+		}))
+	}
+
+	/**
+	 * Get all stargates for a set of solar systems (for jump connections on map).
+	 */
+	async getStargatesBySystemIds(systemIds: string[]): Promise<UniverseStargate[]> {
+		if (systemIds.length === 0) return []
+		const rows = await this.db
+			.select()
+			.from(universeStargates)
+			.where(inArray(universeStargates.solarSystemId, systemIds))
+		return rows.map((r) => ({
+			stargateId: r.stargateId,
+			stargateName: r.stargateName,
+			solarSystemId: r.solarSystemId,
+			destinationSolarSystemId: r.destinationSolarSystemId,
+			destinationStargateId: r.destinationStargateId,
+			typeId: r.typeId,
+		}))
+	}
+
+	/**
+	 * Get system and moon counts per region (for region overview map).
+	 */
+	async getRegionStats(regionIds: string[]): Promise<Record<string, { systemCount: number; moonCount: number }>> {
+		if (regionIds.length === 0) return {}
+
+		const [systemRows, moonRows] = await Promise.all([
+			this.db
+				.select({
+					regionId: universeSolarSystems.regionId,
+					systemCount: sql<string>`count(*)`.as('system_count'),
+				})
+				.from(universeSolarSystems)
+				.where(inArray(universeSolarSystems.regionId, regionIds))
+				.groupBy(universeSolarSystems.regionId),
+
+			this.db
+				.select({
+					regionId: universeSolarSystems.regionId,
+					moonCount: sql<string>`count(${moons.moonId})`.as('moon_count'),
+				})
+				.from(moons)
+				.innerJoin(universeSolarSystems, eq(moons.solarSystemId, universeSolarSystems.solarSystemId))
+				.where(inArray(universeSolarSystems.regionId, regionIds))
+				.groupBy(universeSolarSystems.regionId),
+		])
+
+		const result: Record<string, { systemCount: number; moonCount: number }> = {}
+		for (const r of systemRows) {
+			result[r.regionId] = { systemCount: Number(r.systemCount), moonCount: 0 }
+		}
+		for (const r of moonRows) {
+			if (result[r.regionId]) result[r.regionId].moonCount = Number(r.moonCount)
+		}
+		return result
+	}
+
+	/**
+	 * Map moon IDs to their region IDs (for aggregating scan coverage by region).
+	 */
+	async getMoonRegionIds(moonIds: string[]): Promise<Record<string, string>> {
+		if (moonIds.length === 0) return {}
+
+		const rows = await this.db
+			.select({
+				moonId: moons.moonId,
+				regionId: universeSolarSystems.regionId,
+			})
+			.from(moons)
+			.innerJoin(universeSolarSystems, eq(moons.solarSystemId, universeSolarSystems.solarSystemId))
+			.where(inArray(moons.moonId, moonIds))
+
+		const result: Record<string, string> = {}
+		for (const r of rows) result[r.moonId] = r.regionId
+		return result
+	}
+
+	/**
+	 * Get unique cross-region stargate connections (for drawing inter-region lines on universe map).
+	 */
+	async getRegionConnections(regionIds: string[]): Promise<Array<{ fromRegionId: string; toRegionId: string }>> {
+		if (regionIds.length === 0) return []
+
+		const ss1 = alias(universeSolarSystems, 'ss1')
+		const ss2 = alias(universeSolarSystems, 'ss2')
+
+		const rows = await this.db
+			.selectDistinct({
+				fromRegionId: ss1.regionId,
+				toRegionId: ss2.regionId,
+			})
+			.from(universeStargates)
+			.innerJoin(ss1, eq(universeStargates.solarSystemId, ss1.solarSystemId))
+			.innerJoin(ss2, eq(universeStargates.destinationSolarSystemId, ss2.solarSystemId))
+			.where(and(ne(ss1.regionId, ss2.regionId), inArray(ss1.regionId, regionIds)))
+
+		// Deduplicate bidirectional connections (A→B and B→A both appear)
+		const seen = new Set<string>()
+		const connections: Array<{ fromRegionId: string; toRegionId: string }> = []
+		for (const row of rows) {
+			const key = [row.fromRegionId, row.toRegionId].sort().join('|')
+			if (!seen.has(key)) {
+				seen.add(key)
+				connections.push({ fromRegionId: row.fromRegionId, toRegionId: row.toRegionId })
+			}
+		}
+		return connections
 	}
 
 	/**

@@ -141,6 +141,16 @@
 				"name": "LEGACY",
 				"class_name": "Legacy",
 				"script_name": "legacy"
+			},
+			{
+				"name": "MOON_SCAN",
+				"class_name": "MoonScanDO",
+				"script_name": "moon-scan"
+			},
+			{
+				"name": "MARKETS",
+				"class_name": "Markets",
+				"script_name": "markets"
 			}
 		]
 	},

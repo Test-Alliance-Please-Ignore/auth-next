@@ -42,6 +42,7 @@ import sessionRoutes from './routes/session'
 import skillPlansRoutes from './routes/skill-plans'
 import skillsRoutes from './routes/skills'
 import flagsRoutes from './routes/flags'
+import { moonScanRoutes } from './routes/moon-scan'
 import srpRoutes from './routes/srp'
 import usersRoutes from './routes/users'
 import universeRoutes from './routes/universe'
@@ -128,6 +129,7 @@ const app = new Hono<App>()
 	.route('/api/industry', industryOrdersRoutes)
 	.route('/api/flags', flagsRoutes)
 	.route('/api/srp', srpRoutes)
+	.route('/api/moon-scan', moonScanRoutes)
 	.route('/api/bills', billsUserRoutes)
 	.route('/api/session', sessionRoutes)
 

@@ -1,0 +1,20 @@
+{
+  "version": "7",
+  "dialect": "postgresql",
+  "entries": [
+    {
+      "idx": 0,
+      "version": "7",
+      "when": 1777836102638,
+      "tag": "0000_dusty_lilith",
+      "breakpoints": true
+    },
+    {
+      "idx": 1,
+      "version": "7",
+      "when": 1746399600000,
+      "tag": "0001_remove_athanor_profile",
+      "breakpoints": true
+    }
+  ]
+}

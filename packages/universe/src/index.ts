@@ -262,6 +262,36 @@ export interface Universe {
 	): Promise<Record<string, UniverseNpcStation | null>>
 
 	/**
+	 * Get all solar systems in a region (for region map rendering).
+	 */
+	getSystemsByRegionId(regionId: string): Promise<UniverseSolarSystem[]>
+
+	/**
+	 * Get all moons in a solar system.
+	 */
+	getMoonsBySystemId(systemId: string): Promise<UniverseStaticMoon[]>
+
+	/**
+	 * Get all stargates for a set of solar systems (returns flat array for jump connection drawing).
+	 */
+	getStargatesBySystemIds(systemIds: string[]): Promise<UniverseStargate[]>
+
+	/**
+	 * Get system and moon counts per region (for region overview map).
+	 */
+	getRegionStats(regionIds: string[]): Promise<Record<string, { systemCount: number; moonCount: number }>>
+
+	/**
+	 * Map moon IDs to their region IDs (for aggregating scan coverage by region).
+	 */
+	getMoonRegionIds(moonIds: string[]): Promise<Record<string, string>>
+
+	/**
+	 * Get unique cross-region stargate connections (for drawing inter-region lines on universe map).
+	 */
+	getRegionConnections(regionIds: string[]): Promise<Array<{ fromRegionId: string; toRegionId: string }>>
+
+	/**
 	 * Returns all published type IDs eligible for daily market price tracking.
 	 *
 	 * Includes:

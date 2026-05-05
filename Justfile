@@ -111,6 +111,7 @@ db-generate-all:
   cd apps/eve-corporation-data && bun run db:generate
   cd apps/eve-character-data && bun run db:generate
   cd apps/eve-token-store && bun run db:generate
+  cd apps/moon-scan && bun run db:generate
 
 # Push schema changes to database (for development)
 [group('2. database')]
@@ -176,6 +177,17 @@ db-migrate-all:
   cd apps/eve-corporation-data && bun run db:migrate
   cd apps/eve-character-data && bun run db:migrate
   cd apps/eve-token-store && bun run db:migrate
+  cd apps/moon-scan && bun run db:migrate
+
+# Seed moon permissions into groups DB
+[group('2. database')]
+db-seed-moon-permissions:
+  cd apps/groups && bun run db:seed-moon-permissions
+
+# Seed moon-scan static data (ore rarities, structure profiles)
+[group('2. database')]
+db-seed-moon-scan:
+  cd apps/moon-scan && bun run db:seed
 
 # Open Drizzle Studio for a specific app
 [group('2. database')]
