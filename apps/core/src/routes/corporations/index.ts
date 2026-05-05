@@ -351,20 +351,6 @@ async function enrichMembersPageLiveTokenStatus(
 	}
 }
 
-<<<<<<< Updated upstream
-=======
-function shouldEnrichMembersPageLiveTokenStatus(
-	returnUnpaginated: boolean,
-	query: MembersQuery
-): boolean {
-	// Member list endpoints should remain fast and use persisted token validity.
-	// Live token validation is reserved for detail views and explicit refresh flows.
-	void returnUnpaginated
-	void query
-	return false
-}
-
->>>>>>> Stashed changes
 /**
  * Helper to check cache for JSON response
  */
