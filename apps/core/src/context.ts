@@ -4,7 +4,6 @@ import type { EveTokenStore } from '@repo/eve-token-store'
 import type { Groups } from '@repo/groups'
 import type { HonoApp } from '@repo/hono-helpers'
 import type { SharedHonoEnv, SharedHonoVariables } from '@repo/hono-helpers/src/types'
-import type { MoonScanDO } from '@repo/moon-scan'
 import type { Skills } from '@repo/skills'
 import type { createDb } from './db'
 import type { UserDiscordRefreshWorkflowParams } from './workflows/user-discord-refresh.workflow'
@@ -68,7 +67,7 @@ export type Env = SharedHonoEnv & {
 	/** Legacy migration Durable Object binding */
 	LEGACY: DurableObjectNamespace
 	/** Moon Scan Durable Object binding */
-	MOON_SCAN: DurableObjectNamespace<MoonScanDO>
+	MOON_SCAN: DurableObjectNamespace
 	/** Markets Durable Object binding */
 	MARKETS: DurableObjectNamespace
 	/** Legacy Auth OAuth Client ID (set as Wrangler secret) */
