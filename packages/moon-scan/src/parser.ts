@@ -25,17 +25,16 @@ export function parseMoonScanTsv(raw: string): ParseResult {
 	const errors: string[] = []
 	const seenMoonIds = new Set<string>()
 
-	const pending: {
+	type PendingScan = {
 		moonName: string
 		moonId: string | null
 		solarSystemId: string | null
 		planetId: string | null
 		ores: ParsedOre[]
 		warnings: string[]
-	} | null = null
+	}
 
-	// We'll accumulate using a mutable reference pattern
-	let current: (typeof pending) = null
+	let current: PendingScan | null = null
 	const finalScans: ParsedScan[] = []
 
 	function finalizeCurrent() {
