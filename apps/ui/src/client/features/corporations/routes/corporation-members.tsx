@@ -68,7 +68,7 @@ export default function CorporationMembers() {
 	const [isRefreshing, setIsRefreshing] = useState(false)
 	const [membersQuery, setMembersQuery] = useState<CorporationMembersQuery>({
 		page: 1,
-		limit: 50,
+		limit: 25,
 		search: '',
 		authFilter: 'all',
 		activityFilter: 'all',
