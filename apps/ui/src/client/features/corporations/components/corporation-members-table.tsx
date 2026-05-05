@@ -19,9 +19,10 @@ import {
 	User,
 	Users,
 } from 'lucide-react'
-import { useCallback, useMemo, useState } from 'react'
+import { useCallback, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 
+import { UserSearchPaginationControls } from '@/components/user-search-pagination-controls'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Card } from '@/components/ui/card'
@@ -186,7 +187,6 @@ export default function CorporationMembersTable({
 	const sortField: SortField = query.sortField ?? 'role'
 	const sortOrder = query.sortOrder ?? 'asc'
 	const currentPage = pagination?.page ?? 1
-	const totalPages = pagination?.totalPages ?? 1
 	const paginatedMembers = members
 
 	// HR dialog states
@@ -307,14 +307,23 @@ export default function CorporationMembersTable({
 		inactive: members.filter((m) => m.activityStatus === 'inactive').length,
 		directors: members.filter((m) => m.role === 'Director').length,
 	}
-	const previewPages = useMemo(() => {
-		const maxVisible = 5
-		if (totalPages <= maxVisible) {
-			return Array.from({ length: totalPages }, (_, i) => i + 1)
-		}
-		const startPage = Math.max(1, Math.min(currentPage - 2, totalPages - (maxVisible - 1)))
-		return Array.from({ length: maxVisible }, (_, i) => startPage + i)
-	}, [currentPage, totalPages])
+	const pageLimit = pagination?.limit ?? query.limit ?? 50
+	const totalItems = pagination?.totalItems ?? 0
+	const hasPagination = (pagination?.totalPages ?? 1) > 1
+
+	const renderPaginationControls = () => (
+		<div className="border-b p-4">
+			<UserSearchPaginationControls
+				totalCount={totalItems}
+				page={currentPage}
+				pageSize={pageLimit}
+				onPageChange={(page) => onQueryChange((prev) => ({ ...prev, page }))}
+				onPageSizeChange={(limit) => onQueryChange((prev) => ({ ...prev, page: 1, limit }))}
+				pageSizeOptions={[10, 25, 50, 100]}
+				itemLabel="members"
+			/>
+		</div>
+	)
 
 	if (loading) {
 		return (
@@ -427,6 +436,7 @@ export default function CorporationMembersTable({
 
 			{/* Table */}
 			<Card>
+				{hasPagination && renderPaginationControls()}
 				<Table>
 					<TableHeader>
 						<TableRow>
@@ -644,71 +654,7 @@ export default function CorporationMembersTable({
 				</Table>
 
 				{/* Pagination */}
-				{totalPages > 1 && (
-					<div className="flex items-center justify-between p-4 border-t">
-						<div className="text-sm text-muted-foreground">
-							Showing{' '}
-							{(pagination?.totalItems ?? 0) > 0
-								? `${(currentPage - 1) * (pagination?.limit ?? 50) + 1}-${Math.min(
-										currentPage * (pagination?.limit ?? 50),
-										pagination?.totalItems ?? 0
-									)}`
-								: '0-0'}{' '}
-							of {pagination?.totalItems ?? 0} members
-						</div>
-						<div className="flex gap-2">
-							<Button
-								size="sm"
-								variant="ghost"
-								disabled={currentPage === 1}
-								onClick={() =>
-									onQueryChange((prev) => ({ ...prev, page: Math.max(1, currentPage - 1) }))
-								}
-							>
-								Previous
-							</Button>
-							<div className="flex items-center gap-1">
-								{previewPages.map((pageNum) => {
-									return (
-										<Button
-											key={pageNum}
-											size="sm"
-											variant={currentPage === pageNum ? 'primary' : 'ghost'}
-											onClick={() => onQueryChange((prev) => ({ ...prev, page: pageNum }))}
-										>
-											{pageNum}
-										</Button>
-									)
-								})}
-								{totalPages > 5 && previewPages[previewPages.length - 1] < totalPages - 1 && (
-									<span className="px-2">...</span>
-								)}
-								{totalPages > 5 && previewPages[previewPages.length - 1] < totalPages && (
-									<Button
-										size="sm"
-										variant={currentPage === totalPages ? 'primary' : 'ghost'}
-										onClick={() => onQueryChange((prev) => ({ ...prev, page: totalPages }))}
-									>
-										{totalPages}
-									</Button>
-								)}
-							</div>
-							<Button
-								size="sm"
-								variant="ghost"
-								disabled={currentPage === totalPages}
-								onClick={() =>
-									onQueryChange((prev) => ({
-										...prev,
-										page: Math.min(totalPages, currentPage + 1),
-									}))
-								}
-							>
-								Next
-							</Button>
-						</div>
-					</div>
-				)}
+				{hasPagination && renderPaginationControls()}
 			</Card>
 
 			{/* HR Role Dialogs */}

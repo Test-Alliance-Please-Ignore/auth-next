@@ -351,6 +351,17 @@ async function enrichMembersPageLiveTokenStatus(
 	}
 }
 
+function shouldEnrichMembersPageLiveTokenStatus(
+	returnUnpaginated: boolean,
+	query: MembersQuery
+): boolean {
+	// Keep search-as-you-type responsive by avoiding live token validation for
+	// interactive filtered/sorted queries and unpaginated "all members" payloads.
+	// In those cases we return persisted hasValidToken values from core.user_characters.
+	if (returnUnpaginated) return false
+	return canUseBackendPaginatedMembersPath(query)
+}
+
 /**
  * Helper to check cache for JSON response
  */
@@ -1689,7 +1700,7 @@ app.get('/:corporationId/members', requireAuth(), async (c) => {
 				.where(eq(userCharacters.corporationId, corporationId))
 				.then((rows) => rows[0] ?? { count: 0 })
 
-			const enriched = await enrichMembersPageLiveTokenStatus(db, tokenStoreStub, {
+			const response = {
 				items: pageMembers,
 				pagination: paged.pagination,
 				summary: {
@@ -1699,8 +1710,13 @@ app.get('/:corporationId/members', requireAuth(), async (c) => {
 					inactive: paged.summary.inactive,
 					directors: paged.summary.directors,
 				},
-			})
+			}
 
+			if (!shouldEnrichMembersPageLiveTokenStatus(returnUnpaginated, query)) {
+				return c.json(response)
+			}
+
+			const enriched = await enrichMembersPageLiveTokenStatus(db, tokenStoreStub, response)
 			return c.json(enriched)
 		}
 
@@ -1715,6 +1731,9 @@ app.get('/:corporationId/members', requireAuth(), async (c) => {
 			const response = returnUnpaginated
 				? buildUnpaginatedMembersResponse(cached)
 				: filterSortAndPaginateMembers(cached, query)
+			if (!shouldEnrichMembersPageLiveTokenStatus(returnUnpaginated, query)) {
+				return c.json(response)
+			}
 			const enriched = await enrichMembersPageLiveTokenStatus(db, tokenStoreStub, response)
 			return c.json(enriched)
 		}
@@ -1861,6 +1880,9 @@ app.get('/:corporationId/members', requireAuth(), async (c) => {
 		const response = returnUnpaginated
 			? buildUnpaginatedMembersResponse(membersWithDetails)
 			: filterSortAndPaginateMembers(membersWithDetails, query)
+		if (!shouldEnrichMembersPageLiveTokenStatus(returnUnpaginated, query)) {
+			return c.json(response)
+		}
 		const enriched = await enrichMembersPageLiveTokenStatus(db, tokenStoreStub, response)
 		return c.json(enriched)
 	} catch (error) {

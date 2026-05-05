@@ -8,6 +8,7 @@ interface UserSearchPaginationControlsProps {
 	onPageChange: (page: number) => void
 	onPageSizeChange: (pageSize: number) => void
 	pageSizeOptions?: number[]
+	itemLabel?: string
 }
 
 const DEFAULT_PAGE_SIZE_OPTIONS = [25, 50, 100]
@@ -19,6 +20,7 @@ export function UserSearchPaginationControls({
 	onPageChange,
 	onPageSizeChange,
 	pageSizeOptions = DEFAULT_PAGE_SIZE_OPTIONS,
+	itemLabel = 'users',
 }: UserSearchPaginationControlsProps) {
 	const totalPages = Math.ceil(totalCount / pageSize)
 	const start = totalCount === 0 ? 0 : (page - 1) * pageSize + 1
@@ -37,7 +39,9 @@ export function UserSearchPaginationControls({
 	return (
 		<div className="flex items-center justify-between gap-3">
 			<div className="text-sm text-muted-foreground">
-				{totalCount > 0 ? `${start}-${end} of ${totalCount} users` : '0 users'}
+				{totalCount > 0
+					? `${start}-${end} of ${totalCount} ${itemLabel}`
+					: `0 ${itemLabel}`}
 			</div>
 			<div className="flex items-center gap-2 justify-end">
 				<div className="flex items-center gap-2">
