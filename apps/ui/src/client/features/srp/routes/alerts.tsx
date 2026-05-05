@@ -3,6 +3,7 @@ import { Link, Navigate } from 'react-router-dom'
 import { toast } from 'sonner'
 
 import { Button } from '@/components/ui/button'
+import { Card, CardContent } from '@/components/ui/card'
 import { Container } from '@/components/ui/container'
 import { EveTimeDisplay } from '@/components/ui/eve-time-display'
 import { PageHeader } from '@/components/ui/page-header'
@@ -39,26 +40,30 @@ export default function SRPAlertsPage() {
 	if (isLoading) {
 		return (
 			<Container>
-				<PageHeader title="SRP Alerts" description="Payment mismatches that require review" />
-				<div className="mt-4 space-y-2">
+			<PageHeader title="SRP Alerts" description="Payment mismatches that require review" />
+			<Card className="mt-4">
+				<CardContent className="space-y-2 p-4">
 					{[...Array(3)].map((_, idx) => (
 						<div key={idx} className="h-14 animate-pulse rounded-md bg-muted/30" />
 					))}
-				</div>
-			</Container>
-		)
-	}
+				</CardContent>
+			</Card>
+		</Container>
+	)
+}
 
 	if (error) {
 		return (
 			<Container>
-				<PageHeader title="SRP Alerts" description="Payment mismatches that require review" />
-				<div className="mt-4 rounded-lg border border-red-500/50 bg-red-500/10 p-6 text-center text-sm text-red-500">
+			<PageHeader title="SRP Alerts" description="Payment mismatches that require review" />
+			<Card className="mt-4 border-red-500/50 bg-red-500/10">
+				<CardContent className="p-6 text-center text-sm text-red-500">
 					Failed to load SRP payment alerts
-				</div>
-			</Container>
-		)
-	}
+				</CardContent>
+			</Card>
+		</Container>
+	)
+}
 
 	const alerts: SRPPaymentMismatchAlert[] = data?.alerts ?? []
 
@@ -82,7 +87,8 @@ export default function SRPAlertsPage() {
 				</div>
 			</div>
 
-			<div className="mt-3 rounded-md border">
+			<Card className="mt-3">
+				<CardContent className="p-0">
 				<Table>
 					<TableHeader>
 						<TableRow>
@@ -159,7 +165,8 @@ export default function SRPAlertsPage() {
 						)}
 					</TableBody>
 				</Table>
-			</div>
+				</CardContent>
+			</Card>
 		</Container>
 	)
 }
