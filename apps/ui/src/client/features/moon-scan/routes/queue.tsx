@@ -97,7 +97,7 @@ function QueueRow({ scan }: { scan: MoonScan }) {
 			<TableCell>
 				<div className="flex flex-wrap gap-1">
 					{scan.ores.map((ore) => (
-						<Badge key={ore.oreTypeId} variant="outline" className="font-mono text-xs">
+						<Badge key={ore.oreTypeId} variant="ghost" className="font-mono text-xs">
 							{ore.oreTypeId} {(parseFloat(ore.quantity) * 100).toFixed(1)}%
 						</Badge>
 					))}
@@ -180,7 +180,7 @@ export default function QueuePage() {
 						<p className="text-xs text-muted-foreground">{data?.total ?? 0} pending</p>
 						<div className="flex items-center gap-2">
 							<Button
-								variant="outline"
+								variant="ghost"
 								size="sm"
 								disabled={page <= 1}
 								onClick={() => setPage((p) => p - 1)}
@@ -189,7 +189,7 @@ export default function QueuePage() {
 							</Button>
 							<span className="text-xs text-muted-foreground">{page} / {totalPages}</span>
 							<Button
-								variant="outline"
+								variant="ghost"
 								size="sm"
 								disabled={page >= totalPages}
 								onClick={() => setPage((p) => p + 1)}

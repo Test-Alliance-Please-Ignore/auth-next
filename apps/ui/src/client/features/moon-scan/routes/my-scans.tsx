@@ -116,7 +116,7 @@ export default function MyScansPage() {
 						</p>
 						<div className="flex items-center gap-2">
 							<Button
-								variant="outline"
+								variant="ghost"
 								size="sm"
 								disabled={page <= 1}
 								onClick={() => setPage((p) => p - 1)}
@@ -127,7 +127,7 @@ export default function MyScansPage() {
 								{page} / {totalPages}
 							</span>
 							<Button
-								variant="outline"
+								variant="ghost"
 								size="sm"
 								disabled={page >= totalPages}
 								onClick={() => setPage((p) => p + 1)}

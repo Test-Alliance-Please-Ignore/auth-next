@@ -29,9 +29,9 @@ function ScanPreviewRow({ scan }: { scan: AnnotatedScan }) {
 					{scan.secStatus !== null ? scan.secStatus.toFixed(1) : '?'}
 				</span>
 				{scan.eligible ? (
-					<Badge variant="outline" className="text-green-400 border-green-400/50">eligible</Badge>
+					<Badge variant="ghost" className="text-green-400 border-green-400/50">eligible</Badge>
 				) : (
-					<Badge variant="outline" className="text-muted-foreground">high-sec</Badge>
+					<Badge variant="ghost" className="text-muted-foreground">high-sec</Badge>
 				)}
 			</div>
 		</div>
@@ -95,7 +95,7 @@ export default function SubmitScanPage() {
 
 				<div className="flex gap-2">
 					<Button
-						variant="outline"
+						variant="ghost"
 						onClick={handleParse}
 						disabled={!raw.trim() || parseMutation.isPending}
 					>

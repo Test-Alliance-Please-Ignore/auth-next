@@ -124,7 +124,7 @@ export default function SystemPage() {
 											) : moon.hasScans ? (
 												<Badge className="bg-yellow-500/20 text-yellow-400 border-yellow-500/30">Pending</Badge>
 											) : (
-												<Badge variant="outline" className="text-muted-foreground">No data</Badge>
+												<Badge variant="ghost" className="text-muted-foreground">No data</Badge>
 											)}
 										</TableCell>
 										<TableCell>
