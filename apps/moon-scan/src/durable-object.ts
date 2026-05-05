@@ -30,11 +30,11 @@ import type {
 	SubmitScanInput,
 	VerifiedComposition,
 } from '@repo/moon-scan'
-import type { DbClientWs } from './db'
+import type { DbClient } from './db'
 import type { Env } from './context'
 
 export class MoonScanDO extends DurableObject<Env> implements IMoonScanDO {
-	private db: DbClientWs<typeof schema>
+	private db: DbClient<typeof schema>
 
 	constructor(state: DurableObjectState, env: Env) {
 		super(state, env)
