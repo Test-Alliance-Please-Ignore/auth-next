@@ -351,6 +351,20 @@ async function enrichMembersPageLiveTokenStatus(
 	}
 }
 
+<<<<<<< Updated upstream
+=======
+function shouldEnrichMembersPageLiveTokenStatus(
+	returnUnpaginated: boolean,
+	query: MembersQuery
+): boolean {
+	// Member list endpoints should remain fast and use persisted token validity.
+	// Live token validation is reserved for detail views and explicit refresh flows.
+	void returnUnpaginated
+	void query
+	return false
+}
+
+>>>>>>> Stashed changes
 /**
  * Helper to check cache for JSON response
  */
@@ -425,6 +439,11 @@ async function checkCorporationAccess(
 	// Get user's characters to check CEO/Director status
 	const userChars = await db.query.userCharacters.findMany({
 		where: eq(userCharacters.userId, user.id),
+		columns: {
+			characterId: true,
+			characterName: true,
+			corporationId: true,
+		},
 	})
 
 	logger.info('[Corporation Access] Checking user access', {
@@ -434,8 +453,42 @@ async function checkCorporationAccess(
 	})
 
 	let userRole: 'CEO' | 'Director' | null = null
+	const corpStub = getStub<EveCorporationData>(c.env.EVE_CORPORATION_DATA, corporationId)
+	const [corpInfo, directors] = await Promise.all([
+		corpStub.getCorporationInfo(corporationId),
+		corpStub.getDirectors(corporationId),
+	])
+	const directorIds = new Set(directors.map((d) => d.characterId))
 
-	for (const character of userChars) {
+	// Fast path: use persisted core.user_characters corporation affiliation.
+	// This avoids expensive per-character DO reads on interactive member-search requests.
+	const inCorpByPersistedAffiliation = userChars.filter((character) => character.corporationId === corporationId)
+	for (const character of inCorpByPersistedAffiliation) {
+		if (corpInfo && String(corpInfo.ceoId) === character.characterId) {
+			logger.info('[Corporation Access] CEO access granted', {
+				characterId: character.characterId,
+				characterName: character.characterName,
+				corporationId,
+				reason: 'persisted_corporation_ceo',
+			})
+			return { hasAccess: true, role: 'CEO' }
+		}
+		if (directorIds.has(character.characterId)) {
+			userRole = 'Director'
+			logger.info('[Corporation Access] Director access granted', {
+				characterId: character.characterId,
+				characterName: character.characterName,
+				corporationId,
+				reason: 'persisted_corporation_director',
+			})
+		}
+	}
+
+	// Fallback only for characters where persisted affiliation is missing.
+	// This keeps correctness while minimizing slow EVE_CHARACTER_DATA round-trips.
+	const unresolvedAffiliationCharacters = userChars.filter((character) => !character.corporationId)
+
+	for (const character of unresolvedAffiliationCharacters) {
 		try {
 			// Check if character is in this corporation
 			const charStub = getStub<EveCharacterData>(c.env.EVE_CHARACTER_DATA, character.characterId)
@@ -445,13 +498,6 @@ async function checkCorporationAccess(
 			if (!charData || String(charData.corporationId) !== corporationId) {
 				continue
 			}
-
-			// Get corporation data to check CEO and directors
-			const corpStub = getStub<EveCorporationData>(c.env.EVE_CORPORATION_DATA, corporationId)
-			const [corpInfo, directors] = await Promise.all([
-				corpStub.getCorporationInfo(corporationId),
-				corpStub.getDirectors(corporationId),
-			])
 
 			// Check if character is CEO
 			const isCeo = corpInfo && String(corpInfo.ceoId) === character.characterId
@@ -467,8 +513,7 @@ async function checkCorporationAccess(
 			}
 
 			// Check if character is a director
-			const matchedDirector = directors.find((d) => d.characterId === character.characterId)
-			if (matchedDirector) {
+			if (directorIds.has(character.characterId)) {
 				userRole = 'Director'
 				logger.info('[Corporation Access] Director access granted', {
 					characterId: character.characterId,
