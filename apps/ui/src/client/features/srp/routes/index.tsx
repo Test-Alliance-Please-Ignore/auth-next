@@ -1,3 +1,4 @@
+import { Card, CardContent } from '@/components/ui/card'
 import { Container } from '@/components/ui/container'
 import { PageHeader } from '@/components/ui/page-header'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
@@ -30,7 +31,8 @@ export default function SRPIndex() {
 				description="Request reimbursement for ship losses"
 			/>
 
-			<div className="mt-section rounded-md border bg-card">
+			<Card className="mt-section">
+				<CardContent className="p-0">
 				<Tabs defaultValue="losses">
 					<TabsList className="w-full rounded-b-none border-b">
 						<TabsTrigger value="losses">Recent Losses</TabsTrigger>
@@ -74,7 +76,8 @@ export default function SRPIndex() {
 
 					</div>
 				</Tabs>
-			</div>
+				</CardContent>
+			</Card>
 		</Container>
 	)
 }
