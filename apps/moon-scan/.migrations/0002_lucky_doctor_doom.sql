@@ -1,0 +1,1 @@
+DROP TABLE "moon_ore_rarities" CASCADE;

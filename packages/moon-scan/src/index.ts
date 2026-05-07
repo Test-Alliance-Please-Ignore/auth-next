@@ -10,6 +10,16 @@ export type LeaderboardWindow = 'all' | '7d' | '30d'
 export type StructureType = 'tatara' | 'metenox'
 export type OreRarity = 'R4' | 'R8' | 'R16' | 'R32' | 'R64'
 
+export const ORE_TYPE_RARITY: Record<string, OreRarity> = {
+	'45490': 'R4', '45491': 'R4', '45492': 'R4', '45493': 'R4',
+	'45494': 'R8', '45495': 'R8', '45496': 'R8', '45497': 'R8',
+	'45498': 'R16', '45499': 'R16', '45500': 'R16', '45501': 'R16',
+	'45502': 'R32', '45503': 'R32', '45504': 'R32', '45506': 'R32',
+	'45510': 'R64', '45511': 'R64', '45512': 'R64', '45513': 'R64',
+}
+
+export const RARITY_ORDER: Record<OreRarity, number> = { R4: 1, R8: 2, R16: 3, R32: 4, R64: 5 }
+
 export interface MoonScanOre {
 	oreTypeId: string
 	quantity: string

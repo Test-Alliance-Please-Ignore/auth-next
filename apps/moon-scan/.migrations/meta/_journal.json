@@ -15,6 +15,13 @@
       "when": 1746399600000,
       "tag": "0001_remove_athanor_profile",
       "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "7",
+      "when": 1778136781141,
+      "tag": "0002_lucky_doctor_doom",
+      "breakpoints": true
     }
   ]
 }

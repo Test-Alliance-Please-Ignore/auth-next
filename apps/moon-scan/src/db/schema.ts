@@ -37,12 +37,6 @@ export const verifiedCompositions = pgTable('moon_verified_compositions', {
 	verifiedBy: text('verified_by'),
 })
 
-export const oreRarities = pgTable('moon_ore_rarities', {
-	oreTypeId: text('ore_type_id').primaryKey(),
-	rarity: text('rarity').notNull(),
-	color: text('color').notNull(),
-})
-
 export const extractionSettings = pgTable('moon_extraction_settings', {
 	id: text('id').primaryKey().default('default'),
 	defaultReprocessingYield: text('default_reprocessing_yield').default('0.80').notNull(),
@@ -76,7 +70,6 @@ export type NewMoonScan = typeof moonScans.$inferInsert
 export type MoonScanOre = typeof moonScanOres.$inferSelect
 export type NewMoonScanOre = typeof moonScanOres.$inferInsert
 export type VerifiedComposition = typeof verifiedCompositions.$inferSelect
-export type OreRarity = typeof oreRarities.$inferSelect
 export type ExtractionSetting = typeof extractionSettings.$inferSelect
 export type StructureProfile = typeof structureProfiles.$inferSelect
 export type CharacterNameCache = typeof characterNameCache.$inferSelect

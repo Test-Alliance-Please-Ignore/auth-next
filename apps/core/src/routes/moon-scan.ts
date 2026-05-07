@@ -6,6 +6,8 @@ import { TimeCache } from '@repo/hono-helpers'
 import {
 	FUEL_BLOCK_TYPE_ID,
 	MAGMATIC_GAS_TYPE_ID,
+	ORE_TYPE_RARITY,
+	RARITY_ORDER,
 	getAllMaterialTypeIds,
 	getMoonOreData,
 	parseMoonScanTsv,
@@ -16,7 +18,7 @@ import { requireAllianceMember } from '../middleware/session'
 
 import { createEveRegionId, createEveTypeId } from '@repo/eve-types'
 import type { Markets } from '@repo/markets'
-import type { MoonScanDO, MoonProfitability, OreWithProfitability, StructureProfitability } from '@repo/moon-scan'
+import type { MoonScanDO, MoonProfitability, OreRarity, OreWithProfitability, StructureProfitability } from '@repo/moon-scan'
 import type { VerifiedComposition } from '@repo/moon-scan'
 import type { Universe } from '@repo/universe'
 import type { App } from '../context'
@@ -348,14 +350,7 @@ moonScanRoutes.get('/moons/verified', async (c) => {
 	const reprocessingYield = parseFloat(settings.defaultReprocessingYield)
 	const cycleDays = settings.defaultCycleDays
 
-	const ORE_RARITY: Record<string, string> = {
-		'45490': 'R4', '45491': 'R4', '45492': 'R4', '45493': 'R4',
-		'45494': 'R8', '45495': 'R8', '45496': 'R8', '45497': 'R8',
-		'45498': 'R16', '45499': 'R16', '45500': 'R16', '45501': 'R16',
-		'45502': 'R32', '45503': 'R32', '45504': 'R32', '45506': 'R32',
-		'45510': 'R64', '45511': 'R64', '45512': 'R64', '45513': 'R64',
-	}
-	const RARITY_ORDER: Record<string, number> = { R4: 1, R8: 2, R16: 3, R32: 4, R64: 5 }
+
 
 	function computeMoonProfit(composition: typeof compositions[number]) {
 		let metenoxProfit: number | null = null
@@ -407,10 +402,10 @@ moonScanRoutes.get('/moons/verified', async (c) => {
 		const region = regionId ? regionsById[regionId] : null
 
 		const highestRarity = comp.ores.reduce<string | null>((best, ore) => {
-			const r = ORE_RARITY[ore.oreTypeId]
+			const r = ORE_TYPE_RARITY[ore.oreTypeId]
 			if (!r) return best
 			if (!best) return r
-			return (RARITY_ORDER[r] ?? 0) > (RARITY_ORDER[best] ?? 0) ? r : best
+			return (RARITY_ORDER[r] ?? 0) > (RARITY_ORDER[best as OreRarity] ?? 0) ? r : best
 		}, null)
 
 		const { metenoxProfit, tataraProfit } = computeMoonProfit(comp)
