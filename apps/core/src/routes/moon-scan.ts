@@ -444,20 +444,27 @@ async function computeProfitability(
 	try {
 		const oreTypeIds = composition.ores.map((o) => o.oreTypeId)
 
+		const universe = getUniverseStub(env)
 		const [settings, profiles, typeMaterialsMap] = await Promise.all([
 			moonScan.getExtractionSettings(),
 			moonScan.getStructureProfiles(),
-			getUniverseStub(env).getTypeMaterials(oreTypeIds),
+			universe.getTypeMaterials(oreTypeIds),
 		])
 
-		// Collect all material type IDs needed for pricing
-		const materialTypeIds = getAllMaterialTypeIds()
+		// Collect all unique material type IDs from the live data for pricing + name lookup
+		const liveMaterialTypeIds = [...new Set(
+			Object.values(typeMaterialsMap).flatMap((mats) => mats.map((m) => m.materialTypeId))
+		)]
+
 		const markets = getMarketsStub(env)
-		const priceResponse = await markets.getBatchMarketDataAtTime({
-			regionId: createEveRegionId('universe'),
-			typeIds: [...materialTypeIds, FUEL_BLOCK_TYPE_ID, MAGMATIC_GAS_TYPE_ID].map(createEveTypeId),
-			atTime: new Date(),
-		})
+		const [priceResponse, typeNamesMap] = await Promise.all([
+			markets.getBatchMarketDataAtTime({
+				regionId: createEveRegionId('universe'),
+				typeIds: [...liveMaterialTypeIds, FUEL_BLOCK_TYPE_ID, MAGMATIC_GAS_TYPE_ID].map(createEveTypeId),
+				atTime: new Date(),
+			}),
+			universe.resolveTypeNamesByIds(liveMaterialTypeIds),
+		])
 		const priceMap: Record<string, number> = {}
 		for (const p of priceResponse.prices) {
 			if (p.bestSellPrice) priceMap[p.typeId] = parseFloat(p.bestSellPrice)
@@ -491,11 +498,10 @@ async function computeProfitability(
 				const units = Math.floor(rawUnits)
 				const unitSellPrice = priceMap[mat.materialTypeId] ?? 0
 				const totalValue = units * unitSellPrice
-				// Look up material name from static data (names are correct, only quantities were wrong)
-				const staticOutput = oreData?.outputs.find((o) => o.materialTypeId === mat.materialTypeId)
+				const materialName = typeNamesMap[mat.materialTypeId]?.typeName ?? mat.materialTypeId
 				return {
 					materialTypeId: mat.materialTypeId,
-					materialName: staticOutput?.materialName ?? mat.materialTypeId,
+					materialName,
 					quantity: units,
 					batchSize: 100,
 					batchQty,
