@@ -9,7 +9,6 @@ import { Skeleton } from '@/components/ui/skeleton'
 import { formatISK } from '@/lib/format-utils'
 import { useUserPermissions } from '@/hooks/useUserPermissions'
 
-import { getBatchQuantity } from '../ore-batch-quantities'
 import { RARITY_COLORS, getOreRarity } from '../ore-rarities'
 import { useMoonDetail } from '../hooks'
 
@@ -53,7 +52,7 @@ function OreCompositionTable({ ores }: { ores: OreWithProfitability[] }) {
 						const color = rarity ? RARITY_COLORS[rarity] : '#555'
 						const rows = ore.refinesTo.filter((r) => r.quantity > 0)
 						return rows.map((product, idx) => {
-							const batchQty = getBatchQuantity(ore.oreTypeId, product.materialTypeId)
+							const batchQty = product.batchQty
 							const per100Value = batchQty * parseFloat(product.unitSellPrice)
 							return (
 								<tr key={`${ore.oreTypeId}-${product.materialTypeId}`}>

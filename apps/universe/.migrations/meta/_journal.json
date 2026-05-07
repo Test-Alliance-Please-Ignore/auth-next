@@ -29,6 +29,13 @@
       "when": 1776532421203,
       "tag": "0003_amused_switch",
       "breakpoints": true
+    },
+    {
+      "idx": 4,
+      "version": "7",
+      "when": 1778134778666,
+      "tag": "0004_conscious_raider",
+      "breakpoints": true
     }
   ]
 }

@@ -324,14 +324,20 @@ moonScanRoutes.get('/moons/verified', async (c) => {
 	const regionIds = [...new Set(Object.values(moonRegionMap).filter((id): id is string => !!id))]
 	const regionsById = regionIds.length > 0 ? await universe.resolveRegionsByIds(regionIds) : {}
 
-	// Fetch prices once for all profitability calculations
+	// Collect all unique ore type IDs across all compositions for typeMaterials lookup
+	const allOreTypeIds = [...new Set(compositions.flatMap((c) => c.ores.map((o) => o.oreTypeId)))]
+
+	// Fetch prices and live typeMaterials in parallel
 	const markets = getMarketsStub(c.env)
 	const materialTypeIds = getAllMaterialTypeIds()
-	const priceResponse = await markets.getBatchMarketDataAtTime({
-		regionId: createEveRegionId('universe'),
-		typeIds: [...materialTypeIds, FUEL_BLOCK_TYPE_ID, MAGMATIC_GAS_TYPE_ID].map(createEveTypeId),
-		atTime: new Date(),
-	})
+	const [priceResponse, typeMaterialsMap] = await Promise.all([
+		markets.getBatchMarketDataAtTime({
+			regionId: createEveRegionId('universe'),
+			typeIds: [...materialTypeIds, FUEL_BLOCK_TYPE_ID, MAGMATIC_GAS_TYPE_ID].map(createEveTypeId),
+			atTime: new Date(),
+		}),
+		universe.getTypeMaterials(allOreTypeIds),
+	])
 	const priceMap: Record<string, number> = {}
 	for (const p of priceResponse.prices) {
 		if (p.bestSellPrice) priceMap[p.typeId] = parseFloat(p.bestSellPrice)
@@ -369,14 +375,15 @@ moonScanRoutes.get('/moons/verified', async (c) => {
 			let grossIsk = 0
 			for (const ore of composition.ores) {
 				const oreData = getMoonOreData(ore.oreTypeId)
+				const liveMaterials = typeMaterialsMap[ore.oreTypeId] ?? []
 				const fraction = parseFloat(ore.quantity)
 				const oreVolumeM3 = totalVolume * fraction
 				const unitVolume = oreData?.volumeM3 ?? 10
 				const oreUnits = oreVolumeM3 / unitVolume
-				for (const output of (oreData?.outputs ?? [])) {
-					if (profile.isPassive && MINERAL_TYPE_IDS.has(output.materialTypeId)) continue
-					const rawUnits = Math.floor(oreUnits / output.batchSize) * output.quantity * reprocessingYield
-					grossIsk += Math.floor(rawUnits) * (priceMap[output.materialTypeId] ?? 0)
+				for (const mat of liveMaterials) {
+					if (profile.isPassive && MINERAL_TYPE_IDS.has(mat.materialTypeId)) continue
+					const rawUnits = Math.floor(oreUnits / 100) * mat.quantity * reprocessingYield
+					grossIsk += Math.floor(rawUnits) * (priceMap[mat.materialTypeId] ?? 0)
 				}
 			}
 
@@ -435,9 +442,12 @@ async function computeProfitability(
 	moonScan: MoonScanDO,
 ): Promise<MoonProfitability | null> {
 	try {
-		const [settings, profiles] = await Promise.all([
+		const oreTypeIds = composition.ores.map((o) => o.oreTypeId)
+
+		const [settings, profiles, typeMaterialsMap] = await Promise.all([
 			moonScan.getExtractionSettings(),
 			moonScan.getStructureProfiles(),
+			getUniverseStub(env).getTypeMaterials(oreTypeIds),
 		])
 
 		// Collect all material type IDs needed for pricing
@@ -469,21 +479,26 @@ async function computeProfitability(
 
 		const oresWithProfit: OreWithProfitability[] = composition.ores.map((ore) => {
 			const oreData = getMoonOreData(ore.oreTypeId)
+			const liveMaterials = typeMaterialsMap[ore.oreTypeId] ?? []
 			const fraction = parseFloat(ore.quantity)
 			const oreVolumeM3 = tataraVolume * fraction
-			const unitVolume = oreData?.volumeM3 ?? 8
+			const unitVolume = oreData?.volumeM3 ?? 10
 			const oreUnits = oreVolumeM3 / unitVolume
 
-			const refinesTo = (oreData?.outputs ?? []).map((output) => {
-				const rawUnits = Math.floor(oreUnits / output.batchSize) * output.quantity * reprocessingYield
+			const refinesTo = liveMaterials.map((mat) => {
+				const batchQty = mat.quantity
+				const rawUnits = Math.floor(oreUnits / 100) * batchQty * reprocessingYield
 				const units = Math.floor(rawUnits)
-				const unitSellPrice = priceMap[output.materialTypeId] ?? 0
+				const unitSellPrice = priceMap[mat.materialTypeId] ?? 0
 				const totalValue = units * unitSellPrice
+				// Look up material name from static data (names are correct, only quantities were wrong)
+				const staticOutput = oreData?.outputs.find((o) => o.materialTypeId === mat.materialTypeId)
 				return {
-					materialTypeId: output.materialTypeId,
-					materialName: output.materialName,
+					materialTypeId: mat.materialTypeId,
+					materialName: staticOutput?.materialName ?? mat.materialTypeId,
 					quantity: units,
-					batchSize: output.batchSize,
+					batchSize: 100,
+					batchQty,
 					unitSellPrice: String(unitSellPrice),
 					totalValue: String(totalValue),
 					materialRarity: null,
@@ -509,35 +524,25 @@ async function computeProfitability(
 			const fuelPerHr = parseFloat(profile.fuelPerHr)
 			const magmaticGasPerHr = profile.magmaticGasPerHr ? parseFloat(profile.magmaticGasPerHr) : 0
 
-			let cycleHours: number
-			let totalVolume: number
-			let fuelUnits: number
-			let magmaticGasUnits: number
-
-			if (profile.isPassive) {
-				cycleHours = cycleDays * 24
-				totalVolume = baseRate * parseFloat(profile.nullsecModifier) * cycleHours
-				fuelUnits = fuelPerHr * cycleHours
-				magmaticGasUnits = magmaticGasPerHr * cycleHours
-			} else {
-				cycleHours = cycleDays * 24
-				totalVolume = baseRate * cycleHours
-				fuelUnits = fuelPerHr * cycleHours
-				magmaticGasUnits = 0
-			}
+			const cycleHours = cycleDays * 24
+			const totalVolume = profile.isPassive
+				? baseRate * parseFloat(profile.nullsecModifier) * cycleHours
+				: baseRate * cycleHours
+			const fuelUnits = fuelPerHr * cycleHours
+			const magmaticGasUnits = profile.isPassive ? magmaticGasPerHr * cycleHours : 0
 
 			let grossIsk = 0
 			for (const ore of composition.ores) {
 				const oreData = getMoonOreData(ore.oreTypeId)
+				const liveMaterials = typeMaterialsMap[ore.oreTypeId] ?? []
 				const fraction = parseFloat(ore.quantity)
 				const oreVolumeM3 = totalVolume * fraction
 				const unitVolume = oreData?.volumeM3 ?? 10
 				const oreUnits = oreVolumeM3 / unitVolume
-				for (const output of (oreData?.outputs ?? [])) {
-					if (profile.isPassive && MINERAL_TYPE_IDS.has(output.materialTypeId)) continue
-					const rawUnits = Math.floor(oreUnits / output.batchSize) * output.quantity * reprocessingYield
-					const units = Math.floor(rawUnits)
-					grossIsk += units * (priceMap[output.materialTypeId] ?? 0)
+				for (const mat of liveMaterials) {
+					if (profile.isPassive && MINERAL_TYPE_IDS.has(mat.materialTypeId)) continue
+					const rawUnits = Math.floor(oreUnits / 100) * mat.quantity * reprocessingYield
+					grossIsk += Math.floor(rawUnits) * (priceMap[mat.materialTypeId] ?? 0)
 				}
 			}
 

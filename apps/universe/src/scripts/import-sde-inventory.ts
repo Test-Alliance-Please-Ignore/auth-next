@@ -5,7 +5,7 @@ import { sql } from 'drizzle-orm'
 import { z } from 'zod'
 
 import { createDb } from '../db'
-import { invCategories, invFlags, invGroups, invMarketGroups, invTypes } from '../db/schema'
+import { invCategories, invFlags, invGroups, invMarketGroups, invTypes, typeMaterials } from '../db/schema'
 import {
 	getEnglishName,
 	prepareSdeDataDir,
@@ -66,6 +66,14 @@ const invTypeSchema = z.object({
 	iconID: z.number().nullable().optional(),
 	soundID: z.number().nullable().optional(),
 	graphicID: z.number().nullable().optional(),
+})
+
+const typeMaterialSchema = z.object({
+	_key: z.number(),
+	materials: z.array(z.object({
+		materialTypeID: z.number(),
+		quantity: z.number(),
+	})).optional(),
 })
 
 const dogmaEffectSchema = z.object({
@@ -397,6 +405,39 @@ async function importFlags(db: ReturnType<typeof createDb>, sdeDataDir: string) 
 	console.log(`  ✓ ${rows.length} flags`)
 }
 
+async function importTypeMaterials(db: ReturnType<typeof createDb>, sdeDataDir: string) {
+	console.log('Importing type materials...')
+	const raw = await readSdeJsonlTable<z.input<typeof typeMaterialSchema>>(sdeDataDir, 'typeMaterials.jsonl')
+	const data = z.array(typeMaterialSchema).parse(raw)
+
+	const rows: { typeId: string; materialTypeId: string; quantity: number }[] = []
+	for (const entry of data) {
+		if (!entry.materials) continue
+		const typeId = entry._key.toString()
+		for (const mat of entry.materials) {
+			rows.push({ typeId, materialTypeId: mat.materialTypeID.toString(), quantity: mat.quantity })
+		}
+	}
+
+	const reportProgress = createProgressReporter('type materials', rows.length)
+	const BATCH_SIZE = 500
+	let processed = 0
+	for (let i = 0; i < rows.length; i += BATCH_SIZE) {
+		const batch = rows.slice(i, i + BATCH_SIZE)
+		await db
+			.insert(typeMaterials)
+			.values(batch)
+			.onConflictDoUpdate({
+				target: [typeMaterials.typeId, typeMaterials.materialTypeId],
+				set: { quantity: sql`excluded.quantity` },
+			})
+		processed += batch.length
+		reportProgress(processed)
+	}
+
+	console.log(`  ✓ ${rows.length} type materials`)
+}
+
 async function storeSdeVersion(
 	db: ReturnType<typeof createDb>,
 	sdeMetadata: SdeMetadata | null
@@ -456,6 +497,7 @@ async function main() {
 	await importGroups(db, sdeDataDir)
 	await importMarketGroups(db, sdeDataDir)
 	await importTypes(db, sdeDataDir)
+	await importTypeMaterials(db, sdeDataDir)
 	await importFlags(db, sdeDataDir)
 	await storeSdeVersion(db, sdeMetadata)
 

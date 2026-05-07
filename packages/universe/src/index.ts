@@ -61,6 +61,11 @@ export * from './type-metadata'
 // Export geography types
 export * from './geography'
 
+export interface TypeMaterial {
+	materialTypeId: string
+	quantity: number
+}
+
 /**
  * Public RPC interface for Universe Durable Object
  *
@@ -365,4 +370,11 @@ export interface Universe {
 	 * @returns Array of killmail records
 	 */
 	getKillmailsByTimeRange(startTime: Date, endTime: Date): Promise<Killmail[]>
+
+	/**
+	 * Get reprocessing materials for one or more type IDs
+	 * @param typeIds - Array of type IDs to look up
+	 * @returns Record mapping each typeId to its list of output materials
+	 */
+	getTypeMaterials(typeIds: string[]): Promise<Record<string, TypeMaterial[]>>
 }

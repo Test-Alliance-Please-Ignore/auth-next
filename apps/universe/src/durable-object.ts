@@ -22,6 +22,7 @@ import {
 	invTypes,
 	moonResources,
 	moons,
+	typeMaterials,
 	universeConstellations,
 	universeNpcStations,
 	universePlanets,
@@ -54,6 +55,7 @@ import type {
 	UniverseSolarSystem,
 	UniverseStargate,
 	UniverseStaticMoon,
+	TypeMaterial,
 	TypeMetadata,
 	Universe,
 	UniverseMoon,
@@ -1896,6 +1898,16 @@ export class UniverseDO extends DurableObject<Env, {}> implements Universe {
 	 */
 	async getKillmailsByTimeRange(startTime: Date, endTime: Date): Promise<Killmail[]> {
 		return this.killmailService.getKillmailsByTimeRange(startTime, endTime)
+	}
+
+	async getTypeMaterials(typeIds: string[]): Promise<Record<string, TypeMaterial[]>> {
+		if (typeIds.length === 0) return {}
+		const rows = await this.db.select().from(typeMaterials).where(inArray(typeMaterials.typeId, typeIds))
+		const result: Record<string, TypeMaterial[]> = Object.fromEntries(typeIds.map((id) => [id, []]))
+		for (const row of rows) {
+			result[row.typeId].push({ materialTypeId: row.materialTypeId, quantity: row.quantity })
+		}
+		return result
 	}
 
 	/**

@@ -93,6 +93,8 @@ export interface OreRefineProduct {
 	materialName: string
 	quantity: number
 	batchSize: number
+	/** Per-100-unit batch output quantity from SDE typeMaterials */
+	batchQty: number
 	unitSellPrice: string
 	totalValue: string
 	/** Rarity of this material's source ore, for coloring the badge */

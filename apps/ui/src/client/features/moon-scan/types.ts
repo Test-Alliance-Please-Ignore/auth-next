@@ -139,6 +139,7 @@ export interface OreRefineProduct {
 	materialName: string
 	quantity: number
 	batchSize: number
+	batchQty: number
 	unitSellPrice: string
 	totalValue: string
 	materialRarity: string | null
