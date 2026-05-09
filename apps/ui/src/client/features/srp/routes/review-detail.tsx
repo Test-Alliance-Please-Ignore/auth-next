@@ -1,6 +1,8 @@
 import { useState } from 'react'
 import { Link, Navigate, useNavigate, useParams } from 'react-router-dom'
 
+import { roundToMillion } from '@repo/srp'
+import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Card } from '@/components/ui/card'
 import { Container } from '@/components/ui/container'
@@ -18,6 +20,25 @@ import { RequestStatusBadge } from '../components/RequestStatusBadge'
 import { ReviewRequestForm } from '../components/ReviewRequestForm'
 import { useRequest, useRequestComments, useUpdateReviewState } from '../hooks'
 import { formatISK, getKillmailUrl, getRequestCharacterRole } from '../utils'
+
+function formatAppliedModifierValue(modifier: {
+	modifierType: 'deduction' | 'bonus'
+	mode: 'percentage' | 'value'
+	amount: number
+	computedAmountISK: string
+}): string {
+	const sign = modifier.modifierType === 'deduction' ? '−' : '+'
+	const computedAmount = Number.parseFloat(modifier.computedAmountISK)
+	const roundedToNearestMillion = Number.isFinite(computedAmount)
+		? roundToMillion(String(Math.round(computedAmount)))
+		: '0'
+
+	if (modifier.mode === 'value') {
+		return `${sign}${formatISK(roundedToNearestMillion)}`
+	}
+
+	return `${sign}${modifier.amount}% (${formatISK(roundedToNearestMillion)})`
+}
 
 export default function ReviewRequestDetail() {
 	const { id } = useParams<{ id: string }>()
@@ -287,6 +308,58 @@ export default function ReviewRequestDetail() {
 											{formatISK(request.approvedAmount)}
 										</div>
 									</div>
+								)}
+							</div>
+						</Card>
+						<Card className="p-6">
+							<h3 className="mb-4 font-semibold">Review Adjustments</h3>
+							<div className="grid gap-4 sm:grid-cols-2">
+								<div>
+									<div className="text-sm text-muted-foreground">Coverage Policy</div>
+									<div className="font-medium">{request.appliedModifierPolicyName ?? 'None'}</div>
+								</div>
+								<div>
+									<div className="text-sm text-muted-foreground">Cap Policy</div>
+									<div className="font-medium">{request.appliedCapPolicyName ?? 'None'}</div>
+								</div>
+							</div>
+
+							<div className="mt-4">
+								<div className="text-sm text-muted-foreground">Bonuses / Deductions</div>
+								{request.appliedModifiers && request.appliedModifiers.length > 0 ? (
+									<ul className="mt-2 space-y-1 text-sm">
+										{request.appliedModifiers.map((modifier: {
+											id: string
+											modifierType: 'deduction' | 'bonus'
+											mode: 'percentage' | 'value'
+											amount: number
+											reason: string
+											computedAmountISK: string
+										}) => (
+											<li
+												key={modifier.id}
+												className={
+													modifier.modifierType === 'deduction'
+														? 'flex items-center gap-2 text-destructive'
+														: 'flex items-center gap-2 text-green-600'
+												}
+											>
+												<Badge
+													variant={
+														modifier.modifierType === 'deduction' ? 'destructive' : 'success'
+													}
+												>
+													{modifier.modifierType === 'deduction' ? 'Deduction' : 'Bonus'}
+												</Badge>
+												<span className="font-semibold">
+													{formatAppliedModifierValue(modifier)}
+												</span>
+												<span className="text-foreground">: {modifier.reason}</span>
+											</li>
+										))}
+									</ul>
+								) : (
+									<div className="mt-1 text-sm font-medium">None</div>
 								)}
 							</div>
 						</Card>
