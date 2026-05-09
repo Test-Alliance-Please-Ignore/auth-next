@@ -43,6 +43,7 @@ export default function SkillPlansList() {
 		categoryId: undefined,
 		maintainerType: 'all',
 	})
+	const [selectedCharacterId, setSelectedCharacterId] = useState<string>('all')
 
 	const { data: plansResponse, isLoading: plansLoading } = useSkillPlans({
 		search: filters.search || undefined,
@@ -93,7 +94,13 @@ export default function SkillPlansList() {
 		return groupPlansByCategory(filteredPlans)
 	}, [filteredPlans])
 
-	const characterSkillQueries = useCharacterSkillLevelsForCharacters(user?.characters ?? [])
+	const selectedCharacters = useMemo(() => {
+		if (!user?.characters?.length) return []
+		if (selectedCharacterId === 'all') return user.characters
+		return user.characters.filter((character) => character.characterId === selectedCharacterId)
+	}, [selectedCharacterId, user?.characters])
+
+	const characterSkillQueries = useCharacterSkillLevelsForCharacters(selectedCharacters)
 
 	const planSkillsQueries = useQueries({
 		queries: filteredPlans.map((plan) => ({
@@ -110,7 +117,7 @@ export default function SkillPlansList() {
 			ReturnType<typeof summarizeReadinessStatuses> & { hasNoSkills: boolean }
 		>()
 
-		if (!user?.characters?.length) {
+		if (!selectedCharacters.length) {
 			return result
 		}
 
@@ -133,7 +140,7 @@ export default function SkillPlansList() {
 				continue
 			}
 
-			const statuses = user.characters.map((character, characterIndex) => {
+			const statuses = selectedCharacters.map((character, characterIndex) => {
 				if (!character.hasValidToken) {
 					return 'incomplete' as const
 				}
@@ -169,7 +176,7 @@ export default function SkillPlansList() {
 		}
 
 		return result
-	}, [characterSkillQueries, filteredPlans, planSkillsQueries, user])
+	}, [characterSkillQueries, filteredPlans, planSkillsQueries, selectedCharacters])
 
 	const readinessLoadingByPlanId = useMemo(() => {
 		const loading = new Map<string, boolean>()
@@ -229,7 +236,7 @@ export default function SkillPlansList() {
 						<CardTitle>Filters</CardTitle>
 					</CardHeader>
 					<CardContent>
-						<div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+						<div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-4">
 							{/* Search */}
 							<div className="space-y-2">
 								<Label htmlFor="search">Search</Label>
@@ -245,43 +252,45 @@ export default function SkillPlansList() {
 								</div>
 							</div>
 
+							{/* Character filter */}
+							<div className="space-y-2">
+								<Label htmlFor="character-filter">Character</Label>
+								<Select
+									value={selectedCharacterId}
+									onValueChange={setSelectedCharacterId}
+									inputId="character-filter"
+									searchable
+									options={[
+										{ value: 'all', label: 'All Characters' },
+										...((user?.characters ?? []).map((character) => ({
+											value: character.characterId,
+											label: character.characterName,
+										}))),
+									]}
+									placeholder="All Characters"
+								/>
+							</div>
+
 							{/* Category filter */}
 							<div className="space-y-2">
 								<Label htmlFor="category">Category</Label>
 								<Select
 									value={filters.categoryId || 'all'}
 									onValueChange={(value) =>
-										setFilters({ ...filters, categoryId: value === 'all' ? undefined : value })
+										setFilters({
+											...filters,
+											categoryId: value === 'all' ? undefined : value,
+										})
 									}
 									inputId="category"
 									options={[
 										{ value: 'all', label: 'All categories' },
-										...(categories?.map((category) => ({ value: category.id,
+										...(categories?.map((category) => ({
+											value: category.id,
 											label: category.name,
 										})) ?? []),
 									]}
 									placeholder="All categories"
-								/>
-							</div>
-
-							{/* Status filter */}
-							<div className="space-y-2">
-								<Label htmlFor="status">Status</Label>
-								<Select
-									value={filters.published === undefined ? 'all' : String(filters.published)}
-									onValueChange={(value) =>
-										setFilters({
-											...filters,
-											published: value === 'all' ? undefined : value === 'true',
-										})
-									}
-									inputId="status"
-									options={[
-										{ value: 'all', label: 'All statuses' },
-										{ value: 'true', label: 'Published' },
-										{ value: 'false', label: 'Draft' },
-									]}
-									placeholder="All statuses"
 								/>
 							</div>
 
@@ -303,6 +312,27 @@ export default function SkillPlansList() {
 										{ value: 'group', label: 'Group maintained' },
 									]}
 									placeholder="All maintainers"
+								/>
+							</div>
+
+							{/* Status filter */}
+							<div className="space-y-2">
+								<Label htmlFor="status">Status</Label>
+								<Select
+									value={filters.published === undefined ? 'all' : String(filters.published)}
+									onValueChange={(value) =>
+										setFilters({
+											...filters,
+											published: value === 'all' ? undefined : value === 'true',
+										})
+									}
+									inputId="status"
+									options={[
+										{ value: 'all', label: 'All statuses' },
+										{ value: 'true', label: 'Published' },
+										{ value: 'false', label: 'Draft' },
+									]}
+									placeholder="All statuses"
 								/>
 							</div>
 						</div>
