@@ -45,15 +45,35 @@ export default function PaymentsQueue() {
 }
 
 function PaymentStack() {
-	const { data, isLoading, error } = useRequestsByStatus('approved', { limit: 100 })
+	const { data, isLoading, isFetching, error, refetch } = useRequestsByStatus('approved', { limit: 100 })
 	const { data: payoutTotalData } = usePendingPayoutTotal()
 	const [dismissed, setDismissed] = useState<Set<string>>(new Set())
 	const [ghosts, setGhosts] = useState<Map<string, GhostExitCard>>(new Map())
+	const [showLoadWarning, setShowLoadWarning] = useState(false)
 	const markPaid = useMarkPaid()
 	const containerRef = useRef<HTMLDivElement>(null)
 	const cardRefs = useRef<Map<string, HTMLDivElement>>(new Map())
 	const previousCardTopsRef = useRef<Map<string, number>>(new Map())
+	const hasMountedRef = useRef(false)
 	const rawRequests: SRPRequestResponse[] = (data?.requests ?? []) as SRPRequestResponse[]
+
+	useEffect(() => {
+		if (!hasMountedRef.current) {
+			hasMountedRef.current = true
+			void refetch()
+		}
+	}, [refetch])
+
+	useEffect(() => {
+		if (!isLoading && !isFetching) {
+			setShowLoadWarning(false)
+			return
+		}
+		const timeout = window.setTimeout(() => {
+			setShowLoadWarning(true)
+		}, 8000)
+		return () => window.clearTimeout(timeout)
+	}, [isFetching, isLoading])
 
 	useEffect(() => {
 		if (dismissed.size === 0) {
@@ -112,7 +132,19 @@ function PaymentStack() {
 		previousCardTopsRef.current = nextCardTops
 	}, [visibleRequestIds])
 
-	if (isLoading) {
+	if (!data && (isLoading || isFetching)) {
+		if (showLoadWarning) {
+			return (
+				<div className="rounded-lg border border-muted p-6 text-center">
+					<p className="text-sm text-muted-foreground">
+						Payment queue is taking longer than expected.
+					</p>
+					<Button variant="secondary" size="sm" className="mt-3" onClick={() => void refetch()}>
+						Retry loading queue
+					</Button>
+				</div>
+			)
+		}
 		return (
 			<div className="space-y-3 pt-4">
 				{[...Array(3)].map((_, i) => (
