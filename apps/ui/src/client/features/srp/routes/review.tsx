@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react'
 import { Link, Navigate } from 'react-router-dom'
 
+import { UserSearchPaginationControls } from '@/components/user-search-pagination-controls'
 import { Button } from '@/components/ui/button'
 import { DateRangeInput } from '@/components/ui/date-range-input'
 import { Card, CardContent } from '@/components/ui/card'
@@ -65,6 +66,18 @@ export default function ReviewQueue() {
 		return 'pending'
 	})
 	const [filters, setFilters] = useState<ReviewQueueFilters>({})
+	const [page, setPage] = useState(1)
+	const [pageSize, setPageSize] = useState(25)
+
+	useEffect(() => {
+		setPage(1)
+	}, [
+		filters.characterName,
+		filters.shipTypeName,
+		filters.solarSystemName,
+		filters.dateFrom,
+		filters.dateTo,
+	])
 
 	const canAccessReviewQueue =
 		isAdmin ||
@@ -79,6 +92,7 @@ export default function ReviewQueue() {
 	const handleTabChange = (value: string) => {
 		const nextTab = value as RequestStatus
 		setActiveTab(nextTab)
+		setPage(1)
 		if (typeof window !== 'undefined') {
 			window.sessionStorage.setItem(REVIEW_QUEUE_ACTIVE_TAB_STORAGE_KEY, nextTab)
 		}
@@ -202,16 +216,42 @@ export default function ReviewQueue() {
 						</TabsList>
 					</Tabs>
 
-					<ReviewTabContent status={activeTab} filters={filters} />
+					<ReviewTabContent
+						status={activeTab}
+						filters={filters}
+						page={page}
+						pageSize={pageSize}
+						onPageChange={setPage}
+						onPageSizeChange={(nextPageSize) => {
+							setPageSize(nextPageSize)
+							setPage(1)
+						}}
+					/>
 				</CardContent>
 			</Card>
 		</Container>
 	)
 }
 
-function ReviewTabContent({ status, filters }: { status: RequestStatus; filters: ReviewQueueFilters }) {
+function ReviewTabContent({
+	status,
+	filters,
+	page,
+	pageSize,
+	onPageChange,
+	onPageSizeChange,
+}: {
+	status: RequestStatus
+	filters: ReviewQueueFilters
+	page: number
+	pageSize: number
+	onPageChange: (page: number) => void
+	onPageSizeChange: (pageSize: number) => void
+}) {
+	const offset = (page - 1) * pageSize
 	const { data, isLoading, isFetching, error, refetch } = useRequestsByStatus(status, {
-		limit: 50,
+		limit: pageSize,
+		offset,
 		...filters,
 	})
 	const [showLoadWarning, setShowLoadWarning] = useState(false)
@@ -233,6 +273,8 @@ function ReviewTabContent({ status, filters }: { status: RequestStatus; filters:
 			filters.dateFrom ||
 			filters.dateTo
 	)
+	const totalCount = data?.total ?? 0
+	const hasPagination = Math.ceil(totalCount / pageSize) > 1
 
 	if (!data && (isLoading || isFetching)) {
 		if (showLoadWarning) {
@@ -280,6 +322,19 @@ function ReviewTabContent({ status, filters }: { status: RequestStatus; filters:
 
 	return (
 		<div>
+			{hasPagination && (
+				<div className="mb-3 rounded-md border p-3">
+					<UserSearchPaginationControls
+						totalCount={totalCount}
+						page={page}
+						pageSize={pageSize}
+						onPageChange={onPageChange}
+						onPageSizeChange={onPageSizeChange}
+						pageSizeOptions={[10, 25, 50, 100]}
+						itemLabel="requests"
+					/>
+				</div>
+			)}
 			<div className="rounded-md border">
 				<Table>
 					<TableHeader>
@@ -372,10 +427,18 @@ function ReviewTabContent({ status, filters }: { status: RequestStatus; filters:
 					</TableBody>
 				</Table>
 			</div>
-			{data && data.total > requests.length && (
-				<p className="mt-2 text-center text-sm text-muted-foreground">
-					Showing {requests.length} of {data.total}
-				</p>
+			{hasPagination && (
+				<div className="mt-3 rounded-md border p-3">
+					<UserSearchPaginationControls
+						totalCount={totalCount}
+						page={page}
+						pageSize={pageSize}
+						onPageChange={onPageChange}
+						onPageSizeChange={onPageSizeChange}
+						pageSizeOptions={[10, 25, 50, 100]}
+						itemLabel="requests"
+					/>
+				</div>
 			)}
 		</div>
 	)
