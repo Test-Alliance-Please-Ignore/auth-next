@@ -1304,6 +1304,9 @@ export class SrpDO extends DurableObject<Env> implements Srp {
 	 * Helper: Format request for response
 	 */
 	private formatRequest(request: any): SRPRequestResponse {
+		const effectiveApprovedAmount =
+			request.requestStatus === 'rejected' ? '0' : request.approvedAmount
+
 		return {
 			id: request.id,
 			userId: request.userId,
@@ -1321,7 +1324,7 @@ export class SrpDO extends DurableObject<Env> implements Srp {
 			solarSystemName: request.solarSystemName ?? undefined,
 			contextText: request.contextText ?? undefined,
 			requestStatus: request.requestStatus,
-			approvedAmount: request.approvedAmount ?? undefined,
+			approvedAmount: effectiveApprovedAmount ?? undefined,
 			reviewerId: request.reviewerId ?? undefined,
 			reviewerCharacterName: request.reviewerCharacterName ?? undefined,
 			reviewedAt: request.reviewedAt?.toISOString(),
