@@ -196,6 +196,8 @@ moonScanRoutes.get('/moons/region/:regionId', async (c) => {
 	const coverageMap = new Map(coverage.map((c) => [c.moonId, c]))
 
 	// Deduplicate jump links (each jump has two stargates)
+	const regionSystemIds = new Set(systems.map((s) => s.solarSystemId))
+	const borderSystemIds = new Set<string>()
 	const jumps = new Set<string>()
 	const jumpLinks: Array<{ from: string; to: string }> = []
 	for (const sg of stargates) {
@@ -205,7 +207,13 @@ moonScanRoutes.get('/moons/region/:regionId', async (c) => {
 			jumps.add(key)
 			jumpLinks.push({ from: sg.solarSystemId, to: sg.destinationSolarSystemId })
 		}
+		if (!regionSystemIds.has(sg.destinationSolarSystemId)) {
+			borderSystemIds.add(sg.destinationSolarSystemId)
+		}
 	}
+
+	// Resolve region names for border (neighboring-region) systems
+	const borderRegions = await universe.getRegionsBySystemIds([...borderSystemIds])
 
 	// Aggregate per-system moon coverage
 	const systemMoonCoverage = new Map<string, { total: number; verified: number }>()
@@ -230,6 +238,7 @@ moonScanRoutes.get('/moons/region/:regionId', async (c) => {
 			verifiedCount: systemMoonCoverage.get(s.solarSystemId)?.verified ?? 0,
 		})),
 		jumpLinks,
+		borderRegions,
 	})
 })
 

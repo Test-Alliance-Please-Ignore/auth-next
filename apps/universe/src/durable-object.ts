@@ -1760,6 +1760,24 @@ export class UniverseDO extends DurableObject<Env, {}> implements Universe {
 	/**
 	 * Get unique cross-region stargate connections (for drawing inter-region lines on universe map).
 	 */
+	async getRegionsBySystemIds(systemIds: string[]): Promise<Record<string, { regionId: string; regionName: string }>> {
+		if (systemIds.length === 0) return {}
+		const rows = await this.db
+			.select({
+				solarSystemId: universeSolarSystems.solarSystemId,
+				regionId: universeSolarSystems.regionId,
+				regionName: universeRegions.regionName,
+			})
+			.from(universeSolarSystems)
+			.innerJoin(universeRegions, eq(universeSolarSystems.regionId, universeRegions.regionId))
+			.where(inArray(universeSolarSystems.solarSystemId, systemIds))
+		const result: Record<string, { regionId: string; regionName: string }> = {}
+		for (const row of rows) {
+			result[row.solarSystemId] = { regionId: row.regionId, regionName: row.regionName }
+		}
+		return result
+	}
+
 	async getRegionConnections(regionIds: string[]): Promise<Array<{ fromRegionId: string; toRegionId: string }>> {
 		if (regionIds.length === 0) return []
 

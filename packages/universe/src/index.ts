@@ -292,6 +292,11 @@ export interface Universe {
 	getMoonRegionIds(moonIds: string[]): Promise<Record<string, string>>
 
 	/**
+	 * Get region info for a set of solar system IDs (for labelling border nodes on region maps).
+	 */
+	getRegionsBySystemIds(systemIds: string[]): Promise<Record<string, { regionId: string; regionName: string }>>
+
+	/**
 	 * Get unique cross-region stargate connections (for drawing inter-region lines on universe map).
 	 */
 	getRegionConnections(regionIds: string[]): Promise<Array<{ fromRegionId: string; toRegionId: string }>>

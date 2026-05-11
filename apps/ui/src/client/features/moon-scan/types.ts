@@ -104,6 +104,7 @@ export interface RegionDetail {
 	regionId: string
 	systems: RegionSystemEntry[]
 	jumpLinks: JumpLink[]
+	borderRegions: Record<string, { regionId: string; regionName: string }>
 }
 
 // System detail

@@ -67,6 +67,8 @@ export default function RegionPage() {
 
 	useEffect(() => {
 		if (!regionName || regionName === regionId) return
+		setCoords(null)
+		setCoordsError(false)
 		const file = regionNameToFile(regionName)
 		fetch(`/dotlan/${file}.json`)
 			.then((r) => {
@@ -167,6 +169,7 @@ export default function RegionPage() {
 						systems={detail.systems}
 						jumpLinks={detail.jumpLinks}
 						coords={coords}
+						borderRegions={detail.borderRegions}
 					/>
 				</div>
 			)}

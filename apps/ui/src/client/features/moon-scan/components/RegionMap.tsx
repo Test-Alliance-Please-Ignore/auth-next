@@ -13,6 +13,7 @@ interface Props {
 	systems: RegionSystemEntry[]
 	jumpLinks: JumpLink[]
 	coords: DotlanCoords
+	borderRegions: Record<string, { regionId: string; regionName: string }>
 }
 
 // Dotlan system node dimensions (matching old tool).
@@ -55,17 +56,29 @@ interface TooltipState {
 	scannedCount: number
 }
 
-export function RegionMap({ systems, jumpLinks, coords }: Props) {
+export function RegionMap({ systems, jumpLinks, coords, borderRegions = {} }: Props) {
 	const navigate = useNavigate()
 	const [tooltip, setTooltip] = useState<TooltipState | null>(null)
 	const [tooltipPos, setTooltipPos] = useState({ x: 0, y: 0 })
 
 	const systemMap = new Map(systems.map((s) => [s.solarSystemId, s]))
-	// Only draw jump lines between systems that are in THIS region's data.
-	// Dotlan JSON files include gateway nodes from neighboring regions at
-	// the edges — filtering to known systems prevents lines to empty space.
 	const systemIds = new Set(systems.map((s) => s.solarSystemId))
-	const [vx, vy, vw, vh] = coords.viewbox
+	const coordSystems: Record<string, [number, number]> = coords.systems ?? {}
+	// Border nodes = systems in the dotlan JSON that aren't in this region,
+	// but only those that have an actual stargate connection in jumpLinks.
+	// Border nodes = systems in the dotlan JSON that aren't in this region,
+	// but only those with an actual stargate connection in jumpLinks.
+	const borderSystemIds = new Set(
+		jumpLinks.flatMap((l) => [l.from, l.to]).filter((id) => !systemIds.has(id) && id in coordSystems)
+	)
+	// Expand the viewbox so nodes at the edges get equal breathing room on all sides.
+	const PAD = 20
+	const allCoords = Object.values(coordSystems)
+	const minX = (allCoords.length ? Math.min(...allCoords.map((p) => p[0])) : 0) - RW / 2 - PAD
+	const minY = (allCoords.length ? Math.min(...allCoords.map((p) => p[1])) : 0) + OY - RH / 2 - PAD
+	const maxX = (allCoords.length ? Math.max(...allCoords.map((p) => p[0])) : 1024) + RW / 2 + PAD
+	const maxY = (allCoords.length ? Math.max(...allCoords.map((p) => p[1])) : 768) + OY + RH / 2 + PAD
+	const [vx, vy, vw, vh] = [minX, minY, maxX - minX, maxY - minY]
 
 	function handleMouseMove(e: React.MouseEvent<HTMLDivElement>) {
 		const br = e.currentTarget.getBoundingClientRect()
@@ -87,12 +100,17 @@ export function RegionMap({ systems, jumpLinks, coords }: Props) {
 				style={{ minWidth: '600px', maxHeight: '75vh' }}
 				preserveAspectRatio="xMidYMid meet"
 			>
-				{/* Jump links — intra-region only */}
+				{/* Jump links — intra-region and cross-region border links */}
 				{jumpLinks.map((link, i) => {
-					if (!systemIds.has(link.from) || !systemIds.has(link.to)) return null
-					const fromPos = coords.systems[link.from]
-					const toPos = coords.systems[link.to]
+					const fromIsBorder = borderSystemIds.has(link.from)
+					const toIsBorder = borderSystemIds.has(link.to)
+					// Skip if neither end is in the dotlan coords
+					if (!systemIds.has(link.from) && !fromIsBorder) return null
+					if (!systemIds.has(link.to) && !toIsBorder) return null
+					const fromPos = coordSystems[link.from]
+					const toPos = coordSystems[link.to]
 					if (!fromPos || !toPos) return null
+					const isBorderLink = fromIsBorder || toIsBorder
 					return (
 						<line
 							key={i}
@@ -100,14 +118,56 @@ export function RegionMap({ systems, jumpLinks, coords }: Props) {
 							y1={fromPos[1] + OY}
 							x2={toPos[0] + OX}
 							y2={toPos[1] + OY}
-							stroke="#2a3a4a"
+							stroke={isBorderLink ? '#4a6a8a' : '#2a3a4a'}
 							strokeWidth={1}
+							strokeDasharray={isBorderLink ? '3 2' : undefined}
 						/>
 					)
 				})}
 
+				{/* Border nodes — neighboring-region systems shown as exit indicators */}
+				{[...borderSystemIds].map((sysId) => {
+					const pos = coordSystems[sysId]
+					if (!pos) return null
+					const region = borderRegions[sysId]
+					const cx = pos[0] + OX
+					const cy = pos[1] + OY
+					return (
+						<g
+							key={`border-${sysId}`}
+							style={{ cursor: region ? 'pointer' : 'default' }}
+							onClick={() => region && navigate(`/moon-scan/region/${region.regionId}`)}
+						>
+							<rect
+								x={cx - RW / 2}
+								y={cy - RH / 2}
+								width={RW}
+								height={RH}
+								rx={4}
+								ry={4}
+								fill="#0d1a26"
+								stroke="#3a5a7a"
+								strokeWidth={1}
+								strokeDasharray="3 2"
+							/>
+							<text
+								x={cx}
+								y={cy}
+								textAnchor="middle"
+								dominantBaseline="central"
+								fontSize={6}
+								fontFamily="Arial, Helvetica, sans-serif"
+								fill="#4a8aaa"
+								style={{ pointerEvents: 'none' }}
+							>
+								{region ? region.regionName : '?'}
+							</text>
+						</g>
+					)
+				})}
+
 				{/* System nodes */}
-				{Object.entries(coords.systems).map(([sysId, pos]) => {
+				{Object.entries(coordSystems).map(([sysId, pos]) => {
 					const sys = systemMap.get(sysId)
 					if (!sys) return null
 
@@ -220,6 +280,10 @@ export function RegionMap({ systems, jumpLinks, coords }: Props) {
 				<span className="flex items-center gap-1.5">
 					<span className="inline-block h-3 w-8 rounded" style={{ background: '#151c24', border: '1px solid #2a3644' }} />
 					No Moons
+				</span>
+				<span className="flex items-center gap-1.5">
+					<span className="inline-block h-3 w-8 rounded" style={{ background: '#0d1a26', border: '1px dashed #3a5a7a' }} />
+					Other Region
 				</span>
 				<span className="text-muted-foreground/60">Click eligible system to view details</span>
 			</div>
