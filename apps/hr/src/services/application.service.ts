@@ -48,12 +48,13 @@ export class ApplicationService {
 
 		if (filters.characterIds && filters.characterIds.length > 0) {
 			const mainCharacterMatch = inArray(applications.characterId, filters.characterIds)
-			const altCharacterMatch = sql<boolean>`exists (
-				select 1
-				from ${applicationAlts}
-				where ${applicationAlts.applicationId} = ${applications.id}
-				and ${inArray(applicationAlts.characterId, filters.characterIds)}
-			)`
+			const altCharacterMatch = inArray(
+				applications.id,
+				this.ctx.db
+					.select({ applicationId: applicationAlts.applicationId })
+					.from(applicationAlts)
+					.where(inArray(applicationAlts.characterId, filters.characterIds))
+			)
 			conditions.push(or(mainCharacterMatch, altCharacterMatch))
 		}
 

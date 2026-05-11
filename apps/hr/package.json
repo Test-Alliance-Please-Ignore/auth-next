@@ -17,7 +17,8 @@
 		"fix:workers-types": "run-wrangler-types",
 		"preview": "run-vite-preview",
 		"tail": "run-wrangler-tail",
-		"test": "run-vitest"
+		"test": "vitest --testTimeout=15000 -c ./vitest.config.node.ts",
+		"test:integration": "vitest --testTimeout=15000 -c ./vitest.config.ts"
 	},
 	"dependencies": {
 		"@neondatabase/serverless": "1.0.2",
