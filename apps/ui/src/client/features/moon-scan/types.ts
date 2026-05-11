@@ -162,6 +162,7 @@ export interface StructureProfitability {
 	fuelCost: string
 	magmaticGasCost: string | null
 	profit: string
+	ores: OreWithProfitability[]
 }
 
 export interface MoonProfitability {

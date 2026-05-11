@@ -39,7 +39,7 @@ export interface ExtractionResult {
 	magmaticGasCostIsk: number
 	profitIsk: number
 	cycleHours: number
-	// true for Metenox (24h), false for Athanor/Tatara (cycle-based)
+	// true for Metenox (passive, 24h fixed), false for Tatara (cycle-based)
 	isPassive: boolean
 }
 
@@ -79,7 +79,7 @@ export function calculateExtraction(input: ExtractionInput): ExtractionResult {
 		fuelUnits = fuelPerHr * cycleHours
 		magmaticGasUnits = magmaticGasPerHr * cycleHours
 	} else {
-		// Athanor / Tatara: cycle-based
+		// Tatara: cycle-based
 		const minDays = profile.minCycleDays ?? 1
 		const maxDays = profile.maxCycleDays ?? 56
 		const clampedDays = Math.max(minDays, Math.min(maxDays, cycleDays))

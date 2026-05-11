@@ -105,159 +105,111 @@ function MaterialCell({ product, batchQty }: { product: OreRefineProduct; batchQ
 	)
 }
 
-interface MaterialBreakdownRow {
-	materialTypeId: string
-	materialName: string
-	quantity: number
-	totalValue: number
+function StructurePanel({ structure }: { structure: StructureProfitability }) {
+	const LABELS: Record<string, string> = { metenox: 'Metenox', tatara: 'Refinery' }
+	const label = LABELS[structure.structureType] ?? structure.structureType
+	const gross = parseFloat(structure.grossIsk)
+	const fuel = parseFloat(structure.fuelCost)
+	const magmatic = parseFloat(structure.magmaticGasCost ?? '0')
+	const profit = parseFloat(structure.profit)
+
+	return (
+		<div className="p-4">
+			<h6 className="text-sm font-medium mb-3">{label} (per {structure.cycleDays}d cycle)</h6>
+
+			<table className="w-full text-xs mb-3">
+				<thead>
+					<tr className="border-b text-muted-foreground">
+						<th className="pb-1 font-medium text-left">Ore / Material</th>
+						<th className="pb-1 font-medium text-right">Qty</th>
+						<th className="pb-1 font-medium text-right">Value</th>
+					</tr>
+				</thead>
+				<tbody className="divide-y divide-border/50">
+					{structure.ores.map((ore) => {
+						const oreRarity = getOreRarity(ore.oreTypeId)
+						const oreColor = oreRarity ? RARITY_COLORS[oreRarity] : '#555'
+						const rows = ore.refinesTo.filter((r) => r.quantity > 0)
+						if (rows.length === 0) return null
+						const oreValue = rows.reduce((s, r) => s + parseFloat(r.totalValue), 0)
+						return (
+							<>
+								{/* Ore header row */}
+								<tr key={`ore-${ore.oreTypeId}`} className="bg-muted/20">
+									<td colSpan={2} className="pt-2 pb-1 px-0">
+										<span
+											className="inline-flex items-center rounded px-1.5 py-0.5 text-xs font-semibold text-white"
+											style={{ backgroundColor: oreColor }}
+										>
+											{ore.oreName}
+										</span>
+										<span className="ml-1.5 text-muted-foreground text-xs">
+											{(parseFloat(ore.quantity) * 100).toFixed(1)}%
+										</span>
+									</td>
+									<td className="pt-2 pb-1 text-right tabular-nums text-muted-foreground">
+										{formatISK(oreValue, { showDecimals: false })}
+									</td>
+								</tr>
+								{/* Material rows */}
+								{rows.map((mat) => {
+									const matRarity = getOreRarity(mat.materialTypeId)
+									return (
+										<tr key={`${ore.oreTypeId}-${mat.materialTypeId}`}>
+											<td className="py-0.5 pl-3 text-muted-foreground">
+												{matRarity && <><RarityBadge rarity={matRarity} />{' '}</>}
+												{mat.materialName}
+											</td>
+											<td className="py-0.5 text-right tabular-nums text-muted-foreground">{mat.quantity.toLocaleString()}</td>
+											<td className="py-0.5 text-right tabular-nums">{formatISK(mat.totalValue, { showDecimals: false })}</td>
+										</tr>
+									)
+								})}
+							</>
+						)
+					})}
+				</tbody>
+			</table>
+
+			<table className="w-full text-sm border-t pt-2">
+				<tbody>
+					<tr>
+						<td className="py-1 text-muted-foreground">Gross ISK</td>
+						<td className="py-1 text-right tabular-nums">{formatISK(String(Math.round(gross)), { showDecimals: false })}</td>
+					</tr>
+					<tr>
+						<td className="py-1 text-muted-foreground">Fuel Blocks</td>
+						<td className="py-1 text-right tabular-nums text-red-400">−{formatISK(String(Math.round(fuel)), { showDecimals: false })}</td>
+					</tr>
+					{structure.magmaticGasCost && (
+						<tr>
+							<td className="py-1 text-muted-foreground">Magmatic Gas</td>
+							<td className="py-1 text-right tabular-nums text-red-400">−{formatISK(String(Math.round(magmatic)), { showDecimals: false })}</td>
+						</tr>
+					)}
+					<tr className="border-t font-semibold">
+						<td className="py-1.5">Profit</td>
+						<td className={`py-1.5 text-right tabular-nums ${profit >= 0 ? 'text-green-400' : 'text-red-400'}`}>
+							{formatISK(String(Math.round(profit)), { showDecimals: false })}
+						</td>
+					</tr>
+				</tbody>
+			</table>
+		</div>
+	)
 }
 
-function buildMaterialBreakdown(ores: OreWithProfitability[], isPassive: boolean): MaterialBreakdownRow[] {
-	const MINERAL_IDS = new Set(['35', '36'])
-	const map = new Map<string, MaterialBreakdownRow>()
-
-	for (const ore of ores) {
-		for (const product of ore.refinesTo) {
-			if (isPassive && MINERAL_IDS.has(product.materialTypeId)) continue
-			if (product.quantity === 0) continue
-			const existing = map.get(product.materialTypeId)
-			const value = parseFloat(product.totalValue)
-			if (existing) {
-				existing.quantity += product.quantity
-				existing.totalValue += value
-			} else {
-				map.set(product.materialTypeId, {
-					materialTypeId: product.materialTypeId,
-					materialName: product.materialName,
-					quantity: product.quantity,
-					totalValue: value,
-				})
-			}
-		}
-	}
-
-	return Array.from(map.values()).sort((a, b) => b.totalValue - a.totalValue)
-}
-
-function ProfitabilityCard({ ores, structures, updatedAt }: { ores: OreWithProfitability[]; structures: StructureProfitability[]; updatedAt: string }) {
-	const metenox = structures.find((s) => s.structureType === 'metenox')
-	const tatara = structures.find((s) => s.structureType === 'tatara')
-
-	const metenoxMaterials = metenox ? buildMaterialBreakdown(ores, true) : []
-	const tataraMaterials = tatara ? buildMaterialBreakdown(ores, false) : []
+function ProfitabilityCard({ structures, updatedAt }: { structures: StructureProfitability[]; updatedAt: string }) {
+	const ORDER = ['metenox', 'tatara']
+	const visible = ORDER
+		.map((id) => structures.find((s) => s.structureType === id))
+		.filter((s): s is StructureProfitability => s !== undefined)
 
 	return (
 		<div className="rounded-md border bg-card">
 			<div className="border-b px-4 py-3 text-sm font-semibold">Profitability</div>
 			<div className="grid grid-cols-1 gap-0 sm:grid-cols-2 sm:divide-x">
-				{metenox && (
-					<div className="p-4">
-						<h6 className="text-sm font-medium mb-3">Metenox (per {metenox.cycleDays}d cycle)</h6>
-
-						{/* Material breakdown */}
-						<table className="w-full text-xs mb-3">
-							<thead>
-								<tr className="border-b text-muted-foreground">
-									<th className="pb-1 font-medium text-left">Material</th>
-									<th className="pb-1 font-medium text-right">Qty</th>
-									<th className="pb-1 font-medium text-right">Value</th>
-								</tr>
-							</thead>
-							<tbody className="divide-y divide-border/50">
-								{metenoxMaterials.map((m) => {
-									const rarity = getOreRarity(m.materialTypeId)
-									return (
-										<tr key={m.materialTypeId}>
-											<td className="py-1">
-												{rarity && <><RarityBadge rarity={rarity} />{' '}</>}
-												{m.materialName}
-											</td>
-											<td className="py-1 text-right tabular-nums text-muted-foreground">{m.quantity.toLocaleString()}</td>
-											<td className="py-1 text-right tabular-nums">{formatISK(m.totalValue, { showDecimals: false })}</td>
-										</tr>
-									)
-								})}
-							</tbody>
-						</table>
-
-						{/* Summary */}
-						<table className="w-full text-sm border-t pt-2">
-							<tbody>
-								<tr>
-									<td className="py-1 text-muted-foreground">Gross ISK</td>
-									<td className="py-1 text-right tabular-nums">{formatISK(metenox.grossIsk, { showDecimals: false })}</td>
-								</tr>
-								<tr>
-									<td className="py-1 text-muted-foreground">Fuel Blocks</td>
-									<td className="py-1 text-right tabular-nums text-red-400">−{formatISK(metenox.fuelCost, { showDecimals: false })}</td>
-								</tr>
-								{metenox.magmaticGasCost && (
-									<tr>
-										<td className="py-1 text-muted-foreground">Magmatic Gas</td>
-										<td className="py-1 text-right tabular-nums text-red-400">−{formatISK(metenox.magmaticGasCost, { showDecimals: false })}</td>
-									</tr>
-								)}
-								<tr className="border-t font-semibold">
-									<td className="py-1.5">Profit</td>
-									<td className={`py-1.5 text-right tabular-nums ${parseFloat(metenox.profit) >= 0 ? 'text-green-400' : 'text-red-400'}`}>
-										{formatISK(metenox.profit, { showDecimals: false })}
-									</td>
-								</tr>
-							</tbody>
-						</table>
-					</div>
-				)}
-				{tatara && (
-					<div className="p-4">
-						<h6 className="text-sm font-medium mb-3">Refinery (per {tatara.cycleDays}d cycle)</h6>
-
-						{/* Material breakdown */}
-						<table className="w-full text-xs mb-3">
-							<thead>
-								<tr className="border-b text-muted-foreground">
-									<th className="pb-1 font-medium text-left">Material</th>
-									<th className="pb-1 font-medium text-right">Qty</th>
-									<th className="pb-1 font-medium text-right">Value</th>
-								</tr>
-							</thead>
-							<tbody className="divide-y divide-border/50">
-								{tataraMaterials.map((m) => {
-									const rarity = getOreRarity(m.materialTypeId)
-									return (
-										<tr key={m.materialTypeId}>
-											<td className="py-1">
-												{rarity && <><RarityBadge rarity={rarity} />{' '}</>}
-												{m.materialName}
-											</td>
-											<td className="py-1 text-right tabular-nums text-muted-foreground">{m.quantity.toLocaleString()}</td>
-											<td className="py-1 text-right tabular-nums">{formatISK(m.totalValue, { showDecimals: false })}</td>
-										</tr>
-									)
-								})}
-							</tbody>
-						</table>
-
-						{/* Summary */}
-						<table className="w-full text-sm border-t pt-2">
-							<tbody>
-								<tr>
-									<td className="py-1 text-muted-foreground">Gross ISK</td>
-									<td className="py-1 text-right tabular-nums">{formatISK(tatara.grossIsk, { showDecimals: false })}</td>
-								</tr>
-								<tr>
-									<td className="py-1 text-muted-foreground">Fuel Cost</td>
-									<td className="py-1 text-right tabular-nums text-red-400">−{formatISK(tatara.fuelCost, { showDecimals: false })}</td>
-								</tr>
-								<tr className="border-t font-semibold">
-									<td className="py-1.5">Profit</td>
-									<td className={`py-1.5 text-right tabular-nums ${parseFloat(tatara.profit) >= 0 ? 'text-green-400' : 'text-red-400'}`}>
-										{formatISK(tatara.profit, { showDecimals: false })}
-									</td>
-								</tr>
-							</tbody>
-						</table>
-					</div>
-				)}
+				{visible.map((s) => <StructurePanel key={s.structureType} structure={s} />)}
 			</div>
 			<div className="border-t px-4 py-2 text-xs text-muted-foreground">
 				Updated {new Date(updatedAt).toUTCString().replace(':00 GMT', ' UTC')}
@@ -371,7 +323,7 @@ export default function MoonPage() {
 			{/* Profitability panel */}
 			{!isLoading && profitability && (
 				<div className="mb-6">
-					<ProfitabilityCard ores={profitability.ores} structures={profitability.structures} updatedAt={profitability.updatedAt} />
+					<ProfitabilityCard structures={profitability.structures} updatedAt={profitability.updatedAt} />
 				</div>
 			)}
 

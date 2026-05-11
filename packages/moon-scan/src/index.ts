@@ -1,8 +1,7 @@
 export type { ParsedOre, ParsedScan, ParseResult } from './parser'
 export { parseMoonScanTsv } from './parser'
 
-export type { OreReprocessingOutput, OreStaticData } from './reprocessing'
-export { getMoonOreData, getAllMaterialTypeIds, FUEL_BLOCK_TYPE_ID, MAGMATIC_GAS_TYPE_ID } from './reprocessing'
+export { FUEL_BLOCK_TYPE_ID, MAGMATIC_GAS_TYPE_ID, MOON_GOO_TYPE_IDS, MOON_ORE_TYPE_IDS, MOON_ORE_VOLUME_M3, getOreVolume } from './reprocessing'
 
 export type MoonScanStatus = 'pending' | 'verified' | 'rejected'
 export type MoonScanSource = 'user' | 'system'
@@ -127,6 +126,7 @@ export interface StructureProfitability {
 	fuelCost: string
 	magmaticGasCost: string | null
 	profit: string
+	ores: OreWithProfitability[]
 }
 
 export interface MoonProfitability {

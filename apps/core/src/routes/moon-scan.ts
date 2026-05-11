@@ -6,10 +6,10 @@ import { TimeCache } from '@repo/hono-helpers'
 import {
 	FUEL_BLOCK_TYPE_ID,
 	MAGMATIC_GAS_TYPE_ID,
+	MOON_GOO_TYPE_IDS,
 	ORE_TYPE_RARITY,
 	RARITY_ORDER,
-	getAllMaterialTypeIds,
-	getMoonOreData,
+	getOreVolume,
 	parseMoonScanTsv,
 } from '@repo/moon-scan'
 
@@ -340,11 +340,10 @@ moonScanRoutes.get('/moons/verified', async (c) => {
 
 	// Fetch prices and live typeMaterials in parallel
 	const markets = getMarketsStub(c.env)
-	const materialTypeIds = getAllMaterialTypeIds()
 	const [priceResponse, typeMaterialsMap] = await Promise.all([
 		markets.getBatchMarketDataAtTime({
 			regionId: createEveRegionId('universe'),
-			typeIds: [...materialTypeIds, FUEL_BLOCK_TYPE_ID, MAGMATIC_GAS_TYPE_ID].map(createEveTypeId),
+			typeIds: [...MOON_GOO_TYPE_IDS, FUEL_BLOCK_TYPE_ID, MAGMATIC_GAS_TYPE_ID].map(createEveTypeId),
 			atTime: new Date(),
 		}),
 		universe.getTypeMaterials(allOreTypeIds),
@@ -378,12 +377,10 @@ moonScanRoutes.get('/moons/verified', async (c) => {
 
 			let grossIsk = 0
 			for (const ore of composition.ores) {
-				const oreData = getMoonOreData(ore.oreTypeId)
 				const liveMaterials = typeMaterialsMap[ore.oreTypeId] ?? []
 				const fraction = parseFloat(ore.quantity)
 				const oreVolumeM3 = totalVolume * fraction
-				const unitVolume = oreData?.volumeM3 ?? 10
-				const oreUnits = oreVolumeM3 / unitVolume
+				const oreUnits = oreVolumeM3 / getOreVolume(ore.oreTypeId)
 				for (const mat of liveMaterials) {
 					if (profile.isPassive && MINERAL_TYPE_IDS.has(mat.materialTypeId)) continue
 					const rawUnits = Math.floor(oreUnits / 100) * mat.quantity * reprocessingYield
@@ -459,6 +456,7 @@ async function computeProfitability(
 		const liveMaterialTypeIds = [...new Set(
 			Object.values(typeMaterialsMap).flatMap((mats) => mats.map((m) => m.materialTypeId))
 		)]
+		const oreTypeIdsForNames = composition.ores.map((o) => o.oreTypeId)
 
 		const markets = getMarketsStub(env)
 		const [priceResponse, typeNamesMap] = await Promise.all([
@@ -467,7 +465,7 @@ async function computeProfitability(
 				typeIds: [...liveMaterialTypeIds, FUEL_BLOCK_TYPE_ID, MAGMATIC_GAS_TYPE_ID].map(createEveTypeId),
 				atTime: new Date(),
 			}),
-			universe.resolveTypeNamesByIds(liveMaterialTypeIds),
+			universe.resolveTypeNamesByIds([...liveMaterialTypeIds, ...oreTypeIdsForNames]),
 		])
 		const priceMap: Record<string, number> = {}
 		for (const p of priceResponse.prices) {
@@ -479,86 +477,71 @@ async function computeProfitability(
 		const reprocessingYield = parseFloat(settings.defaultReprocessingYield)
 		const cycleDays = settings.defaultCycleDays
 
-		// Build ore profitability rows (used for composition table display)
-		// Use tatara profile for per-ore volume calculation (30-day cycle)
+		const cycleHours = cycleDays * 24
+
+		function buildStructureOres(totalVolume: number, isPassive: boolean): OreWithProfitability[] {
+			return composition.ores
+				.map((ore) => {
+					const liveMaterials = typeMaterialsMap[ore.oreTypeId] ?? []
+					const fraction = parseFloat(ore.quantity)
+					const oreUnits = (totalVolume * fraction) / getOreVolume(ore.oreTypeId)
+
+					const refinesTo = liveMaterials
+						.filter((mat) => !(isPassive && MINERAL_TYPE_IDS.has(mat.materialTypeId)))
+						.map((mat) => {
+							const batchQty = mat.quantity
+							const units = Math.floor(Math.floor(oreUnits / 100) * batchQty * reprocessingYield)
+							const unitSellPrice = priceMap[mat.materialTypeId] ?? 0
+							return {
+								materialTypeId: mat.materialTypeId,
+								materialName: typeNamesMap[mat.materialTypeId]?.typeName ?? mat.materialTypeId,
+								quantity: units,
+								batchSize: 100,
+								batchQty,
+								unitSellPrice: String(unitSellPrice),
+								totalValue: String(units * unitSellPrice),
+								materialRarity: null,
+							}
+						})
+						.sort((a, b) =>
+							(RARITY_ORDER[ORE_TYPE_RARITY[b.materialTypeId] as OreRarity] ?? 0) -
+							(RARITY_ORDER[ORE_TYPE_RARITY[a.materialTypeId] as OreRarity] ?? 0)
+						)
+
+					const totalOreValue = refinesTo.reduce((sum, r) => sum + parseFloat(r.totalValue), 0)
+					return {
+						oreTypeId: ore.oreTypeId,
+						oreName: typeNamesMap[ore.oreTypeId]?.typeName ?? ore.oreTypeId,
+						quantity: ore.quantity,
+						rarity: null,
+						refinesTo,
+						totalOreValue: String(totalOreValue),
+					}
+				})
+				.sort((a, b) =>
+					(RARITY_ORDER[ORE_TYPE_RARITY[b.oreTypeId] as OreRarity] ?? 0) -
+					(RARITY_ORDER[ORE_TYPE_RARITY[a.oreTypeId] as OreRarity] ?? 0)
+				)
+		}
+
+		// Compute per-structure profitability, each with its own volume and ore rows
 		const tataraProfile = profiles.find((p) => p.id === 'tatara')
-		if (!tataraProfile) return null
-
-		const tataraBaseRate = parseFloat(tataraProfile.baseVolumePerHr) * (1 + parseFloat(tataraProfile.rigBonus))
-		const tataraHours = cycleDays * 24
-		const tataraVolume = tataraBaseRate * tataraHours
-
-		const oresWithProfit: OreWithProfitability[] = composition.ores.map((ore) => {
-			const oreData = getMoonOreData(ore.oreTypeId)
-			const liveMaterials = typeMaterialsMap[ore.oreTypeId] ?? []
-			const fraction = parseFloat(ore.quantity)
-			const oreVolumeM3 = tataraVolume * fraction
-			const unitVolume = oreData?.volumeM3 ?? 10
-			const oreUnits = oreVolumeM3 / unitVolume
-
-			const refinesTo = liveMaterials.map((mat) => {
-				const batchQty = mat.quantity
-				const rawUnits = Math.floor(oreUnits / 100) * batchQty * reprocessingYield
-				const units = Math.floor(rawUnits)
-				const unitSellPrice = priceMap[mat.materialTypeId] ?? 0
-				const totalValue = units * unitSellPrice
-				const materialName = typeNamesMap[mat.materialTypeId]?.typeName ?? mat.materialTypeId
-				return {
-					materialTypeId: mat.materialTypeId,
-					materialName,
-					quantity: units,
-					batchSize: 100,
-					batchQty,
-					unitSellPrice: String(unitSellPrice),
-					totalValue: String(totalValue),
-					materialRarity: null,
-				}
-			})
-
-			const totalOreValue = refinesTo.reduce((sum, r) => sum + parseFloat(r.totalValue), 0)
-
-			return {
-				oreTypeId: ore.oreTypeId,
-				oreName: oreData?.oreName ?? ore.oreTypeId,
-				quantity: ore.quantity,
-				rarity: null,
-				refinesTo,
-				totalOreValue: String(totalOreValue),
-			}
-		})
-
-		// Compute per-structure profitability
 		const structures: StructureProfitability[] = []
 		for (const profile of profiles) {
 			const baseRate = parseFloat(profile.baseVolumePerHr) * (1 + parseFloat(profile.rigBonus))
 			const fuelPerHr = parseFloat(profile.fuelPerHr)
 			const magmaticGasPerHr = profile.magmaticGasPerHr ? parseFloat(profile.magmaticGasPerHr) : 0
 
-			const cycleHours = cycleDays * 24
 			const totalVolume = profile.isPassive
 				? baseRate * parseFloat(profile.nullsecModifier) * cycleHours
 				: baseRate * cycleHours
 			const fuelUnits = fuelPerHr * cycleHours
 			const magmaticGasUnits = profile.isPassive ? magmaticGasPerHr * cycleHours : 0
 
-			let grossIsk = 0
-			for (const ore of composition.ores) {
-				const oreData = getMoonOreData(ore.oreTypeId)
-				const liveMaterials = typeMaterialsMap[ore.oreTypeId] ?? []
-				const fraction = parseFloat(ore.quantity)
-				const oreVolumeM3 = totalVolume * fraction
-				const unitVolume = oreData?.volumeM3 ?? 10
-				const oreUnits = oreVolumeM3 / unitVolume
-				for (const mat of liveMaterials) {
-					if (profile.isPassive && MINERAL_TYPE_IDS.has(mat.materialTypeId)) continue
-					const rawUnits = Math.floor(oreUnits / 100) * mat.quantity * reprocessingYield
-					grossIsk += Math.floor(rawUnits) * (priceMap[mat.materialTypeId] ?? 0)
-				}
-			}
-
+			const ores = buildStructureOres(totalVolume, profile.isPassive)
+			const grossIsk = ores.reduce((sum, ore) => sum + parseFloat(ore.totalOreValue), 0)
 			const fuelCost = fuelUnits * fuelBlockPrice
 			const magmaticGasCost = magmaticGasUnits * magmaticGasPrice
-			const profit = grossIsk - fuelCost - magmaticGasCost
 
 			structures.push({
 				structureType: profile.id,
@@ -566,12 +549,18 @@ async function computeProfitability(
 				grossIsk: String(Math.round(grossIsk)),
 				fuelCost: String(Math.round(fuelCost)),
 				magmaticGasCost: profile.isPassive ? String(Math.round(magmaticGasCost)) : null,
-				profit: String(Math.round(profit)),
+				profit: String(Math.round(grossIsk - fuelCost - magmaticGasCost)),
+				ores,
 			})
 		}
 
+		// Tatara ores drive the composition table (shows all materials incl. minerals)
+		const compositionOres = tataraProfile
+			? structures.find((s) => s.structureType === 'tatara')?.ores ?? []
+			: []
+
 		return {
-			ores: oresWithProfit,
+			ores: compositionOres,
 			structures,
 			updatedAt: new Date().toISOString(),
 		}
