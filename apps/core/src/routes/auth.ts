@@ -26,6 +26,7 @@ import type { RequestMetadata } from '@repo/core'
 import type { EveCharacterData } from '@repo/eve-character-data'
 import type { EveTokenStore } from '@repo/eve-token-store'
 import type { BlacklistEntry, Hr } from '@repo/hr'
+import type { Legacy } from '@repo/legacy'
 import type { App } from '../context'
 
 /**
@@ -108,6 +109,19 @@ async function hydrateAndReconcileUserRoles(
 			error: toErrorMessage(error),
 		})
 	}
+}
+
+function triggerLegacyMigrationRecheck(c: Context<App>, userId: string): void {
+	c.executionCtx.waitUntil(
+		(async () => {
+			try {
+				const stub = getStub<Legacy>(c.env.LEGACY, 'default')
+				await stub.recheckUser(userId, 'system:auth-link')
+			} catch (error) {
+				console.error('[Auth] Failed to trigger legacy migration recheck:', toErrorMessage(error))
+			}
+		})()
+	)
 }
 
 async function findBlacklistedCharacterTrigger(
@@ -385,6 +399,7 @@ auth.get('/callback', async (c) => {
 			.where(eq(userCharacters.characterId, characterId))
 
 		await activityService.logCharacterLinked(stateUserId, characterId, getRequestMetadata(c))
+		triggerLegacyMigrationRecheck(c, stateUserId)
 
 		// Fetch character data in background (non-blocking)
 		const eveCharacterDataStub = getStub<EveCharacterData>(
@@ -688,6 +703,7 @@ auth.post('/claim-main', async (c) => {
 	enqueueIpRecording(c, db, user.id)
 
 	await activityService.logLogin(user.id, tokenInfo.characterId, getRequestMetadata(c))
+	triggerLegacyMigrationRecheck(c, user.id)
 
 	// Fetch character data in background (non-blocking)
 	const eveCharacterDataStub = getStub<EveCharacterData>(
@@ -839,6 +855,7 @@ auth.post('/link-character', requireAuth(), async (c) => {
 	await hydrateAndReconcileUserRoles(c, db, user.id, tokenInfo.characterId)
 
 	await activityService.logCharacterLinked(user.id, tokenInfo.characterId, getRequestMetadata(c))
+	triggerLegacyMigrationRecheck(c, user.id)
 
 	c.executionCtx.waitUntil(
 		(async () => {

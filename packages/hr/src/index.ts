@@ -40,6 +40,25 @@ export function isActiveApplicationStatus(status: string): boolean {
 	return ACTIVE_APPLICATION_STATUSES.includes(status as ApplicationStatus)
 }
 
+export interface HrAccessState {
+	hasHrAccess: boolean
+	isHrAuditor: boolean
+	isSiteAdmin: boolean
+}
+
+export function resolveHrAccessState(input: {
+	isSiteAdmin: boolean
+	isHrAuditor: boolean
+	hrCorporationCount: number
+}): HrAccessState {
+	const hasHrAccess = input.isSiteAdmin || input.isHrAuditor || input.hrCorporationCount > 0
+	return {
+		hasHrAccess,
+		isHrAuditor: input.isHrAuditor,
+		isSiteAdmin: input.isSiteAdmin,
+	}
+}
+
 /**
  * Recommendation sentiment values
  */

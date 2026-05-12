@@ -8,12 +8,14 @@
 import { Hono } from 'hono'
 import { z } from 'zod'
 
-import { and, desc, eq, gt } from '@repo/db-utils'
+import { and, desc, eq, gt, inArray, sql } from '@repo/db-utils'
 import { getStub } from '@repo/do-utils'
 import { logger } from '@repo/hono-helpers'
 
 import { createDb } from '../db'
 import { corporationDiscordServers, userActivityLog, userCharacters, users } from '../db/schema'
+import { getIpHashMatches, getUserIpHistory } from '../lib/ip-history'
+import { recordUserIpAddress } from '../lib/ip-tracking'
 import { validatePagination } from '../lib/validation'
 import { triggerUserRefreshWorkflow } from '../lib/workflow-triggers'
 import { requireAdmin, requireAuth } from '../middleware/session'
@@ -21,12 +23,14 @@ import * as discordService from '../services/discord.service'
 import { SessionService } from '../services/session.service'
 import { UserService } from '../services/user.service'
 
+import type { Context } from 'hono'
 import type { Core } from '@repo/core'
 import type { Discord } from '@repo/discord'
 import type { EveCharacterData } from '@repo/eve-character-data'
 import type { EveTokenStore } from '@repo/eve-token-store'
 import type { Groups } from '@repo/groups'
 import type { Hr } from '@repo/hr'
+import type { Legacy } from '@repo/legacy'
 import type { App } from '../context'
 
 const app = new Hono<App>()
@@ -107,6 +111,324 @@ app.get('/users/:userId', requireAuth(), requireAdmin(), async (c) => {
 		logger.error('Error fetching user details:', error)
 		return c.json({ error: 'Failed to fetch user details' }, 500)
 	}
+})
+
+/**
+ * GET /admin/users/:userId/ip-history
+ * Returns hashed-only IP history for a user.
+ */
+app.get('/users/:userId/ip-history', requireAuth(), requireAdmin(), async (c) => {
+	const userId = c.req.param('userId')
+	const db = c.get('db')
+	if (!db) return c.json({ error: 'Database unavailable' }, 500)
+
+	try {
+		const entries = await getUserIpHistory(db, userId)
+		return c.json({ entries })
+	} catch (error) {
+		logger.error('[AdminRoute.getUserIpHistory] Failed', {
+			userId,
+			error: error instanceof Error ? error.message : String(error),
+		})
+		return c.json({ error: 'Failed to fetch IP history' }, 500)
+	}
+})
+
+/**
+ * GET /admin/ip-history/:ipAddressHash/matches
+ * Returns users associated with the same hashed IP.
+ */
+app.get('/ip-history/:ipAddressHash/matches', requireAuth(), requireAdmin(), async (c) => {
+	const ipAddressHash = c.req.param('ipAddressHash')
+	const db = c.get('db')
+	if (!db) return c.json({ error: 'Database unavailable' }, 500)
+
+	try {
+		const matches = await getIpHashMatches(db, ipAddressHash)
+		return c.json({ matches })
+	} catch (error) {
+		logger.error('[AdminRoute.getIpHashMatches] Failed', {
+			ipAddressHash,
+			error: error instanceof Error ? error.message : String(error),
+		})
+		return c.json({ error: 'Failed to fetch IP hash matches' }, 500)
+	}
+})
+
+/**
+ * Legacy migration queue endpoints (admin-scoped).
+ */
+app.get('/legacy/migrations', requireAuth(), requireAdmin(), async (c) => {
+	const stub = getStub<Legacy>(c.env.LEGACY, 'default')
+	const page = Number(c.req.query('page') ?? '1')
+	const pageSize = Number(c.req.query('pageSize') ?? '25')
+	const status = c.req.query('status') as
+		| 'pending'
+		| 'partially_applied'
+		| 'applied'
+		| 'dismissed'
+		| 'error'
+		| undefined
+	const severity = c.req.query('severity') as 'none' | 'high' | 'critical' | undefined
+	const modernUserId = c.req.query('modernUserId') || undefined
+	const legacyAuthUserId = c.req.query('legacyAuthUserId') || undefined
+	const result = await stub.listMigrations({
+		page,
+		pageSize,
+		status,
+		severity,
+		modernUserId,
+		legacyAuthUserId,
+	})
+	return c.json(result)
+})
+
+app.get('/legacy/migrations/:id', requireAuth(), requireAdmin(), async (c) => {
+	const id = c.req.param('id')
+	const stub = getStub<Legacy>(c.env.LEGACY, 'default')
+	const result = await stub.getMigration(id)
+	if (!result) return c.json({ error: 'Migration queue item not found' }, 404)
+	return c.json(result)
+})
+
+app.post('/legacy/migrations/:id/apply', requireAuth(), requireAdmin(), async (c) => {
+	const id = c.req.param('id')
+	const stub = getStub<Legacy>(c.env.LEGACY, 'default')
+	const body = (await c.req.json().catch(() => ({}))) as { payload?: Record<string, unknown> }
+	const result = await stub.applyMigration(id, body.payload)
+	if (!result) return c.json({ error: 'Migration queue item not found' }, 404)
+	return c.json(result)
+})
+
+app.post('/legacy/migrations/:id/dismiss', requireAuth(), requireAdmin(), async (c) => {
+	const id = c.req.param('id')
+	const stub = getStub<Legacy>(c.env.LEGACY, 'default')
+	const body = (await c.req.json().catch(() => ({}))) as { payload?: Record<string, unknown> }
+	const result = await stub.dismissMigration(id, body.payload)
+	if (!result) return c.json({ error: 'Migration queue item not found' }, 404)
+	return c.json(result)
+})
+
+app.post('/legacy/migrations/:id/resolve', requireAuth(), requireAdmin(), async (c) => {
+	const id = c.req.param('id')
+	const body = (await c.req.json()) as { decision: 'accept' | 'reject' | 'needs_review'; note?: string }
+	const stub = getStub<Legacy>(c.env.LEGACY, 'default')
+	const result = await stub.resolveMigration(id, body)
+	if (!result) return c.json({ error: 'Migration queue item not found' }, 404)
+	return c.json(result)
+})
+
+app.post('/legacy/migrations/recheck/:modernUserId', requireAuth(), requireAdmin(), async (c) => {
+	const modernUserId = c.req.param('modernUserId')
+	const user = c.get('user')!
+	const stub = getStub<Legacy>(c.env.LEGACY, 'default')
+	const result = await stub.recheckUser(modernUserId, user.id)
+	return c.json(result)
+})
+
+app.get('/legacy/history', requireAuth(), requireAdmin(), async (c) => {
+	const stub = getStub<Legacy>(c.env.LEGACY, 'default')
+	const result = await stub.listHistory({
+		page: Number(c.req.query('page') ?? '1'),
+		pageSize: Number(c.req.query('pageSize') ?? '25'),
+		corporationId: c.req.query('corporationId') || undefined,
+		characterId: c.req.query('characterId') || undefined,
+		characterIds: c.req.query('characterIds') || undefined,
+		characterName: c.req.query('characterName') || undefined,
+	})
+	return c.json(result)
+})
+
+app.get('/legacy/history/:legacyApplicationId', requireAuth(), requireAdmin(), async (c) => {
+	const legacyApplicationId = c.req.param('legacyApplicationId')
+	const stub = getStub<Legacy>(c.env.LEGACY, 'default')
+	const result = await stub.getHistoryApplication(legacyApplicationId)
+	if (!result) return c.json({ error: 'Legacy application not found' }, 404)
+	return c.json(result)
+})
+
+app.post('/legacy/import-character-links', requireAuth(), requireAdmin(), async (c) => {
+	const user = c.get('user')!
+	const db = c.get('db')
+	if (!db) return c.json({ error: 'Database unavailable' }, 500)
+
+	const schema = z.object({
+		modernUserId: z.string().uuid(),
+		legacyAuthUserId: z.string().min(1),
+		characters: z.array(
+			z.object({
+				characterId: z.string().min(1),
+				characterName: z.string().min(1),
+				source: z.enum(['esi_owner', 'xml_account']).optional(),
+			})
+		),
+	})
+	const parsed = schema.safeParse(await c.req.json())
+	if (!parsed.success) return c.json({ error: 'Invalid payload', details: parsed.error.flatten() }, 400)
+
+	const { modernUserId, legacyAuthUserId, characters } = parsed.data
+	const uniqueCharacters = [...new Map(characters.map((ch) => [ch.characterId, ch])).values()]
+	const existing = await db.query.userCharacters.findMany({
+		where: inArray(
+			userCharacters.characterId,
+			uniqueCharacters.map((ch) => ch.characterId)
+		),
+		columns: { characterId: true, userId: true },
+	})
+	const existingByCharacterId = new Map(existing.map((row) => [row.characterId, row]))
+	let inserted = 0
+	let alreadyLinkedToUser = 0
+	let linkedToOtherUser = 0
+
+	for (const character of uniqueCharacters) {
+		const existingRow = existingByCharacterId.get(character.characterId)
+		if (existingRow) {
+			if (existingRow.userId === modernUserId) {
+				alreadyLinkedToUser += 1
+			} else {
+				linkedToOtherUser += 1
+			}
+			continue
+		}
+
+		await db.insert(userCharacters).values({
+			userId: modernUserId,
+			characterId: character.characterId,
+			characterName: character.characterName,
+			characterOwnerHash: `legacy-import:${legacyAuthUserId}:${character.source ?? 'unknown'}`,
+			is_primary: false,
+			hasValidToken: null,
+			isDeleted: false,
+		})
+		inserted += 1
+	}
+
+	await db
+		.update(users)
+		.set({
+			legacyAuthUserId,
+			updatedAt: new Date(),
+		})
+		.where(and(eq(users.id, modernUserId), sql`${users.legacyAuthUserId} is null`))
+
+	logger.info('[Admin Legacy Import] Character links imported', {
+		actorUserId: user.id,
+		modernUserId,
+		legacyAuthUserId,
+		inserted,
+		alreadyLinkedToUser,
+		linkedToOtherUser,
+	})
+
+	return c.json({
+		inserted,
+		alreadyLinkedToUser,
+		linkedToOtherUser,
+		totalRequested: uniqueCharacters.length,
+	})
+})
+
+app.post('/legacy/import-notes', requireAuth(), requireAdmin(), async (c) => {
+	const user = c.get('user')!
+	const schema = z.object({
+		modernUserId: z.string().uuid(),
+		legacyAuthUserId: z.string().min(1),
+		notes: z.array(
+			z.object({
+				legacyNoteId: z.string().min(1),
+				note: z.string().min(1),
+				legacyCreatedByUserId: z.string().optional().nullable(),
+				legacyDateCreated: z.string().optional().nullable(),
+				metadata: z.record(z.string(), z.unknown()).optional(),
+			})
+		),
+	})
+	const parsed = schema.safeParse(await c.req.json())
+	if (!parsed.success) return c.json({ error: 'Invalid payload', details: parsed.error.flatten() }, 400)
+
+	const hrStub = getStub<Hr>(c.env.HR, 'default')
+	const primaryCharacter = user.characters.find((ch) => ch.is_primary)
+	const authorCharacterId = primaryCharacter?.characterId ?? user.mainCharacterId
+	const authorCharacterName = primaryCharacter?.characterName ?? 'System'
+	let created = 0
+	let failed = 0
+	for (const note of parsed.data.notes) {
+		try {
+			await hrStub.createNote(
+				parsed.data.modernUserId,
+				null,
+				user.id,
+				authorCharacterId,
+				authorCharacterName,
+				note.note,
+				'background_check',
+				'normal',
+				{
+					source: 'legacy_import',
+					legacyAuthUserId: parsed.data.legacyAuthUserId,
+					legacyNoteId: note.legacyNoteId,
+					legacyCreatedByUserId: note.legacyCreatedByUserId ?? null,
+					legacyDateCreated: note.legacyDateCreated ?? null,
+					...(note.metadata ?? {}),
+				}
+			)
+			created += 1
+		} catch {
+			failed += 1
+		}
+	}
+
+	logger.info('[Admin Legacy Import] Notes imported', {
+		actorUserId: user.id,
+		modernUserId: parsed.data.modernUserId,
+		legacyAuthUserId: parsed.data.legacyAuthUserId,
+		created,
+		failed,
+	})
+
+	return c.json({ created, failed, totalRequested: parsed.data.notes.length })
+})
+
+app.post('/legacy/import-ip-associations', requireAuth(), requireAdmin(), async (c) => {
+	const db = c.get('db')
+	if (!db) return c.json({ error: 'Database unavailable' }, 500)
+	const hashSecret = c.env.IP_ADDRESS_HASH_SECRET
+	if (!hashSecret) return c.json({ error: 'IP hash secret not configured' }, 500)
+
+	const schema = z.object({
+		modernUserId: z.string().uuid(),
+		legacyAuthUserId: z.string().min(1),
+		ipAddresses: z.array(
+			z.object({
+				ipAddress: z.string().min(1),
+			})
+		),
+	})
+	const parsed = schema.safeParse(await c.req.json())
+	if (!parsed.success) return c.json({ error: 'Invalid payload', details: parsed.error.flatten() }, 400)
+
+	const uniqueIps = [...new Set(parsed.data.ipAddresses.map((ip) => ip.ipAddress.trim()).filter(Boolean))]
+	let imported = 0
+	let failed = 0
+	for (const ip of uniqueIps) {
+		try {
+			await recordUserIpAddress({
+				db,
+				userId: parsed.data.modernUserId,
+				ip,
+				hashSecret,
+			})
+			imported += 1
+		} catch {
+			failed += 1
+		}
+	}
+
+	return c.json({
+		imported,
+		failed,
+		totalRequested: uniqueIps.length,
+	})
 })
 
 /**
@@ -1235,6 +1557,38 @@ app.get('/blacklist/character/:characterId', requireAuth(), requireAdmin(), asyn
 	} catch (error) {
 		logger.error('Error fetching character blacklists:', error)
 		return c.json({ error: 'Failed to fetch character blacklists' }, 500)
+	}
+})
+
+/**
+ * POST /admin/blacklist/check-characters
+ * Bulk check character ID/name blacklist status.
+ */
+app.post('/blacklist/check-characters', requireAuth(), requireAdmin(), async (c) => {
+	const schema = z.object({
+		characterIds: z.array(z.string().min(1)).default([]),
+		characterNames: z.array(z.string().min(1)).default([]),
+	})
+	const parsed = schema.safeParse(await c.req.json())
+	if (!parsed.success) {
+		return c.json({ error: 'Invalid payload', details: parsed.error.flatten() }, 400)
+	}
+	const uniqueIds = [...new Set(parsed.data.characterIds)]
+	const uniqueNames = [...new Set(parsed.data.characterNames)]
+
+	try {
+		const hrStub = getStub<Hr>(c.env.HR, 'default')
+		const [idMatches, nameMatches] = await Promise.all([
+			uniqueIds.length > 0 ? hrStub.checkCharactersBlacklisted(uniqueIds) : Promise.resolve({}),
+			uniqueNames.length > 0 ? hrStub.checkCharacterNamesBlacklisted(uniqueNames) : Promise.resolve({}),
+		])
+		return c.json({
+			characterIds: idMatches,
+			characterNames: nameMatches,
+		})
+	} catch (error) {
+		logger.error('Error bulk checking character blacklists:', error)
+		return c.json({ error: 'Failed to bulk check character blacklists' }, 500)
 	}
 })
 

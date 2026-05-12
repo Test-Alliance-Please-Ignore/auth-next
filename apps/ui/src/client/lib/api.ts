@@ -984,6 +984,32 @@ export interface AdminUserDetail {
 	updatedAt: string
 }
 
+export interface UserIpHistoryEntry {
+	ipAddressHash: string
+	firstSeenAt: string
+	lastSeenAt: string
+	seenCount: number
+	distinctUserCount: number
+}
+
+export interface UserIpHistoryResponse {
+	entries: UserIpHistoryEntry[]
+}
+
+export interface IpHashUserMatch {
+	userId: string
+	mainCharacterId: string
+	mainCharacterName: string | null
+	isAdmin: boolean
+	seenCount: number
+	firstSeenAt: string
+	lastSeenAt: string
+}
+
+export interface IpHashMatchesResponse {
+	matches: IpHashUserMatch[]
+}
+
 export interface AdminActivityLog {
 	id: string
 	userId: string
@@ -1012,6 +1038,73 @@ export interface AdminActivityLogFilters {
 	endDate?: string
 	page?: number
 	pageSize?: number
+}
+
+export type LegacyMigrationStatus = 'pending' | 'partially_applied' | 'applied' | 'dismissed' | 'error'
+export type LegacyMigrationSeverity = 'none' | 'high' | 'critical'
+
+export interface LegacyMigrationQueueItem {
+	id: string
+	modernUserId: string
+	legacyAuthUserId: string
+	status: LegacyMigrationStatus
+	severity: LegacyMigrationSeverity
+	candidateSnapshot: Record<string, unknown>
+	conflicts: Record<string, unknown>
+	lastError: string | null
+	lastMatchedAt: string
+	lastReviewedAt: string | null
+	createdAt: string
+	updatedAt: string
+}
+
+export interface LegacyMigrationAction {
+	id: string
+	queueId: string
+	action: 'create' | 'update' | 'recheck' | 'apply' | 'dismiss'
+	performedByUserId: string | null
+	payload: Record<string, unknown>
+	createdAt: string
+}
+
+export interface LegacyHistoryApplication {
+	id: string
+	legacyApplicationId: string
+	legacyAuthUserId: string | null
+	characterId: string | null
+	characterName: string | null
+	corporationId: string | null
+	corporationName: string | null
+	status: string | null
+	applicationDate: string | null
+	metadata: Record<string, unknown> | null
+	createdAt: string
+	updatedAt: string
+}
+
+export interface LegacyHistoryEvent {
+	id: string
+	legacyEventId: string
+	legacyApplicationId: string
+	legacyAuthUserId: string | null
+	eventType: string
+	eventCode: number | null
+	message: string | null
+	legacyActorUserId: string | null
+	eventAt: string | null
+	metadata: Record<string, unknown> | null
+	createdAt: string
+	updatedAt: string
+}
+
+export interface ApplyLegacyMigrationPayload {
+	applyBlacklistToUser?: boolean
+	blacklistReason?: string
+	blacklistMetadata?: Record<string, unknown>
+	importCharacterLinks?: boolean
+	importNotes?: boolean
+	importIpAssociations?: boolean
+	markSkipped?: boolean
 }
 
 /**
@@ -2394,6 +2487,22 @@ export class ApiClient {
 		return this.get(`/admin/users/${userId}`)
 	}
 
+	async getAdminUserIpHistory(userId: string): Promise<UserIpHistoryResponse> {
+		return this.get(`/admin/users/${userId}/ip-history`)
+	}
+
+	async getAdminIpHashMatches(ipAddressHash: string): Promise<IpHashMatchesResponse> {
+		return this.get(`/admin/ip-history/${encodeURIComponent(ipAddressHash)}/matches`)
+	}
+
+	async getHrAuditorUserIpHistory(userId: string): Promise<UserIpHistoryResponse> {
+		return this.get(`/hr/audit/users/${userId}/ip-history`)
+	}
+
+	async getHrAuditorIpHashMatches(ipAddressHash: string): Promise<IpHashMatchesResponse> {
+		return this.get(`/hr/audit/ip-history/${encodeURIComponent(ipAddressHash)}/matches`)
+	}
+
 	async setUserAdmin(userId: string, isAdmin: boolean): Promise<{ success: boolean }> {
 		return this.post(`/admin/users/${userId}/admin`, { isAdmin })
 	}
@@ -2493,6 +2602,105 @@ export class ApiClient {
 		batchId: string
 	): Promise<ManualEveCharacterSyncBatchStatusResponse> {
 		return this.get(`/admin/eve-character-sync/manual-run/${batchId}`)
+	}
+
+	async getLegacyMigrationQueue(filters?: {
+		page?: number
+		pageSize?: number
+		status?: LegacyMigrationStatus
+		severity?: LegacyMigrationSeverity
+		modernUserId?: string
+		legacyAuthUserId?: string
+	}): Promise<{
+		items: LegacyMigrationQueueItem[]
+		pagination: {
+			page: number
+			pageSize: number
+			total: number
+			totalPages: number
+		}
+	}> {
+		const params = new URLSearchParams()
+		if (filters?.page) params.set('page', String(filters.page))
+		if (filters?.pageSize) params.set('pageSize', String(filters.pageSize))
+		if (filters?.status) params.set('status', filters.status)
+		if (filters?.severity) params.set('severity', filters.severity)
+		if (filters?.modernUserId) params.set('modernUserId', filters.modernUserId)
+		if (filters?.legacyAuthUserId) params.set('legacyAuthUserId', filters.legacyAuthUserId)
+		const query = params.toString()
+		return this.get(`/admin/legacy/migrations${query ? `?${query}` : ''}`)
+	}
+
+	async getLegacyMigrationQueueItem(id: string): Promise<{
+		item: LegacyMigrationQueueItem
+		actions: LegacyMigrationAction[]
+	}> {
+		return this.get(`/admin/legacy/migrations/${id}`)
+	}
+
+	async applyLegacyMigrationQueueItem(
+		id: string,
+		payload?: ApplyLegacyMigrationPayload
+	): Promise<{ item: LegacyMigrationQueueItem }> {
+		return this.post(`/admin/legacy/migrations/${id}/apply`, payload ? { payload } : {})
+	}
+
+	async dismissLegacyMigrationQueueItem(
+		id: string,
+		payload?: Record<string, unknown>
+	): Promise<{ item: LegacyMigrationQueueItem }> {
+		return this.post(`/admin/legacy/migrations/${id}/dismiss`, payload ? { payload } : {})
+	}
+
+	async resolveLegacyMigrationQueueItem(
+		id: string,
+		payload: { decision: 'accept' | 'reject' | 'needs_review'; note?: string }
+	): Promise<{ item: LegacyMigrationQueueItem }> {
+		return this.post(`/admin/legacy/migrations/${id}/resolve`, payload)
+	}
+
+	async recheckLegacyMigrationQueueUser(modernUserId: string): Promise<{
+		ok: boolean
+		modernUserId: string
+		legacyAuthUserIds?: string[]
+		created: number
+		updated: number
+		dismissed: number
+	}> {
+		return this.post(`/admin/legacy/migrations/recheck/${modernUserId}`)
+	}
+
+	async getLegacyHistory(filters?: {
+		page?: number
+		pageSize?: number
+		corporationId?: string
+		characterId?: string
+		characterIds?: string
+		characterName?: string
+	}): Promise<{
+		items: LegacyHistoryApplication[]
+		pagination: {
+			page: number
+			pageSize: number
+			total: number
+			totalPages: number
+		}
+	}> {
+		const params = new URLSearchParams()
+		if (filters?.page) params.set('page', String(filters.page))
+		if (filters?.pageSize) params.set('pageSize', String(filters.pageSize))
+		if (filters?.corporationId) params.set('corporationId', filters.corporationId)
+		if (filters?.characterId) params.set('characterId', filters.characterId)
+		if (filters?.characterIds) params.set('characterIds', filters.characterIds)
+		if (filters?.characterName) params.set('characterName', filters.characterName)
+		const query = params.toString()
+		return this.get(`/admin/legacy/history${query ? `?${query}` : ''}`)
+	}
+
+	async getLegacyHistoryApplication(
+		legacyApplicationId: string
+	): Promise<{ application: LegacyHistoryApplication; events: LegacyHistoryEvent[] }> {
+		return this.get(`/admin/legacy/history/${legacyApplicationId}`)
 	}
 
 	// ===== Admin Blacklist Management API Methods =====

@@ -7,14 +7,18 @@ import { captureException, logger } from '@repo/hono-helpers'
 import { APPLICATION_STATUSES } from '@repo/hr'
 
 import { managedCorporations, userCharacters, users } from '../db/schema'
-import { getCachedUserPermissions } from '../lib/groups-cache'
+import {
+	hasHrAuditorPermission as hasHrAuditorPermissionForUser,
+	resolveHrAccessState,
+} from '../lib/hr-access'
+import { getIpHashMatches, getUserIpHistory } from '../lib/ip-history'
 import { validatePagination } from '../lib/validation'
 import { requireAdmin, requireAuth } from '../middleware/session'
 
 import type { Context } from 'hono'
 import type { Core } from '@repo/core'
 import type { Esi, EsiTypeResolver } from '@repo/esi'
-import type { ApplicationFilters, Hr, HrNote, NoteFilters, RoleFilters } from '@repo/hr'
+import type { ApplicationFilters, Hr, HrNote, NoteFilters } from '@repo/hr'
 import type { App } from '../context'
 
 const app = new Hono<App>()
@@ -169,32 +173,26 @@ async function enrichHrNotesWithAuthorSource(
 }
 
 /**
- * Check if the current user has the urn:hr:auditor group permission.
- * This does NOT include site-admin bypass.
- */
-async function hasHrAuditorPermission(c: Context<App>): Promise<boolean> {
-	const user = c.get('user')!
-	const permissions = await getCachedUserPermissions(c.env, user.id)
-	return permissions.some((p) => p.urn === 'urn:hr:auditor')
-}
-
-/**
  * Check if the current user has any active HR role across any corporation.
  * Returns true for site admins, HR auditors, and users with any corp-scoped HR role.
  */
 async function hasAnyHrAccess(c: Context<App>): Promise<boolean> {
 	const user = c.get('user')!
+	const access = await resolveHrAccessState({
+		env: c.env,
+		userId: user.id,
+		isSiteAdmin: user.is_admin,
+		hrStub: getHrStub(c),
+	})
+	return access.hasHrAccess
+}
 
-	// Site admins always have access
-	if (user.is_admin) return true
-
-	// Alliance-level HR auditors have cross-corp read access
-	if (await hasHrAuditorPermission(c)) return true
-
-	// Single RPC call returns all corps where user has any HR role
-	const hr = getHrStub(c)
-	const hrCorps = await hr.getUserHrCorporations(user.id)
-	return hrCorps.length > 0
+async function hasHrAuditorPermission(c: Context<App>): Promise<boolean> {
+	const user = c.get('user')!
+	return hasHrAuditorPermissionForUser({
+		env: c.env,
+		userId: user.id,
+	})
 }
 
 type HrRoleManagementAccess = 'site_admin' | 'ceo' | 'hr_admin' | null
@@ -1957,6 +1955,60 @@ app.get('/audit/users/:userId', requireAuth(), async (c) => {
 			{ error: error instanceof Error ? error.message : 'Failed to get user details' },
 			500
 		)
+	}
+})
+
+/**
+ * GET /api/hr/audit/users/:userId/ip-history
+ * Hashed-only IP history for a user.
+ */
+app.get('/audit/users/:userId/ip-history', requireAuth(), async (c) => {
+	const user = c.get('user')!
+	if (!user.is_admin && !(await hasHrAuditorPermission(c))) {
+		return c.json({ error: 'Forbidden' }, 403)
+	}
+
+	const db = c.get('db')
+	if (!db) return c.json({ error: 'Database unavailable' }, 500)
+
+	const targetUserId = c.req.param('userId')
+	try {
+		const entries = await getUserIpHistory(db, targetUserId)
+		return c.json({ entries })
+	} catch (error) {
+		logger.error('[HR Audit] Failed to get user IP history', {
+			userId: user.id,
+			targetUserId,
+			error: error instanceof Error ? error.message : String(error),
+		})
+		return c.json({ error: 'Failed to fetch IP history' }, 500)
+	}
+})
+
+/**
+ * GET /api/hr/audit/ip-history/:ipAddressHash/matches
+ * Hashed-only user matches for a shared IP hash.
+ */
+app.get('/audit/ip-history/:ipAddressHash/matches', requireAuth(), async (c) => {
+	const user = c.get('user')!
+	if (!user.is_admin && !(await hasHrAuditorPermission(c))) {
+		return c.json({ error: 'Forbidden' }, 403)
+	}
+
+	const db = c.get('db')
+	if (!db) return c.json({ error: 'Database unavailable' }, 500)
+
+	const ipAddressHash = c.req.param('ipAddressHash')
+	try {
+		const matches = await getIpHashMatches(db, ipAddressHash)
+		return c.json({ matches })
+	} catch (error) {
+		logger.error('[HR Audit] Failed to get IP hash matches', {
+			userId: user.id,
+			ipAddressHash,
+			error: error instanceof Error ? error.message : String(error),
+		})
+		return c.json({ error: 'Failed to fetch IP hash matches' }, 500)
 	}
 })
 

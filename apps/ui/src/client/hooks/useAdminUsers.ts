@@ -18,6 +18,9 @@ export const adminUserKeys = {
 	list: (filters?: AdminUsersFilters) => [...adminUserKeys.lists(), filters] as const,
 	details: () => [...adminUserKeys.all, 'detail'] as const,
 	detail: (userId: string) => [...adminUserKeys.details(), userId] as const,
+	ipHistory: (userId: string) => [...adminUserKeys.detail(userId), 'ip-history'] as const,
+	ipHashMatches: (ipAddressHash: string) =>
+		[...adminUserKeys.all, 'ip-history', ipAddressHash, 'matches'] as const,
 	discordInspection: (userId: string) =>
 		[...adminUserKeys.detail(userId), 'discord-inspection'] as const,
 	activityLogs: () => ['admin', 'activity-logs'] as const,
@@ -48,6 +51,24 @@ export function useAdminUser(userId: string) {
 		queryFn: () => api.getAdminUser(userId),
 		enabled: !!userId,
 		staleTime: 1000 * 60 * 2, // 2 minutes
+	})
+}
+
+export function useAdminUserIpHistory(userId: string) {
+	return useQuery({
+		queryKey: adminUserKeys.ipHistory(userId),
+		queryFn: () => api.getAdminUserIpHistory(userId),
+		enabled: !!userId,
+		staleTime: 1000 * 60 * 2,
+	})
+}
+
+export function useAdminIpHashMatches(ipAddressHash: string | null) {
+	return useQuery({
+		queryKey: adminUserKeys.ipHashMatches(ipAddressHash ?? ''),
+		queryFn: () => api.getAdminIpHashMatches(ipAddressHash ?? ''),
+		enabled: !!ipAddressHash,
+		staleTime: 1000 * 60,
 	})
 }
 

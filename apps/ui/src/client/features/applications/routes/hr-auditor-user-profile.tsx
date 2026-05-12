@@ -5,6 +5,7 @@ import { useMemo, useState } from 'react'
 import { Link, Navigate, useLocation, useNavigate, useParams } from 'react-router-dom'
 
 import { MemberAvatar } from '@/components/member-avatar'
+import { IpHistoryCard } from '@/components/ip-history-card'
 import { Badge } from '@/components/ui/badge'
 import {
 	Breadcrumb,
@@ -38,7 +39,13 @@ import {
 	useFulcrumScanDmPreference,
 } from '../components/fulcrum-scan-dialogs'
 import { useApplications, useHRNotes, useRequestFulcrumReport, useRequestFulcrumReportBatch } from '../hooks'
-import { auditorUserKeys, useAuditorFulcrum, useAuditorUser } from '../../../hooks/useAuditorUsers'
+import {
+	auditorUserKeys,
+	useAuditorFulcrum,
+	useAuditorIpHashMatches,
+	useAuditorUser,
+	useAuditorUserIpHistory,
+} from '../../../hooks/useAuditorUsers'
 import { myCorporationsApi } from '../../corporations/api'
 
 import type { CharacterReportMetadata, FulcrumCharacterData } from '../api'
@@ -84,6 +91,7 @@ export default function HrAuditorUserProfilePage() {
 	const [scanAllDialogOpen, setScanAllDialogOpen] = useState(false)
 	const [singleScanDialogCharacter, setSingleScanDialogCharacter] = useState<AuditorCharacterRow | null>(null)
 	const [addNoteDialogOpen, setAddNoteDialogOpen] = useState(false)
+	const [selectedIpHash, setSelectedIpHash] = useState<string | null>(null)
 	const {
 		sendDmForScanRequests,
 		setSendDmForScanRequests,
@@ -98,6 +106,8 @@ export default function HrAuditorUserProfilePage() {
 	const { data: applications, isLoading: appsLoading } = useApplications(
 		userId ? { userId } : undefined
 	)
+	const { data: ipHistoryData } = useAuditorUserIpHistory(userId ?? '')
+	const { data: ipMatchesData, isLoading: ipMatchesLoading } = useAuditorIpHashMatches(selectedIpHash)
 
 	const requestReport = useRequestFulcrumReport()
 	const requestReportBatch = useRequestFulcrumReportBatch()
@@ -548,6 +558,16 @@ export default function HrAuditorUserProfilePage() {
 						onOpenApplication={(application) =>
 							navigate(`/corporations/${application.corporationId}/applications/${application.id}`)
 						}
+					/>
+					<IpHistoryCard
+						title="IP History"
+						entries={ipHistoryData?.entries ?? []}
+						selectedHash={selectedIpHash}
+						onSelectHash={setSelectedIpHash}
+						matches={ipMatchesData?.matches ?? []}
+						matchesLoading={ipMatchesLoading}
+						buildUserLink={(targetUserId) => `/hr/users/${targetUserId}`}
+						getUserIpHistory={(targetUserId) => apiClient.getHrAuditorUserIpHistory(targetUserId)}
 					/>
 				</div>
 			</div>

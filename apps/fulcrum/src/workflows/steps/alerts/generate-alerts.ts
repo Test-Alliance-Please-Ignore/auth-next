@@ -40,6 +40,15 @@ interface CoreBinding {
     getUserDetails(
         userId: string,
     ): Promise<{ characters: Array<{ characterName: string }> } | null>
+    getBlacklistedIpAssociationsForCharacter(characterId: string): Promise<{
+        subjectUserId: string | null
+        matches: Array<{
+            userId: string
+            mainCharacterId: string
+            mainCharacterName: string | null
+            matchingIpHashes: string[]
+        }>
+    }>
 }
 
 /** Narrow interface for the HR DO methods we need */
@@ -395,6 +404,34 @@ export async function generateAlerts(
                     characterId,
                 )
                 if (blacklistAlert) alerts.push(blacklistAlert)
+            }
+
+            // Alert 7: IP-linked Blacklisted Users
+            const ipAssociations = await core.getBlacklistedIpAssociationsForCharacter(characterId)
+            if (ipAssociations.matches.length > 0) {
+                const userCount = ipAssociations.matches.length
+                const hashCount = new Set(
+                    ipAssociations.matches.flatMap((match) => match.matchingIpHashes),
+                ).size
+                const sample = ipAssociations.matches
+                    .slice(0, 3)
+                    .map((match) => match.mainCharacterName ?? match.mainCharacterId)
+                    .join(', ')
+                const more = userCount > 3 ? ` and ${userCount - 3} more` : ''
+
+                alerts.push({
+                    id: 'ip-blacklist-association',
+                    type: 'ip-blacklist-association',
+                    severity: 'critical',
+                    title: 'IP Association With Blacklisted Users',
+                    description: `Shared IP hash history with ${userCount} blacklisted user${userCount !== 1 ? 's' : ''} across ${hashCount} hash${hashCount !== 1 ? 'es' : ''}: ${sample}${more}.`,
+                    details: {
+                        subjectUserId: ipAssociations.subjectUserId,
+                        totalBlacklistedUsers: userCount,
+                        uniqueMatchingHashes: hashCount,
+                        matches: ipAssociations.matches,
+                    },
+                })
             }
         } catch (error) {
             console.warn('[generate-alerts] Blacklist association check failed:', error)

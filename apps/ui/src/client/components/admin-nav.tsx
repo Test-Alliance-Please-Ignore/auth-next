@@ -1,5 +1,6 @@
 import {
 	ArrowLeft,
+	ArchiveRestore,
 	Building2,
 	ChevronDown,
 	ChevronRight,
@@ -12,7 +13,6 @@ import {
 	Receipt,
 	ScrollText,
 	ShieldBan,
-	Target,
 	UserCircle,
 	Users,
 } from 'lucide-react'
@@ -106,6 +106,16 @@ export function AdminNav({ onNavigate }: AdminNavProps) {
 			label: 'Users',
 			href: '/admin/users',
 			icon: UserCircle,
+		},
+		{
+			label: 'Legacy Migrations',
+			href: '/admin/legacy-migrations',
+			icon: ArchiveRestore,
+		},
+		{
+			label: 'Legacy History',
+			href: '/admin/legacy-history',
+			icon: ArchiveRestore,
 		},
 		{
 			label: 'Blacklist',

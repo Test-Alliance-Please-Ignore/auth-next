@@ -39,6 +39,8 @@ import AdminDkpLeaderboardsPage from '@/routes/admin/dkp-leaderboards'
 import AdminGroupDetailPage from '@/routes/admin/group-detail'
 import AdminGroupsPage from '@/routes/admin/groups'
 import AdminLayout from '@/routes/admin/layout'
+import AdminLegacyMigrationsPage from '@/routes/admin/legacy-migrations'
+import AdminLegacyHistoryPage from '@/routes/admin/legacy-history'
 import AdminPermissionCategoriesPage from '@/routes/admin/permissions/categories'
 import AdminGlobalPermissionsPage from '@/routes/admin/permissions/global'
 import AdminUserActivityPage from '@/routes/admin/user-activity'
@@ -89,6 +91,8 @@ export const adminRouteElements = (
 				</Suspense>
 			}
 		/>
+		<Route path="legacy-migrations" element={<AdminLegacyMigrationsPage />} />
+		<Route path="legacy-history" element={<AdminLegacyHistoryPage />} />
 		<Route path="blacklist" element={<AdminBlacklistPage />} />
 		<Route path="activity-log" element={<AdminActivityLogPage />} />
 		<Route path="dev/components" element={<DevComponentsPage />} />

@@ -23,6 +23,7 @@ import { Link, useNavigate, useParams } from 'react-router-dom'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
+import { IpHistoryCard } from '@/components/ip-history-card'
 import {
 	Dialog,
 	DialogContent,
@@ -47,6 +48,8 @@ import { HRNoteCard } from '@/features/applications/components/hr-note-card'
 import { useHRNotes } from '@/features/applications/hooks'
 import {
 	useAdminUser,
+	useAdminUserIpHistory,
+	useAdminIpHashMatches,
 	useClearUserSessions,
 	useDeleteUserCharacter,
 	useRevokeDiscordLink,
@@ -83,6 +86,9 @@ export default function UserDetailPage() {
 	const queryClient = useQueryClient()
 
 	const { data: user, isLoading, refetch } = useAdminUser(userId!)
+	const { data: ipHistoryData } = useAdminUserIpHistory(userId!)
+	const [selectedIpHash, setSelectedIpHash] = useState<string | null>(null)
+	const { data: ipMatchesData, isLoading: ipMatchesLoading } = useAdminIpHashMatches(selectedIpHash)
 	const setUserAdmin = useSetUserAdmin()
 	const deleteCharacter = useDeleteUserCharacter()
 	const setPrimaryCharacter = useSetUserPrimaryCharacter()
@@ -443,6 +449,16 @@ export default function UserDetailPage() {
 				</div>
 				<div className="flex gap-2">
 					<Button variant="ghost" asChild>
+						<Link
+							to={`/admin/legacy-history?characterIds=${encodeURIComponent(
+								user.characters.map((character) => character.characterId).join(',')
+							)}`}
+						>
+							<History className="h-4 w-4" />
+							Legacy History
+						</Link>
+					</Button>
+					<Button variant="ghost" asChild>
 						<Link to={`/admin/users/${user.id}/discord-access`}>
 							<Bot className="h-4 w-4" />
 							Discord Access
@@ -619,6 +635,17 @@ export default function UserDetailPage() {
 					</div>
 				</CardContent>
 			</Card>
+
+			<IpHistoryCard
+				title="IP History"
+				entries={ipHistoryData?.entries ?? []}
+				selectedHash={selectedIpHash}
+				onSelectHash={setSelectedIpHash}
+				matches={ipMatchesData?.matches ?? []}
+				matchesLoading={ipMatchesLoading}
+				buildUserLink={(targetUserId) => `/admin/users/${targetUserId}`}
+				getUserIpHistory={(targetUserId) => api.getAdminUserIpHistory(targetUserId)}
+			/>
 
 			{/* Admin Notes */}
 			<Card>
