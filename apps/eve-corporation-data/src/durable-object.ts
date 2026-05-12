@@ -3824,7 +3824,6 @@ export class EveCorporationDataDO extends DurableObject<Env> implements EveCorpo
 		const conditions: SQL[] = [
 			eq(corporationContracts.assigneeId, allianceId),
 			eq(corporationContracts.type, 'courier'),
-			eq(corporationContracts.availability, 'alliance'),
 		]
 		if (status) {
 			conditions.push(eq(corporationContracts.status, status))
@@ -3884,7 +3883,6 @@ export class EveCorporationDataDO extends DurableObject<Env> implements EveCorpo
 				and(
 					eq(corporationContracts.assigneeId, allianceId),
 					eq(corporationContracts.type, 'courier'),
-					eq(corporationContracts.availability, 'alliance'),
 					eq(corporationContracts.status, 'finished')
 				)
 			)
