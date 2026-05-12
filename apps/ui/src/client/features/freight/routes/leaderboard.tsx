@@ -38,7 +38,7 @@ export default function FreightLeaderboardPage() {
     const byContracts = useMemo(
         () =>
             entries
-                ? [...entries]
+                ? [...entries.entries]
                     .sort((a, b) => b.contractsCompleted - a.contractsCompleted)
                     .slice(0, 10)
                 : [],
@@ -48,14 +48,18 @@ export default function FreightLeaderboardPage() {
     const byVolume = useMemo(
         () =>
             entries
-                ? [...entries]
+                ? [...entries.entries]
                     .sort((a, b) => Number(b.totalVolume) - Number(a.totalVolume))
                     .slice(0, 10)
                 : [],
         [entries]
     )
 
-    const isEmpty = !entries || entries.length === 0
+    const isEmpty = !entries || entries.entries.length === 0
+
+    const oldestDate = entries?.oldestContractDate
+        ? new Date(entries.oldestContractDate).toLocaleDateString(undefined, { year: 'numeric', month: 'short', day: 'numeric' })
+        : null
 
     return (
         <Container size="wide">
@@ -64,6 +68,7 @@ export default function FreightLeaderboardPage() {
                     <h1 className="text-3xl font-bold gradient-text">Freight Leaderboard</h1>
                     <p className="text-muted-foreground mt-1">
                         Top haulers by completed courier contracts
+                        {oldestDate && <span className="ml-2 text-xs">· since {oldestDate}</span>}
                     </p>
                 </div>
                 <div className="flex rounded-md border overflow-hidden shrink-0">

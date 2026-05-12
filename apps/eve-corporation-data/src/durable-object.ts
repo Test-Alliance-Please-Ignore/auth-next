@@ -36,7 +36,7 @@ import type {
 	CorporationAuthStatus,
 	CorporationConfigData,
 	CorporationContractData,
-	CourierLeaderboardEntry,
+	CourierLeaderboard,
 	CorporationCoreData,
 	CorporationFinancialData,
 	CorporationIndustryJobData,
@@ -3868,7 +3868,7 @@ export class EveCorporationDataDO extends DurableObject<Env> implements EveCorpo
 	/**
 	 * Get leaderboard for completed courier contracts assigned to an alliance
 	 */
-	async getCourierLeaderboard(allianceId: string, since?: Date): Promise<CourierLeaderboardEntry[]> {
+	async getCourierLeaderboard(allianceId: string, since?: Date): Promise<CourierLeaderboard> {
 		const conditions: SQL[] = [
 			eq(corporationContracts.assigneeId, allianceId),
 			eq(corporationContracts.type, 'courier'),
@@ -3884,6 +3884,7 @@ export class EveCorporationDataDO extends DurableObject<Env> implements EveCorpo
 				acceptorId: corporationContracts.acceptorId,
 				volume: corporationContracts.volume,
 				reward: corporationContracts.reward,
+				dateCompleted: corporationContracts.dateCompleted,
 			})
 			.from(corporationContracts)
 			.where(and(...conditions))
@@ -3899,12 +3900,13 @@ export class EveCorporationDataDO extends DurableObject<Env> implements EveCorpo
 				totalReward: sql<number>`coalesce(sum(cast(${distinct.reward} as numeric)), 0)`.as(
 					'total_reward'
 				),
+				oldestContract: sql<Date | null>`min(${distinct.dateCompleted})`.as('oldest_contract'),
 			})
 			.from(distinct)
 			.groupBy(distinct.acceptorId)
 			.orderBy(sql`count(*) desc`)
 
-		return results
+		const entries = results
 			.filter((r) => r.acceptorId !== null)
 			.map((r) => ({
 				acceptorId: r.acceptorId!,
@@ -3912,6 +3914,14 @@ export class EveCorporationDataDO extends DurableObject<Env> implements EveCorpo
 				totalVolume: Number(r.totalVolume),
 				totalReward: Number(r.totalReward),
 			}))
+
+		const oldestContractDate = results.reduce<Date | null>((min, r) => {
+			if (!r.oldestContract) return min
+			const d = new Date(r.oldestContract)
+			return min === null || d < min ? d : min
+		}, null)
+
+		return { entries, oldestContractDate }
 	}
 
 	/**

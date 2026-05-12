@@ -580,6 +580,14 @@ export interface CourierLeaderboardEntry {
 }
 
 /**
+ * Leaderboard result with metadata
+ */
+export interface CourierLeaderboard {
+	entries: CourierLeaderboardEntry[]
+	oldestContractDate: Date | null
+}
+
+/**
  * Corporation industry job data
  */
 export interface CorporationIndustryJobData {
@@ -1362,7 +1370,7 @@ export interface EveCorporationData {
 	 * @param allianceId - The alliance ID
 	 * @returns Leaderboard entries sorted by contracts completed descending
 	 */
-	getCourierLeaderboard(allianceId: string, since?: Date): Promise<CourierLeaderboardEntry[]>
+	getCourierLeaderboard(allianceId: string, since?: Date): Promise<CourierLeaderboard>
 
 	/**
 	 * Get corporation industry jobs

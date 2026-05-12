@@ -415,7 +415,7 @@ app.get('/leaderboard', requireAuth(), requireAllianceMember(), async (c) => {
 		const leaderboard = await corpDataStub.getCourierLeaderboard(ALLIANCE_ID, since)
 
 		// Resolve acceptor names
-		const idsToResolve = leaderboard.map((entry) => entry.acceptorId)
+		const idsToResolve = leaderboard.entries.map((entry) => entry.acceptorId)
 		let names: Record<string, string> = {}
 		if (idsToResolve.length > 0) {
 			try {
@@ -428,12 +428,13 @@ app.get('/leaderboard', requireAuth(), requireAllianceMember(), async (c) => {
 			}
 		}
 
-		const enriched = leaderboard.map((entry) => ({
-			...entry,
-			acceptorName: names[entry.acceptorId] ?? null,
-		}))
-
-		return c.json(enriched)
+		return c.json({
+			oldestContractDate: leaderboard.oldestContractDate,
+			entries: leaderboard.entries.map((entry) => ({
+				...entry,
+				acceptorName: names[entry.acceptorId] ?? null,
+			})),
+		})
 	} catch (error) {
 		logger.error('Error fetching freight leaderboard:', {
 			error: error instanceof Error ? error.message : String(error),

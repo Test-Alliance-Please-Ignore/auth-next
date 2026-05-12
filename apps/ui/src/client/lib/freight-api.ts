@@ -60,6 +60,11 @@ export interface FreightLeaderboardEntry {
 	totalReward: number
 }
 
+export interface FreightLeaderboard {
+	entries: FreightLeaderboardEntry[]
+	oldestContractDate: string | null
+}
+
 export class FreightApiClient extends ApiClient {
 	/**
 	 * List all freight routes
@@ -126,7 +131,7 @@ export class FreightApiClient extends ApiClient {
 	/**
 	 * Get courier contract leaderboard
 	 */
-	async getLeaderboard(period?: '30d' | 'all'): Promise<FreightLeaderboardEntry[]> {
+	async getLeaderboard(period?: '30d' | 'all'): Promise<FreightLeaderboard> {
 		const params = period && period !== 'all' ? `?period=${period}` : ''
 		return this.get(`${FREIGHT_API_BASE}/leaderboard${params}`)
 	}
