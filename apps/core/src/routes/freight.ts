@@ -410,7 +410,9 @@ app.get('/leaderboard', requireAuth(), requireAllianceMember(), async (c) => {
 			'alliance-queries'
 		)
 
-		const leaderboard = await corpDataStub.getCourierLeaderboard(ALLIANCE_ID)
+		const period = c.req.query('period')
+		const since = period === '30d' ? new Date(Date.now() - 30 * 24 * 60 * 60 * 1000) : undefined
+		const leaderboard = await corpDataStub.getCourierLeaderboard(ALLIANCE_ID, since)
 
 		// Resolve acceptor names
 		const idsToResolve = leaderboard.map((entry) => entry.acceptorId)

@@ -1,5 +1,5 @@
 import { Package, Trophy } from 'lucide-react'
-import { useMemo } from 'react'
+import { useMemo, useState } from 'react'
 
 import { Card, CardContent, CardHeader } from '@/components/ui/card'
 import { Container } from '@/components/ui/container'
@@ -32,7 +32,8 @@ function getRankDisplay(rank: number): React.ReactNode {
 export default function FreightLeaderboardPage() {
     usePageTitle('Freight Leaderboard')
 
-    const { data: entries, isLoading } = useFreightLeaderboard()
+    const [period, setPeriod] = useState<'30d' | 'all'>('30d')
+    const { data: entries, isLoading } = useFreightLeaderboard(period)
 
     const byContracts = useMemo(
         () =>
@@ -58,11 +59,27 @@ export default function FreightLeaderboardPage() {
 
     return (
         <Container size="wide">
-            <div className="mb-section md:mb-10">
-                <h1 className="text-3xl font-bold gradient-text">Freight Leaderboard</h1>
-                <p className="text-muted-foreground mt-1">
-                    Top haulers by completed courier contracts
-                </p>
+            <div className="mb-section md:mb-10 flex items-end justify-between gap-4">
+                <div>
+                    <h1 className="text-3xl font-bold gradient-text">Freight Leaderboard</h1>
+                    <p className="text-muted-foreground mt-1">
+                        Top haulers by completed courier contracts
+                    </p>
+                </div>
+                <div className="flex rounded-md border overflow-hidden shrink-0">
+                    <button
+                        onClick={() => setPeriod('30d')}
+                        className={`px-4 py-1.5 text-sm font-medium transition-colors ${period === '30d' ? 'bg-primary text-primary-foreground' : 'text-muted-foreground hover:text-foreground hover:bg-muted'}`}
+                    >
+                        Last 30 Days
+                    </button>
+                    <button
+                        onClick={() => setPeriod('all')}
+                        className={`px-4 py-1.5 text-sm font-medium transition-colors ${period === 'all' ? 'bg-primary text-primary-foreground' : 'text-muted-foreground hover:text-foreground hover:bg-muted'}`}
+                    >
+                        All Time
+                    </button>
+                </div>
             </div>
 
             {isLoading ? (

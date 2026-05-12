@@ -23,10 +23,10 @@ export function useFreightContracts(filters?: { status?: string }) {
 /**
  * Fetch courier contract leaderboard
  */
-export function useFreightLeaderboard() {
+export function useFreightLeaderboard(period?: '30d' | 'all') {
     return useQuery({
-        queryKey: freightContractKeys.leaderboard(),
-        queryFn: () => freightApi.getLeaderboard(),
+        queryKey: [...freightContractKeys.leaderboard(), period],
+        queryFn: () => freightApi.getLeaderboard(period),
         staleTime: 1000 * 60 * 5, // 5 minutes
     })
 }
