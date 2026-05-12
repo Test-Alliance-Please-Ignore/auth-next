@@ -126,8 +126,9 @@ export class FreightApiClient extends ApiClient {
 	/**
 	 * Get courier contract leaderboard
 	 */
-	async getLeaderboard(): Promise<FreightLeaderboardEntry[]> {
-		return this.get(`${FREIGHT_API_BASE}/leaderboard`)
+	async getLeaderboard(period?: '30d' | 'all'): Promise<FreightLeaderboardEntry[]> {
+		const params = period && period !== 'all' ? `?period=${period}` : ''
+		return this.get(`${FREIGHT_API_BASE}/leaderboard${params}`)
 	}
 }
 

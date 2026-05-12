@@ -3824,15 +3824,17 @@ export class EveCorporationDataDO extends DurableObject<Env> implements EveCorpo
 		const conditions: SQL[] = [
 			eq(corporationContracts.assigneeId, allianceId),
 			eq(corporationContracts.type, 'courier'),
+			gt(corporationContracts.dateExpired, new Date()),
 		]
 		if (status) {
 			conditions.push(eq(corporationContracts.status, status))
 		}
 
-		const results = await this.getDb().query.corporationContracts.findMany({
-			where: and(...conditions),
-			orderBy: [desc(corporationContracts.dateIssued)],
-		})
+		const results = await this.getDb()
+			.selectDistinctOn([corporationContracts.contractId])
+			.from(corporationContracts)
+			.where(and(...conditions))
+			.orderBy(corporationContracts.contractId, desc(corporationContracts.dateIssued))
 
 		return results.map((r) => ({
 			id: r.id,
@@ -3866,27 +3868,40 @@ export class EveCorporationDataDO extends DurableObject<Env> implements EveCorpo
 	/**
 	 * Get leaderboard for completed courier contracts assigned to an alliance
 	 */
-	async getCourierLeaderboard(allianceId: string): Promise<CourierLeaderboardEntry[]> {
+	async getCourierLeaderboard(allianceId: string, since?: Date): Promise<CourierLeaderboardEntry[]> {
+		const conditions: SQL[] = [
+			eq(corporationContracts.assigneeId, allianceId),
+			eq(corporationContracts.type, 'courier'),
+			eq(corporationContracts.status, 'finished'),
+		]
+		if (since) {
+			conditions.push(gt(corporationContracts.dateCompleted, since))
+		}
+
+		const distinct = this.getDb()
+			.selectDistinctOn([corporationContracts.contractId], {
+				contractId: corporationContracts.contractId,
+				acceptorId: corporationContracts.acceptorId,
+				volume: corporationContracts.volume,
+				reward: corporationContracts.reward,
+			})
+			.from(corporationContracts)
+			.where(and(...conditions))
+			.as('distinct_contracts')
+
 		const results = await this.getDb()
 			.select({
-				acceptorId: corporationContracts.acceptorId,
+				acceptorId: distinct.acceptorId,
 				contractsCompleted: sql<number>`count(*)`.as('contracts_completed'),
-				totalVolume: sql<number>`coalesce(sum(cast(${corporationContracts.volume} as numeric)), 0)`.as(
+				totalVolume: sql<number>`coalesce(sum(cast(${distinct.volume} as numeric)), 0)`.as(
 					'total_volume'
 				),
-				totalReward: sql<number>`coalesce(sum(cast(${corporationContracts.reward} as numeric)), 0)`.as(
+				totalReward: sql<number>`coalesce(sum(cast(${distinct.reward} as numeric)), 0)`.as(
 					'total_reward'
 				),
 			})
-			.from(corporationContracts)
-			.where(
-				and(
-					eq(corporationContracts.assigneeId, allianceId),
-					eq(corporationContracts.type, 'courier'),
-					eq(corporationContracts.status, 'finished')
-				)
-			)
-			.groupBy(corporationContracts.acceptorId)
+			.from(distinct)
+			.groupBy(distinct.acceptorId)
 			.orderBy(sql`count(*) desc`)
 
 		return results

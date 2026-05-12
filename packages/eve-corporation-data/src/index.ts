@@ -1362,7 +1362,7 @@ export interface EveCorporationData {
 	 * @param allianceId - The alliance ID
 	 * @returns Leaderboard entries sorted by contracts completed descending
 	 */
-	getCourierLeaderboard(allianceId: string): Promise<CourierLeaderboardEntry[]>
+	getCourierLeaderboard(allianceId: string, since?: Date): Promise<CourierLeaderboardEntry[]>
 
 	/**
 	 * Get corporation industry jobs
