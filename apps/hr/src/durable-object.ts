@@ -20,6 +20,8 @@ import type {
 	ApplicationStaffNote,
 	BlacklistEntry,
 	BlacklistFilters,
+	BlacklistTargetCheckItem,
+	BlacklistTargetCheckResult,
 	BlacklistResults,
 	CharacterIdNameBlacklistResult,
 	CharacterIdNamePair,
@@ -735,6 +737,10 @@ export class HrDO extends DurableObject<Env> implements Hr {
 		pairs: CharacterIdNamePair[]
 	): Promise<CharacterIdNameBlacklistResult[]> {
 		return await this.blacklistService.checkCharacterIdOrNamePairsBlacklisted(pairs)
+	}
+
+	async checkBlacklistTargets(targets: BlacklistTargetCheckItem[]): Promise<BlacklistTargetCheckResult[]> {
+		return await this.blacklistService.checkBlacklistTargets(targets)
 	}
 
 	/**

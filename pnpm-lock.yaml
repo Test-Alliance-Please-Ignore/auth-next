@@ -1525,6 +1525,9 @@ importers:
       hono:
         specifier: 4.10.6
         version: 4.10.6
+      mysql2:
+        specifier: 3.15.3
+        version: 3.15.3
       workers-tagged-logger:
         specifier: 0.13.7
         version: 0.13.7
@@ -1638,9 +1641,15 @@ importers:
       '@neondatabase/serverless':
         specifier: 1.0.2
         version: 1.0.2
+      '@repo/core':
+        specifier: workspace:*
+        version: link:../../packages/core
       '@repo/db-utils':
         specifier: workspace:*
         version: link:../../packages/db-utils
+      '@repo/do-utils':
+        specifier: workspace:*
+        version: link:../../packages/do-utils
       '@repo/hono-helpers':
         specifier: workspace:*
         version: link:../../packages/hono-helpers

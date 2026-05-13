@@ -5,14 +5,13 @@
  */
 
 export type LegacyMigrationStatus = 'pending' | 'partially_applied' | 'applied' | 'dismissed' | 'error'
-export type LegacyMigrationSeverity = 'none' | 'high' | 'critical'
 
 export interface LegacyMigrationQueueItem {
 	id: string
 	modernUserId: string
+	modernUserMainCharacterName?: string | null
 	legacyAuthUserId: string
 	status: LegacyMigrationStatus
-	severity: LegacyMigrationSeverity
 	candidateSnapshot: Record<string, unknown>
 	conflicts: Record<string, unknown>
 	lastError: string | null
@@ -20,6 +19,23 @@ export interface LegacyMigrationQueueItem {
 	lastReviewedAt: Date | null
 	createdAt: Date
 	updatedAt: Date
+}
+
+export interface LegacyMigrationCandidateCharacter {
+	characterId: string
+	characterName: string
+	source: 'legacy_primary' | 'esi_owner' | 'xml_account'
+	alreadyLinkedToModernUser: boolean
+	linkedToOtherUserId: string | null
+}
+
+export interface LegacyMigrationCandidateNote {
+	legacyNoteId: string
+	note: string
+	legacyCreatedByUserId: string | null
+	legacyCreatedByCharacterName: string | null
+	legacyDateCreated: Date | null
+	alreadyImported: boolean
 }
 
 export interface LegacyMigrationAction {
@@ -62,25 +78,33 @@ export interface LegacyHistoryEvent {
 }
 
 export interface Legacy extends DurableObject {
+	resolveLegacyActorCharacterNames(legacyAuthUserIds: string[]): Promise<Record<string, string>>
 	listMigrations(filters: {
 		page: number
 		pageSize: number
 		status?: LegacyMigrationStatus
-		severity?: LegacyMigrationSeverity
 		modernUserId?: string
 		legacyAuthUserId?: string
 	}): Promise<{
 		items: LegacyMigrationQueueItem[]
 		pagination: { page: number; pageSize: number; total: number; totalPages: number }
 	}>
-	getMigration(id: string): Promise<{ item: LegacyMigrationQueueItem; actions: LegacyMigrationAction[] } | null>
+	getMigration(id: string): Promise<{
+		item: LegacyMigrationQueueItem
+		actions: LegacyMigrationAction[]
+		candidates: {
+			characters: LegacyMigrationCandidateCharacter[]
+			notes: LegacyMigrationCandidateNote[]
+			ipAddresses: string[]
+		}
+	} | null>
 	applyMigration(id: string, payload?: Record<string, unknown>): Promise<{ item: LegacyMigrationQueueItem } | null>
 	dismissMigration(id: string, payload?: Record<string, unknown>): Promise<{ item: LegacyMigrationQueueItem } | null>
 	resolveMigration(
 		id: string,
 		payload: { decision: 'accept' | 'reject' | 'needs_review'; note?: string }
 	): Promise<{ item: LegacyMigrationQueueItem } | null>
-	recheckUser(modernUserId: string, actorUserId?: string): Promise<{
+	recheckUser(modernUserId: string, actorUserId?: string, options?: { force?: boolean }): Promise<{
 		ok: boolean
 		modernUserId: string
 		legacyAuthUserIds?: string[]
@@ -93,9 +117,9 @@ export interface Legacy extends DurableObject {
 		page: number
 		pageSize: number
 		corporationId?: string
-		characterId?: string
 		characterIds?: string
 		characterName?: string
+		corporationName?: string
 	}): Promise<{
 		items: LegacyHistoryApplication[]
 		pagination: { page: number; pageSize: number; total: number; totalPages: number }
@@ -103,6 +127,6 @@ export interface Legacy extends DurableObject {
 	getHistoryApplication(legacyApplicationId: string): Promise<{
 		application: LegacyHistoryApplication
 		events: LegacyHistoryEvent[]
+		actorLegacyCharacterNames: Record<string, string>
 	} | null>
 }
-

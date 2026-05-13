@@ -16,6 +16,7 @@ export interface TriggerUserRefreshOptions {
 	source: string
 	bypassThrottle?: boolean
 	refreshMode?: 'scheduled' | 'event' | 'manual'
+	suppressDiscordRefresh?: boolean
 }
 
 export interface TriggerUserRefreshResult {
@@ -131,6 +132,7 @@ export async function triggerUserRefreshWorkflow({
 	source,
 	bypassThrottle = false,
 	refreshMode = 'scheduled',
+	suppressDiscordRefresh = false,
 }: TriggerUserRefreshOptions): Promise<TriggerUserRefreshResult> {
 	try {
 		const userRecord = await db.query.users.findFirst({
@@ -154,7 +156,7 @@ export async function triggerUserRefreshWorkflow({
 
 		const instance = await env.USER_REFRESH_WORKFLOW.create({
 			id: createUserRefreshWorkflowId(source, userId),
-			params: { userId, refreshMode },
+			params: { userId, refreshMode, suppressDiscordRefresh },
 		})
 
 		logger.info('[WorkflowTrigger] Triggered user refresh workflow', {
@@ -162,6 +164,7 @@ export async function triggerUserRefreshWorkflow({
 			source,
 			bypassThrottle,
 			refreshMode,
+			suppressDiscordRefresh,
 			workflowInstanceId: instance.id,
 		})
 		return {

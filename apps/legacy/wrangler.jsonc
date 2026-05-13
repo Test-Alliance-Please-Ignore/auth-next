@@ -10,13 +10,15 @@
 	"observability": {
 		"enabled": true
 	},
-	"services": [{ "binding": "CORE", "service": "core" }],
 	"vars": {
 		"NAME": "legacy",
 		"ENVIRONMENT": "development"
 	},
 	"durable_objects": {
-		"bindings": [{ "name": "LEGACY", "class_name": "Legacy" }]
+		"bindings": [
+			{ "name": "LEGACY", "class_name": "Legacy" },
+			{ "name": "CORE", "class_name": "Core", "script_name": "core" }
+		]
 	},
 	"migrations": [{ "tag": "v1", "new_sqlite_classes": ["Legacy"] }]
 }

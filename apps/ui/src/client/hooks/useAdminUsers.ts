@@ -222,9 +222,9 @@ export function useDeleteUserCharacter() {
 	return useMutation({
 		mutationFn: ({ userId, characterId }: { userId: string; characterId: string }) =>
 			api.deleteUserCharacter(userId, characterId),
-		onSuccess: (_, { userId, characterId }) => {
+		onSuccess: async (_, { userId, characterId }) => {
 			// Invalidate user lists
-			void queryClient.invalidateQueries({ queryKey: adminUserKeys.lists() })
+			await queryClient.invalidateQueries({ queryKey: adminUserKeys.lists() })
 
 			// Update user detail cache
 			queryClient.setQueryData(adminUserKeys.detail(userId), (old: AdminUserDetail | undefined) => {
@@ -235,8 +235,18 @@ export function useDeleteUserCharacter() {
 				}
 			})
 
-			// Invalidate user in list cache to refetch
-			void queryClient.invalidateQueries({ queryKey: adminUserKeys.detail(userId) })
+			// Force immediate refetch of this detail view so server-side state (primary/main, counts, etc)
+			// is reflected without requiring a manual page refresh.
+			await queryClient.invalidateQueries({
+				queryKey: adminUserKeys.detail(userId),
+				exact: true,
+				refetchType: 'active',
+			})
+			await queryClient.refetchQueries({
+				queryKey: adminUserKeys.detail(userId),
+				exact: true,
+				type: 'active',
+			})
 		},
 	})
 }

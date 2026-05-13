@@ -290,6 +290,11 @@ export default function HrApplicationReview() {
 		)
 	}
 
+	const legacySearchParams = new URLSearchParams({
+		characterIds: [application.characterId, ...altCharacterIds].join(','),
+	})
+	const legacyHistoryPath = `/hr/legacy-history?${legacySearchParams.toString()}`
+
 	// Main content
 	return (
 		<Container>
@@ -321,12 +326,20 @@ export default function HrApplicationReview() {
 					</BreadcrumbList>
 				</Breadcrumb>
 
-				<Button asChild variant="ghost">
-					<Link to={applicationsPath}>
-						<ArrowLeft className="h-4 w-4" />
-						Back to Applications
-					</Link>
-				</Button>
+				<div className="flex items-center gap-2">
+					<Button asChild variant="ghost">
+						<a href={legacyHistoryPath} target="_blank" rel="noreferrer">
+							<Briefcase className="h-4 w-4" />
+							Legacy App Search
+						</a>
+					</Button>
+					<Button asChild variant="ghost">
+						<Link to={applicationsPath}>
+							<ArrowLeft className="h-4 w-4" />
+							Back to Applications
+						</Link>
+					</Button>
+				</div>
 			</div>
 
 			{/* Header Card */}
@@ -523,7 +536,7 @@ export default function HrApplicationReview() {
 							</CardDescription>
 						</CardHeader>
 						<CardContent>
-							<div className="rounded-md border p-3">
+							<div className="card-gradient rounded-md border border-border/50 bg-card p-3 shadow-elevated">
 								<CharacterIdentitySummary
 									characterId={application.characterId}
 									characterName={application.characterName}
@@ -552,7 +565,10 @@ export default function HrApplicationReview() {
 							{altCharacterIds.length > 0 ? (
 								<div className="space-y-3">
 									{altCharacterIds.map((charId) => (
-										<div key={charId} className="rounded-md border p-3">
+										<div
+											key={charId}
+											className="card-gradient rounded-md border border-border/50 bg-card p-3 shadow-elevated"
+										>
 											<CharacterIdentitySummary
 												characterId={charId}
 												characterName={altCharacterNames[charId] ?? charId}

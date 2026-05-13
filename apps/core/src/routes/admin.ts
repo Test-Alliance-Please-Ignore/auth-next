@@ -53,6 +53,15 @@ app.get('/users', requireAuth(), requireAdmin(), async (c) => {
 
 	try {
 		const search = c.req.query('search')
+		const isAdminRaw = c.req.query('isAdmin')
+		let isAdmin: boolean | undefined
+		if (isAdminRaw === 'true') {
+			isAdmin = true
+		} else if (isAdminRaw === 'false') {
+			isAdmin = false
+		} else if (typeof isAdminRaw === 'string' && isAdminRaw.length > 0) {
+			return c.json({ error: 'isAdmin must be "true" or "false"' }, 400)
+		}
 
 		// Validate pagination parameters
 		const pagination = validatePagination(c.req.query('limit'), c.req.query('offset'))
@@ -64,6 +73,7 @@ app.get('/users', requireAuth(), requireAdmin(), async (c) => {
 		const result = await c.env.ADMIN.searchUsers(
 			{
 				search,
+				isAdmin,
 				limit: pagination.data.limit,
 				offset: pagination.data.offset,
 			},
@@ -169,14 +179,12 @@ app.get('/legacy/migrations', requireAuth(), requireAdmin(), async (c) => {
 		| 'dismissed'
 		| 'error'
 		| undefined
-	const severity = c.req.query('severity') as 'none' | 'high' | 'critical' | undefined
 	const modernUserId = c.req.query('modernUserId') || undefined
 	const legacyAuthUserId = c.req.query('legacyAuthUserId') || undefined
 	const result = await stub.listMigrations({
 		page,
 		pageSize,
 		status,
-		severity,
 		modernUserId,
 		legacyAuthUserId,
 	})
@@ -193,9 +201,13 @@ app.get('/legacy/migrations/:id', requireAuth(), requireAdmin(), async (c) => {
 
 app.post('/legacy/migrations/:id/apply', requireAuth(), requireAdmin(), async (c) => {
 	const id = c.req.param('id')
+	const user = c.get('user')!
 	const stub = getStub<Legacy>(c.env.LEGACY, 'default')
 	const body = (await c.req.json().catch(() => ({}))) as { payload?: Record<string, unknown> }
-	const result = await stub.applyMigration(id, body.payload)
+	const result = await stub.applyMigration(id, {
+		...(body.payload ?? {}),
+		performedByUserId: user.id,
+	})
 	if (!result) return c.json({ error: 'Migration queue item not found' }, 404)
 	return c.json(result)
 })
@@ -222,28 +234,7 @@ app.post('/legacy/migrations/recheck/:modernUserId', requireAuth(), requireAdmin
 	const modernUserId = c.req.param('modernUserId')
 	const user = c.get('user')!
 	const stub = getStub<Legacy>(c.env.LEGACY, 'default')
-	const result = await stub.recheckUser(modernUserId, user.id)
-	return c.json(result)
-})
-
-app.get('/legacy/history', requireAuth(), requireAdmin(), async (c) => {
-	const stub = getStub<Legacy>(c.env.LEGACY, 'default')
-	const result = await stub.listHistory({
-		page: Number(c.req.query('page') ?? '1'),
-		pageSize: Number(c.req.query('pageSize') ?? '25'),
-		corporationId: c.req.query('corporationId') || undefined,
-		characterId: c.req.query('characterId') || undefined,
-		characterIds: c.req.query('characterIds') || undefined,
-		characterName: c.req.query('characterName') || undefined,
-	})
-	return c.json(result)
-})
-
-app.get('/legacy/history/:legacyApplicationId', requireAuth(), requireAdmin(), async (c) => {
-	const legacyApplicationId = c.req.param('legacyApplicationId')
-	const stub = getStub<Legacy>(c.env.LEGACY, 'default')
-	const result = await stub.getHistoryApplication(legacyApplicationId)
-	if (!result) return c.json({ error: 'Legacy application not found' }, 404)
+	const result = await stub.recheckUser(modernUserId, user.id, { force: true })
 	return c.json(result)
 })
 
@@ -370,6 +361,7 @@ app.post('/legacy/import-notes', requireAuth(), requireAdmin(), async (c) => {
 					legacyCreatedByUserId: note.legacyCreatedByUserId ?? null,
 					legacyDateCreated: note.legacyDateCreated ?? null,
 					...(note.metadata ?? {}),
+					visibility: 'hr',
 				}
 			)
 			created += 1
@@ -401,13 +393,43 @@ app.post('/legacy/import-ip-associations', requireAuth(), requireAdmin(), async 
 		ipAddresses: z.array(
 			z.object({
 				ipAddress: z.string().min(1),
+				firstSeenAt: z.string().datetime().nullable().optional(),
+				lastSeenAt: z.string().datetime().nullable().optional(),
 			})
 		),
 	})
 	const parsed = schema.safeParse(await c.req.json())
 	if (!parsed.success) return c.json({ error: 'Invalid payload', details: parsed.error.flatten() }, 400)
 
-	const uniqueIps = [...new Set(parsed.data.ipAddresses.map((ip) => ip.ipAddress.trim()).filter(Boolean))]
+	const aggregatedByIp = new Map<
+		string,
+		{ ipAddress: string; firstSeenAt: Date | null; lastSeenAt: Date | null }
+	>()
+	for (const row of parsed.data.ipAddresses) {
+		const ipAddress = row.ipAddress.trim()
+		if (!ipAddress) continue
+		const parsedFirstSeenAt = row.firstSeenAt ? new Date(row.firstSeenAt) : null
+		const parsedLastSeenAt = row.lastSeenAt ? new Date(row.lastSeenAt) : null
+		const existing = aggregatedByIp.get(ipAddress)
+		if (!existing) {
+			aggregatedByIp.set(ipAddress, { ipAddress, firstSeenAt: parsedFirstSeenAt, lastSeenAt: parsedLastSeenAt })
+			continue
+		}
+		const firstSeenAt =
+			existing.firstSeenAt && parsedFirstSeenAt
+				? existing.firstSeenAt < parsedFirstSeenAt
+					? existing.firstSeenAt
+					: parsedFirstSeenAt
+				: existing.firstSeenAt ?? parsedFirstSeenAt
+		const lastSeenAt =
+			existing.lastSeenAt && parsedLastSeenAt
+				? existing.lastSeenAt > parsedLastSeenAt
+					? existing.lastSeenAt
+					: parsedLastSeenAt
+				: existing.lastSeenAt ?? parsedLastSeenAt
+		aggregatedByIp.set(ipAddress, { ipAddress, firstSeenAt, lastSeenAt })
+	}
+	const uniqueIps = [...aggregatedByIp.values()]
 	let imported = 0
 	let failed = 0
 	for (const ip of uniqueIps) {
@@ -415,8 +437,11 @@ app.post('/legacy/import-ip-associations', requireAuth(), requireAdmin(), async 
 			await recordUserIpAddress({
 				db,
 				userId: parsed.data.modernUserId,
-				ip,
+				ip: ip.ipAddress,
 				hashSecret,
+				firstSeenAt: ip.firstSeenAt,
+				lastSeenAt: ip.lastSeenAt,
+				overwriteObservedWindow: true,
 			})
 			imported += 1
 		} catch {

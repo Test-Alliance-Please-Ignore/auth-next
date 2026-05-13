@@ -331,6 +331,19 @@ export interface CharacterIdNameBlacklistResult extends CharacterIdNamePair {
 	matchedBy: 'id' | 'name' | 'both' | 'none'
 }
 
+export interface BlacklistTargetCheckItem {
+	targetType: BlacklistTargetType
+	targetValue: string
+}
+
+export interface BlacklistTargetCheckResult extends BlacklistTargetCheckItem {
+	isBlacklisted: boolean
+	reason: string | null
+	createdAt: Date | null
+	blacklistedBy: string | null
+	entryMode: 'manual' | 'automatic' | null
+}
+
 /**
  * Filters for listing blacklists
  */
@@ -941,6 +954,12 @@ export interface Hr extends DurableObject {
 	checkCharacterIdOrNamePairsBlacklisted(
 		pairs: CharacterIdNamePair[]
 	): Promise<CharacterIdNameBlacklistResult[]>
+
+	/**
+	 * Bulk check arbitrary blacklist targetType/targetValue pairs.
+	 * Character names are normalized to lowercase before comparison.
+	 */
+	checkBlacklistTargets(targets: BlacklistTargetCheckItem[]): Promise<BlacklistTargetCheckResult[]>
 
 	/**
 	 * Create a user blacklist entry

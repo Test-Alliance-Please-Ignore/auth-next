@@ -16,9 +16,12 @@ import {
 	UserCircle,
 	Users,
 } from 'lucide-react'
+import { useQuery } from '@tanstack/react-query'
 import { useState } from 'react'
 import { Link, useLocation } from 'react-router-dom'
 
+import { Badge } from '@/components/ui/badge'
+import { api } from '@/lib/api'
 import { cn } from '@/lib/utils'
 
 interface AdminNavProps {
@@ -31,6 +34,17 @@ function isRouteActive(pathname: string, href: string): boolean {
 
 export function AdminNav({ onNavigate }: AdminNavProps) {
 	const location = useLocation()
+	const { data: pendingLegacyMigrationsCount = 0 } = useQuery({
+		queryKey: ['admin-nav', 'legacy-migrations', 'pending-count'],
+		queryFn: async () => {
+			const result = await api.getLegacyMigrationQueue({
+				page: 1,
+				pageSize: 1,
+				status: 'pending',
+			})
+			return result.pagination.total
+		},
+	})
 	const isBroadcastRoute =
 		location.pathname === '/admin/broadcasts' || location.pathname.startsWith('/admin/broadcasts/')
 	const isDiscordRoute =
@@ -48,14 +62,19 @@ export function AdminNav({ onNavigate }: AdminNavProps) {
 
 	const navItems = [
 		{
-			label: 'Categories',
-			href: '/admin/categories',
-			icon: FolderKanban,
+			label: 'Users',
+			href: '/admin/users',
+			icon: UserCircle,
 		},
 		{
 			label: 'Groups',
 			href: '/admin/groups',
 			icon: Users,
+		},
+		{
+			label: 'Categories',
+			href: '/admin/categories',
+			icon: FolderKanban,
 		},
 		{
 			label: 'Permissions',
@@ -103,18 +122,8 @@ export function AdminNav({ onNavigate }: AdminNavProps) {
 			icon: Factory,
 		},
 		{
-			label: 'Users',
-			href: '/admin/users',
-			icon: UserCircle,
-		},
-		{
 			label: 'Legacy Migrations',
 			href: '/admin/legacy-migrations',
-			icon: ArchiveRestore,
-		},
-		{
-			label: 'Legacy History',
-			href: '/admin/legacy-history',
 			icon: ArchiveRestore,
 		},
 		{
@@ -217,7 +226,14 @@ export function AdminNav({ onNavigate }: AdminNavProps) {
 							)}
 						>
 							<Icon className="h-5 w-5 flex-shrink-0" />
-							{item.label}
+							<span className="flex items-center gap-2">
+								{item.label}
+								{item.href === '/admin/legacy-migrations' && pendingLegacyMigrationsCount > 0 ? (
+									<Badge variant="destructive">
+										{pendingLegacyMigrationsCount > 99 ? '99+' : pendingLegacyMigrationsCount}
+									</Badge>
+								) : null}
+							</span>
 						</Link>
 					)
 				})}

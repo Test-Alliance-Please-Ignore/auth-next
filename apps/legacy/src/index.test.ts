@@ -17,10 +17,24 @@ vi.mock('./db', () => ({
 	createDb: (...args: unknown[]) => createDbMock(...args),
 }))
 
+const { coreStubMock } = vi.hoisted(() => ({
+	coreStubMock: {
+		getUserCharacters: vi.fn(),
+		getUserDiscordUserId: vi.fn(),
+		createUserBlacklist: vi.fn(),
+		legacyImportCharacterLinks: vi.fn(),
+		legacyImportNotes: vi.fn(),
+		legacyImportIpAssociations: vi.fn(),
+	},
+}))
+
+vi.mock('@repo/do-utils', () => ({
+	getStub: () => coreStubMock,
+}))
+
 import { LegacyDO } from './durable-object'
 
 describe('legacy durable object rpc', () => {
-	const coreFetch = vi.fn()
 	const migrationQueueFindFirst = vi.fn()
 	const migrationQueueFindMany = vi.fn()
 	const legacyCharactersFindMany = vi.fn()
@@ -96,34 +110,25 @@ describe('legacy durable object rpc', () => {
 		actionInsertValues.mockResolvedValue(undefined)
 		actionInsertReturning.mockResolvedValue([{ id: 'queue-row-1' }])
 
-		coreFetch.mockImplementation(async (url: string) => {
-			if (url.includes('/api/admin/users/')) {
-				return new Response(
-					JSON.stringify({
-						id: '11111111-1111-4111-8111-111111111111',
-						characters: [{ characterId: '2001' }],
-					}),
-					{ status: 200 }
-				)
-			}
-			if (url.endsWith('/api/admin/legacy/import-character-links')) {
-				return new Response(JSON.stringify({ inserted: 1, linkedToOtherUser: 0 }), { status: 200 })
-			}
-			if (url.endsWith('/api/admin/legacy/import-notes')) {
-				return new Response(JSON.stringify({ created: 1, failed: 0 }), { status: 200 })
-			}
-			if (url.endsWith('/api/admin/legacy/import-ip-associations')) {
-				return new Response(JSON.stringify({ imported: 1, failed: 0 }), { status: 200 })
-			}
-			if (url.endsWith('/api/admin/blacklist/user')) {
-				return new Response(JSON.stringify({ ok: true }), { status: 200 })
-			}
-			return new Response(JSON.stringify({ ok: true }), { status: 200 })
+		coreStubMock.getUserCharacters.mockResolvedValue([{ characterId: '2001', characterName: 'One' }])
+		coreStubMock.getUserDiscordUserId.mockResolvedValue(null)
+		coreStubMock.createUserBlacklist.mockResolvedValue({ entryId: 'entry-1' })
+		coreStubMock.legacyImportCharacterLinks.mockResolvedValue({
+			inserted: 1,
+			alreadyLinkedToUser: 0,
+			linkedToOtherUser: 0,
+			totalRequested: 1,
+		})
+		coreStubMock.legacyImportNotes.mockResolvedValue({ created: 1, failed: 0, totalRequested: 1 })
+		coreStubMock.legacyImportIpAssociations.mockResolvedValue({
+			imported: 1,
+			failed: 0,
+			totalRequested: 1,
 		})
 
 		legacy = new LegacyDO({} as DurableObjectState, {
 			DATABASE_URL: 'postgresql://test',
-			CORE: { fetch: coreFetch },
+			CORE: {} as DurableObjectNamespace,
 		} as any)
 	})
 
@@ -135,18 +140,9 @@ describe('legacy durable object rpc', () => {
 		})
 
 		expect(result?.item.status).toBe('applied')
-		expect(coreFetch).toHaveBeenCalledWith(
-			'https://core.internal/api/admin/legacy/import-character-links',
-			expect.objectContaining({ method: 'POST' })
-		)
-		expect(coreFetch).toHaveBeenCalledWith(
-			'https://core.internal/api/admin/legacy/import-notes',
-			expect.objectContaining({ method: 'POST' })
-		)
-		expect(coreFetch).toHaveBeenCalledWith(
-			'https://core.internal/api/admin/legacy/import-ip-associations',
-			expect.objectContaining({ method: 'POST' })
-		)
+		expect(coreStubMock.legacyImportCharacterLinks).toHaveBeenCalledTimes(1)
+		expect(coreStubMock.legacyImportNotes).toHaveBeenCalledTimes(1)
+		expect(coreStubMock.legacyImportIpAssociations).toHaveBeenCalledTimes(1)
 		expect(actionInsertValues).toHaveBeenCalledWith(
 			expect.objectContaining({
 				action: 'apply',

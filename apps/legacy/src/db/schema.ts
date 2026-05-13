@@ -1,4 +1,20 @@
-import { index, inet, integer, jsonb, pgTable, text, timestamp, unique, uuid } from 'drizzle-orm/pg-core'
+import { boolean, index, inet, integer, jsonb, pgTable, text, timestamp, unique, uuid } from 'drizzle-orm/pg-core'
+
+// Core-owned tables queried by legacy worker for trusted internal matching.
+// These are read-only from legacy and already exist in the shared database.
+export const coreUsers = pgTable('users', {
+	id: uuid('id').primaryKey(),
+	mainCharacterId: text('main_character_id'),
+	discordUserId: text('discord_user_id'),
+})
+
+export const coreUserCharacters = pgTable('user_characters', {
+	id: uuid('id').primaryKey(),
+	userId: uuid('user_id').notNull(),
+	characterId: text('character_id').notNull(),
+	characterName: text('character_name'),
+	isDeleted: boolean('deleted').notNull(),
+})
 
 export const legacyAuthCharacters = pgTable(
 	'legacy_auth_characters',
@@ -7,7 +23,7 @@ export const legacyAuthCharacters = pgTable(
 		legacyAuthUserId: text('legacy_auth_user_id').notNull(),
 		characterId: text('character_id').notNull(),
 		characterName: text('character_name').notNull(),
-		source: text('source', { enum: ['esi_owner', 'xml_account'] }).notNull(),
+		source: text('source', { enum: ['legacy_primary', 'esi_owner', 'xml_account'] }).notNull(),
 		sourceSnapshotAt: timestamp('source_snapshot_at', { withTimezone: true }).defaultNow().notNull(),
 		createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
 		updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow().notNull(),
@@ -16,11 +32,7 @@ export const legacyAuthCharacters = pgTable(
 		index('legacy_auth_characters_legacy_user_idx').on(table.legacyAuthUserId),
 		index('legacy_auth_characters_character_id_idx').on(table.characterId),
 		index('legacy_auth_characters_source_idx').on(table.source),
-		unique('legacy_auth_characters_legacy_user_character_source_unique').on(
-			table.legacyAuthUserId,
-			table.characterId,
-			table.source
-		),
+		unique('legacy_auth_characters_legacy_user_character_unique').on(table.legacyAuthUserId, table.characterId),
 	]
 )
 
@@ -30,8 +42,6 @@ export const legacyAuthUserIpAddresses = pgTable(
 		id: uuid('id').defaultRandom().primaryKey(),
 		legacyAuthUserId: text('legacy_auth_user_id').notNull(),
 		ipAddress: inet('ip_address').notNull(),
-		oldIpHash: text('old_ip_hash'),
-		newIpHash: text('new_ip_hash'),
 		firstSeenAt: timestamp('first_seen_at', { withTimezone: true }),
 		lastSeenAt: timestamp('last_seen_at', { withTimezone: true }),
 		sourceSnapshotAt: timestamp('source_snapshot_at', { withTimezone: true }).defaultNow().notNull(),
@@ -41,8 +51,6 @@ export const legacyAuthUserIpAddresses = pgTable(
 	(table) => [
 		index('legacy_auth_user_ips_legacy_user_idx').on(table.legacyAuthUserId),
 		index('legacy_auth_user_ips_ip_address_idx').on(table.ipAddress),
-		index('legacy_auth_user_ips_old_hash_idx').on(table.oldIpHash),
-		index('legacy_auth_user_ips_new_hash_idx').on(table.newIpHash),
 		unique('legacy_auth_user_ips_legacy_user_ip_unique').on(table.legacyAuthUserId, table.ipAddress),
 	]
 )
@@ -193,6 +201,8 @@ export const legacyMigrationActions = pgTable(
 )
 
 export const schema = {
+	coreUsers,
+	coreUserCharacters,
 	legacyAuthCharacters,
 	legacyAuthUserIpAddresses,
 	legacyAuthDiscordAccounts,

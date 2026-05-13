@@ -4,7 +4,7 @@ import type { createDb } from './db'
 
 export type Env = SharedHonoEnv & {
 	DATABASE_URL: string
-	CORE: Fetcher
+	CORE: DurableObjectNamespace
 }
 
 export type Variables = SharedHonoVariables & {

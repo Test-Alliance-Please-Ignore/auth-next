@@ -53,9 +53,14 @@ const HrAuditorUsersPage = lazy(() => import('./features/applications/routes/hr-
 const HrAuditorUserProfilePage = lazy(
 	() => import('./features/applications/routes/hr-auditor-user-profile')
 )
+const HrAuditorIpHistoryInspectionPage = lazy(
+	() => import('./features/applications/routes/hr-auditor-ip-history-inspection')
+)
 const HrAuditorUserGroupsPage = lazy(
 	() => import('./features/applications/routes/hr-auditor-user-groups')
 )
+const HrLegacyHistoryPage = lazy(() => import('./routes/admin/legacy-history'))
+const HrLegacyHistoryDetailPage = lazy(() => import('./routes/hr-legacy-history-detail'))
 
 // Lazy load the Skill Plans feature for code splitting
 const SkillPlansList = lazy(() => import('./features/skill-plans/routes/skill-plans-list'))
@@ -338,6 +343,30 @@ export default function App() {
 								element={
 									<Suspense fallback={<LoadingPage />}>
 										<HrAuditorUserGroupsPage />
+									</Suspense>
+								}
+							/>
+							<Route
+								path="/hr/legacy-history"
+								element={
+									<Suspense fallback={<LoadingPage />}>
+										<HrLegacyHistoryPage />
+									</Suspense>
+								}
+							/>
+							<Route
+								path="/hr/legacy-history/:legacyApplicationId"
+								element={
+									<Suspense fallback={<LoadingPage />}>
+										<HrLegacyHistoryDetailPage />
+									</Suspense>
+								}
+							/>
+							<Route
+								path="/hr/ip-history/:ipAddressHash"
+								element={
+									<Suspense fallback={<LoadingPage />}>
+										<HrAuditorIpHistoryInspectionPage />
 									</Suspense>
 								}
 							/>

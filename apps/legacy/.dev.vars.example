@@ -1,0 +1,2 @@
+DATABASE_URL=postgresql://user:pass@host/dbname?sslmode=require
+SENTRY_DSN=

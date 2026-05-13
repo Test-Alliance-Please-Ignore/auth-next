@@ -107,7 +107,7 @@ function CharacterReportCard({
 		isRequesting && (requestingCharacterId === null || requestingCharacterId === character.characterId)
 
 	return (
-		<div className="flex items-start gap-4 rounded-lg border p-4">
+		<div className="card-gradient flex items-start gap-4 rounded-lg border border-border/50 bg-card p-4 shadow-elevated">
 			<div className="min-w-0 flex-1 space-y-2">
 				<CharacterIdentitySummary
 					characterId={character.characterId}

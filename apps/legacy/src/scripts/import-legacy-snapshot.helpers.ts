@@ -7,8 +7,26 @@ export function chunkRows<T>(rows: T[], size: number): T[][] {
 export function toDateOrNull(value: Date | string | null): Date | null {
 	if (!value) return null
 	if (value instanceof Date) return value
-	const parsed = new Date(value)
+
+	// MariaDB datetime values are often emitted without timezone. Treat those as UTC
+	// to avoid locale-dependent parsing drift during snapshot imports.
+	const mysqlDateTimePattern = /^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}(\.\d+)?$/
+	const normalizedValue =
+		typeof value === 'string' && mysqlDateTimePattern.test(value)
+			? value.replace(' ', 'T') + 'Z'
+			: value
+
+	const parsed = new Date(normalizedValue)
 	return Number.isNaN(parsed.getTime()) ? null : parsed
+}
+
+export function toDateOrNullUtcCapped(
+	value: Date | string | null,
+	capAt: Date
+): Date | null {
+	const parsed = toDateOrNull(value)
+	if (!parsed) return null
+	return parsed.getTime() > capAt.getTime() ? capAt : parsed
 }
 
 export function isLikelyIp(ip: string): boolean {

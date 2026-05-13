@@ -63,6 +63,7 @@ import type {
 } from '@repo/admin'
 import type { Core } from '@repo/core'
 import type { Hr } from '@repo/hr'
+import type { Legacy } from '@repo/legacy'
 import type { App, Env } from './context'
 
 const app = new Hono<App>()
@@ -353,6 +354,70 @@ export class CoreWorker extends WorkerEntrypoint<Env> {
 				mainCharacterName: charNameById.get(row.mainCharacterId) ?? null,
 				matchingIpHashes: [...(hashByUserId.get(row.userId) ?? new Set<string>())],
 			})),
+		}
+	}
+
+	/**
+	 * Return legacy migration-style association data for a character owner (read-only consumer).
+	 * This forces a recheck so Fulcrum sees fresh associations and blacklist signal state.
+	 */
+	async getLegacyAssociationsForCharacter(characterId: string): Promise<{
+		modernUserId: string | null
+		items: Array<{
+			id: string
+			legacyAuthUserId: string
+			status: string
+			modernUserMainCharacterName: string | null
+			candidateSnapshot: Record<string, unknown>
+			conflicts: Record<string, unknown>
+			candidates: {
+				characters: Array<{
+					characterId: string
+					characterName: string
+					source: 'legacy_primary' | 'esi_owner' | 'xml_account'
+					alreadyLinkedToModernUser: boolean
+					linkedToOtherUserId: string | null
+				}>
+				notes: Array<{
+					legacyNoteId: string
+					note: string
+					legacyCreatedByUserId: string | null
+					legacyCreatedByCharacterName: string | null
+					legacyDateCreated: Date | null
+					alreadyImported: boolean
+				}>
+				ipAddresses: string[]
+			}
+		}>
+	}> {
+		const ownership = await this.getService().getCharacterOwnership(characterId)
+		if (!ownership) return { modernUserId: null, items: [] }
+
+		const legacyStub = getStub<Legacy>(this.env.LEGACY, 'default')
+		await legacyStub.recheckUser(ownership.userId, 'system:fulcrum-report', { force: true })
+		const listing = await legacyStub.listMigrations({
+			page: 1,
+			pageSize: 100,
+			modernUserId: ownership.userId,
+		})
+		if (listing.items.length === 0) {
+			return { modernUserId: ownership.userId, items: [] }
+		}
+
+		const details = await Promise.all(listing.items.map((item) => legacyStub.getMigration(item.id)))
+		return {
+			modernUserId: ownership.userId,
+			items: details
+				.filter((detail): detail is NonNullable<typeof detail> => detail !== null)
+				.map((detail) => ({
+					id: detail.item.id,
+					legacyAuthUserId: detail.item.legacyAuthUserId,
+					status: detail.item.status,
+					modernUserMainCharacterName: detail.item.modernUserMainCharacterName ?? null,
+					candidateSnapshot: detail.item.candidateSnapshot ?? {},
+					conflicts: detail.item.conflicts ?? {},
+					candidates: detail.candidates,
+				})),
 		}
 	}
 

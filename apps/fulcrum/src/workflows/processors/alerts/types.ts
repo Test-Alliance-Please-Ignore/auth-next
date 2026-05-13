@@ -13,6 +13,8 @@ export type AlertType =
     | 'corp-hopper'
     | 'blacklist-association'
     | 'ip-blacklist-association'
+    | 'legacy-additional-associations'
+    | 'legacy-blacklist-association'
 
 export interface ReportAlert {
     id: string

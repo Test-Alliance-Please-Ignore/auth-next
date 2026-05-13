@@ -6,6 +6,7 @@ import { Link } from 'react-router-dom'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
+import { UserSearchPaginationControls } from '@/components/user-search-pagination-controls'
 import {
 	Dialog,
 	DialogContent,
@@ -219,6 +220,13 @@ export default function BlacklistPage() {
 				entry.id.toLowerCase().includes(search)
 			)
 		}) || []
+	const totalCount = data?.pagination.totalCount ?? 0
+	const hasPagination = (data?.pagination.totalPages ?? 0) > 1
+
+	const handlePageSizeChange = (newSize: number) => {
+		setPageSize(newSize)
+		setPage(1)
+	}
 
 	return (
 		<div className="space-y-6">
@@ -305,19 +313,6 @@ export default function BlacklistPage() {
 							/>
 						</div>
 
-						<div className="space-y-2">
-							<Label htmlFor="pageSize">Page Size</Label>
-							<Select
-								inputId="pageSize"
-								value={String(pageSize)}
-								onValueChange={(v) => setPageSize(Number(v))}
-								options={[
-									{ value: '25', label: '25' },
-									{ value: '50', label: '50' },
-									{ value: '100', label: '100' },
-								]}
-							/>
-						</div>
 					</div>
 
 					{hasActiveFilters && (
@@ -335,14 +330,27 @@ export default function BlacklistPage() {
 			{/* Blacklist Table */}
 			<Card>
 				<CardHeader>
-					<CardTitle>Blacklist Entries</CardTitle>
-					<CardDescription>
-						{isLoading ? (
-							<Skeleton className="h-4 w-32" />
-						) : (
-							`${filteredData.length} entry(ies) • Page ${data?.pagination.page || 1} of ${data?.pagination.totalPages || 1}`
-						)}
-					</CardDescription>
+					<div className="space-y-4">
+						<div>
+							<CardTitle>Blacklist Entries</CardTitle>
+							<CardDescription>
+								{isLoading ? (
+									<Skeleton className="h-4 w-32" />
+								) : (
+									`${filteredData.length} ${filteredData.length === 1 ? 'entry' : 'entries'} • Page ${data?.pagination.page || 1} of ${data?.pagination.totalPages || 1}`
+								)}
+							</CardDescription>
+						</div>
+						<UserSearchPaginationControls
+							totalCount={totalCount}
+							page={page}
+							pageSize={pageSize}
+							onPageChange={setPage}
+							onPageSizeChange={handlePageSizeChange}
+							pageSizeOptions={[10, 25, 50, 100]}
+							itemLabel="entries"
+						/>
+					</div>
 				</CardHeader>
 				<CardContent>
 					{isLoading ? (
@@ -382,7 +390,7 @@ export default function BlacklistPage() {
 										<TableHead>Target Value</TableHead>
 										<TableHead>Reason</TableHead>
 										<TableHead>Added</TableHead>
-										<TableHead>Status</TableHead>
+										<TableHead>Entry Mode</TableHead>
 										<TableHead className="text-right">Actions</TableHead>
 									</TableRow>
 								</TableHeader>
@@ -456,32 +464,17 @@ export default function BlacklistPage() {
 								</TableBody>
 							</Table>
 
-							{/* Pagination */}
-							{data && data.pagination.totalPages > 1 && (
-								<div className="flex items-center justify-between pt-4">
-									<p className="text-sm text-muted-foreground">
-										Showing {(page - 1) * pageSize + 1} to{' '}
-										{Math.min(page * pageSize, data.pagination.totalCount)} of{' '}
-										{data.pagination.totalCount} entries
-									</p>
-									<div className="flex gap-2">
-										<Button
-											variant="ghost"
-											size="sm"
-											onClick={() => setPage(page - 1)}
-											disabled={page === 1}
-										>
-											Previous
-										</Button>
-										<Button
-											variant="ghost"
-											size="sm"
-											onClick={() => setPage(page + 1)}
-											disabled={page === data.pagination.totalPages}
-										>
-											Next
-										</Button>
-									</div>
+							{hasPagination && (
+								<div className="mt-4 border-t border-border pt-4">
+									<UserSearchPaginationControls
+										totalCount={totalCount}
+										page={page}
+										pageSize={pageSize}
+										onPageChange={setPage}
+										onPageSizeChange={handlePageSizeChange}
+										pageSizeOptions={[10, 25, 50, 100]}
+										itemLabel="entries"
+									/>
 								</div>
 							)}
 						</div>

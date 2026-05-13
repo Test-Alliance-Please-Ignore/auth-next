@@ -174,6 +174,7 @@ function summarizeCoreAttachmentDelta(
 export interface UserRefreshWorkflowParams {
 	userId: string
 	refreshMode?: 'scheduled' | 'event' | 'manual'
+	suppressDiscordRefresh?: boolean
 }
 
 /**
@@ -192,7 +193,8 @@ export class UserRefreshWorkflow extends WorkflowEntrypoint<Env, UserRefreshWork
 	private createContext(
 		userId: string,
 		workflowInstanceId: string,
-		refreshMode: UserRefreshWorkflowParams['refreshMode'] = 'scheduled'
+		refreshMode: UserRefreshWorkflowParams['refreshMode'] = 'scheduled',
+		suppressDiscordRefresh: boolean = false
 	): WorkflowContext {
 		return {
 			env: this.env,
@@ -200,6 +202,7 @@ export class UserRefreshWorkflow extends WorkflowEntrypoint<Env, UserRefreshWork
 			db: createDb(this.env.DATABASE_URL),
 			userId,
 			refreshMode,
+			suppressDiscordRefresh,
 		}
 	}
 
@@ -208,6 +211,7 @@ export class UserRefreshWorkflow extends WorkflowEntrypoint<Env, UserRefreshWork
 		userId: string,
 		workflowInstanceId: string,
 		refreshMode: UserRefreshWorkflowParams['refreshMode'],
+		suppressDiscordRefresh: boolean,
 		characterId: string
 	): Promise<CharacterRefreshOutcome> {
 		console.log('[Workflow] Character refresh started', {
@@ -221,7 +225,12 @@ export class UserRefreshWorkflow extends WorkflowEntrypoint<Env, UserRefreshWork
 				`update-character-public-info-${characterId}`,
 				CHARACTER_STEP_OPTIONS,
 				async () => {
-					const ctx = this.createContext(userId, workflowInstanceId, refreshMode)
+					const ctx = this.createContext(
+						userId,
+						workflowInstanceId,
+						refreshMode,
+						suppressDiscordRefresh
+					)
 					return updateCharacterPublicInfo(ctx, characterId)
 				}
 			)
@@ -231,7 +240,12 @@ export class UserRefreshWorkflow extends WorkflowEntrypoint<Env, UserRefreshWork
 					`reconcile-corporation-membership-${characterId}`,
 					CHARACTER_STEP_OPTIONS,
 					async () => {
-						const ctx = this.createContext(userId, workflowInstanceId, refreshMode)
+						const ctx = this.createContext(
+							userId,
+							workflowInstanceId,
+							refreshMode,
+							suppressDiscordRefresh
+						)
 						return reconcileCharacterCorporationMembership(ctx, characterId, null)
 					}
 				)
@@ -247,7 +261,12 @@ export class UserRefreshWorkflow extends WorkflowEntrypoint<Env, UserRefreshWork
 				`reconcile-corporation-membership-${characterId}`,
 				CHARACTER_STEP_OPTIONS,
 				async () => {
-					const ctx = this.createContext(userId, workflowInstanceId, refreshMode)
+					const ctx = this.createContext(
+						userId,
+						workflowInstanceId,
+						refreshMode,
+						suppressDiscordRefresh
+					)
 					return reconcileCharacterCorporationMembership(
 						ctx,
 						characterId,
@@ -260,7 +279,12 @@ export class UserRefreshWorkflow extends WorkflowEntrypoint<Env, UserRefreshWork
 				`validate-character-token-${characterId}`,
 				CHARACTER_STEP_OPTIONS,
 				async () => {
-					const ctx = this.createContext(userId, workflowInstanceId, refreshMode)
+					const ctx = this.createContext(
+						userId,
+						workflowInstanceId,
+						refreshMode,
+						suppressDiscordRefresh
+					)
 					return tryCharacterAuthenticatedFetch(ctx, characterId)
 				}
 			)
@@ -309,7 +333,7 @@ export class UserRefreshWorkflow extends WorkflowEntrypoint<Env, UserRefreshWork
 		event: WorkflowEvent<UserRefreshWorkflowParams>,
 		step: WorkflowStep
 	): Promise<UserRefreshWorkflowResult> {
-		const { userId, refreshMode = 'scheduled' } = event.payload
+		const { userId, refreshMode = 'scheduled', suppressDiscordRefresh = false } = event.payload
 		const workflowInstanceId = event.instanceId
 
 		const logContext = { userId, workflowInstanceId, refreshMode }
@@ -331,7 +355,12 @@ export class UserRefreshWorkflow extends WorkflowEntrypoint<Env, UserRefreshWork
 		try {
 			// Step 1: Check if user is blacklisted
 			const checkUserBlacklistedResult = await step.do('check-user-blacklisted', () => {
-				const ctx = this.createContext(userId, workflowInstanceId, refreshMode)
+				const ctx = this.createContext(
+					userId,
+					workflowInstanceId,
+					refreshMode,
+					suppressDiscordRefresh
+				)
 				return checkUserBlacklisted(ctx)
 			})
 			steps['check-user-blacklisted'] = 'ok'
@@ -344,7 +373,12 @@ export class UserRefreshWorkflow extends WorkflowEntrypoint<Env, UserRefreshWork
 			// Step 2: Disable user if blacklisted
 			if (checkUserBlacklistedResult.isBlacklisted) {
 				await step.do('disable-blacklisted-user', () => {
-					const ctx = this.createContext(userId, workflowInstanceId, refreshMode)
+					const ctx = this.createContext(
+						userId,
+						workflowInstanceId,
+						refreshMode,
+						suppressDiscordRefresh
+					)
 					return disableBlacklistedUser(ctx)
 				})
 				steps['disable-blacklisted-user'] = 'ok'
@@ -380,6 +414,7 @@ export class UserRefreshWorkflow extends WorkflowEntrypoint<Env, UserRefreshWork
 						userId,
 						workflowInstanceId,
 						refreshMode,
+						suppressDiscordRefresh,
 						character.characterId
 					)
 			)
@@ -422,7 +457,12 @@ export class UserRefreshWorkflow extends WorkflowEntrypoint<Env, UserRefreshWork
 						'get-user-role-attachments',
 						ROLE_STEP_OPTIONS,
 						() => {
-							const ctx = this.createContext(userId, workflowInstanceId, refreshMode)
+							const ctx = this.createContext(
+								userId,
+								workflowInstanceId,
+								refreshMode,
+								suppressDiscordRefresh
+							)
 							return getUserRoleAttachments(ctx)
 						}
 					)
@@ -447,7 +487,12 @@ export class UserRefreshWorkflow extends WorkflowEntrypoint<Env, UserRefreshWork
 
 				// Step 5: Attach user roles
 				const attachUserRolesResult = await step.do('attach-user-roles', ROLE_STEP_OPTIONS, () => {
-					const ctx = this.createContext(userId, workflowInstanceId, refreshMode)
+					const ctx = this.createContext(
+						userId,
+						workflowInstanceId,
+						refreshMode,
+						suppressDiscordRefresh
+					)
 					return attachUserRoles(ctx)
 				})
 				steps['attach-user-roles'] = 'ok'
@@ -473,7 +518,12 @@ export class UserRefreshWorkflow extends WorkflowEntrypoint<Env, UserRefreshWork
 
 			// Step 6: Update completion timestamp
 			await step.do('update-completion-timestamp', () => {
-				const ctx = this.createContext(userId, workflowInstanceId, refreshMode)
+				const ctx = this.createContext(
+					userId,
+					workflowInstanceId,
+					refreshMode,
+					suppressDiscordRefresh
+				)
 				return updateCompletionTimestamp(ctx)
 			})
 			steps['update-completion-timestamp'] = 'ok'

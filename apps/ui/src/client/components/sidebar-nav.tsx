@@ -256,6 +256,13 @@ export function SidebarNav({ onNavigate, isSidebarOpen = true, onToggleSidebar }
 			})
 		}
 
+		if ((hrCorporations?.length ?? 0) > 0 || isAuditor || isSiteAdmin) {
+			hrItems.push({
+				label: 'Legacy Applications',
+				href: '/hr/legacy-history',
+			})
+		}
+
 		navItems.push({
 			label: 'HR',
 			href: '#hr',

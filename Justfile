@@ -197,6 +197,78 @@ db-push app:
 db-migrate app:
   cd apps/{{app}} && bun run db:migrate
 
+# Legacy snapshot import helpers
+[group('2. database')]
+legacy-snapshot-extract stage='all' snapshot_dir='./tmp/legacy-snapshot' batch_size='100':
+  pnpm -F legacy db:import:snapshot -- --stage {{stage}} --extract-only --snapshot-dir {{snapshot_dir}} --batch-size {{batch_size}}
+
+[group('2. database')]
+legacy-snapshot-dry-run stage='all' snapshot_dir='./tmp/legacy-snapshot' from_snapshot='false' batch_size='100':
+  #!/usr/bin/env bash
+  set -euo pipefail
+  cmd=(pnpm -F legacy db:import:snapshot -- --stage {{stage}} --dry-run --snapshot-dir {{snapshot_dir}} --batch-size {{batch_size}})
+  if [ "{{from_snapshot}}" = "true" ]; then
+    cmd+=(--from-snapshot)
+  fi
+  "${cmd[@]}"
+
+[group('2. database')]
+legacy-snapshot-apply stage='all' snapshot_dir='./tmp/legacy-snapshot' from_snapshot='false' batch_size='100' prune_stale='true':
+  #!/usr/bin/env bash
+  set -euo pipefail
+  cmd=(pnpm -F legacy db:import:snapshot -- --stage {{stage}} --apply --snapshot-dir {{snapshot_dir}} --batch-size {{batch_size}})
+  if [ "{{from_snapshot}}" = "true" ]; then
+    cmd+=(--from-snapshot)
+  fi
+  if [ "{{prune_stale}}" != "true" ]; then
+    cmd+=(--no-prune-stale)
+  fi
+  "${cmd[@]}"
+
+[group('2. database')]
+legacy-snapshot-resume stage='all' snapshot_dir='./tmp/legacy-snapshot' from_snapshot='true' batch_size='100' prune_stale='true':
+  #!/usr/bin/env bash
+  set -euo pipefail
+  cmd=(pnpm -F legacy db:import:snapshot -- --stage {{stage}} --apply --resume --snapshot-dir {{snapshot_dir}} --batch-size {{batch_size}})
+  if [ "{{from_snapshot}}" = "true" ]; then
+    cmd+=(--from-snapshot)
+  fi
+  if [ "{{prune_stale}}" != "true" ]; then
+    cmd+=(--no-prune-stale)
+  fi
+  "${cmd[@]}"
+
+[group('2. database')]
+legacy-snapshot-reset-cursor snapshot_dir='./tmp/legacy-snapshot':
+  pnpm -F legacy db:import:snapshot -- --stage all --dry-run --snapshot-dir {{snapshot_dir}} --reset-cursor
+
+[group('2. database')]
+legacy-snapshot-clear-temp snapshot_dir='./tmp/legacy-snapshot':
+  #!/usr/bin/env bash
+  set -euo pipefail
+  if [ -d "{{snapshot_dir}}" ]; then
+    rm -rf "{{snapshot_dir}}"
+    echo "Removed snapshot temp directory: {{snapshot_dir}}"
+  else
+    echo "Snapshot temp directory not found: {{snapshot_dir}}"
+  fi
+
+[group('2. database')]
+legacy-blacklist-import:
+  pnpm -F hr db:import:legacy-blacklist -- --apply
+
+[group('2. database')]
+legacy-blacklist-dry-run export_dir='./tmp/legacy-blacklist':
+  pnpm -F hr db:import:legacy-blacklist -- --dry-run --export {{export_dir}}
+
+[group('2. database')]
+legacy-blacklist-resume export_dir='./tmp/legacy-blacklist':
+  pnpm -F hr db:import:legacy-blacklist -- --apply --export {{export_dir}} --resume
+
+[group('2. database')]
+legacy-blacklist-reset-cursor export_dir='./tmp/legacy-blacklist':
+  pnpm -F hr db:import:legacy-blacklist -- --dry-run --export {{export_dir}} --reset-cursor
+
 # Run dev script. Runs turbo dev if not in a specific project directory.
 [group('2. local dev')]
 [no-cd]

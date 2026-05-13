@@ -1,4 +1,4 @@
-import { and, desc, eq, inArray } from '@repo/db-utils'
+import { and, desc, eq, inArray, sql } from '@repo/db-utils'
 
 import { hrNotes } from '../db/schema'
 
@@ -30,6 +30,31 @@ export class HrNotesService {
 		priority: HrNotePriority,
 		metadata?: Record<string, unknown>
 	): Promise<HrNote> {
+		if (metadata?.source === 'legacy_import' && typeof metadata?.legacyNoteId === 'string') {
+			const [existing] = await this.ctx.db
+				.select()
+				.from(hrNotes)
+				.where(
+					and(
+						eq(hrNotes.subjectUserId, subjectUserId),
+						sql`${hrNotes.metadata}->>'source' = 'legacy_import'`,
+						sql`${hrNotes.metadata}->>'legacyNoteId' = ${metadata.legacyNoteId}`
+					)
+				)
+				.limit(1)
+			if (existing) {
+				return this.mapToHrNote(existing)
+			}
+		}
+
+		let createdAt: Date | undefined
+		if (metadata?.source === 'legacy_import' && typeof metadata?.legacyDateCreated === 'string') {
+			const parsed = new Date(metadata.legacyDateCreated)
+			if (!Number.isNaN(parsed.getTime())) {
+				createdAt = parsed
+			}
+		}
+
 		const [note] = await this.ctx.db
 			.insert(hrNotes)
 			.values({
@@ -42,6 +67,7 @@ export class HrNotesService {
 				noteType,
 				priority,
 				metadata,
+				...(createdAt ? { createdAt, updatedAt: createdAt } : {}),
 			})
 			.returning()
 

@@ -4,11 +4,12 @@ import {
 	ArrowLeft,
 	Bot,
 	CheckCircle,
+	ChevronDown,
 	ExternalLink,
 	History,
 	LogOut,
 	MessageSquare,
-	Plus,
+	MessageSquarePlus,
 	RefreshCw,
 	Shield,
 	ShieldBan,
@@ -17,7 +18,7 @@ import {
 	Users,
 	XCircle,
 } from 'lucide-react'
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { Link, useNavigate, useParams } from 'react-router-dom'
 
 import { Badge } from '@/components/ui/badge'
@@ -49,7 +50,6 @@ import { useHRNotes } from '@/features/applications/hooks'
 import {
 	useAdminUser,
 	useAdminUserIpHistory,
-	useAdminIpHashMatches,
 	useClearUserSessions,
 	useDeleteUserCharacter,
 	useRevokeDiscordLink,
@@ -61,6 +61,7 @@ import {
 } from '@/hooks/useAdminUsers'
 import { useCorporations } from '@/hooks/useCorporations'
 import { usePageTitle } from '@/hooks/usePageTitle'
+import { useBreadcrumb } from '@/hooks/useBreadcrumb'
 import { api } from '@/lib/api'
 import { characterPortraitUrl } from '@/lib/eve-images'
 import { formatDateTime, formatRelativeTime } from '@/lib/date-utils'
@@ -84,11 +85,10 @@ export default function UserDetailPage() {
 	const { userId } = useParams<{ userId: string }>()
 	const navigate = useNavigate()
 	const queryClient = useQueryClient()
+	const { setCustomLabel, clearCustomLabel } = useBreadcrumb()
 
 	const { data: user, isLoading, refetch } = useAdminUser(userId!)
 	const { data: ipHistoryData } = useAdminUserIpHistory(userId!)
-	const [selectedIpHash, setSelectedIpHash] = useState<string | null>(null)
-	const { data: ipMatchesData, isLoading: ipMatchesLoading } = useAdminIpHashMatches(selectedIpHash)
 	const setUserAdmin = useSetUserAdmin()
 	const deleteCharacter = useDeleteUserCharacter()
 	const setPrimaryCharacter = useSetUserPrimaryCharacter()
@@ -123,7 +123,6 @@ export default function UserDetailPage() {
 			queryClient.invalidateQueries({ queryKey: ['adminUser', userId] })
 		},
 	})
-
 	const activeBlacklist = blacklistEntries.find((entry) => entry.targetType === 'user')
 	const activeDiscordBlacklist = blacklistEntries.find((entry) => entry.targetType === 'discord_id')
 
@@ -176,6 +175,18 @@ export default function UserDetailPage() {
 	const { data: hrNotes = [], isLoading: notesLoading } = useHRNotes({
 		subjectUserId: userId!,
 	})
+
+	useEffect(() => {
+		if (!userId) return
+		const path = `/admin/users/${userId}`
+		if (user) {
+			const label = user.characters.find((character) => character.is_primary)?.characterName ?? user.id
+			setCustomLabel(path, label)
+		}
+		return () => {
+			clearCustomLabel(path)
+		}
+	}, [clearCustomLabel, setCustomLabel, user, userId])
 
 	if (isLoading) {
 		return (
@@ -449,16 +460,6 @@ export default function UserDetailPage() {
 				</div>
 				<div className="flex gap-2">
 					<Button variant="ghost" asChild>
-						<Link
-							to={`/admin/legacy-history?characterIds=${encodeURIComponent(
-								user.characters.map((character) => character.characterId).join(',')
-							)}`}
-						>
-							<History className="h-4 w-4" />
-							Legacy History
-						</Link>
-					</Button>
-					<Button variant="ghost" asChild>
 						<Link to={`/admin/users/${user.id}/discord-access`}>
 							<Bot className="h-4 w-4" />
 							Discord Access
@@ -468,6 +469,16 @@ export default function UserDetailPage() {
 						<Link to={`/admin/users/${user.id}/groups`}>
 							<Users className="h-4 w-4" />
 							Group Memberships
+						</Link>
+					</Button>
+					<Button variant="ghost" asChild>
+						<Link
+							to={`/admin/legacy-migrations?userId=${encodeURIComponent(user.id)}&autoRecheck=1`}
+							target="_blank"
+							rel="noopener noreferrer"
+						>
+							<RefreshCw className="h-4 w-4" />
+							Legacy Data
 						</Link>
 					</Button>
 					<Button variant="ghost" asChild>
@@ -636,46 +647,66 @@ export default function UserDetailPage() {
 				</CardContent>
 			</Card>
 
-			<IpHistoryCard
-				title="IP History"
-				entries={ipHistoryData?.entries ?? []}
-				selectedHash={selectedIpHash}
-				onSelectHash={setSelectedIpHash}
-				matches={ipMatchesData?.matches ?? []}
-				matchesLoading={ipMatchesLoading}
-				buildUserLink={(targetUserId) => `/admin/users/${targetUserId}`}
-				getUserIpHistory={(targetUserId) => api.getAdminUserIpHistory(targetUserId)}
-			/>
-
 			{/* Admin Notes */}
 			<Card>
-				<CardHeader>
-					<div className="flex items-center justify-between">
-						<div>
-							<CardTitle>Admin Notes</CardTitle>
-							<CardDescription>Private notes about this user (admin only)</CardDescription>
-						</div>
-						<Button onClick={() => setAddNoteDialogOpen(true)} size="sm">
-							<Plus className="h-4 w-4" />
-							Add Note
-						</Button>
-					</div>
-				</CardHeader>
-				<CardContent>
-					{notesLoading ? (
-						<div className="text-center py-4 text-muted-foreground">Loading notes...</div>
-					) : hrNotes.length === 0 ? (
-						<div className="text-center py-8 text-muted-foreground border border-dashed rounded-md">
-							No notes yet. Add a note to track important information about this user.
-						</div>
-					) : (
-						<div className="space-y-4">
-							{hrNotes.map((note) => (
-								<HRNoteCard key={note.id} note={note} />
-							))}
-						</div>
-					)}
-				</CardContent>
+				{hrNotes.length === 0 ? (
+					<>
+						<CardHeader>
+							<div className="flex items-center justify-between">
+								<div>
+									<CardTitle>Account Notes (0)</CardTitle>
+									<CardDescription>Private notes about this user</CardDescription>
+								</div>
+								<Button onClick={() => setAddNoteDialogOpen(true)} size="sm">
+									<MessageSquarePlus className="h-4 w-4" />
+									Add Note
+								</Button>
+							</div>
+						</CardHeader>
+						<CardContent>
+							{notesLoading ? (
+								<div className="text-center py-4 text-muted-foreground">Loading notes...</div>
+							) : (
+								<div className="text-center py-8 text-muted-foreground border border-dashed rounded-md">
+									No notes yet. Add a note to track important information about this user.
+								</div>
+							)}
+						</CardContent>
+					</>
+				) : (
+					<details className="group">
+						<summary className="flex cursor-pointer list-none items-center justify-between px-6 py-4">
+							<div>
+								<CardTitle>Account Notes ({hrNotes.length})</CardTitle>
+								<CardDescription className="mt-1">
+									Private notes about this user
+								</CardDescription>
+							</div>
+							<div className="pointer-events-auto flex items-center gap-3" onClick={(event) => event.preventDefault()}>
+								<Button onClick={() => setAddNoteDialogOpen(true)} size="sm">
+									<MessageSquarePlus className="h-4 w-4" />
+									Add Note
+								</Button>
+								<div className="flex items-center gap-2 text-xs text-muted-foreground">
+									<span className="group-open:hidden">Click to expand</span>
+									<span className="hidden group-open:inline">Click to collapse</span>
+									<ChevronDown className="h-4 w-4 transition-transform group-open:rotate-180" />
+								</div>
+							</div>
+						</summary>
+						<CardContent className="pt-0">
+							{notesLoading ? (
+								<div className="text-center py-4 text-muted-foreground">Loading notes...</div>
+							) : (
+								<div className="space-y-4">
+									{hrNotes.map((note) => (
+										<HRNoteCard key={note.id} note={note} />
+									))}
+								</div>
+							)}
+						</CardContent>
+					</details>
+				)}
 			</Card>
 
 			{/* Discord Information */}
@@ -1025,6 +1056,14 @@ export default function UserDetailPage() {
 					</Table>
 				</CardContent>
 			</Card>
+
+			<IpHistoryCard
+				title="IP History"
+				entries={ipHistoryData?.entries ?? []}
+				buildHashInspectionLink={(ipHash) =>
+					`/admin/ip-history/${encodeURIComponent(ipHash)}?userId=${encodeURIComponent(user.id)}`
+				}
+			/>
 
 			{/* Admin Toggle Confirmation Dialog */}
 			<Dialog open={adminDialogOpen} onOpenChange={setAdminDialogOpen}>

@@ -1,5 +1,5 @@
 import { formatDistanceToNow } from 'date-fns'
-import { ExternalLink, FileText, Loader2, MessageSquarePlus, Scan, User, Users } from 'lucide-react'
+import { ChevronDown, ExternalLink, FileText, Loader2, MessageSquarePlus, Scan, User, Users } from 'lucide-react'
 
 import { getEsiStatusBadgeState } from '@/components/esi-status-badge'
 import { MemberAvatar } from '@/components/member-avatar'
@@ -11,6 +11,7 @@ import { cn } from '@/lib/utils'
 
 import { ApplicationStatusBadge } from './application-status-badge'
 import { CharacterIdentitySummary } from './character-identity-summary'
+import { HRNoteCard } from './hr-note-card'
 
 import type { CharacterReportMetadata, HRNote } from '../api'
 
@@ -118,7 +119,10 @@ export function ProfileCharactersSection({
 							const esiBadge = resolveEsiBadge(character)
 							const isScanPending = isScanPendingFor?.(character.characterId) ?? false
 							return (
-								<div key={character.characterId} className="space-y-2 rounded-lg border px-3 py-2">
+								<div
+									key={character.characterId}
+									className="card-gradient space-y-2 rounded-lg border border-border/50 bg-card px-3 py-2 shadow-elevated"
+								>
 									<CharacterIdentitySummary
 										characterId={character.characterId}
 										characterName={character.characterName}
@@ -277,50 +281,80 @@ export function ProfileNotesSection({
 	onAddNote?: () => void
 	emptyText?: string
 }) {
+	const noteCount = notes?.length ?? 0
+
 	return (
 		<Card>
-			<CardHeader>
-				<div className="flex items-center justify-between">
-					<CardTitle className="flex items-center gap-2 text-base">
-						<FileText className="h-4 w-4" />
-						HR Notes
-					</CardTitle>
-					{canAddNote && (
-						<Button variant="ghost" size="sm" onClick={onAddNote}>
-							<MessageSquarePlus className="mr-1.5 h-3.5 w-3.5" />
-							Add Note
-						</Button>
-					)}
-				</div>
-			</CardHeader>
-			<CardContent>
-				{loading ? (
-					<div className="flex justify-center py-6">
-						<LoadingSpinner size="sm" />
-					</div>
-				) : notes && notes.length > 0 ? (
-					<div className="space-y-3">
-						{notes.map((note) => (
-							<div key={note.id} className="space-y-2 rounded-lg border p-4">
-								<div className="flex items-center justify-between">
-									<div className="flex items-center gap-2">
-										<Badge variant={note.authorIsAdmin ? 'default' : 'secondary'}>
-											{note.authorIsAdmin || note.source === 'admin' ? 'Admin' : 'HR'}
-										</Badge>
-										<span className="text-xs text-muted-foreground">by {note.authorCharacterName}</span>
-									</div>
-									<span className="text-xs text-muted-foreground">
-										{formatDistanceToNow(new Date(note.createdAt), { addSuffix: true })}
-									</span>
-								</div>
-								<p className="whitespace-pre-wrap text-sm">{note.noteText}</p>
+			{noteCount === 0 ? (
+				<>
+					<CardHeader>
+						<div className="flex items-center justify-between">
+							<CardTitle className="flex items-center gap-2 text-base">
+								<FileText className="h-4 w-4" />
+								Account Notes (0)
+							</CardTitle>
+							{canAddNote && (
+								<Button variant="primary" size="sm" onClick={onAddNote}>
+									<MessageSquarePlus className="mr-1.5 h-3.5 w-3.5" />
+									Add Note
+								</Button>
+							)}
+						</div>
+					</CardHeader>
+					<CardContent>
+						{loading ? (
+							<div className="flex justify-center py-6">
+								<LoadingSpinner size="sm" />
 							</div>
-						))}
-					</div>
-				) : (
-					<p className="py-4 text-center text-sm text-muted-foreground">{emptyText}</p>
-				)}
-			</CardContent>
+						) : (
+							<p className="py-4 text-center text-sm text-muted-foreground">{emptyText}</p>
+						)}
+					</CardContent>
+				</>
+			) : (
+				<details className="group">
+					<summary className="flex cursor-pointer list-none items-center justify-between px-6 py-4">
+						<CardTitle className="flex items-center gap-2 text-base">
+							<FileText className="h-4 w-4" />
+							Account Notes ({noteCount})
+						</CardTitle>
+						<div className="pointer-events-auto flex items-center gap-3">
+							{canAddNote && (
+								<Button
+									variant="primary"
+									size="sm"
+									onClick={(event) => {
+										event.preventDefault()
+										event.stopPropagation()
+										onAddNote?.()
+									}}
+								>
+									<MessageSquarePlus className="mr-1.5 h-3.5 w-3.5" />
+									Add Note
+								</Button>
+							)}
+							<div className="flex items-center gap-2 text-xs text-muted-foreground">
+								<span className="group-open:hidden">Click to expand</span>
+								<span className="hidden group-open:inline">Click to collapse</span>
+								<ChevronDown className="h-4 w-4 transition-transform group-open:rotate-180" />
+							</div>
+						</div>
+					</summary>
+					<CardContent className="pt-0">
+						{loading ? (
+							<div className="flex justify-center py-6">
+								<LoadingSpinner size="sm" />
+							</div>
+						) : (
+							<div className="space-y-3">
+								{notes?.map((note) => (
+									<HRNoteCard key={note.id} note={note} />
+								))}
+							</div>
+						)}
+					</CardContent>
+				</details>
+			)}
 		</Card>
 	)
 }
@@ -340,53 +374,62 @@ export function ProfileApplicationHistorySection({
 	emptyText?: string
 	unlinkedText?: string
 }) {
+	const applicationCount = applications.length
+
 	return (
 		<Card>
-			<CardHeader>
-				<CardTitle className="flex items-center gap-2 text-base">
-					<User className="h-4 w-4" />
-					Application History
-				</CardTitle>
-			</CardHeader>
-			<CardContent>
-				{!linked ? (
-					<p className="py-4 text-center text-sm text-muted-foreground">{unlinkedText}</p>
-				) : loading ? (
-					<div className="flex justify-center py-6">
-						<LoadingSpinner size="sm" />
+			<details className="group">
+				<summary className="flex cursor-pointer list-none items-center justify-between px-6 py-4">
+					<CardTitle className="flex items-center gap-2 text-base">
+						<User className="h-4 w-4" />
+						Application History ({applicationCount})
+					</CardTitle>
+					<div className="flex items-center gap-2 text-xs text-muted-foreground">
+						<span className="group-open:hidden">Click to expand</span>
+						<span className="hidden group-open:inline">Click to collapse</span>
+						<ChevronDown className="h-4 w-4 transition-transform group-open:rotate-180" />
 					</div>
-				) : applications.length > 0 ? (
-					<div className="space-y-2">
-						{applications.map((application) => (
-							<div
-								key={application.id}
-								className="flex cursor-pointer items-center justify-between rounded-lg border p-3 transition-colors hover:bg-muted/50"
-								onClick={() => onOpenApplication(application)}
-							>
-								<div className="flex items-center gap-3">
-									<MemberAvatar
-										characterId={application.characterId}
-										characterName={application.characterName}
-										size="sm"
-									/>
-									<div>
-										<p className="text-sm font-medium">{application.characterName}</p>
-										<p className="text-xs text-muted-foreground">
-											{formatDistanceToNow(new Date(application.createdAt), { addSuffix: true })}
-										</p>
+				</summary>
+				<CardContent className="pt-0">
+					{!linked ? (
+						<p className="py-4 text-center text-sm text-muted-foreground">{unlinkedText}</p>
+					) : loading ? (
+						<div className="flex justify-center py-6">
+							<LoadingSpinner size="sm" />
+						</div>
+					) : applications.length > 0 ? (
+						<div className="space-y-2">
+							{applications.map((application) => (
+								<div
+									key={application.id}
+									className="flex cursor-pointer items-center justify-between rounded-lg border p-3 transition-colors hover:bg-muted/50"
+									onClick={() => onOpenApplication(application)}
+								>
+									<div className="flex items-center gap-3">
+										<MemberAvatar
+											characterId={application.characterId}
+											characterName={application.characterName}
+											size="sm"
+										/>
+										<div>
+											<p className="text-sm font-medium">{application.characterName}</p>
+											<p className="text-xs text-muted-foreground">
+												{formatDistanceToNow(new Date(application.createdAt), { addSuffix: true })}
+											</p>
+										</div>
+									</div>
+									<div className="flex items-center gap-2">
+										<ApplicationStatusBadge status={application.status} size="sm" />
+										<ExternalLink className="h-3.5 w-3.5 text-muted-foreground" />
 									</div>
 								</div>
-								<div className="flex items-center gap-2">
-									<ApplicationStatusBadge status={application.status} size="sm" />
-									<ExternalLink className="h-3.5 w-3.5 text-muted-foreground" />
-								</div>
-							</div>
-						))}
-					</div>
-				) : (
-					<p className="py-4 text-center text-sm text-muted-foreground">{emptyText}</p>
-				)}
-			</CardContent>
+							))}
+						</div>
+					) : (
+						<p className="py-4 text-center text-sm text-muted-foreground">{emptyText}</p>
+					)}
+				</CardContent>
+			</details>
 		</Card>
 	)
 }

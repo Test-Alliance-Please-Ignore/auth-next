@@ -28,6 +28,7 @@ describe('import-legacy-snapshot helpers', () => {
 		const now = new Date()
 		expect(toDateOrNull(now)).toBe(now)
 		expect(toDateOrNull('2026-01-01T00:00:00.000Z')).toBeInstanceOf(Date)
+		expect(toDateOrNull('2026-01-01 00:00:00')?.toISOString()).toBe('2026-01-01T00:00:00.000Z')
 		expect(toDateOrNull('invalid-date')).toBeNull()
 		expect(toDateOrNull(null)).toBeNull()
 	})

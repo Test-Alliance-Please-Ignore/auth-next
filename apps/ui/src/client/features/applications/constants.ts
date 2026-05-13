@@ -14,6 +14,7 @@ export interface SectionTab {
 
 export const SECTION_TABS: SectionTab[] = [
 	{ name: 'public-info', label: 'Overview' },
+	{ name: 'alerts', label: 'Legacy Data' },
 	{ name: 'skills', label: 'Skills' },
 	{ name: 'assets', label: 'Assets' },
 	{ name: 'fitted-ships', label: 'Ships' },
@@ -27,6 +28,7 @@ export const SECTION_TABS: SectionTab[] = [
 /** All possible data sections a complete report would contain */
 export const ALL_DATA_SECTIONS: ReportSectionName[] = [
 	'public-info',
+	'alerts',
 	'skills',
 	'assets',
 	'fitted-ships',
@@ -42,6 +44,7 @@ export const ALL_DATA_SECTIONS: ReportSectionName[] = [
 
 export const SECTION_LABELS: Record<string, string> = {
 	'public-info': 'Public Info',
+	alerts: 'Legacy Data',
 	skills: 'Skills',
 	assets: 'Assets',
 	'fitted-ships': 'Ships',

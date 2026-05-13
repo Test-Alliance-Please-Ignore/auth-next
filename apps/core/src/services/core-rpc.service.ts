@@ -91,6 +91,10 @@ export class CoreRpcService {
 
 			whereCondition = or(...conditions)
 		}
+		if (params.isAdmin !== undefined) {
+			const adminWhere = eq(users.is_admin, params.isAdmin)
+			whereCondition = whereCondition ? and(whereCondition, adminWhere) : adminWhere
+		}
 
 		// Get users page
 		const usersQuery = this.db

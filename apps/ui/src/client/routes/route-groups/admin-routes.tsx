@@ -40,7 +40,7 @@ import AdminGroupDetailPage from '@/routes/admin/group-detail'
 import AdminGroupsPage from '@/routes/admin/groups'
 import AdminLayout from '@/routes/admin/layout'
 import AdminLegacyMigrationsPage from '@/routes/admin/legacy-migrations'
-import AdminLegacyHistoryPage from '@/routes/admin/legacy-history'
+import AdminLegacyMigrationDetailPage from '@/routes/admin/legacy-migration-detail'
 import AdminPermissionCategoriesPage from '@/routes/admin/permissions/categories'
 import AdminGlobalPermissionsPage from '@/routes/admin/permissions/global'
 import AdminUserActivityPage from '@/routes/admin/user-activity'
@@ -48,6 +48,7 @@ import AdminUserDetailPage from '@/routes/admin/user-detail'
 import AdminUserDiscordAccessPage from '@/routes/admin/user-discord-access'
 import AdminUserGroupsPage from '@/routes/admin/user-groups'
 import AdminUsersPage from '@/routes/admin/users'
+import AdminIpHistoryInspectionPage from '@/routes/admin/ip-history-inspection'
 
 const UserHrNotes = lazy(() => import('@/features/applications/routes/user-hr-notes'))
 const IndustryProvidersPage = lazy(() => import('@/features/industry/routes/industry-providers'))
@@ -63,7 +64,7 @@ const IndustryProviderNewPage = lazy(
 
 export const adminRouteElements = (
 	<Route path="/admin" element={<AdminLayout />}>
-		<Route index element={<Navigate to="/admin/categories" replace />} />
+		<Route index element={<Navigate to="/admin/users" replace />} />
 		<Route path="categories" element={<AdminCategoriesPage />} />
 		<Route path="groups" element={<AdminGroupsPage />} />
 		<Route path="groups/:groupId" element={<AdminGroupDetailPage />} />
@@ -83,6 +84,7 @@ export const adminRouteElements = (
 		<Route path="users/:userId/discord-access" element={<AdminUserDiscordAccessPage />} />
 		<Route path="users/:userId/groups" element={<AdminUserGroupsPage />} />
 		<Route path="users/:userId/activity" element={<AdminUserActivityPage />} />
+		<Route path="ip-history/:ipAddressHash" element={<AdminIpHistoryInspectionPage />} />
 		<Route
 			path="users/:userId/hr-notes"
 			element={
@@ -91,8 +93,8 @@ export const adminRouteElements = (
 				</Suspense>
 			}
 		/>
-		<Route path="legacy-migrations" element={<AdminLegacyMigrationsPage />} />
-		<Route path="legacy-history" element={<AdminLegacyHistoryPage />} />
+	<Route path="legacy-migrations" element={<AdminLegacyMigrationsPage />} />
+	<Route path="legacy-migrations/:id" element={<AdminLegacyMigrationDetailPage />} />
 		<Route path="blacklist" element={<AdminBlacklistPage />} />
 		<Route path="activity-log" element={<AdminActivityLogPage />} />
 		<Route path="dev/components" element={<DevComponentsPage />} />

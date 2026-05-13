@@ -21,6 +21,16 @@ describe('computeQueueSeverity', () => {
 		).toBe('high')
 	})
 
+	it('returns high when a legacy match was sourced from discord id', () => {
+		expect(
+			computeQueueSeverity({
+				crossModernUserQueueMatches: 0,
+				multipleLegacyMatchesForModernUser: false,
+				hasDiscordIdMatch: true,
+			})
+		).toBe('high')
+	})
+
 	it('returns none for single clean match', () => {
 		expect(
 			computeQueueSeverity({

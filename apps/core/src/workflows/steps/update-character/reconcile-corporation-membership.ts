@@ -33,11 +33,13 @@ export async function reconcileCharacterCorporationMembership(
 
 	if (membershipChanged) {
 		// This workflow run already reconciles core attachments via attach-user-roles.
-		// We only need to trigger downstream Discord role refresh for the affected user.
-		const coreStub = getStub<Core>(ctx.env.CORE, 'default')
-		await coreStub.addPendingDiscordRefreshes([ctx.userId], {
-			source: 'corp-membership-reconciled',
-		})
+		// Trigger downstream Discord role refresh unless explicitly suppressed.
+		if (!ctx.suppressDiscordRefresh) {
+			const coreStub = getStub<Core>(ctx.env.CORE, 'default')
+			await coreStub.addPendingDiscordRefreshes([ctx.userId], {
+				source: 'corp-membership-reconciled',
+			})
+		}
 	}
 
 	logger.info('[Workflow] Reconciled character corporation membership', {

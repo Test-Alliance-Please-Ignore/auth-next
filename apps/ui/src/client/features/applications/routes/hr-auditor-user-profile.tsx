@@ -42,7 +42,6 @@ import { useApplications, useHRNotes, useRequestFulcrumReport, useRequestFulcrum
 import {
 	auditorUserKeys,
 	useAuditorFulcrum,
-	useAuditorIpHashMatches,
 	useAuditorUser,
 	useAuditorUserIpHistory,
 } from '../../../hooks/useAuditorUsers'
@@ -91,7 +90,6 @@ export default function HrAuditorUserProfilePage() {
 	const [scanAllDialogOpen, setScanAllDialogOpen] = useState(false)
 	const [singleScanDialogCharacter, setSingleScanDialogCharacter] = useState<AuditorCharacterRow | null>(null)
 	const [addNoteDialogOpen, setAddNoteDialogOpen] = useState(false)
-	const [selectedIpHash, setSelectedIpHash] = useState<string | null>(null)
 	const {
 		sendDmForScanRequests,
 		setSendDmForScanRequests,
@@ -107,7 +105,6 @@ export default function HrAuditorUserProfilePage() {
 		userId ? { userId } : undefined
 	)
 	const { data: ipHistoryData } = useAuditorUserIpHistory(userId ?? '')
-	const { data: ipMatchesData, isLoading: ipMatchesLoading } = useAuditorIpHashMatches(selectedIpHash)
 
 	const requestReport = useRequestFulcrumReport()
 	const requestReportBatch = useRequestFulcrumReportBatch()
@@ -562,12 +559,9 @@ export default function HrAuditorUserProfilePage() {
 					<IpHistoryCard
 						title="IP History"
 						entries={ipHistoryData?.entries ?? []}
-						selectedHash={selectedIpHash}
-						onSelectHash={setSelectedIpHash}
-						matches={ipMatchesData?.matches ?? []}
-						matchesLoading={ipMatchesLoading}
-						buildUserLink={(targetUserId) => `/hr/users/${targetUserId}`}
-						getUserIpHistory={(targetUserId) => apiClient.getHrAuditorUserIpHistory(targetUserId)}
+						buildHashInspectionLink={(ipHash) =>
+							`/hr/ip-history/${encodeURIComponent(ipHash)}?userId=${encodeURIComponent(userDetails.id)}`
+						}
 					/>
 				</div>
 			</div>
