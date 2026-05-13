@@ -35,7 +35,6 @@ import {
 } from '@/features/srp/state/nav-queue-counts-store'
 import { useTaxAlerts } from '@/hooks/corporation-tax'
 import { useAuth, useLogout } from '@/hooks/useAuth'
-import { useFeatureFlag } from '@/hooks/useFeatureFlags'
 import { usePendingInvitations } from '@/hooks/useGroups'
 import { useUserPermissions } from '@/hooks/useUserPermissions'
 import { characterPortraitUrl } from '@/lib/eve-images'
@@ -71,12 +70,10 @@ export function SidebarNav({ onNavigate, isSidebarOpen = true, onToggleSidebar }
 	const { data: hrCorporations } = useHrAccessibleCorporations()
 	const { permissions, hasAnyPermission } = useUserPermissions()
 	const isSiteAdmin = user?.is_admin === true
-	const srpEnabled = useFeatureFlag('srp.enabled', false)
 	const hasSrpManagerPermission = hasAnyPermission('urn:srp:manager')
 	const hasSrpPayerPermission = hasAnyPermission('urn:srp:payer')
 	const hasSrpReviewerPermission = hasAnyPermission('urn:srp:reviewer')
 	const previewSrpState = resolveSrpNavState({
-		srpEnabled,
 		isSiteAdmin,
 		hasSrpReviewerPermission,
 		hasSrpPayerPermission,
@@ -128,7 +125,6 @@ export function SidebarNav({ onNavigate, isSidebarOpen = true, onToggleSidebar }
 	const paymentQueueCount = shouldFetchSrpPaymentCount ? storedPaymentQueueCount : 0
 	const srpAlertCount = shouldFetchSrpAlertCount ? storedSrpAlertCount : 0
 	const srpNavState = resolveSrpNavState({
-		srpEnabled,
 		isSiteAdmin,
 		hasSrpReviewerPermission,
 		hasSrpPayerPermission,
