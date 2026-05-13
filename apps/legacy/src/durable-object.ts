@@ -290,7 +290,16 @@ export class LegacyDO extends DurableObject<Env> implements Legacy {
 							coreUserCharacters.characterId,
 							characters.map((character) => character.characterId)
 						),
-						columns: { characterId: true, userId: true },
+						columns: {
+							characterId: true,
+							characterName: true,
+							userId: true,
+							corporationId: true,
+							corporationName: true,
+							allianceId: true,
+							allianceName: true,
+							isDeleted: true,
+						},
 					})
 				: []
 		const noteActorIds = [
@@ -305,13 +314,38 @@ export class LegacyDO extends DurableObject<Env> implements Legacy {
 			)
 		)
 		const linkedByCharacterId = new Map(linkedRows.map((row) => [row.characterId, row.userId]))
+		const linkedRowByCharacterId = new Map(linkedRows.map((row) => [row.characterId, row]))
+		const metadataCharacterIds = characters
+			.filter((character) => linkedByCharacterId.get(character.characterId) !== item.modernUserId)
+			.map((character) => character.characterId)
+		const characterMetadataRows = await coreStub.getLegacyCharacterImportMetadata(metadataCharacterIds)
+		const characterMetadataById = new Map(
+			characterMetadataRows.map((row) => [row.characterId, row])
+		)
 		const candidates = {
 			characters: characters.map((character) => {
 				const linkedUserId = linkedByCharacterId.get(character.characterId) ?? null
+				const linkedRow = linkedRowByCharacterId.get(character.characterId)
+				const metadata =
+					linkedUserId === item.modernUserId
+						? {
+							characterName: linkedRow?.characterName ?? character.characterName,
+							corporationId: linkedRow?.corporationId ?? null,
+							corporationName: linkedRow?.corporationName ?? null,
+							allianceId: linkedRow?.allianceId ?? null,
+							allianceName: linkedRow?.allianceName ?? null,
+							isDeleted: linkedRow?.isDeleted ?? false,
+						}
+						: characterMetadataById.get(character.characterId)
 				return {
 					characterId: character.characterId,
-					characterName: character.characterName,
+					characterName: metadata?.characterName ?? character.characterName,
 					source: character.source,
+					corporationId: metadata?.corporationId ?? null,
+					corporationName: metadata?.corporationName ?? null,
+					allianceId: metadata?.allianceId ?? null,
+					allianceName: metadata?.allianceName ?? null,
+					isDeleted: metadata?.isDeleted ?? false,
 					alreadyLinkedToModernUser: linkedUserId === item.modernUserId,
 					linkedToOtherUserId: linkedUserId && linkedUserId !== item.modernUserId ? linkedUserId : null,
 				}
@@ -393,11 +427,21 @@ export class LegacyDO extends DurableObject<Env> implements Legacy {
 				selectedCharacterIds && selectedCharacterIds.size > 0
 					? allCharacters.filter((character) => selectedCharacterIds.has(character.characterId))
 					: allCharacters
+			const characterMetadataRows = await coreStub.getLegacyCharacterImportMetadata(
+				characters.map((character) => character.characterId)
+			)
+			const characterMetadataById = new Map(
+				characterMetadataRows.map((row) => [row.characterId, row])
+			)
+			const importableCharacters = characters.filter((character) => {
+				const metadata = characterMetadataById.get(character.characterId)
+				return !metadata?.isDeleted
+			})
 			try {
 				await coreStub.legacyImportCharacterLinks({
 					modernUserId: existing.modernUserId,
 					legacyAuthUserId: existing.legacyAuthUserId,
-					characters,
+					characters: importableCharacters,
 				})
 				applyResults.importCharacterLinks = { status: 'applied' }
 			} catch (error) {

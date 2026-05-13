@@ -59,6 +59,11 @@ type LegacyAssociationItem = {
 			characterId: string
 			characterName: string
 			source: 'legacy_primary' | 'esi_owner' | 'xml_account'
+			corporationId: string | null
+			corporationName: string | null
+			allianceId: string | null
+			allianceName: string | null
+			isDeleted: boolean
 			alreadyLinkedToModernUser: boolean
 			linkedToOtherUserId: string | null
 		}>
@@ -108,11 +113,43 @@ function LegacyDataSection({ data }: { data: unknown }) {
 												<div className="min-w-0">
 													<div className="font-medium">{character.characterName}</div>
 													<div className="text-xs font-mono text-muted-foreground">{character.characterId}</div>
+													{character.corporationName || character.allianceName ? (
+														<div className="mt-1 flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-white">
+															{character.corporationName ? (
+																<span className="inline-flex items-center gap-1.5">
+																	{character.corporationId ? (
+																		<img
+																			src={`https://images.evetech.net/corporations/${character.corporationId}/logo?size=32`}
+																			alt={character.corporationName}
+																			className="h-4 w-4 rounded-sm"
+																			loading="lazy"
+																		/>
+																	) : null}
+																	<span>{character.corporationName}</span>
+																</span>
+															) : null}
+															{character.allianceName ? (
+																<span className="inline-flex items-center gap-1.5">
+																	{character.allianceId ? (
+																		<img
+																			src={`https://images.evetech.net/alliances/${character.allianceId}/logo?size=32`}
+																			alt={character.allianceName}
+																			className="h-4 w-4 rounded-sm"
+																			loading="lazy"
+																		/>
+																	) : null}
+																	<span>{character.allianceName}</span>
+																</span>
+															) : null}
+														</div>
+													) : null}
 												</div>
 												{character.alreadyLinkedToModernUser ? (
 													<Badge variant="success">Already linked</Badge>
 												) : character.linkedToOtherUserId ? (
 													<Badge variant="destructive">Linked to other user</Badge>
+												) : character.isDeleted ? (
+													<Badge variant="warning">Deleted</Badge>
 												) : (
 													<Badge variant="warning">Not linked</Badge>
 												)}
