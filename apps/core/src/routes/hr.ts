@@ -7,14 +7,19 @@ import { captureException, logger } from '@repo/hono-helpers'
 import { APPLICATION_STATUSES } from '@repo/hr'
 
 import { managedCorporations, userCharacters, users } from '../db/schema'
-import { getCachedUserPermissions } from '../lib/groups-cache'
+import {
+	hasHrAuditorPermission as hasHrAuditorPermissionForUser,
+	resolveHrAccessState,
+} from '../lib/hr-access'
+import { getIpHashMatches, getUserIpHistory } from '../lib/ip-history'
 import { validatePagination } from '../lib/validation'
 import { requireAdmin, requireAuth } from '../middleware/session'
 
 import type { Context } from 'hono'
 import type { Core } from '@repo/core'
 import type { Esi, EsiTypeResolver } from '@repo/esi'
-import type { ApplicationFilters, Hr, HrNote, NoteFilters, RoleFilters } from '@repo/hr'
+import type { ApplicationFilters, Hr, HrNote, NoteFilters } from '@repo/hr'
+import type { Legacy } from '@repo/legacy'
 import type { App } from '../context'
 
 const app = new Hono<App>()
@@ -40,6 +45,10 @@ function getHrStub(c: Context<App>): Hr {
  */
 function getCoreStub(c: Context<App>): Core {
 	return getStub<Core>(c.env.CORE, 'default')
+}
+
+function getLegacyStub(c: Context<App>): Legacy {
+	return getStub<Legacy>(c.env.LEGACY, 'default')
 }
 
 /**
@@ -168,14 +177,17 @@ async function enrichHrNotesWithAuthorSource(
 	})
 }
 
-/**
- * Check if the current user has the urn:hr:auditor group permission.
- * This does NOT include site-admin bypass.
- */
-async function hasHrAuditorPermission(c: Context<App>): Promise<boolean> {
-	const user = c.get('user')!
-	const permissions = await getCachedUserPermissions(c.env, user.id)
-	return permissions.some((p) => p.urn === 'urn:hr:auditor')
+type HrNoteVisibility = 'admin' | 'hr'
+
+function getHrNoteVisibility(note: HrNote): HrNoteVisibility {
+	const visibility = note.metadata?.visibility
+	if (visibility === 'admin' || visibility === 'hr') return visibility
+	return note.noteType === 'background_check' ? 'admin' : 'hr'
+}
+
+function canViewHrNote(note: HrNote, isSiteAdmin: boolean): boolean {
+	if (isSiteAdmin) return true
+	return getHrNoteVisibility(note) === 'hr'
 }
 
 /**
@@ -184,17 +196,21 @@ async function hasHrAuditorPermission(c: Context<App>): Promise<boolean> {
  */
 async function hasAnyHrAccess(c: Context<App>): Promise<boolean> {
 	const user = c.get('user')!
+	const access = await resolveHrAccessState({
+		env: c.env,
+		userId: user.id,
+		isSiteAdmin: user.is_admin,
+		hrStub: getHrStub(c),
+	})
+	return access.hasHrAccess
+}
 
-	// Site admins always have access
-	if (user.is_admin) return true
-
-	// Alliance-level HR auditors have cross-corp read access
-	if (await hasHrAuditorPermission(c)) return true
-
-	// Single RPC call returns all corps where user has any HR role
-	const hr = getHrStub(c)
-	const hrCorps = await hr.getUserHrCorporations(user.id)
-	return hrCorps.length > 0
+async function hasHrAuditorPermission(c: Context<App>): Promise<boolean> {
+	const user = c.get('user')!
+	return hasHrAuditorPermissionForUser({
+		env: c.env,
+		userId: user.id,
+	})
 }
 
 type HrRoleManagementAccess = 'site_admin' | 'ceo' | 'hr_admin' | null
@@ -1445,6 +1461,18 @@ app.post('/notes', requireAuth(), async (c) => {
 	}
 	const { subjectUserId, subjectCharacterId, noteText, noteType, priority, metadata } =
 		await c.req.json()
+	const requestedVisibility = metadata?.visibility
+	const normalizedVisibility: HrNoteVisibility =
+		requestedVisibility === 'admin' || requestedVisibility === 'hr'
+			? requestedVisibility
+			: noteType === 'background_check'
+				? 'admin'
+				: 'hr'
+	const effectiveVisibility: HrNoteVisibility = user.is_admin ? normalizedVisibility : 'hr'
+	const enrichedMetadata = {
+		...(metadata ?? {}),
+		visibility: effectiveVisibility,
+	}
 
 	// Get admin's primary character
 	const primaryCharacter = user.characters.find((c) => c.is_primary)
@@ -1462,7 +1490,7 @@ app.post('/notes', requireAuth(), async (c) => {
 			noteText,
 			noteType,
 			priority,
-			metadata
+			enrichedMetadata
 		)
 
 		logger.info('[HR Notes] Note created', {
@@ -1488,6 +1516,7 @@ app.post('/notes', requireAuth(), async (c) => {
  * Access: Site admins, HR admins, HR reviewers
  */
 app.get('/notes', requireAuth(), async (c) => {
+	const user = c.get('user')!
 	if (!(await hasAnyHrAccess(c))) {
 		return c.json({ error: 'Forbidden' }, 403)
 	}
@@ -1504,9 +1533,10 @@ app.get('/notes', requireAuth(), async (c) => {
 	try {
 		const hr = getHrStub(c)
 		const notes = await hr.listNotes(filters)
+		const visibleNotes = notes.filter((note) => canViewHrNote(note, user.is_admin))
 		const db = c.get('db')
-		if (!db) return c.json(notes)
-		const enriched = await enrichHrNotesWithAuthorSource(db, notes)
+		if (!db) return c.json(visibleNotes)
+		const enriched = await enrichHrNotesWithAuthorSource(db, visibleNotes)
 		return c.json(enriched)
 	} catch (error) {
 		return c.json({ error: error instanceof Error ? error.message : 'Failed to list notes' }, 500)
@@ -1519,6 +1549,7 @@ app.get('/notes', requireAuth(), async (c) => {
  * Access: Site admins, HR admins, HR reviewers
  */
 app.get('/notes/user/:userId', requireAuth(), async (c) => {
+	const user = c.get('user')!
 	if (!(await hasAnyHrAccess(c))) {
 		return c.json({ error: 'Forbidden' }, 403)
 	}
@@ -1528,9 +1559,10 @@ app.get('/notes/user/:userId', requireAuth(), async (c) => {
 	try {
 		const hr = getHrStub(c)
 		const notes = await hr.getUserNotes(subjectUserId)
+		const visibleNotes = notes.filter((note) => canViewHrNote(note, user.is_admin))
 		const db = c.get('db')
-		if (!db) return c.json(notes)
-		const enriched = await enrichHrNotesWithAuthorSource(db, notes)
+		if (!db) return c.json(visibleNotes)
+		const enriched = await enrichHrNotesWithAuthorSource(db, visibleNotes)
 		return c.json(enriched)
 	} catch (error) {
 		return c.json(
@@ -1958,6 +1990,156 @@ app.get('/audit/users/:userId', requireAuth(), async (c) => {
 			500
 		)
 	}
+})
+
+/**
+ * GET /api/hr/audit/users/:userId/ip-history
+ * Hashed-only IP history for a user.
+ */
+app.get('/audit/users/:userId/ip-history', requireAuth(), async (c) => {
+	const user = c.get('user')!
+	if (!user.is_admin && !(await hasHrAuditorPermission(c))) {
+		return c.json({ error: 'Forbidden' }, 403)
+	}
+
+	const db = c.get('db')
+	if (!db) return c.json({ error: 'Database unavailable' }, 500)
+
+	const targetUserId = c.req.param('userId')
+	try {
+		const entries = await getUserIpHistory(db, targetUserId)
+		return c.json({ entries })
+	} catch (error) {
+		logger.error('[HR Audit] Failed to get user IP history', {
+			userId: user.id,
+			targetUserId,
+			error: error instanceof Error ? error.message : String(error),
+		})
+		return c.json({ error: 'Failed to fetch IP history' }, 500)
+	}
+})
+
+/**
+ * GET /api/hr/audit/ip-history/:ipAddressHash/matches
+ * Hashed-only user matches for a shared IP hash.
+ */
+app.get('/audit/ip-history/:ipAddressHash/matches', requireAuth(), async (c) => {
+	const user = c.get('user')!
+	if (!user.is_admin && !(await hasHrAuditorPermission(c))) {
+		return c.json({ error: 'Forbidden' }, 403)
+	}
+
+	const db = c.get('db')
+	if (!db) return c.json({ error: 'Database unavailable' }, 500)
+
+	const ipAddressHash = c.req.param('ipAddressHash')
+	try {
+		const matches = await getIpHashMatches(db, ipAddressHash)
+		return c.json({ matches })
+	} catch (error) {
+		logger.error('[HR Audit] Failed to get IP hash matches', {
+			userId: user.id,
+			ipAddressHash,
+			error: error instanceof Error ? error.message : String(error),
+		})
+		return c.json({ error: 'Failed to fetch IP hash matches' }, 500)
+	}
+})
+
+/**
+ * GET /api/hr/legacy/history
+ * Read-only legacy applications history for HR staff.
+ */
+app.get('/legacy/history', requireAuth(), async (c) => {
+	const user = c.get('user')!
+	if (!user.is_admin && !(await hasAnyHrAccess(c))) {
+		return c.json({ error: 'Forbidden' }, 403)
+	}
+
+	const legacy = getLegacyStub(c)
+	const result = await legacy.listHistory({
+		page: Number(c.req.query('page') ?? '1'),
+		pageSize: Number(c.req.query('pageSize') ?? '25'),
+		corporationId: c.req.query('corporationId') || undefined,
+		characterIds: c.req.query('characterIds') || undefined,
+		characterName: c.req.query('characterName') || undefined,
+		corporationName: c.req.query('corporationName') || undefined,
+	})
+	return c.json(result)
+})
+
+/**
+ * GET /api/hr/legacy/history/:legacyApplicationId
+ * Read-only legacy application detail for HR staff.
+ */
+app.get('/legacy/history/:legacyApplicationId', requireAuth(), async (c) => {
+	const user = c.get('user')!
+	if (!user.is_admin && !(await hasAnyHrAccess(c))) {
+		return c.json({ error: 'Forbidden' }, 403)
+	}
+
+	const legacyApplicationId = c.req.param('legacyApplicationId')
+	const legacy = getLegacyStub(c)
+	const result = await legacy.getHistoryApplication(legacyApplicationId)
+	if (!result) return c.json({ error: 'Legacy application not found' }, 404)
+
+	let modernUserMatch: { userId: string; characterId: string } | null = null
+	const actorMatches: Record<string, { userId: string; mainCharacterName: string | null }> = {}
+	const db = c.get('db')
+	if (db) {
+		if (result.application.characterId) {
+			const match = await db.query.userCharacters.findFirst({
+				where: and(
+					eq(userCharacters.characterId, result.application.characterId),
+					eq(userCharacters.isDeleted, false)
+				),
+				columns: { userId: true, characterId: true },
+			})
+			if (match) {
+				modernUserMatch = {
+					userId: match.userId,
+					characterId: match.characterId,
+				}
+			}
+		}
+
+		const actorLegacyIds = [
+			...new Set(
+				result.events
+					.map((event) => event.legacyActorUserId)
+					.filter((id): id is string => Boolean(id))
+			),
+		]
+		if (actorLegacyIds.length > 0) {
+			const actorUsers = await db.query.users.findMany({
+				where: inArray(users.legacyAuthUserId, actorLegacyIds),
+				columns: { id: true, legacyAuthUserId: true, mainCharacterId: true },
+			})
+			const mainCharacterIds = actorUsers.map((userRow) => userRow.mainCharacterId)
+			const chars =
+				mainCharacterIds.length > 0
+					? await db.query.userCharacters.findMany({
+							where: inArray(userCharacters.characterId, mainCharacterIds),
+							columns: { characterId: true, characterName: true },
+						})
+					: []
+			const charNameById = new Map(chars.map((char) => [char.characterId, char.characterName]))
+			for (const actorUser of actorUsers) {
+				if (!actorUser.legacyAuthUserId) continue
+				actorMatches[actorUser.legacyAuthUserId] = {
+					userId: actorUser.id,
+					mainCharacterName: charNameById.get(actorUser.mainCharacterId) ?? null,
+				}
+			}
+		}
+	}
+
+	return c.json({
+		...result,
+		modernUserMatch,
+		actorMatches,
+		actorLegacyCharacterNames: result.actorLegacyCharacterNames ?? {},
+	})
 })
 
 export default app

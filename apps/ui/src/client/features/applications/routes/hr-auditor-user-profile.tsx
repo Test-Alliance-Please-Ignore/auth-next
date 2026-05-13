@@ -5,6 +5,7 @@ import { useMemo, useState } from 'react'
 import { Link, Navigate, useLocation, useNavigate, useParams } from 'react-router-dom'
 
 import { MemberAvatar } from '@/components/member-avatar'
+import { IpHistoryCard } from '@/components/ip-history-card'
 import { Badge } from '@/components/ui/badge'
 import {
 	Breadcrumb,
@@ -38,7 +39,12 @@ import {
 	useFulcrumScanDmPreference,
 } from '../components/fulcrum-scan-dialogs'
 import { useApplications, useHRNotes, useRequestFulcrumReport, useRequestFulcrumReportBatch } from '../hooks'
-import { auditorUserKeys, useAuditorFulcrum, useAuditorUser } from '../../../hooks/useAuditorUsers'
+import {
+	auditorUserKeys,
+	useAuditorFulcrum,
+	useAuditorUser,
+	useAuditorUserIpHistory,
+} from '../../../hooks/useAuditorUsers'
 import { myCorporationsApi } from '../../corporations/api'
 
 import type { CharacterReportMetadata, FulcrumCharacterData } from '../api'
@@ -98,6 +104,7 @@ export default function HrAuditorUserProfilePage() {
 	const { data: applications, isLoading: appsLoading } = useApplications(
 		userId ? { userId } : undefined
 	)
+	const { data: ipHistoryData } = useAuditorUserIpHistory(userId ?? '')
 
 	const requestReport = useRequestFulcrumReport()
 	const requestReportBatch = useRequestFulcrumReportBatch()
@@ -547,6 +554,13 @@ export default function HrAuditorUserProfilePage() {
 						loading={appsLoading}
 						onOpenApplication={(application) =>
 							navigate(`/corporations/${application.corporationId}/applications/${application.id}`)
+						}
+					/>
+					<IpHistoryCard
+						title="IP History"
+						entries={ipHistoryData?.entries ?? []}
+						buildHashInspectionLink={(ipHash) =>
+							`/hr/ip-history/${encodeURIComponent(ipHash)}?userId=${encodeURIComponent(userDetails.id)}`
 						}
 					/>
 				</div>

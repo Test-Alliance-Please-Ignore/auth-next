@@ -8,6 +8,7 @@ import { Card } from '@/components/ui/card'
 import { Container } from '@/components/ui/container'
 import { EveTimeDisplay } from '@/components/ui/eve-time-display'
 import { PageHeader } from '@/components/ui/page-header'
+import { usePageTitle } from '@/hooks/usePageTitle'
 import { useUserPermissions } from '@/hooks/useUserPermissions'
 
 import { useMarkPaid, usePendingPayoutTotal, useRequestsByStatus } from '../hooks'
@@ -28,6 +29,8 @@ function toTimestamp(value: string | null | undefined): number {
 }
 
 export default function PaymentsQueue() {
+	usePageTitle('SRP - Payment Queue')
+
 	const { hasAnyPermission } = useUserPermissions()
 
 	if (!hasAnyPermission('urn:srp:payer', 'urn:srp:manager')) {

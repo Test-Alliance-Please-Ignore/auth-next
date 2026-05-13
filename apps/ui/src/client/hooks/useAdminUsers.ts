@@ -18,6 +18,9 @@ export const adminUserKeys = {
 	list: (filters?: AdminUsersFilters) => [...adminUserKeys.lists(), filters] as const,
 	details: () => [...adminUserKeys.all, 'detail'] as const,
 	detail: (userId: string) => [...adminUserKeys.details(), userId] as const,
+	ipHistory: (userId: string) => [...adminUserKeys.detail(userId), 'ip-history'] as const,
+	ipHashMatches: (ipAddressHash: string) =>
+		[...adminUserKeys.all, 'ip-history', ipAddressHash, 'matches'] as const,
 	discordInspection: (userId: string) =>
 		[...adminUserKeys.detail(userId), 'discord-inspection'] as const,
 	activityLogs: () => ['admin', 'activity-logs'] as const,
@@ -48,6 +51,24 @@ export function useAdminUser(userId: string) {
 		queryFn: () => api.getAdminUser(userId),
 		enabled: !!userId,
 		staleTime: 1000 * 60 * 2, // 2 minutes
+	})
+}
+
+export function useAdminUserIpHistory(userId: string) {
+	return useQuery({
+		queryKey: adminUserKeys.ipHistory(userId),
+		queryFn: () => api.getAdminUserIpHistory(userId),
+		enabled: !!userId,
+		staleTime: 1000 * 60 * 2,
+	})
+}
+
+export function useAdminIpHashMatches(ipAddressHash: string | null) {
+	return useQuery({
+		queryKey: adminUserKeys.ipHashMatches(ipAddressHash ?? ''),
+		queryFn: () => api.getAdminIpHashMatches(ipAddressHash ?? ''),
+		enabled: !!ipAddressHash,
+		staleTime: 1000 * 60,
 	})
 }
 
@@ -201,9 +222,9 @@ export function useDeleteUserCharacter() {
 	return useMutation({
 		mutationFn: ({ userId, characterId }: { userId: string; characterId: string }) =>
 			api.deleteUserCharacter(userId, characterId),
-		onSuccess: (_, { userId, characterId }) => {
+		onSuccess: async (_, { userId, characterId }) => {
 			// Invalidate user lists
-			void queryClient.invalidateQueries({ queryKey: adminUserKeys.lists() })
+			await queryClient.invalidateQueries({ queryKey: adminUserKeys.lists() })
 
 			// Update user detail cache
 			queryClient.setQueryData(adminUserKeys.detail(userId), (old: AdminUserDetail | undefined) => {
@@ -214,8 +235,18 @@ export function useDeleteUserCharacter() {
 				}
 			})
 
-			// Invalidate user in list cache to refetch
-			void queryClient.invalidateQueries({ queryKey: adminUserKeys.detail(userId) })
+			// Force immediate refetch of this detail view so server-side state (primary/main, counts, etc)
+			// is reflected without requiring a manual page refresh.
+			await queryClient.invalidateQueries({
+				queryKey: adminUserKeys.detail(userId),
+				exact: true,
+				refetchType: 'active',
+			})
+			await queryClient.refetchQueries({
+				queryKey: adminUserKeys.detail(userId),
+				exact: true,
+				type: 'active',
+			})
 		},
 	})
 }

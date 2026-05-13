@@ -2,6 +2,7 @@ import { Card, CardContent } from '@/components/ui/card'
 import { Container } from '@/components/ui/container'
 import { PageHeader } from '@/components/ui/page-header'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
+import { usePageTitle } from '@/hooks/usePageTitle'
 
 import { LossTable } from '../components/LossTable'
 import { RequestTable } from '../components/RequestTable'
@@ -10,6 +11,8 @@ import { useMyRequests, useRecentLosses, useRefreshKillmails, useSRPConfig } fro
 import type { LossWithSRPStatus } from '../types'
 
 export default function SRPIndex() {
+	usePageTitle('SRP')
+
 	const {
 		data: losses,
 		isLoading: lossesLoading,

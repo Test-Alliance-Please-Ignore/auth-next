@@ -7,6 +7,7 @@
 
 import { useState } from 'react'
 
+import { Badge } from '@/components/ui/badge'
 import { Card, CardContent } from '@/components/ui/card'
 import { Skeleton } from '@/components/ui/skeleton'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
@@ -37,6 +38,135 @@ import {
 import { AlertsBanner } from './report-sections/alerts-banner'
 
 import type { ReportSectionName } from '../api'
+
+type LegacyBlacklistSignals = {
+	hasAnyBlacklistSignal?: boolean
+	ipAssociatedBlacklistedUsers?: Array<{
+		userId: string
+		mainCharacterId: string
+		mainCharacterName: string | null
+	}>
+}
+
+type LegacyAssociationItem = {
+	id: string
+	legacyAuthUserId: string
+	status: string
+	modernUserMainCharacterName: string | null
+	conflicts: Record<string, unknown>
+	candidates: {
+		characters: Array<{
+			characterId: string
+			characterName: string
+			source: 'legacy_primary' | 'esi_owner' | 'xml_account'
+			alreadyLinkedToModernUser: boolean
+			linkedToOtherUserId: string | null
+		}>
+		notes: Array<{
+			legacyNoteId: string
+			note: string
+			legacyCreatedByCharacterName: string | null
+			alreadyImported: boolean
+		}>
+		ipAddresses: string[]
+	}
+}
+
+function LegacyDataSection({ data }: { data: unknown }) {
+	const alertsPayload = data as { alerts?: Array<{ type: string; details?: Record<string, unknown> }> }
+	const legacyAlert = alertsPayload?.alerts?.find((alert) => alert.type === 'legacy-additional-associations')
+	const items = (legacyAlert?.details?.items as LegacyAssociationItem[] | undefined) ?? []
+
+	if (items.length === 0) {
+		return <p className="text-sm text-muted-foreground">No legacy associations found for this report owner.</p>
+	}
+
+	return (
+		<div className="space-y-4">
+			{items.map((item) => {
+				const blacklistSignals = (item.conflicts?.blacklistSignals as LegacyBlacklistSignals | undefined) ?? {}
+				const ipAssociatedMatches = blacklistSignals.ipAssociatedBlacklistedUsers ?? []
+				return (
+					<Card key={item.id}>
+						<CardContent className="pt-6 space-y-3">
+							<div className="flex flex-wrap items-center gap-2">
+								<h3 className="text-sm font-semibold">Legacy User {item.legacyAuthUserId}</h3>
+								<Badge variant="secondary">{item.status}</Badge>
+								{blacklistSignals.hasAnyBlacklistSignal ? (
+									<Badge variant="destructive">Blacklist Alert</Badge>
+								) : null}
+							</div>
+
+							<div className="space-y-2">
+								<p className="text-xs font-semibold text-muted-foreground">Character Matches</p>
+								{item.candidates.characters.length === 0 ? (
+									<p className="text-sm text-muted-foreground">None</p>
+								) : (
+									item.candidates.characters.map((character) => (
+										<div key={character.characterId} className="rounded border border-border/90 bg-card/80 p-2.5">
+											<div className="flex items-center justify-between gap-3">
+												<div className="min-w-0">
+													<div className="font-medium">{character.characterName}</div>
+													<div className="text-xs font-mono text-muted-foreground">{character.characterId}</div>
+												</div>
+												{character.alreadyLinkedToModernUser ? (
+													<Badge variant="success">Already linked</Badge>
+												) : character.linkedToOtherUserId ? (
+													<Badge variant="destructive">Linked to other user</Badge>
+												) : (
+													<Badge variant="warning">Not linked</Badge>
+												)}
+											</div>
+										</div>
+									))
+								)}
+							</div>
+
+							<div className="space-y-2">
+								<p className="text-xs font-semibold text-muted-foreground">Legacy Notes</p>
+								{item.candidates.notes.length === 0 ? (
+									<p className="text-sm text-muted-foreground">None</p>
+								) : (
+									item.candidates.notes.map((note) => (
+										<div key={note.legacyNoteId} className="rounded border border-border/90 bg-card/80 p-2.5">
+											<div className="flex items-start justify-between gap-3">
+												<div className="min-w-0 text-sm whitespace-pre-wrap">{note.note}</div>
+												{note.alreadyImported ? (
+													<Badge variant="success">Already imported</Badge>
+												) : (
+													<Badge variant="warning">Not linked</Badge>
+												)}
+											</div>
+											{note.legacyCreatedByCharacterName ? (
+												<div className="mt-1 text-xs text-muted-foreground">by {note.legacyCreatedByCharacterName}</div>
+											) : null}
+										</div>
+									))
+								)}
+							</div>
+
+							<div className="space-y-2">
+								<p className="text-xs font-semibold text-muted-foreground">IP-associated Modern Users</p>
+								{ipAssociatedMatches.length === 0 ? (
+									<p className="text-sm text-muted-foreground">None</p>
+								) : (
+									<div className="space-y-1">
+										{ipAssociatedMatches.map((match) => (
+											<div key={`${item.id}:${match.userId}`} className="text-sm rounded border border-border/90 bg-card/80 p-2">
+												{match.mainCharacterName ?? match.mainCharacterId}{' '}
+												<span className="font-mono text-xs text-muted-foreground">({match.userId})</span>
+											</div>
+										))}
+									</div>
+								)}
+							</div>
+						</CardContent>
+					</Card>
+				)
+			})}
+		</div>
+	)
+}
 
 // ============================================================================
 // Overview Content (combines public-info, corp-history, and clones)
@@ -298,6 +428,8 @@ function SectionContent({
 				return <WalletJournalSection data={d} />
 			case 'contacts':
 				return <ContactsSection data={d} />
+			case 'alerts':
+				return <LegacyDataSection data={d} />
 			default:
 				return <p className="text-sm text-muted-foreground">Unknown section.</p>
 		}

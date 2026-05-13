@@ -2,12 +2,12 @@ import { WorkerEntrypoint } from 'cloudflare:workers'
 import { Hono } from 'hono'
 import { useWorkersLogger } from 'workers-tagged-logger'
 
-import { inArray } from '@repo/db-utils'
+import { and, eq, inArray, ne } from '@repo/db-utils'
 import { getStub } from '@repo/do-utils'
 import { withNotFound, withOnError, withSentry } from '@repo/hono-helpers'
 
 import { createDb } from './db'
-import { discordMemberAuditRuns, userCharacters } from './db/schema'
+import { discordMemberAuditRuns, userCharacters, userIpAddresses, users } from './db/schema'
 import { CoreDO } from './durable-object'
 import { triggerDiscordRefreshWorkflow, triggerUserRefreshWorkflow } from './lib/workflow-triggers'
 import { csrfProtection } from './middleware/csrf'
@@ -62,6 +62,8 @@ import type {
 	UserDetails,
 } from '@repo/admin'
 import type { Core } from '@repo/core'
+import type { Hr } from '@repo/hr'
+import type { Legacy } from '@repo/legacy'
 import type { App, Env } from './context'
 
 const app = new Hono<App>()
@@ -263,6 +265,159 @@ export class CoreWorker extends WorkerEntrypoint<Env> {
 		return {
 			userId: ownership.userId,
 			isPrimary: ownership.isPrimary,
+		}
+	}
+
+	/**
+	 * Find blacklisted users that share known IP hashes with the owner of a character.
+	 * Returns hashed-only data for cross-account risk checks.
+	 */
+	async getBlacklistedIpAssociationsForCharacter(characterId: string): Promise<{
+		subjectUserId: string | null
+		matches: Array<{
+			userId: string
+			mainCharacterId: string
+			mainCharacterName: string | null
+			matchingIpHashes: string[]
+		}>
+	}> {
+		const ownership = await this.getService().getCharacterOwnership(characterId)
+		if (!ownership) return { subjectUserId: null, matches: [] }
+
+		const db = createDb(this.env.DATABASE_URL)
+		const hrStub = getStub<Hr>(this.env.HR, 'default')
+
+		const subjectHashesRows = await db
+			.selectDistinct({ ipAddressHash: userIpAddresses.ipAddressHash })
+			.from(userIpAddresses)
+			.where(eq(userIpAddresses.userId, ownership.userId))
+		const subjectHashes = subjectHashesRows.map((row) => row.ipAddressHash)
+		if (subjectHashes.length === 0) return { subjectUserId: ownership.userId, matches: [] }
+
+		const linkedRows = await db
+			.select({
+				userId: userIpAddresses.userId,
+				ipAddressHash: userIpAddresses.ipAddressHash,
+			})
+			.from(userIpAddresses)
+			.where(
+				and(
+					inArray(userIpAddresses.ipAddressHash, subjectHashes),
+					ne(userIpAddresses.userId, ownership.userId)
+				)
+			)
+
+		const hashByUserId = new Map<string, Set<string>>()
+		for (const row of linkedRows) {
+			if (row.userId === ownership.userId) continue
+			const set = hashByUserId.get(row.userId) ?? new Set<string>()
+			set.add(row.ipAddressHash)
+			hashByUserId.set(row.userId, set)
+		}
+
+		const linkedUserIds = [...hashByUserId.keys()]
+		if (linkedUserIds.length === 0) return { subjectUserId: ownership.userId, matches: [] }
+
+		const blacklistChecks = await Promise.all(
+			linkedUserIds.map(async (userId) => ({ userId, isBlacklisted: await hrStub.isUserBlacklisted(userId) }))
+		)
+		const blacklistedUserIds = blacklistChecks
+			.filter((result) => result.isBlacklisted)
+			.map((result) => result.userId)
+		if (blacklistedUserIds.length === 0) return { subjectUserId: ownership.userId, matches: [] }
+
+		const linkedUsers = await db
+			.select({
+				userId: users.id,
+				mainCharacterId: users.mainCharacterId,
+			})
+			.from(users)
+			.where(inArray(users.id, blacklistedUserIds))
+
+		const mainCharacterIds = linkedUsers.map((row) => row.mainCharacterId)
+		const mainChars = mainCharacterIds.length
+			? await db
+					.select({
+						characterId: userCharacters.characterId,
+						characterName: userCharacters.characterName,
+					})
+					.from(userCharacters)
+					.where(inArray(userCharacters.characterId, mainCharacterIds))
+			: []
+		const charNameById = new Map(mainChars.map((row) => [row.characterId, row.characterName]))
+
+		return {
+			subjectUserId: ownership.userId,
+			matches: linkedUsers.map((row) => ({
+				userId: row.userId,
+				mainCharacterId: row.mainCharacterId,
+				mainCharacterName: charNameById.get(row.mainCharacterId) ?? null,
+				matchingIpHashes: [...(hashByUserId.get(row.userId) ?? new Set<string>())],
+			})),
+		}
+	}
+
+	/**
+	 * Return legacy migration-style association data for a character owner (read-only consumer).
+	 * This forces a recheck so Fulcrum sees fresh associations and blacklist signal state.
+	 */
+	async getLegacyAssociationsForCharacter(characterId: string): Promise<{
+		modernUserId: string | null
+		items: Array<{
+			id: string
+			legacyAuthUserId: string
+			status: string
+			modernUserMainCharacterName: string | null
+			candidateSnapshot: Record<string, unknown>
+			conflicts: Record<string, unknown>
+			candidates: {
+				characters: Array<{
+					characterId: string
+					characterName: string
+					source: 'legacy_primary' | 'esi_owner' | 'xml_account'
+					alreadyLinkedToModernUser: boolean
+					linkedToOtherUserId: string | null
+				}>
+				notes: Array<{
+					legacyNoteId: string
+					note: string
+					legacyCreatedByUserId: string | null
+					legacyCreatedByCharacterName: string | null
+					legacyDateCreated: Date | null
+					alreadyImported: boolean
+				}>
+				ipAddresses: string[]
+			}
+		}>
+	}> {
+		const ownership = await this.getService().getCharacterOwnership(characterId)
+		if (!ownership) return { modernUserId: null, items: [] }
+
+		const legacyStub = getStub<Legacy>(this.env.LEGACY, 'default')
+		await legacyStub.recheckUser(ownership.userId, 'system:fulcrum-report', { force: true })
+		const listing = await legacyStub.listMigrations({
+			page: 1,
+			pageSize: 100,
+			modernUserId: ownership.userId,
+		})
+		if (listing.items.length === 0) {
+			return { modernUserId: ownership.userId, items: [] }
+		}
+
+		const details = await Promise.all(listing.items.map((item) => legacyStub.getMigration(item.id)))
+		return {
+			modernUserId: ownership.userId,
+			items: details
+				.filter((detail): detail is NonNullable<typeof detail> => detail !== null)
+				.map((detail) => ({
+					id: detail.item.id,
+					legacyAuthUserId: detail.item.legacyAuthUserId,
+					status: detail.item.status,
+					modernUserMainCharacterName: detail.item.modernUserMainCharacterName ?? null,
+					candidateSnapshot: detail.item.candidateSnapshot ?? {},
+					conflicts: detail.item.conflicts ?? {},
+					candidates: detail.candidates,
+				})),
 		}
 	}
 

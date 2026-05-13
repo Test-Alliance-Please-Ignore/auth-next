@@ -59,6 +59,9 @@ export const auditorUserKeys = {
 	details: () => [...auditorUserKeys.all, 'detail'] as const,
 	detail: (userId: string) => [...auditorUserKeys.details(), userId] as const,
 	fulcrum: (userId: string) => [...auditorUserKeys.detail(userId), 'fulcrum'] as const,
+	ipHistory: (userId: string) => [...auditorUserKeys.detail(userId), 'ip-history'] as const,
+	ipHashMatches: (ipAddressHash: string) =>
+		[...auditorUserKeys.all, 'ip-history', ipAddressHash, 'matches'] as const,
 }
 
 /**
@@ -90,6 +93,24 @@ export function useAuditorUser(userId: string) {
 		enabled: !!userId,
 		staleTime: 1000 * 60 * 2,
 		gcTime: 1000 * 60 * 5,
+	})
+}
+
+export function useAuditorUserIpHistory(userId: string) {
+	return useQuery({
+		queryKey: auditorUserKeys.ipHistory(userId),
+		queryFn: () => apiClient.getHrAuditorUserIpHistory(userId),
+		enabled: !!userId,
+		staleTime: 1000 * 60 * 2,
+	})
+}
+
+export function useAuditorIpHashMatches(ipAddressHash: string | null) {
+	return useQuery({
+		queryKey: auditorUserKeys.ipHashMatches(ipAddressHash ?? ''),
+		queryFn: () => apiClient.getHrAuditorIpHashMatches(ipAddressHash ?? ''),
+		enabled: !!ipAddressHash,
+		staleTime: 1000 * 60,
 	})
 }
 

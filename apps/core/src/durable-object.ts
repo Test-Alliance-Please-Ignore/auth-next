@@ -1,24 +1,31 @@
 import { DurableObject } from 'cloudflare:workers'
 
 import { CORE_ROLES, SERVICE_CORE } from '@repo/core'
-import { and, asc, eq, inArray, isNull, lt, or } from '@repo/db-utils'
+import { and, asc, eq, inArray, isNull, lt, ne, or } from '@repo/db-utils'
 import { getStub } from '@repo/do-utils'
 import { getEsiInstanceForCharacter, getEsiInstanceForCorporation } from '@repo/esi'
 import { logger } from '@repo/hono-helpers'
 
 import { createDb } from './db'
-import { userCharacters, users } from './db/schema'
+import { userCharacters, userIpAddresses, users } from './db/schema'
+import { recordUserIpAddress } from './lib/ip-tracking'
 import { validateAndSyncCharacterTokenValidity } from './lib/token-validity'
 import { triggerDiscordRefreshWorkflow, triggerUserRefreshWorkflow } from './lib/workflow-triggers'
+import { updateCharacterPublicInfo } from './workflows/steps/update-character'
 
 import type { Core } from '@repo/core'
 import type { CharacterPublicInfo } from '@repo/esi'
 import type { EveTokenStore } from '@repo/eve-token-store'
 import type { CreateRoleRequest, Groups } from '@repo/groups'
+import type { BlacklistTargetCheckItem, BlacklistTargetType, Hr } from '@repo/hr'
+import type { Legacy } from '@repo/legacy'
 import type { Env } from './context'
 
 export class CoreDO extends DurableObject<Env> implements Core {
 	private readonly logger = logger.withTags({ service: 'core-durable-object' })
+	private static readonly encoder = new TextEncoder()
+	private static cachedIpHashSecret: string | null = null
+	private static cachedIpHashKey: CryptoKey | null = null
 
 	/**
 	 * In-memory map of userIds pending Discord refresh.
@@ -83,6 +90,32 @@ export class CoreDO extends DurableObject<Env> implements Core {
 
 	private getDb(): ReturnType<typeof createDb> {
 		return createDb(this.env.DATABASE_URL)
+	}
+
+	private static bufferToHex(buffer: ArrayBuffer): string {
+		return Array.from(new Uint8Array(buffer))
+			.map((b) => b.toString(16).padStart(2, '0'))
+			.join('')
+	}
+
+	private async hashIpAddress(secret: string, value: string): Promise<string> {
+		if (CoreDO.cachedIpHashSecret !== secret || !CoreDO.cachedIpHashKey) {
+			CoreDO.cachedIpHashKey = await crypto.subtle.importKey(
+				'raw',
+				CoreDO.encoder.encode(secret),
+				{ name: 'HMAC', hash: 'SHA-256' },
+				false,
+				['sign']
+			)
+			CoreDO.cachedIpHashSecret = secret
+		}
+
+		const signature = await crypto.subtle.sign(
+			'HMAC',
+			CoreDO.cachedIpHashKey,
+			CoreDO.encoder.encode(value)
+		)
+		return CoreDO.bufferToHex(signature)
 	}
 
 	private async ensureRolesExist(): Promise<void> {
@@ -368,7 +401,771 @@ export class CoreDO extends DurableObject<Env> implements Core {
 	}
 
 	async getUserDiscordUserId(userId: string): Promise<string | null> {
-		throw new Error('Not implemented')
+		const user = await this.getDb().query.users.findFirst({
+			where: eq(users.id, userId),
+			columns: { discordUserId: true },
+		})
+		return user?.discordUserId ?? null
+	}
+
+	async createUserBlacklist(input: {
+		userId: string
+		reason: string
+		blacklistedBy: string
+		metadata?: Record<string, unknown>
+	}): Promise<{ entryId: string }> {
+		const hrStub = getStub<Hr>(this.env.HR, 'default')
+		const user = await this.getDb().query.users.findFirst({
+			where: eq(users.id, input.userId),
+			columns: { discordUserId: true },
+		})
+		const entry = await hrStub.createUserBlacklist({
+			userId: input.userId,
+			discordUserId: user?.discordUserId ?? undefined,
+			reason: input.reason,
+			blacklistedBy: input.blacklistedBy,
+			metadata: input.metadata,
+		})
+		return { entryId: entry.id }
+	}
+
+	async legacyImportCharacterLinks(input: {
+		modernUserId: string
+		legacyAuthUserId: string
+		characters: Array<{
+			characterId: string
+			characterName: string
+			source?: 'legacy_primary' | 'esi_owner' | 'xml_account'
+		}>
+	}): Promise<{
+		inserted: number
+		alreadyLinkedToUser: number
+		linkedToOtherUser: number
+		totalRequested: number
+	}> {
+		const db = this.getDb()
+		const uniqueCharacters = [
+			...new Map(input.characters.map((ch) => [ch.characterId, ch])).values(),
+		]
+		const existing = await db.query.userCharacters.findMany({
+			where: inArray(
+				userCharacters.characterId,
+				uniqueCharacters.map((ch) => ch.characterId)
+			),
+			columns: { characterId: true, userId: true },
+		})
+		const existingByCharacterId = new Map(existing.map((row) => [row.characterId, row]))
+		const insertedCharacterIds: string[] = []
+		let inserted = 0
+		let alreadyLinkedToUser = 0
+		let linkedToOtherUser = 0
+
+		for (const character of uniqueCharacters) {
+			const existingRow = existingByCharacterId.get(character.characterId)
+			if (existingRow) {
+				if (existingRow.userId === input.modernUserId) {
+					alreadyLinkedToUser += 1
+				} else {
+					linkedToOtherUser += 1
+				}
+				continue
+			}
+
+			await db.insert(userCharacters).values({
+				userId: input.modernUserId,
+				characterId: character.characterId,
+				characterName: character.characterName,
+				characterOwnerHash: `legacy-import:${input.legacyAuthUserId}:${character.source ?? 'unknown'}`,
+				is_primary: false,
+				hasValidToken: null,
+				isDeleted: false,
+			})
+			insertedCharacterIds.push(character.characterId)
+			inserted += 1
+		}
+
+		await db
+			.update(users)
+			.set({
+				legacyAuthUserId: input.legacyAuthUserId,
+				updatedAt: new Date(),
+			})
+			.where(eq(users.id, input.modernUserId))
+
+		// Ensure newly imported characters are hydrated with current public/affiliation
+		// data immediately so HR/admin views don't show stale "unknown" corp/alliance.
+		if (inserted > 0) {
+			const hydrateContext = {
+				db,
+				env: this.env,
+				workflowInstanceId: `legacy-import-hydration-${Date.now().toString(36)}`,
+				userId: input.modernUserId,
+				refreshMode: 'manual' as const,
+				suppressDiscordRefresh: true,
+			}
+			for (const characterId of insertedCharacterIds) {
+				try {
+					await updateCharacterPublicInfo(hydrateContext, characterId)
+				} catch (error) {
+					this.logger.warn('[Legacy Import] Failed to pre-hydrate imported character', {
+						userId: input.modernUserId,
+						characterId,
+						error: error instanceof Error ? error.message : String(error),
+					})
+				}
+			}
+
+			await triggerUserRefreshWorkflow({
+				db,
+				env: this.env,
+				userId: input.modernUserId,
+				source: 'legacy-import-character-links',
+				bypassThrottle: true,
+				refreshMode: 'manual',
+				suppressDiscordRefresh: true,
+			})
+		}
+
+		return {
+			inserted,
+			alreadyLinkedToUser,
+			linkedToOtherUser,
+			totalRequested: uniqueCharacters.length,
+		}
+	}
+
+	async legacyImportNotes(input: {
+		modernUserId: string
+		legacyAuthUserId: string
+		actorUserId: string
+		notes: Array<{
+			legacyNoteId: string
+			note: string
+			legacyCreatedByUserId?: string | null
+			legacyDateCreated?: string | null
+			metadata?: Record<string, unknown>
+		}>
+	}): Promise<{ created: number; failed: number; totalRequested: number }> {
+		const db = this.getDb()
+		const hrStub = getStub<Hr>(this.env.HR, 'default')
+		const isUuid = (value: string) =>
+			/^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(value)
+		const actorUserId = isUuid(input.actorUserId) ? input.actorUserId : null
+		const importerPrimary = actorUserId
+			? await db.query.userCharacters.findFirst({
+					where: and(eq(userCharacters.userId, actorUserId), eq(userCharacters.is_primary, true)),
+					columns: { characterId: true, characterName: true },
+				})
+			: null
+		const importerUser = actorUserId
+			? await db.query.users.findFirst({
+					where: eq(users.id, actorUserId),
+					columns: { mainCharacterId: true },
+				})
+			: null
+		const importerCharacterId =
+			importerPrimary?.characterId ?? importerUser?.mainCharacterId ?? null
+		const importerCharacterName = importerPrimary?.characterName ?? 'System'
+
+		const legacyActorIds = [
+			...new Set(
+				input.notes
+					.map((note) => note.legacyCreatedByUserId)
+					.filter((value): value is string => Boolean(value))
+			),
+		]
+		const legacyStub = getStub<Legacy>(this.env.LEGACY, 'default')
+		const legacyActorCharacterNames =
+			legacyActorIds.length > 0
+				? await legacyStub.resolveLegacyActorCharacterNames(legacyActorIds)
+				: {}
+		const modernUsersByLegacyId =
+			legacyActorIds.length > 0
+				? await db.query.users.findMany({
+						where: inArray(users.legacyAuthUserId, legacyActorIds),
+						columns: { id: true, legacyAuthUserId: true, mainCharacterId: true },
+					})
+				: []
+		const modernUserByLegacyId = new Map(
+			modernUsersByLegacyId
+				.filter((row): row is typeof row & { legacyAuthUserId: string } =>
+					Boolean(row.legacyAuthUserId)
+				)
+				.map((row) => [row.legacyAuthUserId, row])
+		)
+		const modernUserIds = [...new Set(modernUsersByLegacyId.map((row) => row.id))]
+		const primaryChars =
+			modernUserIds.length > 0
+				? await db.query.userCharacters.findMany({
+						where: and(
+							inArray(userCharacters.userId, modernUserIds),
+							eq(userCharacters.is_primary, true)
+						),
+						columns: { userId: true, characterId: true, characterName: true },
+					})
+				: []
+		const primaryCharByUserId = new Map(primaryChars.map((row) => [row.userId, row]))
+
+		let created = 0
+		let failed = 0
+		for (const note of input.notes) {
+			const attributedModernUser = note.legacyCreatedByUserId
+				? modernUserByLegacyId.get(note.legacyCreatedByUserId)
+				: undefined
+			const attributedPrimary = attributedModernUser
+				? (primaryCharByUserId.get(attributedModernUser.id) ?? null)
+				: null
+			const authorUserId = attributedModernUser?.id ?? actorUserId ?? input.modernUserId
+			const authorCharacterId =
+				attributedPrimary?.characterId ??
+				attributedModernUser?.mainCharacterId ??
+				importerCharacterId ??
+				null
+			const authorCharacterName =
+				attributedPrimary?.characterName ??
+				(note.legacyCreatedByUserId
+					? (legacyActorCharacterNames[note.legacyCreatedByUserId] ?? null)
+					: null) ??
+				importerCharacterName
+
+			try {
+				await hrStub.createNote(
+					input.modernUserId,
+					null,
+					authorUserId,
+					authorCharacterId,
+					authorCharacterName,
+					note.note,
+					'general',
+					'normal',
+					{
+						source: 'legacy_import',
+						legacyAuthUserId: input.legacyAuthUserId,
+						legacyNoteId: note.legacyNoteId,
+						legacyCreatedByUserId: note.legacyCreatedByUserId ?? null,
+						legacyDateCreated: note.legacyDateCreated ?? null,
+						legacyNoteActorResolution: attributedModernUser
+							? 'resolved_modern_user'
+							: 'unresolved_importer_fallback',
+						legacyNoteActorResolvedUserId: attributedModernUser?.id ?? null,
+						...(note.metadata ?? {}),
+						visibility: 'hr',
+					}
+				)
+				created += 1
+			} catch {
+				failed += 1
+			}
+		}
+
+		return { created, failed, totalRequested: input.notes.length }
+	}
+
+	async legacyImportIpAssociations(input: {
+		modernUserId: string
+		legacyAuthUserId: string
+		ipAddresses: Array<{
+			ipAddress: string
+			firstSeenAt?: string | null
+			lastSeenAt?: string | null
+		}>
+	}): Promise<{ imported: number; failed: number; totalRequested: number }> {
+		const db = this.getDb()
+		const hashSecret = this.env.IP_ADDRESS_HASH_SECRET
+		if (!hashSecret) {
+			throw new Error('IP hash secret not configured')
+		}
+
+		const aggregatedByIp = new Map<
+			string,
+			{ ipAddress: string; firstSeenAt: Date | null; lastSeenAt: Date | null }
+		>()
+		for (const row of input.ipAddresses) {
+			const ipAddress = row.ipAddress.trim()
+			if (!ipAddress) continue
+			const parsedFirstSeenAt =
+				row.firstSeenAt && !Number.isNaN(new Date(row.firstSeenAt).getTime())
+					? new Date(row.firstSeenAt)
+					: null
+			const parsedLastSeenAt =
+				row.lastSeenAt && !Number.isNaN(new Date(row.lastSeenAt).getTime())
+					? new Date(row.lastSeenAt)
+					: null
+			const existing = aggregatedByIp.get(ipAddress)
+			if (!existing) {
+				aggregatedByIp.set(ipAddress, {
+					ipAddress,
+					firstSeenAt: parsedFirstSeenAt,
+					lastSeenAt: parsedLastSeenAt,
+				})
+				continue
+			}
+			const firstSeenAt =
+				existing.firstSeenAt && parsedFirstSeenAt
+					? existing.firstSeenAt < parsedFirstSeenAt
+						? existing.firstSeenAt
+						: parsedFirstSeenAt
+					: (existing.firstSeenAt ?? parsedFirstSeenAt)
+			const lastSeenAt =
+				existing.lastSeenAt && parsedLastSeenAt
+					? existing.lastSeenAt > parsedLastSeenAt
+						? existing.lastSeenAt
+						: parsedLastSeenAt
+					: (existing.lastSeenAt ?? parsedLastSeenAt)
+			aggregatedByIp.set(ipAddress, { ipAddress, firstSeenAt, lastSeenAt })
+		}
+		const uniqueIps = [...aggregatedByIp.values()]
+		let imported = 0
+		let failed = 0
+		for (const ip of uniqueIps) {
+			try {
+				await recordUserIpAddress({
+					db,
+					userId: input.modernUserId,
+					ip: ip.ipAddress,
+					hashSecret,
+					firstSeenAt: ip.firstSeenAt,
+					lastSeenAt: ip.lastSeenAt,
+					overwriteObservedWindow: true,
+				})
+				imported += 1
+			} catch {
+				failed += 1
+			}
+		}
+
+		return {
+			imported,
+			failed,
+			totalRequested: uniqueIps.length,
+		}
+	}
+
+	async getImportedLegacyNoteIdsForUser(
+		userId: string,
+		legacyNoteIds: string[]
+	): Promise<string[]> {
+		if (legacyNoteIds.length === 0) return []
+		const hrStub = getStub<Hr>(this.env.HR, 'default')
+		const notes = await hrStub.listNotes({
+			subjectUserId: userId,
+			limit: Math.max(legacyNoteIds.length * 4, 200),
+			offset: 0,
+		})
+		const targetIds = new Set(legacyNoteIds)
+		return notes
+			.filter((note) => note.metadata?.source === 'legacy_import')
+			.map((note) =>
+				typeof note.metadata?.legacyNoteId === 'string' ? note.metadata.legacyNoteId : null
+			)
+			.filter((legacyNoteId): legacyNoteId is string => legacyNoteId !== null)
+			.filter((legacyNoteId) => targetIds.has(legacyNoteId))
+	}
+
+	async evaluateLegacyMigrationBlacklistSignals(input: {
+		modernUserId: string
+		characterPairs: Array<{ characterId: string; characterName: string }>
+		discordUserIds: string[]
+		ipAddresses: string[]
+		sourceHints?: Array<{
+			targetType: BlacklistTargetType
+			targetValue: string
+			source: 'legacy_direct' | 'legacy_ip_association' | 'tang_direct' | 'tang_ip_association'
+		}>
+	}): Promise<{
+		hasAnyBlacklistSignal: boolean
+		modernUserBlacklisted: boolean
+		matchedTargets: Array<{
+			targetType: BlacklistTargetType
+			targetValue: string
+			reason: string | null
+			createdAt: Date | null
+			blacklistedBy: string | null
+			entryMode: 'manual' | 'automatic' | null
+			discoverySources: Array<
+				'legacy_direct' | 'legacy_ip_association' | 'tang_direct' | 'tang_ip_association'
+			>
+			preferredSource: 'legacy' | 'tang'
+		}>
+		matchingCharactersBlacklisted: Array<{
+			characterId: string
+			characterName: string
+			matchedBy: Array<'character_id' | 'character_name'>
+			reason: string | null
+			createdAt: Date | null
+			blacklistedBy: string | null
+			entryMode: 'manual' | 'automatic' | null
+			discoverySources: Array<
+				'legacy_direct' | 'legacy_ip_association' | 'tang_direct' | 'tang_ip_association'
+			>
+			preferredSource: 'legacy' | 'tang'
+		}>
+		matchingDiscordUserIdsBlacklisted: string[]
+		ipAssociatedBlacklistedUsers: Array<{
+			userId: string
+			mainCharacterId: string
+			mainCharacterName: string | null
+			matchingIpHashes: string[]
+			userBlacklisted: boolean
+			discordBlacklisted: boolean
+			matchedItems: Array<{ targetType: BlacklistTargetType; targetValue: string }>
+			matchingBlacklistedCharacters: Array<{
+				characterId: string
+				characterName: string
+				matchedBy: Array<'character_id' | 'character_name'>
+			}>
+		}>
+	}> {
+		const db = this.getDb()
+		const hrStub = getStub<Hr>(this.env.HR, 'default')
+		const pushTarget = (
+			targets: BlacklistTargetCheckItem[],
+			targetType: BlacklistTargetCheckItem['targetType'],
+			targetValue?: string | null
+		) => {
+			const value = (targetValue ?? '').trim()
+			if (!value) return
+			targets.push({ targetType, targetValue: value })
+		}
+		const dedupeTargets = (targets: BlacklistTargetCheckItem[]): BlacklistTargetCheckItem[] => {
+			const map = new Map<string, BlacklistTargetCheckItem>()
+			for (const target of targets) {
+				const normalizedValue =
+					target.targetType === 'character_name'
+						? target.targetValue.trim().toLowerCase()
+						: target.targetValue.trim()
+				if (!normalizedValue) continue
+				map.set(`${target.targetType}:${normalizedValue}`, {
+					targetType: target.targetType,
+					targetValue: normalizedValue,
+				})
+			}
+			return [...map.values()]
+		}
+		const sourceByTarget = new Map<
+			string,
+			Set<'legacy_direct' | 'legacy_ip_association' | 'tang_direct' | 'tang_ip_association'>
+		>()
+		const addSource = (
+			targetType: BlacklistTargetType,
+			targetValue: string,
+			source: 'legacy_direct' | 'legacy_ip_association' | 'tang_direct' | 'tang_ip_association'
+		) => {
+			const normalizedValue =
+				targetType === 'character_name' ? targetValue.trim().toLowerCase() : targetValue.trim()
+			if (!normalizedValue) return
+			const key = `${targetType}:${normalizedValue}`
+			const bucket =
+				sourceByTarget.get(key) ??
+				new Set<'legacy_direct' | 'legacy_ip_association' | 'tang_direct' | 'tang_ip_association'>()
+			bucket.add(source)
+			sourceByTarget.set(key, bucket)
+		}
+		const getSourceMeta = (targetType: BlacklistTargetType, targetValue: string) => {
+			const normalizedValue =
+				targetType === 'character_name' ? targetValue.trim().toLowerCase() : targetValue.trim()
+			const sources = [...(sourceByTarget.get(`${targetType}:${normalizedValue}`) ?? new Set())]
+			const preferredSource: 'legacy' | 'tang' = sources.some((source) =>
+				source.startsWith('tang_')
+			)
+				? 'tang'
+				: 'legacy'
+			return { sources, preferredSource }
+		}
+		const buildMatchSet = (rows: Array<{ targetType: string; targetValue: string }>): Set<string> =>
+			new Set(
+				rows.map((row) => {
+					const normalizedValue =
+						row.targetType === 'character_name' ? row.targetValue.toLowerCase() : row.targetValue
+					return `${row.targetType}:${normalizedValue}`
+				})
+			)
+
+		const uniqueCharacterPairs = [
+			...new Map(
+				input.characterPairs
+					.filter((pair) => pair.characterId || pair.characterName)
+					.map((pair) => [pair.characterId || `name:${pair.characterName}`, pair])
+			).values(),
+		]
+		const uniqueIpAddresses = [
+			...new Set(input.ipAddresses.map((value) => value.trim()).filter(Boolean)),
+		]
+
+		const primaryTargets: BlacklistTargetCheckItem[] = [
+			{ targetType: 'user', targetValue: input.modernUserId },
+		]
+		addSource('user', input.modernUserId, 'tang_direct')
+		for (const hint of input.sourceHints ?? []) {
+			addSource(hint.targetType, hint.targetValue, hint.source)
+		}
+		for (const pair of uniqueCharacterPairs) {
+			pushTarget(primaryTargets, 'character_id', pair.characterId)
+			pushTarget(primaryTargets, 'character_name', pair.characterName)
+		}
+		for (const discordUserId of input.discordUserIds) {
+			pushTarget(primaryTargets, 'discord_id', discordUserId)
+		}
+		const dedupedPrimaryTargets = dedupeTargets(primaryTargets)
+		const allTargets: BlacklistTargetCheckItem[] = [...dedupedPrimaryTargets]
+		const directTargetKeySet = new Set(
+			dedupedPrimaryTargets.map((target) => `${target.targetType}:${target.targetValue}`)
+		)
+		const linkedUserContexts: Array<{
+			userId: string
+			mainCharacterId: string
+			mainCharacterName: string | null
+			discordUserId: string | null
+			userPairs: Array<{ characterId: string; characterName: string }>
+			matchingIpHashes: string[]
+		}> = []
+
+		const ipAssociatedBlacklistedUsers: Array<{
+			userId: string
+			mainCharacterId: string
+			mainCharacterName: string | null
+			matchingIpHashes: string[]
+			userBlacklisted: boolean
+			discordBlacklisted: boolean
+			matchedItems: Array<{ targetType: BlacklistTargetType; targetValue: string }>
+			matchingBlacklistedCharacters: Array<{
+				characterId: string
+				characterName: string
+				matchedBy: Array<'character_id' | 'character_name'>
+			}>
+		}> = []
+
+		if (uniqueIpAddresses.length > 0 && this.env.IP_ADDRESS_HASH_SECRET) {
+			const hashSecret = this.env.IP_ADDRESS_HASH_SECRET
+			const ipHashes = await Promise.all(
+				uniqueIpAddresses.map((ipAddress) => this.hashIpAddress(hashSecret, ipAddress))
+			)
+			const uniqueIpHashes = [...new Set(ipHashes)]
+			if (uniqueIpHashes.length > 0) {
+				const linkedRows = await db
+					.select({
+						userId: userIpAddresses.userId,
+						ipAddressHash: userIpAddresses.ipAddressHash,
+					})
+					.from(userIpAddresses)
+					.where(
+						and(
+							inArray(userIpAddresses.ipAddressHash, uniqueIpHashes),
+							ne(userIpAddresses.userId, input.modernUserId)
+						)
+					)
+				const linkedUserIds = [...new Set(linkedRows.map((row) => row.userId))]
+				if (linkedUserIds.length > 0) {
+					const linkedUsers = await db.query.users.findMany({
+						where: inArray(users.id, linkedUserIds),
+						columns: { id: true, mainCharacterId: true, discordUserId: true },
+					})
+					const linkedUserCharacters = await db.query.userCharacters.findMany({
+						where: and(
+							inArray(userCharacters.userId, linkedUserIds),
+							eq(userCharacters.isDeleted, false)
+						),
+						columns: { userId: true, characterId: true, characterName: true },
+					})
+					const linkedMainCharacterNames = await db.query.userCharacters.findMany({
+						where: inArray(
+							userCharacters.characterId,
+							linkedUsers.map((user) => user.mainCharacterId)
+						),
+						columns: { characterId: true, characterName: true },
+					})
+					const mainCharacterNameById = new Map(
+						linkedMainCharacterNames.map((row) => [row.characterId, row.characterName])
+					)
+					const characterPairsByUser = new Map<
+						string,
+						Array<{ characterId: string; characterName: string }>
+					>()
+					for (const row of linkedUserCharacters) {
+						const bucket = characterPairsByUser.get(row.userId) ?? []
+						bucket.push({ characterId: row.characterId, characterName: row.characterName })
+						characterPairsByUser.set(row.userId, bucket)
+					}
+					const matchingHashesByUserId = new Map<string, Set<string>>()
+					for (const row of linkedRows) {
+						const bucket = matchingHashesByUserId.get(row.userId) ?? new Set<string>()
+						bucket.add(row.ipAddressHash)
+						matchingHashesByUserId.set(row.userId, bucket)
+					}
+
+					const ipAssociationTargets: BlacklistTargetCheckItem[] = []
+					for (const linkedUser of linkedUsers) {
+						const userTargets: BlacklistTargetCheckItem[] = [
+							{ targetType: 'user', targetValue: linkedUser.id },
+						]
+						addSource('user', linkedUser.id, 'tang_ip_association')
+						if (linkedUser.discordUserId) {
+							userTargets.push({ targetType: 'discord_id', targetValue: linkedUser.discordUserId })
+							addSource('discord_id', linkedUser.discordUserId, 'tang_ip_association')
+						}
+						const userPairs = characterPairsByUser.get(linkedUser.id) ?? []
+						for (const pair of userPairs) {
+							pushTarget(userTargets, 'character_id', pair.characterId)
+							pushTarget(userTargets, 'character_name', pair.characterName)
+							addSource('character_id', pair.characterId, 'tang_ip_association')
+							if (pair.characterName)
+								addSource('character_name', pair.characterName, 'tang_ip_association')
+						}
+						for (const target of dedupeTargets(userTargets)) {
+							ipAssociationTargets.push(target)
+						}
+						linkedUserContexts.push({
+							userId: linkedUser.id,
+							mainCharacterId: linkedUser.mainCharacterId,
+							mainCharacterName: mainCharacterNameById.get(linkedUser.mainCharacterId) ?? null,
+							discordUserId: linkedUser.discordUserId ?? null,
+							userPairs,
+							matchingIpHashes: [
+								...(matchingHashesByUserId.get(linkedUser.id) ?? new Set<string>()),
+							],
+						})
+					}
+					allTargets.push(...dedupeTargets(ipAssociationTargets))
+				}
+			}
+		}
+
+		const dedupedAllTargets = dedupeTargets(allTargets)
+		const allResults = await hrStub.checkBlacklistTargets(dedupedAllTargets)
+		const allBlacklisted = allResults.filter((row) => row.isBlacklisted)
+		const matchedByKey = new Map(
+			allBlacklisted.map((row) => [`${row.targetType}:${row.targetValue}`, row] as const)
+		)
+		const isMatched = (targetType: BlacklistTargetType, targetValue?: string | null): boolean => {
+			const value = (targetValue ?? '').trim()
+			if (!value) return false
+			const normalized = targetType === 'character_name' ? value.toLowerCase() : value
+			return matchedByKey.has(`${targetType}:${normalized}`)
+		}
+		const getMatchedMeta = (targetType: BlacklistTargetType, targetValue?: string | null) => {
+			const value = (targetValue ?? '').trim()
+			if (!value) return null
+			const normalized = targetType === 'character_name' ? value.toLowerCase() : value
+			return matchedByKey.get(`${targetType}:${normalized}`) ?? null
+		}
+		const coalesceCharacterMeta = (characterId: string, characterName?: string | null) => {
+			const byId = getMatchedMeta('character_id', characterId)
+			const byName = getMatchedMeta('character_name', characterName)
+			if (byId && byName) {
+				const idDate = byId.createdAt ? new Date(byId.createdAt).getTime() : 0
+				const nameDate = byName.createdAt ? new Date(byName.createdAt).getTime() : 0
+				return idDate >= nameDate ? byId : byName
+			}
+			return byId ?? byName
+		}
+
+		const primaryResults = allResults.filter((row) =>
+			directTargetKeySet.has(`${row.targetType}:${row.targetValue}`)
+		)
+		const modernUserBlacklisted = isMatched('user', input.modernUserId)
+		const matchingCharactersBlacklisted = uniqueCharacterPairs
+			.map((pair) => {
+				const idMatched = isMatched('character_id', pair.characterId)
+				const nameMatched = isMatched('character_name', pair.characterName)
+				if (!idMatched && !nameMatched) return null
+				const meta = coalesceCharacterMeta(pair.characterId, pair.characterName)
+				const sourceMeta = getSourceMeta('character_id', pair.characterId)
+				return {
+					characterId: pair.characterId,
+					characterName: pair.characterName ?? '',
+					matchedBy:
+						idMatched && nameMatched
+							? (['character_id', 'character_name'] as Array<'character_id' | 'character_name'>)
+							: idMatched
+								? (['character_id'] as Array<'character_id' | 'character_name'>)
+								: (['character_name'] as Array<'character_id' | 'character_name'>),
+					reason: meta?.reason ?? null,
+					createdAt: meta?.createdAt ?? null,
+					blacklistedBy: meta?.blacklistedBy ?? null,
+					entryMode: meta?.entryMode ?? null,
+					discoverySources: sourceMeta.sources,
+					preferredSource: sourceMeta.preferredSource,
+				}
+			})
+			.filter((row): row is NonNullable<typeof row> => row !== null)
+		const matchingDiscordUserIdsBlacklisted = [
+			...new Set(
+				input.discordUserIds.filter((discordUserId) => isMatched('discord_id', discordUserId))
+			),
+		]
+
+		for (const linkedUser of linkedUserContexts) {
+			const userBlacklisted = isMatched('user', linkedUser.userId)
+			const discordBlacklisted = linkedUser.discordUserId
+				? isMatched('discord_id', linkedUser.discordUserId)
+				: false
+			const matchingBlacklistedCharacters = linkedUser.userPairs
+				.map((pair) => {
+					const idMatched = isMatched('character_id', pair.characterId)
+					const nameMatched = isMatched('character_name', pair.characterName)
+					if (!idMatched && !nameMatched) return null
+					return {
+						characterId: pair.characterId,
+						characterName: pair.characterName ?? '',
+						matchedBy:
+							idMatched && nameMatched
+								? (['character_id', 'character_name'] as Array<'character_id' | 'character_name'>)
+								: idMatched
+									? (['character_id'] as Array<'character_id' | 'character_name'>)
+									: (['character_name'] as Array<'character_id' | 'character_name'>),
+					}
+				})
+				.filter((row): row is NonNullable<typeof row> => row !== null)
+			const matchedItems: Array<{ targetType: BlacklistTargetType; targetValue: string }> = []
+			if (userBlacklisted) matchedItems.push({ targetType: 'user', targetValue: linkedUser.userId })
+			if (discordBlacklisted && linkedUser.discordUserId) {
+				matchedItems.push({ targetType: 'discord_id', targetValue: linkedUser.discordUserId })
+			}
+			for (const row of matchingBlacklistedCharacters) {
+				matchedItems.push({ targetType: 'character_id', targetValue: row.characterId })
+			}
+			if (!userBlacklisted && !discordBlacklisted && matchingBlacklistedCharacters.length === 0)
+				continue
+			ipAssociatedBlacklistedUsers.push({
+				userId: linkedUser.userId,
+				mainCharacterId: linkedUser.mainCharacterId,
+				mainCharacterName: linkedUser.mainCharacterName,
+				matchingIpHashes: linkedUser.matchingIpHashes,
+				userBlacklisted,
+				discordBlacklisted,
+				matchingBlacklistedCharacters,
+				matchedItems,
+			})
+		}
+
+		const hasAnyBlacklistSignal =
+			modernUserBlacklisted ||
+			matchingCharactersBlacklisted.length > 0 ||
+			matchingDiscordUserIdsBlacklisted.length > 0 ||
+			ipAssociatedBlacklistedUsers.length > 0
+
+		return {
+			hasAnyBlacklistSignal,
+			modernUserBlacklisted,
+			matchedTargets: primaryResults
+				.filter((row) => row.isBlacklisted)
+				.map((row) => {
+					const sourceMeta = getSourceMeta(row.targetType, row.targetValue)
+					return {
+						targetType: row.targetType,
+						targetValue: row.targetValue,
+						reason: row.reason,
+						createdAt: row.createdAt,
+						blacklistedBy: row.blacklistedBy,
+						entryMode: row.entryMode,
+						discoverySources: sourceMeta.sources,
+						preferredSource: sourceMeta.preferredSource,
+					}
+				}),
+			matchingCharactersBlacklisted,
+			matchingDiscordUserIdsBlacklisted,
+			ipAssociatedBlacklistedUsers,
+		}
 	}
 
 	async listUsersNeedingRefresh(maxResults: number): Promise<string[]> {
@@ -402,10 +1199,7 @@ export class CoreDO extends DurableObject<Env> implements Core {
 
 		const userIds = candidates.map((candidate) => candidate.id)
 		const activeCharacterRows = await this.getDb().query.userCharacters.findMany({
-			where: and(
-				inArray(userCharacters.userId, userIds),
-				eq(userCharacters.isDeleted, false)
-			),
+			where: and(inArray(userCharacters.userId, userIds), eq(userCharacters.isDeleted, false)),
 			columns: {
 				userId: true,
 			},
@@ -566,9 +1360,7 @@ export class CoreDO extends DurableObject<Env> implements Core {
 		this.logger.info('[CoreDO] Evicted pending Discord refresh entry', { userId, reason })
 	}
 
-	private async waitForUserRefreshWorkflowCompletion(
-		workflowInstanceId: string
-	): Promise<{
+	private async waitForUserRefreshWorkflowCompletion(workflowInstanceId: string): Promise<{
 		status: 'completed' | 'completed_with_errors' | 'failed' | 'unknown'
 		affiliationChanged: boolean
 	}> {

@@ -12,6 +12,9 @@ export type AlertType =
     | 'data-fetch-failure'
     | 'corp-hopper'
     | 'blacklist-association'
+    | 'ip-blacklist-association'
+    | 'legacy-additional-associations'
+    | 'legacy-blacklist-association'
 
 export interface ReportAlert {
     id: string

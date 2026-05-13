@@ -4,6 +4,7 @@
  * Shared types and interfaces for the Features worker.
  * This package allows other workers to interact with feature flags via RPC.
  */
+import type { DurableObject } from 'cloudflare:workers'
 
 /**
  * Value types supported by feature flags

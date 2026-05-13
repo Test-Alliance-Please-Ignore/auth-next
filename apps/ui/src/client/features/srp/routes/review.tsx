@@ -19,6 +19,7 @@ import {
 } from '@/components/ui/table'
 import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { useUserPermissions } from '@/hooks/useUserPermissions'
+import { usePageTitle } from '@/hooks/usePageTitle'
 import { api } from '@/lib/api'
 import { typeIconUrl } from '@/lib/eve-images'
 
@@ -54,6 +55,8 @@ function toTimestamp(value: string | null | undefined): number {
 }
 
 export default function ReviewQueue() {
+	usePageTitle('SRP - Review Queue')
+
 	const { hasPermission, isAdmin } = useUserPermissions()
 	const [activeTab, setActiveTab] = useState<RequestStatus>(() => {
 		if (typeof window === 'undefined') return 'pending'

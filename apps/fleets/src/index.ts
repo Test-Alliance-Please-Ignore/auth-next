@@ -157,13 +157,21 @@ const app = new Hono<App>()
 			)
 		}
 
-		// Get the FleetMonitor DO stub for this fleet
-		// DO ID format: 'fleet-${fleetId}'
-		const fleetMonitorStub = getStub<FleetMonitor>(c.env.FLEET_MONITOR, `fleet-${fleetId}`)
+			// Get the FleetMonitor DO stub for this fleet
+			// DO ID format: 'fleet-${fleetId}'
+			const fleetMonitorStub = getStub<FleetMonitor>(c.env.FLEET_MONITOR, `fleet-${fleetId}`)
+			if (!fleetMonitorStub.fetch) {
+				return c.json(
+					{
+						error: 'Fleet monitor endpoint unavailable',
+					},
+					500
+				)
+			}
 
-		// Forward the request to the Durable Object for WebSocket upgrade
-		// The DO will handle the WebSocket protocol from here
-		return fleetMonitorStub.fetch(c.req.raw)
+			// Forward the request to the Durable Object for WebSocket upgrade
+			// The DO will handle the WebSocket protocol from here
+			return fleetMonitorStub.fetch(c.req.raw)
 	})
 
 	// Fleet Monitor status endpoint (HTTP GET)
@@ -179,12 +187,20 @@ const app = new Hono<App>()
 			)
 		}
 
-		try {
-			// Get the FleetMonitor DO stub for this fleet
-			const fleetMonitorStub = getStub<FleetMonitor>(c.env.FLEET_MONITOR, `fleet-${fleetId}`)
+			try {
+				// Get the FleetMonitor DO stub for this fleet
+				const fleetMonitorStub = getStub<FleetMonitor>(c.env.FLEET_MONITOR, `fleet-${fleetId}`)
+				if (!fleetMonitorStub.fetch) {
+					return c.json(
+						{
+							error: 'Fleet monitor endpoint unavailable',
+						},
+						500
+					)
+				}
 
-			// Forward the request to the Durable Object
-			return fleetMonitorStub.fetch(c.req.raw)
+				// Forward the request to the Durable Object
+				return fleetMonitorStub.fetch(c.req.raw)
 		} catch (error) {
 			return c.json(
 				{

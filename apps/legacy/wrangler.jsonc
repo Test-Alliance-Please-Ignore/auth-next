@@ -1,0 +1,24 @@
+{
+	"$schema": "node_modules/wrangler/config-schema.json",
+	"name": "legacy",
+	"main": "src/index.ts",
+	"compatibility_date": "2025-04-28",
+	"compatibility_flags": ["nodejs_compat"],
+	"routes": [],
+	"logpush": false,
+	"workers_dev": false,
+	"observability": {
+		"enabled": true
+	},
+	"vars": {
+		"NAME": "legacy",
+		"ENVIRONMENT": "development"
+	},
+	"durable_objects": {
+		"bindings": [
+			{ "name": "LEGACY", "class_name": "Legacy" },
+			{ "name": "CORE", "class_name": "Core", "script_name": "core" }
+		]
+	},
+	"migrations": [{ "tag": "v1", "new_sqlite_classes": ["Legacy"] }]
+}

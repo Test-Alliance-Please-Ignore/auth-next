@@ -11,6 +11,7 @@ import { formatDistanceToNow } from 'date-fns'
 import { Pencil, Trash2 } from 'lucide-react'
 
 import { MemberAvatar } from '@/components/member-avatar'
+import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent } from '@/components/ui/card'
 import { cn } from '@/lib/utils'
@@ -50,6 +51,12 @@ export interface HRNoteCardProps {
  * ```
  */
 export function HRNoteCard({ note, showSubject = false, className, onEdit, onDelete }: HRNoteCardProps) {
+	const isLegacyFallbackActor = note.metadata?.legacyNoteActorResolution === 'unresolved_importer_fallback'
+	const isLegacyImportedNote = note.metadata?.source === 'legacy_import'
+	const displayAuthorName = isLegacyFallbackActor ? 'Legacy User' : note.authorCharacterName
+	const displayAuthorCharacterId = isLegacyFallbackActor ? '1' : note.authorCharacterId
+	const visibility = note.metadata?.visibility === 'admin' ? 'admin' : 'hr'
+
 	// Priority-based card styling
 	const getPriorityCardClasses = () => {
 		switch (note.priority) {
@@ -74,12 +81,16 @@ export function HRNoteCard({ note, showSubject = false, className, onEdit, onDel
 				{/* Header row: Author, badges, timestamp, actions */}
 				<div className="flex items-center gap-2 mb-2">
 					<MemberAvatar
-						characterId={note.authorCharacterId}
-						characterName={note.authorCharacterName}
+						characterId={displayAuthorCharacterId}
+						characterName={displayAuthorName}
 						size="sm"
 					/>
-					<span className="font-medium text-sm">{note.authorCharacterName}</span>
+					<span className="font-medium text-sm">{displayAuthorName}</span>
 					<HRNoteTypeBadge noteType={note.noteType} size="sm" />
+					<Badge variant={visibility === 'admin' ? 'secondary' : 'default'}>
+						{visibility === 'admin' ? 'Admin-only' : 'HR note'}
+					</Badge>
+					{isLegacyImportedNote ? <Badge variant="secondary">Legacy</Badge> : null}
 					<HRNotePriorityBadge priority={note.priority} size="sm" />
 					<span className="text-xs text-muted-foreground ml-auto">
 						{formatDistanceToNow(new Date(note.createdAt), { addSuffix: true })}
@@ -116,20 +127,6 @@ export function HRNoteCard({ note, showSubject = false, className, onEdit, onDel
 				<div className="mt-2 p-2 bg-background/40 rounded-md border border-border/30">
 					<p className="text-sm text-foreground whitespace-pre-wrap">{note.noteText}</p>
 				</div>
-
-				{/* Metadata Tags */}
-				{note.metadata && Object.keys(note.metadata).length > 0 && (
-					<div className="flex flex-wrap gap-1 mt-2">
-						{Object.entries(note.metadata).map(([key, value]) => (
-							<span
-								key={key}
-								className="text-xs px-1.5 py-0.5 rounded bg-muted text-muted-foreground font-mono"
-							>
-								{key}: {String(value)}
-							</span>
-						))}
-					</div>
-				)}
 			</CardContent>
 		</Card>
 	)

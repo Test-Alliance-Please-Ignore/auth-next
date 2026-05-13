@@ -40,6 +40,25 @@ export function isActiveApplicationStatus(status: string): boolean {
 	return ACTIVE_APPLICATION_STATUSES.includes(status as ApplicationStatus)
 }
 
+export interface HrAccessState {
+	hasHrAccess: boolean
+	isHrAuditor: boolean
+	isSiteAdmin: boolean
+}
+
+export function resolveHrAccessState(input: {
+	isSiteAdmin: boolean
+	isHrAuditor: boolean
+	hrCorporationCount: number
+}): HrAccessState {
+	const hasHrAccess = input.isSiteAdmin || input.isHrAuditor || input.hrCorporationCount > 0
+	return {
+		hasHrAccess,
+		isHrAuditor: input.isHrAuditor,
+		isSiteAdmin: input.isSiteAdmin,
+	}
+}
+
 /**
  * Recommendation sentiment values
  */
@@ -310,6 +329,19 @@ export interface CharacterIdNamePair {
 export interface CharacterIdNameBlacklistResult extends CharacterIdNamePair {
 	isBlacklisted: boolean
 	matchedBy: 'id' | 'name' | 'both' | 'none'
+}
+
+export interface BlacklistTargetCheckItem {
+	targetType: BlacklistTargetType
+	targetValue: string
+}
+
+export interface BlacklistTargetCheckResult extends BlacklistTargetCheckItem {
+	isBlacklisted: boolean
+	reason: string | null
+	createdAt: Date | null
+	blacklistedBy: string | null
+	entryMode: 'manual' | 'automatic' | null
 }
 
 /**
@@ -922,6 +954,12 @@ export interface Hr extends DurableObject {
 	checkCharacterIdOrNamePairsBlacklisted(
 		pairs: CharacterIdNamePair[]
 	): Promise<CharacterIdNameBlacklistResult[]>
+
+	/**
+	 * Bulk check arbitrary blacklist targetType/targetValue pairs.
+	 * Character names are normalized to lowercase before comparison.
+	 */
+	checkBlacklistTargets(targets: BlacklistTargetCheckItem[]): Promise<BlacklistTargetCheckResult[]>
 
 	/**
 	 * Create a user blacklist entry

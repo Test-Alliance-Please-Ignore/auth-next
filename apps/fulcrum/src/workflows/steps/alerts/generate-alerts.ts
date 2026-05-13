@@ -40,6 +40,44 @@ interface CoreBinding {
     getUserDetails(
         userId: string,
     ): Promise<{ characters: Array<{ characterName: string }> } | null>
+    getBlacklistedIpAssociationsForCharacter(characterId: string): Promise<{
+        subjectUserId: string | null
+        matches: Array<{
+            userId: string
+            mainCharacterId: string
+            mainCharacterName: string | null
+            matchingIpHashes: string[]
+        }>
+    }>
+    getLegacyAssociationsForCharacter(characterId: string): Promise<{
+        modernUserId: string | null
+        items: Array<{
+            id: string
+            legacyAuthUserId: string
+            status: string
+            modernUserMainCharacterName: string | null
+            candidateSnapshot: Record<string, unknown>
+            conflicts: Record<string, unknown>
+            candidates: {
+                characters: Array<{
+                    characterId: string
+                    characterName: string
+                    source: 'legacy_primary' | 'esi_owner' | 'xml_account'
+                    alreadyLinkedToModernUser: boolean
+                    linkedToOtherUserId: string | null
+                }>
+                notes: Array<{
+                    legacyNoteId: string
+                    note: string
+                    legacyCreatedByUserId: string | null
+                    legacyCreatedByCharacterName: string | null
+                    legacyDateCreated: Date | null
+                    alreadyImported: boolean
+                }>
+                ipAddresses: string[]
+            }
+        }>
+    }>
 }
 
 /** Narrow interface for the HR DO methods we need */
@@ -395,6 +433,79 @@ export async function generateAlerts(
                     characterId,
                 )
                 if (blacklistAlert) alerts.push(blacklistAlert)
+            }
+
+            // Alert 7: IP-linked Blacklisted Users
+            const ipAssociations = await core.getBlacklistedIpAssociationsForCharacter(characterId)
+            if (ipAssociations.matches.length > 0) {
+                const userCount = ipAssociations.matches.length
+                const hashCount = new Set(
+                    ipAssociations.matches.flatMap((match) => match.matchingIpHashes),
+                ).size
+                const sample = ipAssociations.matches
+                    .slice(0, 3)
+                    .map((match) => match.mainCharacterName ?? match.mainCharacterId)
+                    .join(', ')
+                const more = userCount > 3 ? ` and ${userCount - 3} more` : ''
+
+                alerts.push({
+                    id: 'ip-blacklist-association',
+                    type: 'ip-blacklist-association',
+                    severity: 'critical',
+                    title: 'IP Association With Blacklisted Users',
+                    description: `Shared IP hash history with ${userCount} blacklisted user${userCount !== 1 ? 's' : ''} across ${hashCount} hash${hashCount !== 1 ? 'es' : ''}: ${sample}${more}.`,
+                    details: {
+                        subjectUserId: ipAssociations.subjectUserId,
+                        totalBlacklistedUsers: userCount,
+                        uniqueMatchingHashes: hashCount,
+                        matches: ipAssociations.matches,
+                    },
+                })
+            }
+
+            // Alert 8: Legacy additional association context + blacklist signals (read-only)
+            const legacyAssociations = await core.getLegacyAssociationsForCharacter(characterId)
+            if (legacyAssociations.items.length > 0) {
+                const itemsWithBlacklistSignal = legacyAssociations.items.filter((item) => {
+                    const signals =
+                        item.conflicts && typeof item.conflicts === 'object'
+                            ? (item.conflicts as Record<string, unknown>).blacklistSignals
+                            : null
+                    return (
+                        Boolean(signals) &&
+                        typeof signals === 'object' &&
+                        Boolean((signals as Record<string, unknown>).hasAnyBlacklistSignal)
+                    )
+                })
+
+                alerts.push({
+                    id: 'legacy-additional-associations',
+                    type: 'legacy-additional-associations',
+                    severity: itemsWithBlacklistSignal.length > 0 ? 'high' : 'medium',
+                    title: 'Legacy Additional Associations',
+                    description:
+                        itemsWithBlacklistSignal.length > 0
+                            ? `${legacyAssociations.items.length} legacy association group(s) found; ${itemsWithBlacklistSignal.length} include blacklist signal(s).`
+                            : `${legacyAssociations.items.length} legacy association group(s) found.`,
+                    details: {
+                        modernUserId: legacyAssociations.modernUserId,
+                        items: legacyAssociations.items,
+                    },
+                })
+
+                if (itemsWithBlacklistSignal.length > 0) {
+                    alerts.push({
+                        id: 'legacy-blacklist-association',
+                        type: 'legacy-blacklist-association',
+                        severity: 'critical',
+                        title: 'Legacy Blacklist Association',
+                        description: `${itemsWithBlacklistSignal.length} legacy association group(s) include blacklist matches.`,
+                        details: {
+                            modernUserId: legacyAssociations.modernUserId,
+                            items: itemsWithBlacklistSignal,
+                        },
+                    })
+                }
             }
         } catch (error) {
             console.warn('[generate-alerts] Blacklist association check failed:', error)

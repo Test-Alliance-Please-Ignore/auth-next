@@ -8,6 +8,7 @@ import { Card } from '@/components/ui/card'
 import { Container } from '@/components/ui/container'
 import { EveTimeDisplay } from '@/components/ui/eve-time-display'
 import { PageHeader } from '@/components/ui/page-header'
+import { usePageTitle } from '@/hooks/usePageTitle'
 import { useUserPermissions } from '@/hooks/useUserPermissions'
 import { characterPortraitUrl, corporationLogoUrl } from '@/lib/eve-images'
 
@@ -60,6 +61,7 @@ export default function ReviewRequestDetail() {
 	if (!id) return <Navigate to="/srp/review" replace />
 
 	const { data: request, isLoading, error } = useRequest(id)
+	usePageTitle(request ? `SRP Review ${request.id}` : 'SRP Review')
 	const canSeeInternal = isSrpStaff
 	const { data: comments = [], refetch: refetchComments } = useRequestComments(id, canSeeInternal)
 	const updateState = useUpdateReviewState()
@@ -94,7 +96,7 @@ export default function ReviewRequestDetail() {
 	return (
 		<Container>
 			<PageHeader
-				title={`Review: ${request.shipTypeName ?? 'Ship'}`}
+				title={`Review: ${request.shipTypeName ?? 'Ship'} (#${request.id})`}
 				description={
 					<span className="inline-flex items-center gap-2 flex-wrap">
 						<span className="inline-flex items-center gap-2">

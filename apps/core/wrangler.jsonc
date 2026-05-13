@@ -136,6 +136,11 @@
 				"name": "FULCRUM",
 				"class_name": "Fulcrum",
 				"script_name": "fulcrum"
+			},
+			{
+				"name": "LEGACY",
+				"class_name": "Legacy",
+				"script_name": "legacy"
 			}
 		]
 	},

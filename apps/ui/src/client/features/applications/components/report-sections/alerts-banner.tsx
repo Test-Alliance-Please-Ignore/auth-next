@@ -125,6 +125,8 @@ function AlertDetails({ alert }: { alert: ReportAlert }) {
             return <CorpHopperDetails details={alert.details} />
         case 'blacklist-association':
             return <BlacklistAssociationDetails details={alert.details} />
+        case 'ip-blacklist-association':
+            return <IpBlacklistAssociationDetails details={alert.details} />
         default:
             return (
                 <pre className="overflow-x-auto text-xs text-muted-foreground">
@@ -132,6 +134,32 @@ function AlertDetails({ alert }: { alert: ReportAlert }) {
                 </pre>
             )
     }
+}
+
+function IpBlacklistAssociationDetails({ details }: { details: Record<string, unknown> }) {
+	const matches = details.matches as Array<{
+		userId: string
+		mainCharacterId: string
+		mainCharacterName: string | null
+		matchingIpHashes: string[]
+	}> | undefined
+
+	if (!matches || matches.length === 0) {
+		return <p className="text-sm text-muted-foreground">No matching users.</p>
+	}
+
+	return (
+		<div className="space-y-2 text-sm">
+			{matches.map((match) => (
+				<div key={match.userId} className="rounded border p-2">
+					<p className="font-medium">{match.mainCharacterName ?? match.mainCharacterId}</p>
+					<p className="text-xs text-muted-foreground font-mono break-all">
+						{match.matchingIpHashes.join(', ')}
+					</p>
+				</div>
+			))}
+		</div>
+	)
 }
 
 function SpPlausibilityDetails({ details }: { details: Record<string, unknown> }) {

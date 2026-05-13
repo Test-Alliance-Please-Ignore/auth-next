@@ -64,6 +64,8 @@ export type Env = SharedHonoEnv & {
 	INDUSTRY: DurableObjectNamespace
 	/** Fulcrum (Character Reports) Durable Object binding */
 	FULCRUM: DurableObjectNamespace
+	/** Legacy migration Durable Object binding */
+	LEGACY: DurableObjectNamespace
 	/** Legacy Auth OAuth Client ID (set as Wrangler secret) */
 	LEGACY_AUTH_CLIENT_ID: string
 	/** Legacy Auth OAuth Client Secret (set as Wrangler secret) */
@@ -74,6 +76,8 @@ export type Env = SharedHonoEnv & {
 	IP_ADDRESS_HASH_SECRET: string
 	/** Optional comma-separated Discord user IDs to exclude from member audits */
 	DISCORD_AUDIT_EXCLUDED_USER_IDS?: string
+	/** Shared key for trusted internal legacy-worker operations */
+	LEGACY_INTERNAL_KEY?: string
 }
 
 /** Session user data attached to request context */

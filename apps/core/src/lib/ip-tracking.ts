@@ -65,6 +65,13 @@ export interface RecordUserIpAddressOptions {
 	ip: string
 	hashSecret: string
 	now?: Date
+	firstSeenAt?: Date | null
+	lastSeenAt?: Date | null
+	overwriteObservedWindow?: boolean
+}
+
+function clampDateToNow(value: Date, now: Date): Date {
+	return value.getTime() > now.getTime() ? now : value
 }
 
 export async function recordUserIpAddress({
@@ -73,6 +80,9 @@ export async function recordUserIpAddress({
 	ip,
 	hashSecret,
 	now = new Date(),
+	firstSeenAt = null,
+	lastSeenAt = null,
+	overwriteObservedWindow = false,
 }: RecordUserIpAddressOptions): Promise<void> {
 	if (!ip || !hashSecret) {
 		return
@@ -84,26 +94,63 @@ export async function recordUserIpAddress({
 	}
 
 	const ipAddressHash = await getHmac(hashSecret, ipAddress)
+	const hasObservedWindow = firstSeenAt !== null || lastSeenAt !== null
+	// For historical imports, never fill a missing boundary with "now" because that
+	// can distort legacy windows. Fall back to the known boundary instead.
+	const rawObservedFirstSeenAt = hasObservedWindow
+		? (firstSeenAt ?? lastSeenAt ?? now)
+		: now
+	const rawObservedLastSeenAt = hasObservedWindow
+		? (lastSeenAt ?? firstSeenAt ?? now)
+		: now
+	const clampedFirstSeenAt = clampDateToNow(rawObservedFirstSeenAt, now)
+	const clampedLastSeenAt = clampDateToNow(rawObservedLastSeenAt, now)
+	const observedFirstSeenAt =
+		clampedFirstSeenAt.getTime() <= clampedLastSeenAt.getTime()
+			? clampedFirstSeenAt
+			: clampedLastSeenAt
+	const observedLastSeenAt =
+		clampedLastSeenAt.getTime() >= clampedFirstSeenAt.getTime()
+			? clampedLastSeenAt
+			: clampedFirstSeenAt
 
-	// Atomic upsert with conditional lastSeenAt update (respects 15-min rate limit)
+	// For legacy imports, preserve historical window semantics.
+	// For live traffic, keep conditional lastSeenAt update (15-min rate limit).
 	await db
 		.insert(userIpAddresses)
 		.values({
 			userId,
 			ipAddress,
 			ipAddressHash,
-			firstSeenAt: now,
-			lastSeenAt: now,
+			firstSeenAt: observedFirstSeenAt,
+			lastSeenAt: observedLastSeenAt,
 		})
 		.onConflictDoUpdate({
 			target: [userIpAddresses.userId, userIpAddresses.ipAddress],
 			set: {
 				ipAddressHash,
-				lastSeenAt: sql`CASE
-					WHEN ${userIpAddresses.lastSeenAt} < NOW() - INTERVAL '15 minutes'
-					THEN ${now}
-					ELSE ${userIpAddresses.lastSeenAt}
-				END`,
+				firstSeenAt: hasObservedWindow
+					? overwriteObservedWindow
+						? observedFirstSeenAt
+						: sql`CASE
+							WHEN ${userIpAddresses.firstSeenAt} IS NULL THEN ${observedFirstSeenAt}
+							WHEN ${observedFirstSeenAt} IS NULL THEN ${userIpAddresses.firstSeenAt}
+							ELSE LEAST(${userIpAddresses.firstSeenAt}, ${observedFirstSeenAt})
+						END`
+					: userIpAddresses.firstSeenAt,
+				lastSeenAt: hasObservedWindow
+					? overwriteObservedWindow
+						? observedLastSeenAt
+						: sql`CASE
+							WHEN ${userIpAddresses.lastSeenAt} IS NULL THEN ${observedLastSeenAt}
+							WHEN ${observedLastSeenAt} IS NULL THEN ${userIpAddresses.lastSeenAt}
+							ELSE GREATEST(${userIpAddresses.lastSeenAt}, ${observedLastSeenAt})
+						END`
+					: sql`CASE
+						WHEN ${userIpAddresses.lastSeenAt} < NOW() - INTERVAL '15 minutes'
+						THEN ${now}
+						ELSE ${userIpAddresses.lastSeenAt}
+					END`,
 			},
 		})
 }

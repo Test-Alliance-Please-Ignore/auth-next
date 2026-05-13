@@ -6,6 +6,8 @@ import type {
 	BlacklistEntry,
 	BlacklistFilters,
 	BlacklistResults,
+	BlacklistTargetCheckItem,
+	BlacklistTargetCheckResult,
 	BlacklistTargetType,
 	CharacterIdNameBlacklistResult,
 	CharacterIdNamePair,
@@ -254,6 +256,87 @@ export class BlacklistService {
 				matchedBy: idMatched && nameMatched ? 'both' : idMatched ? 'id' : nameMatched ? 'name' : 'none',
 			}
 		})
+	}
+
+	async checkBlacklistTargets(targets: BlacklistTargetCheckItem[]): Promise<BlacklistTargetCheckResult[]> {
+		if (targets.length === 0) return []
+		const normalizedTargets = targets
+			.map((target) => {
+				const rawValue = target.targetValue?.trim() ?? ''
+				if (!rawValue) return null
+				return {
+					targetType: target.targetType,
+					targetValue:
+						target.targetType === 'character_name'
+							? this.normalizeCharacterName(rawValue)
+							: rawValue,
+				} satisfies BlacklistTargetCheckItem
+			})
+			.filter((target): target is BlacklistTargetCheckItem => target !== null)
+
+		if (normalizedTargets.length === 0) return []
+
+		const grouped = new Map<BlacklistTargetType, string[]>()
+		for (const target of normalizedTargets) {
+			const bucket = grouped.get(target.targetType) ?? []
+			bucket.push(target.targetValue)
+			grouped.set(target.targetType, bucket)
+		}
+
+		const existing = new Map<
+			string,
+			{
+				reason: string | null
+				createdAt: Date | null
+				blacklistedBy: string | null
+				entryMode: 'manual' | 'automatic'
+			}
+		>()
+		const chunkSize = 250
+		for (const [targetType, values] of grouped.entries()) {
+			const uniqueValues = [...new Set(values)]
+			if (uniqueValues.length === 0) continue
+			for (let index = 0; index < uniqueValues.length; index += chunkSize) {
+				const valuesChunk = uniqueValues.slice(index, index + chunkSize)
+				const rows = await this.ctx.db
+					.select({
+						targetType: blacklistEntries.targetType,
+						targetValue: blacklistEntries.targetValue,
+						reason: blacklistEntries.reason,
+						createdAt: blacklistEntries.createdAt,
+						blacklistedBy: blacklistEntries.blacklistedBy,
+						isAutoBlacklist: blacklistEntries.isAutoBlacklist,
+					})
+					.from(blacklistEntries)
+					.where(
+						and(
+							eq(blacklistEntries.targetType, targetType),
+							inArray(blacklistEntries.targetValue, valuesChunk)
+						)
+					)
+				for (const row of rows) {
+					if (!row.targetType || !row.targetValue) continue
+					existing.set(`${row.targetType}:${row.targetValue}`, {
+						reason: row.reason ?? null,
+						createdAt: row.createdAt ?? null,
+						blacklistedBy: row.blacklistedBy ?? null,
+						entryMode: row.isAutoBlacklist ? 'automatic' : 'manual',
+					})
+				}
+			}
+		}
+
+		return normalizedTargets.map((target) => ({
+			...(existing.get(`${target.targetType}:${target.targetValue}`) ?? {
+				reason: null,
+				createdAt: null,
+				blacklistedBy: null,
+				entryMode: null,
+			}),
+			targetType: target.targetType,
+			targetValue: target.targetValue,
+			isBlacklisted: existing.has(`${target.targetType}:${target.targetValue}`),
+		}))
 	}
 
 	/**

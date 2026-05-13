@@ -4,6 +4,7 @@
  * Shared types and interfaces for the Strife Durable Object.
  * This package allows other workers to interact with the Durable Object via RPC.
  */
+import type { DurableObject } from 'cloudflare:workers'
 
 /**
  * Public RPC interface for Strife Durable Object

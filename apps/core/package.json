@@ -46,6 +46,7 @@
 		"@repo/hono-helpers": "workspace:*",
 		"@repo/hr": "workspace:*",
 		"@repo/industry": "workspace:*",
+		"@repo/legacy": "workspace:*",
 		"@repo/skills": "workspace:*",
 		"@repo/srp": "workspace:*",
 		"@repo/universe": "workspace:*",
