@@ -59,7 +59,7 @@ const HrAuditorIpHistoryInspectionPage = lazy(
 const HrAuditorUserGroupsPage = lazy(
 	() => import('./features/applications/routes/hr-auditor-user-groups')
 )
-const HrLegacyHistoryPage = lazy(() => import('./routes/admin/legacy-history'))
+const HrLegacyHistoryPage = lazy(() => import('./routes/hr-legacy-history'))
 const HrLegacyHistoryDetailPage = lazy(() => import('./routes/hr-legacy-history-detail'))
 
 // Lazy load the Skill Plans feature for code splitting
