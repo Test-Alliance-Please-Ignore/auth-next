@@ -113,9 +113,6 @@ export default function FreightManageEditPage() {
 
 	const handleChange = (field: string, value: string) => {
 		setFormData((prev) => ({ ...prev, [field]: value }))
-		// Clear system ID when user types manually (forces re-selection)
-		if (field === 'pickupName') setPickupSystemId(null)
-		if (field === 'destinationName') setDestinationSystemId(null)
 		if (errors[field]) {
 			setErrors((prev) => {
 				const { [field]: _, ...rest } = prev
@@ -305,6 +302,7 @@ export default function FreightManageEditPage() {
 								query={pickupQuery}
 								onQueryChange={(nextQuery) => {
 									setPickupQuery(nextQuery)
+									setPickupSystemId(null)
 									handleChange('pickupName', nextQuery)
 								}}
 								searchable
@@ -343,6 +341,7 @@ export default function FreightManageEditPage() {
 								query={destinationQuery}
 								onQueryChange={(nextQuery) => {
 									setDestinationQuery(nextQuery)
+									setDestinationSystemId(null)
 									handleChange('destinationName', nextQuery)
 								}}
 								searchable
