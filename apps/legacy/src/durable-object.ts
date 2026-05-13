@@ -3,9 +3,8 @@ import { DurableObject } from 'cloudflare:workers'
 import { getStub } from '@repo/do-utils'
 import { and, asc, desc, eq, ilike, inArray, ne, notInArray, or, sql } from '@repo/db-utils'
 import { createDb } from './db'
+import { coreUserCharacters, coreUsers } from './db/schema-core'
 import {
-	coreUserCharacters,
-	coreUsers,
 	legacyAuthApplicationEvents,
 	legacyAuthApplications,
 	legacyAuthCharacters,
