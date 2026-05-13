@@ -13,6 +13,9 @@ export const coreUserCharacters = pgTable('user_characters', {
 	userId: uuid('user_id').notNull(),
 	characterId: text('character_id').notNull(),
 	characterName: text('character_name'),
+	corporationId: text('corporation_id'),
+	corporationName: text('corporation_name'),
+	allianceId: text('alliance_id'),
+	allianceName: text('alliance_name'),
 	isDeleted: boolean('deleted').notNull(),
 })
-

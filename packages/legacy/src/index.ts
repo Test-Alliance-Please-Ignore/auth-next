@@ -26,6 +26,11 @@ export interface LegacyMigrationCandidateCharacter {
 	characterId: string
 	characterName: string
 	source: 'legacy_primary' | 'esi_owner' | 'xml_account'
+	corporationId: string | null
+	corporationName: string | null
+	allianceId: string | null
+	allianceName: string | null
+	isDeleted: boolean
 	alreadyLinkedToModernUser: boolean
 	linkedToOtherUserId: string | null
 }

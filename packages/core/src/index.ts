@@ -97,6 +97,17 @@ export interface Core {
 		userId: string,
 		legacyNoteIds: string[]
 	): Promise<string[]>
+	getLegacyCharacterImportMetadata(characterIds: string[]): Promise<
+		Array<{
+			characterId: string
+			characterName: string | null
+			corporationId: string | null
+			corporationName: string | null
+			allianceId: string | null
+			allianceName: string | null
+			isDeleted: boolean
+		}>
+	>
 	evaluateLegacyMigrationBlacklistSignals(input: {
 		modernUserId: string
 		characterPairs: Array<{ characterId: string; characterName: string }>

@@ -762,6 +762,107 @@ export class CoreDO extends DurableObject<Env> implements Core {
 			.filter((legacyNoteId) => targetIds.has(legacyNoteId))
 	}
 
+	async getLegacyCharacterImportMetadata(characterIds: string[]): Promise<
+		Array<{
+			characterId: string
+			characterName: string | null
+			corporationId: string | null
+			corporationName: string | null
+			allianceId: string | null
+			allianceName: string | null
+			isDeleted: boolean
+		}>
+	> {
+		const uniqueCharacterIds = [...new Set(characterIds.filter(Boolean))]
+		if (uniqueCharacterIds.length === 0) return []
+
+		const db = this.getDb()
+		const existingRows = await db.query.userCharacters.findMany({
+			where: inArray(userCharacters.characterId, uniqueCharacterIds),
+			columns: {
+				characterId: true,
+				characterName: true,
+				corporationId: true,
+				corporationName: true,
+				allianceId: true,
+				allianceName: true,
+				isDeleted: true,
+			},
+		})
+		const existingByCharacterId = new Map(existingRows.map((row) => [row.characterId, row]))
+		const tokenStore = getStub<EveTokenStore>(this.env.EVE_TOKEN_STORE, 'default')
+
+		const resolveIsDeletedError = (error: unknown): boolean => {
+			if (!(error instanceof Error)) return false
+			const message = error.message.toLowerCase()
+			return message.includes('deleted') || message.includes('404') || message.includes('not found')
+		}
+
+		const baseRows = await Promise.all(
+			uniqueCharacterIds.map(async (characterId) => {
+				const existing = existingByCharacterId.get(characterId)
+				if (existing?.isDeleted) {
+					return {
+						characterId,
+						characterName: existing.characterName ?? null,
+						corporationId: existing.corporationId ?? null,
+						corporationName: existing.corporationName ?? null,
+						allianceId: existing.allianceId ?? null,
+						allianceName: existing.allianceName ?? null,
+						isDeleted: true,
+					}
+				}
+				try {
+					const publicInfo = await this.getCharacterInfo(characterId)
+					const corporationId = publicInfo?.corporation_id
+						? String(publicInfo.corporation_id)
+						: (existing?.corporationId ?? null)
+					const allianceId = publicInfo?.alliance_id
+						? String(publicInfo.alliance_id)
+						: (existing?.allianceId ?? null)
+					return {
+						characterId,
+						characterName: publicInfo?.name ?? existing?.characterName ?? null,
+						corporationId,
+						corporationName: existing?.corporationName ?? null,
+						allianceId,
+						allianceName: existing?.allianceName ?? null,
+						isDeleted: corporationId === '1000001' ? true : false,
+					}
+				} catch (error) {
+					return {
+						characterId,
+						characterName: existing?.characterName ?? null,
+						corporationId: existing?.corporationId ?? null,
+						corporationName: existing?.corporationName ?? null,
+						allianceId: existing?.allianceId ?? null,
+						allianceName: existing?.allianceName ?? null,
+						isDeleted: resolveIsDeletedError(error),
+					}
+				}
+			})
+		)
+
+		const idsToResolve = [
+			...new Set(
+				baseRows
+					.flatMap((row) => [row.corporationId, row.allianceId])
+					.filter((value): value is string => Boolean(value))
+			),
+		]
+		const resolvedNames = idsToResolve.length > 0 ? await tokenStore.resolveIds(idsToResolve) : {}
+
+		return baseRows.map((row) => ({
+			...row,
+			corporationName: row.corporationId ? (resolvedNames[row.corporationId] ?? row.corporationName) : null,
+			allianceName: row.allianceId ? (resolvedNames[row.allianceId] ?? row.allianceName) : null,
+			isDeleted:
+				row.isDeleted ||
+				row.corporationId === '1000001' ||
+				(row.corporationName?.toLowerCase() ?? '') === 'doomheim',
+		}))
+	}
+
 	async evaluateLegacyMigrationBlacklistSignals(input: {
 		modernUserId: string
 		characterPairs: Array<{ characterId: string; characterName: string }>

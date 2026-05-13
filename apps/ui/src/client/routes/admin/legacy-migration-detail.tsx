@@ -9,6 +9,7 @@ import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Checkbox } from '@/components/ui/checkbox'
 import { LoadingInline } from '@/components/ui/loading'
+import { PageHeader } from '@/components/ui/page-header'
 import { useConfirmationDialog } from '@/hooks/useConfirmationDialog'
 import { usePageTitle } from '@/hooks/usePageTitle'
 import { api } from '@/lib/api'
@@ -390,32 +391,37 @@ export default function AdminLegacyMigrationDetailPage() {
 
 	return (
 		<div className="space-y-6">
-			<div className="flex items-center justify-between">
-				<div>
-					<h1 className="text-xl font-semibold">
-						{modernUserQuery.data?.characters.find((character) => character.is_primary)?.characterName ??
-							item.modernUserMainCharacterName ??
-							'Unknown User'}
-					</h1>
-					<p className="text-xs font-mono text-muted-foreground">{item.modernUserId}</p>
-				</div>
-				<div className="flex items-center gap-2">
-					<Button
-						variant="secondary"
-						onClick={() => void recheckMutation.mutateAsync()}
-						disabled={recheckMutation.isPending}
-					>
-						{recheckMutation.isPending ? <LoadingInline className="mr-2" /> : null}
-						Recheck
-					</Button>
-					<Button variant="ghost" asChild>
-						<Link to="/admin/legacy-migrations">
-							<ArrowLeft className="h-4 w-4" />
-							Back to Legacy Migrations
-						</Link>
-					</Button>
-				</div>
-			</div>
+			<PageHeader
+				title={
+					modernUserQuery.data?.characters.find((character) => character.is_primary)?.characterName ??
+					item.modernUserMainCharacterName ??
+					'Unknown User'
+				}
+				description={<span className="font-mono text-sm">{item.modernUserId}</span>}
+				action={
+					<div className="flex items-center gap-2">
+						<Button
+							variant="secondary"
+							onClick={() => void recheckMutation.mutateAsync()}
+							disabled={recheckMutation.isPending}
+						>
+							{recheckMutation.isPending ? <LoadingInline className="mr-2" /> : null}
+							Recheck
+						</Button>
+						<Button variant="ghost" asChild>
+							<Link to={`/admin/users/${item.modernUserId}`} target="_blank" rel="noopener noreferrer">
+								Open User Details
+							</Link>
+						</Button>
+						<Button variant="ghost" asChild>
+							<Link to="/admin/legacy-migrations">
+								<ArrowLeft className="h-4 w-4" />
+								Back to Legacy Migrations
+							</Link>
+						</Button>
+					</div>
+				}
+			/>
 
 			{blacklistAlerts?.hasAnyBlacklistSignal ? (
 				<Card className="border-destructive/60">
@@ -524,6 +530,36 @@ export default function AdminLegacyMigrationDetailPage() {
 									<span>{character.characterName}</span>
 								</div>
 								<div className="text-xs font-mono text-muted-foreground">{character.characterId}</div>
+								{character.corporationName || character.allianceName ? (
+									<div className="mt-1 flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-white">
+										{character.corporationName ? (
+											<span className="inline-flex items-center gap-1.5">
+												{character.corporationId ? (
+													<img
+														src={`https://images.evetech.net/corporations/${character.corporationId}/logo?size=32`}
+														alt={character.corporationName}
+														className="h-4 w-4 rounded-sm"
+														loading="lazy"
+													/>
+												) : null}
+												<span>{character.corporationName}</span>
+											</span>
+										) : null}
+										{character.allianceName ? (
+											<span className="inline-flex items-center gap-1.5">
+												{character.allianceId ? (
+													<img
+														src={`https://images.evetech.net/alliances/${character.allianceId}/logo?size=32`}
+														alt={character.allianceName}
+														className="h-4 w-4 rounded-sm"
+														loading="lazy"
+													/>
+												) : null}
+												<span>{character.allianceName}</span>
+											</span>
+										) : null}
+									</div>
+								) : null}
 							</div>
 							{character.alreadyLinkedToModernUser ? (
 								<Badge variant="success">Already linked</Badge>
@@ -532,6 +568,8 @@ export default function AdminLegacyMigrationDetailPage() {
 									<Badge variant="destructive">Linked to other user</Badge>
 									<div className="text-xs font-mono text-muted-foreground mt-1">{character.linkedToOtherUserId}</div>
 								</div>
+							) : character.isDeleted ? (
+								<Badge variant="warning">Deleted - not importable</Badge>
 							) : (
 								<label className="flex items-center gap-2 cursor-pointer rounded border border-border/80 bg-muted/30 px-2 py-1">
 									<Checkbox
