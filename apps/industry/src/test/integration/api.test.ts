@@ -25,6 +25,9 @@ describe('Industry Durable Object', () => {
 		const stub = getStub<Industry>(env.INDUSTRY, `test-${Date.now()}-${Math.random()}`)
 
 		// Call fetch to verify the DO can be accessed
+		if (!stub.fetch) {
+			throw new Error('Industry Durable Object stub does not implement fetch')
+		}
 		const response = await stub.fetch(new Request('http://example.com/'))
 
 		expect(response.status).toBe(200)
