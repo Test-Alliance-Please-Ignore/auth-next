@@ -674,6 +674,34 @@ export class LegacyDO extends DurableObject<Env> implements Legacy {
 	}
 
 	async recheckUser(modernUserId: string, actorUserId?: string, options?: { force?: boolean }) {
+		const IP_ASSOCIATION_MAX_GAP_MS = 365 * 24 * 60 * 60 * 1000
+		type IpRange = { firstSeenAt: Date | null; lastSeenAt: Date | null }
+		const toDateOrNull = (value: unknown): Date | null => {
+			if (value instanceof Date) return Number.isNaN(value.getTime()) ? null : value
+			if (typeof value === 'string') {
+				const parsed = new Date(value)
+				return Number.isNaN(parsed.getTime()) ? null : parsed
+			}
+			return null
+		}
+		const getRangeBounds = (range: IpRange): { start: number; end: number } | null => {
+			const first = toDateOrNull(range.firstSeenAt)
+			const last = toDateOrNull(range.lastSeenAt)
+			const start = first?.getTime() ?? last?.getTime() ?? null
+			const end = last?.getTime() ?? first?.getTime() ?? null
+			if (start === null || end === null) return null
+			return start <= end ? { start, end } : { start: end, end: start }
+		}
+		const areRangesTemporallyAssociated = (a: IpRange, b: IpRange): boolean => {
+			const aBounds = getRangeBounds(a)
+			const bBounds = getRangeBounds(b)
+			if (!aBounds || !bBounds) return true
+			if (aBounds.start <= bBounds.end && bBounds.start <= aBounds.end) return true
+			const gapMs =
+				aBounds.end < bBounds.start ? bBounds.start - aBounds.end : aBounds.start - bBounds.end
+			return gapMs <= IP_ASSOCIATION_MAX_GAP_MS
+		}
+
 		const force = options?.force === true
 		const targetUser = await this.getCoreAdminUserDetails(modernUserId)
 		if (!targetUser) {
@@ -766,7 +794,7 @@ export class LegacyDO extends DurableObject<Env> implements Legacy {
 			legacyUserIds.length > 0
 				? await this.db.query.legacyAuthUserIpAddresses.findMany({
 						where: inArray(legacyAuthUserIpAddresses.legacyAuthUserId, legacyUserIds),
-						columns: { legacyAuthUserId: true, ipAddress: true },
+						columns: { legacyAuthUserId: true, ipAddress: true, firstSeenAt: true, lastSeenAt: true },
 					})
 				: []
 		const uniqueMatchedIps = [...new Set(ipRows.map((row) => row.ipAddress).filter(Boolean))]
@@ -777,7 +805,7 @@ export class LegacyDO extends DurableObject<Env> implements Legacy {
 							inArray(legacyAuthUserIpAddresses.ipAddress, uniqueMatchedIps),
 							notInArray(legacyAuthUserIpAddresses.legacyAuthUserId, legacyUserIds)
 						),
-						columns: { legacyAuthUserId: true, ipAddress: true },
+						columns: { legacyAuthUserId: true, ipAddress: true, firstSeenAt: true, lastSeenAt: true },
 					})
 				: []
 		const ipNeighborLegacyUserIds = [...new Set(ipNeighborRows.map((row) => row.legacyAuthUserId))]
@@ -835,6 +863,13 @@ export class LegacyDO extends DurableObject<Env> implements Legacy {
 			bucket.push(row.ipAddress)
 			ipAddressesByLegacyUser.set(row.legacyAuthUserId, bucket)
 		}
+		const ipRangeByLegacyUserAndIp = new Map<string, IpRange>()
+		for (const row of [...ipRows, ...ipNeighborRows]) {
+			ipRangeByLegacyUserAndIp.set(`${row.legacyAuthUserId}:${row.ipAddress}`, {
+				firstSeenAt: toDateOrNull(row.firstSeenAt),
+				lastSeenAt: toDateOrNull(row.lastSeenAt),
+			})
+		}
 		const legacyUserIdsByIp = new Map<string, Set<string>>()
 		for (const row of [...ipRows, ...ipNeighborRows]) {
 			const bucket = legacyUserIdsByIp.get(row.ipAddress) ?? new Set<string>()
@@ -875,8 +910,20 @@ export class LegacyDO extends DurableObject<Env> implements Legacy {
 				if (sharedLegacyIpAddresses.has(ipAddress)) {
 					continue
 				}
+				const currentUserIpRange = ipRangeByLegacyUserAndIp.get(`${legacyAuthUserId}:${ipAddress}`) ?? {
+					firstSeenAt: null,
+					lastSeenAt: null,
+				}
 				for (const legacyUserId of legacyUserIdsByIp.get(ipAddress) ?? new Set<string>()) {
-					if (legacyUserId !== legacyAuthUserId) ipNeighborLegacyUsers.add(legacyUserId)
+					if (legacyUserId === legacyAuthUserId) continue
+					const candidateUserIpRange = ipRangeByLegacyUserAndIp.get(`${legacyUserId}:${ipAddress}`) ?? {
+						firstSeenAt: null,
+						lastSeenAt: null,
+					}
+					if (!areRangesTemporallyAssociated(currentUserIpRange, candidateUserIpRange)) {
+						continue
+					}
+					ipNeighborLegacyUsers.add(legacyUserId)
 				}
 			}
 			const expandedCharacterPairs = [...associatedCharacters]

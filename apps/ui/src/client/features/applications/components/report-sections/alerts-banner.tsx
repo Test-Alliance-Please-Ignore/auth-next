@@ -73,11 +73,7 @@ function AlertItem({ alert }: { alert: ReportAlert }) {
 
     return (
         <div
-            role={hasDetails ? 'button' : undefined}
-            tabIndex={hasDetails ? 0 : undefined}
-            onClick={hasDetails ? () => setExpanded(!expanded) : undefined}
-            onKeyDown={hasDetails ? (e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); setExpanded(!expanded) } } : undefined}
-            className={`border-l-4 ${SEVERITY_BORDER[alert.severity]} rounded-r-md bg-card px-4 py-3 ${hasDetails ? 'cursor-pointer hover:bg-muted/50 transition-colors' : ''}`}
+            className={`border-l-4 ${SEVERITY_BORDER[alert.severity]} rounded-r-md bg-card px-4 py-3`}
         >
             <div className="flex items-start justify-between gap-3">
                 <div className="min-w-0 flex-1">
@@ -90,9 +86,14 @@ function AlertItem({ alert }: { alert: ReportAlert }) {
                     <p className="mt-1 text-sm text-muted-foreground">{alert.description}</p>
                 </div>
                 {hasDetails && (
-                    <span className="shrink-0 text-xs text-muted-foreground">
+                    <button
+                        type="button"
+                        className="shrink-0 text-xs text-muted-foreground hover:text-foreground transition-colors"
+                        onClick={() => setExpanded((v) => !v)}
+                        aria-expanded={expanded}
+                    >
                         {expanded ? 'Hide' : 'Details'}
-                    </span>
+                    </button>
                 )}
             </div>
 
@@ -128,9 +129,9 @@ function AlertDetails({ alert }: { alert: ReportAlert }) {
         case 'ip-blacklist-association':
             return <IpBlacklistAssociationDetails details={alert.details} />
         case 'legacy-additional-associations':
-            return <LegacyAssociationDetails details={alert.details} />
+            return <LegacyAssociationDetails details={alert.details} alertType={alert.type} />
         case 'legacy-blacklist-association':
-            return <LegacyAssociationDetails details={alert.details} />
+            return <LegacyAssociationDetails details={alert.details} alertType={alert.type} />
         default:
             return (
                 <p className="text-xs text-muted-foreground">Additional details are not displayed.</p>
@@ -138,7 +139,13 @@ function AlertDetails({ alert }: { alert: ReportAlert }) {
     }
 }
 
-function LegacyAssociationDetails({ details }: { details: Record<string, unknown> }) {
+function LegacyAssociationDetails({
+	details,
+	alertType,
+}: {
+	details: Record<string, unknown>
+	alertType: 'legacy-additional-associations' | 'legacy-blacklist-association'
+}) {
 	const items = Array.isArray(details.items)
 		? (details.items as Array<{
 			id: string
@@ -195,7 +202,7 @@ function LegacyAssociationDetails({ details }: { details: Record<string, unknown
 						<div className="mt-1 text-xs text-muted-foreground">
 							{characterCount} character(s), {noteCount} note(s), {ipAddressCount} IP address(es)
 						</div>
-						{characters.length > 0 ? (
+						{alertType === 'legacy-additional-associations' && characters.length > 0 ? (
 							<div className="mt-2 space-y-1.5">
 								<div className="text-xs font-semibold text-muted-foreground">Associated Characters</div>
 								{characters.map((character) => (
@@ -222,7 +229,7 @@ function LegacyAssociationDetails({ details }: { details: Record<string, unknown
 								))}
 							</div>
 						) : null}
-						{matchedTargets.length > 0 ? (
+						{alertType === 'legacy-blacklist-association' && matchedTargets.length > 0 ? (
 							<div className="mt-2 space-y-1.5">
 								<div className="text-xs font-semibold text-muted-foreground">Matched Blacklist Items</div>
 								{matchedTargets.map((target, index) => (

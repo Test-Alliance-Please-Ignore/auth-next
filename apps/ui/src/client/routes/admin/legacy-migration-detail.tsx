@@ -260,6 +260,13 @@ export default function AdminLegacyMigrationDetailPage() {
 		enabled: Boolean(id),
 	})
 
+	const decrementPendingNavBadge = () => {
+		queryClient.setQueryData<number>(
+			['admin-nav', 'legacy-migrations', 'pending-count'],
+			(current) => Math.max(0, (current ?? 0) - 1)
+		)
+	}
+
 	const applyMutation = useMutation({
 		mutationFn: () =>
 			api.applyLegacyMigrationQueueItem(id as string, {
@@ -272,7 +279,11 @@ export default function AdminLegacyMigrationDetailPage() {
 				noteIds: [...selectedNoteIds],
 			}),
 		onSuccess: async () => {
+			decrementPendingNavBadge()
 			await queryClient.invalidateQueries({ queryKey: ['admin', 'legacy-migrations'] })
+			await queryClient.invalidateQueries({
+				queryKey: ['admin-nav', 'legacy-migrations', 'pending-count'],
+			})
 			await queryClient.invalidateQueries({ queryKey: ['admin', 'legacy-migration-detail', id] })
 		},
 	})
@@ -280,7 +291,11 @@ export default function AdminLegacyMigrationDetailPage() {
 	const dismissMutation = useMutation({
 		mutationFn: () => api.dismissLegacyMigrationQueueItem(id as string),
 		onSuccess: async () => {
+			decrementPendingNavBadge()
 			await queryClient.invalidateQueries({ queryKey: ['admin', 'legacy-migrations'] })
+			await queryClient.invalidateQueries({
+				queryKey: ['admin-nav', 'legacy-migrations', 'pending-count'],
+			})
 			navigate('/admin/legacy-migrations')
 		},
 	})
