@@ -127,13 +127,128 @@ function AlertDetails({ alert }: { alert: ReportAlert }) {
             return <BlacklistAssociationDetails details={alert.details} />
         case 'ip-blacklist-association':
             return <IpBlacklistAssociationDetails details={alert.details} />
+        case 'legacy-additional-associations':
+            return <LegacyAssociationDetails details={alert.details} />
+        case 'legacy-blacklist-association':
+            return <LegacyAssociationDetails details={alert.details} />
         default:
             return (
-                <pre className="overflow-x-auto text-xs text-muted-foreground">
-                    {JSON.stringify(alert.details, null, 2)}
-                </pre>
+                <p className="text-xs text-muted-foreground">Additional details are not displayed.</p>
             )
     }
+}
+
+function LegacyAssociationDetails({ details }: { details: Record<string, unknown> }) {
+	const items = Array.isArray(details.items)
+		? (details.items as Array<{
+			id: string
+			legacyAuthUserId: string
+			status: string
+			candidates?: {
+				characters?: Array<{
+					characterId: string
+					characterName: string
+					alreadyLinkedToModernUser?: boolean
+					linkedToOtherUserId?: string | null
+					isDeleted?: boolean
+				}>
+				notes?: Array<{ legacyNoteId: string }>
+				ipAddressCount?: number
+			}
+			conflicts?: {
+				blacklistSignals?: {
+					hasAnyBlacklistSignal?: boolean
+					matchedTargets?: Array<{
+						targetType?: string
+						targetValue?: string
+						discoverySources?: string[]
+					}>
+				}
+			}
+		}>)
+		: []
+
+	if (items.length === 0) {
+		return <p className="text-sm text-muted-foreground">No association items.</p>
+	}
+
+	return (
+		<div className="space-y-2 text-sm">
+			{items.map((item) => {
+				const characterCount = item.candidates?.characters?.length ?? 0
+				const characters = item.candidates?.characters ?? []
+				const noteCount = item.candidates?.notes?.length ?? 0
+				const ipAddressCount = item.candidates?.ipAddressCount ?? 0
+				const hasBlacklistSignal = Boolean(item.conflicts?.blacklistSignals?.hasAnyBlacklistSignal)
+				const matchedTargets =
+					item.conflicts?.blacklistSignals?.matchedTargets?.filter(
+						(target): target is { targetType: string; targetValue: string; discoverySources?: string[] } =>
+							typeof target?.targetType === 'string' && typeof target?.targetValue === 'string'
+					) ?? []
+				return (
+					<div key={item.id} className="rounded border p-2">
+						<div className="flex flex-wrap items-center gap-2">
+							<span className="font-medium">Legacy User {item.legacyAuthUserId}</span>
+							<Badge variant="secondary">{item.status}</Badge>
+							{hasBlacklistSignal ? <Badge variant="destructive">Blacklist Alert</Badge> : null}
+						</div>
+						<div className="mt-1 text-xs text-muted-foreground">
+							{characterCount} character(s), {noteCount} note(s), {ipAddressCount} IP address(es)
+						</div>
+						{characters.length > 0 ? (
+							<div className="mt-2 space-y-1.5">
+								<div className="text-xs font-semibold text-muted-foreground">Associated Characters</div>
+								{characters.map((character) => (
+									<div
+										key={`${item.id}:character:${character.characterId}`}
+										className="rounded border border-border/70 bg-card/70 px-2 py-1.5"
+									>
+										<div className="flex flex-wrap items-center gap-2">
+											<span className="font-medium text-foreground">{character.characterName}</span>
+											<span className="font-mono text-xs text-muted-foreground">
+												({character.characterId})
+											</span>
+											{character.alreadyLinkedToModernUser ? (
+												<Badge variant="success" className="text-[10px]">Already linked</Badge>
+											) : character.linkedToOtherUserId ? (
+												<Badge variant="destructive" className="text-[10px]">Linked to other user</Badge>
+											) : character.isDeleted ? (
+												<Badge variant="warning" className="text-[10px]">Deleted</Badge>
+											) : (
+												<Badge variant="warning" className="text-[10px]">Not linked</Badge>
+											)}
+										</div>
+									</div>
+								))}
+							</div>
+						) : null}
+						{matchedTargets.length > 0 ? (
+							<div className="mt-2 space-y-1.5">
+								<div className="text-xs font-semibold text-muted-foreground">Matched Blacklist Items</div>
+								{matchedTargets.map((target, index) => (
+									<div key={`${item.id}:${target.targetType}:${target.targetValue}:${index}`} className="rounded border border-border/70 bg-card/70 px-2 py-1.5">
+										<div className="flex flex-wrap items-center gap-2">
+											<Badge variant="ghost" className="text-[10px]">
+												{target.targetType.replace(/_/g, ' ')}
+											</Badge>
+											<span className="font-mono text-xs text-foreground break-all">
+												{target.targetValue}
+											</span>
+											{(target.discoverySources ?? []).slice(0, 3).map((source) => (
+												<Badge key={`${item.id}:${target.targetValue}:${source}`} variant="warning" className="text-[10px]">
+													{source.replace(/_/g, ' ')}
+												</Badge>
+											))}
+										</div>
+									</div>
+								))}
+							</div>
+						) : null}
+					</div>
+				)
+			})}
+		</div>
+	)
 }
 
 function IpBlacklistAssociationDetails({ details }: { details: Record<string, unknown> }) {

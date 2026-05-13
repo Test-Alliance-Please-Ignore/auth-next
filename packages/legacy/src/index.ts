@@ -101,7 +101,7 @@ export interface Legacy extends DurableObject {
 		candidates: {
 			characters: LegacyMigrationCandidateCharacter[]
 			notes: LegacyMigrationCandidateNote[]
-			ipAddresses: string[]
+			ipAddressCount: number
 		}
 	} | null>
 	applyMigration(id: string, payload?: Record<string, unknown>): Promise<{ item: LegacyMigrationQueueItem } | null>

@@ -391,7 +391,7 @@ export class CoreWorker extends WorkerEntrypoint<Env> {
 					legacyDateCreated: Date | null
 					alreadyImported: boolean
 				}>
-				ipAddresses: string[]
+				ipAddressCount: number
 			}
 		}>
 	}> {

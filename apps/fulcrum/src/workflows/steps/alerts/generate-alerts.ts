@@ -56,7 +56,6 @@ interface CoreBinding {
             legacyAuthUserId: string
             status: string
             modernUserMainCharacterName: string | null
-            candidateSnapshot: Record<string, unknown>
             conflicts: Record<string, unknown>
             candidates: {
                 characters: Array<{
@@ -79,10 +78,56 @@ interface CoreBinding {
                     legacyDateCreated: Date | null
                     alreadyImported: boolean
                 }>
-                ipAddresses: string[]
+                ipAddressCount: number
             }
         }>
     }>
+}
+
+type LegacyAssociationItem = Awaited<
+		ReturnType<CoreBinding['getLegacyAssociationsForCharacter']>
+	>['items'][number]
+
+function sanitizeLegacyBlacklistSignals(conflicts: Record<string, unknown>): Record<string, unknown> {
+	const raw =
+		conflicts && typeof conflicts === 'object' && conflicts.blacklistSignals && typeof conflicts.blacklistSignals === 'object'
+			? (conflicts.blacklistSignals as Record<string, unknown>)
+			: null
+	if (!raw) return {}
+
+	return {
+		hasAnyBlacklistSignal: Boolean(raw.hasAnyBlacklistSignal),
+		modernUserBlacklisted: Boolean(raw.modernUserBlacklisted),
+		matchingDiscordUserIdsBlacklisted: Array.isArray(raw.matchingDiscordUserIdsBlacklisted)
+			? raw.matchingDiscordUserIdsBlacklisted
+			: [],
+		ipAssociatedBlacklistedUsers: Array.isArray(raw.ipAssociatedBlacklistedUsers)
+			? raw.ipAssociatedBlacklistedUsers
+			: [],
+		matchedTargets: Array.isArray(raw.matchedTargets)
+			? raw.matchedTargets
+			: [],
+		matchingCharactersBlacklisted: Array.isArray(raw.matchingCharactersBlacklisted)
+			? raw.matchingCharactersBlacklisted
+			: [],
+	}
+}
+
+function sanitizeLegacyAssociationItems(items: LegacyAssociationItem[]) {
+	return items.map((item) => ({
+		id: item.id,
+		legacyAuthUserId: item.legacyAuthUserId,
+		status: item.status,
+		modernUserMainCharacterName: item.modernUserMainCharacterName,
+		conflicts: {
+			blacklistSignals: sanitizeLegacyBlacklistSignals(item.conflicts),
+		},
+		candidates: {
+			characters: item.candidates.characters,
+			notes: item.candidates.notes,
+			ipAddressCount: item.candidates.ipAddressCount,
+		},
+	}))
 }
 
 /** Narrow interface for the HR DO methods we need */
@@ -494,7 +539,7 @@ export async function generateAlerts(
                             : `${legacyAssociations.items.length} legacy association group(s) found.`,
                     details: {
                         modernUserId: legacyAssociations.modernUserId,
-                        items: legacyAssociations.items,
+                        items: sanitizeLegacyAssociationItems(legacyAssociations.items),
                     },
                 })
 
@@ -507,7 +552,7 @@ export async function generateAlerts(
                         description: `${itemsWithBlacklistSignal.length} legacy association group(s) include blacklist matches.`,
                         details: {
                             modernUserId: legacyAssociations.modernUserId,
-                            items: itemsWithBlacklistSignal,
+                            items: sanitizeLegacyAssociationItems(itemsWithBlacklistSignal),
                         },
                     })
                 }
