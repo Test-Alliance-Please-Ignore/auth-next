@@ -3,6 +3,7 @@
  *
  * Shared RPC interface for legacy migration/history worker.
  */
+import type { DurableObject } from 'cloudflare:workers'
 
 export type LegacyMigrationStatus = 'pending' | 'partially_applied' | 'applied' | 'dismissed' | 'error'
 

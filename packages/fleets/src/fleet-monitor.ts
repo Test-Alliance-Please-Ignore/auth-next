@@ -1,3 +1,4 @@
+import type { DurableObject } from 'cloudflare:workers'
 import { EsiGetFleetInformation, EsiGetFleetMembers } from './esi'
 
 /**

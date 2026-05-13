@@ -7,7 +7,8 @@
 	"main": "src/index.ts",
 	"scripts": {
 		"check:lint": "run-eslint",
-		"check:types": "run-tsc"
+		"check:types": "run-tsc",
+		"fix:workers-types": "run-wrangler-types"
 	},
 	"devDependencies": {
 		"@repo/eslint-config": "workspace:*",
@@ -15,4 +16,3 @@
 		"@repo/typescript-config": "workspace:*"
 	}
 }
-

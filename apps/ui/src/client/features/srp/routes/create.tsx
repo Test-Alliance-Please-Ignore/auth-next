@@ -3,11 +3,14 @@ import { Link, Navigate, useSearchParams } from 'react-router-dom'
 import { Button } from '@/components/ui/button'
 import { Container } from '@/components/ui/container'
 import { PageHeader } from '@/components/ui/page-header'
+import { usePageTitle } from '@/hooks/usePageTitle'
 
 import { CreateRequestForm } from '../components/CreateRequestForm'
 import { useKillmailPreview, useRecentLosses } from '../hooks'
 
 export default function CreateRequest() {
+	usePageTitle('SRP - Submit Request')
+
 	const [searchParams] = useSearchParams()
 
 	const killmailId = searchParams.get('killmailId')

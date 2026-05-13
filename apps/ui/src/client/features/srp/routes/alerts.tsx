@@ -17,6 +17,7 @@ import {
 	TableRow,
 } from '@/components/ui/table'
 import { useUserPermissions } from '@/hooks/useUserPermissions'
+import { usePageTitle } from '@/hooks/usePageTitle'
 
 import { useAcknowledgeSrpPaymentMismatchAlert, useSrpPaymentMismatchAlerts } from '../hooks'
 import { formatISK } from '../utils'
@@ -24,6 +25,8 @@ import { formatISK } from '../utils'
 import type { SRPPaymentMismatchAlert } from '../types'
 
 export default function SRPAlertsPage() {
+	usePageTitle('SRP - Alerts')
+
 	const { hasAnyPermission } = useUserPermissions()
 	const [includeAcknowledged, setIncludeAcknowledged] = useState(false)
 	const { data, isLoading, error } = useSrpPaymentMismatchAlerts({

@@ -15,6 +15,7 @@ import { Select } from '@/components/ui/select'
 import { Switch } from '@/components/ui/switch'
 import { Textarea } from '@/components/ui/textarea'
 import { useUserPermissions } from '@/hooks/useUserPermissions'
+import { usePageTitle } from '@/hooks/usePageTitle'
 import { api } from '@/lib/api'
 
 import {
@@ -57,6 +58,8 @@ function formatTemplateAmount(modifier: SRPPredefinedAdhocModifier): string {
 }
 
 export default function PoliciesPage() {
+	usePageTitle('SRP - Policies')
+
 	const { hasPermission, isAdmin } = useUserPermissions()
 
 	if (!(isAdmin || hasPermission('urn:srp:manager'))) {

@@ -10,6 +10,7 @@ import { EveTimeDisplay } from '@/components/ui/eve-time-display'
 import { PageHeader } from '@/components/ui/page-header'
 import { useAuth } from '@/hooks/useAuth'
 import { useConfirmationDialog } from '@/hooks/useConfirmationDialog'
+import { usePageTitle } from '@/hooks/usePageTitle'
 import { useUserPermissions } from '@/hooks/useUserPermissions'
 
 import { CommentForm } from '../components/CommentForm'
@@ -51,6 +52,8 @@ export default function RequestDetails() {
 	const { data: comments = [], refetch: refetchComments } = useRequestComments(id, false)
 	const createRequest = useCreateRequest()
 	const withdrawRequest = useWithdrawRequest()
+
+	usePageTitle(request ? `SRP Request ${request.id}` : 'SRP Request')
 
 	if (!id) {
 		return <Navigate to="/srp" replace />
@@ -149,7 +152,7 @@ export default function RequestDetails() {
 	return (
 		<Container>
 			<PageHeader
-				title={`SRP Request #${request.id.slice(0, 8)}`}
+				title={`SRP Request #${request.id}`}
 				description={
 					<span className="inline-flex items-center gap-2">
 						<span className="text-lg font-semibold text-foreground">Status:</span>
@@ -199,6 +202,10 @@ export default function RequestDetails() {
 						<div>
 							<div className="text-sm text-muted-foreground">Ship</div>
 							<div className="font-medium">{request.shipTypeName}</div>
+						</div>
+						<div>
+							<div className="text-sm text-muted-foreground">Lossmail ID</div>
+							<div className="font-mono font-medium break-all">{request.id}</div>
 						</div>
 						<div>
 							<div className="text-sm text-muted-foreground">Approved Payout</div>
