@@ -48,7 +48,7 @@ export function PendingInvitationsList({ groupId }: PendingInvitationsListProps)
 				{invitations.map((invitation) => (
 					<div
 						key={invitation.id}
-						className="border border-gray-200 rounded-lg p-3 hover:bg-gray-50 transition-colors"
+						className="rounded-lg border border-border p-3 transition-colors hover:bg-muted/20"
 					>
 						<div className="flex items-start justify-between">
 							<div className="flex-1">

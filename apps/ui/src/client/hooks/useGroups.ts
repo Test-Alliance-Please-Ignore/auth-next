@@ -6,6 +6,7 @@ import { useApiMutation } from './useApiMutation'
 
 import type {
 	CreateGroupRequest,
+	Group,
 	CreateJoinRequestRequest,
 	GroupsFilters,
 	GroupWithDetails,
@@ -67,7 +68,40 @@ export function useCreateGroup() {
 	return useApiMutation({
 		mutationFn: (data: CreateGroupRequest) => api.createGroup(data),
 		successMessage: (group) => `Group "${group.name}" created successfully`,
-		onSuccess: async () => {
+		onSuccess: async (createdGroup) => {
+			const matchesFilters = (group: Group, filters: GroupsFilters | undefined): boolean => {
+				if (!filters) return true
+				if (filters.search && !group.name.toLowerCase().includes(filters.search.toLowerCase())) {
+					return false
+				}
+				if (filters.categoryId && group.categoryId !== filters.categoryId) return false
+				if (filters.visibility && group.visibility !== filters.visibility) return false
+				if (filters.joinMode && group.joinMode !== filters.joinMode) return false
+				if (filters.myGroups) return false
+				return true
+			}
+
+			// Immediate local write-through so newly created group appears without refresh.
+			const listCaches = queryClient.getQueriesData<GroupWithDetails[]>({
+				queryKey: groupKeys.lists(),
+			})
+			for (const [queryKey, cached] of listCaches) {
+				if (!cached) continue
+				const key = queryKey as readonly unknown[]
+				const filters = key.length >= 4 ? (key[3] as GroupsFilters | undefined) : undefined
+				if (!matchesFilters(createdGroup, filters)) continue
+				if (cached.some((group) => group.id === createdGroup.id)) continue
+				const category = cached.find((group) => group.categoryId === createdGroup.categoryId)?.category
+				if (!category) continue
+				const optimisticGroup: GroupWithDetails = {
+					...createdGroup,
+					category,
+					memberCount: 0,
+					adminUserIds: [createdGroup.ownerId],
+				}
+				queryClient.setQueryData<GroupWithDetails[]>(queryKey, [optimisticGroup, ...cached])
+			}
+
 			// Invalidate all group lists (they may have different filters)
 			await Promise.all([
 				queryClient.invalidateQueries({ queryKey: groupKeys.all }),
@@ -267,10 +301,11 @@ export function useAcceptInvitation() {
 		mutationFn: (invitationId: string) => api.acceptInvitation(invitationId),
 		successMessage: 'Invitation accepted',
 		onSuccess: () => {
-			// Invalidate invitations and user memberships
+			// Invalidate invitations, memberships, and auth session permissions.
 			void queryClient.invalidateQueries({ queryKey: groupKeys.invitations() })
 			void queryClient.invalidateQueries({ queryKey: groupKeys.userMemberships() })
 			void queryClient.invalidateQueries({ queryKey: groupKeys.lists() })
+			void queryClient.invalidateQueries({ queryKey: ['auth', 'session'] })
 		},
 	})
 }
@@ -301,9 +336,10 @@ export function useRedeemInviteCode() {
 		mutationFn: (code: string) => api.redeemInviteCode(code),
 		successMessage: (response) => `You have joined "${response.group.name}"`,
 		onSuccess: () => {
-			// Invalidate user memberships and group lists
+			// Invalidate memberships/lists and refresh auth session permissions.
 			void queryClient.invalidateQueries({ queryKey: groupKeys.userMemberships() })
 			void queryClient.invalidateQueries({ queryKey: groupKeys.lists() })
+			void queryClient.invalidateQueries({ queryKey: ['auth', 'session'] })
 		},
 	})
 }

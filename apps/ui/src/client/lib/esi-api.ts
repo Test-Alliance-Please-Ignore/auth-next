@@ -55,7 +55,7 @@ export class EsiApiClient extends ApiClient {
 		const params = new URLSearchParams()
 		params.set('q', query)
 
-		return this.get(`${ESI_API_BASE}/search/systems?${params.toString()}`)
+		return this.get(`/universe/search/systems?${params.toString()}`)
 	}
 
 	/**
