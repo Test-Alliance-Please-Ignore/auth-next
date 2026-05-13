@@ -108,7 +108,7 @@ export function PendingJoinRequestsList({ groupId }: PendingJoinRequestsListProp
 					{pendingRequests.map((request) => (
 						<div
 							key={request.id}
-							className="border border-border rounded-lg p-3 hover:bg-muted/50 transition-colors"
+							className="rounded-lg border border-border p-3 transition-colors hover:bg-muted/20"
 						>
 							<div className="flex items-start justify-between gap-3">
 								<div className="flex-1">

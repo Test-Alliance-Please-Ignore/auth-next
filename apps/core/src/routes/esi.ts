@@ -20,31 +20,6 @@ const app = new Hono<App>()
 app.use('*', requireAuth())
 
 /**
- * GET /esi/search/systems?q={query}
- * Search for solar systems by name
- */
-app.get('/search/systems', async (c) => {
-	try {
-		const query = c.req.query('q')
-		logger.info('ESI route /search/systems called', { query, hasUser: !!c.get('user') })
-
-		if (!query || query.length < 2) {
-			logger.info('ESI route /search/systems: query too short', { query })
-			return c.json({ error: 'Query must be at least 2 characters' }, 400)
-		}
-
-		const esiService = new EsiService(c.env)
-		logger.info('ESI route /search/systems: calling esiService.searchSystems')
-		const results = await esiService.searchSystems(query)
-		logger.info('ESI route /search/systems: returning results', { resultCount: results.length })
-		return c.json(results)
-	} catch (error) {
-		logger.error('Error in ESI systems search:', error)
-		return c.json({ error: 'Failed to search systems' }, 500)
-	}
-})
-
-/**
  * GET /esi/search/stations?q={query}
  * Search for NPC stations by name
  */

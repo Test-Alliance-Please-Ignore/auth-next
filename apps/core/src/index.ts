@@ -44,6 +44,7 @@ import skillsRoutes from './routes/skills'
 import flagsRoutes from './routes/flags'
 import srpRoutes from './routes/srp'
 import usersRoutes from './routes/users'
+import universeRoutes from './routes/universe'
 import { CoreRpcService } from './services/core-rpc.service'
 import {
 	ensureDiscordCommandRegistryLoaded,
@@ -104,6 +105,7 @@ const app = new Hono<App>()
 	.route('/api/admin', industryAdminRoutes) // Admin industry API
 	.route('/api/auth', authRoutes)
 	.route('/api/users', usersRoutes)
+	.route('/api/universe', universeRoutes)
 	.route('/api/characters', charactersRoutes)
 	.route('/api/corporation-tax', corporationTaxRoutes)
 	.route('/api/corporations', corporationsRoutes)

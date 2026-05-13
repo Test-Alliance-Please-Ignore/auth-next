@@ -61,6 +61,13 @@ import type {
 import type { Env } from './context'
 
 /**
+ * Module-level cache for all solar system ID/name pairs, used by search fallback.
+ * Refreshed hourly per worker instance.
+ */
+let allSolarSystemNamesCache: Array<{ id: string; name: string }> | null = null
+let allSolarSystemNamesCacheExpiry = 0
+
+/**
  * Universe Durable Object
  *
  * This Durable Object uses SQLite storage and implements:
@@ -122,6 +129,67 @@ export class UniverseDO extends DurableObject<Env, {}> implements Universe {
 	// ========================================================================
 	// PRIVATE HELPERS
 	// ========================================================================
+
+	async searchSolarSystems(query: string, limit = 20): Promise<UniverseSolarSystem[]> {
+		const trimmedQuery = query.trim()
+		if (trimmedQuery.length < 2) return []
+		const safeLimit = Math.max(1, Math.min(limit, 50))
+
+		const rows = await this.db
+			.select()
+			.from(universeSolarSystems)
+			.where(ilike(universeSolarSystems.solarSystemName, `%${trimmedQuery}%`))
+			.orderBy(universeSolarSystems.solarSystemName)
+			.limit(safeLimit)
+
+		const results = rows.map((row) => ({
+			solarSystemId: row.solarSystemId,
+			solarSystemName: row.solarSystemName,
+			regionId: row.regionId,
+			constellationId: row.constellationId,
+			securityStatus: row.securityStatus,
+		}))
+
+		for (const system of results) {
+			this.solarSystemIdsCache.set(system.solarSystemId, system)
+			this.solarSystemNamesCache.set(system.solarSystemName, system)
+		}
+
+		if (results.length > 0) {
+			return results
+		}
+
+		// Fallback: if SDE-backed DB lookup missed, search via ESI universe IDs + name resolution,
+		// then hydrate full system rows through resolveSolarSystemsByIds (which backfills DB/cache).
+		const tokenStoreStub = getStub<EveTokenStore>(this.env.EVE_TOKEN_STORE, 'default')
+		if (!allSolarSystemNamesCache || allSolarSystemNamesCacheExpiry <= Date.now()) {
+			const idsResult = await tokenStoreStub.fetchPublicEsi<number[]>(
+				'/latest/universe/systems/?datasource=tranquility'
+			)
+			const ids = idsResult.data.map((id) => String(id))
+			const resolverStub = getStub<EsiTypeResolver>(this.env.ESI_TYPE_RESOLVER, 'global')
+			const namesById = await resolverStub.resolveIds(ids)
+			allSolarSystemNamesCache = ids
+				.map((id) => ({ id, name: namesById[id] }))
+				.filter((row) => Boolean(row.name))
+			allSolarSystemNamesCacheExpiry = Date.now() + 60 * 60 * 1000
+		}
+
+		const fallbackIds = (allSolarSystemNamesCache ?? [])
+			.filter((row) => row.name.toLowerCase().includes(trimmedQuery.toLowerCase()))
+			.slice(0, safeLimit)
+			.map((row) => row.id)
+
+		if (fallbackIds.length === 0) {
+			return []
+		}
+
+		const hydrated = await this.resolveSolarSystemsByIds(fallbackIds)
+		return fallbackIds
+			.map((id) => hydrated[id])
+			.filter((system): system is UniverseSolarSystem => Boolean(system))
+
+	}
 
 	/**
 	 * Normalize incoming moon ID values and ensure they are not empty.

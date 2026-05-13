@@ -78,6 +78,13 @@ export * from './geography'
  */
 export interface Universe {
 	/**
+	 * Search solar systems by partial name.
+	 * @param query - Partial solar system name
+	 * @param limit - Maximum number of results (default 20)
+	 */
+	searchSolarSystems(query: string, limit?: number): Promise<UniverseSolarSystem[]>
+
+	/**
 	 * Get structure information from ESI
 	 * @param structureId - The structure ID
 	 * @param authorizedCharacterId - Character ID with access to the structure
