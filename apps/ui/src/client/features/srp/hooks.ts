@@ -11,6 +11,7 @@ import {
 	patchLossesForRequest,
 	patchMyRequestsStatus,
 	prependMyRequest,
+	removeLossByKillmailId,
 } from './state/cache-updates'
 import {
 	mergeLossesWithOverlay,
@@ -33,6 +34,7 @@ import {
 import type {
 	CommentVisibility,
 	RequestStatus,
+	SRPCommentResponse,
 	SRPConfigResponse,
 	SRPRequestResponse,
 	SRPPaymentMismatchAlert,
@@ -391,6 +393,37 @@ export function useCreateRequest() {
 	})
 }
 
+export function useDismissRecentLoss() {
+	const queryClient = useQueryClient()
+	return useMutation({
+		mutationFn: ({ killmailId }: { killmailId: string }) => api.dismissRecentLoss(killmailId),
+		onMutate: async ({ killmailId }) => {
+			const previousLosses = queryClient.getQueriesData({
+				predicate: (query) => isSrpLossesQueryKey(query.queryKey),
+			})
+			queryClient.setQueriesData(
+				{
+					predicate: (query) => isSrpLossesQueryKey(query.queryKey),
+				},
+				(old) =>
+					removeLossByKillmailId(
+						old as LossListEntry[] | RecentLossesQueryData | undefined,
+						killmailId
+					)
+			)
+			return { previousLosses }
+		},
+		onError: (_error, _variables, context) => {
+			for (const [queryKey, previous] of context?.previousLosses ?? []) {
+				queryClient.setQueryData(queryKey, previous)
+			}
+		},
+		onSuccess: () => {
+			invalidateLossQueries(queryClient)
+		},
+	})
+}
+
 export function useSubmitReview() {
 	const queryClient = useQueryClient()
 	return useMutation({
@@ -546,10 +579,66 @@ export function useAddComment() {
 			requestId: string
 			data: { content: string; visibility: CommentVisibility }
 		}) => api.addComment(requestId, data),
+		onMutate: async ({
+			requestId,
+			data,
+		}: {
+			requestId: string
+			data: { content: string; visibility: CommentVisibility }
+		}) => {
+			const previousPublic = queryClient.getQueryData<SRPCommentResponse[]>(
+				srpKeys.comments(requestId, false)
+			)
+			const previousInternal = queryClient.getQueryData<SRPCommentResponse[]>(
+				srpKeys.comments(requestId, true)
+			)
+			const nowIso = new Date().toISOString()
+			const tempId = `temp-${crypto.randomUUID()}`
+			const optimisticComment: SRPCommentResponse = {
+				id: tempId,
+				requestId,
+				authorUserId: 'me',
+				authorCharacterName: 'You',
+				content: data.content,
+				visibility: data.visibility,
+				isEdited: false,
+				createdAt: nowIso,
+			}
+
+			queryClient.setQueryData<SRPCommentResponse[]>(srpKeys.comments(requestId, true), (old = []) => [
+				...old,
+				optimisticComment,
+			])
+			if (data.visibility === 'public') {
+				queryClient.setQueryData<SRPCommentResponse[]>(srpKeys.comments(requestId, false), (old = []) => [
+					...old,
+					optimisticComment,
+				])
+			}
+
+			return { previousPublic, previousInternal, requestId, tempId }
+		},
+		onError: (_error, _variables, context) => {
+			if (!context) return
+			queryClient.setQueryData(srpKeys.comments(context.requestId, false), context.previousPublic)
+			queryClient.setQueryData(srpKeys.comments(context.requestId, true), context.previousInternal)
+		},
 		onSuccess: (
-			_data: any,
-			variables: { requestId: string; data: { content: string; visibility: CommentVisibility } }
+			comment: SRPCommentResponse,
+			variables: { requestId: string; data: { content: string; visibility: CommentVisibility } },
+			context: { previousPublic?: SRPCommentResponse[]; previousInternal?: SRPCommentResponse[]; requestId: string; tempId: string } | undefined
 		) => {
+			if (context) {
+				queryClient.setQueryData<SRPCommentResponse[]>(srpKeys.comments(variables.requestId, true), (old = []) =>
+					old.map((row) => (row.id === context.tempId ? comment : row))
+				)
+				if (variables.data.visibility === 'public') {
+					queryClient.setQueryData<SRPCommentResponse[]>(
+						srpKeys.comments(variables.requestId, false),
+						(old = []) => old.map((row) => (row.id === context.tempId ? comment : row))
+					)
+				}
+			}
 			void queryClient.invalidateQueries({ queryKey: srpKeys.comments(variables.requestId, false) })
 			void queryClient.invalidateQueries({ queryKey: srpKeys.comments(variables.requestId, true) })
 		},

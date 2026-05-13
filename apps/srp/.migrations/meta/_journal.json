@@ -71,6 +71,13 @@
       "when": 1777184321879,
       "tag": "0009_aberrant_nova",
       "breakpoints": true
+    },
+    {
+      "idx": 10,
+      "version": "7",
+      "when": 1778668607874,
+      "tag": "0010_mixed_frank_castle",
+      "breakpoints": true
     }
   ]
 }

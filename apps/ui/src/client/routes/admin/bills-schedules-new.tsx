@@ -17,6 +17,8 @@ import { formatScheduleFrequency } from '@/lib/bills-utils'
 import type { CreateScheduleInput, EntityType, PayeeType, ScheduleFrequency } from '@repo/bills'
 import { Button } from '@/components/ui/button'
 
+const MS_PER_DAY = 86_400_000
+
 export default function AdminBillsSchedulesNewPage() {
 	usePageTitle('Admin - Create Bill Schedule')
 
@@ -104,9 +106,9 @@ export default function AdminBillsSchedulesNewPage() {
 
 		switch (formData.frequency) {
 			case 'daily':
-				return new Date(baseDate.getTime() + 24 * 60 * 60 * 1000)
+				return new Date(baseDate.getTime() + MS_PER_DAY)
 			case 'weekly':
-				return new Date(baseDate.getTime() + 7 * 24 * 60 * 60 * 1000)
+				return new Date(baseDate.getTime() + 7 * MS_PER_DAY)
 			case 'monthly': {
 				// Use UTC methods so month arithmetic stays in UTC regardless of the
 				// browser's local timezone. setMonth/getMonth operate in local time and

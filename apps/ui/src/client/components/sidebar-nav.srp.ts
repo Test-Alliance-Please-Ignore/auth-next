@@ -12,7 +12,6 @@ export interface SidebarSrpNavItem {
 }
 
 export interface ResolveSrpNavStateInput {
-	srpEnabled: boolean
 	isSiteAdmin: boolean
 	hasSrpReviewerPermission: boolean
 	hasSrpPayerPermission: boolean
@@ -36,7 +35,6 @@ export interface ResolveSrpNavStateResult {
 
 export function resolveSrpNavState(input: ResolveSrpNavStateInput): ResolveSrpNavStateResult {
 	const {
-		srpEnabled,
 		isSiteAdmin,
 		hasSrpReviewerPermission,
 		hasSrpPayerPermission,
@@ -54,18 +52,12 @@ export function resolveSrpNavState(input: ResolveSrpNavStateInput): ResolveSrpNa
 		isSiteAdmin || hasSrpManagerPermission || hasSrpPayerPermission || hasSrpReviewerPermission
 	const hasSrpStaffAccess = canSeeSrpReviewQueue
 
-	const shouldFetchSrpReviewCount = srpEnabled && canSeeSrpReviewQueue
-	const shouldFetchSrpPaymentCount = srpEnabled && canSeeSrpPaymentQueue
-	const shouldFetchSrpAlertCount = srpEnabled && canSeeSrpAlerts
+	const shouldFetchSrpReviewCount = canSeeSrpReviewQueue
+	const shouldFetchSrpPaymentCount = canSeeSrpPaymentQueue
+	const shouldFetchSrpAlertCount = canSeeSrpAlerts
 
 	let navItem: SidebarSrpNavItem
-	if (!srpEnabled) {
-		navItem = {
-			label: 'SRP',
-			href: 'https://reimbursement.pleaseignore.com/',
-			external: true,
-		}
-	} else if (!hasSrpStaffAccess) {
+	if (!hasSrpStaffAccess) {
 		navItem = {
 			label: 'SRP',
 			href: '/srp',

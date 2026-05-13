@@ -15,6 +15,7 @@ import type { App } from '../context'
 import type { SessionUser } from '../context'
 
 const app = new Hono<App>()
+const MS_PER_DAY = 86_400_000
 
 // ============================================================================
 // Helpers
@@ -161,7 +162,7 @@ app.get('/users/:userId/characters', requireAuth(), async (c) => {
 					if (!lastLogon) {
 						activityStatus = 'unknown'
 					} else {
-						const activeThresholdMs = 7 * 24 * 60 * 60 * 1000
+						const activeThresholdMs = 7 * MS_PER_DAY
 						activityStatus =
 							new Date().getTime() - lastLogon.getTime() < activeThresholdMs
 								? 'active'

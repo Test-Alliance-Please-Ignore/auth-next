@@ -4,7 +4,6 @@ import { resolveSrpNavState } from '@/components/sidebar-nav.srp'
 
 function resolve(overrides: Partial<Parameters<typeof resolveSrpNavState>[0]> = {}) {
 	return resolveSrpNavState({
-		srpEnabled: true,
 		isSiteAdmin: false,
 		hasSrpReviewerPermission: false,
 		hasSrpPayerPermission: false,
@@ -17,19 +16,7 @@ function resolve(overrides: Partial<Parameters<typeof resolveSrpNavState>[0]> = 
 }
 
 describe('resolveSrpNavState', () => {
-	it('uses external SRP link when feature flag is disabled', () => {
-		const state = resolve({ srpEnabled: false })
-		expect(state.navItem).toEqual({
-			label: 'SRP',
-			href: 'https://reimbursement.pleaseignore.com/',
-			external: true,
-		})
-		expect(state.shouldFetchSrpReviewCount).toBe(false)
-		expect(state.shouldFetchSrpPaymentCount).toBe(false)
-		expect(state.shouldFetchSrpAlertCount).toBe(false)
-	})
-
-	it('shows non-staff single-link SRP nav when feature flag is enabled', () => {
+	it('shows non-staff single-link SRP nav', () => {
 		const state = resolve()
 		expect(state.navItem).toEqual({
 			label: 'SRP',

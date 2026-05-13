@@ -2966,6 +2966,10 @@ export class ApiClient {
 		return this.get(`/srp/losses?daysBack=${daysBack}`)
 	}
 
+	async dismissRecentLoss(killmailId: string): Promise<{ success: true }> {
+		return this.post(`/srp/losses/${encodeURIComponent(killmailId)}/dismiss`, {})
+	}
+
 	/**
 	 * Create a new SRP request
 	 */

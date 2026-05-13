@@ -19,6 +19,7 @@ import type { Freight } from '@repo/freight'
 import type { App } from '../context'
 
 const FREIGHT_MANAGER_URN = 'urn:freight:manager'
+const MS_PER_DAY = 86_400_000
 
 /**
  * Hardcoded TEST Alliance Please Ignore alliance ID
@@ -411,7 +412,7 @@ app.get('/leaderboard', requireAuth(), requireAllianceMember(), async (c) => {
 		)
 
 		const period = c.req.query('period')
-		const since = period === '30d' ? new Date(Date.now() - 30 * 24 * 60 * 60 * 1000) : undefined
+		const since = period === '30d' ? new Date(Date.now() - 30 * MS_PER_DAY) : undefined
 		const leaderboard = await corpDataStub.getCourierLeaderboard(ALLIANCE_ID, since)
 
 		// Resolve acceptor names

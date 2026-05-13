@@ -31,9 +31,59 @@ import type { EveTokenStore } from '@repo/eve-token-store'
 import type { Groups } from '@repo/groups'
 import type { Hr } from '@repo/hr'
 import type { Legacy } from '@repo/legacy'
+import type { Srp } from '@repo/srp'
 import type { App } from '../context'
 
 const app = new Hono<App>()
+
+async function rejectUnpaidSrpRequestsForBlacklistedUser(
+	c: Context<App>,
+	targetUserId: string,
+	actorUserId: string,
+	actorCharacterName: string
+): Promise<number> {
+	const srpStub = getStub<Srp>(c.env.SRP, `admin-blacklist-${targetUserId}`)
+	const limit = 200
+	let offset = 0
+	const allRequests: Awaited<ReturnType<Srp['getUserRequests']>> = []
+
+	while (true) {
+		const batch = await srpStub.getUserRequests(targetUserId, limit, offset)
+		if (batch.length === 0) break
+		allRequests.push(...batch)
+		if (batch.length < limit) break
+		offset += limit
+	}
+
+	const requestsToReject = allRequests.filter(
+		(request) =>
+			request.requestStatus !== 'paid' &&
+			request.requestStatus !== 'rejected' &&
+			request.requestStatus !== 'withdrawn'
+	)
+
+	let rejectedCount = 0
+	for (const request of requestsToReject) {
+		try {
+			await srpStub.updateReviewState(
+				request.id,
+				actorUserId,
+				actorCharacterName,
+				'rejected',
+				'User blacklisted.'
+			)
+			rejectedCount += 1
+		} catch (error) {
+			logger.warn('[Admin] Failed rejecting unpaid SRP request for blacklisted user', {
+				targetUserId,
+				requestId: request.id,
+				error: error instanceof Error ? error.message : String(error),
+			})
+		}
+	}
+
+	return rejectedCount
+}
 
 /**
  * GET /admin/users
@@ -1202,6 +1252,18 @@ app.post('/blacklist/user', requireAuth(), requireAdmin(), async (c) => {
 			// 2. Invalidate sessions
 			await sessionService.invalidateAllUserSessions(targetUserId)
 			await removeUserFromAllGroups(targetUserId)
+			const rejectedSrpCount = await rejectUnpaidSrpRequestsForBlacklistedUser(
+				c,
+				targetUserId,
+				blacklistedByUserId,
+				'System'
+			)
+			if (rejectedSrpCount > 0) {
+				logger.info('[Admin] Rejected unpaid SRP requests for blacklisted user', {
+					targetUserId,
+					rejectedSrpCount,
+				})
+			}
 
 			// 2b. Immediately enforce Discord revocation/ban for blacklisted users
 			try {
@@ -1408,6 +1470,19 @@ app.post('/blacklist/character', requireAuth(), requireAdmin(), async (c) => {
 
 			// Invalidate all sessions
 			await sessionService.invalidateAllUserSessions(char.userId)
+			const rejectedSrpCount = await rejectUnpaidSrpRequestsForBlacklistedUser(
+				c,
+				char.userId,
+				user.id,
+				'System'
+			)
+			if (rejectedSrpCount > 0) {
+				logger.info('[Admin] Rejected unpaid SRP requests for character-linked blacklisted user', {
+					characterId,
+					userId: char.userId,
+					rejectedSrpCount,
+				})
+			}
 			try {
 				const groupsStub = getStub<Groups>(c.env.GROUPS, 'default')
 				const memberships = await groupsStub.getUserMemberships(char.userId)

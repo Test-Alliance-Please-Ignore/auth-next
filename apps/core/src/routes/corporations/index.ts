@@ -23,6 +23,8 @@ import type { Hr } from '@repo/hr'
 import type { App } from '../../context'
 
 const app = new Hono<App>()
+const MS_PER_DAY = 86_400_000
+const ACTIVE_MEMBER_THRESHOLD_MS = 7 * MS_PER_DAY
 
 /**
  * Cache duration for corporation member data (5 minutes)
@@ -1883,7 +1885,7 @@ app.get('/:corporationId/members', requireAuth(), async (c) => {
 					locationSystem: undefined, // Would need additional ESI scopes
 					locationRegion: undefined, // Would need to be resolved from system ID
 					activityStatus: tracking?.logonDate
-						? new Date().getTime() - tracking.logonDate.getTime() < 7 * 24 * 60 * 60 * 1000
+						? new Date().getTime() - tracking.logonDate.getTime() < ACTIVE_MEMBER_THRESHOLD_MS
 							? 'active'
 							: 'inactive'
 						: 'unknown',
@@ -2044,7 +2046,7 @@ app.get('/:corporationId/members/:accountId', requireAuth(), async (c) => {
 				locationSystem: undefined,
 				locationRegion: undefined,
 				activityStatus: tracking?.logonDate
-					? new Date().getTime() - tracking.logonDate.getTime() < 7 * 24 * 60 * 60 * 1000
+					? new Date().getTime() - tracking.logonDate.getTime() < ACTIVE_MEMBER_THRESHOLD_MS
 						? 'active'
 						: 'inactive'
 					: 'unknown',

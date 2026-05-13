@@ -692,7 +692,12 @@ srp.use('*', async (c, next) => {
  */
 srp.get('/losses', async (c) => {
 	const user = c.get('user')!
-	const daysBack = c.req.query('daysBack') ? Number.parseInt(c.req.query('daysBack')!, 10) : 30
+	const srpStub = getStub<Srp>(c.env.SRP, getRequestId(c))
+	const config = await srpStub.getConfig()
+	const configuredLookbackDays = config?.maxLossAgeDays ?? 30
+	const daysBack = c.req.query('daysBack')
+		? Number.parseInt(c.req.query('daysBack')!, 10)
+		: configuredLookbackDays
 
 	// Get all character IDs for the user
 	const characters = user.characters.map((char) => ({
@@ -704,7 +709,6 @@ srp.get('/losses', async (c) => {
 		return c.json({ losses: [], failedCharacters: [] })
 	}
 
-	const srpStub = getStub<Srp>(c.env.SRP, getRequestId(c))
 	const tokenStore = getStub<EveTokenStore>(c.env.EVE_TOKEN_STORE, 'default')
 	const perCharacterResults = await Promise.all(
 		characters.map(async (character) => {
@@ -768,6 +772,27 @@ srp.get('/losses', async (c) => {
 		losses: lossesWithRegions,
 		failedCharacters,
 	})
+})
+
+/**
+ * Dismiss a recent loss from the user's SRP losses list.
+ * POST /api/srp/losses/:killmailId/dismiss
+ */
+srp.post('/losses/:killmailId/dismiss', async (c) => {
+	const user = c.get('user')
+	if (!user?.id) {
+		return c.json({ error: 'Authentication required' }, 401)
+	}
+
+	const killmailId = c.req.param('killmailId')
+	if (!killmailId || !/^\d+$/.test(killmailId)) {
+		return c.json({ error: 'Invalid killmail id' }, 400)
+	}
+
+	const requestId = getRequestId(c)
+	const srpStub = getStub<Srp>(c.env.SRP, requestId)
+	await srpStub.dismissLoss(user.id, killmailId)
+	return c.json({ success: true })
 })
 
 /**
