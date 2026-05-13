@@ -6,6 +6,7 @@ import type { TokenValidationResult, TokenValidationStatus, EveTokenStore } from
 import type { DbClient, schema } from '../db'
 
 const NON_DEGRADING_TOKEN_STATUSES: TokenValidationStatus[] = ['transient_error']
+const DEFAULT_TOKEN_VALIDITY_CACHE_MS = 86_400_000
 
 export function isNonDegradingTokenStatus(status: TokenValidationStatus): boolean {
 	return NON_DEGRADING_TOKEN_STATUSES.includes(status)
@@ -83,7 +84,7 @@ export async function validateAndSyncCharacterTokenValidityBatch({
 	tokenStore,
 	characters,
 	maxConcurrency = 10,
-	validityCacheMs = 24 * 60 * 60 * 1000,
+	validityCacheMs = DEFAULT_TOKEN_VALIDITY_CACHE_MS,
 	forceValidate = false,
 }: {
 	db: DbClient<typeof schema>

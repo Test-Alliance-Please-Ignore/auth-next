@@ -83,6 +83,20 @@ export function patchLossesByRequestStatus(
 	}
 }
 
+export function removeLossByKillmailId(
+	losses: LossListEntry[] | RecentLossesQueryData | undefined,
+	killmailId: string
+): LossListEntry[] | RecentLossesQueryData | undefined {
+	if (!losses) return losses
+	const list = Array.isArray(losses) ? losses : losses.losses
+	const patched = list.filter((loss) => loss.killmailId !== killmailId)
+	if (Array.isArray(losses)) return patched
+	return {
+		...losses,
+		losses: patched,
+	}
+}
+
 export function patchMyRequestsStatus(
 	data: MyRequestsQueryData | undefined,
 	request: SRPRequestResponse

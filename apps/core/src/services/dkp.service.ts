@@ -7,6 +7,8 @@ import type { EveCharacterData } from '@repo/eve-character-data'
 import type { EveCorporationData } from '@repo/eve-corporation-data'
 import type { DbClient, schema } from '../db'
 
+const MS_PER_DAY = 86_400_000
+
 /**
  * DKP Service - Business logic for DKP tracking operations
  *
@@ -376,9 +378,9 @@ export class DkpService {
 		}
 
 		const now = new Date()
-		const last7days = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000)
-		const last30days = new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000)
-		const last90days = new Date(now.getTime() - 90 * 24 * 60 * 60 * 1000)
+		const last7days = new Date(now.getTime() - 7 * MS_PER_DAY)
+		const last30days = new Date(now.getTime() - 30 * MS_PER_DAY)
+		const last90days = new Date(now.getTime() - 90 * MS_PER_DAY)
 
 		let totalAll = 0
 		let total7d = 0
@@ -455,9 +457,9 @@ export class DkpService {
 		}
 
 		const now = new Date()
-		const last7days = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000)
-		const last30days = new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000)
-		const last90days = new Date(now.getTime() - 90 * 24 * 60 * 60 * 1000)
+		const last7days = new Date(now.getTime() - 7 * MS_PER_DAY)
+		const last30days = new Date(now.getTime() - 30 * MS_PER_DAY)
+		const last90days = new Date(now.getTime() - 90 * MS_PER_DAY)
 
 		let totalAll = 0
 		let total7d = 0
@@ -553,9 +555,9 @@ export class DkpService {
 		}>
 	}> {
 		const now = new Date()
-		const last7days = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000)
-		const last30days = new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000)
-		const last90days = new Date(now.getTime() - 90 * 24 * 60 * 60 * 1000)
+		const last7days = new Date(now.getTime() - 7 * MS_PER_DAY)
+		const last30days = new Date(now.getTime() - 30 * MS_PER_DAY)
+		const last90days = new Date(now.getTime() - 90 * MS_PER_DAY)
 
 		// Get all transactions for corporation
 		const transactions = await this.db.query.dkpTransactions.findMany({
@@ -651,7 +653,7 @@ export class DkpService {
 		if (period !== 'all') {
 			const now = new Date()
 			const days = period === '7d' ? 7 : period === '30d' ? 30 : period === '90d' ? 90 : 0
-			timeFilter = new Date(now.getTime() - days * 24 * 60 * 60 * 1000)
+			timeFilter = new Date(now.getTime() - days * MS_PER_DAY)
 		}
 
 		// Build where conditions
@@ -747,7 +749,7 @@ export class DkpService {
 		if (period !== 'all') {
 			const now = new Date()
 			const days = period === '7d' ? 7 : period === '30d' ? 30 : period === '90d' ? 90 : 0
-			timeFilter = new Date(now.getTime() - days * 24 * 60 * 60 * 1000)
+			timeFilter = new Date(now.getTime() - days * MS_PER_DAY)
 		}
 
 		// Query with aggregation by userId
@@ -871,7 +873,7 @@ export class DkpService {
 		if (period !== 'all') {
 			const now = new Date()
 			const days = period === '7d' ? 7 : period === '30d' ? 30 : period === '90d' ? 90 : 0
-			timeFilter = new Date(now.getTime() - days * 24 * 60 * 60 * 1000)
+			timeFilter = new Date(now.getTime() - days * MS_PER_DAY)
 		}
 
 		// Query with aggregation
@@ -1056,9 +1058,9 @@ export class DkpService {
 		}>
 	}> {
 		const now = new Date()
-		const last7days = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000)
-		const last30days = new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000)
-		const last90days = new Date(now.getTime() - 90 * 24 * 60 * 60 * 1000)
+		const last7days = new Date(now.getTime() - 7 * MS_PER_DAY)
+		const last30days = new Date(now.getTime() - 30 * MS_PER_DAY)
+		const last90days = new Date(now.getTime() - 90 * MS_PER_DAY)
 
 		// Get all transactions
 		const allTransactions = await this.db.query.dkpTransactions.findMany()

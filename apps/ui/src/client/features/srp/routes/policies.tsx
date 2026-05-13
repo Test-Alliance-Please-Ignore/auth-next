@@ -118,7 +118,7 @@ function GeneralConfigPanel({ config }: { config?: SRPConfigResponse }) {
 	const updateConfigMutation = useUpdateSRPConfig()
 	const [defaultCoverageRatePercent, setDefaultCoverageRatePercent] = useState('100')
 	const [maxPayoutAmount, setMaxPayoutAmount] = useState('')
-	const [maxLossAgeDays, setMaxLossAgeDays] = useState('60')
+	const [maxLossAgeDays, setMaxLossAgeDays] = useState('30')
 	const [paymentProcessorCorporationId, setPaymentProcessorCorporationId] = useState('')
 	const [srpGroupId, setSrpGroupId] = useState('')
 	const [paymentProcessorCorporationOptions, setPaymentProcessorCorporationOptions] = useState<
@@ -211,7 +211,7 @@ function GeneralConfigPanel({ config }: { config?: SRPConfigResponse }) {
 			await updateConfigMutation.mutateAsync({
 				defaultCoverageRate: String((Number.parseFloat(defaultCoverageRatePercent) || 0) / 100),
 				maxPayoutAmount: maxPayoutAmount.trim() ? maxPayoutAmount.trim() : null,
-				maxLossAgeDays: Math.max(1, Number.parseInt(maxLossAgeDays, 10) || 60),
+				maxLossAgeDays: Math.max(1, Number.parseInt(maxLossAgeDays, 10) || 30),
 				paymentProcessorCorporationId: paymentProcessorCorporationId.trim()
 					? paymentProcessorCorporationId.trim()
 					: null,

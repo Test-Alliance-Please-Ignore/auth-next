@@ -48,6 +48,13 @@ type ReviewQueueFilters = {
 	dateTo?: string
 }
 
+type ReviewQueueSortBy = 'submitted' | 'loss'
+type ReviewQueueSortDirection = 'asc' | 'desc'
+
+function getDefaultSortDirectionForStatus(status: RequestStatus): ReviewQueueSortDirection {
+	return status === 'approved' || status === 'rejected' || status === 'paid' ? 'desc' : 'asc'
+}
+
 function toTimestamp(value: string | null | undefined): number {
 	if (!value) return 0
 	const parsed = Date.parse(value)
@@ -251,6 +258,26 @@ function ReviewTabContent({
 	onPageChange: (page: number) => void
 	onPageSizeChange: (pageSize: number) => void
 }) {
+	const [sortBy, setSortBy] = useState<ReviewQueueSortBy>('submitted')
+	const [sortDirection, setSortDirection] = useState<ReviewQueueSortDirection>(
+		getDefaultSortDirectionForStatus(status)
+	)
+	useEffect(() => {
+		setSortDirection(getDefaultSortDirectionForStatus(status))
+	}, [status])
+	const toggleSort = (nextSortBy: ReviewQueueSortBy) => {
+		if (sortBy === nextSortBy) {
+			setSortDirection((prev) => (prev === 'asc' ? 'desc' : 'asc'))
+			return
+		}
+		setSortBy(nextSortBy)
+		setSortDirection(getDefaultSortDirectionForStatus(status))
+	}
+	const sortIndicator = (field: ReviewQueueSortBy) => {
+		if (sortBy !== field) return '↕'
+		return sortDirection === 'asc' ? '↑' : '↓'
+	}
+
 	const offset = (page - 1) * pageSize
 	const { data, isLoading, isFetching, error, refetch } = useRequestsByStatus(status, {
 		limit: pageSize,
@@ -308,7 +335,9 @@ function ReviewTabContent({
 	}
 
 	const requests: SRPRequestResponse[] = [...(data?.requests ?? [])].sort((a, b) => {
-		return toTimestamp(a.createdAt) - toTimestamp(b.createdAt)
+		const left = sortBy === 'submitted' ? toTimestamp(a.createdAt) : toTimestamp(a.lossDate)
+		const right = sortBy === 'submitted' ? toTimestamp(b.createdAt) : toTimestamp(b.lossDate)
+		return sortDirection === 'asc' ? left - right : right - left
 	})
 
 	if (requests.length === 0) {
@@ -347,8 +376,28 @@ function ReviewTabContent({
 							<TableHead>Pilot</TableHead>
 							<TableHead className="text-right">Payout / Value</TableHead>
 							<TableHead>System</TableHead>
-							<TableHead>Lost</TableHead>
-							<TableHead>Submitted</TableHead>
+							<TableHead>
+								<button
+									type="button"
+									className="inline-flex items-center gap-1 text-left hover:text-foreground"
+									onClick={() => toggleSort('loss')}
+								>
+									Lost
+									<span className="text-xs text-muted-foreground">{sortIndicator('loss')}</span>
+								</button>
+							</TableHead>
+							<TableHead>
+								<button
+									type="button"
+									className="inline-flex items-center gap-1 text-left hover:text-foreground"
+									onClick={() => toggleSort('submitted')}
+								>
+									Submitted
+									<span className="text-xs text-muted-foreground">
+										{sortIndicator('submitted')}
+									</span>
+								</button>
+							</TableHead>
 							<TableHead>Status</TableHead>
 							<TableHead className="text-right">Actions</TableHead>
 						</TableRow>
@@ -371,6 +420,8 @@ function ReviewTabContent({
 								<TableCell className="font-semibold">
 									<Link
 										to={`/srp/review/${req.id}`}
+										target="_blank"
+										rel="noopener noreferrer"
 										className="underline-offset-4 hover:underline focus-visible:underline"
 									>
 										{req.shipTypeName ?? '—'}
@@ -422,7 +473,9 @@ function ReviewTabContent({
 								</TableCell>
 								<TableCell className="text-right">
 									<Button size="sm" variant="secondary" asChild>
-										<Link to={`/srp/review/${req.id}`}>View</Link>
+										<Link to={`/srp/review/${req.id}`} target="_blank" rel="noopener noreferrer">
+											View
+										</Link>
 									</Button>
 								</TableCell>
 							</TableRow>

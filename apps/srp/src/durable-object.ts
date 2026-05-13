@@ -2,7 +2,6 @@ import { DurableObject } from 'cloudflare:workers'
 
 import { and, desc, eq, gte, ilike, inArray, lte, sql } from '@repo/db-utils'
 import { getStub } from '@repo/do-utils'
-import { getEsiInstanceForCharacter } from '@repo/esi'
 import { createEveRegionId, createEveTypeId } from '@repo/eve-types'
 import { generateKillmailUrl, roundToMillion } from '@repo/srp'
 
@@ -10,6 +9,7 @@ import { createDb } from './db'
 import {
 	srpComments,
 	srpConfig,
+	srpDismissedLosses,
 	srpPaymentAlerts,
 	srpPolicies,
 	srpRequestHistory,
@@ -28,7 +28,7 @@ import type { srpRequests as srpRequestsTable } from './db/schema'
 
 type KillmailDataJson = NonNullable<typeof srpRequestsTable.$inferInsert.killmailData>
 
-import type { EveCharacterData } from '@repo/eve-character-data'
+import type { CharacterLossData, EveCharacterData } from '@repo/eve-character-data'
 import type { EveCorporationData } from '@repo/eve-corporation-data'
 import type { LatestMarketPrice, Markets } from '@repo/markets'
 import type {
@@ -49,7 +49,6 @@ import type {
 	UpdateSRPConfig,
 } from '@repo/srp'
 import type { Universe } from '@repo/universe'
-import type { KillmailDetail } from '@repo/universe'
 import type { Env } from './context'
 
 /**
@@ -59,6 +58,7 @@ import type { Env } from './context'
  * Uses PostgreSQL for persistent storage.
  */
 export class SrpDO extends DurableObject<Env> implements Srp {
+	private static readonly MS_PER_DAY = 86_400_000
 	private db: ReturnType<typeof createDb>
 	private readonly shipSlotCapacityCache = new Map<
 		string,
@@ -184,8 +184,8 @@ export class SrpDO extends DurableObject<Env> implements Srp {
 		// Calculate SRP valuation from Jita prices at time of loss
 		const config = await this.getConfig()
 		const lossDate = new Date(killmailData.killmailTime)
-		const maxLossAgeDays = config?.maxLossAgeDays ?? 60
-		const maxLossAgeMs = maxLossAgeDays * 24 * 60 * 60 * 1000
+		const maxLossAgeDays = config?.maxLossAgeDays ?? 30
+		const maxLossAgeMs = maxLossAgeDays * SrpDO.MS_PER_DAY
 		if (Date.now() - lossDate.getTime() > maxLossAgeMs) {
 			throw new Error(`Loss is older than the maximum allowed age of ${maxLossAgeDays} days`)
 		}
@@ -382,41 +382,34 @@ export class SrpDO extends DurableObject<Env> implements Srp {
 		const config = await this.getConfig()
 		const maxLossAgeDays = config?.maxLossAgeDays ?? daysBack
 		const effectiveDaysBack = Math.max(1, Math.min(daysBack, maxLossAgeDays))
-		const cutoffMs = Date.now() - effectiveDaysBack * 24 * 60 * 60 * 1000
+		const cutoffMs = Date.now() - effectiveDaysBack * SrpDO.MS_PER_DAY
 
-		// Fetch losses from eve-character-data for each character
-		const allLosses: KillmailDetail[] = []
+		// Fetch losses cache-first from eve-character-data, then refresh from ESI with cursor-stop pagination.
+		const allLosses = new Map<string, CharacterLossData>()
 
 		const universeStub = getStub<Universe>(this.env.UNIVERSE, 'default')
 		for (const characterId of characterIds) {
-			const esiInstance = getEsiInstanceForCharacter(this.env.ESI, characterId)
-			const killmails = await esiInstance.fetchCharacterKillmails(characterId)
+			const characterDataStub = getStub<EveCharacterData>(this.env.EVE_CHARACTER_DATA, characterId)
+			const cachedLosses = await characterDataStub.getRecentLosses(characterId, effectiveDaysBack, false)
+			for (const loss of cachedLosses) {
+				allLosses.set(loss.killmailId, loss)
+			}
 
-			const losses = killmails.filter((km) => {
-				if (km.victim.character_id !== characterId) return false
-				const killmailMs = new Date(km.killmail_time).getTime()
-				if (!Number.isFinite(killmailMs)) return false
-				if (killmailMs < cutoffMs) return false
-				// Hide empty pod losses from requestable list:
-				// keep capsule losses only when at least one implant is fitted.
-				if (this.isPodShipTypeId(String(km.victim.ship_type_id)) && !this.hasImplantFitted(km)) {
-					return false
-				}
-				return true
-			})
+			try {
+				await characterDataStub.fetchKillmails(characterId)
+			} catch (error) {
+				console.warn(`[SrpDO.getRecentLosses] Failed to refresh killmails for ${characterId}`, error)
+			}
 
-			// Convert losses to the format we need (with string timestamps)
-			// Note: Date objects are serialized to ISO strings over RPC
-			allLosses.push(
-				...losses.map((loss) => ({
-					...loss,
-					killmailTime: loss.killmail_time,
-				}))
-			)
+			const refreshedLosses = await characterDataStub.getRecentLosses(characterId, effectiveDaysBack, false)
+			for (const loss of refreshedLosses) {
+				allLosses.set(loss.killmailId, loss)
+			}
 		}
+		const mergedLosses = [...allLosses.values()]
 
-		const shipTypeIds = [...new Set(allLosses.map((l) => String(l.victim.ship_type_id)))]
-		const systemIds = [...new Set(allLosses.map((l) => String(l.solar_system_id)))]
+		const shipTypeIds = [...new Set(mergedLosses.map((l) => String(l.shipTypeId)))]
+		const systemIds = [...new Set(mergedLosses.map((l) => String(l.solarSystemId)))]
 
 		const [typeMap, systemMap, typeMetaMap] = await Promise.all([
 			universeStub.resolveTypeNamesByIds(shipTypeIds),
@@ -440,7 +433,7 @@ export class SrpDO extends DurableObject<Env> implements Srp {
 			if (system?.solarSystemName) resolved[id] = system.solarSystemName
 		}
 		// Get existing SRP requests for these losses
-		const killmailIds = allLosses.map((l) => String(l.killmail_id))
+		const killmailIds = mergedLosses.map((l) => String(l.killmailId))
 
 		if (killmailIds.length === 0) {
 			return []
@@ -449,6 +442,11 @@ export class SrpDO extends DurableObject<Env> implements Srp {
 		const existingRequests = await this.db.query.srpRequests.findMany({
 			where: and(eq(srpRequests.userId, userId), inArray(srpRequests.id, killmailIds)),
 		})
+		const dismissedLosses = await this.db.query.srpDismissedLosses.findMany({
+			where: and(eq(srpDismissedLosses.userId, userId), inArray(srpDismissedLosses.killmailId, killmailIds)),
+			columns: { killmailId: true },
+		})
+		const dismissedKillmailIds = new Set(dismissedLosses.map((row) => row.killmailId))
 
 		const requestMap = new Map(
 			existingRequests.map((r) => [r.id, { id: r.id, status: r.requestStatus }])
@@ -456,8 +454,8 @@ export class SrpDO extends DurableObject<Env> implements Srp {
 		const legacyPaidKillmailIds = new Set<string>()
 		const paymentProcessorCorporationId = config?.paymentProcessorCorporationId?.trim()
 		if (paymentProcessorCorporationId) {
-			const oldestLossTimeMs = allLosses.reduce((oldest, loss) => {
-				const lossMs = new Date(loss.killmail_time).getTime()
+			const oldestLossTimeMs = mergedLosses.reduce((oldest, loss) => {
+				const lossMs = new Date(loss.killmailTime).getTime()
 				if (!Number.isFinite(lossMs)) return oldest
 				return Math.min(oldest, lossMs)
 			}, Number.POSITIVE_INFINITY)
@@ -486,34 +484,52 @@ export class SrpDO extends DurableObject<Env> implements Srp {
 		}
 
 		// Annotate losses with SRP status and sort by time descending
-		return allLosses
-			.filter((loss) => !legacyPaidKillmailIds.has(String(loss.killmail_id)))
+		return mergedLosses
+			.filter((loss) => !dismissedKillmailIds.has(String(loss.killmailId)))
+			.filter((loss) => !legacyPaidKillmailIds.has(String(loss.killmailId)))
 			.filter((loss) => {
-				const shipTypeId = String(loss.victim.ship_type_id)
+				const shipTypeId = String(loss.shipTypeId)
 				const marketGroupId = typeMetaMap[shipTypeId]?.marketGroupId ?? null
 				const shipTypeName = resolved[shipTypeId] ?? ''
 				const looksLikeShuttleByName = shipTypeName.toLowerCase().includes('shuttle')
 				return !(this.isShuttleMarketGroupId(marketGroupId) || looksLikeShuttleByName)
 			})
 			.map((loss) => {
-				const lossKillmailId = String(loss.killmail_id)
+				const lossKillmailId = String(loss.killmailId)
 				const request = requestMap.get(lossKillmailId)
 				return {
 					killmailId: lossKillmailId,
-					killmailHash: loss.killmail_hash ?? '',
-					killmailTime: loss.killmail_time,
-					shipTypeId: loss.victim.ship_type_id,
-					shipTypeName: resolved[loss.victim.ship_type_id],
-					totalValue: '0',
-					solarSystemId: loss.solar_system_id,
-					solarSystemName: resolved[loss.solar_system_id],
-					victimCharacterId: String(loss.victim.character_id ?? ''),
+					killmailHash: loss.killmailHash ?? '',
+					killmailTime: new Date(loss.killmailTime).toISOString(),
+					shipTypeId: loss.shipTypeId,
+					shipTypeName: resolved[String(loss.shipTypeId)],
+					totalValue: loss.totalValue ?? '0',
+					solarSystemId: loss.solarSystemId,
+					solarSystemName: resolved[String(loss.solarSystemId)],
+					victimCharacterId: String(loss.victimCharacterId ?? ''),
 					hasSRPRequest: !!request,
 					srpRequestId: request?.id,
 					srpRequestStatus: request?.status,
 				}
 			})
 			.sort((a, b) => new Date(b.killmailTime).getTime() - new Date(a.killmailTime).getTime())
+	}
+
+	async dismissLoss(userId: string, killmailId: string): Promise<void> {
+		const normalizedKillmailId = killmailId.trim()
+		if (!/^\d+$/.test(normalizedKillmailId)) {
+			throw new Error('Invalid killmail id')
+		}
+
+		await this.db
+			.insert(srpDismissedLosses)
+			.values({
+				userId,
+				killmailId: normalizedKillmailId,
+			})
+			.onConflictDoNothing({
+				target: [srpDismissedLosses.userId, srpDismissedLosses.killmailId],
+			})
 	}
 
 	private extractLegacyPaidKillmailId(reason: string | null | undefined): string | null {
@@ -523,23 +539,9 @@ export class SrpDO extends DurableObject<Env> implements Srp {
 		return match[1] ?? null
 	}
 
-	private isPodShipTypeId(shipTypeId: string): boolean {
-		return this.POD_TYPE_IDS.has(shipTypeId)
-	}
-
 	private isShuttleMarketGroupId(marketGroupId: string | null): boolean {
 		if (!marketGroupId) return false
 		return this.SHUTTLE_MARKET_GROUP_IDS.has(marketGroupId)
-	}
-
-	private hasImplantFitted(killmail: KillmailDetail): boolean {
-		const items = killmail.victim?.items ?? []
-		return items.some((item: any) => {
-			const flag = Number(item?.flag)
-			if (!Number.isFinite(flag)) return false
-			// Implant flags in killmails are in 89-98 range.
-			return flag >= 89 && flag <= 98
-		})
 	}
 
 	/**
@@ -1003,7 +1005,7 @@ export class SrpDO extends DurableObject<Env> implements Srp {
 				isActive: true,
 				defaultCoverageRate: updates.defaultCoverageRate || current?.defaultCoverageRate || '1.0',
 				maxPayoutAmount: updates.maxPayoutAmount || current?.maxPayoutAmount || null,
-				maxLossAgeDays: updates.maxLossAgeDays || current?.maxLossAgeDays || 60,
+				maxLossAgeDays: updates.maxLossAgeDays || current?.maxLossAgeDays || 30,
 				metadata: mergedMetadata,
 				createdBy: userId,
 				effectiveFrom: new Date(),
@@ -1426,7 +1428,7 @@ export class SrpDO extends DurableObject<Env> implements Srp {
 
 			this.shipSlotCapacityCache.set(shipTypeId, {
 				value: resolved,
-				expiresAt: now + 24 * 60 * 60 * 1000,
+				expiresAt: now + SrpDO.MS_PER_DAY,
 			})
 			return resolved
 		} catch {

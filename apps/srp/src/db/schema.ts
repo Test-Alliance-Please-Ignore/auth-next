@@ -388,7 +388,7 @@ export const srpConfig = pgTable(
 		/** Maximum SRP payout per request (ISK as text, null = no limit) */
 		maxPayoutAmount: text('max_payout_amount'),
 		/** Maximum age of a loss (in days) eligible for SRP submission */
-		maxLossAgeDays: integer('max_loss_age_days').default(60).notNull(),
+		maxLossAgeDays: integer('max_loss_age_days').default(30).notNull(),
 		/** Additional configuration metadata */
 		metadata: jsonb('metadata').$type<{
 			requiresReviewNotes?: boolean
@@ -414,6 +414,26 @@ export const srpConfig = pgTable(
 		// Find active config (should only be one)
 		index('srp_config_active_idx').on(table.isActive),
 		index('srp_config_effective_from_idx').on(table.effectiveFrom),
+	]
+)
+
+/**
+ * SRP Dismissed Losses table - user-hidden losses from the recent losses list.
+ *
+ * This allows users to hide a loss they do not intend to submit for SRP.
+ */
+export const srpDismissedLosses = pgTable(
+	'srp_dismissed_losses',
+	{
+		id: uuid('id').defaultRandom().primaryKey(),
+		userId: uuid('user_id').notNull(),
+		killmailId: text('killmail_id').notNull(),
+		dismissedAt: timestamp('dismissed_at', { withTimezone: true }).defaultNow().notNull(),
+	},
+	(table) => [
+		index('srp_dismissed_losses_user_idx').on(table.userId),
+		index('srp_dismissed_losses_killmail_idx').on(table.killmailId),
+		uniqueIndex('srp_dismissed_losses_user_killmail_unique').on(table.userId, table.killmailId),
 	]
 )
 
@@ -457,6 +477,7 @@ export const schema = {
 	srpComments,
 	srpPaymentAlerts,
 	srpConfig,
+	srpDismissedLosses,
 	srpRequestsRelations,
 	srpRequestHistoryRelations,
 	srpCommentsRelations,

@@ -68,6 +68,10 @@ export const devLocalCmd = new Command('dev-local')
 				...excludeWorkers.map((name) => `--filter=!${name}`),
 			]
 
+			// In root local-dev mode we already start workers via turbo.
+			// Disable Vite auxiliary-worker auto-start to avoid duplicate wrangler boot races.
+			$.env.LOCAL_DEV_DISABLE_AUXILIARY_WORKERS = '1'
+
 			// Use --only to avoid pulling in task dependencies like "build" for every package.
 			// For local iteration this keeps memory/cpu pressure manageable.
 			await $`bun turbo dev --only ${workerFilters} ${args}`

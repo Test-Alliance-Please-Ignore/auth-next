@@ -2,6 +2,7 @@ import { ExternalLink, RefreshCw } from 'lucide-react'
 import { useEffect, useRef, useState } from 'react'
 import { Link } from 'react-router-dom'
 
+import { useConfirmationDialog } from '@/hooks/useConfirmationDialog'
 import { Button } from '@/components/ui/button'
 import { EveTimeDisplay } from '@/components/ui/eve-time-display'
 import {
@@ -47,6 +48,8 @@ interface LossTableProps {
 		message?: string
 		error?: string
 	}>
+	onDismissLoss?: (killmailId: string) => Promise<void> | void
+	dismissingKillmailId?: string | null
 }
 
 export function LossTable({
@@ -57,8 +60,11 @@ export function LossTable({
 	config,
 	refreshResults,
 	loadFailures,
+	onDismissLoss,
+	dismissingKillmailId,
 }: LossTableProps) {
-	const maxLossAgeDays = config?.maxLossAgeDays ?? 60
+	const { requestConfirmation, confirmationDialog } = useConfirmationDialog()
+	const maxLossAgeDays = config?.maxLossAgeDays ?? 30
 	const [nowMs, setNowMs] = useState(() => Date.now())
 	const initialFetchCooldownAppliedRef = useRef(false)
 	const [cooldownUntilMs, setCooldownUntilMs] = useState(() => {
@@ -109,6 +115,8 @@ export function LossTable({
 		onRefresh()
 	}
 
+	const hasLoadFailures = Boolean(loadFailures && loadFailures.length > 0)
+
 	if (isLoading) {
 		return (
 			<div className="space-y-6">
@@ -127,6 +135,7 @@ export function LossTable({
 
 	return (
 		<div className="space-y-3">
+			{confirmationDialog}
 			{onRefresh && (
 				<div className="flex justify-end">
 					<Button
@@ -194,7 +203,11 @@ export function LossTable({
 
 			{losses.length === 0 ? (
 				<div className="rounded-lg border border-dashed p-8 text-center">
-					<p className="text-sm text-muted-foreground">No recent losses found. Fly safe! o7</p>
+					<p className="text-sm text-muted-foreground">
+						{hasLoadFailures
+							? 'No requestable losses loaded from available characters right now. Some character fetches failed above.'
+							: `No requestable losses found in the last ${maxLossAgeDays} days.`}
+					</p>
 				</div>
 			) : (
 				<div className="rounded-md border">
@@ -298,13 +311,39 @@ export function LossTable({
 														Too old
 													</span>
 												) : (
-													<Button size="sm" asChild>
-														<Link
-															to={`/srp/create?killmailId=${loss.killmailId}&killmailHash=${loss.killmailHash}`}
+													<div className="flex items-center gap-2">
+														<Button size="sm" asChild>
+															<Link
+																to={`/srp/create?killmailId=${loss.killmailId}&killmailHash=${loss.killmailHash}`}
+															>
+																Request SRP
+															</Link>
+														</Button>
+														<Button
+															variant="ghost"
+															size="sm"
+															disabled={
+																!onDismissLoss || dismissingKillmailId === loss.killmailId
+															}
+															onClick={() => {
+																if (!onDismissLoss) return
+																requestConfirmation({
+																	title: 'Dismiss This Loss?',
+																	description:
+																		'This will remove the loss from your recent losses list and cannot be undone.',
+																	confirmLabel: 'Dismiss Loss',
+																	intent: 'destructive',
+																	onConfirm: async () => {
+																		await onDismissLoss(loss.killmailId)
+																	},
+																})
+															}}
 														>
-															Request SRP
-														</Link>
-													</Button>
+															{dismissingKillmailId === loss.killmailId
+																? 'Dismissing…'
+																: 'Dismiss'}
+														</Button>
+													</div>
 												)}
 											</div>
 										</TableCell>

@@ -6,21 +6,29 @@ import { usePageTitle } from '@/hooks/usePageTitle'
 
 import { LossTable } from '../components/LossTable'
 import { RequestTable } from '../components/RequestTable'
-import { useMyRequests, useRecentLosses, useRefreshKillmails, useSRPConfig } from '../hooks'
+import {
+	useDismissRecentLoss,
+	useMyRequests,
+	useRecentLosses,
+	useRefreshKillmails,
+	useSRPConfig,
+} from '../hooks'
 
 import type { LossWithSRPStatus } from '../types'
 
 export default function SRPIndex() {
 	usePageTitle('SRP')
+	const { data: config } = useSRPConfig()
+	const recentLossLookbackDays = config?.maxLossAgeDays ?? 30
 
 	const {
 		data: losses,
 		isLoading: lossesLoading,
 		error: lossesError,
 		failedCharacters: loadFailures,
-	} = useRecentLosses(60)
+	} = useRecentLosses(recentLossLookbackDays)
 	const refreshMutation = useRefreshKillmails()
-	const { data: config } = useSRPConfig()
+	const dismissLossMutation = useDismissRecentLoss()
 	const {
 		data: requestsData,
 		isLoading: requestsLoading,
@@ -60,6 +68,14 @@ export default function SRPIndex() {
 									config={config}
 									refreshResults={refreshMutation.data?.results}
 									loadFailures={loadFailures}
+									onDismissLoss={async (killmailId) => {
+										await dismissLossMutation.mutateAsync({ killmailId })
+									}}
+									dismissingKillmailId={
+										dismissLossMutation.isPending
+											? dismissLossMutation.variables?.killmailId ?? null
+											: null
+									}
 								/>
 							)}
 						</TabsContent>

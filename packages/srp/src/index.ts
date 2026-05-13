@@ -41,6 +41,7 @@ export interface Srp {
 		daysBack?: number,
 		excludeNonSrpEligible?: boolean
 	): Promise<LossWithSRPStatus[]>
+	dismissLoss(userId: string, killmailId: string): Promise<void>
 
 	// Legacy review methods (kept for backward compat)
 	getPendingRequests(

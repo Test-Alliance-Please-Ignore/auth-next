@@ -50,6 +50,7 @@ type DiscordDirectMessenger = {
 const SYSTEM_ACTOR_USER_ID = '00000000-0000-0000-0000-000000000000'
 const SYSTEM_ACTOR_CHARACTER_NAME = 'SRP Payment Monitor'
 const PAYMENT_MISMATCH_HISTORY_ACTION = 'payment_amount_mismatch_detected'
+const MS_PER_DAY = 86_400_000
 
 function formatISK(value: string | number, options?: { showDecimals?: boolean }): string {
 	const num = typeof value === 'string' ? Number.parseFloat(value) : value
@@ -170,7 +171,7 @@ export class SrpPaymentStatusCheckWorkflow extends WorkflowEntrypoint<
 				const paymentDateMs = paymentDate?.getTime()
 				const fromDate =
 					typeof paymentDateMs === 'number' && Number.isFinite(paymentDateMs)
-						? new Date(paymentDateMs - 24 * 60 * 60 * 1000)
+						? new Date(paymentDateMs - MS_PER_DAY)
 						: new Date(request.createdAt)
 				const result = await db.execute<WalletJournalMatchRow>(
 					sql`select
