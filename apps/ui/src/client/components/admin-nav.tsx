@@ -20,7 +20,6 @@ import { useQuery } from '@tanstack/react-query'
 import { useState } from 'react'
 import { Link, useLocation } from 'react-router-dom'
 
-import { Badge } from '@/components/ui/badge'
 import { api } from '@/lib/api'
 import { cn } from '@/lib/utils'
 
@@ -229,9 +228,9 @@ export function AdminNav({ onNavigate }: AdminNavProps) {
 							<span className="flex items-center gap-2">
 								{item.label}
 								{item.href === '/admin/legacy-migrations' && pendingLegacyMigrationsCount > 0 ? (
-									<Badge variant="destructive">
+									<span className="inline-flex h-5 min-w-5 items-center justify-center rounded-full bg-destructive px-1.5 text-[10px] font-semibold leading-none text-destructive-foreground ring-1 ring-destructive/80">
 										{pendingLegacyMigrationsCount > 99 ? '99+' : pendingLegacyMigrationsCount}
-									</Badge>
+									</span>
 								) : null}
 							</span>
 						</Link>
