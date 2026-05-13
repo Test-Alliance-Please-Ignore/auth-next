@@ -359,9 +359,43 @@ export class LegacyDO extends DurableObject<Env> implements Legacy {
 				legacyDateCreated: note.legacyDateCreated ?? null,
 				alreadyImported: importedLegacyNoteIds.has(note.legacyNoteId),
 			})),
-			ipAddresses: ipAddresses.map((entry) => entry.ipAddress),
+			ipAddressCount: ipAddresses.length,
 		}
-		return { item, actions, candidates }
+		const snapshot = item.candidateSnapshot ?? {}
+		const associatedCounts =
+			snapshot && typeof snapshot === 'object' && snapshot.associatedCounts && typeof snapshot.associatedCounts === 'object'
+				? (snapshot.associatedCounts as Record<string, unknown>)
+				: {}
+		const sanitizedCandidateSnapshot = {
+			recheckMode:
+				snapshot && typeof snapshot === 'object' && typeof (snapshot as Record<string, unknown>).recheckMode === 'string'
+					? (snapshot as Record<string, unknown>).recheckMode
+					: undefined,
+			recheckedAt:
+				snapshot && typeof snapshot === 'object' && typeof (snapshot as Record<string, unknown>).recheckedAt === 'string'
+					? (snapshot as Record<string, unknown>).recheckedAt
+					: undefined,
+			matchSources:
+				snapshot && typeof snapshot === 'object' && (snapshot as Record<string, unknown>).matchSources
+					? (snapshot as Record<string, unknown>).matchSources
+					: undefined,
+			modernUserId:
+				snapshot && typeof snapshot === 'object' && typeof (snapshot as Record<string, unknown>).modernUserId === 'string'
+					? (snapshot as Record<string, unknown>).modernUserId
+					: undefined,
+			recheckVersion:
+				snapshot && typeof snapshot === 'object' && typeof (snapshot as Record<string, unknown>).recheckVersion === 'number'
+					? (snapshot as Record<string, unknown>).recheckVersion
+					: undefined,
+			associatedCounts: {
+				characters: Number(associatedCounts.characters ?? 0),
+				notes: Number(associatedCounts.notes ?? 0),
+				applications: Number(associatedCounts.applications ?? 0),
+				discordAccounts: Number(associatedCounts.discordAccounts ?? 0),
+				ipAddresses: Number(associatedCounts.ipAddresses ?? 0),
+			},
+		}
+		return { item: { ...item, candidateSnapshot: sanitizedCandidateSnapshot }, actions, candidates }
 	}
 
 	async applyMigration(id: string, payload?: Record<string, unknown>) {
@@ -382,9 +416,6 @@ export class LegacyDO extends DurableObject<Env> implements Legacy {
 			: null
 		const selectedNoteIds = Array.isArray(payload?.noteIds)
 			? new Set(payload.noteIds.filter((value): value is string => typeof value === 'string'))
-			: null
-		const selectedIpAddresses = Array.isArray(payload?.ipAddresses)
-			? new Set(payload.ipAddresses.filter((value): value is string => typeof value === 'string'))
 			: null
 		const performedByUserId =
 			typeof payload?.performedByUserId === 'string' ? payload.performedByUserId : 'system:legacy'
@@ -491,12 +522,8 @@ export class LegacyDO extends DurableObject<Env> implements Legacy {
 				where: eq(legacyAuthUserIpAddresses.legacyAuthUserId, existing.legacyAuthUserId),
 				columns: { ipAddress: true, firstSeenAt: true, lastSeenAt: true },
 			})
-			const selectedIps =
-				selectedIpAddresses && selectedIpAddresses.size > 0
-					? allIps.filter((entry) => selectedIpAddresses.has(entry.ipAddress))
-					: allIps
 			const SHARED_LEGACY_IP_USER_THRESHOLD = 10
-			const candidateIpValues = [...new Set(selectedIps.map((entry) => entry.ipAddress).filter(Boolean))]
+			const candidateIpValues = [...new Set(allIps.map((entry) => entry.ipAddress).filter(Boolean))]
 			const sharedIpRows =
 				candidateIpValues.length > 0
 					? await this.db
@@ -511,7 +538,7 @@ export class LegacyDO extends DurableObject<Env> implements Legacy {
 			const sharedCountByIp = new Map(
 				sharedIpRows.map((row) => [row.ipAddress, Number(row.sharedLegacyUserCount)])
 			)
-			const ips = selectedIps.filter((entry) => {
+			const ips = allIps.filter((entry) => {
 				const sharedCount = sharedCountByIp.get(entry.ipAddress) ?? 0
 				return sharedCount <= SHARED_LEGACY_IP_USER_THRESHOLD
 			})

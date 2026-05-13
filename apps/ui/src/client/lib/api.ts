@@ -1138,7 +1138,6 @@ export interface ApplyLegacyMigrationPayload {
 	markSkipped?: boolean
 	characterIds?: string[]
 	noteIds?: string[]
-	ipAddresses?: string[]
 }
 
 /**
@@ -2670,7 +2669,7 @@ export class ApiClient {
 		candidates: {
 			characters: LegacyMigrationCandidateCharacter[]
 			notes: LegacyMigrationCandidateNote[]
-			ipAddresses: string[]
+			ipAddressCount: number
 		}
 	}> {
 		return this.get(`/admin/legacy/migrations/${id}`)

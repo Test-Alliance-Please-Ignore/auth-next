@@ -371,8 +371,8 @@ export default function AdminLegacyMigrationDetailPage() {
 
 	const importSummary = useMemo(
 		() =>
-			`${selectedCharacterIds.size} character(s), ${selectedNoteIds.size} note(s), ${importIpAssociations ? candidates?.ipAddresses.length ?? 0 : 0} IP(s) selected`,
-		[candidates?.ipAddresses.length, importIpAssociations, selectedCharacterIds.size, selectedNoteIds.size]
+			`${selectedCharacterIds.size} character(s), ${selectedNoteIds.size} note(s), ${importIpAssociations ? candidates?.ipAddressCount ?? 0 : 0} IP(s) selected`,
+		[candidates?.ipAddressCount, importIpAssociations, selectedCharacterIds.size, selectedNoteIds.size]
 	)
 
 	if (detailQuery.isLoading || !item || !candidates) {
@@ -626,7 +626,7 @@ export default function AdminLegacyMigrationDetailPage() {
 						<div className="text-sm">
 							Import legacy IP associations
 							<span className="text-muted-foreground ml-2">
-								({candidates.ipAddresses.length} importable)
+								({candidates.ipAddressCount} importable)
 							</span>
 						</div>
 						<label className="flex items-center gap-2 cursor-pointer rounded border border-border/80 bg-muted/30 px-2 py-1">

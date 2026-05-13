@@ -73,7 +73,7 @@ type LegacyAssociationItem = {
 			legacyCreatedByCharacterName: string | null
 			alreadyImported: boolean
 		}>
-		ipAddresses: string[]
+		ipAddressCount: number
 	}
 }
 
@@ -184,6 +184,9 @@ function LegacyDataSection({ data }: { data: unknown }) {
 
 							<div className="space-y-2">
 								<p className="text-xs font-semibold text-muted-foreground">IP-associated Modern Users</p>
+								<div className="text-xs text-muted-foreground">
+									Legacy IP addresses: {item.candidates.ipAddressCount}
+								</div>
 								{ipAssociatedMatches.length === 0 ? (
 									<p className="text-sm text-muted-foreground">None</p>
 								) : (

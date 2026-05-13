@@ -127,13 +127,62 @@ function AlertDetails({ alert }: { alert: ReportAlert }) {
             return <BlacklistAssociationDetails details={alert.details} />
         case 'ip-blacklist-association':
             return <IpBlacklistAssociationDetails details={alert.details} />
+        case 'legacy-additional-associations':
+            return <LegacyAssociationDetails details={alert.details} />
+        case 'legacy-blacklist-association':
+            return <LegacyAssociationDetails details={alert.details} />
         default:
             return (
-                <pre className="overflow-x-auto text-xs text-muted-foreground">
-                    {JSON.stringify(alert.details, null, 2)}
-                </pre>
+                <p className="text-xs text-muted-foreground">Additional details are not displayed.</p>
             )
     }
+}
+
+function LegacyAssociationDetails({ details }: { details: Record<string, unknown> }) {
+	const items = Array.isArray(details.items)
+		? (details.items as Array<{
+			id: string
+			legacyAuthUserId: string
+			status: string
+			candidates?: {
+				characters?: Array<{ characterId: string; characterName: string }>
+				notes?: Array<{ legacyNoteId: string }>
+				ipAddressCount?: number
+			}
+			conflicts?: {
+				blacklistSignals?: {
+					hasAnyBlacklistSignal?: boolean
+				}
+			}
+		}>)
+		: []
+
+	if (items.length === 0) {
+		return <p className="text-sm text-muted-foreground">No association items.</p>
+	}
+
+	return (
+		<div className="space-y-2 text-sm">
+			{items.map((item) => {
+				const characterCount = item.candidates?.characters?.length ?? 0
+				const noteCount = item.candidates?.notes?.length ?? 0
+				const ipAddressCount = item.candidates?.ipAddressCount ?? 0
+				const hasBlacklistSignal = Boolean(item.conflicts?.blacklistSignals?.hasAnyBlacklistSignal)
+				return (
+					<div key={item.id} className="rounded border p-2">
+						<div className="flex flex-wrap items-center gap-2">
+							<span className="font-medium">Legacy User {item.legacyAuthUserId}</span>
+							<Badge variant="secondary">{item.status}</Badge>
+							{hasBlacklistSignal ? <Badge variant="destructive">Blacklist Alert</Badge> : null}
+						</div>
+						<div className="mt-1 text-xs text-muted-foreground">
+							{characterCount} character(s), {noteCount} note(s), {ipAddressCount} IP address(es)
+						</div>
+					</div>
+				)
+			})}
+		</div>
+	)
 }
 
 function IpBlacklistAssociationDetails({ details }: { details: Record<string, unknown> }) {
