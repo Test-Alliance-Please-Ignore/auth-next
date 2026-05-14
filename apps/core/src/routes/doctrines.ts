@@ -362,7 +362,12 @@ doctrines.get('/fittings/:id', async (c) => {
  * POST /api/doctrines/fittings/preview
  */
 doctrines.post('/fittings/preview', async (c) => {
+	const user = c.get('user')!
 	const body = await c.req.json()
+
+	if (!(await isDoctrineManager(c.env, user))) {
+		return c.json({ error: 'Requires doctrines:manager permission' }, 403)
+	}
 
 	const validation = PreviewEftSchema.safeParse(body)
 	if (!validation.success) {
