@@ -14,6 +14,7 @@ import { Container } from '@/components/ui/container'
 import { LoadingSpinner } from '@/components/ui/loading'
 import { PageHeader } from '@/components/ui/page-header'
 import { usePageTitle } from '@/hooks/usePageTitle'
+import { useUserPermissions } from '@/hooks/useUserPermissions'
 import { api } from '@/lib/api'
 import toast from '@/lib/toast'
 
@@ -27,10 +28,12 @@ import type { CreateFittingRequest, ParsedFittingPreview, UpdateFittingRequest }
 export default function FittingCreatePage() {
 	usePageTitle('Create Fitting')
 	const navigate = useNavigate()
+	const { hasPermission, isAdmin } = useUserPermissions()
 	const [searchParams] = useSearchParams()
 	const doctrineId = searchParams.get('doctrineId')
 	const createMutation = useCreateFitting()
 	const addToDoctrine = useAddFittingToDoctrine()
+	const canManage = isAdmin || hasPermission('urn:doctrines:manager')
 	const [preview, setPreview] = useState<ParsedFittingPreview | null>(null)
 	const [previewLoading, setPreviewLoading] = useState(false)
 
@@ -90,59 +93,69 @@ export default function FittingCreatePage() {
 
 			<PageHeader title="Create Fitting" description="Import a new ship fitting from EFT format" />
 
-			<div className="grid gap-6 lg:grid-cols-2">
-				{/* Left — Form */}
-				<Card>
-					<CardContent className="pt-6">
-						<FittingForm
-							onSubmit={handleSubmit}
-							onCancel={handleCancel}
-							isSubmitting={createMutation.isPending}
-							onPreviewChange={handlePreviewChange}
-						/>
-					</CardContent>
-				</Card>
+			{canManage ? (
+				<div className="grid gap-6 lg:grid-cols-2">
+					{/* Left — Form */}
+					<Card>
+						<CardContent className="pt-6">
+							<FittingForm
+								onSubmit={handleSubmit}
+								onCancel={handleCancel}
+								isSubmitting={createMutation.isPending}
+								onPreviewChange={handlePreviewChange}
+							/>
+						</CardContent>
+					</Card>
 
-				{/* Right — Visual Preview */}
-				{(preview || previewLoading) && (
-					<div className="space-y-6">
-						{previewLoading ? (
-							<Card>
-								<CardContent className="pt-6 flex justify-center">
-									<LoadingSpinner />
-								</CardContent>
-							</Card>
-						) : preview && preview.items.length > 0 ? (
-							<>
-								{preview.unresolvedItems?.length > 0 && (
+					{/* Right — Visual Preview */}
+					{(preview || previewLoading) && (
+						<div className="space-y-6">
+							{previewLoading ? (
+								<Card>
+									<CardContent className="pt-6 flex justify-center">
+										<LoadingSpinner />
+									</CardContent>
+								</Card>
+							) : preview && preview.items.length > 0 ? (
+								<>
+									{preview.unresolvedItems?.length > 0 && (
+										<Card>
+											<CardContent className="pt-4 pb-4">
+												<p className="text-sm text-amber-400">
+													Could not resolve:{' '}
+													{preview.unresolvedItems.join(', ')}
+												</p>
+											</CardContent>
+										</Card>
+									)}
 									<Card>
-										<CardContent className="pt-4 pb-4">
-											<p className="text-sm text-amber-400">
-												Could not resolve:{' '}
-												{preview.unresolvedItems.join(', ')}
-											</p>
+										<CardContent className="pt-6">
+											<FittingPanel
+												fittingItems={preview.items}
+												shipTypeId={preview.shipTypeId}
+												shipName={preview.shipName}
+											/>
 										</CardContent>
 									</Card>
-								)}
-								<Card>
-									<CardContent className="pt-6">
-										<FittingPanel
-											fittingItems={preview.items}
-											shipTypeId={preview.shipTypeId}
-											shipName={preview.shipName}
-										/>
-									</CardContent>
-								</Card>
-								<Card>
-									<CardContent className="pt-6">
-										<FittingSlotList fittingItems={preview.items} />
-									</CardContent>
-								</Card>
-							</>
-						) : null}
-					</div>
-				)}
-			</div>
+									<Card>
+										<CardContent className="pt-6">
+											<FittingSlotList fittingItems={preview.items} />
+										</CardContent>
+									</Card>
+								</>
+							) : null}
+						</div>
+					)}
+				</div>
+			) : (
+				<Card>
+					<CardContent className="pt-6">
+						<p className="text-sm text-muted-foreground">
+							You do not have permission to perform this action.
+						</p>
+					</CardContent>
+				</Card>
+			)}
 		</Container>
 	)
 }

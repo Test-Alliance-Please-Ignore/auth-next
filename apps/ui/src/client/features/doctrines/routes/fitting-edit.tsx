@@ -13,6 +13,7 @@ import { Container } from '@/components/ui/container'
 import { LoadingSpinner } from '@/components/ui/loading'
 import { PageHeader } from '@/components/ui/page-header'
 import { usePageTitle } from '@/hooks/usePageTitle'
+import { useUserPermissions } from '@/hooks/useUserPermissions'
 import toast from '@/lib/toast'
 
 import { FittingForm } from '../components/FittingForm'
@@ -25,10 +26,12 @@ import type { UpdateFittingRequest } from '../types'
 export default function FittingEditPage() {
 	const { id } = useParams<{ id: string }>()
 	const navigate = useNavigate()
+	const { hasPermission, isAdmin } = useUserPermissions()
 	const [searchParams] = useSearchParams()
 	const doctrineId = searchParams.get('doctrineId')
 	const { data: fitting, isLoading } = useFitting(id)
 	const updateMutation = useUpdateFitting()
+	const canManage = isAdmin || hasPermission('urn:doctrines:manager')
 
 	usePageTitle(fitting ? `Edit ${fitting.shipName}` : 'Edit Fitting')
 
@@ -93,39 +96,49 @@ export default function FittingEditPage() {
 				description="Update fitting details and EFT format"
 			/>
 
-			<div className="grid gap-6 lg:grid-cols-2">
-				{/* Left — Form */}
+			{canManage ? (
+				<div className="grid gap-6 lg:grid-cols-2">
+					{/* Left — Form */}
+					<Card>
+						<CardContent className="pt-6">
+							<FittingForm
+								fitting={fitting}
+								onSubmit={handleSubmit}
+								onCancel={handleCancel}
+								isSubmitting={updateMutation.isPending}
+							/>
+						</CardContent>
+					</Card>
+
+					{/* Right — Visual Preview */}
+					{fitting.fittingItems && fitting.fittingItems.length > 0 && (
+						<div className="space-y-6">
+							<Card>
+								<CardContent className="pt-6">
+									<FittingPanel
+										fittingItems={fitting.fittingItems}
+										shipTypeId={fitting.shipTypeId}
+										shipName={fitting.shipName}
+									/>
+								</CardContent>
+							</Card>
+							<Card>
+								<CardContent className="pt-6">
+									<FittingSlotList fittingItems={fitting.fittingItems} />
+								</CardContent>
+							</Card>
+						</div>
+					)}
+				</div>
+			) : (
 				<Card>
 					<CardContent className="pt-6">
-						<FittingForm
-							fitting={fitting}
-							onSubmit={handleSubmit}
-							onCancel={handleCancel}
-							isSubmitting={updateMutation.isPending}
-						/>
+						<p className="text-sm text-muted-foreground">
+							You do not have permission to perform this action.
+						</p>
 					</CardContent>
 				</Card>
-
-				{/* Right — Visual Preview */}
-				{fitting.fittingItems && fitting.fittingItems.length > 0 && (
-					<div className="space-y-6">
-						<Card>
-							<CardContent className="pt-6">
-								<FittingPanel
-									fittingItems={fitting.fittingItems}
-									shipTypeId={fitting.shipTypeId}
-									shipName={fitting.shipName}
-								/>
-							</CardContent>
-						</Card>
-						<Card>
-							<CardContent className="pt-6">
-								<FittingSlotList fittingItems={fitting.fittingItems} />
-							</CardContent>
-						</Card>
-					</div>
-				)}
-			</div>
+			)}
 		</Container>
 	)
 }
