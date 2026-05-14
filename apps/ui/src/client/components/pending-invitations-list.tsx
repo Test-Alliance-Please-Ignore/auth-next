@@ -1,6 +1,8 @@
-import { useGroupInvitations } from '@/hooks/useGroups'
+import { useCancelInvitation, useGroupInvitations } from '@/hooks/useGroups'
+import { Trash2 } from 'lucide-react'
 
 import { Badge } from './ui/badge'
+import { Button } from './ui/button'
 import { Card } from './ui/card'
 
 interface PendingInvitationsListProps {
@@ -9,6 +11,7 @@ interface PendingInvitationsListProps {
 
 export function PendingInvitationsList({ groupId }: PendingInvitationsListProps) {
 	const { data: invitations, isLoading, error } = useGroupInvitations(groupId)
+	const cancelInvitation = useCancelInvitation()
 
 	if (isLoading) {
 		return (
@@ -48,7 +51,7 @@ export function PendingInvitationsList({ groupId }: PendingInvitationsListProps)
 				{invitations.map((invitation) => (
 					<div
 						key={invitation.id}
-						className="rounded-lg border border-border p-3 transition-colors hover:bg-muted/20"
+						className="rounded-lg border border-border p-3 transition-colors hover:bg-muted/30"
 					>
 						<div className="flex items-start justify-between">
 							<div className="flex-1">
@@ -68,6 +71,23 @@ export function PendingInvitationsList({ groupId }: PendingInvitationsListProps)
 							<Badge variant="ghost" className="ml-2">
 								{invitation.status}
 							</Badge>
+						</div>
+						<div className="mt-3 flex justify-end">
+							<Button
+								variant="ghost"
+								size="sm"
+								onClick={() =>
+									cancelInvitation.mutate({
+										invitationId: invitation.id,
+										groupId,
+									})
+								}
+								disabled={cancelInvitation.isPending}
+								aria-label={`Cancel invitation for ${invitation.inviteeCharacterName || 'unknown character'}`}
+							>
+								<Trash2 className="h-4 w-4" />
+								<span className="ml-2">Cancel</span>
+							</Button>
 						</div>
 					</div>
 				))}

@@ -386,7 +386,7 @@ groups.post(
 /**
  * DELETE /invitations/:id
  *
- * Cancel an invitation (inviter, group owner/admin, or site admin)
+ * Cancel an invitation (same permissions as creating invitations)
  * Works on both active and expired pending invitations
  */
 groups.delete(

@@ -387,6 +387,22 @@ export function useCreateInvitation() {
 }
 
 /**
+ * Cancel a pending invitation (inviter, group owner/admin, or site admin)
+ */
+export function useCancelInvitation() {
+	const queryClient = useQueryClient()
+
+	return useApiMutation({
+		mutationFn: ({ invitationId }: { invitationId: string; groupId: string }) =>
+			api.cancelInvitation(invitationId),
+		successMessage: 'Invitation cancelled',
+		onSuccess: (_, { groupId }) => {
+			void queryClient.invalidateQueries({ queryKey: groupKeys.groupInvitations(groupId) })
+		},
+	})
+}
+
+/**
  * Transfer group ownership (owner or admin only)
  */
 export function useTransferOwnership() {
