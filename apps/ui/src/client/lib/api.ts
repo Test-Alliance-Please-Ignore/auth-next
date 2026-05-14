@@ -1923,6 +1923,10 @@ export class ApiClient {
 		return this.post(`/groups/invitations/${id}/decline`)
 	}
 
+	async cancelInvitation(id: string): Promise<void> {
+		return this.delete(`/groups/invitations/${id}`)
+	}
+
 	// Invite Codes
 	async redeemInviteCode(code: string): Promise<RedeemInviteCodeResponse> {
 		return this.post('/groups/invite-codes/redeem', { code })

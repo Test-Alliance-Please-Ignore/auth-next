@@ -1244,9 +1244,7 @@ export class GroupsDO extends DurableObject<Env> implements Groups {
 			this.isUserSiteAdmin(actorId),
 		])
 		if (!canModerateGroup(invitation.group, actorId, isGroupAdmin, isSiteAdmin)) {
-			throw new Error(
-				'Only the inviter, group owner, group admins, or site admins can cancel an invitation'
-			)
+			throw new Error('Only group owner or admins can cancel invitations')
 		}
 
 		await this.db
