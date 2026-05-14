@@ -12,6 +12,7 @@ import { Card, CardContent } from '@/components/ui/card'
 import { Container } from '@/components/ui/container'
 import { PageHeader } from '@/components/ui/page-header'
 import { usePageTitle } from '@/hooks/usePageTitle'
+import { useUserPermissions } from '@/hooks/useUserPermissions'
 import toast from '@/lib/toast'
 
 import { DoctrineForm } from '../components/DoctrineForm'
@@ -22,7 +23,9 @@ import type { CreateDoctrineRequest, UpdateDoctrineRequest } from '../types'
 export default function DoctrineCreatePage() {
 	usePageTitle('Create Doctrine')
 	const navigate = useNavigate()
+	const { hasPermission, isAdmin } = useUserPermissions()
 	const createMutation = useCreateDoctrine()
+	const canManage = isAdmin || hasPermission('urn:doctrines:manager')
 
 	const handleSubmit = async (data: CreateDoctrineRequest | UpdateDoctrineRequest) => {
 		try {
@@ -49,17 +52,27 @@ export default function DoctrineCreatePage() {
 
 			<PageHeader title="Create Doctrine" description="Define a new fleet doctrine" />
 
-			<Card>
-				<CardContent className="pt-6">
-					<div className="max-w-2xl">
-						<DoctrineForm
-							onSubmit={handleSubmit}
-							onCancel={handleCancel}
-							isSubmitting={createMutation.isPending}
-						/>
-					</div>
-				</CardContent>
-			</Card>
+			{canManage ? (
+				<Card>
+					<CardContent className="pt-6">
+						<div className="max-w-2xl">
+							<DoctrineForm
+								onSubmit={handleSubmit}
+								onCancel={handleCancel}
+								isSubmitting={createMutation.isPending}
+							/>
+						</div>
+					</CardContent>
+				</Card>
+			) : (
+				<Card>
+					<CardContent className="pt-6">
+						<p className="text-sm text-muted-foreground">
+							You do not have permission to perform this action.
+						</p>
+					</CardContent>
+				</Card>
+			)}
 		</Container>
 	)
 }

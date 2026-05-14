@@ -18,6 +18,7 @@ import { PageHeader } from '@/components/ui/page-header'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { useConfirmationDialog } from '@/hooks/useConfirmationDialog'
 import { usePageTitle } from '@/hooks/usePageTitle'
+import { useUserPermissions } from '@/hooks/useUserPermissions'
 import toast from '@/lib/toast'
 
 import { CategoryDialog } from '../components/CategoryDialog'
@@ -36,6 +37,8 @@ import type { DoctrineCategory, StagingSystem } from '../types'
 
 export default function DoctrinesAdminPage() {
 	usePageTitle('Doctrines Admin')
+	const { hasPermission, isAdmin } = useUserPermissions()
+	const canManage = isAdmin || hasPermission('urn:doctrines:manager')
 
 	const { data: categories, isLoading: categoriesLoading } = useDoctrineCategories()
 	const { data: stagingSystems, isLoading: stagingLoading } = useStagingSystems()
@@ -116,6 +119,30 @@ export default function DoctrinesAdminPage() {
 			f.name.toLowerCase().includes(fittingSearch.toLowerCase()) ||
 			f.shipName.toLowerCase().includes(fittingSearch.toLowerCase())
 	)
+
+	if (!canManage) {
+		return (
+			<Container>
+				<Button asChild variant="ghost" size="sm" className="mb-4">
+					<Link to="/doctrines">
+						<ArrowLeft className="h-4 w-4" />
+						Back to Doctrines
+					</Link>
+				</Button>
+				<PageHeader
+					title="Doctrines Admin"
+					description="Manage categories, staging systems, and fittings"
+				/>
+				<Card>
+					<CardContent className="pt-6">
+						<p className="text-sm text-muted-foreground">
+							You do not have permission to perform this action.
+						</p>
+					</CardContent>
+				</Card>
+			</Container>
+		)
+	}
 
 	return (
 		<Container>
