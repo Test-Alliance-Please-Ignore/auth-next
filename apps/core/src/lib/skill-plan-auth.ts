@@ -1,6 +1,7 @@
 import { eq } from '@repo/db-utils'
 
 import { getCachedUserMemberships } from './groups-cache'
+import { getCachedUserPermissions } from './groups-cache'
 
 import type { SkillPlan, SkillPlanSummary } from '@repo/skills'
 import type { DbClient, schema } from '../db'
@@ -15,6 +16,15 @@ type GroupsEnv = {
 	GROUPS: DurableObjectNamespace
 }
 
+async function hasSkillPlanPermission(
+	env: GroupsEnv,
+	userId: string,
+	urn: string
+): Promise<boolean> {
+	const permissions = await getCachedUserPermissions(env, userId)
+	return permissions.some((permission) => permission.urn === urn)
+}
+
 /**
  * Check if user can modify a skill plan based on maintainer ID
  * Users can modify if they are the maintainer
@@ -25,6 +35,11 @@ export async function canModifyPlan(
 	userId: string,
 	env: GroupsEnv
 ): Promise<boolean> {
+	// Global override: users with manage-all can modify any plan.
+	if (await hasSkillPlanPermission(env, userId, 'urn:skill-plans:manage-all')) {
+		return true
+	}
+
 	// Check if maintainer is the user
 	if (plan.maintainerId === userId) {
 		return true
@@ -49,7 +64,7 @@ export async function canDeletePlan(
 	userId: string,
 	env: GroupsEnv
 ): Promise<boolean> {
-	// Only maintainers can delete
+	// Maintainers and users with manage-all can delete.
 	return canModifyPlan(plan, userId, env)
 }
 

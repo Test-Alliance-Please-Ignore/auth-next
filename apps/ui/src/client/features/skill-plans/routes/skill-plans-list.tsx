@@ -14,6 +14,7 @@ import { Select } from '../../../components/ui/select'
 import { Section } from '../../../components/ui/section'
 import { useAuth } from '../../../hooks/useAuth'
 import { usePageTitle } from '../../../hooks/usePageTitle'
+import { useUserPermissions } from '../../../hooks/useUserPermissions'
 import { skillPlansApi } from '../api'
 import { CategorySectionHeader } from '../components/category-section-header'
 import { SkillPlanCard } from '../components/skill-plan-card'
@@ -37,6 +38,7 @@ export default function SkillPlansList() {
 	usePageTitle('Skill Plans')
 
 	const { user } = useAuth()
+	const { hasPermission } = useUserPermissions()
 	const [filters, setFilters] = useState<SkillPlansFilter>({
 		published: true, // Default to published plans
 		search: '',
@@ -209,7 +211,9 @@ export default function SkillPlansList() {
 					<h2 className="text-xl font-semibold">Available Plans</h2>
 					{user && (
 						<div className="flex gap-2">
-							{user.is_admin && (
+							{(user.is_admin ||
+								hasPermission('urn:skill-plans:categories:create') ||
+								hasPermission('urn:skill-plans:categories:manage')) && (
 								<Button variant="ghost" asChild>
 									<Link to="/skill-plans/categories/manage">
 										<Settings className="h-4 w-4" />
@@ -220,12 +224,14 @@ export default function SkillPlansList() {
 							<Button variant="ghost" asChild>
 								<Link to="/skill-plans/my">My Plans</Link>
 							</Button>
-							<Button asChild>
-								<Link to="/skill-plans/create">
-									<Plus className="h-4 w-4" />
-									Create Plan
-								</Link>
-							</Button>
+							{(user.is_admin || hasPermission('urn:skill-plans:create')) && (
+								<Button asChild>
+									<Link to="/skill-plans/create">
+										<Plus className="h-4 w-4" />
+										Create Plan
+									</Link>
+								</Button>
+							)}
 						</div>
 					)}
 				</div>

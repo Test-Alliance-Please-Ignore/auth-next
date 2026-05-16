@@ -26,6 +26,7 @@ import {
 } from '../../../components/ui/table'
 import { useAuth } from '../../../hooks/useAuth'
 import { usePageTitle } from '../../../hooks/usePageTitle'
+import { useUserPermissions } from '../../../hooks/useUserPermissions'
 import { CategoryForm } from '../components/category-form'
 import {
 	useCreateCategory,
@@ -40,6 +41,7 @@ export default function CategoriesManagement() {
 	usePageTitle('Manage Skill Plan Categories')
 
 	const { user, isAuthenticated, isLoading: authLoading } = useAuth()
+	const { hasPermission } = useUserPermissions()
 	const { data: categories, isLoading: categoriesLoading } = useSkillPlanCategories()
 	const createCategory = useCreateCategory()
 	const updateCategory = useUpdateCategory()
@@ -48,9 +50,9 @@ export default function CategoriesManagement() {
 	const [showCreateDialog, setShowCreateDialog] = useState(false)
 	const [editingCategory, setEditingCategory] = useState<SkillPlanCategory | null>(null)
 
-	// Check if user has permission to manage categories
-	// For now, we'll allow admins only - you can add more permission checks here
-	const canManageCategories = user?.is_admin
+	const canCreateCategories = user?.is_admin || hasPermission('urn:skill-plans:categories:create')
+	const canManageCategories = user?.is_admin || hasPermission('urn:skill-plans:categories:manage')
+	const canAccessPage = canCreateCategories || canManageCategories
 
 	// Redirect if not authenticated
 	if (!authLoading && !isAuthenticated) {
@@ -58,7 +60,7 @@ export default function CategoriesManagement() {
 	}
 
 	// Redirect if no permission
-	if (!authLoading && !canManageCategories) {
+	if (!authLoading && !canAccessPage) {
 		return <Navigate to="/skill-plans" replace />
 	}
 
@@ -122,10 +124,12 @@ export default function CategoriesManagement() {
 				{/* Actions bar */}
 				<div className="flex justify-between items-center mb-6">
 					<h2 className="text-xl font-semibold">Categories ({sortedCategories.length})</h2>
-					<Button onClick={() => setShowCreateDialog(true)}>
-						<Plus className="h-4 w-4" />
-						New Category
-					</Button>
+					{canCreateCategories ? (
+						<Button onClick={() => setShowCreateDialog(true)}>
+							<Plus className="h-4 w-4" />
+							New Category
+						</Button>
+					) : null}
 				</div>
 
 				{/* Categories table */}
@@ -155,23 +159,27 @@ export default function CategoriesManagement() {
 												{category.description}
 											</TableCell>
 											<TableCell>
-												<div className="flex gap-2">
-													<Button
-														variant="ghost"
-														size="sm"
-														onClick={() => setEditingCategory(category)}
-													>
-														<Edit2 className="h-4 w-4" />
-													</Button>
-													<Button
-														variant="ghost"
-														size="sm"
-														onClick={() => handleDeleteCategory(category.id)}
-														className="text-destructive hover:text-destructive"
-													>
-														<Trash2 className="h-4 w-4" />
-													</Button>
-												</div>
+												{canManageCategories ? (
+													<div className="flex gap-2">
+														<Button
+															variant="ghost"
+															size="sm"
+															onClick={() => setEditingCategory(category)}
+														>
+															<Edit2 className="h-4 w-4" />
+														</Button>
+														<Button
+															variant="ghost"
+															size="sm"
+															onClick={() => handleDeleteCategory(category.id)}
+															className="text-destructive hover:text-destructive"
+														>
+															<Trash2 className="h-4 w-4" />
+														</Button>
+													</div>
+												) : (
+													<span className="text-xs text-muted-foreground">View only</span>
+												)}
 											</TableCell>
 										</TableRow>
 									))}
@@ -181,10 +189,12 @@ export default function CategoriesManagement() {
 							<div className="text-center py-8 text-muted-foreground">
 								<Settings className="h-12 w-12 mx-auto mb-4 opacity-20" />
 								<p>No categories have been created yet.</p>
-								<Button className="mt-4" onClick={() => setShowCreateDialog(true)}>
-									<Plus className="h-4 w-4" />
-									Create First Category
-								</Button>
+								{canCreateCategories ? (
+									<Button className="mt-4" onClick={() => setShowCreateDialog(true)}>
+										<Plus className="h-4 w-4" />
+										Create First Category
+									</Button>
+								) : null}
 							</div>
 						)}
 					</CardContent>
@@ -192,7 +202,7 @@ export default function CategoriesManagement() {
 			</Section>
 
 			{/* Create category dialog */}
-			<Dialog open={showCreateDialog} onOpenChange={setShowCreateDialog}>
+			<Dialog open={canCreateCategories && showCreateDialog} onOpenChange={setShowCreateDialog}>
 				<DialogContent>
 					<DialogHeader>
 						<DialogTitle>Create New Category</DialogTitle>
@@ -208,7 +218,10 @@ export default function CategoriesManagement() {
 			</Dialog>
 
 			{/* Edit category dialog */}
-			<Dialog open={!!editingCategory} onOpenChange={(open) => !open && setEditingCategory(null)}>
+			<Dialog
+				open={canManageCategories && !!editingCategory}
+				onOpenChange={(open) => !open && setEditingCategory(null)}
+			>
 				<DialogContent>
 					<DialogHeader>
 						<DialogTitle>Edit Category</DialogTitle>

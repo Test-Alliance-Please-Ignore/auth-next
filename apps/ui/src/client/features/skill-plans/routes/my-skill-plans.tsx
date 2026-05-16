@@ -10,6 +10,7 @@ import { PageHeader } from '../../../components/ui/page-header'
 import { Section } from '../../../components/ui/section'
 import { useAuth } from '../../../hooks/useAuth'
 import { usePageTitle } from '../../../hooks/usePageTitle'
+import { useUserPermissions } from '../../../hooks/useUserPermissions'
 import { CategorySectionHeader } from '../components/category-section-header'
 import { SkillPlanCard } from '../components/skill-plan-card'
 import { useDeleteSkillPlan, useMySkillPlans } from '../hooks'
@@ -19,6 +20,7 @@ export default function MySkillPlans() {
 	usePageTitle('My Skill Plans')
 
 	const { user, isAuthenticated, isLoading: authLoading } = useAuth()
+	const { hasPermission } = useUserPermissions()
 	const { data: plansResponse, isLoading } = useMySkillPlans()
 	const deletePlan = useDeleteSkillPlan()
 
@@ -72,15 +74,27 @@ export default function MySkillPlans() {
 								</Link>
 							</Button>
 						)}
+						{!user?.is_admin &&
+						(hasPermission('urn:skill-plans:categories:create') ||
+							hasPermission('urn:skill-plans:categories:manage')) ? (
+							<Button variant="ghost" asChild>
+								<Link to="/skill-plans/categories/manage">
+									<Settings className="h-4 w-4" />
+									Manage Categories
+								</Link>
+							</Button>
+						) : null}
 						<Button variant="ghost" asChild>
 							<Link to="/skill-plans">Browse All Plans</Link>
 						</Button>
-						<Button asChild>
-							<Link to="/skill-plans/create">
-								<Plus className="h-4 w-4" />
-								Create New Plan
-							</Link>
-						</Button>
+						{(user?.is_admin || hasPermission('urn:skill-plans:create')) && (
+							<Button asChild>
+								<Link to="/skill-plans/create">
+									<Plus className="h-4 w-4" />
+									Create New Plan
+								</Link>
+							</Button>
+						)}
 					</div>
 				</div>
 
@@ -105,12 +119,14 @@ export default function MySkillPlans() {
 					<Card>
 						<CardContent className="py-12 text-center">
 							<p className="text-muted-foreground mb-4">You haven't created any skill plans yet.</p>
-							<Button asChild>
-								<Link to="/skill-plans/create">
-									<Plus className="h-4 w-4" />
-									Create Your First Plan
-								</Link>
-							</Button>
+							{(user?.is_admin || hasPermission('urn:skill-plans:create')) && (
+								<Button asChild>
+									<Link to="/skill-plans/create">
+										<Plus className="h-4 w-4" />
+										Create Your First Plan
+									</Link>
+								</Button>
+							)}
 						</CardContent>
 					</Card>
 				)}
