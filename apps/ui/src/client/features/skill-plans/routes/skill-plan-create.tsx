@@ -7,6 +7,7 @@ import { PageHeader } from '../../../components/ui/page-header'
 import { Section } from '../../../components/ui/section'
 import { useAuth } from '../../../hooks/useAuth'
 import { usePageTitle } from '../../../hooks/usePageTitle'
+import { useUserPermissions } from '../../../hooks/useUserPermissions'
 import { SkillPlanForm } from '../components/skill-plan-form'
 import { useCreateSkillPlan } from '../hooks'
 
@@ -17,10 +18,16 @@ export default function SkillPlanCreate() {
 
 	const navigate = useNavigate()
 	const { user, isAuthenticated, isLoading: authLoading } = useAuth()
+	const { hasPermission } = useUserPermissions()
 	const createPlan = useCreateSkillPlan()
+	const canCreatePlans = user?.is_admin || hasPermission('urn:skill-plans:create')
 
 	// Redirect if not authenticated
 	if (!authLoading && !isAuthenticated) {
+		return <Navigate to="/skill-plans" replace />
+	}
+
+	if (!authLoading && !canCreatePlans) {
 		return <Navigate to="/skill-plans" replace />
 	}
 

@@ -60,6 +60,13 @@ function formatTargetType(targetType: string): string {
 	}
 }
 
+function formatLegacyDate(value: string | null): string | null {
+	if (!value) return null
+	const date = new Date(value)
+	if (Number.isNaN(date.getTime())) return null
+	return date.toLocaleString()
+}
+
 function parseBlacklistAlerts(conflicts: Record<string, unknown>): {
 	hasAnyBlacklistSignal: boolean
 	modernUserBlacklisted: boolean
@@ -604,31 +611,39 @@ export default function AdminLegacyMigrationDetailPage() {
 					<CardTitle>Notes</CardTitle>
 				</CardHeader>
 				<CardContent className="space-y-2">
-					{candidates.notes.map((note) => (
-						<div key={note.legacyNoteId} className="flex items-start justify-between rounded border border-border/90 bg-card/80 p-2.5 gap-3">
-							<div className="min-w-0">
-								<div className="text-sm whitespace-pre-wrap">{note.note}</div>
-								<div className="text-xs text-muted-foreground font-mono mt-1">
-									{note.legacyCreatedByCharacterName
-										? `by ${note.legacyCreatedByCharacterName}`
-										: note.legacyCreatedByUserId
-											? `by legacy user ${note.legacyCreatedByUserId}`
-											: ''}
+					{candidates.notes.map((note) => {
+						const formattedLegacyDate = formatLegacyDate(note.legacyDateCreated)
+						return (
+							<div key={note.legacyNoteId} className="flex items-start justify-between rounded border border-border/90 bg-card/80 p-2.5 gap-3">
+								<div className="min-w-0">
+									<div className="text-sm whitespace-pre-wrap">{note.note}</div>
+									<div className="text-xs text-muted-foreground font-mono mt-1">
+										{note.legacyCreatedByCharacterName
+											? `by ${note.legacyCreatedByCharacterName}`
+											: note.legacyCreatedByUserId
+												? `by legacy user ${note.legacyCreatedByUserId}`
+												: ''}
+									</div>
+									{formattedLegacyDate ? (
+										<div className="text-xs text-muted-foreground font-mono">
+											{formattedLegacyDate}
+										</div>
+									) : null}
 								</div>
+								{note.alreadyImported ? (
+									<Badge variant="success">Already imported</Badge>
+								) : (
+									<label className="flex items-center gap-2 cursor-pointer rounded border border-border/80 bg-muted/30 px-2 py-1">
+										<Checkbox
+											checked={selectedNoteIds.has(note.legacyNoteId)}
+											onCheckedChange={() => toggleNote(note.legacyNoteId)}
+										/>
+										<span className="text-sm">Import</span>
+									</label>
+								)}
 							</div>
-							{note.alreadyImported ? (
-								<Badge variant="success">Already imported</Badge>
-							) : (
-								<label className="flex items-center gap-2 cursor-pointer rounded border border-border/80 bg-muted/30 px-2 py-1">
-									<Checkbox
-										checked={selectedNoteIds.has(note.legacyNoteId)}
-										onCheckedChange={() => toggleNote(note.legacyNoteId)}
-									/>
-									<span className="text-sm">Import</span>
-								</label>
-							)}
-						</div>
-					))}
+						)
+					})}
 				</CardContent>
 			</Card>
 

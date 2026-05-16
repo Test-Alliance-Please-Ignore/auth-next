@@ -9,7 +9,7 @@ import {
 	canModifyPlan,
 	canViewPlan,
 } from '../lib/skill-plan-auth'
-import { getCachedGroup, getCachedUserMemberships } from '../lib/groups-cache'
+import { getCachedGroup, getCachedUserMemberships, getCachedUserPermissions } from '../lib/groups-cache'
 import { requireAllianceMember } from '../middleware/session'
 
 import type { EveCharacterData } from '@repo/eve-character-data'
@@ -83,6 +83,18 @@ async function canAssignMaintainer(
 	return maintainerId === user.id
 }
 
+async function hasSkillPlanPermission(
+	env: { GROUPS: DurableObjectNamespace },
+	user: { id: string; is_admin?: boolean },
+	urn: string
+): Promise<boolean> {
+	if (user.is_admin) {
+		return true
+	}
+	const permissions = await getCachedUserPermissions(env, user.id)
+	return permissions.some((permission) => permission.urn === urn)
+}
+
 const skillPlansRoutes = new Hono<App>()
 	// All routes require alliance membership
 	.use('*', requireAllianceMember())
@@ -103,13 +115,12 @@ const skillPlansRoutes = new Hono<App>()
 	/**
 	 * POST /api/skill-plans/categories
 	 * Create a new skill plan category
-	 * Requires: Admin role
+	 * Requires: urn:skill-plans:categories:create (or site admin)
 	 */
 	.post('/categories', async (c) => {
 		const user = c.get('user')!
 
-		// Only admins can create categories
-		if (!user.is_admin) {
+		if (!(await hasSkillPlanPermission(c.env, user, 'urn:skill-plans:categories:create'))) {
 			return c.json({ error: 'Forbidden' }, 403)
 		}
 
@@ -144,14 +155,13 @@ const skillPlansRoutes = new Hono<App>()
 	/**
 	 * PATCH /api/skill-plans/categories/:categoryId
 	 * Update a skill plan category
-	 * Requires: Admin role
+	 * Requires: urn:skill-plans:categories:manage (or site admin)
 	 */
 	.patch('/categories/:categoryId', async (c) => {
 		const user = c.get('user')!
 		const categoryId = c.req.param('categoryId')
 
-		// Only admins can manage categories
-		if (!user.is_admin) {
+		if (!(await hasSkillPlanPermission(c.env, user, 'urn:skill-plans:categories:manage'))) {
 			return c.json({ error: 'Forbidden' }, 403)
 		}
 
@@ -182,14 +192,13 @@ const skillPlansRoutes = new Hono<App>()
 	/**
 	 * DELETE /api/skill-plans/categories/:categoryId
 	 * Delete a skill plan category
-	 * Requires: Admin role
+	 * Requires: urn:skill-plans:categories:manage (or site admin)
 	 */
 	.delete('/categories/:categoryId', async (c) => {
 		const user = c.get('user')!
 		const categoryId = c.req.param('categoryId')
 
-		// Only admins can manage categories
-		if (!user.is_admin) {
+		if (!(await hasSkillPlanPermission(c.env, user, 'urn:skill-plans:categories:manage'))) {
 			return c.json({ error: 'Forbidden' }, 403)
 		}
 
@@ -393,6 +402,11 @@ const skillPlansRoutes = new Hono<App>()
 
 		// Check if user can check this character's progress
 		let allowed = await canCheckCharacterProgress(characterId, user.id, db)
+
+		// Additional allow path: explicit permission to check any character progress.
+		if (!allowed) {
+			allowed = await hasSkillPlanPermission(c.env, user, 'urn:skill-plans:progress:check-any')
+		}
 
 		// Fallback: allow HR reviewers to check any character's progress
 		if (!allowed) {
@@ -643,10 +657,13 @@ const skillPlansRoutes = new Hono<App>()
 	/**
 	 * POST /api/skill-plans
 	 * Create a new skill plan
-	 * Any alliance member can create skill plans
+	 * Requires: urn:skill-plans:create (or site admin)
 	 */
 	.post('/', async (c) => {
 		const user = c.get('user')!
+		if (!(await hasSkillPlanPermission(c.env, user, 'urn:skill-plans:create'))) {
+			return c.json({ error: 'Forbidden' }, 403)
+		}
 
 		// Parse input
 		const data = await c.req.json<CreateSkillPlanInput>()
@@ -1205,6 +1222,11 @@ const skillPlansRoutes = new Hono<App>()
 		// Check if user can check this character's progress
 		let allowed = await canCheckCharacterProgress(characterId, user.id, db)
 
+		// Additional allow path: explicit permission to check any character progress.
+		if (!allowed) {
+			allowed = await hasSkillPlanPermission(c.env, user, 'urn:skill-plans:progress:check-any')
+		}
+
 		// Fallback: allow HR reviewers to check any character's progress
 		if (!allowed) {
 			const hrStub = getStub<Hr>(c.env.HR, 'default')
@@ -1318,6 +1340,11 @@ const skillPlansRoutes = new Hono<App>()
 
 		// Check if user can check this character's progress
 		let allowed = await canCheckCharacterProgress(characterId, user.id, db)
+
+		// Additional allow path: explicit permission to check any character progress.
+		if (!allowed) {
+			allowed = await hasSkillPlanPermission(c.env, user, 'urn:skill-plans:progress:check-any')
+		}
 
 		// Fallback: allow HR reviewers to check any character's progress
 		if (!allowed) {
