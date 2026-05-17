@@ -360,11 +360,21 @@ export interface Groups {
 	 * Admin Operations
 	 */
 
-	/** Add a group admin (owner only) */
-	addAdmin(groupId: string, actorId: string, targetUserId: string): Promise<void>
+	/** Add a group admin (owner or site admin) */
+	addAdmin(
+		groupId: string,
+		actorId: string,
+		targetUserId: string,
+		isGlobalAdmin?: boolean
+	): Promise<void>
 
-	/** Remove a group admin (owner only) */
-	removeAdmin(groupId: string, actorId: string, targetUserId: string): Promise<void>
+	/** Remove a group admin (owner or site admin) */
+	removeAdmin(
+		groupId: string,
+		actorId: string,
+		targetUserId: string,
+		isGlobalAdmin?: boolean
+	): Promise<void>
 
 	/** Check if user is a group admin */
 	isGroupAdmin(groupId: string, userId: string): Promise<boolean>
