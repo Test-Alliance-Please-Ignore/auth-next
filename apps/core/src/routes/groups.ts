@@ -6,7 +6,7 @@ import { and } from '@repo/db-utils'
 import { getStub } from '@repo/do-utils'
 
 import { createDb } from '../db'
-import { clearUserCache, getCachedGroup, getCachedUserMemberships } from '../lib/groups-cache'
+import { clearUserCache, getCachedUserMemberships } from '../lib/groups-cache'
 import { triggerDiscordRefreshWorkflow } from '../lib/workflow-triggers'
 import { requireAdmin, requireAuth } from '../middleware/session'
 
@@ -1133,7 +1133,7 @@ groups.get('/:id', requireAuth({ any: [ROLE_CORE_ALLIANCE_MEMBER] }), async (c) 
 	const groupsDO = getStub<Groups>(c.env.GROUPS, 'default')
 
 	try {
-		const group = await getCachedGroup(c.env, groupId, user.id)
+		const group = await groupsDO.getGroup(groupId, user.id)
 
 		if (!group) {
 			return c.json({ error: 'Group not found' }, 404)
@@ -1308,7 +1308,7 @@ groups.post(
 		}
 
 		try {
-			await groupsDO.addAdmin(groupId, user.id, body.userId)
+			await groupsDO.addAdmin(groupId, user.id, body.userId, user.is_admin)
 			return c.json({ success: true }, 200)
 		} catch (error) {
 			if (error instanceof Error) {
@@ -1338,7 +1338,7 @@ groups.delete(
 		const groupsDO = getStub<Groups>(c.env.GROUPS, 'default')
 
 		try {
-			await groupsDO.removeAdmin(groupId, user.id, targetUserId)
+			await groupsDO.removeAdmin(groupId, user.id, targetUserId, user.is_admin)
 			return c.json({ success: true }, 200)
 		} catch (error) {
 			if (error instanceof Error) {
