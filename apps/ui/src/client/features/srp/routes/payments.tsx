@@ -11,7 +11,7 @@ import { PageHeader } from '@/components/ui/page-header'
 import { usePageTitle } from '@/hooks/usePageTitle'
 import { useUserPermissions } from '@/hooks/useUserPermissions'
 
-import { useMarkPaid, usePendingPayoutTotal, useRequestsByStatus } from '../hooks'
+import { useMarkPaid, usePendingPayments, usePendingPayoutTotal } from '../hooks'
 import { formatISK, formatISKShort, formatRelativeTime } from '../utils'
 
 import type { SRPRequestResponse } from '../types'
@@ -48,7 +48,10 @@ export default function PaymentsQueue() {
 }
 
 function PaymentStack() {
-	const { data, isLoading, isFetching, error, refetch } = useRequestsByStatus('approved', { limit: 100 })
+	const { data, isLoading, isFetching, error, refetch } = usePendingPayments(
+		{ limit: 100 },
+		{ refetchOnWindowFocus: false, refetchOnReconnect: false }
+	)
 	const { data: payoutTotalData } = usePendingPayoutTotal()
 	const [dismissed, setDismissed] = useState<Set<string>>(new Set())
 	const [ghosts, setGhosts] = useState<Map<string, GhostExitCard>>(new Map())
@@ -214,9 +217,16 @@ function PaymentStack() {
 	return (
 		<div ref={containerRef} className="relative mt-4 space-y-3">
 			<Card className="p-4">
-				<div className="text-sm text-muted-foreground">Pending Payout Total</div>
-				<div className="mt-1 font-mono text-2xl font-semibold tabular-nums text-success">
-					{formatISKShort(pendingPayoutTotal)}
+				<div className="flex items-start justify-between gap-3">
+					<div>
+						<div className="text-sm text-muted-foreground">Pending Payout Total</div>
+						<div className="mt-1 font-mono text-2xl font-semibold tabular-nums text-success">
+							{formatISKShort(pendingPayoutTotal)}
+						</div>
+					</div>
+					<Button variant="secondary" size="sm" onClick={() => void refetch()}>
+						Refresh Queue
+					</Button>
 				</div>
 			</Card>
 			{[...ghosts.values()].map((ghost) => (

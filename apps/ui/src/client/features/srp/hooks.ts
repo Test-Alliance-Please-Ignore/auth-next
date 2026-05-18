@@ -249,12 +249,20 @@ export function useRequestsByStatus(
 }
 
 export function usePendingPayments(
-	params: { corporationId?: string; limit?: number; offset?: number } = {}
+	params: { corporationId?: string; limit?: number; offset?: number } = {},
+	options?: {
+		enabled?: boolean
+		refetchOnWindowFocus?: boolean
+		refetchOnReconnect?: boolean
+	}
 ) {
 	return useQuery({
 		queryKey: srpKeys.pendingPayments(params),
 		queryFn: () => api.getPendingPayments(params),
 		staleTime: 1000 * 30,
+		enabled: options?.enabled ?? true,
+		refetchOnWindowFocus: options?.refetchOnWindowFocus,
+		refetchOnReconnect: options?.refetchOnReconnect,
 	})
 }
 
@@ -694,8 +702,6 @@ export function useMarkPaid() {
 			})
 			upsertRequestAcrossReviewQueueSnapshots(request)
 			setRequestStatusAcrossCaches(queryClient, request)
-			void queryClient.invalidateQueries({ queryKey: srpKeys.payments() })
-			void queryClient.invalidateQueries({ queryKey: srpKeys.allRequests() })
 			refreshQueueBadgesSoft(queryClient, ['approved', 'pending', 'paid'])
 			void queryClient.invalidateQueries({ queryKey: srpKeys.pendingPayoutTotal() })
 		},

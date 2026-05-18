@@ -36,13 +36,15 @@ export interface BlacklistMatch {
 	source: 'wallet-journal' | 'wallet-transactions' | 'contracts' | 'contacts' | 'mails' | 'ship-names'
 	/** Human-readable detail about the specific record */
 	detail: string
+	/** Source event timestamp when available (ISO 8601) */
+	occurredAt?: string
 }
 
 /** Grouped matches: one blacklisted character with all their touchpoints */
 export interface BlacklistAssociationGroup {
 	characterId: string
 	characterName?: string
-	matches: Array<{ source: BlacklistMatch['source']; detail: string }>
+	matches: Array<{ source: BlacklistMatch['source']; detail: string; occurredAt?: string }>
 }
 
 /**
@@ -79,17 +81,6 @@ export function checkBlacklistAssociation(
 		return Number.isFinite(parsed) ? parsed : 0
 	}
 
-	/** Format an ISO/ESI timestamp to a short human-readable string */
-	const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec']
-	const fmtDate = (raw: string | undefined | null): string => {
-		if (!raw) return 'unknown date'
-		const d = new Date(raw)
-		if (Number.isNaN(d.getTime())) return raw
-		const hh = String(d.getUTCHours()).padStart(2, '0')
-		const mm = String(d.getUTCMinutes()).padStart(2, '0')
-		return `${MONTHS[d.getUTCMonth()]} ${d.getUTCDate()}, ${d.getUTCFullYear()} ${hh}:${mm}`
-	}
-
 	// Helper: check if an ID is blacklisted (and not the report subject)
 	const isBlacklisted = (id: string | undefined | null): id is string => {
 		if (!id) return false
@@ -119,14 +110,16 @@ export function checkBlacklistAssociation(
 					characterId: entry.first_party_id,
 					characterName: entry.firstPartyName,
 					source: 'wallet-journal',
-					detail: `${entry.refTypeLabel} on ${fmtDate(entry.date)} for ${entry.amountFormatted}`,
+					detail: `${entry.refTypeLabel} for ${entry.amountFormatted}`,
+					occurredAt: entry.date,
 				})
 			} else if (isBlacklistedByName(false, entry.firstPartyName)) {
 				matches.push({
 					characterId: entry.first_party_id ?? `name:${entry.firstPartyName}`,
 					characterName: entry.firstPartyName,
 					source: 'wallet-journal',
-					detail: `${entry.refTypeLabel} on ${fmtDate(entry.date)} for ${entry.amountFormatted}`,
+					detail: `${entry.refTypeLabel} for ${entry.amountFormatted}`,
+					occurredAt: entry.date,
 				})
 			}
 			if (isBlacklisted(entry.second_party_id)) {
@@ -134,14 +127,16 @@ export function checkBlacklistAssociation(
 					characterId: entry.second_party_id,
 					characterName: entry.secondPartyName,
 					source: 'wallet-journal',
-					detail: `${entry.refTypeLabel} on ${fmtDate(entry.date)} for ${entry.amountFormatted}`,
+					detail: `${entry.refTypeLabel} for ${entry.amountFormatted}`,
+					occurredAt: entry.date,
 				})
 			} else if (isBlacklistedByName(false, entry.secondPartyName)) {
 				matches.push({
 					characterId: entry.second_party_id ?? `name:${entry.secondPartyName}`,
 					characterName: entry.secondPartyName,
 					source: 'wallet-journal',
-					detail: `${entry.refTypeLabel} on ${fmtDate(entry.date)} for ${entry.amountFormatted}`,
+					detail: `${entry.refTypeLabel} for ${entry.amountFormatted}`,
+					occurredAt: entry.date,
 				})
 			}
 		}
@@ -160,14 +155,16 @@ export function checkBlacklistAssociation(
 					characterId: tx.client_id,
 					characterName: tx.clientName,
 					source: 'wallet-transactions',
-					detail: `${tx.is_buy ? 'Bought' : 'Sold'} ${tx.quantity}x ${tx.typeName ?? tx.type_id} on ${fmtDate(tx.date)} for ${tx.totalValue} ISK`,
+					detail: `${tx.is_buy ? 'Bought' : 'Sold'} ${tx.quantity}x ${tx.typeName ?? tx.type_id} for ${tx.totalValue} ISK`,
+					occurredAt: tx.date,
 				})
 			} else if (isBlacklistedByName(false, tx.clientName)) {
 				matches.push({
 					characterId: tx.client_id ?? `name:${tx.clientName}`,
 					characterName: tx.clientName,
 					source: 'wallet-transactions',
-					detail: `${tx.is_buy ? 'Bought' : 'Sold'} ${tx.quantity}x ${tx.typeName ?? tx.type_id} on ${fmtDate(tx.date)} for ${tx.totalValue} ISK`,
+					detail: `${tx.is_buy ? 'Bought' : 'Sold'} ${tx.quantity}x ${tx.typeName ?? tx.type_id} for ${tx.totalValue} ISK`,
+					occurredAt: tx.date,
 				})
 			}
 		}
@@ -181,14 +178,16 @@ export function checkBlacklistAssociation(
 					characterId: contract.issuer_id,
 					characterName: contract.issuerName,
 					source: 'contracts',
-					detail: `Issuer of ${contract.type} contract (${contract.status}) issued ${fmtDate(contract.date_issued)}`,
+					detail: `Issuer of ${contract.type} contract (${contract.status})`,
+					occurredAt: contract.date_issued,
 				})
 			} else if (isBlacklistedByName(false, contract.issuerName)) {
 				matches.push({
 					characterId: contract.issuer_id ?? `name:${contract.issuerName}`,
 					characterName: contract.issuerName,
 					source: 'contracts',
-					detail: `Issuer of ${contract.type} contract (${contract.status}) issued ${fmtDate(contract.date_issued)}`,
+					detail: `Issuer of ${contract.type} contract (${contract.status})`,
+					occurredAt: contract.date_issued,
 				})
 			}
 			if (isBlacklisted(contract.acceptor_id)) {
@@ -196,14 +195,16 @@ export function checkBlacklistAssociation(
 					characterId: contract.acceptor_id,
 					characterName: contract.acceptorName,
 					source: 'contracts',
-					detail: `Acceptor of ${contract.type} contract (${contract.status}) issued ${fmtDate(contract.date_issued)}`,
+					detail: `Acceptor of ${contract.type} contract (${contract.status})`,
+					occurredAt: contract.date_issued,
 				})
 			} else if (isBlacklistedByName(false, contract.acceptorName)) {
 				matches.push({
 					characterId: contract.acceptor_id ?? `name:${contract.acceptorName}`,
 					characterName: contract.acceptorName,
 					source: 'contracts',
-					detail: `Acceptor of ${contract.type} contract (${contract.status}) issued ${fmtDate(contract.date_issued)}`,
+					detail: `Acceptor of ${contract.type} contract (${contract.status})`,
+					occurredAt: contract.date_issued,
 				})
 			}
 			if (isBlacklisted(contract.assignee_id) && contract.assignee_id !== contract.issuer_id) {
@@ -211,7 +212,8 @@ export function checkBlacklistAssociation(
 					characterId: contract.assignee_id,
 					characterName: contract.assigneeName,
 					source: 'contracts',
-					detail: `Assignee of ${contract.type} contract (${contract.status}) issued ${fmtDate(contract.date_issued)}`,
+					detail: `Assignee of ${contract.type} contract (${contract.status})`,
+					occurredAt: contract.date_issued,
 				})
 			} else if (
 				contract.assignee_id !== contract.issuer_id &&
@@ -221,7 +223,8 @@ export function checkBlacklistAssociation(
 					characterId: contract.assignee_id ?? `name:${contract.assigneeName}`,
 					characterName: contract.assigneeName,
 					source: 'contracts',
-					detail: `Assignee of ${contract.type} contract (${contract.status}) issued ${fmtDate(contract.date_issued)}`,
+					detail: `Assignee of ${contract.type} contract (${contract.status})`,
+					occurredAt: contract.date_issued,
 				})
 			}
 		}
@@ -259,14 +262,16 @@ export function checkBlacklistAssociation(
 					characterId: mail.from!,
 					characterName: mail.fromName,
 					source: 'mails',
-					detail: `Sent mail "${mail.subject ?? '(no subject)'}" on ${fmtDate(mail.timestamp)}`,
+					detail: `Sent mail "${mail.subject ?? '(no subject)'}"`,
+					occurredAt: mail.timestamp,
 				})
 			} else if (isBlacklistedByName(false, mail.fromName)) {
 				matches.push({
 					characterId: mail.from ?? `name:${mail.fromName}`,
 					characterName: mail.fromName,
 					source: 'mails',
-					detail: `Sent mail "${mail.subject ?? '(no subject)'}" on ${fmtDate(mail.timestamp)}`,
+					detail: `Sent mail "${mail.subject ?? '(no subject)'}"`,
+					occurredAt: mail.timestamp,
 				})
 			}
 			if (mail.recipients) {
@@ -276,7 +281,8 @@ export function checkBlacklistAssociation(
 							characterId: recipient.recipient_id,
 							characterName: recipient.recipientName,
 							source: 'mails',
-							detail: `Received mail "${mail.subject ?? '(no subject)'}" on ${fmtDate(mail.timestamp)}`,
+							detail: `Received mail "${mail.subject ?? '(no subject)'}"`,
+							occurredAt: mail.timestamp,
 						})
 					} else if (
 						recipient.recipient_type === 'character' &&
@@ -286,7 +292,8 @@ export function checkBlacklistAssociation(
 							characterId: recipient.recipient_id ?? `name:${recipient.recipientName}`,
 							characterName: recipient.recipientName,
 							source: 'mails',
-							detail: `Received mail "${mail.subject ?? '(no subject)'}" on ${fmtDate(mail.timestamp)}`,
+							detail: `Received mail "${mail.subject ?? '(no subject)'}"`,
+							occurredAt: mail.timestamp,
 						})
 					}
 				}
@@ -319,12 +326,12 @@ export function checkBlacklistAssociation(
 			if (!existing.characterName && match.characterName) {
 				existing.characterName = match.characterName
 			}
-			existing.matches.push({ source: match.source, detail: match.detail })
+			existing.matches.push({ source: match.source, detail: match.detail, occurredAt: match.occurredAt })
 		} else {
 			grouped.set(match.characterId, {
 				characterId: match.characterId,
 				characterName: match.characterName,
-				matches: [{ source: match.source, detail: match.detail }],
+				matches: [{ source: match.source, detail: match.detail, occurredAt: match.occurredAt }],
 			})
 		}
 	}

@@ -455,7 +455,7 @@ function BlacklistAssociationDetails({ details }: { details: Record<string, unkn
     const associations = details.associations as Array<{
         characterId: string
         characterName?: string
-        matches: Array<{ source: string; detail: string }>
+        matches: Array<{ source: string; detail: string; occurredAt?: string }>
     }> | undefined
 
     if (!associations || associations.length === 0) return null
@@ -468,17 +468,6 @@ function BlacklistAssociationDetails({ details }: { details: Record<string, unkn
         'mails': 'Mails',
         'ship-names': 'Ship Names',
     }
-
-    const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec']
-    /** Replace ISO 8601 timestamps in a string with "Mon DD, YYYY HH:MM" */
-    const humanizeDates = (text: string): string =>
-        text.replace(/\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}Z/g, (iso) => {
-            const d = new Date(iso)
-            if (Number.isNaN(d.getTime())) return iso
-            const hh = String(d.getUTCHours()).padStart(2, '0')
-            const mm = String(d.getUTCMinutes()).padStart(2, '0')
-            return `${MONTHS[d.getUTCMonth()]} ${d.getUTCDate()}, ${d.getUTCFullYear()} ${hh}:${mm}`
-        })
 
     return (
         <div className="space-y-3 text-sm">
@@ -501,7 +490,13 @@ function BlacklistAssociationDetails({ details }: { details: Record<string, unkn
                         {assoc.matches.map((match, i) => (
                             <li key={i}>
                                 <span className="text-xs font-medium">{SOURCE_LABELS[match.source] ?? match.source}</span>
-                                <span className="text-xs text-muted-foreground"> — {humanizeDates(match.detail)}</span>
+                                <span className="text-xs text-muted-foreground"> — {match.detail}</span>
+                                {match.occurredAt ? (
+                                    <span className="ml-1 inline-flex items-center gap-1 text-xs text-muted-foreground">
+                                        <span>·</span>
+                                        <EveTimeDisplay dateStr={match.occurredAt} format="compact" />
+                                    </span>
+                                ) : null}
                             </li>
                         ))}
                     </ul>
