@@ -1,4 +1,4 @@
-import { AlertCircle, CheckCircle2, ClipboardCopy, Filter, XCircle } from 'lucide-react'
+import { AlertCircle, CheckCircle2, ClipboardCopy, Filter, ShoppingCart, XCircle } from 'lucide-react'
 import { useMemo, useState } from 'react'
 
 import { Badge } from '../../../components/ui/badge'
@@ -46,6 +46,22 @@ function buildMissingSkillText(
 		}
 	}
 	return lines.join('\n')
+}
+
+async function copyMissingSkillbooks(
+	skills: CharacterSkillProgress[],
+	characterSkillLevels: Record<string, number>
+) {
+	const missing = skills.filter((s) => !(s.skillId in characterSkillLevels))
+	if (missing.length === 0) return
+	const text = missing.map((s) => s.skillName).join('\n')
+	const { success, error } = await import('../../../lib/toast')
+	try {
+		await navigator.clipboard.writeText(text)
+		success(`Copied ${missing.length} missing skillbook${missing.length === 1 ? '' : 's'} to clipboard`)
+	} catch {
+		error('Failed to copy to clipboard')
+	}
 }
 
 async function copyMissingSkills(
@@ -185,8 +201,9 @@ export function ProgressChecker({ planId, planName, initialCharacterId }: Progre
 									</p>
 								</div>
 
-							{/* Status badge */}
-							<div className="flex items-center gap-2 pt-2">
+							{/* Status badge + skillbooks */}
+							<div className="flex items-center justify-between pt-2">
+							<div className="flex items-center gap-2">
 								{(progress.percentageRequired || 0) === 100 ? (
 									<Badge variant="default" className="flex items-center gap-1">
 										<CheckCircle2 className="h-3 w-3" />
@@ -203,6 +220,29 @@ export function ProgressChecker({ planId, planName, initialCharacterId }: Progre
 										Training needed
 									</Badge>
 								)}
+							</div>
+							{(() => {
+								const missingCount = (progress.skills || []).filter(
+									(s) => !(s.skillId in (selectedCharacterSkills?.levels ?? {}))
+								).length
+								return missingCount > 0 ? (
+									<Button
+										variant="ghost"
+										size="sm"
+										className="h-7 px-2 text-xs gap-1"
+										onClick={() =>
+											copyMissingSkillbooks(
+												progress.skills || [],
+												selectedCharacterSkills?.levels ?? {}
+											)
+										}
+										title="Copy missing skillbooks for EVE multi-buy"
+									>
+										<ShoppingCart className="h-3 w-3" />
+										Copy Missing Skillbooks ({missingCount})
+									</Button>
+								) : null
+							})()}
 							</div>
 						</CardContent>
 					</Card>
