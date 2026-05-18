@@ -1,4 +1,4 @@
-import { and, desc, eq, ilike, inArray, or } from '@repo/db-utils'
+import { and, desc, eq, ilike, inArray, or, sql } from '@repo/db-utils'
 
 import { blacklistEntries } from '../db/schema'
 
@@ -620,7 +620,7 @@ export class BlacklistService {
 				or(
 					ilike(blacklistEntries.targetValue, search),
 					ilike(blacklistEntries.reason, search),
-					ilike(blacklistEntries.targetType, search),
+					sql`${blacklistEntries.targetType}::text ilike ${search}`,
 				)
 			)
 		}
