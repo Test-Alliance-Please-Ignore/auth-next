@@ -1,6 +1,6 @@
 import { DurableObject } from 'cloudflare:workers'
 
-import { and, desc, eq, gte, ilike, inArray, lte, sql } from '@repo/db-utils'
+import { and, asc, desc, eq, gte, ilike, inArray, lte, sql } from '@repo/db-utils'
 import { getStub } from '@repo/do-utils'
 import { createEveRegionId, createEveTypeId } from '@repo/eve-types'
 import { generateKillmailUrl, roundToMillion } from '@repo/srp'
@@ -852,7 +852,7 @@ export class SrpDO extends DurableObject<Env> implements Srp {
 				corporationId ? eq(srpRequests.corporationId, corporationId) : undefined,
 				eq(srpRequests.requestStatus, 'approved')
 			),
-			orderBy: srpRequests.reviewedAt,
+			orderBy: [asc(srpRequests.createdAt)],
 			limit,
 			offset,
 		})
