@@ -351,6 +351,7 @@ export interface BlacklistFilters {
 	targetType?: BlacklistTargetType
 	isAutoBlacklist?: boolean
 	targetValue?: string
+	search?: string
 	limit?: number
 	offset?: number
 }

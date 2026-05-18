@@ -1541,6 +1541,7 @@ app.post('/blacklist/character', requireAuth(), requireAdmin(), async (c) => {
  * Query params:
  * - targetType?: blacklist target type - Filter by target type
  * - isAutoBlacklist?: boolean - Filter by auto-blacklist status
+ * - search?: string - Search across target value, reason, and target type
  * - limit?: number - Results per page (default 50)
  * - offset?: number - Pagination offset (default 0)
  */
@@ -1575,12 +1576,14 @@ app.get('/blacklist', requireAuth(), requireAdmin(), async (c) => {
 		const isAutoBlacklistParam = c.req.query('isAutoBlacklist')
 		const isAutoBlacklist =
 			isAutoBlacklistParam === 'true' ? true : isAutoBlacklistParam === 'false' ? false : undefined
+		const search = c.req.query('search')?.trim() || undefined
 
 		// Call HR DO via RPC
 		const hrStub = getStub<Hr>(c.env.HR, 'default')
 		const result = await hrStub.getAllBlacklists({
 			targetType,
 			isAutoBlacklist,
+			search,
 			limit: pagination.data.limit,
 			offset: pagination.data.offset,
 		})

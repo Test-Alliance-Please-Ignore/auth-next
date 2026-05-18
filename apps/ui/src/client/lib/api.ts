@@ -1181,6 +1181,7 @@ export interface CreateCharacterBlacklistRequest {
 export interface BlacklistFilters {
 	targetType?: BlacklistTargetType
 	isAutoBlacklist?: boolean
+	search?: string
 	page?: number
 	pageSize?: number
 }
@@ -2776,6 +2777,7 @@ export class ApiClient {
 		if (filters?.targetType) params.set('targetType', filters.targetType)
 		if (filters?.isAutoBlacklist !== undefined)
 			params.set('isAutoBlacklist', String(filters.isAutoBlacklist))
+		if (filters?.search?.trim()) params.set('search', filters.search.trim())
 		if (filters?.page !== undefined)
 			params.set('offset', String((filters.page - 1) * (filters.pageSize || 50)))
 		if (filters?.pageSize !== undefined) params.set('limit', String(filters.pageSize))
