@@ -10,6 +10,7 @@ import { useCallback, useMemo, useState } from 'react'
 import type { ReactNode } from 'react'
 
 import { Badge } from '@/components/ui/badge'
+import { formatMonthDay, formatTime } from '@/lib/date-utils'
 import { cn } from '@/lib/utils'
 
 import { fulcrumApi } from '../../api'
@@ -155,9 +156,9 @@ function formatShortDate(timestamp?: string): string {
 	const now = new Date()
 	const isToday = d.toDateString() === now.toDateString()
 	if (isToday) {
-		return d.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', hour12: false })
+		return formatTime(d)
 	}
-	return d.toLocaleDateString('en-US', { month: 'short', day: 'numeric' })
+	return formatMonthDay(d)
 }
 
 function recipientSummary(recipients?: MailRecipient[]): string {

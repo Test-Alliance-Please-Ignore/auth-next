@@ -5,6 +5,7 @@
 import { MantineReactTable } from 'mantine-react-table'
 
 import { Badge } from '@/components/ui/badge'
+import { EveTimeDisplay } from '@/components/ui/eve-time-display'
 
 import { useFulcrumTable } from './use-fulcrum-table'
 
@@ -39,10 +40,10 @@ function formatIsk(value: string | number): string {
 const columns: MRT_ColumnDef<ProcessedWalletTransaction>[] = [
 	{
 		accessorKey: 'date',
-		header: 'Date',
+		header: 'Date/Time',
 		filterVariant: 'date-range',
 		accessorFn: (row) => new Date(row.date),
-		Cell: ({ row }) => new Date(row.original.date).toLocaleDateString(),
+		Cell: ({ row }) => <EveTimeDisplay dateStr={row.original.date} format="compact" />,
 	},
 	{
 		accessorKey: 'is_buy',

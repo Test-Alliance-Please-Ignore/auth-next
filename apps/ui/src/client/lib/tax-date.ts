@@ -1,15 +1,13 @@
+import { formatDate, formatDateTime } from './date-utils'
+
 export function formatTaxDateTime(value: string | Date | null | undefined): string {
-	if (!value) {
-		return '-'
-	}
-	return new Date(value).toLocaleString()
+	const formatted = formatDateTime(value)
+	return formatted === 'N/A' ? '-' : formatted
 }
 
 export function formatTaxDate(value: string | Date | null | undefined): string {
-	if (!value) {
-		return '-'
-	}
-	return new Date(value).toLocaleDateString()
+	const formatted = formatDate(value)
+	return formatted === 'N/A' ? '-' : formatted
 }
 
 function toDateInputValue(date: Date): string {

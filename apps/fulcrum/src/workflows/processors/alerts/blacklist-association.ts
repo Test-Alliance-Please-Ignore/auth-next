@@ -23,6 +23,9 @@ import type { ProcessedContact } from '../helpers/contacts'
 import type { ProcessedMail } from '../helpers/mails'
 import type { ReportAlert } from './types'
 
+const JITA_MARKET_BLACKLIST_MIN_ISK = 100_000_000
+const JITA_4_4_STATION_ID = '60003760'
+
 /** Where a blacklisted character was found */
 export interface BlacklistMatch {
 	/** The blacklisted character ID */
@@ -69,6 +72,12 @@ export function checkBlacklistAssociation(
 	if (blacklistedIds.size === 0 && blacklistedNames.size === 0) return null
 
 	const matches: BlacklistMatch[] = []
+	const parseIskNumber = (value: string | number | undefined): number => {
+		if (typeof value === 'number') return Number.isFinite(value) ? value : 0
+		if (!value) return 0
+		const parsed = Number.parseFloat(String(value).replace(/,/g, ''))
+		return Number.isFinite(parsed) ? parsed : 0
+	}
 
 	/** Format an ISO/ESI timestamp to a short human-readable string */
 	const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec']
@@ -141,19 +150,24 @@ export function checkBlacklistAssociation(
 	// Scan wallet transactions
 	if (walletTransactions) {
 		for (const tx of walletTransactions) {
+			const txValue = parseIskNumber(tx.totalValue)
+			const shouldSuppressJitaNoise =
+				tx.location_id === JITA_4_4_STATION_ID && txValue < JITA_MARKET_BLACKLIST_MIN_ISK
+			if (shouldSuppressJitaNoise) continue
+
 			if (isBlacklisted(tx.client_id)) {
 				matches.push({
 					characterId: tx.client_id,
 					characterName: tx.clientName,
 					source: 'wallet-transactions',
-					detail: `${tx.is_buy ? 'Bought' : 'Sold'} ${tx.quantity}x ${tx.typeName ?? tx.type_id} on ${fmtDate(tx.date)}`,
+					detail: `${tx.is_buy ? 'Bought' : 'Sold'} ${tx.quantity}x ${tx.typeName ?? tx.type_id} on ${fmtDate(tx.date)} for ${tx.totalValue} ISK`,
 				})
 			} else if (isBlacklistedByName(false, tx.clientName)) {
 				matches.push({
 					characterId: tx.client_id ?? `name:${tx.clientName}`,
 					characterName: tx.clientName,
 					source: 'wallet-transactions',
-					detail: `${tx.is_buy ? 'Bought' : 'Sold'} ${tx.quantity}x ${tx.typeName ?? tx.type_id} on ${fmtDate(tx.date)}`,
+					detail: `${tx.is_buy ? 'Bought' : 'Sold'} ${tx.quantity}x ${tx.typeName ?? tx.type_id} on ${fmtDate(tx.date)} for ${tx.totalValue} ISK`,
 				})
 			}
 		}

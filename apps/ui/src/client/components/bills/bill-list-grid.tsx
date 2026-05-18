@@ -7,6 +7,7 @@ import { ISKAmount } from '@/components/bills/isk-amount'
 import { Badge } from '@/components/ui/badge'
 import { TaxReportDataGrid } from '@/components/tax-report-data-grid'
 import { formatDueDate } from '@/lib/bills-utils'
+import { formatDateTime } from '@/lib/date-utils'
 
 import type {
 	MRT_ColumnDef,
@@ -16,18 +17,6 @@ import type {
 } from 'mantine-react-table'
 import type { ReactNode } from 'react'
 import type { BillWithDetails } from '@repo/bills'
-
-function formatDateTime(value: Date | string): string {
-	const date = typeof value === 'string' ? new Date(value) : value
-	if (Number.isNaN(date.getTime())) return '-'
-	return date.toLocaleString('en-US', {
-		year: 'numeric',
-		month: 'short',
-		day: 'numeric',
-		hour: '2-digit',
-		minute: '2-digit',
-	})
-}
 
 export function BillListGrid(props: {
 	rows: BillWithDetails[]
