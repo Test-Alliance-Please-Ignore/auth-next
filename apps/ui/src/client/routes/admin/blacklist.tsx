@@ -1,6 +1,6 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { AlertTriangle, Plus, Search, ShieldBan, Trash2, X } from 'lucide-react'
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { Link } from 'react-router-dom'
 
 import { Badge } from '@/components/ui/badge'
@@ -29,7 +29,6 @@ import {
 	TableRow,
 } from '@/components/ui/table'
 import { Textarea } from '@/components/ui/textarea'
-import { useDebounce } from '@/hooks/useDebounce'
 import { usePageTitle } from '@/hooks/usePageTitle'
 import { api } from '@/lib/api'
 import { formatDateTime, formatRelativeTime } from '@/lib/date-utils'
@@ -56,6 +55,7 @@ export default function BlacklistPage() {
 	const [page, setPage] = useState(1)
 	const [pageSize, setPageSize] = useState(50)
 	const [searchQuery, setSearchQuery] = useState('')
+	const [appliedSearch, setAppliedSearch] = useState('')
 	const [targetTypeFilter, setTargetTypeFilter] = useState<BlacklistTargetType | 'all'>('all')
 	const [autoBlacklistFilter, setAutoBlacklistFilter] = useState<'all' | 'true' | 'false'>('all')
 
@@ -73,7 +73,9 @@ export default function BlacklistPage() {
 		reason: '',
 	})
 
-	const debouncedSearch = useDebounce(searchQuery, 500)
+	useEffect(() => {
+		setPage(1)
+	}, [appliedSearch, targetTypeFilter, autoBlacklistFilter])
 
 	// Fetch blacklists
 	const { data, isLoading, error } = useQuery({
@@ -83,6 +85,7 @@ export default function BlacklistPage() {
 			pageSize,
 			targetTypeFilter === 'all' ? undefined : targetTypeFilter,
 			autoBlacklistFilter === 'all' ? undefined : autoBlacklistFilter === 'true',
+			appliedSearch.trim() || undefined,
 		],
 		queryFn: () =>
 			api.getBlacklists({
@@ -90,6 +93,7 @@ export default function BlacklistPage() {
 				pageSize,
 				targetType: targetTypeFilter === 'all' ? undefined : targetTypeFilter,
 				isAutoBlacklist: autoBlacklistFilter === 'all' ? undefined : autoBlacklistFilter === 'true',
+				search: appliedSearch.trim() || undefined,
 			}),
 	})
 
@@ -203,23 +207,13 @@ export default function BlacklistPage() {
 		setTargetTypeFilter('all')
 		setAutoBlacklistFilter('all')
 		setSearchQuery('')
+		setAppliedSearch('')
 	}
 
 	const hasActiveFilters =
-		targetTypeFilter !== 'all' || autoBlacklistFilter !== 'all' || searchQuery.trim() !== ''
+		targetTypeFilter !== 'all' || autoBlacklistFilter !== 'all' || appliedSearch.trim() !== ''
 
-	// Filter data client-side for search
-	const filteredData =
-		data?.data.filter((entry) => {
-			if (!debouncedSearch.trim()) return true
-			const search = debouncedSearch.toLowerCase()
-			return (
-				entry.reason.toLowerCase().includes(search) ||
-				entry.targetValue.toLowerCase().includes(search) ||
-				entry.targetType.toLowerCase().includes(search) ||
-				entry.id.toLowerCase().includes(search)
-			)
-		}) || []
+	const filteredData = data?.data || []
 	const totalCount = data?.pagination.totalCount ?? 0
 	const hasPagination = (data?.pagination.totalPages ?? 0) > 1
 
@@ -274,6 +268,12 @@ export default function BlacklistPage() {
 									placeholder="Search ID, reason..."
 									value={searchQuery}
 									onChange={(e) => setSearchQuery(e.target.value)}
+									onKeyDown={(e) => {
+										if (e.key === 'Enter') {
+											e.preventDefault()
+											setAppliedSearch(searchQuery)
+										}
+									}}
 									className="pl-9"
 								/>
 							</div>
@@ -311,6 +311,17 @@ export default function BlacklistPage() {
 									{ value: 'false', label: 'Manual Only' },
 								]}
 							/>
+						</div>
+						<div className="space-y-2">
+							<Label>&nbsp;</Label>
+							<Button
+								type="button"
+								variant="secondary"
+								className="w-full"
+								onClick={() => setAppliedSearch(searchQuery)}
+							>
+								Search
+							</Button>
 						</div>
 
 					</div>

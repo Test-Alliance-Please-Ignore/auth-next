@@ -1,4 +1,4 @@
-import { and, desc, eq, inArray } from '@repo/db-utils'
+import { and, desc, eq, ilike, inArray, or } from '@repo/db-utils'
 
 import { blacklistEntries } from '../db/schema'
 
@@ -613,6 +613,16 @@ export class BlacklistService {
 
 		if (filters.targetValue) {
 			conditions.push(eq(blacklistEntries.targetValue, filters.targetValue))
+		}
+		if (filters.search?.trim()) {
+			const search = `%${filters.search.trim()}%`
+			conditions.push(
+				or(
+					ilike(blacklistEntries.targetValue, search),
+					ilike(blacklistEntries.reason, search),
+					ilike(blacklistEntries.targetType, search),
+				)
+			)
 		}
 
 		const whereClause = conditions.length > 0 ? and(...conditions) : undefined
