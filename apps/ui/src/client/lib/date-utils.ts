@@ -1,6 +1,19 @@
 /**
  * Date utility functions for formatting dates consistently across the application
  */
+type DateInput = string | Date | null | undefined
+
+function parseDate(value: DateInput): Date | null {
+	if (!value) return null
+	const date = typeof value === 'string' ? new Date(value) : value
+	return Number.isNaN(date.getTime()) ? null : date
+}
+
+function formatWithOptions(value: DateInput, options: Intl.DateTimeFormatOptions, fallback: string): string {
+	const date = parseDate(value)
+	if (!date) return fallback
+	return new Intl.DateTimeFormat('en-US', options).format(date)
+}
 
 /**
  * Format a date string to a human-readable format
@@ -9,23 +22,16 @@
  * @returns Formatted date string
  */
 export function formatDate(
-	dateString: string | Date | null | undefined,
+	dateString: DateInput,
 	options?: Intl.DateTimeFormatOptions
 ): string {
-	if (!dateString) return 'N/A'
-
-	const date = typeof dateString === 'string' ? new Date(dateString) : dateString
-
-	if (isNaN(date.getTime())) return 'Invalid date'
-
 	const defaultOptions: Intl.DateTimeFormatOptions = {
 		year: 'numeric',
 		month: 'short',
 		day: 'numeric',
 		...options,
 	}
-
-	return new Intl.DateTimeFormat('en-US', defaultOptions).format(date)
+	return formatWithOptions(dateString, defaultOptions, 'N/A')
 }
 
 /**
@@ -33,20 +39,14 @@ export function formatDate(
  * @param dateString - ISO date string or Date object
  * @returns Formatted date and time string
  */
-export function formatDateTime(dateString: string | Date | null | undefined): string {
-	if (!dateString) return 'N/A'
-
-	const date = typeof dateString === 'string' ? new Date(dateString) : dateString
-
-	if (isNaN(date.getTime())) return 'Invalid date'
-
-	return new Intl.DateTimeFormat('en-US', {
+export function formatDateTime(dateString: DateInput): string {
+	return formatWithOptions(dateString, {
 		year: 'numeric',
 		month: 'short',
 		day: 'numeric',
 		hour: '2-digit',
 		minute: '2-digit',
-	}).format(date)
+	}, 'N/A')
 }
 
 /**
@@ -54,12 +54,9 @@ export function formatDateTime(dateString: string | Date | null | undefined): st
  * @param dateString - ISO date string or Date object
  * @returns Relative time string
  */
-export function formatRelativeTime(dateString: string | Date | null | undefined): string {
-	if (!dateString) return 'N/A'
-
-	const date = typeof dateString === 'string' ? new Date(dateString) : dateString
-
-	if (isNaN(date.getTime())) return 'Invalid date'
+export function formatRelativeTime(dateString: DateInput): string {
+	const date = parseDate(dateString)
+	if (!date) return 'N/A'
 
 	const now = new Date()
 	const diffMs = now.getTime() - date.getTime()
@@ -100,17 +97,91 @@ export function formatDateShort(dateString: string | Date | null | undefined): s
  * @returns Long formatted date string
  */
 export function formatDateLong(dateString: string | Date | null | undefined): string {
-	if (!dateString) return 'N/A'
-
-	const date = typeof dateString === 'string' ? new Date(dateString) : dateString
-
-	if (isNaN(date.getTime())) return 'Invalid date'
-
-	return new Intl.DateTimeFormat('en-US', {
+	return formatWithOptions(dateString, {
 		year: 'numeric',
 		month: 'long',
 		day: 'numeric',
 		hour: '2-digit',
 		minute: '2-digit',
-	}).format(date)
+	}, 'N/A')
+}
+
+export function formatDateNumeric(dateString: DateInput): string {
+	return formatWithOptions(dateString, {
+		year: 'numeric',
+		month: '2-digit',
+		day: '2-digit',
+	}, 'N/A')
+}
+
+export function formatMonthDay(dateString: DateInput): string {
+	return formatWithOptions(dateString, {
+		month: 'short',
+		day: 'numeric',
+	}, 'N/A')
+}
+
+export function formatTime(dateString: DateInput): string {
+	return formatWithOptions(dateString, {
+		hour: '2-digit',
+		minute: '2-digit',
+	}, 'N/A')
+}
+
+export function formatDateTimeWithSeconds(dateString: DateInput): string {
+	return formatWithOptions(dateString, {
+		year: 'numeric',
+		month: 'short',
+		day: 'numeric',
+		hour: '2-digit',
+		minute: '2-digit',
+		second: '2-digit',
+	}, 'N/A')
+}
+
+export function formatDateTimeLong(dateString: DateInput): string {
+	return formatWithOptions(dateString, {
+		dateStyle: 'long',
+		timeStyle: 'short',
+	}, 'N/A')
+}
+
+export function formatDateTimeFull(dateString: DateInput): string {
+	return formatWithOptions(dateString, {
+		dateStyle: 'full',
+		timeStyle: 'long',
+	}, 'N/A')
+}
+
+export function formatDateTimeWithZone(dateString: DateInput): string {
+	return formatWithOptions(dateString, {
+		year: 'numeric',
+		month: 'long',
+		day: 'numeric',
+		hour: 'numeric',
+		minute: '2-digit',
+		timeZoneName: 'short',
+	}, 'N/A')
+}
+
+export function formatUtcDateTime(dateString: DateInput, compact = false): string {
+	return formatWithOptions(dateString, compact
+		? {
+			year: '2-digit',
+			month: 'short',
+			day: '2-digit',
+			hour: '2-digit',
+			minute: '2-digit',
+			hour12: false,
+			timeZone: 'UTC',
+		}
+		: {
+			year: 'numeric',
+			month: 'long',
+			day: 'numeric',
+			hour: '2-digit',
+			minute: '2-digit',
+			hour12: false,
+			timeZone: 'UTC',
+		}, 'N/A')
 }

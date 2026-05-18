@@ -1,8 +1,10 @@
 import { formatDistanceToNow } from 'date-fns'
+import { formatDateTimeFull, formatDateTimeLong, formatDateTimeWithSeconds } from './date-utils'
 
 export function formatDateTimeLocal(date: string | null): string {
 	if (!date) return '-'
-	return new Date(date).toLocaleString()
+	const formatted = formatDateTimeLong(date)
+	return formatted === 'N/A' ? '-' : formatted
 }
 
 function formatDateWithTime(date: Date, dateStyle: 'long' | 'full'): string {
@@ -49,17 +51,9 @@ export function formatDiscordTimestamp(date: Date, style?: string): string {
 }
 
 export function formatIsoTimestamp(date: Date): string {
-	return new Intl.DateTimeFormat('en-US', {
-		month: 'short',
-		day: 'numeric',
-		year: 'numeric',
-		hour: 'numeric',
-		minute: '2-digit',
-		second: '2-digit',
-		hour12: true,
-	}).format(date)
+	return formatDateTimeWithSeconds(date)
 }
 
 export function formatFullTimestampTooltip(date: Date): string {
-	return date.toLocaleString('en-US', { dateStyle: 'full', timeStyle: 'long' })
+	return formatDateTimeFull(date)
 }

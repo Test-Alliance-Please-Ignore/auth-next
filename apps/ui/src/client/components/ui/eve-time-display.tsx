@@ -1,5 +1,6 @@
 import { useRef, useState } from 'react'
 
+import { formatDateTimeWithZone, formatUtcDateTime } from '@/lib/date-utils'
 import { cn } from '@/lib/utils'
 
 import { Popover, PopoverAnchor, PopoverContent } from './popover'
@@ -10,40 +11,13 @@ interface EveTimeDisplayProps {
 	format?: 'full' | 'compact'
 }
 
-function formatLocalDateTime(dateStr: string): string {
-	return new Intl.DateTimeFormat('en-US', {
-		year: 'numeric',
-		month: 'long',
-		day: 'numeric',
-		hour: 'numeric',
-		minute: '2-digit',
-		timeZoneName: 'short',
-	}).format(new Date(dateStr))
-}
-
 function formatEveDateTime(dateStr: string, format: 'full' | 'compact'): string {
 	if (format === 'compact') {
-		const formatted = new Intl.DateTimeFormat('en-US', {
-			year: '2-digit',
-			month: 'short',
-			day: '2-digit',
-			hour: '2-digit',
-			minute: '2-digit',
-			hour12: false,
-			timeZone: 'UTC',
-		}).format(new Date(dateStr))
+		const formatted = formatUtcDateTime(dateStr, true)
 		return `${formatted} EVE`
 	}
 
-	const formatted = new Intl.DateTimeFormat('en-US', {
-		year: 'numeric',
-		month: 'long',
-		day: 'numeric',
-		hour: '2-digit',
-		minute: '2-digit',
-		hour12: false,
-		timeZone: 'UTC',
-	}).format(new Date(dateStr))
+	const formatted = formatUtcDateTime(dateStr)
 
 	return `${formatted} EVE Time`
 }
@@ -93,7 +67,7 @@ export function EveTimeDisplay({ dateStr, className, format = 'full' }: EveTimeD
 			>
 				<div className="space-y-1">
 					<p className="text-[11px] uppercase tracking-wide text-muted-foreground">Local Time</p>
-					<p className="text-sm">{formatLocalDateTime(dateStr)}</p>
+					<p className="text-sm">{formatDateTimeWithZone(dateStr)}</p>
 				</div>
 			</PopoverContent>
 		</Popover>

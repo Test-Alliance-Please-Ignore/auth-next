@@ -5,6 +5,7 @@
 import { useMemo, useState } from 'react'
 import { MantineReactTable } from 'mantine-react-table'
 
+import { EveTimeDisplay } from '@/components/ui/eve-time-display'
 import { Select } from '@/components/ui/select'
 import { useFulcrumTable } from './use-fulcrum-table'
 
@@ -40,10 +41,10 @@ function isHighlightedJournalType(entry: ProcessedWalletJournalEntry): boolean {
 const columns: MRT_ColumnDef<ProcessedWalletJournalEntry>[] = [
 	{
 		accessorKey: 'date',
-		header: 'Date',
+		header: 'Date/Time',
 		filterVariant: 'date-range',
 		accessorFn: (row) => new Date(row.date),
-		Cell: ({ row }) => new Date(row.original.date).toLocaleDateString(),
+		Cell: ({ row }) => <EveTimeDisplay dateStr={row.original.date} format="compact" />,
 	},
 	{
 		accessorKey: 'refTypeLabel',

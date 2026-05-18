@@ -6,6 +6,7 @@ import { useState } from 'react'
 
 import { Badge } from '@/components/ui/badge'
 import { Card, CardContent } from '@/components/ui/card'
+import { EveTimeDisplay } from '@/components/ui/eve-time-display'
 
 import { useReportSectionData } from '../../hooks'
 
@@ -545,8 +546,9 @@ function LargeIskTransferDetails({ details }: { details: Record<string, unknown>
                             <div key={i} className="flex items-center justify-between gap-4">
                                 <div className="min-w-0">
                                     <span className="font-medium">{t.otherPartyName}</span>
-                                    <span className="ml-2 text-xs text-muted-foreground">
-                                        {t.refTypeLabel} · {new Date(t.date).toLocaleDateString()}
+                                    <span className="ml-2 text-xs text-muted-foreground inline-flex items-center gap-1">
+                                        <span>{t.refTypeLabel} ·</span>
+                                        <EveTimeDisplay dateStr={t.date} format="compact" />
                                     </span>
                                 </div>
                                 <span className={`shrink-0 font-mono ${t.direction === 'incoming' ? 'text-green-400' : 'text-red-400'}`}>
