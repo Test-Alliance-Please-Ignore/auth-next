@@ -140,6 +140,33 @@ function refreshQueueBadgesSoft(
 	})
 }
 
+function adjustPendingPayoutTotalCaches(
+	queryClient: ReturnType<typeof useQueryClient>,
+	delta: number
+) {
+	queryClient.setQueriesData(
+		{
+			predicate: (query) => {
+				const key = query.queryKey
+				return (
+					Array.isArray(key) &&
+					key[0] === 'srp' &&
+					key[1] === 'payments' &&
+					key[2] === 'pending-total'
+				)
+			},
+		},
+		(old) => {
+			const current = old as { pendingPayoutTotal?: string } | undefined
+			if (!current || typeof current.pendingPayoutTotal !== 'string') return old
+			const currentNum = Number.parseFloat(current.pendingPayoutTotal)
+			if (!Number.isFinite(currentNum)) return old
+			const next = Math.max(0, currentNum + delta)
+			return { ...current, pendingPayoutTotal: String(next) }
+		}
+	)
+}
+
 // ===== Query Hooks =====
 
 export function useRecentLosses(daysBack: number = 30) {
@@ -680,7 +707,42 @@ export function useMarkPaid() {
 		mutationFn: (id: string) => api.markPaid(id),
 		onMutate: async (id: string) => {
 			const previous = snapshotReviewQueueStateForRollback()
+			const previousPendingTotals = queryClient.getQueriesData({
+				predicate: (query) => {
+					const key = query.queryKey
+					return (
+						Array.isArray(key) &&
+						key[0] === 'srp' &&
+						key[1] === 'payments' &&
+						key[2] === 'pending-total'
+					)
+				},
+			})
 			transitionRequestStatusAcrossReviewQueueSnapshots(id, 'paid')
+			let approvedAmountDelta = 0
+			const pendingPaymentQueries = queryClient.getQueriesData<{ requests?: SRPRequestResponse[] }>({
+				predicate: (query) => {
+					const key = query.queryKey
+					return (
+						Array.isArray(key) &&
+						key[0] === 'srp' &&
+						key[1] === 'payments' &&
+						key[2] === 'pending'
+					)
+				},
+			})
+			for (const [, value] of pendingPaymentQueries) {
+				const request = value?.requests?.find((entry) => entry.id === id)
+				if (!request) continue
+				const amount = Number.parseFloat(request.approvedAmount ?? '0')
+				if (Number.isFinite(amount)) {
+					approvedAmountDelta = amount
+				}
+				break
+			}
+			if (approvedAmountDelta > 0) {
+				adjustPendingPayoutTotalCaches(queryClient, -approvedAmountDelta)
+			}
 			const existing = queryClient.getQueryData<SRPRequestResponse>(srpKeys.request(id))
 			if (existing) {
 				upsertRequestAcrossReviewQueueSnapshots({
@@ -688,11 +750,14 @@ export function useMarkPaid() {
 					requestStatus: 'paid',
 				})
 			}
-			return { previous }
+			return { previous, previousPendingTotals }
 		},
 		onError: (_error, _variables, context) => {
 			if (context?.previous) {
 				restoreReviewQueueStateFromRollback(context.previous)
+			}
+			for (const [queryKey, previousValue] of context?.previousPendingTotals ?? []) {
+				queryClient.setQueryData(queryKey, previousValue)
 			}
 		},
 		onSuccess: (request: SRPRequestResponse) => {
