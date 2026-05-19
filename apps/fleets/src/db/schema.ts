@@ -50,8 +50,56 @@ export const fleetMemberships = pgTable(
 )
 
 /**
+ * Fleet tracking sessions table
+ *
+ * The top-level entity for manual fleet tracking. One row per "Start tracking"
+ * action. A session ties together a tracked fleet, the FC character, the user
+ * who initiated tracking, and the resulting historical data.
+ */
+export const fleetTrackingSessions = pgTable(
+	'fleet_tracking_sessions',
+	{
+		id: uuid('id').defaultRandom().primaryKey(),
+		/** Human-readable session name supplied by the starting user */
+		name: text('name').notNull(),
+		/** Character being tracked (the FC) */
+		characterId: text('character_id').notNull(),
+		/** User who clicked Start */
+		startedByUserId: text('started_by_user_id').notNull(),
+		/** Resolved on session start; required because the start path validates fleet boss before insert */
+		fleetId: text('fleet_id'),
+		/** 'active' | 'ended' */
+		status: text('status').notNull().default('active'),
+		startedAt: timestamp('started_at').defaultNow().notNull(),
+		endedAt: timestamp('ended_at'),
+		/**
+		 * 'user_stopped' | 'admin_stopped' | 'fleet_disbanded'
+		 * | 'character_left_fleet' | 'not_fleet_boss'
+		 * | 'esi_error' | 'token_expired'
+		 */
+		endedReason: text('ended_reason'),
+		/** User who triggered the stop (null for system-initiated ends like fleet_disbanded) */
+		endedByUserId: text('ended_by_user_id'),
+		createdAt: timestamp('created_at').defaultNow().notNull(),
+		updatedAt: timestamp('updated_at').defaultNow().notNull(),
+	},
+	(table) => ({
+		characterIdIdx: index('fleet_tracking_sessions_character_id_idx').on(table.characterId),
+		fleetIdIdx: index('fleet_tracking_sessions_fleet_id_idx').on(table.fleetId),
+		startedByUserIdIdx: index('fleet_tracking_sessions_started_by_user_id_idx').on(
+			table.startedByUserId
+		),
+		statusIdx: index('fleet_tracking_sessions_status_idx').on(table.status),
+		startedAtIdx: index('fleet_tracking_sessions_started_at_idx').on(table.startedAt),
+	})
+)
+
+/**
  * Fleet state cache table
- * Caches fleet information from ESI for performance
+ *
+ * Live snapshot of an actively-tracked fleet, upserted each tick by the
+ * FleetMonitor DO. Holds the current state from ESI plus a back-reference
+ * to the tracking session.
  */
 export const fleetStateCache = pgTable(
 	'fleet_state_cache',
@@ -59,6 +107,10 @@ export const fleetStateCache = pgTable(
 		id: uuid('id').defaultRandom().primaryKey(),
 		fleetId: text('fleet_id').notNull().unique(),
 		fleetBossId: text('fleet_boss_id').notNull(),
+		/** The tracking session this cache row belongs to */
+		trackingSessionId: uuid('tracking_session_id').references(() => fleetTrackingSessions.id, {
+			onDelete: 'set null',
+		}),
 		isActive: boolean('is_active').default(true).notNull(),
 		memberCount: integer('member_count').default(0).notNull(),
 		motd: text('motd'),
@@ -75,6 +127,9 @@ export const fleetStateCache = pgTable(
 	(table) => ({
 		fleetIdIdx: index('fleet_state_cache_fleet_id_idx').on(table.fleetId),
 		fleetBossIdIdx: index('fleet_state_cache_fleet_boss_id_idx').on(table.fleetBossId),
+		trackingSessionIdIdx: index('fleet_state_cache_tracking_session_id_idx').on(
+			table.trackingSessionId
+		),
 		lastCheckedIdx: index('fleet_state_cache_last_checked_idx').on(table.lastChecked),
 		notFoundIdx: index('fleet_state_cache_not_found_idx').on(table.notFound),
 		endedAtIdx: index('fleet_state_cache_ended_at_idx').on(table.endedAt),
@@ -92,6 +147,10 @@ export const fleetSummaries = pgTable(
 		id: uuid('id').defaultRandom().primaryKey(),
 		fleetId: text('fleet_id').notNull(),
 		fleetBossId: text('fleet_boss_id').notNull(),
+		/** Back-reference to the session this summary belongs to (nullable for historical rows without a session) */
+		trackingSessionId: uuid('tracking_session_id').references(() => fleetTrackingSessions.id, {
+			onDelete: 'set null',
+		}),
 		startedAt: timestamp('started_at').notNull(),
 		endedAt: timestamp('ended_at').notNull(),
 		peakMemberCount: integer('peak_member_count').default(0).notNull(),
@@ -106,28 +165,15 @@ export const fleetSummaries = pgTable(
 	(table) => ({
 		fleetIdIdx: index('fleet_summaries_fleet_id_idx').on(table.fleetId),
 		fleetBossIdIdx: index('fleet_summaries_fleet_boss_id_idx').on(table.fleetBossId),
+		trackingSessionIdIdx: index('fleet_summaries_tracking_session_id_idx').on(
+			table.trackingSessionId
+		),
 		startedAtIdx: index('fleet_summaries_started_at_idx').on(table.startedAt),
 		endedAtIdx: index('fleet_summaries_ended_at_idx').on(table.endedAt),
 		fleetBossStartedIdx: index('fleet_summaries_fleet_boss_started_idx').on(
 			table.fleetBossId,
 			table.startedAt
 		),
-	})
-)
-
-/**
- * Monitored fleet commanders table
- * Stores character IDs of fleet commanders to monitor for fleet activity
- */
-export const monitoredFleetCommanders = pgTable(
-	'monitored_fleet_commanders',
-	{
-		id: uuid('id').defaultRandom().primaryKey(),
-		characterId: text('character_id').notNull().unique(),
-		createdAt: timestamp('created_at').defaultNow().notNull(),
-	},
-	(table) => ({
-		characterIdIdx: index('monitored_fleet_commanders_character_id_idx').on(table.characterId),
 	})
 )
 
@@ -159,6 +205,8 @@ export const fleetMemberHistory = pgTable(
 		shipTypeName: text('ship_type_name'), // Ship type name (resolved from shipTypeId)
 		wingName: text('wing_name'), // Wing name (resolution to be implemented later)
 		squadName: text('squad_name'), // Squad name (resolution to be implemented later)
+		/** Corporation the character was in at the time of the event. */
+		corporationId: text('corporation_id'),
 	},
 	(table) => ({
 		fleetIdIdx: index('fleet_member_history_fleet_id_idx').on(table.fleetId),
@@ -169,6 +217,55 @@ export const fleetMemberHistory = pgTable(
 			table.fleetId,
 			table.characterId
 		),
+		corporationIdIdx: index('fleet_member_history_corporation_id_idx').on(table.corporationId),
+	})
+)
+
+/**
+ * Fleet member ship events table
+ *
+ * Per-pilot ship-change timeline. One row per detected change of a member's
+ * shipTypeId during a session. The row holds the location (system/station)
+ * at the moment the ship was boarded; intermediate movement while in the
+ * same ship is not recorded.
+ *
+ * `endedAt = null` means the row is still open (current ship at the time of
+ * query). On ship change, leave, or session end, the open row is closed and
+ * a new one inserted (if applicable).
+ */
+export const fleetMemberShipEvents = pgTable(
+	'fleet_member_ship_events',
+	{
+		id: uuid('id').defaultRandom().primaryKey(),
+		trackingSessionId: uuid('tracking_session_id')
+			.notNull()
+			.references(() => fleetTrackingSessions.id, { onDelete: 'cascade' }),
+		fleetId: text('fleet_id').notNull(),
+		characterId: text('character_id').notNull(),
+		shipTypeId: integer('ship_type_id').notNull(),
+		/** Location at the moment this ship was first observed. Not updated on roaming. */
+		solarSystemId: integer('solar_system_id').notNull(),
+		stationId: integer('station_id'),
+		startedAt: timestamp('started_at').notNull(),
+		endedAt: timestamp('ended_at'),
+		eventTimestamp: timestamp('event_timestamp').defaultNow().notNull(),
+		createdAt: timestamp('created_at').defaultNow().notNull(),
+	},
+	(table) => ({
+		sessionCharacterStartedIdx: index('fleet_member_ship_events_session_character_started_idx').on(
+			table.trackingSessionId,
+			table.characterId,
+			table.startedAt
+		),
+		fleetCharacterStartedIdx: index('fleet_member_ship_events_fleet_character_started_idx').on(
+			table.fleetId,
+			table.characterId,
+			table.startedAt
+		),
+		eventTimestampIdx: index('fleet_member_ship_events_event_timestamp_idx').on(
+			table.eventTimestamp
+		),
+		endedAtIdx: index('fleet_member_ship_events_ended_at_idx').on(table.endedAt),
 	})
 )
 
@@ -176,8 +273,9 @@ export const fleetMemberHistory = pgTable(
 export const schema = {
 	fleetInvitations,
 	fleetMemberships,
+	fleetTrackingSessions,
 	fleetStateCache,
 	fleetSummaries,
-	monitoredFleetCommanders,
 	fleetMemberHistory,
+	fleetMemberShipEvents,
 }

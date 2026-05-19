@@ -1,0 +1,66 @@
+import { ChevronRight } from 'lucide-react'
+import { Link } from 'react-router-dom'
+
+import { Card, CardContent } from '@/components/ui/card'
+import { formatRelativeTime } from '@/lib/date-utils'
+import { formatDurationBetween, formatEndReason } from '../utils/format'
+import { SessionStatusPill } from './session-status-pill'
+
+import type { TrackingSession } from '../types'
+
+interface SessionCardProps {
+	session: TrackingSession
+}
+
+export function SessionCard({ session }: SessionCardProps) {
+	const isActive = session.status === 'active'
+
+	return (
+		<Link
+			to={`/fleet-tracking/${session.id}`}
+			className="block group focus:outline-none focus-visible:ring-2 focus-visible:ring-ring rounded-lg"
+		>
+			<Card className="transition-colors group-hover:bg-accent/40 cursor-pointer">
+				<CardContent className="p-4">
+					<div className="flex items-center justify-between gap-4">
+						<div className="space-y-1.5 min-w-0 flex-1">
+							<div className="flex items-center gap-2">
+								<SessionStatusPill status={session.status} />
+								<h3 className="font-semibold truncate">{session.name}</h3>
+							</div>
+							<div className="text-sm text-muted-foreground">
+								FC:{' '}
+								{session.characterName ?? (
+									<span className="font-mono">{session.characterId}</span>
+								)}
+								{' • '}
+								{isActive ? (
+									<>Running {formatDurationBetween(session.startedAt, null)}</>
+								) : (
+									<>
+										{new Date(session.startedAt).toLocaleString()} →{' '}
+										{session.endedAt && new Date(session.endedAt).toLocaleString()}
+										{' • '}
+										{formatDurationBetween(session.startedAt, session.endedAt)}
+										{session.endedReason && (
+											<>
+												{' • '}
+												{formatEndReason(session.endedReason)}
+											</>
+										)}
+									</>
+								)}
+							</div>
+							{isActive && (
+								<div className="text-xs text-muted-foreground">
+									Started {formatRelativeTime(session.startedAt)}
+								</div>
+							)}
+						</div>
+						<ChevronRight className="h-5 w-5 text-muted-foreground shrink-0 transition-transform group-hover:translate-x-0.5" />
+					</div>
+				</CardContent>
+			</Card>
+		</Link>
+	)
+}

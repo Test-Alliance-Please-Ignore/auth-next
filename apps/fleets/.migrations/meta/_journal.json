@@ -64,6 +64,27 @@
       "when": 1763215122931,
       "tag": "0008_curious_hydra",
       "breakpoints": true
+    },
+    {
+      "idx": 9,
+      "version": "7",
+      "when": 1779127813757,
+      "tag": "0009_perfect_captain_britain",
+      "breakpoints": true
+    },
+    {
+      "idx": 10,
+      "version": "7",
+      "when": 1779133547775,
+      "tag": "0010_shiny_strong_guy",
+      "breakpoints": true
+    },
+    {
+      "idx": 11,
+      "version": "7",
+      "when": 1779215177027,
+      "tag": "0011_deep_bill_hollister",
+      "breakpoints": true
     }
   ]
 }

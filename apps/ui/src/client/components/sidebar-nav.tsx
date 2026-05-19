@@ -15,6 +15,7 @@ import {
 	Mail,
 	Moon,
 	Package,
+	Radar,
 	Radio,
 	Receipt,
 	Scale,
@@ -279,6 +280,28 @@ export function SidebarNav({ onNavigate, isSidebarOpen = true, onToggleSidebar }
 			href: '/doctrines',
 			icon: Swords,
 		},
+	)
+
+	const canSeeFleetTracking =
+		isSiteAdmin ||
+		hasAnyPermission('urn:fleet-tracking:create') ||
+		hasAnyPermission('urn:fleet-tracking:view-all')
+	const canSeeFleetStats = isSiteAdmin || hasAnyPermission('urn:fleet-tracking:view-all')
+	if (canSeeFleetTracking) {
+		navItems.push({
+			label: 'Fleet Tracking',
+			href: '/fleet-tracking',
+			icon: Radar,
+			children: canSeeFleetStats
+				? [
+						{ label: 'Fleets', href: '/fleet-tracking' },
+						{ label: 'Statistics', href: '/fleet-tracking/stats' },
+					]
+				: undefined,
+		})
+	}
+
+	navItems.push(
 		{
 			...srpNavState.navItem,
 			icon: CircleDollarSign,

@@ -19,8 +19,10 @@ export interface FleetDetailsResponse {
 export interface FleetMonitorStateRow extends Record<string, string | number | null> {
 	fleet_id: string
 	character_id: string
+	tracking_session_id: string | null
 	is_initialized: number
 	last_checked: string | null
+	peak_member_count: number
 }
 
 /**
@@ -30,8 +32,10 @@ export interface FleetMonitorStateRow extends Record<string, string | number | n
 export interface FleetMonitorState {
 	fleetId: string
 	characterId: string
+	trackingSessionId: string | null
 	isInitialized: boolean
 	lastChecked: string | null
+	peakMemberCount: number
 }
 
 /**
@@ -56,9 +60,15 @@ export interface FleetMonitor extends DurableObject {
 	 * Initialize fleet monitoring for a specific fleet
 	 * @param fleetId - ESI fleet ID
 	 * @param characterId - Character ID of the fleet boss (for ESI access)
+	 * @param trackingSessionId - ID of the fleet_tracking_sessions row driving this monitor
 	 * @param force - If true, force re-initialization even if already initialized
 	 */
-	initializeMonitoring(fleetId: string, characterId: string, force?: boolean): Promise<void>
+	initializeMonitoring(
+		fleetId: string,
+		characterId: string,
+		trackingSessionId: string,
+		force?: boolean
+	): Promise<void>
 
 	/**
 	 * Get current fleet status
@@ -71,6 +81,17 @@ export interface FleetMonitor extends DurableObject {
 	 * @returns Monitor state including lastChecked timestamp, or null if not initialized
 	 */
 	getMonitorState(): Promise<FleetMonitorState | null>
+
+	/**
+	 * Explicitly end the tracking session.
+	 * Closes all open ship-event rows, updates the session row with end timestamp/reason,
+	 * archives a fleet_summaries entry, and terminates the DO.
+	 */
+	endSession(args: {
+		sessionId: string
+		endedReason: 'user_stopped' | 'admin_stopped' | 'fleet_disbanded' | 'esi_error' | 'token_expired'
+		endedByUserId: string | null
+	}): Promise<void>
 
 	/**
 	 * Delete all storage and terminate the Durable Object
