@@ -15,11 +15,6 @@
 			{
 				"name": "CORE",
 				"class_name": "Core"
-			},
-			{
-				"name": "SRP",
-				"class_name": "Srp",
-				"script_name": "srp"
 			}
 		]
 	},
