@@ -24,7 +24,8 @@ export async function getScannedMoons(params: {
 	page?: number
 	pageSize?: number
 	regionId?: string
-	rarity?: string
+	constellationId?: string
+	rarities?: string[]
 	search?: string
 	sortBy?: string
 	sortDir?: 'asc' | 'desc'
@@ -33,7 +34,8 @@ export async function getScannedMoons(params: {
 	if (params.page) qs.set('page', String(params.page))
 	if (params.pageSize) qs.set('pageSize', String(params.pageSize))
 	if (params.regionId && params.regionId !== 'all') qs.set('regionId', params.regionId)
-	if (params.rarity && params.rarity !== 'All') qs.set('rarity', params.rarity)
+	if (params.constellationId && params.constellationId !== 'all') qs.set('constellationId', params.constellationId)
+	if (params.rarities && params.rarities.length > 0) qs.set('rarity', params.rarities.join(','))
 	if (params.search?.trim()) qs.set('search', params.search.trim())
 	if (params.sortBy) qs.set('sortBy', params.sortBy)
 	if (params.sortDir) qs.set('sortDir', params.sortDir)

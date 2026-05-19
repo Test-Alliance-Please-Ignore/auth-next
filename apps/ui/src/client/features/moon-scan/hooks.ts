@@ -1,4 +1,4 @@
-import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
+import { keepPreviousData, useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 
 import {
 	getAdminSettings,
@@ -43,7 +43,8 @@ export function useScannedMoons(params: {
 	page?: number
 	pageSize?: number
 	regionId?: string
-	rarity?: string
+	constellationId?: string
+	rarities?: string[]
 	search?: string
 	sortBy?: string
 	sortDir?: 'asc' | 'desc'
@@ -52,6 +53,7 @@ export function useScannedMoons(params: {
 		queryKey: moonScanKeys.verifiedMoons(params),
 		queryFn: () => getScannedMoons(params),
 		staleTime: STALE_5M,
+		placeholderData: keepPreviousData,
 	})
 }
 

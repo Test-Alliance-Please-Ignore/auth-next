@@ -8,7 +8,8 @@ export const moonScanKeys = {
 		page?: number
 		pageSize?: number
 		regionId?: string
-		rarity?: string
+		constellationId?: string
+		rarities?: string[]
 		search?: string
 		sortBy?: string
 		sortDir?: 'asc' | 'desc'
