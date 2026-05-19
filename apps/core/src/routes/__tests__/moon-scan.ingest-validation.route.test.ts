@@ -151,11 +151,11 @@ describe('moon-scan ingest sanitization', () => {
 		expect(moonScanStub.submitScans).not.toHaveBeenCalled()
 	})
 
-	it('hard-rejects quantity sum outliers', async () => {
-		const app = createApp(makeUser({ id: 'submit-user-sum' }))
+	it('hard-rejects scans whose quantities sum to more than 1.0', async () => {
+		const app = createApp(makeUser({ id: 'submit-user-sum-over' }))
 		const raw = buildRawWithOres([
 			{ oreName: 'Bitumens', quantity: '0.8', oreTypeId: '45490' },
-			{ oreName: 'Coesite', quantity: '0.1', oreTypeId: '45491' },
+			{ oreName: 'Coesite', quantity: '0.7', oreTypeId: '45491' },
 		], '40161739')
 
 		const res = await app.request('/api/moon-scan/scans/submit', {
@@ -168,6 +168,27 @@ describe('moon-scan ingest sanitization', () => {
 		const body = await res.json() as { parseErrors?: string[] }
 		expect(body.parseErrors?.some((error) => error.includes('quantities sum'))).toBe(true)
 		expect(moonScanStub.submitScans).not.toHaveBeenCalled()
+	})
+
+	it('accepts partial scans whose quantities sum to less than 1.0', async () => {
+		// Post-CCP ore-removal changes, valid moon scans can legitimately sum to
+		// less than 1.0 because some ores were removed from compositions without
+		// redistributing the remaining percentages.
+		const app = createApp(makeUser({ id: 'submit-user-partial-sum' }))
+		const raw = buildRawWithOres([
+			{ oreName: 'Bitumens', quantity: '0.3591233194', oreTypeId: '45492' },
+			{ oreName: 'Coesite', quantity: '0.2542834282', oreTypeId: '45493' },
+			{ oreName: 'Sylvite', quantity: '0.1865932345', oreTypeId: '45491' },
+		], '40161739')
+
+		const res = await app.request('/api/moon-scan/scans/submit', {
+			method: 'POST',
+			headers: { 'content-type': 'application/json' },
+			body: JSON.stringify({ raw }),
+		}, env)
+
+		expect(res.status).toBe(200)
+		expect(moonScanStub.submitScans).toHaveBeenCalled()
 	})
 
 	it('hard-rejects non-whitelisted ore type IDs', async () => {

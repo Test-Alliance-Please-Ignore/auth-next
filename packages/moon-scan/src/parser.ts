@@ -75,10 +75,13 @@ export function parseMoonScanTsv(raw: string): ParseResult {
 			return
 		}
 
-		// Quantity sum validation: must be in [0.99, 1.01]
+		// Quantity sum validation: must not exceed 1.0 (with a small float-rounding
+		// tolerance). The lower bound is intentionally unconstrained — CCP removed
+		// some ores from moon compositions without redistributing the remaining
+		// percentages, so a fully scanned moon can legitimately sum to less than 1.
 		const sum = ores.reduce((acc, o) => acc + parseFloat(o.quantity), 0)
-		if (sum < 0.99 || sum > 1.01) {
-			errors.push(`Moon "${moonName}": quantities sum to ${sum.toFixed(4)} (expected ~1.0)`)
+		if (sum > 1.01) {
+			errors.push(`Moon "${moonName}": quantities sum to ${sum.toFixed(4)} (must not exceed 1.0)`)
 			return
 		}
 
