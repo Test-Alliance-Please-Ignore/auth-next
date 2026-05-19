@@ -39,6 +39,14 @@ export default function SkillPlansList() {
 
 	const { user } = useAuth()
 	const { hasPermission } = useUserPermissions()
+	const canCreatePlans = !!user && (user.is_admin || hasPermission('urn:skill-plans:create'))
+	const canManageCategories =
+		!!user &&
+		(user.is_admin ||
+			hasPermission('urn:skill-plans:categories:create') ||
+			hasPermission('urn:skill-plans:categories:manage'))
+	const canEditSkillPlans =
+		!!user && (canCreatePlans || canManageCategories || hasPermission('urn:skill-plans:manage-all'))
 	const [filters, setFilters] = useState<SkillPlansFilter>({
 		published: true, // Default to published plans
 		search: '',
@@ -209,11 +217,9 @@ export default function SkillPlansList() {
 				{/* Actions bar */}
 				<div className="flex justify-between items-center mb-6">
 					<h2 className="text-xl font-semibold">Available Plans</h2>
-					{user && (
+					{user && canEditSkillPlans && (
 						<div className="flex gap-2">
-							{(user.is_admin ||
-								hasPermission('urn:skill-plans:categories:create') ||
-								hasPermission('urn:skill-plans:categories:manage')) && (
+							{canManageCategories && (
 								<Button variant="ghost" asChild>
 									<Link to="/skill-plans/categories/manage">
 										<Settings className="h-4 w-4" />
@@ -224,7 +230,7 @@ export default function SkillPlansList() {
 							<Button variant="ghost" asChild>
 								<Link to="/skill-plans/my">My Plans</Link>
 							</Button>
-							{(user.is_admin || hasPermission('urn:skill-plans:create')) && (
+							{canCreatePlans && (
 								<Button asChild>
 									<Link to="/skill-plans/create">
 										<Plus className="h-4 w-4" />
@@ -344,7 +350,7 @@ export default function SkillPlansList() {
 						</div>
 
 						{/* My plans toggle */}
-						{user && (
+						{user && canEditSkillPlans && (
 							<div className="mt-4 flex items-center gap-2">
 								<input
 									type="checkbox"
@@ -391,7 +397,7 @@ export default function SkillPlansList() {
 						<Card>
 							<CardContent className="py-8 text-center text-muted-foreground">
 								No skill plans found matching your filters.
-								{user && (
+								{canCreatePlans && (
 									<div className="mt-4">
 										<Button asChild>
 											<Link to="/skill-plans/create">

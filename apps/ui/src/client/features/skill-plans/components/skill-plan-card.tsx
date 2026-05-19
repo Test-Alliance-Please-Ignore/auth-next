@@ -45,19 +45,6 @@ export function SkillPlanCard({
 		navigate(`/skill-plans/${plan.id}`)
 	}
 
-	const completedPct =
-		characterReadiness && characterReadiness.total > 0
-			? (characterReadiness.completed / characterReadiness.total) * 100
-			: 0
-	const meetsPct =
-		characterReadiness && characterReadiness.total > 0
-			? (characterReadiness.meetsRequirements / characterReadiness.total) * 100
-			: 0
-	const incompletePct =
-		characterReadiness && characterReadiness.total > 0
-			? (characterReadiness.incomplete / characterReadiness.total) * 100
-			: 0
-
 	return (
 		<Card
 			className="flex h-full flex-col hover:shadow-lg transition-shadow cursor-pointer"
@@ -103,11 +90,6 @@ export function SkillPlanCard({
 						<div className="flex items-center justify-between text-xs text-muted-foreground">
 							<span>Character Readiness</span>
 							<span>{characterReadiness.total} characters</span>
-						</div>
-						<div className="flex h-2 w-full overflow-hidden rounded-full bg-muted">
-							<div className="bg-success" style={{ width: `${completedPct}%` }} />
-							<div className="bg-warning" style={{ width: `${meetsPct}%` }} />
-							<div className="bg-destructive" style={{ width: `${incompletePct}%` }} />
 						</div>
 						<div className="flex flex-wrap items-center gap-2 text-xs">
 							{characterReadiness.completed > 0 && (
