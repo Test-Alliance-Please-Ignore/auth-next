@@ -34,10 +34,15 @@ export async function getRegionDetail(regionId: string): Promise<RegionDetail> {
 
 export async function getDotlanRegionCoords(regionFile: string): Promise<DotlanCoords> {
 	const response = await fetch(`/dotlan/${regionFile}.json`)
+	const bodyText = await response.text()
 	if (!response.ok) {
 		throw new Error('No map coordinates available for this region')
 	}
-	return response.json() as Promise<DotlanCoords>
+	try {
+		return JSON.parse(bodyText) as DotlanCoords
+	} catch {
+		throw new Error('Invalid map coordinate payload for this region')
+	}
 }
 
 export async function getSystemDetail(systemId: string): Promise<SystemDetail> {
