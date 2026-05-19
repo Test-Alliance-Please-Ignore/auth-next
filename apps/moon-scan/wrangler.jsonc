@@ -1,0 +1,30 @@
+{
+	"$schema": "node_modules/wrangler/config-schema.json",
+	"name": "moon-scan",
+	"main": "src/index.ts",
+	"compatibility_date": "2025-03-07",
+	"compatibility_flags": ["nodejs_compat"],
+	"routes": [],
+	"logpush": false,
+	"observability": {
+		"enabled": true,
+		"head_sampling_rate": 1
+	},
+	"vars": {
+		"ENVIRONMENT": "production"
+	},
+	"durable_objects": {
+		"bindings": [
+			{
+				"name": "MOON_SCAN",
+				"class_name": "MoonScanDO"
+			}
+		]
+	},
+	"migrations": [
+		{
+			"tag": "v1",
+			"new_classes": ["MoonScanDO"]
+		}
+	]
+}

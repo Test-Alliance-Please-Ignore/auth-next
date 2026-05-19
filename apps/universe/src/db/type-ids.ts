@@ -1,4 +1,4 @@
-import { boolean, index, integer, pgTable, text } from 'drizzle-orm/pg-core'
+import { boolean, index, integer, pgTable, primaryKey, text } from 'drizzle-orm/pg-core'
 
 export const characterIds = pgTable(
 	'universe_eve_character_ids',
@@ -106,6 +106,19 @@ export const invMarketGroups = pgTable(
 		index('universe_eve_market_groups_parent_group_id_idx').on(table.parentGroupId),
 		index('universe_eve_market_groups_market_group_name_idx').on(table.marketGroupName),
 		index('universe_eve_market_groups_has_types_idx').on(table.hasTypes),
+	]
+)
+
+export const typeMaterials = pgTable(
+	'universe_eve_type_materials',
+	{
+		typeId: text('type_id').notNull(),
+		materialTypeId: text('material_type_id').notNull(),
+		quantity: integer('quantity').notNull(),
+	},
+	(table) => [
+		primaryKey({ columns: [table.typeId, table.materialTypeId] }),
+		index('universe_eve_type_materials_type_id_idx').on(table.typeId),
 	]
 )
 

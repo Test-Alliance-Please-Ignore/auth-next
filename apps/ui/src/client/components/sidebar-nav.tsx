@@ -13,6 +13,7 @@ import {
 	LayoutDashboard,
 	LogOut,
 	Mail,
+	Moon,
 	Package,
 	Radio,
 	Receipt,
@@ -302,6 +303,31 @@ export function SidebarNav({ onNavigate, isSidebarOpen = true, onToggleSidebar }
 			],
 		},
 	)
+
+	if (isSiteAdmin || hasAnyPermission('urn:moons:view')) {
+		navItems.push({
+			label: 'Moon Scanning',
+			href: '/moon-scan',
+			icon: Moon,
+			children: [
+				{ label: 'Regions', href: '/moon-scan' },
+				{ label: 'Scanned Moons', href: '/moon-scan/scanned' },
+				{ label: 'Leaderboard', href: '/moon-scan/leaderboard' },
+				...(isSiteAdmin || hasAnyPermission('urn:moons:submit')
+					? [
+							{ label: 'Submit Scan', href: '/moon-scan/submit' },
+							{ label: 'My Scans', href: '/moon-scan/my-scans' },
+						]
+					: []),
+				...(isSiteAdmin || hasAnyPermission('urn:moons:validate')
+					? [{ label: 'Validation Queue', href: '/moon-scan/queue' }]
+					: []),
+				...(isSiteAdmin || hasAnyPermission('urn:moons:admin')
+					? [{ label: 'Configuration', href: '/moon-scan/settings' }]
+					: []),
+			],
+		})
+	}
 
 	// Continue with other nav items
 	navItems.push({

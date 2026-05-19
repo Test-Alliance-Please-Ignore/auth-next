@@ -105,6 +105,18 @@ const FreightManageEdit = lazy(() => import('./features/freight/routes/manage-ed
 const FreightContracts = lazy(() => import('./features/freight/routes/contracts'))
 const FreightLeaderboard = lazy(() => import('./features/freight/routes/leaderboard'))
 
+// Lazy load the Moon Scanning feature for code splitting
+const MoonScanIndex = lazy(() => import('./features/moon-scan/routes/index'))
+const MoonScanSubmit = lazy(() => import('./features/moon-scan/routes/submit'))
+const MoonScanMyScans = lazy(() => import('./features/moon-scan/routes/my-scans'))
+const MoonScanQueue = lazy(() => import('./features/moon-scan/routes/queue'))
+const MoonScanRegion = lazy(() => import('./features/moon-scan/routes/region'))
+const MoonScanSystem = lazy(() => import('./features/moon-scan/routes/system'))
+const MoonScanMoon = lazy(() => import('./features/moon-scan/routes/moon'))
+const MoonScanLeaderboard = lazy(() => import('./features/moon-scan/routes/leaderboard'))
+const MoonScanAdminSettings = lazy(() => import('./features/moon-scan/routes/admin/settings'))
+const MoonScanScannedMoons = lazy(() => import('./features/moon-scan/routes/scanned-moons'))
+
 // Create a client
 const queryClient = new QueryClient({
 	defaultOptions: {
@@ -650,6 +662,88 @@ export default function App() {
 								element={
 									<Suspense fallback={<LoadingPage />}>
 										<FreightLeaderboard />
+									</Suspense>
+								}
+							/>
+
+							{/* Moon Scanning routes */}
+							<Route
+								path="/moon-scan"
+								element={
+									<Suspense fallback={<LoadingPage />}>
+										<MoonScanIndex />
+									</Suspense>
+								}
+							/>
+							<Route
+								path="/moon-scan/submit"
+								element={
+									<Suspense fallback={<LoadingPage />}>
+										<MoonScanSubmit />
+									</Suspense>
+								}
+							/>
+							<Route
+								path="/moon-scan/my-scans"
+								element={
+									<Suspense fallback={<LoadingPage />}>
+										<MoonScanMyScans />
+									</Suspense>
+								}
+							/>
+							<Route
+								path="/moon-scan/queue"
+								element={
+									<Suspense fallback={<LoadingPage />}>
+										<MoonScanQueue />
+									</Suspense>
+								}
+							/>
+							<Route
+								path="/moon-scan/region/:regionId"
+								element={
+									<Suspense fallback={<LoadingPage />}>
+										<MoonScanRegion />
+									</Suspense>
+								}
+							/>
+							<Route
+								path="/moon-scan/system/:systemId"
+								element={
+									<Suspense fallback={<LoadingPage />}>
+										<MoonScanSystem />
+									</Suspense>
+								}
+							/>
+							<Route
+								path="/moon-scan/moon/:moonId"
+								element={
+									<Suspense fallback={<LoadingPage />}>
+										<MoonScanMoon />
+									</Suspense>
+								}
+							/>
+							<Route
+								path="/moon-scan/leaderboard"
+								element={
+									<Suspense fallback={<LoadingPage />}>
+										<MoonScanLeaderboard />
+									</Suspense>
+								}
+							/>
+							<Route
+								path="/moon-scan/settings"
+								element={
+									<Suspense fallback={<LoadingPage />}>
+										<MoonScanAdminSettings />
+									</Suspense>
+								}
+							/>
+							<Route
+								path="/moon-scan/scanned"
+								element={
+									<Suspense fallback={<LoadingPage />}>
+										<MoonScanScannedMoons />
 									</Suspense>
 								}
 							/>

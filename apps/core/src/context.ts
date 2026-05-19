@@ -66,6 +66,10 @@ export type Env = SharedHonoEnv & {
 	FULCRUM: DurableObjectNamespace
 	/** Legacy migration Durable Object binding */
 	LEGACY: DurableObjectNamespace
+	/** Moon Scan Durable Object binding */
+	MOON_SCAN: DurableObjectNamespace
+	/** Markets Durable Object binding */
+	MARKETS: DurableObjectNamespace
 	/** Legacy Auth OAuth Client ID (set as Wrangler secret) */
 	LEGACY_AUTH_CLIENT_ID: string
 	/** Legacy Auth OAuth Client Secret (set as Wrangler secret) */

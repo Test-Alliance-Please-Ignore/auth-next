@@ -1,11 +1,17 @@
 import { DurableObject } from 'cloudflare:workers'
 
-import { and, eq, ilike, inArray, sql } from '@repo/db-utils'
+import { alias } from 'drizzle-orm/pg-core'
+
+import { and, eq, ilike, inArray, ne, sql } from '@repo/db-utils'
 import { getStub, LRUCache } from '@repo/do-utils'
 import { logger } from '@repo/hono-helpers'
 import {
 	EsiGetStructureMarketDataResponseSchema,
 	EsiGetStructureResponseSchema,
+	FUEL_BLOCK_TYPE_ID,
+	MAGMATIC_GAS_TYPE_ID,
+	MOON_BASE_MINERAL_TYPE_IDS,
+	MOON_GOO_TYPE_IDS,
 	UniverseMoonResourceSchema,
 	UniverseMoonSchema,
 	UniverseMoonWithResourcesSchema,
@@ -20,6 +26,7 @@ import {
 	invTypes,
 	moonResources,
 	moons,
+	typeMaterials,
 	universeConstellations,
 	universeNpcStations,
 	universePlanets,
@@ -52,6 +59,7 @@ import type {
 	UniverseSolarSystem,
 	UniverseStargate,
 	UniverseStaticMoon,
+	TypeMaterial,
 	TypeMetadata,
 	Universe,
 	UniverseMoon,
@@ -91,10 +99,17 @@ export class UniverseDO extends DurableObject<Env, {}> implements Universe {
 	private planetNamesCache: LRUCache<UniversePlanet>
 	private moonIdsCache: LRUCache<UniverseStaticMoon>
 	private moonNamesCache: LRUCache<UniverseStaticMoon>
+	private moonsBySystemCache: LRUCache<UniverseStaticMoon[]>
 	private stargateIdsCache: LRUCache<UniverseStargate>
 	private stargateNamesCache: LRUCache<UniverseStargate>
+	private stargatesBySystemCache: LRUCache<UniverseStargate[]>
 	private npcStationIdsCache: LRUCache<UniverseNpcStation>
 	private npcStationNamesCache: LRUCache<UniverseNpcStation>
+	private systemsByRegionCache: LRUCache<UniverseSolarSystem[]>
+	private regionStatsCache: LRUCache<{ systemCount: number; moonCount: number }>
+	private regionsBySystemCache: LRUCache<{ regionId: string; regionName: string }>
+	private regionConnectionsCache: LRUCache<Array<{ fromRegionId: string; toRegionId: string }>>
+	private typeMaterialsCache: LRUCache<TypeMaterial[]>
 	private killmailService: KillmailService
 
 	/**
@@ -119,10 +134,17 @@ export class UniverseDO extends DurableObject<Env, {}> implements Universe {
 		this.planetNamesCache = new LRUCache<UniversePlanet>(2000)
 		this.moonIdsCache = new LRUCache<UniverseStaticMoon>(3000)
 		this.moonNamesCache = new LRUCache<UniverseStaticMoon>(3000)
+		this.moonsBySystemCache = new LRUCache<UniverseStaticMoon[]>(1000)
 		this.stargateIdsCache = new LRUCache<UniverseStargate>(1000)
 		this.stargateNamesCache = new LRUCache<UniverseStargate>(1000)
+		this.stargatesBySystemCache = new LRUCache<UniverseStargate[]>(1000)
 		this.npcStationIdsCache = new LRUCache<UniverseNpcStation>(1000)
 		this.npcStationNamesCache = new LRUCache<UniverseNpcStation>(1000)
+		this.systemsByRegionCache = new LRUCache<UniverseSolarSystem[]>(200)
+		this.regionStatsCache = new LRUCache<{ systemCount: number; moonCount: number }>(200)
+		this.regionsBySystemCache = new LRUCache<{ regionId: string; regionName: string }>(2000)
+		this.regionConnectionsCache = new LRUCache<Array<{ fromRegionId: string; toRegionId: string }>>(200)
+		this.typeMaterialsCache = new LRUCache<TypeMaterial[]>(8000)
 		this.killmailService = new KillmailService(this.db, this.env)
 	}
 
@@ -781,7 +803,15 @@ export class UniverseDO extends DurableObject<Env, {}> implements Universe {
 		const directTypeIds = directRows.map((r) => r.typeId)
 		const implantTypeIds = implantResult.rows.map((r) => r.type_id)
 
-		return [...new Set([...directTypeIds, ...implantTypeIds])]
+		// Universe is the source-of-truth for moon extraction price IDs.
+		const moonMaterialTypeIds = [
+			...MOON_BASE_MINERAL_TYPE_IDS,
+			...MOON_GOO_TYPE_IDS,
+			FUEL_BLOCK_TYPE_ID,
+			MAGMATIC_GAS_TYPE_ID,
+		]
+
+		return [...new Set([...directTypeIds, ...implantTypeIds, ...moonMaterialTypeIds])]
 	}
 
 	/**
@@ -1633,6 +1663,307 @@ export class UniverseDO extends DurableObject<Env, {}> implements Universe {
 	}
 
 	/**
+	 * Get all solar systems in a region.
+	 */
+	async getSystemsByRegionId(regionId: string): Promise<UniverseSolarSystem[]> {
+		const cached = this.systemsByRegionCache.get(regionId)
+		if (cached !== undefined) return cached
+
+		const rows = await this.db
+			.select()
+			.from(universeSolarSystems)
+			.where(eq(universeSolarSystems.regionId, regionId))
+		const systems = rows.map((r) => ({
+			solarSystemId: r.solarSystemId,
+			solarSystemName: r.solarSystemName,
+			regionId: r.regionId,
+			constellationId: r.constellationId,
+			securityStatus: r.securityStatus,
+		}))
+		this.systemsByRegionCache.set(regionId, systems)
+		return systems
+	}
+
+	/**
+	 * Get all moons in a solar system.
+	 */
+	async getMoonsBySystemId(systemId: string): Promise<UniverseStaticMoon[]> {
+		const moonMap = await this.getMoonsBySystemIds([systemId])
+		return moonMap[systemId] ?? []
+	}
+
+	/**
+	 * Batch variant of getMoonsBySystemId.
+	 */
+	async getMoonsBySystemIds(systemIds: string[]): Promise<Record<string, UniverseStaticMoon[]>> {
+		if (systemIds.length === 0) return {}
+
+		const result: Record<string, UniverseStaticMoon[]> = {}
+		const cacheMisses: string[] = []
+
+		for (const systemId of systemIds) {
+			const cached = this.moonsBySystemCache.get(systemId)
+			if (cached !== undefined) {
+				result[systemId] = cached
+				continue
+			}
+			cacheMisses.push(systemId)
+		}
+
+		if (cacheMisses.length > 0) {
+			const rows = await this.db
+				.select()
+				.from(moons)
+				.where(inArray(moons.solarSystemId, cacheMisses))
+			const grouped = new Map<string, UniverseStaticMoon[]>()
+			for (const row of rows) {
+				const bucket = grouped.get(row.solarSystemId) ?? []
+				bucket.push({
+					moonId: row.moonId,
+					moonName: row.name,
+					planetId: row.planetId,
+					solarSystemId: row.solarSystemId,
+				})
+				grouped.set(row.solarSystemId, bucket)
+			}
+			for (const systemId of cacheMisses) {
+				const moonsForSystem = grouped.get(systemId) ?? []
+				this.moonsBySystemCache.set(systemId, moonsForSystem)
+				result[systemId] = moonsForSystem
+			}
+		}
+
+		for (const systemId of systemIds) {
+			if (result[systemId] === undefined) {
+				result[systemId] = []
+			}
+		}
+
+		return result
+	}
+
+	/**
+	 * Get all stargates for a set of solar systems (for jump connections on map).
+	 */
+	async getStargatesBySystemIds(systemIds: string[]): Promise<UniverseStargate[]> {
+		if (systemIds.length === 0) return []
+
+		const cacheMisses: string[] = []
+		const stargatesBySystem = new Map<string, UniverseStargate[]>()
+
+		for (const systemId of systemIds) {
+			const cached = this.stargatesBySystemCache.get(systemId)
+			if (cached !== undefined) {
+				stargatesBySystem.set(systemId, cached)
+				continue
+			}
+			cacheMisses.push(systemId)
+		}
+
+		if (cacheMisses.length > 0) {
+			const rows = await this.db
+				.select()
+				.from(universeStargates)
+				.where(inArray(universeStargates.solarSystemId, cacheMisses))
+			for (const row of rows) {
+				const gate: UniverseStargate = {
+					stargateId: row.stargateId,
+					stargateName: row.stargateName,
+					solarSystemId: row.solarSystemId,
+					destinationSolarSystemId: row.destinationSolarSystemId,
+					destinationStargateId: row.destinationStargateId,
+					typeId: row.typeId,
+				}
+				const bucket = stargatesBySystem.get(row.solarSystemId) ?? []
+				bucket.push(gate)
+				stargatesBySystem.set(row.solarSystemId, bucket)
+			}
+			for (const systemId of cacheMisses) {
+				const gatesForSystem = stargatesBySystem.get(systemId) ?? []
+				this.stargatesBySystemCache.set(systemId, gatesForSystem)
+				stargatesBySystem.set(systemId, gatesForSystem)
+			}
+		}
+
+		return systemIds.flatMap((systemId) => stargatesBySystem.get(systemId) ?? [])
+	}
+
+	/**
+	 * Get system and moon counts per region (for region overview map).
+	 */
+	async getRegionStats(regionIds: string[]): Promise<Record<string, { systemCount: number; moonCount: number }>> {
+		if (regionIds.length === 0) return {}
+
+		const result: Record<string, { systemCount: number; moonCount: number }> = {}
+		const cacheMisses: string[] = []
+		for (const regionId of regionIds) {
+			const cached = this.regionStatsCache.get(regionId)
+			if (cached !== undefined) {
+				result[regionId] = cached
+				continue
+			}
+			cacheMisses.push(regionId)
+		}
+
+		if (cacheMisses.length > 0) {
+			const [systemRows, moonRows] = await Promise.all([
+				this.db
+					.select({
+						regionId: universeSolarSystems.regionId,
+						systemCount: sql<string>`count(*)`.as('system_count'),
+					})
+					.from(universeSolarSystems)
+					.where(inArray(universeSolarSystems.regionId, cacheMisses))
+					.groupBy(universeSolarSystems.regionId),
+
+				this.db
+					.select({
+						regionId: universeSolarSystems.regionId,
+						moonCount: sql<string>`count(${moons.moonId})`.as('moon_count'),
+					})
+					.from(moons)
+					.innerJoin(universeSolarSystems, eq(moons.solarSystemId, universeSolarSystems.solarSystemId))
+					.where(inArray(universeSolarSystems.regionId, cacheMisses))
+					.groupBy(universeSolarSystems.regionId),
+			])
+
+			const missesResult: Record<string, { systemCount: number; moonCount: number }> = {}
+			for (const r of systemRows) {
+				missesResult[r.regionId] = { systemCount: Number(r.systemCount), moonCount: 0 }
+			}
+			for (const r of moonRows) {
+				const existing = missesResult[r.regionId] ?? { systemCount: 0, moonCount: 0 }
+				missesResult[r.regionId] = { ...existing, moonCount: Number(r.moonCount) }
+			}
+			for (const regionId of cacheMisses) {
+				const stats = missesResult[regionId] ?? { systemCount: 0, moonCount: 0 }
+				this.regionStatsCache.set(regionId, stats)
+				result[regionId] = stats
+			}
+		}
+
+		for (const regionId of regionIds) {
+			if (result[regionId] === undefined) {
+				result[regionId] = { systemCount: 0, moonCount: 0 }
+			}
+		}
+
+		return result
+	}
+
+	/**
+	 * Map moon IDs to their region IDs (for aggregating scan coverage by region).
+	 */
+	async getMoonRegionIds(moonIds: string[]): Promise<Record<string, string>> {
+		if (moonIds.length === 0) return {}
+
+		const rows = await this.db
+			.select({
+				moonId: moons.moonId,
+				regionId: universeSolarSystems.regionId,
+			})
+			.from(moons)
+			.innerJoin(universeSolarSystems, eq(moons.solarSystemId, universeSolarSystems.solarSystemId))
+			.where(inArray(moons.moonId, moonIds))
+
+		const result: Record<string, string> = {}
+		for (const r of rows) result[r.moonId] = r.regionId
+		return result
+	}
+
+	/**
+	 * Get unique cross-region stargate connections (for drawing inter-region lines on universe map).
+	 */
+	async getRegionsBySystemIds(systemIds: string[]): Promise<Record<string, { regionId: string; regionName: string }>> {
+		if (systemIds.length === 0) return {}
+		const result: Record<string, { regionId: string; regionName: string }> = {}
+		const cacheMisses: string[] = []
+		for (const systemId of systemIds) {
+			const cached = this.regionsBySystemCache.get(systemId)
+			if (cached !== undefined) {
+				result[systemId] = cached
+				continue
+			}
+			cacheMisses.push(systemId)
+		}
+
+		if (cacheMisses.length > 0) {
+			const rows = await this.db
+				.select({
+					solarSystemId: universeSolarSystems.solarSystemId,
+					regionId: universeSolarSystems.regionId,
+					regionName: universeRegions.regionName,
+				})
+				.from(universeSolarSystems)
+				.innerJoin(universeRegions, eq(universeSolarSystems.regionId, universeRegions.regionId))
+				.where(inArray(universeSolarSystems.solarSystemId, cacheMisses))
+			for (const row of rows) {
+				const value = { regionId: row.regionId, regionName: row.regionName }
+				this.regionsBySystemCache.set(row.solarSystemId, value)
+				result[row.solarSystemId] = value
+			}
+		}
+
+		return result
+	}
+
+	async getRegionConnections(regionIds: string[]): Promise<Array<{ fromRegionId: string; toRegionId: string }>> {
+		if (regionIds.length === 0) return []
+
+		const cachedConnections = new Map<string, Array<{ fromRegionId: string; toRegionId: string }>>()
+		const cacheMisses: string[] = []
+		for (const regionId of regionIds) {
+			const cached = this.regionConnectionsCache.get(regionId)
+			if (cached !== undefined) {
+				cachedConnections.set(regionId, cached)
+				continue
+			}
+			cacheMisses.push(regionId)
+		}
+
+		if (cacheMisses.length > 0) {
+			const ss1 = alias(universeSolarSystems, 'ss1')
+			const ss2 = alias(universeSolarSystems, 'ss2')
+			const rows = await this.db
+				.selectDistinct({
+					fromRegionId: ss1.regionId,
+					toRegionId: ss2.regionId,
+				})
+				.from(universeStargates)
+				.innerJoin(ss1, eq(universeStargates.solarSystemId, ss1.solarSystemId))
+				.innerJoin(ss2, eq(universeStargates.destinationSolarSystemId, ss2.solarSystemId))
+				.where(and(ne(ss1.regionId, ss2.regionId), inArray(ss1.regionId, cacheMisses)))
+
+			const grouped = new Map<string, Array<{ fromRegionId: string; toRegionId: string }>>()
+			for (const row of rows) {
+				const bucket = grouped.get(row.fromRegionId) ?? []
+				bucket.push({ fromRegionId: row.fromRegionId, toRegionId: row.toRegionId })
+				grouped.set(row.fromRegionId, bucket)
+			}
+			for (const regionId of cacheMisses) {
+				const regionConnections = grouped.get(regionId) ?? []
+				this.regionConnectionsCache.set(regionId, regionConnections)
+				cachedConnections.set(regionId, regionConnections)
+			}
+		}
+
+		// Deduplicate bidirectional connections (A→B and B→A both appear)
+		const seen = new Set<string>()
+		const connections: Array<{ fromRegionId: string; toRegionId: string }> = []
+		for (const regionId of regionIds) {
+			const regionConnections = cachedConnections.get(regionId) ?? []
+			for (const row of regionConnections) {
+				const key = [row.fromRegionId, row.toRegionId].sort().join('|')
+				if (!seen.has(key)) {
+					seen.add(key)
+					connections.push(row)
+				}
+			}
+		}
+		return connections
+	}
+
+	/**
 	 * Search for types by name (partial LIKE match)
 	 * Only returns published types. Results ordered by name.
 	 */
@@ -1741,6 +2072,43 @@ export class UniverseDO extends DurableObject<Env, {}> implements Universe {
 	 */
 	async getKillmailsByTimeRange(startTime: Date, endTime: Date): Promise<Killmail[]> {
 		return this.killmailService.getKillmailsByTimeRange(startTime, endTime)
+	}
+
+	async getTypeMaterials(typeIds: string[]): Promise<Record<string, TypeMaterial[]>> {
+		if (typeIds.length === 0) return {}
+		const result: Record<string, TypeMaterial[]> = {}
+		const cacheMisses: string[] = []
+		for (const typeId of typeIds) {
+			const cached = this.typeMaterialsCache.get(typeId)
+			if (cached !== undefined) {
+				result[typeId] = cached
+				continue
+			}
+			cacheMisses.push(typeId)
+		}
+
+		if (cacheMisses.length > 0) {
+			const rows = await this.db
+				.select()
+				.from(typeMaterials)
+				.where(inArray(typeMaterials.typeId, cacheMisses))
+			const grouped = new Map<string, TypeMaterial[]>()
+			for (const row of rows) {
+				const bucket = grouped.get(row.typeId) ?? []
+				bucket.push({ materialTypeId: row.materialTypeId, quantity: row.quantity })
+				grouped.set(row.typeId, bucket)
+			}
+			for (const typeId of cacheMisses) {
+				const materials = grouped.get(typeId) ?? []
+				this.typeMaterialsCache.set(typeId, materials)
+				result[typeId] = materials
+			}
+		}
+
+		for (const typeId of typeIds) {
+			if (result[typeId] === undefined) result[typeId] = []
+		}
+		return result
 	}
 
 	/**
