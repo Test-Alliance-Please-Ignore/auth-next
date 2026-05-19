@@ -26,6 +26,8 @@ export async function getScannedMoons(params: {
 	regionId?: string
 	rarity?: string
 	search?: string
+	sortBy?: string
+	sortDir?: 'asc' | 'desc'
 } = {}): Promise<ScannedMoonsResponse> {
 	const qs = new URLSearchParams()
 	if (params.page) qs.set('page', String(params.page))
@@ -33,6 +35,8 @@ export async function getScannedMoons(params: {
 	if (params.regionId && params.regionId !== 'all') qs.set('regionId', params.regionId)
 	if (params.rarity && params.rarity !== 'All') qs.set('rarity', params.rarity)
 	if (params.search?.trim()) qs.set('search', params.search.trim())
+	if (params.sortBy) qs.set('sortBy', params.sortBy)
+	if (params.sortDir) qs.set('sortDir', params.sortDir)
 	const query = qs.toString()
 	return apiClient.get(`/moon-scan/moons/verified${query ? `?${query}` : ''}`)
 }

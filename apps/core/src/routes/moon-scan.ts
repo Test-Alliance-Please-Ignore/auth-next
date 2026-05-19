@@ -132,6 +132,18 @@ const VerifiedMoonsQuerySchema = z.object({
 	regionId: z.string().optional(),
 	rarity: z.enum(['R4', 'R8', 'R16', 'R32', 'R64']).optional(),
 	search: z.string().trim().optional(),
+	sortBy: z
+		.enum([
+			'moonName',
+			'solarSystemName',
+			'regionName',
+			'securityStatus',
+			'highestRarity',
+			'metenoxProfit',
+			'tataraProfit',
+		])
+		.default('moonName'),
+	sortDir: z.enum(['asc', 'desc']).default('asc'),
 })
 
 const ExtractionSettingsSchema = z.object({
@@ -351,6 +363,8 @@ moonScanRoutes.get('/moons/verified', async (c) => {
 		regionId: c.req.query('regionId'),
 		rarity: c.req.query('rarity'),
 		search: c.req.query('search'),
+		sortBy: c.req.query('sortBy'),
+		sortDir: c.req.query('sortDir'),
 	})
 	if (!query.success) {
 		return c.json({ error: 'Invalid query', issues: query.error.issues }, 400)
@@ -510,6 +524,58 @@ moonScanRoutes.get('/moons/verified', async (c) => {
 			(m) => m.moonName.toLowerCase().includes(q) || m.solarSystemName.toLowerCase().includes(q)
 		)
 	}
+
+	const { sortBy, sortDir } = query.data
+	const direction = sortDir === 'asc' ? 1 : -1
+	const rarityRank = (rarity: string | null): number => {
+		if (!rarity) return -1
+		return RARITY_ORDER[rarity as OreRarity] ?? -1
+	}
+	const parseNum = (value: string | null): number | null => {
+		if (value == null) return null
+		const n = Number.parseFloat(value)
+		return Number.isFinite(n) ? n : null
+	}
+	filtered = [...filtered].sort((a, b) => {
+		let cmp = 0
+		switch (sortBy) {
+			case 'moonName':
+				cmp = a.moonName.localeCompare(b.moonName)
+				break
+			case 'solarSystemName':
+				cmp = a.solarSystemName.localeCompare(b.solarSystemName)
+				break
+			case 'regionName':
+				cmp = a.regionName.localeCompare(b.regionName)
+				break
+			case 'securityStatus': {
+				const av = parseSecurityStatus(a.securityStatus)
+				const bv = parseSecurityStatus(b.securityStatus)
+				cmp = av === bv ? 0 : av === null ? 1 : bv === null ? -1 : av - bv
+				break
+			}
+			case 'highestRarity': {
+				const av = rarityRank(a.highestRarity)
+				const bv = rarityRank(b.highestRarity)
+				cmp = av - bv
+				break
+			}
+			case 'metenoxProfit': {
+				const av = parseNum(a.metenoxProfit)
+				const bv = parseNum(b.metenoxProfit)
+				cmp = av === bv ? 0 : av === null ? 1 : bv === null ? -1 : av - bv
+				break
+			}
+			case 'tataraProfit': {
+				const av = parseNum(a.tataraProfit)
+				const bv = parseNum(b.tataraProfit)
+				cmp = av === bv ? 0 : av === null ? 1 : bv === null ? -1 : av - bv
+				break
+			}
+		}
+		if (cmp !== 0) return cmp * direction
+		return a.moonName.localeCompare(b.moonName)
+	})
 
 	const total = filtered.length
 	const page = query.data.page

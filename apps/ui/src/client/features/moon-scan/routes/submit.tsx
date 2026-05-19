@@ -9,18 +9,12 @@ import { Textarea } from '@/components/ui/textarea'
 
 import { useParseScan, useSubmitScan } from '../hooks'
 import { useMoonScanPermissions } from '../permissions'
+import { securityStatusTextClass } from '../security-status'
 
 import type { AnnotatedScan } from '../types'
 
 function ScanPreviewRow({ scan }: { scan: AnnotatedScan }) {
-	const secColor =
-		scan.secStatus === null
-			? 'text-muted-foreground'
-			: scan.secStatus < 0.0
-				? 'text-red-400'
-				: scan.secStatus < 0.5
-					? 'text-yellow-400'
-					: 'text-green-400'
+	const secColor = securityStatusTextClass(scan.secStatus)
 
 	return (
 		<div className={`flex items-center justify-between rounded border px-3 py-2 text-sm ${scan.eligible ? '' : 'opacity-50'}`}>
