@@ -21,7 +21,7 @@ import type { TrackingSessionStatus } from '../types'
 
 type Tab = 'all' | TrackingSessionStatus
 
-const PAGE_SIZE = 20
+const PAGE_SIZE = 10
 
 /**
  * Convert a YYYY-MM-DD date input into an ISO timestamp at start-of-day (UTC).

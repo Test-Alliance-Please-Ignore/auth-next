@@ -253,7 +253,7 @@ function DetailView({
 			{isLive && (
 				<div className="text-xs text-muted-foreground flex items-center gap-1">
 					<Clock className="h-3 w-3" />
-					Fleet data updates every 30 seconds. Page polls every 5 seconds for new updates.
+					Fleet data updates every 30 seconds.
 				</div>
 			)}
 		</div>
