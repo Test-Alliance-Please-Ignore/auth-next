@@ -71,6 +71,17 @@ async function hasMoonPerm(
 	const cacheKey = `moon-perm:${userId}:${urn}`
 	return permissionCache.getOrSet(cacheKey, async () => {
 		const perms = await getCachedUserPermissions(env, userId)
+		if (urn === MOON_URNS.view) {
+			return perms.some((p) =>
+				p.urn === MOON_URNS.view
+				|| p.urn === MOON_URNS.submit
+				|| p.urn === MOON_URNS.validate
+				|| p.urn === MOON_URNS.admin
+			)
+		}
+		if (urn === MOON_URNS.submit || urn === MOON_URNS.validate) {
+			return perms.some((p) => p.urn === urn || p.urn === MOON_URNS.admin)
+		}
 		return perms.some((p) => p.urn === urn)
 	})
 }

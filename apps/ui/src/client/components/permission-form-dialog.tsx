@@ -214,6 +214,7 @@ export function PermissionFormDialog({
 						setFormData({ ...formData, categoryId: value === 'none' ? undefined : value })
 					}
 					inputId="category"
+					searchable
 					options={[
 						{ value: 'none', label: 'No category' },
 						...categories.map((category) => ({ value: category.id, label: category.name })),
