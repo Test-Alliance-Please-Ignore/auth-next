@@ -134,7 +134,7 @@ describe('moon-scan scan detail access', () => {
 		const user = makeUser({ id: 'validator-pending' })
 		moonScanStub.getScan.mockResolvedValue(makeScan('pending'))
 		getCachedUserPermissionsMock.mockResolvedValue([
-			{ urn: 'urn:moons:validate' },
+			{ urn: 'urn:moons:scan:validate' },
 		] as any)
 
 		const app = createApp(user)
@@ -144,7 +144,7 @@ describe('moon-scan scan detail access', () => {
 		expect(await res.json()).toMatchObject({ id: 'scan-1', status: 'pending' })
 	})
 
-	it('allows scan owner to read their own pending scan', async () => {
+	it('denies scan owner without moon scan urns', async () => {
 		const user = makeUser({
 			id: 'owner-pending',
 			characters: [
@@ -160,6 +160,30 @@ describe('moon-scan scan detail access', () => {
 		})
 		moonScanStub.getScan.mockResolvedValue(makeScan('pending', '4242'))
 		getCachedUserPermissionsMock.mockResolvedValue([] as any)
+
+		const app = createApp(user)
+		const res = await app.request('/api/moon-scan/scans/scan-1', {}, env)
+
+		expect(res.status).toBe(403)
+		expect(await res.json()).toEqual({ error: 'Forbidden' })
+	})
+
+	it('allows scan owner with submit urn to read their own pending scan', async () => {
+		const user = makeUser({
+			id: 'owner-pending-with-submit',
+			characters: [
+				{
+					id: 'uc-42',
+					characterOwnerHash: 'owner-42',
+					characterId: '4242',
+					characterName: 'Owner Pilot',
+					is_primary: true,
+					hasValidToken: true,
+				},
+			],
+		})
+		moonScanStub.getScan.mockResolvedValue(makeScan('pending', '4242'))
+		getCachedUserPermissionsMock.mockResolvedValue([{ urn: 'urn:moons:scan:submit' }] as any)
 
 		const app = createApp(user)
 		const res = await app.request('/api/moon-scan/scans/scan-1', {}, env)

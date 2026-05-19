@@ -5,8 +5,8 @@ export function useMoonScanPermissions() {
 
 	return {
 		canView: isAdmin || hasPermission('urn:moons:view'),
-		canSubmit: isAdmin || hasPermission('urn:moons:submit'),
-		canValidate: isAdmin || hasPermission('urn:moons:validate'),
+		canSubmit: isAdmin || hasPermission('urn:moons:scan:submit'),
+		canValidate: isAdmin || hasPermission('urn:moons:scan:validate'),
 		canAdmin: isAdmin || hasPermission('urn:moons:admin'),
 	}
 }
