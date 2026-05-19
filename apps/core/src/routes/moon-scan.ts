@@ -126,6 +126,14 @@ const ScanFiltersSchema = z.object({
 	pageSize: z.coerce.number().int().positive().max(100).default(20),
 })
 
+const VerifiedMoonsQuerySchema = z.object({
+	page: z.coerce.number().int().positive().default(1),
+	pageSize: z.coerce.number().int().positive().max(100).default(50),
+	regionId: z.string().optional(),
+	rarity: z.enum(['R4', 'R8', 'R16', 'R32', 'R64']).optional(),
+	search: z.string().trim().optional(),
+})
+
 const ExtractionSettingsSchema = z.object({
 	defaultReprocessingYield: z.string().optional(),
 	defaultCycleDays: z.number().int().positive().optional(),
@@ -337,6 +345,17 @@ moonScanRoutes.get('/moons/verified', async (c) => {
 		return c.json({ error: 'Forbidden' }, 403)
 	}
 
+	const query = VerifiedMoonsQuerySchema.safeParse({
+		page: c.req.query('page'),
+		pageSize: c.req.query('pageSize'),
+		regionId: c.req.query('regionId'),
+		rarity: c.req.query('rarity'),
+		search: c.req.query('search'),
+	})
+	if (!query.success) {
+		return c.json({ error: 'Invalid query', issues: query.error.issues }, 400)
+	}
+
 	const moonScan = getMoonScanStub(c.env)
 	const universe = getUniverseStub(c.env)
 
@@ -344,7 +363,13 @@ moonScanRoutes.get('/moons/verified', async (c) => {
 	const summary = await moonScan.getScanSummary()
 	const verifiedMoonIds = summary.verifiedMoonIds
 	if (verifiedMoonIds.length === 0) {
-		return c.json({ moons: [], updatedAt: new Date().toISOString() })
+		return c.json({
+			items: [],
+			total: 0,
+			page: query.data.page,
+			pageSize: query.data.pageSize,
+			updatedAt: new Date().toISOString(),
+		})
 	}
 
 	// Bulk-load compositions, moon static data, and settings+prices in parallel
@@ -472,7 +497,27 @@ moonScanRoutes.get('/moons/verified', async (c) => {
 		}
 	}).filter((m): m is NonNullable<typeof m> => m !== null)
 
-	return c.json({ moons, updatedAt: new Date().toISOString() })
+	let filtered = moons
+	if (query.data.regionId) {
+		filtered = filtered.filter((m) => m.regionId === query.data.regionId)
+	}
+	if (query.data.rarity) {
+		filtered = filtered.filter((m) => m.highestRarity === query.data.rarity)
+	}
+	if (query.data.search) {
+		const q = query.data.search.toLowerCase()
+		filtered = filtered.filter(
+			(m) => m.moonName.toLowerCase().includes(q) || m.solarSystemName.toLowerCase().includes(q)
+		)
+	}
+
+	const total = filtered.length
+	const page = query.data.page
+	const pageSize = query.data.pageSize
+	const start = (page - 1) * pageSize
+	const items = filtered.slice(start, start + pageSize)
+
+	return c.json({ items, total, page, pageSize, updatedAt: new Date().toISOString() })
 })
 
 function getMarketsStub(env: App['Bindings']): Markets {

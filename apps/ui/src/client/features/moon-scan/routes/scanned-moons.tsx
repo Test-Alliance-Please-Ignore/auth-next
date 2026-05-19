@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useMemo, useState } from 'react'
 import { Link } from 'react-router-dom'
 
 import { UserSearchPaginationControls } from '@/components/user-search-pagination-controls'
@@ -95,7 +95,13 @@ export default function ScannedMoonsPage() {
 	const [page, setPage] = useState(1)
 	const [pageSize, setPageSize] = useState(50)
 
-	const { data, isLoading, error } = useScannedMoons()
+	const { data, isLoading, error } = useScannedMoons({
+		page,
+		pageSize,
+		regionId: regionFilter,
+		rarity: rarityTab,
+		search,
+	})
 	const { data: regionsData } = useMoonRegions()
 
 	const regions = useMemo(() => {
@@ -110,37 +116,8 @@ export default function ScannedMoonsPage() {
 		[regions]
 	)
 
-	const filtered = useMemo(() => {
-		if (!data) return []
-		let list = data.moons
-		if (rarityTab !== 'All') list = list.filter((m) => m.highestRarity === rarityTab)
-		if (regionFilter !== 'all') list = list.filter((m) => m.regionId === regionFilter)
-		if (search.trim()) {
-			const q = search.trim().toLowerCase()
-			list = list.filter(
-				(m) => m.moonName.toLowerCase().includes(q) || m.solarSystemName.toLowerCase().includes(q)
-			)
-		}
-		return list
-	}, [data, rarityTab, regionFilter, search])
-	const totalCount = filtered.length
-	const totalPages = Math.max(1, Math.ceil(totalCount / pageSize))
-	const pagedMoons = useMemo(() => {
-		const start = (page - 1) * pageSize
-		return filtered.slice(start, start + pageSize)
-	}, [filtered, page, pageSize])
-
-	useEffect(() => {
-		setPage(1)
-	}, [rarityTab, regionFilter, search])
-
-	useEffect(() => {
-		if (page > totalPages) {
-			setPage(totalPages)
-		}
-	}, [page, totalPages])
-
-	const hasPagination = totalCount > pageSize
+	const totalCount = data?.total ?? 0
+	const hasPagination = Math.ceil(totalCount / pageSize) > 1
 	const renderPaginationControls = () => (
 		<UserSearchPaginationControls
 			totalCount={totalCount}
@@ -187,6 +164,7 @@ export default function ScannedMoonsPage() {
 									value={tab}
 									className="rounded px-2.5 py-1 text-xs font-medium"
 									style={tab !== 'All' ? { color: RARITY_COLORS[tab as OreRarity] } : undefined}
+									onClick={() => setPage(1)}
 								>
 									{tab}
 								</TabsTrigger>
@@ -197,7 +175,10 @@ export default function ScannedMoonsPage() {
 				{/* Region dropdown */}
 					<Select
 						value={regionFilter}
-						onValueChange={(value) => setRegionFilter(value)}
+						onValueChange={(value) => {
+							setRegionFilter(value)
+							setPage(1)
+						}}
 						options={regionOptions}
 						searchable
 						placeholder="Filter region..."
@@ -210,12 +191,15 @@ export default function ScannedMoonsPage() {
 					className="w-56"
 					placeholder="Search moon or system…"
 					value={search}
-					onChange={(e) => setSearch(e.target.value)}
+					onChange={(e) => {
+						setSearch(e.target.value)
+						setPage(1)
+					}}
 				/>
 
 				{!isLoading && data && (
 					<span className="ml-auto text-xs text-muted-foreground">
-						{filtered.length} / {data.moons.length} moons
+						{data.items.length} shown • {data.total} total
 					</span>
 				)}
 			</div>
@@ -245,8 +229,8 @@ export default function ScannedMoonsPage() {
 										))}
 									</TableRow>
 								))
-							: pagedMoons.map((moon) => <MoonRow key={moon.moonId} moon={moon} />)}
-						{!isLoading && filtered.length === 0 && (
+							: (data?.items ?? []).map((moon) => <MoonRow key={moon.moonId} moon={moon} />)}
+						{!isLoading && (data?.items.length ?? 0) === 0 && (
 							<TableRow>
 								<TableCell colSpan={7} className="py-8 text-center text-sm text-muted-foreground">
 									No moons match the current filters.

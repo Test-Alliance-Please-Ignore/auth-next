@@ -20,8 +20,21 @@ import type {
 	DotlanCoords,
 } from './types'
 
-export async function getScannedMoons(): Promise<ScannedMoonsResponse> {
-	return apiClient.get('/moon-scan/moons/verified')
+export async function getScannedMoons(params: {
+	page?: number
+	pageSize?: number
+	regionId?: string
+	rarity?: string
+	search?: string
+} = {}): Promise<ScannedMoonsResponse> {
+	const qs = new URLSearchParams()
+	if (params.page) qs.set('page', String(params.page))
+	if (params.pageSize) qs.set('pageSize', String(params.pageSize))
+	if (params.regionId && params.regionId !== 'all') qs.set('regionId', params.regionId)
+	if (params.rarity && params.rarity !== 'All') qs.set('rarity', params.rarity)
+	if (params.search?.trim()) qs.set('search', params.search.trim())
+	const query = qs.toString()
+	return apiClient.get(`/moon-scan/moons/verified${query ? `?${query}` : ''}`)
 }
 
 export async function getRegions(): Promise<RegionsResponse> {

@@ -4,7 +4,13 @@ export const moonScanKeys = {
 	all: ['moon-scan'] as const,
 
 	// Verified moons list
-	verifiedMoons: () => [...moonScanKeys.all, 'verified-moons'] as const,
+	verifiedMoons: (params: {
+		page?: number
+		pageSize?: number
+		regionId?: string
+		rarity?: string
+		search?: string
+	}) => [...moonScanKeys.all, 'verified-moons', params] as const,
 
 	// Regions
 	regions: () => [...moonScanKeys.all, 'regions'] as const,

@@ -199,7 +199,10 @@ export interface ScannedMoonEntry {
 }
 
 export interface ScannedMoonsResponse {
-	moons: ScannedMoonEntry[]
+	items: ScannedMoonEntry[]
+	total: number
+	page: number
+	pageSize: number
 	updatedAt: string
 }
 

@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router-dom'
 
 import { Card } from '@/components/ui/card'
 import { Container } from '@/components/ui/container'
+import { Input } from '@/components/ui/input'
 import { PageHeader } from '@/components/ui/page-header'
 import { Skeleton } from '@/components/ui/skeleton'
 import {
@@ -86,11 +87,12 @@ interface TooltipState {
 
 interface RegionNodeProps {
 	region: RegionSummary
+	dimmed?: boolean
 	onHover: (region: RegionSummary | null) => void
 	onClick: () => void
 }
 
-function RegionNode({ region, onHover, onClick }: RegionNodeProps) {
+function RegionNode({ region, dimmed = false, onHover, onClick }: RegionNodeProps) {
 	const pos = DOTLAN_COORDS[region.regionId]
 	if (!pos) return null
 	const [cx, cy] = pos
@@ -102,6 +104,7 @@ function RegionNode({ region, onHover, onClick }: RegionNodeProps) {
 
 	return (
 		<g
+			opacity={dimmed ? 0.2 : 1}
 			style={{ cursor: 'pointer' }}
 			onClick={onClick}
 			onMouseEnter={() => onHover(region)}
@@ -149,6 +152,7 @@ export default function MoonScanIndex() {
 
 	const [tooltip, setTooltip] = useState<TooltipState | null>(null)
 	const [tooltipPx, setTooltipPx] = useState<{ x: number; y: number } | null>(null)
+	const [regionSearch, setRegionSearch] = useState('')
 
 	if (!canView) {
 		return (
@@ -159,6 +163,12 @@ export default function MoonScanIndex() {
 	}
 
 	const sorted = [...(regions ?? [])].sort((a, b) => a.regionName.localeCompare(b.regionName))
+	const normalizedRegionSearch = regionSearch.trim().toLowerCase()
+	const filteredRegions = normalizedRegionSearch
+		? sorted.filter((r) => r.regionName.toLowerCase().includes(normalizedRegionSearch))
+		: sorted
+	const highlightedRegionIds = new Set(filteredRegions.map((r) => r.regionId))
+	const hasActiveRegionFilter = normalizedRegionSearch.length > 0
 
 	function handleNodeHover(region: RegionSummary | null) {
 		setTooltip(region ? { region } : null)
@@ -228,6 +238,7 @@ export default function MoonScanIndex() {
 							<RegionNode
 								key={r.regionId}
 								region={r}
+								dimmed={hasActiveRegionFilter && !highlightedRegionIds.has(r.regionId)}
 								onHover={handleNodeHover}
 								onClick={() => navigate(`/moon-scan/region/${r.regionId}`)}
 							/>
@@ -293,6 +304,17 @@ export default function MoonScanIndex() {
 
 				{/* Regions Table */}
 				<Card>
+					<div className="border-b px-4 py-2.5">
+						<div className="flex items-center justify-between gap-2">
+							<div className="text-sm font-medium">Regions</div>
+							<Input
+								value={regionSearch}
+								onChange={(e) => setRegionSearch(e.target.value)}
+								placeholder="Filter regions..."
+								className="h-8 w-full sm:w-64"
+							/>
+						</div>
+					</div>
 					<div className="overflow-x-auto">
 						<Table>
 							<TableHeader>
@@ -312,7 +334,7 @@ export default function MoonScanIndex() {
 												</TableCell>
 											</TableRow>
 										))
-									: sorted.map((r) => (
+									: filteredRegions.map((r) => (
 											<TableRow
 												key={r.regionId}
 												className="cursor-pointer hover:bg-accent/50 transition-colors"
@@ -328,6 +350,13 @@ export default function MoonScanIndex() {
 												</TableCell>
 											</TableRow>
 										))}
+								{!isLoading && filteredRegions.length === 0 && (
+									<TableRow>
+										<TableCell colSpan={4} className="py-8 text-center text-sm text-muted-foreground">
+											No regions match the current filter.
+										</TableCell>
+									</TableRow>
+								)}
 							</TableBody>
 						</Table>
 					</div>
