@@ -85,8 +85,11 @@ export interface CharacterProgress {
 	totalSkills: number
 	completedRequired: number
 	completedRecommended: number
+	totalRecommendedUpgrades: number
+	completedRecommendedUpgrades: number
 	percentageRequired: number
 	percentageRecommended: number
+	percentageRecommendedUpgrades: number
 	skills: CharacterSkillProgress[]
 }
 

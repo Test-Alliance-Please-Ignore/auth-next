@@ -100,25 +100,20 @@ export default function SkillPlanDetail() {
 
 	return (
 		<Container>
-			<PageHeader title={plan.name} description={plan.description} />
-
-			{/* Plan status badge */}
-			<div className="mb-6">
-				<Badge variant={plan.isPublished ? 'default' : 'secondary'}>
-					{plan.isPublished ? 'Published' : 'Draft'}
-				</Badge>
+			<div className="mb-4">
+				<Button variant="ghost" size="sm" asChild>
+					<Link to="/skill-plans">
+						<ArrowLeft className="h-4 w-4" />
+						Back to Plans
+					</Link>
+				</Button>
 			</div>
+
+			<PageHeader title={plan.name} description={plan.description} />
 
 			<Section>
 				{/* Action buttons */}
-				<div className="flex justify-between items-center mb-6">
-					<Button variant="ghost" asChild>
-						<Link to="/skill-plans">
-							<ArrowLeft className="h-4 w-4" />
-							Back to Plans
-						</Link>
-					</Button>
-
+				<div className="mb-6 flex items-center justify-end">
 					<div className="flex gap-2">
 						{plan.canModify && (
 							<>
@@ -162,9 +157,14 @@ export default function SkillPlanDetail() {
 					{/* Overview Tab */}
 					<TabsContent value="overview" className="space-y-4">
 						<Card>
-							<CardHeader>
+						<CardHeader>
+							<div className="flex items-center justify-between gap-3">
 								<CardTitle>Plan Information</CardTitle>
-							</CardHeader>
+								<Badge variant={plan.isPublished ? 'default' : 'secondary'}>
+									{plan.isPublished ? 'Published' : 'Draft'}
+								</Badge>
+							</div>
+						</CardHeader>
 							<CardContent className="space-y-4">
 								{/* Description and Maintainer - side by side on desktop, stacked on mobile */}
 								<div className="grid grid-cols-1 md:grid-cols-2 gap-4">

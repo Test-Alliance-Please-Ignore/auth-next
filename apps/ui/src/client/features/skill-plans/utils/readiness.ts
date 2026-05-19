@@ -109,10 +109,21 @@ export function calculateCharacterProgress({
 		(skill) => skill.meetsRequired || skill.meetsRecommended
 	).length
 	const completedRecommended = skills.filter((skill) => skill.meetsRecommended).length
+	const recommendedUpgradeSkills = skills.filter(
+		(skill) => skill.recommendedLevel > skill.requiredLevel
+	)
+	const totalRecommendedUpgrades = recommendedUpgradeSkills.length
+	const completedRecommendedUpgrades = recommendedUpgradeSkills.filter(
+		(skill) => skill.meetsRecommended
+	).length
 
 	const percentageRequired = totalSkills > 0 ? (completedRequired / totalSkills) * 100 : 0
 	const percentageRecommended =
 		totalSkills > 0 ? (completedRecommended / totalSkills) * 100 : 0
+	const percentageRecommendedUpgrades =
+		totalRecommendedUpgrades > 0
+			? (completedRecommendedUpgrades / totalRecommendedUpgrades) * 100
+			: 0
 
 	return {
 		characterId,
@@ -122,8 +133,11 @@ export function calculateCharacterProgress({
 		totalSkills,
 		completedRequired,
 		completedRecommended,
+		totalRecommendedUpgrades,
+		completedRecommendedUpgrades,
 		percentageRequired: roundToTwo(percentageRequired),
 		percentageRecommended: roundToTwo(percentageRecommended),
+		percentageRecommendedUpgrades: roundToTwo(percentageRecommendedUpgrades),
 		skills,
 	}
 }
