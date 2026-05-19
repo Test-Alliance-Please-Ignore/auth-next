@@ -323,7 +323,7 @@ export function SidebarNav({ onNavigate, isSidebarOpen = true, onToggleSidebar }
 					? [{ label: 'Validation Queue', href: '/moon-scan/queue' }]
 					: []),
 				...(isSiteAdmin || hasAnyPermission('urn:moons:admin')
-					? [{ label: 'Admin Settings', href: '/moon-scan/admin/settings' }]
+					? [{ label: 'Configuration', href: '/moon-scan/settings' }]
 					: []),
 			],
 		})

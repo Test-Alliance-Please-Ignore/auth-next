@@ -2,6 +2,7 @@ import { useState } from 'react'
 
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
+import { Card, CardContent } from '@/components/ui/card'
 import { Container } from '@/components/ui/container'
 import { PageHeader } from '@/components/ui/page-header'
 import { Textarea } from '@/components/ui/textarea'
@@ -81,68 +82,73 @@ export default function SubmitScanPage() {
 			/>
 
 			<div className="mt-section space-y-4">
-				<Textarea
-					placeholder="Paste scan data here..."
-					className="min-h-48 font-mono text-xs"
-					value={raw}
-					onChange={(e) => {
-						setRaw(e.target.value)
-						parseMutation.reset()
-						submitMutation.reset()
-					}}
-				/>
+				<Card>
+					<CardContent className="space-y-4 p-4">
+						<Textarea
+							placeholder="Paste scan data here..."
+							className="min-h-48 font-mono text-xs"
+							value={raw}
+							onChange={(e) => {
+								setRaw(e.target.value)
+								parseMutation.reset()
+								submitMutation.reset()
+							}}
+						/>
 
-				<div className="flex gap-2">
-					<Button
-						variant="ghost"
-						onClick={handleParse}
-						disabled={!raw.trim() || parseMutation.isPending}
-					>
-						{parseMutation.isPending ? 'Parsing…' : 'Preview'}
-					</Button>
-					<Button
-						onClick={handleSubmit}
-						disabled={!raw.trim() || submitMutation.isPending}
-					>
-						{submitMutation.isPending ? 'Submitting…' : 'Submit'}
-					</Button>
-				</div>
+						<div className="flex gap-2">
+							<Button
+								variant="ghost"
+								onClick={handleParse}
+								disabled={!raw.trim() || parseMutation.isPending}
+							>
+								{parseMutation.isPending ? 'Parsing…' : 'Preview'}
+							</Button>
+							<Button
+								onClick={handleSubmit}
+								disabled={!raw.trim() || submitMutation.isPending}
+							>
+								{submitMutation.isPending ? 'Submitting…' : 'Submit'}
+							</Button>
+						</div>
 
-				{parseMutation.error && (
-					<div className="rounded-lg border border-red-500/50 bg-red-500/10 p-3 text-sm text-red-400">
-						{parseMutation.error instanceof Error ? parseMutation.error.message : 'Parse failed'}
-					</div>
-				)}
-
-				{submitMutation.error && (
-					<div className="rounded-lg border border-red-500/50 bg-red-500/10 p-3 text-sm text-red-400">
-						{submitMutation.error instanceof Error ? submitMutation.error.message : 'Submit failed'}
-					</div>
-				)}
-
-				{submitResult && (
-					<div className="rounded-lg border border-green-500/50 bg-green-500/10 p-4 space-y-1">
-						<p className="text-sm font-medium text-green-400">
-							Submitted {submitResult.submitted} scan{submitResult.submitted !== 1 ? 's' : ''}
-							{submitResult.autoVerified > 0 && ` (${submitResult.autoVerified} auto-verified)`}
-						</p>
-						{submitResult.rejected > 0 && (
-							<p className="text-xs text-muted-foreground">
-								{submitResult.rejected} high-sec system{submitResult.rejected !== 1 ? 's' : ''} skipped
-							</p>
+						{parseMutation.error && (
+							<div className="rounded-lg border border-red-500/50 bg-red-500/10 p-3 text-sm text-red-400">
+								{parseMutation.error instanceof Error ? parseMutation.error.message : 'Parse failed'}
+							</div>
 						)}
-						{submitResult.parseErrors.length > 0 && (
-							<ul className="mt-2 space-y-0.5">
-								{submitResult.parseErrors.map((e, i) => (
-									<li key={i} className="text-xs text-yellow-400">{e}</li>
-								))}
-							</ul>
+
+						{submitMutation.error && (
+							<div className="rounded-lg border border-red-500/50 bg-red-500/10 p-3 text-sm text-red-400">
+								{submitMutation.error instanceof Error ? submitMutation.error.message : 'Submit failed'}
+							</div>
 						)}
-					</div>
-				)}
+
+						{submitResult && (
+							<div className="rounded-lg border border-green-500/50 bg-green-500/10 p-4 space-y-1">
+								<p className="text-sm font-medium text-green-400">
+									Submitted {submitResult.submitted} scan{submitResult.submitted !== 1 ? 's' : ''}
+									{submitResult.autoVerified > 0 && ` (${submitResult.autoVerified} auto-verified)`}
+								</p>
+								{submitResult.rejected > 0 && (
+									<p className="text-xs text-muted-foreground">
+										{submitResult.rejected} high-sec system{submitResult.rejected !== 1 ? 's' : ''} skipped
+									</p>
+								)}
+								{submitResult.parseErrors.length > 0 && (
+									<ul className="mt-2 space-y-0.5">
+										{submitResult.parseErrors.map((e, i) => (
+											<li key={i} className="text-xs text-yellow-400">{e}</li>
+										))}
+									</ul>
+								)}
+							</div>
+						)}
+					</CardContent>
+				</Card>
 
 				{hasPreview && previewResult.scans.length > 0 && (
-					<div className="rounded-md border bg-card p-4 space-y-3">
+					<Card>
+						<CardContent className="space-y-3 p-4">
 						<p className="text-sm font-medium">
 							{previewResult.scans.length} moon{previewResult.scans.length !== 1 ? 's' : ''} found
 							{' '}({previewResult.scans.filter((s) => s.eligible).length} eligible)
@@ -159,7 +165,8 @@ export default function SubmitScanPage() {
 								))}
 							</div>
 						)}
-					</div>
+						</CardContent>
+					</Card>
 				)}
 
 				{hasPreview && previewResult.scans.length === 0 && (

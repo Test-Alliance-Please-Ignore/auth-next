@@ -2,6 +2,7 @@ import { useState } from 'react'
 import { Link } from 'react-router-dom'
 
 import { UserSearchPaginationControls } from '@/components/user-search-pagination-controls'
+import { Card } from '@/components/ui/card'
 import { Container } from '@/components/ui/container'
 import { PageHeader } from '@/components/ui/page-header'
 import { Skeleton } from '@/components/ui/skeleton'
@@ -84,7 +85,7 @@ export default function MyScansPage() {
 				</div>
 			)}
 
-			<div className="mt-section rounded-md border bg-card">
+			<Card className="mt-section">
 				{hasPagination && <div className="border-b p-4">{renderPaginationControls()}</div>}
 				<Table>
 					<TableHeader>
@@ -121,7 +122,7 @@ export default function MyScansPage() {
 				</Table>
 
 				{hasPagination && <div className="border-t p-4">{renderPaginationControls()}</div>}
-			</div>
+			</Card>
 		</Container>
 	)
 }

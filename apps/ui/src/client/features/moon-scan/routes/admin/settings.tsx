@@ -2,18 +2,12 @@ import { useState } from 'react'
 
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Container } from '@/components/ui/container'
 import { Input } from '@/components/ui/input'
+import { Label } from '@/components/ui/label'
 import { PageHeader } from '@/components/ui/page-header'
 import { Skeleton } from '@/components/ui/skeleton'
-import {
-	Table,
-	TableBody,
-	TableCell,
-	TableHead,
-	TableHeader,
-	TableRow,
-} from '@/components/ui/table'
 
 import { useAdminSettings, useUpdateExtractionSettings, useUpdateStructureProfile } from '../../hooks'
 import { useMoonScanPermissions } from '../../permissions'
@@ -44,48 +38,51 @@ function ProfileRow({
 	})
 
 	return (
-		<TableRow>
-			<TableCell className="font-medium whitespace-nowrap">{label}</TableCell>
-			<TableCell>
-				{profile.isPassive
-					? <Badge variant="secondary">Passive</Badge>
-					: <Badge>Active</Badge>}
-			</TableCell>
-			<TableCell>
-				<Input
-					type="number"
-					className="w-28 rounded border bg-background px-2 py-1 text-sm font-mono"
-					value={draft.baseVolumePerHr}
-					step="0.01"
-					onChange={(e) => setDraft((d) => ({ ...d, baseVolumePerHr: e.target.value }))}
-				/>
-			</TableCell>
-			<TableCell>
-				<Input
-					type="number"
-					className="w-24 rounded border bg-background px-2 py-1 text-sm font-mono"
-					value={draft.fuelPerHr}
-					step="0.1"
-					onChange={(e) => setDraft((d) => ({ ...d, fuelPerHr: e.target.value }))}
-				/>
-			</TableCell>
-			<TableCell>
-				{draft.magmaticGasPerHr !== null ? (
+		<div className="rounded-md border p-4">
+			<div className="mb-3 flex items-center justify-between gap-3">
+				<div className="font-medium">{label}</div>
+				{profile.isPassive ? <Badge variant="secondary">Passive</Badge> : <Badge>Active</Badge>}
+			</div>
+			<div className="grid gap-4 sm:grid-cols-3">
+				<div>
+					<Label>Base Rate (m³/hr)</Label>
+					<Input
+						type="number"
+						className="mt-1 text-sm font-mono"
+						value={draft.baseVolumePerHr}
+						step="0.01"
+						onChange={(e) => setDraft((d) => ({ ...d, baseVolumePerHr: e.target.value }))}
+					/>
+				</div>
+				<div>
+					<Label>Fuel Blocks/hr</Label>
+					<Input
+						type="number"
+						className="mt-1 text-sm font-mono"
+						value={draft.fuelPerHr}
+						step="0.1"
+						onChange={(e) => setDraft((d) => ({ ...d, fuelPerHr: e.target.value }))}
+					/>
+				</div>
+				<div>
+					<Label>Magmatic Gas/hr</Label>
+					{draft.magmaticGasPerHr !== null ? (
 						<Input
 							type="number"
-							className="w-24 rounded border bg-background px-2 py-1 text-sm font-mono"
+							className="mt-1 text-sm font-mono"
 							value={draft.magmaticGasPerHr}
 							step="0.1"
 							onChange={(e) => setDraft((d) => ({ ...d, magmaticGasPerHr: e.target.value }))}
 						/>
-				) : (
-					<span className="text-muted-foreground tabular-nums">0.0</span>
-				)}
-			</TableCell>
-			<TableCell>
+					) : (
+						<Input className="mt-1 text-sm font-mono" value="0.0" disabled />
+					)}
+				</div>
+			</div>
+			<div className="mt-4 flex justify-end">
 				<Button size="sm" onClick={() => onSave(draft)} disabled={isSaving}>Save</Button>
-			</TableCell>
-		</TableRow>
+			</div>
+		</div>
 	)
 }
 
@@ -108,61 +105,48 @@ function GlobalSettingsForm({
 	const rows: Array<{ key: keyof typeof draft; label: string; step: string; description: string }> = [
 		{
 			key: 'defaultCycleDays',
-			label: 'default_cycle_days',
+			label: 'Default Cycle Days',
 			step: '1',
 			description: 'Default cycle days for Metenox and Refinery profit calculations.',
 		},
 		{
 			key: 'defaultReprocessingYield',
-			label: 'default_reprocessing_yield',
+			label: 'Default Reprocessing Yield',
 			step: '0.0001',
 			description: 'Default reprocessing efficiency (0.0–1.0). Typical for well-skilled Tatara.',
 		},
 		{
 			key: 'fuelBlockPriceOverride',
-			label: 'fuel_block_price_override',
+			label: 'Fuel Block Price Override',
 			step: '0.0001',
 			description: 'Override fuel block price (0 = use cheapest Jita sell).',
 		},
 		{
 			key: 'magmaticGasPriceOverride',
-			label: 'magmatic_gas_price_override',
+			label: 'Magmatic Gas Price Override',
 			step: '0.0001',
 			description: 'Override Magmatic Gas price (0 = use Jita sell).',
 		},
 	]
 
 	return (
-		<div>
-			<div className="overflow-x-auto">
-				<Table>
-					<TableHeader>
-						<TableRow>
-							<TableHead>Setting</TableHead>
-							<TableHead>Value</TableHead>
-							<TableHead>Description</TableHead>
-						</TableRow>
-					</TableHeader>
-					<TableBody>
-						{rows.map(({ key, label, step, description }) => (
-							<TableRow key={key}>
-								<TableCell className="font-mono text-xs whitespace-nowrap">{label}</TableCell>
-								<TableCell>
-										<Input
-											type="number"
-											className="w-36 rounded border bg-background px-2 py-1 text-sm font-mono"
-											value={draft[key]}
-											step={step}
-											onChange={(e) => setDraft((d) => ({ ...d, [key]: e.target.value }))}
-										/>
-								</TableCell>
-								<TableCell className="text-xs text-muted-foreground">{description}</TableCell>
-							</TableRow>
-						))}
-					</TableBody>
-				</Table>
+		<div className="space-y-4">
+			<div className="grid gap-4 sm:grid-cols-2">
+				{rows.map(({ key, label, step, description }) => (
+					<div key={key}>
+						<Label>{label}</Label>
+						<Input
+							type="number"
+							className="mt-1 text-sm font-mono"
+							value={draft[key]}
+							step={step}
+							onChange={(e) => setDraft((d) => ({ ...d, [key]: e.target.value }))}
+						/>
+						<p className="mt-1 text-xs text-muted-foreground">{description}</p>
+					</div>
+				))}
 			</div>
-			<div className="px-4 py-3 border-t">
+			<div className="flex justify-end border-t pt-4">
 				<Button
 					onClick={() => onSave({
 						defaultCycleDays: parseInt(draft.defaultCycleDays, 10),
@@ -194,7 +178,7 @@ export default function AdminSettingsPage() {
 	if (!canAdmin) {
 		return (
 			<Container>
-				<PageHeader title="Extraction Settings" description="You do not have permission to manage moon settings." />
+				<PageHeader title="Configuration" description="You do not have permission to manage moon settings." />
 			</Container>
 		)
 	}
@@ -204,8 +188,8 @@ export default function AdminSettingsPage() {
 	return (
 		<Container>
 			<PageHeader
-				title="Extraction Settings"
-				description="Configure structure profiles and global extraction parameters."
+				title="Configuration"
+				description="Configure moon scanning defaults and structure extraction profiles."
 			/>
 
 			{error && (
@@ -222,48 +206,46 @@ export default function AdminSettingsPage() {
 				<div className="mt-section space-y-6">
 
 					{/* Structure Profiles */}
-					<div className="rounded-md border bg-card">
-						<div className="border-b px-4 py-3 text-sm font-semibold">Structure Profiles</div>
-						<div className="overflow-x-auto">
-							<Table>
-								<TableHeader>
-									<TableRow>
-										<TableHead>Structure</TableHead>
-										<TableHead>Extraction Type</TableHead>
-										<TableHead>Base Rate (m³/hr)</TableHead>
-										<TableHead>Fuel Blocks/hr</TableHead>
-										<TableHead>Magmatic Gas/hr</TableHead>
-										<TableHead>Actions</TableHead>
-									</TableRow>
-								</TableHeader>
-								<TableBody>
-									{PROFILE_ROWS.map(({ id, label }) => {
-										const profile = data.profiles.find((p) => p.id === id)
-										if (!profile) return null
-										return (
-											<ProfileRow
-												key={id}
-												label={label}
-												profile={profile}
-												isSaving={isSaving}
-												onSave={(draft) => updateProfile.mutate({ id, profile: draft })}
-											/>
-										)
-									})}
-								</TableBody>
-							</Table>
-						</div>
-					</div>
+					<Card>
+						<CardHeader>
+							<CardTitle className="text-lg">Structure Profiles</CardTitle>
+							<CardDescription>
+								Configure extraction rates and hourly consumables for each moon extraction structure type.
+							</CardDescription>
+						</CardHeader>
+						<CardContent className="space-y-4">
+							{PROFILE_ROWS.map(({ id, label }) => {
+								const profile = data.profiles.find((p) => p.id === id)
+								if (!profile) return null
+								return (
+									<ProfileRow
+										key={id}
+										label={label}
+										profile={profile}
+										isSaving={isSaving}
+										onSave={(draft) => updateProfile.mutate({ id, profile: draft })}
+									/>
+								)
+							})}
+						</CardContent>
+					</Card>
 
 					{/* Global Settings */}
-					<div className="rounded-md border bg-card">
-						<div className="border-b px-4 py-3 text-sm font-semibold">Global Extraction Settings</div>
+					<Card>
+						<CardHeader>
+							<CardTitle className="text-lg">Global Extraction Settings</CardTitle>
+							<CardDescription>
+								Set defaults for cycle duration, reprocessing yield, and optional live market price overrides.
+							</CardDescription>
+						</CardHeader>
+						<CardContent>
 						<GlobalSettingsForm
 							settings={data.settings}
 							isSaving={isSaving}
 							onSave={(s) => updateSettings.mutate(s)}
 						/>
-					</div>
+						</CardContent>
+					</Card>
 
 				</div>
 			)}

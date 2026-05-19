@@ -1,6 +1,7 @@
 import { useRef, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 
+import { Card } from '@/components/ui/card'
 import { Container } from '@/components/ui/container'
 import { PageHeader } from '@/components/ui/page-header'
 import { Skeleton } from '@/components/ui/skeleton'
@@ -189,9 +190,9 @@ export default function MoonScanIndex() {
 			{isLoading ? (
 				<Skeleton className="h-[500px] w-full rounded-md" />
 			) : (
-				<div
+				<Card
 						ref={mapWrapRef}
-						className="relative rounded-md border"
+						className="relative"
 						style={{ background: MAP_COLORS.background }}
 						onMouseMove={handleMouseMove}
 					onMouseLeave={() => setTooltip(null)}
@@ -266,7 +267,7 @@ export default function MoonScanIndex() {
 							)}
 						</div>
 					)}
-				</div>
+				</Card>
 			)}
 
 			{/* Legend */}
@@ -291,7 +292,7 @@ export default function MoonScanIndex() {
 			</div>
 
 				{/* Regions Table */}
-				<div className="rounded-md border bg-card">
+				<Card>
 					<div className="overflow-x-auto">
 						<Table>
 							<TableHeader>
@@ -330,7 +331,7 @@ export default function MoonScanIndex() {
 							</TableBody>
 						</Table>
 					</div>
-				</div>
+				</Card>
 			</Container>
 	)
 }

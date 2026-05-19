@@ -732,7 +732,7 @@ export default function App() {
 								}
 							/>
 							<Route
-								path="/moon-scan/admin/settings"
+								path="/moon-scan/settings"
 								element={
 									<Suspense fallback={<LoadingPage />}>
 										<MoonScanAdminSettings />

@@ -1,6 +1,7 @@
 import { useMemo, useState } from 'react'
 import { Link } from 'react-router-dom'
 
+import { Card } from '@/components/ui/card'
 import { Container } from '@/components/ui/container'
 import { Input } from '@/components/ui/input'
 import { PageHeader } from '@/components/ui/page-header'
@@ -185,7 +186,7 @@ export default function ScannedMoonsPage() {
 				)}
 			</div>
 
-			<div className="mt-4 rounded-md border bg-card">
+			<Card className="mt-4">
 				<Table>
 					<TableHeader>
 						<TableRow>
@@ -219,7 +220,7 @@ export default function ScannedMoonsPage() {
 						)}
 					</TableBody>
 				</Table>
-			</div>
+			</Card>
 		</Container>
 	)
 }
