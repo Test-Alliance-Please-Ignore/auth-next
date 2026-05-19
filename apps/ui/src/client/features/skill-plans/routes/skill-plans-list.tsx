@@ -1,6 +1,6 @@
 import { useQueries } from '@tanstack/react-query'
 import { Plus, Search, Settings } from 'lucide-react'
-import { useMemo, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { Link } from 'react-router-dom'
 
 import { Button } from '../../../components/ui/button'
@@ -22,6 +22,7 @@ import {
 	skillPlanKeys,
 	useDeleteSkillPlan,
 	useCharacterSkillLevelsForCharacters,
+	useMySkillPlans,
 	useSkillPlanCategories,
 	useSkillPlans,
 } from '../hooks'
@@ -51,15 +52,25 @@ export default function SkillPlansList() {
 		published: true, // Default to published plans
 		search: '',
 		categoryId: undefined,
-		maintainerType: 'all',
+		maintainer: 'all',
 	})
 	const [selectedCharacterId, setSelectedCharacterId] = useState<string>('all')
 
+	useEffect(() => {
+		if (!canEditSkillPlans) {
+			setFilters((prev) => ({
+				...prev,
+				published: true,
+				myPlansOnly: false,
+			}))
+		}
+	}, [canEditSkillPlans])
+
 	const { data: plansResponse, isLoading: plansLoading } = useSkillPlans({
-		search: filters.search || undefined,
 		categoryId: filters.categoryId,
-		published: filters.published,
-		maintainerId: filters.myPlansOnly ? user?.id : undefined,
+	})
+	const { data: myPlansResponse } = useMySkillPlans(undefined, {
+		enabled: !!user,
 	})
 
 	const { data: categories, isLoading: categoriesLoading } = useSkillPlanCategories()
@@ -81,23 +92,98 @@ export default function SkillPlansList() {
 		console.log('Clone plan:', planId)
 	}
 
-	// Extract plans from paginated response
-	const plans = plansResponse?.items || []
-	const totalPlans = plansResponse?.total || 0
+	// Merge default published feed with user's maintained plans (including drafts), deduped by plan id.
+	const mergedPlans = useMemo(() => {
+		const published = plansResponse?.items ?? []
+		const myPlans = myPlansResponse?.items ?? []
+		const byId = new Map<string, (typeof published)[number]>()
+		for (const plan of published) {
+			byId.set(plan.id, plan)
+		}
+		for (const plan of myPlans) {
+			byId.set(plan.id, plan)
+		}
+		return Array.from(byId.values())
+	}, [myPlansResponse?.items, plansResponse?.items])
 
-	// Filter plans based on maintainer type
-	const filteredPlans = useMemo(() => {
-		if (!plans) return []
+	const myPlanIds = useMemo(() => {
+		return new Set((myPlansResponse?.items ?? []).map((plan) => plan.id))
+	}, [myPlansResponse?.items])
 
-		if (filters.maintainerType === 'all') return plans
-
-		return plans.filter((plan) => {
-			if (filters.maintainerType === 'user') {
-				return plan.maintainerType === 'user' || !plan.maintainerType
+	const maintainerOptions = useMemo(() => {
+		const options = new Map<string, { value: string; label: string; description: string }>()
+		for (const plan of mergedPlans) {
+			if (!plan.maintainerId) {
+				continue
 			}
-			return plan.maintainerType === filters.maintainerType
+			const type = plan.maintainerType ?? 'user'
+			const value = `${type}:${plan.maintainerId}`
+			const name = plan.maintainerName || plan.ownerCharacterName || 'Unknown Maintainer'
+			options.set(value, {
+				value,
+				label: name,
+				description: type === 'group' ? 'Group' : 'User',
+			})
+		}
+		return [{ value: 'all', label: 'All maintainers' }, ...Array.from(options.values())]
+	}, [mergedPlans])
+
+	// Filter plans client-side because backend list endpoint only supports category filtering
+	const filteredPlans = useMemo(() => {
+		return mergedPlans.filter((plan) => {
+			if (!canEditSkillPlans && !plan.isPublished) {
+				return false
+			}
+
+			if (filters.myPlansOnly && !myPlanIds.has(plan.id)) {
+				return false
+			}
+
+			if (filters.search?.trim()) {
+				const search = filters.search.trim().toLowerCase()
+				const matchesSearch =
+					plan.name.toLowerCase().includes(search) || plan.description.toLowerCase().includes(search)
+				if (!matchesSearch) {
+					return false
+				}
+			}
+
+			if (filters.categoryId) {
+				const belongsToCategory = plan.categories?.some((category) => category.id === filters.categoryId)
+				if (!belongsToCategory) {
+					return false
+				}
+			}
+
+			if (filters.published !== undefined) {
+				const normalizedIsPublished = Boolean(plan.isPublished)
+				if (normalizedIsPublished !== filters.published) {
+					return false
+				}
+			}
+
+			if (!filters.maintainer || filters.maintainer === 'all') {
+				return true
+			}
+
+			if (!plan.maintainerId) {
+				return false
+			}
+			const type = plan.maintainerType ?? 'user'
+			return `${type}:${plan.maintainerId}` === filters.maintainer
 		})
-	}, [plans, filters.maintainerType])
+	}, [
+		canEditSkillPlans,
+		filters.categoryId,
+		filters.maintainer,
+		filters.myPlansOnly,
+		filters.published,
+		filters.search,
+		mergedPlans,
+		myPlanIds,
+	])
+
+	const totalPlans = mergedPlans.length
 
 	// Group filtered plans by category
 	const groupedPlans = useMemo(() => {
@@ -202,7 +288,25 @@ export default function SkillPlansList() {
 		return loading
 	}, [characterSkillQueries, filteredPlans, planSkillsQueries, user])
 
-	if (plansLoading || categoriesLoading) {
+	const readinessIndicatorByPlanId = useMemo(() => {
+		const indicator = new Map<string, 'recommended' | 'required' | 'incomplete'>()
+		for (const plan of filteredPlans) {
+			const readiness = readinessByPlanId.get(plan.id)
+			if (!readiness || readiness.total === 0) {
+				continue
+			}
+			if (readiness.completed > 0) {
+				indicator.set(plan.id, 'recommended')
+			} else if (readiness.meetsRequirements > 0) {
+				indicator.set(plan.id, 'required')
+			} else {
+				indicator.set(plan.id, 'incomplete')
+			}
+		}
+		return indicator
+	}, [filteredPlans, readinessByPlanId])
+
+	if ((plansLoading && !plansResponse) || categoriesLoading) {
 		return <LoadingPage />
 	}
 
@@ -306,47 +410,45 @@ export default function SkillPlansList() {
 								/>
 							</div>
 
-							{/* Maintainer type filter */}
+							{/* Maintainer filter */}
 							<div className="space-y-2">
 								<Label htmlFor="maintainer">Maintainer</Label>
 								<Select
-									value={filters.maintainerType}
+									value={filters.maintainer || 'all'}
 									onValueChange={(value) =>
 										setFilters({
 											...filters,
-											maintainerType: value as SkillPlansFilter['maintainerType'],
+											maintainer: value,
 										})
 									}
 									inputId="maintainer"
-									options={[
-										{ value: 'all', label: 'All maintainers' },
-										{ value: 'user', label: 'User maintained' },
-										{ value: 'group', label: 'Group maintained' },
-									]}
+									searchable
+									options={maintainerOptions}
 									placeholder="All maintainers"
 								/>
 							</div>
 
-							{/* Status filter */}
-							<div className="space-y-2">
-								<Label htmlFor="status">Status</Label>
-								<Select
-									value={filters.published === undefined ? 'all' : String(filters.published)}
-									onValueChange={(value) =>
-										setFilters({
-											...filters,
-											published: value === 'all' ? undefined : value === 'true',
-										})
-									}
-									inputId="status"
-									options={[
-										{ value: 'all', label: 'All statuses' },
-										{ value: 'true', label: 'Published' },
-										{ value: 'false', label: 'Draft' },
-									]}
-									placeholder="All statuses"
-								/>
-							</div>
+							{canEditSkillPlans && (
+								<div className="space-y-2">
+									<Label htmlFor="status">Status</Label>
+									<Select
+										value={filters.published === undefined ? 'all' : String(filters.published)}
+										onValueChange={(value) =>
+											setFilters({
+												...filters,
+												published: value === 'all' ? undefined : value === 'true',
+											})
+										}
+										inputId="status"
+										options={[
+											{ value: 'all', label: 'All statuses' },
+											{ value: 'true', label: 'Published' },
+											{ value: 'false', label: 'Draft' },
+										]}
+										placeholder="All statuses"
+									/>
+								</div>
+							)}
 						</div>
 
 						{/* My plans toggle */}
@@ -386,6 +488,8 @@ export default function SkillPlansList() {
 													characterReadiness={readinessByPlanId.get(plan.id)}
 													hasNoSkills={readinessByPlanId.get(plan.id)?.hasNoSkills || false}
 													isReadinessLoading={readinessLoadingByPlanId.get(plan.id) || false}
+													showPublicationState={canEditSkillPlans}
+													readinessIndicator={readinessIndicatorByPlanId.get(plan.id)}
 												/>
 											))}
 										</div>

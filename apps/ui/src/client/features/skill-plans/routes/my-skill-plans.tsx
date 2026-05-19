@@ -110,6 +110,7 @@ export default function MySkillPlans() {
 										<SkillPlanCard
 											key={`${group.category?.id || 'uncategorized'}-${plan.id}`}
 											plan={plan}
+											showPublicationState={canEditSkillPlans}
 										/>
 									))}
 								</div>

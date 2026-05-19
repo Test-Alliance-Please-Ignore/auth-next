@@ -1,4 +1,4 @@
-import { Globe, Lock } from 'lucide-react'
+import { CheckCircle2, Globe, Lock, Star, XCircle } from 'lucide-react'
 import { Link, useNavigate } from 'react-router-dom'
 
 import { Badge } from '../../../components/ui/badge'
@@ -18,6 +18,8 @@ interface SkillPlanCardProps {
 	characterReadiness?: CharacterReadinessSummary
 	isReadinessLoading?: boolean
 	hasNoSkills?: boolean
+	showPublicationState?: boolean
+	readinessIndicator?: 'recommended' | 'required' | 'incomplete'
 }
 
 export function SkillPlanCard({
@@ -25,16 +27,10 @@ export function SkillPlanCard({
 	characterReadiness,
 	isReadinessLoading = false,
 	hasNoSkills = false,
+	showPublicationState = true,
+	readinessIndicator,
 }: SkillPlanCardProps) {
 	const navigate = useNavigate()
-
-	const getStatusIcon = () => {
-		return plan.isPublished ? (
-			<Globe className="h-3 w-3 text-green-500" />
-		) : (
-			<Lock className="h-3 w-3 text-muted-foreground" />
-		)
-	}
 
 	const handleCardClick = (e: React.MouseEvent) => {
 		// Don't navigate if clicking on a button or link inside the card
@@ -43,6 +39,19 @@ export function SkillPlanCard({
 			return
 		}
 		navigate(`/skill-plans/${plan.id}`)
+	}
+
+	const renderReadinessIndicator = () => {
+		if (readinessIndicator === 'recommended') {
+			return <Star className="h-4 w-4 shrink-0 mt-1 text-amber-400 fill-amber-400" />
+		}
+		if (readinessIndicator === 'required') {
+			return <CheckCircle2 className="h-4 w-4 shrink-0 mt-1 text-green-400" />
+		}
+		if (readinessIndicator === 'incomplete') {
+			return <XCircle className="h-4 w-4 shrink-0 mt-1 text-red-400" />
+		}
+		return null
 	}
 
 	return (
@@ -55,17 +64,25 @@ export function SkillPlanCard({
 					<div className="space-y-1 flex-1">
 						<CardTitle className="text-lg">
 							<Link to={`/skill-plans/${plan.id}`} className="hover:text-primary transition-colors">
-								{plan.name}
+								<span className="inline-grid grid-cols-[auto_1fr] items-start gap-2">
+									{renderReadinessIndicator()}
+									<span className="leading-tight">{plan.name}</span>
+								</span>
 							</Link>
 						</CardTitle>
 						<CardDescription className="line-clamp-2">{plan.description}</CardDescription>
 					</div>
-					<div className="flex items-center gap-2">
-						{getStatusIcon()}
-						<Badge variant={plan.isPublished ? 'default' : 'secondary'}>
-							{plan.isPublished ? 'Published' : 'Draft'}
-						</Badge>
-					</div>
+					{showPublicationState ? (
+						<div className="flex items-center">
+							<Badge
+								variant={plan.isPublished ? 'default' : 'secondary'}
+								icon={plan.isPublished ? Globe : Lock}
+								className="gap-1.5"
+							>
+								{plan.isPublished ? 'Published' : 'Draft'}
+							</Badge>
+						</div>
+					) : null}
 				</div>
 			</CardHeader>
 
