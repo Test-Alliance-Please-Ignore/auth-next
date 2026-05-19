@@ -8,8 +8,11 @@ export const moonScanKeys = {
 		page?: number
 		pageSize?: number
 		regionId?: string
-		rarity?: string
+		constellationId?: string
+		rarities?: string[]
 		search?: string
+		sortBy?: 'metenox' | 'tatara'
+		sortDir?: 'asc' | 'desc'
 	}) => [...moonScanKeys.all, 'verified-moons', params] as const,
 
 	// Regions

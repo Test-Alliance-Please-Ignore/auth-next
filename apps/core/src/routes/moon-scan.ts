@@ -126,12 +126,26 @@ const ScanFiltersSchema = z.object({
 	pageSize: z.coerce.number().int().positive().max(100).default(20),
 })
 
+const RARITY_VALUES = ['R4', 'R8', 'R16', 'R32', 'R64'] as const
+const RaritySchema = z.enum(RARITY_VALUES)
 const VerifiedMoonsQuerySchema = z.object({
 	page: z.coerce.number().int().positive().default(1),
 	pageSize: z.coerce.number().int().positive().max(100).default(50),
 	regionId: z.string().optional(),
-	rarity: z.enum(['R4', 'R8', 'R16', 'R32', 'R64']).optional(),
+	constellationId: z.string().optional(),
+	rarity: z
+		.string()
+		.optional()
+		.transform((val) => {
+			if (!val) return undefined
+			const parts = val.split(',').map((p) => p.trim()).filter(Boolean)
+			if (parts.length === 0) return undefined
+			return parts
+		})
+		.pipe(z.array(RaritySchema).optional()),
 	search: z.string().trim().optional(),
+	sortBy: z.enum(['metenox', 'tatara']).optional(),
+	sortDir: z.enum(['asc', 'desc']).optional(),
 })
 
 const ExtractionSettingsSchema = z.object({
@@ -349,8 +363,11 @@ moonScanRoutes.get('/moons/verified', async (c) => {
 		page: c.req.query('page'),
 		pageSize: c.req.query('pageSize'),
 		regionId: c.req.query('regionId'),
+		constellationId: c.req.query('constellationId'),
 		rarity: c.req.query('rarity'),
 		search: c.req.query('search'),
+		sortBy: c.req.query('sortBy'),
+		sortDir: c.req.query('sortDir'),
 	})
 	if (!query.success) {
 		return c.json({ error: 'Invalid query', issues: query.error.issues }, 400)
@@ -394,6 +411,19 @@ moonScanRoutes.get('/moons/verified', async (c) => {
 	// Resolve region names
 	const regionIds = [...new Set(Object.values(moonRegionMap).filter((id): id is string => !!id))]
 	const regionsById = regionIds.length > 0 ? await universe.resolveRegionsByIds(regionIds) : {}
+
+	// Resolve constellation names (each system already carries constellationId)
+	const constellationIds = [
+		...new Set(
+			Object.values(systemsById)
+				.filter((s): s is NonNullable<typeof s> => s !== null)
+				.map((s) => s.constellationId)
+				.filter((id): id is string => !!id)
+		),
+	]
+	const constellationsById = constellationIds.length > 0
+		? await universe.resolveConstellationsByIds(constellationIds)
+		: {}
 
 	// Collect all unique ore type IDs across all compositions for typeMaterials lookup
 	const allOreTypeIds = [...new Set(compositions.flatMap((c) => c.ores.map((o) => o.oreTypeId)))]
@@ -473,6 +503,8 @@ moonScanRoutes.get('/moons/verified', async (c) => {
 		const system = systemsById[moon.solarSystemId]
 		const regionId = moonRegionMap[comp.moonId] ?? null
 		const region = regionId ? regionsById[regionId] : null
+		const constellationId = system?.constellationId ?? null
+		const constellation = constellationId ? constellationsById[constellationId] : null
 
 		const highestRarity = comp.ores.reduce<string | null>((best, ore) => {
 			const r = ORE_TYPE_RARITY[ore.oreTypeId]
@@ -490,6 +522,8 @@ moonScanRoutes.get('/moons/verified', async (c) => {
 			solarSystemName: system?.solarSystemName ?? moon.solarSystemId,
 			regionId: regionId ?? '',
 			regionName: region?.regionName ?? regionId ?? '',
+			constellationId: constellationId ?? '',
+			constellationName: constellation?.constellationName ?? constellationId ?? '',
 			securityStatus: system?.securityStatus ?? null,
 			highestRarity,
 			metenoxProfit: metenoxProfit !== null ? String(metenoxProfit) : null,
@@ -501,8 +535,25 @@ moonScanRoutes.get('/moons/verified', async (c) => {
 	if (query.data.regionId) {
 		filtered = filtered.filter((m) => m.regionId === query.data.regionId)
 	}
-	if (query.data.rarity) {
-		filtered = filtered.filter((m) => m.highestRarity === query.data.rarity)
+	// Unique constellations within the region-filter (drives the cascading dropdown).
+	const constellationsForFilter = new Map<string, { constellationId: string; constellationName: string }>()
+	for (const m of filtered) {
+		if (m.constellationId && !constellationsForFilter.has(m.constellationId)) {
+			constellationsForFilter.set(m.constellationId, {
+				constellationId: m.constellationId,
+				constellationName: m.constellationName,
+			})
+		}
+	}
+	const constellationsSummary = [...constellationsForFilter.values()].sort((a, b) =>
+		a.constellationName.localeCompare(b.constellationName)
+	)
+	if (query.data.constellationId) {
+		filtered = filtered.filter((m) => m.constellationId === query.data.constellationId)
+	}
+	if (query.data.rarity && query.data.rarity.length > 0) {
+		const rarities = new Set<string>(query.data.rarity)
+		filtered = filtered.filter((m) => m.highestRarity !== null && rarities.has(m.highestRarity))
 	}
 	if (query.data.search) {
 		const q = query.data.search.toLowerCase()
@@ -511,13 +562,34 @@ moonScanRoutes.get('/moons/verified', async (c) => {
 		)
 	}
 
+	if (query.data.sortBy) {
+		const dir = query.data.sortDir === 'asc' ? 1 : -1
+		const key = query.data.sortBy === 'metenox' ? 'metenoxProfit' : 'tataraProfit'
+		filtered = [...filtered].sort((a, b) => {
+			const av = a[key]
+			const bv = b[key]
+			// Nulls always sort last regardless of direction
+			if (av === null && bv === null) return 0
+			if (av === null) return 1
+			if (bv === null) return -1
+			return (parseFloat(av) - parseFloat(bv)) * dir
+		})
+	}
+
 	const total = filtered.length
 	const page = query.data.page
 	const pageSize = query.data.pageSize
 	const start = (page - 1) * pageSize
 	const items = filtered.slice(start, start + pageSize)
 
-	return c.json({ items, total, page, pageSize, updatedAt: new Date().toISOString() })
+	return c.json({
+		items,
+		total,
+		page,
+		pageSize,
+		constellations: constellationsSummary,
+		updatedAt: new Date().toISOString(),
+	})
 })
 
 function getMarketsStub(env: App['Bindings']): Markets {

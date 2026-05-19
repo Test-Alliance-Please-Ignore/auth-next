@@ -1,5 +1,6 @@
-import { useMemo, useState } from 'react'
+import { Fragment, useMemo, useState } from 'react'
 import { Link } from 'react-router-dom'
+import { ChevronDown, ChevronRight, ChevronUp, ChevronsUpDown } from 'lucide-react'
 
 import { UserSearchPaginationControls } from '@/components/user-search-pagination-controls'
 import { Card } from '@/components/ui/card'
@@ -16,7 +17,6 @@ import {
 	TableHeader,
 	TableRow,
 } from '@/components/ui/table'
-import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { formatISK } from '@/lib/format-utils'
 
 import { RARITY_COLORS } from '../ore-rarities'
@@ -25,8 +25,9 @@ import { useMoonScanPermissions } from '../permissions'
 
 import type { OreRarity, ScannedMoonEntry } from '../types'
 
-const RARITY_TABS = ['All', 'R4', 'R8', 'R16', 'R32', 'R64'] as const
-type RarityTab = (typeof RARITY_TABS)[number]
+const RARITY_VALUES: readonly OreRarity[] = ['R4', 'R8', 'R16', 'R32', 'R64']
+type SortField = 'metenox' | 'tatara'
+type SortDir = 'asc' | 'desc'
 
 function secColor(sec: string | null): string {
 	if (sec === null) return 'text-muted-foreground'
@@ -44,6 +45,36 @@ function RarityBadge({ rarity }: { rarity: OreRarity }) {
 		>
 			{rarity}
 		</span>
+	)
+}
+
+function SortHeader({
+	label,
+	field,
+	sortBy,
+	sortDir,
+	onToggle,
+}: {
+	label: string
+	field: SortField
+	sortBy: SortField | null
+	sortDir: SortDir
+	onToggle: (field: SortField) => void
+}) {
+	const active = sortBy === field
+	const Icon = !active ? ChevronsUpDown : sortDir === 'asc' ? ChevronUp : ChevronDown
+	return (
+		<button
+			type="button"
+			onClick={() => onToggle(field)}
+			className={`inline-flex items-center gap-1 hover:text-foreground transition-colors ${
+				active ? 'text-foreground' : ''
+			}`}
+			aria-label={`Sort by ${label}`}
+		>
+			<span>{label}</span>
+			<Icon className={`h-3.5 w-3.5 ${active ? 'opacity-100' : 'opacity-50'}`} />
+		</button>
 	)
 }
 
@@ -89,18 +120,45 @@ function MoonRow({ moon }: { moon: ScannedMoonEntry }) {
 export default function ScannedMoonsPage() {
 	const { canView } = useMoonScanPermissions()
 
-	const [rarityTab, setRarityTab] = useState<RarityTab>('All')
+	const [selectedRarities, setSelectedRarities] = useState<OreRarity[]>([])
 	const [regionFilter, setRegionFilter] = useState<string>('all')
+	const [constellationFilter, setConstellationFilter] = useState<string>('all')
 	const [search, setSearch] = useState('')
 	const [page, setPage] = useState(1)
 	const [pageSize, setPageSize] = useState(50)
+	const [sortBy, setSortBy] = useState<SortField | null>(null)
+	const [sortDir, setSortDir] = useState<SortDir>('desc')
+	const [collapsedConstellations, setCollapsedConstellations] = useState<Set<string>>(new Set())
 
-	const { data, isLoading, error } = useScannedMoons({
+	const toggleRarity = (rarity: OreRarity) => {
+		setSelectedRarities((prev) =>
+			prev.includes(rarity) ? prev.filter((r) => r !== rarity) : [...prev, rarity]
+		)
+		setPage(1)
+	}
+
+	const toggleSort = (field: SortField) => {
+		if (sortBy !== field) {
+			setSortBy(field)
+			setSortDir('desc')
+		} else if (sortDir === 'desc') {
+			setSortDir('asc')
+		} else {
+			setSortBy(null)
+			setSortDir('desc')
+		}
+		setPage(1)
+	}
+
+	const { data, isLoading, isFetching, error } = useScannedMoons({
 		page,
 		pageSize,
 		regionId: regionFilter,
-		rarity: rarityTab,
+		constellationId: constellationFilter,
+		rarities: selectedRarities,
 		search,
+		sortBy: sortBy ?? undefined,
+		sortDir: sortBy ? sortDir : undefined,
 	})
 	const { data: regionsData } = useMoonRegions()
 
@@ -115,6 +173,42 @@ export default function ScannedMoonsPage() {
 		],
 		[regions]
 	)
+
+	const constellationOptions = useMemo(() => {
+		const constellations = data?.constellations ?? []
+		return [
+			{ value: 'all', label: 'All Constellations' },
+			...constellations.map((c) => ({ value: c.constellationId, label: c.constellationName })),
+		]
+	}, [data?.constellations])
+
+	const groupedItems = useMemo(() => {
+		const items = data?.items ?? []
+		const groups = new Map<string, { constellationId: string; constellationName: string; moons: ScannedMoonEntry[] }>()
+		for (const moon of items) {
+			const key = moon.constellationId || '_unknown'
+			let group = groups.get(key)
+			if (!group) {
+				group = {
+					constellationId: moon.constellationId,
+					constellationName: moon.constellationName || 'Unknown Constellation',
+					moons: [],
+				}
+				groups.set(key, group)
+			}
+			group.moons.push(moon)
+		}
+		return [...groups.values()]
+	}, [data?.items])
+
+	const toggleConstellationCollapse = (id: string) => {
+		setCollapsedConstellations((prev) => {
+			const next = new Set(prev)
+			if (next.has(id)) next.delete(id)
+			else next.add(id)
+			return next
+		})
+	}
 
 	const totalCount = data?.total ?? 0
 	const hasPagination = Math.ceil(totalCount / pageSize) > 1
@@ -155,28 +249,50 @@ export default function ScannedMoonsPage() {
 
 			{/* Filters */}
 			<div className="mt-section flex flex-wrap items-center gap-3">
-					{/* Rarity tabs */}
-					<Tabs value={rarityTab} onValueChange={(value) => setRarityTab(value as RarityTab)}>
-						<TabsList className="rounded-md border bg-card p-1">
-							{RARITY_TABS.map((tab) => (
-								<TabsTrigger
-									key={tab}
-									value={tab}
-									className="rounded px-2.5 py-1 text-xs font-medium"
-									style={tab !== 'All' ? { color: RARITY_COLORS[tab as OreRarity] } : undefined}
-									onClick={() => setPage(1)}
+					{/* Rarity multi-select chips */}
+					<div className="flex items-center gap-1 rounded-md border bg-card p-1">
+						<button
+							type="button"
+							onClick={() => {
+								setSelectedRarities([])
+								setPage(1)
+							}}
+							className={`rounded px-2.5 py-1 text-xs font-medium transition-colors ${
+								selectedRarities.length === 0
+									? 'bg-muted text-foreground'
+									: 'text-muted-foreground hover:text-foreground'
+							}`}
+						>
+							All
+						</button>
+						{RARITY_VALUES.map((rarity) => {
+							const active = selectedRarities.includes(rarity)
+							return (
+								<button
+									key={rarity}
+									type="button"
+									onClick={() => toggleRarity(rarity)}
+									aria-pressed={active}
+									className={`rounded px-2.5 py-1 text-xs font-semibold transition-colors ${
+										active ? 'text-white' : 'hover:bg-muted/50'
+									}`}
+									style={{
+										color: active ? '#fff' : RARITY_COLORS[rarity],
+										backgroundColor: active ? RARITY_COLORS[rarity] : undefined,
+									}}
 								>
-									{tab}
-								</TabsTrigger>
-							))}
-						</TabsList>
-					</Tabs>
+									{rarity}
+								</button>
+							)
+						})}
+					</div>
 
 				{/* Region dropdown */}
 					<Select
 						value={regionFilter}
 						onValueChange={(value) => {
 							setRegionFilter(value)
+							setConstellationFilter('all')
 							setPage(1)
 						}}
 						options={regionOptions}
@@ -184,6 +300,21 @@ export default function ScannedMoonsPage() {
 						placeholder="Filter region..."
 						className="w-56"
 						inputClassName="h-9"
+					/>
+
+				{/* Constellation dropdown */}
+					<Select
+						value={constellationFilter}
+						onValueChange={(value) => {
+							setConstellationFilter(value)
+							setPage(1)
+						}}
+						options={constellationOptions}
+						searchable
+						placeholder="Filter constellation..."
+						className="w-56"
+						inputClassName="h-9"
+						disabled={constellationOptions.length <= 1}
 					/>
 
 				{/* Name / system search */}
@@ -198,7 +329,13 @@ export default function ScannedMoonsPage() {
 				/>
 
 				{!isLoading && data && (
-					<span className="ml-auto text-xs text-muted-foreground">
+					<span className="ml-auto flex items-center gap-2 text-xs text-muted-foreground">
+						{isFetching && (
+							<span
+								className="inline-block h-2 w-2 animate-pulse rounded-full bg-primary"
+								aria-label="Updating"
+							/>
+						)}
 						{data.items.length} shown • {data.total} total
 					</span>
 				)}
@@ -214,8 +351,24 @@ export default function ScannedMoonsPage() {
 							<TableHead>Region</TableHead>
 							<TableHead>Sec</TableHead>
 							<TableHead>Rarity</TableHead>
-							<TableHead className="text-right">Metenox 30d</TableHead>
-							<TableHead className="text-right">Refinery 30d</TableHead>
+							<TableHead className="text-right">
+								<SortHeader
+									label="Metenox 30d"
+									field="metenox"
+									sortBy={sortBy}
+									sortDir={sortDir}
+									onToggle={toggleSort}
+								/>
+							</TableHead>
+							<TableHead className="text-right">
+								<SortHeader
+									label="Refinery 30d"
+									field="tatara"
+									sortBy={sortBy}
+									sortDir={sortDir}
+									onToggle={toggleSort}
+								/>
+							</TableHead>
 						</TableRow>
 					</TableHeader>
 					<TableBody>
@@ -229,7 +382,33 @@ export default function ScannedMoonsPage() {
 										))}
 									</TableRow>
 								))
-							: (data?.items ?? []).map((moon) => <MoonRow key={moon.moonId} moon={moon} />)}
+							: groupedItems.map((group) => {
+									const collapsed = collapsedConstellations.has(group.constellationId)
+									return (
+										<Fragment key={group.constellationId || '_unknown'}>
+											<TableRow
+												className="bg-muted/30 hover:bg-muted/40 cursor-pointer"
+												onClick={() => toggleConstellationCollapse(group.constellationId)}
+											>
+												<TableCell colSpan={7} className="py-2">
+													<div className="flex items-center gap-2 text-sm font-medium">
+														{collapsed ? (
+															<ChevronRight className="h-4 w-4 text-muted-foreground" />
+														) : (
+															<ChevronDown className="h-4 w-4 text-muted-foreground" />
+														)}
+														<span>{group.constellationName}</span>
+														<span className="text-xs font-normal text-muted-foreground">
+															{group.moons.length} moon{group.moons.length === 1 ? '' : 's'}
+														</span>
+													</div>
+												</TableCell>
+											</TableRow>
+											{!collapsed &&
+												group.moons.map((moon) => <MoonRow key={moon.moonId} moon={moon} />)}
+										</Fragment>
+									)
+								})}
 						{!isLoading && (data?.items.length ?? 0) === 0 && (
 							<TableRow>
 								<TableCell colSpan={7} className="py-8 text-center text-sm text-muted-foreground">

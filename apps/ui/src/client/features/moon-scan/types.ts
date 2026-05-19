@@ -192,10 +192,17 @@ export interface ScannedMoonEntry {
 	solarSystemName: string
 	regionId: string
 	regionName: string
+	constellationId: string
+	constellationName: string
 	securityStatus: string | null
 	highestRarity: OreRarity | null
 	metenoxProfit: string | null
 	tataraProfit: string | null
+}
+
+export interface ConstellationSummary {
+	constellationId: string
+	constellationName: string
 }
 
 export interface ScannedMoonsResponse {
@@ -203,6 +210,7 @@ export interface ScannedMoonsResponse {
 	total: number
 	page: number
 	pageSize: number
+	constellations: ConstellationSummary[]
 	updatedAt: string
 }
 
