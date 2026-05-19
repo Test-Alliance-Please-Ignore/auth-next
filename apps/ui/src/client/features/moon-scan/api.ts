@@ -27,7 +27,7 @@ export async function getScannedMoons(params: {
 	constellationId?: string
 	rarities?: string[]
 	search?: string
-	sortBy?: 'metenox' | 'tatara'
+	sortBy?: string
 	sortDir?: 'asc' | 'desc'
 } = {}): Promise<ScannedMoonsResponse> {
 	const qs = new URLSearchParams()

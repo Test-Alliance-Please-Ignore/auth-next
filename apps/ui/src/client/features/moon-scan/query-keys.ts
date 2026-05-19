@@ -11,7 +11,7 @@ export const moonScanKeys = {
 		constellationId?: string
 		rarities?: string[]
 		search?: string
-		sortBy?: 'metenox' | 'tatara'
+		sortBy?: string
 		sortDir?: 'asc' | 'desc'
 	}) => [...moonScanKeys.all, 'verified-moons', params] as const,
 

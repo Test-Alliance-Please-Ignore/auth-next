@@ -6,6 +6,7 @@ import { ArrowLeft } from 'lucide-react'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Container } from '@/components/ui/container'
+import { PageHeader } from '@/components/ui/page-header'
 import { Skeleton } from '@/components/ui/skeleton'
 import {
 	Table,
@@ -245,43 +246,53 @@ export default function MoonPage() {
 
 	return (
 		<Container>
-			{/* Breadcrumb */}
-			<div className="flex items-center gap-2 text-sm text-muted-foreground mb-1">
-				<Link to="/moon-scan" className="hover:underline">Moons</Link>
-				{moon?.solarSystemId && (
-					<>
-						<span>/</span>
-						<Link to={`/moon-scan/system/${moon.solarSystemId}`} className="hover:underline">
-							{moon.solarSystemName || 'System'}
-						</Link>
-					</>
+			<PageHeader
+				title={moon?.moonName ?? moonId!}
+				description={
+					moon ? `Moon ID: ${moon.moonId}` : undefined
+				}
+				action={(
+					<div className="flex flex-col items-end gap-2">
+						<div className="flex items-center gap-2 text-sm text-muted-foreground">
+							<Link to="/moon-scan" className="hover:underline">Moons</Link>
+							{moon?.solarSystemId && (
+								<>
+									<span>/</span>
+									<Link to={`/moon-scan/system/${moon.solarSystemId}`} className="hover:underline">
+										{moon.solarSystemName || 'System'}
+									</Link>
+								</>
+							)}
+							<span>/</span>
+							<span>{moon?.moonName ?? moonId}</span>
+						</div>
+						{moon?.solarSystemId ? (
+							<Button variant="ghost" size="sm" asChild>
+								<Link to={`/moon-scan/system/${moon.solarSystemId}`}>
+									<ArrowLeft className="mr-2 h-4 w-4" />
+									Back to System
+								</Link>
+							</Button>
+						) : (
+							<Button variant="ghost" size="sm" asChild>
+								<Link to="/moon-scan">
+									<ArrowLeft className="mr-2 h-4 w-4" />
+									Back to Regions
+								</Link>
+							</Button>
+						)}
+					</div>
 				)}
-				<span>/</span>
-				<span>{moon?.moonName ?? moonId}</span>
-			</div>
+			/>
 
-			{/* Title + badges */}
-			<div className="mt-2 mb-6">
-				<div className="flex items-center justify-between flex-wrap gap-2">
+			<div className="mb-6 -mt-3">
 				<div className="flex items-center gap-3 flex-wrap">
-					<h1 className="text-2xl font-bold">{moon?.moonName ?? moonId}</h1>
-					{composition
-						? <Badge className="bg-green-500/20 text-green-400 border-green-500/30">verified</Badge>
-						: !isLoading && <Badge className="bg-yellow-500/20 text-yellow-400 border-yellow-500/30">unverified</Badge>
-					}
+					{composition ? (
+						<Badge className="bg-green-500/20 text-green-400 border-green-500/30">verified</Badge>
+					) : !isLoading ? (
+						<Badge className="bg-yellow-500/20 text-yellow-400 border-yellow-500/30">unverified</Badge>
+					) : null}
 				</div>
-				{moon?.solarSystemId && (
-					<Button variant="ghost" size="sm" asChild>
-						<Link to={`/moon-scan/system/${moon.solarSystemId}`}>
-							<ArrowLeft className="mr-2 h-4 w-4" />
-							Back
-						</Link>
-					</Button>
-				)}
-				</div>
-				{moon && (
-					<p className="text-sm text-muted-foreground mt-1">Moon ID: {moon.moonId}</p>
-				)}
 			</div>
 
 			{error && (

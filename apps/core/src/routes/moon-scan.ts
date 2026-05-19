@@ -144,8 +144,18 @@ const VerifiedMoonsQuerySchema = z.object({
 		})
 		.pipe(z.array(RaritySchema).optional()),
 	search: z.string().trim().optional(),
-	sortBy: z.enum(['metenox', 'tatara']).optional(),
-	sortDir: z.enum(['asc', 'desc']).optional(),
+	sortBy: z
+		.enum([
+			'moonName',
+			'solarSystemName',
+			'regionName',
+			'securityStatus',
+			'highestRarity',
+			'metenoxProfit',
+			'tataraProfit',
+		])
+		.default('moonName'),
+	sortDir: z.enum(['asc', 'desc']).default('asc'),
 })
 
 const ExtractionSettingsSchema = z.object({
@@ -562,19 +572,57 @@ moonScanRoutes.get('/moons/verified', async (c) => {
 		)
 	}
 
-	if (query.data.sortBy) {
-		const dir = query.data.sortDir === 'asc' ? 1 : -1
-		const key = query.data.sortBy === 'metenox' ? 'metenoxProfit' : 'tataraProfit'
-		filtered = [...filtered].sort((a, b) => {
-			const av = a[key]
-			const bv = b[key]
-			// Nulls always sort last regardless of direction
-			if (av === null && bv === null) return 0
-			if (av === null) return 1
-			if (bv === null) return -1
-			return (parseFloat(av) - parseFloat(bv)) * dir
-		})
+	const { sortBy, sortDir } = query.data
+	const direction = sortDir === 'asc' ? 1 : -1
+	const rarityRank = (rarity: string | null): number => {
+		if (!rarity) return -1
+		return RARITY_ORDER[rarity as OreRarity] ?? -1
 	}
+	const parseNum = (value: string | null): number | null => {
+		if (value == null) return null
+		const n = Number.parseFloat(value)
+		return Number.isFinite(n) ? n : null
+	}
+	filtered = [...filtered].sort((a, b) => {
+		let cmp = 0
+		switch (sortBy) {
+			case 'moonName':
+				cmp = a.moonName.localeCompare(b.moonName)
+				break
+			case 'solarSystemName':
+				cmp = a.solarSystemName.localeCompare(b.solarSystemName)
+				break
+			case 'regionName':
+				cmp = a.regionName.localeCompare(b.regionName)
+				break
+			case 'securityStatus': {
+				const av = parseSecurityStatus(a.securityStatus)
+				const bv = parseSecurityStatus(b.securityStatus)
+				cmp = av === bv ? 0 : av === null ? 1 : bv === null ? -1 : av - bv
+				break
+			}
+			case 'highestRarity': {
+				const av = rarityRank(a.highestRarity)
+				const bv = rarityRank(b.highestRarity)
+				cmp = av - bv
+				break
+			}
+			case 'metenoxProfit': {
+				const av = parseNum(a.metenoxProfit)
+				const bv = parseNum(b.metenoxProfit)
+				cmp = av === bv ? 0 : av === null ? 1 : bv === null ? -1 : av - bv
+				break
+			}
+			case 'tataraProfit': {
+				const av = parseNum(a.tataraProfit)
+				const bv = parseNum(b.tataraProfit)
+				cmp = av === bv ? 0 : av === null ? 1 : bv === null ? -1 : av - bv
+				break
+			}
+		}
+		if (cmp !== 0) return cmp * direction
+		return a.moonName.localeCompare(b.moonName)
+	})
 
 	const total = filtered.length
 	const page = query.data.page

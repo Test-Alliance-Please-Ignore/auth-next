@@ -46,7 +46,7 @@ export function useScannedMoons(params: {
 	constellationId?: string
 	rarities?: string[]
 	search?: string
-	sortBy?: 'metenox' | 'tatara'
+	sortBy?: string
 	sortDir?: 'asc' | 'desc'
 } = {}) {
 	return useQuery({

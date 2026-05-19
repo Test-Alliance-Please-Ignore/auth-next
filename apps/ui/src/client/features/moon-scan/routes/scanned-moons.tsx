@@ -1,6 +1,6 @@
 import { Fragment, useMemo, useState } from 'react'
 import { Link } from 'react-router-dom'
-import { ChevronDown, ChevronRight, ChevronUp, ChevronsUpDown } from 'lucide-react'
+import { ArrowDown, ArrowUp, ChevronDown, ChevronRight } from 'lucide-react'
 
 import { UserSearchPaginationControls } from '@/components/user-search-pagination-controls'
 import { Card } from '@/components/ui/card'
@@ -22,20 +22,20 @@ import { formatISK } from '@/lib/format-utils'
 import { RARITY_COLORS } from '../ore-rarities'
 import { useScannedMoons, useMoonRegions } from '../hooks'
 import { useMoonScanPermissions } from '../permissions'
+import { parseSecurityStatus, securityStatusTextClass } from '../security-status'
 
 import type { OreRarity, ScannedMoonEntry } from '../types'
 
 const RARITY_VALUES: readonly OreRarity[] = ['R4', 'R8', 'R16', 'R32', 'R64']
-type SortField = 'metenox' | 'tatara'
+type SortBy =
+	| 'moonName'
+	| 'solarSystemName'
+	| 'regionName'
+	| 'securityStatus'
+	| 'highestRarity'
+	| 'metenoxProfit'
+	| 'tataraProfit'
 type SortDir = 'asc' | 'desc'
-
-function secColor(sec: string | null): string {
-	if (sec === null) return 'text-muted-foreground'
-	const s = parseFloat(sec)
-	if (s >= 0.5) return 'text-green-400'
-	if (s > 0) return 'text-yellow-400'
-	return 'text-red-400'
-}
 
 function RarityBadge({ rarity }: { rarity: OreRarity }) {
 	return (
@@ -45,36 +45,6 @@ function RarityBadge({ rarity }: { rarity: OreRarity }) {
 		>
 			{rarity}
 		</span>
-	)
-}
-
-function SortHeader({
-	label,
-	field,
-	sortBy,
-	sortDir,
-	onToggle,
-}: {
-	label: string
-	field: SortField
-	sortBy: SortField | null
-	sortDir: SortDir
-	onToggle: (field: SortField) => void
-}) {
-	const active = sortBy === field
-	const Icon = !active ? ChevronsUpDown : sortDir === 'asc' ? ChevronUp : ChevronDown
-	return (
-		<button
-			type="button"
-			onClick={() => onToggle(field)}
-			className={`inline-flex items-center gap-1 hover:text-foreground transition-colors ${
-				active ? 'text-foreground' : ''
-			}`}
-			aria-label={`Sort by ${label}`}
-		>
-			<span>{label}</span>
-			<Icon className={`h-3.5 w-3.5 ${active ? 'opacity-100' : 'opacity-50'}`} />
-		</button>
 	)
 }
 
@@ -89,7 +59,7 @@ function ProfitCell({ value }: { value: string | null }) {
 }
 
 function MoonRow({ moon }: { moon: ScannedMoonEntry }) {
-	const sec = moon.securityStatus !== null ? Math.max(0, parseFloat(moon.securityStatus)).toFixed(1) : '—'
+	const sec = parseSecurityStatus(moon.securityStatus)
 	return (
 		<TableRow>
 			<TableCell>
@@ -103,7 +73,9 @@ function MoonRow({ moon }: { moon: ScannedMoonEntry }) {
 				</Link>
 			</TableCell>
 			<TableCell className="text-sm text-muted-foreground">{moon.regionName}</TableCell>
-			<TableCell className={`font-mono text-xs ${secColor(moon.securityStatus)}`}>{sec}</TableCell>
+			<TableCell className={`font-mono text-xs ${securityStatusTextClass(sec)}`}>
+				{sec === null ? '—' : sec.toFixed(1)}
+			</TableCell>
 			<TableCell>
 				{moon.highestRarity ? <RarityBadge rarity={moon.highestRarity as OreRarity} /> : <span className="text-muted-foreground">—</span>}
 			</TableCell>
@@ -126,27 +98,14 @@ export default function ScannedMoonsPage() {
 	const [search, setSearch] = useState('')
 	const [page, setPage] = useState(1)
 	const [pageSize, setPageSize] = useState(50)
-	const [sortBy, setSortBy] = useState<SortField | null>(null)
-	const [sortDir, setSortDir] = useState<SortDir>('desc')
+	const [sortBy, setSortBy] = useState<SortBy>('moonName')
+	const [sortDir, setSortDir] = useState<SortDir>('asc')
 	const [collapsedConstellations, setCollapsedConstellations] = useState<Set<string>>(new Set())
 
 	const toggleRarity = (rarity: OreRarity) => {
 		setSelectedRarities((prev) =>
 			prev.includes(rarity) ? prev.filter((r) => r !== rarity) : [...prev, rarity]
 		)
-		setPage(1)
-	}
-
-	const toggleSort = (field: SortField) => {
-		if (sortBy !== field) {
-			setSortBy(field)
-			setSortDir('desc')
-		} else if (sortDir === 'desc') {
-			setSortDir('asc')
-		} else {
-			setSortBy(null)
-			setSortDir('desc')
-		}
 		setPage(1)
 	}
 
@@ -157,8 +116,8 @@ export default function ScannedMoonsPage() {
 		constellationId: constellationFilter,
 		rarities: selectedRarities,
 		search,
-		sortBy: sortBy ?? undefined,
-		sortDir: sortBy ? sortDir : undefined,
+		sortBy,
+		sortDir,
 	})
 	const { data: regionsData } = useMoonRegions()
 
@@ -212,6 +171,41 @@ export default function ScannedMoonsPage() {
 
 	const totalCount = data?.total ?? 0
 	const hasPagination = Math.ceil(totalCount / pageSize) > 1
+	const toggleSort = (column: SortBy) => {
+		if (sortBy === column) {
+			setSortDir((dir) => (dir === 'asc' ? 'desc' : 'asc'))
+		} else {
+			setSortBy(column)
+			setSortDir('asc')
+		}
+		setPage(1)
+	}
+	const SortIndicator = ({ column }: { column: SortBy }) => {
+		if (sortBy !== column) return null
+		return sortDir === 'asc' ? <ArrowUp className="h-3.5 w-3.5" /> : <ArrowDown className="h-3.5 w-3.5" />
+	}
+	const SortableHead = ({
+		label,
+		column,
+		className,
+		alignRight = false,
+	}: {
+		label: string
+		column: SortBy
+		className?: string
+		alignRight?: boolean
+	}) => (
+		<TableHead className={className}>
+			<button
+				type="button"
+				onClick={() => toggleSort(column)}
+				className={`inline-flex items-center gap-1.5 hover:text-foreground ${alignRight ? 'w-full justify-end' : ''}`}
+			>
+				<span>{label}</span>
+				<SortIndicator column={column} />
+			</button>
+		</TableHead>
+	)
 	const renderPaginationControls = () => (
 		<UserSearchPaginationControls
 			totalCount={totalCount}
@@ -346,29 +340,23 @@ export default function ScannedMoonsPage() {
 				<Table>
 					<TableHeader>
 						<TableRow>
-							<TableHead>Moon</TableHead>
-							<TableHead>System</TableHead>
-							<TableHead>Region</TableHead>
-							<TableHead>Sec</TableHead>
-							<TableHead>Rarity</TableHead>
-							<TableHead className="text-right">
-								<SortHeader
-									label="Metenox 30d"
-									field="metenox"
-									sortBy={sortBy}
-									sortDir={sortDir}
-									onToggle={toggleSort}
-								/>
-							</TableHead>
-							<TableHead className="text-right">
-								<SortHeader
-									label="Refinery 30d"
-									field="tatara"
-									sortBy={sortBy}
-									sortDir={sortDir}
-									onToggle={toggleSort}
-								/>
-							</TableHead>
+							<SortableHead label="Moon" column="moonName" />
+							<SortableHead label="System" column="solarSystemName" />
+							<SortableHead label="Region" column="regionName" />
+							<SortableHead label="Security" column="securityStatus" />
+							<SortableHead label="Rarity" column="highestRarity" />
+							<SortableHead
+								label="Metenox 30d"
+								column="metenoxProfit"
+								className="text-right"
+								alignRight
+							/>
+							<SortableHead
+								label="Refinery 30d"
+								column="tataraProfit"
+								className="text-right"
+								alignRight
+							/>
 						</TableRow>
 					</TableHeader>
 					<TableBody>

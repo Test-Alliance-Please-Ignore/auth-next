@@ -20,25 +20,10 @@ import {
 import { RegionMap } from '../components/RegionMap'
 import { useDotlanRegionCoords, useMoonRegionDetail, useMoonRegions } from '../hooks'
 import { useMoonScanPermissions } from '../permissions'
+import { parseSecurityStatus, securityStatusTextClass } from '../security-status'
 
 function regionNameToFile(name: string): string {
 	return name.replace(/ /g, '_')
-}
-
-function secColor(secStatus: string | null): string {
-	if (secStatus === null) return 'text-muted-foreground'
-	const s = parseFloat(secStatus)
-	if (s >= 0.5) return 'text-green-400'
-	if (s > 0) return 'text-orange-400'
-	return 'text-red-400'
-}
-
-function parseSecurityStatus(secStatus: string | null): number | null {
-	if (secStatus == null) return null
-	const normalized = secStatus.replace(/[−–—]/g, '-').trim()
-	if (normalized.length === 0) return null
-	const value = Number.parseFloat(normalized)
-	return Number.isFinite(value) ? value : null
 }
 
 function secLabel(secStatus: string | null): string {
@@ -113,21 +98,24 @@ export default function RegionPage() {
 
 	return (
 		<Container>
-			<div className="flex items-center gap-2 text-sm text-muted-foreground mb-1">
-				<Link to="/moon-scan" className="hover:underline">Moon Scanning</Link>
-				<span>/</span>
-				<span>{regionName}</span>
-			</div>
-
-			<div className="flex items-center justify-between">
-				<PageHeader title={regionName as string} />
-				<Button variant="ghost" size="sm" asChild>
-					<Link to="/moon-scan">
-						<ArrowLeft className="mr-2 h-4 w-4" />
-						Back
-					</Link>
-				</Button>
-			</div>
+			<PageHeader
+				title={regionName as string}
+				action={(
+					<div className="flex flex-col items-end gap-2">
+						<div className="flex items-center gap-2 text-sm text-muted-foreground">
+							<Link to="/moon-scan" className="hover:underline">Moon Scanning</Link>
+							<span>/</span>
+							<span>{regionName}</span>
+						</div>
+						<Button variant="ghost" size="sm" asChild>
+							<Link to="/moon-scan">
+								<ArrowLeft className="mr-2 h-4 w-4" />
+								Back to Regions
+							</Link>
+						</Button>
+					</div>
+				)}
+			/>
 
 			{error && (
 				<div className="mt-4 rounded-lg border border-red-500/50 bg-red-500/10 p-4 text-sm text-red-500">
@@ -240,7 +228,7 @@ export default function RegionPage() {
 														<span className="text-muted-foreground">{sys.solarSystemName}</span>
 													)}
 												</TableCell>
-												<TableCell className={`font-mono text-xs ${secColor(sys.securityStatus)}`}>
+												<TableCell className={`font-mono text-xs ${securityStatusTextClass(sec)}`}>
 													{secLabel(sys.securityStatus)}
 												</TableCell>
 												<TableCell className="text-right tabular-nums">{sys.moonCount || '—'}</TableCell>
