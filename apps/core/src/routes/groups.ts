@@ -1296,7 +1296,6 @@ groups.delete(
 groups.post(
 	'/:groupId/admins',
 	requireAuth({ any: [ROLE_CORE_ALLIANCE_MEMBER] }),
-	requireAdmin(),
 	async (c) => {
 		const user = c.get('user')!
 		const groupId = c.req.param('groupId')
@@ -1330,7 +1329,6 @@ groups.post(
 groups.delete(
 	'/:groupId/admins/:userId',
 	requireAuth({ any: [ROLE_CORE_ALLIANCE_MEMBER] }),
-	requireAdmin(),
 	async (c) => {
 		const user = c.get('user')!
 		const groupId = c.req.param('groupId')
