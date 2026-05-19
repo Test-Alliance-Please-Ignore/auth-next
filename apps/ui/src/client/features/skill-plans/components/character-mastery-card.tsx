@@ -1,4 +1,4 @@
-import { AlertCircle, CheckCircle2, XCircle } from 'lucide-react'
+import { CheckCircle2, Star, XCircle } from 'lucide-react'
 
 import { MemberAvatar } from '@/components/member-avatar'
 import { Card } from '@/components/ui/card'
@@ -37,72 +37,27 @@ export function CharacterMasteryCard({
 		switch (masteryStatus) {
 			case 'fully_trained':
 				return {
-					boxClass: 'border-green-500 text-green-500',
-					bgClass: 'bg-green-500/20',
-					icon: <CheckCircle2 className="h-5 w-5" />,
+					boxClass: 'border-amber-300 text-amber-300',
+					bgClass: 'bg-amber-400/20',
+					icon: <Star className="h-5 w-5 fill-current" />,
 					text: 'Fully Trained',
 					progressPercent: 100,
 				}
 			case 'meets_minimum':
 				return {
-					boxClass: 'border-yellow-500 text-yellow-500',
-					bgClass: 'bg-yellow-500/20',
-					icon: <AlertCircle className="h-5 w-5" />,
-					text: 'Meets Requirements',
+					boxClass: 'border-success text-success',
+					bgClass: 'bg-success/20',
+					icon: <CheckCircle2 className="h-5 w-5" />,
+					text: 'Meets Required',
 					progressPercent: 100,
 				}
 			case 'insufficient':
 			default: {
-				// Calculate color gradient based on actual progress percentage
-				let bgClass = 'bg-muted/20'
-				let borderColor = 'border-muted'
-				let textColor = 'text-muted-foreground'
-				let icon = <XCircle className="h-5 w-5" />
-
-				if (progressPercent >= 90) {
-					// Almost there! - use amber
-					bgClass = 'bg-amber-500/20'
-					borderColor = 'border-amber-500'
-					textColor = 'text-amber-500'
-					icon = <AlertCircle className="h-5 w-5" />
-				} else if (progressPercent >= 75) {
-					// Getting close - use orange
-					bgClass = 'bg-orange-500/20'
-					borderColor = 'border-orange-500'
-					textColor = 'text-orange-500'
-					icon = <AlertCircle className="h-5 w-5" />
-				} else if (progressPercent >= 60) {
-					// Good progress - use blue
-					bgClass = 'bg-blue-500/20'
-					borderColor = 'border-blue-500'
-					textColor = 'text-blue-500'
-				} else if (progressPercent >= 40) {
-					// Some progress - use indigo
-					bgClass = 'bg-indigo-500/20'
-					borderColor = 'border-indigo-500'
-					textColor = 'text-indigo-500'
-				} else if (progressPercent >= 20) {
-					// Early progress - use purple
-					bgClass = 'bg-purple-500/20'
-					borderColor = 'border-purple-500'
-					textColor = 'text-purple-500'
-				} else if (progressPercent > 0) {
-					// Just started - use slate
-					bgClass = 'bg-slate-500/20'
-					borderColor = 'border-slate-500'
-					textColor = 'text-slate-500'
-				} else {
-					// No progress - use muted gray
-					bgClass = 'bg-muted/20'
-					borderColor = 'border-muted'
-					textColor = 'text-muted-foreground'
-				}
-
 				return {
-					boxClass: `${borderColor} ${textColor}`,
-					bgClass,
-					icon,
-					text: progressPercent === 0 ? 'Training Needed' : 'In Progress',
+					boxClass: 'border-destructive text-destructive',
+					bgClass: 'bg-destructive/20',
+					icon: <XCircle className="h-5 w-5" />,
+					text: 'Needs Training',
 					progressPercent,
 				}
 			}
@@ -199,11 +154,7 @@ export function CharacterMasteryCard({
 					{/* Content */}
 					<div className="relative flex items-center justify-center gap-2 px-3 py-2">
 						{statusDisplay.icon}
-						<span className="text-sm font-medium">
-							{masteryStatus === 'insufficient' && statusDisplay.progressPercent > 0
-								? `${Math.floor(statusDisplay.progressPercent / 5) * 5}% Trained`
-								: statusDisplay.text}
-						</span>
+						<span className="text-sm font-medium">{statusDisplay.text}</span>
 					</div>
 				</div>
 

@@ -1,11 +1,10 @@
-import { AlertCircle, CheckCircle2, ClipboardCopy, Filter, ShoppingCart, XCircle } from 'lucide-react'
+import { AlertCircle, CheckCircle2, ClipboardCopy, Filter, ShoppingCart, Star, XCircle } from 'lucide-react'
 import { useMemo, useState } from 'react'
 
 import { Badge } from '../../../components/ui/badge'
 import { Button } from '../../../components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '../../../components/ui/card'
 import { LoadingSpinner } from '../../../components/ui/loading'
-import { Progress } from '../../../components/ui/progress'
 import {
 	Table,
 	TableBody,
@@ -139,67 +138,104 @@ export function ProgressChecker({ planId, planName, initialCharacterId }: Progre
 							<CardTitle>Overall Progress</CardTitle>
 						</CardHeader>
 						<CardContent className="space-y-4">
-								<div className="space-y-1.5">
-									<div className="flex justify-between text-sm">
-										<span>Required Skills</span>
-										<div className="flex items-center gap-2">
-											<span className="font-medium">
-												{progress.completedRequired || 0} / {progress.totalSkills || 0} completed
-											</span>
-											{(progress.completedRequired || 0) < (progress.totalSkills || 0) && (
-												<Button
-													variant="ghost"
-													size="sm"
-													className="h-7 px-2 text-xs gap-1"
-													onClick={() => copyMissingSkills(progress.skills || [], 'required')}
-													title="Copy missing required skills for EVE import"
-												>
-													<ClipboardCopy className="h-3 w-3" />
-													Copy Missing to EVE
-												</Button>
-											)}
-										</div>
-									</div>
-									<Progress
-										value={progress.percentageRequired || 0}
-										className="h-2 bg-warning [&>div]:bg-primary"
-									/>
-									<p className="text-xs text-muted-foreground">
-										{(progress.percentageRequired || 0).toFixed(1)}% of required skills met
-									</p>
+							<div className="space-y-3">
+								<div className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+									Progress Targets
 								</div>
+								<div className="grid gap-2 md:grid-cols-2">
+									<div className="rounded-md border border-success/30 bg-success/5 px-3 py-2">
+										<div className="flex items-center justify-between gap-2">
+											<span className="text-sm font-medium text-success">Required Skills</span>
+											<span className="text-sm font-bold text-success">
+												{progress.completedRequired || 0} / {progress.totalSkills || 0}
+											</span>
+										</div>
+										{(progress.completedRequired || 0) < (progress.totalSkills || 0) && (
+											<Button
+												variant="ghost"
+												size="sm"
+												className="mt-2 h-7 px-2 text-xs gap-1"
+												onClick={() => copyMissingSkills(progress.skills || [], 'required')}
+												title="Copy missing required skills for EVE import"
+											>
+												<ClipboardCopy className="h-3 w-3" />
+												Copy Missing Required
+											</Button>
+										)}
+									</div>
+									<div className="rounded-md border border-amber-300/30 bg-amber-400/5 px-3 py-2">
+										<div className="flex items-center justify-between gap-2">
+											<span className="text-sm font-medium text-amber-300">
+												Recommended Skills
+											</span>
+											<span className="text-sm font-bold text-amber-300">
+												{progress.completedRecommendedUpgrades || 0} /{' '}
+												{progress.totalRecommendedUpgrades || 0}
+											</span>
+										</div>
+										{(progress.completedRecommendedUpgrades || 0) <
+											(progress.totalRecommendedUpgrades || 0) && (
+											<Button
+												variant="ghost"
+												size="sm"
+												className="mt-2 h-7 px-2 text-xs gap-1"
+												onClick={() => copyMissingSkills(progress.skills || [], 'recommended')}
+												title="Copy missing recommended skills for EVE import"
+											>
+												<ClipboardCopy className="h-3 w-3" />
+												Copy Missing Recommended
+											</Button>
+										)}
+									</div>
+								</div>
+								<div className="relative h-2 w-full overflow-hidden rounded-full bg-destructive/25">
+									{(() => {
+										const requiredCount = progress.totalSkills || 0
+										const recommendedUpgradeCount = progress.totalRecommendedUpgrades || 0
+										const totalStages = requiredCount + recommendedUpgradeCount
+										const requiredSegmentMax =
+											totalStages > 0 ? (requiredCount / totalStages) * 100 : 100
+										const recommendedSegmentMax = Math.max(0, 100 - requiredSegmentMax)
+										const greenWidth =
+											requiredCount > 0
+												? requiredSegmentMax *
+													Math.max(0, Math.min(1, (progress.completedRequired || 0) / requiredCount))
+												: requiredSegmentMax
+										const goldWidth =
+											recommendedUpgradeCount > 0
+												? recommendedSegmentMax *
+													Math.max(
+														0,
+														Math.min(
+															1,
+															(progress.completedRecommendedUpgrades || 0) /
+																recommendedUpgradeCount
+														)
+													)
+												: 0
 
-								<div className="space-y-1.5">
-									<div className="flex justify-between text-sm">
-										<span>Recommended Skills</span>
-										<div className="flex items-center gap-2">
-											<span className="font-medium">
-												{progress.completedRecommended || 0} / {progress.totalSkills || 0} completed
-											</span>
-											{(progress.completedRecommended || 0) < (progress.totalSkills || 0) && (
-												<Button
-													variant="ghost"
-													size="sm"
-													className="h-7 px-2 text-xs gap-1"
-													onClick={() =>
-														copyMissingSkills(progress.skills || [], 'recommended')
-													}
-													title="Copy missing recommended skills for EVE import"
-												>
-													<ClipboardCopy className="h-3 w-3" />
-													Copy Missing to EVE
-												</Button>
-											)}
-										</div>
-									</div>
-									<Progress
-										value={progress.percentageRecommended || 0}
-										className="h-2 bg-warning [&>div]:bg-primary"
-									/>
-									<p className="text-xs text-muted-foreground">
-										{(progress.percentageRecommended || 0).toFixed(1)}% of recommended skills met
-									</p>
+										return (
+											<>
+												<div
+													className="absolute inset-y-0 left-0 bg-success transition-all"
+													style={{ width: `${greenWidth}%` }}
+												/>
+												<div
+												className="absolute inset-y-0 bg-amber-400 transition-all"
+													style={{
+														left: `${requiredSegmentMax}%`,
+													width: `${goldWidth}%`,
+													}}
+												/>
+											</>
+										)
+									})()}
 								</div>
+								<div className="flex justify-between text-xs text-muted-foreground">
+									<p>{(progress.percentageRequired || 0).toFixed(1)}% required</p>
+									<p>{(progress.percentageRecommendedUpgrades || 0).toFixed(1)}% recommended</p>
+								</div>
+							</div>
 
 							{/* Status badge + skillbooks */}
 							<div className="flex items-center justify-between pt-2">
@@ -330,29 +366,52 @@ export function ProgressChecker({ planId, planName, initialCharacterId }: Progre
 											<TableRow
 												key={skill.skillId}
 												className={cn(
-													!skill.meetsRecommended && skill.meetsRequired && 'bg-yellow-500/10',
+													skill.meetsRecommended && 'bg-amber-400/10',
+													!skill.meetsRecommended && skill.meetsRequired && 'bg-success/10',
 													!skill.meetsRequired && 'bg-red-500/10'
 												)}
 											>
 												<TableCell className="font-medium">
 													{skill.skillName || 'Unknown Skill'}
 												</TableCell>
-												<TableCell className="text-center">
+												<TableCell
+													className={cn(
+														'text-center',
+														skill.meetsRecommended
+															? skill.recommendedLevel > skill.requiredLevel
+																? 'font-bold text-amber-300'
+																: 'text-success'
+															: skill.meetsRequired
+																? 'text-success'
+																: 'font-bold text-destructive'
+													)}
+												>
 													{(skill.currentLevel || 0) > 0 ? skill.currentLevel : '-'}
 												</TableCell>
-												<TableCell className="text-center">{skill.requiredLevel || 0}</TableCell>
-												<TableCell className="text-center">{skill.recommendedLevel || 0}</TableCell>
-												<TableCell>
-													{skill.meetsRecommended ? (
-														<div className="flex items-center gap-1 text-green-500">
-															<CheckCircle2 className="h-4 w-4" />
-															<span className="text-xs">Fully trained</span>
-														</div>
-													) : skill.meetsRequired ? (
-														<div className="flex items-center gap-1 text-yellow-500">
-															<AlertCircle className="h-4 w-4" />
-															<span className="text-xs">Meets minimum</span>
-														</div>
+												<TableCell className="text-center font-bold text-success">
+													{skill.requiredLevel || 0}
+												</TableCell>
+												<TableCell
+													className={cn(
+														'text-center',
+														skill.recommendedLevel > skill.requiredLevel
+															? 'font-bold text-amber-300'
+															: 'text-success'
+													)}
+												>
+													{skill.recommendedLevel || 0}
+												</TableCell>
+														<TableCell>
+															{skill.meetsRecommended ? (
+																<div className="flex items-center gap-1 text-amber-300">
+																	<Star className="h-4 w-4 fill-current" />
+																	<span className="text-xs">Fully trained</span>
+																</div>
+															) : skill.meetsRequired ? (
+																<div className="flex items-center gap-1 text-success">
+																	<CheckCircle2 className="h-4 w-4" />
+																	<span className="text-xs">Meets minimum</span>
+																</div>
 													) : (
 														<div className="flex items-center gap-1 text-destructive">
 															<XCircle className="h-4 w-4" />

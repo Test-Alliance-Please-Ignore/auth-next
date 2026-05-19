@@ -89,7 +89,7 @@ export function SkillPlanCard({
 			<CardContent className="flex flex-1 flex-col">
 				{/* Skills count */}
 				{plan.skills && (
-					<div className="text-sm text-muted-foreground">
+					<div className="text-sm font-medium text-muted-foreground">
 						{plan.skills.length} skill{plan.skills.length !== 1 ? 's' : ''} in this plan
 					</div>
 				)}
@@ -104,24 +104,29 @@ export function SkillPlanCard({
 					</div>
 				) : characterReadiness && characterReadiness.total > 0 ? (
 					<div className="mt-auto pt-3 space-y-2">
-						<div className="flex items-center justify-between text-xs text-muted-foreground">
+						<div className="flex items-center gap-2 text-xs text-muted-foreground">
 							<span>Character Readiness</span>
-							<span>{characterReadiness.total} characters</span>
+							<span className="font-semibold text-foreground">{characterReadiness.total}</span>
+							<span>characters</span>
 						</div>
 						<div className="flex flex-wrap items-center gap-2 text-xs">
 							{characterReadiness.completed > 0 && (
-								<Badge variant="success" className="px-2 py-0">
-									Completed {characterReadiness.completed}
+								<Badge variant="gold" className="gap-1 px-2 py-0">
+									<Star className="h-3 w-3 fill-current" />
+									Fully Trained <span className="font-bold">{characterReadiness.completed}</span>
 								</Badge>
 							)}
 							{characterReadiness.meetsRequirements > 0 && (
-								<Badge variant="warning" className="px-2 py-0">
-									Meets Required {characterReadiness.meetsRequirements}
+								<Badge variant="success" className="gap-1 px-2 py-0">
+									<CheckCircle2 className="h-3 w-3" />
+									Meets Required{' '}
+									<span className="font-bold">{characterReadiness.meetsRequirements}</span>
 								</Badge>
 							)}
 							{characterReadiness.incomplete > 0 && (
-								<Badge variant="destructive" className="px-2 py-0">
-									Incomplete {characterReadiness.incomplete}
+								<Badge variant="destructive" className="gap-1 px-2 py-0">
+									<XCircle className="h-3 w-3" />
+									Needs Training <span className="font-bold">{characterReadiness.incomplete}</span>
 								</Badge>
 							)}
 						</div>
