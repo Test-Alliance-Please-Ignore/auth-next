@@ -1,6 +1,8 @@
 import { useMemo, useState } from 'react'
 import { Link } from 'react-router-dom'
 
+import { ArrowDown, ArrowUp } from 'lucide-react'
+
 import { UserSearchPaginationControls } from '@/components/user-search-pagination-controls'
 import { Card } from '@/components/ui/card'
 import { Container } from '@/components/ui/container'
@@ -22,19 +24,21 @@ import { formatISK } from '@/lib/format-utils'
 import { RARITY_COLORS } from '../ore-rarities'
 import { useScannedMoons, useMoonRegions } from '../hooks'
 import { useMoonScanPermissions } from '../permissions'
+import { parseSecurityStatus, securityStatusTextClass } from '../security-status'
 
 import type { OreRarity, ScannedMoonEntry } from '../types'
 
 const RARITY_TABS = ['All', 'R4', 'R8', 'R16', 'R32', 'R64'] as const
 type RarityTab = (typeof RARITY_TABS)[number]
-
-function secColor(sec: string | null): string {
-	if (sec === null) return 'text-muted-foreground'
-	const s = parseFloat(sec)
-	if (s >= 0.5) return 'text-green-400'
-	if (s > 0) return 'text-yellow-400'
-	return 'text-red-400'
-}
+type SortBy =
+	| 'moonName'
+	| 'solarSystemName'
+	| 'regionName'
+	| 'securityStatus'
+	| 'highestRarity'
+	| 'metenoxProfit'
+	| 'tataraProfit'
+type SortDir = 'asc' | 'desc'
 
 function RarityBadge({ rarity }: { rarity: OreRarity }) {
 	return (
@@ -58,7 +62,7 @@ function ProfitCell({ value }: { value: string | null }) {
 }
 
 function MoonRow({ moon }: { moon: ScannedMoonEntry }) {
-	const sec = moon.securityStatus !== null ? Math.max(0, parseFloat(moon.securityStatus)).toFixed(1) : '—'
+	const sec = parseSecurityStatus(moon.securityStatus)
 	return (
 		<TableRow>
 			<TableCell>
@@ -72,7 +76,9 @@ function MoonRow({ moon }: { moon: ScannedMoonEntry }) {
 				</Link>
 			</TableCell>
 			<TableCell className="text-sm text-muted-foreground">{moon.regionName}</TableCell>
-			<TableCell className={`font-mono text-xs ${secColor(moon.securityStatus)}`}>{sec}</TableCell>
+			<TableCell className={`font-mono text-xs ${securityStatusTextClass(sec)}`}>
+				{sec === null ? '—' : sec.toFixed(1)}
+			</TableCell>
 			<TableCell>
 				{moon.highestRarity ? <RarityBadge rarity={moon.highestRarity as OreRarity} /> : <span className="text-muted-foreground">—</span>}
 			</TableCell>
@@ -94,6 +100,8 @@ export default function ScannedMoonsPage() {
 	const [search, setSearch] = useState('')
 	const [page, setPage] = useState(1)
 	const [pageSize, setPageSize] = useState(50)
+	const [sortBy, setSortBy] = useState<SortBy>('moonName')
+	const [sortDir, setSortDir] = useState<SortDir>('asc')
 
 	const { data, isLoading, error } = useScannedMoons({
 		page,
@@ -101,6 +109,8 @@ export default function ScannedMoonsPage() {
 		regionId: regionFilter,
 		rarity: rarityTab,
 		search,
+		sortBy,
+		sortDir,
 	})
 	const { data: regionsData } = useMoonRegions()
 
@@ -118,6 +128,41 @@ export default function ScannedMoonsPage() {
 
 	const totalCount = data?.total ?? 0
 	const hasPagination = Math.ceil(totalCount / pageSize) > 1
+	const toggleSort = (column: SortBy) => {
+		if (sortBy === column) {
+			setSortDir((dir) => (dir === 'asc' ? 'desc' : 'asc'))
+		} else {
+			setSortBy(column)
+			setSortDir('asc')
+		}
+		setPage(1)
+	}
+	const SortIndicator = ({ column }: { column: SortBy }) => {
+		if (sortBy !== column) return null
+		return sortDir === 'asc' ? <ArrowUp className="h-3.5 w-3.5" /> : <ArrowDown className="h-3.5 w-3.5" />
+	}
+	const SortableHead = ({
+		label,
+		column,
+		className,
+		alignRight = false,
+	}: {
+		label: string
+		column: SortBy
+		className?: string
+		alignRight?: boolean
+	}) => (
+		<TableHead className={className}>
+			<button
+				type="button"
+				onClick={() => toggleSort(column)}
+				className={`inline-flex items-center gap-1.5 hover:text-foreground ${alignRight ? 'w-full justify-end' : ''}`}
+			>
+				<span>{label}</span>
+				<SortIndicator column={column} />
+			</button>
+		</TableHead>
+	)
 	const renderPaginationControls = () => (
 		<UserSearchPaginationControls
 			totalCount={totalCount}
@@ -209,13 +254,23 @@ export default function ScannedMoonsPage() {
 				<Table>
 					<TableHeader>
 						<TableRow>
-							<TableHead>Moon</TableHead>
-							<TableHead>System</TableHead>
-							<TableHead>Region</TableHead>
-							<TableHead>Sec</TableHead>
-							<TableHead>Rarity</TableHead>
-							<TableHead className="text-right">Metenox 30d</TableHead>
-							<TableHead className="text-right">Refinery 30d</TableHead>
+							<SortableHead label="Moon" column="moonName" />
+							<SortableHead label="System" column="solarSystemName" />
+							<SortableHead label="Region" column="regionName" />
+							<SortableHead label="Security" column="securityStatus" />
+							<SortableHead label="Rarity" column="highestRarity" />
+							<SortableHead
+								label="Metenox 30d"
+								column="metenoxProfit"
+								className="text-right"
+								alignRight
+							/>
+							<SortableHead
+								label="Refinery 30d"
+								column="tataraProfit"
+								className="text-right"
+								alignRight
+							/>
 						</TableRow>
 					</TableHeader>
 					<TableBody>

@@ -1,4 +1,4 @@
-import { Link, useNavigate, useParams } from 'react-router-dom'
+import { Link, useParams } from 'react-router-dom'
 
 import { ArrowLeft } from 'lucide-react'
 
@@ -20,10 +20,10 @@ import { OreCompositionBar } from '../components/OreCompositionBar'
 import { ScanStatusBadge } from '../components/ScanStatusBadge'
 import { useMoonSystemDetail } from '../hooks'
 import { useMoonScanPermissions } from '../permissions'
+import { securityStatusTextClass } from '../security-status'
 
 export default function SystemPage() {
 	const { systemId } = useParams<{ systemId: string }>()
-	const navigate = useNavigate()
 	const { canView } = useMoonScanPermissions()
 
 	const { data: detail, isLoading, error } = useMoonSystemDetail(systemId!)
@@ -40,49 +40,50 @@ export default function SystemPage() {
 		? parseFloat(sys.securityStatus)
 		: null
 
-	const secColor =
-		secStatus === null
-			? 'text-muted-foreground'
-			: secStatus >= 0.5
-				? 'text-green-400'
-				: secStatus > 0
-					? 'text-yellow-400'
-					: 'text-red-400'
+	const secColor = securityStatusTextClass(secStatus)
 
 	const verifiedMoons = (detail?.moons ?? []).filter((m) => m.isVerified).length
 	const scannedMoons = (detail?.moons ?? []).filter((m) => m.hasScans).length
 
 	return (
 		<Container>
-			<div className="flex items-center gap-2 text-sm text-muted-foreground mb-1">
-				<Link to="/moon-scan" className="hover:underline">Moon Scanning</Link>
-				<span>/</span>
-				<span>{sys?.solarSystemName ?? systemId}</span>
-			</div>
-
-			<div className="flex items-center justify-between">
-				<PageHeader
-					title={sys?.solarSystemName ?? systemId!}
-					description={
-						isLoading
-							? 'Loading…'
-							: `${detail?.moons.length ?? 0} moons · ${scannedMoons} scanned · ${verifiedMoons} verified`
-					}
-				/>
-				<Button variant="ghost" size="sm" onClick={() => navigate(-1)}>
-					<ArrowLeft className="mr-2 h-4 w-4" />
-					Back
-				</Button>
-			</div>
-
-			{sys && (
-				<div className="mt-2 flex items-center gap-4 text-sm">
-					<span className="text-muted-foreground">Security status:</span>
-					<span className={`font-mono font-medium ${secColor}`}>
-						{secStatus !== null ? secStatus.toFixed(2) : '—'}
-					</span>
+			<div className="mb-section md:mb-10">
+				<div className="flex items-start justify-between gap-4">
+					<div className="space-y-3">
+						<div className="flex items-center gap-3">
+							<h1 className="text-4xl md:text-5xl font-bold leading-none gradient-text">
+								{sys?.solarSystemName ?? systemId!}
+							</h1>
+							{sys && (
+								<span className="inline-flex items-center gap-2 rounded-md border bg-card px-3 py-1.5 text-sm">
+									<span className="text-muted-foreground">Security</span>
+									<span className={`font-mono font-semibold tabular-nums ${secColor}`}>
+										{secStatus !== null ? secStatus.toFixed(2) : '—'}
+									</span>
+								</span>
+							)}
+						</div>
+						<p className="text-muted-foreground text-lg">
+							{isLoading
+								? 'Loading…'
+								: `${detail?.moons.length ?? 0} moons · ${scannedMoons} scanned · ${verifiedMoons} verified`}
+						</p>
+					</div>
+					<div className="flex flex-col items-end gap-2">
+						<div className="flex items-center gap-2 text-sm text-muted-foreground">
+							<Link to="/moon-scan" className="hover:underline">Moon Scanning</Link>
+							<span>/</span>
+							<span>{sys?.solarSystemName ?? systemId}</span>
+						</div>
+						<Button variant="ghost" size="sm" asChild>
+							<Link to="/moon-scan">
+								<ArrowLeft className="mr-2 h-4 w-4" />
+								Back to Regions
+							</Link>
+						</Button>
+					</div>
 				</div>
-			)}
+			</div>
 
 			{error && (
 				<div className="mt-4 rounded-lg border border-red-500/50 bg-red-500/10 p-4 text-sm text-red-500">

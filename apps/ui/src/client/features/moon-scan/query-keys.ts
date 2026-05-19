@@ -10,6 +10,8 @@ export const moonScanKeys = {
 		regionId?: string
 		rarity?: string
 		search?: string
+		sortBy?: string
+		sortDir?: 'asc' | 'desc'
 	}) => [...moonScanKeys.all, 'verified-moons', params] as const,
 
 	// Regions

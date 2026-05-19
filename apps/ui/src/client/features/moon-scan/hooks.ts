@@ -45,6 +45,8 @@ export function useScannedMoons(params: {
 	regionId?: string
 	rarity?: string
 	search?: string
+	sortBy?: string
+	sortDir?: 'asc' | 'desc'
 } = {}) {
 	return useQuery({
 		queryKey: moonScanKeys.verifiedMoons(params),
