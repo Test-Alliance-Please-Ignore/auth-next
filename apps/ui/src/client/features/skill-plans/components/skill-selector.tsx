@@ -29,7 +29,7 @@ export function SkillSelector({
 	const [debouncedSearchTerm, setDebouncedSearchTerm] = useState('')
 	const [selectedGroup, setSelectedGroup] = useState<string>('all')
 	const [selectedSkill, setSelectedSkill] = useState<AvailableSkill | null>(null)
-	const [requiredLevel, setRequiredLevel] = useState(1)
+	const [requiredLevel, setRequiredLevel] = useState(0)
 	const [recommendedLevel, setRecommendedLevel] = useState(5)
 
 	// Use search API when search term is provided, otherwise get all skills
@@ -97,7 +97,7 @@ export function SkillSelector({
 
 			// Reset form
 			setSelectedSkill(null)
-			setRequiredLevel(1)
+			setRequiredLevel(0)
 			setRecommendedLevel(5)
 		} catch (error) {
 			console.error('Failed to add skill:', error)
@@ -211,8 +211,9 @@ export function SkillSelector({
 											}
 										}}
 										inputId="required-level"
-										options={[1, 2, 3, 4, 5].map((level) => ({ value: String(level),
-											label: `Level ${level}`,
+										options={[0, 1, 2, 3, 4, 5].map((level) => ({
+											value: String(level),
+											label: level === 0 ? 'Optional' : `Level ${level}`,
 										}))}
 										disabled={isSubmitting}
 									/>

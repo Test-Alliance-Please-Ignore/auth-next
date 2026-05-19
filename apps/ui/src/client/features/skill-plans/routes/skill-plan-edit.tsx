@@ -264,8 +264,9 @@ export default function SkillPlanEdit() {
 															onValueChange={(value) =>
 																handleUpdateSkillLevel(skill.skillId, 'requiredLevel', value)
 															}
-															options={[1, 2, 3, 4, 5].map((level) => ({ value: String(level),
-																label: String(level),
+															options={[0, 1, 2, 3, 4, 5].map((level) => ({
+																value: String(level),
+																label: level === 0 ? 'Optional' : String(level),
 															}))}
 															className="w-20 mx-auto"
 															disabled={updateSkillLevels.isPending}
