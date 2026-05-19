@@ -1,3 +1,5 @@
+import { MOON_GOO_TYPE_IDS, MOON_ORE_TYPE_IDS } from './reprocessing'
+
 export type { ParsedOre, ParsedScan, ParseResult } from './parser'
 export { parseMoonScanTsv } from './parser'
 
@@ -9,12 +11,25 @@ export type LeaderboardWindow = 'all' | '7d' | '30d'
 export type StructureType = 'tatara' | 'metenox'
 export type OreRarity = 'R4' | 'R8' | 'R16' | 'R32' | 'R64'
 
+const RARITY_BUCKETS: readonly OreRarity[] = ['R4', 'R8', 'R16', 'R32', 'R64']
+
+function getRarityByIndex(index: number): OreRarity {
+	const rarity = RARITY_BUCKETS[Math.floor(index / 4)]
+	if (!rarity) throw new Error(`Unexpected moon ore rarity index: ${index}`)
+	return rarity
+}
+
+function buildRarityMap(typeIds: readonly string[]): Record<string, OreRarity> {
+	const map: Record<string, OreRarity> = {}
+	typeIds.forEach((typeId, index) => {
+		map[typeId] = getRarityByIndex(index)
+	})
+	return map
+}
+
 export const ORE_TYPE_RARITY: Record<string, OreRarity> = {
-	'45490': 'R4', '45491': 'R4', '45492': 'R4', '45493': 'R4',
-	'45494': 'R8', '45495': 'R8', '45496': 'R8', '45497': 'R8',
-	'45498': 'R16', '45499': 'R16', '45500': 'R16', '45501': 'R16',
-	'45502': 'R32', '45503': 'R32', '45504': 'R32', '45506': 'R32',
-	'45510': 'R64', '45511': 'R64', '45512': 'R64', '45513': 'R64',
+	...buildRarityMap(MOON_ORE_TYPE_IDS),
+	...buildRarityMap(MOON_GOO_TYPE_IDS),
 }
 
 export const RARITY_ORDER: Record<OreRarity, number> = { R4: 1, R8: 2, R16: 3, R32: 4, R64: 5 }

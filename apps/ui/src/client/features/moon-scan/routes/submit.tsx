@@ -5,9 +5,9 @@ import { Button } from '@/components/ui/button'
 import { Container } from '@/components/ui/container'
 import { PageHeader } from '@/components/ui/page-header'
 import { Textarea } from '@/components/ui/textarea'
-import { useUserPermissions } from '@/hooks/useUserPermissions'
 
 import { useParseScan, useSubmitScan } from '../hooks'
+import { useMoonScanPermissions } from '../permissions'
 
 import type { AnnotatedScan } from '../types'
 
@@ -39,8 +39,7 @@ function ScanPreviewRow({ scan }: { scan: AnnotatedScan }) {
 }
 
 export default function SubmitScanPage() {
-	const { hasPermission, isAdmin } = useUserPermissions()
-	const canSubmit = isAdmin || hasPermission('urn:moons:submit')
+	const { canSubmit } = useMoonScanPermissions()
 
 	const [raw, setRaw] = useState('')
 	const parseMutation = useParseScan()

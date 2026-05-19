@@ -107,6 +107,12 @@ export interface RegionDetail {
 	borderRegions: Record<string, { regionId: string; regionName: string }>
 }
 
+export interface DotlanCoords {
+	region: string
+	viewbox: [number, number, number, number]
+	systems: Record<string, [number, number]>
+}
+
 // System detail
 export interface SystemInfo {
 	solarSystemId: string

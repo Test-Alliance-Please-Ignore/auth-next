@@ -15,16 +15,16 @@ import {
 	TableHeader,
 	TableRow,
 } from '@/components/ui/table'
-import { useUserPermissions } from '@/hooks/useUserPermissions'
 
 import { OreCompositionBar } from '../components/OreCompositionBar'
+import { ScanStatusBadge } from '../components/ScanStatusBadge'
 import { useMoonSystemDetail } from '../hooks'
+import { useMoonScanPermissions } from '../permissions'
 
 export default function SystemPage() {
 	const { systemId } = useParams<{ systemId: string }>()
 	const navigate = useNavigate()
-	const { hasPermission, isAdmin } = useUserPermissions()
-	const canView = isAdmin || hasPermission('urn:moons:view')
+	const { canView } = useMoonScanPermissions()
 
 	const { data: detail, isLoading, error } = useMoonSystemDetail(systemId!)
 	if (!canView) {
@@ -118,14 +118,14 @@ export default function SystemPage() {
 												{moon.moonName}
 											</Link>
 										</TableCell>
-										<TableCell>
-											{moon.isVerified ? (
-												<Badge className="bg-green-500/20 text-green-400 border-green-500/30">Verified</Badge>
-											) : moon.hasScans ? (
-												<Badge className="bg-yellow-500/20 text-yellow-400 border-yellow-500/30">Pending</Badge>
-											) : (
-												<Badge variant="ghost" className="text-muted-foreground">No data</Badge>
-											)}
+											<TableCell>
+												{moon.isVerified ? (
+													<ScanStatusBadge status="verified" />
+												) : moon.hasScans ? (
+													<ScanStatusBadge status="pending" />
+												) : (
+													<Badge variant="ghost" className="text-muted-foreground">No data</Badge>
+												)}
 										</TableCell>
 										<TableCell>
 											{moon.composition ? (

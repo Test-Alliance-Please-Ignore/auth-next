@@ -7,10 +7,17 @@ import {
 	FUEL_BLOCK_TYPE_ID,
 	MAGMATIC_GAS_TYPE_ID,
 	MOON_GOO_TYPE_IDS,
+	MOON_ORE_TYPE_IDS,
 	ORE_TYPE_RARITY,
 	RARITY_ORDER,
 	getOreVolume,
 	parseMoonScanTsv,
+	type MoonScanDO,
+	type MoonProfitability,
+	type OreRarity,
+	type OreWithProfitability,
+	type StructureProfitability,
+	type VerifiedComposition,
 } from '@repo/moon-scan'
 
 import { getCachedUserPermissions } from '../lib/groups-cache'
@@ -18,10 +25,8 @@ import { requireAllianceMember } from '../middleware/session'
 
 import { createEveRegionId, createEveTypeId } from '@repo/eve-types'
 import type { Markets } from '@repo/markets'
-import type { MoonScanDO, MoonProfitability, OreRarity, OreWithProfitability, StructureProfitability } from '@repo/moon-scan'
-import type { VerifiedComposition } from '@repo/moon-scan'
 import type { Universe } from '@repo/universe'
-import type { App } from '../context'
+import type { App, SessionUser } from '../context'
 
 // ─── Permission URNs ─────────────────────────────────────────────────────────
 
@@ -44,6 +49,7 @@ function isKSpaceRegion(regionId: string): boolean {
 
 // Security status threshold: raw stored value < 0.6 is eligible for moon mining
 const SEC_STATUS_THRESHOLD = 0.6
+const MAX_SCAN_RAW_BYTES = 1_000_000
 
 // ─── Caches ──────────────────────────────────────────────────────────────────
 
@@ -51,6 +57,7 @@ const permissionCache = new TimeCache<boolean>(15_000)
 
 // Minerals that Metenox does NOT output (only moon goo materials)
 const MINERAL_TYPE_IDS = new Set(['35', '36'])
+const ALLOWED_MOON_SCAN_ORE_TYPE_IDS = new Set<string>([...MOON_ORE_TYPE_IDS, ...MOON_GOO_TYPE_IDS])
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
 
@@ -74,6 +81,22 @@ function getMoonScanStub(env: App['Bindings']): MoonScanDO {
 
 function getUniverseStub(env: App['Bindings']): Universe {
 	return getStub<Universe>(env.UNIVERSE, 'default')
+}
+
+function resolveEffectivePrice(override: string | null | undefined, livePrice: number): number {
+	if (override === null || override === undefined) return livePrice
+	const parsed = Number.parseFloat(override)
+	if (Number.isNaN(parsed) || parsed <= 0) return livePrice
+	return parsed
+}
+
+function isScanOwner(scan: { submittedBy: string | null }, user: SessionUser): boolean {
+	if (!scan.submittedBy) return false
+	return user.characters.some((character) => character.characterId === scan.submittedBy)
+}
+
+function isRawPayloadTooLarge(raw: string): boolean {
+	return new TextEncoder().encode(raw).length > MAX_SCAN_RAW_BYTES
 }
 
 // ─── Zod schemas ──────────────────────────────────────────────────────────────
@@ -187,11 +210,11 @@ moonScanRoutes.get('/moons/region/:regionId', async (c) => {
 
 	const [stargates, moonsBySystem] = await Promise.all([
 		universe.getStargatesBySystemIds(systems.map((s) => s.solarSystemId)),
-		Promise.all(eligibleSystemIds.map((id) => universe.getMoonsBySystemId(id).then((moons) => ({ id, moons })))),
+		universe.getMoonsBySystemIds(eligibleSystemIds),
 	])
 
 	// Build moon ID list and get coverage
-	const allMoonIds = moonsBySystem.flatMap(({ moons }) => moons.map((m) => m.moonId))
+	const allMoonIds = Object.values(moonsBySystem).flatMap((moons) => moons.map((m) => m.moonId))
 	const coverage = await moonScan.getMoonCoverage(allMoonIds)
 	const coverageMap = new Map(coverage.map((c) => [c.moonId, c]))
 
@@ -217,26 +240,27 @@ moonScanRoutes.get('/moons/region/:regionId', async (c) => {
 
 	// Aggregate per-system moon coverage
 	const systemMoonCoverage = new Map<string, { total: number; verified: number }>()
-	for (const { id, moons } of moonsBySystem) {
+	for (const systemId of eligibleSystemIds) {
+		const moons = moonsBySystem[systemId] ?? []
 		let total = 0; let verified = 0
 		for (const m of moons) {
 			const c = coverageMap.get(m.moonId)
 			if (c?.hasScans) total++
 			if (c?.isVerified) verified++
 		}
-		systemMoonCoverage.set(id, { total, verified })
+		systemMoonCoverage.set(systemId, { total, verified })
 	}
 
 	return c.json({
 		regionId,
 		systems: systems.map((s) => ({
-			solarSystemId: s.solarSystemId,
-			solarSystemName: s.solarSystemName,
-			securityStatus: s.securityStatus,
-			moonCount: moonsBySystem.find((m) => m.id === s.solarSystemId)?.moons.length ?? 0,
-			scannedCount: systemMoonCoverage.get(s.solarSystemId)?.total ?? 0,
-			verifiedCount: systemMoonCoverage.get(s.solarSystemId)?.verified ?? 0,
-		})),
+				solarSystemId: s.solarSystemId,
+				solarSystemName: s.solarSystemName,
+				securityStatus: s.securityStatus,
+				moonCount: moonsBySystem[s.solarSystemId]?.length ?? 0,
+				scannedCount: systemMoonCoverage.get(s.solarSystemId)?.total ?? 0,
+				verifiedCount: systemMoonCoverage.get(s.solarSystemId)?.verified ?? 0,
+			})),
 		jumpLinks,
 		borderRegions,
 	})
@@ -269,12 +293,9 @@ moonScanRoutes.get('/moons/system/:systemId', async (c) => {
 	const compositionMap = new Map(compositions.map((c) => [c.moonId, c]))
 
 	const verifiedMoonIds = compositions.filter((c) => c.isVerified).map((c) => c.moonId)
-	const verifiedComps = await Promise.all(
-		verifiedMoonIds.map((id) => moonScan.getVerifiedComposition(id))
-	)
+	const verifiedComps = await moonScan.getVerifiedCompositions(verifiedMoonIds)
 	const verifiedCompMap = new Map(
 		verifiedComps
-			.filter((v): v is NonNullable<typeof v> => v !== null)
 			.map((v) => [v.moonId, v])
 	)
 
@@ -338,23 +359,30 @@ moonScanRoutes.get('/moons/verified', async (c) => {
 	// Collect all unique ore type IDs across all compositions for typeMaterials lookup
 	const allOreTypeIds = [...new Set(compositions.flatMap((c) => c.ores.map((o) => o.oreTypeId)))]
 
-	// Fetch prices and live typeMaterials in parallel
+	// Fetch live typeMaterials first, then price all discovered materials + consumables.
 	const markets = getMarketsStub(c.env)
-	const [priceResponse, typeMaterialsMap] = await Promise.all([
-		markets.getBatchMarketDataAtTime({
-			regionId: createEveRegionId('universe'),
-			typeIds: [...MOON_GOO_TYPE_IDS, FUEL_BLOCK_TYPE_ID, MAGMATIC_GAS_TYPE_ID].map(createEveTypeId),
-			atTime: new Date(),
-		}),
-		universe.getTypeMaterials(allOreTypeIds),
-	])
+	const typeMaterialsMap = await universe.getTypeMaterials(allOreTypeIds)
+	const allMaterialTypeIds = [...new Set(
+		Object.values(typeMaterialsMap).flatMap((materials) => materials.map((material) => material.materialTypeId))
+	)]
+	const priceResponse = await markets.getBatchMarketDataAtTime({
+		regionId: createEveRegionId('universe'),
+		typeIds: [...allMaterialTypeIds, FUEL_BLOCK_TYPE_ID, MAGMATIC_GAS_TYPE_ID].map(createEveTypeId),
+		atTime: new Date(),
+	})
 	const priceMap: Record<string, number> = {}
 	for (const p of priceResponse.prices) {
 		if (p.bestSellPrice) priceMap[p.typeId] = parseFloat(p.bestSellPrice)
 	}
 
-	const fuelBlockPrice = priceMap[FUEL_BLOCK_TYPE_ID] ?? 0
-	const magmaticGasPrice = priceMap[MAGMATIC_GAS_TYPE_ID] ?? 0
+	const fuelBlockPrice = resolveEffectivePrice(
+		settings.fuelBlockPriceOverride,
+		priceMap[FUEL_BLOCK_TYPE_ID] ?? 0
+	)
+	const magmaticGasPrice = resolveEffectivePrice(
+		settings.magmaticGasPriceOverride,
+		priceMap[MAGMATIC_GAS_TYPE_ID] ?? 0
+	)
 	const reprocessingYield = parseFloat(settings.defaultReprocessingYield)
 	const cycleDays = settings.defaultCycleDays
 
@@ -472,8 +500,14 @@ async function computeProfitability(
 			if (p.bestSellPrice) priceMap[p.typeId] = parseFloat(p.bestSellPrice)
 		}
 
-		const fuelBlockPrice = priceMap[FUEL_BLOCK_TYPE_ID] ?? 0
-		const magmaticGasPrice = priceMap[MAGMATIC_GAS_TYPE_ID] ?? 0
+		const fuelBlockPrice = resolveEffectivePrice(
+			settings.fuelBlockPriceOverride,
+			priceMap[FUEL_BLOCK_TYPE_ID] ?? 0
+		)
+		const magmaticGasPrice = resolveEffectivePrice(
+			settings.magmaticGasPriceOverride,
+			priceMap[MAGMATIC_GAS_TYPE_ID] ?? 0
+		)
 		const reprocessingYield = parseFloat(settings.defaultReprocessingYield)
 		const cycleDays = settings.defaultCycleDays
 
@@ -637,6 +671,9 @@ moonScanRoutes.post('/scans/parse', async (c) => {
 	if (!body.raw || typeof body.raw !== 'string') {
 		return c.json({ error: 'raw field is required' }, 400)
 	}
+	if (isRawPayloadTooLarge(body.raw)) {
+		return c.json({ error: `raw payload exceeds ${MAX_SCAN_RAW_BYTES} bytes` }, 413)
+	}
 
 	const parseResult = parseMoonScanTsv(body.raw)
 
@@ -668,6 +705,9 @@ moonScanRoutes.post('/scans/submit', async (c) => {
 	if (!body.raw || typeof body.raw !== 'string') {
 		return c.json({ error: 'raw field is required' }, 400)
 	}
+	if (isRawPayloadTooLarge(body.raw)) {
+		return c.json({ error: `raw payload exceeds ${MAX_SCAN_RAW_BYTES} bytes` }, 413)
+	}
 
 	const parseResult = parseMoonScanTsv(body.raw)
 	if (parseResult.scans.length === 0) {
@@ -684,7 +724,14 @@ moonScanRoutes.post('/scans/submit', async (c) => {
 		return parseFloat(system.securityStatus) < SEC_STATUS_THRESHOLD
 	})
 
-	if (eligibleScans.length === 0) {
+	const scansWithOnlyAllowedOreTypes = eligibleScans.filter((scan) =>
+		scan.ores.every((ore) => ALLOWED_MOON_SCAN_ORE_TYPE_IDS.has(ore.oreTypeId))
+	)
+
+	if (scansWithOnlyAllowedOreTypes.length === 0) {
+		if (eligibleScans.length > 0) {
+			return c.json({ error: 'No scans contain only allowed moon ore type IDs' }, 400)
+		}
 		return c.json({ error: 'All scanned systems are high-sec (sec ≥ 0.6)' }, 400)
 	}
 
@@ -699,7 +746,7 @@ moonScanRoutes.post('/scans/submit', async (c) => {
 	}
 
 	const submittedScans = await moonScan.submitScans(
-		eligibleScans.map((s) => ({
+		scansWithOnlyAllowedOreTypes.map((s) => ({
 			moonId: s.moonId,
 			ores: s.ores.map((o) => ({ oreTypeId: o.oreTypeId, quantity: o.quantity })),
 		})),
@@ -707,7 +754,7 @@ moonScanRoutes.post('/scans/submit', async (c) => {
 		canValidate
 	)
 
-	const rejected = parseResult.scans.length - eligibleScans.length
+	const rejected = parseResult.scans.length - scansWithOnlyAllowedOreTypes.length
 
 	return c.json({
 		submitted: submittedScans.length,
@@ -773,13 +820,18 @@ moonScanRoutes.get('/scans/mine', async (c) => {
 
 moonScanRoutes.get('/scans/:id', async (c) => {
 	const user = c.get('user')!
-	if (!await hasMoonPerm(c.env, user.id, MOON_URNS.view, user.is_admin)) {
-		return c.json({ error: 'Forbidden' }, 403)
-	}
-
+	const canView = await hasMoonPerm(c.env, user.id, MOON_URNS.view, user.is_admin)
+	const canValidate = await hasMoonPerm(c.env, user.id, MOON_URNS.validate, user.is_admin)
 	const moonScan = getMoonScanStub(c.env)
 	const scan = await moonScan.getScan(c.req.param('id'))
 	if (!scan) return c.json({ error: 'Not found' }, 404)
+
+	const owner = isScanOwner(scan, user)
+	const canReadVerified = scan.status === 'verified' && canView
+	if (!canReadVerified && !canValidate && !owner && !user.is_admin) {
+		return c.json({ error: 'Forbidden' }, 403)
+	}
+
 	return c.json(scan)
 })
 

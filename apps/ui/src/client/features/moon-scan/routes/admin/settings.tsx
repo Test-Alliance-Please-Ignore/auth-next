@@ -3,11 +3,20 @@ import { useState } from 'react'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Container } from '@/components/ui/container'
+import { Input } from '@/components/ui/input'
 import { PageHeader } from '@/components/ui/page-header'
 import { Skeleton } from '@/components/ui/skeleton'
-import { useUserPermissions } from '@/hooks/useUserPermissions'
+import {
+	Table,
+	TableBody,
+	TableCell,
+	TableHead,
+	TableHeader,
+	TableRow,
+} from '@/components/ui/table'
 
 import { useAdminSettings, useUpdateExtractionSettings, useUpdateStructureProfile } from '../../hooks'
+import { useMoonScanPermissions } from '../../permissions'
 
 import type { ExtractionSettings, StructureProfile, StructureType } from '../../types'
 
@@ -35,48 +44,48 @@ function ProfileRow({
 	})
 
 	return (
-		<tr>
-			<td className="px-4 py-2.5 font-medium whitespace-nowrap">{label}</td>
-			<td className="px-4 py-2.5">
+		<TableRow>
+			<TableCell className="font-medium whitespace-nowrap">{label}</TableCell>
+			<TableCell>
 				{profile.isPassive
 					? <Badge variant="secondary">Passive</Badge>
 					: <Badge>Active</Badge>}
-			</td>
-			<td className="px-4 py-2.5">
-				<input
+			</TableCell>
+			<TableCell>
+				<Input
 					type="number"
 					className="w-28 rounded border bg-background px-2 py-1 text-sm font-mono"
 					value={draft.baseVolumePerHr}
 					step="0.01"
 					onChange={(e) => setDraft((d) => ({ ...d, baseVolumePerHr: e.target.value }))}
 				/>
-			</td>
-			<td className="px-4 py-2.5">
-				<input
+			</TableCell>
+			<TableCell>
+				<Input
 					type="number"
 					className="w-24 rounded border bg-background px-2 py-1 text-sm font-mono"
 					value={draft.fuelPerHr}
 					step="0.1"
 					onChange={(e) => setDraft((d) => ({ ...d, fuelPerHr: e.target.value }))}
 				/>
-			</td>
-			<td className="px-4 py-2.5">
+			</TableCell>
+			<TableCell>
 				{draft.magmaticGasPerHr !== null ? (
-					<input
-						type="number"
-						className="w-24 rounded border bg-background px-2 py-1 text-sm font-mono"
-						value={draft.magmaticGasPerHr}
-						step="0.1"
-						onChange={(e) => setDraft((d) => ({ ...d, magmaticGasPerHr: e.target.value }))}
-					/>
+						<Input
+							type="number"
+							className="w-24 rounded border bg-background px-2 py-1 text-sm font-mono"
+							value={draft.magmaticGasPerHr}
+							step="0.1"
+							onChange={(e) => setDraft((d) => ({ ...d, magmaticGasPerHr: e.target.value }))}
+						/>
 				) : (
 					<span className="text-muted-foreground tabular-nums">0.0</span>
 				)}
-			</td>
-			<td className="px-4 py-2.5">
+			</TableCell>
+			<TableCell>
 				<Button size="sm" onClick={() => onSave(draft)} disabled={isSaving}>Save</Button>
-			</td>
-		</tr>
+			</TableCell>
+		</TableRow>
 	)
 }
 
@@ -126,32 +135,32 @@ function GlobalSettingsForm({
 	return (
 		<div>
 			<div className="overflow-x-auto">
-				<table className="w-full text-sm">
-					<thead>
-						<tr className="border-b text-left text-xs text-muted-foreground">
-							<th className="px-4 py-2 font-medium">Setting</th>
-							<th className="px-4 py-2 font-medium">Value</th>
-							<th className="px-4 py-2 font-medium">Description</th>
-						</tr>
-					</thead>
-					<tbody className="divide-y">
+				<Table>
+					<TableHeader>
+						<TableRow>
+							<TableHead>Setting</TableHead>
+							<TableHead>Value</TableHead>
+							<TableHead>Description</TableHead>
+						</TableRow>
+					</TableHeader>
+					<TableBody>
 						{rows.map(({ key, label, step, description }) => (
-							<tr key={key}>
-								<td className="px-4 py-2.5 font-mono text-xs whitespace-nowrap">{label}</td>
-								<td className="px-4 py-2.5">
-									<input
-										type="number"
-										className="w-36 rounded border bg-background px-2 py-1 text-sm font-mono"
-										value={draft[key]}
-										step={step}
-										onChange={(e) => setDraft((d) => ({ ...d, [key]: e.target.value }))}
-									/>
-								</td>
-								<td className="px-4 py-2.5 text-xs text-muted-foreground">{description}</td>
-							</tr>
+							<TableRow key={key}>
+								<TableCell className="font-mono text-xs whitespace-nowrap">{label}</TableCell>
+								<TableCell>
+										<Input
+											type="number"
+											className="w-36 rounded border bg-background px-2 py-1 text-sm font-mono"
+											value={draft[key]}
+											step={step}
+											onChange={(e) => setDraft((d) => ({ ...d, [key]: e.target.value }))}
+										/>
+								</TableCell>
+								<TableCell className="text-xs text-muted-foreground">{description}</TableCell>
+							</TableRow>
 						))}
-					</tbody>
-				</table>
+					</TableBody>
+				</Table>
 			</div>
 			<div className="px-4 py-3 border-t">
 				<Button
@@ -176,8 +185,7 @@ const PROFILE_ROWS: Array<{ id: StructureType; label: string }> = [
 ]
 
 export default function AdminSettingsPage() {
-	const { hasPermission, isAdmin } = useUserPermissions()
-	const canAdmin = isAdmin || hasPermission('urn:moons:admin')
+	const { canAdmin } = useMoonScanPermissions()
 
 	const { data, isLoading, error } = useAdminSettings()
 	const updateSettings = useUpdateExtractionSettings()
@@ -217,18 +225,18 @@ export default function AdminSettingsPage() {
 					<div className="rounded-md border bg-card">
 						<div className="border-b px-4 py-3 text-sm font-semibold">Structure Profiles</div>
 						<div className="overflow-x-auto">
-							<table className="w-full text-sm">
-								<thead>
-									<tr className="border-b text-left text-xs text-muted-foreground">
-										<th className="px-4 py-2 font-medium">Structure</th>
-										<th className="px-4 py-2 font-medium">Extraction Type</th>
-										<th className="px-4 py-2 font-medium">Base Rate (m³/hr)</th>
-										<th className="px-4 py-2 font-medium">Fuel Blocks/hr</th>
-										<th className="px-4 py-2 font-medium">Magmatic Gas/hr</th>
-										<th className="px-4 py-2 font-medium">Actions</th>
-									</tr>
-								</thead>
-								<tbody className="divide-y">
+							<Table>
+								<TableHeader>
+									<TableRow>
+										<TableHead>Structure</TableHead>
+										<TableHead>Extraction Type</TableHead>
+										<TableHead>Base Rate (m³/hr)</TableHead>
+										<TableHead>Fuel Blocks/hr</TableHead>
+										<TableHead>Magmatic Gas/hr</TableHead>
+										<TableHead>Actions</TableHead>
+									</TableRow>
+								</TableHeader>
+								<TableBody>
 									{PROFILE_ROWS.map(({ id, label }) => {
 										const profile = data.profiles.find((p) => p.id === id)
 										if (!profile) return null
@@ -242,8 +250,8 @@ export default function AdminSettingsPage() {
 											/>
 										)
 									})}
-								</tbody>
-							</table>
+								</TableBody>
+							</Table>
 						</div>
 					</div>
 

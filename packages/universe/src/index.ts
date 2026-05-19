@@ -2,8 +2,6 @@ import type { InventoryParseResult } from '@repo/eve-types'
 
 import type { InvFlag } from './inv-flags'
 import type { InvGroup } from './inv-groups'
-import type { InvItem } from './inv-items'
-import type { InvName } from './inv-names'
 import type { InvType } from './inv-types'
 import type { Killmail, KillmailDetail } from './killmails'
 import type { EveMoonId, UniverseMoon, UniverseMoonWithResources } from './moons'
@@ -60,6 +58,26 @@ export * from './type-metadata'
 
 // Export geography types
 export * from './geography'
+
+// Canonical static IDs for moon extraction and profitability.
+// Universe is the source of truth for static EVE identifiers.
+export const FUEL_BLOCK_TYPE_ID = '4247'
+export const MAGMATIC_GAS_TYPE_ID = '81143'
+export const MOON_BASE_MINERAL_TYPE_IDS = ['35', '36'] as const
+export const MOON_ORE_TYPE_IDS = [
+	'45490', '45491', '45492', '45493',
+	'45494', '45495', '45496', '45497',
+	'45498', '45499', '45500', '45501',
+	'45502', '45503', '45504', '45506',
+	'45510', '45511', '45512', '45513',
+] as const
+export const MOON_GOO_TYPE_IDS = [
+	'16633', '16634', '16635', '16636',
+	'16637', '16638', '16639', '16640',
+	'16641', '16642', '16643', '16644',
+	'16646', '16647', '16648', '16649',
+	'16650', '16651', '16652', '16653',
+] as const
 
 export interface TypeMaterial {
 	materialTypeId: string
@@ -275,6 +293,12 @@ export interface Universe {
 	 * Get all moons in a solar system.
 	 */
 	getMoonsBySystemId(systemId: string): Promise<UniverseStaticMoon[]>
+
+	/**
+	 * Batch variant of getMoonsBySystemId.
+	 * @returns Record keyed by solarSystemId.
+	 */
+	getMoonsBySystemIds(systemIds: string[]): Promise<Record<string, UniverseStaticMoon[]>>
 
 	/**
 	 * Get all stargates for a set of solar systems (returns flat array for jump connection drawing).

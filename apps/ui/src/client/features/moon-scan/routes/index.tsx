@@ -4,9 +4,17 @@ import { useNavigate } from 'react-router-dom'
 import { Container } from '@/components/ui/container'
 import { PageHeader } from '@/components/ui/page-header'
 import { Skeleton } from '@/components/ui/skeleton'
-import { useUserPermissions } from '@/hooks/useUserPermissions'
+import {
+	Table,
+	TableBody,
+	TableCell,
+	TableHead,
+	TableHeader,
+	TableRow,
+} from '@/components/ui/table'
 
 import { useMoonRegions } from '../hooks'
+import { useMoonScanPermissions } from '../permissions'
 import type { RegionSummary } from '../types'
 
 // Dotlan-exact region center coordinates for the universe map.
@@ -39,19 +47,36 @@ const DOTLAN_COORDS: Record<string, [number, number]> = {
 
 const RW = 54
 const RH = 16
+const MAP_COLORS = {
+	verifiedFill: '#1a3320',
+	verifiedStroke: '#28a745',
+	partialFill: '#332a10',
+	partialStroke: '#c89b20',
+	hasMoonFill: '#1e2830',
+	hasMoonStroke: '#4a5a6a',
+	emptyFill: '#151c24',
+	emptyStroke: '#2a3644',
+	text: '#c8d4e0',
+	connection: '#2a3a4a',
+	background: '#0b1218',
+	tooltipBackground: 'rgba(14,22,32,0.95)',
+	tooltipBorder: '#3d9ae8',
+	tooltipText: '#d0d8e0',
+	tooltipMuted: '#6b7c8f',
+} as const
 
 function regionFill(moonCount: number, verifiedCount: number, scannedCount: number): string {
-	if (moonCount === 0) return '#151c24'
-	if (verifiedCount === moonCount) return '#1a3320'
-	if (verifiedCount > 0 || scannedCount > 0) return '#332a10'
-	return '#1e2830'
+	if (moonCount === 0) return MAP_COLORS.emptyFill
+	if (verifiedCount === moonCount) return MAP_COLORS.verifiedFill
+	if (verifiedCount > 0 || scannedCount > 0) return MAP_COLORS.partialFill
+	return MAP_COLORS.hasMoonFill
 }
 
 function regionStroke(moonCount: number, verifiedCount: number, scannedCount: number): string {
-	if (moonCount === 0) return '#2a3644'
-	if (verifiedCount === moonCount) return '#28a745'
-	if (verifiedCount > 0 || scannedCount > 0) return '#c89b20'
-	return '#4a5a6a'
+	if (moonCount === 0) return MAP_COLORS.emptyStroke
+	if (verifiedCount === moonCount) return MAP_COLORS.verifiedStroke
+	if (verifiedCount > 0 || scannedCount > 0) return MAP_COLORS.partialStroke
+	return MAP_COLORS.hasMoonStroke
 }
 
 interface TooltipState {
@@ -71,7 +96,7 @@ function RegionNode({ region, onHover, onClick }: RegionNodeProps) {
 
 	const fill = regionFill(region.moonCount, region.verifiedCount, region.scannedCount)
 	const stroke = regionStroke(region.moonCount, region.verifiedCount, region.scannedCount)
-	const textFill = '#c8d4e0'
+	const textFill = MAP_COLORS.text
 	const clipId = `clip-${region.regionId}`
 
 	return (
@@ -113,8 +138,7 @@ function RegionNode({ region, onHover, onClick }: RegionNodeProps) {
 }
 
 export default function MoonScanIndex() {
-	const { hasPermission, isAdmin } = useUserPermissions()
-	const canView = isAdmin || hasPermission('urn:moons:view')
+	const { canView } = useMoonScanPermissions()
 	const navigate = useNavigate()
 	const mapWrapRef = useRef<HTMLDivElement>(null)
 
@@ -166,10 +190,10 @@ export default function MoonScanIndex() {
 				<Skeleton className="h-[500px] w-full rounded-md" />
 			) : (
 				<div
-					ref={mapWrapRef}
-					className="relative rounded-md border"
-					style={{ background: '#0b1218' }}
-					onMouseMove={handleMouseMove}
+						ref={mapWrapRef}
+						className="relative rounded-md border"
+						style={{ background: MAP_COLORS.background }}
+						onMouseMove={handleMouseMove}
 					onMouseLeave={() => setTooltip(null)}
 				>
 					<svg
@@ -189,10 +213,10 @@ export default function MoonScanIndex() {
 									key={i}
 									x1={fromPos[0]}
 									y1={fromPos[1]}
-									x2={toPos[0]}
-									y2={toPos[1]}
-									stroke="#2a3a4a"
-									strokeWidth={1}
+										x2={toPos[0]}
+										y2={toPos[1]}
+										stroke={MAP_COLORS.connection}
+										strokeWidth={1}
 									opacity={0.7}
 								/>
 							)
@@ -212,32 +236,32 @@ export default function MoonScanIndex() {
 					{/* Tooltip */}
 					{tooltip && tooltipPx && (
 						<div
-							style={{
-								position: 'absolute',
-								left: tooltipPx.x,
-								top: tooltipPx.y,
-								background: 'rgba(14,22,32,0.95)',
-								border: '1px solid #3d9ae8',
-								color: '#d0d8e0',
-								padding: '6px 10px',
+								style={{
+									position: 'absolute',
+									left: tooltipPx.x,
+									top: tooltipPx.y,
+									background: MAP_COLORS.tooltipBackground,
+									border: `1px solid ${MAP_COLORS.tooltipBorder}`,
+									color: MAP_COLORS.tooltipText,
+									padding: '6px 10px',
 								borderRadius: 4,
 								fontSize: '0.8rem',
 								pointerEvents: 'none',
 								whiteSpace: 'nowrap',
 								zIndex: 10,
 							}}
-						>
-							<span style={{ color: '#3d9ae8', fontWeight: 600 }}>{tooltip.region.regionName}</span>
-							<br />
-							<span style={{ color: '#6b7c8f' }}>Systems: </span>{tooltip.region.systemCount}
-							{'  '}
-							<span style={{ color: '#6b7c8f' }}>Moons: </span>{tooltip.region.moonCount}
-							{tooltip.region.moonCount > 0 && (
-								<>
-									<br />
-									<span style={{ color: '#6b7c8f' }}>Verified: </span>
-									{tooltip.region.verifiedCount}
-									{' '}({Math.round(tooltip.region.verifiedCount / tooltip.region.moonCount * 100)}%)
+							>
+								<span style={{ color: MAP_COLORS.tooltipBorder, fontWeight: 600 }}>{tooltip.region.regionName}</span>
+								<br />
+								<span style={{ color: MAP_COLORS.tooltipMuted }}>Systems: </span>{tooltip.region.systemCount}
+								{'  '}
+								<span style={{ color: MAP_COLORS.tooltipMuted }}>Moons: </span>{tooltip.region.moonCount}
+								{tooltip.region.moonCount > 0 && (
+									<>
+										<br />
+										<span style={{ color: MAP_COLORS.tooltipMuted }}>Verified: </span>
+										{tooltip.region.verifiedCount}
+										{' '}({Math.round(tooltip.region.verifiedCount / tooltip.region.moonCount * 100)}%)
 								</>
 							)}
 						</div>
@@ -246,67 +270,67 @@ export default function MoonScanIndex() {
 			)}
 
 			{/* Legend */}
-			<div className="mt-2 mb-4 flex flex-wrap items-center gap-4 text-xs text-muted-foreground">
-				<span className="flex items-center gap-1.5">
-					<span className="inline-block h-3 w-8 rounded" style={{ background: '#1a3320', border: '1px solid #28a745' }} />
-					100% Verified
-				</span>
-				<span className="flex items-center gap-1.5">
-					<span className="inline-block h-3 w-8 rounded" style={{ background: '#332a10', border: '1px solid #c89b20' }} />
-					Partially Scanned
-				</span>
-				<span className="flex items-center gap-1.5">
-					<span className="inline-block h-3 w-8 rounded" style={{ background: '#1e2830', border: '1px solid #4a5a6a' }} />
-					Has Moons
-				</span>
-				<span className="flex items-center gap-1.5">
-					<span className="inline-block h-3 w-8 rounded" style={{ background: '#151c24', border: '1px solid #2a3644' }} />
-					No Moon Data
-				</span>
+				<div className="mt-2 mb-4 flex flex-wrap items-center gap-4 text-xs text-muted-foreground">
+					<span className="flex items-center gap-1.5">
+						<span className="inline-block h-3 w-8 rounded" style={{ background: MAP_COLORS.verifiedFill, border: `1px solid ${MAP_COLORS.verifiedStroke}` }} />
+						100% Verified
+					</span>
+					<span className="flex items-center gap-1.5">
+						<span className="inline-block h-3 w-8 rounded" style={{ background: MAP_COLORS.partialFill, border: `1px solid ${MAP_COLORS.partialStroke}` }} />
+						Partially Scanned
+					</span>
+					<span className="flex items-center gap-1.5">
+						<span className="inline-block h-3 w-8 rounded" style={{ background: MAP_COLORS.hasMoonFill, border: `1px solid ${MAP_COLORS.hasMoonStroke}` }} />
+						Has Moons
+					</span>
+					<span className="flex items-center gap-1.5">
+						<span className="inline-block h-3 w-8 rounded" style={{ background: MAP_COLORS.emptyFill, border: `1px solid ${MAP_COLORS.emptyStroke}` }} />
+						No Moon Data
+					</span>
 				<span className="text-muted-foreground/60">Click region to open</span>
 			</div>
 
-			{/* Regions Table */}
-			<div className="rounded-md border bg-card">
-				<div className="overflow-x-auto">
-					<table className="w-full text-sm">
-						<thead>
-							<tr className="border-b text-left text-xs text-muted-foreground">
-								<th className="px-4 py-2 font-medium">Region</th>
-								<th className="px-4 py-2 font-medium text-right">Systems</th>
-								<th className="px-4 py-2 font-medium text-right">Moons</th>
-								<th className="px-4 py-2 font-medium text-right">Verified</th>
-							</tr>
-						</thead>
-						<tbody className="divide-y">
-							{isLoading
-								? Array.from({ length: 10 }).map((_, i) => (
-										<tr key={i}>
-											<td className="px-4 py-2" colSpan={4}>
-												<Skeleton className="h-4 w-32" />
-											</td>
-										</tr>
-									))
-								: sorted.map((r) => (
-										<tr
-											key={r.regionId}
-											className="cursor-pointer hover:bg-accent/50 transition-colors"
-											onClick={() => navigate(`/moon-scan/region/${r.regionId}`)}
-										>
-											<td className="px-4 py-2 font-medium">{r.regionName}</td>
-											<td className="px-4 py-2 text-right tabular-nums text-muted-foreground">{r.systemCount}</td>
-											<td className="px-4 py-2 text-right tabular-nums">{r.moonCount || '—'}</td>
-											<td className="px-4 py-2 text-right tabular-nums">
-												{r.moonCount > 0
-													? `${r.verifiedCount} (${Math.round(r.verifiedCount / r.moonCount * 100)}%)`
-													: '—'}
-											</td>
-										</tr>
-									))}
-						</tbody>
-					</table>
+				{/* Regions Table */}
+				<div className="rounded-md border bg-card">
+					<div className="overflow-x-auto">
+						<Table>
+							<TableHeader>
+								<TableRow>
+									<TableHead>Region</TableHead>
+									<TableHead className="text-right">Systems</TableHead>
+									<TableHead className="text-right">Moons</TableHead>
+									<TableHead className="text-right">Verified</TableHead>
+								</TableRow>
+							</TableHeader>
+							<TableBody>
+								{isLoading
+									? Array.from({ length: 10 }).map((_, i) => (
+											<TableRow key={i}>
+												<TableCell colSpan={4}>
+													<Skeleton className="h-4 w-32" />
+												</TableCell>
+											</TableRow>
+										))
+									: sorted.map((r) => (
+											<TableRow
+												key={r.regionId}
+												className="cursor-pointer hover:bg-accent/50 transition-colors"
+												onClick={() => navigate(`/moon-scan/region/${r.regionId}`)}
+											>
+												<TableCell className="font-medium">{r.regionName}</TableCell>
+												<TableCell className="text-right tabular-nums text-muted-foreground">{r.systemCount}</TableCell>
+												<TableCell className="text-right tabular-nums">{r.moonCount || '—'}</TableCell>
+												<TableCell className="text-right tabular-nums">
+													{r.moonCount > 0
+														? `${r.verifiedCount} (${Math.round(r.verifiedCount / r.moonCount * 100)}%)`
+														: '—'}
+												</TableCell>
+											</TableRow>
+										))}
+							</TableBody>
+						</Table>
+					</div>
 				</div>
-			</div>
-		</Container>
+			</Container>
 	)
 }

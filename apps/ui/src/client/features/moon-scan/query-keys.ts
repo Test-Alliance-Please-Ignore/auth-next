@@ -9,8 +9,10 @@ export const moonScanKeys = {
 	// Regions
 	regions: () => [...moonScanKeys.all, 'regions'] as const,
 	region: (regionId: string) => [...moonScanKeys.all, 'region', regionId] as const,
+	dotlanRegion: (regionFile: string) => [...moonScanKeys.all, 'dotlan-region', regionFile] as const,
 
 	// Systems
+	systems: () => [...moonScanKeys.all, 'system'] as const,
 	system: (systemId: string) => [...moonScanKeys.all, 'system', systemId] as const,
 
 	// Moons

@@ -1,3 +1,4 @@
+import { Fragment } from 'react'
 import { Link, useParams } from 'react-router-dom'
 
 import { ArrowLeft } from 'lucide-react'
@@ -6,19 +7,23 @@ import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Container } from '@/components/ui/container'
 import { Skeleton } from '@/components/ui/skeleton'
+import {
+	Table,
+	TableBody,
+	TableCell,
+	TableHead,
+	TableHeader,
+	TableRow,
+} from '@/components/ui/table'
 import { formatISK } from '@/lib/format-utils'
-import { useUserPermissions } from '@/hooks/useUserPermissions'
 
+import { ScanStatusBadge } from '../components/ScanStatusBadge'
+import { formatMoonScanDateTime } from '../date'
 import { RARITY_COLORS, getOreRarity } from '../ore-rarities'
 import { useMoonDetail } from '../hooks'
+import { useMoonScanPermissions } from '../permissions'
 
-import type { MoonScanStatus, OreRefineProduct, OreWithProfitability, StructureProfitability } from '../types'
-
-function StatusBadge({ status }: { status: MoonScanStatus }) {
-	if (status === 'verified') return <Badge className="bg-green-500/20 text-green-400 border-green-500/30">verified</Badge>
-	if (status === 'rejected') return <Badge className="bg-red-500/20 text-red-400 border-red-500/30">rejected</Badge>
-	return <Badge className="bg-yellow-500/20 text-yellow-400 border-yellow-500/30">pending</Badge>
-}
+import type { OreRefineProduct, OreWithProfitability, StructureProfitability } from '../types'
 
 function RarityBadge({ rarity }: { rarity: string }) {
 	const color = RARITY_COLORS[rarity as keyof typeof RARITY_COLORS] ?? '#555'
@@ -35,18 +40,18 @@ function RarityBadge({ rarity }: { rarity: string }) {
 function OreCompositionTable({ ores }: { ores: OreWithProfitability[] }) {
 	return (
 		<div className="overflow-x-auto">
-			<table className="w-full text-sm">
-				<thead>
-					<tr className="border-b text-left text-xs text-muted-foreground">
-						<th className="px-4 py-2 font-medium">Ore</th>
-						<th className="px-4 py-2 font-medium">Rarity</th>
-						<th className="px-4 py-2 font-medium">Percentage</th>
-						<th className="px-4 py-2 font-medium">Refines To (per 100)</th>
-						<th className="px-4 py-2 font-medium text-right">Jita Sell</th>
-						<th className="px-4 py-2 font-medium text-right">Per 100 ore</th>
-					</tr>
-				</thead>
-				<tbody className="divide-y">
+			<Table>
+				<TableHeader>
+					<TableRow>
+						<TableHead>Ore</TableHead>
+						<TableHead>Rarity</TableHead>
+						<TableHead>Percentage</TableHead>
+						<TableHead>Refines To (per 100)</TableHead>
+						<TableHead className="text-right">Jita Sell</TableHead>
+						<TableHead className="text-right">Per 100 ore</TableHead>
+					</TableRow>
+				</TableHeader>
+				<TableBody>
 					{ores.map((ore) => {
 						const rarity = getOreRarity(ore.oreTypeId)
 						const color = rarity ? RARITY_COLORS[rarity] : '#555'
@@ -55,40 +60,40 @@ function OreCompositionTable({ ores }: { ores: OreWithProfitability[] }) {
 							const batchQty = product.batchQty
 							const per100Value = batchQty * parseFloat(product.unitSellPrice)
 							return (
-								<tr key={`${ore.oreTypeId}-${product.materialTypeId}`}>
+								<TableRow key={`${ore.oreTypeId}-${product.materialTypeId}`}>
 									{idx === 0 && (
 										<>
-											<td rowSpan={rows.length} className="px-4 py-2.5 align-top">
+											<TableCell rowSpan={rows.length} className="align-top">
 												<span
 													className="inline-flex items-center rounded px-2 py-0.5 text-xs font-semibold text-white"
 													style={{ backgroundColor: color }}
 												>
 													{ore.oreName}
 												</span>
-											</td>
-											<td rowSpan={rows.length} className="px-4 py-2.5 align-top whitespace-nowrap">
+											</TableCell>
+											<TableCell rowSpan={rows.length} className="align-top whitespace-nowrap">
 												{rarity ? <RarityBadge rarity={rarity} /> : '—'}
-											</td>
-											<td rowSpan={rows.length} className="px-4 py-2.5 align-top whitespace-nowrap tabular-nums">
+											</TableCell>
+											<TableCell rowSpan={rows.length} className="align-top whitespace-nowrap tabular-nums">
 												{(parseFloat(ore.quantity) * 100).toFixed(2)}%
-											</td>
+											</TableCell>
 										</>
 									)}
-									<td className="px-4 py-2.5">
+									<TableCell>
 										<MaterialCell product={product} batchQty={batchQty} />
-									</td>
-									<td className="px-4 py-2.5 text-right tabular-nums text-xs">
+									</TableCell>
+									<TableCell className="text-right tabular-nums text-xs">
 										{formatISK(product.unitSellPrice, { showDecimals: false })}
-									</td>
-									<td className="px-4 py-2.5 text-right tabular-nums text-xs">
+									</TableCell>
+									<TableCell className="text-right tabular-nums text-xs">
 										{formatISK(per100Value, { showDecimals: false })}
-									</td>
-								</tr>
+									</TableCell>
+								</TableRow>
 							)
 						})
 					})}
-				</tbody>
-			</table>
+				</TableBody>
+			</Table>
 		</div>
 	)
 }
@@ -117,26 +122,26 @@ function StructurePanel({ structure }: { structure: StructureProfitability }) {
 		<div className="p-4">
 			<h6 className="text-sm font-medium mb-3">{label} (per {structure.cycleDays}d cycle)</h6>
 
-			<table className="w-full text-xs mb-3">
-				<thead>
-					<tr className="border-b text-muted-foreground">
-						<th className="pb-1 font-medium text-left">Ore / Material</th>
-						<th className="pb-1 font-medium text-right">Qty</th>
-						<th className="pb-1 font-medium text-right">Value</th>
-					</tr>
-				</thead>
-				<tbody className="divide-y divide-border/50">
+			<Table className="mb-3 text-xs">
+				<TableHeader>
+					<TableRow>
+						<TableHead className="text-left">Ore / Material</TableHead>
+						<TableHead className="text-right">Qty</TableHead>
+						<TableHead className="text-right">Value</TableHead>
+					</TableRow>
+				</TableHeader>
+				<TableBody className="divide-y divide-border/50">
 					{structure.ores.map((ore) => {
 						const oreRarity = getOreRarity(ore.oreTypeId)
 						const oreColor = oreRarity ? RARITY_COLORS[oreRarity] : '#555'
 						const rows = ore.refinesTo.filter((r) => r.quantity > 0)
 						if (rows.length === 0) return null
 						const oreValue = rows.reduce((s, r) => s + parseFloat(r.totalValue), 0)
-						return (
-							<>
-								{/* Ore header row */}
-								<tr key={`ore-${ore.oreTypeId}`} className="bg-muted/20">
-									<td colSpan={2} className="pt-2 pb-1 px-0">
+							return (
+								<Fragment key={`ore-${ore.oreTypeId}`}>
+									{/* Ore header row */}
+									<TableRow className="bg-muted/20">
+										<TableCell colSpan={2} className="px-0 pb-1 pt-2">
 										<span
 											className="inline-flex items-center rounded px-1.5 py-0.5 text-xs font-semibold text-white"
 											style={{ backgroundColor: oreColor }}
@@ -146,55 +151,55 @@ function StructurePanel({ structure }: { structure: StructureProfitability }) {
 										<span className="ml-1.5 text-muted-foreground text-xs">
 											{(parseFloat(ore.quantity) * 100).toFixed(1)}%
 										</span>
-									</td>
-									<td className="pt-2 pb-1 text-right tabular-nums text-muted-foreground">
+									</TableCell>
+									<TableCell className="pb-1 pt-2 text-right tabular-nums text-muted-foreground">
 										{formatISK(oreValue, { showDecimals: false })}
-									</td>
-								</tr>
+									</TableCell>
+								</TableRow>
 								{/* Material rows */}
 								{rows.map((mat) => {
 									const matRarity = getOreRarity(mat.materialTypeId)
 									return (
-										<tr key={`${ore.oreTypeId}-${mat.materialTypeId}`}>
-											<td className="py-0.5 pl-3 text-muted-foreground">
+										<TableRow key={`${ore.oreTypeId}-${mat.materialTypeId}`}>
+											<TableCell className="py-0.5 pl-3 text-muted-foreground">
 												{matRarity && <><RarityBadge rarity={matRarity} />{' '}</>}
 												{mat.materialName}
-											</td>
-											<td className="py-0.5 text-right tabular-nums text-muted-foreground">{mat.quantity.toLocaleString()}</td>
-											<td className="py-0.5 text-right tabular-nums">{formatISK(mat.totalValue, { showDecimals: false })}</td>
-										</tr>
+											</TableCell>
+											<TableCell className="py-0.5 text-right tabular-nums text-muted-foreground">{mat.quantity.toLocaleString()}</TableCell>
+											<TableCell className="py-0.5 text-right tabular-nums">{formatISK(mat.totalValue, { showDecimals: false })}</TableCell>
+										</TableRow>
 									)
 								})}
-							</>
-						)
-					})}
-				</tbody>
-			</table>
+								</Fragment>
+							)
+						})}
+				</TableBody>
+			</Table>
 
-			<table className="w-full text-sm border-t pt-2">
-				<tbody>
-					<tr>
-						<td className="py-1 text-muted-foreground">Gross ISK</td>
-						<td className="py-1 text-right tabular-nums">{formatISK(String(Math.round(gross)), { showDecimals: false })}</td>
-					</tr>
-					<tr>
-						<td className="py-1 text-muted-foreground">Fuel Blocks</td>
-						<td className="py-1 text-right tabular-nums text-red-400">−{formatISK(String(Math.round(fuel)), { showDecimals: false })}</td>
-					</tr>
+			<Table className="border-t pt-2 text-sm">
+				<TableBody>
+					<TableRow>
+						<TableCell className="py-1 text-muted-foreground">Gross ISK</TableCell>
+						<TableCell className="py-1 text-right tabular-nums">{formatISK(String(Math.round(gross)), { showDecimals: false })}</TableCell>
+					</TableRow>
+					<TableRow>
+						<TableCell className="py-1 text-muted-foreground">Fuel Blocks</TableCell>
+						<TableCell className="py-1 text-right tabular-nums text-red-400">−{formatISK(String(Math.round(fuel)), { showDecimals: false })}</TableCell>
+					</TableRow>
 					{structure.magmaticGasCost && (
-						<tr>
-							<td className="py-1 text-muted-foreground">Magmatic Gas</td>
-							<td className="py-1 text-right tabular-nums text-red-400">−{formatISK(String(Math.round(magmatic)), { showDecimals: false })}</td>
-						</tr>
+						<TableRow>
+							<TableCell className="py-1 text-muted-foreground">Magmatic Gas</TableCell>
+							<TableCell className="py-1 text-right tabular-nums text-red-400">−{formatISK(String(Math.round(magmatic)), { showDecimals: false })}</TableCell>
+						</TableRow>
 					)}
-					<tr className="border-t font-semibold">
-						<td className="py-1.5">Profit</td>
-						<td className={`py-1.5 text-right tabular-nums ${profit >= 0 ? 'text-green-400' : 'text-red-400'}`}>
+					<TableRow className="border-t font-semibold">
+						<TableCell className="py-1.5">Profit</TableCell>
+						<TableCell className={`py-1.5 text-right tabular-nums ${profit >= 0 ? 'text-green-400' : 'text-red-400'}`}>
 							{formatISK(String(Math.round(profit)), { showDecimals: false })}
-						</td>
-					</tr>
-				</tbody>
-			</table>
+						</TableCell>
+					</TableRow>
+				</TableBody>
+			</Table>
 		</div>
 	)
 }
@@ -220,8 +225,7 @@ function ProfitabilityCard({ structures, updatedAt }: { structures: StructurePro
 
 export default function MoonPage() {
 	const { moonId } = useParams<{ moonId: string }>()
-	const { hasPermission, isAdmin } = useUserPermissions()
-	const canView = isAdmin || hasPermission('urn:moons:view')
+	const { canView } = useMoonScanPermissions()
 
 	const { data: detail, isLoading, error } = useMoonDetail(moonId!)
 
@@ -331,51 +335,49 @@ export default function MoonPage() {
 			<div className="rounded-md border bg-card">
 				<div className="border-b px-4 py-3 text-sm font-semibold">Scan History</div>
 				<div className="overflow-x-auto">
-					<table className="w-full text-sm">
-						<thead>
-							<tr className="border-b text-left text-xs text-muted-foreground">
-								<th className="px-4 py-2 font-medium">Date</th>
-								<th className="px-4 py-2 font-medium">Submitted By</th>
-								<th className="px-4 py-2 font-medium">Status</th>
-								<th className="px-4 py-2 font-medium">Ores</th>
-							</tr>
-						</thead>
-						<tbody className="divide-y">
-							{(detail?.scans ?? []).map((scan) => (
-								<tr key={scan.id}>
-									<td className="px-4 py-2.5 text-xs whitespace-nowrap">
-										{new Date(scan.submittedAt).toISOString().slice(0, 16).replace('T', ' ')}
-									</td>
-									<td className="px-4 py-2.5 text-xs text-muted-foreground">
-										{scan.submittedByName ?? scan.submittedBy ?? '?'}
-									</td>
-									<td className="px-4 py-2.5">
-										<StatusBadge status={scan.status} />
-									</td>
-									<td className="px-4 py-2.5 text-xs text-muted-foreground">
-										{scan.ores.map((ore, i) => {
-											const data = profitability?.ores.find((o) => o.oreTypeId === ore.oreTypeId)
-											const name = data?.oreName ?? ore.oreTypeId
+						<Table>
+							<TableHeader>
+								<TableRow>
+									<TableHead>Date</TableHead>
+									<TableHead>Submitted By</TableHead>
+									<TableHead>Status</TableHead>
+									<TableHead>Ores</TableHead>
+								</TableRow>
+							</TableHeader>
+							<TableBody>
+								{(detail?.scans ?? []).map((scan) => (
+									<TableRow key={scan.id}>
+										<TableCell className="text-xs whitespace-nowrap">
+											{formatMoonScanDateTime(scan.submittedAt)}
+										</TableCell>
+										<TableCell className="text-xs text-muted-foreground">
+											{scan.submittedByName ?? scan.submittedBy ?? '?'}
+										</TableCell>
+										<TableCell><ScanStatusBadge status={scan.status} /></TableCell>
+										<TableCell className="text-xs text-muted-foreground">
+											{scan.ores.map((ore, i) => {
+												const data = profitability?.ores.find((o) => o.oreTypeId === ore.oreTypeId)
+												const name = data?.oreName ?? ore.oreTypeId
 											return (
 												<span key={ore.oreTypeId}>
 													{name} ({(parseFloat(ore.quantity) * 100).toFixed(1)}%){i < scan.ores.length - 1 ? ', ' : ''}
-												</span>
-											)
-										})}
-									</td>
-								</tr>
-							))}
-							{detail?.scans.length === 0 && (
-								<tr>
-									<td colSpan={4} className="px-4 py-6 text-center text-sm text-muted-foreground">
-										No scan records for this moon.
-									</td>
-								</tr>
-							)}
-						</tbody>
-					</table>
+													</span>
+												)
+											})}
+										</TableCell>
+									</TableRow>
+								))}
+								{detail?.scans.length === 0 && (
+									<TableRow>
+										<TableCell colSpan={4} className="py-6 text-center text-sm text-muted-foreground">
+											No scan records for this moon.
+										</TableCell>
+									</TableRow>
+								)}
+							</TableBody>
+						</Table>
+					</div>
 				</div>
-			</div>
-		</Container>
+			</Container>
 	)
 }

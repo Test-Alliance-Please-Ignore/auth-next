@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useMemo } from 'react'
 import { Link, useParams } from 'react-router-dom'
 
 import { ArrowLeft } from 'lucide-react'
@@ -7,17 +7,18 @@ import { Button } from '@/components/ui/button'
 import { Container } from '@/components/ui/container'
 import { PageHeader } from '@/components/ui/page-header'
 import { Skeleton } from '@/components/ui/skeleton'
-import { useUserPermissions } from '@/hooks/useUserPermissions'
+import {
+	Table,
+	TableBody,
+	TableCell,
+	TableHead,
+	TableHeader,
+	TableRow,
+} from '@/components/ui/table'
 
 import { RegionMap } from '../components/RegionMap'
-import { useMoonRegionDetail, useMoonRegions } from '../hooks'
-import type { RegionSystemEntry } from '../types'
-
-interface DotlanCoords {
-	region: string
-	viewbox: [number, number, number, number]
-	systems: Record<string, [number, number]>
-}
+import { useDotlanRegionCoords, useMoonRegionDetail, useMoonRegions } from '../hooks'
+import { useMoonScanPermissions } from '../permissions'
 
 function regionNameToFile(name: string): string {
 	return name.replace(/ /g, '_')
@@ -39,45 +40,35 @@ function secLabel(secStatus: string | null): string {
 function CoverageBar({ moonCount, verifiedCount }: { moonCount: number; verifiedCount: number }) {
 	if (moonCount === 0) return <span className="text-xs text-muted-foreground">—</span>
 	const pct = Math.round((verifiedCount / moonCount) * 100)
-	return (
-		<div className="flex items-center gap-1.5">
-			<div className="h-3 w-20 overflow-hidden rounded-full bg-muted">
-				<div
-					className="h-full rounded-full"
-					style={{ width: `${pct}%`, background: '#28a745' }}
-				/>
-			</div>
-			<span className="text-xs text-muted-foreground">{pct}%</span>
+		return (
+			<div className="flex items-center gap-1.5">
+				<div className="h-3 w-20 overflow-hidden rounded-full bg-muted">
+					<div
+						className="h-full rounded-full bg-green-500"
+						style={{ width: `${pct}%` }}
+					/>
+				</div>
+				<span className="text-xs text-muted-foreground">{pct}%</span>
 		</div>
 	)
 }
 
 export default function RegionPage() {
 	const { regionId } = useParams<{ regionId: string }>()
-	const { hasPermission, isAdmin } = useUserPermissions()
-	const canView = isAdmin || hasPermission('urn:moons:view')
+	const { canView } = useMoonScanPermissions()
 
 	const { data: regionsData } = useMoonRegions()
 	const { data: detail, isLoading, error } = useMoonRegionDetail(regionId!)
 
-	const [coords, setCoords] = useState<DotlanCoords | null>(null)
-	const [coordsError, setCoordsError] = useState(false)
-
 	const regionName = regionsData?.regions.find((r) => r.regionId === regionId)?.regionName ?? regionId
-
-	useEffect(() => {
-		if (!regionName || regionName === regionId) return
-		setCoords(null)
-		setCoordsError(false)
-		const file = regionNameToFile(regionName)
-		fetch(`/dotlan/${file}.json`)
-			.then((r) => {
-				if (!r.ok) throw new Error('Not found')
-				return r.json() as Promise<DotlanCoords>
-			})
-			.then(setCoords)
-			.catch(() => setCoordsError(true))
-	}, [regionName, regionId])
+	const dotlanFile = useMemo(
+		() => (regionName && regionName !== regionId ? regionNameToFile(regionName) : ''),
+		[regionId, regionName]
+	)
+	const {
+		data: coords,
+		error: coordsError,
+	} = useDotlanRegionCoords(dotlanFile, dotlanFile.length > 0)
 
 	if (!canView) {
 		return (
@@ -151,11 +142,11 @@ export default function RegionPage() {
 				</div>
 			)}
 
-			{coordsError && (
-				<div className="mt-4 rounded-lg border border-yellow-500/50 bg-yellow-500/10 p-4 text-sm text-yellow-400">
-					No map coordinates available for this region.
-				</div>
-			)}
+				{coordsError && (
+					<div className="mt-4 rounded-lg border border-yellow-500/50 bg-yellow-500/10 p-4 text-sm text-yellow-400">
+						{coordsError instanceof Error ? coordsError.message : 'No map coordinates available for this region.'}
+					</div>
+				)}
 
 			{isLoading && (
 				<div className="mt-4">
@@ -175,68 +166,68 @@ export default function RegionPage() {
 			)}
 
 			{/* Systems table */}
-			{!isLoading && detail && (
-				<div className="mt-6 rounded-md border bg-card">
-					<div className="border-b px-4 py-2.5 text-sm font-medium">
-						Systems
+				{!isLoading && detail && (
+					<div className="mt-6 rounded-md border bg-card">
+						<div className="border-b px-4 py-2.5 text-sm font-medium">
+							Systems
 						{eligibleSystems.length > 0 && (
 							<span className="ml-2 text-xs text-muted-foreground">
 								({eligibleSystems.length} eligible for moon mining)
 							</span>
 						)}
-					</div>
-					<div className="overflow-x-auto">
-						<table className="w-full text-sm">
-							<thead>
-								<tr className="border-b text-left text-xs text-muted-foreground">
-									<th className="px-4 py-2 font-medium">System</th>
-									<th className="px-4 py-2 font-medium">Security</th>
-									<th className="px-4 py-2 font-medium text-right">Moons</th>
-									<th className="px-4 py-2 font-medium text-right">Verified</th>
-									<th className="px-4 py-2 font-medium">Coverage</th>
-								</tr>
-							</thead>
-							<tbody className="divide-y">
-								{sortedSystems.map((sys) => {
-									const eligible =
-										sys.securityStatus !== null && parseFloat(sys.securityStatus) < 0.6
-									return (
-										<tr
-											key={sys.solarSystemId}
-											className={eligible ? 'hover:bg-accent/50 transition-colors' : undefined}
-										>
-											<td className="px-4 py-2">
-												{eligible ? (
-													<Link
-														to={`/moon-scan/system/${sys.solarSystemId}`}
+						</div>
+						<div className="overflow-x-auto">
+							<Table>
+								<TableHeader>
+									<TableRow>
+										<TableHead>System</TableHead>
+										<TableHead>Security</TableHead>
+										<TableHead className="text-right">Moons</TableHead>
+										<TableHead className="text-right">Verified</TableHead>
+										<TableHead>Coverage</TableHead>
+									</TableRow>
+								</TableHeader>
+								<TableBody>
+									{sortedSystems.map((sys) => {
+										const eligible =
+											sys.securityStatus !== null && parseFloat(sys.securityStatus) < 0.6
+										return (
+											<TableRow
+												key={sys.solarSystemId}
+												className={eligible ? 'hover:bg-accent/50 transition-colors' : undefined}
+											>
+												<TableCell>
+													{eligible ? (
+														<Link
+															to={`/moon-scan/system/${sys.solarSystemId}`}
 														className="font-medium hover:underline"
 													>
 														{sys.solarSystemName}
 													</Link>
-												) : (
-													<span className="text-muted-foreground">{sys.solarSystemName}</span>
-												)}
-											</td>
-											<td className={`px-4 py-2 font-mono text-xs ${secColor(sys.securityStatus)}`}>
-												{secLabel(sys.securityStatus)}
-											</td>
-											<td className="px-4 py-2 text-right tabular-nums">{sys.moonCount || '—'}</td>
-											<td className="px-4 py-2 text-right tabular-nums">{eligible ? sys.verifiedCount : '—'}</td>
-											<td className="px-4 py-2">
-												{eligible ? (
-													<CoverageBar moonCount={sys.moonCount} verifiedCount={sys.verifiedCount} />
-												) : (
-													<span className="text-xs text-muted-foreground">—</span>
-												)}
-											</td>
-										</tr>
-									)
-								})}
-							</tbody>
-						</table>
+													) : (
+														<span className="text-muted-foreground">{sys.solarSystemName}</span>
+													)}
+												</TableCell>
+												<TableCell className={`font-mono text-xs ${secColor(sys.securityStatus)}`}>
+													{secLabel(sys.securityStatus)}
+												</TableCell>
+												<TableCell className="text-right tabular-nums">{sys.moonCount || '—'}</TableCell>
+												<TableCell className="text-right tabular-nums">{eligible ? sys.verifiedCount : '—'}</TableCell>
+												<TableCell>
+													{eligible ? (
+														<CoverageBar moonCount={sys.moonCount} verifiedCount={sys.verifiedCount} />
+													) : (
+														<span className="text-xs text-muted-foreground">—</span>
+													)}
+												</TableCell>
+											</TableRow>
+										)
+									})}
+								</TableBody>
+							</Table>
+						</div>
 					</div>
-				</div>
-			)}
+				)}
 		</Container>
 	)
 }

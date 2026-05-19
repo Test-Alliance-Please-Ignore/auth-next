@@ -1825,7 +1825,7 @@ importers:
         version: link:../../packages/moon-scan
       drizzle-orm:
         specifier: 0.44.7
-        version: 0.44.7(@cloudflare/workers-types@4.20260501.1)(@neondatabase/serverless@1.0.2)(@opentelemetry/api@1.9.0)(@types/pg@8.15.6)(bun-types@1.3.2(@types/react@19.2.6))
+        version: 0.44.7(@cloudflare/workers-types@4.20260501.1)(@neondatabase/serverless@1.0.2)(@opentelemetry/api@1.9.0)(@types/pg@8.15.6)(bun-types@1.3.2(@types/react@19.2.6))(mysql2@3.15.3)
       hono:
         specifier: 4.10.6
         version: 4.10.6
@@ -2346,6 +2346,9 @@ importers:
       '@repo/hono-helpers':
         specifier: workspace:*
         version: link:../../packages/hono-helpers
+      '@repo/moon-scan':
+        specifier: workspace:*
+        version: link:../../packages/moon-scan
       '@repo/srp':
         specifier: workspace:*
         version: link:../../packages/srp
@@ -3097,6 +3100,10 @@ importers:
         version: link:../typescript-config
 
   packages/moon-scan:
+    dependencies:
+      '@repo/universe':
+        specifier: workspace:*
+        version: link:../universe
     devDependencies:
       '@repo/eslint-config':
         specifier: workspace:*

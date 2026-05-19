@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import { Link } from 'react-router-dom'
 
+import { UserSearchPaginationControls } from '@/components/user-search-pagination-controls'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Container } from '@/components/ui/container'
@@ -15,9 +16,10 @@ import {
 	TableRow,
 } from '@/components/ui/table'
 import { Textarea } from '@/components/ui/textarea'
-import { useUserPermissions } from '@/hooks/useUserPermissions'
 
+import { formatMoonScanDate } from '../date'
 import { useRejectScan, useScanQueue, useVerifyScan } from '../hooks'
+import { useMoonScanPermissions } from '../permissions'
 
 import type { MoonScan } from '../types'
 
@@ -82,7 +84,7 @@ function ValidationActions({ scan }: { scan: MoonScan }) {
 }
 
 function QueueRow({ scan }: { scan: MoonScan }) {
-	const submittedAt = new Date(scan.submittedAt).toLocaleDateString()
+	const submittedAt = formatMoonScanDate(scan.submittedAt)
 	return (
 		<TableRow>
 			<TableCell className="font-mono text-xs">
@@ -111,11 +113,10 @@ function QueueRow({ scan }: { scan: MoonScan }) {
 }
 
 export default function QueuePage() {
-	const { hasPermission, isAdmin } = useUserPermissions()
-	const canValidate = isAdmin || hasPermission('urn:moons:validate')
+	const { canValidate } = useMoonScanPermissions()
 
 	const [page, setPage] = useState(1)
-	const pageSize = 20
+	const [pageSize, setPageSize] = useState(20)
 
 	const { data, isLoading, error } = useScanQueue({ page, pageSize })
 
@@ -127,7 +128,23 @@ export default function QueuePage() {
 		)
 	}
 
-	const totalPages = data ? Math.ceil(data.total / data.pageSize) : 1
+	const totalCount = data?.total ?? 0
+	const hasPagination = Math.ceil(totalCount / pageSize) > 1
+
+	const renderPaginationControls = () => (
+		<UserSearchPaginationControls
+			totalCount={totalCount}
+			page={page}
+			pageSize={pageSize}
+			onPageChange={setPage}
+			onPageSizeChange={(nextPageSize) => {
+				setPageSize(nextPageSize)
+				setPage(1)
+			}}
+			pageSizeOptions={[20, 50, 100]}
+			itemLabel="pending scans"
+		/>
+	)
 
 	return (
 		<Container>
@@ -143,6 +160,7 @@ export default function QueuePage() {
 			)}
 
 			<div className="mt-section rounded-md border bg-card">
+				{hasPagination && <div className="border-b p-4">{renderPaginationControls()}</div>}
 				<Table>
 					<TableHeader>
 						<TableRow>
@@ -175,30 +193,7 @@ export default function QueuePage() {
 					</TableBody>
 				</Table>
 
-				{totalPages > 1 && (
-					<div className="flex items-center justify-between border-t px-4 py-3">
-						<p className="text-xs text-muted-foreground">{data?.total ?? 0} pending</p>
-						<div className="flex items-center gap-2">
-							<Button
-								variant="ghost"
-								size="sm"
-								disabled={page <= 1}
-								onClick={() => setPage((p) => p - 1)}
-							>
-								Previous
-							</Button>
-							<span className="text-xs text-muted-foreground">{page} / {totalPages}</span>
-							<Button
-								variant="ghost"
-								size="sm"
-								disabled={page >= totalPages}
-								onClick={() => setPage((p) => p + 1)}
-							>
-								Next
-							</Button>
-						</div>
-					</div>
-				)}
+				{hasPagination && <div className="border-t p-4">{renderPaginationControls()}</div>}
 			</div>
 		</Container>
 	)

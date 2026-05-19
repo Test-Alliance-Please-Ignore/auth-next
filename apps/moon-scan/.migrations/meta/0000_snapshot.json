@@ -1,5 +1,5 @@
 {
-  "id": "e893dcd9-62ba-45cb-ac4f-2c03d2c1d3db",
+  "id": "99260a8e-566c-47f9-b97c-ea266a47c593",
   "prevId": "00000000-0000-0000-0000-000000000000",
   "version": "7",
   "dialect": "postgresql",
@@ -291,37 +291,6 @@
           "with": {}
         }
       },
-      "foreignKeys": {},
-      "compositePrimaryKeys": {},
-      "uniqueConstraints": {},
-      "policies": {},
-      "checkConstraints": {},
-      "isRLSEnabled": false
-    },
-    "public.moon_ore_rarities": {
-      "name": "moon_ore_rarities",
-      "schema": "",
-      "columns": {
-        "ore_type_id": {
-          "name": "ore_type_id",
-          "type": "text",
-          "primaryKey": true,
-          "notNull": true
-        },
-        "rarity": {
-          "name": "rarity",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "color": {
-          "name": "color",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true
-        }
-      },
-      "indexes": {},
       "foreignKeys": {},
       "compositePrimaryKeys": {},
       "uniqueConstraints": {},

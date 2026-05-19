@@ -17,6 +17,7 @@ import type {
 	StructureType,
 	SubmitResult,
 	SystemDetail,
+	DotlanCoords,
 } from './types'
 
 export async function getScannedMoons(): Promise<ScannedMoonsResponse> {
@@ -29,6 +30,14 @@ export async function getRegions(): Promise<RegionsResponse> {
 
 export async function getRegionDetail(regionId: string): Promise<RegionDetail> {
 	return apiClient.get(`/moon-scan/moons/region/${regionId}`)
+}
+
+export async function getDotlanRegionCoords(regionFile: string): Promise<DotlanCoords> {
+	const response = await fetch(`/dotlan/${regionFile}.json`)
+	if (!response.ok) {
+		throw new Error('No map coordinates available for this region')
+	}
+	return response.json() as Promise<DotlanCoords>
 }
 
 export async function getSystemDetail(systemId: string): Promise<SystemDetail> {
@@ -108,4 +117,3 @@ export async function updateStructureProfile(
 ): Promise<StructureProfile> {
 	return apiClient.post(`/moon-scan/admin/settings/profiles/${id}`, profile)
 }
-

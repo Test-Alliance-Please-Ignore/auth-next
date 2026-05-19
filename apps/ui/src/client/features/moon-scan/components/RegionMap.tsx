@@ -65,8 +65,6 @@ export function RegionMap({ systems, jumpLinks, coords, borderRegions = {} }: Pr
 	const systemIds = new Set(systems.map((s) => s.solarSystemId))
 	const coordSystems: Record<string, [number, number]> = coords.systems ?? {}
 	// Border nodes = systems in the dotlan JSON that aren't in this region,
-	// but only those that have an actual stargate connection in jumpLinks.
-	// Border nodes = systems in the dotlan JSON that aren't in this region,
 	// but only those with an actual stargate connection in jumpLinks.
 	const borderSystemIds = new Set(
 		jumpLinks.flatMap((l) => [l.from, l.to]).filter((id) => !systemIds.has(id) && id in coordSystems)

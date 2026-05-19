@@ -9,6 +9,9 @@
 		"check:lint": "run-eslint",
 		"check:types": "run-tsc"
 	},
+	"dependencies": {
+		"@repo/universe": "workspace:*"
+	},
 	"devDependencies": {
 		"@repo/eslint-config": "workspace:*",
 		"@repo/tools": "workspace:*",

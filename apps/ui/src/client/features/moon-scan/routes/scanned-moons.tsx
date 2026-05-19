@@ -1,11 +1,10 @@
 import { useMemo, useState } from 'react'
 import { Link } from 'react-router-dom'
 
-import { Badge } from '@/components/ui/badge'
-import { Button } from '@/components/ui/button'
 import { Container } from '@/components/ui/container'
 import { Input } from '@/components/ui/input'
 import { PageHeader } from '@/components/ui/page-header'
+import { Select } from '@/components/ui/select'
 import { Skeleton } from '@/components/ui/skeleton'
 import {
 	Table,
@@ -15,11 +14,12 @@ import {
 	TableHeader,
 	TableRow,
 } from '@/components/ui/table'
+import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { formatISK } from '@/lib/format-utils'
-import { useUserPermissions } from '@/hooks/useUserPermissions'
 
 import { RARITY_COLORS } from '../ore-rarities'
 import { useScannedMoons, useMoonRegions } from '../hooks'
+import { useMoonScanPermissions } from '../permissions'
 
 import type { OreRarity, ScannedMoonEntry } from '../types'
 
@@ -85,8 +85,7 @@ function MoonRow({ moon }: { moon: ScannedMoonEntry }) {
 }
 
 export default function ScannedMoonsPage() {
-	const { hasPermission, isAdmin } = useUserPermissions()
-	const canView = isAdmin || hasPermission('urn:moons:view')
+	const { canView } = useMoonScanPermissions()
 
 	const [rarityTab, setRarityTab] = useState<RarityTab>('All')
 	const [regionFilter, setRegionFilter] = useState<string>('all')
@@ -99,6 +98,13 @@ export default function ScannedMoonsPage() {
 		if (!regionsData) return []
 		return [...regionsData.regions].sort((a, b) => a.regionName.localeCompare(b.regionName))
 	}, [regionsData])
+	const regionOptions = useMemo(
+		() => [
+			{ value: 'all', label: 'All Regions' },
+			...regions.map((region) => ({ value: region.regionId, label: region.regionName })),
+		],
+		[regions]
+	)
 
 	const filtered = useMemo(() => {
 		if (!data) return []
@@ -137,41 +143,32 @@ export default function ScannedMoonsPage() {
 
 			{/* Filters */}
 			<div className="mt-section flex flex-wrap items-center gap-3">
-				{/* Rarity tabs */}
-				<div className="flex items-center rounded-md border bg-card p-1 gap-0.5">
-					{RARITY_TABS.map((tab) => (
-						<button
-							key={tab}
-							onClick={() => setRarityTab(tab)}
-							className={`rounded px-2.5 py-1 text-xs font-medium transition-colors ${
-								rarityTab === tab
-									? 'bg-primary text-primary-foreground'
-									: 'text-muted-foreground hover:text-foreground'
-							}`}
-							style={
-								tab !== 'All' && rarityTab === tab
-									? { backgroundColor: RARITY_COLORS[tab as OreRarity] }
-									: undefined
-							}
-						>
-							{tab}
-						</button>
-					))}
-				</div>
+					{/* Rarity tabs */}
+					<Tabs value={rarityTab} onValueChange={(value) => setRarityTab(value as RarityTab)}>
+						<TabsList className="rounded-md border bg-card p-1">
+							{RARITY_TABS.map((tab) => (
+								<TabsTrigger
+									key={tab}
+									value={tab}
+									className="rounded px-2.5 py-1 text-xs font-medium"
+									style={tab !== 'All' ? { color: RARITY_COLORS[tab as OreRarity] } : undefined}
+								>
+									{tab}
+								</TabsTrigger>
+							))}
+						</TabsList>
+					</Tabs>
 
 				{/* Region dropdown */}
-				<select
-					className="rounded-md border bg-card px-3 py-1.5 text-sm text-foreground focus:outline-none focus:ring-1 focus:ring-ring"
-					value={regionFilter}
-					onChange={(e) => setRegionFilter(e.target.value)}
-				>
-					<option value="all">All Regions</option>
-					{regions.map((r) => (
-						<option key={r.regionId} value={r.regionId}>
-							{r.regionName}
-						</option>
-					))}
-				</select>
+					<Select
+						value={regionFilter}
+						onValueChange={(value) => setRegionFilter(value)}
+						options={regionOptions}
+						searchable
+						placeholder="Filter region..."
+						className="w-56"
+						inputClassName="h-9"
+					/>
 
 				{/* Name / system search */}
 				<Input

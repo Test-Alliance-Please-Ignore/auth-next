@@ -2,6 +2,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 
 import {
 	getAdminSettings,
+	getDotlanRegionCoords,
 	getLeaderboard,
 	getMoonDetail,
 	getMyScans,
@@ -32,6 +33,12 @@ import type {
 const STALE_5M = 1000 * 60 * 5
 const STALE_1M = 1000 * 60
 
+function invalidateMoonReadModels(queryClient: ReturnType<typeof useQueryClient>): void {
+	void queryClient.invalidateQueries({ queryKey: moonScanKeys.verifiedMoons() })
+	void queryClient.invalidateQueries({ queryKey: moonScanKeys.regions() })
+	void queryClient.invalidateQueries({ queryKey: moonScanKeys.systems() })
+}
+
 export function useScannedMoons() {
 	return useQuery({
 		queryKey: moonScanKeys.verifiedMoons(),
@@ -53,6 +60,15 @@ export function useMoonRegionDetail(regionId: string) {
 		queryKey: moonScanKeys.region(regionId),
 		queryFn: () => getRegionDetail(regionId),
 		staleTime: STALE_5M,
+	})
+}
+
+export function useDotlanRegionCoords(regionFile: string, enabled: boolean) {
+	return useQuery({
+		queryKey: moonScanKeys.dotlanRegion(regionFile),
+		queryFn: () => getDotlanRegionCoords(regionFile),
+		staleTime: STALE_5M,
+		enabled,
 	})
 }
 
@@ -136,8 +152,11 @@ export function useSubmitScan() {
 	return useMutation({
 		mutationFn: (raw: string) => submitScanTsv(raw),
 		onSuccess: () => {
-			queryClient.invalidateQueries({ queryKey: moonScanKeys.scans() })
-			queryClient.invalidateQueries({ queryKey: moonScanKeys.leaderboard('all') })
+			void queryClient.invalidateQueries({ queryKey: moonScanKeys.scans() })
+			void queryClient.invalidateQueries({ queryKey: [...moonScanKeys.scans(), 'mine'] })
+			void queryClient.invalidateQueries({ queryKey: [...moonScanKeys.scans(), 'queue'] })
+			void queryClient.invalidateQueries({ queryKey: [...moonScanKeys.all, 'leaderboard'] })
+			invalidateMoonReadModels(queryClient)
 		},
 	})
 }
@@ -147,10 +166,11 @@ export function useVerifyScan() {
 	return useMutation({
 		mutationFn: ({ id, notes }: { id: string; notes?: string }) => verifyScan(id, notes),
 		onSuccess: (scan) => {
-			queryClient.invalidateQueries({ queryKey: moonScanKeys.scan(scan.id) })
-			queryClient.invalidateQueries({ queryKey: moonScanKeys.scans() })
-			queryClient.invalidateQueries({ queryKey: moonScanKeys.moon(scan.moonId) })
-			queryClient.invalidateQueries({ queryKey: moonScanKeys.system('') })
+			void queryClient.invalidateQueries({ queryKey: moonScanKeys.scan(scan.id) })
+			void queryClient.invalidateQueries({ queryKey: moonScanKeys.scans() })
+			void queryClient.invalidateQueries({ queryKey: [...moonScanKeys.scans(), 'queue'] })
+			void queryClient.invalidateQueries({ queryKey: moonScanKeys.moon(scan.moonId) })
+			invalidateMoonReadModels(queryClient)
 		},
 	})
 }
@@ -160,8 +180,9 @@ export function useRejectScan() {
 	return useMutation({
 		mutationFn: ({ id, notes }: { id: string; notes?: string }) => rejectScan(id, notes),
 		onSuccess: (scan) => {
-			queryClient.invalidateQueries({ queryKey: moonScanKeys.scan(scan.id) })
-			queryClient.invalidateQueries({ queryKey: moonScanKeys.scans() })
+			void queryClient.invalidateQueries({ queryKey: moonScanKeys.scan(scan.id) })
+			void queryClient.invalidateQueries({ queryKey: moonScanKeys.scans() })
+			void queryClient.invalidateQueries({ queryKey: [...moonScanKeys.scans(), 'queue'] })
 		},
 	})
 }
@@ -171,7 +192,8 @@ export function useUpdateExtractionSettings() {
 	return useMutation({
 		mutationFn: (settings: Partial<ExtractionSettings>) => updateExtractionSettings(settings),
 		onSuccess: () => {
-			queryClient.invalidateQueries({ queryKey: moonScanKeys.adminSettings() })
+			void queryClient.invalidateQueries({ queryKey: moonScanKeys.adminSettings() })
+			invalidateMoonReadModels(queryClient)
 		},
 	})
 }
@@ -182,7 +204,8 @@ export function useUpdateStructureProfile() {
 		mutationFn: ({ id, profile }: { id: StructureType; profile: Partial<StructureProfile> }) =>
 			updateStructureProfile(id, profile),
 		onSuccess: () => {
-			queryClient.invalidateQueries({ queryKey: moonScanKeys.adminSettings() })
+			void queryClient.invalidateQueries({ queryKey: moonScanKeys.adminSettings() })
+			invalidateMoonReadModels(queryClient)
 		},
 	})
 }

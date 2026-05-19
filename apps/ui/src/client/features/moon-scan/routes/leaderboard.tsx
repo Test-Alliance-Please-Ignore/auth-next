@@ -2,6 +2,7 @@ import { useState } from 'react'
 
 import { Container } from '@/components/ui/container'
 import { PageHeader } from '@/components/ui/page-header'
+import { Select } from '@/components/ui/select'
 import { Skeleton } from '@/components/ui/skeleton'
 import {
 	Table,
@@ -11,21 +12,20 @@ import {
 	TableHeader,
 	TableRow,
 } from '@/components/ui/table'
-import { useUserPermissions } from '@/hooks/useUserPermissions'
 
 import { useLeaderboard } from '../hooks'
+import { useMoonScanPermissions } from '../permissions'
 
 import type { LeaderboardWindow } from '../types'
 
-const WINDOWS: { value: LeaderboardWindow; label: string }[] = [
+const WINDOWS: Array<{ value: LeaderboardWindow; label: string }> = [
 	{ value: 'all', label: 'All time' },
 	{ value: '30d', label: 'Last 30 days' },
 	{ value: '7d', label: 'Last 7 days' },
 ]
 
 export default function LeaderboardPage() {
-	const { hasPermission, isAdmin } = useUserPermissions()
-	const canView = isAdmin || hasPermission('urn:moons:view')
+	const { canView } = useMoonScanPermissions()
 
 	const [window, setWindow] = useState<LeaderboardWindow>('all')
 	const { data: entries, isLoading, error } = useLeaderboard(window)
@@ -45,20 +45,14 @@ export default function LeaderboardPage() {
 				description="Top contributors ranked by verified moon scans"
 			/>
 
-			<div className="mt-section flex gap-2">
-				{WINDOWS.map((w) => (
-					<button
-						key={w.value}
-						onClick={() => setWindow(w.value)}
-						className={`rounded-md border px-3 py-1.5 text-sm transition-colors ${
-							window === w.value
-								? 'bg-primary text-primary-foreground border-primary'
-								: 'bg-card text-muted-foreground hover:text-foreground'
-						}`}
-					>
-						{w.label}
-					</button>
-				))}
+			<div className="mt-section">
+				<Select
+					value={window}
+					onValueChange={(nextValue) => setWindow(nextValue as LeaderboardWindow)}
+					options={WINDOWS.map((entry) => ({ value: entry.value, label: entry.label }))}
+					className="w-44"
+					inputClassName="h-9"
+				/>
 			</div>
 
 			{error && (

@@ -1,8 +1,7 @@
 import { useState } from 'react'
 import { Link } from 'react-router-dom'
 
-import { Badge } from '@/components/ui/badge'
-import { Button } from '@/components/ui/button'
+import { UserSearchPaginationControls } from '@/components/user-search-pagination-controls'
 import { Container } from '@/components/ui/container'
 import { PageHeader } from '@/components/ui/page-header'
 import { Skeleton } from '@/components/ui/skeleton'
@@ -14,20 +13,16 @@ import {
 	TableHeader,
 	TableRow,
 } from '@/components/ui/table'
-import { useUserPermissions } from '@/hooks/useUserPermissions'
 
+import { ScanStatusBadge } from '../components/ScanStatusBadge'
+import { formatMoonScanDate } from '../date'
 import { useMyScans } from '../hooks'
+import { useMoonScanPermissions } from '../permissions'
 
-import type { MoonScan, MoonScanStatus } from '../types'
-
-function statusBadge(status: MoonScanStatus) {
-	if (status === 'verified') return <Badge className="bg-green-500/20 text-green-400 border-green-500/30">Verified</Badge>
-	if (status === 'rejected') return <Badge className="bg-red-500/20 text-red-400 border-red-500/30">Rejected</Badge>
-	return <Badge className="bg-yellow-500/20 text-yellow-400 border-yellow-500/30">Pending</Badge>
-}
+import type { MoonScan } from '../types'
 
 function ScanRow({ scan }: { scan: MoonScan }) {
-	const submittedAt = new Date(scan.submittedAt).toLocaleDateString()
+	const submittedAt = formatMoonScanDate(scan.submittedAt)
 	return (
 		<TableRow>
 			<TableCell className="font-mono text-xs text-muted-foreground">
@@ -35,19 +30,18 @@ function ScanRow({ scan }: { scan: MoonScan }) {
 					{scan.moonId}
 				</Link>
 			</TableCell>
-			<TableCell>{scan.ores.length} ore{scan.ores.length !== 1 ? 's' : ''}</TableCell>
-			<TableCell>{submittedAt}</TableCell>
-			<TableCell>{statusBadge(scan.status)}</TableCell>
-		</TableRow>
-	)
+				<TableCell>{scan.ores.length} ore{scan.ores.length !== 1 ? 's' : ''}</TableCell>
+				<TableCell>{submittedAt}</TableCell>
+				<TableCell><ScanStatusBadge status={scan.status} /></TableCell>
+			</TableRow>
+		)
 }
 
 export default function MyScansPage() {
-	const { hasPermission, isAdmin } = useUserPermissions()
-	const canSubmit = isAdmin || hasPermission('urn:moons:submit')
+	const { canSubmit } = useMoonScanPermissions()
 
 	const [page, setPage] = useState(1)
-	const pageSize = 20
+	const [pageSize, setPageSize] = useState(20)
 
 	const { data, isLoading, error } = useMyScans({ page, pageSize })
 
@@ -59,7 +53,23 @@ export default function MyScansPage() {
 		)
 	}
 
-	const totalPages = data ? Math.ceil(data.total / data.pageSize) : 1
+	const totalCount = data?.total ?? 0
+	const hasPagination = Math.ceil(totalCount / pageSize) > 1
+
+	const renderPaginationControls = () => (
+		<UserSearchPaginationControls
+			totalCount={totalCount}
+			page={page}
+			pageSize={pageSize}
+			onPageChange={setPage}
+			onPageSizeChange={(nextPageSize) => {
+				setPageSize(nextPageSize)
+				setPage(1)
+			}}
+			pageSizeOptions={[20, 50, 100]}
+			itemLabel="scans"
+		/>
+	)
 
 	return (
 		<Container>
@@ -75,6 +85,7 @@ export default function MyScansPage() {
 			)}
 
 			<div className="mt-section rounded-md border bg-card">
+				{hasPagination && <div className="border-b p-4">{renderPaginationControls()}</div>}
 				<Table>
 					<TableHeader>
 						<TableRow>
@@ -109,34 +120,7 @@ export default function MyScansPage() {
 					</TableBody>
 				</Table>
 
-				{totalPages > 1 && (
-					<div className="flex items-center justify-between border-t px-4 py-3">
-						<p className="text-xs text-muted-foreground">
-							{data?.total ?? 0} total scans
-						</p>
-						<div className="flex items-center gap-2">
-							<Button
-								variant="ghost"
-								size="sm"
-								disabled={page <= 1}
-								onClick={() => setPage((p) => p - 1)}
-							>
-								Previous
-							</Button>
-							<span className="text-xs text-muted-foreground">
-								{page} / {totalPages}
-							</span>
-							<Button
-								variant="ghost"
-								size="sm"
-								disabled={page >= totalPages}
-								onClick={() => setPage((p) => p + 1)}
-							>
-								Next
-							</Button>
-						</div>
-					</div>
-				)}
+				{hasPagination && <div className="border-t p-4">{renderPaginationControls()}</div>}
 			</div>
 		</Container>
 	)

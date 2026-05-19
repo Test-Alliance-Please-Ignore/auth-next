@@ -35,12 +35,6 @@ CREATE TABLE "moon_scans" (
 	"notes" text
 );
 --> statement-breakpoint
-CREATE TABLE "moon_ore_rarities" (
-	"ore_type_id" text PRIMARY KEY NOT NULL,
-	"rarity" text NOT NULL,
-	"color" text NOT NULL
-);
---> statement-breakpoint
 CREATE TABLE "moon_structure_profiles" (
 	"id" text PRIMARY KEY NOT NULL,
 	"base_volume_per_hr" text NOT NULL,
