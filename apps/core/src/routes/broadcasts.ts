@@ -1304,8 +1304,17 @@ broadcasts.post('/:id/send', async (c) => {
 		return c.json({ error: 'Permission denied' }, 403)
 	}
 
+	// Resolve the fleet-tracking gate at the route layer. The DO uses this flag
+	// to decide whether the system_fleet_tracking side effect is allowed to run.
+	const userPermissions = await getCachedUserPermissions(c.env, user.id)
+	const canStartTracking =
+		user.is_admin ||
+		userPermissions.some((p) => p.urn === 'urn:fleet-tracking:create')
+
 	// Send broadcast
-	const result = await broadcastsStub.sendBroadcast(broadcastId, user.id)
+	const result = await broadcastsStub.sendBroadcast(broadcastId, user.id, {
+		canStartTracking,
+	})
 
 	return c.json(result)
 })

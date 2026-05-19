@@ -26,6 +26,11 @@
 				"name": "GROUPS",
 				"class_name": "Groups",
 				"script_name": "groups"
+			},
+			{
+				"name": "FLEETS",
+				"class_name": "Fleets",
+				"script_name": "fleets"
 			}
 		]
 	},

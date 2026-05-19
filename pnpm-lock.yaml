@@ -322,6 +322,9 @@ importers:
       '@repo/do-utils':
         specifier: workspace:*
         version: link:../../packages/do-utils
+      '@repo/fleets':
+        specifier: workspace:*
+        version: link:../../packages/fleets
       '@repo/groups':
         specifier: workspace:*
         version: link:../../packages/groups

@@ -3,6 +3,19 @@ import { DurableObject } from 'cloudflare:workers'
 import { and, asc, desc, eq, inArray, or, sql } from '@repo/db-utils'
 import { getStub } from '@repo/do-utils'
 import { parseBroadcastSrpMode, renderBroadcastSrpSection } from '@repo/broadcasts'
+import { StartTrackingSessionError } from '@repo/fleets'
+import { logger } from '@repo/hono-helpers'
+
+/** Parse a loose truthy value (boolean, number, "true"/"yes"/etc) into a boolean. */
+function parseBoolFlag(value: unknown): boolean {
+	if (typeof value === 'boolean') return value
+	if (typeof value === 'number') return value !== 0
+	if (typeof value === 'string') {
+		const normalized = value.trim().toLowerCase()
+		return ['true', '1', 'yes', 'enabled', 'on'].includes(normalized)
+	}
+	return false
+}
 
 import { createDb } from './db'
 import {
@@ -33,6 +46,7 @@ import type {
 	UpdateBroadcastTemplateRequest,
 } from '@repo/broadcasts'
 import type { Discord } from '@repo/discord'
+import type { Fleets } from '@repo/fleets'
 import type { Env } from './context'
 
 const DISCORD_MESSAGE_MAX_LENGTH = 2000
@@ -584,7 +598,11 @@ export class BroadcastsDO extends DurableObject<Env> implements Broadcasts {
 		}
 	}
 
-	async sendBroadcast(broadcastId: string, userId: string): Promise<SendBroadcastResult> {
+	async sendBroadcast(
+		broadcastId: string,
+		userId: string,
+		options: { canStartTracking?: boolean } = {}
+	): Promise<SendBroadcastResult> {
 		const broadcastDetails = await this.getBroadcast(broadcastId, userId)
 		if (!broadcastDetails) {
 			throw new Error('Broadcast not found')
@@ -706,6 +724,17 @@ export class BroadcastsDO extends DurableObject<Env> implements Broadcasts {
 					.where(eq(broadcasts.id, broadcastId))
 					.returning()
 
+				// Side effect: start fleet tracking if the template requested it.
+				// Runs only after Discord has confirmed the message went out, so a
+				// Discord failure never leaves an orphan tracking session.
+				const trackingOutcome = await this.maybeStartFleetTracking({
+					broadcastId,
+					broadcastTitle: broadcastDetails.title,
+					content: renderedContent,
+					userId,
+					canStartTracking: options.canStartTracking ?? false,
+				})
+
 				return {
 					success: true,
 					broadcast: {
@@ -723,6 +752,8 @@ export class BroadcastsDO extends DurableObject<Env> implements Broadcasts {
 						sentAt: delivery.sentAt ? delivery.sentAt.toISOString() : null,
 						createdAt: delivery.createdAt.toISOString(),
 					},
+					trackingSessionId: trackingOutcome.sessionId,
+					trackingError: trackingOutcome.error,
 				}
 			}
 
@@ -1025,6 +1056,81 @@ export class BroadcastsDO extends DurableObject<Env> implements Broadcasts {
 			return ['true', '1', 'yes', 'enabled', 'on'].includes(normalized)
 		}
 		return false
+	}
+
+	/**
+	 * If the broadcast content has the system_fleet_tracking flag set, try to
+	 * spin up a fleet tracking session on FleetsDO. Returns the resulting
+	 * sessionId (or a user-facing error string). Never throws; broadcast
+	 * delivery already succeeded by the time we get here.
+	 */
+	private async maybeStartFleetTracking(args: {
+		broadcastId: string
+		broadcastTitle: string
+		content: Record<string, unknown>
+		userId: string
+		canStartTracking: boolean
+	}): Promise<{ sessionId: string | null; error: string | null }> {
+		if (!parseBoolFlag(args.content.__fleetTrackingEnabled)) {
+			return { sessionId: null, error: null }
+		}
+
+		if (!args.canStartTracking) {
+			const error = 'You do not have permission to start fleet tracking.'
+			logger.warn('[Broadcasts] Fleet tracking requested but user lacks permission', {
+				broadcastId: args.broadcastId,
+				userId: args.userId,
+			})
+			return { sessionId: null, error }
+		}
+
+		const characterId = args.content.__fleetTrackingCharacterId
+		if (typeof characterId !== 'string' || !characterId.trim()) {
+			return {
+				sessionId: null,
+				error: 'No character selected for fleet tracking.',
+			}
+		}
+
+		try {
+			const fleetsStub = getStub<Fleets>(this.env.FLEETS, 'default')
+			const result = await fleetsStub.startTrackingSession({
+				characterId: characterId.trim(),
+				startedByUserId: args.userId,
+				name: args.broadcastTitle,
+			})
+			return { sessionId: result.sessionId, error: null }
+		} catch (error) {
+			const errorMessage =
+				error instanceof StartTrackingSessionError
+					? this.formatTrackingStartError(error.code)
+					: error instanceof Error
+						? error.message
+						: 'Failed to start fleet tracking.'
+			logger.warn('[Broadcasts] Failed to start fleet tracking after broadcast send', {
+				broadcastId: args.broadcastId,
+				characterId,
+				error: error instanceof Error ? error.message : String(error),
+			})
+			return { sessionId: null, error: errorMessage }
+		}
+	}
+
+	private formatTrackingStartError(code: string): string {
+		switch (code) {
+			case 'not_in_fleet':
+				return 'Selected character is not currently in a fleet.'
+			case 'not_fleet_boss':
+				return 'Selected character is not the fleet boss.'
+			case 'character_session_active':
+				return 'A tracking session is already running for this character.'
+			case 'fleet_session_active':
+				return 'A tracking session is already running for this fleet.'
+			case 'esi_unavailable':
+				return 'EVE ESI is unreachable; try starting tracking manually.'
+			default:
+				return `Failed to start fleet tracking (${code}).`
+		}
 	}
 
 	private resolveSrpToken(content: Record<string, unknown>): string {

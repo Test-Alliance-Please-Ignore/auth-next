@@ -39,6 +39,7 @@ import {
 	resolveDoctrineSelectionFromValue,
 	SystemDoctrineField,
 } from '@/features/broadcasts/components/system-doctrine-field'
+import { SystemFleetTrackingField } from '@/features/broadcasts/components/system-fleet-tracking-field'
 import { SystemFrogsirenField } from '@/features/broadcasts/components/system-frogsiren-field'
 import { SystemSrpField } from '@/features/broadcasts/components/system-srp-field'
 import { generateSrpTokenAtFormLoad } from '@/features/broadcasts/srp-token-generator'
@@ -423,6 +424,12 @@ export default function NewBroadcastPage() {
 					return
 				}
 
+				if (field.type === 'system_fleet_tracking') {
+					initialFields.__fleetTrackingEnabled = 'false'
+					initialFields.__fleetTrackingCharacterId = ''
+					return
+				}
+
 				initialFields[field.name] = ''
 			})
 			setTemplateFields(initialFields)
@@ -529,6 +536,17 @@ export default function NewBroadcastPage() {
 					changed = true
 				}
 			}
+
+			if (field.type === 'system_fleet_tracking') {
+				if (templateFields.__fleetTrackingEnabled === undefined) {
+					updateTemplateField('__fleetTrackingEnabled', 'false')
+					changed = true
+				}
+				if (templateFields.__fleetTrackingCharacterId === undefined) {
+					updateTemplateField('__fleetTrackingCharacterId', '')
+					changed = true
+				}
+			}
 		}
 
 		if (changed) {
@@ -604,6 +622,30 @@ export default function NewBroadcastPage() {
 					sendResult.delivery.errorMessage || 'Failed to send broadcast'
 				throw new Error(errorText)
 			}
+
+			// Fleet-tracking side effect: if the broadcast started a session, redirect
+			// to it. If the broadcast asked for tracking but it failed, surface the
+			// reason and stay on this page so the user can investigate.
+			if (sendResult.trackingSessionId) {
+				setMessage({
+					type: 'success',
+					text: 'Broadcast sent — opening tracking session…',
+				})
+				setTimeout(
+					() => navigate(`/fleet-tracking/${sendResult.trackingSessionId}`),
+					1200
+				)
+				return
+			}
+			if (sendResult.trackingError) {
+				setMessage({
+					type: 'error',
+					text: `Broadcast sent, but fleet tracking failed: ${sendResult.trackingError}`,
+				})
+				setIsSending(false)
+				return
+			}
+
 			setMessage({ type: 'success', text: 'Broadcast sent successfully!' })
 			setTimeout(() => navigate('/broadcasts'), 2000)
 		} catch (error) {
@@ -889,7 +931,11 @@ export default function NewBroadcastPage() {
 										<Label className="text-sm font-medium">Template Fields</Label>
 										<div className="grid gap-4 md:grid-cols-2">
 											{selectedTemplate.fieldSchema
-												.filter((field) => field.type !== 'system_frogsiren')
+												.filter(
+													(field) =>
+														field.type !== 'system_frogsiren' &&
+														field.type !== 'system_fleet_tracking'
+												)
 												.map((field) => (
 													<div key={field.name} className="space-y-2 min-w-0">
 														{field.type === 'system_srp' ? (
@@ -1039,6 +1085,32 @@ export default function NewBroadcastPage() {
 													}}
 												/>
 											))}
+											{selectedTemplate.fieldSchema.some(
+												(field) => field.type === 'system_fleet_tracking'
+											) && (
+												<SystemFleetTrackingField
+													enabled={parseBooleanField(
+														templateFields.__fleetTrackingEnabled,
+														false
+													)}
+													onEnabledChange={(next) =>
+														updateTemplateField(
+															'__fleetTrackingEnabled',
+															next ? 'true' : 'false'
+														)
+													}
+													characterId={templateFields.__fleetTrackingCharacterId ?? ''}
+													onCharacterIdChange={(value) =>
+														updateTemplateField('__fleetTrackingCharacterId', value)
+													}
+													characters={(user?.characters ?? [])
+														.filter((c) => c.hasValidToken)
+														.map((c) => ({
+															characterId: c.characterId,
+															characterName: c.characterName,
+														}))}
+												/>
+											)}
 									</div>
 								</div>
 							) : null}

@@ -65,6 +65,7 @@ export interface TemplateFieldSchema {
 		| 'system_staging'
 		| 'system_srp'
 		| 'system_frogsiren'
+		| 'system_fleet_tracking'
 	required?: boolean
 	placeholder?: string
 	options?: string[]
@@ -209,6 +210,14 @@ export interface SendBroadcastResult {
 	success: boolean
 	broadcast: Broadcast
 	delivery: BroadcastDelivery
+	/** ID of the fleet tracking session this broadcast started, if any. */
+	trackingSessionId?: string | null
+	/**
+	 * Reason fleet tracking failed to start, if it was requested but failed
+	 * (e.g. character not fleet boss, ESI error, missing permission).
+	 * `null` when tracking wasn't requested or started successfully.
+	 */
+	trackingError?: string | null
 }
 
 export {
@@ -387,9 +396,16 @@ export interface Broadcasts {
 	 * Send a broadcast immediately
 	 * @param broadcastId - Broadcast ID to send
 	 * @param userId - User ID sending the broadcast
+	 * @param options - Optional flags. `canStartTracking` lets the caller signal
+	 *   that the user holds urn:fleet-tracking:create, gating the
+	 *   system_fleet_tracking side effect.
 	 * @returns Send result with delivery status
 	 */
-	sendBroadcast(broadcastId: string, userId: string): Promise<SendBroadcastResult>
+	sendBroadcast(
+		broadcastId: string,
+		userId: string,
+		options?: { canStartTracking?: boolean }
+	): Promise<SendBroadcastResult>
 
 	/**
 	 * Update a draft broadcast

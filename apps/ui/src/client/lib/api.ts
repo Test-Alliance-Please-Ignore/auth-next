@@ -1372,6 +1372,10 @@ export interface SendBroadcastResponse {
 		discordMessageId?: string | null
 		errorMessage?: string | null
 	}
+	/** Set when the broadcast started a fleet tracking session via system_fleet_tracking. */
+	trackingSessionId?: string | null
+	/** Set when the broadcast asked for tracking but it failed (e.g. not fleet boss). */
+	trackingError?: string | null
 }
 
 /**
