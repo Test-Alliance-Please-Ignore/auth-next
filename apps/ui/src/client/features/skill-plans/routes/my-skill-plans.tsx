@@ -23,9 +23,20 @@ export default function MySkillPlans() {
 	const { hasPermission } = useUserPermissions()
 	const { data: plansResponse, isLoading } = useMySkillPlans()
 	const deletePlan = useDeleteSkillPlan()
+	const canCreatePlans = !!user && (user.is_admin || hasPermission('urn:skill-plans:create'))
+	const canManageCategories =
+		!!user &&
+		(user.is_admin ||
+			hasPermission('urn:skill-plans:categories:create') ||
+			hasPermission('urn:skill-plans:categories:manage'))
+	const canEditSkillPlans =
+		!!user && (canCreatePlans || canManageCategories || hasPermission('urn:skill-plans:manage-all'))
 
 	// Redirect if not authenticated
 	if (!authLoading && !isAuthenticated) {
+		return <Navigate to="/skill-plans" replace />
+	}
+	if (!authLoading && isAuthenticated && !canEditSkillPlans) {
 		return <Navigate to="/skill-plans" replace />
 	}
 
@@ -66,7 +77,7 @@ export default function MySkillPlans() {
 				<div className="flex justify-between items-center mb-6">
 					<h2 className="text-xl font-semibold">Your Plans ({totalPlans})</h2>
 					<div className="flex gap-2">
-						{user?.is_admin && (
+						{canManageCategories && (
 							<Button variant="ghost" asChild>
 								<Link to="/skill-plans/categories/manage">
 									<Settings className="h-4 w-4" />
@@ -74,20 +85,10 @@ export default function MySkillPlans() {
 								</Link>
 							</Button>
 						)}
-						{!user?.is_admin &&
-						(hasPermission('urn:skill-plans:categories:create') ||
-							hasPermission('urn:skill-plans:categories:manage')) ? (
-							<Button variant="ghost" asChild>
-								<Link to="/skill-plans/categories/manage">
-									<Settings className="h-4 w-4" />
-									Manage Categories
-								</Link>
-							</Button>
-						) : null}
 						<Button variant="ghost" asChild>
 							<Link to="/skill-plans">Browse All Plans</Link>
 						</Button>
-						{(user?.is_admin || hasPermission('urn:skill-plans:create')) && (
+						{canCreatePlans && (
 							<Button asChild>
 								<Link to="/skill-plans/create">
 									<Plus className="h-4 w-4" />
@@ -109,6 +110,7 @@ export default function MySkillPlans() {
 										<SkillPlanCard
 											key={`${group.category?.id || 'uncategorized'}-${plan.id}`}
 											plan={plan}
+											showPublicationState={canEditSkillPlans}
 										/>
 									))}
 								</div>
@@ -119,7 +121,7 @@ export default function MySkillPlans() {
 					<Card>
 						<CardContent className="py-12 text-center">
 							<p className="text-muted-foreground mb-4">You haven't created any skill plans yet.</p>
-							{(user?.is_admin || hasPermission('urn:skill-plans:create')) && (
+							{canCreatePlans && (
 								<Button asChild>
 									<Link to="/skill-plans/create">
 										<Plus className="h-4 w-4" />

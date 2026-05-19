@@ -106,7 +106,7 @@ export interface SkillPlansFilter {
 	search?: string
 	categoryId?: string
 	published?: boolean
-	maintainerType?: 'user' | 'group' | 'all'
+	maintainer?: string
 	myPlansOnly?: boolean
 }
 

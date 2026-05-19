@@ -46,20 +46,25 @@ export function useSkillPlans(
 		published?: boolean
 		maintainerId?: string
 	},
-	pagination?: PaginationParams
+	pagination?: PaginationParams,
+	options?: { enabled?: boolean }
 ) {
 	return useQuery<PaginatedResponse<SkillPlan>>({
 		queryKey: skillPlanKeys.list(filters, pagination),
 		queryFn: () => skillPlansApi.getPlans(filters, pagination),
 		staleTime: 1000 * 60 * 5, // 5 minutes
+		enabled: options?.enabled ?? true,
+		placeholderData: (previousData) => previousData,
 	})
 }
 
-export function useMySkillPlans(pagination?: PaginationParams) {
+export function useMySkillPlans(pagination?: PaginationParams, options?: { enabled?: boolean }) {
 	return useQuery<PaginatedResponse<SkillPlan>>({
 		queryKey: skillPlanKeys.myPlans(pagination),
 		queryFn: () => skillPlansApi.getMyPlans(pagination),
 		staleTime: 1000 * 60 * 2, // 2 minutes
+		enabled: options?.enabled ?? true,
+		placeholderData: (previousData) => previousData,
 	})
 }
 
