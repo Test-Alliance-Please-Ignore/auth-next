@@ -1,10 +1,11 @@
-import { useMemo } from 'react'
+import { useMemo, useState } from 'react'
 import { Link, useParams } from 'react-router-dom'
 
 import { ArrowLeft } from 'lucide-react'
 
 import { Button } from '@/components/ui/button'
 import { Container } from '@/components/ui/container'
+import { Input } from '@/components/ui/input'
 import { PageHeader } from '@/components/ui/page-header'
 import { Skeleton } from '@/components/ui/skeleton'
 import {
@@ -32,9 +33,19 @@ function secColor(secStatus: string | null): string {
 	return 'text-red-400'
 }
 
+function parseSecurityStatus(secStatus: string | null): number | null {
+	if (secStatus == null) return null
+	const normalized = secStatus.replace(/[−–—]/g, '-').trim()
+	if (normalized.length === 0) return null
+	const value = Number.parseFloat(normalized)
+	return Number.isFinite(value) ? value : null
+}
+
 function secLabel(secStatus: string | null): string {
 	if (secStatus === null) return '?'
-	return Math.max(0, parseFloat(secStatus)).toFixed(1)
+	const parsed = parseSecurityStatus(secStatus)
+	if (parsed === null) return '?'
+	return parsed.toFixed(1)
 }
 
 function CoverageBar({ moonCount, verifiedCount }: { moonCount: number; verifiedCount: number }) {
@@ -56,6 +67,7 @@ function CoverageBar({ moonCount, verifiedCount }: { moonCount: number; verified
 export default function RegionPage() {
 	const { regionId } = useParams<{ regionId: string }>()
 	const { canView } = useMoonScanPermissions()
+	const [systemSearch, setSystemSearch] = useState('')
 
 	const { data: regionsData } = useMoonRegions()
 	const { data: detail, isLoading, error } = useMoonRegionDetail(regionId!)
@@ -82,13 +94,22 @@ export default function RegionPage() {
 	const totalMoons = systems.reduce((n, s) => n + s.moonCount, 0)
 	const totalVerified = systems.reduce((n, s) => n + s.verifiedCount, 0)
 	const coverage = totalMoons > 0 ? (totalVerified / totalMoons) * 100 : 0
-	const eligibleSystems = systems.filter(
-		(s) => s.securityStatus !== null && parseFloat(s.securityStatus) < 0.6
-	)
+	const eligibleSystems = systems.filter((s) => {
+		const sec = parseSecurityStatus(s.securityStatus)
+		return sec !== null && sec < 0.6
+	})
 
 	const sortedSystems = [...systems].sort((a, b) =>
 		a.solarSystemName.localeCompare(b.solarSystemName)
 	)
+	const normalizedSystemSearch = systemSearch.trim().toLowerCase()
+	const filteredSystems = normalizedSystemSearch
+		? sortedSystems.filter((s) => s.solarSystemName.toLowerCase().includes(normalizedSystemSearch))
+		: sortedSystems
+	const highlightedSystemIds = useMemo(() => {
+		if (!normalizedSystemSearch) return undefined
+		return new Set(filteredSystems.map((s) => s.solarSystemId))
+	}, [filteredSystems, normalizedSystemSearch])
 
 	return (
 		<Container>
@@ -161,6 +182,7 @@ export default function RegionPage() {
 						jumpLinks={detail.jumpLinks}
 						coords={coords}
 						borderRegions={detail.borderRegions}
+						highlightedSystemIds={highlightedSystemIds}
 					/>
 				</div>
 			)}
@@ -168,13 +190,23 @@ export default function RegionPage() {
 			{/* Systems table */}
 				{!isLoading && detail && (
 					<div className="mt-6 rounded-md border bg-card">
-						<div className="border-b px-4 py-2.5 text-sm font-medium">
-							Systems
-						{eligibleSystems.length > 0 && (
-							<span className="ml-2 text-xs text-muted-foreground">
-								({eligibleSystems.length} eligible for moon mining)
-							</span>
-						)}
+						<div className="border-b px-4 py-2.5">
+							<div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+								<div className="text-sm font-medium">
+									Systems
+									{eligibleSystems.length > 0 && (
+										<span className="ml-2 text-xs text-muted-foreground">
+											({eligibleSystems.length} eligible for moon mining)
+										</span>
+									)}
+								</div>
+								<Input
+									value={systemSearch}
+									onChange={(e) => setSystemSearch(e.target.value)}
+									placeholder="Filter systems..."
+									className="h-8 w-full sm:w-64"
+								/>
+							</div>
 						</div>
 						<div className="overflow-x-auto">
 							<Table>
@@ -188,9 +220,9 @@ export default function RegionPage() {
 									</TableRow>
 								</TableHeader>
 								<TableBody>
-									{sortedSystems.map((sys) => {
-										const eligible =
-											sys.securityStatus !== null && parseFloat(sys.securityStatus) < 0.6
+									{filteredSystems.map((sys) => {
+										const sec = parseSecurityStatus(sys.securityStatus)
+										const eligible = sec !== null && sec < 0.6
 										return (
 											<TableRow
 												key={sys.solarSystemId}
@@ -225,6 +257,11 @@ export default function RegionPage() {
 									})}
 								</TableBody>
 							</Table>
+							{filteredSystems.length === 0 && (
+								<div className="px-4 py-6 text-sm text-muted-foreground">
+									No systems match the current filter.
+								</div>
+							)}
 						</div>
 					</div>
 				)}

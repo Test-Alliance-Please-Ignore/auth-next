@@ -1,6 +1,7 @@
-import { useMemo, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { Link } from 'react-router-dom'
 
+import { UserSearchPaginationControls } from '@/components/user-search-pagination-controls'
 import { Card } from '@/components/ui/card'
 import { Container } from '@/components/ui/container'
 import { Input } from '@/components/ui/input'
@@ -91,6 +92,8 @@ export default function ScannedMoonsPage() {
 	const [rarityTab, setRarityTab] = useState<RarityTab>('All')
 	const [regionFilter, setRegionFilter] = useState<string>('all')
 	const [search, setSearch] = useState('')
+	const [page, setPage] = useState(1)
+	const [pageSize, setPageSize] = useState(50)
 
 	const { data, isLoading, error } = useScannedMoons()
 	const { data: regionsData } = useMoonRegions()
@@ -120,6 +123,37 @@ export default function ScannedMoonsPage() {
 		}
 		return list
 	}, [data, rarityTab, regionFilter, search])
+	const totalCount = filtered.length
+	const totalPages = Math.max(1, Math.ceil(totalCount / pageSize))
+	const pagedMoons = useMemo(() => {
+		const start = (page - 1) * pageSize
+		return filtered.slice(start, start + pageSize)
+	}, [filtered, page, pageSize])
+
+	useEffect(() => {
+		setPage(1)
+	}, [rarityTab, regionFilter, search])
+
+	useEffect(() => {
+		if (page > totalPages) {
+			setPage(totalPages)
+		}
+	}, [page, totalPages])
+
+	const hasPagination = totalCount > pageSize
+	const renderPaginationControls = () => (
+		<UserSearchPaginationControls
+			totalCount={totalCount}
+			page={page}
+			pageSize={pageSize}
+			onPageChange={setPage}
+			onPageSizeChange={(size) => {
+				setPageSize(size)
+				setPage(1)
+			}}
+			itemLabel="moons"
+		/>
+	)
 
 	if (!canView) {
 		return (
@@ -186,7 +220,8 @@ export default function ScannedMoonsPage() {
 				)}
 			</div>
 
-			<Card className="mt-4">
+			<Card className="mt-4 overflow-hidden">
+				{hasPagination && <div className="border-b p-4">{renderPaginationControls()}</div>}
 				<Table>
 					<TableHeader>
 						<TableRow>
@@ -210,7 +245,7 @@ export default function ScannedMoonsPage() {
 										))}
 									</TableRow>
 								))
-							: filtered.map((moon) => <MoonRow key={moon.moonId} moon={moon} />)}
+							: pagedMoons.map((moon) => <MoonRow key={moon.moonId} moon={moon} />)}
 						{!isLoading && filtered.length === 0 && (
 							<TableRow>
 								<TableCell colSpan={7} className="py-8 text-center text-sm text-muted-foreground">
@@ -220,6 +255,7 @@ export default function ScannedMoonsPage() {
 						)}
 					</TableBody>
 				</Table>
+				{hasPagination && <div className="border-t p-4">{renderPaginationControls()}</div>}
 			</Card>
 		</Container>
 	)

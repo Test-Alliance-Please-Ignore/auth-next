@@ -99,6 +99,20 @@ function isRawPayloadTooLarge(raw: string): boolean {
 	return new TextEncoder().encode(raw).length > MAX_SCAN_RAW_BYTES
 }
 
+function parseSecurityStatus(secStatus: string | null | undefined): number | null {
+	if (secStatus == null) return null
+	// Normalize potential unicode minus signs and trim whitespace.
+	const normalized = secStatus.replace(/[−–—]/g, '-').trim()
+	if (normalized.length === 0) return null
+	const value = Number.parseFloat(normalized)
+	return Number.isFinite(value) ? value : null
+}
+
+function isMoonMiningEligibleSecurity(secStatus: string | null | undefined): boolean {
+	const parsed = parseSecurityStatus(secStatus)
+	return parsed !== null && parsed < SEC_STATUS_THRESHOLD
+}
+
 // ─── Zod schemas ──────────────────────────────────────────────────────────────
 
 const VerifyRejectSchema = z.object({
@@ -205,12 +219,12 @@ moonScanRoutes.get('/moons/region/:regionId', async (c) => {
 	const systems = await universe.getSystemsByRegionId(regionId)
 
 	const eligibleSystemIds = systems
-		.filter((s) => s.securityStatus !== null && parseFloat(s.securityStatus) < SEC_STATUS_THRESHOLD)
+		.filter((s) => isMoonMiningEligibleSecurity(s.securityStatus))
 		.map((s) => s.solarSystemId)
 
 	const [stargates, moonsBySystem] = await Promise.all([
 		universe.getStargatesBySystemIds(systems.map((s) => s.solarSystemId)),
-		universe.getMoonsBySystemIds(eligibleSystemIds),
+		universe.getMoonsBySystemIds(systems.map((s) => s.solarSystemId)),
 	])
 
 	// Build moon ID list and get coverage
@@ -240,7 +254,7 @@ moonScanRoutes.get('/moons/region/:regionId', async (c) => {
 
 	// Aggregate per-system moon coverage
 	const systemMoonCoverage = new Map<string, { total: number; verified: number }>()
-	for (const systemId of eligibleSystemIds) {
+	for (const systemId of systems.map((s) => s.solarSystemId)) {
 		const moons = moonsBySystem[systemId] ?? []
 		let total = 0; let verified = 0
 		for (const m of moons) {
@@ -685,8 +699,8 @@ moonScanRoutes.post('/scans/parse', async (c) => {
 
 	const annotated = parseResult.scans.map((scan) => {
 		const system = systemsById[scan.solarSystemId]
-		const secStatus = system?.securityStatus ? parseFloat(system.securityStatus) : null
-		const eligible = secStatus !== null ? secStatus < SEC_STATUS_THRESHOLD : false
+		const secStatus = parseSecurityStatus(system?.securityStatus ?? null)
+		const eligible = isMoonMiningEligibleSecurity(system?.securityStatus ?? null)
 		return { ...scan, secStatus, eligible }
 	})
 
@@ -720,8 +734,7 @@ moonScanRoutes.post('/scans/submit', async (c) => {
 
 	const eligibleScans = parseResult.scans.filter((scan) => {
 		const system = systemsById[scan.solarSystemId]
-		if (!system?.securityStatus) return false
-		return parseFloat(system.securityStatus) < SEC_STATUS_THRESHOLD
+		return isMoonMiningEligibleSecurity(system?.securityStatus ?? null)
 	})
 
 	const scansWithOnlyAllowedOreTypes = eligibleScans.filter((scan) =>
