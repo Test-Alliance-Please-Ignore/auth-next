@@ -14,6 +14,7 @@ interface Props {
 	jumpLinks: JumpLink[]
 	coords: DotlanCoords
 	borderRegions: Record<string, { regionId: string; regionName: string }>
+	highlightedSystemIds?: Set<string>
 }
 
 // Dotlan system node dimensions (matching old tool).
@@ -56,13 +57,20 @@ interface TooltipState {
 	scannedCount: number
 }
 
-export function RegionMap({ systems, jumpLinks, coords, borderRegions = {} }: Props) {
+export function RegionMap({
+	systems,
+	jumpLinks,
+	coords,
+	borderRegions = {},
+	highlightedSystemIds,
+}: Props) {
 	const navigate = useNavigate()
 	const [tooltip, setTooltip] = useState<TooltipState | null>(null)
 	const [tooltipPos, setTooltipPos] = useState({ x: 0, y: 0 })
 
 	const systemMap = new Map(systems.map((s) => [s.solarSystemId, s]))
 	const systemIds = new Set(systems.map((s) => s.solarSystemId))
+	const hasActiveHighlight = Boolean(highlightedSystemIds && highlightedSystemIds.size > 0)
 	const coordSystems: Record<string, [number, number]> = coords.systems ?? {}
 	// Border nodes = systems in the dotlan JSON that aren't in this region,
 	// but only those with an actual stargate connection in jumpLinks.
@@ -177,10 +185,12 @@ export function RegionMap({ systems, jumpLinks, coords, borderRegions = {} }: Pr
 					const stroke = sysStroke(sys.moonCount, sys.verifiedCount, sys.scannedCount)
 					const textColor = nameColor(sys.moonCount)
 					const clipId = `clip-sys-${sysId}`
+					const dimmed = hasActiveHighlight && !highlightedSystemIds?.has(sysId)
 
 					return (
 						<g
 							key={sysId}
+							opacity={dimmed ? 0.2 : 1}
 							style={{ cursor: eligible ? 'pointer' : 'default' }}
 							onClick={() => eligible && navigate(`/moon-scan/system/${sysId}`)}
 							onMouseEnter={() =>

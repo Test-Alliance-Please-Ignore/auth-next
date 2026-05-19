@@ -1,6 +1,7 @@
 import { useMemo, useState } from 'react'
 import { Link } from 'react-router-dom'
 
+import { UserSearchPaginationControls } from '@/components/user-search-pagination-controls'
 import { Card } from '@/components/ui/card'
 import { Container } from '@/components/ui/container'
 import { Input } from '@/components/ui/input'
@@ -91,8 +92,16 @@ export default function ScannedMoonsPage() {
 	const [rarityTab, setRarityTab] = useState<RarityTab>('All')
 	const [regionFilter, setRegionFilter] = useState<string>('all')
 	const [search, setSearch] = useState('')
+	const [page, setPage] = useState(1)
+	const [pageSize, setPageSize] = useState(50)
 
-	const { data, isLoading, error } = useScannedMoons()
+	const { data, isLoading, error } = useScannedMoons({
+		page,
+		pageSize,
+		regionId: regionFilter,
+		rarity: rarityTab,
+		search,
+	})
 	const { data: regionsData } = useMoonRegions()
 
 	const regions = useMemo(() => {
@@ -107,19 +116,21 @@ export default function ScannedMoonsPage() {
 		[regions]
 	)
 
-	const filtered = useMemo(() => {
-		if (!data) return []
-		let list = data.moons
-		if (rarityTab !== 'All') list = list.filter((m) => m.highestRarity === rarityTab)
-		if (regionFilter !== 'all') list = list.filter((m) => m.regionId === regionFilter)
-		if (search.trim()) {
-			const q = search.trim().toLowerCase()
-			list = list.filter(
-				(m) => m.moonName.toLowerCase().includes(q) || m.solarSystemName.toLowerCase().includes(q)
-			)
-		}
-		return list
-	}, [data, rarityTab, regionFilter, search])
+	const totalCount = data?.total ?? 0
+	const hasPagination = Math.ceil(totalCount / pageSize) > 1
+	const renderPaginationControls = () => (
+		<UserSearchPaginationControls
+			totalCount={totalCount}
+			page={page}
+			pageSize={pageSize}
+			onPageChange={setPage}
+			onPageSizeChange={(size) => {
+				setPageSize(size)
+				setPage(1)
+			}}
+			itemLabel="moons"
+		/>
+	)
 
 	if (!canView) {
 		return (
@@ -153,6 +164,7 @@ export default function ScannedMoonsPage() {
 									value={tab}
 									className="rounded px-2.5 py-1 text-xs font-medium"
 									style={tab !== 'All' ? { color: RARITY_COLORS[tab as OreRarity] } : undefined}
+									onClick={() => setPage(1)}
 								>
 									{tab}
 								</TabsTrigger>
@@ -163,7 +175,10 @@ export default function ScannedMoonsPage() {
 				{/* Region dropdown */}
 					<Select
 						value={regionFilter}
-						onValueChange={(value) => setRegionFilter(value)}
+						onValueChange={(value) => {
+							setRegionFilter(value)
+							setPage(1)
+						}}
 						options={regionOptions}
 						searchable
 						placeholder="Filter region..."
@@ -176,17 +191,21 @@ export default function ScannedMoonsPage() {
 					className="w-56"
 					placeholder="Search moon or system…"
 					value={search}
-					onChange={(e) => setSearch(e.target.value)}
+					onChange={(e) => {
+						setSearch(e.target.value)
+						setPage(1)
+					}}
 				/>
 
 				{!isLoading && data && (
 					<span className="ml-auto text-xs text-muted-foreground">
-						{filtered.length} / {data.moons.length} moons
+						{data.items.length} shown • {data.total} total
 					</span>
 				)}
 			</div>
 
-			<Card className="mt-4">
+			<Card className="mt-4 overflow-hidden">
+				{hasPagination && <div className="border-b p-4">{renderPaginationControls()}</div>}
 				<Table>
 					<TableHeader>
 						<TableRow>
@@ -210,8 +229,8 @@ export default function ScannedMoonsPage() {
 										))}
 									</TableRow>
 								))
-							: filtered.map((moon) => <MoonRow key={moon.moonId} moon={moon} />)}
-						{!isLoading && filtered.length === 0 && (
+							: (data?.items ?? []).map((moon) => <MoonRow key={moon.moonId} moon={moon} />)}
+						{!isLoading && (data?.items.length ?? 0) === 0 && (
 							<TableRow>
 								<TableCell colSpan={7} className="py-8 text-center text-sm text-muted-foreground">
 									No moons match the current filters.
@@ -220,6 +239,7 @@ export default function ScannedMoonsPage() {
 						)}
 					</TableBody>
 				</Table>
+				{hasPagination && <div className="border-t p-4">{renderPaginationControls()}</div>}
 			</Card>
 		</Container>
 	)

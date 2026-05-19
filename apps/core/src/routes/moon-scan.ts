@@ -99,6 +99,20 @@ function isRawPayloadTooLarge(raw: string): boolean {
 	return new TextEncoder().encode(raw).length > MAX_SCAN_RAW_BYTES
 }
 
+function parseSecurityStatus(secStatus: string | null | undefined): number | null {
+	if (secStatus == null) return null
+	// Normalize potential unicode minus signs and trim whitespace.
+	const normalized = secStatus.replace(/[−–—]/g, '-').trim()
+	if (normalized.length === 0) return null
+	const value = Number.parseFloat(normalized)
+	return Number.isFinite(value) ? value : null
+}
+
+function isMoonMiningEligibleSecurity(secStatus: string | null | undefined): boolean {
+	const parsed = parseSecurityStatus(secStatus)
+	return parsed !== null && parsed < SEC_STATUS_THRESHOLD
+}
+
 // ─── Zod schemas ──────────────────────────────────────────────────────────────
 
 const VerifyRejectSchema = z.object({
@@ -110,6 +124,14 @@ const ScanFiltersSchema = z.object({
 	moonId: z.string().optional(),
 	page: z.coerce.number().int().positive().default(1),
 	pageSize: z.coerce.number().int().positive().max(100).default(20),
+})
+
+const VerifiedMoonsQuerySchema = z.object({
+	page: z.coerce.number().int().positive().default(1),
+	pageSize: z.coerce.number().int().positive().max(100).default(50),
+	regionId: z.string().optional(),
+	rarity: z.enum(['R4', 'R8', 'R16', 'R32', 'R64']).optional(),
+	search: z.string().trim().optional(),
 })
 
 const ExtractionSettingsSchema = z.object({
@@ -205,12 +227,12 @@ moonScanRoutes.get('/moons/region/:regionId', async (c) => {
 	const systems = await universe.getSystemsByRegionId(regionId)
 
 	const eligibleSystemIds = systems
-		.filter((s) => s.securityStatus !== null && parseFloat(s.securityStatus) < SEC_STATUS_THRESHOLD)
+		.filter((s) => isMoonMiningEligibleSecurity(s.securityStatus))
 		.map((s) => s.solarSystemId)
 
 	const [stargates, moonsBySystem] = await Promise.all([
 		universe.getStargatesBySystemIds(systems.map((s) => s.solarSystemId)),
-		universe.getMoonsBySystemIds(eligibleSystemIds),
+		universe.getMoonsBySystemIds(systems.map((s) => s.solarSystemId)),
 	])
 
 	// Build moon ID list and get coverage
@@ -240,7 +262,7 @@ moonScanRoutes.get('/moons/region/:regionId', async (c) => {
 
 	// Aggregate per-system moon coverage
 	const systemMoonCoverage = new Map<string, { total: number; verified: number }>()
-	for (const systemId of eligibleSystemIds) {
+	for (const systemId of systems.map((s) => s.solarSystemId)) {
 		const moons = moonsBySystem[systemId] ?? []
 		let total = 0; let verified = 0
 		for (const m of moons) {
@@ -323,6 +345,17 @@ moonScanRoutes.get('/moons/verified', async (c) => {
 		return c.json({ error: 'Forbidden' }, 403)
 	}
 
+	const query = VerifiedMoonsQuerySchema.safeParse({
+		page: c.req.query('page'),
+		pageSize: c.req.query('pageSize'),
+		regionId: c.req.query('regionId'),
+		rarity: c.req.query('rarity'),
+		search: c.req.query('search'),
+	})
+	if (!query.success) {
+		return c.json({ error: 'Invalid query', issues: query.error.issues }, 400)
+	}
+
 	const moonScan = getMoonScanStub(c.env)
 	const universe = getUniverseStub(c.env)
 
@@ -330,7 +363,13 @@ moonScanRoutes.get('/moons/verified', async (c) => {
 	const summary = await moonScan.getScanSummary()
 	const verifiedMoonIds = summary.verifiedMoonIds
 	if (verifiedMoonIds.length === 0) {
-		return c.json({ moons: [], updatedAt: new Date().toISOString() })
+		return c.json({
+			items: [],
+			total: 0,
+			page: query.data.page,
+			pageSize: query.data.pageSize,
+			updatedAt: new Date().toISOString(),
+		})
 	}
 
 	// Bulk-load compositions, moon static data, and settings+prices in parallel
@@ -458,7 +497,27 @@ moonScanRoutes.get('/moons/verified', async (c) => {
 		}
 	}).filter((m): m is NonNullable<typeof m> => m !== null)
 
-	return c.json({ moons, updatedAt: new Date().toISOString() })
+	let filtered = moons
+	if (query.data.regionId) {
+		filtered = filtered.filter((m) => m.regionId === query.data.regionId)
+	}
+	if (query.data.rarity) {
+		filtered = filtered.filter((m) => m.highestRarity === query.data.rarity)
+	}
+	if (query.data.search) {
+		const q = query.data.search.toLowerCase()
+		filtered = filtered.filter(
+			(m) => m.moonName.toLowerCase().includes(q) || m.solarSystemName.toLowerCase().includes(q)
+		)
+	}
+
+	const total = filtered.length
+	const page = query.data.page
+	const pageSize = query.data.pageSize
+	const start = (page - 1) * pageSize
+	const items = filtered.slice(start, start + pageSize)
+
+	return c.json({ items, total, page, pageSize, updatedAt: new Date().toISOString() })
 })
 
 function getMarketsStub(env: App['Bindings']): Markets {
@@ -685,8 +744,8 @@ moonScanRoutes.post('/scans/parse', async (c) => {
 
 	const annotated = parseResult.scans.map((scan) => {
 		const system = systemsById[scan.solarSystemId]
-		const secStatus = system?.securityStatus ? parseFloat(system.securityStatus) : null
-		const eligible = secStatus !== null ? secStatus < SEC_STATUS_THRESHOLD : false
+		const secStatus = parseSecurityStatus(system?.securityStatus ?? null)
+		const eligible = isMoonMiningEligibleSecurity(system?.securityStatus ?? null)
 		return { ...scan, secStatus, eligible }
 	})
 
@@ -720,8 +779,7 @@ moonScanRoutes.post('/scans/submit', async (c) => {
 
 	const eligibleScans = parseResult.scans.filter((scan) => {
 		const system = systemsById[scan.solarSystemId]
-		if (!system?.securityStatus) return false
-		return parseFloat(system.securityStatus) < SEC_STATUS_THRESHOLD
+		return isMoonMiningEligibleSecurity(system?.securityStatus ?? null)
 	})
 
 	const scansWithOnlyAllowedOreTypes = eligibleScans.filter((scan) =>

@@ -34,15 +34,21 @@ const STALE_5M = 1000 * 60 * 5
 const STALE_1M = 1000 * 60
 
 function invalidateMoonReadModels(queryClient: ReturnType<typeof useQueryClient>): void {
-	void queryClient.invalidateQueries({ queryKey: moonScanKeys.verifiedMoons() })
+	void queryClient.invalidateQueries({ queryKey: [...moonScanKeys.all, 'verified-moons'] })
 	void queryClient.invalidateQueries({ queryKey: moonScanKeys.regions() })
 	void queryClient.invalidateQueries({ queryKey: moonScanKeys.systems() })
 }
 
-export function useScannedMoons() {
+export function useScannedMoons(params: {
+	page?: number
+	pageSize?: number
+	regionId?: string
+	rarity?: string
+	search?: string
+} = {}) {
 	return useQuery({
-		queryKey: moonScanKeys.verifiedMoons(),
-		queryFn: getScannedMoons,
+		queryKey: moonScanKeys.verifiedMoons(params),
+		queryFn: () => getScannedMoons(params),
 		staleTime: STALE_5M,
 	})
 }

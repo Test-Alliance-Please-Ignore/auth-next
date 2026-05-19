@@ -75,10 +75,10 @@ export function parseMoonScanTsv(raw: string): ParseResult {
 			return
 		}
 
-		// Quantity sum validation: must be in [0.99, 1.01]
+		// Quantity sum sanitization: accept observed totals (not expected to equal 1.0).
 		const sum = ores.reduce((acc, o) => acc + parseFloat(o.quantity), 0)
-		if (sum < 0.99 || sum > 1.01) {
-			errors.push(`Moon "${moonName}": quantities sum to ${sum.toFixed(4)} (expected ~1.0)`)
+		if (!Number.isFinite(sum) || sum < 0) {
+			errors.push(`Moon "${moonName}": quantities sum to an invalid total (${sum})`)
 			return
 		}
 
@@ -129,7 +129,7 @@ export function parseMoonScanTsv(raw: string): ParseResult {
 			const moonId = nonEmpty[5] ?? null
 
 				const quantity = parseFloat(quantityRaw)
-				if (Number.isNaN(quantity) || quantity <= 0 || quantity > 1) {
+				if (Number.isNaN(quantity) || quantity < 0 || quantity > 1) {
 					current.errors.push(`invalid quantity "${quantityRaw}" for ${oreName}`)
 					continue
 				}
