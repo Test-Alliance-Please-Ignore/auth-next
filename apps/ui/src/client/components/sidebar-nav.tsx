@@ -313,13 +313,13 @@ export function SidebarNav({ onNavigate, isSidebarOpen = true, onToggleSidebar }
 				{ label: 'Regions', href: '/moon-scan' },
 				{ label: 'Scanned Moons', href: '/moon-scan/scanned' },
 				{ label: 'Leaderboard', href: '/moon-scan/leaderboard' },
-				...(isSiteAdmin || hasAnyPermission('urn:moons:submit')
+				...(isSiteAdmin || hasAnyPermission('urn:moons:scan:submit')
 					? [
 							{ label: 'Submit Scan', href: '/moon-scan/submit' },
 							{ label: 'My Scans', href: '/moon-scan/my-scans' },
 						]
 					: []),
-				...(isSiteAdmin || hasAnyPermission('urn:moons:validate')
+				...(isSiteAdmin || hasAnyPermission('urn:moons:scan:validate')
 					? [{ label: 'Validation Queue', href: '/moon-scan/queue' }]
 					: []),
 				...(isSiteAdmin || hasAnyPermission('urn:moons:admin')

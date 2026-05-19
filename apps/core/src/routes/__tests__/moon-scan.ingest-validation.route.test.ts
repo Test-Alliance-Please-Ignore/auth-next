@@ -86,7 +86,7 @@ describe('moon-scan ingest sanitization', () => {
 	beforeEach(() => {
 		vi.clearAllMocks()
 		getCachedUserPermissionsMock.mockResolvedValue([
-			{ urn: 'urn:moons:submit' },
+			{ urn: 'urn:moons:scan:submit' },
 		] as any)
 
 		moonScanStub = {

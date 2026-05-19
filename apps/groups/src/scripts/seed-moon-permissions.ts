@@ -15,12 +15,12 @@ const MOON_PERMISSIONS = [
 		description: 'Browse moon list, region map, and system detail pages',
 	},
 	{
-		urn: 'urn:moons:submit',
+		urn: 'urn:moons:scan:submit',
 		name: 'Submit Scans',
 		description: 'Paste and submit moon scan data (TSV from EVE client)',
 	},
 	{
-		urn: 'urn:moons:validate',
+		urn: 'urn:moons:scan:validate',
 		name: 'Validate Scans',
 		description: 'Approve or reject scans in the validation queue; own submissions auto-verify',
 	},

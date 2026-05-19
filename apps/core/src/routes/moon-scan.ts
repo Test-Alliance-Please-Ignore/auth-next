@@ -32,8 +32,8 @@ import type { App, SessionUser } from '../context'
 
 const MOON_URNS = {
 	view: 'urn:moons:view',
-	submit: 'urn:moons:submit',
-	validate: 'urn:moons:validate',
+	submit: 'urn:moons:scan:submit',
+	validate: 'urn:moons:scan:validate',
 	admin: 'urn:moons:admin',
 } as const
 
@@ -821,6 +821,7 @@ moonScanRoutes.get('/scans/mine', async (c) => {
 moonScanRoutes.get('/scans/:id', async (c) => {
 	const user = c.get('user')!
 	const canView = await hasMoonPerm(c.env, user.id, MOON_URNS.view, user.is_admin)
+	const canSubmit = await hasMoonPerm(c.env, user.id, MOON_URNS.submit, user.is_admin)
 	const canValidate = await hasMoonPerm(c.env, user.id, MOON_URNS.validate, user.is_admin)
 	const moonScan = getMoonScanStub(c.env)
 	const scan = await moonScan.getScan(c.req.param('id'))
@@ -828,7 +829,8 @@ moonScanRoutes.get('/scans/:id', async (c) => {
 
 	const owner = isScanOwner(scan, user)
 	const canReadVerified = scan.status === 'verified' && canView
-	if (!canReadVerified && !canValidate && !owner && !user.is_admin) {
+	const canReadOwned = owner && canSubmit
+	if (!canReadVerified && !canValidate && !canReadOwned && !user.is_admin) {
 		return c.json({ error: 'Forbidden' }, 403)
 	}
 
