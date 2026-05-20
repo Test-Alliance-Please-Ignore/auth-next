@@ -15,6 +15,7 @@ import { requireAllianceMember, requireAuth } from '../middleware/session'
 
 import type { EsiTypeResolver } from '@repo/esi'
 import type { EveCorporationData } from '@repo/eve-corporation-data'
+import type { EveTokenStore } from '@repo/eve-token-store'
 import type { Freight } from '@repo/freight'
 import type { App } from '../context'
 
@@ -397,6 +398,98 @@ app.get('/contracts', requireAuth(), requireAllianceMember(), async (c) => {
 			stack: error instanceof Error ? error.stack : undefined,
 		})
 		return c.json({ error: 'Failed to list freight contracts' }, 500)
+	}
+})
+
+/**
+ * POST /freight/contracts/:contractId/open-in-game
+ * Opens the contract window in the player's running EVE client via the
+ * ESI `/ui/openwindow/contract/` endpoint. Targets the user's main character.
+ *
+ * Requires the `esi-ui.open_window.v1` scope (granted by default at login).
+ */
+app.post('/contracts/:contractId/open-in-game', requireAuth(), requireAllianceMember(), async (c) => {
+	const user = c.get('user')!
+	const contractIdParam = c.req.param('contractId')
+
+	const contractId = Number(contractIdParam)
+	if (!Number.isInteger(contractId) || contractId <= 0) {
+		return c.json({ error: 'Invalid contract ID' }, 400)
+	}
+
+	// Resolve the user's main character: explicit mainCharacterId, then the
+	// primary character, then fall back to the first linked character.
+	const mainCharacter =
+		user.characters.find((char) => char.characterId === user.mainCharacterId) ??
+		user.characters.find((char) => char.is_primary) ??
+		user.characters[0]
+
+	if (!mainCharacter) {
+		return c.json({ error: 'No EVE character linked to this account' }, 400)
+	}
+
+	try {
+		const tokenStore = getStub<EveTokenStore>(c.env.EVE_TOKEN_STORE, 'default')
+		// getAccessToken refreshes an expired token; null means no usable token
+		// (revoked, deleted, or — for older logins — missing the ui scope).
+		const accessToken = await tokenStore.getAccessToken(mainCharacter.characterId)
+
+		if (!accessToken) {
+			return c.json(
+				{
+					error: 'token_unavailable',
+					message: `Could not authorize ${mainCharacter.characterName}. Please re-link this character.`,
+				},
+				409
+			)
+		}
+
+		// ESI acts on the logged-in client of the token's character. A 204 means
+		// the request was accepted; the client must be running for it to appear.
+		const esiResponse = await fetch(
+			`https://esi.evetech.net/latest/ui/openwindow/contract/?contract_id=${contractId}`,
+			{
+				method: 'POST',
+				headers: {
+					Authorization: `Bearer ${accessToken}`,
+					'Content-Type': 'application/json',
+				},
+			}
+		)
+
+		if (esiResponse.status === 204) {
+			return c.json({ success: true, characterName: mainCharacter.characterName })
+		}
+
+		if (esiResponse.status === 403) {
+			return c.json(
+				{
+					error: 'scope_missing',
+					message: `${mainCharacter.characterName} has not granted the in-game UI permission. Please re-link this character.`,
+				},
+				409
+			)
+		}
+
+		// 520 / other: ESI reaches no client, or the client is offline.
+		logger.warn('ESI openwindow/contract returned non-204', {
+			status: esiResponse.status,
+			contractId,
+			characterId: mainCharacter.characterId,
+		})
+		return c.json(
+			{
+				error: 'client_unreachable',
+				message: 'Could not reach an online EVE client. Make sure the game is running and logged in on your main character.',
+			},
+			502
+		)
+	} catch (error) {
+		logger.error('Error opening contract in-game:', {
+			error: error instanceof Error ? error.message : String(error),
+			contractId,
+		})
+		return c.json({ error: 'Failed to open contract in-game' }, 500)
 	}
 })
 
