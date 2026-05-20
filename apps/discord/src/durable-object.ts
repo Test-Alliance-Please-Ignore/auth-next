@@ -14,6 +14,7 @@ import type {
 	Discord,
 	DiscordGuildMemberSnapshot,
 	DiscordGuildMembershipDetail,
+	DiscordGuildScheduledEvent,
 	DiscordRegisteredSlashCommand,
 	DiscordSlashCommandDefinition,
 	DiscordTokenResponse,
@@ -21,6 +22,28 @@ import type {
 	SendMessageResult,
 } from '@repo/discord'
 import type { Env } from './context'
+
+/**
+ * Raw shape of a Discord guild scheduled event as returned by the API.
+ * Only the fields we consume are typed.
+ */
+interface DiscordScheduledEventApiResponse {
+	id: string
+	name: string
+	description?: string | null
+	scheduled_start_time: string
+	scheduled_end_time?: string | null
+	entity_metadata?: { location?: string | null } | null
+	status: number
+	user_count?: number | null
+	/** Cover image hash; combine with the event ID to build the CDN URL. */
+	image?: string | null
+	creator?: {
+		id: string
+		username?: string | null
+		global_name?: string | null
+	} | null
+}
 
 /**
  * Discord Durable Object
@@ -1669,6 +1692,55 @@ export class DiscordDO extends DurableObject<Env> implements Discord {
 				success: false,
 				error: error instanceof Error ? error.message : 'Failed to delete slash command',
 			}
+		}
+	}
+
+	/**
+	 * List a guild's scheduled events using the bot token.
+	 *
+	 * Discord is the source of truth for events; this is a read-only call
+	 * used to display events created in the Discord client.
+	 */
+	async listGuildScheduledEvents(guildId: string): Promise<DiscordGuildScheduledEvent[]> {
+		const client = this.createDiscordClient()
+		const raw = await client.get<DiscordScheduledEventApiResponse[]>(
+			DiscordRoutes.guildScheduledEvents(guildId)
+		)
+		return raw.map((event) => this.toDiscordGuildScheduledEvent(guildId, event))
+	}
+
+	/**
+	 * Normalize a raw Discord scheduled-event API response into our shape.
+	 */
+	private toDiscordGuildScheduledEvent(
+		guildId: string,
+		raw: DiscordScheduledEventApiResponse
+	): DiscordGuildScheduledEvent {
+		// Cover image: built from the event ID + image hash, per Discord's CDN scheme.
+		const imageUrl = raw.image
+			? `https://cdn.discordapp.com/guild-events/${raw.id}/${raw.image}.png?size=512`
+			: null
+
+		const creator = raw.creator
+			? {
+					id: raw.creator.id,
+					username: raw.creator.username ?? '',
+					displayName: raw.creator.global_name ?? null,
+				}
+			: null
+
+		return {
+			id: raw.id,
+			guildId,
+			name: raw.name,
+			description: raw.description ?? null,
+			scheduledStartTime: raw.scheduled_start_time,
+			scheduledEndTime: raw.scheduled_end_time ?? null,
+			location: raw.entity_metadata?.location ?? null,
+			status: raw.status,
+			userCount: raw.user_count ?? null,
+			imageUrl,
+			creator,
 		}
 	}
 

@@ -257,6 +257,44 @@ export interface DiscordRegisteredSlashCommand {
 	description: string
 }
 
+/**
+ * The creator of a Discord guild scheduled event.
+ */
+export interface DiscordEventCreator {
+	id: string
+	/** Discord username (e.g. "someuser"). */
+	username: string
+	/** Server/display name when set, otherwise null. */
+	displayName: string | null
+}
+
+/**
+ * A Discord guild scheduled event, as read from the Discord API.
+ *
+ * Discord is the source of truth for events: they are created and edited
+ * in the Discord client. Auth only reads them for display.
+ */
+export interface DiscordGuildScheduledEvent {
+	id: string
+	guildId: string
+	name: string
+	description: string | null
+	/** ISO-8601 start time. */
+	scheduledStartTime: string
+	/** ISO-8601 end time. Null for VOICE/STAGE events. */
+	scheduledEndTime: string | null
+	/** Free-text location for EXTERNAL events; null for channel-based events. */
+	location: string | null
+	/** Discord status: 1 SCHEDULED, 2 ACTIVE, 3 COMPLETED, 4 CANCELED. */
+	status: number
+	/** Number of users subscribed/interested, when available. */
+	userCount: number | null
+	/** Fully-qualified cover image URL, or null when the event has no image. */
+	imageUrl: string | null
+	/** The user who created the event, when available. */
+	creator: DiscordEventCreator | null
+}
+
 export interface Discord {
 	/**
 	 * Search linked core users by Discord username (case-insensitive, partial match)
@@ -426,6 +464,18 @@ export interface Discord {
 	 * Delete a channel message by ID
 	 */
 	deleteMessage(channelId: string, messageId: string): Promise<{ success: boolean; error?: string }>
+
+	/**
+	 * List a guild's scheduled events using the bot token.
+	 *
+	 * Discord is the source of truth for events; auth reads them for display
+	 * only. Events are created and managed in the Discord client.
+	 *
+	 * @param guildId - Discord guild ID
+	 * @returns The guild's scheduled events
+	 */
+	listGuildScheduledEvents(guildId: string): Promise<DiscordGuildScheduledEvent[]>
+
 
 	/**
 	 * Check which guilds a user is a member of using bot token

@@ -28,7 +28,9 @@
 		"ENVIRONMENT": "production",
 		"SENTRY_RELEASE": "unknown",
 		"SENTRY_DSN": "https://8a3d31a3a18e448f97e19e3d9930547d@app.glitchtip.com/13711",
-		"LEGACY_AUTH_CALLBACK_URL": "https://pleaseignore.app/api/auth/legacy-auth/callback"
+		"LEGACY_AUTH_CALLBACK_URL": "https://pleaseignore.app/api/auth/legacy-auth/callback",
+		// Guild ID of the main Discord server; events are read from here.
+		"MAIN_DISCORD_GUILD_ID": "356398105404375041"
 	},
 	"durable_objects": {
 		"bindings": [

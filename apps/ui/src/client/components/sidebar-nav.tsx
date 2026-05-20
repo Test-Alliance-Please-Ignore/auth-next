@@ -2,7 +2,6 @@ import {
 	BookMarked,
 	BookOpen,
 	Briefcase,
-	Building2,
 	ChevronLeft,
 	ChevronDown,
 	ChevronRight,

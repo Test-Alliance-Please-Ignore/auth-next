@@ -82,6 +82,8 @@ export type Env = SharedHonoEnv & {
 	DISCORD_AUDIT_EXCLUDED_USER_IDS?: string
 	/** Shared key for trusted internal legacy-worker operations */
 	LEGACY_INTERNAL_KEY?: string
+	/** Guild ID of the community's main Discord server, used to read scheduled events */
+	MAIN_DISCORD_GUILD_ID?: string
 }
 
 /** Session user data attached to request context */

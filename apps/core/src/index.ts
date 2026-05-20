@@ -27,6 +27,7 @@ import dkpRoutes from './routes/dkp'
 import doctrinesRoutes from './routes/doctrines'
 import entitiesRoutes from './routes/entities'
 import esiRoutes from './routes/esi'
+import eventsRoutes from './routes/events'
 import fleetsRoutes from './routes/fleets'
 import freightRoutes from './routes/freight'
 import fulcrumRoutes from './routes/fulcrum'
@@ -121,6 +122,7 @@ const app = new Hono<App>()
 	.route('/api/discord', discordRoutes)
 	.route('/api/groups', groupsRoutes)
 	.route('/api/broadcasts', broadcastsRoutes)
+	.route('/api/events', eventsRoutes)
 	.route('/api/fleets', fleetsRoutes)
 	.route('/api/freight', freightRoutes)
 	.route('/api/fulcrum', fulcrumRoutes)

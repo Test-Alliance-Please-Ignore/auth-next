@@ -32,6 +32,15 @@ export const DiscordRoutes = {
 	 * GET /guilds/{guildId}/members
 	 */
 	guildMembers: (guildId: string) => `/guilds/${guildId}/members`,
+
+	/**
+	 * Route for guild scheduled events.
+	 * GET /guilds/{guildId}/scheduled-events?with_user_count=true
+	 *
+	 * `with_user_count` makes Discord include the interested-user count.
+	 */
+	guildScheduledEvents: (guildId: string) =>
+		`/guilds/${guildId}/scheduled-events?with_user_count=true`,
 } as const
 
 export type DiscordRoutesType = typeof DiscordRoutes

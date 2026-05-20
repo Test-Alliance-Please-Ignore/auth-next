@@ -5,6 +5,7 @@ import { Link, useNavigate, useSearchParams } from 'react-router-dom'
 import { DiscordCard } from '@/components/discord-card'
 import { LegacyCharacterCard } from '@/components/legacy-character-card'
 import { ServicesCard } from '@/components/services-card'
+import { UpcomingEventsCard } from '@/features/events/components/UpcomingEventsCard'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
@@ -467,6 +468,13 @@ export default function DashboardPage() {
 						</Card>
 					</div>
 				)}
+			</Section>
+
+			<div className="my-8" />
+
+			<Section>
+				{/* Upcoming Events */}
+				<UpcomingEventsCard />
 			</Section>
 
 			<div className="my-8" />
