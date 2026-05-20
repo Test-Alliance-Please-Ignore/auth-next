@@ -36,6 +36,7 @@ type SortBy =
 	| 'metenoxProfit'
 	| 'tataraProfit'
 type SortDir = 'asc' | 'desc'
+type ViewMode = 'grouped' | 'ungrouped'
 
 function RarityBadge({ rarity }: { rarity: OreRarity }) {
 	return (
@@ -100,6 +101,7 @@ export default function ScannedMoonsPage() {
 	const [pageSize, setPageSize] = useState(50)
 	const [sortBy, setSortBy] = useState<SortBy>('moonName')
 	const [sortDir, setSortDir] = useState<SortDir>('asc')
+	const [viewMode, setViewMode] = useState<ViewMode>('grouped')
 	const [collapsedConstellations, setCollapsedConstellations] = useState<Set<string>>(new Set())
 
 	const toggleRarity = (rarity: OreRarity) => {
@@ -322,6 +324,25 @@ export default function ScannedMoonsPage() {
 					}}
 				/>
 
+				{/* Grouped / ungrouped view toggle */}
+				<div className="flex items-center gap-1 rounded-md border bg-card p-1">
+					{(['grouped', 'ungrouped'] as const).map((mode) => (
+						<button
+							key={mode}
+							type="button"
+							onClick={() => setViewMode(mode)}
+							aria-pressed={viewMode === mode}
+							className={`rounded px-2.5 py-1 text-xs font-medium capitalize transition-colors ${
+								viewMode === mode
+									? 'bg-muted text-foreground'
+									: 'text-muted-foreground hover:text-foreground'
+							}`}
+						>
+							{mode}
+						</button>
+					))}
+				</div>
+
 				{!isLoading && data && (
 					<span className="ml-auto flex items-center gap-2 text-xs text-muted-foreground">
 						{isFetching && (
@@ -370,7 +391,9 @@ export default function ScannedMoonsPage() {
 										))}
 									</TableRow>
 								))
-							: groupedItems.map((group) => {
+							: viewMode === 'ungrouped'
+								? (data?.items ?? []).map((moon) => <MoonRow key={moon.moonId} moon={moon} />)
+								: groupedItems.map((group) => {
 									const collapsed = collapsedConstellations.has(group.constellationId)
 									return (
 										<Fragment key={group.constellationId || '_unknown'}>
