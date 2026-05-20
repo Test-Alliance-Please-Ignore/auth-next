@@ -1,6 +1,7 @@
-import { useQuery } from '@tanstack/react-query'
+import { useMutation, useQuery } from '@tanstack/react-query'
 
 import { freightApi } from '@/lib/freight-api'
+import toast from '@/lib/toast'
 
 export const freightContractKeys = {
     all: ['freight-contracts'] as const,
@@ -17,6 +18,26 @@ export function useFreightContracts(filters?: { status?: string }) {
         queryKey: freightContractKeys.list(filters),
         queryFn: () => freightApi.listContracts(filters),
         staleTime: 1000 * 60, // 1 minute
+    })
+}
+
+/**
+ * Open a courier contract in the player's running EVE client.
+ * Surfaces success / failure (e.g. client offline, re-link needed) as toasts.
+ */
+export function useOpenContractInGame() {
+    return useMutation({
+        mutationFn: (contractId: string) => freightApi.openContractInGame(contractId),
+        onSuccess: (result) => {
+            toast.success(`Opening contract in ${result.characterName}'s client`)
+        },
+        onError: (err) => {
+            toast.error(
+                err instanceof Error
+                    ? err.message
+                    : 'Could not open the contract in-game'
+            )
+        },
     })
 }
 

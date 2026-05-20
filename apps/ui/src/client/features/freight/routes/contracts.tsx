@@ -1,7 +1,8 @@
-import { Package } from 'lucide-react'
+import { ExternalLink, Package } from 'lucide-react'
 import { useMemo } from 'react'
 import { MantineReactTable, useMantineReactTable } from 'mantine-react-table'
 
+import { Button } from '@/components/ui/button'
 import { Container } from '@/components/ui/container'
 import {
     mrtPaperProps,
@@ -13,7 +14,7 @@ import {
     mrtTableHeadProps,
     mrtTableProps,
 } from '@/lib/mrt-theme'
-import { useFreightContracts } from '@/hooks/useFreightContracts'
+import { useFreightContracts, useOpenContractInGame } from '@/hooks/useFreightContracts'
 import { usePageTitle } from '@/hooks/usePageTitle'
 
 import { formatISK, formatNumber } from '../utils'
@@ -39,7 +40,7 @@ function formatTimeRemaining(dateExpired: string): string {
     return `${hours} hour${hours !== 1 ? 's' : ''}`
 }
 
-const columns: MRT_ColumnDef<FreightContract>[] = [
+const baseColumns: MRT_ColumnDef<FreightContract>[] = [
     {
         accessorKey: 'startLocationName',
         header: 'Pickup',
@@ -101,8 +102,45 @@ export default function FreightContractsPage() {
     usePageTitle('Open Contracts')
 
     const { data: contracts, isLoading } = useFreightContracts({ status: 'outstanding' })
+    const openInGame = useOpenContractInGame()
 
     const data = useMemo(() => contracts ?? [], [contracts])
+
+    const columns = useMemo<Array<MRT_ColumnDef<FreightContract>>>(
+        () => [
+            ...baseColumns,
+            {
+                id: 'openInGame',
+                header: '',
+                enableSorting: false,
+                size: 110,
+                mantineTableBodyCellProps: {
+                    style: {
+                        textAlign: 'center',
+                        borderBottom: '1px solid hsl(var(--border) / 0.7)',
+                    },
+                },
+                Cell: ({ row }) => {
+                    const { contractId } = row.original
+                    const isPending =
+                        openInGame.isPending && openInGame.variables === contractId
+                    return (
+                        <Button
+                            variant="secondary"
+                            size="sm"
+                            disabled={openInGame.isPending}
+                            onClick={() => openInGame.mutate(contractId)}
+                            title="Open this contract in your EVE client"
+                        >
+                            <ExternalLink className="mr-1.5 h-3.5 w-3.5" />
+                            {isPending ? 'Opening…' : 'In-game'}
+                        </Button>
+                    )
+                },
+            },
+        ],
+        [openInGame]
+    )
 
     const table = useMantineReactTable({
         columns,

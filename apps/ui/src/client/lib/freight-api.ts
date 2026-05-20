@@ -129,6 +129,16 @@ export class FreightApiClient extends ApiClient {
 	}
 
 	/**
+	 * Open a courier contract in the player's running EVE client (via ESI).
+	 * Targets the user's main character.
+	 */
+	async openContractInGame(
+		contractId: string
+	): Promise<{ success: boolean; characterName: string }> {
+		return this.post(`${FREIGHT_API_BASE}/contracts/${contractId}/open-in-game`)
+	}
+
+	/**
 	 * Get courier contract leaderboard
 	 */
 	async getLeaderboard(period?: '30d' | 'all'): Promise<FreightLeaderboard> {
