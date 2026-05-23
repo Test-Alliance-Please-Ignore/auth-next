@@ -7,6 +7,7 @@ import { Card, CardContent } from '@/components/ui/card'
 import { Container } from '@/components/ui/container'
 import { DateRangeInput } from '@/components/ui/date-range-input'
 import { EveTimeDisplay } from '@/components/ui/eve-time-display'
+import { HoverPopover } from '@/components/ui/hover-popover'
 import { PageHeader } from '@/components/ui/page-header'
 import { Select } from '@/components/ui/select'
 import {
@@ -51,6 +52,14 @@ export default function SRPWalletHistoryPage() {
 	const items = data?.items ?? []
 	const total = data?.total ?? 0
 	const hasPagination = Math.ceil(total / pageSize) > 1
+
+	const getAlertReasons = (item: (typeof items)[number]): string[] => {
+		const reasons: string[] = []
+		if (item.hasRecipientMismatch) reasons.push('Recipient mismatch')
+		if ((item.matchingAlertKinds ?? []).includes('payment_mismatch')) reasons.push('Amount mismatch')
+		if ((item.matchingAlertKinds ?? []).includes('payment_missing')) reasons.push('Missing payment (>24h)')
+		return [...new Set(reasons)]
+	}
 
 	const renderPagination = () => (
 		<UserSearchPaginationControls
@@ -138,9 +147,9 @@ export default function SRPWalletHistoryPage() {
 								<TableRow>
 									<TableHead>Date</TableHead>
 									<TableHead>Reason</TableHead>
-								<TableHead>Recipient</TableHead>
-								<TableHead className="text-right">Amount</TableHead>
-								<TableHead>Journal</TableHead>
+									<TableHead>Recipient</TableHead>
+									<TableHead className="text-right">Amount</TableHead>
+									<TableHead>Journal</TableHead>
 								</TableRow>
 							</TableHeader>
 							<TableBody>
@@ -166,14 +175,34 @@ export default function SRPWalletHistoryPage() {
 									items.map((item) => (
 										<TableRow
 											key={`${item.journalId}-${item.entryDate}`}
-											className={item.hasOpenAlert ? 'bg-red-500/10 hover:bg-red-500/15' : undefined}
+											className={
+												item.hasOpenAlert
+													? 'bg-red-900/25 hover:bg-red-900/30 border-l-2 border-l-red-500'
+													: undefined
+											}
 										>
 											<TableCell className="text-sm">
 												<EveTimeDisplay dateStr={item.entryDate} />
 											</TableCell>
 											<TableCell className="max-w-[380px] truncate text-sm">
 												<div className="flex items-center gap-2">
-													{item.hasOpenAlert && <AlertTriangle className="h-3.5 w-3.5 text-red-400" />}
+													{item.hasOpenAlert && (
+														<HoverPopover
+															trigger={<AlertTriangle className="h-3.5 w-3.5 text-red-400" />}
+															align="start"
+															side="top"
+															className="w-64 p-3"
+														>
+															<div className="space-y-1">
+																<p className="text-xs font-semibold text-red-300">Alert Details</p>
+																<ul className="list-disc pl-4 text-xs text-muted-foreground">
+																	{getAlertReasons(item).map((reason) => (
+																		<li key={reason}>{reason}</li>
+																	))}
+																</ul>
+															</div>
+														</HoverPopover>
+													)}
 													{item.linkedRequestId ? (
 														<Link to={`/srp/request/${item.linkedRequestId}`} className="text-primary hover:underline">
 															{item.reason ?? '—'}

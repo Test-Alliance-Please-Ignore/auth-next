@@ -3162,6 +3162,7 @@ export class ApiClient {
 	}): Promise<{
 		items: Array<{
 			linkedRequestId?: string | null
+			hasRecipientMismatch?: boolean
 			journalId: string
 			refType?: string | null
 			amount: string

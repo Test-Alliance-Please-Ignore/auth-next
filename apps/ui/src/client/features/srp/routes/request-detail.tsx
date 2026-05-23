@@ -89,6 +89,7 @@ export default function RequestDetails() {
 		hasPermission('urn:srp:reviewer') ||
 		hasPermission('urn:srp:payer') ||
 		hasPermission('urn:srp:manager')
+	const canOpenHrUserProfile = isAdmin || hasPermission('urn:hr:auditor')
 	const canWithdraw =
 		user?.id === request.userId &&
 		(request.requestStatus === 'pending' || request.requestStatus === 'needs_context')
@@ -225,7 +226,13 @@ export default function RequestDetails() {
 						<div>
 							<div className="text-sm text-muted-foreground">Character</div>
 							<div className="inline-flex items-center gap-2 font-medium">
-								<span>{request.characterName}</span>
+								{canOpenHrUserProfile ? (
+									<Link to={`/hr/users/${request.userId}`} className="text-primary hover:underline">
+										{request.characterName}
+									</Link>
+								) : (
+									<span>{request.characterName}</span>
+								)}
 								<CharacterRoleBadge
 									role={getRequestCharacterRole(request)}
 									mainCharacterName={request.mainCharacterName}
