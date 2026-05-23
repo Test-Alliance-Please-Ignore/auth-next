@@ -326,15 +326,15 @@ export class SrpDO extends DurableObject<Env> implements Srp {
 	async getRequest(requestId: string, userId: string): Promise<SRPRequestResponse | null> {
 		const request = await this.db.query.srpRequests.findFirst({
 			where: eq(srpRequests.id, requestId),
-			with: {
-				comments: {
-					orderBy: desc(srpComments.createdAt),
+				with: {
+					comments: {
+						orderBy: asc(srpComments.createdAt),
+					},
+					history: {
+						orderBy: asc(srpRequestHistory.timestamp),
+						limit: 50,
+					},
 				},
-				history: {
-					orderBy: desc(srpRequestHistory.timestamp),
-					limit: 50,
-				},
-			},
 		})
 
 		if (!request) return null
@@ -721,13 +721,13 @@ export class SrpDO extends DurableObject<Env> implements Srp {
 
 		if (!request) throw new Error('Request not found')
 
-		const comments = await this.db.query.srpComments.findMany({
+			const comments = await this.db.query.srpComments.findMany({
 			where: and(
 				eq(srpComments.requestId, requestId),
 				includeInternal ? undefined : eq(srpComments.visibility, 'public')
 			),
-			orderBy: desc(srpComments.createdAt),
-		})
+				orderBy: asc(srpComments.createdAt),
+			})
 
 		return comments.map((c) => ({
 			id: c.id,
