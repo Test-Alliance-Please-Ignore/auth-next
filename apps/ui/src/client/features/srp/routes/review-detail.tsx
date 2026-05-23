@@ -51,6 +51,7 @@ export default function ReviewRequestDetail() {
 		hasPermission('urn:srp:reviewer') ||
 		hasPermission('urn:srp:payer') ||
 		hasPermission('urn:srp:manager')
+	const canOpenHrUserProfile = isAdmin || hasPermission('urn:hr:auditor')
 	const isSrpStaff =
 		isAdmin ||
 		hasPermission('urn:srp:reviewer') ||
@@ -106,7 +107,13 @@ export default function ReviewRequestDetail() {
 								className="h-5 w-5 rounded-full border border-border/50 object-cover"
 								loading="lazy"
 							/>
-							<span className="font-semibold">{request.characterName}</span>
+							{canOpenHrUserProfile ? (
+								<Link to={`/hr/users/${request.userId}`} className="font-semibold text-primary hover:underline">
+									{request.characterName}
+								</Link>
+							) : (
+								<span className="font-semibold">{request.characterName}</span>
+							)}
 						</span>
 						<CharacterRoleBadge
 							role={getRequestCharacterRole(request)}
@@ -268,7 +275,13 @@ export default function ReviewRequestDetail() {
 											className="h-5 w-5 rounded-full border border-border/50 object-cover"
 											loading="lazy"
 										/>
-										<span>{request.characterName}</span>
+										{canOpenHrUserProfile ? (
+											<Link to={`/hr/users/${request.userId}`} className="text-primary hover:underline">
+												{request.characterName}
+											</Link>
+										) : (
+											<span>{request.characterName}</span>
+										)}
 										<CharacterRoleBadge
 											role={getRequestCharacterRole(request)}
 											mainCharacterName={request.mainCharacterName}
