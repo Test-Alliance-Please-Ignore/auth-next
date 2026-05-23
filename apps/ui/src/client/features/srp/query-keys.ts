@@ -39,6 +39,15 @@ export const srpKeys = {
 		[...srpKeys.payments(), 'pending-total', params] as const,
 	paymentAlerts: (params?: { includeAcknowledged?: boolean; limit?: number; offset?: number }) =>
 		[...srpKeys.payments(), 'alerts', params] as const,
+	walletHistory: (params?: {
+		reason?: string
+		senderId?: string
+		recipientId?: string
+		dateFrom?: string
+		dateTo?: string
+		limit?: number
+		offset?: number
+	}) => [...srpKeys.payments(), 'wallet-history', params] as const,
 
 	// Comments
 	comments: (requestId: string, includeInternal: boolean) =>

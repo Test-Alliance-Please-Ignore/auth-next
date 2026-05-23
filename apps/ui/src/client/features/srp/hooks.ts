@@ -784,6 +784,21 @@ export function useAcknowledgeSrpPaymentMismatchAlert() {
 	})
 }
 
+export function useSrpWalletHistory(params: {
+	reason?: string
+	recipientId?: string
+	dateFrom?: string
+	dateTo?: string
+	limit?: number
+	offset?: number
+}) {
+	return useQuery({
+		queryKey: srpKeys.walletHistory(params),
+		queryFn: () => api.getSrpWalletHistory(params),
+		staleTime: 1000 * 30,
+	})
+}
+
 export function useUpdateSRPConfig() {
 	const queryClient = useQueryClient()
 	return useMutation({

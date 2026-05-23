@@ -84,6 +84,10 @@ export function resolveSrpNavState(input: ResolveSrpNavStateInput): ResolveSrpNa
 								href: '/srp/payments',
 								badge: paymentQueueCount > 0 ? paymentQueueCount : undefined,
 							},
+							{
+								label: 'Wallet History',
+								href: '/srp/wallet-history',
+							},
 						]
 					: []),
 				...(canSeeSrpAlerts

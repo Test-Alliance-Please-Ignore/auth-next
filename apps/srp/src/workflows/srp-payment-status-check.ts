@@ -54,6 +54,7 @@ type DiscordDirectMessenger = {
 const SYSTEM_ACTOR_USER_ID = '00000000-0000-0000-0000-000000000000'
 const SYSTEM_ACTOR_CHARACTER_NAME = 'SRP Payment Monitor'
 const PAYMENT_MISMATCH_HISTORY_ACTION = 'payment_amount_mismatch_detected'
+const PAYMENT_MISSING_HISTORY_ACTION = 'payment_missing_detected'
 const PAYMENT_SCAN_CURSOR_ACTION = 'payment_scan_cursor_updated'
 const MS_PER_DAY = 86_400_000
 
@@ -209,7 +210,7 @@ export class SrpPaymentStatusCheckWorkflow extends WorkflowEntrypoint<
 						and amount::numeric <> 0
 						and ref_type = 'corporation_account_withdrawal'
 						and reason is not null
-						and btrim(reason) = ${reasonNeedle}
+						and reason ilike ${`%${reasonNeedle}%`}
 					order by date desc
 					limit 250`
 				)
@@ -265,8 +266,6 @@ export class SrpPaymentStatusCheckWorkflow extends WorkflowEntrypoint<
 
 		const recipientMismatchEntry = rowsWithAmounts.find(
 			(row) =>
-				approvedAmount !== null &&
-				absBigInt(row.parsedAmount) === absBigInt(approvedAmount) &&
 				row.entry.secondPartyId !== request.characterId
 		)?.entry
 
@@ -514,6 +513,144 @@ export class SrpPaymentStatusCheckWorkflow extends WorkflowEntrypoint<
 		}
 
 		if (!matchedEntry) {
+			const paymentDate = request.paymentDate ? new Date(request.paymentDate) : null
+			const paymentDateMs = paymentDate?.getTime()
+			const nowMs = Date.now()
+			const isOverdueMissingPayment =
+				typeof paymentDateMs === 'number' &&
+				Number.isFinite(paymentDateMs) &&
+				nowMs - paymentDateMs > MS_PER_DAY
+
+			if (isOverdueMissingPayment) {
+				const syntheticJournalId = `missing-payment-${request.id}`
+				const [existingMissingAlert] = (
+					await db.execute<ExistingPaymentAlertRow>(
+						sql`select id::text as "id"
+							from srp_payment_alerts
+							where request_id = ${request.id}
+								and kind = 'payment_missing'
+								and journal_id = ${syntheticJournalId}
+							limit 1`
+					)
+				).rows
+
+				let paymentAlertId: string
+				if (existingMissingAlert) {
+					await db.execute(
+						sql`update srp_payment_alerts
+							set
+								state = 'open',
+								expected_amount = ${request.approvedAmount ?? '0'},
+								observed_amount = '0',
+								expected_recipient_character_id = ${request.characterId},
+								expected_recipient_character_name = ${request.characterName},
+								actual_recipient_character_id = null,
+								actual_recipient_character_name = null,
+								actual_payer_id = null,
+								actual_payer_name = null,
+								reason = ${`No matching wallet transaction found within 24 hours of payment_pending for ${reasonNeedle}`},
+								payment_processor_corporation_id = ${processorCorporationId},
+								metadata = ${JSON.stringify({
+									alertType: 'payment_missing',
+									paymentDate: request.paymentDate ?? null,
+									expectedReason: reasonNeedle,
+									thresholdHours: 24,
+									matchedTransactionCount: walletMatches.length,
+								})}::jsonb,
+								last_seen_at = now()
+							where id = ${existingMissingAlert.id}::uuid`
+					)
+					paymentAlertId = existingMissingAlert.id
+				} else {
+					const [insertedMissingAlert] = (
+						await db.execute<ExistingPaymentAlertRow>(
+							sql`insert into srp_payment_alerts (
+									request_id,
+									kind,
+									state,
+									journal_id,
+									expected_amount,
+									observed_amount,
+									expected_recipient_character_id,
+									expected_recipient_character_name,
+									actual_recipient_character_id,
+									actual_recipient_character_name,
+									actual_payer_id,
+									actual_payer_name,
+									reason,
+									payment_processor_corporation_id,
+									metadata
+								) values (
+									${request.id},
+									'payment_missing',
+									'open',
+									${syntheticJournalId},
+									${request.approvedAmount ?? '0'},
+									'0',
+									${request.characterId},
+									${request.characterName},
+									null,
+									null,
+									null,
+									null,
+									${`No matching wallet transaction found within 24 hours of payment_pending for ${reasonNeedle}`},
+									${processorCorporationId},
+									${JSON.stringify({
+										alertType: 'payment_missing',
+										paymentDate: request.paymentDate ?? null,
+										expectedReason: reasonNeedle,
+										thresholdHours: 24,
+										matchedTransactionCount: walletMatches.length,
+									})}::jsonb
+								)
+								returning id::text as "id"`
+						)
+					).rows
+					if (!insertedMissingAlert) throw new Error('Failed to persist SRP missing payment alert')
+					paymentAlertId = insertedMissingAlert.id
+				}
+
+				const [existingMissingEvent] = (
+					await db.execute<ExistingMismatchHistoryRow>(
+						sql`select id::text as "id"
+							from srp_request_history
+							where request_id = ${request.id}
+								and action = ${PAYMENT_MISSING_HISTORY_ACTION}
+								and metadata->>'paymentAlertId' = ${paymentAlertId}
+							limit 1`
+					)
+				).rows
+
+				if (!existingMissingEvent) {
+					await db.execute(
+						sql`insert into srp_request_history (
+								request_id,
+								actor_user_id,
+								actor_character_name,
+								action,
+								visibility,
+								metadata
+							) values (
+								${request.id},
+								${SYSTEM_ACTOR_USER_ID}::uuid,
+								${SYSTEM_ACTOR_CHARACTER_NAME},
+								${PAYMENT_MISSING_HISTORY_ACTION},
+								'internal',
+								${JSON.stringify({
+									paymentAlertId,
+									expectedAmount: request.approvedAmount ?? '0',
+									expectedRecipientCharacterId: request.characterId,
+									expectedRecipientCharacterName: request.characterName,
+									expectedReason: reasonNeedle,
+									paymentDate: request.paymentDate ?? null,
+									thresholdHours: 24,
+									matchedTransactionCount: walletMatches.length,
+								})}::jsonb
+							)`
+					)
+				}
+			}
+
 			console.info('[SRP Payment Workflow] No matching wallet transaction found', {
 				requestId,
 				workflowInstanceId,

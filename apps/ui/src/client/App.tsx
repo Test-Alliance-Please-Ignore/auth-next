@@ -84,6 +84,7 @@ const SRPRequestDetails = lazy(() => import('./features/srp/routes/request-detai
 const SRPReview = lazy(() => import('./features/srp/routes/review'))
 const SRPReviewDetail = lazy(() => import('./features/srp/routes/review-detail'))
 const SRPPayments = lazy(() => import('./features/srp/routes/payments'))
+const SRPWalletHistory = lazy(() => import('./features/srp/routes/wallet-history'))
 const SRPAlerts = lazy(() => import('./features/srp/routes/alerts'))
 const SRPPolicies = lazy(() => import('./features/srp/routes/policies'))
 
@@ -511,6 +512,14 @@ export default function App() {
 								element={
 									<Suspense fallback={<LoadingPage />}>
 										<SRPAlerts />
+									</Suspense>
+								}
+							/>
+							<Route
+								path="/srp/wallet-history"
+								element={
+									<Suspense fallback={<LoadingPage />}>
+										<SRPWalletHistory />
 									</Suspense>
 								}
 							/>
