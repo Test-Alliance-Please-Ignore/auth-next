@@ -548,7 +548,10 @@ export class HrRoleService {
 			const leadershipRole = await this.getLeadershipRoleForCorporation(userId, corporationId)
 			if (minRole === 'hr_admin' && leadershipRole === 'hr_admin') {
 				corporationIds.add(corporationId)
-			} else if (minRole === 'hr_reviewer' && leadershipRole === 'hr_admin') {
+			} else if (
+				minRole === 'hr_reviewer' &&
+				(leadershipRole === 'hr_admin' || leadershipRole === 'hr_reviewer')
+			) {
 				corporationIds.add(corporationId)
 			}
 		}

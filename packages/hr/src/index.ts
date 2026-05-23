@@ -14,6 +14,7 @@ export const APPLICATION_STATUSES = [
 	'pending',
 	'under_review',
 	'accepted',
+	'completed',
 	'rejected',
 	'withdrawn',
 ] as const
@@ -389,6 +390,7 @@ export interface ApplicationListResult {
 		pending: number
 		under_review: number
 		accepted: number
+		completed: number
 		rejected: number
 		withdrawn: number
 	}

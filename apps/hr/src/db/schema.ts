@@ -43,10 +43,10 @@ export const applications = pgTable(
 		characterName: varchar('character_name', { length: 255 }).notNull(),
 		/** Application text from the user */
 		applicationText: text('application_text').notNull(),
-		/** Status: pending, under_review, accepted, rejected, withdrawn */
+		/** Status: pending, under_review, accepted, completed, rejected, withdrawn */
 		status: varchar('status', {
 			length: 50,
-			enum: ['pending', 'under_review', 'accepted', 'rejected', 'withdrawn'],
+			enum: ['pending', 'under_review', 'accepted', 'completed', 'rejected', 'withdrawn'],
 		})
 			.notNull()
 			.default('pending'),
