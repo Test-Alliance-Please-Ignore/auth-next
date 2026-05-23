@@ -40,6 +40,10 @@ type ExistingPaymentAlertRow = {
 	id: string
 }
 
+type ExistingScanCursorRow = {
+	cursorDate: string | null
+}
+
 type DiscordDirectMessenger = {
 	sendDirectMessage(
 		coreUserId: string,
@@ -50,6 +54,7 @@ type DiscordDirectMessenger = {
 const SYSTEM_ACTOR_USER_ID = '00000000-0000-0000-0000-000000000000'
 const SYSTEM_ACTOR_CHARACTER_NAME = 'SRP Payment Monitor'
 const PAYMENT_MISMATCH_HISTORY_ACTION = 'payment_amount_mismatch_detected'
+const PAYMENT_SCAN_CURSOR_ACTION = 'payment_scan_cursor_updated'
 const MS_PER_DAY = 86_400_000
 
 function formatISK(value: string | number, options?: { showDecimals?: boolean }): string {
@@ -158,6 +163,23 @@ export class SrpPaymentStatusCheckWorkflow extends WorkflowEntrypoint<
 
 		const approvedAmount = parseAmountToBigInt(request.approvedAmount)
 		const reasonNeedle = buildKillmailReasonNeedle(request.id)
+		const db = createDb(this.env.DATABASE_URL)
+
+		const [existingCursor] = (
+			await db.execute<ExistingScanCursorRow>(
+				sql`select metadata->>'cursorDate' as "cursorDate"
+					from srp_request_history
+					where request_id = ${request.id}
+						and action = ${PAYMENT_SCAN_CURSOR_ACTION}
+					order by timestamp desc
+					limit 1`
+			)
+		).rows
+
+		const existingCursorDate =
+			existingCursor?.cursorDate && !Number.isNaN(Date.parse(existingCursor.cursorDate))
+				? new Date(existingCursor.cursorDate)
+				: null
 
 		const walletMatches = await step.do(
 			'find-wallet-journal-matches',
@@ -166,13 +188,13 @@ export class SrpPaymentStatusCheckWorkflow extends WorkflowEntrypoint<
 				timeout: '30 seconds',
 			},
 			async () => {
-				const db = createDb(this.env.DATABASE_URL)
 				const paymentDate = request.paymentDate ? new Date(request.paymentDate) : null
 				const paymentDateMs = paymentDate?.getTime()
-				const fromDate =
+				const fallbackFromDate =
 					typeof paymentDateMs === 'number' && Number.isFinite(paymentDateMs)
 						? new Date(paymentDateMs - MS_PER_DAY)
 						: new Date(request.createdAt)
+				const fromDate = existingCursorDate ?? fallbackFromDate
 				const result = await db.execute<WalletJournalMatchRow>(
 					sql`select
 						journal_id::text as "journalId",
@@ -194,6 +216,37 @@ export class SrpPaymentStatusCheckWorkflow extends WorkflowEntrypoint<
 				return result.rows ?? []
 			}
 		)
+
+		const maxScannedEntryDate =
+			walletMatches.length > 0
+				? walletMatches.reduce(
+						(latest, row) => (row.entryDate > latest ? row.entryDate : latest),
+						walletMatches[0].entryDate
+					)
+				: null
+		const nextCursorDate = maxScannedEntryDate ?? new Date()
+		if (!existingCursorDate || nextCursorDate.getTime() > existingCursorDate.getTime()) {
+			await db.execute(
+				sql`insert into srp_request_history (
+						request_id,
+						actor_user_id,
+						actor_character_name,
+						action,
+						visibility,
+						metadata
+					) values (
+						${request.id},
+						${SYSTEM_ACTOR_USER_ID}::uuid,
+						${SYSTEM_ACTOR_CHARACTER_NAME},
+						${PAYMENT_SCAN_CURSOR_ACTION},
+						'internal',
+						${JSON.stringify({
+							cursorDate: nextCursorDate.toISOString(),
+							scannedRows: walletMatches.length,
+						})}::jsonb
+					)`
+			)
+		}
 
 		const rowsWithAmounts = walletMatches
 			.map((entry) => ({
@@ -224,7 +277,6 @@ export class SrpPaymentStatusCheckWorkflow extends WorkflowEntrypoint<
 		const anomalyEntry = recipientMismatchEntry ?? amountMismatchEntry
 
 		if (!matchedEntry && anomalyEntry) {
-			const db = createDb(this.env.DATABASE_URL)
 			const mismatchReason = anomalyEntry.reason ?? reasonNeedle
 			const srpGroupId = config?.srpGroupId?.trim() ?? ''
 			const isRecipientMismatch = Boolean(recipientMismatchEntry)
@@ -256,7 +308,6 @@ export class SrpPaymentStatusCheckWorkflow extends WorkflowEntrypoint<
 				await db.execute(
 					sql`update srp_payment_alerts
 						set
-							state = 'open',
 							kind = 'payment_mismatch',
 							expected_amount = ${request.approvedAmount ?? '0'},
 							observed_amount = ${anomalyEntry.amount},
@@ -273,10 +324,7 @@ export class SrpPaymentStatusCheckWorkflow extends WorkflowEntrypoint<
 								expectedRecipientCharacterId: request.characterId,
 								actualRecipientCharacterId: anomalyEntry.secondPartyId ?? null,
 							})}::jsonb,
-							last_seen_at = now(),
-							acknowledged_at = null,
-							acknowledged_by_user_id = null,
-							acknowledged_by_character_name = null
+							last_seen_at = now()
 						where id = ${existingAlert.id}::uuid`
 				)
 				paymentAlertId = existingAlert.id
