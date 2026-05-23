@@ -54,6 +54,7 @@ const ReviewQueueStatusQuerySchema = z.enum([
 ])
 const RequestSearchFieldQuerySchema = z.enum(['character', 'ship', 'system'])
 const WalletHistorySearchFieldQuerySchema = z.enum(['reason', 'recipient'])
+const SRP_REQUEST_ID_IN_REASON_REGEX = /KM#(\d+)/i
 
 /**
  * Permission check cache - 15 second TTL
@@ -1642,7 +1643,7 @@ srp.get('/payments/wallet-history', async (c) => {
 			rows
 				.map((row) => {
 					const text = row.reason ?? ''
-					const match = text.match(/KM#(\d+)/i)
+					const match = text.match(SRP_REQUEST_ID_IN_REASON_REGEX)
 					return match?.[1] ?? null
 				})
 				.filter((value): value is string => Boolean(value))
@@ -1684,14 +1685,21 @@ srp.get('/payments/wallet-history', async (c) => {
 
 	return c.json({
 		items: rows.map((row) => ({
-			linkedRequestId: (() => {
+			hasRecipientMismatch: (() => {
 				const reasonText = row.reason ?? ''
-				const match = reasonText.match(/KM#(\d+)/i)
-				if (!match?.[1]) return null
+				const match = reasonText.match(SRP_REQUEST_ID_IN_REASON_REGEX)
+				if (!match?.[1]) return false
 				const requestId = match[1]
 				const requestCharacterId = requestById.get(requestId)
-				if (!requestCharacterId) return null
-				return row.recipientId && row.recipientId === requestCharacterId ? requestId : null
+				if (!requestCharacterId || !row.recipientId) return false
+				return row.recipientId !== requestCharacterId
+			})(),
+			linkedRequestId: (() => {
+				const reasonText = row.reason ?? ''
+				const match = reasonText.match(SRP_REQUEST_ID_IN_REASON_REGEX)
+				if (!match?.[1]) return null
+				const requestId = match[1]
+				return requestById.has(requestId) ? requestId : null
 			})(),
 			journalId: row.journalId,
 			refType: row.refType,
@@ -1704,7 +1712,17 @@ srp.get('/payments/wallet-history', async (c) => {
 					? row.entryDate.toISOString()
 					: new Date(String(row.entryDate)).toISOString(),
 			matchingAlertKinds: alertKindsByJournalId.get(row.journalId) ?? [],
-			hasOpenAlert: (alertKindsByJournalId.get(row.journalId) ?? []).length > 0,
+			hasOpenAlert:
+				(alertKindsByJournalId.get(row.journalId) ?? []).length > 0 ||
+				(() => {
+					const reasonText = row.reason ?? ''
+					const match = reasonText.match(SRP_REQUEST_ID_IN_REASON_REGEX)
+					if (!match?.[1]) return false
+					const requestId = match[1]
+					const requestCharacterId = requestById.get(requestId)
+					if (!requestCharacterId || !row.recipientId) return false
+					return row.recipientId !== requestCharacterId
+				})(),
 		})),
 		total,
 		limit,
