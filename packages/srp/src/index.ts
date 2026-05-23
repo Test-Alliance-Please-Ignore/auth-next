@@ -530,7 +530,7 @@ export interface SRPConfigResponse {
 export interface SRPPaymentMismatchAlert {
 	id: string
 	requestId: string
-	kind: 'payment_mismatch'
+	kind: 'payment_mismatch' | 'payment_missing'
 	state: 'open' | 'acknowledged'
 	journalId: string
 	expectedAmount: string

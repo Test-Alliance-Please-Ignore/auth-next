@@ -1,7 +1,7 @@
 import { Hono } from 'hono'
 import { z } from 'zod'
 
-import { and, desc, eq, ilike, inArray, or } from '@repo/db-utils'
+import { and, desc, eq, ilike, inArray, or, sql } from '@repo/db-utils'
 import { getStub } from '@repo/do-utils'
 import { TimeCache } from '@repo/hono-helpers'
 import {
@@ -23,6 +23,7 @@ import { requireAllianceMember } from '../middleware/session'
 import type { Doctrines, FittingWithItems } from '@repo/doctrines'
 import type { EveCharacterData } from '@repo/eve-character-data'
 import type { EveTokenStore } from '@repo/eve-token-store'
+import type { EsiTypeResolver } from '@repo/esi'
 import type { LossWithSRPStatus, SRPCommentResponse, SRPRequestResponse, Srp } from '@repo/srp'
 import type { Universe } from '@repo/universe'
 import type { App } from '../context'
@@ -52,6 +53,7 @@ const ReviewQueueStatusQuerySchema = z.enum([
 	'paid',
 ])
 const RequestSearchFieldQuerySchema = z.enum(['character', 'ship', 'system'])
+const WalletHistorySearchFieldQuerySchema = z.enum(['reason', 'recipient'])
 
 /**
  * Permission check cache - 15 second TTL
@@ -1551,6 +1553,251 @@ srp.get('/payments/pending-total', async (c) => {
 	const pendingPayoutTotal = await srpStub.getPendingPayoutTotal(corporationId)
 
 	return c.json({ pendingPayoutTotal })
+})
+
+/**
+ * Wallet history for configured SRP payment processor corporation
+ * GET /api/srp/payments/wallet-history?reason=&recipientId=&dateFrom=&dateTo=&limit=50&offset=0
+ *
+ * Requires payer-or-higher permissions
+ */
+srp.get('/payments/wallet-history', async (c) => {
+	const user = c.get('user')!
+	const canPay = await hasSrpTierPermission(c.env, user.id, 'payer', user.is_admin)
+	if (!canPay) return c.json({ error: 'Requires payer-or-higher permissions' }, 403)
+
+	const reason = c.req.query('reason')?.trim()
+	const recipientId = c.req.query('recipientId')?.trim()
+	const dateFrom = c.req.query('dateFrom')?.trim()
+	const dateTo = c.req.query('dateTo')?.trim()
+	const limit = c.req.query('limit') ? Number.parseInt(c.req.query('limit')!, 10) : 50
+	const offset = c.req.query('offset') ? Number.parseInt(c.req.query('offset')!, 10) : 0
+
+	if (!Number.isFinite(limit) || limit < 1 || limit > 200) {
+		return c.json({ error: 'limit must be between 1 and 200' }, 400)
+	}
+	if (!Number.isFinite(offset) || offset < 0) {
+		return c.json({ error: 'offset must be >= 0' }, 400)
+	}
+
+	const srpStub = getStub<Srp>(c.env.SRP, getRequestId(c))
+	const config = await srpStub.getConfig()
+	const processorCorporationId = config?.paymentProcessorCorporationId?.trim() ?? ''
+	if (!processorCorporationId) {
+		return c.json({ error: 'SRP payment processor corporation is not configured' }, 400)
+	}
+
+	const db = c.get('db')
+	if (!db) return c.json({ error: 'Database unavailable' }, 500)
+
+	const whereParts = [
+		sql`corporation_id = ${processorCorporationId}`,
+		sql`ref_type = 'corporation_account_withdrawal'`,
+		sql`exists (
+			select 1
+			from user_characters recipient_char
+			where recipient_char.character_id = second_party_id
+		)`,
+	]
+	if (reason) whereParts.push(sql`reason ilike ${`%${reason}%`}`)
+	if (recipientId) whereParts.push(sql`second_party_id = ${recipientId}`)
+	if (dateFrom) whereParts.push(sql`date >= ${dateFrom.includes('T') ? new Date(dateFrom) : new Date(`${dateFrom}T00:00:00.000Z`)}`)
+	if (dateTo) whereParts.push(sql`date <= ${dateTo.includes('T') ? new Date(dateTo) : new Date(`${dateTo}T23:59:59.999Z`)}`)
+	const whereClause = sql.join(whereParts, sql` and `)
+
+	const [rowsResult, countResult] = await Promise.all([
+		db.execute<{
+			journalId: string
+			refType: string | null
+			amount: string
+			reason: string | null
+			recipientId: string | null
+			entryDate: Date
+		}>(
+			sql`select
+				journal_id::text as "journalId",
+				ref_type as "refType",
+				amount as "amount",
+				reason as "reason",
+				second_party_id as "recipientId",
+				date as "entryDate"
+			from corporation_wallet_journal
+			where ${whereClause}
+			order by date desc
+			limit ${limit}
+			offset ${offset}`
+		),
+		db.execute<{ total: number }>(
+			sql`select cast(count(*) as integer) as "total"
+				from corporation_wallet_journal
+				where ${whereClause}`
+		),
+	])
+
+	const rows = rowsResult.rows ?? []
+	const total = countResult.rows?.[0]?.total ?? 0
+	const journalIds = [...new Set(rows.map((row) => row.journalId))]
+	const kmRequestIds = [
+		...new Set(
+			rows
+				.map((row) => {
+					const text = row.reason ?? ''
+					const match = text.match(/KM#(\d+)/i)
+					return match?.[1] ?? null
+				})
+				.filter((value): value is string => Boolean(value))
+		),
+	]
+
+	const [matchingRequestsResult, paymentAlertsResult] = await Promise.all([
+		kmRequestIds.length > 0
+			? db.execute<{ id: string; characterId: string }>(
+					sql`select id::text as "id", character_id as "characterId"
+						from srp_requests
+						where id in ${sql`(${sql.join(kmRequestIds.map((id) => sql`${id}`), sql`,`)})`}`
+				)
+			: Promise.resolve({ rows: [] as Array<{ id: string; characterId: string }> }),
+		journalIds.length > 0
+			? db.execute<{ journalId: string; kind: string; state: string }>(
+					sql`select journal_id::text as "journalId", kind, state
+						from srp_payment_alerts
+						where journal_id in ${sql`(${sql.join(journalIds.map((id) => sql`${id}`), sql`,`)})`}`
+				)
+			: Promise.resolve({ rows: [] as Array<{ journalId: string; kind: string; state: string }> }),
+	])
+	const requestById = new Map(
+		(matchingRequestsResult.rows ?? []).map((row) => [row.id, row.characterId])
+	)
+	const alertKindsByJournalId = new Map<string, string[]>()
+	for (const row of paymentAlertsResult.rows ?? []) {
+		const existing = alertKindsByJournalId.get(row.journalId) ?? []
+		if (row.state === 'open' && !existing.includes(row.kind)) {
+			existing.push(row.kind)
+			alertKindsByJournalId.set(row.journalId, existing)
+		}
+	}
+
+	const idsToResolve = [...new Set(rows.map((row) => row.recipientId).filter((id): id is string => Boolean(id)))]
+	const resolver = getStub<EsiTypeResolver>(c.env.ESI_TYPE_RESOLVER, 'global')
+	const resolvedNames: Record<string, string> =
+		idsToResolve.length > 0 ? await resolver.resolveIds(idsToResolve).catch(() => ({})) : {}
+
+	return c.json({
+		items: rows.map((row) => ({
+			linkedRequestId: (() => {
+				const reasonText = row.reason ?? ''
+				const match = reasonText.match(/KM#(\d+)/i)
+				if (!match?.[1]) return null
+				const requestId = match[1]
+				const requestCharacterId = requestById.get(requestId)
+				if (!requestCharacterId) return null
+				return row.recipientId && row.recipientId === requestCharacterId ? requestId : null
+			})(),
+			journalId: row.journalId,
+			refType: row.refType,
+			amount: row.amount,
+			reason: row.reason,
+			recipientId: row.recipientId,
+			recipientName: row.recipientId ? (resolvedNames[row.recipientId] ?? null) : null,
+			entryDate:
+				row.entryDate instanceof Date
+					? row.entryDate.toISOString()
+					: new Date(String(row.entryDate)).toISOString(),
+			matchingAlertKinds: alertKindsByJournalId.get(row.journalId) ?? [],
+			hasOpenAlert: (alertKindsByJournalId.get(row.journalId) ?? []).length > 0,
+		})),
+		total,
+		limit,
+		offset,
+	})
+})
+
+/**
+ * Search values for SRP wallet history filters
+ * GET /api/srp/payments/wallet-history/search-values?field=recipient|reason&q=...
+ *
+ * Requires payer-or-higher permissions
+ */
+srp.get('/payments/wallet-history/search-values', async (c) => {
+	const user = c.get('user')!
+	const canPay = await hasSrpTierPermission(c.env, user.id, 'payer', user.is_admin)
+	if (!canPay) return c.json({ error: 'Requires payer-or-higher permissions' }, 403)
+
+	const parsedField = WalletHistorySearchFieldQuerySchema.safeParse(c.req.query('field'))
+	if (!parsedField.success) return c.json({ error: 'Invalid search field' }, 400)
+	const field = parsedField.data
+	const q = c.req.query('q')?.trim() ?? ''
+	if (q.length < 2) return c.json({ values: [] })
+
+	const srpStub = getStub<Srp>(c.env.SRP, getRequestId(c))
+	const config = await srpStub.getConfig()
+	const processorCorporationId = config?.paymentProcessorCorporationId?.trim() ?? ''
+	if (!processorCorporationId) {
+		return c.json({ error: 'SRP payment processor corporation is not configured' }, 400)
+	}
+
+	const db = c.get('db')
+	if (!db) return c.json({ error: 'Database unavailable' }, 500)
+
+	if (field === 'reason') {
+		const result = await db.execute<{ value: string }>(
+			sql`select distinct reason as "value"
+				from corporation_wallet_journal
+				where corporation_id = ${processorCorporationId}
+					and ref_type = 'corporation_account_withdrawal'
+					and exists (
+						select 1
+						from user_characters recipient_char
+						where recipient_char.character_id = second_party_id
+					)
+					and reason is not null
+					and reason ilike ${`%${q}%`}
+				order by "value" asc
+				limit 25`
+		)
+		return c.json({
+			values: (result.rows ?? [])
+				.map((row) => row.value)
+				.filter((value): value is string => typeof value === 'string' && value.length > 0)
+				.map((value) => ({ value, label: value })),
+		})
+	}
+
+	const result = await db.execute<{ value: string }>(
+		sql`select distinct wallet_ids."value"
+			from corporation_wallet_journal as wj
+			cross join lateral (select wj.second_party_id::text as "value") as wallet_ids
+			left join user_characters uc on uc.character_id = wallet_ids."value"
+			where wj.corporation_id = ${processorCorporationId}
+				and wj.ref_type = 'corporation_account_withdrawal'
+				and exists (
+					select 1
+					from user_characters recipient_char
+					where recipient_char.character_id = wj.second_party_id
+				)
+				and wallet_ids."value" is not null
+				and (
+					wallet_ids."value" ilike ${`%${q}%`}
+					or uc.character_name ilike ${`%${q}%`}
+				)
+			order by wallet_ids."value" asc
+			limit 25`
+	)
+	const values = (result.rows ?? [])
+		.map((row) => row.value)
+		.filter((value): value is string => typeof value === 'string' && value.length > 0)
+
+	const resolver = getStub<EsiTypeResolver>(c.env.ESI_TYPE_RESOLVER, 'global')
+	const resolvedNames: Record<string, string> =
+		values.length > 0 ? await resolver.resolveIds(values).catch(() => ({})) : {}
+
+	return c.json({
+		values: values.map((value) => ({
+			value,
+			label: resolvedNames[value] ?? value,
+			description: resolvedNames[value] ? value : undefined,
+		})),
+	})
 })
 
 /**

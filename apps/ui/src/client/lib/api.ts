@@ -3152,6 +3152,55 @@ export class ApiClient {
 		return this.get(`/srp/payments/pending-total${query ? `?${query}` : ''}`)
 	}
 
+	async getSrpWalletHistory(params?: {
+		reason?: string
+		recipientId?: string
+		dateFrom?: string
+		dateTo?: string
+		limit?: number
+		offset?: number
+	}): Promise<{
+		items: Array<{
+			linkedRequestId?: string | null
+			journalId: string
+			refType?: string | null
+			amount: string
+			reason?: string | null
+			recipientId?: string | null
+			recipientName?: string | null
+			entryDate: string
+			matchingAlertKinds?: string[]
+			hasOpenAlert?: boolean
+		}>
+		total: number
+		limit: number
+		offset: number
+	}> {
+		const searchParams = new URLSearchParams()
+		if (params?.reason) searchParams.set('reason', params.reason)
+		if (params?.recipientId) searchParams.set('recipientId', params.recipientId)
+		if (params?.dateFrom) searchParams.set('dateFrom', params.dateFrom)
+		if (params?.dateTo) searchParams.set('dateTo', params.dateTo)
+		if (params?.limit !== undefined) searchParams.set('limit', String(params.limit))
+		if (params?.offset !== undefined) searchParams.set('offset', String(params.offset))
+
+		const query = searchParams.toString()
+		return this.get(`/srp/payments/wallet-history${query ? `?${query}` : ''}`)
+	}
+
+	async searchSrpWalletHistoryValues(params: {
+		field: 'reason' | 'recipient'
+		query: string
+	}): Promise<Array<{ value: string; label: string; description?: string }>> {
+		const searchParams = new URLSearchParams()
+		searchParams.set('field', params.field)
+		searchParams.set('q', params.query)
+		const result = await this.get<{ values: Array<{ value: string; label: string; description?: string }> }>(
+			`/srp/payments/wallet-history/search-values?${searchParams.toString()}`
+		)
+		return result.values ?? []
+	}
+
 	async getSrpPaymentMismatchAlerts(params?: {
 		includeAcknowledged?: boolean
 		limit?: number
