@@ -145,18 +145,13 @@ export class HrDO extends DurableObject<Env> implements Hr {
 	): Promise<Application[]> {
 		// Get user's HR corporations for authorization
 		const userHrCorporations = await this.hrRoleService.getUserHrCorporations(userId)
-		const userHrReviewerCorporations =
-			access.isAdmin || access.isAuditor
-				? []
-				: await this.hrRoleService.getUserHrReviewerCorporations(userId)
 
 		return await this.applicationService.listApplications(
 			filters,
 			userId,
 			access.isAdmin,
 			access.isAuditor,
-			userHrCorporations,
-			userHrReviewerCorporations
+			userHrCorporations
 		)
 	}
 
@@ -166,18 +161,13 @@ export class HrDO extends DurableObject<Env> implements Hr {
 		access: { isAdmin: boolean; isAuditor: boolean }
 	): Promise<ApplicationListResult> {
 		const userHrCorporations = await this.hrRoleService.getUserHrCorporations(userId)
-		const userHrReviewerCorporations =
-			access.isAdmin || access.isAuditor
-				? []
-				: await this.hrRoleService.getUserHrReviewerCorporations(userId)
 
 		return await this.applicationService.listApplicationsPaged(
 			filters,
 			userId,
 			access.isAdmin,
 			access.isAuditor,
-			userHrCorporations,
-			userHrReviewerCorporations
+			userHrCorporations
 		)
 	}
 
@@ -191,10 +181,6 @@ export class HrDO extends DurableObject<Env> implements Hr {
 	): Promise<ApplicationDetail> {
 		// Get user's HR corporations for authorization
 		const userHrCorporations = await this.hrRoleService.getUserHrCorporations(userId)
-		const userHrReviewerCorporations =
-			access.isAdmin || access.isAuditor
-				? []
-				: await this.hrRoleService.getUserHrReviewerCorporations(userId)
 
 		return await this.applicationService.getApplication(
 			applicationId,
@@ -202,8 +188,7 @@ export class HrDO extends DurableObject<Env> implements Hr {
 			access.isAdmin,
 			access.isAuditor,
 			userHrCorporations,
-			true, // Include activity log for HR/admin
-			userHrReviewerCorporations
+			true // Include activity log for HR/admin
 		)
 	}
 

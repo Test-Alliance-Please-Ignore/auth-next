@@ -73,6 +73,7 @@ export function ApplicationActionPanel({
 	const [reviewNotes, setReviewNotes] = useState('')
 	const [reviewNotesError, setReviewNotesError] = useState('')
 	const [showAcceptDialog, setShowAcceptDialog] = useState(false)
+	const [showCompleteDialog, setShowCompleteDialog] = useState(false)
 	const [showRejectDialog, setShowRejectDialog] = useState(false)
 	const [pendingTemplate, setPendingTemplate] = useState<MessageTemplate | null>(null)
 
@@ -82,6 +83,7 @@ export function ApplicationActionPanel({
 	// Determine available actions based on role
 	const canMarkUnderReview = userRole && ['hr_admin', 'hr_reviewer'].includes(userRole)
 	const canAccept = userRole && ['hr_admin', 'hr_reviewer'].includes(userRole)
+	const canComplete = userRole && ['hr_admin', 'hr_reviewer'].includes(userRole)
 	const canReject = userRole && ['hr_admin', 'hr_reviewer'].includes(userRole)
 
 	// Handle template selection - confirm if text already exists
@@ -165,6 +167,35 @@ export function ApplicationActionPanel({
 		}
 	}
 
+	// Handler for completing application
+	const handleCompleteClick = () => {
+		if (!validateReviewNotes()) return
+		setShowCompleteDialog(true)
+	}
+
+	const handleCompleteConfirm = async () => {
+		try {
+			await updateStatusMutation.mutateAsync({
+				applicationId: application.id,
+				data: {
+					status: 'completed',
+					reviewNotes,
+				},
+			})
+
+			showSuccess('Application marked as completed')
+			setShowCompleteDialog(false)
+			setReviewNotes('')
+			setReviewNotesError('')
+
+			if (onStatusChange) {
+				onStatusChange('completed', reviewNotes)
+			}
+		} catch (error) {
+			showError(error instanceof Error ? error.message : 'Failed to complete application')
+		}
+	}
+
 	// Handler for rejecting application
 	const handleRejectClick = () => {
 		if (!validateReviewNotes()) return
@@ -211,8 +242,8 @@ export function ApplicationActionPanel({
 		)
 	}
 
-	// Application cannot be reviewed (already accepted/rejected/withdrawn)
-	if (!canReview) {
+	// Application cannot be reviewed or completed (already terminal)
+	if (!canReview && application.status !== 'accepted') {
 		return (
 			<Card className={cn('border-muted', className)}>
 				<CardHeader>
@@ -303,10 +334,26 @@ export function ApplicationActionPanel({
 					{canAccept && (
 						<Button variant="confirm"
 							onClick={handleAcceptClick}
-							disabled={disabled || updateStatusMutation.isPending}
+							disabled={
+								disabled || updateStatusMutation.isPending || application.status !== 'under_review'
+							}
 							className="flex-1"
 						>
 							Accept Application
+						</Button>
+					)}
+
+					{/* Complete - Available after acceptance */}
+					{canComplete && (
+						<Button
+							variant="confirm"
+							onClick={handleCompleteClick}
+							disabled={
+								disabled || updateStatusMutation.isPending || application.status !== 'accepted'
+							}
+							className="flex-1"
+						>
+							Mark Completed
 						</Button>
 					)}
 
@@ -394,6 +441,36 @@ export function ApplicationActionPanel({
 							loadingText="Rejecting..."
 						>
 							Reject Application
+						</Button>
+					</DialogFooter>
+				</DialogContent>
+			</Dialog>
+
+			{/* Complete Confirmation Dialog */}
+			<Dialog open={showCompleteDialog} onOpenChange={setShowCompleteDialog}>
+				<DialogContent>
+					<DialogHeader>
+						<DialogTitle>Mark Application Completed?</DialogTitle>
+						<DialogDescription>
+							Are you sure you want to mark the accepted application from{' '}
+							<strong>{application.characterName}</strong> as completed?
+						</DialogDescription>
+					</DialogHeader>
+					<DialogFooter>
+						<Button
+							variant="ghost"
+							onClick={() => setShowCompleteDialog(false)}
+							disabled={updateStatusMutation.isPending}
+						>
+							Cancel
+						</Button>
+						<Button
+							variant="confirm"
+							onClick={handleCompleteConfirm}
+							loading={updateStatusMutation.isPending}
+							loadingText="Completing..."
+						>
+							Mark Completed
 						</Button>
 					</DialogFooter>
 				</DialogContent>

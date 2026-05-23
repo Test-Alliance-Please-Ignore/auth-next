@@ -168,7 +168,7 @@ describe('ApplicationService.addApplicationAlts', () => {
 		).rejects.toThrow('You can only modify your own applications')
 	})
 
-	it.each(['accepted', 'rejected', 'withdrawn'] as const)(
+	it.each(['accepted', 'completed', 'rejected', 'withdrawn'] as const)(
 		'throws when application is in terminal state: %s',
 		async (status) => {
 			const db = makeContext().db
@@ -268,7 +268,7 @@ describe('ApplicationService.removeApplicationAlt', () => {
 		).rejects.toThrow('You can only modify your own applications')
 	})
 
-	it.each(['accepted', 'rejected', 'withdrawn'] as const)(
+	it.each(['accepted', 'completed', 'rejected', 'withdrawn'] as const)(
 		'throws when application is in terminal state: %s',
 		async (status) => {
 			const db = makeContext().db

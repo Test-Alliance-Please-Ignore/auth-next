@@ -55,6 +55,7 @@ const FILTER_TABS: FilterTabConfig[] = [
 	{ label: 'Pending', value: 'pending' },
 	{ label: 'Under Review', value: 'under_review' },
 	{ label: 'Accepted', value: 'accepted' },
+	{ label: 'Completed', value: 'completed' },
 	{ label: 'Rejected', value: 'rejected' },
 ]
 
@@ -117,6 +118,7 @@ export default function HrApplicationsList() {
 			pending: applicationsResult?.counts.pending ?? 0,
 			under_review: applicationsResult?.counts.under_review ?? 0,
 			accepted: applicationsResult?.counts.accepted ?? 0,
+			completed: applicationsResult?.counts.completed ?? 0,
 			rejected: applicationsResult?.counts.rejected ?? 0,
 			withdrawn: applicationsResult?.counts.withdrawn ?? 0,
 		}),
@@ -249,7 +251,7 @@ export default function HrApplicationsList() {
 			/>
 
 			{/* Statistics Cards */}
-			<div className="grid grid-cols-3 md:grid-cols-5 gap-4 mb-6">
+			<div className="grid grid-cols-3 md:grid-cols-6 gap-4 mb-6">
 				<ApplicationStatsCard label="Pending" value={stats.pending} variant="pending" />
 				<ApplicationStatsCard
 					label="Under Review"
@@ -257,6 +259,7 @@ export default function HrApplicationsList() {
 					variant="under_review"
 				/>
 				<ApplicationStatsCard label="Accepted" value={stats.accepted} variant="accepted" />
+				<ApplicationStatsCard label="Completed" value={stats.completed} variant="completed" />
 				<ApplicationStatsCard label="Rejected" value={stats.rejected} variant="rejected" />
 				<ApplicationStatsCard label="Withdrawn" value={stats.withdrawn} variant="withdrawn" />
 			</div>

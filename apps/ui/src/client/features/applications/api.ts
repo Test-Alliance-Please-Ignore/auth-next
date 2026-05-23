@@ -14,7 +14,13 @@ import { apiClient } from '../../lib/api'
 /**
  * Application status types
  */
-export type ApplicationStatus = 'pending' | 'under_review' | 'accepted' | 'rejected' | 'withdrawn'
+export type ApplicationStatus =
+	| 'pending'
+	| 'under_review'
+	| 'accepted'
+	| 'completed'
+	| 'rejected'
+	| 'withdrawn'
 
 /**
  * Recommendation sentiment types
@@ -205,6 +211,7 @@ export interface ApplicationsListResult {
 		pending: number
 		under_review: number
 		accepted: number
+		completed: number
 		rejected: number
 		withdrawn: number
 	}
@@ -658,6 +665,7 @@ export function getStatusDisplayName(status: ApplicationStatus): string {
 		pending: 'Pending',
 		under_review: 'Under Review',
 		accepted: 'Accepted',
+		completed: 'Completed',
 		rejected: 'Rejected',
 		withdrawn: 'Withdrawn',
 	}

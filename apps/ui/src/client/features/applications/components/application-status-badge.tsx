@@ -5,7 +5,7 @@
  * Follows the Caldari-themed design system with space-themed colors.
  */
 
-import { AlertCircle, CheckCircle, Clock, Eye, Minus, XCircle } from 'lucide-react'
+import { AlertCircle, Check, CircleCheckBig, Clock, Eye, Minus, XCircle } from 'lucide-react'
 
 import { Badge } from '@/components/ui/badge'
 import { cn } from '@/lib/utils'
@@ -48,7 +48,12 @@ const statusConfig: Record<
 	},
 	accepted: {
 		label: 'Accepted',
-		icon: CheckCircle,
+		icon: Check,
+		variant: 'success',
+	},
+	completed: {
+		label: 'Completed',
+		icon: CircleCheckBig,
 		variant: 'success',
 	},
 	rejected: {

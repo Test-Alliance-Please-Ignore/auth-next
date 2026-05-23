@@ -28,8 +28,7 @@ export class ApplicationService {
 		userId: string,
 		isAdmin: boolean,
 		isAuditor: boolean,
-		userHrCorporations: string[] = [],
-		userHrReviewerCorporations: string[] = []
+		userHrCorporations: string[] = []
 	) {
 		const conditions: ReturnType<typeof and>[] = []
 
@@ -73,38 +72,11 @@ export class ApplicationService {
 			const authConditions = [eq(applications.userId, userId)]
 
 			if (isAuditor) {
-				// Auditors are global viewer-equivalent: read-only active queue visibility
-				const auditorCondition = inArray(applications.status, ['pending', 'under_review'])
-				authConditions.push(auditorCondition)
+				// Auditors have read-only visibility to all applications
+				authConditions.push(sql`true`)
 			} else if (userHrCorporations.length > 0) {
-				// Viewer-only corps can only see pending/under_review
-				const viewerOnlyCorps = userHrCorporations.filter(
-					(corpId) => !userHrReviewerCorporations.includes(corpId)
-				)
-
-				const corpConditions = []
-
-				// HR reviewer+ corps: see all statuses
-				if (userHrReviewerCorporations.length > 0) {
-					corpConditions.push(
-						inArray(applications.corporationId, userHrReviewerCorporations)
-					)
-				}
-
-				// Viewer-only corps: only pending/under_review
-				if (viewerOnlyCorps.length > 0) {
-					const viewerCondition = and(
-						inArray(applications.corporationId, viewerOnlyCorps),
-						inArray(applications.status, ['pending', 'under_review'])
-					)
-					if (viewerCondition) {
-						corpConditions.push(viewerCondition)
-					}
-				}
-
-				if (corpConditions.length > 0) {
-					authConditions.push(...corpConditions)
-				}
+				// Any HR access to a corporation allows visibility to all statuses
+				authConditions.push(inArray(applications.corporationId, userHrCorporations))
 			}
 
 			conditions.push(or(...authConditions))
@@ -185,17 +157,9 @@ export class ApplicationService {
 		userId: string,
 		isAdmin: boolean,
 		isAuditor: boolean,
-		userHrCorporations: string[] = [],
-		userHrReviewerCorporations: string[] = []
+		userHrCorporations: string[] = []
 	): Promise<Application[]> {
-		const where = this.buildListApplicationsWhere(
-			filters,
-			userId,
-			isAdmin,
-			isAuditor,
-			userHrCorporations,
-			userHrReviewerCorporations
-		)
+		const where = this.buildListApplicationsWhere(filters, userId, isAdmin, isAuditor, userHrCorporations)
 
 		// Build query
 		const results = await this.ctx.db.query.applications.findMany({
@@ -214,24 +178,15 @@ export class ApplicationService {
 		userId: string,
 		isAdmin: boolean,
 		isAuditor: boolean,
-		userHrCorporations: string[] = [],
-		userHrReviewerCorporations: string[] = []
+		userHrCorporations: string[] = []
 	): Promise<ApplicationListResult> {
-		const where = this.buildListApplicationsWhere(
-			filters,
-			userId,
-			isAdmin,
-			isAuditor,
-			userHrCorporations,
-			userHrReviewerCorporations
-		)
+		const where = this.buildListApplicationsWhere(filters, userId, isAdmin, isAuditor, userHrCorporations)
 		const whereWithoutStatus = this.buildListApplicationsWhere(
 			{ ...filters, status: undefined },
 			userId,
 			isAdmin,
 			isAuditor,
-			userHrCorporations,
-			userHrReviewerCorporations
+			userHrCorporations
 		)
 		const limit = filters.limit || 50
 		const offset = filters.offset || 0
@@ -262,6 +217,7 @@ export class ApplicationService {
 			pending: 0,
 			under_review: 0,
 			accepted: 0,
+			completed: 0,
 			rejected: 0,
 			withdrawn: 0,
 		}
@@ -290,7 +246,7 @@ export class ApplicationService {
 		isAuditor: boolean,
 		userHrCorporations: string[] = [],
 		includeActivityLog = false,
-		userHrReviewerCorporations: string[] = []
+		_userHrReviewerCorporations: string[] = []
 	): Promise<ApplicationDetail> {
 		// Get the application
 		const application = await this.ctx.db.query.applications.findFirst({
@@ -304,18 +260,9 @@ export class ApplicationService {
 		// Check authorization
 		const isOwner = application.userId === userId
 		const hasHrAccess = isAuditor || userHrCorporations.includes(application.corporationId)
-		const isReviewerOrAbove = userHrReviewerCorporations.includes(application.corporationId)
 
 		if (!isOwner && !hasHrAccess && !isAdmin) {
 			throw new Error('You do not have permission to view this application')
-		}
-
-		// Viewer-only HR can only see pending/under_review applications
-		const activeStatuses = ['pending', 'under_review']
-		if (hasHrAccess && !isReviewerOrAbove && !isAdmin && !isOwner) {
-			if (!activeStatuses.includes(application.status)) {
-				throw new Error('You do not have permission to view this application')
-			}
 		}
 
 		// Get recommendations
@@ -395,7 +342,11 @@ export class ApplicationService {
 		const previousStatus = application.status
 
 		// Set reviewer info for any status change that involves review
-		const isReviewAction = status === 'accepted' || status === 'rejected' || status === 'under_review'
+		const isReviewAction =
+			status === 'accepted' ||
+			status === 'completed' ||
+			status === 'rejected' ||
+			status === 'under_review'
 
 		// Update the application
 		await this.ctx.db

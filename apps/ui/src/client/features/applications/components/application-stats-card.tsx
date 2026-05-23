@@ -33,6 +33,7 @@ const variantStyles: Record<ApplicationStatus | 'all', string> = {
 	pending: 'border-accent/50 bg-accent/5',
 	under_review: 'border-primary/50 bg-primary/5',
 	accepted: 'border-success/50 bg-success/5',
+	completed: 'border-emerald-500/50 bg-emerald-500/5',
 	rejected: 'border-destructive/50 bg-destructive/5',
 	withdrawn: 'border-muted/50 bg-muted/5',
 }
@@ -42,6 +43,7 @@ const valueStyles: Record<ApplicationStatus | 'all', string> = {
 	pending: 'text-accent-foreground',
 	under_review: 'text-primary',
 	accepted: 'text-success',
+	completed: 'text-emerald-500',
 	rejected: 'text-destructive',
 	withdrawn: 'text-muted-foreground',
 }

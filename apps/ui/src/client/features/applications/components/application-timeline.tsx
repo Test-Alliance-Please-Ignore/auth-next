@@ -59,6 +59,11 @@ const actionConfig: Record<
 		icon: CheckCircle,
 		colorClasses: 'bg-success text-success-foreground',
 	},
+	status_changed_completed: {
+		label: 'Status: Completed',
+		icon: CheckCircle,
+		colorClasses: 'bg-emerald-500 text-white',
+	},
 	status_changed_rejected: {
 		label: 'Status: Rejected',
 		icon: XCircle,

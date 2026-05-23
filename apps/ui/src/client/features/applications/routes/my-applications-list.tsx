@@ -43,6 +43,7 @@ const FILTER_TABS: FilterTabConfig[] = [
 	{ label: 'Pending', value: 'pending' },
 	{ label: 'Under Review', value: 'under_review' },
 	{ label: 'Accepted', value: 'accepted' },
+	{ label: 'Completed', value: 'completed' },
 	{ label: 'Rejected', value: 'rejected' },
 	{ label: 'Withdrawn', value: 'withdrawn' },
 ]
@@ -77,6 +78,7 @@ export default function MyApplicationsList() {
 				pending: 0,
 				under_review: 0,
 				accepted: 0,
+				completed: 0,
 				rejected: 0,
 				withdrawn: 0,
 			}
@@ -87,6 +89,7 @@ export default function MyApplicationsList() {
 			pending: applications.filter((a) => a.status === 'pending').length,
 			under_review: applications.filter((a) => a.status === 'under_review').length,
 			accepted: applications.filter((a) => a.status === 'accepted').length,
+			completed: applications.filter((a) => a.status === 'completed').length,
 			rejected: applications.filter((a) => a.status === 'rejected').length,
 			withdrawn: applications.filter((a) => a.status === 'withdrawn').length,
 		}
@@ -159,7 +162,7 @@ export default function MyApplicationsList() {
 			</div>
 
 			{/* Statistics Cards */}
-			<div className="grid grid-cols-3 md:grid-cols-5 gap-4 mb-6">
+			<div className="grid grid-cols-3 md:grid-cols-6 gap-4 mb-6">
 				<ApplicationStatsCard label="Pending" value={stats.pending} variant="pending" />
 				<ApplicationStatsCard
 					label="Under Review"
@@ -167,6 +170,7 @@ export default function MyApplicationsList() {
 					variant="under_review"
 				/>
 				<ApplicationStatsCard label="Accepted" value={stats.accepted} variant="accepted" />
+				<ApplicationStatsCard label="Completed" value={stats.completed} variant="completed" />
 				<ApplicationStatsCard label="Rejected" value={stats.rejected} variant="rejected" />
 				<ApplicationStatsCard label="Withdrawn" value={stats.withdrawn} variant="withdrawn" />
 			</div>
