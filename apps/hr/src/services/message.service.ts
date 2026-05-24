@@ -35,9 +35,12 @@ export class MessageService {
 			throw new Error('Application not found')
 		}
 
-		// Validate application is in "open" status (pending or under_review)
-		if (!['pending', 'under_review'].includes(application.status)) {
-			throw new Error('Messages can only be sent for applications that are pending or under review')
+		// Validate application is in a messageable status.
+		// Accepted is no longer final; completed remains final/locked.
+		if (!['pending', 'under_review', 'accepted'].includes(application.status)) {
+			throw new Error(
+				'Messages can only be sent for applications that are pending, under review, or accepted'
+			)
 		}
 
 		// Resolve the effective recipientId for storage
