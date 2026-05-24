@@ -275,7 +275,7 @@ export default function AdminLegacyMigrationsPage() {
 									<TableRow key={group.modernUserId}>
 										<TableCell>
 											<Link
-												to={`/admin/legacy-migrations/${group.items[0]?.id ?? ''}`}
+												to={`/admin/legacy-migrations/${group.modernUserId}`}
 												target="_blank"
 												rel="noopener noreferrer"
 												className="font-medium text-primary hover:underline"
