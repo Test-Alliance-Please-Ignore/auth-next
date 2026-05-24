@@ -1558,7 +1558,7 @@ srp.get('/payments/pending-total', async (c) => {
 
 /**
  * Wallet history for configured SRP payment processor corporation
- * GET /api/srp/payments/wallet-history?reason=&recipientId=&dateFrom=&dateTo=&limit=50&offset=0
+ * GET /api/srp/payments/wallet-history?reason=&recipientId=&alertsOnly=false&dateFrom=&dateTo=&limit=50&offset=0
  *
  * Requires payer-or-higher permissions
  */
@@ -1569,6 +1569,7 @@ srp.get('/payments/wallet-history', async (c) => {
 
 	const reason = c.req.query('reason')?.trim()
 	const recipientId = c.req.query('recipientId')?.trim()
+	const alertsOnly = c.req.query('alertsOnly') === 'true'
 	const dateFrom = c.req.query('dateFrom')?.trim()
 	const dateTo = c.req.query('dateTo')?.trim()
 	const limit = c.req.query('limit') ? Number.parseInt(c.req.query('limit')!, 10) : 50
@@ -1615,18 +1616,29 @@ srp.get('/payments/wallet-history', async (c) => {
 			recipientId: string | null
 			entryDate: Date
 		}>(
-			sql`select
-				journal_id::text as "journalId",
-				ref_type as "refType",
-				amount as "amount",
-				reason as "reason",
-				second_party_id as "recipientId",
-				date as "entryDate"
-			from corporation_wallet_journal
-			where ${whereClause}
-			order by date desc
-			limit ${limit}
-			offset ${offset}`
+			alertsOnly
+				? sql`select
+						journal_id::text as "journalId",
+						ref_type as "refType",
+						amount as "amount",
+						reason as "reason",
+						second_party_id as "recipientId",
+						date as "entryDate"
+					from corporation_wallet_journal
+					where ${whereClause}
+					order by date desc`
+				: sql`select
+						journal_id::text as "journalId",
+						ref_type as "refType",
+						amount as "amount",
+						reason as "reason",
+						second_party_id as "recipientId",
+						date as "entryDate"
+					from corporation_wallet_journal
+					where ${whereClause}
+					order by date desc
+					limit ${limit}
+					offset ${offset}`
 		),
 		db.execute<{ total: number }>(
 			sql`select cast(count(*) as integer) as "total"
@@ -1636,7 +1648,7 @@ srp.get('/payments/wallet-history', async (c) => {
 	])
 
 	const rows = rowsResult.rows ?? []
-	const total = countResult.rows?.[0]?.total ?? 0
+	const rawTotal = countResult.rows?.[0]?.total ?? 0
 	const journalIds = [...new Set(rows.map((row) => row.journalId))]
 	const kmRequestIds = [
 		...new Set(
@@ -1659,22 +1671,64 @@ srp.get('/payments/wallet-history', async (c) => {
 				)
 			: Promise.resolve({ rows: [] as Array<{ id: string; characterId: string }> }),
 		journalIds.length > 0
-			? db.execute<{ journalId: string; kind: string; state: string }>(
-					sql`select journal_id::text as "journalId", kind, state
+			? db.execute<{
+					journalId: string
+					kind: string
+					state: string
+					expectedAmount: string | null
+					observedAmount: string | null
+					expectedRecipientCharacterId: string | null
+					actualRecipientCharacterId: string | null
+				}>(
+					sql`select
+							journal_id::text as "journalId",
+							kind,
+							state,
+							expected_amount as "expectedAmount",
+							observed_amount as "observedAmount",
+							expected_recipient_character_id as "expectedRecipientCharacterId",
+							actual_recipient_character_id as "actualRecipientCharacterId"
 						from srp_payment_alerts
 						where journal_id in ${sql`(${sql.join(journalIds.map((id) => sql`${id}`), sql`,`)})`}`
 				)
-			: Promise.resolve({ rows: [] as Array<{ journalId: string; kind: string; state: string }> }),
+			: Promise.resolve({
+					rows: [] as Array<{
+						journalId: string
+						kind: string
+						state: string
+						expectedAmount: string | null
+						observedAmount: string | null
+						expectedRecipientCharacterId: string | null
+						actualRecipientCharacterId: string | null
+					}>,
+				}),
 	])
 	const requestById = new Map(
 		(matchingRequestsResult.rows ?? []).map((row) => [row.id, row.characterId])
 	)
 	const alertKindsByJournalId = new Map<string, string[]>()
+	const paymentAlertDetailByJournalId = new Map<
+		string,
+		{
+			expectedAmount: string | null
+			observedAmount: string | null
+			expectedRecipientCharacterId: string | null
+			actualRecipientCharacterId: string | null
+		}
+	>()
 	for (const row of paymentAlertsResult.rows ?? []) {
 		const existing = alertKindsByJournalId.get(row.journalId) ?? []
 		if (row.state === 'open' && !existing.includes(row.kind)) {
 			existing.push(row.kind)
 			alertKindsByJournalId.set(row.journalId, existing)
+		}
+		if (row.state === 'open' && !paymentAlertDetailByJournalId.has(row.journalId)) {
+			paymentAlertDetailByJournalId.set(row.journalId, {
+				expectedAmount: row.expectedAmount,
+				observedAmount: row.observedAmount,
+				expectedRecipientCharacterId: row.expectedRecipientCharacterId,
+				actualRecipientCharacterId: row.actualRecipientCharacterId,
+			})
 		}
 	}
 
@@ -1683,8 +1737,7 @@ srp.get('/payments/wallet-history', async (c) => {
 	const resolvedNames: Record<string, string> =
 		idsToResolve.length > 0 ? await resolver.resolveIds(idsToResolve).catch(() => ({})) : {}
 
-	return c.json({
-		items: rows.map((row) => ({
+	const computedItems = rows.map((row) => ({
 			hasRecipientMismatch: (() => {
 				const reasonText = row.reason ?? ''
 				const match = reasonText.match(SRP_REQUEST_ID_IN_REASON_REGEX)
@@ -1712,6 +1765,7 @@ srp.get('/payments/wallet-history', async (c) => {
 					? row.entryDate.toISOString()
 					: new Date(String(row.entryDate)).toISOString(),
 			matchingAlertKinds: alertKindsByJournalId.get(row.journalId) ?? [],
+			alertDetail: paymentAlertDetailByJournalId.get(row.journalId) ?? null,
 			hasOpenAlert:
 				(alertKindsByJournalId.get(row.journalId) ?? []).length > 0 ||
 				(() => {
@@ -1723,8 +1777,14 @@ srp.get('/payments/wallet-history', async (c) => {
 					if (!requestCharacterId || !row.recipientId) return false
 					return row.recipientId !== requestCharacterId
 				})(),
-		})),
-		total,
+		}))
+
+	const items = alertsOnly ? computedItems.filter((item) => item.hasOpenAlert) : computedItems
+	const pagedItems = alertsOnly ? items.slice(offset, offset + limit) : items
+
+	return c.json({
+		items: pagedItems,
+		total: alertsOnly ? items.length : rawTotal,
 		limit,
 		offset,
 	})

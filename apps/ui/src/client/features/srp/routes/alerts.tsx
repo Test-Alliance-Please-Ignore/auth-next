@@ -82,39 +82,6 @@ export default function SRPAlertsPage() {
 	return (
 		<Container>
 			<PageHeader title="SRP Alerts" description="Payment mismatches that require review" />
-			<Card className="mt-4">
-				<CardContent className="p-0">
-					<Table>
-						<TableHeader>
-							<TableRow>
-								<TableHead>Alert Type</TableHead>
-								<TableHead>Trigger</TableHead>
-								<TableHead>Deduping</TableHead>
-							</TableRow>
-						</TableHeader>
-						<TableBody>
-							<TableRow>
-								<TableCell className="font-mono text-xs">payment_mismatch</TableCell>
-								<TableCell className="text-sm">
-									Reason references an SRP request but recipient or amount does not match.
-								</TableCell>
-								<TableCell className="text-sm">
-									Upsert by request + journal + observed amount; updates <code>lastSeenAt</code>.
-								</TableCell>
-							</TableRow>
-							<TableRow>
-								<TableCell className="font-mono text-xs">payment_missing</TableCell>
-								<TableCell className="text-sm">
-									Request remains payment pending and no matching transaction found after 24 hours.
-								</TableCell>
-								<TableCell className="text-sm">
-									Single synthetic key per request; refreshed on recheck, not duplicated.
-								</TableCell>
-							</TableRow>
-						</TableBody>
-					</Table>
-				</CardContent>
-			</Card>
 			<div className="mt-4 flex items-center justify-between">
 				<div className="text-sm text-muted-foreground">{data?.total ?? 0} alerts</div>
 				<div className="flex items-center gap-2 text-sm">

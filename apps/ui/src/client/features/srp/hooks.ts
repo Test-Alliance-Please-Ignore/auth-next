@@ -787,6 +787,7 @@ export function useAcknowledgeSrpPaymentMismatchAlert() {
 export function useSrpWalletHistory(params: {
 	reason?: string
 	recipientId?: string
+	alertsOnly?: boolean
 	dateFrom?: string
 	dateTo?: string
 	limit?: number
