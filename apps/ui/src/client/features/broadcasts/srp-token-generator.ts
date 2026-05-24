@@ -20,6 +20,22 @@ function randomInt(maxExclusive: number): number {
 	return random % maxExclusive
 }
 
+function pickUniqueWord(list: readonly string[], used: Set<string>): string {
+	if (list.length === 0) return 'Token'
+	const start = randomInt(list.length)
+	for (let offset = 0; offset < list.length; offset += 1) {
+		const index = (start + offset) % list.length
+		const candidate = list[index] ?? 'Token'
+		const key = candidate.trim().toLowerCase()
+		if (!used.has(key)) {
+			used.add(key)
+			return candidate
+		}
+	}
+	// Pool fully exhausted by used words; allow reuse as fallback.
+	return list[start] ?? 'Token'
+}
+
 const SRP_TOKEN_ADJECTIVES = [
 	'abyssal', 'adaptive', 'alliance', 'amarr', 'anomic', 'antimatter', 'arcadian', 'armored',
 	'artillery', 'ashen', 'assault', 'aurora', 'auxiliary', 'ballistic', 'barbed', 'bastion',
@@ -133,54 +149,18 @@ const SRP_TOKEN_VERBS = [
 ] as const
 
 export function generateSrpTokenAtFormLoad(): string {
-	const pattern = randomInt(8)
+	const used = new Set<string>()
+	const adj = () => toPascalCaseWord(pickUniqueWord(SRP_TOKEN_ADJECTIVES, used))
+	const noun = () => toPascalCaseWord(pickUniqueWord(SRP_TOKEN_NOUNS, used))
+	const verb = () => toPascalCaseWord(pickUniqueWord(SRP_TOKEN_VERBS, used))
+
+	const pattern = randomInt(3)
 	switch (pattern) {
 		case 0:
-			return [
-				toPascalCaseWord(randomItem(SRP_TOKEN_ADJECTIVES)),
-				toPascalCaseWord(randomItem(SRP_TOKEN_NOUNS)),
-				toPascalCaseWord(randomItem(SRP_TOKEN_NOUNS)),
-			].join('')
+			return [adj(), verb(), noun()].join('')
 		case 1:
-			return [
-				toPascalCaseWord(randomItem(SRP_TOKEN_VERBS)),
-				toPascalCaseWord(randomItem(SRP_TOKEN_NOUNS)),
-			].join('')
-		case 2:
-			return [
-				toPascalCaseWord(randomItem(SRP_TOKEN_ADJECTIVES)),
-				toPascalCaseWord(randomItem(SRP_TOKEN_VERBS)),
-				toPascalCaseWord(randomItem(SRP_TOKEN_NOUNS)),
-			].join('')
-		case 3:
-			return [
-				toPascalCaseWord(randomItem(SRP_TOKEN_NOUNS)),
-				toPascalCaseWord(randomItem(SRP_TOKEN_ADJECTIVES)),
-				toPascalCaseWord(randomItem(SRP_TOKEN_NOUNS)),
-			].join('')
-		case 4:
-			return [
-				toPascalCaseWord(randomItem(SRP_TOKEN_VERBS)),
-				toPascalCaseWord(randomItem(SRP_TOKEN_ADJECTIVES)),
-				toPascalCaseWord(randomItem(SRP_TOKEN_NOUNS)),
-			].join('')
-		case 5:
-			return [
-				toPascalCaseWord(randomItem(SRP_TOKEN_NOUNS)),
-				toPascalCaseWord(randomItem(SRP_TOKEN_NOUNS)),
-				toPascalCaseWord(randomItem(SRP_TOKEN_ADJECTIVES)),
-			].join('')
-		case 6:
-			return [
-				toPascalCaseWord(randomItem(SRP_TOKEN_VERBS)),
-				toPascalCaseWord(randomItem(SRP_TOKEN_ADJECTIVES)),
-				toPascalCaseWord(randomItem(SRP_TOKEN_NOUNS)),
-			].join('')
+			return [verb(), adj(), noun()].join('')
 		default:
-			return [
-				toPascalCaseWord(randomItem(SRP_TOKEN_ADJECTIVES)),
-				toPascalCaseWord(randomItem(SRP_TOKEN_NOUNS)),
-				toPascalCaseWord(randomItem(SRP_TOKEN_ADJECTIVES)),
-			].join('')
+			return [adj(), noun(), verb()].join('')
 	}
 }
