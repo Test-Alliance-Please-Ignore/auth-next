@@ -354,6 +354,38 @@ export default function AdminLegacyMigrationDetailPage() {
 	}
 
 	const allDetails = useMemo(() => detailsQuery.data ?? [], [detailsQuery.data])
+	const linkedOtherUserIds = useMemo(
+		() =>
+			Array.from(
+				new Set(
+					allDetails
+						.flatMap((detail) => detail.candidates.characters)
+						.map((character) => character.linkedToOtherUserId)
+						.filter((value): value is string => Boolean(value))
+				)
+			),
+		[allDetails]
+	)
+	const linkedOtherUsersQuery = useQuery({
+		queryKey: ['admin', 'legacy-migration-detail', modernUserId, 'linked-other-users', linkedOtherUserIds],
+		queryFn: async () => {
+			const rows = await Promise.all(
+				linkedOtherUserIds.map(async (userId) => {
+					try {
+						const user = await api.getAdminUser(userId)
+						const primaryCharacterName =
+							user.characters.find((character) => character.is_primary)?.characterName ?? null
+						return [userId, primaryCharacterName ?? userId] as const
+					} catch {
+						return [userId, userId] as const
+					}
+				})
+			)
+			return new Map(rows)
+		},
+		enabled: linkedOtherUserIds.length > 0,
+	})
+	const linkedOtherUserNameById = linkedOtherUsersQuery.data ?? new Map<string, string>()
 	const blacklistAttributorIds = useMemo(
 		() =>
 			Array.from(
@@ -598,7 +630,23 @@ export default function AdminLegacyMigrationDetailPage() {
 										{character.alreadyLinkedToModernUser ? (
 											<Badge variant="success">Already linked</Badge>
 										) : character.linkedToOtherUserId ? (
-											<Badge variant="destructive">Linked to other user</Badge>
+											<div className="text-right">
+												<Badge variant="destructive">Linked to other user</Badge>
+												<div className="text-xs mt-1">
+													<Link
+														to={`/admin/users/${character.linkedToOtherUserId}`}
+														target="_blank"
+														rel="noopener noreferrer"
+														className="text-primary hover:underline"
+													>
+														{linkedOtherUserNameById.get(character.linkedToOtherUserId) ??
+															character.linkedToOtherUserId}
+													</Link>
+												</div>
+												<div className="text-xs font-mono text-muted-foreground">
+													{character.linkedToOtherUserId}
+												</div>
+											</div>
 										) : character.isDeleted ? (
 											<Badge variant="warning">Deleted - not importable</Badge>
 										) : (
