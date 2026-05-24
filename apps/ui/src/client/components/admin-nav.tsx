@@ -36,12 +36,8 @@ export function AdminNav({ onNavigate }: AdminNavProps) {
 	const { data: pendingLegacyMigrationsCount = 0 } = useQuery({
 		queryKey: ['admin-nav', 'legacy-migrations', 'pending-count'],
 		queryFn: async () => {
-			const result = await api.getLegacyMigrationQueue({
-				page: 1,
-				pageSize: 1,
-				status: 'pending',
-			})
-			return result.pagination.total
+			const result = await api.getLegacyMigrationPendingUserCount()
+			return result.count
 		},
 	})
 	const isBroadcastRoute =

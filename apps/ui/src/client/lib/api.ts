@@ -2668,6 +2668,10 @@ export class ApiClient {
 		return this.get(`/admin/legacy/migrations${query ? `?${query}` : ''}`)
 	}
 
+	async getLegacyMigrationPendingUserCount(): Promise<{ count: number }> {
+		return this.get('/admin/legacy/migrations/pending-user-count')
+	}
+
 	async getLegacyMigrationQueueItem(id: string): Promise<{
 		item: LegacyMigrationQueueItem
 		actions: LegacyMigrationAction[]

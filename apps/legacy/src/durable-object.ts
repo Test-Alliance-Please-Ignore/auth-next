@@ -255,6 +255,15 @@ export class LegacyDO extends DurableObject<Env> implements Legacy {
 		}
 	}
 
+	async countPendingMigrationUsers(): Promise<number> {
+		const rows = await this.db
+			.select({ modernUserId: legacyMigrationQueue.modernUserId })
+			.from(legacyMigrationQueue)
+			.where(eq(legacyMigrationQueue.status, 'pending'))
+			.groupBy(legacyMigrationQueue.modernUserId)
+		return rows.length
+	}
+
 	async getMigration(id: string) {
 		const item = await this.db.query.legacyMigrationQueue.findFirst({
 			where: eq(legacyMigrationQueue.id, id),

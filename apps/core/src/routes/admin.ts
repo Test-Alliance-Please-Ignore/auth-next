@@ -241,6 +241,12 @@ app.get('/legacy/migrations', requireAuth(), requireAdmin(), async (c) => {
 	return c.json(result)
 })
 
+app.get('/legacy/migrations/pending-user-count', requireAuth(), requireAdmin(), async (c) => {
+	const stub = getStub<Legacy>(c.env.LEGACY, 'default')
+	const count = await stub.countPendingMigrationUsers()
+	return c.json({ count })
+})
+
 app.get('/legacy/migrations/:id', requireAuth(), requireAdmin(), async (c) => {
 	const id = c.req.param('id')
 	const stub = getStub<Legacy>(c.env.LEGACY, 'default')
