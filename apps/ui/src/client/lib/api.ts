@@ -3155,6 +3155,7 @@ export class ApiClient {
 	async getSrpWalletHistory(params?: {
 		reason?: string
 		recipientId?: string
+		alertsOnly?: boolean
 		dateFrom?: string
 		dateTo?: string
 		limit?: number
@@ -3171,6 +3172,12 @@ export class ApiClient {
 			recipientName?: string | null
 			entryDate: string
 			matchingAlertKinds?: string[]
+			alertDetail?: {
+				expectedAmount?: string | null
+				observedAmount?: string | null
+				expectedRecipientCharacterId?: string | null
+				actualRecipientCharacterId?: string | null
+			} | null
 			hasOpenAlert?: boolean
 		}>
 		total: number
@@ -3180,6 +3187,7 @@ export class ApiClient {
 		const searchParams = new URLSearchParams()
 		if (params?.reason) searchParams.set('reason', params.reason)
 		if (params?.recipientId) searchParams.set('recipientId', params.recipientId)
+		if (params?.alertsOnly) searchParams.set('alertsOnly', 'true')
 		if (params?.dateFrom) searchParams.set('dateFrom', params.dateFrom)
 		if (params?.dateTo) searchParams.set('dateTo', params.dateTo)
 		if (params?.limit !== undefined) searchParams.set('limit', String(params.limit))
