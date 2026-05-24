@@ -646,7 +646,7 @@ export default function HrApplicationReview() {
 								currentUserId={user!.id}
 								recipientId={application.userId}
 								corporationId={corporationId}
-								canSend={['pending', 'under_review'].includes(application.status)}
+								canSend={['pending', 'under_review', 'accepted'].includes(application.status)}
 								showTemplates={true}
 							/>
 						</CardContent>
