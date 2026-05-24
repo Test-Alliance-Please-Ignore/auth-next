@@ -94,7 +94,7 @@ export const adminRouteElements = (
 			}
 		/>
 	<Route path="legacy-migrations" element={<AdminLegacyMigrationsPage />} />
-	<Route path="legacy-migrations/:id" element={<AdminLegacyMigrationDetailPage />} />
+		<Route path="legacy-migrations/:modernUserId" element={<AdminLegacyMigrationDetailPage />} />
 		<Route path="blacklist" element={<AdminBlacklistPage />} />
 		<Route path="activity-log" element={<AdminActivityLogPage />} />
 		<Route path="dev/components" element={<DevComponentsPage />} />
