@@ -3414,6 +3414,13 @@ export class ApiClient {
 		return this.get(`/doctrines/search/types?${params.toString()}`)
 	}
 
+	async searchUniverseSystems(
+		query: string
+	): Promise<Array<{ id: string; name: string; systemId: string; systemName: string }>> {
+		const params = new URLSearchParams({ q: query })
+		return this.get(`/universe/search/systems?${params.toString()}`)
+	}
+
 	// Categories
 	async getDoctrineCategories(): Promise<DoctrineCategory[]> {
 		return this.get('/doctrines/categories')

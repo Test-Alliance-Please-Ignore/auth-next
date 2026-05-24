@@ -1,7 +1,7 @@
 import { useMemo, useState } from 'react'
 
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { ArrowLeft } from 'lucide-react'
+import { ArrowLeft, User } from 'lucide-react'
 import { Link, useNavigate, useParams } from 'react-router-dom'
 
 import { Badge } from '@/components/ui/badge'
@@ -460,7 +460,8 @@ export default function AdminLegacyMigrationDetailPage() {
 						{allDetails.map((detail, index) => (
 							<Button key={detail.item.id} variant="ghost" size="sm" asChild>
 								<a href={`#legacy-account-${detail.item.id}`}>
-									{index + 1}. {detail.item.legacyAuthUserId}
+									<User className="h-3.5 w-3.5" />
+									<span className="font-semibold">{detail.item.legacyAuthUserId}</span>
 								</a>
 							</Button>
 						))}

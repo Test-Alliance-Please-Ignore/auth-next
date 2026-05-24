@@ -126,16 +126,20 @@ export default function ReviewQueue() {
 							}
 							searchable
 							searchDelegate={async (query) => {
-								const values = await api.getSrpReviewSearchValues({
-									status: activeTab,
-									field: 'character',
-									query,
-								})
-
-								return values.map((entry) => ({
-									value: entry.value,
-									label: entry.value,
-								}))
+								const values = await api.searchCharacters(query)
+								const seen = new Set<string>()
+								return values
+									.map((entry) => entry.characterName)
+									.filter((name) => {
+										const key = name.trim().toLowerCase()
+										if (!key || seen.has(key)) return false
+										seen.add(key)
+										return true
+									})
+									.map((name) => ({
+										value: name,
+										label: name,
+									}))
 							}}
 							placeholder="Character"
 							minQueryLength={2}
@@ -154,15 +158,11 @@ export default function ReviewQueue() {
 							}
 							searchable
 							searchDelegate={async (query) => {
-								const values = await api.getSrpReviewSearchValues({
-									status: activeTab,
-									field: 'ship',
-									query,
-								})
-
+								const values = await api.searchShipTypes(query)
 								return values.map((entry) => ({
-									value: entry.value,
-									label: entry.value,
+									value: entry.typeName,
+									label: entry.typeName,
+									description: entry.typeId,
 								}))
 							}}
 							placeholder="Ship"
@@ -182,15 +182,11 @@ export default function ReviewQueue() {
 							}
 							searchable
 							searchDelegate={async (query) => {
-								const values = await api.getSrpReviewSearchValues({
-									status: activeTab,
-									field: 'system',
-									query,
-								})
-
+								const values = await api.searchUniverseSystems(query)
 								return values.map((entry) => ({
-									value: entry.value,
-									label: entry.value,
+									value: entry.systemName,
+									label: entry.systemName,
+									description: entry.systemId,
 								}))
 							}}
 							placeholder="System"
