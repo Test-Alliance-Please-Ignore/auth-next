@@ -256,6 +256,7 @@ export default function AdminLegacyMigrationsPage() {
 							<TableRow>
 								<TableHead>Modern User</TableHead>
 								<TableHead>Legacy Accounts</TableHead>
+								<TableHead>Status</TableHead>
 								<TableHead>Conflicts</TableHead>
 								<TableHead className="text-right">Actions</TableHead>
 							</TableRow>
@@ -273,34 +274,37 @@ export default function AdminLegacyMigrationsPage() {
 								return (
 									<TableRow key={group.modernUserId}>
 										<TableCell>
-											<div className="font-medium">
+											<Link
+												to={`/admin/legacy-migrations/${group.items[0]?.id ?? ''}`}
+												target="_blank"
+												rel="noopener noreferrer"
+												className="font-medium text-primary hover:underline"
+											>
 												{group.modernUserMainCharacterName ?? 'Unknown character'}
-											</div>
+											</Link>
 											<div className="text-xs text-muted-foreground font-mono">
 												{group.modernUserId}
 											</div>
 										</TableCell>
 										<TableCell>
-											<div className="space-y-2">
-												{group.items.map((item) => {
-													const detailPath = `/admin/legacy-migrations/${item.id}`
-													return (
-														<div
-															key={item.id}
-															className="flex items-center justify-between gap-3 rounded-md border border-border/60 px-3 py-2"
-														>
-															<div className="flex items-center gap-2 min-w-0">
-																<span className="font-mono text-xs">{item.legacyAuthUserId}</span>
-																<Badge variant={statusBadgeVariant(item.status)}>{item.status}</Badge>
-															</div>
-															<Button variant="ghost" size="sm" asChild>
-																<Link to={detailPath} target="_blank" rel="noopener noreferrer">
-																	Open
-																</Link>
-															</Button>
-														</div>
-													)
-												})}
+											<div className="text-sm">
+												{group.items.length} legacy account{group.items.length === 1 ? '' : 's'}
+											</div>
+											<div className="text-xs text-muted-foreground">
+												{group.items
+													.slice(0, 3)
+													.map((item) => item.legacyAuthUserId)
+													.join(', ')}
+												{group.items.length > 3 ? ', ...' : ''}
+											</div>
+										</TableCell>
+										<TableCell>
+											<div className="flex gap-1 flex-wrap">
+												{Array.from(new Set(group.items.map((item) => item.status))).map((statusValue) => (
+													<Badge key={statusValue} variant={statusBadgeVariant(statusValue)}>
+														{statusValue}
+													</Badge>
+												))}
 											</div>
 										</TableCell>
 										<TableCell>
@@ -333,17 +337,6 @@ export default function AdminLegacyMigrationsPage() {
 													{isRecheckingThisRow ? <LoadingInline className="mr-2" /> : null}
 													Recheck
 												</Button>
-												{group.items[0] ? (
-													<Button variant="primary" size="sm" asChild>
-														<Link
-															to={`/admin/legacy-migrations/${group.items[0].id}`}
-															target="_blank"
-															rel="noopener noreferrer"
-														>
-															Open First
-														</Link>
-													</Button>
-												) : null}
 											</div>
 										</TableCell>
 									</TableRow>
@@ -351,7 +344,7 @@ export default function AdminLegacyMigrationsPage() {
 							})}
 							{!listQuery.isLoading && groupedItems.length === 0 ? (
 								<TableRow>
-									<TableCell colSpan={4} className="text-center text-muted-foreground">
+									<TableCell colSpan={5} className="text-center text-muted-foreground">
 										No queue items found.
 									</TableCell>
 								</TableRow>

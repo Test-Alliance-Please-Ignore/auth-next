@@ -249,6 +249,28 @@ function parseBlacklistAlerts(conflicts: Record<string, unknown>): {
 	}
 }
 
+function parseQueueConflicts(conflicts: Record<string, unknown>): {
+	multiMatch: boolean
+	crossUserCount: number
+	hasBlacklist: boolean
+} {
+	const crossMatches =
+		Array.isArray(conflicts.crossModernUserQueueMatches) ? conflicts.crossModernUserQueueMatches : []
+	const blacklistSignals =
+		conflicts && typeof conflicts.blacklistSignals === 'object'
+			? (conflicts.blacklistSignals as Record<string, unknown>)
+			: null
+	const hasBlacklist =
+		Boolean(blacklistSignals?.hasAnyBlacklistSignal) ||
+		Boolean(blacklistSignals?.modernUserBlacklisted) ||
+		(Array.isArray(blacklistSignals?.matchedTargets) && blacklistSignals.matchedTargets.length > 0)
+	return {
+		multiMatch: Boolean(conflicts.multipleLegacyUsersForModernUser),
+		crossUserCount: crossMatches.length,
+		hasBlacklist,
+	}
+}
+
 export default function AdminLegacyMigrationDetailPage() {
 	usePageTitle('Admin - Legacy Migration Detail')
 	const { id } = useParams<{ id: string }>()
@@ -404,6 +426,16 @@ export default function AdminLegacyMigrationDetailPage() {
 	})
 	const blacklistAttributorNameById = blacklistAttributorsQuery.data ?? new Map<string, string>()
 	const linkedOtherUserNameById = linkedOtherUsersQuery.data ?? new Map<string, string>()
+	const siblingQueueItemsQuery = useQuery({
+		queryKey: ['admin', 'legacy-migration-detail', id, 'sibling-queue-items', item?.modernUserId],
+		queryFn: () =>
+			api.getLegacyMigrationQueue({
+				page: 1,
+				pageSize: 200,
+				modernUserId: item!.modernUserId,
+			}),
+		enabled: Boolean(item?.modernUserId),
+	})
 
 	const toggleCharacter = (characterId: string) => {
 		setSelectedCharacterIds((prev) => {
@@ -562,6 +594,61 @@ export default function AdminLegacyMigrationDetailPage() {
 					</CardContent>
 				</Card>
 			) : null}
+
+			<Card>
+				<CardHeader>
+					<CardTitle>Legacy Accounts</CardTitle>
+				</CardHeader>
+				<CardContent className="space-y-2">
+					{(siblingQueueItemsQuery.data?.items ?? [item]).map((queueItem) => {
+						const conflicts = parseQueueConflicts(queueItem.conflicts)
+						const isCurrent = queueItem.id === item.id
+						return (
+							<div
+								key={queueItem.id}
+								className={
+									isCurrent
+										? 'rounded border border-primary/50 bg-primary/5 p-2.5'
+										: 'rounded border border-border/90 bg-card/80 p-2.5'
+								}
+							>
+								<div className="flex flex-wrap items-center justify-between gap-2">
+									<div className="flex items-center gap-2">
+										<span className="font-mono text-xs">{queueItem.legacyAuthUserId}</span>
+										<Badge variant="secondary">Legacy Account</Badge>
+										{isCurrent ? <Badge variant="special">Current</Badge> : null}
+										<Badge
+											variant={
+												queueItem.status === 'applied'
+													? 'success'
+													: queueItem.status === 'pending'
+														? 'warning'
+														: queueItem.status === 'error'
+															? 'destructive'
+															: 'secondary'
+											}
+										>
+											{queueItem.status}
+										</Badge>
+										{conflicts.hasBlacklist ? <Badge variant="destructive">Blacklist</Badge> : null}
+										{conflicts.multiMatch ? <Badge variant="warning">Multi-match</Badge> : null}
+										{conflicts.crossUserCount > 0 ? (
+											<Badge variant="destructive">Cross-user ({conflicts.crossUserCount})</Badge>
+										) : null}
+									</div>
+									{!isCurrent ? (
+										<Button variant="ghost" size="sm" asChild>
+											<Link to={`/admin/legacy-migrations/${queueItem.id}`}>
+												Open Account
+											</Link>
+										</Button>
+									) : null}
+								</div>
+							</div>
+						)
+					})}
+				</CardContent>
+			</Card>
 
 			<Card>
 				<CardHeader>
