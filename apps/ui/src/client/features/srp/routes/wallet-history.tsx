@@ -57,10 +57,22 @@ export default function SRPWalletHistoryPage() {
 
 	const getAlertReasonLines = (item: (typeof items)[number]): string[] => {
 		const lines: string[] = []
+		const expectedRecipient =
+			item.alertDetail?.expectedRecipientCharacterName && item.alertDetail?.expectedRecipientCharacterId
+				? `${item.alertDetail.expectedRecipientCharacterName} (${item.alertDetail.expectedRecipientCharacterId})`
+				: item.alertDetail?.expectedRecipientCharacterName ??
+					item.alertDetail?.expectedRecipientCharacterId ??
+					'unknown'
+		const actualRecipient =
+			item.alertDetail?.actualRecipientCharacterName && item.alertDetail?.actualRecipientCharacterId
+				? `${item.alertDetail.actualRecipientCharacterName} (${item.alertDetail.actualRecipientCharacterId})`
+				: item.alertDetail?.actualRecipientCharacterName ??
+					item.recipientName ??
+					item.alertDetail?.actualRecipientCharacterId ??
+					item.recipientId ??
+					'unknown'
 		if (item.hasRecipientMismatch) {
-			lines.push(
-				`Recipient mismatch (expected ${item.alertDetail?.expectedRecipientCharacterId ?? 'unknown'}, actual ${item.recipientId ?? 'unknown'})`
-			)
+			lines.push(`Recipient mismatch (expected ${expectedRecipient}, actual ${actualRecipient})`)
 		}
 		if ((item.matchingAlertKinds ?? []).includes('payment_mismatch')) {
 			lines.push(
@@ -229,7 +241,12 @@ export default function SRPWalletHistoryPage() {
 														</HoverPopover>
 													)}
 													{item.linkedRequestId ? (
-														<Link to={`/srp/request/${item.linkedRequestId}`} className="text-primary hover:underline">
+														<Link
+															to={`/srp/request/${item.linkedRequestId}`}
+															target="_blank"
+															rel="noopener noreferrer"
+															className="text-primary hover:underline"
+														>
 															{item.reason ?? '—'}
 														</Link>
 													) : (

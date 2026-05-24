@@ -1678,7 +1678,9 @@ srp.get('/payments/wallet-history', async (c) => {
 					expectedAmount: string | null
 					observedAmount: string | null
 					expectedRecipientCharacterId: string | null
+					expectedRecipientCharacterName: string | null
 					actualRecipientCharacterId: string | null
+					actualRecipientCharacterName: string | null
 				}>(
 					sql`select
 							journal_id::text as "journalId",
@@ -1687,7 +1689,9 @@ srp.get('/payments/wallet-history', async (c) => {
 							expected_amount as "expectedAmount",
 							observed_amount as "observedAmount",
 							expected_recipient_character_id as "expectedRecipientCharacterId",
-							actual_recipient_character_id as "actualRecipientCharacterId"
+							expected_recipient_character_name as "expectedRecipientCharacterName",
+							actual_recipient_character_id as "actualRecipientCharacterId",
+							actual_recipient_character_name as "actualRecipientCharacterName"
 						from srp_payment_alerts
 						where journal_id in ${sql`(${sql.join(journalIds.map((id) => sql`${id}`), sql`,`)})`}`
 				)
@@ -1699,7 +1703,9 @@ srp.get('/payments/wallet-history', async (c) => {
 						expectedAmount: string | null
 						observedAmount: string | null
 						expectedRecipientCharacterId: string | null
+						expectedRecipientCharacterName: string | null
 						actualRecipientCharacterId: string | null
+						actualRecipientCharacterName: string | null
 					}>,
 				}),
 	])
@@ -1713,7 +1719,9 @@ srp.get('/payments/wallet-history', async (c) => {
 			expectedAmount: string | null
 			observedAmount: string | null
 			expectedRecipientCharacterId: string | null
+			expectedRecipientCharacterName: string | null
 			actualRecipientCharacterId: string | null
+			actualRecipientCharacterName: string | null
 		}
 	>()
 	for (const row of paymentAlertsResult.rows ?? []) {
@@ -1727,7 +1735,9 @@ srp.get('/payments/wallet-history', async (c) => {
 				expectedAmount: row.expectedAmount,
 				observedAmount: row.observedAmount,
 				expectedRecipientCharacterId: row.expectedRecipientCharacterId,
+				expectedRecipientCharacterName: row.expectedRecipientCharacterName,
 				actualRecipientCharacterId: row.actualRecipientCharacterId,
+				actualRecipientCharacterName: row.actualRecipientCharacterName,
 			})
 		}
 	}

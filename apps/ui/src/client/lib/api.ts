@@ -3176,7 +3176,9 @@ export class ApiClient {
 				expectedAmount?: string | null
 				observedAmount?: string | null
 				expectedRecipientCharacterId?: string | null
+				expectedRecipientCharacterName?: string | null
 				actualRecipientCharacterId?: string | null
+				actualRecipientCharacterName?: string | null
 			} | null
 			hasOpenAlert?: boolean
 		}>
