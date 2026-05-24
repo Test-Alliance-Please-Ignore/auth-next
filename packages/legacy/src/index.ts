@@ -95,6 +95,7 @@ export interface Legacy extends DurableObject {
 		items: LegacyMigrationQueueItem[]
 		pagination: { page: number; pageSize: number; total: number; totalPages: number }
 	}>
+	countPendingMigrationUsers(): Promise<number>
 	getMigration(id: string): Promise<{
 		item: LegacyMigrationQueueItem
 		actions: LegacyMigrationAction[]
