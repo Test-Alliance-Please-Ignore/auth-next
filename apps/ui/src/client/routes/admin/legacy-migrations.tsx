@@ -11,7 +11,7 @@ import { LoadingInline } from '@/components/ui/loading'
 import { Select } from '@/components/ui/select'
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
 import { usePageTitle } from '@/hooks/usePageTitle'
-import { api, type LegacyMigrationStatus } from '@/lib/api'
+import { api, type LegacyMigrationQueueItem, type LegacyMigrationStatus } from '@/lib/api'
 
 const statusOptions = [
 	{ value: '', label: 'All statuses' },
@@ -30,12 +30,25 @@ function statusBadgeVariant(status: LegacyMigrationStatus): 'secondary' | 'succe
 	return 'ghost'
 }
 
-function parseConflicts(conflicts: Record<string, unknown>): { multiMatch: boolean; crossUserCount: number } {
+function parseConflicts(conflicts: Record<string, unknown>): {
+	multiMatch: boolean
+	crossUserCount: number
+	hasBlacklist: boolean
+} {
 	const crossMatches =
 		Array.isArray(conflicts.crossModernUserQueueMatches) ? conflicts.crossModernUserQueueMatches : []
+	const blacklistSignals =
+		conflicts && typeof conflicts.blacklistSignals === 'object'
+			? (conflicts.blacklistSignals as Record<string, unknown>)
+			: null
+	const hasBlacklist =
+		Boolean(blacklistSignals?.hasAnyBlacklistSignal) ||
+		Boolean(blacklistSignals?.modernUserBlacklisted) ||
+		(Array.isArray(blacklistSignals?.matchedTargets) && blacklistSignals.matchedTargets.length > 0)
 	return {
 		multiMatch: Boolean(conflicts.multipleLegacyUsersForModernUser),
 		crossUserCount: crossMatches.length,
+		hasBlacklist,
 	}
 }
 
@@ -108,6 +121,28 @@ export default function AdminLegacyMigrationsPage() {
 	}, [modernUserId, recheckMutation, searchParams, setSearchParams])
 
 	const hasPagination = (listQuery.data?.pagination.total ?? 0) > pageSize
+	const groupedItems = Object.values(
+		(listQuery.data?.items ?? []).reduce<
+			Record<
+				string,
+				{
+					modernUserId: string
+					modernUserMainCharacterName: string | null
+					items: LegacyMigrationQueueItem[]
+				}
+			>
+		>((acc, item) => {
+			if (!acc[item.modernUserId]) {
+				acc[item.modernUserId] = {
+						modernUserId: item.modernUserId,
+						modernUserMainCharacterName: item.modernUserMainCharacterName ?? null,
+						items: [],
+					}
+				}
+			acc[item.modernUserId].items.push(item)
+			return acc
+		}, {})
+	)
 
 	return (
 		<div className="space-y-6">
@@ -220,50 +255,75 @@ export default function AdminLegacyMigrationsPage() {
 						<TableHeader>
 							<TableRow>
 								<TableHead>Modern User</TableHead>
-								<TableHead>Legacy User</TableHead>
-								<TableHead>Status</TableHead>
+								<TableHead>Legacy Accounts</TableHead>
 								<TableHead>Conflicts</TableHead>
 								<TableHead className="text-right">Actions</TableHead>
 							</TableRow>
 						</TableHeader>
 						<TableBody>
-							{(listQuery.data?.items ?? []).map((item) => {
-								const conflicts = parseConflicts(item.conflicts)
-								const isRecheckingThisRow = recheckingUserId === item.modernUserId
-								const detailPath = `/admin/legacy-migrations/${item.id}`
+							{groupedItems.map((group) => {
+								const isRecheckingThisRow = recheckingUserId === group.modernUserId
+								const groupedConflicts = group.items.map((item) => parseConflicts(item.conflicts))
+								const hasMultiMatch = groupedConflicts.some((conflict) => conflict.multiMatch)
+								const crossUserCount = Math.max(
+									...groupedConflicts.map((conflict) => conflict.crossUserCount),
+									0
+								)
+								const hasBlacklist = groupedConflicts.some((conflict) => conflict.hasBlacklist)
 								return (
-									<TableRow
-										key={item.id}
-										className="cursor-pointer"
-										onClick={() => window.open(detailPath, '_blank', 'noopener,noreferrer')}
-									>
+									<TableRow key={group.modernUserId}>
 										<TableCell>
-											<div className="font-medium">{item.modernUserMainCharacterName ?? 'Unknown character'}</div>
-											<div className="text-xs text-muted-foreground font-mono">{item.modernUserId}</div>
+											<div className="font-medium">
+												{group.modernUserMainCharacterName ?? 'Unknown character'}
+											</div>
+											<div className="text-xs text-muted-foreground font-mono">
+												{group.modernUserId}
+											</div>
 										</TableCell>
-										<TableCell className="font-mono text-xs">{item.legacyAuthUserId}</TableCell>
 										<TableCell>
-											<Badge variant={statusBadgeVariant(item.status)}>{item.status}</Badge>
+											<div className="space-y-2">
+												{group.items.map((item) => {
+													const detailPath = `/admin/legacy-migrations/${item.id}`
+													return (
+														<div
+															key={item.id}
+															className="flex items-center justify-between gap-3 rounded-md border border-border/60 px-3 py-2"
+														>
+															<div className="flex items-center gap-2 min-w-0">
+																<span className="font-mono text-xs">{item.legacyAuthUserId}</span>
+																<Badge variant={statusBadgeVariant(item.status)}>{item.status}</Badge>
+															</div>
+															<Button variant="ghost" size="sm" asChild>
+																<Link to={detailPath} target="_blank" rel="noopener noreferrer">
+																	Open
+																</Link>
+															</Button>
+														</div>
+													)
+												})}
+											</div>
 										</TableCell>
 										<TableCell>
 											<div className="flex gap-1 flex-wrap">
-												{conflicts.multiMatch ? <Badge variant="warning">Multi-match</Badge> : null}
-												{conflicts.crossUserCount > 0 ? (
-													<Badge variant="destructive">Cross-user ({conflicts.crossUserCount})</Badge>
-												) : conflicts.multiMatch ? null : (
+												{hasMultiMatch ? <Badge variant="warning">Multi-match</Badge> : null}
+												{crossUserCount > 0 ? (
+													<Badge variant="destructive">Cross-user ({crossUserCount})</Badge>
+												) : null}
+												{hasBlacklist ? <Badge variant="destructive">Blacklist</Badge> : null}
+												{!hasMultiMatch && crossUserCount === 0 && !hasBlacklist ? (
 													<Badge variant="ghost">None</Badge>
-												)}
+												) : null}
 											</div>
 										</TableCell>
 										<TableCell className="text-right">
-											<div className="inline-flex items-center gap-2" onClick={(event) => event.stopPropagation()}>
+											<div className="inline-flex items-center gap-2">
 												<Button
 													variant="secondary"
 													size="sm"
 													onClick={async () => {
-														setRecheckingUserId(item.modernUserId)
+														setRecheckingUserId(group.modernUserId)
 														try {
-															await recheckMutation.mutateAsync(item.modernUserId)
+															await recheckMutation.mutateAsync(group.modernUserId)
 														} finally {
 															setRecheckingUserId(null)
 														}
@@ -273,19 +333,25 @@ export default function AdminLegacyMigrationsPage() {
 													{isRecheckingThisRow ? <LoadingInline className="mr-2" /> : null}
 													Recheck
 												</Button>
-												<Button variant="primary" size="sm" asChild>
-													<Link to={detailPath} target="_blank" rel="noopener noreferrer">
-														Open
-													</Link>
-												</Button>
+												{group.items[0] ? (
+													<Button variant="primary" size="sm" asChild>
+														<Link
+															to={`/admin/legacy-migrations/${group.items[0].id}`}
+															target="_blank"
+															rel="noopener noreferrer"
+														>
+															Open First
+														</Link>
+													</Button>
+												) : null}
 											</div>
 										</TableCell>
 									</TableRow>
 								)
 							})}
-							{!listQuery.isLoading && (listQuery.data?.items.length ?? 0) === 0 ? (
+							{!listQuery.isLoading && groupedItems.length === 0 ? (
 								<TableRow>
-									<TableCell colSpan={5} className="text-center text-muted-foreground">
+									<TableCell colSpan={4} className="text-center text-muted-foreground">
 										No queue items found.
 									</TableCell>
 								</TableRow>
