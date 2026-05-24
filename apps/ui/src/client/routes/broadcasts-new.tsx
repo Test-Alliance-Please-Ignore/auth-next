@@ -41,6 +41,7 @@ import {
 } from '@/features/broadcasts/components/system-doctrine-field'
 import { SystemFrogsirenField } from '@/features/broadcasts/components/system-frogsiren-field'
 import { SystemSrpField } from '@/features/broadcasts/components/system-srp-field'
+import { generateSrpTokenAtFormLoad } from '@/features/broadcasts/srp-token-generator'
 import {
 	getInitialStagingFieldState,
 	resolveStagingSelectionFromValue,
@@ -193,55 +194,6 @@ function parseBooleanField(value: string | undefined, defaultValue: boolean): bo
 	if (['true', '1', 'yes', 'enabled', 'on'].includes(normalized)) return true
 	if (['false', '0', 'no', 'disabled', 'off'].includes(normalized)) return false
 	return defaultValue
-}
-
-function toPascalCaseWord(word: string): string {
-	const cleaned = word.replace(/[^a-zA-Z0-9]+/g, ' ').trim()
-	if (!cleaned) return ''
-	return cleaned
-		.split(/\s+/)
-		.filter(Boolean)
-		.map((part) => part.charAt(0).toUpperCase() + part.slice(1).toLowerCase())
-		.join('')
-}
-
-function randomItem(list: readonly string[]): string {
-	if (list.length === 0) return 'Token'
-	const random = crypto.getRandomValues(new Uint32Array(1))[0] ?? 0
-	return list[random % list.length] ?? 'Token'
-}
-
-function generateSrpTokenAtFormLoad(): string {
-	const adjectives = [
-		'fleet',
-		'rapid',
-		'brave',
-		'silent',
-		'steady',
-		'iron',
-		'solar',
-		'storm',
-		'ember',
-		'aurora',
-	] as const
-	const nouns = [
-		'staging',
-		'vanguard',
-		'sentinel',
-		'citadel',
-		'anchor',
-		'convoy',
-		'doctrine',
-		'beacon',
-		'horizon',
-		'relay',
-	] as const
-
-	return [
-		toPascalCaseWord(randomItem(adjectives)),
-		toPascalCaseWord(randomItem(nouns)),
-		toPascalCaseWord(randomItem(nouns)),
-	].join('')
 }
 
 function wrapWithFrogsirenBanner(message: string): string {
