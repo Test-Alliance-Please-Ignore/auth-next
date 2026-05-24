@@ -92,8 +92,21 @@ function parseBlacklistAlerts(conflicts: Record<string, unknown>): {
 	const matchedTargets = Array.isArray(blacklistSignals?.matchedTargets)
 		? blacklistSignals.matchedTargets
 		: []
+	const matchingCharactersBlacklisted = Array.isArray(blacklistSignals?.matchingCharactersBlacklisted)
+		? blacklistSignals.matchingCharactersBlacklisted
+		: []
+	const characterNameById = new Map(
+		matchingCharactersBlacklisted
+			.filter((value): value is Record<string, unknown> => Boolean(value) && typeof value === 'object')
+			.map((value) => {
+				const characterId = String(value.characterId ?? '').trim()
+				const characterName = String(value.characterName ?? '').trim()
+				return [characterId, characterName] as const
+			})
+			.filter(([characterId, characterName]) => characterId.length > 0 && characterName.length > 0)
+	)
 
-	const matches = matchedTargets
+	const rawMatches = matchedTargets
 		.filter((value): value is Record<string, unknown> => Boolean(value) && typeof value === 'object')
 		.map((value) => {
 			const parsedEntryMode: 'manual' | 'automatic' | null =
@@ -102,10 +115,12 @@ function parseBlacklistAlerts(conflicts: Record<string, unknown>): {
 			const targetValue = String(value.targetValue ?? '')
 			const preferredSource: 'legacy' | 'tang' =
 				value.preferredSource === 'legacy' ? 'legacy' : 'tang'
+			const resolvedCharacterName =
+				targetType === 'character_id' ? characterNameById.get(targetValue.trim()) ?? null : null
 			return {
 				key: `${targetType}:${targetValue}`,
-				label: targetValue,
-				subLabel: null,
+				label: resolvedCharacterName ?? targetValue,
+				subLabel: resolvedCharacterName ? targetValue : null,
 				targetType,
 				reason: typeof value.reason === 'string' && value.reason.trim().length > 0 ? value.reason : null,
 				entryMode: parsedEntryMode,
@@ -128,6 +143,17 @@ function parseBlacklistAlerts(conflicts: Record<string, unknown>): {
 			}
 		})
 		.filter((value) => value.targetType.length > 0 && value.label.length > 0)
+
+	const characterIdMatches = new Set(
+		rawMatches
+			.filter((match) => match.targetType === 'character_id' && match.subLabel)
+			.map((match) => `${match.label.trim().toLowerCase()}`)
+	)
+
+	const matches = rawMatches.filter((match) => {
+		if (match.targetType !== 'character_name') return true
+		return !characterIdMatches.has(match.label.trim().toLowerCase())
+	})
 
 	const discordMatches = Array.isArray(blacklistSignals?.matchingDiscordUserIdsBlacklisted)
 		? blacklistSignals.matchingDiscordUserIdsBlacklisted
