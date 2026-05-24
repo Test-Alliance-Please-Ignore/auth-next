@@ -1742,27 +1742,36 @@ srp.get('/payments/wallet-history', async (c) => {
 		}
 	}
 
-	const idsToResolve = [...new Set(rows.map((row) => row.recipientId).filter((id): id is string => Boolean(id)))]
+	const requestCharacterIds = [...new Set((matchingRequestsResult.rows ?? []).map((row) => row.characterId))]
+	const idsToResolve = [
+		...new Set(
+			[...rows.map((row) => row.recipientId), ...requestCharacterIds].filter(
+				(id): id is string => Boolean(id)
+			)
+		),
+	]
 	const resolver = getStub<EsiTypeResolver>(c.env.ESI_TYPE_RESOLVER, 'global')
 	const resolvedNames: Record<string, string> =
 		idsToResolve.length > 0 ? await resolver.resolveIds(idsToResolve).catch(() => ({})) : {}
 
-	const computedItems = rows.map((row) => ({
-			hasRecipientMismatch: (() => {
+	const computedItems = rows.map((row) => {
+			const requestIdFromReason = (() => {
 				const reasonText = row.reason ?? ''
 				const match = reasonText.match(SRP_REQUEST_ID_IN_REASON_REGEX)
-				if (!match?.[1]) return false
-				const requestId = match[1]
-				const requestCharacterId = requestById.get(requestId)
-				if (!requestCharacterId || !row.recipientId) return false
-				return row.recipientId !== requestCharacterId
-			})(),
+				return match?.[1] ?? null
+			})()
+			const expectedRequestCharacterId = requestIdFromReason
+				? (requestById.get(requestIdFromReason) ?? null)
+				: null
+			const hasRecipientMismatch = Boolean(
+				expectedRequestCharacterId && row.recipientId && row.recipientId !== expectedRequestCharacterId
+			)
+
+			return {
+			hasRecipientMismatch,
 			linkedRequestId: (() => {
-				const reasonText = row.reason ?? ''
-				const match = reasonText.match(SRP_REQUEST_ID_IN_REASON_REGEX)
-				if (!match?.[1]) return null
-				const requestId = match[1]
-				return requestById.has(requestId) ? requestId : null
+				if (!requestIdFromReason) return null
+				return requestById.has(requestIdFromReason) ? requestIdFromReason : null
 			})(),
 			journalId: row.journalId,
 			refType: row.refType,
@@ -1775,19 +1784,27 @@ srp.get('/payments/wallet-history', async (c) => {
 					? row.entryDate.toISOString()
 					: new Date(String(row.entryDate)).toISOString(),
 			matchingAlertKinds: alertKindsByJournalId.get(row.journalId) ?? [],
-			alertDetail: paymentAlertDetailByJournalId.get(row.journalId) ?? null,
+			alertDetail:
+				paymentAlertDetailByJournalId.get(row.journalId) ??
+				(hasRecipientMismatch
+					? {
+							expectedAmount: null,
+							observedAmount: row.amount,
+							expectedRecipientCharacterId: expectedRequestCharacterId,
+							expectedRecipientCharacterName: expectedRequestCharacterId
+								? (resolvedNames[expectedRequestCharacterId] ?? null)
+								: null,
+							actualRecipientCharacterId: row.recipientId,
+							actualRecipientCharacterName: row.recipientId
+								? (resolvedNames[row.recipientId] ?? null)
+								: null,
+					  }
+					: null),
 			hasOpenAlert:
 				(alertKindsByJournalId.get(row.journalId) ?? []).length > 0 ||
-				(() => {
-					const reasonText = row.reason ?? ''
-					const match = reasonText.match(SRP_REQUEST_ID_IN_REASON_REGEX)
-					if (!match?.[1]) return false
-					const requestId = match[1]
-					const requestCharacterId = requestById.get(requestId)
-					if (!requestCharacterId || !row.recipientId) return false
-					return row.recipientId !== requestCharacterId
-				})(),
-		}))
+				hasRecipientMismatch,
+		}
+	})
 
 	const items = alertsOnly ? computedItems.filter((item) => item.hasOpenAlert) : computedItems
 	const pagedItems = alertsOnly ? items.slice(offset, offset + limit) : items
