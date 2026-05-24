@@ -41,8 +41,8 @@ export const srpKeys = {
 		[...srpKeys.payments(), 'alerts', params] as const,
 	walletHistory: (params?: {
 		reason?: string
-		senderId?: string
 		recipientId?: string
+		alertsOnly?: boolean
 		dateFrom?: string
 		dateTo?: string
 		limit?: number

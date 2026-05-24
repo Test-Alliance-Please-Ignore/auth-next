@@ -10,6 +10,7 @@ import { EveTimeDisplay } from '@/components/ui/eve-time-display'
 import { HoverPopover } from '@/components/ui/hover-popover'
 import { PageHeader } from '@/components/ui/page-header'
 import { Select } from '@/components/ui/select'
+import { Switch } from '@/components/ui/switch'
 import {
 	Table,
 	TableBody,
@@ -28,6 +29,7 @@ import { formatISK } from '../utils'
 type WalletHistoryFilters = {
 	reason?: string
 	recipientId?: string
+	alertsOnly?: boolean
 	dateFrom?: string
 	dateTo?: string
 }
@@ -53,12 +55,22 @@ export default function SRPWalletHistoryPage() {
 	const total = data?.total ?? 0
 	const hasPagination = Math.ceil(total / pageSize) > 1
 
-	const getAlertReasons = (item: (typeof items)[number]): string[] => {
-		const reasons: string[] = []
-		if (item.hasRecipientMismatch) reasons.push('Recipient mismatch')
-		if ((item.matchingAlertKinds ?? []).includes('payment_mismatch')) reasons.push('Amount mismatch')
-		if ((item.matchingAlertKinds ?? []).includes('payment_missing')) reasons.push('Missing payment (>24h)')
-		return [...new Set(reasons)]
+	const getAlertReasonLines = (item: (typeof items)[number]): string[] => {
+		const lines: string[] = []
+		if (item.hasRecipientMismatch) {
+			lines.push(
+				`Recipient mismatch (expected ${item.alertDetail?.expectedRecipientCharacterId ?? 'unknown'}, actual ${item.recipientId ?? 'unknown'})`
+			)
+		}
+		if ((item.matchingAlertKinds ?? []).includes('payment_mismatch')) {
+			lines.push(
+				`Amount mismatch (expected ${item.alertDetail?.expectedAmount ?? 'unknown'}, actual ${item.alertDetail?.observedAmount ?? item.amount})`
+			)
+		}
+		if ((item.matchingAlertKinds ?? []).includes('payment_missing')) {
+			lines.push(`Missing payment (>24h) (expected ${item.alertDetail?.expectedAmount ?? 'unknown'})`)
+		}
+		return [...new Set(lines)]
 	}
 
 	const renderPagination = () => (
@@ -137,6 +149,19 @@ export default function SRPWalletHistoryPage() {
 								className="[&_.themed-date-picker__input]:h-10"
 							/>
 						</div>
+						<div className="flex items-center gap-2 md:col-span-2 xl:col-span-4">
+							<Switch
+								checked={Boolean(filters.alertsOnly)}
+								onCheckedChange={(checked) => {
+									setFilters((prev) => ({
+										...prev,
+										alertsOnly: checked ? true : undefined,
+									}))
+									setPage(1)
+								}}
+							/>
+							<span className="text-sm text-muted-foreground">Alerts only</span>
+						</div>
 					</div>
 
 					{hasPagination && <div className="border-y py-3">{renderPagination()}</div>}
@@ -177,7 +202,7 @@ export default function SRPWalletHistoryPage() {
 											key={`${item.journalId}-${item.entryDate}`}
 											className={
 												item.hasOpenAlert
-													? 'bg-red-900/25 hover:bg-red-900/30 border-l-2 border-l-red-500'
+													? 'odd:!bg-red-900/25 even:!bg-red-900/25 hover:!bg-red-900/30 border-l-2 border-l-red-500'
 													: undefined
 											}
 										>
@@ -188,7 +213,7 @@ export default function SRPWalletHistoryPage() {
 												<div className="flex items-center gap-2">
 													{item.hasOpenAlert && (
 														<HoverPopover
-															trigger={<AlertTriangle className="h-3.5 w-3.5 text-red-400" />}
+															trigger={<AlertTriangle className="h-3.5 w-3.5 cursor-help text-red-400" />}
 															align="start"
 															side="top"
 															className="w-64 p-3"
@@ -196,7 +221,7 @@ export default function SRPWalletHistoryPage() {
 															<div className="space-y-1">
 																<p className="text-xs font-semibold text-red-300">Alert Details</p>
 																<ul className="list-disc pl-4 text-xs text-muted-foreground">
-																	{getAlertReasons(item).map((reason) => (
+																	{getAlertReasonLines(item).map((reason) => (
 																		<li key={reason}>{reason}</li>
 																	))}
 																</ul>
