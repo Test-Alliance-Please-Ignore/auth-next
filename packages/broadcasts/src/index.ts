@@ -88,6 +88,13 @@ export interface Broadcast {
 	permissionId: string
 	createdBy: string
 	createdByCharacterName: string
+	srpMode?: 'blanket' | 'military' | 'coalition' | 'disabled' | null
+	/** Generated SRP token linked to this broadcast, when applicable. */
+	srpToken?: string | null
+	/** Doctrine ID selected at broadcast compose time, when a non-custom doctrine was chosen. */
+	doctrineId?: string | null
+	/** Fleet tracking session linked to this broadcast, when applicable. */
+	fleetSessionId?: string | null
 	createdAt: string
 	updatedAt: string
 }
@@ -383,6 +390,25 @@ export interface Broadcasts {
 	 * @returns Broadcast with details or null if not found
 	 */
 	getBroadcast(broadcastId: string, userId: string): Promise<BroadcastWithDetails | null>
+
+	/**
+	 * Resolve a broadcast by SRP token.
+	 * @param srpToken - SRP token to match
+	 * @param userId - User ID making the request
+	 * @returns Broadcast details or null if not found
+	 */
+	getBroadcastBySrpToken(srpToken: string, userId: string): Promise<BroadcastWithDetails | null>
+
+	/**
+	 * Resolve a broadcast by linked fleet tracking session id.
+	 * @param fleetSessionId - Fleet tracking session id
+	 * @param userId - User ID making the request
+	 * @returns Broadcast details or null if not found
+	 */
+	getBroadcastByFleetSessionId(
+		fleetSessionId: string,
+		userId: string
+	): Promise<BroadcastWithDetails | null>
 
 	/**
 	 * Create a new broadcast

@@ -1,16 +1,28 @@
 import { ArrowLeft, Clock, Lock, Square } from 'lucide-react'
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { Link, Navigate, useParams } from 'react-router-dom'
 
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { ConfirmationDialog } from '@/components/ui/confirmation-dialog'
 import { Container } from '@/components/ui/container'
+import { EveTimeDisplay } from '@/components/ui/eve-time-display'
 import { LoadingPage } from '@/components/ui/loading'
+import { PageHeader } from '@/components/ui/page-header'
+import { Select } from '@/components/ui/select'
+import {
+	Table,
+	TableBody,
+	TableCell,
+	TableHead,
+	TableHeader,
+	TableRow,
+} from '@/components/ui/table'
 import { useAuth } from '@/hooks/useAuth'
 import { usePageTitle } from '@/hooks/usePageTitle'
 import { useUserPermissions } from '@/hooks/useUserPermissions'
 import { error as toastError, success as toastSuccess } from '@/lib/toast'
+import { useDoctrine, useDoctrines } from '@/features/doctrines/hooks'
 import { CurrentMembersPanel } from '../components/current-members-panel'
 import { SessionRosterPanel } from '../components/session-roster-panel'
 import { SessionStatusPill } from '../components/session-status-pill'
@@ -21,6 +33,8 @@ import {
 	useSessionRoster,
 	useSessionSummary,
 	useSessionTimeline,
+	useKickTrackingMembers,
+	useSessionBroadcastLink,
 	useStopTracking,
 	useTrackingSession,
 } from '../hooks'
@@ -54,14 +68,17 @@ export default function TrackingSessionDetail() {
 
 	return (
 		<Container>
-			<div className="mb-4">
-				<Button asChild variant="ghost" size="sm">
-					<Link to="/fleet-tracking">
-						<ArrowLeft className="h-4 w-4" />
-						Back
-					</Link>
-				</Button>
-			</div>
+			<PageHeader
+				title={session.name}
+				action={
+					<Button asChild variant="ghost" size="sm">
+						<Link to="/fleet-tracking">
+							<ArrowLeft className="h-4 w-4" />
+							Back
+						</Link>
+					</Button>
+				}
+			/>
 
 			<HeaderBlock session={session} canStop={canStop} />
 
@@ -70,6 +87,7 @@ export default function TrackingSessionDetail() {
 					sessionId={sessionId}
 					status={session.status}
 					startedAt={session.startedAt}
+					canKickMembers={canStop}
 				/>
 			) : (
 				<SummaryOnlyView sessionId={sessionId} />
@@ -102,23 +120,27 @@ function HeaderBlock({
 		<div className="mb-6">
 			<div className="flex items-start justify-between gap-4 flex-wrap">
 				<div className="space-y-1.5">
-					<div className="flex items-center gap-2 flex-wrap">
-						<SessionStatusPill status={session.status} />
-						<h1 className="text-2xl font-semibold">{session.name}</h1>
-					</div>
-					<div className="text-sm text-muted-foreground">
-						FC: {session.characterName ?? <span className="font-mono">{session.characterId}</span>}
-						{' • '}
-						{session.status === 'active' ? (
-							<>Running {formatDurationBetween(session.startedAt, null)}</>
-						) : (
-							<>
-								{new Date(session.startedAt).toLocaleString()} →{' '}
-								{session.endedAt && new Date(session.endedAt).toLocaleString()}
-								{' • '}
-								{formatDurationBetween(session.startedAt, session.endedAt)}
-							</>
-						)}
+					<div className="text-sm leading-6 flex items-center flex-wrap gap-x-2">
+						<span className="inline-flex items-center">
+							<SessionStatusPill status={session.status} />
+						</span>
+						<span className="text-muted-foreground">FC:</span>{' '}
+						<span className="font-semibold text-foreground">
+							{session.characterName ?? <span className="font-mono">{session.characterId}</span>}
+						</span>
+						<span className="text-muted-foreground">•</span>
+						<span className="font-medium text-foreground">
+							{session.status === 'active' ? (
+								<>Running {formatDurationBetween(session.startedAt, null)}</>
+							) : (
+								<>
+									<EveTimeDisplay dateStr={session.startedAt} /> →{' '}
+									{session.endedAt && <EveTimeDisplay dateStr={session.endedAt} />}
+									<span className="text-muted-foreground">•</span>
+									{formatDurationBetween(session.startedAt, session.endedAt)}
+								</>
+							)}
+						</span>
 					</div>
 					{session.endedReason && (
 						<div className="text-sm text-muted-foreground">
@@ -156,14 +178,20 @@ function DetailView({
 	sessionId,
 	status,
 	startedAt,
+	canKickMembers,
 }: {
 	sessionId: string
 	status: 'active' | 'ended'
 	startedAt: string
+	canKickMembers: boolean
 }) {
+	const [selectedDoctrineId, setSelectedDoctrineId] = useState('')
+	const { data: doctrines = [] } = useDoctrines()
+	const { data: selectedDoctrine } = useDoctrine(selectedDoctrineId || undefined)
+	const { data: broadcastLinkResp } = useSessionBroadcastLink(sessionId)
+
 	const isLive = status === 'active'
-	// Backend tick is 30s; polling more often just burns requests for stale data.
-	const LIVE_POLL_MS = 30_000
+	const LIVE_POLL_MS = 5_000
 	const { data: liveResp } = useSessionLiveSnapshot(sessionId, {
 		refetchInterval: isLive ? LIVE_POLL_MS : false,
 	})
@@ -171,7 +199,7 @@ function DetailView({
 	const pollInterval = isLive ? LIVE_POLL_MS : (false as const)
 	const { data: timeline } = useSessionTimeline(
 		sessionId,
-		{ limit: 15 },
+		{ limit: 25 },
 		{ refetchInterval: pollInterval }
 	)
 	// Lightweight totals — only the `total` field is used, not the rows.
@@ -189,9 +217,36 @@ function DetailView({
 		refetchInterval: pollInterval,
 	})
 	const { data: roster } = useSessionRoster(isLive ? undefined : sessionId)
+	const kickMembersMutation = useKickTrackingMembers()
 
 	const snapshot = liveResp?.snapshot ?? null
 	const summary = summaryResp?.summary ?? null
+	const broadcastLink = broadcastLinkResp?.broadcast ?? null
+	const doctrineShipTypeIds = selectedDoctrine
+		? new Set(
+				selectedDoctrine.fittings
+					.map((entry) => entry.fitting.shipTypeId)
+					.filter((id): id is string => Boolean(id))
+			)
+		: undefined
+
+	useEffect(() => {
+		if (selectedDoctrineId) return
+		const doctrineIdFromBroadcast = broadcastLink?.doctrineId?.trim()
+		if (doctrineIdFromBroadcast) {
+			const matchedById = doctrines.find((doctrine) => doctrine.id === doctrineIdFromBroadcast)
+			if (matchedById) {
+				setSelectedDoctrineId(matchedById.id)
+				return
+			}
+		}
+		const doctrineFromBroadcast = broadcastLink?.doctrine?.trim()
+		if (!doctrineFromBroadcast || doctrineFromBroadcast.toLowerCase() === 'read motd') return
+		const matchedDoctrine = doctrines.find((doctrine) => doctrine.name === doctrineFromBroadcast)
+		if (matchedDoctrine) {
+			setSelectedDoctrineId(matchedDoctrine.id)
+		}
+	}, [broadcastLink?.doctrine, doctrines, selectedDoctrineId])
 
 	// Headline stats
 	const stats: Array<{ label: string; value: string | number; sublabel?: string }> = []
@@ -222,6 +277,61 @@ function DetailView({
 	return (
 		<div className="space-y-6">
 			{stats.length > 0 && <SessionStatsGrid stats={stats} />}
+			{(isLive || broadcastLink) && (
+				<div className="grid gap-4 lg:grid-cols-2">
+					{isLive ? (
+						<Card>
+							<CardHeader>
+								<CardTitle className="text-base">Doctrine</CardTitle>
+							</CardHeader>
+							<CardContent>
+								<div className="max-w-md">
+									<Select
+										value={selectedDoctrineId}
+										onValueChange={(value) => setSelectedDoctrineId(value || '')}
+										options={[
+											{ value: '', label: 'No Doctrine Selected' },
+											...doctrines.map((d) => ({ value: d.id, label: d.name })),
+										]}
+										placeholder="Select doctrine"
+										searchable
+									/>
+								</div>
+							</CardContent>
+						</Card>
+					) : (
+						<div />
+					)}
+					<Card>
+						<CardHeader>
+							<CardTitle className="text-base">SRP</CardTitle>
+						</CardHeader>
+						<CardContent className="space-y-2 text-sm">
+							{broadcastLink ? (
+								<>
+									<div>
+										<span className="text-muted-foreground">Mode:</span>{' '}
+										<span className="font-medium text-foreground">
+											{broadcastLink.srpMode
+												? broadcastLink.srpMode.charAt(0).toUpperCase() +
+													broadcastLink.srpMode.slice(1)
+												: 'None'}
+										</span>
+									</div>
+									<div>
+										<span className="text-muted-foreground">Token:</span>{' '}
+										<span className="font-mono text-foreground">
+											{broadcastLink.srpToken ?? 'N/A'}
+										</span>
+									</div>
+								</>
+							) : (
+								<div className="text-muted-foreground">No linked broadcast found for this session.</div>
+							)}
+						</CardContent>
+					</Card>
+				</div>
+			)}
 
 			{isLive
 				? currentMembers && (
@@ -229,6 +339,46 @@ function DetailView({
 							sessionId={sessionId}
 							members={currentMembers.members}
 							groupCounts={currentMembers.groupCounts}
+							doctrineShipTypeIds={doctrineShipTypeIds}
+							canKickMembers={canKickMembers}
+							isKickingMembers={kickMembersMutation.isPending}
+							onKickMembers={async (memberCharacterIds) => {
+								const result = await kickMembersMutation.mutateAsync({
+									sessionId,
+									memberCharacterIds,
+								})
+								if (result.summary.failed > 0) {
+									const firstFailure = result.results.find((r) => !r.success)
+									const mapKickFailureReason = (raw?: string): string => {
+										const text = (raw ?? '').toLowerCase()
+										if (!text) return 'Unable to remove this member.'
+										if (text.includes('permission') || text.includes('unauthorized') || text.includes('forbidden')) {
+											return 'You may not have the required permissions to remove this member.'
+										}
+										if (text.includes('not found') || text.includes('already left')) {
+											return 'That member is no longer in this fleet.'
+										}
+										if (text.includes('not active')) {
+											return 'This fleet session is no longer active.'
+										}
+										return 'Unable to remove this member.'
+									}
+									console.error('[Fleet Tracking] Kick member(s) had failures', {
+										sessionId,
+										memberCharacterIds,
+										results: result.results,
+									})
+									toastError(
+										result.summary.total === 1
+											? `Could not remove this member from fleet. ${mapKickFailureReason(firstFailure?.error)}`
+											: `Removed ${result.summary.success}/${result.summary.total} members. Some members could not be removed.`
+									)
+									return
+								}
+								toastSuccess(
+									`Removed ${result.summary.success} member${result.summary.success === 1 ? '' : 's'} from fleet.`
+								)
+							}}
 						/>
 					)
 				: roster && (
@@ -253,7 +403,7 @@ function DetailView({
 			{isLive && (
 				<div className="text-xs text-muted-foreground flex items-center gap-1">
 					<Clock className="h-3 w-3" />
-					Fleet data updates every 30 seconds.
+					Fleet data updates every 10 seconds.
 				</div>
 			)}
 		</div>
@@ -281,40 +431,50 @@ function TimelinePanel({
 				{timeline.length === 0 ? (
 					<div className="text-sm text-muted-foreground py-4">No events recorded yet.</div>
 				) : (
-					<ul className="space-y-2">
-						{timeline.slice(0, 15).map((ev) => (
-							<li key={ev.id} className="text-sm flex items-baseline gap-3">
-								<time className="font-mono text-xs text-muted-foreground">
-									{new Date(ev.eventTimestamp).toLocaleTimeString()}
-								</time>
-								<span className="font-medium">
-									{ev.eventType === 'join' ? '→' : ev.eventType === 'leave' ? '←' : '⟶'}{' '}
-									<Link
-										to={`/fleet-tracking/${sessionId}/members/${ev.characterId}`}
-										className="hover:underline"
-									>
-										{ev.characterName || ev.characterId}
-									</Link>
-								</span>
-								<span className="text-muted-foreground">
-									{ev.eventType === 'ship_change' ? (
-										<>
-											re-shipped:{' '}
-											{ev.previousShipTypeName || `type #${ev.previousShipTypeId ?? '?'}`} →{' '}
-											{ev.shipTypeName || `type #${ev.shipTypeId}`} (in{' '}
-											{ev.systemName || `system #${ev.solarSystemId}`})
-										</>
-									) : (
-										<>
-											{ev.eventType === 'join' ? 'joined' : 'left'} in{' '}
-											{ev.shipTypeName || `type #${ev.shipTypeId}`} at{' '}
-											{ev.systemName || `system #${ev.solarSystemId}`}
-										</>
-									)}
-								</span>
-							</li>
-						))}
-					</ul>
+					<Table>
+						<TableHeader>
+							<TableRow>
+								<TableHead>Timestamp</TableHead>
+								<TableHead>Event</TableHead>
+								<TableHead>Character</TableHead>
+								<TableHead>Details</TableHead>
+							</TableRow>
+						</TableHeader>
+						<TableBody>
+							{timeline.map((ev) => (
+								<TableRow key={ev.id}>
+									<TableCell className="text-muted-foreground">
+										<EveTimeDisplay dateStr={ev.eventTimestamp} />
+									</TableCell>
+									<TableCell className="font-medium">
+										{ev.eventType === 'join' ? 'Join' : ev.eventType === 'leave' ? 'Leave' : 'Ship Change'}
+									</TableCell>
+									<TableCell>
+										<Link
+											to={`/fleet-tracking/${sessionId}/members/${ev.characterId}`}
+											className="hover:underline"
+										>
+											{ev.characterName || ev.characterId}
+										</Link>
+									</TableCell>
+									<TableCell className="text-muted-foreground">
+										{ev.eventType === 'ship_change' ? (
+											<>
+												{ev.previousShipTypeName || `type #${ev.previousShipTypeId ?? '?'}`} →{' '}
+												{ev.shipTypeName || `type #${ev.shipTypeId}`} in{' '}
+												{ev.systemName || `system #${ev.solarSystemId}`}
+											</>
+										) : (
+											<>
+												{ev.shipTypeName || `type #${ev.shipTypeId}`} at{' '}
+												{ev.systemName || `system #${ev.solarSystemId}`}
+											</>
+										)}
+									</TableCell>
+								</TableRow>
+							))}
+						</TableBody>
+					</Table>
 				)}
 			</CardContent>
 		</Card>

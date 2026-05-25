@@ -1181,6 +1181,60 @@ broadcasts.get('/', async (c) => {
 })
 
 /**
+ * Resolve a broadcast by SRP token
+ * GET /api/broadcasts/by-srp-token/:srpToken
+ */
+broadcasts.get('/by-srp-token/:srpToken', async (c) => {
+	const user = c.get('user')!
+	const srpToken = c.req.param('srpToken')
+
+	const broadcastsStub = getStub<Broadcasts>(c.env.BROADCASTS, 'default')
+	const broadcast = await broadcastsStub.getBroadcastBySrpToken(srpToken, user.id)
+
+	if (!broadcast) {
+		return c.json({ error: 'Broadcast not found' }, 404)
+	}
+
+	if (!user.is_admin) {
+		const permissionContext = await getUserBroadcastPermissionContext(c.env, user.id)
+		const canView = canAccessBroadcastTargetByAction(broadcast.target, 'send', permissionContext)
+
+		if (!canView) {
+			return c.json({ error: 'Not authorized to view this broadcast' }, 403)
+		}
+	}
+
+	return c.json(broadcast)
+})
+
+/**
+ * Resolve a broadcast by linked fleet session id
+ * GET /api/broadcasts/by-fleet-session/:fleetSessionId
+ */
+broadcasts.get('/by-fleet-session/:fleetSessionId', async (c) => {
+	const user = c.get('user')!
+	const fleetSessionId = c.req.param('fleetSessionId')
+
+	const broadcastsStub = getStub<Broadcasts>(c.env.BROADCASTS, 'default')
+	const broadcast = await broadcastsStub.getBroadcastByFleetSessionId(fleetSessionId, user.id)
+
+	if (!broadcast) {
+		return c.json({ broadcast: null })
+	}
+
+	if (!user.is_admin) {
+		const permissionContext = await getUserBroadcastPermissionContext(c.env, user.id)
+		const canView = canAccessBroadcastTargetByAction(broadcast.target, 'send', permissionContext)
+
+		if (!canView) {
+			return c.json({ error: 'Not authorized to view this broadcast' }, 403)
+		}
+	}
+
+	return c.json({ broadcast })
+})
+
+/**
  * Get a single broadcast with full details
  * GET /api/broadcasts/:id
  */

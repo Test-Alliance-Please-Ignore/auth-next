@@ -396,6 +396,7 @@ export default function NewBroadcastPage() {
 					const doctrineState = getInitialDoctrineFieldState()
 					initialSelections[field.name] = doctrineState.selection
 					initialFields[field.name] = doctrineState.value
+					initialFields.__doctrineId = ''
 					return
 				}
 
@@ -485,6 +486,11 @@ export default function NewBroadcastPage() {
 				if ((templateFields[field.name] ?? '') !== doctrineState.value) {
 					updateTemplateField(field.name, doctrineState.value)
 				}
+				const matchedDoctrine = doctrines.find((doctrine) => doctrine.name === doctrineState.value)
+				const nextDoctrineId = matchedDoctrine?.id ?? ''
+				if ((templateFields.__doctrineId ?? '') !== nextDoctrineId) {
+					updateTemplateField('__doctrineId', nextDoctrineId)
+				}
 				changed = true
 				continue
 			}
@@ -552,7 +558,7 @@ export default function NewBroadcastPage() {
 		if (changed) {
 			setTemplateFieldSelections(nextSelections)
 		}
-	}, [selectedTemplate, templateFieldSelections, templateFields])
+	}, [doctrines, selectedTemplate, templateFieldSelections, templateFields])
 
 	useEffect(() => {
 		if (isEditMode || !selectedTargetId || !templates || templates.length === 0) return
@@ -969,12 +975,20 @@ export default function NewBroadcastPage() {
 																}
 																value={templateFields[field.name]}
 																doctrines={doctrines}
-																onSelectionChange={(value) =>
-																	updateTemplateFieldSelection(field.name, value)
-																}
-																onValueChange={(value) =>
+																	onSelectionChange={(value) => {
+																		updateTemplateFieldSelection(field.name, value)
+																		const matchedDoctrine = doctrines.find(
+																			(doctrine) => doctrine.name === value
+																		)
+																		updateTemplateField('__doctrineId', matchedDoctrine?.id ?? '')
+																	}}
+																onValueChange={(value) => {
 																	updateTemplateField(field.name, value)
-																}
+																	const matchedDoctrine = doctrines.find(
+																		(doctrine) => doctrine.name === value
+																	)
+																	updateTemplateField('__doctrineId', matchedDoctrine?.id ?? '')
+																}}
 															/>
 														) : field.type === 'system_staging' ? (
 															<SystemStagingField

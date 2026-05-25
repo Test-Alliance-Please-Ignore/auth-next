@@ -311,7 +311,7 @@ export interface Doctrines {
 		id: string,
 		data: UpdateDoctrineRequest & { updatedBy?: string }
 	): Promise<Doctrine>
-	deleteDoctrine(id: string): Promise<void>
+	deleteDoctrine(id: string, deletedBy?: string): Promise<void>
 
 	// Doctrine-Staging Relationship
 	setDoctrineStagingSystem(doctrineId: string, data: SetDoctrineStagingRequest): Promise<void>
@@ -323,7 +323,7 @@ export interface Doctrines {
 	getFittingsWithDoctrines(): Promise<FittingWithDoctrines[]>
 	getFitting(id: string): Promise<FittingWithItems | null>
 	updateFitting(id: string, data: UpdateFittingRequest): Promise<Fitting>
-	deleteFitting(id: string): Promise<void>
+	deleteFitting(id: string, deletedBy?: string): Promise<void>
 
 	// Doctrine-Fitting Relationship
 	addFittingToDoctrine(doctrineId: string, data: AddFittingToDoctrineRequest): Promise<void>

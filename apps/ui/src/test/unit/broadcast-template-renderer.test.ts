@@ -38,7 +38,7 @@ describe('renderBroadcastTemplateMessage', () => {
 
 		expect(blanket).toBe('SRP: **Blanket**\nSRP Token: **TokenA**')
 		expect(military).toBe('SRP: **Military**\nSRP Token: **TokenB**')
-		expect(coalition).toBe('SRP: **Coalition**\nSRP Token: **TokenC**')
+		expect(coalition).toBe('SRP: **Coalition**')
 		expect(disabled).toBe('SRP: **No**')
 	})
 

@@ -4,7 +4,9 @@ import { Link, Navigate, useParams } from 'react-router-dom'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent } from '@/components/ui/card'
 import { Container } from '@/components/ui/container'
+import { EveTimeDisplay } from '@/components/ui/eve-time-display'
 import { LoadingPage } from '@/components/ui/loading'
+import { PageHeader } from '@/components/ui/page-header'
 import {
 	Table,
 	TableBody,
@@ -35,18 +37,19 @@ export default function UserStats() {
 
 	return (
 		<Container>
-			<div className="mb-4">
-				<Button asChild variant="ghost" size="sm">
-					<Link to="/fleet-tracking/stats">
-						<ArrowLeft className="h-4 w-4" />
-						Stats
-					</Link>
-				</Button>
-			</div>
-
+			<PageHeader
+				title={mainName}
+				action={
+					<Button asChild variant="ghost" size="sm">
+						<Link to="/fleet-tracking/stats">
+							<ArrowLeft className="h-4 w-4" />
+							Stats
+						</Link>
+					</Button>
+				}
+			/>
 			<div className="mb-6 flex items-start justify-between gap-4 flex-wrap">
 				<div>
-					<h1 className="text-2xl font-semibold">{mainName}</h1>
 					<p className="text-sm text-muted-foreground mt-1">
 						{data?.perCharacter.length ?? 0} character{(data?.perCharacter.length ?? 0) === 1 ? '' : 's'}
 					</p>
@@ -139,7 +142,7 @@ export default function UserStats() {
 									<TableBody>
 										{data.recentSessions.map((s) => (
 											<TableRow key={`${s.sessionId}-${s.characterId}`}>
-												<TableCell>{new Date(s.startedAt).toLocaleDateString()}</TableCell>
+												<TableCell><EveTimeDisplay dateStr={s.startedAt} /></TableCell>
 												<TableCell>
 													<Link
 														to={`/fleet-tracking/stats/characters/${s.characterId}`}

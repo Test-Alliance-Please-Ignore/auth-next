@@ -1,5 +1,5 @@
 import { relations } from 'drizzle-orm'
-import { index, integer, jsonb, pgEnum, pgTable, primaryKey, text, timestamp, uuid, varchar } from 'drizzle-orm/pg-core'
+import { index, integer, jsonb, pgEnum, pgTable, primaryKey, text, timestamp, uniqueIndex, uuid, varchar } from 'drizzle-orm/pg-core'
 
 /**
  * Enums
@@ -16,6 +16,14 @@ export const broadcastStatusEnum = pgEnum('broadcast_status', [
 	'sent',
 	'failed',
 	'rescinded',
+])
+
+/** Broadcast SRP mode (for correlation metadata). */
+export const broadcastSrpModeEnum = pgEnum('broadcast_srp_mode', [
+	'blanket',
+	'military',
+	'coalition',
+	'disabled',
 ])
 
 /** Delivery status */
@@ -163,6 +171,35 @@ export const broadcasts = pgTable(
 )
 
 /**
+ * Broadcast Session Links table
+ *
+ * Stores linkage between a broadcast and its generated SRP token / optional
+ * fleet tracking session. This keeps correlation metadata queryable without
+ * depending on JSON content fields.
+ */
+export const broadcastSessionLinks = pgTable(
+	'broadcast_session_links',
+	{
+		id: uuid('id').defaultRandom().primaryKey(),
+		broadcastId: uuid('broadcast_id')
+			.notNull()
+			.references(() => broadcasts.id, { onDelete: 'cascade' }),
+		srpMode: broadcastSrpModeEnum('srp_mode'),
+		srpToken: varchar('srp_token', { length: 255 }),
+		doctrineId: uuid('doctrine_id'),
+		fleetSessionId: uuid('fleet_session_id'),
+		createdAt: timestamp('created_at').defaultNow().notNull(),
+		updatedAt: timestamp('updated_at').defaultNow().notNull(),
+	},
+	(table) => [
+		uniqueIndex('broadcast_session_links_broadcast_id_unique').on(table.broadcastId),
+		uniqueIndex('broadcast_session_links_srp_token_unique').on(table.srpToken),
+		index('broadcast_session_links_doctrine_id_idx').on(table.doctrineId),
+		index('broadcast_session_links_fleet_session_id_idx').on(table.fleetSessionId),
+	]
+)
+
+/**
  * Broadcast Deliveries table - Tracking delivery status per target
  *
  * Tracks the delivery status of each broadcast to each target, including
@@ -232,6 +269,7 @@ export const broadcastsRelations = relations(broadcasts, ({ one, many }) => ({
 		references: [broadcastTargets.id],
 	}),
 	deliveries: many(broadcastDeliveries),
+	sessionLinks: many(broadcastSessionLinks),
 }))
 
 export const broadcastDeliveriesRelations = relations(broadcastDeliveries, ({ one }) => ({
@@ -245,6 +283,13 @@ export const broadcastDeliveriesRelations = relations(broadcastDeliveries, ({ on
 	}),
 }))
 
+export const broadcastSessionLinksRelations = relations(broadcastSessionLinks, ({ one }) => ({
+	broadcast: one(broadcasts, {
+		fields: [broadcastSessionLinks.broadcastId],
+		references: [broadcasts.id],
+	}),
+}))
+
 /**
  * Schema export for use with createDb
  */
@@ -253,10 +298,12 @@ export const schema = {
 	broadcastTemplates,
 	broadcastTemplateTargets,
 	broadcasts,
+	broadcastSessionLinks,
 	broadcastDeliveries,
 	broadcastTemplatesRelations,
 	broadcastTargetsRelations,
 	broadcastTemplateTargetsRelations,
 	broadcastsRelations,
+	broadcastSessionLinksRelations,
 	broadcastDeliveriesRelations,
 }

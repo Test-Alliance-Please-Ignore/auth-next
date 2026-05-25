@@ -4,7 +4,9 @@ import { Link, Navigate, useParams } from 'react-router-dom'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent } from '@/components/ui/card'
 import { Container } from '@/components/ui/container'
+import { EveTimeDisplay } from '@/components/ui/eve-time-display'
 import { LoadingPage } from '@/components/ui/loading'
+import { PageHeader } from '@/components/ui/page-header'
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
 import { usePageTitle } from '@/hooks/usePageTitle'
 import { useMemberShipHistory, useTrackingSession } from '../hooks'
@@ -15,13 +17,13 @@ export default function MemberShipHistory() {
 	const { sessionId, characterId } = useParams<{ sessionId: string; characterId: string }>()
 
 	const { data: session } = useTrackingSession(sessionId)
-	const { data, isLoading } = useMemberShipHistory(sessionId, characterId)
+	const { data, isLoading, isFetching } = useMemberShipHistory(sessionId, characterId)
 
 	if (!sessionId || !characterId) return <Navigate to="/fleet-tracking" replace />
-	if (isLoading) return <LoadingPage />
+	if (isLoading || isFetching) return <LoadingPage />
 
 	const rows = data?.items ?? []
-	const characterName = data?.characterName ?? characterId
+	const characterName = data?.characterName ?? 'Pilot Ship History'
 	const totalMs = rows.reduce((sum, r) => {
 		const start = new Date(r.startedAt).getTime()
 		const end = r.endedAt ? new Date(r.endedAt).getTime() : Date.now()
@@ -30,21 +32,20 @@ export default function MemberShipHistory() {
 
 	return (
 		<Container>
-			<div className="mb-4">
-				<Button asChild variant="ghost" size="sm">
-					<Link to={`/fleet-tracking/${sessionId}`}>
-						<ArrowLeft className="h-4 w-4" />
-						Session
-					</Link>
-				</Button>
-			</div>
-
+			<PageHeader
+				title={characterName}
+				description="Ship history"
+				action={
+					<Button asChild variant="ghost" size="sm">
+						<Link to={`/fleet-tracking/${sessionId}`}>
+							<ArrowLeft className="h-4 w-4" />
+							Session
+						</Link>
+					</Button>
+				}
+			/>
 			<div className="mb-6">
-				<h1 className="text-2xl font-semibold">{characterName}</h1>
-				<p className="text-sm text-muted-foreground mt-1">Ship history</p>
-				{session && (
-					<p className="text-sm text-muted-foreground">Session: {session.name}</p>
-				)}
+				{session && <p className="text-sm text-muted-foreground">Session: {session.name}</p>}
 				<p className="text-sm pt-2">
 					Time in fleet: <span className="font-medium">{formatDuration(totalMs)}</span>
 					{' • '}
@@ -79,9 +80,9 @@ export default function MemberShipHistory() {
 												? ` / ${r.stationName ?? `station #${r.stationId}`}`
 												: ''}
 										</TableCell>
-										<TableCell>{new Date(r.startedAt).toLocaleTimeString()}</TableCell>
+										<TableCell><EveTimeDisplay dateStr={r.startedAt} /></TableCell>
 										<TableCell>
-											{r.endedAt ? new Date(r.endedAt).toLocaleTimeString() : 'current'}
+											{r.endedAt ? <EveTimeDisplay dateStr={r.endedAt} /> : 'current'}
 										</TableCell>
 										<TableCell>{formatDurationBetween(r.startedAt, r.endedAt)}</TableCell>
 									</TableRow>

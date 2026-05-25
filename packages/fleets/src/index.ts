@@ -65,6 +65,12 @@ export interface FleetJoinResult {
 	invitationSent?: boolean
 }
 
+export interface KickTrackingSessionMemberResult {
+	characterId: string
+	success: boolean
+	error?: string
+}
+
 /**
  * Public RPC interface for Fleets Durable Object
  *
@@ -242,6 +248,23 @@ export interface Fleets extends DurableObject {
 	 * character that ever appeared, with aggregate timing + final-ship info.
 	 */
 	getSessionRoster(sessionId: string): Promise<SessionRosterRow[]>
+
+	/**
+	 * Remove one fleet member from the active tracked fleet via ESI.
+	 */
+	kickTrackingSessionMember(args: {
+		sessionId: string
+		memberCharacterId: string
+	}): Promise<KickTrackingSessionMemberResult>
+
+	/**
+	 * Remove multiple fleet members from the active tracked fleet via ESI.
+	 * Best-effort, per-member results are returned.
+	 */
+	kickTrackingSessionMembers(args: {
+		sessionId: string
+		memberCharacterIds: string[]
+	}): Promise<KickTrackingSessionMemberResult[]>
 
 	// ===== Stats / analytics primitives =====
 	//

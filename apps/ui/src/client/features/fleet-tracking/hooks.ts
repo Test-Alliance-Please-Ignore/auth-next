@@ -1,4 +1,4 @@
-import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
+import { keepPreviousData, useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 
 import { fleetTrackingApi } from './api'
 
@@ -18,6 +18,7 @@ export const fleetTrackingKeys = {
 	shipHistory: (id: string, characterId: string) =>
 		[...fleetTrackingKeys.session(id), 'ship-history', characterId] as const,
 	summary: (id: string) => [...fleetTrackingKeys.session(id), 'summary'] as const,
+	broadcastLink: (id: string) => [...fleetTrackingKeys.session(id), 'broadcast-link'] as const,
 }
 
 export function useTrackingSessions(filter: ListSessionsFilter = {}) {
@@ -25,6 +26,7 @@ export function useTrackingSessions(filter: ListSessionsFilter = {}) {
 		queryKey: fleetTrackingKeys.list(filter),
 		queryFn: () => fleetTrackingApi.listSessions(filter),
 		staleTime: 5_000,
+		placeholderData: keepPreviousData,
 	})
 }
 
@@ -83,6 +85,7 @@ export function useSessionTimeline(
 		queryFn: () => fleetTrackingApi.getTimeline(sessionId!, opts),
 		enabled: !!sessionId,
 		refetchInterval: queryOptions.refetchInterval,
+		placeholderData: keepPreviousData,
 	})
 }
 
@@ -94,6 +97,11 @@ export function useMemberShipHistory(
 		queryKey: fleetTrackingKeys.shipHistory(sessionId ?? '', characterId ?? ''),
 		queryFn: () => fleetTrackingApi.getMemberShipHistory(sessionId!, characterId!),
 		enabled: !!sessionId && !!characterId,
+		staleTime: 0,
+		gcTime: 0,
+		refetchOnMount: 'always',
+		refetchOnWindowFocus: false,
+		refetchOnReconnect: false,
 	})
 }
 
@@ -101,6 +109,14 @@ export function useSessionSummary(sessionId: string | undefined) {
 	return useQuery({
 		queryKey: fleetTrackingKeys.summary(sessionId ?? ''),
 		queryFn: () => fleetTrackingApi.getSummary(sessionId!),
+		enabled: !!sessionId,
+	})
+}
+
+export function useSessionBroadcastLink(sessionId: string | undefined) {
+	return useQuery({
+		queryKey: fleetTrackingKeys.broadcastLink(sessionId ?? ''),
+		queryFn: () => fleetTrackingApi.getSessionBroadcastLink(sessionId!),
 		enabled: !!sessionId,
 	})
 }
@@ -122,6 +138,26 @@ export function useStopTracking() {
 		onSuccess: (_data, sessionId) => {
 			qc.invalidateQueries({ queryKey: fleetTrackingKeys.lists() })
 			qc.invalidateQueries({ queryKey: fleetTrackingKeys.session(sessionId) })
+		},
+	})
+}
+
+export function useKickTrackingMembers() {
+	const qc = useQueryClient()
+	return useMutation({
+		mutationFn: ({
+			sessionId,
+			memberCharacterIds,
+		}: {
+			sessionId: string
+			memberCharacterIds: string[]
+		}) => fleetTrackingApi.kickMembers(sessionId, memberCharacterIds),
+		onSuccess: (_data, variables) => {
+			qc.invalidateQueries({ queryKey: fleetTrackingKeys.live(variables.sessionId) })
+			qc.invalidateQueries({
+				queryKey: [...fleetTrackingKeys.session(variables.sessionId), 'current-members'] as const,
+			})
+			qc.invalidateQueries({ queryKey: [...fleetTrackingKeys.session(variables.sessionId), 'timeline'] })
 		},
 	})
 }

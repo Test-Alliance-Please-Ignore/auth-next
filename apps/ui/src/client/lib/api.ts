@@ -1260,6 +1260,10 @@ export interface Broadcast {
 	permissionId: string
 	createdBy: string
 	createdByCharacterName: string
+	srpMode?: 'blanket' | 'military' | 'coalition' | 'disabled' | null
+	srpToken?: string | null
+	doctrineId?: string | null
+	fleetSessionId?: string | null
 	createdAt: string
 	updatedAt: string
 }

@@ -50,6 +50,13 @@
       "when": 1776801605205,
       "tag": "0006_unknown_timeslip",
       "breakpoints": true
+    },
+    {
+      "idx": 7,
+      "version": "7",
+      "when": 1779751689612,
+      "tag": "0007_romantic_veda",
+      "breakpoints": true
     }
   ]
 }

@@ -28,6 +28,7 @@ import {
 	FleetInformation,
 	FleetJoinResult,
 	Fleets,
+	KickTrackingSessionMemberResult,
 	QuickJoinCreationResult,
 	QuickJoinInvitation,
 	QuickJoinValidationResult,
@@ -80,6 +81,36 @@ import type { Universe } from '@repo/universe'
  */
 export class FleetsDO extends DurableObject implements Fleets {
 	private db: ReturnType<typeof createDbClient<typeof schema>>
+
+	private async formatFleetKickError(response: Response): Promise<string> {
+		let details = ''
+		try {
+			const text = await response.text()
+			if (text) {
+				try {
+					const parsed = JSON.parse(text) as { error?: string; message?: string }
+					details = parsed.error || parsed.message || text
+				} catch {
+					details = text
+				}
+			}
+		} catch {
+			// ignore body parse failures
+		}
+
+		switch (response.status) {
+			case 401:
+				return 'Unauthorized ESI token for fleet commander'
+			case 403:
+				return 'Fleet commander token lacks permission to remove this member'
+			case 404:
+				return 'Fleet or member not found (member may have already left)'
+			case 422:
+				return details || 'ESI rejected the member removal request'
+			default:
+				return details || `ESI returned ${response.status}`
+		}
+	}
 
 	/**
 	 * Initialize the Durable Object
@@ -1548,6 +1579,109 @@ export class FleetsDO extends DurableObject implements Fleets {
 		// Default sort: longest in fleet first
 		result.sort((a, b) => b.totalSeconds - a.totalSeconds)
 		return result
+	}
+
+	async kickTrackingSessionMember(args: {
+		sessionId: string
+		memberCharacterId: string
+	}): Promise<KickTrackingSessionMemberResult> {
+		const [result] = await this.kickTrackingSessionMembers({
+			sessionId: args.sessionId,
+			memberCharacterIds: [args.memberCharacterId],
+		})
+		return (
+			result ?? {
+				characterId: args.memberCharacterId,
+				success: false,
+				error: 'Kick operation did not produce a result',
+			}
+		)
+	}
+
+	async kickTrackingSessionMembers(args: {
+		sessionId: string
+		memberCharacterIds: string[]
+	}): Promise<KickTrackingSessionMemberResult[]> {
+		const uniqueMemberIds = Array.from(
+			new Set(args.memberCharacterIds.map((id) => id.trim()).filter(Boolean))
+		)
+		if (uniqueMemberIds.length === 0) return []
+
+		const [session] = await this.db
+			.select({
+				id: fleetTrackingSessions.id,
+				status: fleetTrackingSessions.status,
+				fleetId: fleetTrackingSessions.fleetId,
+				characterId: fleetTrackingSessions.characterId,
+			})
+			.from(fleetTrackingSessions)
+			.where(eq(fleetTrackingSessions.id, args.sessionId))
+			.limit(1)
+
+		if (!session) {
+			return uniqueMemberIds.map((characterId) => ({
+				characterId,
+				success: false,
+				error: 'Session not found',
+			}))
+		}
+		if (session.status !== 'active') {
+			return uniqueMemberIds.map((characterId) => ({
+				characterId,
+				success: false,
+				error: 'Session is not active',
+			}))
+		}
+		if (!session.fleetId) {
+			return uniqueMemberIds.map((characterId) => ({
+				characterId,
+				success: false,
+				error: 'Tracked session has no active fleet ID',
+			}))
+		}
+
+		const tokenStore = getStub<EveTokenStore>(this.env.EVE_TOKEN_STORE, 'default')
+		const accessToken = await tokenStore.getAccessToken(session.characterId)
+		if (!accessToken) {
+			return uniqueMemberIds.map((characterId) => ({
+				characterId,
+				success: false,
+				error: 'Fleet commander ESI access expired',
+			}))
+		}
+
+		const results: KickTrackingSessionMemberResult[] = []
+		for (const memberCharacterId of uniqueMemberIds) {
+			try {
+				const response = await fetch(
+					`https://esi.evetech.net/latest/fleets/${session.fleetId}/members/${memberCharacterId}/?datasource=tranquility`,
+					{
+						method: 'DELETE',
+						headers: {
+							Authorization: `Bearer ${accessToken}`,
+						},
+					}
+				)
+
+				if (response.ok) {
+					results.push({ characterId: memberCharacterId, success: true })
+				} else {
+					results.push({
+						characterId: memberCharacterId,
+						success: false,
+						error: await this.formatFleetKickError(response),
+					})
+				}
+			} catch (error) {
+				results.push({
+					characterId: memberCharacterId,
+					success: false,
+					error: error instanceof Error ? error.message : String(error),
+				})
+			}
+		}
+
+		return results
 	}
 
 	// ===== Stats / analytics =====

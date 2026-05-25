@@ -17,7 +17,8 @@
 		"fix:workers-types": "run-wrangler-types",
 		"preview": "run-vite-preview",
 		"tail": "run-wrangler-tail",
-		"test": "run-vitest"
+		"test": "run-vitest",
+		"test:unit": "run-vitest --config vitest.unit.config.ts"
 	},
 	"dependencies": {
 		"@neondatabase/serverless": "1.0.2",

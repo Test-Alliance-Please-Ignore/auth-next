@@ -26,6 +26,17 @@ export interface TrackingSession {
 	updatedAt: string
 }
 
+export interface SessionBroadcastLink {
+	id: string
+	title: string
+	status: string
+	sentAt: string | null
+	doctrineId: string | null
+	doctrine: string | null
+	srpMode?: 'blanket' | 'military' | 'coalition' | 'disabled' | null
+	srpToken?: string | null
+}
+
 export interface TrackingSessionListResult {
 	items: TrackingSession[]
 	total: number
@@ -108,6 +119,19 @@ export interface SessionGroupCount {
 export interface SessionCurrentMembersResponse {
 	members: SessionCurrentMember[]
 	groupCounts: SessionGroupCount[]
+}
+
+export interface KickTrackingMembersResponse {
+	results: Array<{
+		characterId: string
+		success: boolean
+		error?: string
+	}>
+	summary: {
+		total: number
+		success: number
+		failed: number
+	}
 }
 
 export interface SessionRosterRow {

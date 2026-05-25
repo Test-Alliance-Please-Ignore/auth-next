@@ -3,6 +3,7 @@ import {
 	boolean,
 	index,
 	integer,
+	jsonb,
 	pgTable,
 	primaryKey,
 	text,
@@ -39,6 +40,8 @@ export const doctrinesDoctrines = pgTable(
 		categoryId: uuid('category_id').references(() => doctrinesCategories.id, { onDelete: 'set null' }),
 		sortOrder: integer('sort_order').default(0).notNull(),
 		updatedBy: text('updated_by'),
+		deletedAt: timestamp('deleted_at', { withTimezone: true }),
+		deletedBy: text('deleted_by'),
 		createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
 		updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow().notNull(),
 	},
@@ -60,12 +63,44 @@ export const doctrinesFittings = pgTable(
 		category: text('category').notNull(),
 		srpEligible: boolean('srp_eligible').default(false).notNull(),
 		srpValue: text('srp_value').default('0').notNull(),
+		deletedAt: timestamp('deleted_at', { withTimezone: true }),
+		deletedBy: text('deleted_by'),
 		createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
 		updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow().notNull(),
 	},
 	(table) => ({
 		shipTypeIdIndex: index('doctrines_fittings_ship_type_id_idx').on(table.shipTypeId),
 		categoryIndex: index('doctrines_fittings_category_idx').on(table.category),
+	})
+)
+
+export const doctrinesDeletedDoctrineSnapshots = pgTable(
+	'doctrines_deleted_doctrine_snapshots',
+	{
+		id: uuid('id').defaultRandom().primaryKey(),
+		doctrineId: uuid('doctrine_id').notNull(),
+		deletedAt: timestamp('deleted_at', { withTimezone: true }).defaultNow().notNull(),
+		deletedBy: text('deleted_by'),
+		snapshot: jsonb('snapshot').notNull(),
+	},
+	(table) => ({
+		doctrineIdIndex: index('doctrines_deleted_doctrine_snapshots_doctrine_id_idx').on(table.doctrineId),
+		deletedAtIndex: index('doctrines_deleted_doctrine_snapshots_deleted_at_idx').on(table.deletedAt),
+	})
+)
+
+export const doctrinesDeletedFittingSnapshots = pgTable(
+	'doctrines_deleted_fitting_snapshots',
+	{
+		id: uuid('id').defaultRandom().primaryKey(),
+		fittingId: uuid('fitting_id').notNull(),
+		deletedAt: timestamp('deleted_at', { withTimezone: true }).defaultNow().notNull(),
+		deletedBy: text('deleted_by'),
+		snapshot: jsonb('snapshot').notNull(),
+	},
+	(table) => ({
+		fittingIdIndex: index('doctrines_deleted_fitting_snapshots_fitting_id_idx').on(table.fittingId),
+		deletedAtIndex: index('doctrines_deleted_fitting_snapshots_deleted_at_idx').on(table.deletedAt),
 	})
 )
 

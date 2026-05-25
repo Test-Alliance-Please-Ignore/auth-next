@@ -2,13 +2,25 @@ import { ArrowLeft } from 'lucide-react'
 import { useState } from 'react'
 import { Link, Navigate, useParams } from 'react-router-dom'
 
+import { UserSearchPaginationControls } from '@/components/user-search-pagination-controls'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Container } from '@/components/ui/container'
-import { Input } from '@/components/ui/input'
+import { EveTimeDisplay } from '@/components/ui/eve-time-display'
 import { LoadingPage } from '@/components/ui/loading'
+import { PageHeader } from '@/components/ui/page-header'
+import { Select } from '@/components/ui/select'
+import {
+	Table,
+	TableBody,
+	TableCell,
+	TableHead,
+	TableHeader,
+	TableRow,
+} from '@/components/ui/table'
 import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { usePageTitle } from '@/hooks/usePageTitle'
+import { api } from '@/lib/api'
 import { useSessionTimeline, useTrackingSession } from '../hooks'
 
 type Filter = 'all' | 'join' | 'leave' | 'ship_change'
@@ -18,36 +30,34 @@ export default function SessionTimeline() {
 	const { sessionId } = useParams<{ sessionId: string }>()
 	const [filter, setFilter] = useState<Filter>('all')
 	const [characterId, setCharacterId] = useState('')
-	const [offset, setOffset] = useState(0)
-	const limit = 100
+	const [page, setPage] = useState(1)
+	const [pageSize, setPageSize] = useState(25)
+	const limit = pageSize
 
 	const { data: session } = useTrackingSession(sessionId)
 	const { data: timeline, isLoading } = useSessionTimeline(sessionId, {
 		eventType: filter === 'all' ? undefined : filter,
 		characterId: characterId.trim() || undefined,
 		limit,
-		offset,
+		offset: (page - 1) * pageSize,
 	})
 
 	if (!sessionId) return <Navigate to="/fleet-tracking" replace />
 
 	return (
 		<Container>
-			<div className="mb-4">
-				<Button asChild variant="ghost" size="sm">
-					<Link to={`/fleet-tracking/${sessionId}`}>
-						<ArrowLeft className="h-4 w-4" />
-						Session
-					</Link>
-				</Button>
-			</div>
-
-			<div className="mb-6">
-				<h1 className="text-2xl font-semibold">Timeline</h1>
-				{session && (
-					<p className="text-sm text-muted-foreground mt-1">Session: {session.name}</p>
-				)}
-			</div>
+			<PageHeader
+				title="Timeline"
+				description={session ? `Session: ${session.name}` : undefined}
+				action={
+					<Button asChild variant="ghost" size="sm">
+						<Link to={`/fleet-tracking/${sessionId}`}>
+							<ArrowLeft className="h-4 w-4" />
+							Session
+						</Link>
+					</Button>
+				}
+			/>
 
 			<Card>
 				<CardHeader>
@@ -59,7 +69,7 @@ export default function SessionTimeline() {
 							value={filter}
 							onValueChange={(v) => {
 								setFilter(v as Filter)
-								setOffset(0)
+								setPage(1)
 							}}
 						>
 							<TabsList>
@@ -69,21 +79,52 @@ export default function SessionTimeline() {
 								<TabsTrigger value="ship_change">Ship changes</TabsTrigger>
 							</TabsList>
 						</Tabs>
-						<Input
-							value={characterId}
-							onChange={(e) => {
-								setCharacterId(e.target.value)
-								setOffset(0)
-							}}
-							placeholder="Filter by character ID"
-							className="max-w-xs"
-						/>
+						<div className="w-full max-w-sm">
+							<Select
+								options={[]}
+								value={characterId}
+								onValueChange={(value) => {
+									setCharacterId(value || '')
+									setPage(1)
+								}}
+								searchable
+								searchDelegate={async (query) => {
+									const values = await api.searchCharacters(query)
+									return values.map((entry) => ({
+										value: entry.characterId,
+										label: entry.characterName,
+										description: entry.characterId,
+									}))
+								}}
+								placeholder="Filter by character name"
+								minQueryLength={2}
+								queryHintText="Type at least 2 characters"
+								emptyText="No character names found"
+								selectAllOption={{ value: '', label: 'All Characters' }}
+							/>
+						</div>
 					</div>
 				</CardContent>
 			</Card>
 
 			<Card className="mt-4">
 				<CardContent className="p-0">
+					{timeline && timeline.total > 0 && (
+						<div className="p-3 border-b">
+							<UserSearchPaginationControls
+								totalCount={timeline.total}
+								page={page}
+								pageSize={pageSize}
+								onPageChange={setPage}
+								onPageSizeChange={(nextPageSize) => {
+									setPageSize(nextPageSize)
+									setPage(1)
+								}}
+								pageSizeOptions={[10, 25, 50]}
+								itemLabel="events"
+							/>
+						</div>
+					)}
 					{isLoading ? (
 						<LoadingPage />
 					) : !timeline || timeline.items.length === 0 ? (
@@ -91,68 +132,68 @@ export default function SessionTimeline() {
 							No events found for the selected filters.
 						</div>
 					) : (
-						<ul className="divide-y">
-							{timeline.items.map((ev) => (
-								<li key={ev.id} className="p-4 flex items-baseline gap-3">
-									<time className="font-mono text-xs text-muted-foreground w-32 shrink-0">
-										{new Date(ev.eventTimestamp).toLocaleString()}
-									</time>
-									<span className="font-medium">
-										{ev.eventType === 'join' ? '→' : ev.eventType === 'leave' ? '←' : '⟶'}{' '}
-										<Link
-											to={`/fleet-tracking/${sessionId}/members/${ev.characterId}`}
-											className="hover:underline"
-										>
-											{ev.characterName || ev.characterId}
-										</Link>
-									</span>
-									<span className="text-sm text-muted-foreground">
-										{ev.eventType === 'ship_change' ? (
-											<>
-												re-shipped:{' '}
-												{ev.previousShipTypeName || `type #${ev.previousShipTypeId ?? '?'}`} →{' '}
-												{ev.shipTypeName || `type #${ev.shipTypeId}`} (in{' '}
-												{ev.systemName || `system #${ev.solarSystemId}`})
-											</>
-										) : (
-											<>
-												{ev.eventType === 'join' ? 'joined' : 'left'} in{' '}
-												{ev.shipTypeName || `type #${ev.shipTypeId}`} at{' '}
-												{ev.systemName || `system #${ev.solarSystemId}`}
-											</>
-										)}
-									</span>
-								</li>
-							))}
-						</ul>
+						<Table>
+							<TableHeader>
+								<TableRow>
+									<TableHead>Timestamp</TableHead>
+									<TableHead>Event</TableHead>
+									<TableHead>Character</TableHead>
+									<TableHead>Details</TableHead>
+								</TableRow>
+							</TableHeader>
+							<TableBody>
+								{timeline.items.map((ev) => (
+									<TableRow key={ev.id}>
+										<TableCell className="text-muted-foreground">
+											<EveTimeDisplay dateStr={ev.eventTimestamp} />
+										</TableCell>
+										<TableCell className="font-medium">
+											{ev.eventType === 'join' ? 'Join' : ev.eventType === 'leave' ? 'Leave' : 'Ship Change'}
+										</TableCell>
+										<TableCell>
+											<Link
+												to={`/fleet-tracking/${sessionId}/members/${ev.characterId}`}
+												className="hover:underline"
+											>
+												{ev.characterName || ev.characterId}
+											</Link>
+										</TableCell>
+										<TableCell className="text-muted-foreground">
+											{ev.eventType === 'ship_change' ? (
+												<>
+													{ev.previousShipTypeName || `type #${ev.previousShipTypeId ?? '?'}`} →{' '}
+													{ev.shipTypeName || `type #${ev.shipTypeId}`} in{' '}
+													{ev.systemName || `system #${ev.solarSystemId}`}
+												</>
+											) : (
+												<>
+													{ev.shipTypeName || `type #${ev.shipTypeId}`} at{' '}
+													{ev.systemName || `system #${ev.solarSystemId}`}
+												</>
+											)}
+										</TableCell>
+									</TableRow>
+								))}
+							</TableBody>
+						</Table>
 					)}
 				</CardContent>
 			</Card>
 
-			{timeline && timeline.total > limit && (
-				<div className="mt-4 flex items-center justify-between text-sm">
-					<div className="text-muted-foreground">
-						Showing {offset + 1}–{Math.min(offset + timeline.items.length, timeline.total)} of{' '}
-						{timeline.total}
-					</div>
-					<div className="flex gap-2">
-						<Button
-							variant="ghost"
-							size="sm"
-							disabled={offset === 0}
-							onClick={() => setOffset(Math.max(0, offset - limit))}
-						>
-							Previous
-						</Button>
-						<Button
-							variant="ghost"
-							size="sm"
-							disabled={offset + limit >= timeline.total}
-							onClick={() => setOffset(offset + limit)}
-						>
-							Next
-						</Button>
-					</div>
+			{timeline && timeline.total > 0 && (
+				<div className="mt-4 border-t pt-3">
+					<UserSearchPaginationControls
+						totalCount={timeline.total}
+						page={page}
+						pageSize={pageSize}
+						onPageChange={setPage}
+						onPageSizeChange={(nextPageSize) => {
+							setPageSize(nextPageSize)
+							setPage(1)
+						}}
+						pageSizeOptions={[10, 25, 50]}
+						itemLabel="events"
+					/>
 				</div>
 			)}
 		</Container>

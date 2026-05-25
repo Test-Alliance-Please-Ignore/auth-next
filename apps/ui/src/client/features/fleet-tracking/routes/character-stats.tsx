@@ -4,7 +4,9 @@ import { Link, Navigate, useParams } from 'react-router-dom'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent } from '@/components/ui/card'
 import { Container } from '@/components/ui/container'
+import { EveTimeDisplay } from '@/components/ui/eve-time-display'
 import { LoadingPage } from '@/components/ui/loading'
+import { PageHeader } from '@/components/ui/page-header'
 import {
 	Table,
 	TableBody,
@@ -14,6 +16,7 @@ import {
 	TableRow,
 } from '@/components/ui/table'
 import { usePageTitle } from '@/hooks/usePageTitle'
+import { corporationLogoUrl } from '@/lib/eve-images'
 import { SessionStatsGrid } from '../components/session-stats-grid'
 import { ShipDistributionChart } from '../components/ship-distribution-chart'
 import { StatsRangePicker, useRangeFromSearchParams } from '../components/stats-range-picker'
@@ -31,25 +34,34 @@ export default function CharacterStats() {
 
 	return (
 		<Container>
-			<div className="mb-4">
-				<Button asChild variant="ghost" size="sm">
-					<Link to="/fleet-tracking/stats">
-						<ArrowLeft className="h-4 w-4" />
-						Stats
-					</Link>
-				</Button>
-			</div>
-
+			<PageHeader
+				title={data?.characterName ?? 'Character Stats'}
+				action={
+					<Button asChild variant="ghost" size="sm">
+						<Link to="/fleet-tracking/stats">
+							<ArrowLeft className="h-4 w-4" />
+							Stats
+						</Link>
+					</Button>
+				}
+			/>
 			<div className="mb-6 flex items-start justify-between gap-4 flex-wrap">
 				<div>
-					<h1 className="text-2xl font-semibold">{data?.characterName ?? characterId}</h1>
 					<p className="text-sm text-muted-foreground mt-1">
 						{data?.corporationName ? (
 							<>
-								Corp:{' '}
+								<span>Corp:</span>{' '}
+								{data.corporationId ? (
+									<img
+										src={corporationLogoUrl(data.corporationId, 32)}
+										alt={data.corporationName}
+										className="h-5 w-5 rounded-sm inline-block align-text-bottom"
+										loading="lazy"
+									/>
+								) : null}{' '}
 								<Link
 									to={`/fleet-tracking/stats/corporations/${data.corporationId}`}
-									className="hover:underline"
+									className="font-semibold text-foreground hover:underline"
 								>
 									{data.corporationName}
 								</Link>
@@ -115,9 +127,7 @@ export default function CharacterStats() {
 									<TableBody>
 										{data.recentSessions.map((s) => (
 											<TableRow key={s.sessionId}>
-												<TableCell>
-													{new Date(s.startedAt).toLocaleDateString()}
-												</TableCell>
+												<TableCell><EveTimeDisplay dateStr={s.startedAt} /></TableCell>
 												<TableCell>
 													<Link to={`/fleet-tracking/${s.sessionId}`} className="hover:underline">
 														{s.sessionName}

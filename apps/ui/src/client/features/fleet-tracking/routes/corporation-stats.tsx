@@ -4,6 +4,7 @@ import { Link, Navigate, useParams } from 'react-router-dom'
 import { Button } from '@/components/ui/button'
 import { Container } from '@/components/ui/container'
 import { LoadingPage } from '@/components/ui/loading'
+import { PageHeader } from '@/components/ui/page-header'
 import { usePageTitle } from '@/hooks/usePageTitle'
 import { RankingList } from '../components/ranking-list'
 import { SessionStatsGrid } from '../components/session-stats-grid'
@@ -14,29 +15,26 @@ import { formatDuration } from '../utils/format'
 
 export default function CorporationStats() {
 	const { corpId } = useParams<{ corpId: string }>()
-	usePageTitle('Corporation Stats')
 	const { range } = useRangeFromSearchParams()
 	const { data, isLoading } = useCorporationStats(corpId, range)
+	usePageTitle(data?.corporationName ? `${data.corporationName} — Corporation Stats` : 'Corporation Stats')
 
 	if (!corpId) return <Navigate to="/fleet-tracking/stats" replace />
 
 	return (
 		<Container>
-			<div className="mb-4">
-				<Button asChild variant="ghost" size="sm">
-					<Link to="/fleet-tracking/stats">
-						<ArrowLeft className="h-4 w-4" />
-						Stats
-					</Link>
-				</Button>
-			</div>
-
-			<div className="mb-6 flex items-start justify-between gap-4 flex-wrap">
-				<div>
-					<h1 className="text-2xl font-semibold">
-						{data?.corporationName ?? <span className="font-mono">Corp {corpId}</span>}
-					</h1>
-				</div>
+			<PageHeader
+				title={data?.corporationName ?? 'Corporation Stats'}
+				action={
+					<Button asChild variant="ghost" size="sm">
+						<Link to="/fleet-tracking/stats">
+							<ArrowLeft className="h-4 w-4" />
+							Stats
+						</Link>
+					</Button>
+				}
+			/>
+			<div className="mb-6 flex items-start justify-end gap-4 flex-wrap">
 				<StatsRangePicker />
 			</div>
 

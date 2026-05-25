@@ -497,6 +497,58 @@ app.delete('/tracking/:sessionId', async (c) => {
 })
 
 /**
+ * POST /fleets/tracking/:sessionId/kick-members
+ * Remove one or more members from the active tracked fleet via ESI.
+ * Owner of the session or admin only.
+ */
+app.post('/tracking/:sessionId/kick-members', async (c) => {
+	const user = c.get('user')!
+	const sessionId = c.req.param('sessionId')
+	const body = await c.req.json<{ memberCharacterIds?: string[] }>()
+	const memberCharacterIds = Array.from(
+		new Set((body.memberCharacterIds ?? []).map((id) => id?.trim()).filter(Boolean) as string[])
+	)
+	if (memberCharacterIds.length === 0) {
+		return c.json({ error: 'memberCharacterIds is required' }, 400)
+	}
+
+	const fleetsStub = getStub<Fleets>(c.env.FLEETS, 'default')
+	const session = await fleetsStub.getTrackingSession(sessionId)
+	if (!session) return c.json({ error: 'Session not found' }, 404)
+	if (session.status !== 'active') {
+		return c.json({ error: 'Session is not active' }, 409)
+	}
+
+	const { isAdmin } = await resolveTrackingPerms(c)
+	const isOwner = session.startedByUserId === user.id
+	if (!isOwner && !isAdmin) {
+		return c.json({ error: 'You can only manage your own active sessions' }, 403)
+	}
+
+	try {
+		const results = await fleetsStub.kickTrackingSessionMembers({
+			sessionId,
+			memberCharacterIds,
+		})
+		return c.json({
+			results,
+			summary: {
+				total: results.length,
+				success: results.filter((r) => r.success).length,
+				failed: results.filter((r) => !r.success).length,
+			},
+		})
+	} catch (error) {
+		logger.error('kickTrackingSessionMembers failed', {
+			sessionId,
+			userId: user.id,
+			error: error instanceof Error ? error.message : String(error),
+		})
+		return c.json({ error: 'Failed to remove members from fleet' }, 500)
+	}
+})
+
+/**
  * GET /fleets/tracking
  * List sessions, scoped by permissions.
  */
@@ -1344,13 +1396,19 @@ app.get('/tracking/stats/corporations/:corpId', async (c) => {
 	const fleetsStub = getStub<Fleets>(c.env.FLEETS, 'default')
 
 	const data = await withStatsCache(c, 'view-all', async () => {
+		const db = createDb(c.env.DATABASE_URL)
 		// Historical corp membership at time of fleet — derived from fleet_member_history.
 		const characterIds = await fleetsStub.getCharactersByCorpInWindow(corpId, range)
 		if (characterIds.length === 0) {
+			const [corpRow] = await db
+				.select({ name: schema.managedCorporations.name })
+				.from(schema.managedCorporations)
+				.where(eq(schema.managedCorporations.corporationId, corpId))
+				.limit(1)
 			return {
 				range,
 				corporationId: corpId,
-				corporationName: null as string | null,
+				corporationName: corpRow?.name ?? null,
 				totals: { pilotsActive: 0, pilotHours: 0, sessionsWithPresence: 0, avgPilotsPerSession: 0 },
 				topMembers: [],
 				topFCs: [],
@@ -1417,11 +1475,17 @@ app.get('/tracking/stats/corporations/:corpId', async (c) => {
 			.slice(0, 25)
 
 		const shipNames = await resolveNames(c, shipsFlown.map((s) => s.shipTypeId))
+		const [corpRow] = await db
+			.select({ name: schema.managedCorporations.name })
+			.from(schema.managedCorporations)
+			.where(eq(schema.managedCorporations.corporationId, corpId))
+			.limit(1)
+		const resolvedCorpName = names[corpId] ?? corpRow?.name ?? null
 
 		return {
 			range,
 			corporationId: corpId,
-			corporationName: names[corpId] ?? null,
+			corporationName: resolvedCorpName,
 			totals: {
 				pilotsActive,
 				pilotHours: Math.round(totalMinutes / 60),

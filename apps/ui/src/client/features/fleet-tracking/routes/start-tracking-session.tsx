@@ -108,16 +108,18 @@ export default function StartTrackingSession() {
 
 	return (
 		<Container>
-			<div className="mb-4">
-				<Button asChild variant="ghost" size="sm">
-					<Link to="/fleet-tracking">
-						<ArrowLeft className="h-4 w-4" />
-						Back to Fleet Tracking
-					</Link>
-				</Button>
-			</div>
-
-			<PageHeader title="Start Tracking" description="Start tracking a fleet you are currently in as the fleet boss." />
+			<PageHeader
+				title="Start Tracking"
+				description="Start tracking a fleet you are currently in as the fleet boss."
+				action={
+					<Button asChild variant="ghost" size="sm">
+						<Link to="/fleet-tracking">
+							<ArrowLeft className="h-4 w-4" />
+							Back to Fleet Tracking
+						</Link>
+					</Button>
+				}
+			/>
 
 			<Section>
 				<Card>

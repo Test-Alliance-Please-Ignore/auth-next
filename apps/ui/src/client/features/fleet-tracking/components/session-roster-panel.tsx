@@ -1,8 +1,10 @@
 import { useMemo, useState } from 'react'
 import { Link } from 'react-router-dom'
+import { ArrowDown, ArrowUp, ArrowUpDown } from 'lucide-react'
 
 import { Badge } from '@/components/ui/badge'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
+import { EveTimeDisplay } from '@/components/ui/eve-time-display'
 import {
 	Table,
 	TableBody,
@@ -115,14 +117,15 @@ export function SessionRosterPanel({ sessionId, roster }: SessionRosterPanelProp
 										{row.lastShipTypeName ?? `type #${row.lastShipTypeId}`}
 									</TableCell>
 									<TableCell className="text-muted-foreground">
-										{new Date(row.firstSeenAt).toLocaleTimeString()}
+										<EveTimeDisplay dateStr={row.firstSeenAt} />
 									</TableCell>
 									<TableCell>
 										{row.stayedToEnd ? (
 											<Badge variant="secondary">Stayed to end</Badge>
 										) : (
 											<span className="text-xs text-muted-foreground">
-												Left at {row.leftAt ? new Date(row.leftAt).toLocaleTimeString() : '—'}
+												Left at{' '}
+												{row.leftAt ? <EveTimeDisplay dateStr={row.leftAt} /> : '—'}
 											</span>
 										)}
 									</TableCell>
@@ -160,7 +163,15 @@ function SortableHead({
 				}`}
 			>
 				{label}
-				{active && <span className="text-xs">{asc ? '▲' : '▼'}</span>}
+				{active ? (
+					asc ? (
+						<ArrowUp className="h-3.5 w-3.5" />
+					) : (
+						<ArrowDown className="h-3.5 w-3.5" />
+					)
+				) : (
+					<ArrowUpDown className="h-3.5 w-3.5 opacity-60" />
+				)}
 			</button>
 		</TableHead>
 	)

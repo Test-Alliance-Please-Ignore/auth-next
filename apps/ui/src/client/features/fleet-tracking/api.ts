@@ -5,6 +5,7 @@ import type {
 	CorporationStatsResponse,
 	ListSessionsFilter,
 	SessionCurrentMembersResponse,
+	KickTrackingMembersResponse,
 	SessionRosterResponse,
 	SessionLiveSnapshot,
 	SessionMemberShipHistoryResponse,
@@ -17,6 +18,7 @@ import type {
 	TrackingSession,
 	TrackingSessionListResult,
 	UserStatsResponse,
+	SessionBroadcastLink,
 } from './types'
 
 function buildQuery(params: Record<string, string | number | undefined>): string {
@@ -52,11 +54,55 @@ export const fleetTrackingApi = {
 	getSession: (sessionId: string): Promise<TrackingSession> =>
 		apiClient.get(`/fleets/tracking/${encodeURIComponent(sessionId)}`),
 
+	getSessionBroadcastLink: (
+		sessionId: string
+	): Promise<{ broadcast: SessionBroadcastLink | null }> =>
+		apiClient
+			.get<{
+				broadcast:
+					| ({
+							id: string
+							title: string
+							status: string
+							sentAt: string | null
+							srpMode?: 'blanket' | 'military' | 'coalition' | 'disabled' | null
+							srpToken?: string | null
+							doctrineId?: string | null
+							content?: Record<string, unknown>
+					  } & Record<string, unknown>)
+					| null
+			}>(`/broadcasts/by-fleet-session/${encodeURIComponent(sessionId)}`)
+			.then((resp) => ({
+				broadcast: resp.broadcast
+					? {
+							id: resp.broadcast.id,
+							title: resp.broadcast.title,
+							status: resp.broadcast.status,
+							sentAt: resp.broadcast.sentAt ?? null,
+							srpMode: resp.broadcast.srpMode ?? null,
+							srpToken: resp.broadcast.srpToken ?? null,
+							doctrineId: resp.broadcast.doctrineId ?? null,
+							doctrine:
+								typeof resp.broadcast.content?.doctrine === 'string'
+									? resp.broadcast.content.doctrine
+									: null,
+					  }
+					: null,
+			})),
+
 	getLiveSnapshot: (sessionId: string): Promise<{ snapshot: SessionLiveSnapshot | null }> =>
 		apiClient.get(`/fleets/tracking/${encodeURIComponent(sessionId)}/live`),
 
 	getCurrentMembers: (sessionId: string): Promise<SessionCurrentMembersResponse> =>
 		apiClient.get(`/fleets/tracking/${encodeURIComponent(sessionId)}/current-members`),
+
+	kickMembers: (
+		sessionId: string,
+		memberCharacterIds: string[]
+	): Promise<KickTrackingMembersResponse> =>
+		apiClient.post(`/fleets/tracking/${encodeURIComponent(sessionId)}/kick-members`, {
+			memberCharacterIds,
+		}),
 
 	getRoster: (sessionId: string): Promise<SessionRosterResponse> =>
 		apiClient.get(`/fleets/tracking/${encodeURIComponent(sessionId)}/roster`),

@@ -7,6 +7,7 @@ import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Container } from '@/components/ui/container'
 import { DateRangeInput } from '@/components/ui/date-range-input'
+import { EveTimeDisplay } from '@/components/ui/eve-time-display'
 import { LoadingPage } from '@/components/ui/loading'
 import { PageHeader } from '@/components/ui/page-header'
 import { Section } from '@/components/ui/section'
@@ -173,6 +174,22 @@ export default function TrackingSessionsList() {
 							</div>
 						) : (
 							<>
+								{hasPagination && (
+									<div className="pb-3 border-b">
+										<UserSearchPaginationControls
+											totalCount={total}
+											page={page}
+											pageSize={pageSize}
+											onPageChange={setPage}
+											onPageSizeChange={(nextPageSize) => {
+												setPageSize(nextPageSize)
+												setPage(1)
+											}}
+											pageSizeOptions={[10, 25, 50]}
+											itemLabel="sessions"
+										/>
+									</div>
+								)}
 								<div className="rounded-md border overflow-x-auto">
 									<Table>
 										<TableHeader>
@@ -201,7 +218,7 @@ export default function TrackingSessionsList() {
 														</div>
 													</TableCell>
 													<TableCell className="text-muted-foreground">
-														{new Date(session.startedAt).toLocaleString()}
+														<EveTimeDisplay dateStr={session.startedAt} />
 													</TableCell>
 													<TableCell className="text-muted-foreground">
 														{formatDurationBetween(session.startedAt, session.endedAt)}

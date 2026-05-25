@@ -2,6 +2,7 @@ import { ChevronRight } from 'lucide-react'
 import { Link } from 'react-router-dom'
 
 import { Card, CardContent } from '@/components/ui/card'
+import { EveTimeDisplay } from '@/components/ui/eve-time-display'
 import { formatRelativeTime } from '@/lib/date-utils'
 import { formatDurationBetween, formatEndReason } from '../utils/format'
 import { SessionStatusPill } from './session-status-pill'
@@ -38,8 +39,8 @@ export function SessionCard({ session }: SessionCardProps) {
 									<>Running {formatDurationBetween(session.startedAt, null)}</>
 								) : (
 									<>
-										{new Date(session.startedAt).toLocaleString()} →{' '}
-										{session.endedAt && new Date(session.endedAt).toLocaleString()}
+										<EveTimeDisplay dateStr={session.startedAt} /> →{' '}
+										{session.endedAt && <EveTimeDisplay dateStr={session.endedAt} />}
 										{' • '}
 										{formatDurationBetween(session.startedAt, session.endedAt)}
 										{session.endedReason && (

@@ -21,7 +21,7 @@ describe('BroadcastsDO template token rendering', () => {
 		)
 
 		expect(rendered).toBe(
-			'Formup CFI in MJ-5F9\nSRP: **Coalition**\nSRP Token: **FleetStagingSystemFrontLine**'
+			'Formup CFI in MJ-5F9\nSRP: **Coalition**'
 		)
 	})
 
@@ -61,27 +61,28 @@ describe('BroadcastsDO template token rendering', () => {
 
 		expect(blanket).toBe('SRP: **Blanket**\nSRP Token: **FleetStagingSystemFrontLine**')
 		expect(military).toBe('SRP: **Military**\nSRP Token: **FleetStagingSystemFrontLine**')
-		expect(coalition).toBe('SRP: **Coalition**\nSRP Token: **FleetStagingSystemFrontLine**')
+		expect(coalition).toBe('SRP: **Coalition**')
 		expect(disabled).toBe('SRP: **No**')
 		expect(nonSelectValue).toBe('SRP: **Blanket**\nSRP Token: **FleetStagingSystemFrontLine**')
 	})
 
-	it('generates SRP token during send prep only when SRP is enabled in template', () => {
+	it('generates SRP token during send prep only for tokenized SRP modes', async () => {
 		const subject = createSubject()
 		subject.generateSrpFriendlyToken = () => 'GeneratedToken'
+		subject.isSrpTokenAvailable = async () => true
 
-		const enabled = subject.prepareTemplateContentForSend('{{srp}}', { srp: 'blanket' })
-		const coalition = subject.prepareTemplateContentForSend('{{srp}}', { srp: 'coalition' })
-		const disabled = subject.prepareTemplateContentForSend('{{srp}}', { srp: 'disabled' })
-		const noTokenInTemplate = subject.prepareTemplateContentForSend('Ping {{message}}', {
+		const enabled = await subject.prepareTemplateContentForSend('{{srp}}', { srp: 'blanket' })
+		const coalition = await subject.prepareTemplateContentForSend('{{srp}}', { srp: 'coalition' })
+		const disabled = await subject.prepareTemplateContentForSend('{{srp}}', { srp: 'disabled' })
+		const noTokenInTemplate = await subject.prepareTemplateContentForSend('Ping {{message}}', {
 			message: 'hello',
 			srp: 'blanket',
 		})
 
 		expect(enabled.changed).toBe(true)
 		expect(enabled.content.__srpToken).toBe('GeneratedToken')
-		expect(coalition.changed).toBe(true)
-		expect(coalition.content.__srpToken).toBe('GeneratedToken')
+		expect(coalition.changed).toBe(false)
+		expect(coalition.content.__srpToken).toBeUndefined()
 		expect(disabled.changed).toBe(false)
 		expect(disabled.content.__srpToken).toBeUndefined()
 		expect(noTokenInTemplate.changed).toBe(false)

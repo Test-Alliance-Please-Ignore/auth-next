@@ -7,6 +7,7 @@ import { PageHeader } from '@/components/ui/page-header'
 import { Section } from '@/components/ui/section'
 import { usePageTitle } from '@/hooks/usePageTitle'
 import { useUserPermissions } from '@/hooks/useUserPermissions'
+import { corporationLogoUrl } from '@/lib/eve-images'
 import { RankingList } from '../components/ranking-list'
 import { FleetsPerDayChart } from '../components/fleets-per-day-chart'
 import { SessionStatsGrid } from '../components/session-stats-grid'
@@ -135,12 +136,20 @@ export default function StatsOverview() {
 										emptyText="No corporation data."
 										renderItem={(r) => (
 											<div className="flex items-center justify-between">
-												<Link
-													to={`/fleet-tracking/stats/corporations/${r.corporationId}`}
-													className="hover:underline"
-												>
-													{r.corporationName ?? r.corporationId}
-												</Link>
+												<div className="flex items-center gap-2 min-w-0">
+													<img
+														src={corporationLogoUrl(r.corporationId, 32)}
+														alt={r.corporationName ?? r.corporationId}
+														className="h-5 w-5 rounded-sm border border-border/60 shrink-0"
+														loading="lazy"
+													/>
+													<Link
+														to={`/fleet-tracking/stats/corporations/${r.corporationId}`}
+														className="hover:underline truncate"
+													>
+														{r.corporationName ?? r.corporationId}
+													</Link>
+												</div>
 												<span className="text-muted-foreground">{r.pilots} pilots</span>
 											</div>
 										)}
