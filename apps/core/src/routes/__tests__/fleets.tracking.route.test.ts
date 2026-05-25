@@ -33,7 +33,16 @@ function makeUser(overrides: Partial<SessionUser> = {}): SessionUser {
 		id: 'user-1',
 		mainCharacterId: '1001',
 		sessionId: 'session-1',
-		characters: [{ characterId: '1001', characterName: 'Pilot One' }],
+		characters: [
+			{
+				id: 'uc-1',
+				characterOwnerHash: 'owner-hash-1',
+				characterId: '1001',
+				characterName: 'Pilot One',
+				is_primary: true,
+				hasValidToken: true,
+			},
+		],
 		is_admin: false,
 		roles: [],
 		discordUserId: null,
@@ -61,6 +70,7 @@ function createApp(user: SessionUser) {
 describe('fleets tracking routes', () => {
 	const env = {
 		FLEETS: { name: 'FLEETS' },
+		BROADCASTS: { name: 'BROADCASTS' },
 		ESI_TYPE_RESOLVER: { name: 'ESI_TYPE_RESOLVER' },
 	} as any
 
@@ -71,6 +81,9 @@ describe('fleets tracking routes', () => {
 		getSessionLiveSnapshot: ReturnType<typeof vi.fn>
 		getSessionSummary: ReturnType<typeof vi.fn>
 		getStatsOverview: ReturnType<typeof vi.fn>
+	}
+	let broadcastsStub: {
+		getBroadcastByFleetSessionId: ReturnType<typeof vi.fn>
 	}
 	let resolverStub: { resolveIds: ReturnType<typeof vi.fn> }
 
@@ -85,12 +98,16 @@ describe('fleets tracking routes', () => {
 			getSessionSummary: vi.fn(),
 			getStatsOverview: vi.fn(),
 		}
+		broadcastsStub = {
+			getBroadcastByFleetSessionId: vi.fn().mockResolvedValue(null),
+		}
 		resolverStub = {
 			resolveIds: vi.fn().mockResolvedValue({ '1001': 'Pilot One' }),
 		}
 
 		getStubMock.mockImplementation((binding: unknown) => {
 			if (binding === env.FLEETS) return fleetsStub as any
+			if (binding === env.BROADCASTS) return broadcastsStub as any
 			if (binding === env.ESI_TYPE_RESOLVER) return resolverStub as any
 			throw new Error('Unexpected binding')
 		})
@@ -212,5 +229,50 @@ describe('fleets tracking routes', () => {
 
 		expect(res.status).toBe(400)
 		expect(fleetsStub.getStatsOverview).not.toHaveBeenCalled()
+	})
+
+	it('hydrates linked broadcast SRP/doctrine on session detail', async () => {
+		getCachedUserPermissionsMock.mockResolvedValue([{ urn: 'urn:fleet-tracking:view-all' }] as any)
+		fleetsStub.getTrackingSession.mockResolvedValue({
+			id: 's-broadcast',
+			name: 'Fleet Op',
+			characterId: '1001',
+			startedByUserId: 'user-1',
+			fleetId: 'fleet-1',
+			status: 'ended',
+			startedAt: '2026-05-25T10:00:00.000Z',
+			endedAt: '2026-05-25T11:00:00.000Z',
+			endedReason: 'user_stopped',
+			endedByUserId: 'user-1',
+			createdAt: '2026-05-25T10:00:00.000Z',
+			updatedAt: '2026-05-25T11:00:00.000Z',
+		})
+		broadcastsStub.getBroadcastByFleetSessionId.mockResolvedValue({
+			id: 'b-1',
+			title: 'Ping',
+			status: 'sent',
+			sentAt: '2026-05-25T10:01:00.000Z',
+			doctrineId: 'doc-1',
+			srpMode: 'military',
+			srpToken: 'token-123',
+			content: { doctrine: 'Armor HAC' },
+		})
+
+		const app = createApp(makeUser({ id: 'viewer-1' }))
+		const res = await app.request('/api/fleets/tracking/s-broadcast', {}, env)
+		expect(res.status).toBe(200)
+		await expect(res.json()).resolves.toMatchObject({
+			id: 's-broadcast',
+			characterName: 'Pilot One',
+			broadcast: {
+				id: 'b-1',
+				title: 'Ping',
+				status: 'sent',
+				doctrineId: 'doc-1',
+				doctrine: 'Armor HAC',
+				srpMode: 'military',
+				srpToken: 'token-123',
+			},
+		})
 	})
 })

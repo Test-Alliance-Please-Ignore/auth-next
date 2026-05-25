@@ -13,6 +13,7 @@ import { validatePagination } from '../lib/validation'
 import { requireAuth } from '../middleware/session'
 
 import type { EsiTypeResolver } from '@repo/esi'
+import type { Broadcasts } from '@repo/broadcasts'
 import type { EveCharacterData } from '@repo/eve-character-data'
 import type { EveTokenStore } from '@repo/eve-token-store'
 import type {
@@ -637,13 +638,49 @@ async function resolveSessionAccess(
  * Summary metadata. Owner can always see summary; detail tabs require additional perms.
  */
 app.get('/tracking/:sessionId', async (c) => {
+	const user = c.get('user')!
+	const sessionId = c.req.param('sessionId')
 	const result = await resolveSessionAccess(c, c.req.param('sessionId'))
 	if (result instanceof Response) return result
 
 	const names = await resolveNames(c, [result.session.characterId])
+	let broadcast: {
+		id: string
+		title: string
+		status: string
+		sentAt: string | null
+		doctrineId: string | null
+		doctrine: string | null
+		srpMode?: 'blanket' | 'military' | 'coalition' | 'disabled' | null
+		srpToken?: string | null
+	} | null = null
+
+	try {
+		const broadcastsStub = getStub<Broadcasts>(c.env.BROADCASTS, 'default')
+		const linked = await broadcastsStub.getBroadcastByFleetSessionId(sessionId, user.id)
+		if (linked) {
+			broadcast = {
+				id: linked.id,
+				title: linked.title,
+				status: linked.status,
+				sentAt: linked.sentAt ?? null,
+				doctrineId: linked.doctrineId ?? null,
+				doctrine: typeof linked.content?.doctrine === 'string' ? linked.content.doctrine : null,
+				srpMode: linked.srpMode ?? null,
+				srpToken: linked.srpToken ?? null,
+			}
+		}
+	} catch (error) {
+		logger.warn('Failed to resolve broadcast link for fleet tracking session', {
+			sessionId,
+			error: error instanceof Error ? error.message : String(error),
+		})
+	}
+
 	return c.json({
 		...result.session,
 		characterName: names[result.session.characterId] ?? null,
+		broadcast,
 	})
 })
 

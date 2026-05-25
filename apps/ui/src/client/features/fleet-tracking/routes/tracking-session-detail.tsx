@@ -34,7 +34,6 @@ import {
 	useSessionSummary,
 	useSessionTimeline,
 	useKickTrackingMembers,
-	useSessionBroadcastLink,
 	useStopTracking,
 	useTrackingSession,
 } from '../hooks'
@@ -87,6 +86,7 @@ export default function TrackingSessionDetail() {
 					sessionId={sessionId}
 					status={session.status}
 					startedAt={session.startedAt}
+					broadcastLink={session.broadcast ?? null}
 					canKickMembers={canStop}
 				/>
 			) : (
@@ -178,17 +178,27 @@ function DetailView({
 	sessionId,
 	status,
 	startedAt,
+	broadcastLink,
 	canKickMembers,
 }: {
 	sessionId: string
 	status: 'active' | 'ended'
 	startedAt: string
+	broadcastLink: {
+		id: string
+		title: string
+		status: string
+		sentAt: string | null
+		doctrineId: string | null
+		doctrine: string | null
+		srpMode?: 'blanket' | 'military' | 'coalition' | 'disabled' | null
+		srpToken?: string | null
+	} | null
 	canKickMembers: boolean
 }) {
 	const [selectedDoctrineId, setSelectedDoctrineId] = useState('')
 	const { data: doctrines = [] } = useDoctrines()
 	const { data: selectedDoctrine } = useDoctrine(selectedDoctrineId || undefined)
-	const { data: broadcastLinkResp } = useSessionBroadcastLink(sessionId)
 
 	const isLive = status === 'active'
 	const LIVE_POLL_MS = 5_000
@@ -221,14 +231,34 @@ function DetailView({
 
 	const snapshot = liveResp?.snapshot ?? null
 	const summary = summaryResp?.summary ?? null
-	const broadcastLink = broadcastLinkResp?.broadcast ?? null
+	const normalizeShipTypeId = (value: string | number | null | undefined): string | null => {
+		if (value === null || value === undefined) return null
+		const raw = String(value).trim()
+		if (!raw) return null
+		const asNumber = Number(raw)
+		return Number.isFinite(asNumber) ? String(asNumber) : raw
+	}
 	const doctrineShipTypeIds = selectedDoctrine
 		? new Set(
 				selectedDoctrine.fittings
-					.map((entry) => entry.fitting.shipTypeId)
+					.map((entry) => normalizeShipTypeId(entry.fitting.shipTypeId))
 					.filter((id): id is string => Boolean(id))
 			)
 		: undefined
+	const srpModeLabel = (() => {
+		switch (broadcastLink?.srpMode) {
+			case 'blanket':
+				return 'Blanket'
+			case 'military':
+				return 'Military'
+			case 'coalition':
+				return 'Coalition'
+			case 'disabled':
+				return 'No SRP'
+			default:
+				return 'None'
+		}
+	})()
 
 	useEffect(() => {
 		if (selectedDoctrineId) return
@@ -246,7 +276,7 @@ function DetailView({
 		if (matchedDoctrine) {
 			setSelectedDoctrineId(matchedDoctrine.id)
 		}
-	}, [broadcastLink?.doctrine, doctrines, selectedDoctrineId])
+	}, [broadcastLink?.doctrine, broadcastLink?.doctrineId, doctrines, selectedDoctrineId])
 
 	// Headline stats
 	const stats: Array<{ label: string; value: string | number; sublabel?: string }> = []
@@ -311,12 +341,7 @@ function DetailView({
 								<>
 									<div>
 										<span className="text-muted-foreground">Mode:</span>{' '}
-										<span className="font-medium text-foreground">
-											{broadcastLink.srpMode
-												? broadcastLink.srpMode.charAt(0).toUpperCase() +
-													broadcastLink.srpMode.slice(1)
-												: 'None'}
-										</span>
+										<span className="font-medium text-foreground">{srpModeLabel}</span>
 									</div>
 									<div>
 										<span className="text-muted-foreground">Token:</span>{' '}

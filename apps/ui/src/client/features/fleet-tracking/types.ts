@@ -24,6 +24,7 @@ export interface TrackingSession {
 	endedByUserId: string | null
 	createdAt: string
 	updatedAt: string
+	broadcast?: SessionBroadcastLink | null
 }
 
 export interface SessionBroadcastLink {

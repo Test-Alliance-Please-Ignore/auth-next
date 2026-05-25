@@ -238,10 +238,7 @@ export class DoctrinesDO extends DurableObject<Env> implements Doctrines {
 			with: {
 				category: true,
 				doctrineFittings: {
-					where: isNull(schema.doctrinesFittings.deletedAt),
-					with: {
-						fitting: true,
-					},
+					with: { fitting: true },
 					orderBy: [
 						asc(schema.doctrinesDoctrineFittings.fittingCategory),
 						asc(schema.doctrinesDoctrineFittings.sortOrder),
@@ -261,11 +258,13 @@ export class DoctrinesDO extends DurableObject<Env> implements Doctrines {
 			...doctrine,
 			categoryName: doctrine.category?.name ?? null,
 			categorySortOrder: doctrine.category?.sortOrder ?? null,
-			fittings: doctrine.doctrineFittings.map((df) => ({
-				fitting: df.fitting,
-				fittingCategory: df.fittingCategory,
-				sortOrder: df.sortOrder,
-			})),
+			fittings: doctrine.doctrineFittings
+				.filter((df) => !df.fitting.deletedAt)
+				.map((df) => ({
+					fitting: df.fitting,
+					fittingCategory: df.fittingCategory,
+					sortOrder: df.sortOrder,
+				})),
 			stagingSystems: doctrine.doctrineStagingSystems.map((ds) => ({
 				stagingSystem: ds.stagingSystem,
 				note: ds.note,

@@ -103,6 +103,13 @@ export function CurrentMembersPanel({
 	}
 	const visiblePods = sortedMembers.filter((m) => isCapsule(m))
 	const kickMembers = onKickMembers
+	const normalizeShipTypeId = (value: string | number | null | undefined): string | null => {
+		if (value === null || value === undefined) return null
+		const raw = String(value).trim()
+		if (!raw) return null
+		const asNumber = Number(raw)
+		return Number.isFinite(asNumber) ? String(asNumber) : raw
+	}
 
 	return (
 		<div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
@@ -202,10 +209,11 @@ export function CurrentMembersPanel({
 								</TableHeader>
 								<TableBody>
 									{sortedMembers.map((m) => {
+										const memberShipTypeId = normalizeShipTypeId(m.shipTypeId)
 										const doctrineMismatch =
 											doctrineShipTypeIds != null &&
 											doctrineShipTypeIds.size > 0 &&
-											!doctrineShipTypeIds.has(String(m.shipTypeId))
+											(!memberShipTypeId || !doctrineShipTypeIds.has(memberShipTypeId))
 										return (
 										<TableRow
 											key={m.characterId}
