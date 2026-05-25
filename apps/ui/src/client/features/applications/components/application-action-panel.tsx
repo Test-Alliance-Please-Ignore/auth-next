@@ -5,7 +5,7 @@
  * Different actions available based on HR role (Admin, Reviewer, Viewer).
  */
 
-import { AlertCircle } from 'lucide-react'
+import { AlertCircle, CheckCircle2, Search } from 'lucide-react'
 import { useState } from 'react'
 
 import { Button } from '@/components/ui/button'
@@ -321,11 +321,12 @@ export function ApplicationActionPanel({
 					{/* Mark Under Review - Available to Reviewers and Admins */}
 					{canMarkUnderReview && application.status === 'pending' && (
 						<Button
-							variant="ghost"
+							variant="primary"
 							onClick={handleMarkUnderReview}
 							disabled={disabled || updateStatusMutation.isPending}
 							className="flex-1"
 						>
+							<Search className="h-4 w-4 mr-1" />
 							Mark Under Review
 						</Button>
 					)}
@@ -335,7 +336,9 @@ export function ApplicationActionPanel({
 						<Button variant="confirm"
 							onClick={handleAcceptClick}
 							disabled={
-								disabled || updateStatusMutation.isPending || application.status !== 'under_review'
+								disabled ||
+								updateStatusMutation.isPending ||
+								!['pending', 'under_review'].includes(application.status)
 							}
 							className="flex-1"
 						>
@@ -343,16 +346,20 @@ export function ApplicationActionPanel({
 						</Button>
 					)}
 
-					{/* Complete - Available after acceptance */}
+					{/* Complete - Available from active states */}
 					{canComplete && (
 						<Button
 							variant="confirm"
+							showIcon={false}
 							onClick={handleCompleteClick}
 							disabled={
-								disabled || updateStatusMutation.isPending || application.status !== 'accepted'
+								disabled ||
+								updateStatusMutation.isPending ||
+								!['pending', 'under_review', 'accepted'].includes(application.status)
 							}
 							className="flex-1"
 						>
+							<CheckCircle2 className="h-4 w-4 mr-1" />
 							Mark Completed
 						</Button>
 					)}
