@@ -1,1 +1,0 @@
-ALTER TABLE "fleet_tracking_sessions" DROP COLUMN "notes";

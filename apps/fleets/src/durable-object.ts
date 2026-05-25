@@ -2059,6 +2059,54 @@ export class FleetsDO extends DurableObject implements Fleets {
 	}
 
 	/**
+	 * Search tracked corporation IDs from historical join events.
+	 * Uses DB-side filtering on corporation ID text so core can resolve names for
+	 * a bounded candidate set instead of scanning all tracked corporations.
+	 */
+	async searchTrackedCorporationIds(query: string, limit = 100): Promise<string[]> {
+		const q = query.trim()
+		if (q.length < 2) return []
+
+		const rows = await this.db
+			.selectDistinct({ corporationId: fleetMemberHistory.corporationId })
+			.from(fleetMemberHistory)
+			.where(
+				and(
+					isNotNull(fleetMemberHistory.corporationId),
+					sql`${fleetMemberHistory.corporationId} ILIKE ${`%${q}%`}`
+				)
+			)
+			.limit(limit)
+
+		return rows
+			.filter((r): r is { corporationId: string } => r.corporationId !== null)
+			.map((r) => r.corporationId)
+	}
+
+	/**
+	 * Filter a provided list of corporation IDs down to those present in tracked
+	 * fleet history.
+	 */
+	async filterTrackedCorporationIds(corporationIds: string[]): Promise<string[]> {
+		const ids = Array.from(new Set(corporationIds.map((id) => id.trim()).filter(Boolean)))
+		if (ids.length === 0) return []
+
+		const rows = await this.db
+			.selectDistinct({ corporationId: fleetMemberHistory.corporationId })
+			.from(fleetMemberHistory)
+			.where(
+				and(
+					isNotNull(fleetMemberHistory.corporationId),
+					inArray(fleetMemberHistory.corporationId, ids)
+				)
+			)
+
+		return rows
+			.filter((r): r is { corporationId: string } => r.corporationId !== null)
+			.map((r) => r.corporationId)
+	}
+
+	/**
 	 * Convert a DB row to the RPC-serialized TrackingSession shape.
 	 * Dates become ISO strings so they survive the DO RPC boundary cleanly.
 	 */
@@ -2173,6 +2221,7 @@ export class FleetsDO extends DurableObject implements Fleets {
 			const now = Date.now()
 			const staleThreshold = 2 * 60 * 1000 // 2 minutes in milliseconds
 			const staleFleets: Array<{ fleetId: string; lastChecked: Date | null; ageMs: number }> = []
+			let recoveredCount = 0
 
 			for (const fleet of activeFleets) {
 				try {
@@ -2189,6 +2238,10 @@ export class FleetsDO extends DurableObject implements Fleets {
 						logger.warn('[FleetsDO Watchdog] FleetMonitor not initialized', {
 							fleetId: fleet.fleetId,
 						})
+						const recovered = await this.recoverFleetMonitorSession(fleet.fleetId)
+						if (recovered) {
+							recoveredCount += 1
+						}
 						continue
 					}
 
@@ -2211,6 +2264,11 @@ export class FleetsDO extends DurableObject implements Fleets {
 								ageSeconds: Math.round(ageMs / 1000),
 								thresholdMs: staleThreshold,
 							})
+
+							const recovered = await this.recoverFleetMonitorSession(fleet.fleetId)
+							if (recovered) {
+								recoveredCount += 1
+							}
 						} else {
 							logger.debug('[FleetsDO Watchdog] FleetMonitor is healthy', {
 								fleetId: fleet.fleetId,
@@ -2223,6 +2281,10 @@ export class FleetsDO extends DurableObject implements Fleets {
 						logger.warn('[FleetsDO Watchdog] FleetMonitor has no lastChecked timestamp', {
 							fleetId: fleet.fleetId,
 						})
+						const recovered = await this.recoverFleetMonitorSession(fleet.fleetId)
+						if (recovered) {
+							recoveredCount += 1
+						}
 					}
 				} catch (error) {
 					logger.error('[FleetsDO Watchdog] Failed to check FleetMonitor', {
@@ -2237,6 +2299,7 @@ export class FleetsDO extends DurableObject implements Fleets {
 				logger.error('[FleetsDO Watchdog] Watchdog check completed with stale monitors', {
 					totalChecked: activeFleets.length,
 					staleCount: staleFleets.length,
+					recoveredCount,
 					staleFleets: staleFleets.map((f) => ({
 						fleetId: f.fleetId,
 						ageSeconds: Math.round(f.ageMs / 1000),
@@ -2245,6 +2308,7 @@ export class FleetsDO extends DurableObject implements Fleets {
 			} else {
 				logger.info('[FleetsDO Watchdog] All FleetMonitors are healthy', {
 					totalChecked: activeFleets.length,
+					recoveredCount,
 				})
 			}
 		} catch (error) {
@@ -2255,6 +2319,57 @@ export class FleetsDO extends DurableObject implements Fleets {
 		} finally {
 			// Always reschedule the watchdog
 			await this.scheduleNextWatchdog()
+		}
+	}
+
+	/**
+	 * Attempt to self-heal a FleetMonitor by re-initializing it from the active
+	 * tracking session for the fleet.
+	 */
+	private async recoverFleetMonitorSession(fleetId: string): Promise<boolean> {
+		try {
+			const [activeSession] = await this.db
+				.select({
+					id: fleetTrackingSessions.id,
+					characterId: fleetTrackingSessions.characterId,
+				})
+				.from(fleetTrackingSessions)
+				.where(
+					and(
+						eq(fleetTrackingSessions.fleetId, fleetId),
+						eq(fleetTrackingSessions.status, 'active')
+					)
+				)
+				.orderBy(desc(fleetTrackingSessions.startedAt))
+				.limit(1)
+
+			if (!activeSession) {
+				logger.warn('[FleetsDO Watchdog] Cannot recover monitor - no active session', {
+					fleetId,
+				})
+				return false
+			}
+
+			const fleetMonitorStub = getStub<FleetMonitor>(this.env.FLEET_MONITOR, `fleet-${fleetId}`)
+			await fleetMonitorStub.initializeMonitoring(
+				fleetId,
+				activeSession.characterId,
+				activeSession.id,
+				true
+			)
+
+			logger.info('[FleetsDO Watchdog] Recovered FleetMonitor via forced re-initialize', {
+				fleetId,
+				sessionId: activeSession.id,
+				characterId: activeSession.characterId,
+			})
+			return true
+		} catch (error) {
+			logger.error('[FleetsDO Watchdog] Failed to recover FleetMonitor', {
+				fleetId,
+				error: error instanceof Error ? error.message : String(error),
+			})
+			return false
 		}
 	}
 

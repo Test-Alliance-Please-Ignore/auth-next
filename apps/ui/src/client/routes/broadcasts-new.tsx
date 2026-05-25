@@ -1063,6 +1063,32 @@ export default function NewBroadcastPage() {
 												style={{ minHeight: '2.5rem' }}
 											/>
 										</div>
+										{selectedTemplate.fieldSchema.some(
+											(field) => field.type === 'system_fleet_tracking'
+										) && (
+											<SystemFleetTrackingField
+												enabled={parseBooleanField(
+													templateFields.__fleetTrackingEnabled,
+													false
+												)}
+												onEnabledChange={(next) =>
+													updateTemplateField(
+														'__fleetTrackingEnabled',
+														next ? 'true' : 'false'
+													)
+												}
+												characterId={templateFields.__fleetTrackingCharacterId ?? ''}
+												onCharacterIdChange={(value) =>
+													updateTemplateField('__fleetTrackingCharacterId', value)
+												}
+												characters={(user?.characters ?? [])
+													.filter((c) => c.hasValidToken)
+													.map((c) => ({
+														characterId: c.characterId,
+														characterName: c.characterName,
+													}))}
+											/>
+										)}
 										{selectedTemplate.fieldSchema
 											.filter((field) => field.type === 'system_frogsiren')
 											.map((field) => (
@@ -1085,32 +1111,6 @@ export default function NewBroadcastPage() {
 													}}
 												/>
 											))}
-											{selectedTemplate.fieldSchema.some(
-												(field) => field.type === 'system_fleet_tracking'
-											) && (
-												<SystemFleetTrackingField
-													enabled={parseBooleanField(
-														templateFields.__fleetTrackingEnabled,
-														false
-													)}
-													onEnabledChange={(next) =>
-														updateTemplateField(
-															'__fleetTrackingEnabled',
-															next ? 'true' : 'false'
-														)
-													}
-													characterId={templateFields.__fleetTrackingCharacterId ?? ''}
-													onCharacterIdChange={(value) =>
-														updateTemplateField('__fleetTrackingCharacterId', value)
-													}
-													characters={(user?.characters ?? [])
-														.filter((c) => c.hasValidToken)
-														.map((c) => ({
-															characterId: c.characterId,
-															characterName: c.characterName,
-														}))}
-												/>
-											)}
 									</div>
 								</div>
 							) : null}

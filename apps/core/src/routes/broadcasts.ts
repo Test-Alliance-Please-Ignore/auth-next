@@ -223,6 +223,7 @@ function deriveTemplateFieldSchema(
 		| 'system_staging'
 		| 'system_srp'
 		| 'system_frogsiren'
+		| 'system_fleet_tracking'
 	required: boolean
 	options?: string[]
 	allowCustom?: boolean
@@ -270,7 +271,8 @@ function deriveTemplateFieldSchema(
 			| 'system_doctrine'
 			| 'system_staging'
 			| 'system_srp'
-			| 'system_frogsiren' = token.type
+			| 'system_frogsiren'
+			| 'system_fleet_tracking' = token.type
 		if (
 			existing?.type === 'text' ||
 			existing?.type === 'textarea' ||
@@ -278,7 +280,8 @@ function deriveTemplateFieldSchema(
 			existing?.type === 'system_doctrine' ||
 			existing?.type === 'system_staging' ||
 			existing?.type === 'system_srp' ||
-			existing?.type === 'system_frogsiren'
+			existing?.type === 'system_frogsiren' ||
+			existing?.type === 'system_fleet_tracking'
 		) {
 			type = existing.type
 		}
@@ -299,6 +302,7 @@ function deriveTemplateFieldSchema(
 				| 'system_staging'
 				| 'system_srp'
 				| 'system_frogsiren'
+				| 'system_fleet_tracking'
 			required: boolean
 			options?: string[]
 			allowCustom?: boolean
@@ -335,6 +339,26 @@ function deriveTemplateFieldSchema(
 			name: '__frogsirenEnabled',
 			label: 'FrogSiren',
 			type: 'system_frogsiren',
+			required: false,
+		})
+	}
+
+	const fleetTrackingField = Array.isArray(existingFieldSchema)
+		? existingFieldSchema.find((field) => {
+				if (!field || typeof field !== 'object') return false
+				const typed = field as { type?: unknown; name?: unknown }
+				return (
+					typed.type === 'system_fleet_tracking' &&
+					typed.name === '__fleetTrackingEnabled'
+				)
+			})
+		: null
+
+	if (fleetTrackingField && typeof fleetTrackingField === 'object') {
+		fields.push({
+			name: '__fleetTrackingEnabled',
+			label: 'Fleet Tracking',
+			type: 'system_fleet_tracking',
 			required: false,
 		})
 	}

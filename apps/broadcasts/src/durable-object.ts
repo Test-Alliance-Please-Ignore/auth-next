@@ -3,7 +3,6 @@ import { DurableObject } from 'cloudflare:workers'
 import { and, asc, desc, eq, inArray, or, sql } from '@repo/db-utils'
 import { getStub } from '@repo/do-utils'
 import { parseBroadcastSrpMode, renderBroadcastSrpSection } from '@repo/broadcasts'
-import { StartTrackingSessionError } from '@repo/fleets'
 import { logger } from '@repo/hono-helpers'
 
 /** Parse a loose truthy value (boolean, number, "true"/"yes"/etc) into a boolean. */
@@ -46,7 +45,6 @@ import type {
 	UpdateBroadcastTemplateRequest,
 } from '@repo/broadcasts'
 import type { Discord } from '@repo/discord'
-import type { Fleets } from '@repo/fleets'
 import type { Env } from './context'
 
 const DISCORD_MESSAGE_MAX_LENGTH = 2000
@@ -1093,7 +1091,13 @@ export class BroadcastsDO extends DurableObject<Env> implements Broadcasts {
 		}
 
 		try {
-			const fleetsStub = getStub<Fleets>(this.env.FLEETS, 'default')
+			const fleetsStub = getStub(this.env.FLEETS, 'default') as {
+				startTrackingSession: (args: {
+					characterId: string
+					startedByUserId: string
+					name: string
+				}) => Promise<{ sessionId: string }>
+			}
 			const result = await fleetsStub.startTrackingSession({
 				characterId: characterId.trim(),
 				startedByUserId: args.userId,
@@ -1101,9 +1105,16 @@ export class BroadcastsDO extends DurableObject<Env> implements Broadcasts {
 			})
 			return { sessionId: result.sessionId, error: null }
 		} catch (error) {
+			const trackingErrorCode =
+				typeof error === 'object' &&
+				error !== null &&
+				'code' in error &&
+				typeof (error as { code?: unknown }).code === 'string'
+					? (error as { code: string }).code
+					: null
 			const errorMessage =
-				error instanceof StartTrackingSessionError
-					? this.formatTrackingStartError(error.code)
+				trackingErrorCode
+					? this.formatTrackingStartError(trackingErrorCode)
 					: error instanceof Error
 						? error.message
 						: 'Failed to start fleet tracking.'

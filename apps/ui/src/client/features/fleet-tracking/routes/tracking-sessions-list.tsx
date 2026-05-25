@@ -2,43 +2,43 @@ import { Plus } from 'lucide-react'
 import { useMemo, useState } from 'react'
 import { Link } from 'react-router-dom'
 
+import { UserSearchPaginationControls } from '@/components/user-search-pagination-controls'
 import { Button } from '@/components/ui/button'
-import { Card, CardContent } from '@/components/ui/card'
+import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Container } from '@/components/ui/container'
-import { DateInput } from '@/components/ui/date-input'
-import { Input } from '@/components/ui/input'
-import { Label } from '@/components/ui/label'
+import { DateRangeInput } from '@/components/ui/date-range-input'
 import { LoadingPage } from '@/components/ui/loading'
 import { PageHeader } from '@/components/ui/page-header'
 import { Section } from '@/components/ui/section'
+import { Select } from '@/components/ui/select'
+import {
+	Table,
+	TableBody,
+	TableCell,
+	TableHead,
+	TableHeader,
+	TableRow,
+} from '@/components/ui/table'
 import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { usePageTitle } from '@/hooks/usePageTitle'
 import { useUserPermissions } from '@/hooks/useUserPermissions'
-import { SessionCard } from '../components/session-card'
+import { api } from '@/lib/api'
+import { SessionStatusPill } from '../components/session-status-pill'
 import { useTrackingSessions } from '../hooks'
+import { formatDurationBetween } from '../utils/format'
 
 import type { TrackingSessionStatus } from '../types'
 
 type Tab = 'all' | TrackingSessionStatus
 
-const PAGE_SIZE = 10
-
-/**
- * Convert a YYYY-MM-DD date input into an ISO timestamp at start-of-day (UTC).
- * Returns undefined for empty input.
- */
-function dateInputToIsoStart(value: string): string | undefined {
+export function dateInputToIsoStart(value: string): string | undefined {
 	if (!value) return undefined
 	const [year, month, day] = value.split('-').map(Number)
 	if (!year || !month || !day) return undefined
 	return new Date(Date.UTC(year, month - 1, day)).toISOString()
 }
 
-/**
- * Convert a YYYY-MM-DD date input into an ISO timestamp at start of the NEXT day (UTC),
- * so the filter `to` (exclusive) includes the entire selected day.
- */
-function dateInputToIsoEndExclusive(value: string): string | undefined {
+export function dateInputToIsoEndExclusive(value: string): string | undefined {
 	if (!value) return undefined
 	const [year, month, day] = value.split('-').map(Number)
 	if (!year || !month || !day) return undefined
@@ -54,55 +54,26 @@ export default function TrackingSessionsList() {
 	const [tab, setTab] = useState<Tab>('all')
 	const [fromDate, setFromDate] = useState('')
 	const [toDate, setToDate] = useState('')
-	const [fcSearch, setFcSearch] = useState('')
-	const [page, setPage] = useState(0)
+	const [characterFilter, setCharacterFilter] = useState('')
+	const [page, setPage] = useState(1)
+	const [pageSize, setPageSize] = useState(25)
 
 	const filter = useMemo(
 		() => ({
 			status: tab === 'all' ? undefined : tab,
 			from: dateInputToIsoStart(fromDate),
 			to: dateInputToIsoEndExclusive(toDate),
-			limit: PAGE_SIZE,
-			offset: page * PAGE_SIZE,
+			characterId: characterFilter || undefined,
+			limit: pageSize,
+			offset: (page - 1) * pageSize,
 		}),
-		[tab, fromDate, toDate, page]
+		[tab, fromDate, toDate, characterFilter, page, pageSize]
 	)
 	const { data, isLoading } = useTrackingSessions(filter)
 
 	const sessions = data?.items ?? []
 	const total = data?.total ?? 0
-
-	// Client-side FC name filter on the loaded page. Documented as "page filter"
-	// so users don't get confused that an empty page might still have matches elsewhere.
-	const visibleSessions = useMemo(() => {
-		const q = fcSearch.trim().toLowerCase()
-		if (!q) return sessions
-		return sessions.filter(
-			(s) =>
-				(s.characterName ?? '').toLowerCase().includes(q) ||
-				s.characterId.includes(q) ||
-				s.name.toLowerCase().includes(q)
-		)
-	}, [sessions, fcSearch])
-
-	const onTabChange = (next: Tab) => {
-		setTab(next)
-		setPage(0)
-	}
-	const onFromChange = (next: string) => {
-		setFromDate(next)
-		setPage(0)
-	}
-	const onToChange = (next: string) => {
-		setToDate(next)
-		setPage(0)
-	}
-
-	const totalPages = Math.max(1, Math.ceil(total / PAGE_SIZE))
-	const hasNext = page + 1 < totalPages
-	const hasPrev = page > 0
-	const rangeStart = total === 0 ? 0 : page * PAGE_SIZE + 1
-	const rangeEnd = Math.min(total, page * PAGE_SIZE + sessions.length)
+	const hasPagination = Math.ceil(total / pageSize) > 1
 
 	return (
 		<Container>
@@ -122,117 +93,149 @@ export default function TrackingSessionsList() {
 			/>
 
 			<Section>
-				<div className="flex flex-wrap items-end gap-3 mb-4">
-					<Tabs value={tab} onValueChange={(v) => onTabChange(v as Tab)}>
-						<TabsList>
-							<TabsTrigger value="all">All</TabsTrigger>
-							<TabsTrigger value="active">Active</TabsTrigger>
-							<TabsTrigger value="ended">Ended</TabsTrigger>
-						</TabsList>
-					</Tabs>
-
-					{canViewAll && (
-						<>
-							<div className="space-y-1">
-								<Label htmlFor="fc-search" className="text-xs">
-									FC / fleet name
-								</Label>
-								<Input
-									id="fc-search"
-									value={fcSearch}
-									onChange={(e) => setFcSearch(e.target.value)}
-									placeholder="Filter visible rows"
-									className="h-8 w-56"
-								/>
-							</div>
-							<div className="space-y-1">
-								<Label className="text-xs">From</Label>
-								<div className="w-40">
-									<DateInput value={fromDate} onChange={onFromChange} />
+				<Card>
+					<CardHeader className="pb-3">
+						<CardTitle>Sessions</CardTitle>
+					</CardHeader>
+					<CardContent className="space-y-4">
+						{canViewAll && (
+							<div className="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
+								<div className="xl:col-span-2">
+									<Select
+										options={[]}
+										value={characterFilter}
+										onValueChange={(value) => {
+											setCharacterFilter(value || '')
+											setPage(1)
+										}}
+										searchable
+										searchDelegate={async (query) => {
+											const values = await api.searchCharacters(query)
+											return values.map((entry) => ({
+												value: entry.characterId,
+												label: entry.characterName,
+												description: entry.characterId,
+											}))
+										}}
+										placeholder="FC character"
+										minQueryLength={2}
+										queryHintText="Type at least 2 characters"
+										emptyText="No character names found"
+										selectAllOption={{ value: '', label: 'All FCs' }}
+									/>
 								</div>
-							</div>
-							<div className="space-y-1">
-								<Label className="text-xs">To</Label>
-								<div className="w-40">
-									<DateInput value={toDate} onChange={onToChange} />
-								</div>
-							</div>
-							{(fromDate || toDate || fcSearch) && (
-								<Button
-									variant="ghost"
-									size="sm"
-									onClick={() => {
-										setFromDate('')
-										setToDate('')
-										setFcSearch('')
-										setPage(0)
+								<DateRangeInput
+									value={{ fromDate, toDate }}
+									onChange={({ fromDate: nextFromDate, toDate: nextToDate }) => {
+										setFromDate(nextFromDate)
+										setToDate(nextToDate)
+										setPage(1)
 									}}
-								>
-									Clear
-								</Button>
-							)}
-						</>
-					)}
-				</div>
-
-				{isLoading ? (
-					<LoadingPage />
-				) : visibleSessions.length === 0 ? (
-					<Card>
-						<CardContent className="py-12 text-center">
-							<p className="text-muted-foreground mb-4">
-								{sessions.length === 0
-									? 'No fleet tracking sessions match these filters.'
-									: 'No sessions match the search on this page.'}
-							</p>
-							{canCreate && (
-								<Button asChild>
-									<Link to="/fleet-tracking/new">
-										<Plus className="h-4 w-4" />
-										Start Tracking
-									</Link>
-								</Button>
-							)}
-						</CardContent>
-					</Card>
-				) : (
-					<>
-						<div className="space-y-3">
-							{visibleSessions.map((s) => (
-								<SessionCard key={s.id} session={s} />
-							))}
-						</div>
-						<div className="flex items-center justify-between text-xs text-muted-foreground pt-3">
-							<div>
-								Showing {rangeStart}–{rangeEnd} of {total}
-								{fcSearch && sessions.length !== visibleSessions.length && (
-									<span> · {visibleSessions.length} on this page after search</span>
+									placeholder="Session date range"
+									className="[&_.themed-date-picker__input]:h-10"
+								/>
+								{(fromDate || toDate || characterFilter) && (
+									<Button
+										variant="ghost"
+										size="sm"
+										onClick={() => {
+											setFromDate('')
+											setToDate('')
+											setCharacterFilter('')
+											setPage(1)
+										}}
+									>
+										Clear
+									</Button>
 								)}
 							</div>
-							<div className="flex items-center gap-2">
-								<Button
-									variant="ghost"
-									size="sm"
-									disabled={!hasPrev}
-									onClick={() => setPage((p) => Math.max(0, p - 1))}
-								>
-									Previous
-								</Button>
-								<span>
-									Page {page + 1} of {totalPages}
-								</span>
-								<Button
-									variant="ghost"
-									size="sm"
-									disabled={!hasNext}
-									onClick={() => setPage((p) => p + 1)}
-								>
-									Next
-								</Button>
+						)}
+
+						<Tabs
+							value={tab}
+							onValueChange={(v) => {
+								setTab(v as Tab)
+								setPage(1)
+							}}
+						>
+							<TabsList>
+								<TabsTrigger value="all">All</TabsTrigger>
+								<TabsTrigger value="active">Active</TabsTrigger>
+								<TabsTrigger value="ended">Ended</TabsTrigger>
+							</TabsList>
+						</Tabs>
+
+						{isLoading ? (
+							<LoadingPage />
+						) : sessions.length === 0 ? (
+							<div className="py-10 text-center text-muted-foreground">
+								No fleet tracking sessions match these filters.
 							</div>
-						</div>
-					</>
-				)}
+						) : (
+							<>
+								<div className="rounded-md border overflow-x-auto">
+									<Table>
+										<TableHeader>
+											<TableRow>
+												<TableHead>Status</TableHead>
+												<TableHead>Fleet</TableHead>
+												<TableHead>FC</TableHead>
+												<TableHead>Started</TableHead>
+												<TableHead>Duration</TableHead>
+												<TableHead className="w-20" />
+											</TableRow>
+										</TableHeader>
+										<TableBody>
+											{sessions.map((session) => (
+												<TableRow key={session.id}>
+													<TableCell>
+														<SessionStatusPill status={session.status} />
+													</TableCell>
+													<TableCell className="font-medium">{session.name}</TableCell>
+													<TableCell>
+														<div className="leading-tight">
+															<div>{session.characterName ?? 'Unknown'}</div>
+															<div className="text-xs text-muted-foreground font-mono">
+																{session.characterId}
+															</div>
+														</div>
+													</TableCell>
+													<TableCell className="text-muted-foreground">
+														{new Date(session.startedAt).toLocaleString()}
+													</TableCell>
+													<TableCell className="text-muted-foreground">
+														{formatDurationBetween(session.startedAt, session.endedAt)}
+													</TableCell>
+													<TableCell>
+														<Button asChild variant="ghost" size="sm">
+															<Link to={`/fleet-tracking/${session.id}`}>Open</Link>
+														</Button>
+													</TableCell>
+												</TableRow>
+											))}
+										</TableBody>
+									</Table>
+								</div>
+								{hasPagination && (
+									<div className="pt-3 border-t">
+										<UserSearchPaginationControls
+											totalCount={total}
+											page={page}
+											pageSize={pageSize}
+											onPageChange={setPage}
+											onPageSizeChange={(nextPageSize) => {
+												setPageSize(nextPageSize)
+												setPage(1)
+											}}
+											pageSizeOptions={[10, 25, 50]}
+											itemLabel="sessions"
+										/>
+									</div>
+								)}
+							</>
+						)}
+					</CardContent>
+				</Card>
 			</Section>
 		</Container>
 	)

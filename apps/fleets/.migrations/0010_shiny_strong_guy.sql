@@ -1,2 +1,0 @@
-ALTER TABLE "fleet_member_history" ADD COLUMN "corporation_id" text;--> statement-breakpoint
-CREATE INDEX "fleet_member_history_corporation_id_idx" ON "fleet_member_history" USING btree ("corporation_id");

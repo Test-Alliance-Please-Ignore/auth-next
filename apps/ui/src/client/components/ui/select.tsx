@@ -34,6 +34,7 @@ export interface SelectOption {
 	value: string
 	label: string
 	description?: string
+	descriptionClassName?: string
 }
 
 export type SelectSearchDelegate<TOption extends SelectOption> = (
@@ -44,6 +45,7 @@ interface SelectAllOption {
 	value: string
 	label: string
 	description?: string
+	descriptionClassName?: string
 }
 
 export interface SelectProps<TOption extends SelectOption> {
@@ -602,7 +604,10 @@ export function Select<TOption extends SelectOption>({
 														</div>
 														{option.description && (
 															<div
-																className="truncate text-xs text-muted-foreground"
+																className={cn(
+																	'truncate text-xs text-muted-foreground',
+																	option.descriptionClassName
+																)}
 																title={option.description}
 															>
 																{option.description}

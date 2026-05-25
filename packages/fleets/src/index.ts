@@ -290,6 +290,19 @@ export interface Fleets extends DurableObject {
 	 * resolved by the caller via the ESI resolver.
 	 */
 	listTrackedCorporationIds(): Promise<string[]>
+
+	/**
+	 * Search distinct tracked corporation IDs by optional name query.
+	 * Name resolution/filtering is still performed by the caller; this method
+	 * bounds the candidate ID set server-side for scalability.
+	 */
+	searchTrackedCorporationIds(query: string, limit?: number): Promise<string[]>
+
+	/**
+	 * Return the subset of provided corporation IDs that appear in tracked fleet
+	 * history. Used by core to intersect corp-name search results with tracked data.
+	 */
+	filterTrackedCorporationIds(corporationIds: string[]): Promise<string[]>
 }
 
 export interface CorpRollupRow {

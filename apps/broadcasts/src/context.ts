@@ -1,5 +1,4 @@
 import type { Discord } from '@repo/discord'
-import type { Fleets } from '@repo/fleets'
 import type { Groups } from '@repo/groups'
 import type { HonoApp } from '@repo/hono-helpers'
 import type { SharedHonoEnv, SharedHonoVariables } from '@repo/hono-helpers/src/types'
@@ -10,7 +9,7 @@ export type Env = SharedHonoEnv & {
 	BROADCASTS: DurableObjectNamespace
 	DISCORD: DurableObjectNamespace
 	GROUPS: DurableObjectNamespace
-	FLEETS: DurableObjectNamespace<Fleets>
+	FLEETS: DurableObjectNamespace
 }
 
 /** Session user data attached to request context */

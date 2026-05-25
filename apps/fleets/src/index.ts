@@ -28,12 +28,6 @@ const app = new Hono<App>()
 		return c.text('Fleets Durable Object Worker')
 	})
 
-	// Test page for fleet monitor
-	.get('/test', async (c) => {
-		const { testPageHtml } = await import('./test-page')
-		return c.html(testPageHtml)
-	})
-
 	// Fleet Monitor WebSocket endpoint
 	.get('/fleet-monitor/:fleetId/ws', async (c) => {
 		const fleetId = c.req.param('fleetId')

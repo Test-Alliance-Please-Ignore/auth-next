@@ -169,6 +169,20 @@ function deriveFieldSchemaFromTemplate(
 		})
 	}
 
+	const fleetTrackingField = existing.find(
+		(field) =>
+			field.type === 'system_fleet_tracking' &&
+			field.name === '__fleetTrackingEnabled'
+	)
+	if (fleetTrackingField) {
+		fields.push({
+			name: '__fleetTrackingEnabled',
+			label: 'Fleet Tracking',
+			type: 'system_fleet_tracking',
+			required: false,
+		})
+	}
+
 	return fields
 }
 
@@ -263,6 +277,8 @@ type TemplateDialogProps = {
 	onCancel: () => void
 	formData: CreateBroadcastTemplateRequest
 	setFormData: (data: CreateBroadcastTemplateRequest) => void
+	fleetTrackingEnabled: boolean
+	setFleetTrackingEnabled: (enabled: boolean) => void
 	frogsirenEnabled: boolean
 	setFrogsirenEnabled: (enabled: boolean) => void
 	targets: BroadcastTarget[]
@@ -282,6 +298,8 @@ function TemplateDialog({
 	onCancel,
 	formData,
 	setFormData,
+	fleetTrackingEnabled,
+	setFleetTrackingEnabled,
 	frogsirenEnabled,
 	setFrogsirenEnabled,
 	targets,
@@ -342,6 +360,23 @@ function TemplateDialog({
 								})
 							}
 						/>
+					</div>
+					<div className="rounded-md border border-border/60 px-3 py-2">
+						<div className="flex items-center justify-between gap-3">
+							<div className="space-y-0.5">
+								<Label htmlFor={`${idPrefix}-template-fleet-tracking`}>
+									Enable Fleet Tracking
+								</Label>
+								<p className="text-xs text-muted-foreground">
+									Adds an optional fleet-tracking toggle when composing broadcasts with this template.
+								</p>
+							</div>
+							<Switch
+								id={`${idPrefix}-template-fleet-tracking`}
+								checked={fleetTrackingEnabled}
+								onCheckedChange={setFleetTrackingEnabled}
+							/>
+						</div>
 					</div>
 					<div className="rounded-md border border-border/60 px-3 py-2">
 						<div className="flex items-center justify-between gap-3">
@@ -482,6 +517,11 @@ export default function BroadcastTemplatesPage() {
 	const frogsirenEnabled = formData.fieldSchema.some(
 		(field) => field.type === 'system_frogsiren' && field.name === '__frogsirenEnabled'
 	)
+	const fleetTrackingEnabled = formData.fieldSchema.some(
+		(field) =>
+			field.type === 'system_fleet_tracking' &&
+			field.name === '__fleetTrackingEnabled'
+	)
 
 	const resetForm = () => {
 		setFormData({
@@ -539,6 +579,29 @@ export default function BroadcastTemplatesPage() {
 								name: '__frogsirenEnabled',
 								label: 'FrogSiren',
 								type: 'system_frogsiren',
+								required: false,
+							},
+						]
+					: without,
+			}
+		})
+	}
+
+	const setFleetTrackingEnabled = (enabled: boolean) => {
+		setFormData((current) => {
+			const without = current.fieldSchema.filter(
+				(field) =>
+					!(field.type === 'system_fleet_tracking' && field.name === '__fleetTrackingEnabled')
+			)
+			return {
+				...current,
+				fieldSchema: enabled
+					? [
+							...without,
+							{
+								name: '__fleetTrackingEnabled',
+								label: 'Fleet Tracking',
+								type: 'system_fleet_tracking',
 								required: false,
 							},
 						]
@@ -746,6 +809,8 @@ export default function BroadcastTemplatesPage() {
 				onCancel={() => setCreateDialogOpen(false)}
 				formData={formData}
 				setFormData={setFormData}
+				fleetTrackingEnabled={fleetTrackingEnabled}
+				setFleetTrackingEnabled={setFleetTrackingEnabled}
 				frogsirenEnabled={frogsirenEnabled}
 				setFrogsirenEnabled={setFrogsirenEnabled}
 				targets={targets}
@@ -769,6 +834,8 @@ export default function BroadcastTemplatesPage() {
 				}}
 				formData={formData}
 				setFormData={setFormData}
+				fleetTrackingEnabled={fleetTrackingEnabled}
+				setFleetTrackingEnabled={setFleetTrackingEnabled}
 				frogsirenEnabled={frogsirenEnabled}
 				setFrogsirenEnabled={setFrogsirenEnabled}
 				targets={targets}

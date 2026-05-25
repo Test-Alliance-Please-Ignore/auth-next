@@ -264,7 +264,12 @@ export interface UserStatsResponse {
 }
 
 export interface StatsSearchResponse {
-	characters: Array<{ characterId: string; characterName: string }>
+	characters: Array<{
+		characterId: string
+		characterName: string
+		isPrimary: boolean
+		ownerMainCharacterName: string | null
+	}>
 	corporations: Array<{ corporationId: string; corporationName: string | null }>
 }
 

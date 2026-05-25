@@ -15,6 +15,18 @@ interface SystemFleetTrackingFieldProps {
 	characters: CharacterOption[]
 }
 
+function isSwitchControlClick(target: EventTarget | null): boolean {
+	if (!(target instanceof Element)) return false
+	return Boolean(target.closest('label,button,[role="switch"]'))
+}
+
+function toggleSwitchById(id: string): void {
+	const element = document.getElementById(id)
+	if (element instanceof HTMLButtonElement) {
+		element.click()
+	}
+}
+
 /**
  * Special template field that lets the broadcast author trigger fleet tracking
  * when the broadcast is sent. Mirrors the system_frogsiren pattern: a switch
@@ -32,16 +44,26 @@ export function SystemFleetTrackingField({
 		value: c.characterId,
 		label: c.characterName,
 	}))
+	const switchId = 'fleet-tracking-toggle'
 
 	return (
-		<div className="space-y-2 rounded-md border border-border/60 px-3 py-3">
-			<div className="flex items-center justify-between">
-				<Label htmlFor="fleet-tracking-toggle" className="cursor-pointer">
+		<div className="max-w-xl space-y-2">
+			<div
+				className={`flex items-center justify-between rounded-md border border-border/60 px-3 py-2 cursor-pointer transition-colors ${
+					enabled ? 'bg-slate-500/15' : 'bg-transparent'
+				}`}
+				onClick={(event) => {
+					if (isSwitchControlClick(event.target)) return
+					toggleSwitchById(switchId)
+				}}
+			>
+				<Label htmlFor={switchId} className="font-medium cursor-pointer">
 					Start fleet tracking when broadcast is sent
 				</Label>
 				<Switch
-					id="fleet-tracking-toggle"
+					id={switchId}
 					checked={enabled}
+					onClick={(event) => event.stopPropagation()}
 					onCheckedChange={onEnabledChange}
 				/>
 			</div>

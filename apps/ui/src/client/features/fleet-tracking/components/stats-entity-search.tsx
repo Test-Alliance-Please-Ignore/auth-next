@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 
+import { Badge } from '@/components/ui/badge'
 import { Select } from '@/components/ui/select'
 
 import { useStatsEntitySearch } from '../hooks'
@@ -21,6 +22,8 @@ export function StatsEntitySearch() {
 	const characterOptions = (charSearch.data?.characters ?? []).map((c) => ({
 		value: c.characterId,
 		label: c.characterName,
+		description: c.isPrimary ? undefined : c.ownerMainCharacterName ? `Alt of ${c.ownerMainCharacterName}` : 'Alt',
+		isPrimary: c.isPrimary,
 	}))
 
 	const corporationOptions = (corpSearch.data?.corporations ?? []).map((c) => ({
@@ -53,6 +56,26 @@ export function StatsEntitySearch() {
 					minQueryLength={2}
 					debounceMs={0}
 					emptyText="No matching pilots in tracked fleets"
+					renderOption={(option) => (
+						<div className="min-w-0">
+							<div className="flex items-center gap-2">
+								<div className="truncate font-medium" title={option.label}>
+									{option.label}
+								</div>
+								<Badge
+									variant={option.isPrimary ? 'default' : 'secondary'}
+									className="shrink-0"
+								>
+									{option.isPrimary ? 'Main' : 'Alt'}
+								</Badge>
+							</div>
+							{option.description && (
+								<div className="truncate text-xs text-muted-foreground" title={option.description}>
+									{option.description}
+								</div>
+							)}
+						</div>
+					)}
 				/>
 			</div>
 			<div>

@@ -23,13 +23,13 @@ CREATE TABLE "fleet_tracking_sessions" (
 	"ended_at" timestamp,
 	"ended_reason" text,
 	"ended_by_user_id" text,
-	"notes" text,
 	"created_at" timestamp DEFAULT now() NOT NULL,
 	"updated_at" timestamp DEFAULT now() NOT NULL
 );
 --> statement-breakpoint
 ALTER TABLE "monitored_fleet_commanders" DISABLE ROW LEVEL SECURITY;--> statement-breakpoint
 DROP TABLE "monitored_fleet_commanders" CASCADE;--> statement-breakpoint
+ALTER TABLE "fleet_member_history" ADD COLUMN "corporation_id" text;--> statement-breakpoint
 ALTER TABLE "fleet_state_cache" ADD COLUMN "tracking_session_id" uuid;--> statement-breakpoint
 ALTER TABLE "fleet_summaries" ADD COLUMN "tracking_session_id" uuid;--> statement-breakpoint
 ALTER TABLE "fleet_member_ship_events" ADD CONSTRAINT "fleet_member_ship_events_tracking_session_id_fleet_tracking_sessions_id_fk" FOREIGN KEY ("tracking_session_id") REFERENCES "public"."fleet_tracking_sessions"("id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
@@ -44,5 +44,6 @@ CREATE INDEX "fleet_tracking_sessions_status_idx" ON "fleet_tracking_sessions" U
 CREATE INDEX "fleet_tracking_sessions_started_at_idx" ON "fleet_tracking_sessions" USING btree ("started_at");--> statement-breakpoint
 ALTER TABLE "fleet_state_cache" ADD CONSTRAINT "fleet_state_cache_tracking_session_id_fleet_tracking_sessions_id_fk" FOREIGN KEY ("tracking_session_id") REFERENCES "public"."fleet_tracking_sessions"("id") ON DELETE set null ON UPDATE no action;--> statement-breakpoint
 ALTER TABLE "fleet_summaries" ADD CONSTRAINT "fleet_summaries_tracking_session_id_fleet_tracking_sessions_id_fk" FOREIGN KEY ("tracking_session_id") REFERENCES "public"."fleet_tracking_sessions"("id") ON DELETE set null ON UPDATE no action;--> statement-breakpoint
+CREATE INDEX "fleet_member_history_corporation_id_idx" ON "fleet_member_history" USING btree ("corporation_id");--> statement-breakpoint
 CREATE INDEX "fleet_state_cache_tracking_session_id_idx" ON "fleet_state_cache" USING btree ("tracking_session_id");--> statement-breakpoint
 CREATE INDEX "fleet_summaries_tracking_session_id_idx" ON "fleet_summaries" USING btree ("tracking_session_id");

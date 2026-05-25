@@ -26,6 +26,7 @@ import {
 import type { EveCharacterData } from '@repo/eve-character-data'
 import type { EveTokenStore } from '@repo/eve-token-store'
 import type { InvType, Universe } from '@repo/universe'
+import { computeNextPollDelayMs } from './polling'
 
 /**
  * Normalize station_id to ensure it's either a number or null
@@ -58,12 +59,13 @@ function normalizeStationId(value: number | null | undefined | string): number |
  *
  * This Durable Object is created per-fleet (id: `fleet-${fleetId}`) and implements:
  * - RPC methods for fleet status queries
- * - Alarm handler for periodic fleet status updates (every 30 seconds)
+ * - Alarm handler for periodic fleet status updates (10s baseline cadence, header-aware)
  * - WebSocket hibernation API for real-time updates
  * - SQLite-backed state for instance-specific data (fleetId, characterId)
  * - PostgreSQL for cross-instance data (fleetStateCache)
  */
 export class FleetMonitorDO extends DurableObject {
+	private static readonly BASE_POLL_INTERVAL_MS = 10 * 1000
 	private db: ReturnType<typeof createDbClientWs<typeof schema>>
 	// In-memory caches for ID to name mappings
 	private characterNameCache = new Map<string, string>()
@@ -520,7 +522,7 @@ export class FleetMonitorDO extends DurableObject {
 			})
 		}
 
-		// Schedule first alarm for 30 seconds from now
+		// Schedule first alarm at baseline cadence.
 		await this.scheduleNextAlarm()
 
 		logger.info(`[FleetMonitor ${fleetId}] Monitoring initialized and alarm scheduled`)
@@ -549,6 +551,7 @@ export class FleetMonitorDO extends DurableObject {
 				characterId
 			)
 			const fleetInfo = esiGetFleetInformationSchema.parse(fleetResponse.data)
+			let nextPollAt = fleetResponse.expiresAt
 
 			// Fetch fleet members
 			let members: EsiGetFleetMembers | undefined
@@ -560,6 +563,9 @@ export class FleetMonitorDO extends DurableObject {
 				)
 				members = esiGetFleetMembersSchema.parse(membersResponse.data)
 				memberCount = members.length
+				if (membersResponse.expiresAt.getTime() > nextPollAt.getTime()) {
+					nextPollAt = membersResponse.expiresAt
+				}
 			} catch (error) {
 				logger.error(`[FleetMonitor ${fleetId}] Failed to fetch members`, {
 					fleetId,
@@ -652,6 +658,7 @@ export class FleetMonitorDO extends DurableObject {
 				members,
 				fleetBossName: characterInfo?.name,
 				memberCount,
+				nextPollAt: nextPollAt.toISOString(),
 				// Include resolved ship type names, character names, system names, and station names as metadata
 				...(resolvedShipTypes && { shipTypeNames: resolvedShipTypes }),
 				...(resolvedCharacterNames && { characterNames: resolvedCharacterNames }),
@@ -2076,7 +2083,14 @@ export class FleetMonitorDO extends DurableObject {
 				lastChecked: now,
 			})
 
-			// Ensure next alarm is scheduled (already scheduled early, but await to catch errors)
+			// Respect ESI cache expiry guidance while maintaining a 10s baseline cadence.
+			const nextDelayMs = computeNextPollDelayMs({
+				basePollIntervalMs: FleetMonitorDO.BASE_POLL_INTERVAL_MS,
+				nextPollAt: fleetStatus.nextPollAt ?? null,
+			})
+			await this.scheduleNextAlarm(nextDelayMs)
+
+			// Ensure next alarm is scheduled (already scheduled early, but await to catch errors).
 			await nextAlarmPromise
 		} catch (error) {
 			const errorMessage = error instanceof Error ? error.message : String(error)
@@ -2245,10 +2259,10 @@ export class FleetMonitorDO extends DurableObject {
 	}
 
 	/**
-	 * Schedule the next alarm to run 30 seconds from now
+	 * Schedule the next alarm to run after a delay.
 	 * Only schedules if the monitor is properly initialized with valid IDs
 	 */
-	private async scheduleNextAlarm(): Promise<void> {
+	private async scheduleNextAlarm(delayMs: number = FleetMonitorDO.BASE_POLL_INTERVAL_MS): Promise<void> {
 		// Verify state is valid before scheduling
 		const state = await this.getState()
 		if (!state || !state.isInitialized) {
@@ -2269,13 +2283,14 @@ export class FleetMonitorDO extends DurableObject {
 			return
 		}
 
-		const thirtySeconds = 30 * 1000 // 30 seconds in milliseconds
-		const nextAlarmTime = Date.now() + thirtySeconds
+		const clampedDelayMs = Math.max(1_000, delayMs)
+		const nextAlarmTime = Date.now() + clampedDelayMs
 
 		await this.state.storage.setAlarm(nextAlarmTime)
 
 		logger.info(`[FleetMonitor ${state.fleetId}] Alarm scheduled`, {
 			fleetId: state.fleetId,
+			delayMs: clampedDelayMs,
 			nextAlarmTime: new Date(nextAlarmTime).toISOString(),
 		})
 	}

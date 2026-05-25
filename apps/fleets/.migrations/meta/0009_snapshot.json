@@ -1,5 +1,5 @@
 {
-  "id": "296d4c41-7677-4437-8601-f02e25fcff69",
+  "id": "98411185-eb81-462f-984f-2b9d2cecffcb",
   "prevId": "7326ea83-3a37-4cd1-a89a-245dfef301f2",
   "version": "7",
   "dialect": "postgresql",
@@ -255,6 +255,12 @@
           "type": "text",
           "primaryKey": false,
           "notNull": false
+        },
+        "corporation_id": {
+          "name": "corporation_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
         }
       },
       "indexes": {
@@ -329,6 +335,21 @@
             },
             {
               "expression": "character_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "fleet_member_history_corporation_id_idx": {
+          "name": "fleet_member_history_corporation_id_idx",
+          "columns": [
+            {
+              "expression": "corporation_id",
               "isExpression": false,
               "asc": true,
               "nulls": "last"
@@ -1150,12 +1171,6 @@
         },
         "ended_by_user_id": {
           "name": "ended_by_user_id",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "notes": {
-          "name": "notes",
           "type": "text",
           "primaryKey": false,
           "notNull": false

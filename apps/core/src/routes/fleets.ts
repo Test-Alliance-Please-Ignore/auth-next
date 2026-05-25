@@ -1,7 +1,7 @@
 import { Hono } from 'hono'
 import type { Context } from 'hono'
 
-import { eq, inArray } from '@repo/db-utils'
+import { and, eq, ilike, inArray, or } from '@repo/db-utils'
 import { getStub } from '@repo/do-utils'
 import { createEveCharacterId } from '@repo/eve-types'
 import { StartTrackingSessionError } from '@repo/fleets'
@@ -9,6 +9,7 @@ import { logger, TimeCache } from '@repo/hono-helpers'
 
 import { createDb, schema } from '../db'
 import { getCachedCharacterPermissions, getCachedUserPermissions } from '../lib/groups-cache'
+import { validatePagination } from '../lib/validation'
 import { requireAuth } from '../middleware/session'
 
 import type { EsiTypeResolver } from '@repo/esi'
@@ -120,22 +121,14 @@ app.get('/character/:characterId', async (c) => {
 			isBoss: fleetInfo.fleet_boss_id === characterId,
 		})
 
-		return c.json({
-			isInFleet,
-			fleet_id: String(fleetInfo.fleet_id),
-			fleet_boss_id: String(fleetInfo.fleet_boss_id),
-			role: fleetInfo.role,
-			squad_id: fleetInfo.squad_id,
-			wing_id: fleetInfo.wing_id,
-			// Include debug info temporarily
-			debug: {
-				characterId,
-				rawFleetId: fleetInfo.fleet_id,
-				isValidFleet: fleetInfo.fleet_id !== '0',
-				isBoss: String(fleetInfo.fleet_boss_id) === characterId,
-				timestamp: new Date().toISOString(),
-			},
-		})
+			return c.json({
+				isInFleet,
+				fleet_id: String(fleetInfo.fleet_id),
+				fleet_boss_id: String(fleetInfo.fleet_boss_id),
+				role: fleetInfo.role,
+				squad_id: fleetInfo.squad_id,
+				wing_id: fleetInfo.wing_id,
+			})
 	} catch (error) {
 		logger.error('Failed to get character fleet info:', error)
 		return c.json({ error: 'Failed to get fleet information' }, 500)
@@ -431,7 +424,7 @@ app.post('/tracking', async (c) => {
 	if (!canCreate) {
 		return c.json(
 			{
-				error: `You do not have the ${FLEET_TRACKING_CREATE} permission.`,
+				error: 'You do not have permission to perform this action.',
 			},
 			403
 		)
@@ -520,8 +513,10 @@ app.get('/tracking', async (c) => {
 	const userIdParam = url.searchParams.get('userId') ?? undefined
 	const fromParam = url.searchParams.get('from') ?? undefined
 	const toParam = url.searchParams.get('to') ?? undefined
-	const limitParam = url.searchParams.get('limit')
-	const offsetParam = url.searchParams.get('offset')
+	const pagination = validatePagination(c.req.query('limit'), c.req.query('offset'))
+	if (!pagination.success) {
+		return c.json({ error: pagination.error }, pagination.status)
+	}
 
 	const fleetsStub = getStub<Fleets>(c.env.FLEETS, 'default')
 
@@ -530,8 +525,8 @@ app.get('/tracking', async (c) => {
 		status: status ?? undefined,
 		from: fromParam,
 		to: toParam,
-		limit: limitParam ? Number(limitParam) : undefined,
-		offset: offsetParam ? Number(offsetParam) : undefined,
+		limit: pagination.data.limit,
+		offset: pagination.data.offset,
 	}
 
 	if (canViewAll) {
@@ -746,16 +741,18 @@ app.get('/tracking/:sessionId/timeline', async (c) => {
 	const url = new URL(c.req.url)
 	const eventType = url.searchParams.get('eventType') as 'join' | 'leave' | null
 	const characterId = url.searchParams.get('characterId') ?? undefined
-	const limitParam = url.searchParams.get('limit')
-	const offsetParam = url.searchParams.get('offset')
+	const pagination = validatePagination(c.req.query('limit'), c.req.query('offset'))
+	if (!pagination.success) {
+		return c.json({ error: pagination.error }, pagination.status)
+	}
 
 	const fleetsStub = getStub<Fleets>(c.env.FLEETS, 'default')
 	const timeline = await fleetsStub.getSessionTimeline({
 		sessionId: c.req.param('sessionId'),
 		eventType: eventType ?? undefined,
 		characterId,
-		limit: limitParam ? Number(limitParam) : undefined,
-		offset: offsetParam ? Number(offsetParam) : undefined,
+		limit: pagination.data.limit,
+		offset: pagination.data.offset,
 	})
 
 	// Resolve all distinct character / ship / system / station IDs in the page.
@@ -880,7 +877,7 @@ app.get('/tracking/:sessionId/summary', async (c) => {
 const fleetStatsCache = new TimeCache<unknown>(5 * 60 * 1000)
 
 /** Parse from/to from URL; default to last 30 days. */
-function parseStatsRange(c: Context<App>): StatsRange {
+function parseStatsRange(c: Context<App>): { success: true; data: StatsRange } | { success: false; error: string } {
 	const url = new URL(c.req.url)
 	const now = new Date()
 	const defaultFrom = new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000)
@@ -890,8 +887,14 @@ function parseStatsRange(c: Context<App>): StatsRange {
 
 	const from = fromParam ? new Date(fromParam) : defaultFrom
 	const to = toParam ? new Date(toParam) : now
+	if (Number.isNaN(from.getTime())) {
+		return { success: false, error: 'Invalid from timestamp' }
+	}
+	if (Number.isNaN(to.getTime())) {
+		return { success: false, error: 'Invalid to timestamp' }
+	}
 
-	return { from: from.toISOString(), to: to.toISOString() }
+	return { success: true, data: { from: from.toISOString(), to: to.toISOString() } }
 }
 
 /** Cache key derived from the URL and viewer scope. */
@@ -978,7 +981,9 @@ app.get('/tracking/stats/overview', async (c) => {
 	const { canViewAll } = await resolveTrackingPerms(c)
 	if (!canViewAll) return c.json({ error: 'view-all required' }, 403)
 
-	const range = parseStatsRange(c)
+	const rangeResult = parseStatsRange(c)
+	if (!rangeResult.success) return c.json({ error: rangeResult.error }, 400)
+	const range = rangeResult.data
 	const fleetsStub = getStub<Fleets>(c.env.FLEETS, 'default')
 
 	const data = await withStatsCache(c, 'view-all', async () => {
@@ -1053,24 +1058,92 @@ app.get('/tracking/stats/search', async (c) => {
 	}
 
 	const fleetsStub = getStub<Fleets>(c.env.FLEETS, 'default')
+	const data = await withStatsCache(c, 'view-all', async () => {
+		const charactersPromise = fleetsStub.searchTrackedCharacters(query, 50)
+		const db = createDb(c.env.DATABASE_URL)
 
-	const [characters, allCorpIds] = await Promise.all([
-		fleetsStub.searchTrackedCharacters(query, 25),
-		fleetsStub.listTrackedCorporationIds(),
-	])
+		// Name-backed corp search from managed corporations, then intersect with
+		// tracked fleet corp IDs in Fleets DO.
+		const corpCandidates = await db
+			.select({
+				corporationId: schema.managedCorporations.corporationId,
+				corporationName: schema.managedCorporations.name,
+			})
+			.from(schema.managedCorporations)
+			.where(
+				or(
+					ilike(schema.managedCorporations.name, `%${query}%`),
+					ilike(schema.managedCorporations.corporationId, `%${query}%`)
+				)
+			)
+			.limit(100)
 
-	// Resolve corp names then filter by query client-side
-	const corpNames = await resolveNames(c, allCorpIds)
-	const lowerQuery = query.toLowerCase()
-	const corporations = allCorpIds
-		.map((id) => ({ corporationId: id, corporationName: corpNames[id] ?? null }))
-		.filter(
-			(c) =>
-				c.corporationName != null && c.corporationName.toLowerCase().includes(lowerQuery)
+		const trackedCorpIds = await fleetsStub.filterTrackedCorporationIds(
+			corpCandidates.map((row) => row.corporationId)
 		)
-		.slice(0, 25)
+		const trackedCorpSet = new Set(trackedCorpIds)
+		const corporations = corpCandidates
+			.filter((row) => trackedCorpSet.has(row.corporationId))
+			.slice(0, 25)
+			.map((row) => ({
+				corporationId: row.corporationId,
+				corporationName: row.corporationName ?? row.corporationId,
+			}))
 
-	return c.json({ characters, corporations })
+		const characters = await charactersPromise
+		const characterOwnershipRows =
+			characters.length > 0
+				? await db
+						.select({
+							characterId: schema.userCharacters.characterId,
+							userId: schema.userCharacters.userId,
+							isPrimary: schema.userCharacters.is_primary,
+						})
+						.from(schema.userCharacters)
+						.where(inArray(schema.userCharacters.characterId, characters.map((c) => c.characterId)))
+				: []
+
+		const ownershipByCharacterId = new Map(
+			characterOwnershipRows.map((row) => [
+				row.characterId,
+				{ userId: row.userId, isPrimary: row.isPrimary },
+			])
+		)
+
+		const userIds = Array.from(new Set(characterOwnershipRows.map((row) => row.userId)))
+		const primaryRows =
+			userIds.length > 0
+				? await db
+						.select({
+							userId: schema.userCharacters.userId,
+							mainCharacterName: schema.userCharacters.characterName,
+						})
+						.from(schema.userCharacters)
+						.where(
+							and(
+								inArray(schema.userCharacters.userId, userIds),
+								eq(schema.userCharacters.is_primary, true)
+							)
+						)
+				: []
+		const mainNameByUserId = new Map(primaryRows.map((row) => [row.userId, row.mainCharacterName]))
+
+		const enrichedCharacters = characters.map((entry) => {
+			const ownership = ownershipByCharacterId.get(entry.characterId)
+			const ownerMainCharacterName =
+				ownership?.userId != null ? (mainNameByUserId.get(ownership.userId) ?? null) : null
+			return {
+				characterId: entry.characterId,
+				characterName: entry.characterName,
+				isPrimary: ownership?.isPrimary ?? false,
+				ownerMainCharacterName,
+			}
+		})
+
+		return { characters: enrichedCharacters, corporations }
+	})
+
+	return c.json(data)
 })
 
 /**
@@ -1086,7 +1159,9 @@ app.get('/tracking/stats/characters/:characterId', async (c) => {
 		return c.json({ error: 'Not allowed to view this character' }, 403)
 	}
 
-	const range = parseStatsRange(c)
+	const rangeResult = parseStatsRange(c)
+	if (!rangeResult.success) return c.json({ error: rangeResult.error }, 400)
+	const range = rangeResult.data
 	const scope = canViewAll || isAdmin ? 'view-all' : `self:${user.id}`
 	const fleetsStub = getStub<Fleets>(c.env.FLEETS, 'default')
 
@@ -1128,7 +1203,9 @@ app.get('/tracking/stats/users/:userId', async (c) => {
 		return c.json({ error: 'Not allowed to view this user' }, 403)
 	}
 
-	const range = parseStatsRange(c)
+	const rangeResult = parseStatsRange(c)
+	if (!rangeResult.success) return c.json({ error: rangeResult.error }, 400)
+	const range = rangeResult.data
 	const scope = canViewAll || isAdmin ? 'view-all' : `self:${user.id}`
 	const fleetsStub = getStub<Fleets>(c.env.FLEETS, 'default')
 
@@ -1260,7 +1337,9 @@ app.get('/tracking/stats/corporations/:corpId', async (c) => {
 	const { canViewAll } = await resolveTrackingPerms(c)
 	if (!canViewAll) return c.json({ error: 'view-all required' }, 403)
 
-	const range = parseStatsRange(c)
+	const rangeResult = parseStatsRange(c)
+	if (!rangeResult.success) return c.json({ error: rangeResult.error }, 400)
+	const range = rangeResult.data
 	const corpId = c.req.param('corpId')
 	const fleetsStub = getStub<Fleets>(c.env.FLEETS, 'default')
 

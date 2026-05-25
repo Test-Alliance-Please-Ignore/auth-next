@@ -36,6 +36,119 @@ import type { App } from '../context'
 
 const app = new Hono<App>()
 
+function buildFleetMonitorTestPageHtml(fleetsBaseUrl: string): string {
+	const safeBase = fleetsBaseUrl.replace(/"/g, '&quot;')
+	return `<!DOCTYPE html>
+<html lang="en">
+<head>
+	<meta charset="UTF-8">
+	<meta name="viewport" content="width=device-width, initial-scale=1.0">
+	<title>Fleet Monitor Test (Admin)</title>
+	<style>
+		body { font-family: sans-serif; background: #0b0f14; color: #e6edf3; margin: 0; padding: 24px; }
+		.container { max-width: 1100px; margin: 0 auto; }
+		.card { background: #161b22; border: 1px solid #30363d; border-radius: 8px; padding: 16px; margin-bottom: 16px; }
+		label { display: block; font-size: 12px; color: #8b949e; margin-bottom: 6px; }
+		input { width: 100%; padding: 10px; border-radius: 6px; border: 1px solid #30363d; background: #0d1117; color: #e6edf3; }
+		button { margin-right: 8px; margin-top: 8px; padding: 8px 12px; border: 0; border-radius: 6px; background: #238636; color: #fff; cursor: pointer; }
+		button.secondary { background: #1f6feb; }
+		button.warn { background: #da3633; }
+		#messages { max-height: 260px; overflow: auto; font-family: monospace; font-size: 12px; white-space: pre-wrap; }
+		pre { background: #0d1117; border: 1px solid #30363d; border-radius: 6px; padding: 12px; overflow: auto; }
+		.muted { color: #8b949e; font-size: 12px; }
+	</style>
+</head>
+<body>
+	<div class="container">
+		<h1>Fleet Monitor Test (Admin)</h1>
+		<p class="muted">This page is admin-only and intended for manual diagnostics.</p>
+		<div class="card">
+			<label for="baseUrl">Fleets Worker Base URL</label>
+			<input id="baseUrl" value="${safeBase}" />
+			<label for="fleetId" style="margin-top: 12px;">Fleet ID</label>
+			<input id="fleetId" placeholder="Enter fleet ID" />
+			<div>
+				<button id="connectWs">Connect WebSocket</button>
+				<button id="disconnectWs" class="warn">Disconnect</button>
+				<button id="fetchStatus" class="secondary">Fetch Status</button>
+			</div>
+		</div>
+		<div class="card">
+			<h3>Messages</h3>
+			<div id="messages"></div>
+		</div>
+		<div class="card">
+			<h3>Fleet Status</h3>
+			<pre id="statusOut">No data loaded.</pre>
+		</div>
+	</div>
+	<script>
+		let ws = null;
+		const messages = document.getElementById('messages');
+		const statusOut = document.getElementById('statusOut');
+		const baseUrlInput = document.getElementById('baseUrl');
+		const fleetIdInput = document.getElementById('fleetId');
+		const connectBtn = document.getElementById('connectWs');
+		const disconnectBtn = document.getElementById('disconnectWs');
+		const fetchStatusBtn = document.getElementById('fetchStatus');
+
+		function log(msg) {
+			const line = document.createElement('div');
+			line.textContent = '[' + new Date().toLocaleTimeString() + '] ' + msg;
+			messages.appendChild(line);
+			messages.scrollTop = messages.scrollHeight;
+		}
+
+		function buildUrl(pathSuffix) {
+			const base = (baseUrlInput.value || '').trim().replace(/\\/+$/, '');
+			const fleetId = (fleetIdInput.value || '').trim();
+			if (!base || !fleetId) return null;
+			return base + '/fleet-monitor/' + encodeURIComponent(fleetId) + '/' + pathSuffix;
+		}
+
+		connectBtn.onclick = () => {
+			const wsHttpUrl = buildUrl('ws');
+			if (!wsHttpUrl) return log('Fleet base URL and fleet ID are required');
+			const wsUrl = wsHttpUrl.replace(/^http/, 'ws');
+			try {
+				ws = new WebSocket(wsUrl);
+				ws.onopen = () => { log('WS connected'); ws.send(JSON.stringify({ type: 'subscribe' })); };
+				ws.onmessage = (event) => {
+					log('WS message received');
+					try { statusOut.textContent = JSON.stringify(JSON.parse(event.data), null, 2); }
+					catch { statusOut.textContent = String(event.data); }
+				};
+				ws.onerror = () => log('WS error');
+				ws.onclose = () => log('WS closed');
+			} catch (error) {
+				log('WS connect failed: ' + (error && error.message ? error.message : String(error)));
+			}
+		};
+
+		disconnectBtn.onclick = () => {
+			if (ws) ws.close();
+			ws = null;
+			log('WS disconnect requested');
+		};
+
+		fetchStatusBtn.onclick = async () => {
+			const url = buildUrl('status');
+			if (!url) return log('Fleet base URL and fleet ID are required');
+			log('Fetching status...');
+			try {
+				const response = await fetch(url);
+				const data = await response.json();
+				statusOut.textContent = JSON.stringify(data, null, 2);
+				log('Status fetched: ' + response.status);
+			} catch (error) {
+				log('Status fetch failed: ' + (error && error.message ? error.message : String(error)));
+			}
+		};
+	</script>
+</body>
+</html>`
+}
+
 async function rejectUnpaidSrpRequestsForBlacklistedUser(
 	c: Context<App>,
 	targetUserId: string,
@@ -84,6 +197,19 @@ async function rejectUnpaidSrpRequestsForBlacklistedUser(
 
 	return rejectedCount
 }
+
+/**
+ * GET /admin/fleets/test
+ * Admin-only diagnostics page for Fleet Monitor DO status/ws.
+ */
+app.get('/fleets/test', requireAuth(), requireAdmin(), async (c) => {
+	const baseUrl =
+		c.env.FLEETS_MONITOR_BASE_URL?.trim() ||
+		(new URL(c.req.url).origin.includes('localhost')
+			? 'http://127.0.0.1:8788'
+			: '')
+	return c.html(buildFleetMonitorTestPageHtml(baseUrl))
+})
 
 /**
  * GET /admin/users

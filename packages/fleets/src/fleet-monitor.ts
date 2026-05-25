@@ -10,6 +10,11 @@ export interface FleetDetailsResponse {
 	members?: EsiGetFleetMembers
 	fleetBossName?: string
 	memberCount: number
+	/**
+	 * Earliest recommended next poll time derived from ESI cache metadata.
+	 * Consumers should not poll before this timestamp.
+	 */
+	nextPollAt?: string
 }
 
 /**
