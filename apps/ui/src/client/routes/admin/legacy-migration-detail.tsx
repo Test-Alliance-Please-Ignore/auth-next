@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { ArrowLeft, User } from 'lucide-react'
@@ -324,36 +324,63 @@ export default function AdminLegacyMigrationDetailPage() {
 				.map((character) => character.characterId)
 		),
 		noteIds: new Set(notes.filter((note) => !note.alreadyImported).map((note) => note.legacyNoteId)),
-		importIpAssociations: false,
+		importIpAssociations: true,
 		applyBlacklistToUser: hasBlacklist,
 		markSkipped: false,
 	})
 
-	const ensureSelection = (
-		queueId: string,
-		characters: LegacyMigrationCandidateCharacter[],
-		notes: LegacyMigrationCandidateNote[],
-		hasBlacklist: boolean
-	): SelectionState => {
-		const existing = selectionsByQueueId[queueId]
-		if (existing) return existing
-		return buildDefaultSelection(characters, notes, hasBlacklist)
-	}
-
+	const allDetails = useMemo(() => detailsQuery.data ?? [], [detailsQuery.data])
+	const defaultSelectionsByQueueId = useMemo(
+		() =>
+			Object.fromEntries(
+				allDetails.map((detail) => {
+					const conflictSummary = parseConflicts(detail.item.conflicts)
+					return [
+						detail.item.id,
+						buildDefaultSelection(
+							detail.candidates.characters,
+							detail.candidates.notes,
+							conflictSummary.hasBlacklist
+						),
+					] as const
+				})
+			),
+		[allDetails]
+	)
 	const updateSelection = (queueId: string, updater: (state: SelectionState) => SelectionState) => {
 		setSelectionsByQueueId((prev) => {
-			const current = prev[queueId] ?? {
-				characterIds: new Set<string>(),
-				noteIds: new Set<string>(),
-				importIpAssociations: false,
-				applyBlacklistToUser: false,
-				markSkipped: false,
-			}
+			const current =
+				prev[queueId] ??
+				defaultSelectionsByQueueId[queueId] ??
+				({
+					characterIds: new Set<string>(),
+					noteIds: new Set<string>(),
+					importIpAssociations: false,
+					applyBlacklistToUser: false,
+					markSkipped: false,
+				} satisfies SelectionState)
 			return { ...prev, [queueId]: updater(current) }
 		})
 	}
-
-	const allDetails = useMemo(() => detailsQuery.data ?? [], [detailsQuery.data])
+	useEffect(() => {
+		setSelectionsByQueueId((prev) => {
+			let changed = false
+			const next = { ...prev }
+			for (const [queueId, defaults] of Object.entries(defaultSelectionsByQueueId)) {
+				if (!next[queueId]) {
+					next[queueId] = defaults
+					changed = true
+				}
+			}
+			for (const queueId of Object.keys(next)) {
+				if (!defaultSelectionsByQueueId[queueId]) {
+					delete next[queueId]
+					changed = true
+				}
+			}
+			return changed ? next : prev
+		})
+	}, [defaultSelectionsByQueueId])
 	const linkedOtherUserIds = useMemo(
 		() =>
 			Array.from(
@@ -505,12 +532,9 @@ export default function AdminLegacyMigrationDetailPage() {
 				const { item, candidates } = detail
 				const conflictSummary = parseConflicts(item.conflicts)
 				const blacklistAlerts = parseBlacklistAlerts(item.conflicts)
-				const selection = ensureSelection(
-					item.id,
-					candidates.characters,
-					candidates.notes,
-					conflictSummary.hasBlacklist
-				)
+				const selection =
+					selectionsByQueueId[item.id] ??
+					defaultSelectionsByQueueId[item.id]
 				const importSummary = `${selection.characterIds.size} character(s), ${selection.noteIds.size} note(s), ${selection.importIpAssociations ? candidates.ipAddressCount : 0} IP(s) selected`
 
 				return (
@@ -713,26 +737,33 @@ export default function AdminLegacyMigrationDetailPage() {
 								))}
 							</div>
 
-							<div className="flex items-center justify-between rounded border border-border/90 bg-card/80 p-2.5">
-								<div className="text-sm">
-									Import legacy IP associations
-									<span className="text-muted-foreground ml-2">
-										({candidates.ipAddressCount} importable)
-									</span>
-								</div>
-								<label className="flex items-center gap-2 cursor-pointer rounded border border-border/80 bg-muted/30 px-2 py-1">
-									<Checkbox
-										checked={selection.importIpAssociations}
-										onCheckedChange={(checked) =>
-											updateSelection(item.id, (current) => ({
-												...current,
-												importIpAssociations: checked === true,
-											}))
-										}
-									/>
-									<span className="text-sm">Import</span>
-								</label>
-							</div>
+							<Card>
+								<CardHeader>
+									<CardTitle className="text-sm">IP Associations</CardTitle>
+								</CardHeader>
+								<CardContent>
+									<div className="flex items-center justify-between rounded border border-border/90 bg-card/80 p-2.5">
+										<div className="text-sm">
+											Import legacy IP associations
+											<span className="text-muted-foreground ml-2">
+												({candidates.ipAddressCount} importable)
+											</span>
+										</div>
+										<label className="flex items-center gap-2 cursor-pointer rounded border border-border/80 bg-muted/30 px-2 py-1">
+											<Checkbox
+												checked={selection.importIpAssociations}
+												onCheckedChange={(checked) =>
+													updateSelection(item.id, (current) => ({
+														...current,
+														importIpAssociations: checked === true,
+													}))
+												}
+											/>
+											<span className="text-sm">Import</span>
+										</label>
+									</div>
+								</CardContent>
+							</Card>
 
 							<div className="rounded border border-border/80 p-3 space-y-3">
 								<div className="text-sm text-muted-foreground">{importSummary}</div>
