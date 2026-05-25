@@ -10,6 +10,7 @@ import { useQueries } from '@tanstack/react-query'
 import { formatDistanceToNow } from 'date-fns'
 import { ArrowLeft, Briefcase, Lock } from 'lucide-react'
 import { useState } from 'react'
+import { toast } from 'sonner'
 import { Link, Navigate, useNavigate, useParams, useSearchParams } from 'react-router-dom'
 
 import {
@@ -84,6 +85,7 @@ export default function HrApplicationReview() {
 	const [addNoteDialogOpen, setAddNoteDialogOpen] = useState(false)
 	const [editNoteDialogOpen, setEditNoteDialogOpen] = useState(false)
 	const [selectedNoteId, setSelectedNoteId] = useState<string | null>(null)
+	const [copiedCharacterIds, setCopiedCharacterIds] = useState<Set<string>>(new Set())
 	const { showSuccess, showError } = useMessage()
 	const { requestConfirmation, confirmationDialog } = useConfirmationDialog()
 	const deleteHrNote = useDeleteHRNote()
@@ -130,6 +132,20 @@ export default function HrApplicationReview() {
 	const allCharacterIds = application
 		? [application.characterId, ...altCharacterIds]
 		: []
+	const markCharacterNameCopied = async (characterId: string, characterName: string) => {
+		if (!characterName.trim()) return
+		try {
+			await navigator.clipboard.writeText(characterName)
+			setCopiedCharacterIds((prev) => {
+				const next = new Set(prev)
+				next.add(characterId)
+				return next
+			})
+			toast.success(`${characterName} copied`)
+		} catch {
+			toast.error('Failed to copy character name')
+		}
+	}
 	const spQueries = useQueries({
 		queries: allCharacterIds.map((charId) => ({
 			queryKey: ['character', charId, 'hr-review', corporationId],
@@ -548,6 +564,11 @@ export default function HrApplicationReview() {
 									skillPoints={spByCharacterId[application.characterId]}
 									walletBalance={walletByCharacterId[application.characterId]}
 									isMetricsLoading={metricsLoadingByCharacterId[application.characterId]}
+									enableCopyName
+									isNameCopied={copiedCharacterIds.has(application.characterId)}
+									onCopyName={() =>
+										void markCharacterNameCopied(application.characterId, application.characterName)
+									}
 								/>
 							</div>
 						</CardContent>
@@ -580,6 +601,11 @@ export default function HrApplicationReview() {
 												skillPoints={spByCharacterId[charId]}
 												walletBalance={walletByCharacterId[charId]}
 												isMetricsLoading={metricsLoadingByCharacterId[charId]}
+												enableCopyName
+												isNameCopied={copiedCharacterIds.has(charId)}
+												onCopyName={() =>
+													void markCharacterNameCopied(charId, altCharacterNames[charId] ?? charId)
+												}
 											/>
 										</div>
 									))}

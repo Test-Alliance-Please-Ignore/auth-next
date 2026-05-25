@@ -1,5 +1,6 @@
 import { useLayoutEffect, useRef, useState } from 'react'
 import type { ReactNode } from 'react'
+import { Check, Copy } from 'lucide-react'
 
 import { MemberAvatar } from '@/components/member-avatar'
 import { EsiStatusBadge } from '@/components/esi-status-badge'
@@ -32,6 +33,9 @@ interface CharacterIdentitySummaryProps {
 	isMetricsLoading?: boolean
 	portraitSize?: 'sm' | 'md' | 'lg' | 'xl' | 'auto'
 	nameBadges?: ReactNode
+	enableCopyName?: boolean
+	isNameCopied?: boolean
+	onCopyName?: () => void
 	className?: string
 }
 
@@ -94,6 +98,9 @@ export function CharacterIdentitySummary({
 	isMetricsLoading = false,
 	portraitSize = 'auto',
 	nameBadges,
+	enableCopyName = false,
+	isNameCopied = false,
+	onCopyName,
 	className,
 }: CharacterIdentitySummaryProps) {
 	const npcCorp = isNpcCorporation(corporationId)
@@ -139,7 +146,42 @@ export function CharacterIdentitySummary({
 			/>
 			<div ref={detailsRef} className="min-w-0">
 				<div className="flex items-center gap-2">
-					<p className="truncate text-lg font-semibold text-foreground">{characterName}</p>
+					{enableCopyName && onCopyName ? (
+						<button
+							type="button"
+							onClick={(event) => {
+								event.preventDefault()
+								event.stopPropagation()
+								onCopyName()
+							}}
+							className="truncate text-left text-lg font-semibold text-foreground transition-colors hover:text-primary focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring rounded-sm cursor-copy"
+							aria-label={`Copy ${characterName} to clipboard`}
+							title={isNameCopied ? 'Copied' : 'Copy character name'}
+						>
+							{characterName}
+						</button>
+					) : (
+						<p className="truncate text-lg font-semibold text-foreground">{characterName}</p>
+					)}
+					{enableCopyName && onCopyName ? (
+						<button
+							type="button"
+							onClick={(event) => {
+								event.preventDefault()
+								event.stopPropagation()
+								onCopyName()
+							}}
+							className="inline-flex size-5 items-center justify-center rounded transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring text-blue-500 hover:text-blue-400 cursor-copy"
+							aria-label={`Copy ${characterName} to clipboard`}
+							title={isNameCopied ? 'Copied' : 'Copy character name'}
+						>
+							{isNameCopied ? (
+								<Check className="h-3.5 w-3.5 text-green-500" />
+							) : (
+								<Copy className="h-3.5 w-3.5 text-blue-500" />
+							)}
+						</button>
+					) : null}
 					<EsiStatusBadge
 						hasAuthAccount={hasAuthAccount}
 						hasValidToken={hasValidToken}
