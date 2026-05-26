@@ -285,6 +285,7 @@ export function SidebarNav({ onNavigate, isSidebarOpen = true, onToggleSidebar }
 	const canSeeFleetTracking =
 		isSiteAdmin ||
 		hasAnyPermission('urn:fleet-tracking:create') ||
+		hasAnyPermission('urn:fleet-tracking:view-fleets') ||
 		hasAnyPermission('urn:fleet-tracking:view-all')
 	const canSeeFleetStats = isSiteAdmin || hasAnyPermission('urn:fleet-tracking:view-all')
 	if (canSeeFleetTracking) {

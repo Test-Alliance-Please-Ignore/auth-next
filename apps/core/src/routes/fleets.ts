@@ -353,25 +353,34 @@ app.delete('/quick-join/:token', async (c) => {
 // ============================================================================
 
 const FLEET_TRACKING_CREATE = 'urn:fleet-tracking:create'
+const FLEET_TRACKING_VIEW_FLEETS = 'urn:fleet-tracking:view-fleets'
 const FLEET_TRACKING_VIEW_ALL = 'urn:fleet-tracking:view-all'
 
 /**
  * Resolve the viewer's tracking permissions in one go.
- * Admin implies both perms.
+ * Admin implies every perm. :view-all implies :view-fleets (stats viewers
+ * always get session-detail visibility too).
  */
 async function resolveTrackingPerms(
 	c: Context<App>
-): Promise<{ canCreate: boolean; canViewAll: boolean; isAdmin: boolean }> {
+): Promise<{
+	canCreate: boolean
+	canViewFleets: boolean
+	canViewAll: boolean
+	isAdmin: boolean
+}> {
 	const user = c.get('user')!
 	const isAdmin = !!user.is_admin
 	if (isAdmin) {
-		return { canCreate: true, canViewAll: true, isAdmin: true }
+		return { canCreate: true, canViewFleets: true, canViewAll: true, isAdmin: true }
 	}
 	const userPerms = await getCachedUserPermissions(c.env, user.id)
 	const urns = new Set(userPerms.map((p) => p.urn))
+	const canViewAll = urns.has(FLEET_TRACKING_VIEW_ALL)
 	return {
 		canCreate: urns.has(FLEET_TRACKING_CREATE),
-		canViewAll: urns.has(FLEET_TRACKING_VIEW_ALL),
+		canViewFleets: canViewAll || urns.has(FLEET_TRACKING_VIEW_FLEETS),
+		canViewAll,
 		isAdmin: false,
 	}
 }
@@ -555,8 +564,8 @@ app.post('/tracking/:sessionId/kick-members', async (c) => {
  */
 app.get('/tracking', async (c) => {
 	const user = c.get('user')!
-	const { canCreate, canViewAll } = await resolveTrackingPerms(c)
-	if (!canCreate && !canViewAll) {
+	const { canCreate, canViewFleets } = await resolveTrackingPerms(c)
+	if (!canCreate && !canViewFleets) {
 		return c.json({ error: 'Fleet tracking is not available to you' }, 403)
 	}
 
@@ -582,7 +591,7 @@ app.get('/tracking', async (c) => {
 		offset: pagination.data.offset,
 	}
 
-	if (canViewAll) {
+	if (canViewFleets) {
 		if (userIdParam) filter.startedByUserId = userIdParam
 	} else {
 		// :create-only viewers see only their own sessions, regardless of query
@@ -622,14 +631,14 @@ async function resolveSessionAccess(
 	const session = await fleetsStub.getTrackingSession(sessionId)
 	if (!session) return c.json({ error: 'Session not found' }, 404)
 
-	const { canViewAll, isAdmin } = await resolveTrackingPerms(c)
+	const { canViewFleets, isAdmin } = await resolveTrackingPerms(c)
 	const isOwner = session.startedByUserId === user.id
 
-	if (!isOwner && !canViewAll && !isAdmin) {
+	if (!isOwner && !canViewFleets && !isAdmin) {
 		return c.json({ error: 'Session not found' }, 404)
 	}
 
-	const canViewDetail = canViewAll || isAdmin || (isOwner && session.status === 'active')
+	const canViewDetail = canViewFleets || isAdmin || (isOwner && session.status === 'active')
 	return { mode: 'allow', session, canViewDetail }
 }
 

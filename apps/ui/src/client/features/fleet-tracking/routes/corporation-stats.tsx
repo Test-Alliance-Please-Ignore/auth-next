@@ -6,6 +6,7 @@ import { Container } from '@/components/ui/container'
 import { LoadingPage } from '@/components/ui/loading'
 import { PageHeader } from '@/components/ui/page-header'
 import { usePageTitle } from '@/hooks/usePageTitle'
+import { useUserPermissions } from '@/hooks/useUserPermissions'
 import { RankingList } from '../components/ranking-list'
 import { SessionStatsGrid } from '../components/session-stats-grid'
 import { ShipDistributionChart } from '../components/ship-distribution-chart'
@@ -16,10 +17,34 @@ import { formatDuration } from '../utils/format'
 export default function CorporationStats() {
 	const { corpId } = useParams<{ corpId: string }>()
 	const { range } = useRangeFromSearchParams()
-	const { data, isLoading } = useCorporationStats(corpId, range)
+	const { isAdmin, hasPermission } = useUserPermissions()
+	const canView = isAdmin || hasPermission('urn:fleet-tracking:view-all')
+
+	const { data, isLoading } = useCorporationStats(canView ? corpId : undefined, range)
 	usePageTitle(data?.corporationName ? `${data.corporationName} — Corporation Stats` : 'Corporation Stats')
 
 	if (!corpId) return <Navigate to="/fleet-tracking/stats" replace />
+
+	if (!canView) {
+		return (
+			<Container>
+				<PageHeader
+					title="Corporation Stats"
+					action={
+						<Button asChild variant="ghost" size="sm">
+							<Link to="/fleet-tracking">
+								<ArrowLeft className="h-4 w-4" />
+								Fleet Tracking
+							</Link>
+						</Button>
+					}
+				/>
+				<div className="py-12 text-center text-muted-foreground">
+					You do not have permission to view corporation fleet tracking stats.
+				</div>
+			</Container>
+		)
+	}
 
 	return (
 		<Container>

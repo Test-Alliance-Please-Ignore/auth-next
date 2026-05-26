@@ -15,7 +15,9 @@ import {
 	TableHeader,
 	TableRow,
 } from '@/components/ui/table'
+import { useAuth } from '@/hooks/useAuth'
 import { usePageTitle } from '@/hooks/usePageTitle'
+import { useUserPermissions } from '@/hooks/useUserPermissions'
 import { corporationLogoUrl } from '@/lib/eve-images'
 import { SessionStatsGrid } from '../components/session-stats-grid'
 import { ShipDistributionChart } from '../components/ship-distribution-chart'
@@ -27,10 +29,36 @@ export default function CharacterStats() {
 	const { characterId } = useParams<{ characterId: string }>()
 	usePageTitle('Character Stats')
 	const { range } = useRangeFromSearchParams()
+	const { user } = useAuth()
+	const { isAdmin, hasPermission } = useUserPermissions()
+	const canViewAll = isAdmin || hasPermission('urn:fleet-tracking:view-all')
+	const ownsCharacter = !!user?.characters.some((ch) => ch.characterId === characterId)
+	const canView = canViewAll || ownsCharacter
 
-	const { data, isLoading } = useCharacterStats(characterId, range)
+	const { data, isLoading } = useCharacterStats(canView ? characterId : undefined, range)
 
 	if (!characterId) return <Navigate to="/fleet-tracking/stats" replace />
+
+	if (!canView) {
+		return (
+			<Container>
+				<PageHeader
+					title="Character Stats"
+					action={
+						<Button asChild variant="ghost" size="sm">
+							<Link to="/fleet-tracking">
+								<ArrowLeft className="h-4 w-4" />
+								Fleet Tracking
+							</Link>
+						</Button>
+					}
+				/>
+				<div className="py-12 text-center text-muted-foreground">
+					You do not have permission to view this character's fleet tracking stats.
+				</div>
+			</Container>
+		)
+	}
 
 	return (
 		<Container>

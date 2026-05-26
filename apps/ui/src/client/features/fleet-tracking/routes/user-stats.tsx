@@ -15,7 +15,9 @@ import {
 	TableHeader,
 	TableRow,
 } from '@/components/ui/table'
+import { useAuth } from '@/hooks/useAuth'
 import { usePageTitle } from '@/hooks/usePageTitle'
+import { useUserPermissions } from '@/hooks/useUserPermissions'
 import { SessionStatsGrid } from '../components/session-stats-grid'
 import { ShipDistributionChart } from '../components/ship-distribution-chart'
 import { StatsRangePicker, useRangeFromSearchParams } from '../components/stats-range-picker'
@@ -26,9 +28,36 @@ export default function UserStats() {
 	const { userId } = useParams<{ userId: string }>()
 	usePageTitle('User Stats')
 	const { range } = useRangeFromSearchParams()
-	const { data, isLoading } = useUserStats(userId, range)
+	const { user } = useAuth()
+	const { isAdmin, hasPermission } = useUserPermissions()
+	const canViewAll = isAdmin || hasPermission('urn:fleet-tracking:view-all')
+	const isSelf = !!user && user.id === userId
+	const canView = canViewAll || isSelf
+
+	const { data, isLoading } = useUserStats(canView ? userId : undefined, range)
 
 	if (!userId) return <Navigate to="/fleet-tracking/stats" replace />
+
+	if (!canView) {
+		return (
+			<Container>
+				<PageHeader
+					title="User Stats"
+					action={
+						<Button asChild variant="ghost" size="sm">
+							<Link to="/fleet-tracking">
+								<ArrowLeft className="h-4 w-4" />
+								Fleet Tracking
+							</Link>
+						</Button>
+					}
+				/>
+				<div className="py-12 text-center text-muted-foreground">
+					You do not have permission to view this user's fleet tracking stats.
+				</div>
+			</Container>
+		)
+	}
 
 	const mainName =
 		data?.perCharacter.find((p) => p.is_primary)?.characterName ??
