@@ -50,6 +50,12 @@ import type { Discord } from '@repo/discord'
 import type { Env } from './context'
 
 const DISCORD_MESSAGE_MAX_LENGTH = 2000
+type BroadcastMessageEvent = {
+	type: 'addendum' | 'rescind'
+	message: string | null
+	createdAtUnix: number
+	createdByCharacterName: string
+}
 
 /**
  * Broadcasts Durable Object
@@ -888,8 +894,13 @@ export class BroadcastsDO extends DurableObject<Env> implements Broadcasts {
 				// Add footer with sender, target, and timestamp
 				const sendTime = new Date()
 				const unixTimestamp = Math.floor(sendTime.getTime() / 1000)
-				const footer = `\n\n#### SENT BY ${broadcastDetails.createdByCharacterName} to ${broadcastDetails.target.name} @ <t:${unixTimestamp}:F> ####`
-				message = message + footer
+				const sentFooter = this.buildSentFooter({
+					createdByCharacterName: broadcastDetails.createdByCharacterName,
+					targetName: broadcastDetails.target.name,
+					sentUnix: unixTimestamp,
+				})
+				const baseMessage = message
+				message = `${baseMessage}\n\n${sentFooter}`
 				this.ensureDiscordContentLimit(message)
 
 				// Get Discord DO stub and send message
@@ -922,9 +933,16 @@ export class BroadcastsDO extends DurableObject<Env> implements Broadcasts {
 					.returning()
 
 				// Update broadcast status to 'sent'
+				const nextContent = {
+					...renderedContent,
+					__baseMessage: baseMessage,
+					__messageEvents: [] as BroadcastMessageEvent[],
+					message,
+				}
 				const [updatedBroadcast] = await this.db
 					.update(broadcasts)
 					.set({
+						content: nextContent,
 						status: 'sent',
 						sentAt: now,
 						updatedAt: now,
@@ -938,6 +956,10 @@ export class BroadcastsDO extends DurableObject<Env> implements Broadcasts {
 				const trackingOutcome = await this.maybeStartFleetTracking({
 					broadcastId,
 					broadcastTitle: broadcastDetails.title,
+					targetName: broadcastDetails.target.name,
+					templateFieldSchema: broadcastDetails.template?.fieldSchema as
+						| Array<{ name?: string; options?: string[] }>
+						| undefined,
 					content: renderedContent,
 					userId,
 					canStartTracking: options.canStartTracking ?? false,
@@ -1155,58 +1177,142 @@ export class BroadcastsDO extends DurableObject<Env> implements Broadcasts {
 			const broadcastDetails = await this.getBroadcast(broadcastId, userId)
 
 			if (broadcastDetails) {
-				// Render the original content (without footer)
-				let baseMessage: string
-				if (broadcastDetails.template) {
-					baseMessage = this.renderTemplateMessageWithDefaultText(
-						broadcastDetails.template.messageTemplate,
-						broadcastDetails.content
-					)
-				} else {
-					baseMessage = (broadcastDetails.content.message as string) || broadcastDetails.title
-				}
-				baseMessage = convertUnixTimestamps(baseMessage)
-
 				const rescindTimestamp = Math.floor(Date.now() / 1000)
+				const nextEvent: BroadcastMessageEvent = {
+					type: 'rescind',
+					message: rescindMessage?.trim() || null,
+					createdAtUnix: rescindTimestamp,
+					createdByCharacterName: broadcastDetails.createdByCharacterName,
+				}
+				const existingEvents = this.getMessageEvents(broadcastDetails.content)
+				const nextEvents = [...existingEvents, nextEvent]
+				const baseMessage = this.resolveBaseMessageForEventRendering({
+					broadcast: broadcastDetails,
+					sentAt: broadcast.sentAt,
+				})
+				const sampleRescindedContent = this.renderBroadcastMessageWithEvents({
+					baseMessage,
+					events: nextEvents,
+					createdByCharacterName: broadcastDetails.createdByCharacterName,
+					targetName: broadcastDetails.target.name,
+					sentAt: broadcast.sentAt,
+				})
+				this.ensureDiscordContentLimit(sampleRescindedContent)
 
+				let finalRescindedContent = sampleRescindedContent
 				await Promise.allSettled(
 					deliveries
 						.filter((d) => d.discordMessageId)
 						.map((d) => {
-							// Reconstruct the original sent footer using this delivery's sentAt
-							const sentUnix = d.sentAt
-								? Math.floor(new Date(d.sentAt).getTime() / 1000)
-								: rescindTimestamp
-							const sentFooter = `#### SENT BY ${broadcastDetails.createdByCharacterName} to ${broadcastDetails.target.name} @ <t:${sentUnix}:F> ####`
-
-							// Wrap only the original content in strikethrough, leave footer as-is
-							const strikethrough = baseMessage
-								.split('\n')
-								.map((line) => (line.trim() ? `~~${line}~~` : line))
-								.join('\n')
-
-							// Build: strikethrough content, original footer, optional reason, rescinded footer
-							let rescindedContent = `${strikethrough}\n\n${sentFooter}`
-
-							if (rescindMessage?.trim()) {
-								rescindedContent += `\n\nRESCINDED: ${rescindMessage.trim()}`
-							}
-
-							rescindedContent += `\n\n#### RESCINDED @ <t:${rescindTimestamp}:F> ####`
-
-							return discordStub.editMessage(
-								config.channelId,
-								d.discordMessageId!,
-								rescindedContent
-							)
+							finalRescindedContent = sampleRescindedContent
+							return discordStub.editMessage(config.channelId, d.discordMessageId!, finalRescindedContent)
 						})
 				)
+
+				await this.db
+					.update(broadcasts)
+					.set({
+						content: {
+							...(broadcast.content as Record<string, unknown>),
+							__baseMessage: baseMessage,
+							__messageEvents: nextEvents,
+							message: finalRescindedContent,
+						},
+						status: 'rescinded',
+						updatedAt: new Date(),
+					})
+					.where(eq(broadcasts.id, broadcastId))
+				return
 			}
 		}
-
 		await this.db
 			.update(broadcasts)
 			.set({ status: 'rescinded', updatedAt: new Date() })
+			.where(eq(broadcasts.id, broadcastId))
+	}
+
+	async addBroadcastAddendum(
+		broadcastId: string,
+		userId: string,
+		addendumMessage: string
+	): Promise<void> {
+		const message = addendumMessage.trim()
+		if (!message) throw new Error('Addendum message is required')
+
+		const broadcast = await this.db.query.broadcasts.findFirst({
+			where: eq(broadcasts.id, broadcastId),
+		})
+		if (!broadcast) throw new Error('Broadcast not found')
+		if (broadcast.status !== 'sent') {
+			throw new Error('Only sent broadcasts can receive an addendum')
+		}
+
+		const [deliveries, target] = await Promise.all([
+			this.db.query.broadcastDeliveries.findMany({
+				where: and(
+					eq(broadcastDeliveries.broadcastId, broadcastId),
+					eq(broadcastDeliveries.status, 'sent')
+				),
+			}),
+			this.db.query.broadcastTargets.findFirst({
+				where: eq(broadcastTargets.id, broadcast.targetId),
+			}),
+		])
+
+		if (target?.type === 'discord_channel') {
+			const config = target.config as { channelId: string }
+			const discordStub = getStub<Discord>(this.env.DISCORD, 'default')
+			const broadcastDetails = await this.getBroadcast(broadcastId, userId)
+			if (broadcastDetails) {
+				const addendumTimestamp = Math.floor(Date.now() / 1000)
+				const nextEvent: BroadcastMessageEvent = {
+					type: 'addendum',
+					message,
+					createdAtUnix: addendumTimestamp,
+					createdByCharacterName: broadcastDetails.createdByCharacterName,
+				}
+				const existingEvents = this.getMessageEvents(broadcastDetails.content)
+				const nextEvents = [...existingEvents, nextEvent]
+				const baseMessage = this.resolveBaseMessageForEventRendering({
+					broadcast: broadcastDetails,
+					sentAt: broadcast.sentAt,
+				})
+				const sampleAddendumContent = this.renderBroadcastMessageWithEvents({
+					baseMessage,
+					events: nextEvents,
+					createdByCharacterName: broadcastDetails.createdByCharacterName,
+					targetName: broadcastDetails.target.name,
+					sentAt: broadcast.sentAt,
+				})
+				this.ensureDiscordContentLimit(sampleAddendumContent)
+				let finalAddendumContent = sampleAddendumContent
+				await Promise.allSettled(
+					deliveries
+						.filter((d) => d.discordMessageId)
+						.map((d) => {
+							finalAddendumContent = sampleAddendumContent
+							return discordStub.editMessage(config.channelId, d.discordMessageId!, finalAddendumContent)
+						})
+				)
+
+				await this.db
+					.update(broadcasts)
+					.set({
+						content: {
+							...(broadcast.content as Record<string, unknown>),
+							__baseMessage: baseMessage,
+							__messageEvents: nextEvents,
+							message: finalAddendumContent,
+						},
+						updatedAt: new Date(),
+					})
+					.where(eq(broadcasts.id, broadcastId))
+				return
+			}
+		}
+		await this.db
+			.update(broadcasts)
+			.set({ updatedAt: new Date() })
 			.where(eq(broadcasts.id, broadcastId))
 	}
 
@@ -1304,6 +1410,8 @@ export class BroadcastsDO extends DurableObject<Env> implements Broadcasts {
 	private async maybeStartFleetTracking(args: {
 		broadcastId: string
 		broadcastTitle: string
+		targetName: string
+		templateFieldSchema?: Array<{ name?: string; options?: string[] }>
 		content: Record<string, unknown>
 		userId: string
 		canStartTracking: boolean
@@ -1330,6 +1438,20 @@ export class BroadcastsDO extends DurableObject<Env> implements Broadcasts {
 		}
 
 		try {
+			const trimmedCharacterId = characterId.trim()
+			const tokenCandidate = args.content.fleetName
+			const derivedName =
+				typeof tokenCandidate === 'string' && tokenCandidate.trim().length > 0
+					? tokenCandidate.trim()
+					: this.buildFleetTrackingFallbackName({
+							characterName:
+								typeof args.content.__fleetTrackingCharacterName === 'string'
+									? args.content.__fleetTrackingCharacterName
+									: null,
+							characterId: trimmedCharacterId,
+							targetName: args.targetName,
+					  })
+
 			const fleetsStub = getStub(this.env.FLEETS, 'default') as {
 				startTrackingSession: (args: {
 					characterId: string
@@ -1338,9 +1460,9 @@ export class BroadcastsDO extends DurableObject<Env> implements Broadcasts {
 				}) => Promise<{ sessionId: string }>
 			}
 			const result = await fleetsStub.startTrackingSession({
-				characterId: characterId.trim(),
+				characterId: trimmedCharacterId,
 				startedByUserId: args.userId,
-				name: args.broadcastTitle,
+				name: derivedName || args.broadcastTitle,
 			})
 			return { sessionId: result.sessionId, error: null }
 		} catch (error) {
@@ -1366,6 +1488,20 @@ export class BroadcastsDO extends DurableObject<Env> implements Broadcasts {
 		}
 	}
 
+	private buildFleetTrackingFallbackName(args: {
+		characterName: string | null
+		characterId: string
+		targetName: string
+	}): string {
+		const fcName = args.characterName?.trim() || args.characterId
+		const target = args.targetName.trim() || 'Unknown Target'
+		const eveShort = new Date()
+			.toISOString()
+			.replace('T', ' ')
+			.slice(0, 16)
+		return `${fcName} - ${target} - ${eveShort} EVE`
+	}
+
 	private formatTrackingStartError(code: string): string {
 		switch (code) {
 			case 'not_in_fleet':
@@ -1381,6 +1517,112 @@ export class BroadcastsDO extends DurableObject<Env> implements Broadcasts {
 			default:
 				return `Failed to start fleet tracking (${code}).`
 		}
+	}
+
+	private buildSentFooter(args: {
+		createdByCharacterName: string
+		targetName: string
+		sentUnix: number
+	}): string {
+		return `#### SENT BY ${args.createdByCharacterName} to ${args.targetName} @ <t:${args.sentUnix}:F> ####`
+	}
+
+	private getMessageEvents(content: Record<string, unknown>): BroadcastMessageEvent[] {
+		const raw = content.__messageEvents
+		if (!Array.isArray(raw)) return []
+		return raw
+			.filter((item): item is BroadcastMessageEvent => {
+				if (typeof item !== 'object' || item === null) return false
+				const record = item as Record<string, unknown>
+				if (record.type !== 'addendum' && record.type !== 'rescind') return false
+				if (record.message !== null && typeof record.message !== 'string') return false
+				if (typeof record.createdAtUnix !== 'number') return false
+				if (typeof record.createdByCharacterName !== 'string') return false
+				return true
+			})
+			.sort((a, b) => a.createdAtUnix - b.createdAtUnix)
+	}
+
+	private stripSentFooterIfPresent(message: string): string {
+		const lines = message.split('\n')
+		let index = lines.length - 1
+		while (index >= 0 && lines[index].trim() === '') {
+			index -= 1
+		}
+		if (index < 0) return message
+		if (!lines[index].includes('#### SENT BY ')) return message
+		const baseLines = lines.slice(0, index)
+		while (baseLines.length > 0 && baseLines[baseLines.length - 1].trim() === '') {
+			baseLines.pop()
+		}
+		return baseLines.join('\n')
+	}
+
+	private resolveBaseMessageForEventRendering(args: {
+		broadcast: BroadcastWithDetails
+		sentAt: Date | null
+	}): string {
+		const content = args.broadcast.content as Record<string, unknown>
+		const existingBase = typeof content.__baseMessage === 'string' ? content.__baseMessage.trim() : ''
+		if (existingBase) return existingBase
+
+		if (typeof content.message === 'string' && content.message.trim()) {
+			return this.stripSentFooterIfPresent(content.message.trim())
+		}
+
+		let fallback = args.broadcast.title
+		if (args.broadcast.template) {
+			fallback = this.renderTemplateMessageWithDefaultText(
+				args.broadcast.template.messageTemplate,
+				content
+			)
+		}
+		return convertUnixTimestamps(fallback)
+	}
+
+	private strikethroughLines(message: string): string {
+		return message
+			.split('\n')
+			.map((line) => (line.trim() ? `~~${line}~~` : line))
+			.join('\n')
+	}
+
+	private renderBroadcastMessageWithEvents(args: {
+		baseMessage: string
+		events: BroadcastMessageEvent[]
+		createdByCharacterName: string
+		targetName: string
+		sentAt: Date | null
+	}): string {
+		const sentUnix = args.sentAt ? Math.floor(args.sentAt.getTime() / 1000) : Math.floor(Date.now() / 1000)
+		const rescindIndex = args.events.findIndex((event) => event.type === 'rescind')
+		const body = rescindIndex >= 0 ? this.strikethroughLines(args.baseMessage) : args.baseMessage
+		const sentFooter = this.buildSentFooter({
+			createdByCharacterName: args.createdByCharacterName,
+			targetName: args.targetName,
+			sentUnix,
+		})
+
+		const parts = [`${body}\n\n${sentFooter}`]
+		for (const event of args.events) {
+			if (event.type === 'addendum') {
+				const addendumMessage = event.message?.trim() ?? ''
+				if (!addendumMessage) continue
+				parts.push(
+					`ADDENDUM: ${addendumMessage}\n\n#### ADDENDUM BY ${event.createdByCharacterName} @ <t:${event.createdAtUnix}:F> ####`
+				)
+				continue
+			}
+			let rescindBlock = ''
+			const rescindMessage = event.message?.trim() ?? ''
+			if (rescindMessage) {
+				rescindBlock += `RESCINDED: ${rescindMessage}\n\n`
+			}
+			rescindBlock += `#### RESCINDED @ <t:${event.createdAtUnix}:F> ####`
+			parts.push(rescindBlock)
+		}
+
+		return parts.join('\n\n')
 	}
 
 	private resolveSrpToken(content: Record<string, unknown>): string {

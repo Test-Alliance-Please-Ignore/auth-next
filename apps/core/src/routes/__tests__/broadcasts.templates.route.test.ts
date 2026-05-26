@@ -176,6 +176,34 @@ describe('broadcast template tag validation and schema normalization', () => {
 		)
 	})
 
+	it('rejects template create when fleet tracking is enabled without fleet tokens', async () => {
+		const app = createApp(makeUser())
+		const response = await app.request(
+			'/api/broadcasts/templates',
+			{
+				method: 'POST',
+				body: JSON.stringify({
+					name: 'Missing Fleet Tokens',
+					targetType: 'discord_channel',
+					targetIds: ['target-1'],
+					fieldSchema: [
+						{ name: '__fleetTrackingEnabled', label: 'Fleet Tracking', type: 'system_fleet_tracking', required: false },
+					],
+					messageTemplate: '{{message}}',
+				}),
+			},
+			env
+		)
+
+		expect(response.status).toBe(400)
+		expect(await response.json()).toEqual(
+			expect.objectContaining({
+				error: 'Fleet tracking templates must include both {{<fleetName>}} and {{<fleetCommander>}} tokens.',
+			})
+		)
+		expect(broadcastsStub.createTemplate).not.toHaveBeenCalled()
+	})
+
 	it('normalizes stale fieldSchema during template update', async () => {
 		const app = createApp(makeUser())
 		broadcastsStub.getTemplate.mockResolvedValue(
@@ -214,6 +242,40 @@ describe('broadcast template tag validation and schema normalization', () => {
 			}),
 			'admin-1'
 		)
+	})
+
+	it('rejects template update when fleet tracking is enabled without required fleet tokens', async () => {
+		const app = createApp(makeUser())
+		broadcastsStub.getTemplate.mockResolvedValue(
+			makeTemplate({
+				fieldSchema: [
+					{ name: '__fleetTrackingEnabled', label: 'Fleet Tracking', type: 'system_fleet_tracking', required: false },
+				],
+				messageTemplate: '{{message}}',
+			})
+		)
+
+		const response = await app.request(
+			'/api/broadcasts/templates/template-1',
+			{
+				method: 'PATCH',
+				body: JSON.stringify({
+					fieldSchema: [
+						{ name: '__fleetTrackingEnabled', label: 'Fleet Tracking', type: 'system_fleet_tracking', required: false },
+					],
+					messageTemplate: '{{message}}',
+				}),
+			},
+			env
+		)
+
+		expect(response.status).toBe(400)
+		expect(await response.json()).toEqual(
+			expect.objectContaining({
+				error: 'Fleet tracking templates must include both {{<fleetName>}} and {{<fleetCommander>}} tokens.',
+			})
+		)
+		expect(broadcastsStub.updateTemplate).not.toHaveBeenCalled()
 	})
 
 	it('keeps raw system/select token syntax in messageTemplate while deriving field schema', async () => {

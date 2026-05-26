@@ -318,6 +318,18 @@ export function useRescindBroadcast() {
 	})
 }
 
+export function useAddBroadcastAddendum() {
+	const queryClient = useQueryClient()
+
+	return useMutation({
+		mutationFn: ({ id, addendumMessage }: { id: string; addendumMessage: string }) =>
+			api.addBroadcastAddendum(id, addendumMessage),
+		onSuccess: () => {
+			queryClient.invalidateQueries({ queryKey: broadcastKeys.broadcasts() })
+		},
+	})
+}
+
 /**
  * Fetch broadcast deliveries
  */

@@ -3,7 +3,7 @@ import type { CreateBroadcastTemplateRequest } from '@/lib/api'
 type FieldSchemaEntry = CreateBroadcastTemplateRequest['fieldSchema'][number]
 
 export interface BroadcastSystemTemplateTokenDefinition {
-	name: 'doctrine' | 'staging' | 'srp'
+	name: 'doctrine' | 'staging' | 'srp' | 'fleetName' | 'fleetCommander'
 	label: string
 	fieldType: FieldSchemaEntry['type']
 	required: boolean
@@ -43,6 +43,26 @@ export const BROADCAST_SYSTEM_TEMPLATE_TOKENS: BroadcastSystemTemplateTokenDefin
 		description: 'Select SRP type for the broadcast message.',
 		renderBehavior:
 			'Renders "SRP: **Blanket|Military|Coalition|No**". Non-"No" modes include an SRP token line.',
+	},
+	{
+		name: 'fleetName',
+		label: 'Fleet Name',
+		fieldType: 'system_fleet_name',
+		required: true,
+		tagSyntax: '{{<fleetName>}}',
+		description: 'Fleet name used in the rendered message and as tracking session name.',
+		renderBehavior: 'Renders the fleet name text value.',
+	},
+	{
+		name: 'fleetCommander',
+		label: 'Fleet Commander',
+		fieldType: 'system_fleet_commander',
+		required: true,
+		allowCustom: true,
+		tagSyntax: '{{<fleetCommander>}}',
+		description: 'Searchable character selector with optional custom text fallback.',
+		renderBehavior:
+			'Renders selected character name or custom text. Fleet tracking requires a valid character selection.',
 	},
 ]
 
