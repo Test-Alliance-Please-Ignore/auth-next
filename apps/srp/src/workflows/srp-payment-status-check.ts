@@ -40,10 +40,6 @@ type ExistingPaymentAlertRow = {
 	id: string
 }
 
-type ExistingScanCursorRow = {
-	cursorDate: string | null
-}
-
 type DiscordDirectMessenger = {
 	sendDirectMessage(
 		coreUserId: string,
@@ -55,7 +51,6 @@ const SYSTEM_ACTOR_USER_ID = '00000000-0000-0000-0000-000000000000'
 const SYSTEM_ACTOR_CHARACTER_NAME = 'SRP Payment Monitor'
 const PAYMENT_MISMATCH_HISTORY_ACTION = 'payment_amount_mismatch_detected'
 const PAYMENT_MISSING_HISTORY_ACTION = 'payment_missing_detected'
-const PAYMENT_SCAN_CURSOR_ACTION = 'payment_scan_cursor_updated'
 const MS_PER_DAY = 86_400_000
 
 function formatISK(value: string | number, options?: { showDecimals?: boolean }): string {
@@ -166,22 +161,6 @@ export class SrpPaymentStatusCheckWorkflow extends WorkflowEntrypoint<
 		const reasonNeedle = buildKillmailReasonNeedle(request.id)
 		const db = createDb(this.env.DATABASE_URL)
 
-		const [existingCursor] = (
-			await db.execute<ExistingScanCursorRow>(
-				sql`select metadata->>'cursorDate' as "cursorDate"
-					from srp_request_history
-					where request_id = ${request.id}
-						and action = ${PAYMENT_SCAN_CURSOR_ACTION}
-					order by timestamp desc
-					limit 1`
-			)
-		).rows
-
-		const existingCursorDate =
-			existingCursor?.cursorDate && !Number.isNaN(Date.parse(existingCursor.cursorDate))
-				? new Date(existingCursor.cursorDate)
-				: null
-
 		const walletMatches = await step.do(
 			'find-wallet-journal-matches',
 			{
@@ -195,7 +174,7 @@ export class SrpPaymentStatusCheckWorkflow extends WorkflowEntrypoint<
 					typeof paymentDateMs === 'number' && Number.isFinite(paymentDateMs)
 						? new Date(paymentDateMs - MS_PER_DAY)
 						: new Date(request.createdAt)
-				const fromDate = existingCursorDate ?? fallbackFromDate
+				const fromDate = fallbackFromDate
 				const result = await db.execute<WalletJournalMatchRow>(
 					sql`select
 						journal_id::text as "journalId",
@@ -218,37 +197,6 @@ export class SrpPaymentStatusCheckWorkflow extends WorkflowEntrypoint<
 			}
 		)
 
-		const maxScannedEntryDate =
-			walletMatches.length > 0
-				? walletMatches.reduce(
-						(latest, row) => (row.entryDate > latest ? row.entryDate : latest),
-						walletMatches[0].entryDate
-					)
-				: null
-		const nextCursorDate = maxScannedEntryDate ?? new Date()
-		if (!existingCursorDate || nextCursorDate.getTime() > existingCursorDate.getTime()) {
-			await db.execute(
-				sql`insert into srp_request_history (
-						request_id,
-						actor_user_id,
-						actor_character_name,
-						action,
-						visibility,
-						metadata
-					) values (
-						${request.id},
-						${SYSTEM_ACTOR_USER_ID}::uuid,
-						${SYSTEM_ACTOR_CHARACTER_NAME},
-						${PAYMENT_SCAN_CURSOR_ACTION},
-						'internal',
-						${JSON.stringify({
-							cursorDate: nextCursorDate.toISOString(),
-							scannedRows: walletMatches.length,
-						})}::jsonb
-					)`
-			)
-		}
-
 		const rowsWithAmounts = walletMatches
 			.map((entry) => ({
 				entry,
@@ -266,14 +214,16 @@ export class SrpPaymentStatusCheckWorkflow extends WorkflowEntrypoint<
 
 		const recipientMismatchEntry = rowsWithAmounts.find(
 			(row) =>
-				row.entry.secondPartyId !== request.characterId
+				row.entry.secondPartyId !== request.characterId &&
+				approvedAmount !== null &&
+				absBigInt(row.parsedAmount) === absBigInt(approvedAmount)
 		)?.entry
 
 		const amountMismatchEntry = matchingRecipientRows.find(
 			(row) => approvedAmount !== null && absBigInt(row.parsedAmount) !== absBigInt(approvedAmount)
 		)?.entry
 
-		const anomalyEntry = recipientMismatchEntry ?? amountMismatchEntry
+		const anomalyEntry = amountMismatchEntry ?? recipientMismatchEntry
 
 		if (!matchedEntry && anomalyEntry) {
 			const mismatchReason = anomalyEntry.reason ?? reasonNeedle
