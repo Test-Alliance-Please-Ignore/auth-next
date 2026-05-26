@@ -450,7 +450,7 @@ doctrines.delete('/fittings/:id', async (c) => {
 	}
 
 	const doctrinesStub = getStub<Doctrines>(c.env.DOCTRINES, 'default')
-	await doctrinesStub.deleteFitting(fittingId)
+	await doctrinesStub.deleteFitting(fittingId, getUserCharacterName(user))
 
 	return c.json({ success: true })
 })
@@ -584,7 +584,7 @@ doctrines.delete('/:id', async (c) => {
 	}
 
 	const doctrinesStub = getStub<Doctrines>(c.env.DOCTRINES, 'default')
-	await doctrinesStub.deleteDoctrine(doctrineId)
+	await doctrinesStub.deleteDoctrine(doctrineId, getUserCharacterName(user))
 
 	return c.json({ success: true })
 })

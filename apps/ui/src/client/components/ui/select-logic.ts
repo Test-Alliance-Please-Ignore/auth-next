@@ -2,12 +2,14 @@ export interface SelectOptionLike {
 	value: string
 	label: string
 	description?: string
+	descriptionClassName?: string
 }
 
 export interface SelectAllOptionLike {
 	value: string
 	label: string
 	description?: string
+	descriptionClassName?: string
 }
 
 export interface SelectSearchFlagsInput {
@@ -131,6 +133,7 @@ export function buildRenderedSelectOptions<TOption extends SelectOptionLike>({
 			value: selectAllOption.value,
 			label: selectAllOption.label,
 			description: selectAllOption.description,
+			descriptionClassName: selectAllOption.descriptionClassName,
 			__selectAll: true,
 		},
 		...filteredOptions,

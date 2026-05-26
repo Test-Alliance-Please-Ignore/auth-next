@@ -9,6 +9,7 @@ export type Env = SharedHonoEnv & {
 	BROADCASTS: DurableObjectNamespace
 	DISCORD: DurableObjectNamespace
 	GROUPS: DurableObjectNamespace
+	FLEETS: DurableObjectNamespace
 }
 
 /** Session user data attached to request context */

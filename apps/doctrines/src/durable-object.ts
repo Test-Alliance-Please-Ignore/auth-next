@@ -1,5 +1,5 @@
 import { DurableObject } from 'cloudflare:workers'
-import { and, asc, eq, ilike, like, or } from 'drizzle-orm'
+import { and, asc, eq, ilike, isNull, like, or } from 'drizzle-orm'
 
 import { getStub } from '@repo/do-utils'
 import { EftParser } from '@repo/eve-parsers'
@@ -201,7 +201,7 @@ export class DoctrinesDO extends DurableObject<Env> implements Doctrines {
 	}
 
 	async getDoctrines(filters: ListDoctrinesFilters): Promise<Doctrine[]> {
-		const conditions = []
+		const conditions = [isNull(schema.doctrinesDoctrines.deletedAt)]
 		if (filters.search) {
 			conditions.push(like(schema.doctrinesDoctrines.name, `%${filters.search}%`))
 		}
@@ -234,13 +234,11 @@ export class DoctrinesDO extends DurableObject<Env> implements Doctrines {
 
 	async getDoctrine(id: string): Promise<DoctrineWithFittings | null> {
 		const doctrine = await this.db.query.doctrinesDoctrines.findFirst({
-			where: eq(schema.doctrinesDoctrines.id, id),
+			where: and(eq(schema.doctrinesDoctrines.id, id), isNull(schema.doctrinesDoctrines.deletedAt)),
 			with: {
 				category: true,
 				doctrineFittings: {
-					with: {
-						fitting: true,
-					},
+					with: { fitting: true },
 					orderBy: [
 						asc(schema.doctrinesDoctrineFittings.fittingCategory),
 						asc(schema.doctrinesDoctrineFittings.sortOrder),
@@ -260,11 +258,13 @@ export class DoctrinesDO extends DurableObject<Env> implements Doctrines {
 			...doctrine,
 			categoryName: doctrine.category?.name ?? null,
 			categorySortOrder: doctrine.category?.sortOrder ?? null,
-			fittings: doctrine.doctrineFittings.map((df) => ({
-				fitting: df.fitting,
-				fittingCategory: df.fittingCategory,
-				sortOrder: df.sortOrder,
-			})),
+			fittings: doctrine.doctrineFittings
+				.filter((df) => !df.fitting.deletedAt)
+				.map((df) => ({
+					fitting: df.fitting,
+					fittingCategory: df.fittingCategory,
+					sortOrder: df.sortOrder,
+				})),
 			stagingSystems: doctrine.doctrineStagingSystems.map((ds) => ({
 				stagingSystem: ds.stagingSystem,
 				note: ds.note,
@@ -287,7 +287,7 @@ export class DoctrinesDO extends DurableObject<Env> implements Doctrines {
 		const [updatedDoctrine] = await this.db
 			.update(schema.doctrinesDoctrines)
 			.set(updates)
-			.where(eq(schema.doctrinesDoctrines.id, id))
+			.where(and(eq(schema.doctrinesDoctrines.id, id), isNull(schema.doctrinesDoctrines.deletedAt)))
 			.returning()
 
 		if (!updatedDoctrine) {
@@ -316,15 +316,50 @@ export class DoctrinesDO extends DurableObject<Env> implements Doctrines {
 		}
 	}
 
-	async deleteDoctrine(id: string): Promise<void> {
-		const [deleted] = await this.db
-			.delete(schema.doctrinesDoctrines)
-			.where(eq(schema.doctrinesDoctrines.id, id))
-			.returning({ id: schema.doctrinesDoctrines.id })
+	async deleteDoctrine(id: string, deletedBy?: string): Promise<void> {
+		const doctrine = await this.db.query.doctrinesDoctrines.findFirst({
+			where: and(eq(schema.doctrinesDoctrines.id, id), isNull(schema.doctrinesDoctrines.deletedAt)),
+			with: {
+				category: true,
+				doctrineFittings: {
+					with: {
+						fitting: {
+							with: {
+								fittingItems: true,
+							},
+						},
+					},
+					orderBy: [
+						asc(schema.doctrinesDoctrineFittings.fittingCategory),
+						asc(schema.doctrinesDoctrineFittings.sortOrder),
+					],
+				},
+				doctrineStagingSystems: {
+					with: { stagingSystem: true },
+				},
+			},
+		})
 
-		if (!deleted) {
+		if (!doctrine) {
 			throw new Error('Doctrine not found or failed to delete')
 		}
+
+		const now = new Date()
+		await this.db.insert(schema.doctrinesDeletedDoctrineSnapshots).values({
+			doctrineId: doctrine.id,
+			deletedAt: now,
+			deletedBy: deletedBy ?? null,
+			snapshot: doctrine,
+		})
+
+		await this.db
+			.update(schema.doctrinesDoctrines)
+			.set({
+				deletedAt: now,
+				deletedBy: deletedBy ?? null,
+				updatedAt: now,
+			})
+			.where(and(eq(schema.doctrinesDoctrines.id, id), isNull(schema.doctrinesDoctrines.deletedAt)))
 	}
 
 	// ============================================
@@ -368,7 +403,7 @@ export class DoctrinesDO extends DurableObject<Env> implements Doctrines {
 	}
 
 	async getFittings(filters: ListFittingsFilters): Promise<Fitting[]> {
-		const conditions = []
+		const conditions = [isNull(schema.doctrinesFittings.deletedAt)]
 		if (filters.shipTypeId) {
 			conditions.push(eq(schema.doctrinesFittings.shipTypeId, filters.shipTypeId))
 		}
@@ -378,14 +413,13 @@ export class DoctrinesDO extends DurableObject<Env> implements Doctrines {
 		if (filters.srpEligible !== undefined) {
 			conditions.push(eq(schema.doctrinesFittings.srpEligible, filters.srpEligible))
 		}
-		if (filters.search) {
-			conditions.push(
-				or(
-					ilike(schema.doctrinesFittings.name, `%${filters.search}%`),
-					ilike(schema.doctrinesFittings.shipName, `%${filters.search}%`)
+			if (filters.search) {
+				const nameMatch = ilike(schema.doctrinesFittings.name, `%${filters.search}%`)
+				const shipMatch = ilike(schema.doctrinesFittings.shipName, `%${filters.search}%`)
+				conditions.push(
+					or(nameMatch, shipMatch) ?? nameMatch
 				)
-			)
-		}
+			}
 
 		const whereClause = conditions.length > 0 ? and(...conditions) : undefined
 
@@ -397,6 +431,7 @@ export class DoctrinesDO extends DurableObject<Env> implements Doctrines {
 
 	async getFittingsWithDoctrines(): Promise<FittingWithDoctrines[]> {
 		const fittings = await this.db.query.doctrinesFittings.findMany({
+			where: isNull(schema.doctrinesFittings.deletedAt),
 			orderBy: (tbl, { desc }) => [desc(tbl.updatedAt)],
 			with: {
 				doctrineFittings: {
@@ -419,16 +454,18 @@ export class DoctrinesDO extends DurableObject<Env> implements Doctrines {
 			srpValue: f.srpValue,
 			createdAt: f.createdAt,
 			updatedAt: f.updatedAt,
-			doctrines: f.doctrineFittings.map((df) => ({
-				id: df.doctrine.id,
-				name: df.doctrine.name,
-			})),
+			doctrines: f.doctrineFittings
+				.filter((df) => !df.doctrine.deletedAt)
+				.map((df) => ({
+					id: df.doctrine.id,
+					name: df.doctrine.name,
+				})),
 		}))
 	}
 
 	async getFitting(id: string): Promise<FittingWithItems | null> {
 		const fitting = await this.db.query.doctrinesFittings.findFirst({
-			where: eq(schema.doctrinesFittings.id, id),
+			where: and(eq(schema.doctrinesFittings.id, id), isNull(schema.doctrinesFittings.deletedAt)),
 			with: {
 				fittingItems: true,
 			},
@@ -471,7 +508,7 @@ export class DoctrinesDO extends DurableObject<Env> implements Doctrines {
 		const [updatedFitting] = await this.db
 			.update(schema.doctrinesFittings)
 			.set(updates)
-			.where(eq(schema.doctrinesFittings.id, id))
+			.where(and(eq(schema.doctrinesFittings.id, id), isNull(schema.doctrinesFittings.deletedAt)))
 			.returning()
 
 		if (!updatedFitting) {
@@ -481,15 +518,39 @@ export class DoctrinesDO extends DurableObject<Env> implements Doctrines {
 		return updatedFitting
 	}
 
-	async deleteFitting(id: string): Promise<void> {
-		const [deleted] = await this.db
-			.delete(schema.doctrinesFittings)
-			.where(eq(schema.doctrinesFittings.id, id))
-			.returning({ id: schema.doctrinesFittings.id })
+	async deleteFitting(id: string, deletedBy?: string): Promise<void> {
+		const fitting = await this.db.query.doctrinesFittings.findFirst({
+			where: and(eq(schema.doctrinesFittings.id, id), isNull(schema.doctrinesFittings.deletedAt)),
+			with: {
+				fittingItems: true,
+				doctrineFittings: {
+					with: {
+						doctrine: true,
+					},
+				},
+			},
+		})
 
-		if (!deleted) {
+		if (!fitting) {
 			throw new Error('Fitting not found or failed to delete')
 		}
+
+		const now = new Date()
+		await this.db.insert(schema.doctrinesDeletedFittingSnapshots).values({
+			fittingId: fitting.id,
+			deletedAt: now,
+			deletedBy: deletedBy ?? null,
+			snapshot: fitting,
+		})
+
+		await this.db
+			.update(schema.doctrinesFittings)
+			.set({
+				deletedAt: now,
+				deletedBy: deletedBy ?? null,
+				updatedAt: now,
+			})
+			.where(and(eq(schema.doctrinesFittings.id, id), isNull(schema.doctrinesFittings.deletedAt)))
 	}
 
 	// ============================================
@@ -497,6 +558,20 @@ export class DoctrinesDO extends DurableObject<Env> implements Doctrines {
 	// ============================================
 
 	async addFittingToDoctrine(doctrineId: string, data: AddFittingToDoctrineRequest): Promise<void> {
+		const doctrine = await this.db.query.doctrinesDoctrines.findFirst({
+			where: and(eq(schema.doctrinesDoctrines.id, doctrineId), isNull(schema.doctrinesDoctrines.deletedAt)),
+		})
+		if (!doctrine) {
+			throw new Error('Doctrine not found')
+		}
+
+		const fitting = await this.db.query.doctrinesFittings.findFirst({
+			where: and(eq(schema.doctrinesFittings.id, data.fittingId), isNull(schema.doctrinesFittings.deletedAt)),
+		})
+		if (!fitting) {
+			throw new Error('Fitting not found')
+		}
+
 		// Check if the relationship already exists
 		const existing = await this.db.query.doctrinesDoctrineFittings.findFirst({
 			where: and(
@@ -553,6 +628,13 @@ export class DoctrinesDO extends DurableObject<Env> implements Doctrines {
 	// ============================================
 
 	async setDoctrineStagingSystem(doctrineId: string, data: SetDoctrineStagingRequest): Promise<void> {
+		const doctrine = await this.db.query.doctrinesDoctrines.findFirst({
+			where: and(eq(schema.doctrinesDoctrines.id, doctrineId), isNull(schema.doctrinesDoctrines.deletedAt)),
+		})
+		if (!doctrine) {
+			throw new Error('Doctrine not found')
+		}
+
 		await this.db
 			.insert(schema.doctrinesDoctrineStagingSystems)
 			.values({

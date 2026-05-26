@@ -66,6 +66,8 @@ export type Env = SharedHonoEnv & {
 	FULCRUM: DurableObjectNamespace
 	/** Legacy migration Durable Object binding */
 	LEGACY: DurableObjectNamespace
+	/** Optional external fleets worker base URL for admin fleet monitor test page */
+	FLEETS_MONITOR_BASE_URL?: string
 	/** Moon Scan Durable Object binding */
 	MOON_SCAN: DurableObjectNamespace
 	/** Markets Durable Object binding */

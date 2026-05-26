@@ -65,6 +65,7 @@ export interface TemplateFieldSchema {
 		| 'system_staging'
 		| 'system_srp'
 		| 'system_frogsiren'
+		| 'system_fleet_tracking'
 	required?: boolean
 	placeholder?: string
 	options?: string[]
@@ -87,6 +88,13 @@ export interface Broadcast {
 	permissionId: string
 	createdBy: string
 	createdByCharacterName: string
+	srpMode?: 'blanket' | 'military' | 'coalition' | 'disabled' | null
+	/** Generated SRP token linked to this broadcast, when applicable. */
+	srpToken?: string | null
+	/** Doctrine ID selected at broadcast compose time, when a non-custom doctrine was chosen. */
+	doctrineId?: string | null
+	/** Fleet tracking session linked to this broadcast, when applicable. */
+	fleetSessionId?: string | null
 	createdAt: string
 	updatedAt: string
 }
@@ -209,6 +217,14 @@ export interface SendBroadcastResult {
 	success: boolean
 	broadcast: Broadcast
 	delivery: BroadcastDelivery
+	/** ID of the fleet tracking session this broadcast started, if any. */
+	trackingSessionId?: string | null
+	/**
+	 * Reason fleet tracking failed to start, if it was requested but failed
+	 * (e.g. character not fleet boss, ESI error, missing permission).
+	 * `null` when tracking wasn't requested or started successfully.
+	 */
+	trackingError?: string | null
 }
 
 export {
@@ -376,6 +392,25 @@ export interface Broadcasts {
 	getBroadcast(broadcastId: string, userId: string): Promise<BroadcastWithDetails | null>
 
 	/**
+	 * Resolve a broadcast by SRP token.
+	 * @param srpToken - SRP token to match
+	 * @param userId - User ID making the request
+	 * @returns Broadcast details or null if not found
+	 */
+	getBroadcastBySrpToken(srpToken: string, userId: string): Promise<BroadcastWithDetails | null>
+
+	/**
+	 * Resolve a broadcast by linked fleet tracking session id.
+	 * @param fleetSessionId - Fleet tracking session id
+	 * @param userId - User ID making the request
+	 * @returns Broadcast details or null if not found
+	 */
+	getBroadcastByFleetSessionId(
+		fleetSessionId: string,
+		userId: string
+	): Promise<BroadcastWithDetails | null>
+
+	/**
 	 * Create a new broadcast
 	 * @param data - Broadcast creation data
 	 * @param userId - User ID creating the broadcast
@@ -387,9 +422,16 @@ export interface Broadcasts {
 	 * Send a broadcast immediately
 	 * @param broadcastId - Broadcast ID to send
 	 * @param userId - User ID sending the broadcast
+	 * @param options - Optional flags. `canStartTracking` lets the caller signal
+	 *   that the user holds urn:fleet-tracking:create, gating the
+	 *   system_fleet_tracking side effect.
 	 * @returns Send result with delivery status
 	 */
-	sendBroadcast(broadcastId: string, userId: string): Promise<SendBroadcastResult>
+	sendBroadcast(
+		broadcastId: string,
+		userId: string,
+		options?: { canStartTracking?: boolean }
+	): Promise<SendBroadcastResult>
 
 	/**
 	 * Update a draft broadcast

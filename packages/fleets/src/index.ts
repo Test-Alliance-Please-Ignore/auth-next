@@ -65,6 +65,12 @@ export interface FleetJoinResult {
 	invitationSent?: boolean
 }
 
+export interface KickTrackingSessionMemberResult {
+	characterId: string
+	success: boolean
+	error?: string
+}
+
 /**
  * Public RPC interface for Fleets Durable Object
  *
@@ -153,26 +159,6 @@ export interface Fleets extends DurableObject {
 	revokeQuickJoinInvitation(token: string, characterId: string): Promise<boolean>
 
 	/**
-	 * List all monitored fleet commanders
-	 * @returns Array of character IDs
-	 */
-	listMonitoredFleetCommanders(): Promise<string[]>
-
-	/**
-	 * Add a fleet commander to the monitored list
-	 * @param characterId - EVE character ID to monitor
-	 * @returns true if added successfully, false if already exists
-	 */
-	addMonitoredFleetCommander(characterId: string): Promise<boolean>
-
-	/**
-	 * Remove a fleet commander from the monitored list
-	 * @param characterId - EVE character ID to remove
-	 * @returns true if removed successfully, false if not found
-	 */
-	removeMonitoredFleetCommander(characterId: string): Promise<boolean>
-
-	/**
 	 * Get fleet cache status from database
 	 * @param fleetId - ESI fleet ID
 	 * @returns Cache status with isActive, notFound, and endedAt, or null if not in cache
@@ -187,6 +173,393 @@ export interface Fleets extends DurableObject {
 	 * @returns true if fleet is registered in fleet finder, false otherwise
 	 */
 	getFleetIsRegistered(fleetId: string, characterId: string): Promise<boolean>
+
+	// ===== Manual fleet tracking =====
+
+	/**
+	 * Start a new fleet tracking session.
+	 * Validates that the character is currently the fleet boss before creating
+	 * the session row and spinning up a FleetMonitor instance.
+	 */
+	startTrackingSession(args: {
+		characterId: string
+		startedByUserId: string
+		name: string
+	}): Promise<StartTrackingSessionResult>
+
+	/**
+	 * Stop an active tracking session and archive its summary.
+	 */
+	stopTrackingSession(args: {
+		sessionId: string
+		endedReason: 'user_stopped' | 'admin_stopped'
+		endedByUserId: string
+	}): Promise<void>
+
+	/**
+	 * List tracking sessions, filterable.
+	 */
+	listTrackingSessions(filter: TrackingSessionListFilter): Promise<TrackingSessionListResult>
+
+	/**
+	 * Get a single tracking session by id (summary metadata only).
+	 */
+	getTrackingSession(sessionId: string): Promise<TrackingSession | null>
+
+	/**
+	 * Get the live cache snapshot for a session's fleet.
+	 * Returns null if the session has not started ticking yet.
+	 */
+	getSessionLiveSnapshot(sessionId: string): Promise<SessionLiveSnapshot | null>
+
+	/**
+	 * Get the join/leave event log for a session, paginated.
+	 */
+	getSessionTimeline(args: {
+		sessionId: string
+		eventType?: 'join' | 'leave'
+		characterId?: string
+		limit?: number
+		offset?: number
+	}): Promise<SessionTimelineResult>
+
+	/**
+	 * Get the ship-change timeline for one character within a session.
+	 */
+	getSessionMemberShipHistory(args: {
+		sessionId: string
+		characterId: string
+	}): Promise<SessionMemberShipHistoryRow[]>
+
+	/**
+	 * Get the session summary (one row from fleet_summaries), if it has been
+	 * written yet (only present after the session has ended).
+	 */
+	getSessionSummary(sessionId: string): Promise<SessionSummary | null>
+
+	/**
+	 * Get the current member roster for an active session, derived from open
+	 * (endedAt IS NULL) ship-event rows. One row per character currently in the fleet.
+	 */
+	getSessionCurrentMembers(sessionId: string): Promise<SessionCurrentMemberRow[]>
+
+	/**
+	 * Get the full roster for any session (active or ended). One row per
+	 * character that ever appeared, with aggregate timing + final-ship info.
+	 */
+	getSessionRoster(sessionId: string): Promise<SessionRosterRow[]>
+
+	/**
+	 * Remove one fleet member from the active tracked fleet via ESI.
+	 */
+	kickTrackingSessionMember(args: {
+		sessionId: string
+		memberCharacterId: string
+	}): Promise<KickTrackingSessionMemberResult>
+
+	/**
+	 * Remove multiple fleet members from the active tracked fleet via ESI.
+	 * Best-effort, per-member results are returned.
+	 */
+	kickTrackingSessionMembers(args: {
+		sessionId: string
+		memberCharacterIds: string[]
+	}): Promise<KickTrackingSessionMemberResult[]>
+
+	// ===== Stats / analytics primitives =====
+	//
+	// These return character-id-keyed aggregates. The route handler resolves
+	// characterId → userId / corporationId from its own user_characters table.
+
+	/** Org-wide overview metrics within a time window. */
+	getStatsOverview(range: StatsRange): Promise<StatsOverviewResult>
+
+	/** Aggregate metrics for one character within a time window. */
+	getStatsForCharacter(characterId: string, range: StatsRange): Promise<CharacterStatsResult>
+
+	/**
+	 * Aggregate metrics for a set of character IDs (used for user-level and
+	 * corp-level rollups).
+	 * Returns one entry per character that has any activity in the window.
+	 */
+	getStatsForCharacters(
+		characterIds: string[],
+		range: StatsRange
+	): Promise<Record<string, CharacterStatsResult>>
+
+	/**
+	 * Get distinct corporations with pilot counts derived from
+	 * fleet_member_history (historical corp at time of event).
+	 */
+	getCorpRollupForOverview(range: StatsRange): Promise<CorpRollupRow[]>
+
+	/**
+	 * Get the distinct character IDs that participated in any fleet as members
+	 * of the given corporation within the window. Powers the corp stats page.
+	 */
+	getCharactersByCorpInWindow(corporationId: string, range: StatsRange): Promise<string[]>
+
+	/**
+	 * Search characters that have appeared in any tracked fleet by (substring) name.
+	 * Used to power the stats-page autocomplete.
+	 */
+	searchTrackedCharacters(
+		query: string,
+		limit?: number
+	): Promise<Array<{ characterId: string; characterName: string }>>
+
+	/**
+	 * List all distinct corporation IDs ever seen in a tracked fleet. Names are
+	 * resolved by the caller via the ESI resolver.
+	 */
+	listTrackedCorporationIds(): Promise<string[]>
+
+	/**
+	 * Search distinct tracked corporation IDs by optional name query.
+	 * Name resolution/filtering is still performed by the caller; this method
+	 * bounds the candidate ID set server-side for scalability.
+	 */
+	searchTrackedCorporationIds(query: string, limit?: number): Promise<string[]>
+
+	/**
+	 * Return the subset of provided corporation IDs that appear in tracked fleet
+	 * history. Used by core to intersect corp-name search results with tracked data.
+	 */
+	filterTrackedCorporationIds(corporationIds: string[]): Promise<string[]>
+}
+
+export interface CorpRollupRow {
+	corporationId: string
+	pilotCount: number
+}
+
+// ===== Stats types =====
+
+export interface StatsRange {
+	from: string // ISO timestamp inclusive
+	to: string // ISO timestamp exclusive
+}
+
+export interface TopShipRow {
+	shipTypeId: number
+	/** Total clamped time across the window, in minutes. */
+	totalMinutes: number
+}
+
+export interface TopCharacterRow {
+	characterId: string
+	count: number
+}
+
+export interface TopCharacterHoursRow {
+	characterId: string
+	minutesInFleet: number
+}
+
+export interface SessionsPerDayPoint {
+	day: string // YYYY-MM-DD
+	count: number
+}
+
+export interface StatsOverviewResult {
+	totals: {
+		sessions: number
+		totalMinutes: number
+		uniquePilots: number
+		totalJoins: number
+		avgDurationMinutes: number | null
+		avgPeakMembers: number | null
+		largestFleetPeak: number | null
+	}
+	topFCs: TopCharacterRow[]
+	topPilots: TopCharacterHoursRow[]
+	topShips: TopShipRow[]
+	sessionsPerDay: SessionsPerDayPoint[]
+}
+
+export interface CharacterShipBreakdownRow {
+	shipTypeId: number
+	totalMinutes: number
+}
+
+export interface CharacterRecentSessionRow {
+	sessionId: string
+	sessionName: string
+	fleetId: string | null
+	wasFC: boolean
+	startedAt: string
+	endedAt: string | null
+	totalMinutes: number
+	shipsFlown: number
+}
+
+export interface CharacterStatsResult {
+	totals: {
+		fleetsJoined: number
+		minutesInFleet: number
+		timesFC: number
+		avgFleetDurationMinutes: number | null
+	}
+	shipsFlown: CharacterShipBreakdownRow[]
+	recentSessions: CharacterRecentSessionRow[]
+}
+
+// ===== Read-side response types =====
+
+export interface SessionLiveSnapshot {
+	fleetId: string
+	memberCount: number
+	/** Peak member count observed across the session so far. */
+	peakMemberCount: number
+	motd: string | null
+	isFreeMove: boolean
+	isRegistered: boolean
+	isVoiceEnabled: boolean
+	lastChecked: string
+	updatedAt: string
+}
+
+export interface SessionTimelineRow {
+	id: string
+	characterId: string
+	/**
+	 * 'join' | 'leave' from fleet_member_history.
+	 * 'ship_change' synthesized from fleet_member_ship_events with previousShipTypeId set.
+	 */
+	eventType: 'join' | 'leave' | 'ship_change'
+	shipTypeId: number
+	shipTypeName: string | null
+	/** Only set for ship_change events — the ship the pilot was in before. */
+	previousShipTypeId?: number | null
+	previousShipTypeName?: string | null
+	solarSystemId: number
+	systemName: string | null
+	stationId: number | null
+	role: string
+	roleName: string
+	characterName: string | null
+	eventTimestamp: string
+}
+
+export interface SessionTimelineResult {
+	items: SessionTimelineRow[]
+	total: number
+	limit: number
+	offset: number
+}
+
+export interface SessionMemberShipHistoryRow {
+	shipTypeId: number
+	solarSystemId: number
+	stationId: number | null
+	startedAt: string
+	endedAt: string | null
+}
+
+export interface SessionCurrentMemberRow {
+	characterId: string
+	shipTypeId: number
+	solarSystemId: number
+	stationId: number | null
+	/** When the pilot boarded their current ship. */
+	sinceTime: string
+}
+
+export interface SessionRosterRow {
+	characterId: string
+	/** When this character first joined the fleet during the session. */
+	firstSeenAt: string
+	/** When this character left the fleet, or null if they were still in at session end. */
+	leftAt: string | null
+	/** Total time spent in the fleet during the session, in seconds. */
+	totalSeconds: number
+	/** Number of distinct ships the pilot flew. */
+	shipsFlown: number
+	/** The shipTypeId the pilot was in last (their final ship). */
+	lastShipTypeId: number
+	/** True if the pilot was still in the fleet when the session ended. */
+	stayedToEnd: boolean
+}
+
+export interface SessionSummary {
+	startedAt: string
+	endedAt: string
+	durationMinutes: number | null
+	peakMemberCount: number
+	finalMemberCount: number
+	motd: string | null
+}
+
+// ===== Tracking-session types =====
+
+export type TrackingSessionStatus = 'active' | 'ended'
+
+export type TrackingSessionEndedReason =
+	| 'user_stopped'
+	| 'admin_stopped'
+	| 'fleet_disbanded'
+	| 'character_left_fleet'
+	| 'not_fleet_boss'
+	| 'esi_error'
+	| 'token_expired'
+
+export interface TrackingSession {
+	id: string
+	name: string
+	characterId: string
+	startedByUserId: string
+	fleetId: string | null
+	status: TrackingSessionStatus
+	startedAt: string
+	endedAt: string | null
+	endedReason: TrackingSessionEndedReason | null
+	endedByUserId: string | null
+	createdAt: string
+	updatedAt: string
+}
+
+export interface StartTrackingSessionResult {
+	sessionId: string
+}
+
+export interface TrackingSessionListFilter {
+	characterId?: string
+	startedByUserId?: string
+	status?: TrackingSessionStatus
+	/** ISO timestamp inclusive; filters by sessions.startedAt >= from. */
+	from?: string
+	/** ISO timestamp exclusive; filters by sessions.startedAt < to. */
+	to?: string
+	limit?: number
+	offset?: number
+}
+
+export interface TrackingSessionListResult {
+	items: TrackingSession[]
+	total: number
+	limit: number
+	offset: number
+}
+
+/**
+ * Errors thrown by startTrackingSession so callers can map them to HTTP codes.
+ * The DO throws these; the route handler maps them to status codes.
+ */
+export type StartTrackingSessionErrorCode =
+	| 'not_in_fleet'
+	| 'not_fleet_boss'
+	| 'character_session_active'
+	| 'fleet_session_active'
+	| 'esi_unavailable'
+
+export class StartTrackingSessionError extends Error {
+	constructor(
+		public code: StartTrackingSessionErrorCode,
+		message?: string
+	) {
+		super(message ?? code)
+		this.name = 'StartTrackingSessionError'
+	}
 }
 
 export * from './esi'

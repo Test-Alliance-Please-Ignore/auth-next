@@ -63,6 +63,26 @@ const HrLegacyHistoryPage = lazy(() => import('./routes/hr-legacy-history'))
 const HrLegacyHistoryDetailPage = lazy(() => import('./routes/hr-legacy-history-detail'))
 
 // Lazy load the Skill Plans feature for code splitting
+const TrackingSessionsList = lazy(
+	() => import('./features/fleet-tracking/routes/tracking-sessions-list')
+)
+const StartTrackingSession = lazy(
+	() => import('./features/fleet-tracking/routes/start-tracking-session')
+)
+const TrackingSessionDetail = lazy(
+	() => import('./features/fleet-tracking/routes/tracking-session-detail')
+)
+const SessionTimeline = lazy(() => import('./features/fleet-tracking/routes/session-timeline'))
+const MemberShipHistory = lazy(
+	() => import('./features/fleet-tracking/routes/member-ship-history')
+)
+const FleetStatsOverview = lazy(() => import('./features/fleet-tracking/routes/stats-overview'))
+const FleetCharacterStats = lazy(() => import('./features/fleet-tracking/routes/character-stats'))
+const FleetUserStats = lazy(() => import('./features/fleet-tracking/routes/user-stats'))
+const FleetCorporationStats = lazy(
+	() => import('./features/fleet-tracking/routes/corporation-stats')
+)
+
 const SkillPlansList = lazy(() => import('./features/skill-plans/routes/skill-plans-list'))
 const SkillPlanDetail = lazy(() => import('./features/skill-plans/routes/skill-plan-detail'))
 const SkillPlanCreate = lazy(() => import('./features/skill-plans/routes/skill-plan-create'))
@@ -399,6 +419,80 @@ export default function App() {
 
 							{/* Utilities routes */}
 							<Route path="/inventory-parser" element={<InventoryParserPage />} />
+
+							{/* Fleet Tracking routes (lazy loaded) */}
+							<Route
+								path="/fleet-tracking"
+								element={
+									<Suspense fallback={<LoadingPage />}>
+										<TrackingSessionsList />
+									</Suspense>
+								}
+							/>
+							<Route
+								path="/fleet-tracking/new"
+								element={
+									<Suspense fallback={<LoadingPage />}>
+										<StartTrackingSession />
+									</Suspense>
+								}
+							/>
+							<Route
+								path="/fleet-tracking/stats"
+								element={
+									<Suspense fallback={<LoadingPage />}>
+										<FleetStatsOverview />
+									</Suspense>
+								}
+							/>
+							<Route
+								path="/fleet-tracking/stats/characters/:characterId"
+								element={
+									<Suspense fallback={<LoadingPage />}>
+										<FleetCharacterStats />
+									</Suspense>
+								}
+							/>
+							<Route
+								path="/fleet-tracking/stats/users/:userId"
+								element={
+									<Suspense fallback={<LoadingPage />}>
+										<FleetUserStats />
+									</Suspense>
+								}
+							/>
+							<Route
+								path="/fleet-tracking/stats/corporations/:corpId"
+								element={
+									<Suspense fallback={<LoadingPage />}>
+										<FleetCorporationStats />
+									</Suspense>
+								}
+							/>
+							<Route
+								path="/fleet-tracking/:sessionId/timeline"
+								element={
+									<Suspense fallback={<LoadingPage />}>
+										<SessionTimeline />
+									</Suspense>
+								}
+							/>
+							<Route
+								path="/fleet-tracking/:sessionId/members/:characterId"
+								element={
+									<Suspense fallback={<LoadingPage />}>
+										<MemberShipHistory />
+									</Suspense>
+								}
+							/>
+							<Route
+								path="/fleet-tracking/:sessionId"
+								element={
+									<Suspense fallback={<LoadingPage />}>
+										<TrackingSessionDetail />
+									</Suspense>
+								}
+							/>
 
 							{/* Skill Plans routes (lazy loaded) */}
 							<Route

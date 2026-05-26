@@ -223,6 +223,7 @@ function deriveTemplateFieldSchema(
 		| 'system_staging'
 		| 'system_srp'
 		| 'system_frogsiren'
+		| 'system_fleet_tracking'
 	required: boolean
 	options?: string[]
 	allowCustom?: boolean
@@ -270,7 +271,8 @@ function deriveTemplateFieldSchema(
 			| 'system_doctrine'
 			| 'system_staging'
 			| 'system_srp'
-			| 'system_frogsiren' = token.type
+			| 'system_frogsiren'
+			| 'system_fleet_tracking' = token.type
 		if (
 			existing?.type === 'text' ||
 			existing?.type === 'textarea' ||
@@ -278,7 +280,8 @@ function deriveTemplateFieldSchema(
 			existing?.type === 'system_doctrine' ||
 			existing?.type === 'system_staging' ||
 			existing?.type === 'system_srp' ||
-			existing?.type === 'system_frogsiren'
+			existing?.type === 'system_frogsiren' ||
+			existing?.type === 'system_fleet_tracking'
 		) {
 			type = existing.type
 		}
@@ -299,6 +302,7 @@ function deriveTemplateFieldSchema(
 				| 'system_staging'
 				| 'system_srp'
 				| 'system_frogsiren'
+				| 'system_fleet_tracking'
 			required: boolean
 			options?: string[]
 			allowCustom?: boolean
@@ -335,6 +339,26 @@ function deriveTemplateFieldSchema(
 			name: '__frogsirenEnabled',
 			label: 'FrogSiren',
 			type: 'system_frogsiren',
+			required: false,
+		})
+	}
+
+	const fleetTrackingField = Array.isArray(existingFieldSchema)
+		? existingFieldSchema.find((field) => {
+				if (!field || typeof field !== 'object') return false
+				const typed = field as { type?: unknown; name?: unknown }
+				return (
+					typed.type === 'system_fleet_tracking' &&
+					typed.name === '__fleetTrackingEnabled'
+				)
+			})
+		: null
+
+	if (fleetTrackingField && typeof fleetTrackingField === 'object') {
+		fields.push({
+			name: '__fleetTrackingEnabled',
+			label: 'Fleet Tracking',
+			type: 'system_fleet_tracking',
 			required: false,
 		})
 	}
@@ -1157,6 +1181,60 @@ broadcasts.get('/', async (c) => {
 })
 
 /**
+ * Resolve a broadcast by SRP token
+ * GET /api/broadcasts/by-srp-token/:srpToken
+ */
+broadcasts.get('/by-srp-token/:srpToken', async (c) => {
+	const user = c.get('user')!
+	const srpToken = c.req.param('srpToken')
+
+	const broadcastsStub = getStub<Broadcasts>(c.env.BROADCASTS, 'default')
+	const broadcast = await broadcastsStub.getBroadcastBySrpToken(srpToken, user.id)
+
+	if (!broadcast) {
+		return c.json({ error: 'Broadcast not found' }, 404)
+	}
+
+	if (!user.is_admin) {
+		const permissionContext = await getUserBroadcastPermissionContext(c.env, user.id)
+		const canView = canAccessBroadcastTargetByAction(broadcast.target, 'send', permissionContext)
+
+		if (!canView) {
+			return c.json({ error: 'Not authorized to view this broadcast' }, 403)
+		}
+	}
+
+	return c.json(broadcast)
+})
+
+/**
+ * Resolve a broadcast by linked fleet session id
+ * GET /api/broadcasts/by-fleet-session/:fleetSessionId
+ */
+broadcasts.get('/by-fleet-session/:fleetSessionId', async (c) => {
+	const user = c.get('user')!
+	const fleetSessionId = c.req.param('fleetSessionId')
+
+	const broadcastsStub = getStub<Broadcasts>(c.env.BROADCASTS, 'default')
+	const broadcast = await broadcastsStub.getBroadcastByFleetSessionId(fleetSessionId, user.id)
+
+	if (!broadcast) {
+		return c.json({ broadcast: null })
+	}
+
+	if (!user.is_admin) {
+		const permissionContext = await getUserBroadcastPermissionContext(c.env, user.id)
+		const canView = canAccessBroadcastTargetByAction(broadcast.target, 'send', permissionContext)
+
+		if (!canView) {
+			return c.json({ error: 'Not authorized to view this broadcast' }, 403)
+		}
+	}
+
+	return c.json({ broadcast })
+})
+
+/**
  * Get a single broadcast with full details
  * GET /api/broadcasts/:id
  */
@@ -1304,8 +1382,17 @@ broadcasts.post('/:id/send', async (c) => {
 		return c.json({ error: 'Permission denied' }, 403)
 	}
 
+	// Resolve the fleet-tracking gate at the route layer. The DO uses this flag
+	// to decide whether the system_fleet_tracking side effect is allowed to run.
+	const userPermissions = await getCachedUserPermissions(c.env, user.id)
+	const canStartTracking =
+		user.is_admin ||
+		userPermissions.some((p) => p.urn === 'urn:fleet-tracking:create')
+
 	// Send broadcast
-	const result = await broadcastsStub.sendBroadcast(broadcastId, user.id)
+	const result = await broadcastsStub.sendBroadcast(broadcastId, user.id, {
+		canStartTracking,
+	})
 
 	return c.json(result)
 })

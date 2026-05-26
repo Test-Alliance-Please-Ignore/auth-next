@@ -22,7 +22,7 @@ export function renderBroadcastSrpSection(
 	token?: string
 ): string {
 	const modeLabel = getBroadcastSrpModeLabel(mode)
-	if (mode === 'disabled') {
+	if (mode === 'disabled' || mode === 'coalition') {
 		return `SRP: **${modeLabel}**`
 	}
 	const safeToken = typeof token === 'string' ? token : ''

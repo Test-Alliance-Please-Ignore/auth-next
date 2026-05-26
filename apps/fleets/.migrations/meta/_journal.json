@@ -64,6 +64,13 @@
       "when": 1763215122931,
       "tag": "0008_curious_hydra",
       "breakpoints": true
+    },
+    {
+      "idx": 9,
+      "version": "7",
+      "when": 1779743453154,
+      "tag": "0009_mighty_sabretooth",
+      "breakpoints": true
     }
   ]
 }

@@ -3,10 +3,23 @@ import { DurableObject } from 'cloudflare:workers'
 import { and, asc, desc, eq, inArray, or, sql } from '@repo/db-utils'
 import { getStub } from '@repo/do-utils'
 import { parseBroadcastSrpMode, renderBroadcastSrpSection } from '@repo/broadcasts'
+import { logger } from '@repo/hono-helpers'
+
+/** Parse a loose truthy value (boolean, number, "true"/"yes"/etc) into a boolean. */
+function parseBoolFlag(value: unknown): boolean {
+	if (typeof value === 'boolean') return value
+	if (typeof value === 'number') return value !== 0
+	if (typeof value === 'string') {
+		const normalized = value.trim().toLowerCase()
+		return ['true', '1', 'yes', 'enabled', 'on'].includes(normalized)
+	}
+	return false
+}
 
 import { createDb } from './db'
 import {
 	broadcastDeliveries,
+	broadcastSessionLinks,
 	broadcasts,
 	broadcastTargets,
 	broadcastTemplateTargets,
@@ -31,6 +44,7 @@ import type {
 	UpdateBroadcastRequest,
 	UpdateBroadcastTargetRequest,
 	UpdateBroadcastTemplateRequest,
+	BroadcastSrpMode,
 } from '@repo/broadcasts'
 import type { Discord } from '@repo/discord'
 import type { Env } from './context'
@@ -424,6 +438,151 @@ export class BroadcastsDO extends DurableObject<Env> implements Broadcasts {
 	// BROADCASTS
 	// =========================================================================
 
+	private async getSessionLinksByBroadcastIds(
+		broadcastIds: string[]
+	): Promise<
+		Map<
+			string,
+			{
+				srpMode: BroadcastSrpMode | null
+				srpToken: string | null
+				doctrineId: string | null
+				fleetSessionId: string | null
+			}
+		>
+	> {
+		if (broadcastIds.length === 0) return new Map()
+		const links = await this.db.query.broadcastSessionLinks.findMany({
+			where: inArray(broadcastSessionLinks.broadcastId, broadcastIds),
+		})
+		return new Map(
+			links.map((link) => [
+				link.broadcastId,
+				{
+					srpMode: (link.srpMode as BroadcastSrpMode | null) ?? null,
+					srpToken: link.srpToken ?? null,
+					doctrineId: link.doctrineId ?? null,
+					fleetSessionId: link.fleetSessionId ?? null,
+				},
+			])
+		)
+	}
+
+	private async upsertBroadcastSessionLink(args: {
+		broadcastId: string
+		srpMode?: BroadcastSrpMode | null
+		srpToken?: string | null
+		doctrineId?: string | null
+		fleetSessionId?: string | null
+	}): Promise<void> {
+		const now = new Date()
+		const normalizedSrpToken =
+			typeof args.srpToken === 'string' && args.srpToken.trim().length > 0
+				? args.srpToken.trim()
+				: null
+		const normalizedFleetSessionId =
+			typeof args.fleetSessionId === 'string' && args.fleetSessionId.trim().length > 0
+				? args.fleetSessionId.trim()
+				: null
+		const normalizedDoctrineId =
+			typeof args.doctrineId === 'string' && args.doctrineId.trim().length > 0
+				? args.doctrineId.trim()
+				: null
+
+		await this.db
+			.insert(broadcastSessionLinks)
+			.values({
+				broadcastId: args.broadcastId,
+				srpMode: args.srpMode ?? null,
+				srpToken: normalizedSrpToken,
+				doctrineId: normalizedDoctrineId,
+				fleetSessionId: normalizedFleetSessionId,
+				createdAt: now,
+				updatedAt: now,
+			})
+			.onConflictDoUpdate({
+				target: broadcastSessionLinks.broadcastId,
+				set: {
+					srpMode: args.srpMode ?? null,
+					srpToken: normalizedSrpToken,
+					doctrineId: normalizedDoctrineId,
+					fleetSessionId: normalizedFleetSessionId,
+					updatedAt: now,
+				},
+			})
+	}
+
+	private isUniqueViolation(error: unknown): boolean {
+		if (typeof error !== 'object' || error === null) return false
+		const code = (error as { code?: unknown }).code
+		return typeof code === 'string' && code === '23505'
+	}
+
+	private async reserveSrpLink(args: {
+		broadcastId: string
+		content: Record<string, unknown>
+	}): Promise<{
+		content: Record<string, unknown>
+		srpMode: BroadcastSrpMode | null
+		srpToken: string | null
+		doctrineId: string | null
+	}> {
+		const srpMode = this.resolveSrpModeIfPresent(args.content)
+		const doctrineId = this.resolveDoctrineIdIfPresent(args.content)
+		if (!srpMode) {
+			await this.upsertBroadcastSessionLink({
+				broadcastId: args.broadcastId,
+				srpMode: null,
+				srpToken: null,
+				doctrineId,
+				fleetSessionId: null,
+			})
+			return { content: args.content, srpMode: null, srpToken: null, doctrineId }
+		}
+
+		let nextContent = { ...args.content }
+		if (srpMode === 'disabled' || srpMode === 'coalition') {
+			if ('__srpToken' in nextContent) {
+				delete nextContent.__srpToken
+			}
+			await this.upsertBroadcastSessionLink({
+				broadcastId: args.broadcastId,
+				srpMode,
+				srpToken: null,
+				doctrineId,
+				fleetSessionId: null,
+			})
+			return { content: nextContent, srpMode, srpToken: null, doctrineId }
+		}
+
+		const maxAttempts = 10
+		for (let attempt = 0; attempt < maxAttempts; attempt += 1) {
+			const existing = nextContent.__srpToken
+			const token =
+				typeof existing === 'string' && existing.trim().length > 0
+					? existing.trim()
+					: await this.generateUniqueSrpFriendlyToken()
+			nextContent.__srpToken = token
+			try {
+				await this.upsertBroadcastSessionLink({
+					broadcastId: args.broadcastId,
+					srpMode,
+					srpToken: token,
+					doctrineId,
+					fleetSessionId: null,
+				})
+				return { content: nextContent, srpMode, srpToken: token, doctrineId }
+			} catch (error) {
+				if (!this.isUniqueViolation(error)) throw error
+				// Rare race: another broadcast reserved this token between check and upsert.
+				// Force a new token and retry.
+				delete nextContent.__srpToken
+			}
+		}
+
+		throw new Error('Unable to reserve a unique SRP token.')
+	}
+
 	async listBroadcasts(
 		userId: string,
 		filters?: {
@@ -474,11 +633,18 @@ export class BroadcastsDO extends DurableObject<Env> implements Broadcasts {
 				offset,
 			}),
 		])
+		const sessionLinksByBroadcastId = await this.getSessionLinksByBroadcastIds(
+			broadcastList.map((broadcast) => broadcast.id)
+		)
 
 		return {
 			rows: broadcastList.map((b) => ({
 				...b,
 				content: b.content as Record<string, unknown>,
+				srpMode: sessionLinksByBroadcastId.get(b.id)?.srpMode ?? null,
+				srpToken: sessionLinksByBroadcastId.get(b.id)?.srpToken ?? null,
+				doctrineId: sessionLinksByBroadcastId.get(b.id)?.doctrineId ?? null,
+				fleetSessionId: sessionLinksByBroadcastId.get(b.id)?.fleetSessionId ?? null,
 				scheduledFor: b.scheduledFor ? b.scheduledFor.toISOString() : null,
 				sentAt: b.sentAt ? b.sentAt.toISOString() : null,
 				createdAt: b.createdAt.toISOString(),
@@ -509,6 +675,9 @@ export class BroadcastsDO extends DurableObject<Env> implements Broadcasts {
 		const deliveries = await this.db.query.broadcastDeliveries.findMany({
 			where: eq(broadcastDeliveries.broadcastId, broadcastId),
 		})
+		const link = await this.db.query.broadcastSessionLinks.findFirst({
+			where: eq(broadcastSessionLinks.broadcastId, broadcastId),
+		})
 
 		if (!target) {
 			throw new Error('Target not found for broadcast')
@@ -517,6 +686,10 @@ export class BroadcastsDO extends DurableObject<Env> implements Broadcasts {
 		return {
 			...broadcast,
 			content: broadcast.content as Record<string, unknown>,
+			srpMode: (link?.srpMode as BroadcastSrpMode | null) ?? null,
+			srpToken: link?.srpToken ?? null,
+			doctrineId: link?.doctrineId ?? null,
+			fleetSessionId: link?.fleetSessionId ?? null,
 			scheduledFor: broadcast.scheduledFor ? broadcast.scheduledFor.toISOString() : null,
 			sentAt: broadcast.sentAt ? broadcast.sentAt.toISOString() : null,
 			createdAt: broadcast.createdAt.toISOString(),
@@ -550,6 +723,33 @@ export class BroadcastsDO extends DurableObject<Env> implements Broadcasts {
 		}
 	}
 
+	async getBroadcastBySrpToken(
+		srpToken: string,
+		userId: string
+	): Promise<BroadcastWithDetails | null> {
+		const normalized = srpToken.trim()
+		if (!normalized) return null
+		const link = await this.db.query.broadcastSessionLinks.findFirst({
+			where: eq(broadcastSessionLinks.srpToken, normalized),
+		})
+		if (!link) return null
+		if (link.srpMode !== 'blanket' && link.srpMode !== 'military') return null
+		return this.getBroadcast(link.broadcastId, userId)
+	}
+
+	async getBroadcastByFleetSessionId(
+		fleetSessionId: string,
+		userId: string
+	): Promise<BroadcastWithDetails | null> {
+		const normalized = fleetSessionId.trim()
+		if (!normalized) return null
+		const link = await this.db.query.broadcastSessionLinks.findFirst({
+			where: eq(broadcastSessionLinks.fleetSessionId, normalized),
+		})
+		if (!link) return null
+		return this.getBroadcast(link.broadcastId, userId)
+	}
+
 	async createBroadcast(data: CreateBroadcastRequest, userId: string): Promise<Broadcast> {
 		const now = new Date()
 
@@ -577,6 +777,10 @@ export class BroadcastsDO extends DurableObject<Env> implements Broadcasts {
 		return {
 			...broadcast,
 			content: broadcast.content as Record<string, unknown>,
+			srpMode: null,
+			srpToken: null,
+			doctrineId: null,
+			fleetSessionId: null,
 			scheduledFor: broadcast.scheduledFor ? broadcast.scheduledFor.toISOString() : null,
 			sentAt: null,
 			createdAt: broadcast.createdAt.toISOString(),
@@ -584,7 +788,11 @@ export class BroadcastsDO extends DurableObject<Env> implements Broadcasts {
 		}
 	}
 
-	async sendBroadcast(broadcastId: string, userId: string): Promise<SendBroadcastResult> {
+	async sendBroadcast(
+		broadcastId: string,
+		userId: string,
+		options: { canStartTracking?: boolean } = {}
+	): Promise<SendBroadcastResult> {
 		const broadcastDetails = await this.getBroadcast(broadcastId, userId)
 		if (!broadcastDetails) {
 			throw new Error('Broadcast not found')
@@ -606,7 +814,7 @@ export class BroadcastsDO extends DurableObject<Env> implements Broadcasts {
 		try {
 			let renderedContent = broadcastDetails.content
 			if (broadcastDetails.template) {
-				const prepared = this.prepareTemplateContentForSend(
+				const prepared = await this.prepareTemplateContentForSend(
 					broadcastDetails.template.messageTemplate,
 					broadcastDetails.content
 				)
@@ -625,8 +833,26 @@ export class BroadcastsDO extends DurableObject<Env> implements Broadcasts {
 				}
 			}
 
-			// Send based on target type
-			if (broadcastDetails.target.type === 'discord_channel') {
+				const reservedLink = await this.reserveSrpLink({
+					broadcastId,
+					content: renderedContent,
+				})
+				if (
+					JSON.stringify(reservedLink.content) !== JSON.stringify(renderedContent)
+				) {
+					const [reservedContentUpdate] = await this.db
+						.update(broadcasts)
+						.set({
+							content: reservedLink.content,
+							updatedAt: new Date(),
+						})
+						.where(eq(broadcasts.id, broadcastId))
+						.returning()
+					renderedContent = reservedContentUpdate.content as Record<string, unknown>
+				}
+
+				// Send based on target type
+				if (broadcastDetails.target.type === 'discord_channel') {
 				const config = broadcastDetails.target.config as {
 					guildId: string
 					channelId: string
@@ -706,11 +932,36 @@ export class BroadcastsDO extends DurableObject<Env> implements Broadcasts {
 					.where(eq(broadcasts.id, broadcastId))
 					.returning()
 
+				// Side effect: start fleet tracking if the template requested it.
+				// Runs only after Discord has confirmed the message went out, so a
+				// Discord failure never leaves an orphan tracking session.
+				const trackingOutcome = await this.maybeStartFleetTracking({
+					broadcastId,
+					broadcastTitle: broadcastDetails.title,
+					content: renderedContent,
+					userId,
+					canStartTracking: options.canStartTracking ?? false,
+				})
+				const srpMode = reservedLink.srpMode
+				const srpToken = reservedLink.srpToken
+				const doctrineId = reservedLink.doctrineId
+				await this.upsertBroadcastSessionLink({
+					broadcastId,
+					srpMode,
+					srpToken,
+					doctrineId,
+					fleetSessionId: trackingOutcome.sessionId,
+				})
+
 				return {
 					success: true,
 					broadcast: {
 						...updatedBroadcast,
 						content: updatedBroadcast.content as Record<string, unknown>,
+						srpMode,
+						srpToken,
+						doctrineId,
+						fleetSessionId: trackingOutcome.sessionId,
 						scheduledFor: updatedBroadcast.scheduledFor
 							? updatedBroadcast.scheduledFor.toISOString()
 							: null,
@@ -723,6 +974,8 @@ export class BroadcastsDO extends DurableObject<Env> implements Broadcasts {
 						sentAt: delivery.sentAt ? delivery.sentAt.toISOString() : null,
 						createdAt: delivery.createdAt.toISOString(),
 					},
+					trackingSessionId: trackingOutcome.sessionId,
+					trackingError: trackingOutcome.error,
 				}
 			}
 
@@ -761,6 +1014,17 @@ export class BroadcastsDO extends DurableObject<Env> implements Broadcasts {
 				broadcast: {
 					...updatedBroadcast,
 					content: updatedBroadcast.content as Record<string, unknown>,
+					srpMode: this.resolveSrpModeIfPresent(
+						(updatedBroadcast.content ?? {}) as Record<string, unknown>
+					),
+					srpToken: this.resolveSrpTokenForMode(
+						(updatedBroadcast.content ?? {}) as Record<string, unknown>,
+						this.resolveSrpModeIfPresent((updatedBroadcast.content ?? {}) as Record<string, unknown>)
+					),
+					doctrineId: this.resolveDoctrineIdIfPresent(
+						(updatedBroadcast.content ?? {}) as Record<string, unknown>
+					),
+					fleetSessionId: null,
 					scheduledFor: updatedBroadcast.scheduledFor
 						? updatedBroadcast.scheduledFor.toISOString()
 						: null,
@@ -989,10 +1253,10 @@ export class BroadcastsDO extends DurableObject<Env> implements Broadcasts {
 		})
 	}
 
-	private prepareTemplateContentForSend(
+	private async prepareTemplateContentForSend(
 		template: string,
 		content: Record<string, unknown>
-	): { content: Record<string, unknown>; changed: boolean } {
+	): Promise<{ content: Record<string, unknown>; changed: boolean }> {
 		if (!/\{\{\s*srp\s*\}\}/.test(template)) {
 			return { content, changed: false }
 		}
@@ -1000,7 +1264,7 @@ export class BroadcastsDO extends DurableObject<Env> implements Broadcasts {
 		const nextContent = { ...content }
 		let changed = false
 		const mode = parseBroadcastSrpMode(nextContent.srp)
-		if (mode === 'disabled') {
+		if (mode === 'disabled' || mode === 'coalition') {
 			if ('__srpToken' in nextContent) {
 				delete nextContent.__srpToken
 				changed = true
@@ -1010,10 +1274,14 @@ export class BroadcastsDO extends DurableObject<Env> implements Broadcasts {
 
 		const existingToken = nextContent.__srpToken
 		if (typeof existingToken === 'string' && existingToken.trim().length > 0) {
+			if (!(await this.isSrpTokenAvailable(existingToken.trim()))) {
+				nextContent.__srpToken = await this.generateUniqueSrpFriendlyToken()
+				return { content: nextContent, changed: true }
+			}
 			return { content: nextContent, changed }
 		}
 
-		nextContent.__srpToken = this.generateSrpFriendlyToken()
+		nextContent.__srpToken = await this.generateUniqueSrpFriendlyToken()
 		return { content: nextContent, changed: true }
 	}
 
@@ -1027,6 +1295,94 @@ export class BroadcastsDO extends DurableObject<Env> implements Broadcasts {
 		return false
 	}
 
+	/**
+	 * If the broadcast content has the system_fleet_tracking flag set, try to
+	 * spin up a fleet tracking session on FleetsDO. Returns the resulting
+	 * sessionId (or a user-facing error string). Never throws; broadcast
+	 * delivery already succeeded by the time we get here.
+	 */
+	private async maybeStartFleetTracking(args: {
+		broadcastId: string
+		broadcastTitle: string
+		content: Record<string, unknown>
+		userId: string
+		canStartTracking: boolean
+	}): Promise<{ sessionId: string | null; error: string | null }> {
+		if (!parseBoolFlag(args.content.__fleetTrackingEnabled)) {
+			return { sessionId: null, error: null }
+		}
+
+		if (!args.canStartTracking) {
+			const error = 'You do not have permission to start fleet tracking.'
+			logger.warn('[Broadcasts] Fleet tracking requested but user lacks permission', {
+				broadcastId: args.broadcastId,
+				userId: args.userId,
+			})
+			return { sessionId: null, error }
+		}
+
+		const characterId = args.content.__fleetTrackingCharacterId
+		if (typeof characterId !== 'string' || !characterId.trim()) {
+			return {
+				sessionId: null,
+				error: 'No character selected for fleet tracking.',
+			}
+		}
+
+		try {
+			const fleetsStub = getStub(this.env.FLEETS, 'default') as {
+				startTrackingSession: (args: {
+					characterId: string
+					startedByUserId: string
+					name: string
+				}) => Promise<{ sessionId: string }>
+			}
+			const result = await fleetsStub.startTrackingSession({
+				characterId: characterId.trim(),
+				startedByUserId: args.userId,
+				name: args.broadcastTitle,
+			})
+			return { sessionId: result.sessionId, error: null }
+		} catch (error) {
+			const trackingErrorCode =
+				typeof error === 'object' &&
+				error !== null &&
+				'code' in error &&
+				typeof (error as { code?: unknown }).code === 'string'
+					? (error as { code: string }).code
+					: null
+			const errorMessage =
+				trackingErrorCode
+					? this.formatTrackingStartError(trackingErrorCode)
+					: error instanceof Error
+						? error.message
+						: 'Failed to start fleet tracking.'
+			logger.warn('[Broadcasts] Failed to start fleet tracking after broadcast send', {
+				broadcastId: args.broadcastId,
+				characterId,
+				error: error instanceof Error ? error.message : String(error),
+			})
+			return { sessionId: null, error: errorMessage }
+		}
+	}
+
+	private formatTrackingStartError(code: string): string {
+		switch (code) {
+			case 'not_in_fleet':
+				return 'Selected character is not currently in a fleet.'
+			case 'not_fleet_boss':
+				return 'Selected character is not the fleet boss.'
+			case 'character_session_active':
+				return 'A tracking session is already running for this character.'
+			case 'fleet_session_active':
+				return 'A tracking session is already running for this fleet.'
+			case 'esi_unavailable':
+				return 'EVE ESI is unreachable; try starting tracking manually.'
+			default:
+				return `Failed to start fleet tracking (${code}).`
+		}
+	}
+
 	private resolveSrpToken(content: Record<string, unknown>): string {
 		const existing = content.__srpToken
 		if (typeof existing === 'string' && existing.trim().length > 0) {
@@ -1037,6 +1393,47 @@ export class BroadcastsDO extends DurableObject<Env> implements Broadcasts {
 
 	private generateSrpFriendlyToken(): string {
 		return generateSrpFriendlyToken()
+	}
+
+	private resolveSrpModeIfPresent(content: Record<string, unknown>): BroadcastSrpMode | null {
+		if (!Object.prototype.hasOwnProperty.call(content, 'srp')) return null
+		return parseBroadcastSrpMode(content.srp)
+	}
+
+	private resolveDoctrineIdIfPresent(content: Record<string, unknown>): string | null {
+		const raw = content.__doctrineId
+		if (typeof raw !== 'string') return null
+		const trimmed = raw.trim()
+		// Persist only explicit doctrine IDs (not custom doctrine text).
+		if (!trimmed) return null
+		return trimmed
+	}
+
+	private resolveSrpTokenForMode(
+		content: Record<string, unknown>,
+		mode: BroadcastSrpMode | null
+	): string | null {
+		if (!mode || mode === 'disabled' || mode === 'coalition') return null
+		const token = content.__srpToken
+		return typeof token === 'string' && token.trim().length > 0 ? token.trim() : null
+	}
+
+	private async isSrpTokenAvailable(token: string): Promise<boolean> {
+		const existing = await this.db.query.broadcastSessionLinks.findFirst({
+			where: eq(broadcastSessionLinks.srpToken, token),
+		})
+		return !existing
+	}
+
+	private async generateUniqueSrpFriendlyToken(): Promise<string> {
+		const maxAttempts = 10
+		for (let attempt = 0; attempt < maxAttempts; attempt += 1) {
+			const candidate = this.generateSrpFriendlyToken()
+			if (await this.isSrpTokenAvailable(candidate)) {
+				return candidate
+			}
+		}
+		throw new Error('Unable to generate a unique SRP token.')
 	}
 
 	private renderTemplateMessageWithDefaultText(
