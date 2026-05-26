@@ -1,7 +1,8 @@
-import { Ban, ExternalLink, Pencil, Plus, Send, Trash2 } from 'lucide-react'
+import { Ban, ExternalLink, FilePlus2, Pencil, Plus, Send, Trash2 } from 'lucide-react'
 import { useEffect, useState } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
 
+import { AddBroadcastAddendumDialog } from './add-broadcast-addendum-dialog'
 import { RescindBroadcastDialog } from './rescind-broadcast-dialog'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
@@ -76,6 +77,7 @@ export default function BroadcastsPage() {
 	const deleteBroadcast = useDeleteBroadcast()
 	const [deleteDialogOpen, setDeleteDialogOpen] = useState(false)
 	const [rescindDialogOpen, setRescindDialogOpen] = useState(false)
+	const [addendumDialogOpen, setAddendumDialogOpen] = useState(false)
 	const [selectedBroadcast, setSelectedBroadcast] = useState<Broadcast | null>(null)
 
 	const myBroadcasts = broadcastsPage?.rows ?? []
@@ -104,6 +106,11 @@ export default function BroadcastsPage() {
 	const handleDeleteClick = (broadcast: Broadcast) => {
 		setSelectedBroadcast(broadcast)
 		setDeleteDialogOpen(true)
+	}
+
+	const handleAddendumClick = (broadcast: Broadcast) => {
+		setSelectedBroadcast(broadcast)
+		setAddendumDialogOpen(true)
 	}
 
 	const handleDeleteConfirm = async () => {
@@ -256,16 +263,28 @@ export default function BroadcastsPage() {
 												<TableCell className="sticky right-0 z-10 bg-card border-l border-border/50 text-right">
 													<div className="flex items-center justify-end gap-2">
 														<Link to={`/broadcasts/${broadcast.id}`}>
-															<Button variant="ghost" size="sm" title="Show details">
+															<Button variant="ghost" size="icon" title="Show details" aria-label="Show details">
 																<ExternalLink className="h-4 w-4" />
 															</Button>
 														</Link>
+														{canRescind && broadcast.status === 'sent' && (
+															<Button
+																variant="ghost"
+																size="icon"
+																onClick={() => handleAddendumClick(broadcast)}
+																title="Add addendum"
+																aria-label="Add addendum"
+															>
+																<FilePlus2 className="h-4 w-4 text-primary" />
+															</Button>
+														)}
 														{broadcast.status === 'draft' && (
 															<Button
 																variant="ghost"
-																size="sm"
+																size="icon"
 																onClick={() => navigate(`/broadcasts/new?draftId=${broadcast.id}`)}
 																title="Edit draft"
+																aria-label="Edit draft"
 															>
 																<Pencil className="h-4 w-4" />
 															</Button>
@@ -273,10 +292,11 @@ export default function BroadcastsPage() {
 														{['draft', 'scheduled', 'failed'].includes(broadcast.status) && (
 															<Button
 																variant="ghost"
-																size="sm"
+																size="icon"
 																onClick={() => handleSendNow(broadcast)}
 																disabled={sendBroadcast.isPending}
 																title="Send now"
+																aria-label="Send now"
 															>
 																<Send className="h-4 w-4 text-confirm" />
 															</Button>
@@ -284,9 +304,10 @@ export default function BroadcastsPage() {
 														{canRescind && (
 															<Button
 																variant="ghost"
-																size="sm"
+																size="icon"
 																onClick={() => { setSelectedBroadcast(broadcast); setRescindDialogOpen(true) }}
 																title="Rescind broadcast"
+																aria-label="Rescind broadcast"
 															>
 																<Ban className="h-4 w-4 text-warning" />
 															</Button>
@@ -294,10 +315,11 @@ export default function BroadcastsPage() {
 														{canDelete && (
 															<Button
 																variant="ghost"
-																size="sm"
+																size="icon"
 																onClick={() => handleDeleteClick(broadcast)}
 																disabled={deleteBroadcast.isPending}
 																title="Delete broadcast"
+																aria-label="Delete broadcast"
 															>
 																<Trash2 className="h-4 w-4 text-destructive" />
 															</Button>
@@ -373,6 +395,14 @@ export default function BroadcastsPage() {
 				open={rescindDialogOpen}
 				onOpenChange={(open) => {
 					setRescindDialogOpen(open)
+					if (!open) setSelectedBroadcast(null)
+				}}
+			/>
+			<AddBroadcastAddendumDialog
+				broadcastId={selectedBroadcast?.id ?? ''}
+				open={addendumDialogOpen}
+				onOpenChange={(open) => {
+					setAddendumDialogOpen(open)
 					if (!open) setSelectedBroadcast(null)
 				}}
 			/>

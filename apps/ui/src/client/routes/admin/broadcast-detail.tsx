@@ -1,8 +1,9 @@
-import { ArrowLeft, Ban, Edit3, RefreshCw, Send, Trash2 } from 'lucide-react'
+import { ArrowLeft, Ban, Edit3, FilePlus2, RefreshCw, Send, Trash2 } from 'lucide-react'
 import { useState } from 'react'
 import { Link, useNavigate, useParams } from 'react-router-dom'
 
 import { renderDiscordContentValue } from '@/components/discord-content-renderer'
+import { AddBroadcastAddendumDialog } from '../add-broadcast-addendum-dialog'
 import { RescindBroadcastDialog } from '../rescind-broadcast-dialog'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
@@ -63,6 +64,7 @@ export default function AdminBroadcastDetailPage() {
 	const deleteBroadcast = useDeleteBroadcast()
 	const [deleteDialogOpen, setDeleteDialogOpen] = useState(false)
 	const [rescindDialogOpen, setRescindDialogOpen] = useState(false)
+	const [addendumDialogOpen, setAddendumDialogOpen] = useState(false)
 	const [message, setMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null)
 
 	usePageTitle(
@@ -165,6 +167,17 @@ export default function AdminBroadcastDetailPage() {
 						>
 							<Edit3 className="h-4 w-4" />
 							Edit Draft
+						</Button>
+					)}
+					{broadcast.status === 'sent' && (
+						<Button
+							variant="primary"
+							size="sm"
+							onClick={() => setAddendumDialogOpen(true)}
+							showIcon={false}
+						>
+							<FilePlus2 className="h-4 w-4" />
+							Add Addendum
 						</Button>
 					)}
 					{broadcast.status === 'sent' && (
@@ -348,6 +361,18 @@ export default function AdminBroadcastDetailPage() {
 				onOpenChange={setRescindDialogOpen}
 				onSuccess={async () => {
 					setMessage({ type: 'success', text: 'Broadcast rescinded.' })
+					await refetch()
+				}}
+				onError={(error) => {
+					setMessage({ type: 'error', text: error.message })
+				}}
+			/>
+			<AddBroadcastAddendumDialog
+				broadcastId={broadcast.id}
+				open={addendumDialogOpen}
+				onOpenChange={setAddendumDialogOpen}
+				onSuccess={async () => {
+					setMessage({ type: 'success', text: 'Broadcast addendum appended.' })
 					await refetch()
 				}}
 				onError={(error) => {

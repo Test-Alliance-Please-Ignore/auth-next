@@ -1,8 +1,9 @@
-import { ArrowLeft, Ban, Edit3, RefreshCw, Send, Trash2 } from 'lucide-react'
+import { ArrowLeft, Ban, Edit3, FilePlus2, RefreshCw, Send, Trash2 } from 'lucide-react'
 import { useState } from 'react'
 import { Link, useNavigate, useParams } from 'react-router-dom'
 
 import { renderDiscordContentValue } from '@/components/discord-content-renderer'
+import { AddBroadcastAddendumDialog } from './add-broadcast-addendum-dialog'
 import { RescindBroadcastDialog } from './rescind-broadcast-dialog'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
@@ -55,6 +56,55 @@ const deliveryStatusVariants: Record<DeliveryStatus, BadgeVariant> = {
 	failed: 'destructive',
 }
 
+function isBlankValue(value: unknown): boolean {
+	if (value === null || value === undefined) return true
+	if (typeof value === 'string') return value.trim().length === 0
+	if (Array.isArray(value)) return value.length === 0
+	return false
+}
+
+function parseEnabledFlag(value: unknown): boolean {
+	if (typeof value === 'boolean') return value
+	if (typeof value === 'number') return value !== 0
+	if (typeof value === 'string') {
+		const normalized = value.trim().toLowerCase()
+		return ['true', '1', 'yes', 'enabled', 'on'].includes(normalized)
+	}
+	return false
+}
+
+function getSendBlockingIssues(broadcast: {
+	content: Record<string, unknown>
+	template?: {
+		fieldSchema: Array<{
+			name: string
+			label: string
+			required?: boolean
+		}>
+	}
+}): string[] {
+	const issues: string[] = []
+	const fieldSchema = broadcast.template?.fieldSchema ?? []
+
+	for (const field of fieldSchema) {
+		if (!field.required) continue
+		const value = broadcast.content[field.name]
+		if (isBlankValue(value)) {
+			issues.push(`Required field missing: ${field.label || field.name}`)
+		}
+	}
+
+	const fleetTrackingEnabled = parseEnabledFlag(broadcast.content.__fleetTrackingEnabled)
+	if (fleetTrackingEnabled) {
+		const trackingCharacterId = broadcast.content.__fleetTrackingCharacterId
+		if (isBlankValue(trackingCharacterId)) {
+			issues.push('Fleet tracking is enabled but no tracking character is selected.')
+		}
+	}
+
+	return issues
+}
+
 export default function BroadcastDetailPage() {
 	const navigate = useNavigate()
 	const { broadcastId } = useParams<{ broadcastId: string }>()
@@ -68,6 +118,9 @@ export default function BroadcastDetailPage() {
 	const deleteBroadcast = useDeleteBroadcast()
 	const [deleteDialogOpen, setDeleteDialogOpen] = useState(false)
 	const [rescindDialogOpen, setRescindDialogOpen] = useState(false)
+	const [addendumDialogOpen, setAddendumDialogOpen] = useState(false)
+	const [sendBlockedDialogOpen, setSendBlockedDialogOpen] = useState(false)
+	const [sendBlockingIssues, setSendBlockingIssues] = useState<string[]>([])
 	const [message, setMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null)
 
 	usePageTitle(broadcast ? `Broadcast ${broadcast.id.slice(0, 8)}` : 'Broadcast Details')
@@ -113,8 +166,26 @@ export default function BroadcastDetailPage() {
 	const isEditable = broadcast.status === 'draft'
 
 	const handleSendNow = async () => {
+		const issues = getSendBlockingIssues(broadcast)
+		if (issues.length > 0) {
+			setSendBlockingIssues(issues)
+			setSendBlockedDialogOpen(true)
+			return
+		}
 		try {
-			await sendBroadcast.mutateAsync(broadcast.id)
+			const sendResult = await sendBroadcast.mutateAsync(broadcast.id)
+			if (sendResult.trackingSessionId) {
+				setMessage({ type: 'success', text: 'Broadcast sent — opening tracking session…' })
+				setTimeout(() => navigate(`/fleet-tracking/${sendResult.trackingSessionId}`), 1200)
+				return
+			}
+			if (sendResult.trackingError) {
+				setMessage({
+					type: 'error',
+					text: `Broadcast sent, but fleet tracking failed: ${sendResult.trackingError}`,
+				})
+				return
+			}
 			setMessage({ type: 'success', text: 'Broadcast queued for sending.' })
 			await refetch()
 		} catch (error) {
@@ -183,7 +254,18 @@ export default function BroadcastDetailPage() {
 									Edit Draft
 								</Button>
 							)}
-							{canRescind && (
+							{canRescind && broadcast.status === 'sent' && (
+								<Button
+									variant="primary"
+									size="sm"
+									onClick={() => setAddendumDialogOpen(true)}
+									showIcon={false}
+								>
+									<FilePlus2 className="h-4 w-4" />
+									Add Addendum
+								</Button>
+							)}
+							{canRescind && broadcast.status === 'sent' && (
 								<Button
 									variant="cancel"
 									size="sm"
@@ -360,6 +442,7 @@ export default function BroadcastDetailPage() {
 					)}
 
 					<RescindBroadcastDialog
+						broadcast={broadcast}
 						broadcastId={broadcast.id}
 						open={rescindDialogOpen}
 						onOpenChange={setRescindDialogOpen}
@@ -371,6 +454,51 @@ export default function BroadcastDetailPage() {
 							setMessage({ type: 'error', text: error.message })
 						}}
 					/>
+					<AddBroadcastAddendumDialog
+						broadcast={broadcast}
+						broadcastId={broadcast.id}
+						open={addendumDialogOpen}
+						onOpenChange={setAddendumDialogOpen}
+						onSuccess={async () => {
+							setMessage({ type: 'success', text: 'Broadcast addendum appended.' })
+							await refetch()
+						}}
+						onError={(error) => {
+							setMessage({ type: 'error', text: error.message })
+						}}
+					/>
+					<Dialog open={sendBlockedDialogOpen} onOpenChange={setSendBlockedDialogOpen}>
+						<DialogContent>
+							<DialogHeader>
+								<DialogTitle>Broadcast Cannot Be Sent</DialogTitle>
+								<DialogDescription>
+									This broadcast is missing required data and would send incomplete content.
+								</DialogDescription>
+							</DialogHeader>
+							<div className="space-y-2 text-sm">
+								<div className="font-medium text-foreground">Missing items:</div>
+								<ul className="list-disc pl-5 space-y-1 text-muted-foreground">
+									{sendBlockingIssues.map((issue) => (
+										<li key={issue}>{issue}</li>
+									))}
+								</ul>
+							</div>
+							<DialogFooter>
+								<Button variant="cancel" onClick={() => setSendBlockedDialogOpen(false)}>
+									Cancel
+								</Button>
+								<Button
+									variant="confirm"
+									onClick={() => {
+										setSendBlockedDialogOpen(false)
+										navigate(`/broadcasts/new?draftId=${broadcast.id}`)
+									}}
+								>
+									Open for Editing
+								</Button>
+							</DialogFooter>
+						</DialogContent>
+					</Dialog>
 				</div>
 			</Section>
 		</Container>

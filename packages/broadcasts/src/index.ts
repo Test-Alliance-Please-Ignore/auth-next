@@ -64,6 +64,8 @@ export interface TemplateFieldSchema {
 		| 'system_doctrine'
 		| 'system_staging'
 		| 'system_srp'
+		| 'system_fleet_name'
+		| 'system_fleet_commander'
 		| 'system_frogsiren'
 		| 'system_fleet_tracking'
 	required?: boolean
@@ -458,6 +460,12 @@ export interface Broadcasts {
 	 * @param rescindMessage - Optional message appended after the strikethrough content
 	 */
 	rescindBroadcast(broadcastId: string, userId: string, rescindMessage?: string): Promise<void>
+
+	/**
+	 * Append an addendum to a sent broadcast message.
+	 * @param addendumMessage - Message body appended as an addendum block
+	 */
+	addBroadcastAddendum(broadcastId: string, userId: string, addendumMessage: string): Promise<void>
 
 	/**
 	 * Get deliveries for a broadcast

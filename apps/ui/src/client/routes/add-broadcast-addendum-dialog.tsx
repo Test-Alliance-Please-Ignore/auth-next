@@ -1,4 +1,4 @@
-import { Ban } from 'lucide-react'
+import { FilePlus2 } from 'lucide-react'
 import { useState } from 'react'
 
 import { Button } from '@/components/ui/button'
@@ -12,7 +12,7 @@ import {
 } from '@/components/ui/dialog'
 import { Textarea } from '@/components/ui/textarea'
 import { renderBroadcastTemplateMessage } from '@/features/broadcasts/message-template-renderer'
-import { useRescindBroadcast } from '@/hooks/useBroadcasts'
+import { useAddBroadcastAddendum } from '@/hooks/useBroadcasts'
 
 import type { BroadcastWithDetails } from '@/lib/api'
 
@@ -91,22 +91,13 @@ function buildBaseMessage(broadcast: BroadcastWithDetails): string {
 	return convertUnixTimestampsForPreview(baseMessage)
 }
 
-function strikethroughLines(message: string): string {
-	return message
-		.split('\n')
-		.map((line) => (line.trim() ? `~~${line}~~` : line))
-		.join('\n')
-}
-
 function renderComposedMessageForLength(args: {
 	broadcast: BroadcastWithDetails
 	baseMessage: string
 	events: BroadcastMessageEvent[]
 }): string {
-	const rescindIndex = args.events.findIndex((event) => event.type === 'rescind')
-	const body = rescindIndex >= 0 ? strikethroughLines(args.baseMessage) : args.baseMessage
 	const sentFooter = buildSentFooter(args.broadcast)
-	const parts = [`${body}\n\n${sentFooter}`]
+	const parts = [`${args.baseMessage}\n\n${sentFooter}`]
 	for (const event of args.events) {
 		if (event.type === 'addendum') {
 			const addendumMessage = event.message?.trim() ?? ''
@@ -125,7 +116,7 @@ function renderComposedMessageForLength(args: {
 	return parts.join('\n\n')
 }
 
-interface RescindBroadcastDialogProps {
+interface AddBroadcastAddendumDialogProps {
 	broadcast?: BroadcastWithDetails
 	broadcastId: string
 	open: boolean
@@ -134,61 +125,59 @@ interface RescindBroadcastDialogProps {
 	onError?: (error: Error) => void
 }
 
-export function RescindBroadcastDialog({
+export function AddBroadcastAddendumDialog({
 	broadcast,
 	broadcastId,
 	open,
 	onOpenChange,
 	onSuccess,
 	onError,
-}: RescindBroadcastDialogProps) {
-	const rescindBroadcast = useRescindBroadcast()
-	const [rescindMessage, setRescindMessage] = useState('')
+}: AddBroadcastAddendumDialogProps) {
+	const addendum = useAddBroadcastAddendum()
+	const [addendumMessage, setAddendumMessage] = useState('')
 	const remaining =
 		broadcast
 			? (() => {
-					const rescindTimestamp = Math.floor(Date.now() / 1000)
+					const addendumTimestamp = Math.floor(Date.now() / 1000)
 					const baseMessage = buildBaseMessage(broadcast)
 					const existingEvents = getMessageEvents(broadcast.content as Record<string, unknown>)
 					const nextEvents: BroadcastMessageEvent[] = [
 						...existingEvents,
 						{
-							type: 'rescind',
+							type: 'addendum',
 							message: '',
-							createdAtUnix: rescindTimestamp,
+							createdAtUnix: addendumTimestamp,
 							createdByCharacterName: broadcast.createdByCharacterName,
 						},
 					]
-					const fixedLengthWithReasonPrefix = renderComposedMessageForLength({
+					const fixedLength = renderComposedMessageForLength({
 						broadcast,
 						baseMessage,
 						events: nextEvents,
 					}).length
 					return Math.max(
 						0,
-						DISCORD_MESSAGE_MAX_LENGTH -
-							fixedLengthWithReasonPrefix -
-							rescindMessage.trim().length
+						DISCORD_MESSAGE_MAX_LENGTH - fixedLength - addendumMessage.trim().length
 					)
 				})()
 			: null
 
 	const handleClose = () => {
 		onOpenChange(false)
-		setRescindMessage('')
+		setAddendumMessage('')
 	}
 
 	const handleConfirm = async () => {
 		try {
-			await rescindBroadcast.mutateAsync({
+			await addendum.mutateAsync({
 				id: broadcastId,
-				rescindMessage: rescindMessage.trim() || undefined,
+				addendumMessage: addendumMessage.trim(),
 			})
 			handleClose()
 			onSuccess?.()
 		} catch (error) {
 			handleClose()
-			onError?.(error instanceof Error ? error : new Error('Failed to rescind broadcast'))
+			onError?.(error instanceof Error ? error : new Error('Failed to add broadcast addendum'))
 		}
 	}
 
@@ -196,22 +185,19 @@ export function RescindBroadcastDialog({
 		<Dialog open={open} onOpenChange={onOpenChange}>
 			<DialogContent>
 				<DialogHeader>
-					<DialogTitle>Rescind Broadcast</DialogTitle>
+					<DialogTitle>Add Broadcast Addendum</DialogTitle>
 					<DialogDescription>
-						This will edit the Discord message to display the content as strikethrough text and mark
-						the broadcast as rescinded. This action cannot be undone.
+						This will edit the Discord message by appending a dated addendum block.
 					</DialogDescription>
 				</DialogHeader>
 				<div className="py-2">
-					<label className="text-sm font-medium mb-1 block">
-						Rescind message <span className="text-muted-foreground font-normal">(optional)</span>
-					</label>
+					<label className="text-sm font-medium mb-1 block">Addendum message</label>
 					<Textarea
-						placeholder="Explain why this broadcast is being rescinded..."
-						value={rescindMessage}
-						onChange={(e) => setRescindMessage(e.target.value)}
-						rows={3}
-						disabled={rescindBroadcast.isPending}
+						placeholder="Enter the addendum text to append..."
+						value={addendumMessage}
+						onChange={(e) => setAddendumMessage(e.target.value)}
+						rows={4}
+						disabled={addendum.isPending}
 						maxLength={remaining ?? undefined}
 					/>
 					{remaining !== null ? (
@@ -222,23 +208,23 @@ export function RescindBroadcastDialog({
 						</p>
 					) : null}
 					<p className="text-xs text-muted-foreground mt-1">
-						Appended after the strikethrough content in Discord.
+						This is required and will be appended with timestamp metadata.
 					</p>
 				</div>
 				<DialogFooter>
-					<Button variant="cancel" onClick={handleClose} disabled={rescindBroadcast.isPending}>
+					<Button variant="cancel" onClick={handleClose} disabled={addendum.isPending}>
 						Cancel
 					</Button>
 					<Button
-						variant="destructive"
+						variant="confirm"
 						onClick={handleConfirm}
-						disabled={remaining === 0 && rescindMessage.trim().length > 0}
-						loading={rescindBroadcast.isPending}
-						loadingText="Rescinding..."
+						disabled={addendumMessage.trim().length === 0 || remaining === 0}
+						loading={addendum.isPending}
+						loadingText="Adding..."
 						showIcon={false}
 					>
-						<Ban className="h-4 w-4" />
-						Rescind
+						<FilePlus2 className="h-4 w-4" />
+						Add Addendum
 					</Button>
 				</DialogFooter>
 			</DialogContent>

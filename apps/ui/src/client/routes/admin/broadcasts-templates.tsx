@@ -171,7 +171,6 @@ function deriveFieldSchemaFromTemplate(
 
 	const fleetTrackingField = existing.find(
 		(field) =>
-			field.type === 'system_fleet_tracking' &&
 			field.name === '__fleetTrackingEnabled'
 	)
 	if (fleetTrackingField) {
@@ -221,6 +220,20 @@ function getInvalidTemplateTags(messageTemplate: string): string[] {
 		invalid.push(tag)
 	}
 	return invalid
+}
+
+function templateContainsTokenName(messageTemplate: string, tokenName: string): boolean {
+	const normalized = tokenName.trim()
+	if (!normalized) return true
+	const derived = deriveFieldSchemaFromTemplate(messageTemplate, [])
+	return derived.some((field) => field.name === normalized)
+}
+
+function templateHasFleetTrackingRequiredTokens(messageTemplate: string): boolean {
+	return (
+		templateContainsTokenName(messageTemplate, 'fleetName') &&
+		templateContainsTokenName(messageTemplate, 'fleetCommander')
+	)
 }
 
 function TemplateTokenHelpPopover() {
@@ -518,9 +531,7 @@ export default function BroadcastTemplatesPage() {
 		(field) => field.type === 'system_frogsiren' && field.name === '__frogsirenEnabled'
 	)
 	const fleetTrackingEnabled = formData.fieldSchema.some(
-		(field) =>
-			field.type === 'system_fleet_tracking' &&
-			field.name === '__fleetTrackingEnabled'
+		(field) => field.name === '__fleetTrackingEnabled'
 	)
 
 	const resetForm = () => {
@@ -590,8 +601,7 @@ export default function BroadcastTemplatesPage() {
 	const setFleetTrackingEnabled = (enabled: boolean) => {
 		setFormData((current) => {
 			const without = current.fieldSchema.filter(
-				(field) =>
-					!(field.type === 'system_fleet_tracking' && field.name === '__fleetTrackingEnabled')
+				(field) => field.name !== '__fleetTrackingEnabled'
 			)
 			return {
 				...current,
@@ -617,6 +627,17 @@ export default function BroadcastTemplatesPage() {
 			setMessage({
 				type: 'error',
 				text: `Invalid template tag name(s): ${invalidTags.join(', ')}. Use only letters, numbers, "_" or "-".`,
+			})
+			setTimeout(() => setMessage(null), 5000)
+			return
+		}
+		if (
+			fleetTrackingEnabled &&
+			!templateHasFleetTrackingRequiredTokens(formData.messageTemplate)
+		) {
+			setMessage({
+				type: 'error',
+				text: 'Fleet tracking templates must include both {{<fleetName>}} and {{<fleetCommander>}} tokens.',
 			})
 			setTimeout(() => setMessage(null), 5000)
 			return
@@ -658,6 +679,17 @@ export default function BroadcastTemplatesPage() {
 			setMessage({
 				type: 'error',
 				text: `Invalid template tag name(s): ${invalidTags.join(', ')}. Use only letters, numbers, "_" or "-".`,
+			})
+			setTimeout(() => setMessage(null), 5000)
+			return
+		}
+		if (
+			fleetTrackingEnabled &&
+			!templateHasFleetTrackingRequiredTokens(formData.messageTemplate)
+		) {
+			setMessage({
+				type: 'error',
+				text: 'Fleet tracking templates must include both {{<fleetName>}} and {{<fleetCommander>}} tokens.',
 			})
 			setTimeout(() => setMessage(null), 5000)
 			return

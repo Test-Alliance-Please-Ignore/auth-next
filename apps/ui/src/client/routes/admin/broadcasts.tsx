@@ -1,7 +1,8 @@
-import { Ban, ExternalLink, Trash2 } from 'lucide-react'
+import { Ban, ExternalLink, FilePlus2, Trash2 } from 'lucide-react'
 import { useEffect, useState } from 'react'
 import { Link } from 'react-router-dom'
 
+import { AddBroadcastAddendumDialog } from '../add-broadcast-addendum-dialog'
 import { RescindBroadcastDialog } from '../rescind-broadcast-dialog'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
@@ -75,6 +76,7 @@ export default function AdminBroadcastsPage() {
 
 	const [deleteDialogOpen, setDeleteDialogOpen] = useState(false)
 	const [rescindDialogOpen, setRescindDialogOpen] = useState(false)
+	const [addendumDialogOpen, setAddendumDialogOpen] = useState(false)
 	const [selectedBroadcast, setSelectedBroadcast] = useState<Broadcast | null>(null)
 	const [message, setMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null)
 
@@ -101,6 +103,11 @@ export default function AdminBroadcastsPage() {
 	const handleRescindClick = (broadcast: Broadcast) => {
 		setSelectedBroadcast(broadcast)
 		setRescindDialogOpen(true)
+	}
+
+	const handleAddendumClick = (broadcast: Broadcast) => {
+		setSelectedBroadcast(broadcast)
+		setAddendumDialogOpen(true)
 	}
 
 	const handleDeleteConfirm = async () => {
@@ -243,25 +250,38 @@ export default function AdminBroadcastsPage() {
 												<TableCell className="sticky right-0 z-10 bg-card border-l border-border/50 text-right">
 													<div className="flex items-center justify-end gap-2">
 														<Link to={`/admin/broadcasts/${broadcast.id}`}>
-															<Button variant="ghost" size="sm" title="Show details">
+															<Button variant="ghost" size="icon" title="Show details" aria-label="Show details">
 																<ExternalLink className="h-4 w-4" />
 															</Button>
 														</Link>
 														{broadcast.status === 'sent' && (
+															<Button
+																variant="ghost"
+																size="icon"
+																onClick={() => handleAddendumClick(broadcast)}
+																title="Add addendum"
+																aria-label="Add addendum"
+															>
+																<FilePlus2 className="h-4 w-4 text-primary" />
+															</Button>
+														)}
+														{broadcast.status === 'sent' && (
 														<Button
 															variant="ghost"
-															size="sm"
+															size="icon"
 															onClick={() => handleRescindClick(broadcast)}
 															title="Rescind broadcast"
+															aria-label="Rescind broadcast"
 														>
 															<Ban className="h-4 w-4 text-warning" />
 														</Button>
 													)}
 													<Button
 														variant="ghost"
-														size="sm"
+														size="icon"
 														onClick={() => handleDeleteClick(broadcast)}
 														title="Delete broadcast"
+														aria-label="Delete broadcast"
 													>
 														<Trash2 className="h-4 w-4 text-destructive" />
 													</Button>
@@ -340,6 +360,22 @@ export default function AdminBroadcastsPage() {
 				}}
 				onSuccess={() => {
 					setMessage({ type: 'success', text: 'Broadcast rescinded.' })
+					setTimeout(() => setMessage(null), 3000)
+				}}
+				onError={(error) => {
+					setMessage({ type: 'error', text: error.message })
+					setTimeout(() => setMessage(null), 5000)
+				}}
+			/>
+			<AddBroadcastAddendumDialog
+				broadcastId={selectedBroadcast?.id ?? ''}
+				open={addendumDialogOpen}
+				onOpenChange={(open) => {
+					setAddendumDialogOpen(open)
+					if (!open) setSelectedBroadcast(null)
+				}}
+				onSuccess={() => {
+					setMessage({ type: 'success', text: 'Broadcast addendum appended.' })
 					setTimeout(() => setMessage(null), 3000)
 				}}
 				onError={(error) => {

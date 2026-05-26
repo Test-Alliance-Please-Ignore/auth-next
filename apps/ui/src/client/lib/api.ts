@@ -2924,6 +2924,10 @@ export class ApiClient {
 		return this.post(`/broadcasts/${id}/rescind`, { rescindMessage })
 	}
 
+	async addBroadcastAddendum(id: string, addendumMessage: string): Promise<{ success: boolean }> {
+		return this.post(`/broadcasts/${id}/addendum`, { addendumMessage })
+	}
+
 	async getBroadcastDeliveries(broadcastId: string): Promise<BroadcastDelivery[]> {
 		return this.get(`/broadcasts/${broadcastId}/deliveries`)
 	}

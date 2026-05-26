@@ -1,8 +1,10 @@
 import { Hono } from 'hono'
 
+import { and, eq } from '@repo/db-utils'
 import { ROLE_CORE_ALLIANCE_MEMBER } from '@repo/core'
 import { getStub } from '@repo/do-utils'
 import { getBroadcastSystemTemplateToken } from '@repo/broadcasts'
+import { createDb, schema } from '../db'
 
 import {
 	getCachedUserPermissions,
@@ -41,7 +43,12 @@ type ParsedTemplateToken =
 			normalizedToken: string
 			name: string
 			label: string
-			type: 'system_doctrine' | 'system_staging' | 'system_srp'
+			type:
+				| 'system_doctrine'
+				| 'system_staging'
+				| 'system_srp'
+				| 'system_fleet_name'
+				| 'system_fleet_commander'
 			allowCustom?: boolean
 	  }
 	| {
@@ -195,6 +202,12 @@ function getTemplateFieldSchemaNames(fieldSchema: unknown): string[] {
 		.filter((name): name is string => typeof name === 'string')
 }
 
+function hasFleetTrackingRequiredTokens(messageTemplate: string): boolean {
+	const parsed = parseTemplateMessage(messageTemplate)
+	const tokenNames = new Set(parsed.tokens.map((token) => token.name))
+	return tokenNames.has('fleetName') && tokenNames.has('fleetCommander')
+}
+
 function toTemplateFieldLabel(name: string): string {
 	const normalized = name
 		.replace(/[_-]+/g, ' ')
@@ -222,6 +235,8 @@ function deriveTemplateFieldSchema(
 		| 'system_doctrine'
 		| 'system_staging'
 		| 'system_srp'
+		| 'system_fleet_name'
+		| 'system_fleet_commander'
 		| 'system_frogsiren'
 		| 'system_fleet_tracking'
 	required: boolean
@@ -271,6 +286,8 @@ function deriveTemplateFieldSchema(
 			| 'system_doctrine'
 			| 'system_staging'
 			| 'system_srp'
+			| 'system_fleet_name'
+			| 'system_fleet_commander'
 			| 'system_frogsiren'
 			| 'system_fleet_tracking' = token.type
 		if (
@@ -280,6 +297,8 @@ function deriveTemplateFieldSchema(
 			existing?.type === 'system_doctrine' ||
 			existing?.type === 'system_staging' ||
 			existing?.type === 'system_srp' ||
+			existing?.type === 'system_fleet_name' ||
+			existing?.type === 'system_fleet_commander' ||
 			existing?.type === 'system_frogsiren' ||
 			existing?.type === 'system_fleet_tracking'
 		) {
@@ -301,6 +320,8 @@ function deriveTemplateFieldSchema(
 				| 'system_doctrine'
 				| 'system_staging'
 				| 'system_srp'
+				| 'system_fleet_name'
+				| 'system_fleet_commander'
 				| 'system_frogsiren'
 				| 'system_fleet_tracking'
 			required: boolean
@@ -346,11 +367,8 @@ function deriveTemplateFieldSchema(
 	const fleetTrackingField = Array.isArray(existingFieldSchema)
 		? existingFieldSchema.find((field) => {
 				if (!field || typeof field !== 'object') return false
-				const typed = field as { type?: unknown; name?: unknown }
-				return (
-					typed.type === 'system_fleet_tracking' &&
-					typed.name === '__fleetTrackingEnabled'
-				)
+				const typed = field as { name?: unknown }
+				return typed.name === '__fleetTrackingEnabled'
 			})
 		: null
 
@@ -407,6 +425,47 @@ function buildBroadcastPermissionUrns(
 		sendUrn: `urn:broadcasts:${entityNamespace}:${targetName}:send`,
 		manageUrn: `urn:broadcasts:${entityNamespace}:${targetName}:manage`,
 	}
+}
+
+function isBlankBroadcastValue(value: unknown): boolean {
+	if (value === null || value === undefined) return true
+	if (typeof value === 'string') return value.trim().length === 0
+	if (Array.isArray(value)) return value.length === 0
+	return false
+}
+
+function parseEnabledFlag(value: unknown): boolean {
+	if (typeof value === 'boolean') return value
+	if (typeof value === 'number') return value !== 0
+	if (typeof value === 'string') {
+		const normalized = value.trim().toLowerCase()
+		return ['true', '1', 'yes', 'enabled', 'on'].includes(normalized)
+	}
+	return false
+}
+
+function getSendBlockingIssues(broadcast: {
+	content: Record<string, unknown>
+	template?: {
+		fieldSchema?: Array<{ name: string; label?: string; required?: boolean }>
+	} | null
+}): string[] {
+	const issues: string[] = []
+	const fieldSchema = broadcast.template?.fieldSchema ?? []
+
+	for (const field of fieldSchema) {
+		if (!field?.required) continue
+		if (isBlankBroadcastValue(broadcast.content[field.name])) {
+			issues.push(`Required field missing: ${field.label || field.name}`)
+		}
+	}
+
+	const fleetTrackingEnabled = parseEnabledFlag(broadcast.content.__fleetTrackingEnabled)
+	if (fleetTrackingEnabled && isBlankBroadcastValue(broadcast.content.__fleetTrackingCharacterId)) {
+		issues.push('Fleet tracking is enabled but no tracking character is selected.')
+	}
+
+	return issues
 }
 
 async function getBroadcastPermissionCategoryId(groupsStub: Groups): Promise<string> {
@@ -922,6 +981,18 @@ broadcasts.post('/templates', async (c) => {
 			400
 		)
 	}
+	const normalizedFieldSchema = deriveTemplateFieldSchema(data.messageTemplate, data.fieldSchema)
+	const fleetTrackingEnabled = normalizedFieldSchema.some(
+		(field) => field.name === '__fleetTrackingEnabled'
+	)
+	if (fleetTrackingEnabled && !hasFleetTrackingRequiredTokens(data.messageTemplate)) {
+		return c.json(
+			{
+				error: 'Fleet tracking templates must include both {{<fleetName>}} and {{<fleetCommander>}} tokens.',
+			},
+			400
+		)
+	}
 
 	const broadcastsStub = getStub<Broadcasts>(c.env.BROADCASTS, 'default')
 	const targets = await Promise.all(targetIds.map((targetId) => broadcastsStub.getTarget(targetId, user.id)))
@@ -955,10 +1026,7 @@ broadcasts.post('/templates', async (c) => {
 			targetType,
 			displayOrder,
 			targetIds,
-			fieldSchema: deriveTemplateFieldSchema(
-				data.messageTemplate,
-				data.fieldSchema
-			),
+			fieldSchema: normalizedFieldSchema,
 			messageTemplate: data.messageTemplate,
 		},
 		user.id
@@ -1048,6 +1116,20 @@ broadcasts.patch('/templates/:id', async (c) => {
 
 	const shouldNormalizeFieldSchema =
 		data.messageTemplate !== undefined || data.fieldSchema !== undefined
+	const normalizedFieldSchema = shouldNormalizeFieldSchema
+		? deriveTemplateFieldSchema(nextMessageTemplate, data.fieldSchema ?? template.fieldSchema)
+		: undefined
+	if (
+		normalizedFieldSchema?.some((field) => field.name === '__fleetTrackingEnabled') &&
+		!hasFleetTrackingRequiredTokens(nextMessageTemplate)
+	) {
+		return c.json(
+			{
+				error: 'Fleet tracking templates must include both {{<fleetName>}} and {{<fleetCommander>}} tokens.',
+			},
+			400
+		)
+	}
 
 	const updatePayload: Parameters<Broadcasts['updateTemplate']>[1] = {
 		targetIds: nextTargetIds,
@@ -1065,10 +1147,7 @@ broadcasts.patch('/templates/:id', async (c) => {
 		updatePayload.messageTemplate = data.messageTemplate
 	}
 	if (shouldNormalizeFieldSchema) {
-		updatePayload.fieldSchema = deriveTemplateFieldSchema(
-			nextMessageTemplate,
-			data.fieldSchema ?? template.fieldSchema
-		)
+		updatePayload.fieldSchema = normalizedFieldSchema
 	}
 
 	const updated = await broadcastsStub.updateTemplate(
@@ -1382,13 +1461,75 @@ broadcasts.post('/:id/send', async (c) => {
 		return c.json({ error: 'Permission denied' }, 403)
 	}
 
-	// Resolve the fleet-tracking gate at the route layer. The DO uses this flag
-	// to decide whether the system_fleet_tracking side effect is allowed to run.
+	// Backend preflight validation to prevent bypass via direct API calls.
+	// 1) Required template fields must be present.
+	// 2) Fleet tracking action prerequisites must be valid at send-time.
+	const issues = getSendBlockingIssues({
+		content: broadcast.content,
+		template: broadcast.template,
+	})
+	if (issues.length > 0) {
+		return c.json(
+			{
+				error: 'Broadcast is missing required data.',
+				issues,
+			},
+			400
+		)
+	}
 	const userPermissions = await getCachedUserPermissions(c.env, user.id)
 	const canStartTracking =
 		user.is_admin ||
 		userPermissions.some((p) => p.urn === 'urn:fleet-tracking:create')
+	if (parseEnabledFlag(broadcast.content.__fleetTrackingEnabled) && !canStartTracking) {
+		return c.json(
+			{
+				error: 'You do not have permission to start fleet tracking.',
+				issues: ['Missing permission: urn:fleet-tracking:create'],
+			},
+			403
+		)
+	}
+	if (parseEnabledFlag(broadcast.content.__fleetTrackingEnabled)) {
+		const selectedCharacterId = String(broadcast.content.__fleetTrackingCharacterId ?? '').trim()
+		const db = createDb(c.env.DATABASE_URL)
+		const [character] = await db
+			.select({
+				characterId: schema.userCharacters.characterId,
+				hasValidToken: schema.userCharacters.hasValidToken,
+				isDeleted: schema.userCharacters.isDeleted,
+			})
+			.from(schema.userCharacters)
+			.where(
+				and(
+					eq(schema.userCharacters.userId, user.id),
+					eq(schema.userCharacters.characterId, selectedCharacterId)
+				)
+			)
+			.limit(1)
 
+		if (!character || character.isDeleted) {
+			return c.json(
+				{
+					error: 'Selected fleet tracking character is no longer valid for this user.',
+					issues: ['Fleet tracking character is missing or deleted.'],
+				},
+				400
+			)
+		}
+		if (!character.hasValidToken) {
+			return c.json(
+				{
+					error: 'Selected fleet tracking character does not have a valid ESI token.',
+					issues: ['Fleet tracking character must have a valid ESI token.'],
+				},
+				400
+			)
+		}
+	}
+
+	// Resolve the fleet-tracking gate at the route layer. The DO uses this flag
+	// to decide whether the system_fleet_tracking side effect is allowed to run.
 	// Send broadcast
 	const result = await broadcastsStub.sendBroadcast(broadcastId, user.id, {
 		canStartTracking,
@@ -1467,6 +1608,50 @@ broadcasts.post('/:id/rescind', async (c) => {
 	const rescindMessage = typeof body?.rescindMessage === 'string' ? body.rescindMessage : undefined
 
 	await broadcastsStub.rescindBroadcast(broadcastId, user.id, rescindMessage)
+	return c.json({ success: true })
+})
+
+/**
+ * Add an addendum to a sent/rescinded broadcast
+ * POST /api/broadcasts/:id/addendum
+ */
+broadcasts.post('/:id/addendum', async (c) => {
+	const user = c.get('user')!
+	const broadcastId = c.req.param('id')
+
+	const broadcastsStub = getStub<Broadcasts>(c.env.BROADCASTS, 'default')
+	const broadcast = await broadcastsStub.getBroadcast(broadcastId, user.id)
+
+	if (!broadcast) {
+		return c.json({ error: 'Broadcast not found' }, 404)
+	}
+
+	const isOwner = broadcast.createdBy === user.id
+	const allowed = user.is_admin
+		? true
+		: isOwner ||
+			canAccessBroadcastPermissionId(
+				broadcast.target.managePermissionId,
+				'manage',
+				await getUserBroadcastPermissionContext(c.env, user.id)
+			)
+
+	if (!allowed) {
+		return c.json({ error: 'Permission denied' }, 403)
+	}
+
+	if (broadcast.status !== 'sent') {
+		return c.json({ error: 'Only sent broadcasts can receive an addendum' }, 400)
+	}
+
+	const body = await c.req.json().catch(() => ({}))
+	const addendumMessage =
+		typeof body?.addendumMessage === 'string' ? body.addendumMessage.trim() : ''
+	if (!addendumMessage) {
+		return c.json({ error: 'addendumMessage is required' }, 400)
+	}
+
+	await broadcastsStub.addBroadcastAddendum(broadcastId, user.id, addendumMessage)
 	return c.json({ success: true })
 })
 

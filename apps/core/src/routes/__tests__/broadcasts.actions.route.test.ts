@@ -10,6 +10,7 @@ import broadcastsRoutes from '../broadcasts'
 import type { BroadcastWithDetails } from '@repo/broadcasts'
 import type { UserPermission } from '@repo/groups'
 import type { SessionUser } from '../../context'
+import type { BroadcastTemplate } from '@repo/broadcasts'
 
 vi.mock('@repo/do-utils', () => ({
 	getStub: vi.fn(),
@@ -91,6 +92,24 @@ function makeBroadcast(overrides: Partial<BroadcastWithDetails> = {}): Broadcast
 	}
 }
 
+function makeTemplate(overrides: Partial<BroadcastTemplate> = {}): BroadcastTemplate {
+	const now = new Date().toISOString()
+	return {
+		id: 'template-1',
+		name: 'Template 1',
+		description: null,
+		targetType: 'discord_channel',
+		displayOrder: 0,
+		targetIds: ['target-1'],
+		fieldSchema: [{ name: 'message', label: 'Message', type: 'text', required: true }],
+		messageTemplate: '{{message}}',
+		createdBy: 'creator-1',
+		createdAt: now,
+		updatedAt: now,
+		...overrides,
+	}
+}
+
 function createApp(user?: SessionUser) {
 	const app = new Hono<{
 		Bindings: any
@@ -111,8 +130,10 @@ function createApp(user?: SessionUser) {
 function makeBroadcastsStub() {
 	return {
 		getBroadcast: vi.fn(),
+		sendBroadcast: vi.fn(),
 		deleteBroadcast: vi.fn().mockResolvedValue(undefined),
 		rescindBroadcast: vi.fn().mockResolvedValue(undefined),
+		addBroadcastAddendum: vi.fn().mockResolvedValue(undefined),
 	}
 }
 
@@ -210,5 +231,114 @@ describe('broadcasts action permission gates', () => {
 			'user-manage',
 			'cleanup'
 		)
+	})
+
+	it('blocks send when fleet tracking is requested without tracking-create permission', async () => {
+		const app = createApp(makeUser({ id: 'user-send-only' }))
+		broadcastsStub.getBroadcast.mockResolvedValue(
+			makeBroadcast({
+				content: {
+					message: 'hello',
+					__fleetTrackingEnabled: 'true',
+					__fleetTrackingCharacterId: '1234',
+				},
+				template: {
+					...makeTemplate(),
+					fieldSchema: [
+						{ name: 'message', label: 'Message', type: 'text', required: true },
+						{
+							name: '__fleetTrackingEnabled',
+							label: 'Fleet Tracking',
+							type: 'system_fleet_tracking',
+							required: false,
+						},
+					],
+				},
+			})
+		)
+		getCachedUserPermissionsMock.mockResolvedValue([
+			makePermission('perm-target-send', 'urn:broadcasts:alliance:ops:send'),
+		])
+
+		const response = await app.request('/api/broadcasts/broadcast-1/send', { method: 'POST' }, env)
+
+		expect(response.status).toBe(403)
+		expect(await response.json()).toEqual(
+			expect.objectContaining({
+				error: 'You do not have permission to start fleet tracking.',
+			})
+		)
+		expect(broadcastsStub.sendBroadcast).not.toHaveBeenCalled()
+	})
+
+	it('allows addendum for sent broadcast with owner access', async () => {
+		const app = createApp(makeUser({ id: 'owner-1' }))
+		broadcastsStub.getBroadcast.mockResolvedValue(
+			makeBroadcast({
+				status: 'sent',
+				createdBy: 'owner-1',
+			})
+		)
+
+		const response = await app.request(
+			'/api/broadcasts/broadcast-1/addendum',
+			{ method: 'POST', body: JSON.stringify({ addendumMessage: 'Additional context' }) },
+			env
+		)
+
+		expect(response.status).toBe(200)
+		expect(broadcastsStub.addBroadcastAddendum).toHaveBeenCalledWith(
+			'broadcast-1',
+			'owner-1',
+			'Additional context'
+		)
+	})
+
+	it('rejects addendum for rescinded broadcast', async () => {
+		const app = createApp(makeUser({ id: 'owner-1' }))
+		broadcastsStub.getBroadcast.mockResolvedValue(
+			makeBroadcast({
+				status: 'rescinded',
+				createdBy: 'owner-1',
+			})
+		)
+
+		const response = await app.request(
+			'/api/broadcasts/broadcast-1/addendum',
+			{ method: 'POST', body: JSON.stringify({ addendumMessage: 'Should fail' }) },
+			env
+		)
+
+		expect(response.status).toBe(400)
+		expect(await response.json()).toEqual(
+			expect.objectContaining({
+				error: 'Only sent broadcasts can receive an addendum',
+			})
+		)
+		expect(broadcastsStub.addBroadcastAddendum).not.toHaveBeenCalled()
+	})
+
+	it('rejects rescind for already rescinded broadcast', async () => {
+		const app = createApp(makeUser({ id: 'owner-1' }))
+		broadcastsStub.getBroadcast.mockResolvedValue(
+			makeBroadcast({
+				status: 'rescinded',
+				createdBy: 'owner-1',
+			})
+		)
+
+		const response = await app.request(
+			'/api/broadcasts/broadcast-1/rescind',
+			{ method: 'POST', body: JSON.stringify({ rescindMessage: 'Too late' }) },
+			env
+		)
+
+		expect(response.status).toBe(400)
+		expect(await response.json()).toEqual(
+			expect.objectContaining({
+				error: 'Only sent broadcasts can be rescinded',
+			})
+		)
+		expect(broadcastsStub.rescindBroadcast).not.toHaveBeenCalled()
 	})
 })

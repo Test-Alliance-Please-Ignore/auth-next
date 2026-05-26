@@ -32,6 +32,7 @@ import {
 import { useAuth } from '@/hooks/useAuth'
 import { useConfirmationDialog } from '@/hooks/useConfirmationDialog'
 import { usePageTitle } from '@/hooks/usePageTitle'
+import { useUserPermissions } from '@/hooks/useUserPermissions'
 import { useDoctrines, useStagingSystems } from '@/features/doctrines/hooks'
 import {
 	DOCTRINE_READ_MOTD_VALUE,
@@ -40,6 +41,10 @@ import {
 	SystemDoctrineField,
 } from '@/features/broadcasts/components/system-doctrine-field'
 import { SystemFleetTrackingField } from '@/features/broadcasts/components/system-fleet-tracking-field'
+import {
+	FLEET_COMMANDER_CUSTOM_VALUE,
+	SystemFleetCommanderField,
+} from '@/features/broadcasts/components/system-fleet-commander-field'
 import { SystemFrogsirenField } from '@/features/broadcasts/components/system-frogsiren-field'
 import { SystemSrpField } from '@/features/broadcasts/components/system-srp-field'
 import { generateSrpTokenAtFormLoad } from '@/features/broadcasts/srp-token-generator'
@@ -197,6 +202,71 @@ function parseBooleanField(value: string | undefined, defaultValue: boolean): bo
 	return defaultValue
 }
 
+export function resolveFleetCommanderSelectionFromFields(args: {
+	characters: Array<{ characterId: string; characterName: string; hasValidToken: boolean }>
+	mainCharacterId?: string | null
+	value: string
+	characterId: string
+}): { selection: string; value: string; trackingCharacterId: string; trackingCharacterName: string } {
+	const validCharacters = args.characters.filter((character) => character.hasValidToken)
+	const selectedById = validCharacters.find((character) => character.characterId === args.characterId)
+	if (selectedById) {
+		return {
+			selection: selectedById.characterId,
+			value: selectedById.characterName,
+			trackingCharacterId: selectedById.characterId,
+			trackingCharacterName: selectedById.characterName,
+		}
+	}
+
+	const selectedByName = validCharacters.find((character) => character.characterName === args.value)
+	if (selectedByName) {
+		return {
+			selection: selectedByName.characterId,
+			value: selectedByName.characterName,
+			trackingCharacterId: selectedByName.characterId,
+			trackingCharacterName: selectedByName.characterName,
+		}
+	}
+	if ((args.value ?? '').trim().length > 0) {
+		return {
+			selection: FLEET_COMMANDER_CUSTOM_VALUE,
+			value: args.value,
+			trackingCharacterId: '',
+			trackingCharacterName: '',
+		}
+	}
+
+	const mainCharacter = validCharacters.find(
+		(character) => character.characterId === (args.mainCharacterId ?? '')
+	)
+	if (mainCharacter) {
+		return {
+			selection: mainCharacter.characterId,
+			value: mainCharacter.characterName,
+			trackingCharacterId: mainCharacter.characterId,
+			trackingCharacterName: mainCharacter.characterName,
+		}
+	}
+
+	const firstCharacter = validCharacters[0]
+	if (firstCharacter) {
+		return {
+			selection: firstCharacter.characterId,
+			value: firstCharacter.characterName,
+			trackingCharacterId: firstCharacter.characterId,
+			trackingCharacterName: firstCharacter.characterName,
+		}
+	}
+
+	return {
+		selection: FLEET_COMMANDER_CUSTOM_VALUE,
+		value: args.value,
+		trackingCharacterId: '',
+		trackingCharacterName: '',
+	}
+}
+
 function wrapWithFrogsirenBanner(message: string): string {
 	const banner = Array.from({ length: 16 }, () => FROGSIREN_EMOTE).join(' ')
 	return `${banner}\n\n${message}\n\n${banner}`
@@ -230,6 +300,7 @@ export default function NewBroadcastPage() {
 	const sendBroadcast = useSendBroadcast()
 	const updateBroadcast = useUpdateBroadcast()
 	const { user } = useAuth()
+	const { hasPermission, isAdmin } = useUserPermissions()
 	const { requestConfirmation, confirmationDialog } = useConfirmationDialog()
 	const { data: draftBroadcast, isLoading: draftLoading } = useBroadcast(draftId)
 
@@ -321,15 +392,7 @@ export default function NewBroadcastPage() {
 	// Get selected template object
 	const selectedTemplate =
 		selectedTemplateId === 'custom' ? null : templates?.find((t) => t.id === selectedTemplateId)
-	const selectedTemplatePreview = selectedTemplate
-		? [
-				templatePrefixText.trim(),
-				renderBroadcastTemplateMessage(selectedTemplate.messageTemplate, templateFields, false),
-				templateDefaultText.trim(),
-			]
-				.filter(Boolean)
-				.join('\n\n')
-		: ''
+	const canCreateFleetTracking = isAdmin || hasPermission('urn:fleet-tracking:create')
 	const senderCharacterName =
 		user?.characters.find((character) => character.characterId === user.mainCharacterId)?.characterName ??
 		'Unknown Sender'
@@ -428,6 +491,21 @@ export default function NewBroadcastPage() {
 				if (field.type === 'system_fleet_tracking') {
 					initialFields.__fleetTrackingEnabled = 'false'
 					initialFields.__fleetTrackingCharacterId = ''
+					initialFields.__fleetTrackingCharacterName = ''
+					return
+				}
+
+				if (field.type === 'system_fleet_commander') {
+					const fleetCommanderState = resolveFleetCommanderSelectionFromFields({
+						characters: user?.characters ?? [],
+						mainCharacterId: user?.mainCharacterId,
+						value: '',
+						characterId: '',
+					})
+					initialSelections[field.name] = fleetCommanderState.selection
+					initialFields[field.name] = fleetCommanderState.value
+					initialFields.__fleetTrackingCharacterId = fleetCommanderState.trackingCharacterId
+					initialFields.__fleetTrackingCharacterName = fleetCommanderState.trackingCharacterName
 					return
 				}
 
@@ -438,7 +516,7 @@ export default function NewBroadcastPage() {
 			setTemplatePrefixText('')
 			setTemplateDefaultText('')
 		}
-	}, [stagingSystems, templates])
+	}, [stagingSystems, templates, user?.characters, user?.mainCharacterId])
 
 	const updateTemplateField = (fieldName: string, value: string) => {
 		setTemplateFields((current) => ({
@@ -552,13 +630,68 @@ export default function NewBroadcastPage() {
 					updateTemplateField('__fleetTrackingCharacterId', '')
 					changed = true
 				}
+				if (templateFields.__fleetTrackingCharacterName === undefined) {
+					updateTemplateField('__fleetTrackingCharacterName', '')
+					changed = true
+				}
+			}
+
+			if (field.type === 'system_fleet_commander') {
+				const fleetCommanderState = resolveFleetCommanderSelectionFromFields({
+					characters: user?.characters ?? [],
+					mainCharacterId: user?.mainCharacterId,
+					value: templateFields[field.name] ?? '',
+					characterId: templateFields.__fleetTrackingCharacterId ?? '',
+				})
+				if ((templateFieldSelections[field.name] ?? '') !== fleetCommanderState.selection) {
+					nextSelections[field.name] = fleetCommanderState.selection
+					changed = true
+				}
+				if ((templateFields[field.name] ?? '') !== fleetCommanderState.value) {
+					updateTemplateField(field.name, fleetCommanderState.value)
+					changed = true
+				}
+				if (
+					(templateFields.__fleetTrackingCharacterId ?? '') !==
+					fleetCommanderState.trackingCharacterId
+				) {
+					updateTemplateField(
+						'__fleetTrackingCharacterId',
+						fleetCommanderState.trackingCharacterId
+					)
+					changed = true
+				}
+				if (
+					(templateFields.__fleetTrackingCharacterName ?? '') !==
+					fleetCommanderState.trackingCharacterName
+				) {
+					updateTemplateField(
+						'__fleetTrackingCharacterName',
+						fleetCommanderState.trackingCharacterName
+					)
+					changed = true
+				}
+				if (
+					fleetCommanderState.selection === FLEET_COMMANDER_CUSTOM_VALUE &&
+					parseBooleanField(templateFields.__fleetTrackingEnabled, false)
+				) {
+					updateTemplateField('__fleetTrackingEnabled', 'false')
+					changed = true
+				}
 			}
 		}
 
 		if (changed) {
 			setTemplateFieldSelections(nextSelections)
 		}
-	}, [doctrines, selectedTemplate, templateFieldSelections, templateFields])
+	}, [
+		doctrines,
+		selectedTemplate,
+		templateFieldSelections,
+		templateFields,
+		user?.characters,
+		user?.mainCharacterId,
+	])
 
 	useEffect(() => {
 		if (isEditMode || !selectedTargetId || !templates || templates.length === 0) return
@@ -579,6 +712,12 @@ export default function NewBroadcastPage() {
 
 		handleTemplateChange(templates[0]!.id)
 	}, [handleTemplateChange, isEditMode, selectedTargetId, selectedTemplateId, templates])
+
+	useEffect(() => {
+		if (canCreateFleetTracking) return
+		if ((templateFields.__fleetTrackingEnabled ?? '').toLowerCase() !== 'true') return
+		updateTemplateField('__fleetTrackingEnabled', 'false')
+	}, [canCreateFleetTracking, templateFields.__fleetTrackingEnabled])
 
 	const buildBroadcastData = () => {
 		if (!selectedTarget) throw new Error('No target selected')
@@ -874,10 +1013,10 @@ export default function NewBroadcastPage() {
 
 							{/* Custom Message or Template Fields */}
 							{selectedTemplateId === 'custom' ? (
-								<div className="grid gap-4 [grid-template-areas:'preview''form'] lg:[grid-template-areas:'form_preview'] lg:grid-cols-2 lg:items-start">
-									<div className="[grid-area:preview] space-y-2 lg:sticky lg:top-4">
+								<div className="grid gap-4 [grid-template-areas:'preview''form'] lg:[grid-template-areas:'form_preview'] lg:grid-cols-2 lg:items-stretch">
+									<div className="[grid-area:preview] space-y-2 lg:self-stretch">
 										<Label className="text-sm font-medium">Preview</Label>
-										<div className="rounded-md border border-border bg-muted/20 p-3 text-sm overflow-y-auto h-[16rem]">
+										<div className="rounded-md border border-border bg-muted/20 p-3 text-sm overflow-y-auto min-h-[16rem] h-full">
 											{customMessage.trim() ? (
 												renderDiscordContentValue(customMessage, 'preview')
 											) : (
@@ -904,12 +1043,12 @@ export default function NewBroadcastPage() {
 									</div>
 								</div>
 							) : selectedTemplate ? (
-								<div className="grid gap-4 [grid-template-areas:'preview''form'] lg:[grid-template-areas:'form_preview'] lg:grid-cols-2 lg:items-start">
-									<div className="[grid-area:preview] space-y-2 lg:sticky lg:top-4">
+								<div className="grid gap-4 [grid-template-areas:'preview''form'] lg:[grid-template-areas:'form_preview'] lg:grid-cols-2 lg:items-stretch">
+									<div className="[grid-area:preview] space-y-2 lg:self-stretch">
 										<Label className="text-sm font-medium">Preview</Label>
-										<div className="rounded-md border border-border bg-muted/20 p-3 text-sm overflow-y-auto h-[16rem]">
-											{selectedTemplatePreview.trim() ? (
-												renderDiscordContentValue(selectedTemplatePreview, 'preview')
+										<div className="rounded-md border border-border bg-muted/20 p-3 text-sm overflow-y-auto min-h-[16rem] h-full">
+											{renderedOutboundMessage.trim() ? (
+												renderDiscordContentValue(renderedOutboundMessage, 'preview')
 											) : (
 												<span className="text-muted-foreground italic">
 													Preview will appear here…
@@ -1008,6 +1147,46 @@ export default function NewBroadcastPage() {
 																	updateTemplateField(field.name, value)
 																}
 															/>
+														) : field.type === 'system_fleet_commander' ? (
+															<SystemFleetCommanderField
+																fieldName={field.name}
+																fieldLabel={field.label}
+																required={field.required}
+																selection={
+																	templateFieldSelections[field.name] ??
+																	FLEET_COMMANDER_CUSTOM_VALUE
+																}
+																value={templateFields[field.name] ?? ''}
+																characters={(user?.characters ?? [])
+																	.filter((character) => character.hasValidToken)
+																	.map((character) => ({
+																		characterId: character.characterId,
+																		characterName: character.characterName,
+																	}))}
+																onSelectionChange={(value) => {
+																	updateTemplateFieldSelection(field.name, value)
+																	if (value === FLEET_COMMANDER_CUSTOM_VALUE) {
+																		updateTemplateField('__fleetTrackingEnabled', 'false')
+																		updateTemplateField('__fleetTrackingCharacterId', '')
+																		updateTemplateField('__fleetTrackingCharacterName', '')
+																		return
+																	}
+																	const selectedCharacter = (user?.characters ?? []).find(
+																		(character) => character.characterId === value
+																	)
+																	const nextName = selectedCharacter?.characterName ?? ''
+																	updateTemplateField(field.name, nextName)
+																	updateTemplateField(
+																		'__fleetTrackingCharacterId',
+																		selectedCharacter?.characterId ?? ''
+																	)
+																	updateTemplateField(
+																		'__fleetTrackingCharacterName',
+																		nextName
+																	)
+																}}
+																onValueChange={(value) => updateTemplateField(field.name, value)}
+															/>
 														) : (
 															<>
 																<Label htmlFor={field.name}>
@@ -1077,31 +1256,39 @@ export default function NewBroadcastPage() {
 												style={{ minHeight: '2.5rem' }}
 											/>
 										</div>
-										{selectedTemplate.fieldSchema.some(
+										{canCreateFleetTracking &&
+										selectedTemplate.fieldSchema.some(
 											(field) => field.type === 'system_fleet_tracking'
 										) && (
+											(() => {
+												const fleetCommanderField = selectedTemplate.fieldSchema.find(
+													(field) => field.type === 'system_fleet_commander'
+												)
+												const fleetCommanderSelection = fleetCommanderField
+													? (templateFieldSelections[fleetCommanderField.name] ??
+														FLEET_COMMANDER_CUSTOM_VALUE)
+													: FLEET_COMMANDER_CUSTOM_VALUE
+												const fleetTrackingDisabled =
+													fleetCommanderSelection === FLEET_COMMANDER_CUSTOM_VALUE ||
+													(templateFields.__fleetTrackingCharacterId ?? '').trim().length === 0
+												const fleetTrackingDisabledReason = fleetTrackingDisabled
+													? 'Select a valid Fleet Commander character to enable fleet tracking.'
+													: undefined
+												return (
 											<SystemFleetTrackingField
 												enabled={parseBooleanField(
 													templateFields.__fleetTrackingEnabled,
 													false
 												)}
-												onEnabledChange={(next) =>
-													updateTemplateField(
-														'__fleetTrackingEnabled',
-														next ? 'true' : 'false'
-													)
-												}
-												characterId={templateFields.__fleetTrackingCharacterId ?? ''}
-												onCharacterIdChange={(value) =>
-													updateTemplateField('__fleetTrackingCharacterId', value)
-												}
-												characters={(user?.characters ?? [])
-													.filter((c) => c.hasValidToken)
-													.map((c) => ({
-														characterId: c.characterId,
-														characterName: c.characterName,
-													}))}
+												disabled={fleetTrackingDisabled}
+												disabledReason={fleetTrackingDisabledReason}
+												onEnabledChange={(next) => {
+													if (fleetTrackingDisabled && next) return
+													updateTemplateField('__fleetTrackingEnabled', next ? 'true' : 'false')
+												}}
 											/>
+												)
+											})()
 										)}
 										{selectedTemplate.fieldSchema
 											.filter((field) => field.type === 'system_frogsiren')
