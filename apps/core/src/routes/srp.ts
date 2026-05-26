@@ -1766,9 +1766,15 @@ srp.get('/payments/wallet-history', async (c) => {
 			const hasRecipientMismatch = Boolean(
 				expectedRequestCharacterId && row.recipientId && row.recipientId !== expectedRequestCharacterId
 			)
+			const hasMissingReasonWarning = Boolean(
+				row.refType === 'corporation_account_withdrawal' &&
+					row.recipientId &&
+					(!row.reason || row.reason.trim().length === 0)
+			)
 
 			return {
 			hasRecipientMismatch,
+			hasMissingReasonWarning,
 			linkedRequestId: (() => {
 				if (!requestIdFromReason) return null
 				return requestById.has(requestIdFromReason) ? requestIdFromReason : null
@@ -1806,7 +1812,9 @@ srp.get('/payments/wallet-history', async (c) => {
 		}
 	})
 
-	const items = alertsOnly ? computedItems.filter((item) => item.hasOpenAlert) : computedItems
+	const items = alertsOnly
+		? computedItems.filter((item) => item.hasOpenAlert || item.hasMissingReasonWarning)
+		: computedItems
 	const pagedItems = alertsOnly ? items.slice(offset, offset + limit) : items
 
 	return c.json({

@@ -3180,6 +3180,7 @@ export class ApiClient {
 		items: Array<{
 			linkedRequestId?: string | null
 			hasRecipientMismatch?: boolean
+			hasMissingReasonWarning?: boolean
 			journalId: string
 			refType?: string | null
 			amount: string

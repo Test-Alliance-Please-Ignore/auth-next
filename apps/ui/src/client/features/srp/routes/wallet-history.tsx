@@ -84,6 +84,8 @@ export default function SRPWalletHistoryPage() {
 		}
 		return [...new Set(lines)]
 	}
+	const hasMissingReasonWarning = (item: (typeof items)[number]): boolean =>
+		Boolean(item.hasMissingReasonWarning)
 
 	const renderPagination = () => (
 		<UserSearchPaginationControls
@@ -215,6 +217,8 @@ export default function SRPWalletHistoryPage() {
 											className={
 												item.hasOpenAlert
 													? 'odd:!bg-red-900/25 even:!bg-red-900/25 hover:!bg-red-900/30 border-l-2 border-l-red-500'
+													: hasMissingReasonWarning(item)
+														? 'odd:!bg-yellow-900/20 even:!bg-yellow-900/20 hover:!bg-yellow-900/25 border-l-2 border-l-yellow-500'
 													: undefined
 											}
 										>
@@ -237,6 +241,21 @@ export default function SRPWalletHistoryPage() {
 																		<li key={reason}>{reason}</li>
 																	))}
 																</ul>
+															</div>
+														</HoverPopover>
+													)}
+													{hasMissingReasonWarning(item) && (
+														<HoverPopover
+															trigger={<AlertTriangle className="h-3.5 w-3.5 cursor-help text-yellow-400" />}
+															align="start"
+															side="top"
+															className="w-64 p-3"
+														>
+															<div className="space-y-1">
+																<p className="text-xs font-semibold text-yellow-300">Warning</p>
+																<p className="text-xs text-muted-foreground">
+																	Corporation withdrawal to a user character with an empty reason.
+																</p>
 															</div>
 														</HoverPopover>
 													)}
