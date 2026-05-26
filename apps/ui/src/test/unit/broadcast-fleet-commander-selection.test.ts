@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest'
 
 import { FLEET_COMMANDER_CUSTOM_VALUE } from '@/features/broadcasts/components/system-fleet-commander-field'
-import { resolveFleetCommanderSelectionFromFields } from '@/routes/broadcasts-new'
+import { resolveFleetCommanderSelectionFromFields } from '@/features/broadcasts/utils'
 
 describe('resolveFleetCommanderSelectionFromFields', () => {
 	const characters = [

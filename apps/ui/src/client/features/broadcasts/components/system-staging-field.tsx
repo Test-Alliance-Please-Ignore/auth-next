@@ -63,8 +63,7 @@ interface SystemStagingFieldProps {
 	selection: string
 	value: string | undefined
 	stagingSystems: Array<{ solarSystemName: string }>
-	onSelectionChange: (value: string) => void
-	onValueChange: (value: string) => void
+	onChange: (next: { selection: string; value: string }) => void
 }
 
 export function SystemStagingField({
@@ -74,8 +73,7 @@ export function SystemStagingField({
 	selection,
 	value,
 	stagingSystems,
-	onSelectionChange,
-	onValueChange,
+	onChange,
 }: SystemStagingFieldProps) {
 	const options = buildStagingOptions(stagingSystems)
 
@@ -89,12 +87,11 @@ export function SystemStagingField({
 				inputId={fieldName}
 				value={selection}
 				onValueChange={(nextSelection) => {
-					onSelectionChange(nextSelection)
 					if (nextSelection === STAGING_CUSTOM_VALUE) {
-						onValueChange('')
+						onChange({ selection: nextSelection, value: '' })
 						return
 					}
-					onValueChange(nextSelection)
+					onChange({ selection: nextSelection, value: nextSelection })
 				}}
 				options={options}
 				searchable
@@ -103,7 +100,7 @@ export function SystemStagingField({
 				<Input
 					id={`${fieldName}-custom`}
 					value={value ?? ''}
-					onChange={(event) => onValueChange(event.target.value)}
+					onChange={(event) => onChange({ selection, value: event.target.value })}
 					required={required}
 					placeholder="Enter staging system"
 				/>

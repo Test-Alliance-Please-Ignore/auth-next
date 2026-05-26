@@ -1,21 +1,10 @@
-import { Copy } from 'lucide-react'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useNavigate, useSearchParams } from 'react-router-dom'
 import { parseBroadcastSrpMode } from '@repo/broadcasts'
 
-import { renderDiscordContentValue } from '@/components/discord-content-renderer'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Container } from '@/components/ui/container'
-import {
-	Dialog,
-	DialogContent,
-	DialogDescription,
-	DialogFooter,
-	DialogHeader,
-	DialogTitle,
-} from '@/components/ui/dialog'
-import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { PageHeader } from '@/components/ui/page-header'
 import { Section } from '@/components/ui/section'
@@ -30,242 +19,35 @@ import {
 	useUpdateBroadcast,
 } from '@/hooks/useBroadcasts'
 import { useAuth } from '@/hooks/useAuth'
-import { useConfirmationDialog } from '@/hooks/useConfirmationDialog'
 import { usePageTitle } from '@/hooks/usePageTitle'
 import { useUserPermissions } from '@/hooks/useUserPermissions'
+import { BroadcastPreviewPane } from '@/features/broadcasts/components/broadcast-preview-pane'
+import { DiscordTimestampHelperDialog } from '@/features/broadcasts/components/discord-timestamp-helper-dialog'
 import { useDoctrines, useStagingSystems } from '@/features/doctrines/hooks'
 import {
-	DOCTRINE_READ_MOTD_VALUE,
 	getInitialDoctrineFieldState,
 	resolveDoctrineSelectionFromValue,
-	SystemDoctrineField,
 } from '@/features/broadcasts/components/system-doctrine-field'
-import { SystemFleetTrackingField } from '@/features/broadcasts/components/system-fleet-tracking-field'
 import {
 	FLEET_COMMANDER_CUSTOM_VALUE,
-	SystemFleetCommanderField,
 } from '@/features/broadcasts/components/system-fleet-commander-field'
-import { SystemFrogsirenField } from '@/features/broadcasts/components/system-frogsiren-field'
-import { SystemSrpField } from '@/features/broadcasts/components/system-srp-field'
+import { TemplateFieldsEditor } from '@/features/broadcasts/components/template-fields-editor'
 import { generateSrpTokenAtFormLoad } from '@/features/broadcasts/srp-token-generator'
 import {
 	getInitialStagingFieldState,
 	resolveStagingSelectionFromValue,
-	STAGING_CUSTOM_VALUE,
-	SystemStagingField,
 } from '@/features/broadcasts/components/system-staging-field'
+import { useBroadcastDraftInitializer } from '@/features/broadcasts/hooks/use-broadcast-draft-initializer'
 import { renderBroadcastTemplateMessage } from '@/features/broadcasts/message-template-renderer'
+import {
+	autoResizeTextarea,
+	parseBooleanField,
+	resolveFleetCommanderSelectionFromFields,
+} from '@/features/broadcasts/utils'
 
-import type { BroadcastTemplate } from '@/lib/api'
-
-type TimeMode = 'local' | 'eve'
-type TimestampFormat = 't' | 'T' | 'd' | 'D' | 'f' | 'F' | 'R'
 const DISCORD_MESSAGE_MAX_LENGTH = 2000
 const FROGSIREN_EMOTE = '<:fs:1496199804470952080>'
 
-const DISCORD_TIMESTAMP_FORMATS: Array<{ code: TimestampFormat; label: string }> = [
-	{ code: 't', label: 'Short Time' },
-	{ code: 'T', label: 'Long Time' },
-	{ code: 'd', label: 'Short Date' },
-	{ code: 'D', label: 'Long Date' },
-	{ code: 'f', label: 'Short Date/Time' },
-	{ code: 'F', label: 'Long Date/Time' },
-	{ code: 'R', label: 'Relative Time' },
-]
-
-function toDateTimeLocalValue(date: Date): string {
-	const year = date.getFullYear()
-	const month = String(date.getMonth() + 1).padStart(2, '0')
-	const day = String(date.getDate()).padStart(2, '0')
-	const hours = String(date.getHours()).padStart(2, '0')
-	const minutes = String(date.getMinutes()).padStart(2, '0')
-	return `${year}-${month}-${day}T${hours}:${minutes}`
-}
-
-function toDateTimeLocalValueUtc(date: Date): string {
-	const year = date.getUTCFullYear()
-	const month = String(date.getUTCMonth() + 1).padStart(2, '0')
-	const day = String(date.getUTCDate()).padStart(2, '0')
-	const hours = String(date.getUTCHours()).padStart(2, '0')
-	const minutes = String(date.getUTCMinutes()).padStart(2, '0')
-	return `${year}-${month}-${day}T${hours}:${minutes}`
-}
-
-function roundUpToNextMinute(date: Date): Date {
-	const next = new Date(date)
-	next.setSeconds(0, 0)
-	next.setMinutes(next.getMinutes() + 1)
-	return next
-}
-
-function startOfNextHour(date: Date): Date {
-	const next = new Date(date)
-	next.setMinutes(0, 0, 0)
-	next.setHours(next.getHours() + 1)
-	return next
-}
-
-function parseDateTimeInput(value: string, mode: TimeMode): Date | null {
-	if (!value) return null
-	const local = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}$/.test(value)
-	if (!local) return null
-
-	if (mode === 'local') {
-		const date = new Date(value)
-		return Number.isNaN(date.getTime()) ? null : date
-	}
-
-	const [datePart, timePart] = value.split('T')
-	if (!datePart || !timePart) return null
-	const [year, month, day] = datePart.split('-').map(Number)
-	const [hours, minutes] = timePart.split(':').map(Number)
-	if (
-		![year, month, day, hours, minutes].every(Number.isFinite) ||
-		month < 1 ||
-		month > 12 ||
-		day < 1 ||
-		day > 31 ||
-		hours < 0 ||
-		hours > 23 ||
-		minutes < 0 ||
-		minutes > 59
-	) {
-		return null
-	}
-	return new Date(Date.UTC(year, month - 1, day, hours, minutes, 0))
-}
-
-function formatRelativeFromNow(target: Date): string {
-	const diffMs = target.getTime() - Date.now()
-	const absMs = Math.abs(diffMs)
-	const minute = 60_000
-	const hour = 60 * minute
-	const day = 24 * hour
-
-	if (absMs < minute) return diffMs >= 0 ? 'in <1 minute' : '<1 minute ago'
-	if (absMs < hour) {
-		const mins = Math.round(absMs / minute)
-		return diffMs >= 0
-			? `in ${mins} minute${mins === 1 ? '' : 's'}`
-			: `${mins} minute${mins === 1 ? '' : 's'} ago`
-	}
-	if (absMs < day) {
-		const hours = Math.round(absMs / hour)
-		return diffMs >= 0
-			? `in ${hours} hour${hours === 1 ? '' : 's'}`
-			: `${hours} hour${hours === 1 ? '' : 's'} ago`
-	}
-	const days = Math.round(absMs / day)
-	return diffMs >= 0
-		? `in ${days} day${days === 1 ? '' : 's'}`
-		: `${days} day${days === 1 ? '' : 's'} ago`
-}
-
-function getFormatPreview(date: Date, format: TimestampFormat): string {
-	switch (format) {
-		case 't':
-			return date.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })
-		case 'T':
-			return date.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit', second: '2-digit' })
-		case 'd':
-			return date.toLocaleDateString([], { year: 'numeric', month: '2-digit', day: '2-digit' })
-		case 'D':
-			return date.toLocaleDateString([], { year: 'numeric', month: 'long', day: 'numeric' })
-		case 'f':
-			return date.toLocaleString([], {
-				year: 'numeric',
-				month: 'long',
-				day: 'numeric',
-				hour: 'numeric',
-				minute: '2-digit',
-			})
-		case 'F':
-			return date.toLocaleString([], {
-				weekday: 'long',
-				year: 'numeric',
-				month: 'long',
-				day: 'numeric',
-				hour: 'numeric',
-				minute: '2-digit',
-			})
-		case 'R':
-			return formatRelativeFromNow(date)
-	}
-}
-
-function parseBooleanField(value: string | undefined, defaultValue: boolean): boolean {
-	if (typeof value !== 'string') return defaultValue
-	const normalized = value.trim().toLowerCase()
-	if (!normalized) return defaultValue
-	if (['true', '1', 'yes', 'enabled', 'on'].includes(normalized)) return true
-	if (['false', '0', 'no', 'disabled', 'off'].includes(normalized)) return false
-	return defaultValue
-}
-
-export function resolveFleetCommanderSelectionFromFields(args: {
-	characters: Array<{ characterId: string; characterName: string; hasValidToken: boolean }>
-	mainCharacterId?: string | null
-	value: string
-	characterId: string
-}): { selection: string; value: string; trackingCharacterId: string; trackingCharacterName: string } {
-	const validCharacters = args.characters.filter((character) => character.hasValidToken)
-	const selectedById = validCharacters.find((character) => character.characterId === args.characterId)
-	if (selectedById) {
-		return {
-			selection: selectedById.characterId,
-			value: selectedById.characterName,
-			trackingCharacterId: selectedById.characterId,
-			trackingCharacterName: selectedById.characterName,
-		}
-	}
-
-	const selectedByName = validCharacters.find((character) => character.characterName === args.value)
-	if (selectedByName) {
-		return {
-			selection: selectedByName.characterId,
-			value: selectedByName.characterName,
-			trackingCharacterId: selectedByName.characterId,
-			trackingCharacterName: selectedByName.characterName,
-		}
-	}
-	if ((args.value ?? '').trim().length > 0) {
-		return {
-			selection: FLEET_COMMANDER_CUSTOM_VALUE,
-			value: args.value,
-			trackingCharacterId: '',
-			trackingCharacterName: '',
-		}
-	}
-
-	const mainCharacter = validCharacters.find(
-		(character) => character.characterId === (args.mainCharacterId ?? '')
-	)
-	if (mainCharacter) {
-		return {
-			selection: mainCharacter.characterId,
-			value: mainCharacter.characterName,
-			trackingCharacterId: mainCharacter.characterId,
-			trackingCharacterName: mainCharacter.characterName,
-		}
-	}
-
-	const firstCharacter = validCharacters[0]
-	if (firstCharacter) {
-		return {
-			selection: firstCharacter.characterId,
-			value: firstCharacter.characterName,
-			trackingCharacterId: firstCharacter.characterId,
-			trackingCharacterName: firstCharacter.characterName,
-		}
-	}
-
-	return {
-		selection: FLEET_COMMANDER_CUSTOM_VALUE,
-		value: args.value,
-		trackingCharacterId: '',
-		trackingCharacterName: '',
-	}
-}
 
 function wrapWithFrogsirenBanner(message: string): string {
 	const banner = Array.from({ length: 16 }, () => FROGSIREN_EMOTE).join(' ')
@@ -285,11 +67,6 @@ function convertUnixTimestampsForPreview(message: string, format: string = 'f'):
 	})
 }
 
-function autoResizeTextarea(element: HTMLTextAreaElement): void {
-	element.style.height = '0px'
-	element.style.height = `${element.scrollHeight}px`
-}
-
 export default function NewBroadcastPage() {
 	const [searchParams] = useSearchParams()
 	const draftId = searchParams.get('draftId') ?? ''
@@ -301,7 +78,6 @@ export default function NewBroadcastPage() {
 	const updateBroadcast = useUpdateBroadcast()
 	const { user } = useAuth()
 	const { hasPermission, isAdmin } = useUserPermissions()
-	const { requestConfirmation, confirmationDialog } = useConfirmationDialog()
 	const { data: draftBroadcast, isLoading: draftLoading } = useBroadcast(draftId)
 
 	// Form state
@@ -310,18 +86,14 @@ export default function NewBroadcastPage() {
 	const [customMessage, setCustomMessage] = useState<string>('')
 	const [templateFields, setTemplateFields] = useState<Record<string, string>>({})
 	const [templateFieldSelections, setTemplateFieldSelections] = useState<Record<string, string>>({})
-	const [templatePrefixText, setTemplatePrefixText] = useState<string>('')
-	const [templateDefaultText, setTemplateDefaultText] = useState<string>('')
+	const [messageParts, setMessageParts] = useState<{ prefix: string; suffix: string }>({
+		prefix: '',
+		suffix: '',
+	})
 	const [mentionLevel, setMentionLevel] = useState<'none' | 'here' | 'everyone'>('here')
 	const [isSending, setIsSending] = useState(false)
 	const [isSavingDraft, setIsSavingDraft] = useState(false)
 	const [timestampHelperOpen, setTimestampHelperOpen] = useState(false)
-	const [timeMode, setTimeMode] = useState<TimeMode>('local')
-	const [timestampInput, setTimestampInput] = useState<string>(() =>
-		toDateTimeLocalValue(startOfNextHour(new Date()))
-	)
-	const [copiedFormat, setCopiedFormat] = useState<TimestampFormat | null>(null)
-	const timestampInputRef = useRef<HTMLInputElement | null>(null)
 	const [isDraftInitialized, setIsDraftInitialized] = useState(false)
 	const autoSelectedTemplateTargetsRef = useRef<Set<string>>(new Set())
 
@@ -339,55 +111,20 @@ export default function NewBroadcastPage() {
 	// Message state
 	const [message, setMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null)
 
-	useEffect(() => {
-		if (!isEditMode || !draftBroadcast || isDraftInitialized) return
-
-		if (draftBroadcast.status !== 'draft') {
-			setMessage({ type: 'error', text: 'Only draft broadcasts can be edited.' })
-			setIsDraftInitialized(true)
-			return
-		}
-
-		setSelectedTargetId(draftBroadcast.targetId)
-		setSelectedTemplateId(draftBroadcast.templateId ?? 'custom')
-		const nextMentionLevel =
-			draftBroadcast.content.mentionLevel === 'here' ||
-			draftBroadcast.content.mentionLevel === 'everyone' ||
-			draftBroadcast.content.mentionLevel === 'none'
-				? (draftBroadcast.content.mentionLevel as 'here' | 'everyone' | 'none')
-				: 'here'
-		setMentionLevel(nextMentionLevel)
-
-		if (draftBroadcast.templateId) {
-			const nextTemplateFields: Record<string, string> = {}
-			for (const [key, value] of Object.entries(draftBroadcast.content)) {
-				if (key === 'mentionLevel' || key === '__defaultText' || key === '__prefixText') continue
-				nextTemplateFields[key] = typeof value === 'string' ? value : JSON.stringify(value, null, 2)
-			}
-			setTemplateFields(nextTemplateFields)
-			setTemplatePrefixText(
-				typeof draftBroadcast.content.__prefixText === 'string'
-					? draftBroadcast.content.__prefixText
-					: ''
-			)
-			setTemplateDefaultText(
-				typeof draftBroadcast.content.__defaultText === 'string'
-					? draftBroadcast.content.__defaultText
-					: ''
-			)
-			setTemplateFieldSelections({})
-			setCustomMessage('')
-		} else {
-			const messageValue = draftBroadcast.content.message
-			setCustomMessage(typeof messageValue === 'string' ? messageValue : '')
-			setTemplateFields({})
-			setTemplatePrefixText('')
-			setTemplateDefaultText('')
-			setTemplateFieldSelections({})
-		}
-
-		setIsDraftInitialized(true)
-	}, [draftBroadcast, isDraftInitialized, isEditMode])
+	useBroadcastDraftInitializer({
+		isEditMode,
+		draftBroadcast,
+		isDraftInitialized,
+		setIsDraftInitialized,
+		setMessage,
+		setSelectedTargetId,
+		setSelectedTemplateId,
+		setMentionLevel,
+		setTemplateFields,
+		setMessageParts,
+		setTemplateFieldSelections,
+		setCustomMessage,
+	})
 
 	// Get selected template object
 	const selectedTemplate =
@@ -402,9 +139,9 @@ export default function NewBroadcastPage() {
 		let message = ''
 		if (selectedTemplate) {
 			message = [
-				templatePrefixText.trim(),
+				messageParts.prefix.trim(),
 				renderBroadcastTemplateMessage(selectedTemplate.messageTemplate, templateFields, true),
-				templateDefaultText.trim(),
+				messageParts.suffix.trim(),
 			]
 				.filter(Boolean)
 				.join('\n\n')
@@ -430,12 +167,12 @@ export default function NewBroadcastPage() {
 	}, [
 		customMessage,
 		mentionLevel,
+		messageParts.prefix,
+		messageParts.suffix,
 		selectedTarget,
 		selectedTemplate,
 		senderCharacterName,
-		templateDefaultText,
 		templateFields,
-		templatePrefixText,
 	])
 	const renderedOutboundLength = renderedOutboundMessage.length
 	const isOverRenderedMessageLimit = renderedOutboundLength > DISCORD_MESSAGE_MAX_LENGTH
@@ -444,8 +181,7 @@ export default function NewBroadcastPage() {
 		setSelectedTemplateId(templateId)
 		if (templateId === 'custom') {
 			setTemplateFields({})
-			setTemplatePrefixText('')
-			setTemplateDefaultText('')
+			setMessageParts({ prefix: '', suffix: '' })
 			setTemplateFieldSelections({})
 			return
 		}
@@ -489,9 +225,17 @@ export default function NewBroadcastPage() {
 				}
 
 				if (field.type === 'system_fleet_tracking') {
-					initialFields.__fleetTrackingEnabled = 'false'
-					initialFields.__fleetTrackingCharacterId = ''
-					initialFields.__fleetTrackingCharacterName = ''
+					// Preserve commander-derived defaults when the template schema
+					// orders fleet-tracking before/after fleet-commander.
+					if (initialFields.__fleetTrackingEnabled === undefined) {
+						initialFields.__fleetTrackingEnabled = 'false'
+					}
+					if (initialFields.__fleetTrackingCharacterId === undefined) {
+						initialFields.__fleetTrackingCharacterId = ''
+					}
+					if (initialFields.__fleetTrackingCharacterName === undefined) {
+						initialFields.__fleetTrackingCharacterName = ''
+					}
 					return
 				}
 
@@ -513,8 +257,7 @@ export default function NewBroadcastPage() {
 			})
 			setTemplateFields(initialFields)
 			setTemplateFieldSelections(initialSelections)
-			setTemplatePrefixText('')
-			setTemplateDefaultText('')
+			setMessageParts({ prefix: '', suffix: '' })
 		}
 	}, [stagingSystems, templates, user?.characters, user?.mainCharacterId])
 
@@ -730,8 +473,8 @@ export default function NewBroadcastPage() {
 					? { message: customMessage, mentionLevel }
 					: {
 							...templateFields,
-							__prefixText: templatePrefixText,
-							__defaultText: templateDefaultText,
+							__prefixText: messageParts.prefix,
+							__defaultText: messageParts.suffix,
 							mentionLevel,
 						},
 		}
@@ -834,55 +577,6 @@ export default function NewBroadcastPage() {
 		(selectedTemplateId === 'custom' ? customMessage.trim() : selectedTemplate !== null) &&
 		(!isEditMode || draftBroadcast?.status === 'draft')
 	const isSubmitting = isSending || isSavingDraft || updateBroadcast.isPending
-
-	const timestampDate = useMemo(
-		() => parseDateTimeInput(timestampInput, timeMode),
-		[timestampInput, timeMode]
-	)
-	const minTimestampInput = useMemo(
-		() =>
-			timeMode === 'eve'
-				? toDateTimeLocalValueUtc(roundUpToNextMinute(new Date()))
-				: toDateTimeLocalValue(roundUpToNextMinute(new Date())),
-		[timeMode]
-	)
-	const timestampError = useMemo(() => {
-		if (!timestampDate) return 'Enter a valid date/time'
-		if (timestampDate.getTime() <= Date.now()) return 'Date/time must be in the future'
-		return null
-	}, [timestampDate])
-	const timestampEpoch = timestampDate ? Math.floor(timestampDate.getTime() / 1000) : null
-
-	const handleCopyTimestamp = async (format: TimestampFormat) => {
-		if (!timestampEpoch || timestampError) return
-		const token = `<t:${timestampEpoch}:${format}>`
-		try {
-			await navigator.clipboard.writeText(token)
-			setCopiedFormat(format)
-			setTimeout(() => setCopiedFormat((current) => (current === format ? null : current)), 1500)
-		} catch {
-			setMessage({ type: 'error', text: 'Failed to copy timestamp token' })
-		}
-	}
-
-	const handleTimeModeChange = (nextMode: TimeMode) => {
-		const currentParsed = parseDateTimeInput(timestampInput, timeMode)
-		setTimeMode(nextMode)
-
-		if (!currentParsed) {
-			const fallback = startOfNextHour(new Date())
-			setTimestampInput(
-				nextMode === 'eve' ? toDateTimeLocalValueUtc(fallback) : toDateTimeLocalValue(fallback)
-			)
-			return
-		}
-
-		setTimestampInput(
-			nextMode === 'eve'
-				? toDateTimeLocalValueUtc(currentParsed)
-				: toDateTimeLocalValue(currentParsed)
-		)
-	}
 
 	return (
 		<Container>
@@ -1014,18 +708,7 @@ export default function NewBroadcastPage() {
 							{/* Custom Message or Template Fields */}
 							{selectedTemplateId === 'custom' ? (
 								<div className="grid gap-4 [grid-template-areas:'preview''form'] lg:[grid-template-areas:'form_preview'] lg:grid-cols-2 lg:items-stretch">
-									<div className="[grid-area:preview] space-y-2 lg:self-stretch">
-										<Label className="text-sm font-medium">Preview</Label>
-										<div className="rounded-md border border-border bg-muted/20 p-3 text-sm overflow-y-auto min-h-[16rem] h-full">
-											{customMessage.trim() ? (
-												renderDiscordContentValue(customMessage, 'preview')
-											) : (
-												<span className="text-muted-foreground italic">
-													Preview will appear here…
-												</span>
-											)}
-										</div>
-									</div>
+									<BroadcastPreviewPane message={customMessage} />
 									<div className="[grid-area:form] space-y-2">
 										<Label htmlFor="message">Message *</Label>
 										<Textarea
@@ -1044,274 +727,22 @@ export default function NewBroadcastPage() {
 								</div>
 							) : selectedTemplate ? (
 								<div className="grid gap-4 [grid-template-areas:'preview''form'] lg:[grid-template-areas:'form_preview'] lg:grid-cols-2 lg:items-stretch">
-									<div className="[grid-area:preview] space-y-2 lg:self-stretch">
-										<Label className="text-sm font-medium">Preview</Label>
-										<div className="rounded-md border border-border bg-muted/20 p-3 text-sm overflow-y-auto min-h-[16rem] h-full">
-											{renderedOutboundMessage.trim() ? (
-												renderDiscordContentValue(renderedOutboundMessage, 'preview')
-											) : (
-												<span className="text-muted-foreground italic">
-													Preview will appear here…
-												</span>
-											)}
-										</div>
-									</div>
+									<BroadcastPreviewPane message={renderedOutboundMessage} />
 									<div className="[grid-area:form] space-y-4">
-										<div className="max-w-xl space-y-2">
-											<Label htmlFor="template-prefix-text">Text before (optional)</Label>
-											<Textarea
-												id="template-prefix-text"
-												value={templatePrefixText}
-												onChange={(e) => {
-													autoResizeTextarea(e.currentTarget)
-													setTemplatePrefixText(e.target.value)
-												}}
-												rows={1}
-												placeholder="Optional text prepended before the template message"
-												className="resize-none overflow-hidden"
-												style={{ minHeight: '2.5rem' }}
-											/>
-										</div>
-
-										<Label className="text-sm font-medium">Template Fields</Label>
-										<div className="grid gap-4 md:grid-cols-2">
-											{selectedTemplate.fieldSchema
-												.filter(
-													(field) =>
-														field.type !== 'system_frogsiren' &&
-														field.type !== 'system_fleet_tracking'
-												)
-												.map((field) => (
-													<div key={field.name} className="space-y-2 min-w-0">
-														{field.type === 'system_srp' ? (
-															<SystemSrpField
-																fieldName={field.name}
-																value={templateFields[field.name]}
-																onModeChange={(mode) => {
-																	updateTemplateField(field.name, mode)
-																	if (mode === 'disabled') {
-																		updateTemplateField('__srpToken', '')
-																		return
-																	}
-																	if (
-																		(templateFields.__srpToken ?? '').trim().length === 0
-																	) {
-																		updateTemplateField(
-																			'__srpToken',
-																			generateSrpTokenAtFormLoad()
-																		)
-																	}
-																}}
-															/>
-														) : field.type === 'system_doctrine' ? (
-															<SystemDoctrineField
-																fieldName={field.name}
-																fieldLabel={field.label}
-																required={field.required}
-																selection={
-																	templateFieldSelections[field.name] ??
-																	DOCTRINE_READ_MOTD_VALUE
-																}
-																value={templateFields[field.name]}
-																doctrines={doctrines}
-																	onSelectionChange={(value) => {
-																		updateTemplateFieldSelection(field.name, value)
-																		const matchedDoctrine = doctrines.find(
-																			(doctrine) => doctrine.name === value
-																		)
-																		updateTemplateField('__doctrineId', matchedDoctrine?.id ?? '')
-																	}}
-																onValueChange={(value) => {
-																	updateTemplateField(field.name, value)
-																	const matchedDoctrine = doctrines.find(
-																		(doctrine) => doctrine.name === value
-																	)
-																	updateTemplateField('__doctrineId', matchedDoctrine?.id ?? '')
-																}}
-															/>
-														) : field.type === 'system_staging' ? (
-															<SystemStagingField
-																fieldName={field.name}
-																fieldLabel={field.label}
-																required={field.required}
-																selection={
-																	templateFieldSelections[field.name] ??
-																	STAGING_CUSTOM_VALUE
-																}
-																value={templateFields[field.name]}
-																stagingSystems={stagingSystems}
-																onSelectionChange={(value) =>
-																	updateTemplateFieldSelection(field.name, value)
-																}
-																onValueChange={(value) =>
-																	updateTemplateField(field.name, value)
-																}
-															/>
-														) : field.type === 'system_fleet_commander' ? (
-															<SystemFleetCommanderField
-																fieldName={field.name}
-																fieldLabel={field.label}
-																required={field.required}
-																selection={
-																	templateFieldSelections[field.name] ??
-																	FLEET_COMMANDER_CUSTOM_VALUE
-																}
-																value={templateFields[field.name] ?? ''}
-																characters={(user?.characters ?? [])
-																	.filter((character) => character.hasValidToken)
-																	.map((character) => ({
-																		characterId: character.characterId,
-																		characterName: character.characterName,
-																	}))}
-																onSelectionChange={(value) => {
-																	updateTemplateFieldSelection(field.name, value)
-																	if (value === FLEET_COMMANDER_CUSTOM_VALUE) {
-																		updateTemplateField('__fleetTrackingEnabled', 'false')
-																		updateTemplateField('__fleetTrackingCharacterId', '')
-																		updateTemplateField('__fleetTrackingCharacterName', '')
-																		return
-																	}
-																	const selectedCharacter = (user?.characters ?? []).find(
-																		(character) => character.characterId === value
-																	)
-																	const nextName = selectedCharacter?.characterName ?? ''
-																	updateTemplateField(field.name, nextName)
-																	updateTemplateField(
-																		'__fleetTrackingCharacterId',
-																		selectedCharacter?.characterId ?? ''
-																	)
-																	updateTemplateField(
-																		'__fleetTrackingCharacterName',
-																		nextName
-																	)
-																}}
-																onValueChange={(value) => updateTemplateField(field.name, value)}
-															/>
-														) : (
-															<>
-																<Label htmlFor={field.name}>
-																	{field.label}
-																	{field.required && ' *'}
-																</Label>
-																{field.type === 'select' ? (
-																	<div className="w-full">
-																		<Select
-																			inputId={field.name}
-																			value={
-																				templateFieldSelections[field.name] ??
-																				templateFields[field.name] ??
-																				''
-																			}
-																			onValueChange={(value) => {
-																				updateTemplateFieldSelection(field.name, value)
-																				updateTemplateField(field.name, value)
-																			}}
-																			options={(field.options ?? []).map((option) => ({
-																				value: option,
-																				label: option,
-																			}))}
-																			searchable
-																		/>
-																	</div>
-																) : field.type === 'textarea' ? (
-																	<Textarea
-																		id={field.name}
-																		value={templateFields[field.name] || ''}
-																		onChange={(e) => {
-																			autoResizeTextarea(e.currentTarget)
-																			updateTemplateField(field.name, e.target.value)
-																		}}
-																		rows={1}
-																		required={field.required}
-																		className="resize-none overflow-hidden"
-																		style={{ minHeight: '2.5rem' }}
-																	/>
-																) : (
-																	<Input
-																		id={field.name}
-																		value={templateFields[field.name] || ''}
-																		onChange={(e) =>
-																			updateTemplateField(field.name, e.target.value)
-																		}
-																		required={field.required}
-																	/>
-																)}
-															</>
-														)}
-													</div>
-												))}
-										</div>
-										<div className="max-w-xl space-y-2">
-											<Label htmlFor="template-default-text">Text after (optional)</Label>
-											<Textarea
-												id="template-default-text"
-												value={templateDefaultText}
-												onChange={(e) => {
-													autoResizeTextarea(e.currentTarget)
-													setTemplateDefaultText(e.target.value)
-												}}
-												rows={1}
-												placeholder="Optional text appended after the template message"
-												className="resize-none overflow-hidden"
-												style={{ minHeight: '2.5rem' }}
-											/>
-										</div>
-										{canCreateFleetTracking &&
-										selectedTemplate.fieldSchema.some(
-											(field) => field.type === 'system_fleet_tracking'
-										) && (
-											(() => {
-												const fleetCommanderField = selectedTemplate.fieldSchema.find(
-													(field) => field.type === 'system_fleet_commander'
-												)
-												const fleetCommanderSelection = fleetCommanderField
-													? (templateFieldSelections[fleetCommanderField.name] ??
-														FLEET_COMMANDER_CUSTOM_VALUE)
-													: FLEET_COMMANDER_CUSTOM_VALUE
-												const fleetTrackingDisabled =
-													fleetCommanderSelection === FLEET_COMMANDER_CUSTOM_VALUE ||
-													(templateFields.__fleetTrackingCharacterId ?? '').trim().length === 0
-												const fleetTrackingDisabledReason = fleetTrackingDisabled
-													? 'Select a valid Fleet Commander character to enable fleet tracking.'
-													: undefined
-												return (
-											<SystemFleetTrackingField
-												enabled={parseBooleanField(
-													templateFields.__fleetTrackingEnabled,
-													false
-												)}
-												disabled={fleetTrackingDisabled}
-												disabledReason={fleetTrackingDisabledReason}
-												onEnabledChange={(next) => {
-													if (fleetTrackingDisabled && next) return
-													updateTemplateField('__fleetTrackingEnabled', next ? 'true' : 'false')
-												}}
-											/>
-												)
-											})()
-										)}
-										{selectedTemplate.fieldSchema
-											.filter((field) => field.type === 'system_frogsiren')
-											.map((field) => (
-												<SystemFrogsirenField
-													key={field.name}
-													fieldName={field.name}
-													checked={parseBooleanField(templateFields[field.name], false)}
-													onDisable={() => updateTemplateField(field.name, 'false')}
-													onConfirmEnable={() => {
-														requestConfirmation({
-															title: 'Sound the Frogsiren?',
-															description:
-																'Are you really fucking sure you want to sound the frogsiren? Is the happening status: its? Is it UALX all over again?',
-															confirmLabel: 'Sound It',
-															intent: 'destructive',
-															onConfirm: () => {
-																updateTemplateField(field.name, 'true')
-															},
-														})
-													}}
-												/>
-											))}
+										<TemplateFieldsEditor
+											fields={selectedTemplate.fieldSchema}
+											templateFields={templateFields}
+											templateFieldSelections={templateFieldSelections}
+											doctrines={doctrines}
+											stagingSystems={stagingSystems}
+										userCharacters={user?.characters ?? []}
+										mainCharacterId={user?.mainCharacterId}
+										canCreateFleetTracking={canCreateFleetTracking}
+										messageParts={messageParts}
+										onMessagePartsChange={setMessageParts}
+										onUpdateTemplateField={updateTemplateField}
+										onUpdateTemplateFieldSelection={updateTemplateFieldSelection}
+									/>
 									</div>
 								</div>
 							) : null}
@@ -1359,110 +790,10 @@ export default function NewBroadcastPage() {
 				</Card>
 			</Section>
 
-			<Dialog open={timestampHelperOpen} onOpenChange={setTimestampHelperOpen}>
-				<DialogContent
-					className="sm:max-w-2xl"
-					onOpenAutoFocus={(event) => {
-						event.preventDefault()
-						timestampInputRef.current?.focus()
-					}}
-				>
-					<DialogHeader>
-						<DialogTitle>Discord Timestamp Helper</DialogTitle>
-						<DialogDescription>
-							Pick a future date/time and copy Discord timestamp tokens.
-						</DialogDescription>
-					</DialogHeader>
-
-					<div className="space-y-4">
-						<div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-							<div className="space-y-2">
-								<Label htmlFor="timestamp-time-mode">Time Zone</Label>
-								<Select
-									inputId="timestamp-time-mode"
-									value={timeMode}
-									onValueChange={(value) => handleTimeModeChange(value as TimeMode)}
-									options={[
-										{ value: 'local', label: 'Local Time' },
-										{ value: 'eve', label: 'EVE Time (UTC)' },
-									]}
-								/>
-							</div>
-							<div className="space-y-2">
-								<Label htmlFor="timestamp-input">Date & Time</Label>
-								<Input
-									ref={timestampInputRef}
-									id="timestamp-input"
-									type="datetime-local"
-									value={timestampInput}
-									min={minTimestampInput}
-									onChange={(e) => setTimestampInput(e.target.value)}
-								/>
-							</div>
-						</div>
-						<p className="text-xs text-muted-foreground">
-							Time Zone controls how you choose the date/time in this helper only. Discord renders
-							the timestamp in each viewer&apos;s local time.
-						</p>
-
-						{timestampError ? (
-							<p className="text-sm text-destructive">{timestampError}</p>
-						) : timestampEpoch ? (
-							<p className="text-sm text-muted-foreground">
-								Epoch: <span className="font-mono">{timestampEpoch}</span>
-							</p>
-						) : null}
-
-						<div className="space-y-2">
-							<Label>Discord Format Tokens</Label>
-							<div className="max-h-72 overflow-y-auto rounded-md border border-border/60">
-								<table className="w-full text-sm">
-									<thead className="bg-muted/30">
-										<tr>
-											<th className="text-left px-3 py-2 font-medium">Style</th>
-											<th className="text-left px-3 py-2 font-medium">Preview</th>
-											<th className="text-right px-3 py-2 font-medium">Copy</th>
-										</tr>
-									</thead>
-									<tbody>
-										{DISCORD_TIMESTAMP_FORMATS.map((item) => {
-											return (
-												<tr key={item.code} className="border-t border-border/50">
-													<td className="px-3 py-2">
-														<div className="font-medium">{item.label}</div>
-													</td>
-													<td className="px-3 py-2 text-muted-foreground">
-														{timestampDate ? getFormatPreview(timestampDate, item.code) : '—'}
-													</td>
-													<td className="px-3 py-2 text-right">
-														<Button
-															type="button"
-															size="sm"
-															variant="ghost"
-															onClick={() => handleCopyTimestamp(item.code)}
-															disabled={!timestampEpoch || Boolean(timestampError)}
-														>
-															<Copy className="h-4 w-4 mr-1" />
-															{copiedFormat === item.code ? 'Copied' : 'Copy'}
-														</Button>
-													</td>
-												</tr>
-											)
-										})}
-									</tbody>
-								</table>
-							</div>
-						</div>
-					</div>
-
-					<DialogFooter>
-						<Button type="button" variant="confirm" onClick={() => setTimestampHelperOpen(false)}>
-							Done
-						</Button>
-					</DialogFooter>
-				</DialogContent>
-			</Dialog>
-			{confirmationDialog}
+			<DiscordTimestampHelperDialog
+				open={timestampHelperOpen}
+				onOpenChange={setTimestampHelperOpen}
+			/>
 		</Container>
 	)
 }

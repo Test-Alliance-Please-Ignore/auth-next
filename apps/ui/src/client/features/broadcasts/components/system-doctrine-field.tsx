@@ -53,9 +53,8 @@ interface SystemDoctrineFieldProps {
 	required?: boolean
 	selection: string
 	value: string | undefined
-	doctrines: Array<{ name: string }>
-	onSelectionChange: (value: string) => void
-	onValueChange: (value: string) => void
+	doctrines: Array<{ id: string; name: string }>
+	onChange: (next: { selection: string; value: string; doctrineId: string }) => void
 }
 
 export function SystemDoctrineField({
@@ -65,8 +64,7 @@ export function SystemDoctrineField({
 	selection,
 	value,
 	doctrines,
-	onSelectionChange,
-	onValueChange,
+	onChange,
 }: SystemDoctrineFieldProps) {
 	const options = buildDoctrineOptions(doctrines)
 
@@ -80,16 +78,20 @@ export function SystemDoctrineField({
 				inputId={fieldName}
 				value={selection}
 				onValueChange={(nextSelection) => {
-					onSelectionChange(nextSelection)
 					if (nextSelection === DOCTRINE_READ_MOTD_VALUE) {
-						onValueChange('Read MOTD')
+						onChange({ selection: nextSelection, value: 'Read MOTD', doctrineId: '' })
 						return
 					}
 					if (nextSelection === DOCTRINE_CUSTOM_VALUE) {
-						onValueChange('')
+						onChange({ selection: nextSelection, value: '', doctrineId: '' })
 						return
 					}
-					onValueChange(nextSelection)
+					const matchedDoctrine = doctrines.find((doctrine) => doctrine.name === nextSelection)
+					onChange({
+						selection: nextSelection,
+						value: nextSelection,
+						doctrineId: matchedDoctrine?.id ?? '',
+					})
 				}}
 				options={options}
 				searchable
@@ -98,7 +100,13 @@ export function SystemDoctrineField({
 				<Input
 					id={`${fieldName}-custom`}
 					value={value ?? ''}
-					onChange={(event) => onValueChange(event.target.value)}
+					onChange={(event) =>
+						onChange({
+							selection,
+							value: event.target.value,
+							doctrineId: '',
+						})
+					}
 					required={required}
 					placeholder="Enter doctrine"
 				/>
