@@ -16,8 +16,12 @@ interface SystemFleetCommanderFieldProps {
 	selection: string
 	value: string
 	characters: FleetCommanderOption[]
-	onSelectionChange: (value: string) => void
-	onValueChange: (value: string) => void
+	onChange: (next: {
+		selection: string
+		value: string
+		trackingCharacterId: string
+		trackingCharacterName: string
+	}) => void
 }
 
 export function SystemFleetCommanderField({
@@ -27,8 +31,7 @@ export function SystemFleetCommanderField({
 	selection,
 	value,
 	characters,
-	onSelectionChange,
-	onValueChange,
+	onChange,
 }: SystemFleetCommanderFieldProps) {
 	const options = [
 		{
@@ -50,7 +53,26 @@ export function SystemFleetCommanderField({
 			<Select
 				inputId={fieldName}
 				value={selection}
-				onValueChange={onSelectionChange}
+				onValueChange={(nextSelection) => {
+					if (nextSelection === FLEET_COMMANDER_CUSTOM_VALUE) {
+						onChange({
+							selection: nextSelection,
+							value: '',
+							trackingCharacterId: '',
+							trackingCharacterName: '',
+						})
+						return
+					}
+					const selectedCharacter = characters.find(
+						(character) => character.characterId === nextSelection
+					)
+					onChange({
+						selection: nextSelection,
+						value: selectedCharacter?.characterName ?? '',
+						trackingCharacterId: selectedCharacter?.characterId ?? '',
+						trackingCharacterName: selectedCharacter?.characterName ?? '',
+					})
+				}}
 				options={options}
 				placeholder="Select fleet commander"
 				searchable
@@ -58,7 +80,14 @@ export function SystemFleetCommanderField({
 			{selection === FLEET_COMMANDER_CUSTOM_VALUE && (
 				<Input
 					value={value}
-					onChange={(event) => onValueChange(event.target.value)}
+					onChange={(event) =>
+						onChange({
+							selection,
+							value: event.target.value,
+							trackingCharacterId: '',
+							trackingCharacterName: '',
+						})
+					}
 					placeholder="Custom fleet commander text"
 					required={required}
 				/>
