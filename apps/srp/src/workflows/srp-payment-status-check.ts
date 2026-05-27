@@ -375,14 +375,20 @@ export class SrpPaymentStatusCheckWorkflow extends WorkflowEntrypoint<
 				)
 			).rows
 
-			let paymentAlertId: string
-			if (existingAlert || existingOpenAlertForRequest) {
-				const targetAlertId = existingAlert?.id ?? existingOpenAlertForRequest?.id
-				if (!targetAlertId) throw new Error('Failed to determine target SRP payment mismatch alert id')
-				paymentAlertId = targetAlertId
-			} else {
-				const [insertedAlert] = (
-					await db.execute<ExistingPaymentAlertRow>(
+				let paymentAlertId: string
+				const mismatchAlertMetadata = JSON.stringify({
+					isRecipientMismatch,
+					isAmountMismatch,
+					expectedRecipientCharacterId: request.characterId,
+					actualRecipientCharacterId: anomalyEntry.secondPartyId ?? null,
+				})
+				if (existingAlert || existingOpenAlertForRequest) {
+					const targetAlertId = existingAlert?.id ?? existingOpenAlertForRequest?.id
+					if (!targetAlertId) throw new Error('Failed to determine target SRP payment mismatch alert id')
+					paymentAlertId = targetAlertId
+				} else {
+					const [insertedAlert] = (
+						await db.execute<ExistingPaymentAlertRow>(
 						sql`insert into srp_payment_alerts (
 								request_id,
 								kind,
@@ -412,17 +418,12 @@ export class SrpPaymentStatusCheckWorkflow extends WorkflowEntrypoint<
 								${anomalyEntry.secondPartyId ? (resolvedNames[anomalyEntry.secondPartyId] ?? null) : null},
 								${anomalyEntry.firstPartyId},
 								${anomalyEntry.firstPartyId ? (resolvedNames[anomalyEntry.firstPartyId] ?? null) : null},
-								${mismatchReason},
-								${processorCorporationId},
-								${JSON.stringify({
-									isRecipientMismatch,
-									isAmountMismatch,
-									expectedRecipientCharacterId: request.characterId,
-									actualRecipientCharacterId: anomalyEntry.secondPartyId ?? null,
-								})}::jsonb
-							)
-							returning id::text as "id"`
-					)
+									${mismatchReason},
+									${processorCorporationId},
+									${mismatchAlertMetadata}::jsonb
+								)
+								returning id::text as "id"`
+						)
 				).rows
 				if (!insertedAlert) throw new Error('Failed to persist SRP payment mismatch alert')
 				paymentAlertId = insertedAlert.id
@@ -615,9 +616,9 @@ export class SrpPaymentStatusCheckWorkflow extends WorkflowEntrypoint<
 						env: this.env,
 						characterId: request.characterId,
 					})) ?? request.characterName
-				if (existingMissingAlert) {
-					paymentAlertId = existingMissingAlert.id
-				} else {
+					if (existingMissingAlert) {
+						paymentAlertId = existingMissingAlert.id
+					} else {
 					const [insertedMissingAlert] = (
 						await db.execute<ExistingPaymentAlertRow>(
 							sql`insert into srp_payment_alerts (
@@ -667,11 +668,10 @@ export class SrpPaymentStatusCheckWorkflow extends WorkflowEntrypoint<
 								returning id::text as "id"`
 						)
 					).rows
-					if (!insertedMissingAlert) throw new Error('Failed to persist SRP missing payment alert')
-					paymentAlertId = insertedMissingAlert.id
-				}
-
-				const [existingMissingEvent] = (
+						if (!insertedMissingAlert) throw new Error('Failed to persist SRP missing payment alert')
+						paymentAlertId = insertedMissingAlert.id
+					}
+					const [existingMissingEvent] = (
 					await db.execute<ExistingMismatchHistoryRow>(
 						sql`select id::text as "id"
 							from srp_request_history
@@ -681,9 +681,9 @@ export class SrpPaymentStatusCheckWorkflow extends WorkflowEntrypoint<
 					)
 				).rows
 
-				const missingMetadata = {
-					paymentAlertId,
-					expectedAmount: request.approvedAmount ?? '0',
+					const missingMetadata = {
+						paymentAlertId,
+						expectedAmount: request.approvedAmount ?? '0',
 					expectedRecipientCharacterId: request.characterId,
 					expectedRecipientCharacterName: request.characterName,
 					expectedReason: reasonNeedle,

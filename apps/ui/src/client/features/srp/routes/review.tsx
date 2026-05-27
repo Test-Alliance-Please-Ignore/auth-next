@@ -389,24 +389,20 @@ function ReviewTabContent({
 					</div>
 				</div>
 			)}
-			{isFetching && (
-				<div className="mb-3 rounded-md border border-border/60 bg-muted/20 p-2 text-xs text-muted-foreground">
-					Refreshing…
-				</div>
-			)}
-			{hasPagination && (
-				<div className="mb-3 rounded-md border p-3">
-					<UserSearchPaginationControls
+				{hasPagination && (
+					<div className="mb-3 rounded-md border p-3">
+						<UserSearchPaginationControls
 						totalCount={totalCount}
 						page={page}
 						pageSize={pageSize}
 						onPageChange={onPageChange}
-						onPageSizeChange={onPageSizeChange}
-						pageSizeOptions={[10, 25, 50, 100]}
-						itemLabel="requests"
-					/>
-				</div>
-			)}
+							onPageSizeChange={onPageSizeChange}
+							pageSizeOptions={[10, 25, 50, 100]}
+							itemLabel="requests"
+							nextButtonLoading={isFetching}
+						/>
+					</div>
+				)}
 			<div className="rounded-md border">
 				<Table>
 					<TableHeader>
@@ -525,17 +521,18 @@ function ReviewTabContent({
 			</div>
 			{hasPagination && (
 				<div className="mt-3 rounded-md border p-3">
-					<UserSearchPaginationControls
-						totalCount={totalCount}
-						page={page}
-						pageSize={pageSize}
-						onPageChange={onPageChange}
-						onPageSizeChange={onPageSizeChange}
-						pageSizeOptions={[10, 25, 50, 100]}
-						itemLabel="requests"
-					/>
-				</div>
-			)}
+						<UserSearchPaginationControls
+							totalCount={totalCount}
+							page={page}
+							pageSize={pageSize}
+							onPageChange={onPageChange}
+							onPageSizeChange={onPageSizeChange}
+							pageSizeOptions={[10, 25, 50, 100]}
+							itemLabel="requests"
+							nextButtonLoading={isFetching}
+						/>
+					</div>
+				)}
 		</div>
 	)
 }
