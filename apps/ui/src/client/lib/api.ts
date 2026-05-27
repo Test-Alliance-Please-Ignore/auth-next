@@ -3256,6 +3256,10 @@ export class ApiClient {
 		return this.post(`/srp/requests/${id}/mark-paid`, {})
 	}
 
+	async verifyPaid(id: string, reason: string): Promise<any> {
+		return this.post(`/srp/requests/${id}/verify-paid`, { reason })
+	}
+
 	/**
 	 * Get active SRP configuration
 	 */

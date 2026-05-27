@@ -101,6 +101,8 @@ export const srpRequests = pgTable(
 		paymentDate: timestamp('payment_date', { withTimezone: true }),
 		/** Character name who paid (for audit trail) */
 		paymentCharacterName: varchar('payment_character_name', { length: 255 }),
+		/** Internal cursor for payment scan optimization (not user-facing history) */
+		paymentScanCursorDate: timestamp('payment_scan_cursor_date', { withTimezone: true }),
 		/** User ID of reviewer (null if not yet reviewed) */
 		reviewerId: uuid('reviewer_id'),
 		/** Character name of reviewer for display */
