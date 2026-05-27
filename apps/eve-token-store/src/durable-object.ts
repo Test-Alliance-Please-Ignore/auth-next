@@ -991,8 +991,16 @@ export class EveTokenStoreDO extends DurableObject<Env> implements EveTokenStore
 				return null
 			}
 
+			// Select only fields required by this path to remain resilient while
+			// schema migrations roll out between services.
 			const tokenRecord = await this.db.query.eveTokens.findFirst({
 				where: eq(eveTokens.characterId, character.id),
+				columns: {
+					id: true,
+					accessToken: true,
+					refreshToken: true,
+					expiresAt: true,
+				},
 			})
 
 			if (!tokenRecord) {
@@ -1375,30 +1383,39 @@ export class EveTokenStoreDO extends DurableObject<Env> implements EveTokenStore
 				}
 			}
 		}
-		await this.assertAuthenticatedEsiCircuitClosed(path)
-		await this.assertAuthenticatedEsiRampPermit(path)
-		await this.assertAuthenticatedEsiBudget(path)
+			// 2. Cache miss - fetch from ESI
+			// Resolve token before breaker/budget checks so missing-token cases fail
+			// fast without consuming auth ESI budget.
+			const character = await this.db.query.eveCharacters.findFirst({
+				where: eq(eveCharacters.characterId, String(characterId)),
+			})
 
-		// 2. Cache miss - fetch from ESI
-		// Try to get token for authenticated request
-		const character = await this.db.query.eveCharacters.findFirst({
-			where: eq(eveCharacters.characterId, String(characterId)),
-		})
-
-		let token: string | undefined
+			let token: string | undefined
 		if (character) {
-			const accessToken = await this.getAccessToken(character.characterId)
-			token = accessToken || undefined
-		}
+				const accessToken = await this.getAccessToken(character.characterId)
+				token = accessToken || undefined
+			}
+			if (!token) {
+				const metadata = JSON.stringify({
+					status: 401,
+					path,
+					reasonCode: 'no_token_provided',
+				})
+				throw new Error(
+					`ESI request failed: 401 Unauthorized - {"error":"Unauthorized - No token provided"} | metadata=${metadata}`
+				)
+			}
 
-		// 3. Make ESI request
-		const headers: Record<string, string> = {
-			'X-Compatibility-Date': '2025-09-30',
-			Accept: 'application/json',
-		}
-		if (token) {
+			await this.assertAuthenticatedEsiCircuitClosed(path)
+			await this.assertAuthenticatedEsiRampPermit(path)
+			await this.assertAuthenticatedEsiBudget(path)
+
+			// 3. Make ESI request
+			const headers: Record<string, string> = {
+				'X-Compatibility-Date': '2025-09-30',
+				Accept: 'application/json',
+			}
 			headers['Authorization'] = `Bearer ${token}`
-		}
 		if (cached.length > 0 && cached[0].etag) {
 			headers['If-None-Match'] = cached[0].etag
 		}
