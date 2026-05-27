@@ -6,6 +6,7 @@ import type { FreightRoute } from '@repo/freight'
 
 const API_BASE_URL =
 	import.meta.env.VITE_API_BASE_URL || (import.meta.env.PROD ? '/api' : 'http://localhost:8787/api')
+const API_REQUEST_TIMEOUT_MS = 30_000
 
 export interface ApiError {
 	message: string
@@ -1652,11 +1653,17 @@ export class ApiClient {
 
 	private async request<T>(endpoint: string, options?: RequestInit): Promise<T> {
 		const url = `${this.baseUrl}${endpoint}`
+		const timeoutController = new AbortController()
+		const timeout = setTimeout(() => timeoutController.abort(), API_REQUEST_TIMEOUT_MS)
+		if (options?.signal) {
+			options.signal.addEventListener('abort', () => timeoutController.abort(), { once: true })
+		}
 
 		try {
 			const response = await fetch(url, {
-				...options,
+				...(options ?? {}),
 				credentials: 'include', // Send cookies with requests
+				signal: timeoutController.signal,
 				headers: {
 					'Content-Type': 'application/json',
 					'X-Requested-With': 'XMLHttpRequest', // Required for CSRF protection
@@ -1704,11 +1711,15 @@ export class ApiClient {
 				}
 			}
 
-			return response.json()
-		} catch (error) {
-			// Handle network errors (fetch failures, timeouts, etc.)
-			if (error instanceof TypeError && error.message.includes('fetch')) {
-				throw new NetworkError()
+				return response.json()
+			} catch (error) {
+				if (error instanceof Error && error.name === 'AbortError') {
+					throw new NetworkError('Request timed out. Please try again.')
+				}
+
+				// Handle network errors (fetch failures, timeouts, etc.)
+				if (error instanceof TypeError && error.message.includes('fetch')) {
+					throw new NetworkError()
 			}
 
 			// Re-throw API errors
@@ -1724,10 +1735,12 @@ export class ApiClient {
 				throw error
 			}
 
-			// Unknown error
-			throw new NetworkError('An unexpected error occurred. Please try again.')
+				// Unknown error
+				throw new NetworkError('An unexpected error occurred. Please try again.')
+			} finally {
+				clearTimeout(timeout)
+			}
 		}
-	}
 
 	async get<T>(endpoint: string): Promise<T> {
 		return this.request<T>(endpoint, { method: 'GET' })

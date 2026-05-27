@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import { Link, Navigate, useNavigate, useParams } from 'react-router-dom'
-import { toast } from 'sonner'
+import toast from '@/lib/toast'
 
 import { roundToMillion } from '@repo/srp'
 import { Badge } from '@/components/ui/badge'

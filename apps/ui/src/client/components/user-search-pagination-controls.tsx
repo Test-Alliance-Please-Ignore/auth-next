@@ -1,5 +1,6 @@
 import { Button } from '@/components/ui/button'
 import { Select } from '@/components/ui/select'
+import { Loader2 } from 'lucide-react'
 
 interface UserSearchPaginationControlsProps {
 	totalCount: number
@@ -80,12 +81,17 @@ export function UserSearchPaginationControls({
 					<Button
 						variant="ghost"
 						size="sm"
-						disabled={!canGoNext}
+						className="relative w-16"
+						disabled={!canGoNext || nextButtonLoading}
 						onClick={() => onPageChange(page + 1)}
-						loading={nextButtonLoading}
-						loadingText="Next"
 					>
-						Next
+						<span className={nextButtonLoading ? 'opacity-0' : undefined}>Next</span>
+						{nextButtonLoading ? (
+							<Loader2
+								aria-hidden
+								className="absolute left-1/2 top-1/2 h-4 w-4 -translate-x-1/2 -translate-y-1/2 animate-spin"
+							/>
+						) : null}
 					</Button>
 			</div>
 		</div>

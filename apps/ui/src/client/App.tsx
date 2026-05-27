@@ -1,4 +1,4 @@
-import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
+import { QueryCache, QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { lazy, Suspense, useEffect } from 'react'
 import { BrowserRouter, Navigate, Route, Routes, useParams } from 'react-router-dom'
 
@@ -26,6 +26,7 @@ import LegacyAuthCallbackPage from './routes/legacy-auth-callback'
 import MyGroupsPage from './routes/my-groups'
 import { adminRouteElements } from './routes/route-groups/admin-routes'
 import { taxRouteElements } from './routes/route-groups/tax-routes'
+import toast from './lib/toast'
 
 const CorporationMembers = lazy(() => import('./features/corporations/routes/corporation-members'))
 const CorporationSettings = lazy(
@@ -140,6 +141,18 @@ const MoonScanScannedMoons = lazy(() => import('./features/moon-scan/routes/scan
 
 // Create a client
 const queryClient = new QueryClient({
+	queryCache: new QueryCache({
+		onError: (error, query) => {
+			// Skip global toast for inactive/background-only queries.
+			if (query.getObserversCount() === 0) return
+
+			const message =
+				error instanceof Error ? error.message : 'Something went wrong while loading data.'
+			toast.error(message, {
+				id: `query-error:${query.queryHash}`,
+			})
+		},
+	}),
 	defaultOptions: {
 		queries: {
 			staleTime: 1000 * 60 * 5, // 5 minutes

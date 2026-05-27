@@ -1,7 +1,7 @@
 import { Check, Copy } from 'lucide-react'
 import { useEffect, useLayoutEffect, useRef, useState } from 'react'
 import { Link, Navigate } from 'react-router-dom'
-import { toast } from 'sonner'
+import toast from '@/lib/toast'
 
 import { Button } from '@/components/ui/button'
 import { Card } from '@/components/ui/card'
