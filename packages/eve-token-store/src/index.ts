@@ -126,6 +126,8 @@ export interface TokenInfo {
 	scopes: string[]
 	/** Whether token is expired */
 	isExpired: boolean
+	/** Whether a refresh token is available for recovery */
+	hasRefreshToken: boolean
 }
 
 /**
