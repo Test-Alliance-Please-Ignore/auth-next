@@ -43,9 +43,7 @@ const RejectRequestSchema = z.object({
 	rejectionReason: z.string().min(10).max(2000),
 	reviewNotes: z.string().max(2000).optional(),
 })
-const VerifyPaidManuallySchema = z.object({
-	reason: z.string().trim().min(5).max(500),
-})
+const VerifyPaidManuallySchema = z.object({}).passthrough()
 
 const ReviewQueueStatusQuerySchema = z.enum([
 	'pending',
@@ -2021,7 +2019,7 @@ srp.post('/requests/:id/verify-paid', async (c) => {
 		user.id,
 		getPrimaryCharacterName(user),
 		'paid',
-		`Manually verified as paid by ${getPrimaryCharacterName(user)}: ${validation.data.reason}`
+		`Manually verified as paid by ${getPrimaryCharacterName(user)}`
 	)
 
 	return c.json(request)

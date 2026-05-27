@@ -777,7 +777,7 @@ export function useMarkPaid() {
 export function useVerifyPaid() {
 	const queryClient = useQueryClient()
 	return useMutation({
-		mutationFn: ({ id, reason }: { id: string; reason: string }) => api.verifyPaid(id, reason),
+		mutationFn: ({ id }: { id: string }) => api.verifyPaid(id),
 		onSuccess: (request: SRPRequestResponse) => {
 			updateOverlayRequestStatus({
 				requestId: request.id,
