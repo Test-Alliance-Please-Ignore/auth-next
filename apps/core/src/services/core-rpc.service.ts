@@ -595,8 +595,7 @@ export class CoreRpcService {
 		const corporations = await this.db.query.managedCorporations.findMany({
 			where: and(
 				eq(managedCorporations.includeInBackgroundRefresh, true),
-				eq(managedCorporations.isActive, true),
-				eq(managedCorporations.isVerified, true)
+				eq(managedCorporations.isActive, true)
 			),
 			columns: {
 				corporationId: true,
@@ -622,6 +621,27 @@ export class CoreRpcService {
 			.set({
 				lastSync: now,
 				updatedAt: now,
+			})
+			.where(eq(managedCorporations.corporationId, corporationId))
+	}
+
+	async updateCorporationAuthHealth(
+		corporationId: string,
+		input: {
+			healthyDirectorCount: number
+			isVerified: boolean
+			lastVerified?: string | null
+		}
+	): Promise<void> {
+		const { managedCorporations } = await import('../db/schema')
+		const lastVerified = input.lastVerified ? new Date(input.lastVerified) : new Date()
+		await this.db
+			.update(managedCorporations)
+			.set({
+				healthyDirectorCount: Math.max(0, Math.floor(input.healthyDirectorCount)),
+				isVerified: input.isVerified,
+				lastVerified,
+				updatedAt: new Date(),
 			})
 			.where(eq(managedCorporations.corporationId, corporationId))
 	}

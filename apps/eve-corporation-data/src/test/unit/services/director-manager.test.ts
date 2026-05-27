@@ -204,10 +204,51 @@ describe('DirectorManager.recordFailure', () => {
 		expect(set).toHaveBeenCalledWith(
 			expect.objectContaining({
 				isHealthy: false,
-				lastFailureReason: 'ESI request failed: 403 Forbidden',
+				lastFailureReason: '[PERMANENT] ESI request failed: 403 Forbidden',
+				permanentFailureAt: expect.any(Date),
 			})
 		)
 		expect(set.mock.calls[0][0].failureCount).toBeGreaterThanOrEqual(3)
+	})
+
+	it('applies transient cooldown on 429 failures instead of permanent unhealthy marking', async () => {
+		const where = vi.fn().mockResolvedValue(undefined)
+		const set = vi.fn().mockReturnValue({ where })
+		const update = vi.fn().mockReturnValue({ set })
+		const db = {
+			query: {
+				corporationDirectors: {
+					findFirst: vi.fn().mockResolvedValue({
+						id: 'dir-1',
+						characterId: '111',
+						failureCount: 0,
+						isHealthy: true,
+						permanentFailureAt: null,
+					}),
+				},
+			},
+			update,
+		}
+		const manager = new DirectorManager(
+			db as never,
+			'98000001',
+			{} as never
+		)
+
+		await manager.recordFailure(
+			'dir-1',
+			'ESI request failed: 429 Too Many Requests | metadata={"status":429}'
+		)
+
+		expect(set).toHaveBeenCalledWith(
+			expect.objectContaining({
+				isHealthy: false,
+				lastFailureReason: expect.stringContaining('429'),
+				nextRetryAt: expect.any(Date),
+			})
+		)
+		const args = set.mock.calls[0][0]
+		expect(args.permanentFailureAt).toBeUndefined()
 	})
 })
 
@@ -479,6 +520,89 @@ describe('DirectorManager.verifyAllDirectorsHealth', () => {
 		expect(set).toHaveBeenCalledWith(
 			expect.objectContaining({
 				isVerified: false,
+			})
+		)
+	})
+
+	it('skips verification for directors in cooldown and counts them as failed', async () => {
+		const where = vi.fn().mockResolvedValue(undefined)
+		const set = vi.fn().mockReturnValue({ where })
+		const update = vi.fn().mockReturnValue({ set })
+		const manager = new DirectorManager(
+			{ update } as never,
+			'98000001',
+			{} as never
+		)
+		const verifyDirectorHealth = vi.spyOn(manager, 'verifyDirectorHealth').mockResolvedValue(true)
+
+		vi.spyOn(manager, 'getAllDirectors').mockResolvedValue([
+			{
+				directorId: 'dir-1',
+				characterId: '111',
+				characterName: 'Cooldown',
+				isHealthy: false,
+				lastHealthCheck: null,
+				lastUsed: null,
+				failureCount: 1,
+				lastFailureReason: 'ESI request failed: 429 Too Many Requests',
+				nextRetryAt: new Date(Date.now() + 60_000),
+				priority: 1,
+			},
+		])
+
+		const result = await manager.verifyAllDirectorsHealth()
+
+		expect(verifyDirectorHealth).not.toHaveBeenCalled()
+		expect(result).toEqual({ verified: 0, failed: 1 })
+		expect(set).toHaveBeenCalledWith(
+			expect.objectContaining({
+				isVerified: false,
+			})
+		)
+	})
+
+	it('applies 7-day stale invalid backstop to non-permanent unhealthy directors', async () => {
+		const staleAnchor = new Date(Date.now() - 8 * 24 * 60 * 60 * 1000)
+		const directorWhere = vi.fn().mockResolvedValue(undefined)
+		const directorSet = vi.fn().mockReturnValue({ where: directorWhere })
+		const corpWhere = vi.fn().mockResolvedValue(undefined)
+		const corpSet = vi.fn().mockReturnValue({ where: corpWhere })
+		const update = vi
+			.fn()
+			.mockReturnValueOnce({ set: directorSet })
+			.mockReturnValueOnce({ set: corpSet })
+		const manager = new DirectorManager(
+			{ update } as never,
+			'98000001',
+			{} as never
+		)
+		vi.spyOn(manager, 'verifyDirectorHealth')
+			.mockResolvedValueOnce(false)
+		vi.spyOn(manager, 'getAllDirectors').mockResolvedValue([
+			{
+				directorId: 'dir-1',
+				characterId: '111',
+				characterName: 'Stale',
+				isHealthy: false,
+				lastHealthCheck: staleAnchor,
+				lastUsed: null,
+				failureCount: 20,
+				lastFailureReason: 'Director token expired and refresh failed',
+				nextRetryAt: null,
+				permanentFailureAt: null,
+				priority: 1,
+				updatedAt: staleAnchor,
+			},
+		])
+
+		const result = await manager.verifyAllDirectorsHealth()
+
+		expect(result).toEqual({ verified: 0, failed: 1 })
+		expect(directorSet).toHaveBeenCalledWith(
+			expect.objectContaining({
+				isHealthy: false,
+				permanentFailureAt: expect.any(Date),
+				lastFailureReason: expect.stringContaining('[PERMANENT]'),
 			})
 		)
 	})

@@ -7,7 +7,7 @@ import { getEsiInstanceForCharacter, getEsiInstanceForCorporation } from '@repo/
 import { logger } from '@repo/hono-helpers'
 
 import { createDb } from './db'
-import { userCharacters, userIpAddresses, users } from './db/schema'
+import { managedCorporations, userCharacters, userIpAddresses, users } from './db/schema'
 import { recordUserIpAddress } from './lib/ip-tracking'
 import { validateAndSyncCharacterTokenValidity } from './lib/token-validity'
 import { triggerDiscordRefreshWorkflow, triggerUserRefreshWorkflow } from './lib/workflow-triggers'
@@ -406,6 +406,26 @@ export class CoreDO extends DurableObject<Env> implements Core {
 			columns: { discordUserId: true },
 		})
 		return user?.discordUserId ?? null
+	}
+
+	async updateCorporationAuthHealth(
+		corporationId: string,
+		input: {
+			healthyDirectorCount: number
+			isVerified: boolean
+			lastVerified?: string | null
+		}
+	): Promise<void> {
+		const lastVerified = input.lastVerified ? new Date(input.lastVerified) : new Date()
+		await this.getDb()
+			.update(managedCorporations)
+			.set({
+				healthyDirectorCount: Math.max(0, Math.floor(input.healthyDirectorCount)),
+				isVerified: input.isVerified,
+				lastVerified,
+				updatedAt: new Date(),
+			})
+			.where(eq(managedCorporations.corporationId, corporationId))
 	}
 
 	async createUserBlacklist(input: {

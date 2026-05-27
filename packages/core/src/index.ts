@@ -30,6 +30,14 @@ export interface Core {
 	): Promise<Map<string, Array<{ corporationId: string; corporationName: string }>>>
 	getUserAlliances(userId: string): Promise<Array<{ allianceId: string; allianceName: string }>>
 	getUserDiscordUserId(userId: string): Promise<string | null>
+	updateCorporationAuthHealth(
+		corporationId: string,
+		input: {
+			healthyDirectorCount: number
+			isVerified: boolean
+			lastVerified?: string | null
+		}
+	): Promise<void>
 	listUsersNeedingRefresh(limit: number): Promise<string[]>
 	addPendingDiscordRefreshes(
 		userIds: string[],

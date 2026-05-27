@@ -1,15 +1,42 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
-import { reconcileDirectorsFromCorporationRoles } from '../../../workflows/steps/directors'
+import { reconcileDirectorsFromCorporationRoles, selectDirector } from '../../../workflows/steps/directors'
 
 const createTokenStoreMock = vi.fn()
 const getCorporationDataStubMock = vi.fn()
+const createDirectorManagerMock = vi.fn()
 
 vi.mock('../../../workflows/utils/services', () => ({
-	createDirectorManager: vi.fn(),
+	createDirectorManager: (...args: unknown[]) => createDirectorManagerMock(...args),
 	createTokenStore: (...args: unknown[]) => createTokenStoreMock(...args),
 	getCorporationDataStub: (...args: unknown[]) => getCorporationDataStubMock(...args),
 }))
+
+describe('selectDirector workflow step', () => {
+	beforeEach(() => {
+		vi.clearAllMocks()
+	})
+
+	it('returns null when no healthy director is available', async () => {
+		createDirectorManagerMock.mockReturnValue({
+			selectDirector: vi.fn().mockResolvedValue(null),
+		})
+
+		const selected = await selectDirector({} as any, '98000001')
+
+		expect(selected).toBeNull()
+	})
+
+	it('returns null when director manager throws (short-circuit authenticated segment)', async () => {
+		createDirectorManagerMock.mockReturnValue({
+			selectDirector: vi.fn().mockRejectedValue(new Error('director manager unavailable')),
+		})
+
+		const selected = await selectDirector({} as any, '98000001')
+
+		expect(selected).toBeNull()
+	})
+})
 
 describe('reconcileDirectorsFromCorporationRoles', () => {
 	beforeEach(() => {
