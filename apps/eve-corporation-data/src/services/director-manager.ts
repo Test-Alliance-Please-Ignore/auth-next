@@ -1,6 +1,6 @@
 import { and, asc, eq } from '@repo/db-utils'
 import { logger } from '@repo/hono-helpers'
-import { parseEsiErrorMetadata } from '@repo/workflow-utils'
+import { parseEsiErrorMetadata, retryWithBackoff } from '@repo/workflow-utils'
 
 import { characterCorporationRoles, corporationConfig, corporationDirectors } from '../db/schema'
 
@@ -242,12 +242,27 @@ export class DirectorManager {
 						continue
 					}
 
-					if (options?.requiredRoleSets && options.requiredRoleSets.length > 0) {
-						const rolesResponse: EsiResponse<EsiCharacterRoles> = await this.tokenStore.fetchEsi(
-							`/characters/${candidate.characterId}/roles`,
-							candidate.characterId
-						)
-						const roleSet = this.buildEffectiveRoleSet(rolesResponse.data)
+						if (options?.requiredRoleSets && options.requiredRoleSets.length > 0) {
+							const rolesResponse: EsiResponse<EsiCharacterRoles> = await retryWithBackoff(
+								() =>
+									this.tokenStore.fetchEsi(
+										`/characters/${candidate.characterId}/roles`,
+										candidate.characterId
+									),
+								{
+									onRetry: (attempt, error, delayMs) => {
+										logger.warn('[DirectorManager] Retrying director role lookup after ESI throttling', {
+											corporationId: this.corporationId,
+											directorId: candidate.directorId,
+											characterId: candidate.characterId,
+											attempt,
+											delayMs,
+											error: error.message,
+										})
+									},
+								}
+							)
+							const roleSet = this.buildEffectiveRoleSet(rolesResponse.data)
 						const missingRoleSets = this.getMissingRoleSets(roleSet, options.requiredRoleSets)
 						if (missingRoleSets.length > 0) {
 							await this.safeRecordFailure(
@@ -321,8 +336,20 @@ export class DirectorManager {
 			return { matches: false, corporationId: null }
 		}
 
-		const affiliationResponse: EsiResponse<EsiCharacterAffiliation[]> =
-			await this.tokenStore.fetchCharacterAffiliations([characterId])
+		const affiliationResponse: EsiResponse<EsiCharacterAffiliation[]> = await retryWithBackoff(
+			() => this.tokenStore.fetchCharacterAffiliations([characterId]),
+			{
+				onRetry: (attempt, error, delayMs) => {
+					logger.warn('[DirectorManager] Retrying character affiliation lookup after ESI throttling', {
+						corporationId: this.corporationId,
+						characterId,
+						attempt,
+						delayMs,
+						error: error.message,
+					})
+				},
+			}
+		)
 		const affiliations = affiliationResponse.data
 		const affiliation = affiliations.find((entry) => entry.character_id === numericCharacterId)
 		if (!affiliation) {
@@ -496,6 +523,21 @@ export class DirectorManager {
 		return `Director auth failure (${parts.join(', ')})`
 	}
 
+	private isTransientEsiFailure(reason: string): boolean {
+		const lower = reason.toLowerCase()
+		const metadata = parseEsiErrorMetadata(reason)
+		const status = typeof metadata?.status === 'number' ? metadata.status : null
+
+		// ESI/global transient conditions should not degrade director health.
+		if (status === 429) return true
+		if (status !== null && status >= 500) return true
+		if (lower.includes('rate limit')) return true
+		if (lower.includes('timeout')) return true
+		if (lower.includes('temporarily unavailable')) return true
+
+		return false
+	}
+
 	/**
 	 * Record successful director usage
 	 */
@@ -550,6 +592,25 @@ export class DirectorManager {
 		})
 
 		if (!director) {
+			return
+		}
+
+		// Do not punish directors for transient upstream failures.
+		if (!options?.forceUnhealthy && this.isTransientEsiFailure(reason)) {
+			await this.db
+				.update(corporationDirectors)
+				.set({
+					lastFailureReason: reason,
+					updatedAt: now,
+				})
+				.where(eq(corporationDirectors.id, directorId))
+
+			logger.warn('[DirectorManager] Transient ESI failure; preserving director health', {
+				corporationId: this.corporationId,
+				directorId,
+				characterId: director.characterId,
+				reason,
+			})
 			return
 		}
 
@@ -630,11 +691,26 @@ export class DirectorManager {
 				return false
 			}
 
-			// Fetch character roles from ESI
-			const response: EsiResponse<EsiCharacterRoles> = await this.tokenStore.fetchEsi(
-				`/characters/${director.characterId}/roles`,
-				director.characterId
-			)
+				// Fetch character roles from ESI
+				const response: EsiResponse<EsiCharacterRoles> = await retryWithBackoff(
+					() =>
+						this.tokenStore.fetchEsi(
+							`/characters/${director.characterId}/roles`,
+							director.characterId
+						),
+					{
+						onRetry: (attempt, error, delayMs) => {
+							logger.warn('[DirectorManager] Retrying director health role check after ESI throttling', {
+								corporationId: this.corporationId,
+								directorId,
+								characterId: director.characterId,
+								attempt,
+								delayMs,
+								error: error.message,
+							})
+						},
+					}
+				)
 
 			const roles = response.data
 			const roleSet = this.buildEffectiveRoleSet(roles)
