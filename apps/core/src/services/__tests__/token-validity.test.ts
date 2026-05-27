@@ -69,6 +69,19 @@ describe('token-validity helper', () => {
 		).toBe(true)
 	})
 
+	it('degrades validity on permanent_invalid', () => {
+		expect(
+			resolveNextTokenValidity(
+				true,
+				makeValidationResult({
+					isValid: false,
+					status: 'permanent_invalid',
+					error: 'refresh token permanently invalid',
+				}) as any
+			)
+		).toBe(false)
+	})
+
 	it('writes updated hasValidToken from live validation', async () => {
 		const recorder = makeDbRecorder(false)
 		const tokenStore = {

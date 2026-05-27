@@ -105,6 +105,10 @@ export const corporationDirectors = pgTable(
 		failureCount: integer('failure_count').default(0).notNull(),
 		/** Last failure reason (for debugging) */
 		lastFailureReason: text('last_failure_reason'),
+		/** Earliest time this director should be retried for health/auth checks */
+		nextRetryAt: timestamp('next_retry_at', { withTimezone: true }),
+		/** Marks director as terminally invalid until explicit operator intervention */
+		permanentFailureAt: timestamp('permanent_failure_at', { withTimezone: true }),
 		createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
 		updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow().notNull(),
 	},
@@ -112,6 +116,11 @@ export const corporationDirectors = pgTable(
 		unique().on(table.corporationId, table.characterId),
 		// Index for finding healthy directors efficiently
 		index('corporation_directors_corp_healthy_idx').on(table.corporationId, table.isHealthy),
+		index('corporation_directors_corp_next_retry_idx').on(table.corporationId, table.nextRetryAt),
+		index('corporation_directors_corp_permanent_failure_idx').on(
+			table.corporationId,
+			table.permanentFailureAt
+		),
 		// Index for selecting least-recently-used director
 		index('corporation_directors_last_used_idx').on(table.corporationId, table.lastUsed),
 	]

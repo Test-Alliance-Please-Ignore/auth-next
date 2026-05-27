@@ -1,5 +1,6 @@
 import { WorkflowEntrypoint } from 'cloudflare:workers'
 
+import { getStub } from '@repo/do-utils'
 import { logger } from '@repo/hono-helpers'
 import {
 	NonRetryableError,
@@ -45,6 +46,7 @@ import {
 
 import type { WorkflowEvent, WorkflowStep } from 'cloudflare:workers'
 import type { CorporationRole, EveCorporationSyncDataType } from '@repo/eve-corporation-data'
+import type { EveCorporationData } from '@repo/eve-corporation-data'
 import type { Env } from '../context'
 import type {
 	DirectorInfo,
@@ -99,6 +101,30 @@ interface SyncStepResult<T extends EveCorporationSyncDataType> {
 	stats: Partial<SyncStats>
 }
 
+async function syncCoreAuthHealthSnapshot(
+	env: Env,
+	corporationId: string,
+	workflowInstanceId: string
+): Promise<{ healthyDirectorCount: number; isVerified: boolean }> {
+	const corpStub = getStub<EveCorporationData>(env.EVE_CORPORATION_DATA, corporationId)
+	const directors = await corpStub.getDirectors(corporationId)
+	const healthyDirectorCount = directors.filter((director) => director.isHealthy).length
+	const isVerified = healthyDirectorCount > 0
+	await env.CORE.updateCorporationAuthHealth(corporationId, {
+		healthyDirectorCount,
+		isVerified,
+		lastVerified: new Date().toISOString(),
+	})
+	logger.info('[EveCorporationSyncWorkflow] Synced corporation auth health snapshot to Core', {
+		corporationId,
+		workflowInstanceId,
+		healthyDirectorCount,
+		isVerified,
+		directorCount: directors.length,
+	})
+	return { healthyDirectorCount, isVerified }
+}
+
 export class EveCorporationSyncWorkflow extends WorkflowEntrypoint<Env, EveCorporationSyncParams> {
 	async run(event: WorkflowEvent<EveCorporationSyncParams>, step: WorkflowStep) {
 		const { corporationId, dataTypes, trigger } = event.payload
@@ -142,6 +168,9 @@ export class EveCorporationSyncWorkflow extends WorkflowEntrypoint<Env, EveCorpo
 				})
 				return verification
 			}
+		)
+		await step.do('sync-core-auth-health-after-director-verify', {}, () =>
+			syncCoreAuthHealthSnapshot(this.env, corporationId, workflowInstanceId)
 		)
 
 		let director: DirectorInfo | null = await step.do(
@@ -774,6 +803,10 @@ export class EveCorporationSyncWorkflow extends WorkflowEntrypoint<Env, EveCorpo
 				recordDirectorSuccess(this.env, corporationId, director!.directorId)
 			)
 		}
+
+		await step.do('sync-core-auth-health-final', {}, () =>
+			syncCoreAuthHealthSnapshot(this.env, corporationId, workflowInstanceId)
+		)
 
 		await step.do('replay-tax-projection-retry-intent', { timeout: '30 seconds' }, async () => {
 			const replay = await replayTaxProjectionRetryIntent(this.env, corporationId)

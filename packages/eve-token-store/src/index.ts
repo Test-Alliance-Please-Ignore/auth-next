@@ -142,6 +142,7 @@ export type TokenValidationStatus =
 	| 'character_deleted'
 	| 'missing_scopes'
 	| 'invalid_token'
+	| 'permanent_invalid'
 	| 'transient_error'
 
 /**

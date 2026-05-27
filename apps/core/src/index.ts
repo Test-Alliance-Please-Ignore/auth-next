@@ -447,6 +447,20 @@ export class CoreWorker extends WorkerEntrypoint<Env> {
 	}
 
 	/**
+	 * Update corporation auth-health snapshot (used by background corporation workflows).
+	 */
+	async updateCorporationAuthHealth(
+		corporationId: string,
+		input: {
+			healthyDirectorCount: number
+			isVerified: boolean
+			lastVerified?: string | null
+		}
+	): Promise<void> {
+		return this.getService().updateCorporationAuthHealth(corporationId, input)
+	}
+
+	/**
 	 * Get users that have Discord linked and need refresh
 	 */
 	async getUsersForDiscordRefresh(

@@ -7,6 +7,19 @@ import { logger } from '@repo/hono-helpers'
 
 import { createDb } from './db'
 import { eveCharacters, eveTokens } from './db/schema'
+import {
+	classifyAuthEsiPriority,
+	isAuthEsiBudgetExceeded,
+	normalizeAuthEsiRouteKey,
+} from './lib/auth-esi-budget'
+import { computeCircuitOpenUntil } from './lib/auth-esi-breaker'
+import { computeRampRetryAfterSeconds } from './lib/auth-esi-ramp'
+import {
+	classifySsoError,
+	isPermanentRefreshFailure,
+	isRefreshBackstopExpired,
+	shouldForcePermanentByInvalidAge,
+} from './lib/token-health'
 
 import type {
 	AuthorizationUrlResponse,
@@ -35,6 +48,17 @@ const EVE_METADATA_URL = 'https://login.eveonline.com/.well-known/oauth-authoriz
 const EVE_SSO_JWKS_FALLBACK_URL = 'https://login.eveonline.com/oauth/jwks'
 const METADATA_TTL_MS = 5 * 60 * 1000
 const TWENTY_FOUR_HOURS_MS = 24 * 60 * 60 * 1000
+const AUTH_ESI_BREAKER_STORAGE_KEY = 'esi:auth:breaker:open-until-ms'
+const AUTH_ESI_BREAKER_LAST_OPEN_UNTIL_STORAGE_KEY = 'esi:auth:breaker:last-open-until-ms'
+const AUTH_ESI_BREAKER_MIN_OPEN_MS = 5_000
+const AUTH_ESI_BREAKER_MAX_OPEN_MS = 5 * 60 * 1000
+const AUTH_ESI_RATE_WINDOW_MS = 60 * 1000
+const AUTH_ESI_GLOBAL_WINDOW_LIMIT = 180
+const AUTH_ESI_ROUTE_WINDOW_LIMIT = 60
+const AUTH_ESI_BACKGROUND_WINDOW_LIMIT = 130
+const AUTH_ESI_RAMP_WINDOW_MS = 60 * 1000
+const TOKEN_REFRESH_COOLDOWN_PREFIX = 'token:refresh:cooldown:'
+const TOKEN_REFRESH_TRANSIENT_COOLDOWN_MS = 5 * 60 * 1000
 
 /**
  * EVE SSO Scopes
@@ -121,6 +145,8 @@ export class EveTokenStoreDO extends DurableObject<Env> implements EveTokenStore
 	private jwks: ReturnType<typeof createRemoteJWKSet> | null = null
 	private jwksUri: string | null = null
 	private metadata: CachedEveMetadata | null = null
+	private authEsiBreakerOpenUntilMs = 0
+	private authEsiBreakerLastOpenUntilMs = 0
 
 	/**
 	 * Initialize the Durable Object
@@ -138,6 +164,10 @@ export class EveTokenStoreDO extends DurableObject<Env> implements EveTokenStore
 		// Load cached metadata from DO storage once on startup.
 		state.blockConcurrencyWhile(async () => {
 			this.metadata = (await state.storage.get<CachedEveMetadata>('eve:oauth:metadata')) ?? null
+			this.authEsiBreakerOpenUntilMs =
+				(await state.storage.get<number>(AUTH_ESI_BREAKER_STORAGE_KEY)) ?? 0
+			this.authEsiBreakerLastOpenUntilMs =
+				(await state.storage.get<number>(AUTH_ESI_BREAKER_LAST_OPEN_UNTIL_STORAGE_KEY)) ?? 0
 
 			if (this.metadata) {
 				this.jwksUri = this.metadata.jwks_uri
@@ -238,6 +268,27 @@ export class EveTokenStoreDO extends DurableObject<Env> implements EveTokenStore
 			}
 			return fallback
 		}
+	}
+
+	private getTokenRefreshCooldownKey(characterId: string): string {
+		return `${TOKEN_REFRESH_COOLDOWN_PREFIX}${characterId}`
+	}
+
+	private async getTokenRefreshCooldownUntil(characterId: string): Promise<number> {
+		return (
+			(await this.state.storage.get<number>(this.getTokenRefreshCooldownKey(characterId))) ?? 0
+		)
+	}
+
+	private async setTokenRefreshCooldownUntil(
+		characterId: string,
+		cooldownUntilMs: number
+	): Promise<void> {
+		await this.state.storage.put(this.getTokenRefreshCooldownKey(characterId), cooldownUntilMs)
+	}
+
+	private async clearTokenRefreshCooldown(characterId: string): Promise<void> {
+		await this.state.storage.delete(this.getTokenRefreshCooldownKey(characterId))
 	}
 
 	/**
@@ -402,6 +453,18 @@ export class EveTokenStoreDO extends DurableObject<Env> implements EveTokenStore
 	 */
 	async refreshToken(characterId: string): Promise<boolean> {
 		try {
+			const cooldownUntilMs = await this.getTokenRefreshCooldownUntil(characterId)
+			const nowMs = Date.now()
+			if (cooldownUntilMs > nowMs) {
+				logger.withTags({ operation: 'refreshToken', characterId }).warn(
+					'Skipping refresh: token is in cooldown window',
+					{
+						cooldownUntil: new Date(cooldownUntilMs).toISOString(),
+					}
+				)
+				return false
+			}
+
 			const character = await this.db.query.eveCharacters.findFirst({
 				where: eq(eveCharacters.characterId, String(characterId)),
 			})
@@ -416,12 +479,59 @@ export class EveTokenStoreDO extends DurableObject<Env> implements EveTokenStore
 				where: eq(eveTokens.characterId, character.id),
 			})
 
-			if (!tokenRecord || !tokenRecord.refreshToken) {
+			if (!tokenRecord) {
 				logger
 					.withTags({ operation: 'refreshToken', characterId })
 					.error('Token or refresh token not found', {
-						hasTokenRecord: !!tokenRecord,
-						hasRefreshToken: !!tokenRecord?.refreshToken,
+						hasTokenRecord: false,
+						hasRefreshToken: false,
+					})
+				return false
+			}
+			if (tokenRecord.permanentInvalidAt) {
+				logger.withTags({ operation: 'refreshToken', characterId }).warn(
+					'Skipping refresh: token is permanently invalid',
+					{
+						permanentInvalidAt: tokenRecord.permanentInvalidAt.toISOString(),
+						reason: tokenRecord.permanentInvalidReason,
+					}
+				)
+				return false
+			}
+			if (shouldForcePermanentByInvalidAge(tokenRecord.invalidSince)) {
+				await this.db
+					.update(eveTokens)
+					.set({
+						permanentInvalidAt: new Date(),
+						permanentInvalidReason:
+							tokenRecord.permanentInvalidReason ??
+							'Invalid state exceeded 7-day backstop',
+						updatedAt: new Date(),
+					})
+					.where(eq(eveTokens.id, tokenRecord.id))
+				return false
+			}
+			if (!tokenRecord.refreshToken) {
+				const permanentlyInvalid = isRefreshBackstopExpired(tokenRecord.expiresAt)
+				await this.db
+					.update(eveTokens)
+					.set({
+						invalidSince: tokenRecord.invalidSince ?? new Date(),
+						lastValidationAt: new Date(),
+						lastValidationStatus: permanentlyInvalid ? 'permanent_invalid' : 'invalid_token',
+						permanentInvalidAt: permanentlyInvalid ? new Date() : tokenRecord.permanentInvalidAt,
+						permanentInvalidReason: permanentlyInvalid
+							? 'Token expired more than 24h ago without refresh token'
+							: tokenRecord.permanentInvalidReason,
+						updatedAt: new Date(),
+					})
+					.where(eq(eveTokens.id, tokenRecord.id))
+				logger
+					.withTags({ operation: 'refreshToken', characterId })
+					.error('Token or refresh token not found', {
+						hasTokenRecord: true,
+						hasRefreshToken: false,
+						permanentlyInvalid,
 					})
 				return false
 			}
@@ -452,6 +562,12 @@ export class EveTokenStoreDO extends DurableObject<Env> implements EveTokenStore
 					accessToken: encryptedAccessToken,
 					refreshToken: encryptedRefreshToken,
 					expiresAt,
+					invalidSince: null,
+					lastValidationAt: new Date(),
+					lastValidationStatus: 'valid',
+					nextRetryAt: null,
+					permanentInvalidAt: null,
+					permanentInvalidReason: null,
 					updatedAt: new Date(),
 				})
 				.where(eq(eveTokens.id, tokenRecord.id))
@@ -461,36 +577,65 @@ export class EveTokenStoreDO extends DurableObject<Env> implements EveTokenStore
 				.update(eveCharacters)
 				.set({ lastRefreshAt: new Date() })
 				.where(eq(eveCharacters.characterId, String(characterId)))
+			await this.clearTokenRefreshCooldown(characterId)
 
 			return true
-			} catch (error) {
-				const message = error instanceof Error ? error.message : String(error)
-				if (this.isPermanentRefreshFailure(message)) {
-					const character = await this.db.query.eveCharacters.findFirst({
-						where: eq(eveCharacters.characterId, String(characterId)),
-					})
-					if (character) {
-						await this.db
-							.update(eveTokens)
-							.set({
-								refreshToken: null,
-								updatedAt: new Date(),
-							})
-							.where(eq(eveTokens.characterId, character.id))
-					}
-					logger
-						.withTags({ operation: 'refreshToken', characterId })
-						.warn('Permanent token refresh failure; disabled further refresh attempts', {
-							error: message,
+		} catch (error) {
+			const message = error instanceof Error ? error.message : String(error)
+			if (isPermanentRefreshFailure(message)) {
+				const character = await this.db.query.eveCharacters.findFirst({
+					where: eq(eveCharacters.characterId, String(characterId)),
+				})
+				if (character) {
+					await this.db
+						.update(eveTokens)
+						.set({
+							refreshToken: null,
+							invalidSince: new Date(),
+							lastValidationAt: new Date(),
+							lastValidationStatus: 'permanent_invalid',
+							nextRetryAt: null,
+							permanentInvalidAt: new Date(),
+							permanentInvalidReason: message,
+							updatedAt: new Date(),
 						})
-					return false
+						.where(eq(eveTokens.characterId, character.id))
 				}
 				logger
 					.withTags({ operation: 'refreshToken', characterId })
-					.error('Token refresh failed', error)
+					.warn('Permanent token refresh failure; disabled further refresh attempts', {
+						error: message,
+					})
 				return false
 			}
+			const character = await this.db.query.eveCharacters.findFirst({
+				where: eq(eveCharacters.characterId, String(characterId)),
+			})
+			if (character) {
+				const existingToken = await this.db.query.eveTokens.findFirst({
+					where: eq(eveTokens.characterId, character.id),
+				})
+				await this.db
+					.update(eveTokens)
+					.set({
+						invalidSince: existingToken?.invalidSince ?? new Date(),
+						lastValidationAt: new Date(),
+						lastValidationStatus: 'transient_error',
+						nextRetryAt: new Date(Date.now() + TOKEN_REFRESH_TRANSIENT_COOLDOWN_MS),
+						updatedAt: new Date(),
+					})
+					.where(eq(eveTokens.characterId, character.id))
+			}
+			await this.setTokenRefreshCooldownUntil(
+				characterId,
+				Date.now() + TOKEN_REFRESH_TRANSIENT_COOLDOWN_MS
+			)
+			logger
+				.withTags({ operation: 'refreshToken', characterId })
+				.error('Token refresh failed', error)
+			return false
 		}
+	}
 
 	/**
 	 * Get token information (without actual token values)
@@ -580,6 +725,54 @@ export class EveTokenStoreDO extends DurableObject<Env> implements EveTokenStore
 				status: 'token_missing',
 			}
 		}
+		if (tokenRecord.permanentInvalidAt) {
+			return {
+				characterId,
+				error: tokenRecord.permanentInvalidReason ?? 'Token is permanently invalid',
+				isValid: false,
+				missingScopes: [],
+				refreshAttempted: false,
+				refreshSucceeded: false,
+				scopes: [],
+				status: 'permanent_invalid',
+			}
+		}
+		if (shouldForcePermanentByInvalidAge(tokenRecord.invalidSince)) {
+			await this.db
+				.update(eveTokens)
+				.set({
+					permanentInvalidAt: new Date(),
+					permanentInvalidReason:
+						tokenRecord.permanentInvalidReason ?? 'Invalid state exceeded 7-day backstop',
+					lastValidationAt: new Date(),
+					lastValidationStatus: 'permanent_invalid',
+					nextRetryAt: null,
+					updatedAt: new Date(),
+				})
+				.where(eq(eveTokens.id, tokenRecord.id))
+			return {
+				characterId,
+				error: 'Token invalid state exceeded 7-day backstop',
+				isValid: false,
+				missingScopes: [],
+				refreshAttempted: false,
+				refreshSucceeded: false,
+				scopes: [],
+				status: 'permanent_invalid',
+			}
+		}
+		if (tokenRecord.nextRetryAt && tokenRecord.nextRetryAt.getTime() > Date.now()) {
+			return {
+				characterId,
+				error: `Token refresh cooldown active until ${tokenRecord.nextRetryAt.toISOString()}`,
+				isValid: false,
+				missingScopes: [],
+				refreshAttempted: false,
+				refreshSucceeded: false,
+				scopes: JSON.parse(character.scopes) as string[],
+				status: 'transient_error',
+			}
+		}
 
 		let accessToken: string
 		let refreshAttempted = false
@@ -591,6 +784,20 @@ export class EveTokenStoreDO extends DurableObject<Env> implements EveTokenStore
 			if (isExpired) {
 				refreshAttempted = true
 				if (!tokenRecord.refreshToken) {
+					const permanentlyInvalid = isRefreshBackstopExpired(tokenRecord.expiresAt)
+					await this.db
+						.update(eveTokens)
+						.set({
+							invalidSince: tokenRecord.invalidSince ?? new Date(),
+							lastValidationAt: new Date(),
+							lastValidationStatus: permanentlyInvalid ? 'permanent_invalid' : 'invalid_token',
+							permanentInvalidAt: permanentlyInvalid ? new Date() : tokenRecord.permanentInvalidAt,
+							permanentInvalidReason: permanentlyInvalid
+								? 'Token expired more than 24h ago without refresh token'
+								: tokenRecord.permanentInvalidReason,
+							updatedAt: new Date(),
+						})
+						.where(eq(eveTokens.id, tokenRecord.id))
 					return {
 						characterId,
 						error: 'Token is expired and has no refresh token',
@@ -599,7 +806,7 @@ export class EveTokenStoreDO extends DurableObject<Env> implements EveTokenStore
 						refreshAttempted,
 						refreshSucceeded: false,
 						scopes: [],
-						status: 'invalid_token',
+						status: permanentlyInvalid ? 'permanent_invalid' : 'invalid_token',
 					}
 				}
 
@@ -619,6 +826,12 @@ export class EveTokenStoreDO extends DurableObject<Env> implements EveTokenStore
 						accessToken: encryptedAccessToken,
 						expiresAt,
 						refreshToken: encryptedRefreshToken,
+						invalidSince: null,
+						lastValidationAt: new Date(),
+						lastValidationStatus: 'valid',
+						nextRetryAt: null,
+						permanentInvalidAt: null,
+						permanentInvalidReason: null,
 						updatedAt: new Date(),
 					})
 					.where(eq(eveTokens.id, tokenRecord.id))
@@ -627,10 +840,52 @@ export class EveTokenStoreDO extends DurableObject<Env> implements EveTokenStore
 			} else {
 				accessToken = await this.decrypt(tokenRecord.accessToken)
 			}
-		} catch (error) {
-			const errorMessage = error instanceof Error ? error.message : String(error)
-			const status = this.classifySsoError(errorMessage)
+			} catch (error) {
+				const errorMessage = error instanceof Error ? error.message : String(error)
+				const status = classifySsoError(errorMessage)
+				if (refreshAttempted && isPermanentRefreshFailure(errorMessage)) {
+				await this.db
+					.update(eveTokens)
+					.set({
+						refreshToken: null,
+						invalidSince: tokenRecord.invalidSince ?? new Date(),
+						lastValidationAt: new Date(),
+						lastValidationStatus: 'permanent_invalid',
+						nextRetryAt: null,
+						permanentInvalidAt: new Date(),
+						permanentInvalidReason: errorMessage,
+						updatedAt: new Date(),
+					})
+					.where(eq(eveTokens.id, tokenRecord.id))
+					logger
+						.withTags({ operation: 'validateToken', characterId })
+						.warn('Permanent token refresh failure during validation; disabled further refresh attempts', {
+							error: errorMessage,
+						})
+					return {
+						characterId,
+						error: errorMessage,
+						isValid: false,
+						missingScopes: [],
+						refreshAttempted,
+						refreshSucceeded: false,
+						scopes: [],
+						status: 'permanent_invalid',
+					}
+				}
 
+				if (refreshAttempted) {
+				await this.db
+					.update(eveTokens)
+					.set({
+						invalidSince: tokenRecord.invalidSince ?? new Date(),
+						lastValidationAt: new Date(),
+						lastValidationStatus: 'transient_error',
+						nextRetryAt: new Date(Date.now() + TOKEN_REFRESH_TRANSIENT_COOLDOWN_MS),
+						updatedAt: new Date(),
+					})
+					.where(eq(eveTokens.id, tokenRecord.id))
+			}
 			return {
 				characterId,
 				error: errorMessage,
@@ -657,6 +912,18 @@ export class EveTokenStoreDO extends DurableObject<Env> implements EveTokenStore
 					updatedAt: new Date(),
 				})
 				.where(eq(eveCharacters.id, character.id))
+			await this.db
+				.update(eveTokens)
+				.set({
+					invalidSince: null,
+					lastValidationAt: new Date(),
+					lastValidationStatus: missingScopes.length > 0 ? 'missing_scopes' : 'valid',
+					nextRetryAt: null,
+					permanentInvalidAt: null,
+					permanentInvalidReason: null,
+					updatedAt: new Date(),
+				})
+				.where(eq(eveTokens.id, tokenRecord.id))
 
 			if (missingScopes.length > 0) {
 				return {
@@ -682,9 +949,18 @@ export class EveTokenStoreDO extends DurableObject<Env> implements EveTokenStore
 			}
 		} catch (error) {
 			const errorMessage = error instanceof Error ? error.message : String(error)
-			const status = this.classifySsoError(errorMessage)
+			const status = classifySsoError(errorMessage)
 			const scopes = JSON.parse(character.scopes) as string[]
 
+			await this.db
+				.update(eveTokens)
+				.set({
+					invalidSince: tokenRecord.invalidSince ?? new Date(),
+					lastValidationAt: new Date(),
+					lastValidationStatus: status,
+					updatedAt: new Date(),
+				})
+				.where(eq(eveTokens.id, tokenRecord.id))
 			return {
 				characterId,
 				error: errorMessage,
@@ -891,6 +1167,140 @@ export class EveTokenStoreDO extends DurableObject<Env> implements EveTokenStore
 		return parsed
 	}
 
+	private async incrementAuthEsiWindowCounter(
+		counterKey: string
+	): Promise<{ count: number; windowStartMs: number }> {
+		const windowStartMs = Math.floor(Date.now() / AUTH_ESI_RATE_WINDOW_MS) * AUTH_ESI_RATE_WINDOW_MS
+		const storageKey = `esi:auth:budget:${counterKey}:${windowStartMs}`
+		const current = (await this.state.storage.get<number>(storageKey)) ?? 0
+		const next = current + 1
+		await this.state.storage.put(storageKey, next)
+		return { count: next, windowStartMs }
+	}
+
+	private async assertAuthenticatedEsiBudget(path: string): Promise<void> {
+		const routeKey = normalizeAuthEsiRouteKey(path)
+		const priority = classifyAuthEsiPriority(path)
+		const global = await this.incrementAuthEsiWindowCounter('global')
+		const route = await this.incrementAuthEsiWindowCounter(`route:${routeKey}`)
+		const priorityCounter = await this.incrementAuthEsiWindowCounter(`priority:${priority}`)
+
+		if (
+			!isAuthEsiBudgetExceeded({
+				globalCount: global.count,
+				routeCount: route.count,
+				priorityCount: priorityCounter.count,
+				priority,
+				globalLimit: AUTH_ESI_GLOBAL_WINDOW_LIMIT,
+				routeLimit: AUTH_ESI_ROUTE_WINDOW_LIMIT,
+				backgroundLimit: AUTH_ESI_BACKGROUND_WINDOW_LIMIT,
+			})
+		) {
+			return
+		}
+
+		const now = Date.now()
+		const windowEndMs = global.windowStartMs + AUTH_ESI_RATE_WINDOW_MS
+		const retryAfterSeconds = Math.max(1, Math.ceil((windowEndMs - now) / 1000))
+		const metadata = JSON.stringify({
+			status: 429,
+			path,
+			retryAfterSeconds,
+			circuitBreaker: 'budget_exhausted',
+			globalCount: global.count,
+			globalLimit: AUTH_ESI_GLOBAL_WINDOW_LIMIT,
+			routeKey,
+			routeCount: route.count,
+			routeLimit: AUTH_ESI_ROUTE_WINDOW_LIMIT,
+			priority,
+			priorityCount: priorityCounter.count,
+			priorityLimit:
+				priority === 'background' ? AUTH_ESI_BACKGROUND_WINDOW_LIMIT : AUTH_ESI_GLOBAL_WINDOW_LIMIT,
+		})
+		throw new Error(
+			`ESI request failed: 429 Too Many Requests - {"error":"Global auth ESI budget exhausted"} | metadata=${metadata}`
+		)
+	}
+
+	private async assertAuthenticatedEsiRampPermit(path: string): Promise<void> {
+		const now = Date.now()
+		const rampEndsAt = this.authEsiBreakerLastOpenUntilMs + AUTH_ESI_RAMP_WINDOW_MS
+		if (this.authEsiBreakerLastOpenUntilMs <= 0 || now >= rampEndsAt) {
+			return
+		}
+
+		const elapsed = Math.max(0, now - this.authEsiBreakerLastOpenUntilMs)
+		const progress = Math.min(1, elapsed / AUTH_ESI_RAMP_WINDOW_MS)
+		const allowProbability = 0.2 + progress * 0.8
+		if (Math.random() <= allowProbability) {
+			return
+		}
+
+		const remainingRampMs = Math.max(0, rampEndsAt - now)
+		// Derive retry delay from remaining ramp window and sample across the full
+		// bounded retry range to decorrelate post-ramp bursts.
+		const retryAfterSeconds = computeRampRetryAfterSeconds(remainingRampMs)
+		const metadata = JSON.stringify({
+			status: 429,
+			path,
+			retryAfterSeconds,
+			circuitBreaker: 'ramp_gate',
+			rampProgress: progress,
+		})
+		throw new Error(
+			`ESI request failed: 429 Too Many Requests - {"error":"Auth ESI ramp gate throttling"} | metadata=${metadata}`
+		)
+	}
+
+	private async assertAuthenticatedEsiCircuitClosed(path: string): Promise<void> {
+		const now = Date.now()
+		if (this.authEsiBreakerOpenUntilMs <= now) {
+			return
+		}
+		const retryAfterSeconds = Math.max(
+			1,
+			Math.ceil((this.authEsiBreakerOpenUntilMs - now) / 1000)
+		)
+		const metadata = JSON.stringify({
+			status: 429,
+			path,
+			retryAfterSeconds,
+			circuitBreaker: 'open',
+		})
+		throw new Error(
+			`ESI request failed: 429 Too Many Requests - {"error":"Global auth ESI circuit breaker is open"} | metadata=${metadata}`
+		)
+	}
+
+	private async openAuthenticatedEsiCircuit(
+		retryAfterSeconds: number | undefined,
+		reason: string
+	): Promise<void> {
+		const now = Date.now()
+		const nextOpenUntil = computeCircuitOpenUntil({
+			nowMs: now,
+			retryAfterSeconds,
+			minOpenMs: AUTH_ESI_BREAKER_MIN_OPEN_MS,
+			maxOpenMs: AUTH_ESI_BREAKER_MAX_OPEN_MS,
+		})
+		if (nextOpenUntil <= this.authEsiBreakerOpenUntilMs) {
+			return
+		}
+		this.authEsiBreakerOpenUntilMs = nextOpenUntil
+		this.authEsiBreakerLastOpenUntilMs = nextOpenUntil
+		await this.state.storage.put(AUTH_ESI_BREAKER_STORAGE_KEY, this.authEsiBreakerOpenUntilMs)
+		await this.state.storage.put(
+			AUTH_ESI_BREAKER_LAST_OPEN_UNTIL_STORAGE_KEY,
+			this.authEsiBreakerLastOpenUntilMs
+		)
+		logger.withTags({ operation: 'esi_auth_breaker_open' }).warn('Opened auth ESI circuit breaker', {
+			reason,
+			retryAfterSeconds,
+			openForMs: nextOpenUntil - now,
+			openUntil: new Date(this.authEsiBreakerOpenUntilMs).toISOString(),
+		})
+	}
+
 	private normalizeCharacterIds(characterIds: string[]): number[] {
 		return [...new Set(characterIds.map((id) => Number.parseInt(id, 10)).filter(Number.isFinite))].sort(
 			(a, b) => a - b
@@ -965,6 +1375,9 @@ export class EveTokenStoreDO extends DurableObject<Env> implements EveTokenStore
 				}
 			}
 		}
+		await this.assertAuthenticatedEsiCircuitClosed(path)
+		await this.assertAuthenticatedEsiRampPermit(path)
+		await this.assertAuthenticatedEsiBudget(path)
 
 		// 2. Cache miss - fetch from ESI
 		// Try to get token for authenticated request
@@ -1024,6 +1437,12 @@ export class EveTokenStoreDO extends DurableObject<Env> implements EveTokenStore
 
 		if (!response.ok) {
 			const errorText = await response.text()
+			if (response.status === 429) {
+				await this.openAuthenticatedEsiCircuit(
+					this.parseHeaderSeconds(response.headers, 'Retry-After'),
+					`429 on ${path}`
+				)
+			}
 			throw this.buildEsiRequestError(path, response, errorText)
 		}
 
@@ -2271,31 +2690,6 @@ export class EveTokenStoreDO extends DurableObject<Env> implements EveTokenStore
 		}
 	}
 
-	private classifySsoError(errorMessage: string): TokenValidationResult['status'] {
-		const normalizedError = errorMessage.toLowerCase()
-
-		if (
-			normalizedError.includes('status: 400') ||
-			normalizedError.includes('status: 401') ||
-			normalizedError.includes('status: 403') ||
-			normalizedError.includes('invalid_grant') ||
-			normalizedError.includes('invalid token')
-		) {
-			return 'invalid_token'
-		}
-
-		return 'transient_error'
-	}
-
-	private isPermanentRefreshFailure(errorMessage: string): boolean {
-		const normalizedError = errorMessage.toLowerCase()
-		return (
-			normalizedError.includes('invalid_grant') ||
-			normalizedError.includes('invalid refresh token') ||
-			normalizedError.includes('token missing/expired')
-		)
-	}
-
 	/**
 	 * Store token in database (upsert)
 	 */
@@ -2360,6 +2754,12 @@ export class EveTokenStoreDO extends DurableObject<Env> implements EveTokenStore
 					accessToken: encryptedAccessToken,
 					refreshToken: encryptedRefreshToken,
 					expiresAt,
+					invalidSince: null,
+					lastValidationAt: new Date(),
+					lastValidationStatus: 'valid',
+					nextRetryAt: null,
+					permanentInvalidAt: null,
+					permanentInvalidReason: null,
 					updatedAt: new Date(),
 				})
 				.where(eq(eveTokens.id, existingToken.id))
@@ -2370,6 +2770,7 @@ export class EveTokenStoreDO extends DurableObject<Env> implements EveTokenStore
 				accessToken: encryptedAccessToken,
 				refreshToken: encryptedRefreshToken,
 				expiresAt,
+				lastValidationStatus: 'valid',
 			})
 		}
 	}

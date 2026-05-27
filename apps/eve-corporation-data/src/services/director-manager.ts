@@ -20,7 +20,10 @@ export interface DirectorHealth {
 	lastUsed: Date | null
 	failureCount: number
 	lastFailureReason: string | null
+	nextRetryAt?: Date | null
+	permanentFailureAt?: Date | null
 	priority: number
+	updatedAt?: Date
 }
 
 /**
@@ -41,6 +44,9 @@ const FAILURE_THRESHOLD = 3
  * Success count needed to recover from unhealthy state
  */
 const _RECOVERY_THRESHOLD = 3
+const PERMANENT_FAILURE_PREFIX = '[PERMANENT]'
+const INVALID_STALE_PERMANENT_MS = 7 * 24 * 60 * 60 * 1000
+const TRANSIENT_DIRECTOR_COOLDOWN_MS = 10 * 60 * 1000
 
 const FULL_SYNC_REQUIRED_ROLE_SETS: CorporationRole[][] = [
 	['Director'],
@@ -144,7 +150,10 @@ export class DirectorManager {
 			lastUsed: d.lastUsed,
 			failureCount: d.failureCount,
 			lastFailureReason: d.lastFailureReason,
+			nextRetryAt: d.nextRetryAt,
+			permanentFailureAt: d.permanentFailureAt,
 			priority: d.priority,
+			updatedAt: d.updatedAt,
 		}))
 	}
 
@@ -170,7 +179,10 @@ export class DirectorManager {
 			lastUsed: d.lastUsed,
 			failureCount: d.failureCount,
 			lastFailureReason: d.lastFailureReason,
+			nextRetryAt: d.nextRetryAt,
+			permanentFailureAt: d.permanentFailureAt,
 			priority: d.priority,
+			updatedAt: d.updatedAt,
 		}))
 		return result
 	}
@@ -191,7 +203,10 @@ export class DirectorManager {
 			lastUsed: d.lastUsed,
 			failureCount: d.failureCount,
 			lastFailureReason: d.lastFailureReason,
+			nextRetryAt: d.nextRetryAt,
+			permanentFailureAt: d.permanentFailureAt,
 			priority: d.priority,
+			updatedAt: d.updatedAt,
 		}))
 	}
 	/**
@@ -200,7 +215,10 @@ export class DirectorManager {
 	 */
 	async selectDirector(options?: { requiredRoleSets?: CorporationRole[][] }): Promise<SelectedDirector | null> {
 		try {
-			const healthyDirectors = await this.getHealthyDirectors()
+			const now = Date.now()
+			const healthyDirectors = (await this.getHealthyDirectors()).filter(
+				(director) => !director.nextRetryAt || director.nextRetryAt.getTime() <= now
+			)
 
 			if (healthyDirectors.length === 0) {
 				console.error('[DirectorManager] No healthy directors available', {
@@ -220,18 +238,18 @@ export class DirectorManager {
 						continue
 					}
 
-						if (tokenInfo.isExpired) {
-							if (!tokenInfo.hasRefreshToken) {
-								await this.safeRecordFailure(
-									candidate.directorId,
-									'Director token expired and requires reauthentication (no refresh token)',
-									{ forceUnhealthy: true }
-								)
-								continue
-							}
-							const refreshSucceeded = await this.tokenStore.refreshToken(candidate.characterId)
-							if (!refreshSucceeded) {
-								await this.safeRecordFailure(
+					if (tokenInfo.isExpired) {
+						if (!tokenInfo.hasRefreshToken) {
+							await this.safeRecordFailure(
+								candidate.directorId,
+								'Director token expired and requires reauthentication (no refresh token)',
+								{ forceUnhealthy: true }
+							)
+							continue
+						}
+						const refreshSucceeded = await this.tokenStore.refreshToken(candidate.characterId)
+						if (!refreshSucceeded) {
+							await this.safeRecordFailure(
 								candidate.directorId,
 								'Director token expired and refresh failed'
 							)
@@ -250,27 +268,27 @@ export class DirectorManager {
 						continue
 					}
 
-						if (options?.requiredRoleSets && options.requiredRoleSets.length > 0) {
-							const rolesResponse: EsiResponse<EsiCharacterRoles> = await retryWithBackoff(
-								() =>
-									this.tokenStore.fetchEsi(
-										`/characters/${candidate.characterId}/roles`,
-										candidate.characterId
-									),
-								{
-									onRetry: (attempt, error, delayMs) => {
-										logger.warn('[DirectorManager] Retrying director role lookup after ESI throttling', {
-											corporationId: this.corporationId,
-											directorId: candidate.directorId,
-											characterId: candidate.characterId,
-											attempt,
-											delayMs,
-											error: error.message,
-										})
-									},
-								}
-							)
-							const roleSet = this.buildEffectiveRoleSet(rolesResponse.data)
+					if (options?.requiredRoleSets && options.requiredRoleSets.length > 0) {
+						const rolesResponse: EsiResponse<EsiCharacterRoles> = await retryWithBackoff(
+							() =>
+								this.tokenStore.fetchEsi(
+									`/characters/${candidate.characterId}/roles`,
+									candidate.characterId
+								),
+							{
+								onRetry: (attempt, error, delayMs) => {
+									logger.warn('[DirectorManager] Retrying director role lookup after ESI throttling', {
+										corporationId: this.corporationId,
+										directorId: candidate.directorId,
+										characterId: candidate.characterId,
+										attempt,
+										delayMs,
+										error: error.message,
+									})
+								},
+							}
+						)
+						const roleSet = this.buildEffectiveRoleSet(rolesResponse.data)
 						const missingRoleSets = this.getMissingRoleSets(roleSet, options.requiredRoleSets)
 						if (missingRoleSets.length > 0) {
 							await this.safeRecordFailure(
@@ -546,6 +564,68 @@ export class DirectorManager {
 		return false
 	}
 
+	private isPermanentFailureReason(reason: string | null | undefined): boolean {
+		if (!reason) return false
+		return reason.startsWith(PERMANENT_FAILURE_PREFIX)
+	}
+
+	private isPermanentlyFailed(director: {
+		permanentFailureAt?: Date | null
+		lastFailureReason: string | null
+	}): boolean {
+		return Boolean(director.permanentFailureAt) || this.isPermanentFailureReason(director.lastFailureReason)
+	}
+
+	private asPermanentFailureReason(reason: string): string {
+		if (this.isPermanentFailureReason(reason)) {
+			return reason
+		}
+		return `${PERMANENT_FAILURE_PREFIX} ${reason}`
+	}
+
+	private shouldTreatAsPermanentFailure(reason: string): boolean {
+		const lower = reason.toLowerCase()
+		const metadata = parseEsiErrorMetadata(reason)
+		const status = typeof metadata?.status === 'number' ? metadata.status : null
+
+		// Explicit invalid refresh/auth states
+		if (lower.includes('invalid_grant')) return true
+		if (lower.includes('invalid refresh token')) return true
+		if (lower.includes('token expired and requires reauthentication')) return true
+		if (lower.includes('no token available for director')) return true
+
+		// Explicit authz/authn invalid states
+		if (status === 401 || status === 403) {
+			if (lower.includes('required role')) return true
+			if (lower.includes('forbidden')) return true
+			if (lower.includes('unauthorized')) return true
+		}
+
+		// Affiliation mismatch is terminal until explicit operator action
+		if (lower.includes('affiliation mismatch')) return true
+
+		return false
+	}
+
+	private shouldForcePermanentDueToStaleness(director: {
+		isHealthy: boolean
+		lastFailureReason: string | null
+		lastHealthCheck: Date | null
+		nextRetryAt?: Date | null
+		permanentFailureAt?: Date | null
+		updatedAt?: Date
+	}): boolean {
+		if (director.isHealthy) return false
+		if (this.isPermanentlyFailed(director)) return false
+		if (director.lastFailureReason && this.isTransientEsiFailure(director.lastFailureReason)) return false
+		if (director.nextRetryAt && director.nextRetryAt.getTime() > Date.now()) return false
+
+		const anchor = director.lastHealthCheck ?? director.updatedAt
+		if (!anchor) return false
+		const ageMs = Date.now() - anchor.getTime()
+		return ageMs >= INVALID_STALE_PERMANENT_MS
+	}
+
 	/**
 	 * Record successful director usage
 	 */
@@ -572,6 +652,8 @@ export class DirectorManager {
 				failureCount: newFailureCount,
 				isHealthy: shouldRecover ? true : director.isHealthy,
 				lastFailureReason: shouldRecover ? null : director.lastFailureReason,
+				nextRetryAt: shouldRecover ? null : director.nextRetryAt,
+				permanentFailureAt: shouldRecover ? null : director.permanentFailureAt,
 				updatedAt: now,
 			})
 			.where(eq(corporationDirectors.id, directorId))
@@ -605,10 +687,13 @@ export class DirectorManager {
 
 		// Do not punish directors for transient upstream failures.
 		if (!options?.forceUnhealthy && this.isTransientEsiFailure(reason)) {
+			const nextRetryAt = new Date(Date.now() + TRANSIENT_DIRECTOR_COOLDOWN_MS)
 			await this.db
 				.update(corporationDirectors)
 				.set({
 					lastFailureReason: reason,
+					nextRetryAt,
+					isHealthy: false,
 					updatedAt: now,
 				})
 				.where(eq(corporationDirectors.id, directorId))
@@ -618,10 +703,15 @@ export class DirectorManager {
 				directorId,
 				characterId: director.characterId,
 				reason,
+				nextRetryAt: nextRetryAt.toISOString(),
 			})
 			return
 		}
 
+		const normalizedReason =
+			this.shouldTreatAsPermanentFailure(reason) || options?.forceUnhealthy
+				? this.asPermanentFailureReason(reason)
+				: reason
 		let newFailureCount = director.failureCount + 1
 		const shouldMarkUnhealthy = options?.forceUnhealthy
 			? true
@@ -634,8 +724,13 @@ export class DirectorManager {
 			.update(corporationDirectors)
 			.set({
 				failureCount: newFailureCount,
-				lastFailureReason: reason,
+				lastFailureReason: normalizedReason,
 				isHealthy: shouldMarkUnhealthy ? false : director.isHealthy,
+				nextRetryAt: null,
+				permanentFailureAt:
+					this.shouldTreatAsPermanentFailure(reason) || options?.forceUnhealthy
+						? new Date()
+						: director.permanentFailureAt,
 				updatedAt: now,
 			})
 			.where(eq(corporationDirectors.id, directorId))
@@ -645,7 +740,7 @@ export class DirectorManager {
 				directorId,
 				characterId: director.characterId,
 				failureCount: newFailureCount,
-				reason,
+				reason: normalizedReason,
 			})
 		}
 
@@ -699,26 +794,23 @@ export class DirectorManager {
 				return false
 			}
 
-				// Fetch character roles from ESI
-				const response: EsiResponse<EsiCharacterRoles> = await retryWithBackoff(
-					() =>
-						this.tokenStore.fetchEsi(
-							`/characters/${director.characterId}/roles`,
-							director.characterId
-						),
-					{
-						onRetry: (attempt, error, delayMs) => {
-							logger.warn('[DirectorManager] Retrying director health role check after ESI throttling', {
-								corporationId: this.corporationId,
-								directorId,
-								characterId: director.characterId,
-								attempt,
-								delayMs,
-								error: error.message,
-							})
-						},
-					}
-				)
+			// Fetch character roles from ESI
+			const response: EsiResponse<EsiCharacterRoles> = await retryWithBackoff(
+				() =>
+					this.tokenStore.fetchEsi(`/characters/${director.characterId}/roles`, director.characterId),
+				{
+					onRetry: (attempt, error, delayMs) => {
+						logger.warn('[DirectorManager] Retrying director health role check after ESI throttling', {
+							corporationId: this.corporationId,
+							directorId,
+							characterId: director.characterId,
+							attempt,
+							delayMs,
+							error: error.message,
+						})
+					},
+				}
+			)
 
 			const roles = response.data
 			const roleSet = this.buildEffectiveRoleSet(roles)
@@ -756,6 +848,8 @@ export class DirectorManager {
 					isHealthy: true,
 					failureCount: 0,
 					lastFailureReason: null,
+					nextRetryAt: null,
+					permanentFailureAt: null,
 					updatedAt: new Date(),
 				})
 				.where(eq(corporationDirectors.id, directorId))
@@ -799,9 +893,32 @@ export class DirectorManager {
 	async verifyAllDirectorsHealth(): Promise<{ verified: number; failed: number }> {
 		const directors = await this.getAllDirectors()
 
+		for (const director of directors) {
+			if (this.shouldForcePermanentDueToStaleness(director)) {
+				await this.db
+					.update(corporationDirectors)
+					.set({
+						lastFailureReason: this.asPermanentFailureReason(
+							`Token/director invalid state exceeded 7-day backstop (lastHealthyOrUpdatedAt=${(director.lastHealthCheck ?? director.updatedAt ?? new Date(0)).toISOString()})`
+						),
+						permanentFailureAt: new Date(),
+						isHealthy: false,
+						updatedAt: new Date(),
+					})
+					.where(eq(corporationDirectors.id, director.directorId))
+			}
+		}
+
+		const now = Date.now()
+		const nonPermanentDirectors = directors.filter((director) => {
+			if (this.isPermanentlyFailed(director)) return false
+			if (director.nextRetryAt && director.nextRetryAt.getTime() > now) return false
+			return true
+		})
+
 		// Run all verifications in parallel
 		const results = await Promise.allSettled(
-			directors.map((director) => this.verifyDirectorHealth(director.directorId))
+			nonPermanentDirectors.map((director) => this.verifyDirectorHealth(director.directorId))
 		)
 
 		// Count verified vs failed
@@ -815,6 +932,7 @@ export class DirectorManager {
 				failed++
 			}
 		}
+		failed += directors.length - nonPermanentDirectors.length
 
 		// Update corporation config verification status
 		await this.db

@@ -95,8 +95,25 @@ export const eveTokens = pgTable(
 
 		/** When the token was last updated (e.g., after refresh) */
 		updatedAt: timestamp('updated_at').defaultNow().notNull(),
+		/** First time token entered an invalid state */
+		invalidSince: timestamp('invalid_since', { withTimezone: true }),
+		/** Last token validation attempt timestamp */
+		lastValidationAt: timestamp('last_validation_at', { withTimezone: true }),
+		/** Last validation status label */
+		lastValidationStatus: varchar('last_validation_status', { length: 64 }),
+		/** Earliest allowed retry time after transient failures */
+		nextRetryAt: timestamp('next_retry_at', { withTimezone: true }),
+		/** Permanent invalid marker timestamp */
+		permanentInvalidAt: timestamp('permanent_invalid_at', { withTimezone: true }),
+		/** Permanent invalid reason for diagnostics */
+		permanentInvalidReason: text('permanent_invalid_reason'),
 	},
-	(table) => [index('eve_tokens_character_id_idx').on(table.characterId)]
+	(table) => [
+		index('eve_tokens_character_id_idx').on(table.characterId),
+		index('eve_tokens_next_retry_at_idx').on(table.nextRetryAt),
+		index('eve_tokens_permanent_invalid_at_idx').on(table.permanentInvalidAt),
+		index('eve_tokens_last_validation_status_idx').on(table.lastValidationStatus),
+	]
 )
 
 /**
