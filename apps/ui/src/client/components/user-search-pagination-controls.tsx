@@ -9,6 +9,7 @@ interface UserSearchPaginationControlsProps {
 	onPageSizeChange: (pageSize: number) => void
 	pageSizeOptions?: number[]
 	itemLabel?: string
+	nextButtonLoading?: boolean
 }
 
 const DEFAULT_PAGE_SIZE_OPTIONS = [25, 50, 100]
@@ -21,6 +22,7 @@ export function UserSearchPaginationControls({
 	onPageSizeChange,
 	pageSizeOptions = DEFAULT_PAGE_SIZE_OPTIONS,
 	itemLabel = 'users',
+	nextButtonLoading = false,
 }: UserSearchPaginationControlsProps) {
 	const totalPages = Math.ceil(totalCount / pageSize)
 	const start = totalCount === 0 ? 0 : (page - 1) * pageSize + 1
@@ -75,14 +77,16 @@ export function UserSearchPaginationControls({
 						{pageNumber}
 					</Button>
 				))}
-				<Button
-					variant="ghost"
-					size="sm"
-					disabled={!canGoNext}
-					onClick={() => onPageChange(page + 1)}
-				>
-					Next
-				</Button>
+					<Button
+						variant="ghost"
+						size="sm"
+						disabled={!canGoNext}
+						onClick={() => onPageChange(page + 1)}
+						loading={nextButtonLoading}
+						loadingText="Next"
+					>
+						Next
+					</Button>
 			</div>
 		</div>
 	)
