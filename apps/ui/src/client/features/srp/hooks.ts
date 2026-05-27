@@ -63,7 +63,9 @@ function setRequestStatusAcrossCaches(
 	queryClient: ReturnType<typeof useQueryClient>,
 	request: SRPRequestResponse
 ): void {
-	queryClient.setQueryData(srpKeys.request(request.id), request)
+	queryClient.setQueryData(srpKeys.request(request.id), (existing: SRPRequestResponse | undefined) =>
+		existing ? { ...existing, ...request } : request
+	)
 	queryClient.setQueriesData(
 		{
 			predicate: (query) => isSrpLossesQueryKey(query.queryKey),
@@ -787,6 +789,7 @@ export function useVerifyPaid() {
 			setRequestStatusAcrossCaches(queryClient, request)
 			refreshQueueBadgesSoft(queryClient, ['approved', 'pending', 'paid'])
 			void queryClient.invalidateQueries({ queryKey: srpKeys.pendingPayoutTotal() })
+			void queryClient.invalidateQueries({ queryKey: srpKeys.request(request.id) })
 		},
 	})
 }
