@@ -51,6 +51,7 @@ export default function TrackingSessionsList() {
 	const { hasPermission, isAdmin } = useUserPermissions()
 	const canCreate = isAdmin || hasPermission('urn:fleet-tracking:create')
 	const canViewAll = isAdmin || hasPermission('urn:fleet-tracking:view-all')
+	const canViewFleets = canViewAll || hasPermission('urn:fleet-tracking:view-fleets')
 
 	const [tab, setTab] = useState<Tab>('all')
 	const [fromDate, setFromDate] = useState('')
@@ -99,7 +100,7 @@ export default function TrackingSessionsList() {
 						<CardTitle>Sessions</CardTitle>
 					</CardHeader>
 					<CardContent className="space-y-4">
-						{canViewAll && (
+						{canViewFleets && (
 							<div className="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
 								<div className="xl:col-span-2">
 									<Select

@@ -154,7 +154,7 @@ describe('fleets tracking routes', () => {
 		})
 	})
 
-	it('scopes tracking list to self when user lacks view-all permission', async () => {
+	it('scopes tracking list to self when user lacks view-fleets permission', async () => {
 		getCachedUserPermissionsMock.mockResolvedValue([{ urn: 'urn:fleet-tracking:create' }] as any)
 		fleetsStub.listTrackingSessions.mockResolvedValue({ items: [], total: 0 })
 		const app = createApp(makeUser({ id: 'self-user' }))
@@ -171,7 +171,26 @@ describe('fleets tracking routes', () => {
 		)
 	})
 
-	it('denies historical live detail to owner without view-all', async () => {
+	it('allows :view-fleets users to filter the tracking list by any userId', async () => {
+		getCachedUserPermissionsMock.mockResolvedValue([
+			{ urn: 'urn:fleet-tracking:view-fleets' },
+		] as any)
+		fleetsStub.listTrackingSessions.mockResolvedValue({ items: [], total: 0 })
+		const app = createApp(makeUser({ id: 'self-user' }))
+
+		const res = await app.request('/api/fleets/tracking?userId=other-user&limit=25&offset=0', {}, env)
+
+		expect(res.status).toBe(200)
+		expect(fleetsStub.listTrackingSessions).toHaveBeenCalledWith(
+			expect.objectContaining({
+				startedByUserId: 'other-user',
+				limit: 25,
+				offset: 0,
+			})
+		)
+	})
+
+	it('denies historical live detail to owner without view-fleets', async () => {
 		getCachedUserPermissionsMock.mockResolvedValue([{ urn: 'urn:fleet-tracking:create' }] as any)
 		fleetsStub.getTrackingSession.mockResolvedValue({
 			id: 's1',
@@ -185,6 +204,25 @@ describe('fleets tracking routes', () => {
 
 		expect(res.status).toBe(403)
 		expect(fleetsStub.getSessionLiveSnapshot).not.toHaveBeenCalled()
+	})
+
+	it('allows :view-fleets users to view ended sessions belonging to other users', async () => {
+		getCachedUserPermissionsMock.mockResolvedValue([
+			{ urn: 'urn:fleet-tracking:view-fleets' },
+		] as any)
+		fleetsStub.getTrackingSession.mockResolvedValue({
+			id: 's1',
+			status: 'ended',
+			startedByUserId: 'other-user',
+			characterId: '1001',
+		})
+		fleetsStub.getSessionLiveSnapshot.mockResolvedValue({ memberCount: 5 })
+
+		const app = createApp(makeUser({ id: 'user-1' }))
+		const res = await app.request('/api/fleets/tracking/s1/live', {}, env)
+
+		expect(res.status).toBe(200)
+		expect(fleetsStub.getSessionLiveSnapshot).toHaveBeenCalledWith('s1')
 	})
 
 	it('allows active owner live detail access', async () => {

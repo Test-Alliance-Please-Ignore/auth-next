@@ -89,43 +89,44 @@ Note: fleet tracking authorization is enforced by the Core API routes in `apps/c
 
 ### Permission URNs
 
-- `urn:fleet-tracking:create`
-- `urn:fleet-tracking:view-all`
-- Site admins bypass both checks
+- `urn:fleet-tracking:create` — start tracking sessions for own characters; see own sessions.
+- `urn:fleet-tracking:view-fleets` — view all sessions (active + ended) and their detail tabs (live, current members, timeline, roster, ship-history, summary). Does NOT grant stats access.
+- `urn:fleet-tracking:view-all` — full access including stats / per-entity analytics. Implies `view-fleets`.
+- Site admins bypass all checks.
 
 ### Pages
 
-| Page | Site Admin | `view-all` | `create` | Notes |
-|---|---:|---:|---:|---|
-| `/fleet-tracking` | Yes | Yes | Yes | create-only users are scoped to their own sessions |
-| `/fleet-tracking/new` | Yes | Yes | Yes | Start submit requires character ownership |
-| `/fleet-tracking/stats` and stats details | Yes | Yes | No | Overview/search/corp stats are view-all only |
+| Page | Site Admin | `view-all` | `view-fleets` | `create` | Notes |
+|---|---:|---:|---:|---:|---|
+| `/fleet-tracking` | Yes | Yes | Yes | Yes | create-only users are scoped to their own sessions |
+| `/fleet-tracking/new` | Yes | Yes | No | Yes | Start submit requires character ownership |
+| `/fleet-tracking/stats` and stats details | Yes | Yes | No | No | Overview/search/corp stats are view-all only |
 
 ### API Endpoints (`/api/fleets/tracking*`)
 
-| Endpoint | Site Admin | `view-all` | `create` | Access rule |
-|---|---:|---:|---:|---|
-| `POST /tracking` | Yes | Yes | Yes | Must own selected character |
-| `GET /tracking` | Yes | Yes | Yes | create-only forced to own `startedByUserId` |
-| `GET /tracking/:sessionId` | Yes | Yes | Yes | create-only limited to own sessions |
-| `GET /tracking/:sessionId/live` | Yes | Yes | Conditional | create-only: own session + active |
-| `GET /tracking/:sessionId/current-members` | Yes | Yes | Conditional | create-only: own session + active |
-| `GET /tracking/:sessionId/timeline` | Yes | Yes | Conditional | create-only: own session + active |
-| `GET /tracking/:sessionId/members/:characterId/ship-history` | Yes | Yes | Conditional | create-only: own session + active |
-| `GET /tracking/:sessionId/roster` | Yes | Yes | Conditional | create-only: own session + active |
-| `GET /tracking/:sessionId/summary` | Yes | Yes | Yes | Owner/admin/view-all |
-| `DELETE /tracking/:sessionId` | Yes | No (unless owner) | No (unless owner) | Owner of active session or admin |
-| `POST /tracking/:sessionId/kick-members` | Yes | No (unless owner) | No (unless owner) | Owner of active session or admin |
+| Endpoint | Site Admin | `view-all` | `view-fleets` | `create` | Access rule |
+|---|---:|---:|---:|---:|---|
+| `POST /tracking` | Yes | No | No | Yes | Must own selected character |
+| `GET /tracking` | Yes | Yes | Yes | Yes | create-only forced to own `startedByUserId` |
+| `GET /tracking/:sessionId` | Yes | Yes | Yes | Yes | create-only limited to own sessions |
+| `GET /tracking/:sessionId/live` | Yes | Yes | Yes | Conditional | create-only: own session + active |
+| `GET /tracking/:sessionId/current-members` | Yes | Yes | Yes | Conditional | create-only: own session + active |
+| `GET /tracking/:sessionId/timeline` | Yes | Yes | Yes | Conditional | create-only: own session + active |
+| `GET /tracking/:sessionId/members/:characterId/ship-history` | Yes | Yes | Yes | Conditional | create-only: own session + active |
+| `GET /tracking/:sessionId/roster` | Yes | Yes | Yes | Conditional | create-only: own session + active |
+| `GET /tracking/:sessionId/summary` | Yes | Yes | Yes | Yes | Owner/admin/view-fleets |
+| `DELETE /tracking/:sessionId` | Yes | No (unless owner) | No (unless owner) | No (unless owner) | Owner of active session or admin |
+| `POST /tracking/:sessionId/kick-members` | Yes | No (unless owner) | No (unless owner) | No (unless owner) | Owner of active session or admin |
 
 ### Stats Endpoints (`/api/fleets/tracking/stats*`)
 
-| Endpoint | Site Admin | `view-all` | `create` | Access rule |
-|---|---:|---:|---:|---|
-| `GET /stats/overview` | Yes | Yes | No | view-all only |
-| `GET /stats/search` | Yes | Yes | No | view-all only |
-| `GET /stats/corporations/:corpId` | Yes | Yes | No | view-all only |
-| `GET /stats/characters/:characterId` | Yes | Yes | Yes (if own) | Own character unless view-all/admin |
-| `GET /stats/users/:userId` | Yes | Yes | Yes (if self) | Self unless view-all/admin |
+| Endpoint | Site Admin | `view-all` | `view-fleets` | `create` | Access rule |
+|---|---:|---:|---:|---:|---|
+| `GET /stats/overview` | Yes | Yes | No | No | view-all only |
+| `GET /stats/search` | Yes | Yes | No | No | view-all only |
+| `GET /stats/corporations/:corpId` | Yes | Yes | No | No | view-all only |
+| `GET /stats/characters/:characterId` | Yes | Yes | No | Yes (if own) | Own character unless view-all/admin |
+| `GET /stats/users/:userId` | Yes | Yes | No | Yes (if self) | Self unless view-all/admin |
 
 ### Related endpoint used by session details
 

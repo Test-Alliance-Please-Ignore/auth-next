@@ -62,7 +62,8 @@ export default function TrackingSessionDetail() {
 
 	const isOwner = !!user && session.startedByUserId === user.id
 	const canViewAll = isAdmin || hasPermission('urn:fleet-tracking:view-all')
-	const canViewDetail = canViewAll || (isOwner && session.status === 'active')
+	const canViewFleets = canViewAll || hasPermission('urn:fleet-tracking:view-fleets')
+	const canViewDetail = canViewFleets || (isOwner && session.status === 'active')
 	const canStop = session.status === 'active' && (isOwner || isAdmin)
 
 	return (
@@ -541,8 +542,8 @@ function SummaryOnlyView({ sessionId }: { sessionId: string }) {
 						<p className="font-medium">Detailed history is restricted</p>
 						<p className="text-muted-foreground mt-1">
 							Viewing the member roster, full timeline, and ship-change events for ended sessions
-							requires the <code>urn:fleet-tracking:view-all</code> permission. Contact your alliance
-							leadership if you need access.
+							requires the <code>urn:fleet-tracking:view-fleets</code> permission. Contact your
+							alliance leadership if you need access.
 						</p>
 					</div>
 				</CardContent>
