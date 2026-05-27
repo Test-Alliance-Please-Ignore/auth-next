@@ -1,6 +1,6 @@
 import { RefreshCcw } from 'lucide-react'
 import { useEffect, useState } from 'react'
-import { toast } from 'sonner'
+import toast from '@/lib/toast'
 
 import { TaxCorporationScopeSelector } from '@/components/tax-corporation-scope-selector'
 import { Badge } from '@/components/ui/badge'

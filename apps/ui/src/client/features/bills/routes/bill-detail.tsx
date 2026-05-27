@@ -1,7 +1,7 @@
 import { FileText } from 'lucide-react'
 import { useState } from 'react'
 import { Link, Navigate, useParams } from 'react-router-dom'
-import { toast } from 'sonner'
+import toast from '@/lib/toast'
 
 import { BillStatusBadge } from '@/components/bills/bill-status-badge'
 import { Button } from '@/components/ui/button'

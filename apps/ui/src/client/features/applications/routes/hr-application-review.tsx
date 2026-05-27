@@ -10,7 +10,7 @@ import { useQueries } from '@tanstack/react-query'
 import { formatDistanceToNow } from 'date-fns'
 import { ArrowLeft, Briefcase, Lock } from 'lucide-react'
 import { useState } from 'react'
-import { toast } from 'sonner'
+import toast from '@/lib/toast'
 import { Link, Navigate, useNavigate, useParams, useSearchParams } from 'react-router-dom'
 
 import {
