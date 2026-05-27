@@ -101,8 +101,6 @@ export default function ReviewRequestDetail() {
 		hasPermission('urn:srp:manager') && request.requestStatus === 'payment_pending'
 
 	const handleManualVerifyPaid = async () => {
-		const reason = window.prompt('Manual verification reason (required):')?.trim() ?? ''
-		if (!reason) return
 		requestConfirmation({
 			title: 'Mark Payment Verified',
 			description: `Confirm manual payment verification for request #${request.id}?`,
@@ -110,7 +108,7 @@ export default function ReviewRequestDetail() {
 			intent: 'confirm',
 			onConfirm: async () => {
 				try {
-					await verifyPaid.mutateAsync({ id: request.id, reason })
+					await verifyPaid.mutateAsync({ id: request.id })
 					toast.success('Request manually verified as paid')
 				} catch (err: any) {
 					toast.error('Failed to verify request as paid', {
