@@ -280,7 +280,12 @@ function ReviewTabContent({
 		offset,
 		...filters,
 	})
+	const [lastSuccessfulData, setLastSuccessfulData] = useState<typeof data | null>(null)
 	const [showLoadWarning, setShowLoadWarning] = useState(false)
+
+	useEffect(() => {
+		if (data) setLastSuccessfulData(data)
+	}, [data])
 
 	useEffect(() => {
 		if (!isLoading && !isFetching) {
@@ -289,7 +294,7 @@ function ReviewTabContent({
 		}
 		const timeout = window.setTimeout(() => {
 			setShowLoadWarning(true)
-		}, 8000)
+		}, 30000)
 		return () => window.clearTimeout(timeout)
 	}, [isFetching, isLoading])
 	const hasActiveFilters = Boolean(
@@ -299,15 +304,23 @@ function ReviewTabContent({
 			filters.dateFrom ||
 			filters.dateTo
 	)
-	const totalCount = data?.total ?? 0
+	const effectiveData = data ?? lastSuccessfulData
+	const totalCount = effectiveData?.total ?? 0
 	const hasPagination = Math.ceil(totalCount / pageSize) > 1
 
-	if (!data && (isLoading || isFetching)) {
+	if (!effectiveData && (isLoading || isFetching)) {
 		if (showLoadWarning) {
 			return (
 				<div className="rounded-lg border border-muted p-6 text-center">
 					<p className="text-sm text-muted-foreground">Queue is taking longer than expected.</p>
-					<Button variant="secondary" size="sm" className="mt-3" onClick={() => void refetch()}>
+					<Button
+						variant="secondary"
+						size="sm"
+						className="mt-3"
+						onClick={() => void refetch()}
+						disabled={isFetching}
+						loading={isFetching}
+					>
 						Retry loading queue
 					</Button>
 				</div>
@@ -322,15 +335,25 @@ function ReviewTabContent({
 		)
 	}
 
-	if (error) {
+	if (error && !effectiveData) {
 		return (
 			<div className="rounded-lg border border-red-500/50 bg-red-500/10 p-6 text-center">
 				<p className="text-sm text-red-500">Failed to load requests</p>
+				<Button
+					variant="secondary"
+					size="sm"
+					className="mt-3"
+					onClick={() => void refetch()}
+					disabled={isFetching}
+					loading={isFetching}
+				>
+					Retry loading queue
+				</Button>
 			</div>
 		)
 	}
 
-	const requests: SRPRequestResponse[] = [...(data?.requests ?? [])].sort((a, b) => {
+	const requests: SRPRequestResponse[] = [...(effectiveData?.requests ?? [])].sort((a, b) => {
 		const left = sortBy === 'submitted' ? toTimestamp(a.createdAt) : toTimestamp(a.lossDate)
 		const right = sortBy === 'submitted' ? toTimestamp(b.createdAt) : toTimestamp(b.lossDate)
 		return sortDirection === 'asc' ? left - right : right - left
@@ -350,6 +373,27 @@ function ReviewTabContent({
 
 	return (
 		<div>
+			{error && effectiveData && (
+				<div className="mb-3 rounded-md border border-amber-500/40 bg-amber-500/10 p-3 text-sm text-amber-700">
+					<div className="flex items-center justify-between gap-3">
+						<span>Latest refresh failed. Showing last loaded results.</span>
+						<Button
+							variant="secondary"
+							size="sm"
+							onClick={() => void refetch()}
+							disabled={isFetching}
+							loading={isFetching}
+						>
+							Retry
+						</Button>
+					</div>
+				</div>
+			)}
+			{isFetching && (
+				<div className="mb-3 rounded-md border border-border/60 bg-muted/20 p-2 text-xs text-muted-foreground">
+					Refreshing…
+				</div>
+			)}
 			{hasPagination && (
 				<div className="mb-3 rounded-md border p-3">
 					<UserSearchPaginationControls

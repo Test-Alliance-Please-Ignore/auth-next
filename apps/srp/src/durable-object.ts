@@ -59,6 +59,7 @@ import type { Env } from './context'
  */
 export class SrpDO extends DurableObject<Env> implements Srp {
 	private static readonly MS_PER_DAY = 86_400_000
+	private static readonly REVIEW_QUEUE_COUNT_CACHE_TTL_MS = 60_000
 	private db: ReturnType<typeof createDb>
 	private readonly shipSlotCapacityCache = new Map<
 		string,
@@ -67,10 +68,39 @@ export class SrpDO extends DurableObject<Env> implements Srp {
 			expiresAt: number
 		}
 	>()
+	private readonly reviewQueueCountCache = new Map<
+		string,
+		{
+			value: number
+			expiresAt: number
+		}
+	>()
 
 	constructor(state: DurableObjectState, env: Env) {
 		super(state, env)
 		this.db = createDb(env.DATABASE_URL)
+	}
+
+	private clearReviewQueueCountCache(): void {
+		this.reviewQueueCountCache.clear()
+	}
+
+	private buildReviewQueueCountCacheKey(input: {
+		status: RequestStatus
+		characterName?: string
+		shipTypeName?: string
+		solarSystemName?: string
+		dateFrom?: string
+		dateTo?: string
+	}): string {
+		return JSON.stringify({
+			status: input.status,
+			characterName: input.characterName ?? '',
+			shipTypeName: input.shipTypeName ?? '',
+			solarSystemName: input.solarSystemName ?? '',
+			dateFrom: input.dateFrom ?? '',
+			dateTo: input.dateTo ?? '',
+		})
 	}
 
 	/**
@@ -120,10 +150,12 @@ export class SrpDO extends DurableObject<Env> implements Srp {
 					reviewerOverrideMillions: null,
 					paymentDate: null,
 					paymentCharacterName: null,
+					paymentScanCursorDate: null,
 					updatedAt: new Date(),
 				})
 				.where(eq(srpRequests.id, normalizedKillmailId))
 				.returning()
+			this.clearReviewQueueCountCache()
 
 			await this.logHistory(
 				existing.id,
@@ -231,6 +263,7 @@ export class SrpDO extends DurableObject<Env> implements Srp {
 				srpItemPrices: valuation?.itemPrices ?? null,
 			})
 			.returning()
+		this.clearReviewQueueCountCache()
 
 		const request = result[0]
 
@@ -596,6 +629,7 @@ export class SrpDO extends DurableObject<Env> implements Srp {
 			})
 			.where(eq(srpRequests.id, requestId))
 			.returning()
+		this.clearReviewQueueCountCache()
 
 		await this.logHistory(
 			requestId,
@@ -643,6 +677,7 @@ export class SrpDO extends DurableObject<Env> implements Srp {
 			})
 			.where(eq(srpRequests.id, requestId))
 			.returning()
+		this.clearReviewQueueCountCache()
 
 		await this.logHistory(
 			requestId,
@@ -689,6 +724,7 @@ export class SrpDO extends DurableObject<Env> implements Srp {
 			})
 			.where(eq(srpRequests.id, requestId))
 			.returning()
+		this.clearReviewQueueCountCache()
 
 		await this.logHistory(
 			requestId,
@@ -897,6 +933,7 @@ export class SrpDO extends DurableObject<Env> implements Srp {
 				requestStatus: 'payment_pending',
 				paymentDate: new Date(),
 				paymentCharacterName: payerCharacterName,
+				paymentScanCursorDate: null,
 				updatedAt: new Date(),
 			})
 			.where(eq(srpRequests.id, requestId))
@@ -1362,20 +1399,22 @@ export class SrpDO extends DurableObject<Env> implements Srp {
 				editedAt: c.editedAt?.toISOString(),
 				createdAt: c.createdAt.toISOString(),
 			})),
-			history: request.history?.map((h: any) => ({
-				id: h.id,
-				requestId: h.requestId,
-				actorUserId: h.actorUserId,
-				actorCharacterName: h.actorCharacterName,
-				action: h.action,
-				previousRequestStatus: h.previousRequestStatus,
-				newRequestStatus: h.newRequestStatus,
-				previousApprovedAmount: h.previousApprovedAmount,
-				newApprovedAmount: h.newApprovedAmount,
-				metadata: h.metadata as Record<string, unknown>,
-				visibility: h.visibility,
-				timestamp: h.timestamp.toISOString(),
-			})),
+			history: request.history
+				?.filter((h: any) => h.action !== 'payment_scan_cursor_updated')
+				.map((h: any) => ({
+					id: h.id,
+					requestId: h.requestId,
+					actorUserId: h.actorUserId,
+					actorCharacterName: h.actorCharacterName,
+					action: h.action,
+					previousRequestStatus: h.previousRequestStatus,
+					newRequestStatus: h.newRequestStatus,
+					previousApprovedAmount: h.previousApprovedAmount,
+					newApprovedAmount: h.newApprovedAmount,
+					metadata: h.metadata as Record<string, unknown>,
+					visibility: h.visibility,
+					timestamp: h.timestamp.toISOString(),
+				})),
 		}
 	}
 
@@ -1444,7 +1483,7 @@ export class SrpDO extends DurableObject<Env> implements Srp {
 		return {
 			id: alert.id,
 			requestId: alert.requestId,
-			kind: 'payment_mismatch',
+			kind: alert.kind === 'payment_missing' ? 'payment_missing' : 'payment_mismatch',
 			state: alert.state === 'acknowledged' ? 'acknowledged' : 'open',
 			journalId: alert.journalId,
 			expectedAmount: alert.expectedAmount,
@@ -1539,14 +1578,37 @@ export class SrpDO extends DurableObject<Env> implements Srp {
 		const where = and(...conditions)
 		const oldestFirst = status === 'pending' || status === 'needs_context'
 
-		const [requests, [{ count }]] = await Promise.all([
+		const [requests, count] = await Promise.all([
 			this.db.query.srpRequests.findMany({
 				where,
 				orderBy: oldestFirst ? srpRequests.createdAt : desc(srpRequests.createdAt),
 				limit,
 				offset,
 			}),
-			this.db.select({ count: sql<number>`count(*)::int` }).from(srpRequests).where(where),
+			(async () => {
+				const cacheKey = this.buildReviewQueueCountCacheKey({
+					status,
+					characterName,
+					shipTypeName,
+					solarSystemName,
+					dateFrom,
+					dateTo,
+				})
+				const cached = this.reviewQueueCountCache.get(cacheKey)
+				const now = Date.now()
+				if (cached && cached.expiresAt > now) return cached.value
+
+				const [row] = await this.db
+					.select({ count: sql<number>`count(*)::int` })
+					.from(srpRequests)
+					.where(where)
+				const count = row?.count ?? 0
+				this.reviewQueueCountCache.set(cacheKey, {
+					value: count,
+					expiresAt: now + SrpDO.REVIEW_QUEUE_COUNT_CACHE_TTL_MS,
+				})
+				return count
+			})(),
 		])
 
 		return { requests: requests.map((r) => this.formatRequest(r)), total: count }
@@ -1662,6 +1724,7 @@ export class SrpDO extends DurableObject<Env> implements Srp {
 			})
 			.where(eq(srpRequests.id, requestId))
 			.returning()
+		this.clearReviewQueueCountCache()
 
 		// Status transition is public; all other review details are internal
 		await this.logHistory(
@@ -1785,7 +1848,11 @@ export class SrpDO extends DurableObject<Env> implements Srp {
 			.set({
 				requestStatus: newState,
 				...(newState === 'payment_pending'
-					? { paymentDate: new Date(), paymentCharacterName: actorCharacterName }
+					? {
+							paymentDate: new Date(),
+							paymentCharacterName: actorCharacterName,
+							paymentScanCursorDate: null,
+					  }
 					: {}),
 				updatedAt: new Date(),
 			})

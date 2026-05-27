@@ -1,4 +1,5 @@
 import { Card } from '@/components/ui/card'
+import { Badge } from '@/components/ui/badge'
 import { cn } from '@/lib/utils'
 
 import { formatFullDate, formatISK } from '../utils'
@@ -41,6 +42,7 @@ export function RequestHistory({ history, className }: RequestHistoryProps) {
 							<div className="space-y-1">
 								<div className="flex items-center gap-2">
 									<span className="text-sm font-medium">{getActionLabel(entry.action)}</span>
+									{isAlertAction(entry.action) && <Badge variant="destructive">Alert</Badge>}
 									{entry.newRequestStatus && <RequestStatusBadge status={entry.newRequestStatus} />}
 								</div>
 								<div className="text-xs text-muted-foreground">
@@ -123,7 +125,13 @@ function getActionLabel(action: string): string {
 		payment_submitted: 'Payment Sent',
 		payment_completed: 'Payment Completed',
 		partial_payment_completed: 'Partial Payment',
+		payment_missing_detected: 'Payment Missing Alert',
+		payment_amount_mismatch_detected: 'Payment Mismatch Alert',
 		payment_alert_acknowledged: 'Payment Alert Acknowledged',
 	}
 	return labels[action] || action
+}
+
+function isAlertAction(action: string): boolean {
+	return action === 'payment_missing_detected' || action === 'payment_amount_mismatch_detected'
 }

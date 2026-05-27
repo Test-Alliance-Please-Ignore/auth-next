@@ -1,5 +1,6 @@
 import { useState } from 'react'
 import { Link, Navigate, useNavigate, useParams } from 'react-router-dom'
+import { toast } from 'sonner'
 
 import { roundToMillion } from '@repo/srp'
 import { Badge } from '@/components/ui/badge'
@@ -8,6 +9,7 @@ import { Card } from '@/components/ui/card'
 import { Container } from '@/components/ui/container'
 import { EveTimeDisplay } from '@/components/ui/eve-time-display'
 import { PageHeader } from '@/components/ui/page-header'
+import { useConfirmationDialog } from '@/hooks/useConfirmationDialog'
 import { usePageTitle } from '@/hooks/usePageTitle'
 import { useUserPermissions } from '@/hooks/useUserPermissions'
 import { characterPortraitUrl, corporationLogoUrl } from '@/lib/eve-images'
@@ -19,7 +21,7 @@ import { RequestHistory } from '../components/RequestHistory'
 import { SRPRequestDetailSkeleton } from '../components/SRPRequestDetailSkeleton'
 import { RequestStatusBadge } from '../components/RequestStatusBadge'
 import { ReviewRequestForm } from '../components/ReviewRequestForm'
-import { useRequest, useRequestComments, useUpdateReviewState } from '../hooks'
+import { useRequest, useRequestComments, useUpdateReviewState, useVerifyPaid } from '../hooks'
 import { formatISK, getKillmailUrl, getRequestCharacterRole } from '../utils'
 
 function formatAppliedModifierValue(modifier: {
@@ -45,6 +47,7 @@ export default function ReviewRequestDetail() {
 	const { id } = useParams<{ id: string }>()
 	const { hasPermission, isAdmin } = useUserPermissions()
 	const navigate = useNavigate()
+	const { requestConfirmation, confirmationDialog } = useConfirmationDialog()
 
 	const canReview =
 		isAdmin ||
@@ -66,6 +69,7 @@ export default function ReviewRequestDetail() {
 	const canSeeInternal = isSrpStaff
 	const { data: comments = [], refetch: refetchComments } = useRequestComments(id, canSeeInternal)
 	const updateState = useUpdateReviewState()
+	const verifyPaid = useVerifyPaid()
 	const [showRevertConfirm, setShowRevertConfirm] = useState(false)
 
 	if (isLoading) {
@@ -93,8 +97,32 @@ export default function ReviewRequestDetail() {
 	}
 
 	const isPaid = request.requestStatus === 'paid' || request.requestStatus === 'payment_pending'
+	const canManuallyVerifyPaid =
+		hasPermission('urn:srp:manager') && request.requestStatus === 'payment_pending'
+
+	const handleManualVerifyPaid = async () => {
+		const reason = window.prompt('Manual verification reason (required):')?.trim() ?? ''
+		if (!reason) return
+		requestConfirmation({
+			title: 'Mark Payment Verified',
+			description: `Confirm manual payment verification for request #${request.id}?`,
+			confirmLabel: 'Mark Verified',
+			intent: 'confirm',
+			onConfirm: async () => {
+				try {
+					await verifyPaid.mutateAsync({ id: request.id, reason })
+					toast.success('Request manually verified as paid')
+				} catch (err: any) {
+					toast.error('Failed to verify request as paid', {
+						description: err?.message ?? 'Unknown error',
+					})
+				}
+			},
+		})
+	}
 
 	return (
+		<>
 		<Container>
 			<PageHeader
 				title={`Review: ${request.shipTypeName ?? 'Ship'} (#${request.id})`}
@@ -382,7 +410,7 @@ export default function ReviewRequestDetail() {
 						{canReview && (
 							<Card className="p-6">
 								<div className="space-y-3">
-									<div className="flex gap-2">
+									<div className="flex flex-col gap-2">
 										{showRevertConfirm && (
 											<Button
 												variant="secondary"
@@ -394,7 +422,8 @@ export default function ReviewRequestDetail() {
 										)}
 										<Button
 											variant="primary"
-											className="flex-1"
+											size="sm"
+											className="w-full"
 											loading={updateState.isPending}
 											onClick={() => {
 												if (!showRevertConfirm) {
@@ -408,6 +437,17 @@ export default function ReviewRequestDetail() {
 										>
 											{showRevertConfirm ? 'Confirm Revert to Pending' : 'Revert to Pending'}
 										</Button>
+										{canManuallyVerifyPaid && (
+											<Button
+												variant="secondary"
+												size="sm"
+												className="w-full"
+												onClick={() => void handleManualVerifyPaid()}
+												disabled={verifyPaid.isPending || updateState.isPending}
+											>
+												Mark Payment Verified
+											</Button>
+										)}
 									</div>
 									{showRevertConfirm && (
 										<div className="rounded-md border border-amber-500/50 bg-amber-500/10 p-3 text-sm text-amber-600">
@@ -421,5 +461,7 @@ export default function ReviewRequestDetail() {
 				</div>
 			)}
 		</Container>
+		{confirmationDialog}
+		</>
 	)
 }

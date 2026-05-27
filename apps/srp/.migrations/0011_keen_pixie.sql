@@ -1,0 +1,1 @@
+ALTER TABLE "srp_requests" ADD COLUMN "payment_scan_cursor_date" timestamp with time zone;

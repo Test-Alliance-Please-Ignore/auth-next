@@ -43,6 +43,9 @@ const RejectRequestSchema = z.object({
 	rejectionReason: z.string().min(10).max(2000),
 	reviewNotes: z.string().max(2000).optional(),
 })
+const VerifyPaidManuallySchema = z.object({
+	reason: z.string().trim().min(5).max(500),
+})
 
 const ReviewQueueStatusQuerySchema = z.enum([
 	'pending',
@@ -1981,6 +1984,44 @@ srp.post('/requests/:id/mark-paid', async (c) => {
 		existingRequest.id,
 		user.id,
 		getPrimaryCharacterName(user)
+	)
+
+	return c.json(request)
+})
+
+/**
+ * Manually verify a request as paid (manager/admin)
+ * POST /api/srp/requests/:id/verify-paid
+ */
+srp.post('/requests/:id/verify-paid', async (c) => {
+	const user = c.get('user')!
+	const requestId = c.req.param('id')
+	if (!isValidSrpRequestId(requestId)) {
+		return c.json({ error: 'Invalid request id' }, 400)
+	}
+
+	const body = await c.req.json().catch(() => ({}))
+	const validation = VerifyPaidManuallySchema.safeParse(body)
+	if (!validation.success) {
+		return c.json({ error: 'Invalid verification data', details: validation.error }, 400)
+	}
+
+	const canManage = await hasSrpTierPermission(c.env, user.id, 'manager', user.is_admin)
+	if (!canManage) return c.json({ error: 'Requires manager-or-higher permissions' }, 403)
+
+	const srpStub = getStub<Srp>(c.env.SRP, getRequestId(c))
+	const existingRequest = await srpStub.getRequest(requestId, user.id)
+	if (!existingRequest) return c.json({ error: 'Request not found' }, 404)
+	if (existingRequest.requestStatus !== 'payment_pending') {
+		return c.json({ error: 'Request must be in payment_pending to verify as paid' }, 409)
+	}
+
+	const request = await srpStub.updateReviewState(
+		existingRequest.id,
+		user.id,
+		getPrimaryCharacterName(user),
+		'paid',
+		`Manually verified as paid by ${getPrimaryCharacterName(user)}: ${validation.data.reason}`
 	)
 
 	return c.json(request)

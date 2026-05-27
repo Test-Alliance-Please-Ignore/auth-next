@@ -262,7 +262,8 @@ export function useRequestsByStatus(
 	const query = useQuery({
 		queryKey: srpKeys.requestsByStatus(status, params),
 		queryFn: () => api.getRequestsByStatus({ status, ...params }),
-		placeholderData: () => getReviewQueueSnapshot(status, params),
+		placeholderData: (previousData) =>
+			previousData ?? getReviewQueueSnapshot(status, params),
 		staleTime: 1000 * 30,
 		enabled: options?.enabled ?? true,
 	})
@@ -760,6 +761,23 @@ export function useMarkPaid() {
 				queryClient.setQueryData(queryKey, previousValue)
 			}
 		},
+		onSuccess: (request: SRPRequestResponse) => {
+			updateOverlayRequestStatus({
+				requestId: request.id,
+				requestStatus: request.requestStatus,
+			})
+			upsertRequestAcrossReviewQueueSnapshots(request)
+			setRequestStatusAcrossCaches(queryClient, request)
+			refreshQueueBadgesSoft(queryClient, ['approved', 'pending', 'paid'])
+			void queryClient.invalidateQueries({ queryKey: srpKeys.pendingPayoutTotal() })
+		},
+	})
+}
+
+export function useVerifyPaid() {
+	const queryClient = useQueryClient()
+	return useMutation({
+		mutationFn: ({ id, reason }: { id: string; reason: string }) => api.verifyPaid(id, reason),
 		onSuccess: (request: SRPRequestResponse) => {
 			updateOverlayRequestStatus({
 				requestId: request.id,
