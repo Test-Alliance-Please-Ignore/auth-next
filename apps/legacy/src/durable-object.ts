@@ -2,6 +2,7 @@ import { DurableObject } from 'cloudflare:workers'
 
 import { getStub } from '@repo/do-utils'
 import { and, asc, desc, eq, ilike, inArray, ne, notInArray, or, sql } from '@repo/db-utils'
+import { parseDateOrNull } from '@repo/worker-utils'
 import { createDb } from './db'
 import { coreUserCharacters, coreUsers } from './db/schema-core'
 import {
@@ -682,25 +683,17 @@ export class LegacyDO extends DurableObject<Env> implements Legacy {
 		return { item: updated }
 	}
 
-	async recheckUser(modernUserId: string, actorUserId?: string, options?: { force?: boolean }) {
-		const IP_ASSOCIATION_MAX_GAP_MS = 365 * 24 * 60 * 60 * 1000
-		type IpRange = { firstSeenAt: Date | null; lastSeenAt: Date | null }
-		const toDateOrNull = (value: unknown): Date | null => {
-			if (value instanceof Date) return Number.isNaN(value.getTime()) ? null : value
-			if (typeof value === 'string') {
-				const parsed = new Date(value)
-				return Number.isNaN(parsed.getTime()) ? null : parsed
+		async recheckUser(modernUserId: string, actorUserId?: string, options?: { force?: boolean }) {
+			const IP_ASSOCIATION_MAX_GAP_MS = 365 * 24 * 60 * 60 * 1000
+			type IpRange = { firstSeenAt: Date | null; lastSeenAt: Date | null }
+			const getRangeBounds = (range: IpRange): { start: number; end: number } | null => {
+				const first = parseDateOrNull(range.firstSeenAt)
+				const last = parseDateOrNull(range.lastSeenAt)
+				const start = first?.getTime() ?? last?.getTime() ?? null
+				const end = last?.getTime() ?? first?.getTime() ?? null
+				if (start === null || end === null) return null
+				return start <= end ? { start, end } : { start: end, end: start }
 			}
-			return null
-		}
-		const getRangeBounds = (range: IpRange): { start: number; end: number } | null => {
-			const first = toDateOrNull(range.firstSeenAt)
-			const last = toDateOrNull(range.lastSeenAt)
-			const start = first?.getTime() ?? last?.getTime() ?? null
-			const end = last?.getTime() ?? first?.getTime() ?? null
-			if (start === null || end === null) return null
-			return start <= end ? { start, end } : { start: end, end: start }
-		}
 		const areRangesTemporallyAssociated = (a: IpRange, b: IpRange): boolean => {
 			const aBounds = getRangeBounds(a)
 			const bBounds = getRangeBounds(b)
@@ -873,12 +866,12 @@ export class LegacyDO extends DurableObject<Env> implements Legacy {
 			ipAddressesByLegacyUser.set(row.legacyAuthUserId, bucket)
 		}
 		const ipRangeByLegacyUserAndIp = new Map<string, IpRange>()
-		for (const row of [...ipRows, ...ipNeighborRows]) {
-			ipRangeByLegacyUserAndIp.set(`${row.legacyAuthUserId}:${row.ipAddress}`, {
-				firstSeenAt: toDateOrNull(row.firstSeenAt),
-				lastSeenAt: toDateOrNull(row.lastSeenAt),
-			})
-		}
+			for (const row of [...ipRows, ...ipNeighborRows]) {
+				ipRangeByLegacyUserAndIp.set(`${row.legacyAuthUserId}:${row.ipAddress}`, {
+					firstSeenAt: parseDateOrNull(row.firstSeenAt),
+					lastSeenAt: parseDateOrNull(row.lastSeenAt),
+				})
+			}
 		const legacyUserIdsByIp = new Map<string, Set<string>>()
 		for (const row of [...ipRows, ...ipNeighborRows]) {
 			const bucket = legacyUserIdsByIp.get(row.ipAddress) ?? new Set<string>()

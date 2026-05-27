@@ -1,5 +1,6 @@
 import { isTaxIncomeRefType } from '@repo/corporation-tax'
 import { logger, toErrorLogDetails } from '@repo/hono-helpers'
+import { parseDateOrNull } from '@repo/worker-utils'
 
 const SITE_ADMIN_ONLY_ALERT_TYPES = new Set([
 	'discord_delivery_failed',
@@ -193,8 +194,7 @@ export function parseDateQueryParam(value: string | undefined): Date | undefined
 	if (!value) {
 		return undefined
 	}
-	const parsed = new Date(value)
-	return Number.isNaN(parsed.getTime()) ? null : parsed
+	return parseDateOrNull(value)
 }
 
 export function parseSortDirectionQueryParam(

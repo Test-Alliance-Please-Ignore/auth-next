@@ -1,4 +1,5 @@
 import { and, desc, eq, inArray, sql } from '@repo/db-utils'
+import { parseDateOrNull } from '@repo/worker-utils'
 
 import { userCharacters, userIpAddresses, users } from '../db/schema'
 
@@ -33,15 +34,6 @@ function normalizeSeenWindow(firstSeenAt: Date, lastSeenAt: Date): { firstSeenAt
 		return { firstSeenAt: clampedFirstSeenAt, lastSeenAt: clampedLastSeenAt }
 	}
 	return { firstSeenAt: clampedLastSeenAt, lastSeenAt: clampedFirstSeenAt }
-}
-
-function coerceToDate(value: unknown, fallback: Date): Date {
-	if (value instanceof Date && !Number.isNaN(value.getTime())) return value
-	if (typeof value === 'string' || typeof value === 'number') {
-		const parsed = new Date(value)
-		if (!Number.isNaN(parsed.getTime())) return parsed
-	}
-	return fallback
 }
 
 export async function getUserIpHistory(db: Db, userId: string): Promise<UserIpHistoryEntry[]> {
@@ -82,8 +74,8 @@ export async function getUserIpHistory(db: Db, userId: string): Promise<UserIpHi
 	const normalizedRows = rows
 		.map((row) => {
 			const now = new Date()
-			const firstSeenAt = coerceToDate(row.firstSeenAt, now)
-			const lastSeenAt = coerceToDate(row.lastSeenAt, firstSeenAt)
+			const firstSeenAt = parseDateOrNull(row.firstSeenAt) ?? now
+			const lastSeenAt = parseDateOrNull(row.lastSeenAt) ?? firstSeenAt
 			const normalizedSeenWindow = normalizeSeenWindow(firstSeenAt, lastSeenAt)
 			return {
 				...row,
@@ -133,13 +125,13 @@ export async function getIpHashMatches(db: Db, ipAddressHash: string): Promise<I
 	const detailsByUserId = new Map(userDetails.map((row) => [row.id, row]))
 
 	return userRows
-		.map((row) => {
-			const details = detailsByUserId.get(row.userId)
-			if (!details) return null
-			const now = new Date()
-			const firstSeenAt = coerceToDate(row.firstSeenAt, now)
-			const lastSeenAt = coerceToDate(row.lastSeenAt, firstSeenAt)
-			return {
+			.map((row) => {
+				const details = detailsByUserId.get(row.userId)
+				if (!details) return null
+				const now = new Date()
+				const firstSeenAt = parseDateOrNull(row.firstSeenAt) ?? now
+				const lastSeenAt = parseDateOrNull(row.lastSeenAt) ?? firstSeenAt
+				return {
 				userId: row.userId,
 				mainCharacterId: details.mainCharacterId,
 				mainCharacterName: details.mainCharacterName ?? null,

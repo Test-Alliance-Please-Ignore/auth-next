@@ -2,6 +2,7 @@ import { WorkflowEntrypoint, WorkflowEvent, WorkflowStep } from 'cloudflare:work
 
 import { sql } from '@repo/db-utils'
 import { getStub } from '@repo/do-utils'
+import { parseDateOrNull } from '@repo/worker-utils'
 
 import { createDb } from '../db'
 import {
@@ -255,14 +256,16 @@ export class SrpPaymentStatusCheckWorkflow extends WorkflowEntrypoint<
 					return result.rows ?? []
 				}
 			)
+			const scannedEntryDates = walletMatches
+				.map((row) => parseDateOrNull(row.entryDate))
+				.filter((date): date is Date => date !== null)
 			const maxScannedEntryDate =
-				walletMatches.length > 0
-					? walletMatches.reduce(
-						(latest, row) => (row.entryDate > latest ? row.entryDate : latest),
-						walletMatches[0].entryDate
+				scannedEntryDates.length > 0
+					? scannedEntryDates.reduce((latest, date) =>
+						date.getTime() > latest.getTime() ? date : latest
 					)
-				: null
-		const nextCursorDate = maxScannedEntryDate ?? new Date()
+					: null
+			const nextCursorDate: Date = maxScannedEntryDate ?? new Date()
 		if (!existingCursorDate || nextCursorDate.getTime() > existingCursorDate.getTime()) {
 			await db.execute(
 				sql`update srp_requests
