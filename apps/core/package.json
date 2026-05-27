@@ -52,6 +52,7 @@
 		"@repo/skills": "workspace:*",
 		"@repo/srp": "workspace:*",
 		"@repo/universe": "workspace:*",
+		"@repo/worker-utils": "workspace:*",
 		"@repo/workflow-utils": "workspace:*",
 		"drizzle-orm": "0.44.7",
 		"hono": "4.10.6",

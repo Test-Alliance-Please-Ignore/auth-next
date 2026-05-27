@@ -1,4 +1,5 @@
 import { logger } from '@repo/hono-helpers'
+import { parseDateOrNull } from '@repo/worker-utils'
 
 import { getCorporationTaxStub, getGlobalCorporationDataStub } from '../../utils/services'
 
@@ -37,19 +38,8 @@ type SerializedTaxProjectionRefreshInput = Omit<
 }
 
 function toIsoDateString(value: Date | string | null | undefined): string | null {
-	if (value === null || value === undefined) {
-		return null
-	}
-	const parsed = value instanceof Date ? value : new Date(value)
-	return Number.isNaN(parsed.getTime()) ? null : parsed.toISOString()
-}
-
-function toDate(value: Date | string | null | undefined): Date | null {
-	if (value === null || value === undefined) {
-		return null
-	}
-	const parsed = value instanceof Date ? value : new Date(value)
-	return Number.isNaN(parsed.getTime()) ? null : parsed
+	const parsed = parseDateOrNull(value)
+	return parsed ? parsed.toISOString() : null
 }
 
 function serializeTaxProjectionRefreshInput(
@@ -85,7 +75,7 @@ function serializeTaxProjectionRefreshInput(
 function hydrateTaxProjectionRefreshInput(
 	input: SerializedTaxProjectionRefreshInput
 ): TriggerTaxProjectionRefreshInput {
-	const triggeredAt = toDate(input.triggeredAt)
+	const triggeredAt = parseDateOrNull(input.triggeredAt)
 	if (!triggeredAt) {
 		throw new Error('Invalid tax projection retry input: triggeredAt is not a valid date')
 	}
@@ -98,14 +88,14 @@ function hydrateTaxProjectionRefreshInput(
 			? {
 					fetchedCount: input.walletJournal.fetchedCount,
 					maxId: input.walletJournal.maxId,
-					maxDate: toDate(input.walletJournal.maxDate),
+					maxDate: parseDateOrNull(input.walletJournal.maxDate),
 				}
 			: (input.walletJournal ?? null),
 		walletTransactions: input.walletTransactions
 			? {
 					fetchedCount: input.walletTransactions.fetchedCount,
 					maxId: input.walletTransactions.maxId,
-					maxDate: toDate(input.walletTransactions.maxDate),
+					maxDate: parseDateOrNull(input.walletTransactions.maxDate),
 				}
 			: (input.walletTransactions ?? null),
 		includeCharacterWallets: input.includeCharacterWallets,
