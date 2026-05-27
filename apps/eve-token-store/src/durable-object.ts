@@ -14,6 +14,10 @@ import {
 	normalizeAuthEsiRouteKey,
 } from './lib/auth-esi-budget'
 import { computeCircuitOpenUntil } from './lib/auth-esi-breaker'
+import {
+	shouldOpenGlobalEmergencyCircuit,
+	shouldOpenRouteCircuitForResponse,
+} from './lib/auth-esi-circuit-policy'
 import { computeRampRetryAfterSeconds } from './lib/auth-esi-ramp'
 import {
 	classifySsoError,
@@ -1617,23 +1621,30 @@ export class EveTokenStoreDO extends DurableObject<Env> implements EveTokenStore
 		if (!response.ok) {
 			await this.updateAuthenticatedEsiDynamicBudgetFromHeaders(response.headers, response.status)
 			const errorText = await response.text()
-			if (response.status === 429) {
+			if (shouldOpenRouteCircuitForResponse(response.status)) {
 				const retryAfterSeconds = this.parseHeaderSeconds(response.headers, 'Retry-After')
 				await this.openAuthenticatedEsiRouteCircuit(path, retryAfterSeconds, `429 on ${path}`)
-
-				// Keep global breaker only as emergency fuse when signals indicate broader exhaustion.
-				const hasErrorLimitSignals =
-					this.parseHeaderSeconds(response.headers, 'X-ESI-Error-Limit-Remain') !== undefined ||
-					this.parseHeaderSeconds(response.headers, 'X-ESI-Error-Limit-Reset') !== undefined
-				if (hasErrorLimitSignals) {
-					await this.openAuthenticatedEsiCircuit(retryAfterSeconds, `global-style 429 on ${path}`)
-				}
 			}
-			if (response.status === 420) {
+
+			const retryAfterSeconds = this.parseHeaderSeconds(response.headers, 'Retry-After')
+			const errorLimitRemain = this.parseHeaderSeconds(
+				response.headers,
+				'X-ESI-Error-Limit-Remain'
+			)
+			const errorLimitResetSeconds = this.parseHeaderSeconds(
+				response.headers,
+				'X-ESI-Error-Limit-Reset'
+			)
+			if (
+				shouldOpenGlobalEmergencyCircuit({
+					status: response.status,
+					errorLimitRemain,
+					errorLimitResetSeconds,
+				})
+			) {
 				await this.openAuthenticatedEsiCircuit(
-					this.parseHeaderSeconds(response.headers, 'Retry-After') ??
-						this.parseHeaderSeconds(response.headers, 'X-ESI-Error-Limit-Reset'),
-					`420 on ${path}`
+					retryAfterSeconds ?? errorLimitResetSeconds,
+					`${response.status} on ${path}`
 				)
 			}
 			throw this.buildEsiRequestError(path, response, errorText)
