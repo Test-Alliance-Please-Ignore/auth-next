@@ -9,10 +9,15 @@ import { createDb } from './db'
 import { eveCharacters, eveTokens } from './db/schema'
 import {
 	classifyAuthEsiPriority,
+	computeEffectiveAuthEsiBudgetLimits,
 	isAuthEsiBudgetExceeded,
 	normalizeAuthEsiRouteKey,
 } from './lib/auth-esi-budget'
 import { computeCircuitOpenUntil } from './lib/auth-esi-breaker'
+import {
+	shouldOpenGlobalEmergencyCircuit,
+	shouldOpenRouteCircuitForResponse,
+} from './lib/auth-esi-circuit-policy'
 import { computeRampRetryAfterSeconds } from './lib/auth-esi-ramp'
 import {
 	classifySsoError,
@@ -50,6 +55,9 @@ const METADATA_TTL_MS = 5 * 60 * 1000
 const TWENTY_FOUR_HOURS_MS = 24 * 60 * 60 * 1000
 const AUTH_ESI_BREAKER_STORAGE_KEY = 'esi:auth:breaker:open-until-ms'
 const AUTH_ESI_BREAKER_LAST_OPEN_UNTIL_STORAGE_KEY = 'esi:auth:breaker:last-open-until-ms'
+const AUTH_ESI_ROUTE_BREAKER_OPEN_UNTIL_PREFIX = 'esi:auth:breaker:route:open-until-ms:'
+const AUTH_ESI_ROUTE_BREAKER_LAST_OPEN_UNTIL_PREFIX = 'esi:auth:breaker:route:last-open-until-ms:'
+const AUTH_ESI_DYNAMIC_BUDGET_STORAGE_KEY = 'esi:auth:budget:dynamic'
 const AUTH_ESI_BREAKER_MIN_OPEN_MS = 5_000
 const AUTH_ESI_BREAKER_MAX_OPEN_MS = 5 * 60 * 1000
 const AUTH_ESI_RATE_WINDOW_MS = 60 * 1000
@@ -147,6 +155,15 @@ export class EveTokenStoreDO extends DurableObject<Env> implements EveTokenStore
 	private metadata: CachedEveMetadata | null = null
 	private authEsiBreakerOpenUntilMs = 0
 	private authEsiBreakerLastOpenUntilMs = 0
+	private authEsiRouteBreakerOpenUntilMs = new Map<string, number>()
+	private authEsiRouteBreakerLastOpenUntilMs = new Map<string, number>()
+	private authEsiDynamicBudget:
+		| {
+				remain: number
+				resetSeconds: number
+				observedAtMs: number
+		  }
+		| null = null
 
 	/**
 	 * Initialize the Durable Object
@@ -168,6 +185,12 @@ export class EveTokenStoreDO extends DurableObject<Env> implements EveTokenStore
 				(await state.storage.get<number>(AUTH_ESI_BREAKER_STORAGE_KEY)) ?? 0
 			this.authEsiBreakerLastOpenUntilMs =
 				(await state.storage.get<number>(AUTH_ESI_BREAKER_LAST_OPEN_UNTIL_STORAGE_KEY)) ?? 0
+			this.authEsiDynamicBudget =
+				(await state.storage.get<{
+					remain: number
+					resetSeconds: number
+					observedAtMs: number
+				}>(AUTH_ESI_DYNAMIC_BUDGET_STORAGE_KEY)) ?? null
 
 			if (this.metadata) {
 				this.jwksUri = this.metadata.jwks_uri
@@ -1189,6 +1212,14 @@ export class EveTokenStoreDO extends DurableObject<Env> implements EveTokenStore
 	private async assertAuthenticatedEsiBudget(path: string): Promise<void> {
 		const routeKey = normalizeAuthEsiRouteKey(path)
 		const priority = classifyAuthEsiPriority(path)
+		const now = Date.now()
+		const limits = computeEffectiveAuthEsiBudgetLimits({
+			baseGlobalLimit: AUTH_ESI_GLOBAL_WINDOW_LIMIT,
+			baseRouteLimit: AUTH_ESI_ROUTE_WINDOW_LIMIT,
+			baseBackgroundLimit: AUTH_ESI_BACKGROUND_WINDOW_LIMIT,
+			nowMs: now,
+			dynamicBudget: this.authEsiDynamicBudget,
+		})
 		const global = await this.incrementAuthEsiWindowCounter('global')
 		const route = await this.incrementAuthEsiWindowCounter(`route:${routeKey}`)
 		const priorityCounter = await this.incrementAuthEsiWindowCounter(`priority:${priority}`)
@@ -1199,15 +1230,14 @@ export class EveTokenStoreDO extends DurableObject<Env> implements EveTokenStore
 				routeCount: route.count,
 				priorityCount: priorityCounter.count,
 				priority,
-				globalLimit: AUTH_ESI_GLOBAL_WINDOW_LIMIT,
-				routeLimit: AUTH_ESI_ROUTE_WINDOW_LIMIT,
-				backgroundLimit: AUTH_ESI_BACKGROUND_WINDOW_LIMIT,
+				globalLimit: limits.globalLimit,
+				routeLimit: limits.routeLimit,
+				backgroundLimit: limits.backgroundLimit,
 			})
 		) {
 			return
 		}
 
-		const now = Date.now()
 		const windowEndMs = global.windowStartMs + AUTH_ESI_RATE_WINDOW_MS
 		const retryAfterSeconds = Math.max(1, Math.ceil((windowEndMs - now) / 1000))
 		const metadata = JSON.stringify({
@@ -1216,21 +1246,88 @@ export class EveTokenStoreDO extends DurableObject<Env> implements EveTokenStore
 			retryAfterSeconds,
 			circuitBreaker: 'budget_exhausted',
 			globalCount: global.count,
-			globalLimit: AUTH_ESI_GLOBAL_WINDOW_LIMIT,
+			globalLimit: limits.globalLimit,
 			routeKey,
 			routeCount: route.count,
-			routeLimit: AUTH_ESI_ROUTE_WINDOW_LIMIT,
+			routeLimit: limits.routeLimit,
 			priority,
 			priorityCount: priorityCounter.count,
-			priorityLimit:
-				priority === 'background' ? AUTH_ESI_BACKGROUND_WINDOW_LIMIT : AUTH_ESI_GLOBAL_WINDOW_LIMIT,
+			priorityLimit: priority === 'background' ? limits.backgroundLimit : limits.globalLimit,
+			limitSource: limits.source,
+			dynamicBudget: this.authEsiDynamicBudget,
 		})
 		throw new Error(
 			`ESI request failed: 429 Too Many Requests - {"error":"Global auth ESI budget exhausted"} | metadata=${metadata}`
 		)
 	}
 
+	private async updateAuthenticatedEsiDynamicBudgetFromHeaders(
+		headers: Headers,
+		status: number
+	): Promise<void> {
+		const remain = this.parseHeaderSeconds(headers, 'X-ESI-Error-Limit-Remain')
+		const resetSeconds = this.parseHeaderSeconds(headers, 'X-ESI-Error-Limit-Reset')
+		const retryAfterSeconds = this.parseHeaderSeconds(headers, 'Retry-After')
+		const now = Date.now()
+
+		if (remain !== undefined && resetSeconds !== undefined) {
+			this.authEsiDynamicBudget = {
+				remain,
+				resetSeconds,
+				observedAtMs: now,
+			}
+			await this.state.storage.put(AUTH_ESI_DYNAMIC_BUDGET_STORAGE_KEY, this.authEsiDynamicBudget)
+			return
+		}
+
+		// 429 without explicit error-limit headers: still capture retry window as a
+		// temporary exhausted budget signal.
+		if (status === 429 && retryAfterSeconds !== undefined) {
+			this.authEsiDynamicBudget = {
+				remain: 0,
+				resetSeconds: retryAfterSeconds,
+				observedAtMs: now,
+			}
+			await this.state.storage.put(AUTH_ESI_DYNAMIC_BUDGET_STORAGE_KEY, this.authEsiDynamicBudget)
+		}
+	}
+
 	private async assertAuthenticatedEsiRampPermit(path: string): Promise<void> {
+		const routeKey = normalizeAuthEsiRouteKey(path)
+		let routeLastOpenUntilMs = this.authEsiRouteBreakerLastOpenUntilMs.get(routeKey)
+		if (routeLastOpenUntilMs === undefined) {
+			routeLastOpenUntilMs =
+				(await this.state.storage.get<number>(
+					`${AUTH_ESI_ROUTE_BREAKER_LAST_OPEN_UNTIL_PREFIX}${routeKey}`
+				)) ?? 0
+			this.authEsiRouteBreakerLastOpenUntilMs.set(routeKey, routeLastOpenUntilMs)
+		}
+		if (routeLastOpenUntilMs > 0) {
+			const now = Date.now()
+			const routeRampEndsAt = routeLastOpenUntilMs + AUTH_ESI_RAMP_WINDOW_MS
+			if (now < routeRampEndsAt) {
+				const elapsed = Math.max(0, now - routeLastOpenUntilMs)
+				const progress = Math.min(1, elapsed / AUTH_ESI_RAMP_WINDOW_MS)
+				const allowProbability = 0.2 + progress * 0.8
+				if (Math.random() > allowProbability) {
+					const remainingRampMs = Math.max(0, routeRampEndsAt - now)
+					const retryAfterSeconds = computeRampRetryAfterSeconds(remainingRampMs)
+					const metadata = JSON.stringify({
+						status: 429,
+						path,
+						retryAfterSeconds,
+						circuitBreaker: 'route_ramp_gate',
+						routeKey,
+						rampProgress: progress,
+					})
+					throw new Error(
+						`ESI request failed: 429 Too Many Requests - {"error":"Auth ESI route ramp gate throttling"} | metadata=${metadata}`
+					)
+				}
+			}
+		}
+
+		// Global ramp is only used as emergency backpressure after global breaker opens.
 		const now = Date.now()
 		const rampEndsAt = this.authEsiBreakerLastOpenUntilMs + AUTH_ESI_RAMP_WINDOW_MS
 		if (this.authEsiBreakerLastOpenUntilMs <= 0 || now >= rampEndsAt) {
@@ -1263,20 +1360,45 @@ export class EveTokenStoreDO extends DurableObject<Env> implements EveTokenStore
 	private async assertAuthenticatedEsiCircuitClosed(path: string): Promise<void> {
 		const now = Date.now()
 		if (this.authEsiBreakerOpenUntilMs <= now) {
+			// no-op
+		} else {
+			const retryAfterSeconds = Math.max(
+				1,
+				Math.ceil((this.authEsiBreakerOpenUntilMs - now) / 1000)
+			)
+			const metadata = JSON.stringify({
+				status: 429,
+				path,
+				retryAfterSeconds,
+				circuitBreaker: 'open',
+			})
+			throw new Error(
+				`ESI request failed: 429 Too Many Requests - {"error":"Global auth ESI circuit breaker is open"} | metadata=${metadata}`
+			)
+		}
+
+		const routeKey = normalizeAuthEsiRouteKey(path)
+		let routeOpenUntilMs = this.authEsiRouteBreakerOpenUntilMs.get(routeKey)
+		if (routeOpenUntilMs === undefined) {
+			routeOpenUntilMs =
+				(await this.state.storage.get<number>(
+					`${AUTH_ESI_ROUTE_BREAKER_OPEN_UNTIL_PREFIX}${routeKey}`
+				)) ?? 0
+			this.authEsiRouteBreakerOpenUntilMs.set(routeKey, routeOpenUntilMs)
+		}
+		if (!routeOpenUntilMs || routeOpenUntilMs <= now) {
 			return
 		}
-		const retryAfterSeconds = Math.max(
-			1,
-			Math.ceil((this.authEsiBreakerOpenUntilMs - now) / 1000)
-		)
+		const retryAfterSeconds = Math.max(1, Math.ceil((routeOpenUntilMs - now) / 1000))
 		const metadata = JSON.stringify({
 			status: 429,
 			path,
 			retryAfterSeconds,
-			circuitBreaker: 'open',
+			circuitBreaker: 'route_open',
+			routeKey,
 		})
 		throw new Error(
-			`ESI request failed: 429 Too Many Requests - {"error":"Global auth ESI circuit breaker is open"} | metadata=${metadata}`
+			`ESI request failed: 429 Too Many Requests - {"error":"Auth ESI route circuit breaker is open"} | metadata=${metadata}`
 		)
 	}
 
@@ -1307,6 +1429,49 @@ export class EveTokenStoreDO extends DurableObject<Env> implements EveTokenStore
 			openForMs: nextOpenUntil - now,
 			openUntil: new Date(this.authEsiBreakerOpenUntilMs).toISOString(),
 		})
+	}
+
+	private async openAuthenticatedEsiRouteCircuit(
+		path: string,
+		retryAfterSeconds: number | undefined,
+		reason: string
+	): Promise<void> {
+		const routeKey = normalizeAuthEsiRouteKey(path)
+		const now = Date.now()
+		const currentOpenUntilMs =
+			this.authEsiRouteBreakerOpenUntilMs.get(routeKey) ??
+			((await this.state.storage.get<number>(
+				`${AUTH_ESI_ROUTE_BREAKER_OPEN_UNTIL_PREFIX}${routeKey}`
+			)) ?? 0)
+		const nextOpenUntil = computeCircuitOpenUntil({
+			nowMs: now,
+			retryAfterSeconds,
+			minOpenMs: AUTH_ESI_BREAKER_MIN_OPEN_MS,
+			maxOpenMs: AUTH_ESI_BREAKER_MAX_OPEN_MS,
+		})
+		if (nextOpenUntil <= currentOpenUntilMs) {
+			return
+		}
+		this.authEsiRouteBreakerOpenUntilMs.set(routeKey, nextOpenUntil)
+		this.authEsiRouteBreakerLastOpenUntilMs.set(routeKey, nextOpenUntil)
+		await this.state.storage.put(
+			`${AUTH_ESI_ROUTE_BREAKER_OPEN_UNTIL_PREFIX}${routeKey}`,
+			nextOpenUntil
+		)
+		await this.state.storage.put(
+			`${AUTH_ESI_ROUTE_BREAKER_LAST_OPEN_UNTIL_PREFIX}${routeKey}`,
+			nextOpenUntil
+		)
+		logger.withTags({ operation: 'esi_auth_route_breaker_open' }).warn(
+			'Opened auth ESI route circuit breaker',
+			{
+				reason,
+				routeKey,
+				retryAfterSeconds,
+				openForMs: nextOpenUntil - now,
+				openUntil: new Date(nextOpenUntil).toISOString(),
+			}
+		)
 	}
 
 	private normalizeCharacterIds(characterIds: string[]): number[] {
@@ -1434,6 +1599,7 @@ export class EveTokenStoreDO extends DurableObject<Env> implements EveTokenStore
 
 		// Handle 304 Not Modified
 		if (response.status === 304 && cached.length > 0) {
+			await this.updateAuthenticatedEsiDynamicBudgetFromHeaders(response.headers, response.status)
 			const newExpiresAt = this.parseEsiCacheExpiry(response.headers)
 			// Update both expires_at and last_modified to reset the 12-hour window
 			await this.state.storage.sql.exec(
@@ -1453,17 +1619,39 @@ export class EveTokenStoreDO extends DurableObject<Env> implements EveTokenStore
 		}
 
 		if (!response.ok) {
+			await this.updateAuthenticatedEsiDynamicBudgetFromHeaders(response.headers, response.status)
 			const errorText = await response.text()
-			if (response.status === 429) {
+			if (shouldOpenRouteCircuitForResponse(response.status)) {
+				const retryAfterSeconds = this.parseHeaderSeconds(response.headers, 'Retry-After')
+				await this.openAuthenticatedEsiRouteCircuit(path, retryAfterSeconds, `429 on ${path}`)
+			}
+
+			const retryAfterSeconds = this.parseHeaderSeconds(response.headers, 'Retry-After')
+			const errorLimitRemain = this.parseHeaderSeconds(
+				response.headers,
+				'X-ESI-Error-Limit-Remain'
+			)
+			const errorLimitResetSeconds = this.parseHeaderSeconds(
+				response.headers,
+				'X-ESI-Error-Limit-Reset'
+			)
+			if (
+				shouldOpenGlobalEmergencyCircuit({
+					status: response.status,
+					errorLimitRemain,
+					errorLimitResetSeconds,
+				})
+			) {
 				await this.openAuthenticatedEsiCircuit(
-					this.parseHeaderSeconds(response.headers, 'Retry-After'),
-					`429 on ${path}`
+					retryAfterSeconds ?? errorLimitResetSeconds,
+					`${response.status} on ${path}`
 				)
 			}
 			throw this.buildEsiRequestError(path, response, errorText)
 		}
 
 		// 4. Parse and cache response
+		await this.updateAuthenticatedEsiDynamicBudgetFromHeaders(response.headers, response.status)
 		const data = (await response.json()) as T
 		const expiresAt = this.parseEsiCacheExpiry(response.headers)
 		const etag = response.headers.get('ETag')
