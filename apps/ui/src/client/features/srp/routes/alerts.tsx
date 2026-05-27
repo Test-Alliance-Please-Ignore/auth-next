@@ -117,12 +117,12 @@ export default function SRPAlertsPage() {
 									<TableCell className="text-sm">
 										<EveTimeDisplay dateStr={alert.detectedAt} />
 									</TableCell>
-									<TableCell className="text-sm">
-										<Link to={`/srp/request/${alert.requestId}`} className="text-primary hover:underline">
-											{alert.requestId.slice(0, 8)}...
-										</Link>
-										<div className="mt-1 font-mono text-xs text-muted-foreground">
-											Journal {alert.journalId}
+										<TableCell className="text-sm">
+											<Link to={`/srp/request/${alert.requestId}`} className="text-primary hover:underline">
+												{alert.requestId}
+											</Link>
+											<div className="mt-1 font-mono text-xs text-muted-foreground">
+												Journal {alert.journalId}
 										</div>
 									</TableCell>
 									<TableCell className="text-sm">
