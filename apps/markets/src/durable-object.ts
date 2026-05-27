@@ -73,6 +73,11 @@ export class MarketsDO extends DurableObject<Env, {}> implements Markets {
 		`)
 		// Add column if upgrading from an older schema that didn't have it
 		try {
+			this.state.storage.sql.exec(`ALTER TABLE config ADD COLUMN max_snapshots INTEGER DEFAULT NULL`)
+		} catch {
+			// Column already exists — ignore
+		}
+		try {
 			this.state.storage.sql.exec(
 				`ALTER TABLE config ADD COLUMN max_daily_price_history_days INTEGER DEFAULT NULL`
 			)

@@ -1,3 +1,4 @@
+import { access, readFile } from 'node:fs/promises'
 import { dirname, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { config } from 'dotenv'
@@ -51,6 +52,34 @@ interface EsiType {
 	dogma_attributes?: EsiTypeDogmaAttribute[]
 }
 
+interface SdeCategory {
+	categoryID: number
+	categoryName: string
+	published: number
+}
+
+interface SdeGroup {
+	groupID: number
+	categoryID: number
+	groupName: string
+	published: number
+}
+
+interface SdeType {
+	typeID: number
+	groupID: number
+	typeName: string
+	description: string
+	published: number
+}
+
+interface SdeTypeAttribute {
+	typeID: number
+	attributeID: number
+	valueFloat: number | null
+	valueInt: number | null
+}
+
 const ESI_BASE_URL = 'https://esi.evetech.net/latest'
 const SKILLS_CATEGORY_ID = 16
 
@@ -90,6 +119,14 @@ const requirementPairs: Array<[number, number]> = [
 	[ATTRIBUTE_IDS.REQUIRED_SKILL_5, ATTRIBUTE_IDS.REQUIRED_SKILL_5_LEVEL],
 	[ATTRIBUTE_IDS.REQUIRED_SKILL_6, ATTRIBUTE_IDS.REQUIRED_SKILL_6_LEVEL],
 ]
+
+const REQUIRED_ATTRIBUTE_IDS = new Set<number>([
+	ATTRIBUTE_IDS.PRIMARY_ATTRIBUTE,
+	ATTRIBUTE_IDS.SECONDARY_ATTRIBUTE,
+	ATTRIBUTE_IDS.SKILL_TIME_CONSTANT,
+	ATTRIBUTE_IDS.CAN_NOT_BE_TRAINED,
+	...requirementPairs.flat(),
+])
 
 function buildEsiUrl(path: string): string {
 	const url = new URL(`${ESI_BASE_URL}${path}`)
@@ -134,6 +171,126 @@ async function fetchJsonWithRetry<T>(url: string, retries = 3): Promise<T> {
 	throw new Error(`Failed to fetch ${url}: ${String(lastError)}`)
 }
 
+async function fileExists(path: string): Promise<boolean> {
+	try {
+		await access(path)
+		return true
+	} catch {
+		return false
+	}
+}
+
+async function loadJsonFile<T>(path: string): Promise<T> {
+	const content = await readFile(path, 'utf-8')
+	return JSON.parse(content) as T
+}
+
+async function loadSkillDataFromSde(sdeDir: string): Promise<{
+	category: EsiCategory
+	groups: EsiGroup[]
+	types: EsiType[]
+}> {
+	const invCategoriesPath = resolve(sdeDir, 'invCategories.json')
+	const invGroupsPath = resolve(sdeDir, 'invGroups.json')
+	const invTypesPath = resolve(sdeDir, 'invTypes.json')
+	const dgmTypeAttributesPath = resolve(sdeDir, 'dgmTypeAttributes.json')
+
+	const hasSdeFiles = await Promise.all([
+		fileExists(invCategoriesPath),
+		fileExists(invGroupsPath),
+		fileExists(invTypesPath),
+		fileExists(dgmTypeAttributesPath),
+	])
+	if (hasSdeFiles.some((exists) => !exists)) {
+		throw new Error('required SDE files are missing')
+	}
+
+	const [categories, groups, types, typeAttributes] = await Promise.all([
+		loadJsonFile<SdeCategory[]>(invCategoriesPath),
+		loadJsonFile<SdeGroup[]>(invGroupsPath),
+		loadJsonFile<SdeType[]>(invTypesPath),
+		loadJsonFile<SdeTypeAttribute[]>(dgmTypeAttributesPath),
+	])
+
+	const skillCategory = categories.find((category) => category.categoryID === SKILLS_CATEGORY_ID)
+	if (!skillCategory) {
+		throw new Error(`Skill category ${SKILLS_CATEGORY_ID} not found in SDE`)
+	}
+
+	const skillGroups = groups.filter(
+		(group) => group.categoryID === SKILLS_CATEGORY_ID && group.published === 1
+	)
+	const groupIdSet = new Set(skillGroups.map((group) => group.groupID))
+	const skillTypes = types.filter((type) => type.published === 1 && groupIdSet.has(type.groupID))
+	const skillTypeIdSet = new Set(skillTypes.map((type) => type.typeID))
+
+	const attributesByTypeId = new Map<number, EsiTypeDogmaAttribute[]>()
+	for (const attribute of typeAttributes) {
+		if (!skillTypeIdSet.has(attribute.typeID) || !REQUIRED_ATTRIBUTE_IDS.has(attribute.attributeID)) {
+			continue
+		}
+		const value = attribute.valueFloat ?? attribute.valueInt
+		if (value == null) continue
+		const existing = attributesByTypeId.get(attribute.typeID) ?? []
+		existing.push({
+			attribute_id: attribute.attributeID,
+			value,
+		})
+		attributesByTypeId.set(attribute.typeID, existing)
+	}
+
+	const normalizedGroups: EsiGroup[] = skillGroups.map((group) => ({
+		group_id: group.groupID,
+		category_id: group.categoryID,
+		name: group.groupName,
+		published: true,
+		types: skillTypes.filter((type) => type.groupID === group.groupID).map((type) => type.typeID),
+	}))
+
+	const normalizedTypes: EsiType[] = skillTypes.map((type) => ({
+		type_id: type.typeID,
+		group_id: type.groupID,
+		name: type.typeName,
+		description: type.description,
+		published: true,
+		dogma_attributes: attributesByTypeId.get(type.typeID) ?? [],
+	}))
+
+	return {
+		category: {
+			category_id: SKILLS_CATEGORY_ID,
+			name: skillCategory.categoryName || 'Skills',
+			published: skillCategory.published === 1,
+			groups: normalizedGroups.map((group) => group.group_id),
+		},
+		groups: normalizedGroups,
+		types: normalizedTypes,
+	}
+}
+
+async function loadSkillDataFromEsi(): Promise<{
+	category: EsiCategory
+	groups: EsiGroup[]
+	types: EsiType[]
+}> {
+	const category = await fetchJsonWithRetry<EsiCategory>(
+		buildEsiUrl(`/universe/categories/${SKILLS_CATEGORY_ID}/`)
+	)
+
+	const groupResponses = await mapWithConcurrency(category.groups, 20, async (groupId) => {
+		return fetchJsonWithRetry<EsiGroup>(buildEsiUrl(`/universe/groups/${groupId}/`))
+	})
+	const groups = groupResponses.filter(
+		(group) => group.category_id === SKILLS_CATEGORY_ID && group.published
+	)
+	const skillTypeIds = [...new Set(groups.flatMap((group) => (group.types ?? []).map((typeId) => typeId)))]
+	const types = await mapWithConcurrency(skillTypeIds, 25, async (typeId) => {
+		return fetchJsonWithRetry<EsiType>(buildEsiUrl(`/universe/types/${typeId}/`))
+	})
+
+	return { category, groups, types }
+}
+
 function chunk<T>(values: T[], size: number): T[][] {
 	const result: T[][] = []
 	for (let i = 0; i < values.length; i += size) {
@@ -173,13 +330,20 @@ async function main() {
 		throw new Error('DATABASE_URL_MIGRATIONS environment variable is required')
 	}
 
-	console.log('Starting EVE skill catalog import from ESI...')
+	console.log('Starting EVE skill catalog import...')
 	const db = createDb(databaseUrl)
 
-	// 1) Category (Skills)
-	const category = await fetchJsonWithRetry<EsiCategory>(
-		buildEsiUrl(`/universe/categories/${SKILLS_CATEGORY_ID}/`)
-	)
+	const sdeDataDir = resolve(__dirname, '../../../tmp/sde-data')
+	let category: EsiCategory
+	let skillGroups: EsiGroup[]
+	let typeResponses: EsiType[]
+	try {
+		;({ category, groups: skillGroups, types: typeResponses } = await loadSkillDataFromSde(sdeDataDir))
+		console.log(`Using downloaded SDE files from ${sdeDataDir}`)
+	} catch {
+		console.log('Downloaded SDE files unavailable, falling back to ESI')
+		;({ category, groups: skillGroups, types: typeResponses } = await loadSkillDataFromEsi())
+	}
 
 	await db
 		.insert(schema.skillCategories)
@@ -199,14 +363,6 @@ async function main() {
 	console.log('✓ Imported skill category')
 
 	// 2) Groups
-	console.log(`Fetching ${category.groups.length} skill groups from ESI...`)
-	const groupResponses = await mapWithConcurrency(category.groups, 20, async (groupId) => {
-		return fetchJsonWithRetry<EsiGroup>(buildEsiUrl(`/universe/groups/${groupId}/`))
-	})
-
-	const skillGroups = groupResponses.filter(
-		(group) => group.category_id === SKILLS_CATEGORY_ID && group.published
-	)
 
 	for (const group of skillGroups) {
 		await db
@@ -230,14 +386,6 @@ async function main() {
 	console.log(`✓ Imported ${skillGroups.length} skill groups`)
 
 	// 3) Types/skills with dogma attributes
-	const skillTypeIds = [
-		...new Set(skillGroups.flatMap((group) => (group.types ?? []).map((typeId) => typeId))),
-	]
-
-	console.log(`Fetching ${skillTypeIds.length} skill types from ESI...`)
-	const typeResponses = await mapWithConcurrency(skillTypeIds, 25, async (typeId) => {
-		return fetchJsonWithRetry<EsiType>(buildEsiUrl(`/universe/types/${typeId}/`))
-	})
 
 	const validGroupIds = new Set(skillGroups.map((group) => String(group.group_id)))
 	const importedSkillIds: string[] = []
