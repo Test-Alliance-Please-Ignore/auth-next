@@ -220,10 +220,18 @@ export class DirectorManager {
 						continue
 					}
 
-					if (tokenInfo.isExpired) {
-						const refreshSucceeded = await this.tokenStore.refreshToken(candidate.characterId)
-						if (!refreshSucceeded) {
-							await this.safeRecordFailure(
+						if (tokenInfo.isExpired) {
+							if (!tokenInfo.hasRefreshToken) {
+								await this.safeRecordFailure(
+									candidate.directorId,
+									'Director token expired and requires reauthentication (no refresh token)',
+									{ forceUnhealthy: true }
+								)
+								continue
+							}
+							const refreshSucceeded = await this.tokenStore.refreshToken(candidate.characterId)
+							if (!refreshSucceeded) {
+								await this.safeRecordFailure(
 								candidate.directorId,
 								'Director token expired and refresh failed'
 							)

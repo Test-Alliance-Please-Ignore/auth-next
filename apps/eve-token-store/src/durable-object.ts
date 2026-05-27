@@ -463,13 +463,34 @@ export class EveTokenStoreDO extends DurableObject<Env> implements EveTokenStore
 				.where(eq(eveCharacters.characterId, String(characterId)))
 
 			return true
-		} catch (error) {
-			logger
-				.withTags({ operation: 'refreshToken', characterId })
-				.error('Token refresh failed', error)
-			return false
+			} catch (error) {
+				const message = error instanceof Error ? error.message : String(error)
+				if (this.isPermanentRefreshFailure(message)) {
+					const character = await this.db.query.eveCharacters.findFirst({
+						where: eq(eveCharacters.characterId, String(characterId)),
+					})
+					if (character) {
+						await this.db
+							.update(eveTokens)
+							.set({
+								refreshToken: null,
+								updatedAt: new Date(),
+							})
+							.where(eq(eveTokens.characterId, character.id))
+					}
+					logger
+						.withTags({ operation: 'refreshToken', characterId })
+						.warn('Permanent token refresh failure; disabled further refresh attempts', {
+							error: message,
+						})
+					return false
+				}
+				logger
+					.withTags({ operation: 'refreshToken', characterId })
+					.error('Token refresh failed', error)
+				return false
+			}
 		}
-	}
 
 	/**
 	 * Get token information (without actual token values)
@@ -501,6 +522,7 @@ export class EveTokenStoreDO extends DurableObject<Env> implements EveTokenStore
 			expiresAt: tokenRecord.expiresAt,
 			scopes,
 			isExpired,
+			hasRefreshToken: Boolean(tokenRecord.refreshToken),
 		}
 	}
 
@@ -701,14 +723,17 @@ export class EveTokenStoreDO extends DurableObject<Env> implements EveTokenStore
 				return null
 			}
 
-			// Check if token is expired
-			const now = new Date()
-			const isExpired = tokenRecord.expiresAt < now
+				// Check if token is expired
+				const now = new Date()
+				const isExpired = tokenRecord.expiresAt < now
 
-			if (isExpired) {
-				// Try to refresh
-				const refreshed = await this.refreshToken(characterId)
-				if (!refreshed) {
+				if (isExpired) {
+					if (!tokenRecord.refreshToken) {
+						return null
+					}
+					// Try to refresh
+					const refreshed = await this.refreshToken(characterId)
+					if (!refreshed) {
 					return null
 				}
 
@@ -821,16 +846,17 @@ export class EveTokenStoreDO extends DurableObject<Env> implements EveTokenStore
 				const scopes = JSON.parse(character.scopes) as string[]
 				const isExpired = tokenRecord.expiresAt < new Date()
 
-				tokens.push({
-					characterId: character.characterId,
-					characterName: character.characterName,
-					characterOwnerHash: character.characterOwnerHash,
-					expiresAt: tokenRecord.expiresAt,
-					scopes,
-					isExpired,
-				})
+					tokens.push({
+						characterId: character.characterId,
+						characterName: character.characterName,
+						characterOwnerHash: character.characterOwnerHash,
+						expiresAt: tokenRecord.expiresAt,
+						scopes,
+						isExpired,
+						hasRefreshToken: Boolean(tokenRecord.refreshToken),
+					})
+				}
 			}
-		}
 
 		return tokens
 	}
@@ -2259,6 +2285,15 @@ export class EveTokenStoreDO extends DurableObject<Env> implements EveTokenStore
 		}
 
 		return 'transient_error'
+	}
+
+	private isPermanentRefreshFailure(errorMessage: string): boolean {
+		const normalizedError = errorMessage.toLowerCase()
+		return (
+			normalizedError.includes('invalid_grant') ||
+			normalizedError.includes('invalid refresh token') ||
+			normalizedError.includes('token missing/expired')
+		)
 	}
 
 	/**
