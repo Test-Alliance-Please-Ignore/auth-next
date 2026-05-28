@@ -5,6 +5,7 @@ import type { Groups } from '@repo/groups'
 import type { HonoApp } from '@repo/hono-helpers'
 import type { SharedHonoEnv, SharedHonoVariables } from '@repo/hono-helpers/src/types'
 import type { Skills } from '@repo/skills'
+import type { PasteWorker } from '@repo/paste'
 import type { createDb } from './db'
 import type { UserDiscordRefreshWorkflowParams } from './workflows/user-discord-refresh.workflow'
 import type { DiscordMemberAuditWorkflowParams } from './workflows/discord-member-audit.workflow'
@@ -68,6 +69,8 @@ export type Env = SharedHonoEnv & {
 	LEGACY: DurableObjectNamespace
 	/** Optional external fleets worker base URL for admin fleet monitor test page */
 	FLEETS_MONITOR_BASE_URL?: string
+	/** Paste worker service binding */
+	PASTE: PasteWorker
 	/** Moon Scan Durable Object binding */
 	MOON_SCAN: DurableObjectNamespace
 	/** Markets Durable Object binding */

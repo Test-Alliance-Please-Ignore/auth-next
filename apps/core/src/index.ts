@@ -43,6 +43,7 @@ import skillPlansRoutes from './routes/skill-plans'
 import skillsRoutes from './routes/skills'
 import flagsRoutes from './routes/flags'
 import { moonScanRoutes } from './routes/moon-scan'
+import pastesRoutes, { publicPasteRoutes } from './routes/pastes'
 import srpRoutes from './routes/srp'
 import usersRoutes from './routes/users'
 import universeRoutes from './routes/universe'
@@ -99,6 +100,7 @@ const app = new Hono<App>()
 
 	// Public image proxy (no auth, aggressive CDN caching)
 	.route('/images', imagesRoutes)
+	.route('/api/public/paste', publicPasteRoutes)
 
 	// API routes - mounted under /api prefix
 	.route('/api/admin', adminRoutes)
@@ -132,6 +134,7 @@ const app = new Hono<App>()
 	.route('/api/moon-scan', moonScanRoutes)
 	.route('/api/bills', billsUserRoutes)
 	.route('/api/session', sessionRoutes)
+	.route('/api/pastes', pastesRoutes)
 
 // Export worker with HTTP and scheduled handlers
 // HTTP handler is wrapped with Sentry for automatic error tracking

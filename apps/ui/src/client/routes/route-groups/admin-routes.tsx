@@ -41,6 +41,7 @@ import AdminGroupsPage from '@/routes/admin/groups'
 import AdminLayout from '@/routes/admin/layout'
 import AdminLegacyMigrationsPage from '@/routes/admin/legacy-migrations'
 import AdminLegacyMigrationDetailPage from '@/routes/admin/legacy-migration-detail'
+import AdminPastesPage from '@/routes/admin/pastes'
 import AdminPermissionCategoriesPage from '@/routes/admin/permissions/categories'
 import AdminGlobalPermissionsPage from '@/routes/admin/permissions/global'
 import AdminUserActivityPage from '@/routes/admin/user-activity'
@@ -95,9 +96,10 @@ export const adminRouteElements = (
 		/>
 	<Route path="legacy-migrations" element={<AdminLegacyMigrationsPage />} />
 		<Route path="legacy-migrations/:modernUserId" element={<AdminLegacyMigrationDetailPage />} />
-		<Route path="blacklist" element={<AdminBlacklistPage />} />
-		<Route path="activity-log" element={<AdminActivityLogPage />} />
-		<Route path="dev/components" element={<DevComponentsPage />} />
+	<Route path="blacklist" element={<AdminBlacklistPage />} />
+	<Route path="activity-log" element={<AdminActivityLogPage />} />
+	<Route path="pastes" element={<AdminPastesPage />} />
+	<Route path="dev/components" element={<DevComponentsPage />} />
 
 		<Route path="bills" element={<AdminBillsPage />} />
 		<Route path="bills/new" element={<AdminBillsNewPage />} />
