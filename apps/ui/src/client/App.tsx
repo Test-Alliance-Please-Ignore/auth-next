@@ -24,6 +24,9 @@ import InvitationsPage from './routes/invitations'
 import LandingPage from './routes/landing'
 import LegacyAuthCallbackPage from './routes/legacy-auth-callback'
 import MyGroupsPage from './routes/my-groups'
+import PasteViewPage from './routes/paste-view'
+import PasteEditPage from './routes/paste-edit'
+import PastesPage from './routes/pastes'
 import { adminRouteElements } from './routes/route-groups/admin-routes'
 import { taxRouteElements } from './routes/route-groups/tax-routes'
 import toast from './lib/toast'
@@ -145,6 +148,7 @@ const queryClient = new QueryClient({
 		onError: (error, query) => {
 			// Skip global toast for inactive/background-only queries.
 			if (query.getObserversCount() === 0) return
+			if (query.meta?.suppressErrorToast) return
 
 			const message =
 				error instanceof Error ? error.message : 'Something went wrong while loading data.'
@@ -204,6 +208,13 @@ function NavigateHrAuditorUserGroupsToHrUsers() {
 	return <Navigate to={`/hr/users/${userId}/groups`} replace />
 }
 
+function NavigatePasteRootToLogin() {
+	useEffect(() => {
+		window.location.href = '/login'
+	}, [])
+	return <LoadingPage label="Redirecting to login..." />
+}
+
 export default function App() {
 	return (
 		<QueryClientProvider client={queryClient}>
@@ -216,6 +227,8 @@ export default function App() {
 						<Route path="/discord/callback" element={<DiscordCallbackPage />} />
 						<Route path="/legacy-auth/callback" element={<LegacyAuthCallbackPage />} />
 						<Route path="/claim-main" element={<ClaimMainPage />} />
+						<Route path="/paste" element={<NavigatePasteRootToLogin />} />
+						<Route path="/paste/:id" element={<PasteViewPage />} />
 
 						{/* Protected routes with layout */}
 						<Route element={<Layout />}>
@@ -224,6 +237,8 @@ export default function App() {
 							<Route path="/groups" element={<GroupsPage />} />
 							<Route path="/groups/:groupId" element={<GroupDetailPage />} />
 							<Route path="/my-groups" element={<MyGroupsPage />} />
+							<Route path="/pastes" element={<PastesPage />} />
+							<Route path="/pastes/:id/edit" element={<PasteEditPage />} />
 
 							{/* Join Corporations */}
 							<Route
@@ -665,7 +680,6 @@ export default function App() {
 								}
 							/>
 							{taxRouteElements}
-
 							{/* Doctrines routes (lazy loaded) */}
 							<Route
 								path="/doctrines"

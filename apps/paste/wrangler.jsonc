@@ -1,0 +1,33 @@
+{
+	"$schema": "node_modules/wrangler/config-schema.json",
+	"name": "paste",
+	"main": "src/index.ts",
+	"compatibility_date": "2025-03-07",
+	"compatibility_flags": ["nodejs_compat"],
+	"logpush": false,
+	"observability": {
+		"enabled": true,
+		"head_sampling_rate": 1
+	},
+	"workers_dev": false,
+	"triggers": {
+		"crons": ["*/15 * * * *"]
+	},
+	"vars": {
+		"NAME": "paste",
+		"ENVIRONMENT": "production",
+		"SENTRY_RELEASE": "unknown"
+	},
+	"r2_buckets": [
+		{
+			"binding": "PASTE_BUCKET",
+			"bucket_name": "pleaseignore-pastes"
+		}
+	],
+	"kv_namespaces": [
+		{
+			"binding": "PASTE_THROTTLE",
+			"id": "pleaseignore-paste-throttle"
+		}
+	]
+}

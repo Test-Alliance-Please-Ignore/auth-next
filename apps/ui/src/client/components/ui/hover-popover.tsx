@@ -1,4 +1,4 @@
-import { useRef, useState } from 'react'
+import { useEffect, useState } from 'react'
 
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover'
 import { cn } from '@/lib/utils'
@@ -15,6 +15,7 @@ interface HoverPopoverProps {
 	side?: PopoverContentProps['side']
 	sideOffset?: number
 	className?: string
+	fullWidth?: boolean
 }
 
 export function HoverPopover({
@@ -24,38 +25,25 @@ export function HoverPopover({
 	side = 'bottom',
 	sideOffset = 8,
 	className,
+	fullWidth = false,
 }: HoverPopoverProps) {
 	const [open, setOpen] = useState(false)
-	const closeTimeoutRef = useRef<number | null>(null)
+	const [isTriggerHover, setIsTriggerHover] = useState(false)
+	const [isContentHover, setIsContentHover] = useState(false)
 
-	const clearCloseTimeout = () => {
-		if (closeTimeoutRef.current !== null) {
-			window.clearTimeout(closeTimeoutRef.current)
-			closeTimeoutRef.current = null
-		}
-	}
-
-	const openPopover = () => {
-		clearCloseTimeout()
-		setOpen(true)
-	}
-
-	const closePopoverSoon = () => {
-		clearCloseTimeout()
-		closeTimeoutRef.current = window.setTimeout(() => {
-			setOpen(false)
-		}, 80)
-	}
+	useEffect(() => {
+		setOpen(isTriggerHover || isContentHover)
+	}, [isTriggerHover, isContentHover])
 
 	return (
 		<Popover open={open} onOpenChange={setOpen}>
 			<PopoverTrigger asChild>
 				<span
-					className="inline-block"
-					onMouseEnter={openPopover}
-					onMouseLeave={closePopoverSoon}
-					onFocus={openPopover}
-					onBlur={closePopoverSoon}
+					className={fullWidth ? 'inline-block w-full' : 'inline-block'}
+					onMouseEnter={() => setIsTriggerHover(true)}
+					onMouseLeave={() => setIsTriggerHover(false)}
+					onFocus={() => setIsTriggerHover(true)}
+					onBlur={() => setIsTriggerHover(false)}
 				>
 					{trigger}
 				</span>
@@ -65,12 +53,11 @@ export function HoverPopover({
 				side={side}
 				sideOffset={sideOffset}
 				className={cn(className)}
-				onMouseEnter={openPopover}
-				onMouseLeave={closePopoverSoon}
+				onMouseEnter={() => setIsContentHover(true)}
+				onMouseLeave={() => setIsContentHover(false)}
 			>
 				{children}
 			</PopoverContent>
 		</Popover>
 	)
 }
-

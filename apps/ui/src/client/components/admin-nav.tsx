@@ -5,6 +5,7 @@ import {
 	ChevronDown,
 	ChevronRight,
 	Coins,
+	FileText,
 	Factory,
 	FolderKanban,
 	Key,
@@ -115,6 +116,11 @@ export function AdminNav({ onNavigate }: AdminNavProps) {
 			label: 'Industry Providers',
 			href: '/admin/industry-providers',
 			icon: Factory,
+		},
+		{
+			label: 'Pastes',
+			href: '/admin/pastes',
+			icon: FileText,
 		},
 		{
 			label: 'Legacy Migrations',

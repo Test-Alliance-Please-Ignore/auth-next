@@ -1644,11 +1644,70 @@ export interface ResetServicePasswordResponse {
 	newPassword?: string
 }
 
+export interface PasteRecord {
+	id: string
+	name: string
+	createdByUserId: string
+	createdByCharacterId: string | null
+	createdByCharacterName: string | null
+	visibility: 'alliance' | 'public'
+	isPasswordProtected: boolean
+	sizeBytes: number
+	contentType: 'text/plain'
+	expiresAt: string | null
+	createdAt: string
+	updatedAt: string
+	lastAccessedAt: string | null
+	encryptionVersion: string | null
+	creatorDisplayName?: string | null
+}
+
+export interface PasteSettings {
+	createRateLimitCount: number
+	createRateLimitWindowMinutes: number
+	maxActivePastesPerUser: number
+	updatedByUserId: string | null
+	updatedAt: string
+}
+
+export interface PasteViewerResponse {
+	paste: PasteRecord
+	content: string | null
+	requiresPassword: boolean
+}
+
 export class ApiClient {
 	private baseUrl: string
+	private publicBaseUrl: string
 
 	constructor(baseUrl: string = API_BASE_URL) {
 		this.baseUrl = baseUrl
+		this.publicBaseUrl = baseUrl.replace(/\/api$/, '')
+	}
+
+	private async readResponseBody<T>(response: Response): Promise<T | null> {
+		const contentType = response.headers.get('content-type')?.toLowerCase() ?? ''
+		if (!contentType.includes('application/json')) {
+			return null
+		}
+		try {
+			return (await response.json()) as T
+		} catch {
+			return null
+		}
+	}
+
+	private toErrorMessage(value: unknown, fallback: string): string {
+		if (typeof value === 'string' && value.trim()) {
+			return value
+		}
+		if (value && typeof value === 'object' && 'message' in value) {
+			const nested = (value as { message?: unknown }).message
+			if (typeof nested === 'string' && nested.trim()) {
+				return nested
+			}
+		}
+		return fallback
 	}
 
 	private async request<T>(endpoint: string, options?: RequestInit): Promise<T> {
@@ -1676,20 +1735,18 @@ export class ApiClient {
 				let errorMessage: string
 				let errorFields: Record<string, string[]> | undefined
 
-				try {
-					const errorData = (await response.json()) as {
-						error?: string
-						message?: string
-						fields?: Record<string, string[]>
-					}
-					// Backend may return { error: string } or { message: string } or { error: string, fields: {...} }
-					errorMessage =
-						errorData.error || errorData.message || `Request failed: ${response.statusText}`
-					errorFields = errorData.fields
-				} catch {
-					// If response body is not JSON, use status text
-					errorMessage = response.statusText || 'Request failed'
-				}
+				const errorData = await this.readResponseBody<{
+					error?: unknown
+					message?: unknown
+					fields?: Record<string, string[]>
+				}>(response)
+
+				// Backend may return { error: string } or { message: string } or { error: string, fields: {...} }
+				errorMessage = this.toErrorMessage(
+					errorData?.error ?? errorData?.message,
+					response.statusText || `Request failed (${response.status})`
+				)
+				errorFields = errorData?.fields
 
 				// Throw appropriate error type based on status code
 				switch (response.status) {
@@ -1711,7 +1768,14 @@ export class ApiClient {
 				}
 			}
 
-				return response.json()
+			const data = await this.readResponseBody<T>(response)
+			if (data === null) {
+				throw new BaseApiError(
+					`Expected JSON response but received ${response.headers.get('content-type') || 'unknown content-type'}`,
+					response.status,
+				)
+			}
+			return data
 			} catch (error) {
 				if (error instanceof Error && error.name === 'AbortError') {
 					throw new NetworkError('Request timed out. Please try again.')
@@ -1769,6 +1833,45 @@ export class ApiClient {
 			method: 'PATCH',
 			body: JSON.stringify(data),
 		})
+	}
+
+	private async requestPublic<T>(endpoint: string, options?: RequestInit): Promise<T> {
+		const url = `${this.publicBaseUrl}${endpoint}`
+		const timeoutController = new AbortController()
+		const timeout = setTimeout(() => timeoutController.abort(), API_REQUEST_TIMEOUT_MS)
+		if (options?.signal) {
+			options.signal.addEventListener('abort', () => timeoutController.abort(), { once: true })
+		}
+		try {
+			const response = await fetch(url, {
+				...(options ?? {}),
+				credentials: 'include',
+				signal: timeoutController.signal,
+				headers: {
+					'Content-Type': 'application/json',
+					'X-Requested-With': 'XMLHttpRequest',
+					...options?.headers,
+				},
+			})
+			if (!response.ok) {
+			const data = await this.readResponseBody<{ error?: unknown; message?: unknown }>(response)
+			const message = this.toErrorMessage(
+				data?.error ?? data?.message,
+				response.statusText || `Request failed (${response.status})`
+			)
+			throw new BaseApiError(message, response.status)
+			}
+			const data = await this.readResponseBody<T>(response)
+			if (data === null) {
+				throw new BaseApiError(
+					`Expected JSON response but received ${response.headers.get('content-type') || 'unknown content-type'}`,
+					response.status,
+				)
+			}
+			return data
+		} finally {
+			clearTimeout(timeout)
+		}
 	}
 
 	async getCharacterDetail(characterId: string, corporationId?: string): Promise<{
@@ -3665,6 +3768,103 @@ export class ApiClient {
 	 */
 	async getActiveFreightRoutes(): Promise<FreightRoute[]> {
 		return this.get('/freight/routes/active')
+	}
+
+	// ===== Pastes API =====
+	async createPaste(input: {
+		name: string
+		content: string
+		visibility: 'alliance' | 'public'
+		expiration: number | 'indefinite'
+		password?: string
+	}): Promise<PasteRecord> {
+		return this.post('/pastes', input)
+	}
+
+	async getMyPastes(limit = 50, offset = 0): Promise<{ items: PasteRecord[]; total: number }> {
+		return this.get(`/pastes/mine?limit=${limit}&offset=${offset}`)
+	}
+
+	async getPasteForAlliance(id: string): Promise<PasteViewerResponse> {
+		return this.get(`/pastes/${encodeURIComponent(id)}`)
+	}
+
+	async decryptPasteForAlliance(id: string, password: string): Promise<PasteViewerResponse> {
+		return this.post(`/pastes/${encodeURIComponent(id)}/decrypt`, { password })
+	}
+
+	async updatePaste(
+		id: string,
+		input: {
+			name?: string
+			content?: string
+			visibility?: 'alliance' | 'public'
+			expiration?: number | 'indefinite'
+			isPasswordProtected?: boolean
+			password?: string
+		}
+	): Promise<PasteRecord> {
+		return this.patch(`/pastes/${encodeURIComponent(id)}`, input)
+	}
+
+	async rotatePastePassword(
+		id: string,
+		input: { currentPassword: string; newPassword: string }
+	): Promise<PasteRecord> {
+		return this.post(`/pastes/${encodeURIComponent(id)}/rotate-password`, input)
+	}
+
+	async deletePaste(id: string): Promise<{ success: boolean }> {
+		return this.delete(`/pastes/${encodeURIComponent(id)}`)
+	}
+
+	async getPasteSettings(): Promise<PasteSettings> {
+		return this.get('/pastes/settings')
+	}
+
+	async getAdminPastes(input?: {
+		limit?: number
+		offset?: number
+		visibility?: 'alliance' | 'public'
+		creatorUserId?: string
+		createdFrom?: string
+		createdTo?: string
+		expiresFrom?: string
+		expiresTo?: string
+	}): Promise<{ items: PasteRecord[]; total: number }> {
+		const params = new URLSearchParams()
+		params.set('limit', String(input?.limit ?? 50))
+		params.set('offset', String(input?.offset ?? 0))
+		if (input?.visibility) params.set('visibility', input.visibility)
+		if (input?.creatorUserId) params.set('creatorUserId', input.creatorUserId)
+		if (input?.createdFrom) params.set('createdFrom', input.createdFrom)
+		if (input?.createdTo) params.set('createdTo', input.createdTo)
+		if (input?.expiresFrom) params.set('expiresFrom', input.expiresFrom)
+		if (input?.expiresTo) params.set('expiresTo', input.expiresTo)
+		return this.get(`/pastes/admin/list?${params.toString()}`)
+	}
+
+	async updatePasteSettings(input: {
+		createRateLimitCount: number
+		createRateLimitWindowMinutes: number
+		maxActivePastesPerUser: number
+	}): Promise<PasteSettings> {
+		return this.put('/pastes/admin/settings', input)
+	}
+
+	async adminDeletePaste(id: string): Promise<{ success: boolean }> {
+		return this.delete(`/pastes/admin/${encodeURIComponent(id)}`)
+	}
+
+	async getPasteForPublic(id: string): Promise<PasteViewerResponse> {
+		return this.requestPublic(`/api/public/paste/${encodeURIComponent(id)}`, { method: 'GET' })
+	}
+
+	async decryptPasteForPublic(id: string, password: string): Promise<PasteViewerResponse> {
+		return this.requestPublic(`/api/public/paste/${encodeURIComponent(id)}/decrypt`, {
+			method: 'POST',
+			body: JSON.stringify({ password }),
+		})
 	}
 }
 

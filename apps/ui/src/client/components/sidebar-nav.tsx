@@ -8,6 +8,7 @@ import {
 	ChevronRight,
 	CircleDollarSign,
 	ExternalLink,
+	FileText,
 	FolderHeart,
 	Globe,
 	LayoutDashboard,
@@ -365,6 +366,12 @@ export function SidebarNav({ onNavigate, isSidebarOpen = true, onToggleSidebar }
 		label: 'Inventory Parser',
 		href: '/inventory-parser',
 		icon: Package,
+	})
+
+	navItems.push({
+		label: 'Pastes',
+		href: '/pastes',
+		icon: FileText,
 	})
 
 	// External links section

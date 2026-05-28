@@ -9,7 +9,8 @@
 		"pleaseignore.app/images/*",
 		"pleaseignore.app/invite/*",
 		"pleaseignore.app/login*",
-		"pleaseignore.app/fleets/*"
+		"pleaseignore.app/fleets/*",
+		"pleaseignore.app/paste/*"
 	],
 	"logpush": true,
 	"observability": {
@@ -158,6 +159,11 @@
 		{
 			"binding": "ADMIN",
 			"service": "admin"
+		},
+		{
+			"binding": "PASTE",
+			"service": "paste",
+			"entrypoint": "PasteWorkerEntrypoint"
 		}
 	],
 	"migrations": [

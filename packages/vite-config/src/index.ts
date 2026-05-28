@@ -139,9 +139,24 @@ export const createViteConfig = (currentDir: string, configPath?: string) => {
 	const wranglerConfigPath = configPath ?? resolve(currentDir, 'wrangler.jsonc')
 
 	return defineConfig(({ command }: ConfigEnv): UserConfig => {
+		// eslint-disable-next-line turbo/no-undeclared-env-vars
+		const disableAuxWorkers = process.env.LOCAL_DEV_DISABLE_AUXILIARY_WORKERS === '1'
+
 		// Only use auxiliary worker discovery in dev mode (serve command)
 		// For builds, use simple cloudflare plugin for faster builds
 		if (command === 'serve') {
+			if (disableAuxWorkers) {
+				return {
+					plugins: [
+						cloudflare({
+							configPath: wranglerConfigPath,
+							auxiliaryWorkers: [],
+							inspectorPort: false,
+						}),
+					],
+				}
+			}
+
 			const auxiliaryWorkers = findAuxiliaryWorkers(currentDir)
 			return {
 				plugins: [
