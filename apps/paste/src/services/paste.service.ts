@@ -467,9 +467,15 @@ export class PasteService {
 	async listCreatorPastes(input: ListCreatorPastesInput): Promise<PagedResult<PasteRecord>> {
 		const limit = Math.max(1, Math.min(200, input.limit ?? 50))
 		const offset = Math.max(0, input.offset ?? 0)
+		const now = new Date()
+		const settings = await this.getOrCreateSettings()
+		const activeWhere = and(
+			eq(schema.pastes.createdByUserId, input.creatorUserId),
+			or(isNull(schema.pastes.expiresAt), gte(schema.pastes.expiresAt, now))
+		)
 		const [rows, [{ total }]] = await Promise.all([
 			this.db.query.pastes.findMany({
-				where: eq(schema.pastes.createdByUserId, input.creatorUserId),
+				where: activeWhere,
 				orderBy: [desc(schema.pastes.createdAt)],
 				limit,
 				offset,
@@ -477,9 +483,15 @@ export class PasteService {
 			this.db
 				.select({ total: sql<number>`count(*)` })
 				.from(schema.pastes)
-				.where(eq(schema.pastes.createdByUserId, input.creatorUserId)),
+				.where(activeWhere),
 		])
-		return { items: rows.map(toPasteRecord), total }
+		const activeCount = Number(total)
+		return {
+			items: rows.map(toPasteRecord),
+			total: Number(total),
+			activeCount,
+			maxActivePastesPerUser: settings.maxActivePastesPerUser,
+		}
 	}
 
 	async listAdminPastes(input: ListAdminPastesInput): Promise<PagedResult<PasteRecord>> {

@@ -40,6 +40,7 @@
 		"@repo/hono-helpers": "workspace:*",
 		"@repo/moon-scan": "workspace:*",
 		"@repo/srp": "workspace:*",
+		"@repo/worker-utils": "workspace:*",
 		"@tabler/icons-react": "3.40.0",
 		"@tanstack/react-query": "5.90.10",
 		"cmdk": "1.1.1",

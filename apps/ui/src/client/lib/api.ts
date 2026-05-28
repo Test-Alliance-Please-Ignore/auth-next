@@ -3781,7 +3781,12 @@ export class ApiClient {
 		return this.post('/pastes', input)
 	}
 
-	async getMyPastes(limit = 50, offset = 0): Promise<{ items: PasteRecord[]; total: number }> {
+	async getMyPastes(limit = 50, offset = 0): Promise<{
+		items: PasteRecord[]
+		total: number
+		activeCount: number
+		maxActivePastesPerUser: number
+	}> {
 		return this.get(`/pastes/mine?limit=${limit}&offset=${offset}`)
 	}
 

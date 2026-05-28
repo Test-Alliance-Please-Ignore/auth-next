@@ -18,6 +18,7 @@ import { useAuth } from '@/hooks/useAuth'
 import { useConfirmationDialog } from '@/hooks/useConfirmationDialog'
 import { apiClient } from '@/lib/api'
 import toast from '@/lib/toast'
+import { parseDateOrNull } from '@repo/worker-utils'
 
 const EXPIRATION_OPTIONS: Array<{ label: string; value: number | 'indefinite' }> = [
 	{ label: '1 hour', value: 60 },
@@ -91,6 +92,11 @@ export default function PastesPage() {
 		queryFn: () => apiClient.getMyPastes(),
 		enabled: isAuthenticated,
 	})
+	const settingsQuery = useQuery({
+		queryKey: ['pastes', 'settings'],
+		queryFn: () => apiClient.getPasteSettings(),
+		enabled: isAuthenticated,
+	})
 
 	const createMutation = useMutation({
 		mutationFn: () =>
@@ -121,6 +127,24 @@ export default function PastesPage() {
 	})
 
 	const rows = mineQuery.data?.items ?? []
+	const fallbackActiveCount = useMemo(() => {
+		const nowMs = Date.now()
+		return rows.filter((row) => {
+			if (!row.expiresAt) return true
+			const expiresAt = parseDateOrNull(row.expiresAt)
+			if (!expiresAt) return true
+			return expiresAt.getTime() >= nowMs
+		}).length
+	}, [rows])
+	const apiActiveCount = Number(mineQuery.data?.activeCount ?? 0)
+	const activeCount = Math.max(
+		Number.isFinite(apiActiveCount) ? apiActiveCount : 0,
+		fallbackActiveCount
+	)
+	const maxActivePastesPerUser = Number(
+		mineQuery.data?.maxActivePastesPerUser ?? settingsQuery.data?.maxActivePastesPerUser ?? 0
+	)
+	const isAtPasteLimit = maxActivePastesPerUser > 0 && activeCount >= maxActivePastesPerUser
 	const expirationOptions = useMemo(
 		() =>
 			EXPIRATION_OPTIONS.map((option) => ({
@@ -174,6 +198,7 @@ export default function PastesPage() {
 								onChange={(e) => setName(e.target.value)}
 								placeholder="Paste name"
 								className="mt-1"
+								disabled={isAtPasteLimit}
 							/>
 						</div>
 						<div className="grid gap-4 md:grid-cols-[1fr_3.5fr_0.5fr_1fr_3.5fr] md:items-start">
@@ -181,7 +206,11 @@ export default function PastesPage() {
 								<Label>Visibility</Label>
 								<div className="mt-1 flex h-10 items-center gap-2 px-1">
 									<span className="min-w-14 text-sm">{isPublic ? 'Public' : 'Alliance'}</span>
-									<Switch checked={isPublic} onCheckedChange={handleVisibilityChange} />
+									<Switch
+										checked={isPublic}
+										onCheckedChange={handleVisibilityChange}
+										disabled={isAtPasteLimit}
+									/>
 								</div>
 							</div>
 							<div>
@@ -189,6 +218,7 @@ export default function PastesPage() {
 								<Select
 									className="mt-1"
 									value={String(expiration)}
+									disabled={isAtPasteLimit}
 									onValueChange={(value) =>
 										setExpiration(value === 'indefinite' ? 'indefinite' : Number(value))
 									}
@@ -205,7 +235,7 @@ export default function PastesPage() {
 									<Switch
 										checked={isPasswordProtected}
 										onCheckedChange={setIsPasswordProtected}
-										disabled={isPublic}
+										disabled={isPublic || isAtPasteLimit}
 									/>
 								</div>
 							</div>
@@ -223,7 +253,7 @@ export default function PastesPage() {
 														value={password}
 														onChange={(e) => setPassword(e.target.value)}
 														type="password"
-														disabled={!isPasswordProtected}
+														disabled={!isPasswordProtected || isAtPasteLimit}
 														className={
 															showPasswordValidationError && passwordError
 																? 'border-destructive focus-visible:ring-destructive'
@@ -252,7 +282,7 @@ export default function PastesPage() {
 											value={password}
 											onChange={(e) => setPassword(e.target.value)}
 											type="password"
-											disabled={!isPasswordProtected}
+											disabled={!isPasswordProtected || isAtPasteLimit}
 										/>
 									)}
 								</div>
@@ -269,36 +299,49 @@ export default function PastesPage() {
 							onChange={(e) => setContent(e.target.value)}
 							rows={10}
 							placeholder="Paste plaintext content..."
+							disabled={isAtPasteLimit}
 						/>
 					</div>
 					<div className="flex justify-end">
-						<Button
-							onClick={() => {
-								if (passwordRequired) {
-									const submitPasswordError = getPasswordValidationError(password)
-									setShowPasswordValidationError(Boolean(submitPasswordError))
-									if (submitPasswordError) {
-										toast.error(submitPasswordError)
-										return
-									}
+						{isAtPasteLimit ? (
+							<HoverPopover
+								trigger={
+									<div>
+										<Button disabled>{createMutation.isPending ? 'Creating...' : 'Create Paste'}</Button>
+									</div>
 								}
-								createMutation.mutate()
-							}}
-							disabled={
-								createMutation.isPending ||
-								!name.trim() ||
-								!content.trim()
-							}
-						>
-							{createMutation.isPending ? 'Creating...' : 'Create Paste'}
-						</Button>
+								align="center"
+							>
+								<div className="text-xs">You have reached your active paste limit.</div>
+							</HoverPopover>
+						) : (
+							<Button
+								onClick={() => {
+									if (passwordRequired) {
+										const submitPasswordError = getPasswordValidationError(password)
+										setShowPasswordValidationError(Boolean(submitPasswordError))
+										if (submitPasswordError) {
+											toast.error(submitPasswordError)
+											return
+										}
+									}
+									createMutation.mutate()
+								}}
+								disabled={createMutation.isPending || !name.trim() || !content.trim()}
+							>
+								{createMutation.isPending ? 'Creating...' : 'Create Paste'}
+							</Button>
+						)}
 					</div>
 				</CardContent>
 			</Card>
 
 			<Card>
-				<CardHeader>
+				<CardHeader className="flex flex-row items-start justify-between">
 					<CardTitle>My Pastes</CardTitle>
+					<p className="text-sm text-muted-foreground">
+						{activeCount} / {maxActivePastesPerUser || '—'}
+					</p>
 				</CardHeader>
 				<CardContent>
 					<Table>
