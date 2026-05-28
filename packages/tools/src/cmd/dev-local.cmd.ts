@@ -63,14 +63,11 @@ export const devLocalCmd = new Command('dev-local')
 			const includeWorkers = parseCsvList(process.env.LOCAL_DEV_INCLUDE_WORKERS)
 			// eslint-disable-next-line turbo/no-undeclared-env-vars
 			const excludeWorkers = parseCsvList(process.env.LOCAL_DEV_EXCLUDE_WORKERS)
+			const defaultWorkers = includeWorkers.length > 0 ? includeWorkers : ['core', 'ui']
 			const workerFilters = [
-				...includeWorkers.map((name) => `--filter=${name}`),
+				...defaultWorkers.map((name) => `--filter=${name}`),
 				...excludeWorkers.map((name) => `--filter=!${name}`),
 			]
-
-			// In root local-dev mode we already start workers via turbo.
-			// Disable Vite auxiliary-worker auto-start to avoid duplicate wrangler boot races.
-			$.env.LOCAL_DEV_DISABLE_AUXILIARY_WORKERS = '1'
 
 			// Use --only to avoid pulling in task dependencies like "build" for every package.
 			// For local iteration this keeps memory/cpu pressure manageable.

@@ -95,7 +95,7 @@ function handlePasteRouteError(c: any, error: unknown, fallbackMessage: string =
 	return c.json({ error: fallbackMessage }, 500)
 }
 
-function toPublicViewerResponse(
+function toRedactedViewerResponse(
 	payload: Awaited<ReturnType<PasteWorker['getPasteForPublicViewer']>>,
 	options?: { includeName?: boolean }
 ) {
@@ -216,9 +216,12 @@ app.delete('/admin/:id', requireAdmin(), async (c) => {
 })
 
 app.get('/:id', requireAllianceMember(), async (c) => {
-	const paste = await getPasteStub(c).getPasteForAllianceViewer(c.req.param('id'))
-	if (!paste) return c.json({ error: 'Paste unavailable' }, 404)
-	return c.json(paste)
+	const payload = await getPasteStub(c).getPasteForAllianceViewer(c.req.param('id'))
+	if (!payload) return c.json({ error: 'Paste unavailable' }, 404)
+	if (!payload.requiresPassword) {
+		return c.json(payload)
+	}
+	return c.json(toRedactedViewerResponse(payload))
 })
 
 app.post('/:id/decrypt', requireAllianceMember(), async (c) => {
@@ -296,7 +299,7 @@ app.delete('/:id', requireAllianceMember(), async (c) => {
 export const publicPasteRoutes = new Hono<App>()
 publicPasteRoutes.get('/:id', async (c) => {
 	const payload = await getPasteStub(c).getPasteForPublicViewer(c.req.param('id'))
-	const paste = toPublicViewerResponse(payload)
+	const paste = toRedactedViewerResponse(payload)
 	if (!paste) return c.json({ error: 'Invalid password or unavailable paste' }, 404)
 	return c.json(paste)
 })
@@ -318,7 +321,7 @@ publicPasteRoutes.post('/:id/decrypt', async (c) => {
 		requirePublic: true,
 		publicAttemptKey: key,
 	})
-	const paste = toPublicViewerResponse(payload, { includeName: true })
+	const paste = toRedactedViewerResponse(payload, { includeName: true })
 	if (!paste) {
 		return c.json({ error: 'Invalid password or unavailable paste' }, 404)
 	}

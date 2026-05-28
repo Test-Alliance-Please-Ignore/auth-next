@@ -5,7 +5,7 @@
 import type { FreightRoute } from '@repo/freight'
 
 const API_BASE_URL =
-	import.meta.env.VITE_API_BASE_URL || (import.meta.env.PROD ? '/api' : 'http://localhost:8787/api')
+	import.meta.env.VITE_API_BASE_URL || '/api'
 const API_REQUEST_TIMEOUT_MS = 30_000
 
 export interface ApiError {

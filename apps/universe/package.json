@@ -34,6 +34,7 @@
 		"@repo/eve-types": "workspace:*",
 		"@repo/hono-helpers": "workspace:*",
 		"@repo/universe": "workspace:*",
+		"@repo/worker-utils": "workspace:*",
 		"drizzle-orm": "0.44.7",
 		"hono": "4.10.6",
 		"workers-tagged-logger": "0.13.7",

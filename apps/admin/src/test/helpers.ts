@@ -3,9 +3,9 @@
  */
 
 import { eq } from '@repo/db-utils'
+import { userCharacters, users } from '@repo/core-db-schema'
 
 // Import core schema tables (admin connects to same DB as core)
-import { userCharacters, users } from '../../../core/src/db/schema'
 import { adminOperationsLog } from '../db/schema'
 
 import type { DbClient } from '@repo/db-utils'

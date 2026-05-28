@@ -5,6 +5,7 @@
  */
 
 import { retrieveData, storeInR2 } from '../../utils/storage'
+import { parseJsonResponse } from '@repo/worker-utils'
 
 import type { ProcessedAsset } from '../../processors/helpers/assets'
 import type { FittedShip } from '../../processors/helpers/ships'
@@ -50,7 +51,9 @@ export async function applyMarketPrices(
 			return { applied: 0, totalValue: 0 }
 		}
 
-		const prices = await response.json<EsiMarketPrice[]>()
+		const prices = await parseJsonResponse<EsiMarketPrice[]>(response, {
+			context: 'ESI market prices response',
+		})
 
 		// Build price lookup map
 		const priceMap = new Map<string, number>()

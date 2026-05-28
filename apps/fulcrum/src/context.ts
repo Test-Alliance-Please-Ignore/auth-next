@@ -1,7 +1,7 @@
 import type { HonoApp } from '@repo/hono-helpers'
 import type { SharedHonoEnv, SharedHonoVariables } from '@repo/hono-helpers/src/types'
-import type { CoreWorker } from '../../core/src/index'
 import type { createDb } from './db'
+import type { CoreBinding } from './types/core-binding'
 import type { BulkCharacterReportWorkflowParams } from './workflows/bulk-character-report.workflow.js'
 import type { WorkflowParams } from './workflows/character-report.workflow.js'
 
@@ -12,7 +12,7 @@ export type Env = SharedHonoEnv & {
 	ESI: DurableObjectNamespace
 	ESI_TYPE_RESOLVER: DurableObjectNamespace
 	UNIVERSE: DurableObjectNamespace
-	CORE: Service<CoreWorker>
+	CORE: CoreBinding
 	CHARACTER_REPORTS: R2Bucket
 	CHARACTER_REPORT_WORKFLOW: Workflow<WorkflowParams>
 	BULK_CHARACTER_REPORT_WORKFLOW: Workflow<BulkCharacterReportWorkflowParams>

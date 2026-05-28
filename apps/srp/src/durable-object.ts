@@ -4,6 +4,7 @@ import { and, asc, desc, eq, gte, ilike, inArray, lte, sql } from '@repo/db-util
 import { getStub } from '@repo/do-utils'
 import { createEveRegionId, createEveTypeId } from '@repo/eve-types'
 import { generateKillmailUrl, roundToMillion } from '@repo/srp'
+import { parseJsonResponse } from '@repo/worker-utils'
 
 import { createDb } from './db'
 import {
@@ -1460,9 +1461,11 @@ export class SrpDO extends DurableObject<Env> implements Srp {
 				return fallback
 			}
 
-			const data = (await response.json()) as {
+			const data = await parseJsonResponse<{
 				dogma_attributes?: Array<{ attribute_id?: number; value?: number }>
-			}
+			}>(response, {
+				context: `ESI universe type ${shipTypeId}`,
+			})
 			const resolved = parseShipSlotCapacitiesFromDogmaAttributes(data.dogma_attributes)
 
 			this.shipSlotCapacityCache.set(shipTypeId, {

@@ -1,16 +1,16 @@
 {
-	"name": "@repo/discord",
+	"name": "@repo/core-db-schema",
 	"version": "0.1.0",
 	"private": true,
 	"sideEffects": false,
 	"type": "module",
 	"main": "src/index.ts",
-	"dependencies": {
-		"@repo/worker-utils": "workspace:*"
-	},
 	"scripts": {
 		"check:lint": "run-eslint",
 		"check:types": "run-tsc"
+	},
+	"dependencies": {
+		"drizzle-orm": "0.44.7"
 	},
 	"devDependencies": {
 		"@repo/eslint-config": "workspace:*",

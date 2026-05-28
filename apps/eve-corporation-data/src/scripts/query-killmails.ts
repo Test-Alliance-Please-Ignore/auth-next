@@ -6,8 +6,8 @@ import { createInterface } from 'node:readline/promises'
 import { fileURLToPath } from 'node:url'
 
 import { and, createDbClient, eq, gte, ilike, inArray, or } from '@repo/db-utils'
+import { schema as coreSchema } from '@repo/core-db-schema'
 
-import { schema as coreSchema } from '../../../core/src/db/schema'
 import { schema } from '../db'
 import type {
 	KillmailAttacker,

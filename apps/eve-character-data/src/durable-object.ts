@@ -4,6 +4,7 @@ import { and, desc, eq, gte, ilike, inArray, lte, sql } from '@repo/db-utils'
 import { getStub } from '@repo/do-utils'
 import { EveCharacterDataInstance, killmailsSchema } from '@repo/eve-character-data'
 import { createEveAllianceId, createEveCharacterId, createEveCorporationId } from '@repo/eve-types'
+import { parseJsonResponse } from '@repo/worker-utils'
 
 import { createDb } from './db'
 import {
@@ -166,7 +167,7 @@ export class EveCharacterDataDO extends DurableObject<Env> implements EveCharact
 				return null
 			}
 
-			const killmailData = (await response.json()) as {
+			const killmailData = await parseJsonResponse<{
 				killmail_time: string
 				solar_system_id: number
 				victim: {
@@ -177,7 +178,9 @@ export class EveCharacterDataDO extends DurableObject<Env> implements EveCharact
 				zkb?: {
 					totalValue?: number
 				}
-			}
+			}>(response, {
+				context: `ESI killmail details ${killmailId}`,
+			})
 
 			console.log(`[fetchKillmailDetails] Parsed killmail data for ${killmailId}:`, {
 				killmail_time: killmailData.killmail_time,

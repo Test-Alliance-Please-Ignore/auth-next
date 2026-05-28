@@ -4,6 +4,7 @@ import * as z4 from 'zod/v4/core'
 
 import { and, asc, eq, gt, gte, inArray, isNull, lt, lte, or } from '@repo/db-utils'
 import { logger } from '@repo/hono-helpers'
+import { parseJsonResponse } from '@repo/worker-utils'
 
 import { createDb } from './db'
 import { eveCharacters, eveTokens } from './db/schema'
@@ -232,7 +233,9 @@ export class EveTokenStoreDO extends DurableObject<Env> implements EveTokenStore
 				throw new Error(`metadata fetch failed: ${res.status}`)
 			}
 
-			const json = (await res.json()) as EveMetadata
+			const json = await parseJsonResponse<EveMetadata>(res, {
+				context: 'EVE SSO metadata response',
+			})
 
 			if (!json.issuer || !json.jwks_uri) {
 				throw new Error('metadata missing issuer or jwks_uri')
@@ -1552,7 +1555,7 @@ export class EveTokenStoreDO extends DurableObject<Env> implements EveTokenStore
 
 		// 4. Parse and cache response
 		await this.updateAuthenticatedEsiDynamicBudgetFromHeaders(path, response.headers, response.status)
-		const data = (await response.json()) as T
+		const data = await parseJsonResponse<T>(response, { context: `ESI auth response for ${path}` })
 		const expiresAt = this.parseEsiCacheExpiry(response.headers)
 		const etag = response.headers.get('ETag')
 		const pages = this.parseXPages(response.headers)
@@ -1677,7 +1680,7 @@ export class EveTokenStoreDO extends DurableObject<Env> implements EveTokenStore
 		}
 
 		// 3. Parse and cache response
-		const data = (await response.json()) as T
+		const data = await parseJsonResponse<T>(response, { context: `ESI public response for ${path}` })
 		const expiresAt = this.parseEsiCacheExpiry(response.headers)
 		const etag = response.headers.get('ETag')
 		const pages = this.parseXPages(response.headers)
@@ -1779,7 +1782,9 @@ export class EveTokenStoreDO extends DurableObject<Env> implements EveTokenStore
 			throw this.buildEsiRequestError('/characters/affiliation', response, errorText)
 		}
 
-		const data = (await response.json()) as EsiCharacterAffiliation[]
+		const data = await parseJsonResponse<EsiCharacterAffiliation[]>(response, {
+			context: 'ESI character affiliations response',
+		})
 		const expiresAt = this.parseEsiCacheExpiry(response.headers)
 		const etag = response.headers.get('ETag')
 

@@ -5,7 +5,7 @@ import {
 	groupDiscordServers,
 	groups,
 } from '../db/schema'
-import { discordRoles, discordServers } from '../../../core/src/db/schema'
+import { discordRoles, discordServers } from '@repo/core-db-schema'
 import { canManageGroup } from './permissions'
 import { isUserGroupAdmin } from './query-helpers'
 

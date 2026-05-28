@@ -1,7 +1,7 @@
  // Corrected import path
 import type { createDbClient } from '@repo/db-utils'
+import type * as coreSchema from '@repo/core-db-schema'
 import type { createDb } from '../db'
-import type * as coreSchema from '../../../core/src/db/schema'
 import type { Env } from '../context'
 import type { GroupsDOCache } from './groups-do-cache'
 

@@ -1,3 +1,5 @@
+import { parseJsonResponse } from '@repo/worker-utils'
+
 /**
  * Discord API client using native fetch with rate limiting and proxy support
  */
@@ -100,7 +102,10 @@ export class DiscordFetch {
 
 			// Handle errors
 			if (!response.ok) {
-				const body = await response.json().catch(() => ({ message: 'Unknown error' }))
+				const body = await parseJsonResponse<unknown>(response, {
+					context: `Discord API error for ${route}`,
+					allowEmpty: true,
+				}).catch(() => ({ message: 'Unknown error' }))
 				const error = new DiscordAPIError(response.status, body)
 				// Add status as a property for backward compatibility
 				;(error as any).status = response.status
@@ -112,7 +117,7 @@ export class DiscordFetch {
 				return {} as T
 			}
 
-			return response.json() as Promise<T>
+			return parseJsonResponse<T>(response, { context: `Discord API response for ${route}` })
 		}
 
 		// This shouldn't be reached, but TypeScript needs it

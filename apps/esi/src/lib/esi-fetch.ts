@@ -183,6 +183,39 @@ export class EsiFetcher {
 	}
 
 	/**
+	 * Parse JSON response bodies with defensive error handling so unexpected
+	 * non-JSON upstream bodies fail with actionable context.
+	 */
+	private async parseJsonBodySafe<T>(response: Response, path: string): Promise<T> {
+		if (response.status === 204) {
+			return null as T
+		}
+
+		const bodyText = await response.text()
+		if (!bodyText.trim()) {
+			return null as T
+		}
+
+		try {
+			return JSON.parse(bodyText) as T
+		} catch (error) {
+			const contentType = response.headers.get('content-type') ?? 'unknown'
+			const snippet = bodyText.slice(0, 240)
+			logger.error('[EsiFetcher] Failed to parse JSON response body', {
+				path,
+				status: response.status,
+				statusText: response.statusText,
+				contentType,
+				bodySnippet: snippet,
+				error: error instanceof Error ? error.message : String(error),
+			})
+			throw new Error(
+				`ESI response parse failed for ${path}: expected JSON but received ${contentType}`
+			)
+		}
+	}
+
+	/**
 	 * Handle rate limiting by waiting for Retry-After header
 	 * Throws error if max retries exceeded
 	 */
@@ -448,7 +481,7 @@ export class EsiFetcher {
 		}
 
 		// 7. Parse response
-		const data = (await response.json()) as T
+		const data = await this.parseJsonBodySafe<T>(response, path)
 		const expiresAt = this.parseEsiCacheExpiry(response.headers)
 		const etag = response.headers.get('ETag')
 		const pages = this.parseXPages(response.headers)

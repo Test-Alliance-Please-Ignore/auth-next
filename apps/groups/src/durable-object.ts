@@ -4,8 +4,8 @@ import { and, createDbClient, eq, ilike, inArray, isNull, or, sql } from '@repo/
 import { getStub } from '@repo/do-utils'
 
 // Import Core database schema for Discord server and role lookups
-import { discordRoles, discordServers } from '../../core/src/db/schema'
-import * as coreSchema from '../../core/src/db/schema'
+import { discordRoles, discordServers } from '@repo/core-db-schema'
+import * as coreSchema from '@repo/core-db-schema'
 import { createDb } from './db'
 import {
 	categories,
