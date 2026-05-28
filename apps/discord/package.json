@@ -27,6 +27,7 @@
 		"@repo/do-utils": "workspace:*",
 		"@repo/hazmat": "workspace:*",
 		"@repo/hono-helpers": "workspace:*",
+		"@repo/worker-utils": "workspace:*",
 		"discord-api-types": "0.38.34",
 		"drizzle-orm": "0.44.7",
 		"hono": "4.10.6",

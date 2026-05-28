@@ -1,6 +1,7 @@
 import { and, eq, gte, lte, or, sql } from '@repo/db-utils'
 import { getStub } from '@repo/do-utils'
 import { killmailDetailSchema } from '@repo/universe'
+import { parseJsonResponse } from '@repo/worker-utils'
 
 import { killmails, schema } from '../db/schema'
 
@@ -220,7 +221,9 @@ export class KillmailService {
 			}
 
 			// Parse and validate the response
-			const killmailData = await response.json()
+			const killmailData = await parseJsonResponse(response, {
+				context: `ESI killmail details ${killmailId}`,
+			})
 			const validatedData = killmailDetailSchema.parse(killmailData)
 
 			// Store the killmail in the database

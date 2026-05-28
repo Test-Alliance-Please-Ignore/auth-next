@@ -1,6 +1,7 @@
 import { generateShardKey } from '@repo/hazmat'
 import { logger } from '@repo/hono-helpers'
 import { DISCORD_EXCLUDED_NITRO_BOOSTER_ROLE_ID } from '@repo/discord'
+import { parseJsonResponse } from '@repo/worker-utils'
 
 import type {
 	APIGuildMember,
@@ -156,11 +157,16 @@ export class DiscordBotService {
 			}
 
 			if (!response.ok) {
-				const errorData = await response.json().catch(() => ({}))
+				const errorData = await parseJsonResponse(response, {
+					context: `Discord getGuildMember error for ${url}`,
+					allowEmpty: true,
+				}).catch(() => ({}))
 				throw new DiscordAPIError(response.status, errorData)
 			}
 
-			return (await response.json()) as RESTGetAPIGuildMemberResult
+			return await parseJsonResponse<RESTGetAPIGuildMemberResult>(response, {
+				context: `Discord getGuildMember response for ${url}`,
+			})
 		} catch (error) {
 			if (error instanceof DiscordAPIError && error.status === 404) {
 				return null
@@ -188,11 +194,16 @@ export class DiscordBotService {
 		})
 
 		if (!response.ok) {
-			const errorData = await response.json().catch(() => ({}))
+			const errorData = await parseJsonResponse(response, {
+				context: `Discord getGuildRoles error for ${url}`,
+				allowEmpty: true,
+			}).catch(() => ({}))
 			throw new DiscordAPIError(response.status, errorData)
 		}
 
-		const roles = (await response.json()) as APIRole[]
+		const roles = await parseJsonResponse<APIRole[]>(response, {
+			context: `Discord getGuildRoles response for ${url}`,
+		})
 		return roles.map((role) => ({ id: role.id, name: role.name }))
 	}
 
@@ -223,11 +234,16 @@ export class DiscordBotService {
 		})
 
 		if (!response.ok) {
-			const errorData = await response.json().catch(() => ({}))
+			const errorData = await parseJsonResponse(response, {
+				context: `Discord getGuildMembers error for ${url}`,
+				allowEmpty: true,
+			}).catch(() => ({}))
 			throw new DiscordAPIError(response.status, errorData)
 		}
 
-		return (await response.json()) as APIGuildMember[]
+		return await parseJsonResponse<APIGuildMember[]>(response, {
+			context: `Discord getGuildMembers response for ${url}`,
+		})
 	}
 
 	/**
@@ -263,7 +279,10 @@ export class DiscordBotService {
 			}
 
 			if (!response.ok) {
-				const errorData = await response.json().catch(() => ({}))
+				const errorData = await parseJsonResponse(response, {
+					context: `Discord addRoleToMember error for ${url}`,
+					allowEmpty: true,
+				}).catch(() => ({}))
 				throw new DiscordAPIError(response.status, errorData)
 			}
 
@@ -345,7 +364,10 @@ export class DiscordBotService {
 			}
 
 			if (!response.ok) {
-				const errorData = await response.json().catch(() => ({}))
+				const errorData = await parseJsonResponse(response, {
+					context: `Discord removeRoleFromMember error for ${url}`,
+					allowEmpty: true,
+				}).catch(() => ({}))
 				throw new DiscordAPIError(response.status, errorData)
 			}
 
@@ -476,7 +498,10 @@ export class DiscordBotService {
 			})
 
 			if (!response.ok) {
-				const errorData = await response.json().catch(() => ({}))
+				const errorData = await parseJsonResponse(response, {
+					context: `Discord patchGuildMember error for ${url}`,
+					allowEmpty: true,
+				}).catch(() => ({}))
 				throw new DiscordAPIError(response.status, errorData)
 			}
 
@@ -594,11 +619,16 @@ export class DiscordBotService {
 		})
 
 		if (!response.ok) {
-			const errorData = await response.json().catch(() => ({}))
+			const errorData = await parseJsonResponse(response, {
+				context: `Discord getRolesByIds error for ${url}`,
+				allowEmpty: true,
+			}).catch(() => ({}))
 			throw new DiscordAPIError(response.status, errorData)
 		}
 
-		return (await response.json()) as APIRole[]
+		return await parseJsonResponse<APIRole[]>(response, {
+			context: `Discord getRolesByIds response for ${url}`,
+		})
 	}
 
 	/**
@@ -720,7 +750,9 @@ export class DiscordBotService {
 
 			// 201 Created or 200 OK = user added successfully
 			if (response.ok) {
-				const result = (await response.json()) as RESTGetAPIGuildMemberResult
+				const result = await parseJsonResponse<RESTGetAPIGuildMemberResult>(response, {
+					context: `Discord fetchMemberWithRetry response for ${url}`,
+				})
 
 				logger.info('[DiscordBot] Successfully added user to guild', {
 					guildId,
@@ -735,7 +767,10 @@ export class DiscordBotService {
 			}
 
 			// Handle error responses
-			const errorData = await response.json().catch(() => ({}))
+			const errorData = await parseJsonResponse(response, {
+				context: `Discord fetchMemberWithRetry error for ${url}`,
+				allowEmpty: true,
+			}).catch(() => ({}))
 			throw new DiscordAPIError(response.status, errorData)
 		} catch (error) {
 			// Handle Discord API errors

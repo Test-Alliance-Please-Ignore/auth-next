@@ -321,7 +321,7 @@ publicPasteRoutes.post('/:id/decrypt', async (c) => {
 		requirePublic: true,
 		publicAttemptKey: key,
 	})
-	const paste = toPublicViewerResponse(payload, { includeName: true })
+	const paste = toRedactedViewerResponse(payload, { includeName: true })
 	if (!paste) {
 		return c.json({ error: 'Invalid password or unavailable paste' }, 404)
 	}

@@ -4,6 +4,7 @@ import { and, eq, ilike, isNotNull, sql } from '@repo/db-utils'
 import { DiscordAPIError, DiscordFetch, DiscordRoutes } from '@repo/discord'
 import { generateShardKey } from '@repo/hazmat'
 import { logger } from '@repo/hono-helpers'
+import { parseJsonResponse } from '@repo/worker-utils'
 
 import { createDb } from './db'
 import { discordTokens, discordUsers } from './db/schema'
@@ -1335,7 +1336,10 @@ export class DiscordDO extends DurableObject<Env> implements Discord {
 			})
 
 			if (!response.ok) {
-				const errorData = (await response.json().catch(() => ({ message: 'Unknown error' }))) as {
+				const errorData = (await parseJsonResponse<{ message?: string }>(response, {
+					context: `Discord sendMessage error for channel ${channelId}`,
+					allowEmpty: true,
+				}).catch(() => ({ message: 'Unknown error' }))) as {
 					message?: string
 				}
 
@@ -1371,7 +1375,9 @@ export class DiscordDO extends DurableObject<Env> implements Discord {
 				}
 			}
 
-			const result = (await response.json()) as { id: string }
+			const result = await parseJsonResponse<{ id: string }>(response, {
+				context: `Discord sendMessage response for channel ${channelId}`,
+			})
 
 			logger.info('[DiscordDO] Successfully sent message', {
 				guildId,
@@ -1416,7 +1422,10 @@ export class DiscordDO extends DurableObject<Env> implements Discord {
 			})
 
 			if (!response.ok) {
-				const errorData = (await response.json().catch(() => ({ message: 'Unknown error' }))) as {
+				const errorData = (await parseJsonResponse<{ message?: string }>(response, {
+					context: `Discord editMessage error for message ${messageId}`,
+					allowEmpty: true,
+				}).catch(() => ({ message: 'Unknown error' }))) as {
 					message?: string
 				}
 				return {
@@ -1425,7 +1434,9 @@ export class DiscordDO extends DurableObject<Env> implements Discord {
 				}
 			}
 
-			const result = (await response.json()) as { id: string }
+			const result = await parseJsonResponse<{ id: string }>(response, {
+				context: `Discord editMessage response for message ${messageId}`,
+			})
 			return { success: true, messageId: result.id }
 		} catch (error) {
 			return {
@@ -1452,7 +1463,10 @@ export class DiscordDO extends DurableObject<Env> implements Discord {
 
 			// 204 No Content is success for DELETE
 			if (!response.ok && response.status !== 204) {
-				const errorData = (await response.json().catch(() => ({ message: 'Unknown error' }))) as {
+				const errorData = (await parseJsonResponse<{ message?: string }>(response, {
+					context: `Discord deleteMessage error for message ${messageId}`,
+					allowEmpty: true,
+				}).catch(() => ({ message: 'Unknown error' }))) as {
 					message?: string
 				}
 				return {
@@ -1744,7 +1758,9 @@ export class DiscordDO extends DurableObject<Env> implements Discord {
 				return false
 			}
 
-			const data = (await response.json()) as DiscordTokenResponse
+			const data = await parseJsonResponse<DiscordTokenResponse>(response, {
+				context: 'Discord token refresh response',
+			})
 			const newExpiresAt = new Date(Date.now() + data.expires_in * 1000)
 
 			// Encrypt the new tokens

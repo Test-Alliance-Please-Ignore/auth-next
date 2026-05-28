@@ -17,7 +17,9 @@ import {
     collectCustomShipNames,
     extractCandidateCharacterNames,
 } from '../../processors/alerts'
+import { parseJsonResponse } from '@repo/worker-utils'
 import { retrieveData, storeOrReturn } from '../../utils/storage'
+import type { CoreBinding } from '../../../types/core-binding'
 
 import type { StepResult } from '../../utils/storage'
 import type { ProcessedPublicInfo } from '../../processors/helpers/public-info'
@@ -31,58 +33,6 @@ import type { ProcessedWalletJournalEntry } from '../../processors/helpers/walle
 import type { EnrichedMailData } from '../../processors/helpers/mails'
 import type { AssetNameMap } from '../assets/fetch-asset-names'
 import type { ReportAlert, ReportAlerts, ResolvedCharacter } from '../../processors/alerts'
-
-/** Narrow interface for the CORE service methods we need */
-interface CoreBinding {
-    getCharacterOwnership(
-        characterId: string,
-    ): Promise<{ userId: string; isPrimary: boolean } | null>
-    getUserDetails(
-        userId: string,
-    ): Promise<{ characters: Array<{ characterName: string }> } | null>
-    getBlacklistedIpAssociationsForCharacter(characterId: string): Promise<{
-        subjectUserId: string | null
-        matches: Array<{
-            userId: string
-            mainCharacterId: string
-            mainCharacterName: string | null
-            matchingIpHashes: string[]
-        }>
-    }>
-    getLegacyAssociationsForCharacter(characterId: string): Promise<{
-        modernUserId: string | null
-        items: Array<{
-            id: string
-            legacyAuthUserId: string
-            status: string
-            modernUserMainCharacterName: string | null
-            conflicts: Record<string, unknown>
-            candidates: {
-                characters: Array<{
-                    characterId: string
-                    characterName: string
-                    source: 'legacy_primary' | 'esi_owner' | 'xml_account'
-                    corporationId: string | null
-                    corporationName: string | null
-                    allianceId: string | null
-                    allianceName: string | null
-                    isDeleted: boolean
-                    alreadyLinkedToModernUser: boolean
-                    linkedToOtherUserId: string | null
-                }>
-                notes: Array<{
-                    legacyNoteId: string
-                    note: string
-                    legacyCreatedByUserId: string | null
-                    legacyCreatedByCharacterName: string | null
-                    legacyDateCreated: Date | null
-                    alreadyImported: boolean
-                }>
-                ipAddressCount: number
-            }
-        }>
-    }>
-}
 
 type LegacyAssociationItem = Awaited<
 		ReturnType<CoreBinding['getLegacyAssociationsForCharacter']>
@@ -175,7 +125,9 @@ async function resolveNamesToCharacters(names: string[]): Promise<ResolvedCharac
             return []
         }
 
-        const data = await response.json<UniverseIdsResponse>()
+        const data = await parseJsonResponse<UniverseIdsResponse>(response, {
+            context: 'ESI universe ids response',
+        })
         return (data.characters ?? []).map((c) => ({
             name: c.name,
             characterId: c.id,

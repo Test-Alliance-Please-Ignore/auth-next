@@ -1,4 +1,5 @@
 import { useMutation, useQuery } from '@tanstack/react-query'
+import { Check, Copy } from 'lucide-react'
 import { useState } from 'react'
 import { useParams } from 'react-router-dom'
 
@@ -18,6 +19,7 @@ export default function PasteViewPage() {
 	const { id = '' } = useParams<{ id: string }>()
 	const { isAuthenticated, isLoading: isAuthLoading } = useAuth()
 	const [password, setPassword] = useState('')
+	const [copied, setCopied] = useState(false)
 	const viewQuery = useQuery({
 		queryKey: ['paste', 'view', id, isAuthenticated],
 		queryFn: async () => {
@@ -105,7 +107,30 @@ export default function PasteViewPage() {
 			) : null}
 			{!viewQuery.isError && data?.content ? (
 				<Card className="mt-4">
-					<CardContent className="pt-6">
+					<CardHeader className="flex flex-row items-center justify-between">
+						<CardTitle>Content</CardTitle>
+						<Button
+							variant="ghost"
+							size="sm"
+							className="relative"
+							onClick={async () => {
+								try {
+									await navigator.clipboard.writeText(data.content ?? '')
+									setCopied(true)
+									toast.success('Paste content copied')
+									setTimeout(() => setCopied(false), 1200)
+								} catch {
+									toast.error('Failed to copy paste content')
+								}
+							}}
+							aria-label="Copy paste content"
+							title="Copy paste content"
+						>
+							{copied ? <Check className="h-4 w-4 text-green-500" /> : <Copy className="h-4 w-4" />}
+							<span>{copied ? 'Copied' : 'Copy'}</span>
+						</Button>
+					</CardHeader>
+					<CardContent>
 						<pre className="overflow-x-auto text-sm whitespace-pre-wrap">{data.content}</pre>
 					</CardContent>
 				</Card>

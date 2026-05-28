@@ -5,6 +5,7 @@ import { alias } from 'drizzle-orm/pg-core'
 import { and, eq, ilike, inArray, ne, sql } from '@repo/db-utils'
 import { getStub, LRUCache } from '@repo/do-utils'
 import { logger } from '@repo/hono-helpers'
+import { parseJsonResponse } from '@repo/worker-utils'
 import {
 	EsiGetStructureMarketDataResponseSchema,
 	EsiGetStructureResponseSchema,
@@ -1015,11 +1016,13 @@ export class UniverseDO extends DurableObject<Env, {}> implements Universe {
 							`https://esi.evetech.net/latest/universe/constellations/${id}/?datasource=tranquility`
 						)
 						if (!res.ok) return null
-						const data = (await res.json()) as {
+						const data = await parseJsonResponse<{
 							constellation_id: number
 							name: string
 							region_id: number
-						}
+						}>(res, {
+							context: `ESI constellation ${id}`,
+						})
 						return {
 							constellationId: String(data.constellation_id),
 							constellationName: data.name,
@@ -1123,12 +1126,14 @@ export class UniverseDO extends DurableObject<Env, {}> implements Universe {
 							`https://esi.evetech.net/latest/universe/systems/${id}/?datasource=tranquility`
 						)
 						if (!res.ok) return null
-						const data = (await res.json()) as {
+						const data = await parseJsonResponse<{
 							system_id: number
 							name: string
 							constellation_id: number
 							security_status: number
-						}
+						}>(res, {
+							context: `ESI solar system ${id}`,
+						})
 						return {
 							systemId: String(data.system_id),
 							systemName: data.name,
