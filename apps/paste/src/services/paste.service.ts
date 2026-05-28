@@ -24,7 +24,8 @@ const MAX_PASTE_BYTES = 1_048_576
 const ENCRYPTION_VERSION = 'v1'
 const KDF_NAME = 'PBKDF2-SHA256'
 const CIPHER_NAME = 'AES-256-GCM'
-const KDF_ITERATIONS = 120_000
+// Balance security and latency for Workers PBKDF2 limits.
+const KDF_ITERATIONS = 80_000
 const ID_LENGTH = 10
 const BASE62 = '0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz'
 const PASSWORD_PATTERN =
