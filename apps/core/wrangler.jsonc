@@ -9,8 +9,7 @@
 		"pleaseignore.app/images/*",
 		"pleaseignore.app/invite/*",
 		"pleaseignore.app/login*",
-		"pleaseignore.app/fleets/*",
-		"pleaseignore.app/paste/*"
+		"pleaseignore.app/fleets/*"
 	],
 	"logpush": true,
 	"observability": {
