@@ -106,6 +106,8 @@ export interface UpdatePasteSettingsInput {
 export interface PagedResult<T> {
 	items: T[]
 	total: number
+	activeCount?: number
+	maxActivePastesPerUser?: number
 }
 
 export interface PasteWorker {

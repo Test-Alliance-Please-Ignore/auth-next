@@ -2428,6 +2428,9 @@ importers:
       '@repo/srp':
         specifier: workspace:*
         version: link:../../packages/srp
+      '@repo/worker-utils':
+        specifier: workspace:*
+        version: link:../../packages/worker-utils
       '@tabler/icons-react':
         specifier: 3.40.0
         version: 3.40.0(react@19.2.0)
