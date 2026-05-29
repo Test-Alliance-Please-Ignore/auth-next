@@ -27,6 +27,14 @@ type CorporationTaxSyncStub = {
 	}>
 }
 
+type BillsNotificationStub = {
+	enqueueBillNotificationEvent(
+		billId: string,
+		eventType: 'issued' | 'due_24h' | 'overdue' | 'paid',
+		metadata?: Record<string, string | number | boolean | null> | null
+	): Promise<{ recipientCount: number }>
+}
+
 /**
  * Bill Payment Status Check Workflow
  *
@@ -149,6 +157,26 @@ export class BillPaymentStatusCheckWorkflow extends WorkflowEntrypoint<Env, Work
 						billStatus: fetchBillDataResult.bill.status,
 					}
 
+		if (overdueRefreshResult.overdueMarked) {
+			await step.do(
+				'enqueue-overdue-notification',
+				{
+					retries: {
+						limit: 3,
+						delay: 1000,
+						backoff: 'exponential',
+					},
+					timeout: '30 seconds',
+				},
+				async () => {
+					const billsStub = getStub<BillsNotificationStub>(this.env.BILLS, 'default')
+					return billsStub.enqueueBillNotificationEvent(billId, 'overdue', {
+						source: 'bill_payment_status_workflow',
+					})
+				}
+			)
+		}
+
 		// Step 4: Check payment status
 		const paymentStatusResult = await step.do(
 			'check-payment-status',
@@ -167,6 +195,26 @@ export class BillPaymentStatusCheckWorkflow extends WorkflowEntrypoint<Env, Work
 		)
 
 		console.log('[Workflow] Checked payment status', logContext)
+
+		if (paymentStatusResult.markedPaid) {
+			await step.do(
+				'enqueue-paid-notification',
+				{
+					retries: {
+						limit: 3,
+						delay: 1000,
+						backoff: 'exponential',
+					},
+					timeout: '30 seconds',
+				},
+				async () => {
+					const billsStub = getStub<BillsNotificationStub>(this.env.BILLS, 'default')
+					return billsStub.enqueueBillNotificationEvent(billId, 'paid', {
+						source: 'bill_payment_status_workflow',
+					})
+				}
+			)
+		}
 
 		// Step 3.5: Sync tax assessment bill status if this run changed payment data/status.
 		const shouldSyncTaxAssessment =

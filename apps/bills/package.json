@@ -17,16 +17,21 @@
 		"fix:workers-types": "run-wrangler-types",
 		"preview": "run-vite-preview",
 		"tail": "run-wrangler-tail",
-		"test": "run-vitest"
+		"test": "run-vitest --config vitest.unit.config.ts",
+		"test:unit": "run-vitest --config vitest.unit.config.ts",
+		"test:workers": "run-vitest --config vitest.config.ts"
 	},
 	"dependencies": {
 		"@neondatabase/serverless": "1.0.2",
 		"@repo/bills": "workspace:*",
 		"@repo/db-utils": "workspace:*",
+		"@repo/discord": "workspace:*",
 		"@repo/do-utils": "workspace:*",
 		"@repo/esi": "workspace:*",
+		"@repo/eve-corporation-data": "workspace:*",
 		"@repo/groups": "workspace:*",
 		"@repo/hono-helpers": "workspace:*",
+		"@repo/core": "workspace:*",
 		"drizzle-orm": "0.44.7",
 		"hono": "4.10.6",
 		"workers-tagged-logger": "0.13.7"

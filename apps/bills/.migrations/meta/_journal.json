@@ -57,6 +57,13 @@
       "when": 1774962707175,
       "tag": "0007_tiresome_hercules",
       "breakpoints": true
+    },
+    {
+      "idx": 8,
+      "version": "7",
+      "when": 1780096802034,
+      "tag": "0008_fearless_aaron_stack",
+      "breakpoints": true
     }
   ]
 }

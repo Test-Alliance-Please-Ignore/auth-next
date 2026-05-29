@@ -45,6 +45,18 @@ export const billStatusEventTypeEnum = pgEnum('bill_status_event_type', [
 	'overdue',
 	'payment_token_regenerated',
 ])
+export const billNotificationEventTypeEnum = pgEnum('bill_notification_event_type', [
+	'issued',
+	'due_24h',
+	'overdue',
+	'paid',
+])
+export const billNotificationStatusEnum = pgEnum('bill_notification_status', [
+	'pending',
+	'sent',
+	'failed',
+	'skipped',
+])
 
 /**
  * Bills table
@@ -146,6 +158,35 @@ export const billStatusEvents = pgTable(
 		index('bill_status_events_bill_id_idx').on(table.billId),
 		index('bill_status_events_event_type_idx').on(table.eventType),
 		index('bill_status_events_created_at_idx').on(table.createdAt),
+	]
+)
+
+export const billNotificationEvents = pgTable(
+	'bill_notification_events',
+	{
+		id: uuid('id').defaultRandom().primaryKey(),
+		billId: uuid('bill_id')
+			.notNull()
+			.references(() => bills.id, { onDelete: 'cascade' }),
+		recipientUserId: text('recipient_user_id').notNull(),
+		eventType: billNotificationEventTypeEnum('event_type').notNull(),
+		status: billNotificationStatusEnum('status').notNull().default('pending'),
+		firstEligibleAt: timestamp('first_eligible_at', { withTimezone: true }).notNull().defaultNow(),
+		sentAt: timestamp('sent_at', { withTimezone: true }),
+		attemptCount: integer('attempt_count').notNull().default(0),
+		lastError: text('last_error'),
+		workflowInstanceId: text('workflow_instance_id'),
+		metadata: jsonb('metadata').$type<Record<string, string | number | boolean | null> | null>(),
+		createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+		updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+	},
+	(table) => [
+		index('bill_notification_events_bill_id_idx').on(table.billId),
+		index('bill_notification_events_recipient_user_id_idx').on(table.recipientUserId),
+		index('bill_notification_events_event_type_idx').on(table.eventType),
+		index('bill_notification_events_status_idx').on(table.status),
+		index('bill_notification_events_first_eligible_at_idx').on(table.firstEligibleAt),
+		unique('bill_notification_events_unique').on(table.billId, table.recipientUserId, table.eventType),
 	]
 )
 
@@ -271,6 +312,13 @@ export const billStatusEventsRelations = relations(billStatusEvents, ({ one }) =
 	}),
 }))
 
+export const billNotificationEventsRelations = relations(billNotificationEvents, ({ one }) => ({
+	bill: one(bills, {
+		fields: [billNotificationEvents.billId],
+		references: [bills.id],
+	}),
+}))
+
 export const billTemplatesRelations = relations(billTemplates, ({ many }) => ({
 	schedules: many(billSchedules),
 	bills: many(bills),
@@ -299,12 +347,14 @@ export const schema = {
 	bills,
 	billPayments,
 	billStatusEvents,
+	billNotificationEvents,
 	billTemplates,
 	billSchedules,
 	scheduleExecutionLogs,
 	billsRelations,
 	billPaymentsRelations,
 	billStatusEventsRelations,
+	billNotificationEventsRelations,
 	billTemplatesRelations,
 	billSchedulesRelations,
 	scheduleExecutionLogsRelations,
