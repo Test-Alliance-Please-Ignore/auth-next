@@ -19,6 +19,7 @@ export type BillStatusEventType =
 	| 'cancelled'
 	| 'overdue'
 	| 'payment_token_regenerated'
+export type BillNotificationEventType = 'issued' | 'due_24h' | 'overdue' | 'paid'
 export type EntityType = 'character' | 'corporation' | 'group'
 export type EntitySearchType = EntityType | 'user'
 export type PayeeType = 'character' | 'corporation'
@@ -522,6 +523,13 @@ export interface Bills {
 
 	/** Issue a bill (permissions enforced by caller route; draft-only transition) */
 	issueBill(actorUserId: string, billId: string): Promise<Bill>
+
+	/** Enqueue idempotent notification events for one bill and event type. */
+	enqueueBillNotificationEvent(
+		billId: string,
+		eventType: BillNotificationEventType,
+		metadata?: BillMetadata | null
+	): Promise<{ recipientCount: number }>
 
 	/** Cancel a bill (permissions enforced by caller route) */
 	cancelBill(actorUserId: string, billId: string): Promise<Bill>

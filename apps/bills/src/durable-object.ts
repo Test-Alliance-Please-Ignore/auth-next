@@ -1,4 +1,5 @@
 import { DurableObject } from 'cloudflare:workers'
+import { eq } from 'drizzle-orm'
 
 import { getStub } from '@repo/do-utils'
 import { logger, toErrorLogDetails } from '@repo/hono-helpers'
@@ -7,9 +8,12 @@ import { createDb } from './db'
 import { BillService } from './services/bill.service'
 import { ScheduleService } from './services/schedule.service'
 import { TemplateService } from './services/template.service'
+import { generateUuidV7 } from './utils/uuid'
 
 import type {
 	Bill,
+	BillMetadata,
+	BillNotificationEventType,
 	BillExternalRef,
 	BillFilters,
 	BillIntegrationView,
@@ -46,8 +50,10 @@ import type {
 	UpdateScheduleInput,
 	UpdateTemplateInput,
 } from '@repo/bills'
+import type { EveCorporationData } from '@repo/eve-corporation-data'
 import type { Groups } from '@repo/groups'
 import type { Env } from './context'
+import { billNotificationEvents, bills } from './db/schema'
 import type { billPayments } from './db/schema'
 
 /**
@@ -180,7 +186,87 @@ export class BillsDO extends DurableObject<Env> implements Bills {
 	}
 
 	async issueBill(actorUserId: string, billId: string): Promise<Bill> {
-		return this.billService.issueBill(actorUserId, billId)
+		const issued = await this.billService.issueBill(actorUserId, billId)
+		try {
+			await this.enqueueBillNotificationEvent(issued.id, 'issued', { source: 'issue_bill' })
+		} catch (error) {
+			// Notification enqueue is intentionally non-blocking for bill issuance.
+			this.logger.error('[BillsDO] Failed to enqueue issued bill notifications', {
+				billId: issued.id,
+				error: error instanceof Error ? error.message : String(error),
+			})
+		}
+		return issued
+	}
+
+	async enqueueBillNotificationEvent(
+		billId: string,
+		eventType: BillNotificationEventType,
+		metadata?: BillMetadata | null
+	): Promise<{ recipientCount: number }> {
+		const bill = await this.db.query.bills.findFirst({
+			where: eq(bills.id, billId),
+		})
+		if (!bill) {
+			throw new Error('Bill not found')
+		}
+
+		// Gate event production to eligible lifecycle states.
+		if (eventType === 'issued' && bill.status !== 'issued') {
+			return { recipientCount: 0 }
+		}
+		if (eventType === 'due_24h' && (bill.status !== 'issued' || bill.paidAt)) {
+			return { recipientCount: 0 }
+		}
+		if (eventType === 'overdue' && (bill.status !== 'overdue' || bill.paidAt)) {
+			return { recipientCount: 0 }
+		}
+		if (eventType === 'paid' && bill.status !== 'paid') {
+			return { recipientCount: 0 }
+		}
+
+		const recipientUserIds = await this.resolveIssuedNotificationRecipients({
+			payerId: bill.payerId,
+			payerType: bill.payerType,
+		})
+		if (recipientUserIds.length === 0) {
+			this.logger.info('[BillsDO] No recipients resolved for bill notification', {
+				billId,
+				eventType,
+			})
+			return { recipientCount: 0 }
+		}
+
+		const now = new Date()
+		await this.db
+			.insert(billNotificationEvents)
+			.values(
+				recipientUserIds.map((recipientUserId) => ({
+					id: generateUuidV7(),
+					billId,
+					recipientUserId,
+					eventType,
+					status: 'pending' as const,
+					firstEligibleAt: now,
+					metadata: metadata ?? null,
+					createdAt: now,
+					updatedAt: now,
+				}))
+			)
+			.onConflictDoNothing({
+				target: [
+					billNotificationEvents.billId,
+					billNotificationEvents.recipientUserId,
+					billNotificationEvents.eventType,
+				],
+			})
+
+		this.logger.info('[BillsDO] Enqueued bill notifications', {
+			billId,
+			eventType,
+			recipientCount: recipientUserIds.length,
+		})
+		return { recipientCount: recipientUserIds.length }
 	}
 
 	async cancelBill(actorUserId: string, billId: string): Promise<Bill> {
@@ -188,7 +274,16 @@ export class BillsDO extends DurableObject<Env> implements Bills {
 	}
 
 	async markBillPaid(actorUserId: string, billId: string): Promise<Bill> {
-		return this.billService.markBillPaid(actorUserId, billId)
+		const paid = await this.billService.markBillPaid(actorUserId, billId)
+		try {
+			await this.enqueueBillNotificationEvent(paid.id, 'paid', { source: 'manual_mark_paid' })
+		} catch (error) {
+			this.logger.error('[BillsDO] Failed to enqueue paid bill notifications', {
+				billId: paid.id,
+				error: error instanceof Error ? error.message : String(error),
+			})
+		}
+		return paid
 	}
 
 	async revertBillToDraft(actorUserId: string, billId: string): Promise<Bill> {
@@ -514,5 +609,49 @@ export class BillsDO extends DurableObject<Env> implements Bills {
 		}
 
 		return new Response('Bills Durable Object - Use RPC methods', { status: 200 })
+	}
+
+	private async resolveIssuedNotificationRecipients(
+		bill: { payerId: string; payerType: EntityType }
+	): Promise<string[]> {
+		if (bill.payerType === 'character') {
+			const owner = await this.env.CORE.getCharacterOwner(bill.payerId)
+			return owner?.userId ? [owner.userId] : []
+		}
+
+		if (bill.payerType !== 'corporation') {
+			return []
+		}
+
+		const corpId = bill.payerId
+		const corpStub = getStub<EveCorporationData>(this.env.EVE_CORPORATION_DATA, corpId)
+		const [corpInfo, directors] = await Promise.all([
+			corpStub.getCorporationInfo(corpId),
+			corpStub.getDirectors(corpId),
+		])
+
+		const characterIds = new Set<string>()
+		if (corpInfo?.ceoId) {
+			characterIds.add(String(corpInfo.ceoId))
+		}
+		for (const director of directors) {
+			if (director.characterId) {
+				characterIds.add(director.characterId)
+			}
+		}
+		if (characterIds.size === 0) {
+			return []
+		}
+
+		const owners = await Promise.all(
+			[...characterIds].map(async (characterId) => this.env.CORE.getCharacterOwner(characterId))
+		)
+		const userIds = new Set<string>()
+		for (const owner of owners) {
+			if (owner?.userId) {
+				userIds.add(owner.userId)
+			}
+		}
+		return [...userIds]
 	}
 }

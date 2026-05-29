@@ -102,16 +102,30 @@ function createWorkflowAndContext() {
 		skippedAssessmentIds: [],
 		corporationIds: [],
 	})
+	const enqueueBillNotificationEventMock = vi.fn().mockResolvedValue({ recipientCount: 1 })
+	const corporationTaxNamespace = { __ns: 'CORPORATION_TAX' } as unknown as DurableObjectNamespace
+	const billsNamespace = { __ns: 'BILLS' } as unknown as DurableObjectNamespace
 
-	getStubMock.mockReturnValue({
-		syncBillStatus: taxSyncMock,
+	getStubMock.mockImplementation((namespace: unknown) => {
+		if (namespace === corporationTaxNamespace) {
+			return {
+				syncBillStatus: taxSyncMock,
+			}
+		}
+		if (namespace === billsNamespace) {
+			return {
+				enqueueBillNotificationEvent: enqueueBillNotificationEventMock,
+			}
+		}
+		return {}
 	})
 
 	const workflow = new BillPaymentStatusCheckWorkflow(
 		{} as ExecutionContext<unknown>,
 		{
 			DATABASE_URL: 'postgresql://test',
-			CORPORATION_TAX: {} as DurableObjectNamespace,
+			CORPORATION_TAX: corporationTaxNamespace,
+			BILLS: billsNamespace,
 		} as never
 	)
 	vi.spyOn(workflow as never, 'createContext').mockReturnValue(ctx as never)
@@ -121,6 +135,7 @@ function createWorkflowAndContext() {
 		ctx,
 		refreshBillLifecycleStatus,
 		taxSyncMock,
+		enqueueBillNotificationEventMock,
 	}
 }
 
@@ -208,7 +223,7 @@ describe('BillPaymentStatusCheckWorkflow', () => {
 			statusAfter: 'paid',
 		})
 
-		const { workflow, taxSyncMock } = createWorkflowAndContext()
+		const { workflow, taxSyncMock, enqueueBillNotificationEventMock } = createWorkflowAndContext()
 		const { step } = createStep()
 
 		await workflow.run({ payload: { billId: 'bill-1' }, instanceId: 'wf-1' } as never, step)
@@ -217,10 +232,14 @@ describe('BillPaymentStatusCheckWorkflow', () => {
 			id: 'bill-1',
 			status: 'paid',
 		})
+		expect(enqueueBillNotificationEventMock).toHaveBeenCalledWith('bill-1', 'paid', {
+			source: 'bill_payment_status_workflow',
+		})
 	})
 
 	it('syncs tax status when overdue status was marked and no payment was found', async () => {
-		const { workflow, refreshBillLifecycleStatus, taxSyncMock } = createWorkflowAndContext()
+		const { workflow, refreshBillLifecycleStatus, taxSyncMock, enqueueBillNotificationEventMock } =
+			createWorkflowAndContext()
 		refreshBillLifecycleStatus.mockResolvedValueOnce({
 			overdueMarked: true,
 			lateFeeChanged: false,
@@ -231,6 +250,9 @@ describe('BillPaymentStatusCheckWorkflow', () => {
 		await workflow.run({ payload: { billId: 'bill-1' }, instanceId: 'wf-1' } as never, step)
 
 		expect(taxSyncMock).toHaveBeenCalledTimes(1)
+		expect(enqueueBillNotificationEventMock).toHaveBeenCalledWith('bill-1', 'overdue', {
+			source: 'bill_payment_status_workflow',
+		})
 	})
 
 	it('does not sync tax status when no state changed or source is not corporation-tax', async () => {
@@ -266,5 +288,6 @@ describe('BillPaymentStatusCheckWorkflow', () => {
 			secondStep.step
 		)
 		expect(second.taxSyncMock).not.toHaveBeenCalled()
+		expect(second.enqueueBillNotificationEventMock).not.toHaveBeenCalled()
 	})
 })

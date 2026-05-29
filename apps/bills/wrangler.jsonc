@@ -36,12 +36,29 @@
 				"script_name": "corporation-tax"
 			},
 			{
+				"name": "EVE_CORPORATION_DATA",
+				"class_name": "EveCorporationData",
+				"script_name": "eve-corporation-data"
+			},
+			{
+				"name": "DISCORD",
+				"class_name": "Discord",
+				"script_name": "discord"
+			},
+			{
 				"name": "GROUPS",
 				"class_name": "Groups",
 				"script_name": "groups"
 			}
 		]
 	},
+	"services": [
+		{
+			"binding": "CORE",
+			"service": "core",
+			"entrypoint": "CoreWorker"
+		}
+	],
 	"workflows": [
 		{
 			"name": "bill-schedule-executor",
@@ -52,6 +69,11 @@
 			"name": "bill-payment-status-check",
 			"binding": "BILL_PAYMENT_STATUS_CHECK",
 			"class_name": "BillPaymentStatusCheckWorkflow"
+		},
+		{
+			"name": "bill-discord-notify",
+			"binding": "BILL_DISCORD_NOTIFY",
+			"class_name": "BillDiscordNotifyWorkflow"
 		}
 	],
 	"migrations": [{ "tag": "v1", "new_sqlite_classes": ["Bills"] }]

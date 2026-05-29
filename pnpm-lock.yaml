@@ -237,15 +237,24 @@ importers:
       '@repo/bills':
         specifier: workspace:*
         version: link:../../packages/bills
+      '@repo/core':
+        specifier: workspace:*
+        version: link:../../packages/core
       '@repo/db-utils':
         specifier: workspace:*
         version: link:../../packages/db-utils
+      '@repo/discord':
+        specifier: workspace:*
+        version: link:../../packages/discord
       '@repo/do-utils':
         specifier: workspace:*
         version: link:../../packages/do-utils
       '@repo/esi':
         specifier: workspace:*
         version: link:../../packages/esi
+      '@repo/eve-corporation-data':
+        specifier: workspace:*
+        version: link:../../packages/eve-corporation-data
       '@repo/groups':
         specifier: workspace:*
         version: link:../../packages/groups
@@ -2246,6 +2255,9 @@ importers:
       '@repo/db-utils':
         specifier: workspace:*
         version: link:../../packages/db-utils
+      '@repo/discord':
+        specifier: workspace:*
+        version: link:../../packages/discord
       '@repo/do-utils':
         specifier: workspace:*
         version: link:../../packages/do-utils

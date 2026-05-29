@@ -5,6 +5,7 @@ import { withNotFound, withOnError } from '@repo/hono-helpers'
 
 import { BillsDO } from './durable-object'
 import { scheduledHandler } from './scheduled'
+import { BillDiscordNotifyWorkflow } from './workflows/bill-discord-notify'
 import { BillPaymentStatusCheckWorkflow } from './workflows/bill-payment-status-check'
 import { BillScheduleExecutorWorkflow } from './workflows/bill-schedule-executor'
 
@@ -57,6 +58,7 @@ export { BillsDO as Bills }
 // Export the Workflow classes
 export { BillScheduleExecutorWorkflow }
 export { BillPaymentStatusCheckWorkflow }
+export { BillDiscordNotifyWorkflow }
 
 // Export the scheduled handler
 export { scheduledHandler }

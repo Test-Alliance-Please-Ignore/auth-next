@@ -1,11 +1,13 @@
 import { and, eq, inArray, isNull, lte, or } from 'drizzle-orm'
 
+import { getStub } from '@repo/do-utils'
 import { logger } from '@repo/hono-helpers'
 
 import { createDb } from './db'
-import { bills, billSchedules } from './db/schema'
+import { billNotificationEvents, bills, billSchedules } from './db/schema'
 
 import type { Env } from './context'
+import type { Bills } from '@repo/bills'
 
 /**
  * Refreshes bill payment status by scheduling workflows for all open bills
@@ -264,6 +266,124 @@ async function enqueueDueSchedules(env: Env, options: { scheduledTimeMs: number 
 	}
 }
 
+async function enqueueDueSoonNotifications(
+	env: Env,
+	options: { scheduledTimeMs: number }
+): Promise<void> {
+	const startTime = Date.now()
+	const notificationLogger = logger.withTags({ component: 'bills-due-soon-notifications' })
+	const now = new Date(options.scheduledTimeMs)
+	const dueWithin24h = new Date(options.scheduledTimeMs + 24 * 60 * 60 * 1000)
+
+	notificationLogger.info('[Bills] Starting due-soon notification enqueue sweep', {
+		now: now.toISOString(),
+		dueWithin24h: dueWithin24h.toISOString(),
+	})
+
+	try {
+		const db = createDb(env.DATABASE_URL)
+		const candidateBills = await db.query.bills.findMany({
+			where: and(
+				eq(bills.status, 'issued'),
+				isNull(bills.paidAt),
+				lte(bills.dueDate, dueWithin24h)
+			),
+			columns: {
+				id: true,
+				dueDate: true,
+			},
+		})
+		const dueSoonBillIds = candidateBills
+			.filter((bill) => bill.dueDate > now)
+			.map((bill) => bill.id)
+
+		if (dueSoonBillIds.length === 0) {
+			notificationLogger.info('[Bills] No due-soon bills eligible for reminder enqueue', {
+				candidates: candidateBills.length,
+			})
+			return
+		}
+
+		const billsStub = getStub<Bills>(env.BILLS, 'default')
+		const results = await Promise.allSettled(
+			dueSoonBillIds.map((billId) =>
+				billsStub.enqueueBillNotificationEvent(billId, 'due_24h', {
+					source: 'scheduled_due_soon_sweep',
+				})
+			)
+		)
+		const succeeded = results.filter((r) => r.status === 'fulfilled').length
+		const failed = results.length - succeeded
+
+		notificationLogger.info('[Bills] Due-soon reminder enqueue sweep complete', {
+			billsConsidered: candidateBills.length,
+			enqueueAttempted: dueSoonBillIds.length,
+			succeeded,
+			failed,
+			durationMs: Date.now() - startTime,
+		})
+	} catch (error) {
+		notificationLogger.error('[Bills] Due-soon reminder enqueue sweep failed', {
+			error: error instanceof Error ? error.message : String(error),
+			errorStack: error instanceof Error ? error.stack : undefined,
+			durationMs: Date.now() - startTime,
+		})
+		throw error
+	}
+}
+
+async function dispatchPendingNotificationWorkflows(
+	env: Env,
+	options: { scheduledTimeMs: number }
+): Promise<void> {
+	const startTime = Date.now()
+	const notifyLogger = logger.withTags({ component: 'bills-notification-dispatch' })
+	const now = new Date(options.scheduledTimeMs)
+
+	try {
+		const db = createDb(env.DATABASE_URL)
+		const pending = await db.query.billNotificationEvents.findMany({
+			where: and(
+				inArray(billNotificationEvents.status, ['pending', 'failed']),
+				lte(billNotificationEvents.firstEligibleAt, now)
+			),
+			columns: { id: true },
+			limit: 200,
+		})
+		if (pending.length === 0) {
+			notifyLogger.info('[Bills] No pending bill notifications to dispatch', {
+				now: now.toISOString(),
+			})
+			return
+		}
+
+		const workflowOptions = pending.map((row) => ({
+			id: `bill-notify-${row.id}-${options.scheduledTimeMs}`,
+			params: { notificationEventId: row.id } as { notificationEventId: string },
+		}))
+		const BATCH_SIZE = 100
+		let created = 0
+		for (let i = 0; i < workflowOptions.length; i += BATCH_SIZE) {
+			const batch = workflowOptions.slice(i, i + BATCH_SIZE)
+			const instances = await env.BILL_DISCORD_NOTIFY.createBatch(batch)
+			created += instances.length
+		}
+
+		notifyLogger.info('[Bills] Dispatched bill notification workflows', {
+			pendingCount: pending.length,
+			workflowsCreated: created,
+			durationMs: Date.now() - startTime,
+		})
+	} catch (error) {
+		notifyLogger.error('[Bills] Failed dispatching bill notification workflows', {
+			error: error instanceof Error ? error.message : String(error),
+			errorStack: error instanceof Error ? error.stack : undefined,
+			durationMs: Date.now() - startTime,
+		})
+		throw error
+	}
+}
+
 export async function scheduledHandler(
 	event: ScheduledEvent,
 	env: Env,
@@ -276,7 +396,9 @@ export async function scheduledHandler(
 		cron: event.cron,
 	})
 	await enqueueDueSchedules(env, { scheduledTimeMs: event.scheduledTime })
+	await enqueueDueSoonNotifications(env, { scheduledTimeMs: event.scheduledTime })
 	await refreshBillPayments(env, { scheduledTimeMs: event.scheduledTime })
+	await dispatchPendingNotificationWorkflows(env, { scheduledTimeMs: event.scheduledTime })
 
 	const duration = Date.now() - start
 	scheduledLogger.info('[Scheduled] Scheduled refresh via workflows complete', {

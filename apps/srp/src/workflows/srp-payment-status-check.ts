@@ -10,6 +10,7 @@ import {
 	parseAmountToBigInt,
 } from './srp-payment-status-check-utils'
 
+import type { MessageContent } from '@repo/discord'
 import type { EsiTypeResolver } from '@repo/esi'
 import type { Srp } from '@repo/srp'
 import type { Env } from '../context'
@@ -60,7 +61,7 @@ type ExistingScanCursorRow = {
 type DiscordDirectMessenger = {
 	sendDirectMessage(
 		coreUserId: string,
-		message: { content: string; allowEveryone?: boolean }
+		message: MessageContent
 	): Promise<{ success: boolean; error?: string }>
 }
 
@@ -70,6 +71,8 @@ const PAYMENT_MISMATCH_HISTORY_ACTION = 'payment_amount_mismatch_detected'
 const PAYMENT_MISSING_HISTORY_ACTION = 'payment_missing_detected'
 const MS_PER_DAY = 86_400_000
 const EMPTY_REASON_MATCH_WINDOW_MS = 2 * 60 * 1000
+const DISCORD_ALERT_RED = 0xef4444
+const DISCORD_ALERT_YELLOW = 0xf59e0b
 
 function formatISK(value: string | number, options?: { showDecimals?: boolean }): string {
 	const num = typeof value === 'string' ? Number.parseFloat(value) : value
@@ -100,7 +103,7 @@ function buildMismatchDiscordAlertContent(input: {
 	payeeId: string | null
 	payeeName: string | null
 	isRecipientMismatch: boolean
-}) {
+}): MessageContent {
 	const requestUrl = `https://pleaseignore.app/srp/request/${input.requestId}`
 	const expectedRecipientLabel = input.requestCharacterName
 		? `${input.requestCharacterName} (\`${input.requestCharacterId}\`)`
@@ -108,22 +111,122 @@ function buildMismatchDiscordAlertContent(input: {
 	const actualRecipientLabel = input.payeeId
 		? `${input.payeeName ?? 'Unknown'} (\`${input.payeeId}\`)`
 		: 'Unknown'
-	return [
-		`SRP payment value mismatch detected.`,
-		`Request: \`${input.requestId}\``,
-		`Expected payout: **${formatISK(input.expectedAmount, { showDecimals: false })}**`,
-		`Actual payment: **${formatISK(input.observedAmount, { showDecimals: false })}**`,
-		`Payer: ${input.payerId ? `${input.payerName ?? 'Unknown'} (\`${input.payerId}\`)` : 'Unknown'}`,
-		`Payee: ${actualRecipientLabel}`,
-		...(input.isRecipientMismatch
-			? [
-					`Expected recipient: ${expectedRecipientLabel}`,
-					`Actual recipient: ${actualRecipientLabel}`,
-				]
-			: []),
-		`Journal ID: \`${input.journalId}\``,
-		`Request details: <${requestUrl}>`,
-	].join('\n')
+
+	const fields: NonNullable<MessageContent['embeds']>[number]['fields'] = [
+		{
+			name: 'Request',
+			value: `\`${input.requestId}\``,
+			inline: false,
+		},
+		{
+			name: 'Expected Payout',
+			value: formatISK(input.expectedAmount, { showDecimals: false }),
+			inline: true,
+		},
+		{
+			name: 'Observed Payment',
+			value: formatISK(input.observedAmount, { showDecimals: false }),
+			inline: true,
+		},
+		{
+			name: 'Payer',
+			value: input.payerId ? `${input.payerName ?? 'Unknown'} (\`${input.payerId}\`)` : 'Unknown',
+			inline: false,
+		},
+		{
+			name: 'Payee',
+			value: actualRecipientLabel,
+			inline: false,
+		},
+		{
+			name: 'Journal ID',
+			value: `\`${input.journalId}\``,
+			inline: false,
+		},
+	]
+
+	if (input.isRecipientMismatch) {
+		fields.push(
+			{
+				name: 'Expected Recipient',
+				value: expectedRecipientLabel,
+				inline: false,
+			},
+			{
+				name: 'Actual Recipient',
+				value: actualRecipientLabel,
+				inline: false,
+			}
+		)
+	}
+
+	return {
+		content: '',
+		allowEveryone: false,
+		embeds: [
+			{
+				title: 'SRP Payment Mismatch Detected',
+				color: DISCORD_ALERT_RED,
+				description: `[Open SRP Request](${requestUrl})`,
+				fields,
+				timestamp: new Date().toISOString(),
+			},
+		],
+	}
+}
+
+function buildMissingDiscordAlertContent(input: {
+	requestId: string
+	requestCharacterId: string
+	requestCharacterName?: string
+	expectedAmount: string
+	expectedReason: string
+	thresholdHours: number
+}): MessageContent {
+	const requestUrl = `https://pleaseignore.app/srp/request/${input.requestId}`
+	const expectedRecipientLabel = input.requestCharacterName
+		? `${input.requestCharacterName} (\`${input.requestCharacterId}\`)`
+		: `\`${input.requestCharacterId}\``
+
+	return {
+		content: '',
+		allowEveryone: false,
+		embeds: [
+			{
+				title: 'SRP Payment Missing',
+				color: DISCORD_ALERT_YELLOW,
+				description: `[Open SRP Request](${requestUrl})`,
+				fields: [
+					{
+						name: 'Request',
+						value: `\`${input.requestId}\``,
+						inline: false,
+					},
+					{
+						name: 'Expected Payout',
+						value: formatISK(input.expectedAmount, { showDecimals: false }),
+						inline: true,
+					},
+					{
+						name: 'Expected Recipient',
+						value: expectedRecipientLabel,
+						inline: false,
+					},
+					{
+						name: 'Expected Reason',
+						value: `\`${input.expectedReason}\``,
+						inline: false,
+					},
+					{
+						name: 'Threshold',
+						value: `${input.thresholdHours} hours`,
+						inline: true,
+					},
+				],
+				timestamp: new Date().toISOString(),
+			},
+		],
+	}
 }
 
 function absBigInt(value: bigint): bigint {
@@ -334,11 +437,11 @@ export class SrpPaymentStatusCheckWorkflow extends WorkflowEntrypoint<
 			)?.entry
 
 			const anomalyEntry = amountMismatchEntry ?? recipientMismatchEntry
+			const srpGroupId = config?.srpGroupId?.trim() ?? ''
 
 			if (!matchedEntry && anomalyEntry) {
-			const mismatchReason = anomalyEntry.reason ?? reasonNeedle
-			const srpGroupId = config?.srpGroupId?.trim() ?? ''
-			const anomalyEntryAmount = parseAmountToBigInt(anomalyEntry.amount)
+				const mismatchReason = anomalyEntry.reason ?? reasonNeedle
+				const anomalyEntryAmount = parseAmountToBigInt(anomalyEntry.amount)
 			const isRecipientMismatch = anomalyEntry.secondPartyId !== request.characterId
 			const isAmountMismatch =
 				approvedAmount !== null &&
@@ -462,28 +565,28 @@ export class SrpPaymentStatusCheckWorkflow extends WorkflowEntrypoint<
 				if (groupOwner) {
 					srpGroupOwnerUserId = groupOwner.ownerUserId
 					srpGroupName = groupOwner.groupName
-					try {
-						const discord = getStub<DiscordDirectMessenger>(this.env.DISCORD, 'default')
-						const result = await discord.sendDirectMessage(groupOwner.ownerUserId, {
-							content: buildMismatchDiscordAlertContent({
-								requestId: request.id,
-								requestCharacterId: request.characterId,
-								requestCharacterName: request.characterName,
-								expectedAmount: request.approvedAmount ?? '0',
-								observedAmount: anomalyEntry.amount,
-								journalId: anomalyEntry.journalId,
-								payerId: anomalyEntry.firstPartyId,
-								payerName: anomalyEntry.firstPartyId
-									? (resolvedNames[anomalyEntry.firstPartyId] ?? null)
-									: null,
-								payeeId: anomalyEntry.secondPartyId,
-								payeeName: anomalyEntry.secondPartyId
-									? (resolvedNames[anomalyEntry.secondPartyId] ?? null)
-									: null,
-								isRecipientMismatch,
-							}),
-							allowEveryone: false,
-						})
+						try {
+							const discord = getStub<DiscordDirectMessenger>(this.env.DISCORD, 'default')
+							const result = await discord.sendDirectMessage(
+								groupOwner.ownerUserId,
+								buildMismatchDiscordAlertContent({
+									requestId: request.id,
+									requestCharacterId: request.characterId,
+									requestCharacterName: request.characterName,
+									expectedAmount: request.approvedAmount ?? '0',
+									observedAmount: anomalyEntry.amount,
+									journalId: anomalyEntry.journalId,
+									payerId: anomalyEntry.firstPartyId,
+									payerName: anomalyEntry.firstPartyId
+										? (resolvedNames[anomalyEntry.firstPartyId] ?? null)
+										: null,
+									payeeId: anomalyEntry.secondPartyId,
+									payeeName: anomalyEntry.secondPartyId
+										? (resolvedNames[anomalyEntry.secondPartyId] ?? null)
+										: null,
+									isRecipientMismatch,
+								})
+							)
 						discordAlertSent = result.success
 						discordAlertError = result.success ? null : (result.error ?? 'Failed to send Discord DM')
 					} catch (error) {
@@ -675,25 +778,78 @@ export class SrpPaymentStatusCheckWorkflow extends WorkflowEntrypoint<
 						paymentAlertId = insertedMissingAlert.id
 					}
 					const [existingMissingEvent] = (
-					await db.execute<ExistingMismatchHistoryRow>(
+						await db.execute<ExistingMismatchHistoryRow>(
 						sql`select id::text as "id"
 							from srp_request_history
 							where request_id = ${request.id}
 								and action = ${PAYMENT_MISSING_HISTORY_ACTION}
 							limit 1`
 					)
-				).rows
+					).rows
 
-					const missingMetadata = {
-						paymentAlertId,
-						expectedAmount: request.approvedAmount ?? '0',
-					expectedRecipientCharacterId: request.characterId,
-					expectedRecipientCharacterName: request.characterName,
-					expectedReason: reasonNeedle,
-					paymentDate: request.paymentDate ?? null,
-					thresholdHours: 24,
-					matchedTransactionCount: walletMatches.length,
-				}
+					let missingDiscordAlertSent = false
+					let missingDiscordAlertError: string | null = null
+					let missingSrpGroupOwnerUserId: string | null = null
+					let missingSrpGroupName: string | null = null
+
+					if (!existingMissingEvent && srpGroupId) {
+						const [groupOwner] = (
+							await db.execute<GroupOwnerRow>(
+								sql`select
+										id::text as "groupId",
+										name as "groupName",
+										owner_id as "ownerUserId"
+									from groups
+									where id = ${srpGroupId}::uuid
+									limit 1`
+							)
+						).rows
+						if (groupOwner) {
+							missingSrpGroupOwnerUserId = groupOwner.ownerUserId
+							missingSrpGroupName = groupOwner.groupName
+							try {
+								const discord = getStub<DiscordDirectMessenger>(this.env.DISCORD, 'default')
+								const result = await discord.sendDirectMessage(
+									groupOwner.ownerUserId,
+									buildMissingDiscordAlertContent({
+										requestId: request.id,
+										requestCharacterId: request.characterId,
+										requestCharacterName: request.characterName,
+										expectedAmount: request.approvedAmount ?? '0',
+										expectedReason: reasonNeedle,
+										thresholdHours: 24,
+									})
+								)
+								missingDiscordAlertSent = result.success
+								missingDiscordAlertError = result.success
+									? null
+									: (result.error ?? 'Failed to send Discord DM')
+							} catch (error) {
+								missingDiscordAlertSent = false
+								missingDiscordAlertError = error instanceof Error ? error.message : String(error)
+							}
+						} else {
+							missingDiscordAlertError = 'Configured SRP group not found'
+						}
+					} else if (!srpGroupId) {
+						missingDiscordAlertError = 'No SRP group configured'
+					}
+
+						const missingMetadata = {
+							paymentAlertId,
+							expectedAmount: request.approvedAmount ?? '0',
+						expectedRecipientCharacterId: request.characterId,
+						expectedRecipientCharacterName: request.characterName,
+						expectedReason: reasonNeedle,
+						paymentDate: request.paymentDate ?? null,
+						thresholdHours: 24,
+						matchedTransactionCount: walletMatches.length,
+						srpGroupId: srpGroupId || null,
+						srpGroupName: missingSrpGroupName,
+						srpGroupOwnerUserId: missingSrpGroupOwnerUserId,
+						discordAlertSent: missingDiscordAlertSent,
+						discordAlertError: missingDiscordAlertError,
+					}
 				if (!existingMissingEvent) {
 					await db.execute(
 						sql`insert into srp_request_history (
