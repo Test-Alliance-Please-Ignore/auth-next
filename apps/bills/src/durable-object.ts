@@ -1,5 +1,5 @@
 import { DurableObject } from 'cloudflare:workers'
-import { eq } from 'drizzle-orm'
+import { and, eq, isNull, lte } from 'drizzle-orm'
 
 import { getStub } from '@repo/do-utils'
 import { logger, toErrorLogDetails } from '@repo/hono-helpers'
@@ -189,7 +189,12 @@ export class BillsDO extends DurableObject<Env> implements Bills {
 	async issueBill(actorUserId: string, billId: string): Promise<Bill> {
 		const issued = await this.billService.issueBill(actorUserId, billId)
 		try {
-			await this.enqueueBillNotificationEvent(issued.id, 'issued', { source: 'issue_bill' })
+			const enqueueResult = await this.enqueueBillNotificationEvent(issued.id, 'issued', {
+				source: 'issue_bill',
+			})
+			if (enqueueResult.recipientCount > 0) {
+				await this.dispatchImmediateNotificationWorkflows(issued.id, 'issued')
+			}
 		} catch (error) {
 			// Notification enqueue is intentionally non-blocking for bill issuance.
 			this.logger.error('[BillsDO] Failed to enqueue issued bill notifications', {
@@ -636,6 +641,34 @@ export class BillsDO extends DurableObject<Env> implements Bills {
 		}
 
 		return new Response('Bills Durable Object - Use RPC methods', { status: 200 })
+	}
+
+	private async dispatchImmediateNotificationWorkflows(
+		billId: string,
+		eventType: BillNotificationEventType
+	): Promise<void> {
+		const now = new Date()
+		const pendingRows = await this.db.query.billNotificationEvents.findMany({
+			where: and(
+				eq(billNotificationEvents.billId, billId),
+				eq(billNotificationEvents.eventType, eventType),
+				eq(billNotificationEvents.status, 'pending'),
+				lte(billNotificationEvents.firstEligibleAt, now),
+				isNull(billNotificationEvents.workflowInstanceId)
+			),
+			columns: { id: true },
+			limit: 100,
+		})
+		if (pendingRows.length === 0) {
+			return
+		}
+
+		await this.env.BILL_DISCORD_NOTIFY.createBatch(
+			pendingRows.map((row) => ({
+				id: `bill-notify-immediate-${row.id}-${Date.now()}`,
+				params: { notificationEventId: row.id },
+			}))
+		)
 	}
 
 	private async resolveIssuedNotificationRecipients(
