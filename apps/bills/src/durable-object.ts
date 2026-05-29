@@ -71,6 +71,7 @@ export class BillsDO extends DurableObject<Env> implements Bills {
 	private templateService: TemplateService
 	private scheduleService: ScheduleService
 	private readonly logger = logger.withTags({ service: 'bills-durable-object' })
+	private static readonly DEFAULT_OVERDUE_ALERT_MAX_AGE_HOURS = 48
 
 	constructor(
 		public state: DurableObjectState,
@@ -224,6 +225,24 @@ export class BillsDO extends DurableObject<Env> implements Bills {
 		if (eventType === 'paid' && bill.status !== 'paid') {
 			return { recipientCount: 0 }
 		}
+		if (eventType === 'overdue') {
+			const configuredMaxAge = Number(this.env.BILL_OVERDUE_ALERT_MAX_AGE_HOURS)
+			const maxAgeHours =
+				Number.isFinite(configuredMaxAge) && configuredMaxAge > 0
+					? configuredMaxAge
+					: BillsDO.DEFAULT_OVERDUE_ALERT_MAX_AGE_HOURS
+			const dueAgeMs = Date.now() - bill.dueDate.getTime()
+			const dueAgeHours = dueAgeMs / (1000 * 60 * 60)
+			if (dueAgeHours > maxAgeHours) {
+				this.logger.info('[BillsDO] Skipping stale overdue notification event', {
+					billId,
+					dueDate: bill.dueDate.toISOString(),
+					dueAgeHours,
+					maxAgeHours,
+				})
+				return { recipientCount: 0 }
+			}
+		}
 
 		const recipientUserIds = await this.resolveIssuedNotificationRecipients({
 			payerId: bill.payerId,
@@ -274,7 +293,15 @@ export class BillsDO extends DurableObject<Env> implements Bills {
 	}
 
 	async markBillPaid(actorUserId: string, billId: string): Promise<Bill> {
+		const before = await this.db.query.bills.findFirst({
+			where: eq(bills.id, billId),
+			columns: { status: true },
+		})
 		const paid = await this.billService.markBillPaid(actorUserId, billId)
+		const transitionedToPaid = before?.status !== 'paid' && paid.status === 'paid'
+		if (!transitionedToPaid) {
+			return paid
+		}
 		try {
 			await this.enqueueBillNotificationEvent(paid.id, 'paid', { source: 'manual_mark_paid' })
 		} catch (error) {
