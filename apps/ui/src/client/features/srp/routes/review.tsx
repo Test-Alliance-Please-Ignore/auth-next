@@ -456,8 +456,6 @@ function ReviewTabContent({
 								<TableCell className="font-semibold">
 									<Link
 										to={`/srp/review/${req.id}`}
-										target="_blank"
-										rel="noopener noreferrer"
 										className="underline-offset-4 hover:underline focus-visible:underline"
 									>
 										{req.shipTypeName ?? '—'}
@@ -509,7 +507,7 @@ function ReviewTabContent({
 								</TableCell>
 								<TableCell className="text-right">
 									<Button size="sm" variant="secondary" asChild>
-										<Link to={`/srp/review/${req.id}`} target="_blank" rel="noopener noreferrer">
+										<Link to={`/srp/review/${req.id}`}>
 											View
 										</Link>
 									</Button>
