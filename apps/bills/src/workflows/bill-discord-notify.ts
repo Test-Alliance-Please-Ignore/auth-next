@@ -86,6 +86,17 @@ function shouldMarkSkipped(errorMessage: string | null | undefined): boolean {
 	)
 }
 
+function isNotificationStillEligible(input: {
+	eventType: 'issued' | 'due_24h' | 'overdue' | 'paid'
+	billStatus: string
+	paidAt: Date | null
+}): boolean {
+	if (input.eventType === 'issued') return input.billStatus === 'issued'
+	if (input.eventType === 'due_24h') return input.billStatus === 'issued' && !input.paidAt
+	if (input.eventType === 'overdue') return input.billStatus === 'overdue' && !input.paidAt
+	return input.billStatus === 'paid'
+}
+
 export class BillDiscordNotifyWorkflow extends WorkflowEntrypoint<
 	Env,
 	BillDiscordNotifyWorkflowParams
@@ -154,6 +165,19 @@ export class BillDiscordNotifyWorkflow extends WorkflowEntrypoint<
 				})
 				if (!bill) {
 					return { success: false as const, skipped: true as const, error: 'Bill not found' }
+				}
+				if (
+					!isNotificationStillEligible({
+						eventType: eventRow.eventType,
+						billStatus: bill.status,
+						paidAt: bill.paidAt,
+					})
+				) {
+					return {
+						success: false as const,
+						skipped: true as const,
+						error: `Bill no longer eligible for ${eventRow.eventType} notification`,
+					}
 				}
 
 				const payeeName =
