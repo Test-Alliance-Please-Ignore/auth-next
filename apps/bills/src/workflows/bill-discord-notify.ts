@@ -15,17 +15,6 @@ export interface BillDiscordNotifyWorkflowParams {
 	notificationEventId: string
 }
 
-function formatDueDate(date: Date): string {
-	return new Intl.DateTimeFormat('en-US', {
-		year: 'numeric',
-		month: 'long',
-		day: 'numeric',
-		hour: 'numeric',
-		minute: '2-digit',
-		timeZoneName: 'short',
-	}).format(date)
-}
-
 function formatDiscordLongTimestamp(date: Date): string {
 	return `<t:${Math.floor(date.getTime() / 1000)}:F>`
 }
@@ -65,7 +54,6 @@ function buildMessage(input: {
 	const { title, color } = toTitleAndColor(input.eventType)
 	const alertText = toAlertText(input.eventType)
 	const dueLong = formatDiscordLongTimestamp(input.dueDate)
-	const dueAbsolute = formatDueDate(input.dueDate)
 	const amount = `**${formatISK(input.amount, { showDecimals: false })}**`
 	return {
 		content: '',
@@ -79,7 +67,7 @@ function buildMessage(input: {
 					{ name: 'Bill', value: input.title, inline: true },
 					{ name: 'Amount', value: amount, inline: true },
 					{ name: 'Payee', value: input.payeeName, inline: true },
-					{ name: 'Due', value: `${dueLong} (${dueAbsolute})`, inline: false },
+					{ name: 'Due', value: dueLong, inline: false },
 				],
 				footer: { text: `Bill ID: ${input.billId}` },
 				timestamp: new Date().toISOString(),
