@@ -2,7 +2,7 @@ import { WorkflowEntrypoint, WorkflowEvent, WorkflowStep } from 'cloudflare:work
 
 import { sql } from '@repo/db-utils'
 import { getStub } from '@repo/do-utils'
-import { parseDateOrNull } from '@repo/worker-utils'
+import { formatISK, parseDateOrNull } from '@repo/worker-utils'
 
 import { createDb } from '../db'
 import {
@@ -73,23 +73,6 @@ const MS_PER_DAY = 86_400_000
 const EMPTY_REASON_MATCH_WINDOW_MS = 2 * 60 * 1000
 const DISCORD_ALERT_RED = 0xef4444
 const DISCORD_ALERT_YELLOW = 0xf59e0b
-
-function formatISK(value: string | number, options?: { showDecimals?: boolean }): string {
-	const num = typeof value === 'string' ? Number.parseFloat(value) : value
-	const showDecimals = options?.showDecimals ?? true
-	const fractionDigits = showDecimals ? 2 : 0
-
-	if (!Number.isFinite(num)) {
-		return `${(0).toFixed(fractionDigits)} ISK`
-	}
-
-	return (
-		new Intl.NumberFormat('en-US', {
-			minimumFractionDigits: fractionDigits,
-			maximumFractionDigits: fractionDigits,
-		}).format(num) + ' ISK'
-	)
-}
 
 function buildMismatchDiscordAlertContent(input: {
 	requestId: string

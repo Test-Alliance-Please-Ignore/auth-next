@@ -2,6 +2,7 @@ import { WorkflowEntrypoint, WorkflowEvent, WorkflowStep } from 'cloudflare:work
 import { and, eq, inArray, lte, sql } from 'drizzle-orm'
 
 import { getStub } from '@repo/do-utils'
+import { formatISK } from '@repo/worker-utils'
 
 import { createDb } from '../db'
 import { billNotificationEvents, bills } from '../db/schema'
@@ -25,6 +26,10 @@ function formatDueDate(date: Date): string {
 	}).format(date)
 }
 
+function formatDiscordLongTimestamp(date: Date): string {
+	return `<t:${Math.floor(date.getTime() / 1000)}:F>`
+}
+
 const COLORS = {
 	BLUE: 0x3b82f6,
 	YELLOW: 0xf59e0b,
@@ -42,6 +47,13 @@ function toTitleAndColor(eventType: 'issued' | 'due_24h' | 'overdue' | 'paid'): 
 	return { title: 'Bill Paid', color: COLORS.GREEN }
 }
 
+function toAlertText(eventType: 'issued' | 'due_24h' | 'overdue' | 'paid'): string {
+	if (eventType === 'issued') return 'A bill was issued to you.'
+	if (eventType === 'due_24h') return 'A bill assigned to you is due within 24 hours.'
+	if (eventType === 'overdue') return 'A bill assigned to you is now overdue.'
+	return 'A bill assigned to you was marked as paid.'
+}
+
 function buildMessage(input: {
 	billId: string
 	title: string
@@ -51,6 +63,10 @@ function buildMessage(input: {
 	eventType: 'issued' | 'due_24h' | 'overdue' | 'paid'
 }): MessageContent {
 	const { title, color } = toTitleAndColor(input.eventType)
+	const alertText = toAlertText(input.eventType)
+	const dueLong = formatDiscordLongTimestamp(input.dueDate)
+	const dueAbsolute = formatDueDate(input.dueDate)
+	const amount = `**${formatISK(input.amount, { showDecimals: false })}**`
 	return {
 		content: '',
 		allowEveryone: false,
@@ -58,12 +74,12 @@ function buildMessage(input: {
 			{
 				title,
 				color,
-				description: `[View Bill](https://pleaseignore.app/my-bills/${input.billId})`,
+				description: `${alertText}\n[View Bill](https://pleaseignore.app/my-bills/${input.billId})`,
 				fields: [
 					{ name: 'Bill', value: input.title, inline: true },
-					{ name: 'Amount', value: `${input.amount} ISK`, inline: true },
+					{ name: 'Amount', value: amount, inline: true },
 					{ name: 'Payee', value: input.payeeName, inline: true },
-					{ name: 'Due', value: formatDueDate(input.dueDate), inline: false },
+					{ name: 'Due', value: `${dueLong} (${dueAbsolute})`, inline: false },
 				],
 				footer: { text: `Bill ID: ${input.billId}` },
 				timestamp: new Date().toISOString(),
