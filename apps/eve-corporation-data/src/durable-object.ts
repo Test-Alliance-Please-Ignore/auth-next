@@ -1270,7 +1270,12 @@ export class EveCorporationDataDO extends DurableObject<Env> implements EveCorpo
 		const BATCH_SIZE = 25
 		for (let i = 0; i < transactions.length; i += BATCH_SIZE) {
 			const batch = transactions.slice(i, i + BATCH_SIZE)
-			const batchTransactionIds = batch.map((tx) => String(tx.transaction_id))
+			const dedupedBatchByTransactionId = new Map<string, any>()
+			for (const tx of batch) {
+				dedupedBatchByTransactionId.set(String(tx.transaction_id), tx)
+			}
+			const dedupedBatch = [...dedupedBatchByTransactionId.values()]
+			const batchTransactionIds = [...dedupedBatchByTransactionId.keys()]
 			const existingRows =
 				batchTransactionIds.length > 0
 					? await this.getDb().query.corporationWalletTransactions.findMany({
@@ -1286,7 +1291,7 @@ export class EveCorporationDataDO extends DurableObject<Env> implements EveCorpo
 					: []
 			const existingTransactionIds = new Set(existingRows.map((row) => row.transactionId))
 			persistedNewRows += batchTransactionIds.filter((id) => !existingTransactionIds.has(id)).length
-			const valuesToInsert = batch.map((tx) => ({
+			const valuesToInsert = dedupedBatch.map((tx) => ({
 				corporationId: String(corporationId),
 				division,
 				transactionId: tx.transaction_id,
@@ -2088,7 +2093,12 @@ export class EveCorporationDataDO extends DurableObject<Env> implements EveCorpo
 		try {
 			for (let i = 0; i < transactions.length; i += BATCH_SIZE) {
 				const batch = transactions.slice(i, i + BATCH_SIZE)
-				const valuesToInsert = batch.map((tx) => ({
+				const dedupedBatchByTransactionId = new Map<string, EsiCorporationWalletTransaction>()
+				for (const tx of batch) {
+					dedupedBatchByTransactionId.set(String(tx.transaction_id), tx)
+				}
+				const dedupedBatch = [...dedupedBatchByTransactionId.values()]
+				const valuesToInsert = dedupedBatch.map((tx) => ({
 					corporationId: String(corporationId),
 					division,
 					transactionId: tx.transaction_id,
@@ -2118,7 +2128,7 @@ export class EveCorporationDataDO extends DurableObject<Env> implements EveCorpo
 						},
 					})
 
-				insertedCount += batch.length
+				insertedCount += dedupedBatch.length
 			}
 		} catch (error) {
 			logger

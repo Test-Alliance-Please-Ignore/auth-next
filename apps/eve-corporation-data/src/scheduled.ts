@@ -2,6 +2,51 @@ import { logger } from '@repo/hono-helpers'
 
 import type { Env } from './context'
 
+const BACKGROUND_REFRESH_QUEUE_KEY = 'background-refresh:workflow-create-queue:v1'
+const BACKGROUND_REFRESH_DRAIN_LIMIT = 20
+const RATE_LIMIT_BACKOFF_BASE_MS = 15_000
+const RATE_LIMIT_BACKOFF_MAX_MS = 10 * 60 * 1000
+
+type QueueEntry = {
+	corporationId: string
+	name: string
+	nextAttemptAtMs: number
+	attempt: number
+}
+
+function isWorkflowCreationRateLimitError(error: unknown): boolean {
+	const msg = error instanceof Error ? error.message : String(error)
+	return msg.includes('rate_limit.workflow_instance_creation')
+}
+
+function computeQueueBackoffMs(attempt: number): number {
+	const exp = Math.min(6, Math.max(0, attempt))
+	const base = Math.min(RATE_LIMIT_BACKOFF_MAX_MS, RATE_LIMIT_BACKOFF_BASE_MS * 2 ** exp)
+	return Math.floor(base * (0.5 + Math.random() * 0.5))
+}
+
+async function loadQueue(cache: KVNamespace): Promise<QueueEntry[]> {
+	const raw = await cache.get(BACKGROUND_REFRESH_QUEUE_KEY)
+	if (!raw) return []
+	try {
+		const parsed = JSON.parse(raw) as QueueEntry[]
+		if (!Array.isArray(parsed)) return []
+		return parsed.filter(
+			(entry) =>
+				typeof entry?.corporationId === 'string' &&
+				typeof entry?.name === 'string' &&
+				typeof entry?.nextAttemptAtMs === 'number' &&
+				typeof entry?.attempt === 'number'
+		)
+	} catch {
+		return []
+	}
+}
+
+async function saveQueue(cache: KVNamespace, queue: QueueEntry[]): Promise<void> {
+	await cache.put(BACKGROUND_REFRESH_QUEUE_KEY, JSON.stringify(queue))
+}
+
 /**
  * Background Corporation Data Refresh Handler
  *
@@ -21,6 +66,7 @@ export async function scheduledHandler(event: ScheduledEvent, env: Env, _ctx: Ex
 	try {
 		// Get corporations that should be refreshed via Core RPC
 		const corporations = await env.CORE.getCorporationsForBackgroundRefresh()
+		const now = Date.now()
 
 		logger.info('[BackgroundRefresh] Found corporations to refresh', {
 			count: corporations.length,
@@ -32,43 +78,97 @@ export async function scheduledHandler(event: ScheduledEvent, env: Env, _ctx: Ex
 			return
 		}
 
-		// Create workflow instances for each corporation
-		const results = await Promise.allSettled(
-			corporations.map((corp) => createWorkflowInstance(env, corp.corporationId, corp.name))
+		const configuredCorpsById = new Map(
+			corporations.map((corp) => [corp.corporationId, corp] as const)
 		)
+		const existingQueue = await loadQueue(env.CACHE)
 
-		// Count successes, failures, and already running
-		const succeeded = results.filter((r) => r.status === 'fulfilled' && r.value.created).length
-		const alreadyRunning = results.filter(
-			(r) => r.status === 'fulfilled' && !r.value.created
-		).length
-		const failed = results.filter((r) => r.status === 'rejected').length
+		// Keep only currently configured corps, then merge in new corps not already queued.
+		const queueByCorpId = new Map<string, QueueEntry>()
+		for (const queued of existingQueue) {
+			const configured = configuredCorpsById.get(queued.corporationId)
+			if (!configured) continue
+			queueByCorpId.set(queued.corporationId, {
+				...queued,
+				name: configured.name,
+			})
+		}
+		for (const corp of corporations) {
+			if (!queueByCorpId.has(corp.corporationId)) {
+				queueByCorpId.set(corp.corporationId, {
+					corporationId: corp.corporationId,
+					name: corp.name,
+					nextAttemptAtMs: now,
+					attempt: 0,
+				})
+			}
+		}
+
+		const queue = [...queueByCorpId.values()].sort((a, b) => a.nextAttemptAtMs - b.nextAttemptAtMs)
+		const due = queue.filter((entry) => entry.nextAttemptAtMs <= now)
+		const deferred = queue.filter((entry) => entry.nextAttemptAtMs > now)
+		const draining = due.slice(0, BACKGROUND_REFRESH_DRAIN_LIMIT)
+		const remainingDue = due.slice(BACKGROUND_REFRESH_DRAIN_LIMIT)
+
+		let workflowsCreated = 0
+		let alreadyRunning = 0
+		let failed = 0
+		const failures: Array<{ corporationId: string; name: string; error: string }> = []
+		const requeued: QueueEntry[] = []
+
+		for (const corp of draining) {
+			try {
+				const result = await createWorkflowInstance(env, corp.corporationId, corp.name)
+				if (result.created) {
+					workflowsCreated++
+				} else {
+					alreadyRunning++
+				}
+			} catch (error) {
+				failed++
+				const errorMessage = error instanceof Error ? error.message : String(error)
+				failures.push({
+					corporationId: corp.corporationId,
+					name: corp.name,
+					error: errorMessage,
+				})
+				const nextAttempt =
+					now +
+					(isWorkflowCreationRateLimitError(error)
+						? computeQueueBackoffMs(corp.attempt + 1)
+						: RATE_LIMIT_BACKOFF_BASE_MS)
+				requeued.push({
+					corporationId: corp.corporationId,
+					name: corp.name,
+					nextAttemptAtMs: nextAttempt,
+					attempt: corp.attempt + 1,
+				})
+			}
+		}
+
+		const nextQueue = [...remainingDue, ...deferred, ...requeued].sort(
+			(a, b) => a.nextAttemptAtMs - b.nextAttemptAtMs
+		)
+		await saveQueue(env.CACHE, nextQueue)
 
 		const duration = Date.now() - start
 
 		logger.info('[BackgroundRefresh] Scheduled refresh completed', {
 			totalCorporations: corporations.length,
-			workflowsCreated: succeeded,
+			workflowsCreated,
 			alreadyRunning,
 			failed,
+			queueDepth: nextQueue.length,
+			drained: draining.length,
+			deferred: nextQueue.length,
 			durationMs: duration,
 		})
 
 		// Log failed corporations for debugging
 		if (failed > 0) {
-			const failedCorporations = results
-				.map((result, index) =>
-					result.status === 'rejected' ? { ...corporations[index], error: result.reason } : null
-				)
-				.filter((c) => c !== null)
-
 			logger.error('[BackgroundRefresh] Some workflow creations failed', {
 				failed,
-				errors: failedCorporations.map((c) => ({
-					corporationId: c.corporationId,
-					name: c.name,
-					error: c.error instanceof Error ? c.error.message : String(c.error),
-				})),
+				errors: failures,
 			})
 		}
 	} catch (error) {
