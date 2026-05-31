@@ -1,6 +1,5 @@
-import { Link, useParams } from 'react-router-dom'
-
 import { ArrowLeft } from 'lucide-react'
+import { Link, useParams } from 'react-router-dom'
 
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
@@ -15,6 +14,7 @@ import {
 	TableHeader,
 	TableRow,
 } from '@/components/ui/table'
+import { usePageTitle } from '@/hooks/usePageTitle'
 
 import { OreCompositionBar } from '../components/OreCompositionBar'
 import { ScanStatusBadge } from '../components/ScanStatusBadge'
@@ -27,18 +27,23 @@ export default function SystemPage() {
 	const { canView } = useMoonScanPermissions()
 
 	const { data: detail, isLoading, error } = useMoonSystemDetail(systemId!)
+	usePageTitle(detail?.system?.solarSystemName ? `${detail.system.solarSystemName}` : 'System')
 	if (!canView) {
 		return (
 			<Container>
-				<PageHeader title="System Detail" description="You do not have permission to view moon data." />
+				<PageHeader
+					title="System Detail"
+					description="You do not have permission to view moon data."
+				/>
 			</Container>
 		)
 	}
 
 	const sys = detail?.system
-	const secStatus = sys?.securityStatus !== null && sys?.securityStatus !== undefined
-		? parseFloat(sys.securityStatus)
-		: null
+	const secStatus =
+		sys?.securityStatus !== null && sys?.securityStatus !== undefined
+			? parseFloat(sys.securityStatus)
+			: null
 
 	const secColor = securityStatusTextClass(secStatus)
 
@@ -71,7 +76,9 @@ export default function SystemPage() {
 					</div>
 					<div className="flex flex-col items-end gap-2">
 						<div className="flex items-center gap-2 text-sm text-muted-foreground">
-							<Link to="/moon-scan" className="hover:underline">Moon Scanning</Link>
+							<Link to="/moon-scan" className="hover:underline">
+								Moon Scanning
+							</Link>
 							<span>/</span>
 							<span>{sys?.solarSystemName ?? systemId}</span>
 						</div>
@@ -105,7 +112,9 @@ export default function SystemPage() {
 							? Array.from({ length: 4 }).map((_, i) => (
 									<TableRow key={i}>
 										{Array.from({ length: 3 }).map((__, j) => (
-											<TableCell key={j}><Skeleton className="h-4 w-28" /></TableCell>
+											<TableCell key={j}>
+												<Skeleton className="h-4 w-28" />
+											</TableCell>
 										))}
 									</TableRow>
 								))
@@ -119,14 +128,16 @@ export default function SystemPage() {
 												{moon.moonName}
 											</Link>
 										</TableCell>
-											<TableCell>
-												{moon.isVerified ? (
-													<ScanStatusBadge status="verified" />
-												) : moon.hasScans ? (
-													<ScanStatusBadge status="pending" />
-												) : (
-													<Badge variant="ghost" className="text-muted-foreground">No data</Badge>
-												)}
+										<TableCell>
+											{moon.isVerified ? (
+												<ScanStatusBadge status="verified" />
+											) : moon.hasScans ? (
+												<ScanStatusBadge status="pending" />
+											) : (
+												<Badge variant="ghost" className="text-muted-foreground">
+													No data
+												</Badge>
+											)}
 										</TableCell>
 										<TableCell>
 											{moon.composition ? (

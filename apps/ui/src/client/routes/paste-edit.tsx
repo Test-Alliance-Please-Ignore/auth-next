@@ -16,6 +16,7 @@ import { Select } from '@/components/ui/select'
 import { Switch } from '@/components/ui/switch'
 import { Textarea } from '@/components/ui/textarea'
 import { useAuth } from '@/hooks/useAuth'
+import { usePageTitle } from '@/hooks/usePageTitle'
 import { apiClient } from '@/lib/api'
 import toast from '@/lib/toast'
 
@@ -77,6 +78,8 @@ function inferExpirationValue(expiresAt: string | null, presets: Array<number | 
 }
 
 export default function PasteEditPage() {
+	usePageTitle('Edit Paste')
+
 	const { isAuthenticated } = useAuth()
 	const { id = '' } = useParams<{ id: string }>()
 	const navigate = useNavigate()

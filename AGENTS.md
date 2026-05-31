@@ -943,6 +943,14 @@ const queries = useQueries({
 4. Refactor the code to follow React's rules
 5. Only proceed when the lint error is genuinely resolved, not silenced
 
+### Page Title Hook Usage
+
+All navigable UI pages should set a browser tab title with `usePageTitle`.
+
+- For every page route component that renders a navigable screen, import and call `usePageTitle(...)`.
+- Use a stable fallback title for loading/error states and a dynamic title when entity data is available.
+- Do **not** add `usePageTitle` to non-page wrappers such as layout routes, route-group containers, or dialog-only route files.
+
 ### EVE Online Image URLs
 
 **CRITICAL: NEVER hardcode `images.evetech.net` URLs directly in UI components.**

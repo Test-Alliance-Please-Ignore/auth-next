@@ -4,9 +4,12 @@ import { useParams, useSearchParams } from 'react-router-dom'
 import { IpHashInspectionPage } from '@/components/ip-hash-inspection-page'
 import { Container } from '@/components/ui/container'
 import { useAdminIpHashMatches } from '@/hooks/useAdminUsers'
+import { usePageTitle } from '@/hooks/usePageTitle'
 import { api } from '@/lib/api'
 
 export default function AdminIpHistoryInspectionPage() {
+	usePageTitle('Admin - IP History Inspection')
+
 	const { ipAddressHash = '' } = useParams<{ ipAddressHash: string }>()
 	const [searchParams] = useSearchParams()
 	const userId = searchParams.get('userId')

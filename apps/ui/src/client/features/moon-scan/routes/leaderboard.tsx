@@ -12,6 +12,7 @@ import {
 	TableHeader,
 	TableRow,
 } from '@/components/ui/table'
+import { usePageTitle } from '@/hooks/usePageTitle'
 
 import { useLeaderboard } from '../hooks'
 import { useMoonScanPermissions } from '../permissions'
@@ -25,6 +26,8 @@ const WINDOWS: Array<{ value: LeaderboardWindow; label: string }> = [
 ]
 
 export default function LeaderboardPage() {
+	usePageTitle('Moon Scan Leaderboard')
+
 	const { canView } = useMoonScanPermissions()
 
 	const [window, setWindow] = useState<LeaderboardWindow>('all')

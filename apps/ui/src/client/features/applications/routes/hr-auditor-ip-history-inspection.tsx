@@ -5,8 +5,11 @@ import { IpHashInspectionPage } from '@/components/ip-hash-inspection-page'
 import { Container } from '@/components/ui/container'
 import { apiClient } from '@/lib/api'
 import { useAuditorIpHashMatches } from '@/hooks/useAuditorUsers'
+import { usePageTitle } from '@/hooks/usePageTitle'
 
 export default function HrAuditorIpHistoryInspectionPage() {
+	usePageTitle('HR - IP History Inspection')
+
 	const { ipAddressHash = '' } = useParams<{ ipAddressHash: string }>()
 	const [searchParams] = useSearchParams()
 	const userId = searchParams.get('userId')

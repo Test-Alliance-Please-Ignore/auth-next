@@ -17,6 +17,7 @@ import {
 	TableHeader,
 	TableRow,
 } from '@/components/ui/table'
+import { usePageTitle } from '@/hooks/usePageTitle'
 import { formatISK } from '@/lib/format-utils'
 
 import { RARITY_COLORS } from '../ore-rarities'
@@ -91,6 +92,8 @@ function MoonRow({ moon }: { moon: ScannedMoonEntry }) {
 }
 
 export default function ScannedMoonsPage() {
+	usePageTitle('Scanned Moons')
+
 	const { canView } = useMoonScanPermissions()
 
 	const [selectedRarities, setSelectedRarities] = useState<OreRarity[]>([])

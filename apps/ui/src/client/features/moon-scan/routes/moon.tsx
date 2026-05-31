@@ -16,6 +16,7 @@ import {
 	TableHeader,
 	TableRow,
 } from '@/components/ui/table'
+import { usePageTitle } from '@/hooks/usePageTitle'
 import { formatISK } from '@/lib/format-utils'
 
 import { ScanStatusBadge } from '../components/ScanStatusBadge'
@@ -229,6 +230,7 @@ export default function MoonPage() {
 	const { canView } = useMoonScanPermissions()
 
 	const { data: detail, isLoading, error } = useMoonDetail(moonId!)
+	usePageTitle(detail?.moon?.moonName ? `${detail.moon.moonName} — Moon` : 'Moon Detail')
 
 	if (!canView) {
 		return (

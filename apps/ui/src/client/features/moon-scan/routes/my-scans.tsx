@@ -14,6 +14,7 @@ import {
 	TableHeader,
 	TableRow,
 } from '@/components/ui/table'
+import { usePageTitle } from '@/hooks/usePageTitle'
 
 import { ScanStatusBadge } from '../components/ScanStatusBadge'
 import { formatMoonScanDate } from '../date'
@@ -39,6 +40,8 @@ function ScanRow({ scan }: { scan: MoonScan }) {
 }
 
 export default function MyScansPage() {
+	usePageTitle('My Moon Scans')
+
 	const { canSubmit } = useMoonScanPermissions()
 
 	const [page, setPage] = useState(1)

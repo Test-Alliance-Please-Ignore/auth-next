@@ -14,6 +14,7 @@ import {
 	TableHeader,
 	TableRow,
 } from '@/components/ui/table'
+import { usePageTitle } from '@/hooks/usePageTitle'
 
 import { useMoonRegions } from '../hooks'
 import { useMoonScanPermissions } from '../permissions'
@@ -142,6 +143,8 @@ function RegionNode({ region, dimmed = false, onHover, onClick }: RegionNodeProp
 }
 
 export default function MoonScanIndex() {
+	usePageTitle('Moon Scanning')
+
 	const { canView } = useMoonScanPermissions()
 	const navigate = useNavigate()
 	const mapWrapRef = useRef<HTMLDivElement>(null)
