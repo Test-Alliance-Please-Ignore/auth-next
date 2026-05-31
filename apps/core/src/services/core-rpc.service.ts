@@ -1,4 +1,4 @@
-import { and, desc, eq, ilike, inArray, or, sql } from '@repo/db-utils'
+import { and, desc, eq, gt, ilike, inArray, or, sql } from '@repo/db-utils'
 import { getStub } from '@repo/do-utils'
 
 import { userCharacters, users } from '../db/schema'
@@ -595,7 +595,9 @@ export class CoreRpcService {
 		const corporations = await this.db.query.managedCorporations.findMany({
 			where: and(
 				eq(managedCorporations.includeInBackgroundRefresh, true),
-				eq(managedCorporations.isActive, true)
+				eq(managedCorporations.isActive, true),
+				eq(managedCorporations.isVerified, true),
+				gt(managedCorporations.healthyDirectorCount, 0)
 			),
 			columns: {
 				corporationId: true,
