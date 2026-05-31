@@ -282,6 +282,8 @@ export function TemplateFieldsEditor({
 									'Are you really fucking sure you want to sound the frogsiren? Is the happening status: its? Is it UALX all over again?',
 								confirmLabel: 'Sound It',
 								intent: 'destructive',
+								confirmButtonVariant: 'danger',
+								confirmDelaySeconds: 3,
 								onConfirm: () => {
 									onUpdateTemplateField(field.name, 'true')
 								},
