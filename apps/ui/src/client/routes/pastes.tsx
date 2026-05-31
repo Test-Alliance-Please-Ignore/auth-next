@@ -16,6 +16,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@
 import { Textarea } from '@/components/ui/textarea'
 import { useAuth } from '@/hooks/useAuth'
 import { useConfirmationDialog } from '@/hooks/useConfirmationDialog'
+import { usePageTitle } from '@/hooks/usePageTitle'
 import { apiClient } from '@/lib/api'
 import toast from '@/lib/toast'
 import { parseDateOrNull } from '@repo/worker-utils'
@@ -59,6 +60,8 @@ function getPasswordChecks(password: string) {
 }
 
 export default function PastesPage() {
+	usePageTitle('Pastes')
+
 	const { isAuthenticated } = useAuth()
 	const queryClient = useQueryClient()
 	const { requestConfirmation, confirmationDialog } = useConfirmationDialog()

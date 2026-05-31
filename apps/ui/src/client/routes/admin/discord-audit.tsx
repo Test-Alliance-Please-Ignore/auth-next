@@ -21,6 +21,7 @@ import {
 	useStripDiscordGuildRoles,
 } from '@/hooks/useDiscord'
 import { useConfirmationDialog } from '@/hooks/useConfirmationDialog'
+import { usePageTitle } from '@/hooks/usePageTitle'
 import { api } from '@/lib/api'
 
 type AuditTab = 'linked' | 'unlinked'
@@ -41,6 +42,8 @@ function formatDiscordHandle(username: string, discriminator: string): string {
 }
 
 export default function AdminDiscordAuditPage() {
+	usePageTitle('Admin - Discord Audit')
+
 	const { data: servers = [], isLoading: serversLoading } = useDiscordServers()
 	const [serverId, setServerId] = useState<string>('')
 	const [activeServerId, setActiveServerId] = useState<string>('')

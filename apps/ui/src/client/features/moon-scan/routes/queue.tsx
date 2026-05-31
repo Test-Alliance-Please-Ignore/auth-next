@@ -17,6 +17,7 @@ import {
 	TableRow,
 } from '@/components/ui/table'
 import { Textarea } from '@/components/ui/textarea'
+import { usePageTitle } from '@/hooks/usePageTitle'
 
 import { formatMoonScanDate } from '../date'
 import { useRejectScan, useScanQueue, useVerifyScan } from '../hooks'
@@ -114,6 +115,8 @@ function QueueRow({ scan }: { scan: MoonScan }) {
 }
 
 export default function QueuePage() {
+	usePageTitle('Moon Scan Review Queue')
+
 	const { canValidate } = useMoonScanPermissions()
 
 	const [page, setPage] = useState(1)

@@ -6,6 +6,7 @@ import { Card, CardContent } from '@/components/ui/card'
 import { Container } from '@/components/ui/container'
 import { PageHeader } from '@/components/ui/page-header'
 import { Textarea } from '@/components/ui/textarea'
+import { usePageTitle } from '@/hooks/usePageTitle'
 
 import { useParseScan, useSubmitScan } from '../hooks'
 import { useMoonScanPermissions } from '../permissions'
@@ -34,6 +35,8 @@ function ScanPreviewRow({ scan }: { scan: AnnotatedScan }) {
 }
 
 export default function SubmitScanPage() {
+	usePageTitle('Submit Moon Scan')
+
 	const { canSubmit } = useMoonScanPermissions()
 
 	const [raw, setRaw] = useState('')

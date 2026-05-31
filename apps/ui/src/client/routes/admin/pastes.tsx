@@ -14,6 +14,7 @@ import { Select } from '@/components/ui/select'
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
 import { useAuth } from '@/hooks/useAuth'
 import { useConfirmationDialog } from '@/hooks/useConfirmationDialog'
+import { usePageTitle } from '@/hooks/usePageTitle'
 import { apiClient, type PasteSettings } from '@/lib/api'
 import toast from '@/lib/toast'
 
@@ -28,6 +29,8 @@ function toEndOfDayIso(dateOnly: string): string | undefined {
 }
 
 export default function AdminPastesPage() {
+	usePageTitle('Admin - Pastes')
+
 	const { user, isLoading } = useAuth()
 	const queryClient = useQueryClient()
 	const { requestConfirmation, confirmationDialog } = useConfirmationDialog()

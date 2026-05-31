@@ -11,6 +11,7 @@ import { Label } from '@/components/ui/label'
 import { LoadingPage } from '@/components/ui/loading'
 import { PageHeader } from '@/components/ui/page-header'
 import { useAuth } from '@/hooks/useAuth'
+import { usePageTitle } from '@/hooks/usePageTitle'
 import { AuthenticationError, AuthorizationError } from '@/lib/api'
 import { apiClient } from '@/lib/api'
 import toast from '@/lib/toast'
@@ -63,6 +64,7 @@ export default function PasteViewPage() {
 		: isAllianceViewer
 			? data?.paste?.name?.trim() || 'Paste'
 			: decryptedPublicTitle || 'Paste'
+	usePageTitle(pageTitle)
 
 	if (isAuthLoading || viewQuery.isLoading) {
 		return <LoadingPage label="Loading paste..." />

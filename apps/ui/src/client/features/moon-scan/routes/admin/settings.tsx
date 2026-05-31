@@ -8,6 +8,7 @@ import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { PageHeader } from '@/components/ui/page-header'
 import { Skeleton } from '@/components/ui/skeleton'
+import { usePageTitle } from '@/hooks/usePageTitle'
 
 import { useAdminSettings, useUpdateExtractionSettings, useUpdateStructureProfile } from '../../hooks'
 import { useMoonScanPermissions } from '../../permissions'
@@ -169,6 +170,8 @@ const PROFILE_ROWS: Array<{ id: StructureType; label: string }> = [
 ]
 
 export default function AdminSettingsPage() {
+	usePageTitle('Moon Scan Settings')
+
 	const { canAdmin } = useMoonScanPermissions()
 
 	const { data, isLoading, error } = useAdminSettings()
