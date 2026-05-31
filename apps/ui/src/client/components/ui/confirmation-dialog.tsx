@@ -7,6 +7,7 @@ import {
 	DialogHeader,
 	DialogTitle,
 } from './dialog'
+import type { ButtonVariant } from './button'
 
 export type ConfirmationIntent = 'confirm' | 'secondary' | 'destructive'
 
@@ -17,6 +18,9 @@ export type ConfirmationDialogProps = {
 	confirmLabel: string
 	cancelLabel?: string
 	intent?: ConfirmationIntent
+	confirmButtonVariant?: ButtonVariant
+	cancelButtonVariant?: ButtonVariant
+	confirmDisabled?: boolean
 	pending?: boolean
 	onCancel: () => void
 	onConfirm: () => void
@@ -29,6 +33,9 @@ export function ConfirmationDialog({
 	confirmLabel,
 	cancelLabel = 'Cancel',
 	intent = 'confirm',
+	confirmButtonVariant,
+	cancelButtonVariant,
+	confirmDisabled = false,
 	pending = false,
 	onCancel,
 	onConfirm,
@@ -44,13 +51,18 @@ export function ConfirmationDialog({
 					<DialogDescription>{description}</DialogDescription>
 				</DialogHeader>
 				<DialogFooter>
-					<Button variant="cancel" showIcon={false} disabled={pending} onClick={onCancel}>
+					<Button
+						variant={cancelButtonVariant ?? 'cancel'}
+						showIcon={false}
+						disabled={pending}
+						onClick={onCancel}
+					>
 						{cancelLabel}
 					</Button>
 					<Button
-						variant={confirmVariant}
+						variant={confirmButtonVariant ?? confirmVariant}
 						showIcon={false}
-						disabled={pending}
+						disabled={pending || confirmDisabled}
 						loading={pending}
 						onClick={onConfirm}
 					>

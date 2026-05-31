@@ -19,6 +19,7 @@ import {
 	useUpdateBroadcast,
 } from '@/hooks/useBroadcasts'
 import { useAuth } from '@/hooks/useAuth'
+import { useConfirmationDialog } from '@/hooks/useConfirmationDialog'
 import { usePageTitle } from '@/hooks/usePageTitle'
 import { useUserPermissions } from '@/hooks/useUserPermissions'
 import { BroadcastPreviewPane } from '@/features/broadcasts/components/broadcast-preview-pane'
@@ -77,6 +78,7 @@ export default function NewBroadcastPage() {
 	const sendBroadcast = useSendBroadcast()
 	const updateBroadcast = useUpdateBroadcast()
 	const { user } = useAuth()
+	const { requestConfirmation, confirmationDialog } = useConfirmationDialog()
 	const { hasPermission, isAdmin } = useUserPermissions()
 	const { data: draftBroadcast, isLoading: draftLoading } = useBroadcast(draftId)
 
@@ -110,6 +112,29 @@ export default function NewBroadcastPage() {
 
 	// Message state
 	const [message, setMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null)
+
+	const handleMentionLevelChange = useCallback((value: string) => {
+		const nextLevel = value as typeof mentionLevel
+		if (nextLevel !== 'everyone') {
+			setMentionLevel(nextLevel)
+			return
+		}
+
+		// Declining the confirmation should default to @here.
+		setMentionLevel('here')
+		requestConfirmation({
+			title: 'Ping @everyone?',
+			description:
+				'Are you sure you want to ping @everyone? This is sent to offline people as well. Prefer @here instead.',
+			confirmLabel: 'Yes, Ping @everyone',
+			cancelLabel: "It's not that important",
+			confirmButtonVariant: 'danger',
+			cancelButtonVariant: 'confirm',
+			onConfirm: () => {
+				setMentionLevel('everyone')
+			},
+		})
+	}, [requestConfirmation])
 
 	useBroadcastDraftInitializer({
 		isEditMode,
@@ -681,7 +706,7 @@ export default function NewBroadcastPage() {
 									<Select
 										inputId="mentions"
 										value={mentionLevel}
-										onValueChange={(value) => setMentionLevel(value as typeof mentionLevel)}
+										onValueChange={handleMentionLevelChange}
 										options={[
 											{ value: 'none', label: 'No mention' },
 											{ value: 'here', label: '@here' },
@@ -794,6 +819,7 @@ export default function NewBroadcastPage() {
 				open={timestampHelperOpen}
 				onOpenChange={setTimestampHelperOpen}
 			/>
+			{confirmationDialog}
 		</Container>
 	)
 }
