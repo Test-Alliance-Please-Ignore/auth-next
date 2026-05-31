@@ -200,12 +200,11 @@ export class MarketsDO extends DurableObject<Env, {}> implements Markets {
 				return
 			}
 
-			const snapshotIds = snapshotsToDelete.map((s) => s.id)
 			const oldestTime = snapshotsToDelete[0].snapshotTime
 			const newestTime = snapshotsToDelete[snapshotsToDelete.length - 1].snapshotTime
 
 			console.log(
-				`[cleanupOldSnapshots] Deleting ${snapshotIds.length} snapshots from ${oldestTime} to ${newestTime}`
+				`[cleanupOldSnapshots] Deleting ${snapshotsToDelete.length} snapshots from ${oldestTime} to ${newestTime}`
 			)
 
 			// Roll up complete days into market_daily_prices before deleting raw orders.
@@ -216,7 +215,16 @@ export class MarketsDO extends DurableObject<Env, {}> implements Markets {
 				INSERT INTO market_daily_prices
 					(location_id, location_type, price_date, type_id,
 					 avg_sell_price, avg_buy_price, min_sell_price, max_sell_price, snapshot_count)
-				WITH snapshot_bests AS (
+				WITH snapshots_to_rollup AS (
+					SELECT id
+					FROM market_snapshots
+					WHERE location_id = ${locationId}
+					  AND location_type = ${locationType}
+					  AND status = 'complete'
+					ORDER BY snapshot_time ASC
+					LIMIT ${deleteCount}
+				),
+				snapshot_bests AS (
 					SELECT
 						source_location_id,
 						source_location_type,
@@ -226,7 +234,7 @@ export class MarketsDO extends DurableObject<Env, {}> implements Markets {
 						MIN(CASE WHEN is_buy_order = false THEN price::numeric END) AS best_sell,
 						MAX(CASE WHEN is_buy_order = true  THEN price::numeric END) AS best_buy
 					FROM market_orders
-					WHERE snapshot_id = ANY(${snapshotIds})
+					WHERE snapshot_id IN (SELECT id FROM snapshots_to_rollup)
 					  AND DATE(snapshot_time AT TIME ZONE 'UTC') < CURRENT_DATE
 					GROUP BY source_location_id, source_location_type,
 					         DATE(snapshot_time AT TIME ZONE 'UTC'), type_id, snapshot_id
@@ -253,13 +261,33 @@ export class MarketsDO extends DurableObject<Env, {}> implements Markets {
 			`)
 			console.log(`[cleanupOldSnapshots] Daily rollup complete`)
 
-			// Delete the snapshots (CASCADE will handle market_orders)
-			await this.db.delete(marketSnapshots).where(inArray(marketSnapshots.id, snapshotIds))
-
-			// Cleanup orphaned latest_market_prices records
-			await this.db
-				.delete(latestMarketPrices)
-				.where(inArray(latestMarketPrices.snapshotId, snapshotIds))
+			// Delete oldest snapshots (CASCADE handles market_orders), without passing giant ID lists.
+			await this.db.execute(sql`
+				WITH snapshots_to_delete AS (
+					SELECT id
+					FROM market_snapshots
+					WHERE location_id = ${locationId}
+					  AND location_type = ${locationType}
+					  AND status = 'complete'
+					ORDER BY snapshot_time ASC
+					LIMIT ${deleteCount}
+				)
+				DELETE FROM latest_market_prices
+				WHERE snapshot_id IN (SELECT id FROM snapshots_to_delete)
+			`)
+			await this.db.execute(sql`
+				WITH snapshots_to_delete AS (
+					SELECT id
+					FROM market_snapshots
+					WHERE location_id = ${locationId}
+					  AND location_type = ${locationType}
+					  AND status = 'complete'
+					ORDER BY snapshot_time ASC
+					LIMIT ${deleteCount}
+				)
+				DELETE FROM market_snapshots
+				WHERE id IN (SELECT id FROM snapshots_to_delete)
+			`)
 
 			// Trim daily price history beyond retention limit
 			const maxDailyDays = this.getMaxDailyPriceHistoryDays()
@@ -271,7 +299,7 @@ export class MarketsDO extends DurableObject<Env, {}> implements Markets {
 			console.log(`[cleanupOldSnapshots] Trimmed daily prices older than ${maxDailyDays} days`)
 
 			console.log(
-				`[cleanupOldSnapshots] SUCCESS - Deleted ${snapshotIds.length} snapshots and associated data`
+				`[cleanupOldSnapshots] SUCCESS - Deleted ${snapshotsToDelete.length} snapshots and associated data`
 			)
 		} catch (error) {
 			// Log error but don't throw - cleanup is non-critical
