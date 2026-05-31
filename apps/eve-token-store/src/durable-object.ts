@@ -1202,6 +1202,14 @@ export class EveTokenStoreDO extends DurableObject<Env> implements EveTokenStore
 			nowMs: now,
 			dynamicBudget,
 		})
+
+		// Only enforce budget throttling when we have live route budget telemetry
+		// from ESI headers. Without that, static caps can preempt valid traffic.
+		// Real upstream 429s still trigger the route breaker and seed dynamic budget.
+		if (limits.source !== 'dynamic') {
+			return
+		}
+
 		const route = await this.incrementAuthEsiWindowCounter(`route:${routeKey}`)
 
 		if (

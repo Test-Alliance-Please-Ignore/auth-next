@@ -17,7 +17,6 @@ export function normalizeAuthEsiRouteKey(path: string): string {
 	const segments = barePath
 		.split('/')
 		.filter(Boolean)
-		.slice(0, 3)
 		.map((segment) => (/^\d+$/.test(segment) ? ':id' : segment))
 	return `/${segments.join('/')}`
 }
