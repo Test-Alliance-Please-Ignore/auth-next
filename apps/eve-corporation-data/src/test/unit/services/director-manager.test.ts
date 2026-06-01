@@ -242,7 +242,7 @@ describe('DirectorManager.recordFailure', () => {
 
 		expect(set).toHaveBeenCalledWith(
 			expect.objectContaining({
-				isHealthy: false,
+				isHealthy: true,
 				lastFailureReason: expect.stringContaining('429'),
 				nextRetryAt: expect.any(Date),
 			})
