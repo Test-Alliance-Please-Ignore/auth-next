@@ -445,6 +445,38 @@ export default function AdminLegacyMigrationDetailPage() {
 		enabled: blacklistAttributorIds.length > 0,
 	})
 	const blacklistAttributorNameById = blacklistAttributorsQuery.data ?? new Map<string, string>()
+	const legacyActionActorIds = useMemo(
+		() =>
+			Array.from(
+				new Set(
+					allDetails
+						.flatMap((detail) => detail.actions)
+						.map((action) => action.performedByUserId)
+						.filter((value): value is string => typeof value === 'string' && value.trim().length > 0)
+				)
+			),
+		[allDetails]
+	)
+	const legacyActionActorsQuery = useQuery({
+		queryKey: ['admin', 'legacy-migration-detail', modernUserId, 'action-actors', legacyActionActorIds],
+		queryFn: async () => {
+			const rows = await Promise.all(
+				legacyActionActorIds.map(async (userId) => {
+					try {
+						const user = await api.getAdminUser(userId)
+						const primaryCharacter =
+							user.characters.find((character) => character.is_primary)?.characterName ?? null
+						return [userId, primaryCharacter ?? userId] as const
+					} catch {
+						return [userId, userId] as const
+					}
+				})
+			)
+			return new Map(rows)
+		},
+		enabled: legacyActionActorIds.length > 0,
+	})
+	const legacyActionActorNameById = legacyActionActorsQuery.data ?? new Map<string, string>()
 
 	if (queueQuery.isLoading || detailsQuery.isLoading || !modernUserId) {
 		return (
@@ -832,6 +864,48 @@ export default function AdminLegacyMigrationDetailPage() {
 									</Button>
 								</div>
 							</div>
+
+							<Card>
+								<CardHeader>
+									<CardTitle className="text-sm">Queue Action History</CardTitle>
+								</CardHeader>
+								<CardContent className="space-y-2">
+									{detail.actions.length === 0 ? (
+										<div className="text-sm text-muted-foreground">No action history.</div>
+									) : (
+										[...detail.actions]
+											.sort(
+												(a, b) =>
+													new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
+											)
+											.map((action) => (
+												<div
+													key={action.id}
+													className="rounded border border-border/90 bg-card/80 p-2.5 text-sm"
+												>
+													<div className="flex flex-wrap items-center gap-2">
+														<Badge variant="secondary">{action.action}</Badge>
+														<span className="text-muted-foreground">by</span>
+														<span className="font-medium">
+															{action.performedByUserId
+																? (legacyActionActorNameById.get(action.performedByUserId) ??
+																	action.performedByUserId)
+																: 'system'}
+														</span>
+														{action.performedByUserId ? (
+															<span className="font-mono text-xs text-muted-foreground">
+																({action.performedByUserId})
+															</span>
+														) : null}
+													</div>
+													<div className="mt-1 text-xs text-muted-foreground">
+														{new Date(action.createdAt).toLocaleString()}
+													</div>
+												</div>
+											))
+									)}
+								</CardContent>
+							</Card>
 						</CardContent>
 					</Card>
 				)

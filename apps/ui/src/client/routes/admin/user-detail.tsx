@@ -682,8 +682,15 @@ export default function UserDetailPage() {
 									Private notes about this user
 								</CardDescription>
 							</div>
-							<div className="pointer-events-auto flex items-center gap-3" onClick={(event) => event.preventDefault()}>
-								<Button onClick={() => setAddNoteDialogOpen(true)} size="sm">
+							<div className="pointer-events-auto flex items-center gap-3">
+								<Button
+									onClick={(event) => {
+										event.preventDefault()
+										event.stopPropagation()
+										setAddNoteDialogOpen(true)
+									}}
+									size="sm"
+								>
 									<MessageSquarePlus className="h-4 w-4" />
 									Add Note
 								</Button>
