@@ -693,7 +693,7 @@ export class DirectorManager {
 				.set({
 					lastFailureReason: reason,
 					nextRetryAt,
-					isHealthy: false,
+					isHealthy: director.isHealthy,
 					updatedAt: now,
 				})
 				.where(eq(corporationDirectors.id, directorId))
