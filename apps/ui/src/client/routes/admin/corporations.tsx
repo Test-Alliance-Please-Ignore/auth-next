@@ -175,11 +175,11 @@ export default function CorporationsPage() {
 
 	// Get verification status badge (memoized for performance)
 	const getVerificationBadge = useCallback((corp: any) => {
-		if (!corp.assignedCharacterId) {
+		if (corp.healthyDirectorCount <= 0) {
 			return (
 				<Badge variant="ghost" className="gap-1">
 					<ShieldAlert className="h-3 w-3" />
-					No Director
+					Unverified
 				</Badge>
 			)
 		}
@@ -348,21 +348,13 @@ export default function CorporationsPage() {
 													<div className="text-sm text-muted-foreground">[{corp.ticker}]</div>
 												</div>
 											</TableCell>
-											<TableCell>
-												{corp.healthyDirectorCount > 0 || corp.assignedCharacterId ? (
-													<div className="text-sm">
-														<div>
-															{corp.healthyDirectorCount > 0
-																? `${corp.healthyDirectorCount} healthy`
-																: corp.assignedCharacterName || '1 director'}
-														</div>
-														{corp.healthyDirectorCount === 0 && corp.assignedCharacterId && (
-															<div className="text-amber-600 text-xs">Needs verification</div>
-														)}
-													</div>
-												) : (
-													<span className="text-muted-foreground text-sm">No directors</span>
-												)}
+									<TableCell>
+												<div className="text-sm">
+													<div>{`${corp.healthyDirectorCount} healthy`}</div>
+													{corp.healthyDirectorCount === 0 && (
+														<div className="text-amber-600 text-xs">Needs verification</div>
+													)}
+												</div>
 											</TableCell>
 											<TableCell>{getVerificationBadge(corp)}</TableCell>
 											<TableCell>
