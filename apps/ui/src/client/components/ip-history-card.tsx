@@ -17,6 +17,13 @@ export function IpHistoryCard({
 	entries: UserIpHistoryEntry[]
 	buildHashInspectionLink: (ipHash: string) => string
 }) {
+	const prioritizedEntries = [...entries].sort((a, b) => {
+		const interactiveA = a.distinctUserCount > 1 ? 1 : 0
+		const interactiveB = b.distinctUserCount > 1 ? 1 : 0
+		if (interactiveA !== interactiveB) return interactiveB - interactiveA
+		return new Date(b.lastSeenAt).getTime() - new Date(a.lastSeenAt).getTime()
+	})
+
 	return (
 		<Card>
 			<details className="group">
@@ -32,11 +39,11 @@ export function IpHistoryCard({
 					</div>
 				</summary>
 				<CardContent className={cn('space-y-3 pt-0')}>
-							{entries.length === 0 ? (
+							{prioritizedEntries.length === 0 ? (
 								<p className="text-sm text-muted-foreground">No IP history found.</p>
 							) : (
 								<div className="space-y-2">
-									{entries.map((entry) => (
+									{prioritizedEntries.map((entry) => (
 										<div
 											key={entry.ipAddressHash}
 											className="flex flex-wrap items-center justify-between gap-2 rounded-md border p-2"
