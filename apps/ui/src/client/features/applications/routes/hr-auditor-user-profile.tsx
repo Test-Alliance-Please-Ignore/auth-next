@@ -185,6 +185,9 @@ export default function HrAuditorUserProfilePage() {
 		queries: corporationIdsForMemberMeta.map((corporationId) => ({
 			queryKey: ['corporation-member-account', corporationId, userId],
 			queryFn: () => myCorporationsApi.getCorporationMemberAccount(corporationId, userId ?? ''),
+			meta: {
+				suppressErrorToast: true,
+			},
 			enabled: Boolean(userId && corporationId),
 			staleTime: 60_000,
 		})),

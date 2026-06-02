@@ -95,6 +95,9 @@ export function useCorporationMemberAccount(corporationId: string, accountId: st
 	return useQuery<CorporationMemberAccountResponse>({
 		queryKey: corporationKeys.memberAccount(corporationId, accountId),
 		queryFn: () => myCorporationsApi.getCorporationMemberAccount(corporationId, accountId),
+		meta: {
+			suppressErrorToast: true,
+		},
 		staleTime: 1000 * 60,
 		gcTime: 1000 * 60 * 3,
 		enabled: Boolean(corporationId && accountId),
