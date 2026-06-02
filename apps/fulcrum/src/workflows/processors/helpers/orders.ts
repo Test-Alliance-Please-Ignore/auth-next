@@ -145,9 +145,11 @@ export async function enrichMarketOrders(
 			? structureNameMap[order.location_id]
 			: nameMap[order.location_id]
 		const typeMetadata = typeMetadataMap[order.type_id]
+		const state = order.state ?? 'open'
 
 		return {
 			...order,
+			state,
 			typeName,
 			locationName,
 			marketGroupName: typeMetadata?.marketGroupName ?? null,
