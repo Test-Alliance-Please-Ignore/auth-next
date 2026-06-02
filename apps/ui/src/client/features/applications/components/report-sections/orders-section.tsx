@@ -31,7 +31,7 @@ interface ProcessedMarketOrder {
 	volume_remain: number
 	is_buy_order: boolean
 	issued: string
-	state: string
+	state?: string
 	min_volume?: number
 	range: string
 	duration: number
@@ -49,21 +49,25 @@ function formatIsk(value: number): string {
 	return `${value.toLocaleString()} ISK`
 }
 
-function OrderStateBadge({ state }: { state: string }) {
-	const normalized = state.toLowerCase()
+function normalizeOrderState(state?: string): string {
+	return (state ?? 'unknown').toLowerCase()
+}
+
+function OrderStateBadge({ state }: { state?: string }) {
+	const normalized = normalizeOrderState(state)
 	if (normalized === 'open') {
-		return <Badge variant="success" className="text-[10px] capitalize">{state}</Badge>
+		return <Badge variant="success" className="text-[10px] capitalize">{normalized}</Badge>
 	}
 	if (normalized === 'closed') {
-		return <Badge variant="secondary" className="text-[10px] capitalize">{state}</Badge>
+		return <Badge variant="ghost" className="text-[10px] capitalize">{normalized}</Badge>
 	}
 	if (normalized === 'expired') {
-		return <Badge variant="warning" className="text-[10px] capitalize">{state}</Badge>
+		return <Badge variant="warning" className="text-[10px] capitalize">{normalized}</Badge>
 	}
 	if (normalized === 'cancelled') {
-		return <Badge variant="destructive" className="text-[10px] capitalize">{state}</Badge>
+		return <Badge variant="destructive" className="text-[10px] capitalize">{normalized}</Badge>
 	}
-	return <Badge variant="secondary" className="text-[10px] capitalize">{state}</Badge>
+	return <Badge variant="ghost" className="text-[10px] capitalize">{normalized}</Badge>
 }
 
 function OrderIcon({ typeId }: { typeId: string }) {
@@ -111,7 +115,7 @@ function OrderTable({
 }) {
 	const totalNotional = orders.reduce((sum, order) => sum + order.price * order.volume_remain, 0)
 	const stateCounts = orders.reduce<Record<string, number>>((counts, order) => {
-		const key = order.state.toLowerCase()
+		const key = normalizeOrderState(order.state)
 		counts[key] = (counts[key] ?? 0) + 1
 		return counts
 	}, {})
@@ -131,7 +135,7 @@ function OrderTable({
 				case 'issued':
 					return new Date(order.issued).getTime()
 				case 'state':
-					return order.state
+					return normalizeOrderState(order.state)
 				case 'escrow':
 					return order.escrow ?? -1
 			}
@@ -278,7 +282,7 @@ export function OrdersSection({ data }: { data: ProcessedMarketOrder[] }) {
 				order.locationName,
 				order.location_id,
 				order.range,
-				order.state,
+				normalizeOrderState(order.state),
 				order.is_buy_order ? 'buy' : 'sell',
 			]
 				.filter(Boolean)
