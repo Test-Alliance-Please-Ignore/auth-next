@@ -105,5 +105,6 @@ export function checkCorpHopper(
 			})),
 			averageDays: avgDays,
 		},
+		surfaceSections: ['corp-history'],
 	}
 }

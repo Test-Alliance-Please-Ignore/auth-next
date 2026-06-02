@@ -17,33 +17,25 @@ import {
 } from '@/components/ui/table'
 import { cn } from '@/lib/utils'
 
+import { BlacklistHighlight } from './blacklist-highlighting'
+import type { BlacklistHighlights } from './blacklist-highlighting'
+import { formatStandingLabel, getStandingColorClass } from '../../utils/standing'
+
 interface ProcessedContact {
 	contact_id: number
 	contactName?: string
 	contact_type?: string
 	standing?: number
-	standingFormatted?: string
+	standingDisplay?: {
+		value: number
+		label: string
+	}
 }
 
 type ContactTypeFilter = 'all' | 'character' | 'corporation' | 'alliance' | 'faction'
 type StandingFilter = 'all' | 'excellent' | 'good' | 'neutral' | 'bad' | 'terrible'
 
 const DEFAULT_VISIBLE = 50
-
-// EVE Online standing colors
-function standingColor(standing?: number): string {
-	if (standing == null || standing === 0) return 'text-muted-foreground' // neutral grey
-	if (standing >= 5) return 'text-[#2b6cb0]' // dark blue — excellent
-	if (standing > 0) return 'text-[#4a9ede]' // light blue — good
-	if (standing <= -5) return 'text-[#9b2c2c]' // dark red — terrible
-	return 'text-[#c05621]' // orange — bad
-}
-
-function standingLabel(standing?: number): string {
-	if (standing == null) return '0.0'
-	const prefix = standing > 0 ? '+' : ''
-	return `${prefix}${standing.toFixed(1)}`
-}
 
 function matchesStandingFilter(standing: number | undefined, filter: StandingFilter): boolean {
 	if (filter === 'all') return true
@@ -90,7 +82,13 @@ function FilterButton({
 	)
 }
 
-export function ContactsSection({ data }: { data: ProcessedContact[] }) {
+export function ContactsSection({
+	data,
+	blacklistHighlights,
+}: {
+	data: ProcessedContact[]
+	blacklistHighlights?: BlacklistHighlights
+}) {
 	const [search, setSearch] = useState('')
 	const [typeFilter, setTypeFilter] = useState<ContactTypeFilter>('all')
 	const [standingFilter, setStandingFilter] = useState<StandingFilter>('all')
@@ -228,8 +226,17 @@ export function ContactsSection({ data }: { data: ProcessedContact[] }) {
 						<TableBody>
 							{visible.map((contact) => (
 								<TableRow key={contact.contact_id}>
-									<TableCell className="font-medium">
-										{contact.contactName || `ID: ${contact.contact_id}`}
+									<TableCell
+										className={cn(
+											'font-medium',
+										)}
+									>
+										<BlacklistHighlight
+											value={contact.contactName ?? contact.contact_id}
+											blacklist={blacklistHighlights}
+										>
+											{contact.contactName || `ID: ${contact.contact_id}`}
+										</BlacklistHighlight>
 									</TableCell>
 									<TableCell className="text-sm capitalize text-muted-foreground">
 										{contact.contact_type?.replace('_', ' ') || '-'}
@@ -238,10 +245,10 @@ export function ContactsSection({ data }: { data: ProcessedContact[] }) {
 										<span
 											className={cn(
 												'font-mono text-sm font-semibold',
-												standingColor(contact.standing),
+												getStandingColorClass(contact.standing),
 											)}
 										>
-											{standingLabel(contact.standing)}
+											{formatStandingLabel(contact.standing)}
 										</span>
 									</TableCell>
 								</TableRow>

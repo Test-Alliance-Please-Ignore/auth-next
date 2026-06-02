@@ -49,6 +49,7 @@ const VALID_SECTIONS: ReportSectionName[] = [
 	'public-info',
 	'assets',
 	'fitted-ships',
+	'orders',
 	'wallet-transactions',
 	'wallet-journal',
 	'mails',
@@ -390,58 +391,6 @@ app.post('/reports/batch', requireAuth(), async (c) => {
 // ============================================================================
 // Report Content Endpoints
 // ============================================================================
-
-/**
- * GET /api/fulcrum/reports/:reportId/html
- * Get the HTML content of a Fulcrum report
- * REQUIRES: HR viewer or higher role
- */
-app.get('/reports/:reportId/html', requireAuth(), async (c) => {
-	const user = c.get('user')!
-	const reportId = c.req.param('reportId')
-
-	try {
-		const fulcrum = getFulcrumStub(c)
-		const report = await fulcrum.getReportStatus(reportId)
-
-		if (!report) {
-			return c.json({ error: 'Report not found' }, 404)
-		}
-
-		if (report.status === 'expired') {
-			return c.json({ error: 'Report has expired' }, 410)
-		}
-
-		if (report.status !== 'completed') {
-			return c.json({ error: 'Report not ready', status: report.status }, 400)
-		}
-
-		// Check HR permission for the report's corporation (auditors bypass)
-		if (!(await isHrAuditorUser(c, user))) {
-			const hr = getHrStub(c)
-			const hasPermission = await hr.checkPermission(
-				user.id,
-				report.requestorCorporationId,
-				'hr_viewer',
-			)
-			if (!hasPermission) {
-				return c.json({ error: 'HR role required' }, 403)
-			}
-		}
-
-		const html = await fulcrum.getReportHtml(reportId)
-		if (!html) {
-			return c.json({ error: 'Report HTML not found' }, 404)
-		}
-
-		return c.html(html)
-	} catch (error) {
-		return c.json(
-			{ error: error instanceof Error ? error.message : 'Failed to get report' },
-			500,
-		)
-	}
-})
 
 /**
  * GET /api/fulcrum/reports/:reportId/sections

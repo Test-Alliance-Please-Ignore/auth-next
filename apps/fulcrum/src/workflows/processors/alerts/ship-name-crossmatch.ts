@@ -187,5 +187,6 @@ export function checkShipNameCrossmatch(
             totalCustomNamedShips: customNames.size,
             excludedSiblingNames: siblingCharacterNames,
         },
+        surfaceSections: ['assets', 'fitted-ships'],
     }
 }

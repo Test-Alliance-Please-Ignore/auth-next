@@ -27,6 +27,7 @@ import {
 	CorpHistorySection,
 	ExternalLinksCard,
 	FittedShipsSection,
+	OrdersSection,
 	PublicInfoCard,
 	PublicInfoHeader,
 	PublicInfoSection,
@@ -36,6 +37,7 @@ import {
 	WalletTransactionsSection,
 } from './report-sections'
 import { AlertsBanner } from './report-sections/alerts-banner'
+import { extractBlacklistHighlights } from './report-sections/blacklist-highlighting'
 
 import type { ReportSectionName } from '../api'
 
@@ -385,6 +387,15 @@ function SectionContent({
 	// Communications and Overview tabs manage their own data fetching — skip the standard fetch
 	const isCommunications = section === 'mails'
 	const isOverview = section === 'public-info'
+	const sectionAlerts =
+		section !== 'public-info' ? <AlertsBanner reportId={reportId} section={section} /> : null
+	const needsBlacklistHighlights = section === 'contacts' || section === 'mails'
+	const { data: alertData } = useReportSectionData(
+		reportId,
+		'alerts',
+		isActive && needsBlacklistHighlights,
+	)
+	const blacklistHighlights = needsBlacklistHighlights ? extractBlacklistHighlights(alertData) : undefined
 	const { data, isLoading, error } = useReportSectionData(
 		reportId,
 		section,
@@ -396,14 +407,17 @@ function SectionContent({
 	// Communications section handles its own loading/error states
 	if (isCommunications) {
 		return (
-			<Card>
-				<CardContent className="pt-6">
-					<CommunicationsSection
-						reportId={reportId}
-						highlightedCharacterName={highlightedCharacterName}
-					/>
-				</CardContent>
-			</Card>
+			<div className="space-y-4">
+				<Card>
+					<CardContent className="pt-6">
+						<CommunicationsSection
+							reportId={reportId}
+							highlightedCharacterName={highlightedCharacterName}
+							blacklistHighlights={blacklistHighlights}
+						/>
+					</CardContent>
+				</Card>
+			</div>
 		)
 	}
 
@@ -414,37 +428,46 @@ function SectionContent({
 
 	if (isLoading) {
 		return (
-			<Card>
-				<CardContent className="pt-6">
-					<div className="space-y-3">
-						<Skeleton className="h-6 w-48" />
-						<Skeleton className="h-40 w-full" />
-						<Skeleton className="h-20 w-full" />
-					</div>
-				</CardContent>
-			</Card>
+			<div className="space-y-4">
+				{sectionAlerts}
+				<Card>
+					<CardContent className="pt-6">
+						<div className="space-y-3">
+							<Skeleton className="h-6 w-48" />
+							<Skeleton className="h-40 w-full" />
+							<Skeleton className="h-20 w-full" />
+						</div>
+					</CardContent>
+				</Card>
+			</div>
 		)
 	}
 
 	if (error) {
 		return (
-			<Card>
-				<CardContent className="pt-6">
-					<p className="text-sm text-destructive">
-						Failed to load section: {error.message}
-					</p>
-				</CardContent>
-			</Card>
+			<div className="space-y-4">
+				{sectionAlerts}
+				<Card>
+					<CardContent className="pt-6">
+						<p className="text-sm text-destructive">
+							Failed to load section: {error.message}
+						</p>
+					</CardContent>
+				</Card>
+			</div>
 		)
 	}
 
 	if (!data) {
 		return (
-			<Card>
-				<CardContent className="pt-6">
-					<p className="text-sm text-muted-foreground">No data available for this section.</p>
-				</CardContent>
-			</Card>
+			<div className="space-y-4">
+				{sectionAlerts}
+				<Card>
+					<CardContent className="pt-6">
+						<p className="text-sm text-muted-foreground">No data available for this section.</p>
+					</CardContent>
+				</Card>
+			</div>
 		)
 	}
 
@@ -460,6 +483,8 @@ function SectionContent({
 				return <AssetsSection data={d} />
 			case 'fitted-ships':
 				return <FittedShipsSection data={d} />
+			case 'orders':
+				return <OrdersSection data={d} />
 			case 'contracts':
 				return <ContractsSection data={d} />
 			case 'wallet-transactions':
@@ -467,7 +492,7 @@ function SectionContent({
 			case 'wallet-journal':
 				return <WalletJournalSection data={d} />
 			case 'contacts':
-				return <ContactsSection data={d} />
+				return <ContactsSection data={d} blacklistHighlights={blacklistHighlights} />
 			case 'alerts':
 				return <LegacyDataSection data={d} />
 			default:
@@ -476,11 +501,14 @@ function SectionContent({
 	})()
 
 	return (
-		<Card>
-			<CardContent className="pt-6">
-				{content}
-			</CardContent>
-		</Card>
+		<div className="space-y-4">
+			{sectionAlerts}
+			<Card>
+				<CardContent className="pt-6">
+					{content}
+				</CardContent>
+			</Card>
+		</div>
 	)
 }
 

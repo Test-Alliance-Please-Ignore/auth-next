@@ -21,6 +21,7 @@ import type { ProcessedWalletTransaction } from '../helpers/wallet-transactions'
 import type { ProcessedContract } from '../helpers/contracts'
 import type { ProcessedContact } from '../helpers/contacts'
 import type { ProcessedMail } from '../helpers/mails'
+import type { ReportSectionName } from '@repo/fulcrum'
 import type { ReportAlert } from './types'
 
 const JITA_MARKET_BLACKLIST_MIN_ISK = 100_000_000
@@ -32,6 +33,11 @@ export interface BlacklistMatch {
 	characterId: string
 	/** Resolved name (if available) */
 	characterName?: string
+	/** Contact standing details when the source is a contact match */
+	standing?: {
+		value: number
+		label: string
+	}
 	/** Which data source the match was found in */
 	source: 'wallet-journal' | 'wallet-transactions' | 'contracts' | 'contacts' | 'mails' | 'ship-names'
 	/** Human-readable detail about the specific record */
@@ -44,7 +50,12 @@ export interface BlacklistMatch {
 export interface BlacklistAssociationGroup {
 	characterId: string
 	characterName?: string
-	matches: Array<{ source: BlacklistMatch['source']; detail: string; occurredAt?: string }>
+	matches: Array<{
+		source: BlacklistMatch['source']
+		detail: string
+		occurredAt?: string
+		standing?: BlacklistMatch['standing']
+	}>
 }
 
 /**
@@ -237,8 +248,9 @@ export function checkBlacklistAssociation(
 				matches.push({
 					characterId: contact.contact_id,
 					characterName: contact.contactName,
+					standing: contact.standingDisplay,
 					source: 'contacts',
-					detail: `In contacts with standing ${contact.standingFormatted ?? String(contact.standing)}`,
+					detail: `In contacts with standing ${contact.standingDisplay?.label ?? String(contact.standing)}`,
 				})
 			} else if (
 				contact.contact_type === 'character' &&
@@ -247,8 +259,9 @@ export function checkBlacklistAssociation(
 				matches.push({
 					characterId: contact.contact_id ?? `name:${contact.contactName}`,
 					characterName: contact.contactName,
+					standing: contact.standingDisplay,
 					source: 'contacts',
-					detail: `In contacts with standing ${contact.standingFormatted ?? String(contact.standing)}`,
+					detail: `In contacts with standing ${contact.standingDisplay?.label ?? String(contact.standing)}`,
 				})
 			}
 		}
@@ -326,12 +339,22 @@ export function checkBlacklistAssociation(
 			if (!existing.characterName && match.characterName) {
 				existing.characterName = match.characterName
 			}
-			existing.matches.push({ source: match.source, detail: match.detail, occurredAt: match.occurredAt })
+			existing.matches.push({
+				source: match.source,
+				detail: match.detail,
+				occurredAt: match.occurredAt,
+				standing: match.standing,
+			})
 		} else {
 			grouped.set(match.characterId, {
 				characterId: match.characterId,
 				characterName: match.characterName,
-				matches: [{ source: match.source, detail: match.detail, occurredAt: match.occurredAt }],
+				matches: [{
+					source: match.source,
+					detail: match.detail,
+					occurredAt: match.occurredAt,
+					standing: match.standing,
+				}],
 			})
 		}
 	}
@@ -349,6 +372,26 @@ export function checkBlacklistAssociation(
 	const uniqueCharacters = associations.length
 	const totalHits = matches.length
 	const sources = [...new Set(matches.map((m) => m.source))]
+	const surfaceSections = Array.from(
+		new Set<ReportSectionName>(
+			sources.flatMap((source) => {
+				switch (source) {
+					case 'wallet-journal':
+						return ['wallet-journal']
+					case 'wallet-transactions':
+						return ['wallet-transactions']
+					case 'contracts':
+						return ['contracts']
+					case 'contacts':
+						return ['contacts']
+					case 'mails':
+						return ['mails']
+					case 'ship-names':
+						return ['assets', 'fitted-ships']
+				}
+			}),
+		),
+	)
 
 	const charSummaries = associations
 		.slice(0, 5)
@@ -373,5 +416,6 @@ export function checkBlacklistAssociation(
 			uniqueCharacters,
 			sources,
 		},
+		surfaceSections,
 	}
 }

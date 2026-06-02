@@ -159,5 +159,6 @@ export function checkPlexInjectorTrading(
                 sellVolume: s.sellVolume,
             })),
         },
+        surfaceSections: ['wallet-transactions', 'contracts'],
     }
 }

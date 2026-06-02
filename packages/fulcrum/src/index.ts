@@ -86,6 +86,7 @@ export type ReportSectionName =
 	| 'public-info'
 	| 'assets'
 	| 'fitted-ships'
+	| 'orders'
 	| 'wallet-transactions'
 	| 'wallet-journal'
 	| 'mails'
@@ -154,14 +155,6 @@ export interface Fulcrum extends DurableObject {
 	 * @returns Report metadata or null if not found
 	 */
 	getReportStatus(reportId: string): Promise<CharacterReportMetadata | null>
-
-	/**
-	 * Get character report HTML content
-	 * Updates viewed_at timestamp on first view
-	 * @param reportId - Report UUID
-	 * @returns HTML content or null if not found/expired
-	 */
-	getReportHtml(reportId: string): Promise<string | null>
 
 	/**
 	 * List character reports with optional filters

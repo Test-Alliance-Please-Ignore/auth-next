@@ -1,14 +1,19 @@
 /**
- * Alerts Banner - Displays character report alerts at the top of the Overview tab
+ * Alerts Banner - Displays character report alerts at the top of Overview or a specific tab section
  */
 
-import { useState } from 'react'
+import { useMemo, useState } from 'react'
+import { ChevronDown } from 'lucide-react'
 
 import { Badge } from '@/components/ui/badge'
 import { Card, CardContent } from '@/components/ui/card'
 import { EveTimeDisplay } from '@/components/ui/eve-time-display'
+import { useEntityNames } from '@/hooks/useEntityNames'
 
 import { useReportSectionData } from '../../hooks'
+import type { ReportSectionName } from '../../api'
+import { renderBlacklistContextLine } from '../../utils/blacklist-context'
+import { formatStandingLabel, getStandingColorClass } from '../../utils/standing'
 
 import type { BadgeProps } from '@/components/ui/badge'
 
@@ -25,6 +30,7 @@ interface ReportAlert {
     title: string
     description: string
     details: Record<string, unknown>
+    surfaceSections?: ReportSectionName[]
 }
 
 interface ReportAlerts {
@@ -76,7 +82,13 @@ function AlertItem({ alert }: { alert: ReportAlert }) {
         <div
             className={`border-l-4 ${SEVERITY_BORDER[alert.severity]} rounded-r-md bg-card px-4 py-3`}
         >
-            <div className="flex items-start justify-between gap-3">
+            <button
+                type="button"
+                className="flex w-full cursor-pointer items-start justify-between gap-3 text-left"
+                onClick={() => hasDetails && setExpanded((v) => !v)}
+                aria-expanded={expanded}
+                disabled={!hasDetails}
+            >
                 <div className="min-w-0 flex-1">
                     <div className="flex items-center gap-2">
                         <Badge variant={SEVERITY_VARIANT[alert.severity]} className="text-[11px]">
@@ -86,17 +98,15 @@ function AlertItem({ alert }: { alert: ReportAlert }) {
                     </div>
                     <p className="mt-1 text-sm text-muted-foreground">{alert.description}</p>
                 </div>
-                {hasDetails && (
-                    <button
-                        type="button"
-                        className="shrink-0 text-xs text-muted-foreground hover:text-foreground transition-colors"
-                        onClick={() => setExpanded((v) => !v)}
-                        aria-expanded={expanded}
-                    >
-                        {expanded ? 'Hide' : 'Details'}
-                    </button>
-                )}
-            </div>
+                {hasDetails ? (
+                    <div className="mt-0.5 flex shrink-0 items-center gap-1 text-xs text-muted-foreground">
+                        <span>{expanded ? 'Hide' : 'Details'}</span>
+                        <ChevronDown
+                            className={`h-4 w-4 transition-transform ${expanded ? 'rotate-180' : ''}`}
+                        />
+                    </div>
+                ) : null}
+            </button>
 
             {expanded && alert.details && (
                 <div className="mt-3 border-t border-border pt-3">
@@ -233,25 +243,70 @@ function LegacyAssociationDetails({
 						{alertType === 'legacy-blacklist-association' && matchedTargets.length > 0 ? (
 							<div className="mt-2 space-y-1.5">
 								<div className="text-xs font-semibold text-muted-foreground">Matched Blacklist Items</div>
-								{matchedTargets.map((target, index) => (
-									<div key={`${item.id}:${target.targetType}:${target.targetValue}:${index}`} className="rounded border border-border/70 bg-card/70 px-2 py-1.5">
-										<div className="flex flex-wrap items-center gap-2">
-											<Badge variant="ghost" className="text-[10px]">
-												{target.targetType.replace(/_/g, ' ')}
-											</Badge>
-											<span className="font-mono text-xs text-foreground break-all">
-												{target.targetValue}
-											</span>
-											{(target.discoverySources ?? []).slice(0, 3).map((source) => (
-												<Badge key={`${item.id}:${target.targetValue}:${source}`} variant="warning" className="text-[10px]">
-													{source.replace(/_/g, ' ')}
-												</Badge>
-											))}
-										</div>
-									</div>
-								))}
+								<LegacyBlacklistTargetList targets={matchedTargets} alertItemId={item.id} />
 							</div>
 						) : null}
+					</div>
+				)
+			})}
+		</div>
+	)
+}
+
+function LegacyBlacklistTargetList({
+	targets,
+	alertItemId,
+}: {
+	targets: Array<{
+		targetType: string
+		targetValue: string
+		discoverySources?: string[]
+	}>
+	alertItemId: string
+}) {
+	const lookupIds = useMemo(
+		() =>
+			[
+				...new Set(
+					targets
+						.filter((target) => ['character_id', 'corporation_id', 'alliance_id'].includes(target.targetType))
+						.map((target) => target.targetValue)
+						.filter(Boolean),
+				),
+			].sort(),
+		[targets],
+	)
+	const { data: entityNames = {} } = useEntityNames(lookupIds, { enabled: lookupIds.length > 0 })
+
+	return (
+		<div className="space-y-1.5">
+			{targets.map((target, index) => {
+				const resolvedName = entityNames[target.targetValue]
+				return (
+					<div
+						key={`${alertItemId}:${target.targetType}:${target.targetValue}:${index}`}
+						className="rounded border border-border/70 bg-card/70 px-2 py-1.5"
+					>
+						<div className="flex flex-wrap items-center gap-2">
+							<Badge variant="ghost" className="text-[10px]">
+								{target.targetType.replace(/_/g, ' ')}
+							</Badge>
+							<div className="min-w-0">
+								<div className="break-all font-medium text-foreground">
+									{resolvedName ?? target.targetValue}
+								</div>
+								{resolvedName ? (
+									<div className="break-all font-mono text-[10px] text-muted-foreground">
+										{target.targetValue}
+									</div>
+								) : null}
+							</div>
+							{(target.discoverySources ?? []).slice(0, 3).map((source) => (
+								<Badge key={`${alertItemId}:${target.targetValue}:${source}`} variant="warning" className="text-[10px]">
+									{source.replace(/_/g, ' ')}
+								</Badge>
+							))}
+						</div>
 					</div>
 				)
 			})}
@@ -455,6 +510,10 @@ function BlacklistAssociationDetails({ details }: { details: Record<string, unkn
     const associations = details.associations as Array<{
         characterId: string
         characterName?: string
+        standing?: {
+            value?: number
+            label?: string
+        }
         matches: Array<{ source: string; detail: string; occurredAt?: string }>
     }> | undefined
 
@@ -477,6 +536,11 @@ function BlacklistAssociationDetails({ details }: { details: Record<string, unkn
                         <span className="font-medium text-destructive">
                             {assoc.characterName ?? assoc.characterId}
                         </span>
+                        {assoc.standing?.value != null ? (
+                            <span className={getStandingColorClass(assoc.standing.value)}>
+                                {assoc.standing.label ?? formatStandingLabel(assoc.standing.value)}
+                            </span>
+                        ) : null}
                         {assoc.characterName && (
                             <span className="text-xs text-muted-foreground">
                                 ({assoc.characterId})
@@ -490,7 +554,7 @@ function BlacklistAssociationDetails({ details }: { details: Record<string, unkn
                         {assoc.matches.map((match, i) => (
                             <li key={i}>
                                 <span className="text-xs font-medium">{SOURCE_LABELS[match.source] ?? match.source}</span>
-                                <span className="text-xs text-muted-foreground"> — {match.detail}</span>
+                                <span className="text-xs text-muted-foreground"> — {renderBlacklistContextLine(match.detail)}</span>
                                 {match.occurredAt ? (
                                     <span className="ml-1 inline-flex items-center gap-1 text-xs text-muted-foreground">
                                         <span>·</span>
@@ -572,7 +636,13 @@ function formatIsk(value: number): string {
 // Main Banner Component
 // ============================================================================
 
-export function AlertsBanner({ reportId }: { reportId: string }) {
+export function AlertsBanner({
+	reportId,
+	section,
+}: {
+	reportId: string
+	section?: ReportSectionName
+}) {
     const { data, isLoading } = useReportSectionData(reportId, 'alerts', true)
 
     if (isLoading || !data) return null
@@ -580,8 +650,17 @@ export function AlertsBanner({ reportId }: { reportId: string }) {
     const alertsData = data as ReportAlerts
     if (!alertsData.alerts || alertsData.alerts.length === 0) return null
 
+    const filtered = section
+        ? alertsData.alerts.filter((alert) => {
+            const surfaces = alert.surfaceSections ?? []
+            return surfaces.includes(section)
+        })
+        : alertsData.alerts
+
+    if (filtered.length === 0) return null
+
     // Sort by severity
-    const sorted = [...alertsData.alerts].sort(
+    const sorted = [...filtered].sort(
         (a, b) => SEVERITY_ORDER[a.severity] - SEVERITY_ORDER[b.severity],
     )
 

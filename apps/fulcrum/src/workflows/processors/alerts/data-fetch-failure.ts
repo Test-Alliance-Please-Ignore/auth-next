@@ -7,6 +7,7 @@
  */
 
 import type { StepResult } from '../../utils/storage'
+import type { ReportSectionName } from '@repo/fulcrum'
 import type { ReportAlert } from './types'
 
 /** Human-readable labels for workflow step names */
@@ -45,6 +46,35 @@ const STEP_LABELS: Record<string, string> = {
  */
 const NON_CRITICAL_STEPS = new Set(['fetch-asset-names', 'apply-asset-custom-names', 'apply-market-prices'])
 
+const STEP_SECTION_MAP: Record<string, ReportSectionName[]> = {
+    'fetch-public-info': ['public-info'],
+    'process-public-info': ['public-info'],
+    'fetch-assets': ['assets'],
+    'process-assets': ['assets'],
+    'fetch-asset-names': ['assets', 'fitted-ships'],
+    'process-fitted-ships': ['fitted-ships'],
+    'fetch-orders': ['orders'],
+    'process-orders': ['orders'],
+    'fetch-wallet-transactions': ['wallet-transactions'],
+    'process-wallet-transactions': ['wallet-transactions'],
+    'fetch-wallet-journal': ['wallet-journal'],
+    'process-wallet-journal': ['wallet-journal'],
+    'fetch-mails': ['mails'],
+    'process-mails': ['mails'],
+    'fetch-contacts': ['contacts'],
+    'process-contacts': ['contacts'],
+    'fetch-corp-history': ['corp-history'],
+    'process-corp-history': ['corp-history'],
+    'fetch-skills': ['skills'],
+    'process-skills': ['skills'],
+    'fetch-contracts': ['contracts'],
+    'process-contracts': ['contracts'],
+    'fetch-notifications': ['notifications'],
+    'process-notifications': ['notifications'],
+    'fetch-clones': ['clones'],
+    'process-clones': ['clones'],
+}
+
 /**
  * Check all section results for failures and return alerts.
  * Groups fetch+process failures for the same section into a single alert.
@@ -78,6 +108,9 @@ export function checkDataFetchFailures(
 
 	for (const [label, { steps, errors, nonCritical }] of failuresByLabel) {
 		const primaryError = errors[0]
+		const surfaceSections = Array.from(
+			new Set(steps.flatMap((step) => STEP_SECTION_MAP[step] ?? [])),
+		)
 
 		alerts.push({
 			id: `data-fetch-failure-${steps[0]}`,
@@ -91,6 +124,7 @@ export function checkDataFetchFailures(
 				failedSteps: steps,
 				errors,
 			},
+			...(surfaceSections.length > 0 ? { surfaceSections } : {}),
 		})
 	}
 

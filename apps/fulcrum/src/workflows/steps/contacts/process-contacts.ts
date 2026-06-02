@@ -82,7 +82,7 @@ export async function processContacts(
 						contactId: enrichedData[0].contact_id,
 						contactName: enrichedData[0].contactName,
 						standing: enrichedData[0].standing,
-						standingFormatted: enrichedData[0].standingFormatted,
+						standingDisplay: enrichedData[0].standingDisplay,
 					}
 				: null,
 		})
@@ -110,4 +110,3 @@ export async function processContacts(
 		}
 	}
 }
-

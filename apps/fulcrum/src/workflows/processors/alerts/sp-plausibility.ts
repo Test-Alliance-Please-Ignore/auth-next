@@ -60,6 +60,7 @@ export function checkSpPlausibility(
             maxPlausibleSp,
             ratio: Math.round(ratio * 100) / 100,
         },
+        surfaceSections: ['public-info'],
     }
 }
 
