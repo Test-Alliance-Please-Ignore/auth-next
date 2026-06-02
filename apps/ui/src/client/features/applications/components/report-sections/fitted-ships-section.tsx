@@ -221,7 +221,7 @@ function ShipCard({
 			<button
 				type="button"
 				onClick={onToggle}
-				className="flex w-full items-center gap-3 px-3 py-2 text-left hover:bg-muted/50 transition-colors"
+				className="flex w-full cursor-pointer items-center gap-3 px-3 py-2 text-left hover:bg-muted/50 transition-colors"
 			>
 				{isExpanded ? (
 					<ChevronDown className="h-4 w-4 shrink-0 text-muted-foreground" />
@@ -421,7 +421,7 @@ export function FittedShipsSection({ data }: { data: FittedShip[] }) {
 							<button
 								type="button"
 								onClick={() => toggleLocation(group.locationName)}
-								className="flex w-full items-center gap-2 rounded-md px-3 py-2 text-left hover:bg-muted/50 transition-colors"
+								className="flex w-full cursor-pointer items-center gap-2 rounded-md px-3 py-2 text-left hover:bg-muted/50 transition-colors"
 							>
 								{isExpanded ? (
 									<ChevronDown className="h-4 w-4 shrink-0 text-muted-foreground" />

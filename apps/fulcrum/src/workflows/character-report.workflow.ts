@@ -18,6 +18,7 @@ import { fetchContracts, processContracts } from './steps/contracts'
 import { fetchCorpHistory, processCorpHistory } from './steps/corp-history'
 import { processFittedShips } from './steps/fitted-ships'
 import { fetchMails, processMails } from './steps/mails'
+import { fetchOrders, processOrders } from './steps/orders'
 import { fetchNotifications, processNotifications } from './steps/notifications'
 import { fetchPublicInfo, processPublicInfo } from './steps/public-info'
 import { fetchSkills, processSkills } from './steps/skills'
@@ -230,7 +231,31 @@ export class CharacterReportWorkflow extends WorkflowEntrypoint<Env, WorkflowPar
 				),
 			)
 
-			// Step 7: Fetch wallet transactions from ESI
+			// Step 8: Fetch active market orders from ESI
+			const fetchOrdersResult = await doStep('fetch-orders', ESI_STEP, () =>
+				fetchOrders(
+					this.env.ESI,
+					this.env.CHARACTER_REPORTS,
+					'CHARACTER_REPORTS',
+					characterId,
+					workflowInstanceId,
+				),
+			)
+
+			// Step 9: Process active market orders
+			const processOrdersResult = await doStep('process-orders', STEP, () =>
+				processOrders(
+					this.env,
+					getBucket,
+					this.env.CHARACTER_REPORTS,
+					'CHARACTER_REPORTS',
+					fetchOrdersResult,
+					workflowInstanceId,
+					characterId,
+				),
+			)
+
+			// Step 10: Fetch wallet transactions from ESI
 			const fetchWalletTransactionsResult = await doStep('fetch-wallet-transactions', ESI_STEP, () =>
 				fetchWalletTransactions(
 					this.env.ESI,
@@ -241,7 +266,7 @@ export class CharacterReportWorkflow extends WorkflowEntrypoint<Env, WorkflowPar
 				),
 			)
 
-			// Step 8: Process wallet transactions
+			// Step 11: Process wallet transactions
 			const processWalletTransactionsResult = await doStep('process-wallet-transactions', STEP, () =>
 				processWalletTransactions(
 					this.env,
@@ -254,7 +279,7 @@ export class CharacterReportWorkflow extends WorkflowEntrypoint<Env, WorkflowPar
 				),
 			)
 
-			// Step 9: Fetch wallet journal entries
+			// Step 12: Fetch wallet journal entries
 			const fetchWalletJournalResult = await doStep('fetch-wallet-journal', ESI_STEP, () =>
 				fetchWalletJournal(
 					this.env.ESI,
@@ -265,7 +290,7 @@ export class CharacterReportWorkflow extends WorkflowEntrypoint<Env, WorkflowPar
 				),
 			)
 
-			// Step 10: Process wallet journal entries
+			// Step 13: Process wallet journal entries
 			const processWalletJournalResult = await doStep('process-wallet-journal', STEP, () =>
 				processWalletJournal(
 					this.env,
@@ -278,7 +303,7 @@ export class CharacterReportWorkflow extends WorkflowEntrypoint<Env, WorkflowPar
 				),
 			)
 
-			// Step 11: Fetch mails from ESI
+			// Step 14: Fetch mails from ESI
 			const fetchMailsResult = await doStep('fetch-mails', ESI_STEP, () =>
 				fetchMails(
 					this.env.ESI,
@@ -289,7 +314,7 @@ export class CharacterReportWorkflow extends WorkflowEntrypoint<Env, WorkflowPar
 				),
 			)
 
-			// Step 12: Process mails
+			// Step 15: Process mails
 			const processMailsResult = await doStep('process-mails', STEP, () =>
 				processMails(
 					this.env,
@@ -302,7 +327,7 @@ export class CharacterReportWorkflow extends WorkflowEntrypoint<Env, WorkflowPar
 				),
 			)
 
-			// Step 13: Fetch contacts from ESI
+			// Step 16: Fetch contacts from ESI
 			const fetchContactsResult = await doStep('fetch-contacts', ESI_STEP, () =>
 				fetchContacts(
 					this.env.ESI,
@@ -313,7 +338,7 @@ export class CharacterReportWorkflow extends WorkflowEntrypoint<Env, WorkflowPar
 				),
 			)
 
-			// Step 14: Process contacts
+			// Step 17: Process contacts
 			const processContactsResult = await doStep('process-contacts', STEP, () =>
 				processContacts(
 					this.env,
@@ -326,7 +351,7 @@ export class CharacterReportWorkflow extends WorkflowEntrypoint<Env, WorkflowPar
 				),
 			)
 
-			// Step 15: Fetch corporation history from ESI
+			// Step 18: Fetch corporation history from ESI
 			const fetchCorpHistoryResult = await doStep('fetch-corp-history', ESI_STEP, () =>
 				fetchCorpHistory(
 					this.env.ESI,
@@ -337,7 +362,7 @@ export class CharacterReportWorkflow extends WorkflowEntrypoint<Env, WorkflowPar
 				),
 			)
 
-			// Step 16: Process corporation history
+			// Step 19: Process corporation history
 			const processCorpHistoryResult = await doStep('process-corp-history', STEP, () =>
 				processCorpHistory(
 					this.env,
@@ -350,7 +375,7 @@ export class CharacterReportWorkflow extends WorkflowEntrypoint<Env, WorkflowPar
 				),
 			)
 
-			// Step 17: Fetch skills and skill queue from ESI
+			// Step 20: Fetch skills and skill queue from ESI
 			const fetchSkillsResult = await doStep('fetch-skills', ESI_STEP, () =>
 				fetchSkills(
 					this.env.ESI,
@@ -361,7 +386,7 @@ export class CharacterReportWorkflow extends WorkflowEntrypoint<Env, WorkflowPar
 				),
 			)
 
-			// Step 18: Process skills
+			// Step 21: Process skills
 			const processSkillsResult = await doStep('process-skills', STEP, () =>
 				processSkills(
 					this.env,
@@ -374,7 +399,7 @@ export class CharacterReportWorkflow extends WorkflowEntrypoint<Env, WorkflowPar
 				),
 			)
 
-			// Step 19: Fetch contracts from ESI
+			// Step 22: Fetch contracts from ESI
 			const fetchContractsResult = await doStep('fetch-contracts-data', ESI_STEP, () =>
 				fetchContracts(
 					this.env.ESI,
@@ -385,7 +410,7 @@ export class CharacterReportWorkflow extends WorkflowEntrypoint<Env, WorkflowPar
 				),
 			)
 
-			// Step 20: Process contracts
+			// Step 23: Process contracts
 			const processContractsResult = await doStep('process-contracts', STEP, () =>
 				processContracts(
 					this.env,
@@ -398,7 +423,7 @@ export class CharacterReportWorkflow extends WorkflowEntrypoint<Env, WorkflowPar
 				),
 			)
 
-			// Step 21: Fetch notifications from ESI
+			// Step 24: Fetch notifications from ESI
 			const fetchNotificationsResult = await doStep('fetch-notifications', ESI_STEP, () =>
 				fetchNotifications(
 					this.env.ESI,
@@ -409,7 +434,7 @@ export class CharacterReportWorkflow extends WorkflowEntrypoint<Env, WorkflowPar
 				),
 			)
 
-			// Step 22: Process notifications
+			// Step 25: Process notifications
 			const processNotificationsResult = await doStep('process-notifications', NOTIFICATIONS_PROCESS_STEP, () =>
 				processNotifications(
 					this.env,
@@ -422,7 +447,7 @@ export class CharacterReportWorkflow extends WorkflowEntrypoint<Env, WorkflowPar
 				),
 			)
 
-			// Step 23: Fetch clones and active implants from ESI
+			// Step 26: Fetch clones and active implants from ESI
 			const fetchClonesResult = await doStep('fetch-clones', ESI_STEP, () =>
 				fetchClones(
 					this.env.ESI,
@@ -433,7 +458,7 @@ export class CharacterReportWorkflow extends WorkflowEntrypoint<Env, WorkflowPar
 				),
 			)
 
-			// Step 24: Process clones
+			// Step 27: Process clones
 			const processClonesResult = await doStep('process-clones', STEP, () =>
 				processClones(
 					this.env,
@@ -499,6 +524,8 @@ export class CharacterReportWorkflow extends WorkflowEntrypoint<Env, WorkflowPar
 						'process-assets': processAssetsResult,
 						'fetch-asset-names': fetchAssetNamesResult,
 						'process-fitted-ships': processFittedShipsResult,
+						'fetch-orders': fetchOrdersResult,
+						'process-orders': processOrdersResult,
 						'fetch-wallet-transactions': fetchWalletTransactionsResult,
 						'process-wallet-transactions': processWalletTransactionsResult,
 						'fetch-wallet-journal': fetchWalletJournalResult,
@@ -535,6 +562,7 @@ export class CharacterReportWorkflow extends WorkflowEntrypoint<Env, WorkflowPar
 						{ name: 'public-info', result: processResult },
 						{ name: 'assets', result: processAssetsResult },
 						{ name: 'fitted-ships', result: processFittedShipsResult },
+						{ name: 'orders', result: processOrdersResult },
 						{ name: 'wallet-transactions', result: processWalletTransactionsResult },
 						{ name: 'wallet-journal', result: processWalletJournalResult },
 						{ name: 'mails', result: processMailsResult },

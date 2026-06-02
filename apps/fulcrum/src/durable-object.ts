@@ -232,44 +232,6 @@ export class FulcrumDO extends DurableObject<Env, {}> implements Fulcrum {
 	}
 
 	/**
-	 * RPC: Get character report HTML content
-	 * Updates viewed_at timestamp on first view
-	 * Returns HTML or null if not found/expired
-	 */
-	async getReportHtml(reportId: string): Promise<string | null> {
-		const db = this.getDb()
-		const report = await queries.getReport(db, reportId)
-
-		// Check if report exists and is completed
-		if (!report || report.status !== 'completed') {
-			return null
-		}
-
-		// Check if expired
-		if (report.expiresAt && new Date() > report.expiresAt) {
-			return null
-		}
-
-		// Check if R2 location is available
-		if (!report.r2Bucket || !report.r2Key) {
-			return null
-		}
-
-		// Fetch HTML from R2
-		const r2Object = await this.env.CHARACTER_REPORTS.get(report.r2Key)
-		if (!r2Object) {
-			return null
-		}
-
-		const html = await r2Object.text()
-
-		// Mark as viewed (only updates if first view)
-		await queries.markReportViewed(db, reportId)
-
-		return html
-	}
-
-	/**
 	 * RPC: List character reports with optional filters
 	 * Returns array of report metadata
 	 */

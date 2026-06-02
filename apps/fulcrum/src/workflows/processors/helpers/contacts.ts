@@ -10,9 +10,14 @@ import type { CharacterContact, EsiTypeResolver } from '@repo/esi'
 /**
  * Enriched character contact with resolved names
  */
+export interface StandingDisplay {
+	value: number
+	label: string
+}
+
 export interface ProcessedContact extends CharacterContact {
 	contactName?: string
-	standingFormatted?: string
+	standingDisplay?: StandingDisplay
 	processedAt: string
 }
 
@@ -27,14 +32,14 @@ export type ProcessedContacts = ProcessedContact[]
  * Only exact 0.0 gets neutral grey
  *
  * @param standing - Standing value (-10 to +10)
- * @returns Formatted standing string with inline style for color
+ * @returns Structured standing display information
  */
-function formatStanding(standing: number): string {
+function formatStanding(standing: number): StandingDisplay {
 	const standingValue = Number(standing)
 	
 	// Exact 0 gets neutral grey
 	if (standingValue === 0) {
-		return '<span style="color: #808080;">0.0</span>'
+		return { value: standingValue, label: '0.0' }
 	}
 
 	// Positive values: light blue to dark blue (navy)
@@ -70,8 +75,7 @@ function formatStanding(standing: number): string {
 			b = Math.round(255 + (128 - 255) * t)
 		}
 		
-		const color = `rgb(${r}, ${g}, ${b})`
-		return `<span style="color: ${color};">+${standingValue.toFixed(1)}</span>`
+		return { value: standingValue, label: `+${standingValue.toFixed(1)}` }
 	}
 
 	// Negative values: light red to dark red
@@ -107,8 +111,7 @@ function formatStanding(standing: number): string {
 		b = 0
 	}
 	
-	const color = `rgb(${r}, ${g}, ${b})`
-	return `<span style="color: ${color};">${standingValue.toFixed(1)}</span>`
+	return { value: standingValue, label: standingValue.toFixed(1) }
 }
 
 /**
@@ -162,14 +165,13 @@ export async function enrichContacts(
 	const processedAt = new Date().toISOString()
 	return contacts.map((contact) => {
 		const contactName = nameMap[contact.contact_id]
-		const standingFormatted = formatStanding(contact.standing)
+		const standingDisplay = formatStanding(contact.standing)
 
 		return {
 			...contact,
 			contactName,
-			standingFormatted,
+			standingDisplay,
 			processedAt,
 		}
 	})
 }
-

@@ -11,6 +11,8 @@ import { Skeleton } from '@/components/ui/skeleton'
 import { cn } from '@/lib/utils'
 
 import { useReportSectionData } from '../../hooks'
+import { AlertsBanner } from './alerts-banner'
+import type { BlacklistHighlights } from './blacklist-highlighting'
 
 import { MailsSection } from './mails-section'
 import { NotificationsSection } from './notifications-section'
@@ -20,9 +22,11 @@ type SubTab = 'mails' | 'notifications'
 export function CommunicationsSection({
 	reportId,
 	highlightedCharacterName,
+	blacklistHighlights,
 }: {
 	reportId: string
 	highlightedCharacterName?: string
+	blacklistHighlights?: BlacklistHighlights
 }) {
     const [activeTab, setActiveTab] = useState<SubTab>('mails')
 
@@ -57,11 +61,12 @@ export function CommunicationsSection({
             </div>
 
             {/* Content */}
-            {activeTab === 'mails' && (
+			{activeTab === 'mails' && (
 				<SubTabContent
 					reportId={reportId}
 					section="mails"
 					highlightedCharacterName={highlightedCharacterName}
+					blacklistHighlights={blacklistHighlights}
 				/>
 			)}
             {activeTab === 'notifications' && (
@@ -75,16 +80,19 @@ function SubTabContent({
 	reportId,
 	section,
 	highlightedCharacterName,
+	blacklistHighlights,
 }: {
 	reportId: string
 	section: 'mails' | 'notifications'
 	highlightedCharacterName?: string
+	blacklistHighlights?: BlacklistHighlights
 }) {
 	const { data, isLoading, error } = useReportSectionData(reportId, section, true)
 
 	if (isLoading) {
 		return (
 			<div className="space-y-3">
+				<AlertsBanner reportId={reportId} section={section} />
 				<Skeleton className="h-6 w-48" />
 				<Skeleton className="h-40 w-full" />
 				<Skeleton className="h-20 w-full" />
@@ -94,24 +102,41 @@ function SubTabContent({
 
 	if (error) {
 		return (
-			<p className="text-sm text-destructive">
-				Failed to load: {error.message}
-			</p>
+			<div className="space-y-3">
+				<AlertsBanner reportId={reportId} section={section} />
+				<p className="text-sm text-destructive">
+					Failed to load: {error.message}
+				</p>
+			</div>
 		)
 	}
 
 	if (!data) {
-		return <p className="text-sm text-muted-foreground">No data available.</p>
+		return (
+			<div className="space-y-3">
+				<AlertsBanner reportId={reportId} section={section} />
+				<p className="text-sm text-muted-foreground">No data available.</p>
+			</div>
+		)
 	}
 
 	if (section === 'mails') {
 		return (
-			<MailsSection
-				data={data}
-				reportId={reportId}
-				highlightedCharacterName={highlightedCharacterName}
-			/>
+			<div className="space-y-3">
+				<AlertsBanner reportId={reportId} section={section} />
+				<MailsSection
+					data={data}
+					reportId={reportId}
+					highlightedCharacterName={highlightedCharacterName}
+					blacklistHighlights={blacklistHighlights}
+				/>
+			</div>
 		)
 	}
-	return <NotificationsSection data={data} />
+	return (
+		<div className="space-y-3">
+			<AlertsBanner reportId={reportId} section={section} />
+			<NotificationsSection data={data} />
+		</div>
+	)
 }

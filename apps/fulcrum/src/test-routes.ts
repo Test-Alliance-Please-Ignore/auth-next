@@ -136,62 +136,6 @@ testRoutes.get('/reports/:reportId', async (c) => {
 })
 
 /**
- * GET /test/reports/:reportId/html
- * Get report HTML content
- *
- * Response:
- * - HTML content (text/html)
- * - 404 if report not found or HTML not available
- * - 410 if report is expired
- */
-testRoutes.get('/reports/:reportId/html', async (c) => {
-	const reportId = c.req.param('reportId')
-
-	try {
-		const stub = getStub<Fulcrum>(c.env.FULCRUM, 'default')
-
-		// First check report status
-		const report = await stub.getReportStatus(reportId)
-
-		if (!report) {
-			return c.json({ error: 'Report not found' }, 404)
-		}
-
-		if (report.status === 'expired') {
-			return c.json({ error: 'Report has expired' }, 410)
-		}
-
-		if (report.status !== 'completed') {
-			return c.json(
-				{
-					error: 'Report not ready',
-					status: report.status,
-					message: `Report is currently ${report.status}`,
-				},
-				400,
-			)
-		}
-
-		// Get the HTML content
-		const html = await stub.getReportHtml(reportId)
-
-		if (!html) {
-			return c.json({ error: 'Report HTML not found' }, 404)
-		}
-
-		return c.html(html)
-	} catch (error) {
-		return c.json(
-			{
-				error: 'Failed to get report HTML',
-				message: error instanceof Error ? error.message : String(error),
-			},
-			500,
-		)
-	}
-})
-
-/**
  * GET /test/reports
  * List reports with optional filtering
  *

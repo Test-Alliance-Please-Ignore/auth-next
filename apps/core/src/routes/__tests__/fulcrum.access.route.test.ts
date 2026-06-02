@@ -53,7 +53,6 @@ function makeFulcrumStub() {
 		createCharacterReport: vi.fn().mockResolvedValue('report-1'),
 		createBulkCharacterReports: vi.fn().mockResolvedValue({ batchId: 'batch-1' }),
 		getReportStatus: vi.fn(),
-		getReportHtml: vi.fn(),
 		getSectionManifest: vi.fn(),
 		getSectionData: vi.fn(),
 	}

@@ -120,5 +120,6 @@ export function checkLargeIskTransfer(
             largestAmount,
             transfers: transfers.slice(0, 10), // Top 10 by amount
         },
+        surfaceSections: ['wallet-journal'],
     }
 }

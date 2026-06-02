@@ -14,6 +14,8 @@ import { formatMonthDay, formatTime } from '@/lib/date-utils'
 import { cn } from '@/lib/utils'
 
 import { fulcrumApi } from '../../api'
+import { BlacklistHighlight } from './blacklist-highlighting'
+import type { BlacklistHighlights } from './blacklist-highlighting'
 
 // ---------------------------------------------------------------------------
 // Types
@@ -207,10 +209,12 @@ export function MailsSection({
 	data: raw,
 	reportId,
 	highlightedCharacterName,
+	blacklistHighlights,
 }: {
 	data: unknown
 	reportId: string
 	highlightedCharacterName?: string
+	blacklistHighlights?: BlacklistHighlights
 }) {
 	const { mails, mailingLists } = useMemo(() => normaliseData(raw), [raw])
 
@@ -410,14 +414,25 @@ export function MailsSection({
 												</span>
 											</div>
 											<div className="mt-0.5 flex items-center gap-2 text-xs text-muted-foreground">
-										<span className={cn(hasCharacterMention(mail, highlightedCharacterName) && 'font-semibold text-foreground')}>
-											From: {highlightText(mail.fromName || 'Unknown', highlightedCharacterName)}
-										</span>
-										{mail.recipients && mail.recipients.length > 0 && (
-											<span className={cn('truncate', hasCharacterMention(mail, highlightedCharacterName) && 'font-semibold text-foreground')}>
-												→ {highlightText(recipientSummary(mail.recipients), highlightedCharacterName)}
-											</span>
-										)}
+												<span className={cn(hasCharacterMention(mail, highlightedCharacterName) && 'font-semibold text-foreground')}>
+													From:{' '}
+													<BlacklistHighlight
+														value={mail.from ?? mail.fromName}
+														blacklist={blacklistHighlights}
+													>
+														{highlightText(mail.fromName || 'Unknown', highlightedCharacterName)}
+													</BlacklistHighlight>
+												</span>
+												{mail.recipients && mail.recipients.length > 0 && (
+													<span
+														className={cn(
+															'truncate',
+															hasCharacterMention(mail, highlightedCharacterName) && 'font-semibold text-foreground',
+														)}
+													>
+														→ {highlightText(recipientSummary(mail.recipients), highlightedCharacterName)}
+													</span>
+												)}
 											</div>
 										</div>
 									</button>
@@ -437,14 +452,29 @@ export function MailsSection({
 								</h3>
 								<div className="mt-1 flex flex-wrap items-center gap-2 text-sm text-muted-foreground">
 									<span className={cn(hasCharacterMention(selectedMail, highlightedCharacterName) && 'font-semibold text-foreground')}>
-										From: <strong>{selectedMail.fromName || 'Unknown'}</strong>
+										From:{' '}
+										<BlacklistHighlight
+											value={selectedMail.from ?? selectedMail.fromName}
+											blacklist={blacklistHighlights}
+										>
+											<strong>{selectedMail.fromName || 'Unknown'}</strong>
+										</BlacklistHighlight>
 									</span>
 									{selectedMail.recipients && selectedMail.recipients.length > 0 && (
 										<span className="flex flex-wrap items-center gap-1">
 											To:{' '}
 											{selectedMail.recipients.map((r, i) => (
-												<Badge key={i} variant="secondary" className="text-xs py-0">
-													{highlightText(r.recipientName || `ID: ${r.recipient_id}`, highlightedCharacterName)}
+												<Badge
+													key={i}
+													variant="secondary"
+													className="text-xs py-0"
+												>
+													<BlacklistHighlight
+														value={r.recipient_id ?? r.recipientName}
+														blacklist={blacklistHighlights}
+													>
+														{highlightText(r.recipientName || `ID: ${r.recipient_id}`, highlightedCharacterName)}
+													</BlacklistHighlight>
 												</Badge>
 											))}
 										</span>

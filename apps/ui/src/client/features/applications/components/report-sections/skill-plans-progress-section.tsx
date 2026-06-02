@@ -77,7 +77,7 @@ function PlanProgressCard({
             <button
                 type="button"
                 onClick={onToggle}
-                className="w-full text-left"
+                className="w-full cursor-pointer text-left"
             >
                 <CardContent className="py-3 px-4">
                     {isLoading ? (

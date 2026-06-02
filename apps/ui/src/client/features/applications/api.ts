@@ -751,6 +751,7 @@ export type ReportSectionName =
 	| 'public-info'
 	| 'assets'
 	| 'fitted-ships'
+	| 'orders'
 	| 'wallet-transactions'
 	| 'wallet-journal'
 	| 'mails'

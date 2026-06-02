@@ -2,6 +2,8 @@
  * Alert types for Fulcrum character reports
  */
 
+import type { ReportSectionName } from '@repo/fulcrum'
+
 export type AlertSeverity = 'low' | 'medium' | 'high' | 'critical'
 
 export type AlertType =
@@ -23,6 +25,7 @@ export interface ReportAlert {
     title: string
     description: string
     details: Record<string, unknown>
+    surfaceSections?: ReportSectionName[]
 }
 
 export interface ReportAlerts {
