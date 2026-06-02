@@ -50,7 +50,7 @@ function formatIsk(value: number): string {
 }
 
 function normalizeOrderState(state?: string): string {
-	return (state ?? 'unknown').toLowerCase()
+	return String(state ?? 'unknown').toLowerCase()
 }
 
 function OrderStateBadge({ state }: { state?: string }) {
