@@ -105,11 +105,20 @@ export interface Legacy extends DurableObject {
 			ipAddressCount: number
 		}
 	} | null>
-	applyMigration(id: string, payload?: Record<string, unknown>): Promise<{ item: LegacyMigrationQueueItem } | null>
-	dismissMigration(id: string, payload?: Record<string, unknown>): Promise<{ item: LegacyMigrationQueueItem } | null>
+	applyMigration(
+		id: string,
+		payload?: Record<string, unknown>,
+		actorUserId?: string | null
+	): Promise<{ item: LegacyMigrationQueueItem } | null>
+	dismissMigration(
+		id: string,
+		payload?: Record<string, unknown>,
+		actorUserId?: string | null
+	): Promise<{ item: LegacyMigrationQueueItem } | null>
 	resolveMigration(
 		id: string,
-		payload: { decision: 'accept' | 'reject' | 'needs_review'; note?: string }
+		payload: { decision: 'accept' | 'reject' | 'needs_review'; note?: string },
+		actorUserId?: string | null
 	): Promise<{ item: LegacyMigrationQueueItem } | null>
 	recheckUser(modernUserId: string, actorUserId?: string, options?: { force?: boolean }): Promise<{
 		ok: boolean

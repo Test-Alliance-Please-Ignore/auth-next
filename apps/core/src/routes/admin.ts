@@ -386,28 +386,27 @@ app.post('/legacy/migrations/:id/apply', requireAuth(), requireAdmin(), async (c
 	const user = c.get('user')!
 	const stub = getStub<Legacy>(c.env.LEGACY, 'default')
 	const body = (await c.req.json().catch(() => ({}))) as { payload?: Record<string, unknown> }
-	const result = await stub.applyMigration(id, {
-		...(body.payload ?? {}),
-		performedByUserId: user.id,
-	})
+	const result = await stub.applyMigration(id, body.payload ?? {}, user.id)
 	if (!result) return c.json({ error: 'Migration queue item not found' }, 404)
 	return c.json(result)
 })
 
 app.post('/legacy/migrations/:id/dismiss', requireAuth(), requireAdmin(), async (c) => {
 	const id = c.req.param('id')
+	const user = c.get('user')!
 	const stub = getStub<Legacy>(c.env.LEGACY, 'default')
 	const body = (await c.req.json().catch(() => ({}))) as { payload?: Record<string, unknown> }
-	const result = await stub.dismissMigration(id, body.payload)
+	const result = await stub.dismissMigration(id, body.payload ?? {}, user.id)
 	if (!result) return c.json({ error: 'Migration queue item not found' }, 404)
 	return c.json(result)
 })
 
 app.post('/legacy/migrations/:id/resolve', requireAuth(), requireAdmin(), async (c) => {
 	const id = c.req.param('id')
+	const user = c.get('user')!
 	const body = (await c.req.json()) as { decision: 'accept' | 'reject' | 'needs_review'; note?: string }
 	const stub = getStub<Legacy>(c.env.LEGACY, 'default')
-	const result = await stub.resolveMigration(id, body)
+	const result = await stub.resolveMigration(id, body, user.id)
 	if (!result) return c.json({ error: 'Migration queue item not found' }, 404)
 	return c.json(result)
 })

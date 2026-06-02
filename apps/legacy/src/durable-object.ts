@@ -408,7 +408,11 @@ export class LegacyDO extends DurableObject<Env> implements Legacy {
 		return { item: { ...item, candidateSnapshot: sanitizedCandidateSnapshot }, actions, candidates }
 	}
 
-	async applyMigration(id: string, payload?: Record<string, unknown>) {
+	async applyMigration(
+		id: string,
+		payload?: Record<string, unknown>,
+		actorUserId?: string | null
+	) {
 		const existing = await this.db.query.legacyMigrationQueue.findFirst({
 			where: eq(legacyMigrationQueue.id, id),
 		})
@@ -428,7 +432,11 @@ export class LegacyDO extends DurableObject<Env> implements Legacy {
 			? new Set(payload.noteIds.filter((value): value is string => typeof value === 'string'))
 			: null
 		const performedByUserId =
-			typeof payload?.performedByUserId === 'string' ? payload.performedByUserId : 'system:legacy'
+			typeof actorUserId === 'string'
+				? actorUserId
+				: typeof payload?.performedByUserId === 'string'
+					? payload.performedByUserId
+					: 'system:legacy'
 
 		if (applyBlacklistToUser) {
 			try {
@@ -616,7 +624,7 @@ export class LegacyDO extends DurableObject<Env> implements Legacy {
 		await this.db.insert(legacyMigrationActions).values({
 			queueId: id,
 			action: 'apply',
-			performedByUserId: null,
+			performedByUserId,
 			payload: {
 				...(payload ?? {}),
 				applyResults,
@@ -626,7 +634,11 @@ export class LegacyDO extends DurableObject<Env> implements Legacy {
 		return { item: updated }
 	}
 
-	async dismissMigration(id: string, payload?: Record<string, unknown>) {
+	async dismissMigration(
+		id: string,
+		payload?: Record<string, unknown>,
+		actorUserId?: string | null
+	) {
 		const existing = await this.db.query.legacyMigrationQueue.findFirst({
 			where: eq(legacyMigrationQueue.id, id),
 		})
@@ -643,12 +655,17 @@ export class LegacyDO extends DurableObject<Env> implements Legacy {
 		await this.db.insert(legacyMigrationActions).values({
 			queueId: id,
 			action: 'dismiss',
+			performedByUserId: actorUserId ?? null,
 			payload: payload ?? {},
 		})
 		return { item: updated }
 	}
 
-	async resolveMigration(id: string, payload: { decision: 'accept' | 'reject' | 'needs_review'; note?: string }) {
+	async resolveMigration(
+		id: string,
+		payload: { decision: 'accept' | 'reject' | 'needs_review'; note?: string },
+		actorUserId?: string | null
+	) {
 		const existing = await this.db.query.legacyMigrationQueue.findFirst({
 			where: eq(legacyMigrationQueue.id, id),
 		})
@@ -660,7 +677,7 @@ export class LegacyDO extends DurableObject<Env> implements Legacy {
 		conflicts.resolution = {
 			decision: payload.decision,
 			note: payload.note ?? null,
-			decidedByUserId: null,
+			decidedByUserId: actorUserId ?? null,
 			decidedAt: new Date().toISOString(),
 		}
 		const nextStatus: 'pending' | 'partially_applied' | 'applied' | 'dismissed' | 'error' =
@@ -678,6 +695,7 @@ export class LegacyDO extends DurableObject<Env> implements Legacy {
 		await this.db.insert(legacyMigrationActions).values({
 			queueId: id,
 			action: 'update',
+			performedByUserId: actorUserId ?? null,
 			payload: { type: 'resolve_conflict', ...payload },
 		})
 		return { item: updated }
