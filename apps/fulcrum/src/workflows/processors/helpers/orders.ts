@@ -19,6 +19,7 @@ export interface ProcessedMarketOrder extends CharacterMarketOrder {
 	locationName?: string
 	marketGroupName?: string | null
 	categoryName?: string
+	expiresAt?: string
 	processedAt: string
 }
 
@@ -146,6 +147,9 @@ export async function enrichMarketOrders(
 			: nameMap[order.location_id]
 		const typeMetadata = typeMetadataMap[order.type_id]
 		const state = order.state ?? 'open'
+		const expiresAt = new Date(
+			new Date(order.issued).getTime() + order.duration * 24 * 60 * 60 * 1000,
+		).toISOString()
 
 		return {
 			...order,
@@ -154,6 +158,7 @@ export async function enrichMarketOrders(
 			locationName,
 			marketGroupName: typeMetadata?.marketGroupName ?? null,
 			categoryName: typeMetadata?.categoryName,
+			expiresAt,
 			processedAt,
 		}
 	})
