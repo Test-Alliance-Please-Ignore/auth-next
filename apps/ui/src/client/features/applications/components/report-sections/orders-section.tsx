@@ -223,7 +223,9 @@ function OrderTable({
 											<OrderIcon typeId={order.type_id} />
 											<div className="min-w-0 space-y-0.5">
 												<div className="truncate">{order.typeName || order.type_id}</div>
-												<div className="text-xs text-muted-foreground">{order.range}</div>
+												<div className="text-xs text-muted-foreground">
+													Range: {order.range}
+												</div>
 											</div>
 										</div>
 									</TableCell>
