@@ -31,6 +31,7 @@ interface ProcessedMarketOrder {
 	volume_remain: number
 	is_buy_order: boolean
 	issued: string
+	expiresAt?: string
 	state?: string
 	min_volume?: number
 	range: string
@@ -40,7 +41,7 @@ interface ProcessedMarketOrder {
 	processedAt: string
 }
 
-type OrderSortField = 'item' | 'price' | 'total' | 'remain' | 'issued' | 'state' | 'escrow'
+type OrderSortField = 'item' | 'price' | 'total' | 'remain' | 'issued' | 'expires' | 'state' | 'escrow'
 
 function formatIsk(value: number): string {
 	if (value >= 1_000_000_000) return `${(value / 1_000_000_000).toFixed(1)}B ISK`
@@ -50,16 +51,20 @@ function formatIsk(value: number): string {
 }
 
 function normalizeOrderState(state?: string): string {
-	return String(state ?? 'unknown').toLowerCase()
+	const normalized = String(state ?? 'active').toLowerCase().trim()
+	if (!normalized || normalized === 'unknown' || normalized === 'open') {
+		return 'active'
+	}
+	return normalized
 }
 
 function OrderStateBadge({ state }: { state?: string }) {
 	const normalized = normalizeOrderState(state)
-	if (normalized === 'open') {
+	if (normalized === 'active') {
 		return <Badge variant="success" className="text-[10px] capitalize">{normalized}</Badge>
 	}
 	if (normalized === 'closed') {
-		return <Badge variant="ghost" className="text-[10px] capitalize">{normalized}</Badge>
+		return <Badge variant="destructive" className="text-[10px] capitalize">{normalized}</Badge>
 	}
 	if (normalized === 'expired') {
 		return <Badge variant="warning" className="text-[10px] capitalize">{normalized}</Badge>
@@ -134,6 +139,8 @@ function OrderTable({
 					return order.volume_remain
 				case 'issued':
 					return new Date(order.issued).getTime()
+				case 'expires':
+					return new Date(order.expiresAt ?? order.issued).getTime()
 				case 'state':
 					return normalizeOrderState(order.state)
 				case 'escrow':
@@ -182,8 +189,8 @@ function OrderTable({
 			<div className="flex flex-wrap items-center gap-2">
 				<h4 className="text-sm font-semibold text-foreground">{title}</h4>
 				<Badge variant="secondary">{orders.length}</Badge>
-				{stateCounts.open && <Badge variant="success" className="text-[10px] capitalize">{stateCounts.open} open</Badge>}
-				{stateCounts.closed && <Badge variant="secondary" className="text-[10px] capitalize">{stateCounts.closed} closed</Badge>}
+				{stateCounts.active && <Badge variant="success" className="text-[10px] capitalize">{stateCounts.active} active</Badge>}
+				{stateCounts.closed && <Badge variant="ghost" className="text-[10px] capitalize">{stateCounts.closed} closed</Badge>}
 				{stateCounts.expired && <Badge variant="warning" className="text-[10px] capitalize">{stateCounts.expired} expired</Badge>}
 				{stateCounts.cancelled && <Badge variant="destructive" className="text-[10px] capitalize">{stateCounts.cancelled} cancelled</Badge>}
 				<span className="text-xs text-muted-foreground">
@@ -203,6 +210,7 @@ function OrderTable({
 								<SortableHead field="total" label="Total" alignRight />
 								<SortableHead field="remain" label="Remain" alignRight />
 								<SortableHead field="issued" label="Issued" />
+								<SortableHead field="expires" label="Expires" />
 								<SortableHead field="state" label="Status" />
 								{showEscrow && <TableHead className="text-right">Escrow</TableHead>}
 							</TableRow>
@@ -215,16 +223,7 @@ function OrderTable({
 											<OrderIcon typeId={order.type_id} />
 											<div className="min-w-0 space-y-0.5">
 												<div className="truncate">{order.typeName || order.type_id}</div>
-												<div className="flex flex-wrap items-center gap-1.5">
-													<Badge
-														variant={order.is_buy_order ? 'success' : 'destructive'}
-														className="text-[10px]"
-													>
-														{order.is_buy_order ? 'Buy' : 'Sell'}
-													</Badge>
-													<OrderStateBadge state={order.state} />
-													<span className="text-xs text-muted-foreground">{order.range}</span>
-												</div>
+												<div className="text-xs text-muted-foreground">{order.range}</div>
 											</div>
 										</div>
 									</TableCell>
@@ -237,7 +236,9 @@ function OrderTable({
 									</TableCell>
 									<TableCell>
 										<EveTimeDisplay dateStr={order.issued} format="compact" />
-										<div className="text-xs text-muted-foreground">{order.duration}d</div>
+									</TableCell>
+									<TableCell>
+										<EveTimeDisplay dateStr={order.expiresAt ?? order.issued} format="compact" />
 									</TableCell>
 									<TableCell>
 										<OrderStateBadge state={order.state} />
@@ -353,7 +354,7 @@ export function OrdersSection({ data }: { data: ProcessedMarketOrder[] }) {
 				return
 			}
 			setField(field)
-			setOrder(field === 'issued' || field === 'state' ? 'desc' : 'asc')
+			setOrder(field === 'issued' || field === 'expires' || field === 'state' ? 'desc' : 'asc')
 		}
 	}
 
