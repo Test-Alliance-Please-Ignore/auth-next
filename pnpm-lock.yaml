@@ -1333,6 +1333,18 @@ importers:
       '@repo/db-utils':
         specifier: workspace:*
         version: link:../../packages/db-utils
+      '@repo/do-utils':
+        specifier: workspace:*
+        version: link:../../packages/do-utils
+      '@repo/esi':
+        specifier: workspace:*
+        version: link:../../packages/esi
+      '@repo/esi-rate-limit':
+        specifier: workspace:*
+        version: link:../../packages/esi-rate-limit
+      '@repo/eve-token-store':
+        specifier: workspace:*
+        version: link:../../packages/eve-token-store
       '@repo/freight':
         specifier: workspace:*
         version: link:../../packages/freight

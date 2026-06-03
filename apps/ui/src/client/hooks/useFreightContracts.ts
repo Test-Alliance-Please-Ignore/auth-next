@@ -1,24 +1,42 @@
-import { useMutation, useQuery } from '@tanstack/react-query'
+import { keepPreviousData, useMutation, useQuery } from '@tanstack/react-query'
 
 import { freightApi } from '@/lib/freight-api'
 import toast from '@/lib/toast'
 
+import type {
+	FreightContractSortDirection,
+	FreightContractSortKey,
+} from '@/lib/freight-api'
+
 export const freightContractKeys = {
-    all: ['freight-contracts'] as const,
-    lists: () => [...freightContractKeys.all, 'list'] as const,
-    list: (filters?: { status?: string }) => [...freightContractKeys.lists(), filters] as const,
-    leaderboard: () => [...freightContractKeys.all, 'leaderboard'] as const,
+	all: ['freight-contracts'] as const,
+	lists: () => [...freightContractKeys.all, 'list'] as const,
+	list: (filters?: {
+		status?: string
+		page?: number
+		pageSize?: number
+		sortBy?: FreightContractSortKey
+		sortDirection?: FreightContractSortDirection
+	}) => [...freightContractKeys.lists(), filters] as const,
+	leaderboard: () => [...freightContractKeys.all, 'leaderboard'] as const,
 }
 
 /**
  * Fetch alliance courier contracts with optional status filter
  */
-export function useFreightContracts(filters?: { status?: string }) {
-    return useQuery({
-        queryKey: freightContractKeys.list(filters),
-        queryFn: () => freightApi.listContracts(filters),
-        staleTime: 1000 * 60, // 1 minute
-    })
+export function useFreightContracts(filters?: {
+	status?: string
+	page?: number
+	pageSize?: number
+	sortBy?: FreightContractSortKey
+	sortDirection?: FreightContractSortDirection
+}) {
+	return useQuery({
+		queryKey: freightContractKeys.list(filters),
+		queryFn: () => freightApi.listContracts(filters),
+		staleTime: 1000 * 60, // 1 minute
+		placeholderData: keepPreviousData,
+	})
 }
 
 /**
@@ -26,28 +44,26 @@ export function useFreightContracts(filters?: { status?: string }) {
  * Surfaces success / failure (e.g. client offline, re-link needed) as toasts.
  */
 export function useOpenContractInGame() {
-    return useMutation({
-        mutationFn: (contractId: string) => freightApi.openContractInGame(contractId),
-        onSuccess: (result) => {
-            toast.success(`Opening contract in ${result.characterName}'s client`)
-        },
-        onError: (err) => {
-            toast.error(
-                err instanceof Error
-                    ? err.message
-                    : 'Could not open the contract in-game'
-            )
-        },
-    })
+	return useMutation({
+		mutationFn: (contractId: string) => freightApi.openContractInGame(contractId),
+		onSuccess: (result) => {
+			toast.success(`Opening contract in ${result.characterName}'s client`)
+		},
+		onError: (err) => {
+			toast.error(
+				err instanceof Error ? err.message : 'Could not open the contract in-game'
+			)
+		},
+	})
 }
 
 /**
  * Fetch courier contract leaderboard
  */
 export function useFreightLeaderboard(period?: '30d' | 'all') {
-    return useQuery({
-        queryKey: [...freightContractKeys.leaderboard(), period],
-        queryFn: () => freightApi.getLeaderboard(period),
-        staleTime: 1000 * 60 * 5, // 5 minutes
-    })
+	return useQuery({
+		queryKey: [...freightContractKeys.leaderboard(), period],
+		queryFn: () => freightApi.getLeaderboard(period),
+		staleTime: 1000 * 60 * 5, // 5 minutes
+	})
 }

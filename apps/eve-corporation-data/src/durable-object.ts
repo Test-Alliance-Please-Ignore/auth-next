@@ -1,6 +1,6 @@
 import { DurableObject } from 'cloudflare:workers'
 
-import { and, desc, eq, gt, gte, inArray, lte, sql } from '@repo/db-utils'
+import { and, asc, desc, eq, gt, gte, inArray, lte, sql } from '@repo/db-utils'
 import { getStub } from '@repo/do-utils'
 import { logger } from '@repo/hono-helpers'
 
@@ -36,6 +36,8 @@ import type {
 	CorporationAuthStatus,
 	CorporationConfigData,
 	CorporationContractData,
+	CorporationContractSortBy,
+	CorporationContractsPageData,
 	CourierLeaderboard,
 	CorporationCoreData,
 	CorporationFinancialData,
@@ -84,6 +86,8 @@ function minutesAgo(minutes: number): Date {
 	return new Date(Date.now() - minutes * 60 * 1000)
 }
 
+type SortDirection = 'asc' | 'desc'
+
 const REQUIRED_CORPORATION_WALLET_SCOPE = 'esi-wallet.read_corporation_wallets.v1'
 const CHARACTER_WALLET_SCOPE = 'esi-wallet.read_character_wallet.v1'
 const CORPORATION_MEMBERSHIP_SCOPE = 'esi-corporations.read_corporation_membership.v1'
@@ -113,6 +117,110 @@ export class EveCorporationDataDO extends DurableObject<Env> implements EveCorpo
 	private assertNonNpcCorporation(corporationId: string): void {
 		if (!this.isNpcCorporationId(corporationId)) return
 		throw new Error(`NPC corporation ${corporationId} is not supported by eve-corporation-data`)
+	}
+
+	private buildAllianceCourierContractOrderBy(
+		sortBy: CorporationContractSortBy,
+		sortDirection: SortDirection
+	) {
+		const order = sortDirection === 'desc' ? desc : asc
+
+		switch (sortBy) {
+			case 'pickup': {
+				const nullFlag = sql<number>`case when ${corporationContracts.startLocationId} is null then 1 else 0 end`
+				return [
+					order(nullFlag),
+					order(corporationContracts.startLocationId),
+					desc(corporationContracts.dateIssued),
+					desc(corporationContracts.contractId),
+				]
+			}
+			case 'dropoff': {
+				const nullFlag = sql<number>`case when ${corporationContracts.endLocationId} is null then 1 else 0 end`
+				return [
+					order(nullFlag),
+					order(corporationContracts.endLocationId),
+					desc(corporationContracts.dateIssued),
+					desc(corporationContracts.contractId),
+				]
+			}
+			case 'volume': {
+				const nullFlag = sql<number>`case when ${corporationContracts.volume} is null then 1 else 0 end`
+				const volumeValue = sql<number>`nullif(${corporationContracts.volume}, '')::numeric`
+				return [
+					order(nullFlag),
+					order(volumeValue),
+					desc(corporationContracts.dateIssued),
+					desc(corporationContracts.contractId),
+				]
+			}
+			case 'reward': {
+				const nullFlag = sql<number>`case when ${corporationContracts.reward} is null then 1 else 0 end`
+				const rewardValue = sql<number>`nullif(${corporationContracts.reward}, '')::numeric`
+				return [
+					order(nullFlag),
+					order(rewardValue),
+					desc(corporationContracts.dateIssued),
+					desc(corporationContracts.contractId),
+				]
+			}
+			case 'collateral': {
+				const nullFlag = sql<number>`case when ${corporationContracts.collateral} is null then 1 else 0 end`
+				const collateralValue = sql<number>`nullif(${corporationContracts.collateral}, '')::numeric`
+				return [
+					order(nullFlag),
+					order(collateralValue),
+					desc(corporationContracts.dateIssued),
+					desc(corporationContracts.contractId),
+				]
+			}
+			case 'daysToComplete': {
+				const nullFlag = sql<number>`case when ${corporationContracts.daysToComplete} is null then 1 else 0 end`
+				return [
+					order(nullFlag),
+					order(corporationContracts.daysToComplete),
+					desc(corporationContracts.dateIssued),
+					desc(corporationContracts.contractId),
+				]
+			}
+			case 'expires':
+			default:
+				return [
+					order(corporationContracts.dateExpired),
+					desc(corporationContracts.dateIssued),
+					desc(corporationContracts.contractId),
+				]
+		}
+	}
+
+	private mapAllianceCourierContract(row: typeof corporationContracts.$inferSelect): CorporationContractData {
+		return {
+			id: row.id,
+			corporationId: row.corporationId,
+			contractId: row.contractId,
+			acceptorId: row.acceptorId,
+			assigneeId: row.assigneeId,
+			availability: row.availability,
+			buyout: row.buyout,
+			collateral: row.collateral,
+			dateAccepted: row.dateAccepted,
+			dateCompleted: row.dateCompleted,
+			dateExpired: row.dateExpired,
+			dateIssued: row.dateIssued,
+			daysToComplete: row.daysToComplete,
+			endLocationId: row.endLocationId,
+			forCorporation: row.forCorporation,
+			issuerCorporationId: row.issuerCorporationId,
+			issuerId: row.issuerId,
+			price: row.price,
+			reward: row.reward,
+			startLocationId: row.startLocationId,
+			status: row.status,
+			title: row.title,
+			type: row.type,
+			volume: row.volume,
+			updatedAt: row.updatedAt,
+		}
 	}
 
 	/**
@@ -3829,8 +3937,14 @@ export class EveCorporationDataDO extends DurableObject<Env> implements EveCorpo
 	 */
 	async getAllianceCourierContracts(
 		allianceId: string,
-		status?: string
-	): Promise<CorporationContractData[]> {
+		status?: string,
+		page = 1,
+		limit = 25,
+		sortBy: CorporationContractSortBy = 'expires',
+		sortDirection: SortDirection = 'asc'
+	): Promise<CorporationContractsPageData> {
+		const safePage = Math.max(1, Math.trunc(page))
+		const safeLimit = Math.min(Math.max(1, Math.trunc(limit)), 100)
 		const conditions: SQL[] = [
 			eq(corporationContracts.assigneeId, allianceId),
 			eq(corporationContracts.type, 'courier'),
@@ -3840,39 +3954,50 @@ export class EveCorporationDataDO extends DurableObject<Env> implements EveCorpo
 			conditions.push(eq(corporationContracts.status, status))
 		}
 
-		const results = await this.getDb()
-			.selectDistinctOn([corporationContracts.contractId])
+		const [{ count: countValue }] = await this.getDb()
+			.select({
+				count: sql<number>`count(*)`.as('count'),
+			})
 			.from(corporationContracts)
 			.where(and(...conditions))
-			.orderBy(corporationContracts.contractId, desc(corporationContracts.dateIssued))
+		const totalItems = Number(countValue ?? 0)
+		const totalPages = Math.max(1, Math.ceil(totalItems / safeLimit))
+		const currentPage = Math.min(safePage, totalPages)
+		const pageOffset = (currentPage - 1) * safeLimit
 
-		return results.map((r) => ({
-			id: r.id,
-			corporationId: r.corporationId,
-			contractId: r.contractId,
-			acceptorId: r.acceptorId,
-			assigneeId: r.assigneeId,
-			availability: r.availability,
-			buyout: r.buyout,
-			collateral: r.collateral,
-			dateAccepted: r.dateAccepted,
-			dateCompleted: r.dateCompleted,
-			dateExpired: r.dateExpired,
-			dateIssued: r.dateIssued,
-			daysToComplete: r.daysToComplete,
-			endLocationId: r.endLocationId,
-			forCorporation: r.forCorporation,
-			issuerCorporationId: r.issuerCorporationId,
-			issuerId: r.issuerId,
-			price: r.price,
-			reward: r.reward,
-			startLocationId: r.startLocationId,
-			status: r.status,
-			title: r.title,
-			type: r.type,
-			volume: r.volume,
-			updatedAt: r.updatedAt,
-		}))
+		if (totalItems === 0) {
+			return {
+				items: [],
+				pagination: {
+					page: currentPage,
+					limit: safeLimit,
+					totalItems,
+					totalPages,
+					hasNextPage: false,
+					hasPreviousPage: false,
+				},
+			}
+		}
+
+		const results = await this.getDb()
+			.select()
+			.from(corporationContracts)
+			.where(and(...conditions))
+			.orderBy(...this.buildAllianceCourierContractOrderBy(sortBy, sortDirection))
+			.limit(safeLimit)
+			.offset(pageOffset)
+
+		return {
+			items: results.map((r) => this.mapAllianceCourierContract(r)),
+			pagination: {
+				page: currentPage,
+				limit: safeLimit,
+				totalItems,
+				totalPages,
+				hasNextPage: currentPage < totalPages,
+				hasPreviousPage: currentPage > 1,
+			},
+		}
 	}
 
 	/**

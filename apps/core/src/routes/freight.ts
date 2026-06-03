@@ -8,7 +8,6 @@
 import { Hono } from 'hono'
 
 import { getStub } from '@repo/do-utils'
-import { buildEsiUserKey, EsiRateLimitGuard, EsiRateLimitStore } from '@repo/esi-rate-limit'
 import { TimeCache, logger } from '@repo/hono-helpers'
 
 import { getCachedUserPermissions } from '../lib/groups-cache'
@@ -16,9 +15,9 @@ import { requireAllianceMember, requireAuth } from '../middleware/session'
 
 import type { EsiTypeResolver } from '@repo/esi'
 import type { EveCorporationData } from '@repo/eve-corporation-data'
-import type { EveTokenStore } from '@repo/eve-token-store'
 import type { Freight } from '@repo/freight'
 import type { App } from '../context'
+import type { CorporationContractSortBy } from '@repo/eve-corporation-data'
 
 const FREIGHT_MANAGER_URN = 'urn:freight:manager'
 const MS_PER_DAY = 86_400_000
@@ -27,6 +26,11 @@ const MS_PER_DAY = 86_400_000
  * Hardcoded TEST Alliance Please Ignore alliance ID
  */
 const ALLIANCE_ID = '498125261'
+const DEFAULT_CONTRACT_PAGE = 1
+const DEFAULT_CONTRACT_PAGE_SIZE = 25
+const MAX_CONTRACT_PAGE_SIZE = 100
+const DEFAULT_CONTRACT_SORT_BY: CorporationContractSortBy = 'expires'
+const DEFAULT_CONTRACT_SORT_DIRECTION: 'asc' | 'desc' = 'asc'
 
 /**
  * Permission check cache - 15 second TTL
@@ -349,19 +353,47 @@ app.delete('/routes/:routeId', requireAuth(), async (c) => {
 app.get('/contracts', requireAuth(), requireAllianceMember(), async (c) => {
 	try {
 		const status = c.req.query('status')
+		const parsedPage = Number.parseInt(c.req.query('page') ?? String(DEFAULT_CONTRACT_PAGE), 10)
+		const parsedPageSize = Number.parseInt(
+			c.req.query('pageSize') ?? String(DEFAULT_CONTRACT_PAGE_SIZE),
+			10
+		)
+		const rawSortBy = c.req.query('sortBy')
+		const rawSortDirection = c.req.query('sortDirection')
+		const page = Number.isFinite(parsedPage) && parsedPage > 0 ? parsedPage : DEFAULT_CONTRACT_PAGE
+		const pageSize =
+			Number.isFinite(parsedPageSize) && parsedPageSize > 0
+				? Math.min(parsedPageSize, MAX_CONTRACT_PAGE_SIZE)
+				: DEFAULT_CONTRACT_PAGE_SIZE
+		const sortBy: CorporationContractSortBy =
+			rawSortBy === 'pickup' ||
+			rawSortBy === 'dropoff' ||
+			rawSortBy === 'volume' ||
+			rawSortBy === 'reward' ||
+			rawSortBy === 'collateral' ||
+			rawSortBy === 'daysToComplete' ||
+			rawSortBy === 'expires'
+				? rawSortBy
+				: DEFAULT_CONTRACT_SORT_BY
+		const sortDirection: 'asc' | 'desc' =
+			rawSortDirection === 'desc' ? 'desc' : DEFAULT_CONTRACT_SORT_DIRECTION
 		const corpDataStub = getStub<EveCorporationData>(
 			c.env.EVE_CORPORATION_DATA,
 			'alliance-queries'
 		)
 
-		const contracts = await corpDataStub.getAllianceCourierContracts(
+		const contractPage = await corpDataStub.getAllianceCourierContracts(
 			ALLIANCE_ID,
-			status || undefined
+			status || undefined,
+			page,
+			pageSize,
+			sortBy,
+			sortDirection
 		)
 
 		// Collect all unique IDs that need name resolution
 		const idsToResolve = new Set<string>()
-		for (const contract of contracts) {
+		for (const contract of contractPage.items) {
 			if (contract.issuerId) idsToResolve.add(contract.issuerId)
 			if (contract.acceptorId) idsToResolve.add(contract.acceptorId)
 			if (contract.startLocationId) idsToResolve.add(contract.startLocationId)
@@ -380,7 +412,7 @@ app.get('/contracts', requireAuth(), requireAllianceMember(), async (c) => {
 			}
 		}
 
-		const enriched = contracts.map((contract) => ({
+		const enriched = contractPage.items.map((contract) => ({
 			...contract,
 			issuerName: contract.issuerId ? (names[contract.issuerId] ?? null) : null,
 			acceptorName: contract.acceptorId ? (names[contract.acceptorId] ?? null) : null,
@@ -392,7 +424,10 @@ app.get('/contracts', requireAuth(), requireAllianceMember(), async (c) => {
 				: null,
 		}))
 
-		return c.json(enriched)
+		return c.json({
+			items: enriched,
+			pagination: contractPage.pagination,
+		})
 	} catch (error) {
 		logger.error('Error listing freight contracts:', {
 			error: error instanceof Error ? error.message : String(error),
@@ -404,10 +439,8 @@ app.get('/contracts', requireAuth(), requireAllianceMember(), async (c) => {
 
 /**
  * POST /freight/contracts/:contractId/open-in-game
- * Opens the contract window in the player's running EVE client via the
- * ESI `/ui/openwindow/contract/` endpoint. Targets the user's main character.
- *
- * Requires the `esi-ui.open_window.v1` scope (granted by default at login).
+ * Delegates contract window opening to the Freight worker, which owns the
+ * authenticated ESI request and limiter keying for this action.
  */
 app.post('/contracts/:contractId/open-in-game', requireAuth(), requireAllianceMember(), async (c) => {
 	const user = c.get('user')!
@@ -430,73 +463,61 @@ app.post('/contracts/:contractId/open-in-game', requireAuth(), requireAllianceMe
 	}
 
 	try {
-		const tokenStore = getStub<EveTokenStore>(c.env.EVE_TOKEN_STORE, 'default')
-		// getAccessToken refreshes an expired token; null means no usable token
-		// (revoked, deleted, or — for older logins — missing the ui scope).
-		const accessToken = await tokenStore.getAccessToken(mainCharacter.characterId)
+		const freightStub = getStub<Freight>(c.env.FREIGHT, 'default')
+		const result = await freightStub.openContractInGame(
+			mainCharacter.characterId,
+			mainCharacter.characterName,
+			contractId
+		)
 
-		if (!accessToken) {
-			return c.json(
-				{
-					error: 'token_unavailable',
-					message: `Could not authorize ${mainCharacter.characterName}. Please re-link this character.`,
-				},
-				409
-			)
-		}
-
-		// ESI acts on the logged-in client of the token's character. A 204 means
-		// the request was accepted; the client must be running for it to appear.
-		const esiRateLimits = new EsiRateLimitGuard(new EsiRateLimitStore(c.env.ESI_RATE_LIMITS))
-		const esiResponse = await esiRateLimits.request({
-			path: `/latest/ui/openwindow/contract/?contract_id=${contractId}`,
-			userKey: buildEsiUserKey(c.env.EVE_SSO_CLIENT_ID, mainCharacter.characterId),
-			method: 'POST',
-			accessToken,
-			parse: async (response) => response,
-			buildError: ({ response, body, path }) =>
-				new Error(
-					`ESI request failed: ${response.status} ${response.statusText || 'Request Failed'} - ${body || 'Unknown ESI error'} | path=${path}`
-				),
-		})
-
-		if (esiResponse.status === 204) {
+		if (result.success) {
 			return c.json({ success: true, characterName: mainCharacter.characterName })
 		}
 
-		if (esiResponse.status === 403) {
+		if (result.error === 'token_unavailable') {
 			return c.json(
 				{
-					error: 'scope_missing',
-					message: `${mainCharacter.characterName} has not granted the in-game UI permission. Please re-link this character.`,
+					error: result.error,
+					message: result.message,
 				},
 				409
 			)
 		}
 
-		// 520 / other: ESI reaches no client, or the client is offline.
-		logger.warn('ESI openwindow/contract returned non-204', {
-			status: esiResponse.status,
-			contractId,
-			characterId: mainCharacter.characterId,
-		})
-		return c.json(
-			{
-				error: 'client_unreachable',
-				message: 'Could not reach an online EVE client. Make sure the game is running and logged in on your main character.',
-			},
-			502
-		)
-	} catch (error) {
-		if (error instanceof Error && error.message.includes('ESI rate limit active')) {
+		if (result.error === 'scope_missing') {
 			return c.json(
 				{
-					error: 'esi_rate_limited',
-					message: 'ESI is temporarily rate limited. Please retry shortly.',
+					error: result.error,
+					message: result.message,
+				},
+				409
+			)
+		}
+
+		if (result.error === 'esi_rate_limited') {
+			return c.json(
+				{
+					error: result.error,
+					message: result.message,
 				},
 				429
 			)
 		}
+
+		// 520 / other: ESI reaches no client, or the client is offline.
+		logger.warn('Freight worker openwindow/contract returned non-success', {
+			contractId,
+			characterId: mainCharacter.characterId,
+			error: result.error,
+		})
+		return c.json(
+			{
+				error: 'client_unreachable',
+				message: result.message,
+			},
+			502
+		)
+	} catch (error) {
 		logger.error('Error opening contract in-game:', {
 			error: error instanceof Error ? error.message : String(error),
 			contractId,

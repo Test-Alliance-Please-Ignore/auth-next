@@ -16,6 +16,21 @@ export interface FreightLocation {
 export type FreightRouteStatus = 'active' | 'inactive'
 
 /**
+ * Result of asking ESI to open a freight contract in the running client.
+ */
+export type FreightOpenContractResult =
+	| {
+			success: true
+			characterName: string
+	  }
+	| {
+			success: false
+			error: 'token_unavailable' | 'scope_missing' | 'client_unreachable' | 'esi_rate_limited'
+			message: string
+			characterName: string
+	  }
+
+/**
  * Freight route with full database fields
  */
 export interface FreightRoute {
