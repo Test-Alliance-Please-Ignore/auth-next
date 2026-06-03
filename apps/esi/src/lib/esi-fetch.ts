@@ -12,17 +12,22 @@
  */
 
 import { getStub } from '@repo/do-utils'
-import { CharacterDeletedError } from '@repo/esi'
+import {
+	CharacterDeletedError,
+	EsiRequestClient,
+	buildEsiUserKey,
+	buildPublicEsiUserKey,
+	type EsiCacheScopeContext,
+	type EsiResponse,
+} from '@repo/esi'
 import { EveCorporationData } from '@repo/eve-corporation-data'
-import { hashString } from '@repo/fetch-utils'
 import { logger } from '@repo/hono-helpers'
+import { EsiRateLimitStore, normalizeEsiRouteKey, parseEsiRateLimitHeaders } from '@repo/esi-rate-limit'
 
 import { EsiCache } from './cache'
 
 import type { EveTokenStore } from '@repo/eve-token-store'
 import type { Env } from '../context'
-import type { CacheScopeContext } from './cache'
-import type { EsiResponse } from './types'
 
 // ========================================================================
 // OPTIONS & TYPES
@@ -40,7 +45,7 @@ export interface FetchEsiOptions<B = unknown> {
 	/** Whether cache writes should be mirrored to KV/global cache when caching is enabled. */
 	persistGlobalCache?: boolean
 	/** Override the default cache scope (defaults to authenticated scope or public) */
-	cacheScopeOverride?: CacheScopeContext
+	cacheScopeOverride?: EsiCacheScopeContext
 	/**
 	 * Maximum seconds to trust cache before ETag revalidation.
 	 * If set, even non-expired cache entries will trigger conditional requests
@@ -56,10 +61,12 @@ export interface FetchEsiOptions<B = unknown> {
 export class EsiFetcher {
 	private characterId: string | null = null
 	private cache: EsiCache
-	private cacheScope: CacheScopeContext | null = null
+	private cacheScope: EsiCacheScopeContext | null = null
 	private defaultCacheMode: 'default' | 'no-store' = 'default'
+	private readonly esiRateLimits: EsiRateLimitStore
+	private readonly requestClient: EsiRequestClient
 
-	private static readonly PUBLIC_SCOPE: CacheScopeContext = {
+	private static readonly PUBLIC_SCOPE: EsiCacheScopeContext = {
 		scope: 'public',
 		scopeId: 'public',
 	}
@@ -69,6 +76,13 @@ export class EsiFetcher {
 		private env: Env
 	) {
 		this.cache = new EsiCache(this.state, this.env.ESI_GLOBAL_CACHE)
+		this.esiRateLimits = new EsiRateLimitStore(this.env.ESI_RATE_LIMITS)
+		this.requestClient = new EsiRequestClient({
+			rateLimits: this.esiRateLimits,
+			cache: this.cache,
+			debugLogger: logger,
+			compatibilityDate: '2025-11-06',
+		})
 	}
 
 	setDefaultCacheMode(mode: 'default' | 'no-store'): void {
@@ -120,7 +134,7 @@ export class EsiFetcher {
 		if (!token) {
 			throw new Error('No token found for character')
 		}
-		return `Bearer ${token}`
+		return token
 	}
 
 	// ========================================================================
@@ -251,11 +265,12 @@ export class EsiFetcher {
 	private async buildRequestHeaders(
 		cachedEtag: string | null,
 		method: 'GET' | 'POST' = 'GET'
-	): Promise<Record<string, string>> {
+	): Promise<{ headers: Record<string, string>; authenticated: boolean }> {
 		const headers: Record<string, string> = {
 			'X-Compatibility-Date': '2025-11-06',
 			Accept: 'application/json',
 		}
+		let authenticated = false
 
 		// Add Content-Type for POST requests
 		if (method === 'POST') {
@@ -266,7 +281,8 @@ export class EsiFetcher {
 		if (this.characterId) {
 			try {
 				const token = await this.fetchBearerToken()
-				headers['Authorization'] = token
+				headers['Authorization'] = `Bearer ${token}`
+				authenticated = true
 			} catch (error) {
 				// If token fetch fails, continue without auth (for public endpoints)
 				logger.warn('[EsiFetcher] Failed to fetch bearer token, continuing without auth', {
@@ -280,14 +296,129 @@ export class EsiFetcher {
 			headers['If-None-Match'] = cachedEtag
 		}
 
-		return headers
+		return { headers, authenticated }
 	}
 
 	/**
 	 * Get the active cache scope (defaults to public if unauthenticated)
 	 */
-	private getActiveCacheScope(): CacheScopeContext {
+	private getActiveCacheScope(): EsiCacheScopeContext {
 		return this.cacheScope ?? EsiFetcher.PUBLIC_SCOPE
+	}
+
+	private getRateLimitUserKey(authenticated: boolean): string {
+		if (authenticated && this.characterId) {
+			return buildEsiUserKey(this.env.EVE_SSO_CLIENT_ID, this.characterId)
+		}
+		return buildPublicEsiUserKey()
+	}
+
+	private async assertEsiRateLimitAllowance(path: string, userKey: string): Promise<void> {
+		const routeKey = normalizeEsiRouteKey(path)
+		const now = Date.now()
+
+		const routeGroup = await this.esiRateLimits.getRouteGroup(routeKey)
+		if (routeGroup) {
+			const bucket = await this.esiRateLimits.getBucketSnapshot(routeGroup, userKey)
+			if (bucket) {
+				const retryAfterSeconds = bucket.retryAfterSeconds ?? Math.max(1, Math.ceil((bucket.expiresAtMs - now) / 1000))
+				throw this.buildRateLimitPreflightError(path, routeKey, 'bucket', retryAfterSeconds, routeGroup)
+			}
+		}
+
+		const routeErrorLimit = await this.esiRateLimits.getRouteErrorLimit(routeKey, userKey)
+		if (routeErrorLimit) {
+			const retryAfterSeconds =
+				routeErrorLimit.retryAfterSeconds ?? Math.max(1, Math.ceil((routeErrorLimit.expiresAtMs - now) / 1000))
+			throw this.buildRateLimitPreflightError(path, routeKey, 'error_limit', retryAfterSeconds)
+		}
+
+		const routeCooldown = await this.esiRateLimits.getRouteCooldown(routeKey, userKey)
+		if (routeCooldown) {
+			const retryAfterSeconds =
+				routeCooldown.retryAfterSeconds ?? Math.max(1, Math.ceil((routeCooldown.expiresAtMs - now) / 1000))
+			throw this.buildRateLimitPreflightError(path, routeKey, 'route_breaker', retryAfterSeconds)
+		}
+	}
+
+	private buildRateLimitPreflightError(
+		path: string,
+		routeKey: string,
+		circuitBreaker: 'error_limit' | 'bucket' | 'route_breaker',
+		retryAfterSeconds: number,
+		routeGroup?: string
+	): Error {
+		const metadata = JSON.stringify({
+			status: 429,
+			path,
+			retryAfterSeconds,
+			circuitBreaker,
+			routeKey,
+			routeGroup,
+		})
+		return new Error(`ESI request failed: 429 Too Many Requests - {"error":"ESI rate limit active"} | metadata=${metadata}`)
+	}
+
+	private async updateEsiRateLimitState(
+		path: string,
+		headers: Headers,
+		status: number,
+		userKey: string
+	): Promise<void> {
+		const routeKey = normalizeEsiRouteKey(path)
+		const snapshot = parseEsiRateLimitHeaders(headers)
+		const now = Date.now()
+
+		if (snapshot.group) {
+			await this.esiRateLimits.rememberRouteGroup(routeKey, snapshot.group)
+		}
+
+		if (snapshot.errorLimitRemain !== undefined && snapshot.errorLimitResetSeconds !== undefined) {
+			await this.esiRateLimits.putRouteErrorLimit({
+				userKey,
+				routeKey,
+				remaining: snapshot.errorLimitRemain,
+				limit: snapshot.errorLimitRemain,
+				used: snapshot.used,
+				windowSeconds: snapshot.errorLimitResetSeconds,
+				retryAfterSeconds: snapshot.retryAfterSeconds,
+				observedAtMs: now,
+				expiresAtMs: now + snapshot.errorLimitResetSeconds * 1000,
+			})
+			return
+		}
+
+		if (snapshot.group && snapshot.limit !== undefined && snapshot.windowSeconds !== undefined) {
+			const remaining = snapshot.remaining ?? snapshot.limit
+			const used = snapshot.used ?? Math.max(0, snapshot.limit - remaining)
+			await this.esiRateLimits.putBucketSnapshot({
+				group: snapshot.group,
+				userKey,
+				routeKey,
+				status,
+				limit: snapshot.limit,
+				remaining,
+				used,
+				windowSeconds: snapshot.windowSeconds,
+				retryAfterSeconds: snapshot.retryAfterSeconds,
+				observedAtMs: now,
+				expiresAtMs: now + snapshot.windowSeconds * 1000,
+			})
+			return
+		}
+
+		if (status === 429) {
+			const retryAfterSeconds = snapshot.retryAfterSeconds ?? snapshot.errorLimitResetSeconds
+			if (retryAfterSeconds !== undefined) {
+				await this.esiRateLimits.putRouteCooldown({
+					userKey,
+					routeKey,
+					retryAfterSeconds,
+					observedAtMs: now,
+					expiresAtMs: now + retryAfterSeconds * 1000,
+				})
+			}
+		}
 	}
 
 	/**
@@ -327,190 +458,58 @@ export class EsiFetcher {
 	): Promise<EsiResponse<T>> {
 		const cacheScope = options?.cacheScopeOverride ?? this.getActiveCacheScope()
 		const cacheMode = options?.cacheMode ?? this.defaultCacheMode
-		const maxLocalCacheTtl = options?.maxLocalCacheTtl
-		const persistGlobalCache = options?.persistGlobalCache ?? true
 		const method = options?.method ?? 'GET'
-		const body = options?.body
-		const page = this.extractPageFromPath(path)
-		const cachePage = page ?? undefined
-		// Use path without page parameter for cache key
-		let cachePath = this.removePageFromPath(path)
-
-		// For POST requests with body, append hashed body to cache path
-		if (method === 'POST' && body !== undefined) {
-			const bodyStr = JSON.stringify(body)
-			const bodyHash = await hashString(bodyStr)
-			cachePath = `${cachePath}:body:${bodyHash}`
-		}
-
-		// 1. Check cache for valid (non-expired) entries
-		let cached: EsiResponse<T> | null = null
-		if (cacheMode !== 'no-store') {
-			cached = await this.cache.getCachedResponse<T>(cacheScope, cachePath, cachePage, false)
-		}
-
-		if (cached) {
-			// If maxLocalCacheTtl is set, check if we should revalidate via ETag
-			if (maxLocalCacheTtl !== undefined) {
-				// Treat missing lastModified as stale (legacy cache entries without lastModified)
-				const shouldRevalidate =
-					!cached.lastModified ||
-					(Date.now() - cached.lastModified.getTime()) / 1000 > maxLocalCacheTtl
-
-				if (shouldRevalidate) {
-					logger.debug('[EsiFetcher] Cache stale for ETag revalidation', {
-						path,
-						cacheScope,
-						hasLastModified: !!cached.lastModified,
-						maxLocalCacheTtl,
+		const accessToken = this.characterId
+			? await this.fetchBearerToken().catch((error) => {
+					logger.warn('[EsiFetcher] Failed to fetch bearer token, continuing without auth', {
+						error: error instanceof Error ? error.message : String(error),
 					})
-					// Fall through to ETag revalidation below
-					cached = null
-				} else {
-					logger.debug('[EsiFetcher] Cache hit', { path, cacheScope })
-					return cached
-				}
-			} else {
-				logger.debug('[EsiFetcher] Cache hit', { path, cacheScope })
-				return cached
-			}
-		}
-
-		// 2. Get cache entry for ETag (either expired or stale for revalidation)
-		const expiredCached =
-			cacheMode === 'no-store'
-				? null
-				: (cached ??
-					(await this.cache.getCachedResponse<T>(cacheScope, cachePath, cachePage, true)))
-		const cachedEtag = expiredCached?.etag ?? null
-		const headers = await this.buildRequestHeaders(cachedEtag, method)
-
-		// 3. Build fetch options
-		const fetchOptions: RequestInit = { method, headers }
-		if (method === 'POST' && body !== undefined) {
-			fetchOptions.body = JSON.stringify(body)
-		}
-
-		// 4. Make request with retry logic for rate limiting
-		let retryCount = 0
-		let response: Response
-
-		while (true) {
-			try {
-				response = await fetch(`https://esi.evetech.net/latest${path}`, fetchOptions)
-
-				// Handle rate limiting (420 and 429 are both rate limit errors)
-				if (response.status === 420 || response.status === 429) {
-					await this.handleRateLimit(response, retryCount)
-					retryCount++
-					continue // Retry the request
-				}
-
-				// Break out of retry loop for other status codes
-				break
-			} catch (error) {
-				logger.error('[EsiFetcher] Network error during fetch', {
-					path,
-					error: error instanceof Error ? error.message : String(error),
+					return null
 				})
-				throw new Error(
-					`ESI fetch failed for ${path}: ${error instanceof Error ? error.message : String(error)}`
-				)
-			}
-		}
+			: null
+		const authenticated = accessToken !== null
+		const userKey = this.getRateLimitUserKey(authenticated)
 
-		// 5. Handle 304 Not Modified
-		if (response.status === 304) {
-			// We need the cached data (even if expired) to return it
-			if (!expiredCached) {
-				// This shouldn't happen, but if it does, treat as cache miss
-				logger.warn('[EsiFetcher] 304 received but no cached data available', { path, cacheScope })
-				// Fall through to make a new request
-			} else {
-				// Update cache expiry with new expiry from response
-				const newExpiresAt = this.parseEsiCacheExpiry(response.headers)
-				const updatedResponse: EsiResponse<T> = {
-					data: expiredCached.data,
-					expiresAt: newExpiresAt,
-					etag: expiredCached.etag,
-					pages: expiredCached.pages,
-					page: expiredCached.page,
-				}
-				await this.cache.setCachedResponse(cacheScope, cachePath, updatedResponse, cachePage)
-				logger.debug('[EsiFetcher] 304 Not Modified, returning cached response', {
-					path,
-					cacheScope,
-				})
-				return updatedResponse
-			}
-		}
-
-		// 6. Handle error responses
-		if (!response.ok) {
-			const errorText = await response.text().catch(() => 'Unknown error')
-
-			// Check for deleted character (fatal, non-retryable)
-			if (response.status === 404 && errorText.includes('Character has been deleted')) {
-				// Extract character ID from path (e.g., /characters/123456)
-				const charMatch = path.match(/\/characters\/(\d+)/)
-				if (charMatch) {
-					const deletedCharId = charMatch[1]
-					// Mark character as deleted in token store
-					try {
-						const tokenStore = getStub<EveTokenStore>(this.env.EVE_TOKEN_STORE, 'default')
-						await tokenStore.markCharacterDeleted(deletedCharId)
-					} catch (markError) {
-						logger.warn('[EsiFetcher] Failed to mark character as deleted', {
-							characterId: deletedCharId,
-							error: markError instanceof Error ? markError.message : String(markError),
-						})
-					}
-					throw new CharacterDeletedError(deletedCharId)
-				}
-			}
-
-			logger.error('[EsiFetcher] ESI request failed', {
-				path,
-				status: response.status,
-				statusText: response.statusText,
-				errorText,
-			})
-			throw new Error(
-				`ESI request failed: ${response.status} ${response.statusText} - ${errorText}`
-			)
-		}
-
-		// 7. Parse response
-		const data = await this.parseJsonBodySafe<T>(response, path)
-		const expiresAt = this.parseEsiCacheExpiry(response.headers)
-		const etag = response.headers.get('ETag')
-		const pages = this.parseXPages(response.headers)
-		const responsePage = page ?? (pages && pages > 1 ? 1 : null)
-
-		const esiResponse: EsiResponse<T> = {
-			data,
-			expiresAt,
-			etag: etag ?? null,
-			pages,
-			page: responsePage,
-		}
-
-		// 8. Cache response
-		if (cacheMode !== 'no-store') {
-			await this.cache.setCachedResponse(cacheScope, cachePath, esiResponse, cachePage, {
-				persistGlobal: persistGlobalCache,
-			})
-		}
-
-		logger.debug('[EsiFetcher] Successfully fetched and cached response', {
+		return await this.requestClient.request<T>({
 			path,
+			userKey,
 			cacheScope,
 			cacheMode,
-			hasEtag: !!etag,
-			pages,
-		})
+			method,
+			accessToken,
+			jsonBody: options?.body,
+			maxLocalCacheTtl: options?.maxLocalCacheTtl,
+			persistGlobalCache: options?.persistGlobalCache ?? true,
+			parse: (response) => this.parseJsonBodySafe<T>(response, path),
+			buildError: async ({ response, body }) => {
+				if (response.status === 404 && body.includes('Character has been deleted')) {
+					const charMatch = path.match(/\/characters\/(\d+)/)
+					if (charMatch) {
+						const deletedCharId = charMatch[1]
+						try {
+							const tokenStore = getStub<EveTokenStore>(this.env.EVE_TOKEN_STORE, 'default')
+							await tokenStore.markCharacterDeleted(deletedCharId)
+						} catch (markError) {
+							logger.warn('[EsiFetcher] Failed to mark character as deleted', {
+								characterId: deletedCharId,
+								error: markError instanceof Error ? markError.message : String(markError),
+							})
+						}
+						throw new CharacterDeletedError(deletedCharId)
+					}
+				}
 
-		return esiResponse
+				logger.error('[EsiFetcher] ESI request failed', {
+					path,
+					status: response.status,
+					statusText: response.statusText,
+					errorText: body || 'Unknown error',
+				})
+				return new Error(
+					`ESI request failed: ${response.status} ${response.statusText} - ${body || 'Unknown error'}`
+				)
+			},
+		})
 	}
 
 	/**
@@ -523,51 +522,58 @@ export class EsiFetcher {
 		path: string,
 		options?: FetchEsiOptions<B>
 	): Promise<EsiResponse<T[]>> {
-		// 1. Fetch first page
-		const firstPagePath = path.includes('?') ? `${path}&page=1` : `${path}?page=1`
-		const firstPageResponse = await this.fetchEsi<T[]>(firstPagePath, options)
+		const cacheScope = options?.cacheScopeOverride ?? this.getActiveCacheScope()
+		const method = options?.method ?? 'GET'
+		const accessToken = this.characterId
+			? await this.fetchBearerToken().catch((error) => {
+					logger.warn('[EsiFetcher] Failed to fetch bearer token, continuing without auth', {
+						error: error instanceof Error ? error.message : String(error),
+					})
+					return null
+				})
+			: null
+		const authenticated = accessToken !== null
+		const userKey = this.getRateLimitUserKey(authenticated)
 
-		// 2. Check if pagination is needed
-		const totalPages = firstPageResponse.pages ?? 1
+		return await this.requestClient.requestPaginated<T>({
+			path,
+			userKey,
+			cacheScope,
+			cacheMode: options?.cacheMode ?? this.defaultCacheMode,
+			method,
+			accessToken,
+			jsonBody: options?.body,
+			maxLocalCacheTtl: options?.maxLocalCacheTtl,
+			persistGlobalCache: options?.persistGlobalCache ?? true,
+			parse: (response) => this.parseJsonBodySafe<T[]>(response, path),
+			buildError: async ({ response, body }) => {
+				if (response.status === 404 && body.includes('Character has been deleted')) {
+					const charMatch = path.match(/\/characters\/(\d+)/)
+					if (charMatch) {
+						const deletedCharId = charMatch[1]
+						try {
+							const tokenStore = getStub<EveTokenStore>(this.env.EVE_TOKEN_STORE, 'default')
+							await tokenStore.markCharacterDeleted(deletedCharId)
+						} catch (markError) {
+							logger.warn('[EsiFetcher] Failed to mark character as deleted', {
+								characterId: deletedCharId,
+								error: markError instanceof Error ? markError.message : String(markError),
+							})
+						}
+						throw new CharacterDeletedError(deletedCharId)
+					}
+				}
 
-		if (totalPages <= 1) {
-			// Single page, return as-is
-			return firstPageResponse
-		}
-
-		// 3. Fetch remaining pages
-		const pagePromises: Promise<EsiResponse<T[]>>[] = []
-		for (let page = 2; page <= totalPages; page++) {
-			const pagePath = path.includes('?') ? `${path}&page=${page}` : `${path}?page=${page}`
-			pagePromises.push(this.fetchEsi<T[]>(pagePath, options))
-		}
-
-		// 4. Wait for all pages (with rate limiting handled by fetchEsi)
-		const remainingPages = await Promise.all(pagePromises)
-
-		// 5. Combine all pages
-		const allData: T[] = [
-			...(Array.isArray(firstPageResponse.data)
-				? firstPageResponse.data
-				: [firstPageResponse.data]),
-		]
-
-		for (const pageResponse of remainingPages) {
-			if (Array.isArray(pageResponse.data)) {
-				allData.push(...pageResponse.data)
-			} else {
-				allData.push(pageResponse.data)
-			}
-		}
-
-		// 6. Return combined response
-		// Use the first page's expiry and ETag (they should be similar)
-		return {
-			data: allData,
-			expiresAt: firstPageResponse.expiresAt,
-			etag: firstPageResponse.etag,
-			pages: totalPages,
-			page: null, // Combined result, no single page
-		}
+				logger.error('[EsiFetcher] ESI request failed', {
+					path,
+					status: response.status,
+					statusText: response.statusText,
+					errorText: body || 'Unknown error',
+				})
+				return new Error(
+					`ESI request failed: ${response.status} ${response.statusText} - ${body || 'Unknown error'}`
+				)
+			},
+		})
 	}
 }

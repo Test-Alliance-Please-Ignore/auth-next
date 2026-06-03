@@ -2,7 +2,14 @@ import { DurableObject } from 'cloudflare:workers'
 import { createRemoteJWKSet, jwtVerify } from 'jose'
 import * as z4 from 'zod/v4/core'
 
+import { getStub } from '@repo/do-utils'
 import { and, asc, eq, gt, gte, inArray, isNull, lt, lte, or } from '@repo/db-utils'
+import {
+	EsiRequestClient,
+	type EsiCacheScopeContext,
+	type EsiResponse as SharedEsiResponse,
+} from '@repo/esi'
+import { EsiRateLimitStore, buildEsiUserKey, buildPublicEsiUserKey } from '@repo/esi-rate-limit'
 import { logger } from '@repo/hono-helpers'
 import { parseJsonResponse } from '@repo/worker-utils'
 
@@ -40,6 +47,20 @@ import type {
 } from '@repo/eve-token-store'
 import type { EveCharacterId } from '@repo/eve-types'
 import type { Env } from './context'
+
+type EsiHelperStub = {
+	fetchCharacterAffiliation(
+		characterId: string,
+		characterIds: string[],
+		options?: { cacheMode?: 'default' | 'no-store' }
+	): Promise<EsiResponse<EsiCharacterAffiliation[]>>
+	searchCharacter(characterId: string, characterName: string, strict?: boolean): Promise<string[]>
+}
+
+type EsiTypeResolverHelperStub = {
+	resolveNames(names: string[]): Promise<Record<string, string>>
+	resolveIds(ids: string[]): Promise<Record<string, string>>
+}
 
 /**
  * EVE SSO OAuth Endpoints
@@ -146,6 +167,8 @@ export class EveTokenStoreDO extends DurableObject<Env> implements EveTokenStore
 	private jwks: ReturnType<typeof createRemoteJWKSet> | null = null
 	private jwksUri: string | null = null
 	private metadata: CachedEveMetadata | null = null
+	private readonly esiRateLimits: EsiRateLimitStore
+	private readonly esiRequestClient: EsiRequestClient
 	private authEsiRouteBreakerOpenUntilMs = new Map<string, number>()
 	private authEsiRouteBreakerLastOpenUntilMs = new Map<string, number>()
 	private authEsiDynamicBudgetByRoute = new Map<
@@ -169,6 +192,13 @@ export class EveTokenStoreDO extends DurableObject<Env> implements EveTokenStore
 		// on this path, so use Neon HTTP there and keep WebSockets elsewhere.
 		const useWebSocket = env.ENVIRONMENT !== 'development'
 		this.db = createDb(env.DATABASE_URL, useWebSocket)
+		this.esiRateLimits = new EsiRateLimitStore(env.ESI_RATE_LIMITS)
+		this.esiRequestClient = new EsiRequestClient({
+			rateLimits: this.esiRateLimits,
+			cache: this,
+			debugLogger: logger,
+			compatibilityDate: '2025-09-30',
+		})
 
 		// Load cached metadata from DO storage once on startup.
 		state.blockConcurrencyWhile(async () => {
@@ -1153,19 +1183,83 @@ export class EveTokenStoreDO extends DurableObject<Env> implements EveTokenStore
 	}
 
 	/**
-	 * Extract page number from URL path
+	 * ESI cache adapter for the shared request client.
 	 */
-	private extractPageFromPath(path: string): number | undefined {
-		const pageMatch = path.match(/[?&]page=(\d+)/)
-		return pageMatch ? parseInt(pageMatch[1], 10) : undefined
+	async getCachedResponse<T>(
+		scope: EsiCacheScopeContext,
+		path: string,
+		page?: number,
+		includeExpired = false
+	): Promise<SharedEsiResponse<T> | null> {
+		const cacheKey = this.getEsiCacheKey(scope, path, page)
+		const cachedCursor = await this.state.storage.sql.exec<{
+			response_data: string
+			expires_at: number
+			etag: string | null
+			pages: number | null
+			page: number | null
+			last_modified: string | null
+		}>(
+			`SELECT response_data, expires_at, etag, pages, page, last_modified FROM esi_cache WHERE cache_key = ?`,
+			cacheKey
+		)
+
+		const cached = [...cachedCursor]
+		if (cached.length === 0) {
+			return null
+		}
+
+		const lastModified = cached[0].last_modified ? new Date(cached[0].last_modified) : null
+		const isExpired = cached[0].expires_at <= Date.now()
+		const cacheAge = lastModified ? Date.now() - lastModified.getTime() : Infinity
+		if ((isExpired || cacheAge > EveTokenStoreDO.MAX_CACHE_TTL_MS) && !includeExpired) {
+			await this.state.storage.sql.exec(`DELETE FROM esi_cache WHERE cache_key = ?`, cacheKey)
+			return null
+		}
+
+		return {
+			data: JSON.parse(cached[0].response_data) as T,
+			expiresAt: new Date(cached[0].expires_at),
+			etag: cached[0].etag,
+			pages: cached[0].pages,
+			page: cached[0].page,
+			lastModified: lastModified ?? undefined,
+			cached: true,
+		}
 	}
 
 	/**
-	 * Parse X-Pages header from ESI response
+	 * Persist a shared ESI cache entry using the local SQL cache table.
 	 */
-	private parseXPages(headers: Headers): number | undefined {
-		const xPages = headers.get('X-Pages')
-		return xPages ? parseInt(xPages, 10) : undefined
+	async setCachedResponse<T>(
+		scope: EsiCacheScopeContext,
+		path: string,
+		response: SharedEsiResponse<T>,
+		page?: number,
+		_options?: { persistGlobal?: boolean }
+	): Promise<void> {
+		const cacheKey = this.getEsiCacheKey(scope, path, page)
+		const lastModified = response.lastModified ?? new Date()
+
+		await this.state.storage.sql.exec(
+			`INSERT OR REPLACE INTO esi_cache (cache_key, response_data, expires_at, etag, pages, page, last_modified)
+			 VALUES (?, ?, ?, ?, ?, ?, ?)`,
+			cacheKey,
+			JSON.stringify(response.data),
+			response.expiresAt?.getTime() ?? null,
+			response.etag,
+			response.pages ?? null,
+			response.page ?? null,
+			lastModified.toISOString()
+		)
+	}
+
+	private getEsiCacheKey(scope: EsiCacheScopeContext, path: string, page?: number): string {
+		const baseKey = `esi:${scope.scope}:${scope.scopeId}:${path}`
+		if (page !== undefined) {
+			return `${baseKey}:page:${page}`
+		}
+		return baseKey
 	}
 
 	private parseHeaderSeconds(headers: Headers, headerName: string): number | undefined {
@@ -1435,159 +1529,87 @@ export class EveTokenStoreDO extends DurableObject<Env> implements EveTokenStore
 	 * Caches responses according to ESI cache headers
 	 */
 	async fetchEsi<T>(path: string, characterId: string): Promise<EsiResponse<T>> {
-		const cacheKey = `${characterId}:${path}`
-
-		// 1. Check SQLite cache
-		const cachedCursor = await this.state.storage.sql.exec<{
-			response_data: string
-			expires_at: number
-			etag: string | null
-			pages: number | null
-			page: number | null
-			last_modified: string | null
-		}>(
-			`SELECT response_data, expires_at, etag, pages, page, last_modified FROM esi_cache WHERE cache_key = ?`,
-			cacheKey
-		)
-
-		const cached = [...cachedCursor]
-
-		if (cached.length > 0) {
+		const scope = { scope: 'character', scopeId: characterId } as const
+		const cached = await this.getCachedResponse<T>(scope, path, undefined, true)
+		if (cached) {
 			const now = Date.now()
-			const lastModified = cached[0].last_modified
-				? new Date(cached[0].last_modified).getTime()
-				: null
+			const lastModified = cached.lastModified?.getTime()
 			const cacheAge = lastModified ? now - lastModified : Infinity
-
-			// Check both expiry AND 12-hour max age (retroactive enforcement)
-			if (cached[0].expires_at > now && cacheAge <= EveTokenStoreDO.MAX_CACHE_TTL_MS) {
-				// Cache hit
+			if (cached.expiresAt?.getTime() && cached.expiresAt.getTime() > now && cacheAge <= EveTokenStoreDO.MAX_CACHE_TTL_MS) {
 				return {
-					data: JSON.parse(cached[0].response_data) as T,
+					data: cached.data,
 					cached: true,
-					expiresAt: new Date(cached[0].expires_at),
-					etag: cached[0].etag || undefined,
-					pages: cached[0].pages ?? undefined,
-					page: cached[0].page ?? undefined,
+					expiresAt: cached.expiresAt ?? new Date(),
+					etag: cached.etag ?? undefined,
+					pages: cached.pages ?? undefined,
+					page: cached.page ?? undefined,
 				}
 			}
 		}
-			// 2. Cache miss - fetch from ESI
-			// Resolve token before breaker/budget checks so missing-token cases fail
-			// fast without consuming auth ESI budget.
-			const character = await this.db.query.eveCharacters.findFirst({
-				where: eq(eveCharacters.characterId, String(characterId)),
+
+		const character = await this.db.query.eveCharacters.findFirst({
+			where: eq(eveCharacters.characterId, String(characterId)),
+		})
+
+		if (!character) {
+			const metadata = JSON.stringify({
+				status: 401,
+				path,
+				reasonCode: 'no_token_provided',
 			})
-
-			let token: string | undefined
-		if (character) {
-				const accessToken = await this.getAccessToken(character.characterId)
-				token = accessToken || undefined
-			}
-			if (!token) {
-				const metadata = JSON.stringify({
-					status: 401,
-					path,
-					reasonCode: 'no_token_provided',
-				})
-				throw new Error(
-					`ESI request failed: 401 Unauthorized - {"error":"Unauthorized - No token provided"} | metadata=${metadata}`
-				)
-			}
-
-			await this.assertAuthenticatedEsiCircuitClosed(path)
-			await this.assertAuthenticatedEsiRampPermit(path)
-			await this.assertAuthenticatedEsiBudget(path)
-
-			// 3. Make ESI request
-			const headers: Record<string, string> = {
-				'X-Compatibility-Date': '2025-09-30',
-				Accept: 'application/json',
-			}
-			headers['Authorization'] = `Bearer ${token}`
-		if (cached.length > 0 && cached[0].etag) {
-			headers['If-None-Match'] = cached[0].etag
-		}
-
-		let response: Response
-		try {
-			response = await fetch(`https://esi.evetech.net${path}`, { headers })
-		} catch (error) {
-			logger
-				.withTags({ characterId, path, operation: 'esi_fetch' })
-				.error('ESI fetch failed', error)
 			throw new Error(
-				`ESI fetch failed for ${path}: ${error instanceof Error ? error.message : String(error)}`
+				`ESI request failed: 401 Unauthorized - {"error":"Unauthorized - No token provided"} | metadata=${metadata}`
 			)
 		}
 
-		// Handle 304 Not Modified
-		if (response.status === 304 && cached.length > 0) {
-			await this.updateAuthenticatedEsiDynamicBudgetFromHeaders(
+		await this.assertAuthenticatedEsiCircuitClosed(path)
+		await this.assertAuthenticatedEsiRampPermit(path)
+		await this.assertAuthenticatedEsiBudget(path)
+
+		const accessToken = await this.getAccessToken(character.characterId)
+		if (!accessToken) {
+			const metadata = JSON.stringify({
+				status: 401,
 				path,
-				response.headers,
-				response.status
+				reasonCode: 'no_token_provided',
+			})
+			throw new Error(
+				`ESI request failed: 401 Unauthorized - {"error":"Unauthorized - No token provided"} | metadata=${metadata}`
 			)
-			const newExpiresAt = this.parseEsiCacheExpiry(response.headers)
-			// Update both expires_at and last_modified to reset the 12-hour window
-			await this.state.storage.sql.exec(
-				`UPDATE esi_cache SET expires_at = ?, last_modified = ? WHERE cache_key = ?`,
-				newExpiresAt.getTime(),
-				new Date().toISOString(),
-				cacheKey
-			)
-			return {
-				data: JSON.parse(cached[0].response_data) as T,
-				cached: true,
-				expiresAt: newExpiresAt,
-				etag: cached[0].etag || undefined,
-				pages: cached[0].pages ?? undefined,
-				page: cached[0].page ?? undefined,
-			}
 		}
 
-		if (!response.ok) {
-			await this.updateAuthenticatedEsiDynamicBudgetFromHeaders(
-				path,
-				response.headers,
-				response.status
-			)
-			const errorText = await response.text()
-			if (shouldOpenRouteCircuitForResponse(response.status)) {
-				const retryAfterSeconds = this.parseHeaderSeconds(response.headers, 'Retry-After')
-				await this.openAuthenticatedEsiRouteCircuit(path, retryAfterSeconds, `429 on ${path}`)
-			}
-
-			throw this.buildEsiRequestError(path, response, errorText)
-		}
-
-		// 4. Parse and cache response
-		await this.updateAuthenticatedEsiDynamicBudgetFromHeaders(path, response.headers, response.status)
-		const data = await parseJsonResponse<T>(response, { context: `ESI auth response for ${path}` })
-		const expiresAt = this.parseEsiCacheExpiry(response.headers)
-		const etag = response.headers.get('ETag')
-		const pages = this.parseXPages(response.headers)
-		const page = this.extractPageFromPath(path)
-
-		await this.state.storage.sql.exec(
-			`INSERT OR REPLACE INTO esi_cache (cache_key, response_data, expires_at, etag, pages, page, last_modified)
-			 VALUES (?, ?, ?, ?, ?, ?, ?)`,
-			cacheKey,
-			JSON.stringify(data),
-			expiresAt.getTime(),
-			etag,
-			pages ?? null,
-			page ?? null,
-			new Date().toISOString()
-		)
+		const response = await this.esiRequestClient.request<T>({
+			path,
+			userKey: buildEsiUserKey(this.env.EVE_SSO_CLIENT_ID, characterId),
+			cacheScope: scope,
+			cacheMode: 'default',
+			cachedResponse: cached,
+			accessToken,
+			maxLocalCacheTtl: EveTokenStoreDO.MAX_CACHE_TTL_SECONDS,
+			onResponse: async ({ response: esiResponse }) => {
+				await this.updateAuthenticatedEsiDynamicBudgetFromHeaders(
+					path,
+					esiResponse.headers,
+					esiResponse.status
+				)
+				if (shouldOpenRouteCircuitForResponse(esiResponse.status)) {
+					const retryAfterSeconds = this.parseHeaderSeconds(esiResponse.headers, 'Retry-After')
+					await this.openAuthenticatedEsiRouteCircuit(path, retryAfterSeconds, `429 on ${path}`)
+				}
+			},
+			parse: async (esiResponse) =>
+				parseJsonResponse<T>(esiResponse, { context: `ESI auth response for ${path}` }),
+			buildError: async ({ response: esiResponse, body }) =>
+				this.buildEsiRequestError(path, esiResponse, body),
+		})
 
 		return {
-			data,
-			cached: false,
-			expiresAt,
-			etag: etag || undefined,
-			pages,
-			page,
+			data: response.data,
+			cached: response.cached ?? false,
+			expiresAt: response.expiresAt ?? new Date(),
+			etag: response.etag ?? undefined,
+			pages: response.pages ?? undefined,
+			page: response.page ?? undefined,
 		}
 	}
 
@@ -1613,106 +1635,51 @@ export class EveTokenStoreDO extends DurableObject<Env> implements EveTokenStore
 	 * Caches responses according to ESI cache headers
 	 */
 	async fetchPublicEsi<T>(path: string): Promise<EsiResponse<T>> {
-		const cacheKey = `public:${path}`
-
-		// 1. Check SQLite cache
-		const cachedCursor = await this.state.storage.sql.exec<{
-			response_data: string
-			expires_at: number
-			etag: string | null
-			pages: number | null
-			page: number | null
-			last_modified: string | null
-		}>(
-			`SELECT response_data, expires_at, etag, pages, page, last_modified FROM esi_cache WHERE cache_key = ?`,
-			cacheKey
-		)
-
-		const cached = [...cachedCursor]
-
-		if (cached.length > 0) {
+		const scope = EveTokenStoreDO.PUBLIC_CACHE_SCOPE
+		const cached = await this.getCachedResponse<T>(scope, path, undefined, true)
+		if (cached) {
 			const now = Date.now()
-			const lastModified = cached[0].last_modified
-				? new Date(cached[0].last_modified).getTime()
-				: null
+			const lastModified = cached.lastModified?.getTime()
 			const cacheAge = lastModified ? now - lastModified : Infinity
-
-			// Check both expiry AND 12-hour max age (retroactive enforcement)
-			if (cached[0].expires_at > now && cacheAge <= EveTokenStoreDO.MAX_CACHE_TTL_MS) {
-				// Cache hit
+			if (cached.expiresAt?.getTime() && cached.expiresAt.getTime() > now && cacheAge <= EveTokenStoreDO.MAX_CACHE_TTL_MS) {
 				return {
-					data: JSON.parse(cached[0].response_data) as T,
+					data: cached.data,
 					cached: true,
-					expiresAt: new Date(cached[0].expires_at),
-					etag: cached[0].etag || undefined,
-					pages: cached[0].pages ?? undefined,
-					page: cached[0].page ?? undefined,
+					expiresAt: cached.expiresAt ?? new Date(),
+					etag: cached.etag ?? undefined,
+					pages: cached.pages ?? undefined,
+					page: cached.page ?? undefined,
 				}
 			}
 		}
 
-		// 2. Cache miss - fetch from ESI (no authentication)
-		const headers: Record<string, string> = {
-			'X-Compatibility-Date': '2025-09-30',
-			Accept: 'application/json',
-		}
-		if (cached.length > 0 && cached[0].etag) {
-			headers['If-None-Match'] = cached[0].etag
-		}
+		await this.assertAuthenticatedEsiCircuitClosed(path)
 
-		const response = await fetch(`https://esi.evetech.net${path}`, { headers })
-
-		// Handle 304 Not Modified
-		if (response.status === 304 && cached.length > 0) {
-			const newExpiresAt = this.parseEsiCacheExpiry(response.headers)
-			// Update both expires_at and last_modified to reset the 12-hour window
-			await this.state.storage.sql.exec(
-				`UPDATE esi_cache SET expires_at = ?, last_modified = ? WHERE cache_key = ?`,
-				newExpiresAt.getTime(),
-				new Date().toISOString(),
-				cacheKey
-			)
-			return {
-				data: JSON.parse(cached[0].response_data) as T,
-				cached: true,
-				expiresAt: newExpiresAt,
-				etag: cached[0].etag || undefined,
-				pages: cached[0].pages ?? undefined,
-				page: cached[0].page ?? undefined,
-			}
-		}
-
-		if (!response.ok) {
-			const errorText = await response.text()
-			throw this.buildEsiRequestError(path, response, errorText)
-		}
-
-		// 3. Parse and cache response
-		const data = await parseJsonResponse<T>(response, { context: `ESI public response for ${path}` })
-		const expiresAt = this.parseEsiCacheExpiry(response.headers)
-		const etag = response.headers.get('ETag')
-		const pages = this.parseXPages(response.headers)
-		const page = this.extractPageFromPath(path)
-
-		await this.state.storage.sql.exec(
-			`INSERT OR REPLACE INTO esi_cache (cache_key, response_data, expires_at, etag, pages, page, last_modified)
-			 VALUES (?, ?, ?, ?, ?, ?, ?)`,
-			cacheKey,
-			JSON.stringify(data),
-			expiresAt.getTime(),
-			etag,
-			pages ?? null,
-			page ?? null,
-			new Date().toISOString()
-		)
+		const response = await this.esiRequestClient.request<T>({
+			path,
+			userKey: buildPublicEsiUserKey(),
+			cacheScope: scope,
+			cacheMode: 'default',
+			cachedResponse: cached,
+			onResponse: async ({ response: esiResponse }) => {
+				if (shouldOpenRouteCircuitForResponse(esiResponse.status)) {
+					const retryAfterSeconds = this.parseHeaderSeconds(esiResponse.headers, 'Retry-After')
+					await this.openAuthenticatedEsiRouteCircuit(path, retryAfterSeconds, `429 on ${path}`)
+				}
+			},
+			parse: async (esiResponse) =>
+				parseJsonResponse<T>(esiResponse, { context: `ESI public response for ${path}` }),
+			buildError: async ({ response: esiResponse, body }) =>
+				this.buildEsiRequestError(path, esiResponse, body),
+		})
 
 		return {
-			data,
-			cached: false,
-			expiresAt,
-			etag: etag || undefined,
-			pages,
-			page,
+			data: response.data,
+			cached: response.cached ?? false,
+			expiresAt: response.expiresAt ?? new Date(),
+			etag: response.etag ?? undefined,
+			pages: response.pages ?? undefined,
+			page: response.page ?? undefined,
 		}
 	}
 
@@ -1724,96 +1691,13 @@ export class EveTokenStoreDO extends DurableObject<Env> implements EveTokenStore
 			throw new Error('fetchCharacterAffiliations requires at least one valid character ID')
 		}
 
-		const cacheSuffix = normalizedIds.join(',')
-		const cacheKey = `public:/characters/affiliation:${cacheSuffix}`
-		const cachedCursor = await this.state.storage.sql.exec<{
-			response_data: string
-			expires_at: number
-			etag: string | null
-			last_modified: string | null
-		}>(
-			`SELECT response_data, expires_at, etag, last_modified FROM esi_cache WHERE cache_key = ?`,
-			cacheKey
+		const esiStub = getStub<EsiHelperStub>(this.env.ESI, 'default')
+		const response = await esiStub.fetchCharacterAffiliation(
+			String(normalizedIds[0]),
+			normalizedIds.map(String),
+			{ cacheMode: 'default' }
 		)
-
-		const cached = [...cachedCursor]
-		if (cached.length > 0) {
-			const now = Date.now()
-			const lastModified = cached[0].last_modified
-				? new Date(cached[0].last_modified).getTime()
-				: null
-			const cacheAge = lastModified ? now - lastModified : Infinity
-
-			if (cached[0].expires_at > now && cacheAge <= EveTokenStoreDO.MAX_CACHE_TTL_MS) {
-				return {
-					data: JSON.parse(cached[0].response_data) as EsiCharacterAffiliation[],
-					cached: true,
-					expiresAt: new Date(cached[0].expires_at),
-					etag: cached[0].etag || undefined,
-				}
-			}
-		}
-
-		const headers: Record<string, string> = {
-			'X-Compatibility-Date': '2025-09-30',
-			Accept: 'application/json',
-			'Content-Type': 'application/json',
-		}
-		if (cached.length > 0 && cached[0].etag) {
-			headers['If-None-Match'] = cached[0].etag
-		}
-
-		const response = await fetch('https://esi.evetech.net/latest/characters/affiliation/', {
-			method: 'POST',
-			headers,
-			body: JSON.stringify(normalizedIds),
-		})
-
-		if (response.status === 304 && cached.length > 0) {
-			const newExpiresAt = this.parseEsiCacheExpiry(response.headers)
-			await this.state.storage.sql.exec(
-				`UPDATE esi_cache SET expires_at = ?, last_modified = ? WHERE cache_key = ?`,
-				newExpiresAt.getTime(),
-				new Date().toISOString(),
-				cacheKey
-			)
-			return {
-				data: JSON.parse(cached[0].response_data) as EsiCharacterAffiliation[],
-				cached: true,
-				expiresAt: newExpiresAt,
-				etag: cached[0].etag || undefined,
-			}
-		}
-
-		if (!response.ok) {
-			const errorText = await response.text()
-			throw this.buildEsiRequestError('/characters/affiliation', response, errorText)
-		}
-
-		const data = await parseJsonResponse<EsiCharacterAffiliation[]>(response, {
-			context: 'ESI character affiliations response',
-		})
-		const expiresAt = this.parseEsiCacheExpiry(response.headers)
-		const etag = response.headers.get('ETag')
-
-		await this.state.storage.sql.exec(
-			`INSERT OR REPLACE INTO esi_cache (cache_key, response_data, expires_at, etag, pages, page, last_modified)
-			 VALUES (?, ?, ?, ?, ?, ?, ?)`,
-			cacheKey,
-			JSON.stringify(data),
-			expiresAt.getTime(),
-			etag,
-			null,
-			null,
-			new Date().toISOString()
-		)
-
-		return {
-			data,
-			cached: false,
-			expiresAt,
-			etag: etag || undefined,
-		}
+		return response
 	}
 
 	/**
@@ -1821,8 +1705,10 @@ export class EveTokenStoreDO extends DurableObject<Env> implements EveTokenStore
 	 * Useful for forcing fresh data on next request or after errors
 	 */
 	async clearEsiCache(path: string, characterId?: string): Promise<number> {
-		// Build cache key based on whether it's authenticated or public
-		const cacheKey = characterId ? `${characterId}:${path}` : `public:${path}`
+		const scope: EsiCacheScopeContext = characterId
+			? { scope: 'character', scopeId: characterId }
+			: EveTokenStoreDO.PUBLIC_CACHE_SCOPE
+		const cacheKey = this.getEsiCacheKey(scope, path)
 
 		// Delete all cache entries matching this key (including all pages if paginated)
 		// Use LIKE to match all pages: /path?page=1, /path?page=2, etc.
@@ -1976,7 +1862,7 @@ export class EveTokenStoreDO extends DurableObject<Env> implements EveTokenStore
 		basePath: string,
 		options?: { maxConcurrent?: number }
 	): Promise<ReadableStream<Uint8Array>> {
-		const maxConcurrent = options?.maxConcurrent ?? 5
+		const maxConcurrent = options?.maxConcurrent ?? 1
 
 		// Remove any existing page parameter from basePath
 		const cleanPath = basePath.replace(/[?&]page=\d+/, '')
@@ -2335,243 +2221,16 @@ export class EveTokenStoreDO extends DurableObject<Env> implements EveTokenStore
 	 * Resolve multiple entity names to IDs using ESI bulk endpoint
 	 */
 	async resolveNames(names: string[]): Promise<Record<string, string>> {
-		if (names.length === 0) {
-			return {}
-		}
-
-		const result: Record<string, string> = {}
-		const namesToResolve: string[] = []
-
-		// Check cache for each name (non-critical, failures treated as cache miss)
-		for (const name of names) {
-			try {
-				const cachedCursor = await this.state.storage.sql.exec<{
-					entity_id: string
-				}>(
-					`SELECT entity_id FROM entity_cache WHERE entity_name = ? AND expires_at > ?`,
-					name,
-					Date.now()
-				)
-
-				const cached = [...cachedCursor]
-
-				if (cached.length > 0) {
-					result[name] = cached[0].entity_id
-				} else {
-					namesToResolve.push(name)
-				}
-			} catch (error) {
-				// Cache read failure - treat as cache miss
-				logger.withTags({ name, operation: 'cache_read' }).warn('Entity cache read failed', error)
-				namesToResolve.push(name)
-			}
-		}
-
-		// If all names are cached, return early
-		if (namesToResolve.length === 0) {
-			return result
-		}
-
-		// Fetch from ESI for uncached names
-		try {
-			const response = await fetch('https://esi.evetech.net/latest/universe/ids/', {
-				method: 'POST',
-				headers: {
-					'X-Compatibility-Date': '2025-09-30',
-					'Content-Type': 'application/json',
-				},
-				body: JSON.stringify(namesToResolve),
-			})
-
-			if (!response.ok) {
-				const errorText = await response.text()
-				logger.withTags({ status: response.status, errorText }).error('ESI name resolution failed')
-				return result
-			}
-
-			// ESI returns numbers for IDs, but we need strings
-			const data = await response.json<{
-				alliances?: Array<{ id: number; name: string }>
-				characters?: Array<{ id: number; name: string }>
-				corporations?: Array<{ id: number; name: string }>
-				systems?: Array<{ id: number; name: string }>
-				[key: string]: Array<{ id: number; name: string }> | undefined
-			}>()
-
-			// Process all entity types and cache them
-			// Character/corp/alliance names are essentially permanent - cache for 1 year
-			const expiresAt = Date.now() + 365 * 24 * 60 * 60 * 1000
-
-			for (const [entityType, entities] of Object.entries(data)) {
-				if (!entities) continue
-
-				for (const entity of entities) {
-					const entityId = String(entity.id)
-					result[entity.name] = entityId
-
-					// Cache the name→id mapping (non-critical, failures should not prevent returning data)
-					try {
-						await this.state.storage.sql.exec(
-							`INSERT OR REPLACE INTO entity_cache (entity_type, entity_id, entity_name, entity_data, expires_at)
-							 VALUES (?, ?, ?, ?, ?)`,
-							entityType === 'systems' ? 'solar_system' : entityType.slice(0, -1), // 'alliances' → 'alliance'
-							entityId,
-							entity.name,
-							JSON.stringify({ id: entityId, name: entity.name }), // Minimal data for name lookups
-							expiresAt
-						)
-					} catch (error) {
-						// Cache write failure - log but don't fail the request
-						logger
-							.withTags({ entityName: entity.name, entityId, operation: 'cache_write' })
-							.warn('Entity cache write failed', error)
-					}
-				}
-			}
-
-			return result
-		} catch (error) {
-			logger.error(error)
-			return result
-		}
+		const resolver = getStub<EsiTypeResolverHelperStub>(this.env.ESI_TYPE_RESOLVER, 'default')
+		return await resolver.resolveNames(names)
 	}
 
 	/**
 	 * Resolve multiple entity IDs to names using ESI bulk endpoint
 	 */
 	async resolveIds(ids: string[]): Promise<Record<string, string>> {
-		if (ids.length === 0) {
-			return {}
-		}
-
-		const result: Record<string, string> = {}
-		const idsToResolve: string[] = []
-
-		// Check cache for each ID (non-critical, failures treated as cache miss)
-		for (const id of ids) {
-			try {
-				const cachedCursor = await this.state.storage.sql.exec<{
-					entity_name: string
-				}>(
-					`SELECT entity_name FROM entity_cache WHERE entity_id = ? AND expires_at > ?`,
-					id,
-					Date.now()
-				)
-
-				const cached = [...cachedCursor]
-
-				if (cached.length > 0) {
-					result[id] = cached[0].entity_name
-				} else {
-					idsToResolve.push(id)
-				}
-			} catch (error) {
-				// Cache read failure - treat as cache miss
-				logger.withTags({ id, operation: 'cache_read' }).warn('Entity cache read failed', error)
-				idsToResolve.push(id)
-			}
-		}
-
-		// If all IDs are cached, return early
-		if (idsToResolve.length === 0) {
-			return result
-		}
-
-		// Fetch from ESI for uncached IDs
-		// ESI /universe/names/ has a limit of 1000 IDs per request
-		try {
-			// Convert string IDs to integers for ESI API
-			const integerIds = idsToResolve.map((id) => parseInt(id, 10)).filter((id) => !isNaN(id))
-
-			// If no valid IDs after conversion, return early
-			if (integerIds.length === 0) {
-				return result
-			}
-
-			// Batch size limit for ESI /universe/names/ endpoint
-			const BATCH_SIZE = 1000
-
-			// Split into batches if we have more than the limit
-			const batches: number[][] = []
-			for (let i = 0; i < integerIds.length; i += BATCH_SIZE) {
-				batches.push(integerIds.slice(i, i + BATCH_SIZE))
-			}
-
-			logger
-				.withTags({
-					totalIds: integerIds.length,
-					batchCount: batches.length,
-					batchSize: BATCH_SIZE,
-				})
-				.info('Resolving IDs from ESI in batches')
-
-			// Process batches in parallel for better performance
-			const batchResults = await Promise.all(
-				batches.map(async (batch) => {
-					const response = await fetch('https://esi.evetech.net/latest/universe/names/', {
-						method: 'POST',
-						headers: {
-							'X-Compatibility-Date': '2025-09-30',
-							'Content-Type': 'application/json',
-						},
-						body: JSON.stringify(batch),
-					})
-
-					if (!response.ok) {
-						const errorText = await response.text()
-						logger
-							.withTags({ status: response.status, errorText, batchSize: batch.length })
-							.error('ESI ID resolution batch failed')
-						return []
-					}
-
-					// ESI returns numbers for IDs, but we need strings
-					return response.json<Array<{ id: number; name: string; category: string }>>()
-				})
-			)
-
-			// Flatten all batch results
-			const data = batchResults.flat()
-
-			logger
-				.withTags({
-					resolvedCount: data.length,
-					requestedCount: integerIds.length,
-				})
-				.info('ID resolution completed')
-
-			// Cache the results - character/corp/alliance IDs to names are essentially permanent
-			// Cache for 1 year (effectively forever - names very rarely change)
-			const expiresAt = Date.now() + 365 * 24 * 60 * 60 * 1000
-
-			for (const entity of data) {
-				const entityId = String(entity.id)
-				result[entityId] = entity.name
-
-				// Cache the id→name mapping (non-critical, failures should not prevent returning data)
-				try {
-					await this.state.storage.sql.exec(
-						`INSERT OR REPLACE INTO entity_cache (entity_type, entity_id, entity_name, entity_data, expires_at)
-						 VALUES (?, ?, ?, ?, ?)`,
-						entity.category,
-						entityId,
-						entity.name,
-						JSON.stringify({ id: entityId, name: entity.name, category: entity.category }), // Minimal data for ID lookups
-						expiresAt
-					)
-				} catch (error) {
-					// Cache write failure - log but don't fail the request
-					logger
-						.withTags({ entityName: entity.name, entityId, operation: 'cache_write' })
-						.warn('Entity cache write failed', error)
-				}
-			}
-
-			return result
-		} catch (error) {
-			logger.error(error)
-			return result
-		}
+		const resolver = getStub<EsiTypeResolverHelperStub>(this.env.ESI_TYPE_RESOLVER, 'default')
+		return await resolver.resolveIds(ids)
 	}
 
 	/**
@@ -2582,54 +2241,16 @@ export class EveTokenStoreDO extends DurableObject<Env> implements EveTokenStore
 			return []
 		}
 
-		try {
-			// Get any character token for authentication (ESI search requires auth)
-			const tokens = await this.db.query.eveTokens.findMany({
-				limit: 1,
-			})
-
-			if (tokens.length === 0) {
-				logger.warn('No character tokens available for ESI search')
-				return []
-			}
-
-			// Get access token
-			const accessToken = await this.getAccessToken(tokens[0].characterId)
-
-			// Call ESI search endpoint
-			// GET /search/?categories=character&search={name}&strict={strict}
-			const url = new URL('https://esi.evetech.net/latest/search/')
-			url.searchParams.set('categories', 'character')
-			url.searchParams.set('search', characterName)
-			url.searchParams.set('strict', String(strict))
-
-			const response = await fetch(url.toString(), {
-				headers: {
-					Authorization: `Bearer ${accessToken}`,
-					'X-Compatibility-Date': '2025-09-30',
-				},
-			})
-
-			if (!response.ok) {
-				if (response.status === 404) {
-					// No results found
-					return []
-				}
-				const errorText = await response.text()
-				logger
-					.withTags({ status: response.status, errorText, characterName, strict })
-					.error('ESI character search failed')
-				return []
-			}
-
-			const data = await response.json<{ character?: number[] }>()
-
-			// Convert number IDs to strings
-			return (data.character || []).map((id) => String(id))
-		} catch (error) {
-			logger.withTags({ characterName, strict }).error('Character search error', error)
+		const tokens = await this.db.query.eveTokens.findMany({
+			limit: 1,
+		})
+		if (tokens.length === 0) {
+			logger.warn('No character tokens available for ESI search')
 			return []
 		}
+
+		const esiStub = getStub<EsiHelperStub>(this.env.ESI, 'default')
+		return await esiStub.searchCharacter(tokens[0].characterId, characterName, strict)
 	}
 
 	/**
@@ -2987,43 +2608,10 @@ export class EveTokenStoreDO extends DurableObject<Env> implements EveTokenStore
 
 	/** Maximum cache TTL: 12 hours (in milliseconds) */
 	private static readonly MAX_CACHE_TTL_MS = 12 * 60 * 60 * 1000
-
-	/**
-	 * Parse ESI cache expiry from response headers
-	 * IMPORTANT: Caps all cache TTLs to 12 hours maximum regardless of ESI headers
-	 */
-	private parseEsiCacheExpiry(headers: Headers): Date {
-		const now = Date.now()
-		const maxExpiry = now + EveTokenStoreDO.MAX_CACHE_TTL_MS
-		let expiresAt: Date
-
-		// Check Expires header first
-		const expires = headers.get('Expires')
-		if (expires) {
-			expiresAt = new Date(expires)
-		} else {
-			// Check Cache-Control header
-			const cacheControl = headers.get('Cache-Control')
-			if (cacheControl) {
-				const maxAgeMatch = cacheControl.match(/max-age=(\d+)/)
-				if (maxAgeMatch) {
-					expiresAt = new Date(now + parseInt(maxAgeMatch[1], 10) * 1000)
-				} else {
-					// Default: 5 minutes
-					expiresAt = new Date(now + 5 * 60 * 1000)
-				}
-			} else {
-				// Default: 5 minutes
-				expiresAt = new Date(now + 5 * 60 * 1000)
-			}
-		}
-
-		// Cap at 12 hours maximum
-		if (expiresAt.getTime() > maxExpiry) {
-			return new Date(maxExpiry)
-		}
-
-		return expiresAt
+	private static readonly MAX_CACHE_TTL_SECONDS = 12 * 60 * 60
+	private static readonly PUBLIC_CACHE_SCOPE: EsiCacheScopeContext = {
+		scope: 'public',
+		scopeId: 'public',
 	}
 
 	/**

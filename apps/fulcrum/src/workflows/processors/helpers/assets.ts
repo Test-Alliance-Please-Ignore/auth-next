@@ -7,9 +7,17 @@ import { getStub } from '@repo/do-utils'
 import { isStructureId } from '@repo/esi'
 
 import { isRateLimitError, retryWithBackoff } from '../../utils/retry'
+import { buildAssetMap, isInsideShip, isShipAsset, resolveTopLevelLocation } from './location'
 
 import type { CharacterAsset, Esi, EsiTypeResolver } from '@repo/esi'
 import type { Universe } from '@repo/universe'
+
+function isContainerType(typeName?: string, categoryName?: string): boolean {
+	return Boolean(
+		typeName?.toLowerCase().includes('container') ||
+			categoryName?.toLowerCase().includes('container')
+	)
+}
 
 /**
  * Enriched character asset with resolved names
@@ -22,6 +30,8 @@ export interface ProcessedAsset extends CharacterAsset {
 	customName?: string
 	averagePrice?: number
 	estimatedValue?: number
+	isShipAsset?: boolean
+	isContainerAsset?: boolean
 	/** item_id of the container this asset is inside (if any) */
 	containerItemId?: string
 	/** Resolved name of the container (type name or custom name) */
@@ -56,6 +66,8 @@ export async function enrichAssets(
 	if (assets.length === 0) {
 		return []
 	}
+
+	const assetMap = buildAssetMap(assets)
 
 	// Collect all IDs that need resolution
 	const typeIds: string[] = []
@@ -227,32 +239,40 @@ export async function enrichAssets(
 	const enriched = assets.map((asset) => {
 		// Resolve typeName for all type_ids (item types are resolvable)
 		const typeName = nameMap[asset.type_id]
+		const resolvedLocation = resolveTopLevelLocation(asset, assetMap)
 
 		// Resolve locationName:
-		// - Skip items in cargo (always in a ship, location_id is ship item_id)
 		// - For 'station' and 'solar_system': use /universe/names/
-		// - For structure IDs: fetch structure info via ESI
-		// - For 'item' and 'other': skip (not resolvable)
+		// - For structures / structure-held items: fetch structure info via ESI
+		// - For ship cargo: skip (it resolves to the ship item, not a location)
 		let locationName: string | undefined
 
-		// Skip location resolution for cargo items
-		if (asset.location_flag !== 'Cargo') {
-			if (asset.location_type === 'station' || asset.location_type === 'solar_system') {
-				locationName = nameMap[asset.location_id]
-			} else if (isStructureId(asset.location_id)) {
-				// Structure IDs require authenticated lookup
-				locationName = structureNameMap[asset.location_id]
+		if (asset.location_type === 'station' || asset.location_type === 'solar_system') {
+			locationName = nameMap[asset.location_id]
+		} else if (asset.location_type === 'other' || isStructureId(asset.location_id)) {
+			// Player-owned structures require authenticated lookup
+			locationName = structureNameMap[asset.location_id] ?? nameMap[asset.location_id]
+		} else if (!(asset.location_flag === 'Cargo' && isInsideShip(asset, assetMap))) {
+			if (resolvedLocation) {
+				if (resolvedLocation.locationType === 'station') {
+					locationName = nameMap[resolvedLocation.locationId]
+				} else {
+					locationName =
+						structureNameMap[resolvedLocation.locationId] ?? nameMap[resolvedLocation.locationId]
+				}
 			}
-			// 'item' and 'other' types remain undefined
 		}
 
 		const typeMetadata = typeMetadataMap[asset.type_id]
+		const shipAsset = isShipAsset(asset)
 		const result: ProcessedAsset = {
 			...asset,
 			typeName,
 			locationName,
 			marketGroupName: typeMetadata?.marketGroupName ?? null,
 			categoryName: typeMetadata?.categoryName,
+			isContainerAsset:
+				asset.is_singleton && !shipAsset && isContainerType(typeName, typeMetadata?.categoryName),
 			processedAt,
 		}
 		return result

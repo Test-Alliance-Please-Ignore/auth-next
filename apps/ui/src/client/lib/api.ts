@@ -3085,7 +3085,7 @@ export class ApiClient {
 	/**
 	 * Get recent losses for all user's characters with SRP status
 	 */
-	async getRecentLosses(daysBack: number = 30): Promise<{
+	async getRecentLosses(): Promise<{
 		losses: Array<{
 			killmailId: string
 			killmailHash: string
@@ -3109,7 +3109,7 @@ export class ApiClient {
 			error?: string
 		}>
 	}> {
-		return this.get(`/srp/losses?daysBack=${daysBack}`)
+		return this.get('/srp/losses')
 	}
 
 	async dismissRecentLoss(killmailId: string): Promise<{ success: true }> {

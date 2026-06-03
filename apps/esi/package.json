@@ -25,6 +25,7 @@
 		"@repo/db-utils": "workspace:*",
 		"@repo/do-utils": "workspace:*",
 		"@repo/esi": "workspace:*",
+		"@repo/esi-rate-limit": "workspace:*",
 		"@repo/eve-corporation-data": "workspace:*",
 		"@repo/eve-token-store": "workspace:*",
 		"@repo/fetch-utils": "workspace:*",

@@ -8,6 +8,7 @@
 import { Hono } from 'hono'
 
 import { getStub } from '@repo/do-utils'
+import { buildEsiUserKey, EsiRateLimitGuard, EsiRateLimitStore } from '@repo/esi-rate-limit'
 import { TimeCache, logger } from '@repo/hono-helpers'
 
 import { getCachedUserPermissions } from '../lib/groups-cache'
@@ -446,16 +447,18 @@ app.post('/contracts/:contractId/open-in-game', requireAuth(), requireAllianceMe
 
 		// ESI acts on the logged-in client of the token's character. A 204 means
 		// the request was accepted; the client must be running for it to appear.
-		const esiResponse = await fetch(
-			`https://esi.evetech.net/latest/ui/openwindow/contract/?contract_id=${contractId}`,
-			{
-				method: 'POST',
-				headers: {
-					Authorization: `Bearer ${accessToken}`,
-					'Content-Type': 'application/json',
-				},
-			}
-		)
+		const esiRateLimits = new EsiRateLimitGuard(new EsiRateLimitStore(c.env.ESI_RATE_LIMITS))
+		const esiResponse = await esiRateLimits.request({
+			path: `/latest/ui/openwindow/contract/?contract_id=${contractId}`,
+			userKey: buildEsiUserKey(c.env.EVE_SSO_CLIENT_ID, mainCharacter.characterId),
+			method: 'POST',
+			accessToken,
+			parse: async (response) => response,
+			buildError: ({ response, body, path }) =>
+				new Error(
+					`ESI request failed: ${response.status} ${response.statusText || 'Request Failed'} - ${body || 'Unknown ESI error'} | path=${path}`
+				),
+		})
 
 		if (esiResponse.status === 204) {
 			return c.json({ success: true, characterName: mainCharacter.characterName })
@@ -485,6 +488,15 @@ app.post('/contracts/:contractId/open-in-game', requireAuth(), requireAllianceMe
 			502
 		)
 	} catch (error) {
+		if (error instanceof Error && error.message.includes('ESI rate limit active')) {
+			return c.json(
+				{
+					error: 'esi_rate_limited',
+					message: 'ESI is temporarily rate limited. Please retry shortly.',
+				},
+				429
+			)
+		}
 		logger.error('Error opening contract in-game:', {
 			error: error instanceof Error ? error.message : String(error),
 			contractId,

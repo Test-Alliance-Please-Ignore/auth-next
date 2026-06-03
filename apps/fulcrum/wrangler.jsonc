@@ -24,6 +24,11 @@
 				"class_name": "Fulcrum"
 			},
 			{
+				"name": "MARKETS",
+				"class_name": "Markets",
+				"script_name": "markets"
+			},
+			{
 				"name": "ESI",
 				"class_name": "Esi",
 				"script_name": "esi"

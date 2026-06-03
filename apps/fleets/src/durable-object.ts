@@ -17,6 +17,7 @@ import {
 } from '@repo/db-utils'
 import { getStub } from '@repo/do-utils'
 import { assertEveCharacterId, createEveCharacterId } from '@repo/eve-types'
+import { buildEsiUserKey, EsiRateLimitGuard, EsiRateLimitStore } from '@repo/esi-rate-limit'
 import {
 	EsiGetCharacterFleetInformation,
 	esiGetCharacterFleetInformationSchema,
@@ -81,21 +82,20 @@ import type { Universe } from '@repo/universe'
  */
 export class FleetsDO extends DurableObject implements Fleets {
 	private db: ReturnType<typeof createDbClient<typeof schema>>
+	private readonly esiRateLimits: EsiRateLimitGuard
 
-	private async formatFleetKickError(response: Response): Promise<string> {
-		let details = ''
-		try {
-			const text = await response.text()
-			if (text) {
-				try {
-					const parsed = JSON.parse(text) as { error?: string; message?: string }
-					details = parsed.error || parsed.message || text
-				} catch {
-					details = text
-				}
+	private formatFleetKickError(
+		response: Pick<Response, 'status'>,
+		details = ''
+	): string {
+		let parsedDetails = details
+		if (parsedDetails) {
+			try {
+				const parsed = JSON.parse(parsedDetails) as { error?: string; message?: string }
+				parsedDetails = parsed.error || parsed.message || parsedDetails
+			} catch {
+				// keep raw body text when it's not JSON
 			}
-		} catch {
-			// ignore body parse failures
 		}
 
 		switch (response.status) {
@@ -106,10 +106,14 @@ export class FleetsDO extends DurableObject implements Fleets {
 			case 404:
 				return 'Fleet or member not found (member may have already left)'
 			case 422:
-				return details || 'ESI rejected the member removal request'
+				return parsedDetails || 'ESI rejected the member removal request'
 			default:
-				return details || `ESI returned ${response.status}`
+				return parsedDetails || `ESI returned ${response.status}`
 		}
+	}
+
+	private isEsiRateLimitError(error: unknown): boolean {
+		return error instanceof Error && error.message.includes('ESI rate limit active')
 	}
 
 	/**
@@ -121,6 +125,7 @@ export class FleetsDO extends DurableObject implements Fleets {
 	) {
 		super(state, env)
 		this.db = createDbClient(this.env.DATABASE_URL, schema)
+		this.esiRateLimits = new EsiRateLimitGuard(new EsiRateLimitStore(this.env.ESI_RATE_LIMITS))
 	}
 
 	/**
@@ -667,30 +672,28 @@ export class FleetsDO extends DurableObject implements Fleets {
 				}
 			}
 
-			const response = await fetch(
-				`https://esi.evetech.net/latest/fleets/${invitation.fleetId}/members/?datasource=tranquility`,
-				{
-					method: 'POST',
-					headers: {
-						'Content-Type': 'application/json',
-						Authorization: `Bearer ${accessToken}`,
-					},
-					body: JSON.stringify({
-						character_id: parseInt(joiningCharacterId),
-						role: 'squad_member',
-					}),
-				}
-			)
-
-			if (!response.ok) {
-				const errorText = await response.text()
-				console.error('ESI fleet invite failed:', errorText)
+			await this.esiRateLimits.request({
+				path: `/latest/fleets/${invitation.fleetId}/members/?datasource=tranquility`,
+				userKey: buildEsiUserKey(this.env.EVE_SSO_CLIENT_ID, invitation.fleetBossId),
+				method: 'POST',
+				accessToken,
+				jsonBody: {
+					character_id: parseInt(joiningCharacterId),
+					role: 'squad_member',
+				},
+				parse: async () => undefined,
+				buildError: ({ response, body, path }) =>
+					new Error(
+						`ESI request failed: ${response.status} ${response.statusText || 'Request Failed'} - ${body || 'Unknown ESI error'} | path=${path}`
+					),
+			})
+		} catch (error) {
+			if (this.isEsiRateLimitError(error)) {
 				return {
 					success: false,
-					error: 'Failed to create fleet invitation',
+					error: 'ESI is temporarily rate limited. Please retry shortly.',
 				}
 			}
-		} catch (error) {
 			console.error('Failed to create fleet invitation:', error)
 			return {
 				success: false,
@@ -1653,26 +1656,26 @@ export class FleetsDO extends DurableObject implements Fleets {
 		const results: KickTrackingSessionMemberResult[] = []
 		for (const memberCharacterId of uniqueMemberIds) {
 			try {
-				const response = await fetch(
-					`https://esi.evetech.net/latest/fleets/${session.fleetId}/members/${memberCharacterId}/?datasource=tranquility`,
-					{
-						method: 'DELETE',
-						headers: {
-							Authorization: `Bearer ${accessToken}`,
-						},
-					}
-				)
+				await this.esiRateLimits.request({
+					path: `/latest/fleets/${session.fleetId}/members/${memberCharacterId}/?datasource=tranquility`,
+					userKey: buildEsiUserKey(this.env.EVE_SSO_CLIENT_ID, session.characterId),
+					method: 'DELETE',
+					accessToken,
+					parse: async () => undefined,
+					buildError: ({ response, body }) =>
+						new Error(this.formatFleetKickError(response, body)),
+				})
 
-				if (response.ok) {
-					results.push({ characterId: memberCharacterId, success: true })
-				} else {
+				results.push({ characterId: memberCharacterId, success: true })
+			} catch (error) {
+				if (this.isEsiRateLimitError(error)) {
 					results.push({
 						characterId: memberCharacterId,
 						success: false,
-						error: await this.formatFleetKickError(response),
+						error: 'ESI is temporarily rate limited. Please retry shortly.',
 					})
+					continue
 				}
-			} catch (error) {
 				results.push({
 					characterId: memberCharacterId,
 					success: false,

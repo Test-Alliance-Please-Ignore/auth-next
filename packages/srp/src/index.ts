@@ -6,6 +6,8 @@
 
 import { z } from 'zod'
 
+export const MAX_SRP_LOSS_AGE_DAYS = 90
+
 /**
  * ============================================================================
  * RPC INTERFACE
@@ -363,7 +365,7 @@ export type CreateSRPPolicy = z.infer<typeof CreateSRPPolicySchema>
 export const UpdateSRPConfigSchema = z.object({
 	defaultCoverageRate: z.string().optional(),
 	maxPayoutAmount: z.string().nullable().optional(),
-	maxLossAgeDays: z.number().int().positive().optional(),
+	maxLossAgeDays: z.number().int().positive().max(MAX_SRP_LOSS_AGE_DAYS).optional(),
 	paymentProcessorCorporationId: z.string().nullable().optional(),
 	srpGroupId: z.string().nullable().optional(),
 	metadata: z.record(z.string(), z.unknown()).optional(),

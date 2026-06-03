@@ -1,9 +1,13 @@
 import { getStub } from '@repo/do-utils'
+import { isStructureId } from '@repo/esi'
 import type { Universe } from '@repo/universe'
 
+import { buildAssetMap, resolveTopLevelLocation } from './location'
 import { shipTypeIds } from './ship-types'
 
-import type { CharacterAsset, EsiTypeResolver } from '@repo/esi'
+import { isRateLimitError, retryWithBackoff } from '../../utils/retry'
+
+import type { CharacterAsset, Esi, EsiTypeResolver } from '@repo/esi'
 
 export interface FittedShipItem {
 	slot: string
@@ -41,16 +45,23 @@ export interface FittedShip {
 	fighterBay: FittedShipItem[]
 	subsystems: FittedShipItem[]
 	specializedBays: FittedShipBay[]
+	containedShips?: FittedShip[]
 }
 
 export async function findFittedShips(
-	env: { ESI_TYPE_RESOLVER: DurableObjectNamespace; UNIVERSE: DurableObjectNamespace },
+	env: {
+		ESI_TYPE_RESOLVER: DurableObjectNamespace
+		UNIVERSE: DurableObjectNamespace
+		ESI: DurableObjectNamespace
+	},
 	assets: CharacterAsset[],
 	characterId: string
 ): Promise<FittedShip[]> {
+	const assetMap = buildAssetMap(assets)
 	const ships = assets.filter(
 		(asset) => asset.is_singleton === true && shipTypeIds.has(asset.type_id)
 	)
+	const shipItemIds = new Set(ships.map((ship) => ship.item_id))
 
 	const shipTypeIdsToResolve = Array.from(new Set(ships.map((ship) => ship.type_id)))
 	const universeStub = getStub<Universe>(env.UNIVERSE, 'default')
@@ -62,11 +73,127 @@ export async function findFittedShips(
 		}
 	}
 
-	return Promise.all(
+	const resolvedLocations = new Map<
+		string,
+		{ locationId: string; locationType: 'station' | 'solar_system' | 'item' | 'other' }
+	>()
+	const parentShipIdByShipId = new Map<string, string>()
+	const stationLocationIds = new Set<string>()
+	const structureLocationIds = new Set<string>()
+	const typeResolver = getStub<EsiTypeResolver>(env.ESI_TYPE_RESOLVER, 'global')
+	for (const ship of ships) {
+		const directParent = assetMap.get(ship.location_id)
+		if (directParent && shipItemIds.has(directParent.item_id)) {
+			parentShipIdByShipId.set(ship.item_id, directParent.item_id)
+		}
+
+		if (ship.location_type === 'station' || ship.location_type === 'solar_system') {
+			resolvedLocations.set(ship.item_id, {
+				locationId: ship.location_id,
+				locationType: ship.location_type,
+			})
+			stationLocationIds.add(ship.location_id)
+			continue
+		}
+
+		const resolved = resolveTopLevelLocation(ship, assetMap)
+		if (resolved) {
+			resolvedLocations.set(ship.item_id, {
+				locationId: resolved.locationId,
+				locationType: resolved.locationType,
+			})
+			if (resolved.locationType === 'other' && isStructureId(resolved.locationId)) {
+				structureLocationIds.add(resolved.locationId)
+			} else {
+				stationLocationIds.add(resolved.locationId)
+			}
+		} else {
+			resolvedLocations.set(ship.item_id, {
+				locationId: ship.location_id,
+				locationType: ship.location_type,
+			})
+		}
+	}
+
+	const locationNameMap = await typeResolver.resolveIds([...stationLocationIds], characterId)
+	const structureNameMap: Record<string, string> = {}
+	if (structureLocationIds.size > 0) {
+		const esiStub = getStub<Esi>(env.ESI, 'global')
+		const DELAY_MS = 200
+
+		for (const structureId of structureLocationIds) {
+			try {
+				const structureInfo = await retryWithBackoff(
+					async () => esiStub.fetchStructureInfo(characterId, structureId),
+					{
+						maxRetries: 3,
+						initialDelayMs: 1000,
+						maxDelayMs: 30000,
+						backoffMultiplier: 2,
+						onRetry: (attempt, error, delayMs) => {
+							console.warn('[findFittedShips] Retrying structure fetch after rate limit', {
+								structureId,
+								attempt,
+								delayMs,
+								error: error.message,
+							})
+						},
+					}
+				)
+
+				if (structureInfo) {
+					structureNameMap[structureId] = structureInfo.name
+				}
+			} catch (error) {
+				if (isRateLimitError(error)) {
+					console.warn('[findFittedShips] Rate limit error after retries, skipping structure', {
+						structureId,
+						error: error instanceof Error ? error.message : String(error),
+					})
+				} else {
+					console.warn('[findFittedShips] Failed to fetch structure info', {
+						structureId,
+						error: error instanceof Error ? error.message : String(error),
+					})
+				}
+			}
+
+			if (Array.from(structureLocationIds).indexOf(structureId) < structureLocationIds.size - 1) {
+				await new Promise((resolve) => setTimeout(resolve, DELAY_MS))
+			}
+		}
+	}
+
+	const fittedShips = await Promise.all(
 		ships.map(async (ship) => {
-			return await findShipItems(env, ship, assets, characterId, shipGroupIdByTypeId)
+			return await findShipItems(
+				env,
+				ship,
+				assets,
+				characterId,
+				shipGroupIdByTypeId,
+				resolvedLocations.get(ship.item_id),
+				locationNameMap,
+				structureNameMap
+			)
 		})
 	)
+
+	const fittedShipByItemId = new Map(fittedShips.map((ship) => [ship.itemId, ship]))
+	const rootShips: FittedShip[] = []
+	for (const ship of fittedShips) {
+		const parentShipId = parentShipIdByShipId.get(ship.itemId)
+		if (parentShipId && fittedShipByItemId.has(parentShipId)) {
+			const parentShip = fittedShipByItemId.get(parentShipId)
+			if (parentShip) {
+				parentShip.containedShips = [...(parentShip.containedShips ?? []), ship]
+			}
+		} else {
+			rootShips.push(ship)
+		}
+	}
+
+	return rootShips
 }
 
 const findItemsBySlot = (itemId: string, assets: CharacterAsset[], slot: string) => {
@@ -81,6 +208,11 @@ export async function findShipItems(
 	assets: CharacterAsset[],
 	characterId: string,
 	shipGroupIdByTypeId: Record<string, string>,
+	resolvedLocation:
+		| { locationId: string; locationType: 'station' | 'solar_system' | 'item' | 'other' }
+		| undefined,
+	locationNameMap: Record<string, string>,
+	structureNameMap: Record<string, string>
 ): Promise<FittedShip> {
 	const stub = getStub<EsiTypeResolver>(env.ESI_TYPE_RESOLVER, 'global')
 
@@ -156,12 +288,18 @@ export async function findShipItems(
 		ship.type_id, // Include ship type ID for name resolution
 	]
 	// Deduplicate type IDs to avoid unnecessary API calls
-	const locationIds = [ship.location_id]
+	const locationIds = resolvedLocation?.locationType === 'other'
+		? []
+		: [resolvedLocation?.locationId ?? ship.location_id]
 	const idsToResolve = Array.from(new Set([...allTypeIds, ...locationIds]))
 	const nameMap = await stub.resolveIds(idsToResolve, characterId)
 	// Ensure shipName is always a string - fallback to typeId if resolution failed
 	const shipName = nameMap[ship.type_id] || ship.type_id
-	const locationName = nameMap[ship.location_id] || ship.location_id
+	const locationId = resolvedLocation?.locationId ?? ship.location_id
+	const locationName = resolvedLocation?.locationType === 'other'
+		? structureNameMap[locationId] ?? locationId
+		: locationNameMap[locationId] || nameMap[locationId] || locationId
+	const locationType = resolvedLocation?.locationType ?? ship.location_type
 
 	if (!nameMap[ship.type_id]) {
 		console.warn('[findShipItems] Ship type ID not resolved:', {
@@ -204,10 +342,10 @@ export async function findShipItems(
 		shipName,
 		shipTypeId: ship.type_id,
 		shipGroupId: shipGroupIdByTypeId[ship.type_id],
-		locationId: ship.location_id,
+		locationId,
 		locationName,
 		locationFlag: ship.location_flag,
-		locationType: ship.location_type,
+		locationType,
 		rigs: resolvedRigs,
 		highs: resolvedHighs,
 		meds: resolvedMeds,

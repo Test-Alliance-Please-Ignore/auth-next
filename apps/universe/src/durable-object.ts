@@ -5,7 +5,7 @@ import { alias } from 'drizzle-orm/pg-core'
 import { and, eq, ilike, inArray, ne, sql } from '@repo/db-utils'
 import { getStub, LRUCache } from '@repo/do-utils'
 import { logger } from '@repo/hono-helpers'
-import { parseJsonResponse } from '@repo/worker-utils'
+import { buildPublicEsiUserKey, EsiRateLimitGuard, EsiRateLimitStore } from '@repo/esi-rate-limit'
 import {
 	EsiGetStructureMarketDataResponseSchema,
 	EsiGetStructureResponseSchema,
@@ -35,7 +35,6 @@ import {
 	universeSolarSystems,
 	universeStargates,
 } from './db/schema'
-import { KillmailService } from './services/killmail.service'
 import { parseInventory } from './utils/inventory-parser'
 
 import type { InventoryParseResult } from '@repo/eve-types'
@@ -51,8 +50,6 @@ import type {
 	InvFlag,
 	InvGroup,
 	InvType,
-	Killmail,
-	KillmailDetail,
 	UniverseNpcStation,
 	UniversePlanet,
 	UniverseConstellation,
@@ -111,7 +108,7 @@ export class UniverseDO extends DurableObject<Env, {}> implements Universe {
 	private regionsBySystemCache: LRUCache<{ regionId: string; regionName: string }>
 	private regionConnectionsCache: LRUCache<Array<{ fromRegionId: string; toRegionId: string }>>
 	private typeMaterialsCache: LRUCache<TypeMaterial[]>
-	private killmailService: KillmailService
+	private readonly esiRateLimits: EsiRateLimitGuard
 
 	/**
 	 * Initialize the Durable Object
@@ -146,7 +143,7 @@ export class UniverseDO extends DurableObject<Env, {}> implements Universe {
 		this.regionsBySystemCache = new LRUCache<{ regionId: string; regionName: string }>(2000)
 		this.regionConnectionsCache = new LRUCache<Array<{ fromRegionId: string; toRegionId: string }>>(200)
 		this.typeMaterialsCache = new LRUCache<TypeMaterial[]>(8000)
-		this.killmailService = new KillmailService(this.db, this.env)
+		this.esiRateLimits = new EsiRateLimitGuard(new EsiRateLimitStore(env.ESI_RATE_LIMITS))
 	}
 
 	// ========================================================================
@@ -1012,22 +1009,27 @@ export class UniverseDO extends DurableObject<Env, {}> implements Universe {
 			if (unresolved.length > 0) {
 				const fetched = await Promise.allSettled(
 					unresolved.map(async (id) => {
-						const res = await fetch(
-							`https://esi.evetech.net/latest/universe/constellations/${id}/?datasource=tranquility`
-						)
-						if (!res.ok) return null
-						const data = await parseJsonResponse<{
-							constellation_id: number
-							name: string
-							region_id: number
-						}>(res, {
-							context: `ESI constellation ${id}`,
+						return await this.esiRateLimits.request({
+							path: `/latest/universe/constellations/${id}/?datasource=tranquility`,
+							userKey: buildPublicEsiUserKey(),
+							method: 'GET',
+							parse: async (response) => {
+								const data = (await response.json()) as {
+									constellation_id: number
+									name: string
+									region_id: number
+								}
+								return {
+									constellationId: String(data.constellation_id),
+									constellationName: data.name,
+									regionId: String(data.region_id),
+								} satisfies UniverseConstellation
+							},
+							buildError: ({ response, body, path }) =>
+								new Error(
+									`ESI request failed: ${response.status} ${response.statusText || 'Request Failed'} - ${body || 'Unknown ESI error'} | path=${path}`
+								),
 						})
-						return {
-							constellationId: String(data.constellation_id),
-							constellationName: data.name,
-							regionId: String(data.region_id),
-						} satisfies UniverseConstellation
 					})
 				)
 
@@ -1122,24 +1124,29 @@ export class UniverseDO extends DurableObject<Env, {}> implements Universe {
 			if (unresolved.length > 0) {
 				const fetched = await Promise.allSettled(
 					unresolved.map(async (id) => {
-						const res = await fetch(
-							`https://esi.evetech.net/latest/universe/systems/${id}/?datasource=tranquility`
-						)
-						if (!res.ok) return null
-						const data = await parseJsonResponse<{
-							system_id: number
-							name: string
-							constellation_id: number
-							security_status: number
-						}>(res, {
-							context: `ESI solar system ${id}`,
+						return await this.esiRateLimits.request({
+							path: `/latest/universe/systems/${id}/?datasource=tranquility`,
+							userKey: buildPublicEsiUserKey(),
+							method: 'GET',
+							parse: async (response) => {
+								const data = (await response.json()) as {
+									system_id: number
+									name: string
+									constellation_id: number
+									security_status: number
+								}
+								return {
+									systemId: String(data.system_id),
+									systemName: data.name,
+									constellationId: String(data.constellation_id),
+									securityStatus: String(data.security_status),
+								}
+							},
+							buildError: ({ response, body, path }) =>
+								new Error(
+									`ESI request failed: ${response.status} ${response.statusText || 'Request Failed'} - ${body || 'Unknown ESI error'} | path=${path}`
+								),
 						})
-						return {
-							systemId: String(data.system_id),
-							systemName: data.name,
-							constellationId: String(data.constellation_id),
-							securityStatus: String(data.security_status),
-						}
 					})
 				)
 
@@ -2015,68 +2022,6 @@ export class UniverseDO extends DurableObject<Env, {}> implements Universe {
 	 */
 	async webSocketError(ws: WebSocket, error: unknown): Promise<void> {
 		console.error('WebSocket error:', error)
-	}
-
-	// ========================================================================
-	// KILLMAIL METHODS
-	// ========================================================================
-
-	/**
-	 * Store killmail data, resolving all entity names
-	 */
-	async storeKillmail(
-		killmailId: string,
-		killmailHash: string,
-		killmailData: KillmailDetail
-	): Promise<Killmail> {
-		return this.killmailService.storeKillmail(killmailId, killmailHash, killmailData)
-	}
-
-	/**
-	 * Fetch killmail by ID and hash
-	 */
-	async fetchKillmailByIdAndHash(
-		killmailId: string,
-		killmailHash: string
-	): Promise<Killmail | null> {
-		return this.killmailService.fetchKillmailByIdAndHash(killmailId, killmailHash)
-	}
-
-	/**
-	 * Get killmails by character ID
-	 */
-	async getKillmailsByCharacter(
-		characterId: string,
-		filters?: { startTime?: Date; endTime?: Date; lossesOnly?: boolean }
-	): Promise<Killmail[]> {
-		return this.killmailService.getKillmailsByCharacter(characterId, filters)
-	}
-
-	/**
-	 * Get killmails by corporation ID
-	 */
-	async getKillmailsByCorporation(
-		corporationId: string,
-		filters?: { startTime?: Date; endTime?: Date; lossesOnly?: boolean }
-	): Promise<Killmail[]> {
-		return this.killmailService.getKillmailsByCorporation(corporationId, filters)
-	}
-
-	/**
-	 * Get killmails by solar system ID
-	 */
-	async getKillmailsBySystem(
-		solarSystemId: string,
-		filters?: { startTime?: Date; endTime?: Date }
-	): Promise<Killmail[]> {
-		return this.killmailService.getKillmailsBySystem(solarSystemId, filters)
-	}
-
-	/**
-	 * Get killmails by time range
-	 */
-	async getKillmailsByTimeRange(startTime: Date, endTime: Date): Promise<Killmail[]> {
-		return this.killmailService.getKillmailsByTimeRange(startTime, endTime)
 	}
 
 	async getTypeMaterials(typeIds: string[]): Promise<Record<string, TypeMaterial[]>> {

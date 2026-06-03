@@ -30,6 +30,7 @@
 		"@repo/fulcrum": "workspace:*",
 		"@repo/hono-helpers": "workspace:*",
 		"@repo/hr": "workspace:*",
+		"@repo/markets": "workspace:*",
 		"@repo/universe": "workspace:*",
 		"@repo/worker-utils": "workspace:*",
 		"@repo/workflow-utils": "workspace:*",

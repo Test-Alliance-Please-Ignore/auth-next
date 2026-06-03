@@ -486,6 +486,7 @@ export class CharacterReportWorkflow extends WorkflowEntrypoint<Env, WorkflowPar
 			const marketPricesResult = await doStep('apply-market-prices', STEP, () =>
 				applyMarketPrices(
 					getBucket,
+					this.env.MARKETS,
 					processAssetsResult,
 					processFittedShipsResult,
 				),
@@ -514,6 +515,7 @@ export class CharacterReportWorkflow extends WorkflowEntrypoint<Env, WorkflowPar
 				generateAlerts(
 					this.env.CORE,
 					hrStub,
+					this.env.ESI_TYPE_RESOLVER,
 					getBucket,
 					this.env.CHARACTER_REPORTS,
 					'CHARACTER_REPORTS',

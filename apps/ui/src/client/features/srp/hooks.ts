@@ -175,7 +175,7 @@ export function useRecentLosses(daysBack: number = 30) {
 	const overlay = useLossRequestOverlaySnapshot()
 	const query = useQuery({
 		queryKey: srpKeys.losses(daysBack),
-		queryFn: () => api.getRecentLosses(daysBack),
+		queryFn: () => api.getRecentLosses(),
 		staleTime: 1000 * 60 * 5,
 	})
 	useEffect(() => {

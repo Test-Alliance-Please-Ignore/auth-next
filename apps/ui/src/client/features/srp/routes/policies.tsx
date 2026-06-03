@@ -28,6 +28,7 @@ import {
 } from '../hooks'
 import { formatISK } from '../utils'
 
+import { MAX_SRP_LOSS_AGE_DAYS } from '@repo/srp'
 import type { CapConfig, PayoutModifierConfig } from '@repo/srp'
 import type { SelectOption } from '@/components/ui/select'
 import type { SRPConfigResponse, SRPPolicy, SRPPredefinedAdhocModifier } from '../types'
@@ -264,6 +265,7 @@ function GeneralConfigPanel({ config }: { config?: SRPConfigResponse }) {
 						<NumberInput
 							id="maxLossAgeDays"
 							min={1}
+							max={MAX_SRP_LOSS_AGE_DAYS}
 							step={1}
 							allowDecimal={false}
 							value={maxLossAgeDays}

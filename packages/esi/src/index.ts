@@ -72,6 +72,7 @@ import type {
 export * from './types'
 export * from './id-ranges'
 export * from './errors'
+export * from './request'
 
 export interface EsiRequestOptions {
 	cacheMode?: 'default' | 'no-store'
@@ -149,6 +150,10 @@ export interface Esi {
 	): Promise<CharacterMarketTransaction[]>
 	fetchCharacterWalletJournal(characterId: string): Promise<CharacterWalletJournalEntry[]>
 	fetchCharacterBasicKillmails(characterId: string): Promise<CharacterKillmailBasic[]>
+	fetchCharacterBasicKillmailPage(
+		characterId: string,
+		page: number
+	): Promise<{ data: CharacterKillmailBasic[]; pages: number }>
 	fetchCharacterKillmailDetail(
 		characterId: string,
 		killmailId: string,
@@ -157,6 +162,11 @@ export interface Esi {
 	fetchCharacterKillmails(characterId: string): Promise<KillmailDetail[]>
 	fetchCharacterClones(characterId: string): Promise<CharacterClones>
 	fetchCharacterImplants(characterId: string): Promise<CharacterImplants>
+	searchCharacter(
+		characterId: string,
+		characterName: string,
+		strict?: boolean
+	): Promise<string[]>
 
 	// Corporation endpoints
 	fetchCorporationPublicInfo(corporationId: string): Promise<CorporationPublicInfo>
@@ -209,6 +219,23 @@ export interface Esi {
 }
 
 export interface EsiTypeResolver {
+	/**
+	 * Resolve multiple entity names to IDs
+	 * Supports alliances, characters, corporations, systems, etc.
+	 * Caches results for future lookups
+	 *
+	 * @param names - Array of entity names to resolve
+	 * @returns Map of name to ID for found entities
+	 *
+	 * @example
+	 * ```ts
+	 * const stub = getStub<EsiTypeResolver>(env.ESI_TYPE_RESOLVER, 'global')
+	 * const nameMap = await stub.resolveNames(['Jita', 'Goonswarm Federation'])
+	 * // Returns: { 'Jita': '30000142', 'Goonswarm Federation': '1354830081' }
+	 * ```
+	 */
+	resolveNames(names: string[]): Promise<Record<string, string>>
+
 	/**
 	 * Resolve multiple entity IDs to names
 	 * Supports alliances, characters, corporations, systems, etc.

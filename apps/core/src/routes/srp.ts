@@ -21,7 +21,6 @@ import { getCachedUserPermissions } from '../lib/groups-cache'
 import { requireAllianceMember } from '../middleware/session'
 
 import type { Doctrines, FittingWithItems } from '@repo/doctrines'
-import type { EveCharacterData } from '@repo/eve-character-data'
 import type { EveTokenStore } from '@repo/eve-token-store'
 import type { EsiTypeResolver } from '@repo/esi'
 import type { LossWithSRPStatus, SRPCommentResponse, SRPRequestResponse, Srp } from '@repo/srp'
@@ -691,17 +690,14 @@ srp.use('*', async (c, next) => {
 // =============================================================================
 
 /**
- * Get recent losses for all user's characters with SRP status
- * GET /api/srp/losses?daysBack=30
+ * Get recent losses for all user's characters with SRP status.
+ * The backend configuration is the source of truth for the lookback window.
  */
 srp.get('/losses', async (c) => {
 	const user = c.get('user')!
 	const srpStub = getStub<Srp>(c.env.SRP, getRequestId(c))
 	const config = await srpStub.getConfig()
 	const configuredLookbackDays = config?.maxLossAgeDays ?? 30
-	const daysBack = c.req.query('daysBack')
-		? Number.parseInt(c.req.query('daysBack')!, 10)
-		: configuredLookbackDays
 
 	// Get all character IDs for the user
 	const characters = user.characters.map((char) => ({
@@ -731,7 +727,11 @@ srp.get('/losses', async (c) => {
 			}
 
 			try {
-				const losses = await srpStub.getRecentLosses([character.characterId], user.id, daysBack)
+				const losses = await srpStub.getRecentLosses(
+					[character.characterId],
+					user.id,
+					configuredLookbackDays
+				)
 				return {
 					success: true as const,
 					characterId: character.characterId,
@@ -806,7 +806,10 @@ srp.post('/losses/:killmailId/dismiss', async (c) => {
  */
 srp.post('/losses/refresh', async (c) => {
 	const user = c.get('user')!
+	const srpStub = getStub<Srp>(c.env.SRP, getRequestId(c))
 	const tokenStore = getStub<EveTokenStore>(c.env.EVE_TOKEN_STORE, 'default')
+	const config = await srpStub.getConfig()
+	const daysBack = config?.maxLossAgeDays ?? 30
 
 	const settled = await Promise.allSettled(
 		user.characters.map(async (char) => {
@@ -825,10 +828,7 @@ srp.post('/losses/refresh', async (c) => {
 				}
 			}
 			try {
-				const stub = getStub<EveCharacterData>(c.env.EVE_CHARACTER_DATA, char.characterId)
-				const instance = await stub.getInstance(char.characterId)
-				using charInstance = instance
-				await charInstance.fetchKillmails()
+				await srpStub.getRecentLosses([char.characterId], user.id, daysBack)
 				return { characterId: char.characterId, characterName: char.characterName, success: true }
 			} catch (err) {
 				return {

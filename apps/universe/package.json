@@ -30,6 +30,7 @@
 		"@repo/db-utils": "workspace:*",
 		"@repo/do-utils": "workspace:*",
 		"@repo/esi": "workspace:*",
+		"@repo/esi-rate-limit": "workspace:*",
 		"@repo/eve-token-store": "workspace:*",
 		"@repo/eve-types": "workspace:*",
 		"@repo/hono-helpers": "workspace:*",

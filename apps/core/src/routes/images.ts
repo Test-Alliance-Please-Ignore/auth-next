@@ -2,6 +2,7 @@ import { Hono } from 'hono'
 import type { Context } from 'hono'
 
 import type { App } from '../context'
+import { waitUntilWithTelemetry } from '../lib/background-task'
 
 const THIRTY_DAYS = 2592000
 const EVE_IMAGE_BASE = 'https://images.evetech.net'
@@ -48,7 +49,14 @@ async function proxyImage(
 		},
 	})
 
-	c.executionCtx.waitUntil(cache.put(cacheKey, imageResponse.clone()))
+	waitUntilWithTelemetry(
+		c.executionCtx,
+		'images.cache-put',
+		() => cache.put(cacheKey, imageResponse.clone()),
+		{
+			cacheKey: cacheKeyPath,
+		}
+	)
 	return imageResponse
 }
 

@@ -60,13 +60,19 @@ export async function applyAssetCustomNames(
         if (processFittedShipsResult.success && processFittedShipsResult.source === 'r2') {
             const ships = (await retrieveData(getBucket, processFittedShipsResult)) as FittedShip[] | null
             if (ships && Array.isArray(ships)) {
-                for (const ship of ships) {
-                    const customName = nameMap[ship.itemId]
-                    if (customName) {
-                        ship.customName = customName
-                        applied++
+                const applyShipNames = (shipList: FittedShip[]): void => {
+                    for (const ship of shipList) {
+                        const customName = nameMap[ship.itemId]
+                        if (customName) {
+                            ship.customName = customName
+                            applied++
+                        }
+                        if (ship.containedShips?.length) {
+                            applyShipNames(ship.containedShips)
+                        }
                     }
                 }
+                applyShipNames(ships)
                 const shipBucket = getBucket(processFittedShipsResult.r2Bucket)
                 await storeInR2(shipBucket, processFittedShipsResult.r2Key, ships)
             }

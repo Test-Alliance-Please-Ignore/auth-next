@@ -8,8 +8,6 @@
 import { RpcTarget } from 'cloudflare:workers'
 import { z } from 'zod'
 
-import { Killmails, killmailSchema, killmailsSchema } from './killmails'
-
 import type { EveAllianceId, EveCharacterId, EveCorporationId } from '@repo/eve-types'
 
 // ============================================================================
@@ -519,12 +517,6 @@ export interface EveCharacterData {
 	fetchStatus(characterId: string): Promise<void>
 
 	/**
-	 * Fetch and store killmails (requires token)
-	 * @param characterId - EVE character ID
-	 */
-	fetchKillmails(characterId: string): Promise<void>
-
-	/**
 	 * Fetch character corporation roles (requires token)
 	 * @param characterId - EVE character ID
 	 * @param forceRefresh - Force refresh even if cached
@@ -659,40 +651,6 @@ export interface EveCharacterData {
 	 */
 	getInstance(characterId: string): Promise<EveCharacterDataInstance>
 
-	/**
-	 * Get killmails for a character from the database
-	 * @param characterId - EVE character ID
-	 * @param limit - Maximum number of killmails to return (default: 100)
-	 * @returns Array of killmail data
-	 */
-	getKillmails(characterId: string, limit?: number): Promise<Killmails>
-
-	/**
-	 * Fetch detailed killmail data from ESI and store it
-	 * @param killmailId - Killmail ID
-	 * @param killmailHash - Killmail hash
-	 * @param characterId - Character ID (to determine if this is a loss)
-	 * @returns Detailed killmail data
-	 */
-	fetchKillmailDetails(
-		killmailId: string,
-		killmailHash: string,
-		characterId: string
-	): Promise<CharacterKillmailData | null>
-
-	/**
-	 * Get recent losses for a character (last N days)
-	 * Filters to only losses where the character was the victim
-	 * @param characterId - EVE character ID
-	 * @param daysBack - Number of days to look back (default: 30)
-	 * @param excludeNonSrpEligible - If true, exclude ships like pods and shuttles that typically aren't SRP eligible (default: false)
-	 * @returns Array of loss data
-	 */
-	getRecentLosses(
-		characterId: string,
-		daysBack?: number,
-		excludeNonSrpEligible?: boolean
-	): Promise<CharacterLossData[]>
 }
 
 /**
@@ -705,10 +663,6 @@ export class EveCharacterDataInstance extends RpcTarget {
 		private characterId: EveCharacterId | string
 	) {
 		super()
-	}
-
-	async getKillmails(limit?: number): Promise<Killmails> {
-		return await this.characterDataObject.getKillmails(this.characterId, limit)
 	}
 
 	async fetchCharacterData(forceRefresh?: boolean): Promise<void> {
@@ -745,10 +699,6 @@ export class EveCharacterDataInstance extends RpcTarget {
 
 	async fetchStatus(): Promise<void> {
 		await this.characterDataObject.fetchStatus(this.characterId)
-	}
-
-	async fetchKillmails(): Promise<void> {
-		await this.characterDataObject.fetchKillmails(this.characterId)
 	}
 
 	async fetchCorporationRoles(forceRefresh?: boolean): Promise<EsiCharacterRoles | null> {
@@ -829,28 +779,6 @@ export class EveCharacterDataInstance extends RpcTarget {
 
 	async getMarketOrders(): Promise<CharacterMarketOrderData[]> {
 		return await this.characterDataObject.getMarketOrders(this.characterId)
-	}
-
-	async fetchKillmailDetails(
-		killmailId: string,
-		killmailHash: string
-	): Promise<CharacterKillmailData | null> {
-		return await this.characterDataObject.fetchKillmailDetails(
-			killmailId,
-			killmailHash,
-			this.characterId
-		)
-	}
-
-	async getRecentLosses(
-		daysBack?: number,
-		excludeNonSrpEligible?: boolean
-	): Promise<CharacterLossData[]> {
-		return await this.characterDataObject.getRecentLosses(
-			this.characterId,
-			daysBack,
-			excludeNonSrpEligible
-		)
 	}
 
 	[Symbol.dispose](): void {

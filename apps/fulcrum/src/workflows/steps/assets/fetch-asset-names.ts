@@ -66,8 +66,24 @@ export async function fetchAssetNames(
         }
 
         // Singleton items can have custom names — ships and containers
+        // Ship-related bay contents can also carry custom names, so we include
+        // any singleton item that is either a ship type or is stored in a
+        // named hangar / bay slot. This keeps fitted ship labels stable when
+        // the parent location is a citadel or a ship maintenance bay.
         const nameableItemIds = assets
-            .filter((a) => a.is_singleton && (shipTypeIds.has(a.type_id) || a.location_flag === 'Hangar'))
+            .filter((a) =>
+                a.is_singleton &&
+                (
+                    shipTypeIds.has(a.type_id) ||
+                    a.location_flag === 'Hangar' ||
+                    a.location_flag.startsWith('ShipHangar') ||
+                    a.location_flag.startsWith('SpecializedShipHold') ||
+                    a.location_flag.startsWith('SpecializedSmallShipHold') ||
+                    a.location_flag.startsWith('SpecializedMediumShipHold') ||
+                    a.location_flag.startsWith('SpecializedLargeShipHold') ||
+                    a.location_flag.startsWith('SpecializedIndustrialShipHold')
+                )
+            )
             .map((a) => a.item_id)
 
         console.log('[fetchAssetNames] Fetching custom names', {

@@ -5,6 +5,7 @@ import { getStub } from '@repo/do-utils'
 import { logger } from '@repo/hono-helpers'
 
 import { createDb } from '../db'
+import { waitUntilWithTelemetry } from '../lib/background-task'
 import { getCachedUserRoles } from '../lib/groups-cache'
 import { extractClientIp, recordUserIpAddress } from '../lib/ip-tracking'
 import { AuthService } from '../services/auth.service'
@@ -114,13 +115,19 @@ export const sessionMiddleware = (): MiddlewareHandler<App> => {
 			const ip = extractClientIp(c)
 			const hashSecret = c.env.IP_ADDRESS_HASH_SECRET
 			if (ip && hashSecret) {
-				c.executionCtx.waitUntil(
-					recordUserIpAddress({
-						db,
+				waitUntilWithTelemetry(
+					c.executionCtx,
+					'session.ip-recording',
+					() =>
+						recordUserIpAddress({
+							db,
+							userId: sessionUser.id,
+							ip,
+							hashSecret,
+						}),
+					{
 						userId: sessionUser.id,
-						ip,
-						hashSecret,
-					}).catch((error) => logger.error('Failed to record user IP', error))
+					}
 				)
 			}
 
