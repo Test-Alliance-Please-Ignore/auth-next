@@ -9,6 +9,11 @@ interface CoreWorker {
 	getCharacterOwner(
 		characterId: string
 	): Promise<{ userId: string; isPrimary: boolean } | null>
+	getUserCharacterIds(userId: string): Promise<string[]>
+	getUsersNeedingCharacterDataSync(): Promise<{
+		userBatches: Array<{ userId: string; characterIds: string[] }>
+		unownedCharacterIds: string[]
+	}>
 	handleCharacterAffiliationChange(
 		characterId: string,
 		options?: {

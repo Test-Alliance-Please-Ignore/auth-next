@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useState } from 'react'
 import { Link } from 'react-router-dom'
 
 import { useQueryClient } from '@tanstack/react-query'
@@ -31,10 +31,50 @@ type AuditFilter =
 	| 'external'
 	| 'roles_without_member_corp'
 	| 'drifted'
+	| 'unmanaged_roles'
 	| 'with_roles'
 	| 'without_roles'
 
 const SESSION_CACHE_KEY = 'discord-member-audit-cache-v1'
+
+type DiscordAuditCacheEntry = {
+	activeServerId: string
+	tab: AuditTab
+	filter: AuditFilter
+	page: number
+	pageSize: number
+	data: Awaited<ReturnType<typeof api.getDiscordGuildAudit>> | null
+	selectedUnlinked: Record<string, boolean>
+	startCooldownUntil: number
+}
+
+type DiscordAuditSessionCache = {
+	version: 1
+	selectedServerId: string
+	entries: Record<string, DiscordAuditCacheEntry>
+}
+
+function loadDiscordAuditSessionCache(): DiscordAuditSessionCache | null {
+	try {
+		const raw = sessionStorage.getItem(SESSION_CACHE_KEY)
+		if (!raw) return null
+		const parsed = JSON.parse(raw) as Partial<DiscordAuditSessionCache>
+		if (parsed?.version !== 1 || !parsed.entries || typeof parsed.entries !== 'object') {
+			return null
+		}
+		return {
+			version: 1,
+			selectedServerId: typeof parsed.selectedServerId === 'string' ? parsed.selectedServerId : '',
+			entries: parsed.entries as Record<string, DiscordAuditCacheEntry>,
+		}
+	} catch {
+		return null
+	}
+}
+
+function saveDiscordAuditSessionCache(cache: DiscordAuditSessionCache): void {
+	sessionStorage.setItem(SESSION_CACHE_KEY, JSON.stringify(cache))
+}
 
 function formatDiscordHandle(username: string, discriminator: string): string {
 	if (!discriminator || discriminator === '0') return username
@@ -44,16 +84,26 @@ function formatDiscordHandle(username: string, discriminator: string): string {
 export default function AdminDiscordAuditPage() {
 	usePageTitle('Admin - Discord Audit')
 
+	const cachedSession = useMemo(() => loadDiscordAuditSessionCache(), [])
+	const cachedSelectedServerId = cachedSession?.selectedServerId ?? ''
+	const cachedSelectedEntry = cachedSelectedServerId
+		? cachedSession?.entries[cachedSelectedServerId] ?? null
+		: null
+
 	const { data: servers = [], isLoading: serversLoading } = useDiscordServers()
-	const [serverId, setServerId] = useState<string>('')
-	const [activeServerId, setActiveServerId] = useState<string>('')
-	const [tab, setTab] = useState<AuditTab>('linked')
-	const [filter, setFilter] = useState<AuditFilter>('all')
-	const [page, setPage] = useState<number>(1)
-	const [pageSize, setPageSize] = useState<number>(25)
-	const [data, setData] = useState<Awaited<ReturnType<typeof api.getDiscordGuildAudit>> | null>(null)
+	const [serverId, setServerId] = useState<string>(cachedSelectedServerId)
+	const [activeServerId, setActiveServerId] = useState<string>(cachedSelectedEntry?.activeServerId ?? '')
+	const [tab, setTab] = useState<AuditTab>(cachedSelectedEntry?.tab ?? 'linked')
+	const [filter, setFilter] = useState<AuditFilter>(cachedSelectedEntry?.filter ?? 'all')
+	const [page, setPage] = useState<number>(cachedSelectedEntry?.page ?? 1)
+	const [pageSize, setPageSize] = useState<number>(cachedSelectedEntry?.pageSize ?? 25)
+	const [data, setData] = useState<Awaited<ReturnType<typeof api.getDiscordGuildAudit>> | null>(
+		cachedSelectedEntry?.data ?? null
+	)
 	const [isLoading, setIsLoading] = useState<boolean>(false)
-	const [selectedUnlinked, setSelectedUnlinked] = useState<Record<string, boolean>>({})
+	const [selectedUnlinked, setSelectedUnlinked] = useState<Record<string, boolean>>(
+		cachedSelectedEntry?.selectedUnlinked ?? {}
+	)
 
 	const { requestConfirmation, closeConfirmation, confirmationDialog } = useConfirmationDialog()
 	const queryClient = useQueryClient()
@@ -70,6 +120,7 @@ export default function AdminDiscordAuditPage() {
 	const [startCooldownUntil, setStartCooldownUntil] = useState<number>(0)
 	const startCooldownRemainingMs = Math.max(0, startCooldownUntil - nowMs)
 	const isStartCooldownActive = startCooldownRemainingMs > 0
+	const currentCacheKey = serverId || activeServerId
 
 	const selectedIds = useMemo(
 		() => Object.entries(selectedUnlinked).filter(([, checked]) => checked).map(([id]) => id),
@@ -81,60 +132,92 @@ export default function AdminDiscordAuditPage() {
 		unlinkedRows.length > 0 && unlinkedRows.every((row) => selectedUnlinked[row.discordUserId] === true)
 
 	useEffect(() => {
-		try {
-			const raw = sessionStorage.getItem(SESSION_CACHE_KEY)
-			if (!raw) return
-			const parsed = JSON.parse(raw) as {
-				serverId?: string
-				activeServerId?: string
-				tab?: AuditTab
-				filter?: AuditFilter
-				page?: number
-				pageSize?: number
-			}
-			if (parsed.serverId) setServerId(parsed.serverId)
-			if (parsed.activeServerId) setActiveServerId(parsed.activeServerId)
-			if (parsed.tab) setTab(parsed.tab)
-			if (parsed.filter) setFilter(parsed.filter)
-			if (typeof parsed.page === 'number') setPage(parsed.page)
-			if (typeof parsed.pageSize === 'number') setPageSize(parsed.pageSize)
-		} catch {
-			// ignore malformed cache
-		}
-	}, [])
+		if (!currentCacheKey) return
 
-	useEffect(() => {
-		const cachePayload = {
-			serverId,
+		const existing = loadDiscordAuditSessionCache() ?? {
+			version: 1 as const,
+			selectedServerId: currentCacheKey,
+			entries: {},
+		}
+
+		existing.selectedServerId = serverId || existing.selectedServerId
+		existing.entries[currentCacheKey] = {
 			activeServerId,
 			tab,
 			filter,
 			page,
 			pageSize,
+			data,
+			selectedUnlinked,
+			startCooldownUntil,
 		}
-		sessionStorage.setItem(SESSION_CACHE_KEY, JSON.stringify(cachePayload))
-	}, [activeServerId, filter, page, pageSize, serverId, tab])
+		saveDiscordAuditSessionCache(existing)
+	}, [
+		activeServerId,
+		currentCacheKey,
+		data,
+		filter,
+		page,
+		pageSize,
+		selectedUnlinked,
+		serverId,
+		startCooldownUntil,
+		tab,
+	])
 
-	const fetchAuditPage = async (
-		server: string,
-		fetchTab: AuditTab,
-		pageOverride = page,
-		filterOverride?: AuditFilter,
-		pageSizeOverride = pageSize
-	) => {
-		setIsLoading(true)
-		try {
-			const response = await api.getDiscordGuildAudit(server, {
-				tab: fetchTab,
-				filter: filterOverride ?? filter,
-				page: pageOverride,
-				pageSize: pageSizeOverride,
-			})
-			setData(response)
-		} finally {
-			setIsLoading(false)
-		}
-	}
+	const restoreCachedServerState = useCallback(
+		(nextServerId: string) => {
+			const cached = loadDiscordAuditSessionCache()
+			const cachedEntry = cached?.entries[nextServerId]
+
+			setServerId(nextServerId)
+			if (cachedEntry) {
+				setActiveServerId(cachedEntry.activeServerId)
+				setTab(cachedEntry.tab)
+				setFilter(cachedEntry.filter)
+				setPage(cachedEntry.page)
+				setPageSize(cachedEntry.pageSize)
+				setData(cachedEntry.data)
+				setSelectedUnlinked(cachedEntry.selectedUnlinked)
+				setStartCooldownUntil(cachedEntry.startCooldownUntil)
+				return
+			}
+
+			setActiveServerId('')
+			setTab('linked')
+			setFilter('all')
+			setPage(1)
+			setPageSize(25)
+			setData(null)
+			setSelectedUnlinked({})
+			setStartCooldownUntil(0)
+		},
+		[]
+	)
+
+	const fetchAuditPage = useCallback(
+		async (
+			server: string,
+			fetchTab: AuditTab,
+			pageOverride = page,
+			filterOverride?: AuditFilter,
+			pageSizeOverride = pageSize
+		) => {
+			setIsLoading(true)
+			try {
+				const response = await api.getDiscordGuildAudit(server, {
+					tab: fetchTab,
+					filter: filterOverride ?? filter,
+					page: pageOverride,
+					pageSize: pageSizeOverride,
+				})
+				setData(response)
+			} finally {
+				setIsLoading(false)
+			}
+		},
+		[filter, page, pageSize]
+	)
 
 	useEffect(() => {
 		if (!isStartCooldownActive) return
@@ -149,23 +232,28 @@ export default function AdminDiscordAuditPage() {
 			void fetchAuditPage(effectiveServerId, tab)
 		}, 5000)
 		return () => window.clearInterval(timer)
-	}, [effectiveServerId, filter, page, pageSize, runStatus, tab])
+	}, [effectiveServerId, fetchAuditPage, runStatus, tab])
 
 	useEffect(() => {
 		if (!effectiveServerId) return
-		if (isLoading) return
-		if (data && data.tab === tab && data.filter === filter && data.pagination?.page === page && data.pagination?.pageSize === pageSize) {
-			return
-		}
 		void fetchAuditPage(effectiveServerId, tab)
-	}, [data, effectiveServerId, filter, isLoading, page, pageSize, tab])
+	}, [effectiveServerId, fetchAuditPage, tab])
+
+	useEffect(() => {
+		const loadedServerId = data?.server?.id
+		if (!loadedServerId) return
+
+		if (serverId !== loadedServerId) {
+			setServerId(loadedServerId)
+		}
+		if (activeServerId !== loadedServerId) {
+			setActiveServerId(loadedServerId)
+		}
+	}, [activeServerId, data?.server?.id, serverId])
 
 	const onChangeServer = (value: string) => {
-		setServerId(value)
-		setActiveServerId('')
-		setData(null)
-		setPage(1)
-		setSelectedUnlinked({})
+		if (value === serverId) return
+		restoreCachedServerState(value)
 	}
 
 	const startAudit = () => {
@@ -178,7 +266,6 @@ export default function AdminDiscordAuditPage() {
 		setStartCooldownUntil(Date.now() + 60_000)
 		void (async () => {
 			await startAuditMutation.mutateAsync(serverId)
-			await fetchAuditPage(serverId, tab, 1)
 		})()
 	}
 
@@ -188,17 +275,12 @@ export default function AdminDiscordAuditPage() {
 		setFilter('all')
 		setPage(1)
 		setSelectedUnlinked({})
-		if (effectiveServerId) {
-			void fetchAuditPage(effectiveServerId, nextTab, 1, 'all')
-		}
 	}
 
 	const onChangeFilter = (value: string) => {
 		const nextFilter = value as AuditFilter
 		setFilter(nextFilter)
 		setPage(1)
-		if (!effectiveServerId) return
-		void fetchAuditPage(effectiveServerId, tab, 1, nextFilter)
 	}
 
 	const toggleAllVisibleUnlinked = (checked: boolean) => {
@@ -374,16 +456,10 @@ export default function AdminDiscordAuditPage() {
 				pageSizeOptions={[10, 25, 50, 100]}
 				onPageChange={(nextPage) => {
 					setPage(nextPage)
-					if (effectiveServerId) {
-						void fetchAuditPage(effectiveServerId, tab, nextPage)
-					}
 				}}
 				onPageSizeChange={(nextPageSize) => {
 					setPageSize(nextPageSize)
 					setPage(1)
-					if (effectiveServerId) {
-						void fetchAuditPage(effectiveServerId, tab, 1, undefined, nextPageSize)
-					}
 				}}
 			/>
 		</div>
@@ -465,10 +541,11 @@ export default function AdminDiscordAuditPage() {
 								tab === 'linked'
 									? [
 											{ value: 'all', label: 'All Rows' },
-											{ value: 'drifted', label: 'Drifted (Unmanaged Roles)' },
+											{ value: 'drifted', label: 'Managed Role Drift' },
+											{ value: 'unmanaged_roles', label: 'Has Unmanaged Roles' },
 											{ value: 'roles_without_member_corp', label: 'Roles w/o Member Corp' },
-											{ value: 'member_corp', label: 'Member Corp Only' },
-											{ value: 'external', label: 'External Only' },
+											{ value: 'member_corp', label: 'Only Valid Corp Affiliation' },
+											{ value: 'external', label: 'Only External Affiliation' },
 										]
 									: [
 											{ value: 'all', label: 'All Rows' },

@@ -10,6 +10,7 @@ import { validateAndSyncCharacterTokenValidity } from '../lib/token-validity'
 import { requireAuth } from '../middleware/session'
 import { checkAndUpdateDirectorStatus } from '../services/corporation-auto-register.service'
 import { EntityResolverService } from '../services/entity-resolver.service'
+import { shouldTreatSensitiveDataAsLive } from './characters-utils'
 
 import type { EveCharacterData } from '@repo/eve-character-data'
 import type { EveCorporationData } from '@repo/eve-corporation-data'
@@ -529,21 +530,32 @@ app.get('/:characterId', requireAuth(), async (c) => {
 
 		// Add sensitive data for owner/admin/authorized HR viewers
 		if (canViewSensitiveData) {
-			// Fetch live location and status on-demand (volatile ESI data, not stored in daily sync)
-			await Promise.all([
-				eveCharacterData.fetchLocation().catch((err: unknown) => {
-					logger.warn('[Character Detail] Failed to fetch live location', {
-						characterId: characterIdStr,
-						error: err instanceof Error ? err.message : String(err),
-					})
-				}),
-				eveCharacterData.fetchStatus().catch((err: unknown) => {
-					logger.warn('[Character Detail] Failed to fetch live status', {
-						characterId: characterIdStr,
-						error: err instanceof Error ? err.message : String(err),
-					})
-				}),
-			])
+			const tokenState = await db
+				.select({ hasValidToken: userCharacters.hasValidToken })
+				.from(userCharacters)
+				.where(eq(userCharacters.characterId, characterIdStr))
+				.limit(1)
+			const sensitiveDataIsLive = shouldTreatSensitiveDataAsLive(tokenState[0]?.hasValidToken)
+
+			// Fetch live location and status only when the character still has a valid token.
+			// If the token is invalid, we keep the stored snapshot as "last known" state and
+			// let the UI render it as stale rather than overwriting it with misleading live state.
+			if (sensitiveDataIsLive) {
+				await Promise.all([
+					eveCharacterData.fetchLocation().catch((err: unknown) => {
+						logger.warn('[Character Detail] Failed to fetch live location', {
+							characterId: characterIdStr,
+							error: err instanceof Error ? err.message : String(err),
+						})
+					}),
+					eveCharacterData.fetchStatus().catch((err: unknown) => {
+						logger.warn('[Character Detail] Failed to fetch live status', {
+							characterId: characterIdStr,
+							error: err instanceof Error ? err.message : String(err),
+						})
+					}),
+				])
+			}
 
 			const sensitiveData = await eveCharacterData.getSensitiveData()
 
@@ -581,6 +593,7 @@ app.get('/:characterId', requireAuth(), async (c) => {
 							wallet: sensitiveData.wallet,
 							assets: sensitiveData.assets,
 							status: sensitiveData.status,
+							sensitiveDataIsLive,
 							skillQueue: enrichedSkillQueue,
 						}
 					} else {
@@ -589,6 +602,7 @@ app.get('/:characterId', requireAuth(), async (c) => {
 							wallet: sensitiveData.wallet,
 							assets: sensitiveData.assets,
 							status: sensitiveData.status,
+							sensitiveDataIsLive,
 							skillQueue: enrichedSkillQueue,
 						}
 					}
@@ -597,6 +611,7 @@ app.get('/:characterId', requireAuth(), async (c) => {
 						wallet: sensitiveData.wallet,
 						assets: sensitiveData.assets,
 						status: sensitiveData.status,
+						sensitiveDataIsLive,
 						skillQueue: enrichedSkillQueue,
 					}
 				}

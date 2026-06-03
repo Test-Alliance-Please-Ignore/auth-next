@@ -266,6 +266,12 @@ export interface GroupMembershipSummary {
 	joinedAt: Date
 }
 
+export interface GroupMembershipCleanupResult {
+	removedGroupIds: string[]
+	transferredOwnershipGroupIds: string[]
+	deletedGroupIds: string[]
+}
+
 /**
  * Public RPC interface for Groups Durable Object
  *
@@ -355,6 +361,12 @@ export interface Groups {
 
 	/** Get user's group memberships */
 	getUserMemberships(userId: string): Promise<GroupMembershipSummary[]>
+
+	/**
+	 * Force-remove a user from all groups they belong to.
+	 * Intended for system-level entitlement reconciliation.
+	 */
+	forceRemoveUserFromAllGroups(userId: string): Promise<GroupMembershipCleanupResult>
 
 	/**
 	 * Admin Operations

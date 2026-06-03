@@ -65,6 +65,7 @@ import type {
 	UserDetails,
 } from '@repo/admin'
 import type { Core } from '@repo/core'
+import type { EveTokenStore } from '@repo/eve-token-store'
 import type { Hr } from '@repo/hr'
 import type { Legacy } from '@repo/legacy'
 import type { App, Env } from './context'
@@ -200,6 +201,13 @@ export class CoreWorker extends WorkerEntrypoint<Env> {
 	}
 
 	/**
+	 * Get all linked character IDs for a user.
+	 */
+	async getUserCharacterIds(userId: string): Promise<string[]> {
+		return this.getService().getUserCharacterIds(userId)
+	}
+
+	/**
 	 * List every core user that currently has at least one active linked character.
 	 */
 	async listUsersWithActiveCharacters(): Promise<Array<{ userId: string; characterIds: string[] }>> {
@@ -220,6 +228,16 @@ export class CoreWorker extends WorkerEntrypoint<Env> {
 		}
 
 		return [...perUser.entries()].map(([userId, characterIds]) => ({ userId, characterIds }))
+	}
+
+	/**
+	 * Get user batches for the daily character data sync, grouped by user ID.
+	 */
+	async getUsersNeedingCharacterDataSync(): Promise<{
+		userBatches: Array<{ userId: string; characterIds: string[] }>
+		unownedCharacterIds: string[]
+	}> {
+		return this.getService().getUsersNeedingCharacterDataSync()
 	}
 
 	/**

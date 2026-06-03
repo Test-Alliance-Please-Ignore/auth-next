@@ -3,6 +3,7 @@ import { Activity, Lock, MapPin, Wallet } from 'lucide-react'
 import { Card, CardContent, CardHeader, CardTitle } from './ui/card'
 
 interface CharacterPrivateInfoProps {
+	sensitiveDataIsLive?: boolean
 	location?: {
 		solarSystemId: number
 		solarSystemName?: string
@@ -21,7 +22,12 @@ interface CharacterPrivateInfoProps {
 	}
 }
 
-export function CharacterPrivateInfo({ location, wallet, status }: CharacterPrivateInfoProps) {
+export function CharacterPrivateInfo({
+	sensitiveDataIsLive = true,
+	location,
+	wallet,
+	status,
+}: CharacterPrivateInfoProps) {
 	const formatISK = (value: string) => {
 		const num = parseFloat(value)
 		return (
@@ -37,7 +43,9 @@ export function CharacterPrivateInfo({ location, wallet, status }: CharacterPriv
 			{/* Location */}
 			<Card>
 				<CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-					<CardTitle className="text-sm font-medium">Location</CardTitle>
+					<CardTitle className="text-sm font-medium">
+						{sensitiveDataIsLive ? 'Location' : 'Last known location'}
+					</CardTitle>
 					<div className="flex items-center gap-1">
 						<MapPin className="h-4 w-4 text-muted-foreground" />
 						<Lock className="h-3 w-3 text-muted-foreground" />
@@ -101,7 +109,17 @@ export function CharacterPrivateInfo({ location, wallet, status }: CharacterPriv
 					</div>
 				</CardHeader>
 				<CardContent>
-					{status ? (
+					{!sensitiveDataIsLive ? (
+						<div>
+							<div className="flex items-center gap-2">
+								<div className="h-2 w-2 rounded-full bg-gray-400" />
+								<p className="text-lg font-bold">Unknown</p>
+							</div>
+							<p className="text-xs text-muted-foreground mt-1">
+								Token is no longer valid for live status updates.
+							</p>
+						</div>
+					) : status ? (
 						<div>
 							<div className="flex items-center gap-2">
 								<div

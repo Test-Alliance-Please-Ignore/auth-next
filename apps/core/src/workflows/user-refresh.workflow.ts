@@ -13,7 +13,11 @@ import {
 	updateCharacterPublicInfo,
 } from './steps/update-character'
 import { updateCompletionTimestamp } from './steps/update-completion-timestamp'
-import { attachUserRoles, getUserRoleAttachments } from './steps/user-roles'
+import {
+	attachUserRoles,
+	getUserRoleAttachments,
+	reconcileAffiliationBasedGroupMemberships,
+} from './steps/user-roles'
 
 import type { WorkflowEvent, WorkflowStep } from 'cloudflare:workers'
 import type { Env } from '../context'
@@ -514,6 +518,45 @@ export class UserRefreshWorkflow extends WorkflowEntrypoint<Env, UserRefreshWork
 					...logContext,
 					...coreAttachmentDelta,
 				})
+
+				let groupCleanupResult = {
+					shouldStripGroups: false,
+					hasQualifyingAffiliation: false,
+					removedGroupIds: [] as string[],
+					transferredOwnershipGroupIds: [] as string[],
+					deletedGroupIds: [] as string[],
+				}
+				try {
+					groupCleanupResult = await step.do(
+						'reconcile-affiliation-group-memberships',
+						ROLE_STEP_OPTIONS,
+						() => {
+							const ctx = this.createContext(
+								userId,
+								workflowInstanceId,
+								refreshMode,
+								suppressDiscordRefresh
+							)
+							return reconcileAffiliationBasedGroupMemberships(ctx)
+						}
+					)
+					steps['reconcile-affiliation-group-memberships'] = 'ok'
+				} catch (error) {
+					steps['reconcile-affiliation-group-memberships'] = 'failed'
+					console.warn('[Workflow] Failed to reconcile affiliation-based group memberships; continuing', {
+						...logContext,
+						error: error instanceof Error ? error.message : String(error),
+					})
+				}
+
+				if (groupCleanupResult.shouldStripGroups) {
+					console.log('[Workflow] Stripped affiliation-based group memberships', {
+						...logContext,
+						removedGroupCount: groupCleanupResult.removedGroupIds.length,
+						transferredOwnershipGroupCount: groupCleanupResult.transferredOwnershipGroupIds.length,
+						deletedGroupCount: groupCleanupResult.deletedGroupIds.length,
+					})
+				}
 			}
 
 			// Step 6: Update completion timestamp

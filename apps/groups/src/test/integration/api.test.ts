@@ -16,6 +16,7 @@ const ADMIN_USER_ID = 'admin-user-123'
 const USER_1_ID = 'user-1-456'
 const USER_2_ID = 'user-2-789'
 const USER_3_ID = 'user-3-abc'
+const FALLBACK_OWNER_USER_ID = '4a16f141-ddd2-4179-8e3f-7d64a6548f74'
 
 describe('Groups Worker', () => {
 	it('responds to root endpoint', async () => {
@@ -217,6 +218,57 @@ describe('Groups Durable Object - Groups', () => {
 		expect(retrieved?.category).toBeDefined()
 		expect(retrieved?.memberCount).toBeGreaterThanOrEqual(1) // Owner is auto-member
 		expect(retrieved?.isOwner).toBe(true)
+	})
+
+	it('should transfer ownership to the fallback owner when removing an owner from all groups', async () => {
+		const stub = getStub<Groups>(testEnv.GROUPS, 'test-group-owner-fallback')
+
+		const category = await stub.createCategory(
+			{
+				name: 'Owner Fallback Test Category',
+				visibility: 'public',
+			},
+			ADMIN_USER_ID
+		)
+
+		const group = await stub.createGroup(
+			{
+				categoryId: category.id,
+				name: 'Owner Fallback Group',
+			},
+			USER_1_ID
+		)
+
+		await stub.joinGroup(group.id, USER_2_ID)
+		await stub.createGroupScopedPermission(
+			{
+				groupId: group.id,
+				urn: 'urn:groups:test:owner-fallback',
+				name: 'Owner Fallback Permission',
+				targetType: 'all_members',
+			},
+			USER_1_ID
+		)
+
+		const beforePermissions = await stub.listGroupPermissions(group.id, ADMIN_USER_ID)
+		expect(beforePermissions).toHaveLength(1)
+
+		const cleanup = await stub.forceRemoveUserFromAllGroups(USER_1_ID)
+		expect(cleanup.transferredOwnershipGroupIds).toContain(group.id)
+		expect(cleanup.deletedGroupIds).toHaveLength(0)
+
+		const retrieved = await stub.getGroup(group.id, ADMIN_USER_ID)
+		expect(retrieved).toBeDefined()
+		expect(retrieved?.ownerId).toBe(FALLBACK_OWNER_USER_ID)
+
+		const originalOwnerMemberships = await stub.getUserMemberships(USER_1_ID)
+		expect(originalOwnerMemberships.some((membership) => membership.groupId === group.id)).toBe(false)
+
+		const fallbackOwnerMemberships = await stub.getUserMemberships(FALLBACK_OWNER_USER_ID)
+		expect(fallbackOwnerMemberships.some((membership) => membership.groupId === group.id)).toBe(true)
+
+		const afterPermissions = await stub.listGroupPermissions(group.id, ADMIN_USER_ID)
+		expect(afterPermissions).toHaveLength(1)
 	})
 
 	it('should update a group', async () => {

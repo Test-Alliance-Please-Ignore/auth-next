@@ -250,6 +250,11 @@ export interface DiscordSlashCommandOption {
  * Canonical Discord role IDs we intentionally exclude from auth/role-audit logic.
  */
 export const DISCORD_EXCLUDED_NITRO_BOOSTER_ROLE_ID = '585546446120419328'
+export const DISCORD_EXCLUDED_AUTH_GIGACHAD_ROLE_ID = '1431816436640256060'
+export const DISCORD_EXCLUDED_AUTH_ROLE_IDS = new Set([
+	DISCORD_EXCLUDED_NITRO_BOOSTER_ROLE_ID,
+	DISCORD_EXCLUDED_AUTH_GIGACHAD_ROLE_ID,
+])
 
 export interface DiscordRegisteredSlashCommand {
 	id: string

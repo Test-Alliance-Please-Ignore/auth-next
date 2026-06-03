@@ -185,6 +185,83 @@ export class CoreDO extends DurableObject<Env> implements Core {
 
 		return { userId: character.userId, isPrimary: character.is_primary }
 	}
+
+	async getUserCharacterIds(userId: string): Promise<string[]> {
+		const characters = await this.getDb().query.userCharacters.findMany({
+			where: eq(userCharacters.userId, userId),
+			columns: {
+				characterId: true,
+			},
+		})
+
+		return characters.map((character) => character.characterId)
+	}
+
+	async getUsersNeedingCharacterDataSync(): Promise<{
+		userBatches: Array<{ userId: string; characterIds: string[] }>
+		unownedCharacterIds: string[]
+	}> {
+		const tokenStore = getStub<EveTokenStore>(this.env.EVE_TOKEN_STORE, 'default')
+		const dueCharacterIds = await tokenStore.getCharactersNeedingDataSync()
+
+		if (dueCharacterIds.length === 0) {
+			return { userBatches: [], unownedCharacterIds: [] }
+		}
+
+		const dueCharacterOwners = await this.getDb().query.userCharacters.findMany({
+			where: inArray(userCharacters.characterId, dueCharacterIds),
+			columns: {
+				userId: true,
+				characterId: true,
+			},
+		})
+
+		const dueCharacterIndex = new Map(dueCharacterIds.map((characterId, index) => [characterId, index]))
+		const userOrder = new Map<string, number>()
+		const dueUserIds = new Set<string>()
+
+		for (const row of dueCharacterOwners) {
+			dueUserIds.add(row.userId)
+			const existingOrder = userOrder.get(row.userId)
+			const dueIndex = dueCharacterIndex.get(row.characterId) ?? Number.MAX_SAFE_INTEGER
+			if (existingOrder === undefined || dueIndex < existingOrder) {
+				userOrder.set(row.userId, dueIndex)
+			}
+		}
+
+		const ownedCharacterIdSet = new Set(dueCharacterOwners.map((row) => row.characterId))
+		const unownedCharacterIds = dueCharacterIds.filter((characterId) => !ownedCharacterIdSet.has(characterId))
+
+		if (dueUserIds.size === 0) {
+			return { userBatches: [], unownedCharacterIds }
+		}
+
+		const allUserCharacters = await this.getDb().query.userCharacters.findMany({
+			where: inArray(userCharacters.userId, Array.from(dueUserIds)),
+			columns: {
+				userId: true,
+				characterId: true,
+			},
+		})
+
+		const characterIdsByUserId = new Map<string, Set<string>>()
+		for (const row of allUserCharacters) {
+			const bucket = characterIdsByUserId.get(row.userId) ?? new Set<string>()
+			bucket.add(row.characterId)
+			characterIdsByUserId.set(row.userId, bucket)
+		}
+
+		return {
+			userBatches: Array.from(dueUserIds)
+				.sort((a, b) => (userOrder.get(a) ?? 0) - (userOrder.get(b) ?? 0))
+				.map((userId) => ({
+					userId,
+					characterIds: Array.from(characterIdsByUserId.get(userId) ?? []),
+				})),
+			unownedCharacterIds,
+		}
+	}
+
 	async getUserCharacters(
 		userId: string,
 		includeDeleted: boolean = false

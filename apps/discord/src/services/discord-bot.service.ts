@@ -1,6 +1,6 @@
 import { generateShardKey } from '@repo/hazmat'
 import { logger } from '@repo/hono-helpers'
-import { DISCORD_EXCLUDED_NITRO_BOOSTER_ROLE_ID } from '@repo/discord'
+import { DISCORD_EXCLUDED_AUTH_ROLE_IDS } from '@repo/discord'
 import { parseJsonResponse } from '@repo/worker-utils'
 
 import type {
@@ -70,7 +70,7 @@ function sleep(ms: number): Promise<void> {
 }
 
 const MAX_RETRIES = 3
-const EXCLUDED_ROLE_IDS = new Set([DISCORD_EXCLUDED_NITRO_BOOSTER_ROLE_ID]) // Nitro Booster
+const EXCLUDED_ROLE_IDS = DISCORD_EXCLUDED_AUTH_ROLE_IDS
 
 /**
  * Make a fetch request with automatic rate limit retry handling
