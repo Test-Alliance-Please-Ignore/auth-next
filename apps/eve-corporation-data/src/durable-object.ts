@@ -1,6 +1,6 @@
 import { DurableObject } from 'cloudflare:workers'
 
-import { and, asc, desc, eq, gt, gte, inArray, lte, sql } from '@repo/db-utils'
+import { and, desc, eq, gt, gte, inArray, lte, sql } from '@repo/db-utils'
 import { getStub } from '@repo/do-utils'
 import { logger } from '@repo/hono-helpers'
 
@@ -119,78 +119,78 @@ export class EveCorporationDataDO extends DurableObject<Env> implements EveCorpo
 		throw new Error(`NPC corporation ${corporationId} is not supported by eve-corporation-data`)
 	}
 
-	private buildAllianceCourierContractOrderBy(
+	private compareNullableString(left: string | null, right: string | null): number {
+		if (left === right) return 0
+		if (left === null || left === '') return 1
+		if (right === null || right === '') return -1
+		return left.localeCompare(right)
+	}
+
+	private compareNullableNumber(left: number | null, right: number | null): number {
+		if (left === right) return 0
+		if (left === null || left === undefined) return 1
+		if (right === null || right === undefined) return -1
+		return left - right
+	}
+
+	private compareNullableNumericString(left: string | null, right: string | null): number {
+		if (left === right) return 0
+		if (left === null || left === '') return 1
+		if (right === null || right === '') return -1
+		const leftValue = Number.parseFloat(left)
+		const rightValue = Number.parseFloat(right)
+		if (!Number.isFinite(leftValue) && !Number.isFinite(rightValue)) return 0
+		if (!Number.isFinite(leftValue)) return 1
+		if (!Number.isFinite(rightValue)) return -1
+		return leftValue - rightValue
+	}
+
+	private compareAllianceCourierContracts(
+		left: CorporationContractData,
+		right: CorporationContractData,
 		sortBy: CorporationContractSortBy,
 		sortDirection: SortDirection
 	) {
-		const order = sortDirection === 'desc' ? desc : asc
-
+		let comparison = 0
 		switch (sortBy) {
 			case 'pickup': {
-				const nullFlag = sql<number>`case when ${corporationContracts.startLocationId} is null then 1 else 0 end`
-				return [
-					order(nullFlag),
-					order(corporationContracts.startLocationId),
-					desc(corporationContracts.dateIssued),
-					desc(corporationContracts.contractId),
-				]
+				comparison = this.compareNullableString(left.startLocationId, right.startLocationId)
+				break
 			}
 			case 'dropoff': {
-				const nullFlag = sql<number>`case when ${corporationContracts.endLocationId} is null then 1 else 0 end`
-				return [
-					order(nullFlag),
-					order(corporationContracts.endLocationId),
-					desc(corporationContracts.dateIssued),
-					desc(corporationContracts.contractId),
-				]
+				comparison = this.compareNullableString(left.endLocationId, right.endLocationId)
+				break
 			}
 			case 'volume': {
-				const nullFlag = sql<number>`case when ${corporationContracts.volume} is null then 1 else 0 end`
-				const volumeValue = sql<number>`nullif(${corporationContracts.volume}, '')::numeric`
-				return [
-					order(nullFlag),
-					order(volumeValue),
-					desc(corporationContracts.dateIssued),
-					desc(corporationContracts.contractId),
-				]
+				comparison = this.compareNullableNumericString(left.volume, right.volume)
+				break
 			}
 			case 'reward': {
-				const nullFlag = sql<number>`case when ${corporationContracts.reward} is null then 1 else 0 end`
-				const rewardValue = sql<number>`nullif(${corporationContracts.reward}, '')::numeric`
-				return [
-					order(nullFlag),
-					order(rewardValue),
-					desc(corporationContracts.dateIssued),
-					desc(corporationContracts.contractId),
-				]
+				comparison = this.compareNullableNumericString(left.reward, right.reward)
+				break
 			}
 			case 'collateral': {
-				const nullFlag = sql<number>`case when ${corporationContracts.collateral} is null then 1 else 0 end`
-				const collateralValue = sql<number>`nullif(${corporationContracts.collateral}, '')::numeric`
-				return [
-					order(nullFlag),
-					order(collateralValue),
-					desc(corporationContracts.dateIssued),
-					desc(corporationContracts.contractId),
-				]
+				comparison = this.compareNullableNumericString(left.collateral, right.collateral)
+				break
 			}
 			case 'daysToComplete': {
-				const nullFlag = sql<number>`case when ${corporationContracts.daysToComplete} is null then 1 else 0 end`
-				return [
-					order(nullFlag),
-					order(corporationContracts.daysToComplete),
-					desc(corporationContracts.dateIssued),
-					desc(corporationContracts.contractId),
-				]
+				comparison = this.compareNullableNumber(left.daysToComplete, right.daysToComplete)
+				break
 			}
 			case 'expires':
 			default:
-				return [
-					order(corporationContracts.dateExpired),
-					desc(corporationContracts.dateIssued),
-					desc(corporationContracts.contractId),
-				]
+				comparison = left.dateExpired.getTime() - right.dateExpired.getTime()
+				break
 		}
+
+		if (comparison !== 0) {
+			return sortDirection === 'asc' ? comparison : -comparison
+		}
+
+		const issuedComparison = right.dateIssued.getTime() - left.dateIssued.getTime()
+		if (issuedComparison !== 0) return issuedComparison
+
+		return right.contractId.localeCompare(left.contractId)
 	}
 
 	private mapAllianceCourierContract(row: typeof corporationContracts.$inferSelect): CorporationContractData {
@@ -3954,13 +3954,18 @@ export class EveCorporationDataDO extends DurableObject<Env> implements EveCorpo
 			conditions.push(eq(corporationContracts.status, status))
 		}
 
-		const [{ count: countValue }] = await this.getDb()
-			.select({
-				count: sql<number>`count(*)`.as('count'),
-			})
+		const results = await this.getDb()
+			.selectDistinctOn([corporationContracts.contractId])
 			.from(corporationContracts)
 			.where(and(...conditions))
-		const totalItems = Number(countValue ?? 0)
+			.orderBy(corporationContracts.contractId, desc(corporationContracts.dateIssued))
+
+		const mapped = results.map((r) => this.mapAllianceCourierContract(r))
+		const sorted = [...mapped].sort((left, right) =>
+			this.compareAllianceCourierContracts(left, right, sortBy, sortDirection)
+		)
+
+		const totalItems = sorted.length
 		const totalPages = Math.max(1, Math.ceil(totalItems / safeLimit))
 		const currentPage = Math.min(safePage, totalPages)
 		const pageOffset = (currentPage - 1) * safeLimit
@@ -3979,16 +3984,10 @@ export class EveCorporationDataDO extends DurableObject<Env> implements EveCorpo
 			}
 		}
 
-		const results = await this.getDb()
-			.select()
-			.from(corporationContracts)
-			.where(and(...conditions))
-			.orderBy(...this.buildAllianceCourierContractOrderBy(sortBy, sortDirection))
-			.limit(safeLimit)
-			.offset(pageOffset)
+		const pageItems = sorted.slice(pageOffset, pageOffset + safeLimit)
 
 		return {
-			items: results.map((r) => this.mapAllianceCourierContract(r)),
+			items: pageItems,
 			pagination: {
 				page: currentPage,
 				limit: safeLimit,
