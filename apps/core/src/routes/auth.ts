@@ -8,6 +8,7 @@ import { toErrorMessage } from '@repo/hono-helpers'
 
 import { createDb } from '../db'
 import { oauthStates, userCharacters, users } from '../db/schema'
+import { waitUntilWithTelemetry } from '../lib/background-task'
 import { getDiscordStatus } from '../lib/discord-helpers'
 import { getCachedUserPermissions } from '../lib/groups-cache'
 import { extractClientIp, recordUserIpAddress } from '../lib/ip-tracking'
@@ -58,15 +59,19 @@ function enqueueIpRecording(
 		return
 	}
 
-	c.executionCtx.waitUntil(
-		recordUserIpAddress({
-			db,
+	waitUntilWithTelemetry(
+		c.executionCtx,
+		'auth.ip-recording',
+		() =>
+			recordUserIpAddress({
+				db,
+				userId,
+				ip,
+				hashSecret,
+			}),
+		{
 			userId,
-			ip,
-			hashSecret,
-		}).catch((error) => {
-			console.error('[Auth] Failed to record user IP:', toErrorMessage(error))
-		})
+		}
 	)
 }
 
@@ -112,15 +117,16 @@ async function hydrateAndReconcileUserRoles(
 }
 
 function triggerLegacyMigrationRecheck(c: Context<App>, userId: string): void {
-	c.executionCtx.waitUntil(
-		(async () => {
-			try {
-				const stub = getStub<Legacy>(c.env.LEGACY, 'default')
-				await stub.recheckUser(userId, 'system:auth-link')
-			} catch (error) {
-				console.error('[Auth] Failed to trigger legacy migration recheck:', toErrorMessage(error))
-			}
-		})()
+	waitUntilWithTelemetry(
+		c.executionCtx,
+		'auth.legacy-migration-recheck',
+		async () => {
+			const stub = getStub<Legacy>(c.env.LEGACY, 'default')
+			await stub.recheckUser(userId, 'system:auth-link')
+		},
+		{
+			userId,
+		}
 	)
 }
 
@@ -406,39 +412,31 @@ auth.get('/callback', async (c) => {
 			c.env.EVE_CHARACTER_DATA,
 			typeof characterId === 'string' ? characterId : String(characterId)
 		)
-		c.executionCtx.waitUntil(
-			(async () => {
-				try {
-					// Fetch public character data
-					await eveCharacterDataStub.fetchCharacterData(String(characterId), false)
+		waitUntilWithTelemetry(
+			c.executionCtx,
+			'auth.link-character.refresh',
+			async () => {
+				// Fetch public character data
+				await eveCharacterDataStub.fetchCharacterData(String(characterId), false)
 
-					// Fetch authenticated data (skills, attributes, etc.)
-					await eveCharacterDataStub.fetchAuthenticatedData(String(characterId), false)
-				} catch (error) {
-					// Log but don't fail the auth flow if character data fetch fails
-					console.error(
-						'[Auth] Failed to fetch character data after linking:',
-						toErrorMessage(error)
-					)
-				}
+				// Fetch authenticated data (skills, attributes, etc.)
+				await eveCharacterDataStub.fetchAuthenticatedData(String(characterId), false)
 
-				try {
-					await db
-						.update(users)
-						.set({ lastRefreshWorkflowAttempt: new Date() })
-						.where(eq(users.id, stateUserId))
+				await db
+					.update(users)
+					.set({ lastRefreshWorkflowAttempt: new Date() })
+					.where(eq(users.id, stateUserId))
 
-					await c.env.USER_REFRESH_WORKFLOW.create({
-						id: createUserRefreshWorkflowId('link', stateUserId),
-						params: { userId: stateUserId, refreshMode: 'event' },
-					})
-				} catch (error) {
-					console.error(
-						'[Auth] Failed to trigger user refresh workflow after link:',
-						toErrorMessage(error)
-					)
-				}
-			})()
+				await c.env.USER_REFRESH_WORKFLOW.create({
+					id: createUserRefreshWorkflowId('link', stateUserId),
+					params: { userId: stateUserId, refreshMode: 'event' },
+				})
+			},
+			{
+				userId: stateUserId,
+				characterId: String(characterId),
+				source: 'link-character',
+			}
 		)
 
 		// Auto-register corporation if character is a director
@@ -533,46 +531,44 @@ auth.get('/callback', async (c) => {
 			c.env.EVE_CHARACTER_DATA,
 			typeof characterId === 'string' ? characterId : String(characterId)
 		)
-		c.executionCtx.waitUntil(
-			(async () => {
-				try {
-					// Fetch public character data
-					await eveCharacterDataStub.fetchCharacterData(String(characterId), false)
+		waitUntilWithTelemetry(
+			c.executionCtx,
+			'auth.login.refresh',
+			async () => {
+				// Fetch public character data
+				await eveCharacterDataStub.fetchCharacterData(String(characterId), false)
 
-					// Fetch authenticated data (skills, attributes, etc.)
-					await eveCharacterDataStub.fetchAuthenticatedData(String(characterId), false)
-				} catch (error) {
-					// Log but don't fail the auth flow if character data fetch fails
-					console.error('[Auth] Failed to fetch character data after login:', toErrorMessage(error))
-				}
+				// Fetch authenticated data (skills, attributes, etc.)
+				await eveCharacterDataStub.fetchAuthenticatedData(String(characterId), false)
 
 				// Trigger user refresh workflow (throttled to every 5 minutes)
-				try {
-					const THROTTLE_MS = 5 * 60 * 1000 // 5 minutes
-					const userRecord = await db.query.users.findFirst({
-						where: eq(users.id, user.id),
-						columns: { lastRefreshWorkflowAttempt: true },
+				const THROTTLE_MS = 5 * 60 * 1000 // 5 minutes
+				const userRecord = await db.query.users.findFirst({
+					where: eq(users.id, user.id),
+					columns: { lastRefreshWorkflowAttempt: true },
+				})
+
+				const shouldTrigger =
+					!userRecord?.lastRefreshWorkflowAttempt ||
+					Date.now() - userRecord.lastRefreshWorkflowAttempt.getTime() > THROTTLE_MS
+
+				if (shouldTrigger) {
+					await db
+						.update(users)
+						.set({ lastRefreshWorkflowAttempt: new Date() })
+						.where(eq(users.id, user.id))
+
+					await c.env.USER_REFRESH_WORKFLOW.create({
+						id: createUserRefreshWorkflowId('login', user.id),
+						params: { userId: user.id, refreshMode: 'event' },
 					})
-
-					const shouldTrigger =
-						!userRecord?.lastRefreshWorkflowAttempt ||
-						Date.now() - userRecord.lastRefreshWorkflowAttempt.getTime() > THROTTLE_MS
-
-					if (shouldTrigger) {
-						await db
-							.update(users)
-							.set({ lastRefreshWorkflowAttempt: new Date() })
-							.where(eq(users.id, user.id))
-
-						await c.env.USER_REFRESH_WORKFLOW.create({
-							id: createUserRefreshWorkflowId('login', user.id),
-							params: { userId: user.id, refreshMode: 'event' },
-						})
-					}
-				} catch (error) {
-					console.error('[Auth] Failed to trigger user refresh workflow:', toErrorMessage(error))
 				}
-			})()
+			},
+			{
+				userId: user.id,
+				characterId: String(characterId),
+				source: 'login',
+			}
 		)
 
 		// Auto-register corporation if character is a director
@@ -710,37 +706,32 @@ auth.post('/claim-main', async (c) => {
 		c.env.EVE_CHARACTER_DATA,
 		typeof characterId === 'string' ? characterId : String(characterId)
 	)
-	c.executionCtx.waitUntil(
-		(async () => {
-			try {
-				// Fetch public character data
-				await eveCharacterDataStub.fetchCharacterData(String(tokenInfo.characterId), false)
+	waitUntilWithTelemetry(
+		c.executionCtx,
+		'auth.claim-main.refresh',
+		async () => {
+			// Fetch public character data
+			await eveCharacterDataStub.fetchCharacterData(String(tokenInfo.characterId), false)
 
-				// Fetch authenticated data (skills, attributes, etc.)
-				await eveCharacterDataStub.fetchAuthenticatedData(String(tokenInfo.characterId), false)
-			} catch (error) {
-				// Log but don't fail the auth flow if character data fetch fails
-				console.error(
-					'[Auth] Failed to fetch character data after claim-main:',
-					toErrorMessage(error)
-				)
-			}
+			// Fetch authenticated data (skills, attributes, etc.)
+			await eveCharacterDataStub.fetchAuthenticatedData(String(tokenInfo.characterId), false)
 
 			// Trigger user refresh workflow for new user
-			try {
-				await db
-					.update(users)
-					.set({ lastRefreshWorkflowAttempt: new Date() })
-					.where(eq(users.id, user.id))
+			await db
+				.update(users)
+				.set({ lastRefreshWorkflowAttempt: new Date() })
+				.where(eq(users.id, user.id))
 
-				await c.env.USER_REFRESH_WORKFLOW.create({
-					id: createUserRefreshWorkflowId('login', user.id),
-					params: { userId: user.id, refreshMode: 'event' },
-				})
-			} catch (error) {
-				console.error('[Auth] Failed to trigger user refresh workflow:', toErrorMessage(error))
-			}
-		})()
+			await c.env.USER_REFRESH_WORKFLOW.create({
+				id: createUserRefreshWorkflowId('login', user.id),
+				params: { userId: user.id, refreshMode: 'event' },
+			})
+		},
+		{
+			userId: user.id,
+			characterId: tokenInfo.characterId,
+			source: 'claim-main',
+		}
 	)
 
 	// Auto-register corporation if character is a director
@@ -857,25 +848,25 @@ auth.post('/link-character', requireAuth(), async (c) => {
 	await activityService.logCharacterLinked(user.id, tokenInfo.characterId, getRequestMetadata(c))
 	triggerLegacyMigrationRecheck(c, user.id)
 
-	c.executionCtx.waitUntil(
-		(async () => {
-			try {
-				await db
-					.update(users)
-					.set({ lastRefreshWorkflowAttempt: new Date() })
-					.where(eq(users.id, user.id))
+	waitUntilWithTelemetry(
+		c.executionCtx,
+		'auth.link.refresh',
+		async () => {
+			await db
+				.update(users)
+				.set({ lastRefreshWorkflowAttempt: new Date() })
+				.where(eq(users.id, user.id))
 
-				await c.env.USER_REFRESH_WORKFLOW.create({
-					id: createUserRefreshWorkflowId('link', user.id),
-					params: { userId: user.id, refreshMode: 'event' },
-				})
-			} catch (error) {
-				console.error(
-					'[Auth] Failed to trigger user refresh workflow after link:',
-					toErrorMessage(error)
-				)
-			}
-		})()
+			await c.env.USER_REFRESH_WORKFLOW.create({
+				id: createUserRefreshWorkflowId('link', user.id),
+				params: { userId: user.id, refreshMode: 'event' },
+			})
+		},
+		{
+			userId: user.id,
+			characterId: tokenInfo.characterId,
+			source: 'link',
+		}
 	)
 
 	return c.json({

@@ -27,6 +27,8 @@ interface ProcessedAsset {
 	quantity: number
 	is_singleton: boolean
 	is_blueprint_copy?: boolean
+	isShipAsset?: boolean
+	isContainerAsset?: boolean
 	location_flag: string
 	averagePrice?: number
 	estimatedValue?: number
@@ -37,10 +39,13 @@ interface ProcessedAsset {
 interface ContainerGroup {
 	containerItemId: string
 	containerName: string
+	containerAsset: ProcessedAsset
 	assets: ProcessedAsset[]
 	totalItems: number
 	estimatedValue: number
 }
+
+type RowStripe = 'muted' | 'card'
 
 interface LocationGroup {
 	locationName: string
@@ -50,11 +55,21 @@ interface LocationGroup {
 	estimatedValue: number
 }
 
+type TopLevelRow =
+	| { kind: 'container'; key: string; container: ContainerGroup }
+	| { kind: 'asset'; key: string; asset: ProcessedAsset }
+
 function formatIsk(value: number): string {
 	if (value >= 1_000_000_000) return `${(value / 1_000_000_000).toFixed(2)}B ISK`
 	if (value >= 1_000_000) return `${(value / 1_000_000).toFixed(1)}M ISK`
 	if (value >= 1_000) return `${(value / 1_000).toFixed(0)}K ISK`
 	return `${value.toLocaleString()} ISK`
+}
+
+function getRowStripeClass(stripe: RowStripe): string {
+	return stripe === 'muted'
+		? 'bg-muted !bg-muted hover:!bg-[hsl(var(--accent-muted)/0.7)]'
+		: 'bg-card !bg-card hover:!bg-[hsl(var(--accent-muted)/0.7)]'
 }
 
 function ItemIcon({ typeId, categoryName, isBpc }: { typeId: string; categoryName?: string; isBpc?: boolean }) {
@@ -85,9 +100,9 @@ function ItemIcon({ typeId, categoryName, isBpc }: { typeId: string; categoryNam
 	)
 }
 
-function AssetRow({ asset }: { asset: ProcessedAsset }) {
+function AssetRow({ asset, stripe }: { asset: ProcessedAsset; stripe: RowStripe }) {
 	return (
-		<TableRow key={asset.item_id}>
+		<TableRow key={asset.item_id} className={getRowStripeClass(stripe)}>
 			<TableCell className="w-10 pr-0">
 				<ItemIcon typeId={asset.type_id} categoryName={asset.categoryName} isBpc={asset.is_blueprint_copy} />
 			</TableCell>
@@ -118,70 +133,128 @@ function ContainerRows({
 	container,
 	isExpanded,
 	onToggle,
+	stripe,
 }: {
 	container: ContainerGroup
 	isExpanded: boolean
 	onToggle: () => void
+	stripe: RowStripe
 }) {
 	return (
 		<>
 			<TableRow
-				className="cursor-pointer hover:bg-muted/50"
+				className={`cursor-pointer ${getRowStripeClass(stripe)}`}
 				onClick={onToggle}
 			>
-				<TableCell className="w-10 pr-0">
+				<TableCell className="w-10 pl-2 pr-0">
 					{isExpanded ? (
 						<ChevronDown className="h-4 w-4 text-muted-foreground" />
 					) : (
 						<ChevronRight className="h-4 w-4 text-muted-foreground" />
 					)}
 				</TableCell>
-				<TableCell className="font-medium">
-					<div className="flex items-center gap-2">
-						<Package className="h-4 w-4 text-muted-foreground shrink-0" />
-						<span>{container.containerName}</span>
-						<span className="text-xs text-muted-foreground">
-							({container.assets.length} item{container.assets.length !== 1 ? 's' : ''})
-						</span>
+				<TableCell className="px-0 py-2.5 font-medium">
+					<div className="flex items-start gap-1.5">
+						<ItemIcon
+							typeId={container.containerAsset.type_id}
+							categoryName={container.containerAsset.categoryName}
+							isBpc={container.containerAsset.is_blueprint_copy}
+						/>
+						<div className="min-w-0">
+							<div className="flex items-center gap-2">
+								<span className="truncate">{container.containerAsset.customName || container.containerName}</span>
+								<span className="text-xs text-muted-foreground">
+									({container.assets.length} item{container.assets.length !== 1 ? 's' : ''})
+								</span>
+							</div>
+							<div className="text-xs text-muted-foreground truncate">
+								{container.containerAsset.typeName || container.containerAsset.categoryName || 'Container'}
+							</div>
+						</div>
 					</div>
 				</TableCell>
-				<TableCell className="text-sm text-muted-foreground">Container</TableCell>
-				<TableCell className="text-right font-mono">
-					{container.totalItems.toLocaleString()}
+				<TableCell className="py-2.5 text-sm text-muted-foreground">
+					{container.containerAsset.categoryName || 'Container'}
 				</TableCell>
-				<TableCell className="text-right font-mono text-xs text-muted-foreground">
+				<TableCell className="py-2.5 text-right font-mono">{container.totalItems.toLocaleString()}</TableCell>
+				<TableCell className="py-2.5 text-right font-mono text-xs text-muted-foreground">
 					{container.estimatedValue > 0 ? formatIsk(container.estimatedValue) : '-'}
 				</TableCell>
 			</TableRow>
+			{isExpanded && container.assets.length === 0 && (
+				<TableRow className="bg-muted/20">
+					<TableCell className="w-10 pr-0 pl-4" />
+					<TableCell className="pl-8 py-2 text-sm text-muted-foreground italic" colSpan={4}>
+						Empty container
+					</TableCell>
+				</TableRow>
+			)}
 			{isExpanded &&
-				container.assets.map((asset) => (
-					<TableRow key={asset.item_id} className="bg-muted/20">
-						<TableCell className="w-10 pr-0 pl-4">
-							<ItemIcon typeId={asset.type_id} categoryName={asset.categoryName} isBpc={asset.is_blueprint_copy} />
-						</TableCell>
-						<TableCell className="font-medium pl-8">
-							<div>
-								{asset.typeName || asset.type_id}
-								{asset.customName && (
-									<span className="ml-2 text-xs italic text-muted-foreground">
-										&ldquo;{asset.customName}&rdquo;
-									</span>
-								)}
-							</div>
-						</TableCell>
-						<TableCell className="text-sm text-muted-foreground">
-							{asset.categoryName || '-'}
-						</TableCell>
-						<TableCell className="text-right font-mono">
-							{asset.quantity.toLocaleString()}
-						</TableCell>
-						<TableCell className="text-right font-mono text-xs text-muted-foreground">
-							{asset.estimatedValue ? formatIsk(asset.estimatedValue) : '-'}
-						</TableCell>
-					</TableRow>
-				))}
+				<TableRow className="bg-transparent odd:!bg-transparent even:!bg-transparent hover:!bg-transparent">
+					<TableCell colSpan={5} className="px-0 pb-2 pt-0">
+						<div className="border-l-2 border-muted bg-transparent pl-5 pr-3 pt-1 pb-2">
+							<Table className="w-full [&_td]:py-3 [&_td]:px-3 [&_td:first-child]:pl-2 [&_td:last-child]:pr-3">
+								<TableBody>
+									{container.assets.map((asset) => (
+										<TableRow
+											key={asset.item_id}
+											className="odd:bg-muted even:bg-card hover:bg-[hsl(var(--accent-muted)/0.7)]"
+										>
+											<TableCell className="w-10 pl-0 pr-1">
+												<ItemIcon
+													typeId={asset.type_id}
+													categoryName={asset.categoryName}
+													isBpc={asset.is_blueprint_copy}
+												/>
+											</TableCell>
+											<TableCell className="font-medium">
+												<div className="flex items-center gap-2">
+													<span className="truncate">{asset.typeName || asset.type_id}</span>
+													{asset.customName && (
+														<span className="text-xs italic text-muted-foreground">
+															&ldquo;{asset.customName}&rdquo;
+														</span>
+													)}
+												</div>
+											</TableCell>
+											<TableCell className="text-sm text-muted-foreground">
+												{asset.categoryName || '-'}
+											</TableCell>
+											<TableCell className="text-right font-mono">
+												{asset.quantity.toLocaleString()}
+											</TableCell>
+											<TableCell className="text-right font-mono text-xs text-muted-foreground">
+												{asset.estimatedValue ? formatIsk(asset.estimatedValue) : '-'}
+											</TableCell>
+										</TableRow>
+									))}
+								</TableBody>
+							</Table>
+						</div>
+					</TableCell>
+				</TableRow>
+				}
 		</>
 	)
+}
+
+function getTopLevelRows(group: LocationGroup): TopLevelRow[] {
+	const rows: TopLevelRow[] = []
+	for (const container of group.containers) {
+		rows.push({
+			kind: 'container',
+			key: container.containerItemId,
+			container,
+		})
+	}
+	for (const asset of group.looseAssets) {
+		rows.push({
+			kind: 'asset',
+			key: asset.item_id,
+			asset,
+		})
+	}
+	return rows
 }
 
 export function AssetsSection({ data }: { data: ProcessedAsset[] }) {
@@ -203,19 +276,36 @@ export function AssetsSection({ data }: { data: ProcessedAsset[] }) {
 				)
 			})
 			: data
+		const assetById = new Map(filtered.map((asset) => [asset.item_id, asset]))
 
 		// Collect all container item IDs so we can exclude the container items
 		// themselves from the loose asset list (they show as expandable headers)
 		const containerItemIds = new Set<string>()
 		for (const asset of filtered) {
+			if (asset.isShipAsset && asset.containerItemId) {
+				continue
+			}
+			const containerAsset = asset.containerItemId ? assetById.get(asset.containerItemId) : undefined
+			if (containerAsset?.isShipAsset) {
+				continue
+			}
 			if (asset.containerItemId) {
 				containerItemIds.add(asset.containerItemId)
+			} else if (asset.isContainerAsset && asset.is_singleton) {
+				containerItemIds.add(asset.item_id)
 			}
 		}
 
 		const locationMap = new Map<string, { loose: ProcessedAsset[]; containerMap: Map<string, { name: string; assets: ProcessedAsset[] }> }>()
 
 		for (const asset of filtered) {
+			if (asset.isShipAsset && asset.containerItemId) {
+				continue
+			}
+			const containerAsset = asset.containerItemId ? assetById.get(asset.containerItemId) : undefined
+			if (containerAsset?.isShipAsset) {
+				continue
+			}
 			const loc = asset.locationName || 'Unknown Location'
 			if (!locationMap.has(loc)) {
 				locationMap.set(loc, { loose: [], containerMap: new Map() })
@@ -231,8 +321,15 @@ export function AssetsSection({ data }: { data: ProcessedAsset[] }) {
 					})
 				}
 				group.containerMap.get(cId)!.assets.push(asset)
+			} else if (asset.isContainerAsset && asset.is_singleton) {
+				const cId = asset.item_id
+				if (!group.containerMap.has(cId)) {
+					group.containerMap.set(cId, {
+						name: asset.customName || asset.typeName || 'Unknown Container',
+						assets: [],
+					})
+				}
 			} else if (!containerItemIds.has(asset.item_id)) {
-				// Skip container items themselves - they're shown as expandable headers
 				group.loose.push(asset)
 			}
 		}
@@ -241,11 +338,24 @@ export function AssetsSection({ data }: { data: ProcessedAsset[] }) {
 		for (const [locationName, { loose, containerMap }] of locationMap) {
 			const containers: ContainerGroup[] = []
 			for (const [containerItemId, { name, assets }] of containerMap) {
+				const containerAsset =
+					assetById.get(containerItemId) ??
+					({
+						item_id: containerItemId,
+						type_id: containerItemId,
+						typeName: name,
+						isContainerAsset: true,
+						quantity: 1,
+						is_singleton: true,
+						location_flag: 'Container',
+						locationName,
+					} as ProcessedAsset)
 				containers.push({
 					containerItemId,
 					containerName: name,
+					containerAsset,
 					assets: assets.sort((a, b) => (a.typeName ?? '').localeCompare(b.typeName ?? '')),
-					totalItems: assets.reduce((sum, a) => sum + a.quantity, 0),
+					totalItems: assets.reduce((sum, a) => sum + a.quantity, 0) + containerAsset.quantity,
 					estimatedValue: assets.reduce((sum, a) => sum + (a.estimatedValue ?? 0), 0),
 				})
 			}
@@ -357,6 +467,7 @@ export function AssetsSection({ data }: { data: ProcessedAsset[] }) {
 			<div className="space-y-1">
 				{groups.map((group) => {
 					const isExpanded = expandedLocations.has(group.locationName)
+					const topLevelRows = getTopLevelRows(group)
 					const itemCount =
 						group.looseAssets.length +
 						group.containers.reduce((s, c) => s + c.assets.length, 0)
@@ -403,17 +514,23 @@ export function AssetsSection({ data }: { data: ProcessedAsset[] }) {
 											</TableRow>
 										</TableHeader>
 										<TableBody>
-											{group.containers.map((container) => (
-												<ContainerRows
-													key={container.containerItemId}
-													container={container}
-													isExpanded={expandedContainers.has(container.containerItemId)}
-													onToggle={() => toggleContainer(container.containerItemId)}
-												/>
-											))}
-											{group.looseAssets.map((asset) => (
-												<AssetRow key={asset.item_id} asset={asset} />
-											))}
+											{topLevelRows.map((row, index) => {
+												const stripe = index % 2 === 0 ? 'muted' : 'card'
+
+												if (row.kind === 'container') {
+													return (
+														<ContainerRows
+															key={row.key}
+															container={row.container}
+															isExpanded={expandedContainers.has(row.container.containerItemId)}
+															onToggle={() => toggleContainer(row.container.containerItemId)}
+															stripe={stripe}
+														/>
+													)
+												}
+
+												return <AssetRow key={row.key} asset={row.asset} stripe={stripe} />
+											})}
 										</TableBody>
 									</Table>
 								</div>

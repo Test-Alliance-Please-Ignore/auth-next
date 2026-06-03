@@ -251,6 +251,34 @@ export class EsiDO extends DurableObject<Env> implements Esi {
 	}
 
 	@UseCharacterAuth
+	async searchCharacter(
+		characterId: string,
+		characterName: string,
+		strict = true
+	): Promise<string[]> {
+		const query = new URLSearchParams({
+			categories: 'character',
+			search: characterName,
+			strict: String(strict),
+		})
+
+		try {
+			const result = await this.esiFetcher.fetchEsi<{ character?: number[] }>(
+				`/search/?${query.toString()}`,
+				{ cacheMode: 'no-store' }
+			)
+			return (result.data.character ?? []).map((id) => String(id))
+		} catch (error) {
+			const message = error instanceof Error ? error.message : String(error)
+			if (message.includes('404')) {
+				return []
+			}
+			logger.withTags({ characterId, characterName, strict }).error('Character search error', error)
+			return []
+		}
+	}
+
+	@UseCharacterAuth
 	async fetchCharacterPublicInfo(
 		characterId: string,
 		options?: EsiRequestOptions
@@ -600,6 +628,20 @@ export class EsiDO extends DurableObject<Env> implements Esi {
 			`/characters/${characterId}/killmails/recent`
 		)
 		return transformCharacterKillmails(result.data)
+	}
+
+	@UseCharacterAuth
+	async fetchCharacterBasicKillmailPage(
+		characterId: string,
+		page: number
+	): Promise<{ data: CharacterKillmailBasic[]; pages: number }> {
+		const result = await this.esiFetcher.fetchEsi<EsiCharacterKillmail[]>(
+			`/characters/${characterId}/killmails/recent?page=${page}`
+		)
+		return {
+			data: transformCharacterKillmails(result.data ?? []),
+			pages: result.pages ?? 1,
+		}
 	}
 
 	@UseCharacterAuth

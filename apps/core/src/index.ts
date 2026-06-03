@@ -7,6 +7,7 @@ import { getStub } from '@repo/do-utils'
 import { withNotFound, withOnError, withSentry } from '@repo/hono-helpers'
 
 import { createDb } from './db'
+import { waitUntilWithTelemetry } from './lib/background-task'
 import { discordMemberAuditRuns, userCharacters, userIpAddresses, users } from './db/schema'
 import { CoreDO } from './durable-object'
 import { triggerDiscordRefreshWorkflow, triggerUserRefreshWorkflow } from './lib/workflow-triggers'
@@ -175,10 +176,11 @@ export class CoreWorker extends WorkerEntrypoint<Env> {
 	constructor(ctx: ExecutionContext, env: Env) {
 		super(ctx, env)
 		const db = createDb(env.DATABASE_URL)
-		ctx.waitUntil(
-			ensureDiscordCommandRegistryLoaded(db).catch((error) => {
-				console.error('[CoreWorker] Failed to warm Discord command registry', error)
-			})
+		waitUntilWithTelemetry(
+			ctx,
+			'core.command-registry-warm',
+			() => ensureDiscordCommandRegistryLoaded(db),
+			{}
 		)
 	}
 

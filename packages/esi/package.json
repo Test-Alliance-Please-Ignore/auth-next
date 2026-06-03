@@ -12,7 +12,9 @@
 	},
 	"dependencies": {
 		"@repo/do-utils": "workspace:*",
+		"@repo/esi-rate-limit": "workspace:*",
 		"@repo/eve-types": "workspace:*",
+		"@repo/fetch-utils": "workspace:*",
 		"@repo/universe": "workspace:*"
 	},
 	"devDependencies": {

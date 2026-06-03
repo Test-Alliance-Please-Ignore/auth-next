@@ -219,6 +219,8 @@ describe('srp routes - permissions', () => {
 		const body = await response.json<any>()
 
 		expect(response.status).toBe(200)
+		expect(srpStub.getRecentLosses).toHaveBeenCalledWith(['7001'], 'loss-user', 60)
+		expect(srpStub.getRecentLosses).toHaveBeenCalledWith(['7002'], 'loss-user', 60)
 		expect(body.losses).toHaveLength(1)
 		expect(body.losses[0]).toMatchObject({
 			killmailId: '123',
@@ -290,6 +292,7 @@ describe('srp routes - permissions', () => {
 		const body = await response.json<any>()
 
 		expect(response.status).toBe(200)
+		expect(srpStub.getRecentLosses).toHaveBeenCalledWith(['7001'], 'loss-user-invalid-token', 60)
 		expect(body.losses).toHaveLength(1)
 		expect(body.failedCharacters).toEqual([
 			{

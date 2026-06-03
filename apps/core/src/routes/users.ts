@@ -5,6 +5,7 @@ import { getStub } from '@repo/do-utils'
 import { logger } from '@repo/hono-helpers'
 
 import { createDb } from '../db'
+import { waitUntilWithTelemetry } from '../lib/background-task'
 import { managedCorporations, userCharacters } from '../db/schema'
 import { isNpcCorporationId } from '../lib/corporation-id'
 import { getDiscordStatus } from '../lib/discord-helpers'
@@ -126,13 +127,20 @@ users.get('/me', async (c) => {
 	const userService = new UserService(db)
 
 	// Trigger user refresh workflow in background (throttled to every 5 minutes)
-	c.executionCtx.waitUntil(
-		triggerUserRefreshWorkflow({
-			db,
-			env: c.env,
+	waitUntilWithTelemetry(
+		c.executionCtx,
+		'users.me.refresh',
+		() =>
+			triggerUserRefreshWorkflow({
+				db,
+				env: c.env,
+				userId: user.id,
+				source: 'users-me',
+			}),
+		{
 			userId: user.id,
 			source: 'users-me',
-		})
+		}
 	)
 
 	// Get full user profile

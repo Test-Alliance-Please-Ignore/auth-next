@@ -4,11 +4,22 @@
  */
 
 import { enrichAssets } from '../../processors/helpers/assets'
-import { shipTypeIds } from '../../processors/helpers/ship-types'
+import {
+	buildAssetMap,
+	isInsideShip,
+	resolveTopLevelLocation,
+	isShipAsset,
+} from '../../processors/helpers/location'
 import { retrieveData, storeOrReturn } from '../../utils/storage'
+
+import { isStructureId } from '@repo/esi'
 
 import type { CharacterAsset } from '@repo/esi'
 import type { StepResult } from '../../utils/storage'
+
+type AssetRecord = CharacterAsset & {
+	isShipAsset?: boolean
+}
 
 /**
  * Process character assets by enriching with resolved names
@@ -65,90 +76,38 @@ export async function processAssets(
 			}
 		}
 
-		// Build lookup map for parent chain resolution (container items)
-		const assetMap = new Map<string, CharacterAsset>()
-		for (const asset of assets) {
-			assetMap.set(asset.item_id, asset)
-		}
-
-		// Identify ship item IDs to exclude their contents from asset list
-		const shipItemIds = new Set<string>()
-		for (const asset of assets) {
-			if (asset.is_singleton && shipTypeIds.has(asset.type_id)) {
-				shipItemIds.add(asset.item_id)
-			}
-		}
-
-		// Check if an asset is inside a ship (directly or nested via containers in cargo)
-		const isInsideShip = (asset: CharacterAsset): boolean => {
-			let currentId = asset.location_id
-			const visited = new Set<string>()
-			while (currentId && !visited.has(currentId)) {
-				visited.add(currentId)
-				if (shipItemIds.has(currentId)) return true
-				const parent = assetMap.get(currentId)
-				if (!parent || parent.location_type !== 'item') break
-				currentId = parent.location_id
-			}
-			return false
-		}
-
-		// Walk parent chain to find the top-level location (station or player structure)
-		const resolveTopLevelLocation = (
-			asset: CharacterAsset,
-		): {
-			locationId: string
-			locationType: 'station' | 'other'
-			containerItemId?: string
-		} | null => {
-			// The immediate parent is the container (if the asset is location_type 'item')
-			const immediateParent = assetMap.get(asset.location_id)
-			const containerItemId =
-				immediateParent && !shipItemIds.has(immediateParent.item_id)
-					? immediateParent.item_id
-					: undefined
-
-			let currentId = asset.location_id
-			const visited = new Set<string>()
-			while (currentId && !visited.has(currentId)) {
-				visited.add(currentId)
-				const parent = assetMap.get(currentId)
-				if (!parent) return null
-				if (parent.location_type === 'station' || parent.location_type === 'other') {
-					return {
-						locationId: parent.location_id,
-						locationType: parent.location_type,
-						containerItemId,
-					}
-				}
-				if (parent.location_type === 'item') {
-					currentId = parent.location_id
-					continue
-				}
-				break
-			}
-			return null
-		}
+		const assetMap = buildAssetMap(assets)
 
 		// Collect container item IDs for name resolution later
 		const containerItemIds = new Set<string>()
 
 		// Include: stations, player structures, and items in containers (not in ships)
-		const filteredAssets: CharacterAsset[] = []
+		const filteredAssets: AssetRecord[] = []
 		// Track container metadata to apply after enrichment
 		const containerInfoMap = new Map<string, { containerItemId: string }>()
 
 		for (const asset of assets) {
-			if (asset.location_type === 'station' || asset.location_type === 'other') {
-				filteredAssets.push(asset)
-			} else if (asset.location_type === 'item' && !isInsideShip(asset)) {
-				const resolved = resolveTopLevelLocation(asset)
+			if (
+				(asset.location_type === 'station' || asset.location_type === 'other') &&
+				!isShipAsset(asset)
+			) {
+				filteredAssets.push({
+					...asset,
+					isShipAsset: isShipAsset(asset),
+				})
+			} else if (
+				asset.location_type === 'item' &&
+				!isShipAsset(asset) &&
+				!isInsideShip(asset, assetMap)
+			) {
+				const resolved = resolveTopLevelLocation(asset, assetMap)
 				if (resolved) {
 					// Replace location with the resolved top-level station/structure
-					const rewritten: CharacterAsset = {
+					const rewritten: AssetRecord = {
 						...asset,
 						location_id: resolved.locationId,
 						location_type: resolved.locationType,
+						isShipAsset: isShipAsset(asset),
 					}
 					filteredAssets.push(rewritten)
 					if (resolved.containerItemId) {
@@ -157,6 +116,14 @@ export async function processAssets(
 						})
 						containerItemIds.add(resolved.containerItemId)
 					}
+				} else if (isStructureId(asset.location_id) && !isShipAsset(asset)) {
+					// Structure-held items and containers can appear with location_type=item
+					// and no terminal station/other parent in the raw tree. Preserve them so
+					// the assets tab can group them under the structure once enrichment runs.
+					filteredAssets.push({
+						...asset,
+						isShipAsset: isShipAsset(asset),
+					})
 				}
 			}
 		}
@@ -172,7 +139,7 @@ export async function processAssets(
 					containerLocationType !== 'station' &&
 					containerLocationType !== 'other'
 				) {
-					const resolved = resolveTopLevelLocation(container)
+					const resolved = resolveTopLevelLocation(container, assetMap)
 					if (resolved) {
 						containerLocationId = resolved.locationId
 						containerLocationType = resolved.locationType
@@ -184,8 +151,25 @@ export async function processAssets(
 						...container,
 						location_id: containerLocationId,
 						location_type: containerLocationType,
+						isShipAsset: isShipAsset(container),
 					})
 				}
+			}
+		}
+
+		// Ensure parent ship/container assets are retained as rows so their contents
+		// can render as collapsible sub-lists in the UI.
+		const groupedAssetIds = new Set(filteredAssets.map((asset) => asset.item_id))
+		for (const containerId of containerItemIds) {
+			if (groupedAssetIds.has(containerId)) {
+				continue
+			}
+			const container = assetMap.get(containerId)
+			if (container) {
+				filteredAssets.push({
+					...container,
+					isShipAsset: isShipAsset(container),
+				})
 			}
 		}
 
@@ -194,7 +178,6 @@ export async function processAssets(
 			totalAssets: assets.length,
 			filteredAssets: filteredAssets.length,
 			filteredOut: assets.length - filteredAssets.length,
-			shipItemIds: shipItemIds.size,
 			containerItemIds: containerItemIds.size,
 			sampleAsset: filteredAssets[0]
 				? {

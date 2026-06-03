@@ -3,6 +3,7 @@ import { getStub } from '@repo/do-utils'
 import { getEsiInstanceForCharacter } from '@repo/esi'
 
 import { userCharacters } from '../db/schema'
+import { waitUntilWithTelemetry } from '../lib/background-task'
 
 import type { EsiTypeResolver } from '@repo/esi'
 import type { EveCorporationData } from '@repo/eve-corporation-data'
@@ -69,19 +70,22 @@ export async function hydrateCharacterAffiliation(
 	}
 
 	if (executionCtx) {
-		executionCtx.waitUntil(
-			resolveAffiliationNames({
-				db,
-				env,
+		waitUntilWithTelemetry(
+			executionCtx,
+			'auth.affiliation-name-resolution',
+			() =>
+				resolveAffiliationNames({
+					db,
+					env,
+					characterId,
+					corporationId,
+					allianceId,
+				}),
+			{
 				characterId,
 				corporationId,
 				allianceId,
-			}).catch((error) => {
-				console.warn('[Auth] Failed to resolve affiliation names after hydration', {
-					characterId,
-					error: error instanceof Error ? error.message : String(error),
-				})
-			})
+			}
 		)
 	}
 

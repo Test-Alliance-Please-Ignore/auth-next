@@ -17,7 +17,8 @@ import {
     collectCustomShipNames,
     extractCandidateCharacterNames,
 } from '../../processors/alerts'
-import { parseJsonResponse } from '@repo/worker-utils'
+import { getStub } from '@repo/do-utils'
+import type { EsiTypeResolver } from '@repo/esi'
 import { retrieveData, storeOrReturn } from '../../utils/storage'
 import type { CoreBinding } from '../../../types/core-binding'
 
@@ -94,46 +95,25 @@ interface HrBinding {
     }>>
 }
 
-interface UniverseIdsResponse {
-    characters?: Array<{ id: number; name: string }>
-}
-
 /**
- * Resolve names to EVE character IDs using the public ESI endpoint.
+ * Resolve names to EVE character IDs using the shared ESI type resolver.
  * Returns only names that matched actual characters.
  */
-async function resolveNamesToCharacters(names: string[]): Promise<ResolvedCharacter[]> {
+async function resolveNamesToCharacters(
+	esiTypeResolverBinding: DurableObjectNamespace,
+	names: string[],
+): Promise<ResolvedCharacter[]> {
     if (names.length === 0) return []
 
     try {
-        const controller = new AbortController()
-        const timeout = setTimeout(() => controller.abort(), 30_000)
-        let response: Response
-        try {
-            response = await fetch('https://esi.evetech.net/latest/universe/ids/', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify(names),
-                signal: controller.signal,
-            })
-        } finally {
-            clearTimeout(timeout)
-        }
-
-        if (!response.ok) {
-            console.warn('[generate-alerts] universe/ids call failed:', response.status)
-            return []
-        }
-
-        const data = await parseJsonResponse<UniverseIdsResponse>(response, {
-            context: 'ESI universe ids response',
-        })
-        return (data.characters ?? []).map((c) => ({
-            name: c.name,
-            characterId: c.id,
+        const resolver = getStub<EsiTypeResolver>(esiTypeResolverBinding, 'global')
+        const idMap = await resolver.resolveNames(names)
+        return Object.entries(idMap).map(([name, characterId]) => ({
+            name,
+            characterId: Number(characterId),
         }))
     } catch (error) {
-        console.warn('[generate-alerts] universe/ids call error:', error)
+        console.warn('[generate-alerts] resolveNames call error:', error)
         return []
     }
 }
@@ -244,6 +224,7 @@ function collectBlacklistCandidates(
 export async function generateAlerts(
     core: CoreBinding,
     hr: HrBinding,
+    esiTypeResolverBinding: DurableObjectNamespace,
     getBucket: (name: string) => R2Bucket,
     bucket: R2Bucket,
     bucketName: string,
@@ -326,7 +307,7 @@ export async function generateAlerts(
                 const { namesToResolve, candidateToCustomName } = extractCandidateCharacterNames(customNames)
 
                 if (namesToResolve.length > 0) {
-                    const resolvedCharacters = await resolveNamesToCharacters(namesToResolve)
+                    const resolvedCharacters = await resolveNamesToCharacters(esiTypeResolverBinding, namesToResolve)
 
                     const shipAlert = checkShipNameCrossmatch(
                         customNames,
@@ -370,7 +351,7 @@ export async function generateAlerts(
                 if (customNames.size > 0) {
                     const { namesToResolve } = extractCandidateCharacterNames(customNames)
                     if (namesToResolve.length > 0) {
-                        const resolved = await resolveNamesToCharacters(namesToResolve)
+                        const resolved = await resolveNamesToCharacters(esiTypeResolverBinding, namesToResolve)
                         shipNameCharIds = new Map(
                             resolved.map((r) => {
                                 const entry = customNames.get(r.name.toLowerCase())

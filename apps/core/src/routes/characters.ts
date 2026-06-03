@@ -6,6 +6,7 @@ import { createEveCharacterId } from '@repo/eve-types'
 import { logger } from '@repo/hono-helpers'
 
 import { userCharacters } from '../db/schema'
+import { waitUntilWithTelemetry } from '../lib/background-task'
 import { validateAndSyncCharacterTokenValidity } from '../lib/token-validity'
 import { requireAuth } from '../middleware/session'
 import { checkAndUpdateDirectorStatus } from '../services/corporation-auto-register.service'
@@ -542,18 +543,26 @@ app.get('/:characterId', requireAuth(), async (c) => {
 			// let the UI render it as stale rather than overwriting it with misleading live state.
 			if (sensitiveDataIsLive) {
 				await Promise.all([
-					eveCharacterData.fetchLocation().catch((err: unknown) => {
-						logger.warn('[Character Detail] Failed to fetch live location', {
-							characterId: characterIdStr,
-							error: err instanceof Error ? err.message : String(err),
-						})
-					}),
-					eveCharacterData.fetchStatus().catch((err: unknown) => {
-						logger.warn('[Character Detail] Failed to fetch live status', {
-							characterId: characterIdStr,
-							error: err instanceof Error ? err.message : String(err),
-						})
-					}),
+					(async () => {
+						try {
+							await eveCharacterData.fetchLocation()
+						} catch (err: unknown) {
+							logger.warn('[Character Detail] Failed to fetch live location', {
+								characterId: characterIdStr,
+								error: err instanceof Error ? err.message : String(err),
+							})
+						}
+					})(),
+					(async () => {
+						try {
+							await eveCharacterData.fetchStatus()
+						} catch (err: unknown) {
+							logger.warn('[Character Detail] Failed to fetch live status', {
+								characterId: characterIdStr,
+								error: err instanceof Error ? err.message : String(err),
+							})
+						}
+					})(),
 				])
 			}
 
@@ -714,22 +723,6 @@ app.post('/:characterId/refresh', requireAuth(), async (c) => {
 			}
 		}
 
-		// Try to fetch killmails (requires authentication)
-		if (hasValidToken) {
-			try {
-				await eveCharacterData.fetchKillmails()
-				logger.info('[CharacterRefresh] Killmails fetched successfully', {
-					characterId: characterIdStr,
-				})
-			} catch (error) {
-				// Log error but don't fail the refresh
-				logger.error('[CharacterRefresh] Failed to fetch killmails', {
-					characterId: characterIdStr,
-					error: error instanceof Error ? error.message : String(error),
-				})
-			}
-		}
-
 		// Get the updated data
 		let lastUpdated: string | null = null
 		try {
@@ -742,33 +735,22 @@ app.post('/:characterId/refresh', requireAuth(), async (c) => {
 
 		// Check and update director status (fire and forget) — only for owned characters
 		if (character) {
-			c.executionCtx.waitUntil(
-				(async () => {
-					try {
-						logger.info('[CharacterRefresh] Checking director status for character', {
-							characterId: characterIdStr,
-						})
-
-						await checkAndUpdateDirectorStatus(
-							characterIdStr,
-							character.characterName,
-							user.id,
-							db!,
-							c.env.EVE_CHARACTER_DATA,
-							c.env.EVE_TOKEN_STORE,
-							c.env.EVE_CORPORATION_DATA
-						)
-
-						logger.info('[CharacterRefresh] Director status check completed', {
-							characterId: characterIdStr,
-						})
-					} catch (error) {
-						logger.error('[CharacterRefresh] Failed to check director status', {
-							characterId: characterIdStr,
-							error: error instanceof Error ? error.message : String(error),
-						})
-					}
-				})()
+			waitUntilWithTelemetry(
+				c.executionCtx,
+				'characters.director-status',
+				() => checkAndUpdateDirectorStatus(
+					characterIdStr,
+					character.characterName,
+					user.id,
+					db!,
+					c.env.EVE_CHARACTER_DATA,
+					c.env.EVE_TOKEN_STORE,
+					c.env.EVE_CORPORATION_DATA
+				),
+				{
+					characterId: characterIdStr,
+					userId: user.id,
+				}
 			)
 		}
 

@@ -9,6 +9,7 @@ export type Env = SharedHonoEnv & {
 	DATABASE_URL: string
 	APP_BASE_URL: string
 	FULCRUM: DurableObjectNamespace
+	MARKETS: DurableObjectNamespace
 	ESI: DurableObjectNamespace
 	ESI_TYPE_RESOLVER: DurableObjectNamespace
 	UNIVERSE: DurableObjectNamespace

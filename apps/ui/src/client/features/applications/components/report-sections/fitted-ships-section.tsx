@@ -44,6 +44,7 @@ interface FittedShip {
 	shipsInSmb: FittedShipItem[]
 	fleetHangar: FittedShipItem[]
 	specializedBays?: FittedShipBay[]
+	containedShips?: FittedShip[]
 }
 
 interface LocationGroup {
@@ -194,11 +195,15 @@ function SlotGroup({ label, items }: { label: string; items: FittedShipItem[] })
 function ShipCard({
 	ship,
 	isExpanded,
-	onToggle,
+	onToggleShip,
+	expandedShips,
+	depth = 0,
 }: {
 	ship: FittedShip
 	isExpanded: boolean
-	onToggle: () => void
+	onToggleShip: (shipKey: string) => void
+	expandedShips: Set<string>
+	depth?: number
 }) {
 	const totalModules = [
 		ship.highs,
@@ -217,10 +222,10 @@ function ShipCard({
 	].reduce((sum, arr) => sum + arr.length, 0)
 
 	return (
-		<div className="rounded-md border">
+		<div className={cn('rounded-md border', depth > 0 && 'ml-4')}>
 			<button
 				type="button"
-				onClick={onToggle}
+				onClick={() => onToggleShip(ship.itemId || ship.shipTypeId)}
 				className="flex w-full cursor-pointer items-center gap-3 px-3 py-2 text-left hover:bg-muted/50 transition-colors"
 			>
 				{isExpanded ? (
@@ -268,10 +273,34 @@ function ShipCard({
 							<SlotGroup key={bay.bayName} label={bay.bayName} items={bay.items} />
 						))}
 					</div>
+					{ship.containedShips && ship.containedShips.length > 0 && (
+						<div className="mt-4 space-y-2">
+							<h6 className="text-xs font-semibold uppercase text-muted-foreground">
+								Contained Ships
+							</h6>
+							<div className="space-y-2">
+								{ship.containedShips.map((containedShip) => (
+									<ShipCard
+										key={containedShip.itemId ?? `${containedShip.shipTypeId}-${containedShip.shipName}`}
+										ship={containedShip}
+										isExpanded={expandedShips.has(containedShip.itemId || containedShip.shipTypeId)}
+										onToggleShip={onToggleShip}
+										expandedShips={expandedShips}
+										depth={depth + 1}
+									/>
+								))}
+							</div>
+						</div>
+					)}
 				</div>
 			)}
 		</div>
 	)
+}
+
+function collectShipKeys(ship: FittedShip): string[] {
+	const key = ship.itemId || ship.shipTypeId
+	return [key, ...(ship.containedShips?.flatMap(collectShipKeys) ?? [])]
 }
 
 export function FittedShipsSection({ data }: { data: FittedShip[] }) {
@@ -388,13 +417,7 @@ export function FittedShipsSection({ data }: { data: FittedShip[] }) {
 						type="button"
 						onClick={() => {
 							setExpandedLocations(new Set(groups.map((group) => group.locationName)))
-							setExpandedShips(
-								new Set(
-									groups.flatMap((group) =>
-										group.ships.map((ship, index) => ship.itemId || `${ship.shipTypeId}-${index}`)
-									)
-								)
-							)
+							setExpandedShips(new Set(groups.flatMap((group) => group.ships.flatMap(collectShipKeys))))
 						}}
 						className="rounded border border-border px-2.5 py-1.5 text-xs text-muted-foreground hover:text-foreground"
 					>
@@ -450,7 +473,8 @@ export function FittedShipsSection({ data }: { data: FittedShip[] }) {
 												key={shipKey}
 												ship={ship}
 												isExpanded={expandedShips.has(shipKey)}
-												onToggle={() => toggleShip(shipKey)}
+												onToggleShip={toggleShip}
+												expandedShips={expandedShips}
 											/>
 										)
 									})}

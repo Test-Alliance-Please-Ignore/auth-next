@@ -6,6 +6,7 @@ import { and } from '@repo/db-utils'
 import { getStub } from '@repo/do-utils'
 
 import { createDb } from '../db'
+import { waitUntilWithTelemetry } from '../lib/background-task'
 import { clearUserCache, getCachedUserMemberships } from '../lib/groups-cache'
 import { triggerDiscordRefreshWorkflow } from '../lib/workflow-triggers'
 import { requireAdmin, requireAuth } from '../middleware/session'
@@ -344,8 +345,20 @@ groups.post(
 			clearUserCache(user.id)
 
 			// Sync Discord roles — accepting an invitation grants group membership which may grant new roles via Discord attachments
-			c.executionCtx.waitUntil(
-				triggerDiscordRefreshWorkflow({ env: c.env, userId: user.id, source: 'group-invitation-accepted' })
+			waitUntilWithTelemetry(
+				c.executionCtx,
+				'groups.discord-refresh.accept-invitation',
+				() =>
+					triggerDiscordRefreshWorkflow({
+						env: c.env,
+						userId: user.id,
+						source: 'group-invitation-accepted',
+					}),
+				{
+					userId: user.id,
+					groupId: invitationId,
+					source: 'group-invitation-accepted',
+				}
 			)
 
 			return c.json({ success: true }, 200)
@@ -514,8 +527,19 @@ groups.post(
 
 			if (result.success) {
 				// Sync Discord roles — redeeming an invite code grants group membership
-				c.executionCtx.waitUntil(
-					triggerDiscordRefreshWorkflow({ env: c.env, userId: user.id, source: 'group-invite-code-redeemed' })
+				waitUntilWithTelemetry(
+					c.executionCtx,
+					'groups.discord-refresh.redeem-invite-code',
+					() =>
+						triggerDiscordRefreshWorkflow({
+							env: c.env,
+							userId: user.id,
+							source: 'group-invite-code-redeemed',
+						}),
+					{
+						userId: user.id,
+						source: 'group-invite-code-redeemed',
+					}
 				)
 			}
 
@@ -547,8 +571,20 @@ groups.post(
 			clearUserCache(approvedUserId)
 
 			// Sync Discord roles — approval grants group membership which may grant new roles via Discord attachments
-			c.executionCtx.waitUntil(
-				triggerDiscordRefreshWorkflow({ env: c.env, userId: approvedUserId, source: 'group-join-request-approved' })
+			waitUntilWithTelemetry(
+				c.executionCtx,
+				'groups.discord-refresh.approve-join-request',
+				() =>
+					triggerDiscordRefreshWorkflow({
+						env: c.env,
+						userId: approvedUserId,
+						source: 'group-join-request-approved',
+					}),
+				{
+					userId: approvedUserId,
+					requestId,
+					source: 'group-join-request-approved',
+				}
 			)
 
 			return c.json({ success: true }, 200)
@@ -1269,8 +1305,22 @@ groups.delete(
 			await groupsDO.removeMember(groupId, user.id, memberUserId)
 
 			// Sync Discord roles with removal allowed — removing a member may revoke roles granted by the group's Discord attachment
-			c.executionCtx.waitUntil(
-				triggerDiscordRefreshWorkflow({ env: c.env, userId: memberUserId, source: 'group-member-removed', allowRemoval: true })
+			waitUntilWithTelemetry(
+				c.executionCtx,
+				'groups.discord-refresh.remove-member',
+				() =>
+					triggerDiscordRefreshWorkflow({
+						env: c.env,
+						userId: memberUserId,
+						source: 'group-member-removed',
+						allowRemoval: true,
+					}),
+				{
+					userId: memberUserId,
+					groupId,
+					source: 'group-member-removed',
+					allowRemoval: true,
+				}
 			)
 
 			return c.json({ success: true }, 200)
@@ -1366,8 +1416,16 @@ groups.post('/:id/join', requireAuth({ any: [ROLE_CORE_ALLIANCE_MEMBER] }), asyn
 		clearUserCache(user.id)
 
 		// Sync Discord roles — joining a group may grant new roles via Discord attachments
-		c.executionCtx.waitUntil(
-			triggerDiscordRefreshWorkflow({ env: c.env, userId: user.id, source: 'group-joined' })
+		waitUntilWithTelemetry(
+			c.executionCtx,
+			'groups.discord-refresh.join-group',
+			() =>
+				triggerDiscordRefreshWorkflow({ env: c.env, userId: user.id, source: 'group-joined' }),
+			{
+				userId: user.id,
+				groupId,
+				source: 'group-joined',
+			}
 		)
 
 		return c.json({ success: true }, 200)
@@ -1395,8 +1453,22 @@ groups.post('/:id/leave', requireAuth({ any: [ROLE_CORE_ALLIANCE_MEMBER] }), asy
 		clearUserCache(user.id)
 
 		// Sync Discord roles with removal allowed — leaving a group may revoke roles granted by its Discord attachment
-		c.executionCtx.waitUntil(
-			triggerDiscordRefreshWorkflow({ env: c.env, userId: user.id, source: 'group-left', allowRemoval: true })
+		waitUntilWithTelemetry(
+			c.executionCtx,
+			'groups.discord-refresh.leave-group',
+			() =>
+				triggerDiscordRefreshWorkflow({
+					env: c.env,
+					userId: user.id,
+					source: 'group-left',
+					allowRemoval: true,
+				}),
+			{
+				userId: user.id,
+				groupId,
+				source: 'group-left',
+				allowRemoval: true,
+			}
 		)
 
 		return c.json({ success: true }, 200)

@@ -428,6 +428,9 @@ importers:
       '@repo/esi':
         specifier: workspace:*
         version: link:../../packages/esi
+      '@repo/esi-rate-limit':
+        specifier: workspace:*
+        version: link:../../packages/esi-rate-limit
       '@repo/eve-character-data':
         specifier: workspace:*
         version: link:../../packages/eve-character-data
@@ -847,6 +850,9 @@ importers:
       '@repo/esi':
         specifier: workspace:*
         version: link:../../packages/esi
+      '@repo/esi-rate-limit':
+        specifier: workspace:*
+        version: link:../../packages/esi-rate-limit
       '@repo/eve-corporation-data':
         specifier: workspace:*
         version: link:../../packages/eve-corporation-data
@@ -1102,6 +1108,12 @@ importers:
       '@repo/do-utils':
         specifier: workspace:*
         version: link:../../packages/do-utils
+      '@repo/esi':
+        specifier: workspace:*
+        version: link:../../packages/esi
+      '@repo/esi-rate-limit':
+        specifier: workspace:*
+        version: link:../../packages/esi-rate-limit
       '@repo/eve-token-store':
         specifier: workspace:*
         version: link:../../packages/eve-token-store
@@ -1242,6 +1254,9 @@ importers:
       '@repo/do-utils':
         specifier: workspace:*
         version: link:../../packages/do-utils
+      '@repo/esi-rate-limit':
+        specifier: workspace:*
+        version: link:../../packages/esi-rate-limit
       '@repo/eve-character-data':
         specifier: workspace:*
         version: link:../../packages/eve-character-data
@@ -1400,6 +1415,9 @@ importers:
       '@repo/hr':
         specifier: workspace:*
         version: link:../../packages/hr
+      '@repo/markets':
+        specifier: workspace:*
+        version: link:../../packages/markets
       '@repo/universe':
         specifier: workspace:*
         version: link:../../packages/universe
@@ -2267,6 +2285,9 @@ importers:
       '@repo/esi':
         specifier: workspace:*
         version: link:../../packages/esi
+      '@repo/esi-rate-limit':
+        specifier: workspace:*
+        version: link:../../packages/esi-rate-limit
       '@repo/eve-character-data':
         specifier: workspace:*
         version: link:../../packages/eve-character-data
@@ -2591,6 +2612,9 @@ importers:
       '@repo/esi':
         specifier: workspace:*
         version: link:../../packages/esi
+      '@repo/esi-rate-limit':
+        specifier: workspace:*
+        version: link:../../packages/esi-rate-limit
       '@repo/eve-token-store':
         specifier: workspace:*
         version: link:../../packages/eve-token-store
@@ -2841,9 +2865,15 @@ importers:
       '@repo/do-utils':
         specifier: workspace:*
         version: link:../do-utils
+      '@repo/esi-rate-limit':
+        specifier: workspace:*
+        version: link:../esi-rate-limit
       '@repo/eve-types':
         specifier: workspace:*
         version: link:../eve-types
+      '@repo/fetch-utils':
+        specifier: workspace:*
+        version: link:../fetch-utils
       '@repo/universe':
         specifier: workspace:*
         version: link:../universe
@@ -2851,6 +2881,21 @@ importers:
       '@cloudflare/vitest-pool-workers':
         specifier: 0.10.8
         version: 0.10.8(@cloudflare/workers-types@4.20260501.1)(@vitest/runner@3.2.4)(@vitest/snapshot@3.2.4)(vitest@3.2.4)
+      '@repo/eslint-config':
+        specifier: workspace:*
+        version: link:../eslint-config
+      '@repo/tools':
+        specifier: workspace:*
+        version: link:../tools
+      '@repo/typescript-config':
+        specifier: workspace:*
+        version: link:../typescript-config
+      vitest:
+        specifier: 3.2.4
+        version: 3.2.4(@types/node@24.10.1)(@vitest/browser@3.2.4)(jiti@2.6.1)(lightningcss@1.30.2)(tsx@4.21.0)(yaml@2.8.1)
+
+  packages/esi-rate-limit:
+    devDependencies:
       '@repo/eslint-config':
         specifier: workspace:*
         version: link:../eslint-config

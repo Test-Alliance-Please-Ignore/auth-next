@@ -22,6 +22,10 @@
 		{
 			"binding": "ESI_GLOBAL_CACHE",
 			"id": "cd0f385dd4d6458c80dea2108d51a8f7"
+		},
+		{
+			"binding": "ESI_RATE_LIMITS",
+			"id": "40ba8cdb7cb14b8e9bbed35f34faf27b"
 		}
 	],
 	"durable_objects": {

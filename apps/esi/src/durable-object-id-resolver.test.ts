@@ -40,6 +40,7 @@ async function createResolver() {
 	return {
 		resolver: new EsiTypeResolverDO(state, env),
 		env,
+		state,
 	}
 }
 
@@ -106,6 +107,40 @@ describe('EsiTypeResolverDO local-first resolution', () => {
 		expect(universeStub.resolveStargatesByIds).toHaveBeenCalledWith(['50000001'])
 		expect(universeStub.resolvePlanetsByIds).toHaveBeenCalledWith(['40000001'])
 		expect(universeStub.resolveStaticMoonsByIds).toHaveBeenCalledWith(['40000001'])
+	})
+
+	it('uses Universe DB data for static IDs even when the shared cache has an entry', async () => {
+		const { resolver, env, state } = await createResolver()
+
+		state.storage.kv.get = vi.fn().mockImplementation(async (key: string) => {
+			if (key === 'entity:10000002') {
+				return 'Cached Forge'
+			}
+			return null
+		})
+
+		const universeStub = {
+			resolveTypeNamesByIds: vi.fn().mockResolvedValue({}),
+			resolveRegionsByIds: vi.fn().mockResolvedValue({
+				'10000002': { regionName: 'The Forge' },
+			}),
+			resolveSolarSystemsByIds: vi.fn().mockResolvedValue({}),
+			resolveNpcStationsByIds: vi.fn().mockResolvedValue({}),
+			resolveStargatesByIds: vi.fn().mockResolvedValue({}),
+			resolvePlanetsByIds: vi.fn().mockResolvedValue({}),
+			resolveStaticMoonsByIds: vi.fn().mockResolvedValue({}),
+		}
+
+		const mockedGetStub = vi.mocked(getStub)
+		mockedGetStub.mockImplementation((binding) => {
+			if (binding === env.UNIVERSE) return universeStub as never
+			throw new Error('Unexpected binding in test')
+		})
+
+		const result = await resolver.resolveIds(['10000002'])
+
+		expect(result['10000002']).toBe('The Forge')
+		expect(universeStub.resolveRegionsByIds).toHaveBeenCalledWith(['10000002'])
 	})
 
 	it('falls back to ESI names endpoint for unresolved local IDs', async () => {

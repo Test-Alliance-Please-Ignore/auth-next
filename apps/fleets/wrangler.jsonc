@@ -11,6 +11,12 @@
 		"enabled": true
 	},
 	"vars": {},
+	"kv_namespaces": [
+		{
+			"binding": "ESI_RATE_LIMITS",
+			"id": "40ba8cdb7cb14b8e9bbed35f34faf27b"
+		}
+	],
 	"durable_objects": {
 		"bindings": [
 			{

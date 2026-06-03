@@ -32,7 +32,7 @@
 				"name": "EVE_TOKEN_STORE",
 				"class_name": "EveTokenStore",
 				"script_name": "eve-token-store"
-			}
+			},
 		]
 	},
 	"workflows": [

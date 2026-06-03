@@ -4,7 +4,10 @@ import type { createDb } from './db'
 
 export type Env = SharedHonoEnv & {
 	DATABASE_URL: string
+	ESI_RATE_LIMITS: KVNamespace
+	ESI: DurableObjectNamespace
 	EVE_TOKEN_STORE: DurableObjectNamespace
+	ESI_TYPE_RESOLVER: DurableObjectNamespace
 
 	// EVE SSO OAuth Configuration
 	// These secrets should be set via: wrangler secret put <SECRET_NAME>

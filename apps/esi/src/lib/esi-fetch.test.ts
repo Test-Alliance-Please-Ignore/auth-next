@@ -18,6 +18,7 @@ describe('EsiFetcher cache policy', () => {
 			{} as DurableObjectState,
 			{
 				ESI_GLOBAL_CACHE: {} as KVNamespace,
+				ESI_RATE_LIMITS: {} as KVNamespace,
 			} as Env
 		)
 

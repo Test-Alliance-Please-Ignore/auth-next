@@ -2,6 +2,7 @@ import { Hono } from 'hono'
 import { z } from 'zod'
 
 import { createDb } from '../db'
+import { waitUntilWithTelemetry } from '../lib/background-task'
 import { recordUserFingerprint } from '../lib/fingerprint-tracking'
 import { requireAuth } from '../middleware/session'
 
@@ -40,14 +41,18 @@ session.post('/sync', requireAuth(), async (c) => {
 	const { sid } = validation.data
 	const db = createDb(c.env.DATABASE_URL)
 
-	c.executionCtx.waitUntil(
-		recordUserFingerprint({
-			db,
+	waitUntilWithTelemetry(
+		c.executionCtx,
+		'session.fingerprint-recording',
+		() =>
+			recordUserFingerprint({
+				db,
+				userId: user.id,
+				fingerprint: sid,
+			}),
+		{
 			userId: user.id,
-			fingerprint: sid,
-		}).catch((error) => {
-			console.error('[Session] Failed to record fingerprint:', error)
-		})
+		}
 	)
 
 	return c.json({ ok: true })

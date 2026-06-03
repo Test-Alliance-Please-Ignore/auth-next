@@ -15,6 +15,16 @@
 		"crons": ["15,45 * * * *"]
 	},
 	"vars": {},
+	"kv_namespaces": [
+		{
+			"binding": "ESI_GLOBAL_CACHE",
+			"id": "cd0f385dd4d6458c80dea2108d51a8f7"
+		},
+		{
+			"binding": "ESI_RATE_LIMITS",
+			"id": "40ba8cdb7cb14b8e9bbed35f34faf27b"
+		}
+	],
 	"durable_objects": {
 		"bindings": [
 			{
@@ -40,11 +50,6 @@
 				"name": "EVE_TOKEN_STORE",
 				"class_name": "EveTokenStore",
 				"script_name": "eve-token-store"
-			},
-			{
-				"name": "ESI",
-				"class_name": "Esi",
-				"script_name": "esi"
 			},
 			{
 				"name": "ESI_TYPE_RESOLVER",
