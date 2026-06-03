@@ -1,22 +1,30 @@
 import { describe, expect, it, vi } from 'vitest'
 
+vi.mock('cloudflare:workers', () => ({
+	DurableObject: class {},
+}))
+
 const {
 	getGuildMemberMock,
+	getGuildRolesMock,
 	updateGuildMemberRolesMock,
 	banGuildMemberMock,
 	DiscordBotServiceMock,
 } = vi.hoisted(() => {
 	const getGuildMemberMock = vi.fn()
+	const getGuildRolesMock = vi.fn()
 	const updateGuildMemberRolesMock = vi.fn()
 	const banGuildMemberMock = vi.fn()
 	const DiscordBotServiceMock = vi.fn().mockImplementation(() => ({
 		getGuildMember: getGuildMemberMock,
+		getGuildRoles: getGuildRolesMock,
 		updateGuildMemberRoles: updateGuildMemberRolesMock,
 		banGuildMember: banGuildMemberMock,
 	}))
 
 	return {
 		getGuildMemberMock,
+		getGuildRolesMock,
 		updateGuildMemberRolesMock,
 		banGuildMemberMock,
 		DiscordBotServiceMock,
@@ -102,6 +110,7 @@ describe('DiscordDO.revokeAccessAndBan', () => {
 			{
 				guildId: 'guild-1',
 				success: true,
+				kicked: false,
 				rolesCleared: true,
 				banned: true,
 				errorMessage: undefined,
@@ -109,10 +118,55 @@ describe('DiscordDO.revokeAccessAndBan', () => {
 			{
 				guildId: 'guild-2',
 				success: true,
+				kicked: false,
 				rolesCleared: false,
 				banned: true,
 				errorMessage: undefined,
 			},
 		])
+	})
+})
+
+describe('DiscordDO.getUserGuildMembershipDetails', () => {
+	it('retries guild member lookups after a Discord 429', async () => {
+		const randomSpy = vi.spyOn(Math, 'random').mockReturnValue(0)
+
+		getGuildMemberMock
+			.mockRejectedValueOnce(Object.assign(new Error('Discord API error: 429'), { status: 429 }))
+			.mockResolvedValueOnce({ roles: ['managed-role'] })
+		getGuildRolesMock.mockResolvedValue([{ id: 'managed-role', name: 'Managed Role' }])
+
+		const fakeThis = {
+			env: { DISCORD_BOT_TOKEN: 'token' },
+			getUserByCoreUserId: vi.fn().mockResolvedValue({
+				id: 'discord-row-1',
+				userId: 'discord-user-1',
+			}),
+			withDiscordMembershipRetry: (DiscordDO.prototype as any).withDiscordMembershipRetry,
+		}
+
+		vi.useFakeTimers()
+		try {
+			const promise = DiscordDO.prototype.getUserGuildMembershipDetails.call(
+				fakeThis as any,
+				'core-user-1',
+				['guild-1']
+			)
+			await vi.advanceTimersByTimeAsync(1000)
+			const result = await promise
+
+		expect(getGuildMemberMock.mock.calls.length).toBeGreaterThanOrEqual(2)
+			expect(result).toEqual([
+				{
+					guildId: 'guild-1',
+					isMember: true,
+					currentRoleIds: ['managed-role'],
+					currentRoles: [{ roleId: 'managed-role', roleName: 'Managed Role' }],
+				},
+			])
+		} finally {
+			vi.useRealTimers()
+			randomSpy.mockRestore()
+		}
 	})
 })

@@ -1,12 +1,18 @@
 import { DurableObject } from 'cloudflare:workers'
 
 import { and, eq, ilike, isNotNull, sql } from '@repo/db-utils'
-import { DiscordAPIError, DiscordFetch, DiscordRoutes } from '@repo/discord'
+import {
+	DiscordAPIError,
+	DiscordFetch,
+	DiscordRoutes,
+	discordRateLimitGuard,
+} from '@repo/discord'
 import { generateShardKey } from '@repo/hazmat'
 import { logger } from '@repo/hono-helpers'
 import { parseJsonResponse } from '@repo/worker-utils'
 
 import { createDb } from './db'
+import { createDiscordRateLimitKvStore } from './lib/discord-rate-limit-store'
 import { discordTokens, discordUsers } from './db/schema'
 import { DiscordBotService, fetchWithRetry } from './services/discord-bot.service'
 import { calculateRoleChanges } from './utils/role-calculation'
@@ -22,6 +28,26 @@ import type {
 	SendMessageResult,
 } from '@repo/discord'
 import type { Env } from './context'
+
+const DISCORD_MEMBERSHIP_RETRY_MAX_ATTEMPTS = 3
+const DISCORD_MEMBERSHIP_RETRY_BASE_DELAY_MS = 1000
+const DISCORD_MEMBERSHIP_RETRY_MAX_DELAY_MS = 10000
+
+function sleep(ms: number): Promise<void> {
+	return new Promise((resolve) => setTimeout(resolve, ms))
+}
+
+function isDiscordRateLimitError(error: unknown): boolean {
+	const status =
+		typeof error === 'object' && error !== null ? (error as { status?: unknown }).status : undefined
+	return status === 429 || (error instanceof Error && error.message.includes('429'))
+}
+
+function getDiscordMembershipRetryDelayMs(attempt: number): number {
+	const baseDelay = DISCORD_MEMBERSHIP_RETRY_BASE_DELAY_MS * Math.pow(2, attempt)
+	const jitter = Math.floor(Math.random() * 250)
+	return Math.min(DISCORD_MEMBERSHIP_RETRY_MAX_DELAY_MS, baseDelay + jitter)
+}
 
 /**
  * Discord Durable Object
@@ -44,6 +70,11 @@ export class DiscordDO extends DurableObject<Env> implements Discord {
 	) {
 		super(state, env)
 		this.db = createDb(env.DATABASE_URL)
+		if (env.DISCORD_RATE_LIMITS) {
+			discordRateLimitGuard.configureStore(
+				createDiscordRateLimitKvStore(env.DISCORD_RATE_LIMITS)
+			)
+		}
 	}
 
 	// ==================== HELPER FUNCTIONS ====================
@@ -61,6 +92,34 @@ export class DiscordDO extends DurableObject<Env> implements Discord {
 		}
 
 		return user
+	}
+
+	private async withDiscordMembershipRetry<T>(
+		coreUserId: string,
+		guildId: string,
+		operation: () => Promise<T>
+	): Promise<T> {
+		for (let attempt = 0; attempt <= DISCORD_MEMBERSHIP_RETRY_MAX_ATTEMPTS; attempt++) {
+			try {
+				return await operation()
+			} catch (error) {
+				if (!isDiscordRateLimitError(error) || attempt >= DISCORD_MEMBERSHIP_RETRY_MAX_ATTEMPTS) {
+					throw error
+				}
+
+				const waitMs = getDiscordMembershipRetryDelayMs(attempt)
+				logger.warn('[DiscordDO] Rate limited while inspecting Discord membership, retrying', {
+					coreUserId,
+					guildId,
+					attempt: attempt + 1,
+					waitMs,
+					error: String(error),
+				})
+				await sleep(waitMs)
+			}
+		}
+
+		throw new Error('Unexpected retry loop exit')
 	}
 
 	/**
@@ -740,24 +799,25 @@ export class DiscordDO extends DurableObject<Env> implements Discord {
 			const memberGuilds: string[] = []
 			const botService = new DiscordBotService(this.env)
 
-			// Check each guild using bot token (via proxy)
-			await Promise.all(
-				guildIds.map(async (guildId) => {
-					try {
-						const member = await botService.getGuildMember(guildId, discordUserId)
-						if (member) {
-							memberGuilds.push(guildId)
-						}
-						// null means user is not a member (404)
-					} catch (error) {
-						logger.error('[DiscordDO] Error checking guild membership', {
-							coreUserId,
-							guildId,
-							error: String(error),
-						})
+			// Check each guild using bot token (via proxy). Run sequentially so a Discord 429
+			// backs off the membership audit instead of creating a burst of retries.
+			for (const guildId of guildIds) {
+				try {
+					const member = await this.withDiscordMembershipRetry(coreUserId, guildId, () =>
+						botService.getGuildMember(guildId, discordUserId)
+					)
+					if (member) {
+						memberGuilds.push(guildId)
 					}
-				})
-			)
+					// null means user is not a member (404)
+				} catch (error) {
+					logger.error('[DiscordDO] Error checking guild membership', {
+						coreUserId,
+						guildId,
+						error: String(error),
+					})
+				}
+			}
 
 			logger.info('[DiscordDO] Checked guild membership with bot token', {
 				coreUserId,
@@ -798,9 +858,10 @@ export class DiscordDO extends DurableObject<Env> implements Discord {
 			const discordUserId = user.userId
 			const botService = new DiscordBotService(this.env)
 
-			const membershipDetails = await Promise.all(
-				guildIds.map(async (guildId) => {
-					try {
+			const membershipDetails: DiscordGuildMembershipDetail[] = []
+			for (const guildId of guildIds) {
+				try {
+					const detail = await this.withDiscordMembershipRetry(coreUserId, guildId, async () => {
 						const member = await botService.getGuildMember(guildId, discordUserId)
 
 						if (!member) {
@@ -809,7 +870,7 @@ export class DiscordDO extends DurableObject<Env> implements Discord {
 								isMember: false,
 								currentRoleIds: [],
 								currentRoles: [],
-							}
+							} satisfies DiscordGuildMembershipDetail
 						}
 
 						const currentRoleIds = member.roles || []
@@ -826,6 +887,10 @@ export class DiscordDO extends DurableObject<Env> implements Discord {
 									role.roleName = roleNameById.get(role.roleId) || null
 								}
 							} catch (error) {
+								if (isDiscordRateLimitError(error)) {
+									throw error
+								}
+
 								logger.warn('[DiscordDO] Failed to resolve guild role names', {
 									coreUserId,
 									guildId,
@@ -839,23 +904,24 @@ export class DiscordDO extends DurableObject<Env> implements Discord {
 							isMember: true,
 							currentRoleIds,
 							currentRoles,
-						}
-					} catch (error) {
-						logger.error('[DiscordDO] Error getting guild membership details', {
-							coreUserId,
-							guildId,
-							error: String(error),
-						})
-						return {
-							guildId,
-							isMember: false,
-							currentRoleIds: [],
-							currentRoles: [],
-							errorMessage: error instanceof Error ? error.message : 'Unknown error',
-						}
-					}
-				})
-			)
+						} satisfies DiscordGuildMembershipDetail
+					})
+					membershipDetails.push(detail)
+				} catch (error) {
+					logger.error('[DiscordDO] Error getting guild membership details', {
+						coreUserId,
+						guildId,
+						error: String(error),
+					})
+					membershipDetails.push({
+						guildId,
+						isMember: false,
+						currentRoleIds: [],
+						currentRoles: [],
+						errorMessage: error instanceof Error ? error.message : 'Unknown error',
+					})
+				}
+			}
 
 			return membershipDetails
 		} catch (error) {

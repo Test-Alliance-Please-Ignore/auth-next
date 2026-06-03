@@ -602,6 +602,18 @@ export {
 	DiscordAPIError,
 	DiscordRateLimitError,
 	DiscordRoutes,
+} from './client'
+
+export {
+	DiscordRateLimitGuard,
+	discordRateLimitGuard,
+	type DiscordRateLimitRecord,
+	type DiscordRateLimitStore,
+	type DiscordRateLimitObservation,
+	normalizeDiscordRouteKey,
+} from './discord-rate-limit'
+
+export {
 	type DiscordFetchOptions,
 	type DiscordProxyConfig,
 	type DiscordRoutesType,

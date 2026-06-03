@@ -845,7 +845,7 @@ app.get('/:id/audit', requireAuth(), requireAdmin(), async (c) => {
 
 		const linkedCoreUserIds = [...new Set(rows.map((row) => row.coreUserId).filter((id): id is string => !!id))]
 		const hasMemberCorpAttachmentByUserId = new Map<string, boolean>()
-		const hasManagedRoleDriftByUserId = new Map<string, boolean>()
+		const expectedManagedRoleIdsByUserId = new Map<string, Set<string>>()
 		if (linkedCoreUserIds.length > 0) {
 			const groupsStub = getStub<Groups>(c.env.GROUPS, 'default')
 			await Promise.all(
@@ -872,35 +872,46 @@ app.get('/:id/audit', requireAuth(), requireAdmin(), async (c) => {
 					}
 				})
 			)
-			if (filter === 'drifted') {
-				await Promise.all(
-					linkedCoreUserIds.map(async (coreUserId) => {
-						try {
-							const inspection = await discordService.inspectUserDiscordAccess(c.env, coreUserId)
-							const guildInspection = inspection.guilds.find((guild) => guild.guildId === server.guildId)
-							hasManagedRoleDriftByUserId.set(
-								coreUserId,
-								(guildInspection?.unexpectedManagedRoles.length ?? 0) > 0
-							)
-						} catch (error) {
-							logger.warn('[Discord] Failed to resolve managed role drift for audit row', {
-								coreUserId,
-								error: error instanceof Error ? error.message : String(error),
-							})
-							hasManagedRoleDriftByUserId.set(coreUserId, false)
-						}
-					})
-				)
-			}
+
+			await Promise.all(
+				linkedCoreUserIds.map(async (coreUserId) => {
+					try {
+						const expectedByGuild = await discordService.getExpectedManagedRoleIdsByGuild(
+							c.env,
+							coreUserId
+						)
+						expectedManagedRoleIdsByUserId.set(
+							coreUserId,
+							expectedByGuild.get(server.guildId) ?? new Set<string>()
+						)
+					} catch (error) {
+						logger.warn('[Discord] Failed to resolve expected managed roles for audit row', {
+							coreUserId,
+							error: error instanceof Error ? error.message : String(error),
+						})
+						expectedManagedRoleIdsByUserId.set(coreUserId, new Set<string>())
+					}
+				})
+			)
 		}
 
-		const normalizedRows = rows.map((row) => ({
-			...row,
-			roleIds: (row.roleIds ?? []).filter((roleId) => !EXCLUDED_AUDIT_ROLE_IDS.has(roleId)),
-			isInMemberCorporationByAttachments: row.coreUserId
-				? (hasMemberCorpAttachmentByUserId.get(row.coreUserId) ?? false)
-				: false,
-		}))
+		const normalizedRows = rows.map((row) => {
+			const roleIds = (row.roleIds ?? []).filter((roleId) => !EXCLUDED_AUDIT_ROLE_IDS.has(roleId))
+			const expectedManagedRoleIds = row.coreUserId
+				? (expectedManagedRoleIdsByUserId.get(row.coreUserId) ?? new Set<string>())
+				: new Set<string>()
+			const currentManagedRoleIds = roleIds.filter((roleId) => managedRoleIdSet.has(roleId))
+			return {
+				...row,
+				roleIds,
+				isInMemberCorporationByAttachments: row.coreUserId
+					? (hasMemberCorpAttachmentByUserId.get(row.coreUserId) ?? false)
+					: false,
+				hasManagedRoleDrift: row.coreUserId
+					? currentManagedRoleIds.some((roleId) => !expectedManagedRoleIds.has(roleId))
+					: false,
+			}
+		})
 		let filteredRows = normalizedRows
 		if (filter === 'member_corp') {
 			filteredRows = normalizedRows.filter(
@@ -920,9 +931,7 @@ app.get('/:id/audit', requireAuth(), requireAdmin(), async (c) => {
 			)
 		}
 		if (filter === 'drifted') {
-			filteredRows = normalizedRows.filter(
-				(row) => row.coreUserId ? (hasManagedRoleDriftByUserId.get(row.coreUserId) ?? false) : false
-			)
+			filteredRows = normalizedRows.filter((row) => row.hasManagedRoleDrift)
 		}
 		if (filter === 'unmanaged_roles') {
 			filteredRows = normalizedRows.filter((row) =>
@@ -947,9 +956,7 @@ app.get('/:id/audit', requireAuth(), requireAdmin(), async (c) => {
 			).length
 			return {
 				isInMemberCorporation: row.isInMemberCorporationByAttachments,
-				hasManagedRoleDrift: row.coreUserId
-					? (hasManagedRoleDriftByUserId.get(row.coreUserId) ?? false)
-					: false,
+				hasManagedRoleDrift: row.hasManagedRoleDrift ?? false,
 				hasRoleAffiliationMismatch:
 					relevantAffiliationRoleCount > 0 &&
 					!row.isInMemberCorporationByAttachments,
