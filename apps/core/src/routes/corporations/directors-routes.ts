@@ -12,6 +12,27 @@ import type { App } from '../../context'
 
 const app = new Hono<App>()
 
+async function syncManagedCorporationDirectorHealth(
+	db: NonNullable<App['Variables']['db']>,
+	env: App['Bindings'],
+	corporationId: string
+): Promise<number> {
+	const stub = getStub<EveCorporationData>(env.EVE_CORPORATION_DATA, corporationId)
+	const healthyDirectors = await stub.getHealthyDirectors(corporationId)
+	const healthyDirectorCount = healthyDirectors.length
+	await db
+		.update(managedCorporations)
+		.set({
+			healthyDirectorCount,
+			isVerified: healthyDirectorCount > 0,
+			lastVerified: new Date(),
+			updatedAt: new Date(),
+		})
+		.where(eq(managedCorporations.corporationId, corporationId))
+
+	return healthyDirectorCount
+}
+
 function toAdminUnhealthyReason(lastFailureReason: string | null | undefined): {
 	summary: string
 	status: number | null
@@ -173,6 +194,7 @@ app.post('/:corporationId/directors', requireAuth(), requireAdmin(), async (c) =
 
 		const stub = getStub<EveCorporationData>(c.env.EVE_CORPORATION_DATA, corporationId)
 		await stub.addDirector(corporationId, characterId, characterName, priority)
+		await syncManagedCorporationDirectorHealth(db, c.env, corporationId)
 
 		// If this is the first director, persist as primary configured character.
 		const directors = await stub.getDirectors(corporationId)
@@ -201,10 +223,16 @@ app.post('/:corporationId/directors', requireAuth(), requireAdmin(), async (c) =
 app.delete('/:corporationId/directors/:characterId', requireAuth(), requireAdmin(), async (c) => {
 	const corporationId = c.req.param('corporationId')
 	const characterId = c.req.param('characterId')
+	const db = c.get('db')
+
+	if (!db) {
+		return c.json({ error: 'Database not available' }, 500)
+	}
 
 	try {
 		const stub = getStub<EveCorporationData>(c.env.EVE_CORPORATION_DATA, corporationId)
 		await stub.removeDirector(corporationId, characterId)
+		await syncManagedCorporationDirectorHealth(db, c.env, corporationId)
 
 		return c.json({ success: true })
 	} catch (error) {
@@ -250,10 +278,16 @@ app.post(
 	async (c) => {
 		const corporationId = c.req.param('corporationId')
 		const directorId = c.req.param('directorId')
+		const db = c.get('db')
+
+		if (!db) {
+			return c.json({ error: 'Database not available' }, 500)
+		}
 
 		try {
 			const stub = getStub<EveCorporationData>(c.env.EVE_CORPORATION_DATA, corporationId)
 			const isHealthy = await stub.verifyDirectorHealth(corporationId, directorId)
+			await syncManagedCorporationDirectorHealth(db, c.env, corporationId)
 
 			return c.json({ success: true, directorId, isHealthy })
 		} catch (error) {
@@ -278,23 +312,13 @@ app.post('/:corporationId/directors/verify-all', requireAuth(), requireAdmin(), 
 	try {
 		const stub = getStub<EveCorporationData>(c.env.EVE_CORPORATION_DATA, corporationId)
 		const result = await stub.verifyAllDirectorsHealth(corporationId)
-
-		const healthyDirectors = await stub.getHealthyDirectors(corporationId)
-		await db
-			.update(managedCorporations)
-			.set({
-				healthyDirectorCount: healthyDirectors.length,
-				isVerified: healthyDirectors.length > 0,
-				lastVerified: new Date(),
-				updatedAt: new Date(),
-			})
-			.where(eq(managedCorporations.corporationId, corporationId))
+		const healthyCount = await syncManagedCorporationDirectorHealth(db, c.env, corporationId)
 
 		return c.json({
 			success: true,
 			verified: result.verified,
 			failed: result.failed,
-			healthyCount: healthyDirectors.length,
+			healthyCount,
 		})
 	} catch (error) {
 		logger.error('Error verifying all directors:', error)

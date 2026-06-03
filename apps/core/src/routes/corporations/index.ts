@@ -601,7 +601,29 @@ app.get('/', requireAuth(), requireAdmin(), async (c) => {
 		})
 
 		// Safety filter: never expose NPC corporations as managed corporations in admin views.
-		return c.json(corporations.filter((corp) => !isNpcCorporationId(corp.corporationId)))
+		const managed = corporations.filter((corp) => !isNpcCorporationId(corp.corporationId))
+		const enriched = await Promise.all(
+			managed.map(async (corp) => {
+				try {
+					const stub = getStub<EveCorporationData>(c.env.EVE_CORPORATION_DATA, corp.corporationId)
+					const healthyDirectors = await stub.getHealthyDirectors(corp.corporationId)
+					const healthyDirectorCount = healthyDirectors.length
+					return {
+						...corp,
+						healthyDirectorCount,
+						isVerified: healthyDirectorCount > 0,
+					}
+				} catch (error) {
+					logger.warn('[Corporations] Failed to enrich live director health for list item', {
+						corporationId: corp.corporationId,
+						error: error instanceof Error ? error.message : String(error),
+					})
+					return corp
+				}
+			})
+		)
+
+		return c.json(enriched)
 	} catch (error) {
 		logger.error('Error fetching corporations:', error)
 		return c.json({ error: 'Failed to fetch corporations' }, 500)
@@ -1312,13 +1334,15 @@ app.post('/:corporationId/verify', requireAuth(), requireAdmin(), async (c) => {
 			rolesCount: verification.verifiedRoles.length,
 			roles: verification.verifiedRoles,
 		})
+		const healthyDirectorCount = (await stub.getHealthyDirectors(corporationId)).length
 
 		// Update database with verification result
 		logger.info('[Corporations] Updating database with verification result', { corporationId })
 		await db
 			.update(managedCorporations)
 			.set({
-				isVerified: verification.hasAccess,
+				isVerified: healthyDirectorCount > 0,
+				healthyDirectorCount,
 				lastVerified: verification.lastVerified || new Date(),
 				updatedAt: new Date(),
 			})
