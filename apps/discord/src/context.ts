@@ -12,6 +12,7 @@ export interface DiscordInteractionOption {
 export type Env = SharedHonoEnv & {
 	DATABASE_URL: string
 	DISCORD: DurableObjectNamespace
+	DISCORD_RATE_LIMITS: KVNamespace
 	DISCORD_AUTHORIZE_URL: string
 	DISCORD_TOKEN_URL: string
 	DISCORD_TOKEN_REVOKE_URL: string

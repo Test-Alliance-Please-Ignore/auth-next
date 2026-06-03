@@ -5,6 +5,7 @@ import { getStub } from '@repo/do-utils'
 
 // Import the functions under test AFTER mocks are in place
 import {
+	getExpectedManagedRoleIdsByGuild,
 	inspectUserDiscordAccess,
 	inviteUserToDiscordServers,
 	syncUserDiscordAccess,
@@ -1584,5 +1585,62 @@ describe('inspectUserDiscordAccess', () => {
 		expect(guild.expectedManagedRoles).toEqual([])
 		expect(guild.missingExpectedManagedRoles).toEqual([])
 		expect(guild.unexpectedManagedRoles.map((r) => r.roleId)).toEqual(['managed-configured'])
+	})
+})
+
+describe('getExpectedManagedRoleIdsByGuild', () => {
+	it('should build expected managed roles from core grants without inspecting live Discord membership', async () => {
+		dbQueryMocks.discordServers.findMany.mockResolvedValue([
+			makeDiscordServer({ id: 'ds-1', guildId: 'guild-1', guildName: 'Guild One' }),
+		])
+		dbQueryMocks.users.findMany.mockResolvedValue([])
+		dbQueryMocks.userCharacters.findMany.mockResolvedValue([
+			{
+				userId: 'user-1',
+				characterId: 'char-1',
+			},
+		] as any)
+		eveCorpStubMethods.getCorporationIdsByCharacterIds.mockResolvedValue({
+			'char-1': 'corp-1',
+		})
+		dbQueryMocks.corporationDiscordServers.findMany
+			.mockResolvedValueOnce([
+				makeCorpAttachment({
+					corporationId: 'corp-1',
+					discordServerId: 'ds-1',
+					guildId: 'guild-1',
+					roleIds: ['corp-role-db'],
+				}),
+			])
+			.mockResolvedValueOnce([{ discordServerId: 'ds-1' }])
+		groupsStubMethods.getGroupsWithDiscordAutoInvite.mockResolvedValue([
+			makeGroupWithDiscord({
+				groupId: 'group-1',
+				discordServers: [
+					{
+						discordServerId: 'ds-1',
+						autoInvite: true,
+						autoAssignRoles: true,
+						roleIds: ['group-role-db'],
+					},
+				],
+			}),
+		])
+		groupsStubMethods.getGroupMemberUserIds.mockResolvedValue(['user-1'])
+		dbQueryMocks.discordRoles.findMany
+			.mockResolvedValueOnce([
+				{ id: 'group-role-db', roleId: 'group-role-1', isActive: true },
+			] as any)
+			.mockResolvedValueOnce([
+				{ discordServerId: 'ds-1', roleId: 'auto-apply-role', isActive: true },
+			] as any)
+
+		const result = await getExpectedManagedRoleIdsByGuild(mockEnv, 'user-1')
+
+		expect(discordStubMethods.getUserGuildMembershipDetails).not.toHaveBeenCalled()
+		expect(result.get('guild-1')).toBeDefined()
+		expect(Array.from(result.get('guild-1') ?? [])).toEqual(
+			expect.arrayContaining(['corp-role-db', 'group-role-1', 'auto-apply-role'])
+		)
 	})
 })

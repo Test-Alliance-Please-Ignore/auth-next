@@ -1,6 +1,7 @@
 import { generateShardKey } from '@repo/hazmat'
 import { logger } from '@repo/hono-helpers'
 import { DISCORD_EXCLUDED_AUTH_ROLE_IDS } from '@repo/discord'
+import { discordRateLimitGuard, normalizeDiscordRouteKey } from '@repo/discord'
 import { parseJsonResponse } from '@repo/worker-utils'
 
 import type {
@@ -82,19 +83,35 @@ export async function fetchWithRetry(
 	maxRetries: number = MAX_RETRIES
 ): Promise<Response> {
 	let retries = 0
+	const routeKey = normalizeDiscordRouteKey(url, options.method)
 
 	while (retries <= maxRetries) {
+		await discordRateLimitGuard.wait(routeKey)
 		const response = await fetch(url, options)
+		const observation = await discordRateLimitGuard.observe(routeKey, response)
 
 		// Handle rate limiting with retry
 		if (response.status === 429) {
-			const retryAfter =
-				response.headers.get('Retry-After') ?? response.headers.get('X-RateLimit-Reset-After')
-			const waitMs = retryAfter ? parseFloat(retryAfter) * 1000 : Math.pow(2, retries) * 1000
+			const waitMs = observation?.retryAfterMs ?? Math.pow(2, retries) * 1000
+
+			if (observation?.retryAfterMs === null || observation?.retryAfterMs === undefined) {
+				discordRateLimitGuard.record(routeKey, {
+					bucket: observation?.bucket ?? null,
+					global: observation?.global ?? false,
+					remaining: observation?.remaining ?? null,
+					resetAfterMs: null,
+					retryAfterMs: waitMs,
+					scope: observation?.scope ?? null,
+				})
+			}
 
 			logger.warn('[Discord] Rate limited, waiting before retry', {
 				url,
 				retryAfter: waitMs,
+				routeKey,
+				bucket: observation?.bucket ?? null,
+				scope: observation?.scope ?? null,
+				global: observation?.global ?? false,
 				attempt: retries + 1,
 				maxRetries,
 			})

@@ -1,5 +1,7 @@
 import { parseJsonResponse } from '@repo/worker-utils'
 
+import { discordRateLimitGuard, normalizeDiscordRouteKey } from './discord-rate-limit'
+
 /**
  * Discord API client using native fetch with rate limiting and proxy support
  */
@@ -67,8 +69,10 @@ export class DiscordFetch {
 	 */
 	async request<T>(route: string, options?: RequestInit): Promise<T> {
 		let retries = 0
+		const routeKey = normalizeDiscordRouteKey(`${DISCORD_API_BASE}${route}`, options?.method)
 
 		while (retries <= this.maxRetries) {
+			await discordRateLimitGuard.wait(routeKey)
 			const fetchOptions: RequestInit & { proxy?: string } = {
 				...options,
 				headers: {
@@ -84,12 +88,22 @@ export class DiscordFetch {
 			}
 
 			const response = await fetch(`${DISCORD_API_BASE}${route}`, fetchOptions)
+			const observation = await discordRateLimitGuard.observe(routeKey, response)
 
 			// Handle rate limiting
 			if (response.status === 429) {
-				const retryAfter =
-					response.headers.get('Retry-After') ?? response.headers.get('X-RateLimit-Reset-After')
-				const waitMs = retryAfter ? parseFloat(retryAfter) * 1000 : Math.pow(2, retries) * 1000
+				const waitMs = observation?.retryAfterMs ?? Math.pow(2, retries) * 1000
+
+				if (observation?.retryAfterMs === null || observation?.retryAfterMs === undefined) {
+					discordRateLimitGuard.record(routeKey, {
+						bucket: observation?.bucket ?? null,
+						global: observation?.global ?? false,
+						remaining: observation?.remaining ?? null,
+						resetAfterMs: null,
+						retryAfterMs: waitMs,
+						scope: observation?.scope ?? null,
+					})
+				}
 
 				if (retries >= this.maxRetries) {
 					throw new DiscordRateLimitError(waitMs, 'Max retries exceeded on rate limit')

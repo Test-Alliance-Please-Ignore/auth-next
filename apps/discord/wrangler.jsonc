@@ -7,6 +7,12 @@
 	"workers_dev": false,
 	"routes": ["pleaseignore.app/api/discord/interactions"],
 	"logpush": false,
+	"kv_namespaces": [
+		{
+			"binding": "DISCORD_RATE_LIMITS",
+			"id": "f3747a1dafa54c61aa8a9fdeb0625747"
+		}
+	],
 	"observability": {
 		"enabled": true,
 		"head_sampling_rate": 1
