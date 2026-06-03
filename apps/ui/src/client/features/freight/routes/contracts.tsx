@@ -1,4 +1,4 @@
-import { ArrowUpDown, ExternalLink, Package } from 'lucide-react'
+import { ArrowDown, ArrowUp, ArrowUpDown, ExternalLink, Package } from 'lucide-react'
 import { useState } from 'react'
 
 import { Button } from '@/components/ui/button'
@@ -83,18 +83,25 @@ export default function FreightContractsPage() {
 				className={cn('whitespace-nowrap', className)}
 				aria-sort={(active ? sortLabel(sorting.direction) : 'none') as AriaSort}
 			>
-				<Button
+				<button
 					type="button"
-					variant="ghost"
-					size="sm"
-					className="-ml-2 h-8 gap-1 px-2 font-medium text-muted-foreground hover:text-foreground"
+					className={cn(
+						'inline-flex items-center gap-1 text-left hover:text-foreground',
+						active ? 'font-medium text-foreground' : 'text-muted-foreground'
+					)}
 					onClick={() => toggleSorting(key)}
 				>
 					<span>{label}</span>
-					<ArrowUpDown
-						className={cn('h-3.5 w-3.5 transition-opacity', active ? 'opacity-100' : 'opacity-50')}
-					/>
-				</Button>
+					{active ? (
+						sorting.direction === 'asc' ? (
+							<ArrowUp className="h-3.5 w-3.5" />
+						) : (
+							<ArrowDown className="h-3.5 w-3.5" />
+						)
+					) : (
+						<ArrowUpDown className="h-3.5 w-3.5 opacity-60" />
+					)}
+				</button>
 			</TableHead>
 		)
 	}
@@ -133,7 +140,7 @@ export default function FreightContractsPage() {
 							{renderSortHead('Collateral', 'collateral', 'text-right font-mono')}
 							{renderSortHead('TTC', 'daysToComplete', 'text-center font-mono')}
 							{renderSortHead('Expires', 'expires')}
-							<TableHead className="sticky right-0 z-20 border-l border-border/50 bg-card text-right">
+							<TableHead className="sticky right-0 z-20 table-header-bg text-right">
 								Actions
 							</TableHead>
 						</TableRow>
@@ -182,7 +189,7 @@ export default function FreightContractsPage() {
 											{contract.daysToComplete ?? '—'}
 										</TableCell>
 										<TableCell>{formatTimeRemaining(contract.dateExpired)}</TableCell>
-										<TableCell className="sticky right-0 z-10 border-l border-border/50 bg-inherit text-right">
+										<TableCell className="sticky right-0 z-10 bg-card text-right">
 											<Button
 												variant="secondary"
 												size="sm"
