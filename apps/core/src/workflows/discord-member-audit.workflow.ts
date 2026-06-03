@@ -1,7 +1,7 @@
 import { WorkflowEntrypoint } from 'cloudflare:workers'
 
 import { and, eq, inArray } from '@repo/db-utils'
-import { DISCORD_EXCLUDED_NITRO_BOOSTER_ROLE_ID, getDiscordStub } from '@repo/discord'
+import { DISCORD_EXCLUDED_AUTH_ROLE_IDS, getDiscordStub } from '@repo/discord'
 
 import { createDb } from '../db'
 import { discordMemberAuditRows, discordMemberAuditRuns, userCharacters, users } from '../db/schema'
@@ -17,7 +17,7 @@ export interface DiscordMemberAuditWorkflowParams {
 }
 
 type AuditMemberRowInsert = typeof discordMemberAuditRows.$inferInsert
-const EXCLUDED_AUDIT_ROLE_IDS = new Set([DISCORD_EXCLUDED_NITRO_BOOSTER_ROLE_ID])
+const EXCLUDED_AUDIT_ROLE_IDS = DISCORD_EXCLUDED_AUTH_ROLE_IDS
 
 function parseExcludedDiscordUserIds(raw: string | undefined): Set<string> {
 	if (!raw) return new Set()

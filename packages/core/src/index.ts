@@ -7,6 +7,14 @@
 
 export interface Core {
 	getCharacterOwner(characterId: string): Promise<{ userId: string; isPrimary: boolean } | null>
+	getUserCharacterIds(userId: string): Promise<string[]>
+	getUsersNeedingCharacterDataSync(): Promise<{
+		userBatches: Array<{
+			userId: string
+			characterIds: string[]
+		}>
+		unownedCharacterIds: string[]
+	}>
 	getUserCharacters(
 		userId: string,
 		includeDeleted?: boolean

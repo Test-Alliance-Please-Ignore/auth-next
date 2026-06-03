@@ -631,6 +631,7 @@ export interface DiscordAuditMember {
 	isInMemberCorporation?: boolean
 	hasRoleAffiliationMismatch?: boolean
 	unmanagedRoleCount?: number
+	hasManagedRoleDrift?: boolean
 	roleState?: 'ok' | 'drift' | 'error'
 	roleStateReason?: string
 }
@@ -658,6 +659,7 @@ export interface DiscordGuildAuditResponse {
 		| 'external'
 		| 'roles_without_member_corp'
 		| 'drifted'
+		| 'unmanaged_roles'
 		| 'with_roles'
 		| 'without_roles'
 	pagination?: {
@@ -1892,6 +1894,7 @@ export class ApiClient {
 			wallet?: any
 			assets?: any
 			status?: any
+			sensitiveDataIsLive?: boolean
 			skillQueue?: any[]
 		}
 		owner?: {
@@ -2434,6 +2437,7 @@ export class ApiClient {
 				| 'external'
 				| 'roles_without_member_corp'
 				| 'drifted'
+				| 'unmanaged_roles'
 				| 'with_roles'
 				| 'without_roles'
 			page?: number

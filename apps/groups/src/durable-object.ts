@@ -112,6 +112,8 @@ import type {
 import type { Env } from './context'
 import type { ServiceContext } from './services/context' // Added
 
+const FALLBACK_OWNER = '4a16f141-ddd2-4179-8e3f-7d64a6548f74'
+
 /**
  * Groups Durable Object
  *
@@ -752,6 +754,88 @@ export class GroupsDO extends DurableObject<Env> implements Groups {
 			isAdmin: adminGroupIds.has(membership.groupId),
 			joinedAt: membership.joinedAt,
 		}))
+	}
+
+	async forceRemoveUserFromAllGroups(userId: string): Promise<{
+		removedGroupIds: string[]
+		transferredOwnershipGroupIds: string[]
+		deletedGroupIds: string[]
+	}> {
+		const memberships = await this.db.query.groupMembers.findMany({
+			where: eq(groupMembers.userId, userId),
+			with: {
+				group: true,
+			},
+		})
+
+		if (memberships.length === 0) {
+			return {
+				removedGroupIds: [],
+				transferredOwnershipGroupIds: [],
+				deletedGroupIds: [],
+			}
+		}
+
+		const removedGroupIds: string[] = []
+		const transferredOwnershipGroupIds: string[] = []
+		const deletedGroupIds: string[] = []
+		const touchedUserIds = new Set<string>([userId])
+
+		for (const membership of memberships) {
+			const groupId = membership.groupId
+			const group = membership.group
+
+			if (group.ownerId === userId) {
+				const memberRows = await this.db.query.groupMembers.findMany({
+					where: eq(groupMembers.groupId, groupId),
+					columns: { userId: true },
+				})
+				const adminRows = await this.db.query.groupAdmins.findMany({
+					where: eq(groupAdmins.groupId, groupId),
+					columns: { userId: true },
+				})
+				const touchedGroupUserIds = new Set<string>([
+					...memberRows.map((member) => member.userId),
+					...adminRows.map((admin) => admin.userId),
+					FALLBACK_OWNER,
+				])
+
+				await this.db.delete(groupAdmins).where(
+					and(eq(groupAdmins.groupId, groupId), eq(groupAdmins.userId, FALLBACK_OWNER))
+				)
+				await this.db.insert(groupMembers).values({
+					groupId,
+					userId: FALLBACK_OWNER,
+				}).onConflictDoNothing()
+				await this.db.update(groups).set({ ownerId: FALLBACK_OWNER }).where(eq(groups.id, groupId))
+
+				for (const touchedGroupUserId of touchedGroupUserIds) {
+					touchedUserIds.add(touchedGroupUserId)
+				}
+				transferredOwnershipGroupIds.push(groupId)
+			}
+
+			await this.db
+				.delete(groupAdmins)
+				.where(and(eq(groupAdmins.groupId, groupId), eq(groupAdmins.userId, userId)))
+			await this.db
+				.delete(groupMembers)
+				.where(and(eq(groupMembers.groupId, groupId), eq(groupMembers.userId, userId)))
+
+			removedGroupIds.push(groupId)
+			this.invalidateGroupMembersCache(groupId)
+			await this.invalidateGroupMemberPermissionsCache(groupId)
+		}
+
+		for (const touchedUserId of touchedUserIds) {
+			this.invalidateUserPermissionsCache(touchedUserId)
+		}
+
+		return {
+			removedGroupIds,
+			transferredOwnershipGroupIds,
+			deletedGroupIds,
+		}
 	}
 
 	/**

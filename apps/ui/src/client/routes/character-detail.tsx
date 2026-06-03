@@ -287,6 +287,7 @@ export default function CharacterDetailPage() {
 			{/* Owner-only sensitive information */}
 			{character.isOwner && character.private && (
 				<CharacterPrivateInfo
+					sensitiveDataIsLive={character.private.sensitiveDataIsLive}
 					location={character.private.location}
 					wallet={character.private.wallet}
 					status={character.private.status}

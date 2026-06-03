@@ -1938,23 +1938,6 @@ export async function syncUserDiscordAccess(
 		return enforceBlacklistedDiscordAccess(env, userId, 'User is blacklisted')
 	}
 
-	// Check if refresh is needed (15-minute minimum interval)
-	// COMMENTED OUT: This was blocking invitations when users were recently refreshed
-	// const discordStub = getStub<Discord>(env.DISCORD, 'default')
-	// const shouldRefresh = await discordStub.shouldRefreshDiscordAccess(userId, 15)
-	//
-	// if (!shouldRefresh) {
-	// 	logger.debug('[Discord] Skipping sync - recently refreshed', {
-	// 		userId,
-	// 	})
-	// 	return {
-	// 		results: [],
-	// 		totalInvited: 0,
-	// 		totalUpdated: 0,
-	// 		totalFailed: 0,
-	// 	}
-	// }
-
 	// First invite to new servers
 	logger.info('[Discord] syncUserDiscordAccess: Starting invitation process', { userId })
 	const inviteResult = await inviteUserToDiscordServers(env, userId)

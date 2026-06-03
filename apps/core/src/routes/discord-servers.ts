@@ -3,7 +3,7 @@ import { Hono } from 'hono'
 import { ROLE_CORE_CORP_MEMBER } from '@repo/core'
 import { and, asc, desc, eq, gt, ilike, inArray, isNotNull } from '@repo/db-utils'
 import {
-	DISCORD_EXCLUDED_NITRO_BOOSTER_ROLE_ID,
+	DISCORD_EXCLUDED_AUTH_ROLE_IDS,
 	getDiscordStub,
 } from '@repo/discord'
 import { getStub } from '@repo/do-utils'
@@ -42,10 +42,11 @@ type DiscordAuditFilter =
 	| 'external'
 	| 'roles_without_member_corp'
 	| 'drifted'
+	| 'unmanaged_roles'
 	| 'with_roles'
 	| 'without_roles'
-const EXCLUDED_AUDIT_ROLE_IDS = new Set([DISCORD_EXCLUDED_NITRO_BOOSTER_ROLE_ID]) // Nitro Booster role
-const EXCLUDED_AFFILIATION_MISMATCH_ROLE_IDS = new Set(['1431816436640256060']) // New auth gigachad role (audit-only exclusion)
+const EXCLUDED_AUDIT_ROLE_IDS = DISCORD_EXCLUDED_AUTH_ROLE_IDS
+const EXCLUDED_AFFILIATION_MISMATCH_ROLE_IDS = DISCORD_EXCLUDED_AUTH_ROLE_IDS
 
 type DiscordAuditMemberRow = {
 	discordUserId: string
@@ -61,6 +62,7 @@ type DiscordAuditMemberRow = {
 	corporationId: string | null
 	corporationName: string | null
 	isInMemberCorporation?: boolean
+	hasManagedRoleDrift?: boolean
 	hasRoleAffiliationMismatch?: boolean
 	unmanagedRoleCount?: number
 	runId?: string
@@ -779,6 +781,7 @@ app.get('/:id/audit', requireAuth(), requireAdmin(), async (c) => {
 		'external',
 		'roles_without_member_corp',
 		'drifted',
+		'unmanaged_roles',
 		'with_roles',
 		'without_roles',
 	]
@@ -842,6 +845,7 @@ app.get('/:id/audit', requireAuth(), requireAdmin(), async (c) => {
 
 		const linkedCoreUserIds = [...new Set(rows.map((row) => row.coreUserId).filter((id): id is string => !!id))]
 		const hasMemberCorpAttachmentByUserId = new Map<string, boolean>()
+		const hasManagedRoleDriftByUserId = new Map<string, boolean>()
 		if (linkedCoreUserIds.length > 0) {
 			const groupsStub = getStub<Groups>(c.env.GROUPS, 'default')
 			await Promise.all(
@@ -868,6 +872,26 @@ app.get('/:id/audit', requireAuth(), requireAdmin(), async (c) => {
 					}
 				})
 			)
+			if (filter === 'drifted') {
+				await Promise.all(
+					linkedCoreUserIds.map(async (coreUserId) => {
+						try {
+							const inspection = await discordService.inspectUserDiscordAccess(c.env, coreUserId)
+							const guildInspection = inspection.guilds.find((guild) => guild.guildId === server.guildId)
+							hasManagedRoleDriftByUserId.set(
+								coreUserId,
+								(guildInspection?.unexpectedManagedRoles.length ?? 0) > 0
+							)
+						} catch (error) {
+							logger.warn('[Discord] Failed to resolve managed role drift for audit row', {
+								coreUserId,
+								error: error instanceof Error ? error.message : String(error),
+							})
+							hasManagedRoleDriftByUserId.set(coreUserId, false)
+						}
+					})
+				)
+			}
 		}
 
 		const normalizedRows = rows.map((row) => ({
@@ -896,6 +920,11 @@ app.get('/:id/audit', requireAuth(), requireAdmin(), async (c) => {
 			)
 		}
 		if (filter === 'drifted') {
+			filteredRows = normalizedRows.filter(
+				(row) => row.coreUserId ? (hasManagedRoleDriftByUserId.get(row.coreUserId) ?? false) : false
+			)
+		}
+		if (filter === 'unmanaged_roles') {
 			filteredRows = normalizedRows.filter((row) =>
 				row.roleIds.some((roleId) => !managedRoleIdSet.has(roleId))
 			)
@@ -918,6 +947,9 @@ app.get('/:id/audit', requireAuth(), requireAdmin(), async (c) => {
 			).length
 			return {
 				isInMemberCorporation: row.isInMemberCorporationByAttachments,
+				hasManagedRoleDrift: row.coreUserId
+					? (hasManagedRoleDriftByUserId.get(row.coreUserId) ?? false)
+					: false,
 				hasRoleAffiliationMismatch:
 					relevantAffiliationRoleCount > 0 &&
 					!row.isInMemberCorporationByAttachments,
