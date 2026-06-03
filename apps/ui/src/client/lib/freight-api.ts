@@ -49,6 +49,31 @@ export interface FreightContract {
 	endLocationName: string | null
 }
 
+export type FreightContractSortKey =
+	| 'pickup'
+	| 'dropoff'
+	| 'volume'
+	| 'reward'
+	| 'collateral'
+	| 'daysToComplete'
+	| 'expires'
+
+export type FreightContractSortDirection = 'asc' | 'desc'
+
+export interface FreightContractsPagination {
+	page: number
+	limit: number
+	totalItems: number
+	totalPages: number
+	hasNextPage: boolean
+	hasPreviousPage: boolean
+}
+
+export interface FreightContractsPage {
+	items: FreightContract[]
+	pagination: FreightContractsPagination
+}
+
 /**
  * Leaderboard entry returned by the API (with resolved names)
  */
@@ -121,9 +146,19 @@ export class FreightApiClient extends ApiClient {
 	/**
 	 * List alliance courier contracts
 	 */
-	async listContracts(filters?: { status?: string }): Promise<FreightContract[]> {
+	async listContracts(filters?: {
+		status?: string
+		page?: number
+		pageSize?: number
+		sortBy?: FreightContractSortKey
+		sortDirection?: FreightContractSortDirection
+	}): Promise<FreightContractsPage> {
 		const params = new URLSearchParams()
 		if (filters?.status) params.set('status', filters.status)
+		if (filters?.page !== undefined) params.set('page', String(filters.page))
+		if (filters?.pageSize !== undefined) params.set('pageSize', String(filters.pageSize))
+		if (filters?.sortBy) params.set('sortBy', filters.sortBy)
+		if (filters?.sortDirection) params.set('sortDirection', filters.sortDirection)
 		const query = params.toString()
 		return this.get(`${FREIGHT_API_BASE}/contracts${query ? `?${query}` : ''}`)
 	}

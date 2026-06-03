@@ -17,6 +17,7 @@ import type { EsiTypeResolver } from '@repo/esi'
 import type { EveCorporationData } from '@repo/eve-corporation-data'
 import type { Freight } from '@repo/freight'
 import type { App } from '../context'
+import type { CorporationContractSortBy } from '@repo/eve-corporation-data'
 
 const FREIGHT_MANAGER_URN = 'urn:freight:manager'
 const MS_PER_DAY = 86_400_000
@@ -25,6 +26,11 @@ const MS_PER_DAY = 86_400_000
  * Hardcoded TEST Alliance Please Ignore alliance ID
  */
 const ALLIANCE_ID = '498125261'
+const DEFAULT_CONTRACT_PAGE = 1
+const DEFAULT_CONTRACT_PAGE_SIZE = 25
+const MAX_CONTRACT_PAGE_SIZE = 100
+const DEFAULT_CONTRACT_SORT_BY: CorporationContractSortBy = 'expires'
+const DEFAULT_CONTRACT_SORT_DIRECTION: 'asc' | 'desc' = 'asc'
 
 /**
  * Permission check cache - 15 second TTL
@@ -347,19 +353,47 @@ app.delete('/routes/:routeId', requireAuth(), async (c) => {
 app.get('/contracts', requireAuth(), requireAllianceMember(), async (c) => {
 	try {
 		const status = c.req.query('status')
+		const parsedPage = Number.parseInt(c.req.query('page') ?? String(DEFAULT_CONTRACT_PAGE), 10)
+		const parsedPageSize = Number.parseInt(
+			c.req.query('pageSize') ?? String(DEFAULT_CONTRACT_PAGE_SIZE),
+			10
+		)
+		const rawSortBy = c.req.query('sortBy')
+		const rawSortDirection = c.req.query('sortDirection')
+		const page = Number.isFinite(parsedPage) && parsedPage > 0 ? parsedPage : DEFAULT_CONTRACT_PAGE
+		const pageSize =
+			Number.isFinite(parsedPageSize) && parsedPageSize > 0
+				? Math.min(parsedPageSize, MAX_CONTRACT_PAGE_SIZE)
+				: DEFAULT_CONTRACT_PAGE_SIZE
+		const sortBy: CorporationContractSortBy =
+			rawSortBy === 'pickup' ||
+			rawSortBy === 'dropoff' ||
+			rawSortBy === 'volume' ||
+			rawSortBy === 'reward' ||
+			rawSortBy === 'collateral' ||
+			rawSortBy === 'daysToComplete' ||
+			rawSortBy === 'expires'
+				? rawSortBy
+				: DEFAULT_CONTRACT_SORT_BY
+		const sortDirection: 'asc' | 'desc' =
+			rawSortDirection === 'desc' ? 'desc' : DEFAULT_CONTRACT_SORT_DIRECTION
 		const corpDataStub = getStub<EveCorporationData>(
 			c.env.EVE_CORPORATION_DATA,
 			'alliance-queries'
 		)
 
-		const contracts = await corpDataStub.getAllianceCourierContracts(
+		const contractPage = await corpDataStub.getAllianceCourierContracts(
 			ALLIANCE_ID,
-			status || undefined
+			status || undefined,
+			page,
+			pageSize,
+			sortBy,
+			sortDirection
 		)
 
 		// Collect all unique IDs that need name resolution
 		const idsToResolve = new Set<string>()
-		for (const contract of contracts) {
+		for (const contract of contractPage.items) {
 			if (contract.issuerId) idsToResolve.add(contract.issuerId)
 			if (contract.acceptorId) idsToResolve.add(contract.acceptorId)
 			if (contract.startLocationId) idsToResolve.add(contract.startLocationId)
@@ -378,7 +412,7 @@ app.get('/contracts', requireAuth(), requireAllianceMember(), async (c) => {
 			}
 		}
 
-		const enriched = contracts.map((contract) => ({
+		const enriched = contractPage.items.map((contract) => ({
 			...contract,
 			issuerName: contract.issuerId ? (names[contract.issuerId] ?? null) : null,
 			acceptorName: contract.acceptorId ? (names[contract.acceptorId] ?? null) : null,
@@ -390,7 +424,10 @@ app.get('/contracts', requireAuth(), requireAllianceMember(), async (c) => {
 				: null,
 		}))
 
-		return c.json(enriched)
+		return c.json({
+			items: enriched,
+			pagination: contractPage.pagination,
+		})
 	} catch (error) {
 		logger.error('Error listing freight contracts:', {
 			error: error instanceof Error ? error.message : String(error),

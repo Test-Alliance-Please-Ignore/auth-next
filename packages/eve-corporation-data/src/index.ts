@@ -570,6 +570,33 @@ export interface CorporationContractData {
 }
 
 /**
+ * Supported sort keys for alliance courier contract listings.
+ */
+export type CorporationContractSortBy =
+	| 'pickup'
+	| 'dropoff'
+	| 'volume'
+	| 'reward'
+	| 'collateral'
+	| 'daysToComplete'
+	| 'expires'
+
+/**
+ * Paged alliance courier contracts result.
+ */
+export interface CorporationContractsPageData {
+	items: CorporationContractData[]
+	pagination: {
+		page: number
+		limit: number
+		totalItems: number
+		totalPages: number
+		hasNextPage: boolean
+		hasPreviousPage: boolean
+	}
+}
+
+/**
  * Leaderboard entry for courier contracts
  */
 export interface CourierLeaderboardEntry {
@@ -1355,15 +1382,19 @@ export interface EveCorporationData {
 	getContracts(corporationId: string, status?: string): Promise<CorporationContractData[]>
 
 	/**
-	 * Get alliance courier contracts by assignee ID
+	 * Get a paged list of alliance courier contracts by assignee ID
 	 * @param allianceId - The alliance ID (assignee_id on the contract)
 	 * @param status - Filter by contract status
-	 * @returns Array of courier contract data assigned to the alliance
+	 * @returns Paged courier contract data assigned to the alliance
 	 */
 	getAllianceCourierContracts(
 		allianceId: string,
-		status?: string
-	): Promise<CorporationContractData[]>
+		status?: string,
+		page?: number,
+		limit?: number,
+		sortBy?: CorporationContractSortBy,
+		sortDirection?: 'asc' | 'desc'
+	): Promise<CorporationContractsPageData>
 
 	/**
 	 * Get leaderboard for completed courier contracts assigned to an alliance
