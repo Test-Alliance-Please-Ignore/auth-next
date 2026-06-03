@@ -51,10 +51,6 @@ export type Env = SharedHonoEnv & {
 	SESSION_SECRET: string
 	/** ESI Durable Object binding */
 	ESI: DurableObjectNamespace
-	/** ESI rate-limit KV namespace */
-	ESI_RATE_LIMITS: KVNamespace
-	/** ESI OAuth client ID for authenticated route bucket keys */
-	EVE_SSO_CLIENT_ID: string
 	/** Core Durable Object binding */
 	CORE: DurableObjectNamespace
 	/** User Refresh Workflow binding */

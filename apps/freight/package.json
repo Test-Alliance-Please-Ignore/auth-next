@@ -21,8 +21,12 @@
 	},
 	"dependencies": {
 		"@neondatabase/serverless": "1.0.2",
+		"@repo/do-utils": "workspace:*",
 		"@repo/db-utils": "workspace:*",
 		"@repo/freight": "workspace:*",
+		"@repo/esi": "workspace:*",
+		"@repo/esi-rate-limit": "workspace:*",
+		"@repo/eve-token-store": "workspace:*",
 		"@repo/hono-helpers": "workspace:*",
 		"drizzle-orm": "0.44.7",
 		"hono": "4.10.6",

@@ -7,6 +7,7 @@
 
 import type {
 	CreateFreightRouteInput,
+	FreightOpenContractResult,
 	FreightRoute,
 	FreightRouteStatus,
 	UpdateFreightRouteInput,
@@ -66,6 +67,15 @@ export interface Freight {
 	 * Delete a freight route (admin only)
 	 */
 	deleteRoute(adminId: string, routeId: string): Promise<void>
+
+	/**
+	 * Ask ESI to open a freight contract in the user's running client.
+	 */
+	openContractInGame(
+		characterId: string,
+		characterName: string,
+		contractId: number
+	): Promise<FreightOpenContractResult>
 }
 
 /**
@@ -74,6 +84,7 @@ export interface Freight {
 export type {
 	CreateFreightRouteInput,
 	FreightLocation,
+	FreightOpenContractResult,
 	FreightRoute,
 	FreightRouteStatus,
 	UpdateFreightRouteInput,
