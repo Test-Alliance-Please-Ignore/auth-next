@@ -1697,6 +1697,17 @@ export class EveTokenStoreDO extends DurableObject<Env> implements EveTokenStore
 			String(normalizedIds[0]),
 			normalizedIds.map(String),
 			{ cacheMode: 'no-store' }
+		).then((affiliations) =>
+			affiliations.map((affiliation) => ({
+				character_id: Number.parseInt(String(affiliation.character_id), 10),
+				corporation_id: Number.parseInt(String(affiliation.corporation_id), 10),
+				alliance_id: affiliation.alliance_id
+					? Number.parseInt(String(affiliation.alliance_id), 10)
+					: undefined,
+				faction_id: affiliation.faction_id
+					? Number.parseInt(String(affiliation.faction_id), 10)
+					: undefined,
+			}))
 		)
 	}
 

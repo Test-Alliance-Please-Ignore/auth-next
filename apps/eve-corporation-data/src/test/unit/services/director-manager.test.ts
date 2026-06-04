@@ -685,4 +685,89 @@ describe('DirectorManager.verifyAllDirectorsHealth', () => {
 			})
 		)
 	})
+
+	it('re-tests permanent directors when includePermanent is enabled', async () => {
+		const where = vi.fn().mockResolvedValue(undefined)
+		const set = vi.fn().mockReturnValue({ where })
+		const update = vi.fn().mockReturnValue({ set })
+		const manager = new DirectorManager(
+			{ update } as never,
+			'98000001',
+			{} as never
+		)
+
+		const verifyDirectorHealth = vi.spyOn(manager, 'verifyDirectorHealth').mockResolvedValue(true)
+
+		vi.spyOn(manager, 'getAllDirectors').mockResolvedValue([
+			{
+				directorId: 'dir-1',
+				characterId: '111',
+				characterName: 'Permanent',
+				isHealthy: false,
+				lastHealthCheck: null,
+				lastUsed: null,
+				failureCount: 3,
+				lastFailureReason: '[PERMANENT] Director affiliation mismatch: expected corporation 98000001, got 98000002',
+				nextRetryAt: null,
+				permanentFailureAt: new Date(),
+				priority: 1,
+			},
+		])
+
+		const result = await manager.verifyAllDirectorsHealth({ includePermanent: true })
+
+		expect(verifyDirectorHealth).toHaveBeenCalledWith('dir-1')
+		expect(result).toEqual({ verified: 1, failed: 0 })
+		expect(set).toHaveBeenCalledWith(
+			expect.objectContaining({
+				isVerified: true,
+			})
+		)
+	})
+
+	it('checks affiliation for permanent directors when permanent affiliation checks are enabled', async () => {
+		const where = vi.fn().mockResolvedValue(undefined)
+		const set = vi.fn().mockReturnValue({ where })
+		const update = vi.fn().mockReturnValue({ set })
+		const manager = new DirectorManager(
+			{ update } as never,
+			'98000001',
+			{} as never
+		)
+
+		const verifyDirectorHealth = vi.spyOn(manager, 'verifyDirectorHealth').mockResolvedValue(true)
+		const checkAffiliation = vi.spyOn(manager as any, 'checkAffiliation').mockResolvedValue({
+			matches: true,
+			corporationId: '98000001',
+		})
+
+		vi.spyOn(manager, 'getAllDirectors').mockResolvedValue([
+			{
+				directorId: 'dir-1',
+				characterId: '111',
+				characterName: 'Permanent',
+				isHealthy: false,
+				lastHealthCheck: null,
+				lastUsed: null,
+				failureCount: 3,
+				lastFailureReason: '[PERMANENT] Director token expired and could not be refreshed. Re-authenticate this character.',
+				nextRetryAt: null,
+				permanentFailureAt: new Date(),
+				priority: 1,
+			},
+		])
+
+		const result = await manager.verifyAllDirectorsHealth({
+			bypassPermanentFailures: true,
+		})
+
+		expect(verifyDirectorHealth).not.toHaveBeenCalled()
+		expect(checkAffiliation).toHaveBeenCalledWith('111')
+		expect(result).toEqual({ verified: 0, failed: 1 })
+		expect(set).toHaveBeenCalledWith(
+			expect.objectContaining({
+				isVerified: false,
+			})
+		)
+	})
 })

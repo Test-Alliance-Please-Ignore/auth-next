@@ -263,8 +263,10 @@ export interface EsiAlliance {
 }
 
 /**
- * ESI Character Affiliation response entry
- * https://esi.evetech.net/ui/#/Character/post_characters_affiliation
+ * Character Affiliation response entry.
+ *
+ * This matches the normalized contract we expose to callers and keeps the
+ * affiliation shape consistent with the rest of the codebase that consumes it.
  */
 export interface EsiCharacterAffiliation {
 	/** Character ID */

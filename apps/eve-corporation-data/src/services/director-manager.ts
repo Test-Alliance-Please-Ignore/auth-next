@@ -357,8 +357,7 @@ export class DirectorManager {
 	private async checkAffiliation(
 		characterId: string
 	): Promise<{ matches: boolean; corporationId: string | null }> {
-		const numericCharacterId = Number.parseInt(characterId, 10)
-		if (!Number.isFinite(numericCharacterId)) {
+		if (!characterId) {
 			return { matches: false, corporationId: null }
 		}
 
@@ -387,12 +386,24 @@ export class DirectorManager {
 			throw new Error(`Director affiliation lookup failed for character ${characterId}: ${message}`)
 		}
 
+		logger.debug('[DirectorManager] Affiliation lookup response received', {
+			corporationId: this.corporationId,
+			characterId,
+			responseCount: affiliations.length,
+			responseSample: affiliations.slice(0, 3).map((entry) => ({
+				characterId: entry.character_id,
+				corporationId: entry.corporation_id,
+				allianceId: entry.alliance_id ?? null,
+				factionId: entry.faction_id ?? null,
+			})),
+		})
+
 		if (!Array.isArray(affiliations) || affiliations.length === 0) {
 			throw new Error(
 				`Director affiliation lookup returned no affiliations for character ${characterId}`
 			)
 		}
-		const affiliation = affiliations.find((entry) => entry.character_id === numericCharacterId)
+		const affiliation = affiliations.find((entry) => entry.character_id === Number.parseInt(characterId, 10))
 		if (!affiliation) {
 			throw new Error(
 				`Director affiliation lookup did not include character ${characterId}`
@@ -400,6 +411,11 @@ export class DirectorManager {
 		}
 
 		const corporationId = String(affiliation.corporation_id)
+		logger.debug('[DirectorManager] Affiliation lookup matched character', {
+			corporationId: this.corporationId,
+			characterId,
+			matchedCorporationId: corporationId,
+		})
 		return {
 			matches: corporationId === this.corporationId,
 			corporationId,
@@ -410,7 +426,7 @@ export class DirectorManager {
 		directorId: string
 		characterId: string
 		actualCorporationId: string | null
-		context: 'select-director' | 'verify-director-health'
+		context: 'select-director' | 'verify-director-health' | 'verify-all-permanent-affiliation'
 	}): Promise<void> {
 		const reason = `Director affiliation mismatch: expected corporation ${this.corporationId}, got ${params.actualCorporationId ?? 'unknown'}`
 
@@ -507,6 +523,31 @@ export class DirectorManager {
 				reason,
 				error: error instanceof Error ? error.message : String(error),
 			})
+		}
+	}
+
+	private async verifyPermanentDirectorAffiliation(directorId: string): Promise<void> {
+		const director = await this.db.query.corporationDirectors.findFirst({
+			where: eq(corporationDirectors.id, directorId),
+		})
+
+		if (!director) {
+			return
+		}
+
+		try {
+			const affiliationCheck = await this.checkAffiliation(String(director.characterId))
+			if (!affiliationCheck.matches) {
+				await this.handleAffiliationMismatch({
+					directorId,
+					characterId: String(director.characterId),
+					actualCorporationId: affiliationCheck.corporationId,
+					context: 'verify-all-permanent-affiliation',
+				})
+				return
+			}
+		} catch (error) {
+			return
 		}
 	}
 
@@ -913,8 +954,20 @@ export class DirectorManager {
 	/**
 	 * Verify health of all directors
 	 */
-	async verifyAllDirectorsHealth(): Promise<{ verified: number; failed: number }> {
+	async verifyAllDirectorsHealth(options?: {
+		includePermanent?: boolean
+		bypassPermanentFailures?: boolean
+	}): Promise<{ verified: number; failed: number }> {
 		const directors = await this.getAllDirectors()
+		const now = Date.now()
+		const includePermanent = options?.includePermanent ?? false
+		const bypassPermanentFailures = options?.bypassPermanentFailures ?? false
+
+		const activeDirectors = directors.filter((director) => {
+			if (!includePermanent && this.isPermanentlyFailed(director)) return false
+			if (director.nextRetryAt && director.nextRetryAt.getTime() > now) return false
+			return true
+		})
 
 		for (const director of directors) {
 			if (this.shouldForcePermanentDueToStaleness(director)) {
@@ -932,22 +985,34 @@ export class DirectorManager {
 			}
 		}
 
-		const now = Date.now()
-		const nonPermanentDirectors = directors.filter((director) => {
-			if (this.isPermanentlyFailed(director)) return false
-			if (director.nextRetryAt && director.nextRetryAt.getTime() > now) return false
-			return true
-		})
+		const nonPermanentDirectors = activeDirectors
+		const permanentDirectorsToAffiliationCheck =
+			!includePermanent && bypassPermanentFailures
+				? directors.filter(
+						(director) =>
+							this.isPermanentlyFailed(director) &&
+							!(director.nextRetryAt && director.nextRetryAt.getTime() > now)
+					)
+				: []
 
-		// Run all verifications in parallel
 		const results = await Promise.allSettled(
-			nonPermanentDirectors.map((director) => this.verifyDirectorHealth(director.directorId))
+			nonPermanentDirectors.map(async (director) => {
+				return await this.verifyDirectorHealth(director.directorId)
+			})
 		)
+
+		if (permanentDirectorsToAffiliationCheck.length > 0) {
+			await Promise.allSettled(
+				permanentDirectorsToAffiliationCheck.map(async (director) => {
+					await this.verifyPermanentDirectorAffiliation(director.directorId)
+					return true
+				})
+			)
+		}
 
 		// Count verified vs failed
 		let verified = 0
 		let failed = 0
-
 		for (const result of results) {
 			if (result.status === 'fulfilled' && result.value === true) {
 				verified++

@@ -311,7 +311,9 @@ app.post('/:corporationId/directors/verify-all', requireAuth(), requireAdmin(), 
 
 	try {
 		const stub = getStub<EveCorporationData>(c.env.EVE_CORPORATION_DATA, corporationId)
-		const result = await stub.verifyAllDirectorsHealth(corporationId)
+		const result = await stub.verifyAllDirectorsHealth(corporationId, {
+			includePermanent: true,
+		})
 		const healthyCount = await syncManagedCorporationDirectorHealth(db, c.env, corporationId)
 
 		return c.json({
