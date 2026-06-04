@@ -71,7 +71,20 @@ function buildColumns(
 						size="sm"
 					/>
 					<div className="flex flex-col min-w-0">
-						<span className="font-medium truncate">{row.original.characterName}</span>
+						<Link
+							to={`/corporations/${row.original.corporationId}/members/${row.original.userId}`}
+							state={{
+								source: 'applications',
+								returnTo: `/corporations/${row.original.corporationId}/applications/${row.original.id}`,
+								backLabel: 'Back to Application',
+								breadcrumbParentLabel: 'Application',
+								corporationId: row.original.corporationId,
+							}}
+							onClick={(event) => event.stopPropagation()}
+							className="truncate text-left font-medium text-foreground transition-colors hover:text-primary focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
+						>
+							{row.original.characterName}
+						</Link>
 						{(row.original.altCharacterIds?.length ?? 0) > 0 && (
 							<span className="text-xs text-muted-foreground">
 								+{row.original.altCharacterIds!.length} {row.original.altCharacterIds!.length === 1 ? 'Alt' : 'Alts'}

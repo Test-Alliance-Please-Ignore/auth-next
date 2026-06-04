@@ -225,6 +225,7 @@ export function FulcrumPanel({ userId, corporationId, applicationId, mainCharact
 			requestSource: 'hr',
 			applicationId,
 			userId,
+			targetUserId: userId,
 			sendDm,
 		})
 	}
