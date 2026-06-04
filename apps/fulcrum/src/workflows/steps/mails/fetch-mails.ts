@@ -2,6 +2,7 @@ import { getEsiInstanceForCharacter } from '@repo/esi'
 
 import { storeOrReturn } from '../../utils/storage'
 import { retryWithBackoff } from '../../utils/retry'
+import { fetchItemsInBatches } from './mail-content-batching'
 
 import type { Esi, CharacterMail, MailContent, MailingList, MailLabelsResponse } from '@repo/esi'
 import type { StepResult } from '../../utils/storage'
@@ -82,38 +83,28 @@ export async function fetchMailsFromEsi(esiStub: Esi, characterId: string): Prom
 		console.log(`[fetchMails] Capping content fetches to ${maxContentFetches} (skipping ${mailsSkipped.length} oldest mails) due to ESI rate limits`)
 	}
 
-	// Fetch content in parallel batches
-	const batchSize = 20
-	const mailsWithContent: MailWithContent[] = []
-
-	for (let i = 0; i < mailsToFetchContent.length; i += batchSize) {
-		const batch = mailsToFetchContent.slice(i, i + batchSize)
-		console.log(`[fetchMails] Fetching content batch ${Math.floor(i / batchSize) + 1}/${Math.ceil(mailsToFetchContent.length / batchSize)}`)
-		const results = await Promise.allSettled(
-			batch.map(async (mail) => {
-				if (!mail.mail_id) return mail as MailWithContent
-				try {
-					const content = await retryWithBackoff(
-						async () => await esiStub.fetchMailContent(characterId, mail.mail_id!),
-						{ maxRetries: 3, initialDelayMs: 1000, maxDelayMs: 30000 },
-					)
-					return { ...mail, body: content.body } as MailWithContent
-				} catch (error) {
-					console.error(`Failed to fetch content for mail ${mail.mail_id}:`, error)
-					return mail as MailWithContent
-				}
-			}),
-		)
-		for (const result of results) {
-			mailsWithContent.push(
-				result.status === 'fulfilled' ? result.value : batch[0] as MailWithContent,
-			)
-		}
-		// Brief pause between batches to be polite to ESI
-		if (i + batchSize < mailsToFetchContent.length) {
-			await new Promise((resolve) => setTimeout(resolve, 300))
-		}
-	}
+	// Fetch content in smaller parallel batches to avoid connection pressure.
+	// The ESI worker and upstream both enforce connection limits, so we keep the
+	// per-batch concurrency modest and pause between batches.
+	const batchSize = 4
+	const mailsWithContent = await fetchItemsInBatches({
+		items: mailsToFetchContent,
+		batchSize,
+		interBatchDelayMs: 500,
+		fetchItem: async (mail) => {
+			if (!mail.mail_id) return mail as MailWithContent
+			try {
+				const content = await retryWithBackoff(
+					async () => await esiStub.fetchMailContent(characterId, mail.mail_id!),
+					{ maxRetries: 3, initialDelayMs: 1000, maxDelayMs: 30000 },
+				)
+				return { ...mail, body: content.body } as MailWithContent
+			} catch (error) {
+				console.error(`Failed to fetch content for mail ${mail.mail_id}:`, error)
+				return mail as MailWithContent
+			}
+		},
+	})
 
 	// Append skipped mails (no content fetched) to preserve full header list
 	for (const mail of mailsSkipped) {

@@ -4,6 +4,7 @@
  */
 
 import type { CharacterClones, CharacterImplants } from '@repo/esi'
+import type { StructureResolutionCoordinator } from '../../processors/helpers/structure-resolution'
 
 import { retrieveData, storeOrReturn } from '../../utils/storage'
 import { enrichClones } from '../../processors/helpers/clones'
@@ -24,6 +25,7 @@ export async function processClones(
     fetchResult: StepResult,
     workflowInstanceId: string,
     characterId: string,
+    structureResolutionCoordinator?: StructureResolutionCoordinator,
 ): Promise<StepResult> {
     try {
         if (!fetchResult.success) {
@@ -56,7 +58,13 @@ export async function processClones(
             }
         }
 
-        const enrichedData = await enrichClones(env, clones, implants ?? [], characterId)
+        const enrichedData = await enrichClones(
+            env,
+            clones,
+            implants ?? [],
+            characterId,
+            structureResolutionCoordinator,
+        )
 
         return await storeOrReturn(
             bucket,
