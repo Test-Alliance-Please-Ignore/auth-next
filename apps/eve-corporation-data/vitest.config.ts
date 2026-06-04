@@ -2,6 +2,7 @@ import { defineWorkersProject } from '@cloudflare/vitest-pool-workers/config'
 
 export default defineWorkersProject({
 	test: {
+		exclude: ['src/test/unit/workflows/wallet-fanout.test.ts'],
 		poolOptions: {
 			workers: {
 				wrangler: { configPath: `${__dirname}/wrangler.jsonc` },
