@@ -409,6 +409,11 @@ export interface EveTokenStore {
 	 * ```
 	 */
 	fetchEsi<T>(path: string, characterId: string): Promise<EsiResponse<T>>
+	fetchEsi<T>(
+		path: string,
+		characterId: string,
+		options?: { cacheMode?: 'default' | 'no-store' }
+	): Promise<EsiResponse<T>>
 
 	/**
 	 * Fetch data from ESI for this character (ESI Gateway) with a schema
@@ -507,7 +512,7 @@ export interface EveTokenStore {
 	fetchEsiAllPages<T>(
 		basePath: string,
 		characterId: string,
-		options?: { maxConcurrent?: number }
+		options?: { maxConcurrent?: number; cacheMode?: 'default' | 'no-store' }
 	): Promise<{
 		data: T[]
 		pages: number

@@ -1529,9 +1529,15 @@ export class EveTokenStoreDO extends DurableObject<Env> implements EveTokenStore
 	 * Automatically handles authentication if token is available for the character
 	 * Caches responses according to ESI cache headers
 	 */
-	async fetchEsi<T>(path: string, characterId: string): Promise<EsiResponse<T>> {
+	async fetchEsi<T>(
+		path: string,
+		characterId: string,
+		options?: { cacheMode?: 'default' | 'no-store' }
+	): Promise<EsiResponse<T>> {
+		const cacheMode = options?.cacheMode ?? 'default'
 		const scope = { scope: 'character', scopeId: characterId } as const
-		const cached = await this.getCachedResponse<T>(scope, path, undefined, true)
+		const cached =
+			cacheMode === 'no-store' ? null : await this.getCachedResponse<T>(scope, path, undefined, true)
 		if (cached) {
 			const now = Date.now()
 			const lastModified = cached.lastModified?.getTime()
@@ -1583,7 +1589,7 @@ export class EveTokenStoreDO extends DurableObject<Env> implements EveTokenStore
 			path,
 			userKey: buildEsiUserKey(this.env.EVE_SSO_CLIENT_ID, characterId),
 			cacheScope: scope,
-			cacheMode: 'default',
+			cacheMode,
 			cachedResponse: cached,
 			accessToken,
 			maxLocalCacheTtl: EveTokenStoreDO.MAX_CACHE_TTL_SECONDS,
@@ -1742,13 +1748,14 @@ export class EveTokenStoreDO extends DurableObject<Env> implements EveTokenStore
 	async fetchEsiAllPages<T>(
 		basePath: string,
 		characterId: string,
-		options?: { maxConcurrent?: number }
+		options?: { maxConcurrent?: number; cacheMode?: 'default' | 'no-store' }
 	): Promise<{
 		data: T[]
 		pages: number
 		responses: EsiResponse<T[]>[]
 	}> {
 		const maxConcurrent = options?.maxConcurrent ?? 5
+		const cacheMode = options?.cacheMode ?? 'default'
 
 		// Remove any existing page parameter from basePath
 		const cleanPath = basePath.replace(/[?&]page=\d+/, '')
@@ -1756,7 +1763,9 @@ export class EveTokenStoreDO extends DurableObject<Env> implements EveTokenStore
 
 		// Fetch first page to get total page count
 		const firstPagePath = `${cleanPath}${separator}page=1`
-		const firstResponse = await this.fetchEsi<T[]>(firstPagePath, characterId)
+		const firstResponse = await this.fetchEsi<T[]>(firstPagePath, characterId, {
+			cacheMode,
+		})
 
 		const totalPages = firstResponse.pages ?? 1
 		const responses: EsiResponse<T[]>[] = [firstResponse]
@@ -1774,7 +1783,9 @@ export class EveTokenStoreDO extends DurableObject<Env> implements EveTokenStore
 		const remainingPages = Array.from({ length: totalPages - 1 }, (_, i) => i + 2)
 		const fetchPage = async (pageNum: number): Promise<EsiResponse<T[]>> => {
 			const pagePath = `${cleanPath}${separator}page=${pageNum}`
-			return this.fetchEsi<T[]>(pagePath, characterId)
+			return this.fetchEsi<T[]>(pagePath, characterId, {
+				cacheMode,
+			})
 		}
 
 		// Fetch with concurrency control
