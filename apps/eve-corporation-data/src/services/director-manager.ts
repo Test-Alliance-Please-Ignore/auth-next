@@ -362,7 +362,7 @@ export class DirectorManager {
 			return { matches: false, corporationId: null }
 		}
 
-		const affiliationResponse: EsiResponse<EsiCharacterAffiliation[]> = await retryWithBackoff(
+		const affiliations: EsiCharacterAffiliation[] = await retryWithBackoff(
 			() => this.tokenStore.fetchCharacterAffiliations([characterId]),
 			{
 				onRetry: (attempt, error, delayMs) => {
@@ -376,7 +376,13 @@ export class DirectorManager {
 				},
 			}
 		)
-		const affiliations = affiliationResponse.data
+		if (!Array.isArray(affiliations) || affiliations.length === 0) {
+			logger.warn('[DirectorManager] Character affiliation lookup returned no affiliations', {
+				corporationId: this.corporationId,
+				characterId,
+			})
+			return { matches: false, corporationId: null }
+		}
 		const affiliation = affiliations.find((entry) => entry.character_id === numericCharacterId)
 		if (!affiliation) {
 			return { matches: false, corporationId: null }
