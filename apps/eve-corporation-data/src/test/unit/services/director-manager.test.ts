@@ -142,6 +142,49 @@ describe('DirectorManager.selectDirector', () => {
 		})
 		expect(safeMarkSelected).toHaveBeenCalledWith('dir-2')
 	})
+
+	it('records a lookup_not_found failure when affiliation lookup returns 404 during selection', async () => {
+		const tokenStore = {
+			getTokenInfo: vi.fn().mockResolvedValue({ isExpired: false }),
+			refreshToken: vi.fn().mockResolvedValue(true),
+		}
+		const manager = new DirectorManager(
+			{} as never,
+			'98000001',
+			tokenStore as never
+		)
+
+		vi.spyOn(manager as any, 'getHealthyDirectors').mockResolvedValue([
+			{
+				directorId: 'dir-1',
+				characterId: '111',
+				characterName: '404 Director',
+				isHealthy: true,
+				lastHealthCheck: null,
+				lastUsed: null,
+				failureCount: 0,
+				lastFailureReason: null,
+				priority: 1,
+			},
+		])
+		vi.spyOn(manager as any, 'checkAffiliation').mockRejectedValue(
+			new Error(
+				'Director affiliation lookup returned 404 for character 111 | metadata={"status":404,"path":"/characters/affiliation"}'
+			)
+		)
+		const safeRecordFailure = vi
+			.spyOn(manager as any, 'safeRecordFailure')
+			.mockResolvedValue(undefined)
+
+		const selected = await manager.selectDirector()
+
+		expect(safeRecordFailure).toHaveBeenCalledWith(
+			'dir-1',
+			expect.stringContaining('lookup_not_found'),
+			{ forceUnhealthy: true }
+		)
+		expect(selected).toBeNull()
+	})
 })
 
 describe('DirectorManager.checkAffiliation', () => {
@@ -167,7 +210,7 @@ describe('DirectorManager.checkAffiliation', () => {
 		expect(result).toEqual({ matches: true, corporationId: '98000001' })
 	})
 
-	it('treats missing affiliation payloads as a non-match', async () => {
+	it('throws when the affiliation payload does not include the character', async () => {
 		const tokenStore = {
 			fetchCharacterAffiliations: vi.fn().mockResolvedValue([]),
 		}
@@ -177,10 +220,30 @@ describe('DirectorManager.checkAffiliation', () => {
 			tokenStore as never
 		)
 
-		const result = await (manager as any).checkAffiliation('111')
-
+		await expect((manager as any).checkAffiliation('111')).rejects.toThrow(
+			'Director affiliation lookup returned no affiliations for character 111'
+		)
 		expect(tokenStore.fetchCharacterAffiliations).toHaveBeenCalledWith(['111'])
-		expect(result).toEqual({ matches: false, corporationId: null })
+	})
+
+	it('throws a hard error when the affiliation lookup returns 404', async () => {
+		const tokenStore = {
+			fetchCharacterAffiliations: vi.fn().mockRejectedValue(
+				new Error(
+					'ESI request failed: 404 Not Found - not found | metadata={"status":404,"path":"/characters/affiliation"}'
+				)
+			),
+		}
+		const manager = new DirectorManager(
+			{} as never,
+			'98000001',
+			tokenStore as never
+		)
+
+		await expect((manager as any).checkAffiliation('111')).rejects.toThrow(
+			'Director affiliation lookup returned 404 for character 111'
+		)
+		expect(tokenStore.fetchCharacterAffiliations).toHaveBeenCalledWith(['111'])
 	})
 })
 

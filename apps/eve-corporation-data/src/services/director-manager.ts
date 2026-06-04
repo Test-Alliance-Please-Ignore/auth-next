@@ -362,30 +362,41 @@ export class DirectorManager {
 			return { matches: false, corporationId: null }
 		}
 
-		const affiliations: EsiCharacterAffiliation[] = await retryWithBackoff(
-			() => this.tokenStore.fetchCharacterAffiliations([characterId]),
-			{
-				onRetry: (attempt, error, delayMs) => {
-					logger.warn('[DirectorManager] Retrying character affiliation lookup after ESI throttling', {
-						corporationId: this.corporationId,
-						characterId,
-						attempt,
-						delayMs,
-						error: error.message,
-					})
-				},
+		let affiliations: EsiCharacterAffiliation[]
+		try {
+			affiliations = await retryWithBackoff(
+				() => this.tokenStore.fetchCharacterAffiliations([characterId]),
+				{
+					onRetry: (attempt, error, delayMs) => {
+						logger.warn('[DirectorManager] Retrying character affiliation lookup after ESI throttling', {
+							corporationId: this.corporationId,
+							characterId,
+							attempt,
+							delayMs,
+							error: error.message,
+						})
+					},
+				}
+			)
+		} catch (error) {
+			const message = error instanceof Error ? error.message : String(error)
+			const metadata = error instanceof Error ? parseEsiErrorMetadata(error.message) : null
+			if (metadata?.status === 404) {
+				throw new Error(`Director affiliation lookup returned 404 for character ${characterId}`)
 			}
-		)
+			throw new Error(`Director affiliation lookup failed for character ${characterId}: ${message}`)
+		}
+
 		if (!Array.isArray(affiliations) || affiliations.length === 0) {
-			logger.warn('[DirectorManager] Character affiliation lookup returned no affiliations', {
-				corporationId: this.corporationId,
-				characterId,
-			})
-			return { matches: false, corporationId: null }
+			throw new Error(
+				`Director affiliation lookup returned no affiliations for character ${characterId}`
+			)
 		}
 		const affiliation = affiliations.find((entry) => entry.character_id === numericCharacterId)
 		if (!affiliation) {
-			return { matches: false, corporationId: null }
+			throw new Error(
+				`Director affiliation lookup did not include character ${characterId}`
+			)
 		}
 
 		const corporationId = String(affiliation.corporation_id)
@@ -517,6 +528,9 @@ export class DirectorManager {
 			if (status === 401 && lower.includes('expired')) {
 				return 'token_expired'
 			}
+			if (status === 404) {
+				return 'lookup_not_found'
+			}
 			if (status === 403 && lower.includes('required role')) {
 				return 'required_roles_missing'
 			}
@@ -531,6 +545,9 @@ export class DirectorManager {
 		const classifyReasonCode = (): string => {
 			if (roleHint === 'required_roles_missing') {
 				return 'required_roles_missing'
+			}
+			if (status === 404) {
+				return 'lookup_not_found'
 			}
 			if (status === 401) {
 				return 'unauthorized'
