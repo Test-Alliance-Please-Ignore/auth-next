@@ -151,9 +151,9 @@ describe('DirectorManager.checkAffiliation', () => {
 
 	it('uses token store affiliation RPC and matches corporation', async () => {
 		const tokenStore = {
-			fetchCharacterAffiliations: vi.fn().mockResolvedValue({
-				data: [{ character_id: 111, corporation_id: 98000001 }],
-			}),
+			fetchCharacterAffiliations: vi.fn().mockResolvedValue([
+				{ character_id: 111, corporation_id: 98000001 },
+			]),
 		}
 		const manager = new DirectorManager(
 			{} as never,
@@ -165,6 +165,22 @@ describe('DirectorManager.checkAffiliation', () => {
 
 		expect(tokenStore.fetchCharacterAffiliations).toHaveBeenCalledWith(['111'])
 		expect(result).toEqual({ matches: true, corporationId: '98000001' })
+	})
+
+	it('treats missing affiliation payloads as a non-match', async () => {
+		const tokenStore = {
+			fetchCharacterAffiliations: vi.fn().mockResolvedValue([]),
+		}
+		const manager = new DirectorManager(
+			{} as never,
+			'98000001',
+			tokenStore as never
+		)
+
+		const result = await (manager as any).checkAffiliation('111')
+
+		expect(tokenStore.fetchCharacterAffiliations).toHaveBeenCalledWith(['111'])
+		expect(result).toEqual({ matches: false, corporationId: null })
 	})
 })
 

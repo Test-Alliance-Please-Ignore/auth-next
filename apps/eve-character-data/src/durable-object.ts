@@ -45,7 +45,7 @@ import type {
 	EsiWalletJournalEntry,
 	EveCharacterData,
 } from '@repo/eve-character-data'
-import type { EsiCharacterAffiliation, EsiResponse, EveTokenStore } from '@repo/eve-token-store'
+import type { EsiResponse, EveTokenStore } from '@repo/eve-token-store'
 import type { Env } from './context'
 
 /**
@@ -468,7 +468,7 @@ export class EveCharacterDataDO extends DurableObject<Env> implements EveCharact
 		let allianceId = data.alliance_id ? String(data.alliance_id) : null
 
 		if (affiliationResponse.status === 'fulfilled') {
-			const affiliations = (affiliationResponse.value as EsiResponse<EsiCharacterAffiliation[]>).data
+			const affiliations = affiliationResponse.value
 			const affiliation = affiliations.find((a) => a.character_id === parseInt(characterId, 10))
 			if (affiliation) {
 				corporationId = String(affiliation.corporation_id)

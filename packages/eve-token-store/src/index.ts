@@ -448,9 +448,9 @@ export interface EveTokenStore {
 	 * Uses POST /characters/affiliation with token-store caching and ETag support.
 	 *
 	 * @param characterIds - One or more EVE character IDs
-	 * @returns ESI response with affiliation entries for provided character IDs
+	 * @returns Affiliation entries for provided character IDs
 	 */
-	fetchCharacterAffiliations(characterIds: string[]): Promise<EsiResponse<EsiCharacterAffiliation[]>>
+	fetchCharacterAffiliations(characterIds: string[]): Promise<EsiCharacterAffiliation[]>
 
 	/**
 	 * Fetch public data from ESI with a schema

@@ -53,7 +53,7 @@ type EsiHelperStub = {
 		characterId: string,
 		characterIds: string[],
 		options?: { cacheMode?: 'default' | 'no-store' }
-	): Promise<EsiResponse<EsiCharacterAffiliation[]>>
+	): Promise<EsiCharacterAffiliation[]>
 	searchCharacter(characterId: string, characterName: string, strict?: boolean): Promise<string[]>
 }
 
@@ -196,6 +196,7 @@ export class EveTokenStoreDO extends DurableObject<Env> implements EveTokenStore
 		this.esiRequestClient = new EsiRequestClient({
 			rateLimits: this.esiRateLimits,
 			cache: this,
+			baseUrl: 'https://esi.evetech.net',
 			debugLogger: logger,
 			compatibilityDate: '2025-09-30',
 		})
@@ -1685,19 +1686,18 @@ export class EveTokenStoreDO extends DurableObject<Env> implements EveTokenStore
 
 	async fetchCharacterAffiliations(
 		characterIds: string[]
-	): Promise<EsiResponse<EsiCharacterAffiliation[]>> {
+	): Promise<EsiCharacterAffiliation[]> {
 		const normalizedIds = this.normalizeCharacterIds(characterIds)
 		if (normalizedIds.length === 0) {
 			throw new Error('fetchCharacterAffiliations requires at least one valid character ID')
 		}
 
 		const esiStub = getStub<EsiHelperStub>(this.env.ESI, 'default')
-		const response = await esiStub.fetchCharacterAffiliation(
+		return await esiStub.fetchCharacterAffiliation(
 			String(normalizedIds[0]),
 			normalizedIds.map(String),
 			{ cacheMode: 'default' }
 		)
-		return response
 	}
 
 	/**
