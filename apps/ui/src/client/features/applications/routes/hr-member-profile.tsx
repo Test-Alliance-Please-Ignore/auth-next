@@ -334,9 +334,13 @@ export default function HrMemberProfile() {
 		navState?.returnTo?.includes('/applications/') === true ||
 		searchParams.get('returnTo')?.includes('/applications/') === true
 	const isHrNavigationRestricted = permission?.currentRole === 'hr_reviewer' || permission?.currentRole === 'hr_viewer'
-	const backPath = isHrNavigationRestricted
-		? navState?.returnTo ?? searchParams.get('returnTo') ?? `/corporations/${corporationId}/applications`
-		: `/corporations/${corporationId}/members`
+	const applicationBackPath =
+		navState?.returnTo ??
+		searchParams.get('returnTo') ??
+		(isApplicationSource ? `/corporations/${corporationId}/applications` : undefined)
+	const backPath = applicationBackPath ?? (isHrNavigationRestricted
+		? `/corporations/${corporationId}/applications`
+		: `/corporations/${corporationId}/members`)
 	const backLabel =
 		navState?.backLabel ??
 		(isHrNavigationRestricted

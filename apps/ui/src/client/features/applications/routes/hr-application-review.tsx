@@ -11,7 +11,7 @@ import { formatDistanceToNow } from 'date-fns'
 import { ArrowLeft, Briefcase, Lock } from 'lucide-react'
 import { useState } from 'react'
 import toast from '@/lib/toast'
-import { Link, Navigate, useNavigate, useParams, useSearchParams } from 'react-router-dom'
+import { Link, Navigate, useLocation, useNavigate, useParams, useSearchParams } from 'react-router-dom'
 
 import {
 	Breadcrumb,
@@ -75,6 +75,7 @@ export default function HrApplicationReview() {
 		applicationId: string
 	}>()
 	const navigate = useNavigate()
+	const location = useLocation()
 	const [searchParams] = useSearchParams()
 	const initialTab = searchParams.get('tab') || 'details'
 	const { user, isAuthenticated, isLoading: authLoading } = useAuth()
@@ -176,6 +177,18 @@ export default function HrApplicationReview() {
 	)
 
 	const applicationsPath = `/corporations/${corporationId}/applications`
+	const memberProfilePath = application
+		? `/corporations/${corporationId}/members/${application.userId}`
+		: null
+	const memberProfileState = application
+		? {
+				source: 'applications' as const,
+				returnTo: `/corporations/${corporationId}/applications/${application.id}`,
+				backLabel: 'Back to Application',
+				breadcrumbParentLabel: 'Application',
+				corporationId,
+			}
+		: null
 
 	const handleAddNote = () => {
 		setAddNoteDialogOpen(true)
@@ -374,7 +387,17 @@ export default function HrApplicationReview() {
 						{/* Application Header Info */}
 						<div className="flex-1 min-w-0">
 							<h1 className="text-2xl font-bold text-foreground mb-1">
-								{application.characterName}
+								{memberProfilePath && memberProfileState ? (
+									<Link
+										to={memberProfilePath}
+										state={memberProfileState}
+										className="truncate text-left transition-colors hover:text-primary focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring rounded-sm"
+									>
+										{application.characterName}
+									</Link>
+								) : (
+									<span className="truncate">{application.characterName}</span>
+								)}
 								{altCharacterIds.length > 0 && (
 									<span className="ml-2 text-lg font-normal text-muted-foreground">
 										(+{altCharacterIds.length} {altCharacterIds.length === 1 ? 'Alt' : 'Alts'})
