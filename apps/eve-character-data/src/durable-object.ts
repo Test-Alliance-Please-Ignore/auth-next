@@ -192,11 +192,11 @@ export class EveCharacterDataDO extends DurableObject<Env> implements EveCharact
 			}
 		}
 
-		await Promise.all([
-			this.fetchAndStoreSkills(characterId, forceRefresh),
-			this.fetchAndStoreAttributes(characterId, forceRefresh),
-			this.fetchAndStoreWallet(characterId, forceRefresh),
-		])
+		// Keep authenticated fetches sequential to avoid tripping Cloudflare connection limits
+		// when token-store / ESI / DB work overlaps too aggressively in a single refresh pass.
+		await this.fetchAndStoreSkills(characterId, forceRefresh)
+		await this.fetchAndStoreAttributes(characterId, forceRefresh)
+		await this.fetchAndStoreWallet(characterId, forceRefresh)
 	}
 
 	/**
