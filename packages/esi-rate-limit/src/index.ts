@@ -94,6 +94,31 @@ export interface EsiRateLimitKVLike {
 	delete(key: string): Promise<void>
 }
 
+function sleep(ms: number): Promise<void> {
+	return new Promise((resolve) => {
+		const timerApi = globalThis as unknown as {
+			setTimeout?: (handler: () => void, timeout: number) => unknown
+		}
+
+		if (timerApi.setTimeout) {
+			timerApi.setTimeout(resolve, ms)
+			return
+		}
+
+		resolve()
+	})
+}
+
+function warnLimiterWrite(message: string, data: Record<string, unknown>): void {
+	const consoleApi = globalThis as unknown as {
+		console?: {
+			warn: (message: string, data?: Record<string, unknown>) => void
+		}
+	}
+
+	consoleApi.console?.warn(message, data)
+}
+
 export function normalizeEsiRouteKey(path: string): string {
 	const barePath = path.split('?')[0] ?? path
 	const segments = barePath
@@ -253,7 +278,77 @@ function getBucketRequestCost(status: number): number {
 }
 
 export class EsiRateLimitStore {
+	private readonly bucketWriteStates = new Map<
+		string,
+		{
+			flushPromise: Promise<void> | null
+			lastPersistedAtMs: number
+			pendingSnapshot: EsiRateLimitSnapshot | null
+		}
+	>()
+
 	constructor(private readonly kv: EsiRateLimitKVLike) {}
+
+	private getBucketWriteState(key: string): {
+		flushPromise: Promise<void> | null
+		lastPersistedAtMs: number
+		pendingSnapshot: EsiRateLimitSnapshot | null
+	} {
+		const existing = this.bucketWriteStates.get(key)
+		if (existing) {
+			return existing
+		}
+
+		const created = {
+			flushPromise: null,
+			lastPersistedAtMs: 0,
+			pendingSnapshot: null,
+		}
+		this.bucketWriteStates.set(key, created)
+		return created
+	}
+
+	private async persistSnapshot(snapshot: EsiRateLimitSnapshot): Promise<void> {
+		const ttlSeconds = computeTtlSeconds(snapshot.observedAtMs, snapshot.expiresAtMs)
+		try {
+			await this.kv.put(snapshot.key, JSON.stringify(snapshot), {
+				expirationTtl: ttlSeconds,
+			})
+		} catch (error) {
+			// Bucket snapshots are best-effort limiter hints. If KV is briefly
+			// saturated, keep serving requests and let the in-memory snapshot guide
+			// the current instance instead of failing the request path.
+			warnLimiterWrite('[ESIRateLimitStore] Failed to persist bucket snapshot', {
+				key: snapshot.key,
+				error: error instanceof Error ? error.message : String(error),
+			})
+		}
+	}
+
+	private async flushBucketSnapshot(key: string): Promise<void> {
+		const state = this.getBucketWriteState(key)
+
+		while (state.pendingSnapshot) {
+			const pending = state.pendingSnapshot
+			if (!pending) {
+				break
+			}
+
+			const elapsedMs = state.lastPersistedAtMs > 0 ? Date.now() - state.lastPersistedAtMs : 0
+			if (elapsedMs > 0 && elapsedMs < 1000) {
+				await sleep(1000 - elapsedMs)
+			}
+
+			const nextSnapshot = state.pendingSnapshot
+			if (!nextSnapshot) {
+				break
+			}
+
+			state.pendingSnapshot = null
+			await this.persistSnapshot(nextSnapshot)
+			state.lastPersistedAtMs = Date.now()
+		}
+	}
 
 	private async getSnapshot(key: string): Promise<EsiRateLimitSnapshot | null> {
 		try {
@@ -306,13 +401,6 @@ export class EsiRateLimitStore {
 		}
 	}
 
-	private async putSnapshot(snapshot: EsiRateLimitSnapshot): Promise<void> {
-		const ttlSeconds = computeTtlSeconds(snapshot.observedAtMs, snapshot.expiresAtMs)
-		await this.kv.put(snapshot.key, JSON.stringify(snapshot), {
-			expirationTtl: ttlSeconds,
-		})
-	}
-
 	async getRouteGroup(routeKey: string): Promise<string | null> {
 		try {
 			return (await this.kv.get<string>(buildEsiRouteGroupMappingKey(routeKey))) ?? null
@@ -328,7 +416,13 @@ export class EsiRateLimitStore {
 	}
 
 	async getBucketSnapshot(group: string, userKey: string): Promise<EsiRateLimitSnapshot | null> {
-		return this.getSnapshot(buildEsiBucketKey(group, userKey))
+		const key = buildEsiBucketKey(group, userKey)
+		const state = this.bucketWriteStates.get(key)
+		if (state?.pendingSnapshot) {
+			return state.pendingSnapshot
+		}
+
+		return this.getSnapshot(key)
 	}
 
 	async putBucketSnapshot(params: Omit<EsiRateLimitSnapshot, 'family' | 'key' | 'observedAtMs' | 'expiresAtMs'> & {
@@ -376,27 +470,49 @@ export class EsiRateLimitStore {
 			return
 		}
 
-			const summary = summarizeBucketCharges(nextCharges, params.limit, params.windowSeconds, params.observedAtMs)
+		const summary = summarizeBucketCharges(nextCharges, params.limit, params.windowSeconds, params.observedAtMs)
+		const snapshot: EsiRateLimitSnapshot = {
+			family: 'bucket',
+			key,
+			routeKey: params.routeKey,
+			group: params.group,
+			userKey: params.userKey,
+			limit: params.limit,
+			remaining: params.remaining ?? summary.remaining,
+			used: params.used ?? summary.used,
+			windowSeconds: params.windowSeconds,
+			retryAfterSeconds:
+				blockedUntilMs !== undefined
+					? Math.max(1, Math.ceil((blockedUntilMs - params.observedAtMs) / 1000))
+					: params.retryAfterSeconds ?? summary.retryAfterSeconds,
+			charges: summary.charges,
+			blockedUntilMs,
+			observedAtMs: params.observedAtMs,
+			expiresAtMs: blockedUntilMs ? Math.max(summary.expiresAtMs, blockedUntilMs) : summary.expiresAtMs,
+		}
 
-			await this.putSnapshot({
-				family: 'bucket',
-				key,
-				routeKey: params.routeKey,
-				group: params.group,
-				userKey: params.userKey,
-				limit: params.limit,
-				remaining: params.remaining ?? summary.remaining,
-				used: params.used ?? summary.used,
-				windowSeconds: params.windowSeconds,
-				retryAfterSeconds:
-					blockedUntilMs !== undefined
-						? Math.max(1, Math.ceil((blockedUntilMs - params.observedAtMs) / 1000))
-						: params.retryAfterSeconds ?? summary.retryAfterSeconds,
-				charges: summary.charges,
-				blockedUntilMs,
-				observedAtMs: params.observedAtMs,
-				expiresAtMs: blockedUntilMs ? Math.max(summary.expiresAtMs, blockedUntilMs) : summary.expiresAtMs,
+		const state = this.getBucketWriteState(key)
+		state.pendingSnapshot = snapshot
+
+		if (state.flushPromise) {
+			return
+		}
+
+		state.flushPromise = this.flushBucketSnapshot(key)
+			.catch((error) => {
+				warnLimiterWrite('[ESIRateLimitStore] Bucket snapshot flush failed', {
+					key,
+					error: error instanceof Error ? error.message : String(error),
+				})
 			})
+			.finally(() => {
+				state.flushPromise = null
+				if (!state.pendingSnapshot) {
+					this.bucketWriteStates.delete(key)
+				}
+			})
+
+		await state.flushPromise
 	}
 
 	async getRouteErrorLimit(routeKey: string, userKey: string): Promise<EsiRateLimitSnapshot | null> {
@@ -409,7 +525,7 @@ export class EsiRateLimitStore {
 		observedAtMs: number
 		expiresAtMs: number
 	}): Promise<void> {
-		await this.putSnapshot({
+		await this.persistSnapshot({
 			family: 'error-limit',
 			key: buildEsiRouteErrorKey(params.routeKey, params.userKey),
 			routeKey: params.routeKey,
@@ -433,7 +549,7 @@ export class EsiRateLimitStore {
 		observedAtMs: number
 		expiresAtMs: number
 	}): Promise<void> {
-		await this.putSnapshot({
+		await this.persistSnapshot({
 			family: 'route-breaker',
 			key: buildEsiRouteCooldownKey(params.routeKey, params.userKey),
 			routeKey: params.routeKey,

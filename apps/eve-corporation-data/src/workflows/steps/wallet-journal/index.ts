@@ -2,6 +2,7 @@ import { logger } from '@repo/hono-helpers'
 
 import * as esiFetch from '../../../services/esi-fetch'
 import { createTokenStore, getCorporationDataStub } from '../../utils/services'
+import { getWalletDivisionJitterMs, sleep } from '../../utils/wallet-fanout'
 
 import type { Env } from '../../../context'
 
@@ -37,7 +38,12 @@ export async function syncWalletJournal(
 	const corpData = getCorporationDataStub(env, corporationId)
 
 	const results = await Promise.allSettled(
-		WALLET_DIVISIONS.map(async (division) => {
+		WALLET_DIVISIONS.map(async (division, index) => {
+			const delayMs = getWalletDivisionJitterMs(index, WALLET_DIVISIONS.length)
+			if (delayMs > 0) {
+				await sleep(delayMs)
+			}
+
 			const entries = await esiFetch.fetchWalletJournal(
 				tokenStore,
 				corporationId,
