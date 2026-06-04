@@ -1696,7 +1696,7 @@ export class EveTokenStoreDO extends DurableObject<Env> implements EveTokenStore
 		return await esiStub.fetchCharacterAffiliation(
 			String(normalizedIds[0]),
 			normalizedIds.map(String),
-			{ cacheMode: 'default' }
+			{ cacheMode: 'no-store' }
 		)
 	}
 
