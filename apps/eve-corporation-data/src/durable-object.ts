@@ -944,7 +944,8 @@ export class EveCorporationDataDO extends DurableObject<Env> implements EveCorpo
 	 * Verify health of all directors
 	 */
 	async verifyAllDirectorsHealth(
-		corporationId: string
+		corporationId: string,
+		options?: { includePermanent?: boolean; bypassPermanentFailures?: boolean }
 	): Promise<{ verified: number; failed: number }> {
 		const tokenStoreStub = getStub<EveTokenStore>(this.env.EVE_TOKEN_STORE, 'default')
 		const directorManager = new DirectorManager(
@@ -953,7 +954,7 @@ export class EveCorporationDataDO extends DurableObject<Env> implements EveCorpo
 			tokenStoreStub,
 			this.onDirectorAffiliationMismatch.bind(this)
 		)
-		const result = await directorManager.verifyAllDirectorsHealth()
+		const result = await directorManager.verifyAllDirectorsHealth(options)
 
 		// Invalidate cache so next fetch returns fresh data
 		await this.invalidateDirectorsCache(corporationId)

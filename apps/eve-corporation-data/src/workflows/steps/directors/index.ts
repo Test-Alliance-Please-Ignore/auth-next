@@ -70,7 +70,9 @@ export async function verifyAllDirectorsHealth(
 	corporationId: string
 ): Promise<{ verified: number; failed: number }> {
 	const directorManager = createDirectorManager(env, corporationId)
-	return await directorManager.verifyAllDirectorsHealth()
+	return await directorManager.verifyAllDirectorsHealth({
+		bypassPermanentFailures: true,
+	})
 }
 
 type EsiCorporationMemberRole = {

@@ -958,9 +958,13 @@ export interface EveCorporationData {
 	/**
 	 * Verify health of all directors
 	 * @param corporationId - The corporation ID
+	 * @param options - Verification behavior flags
 	 * @returns Count of verified and failed directors
 	 */
-	verifyAllDirectorsHealth(corporationId: string): Promise<{ verified: number; failed: number }>
+	verifyAllDirectorsHealth(
+		corporationId: string,
+		options?: { includePermanent?: boolean; bypassPermanentFailures?: boolean }
+	): Promise<{ verified: number; failed: number }>
 
 	// ========================================================================
 	// STORAGE-ONLY METHODS (for workflow use)
