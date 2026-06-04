@@ -4,6 +4,7 @@
  */
 
 import { findFittedShips } from '../../processors/helpers/ships'
+import type { StructureResolutionCoordinator } from '../../processors/helpers/structure-resolution'
 import { retrieveData, storeOrReturn } from '../../utils/storage'
 
 import type { CharacterAsset } from '@repo/esi'
@@ -33,6 +34,7 @@ export async function processFittedShips(
 	fetchAssetsResult: StepResult,
 	workflowInstanceId: string,
 	characterId: string,
+	structureResolutionCoordinator?: StructureResolutionCoordinator,
 ): Promise<StepResult> {
 	try {
 		// Check if fetch was successful
@@ -77,7 +79,12 @@ export async function processFittedShips(
 				: null,
 		})
 
-		const fittedShips = await findFittedShips(env, assets, characterId)
+		const fittedShips = await findFittedShips(
+			env,
+			assets,
+			characterId,
+			structureResolutionCoordinator,
+		)
 
 		console.log('[processFittedShips] Fitted ships discovery complete', {
 			fittedShipsCount: fittedShips.length,

@@ -6,8 +6,8 @@
 import { getStub } from '@repo/do-utils'
 import { isStructureId } from '@repo/esi'
 
-import { isRateLimitError, retryWithBackoff } from '../../utils/retry'
 import { buildAssetMap, isInsideShip, isShipAsset, resolveTopLevelLocation } from './location'
+import { StructureResolutionCoordinator } from './structure-resolution'
 
 import type { CharacterAsset, Esi, EsiTypeResolver } from '@repo/esi'
 import type { Universe } from '@repo/universe'
@@ -61,7 +61,8 @@ export async function enrichAssets(
 		UNIVERSE: DurableObjectNamespace
 	},
 	assets: CharacterAsset[],
-	characterId: string
+	characterId: string,
+	structureResolutionCoordinator?: StructureResolutionCoordinator
 ): Promise<ProcessedAssets> {
 	if (assets.length === 0) {
 		return []
@@ -170,67 +171,21 @@ export async function enrichAssets(
 		sampleStructureIds: structureLocationIds.slice(0, 3),
 	})
 
-	// Fetch structure info for large location IDs
-	// Process sequentially with delays and exponential backoff retry to avoid rate limits (420/429 errors)
-	// Use 'global' instance to share structure cache across all characters
-	const structureNameMap: Record<string, string> = {}
-	if (structureLocationIds.length > 0) {
-		const esiStub = getStub<Esi>(env.ESI, 'global')
-		const DELAY_MS = 200 // Delay between requests to avoid rate limits
-
-		// Process sequentially to avoid rate limits
-		for (const structureId of structureLocationIds) {
-			try {
-				// Retry with exponential backoff on rate limit errors
-				const structureInfo = await retryWithBackoff(
-					async () => {
-						const info = await esiStub.fetchStructureInfo(characterId, structureId)
-						return info
-					},
-					{
-						maxRetries: 3,
-						initialDelayMs: 1000,
-						maxDelayMs: 30000,
-						backoffMultiplier: 2,
-						onRetry: (attempt, error, delayMs) => {
-							console.warn('[enrichAssets] Retrying structure fetch after rate limit', {
-								structureId,
-								attempt,
-								delayMs,
-								error: error.message,
-							})
-						},
-					}
+	const structureNameMap =
+		structureLocationIds.length > 0
+			? await (structureResolutionCoordinator ?? new StructureResolutionCoordinator()).resolveStructureNames(
+					{ ESI: env.ESI },
+					characterId,
+					structureLocationIds,
+					'enrichAssets'
 				)
+			: {}
 
-				if (structureInfo) {
-					structureNameMap[structureId] = structureInfo.name
-				}
-			} catch (error) {
-				// If it's a rate limit error and we've exhausted retries, skip this structure
-				if (isRateLimitError(error)) {
-					console.warn('[enrichAssets] Rate limit error after retries, skipping structure', {
-						structureId,
-						error: error instanceof Error ? error.message : String(error),
-					})
-				} else {
-					// Structure not found, no access, or other error - skip it
-					console.warn('[enrichAssets] Failed to fetch structure info', {
-						structureId,
-						error: error instanceof Error ? error.message : String(error),
-					})
-				}
-			}
-
-			// Add delay between requests to avoid rate limits
-			if (structureLocationIds.indexOf(structureId) < structureLocationIds.length - 1) {
-				await new Promise((resolve) => setTimeout(resolve, DELAY_MS))
-			}
-		}
-
+	if (structureLocationIds.length > 0) {
 		console.log('[enrichAssets] Structure resolution complete', {
 			requested: structureLocationIds.length,
 			resolved: Object.keys(structureNameMap).length,
+			denied: structureResolutionCoordinator?.getDeniedCount() ?? 0,
 		})
 	}
 

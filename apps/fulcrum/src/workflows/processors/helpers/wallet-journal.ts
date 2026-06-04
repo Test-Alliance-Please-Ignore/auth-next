@@ -2,7 +2,7 @@ import { getStub } from '@repo/do-utils'
 import { getIdClassification, isStructureId, normalizeIdToString } from '@repo/esi'
 
 import { formatCurrency, toTitleCase } from '../../utils/formatting'
-import { isRateLimitError, retryWithBackoff } from '../../utils/retry'
+import { StructureResolutionCoordinator } from './structure-resolution'
 
 import type { CharacterWalletJournalEntry, Esi, EsiTypeResolver } from '@repo/esi'
 
@@ -38,7 +38,8 @@ export async function enrichWalletJournalEntries(
 		ESI: DurableObjectNamespace
 	},
 	entries: CharacterWalletJournalEntry[],
-	characterId: string
+	characterId: string,
+	structureResolutionCoordinator?: StructureResolutionCoordinator
 ): Promise<ProcessedWalletJournalEntries> {
 	if (entries.length === 0) {
 		return []
@@ -87,46 +88,22 @@ export async function enrichWalletJournalEntries(
 		}
 	}
 
-	const structureNameMap: Record<string, string> = {}
-	if (structureIds.size > 0) {
-		const esiStub = getStub<Esi>(env.ESI, 'global')
-		for (const structureId of structureIds) {
-			try {
-				const structureInfo = await retryWithBackoff(
-					async () => await esiStub.fetchStructureInfo(characterId, structureId),
-					{
-						maxRetries: 3,
-						initialDelayMs: 1000,
-						maxDelayMs: 30000,
-						backoffMultiplier: 2,
-						onRetry: (attempt, error, delayMs) => {
-							console.warn('[enrichWalletJournalEntries] Retrying structure fetch', {
-								structureId,
-								attempt,
-								delayMs,
-								error: error.message,
-							})
-						},
-					}
+	const structureNameMap =
+		structureIds.size > 0
+			? await (structureResolutionCoordinator ?? new StructureResolutionCoordinator()).resolveStructureNames(
+					{ ESI: env.ESI },
+					characterId,
+					structureIds,
+					'enrichWalletJournalEntries'
 				)
+			: {}
 
-				if (structureInfo) {
-					structureNameMap[structureId] = structureInfo.name
-				}
-			} catch (error) {
-				if (isRateLimitError(error)) {
-					console.warn(
-						'[enrichWalletJournalEntries] Rate limit when fetching structure info, continuing without name',
-						{ structureId, error: error instanceof Error ? error.message : String(error) }
-					)
-				} else {
-					console.warn('[enrichWalletJournalEntries] Failed to fetch structure info', {
-						structureId,
-						error: error instanceof Error ? error.message : String(error),
-					})
-				}
-			}
-		}
+	if (structureIds.size > 0) {
+		console.log('[enrichWalletJournalEntries] Structure resolution complete', {
+			requested: structureIds.size,
+			resolved: Object.keys(structureNameMap).length,
+			denied: structureResolutionCoordinator?.getDeniedCount() ?? 0,
+		})
 	}
 
 	const processedAt = new Date().toISOString()

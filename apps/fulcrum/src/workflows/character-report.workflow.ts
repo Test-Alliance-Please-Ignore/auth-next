@@ -25,6 +25,7 @@ import { fetchSkills, processSkills } from './steps/skills'
 import { fetchWalletJournal, processWalletJournal } from './steps/wallet-journal'
 import { fetchWalletTransactions, processWalletTransactions } from './steps/wallet-transactions'
 import { fetchClones, processClones } from './steps/clones'
+import { StructureResolutionCoordinator } from './processors/helpers/structure-resolution'
 
 import { getStub } from '@repo/do-utils'
 import { esiFetchStepConfig, esiProcessingStepConfig } from '@repo/workflow-utils'
@@ -101,6 +102,7 @@ export class CharacterReportWorkflow extends WorkflowEntrypoint<Env, WorkflowPar
 		const logCtx = { characterId, reportId, workflowInstanceId }
 		const stepDurationsMs: Record<string, number> = {}
 		let failedStep: string | null = null
+		const structureResolutionCoordinator = new StructureResolutionCoordinator()
 
 		assertRequiredBinding('DATABASE_URL', this.env.DATABASE_URL)
 		assertRequiredBinding('CHARACTER_REPORTS', this.env.CHARACTER_REPORTS)
@@ -202,6 +204,7 @@ export class CharacterReportWorkflow extends WorkflowEntrypoint<Env, WorkflowPar
 					fetchAssetsResult,
 					workflowInstanceId,
 					characterId,
+					structureResolutionCoordinator,
 				),
 			)
 
@@ -228,6 +231,7 @@ export class CharacterReportWorkflow extends WorkflowEntrypoint<Env, WorkflowPar
 					fetchAssetsResult,
 					workflowInstanceId,
 					characterId,
+					structureResolutionCoordinator,
 				),
 			)
 
@@ -252,6 +256,7 @@ export class CharacterReportWorkflow extends WorkflowEntrypoint<Env, WorkflowPar
 					fetchOrdersResult,
 					workflowInstanceId,
 					characterId,
+					structureResolutionCoordinator,
 				),
 			)
 
@@ -276,6 +281,7 @@ export class CharacterReportWorkflow extends WorkflowEntrypoint<Env, WorkflowPar
 					fetchWalletTransactionsResult,
 					workflowInstanceId,
 					characterId,
+					structureResolutionCoordinator,
 				),
 			)
 
@@ -300,6 +306,7 @@ export class CharacterReportWorkflow extends WorkflowEntrypoint<Env, WorkflowPar
 					fetchWalletJournalResult,
 					workflowInstanceId,
 					characterId,
+					structureResolutionCoordinator,
 				),
 			)
 
@@ -468,6 +475,7 @@ export class CharacterReportWorkflow extends WorkflowEntrypoint<Env, WorkflowPar
 					fetchClonesResult,
 					workflowInstanceId,
 					characterId,
+					structureResolutionCoordinator,
 				),
 			)
 

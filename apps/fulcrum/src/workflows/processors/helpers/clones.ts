@@ -6,7 +6,7 @@
 import { getStub } from '@repo/do-utils'
 import { isStructureId } from '@repo/esi'
 
-import { isRateLimitError, retryWithBackoff } from '../../utils/retry'
+import { StructureResolutionCoordinator } from './structure-resolution'
 
 import type { CharacterClones, CharacterImplants, Esi, EsiTypeResolver, JumpClone } from '@repo/esi'
 
@@ -45,6 +45,7 @@ export async function enrichClones(
     clones: CharacterClones,
     implants: CharacterImplants,
     characterId: string,
+    structureResolutionCoordinator?: StructureResolutionCoordinator,
 ): Promise<ProcessedClones> {
     // Collect all IDs that need resolution
     const allImplantIds = new Set<string>()
@@ -83,47 +84,22 @@ export async function enrichClones(
     const nameMap = await typeResolver.resolveIds(idsToResolve)
 
     // Resolve structure locations via authenticated ESI calls
-    const structureNameMap: Record<string, string> = {}
-    if (structureLocationIds.size > 0) {
-        const esiStub = getStub<Esi>(env.ESI, 'global')
-        const DELAY_MS = 200
-
-        for (const structureId of structureLocationIds) {
-            try {
-                const structureInfo = await retryWithBackoff(
-                    async () => esiStub.fetchStructureInfo(characterId, structureId),
-                    {
-                        maxRetries: 3,
-                        initialDelayMs: 1000,
-                        maxDelayMs: 30000,
-                        backoffMultiplier: 2,
-                        onRetry: (attempt, error, delayMs) => {
-                            console.warn('[enrichClones] Retrying structure fetch', {
-                                structureId,
-                                attempt,
-                                delayMs,
-                                error: error.message,
-                            })
-                        },
-                    },
+    const structureNameMap =
+        structureLocationIds.size > 0
+            ? await (structureResolutionCoordinator ?? new StructureResolutionCoordinator()).resolveStructureNames(
+                    { ESI: env.ESI },
+                    characterId,
+                    structureLocationIds,
+                    'enrichClones'
                 )
-                if (structureInfo) {
-                    structureNameMap[structureId] = structureInfo.name
-                }
-            } catch (error) {
-                if (isRateLimitError(error)) {
-                    console.warn('[enrichClones] Rate limit error, skipping structure', { structureId })
-                } else {
-                    console.warn('[enrichClones] Failed to fetch structure info', {
-                        structureId,
-                        error: error instanceof Error ? error.message : String(error),
-                    })
-                }
-            }
+            : {}
 
-            // Delay between requests
-            await new Promise((resolve) => setTimeout(resolve, DELAY_MS))
-        }
+    if (structureLocationIds.size > 0) {
+        console.log('[enrichClones] Structure resolution complete', {
+            requested: structureLocationIds.size,
+            resolved: Object.keys(structureNameMap).length,
+            denied: structureResolutionCoordinator?.getDeniedCount() ?? 0,
+        })
     }
 
     // Helper to resolve a location ID to a name

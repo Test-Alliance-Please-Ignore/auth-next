@@ -1,4 +1,5 @@
 import type { CharacterWalletJournalEntry } from '@repo/esi'
+import type { StructureResolutionCoordinator } from '../../processors/helpers/structure-resolution'
 import { retrieveData, storeOrReturn, type StepResult } from '../../utils/storage'
 import { enrichWalletJournalEntries } from '../../processors/helpers/wallet-journal'
 
@@ -13,6 +14,7 @@ export async function processWalletJournal(
 	fetchResult: StepResult,
 	workflowInstanceId: string,
 	characterId: string,
+	structureResolutionCoordinator?: StructureResolutionCoordinator,
 ): Promise<StepResult> {
 	try {
 		if (!fetchResult.success) {
@@ -52,7 +54,12 @@ export async function processWalletJournal(
 				: null,
 		})
 
-		const enrichedData = await enrichWalletJournalEntries(env, entries, characterId)
+		const enrichedData = await enrichWalletJournalEntries(
+			env,
+			entries,
+			characterId,
+			structureResolutionCoordinator
+		)
 
 		console.log('[processWalletJournal] Enrichment complete', {
 			count: enrichedData.length,
@@ -82,4 +89,3 @@ export async function processWalletJournal(
 		}
 	}
 }
-

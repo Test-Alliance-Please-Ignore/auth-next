@@ -44,6 +44,8 @@ function makeUser(overrides: Partial<SessionUser> = {}): SessionUser {
 function makeHrStub() {
 	return {
 		checkPermission: vi.fn().mockResolvedValue(false),
+		getUserRoles: vi.fn().mockResolvedValue([]),
+		listApplications: vi.fn().mockResolvedValue([]),
 	}
 }
 
@@ -225,6 +227,170 @@ describe('fulcrum route access matrix', () => {
 			applicationId: undefined,
 			sendDm: true,
 		})
+	})
+
+	it('blocks hr_viewer report creation even when the target user has an open application', async () => {
+		hrStub.checkPermission.mockResolvedValue(true)
+		hrStub.getUserRoles.mockResolvedValue([
+			{
+				id: 'role-1',
+				corporationId: '1001',
+				userId: 'user-1',
+				characterId: 'user-1',
+				characterName: 'Main Pilot',
+				role: 'hr_viewer',
+				grantedBy: 'granted-by',
+				grantedAt: new Date(),
+				expiresAt: null,
+				isActive: true,
+				createdAt: new Date(),
+				updatedAt: new Date(),
+			},
+		] as any)
+		hrStub.listApplications.mockImplementation(async (_filters: any, _userId: string, _access: any) =>
+			_filters.status === 'pending'
+				? []
+				: [
+						{
+							id: 'app-1',
+							corporationId: '1001',
+							userId: 'target-1',
+							characterId: '3001',
+							characterName: 'Alt Pilot',
+							applicationText: 'app',
+							status: 'under_review',
+							reviewedBy: null,
+							reviewedByCharacterName: null,
+							reviewedAt: null,
+							reviewNotes: null,
+							createdAt: new Date(),
+							updatedAt: new Date(),
+							lastStaffInteractionAt: null,
+							altCharacterIds: [],
+						},
+					]
+		)
+
+		const app = createApp(makeUser())
+		const res = await app.request(
+			'/api/fulcrum/characters/3001/reports',
+			{
+				method: 'POST',
+				headers: { 'content-type': 'application/json' },
+				body: JSON.stringify({
+					corporationId: '1001',
+					requestSource: 'hr',
+					targetUserId: 'target-1',
+				}),
+			},
+			env
+		)
+
+		expect(res.status).toBe(403)
+		expect(await res.json()).toEqual({ error: 'HR reviewer or admin role required' })
+		expect(fulcrumStub.createCharacterReport).not.toHaveBeenCalled()
+	})
+
+	it('blocks hr_viewer report creation when the target user has no open application', async () => {
+		hrStub.checkPermission.mockResolvedValue(true)
+		hrStub.getUserRoles.mockResolvedValue([
+			{
+				id: 'role-1',
+				corporationId: '1001',
+				userId: 'user-1',
+				characterId: 'user-1',
+				characterName: 'Main Pilot',
+				role: 'hr_viewer',
+				grantedBy: 'granted-by',
+				grantedAt: new Date(),
+				expiresAt: null,
+				isActive: true,
+				createdAt: new Date(),
+				updatedAt: new Date(),
+			},
+		] as any)
+		hrStub.listApplications.mockResolvedValue([])
+
+		const app = createApp(makeUser())
+		const res = await app.request(
+			'/api/fulcrum/characters/3001/reports',
+			{
+				method: 'POST',
+				headers: { 'content-type': 'application/json' },
+				body: JSON.stringify({
+					corporationId: '1001',
+					requestSource: 'hr',
+					targetUserId: 'target-1',
+				}),
+			},
+			env
+		)
+
+		expect(res.status).toBe(403)
+		expect(await res.json()).toEqual({
+			error: 'An open application is required to request Fulcrum reports for this user',
+		})
+		expect(fulcrumStub.createCharacterReport).not.toHaveBeenCalled()
+	})
+
+	it('blocks hr_viewer bulk report creation even when the target user has an open application', async () => {
+		hrStub.checkPermission.mockResolvedValue(true)
+		hrStub.getUserRoles.mockResolvedValue([
+			{
+				id: 'role-1',
+				corporationId: '1001',
+				userId: 'user-1',
+				characterId: 'user-1',
+				characterName: 'Main Pilot',
+				role: 'hr_viewer',
+				grantedBy: 'granted-by',
+				grantedAt: new Date(),
+				expiresAt: null,
+				isActive: true,
+				createdAt: new Date(),
+				updatedAt: new Date(),
+			},
+		] as any)
+		hrStub.listApplications.mockResolvedValue([])
+		hrStub.listApplications.mockImplementation(async (_filters: any, _userId: string, _access: any) => [
+			{
+				id: 'app-1',
+				corporationId: '1001',
+				userId: 'target-1',
+				characterId: '3001',
+				characterName: 'Alt Pilot',
+				applicationText: 'app',
+				status: 'under_review',
+				reviewedBy: null,
+				reviewedByCharacterName: null,
+				reviewedAt: null,
+				reviewNotes: null,
+				createdAt: new Date(),
+				updatedAt: new Date(),
+				lastStaffInteractionAt: null,
+				altCharacterIds: [],
+			},
+		] as any)
+
+		const app = createApp(makeUser())
+		const res = await app.request(
+			'/api/fulcrum/reports/batch',
+			{
+				method: 'POST',
+				headers: { 'content-type': 'application/json' },
+				body: JSON.stringify({
+					corporationId: '1001',
+					requestSource: 'hr',
+					characterIds: ['3001', '3002'],
+					targetUserId: 'target-1',
+				}),
+			},
+			env
+		)
+
+		expect(res.status).toBe(403)
+		expect(await res.json()).toEqual({ error: 'HR reviewer or admin role required' })
+		expect(fulcrumStub.createBulkCharacterReports).not.toHaveBeenCalled()
 	})
 
 	it('passes sendDm=false through to report creation', async () => {

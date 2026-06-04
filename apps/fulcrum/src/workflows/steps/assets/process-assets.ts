@@ -10,6 +10,7 @@ import {
 	resolveTopLevelLocation,
 	isShipAsset,
 } from '../../processors/helpers/location'
+import type { StructureResolutionCoordinator } from '../../processors/helpers/structure-resolution'
 import { retrieveData, storeOrReturn } from '../../utils/storage'
 
 import { isStructureId } from '@repo/esi'
@@ -44,7 +45,8 @@ export async function processAssets(
 	bucketName: string,
 	fetchResult: StepResult,
 	workflowInstanceId: string,
-	characterId: string
+	characterId: string,
+	structureResolutionCoordinator?: StructureResolutionCoordinator
 ): Promise<StepResult> {
 	try {
 		// Check if fetch was successful
@@ -188,7 +190,12 @@ export async function processAssets(
 				: null,
 		})
 
-		const enrichedData = await enrichAssets(env, filteredAssets, characterId)
+		const enrichedData = await enrichAssets(
+			env,
+			filteredAssets,
+			characterId,
+			structureResolutionCoordinator
+		)
 
 		// Apply container metadata to enriched assets
 		for (const asset of enrichedData) {

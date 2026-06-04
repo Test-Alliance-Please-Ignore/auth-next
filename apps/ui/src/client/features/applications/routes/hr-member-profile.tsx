@@ -17,7 +17,7 @@ import {
 } from 'lucide-react'
 import { useQueries } from '@tanstack/react-query'
 import { useMemo, useState } from 'react'
-import { Navigate, useNavigate, useParams, useSearchParams } from 'react-router-dom'
+import { Navigate, useLocation, useNavigate, useParams, useSearchParams } from 'react-router-dom'
 import { formatDistanceToNow } from 'date-fns'
 
 import { MemberAvatar } from '@/components/member-avatar'
@@ -60,6 +60,7 @@ import {
 	useRequestFulcrumReport,
 	useRequestFulcrumReportBatch,
 } from '../hooks'
+import { ACTIVE_APPLICATION_STATUSES } from '../constants'
 
 import type { CorporationMember } from '../../corporations/api'
 import type { FulcrumCharacterData } from '../api'
@@ -111,6 +112,7 @@ export function resolveEsiBadgeState({
 
 export default function HrMemberProfile() {
 	const { corporationId, accountId } = useParams<{ corporationId: string; accountId: string }>()
+	const location = useLocation()
 	const [searchParams] = useSearchParams()
 	const navigate = useNavigate()
 	const { user, isAuthenticated, isLoading: authLoading } = useAuth()
@@ -153,7 +155,7 @@ export default function HrMemberProfile() {
 		(isAdmin || isAuditor) && authUserId ? { subjectUserId: authUserId } : undefined,
 	)
 
-	// Fulcrum data – all HR viewers can access this, not just admins
+	// Fulcrum data is visible to the current HR scope; report creation is gated separately below.
 	const { data: fulcrumCharacters, isLoading: fulcrumLoading } = useApplicationFulcrum(
 		authUserId ?? '',
 		corporationId ?? '',
@@ -174,6 +176,10 @@ export default function HrMemberProfile() {
 			(a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime(),
 		)
 	}, [applications])
+	const hasActiveApplication = useMemo(
+		() => sortedApps.some((app) => ACTIVE_APPLICATION_STATUSES.includes(app.status)),
+		[sortedApps]
+	)
 
 	// Build a unified character list: in-corp members first, then external alts
 	const unifiedCharacters = useMemo(() => {
@@ -246,9 +252,17 @@ export default function HrMemberProfile() {
 			}),
 		[unifiedCharacters]
 	)
+	const canRequestFulcrumReports = useMemo(() => {
+		if (user?.is_admin || isAuditor) return true
+		if (permission?.currentRole === 'hr_admin') return true
+		if (permission?.currentRole === 'hr_reviewer') {
+			return hasActiveApplication
+		}
+		return false
+	}, [hasActiveApplication, isAuditor, permission?.currentRole, user?.is_admin])
 
 	const handleScanAllCharacters = async (sendDm: boolean) => {
-		if (!authUserId || scanEligibleCharacters.length === 0) return
+		if (!authUserId || scanEligibleCharacters.length === 0 || !canRequestFulcrumReports) return
 		setIsScanningAll(true)
 		try {
 			const groups = new Map<string, string[]>()
@@ -285,7 +299,8 @@ export default function HrMemberProfile() {
 			isScanningAll ||
 			requestReport.isPending ||
 			requestReportBatch.isPending ||
-			scanEligibleCharacters.length === 0
+			scanEligibleCharacters.length === 0 ||
+			!canRequestFulcrumReports
 		) {
 			return
 		}
@@ -304,6 +319,38 @@ export default function HrMemberProfile() {
 
 	// Navigation helpers
 	const hasSupersedingCorpAccess = user?.is_admin || hasCorporationAccess
+	const navState = location.state as
+		| {
+				source?: 'applications' | 'members'
+				returnTo?: string
+				backLabel?: string
+				breadcrumbParentLabel?: string
+			}
+		| null
+	const isApplicationSource =
+		navState?.source === 'applications' ||
+		searchParams.get('from') === 'applications' ||
+		searchParams.get('source') === 'applications' ||
+		navState?.returnTo?.includes('/applications/') === true ||
+		searchParams.get('returnTo')?.includes('/applications/') === true
+	const isHrNavigationRestricted = permission?.currentRole === 'hr_reviewer' || permission?.currentRole === 'hr_viewer'
+	const applicationBackPath =
+		navState?.returnTo ??
+		searchParams.get('returnTo') ??
+		(isApplicationSource ? `/corporations/${corporationId}/applications` : undefined)
+	const backPath = applicationBackPath ?? (isHrNavigationRestricted
+		? `/corporations/${corporationId}/applications`
+		: `/corporations/${corporationId}/members`)
+	const backLabel =
+		navState?.backLabel ??
+		(isHrNavigationRestricted
+			? isApplicationSource
+				? 'Back to Application'
+				: 'Back to Applications'
+			: 'Back to Members')
+	const breadcrumbParentLabel =
+		navState?.breadcrumbParentLabel ??
+		(isHrNavigationRestricted ? (isApplicationSource ? 'Application' : 'Applications') : 'Members')
 	const rootCorporationsPath = '/corporations'
 	const rootCorporationsLabel = 'Corporations'
 
@@ -387,10 +434,10 @@ export default function HrMemberProfile() {
 						</p>
 						<Button
 							variant="ghost"
-							onClick={() => navigate(`/corporations/${corporationId}/members`)}
+							onClick={() => navigate(backPath)}
 						>
 							<ArrowLeft className="h-4 w-4" />
-							Back to Members
+							{backLabel}
 						</Button>
 					</CardContent>
 				</Card>
@@ -411,8 +458,8 @@ export default function HrMemberProfile() {
 						</BreadcrumbItem>
 						<BreadcrumbSeparator />
 						<BreadcrumbItem>
-							<BreadcrumbLink to={`/corporations/${corporationId}/members`}>
-								Members
+							<BreadcrumbLink to={backPath}>
+								{breadcrumbParentLabel}
 							</BreadcrumbLink>
 						</BreadcrumbItem>
 						<BreadcrumbSeparator />
@@ -423,10 +470,10 @@ export default function HrMemberProfile() {
 				</Breadcrumb>
 				<Button
 					variant="ghost"
-					onClick={() => navigate(`/corporations/${corporationId}/members`)}
+					onClick={() => navigate(backPath)}
 				>
 					<ArrowLeft className="h-4 w-4" />
-					Back to Members
+					{backLabel}
 				</Button>
 			</div>
 
@@ -573,6 +620,7 @@ export default function HrMemberProfile() {
 							requestReportBatch.isPending ||
 							scanEligibleCharacters.length === 0
 						}
+						canRequestReports={canRequestFulcrumReports}
 						onScanAll={handleOpenScanAllDialog}
 						isScanPendingFor={(characterId) =>
 							requestReport.isPending &&
@@ -599,6 +647,7 @@ export default function HrMemberProfile() {
 								corporationId: character.corporationId,
 								requestSource: 'hr',
 								userId: authUserId,
+								targetUserId: authUserId,
 							})
 						}}
 					/>

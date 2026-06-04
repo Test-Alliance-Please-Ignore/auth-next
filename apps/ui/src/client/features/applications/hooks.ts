@@ -1009,6 +1009,7 @@ export function useRequestFulcrumReport() {
 			applicationId,
 			targetUserId,
 			sendDm,
+			userId,
 		}: {
 			characterId: string
 			corporationId: string
@@ -1024,7 +1025,7 @@ export function useRequestFulcrumReport() {
 				corporationId,
 				requestSource,
 				applicationId,
-				targetUserId,
+				targetUserId ?? userId,
 				sendDm,
 			),
 		onMutate: ({ characterId, corporationId, userId }) => {

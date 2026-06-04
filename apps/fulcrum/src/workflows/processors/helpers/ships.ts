@@ -3,9 +3,8 @@ import { isStructureId } from '@repo/esi'
 import type { Universe } from '@repo/universe'
 
 import { buildAssetMap, resolveTopLevelLocation } from './location'
+import { StructureResolutionCoordinator } from './structure-resolution'
 import { shipTypeIds } from './ship-types'
-
-import { isRateLimitError, retryWithBackoff } from '../../utils/retry'
 
 import type { CharacterAsset, Esi, EsiTypeResolver } from '@repo/esi'
 
@@ -55,7 +54,8 @@ export async function findFittedShips(
 		ESI: DurableObjectNamespace
 	},
 	assets: CharacterAsset[],
-	characterId: string
+	characterId: string,
+	structureResolutionCoordinator?: StructureResolutionCoordinator
 ): Promise<FittedShip[]> {
 	const assetMap = buildAssetMap(assets)
 	const ships = assets.filter(
@@ -116,52 +116,22 @@ export async function findFittedShips(
 	}
 
 	const locationNameMap = await typeResolver.resolveIds([...stationLocationIds], characterId)
-	const structureNameMap: Record<string, string> = {}
-	if (structureLocationIds.size > 0) {
-		const esiStub = getStub<Esi>(env.ESI, 'global')
-		const DELAY_MS = 200
-
-		for (const structureId of structureLocationIds) {
-			try {
-				const structureInfo = await retryWithBackoff(
-					async () => esiStub.fetchStructureInfo(characterId, structureId),
-					{
-						maxRetries: 3,
-						initialDelayMs: 1000,
-						maxDelayMs: 30000,
-						backoffMultiplier: 2,
-						onRetry: (attempt, error, delayMs) => {
-							console.warn('[findFittedShips] Retrying structure fetch after rate limit', {
-								structureId,
-								attempt,
-								delayMs,
-								error: error.message,
-							})
-						},
-					}
+	const structureNameMap =
+		structureLocationIds.size > 0
+			? await (structureResolutionCoordinator ?? new StructureResolutionCoordinator()).resolveStructureNames(
+					{ ESI: env.ESI },
+					characterId,
+					structureLocationIds,
+					'findFittedShips'
 				)
+			: {}
 
-				if (structureInfo) {
-					structureNameMap[structureId] = structureInfo.name
-				}
-			} catch (error) {
-				if (isRateLimitError(error)) {
-					console.warn('[findFittedShips] Rate limit error after retries, skipping structure', {
-						structureId,
-						error: error instanceof Error ? error.message : String(error),
-					})
-				} else {
-					console.warn('[findFittedShips] Failed to fetch structure info', {
-						structureId,
-						error: error instanceof Error ? error.message : String(error),
-					})
-				}
-			}
-
-			if (Array.from(structureLocationIds).indexOf(structureId) < structureLocationIds.size - 1) {
-				await new Promise((resolve) => setTimeout(resolve, DELAY_MS))
-			}
-		}
+	if (structureLocationIds.size > 0) {
+		console.log('[findFittedShips] Structure resolution complete', {
+			requested: structureLocationIds.size,
+			resolved: Object.keys(structureNameMap).length,
+			denied: structureResolutionCoordinator?.getDeniedCount() ?? 0,
+		})
 	}
 
 	const fittedShips = await Promise.all(

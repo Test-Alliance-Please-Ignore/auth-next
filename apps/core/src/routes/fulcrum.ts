@@ -10,6 +10,7 @@ import type { Context } from 'hono'
 import type { Core } from '@repo/core'
 import type { EveCorporationData } from '@repo/eve-corporation-data'
 import type { Fulcrum, ReportRequestSource, ReportSectionName } from '@repo/fulcrum'
+import { ACTIVE_APPLICATION_STATUSES } from '@repo/hr'
 import type { Hr } from '@repo/hr'
 import type { App } from '../context'
 import type { SessionUser } from '../context'
@@ -31,6 +32,45 @@ function getHrStub(c: Context<App>): Hr {
 
 function getCoreStub(c: Context<App>): Core {
 	return getStub<Core>(c.env.CORE, 'default')
+}
+
+type FulcrumReportAccessRole = 'hr_admin' | 'hr_reviewer' | null
+
+function resolveHighestFulcrumReportAccessRole(
+	roles: Array<{ role: string; isActive: boolean }>
+): FulcrumReportAccessRole {
+	const activeRoles = roles.filter((role) => role.isActive)
+	if (activeRoles.some((role) => role.role === 'hr_admin')) return 'hr_admin'
+	if (activeRoles.some((role) => role.role === 'hr_reviewer')) return 'hr_reviewer'
+	return null
+}
+
+async function hasOpenApplicationForTargetUser(
+	hr: Hr,
+	requestor: SessionUser,
+	corporationId: string,
+	targetUserId: string
+): Promise<boolean> {
+	for (const status of ACTIVE_APPLICATION_STATUSES) {
+		const applications = await hr.listApplications(
+			{
+				corporationId,
+				userId: targetUserId,
+				status,
+				limit: 1,
+			},
+			requestor.id,
+			{
+				isAdmin: requestor.is_admin,
+				isAuditor: false,
+			}
+		)
+		if (applications.length > 0) {
+			return true
+		}
+	}
+
+	return false
 }
 
 /**
@@ -273,14 +313,43 @@ app.post('/characters/:characterId/reports', requireAuth(), async (c) => {
 	try {
 		const auditor = await isHrAuditorUser(c, user)
 
-		// Check HR permission for creating reports (auditors can request)
-		if (!auditor) {
+		// Check HR permission for creating reports (auditors/admins can request)
+		if (!auditor && !user.is_admin) {
 			const hr = getHrStub(c)
-			const hasPermission = await hr.checkPermission(user.id, body.corporationId, 'hr_reviewer')
-			if (!hasPermission) {
+			const hasReviewerAccess = await hr.checkPermission(user.id, body.corporationId, 'hr_reviewer')
+			if (!hasReviewerAccess) {
 				return c.json({ error: 'HR reviewer or admin role required' }, 403)
 			}
-		}
+
+			const roles = await hr.getUserRoles(user.id, body.corporationId)
+			const highestRole = resolveHighestFulcrumReportAccessRole(roles)
+			if (highestRole === 'hr_reviewer') {
+				if (!body.targetUserId) {
+					return c.json(
+						{ error: 'targetUserId is required for HR reviewer report requests' },
+						400
+					)
+				}
+
+				const hasOpenApplication = await hasOpenApplicationForTargetUser(
+					hr,
+					user,
+					body.corporationId,
+					body.targetUserId
+				)
+				if (!hasOpenApplication) {
+					return c.json(
+						{
+							error:
+								'An open application is required to request Fulcrum reports for this user',
+						},
+						403,
+					)
+				}
+				} else if (highestRole !== 'hr_admin') {
+					return c.json({ error: 'HR reviewer or admin role required' }, 403)
+				}
+			}
 
 		const fulcrum = getFulcrumStub(c)
 		const reportId = await fulcrum.createCharacterReport({
@@ -344,15 +413,48 @@ app.post('/reports/batch', requireAuth(), async (c) => {
 		return c.json({ error: 'Valid requestSource is required' }, 400)
 	}
 
-	try {
-		const auditor = await isHrAuditorUser(c, user)
-		if (!auditor) {
-			const hr = getHrStub(c)
-			const hasPermission = await hr.checkPermission(user.id, body.corporationId, 'hr_reviewer')
-			if (!hasPermission) {
-				return c.json({ error: 'HR reviewer or admin role required' }, 403)
+		try {
+			const auditor = await isHrAuditorUser(c, user)
+			if (!auditor && !user.is_admin) {
+				const hr = getHrStub(c)
+				const hasReviewerAccess = await hr.checkPermission(
+					user.id,
+					body.corporationId,
+					'hr_reviewer',
+				)
+				if (!hasReviewerAccess) {
+					return c.json({ error: 'HR reviewer or admin role required' }, 403)
+				}
+
+				const roles = await hr.getUserRoles(user.id, body.corporationId)
+				const highestRole = resolveHighestFulcrumReportAccessRole(roles)
+				if (highestRole === 'hr_reviewer') {
+					if (!body.targetUserId) {
+						return c.json(
+							{ error: 'targetUserId is required for HR reviewer report requests' },
+							400,
+						)
+					}
+
+					const hasOpenApplication = await hasOpenApplicationForTargetUser(
+						hr,
+						user,
+						body.corporationId,
+						body.targetUserId,
+					)
+					if (!hasOpenApplication) {
+						return c.json(
+							{
+								error:
+									'An open application is required to request Fulcrum reports for this user',
+							},
+							403,
+						)
+					}
+				} else if (highestRole !== 'hr_admin') {
+					return c.json({ error: 'HR reviewer or admin role required' }, 403)
+				}
 			}
-		}
 
 		const fulcrum = getFulcrumStub(c)
 		const result = await fulcrum.createBulkCharacterReports({

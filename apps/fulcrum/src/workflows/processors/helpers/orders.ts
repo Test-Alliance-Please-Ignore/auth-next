@@ -6,7 +6,7 @@
 import { getStub } from '@repo/do-utils'
 import { isStructureId } from '@repo/esi'
 
-import { isRateLimitError, retryWithBackoff } from '../../utils/retry'
+import { StructureResolutionCoordinator } from './structure-resolution'
 
 import type { CharacterMarketOrder, Esi, EsiTypeResolver } from '@repo/esi'
 import type { Universe } from '@repo/universe'
@@ -31,11 +31,12 @@ export type ProcessedMarketOrders = ProcessedMarketOrder[]
 export async function enrichMarketOrders(
 	env: {
 		ESI_TYPE_RESOLVER: DurableObjectNamespace
-		ESI: DurableObjectNamespace
 		UNIVERSE: DurableObjectNamespace
+		ESI: DurableObjectNamespace
 	},
 	orders: CharacterMarketOrder[],
 	characterId: string,
+	structureResolutionCoordinator?: StructureResolutionCoordinator,
 ): Promise<ProcessedMarketOrders> {
 	if (orders.length === 0) {
 		return []
@@ -90,53 +91,22 @@ export async function enrichMarketOrders(
 	}
 
 	const structureLocationIds = uniqueLocationIds.filter((id) => isStructureId(id))
-	const structureNameMap: Record<string, string> = {}
+	const structureNameMap =
+		structureLocationIds.length > 0
+			? await (structureResolutionCoordinator ?? new StructureResolutionCoordinator()).resolveStructureNames(
+					{ ESI: env.ESI },
+					characterId,
+					structureLocationIds,
+					'enrichMarketOrders'
+				)
+			: {}
 
 	if (structureLocationIds.length > 0) {
-		const esiStub = getStub<Esi>(env.ESI, 'global')
-		const DELAY_MS = 200
-
-		for (const structureId of structureLocationIds) {
-			try {
-				const structureInfo = await retryWithBackoff(
-					async () => esiStub.fetchStructureInfo(characterId, structureId),
-					{
-						maxRetries: 3,
-						initialDelayMs: 1000,
-						maxDelayMs: 30000,
-						backoffMultiplier: 2,
-						onRetry: (attempt, error, delayMs) => {
-							console.warn('[enrichMarketOrders] Retrying structure fetch after rate limit', {
-								structureId,
-								attempt,
-								delayMs,
-								error: error.message,
-							})
-						},
-					},
-				)
-
-				if (structureInfo) {
-					structureNameMap[structureId] = structureInfo.name
-				}
-			} catch (error) {
-				if (isRateLimitError(error)) {
-					console.warn('[enrichMarketOrders] Rate limit error after retries, skipping structure', {
-						structureId,
-						error: error instanceof Error ? error.message : String(error),
-					})
-				} else {
-					console.warn('[enrichMarketOrders] Failed to fetch structure info', {
-						structureId,
-						error: error instanceof Error ? error.message : String(error),
-					})
-				}
-			}
-
-			if (structureLocationIds.indexOf(structureId) < structureLocationIds.length - 1) {
-				await new Promise((resolve) => setTimeout(resolve, DELAY_MS))
-			}
-		}
+		console.log('[enrichMarketOrders] Structure resolution complete', {
+			requested: structureLocationIds.length,
+			resolved: Object.keys(structureNameMap).length,
+			denied: structureResolutionCoordinator?.getDeniedCount() ?? 0,
+		})
 	}
 
 	const processedAt = new Date().toISOString()

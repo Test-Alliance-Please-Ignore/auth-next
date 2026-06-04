@@ -64,6 +64,7 @@ export function ProfileCharactersSection({
 	isScanningAll = false,
 	scanAllLabel,
 	scanAllDisabled = false,
+	canRequestReports = true,
 	onScanAll,
 	isScanPendingFor,
 	onScan,
@@ -78,6 +79,7 @@ export function ProfileCharactersSection({
 	isScanningAll?: boolean
 	scanAllLabel?: string
 	scanAllDisabled?: boolean
+	canRequestReports?: boolean
 	onScanAll?: () => void
 	isScanPendingFor?: (characterId: string) => boolean
 	onScan: (character: SharedProfileCharacter) => void
@@ -98,7 +100,7 @@ export function ProfileCharactersSection({
 							variant="ghost"
 							size="sm"
 							onClick={onScanAll}
-							disabled={scanAllDisabled}
+							disabled={scanAllDisabled || !canRequestReports}
 						>
 							<Scan className={`mr-1.5 h-3.5 w-3.5 ${isScanningAll ? 'animate-spin' : ''}`} />
 							{scanAllLabel ?? 'Scan All'}
@@ -247,7 +249,12 @@ export function ProfileCharactersSection({
 										<Button
 											variant={character.latestReport ? 'ghost' : 'primary'}
 											size="sm"
-											disabled={!character.corporationId || character.hasPendingReport || isScanPending}
+											disabled={
+												!canRequestReports ||
+												!character.corporationId ||
+												character.hasPendingReport ||
+												isScanPending
+											}
 											onClick={() => onScan(character)}
 										>
 											{isScanPending ? (

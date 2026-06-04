@@ -3,6 +3,7 @@
  */
 
 import { enrichMarketOrders } from '../../processors/helpers/orders'
+import type { StructureResolutionCoordinator } from '../../processors/helpers/structure-resolution'
 import { retrieveData, storeOrReturn } from '../../utils/storage'
 
 import type { CharacterMarketOrder } from '@repo/esi'
@@ -20,6 +21,7 @@ export async function processOrders(
 	fetchResult: StepResult,
 	workflowInstanceId: string,
 	characterId: string,
+	structureResolutionCoordinator?: StructureResolutionCoordinator,
 ): Promise<StepResult> {
 	try {
 		if (!fetchResult.success) {
@@ -48,7 +50,12 @@ export async function processOrders(
 			}
 		}
 
-		const enrichedData = await enrichMarketOrders(env, orders, characterId)
+		const enrichedData = await enrichMarketOrders(
+			env,
+			orders,
+			characterId,
+			structureResolutionCoordinator
+		)
 		return await storeOrReturn(
 			bucket,
 			bucketName,

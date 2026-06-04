@@ -71,7 +71,9 @@ function buildColumns(
 						size="sm"
 					/>
 					<div className="flex flex-col min-w-0">
-						<span className="font-medium truncate">{row.original.characterName}</span>
+						<span className="truncate text-left font-medium text-foreground">
+							{row.original.characterName}
+						</span>
 						{(row.original.altCharacterIds?.length ?? 0) > 0 && (
 							<span className="text-xs text-muted-foreground">
 								+{row.original.altCharacterIds!.length} {row.original.altCharacterIds!.length === 1 ? 'Alt' : 'Alts'}
