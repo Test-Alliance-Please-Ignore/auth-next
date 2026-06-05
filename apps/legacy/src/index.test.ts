@@ -42,6 +42,7 @@ describe('legacy durable object rpc', () => {
 	const legacyIpsFindMany = vi.fn()
 	const legacyApplicationsFindMany = vi.fn()
 	const legacyApplicationEventsFindMany = vi.fn()
+	const updateSetMock = vi.fn()
 	const updateReturning = vi.fn()
 	const actionInsertValues = vi.fn()
 	const actionInsertReturning = vi.fn()
@@ -70,11 +71,14 @@ describe('legacy durable object rpc', () => {
 			},
 			select: selectMock,
 			update: vi.fn(() => ({
-				set: () => ({
-					where: () => ({
-						returning: updateReturning,
-					}),
-				}),
+				set: (value: unknown) => {
+					updateSetMock(value)
+					return {
+						where: () => ({
+							returning: updateReturning,
+						}),
+					}
+				},
 			})),
 			insert: vi.fn(() => ({
 				values: (...args: unknown[]) => {
@@ -209,5 +213,92 @@ describe('legacy durable object rpc', () => {
 		const result = await legacy.recheckUser('11111111-1111-4111-8111-111111111111', 'admin-1')
 		expect(result.ok).toBe(true)
 		expect(result.modernUserId).toBe('11111111-1111-4111-8111-111111111111')
+	})
+
+	it('keeps an applied migration applied when a recheck finds no new evidence', async () => {
+		migrationQueueFindMany
+			.mockResolvedValueOnce([
+				{
+					id: 'queue-1',
+					modernUserId: '11111111-1111-4111-8111-111111111111',
+					legacyAuthUserId: 'legacy-1',
+					status: 'applied',
+					candidateSnapshot: {
+						matchingCharacters: [{ characterId: '2001', characterName: 'One', source: 'esi_owner' }],
+						matchingDiscordAccounts: [],
+						associatedCounts: {
+							characters: 1,
+							ipAddresses: 0,
+							notes: 0,
+							applications: 0,
+							discordAccounts: 0,
+						},
+					},
+					conflicts: {
+						multipleLegacyUsersForModernUser: false,
+						crossModernUserQueueMatches: [],
+					},
+				},
+			])
+			.mockResolvedValueOnce([])
+
+		const result = await legacy.recheckUser(
+			'11111111-1111-4111-8111-111111111111',
+			'admin-1',
+			{ force: true }
+		)
+
+		expect(result.ok).toBe(true)
+		expect(result.legacyAuthUserIds).toEqual(['legacy-1'])
+		expect(updateSetMock).toHaveBeenCalledWith(
+			expect.objectContaining({
+				status: 'applied',
+			})
+		)
+	})
+
+	it('reopens an applied migration when a recheck finds new evidence', async () => {
+		legacyCharactersFindMany.mockResolvedValue([
+			{ characterId: '2001', characterName: 'One', source: 'esi_owner' },
+			{ characterId: '2002', characterName: 'Two', source: 'xml_account' },
+		])
+		migrationQueueFindMany
+			.mockResolvedValueOnce([
+				{
+					id: 'queue-1',
+					modernUserId: '11111111-1111-4111-8111-111111111111',
+					legacyAuthUserId: 'legacy-1',
+					status: 'applied',
+					candidateSnapshot: {
+						matchingCharacters: [{ characterId: '2001', characterName: 'One', source: 'esi_owner' }],
+						matchingDiscordAccounts: [],
+						associatedCounts: {
+							characters: 1,
+							ipAddresses: 0,
+							notes: 0,
+							applications: 0,
+							discordAccounts: 0,
+						},
+					},
+					conflicts: {
+						multipleLegacyUsersForModernUser: false,
+						crossModernUserQueueMatches: [],
+					},
+				},
+			])
+			.mockResolvedValueOnce([])
+
+		const result = await legacy.recheckUser(
+			'11111111-1111-4111-8111-111111111111',
+			'admin-1',
+			{ force: true }
+		)
+
+		expect(result.ok).toBe(true)
+		expect(updateSetMock).toHaveBeenCalledWith(
+			expect.objectContaining({
+				status: 'pending',
+			})
+		)
 	})
 })

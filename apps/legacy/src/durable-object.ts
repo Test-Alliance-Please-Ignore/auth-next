@@ -1013,18 +1013,17 @@ export class LegacyDO extends DurableObject<Env> implements Legacy {
 			const existing = existingMap.get(legacyAuthUserId)
 			let queueId = existing?.id
 			if (existing) {
-				const shouldReopenDismissed =
-					existing.status === 'dismissed' &&
-					this.hasMaterialNewFindings({
-						existingSnapshot: existing.candidateSnapshot,
-						existingConflicts: existing.conflicts,
-						nextSnapshot: candidateSnapshot,
-						nextConflicts: conflicts,
-					})
+				const hasMaterialNewFindings = this.hasMaterialNewFindings({
+					existingSnapshot: existing.candidateSnapshot,
+					existingConflicts: existing.conflicts,
+					nextSnapshot: candidateSnapshot,
+					nextConflicts: conflicts,
+				})
+				const shouldReopen = hasMaterialNewFindings && existing.status !== 'pending'
 				await this.db
 					.update(legacyMigrationQueue)
 					.set({
-						status: force ? 'pending' : shouldReopenDismissed ? 'pending' : existing.status,
+						status: shouldReopen ? 'pending' : existing.status,
 						candidateSnapshot,
 						conflicts,
 						lastMatchedAt: now,
