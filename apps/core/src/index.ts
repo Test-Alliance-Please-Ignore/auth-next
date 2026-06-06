@@ -45,6 +45,7 @@ import loginRoutes from './routes/login'
 import mumbleRoutes from './routes/mumble'
 import mumbleTempopRoutes from './routes/mumble-tempop'
 import publicMumbleTempopRoutes from './routes/mumble-tempop-public'
+import oauthRoutes from './routes/oauth'
 import sessionRoutes from './routes/session'
 import skillPlansRoutes from './routes/skill-plans'
 import skillsRoutes from './routes/skills'
@@ -139,6 +140,7 @@ const app = new Hono<App>()
 	.route('/api/fulcrum', fulcrumRoutes)
 	.route('/api/inventory', inventoryRoutes)
 	.route('/api/hr', hrRoutes)
+	.route('/api/oauth', oauthRoutes)
 	.route('/api/industry', industryOrdersRoutes)
 	.route('/api/flags', flagsRoutes)
 	.route('/api/srp', srpRoutes)

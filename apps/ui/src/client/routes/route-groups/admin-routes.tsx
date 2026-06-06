@@ -51,6 +51,7 @@ import AdminUserDiscordAccessPage from '@/routes/admin/user-discord-access'
 import AdminUserGroupsPage from '@/routes/admin/user-groups'
 import AdminUsersPage from '@/routes/admin/users'
 import AdminIpHistoryInspectionPage from '@/routes/admin/ip-history-inspection'
+import AdminThirdPartyAppsPage from '@/routes/admin/third-party-apps'
 
 const UserHrNotes = lazy(() => import('@/features/applications/routes/user-hr-notes'))
 const IndustryProvidersPage = lazy(() => import('@/features/industry/routes/industry-providers'))
@@ -83,6 +84,7 @@ export const adminRouteElements = (
 		<Route path="permissions/categories" element={<AdminPermissionCategoriesPage />} />
 		<Route path="permissions/global" element={<AdminGlobalPermissionsPage />} />
 		<Route path="users" element={<AdminUsersPage />} />
+		<Route path="third-party-apps" element={<AdminThirdPartyAppsPage />} />
 		<Route path="users/:userId" element={<AdminUserDetailPage />} />
 		<Route path="users/:userId/discord-access" element={<AdminUserDiscordAccessPage />} />
 		<Route path="users/:userId/groups" element={<AdminUserGroupsPage />} />
@@ -96,12 +98,12 @@ export const adminRouteElements = (
 				</Suspense>
 			}
 		/>
-	<Route path="legacy-migrations" element={<AdminLegacyMigrationsPage />} />
+		<Route path="legacy-migrations" element={<AdminLegacyMigrationsPage />} />
 		<Route path="legacy-migrations/:modernUserId" element={<AdminLegacyMigrationDetailPage />} />
-	<Route path="blacklist" element={<AdminBlacklistPage />} />
-	<Route path="activity-log" element={<AdminActivityLogPage />} />
-	<Route path="pastes" element={<AdminPastesPage />} />
-	<Route path="dev/components" element={<DevComponentsPage />} />
+		<Route path="blacklist" element={<AdminBlacklistPage />} />
+		<Route path="activity-log" element={<AdminActivityLogPage />} />
+		<Route path="pastes" element={<AdminPastesPage />} />
+		<Route path="dev/components" element={<DevComponentsPage />} />
 
 		<Route path="bills" element={<AdminBillsPage />} />
 		<Route path="bills/new" element={<AdminBillsNewPage />} />

@@ -42,6 +42,7 @@ import type { Hr } from '@repo/hr'
 import type { Legacy } from '@repo/legacy'
 import type { Srp } from '@repo/srp'
 import type { App } from '../context'
+import thirdPartyAppsRoutes from './admin/third-party-apps'
 
 const app = new Hono<App>()
 
@@ -217,6 +218,8 @@ app.get('/fleets/test', requireAuth(), requireAdmin(), async (c) => {
 		(new URL(c.req.url).origin.includes('localhost') ? 'http://127.0.0.1:8788' : '')
 	return c.html(buildFleetMonitorTestPageHtml(baseUrl))
 })
+
+app.route('/third-party-apps', thirdPartyAppsRoutes)
 
 /**
  * GET /admin/users

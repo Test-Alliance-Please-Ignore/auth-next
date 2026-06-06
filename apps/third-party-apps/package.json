@@ -1,0 +1,47 @@
+{
+	"name": "third-party-apps",
+	"version": "0.1.0",
+	"private": true,
+	"sideEffects": false,
+	"type": "module",
+	"scripts": {
+		"build": "run-vite-build",
+		"check:lint": "run-eslint",
+		"check:types": "run-tsc",
+		"deploy": "run-wrangler-deploy",
+		"dev": "run-vite-dev",
+		"fix:workers-types": "run-wrangler-types",
+		"preview": "run-vite-preview",
+		"tail": "run-wrangler-tail",
+		"test": "run-vitest"
+	},
+	"dependencies": {
+		"@cloudflare/workers-oauth-provider": "0.0.10",
+		"@neondatabase/serverless": "1.0.2",
+		"@repo/admin": "workspace:*",
+		"@repo/db-utils": "workspace:*",
+		"@repo/do-utils": "workspace:*",
+		"@repo/esi": "workspace:*",
+		"@repo/esi-rate-limit": "workspace:*",
+		"@repo/groups": "workspace:*",
+		"@repo/hono-helpers": "workspace:*",
+		"@repo/worker-utils": "workspace:*",
+		"drizzle-orm": "0.44.7",
+		"hono": "4.10.6",
+		"radix3": "1.1.1",
+		"workers-tagged-logger": "0.13.7",
+		"zod": "4.1.12"
+	},
+	"devDependencies": {
+		"@cloudflare/vite-plugin": "1.15.0",
+		"@cloudflare/vitest-pool-workers": "0.10.8",
+		"@repo/eslint-config": "workspace:*",
+		"@repo/tools": "workspace:*",
+		"@repo/typescript-config": "workspace:*",
+		"@repo/vite-config": "workspace:*",
+		"@types/node": "24.10.1",
+		"vite": "7.2.2",
+		"vitest": "3.2.4",
+		"wrangler": "4.87.0"
+	}
+}

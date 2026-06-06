@@ -1,4 +1,4 @@
-import type { AdminWorker as IAdminWorker } from '@repo/admin'
+import type { AdminWorker as IAdminWorker, ThirdPartyAppsAdminWorker as IThirdPartyAppsAdminWorker } from '@repo/admin'
 import type { EveCharacterData } from '@repo/eve-character-data'
 import type { EveTokenStore } from '@repo/eve-token-store'
 import type { Groups } from '@repo/groups'
@@ -17,6 +17,8 @@ export type Env = SharedHonoEnv & {
 	DATABASE_URL: string
 	/** Admin worker service binding (RPC) */
 	ADMIN: IAdminWorker
+	/** Third-party apps worker service binding (RPC) */
+	THIRD_PARTY_APPS: IThirdPartyAppsAdminWorker
 	/** EVE Token Store Durable Object binding */
 	EVE_TOKEN_STORE: DurableObjectNamespace
 	/** EVE Character Data Durable Object binding */

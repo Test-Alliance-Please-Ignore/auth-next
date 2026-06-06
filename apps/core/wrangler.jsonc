@@ -179,6 +179,11 @@
 			"entrypoint": "StructuresWorkerEntrypoint"
 		},
 		{
+			"binding": "THIRD_PARTY_APPS",
+			"service": "third-party-apps",
+			"entrypoint": "ThirdPartyAppsWorkerEntrypoint"
+		},
+		{
 			"binding": "PASTE",
 			"service": "paste",
 			"entrypoint": "PasteWorkerEntrypoint"
