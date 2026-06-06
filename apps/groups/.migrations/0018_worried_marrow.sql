@@ -1,0 +1,2 @@
+ALTER TABLE "group_join_requests" DROP CONSTRAINT "unique_pending_join_request";--> statement-breakpoint
+CREATE UNIQUE INDEX "unique_pending_join_request" ON "group_join_requests" USING btree ("group_id","user_id") WHERE "group_join_requests"."status" = 'pending';

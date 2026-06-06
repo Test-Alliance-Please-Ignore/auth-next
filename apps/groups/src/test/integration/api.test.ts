@@ -760,4 +760,46 @@ describe('Groups Durable Object - Join Requests', () => {
 		const members = await stub.getGroupMembers(group.id, USER_1_ID)
 		expect(members.some((m: { userId: string }) => m.userId === USER_3_ID)).toBe(false)
 	})
+
+	it('should allow rejecting multiple historical join requests for the same user and group', async () => {
+		const stub = getStub<Groups>(testEnv.GROUPS, 'test-join-request-reject-repeat')
+
+		const category = await stub.createCategory(
+			{
+				name: 'Repeat Reject Request Category',
+				visibility: 'public',
+			},
+			ADMIN_USER_ID
+		)
+
+		const group = await stub.createGroup(
+			{
+				categoryId: category.id,
+				name: 'Repeat Reject Request Group',
+				joinMode: 'approval',
+			},
+			USER_1_ID
+		)
+
+		const firstRequest = await stub.createJoinRequest(
+			{
+				groupId: group.id,
+			},
+			USER_3_ID
+		)
+
+		await stub.rejectJoinRequest(firstRequest.id, USER_1_ID)
+
+		const secondRequest = await stub.createJoinRequest(
+			{
+				groupId: group.id,
+			},
+			USER_3_ID
+		)
+
+		await stub.rejectJoinRequest(secondRequest.id, USER_1_ID)
+
+		const members = await stub.getGroupMembers(group.id, USER_1_ID)
+		expect(members.some((m: { userId: string }) => m.userId === USER_3_ID)).toBe(false)
+	})
 })

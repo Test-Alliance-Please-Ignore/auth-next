@@ -10,6 +10,7 @@ import {
 	text,
 	timestamp,
 	unique,
+	uniqueIndex,
 	uuid,
 	varchar,
 } from 'drizzle-orm/pg-core'
@@ -291,8 +292,11 @@ export const groupJoinRequests = pgTable(
 			table.userId,
 			table.status
 		),
-		// One pending request per user per group
-		unique('unique_pending_join_request').on(table.groupId, table.userId, table.status),
+		// One pending request per user per group. Historical approved/rejected/cancelled
+		// requests must not block future applications.
+		uniqueIndex('unique_pending_join_request')
+			.on(table.groupId, table.userId)
+			.where(sql`${table.status} = 'pending'`),
 	]
 )
 
