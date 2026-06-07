@@ -28,6 +28,8 @@ import type { EveTokenStore } from '@repo/eve-token-store'
 import type { InvType, Universe } from '@repo/universe'
 import { computeNextPollDelayMs } from './polling'
 
+const LIVE_FLEET_ESI_OPTIONS = { cacheMode: 'no-store' } as const
+
 /**
  * Normalize station_id to ensure it's either a number or null
  * Handles edge cases where the value might be undefined, empty string, or 0
@@ -548,7 +550,8 @@ export class FleetMonitorDO extends DurableObject {
 			// Fetch fleet info
 			const fleetResponse = await tokenStore.fetchEsi<EsiGetFleetInformation>(
 				`/fleets/${fleetId}/`,
-				characterId
+				characterId,
+				LIVE_FLEET_ESI_OPTIONS
 			)
 			const fleetInfo = esiGetFleetInformationSchema.parse(fleetResponse.data)
 			let nextPollAt = fleetResponse.expiresAt
@@ -559,7 +562,8 @@ export class FleetMonitorDO extends DurableObject {
 			try {
 				const membersResponse = await tokenStore.fetchEsi<EsiGetFleetMembers>(
 					`/fleets/${fleetId}/members/`,
-					characterId
+					characterId,
+					LIVE_FLEET_ESI_OPTIONS
 				)
 				members = esiGetFleetMembersSchema.parse(membersResponse.data)
 				memberCount = members.length

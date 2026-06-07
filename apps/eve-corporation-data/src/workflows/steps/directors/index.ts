@@ -137,7 +137,8 @@ export async function reconcileDirectorsFromCorporationRoles(
 	const corpData = getCorporationDataStub(env, corporationId)
 	const rolesResponse = await tokenStore.fetchEsi<EsiCorporationMemberRole[]>(
 		`/corporations/${corporationId}/roles`,
-		directorCharacterId
+		directorCharacterId,
+		{ cacheMode: 'no-store' }
 	)
 
 	const authoritativeDirectorIds = new Set(

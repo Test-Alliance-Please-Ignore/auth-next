@@ -2348,7 +2348,9 @@ export class EveCorporationDataDO extends DurableObject<Env> implements EveCorpo
 		const basePath = `/corporations/${corporationId}/assets`
 		const result = await syncAssetsPaged({
 			fetchPage: (page) =>
-				tokenStore.fetchEsi(`${basePath}?page=${page}`, characterId) as Promise<
+				tokenStore.fetchEsi(`${basePath}?page=${page}`, characterId, {
+					cacheMode: 'no-store',
+				}) as Promise<
 					EsiResponse<RawEsiAsset[]>
 				>,
 			storeAssets: (assets) => this.storeAssets(corporationId, assets),
@@ -3182,7 +3184,8 @@ export class EveCorporationDataDO extends DurableObject<Env> implements EveCorpo
 
 		const response = await tokenStore.fetchEsi<number[]>(
 			`/corporations/${corporationId}/members`,
-			characterId
+			characterId,
+			{ cacheMode: 'no-store' }
 		)
 
 		const currentMemberIds = new Set(response.data.map(String))
