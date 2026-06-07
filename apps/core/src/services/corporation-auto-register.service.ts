@@ -73,7 +73,7 @@ export async function autoRegisterDirectorCorporation(
 				roles_at_hq?: string[]
 				roles_at_base?: string[]
 				roles_at_other?: string[]
-			}>(`/characters/${characterId}/roles`, characterId)
+			}>(`/characters/${characterId}/roles`, characterId, { cacheMode: 'no-store' })
 
 			roles = rolesResponse.data.roles || []
 		} catch (error) {

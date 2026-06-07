@@ -770,7 +770,8 @@ export class MarketsDO extends DurableObject<Env, {}> implements Markets {
 			// Structure markets endpoint returns all orders in single page
 			const response = await tokenStore.fetchEsi<GetRegionMarketDataResponseObject[]>(
 				`/markets/structures/${structureId}/`,
-				characterId
+				characterId,
+				{ cacheMode: 'no-store' }
 			)
 
 			console.log(

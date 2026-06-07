@@ -280,7 +280,8 @@ export class UniverseDO extends DurableObject<Env, {}> implements Universe {
 
 			const response: EsiResponse<EsiGetStructureResponse> = await tokenStoreStub.fetchEsi(
 				`/universe/structures/${String(structureId)}`,
-				String(authorizedCharacterId)
+				String(authorizedCharacterId),
+				{ cacheMode: 'no-store' }
 			)
 
 			// Validate the response using the schema
@@ -327,7 +328,8 @@ export class UniverseDO extends DurableObject<Env, {}> implements Universe {
 			// fetchEsiAllPages expects the element type, not the array type
 			const result = await tokenStoreStub.fetchEsiAllPages<EsiGetStructureMarketDataResponseObject>(
 				`/markets/structures/${String(structureId)}`,
-				String(authorizedCharacterId)
+				String(authorizedCharacterId),
+				{ cacheMode: 'no-store' }
 			)
 
 			// Validate the combined data using the schema (array of orders)

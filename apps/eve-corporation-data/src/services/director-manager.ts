@@ -273,7 +273,8 @@ export class DirectorManager {
 							() =>
 								this.tokenStore.fetchEsi(
 									`/characters/${candidate.characterId}/roles`,
-									candidate.characterId
+									candidate.characterId,
+									{ cacheMode: 'no-store' }
 								),
 							{
 								onRetry: (attempt, error, delayMs) => {
@@ -861,7 +862,11 @@ export class DirectorManager {
 			// Fetch character roles from ESI
 			const response: EsiResponse<EsiCharacterRoles> = await retryWithBackoff(
 				() =>
-					this.tokenStore.fetchEsi(`/characters/${director.characterId}/roles`, director.characterId),
+					this.tokenStore.fetchEsi(
+						`/characters/${director.characterId}/roles`,
+						director.characterId,
+						{ cacheMode: 'no-store' }
+					),
 				{
 					onRetry: (attempt, error, delayMs) => {
 						logger.warn('[DirectorManager] Retrying director health role check after ESI throttling', {

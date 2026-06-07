@@ -71,6 +71,8 @@ import type { EveCharacterId } from '@repo/eve-types'
 import type { FleetMonitor } from '@repo/fleets'
 import type { Universe } from '@repo/universe'
 
+const LIVE_FLEET_ESI_OPTIONS = { cacheMode: 'no-store' } as const
+
 /**
  * Fleets Durable Object
  *
@@ -154,7 +156,8 @@ export class FleetsDO extends DurableObject implements Fleets {
 
 			const response = await tokenStore.fetchEsi<EsiGetCharacterFleetInformation>(
 				`/characters/${characterId}/fleet/`,
-				characterId
+				characterId,
+				LIVE_FLEET_ESI_OPTIONS
 			)
 
 			// Validate the response locally using the schema
@@ -247,7 +250,8 @@ export class FleetsDO extends DurableObject implements Fleets {
 		try {
 			const fleetResponse = await tokenStore.fetchEsi<EsiGetFleetInformation>(
 				`/fleets/${fleetId}/`,
-				fleetBossId
+				fleetBossId,
+				LIVE_FLEET_ESI_OPTIONS
 			)
 			fleetData = esiGetFleetInformationSchema.parse(fleetResponse.data)
 		} catch (error) {
@@ -357,7 +361,8 @@ export class FleetsDO extends DurableObject implements Fleets {
 		try {
 			const fleetResponse = await tokenStore.fetchEsi<EsiGetFleetInformation>(
 				`/fleets/${invitation.fleetId}/`,
-				invitation.fleetBossId
+				invitation.fleetBossId,
+				LIVE_FLEET_ESI_OPTIONS
 			)
 			fleetInfo = esiGetFleetInformationSchema.parse(fleetResponse.data)
 		} catch (error) {
@@ -415,7 +420,8 @@ export class FleetsDO extends DurableObject implements Fleets {
 		try {
 			const fleetResponse = await tokenStore.fetchEsi<EsiGetFleetInformation>(
 				`/fleets/${fleetId}/`,
-				characterId
+				characterId,
+				LIVE_FLEET_ESI_OPTIONS
 			)
 			fleetInfo = esiGetFleetInformationSchema.parse(fleetResponse.data)
 
@@ -492,7 +498,8 @@ export class FleetsDO extends DurableObject implements Fleets {
 		try {
 			const membersResponse = await tokenStore.fetchEsi<EsiGetFleetMembers>(
 				`/fleets/${fleetId}/members/`,
-				characterId
+				characterId,
+				LIVE_FLEET_ESI_OPTIONS
 			)
 
 			// Debug logging to see raw ESI response
@@ -626,7 +633,8 @@ export class FleetsDO extends DurableObject implements Fleets {
 		try {
 			const membersResponse = await tokenStore.fetchEsi<EsiGetFleetMembers>(
 				`/fleets/${invitation.fleetId}/members/`,
-				invitation.fleetBossId
+				invitation.fleetBossId,
+				LIVE_FLEET_ESI_OPTIONS
 			)
 
 			// Debug logging to see raw ESI response
@@ -758,7 +766,8 @@ export class FleetsDO extends DurableObject implements Fleets {
 		try {
 			const fleetResponse = await tokenStore.fetchEsi<EsiGetFleetInformation>(
 				`/fleets/${fleetId}/`,
-				characterId
+				characterId,
+				LIVE_FLEET_ESI_OPTIONS
 			)
 			// Validate the response to ensure it's valid fleet data
 			fleetInfo = esiGetFleetInformationSchema.parse(fleetResponse.data)
@@ -891,7 +900,8 @@ export class FleetsDO extends DurableObject implements Fleets {
 		try {
 			const fleetResponse = await tokenStore.fetchEsi<EsiGetFleetInformation>(
 				`/fleets/${fleetId}/`,
-				characterId
+				characterId,
+				LIVE_FLEET_ESI_OPTIONS
 			)
 			fleetInfo = esiGetFleetInformationSchema.parse(fleetResponse.data)
 		} catch (error) {

@@ -230,7 +230,9 @@ export class EveCharacterDataDO extends DurableObject<Env> implements EveCharact
 			solar_system_id: number
 			station_id?: number
 			structure_id?: number
-		}>(`/characters/${String(characterId)}/location`, String(characterId))
+		}>(`/characters/${String(characterId)}/location`, String(characterId), {
+			cacheMode: 'no-store',
+		})
 
 		const solarSystemId = String(response.data.solar_system_id)
 		const stationId = response.data.station_id ? String(response.data.station_id) : null
@@ -272,7 +274,9 @@ export class EveCharacterDataDO extends DurableObject<Env> implements EveCharact
 			last_logout?: string
 			logins?: number
 			online: boolean
-		}>(`/characters/${String(characterId)}/online`, String(characterId))
+		}>(`/characters/${String(characterId)}/online`, String(characterId), {
+			cacheMode: 'no-store',
+		})
 
 		const { online, last_login, last_logout, logins } = response.data
 
@@ -315,7 +319,8 @@ export class EveCharacterDataDO extends DurableObject<Env> implements EveCharact
 			const tokenStoreStub = getStub<EveTokenStore>(this.env.EVE_TOKEN_STORE, 'default')
 			const response: EsiResponse<EsiCharacterRoles> = await tokenStoreStub.fetchEsi(
 				`/characters/${String(characterId)}/roles`,
-				String(characterId)
+				String(characterId),
+				{ cacheMode: 'no-store' }
 			)
 
 			return response.data
@@ -756,7 +761,8 @@ export class EveCharacterDataDO extends DurableObject<Env> implements EveCharact
 		const tokenStoreStub = getStub<EveTokenStore>(this.env.EVE_TOKEN_STORE, 'default')
 		const response = await tokenStoreStub.fetchEsi<number>(
 			`/characters/${String(characterId)}/wallet`,
-			String(characterId)
+			String(characterId),
+			{ cacheMode: 'no-store' }
 		)
 
 		const balance = String(response.data)
@@ -822,7 +828,9 @@ export class EveCharacterDataDO extends DurableObject<Env> implements EveCharact
 				context_id?: number
 				context_id_type?: string
 			}>
-		>(`/characters/${String(characterId)}/wallet/journal`, String(characterId))
+		>(`/characters/${String(characterId)}/wallet/journal`, String(characterId), {
+			cacheMode: 'no-store',
+		})
 
 		const rawEntries = response.data
 
@@ -937,7 +945,9 @@ export class EveCharacterDataDO extends DurableObject<Env> implements EveCharact
 				is_personal: boolean
 				journal_ref_id: number
 			}>
-		>(`/characters/${String(characterId)}/wallet/transactions`, String(characterId))
+		>(`/characters/${String(characterId)}/wallet/transactions`, String(characterId), {
+			cacheMode: 'no-store',
+		})
 
 		const rawTransactions = response.data
 
@@ -1030,7 +1040,9 @@ export class EveCharacterDataDO extends DurableObject<Env> implements EveCharact
 				escrow?: number
 				region_id?: number
 			}>
-		>(`/characters/${String(characterId)}/orders`, String(characterId))
+		>(`/characters/${String(characterId)}/orders`, String(characterId), {
+			cacheMode: 'no-store',
+		})
 
 		const rawOrders = response.data
 
