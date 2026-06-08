@@ -356,7 +356,8 @@ export interface EveTokenStore {
 	 */
 	validateToken(
 		characterId: string,
-		requiredScopes?: readonly string[]
+		requiredScopes?: readonly string[],
+		options?: { force?: boolean }
 	): Promise<TokenValidationResult>
 
 	/**

@@ -79,6 +79,7 @@ export function UsePublicAuth(
 
 	descriptor.value = async function (this: EsiDOInstance, ...args: unknown[]) {
 		try {
+			await this.esiFetcher.clearAuthentication()
 			return await originalMethod.apply(this, args)
 		} finally {
 			await this.esiFetcher.clearAuthentication()

@@ -29,6 +29,7 @@ import type {
 	CharacterMarketTransactionData,
 	CharacterMarketTransactionsWindowFilters,
 	CharacterPublicData,
+	CharacterPublicRefreshResult,
 	CharacterSensitiveData,
 	CharacterSkillsData,
 	CharacterSkillsResponse,
@@ -123,12 +124,80 @@ export class EveCharacterDataDO extends DurableObject<Env> implements EveCharact
 			forceRefresh
 		)
 		try {
-			await this.fetchAndStorePublicInfo(characterId, forceRefresh)
-			await this.fetchAndStoreCorporationHistory(characterId, forceRefresh)
+			await this.refreshPublicCharacterData(characterId, forceRefresh)
 			console.log('EveCharacterData.fetchCharacterData completed successfully')
 		} catch (error) {
 			console.error('EveCharacterData.fetchCharacterData failed:', error)
 			throw error
+		}
+	}
+
+	/**
+	 * Fetch, store, and classify public character data.
+	 */
+	async refreshPublicCharacterData(
+		characterId: string,
+		forceRefresh = false
+	): Promise<CharacterPublicRefreshResult> {
+		const previousCharacterInfo = await this.getCharacterInfo(characterId)
+		let currentCharacterInfo: CharacterPublicData | null = null
+
+		try {
+			currentCharacterInfo = await this.fetchAndStorePublicInfo(characterId, forceRefresh)
+			if (currentCharacterInfo === null) {
+				return {
+					success: false,
+					isDeleted: true,
+					previousCorporationId: previousCharacterInfo?.corporationId ?? null,
+					currentCorporationId: createEveCorporationId('1000001'),
+					previousAllianceId: previousCharacterInfo?.allianceId ?? null,
+					currentAllianceId: null,
+				}
+			}
+
+			const previousCorporationId = previousCharacterInfo?.corporationId ?? null
+			const currentCorporationId = currentCharacterInfo.corporationId ?? null
+			const previousAllianceId = previousCharacterInfo?.allianceId ?? null
+			const currentAllianceId = currentCharacterInfo.allianceId ?? null
+			const affiliationChanged =
+				previousCorporationId !== currentCorporationId || previousAllianceId !== currentAllianceId
+			const isDeleted = String(currentCorporationId ?? '') === '1000001'
+
+			if (!isDeleted) {
+				await this.fetchAndStoreCorporationHistory(characterId)
+			}
+
+			return {
+				success: !isDeleted,
+				isDeleted,
+				characterName: currentCharacterInfo.name,
+				affiliationChanged,
+				previousCorporationId,
+				currentCorporationId,
+				previousAllianceId,
+				currentAllianceId,
+			}
+		} catch (error) {
+			const errorMessage = error instanceof Error ? error.message : String(error)
+			const lowerMessage = errorMessage.toLowerCase()
+			const isDeletedCharacterError =
+				lowerMessage.includes('has been deleted') ||
+				lowerMessage.includes('character deleted') ||
+				lowerMessage.includes('character_deleted') ||
+				lowerMessage.includes('esi request failed: 404')
+
+			if (!isDeletedCharacterError) {
+				throw error
+			}
+
+			return {
+				success: false,
+				isDeleted: true,
+				previousCorporationId: previousCharacterInfo?.corporationId ?? null,
+				currentCorporationId: null,
+				previousAllianceId: previousCharacterInfo?.allianceId ?? null,
+				currentAllianceId: null,
+			}
 		}
 	}
 
@@ -430,51 +499,112 @@ export class EveCharacterDataDO extends DurableObject<Env> implements EveCharact
 	private async fetchAndStorePublicInfo(
 		characterId: string,
 		_forceRefresh = false
-	): Promise<CharacterPublicData> {
+	): Promise<CharacterPublicData | null> {
 		const tokenStoreStub = getStub<EveTokenStore>(this.env.EVE_TOKEN_STORE, 'default')
+		const existingPublicInfo = await this.db.query.characterPublicInfo.findFirst({
+			where: eq(characterPublicInfo.characterId, characterId),
+		})
+		if (_forceRefresh) {
+			await tokenStoreStub.clearEsiCache(`/characters/${String(characterId)}`)
+		}
 
 		// Fetch public info and affiliation in parallel. Affiliation has a shorter ESI
 		// cache (~1h vs 24h) so we prefer it for corporation_id/alliance_id when available.
 		const [publicInfoResponse, affiliationResponse] = await Promise.allSettled([
-			tokenStoreStub.fetchEsi<{
-				alliance_id?: number
-				birthday: string
-				bloodline_id: number
-				corporation_id: number
-				description?: string
-				faction_id?: number
-				gender: 'male' | 'female'
-				name: string
-				race_id: number
-				security_status?: number
-				title?: string
-			}>(`/characters/${String(characterId)}`, String(characterId)),
+			tokenStoreStub.fetchPublicEsi<EsiCharacterPublicInfo>(`/characters/${String(characterId)}`),
 			tokenStoreStub.fetchCharacterAffiliations([characterId]),
 		])
 
+		const affiliation =
+			affiliationResponse.status === 'fulfilled'
+				? affiliationResponse.value.find((entry) => String(entry.character_id) === characterId)
+				: null
+		const affiliationLooksDeleted = String(affiliation?.corporation_id ?? '') === '1000001'
+
 		if (publicInfoResponse.status === 'rejected') {
-			throw publicInfoResponse.reason
+			const errorMessage =
+				publicInfoResponse.reason instanceof Error
+					? publicInfoResponse.reason.message
+					: String(publicInfoResponse.reason)
+			const lowerMessage = errorMessage.toLowerCase()
+			const publicInfoLooksDeleted =
+				lowerMessage.includes('has been deleted') ||
+				lowerMessage.includes('character deleted') ||
+				lowerMessage.includes('character_deleted') ||
+				lowerMessage.includes('esi request failed: 404')
+			const shouldTreatAsDeleted = publicInfoLooksDeleted || affiliationLooksDeleted
+
+			if (!shouldTreatAsDeleted) {
+				throw publicInfoResponse.reason
+			}
+
+			if (!existingPublicInfo) {
+				// We know the character is deleted, but we do not have enough cached
+				// identity data to materialize a placeholder row yet.
+				return null
+			}
+
+			const corporationId = affiliation?.corporation_id
+				? String(affiliation.corporation_id)
+				: '1000001'
+			const allianceId = affiliation?.alliance_id
+				? String(affiliation.alliance_id)
+				: existingPublicInfo.allianceId ?? null
+
+			try {
+				await this.db
+					.insert(characterPublicInfo)
+					.values({
+						characterId,
+						name: existingPublicInfo.name,
+						corporationId,
+						allianceId,
+						birthday: existingPublicInfo.birthday,
+						raceId: existingPublicInfo.raceId,
+						bloodlineId: existingPublicInfo.bloodlineId,
+						securityStatus: existingPublicInfo.securityStatus ?? undefined,
+						description: existingPublicInfo.description ?? undefined,
+						gender: existingPublicInfo.gender,
+						factionId: existingPublicInfo.factionId ?? null,
+						title: existingPublicInfo.title ?? null,
+						updatedAt: new Date(),
+					})
+					.onConflictDoUpdate({
+						target: characterPublicInfo.characterId,
+						set: {
+							name: existingPublicInfo.name,
+							corporationId,
+							allianceId,
+							birthday: existingPublicInfo.birthday,
+							raceId: existingPublicInfo.raceId,
+							bloodlineId: existingPublicInfo.bloodlineId,
+							securityStatus: existingPublicInfo.securityStatus ?? undefined,
+							description: existingPublicInfo.description ?? undefined,
+							gender: existingPublicInfo.gender,
+							factionId: existingPublicInfo.factionId ?? null,
+							title: existingPublicInfo.title ?? null,
+							updatedAt: new Date(),
+						},
+					})
+			} catch (error) {
+				this.logDbOperationError('fetchAndStorePublicInfo.deletedUpsert', characterId, error, {
+					name: existingPublicInfo.name,
+					corporationId,
+					allianceId,
+				})
+				throw error
+			}
+
+			return (await this.getCharacterInfo(characterId))!
 		}
 
-		const rawData = publicInfoResponse.value.data
-
-		// Convert numeric IDs to strings
-		const data: EsiCharacterPublicInfo = {
-			...rawData,
-			alliance_id: rawData.alliance_id ?? undefined,
-			bloodline_id: rawData.bloodline_id,
-			corporation_id: rawData.corporation_id,
-			faction_id: rawData.faction_id ?? undefined,
-			race_id: rawData.race_id,
-		}
+		const data: EsiCharacterPublicInfo = publicInfoResponse.value.data
 
 		// Prefer affiliation data for corporation/alliance — shorter ESI cache means fresher data.
 		let corporationId = String(data.corporation_id)
 		let allianceId = data.alliance_id ? String(data.alliance_id) : null
 
 		if (affiliationResponse.status === 'fulfilled') {
-			const affiliations = affiliationResponse.value
-			const affiliation = affiliations.find((a) => a.character_id === parseInt(characterId, 10))
 			if (affiliation) {
 				corporationId = String(affiliation.corporation_id)
 				allianceId = affiliation.alliance_id ? String(affiliation.alliance_id) : null

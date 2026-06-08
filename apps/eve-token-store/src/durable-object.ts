@@ -715,7 +715,8 @@ export class EveTokenStoreDO extends DurableObject<Env> implements EveTokenStore
 	 */
 	async validateToken(
 		characterId: string,
-		requiredScopes: readonly string[] = EVE_SCOPES_ALL
+		requiredScopes: readonly string[] = EVE_SCOPES_ALL,
+		options?: { force?: boolean }
 	): Promise<TokenValidationResult> {
 		const character = await this.db.query.eveCharacters.findFirst({
 			where: eq(eveCharacters.characterId, String(characterId)),
@@ -799,7 +800,11 @@ export class EveTokenStoreDO extends DurableObject<Env> implements EveTokenStore
 				status: 'permanent_invalid',
 			}
 		}
-		if (tokenRecord.nextRetryAt && tokenRecord.nextRetryAt.getTime() > Date.now()) {
+		if (
+			!options?.force &&
+			tokenRecord.nextRetryAt &&
+			tokenRecord.nextRetryAt.getTime() > Date.now()
+		) {
 			return {
 				characterId,
 				error: `Token refresh cooldown active until ${tokenRecord.nextRetryAt.toISOString()}`,

@@ -13,6 +13,7 @@ export interface WorkflowContext {
 	userId: string
 	refreshMode: 'scheduled' | 'event' | 'manual'
 	suppressDiscordRefresh?: boolean
+	forceTokenValidation?: boolean
 }
 
 /**

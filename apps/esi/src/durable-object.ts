@@ -188,7 +188,7 @@ import type {
 } from '@repo/esi'
 import type { Env } from './context'
 import type { EsiDb } from './storage/state'
-import { UseCharacterAuth, UseCorporationAuth } from './lib/auth-decorators'
+import { UseCharacterAuth, UseCorporationAuth, UsePublicAuth } from './lib/auth-decorators'
 
 // ========================================================================
 // CACHE REVALIDATION TTL CONSTANTS
@@ -230,7 +230,7 @@ export class EsiDO extends DurableObject<Env> implements Esi {
 		this.esiFetcher.setDefaultCacheMode(mode)
 	}
 
-	@UseCharacterAuth
+	@UsePublicAuth
 	async fetchCharacterAffiliation(
 		characterId: string,
 		characterIds: string[],
@@ -278,7 +278,7 @@ export class EsiDO extends DurableObject<Env> implements Esi {
 		}
 	}
 
-	@UseCharacterAuth
+	@UsePublicAuth
 	async fetchCharacterPublicInfo(
 		characterId: string,
 		options?: EsiRequestOptions

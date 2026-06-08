@@ -1216,6 +1216,7 @@ app.post('/users/:userId/sync', requireAuth(), requireAdmin(), async (c) => {
 			source: `admin-sync-${user.id}`,
 			bypassThrottle: true,
 			refreshMode: 'manual',
+			forceTokenValidation: true,
 		})
 		if (triggerResult.status === 'failed') {
 			return c.json(

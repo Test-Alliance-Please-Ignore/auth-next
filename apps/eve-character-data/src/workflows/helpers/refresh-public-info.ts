@@ -1,18 +1,10 @@
 import { getStub } from '@repo/do-utils'
 import { logger } from '@repo/hono-helpers'
 
-import type { EveCharacterData } from '@repo/eve-character-data'
+import type { CharacterPublicRefreshResult, EveCharacterData } from '@repo/eve-character-data'
 import type { Env } from '../../context'
 
-export interface RefreshPublicInfoResult {
-	success: boolean
-	characterName?: string
-	affiliationChanged?: boolean
-	previousCorporationId?: string | null
-	currentCorporationId?: string | null
-	previousAllianceId?: string | null
-	currentAllianceId?: string | null
-}
+export type RefreshPublicInfoResult = CharacterPublicRefreshResult
 
 function extractErrorDetails(error: unknown): Record<string, unknown> {
 	if (!error || typeof error !== 'object') {
@@ -52,40 +44,19 @@ export async function refreshPublicInfo(
 	const characterDataStub = getStub<EveCharacterData>(env.EVE_CHARACTER_DATA, normalizedCharacterId)
 
 	try {
-		const previousCharacterInfo = await characterDataStub.getCharacterInfo(normalizedCharacterId)
-
-		// Fetch and store public data (public info, portrait, corporation history)
-		await characterDataStub.fetchCharacterData(normalizedCharacterId, true)
-
-		// Get character info to return name
-		const characterInfo = await characterDataStub.getCharacterInfo(normalizedCharacterId)
-		const characterName = characterInfo?.name
-		const previousCorporationId = previousCharacterInfo?.corporationId ?? null
-		const currentCorporationId = characterInfo?.corporationId ?? null
-		const previousAllianceId = previousCharacterInfo?.allianceId ?? null
-		const currentAllianceId = characterInfo?.allianceId ?? null
-		const affiliationChanged =
-			previousCorporationId !== currentCorporationId || previousAllianceId !== currentAllianceId
+		const result = await characterDataStub.refreshPublicCharacterData(normalizedCharacterId, true)
 
 		logger.info('[refreshPublicInfo] Public info refreshed', {
 			characterId: normalizedCharacterId,
-			characterName,
-			affiliationChanged,
-			previousCorporationId,
-			currentCorporationId,
-			previousAllianceId,
-			currentAllianceId,
+			characterName: result.characterName,
+			affiliationChanged: result.affiliationChanged,
+			previousCorporationId: result.previousCorporationId,
+			currentCorporationId: result.currentCorporationId,
+			previousAllianceId: result.previousAllianceId,
+			currentAllianceId: result.currentAllianceId,
 		})
 
-		return {
-			success: true,
-			characterName,
-			affiliationChanged,
-			previousCorporationId,
-			currentCorporationId,
-			previousAllianceId,
-			currentAllianceId,
-		}
+		return result
 	} catch (error) {
 		logger.error('[refreshPublicInfo] Failed to refresh public info', {
 			characterId: normalizedCharacterId,

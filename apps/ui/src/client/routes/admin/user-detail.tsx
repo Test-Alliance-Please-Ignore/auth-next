@@ -176,17 +176,21 @@ export default function UserDetailPage() {
 		subjectUserId: userId!,
 	})
 
+	const primaryCharacter =
+		user?.characters.find((character) => character.is_primary) ?? user?.characters[0] ?? null
+	const primaryCharacterName = primaryCharacter?.characterName || 'this user'
+
 	useEffect(() => {
 		if (!userId) return
 		const path = `/admin/users/${userId}`
 		if (user) {
-			const label = user.characters.find((character) => character.is_primary)?.characterName ?? user.id
+			const label = primaryCharacter?.characterName ?? user.id
 			setCustomLabel(path, label)
 		}
 		return () => {
 			clearCustomLabel(path)
 		}
-	}, [clearCustomLabel, setCustomLabel, user, userId])
+	}, [clearCustomLabel, primaryCharacter, setCustomLabel, user, userId])
 
 	if (isLoading) {
 		return (
@@ -517,17 +521,23 @@ export default function UserDetailPage() {
 			<Card>
 				<CardContent className="pt-6">
 					<div className="flex items-start gap-6">
-						<img
-							src={characterPortraitUrl(user.mainCharacterId, 128)}
-							alt={user.characters.find((c) => c.is_primary)?.characterName || 'Unknown'}
-							className="h-24 w-24 rounded-full"
-						/>
+						{primaryCharacter ? (
+							<img
+								src={characterPortraitUrl(primaryCharacter.characterId, 128)}
+								alt={primaryCharacterName || 'Unknown'}
+								className="h-24 w-24 rounded-full"
+							/>
+						) : (
+							<div className="flex h-24 w-24 items-center justify-center rounded-full border border-dashed text-xs text-muted-foreground">
+								No live characters
+							</div>
+						)}
 						<div className="flex-1">
 							<div className="flex items-start justify-between">
 								<div>
 									<div className="flex items-center justify-between gap-2">
 										<h2 className="text-2xl font-bold">
-											{user.characters.find((c) => c.is_primary)?.characterName || 'Unknown'}
+											{primaryCharacterName || 'Unknown'}
 										</h2>
 										{user.is_admin && (
 											<Badge variant="default">
@@ -1081,8 +1091,8 @@ export default function UserDetailPage() {
 						</DialogTitle>
 						<DialogDescription>
 							{user.is_admin
-								? `Are you sure you want to revoke admin privileges for ${user.characters.find((c) => c.is_primary)?.characterName || 'this user'}? They will lose access to all admin features.`
-								: `Are you sure you want to grant admin privileges to ${user.characters.find((c) => c.is_primary)?.characterName || 'this user'}? They will have full access to all admin features.`}
+								? `Are you sure you want to revoke admin privileges for ${primaryCharacterName}? They will lose access to all admin features.`
+								: `Are you sure you want to grant admin privileges to ${primaryCharacterName}? They will have full access to all admin features.`}
 						</DialogDescription>
 					</DialogHeader>
 					<DialogFooter>
@@ -1124,7 +1134,7 @@ export default function UserDetailPage() {
 						<DialogTitle>Revoke Discord Authorization</DialogTitle>
 						<DialogDescription>
 							Are you sure you want to revoke Discord authorization for{' '}
-							{user.characters.find((c) => c.is_primary)?.characterName || 'this user'}? This will
+							{primaryCharacterName}? This will
 							mark their Discord account as unauthorized and they will need to re-link it.
 						</DialogDescription>
 					</DialogHeader>
@@ -1155,7 +1165,7 @@ export default function UserDetailPage() {
 						<DialogTitle>Unlink Discord Account</DialogTitle>
 						<DialogDescription>
 							Are you sure you want to completely unlink the Discord account for{' '}
-							{user.characters.find((c) => c.is_primary)?.characterName || 'this user'}? This action
+							{primaryCharacterName}? This action
 							will:
 							<ul className="list-disc list-inside mt-2 space-y-1">
 								<li>Remove the Discord link from their account</li>
@@ -1194,7 +1204,7 @@ export default function UserDetailPage() {
 						<DialogTitle>Clear All Sessions</DialogTitle>
 						<DialogDescription>
 							Are you sure you want to clear all active sessions for{' '}
-							{user.characters.find((c) => c.is_primary)?.characterName || 'this user'}? This will
+							{primaryCharacterName}? This will
 							force them to re-authenticate on all devices.
 						</DialogDescription>
 					</DialogHeader>
@@ -1225,7 +1235,7 @@ export default function UserDetailPage() {
 						<DialogTitle>Sync User Data</DialogTitle>
 						<DialogDescription>
 							Are you sure you want to trigger a data sync for{' '}
-							{user.characters.find((c) => c.is_primary)?.characterName || 'this user'}? This will
+							{primaryCharacterName}? This will
 							refresh all character data, authenticated data, and role assignments. The sync runs in
 							the background and may take a few minutes to complete.
 						</DialogDescription>
@@ -1297,7 +1307,7 @@ export default function UserDetailPage() {
 						<DialogDescription>
 							Are you sure you want to set "{selectedCharacterData?.characterName}" as the primary
 							character for{' '}
-							{user.characters.find((c) => c.is_primary)?.characterName || 'this user'}? This will
+							{primaryCharacterName}? This will
 							change the user's main character and update their display name throughout the system.
 						</DialogDescription>
 					</DialogHeader>
@@ -1331,7 +1341,7 @@ export default function UserDetailPage() {
 						<DialogTitle>Discord Access Update Results</DialogTitle>
 						<DialogDescription>
 							Results of updating Discord server access for{' '}
-							{user.characters.find((c) => c.is_primary)?.characterName || 'this user'}
+							{primaryCharacterName}
 						</DialogDescription>
 					</DialogHeader>
 					{discordUpdateResults && (
@@ -1454,7 +1464,7 @@ export default function UserDetailPage() {
 					<DialogHeader>
 						<DialogTitle>Blacklist User</DialogTitle>
 						<DialogDescription>
-							Blacklist {user.characters.find((c) => c.is_primary)?.characterName || 'this user'}.
+							Blacklist {primaryCharacterName}.
 							This will immediately disable all services and prevent login. This action can be
 							reversed.
 						</DialogDescription>
@@ -1504,7 +1514,7 @@ export default function UserDetailPage() {
 						<DialogTitle>Remove from Blacklist</DialogTitle>
 						<DialogDescription>
 							Are you sure you want to remove{' '}
-							{user.characters.find((c) => c.is_primary)?.characterName || 'this user'} from the
+							{primaryCharacterName} from the
 							blacklist? They will regain access to all services immediately.
 						</DialogDescription>
 					</DialogHeader>
@@ -1539,7 +1549,7 @@ export default function UserDetailPage() {
 				open={addNoteDialogOpen}
 				onOpenChange={setAddNoteDialogOpen}
 				subjectUserId={user.id}
-				subjectCharacterName={user.characters.find((c) => c.is_primary)?.characterName}
+				subjectCharacterName={primaryCharacter?.characterName}
 				onSuccess={() => {
 					setMessage({ type: 'success', text: 'Note added successfully' })
 					setTimeout(() => setMessage(null), 3000)

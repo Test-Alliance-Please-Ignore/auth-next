@@ -179,6 +179,7 @@ export interface UserRefreshWorkflowParams {
 	userId: string
 	refreshMode?: 'scheduled' | 'event' | 'manual'
 	suppressDiscordRefresh?: boolean
+	forceTokenValidation?: boolean
 }
 
 /**
@@ -198,7 +199,8 @@ export class UserRefreshWorkflow extends WorkflowEntrypoint<Env, UserRefreshWork
 		userId: string,
 		workflowInstanceId: string,
 		refreshMode: UserRefreshWorkflowParams['refreshMode'] = 'scheduled',
-		suppressDiscordRefresh: boolean = false
+		suppressDiscordRefresh: boolean = false,
+		forceTokenValidation: boolean = false
 	): WorkflowContext {
 		return {
 			env: this.env,
@@ -207,6 +209,7 @@ export class UserRefreshWorkflow extends WorkflowEntrypoint<Env, UserRefreshWork
 			userId,
 			refreshMode,
 			suppressDiscordRefresh,
+			forceTokenValidation,
 		}
 	}
 
@@ -216,6 +219,7 @@ export class UserRefreshWorkflow extends WorkflowEntrypoint<Env, UserRefreshWork
 		workflowInstanceId: string,
 		refreshMode: UserRefreshWorkflowParams['refreshMode'],
 		suppressDiscordRefresh: boolean,
+		forceTokenValidation: boolean,
 		characterId: string
 	): Promise<CharacterRefreshOutcome> {
 		console.log('[Workflow] Character refresh started', {
@@ -233,7 +237,8 @@ export class UserRefreshWorkflow extends WorkflowEntrypoint<Env, UserRefreshWork
 						userId,
 						workflowInstanceId,
 						refreshMode,
-						suppressDiscordRefresh
+						suppressDiscordRefresh,
+						forceTokenValidation
 					)
 					return updateCharacterPublicInfo(ctx, characterId)
 				}
@@ -248,7 +253,8 @@ export class UserRefreshWorkflow extends WorkflowEntrypoint<Env, UserRefreshWork
 							userId,
 							workflowInstanceId,
 							refreshMode,
-							suppressDiscordRefresh
+							suppressDiscordRefresh,
+							forceTokenValidation
 						)
 						return reconcileCharacterCorporationMembership(ctx, characterId, null)
 					}
@@ -269,7 +275,8 @@ export class UserRefreshWorkflow extends WorkflowEntrypoint<Env, UserRefreshWork
 						userId,
 						workflowInstanceId,
 						refreshMode,
-						suppressDiscordRefresh
+						suppressDiscordRefresh,
+						forceTokenValidation
 					)
 					return reconcileCharacterCorporationMembership(
 						ctx,
@@ -287,7 +294,8 @@ export class UserRefreshWorkflow extends WorkflowEntrypoint<Env, UserRefreshWork
 						userId,
 						workflowInstanceId,
 						refreshMode,
-						suppressDiscordRefresh
+						suppressDiscordRefresh,
+						forceTokenValidation
 					)
 					return tryCharacterAuthenticatedFetch(ctx, characterId)
 				}
@@ -337,10 +345,15 @@ export class UserRefreshWorkflow extends WorkflowEntrypoint<Env, UserRefreshWork
 		event: WorkflowEvent<UserRefreshWorkflowParams>,
 		step: WorkflowStep
 	): Promise<UserRefreshWorkflowResult> {
-		const { userId, refreshMode = 'scheduled', suppressDiscordRefresh = false } = event.payload
+		const {
+			userId,
+			refreshMode = 'scheduled',
+			suppressDiscordRefresh = false,
+			forceTokenValidation = false,
+		} = event.payload
 		const workflowInstanceId = event.instanceId
 
-		const logContext = { userId, workflowInstanceId, refreshMode }
+		const logContext = { userId, workflowInstanceId, refreshMode, forceTokenValidation }
 		const steps: Record<string, WorkflowStepStatus> = {}
 		let characterOutcomes: CharacterRefreshOutcome[] = []
 		let characterCount = 0
@@ -363,7 +376,8 @@ export class UserRefreshWorkflow extends WorkflowEntrypoint<Env, UserRefreshWork
 					userId,
 					workflowInstanceId,
 					refreshMode,
-					suppressDiscordRefresh
+					suppressDiscordRefresh,
+					forceTokenValidation
 				)
 				return checkUserBlacklisted(ctx)
 			})
@@ -381,7 +395,8 @@ export class UserRefreshWorkflow extends WorkflowEntrypoint<Env, UserRefreshWork
 						userId,
 						workflowInstanceId,
 						refreshMode,
-						suppressDiscordRefresh
+						suppressDiscordRefresh,
+						forceTokenValidation
 					)
 					return disableBlacklistedUser(ctx)
 				})
@@ -419,6 +434,7 @@ export class UserRefreshWorkflow extends WorkflowEntrypoint<Env, UserRefreshWork
 						workflowInstanceId,
 						refreshMode,
 						suppressDiscordRefresh,
+						forceTokenValidation,
 						character.characterId
 					)
 			)
@@ -465,7 +481,8 @@ export class UserRefreshWorkflow extends WorkflowEntrypoint<Env, UserRefreshWork
 								userId,
 								workflowInstanceId,
 								refreshMode,
-								suppressDiscordRefresh
+								suppressDiscordRefresh,
+								forceTokenValidation
 							)
 							return getUserRoleAttachments(ctx)
 						}
@@ -495,7 +512,8 @@ export class UserRefreshWorkflow extends WorkflowEntrypoint<Env, UserRefreshWork
 						userId,
 						workflowInstanceId,
 						refreshMode,
-						suppressDiscordRefresh
+						suppressDiscordRefresh,
+						forceTokenValidation
 					)
 					return attachUserRoles(ctx)
 				})
@@ -535,7 +553,8 @@ export class UserRefreshWorkflow extends WorkflowEntrypoint<Env, UserRefreshWork
 								userId,
 								workflowInstanceId,
 								refreshMode,
-								suppressDiscordRefresh
+								suppressDiscordRefresh,
+								forceTokenValidation
 							)
 							return reconcileAffiliationBasedGroupMemberships(ctx)
 						}
@@ -565,7 +584,8 @@ export class UserRefreshWorkflow extends WorkflowEntrypoint<Env, UserRefreshWork
 					userId,
 					workflowInstanceId,
 					refreshMode,
-					suppressDiscordRefresh
+					suppressDiscordRefresh,
+					forceTokenValidation
 				)
 				return updateCompletionTimestamp(ctx)
 			})
