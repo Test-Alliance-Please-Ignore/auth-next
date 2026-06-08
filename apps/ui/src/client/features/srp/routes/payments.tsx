@@ -1,5 +1,5 @@
 import { Check, Copy } from 'lucide-react'
-import { useEffect, useLayoutEffect, useRef, useState } from 'react'
+import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import { Link, Navigate } from 'react-router-dom'
 import toast from '@/lib/toast'
 
@@ -12,6 +12,15 @@ import { usePageTitle } from '@/hooks/usePageTitle'
 import { useUserPermissions } from '@/hooks/useUserPermissions'
 
 import { useMarkPaid, usePendingPayments, usePendingPayoutTotal } from '../hooks'
+import {
+	dismissPaymentQueueRequest,
+	prunePaymentQueueDismissals,
+	usePaymentQueueState,
+} from '../state/payment-queue-store'
+import {
+	setReviewQueueSnapshot,
+	useReviewQueueEntityMap,
+} from '../state/review-queue-snapshot-store'
 import { formatISK, formatISKShort, formatRelativeTime } from '../utils'
 
 import type { SRPRequestResponse } from '../types'
@@ -53,7 +62,6 @@ function PaymentStack() {
 		{ refetchOnWindowFocus: false, refetchOnReconnect: false }
 	)
 	const { data: payoutTotalData } = usePendingPayoutTotal()
-	const [dismissed, setDismissed] = useState<Set<string>>(new Set())
 	const [ghosts, setGhosts] = useState<Map<string, GhostExitCard>>(new Map())
 	const [showLoadWarning, setShowLoadWarning] = useState(false)
 	const markPaid = useMarkPaid()
@@ -62,6 +70,9 @@ function PaymentStack() {
 	const previousCardTopsRef = useRef<Map<string, number>>(new Map())
 	const hasMountedRef = useRef(false)
 	const rawRequests: SRPRequestResponse[] = (data?.requests ?? []) as SRPRequestResponse[]
+	const entities = useReviewQueueEntityMap()
+	const dismissedRequestIds = usePaymentQueueState((state) => state.dismissedRequestIds)
+	const dismissed = useMemo(() => new Set(dismissedRequestIds), [dismissedRequestIds])
 
 	useEffect(() => {
 		if (!hasMountedRef.current) {
@@ -82,22 +93,22 @@ function PaymentStack() {
 	}, [isFetching, isLoading])
 
 	useEffect(() => {
-		if (dismissed.size === 0) {
-			return
-		}
-		const activeIds = new Set(rawRequests.map((request) => request.id))
-		setDismissed((prev) => {
-			const next = new Set<string>()
-			for (const id of prev) {
-				if (activeIds.has(id)) {
-					next.add(id)
-				}
-			}
-			return next.size === prev.size ? prev : next
-		})
-	}, [rawRequests, dismissed.size])
+		if (!data?.requests) return
+		prunePaymentQueueDismissals(data.requests.map((request) => request.id))
+	}, [data?.requests])
 
-	const requests = rawRequests.filter((r: SRPRequestResponse) => !dismissed.has(r.id))
+	useEffect(() => {
+		if (!data) return
+		setReviewQueueSnapshot('approved', { limit: data.limit, offset: data.offset }, data)
+	}, [data])
+
+	const requests = useMemo(
+		() =>
+			rawRequests
+				.map((request) => entities[request.id] ?? request)
+				.filter((request: SRPRequestResponse) => !dismissed.has(request.id)),
+		[rawRequests, entities, dismissed]
+	)
 	const sortedRequests = [...requests].sort((a, b) => {
 		const aTime = toTimestamp(a.createdAt)
 		const bTime = toTimestamp(b.createdAt)
@@ -197,7 +208,7 @@ function PaymentStack() {
 				return next
 			})
 		}, EXIT_DURATION_MS)
-		setDismissed((prev) => new Set([...prev, request.id]))
+		dismissPaymentQueueRequest(request.id)
 
 		try {
 			await markPaid.mutateAsync(request.id)
@@ -209,7 +220,8 @@ function PaymentStack() {
 				next.delete(request.id)
 				return next
 			})
-			setDismissed((prev) => new Set([...prev].filter((id) => id !== request.id)))
+			// Keep the request dismissed until the page is refreshed so the operator
+			// does not lose their place during manual third-party entry.
 			toast.error('Failed to mark as paid', { description: e.message })
 		}
 	}

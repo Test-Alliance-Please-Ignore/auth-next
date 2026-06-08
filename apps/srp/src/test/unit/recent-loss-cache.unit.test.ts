@@ -5,6 +5,7 @@ import type { CharacterLossData } from '@repo/eve-character-data'
 import {
 	doesRecentLossCacheCoverCutoff,
 	mergeRecentLosses,
+	isRecentLossRequestable,
 	shouldInvalidateRecentLossCache,
 	selectRecentKillmailsUntilKnown,
 } from '../../lib/recent-loss-cache'
@@ -77,7 +78,7 @@ describe('recent-loss cache helpers', () => {
 		}
 
 		expect(
-			doesRecentLossCacheCoverCutoff(cached, Date.parse('2026-06-01T00:00:00.000Z'), 30)
+			doesRecentLossCacheCoverCutoff(cached, Date.parse('2026-06-01T04:00:00.000Z'), 30)
 		).toBe(true)
 		expect(
 			doesRecentLossCacheCoverCutoff(cached, Date.parse('2026-05-01T00:00:00.000Z'), 30)
@@ -107,5 +108,25 @@ describe('recent-loss cache helpers', () => {
 		expect(shouldInvalidateRecentLossCache(cached, 30)).toBe(false)
 		expect(shouldInvalidateRecentLossCache({ ...cached, maxLossAgeDays: 365 }, 365)).toBe(false)
 		expect(shouldInvalidateRecentLossCache(null, 365)).toBe(false)
+	})
+
+	it('excludes empty capsules but keeps pods with fitted implants requestable', () => {
+		expect(isRecentLossRequestable(buildLoss('10', '2026-06-02T03:00:00.000Z'))).toBe(true)
+		expect(
+			isRecentLossRequestable({
+				...buildLoss('11', '2026-06-02T03:00:00.000Z', {
+					shipTypeId: '670',
+					victimItems: [],
+				}),
+			})
+		).toBe(false)
+		expect(
+			isRecentLossRequestable({
+				...buildLoss('12', '2026-06-02T03:00:00.000Z', {
+					shipTypeId: '33328',
+					victimItems: [{ flag: 89, item_type_id: '1956' }],
+				}),
+			})
+		).toBe(true)
 	})
 })

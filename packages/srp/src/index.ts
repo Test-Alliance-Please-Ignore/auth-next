@@ -14,12 +14,6 @@ export const MAX_SRP_LOSS_AGE_DAYS = 90
  * ============================================================================
  */
 
-export interface RecentLossRefreshThrottleResult {
-	allowed: boolean
-	retryAfterMs: number
-	cooldownUntil: string
-}
-
 export interface RecentLossRefreshCharacterInput {
 	characterId: string
 	characterName: string
@@ -36,6 +30,14 @@ export interface RecentLossRefreshCharacterFailure {
 export interface RecentLossesResponse {
 	losses: LossWithSRPStatus[]
 	failedCharacters: RecentLossRefreshCharacterFailure[]
+}
+
+export interface RecentLossVictimItem {
+	flag: number
+	item_type_id: string
+	quantity_destroyed?: number
+	quantity_dropped?: number
+	items?: RecentLossVictimItem[]
 }
 
 export interface RecentLossRefreshCharacterResult {
@@ -128,16 +130,6 @@ export interface Srp {
 		excludeNonSrpEligible?: boolean
 	): Promise<RecentLossesResponse>
 	dismissLoss(userId: string, killmailId: string): Promise<void>
-	startRecentLossRefresh(
-		userId: string,
-		characters: RecentLossRefreshCharacterInput[],
-		maxLossAgeDays: number
-	): Promise<RecentLossRefreshStartResult>
-	getRecentLossRefreshStatus(userId: string): Promise<RecentLossRefreshStatusResponse>
-	updateRecentLossRefreshStatus(
-		userId: string,
-		status: RecentLossRefreshStatusRecord
-	): Promise<void>
 	refreshRecentLossesForCharacter(
 		userId: string,
 		characterId: string,
@@ -711,6 +703,7 @@ export interface LossWithSRPStatus {
 	solarSystemRegionName?: string
 	victimCharacterId: string // Character who lost the ship
 	victimCharacterName?: string
+	victimItems?: RecentLossVictimItem[]
 	// SRP status
 	hasSRPRequest: boolean
 	srpRequestId?: string

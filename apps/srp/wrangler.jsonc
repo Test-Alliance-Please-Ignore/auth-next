@@ -87,7 +87,11 @@
 	"migrations": [
 		{
 			"tag": "v1",
-			"new_sqlite_classes": ["Srp", "RecentLossRefreshCoordinatorDO"]
+			"new_sqlite_classes": ["Srp"]
+		},
+		{
+			"tag": "v2",
+			"new_sqlite_classes": ["RecentLossRefreshCoordinatorDO"]
 		}
 	]
 }

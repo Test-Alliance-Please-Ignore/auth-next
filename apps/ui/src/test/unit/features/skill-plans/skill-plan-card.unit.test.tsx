@@ -33,7 +33,7 @@ describe('SkillPlanCard readiness badges', () => {
 			</MemoryRouter>
 		)
 
-		expect(html).toContain('Meets Required 2')
+		expect(html).toMatch(/Meets Required\s*<span[^>]*>2<\/span>/)
 		expect(html).not.toContain('Meets 2')
 	})
 
@@ -52,7 +52,7 @@ describe('SkillPlanCard readiness badges', () => {
 			</MemoryRouter>
 		)
 
-		expect(html).toContain('Meets Required 1')
+		expect(html).toMatch(/Meets Required\s*<span[^>]*>1<\/span>/)
 		expect(html).not.toContain('Completed')
 		expect(html).not.toContain('Incomplete')
 	})

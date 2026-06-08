@@ -20,6 +20,24 @@ export interface RecentKillmailSelection {
 	reachedKnownKillmail: boolean
 }
 
+const POD_TYPE_IDS = new Set(['670', '33328'])
+
+function hasFittedImplants(loss: CharacterLossData): boolean {
+	return (
+		loss.victimItems?.some(
+			(item) => typeof item.flag === 'number' && item.flag >= 89 && item.flag <= 98
+		) ?? false
+	)
+}
+
+export function isRecentLossRequestable(loss: CharacterLossData): boolean {
+	if (!POD_TYPE_IDS.has(String(loss.shipTypeId))) {
+		return true
+	}
+
+	return hasFittedImplants(loss)
+}
+
 export function doesRecentLossCacheCoverCutoff(
 	record: RecentLossCacheRecord | null,
 	cutoffMs: number,

@@ -46,6 +46,7 @@ describe('resolveSrpNavState', () => {
 			'My Requests',
 			'Review Queue',
 			'Payment Queue',
+			'Wallet History',
 		])
 		expect(state.shouldFetchSrpReviewCount).toBe(true)
 		expect(state.shouldFetchSrpPaymentCount).toBe(true)
@@ -58,6 +59,7 @@ describe('resolveSrpNavState', () => {
 			'My Requests',
 			'Review Queue',
 			'Payment Queue',
+			'Wallet History',
 			'Alerts',
 			'Configuration',
 		])
@@ -72,6 +74,7 @@ describe('resolveSrpNavState', () => {
 			'My Requests',
 			'Review Queue',
 			'Payment Queue',
+			'Wallet History',
 			'Alerts',
 			'Configuration',
 		])

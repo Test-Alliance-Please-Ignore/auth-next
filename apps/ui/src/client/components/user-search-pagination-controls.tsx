@@ -1,6 +1,8 @@
+import { Loader2 } from 'lucide-react'
+import type { ReactNode } from 'react'
+
 import { Button } from '@/components/ui/button'
 import { Select } from '@/components/ui/select'
-import { Loader2 } from 'lucide-react'
 
 interface UserSearchPaginationControlsProps {
 	totalCount: number
@@ -11,6 +13,7 @@ interface UserSearchPaginationControlsProps {
 	pageSizeOptions?: number[]
 	itemLabel?: string
 	nextButtonLoading?: boolean
+	summaryAction?: ReactNode
 }
 
 const DEFAULT_PAGE_SIZE_OPTIONS = [25, 50, 100]
@@ -24,6 +27,7 @@ export function UserSearchPaginationControls({
 	pageSizeOptions = DEFAULT_PAGE_SIZE_OPTIONS,
 	itemLabel = 'users',
 	nextButtonLoading = false,
+	summaryAction,
 }: UserSearchPaginationControlsProps) {
 	const totalPages = Math.ceil(totalCount / pageSize)
 	const start = totalCount === 0 ? 0 : (page - 1) * pageSize + 1
@@ -41,10 +45,13 @@ export function UserSearchPaginationControls({
 
 	return (
 		<div className="flex items-center justify-between gap-3">
-			<div className="text-sm text-muted-foreground">
-				{totalCount > 0
-					? `${start}-${end} of ${totalCount} ${itemLabel}`
-					: `0 ${itemLabel}`}
+			<div className="flex items-center gap-2 text-sm text-muted-foreground">
+				<div>
+					{totalCount > 0
+						? `${start}-${end} of ${totalCount} ${itemLabel}`
+						: `0 ${itemLabel}`}
+				</div>
+				{summaryAction ? <div className="shrink-0">{summaryAction}</div> : null}
 			</div>
 			<div className="flex items-center gap-2 justify-end">
 				<div className="flex items-center gap-2">
@@ -78,21 +85,21 @@ export function UserSearchPaginationControls({
 						{pageNumber}
 					</Button>
 				))}
-					<Button
-						variant="ghost"
-						size="sm"
-						className="relative w-16"
-						disabled={!canGoNext || nextButtonLoading}
-						onClick={() => onPageChange(page + 1)}
-					>
-						<span className={nextButtonLoading ? 'opacity-0' : undefined}>Next</span>
-						{nextButtonLoading ? (
-							<Loader2
-								aria-hidden
-								className="absolute left-1/2 top-1/2 h-4 w-4 -translate-x-1/2 -translate-y-1/2 animate-spin"
-							/>
-						) : null}
-					</Button>
+				<Button
+					variant="ghost"
+					size="sm"
+					className="relative w-16"
+					disabled={!canGoNext || nextButtonLoading}
+					onClick={() => onPageChange(page + 1)}
+				>
+					<span className={nextButtonLoading ? 'opacity-0' : undefined}>Next</span>
+					{nextButtonLoading ? (
+						<Loader2
+							aria-hidden
+							className="absolute left-1/2 top-1/2 h-4 w-4 -translate-x-1/2 -translate-y-1/2 animate-spin"
+						/>
+					) : null}
+				</Button>
 			</div>
 		</div>
 	)

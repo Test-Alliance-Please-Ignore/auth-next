@@ -95,23 +95,25 @@ export class RecentLossRefreshCoordinatorDO extends DurableObject<Env> implement
 		const cooldownEntry = await this.ctx.storage.get<{ lastTriggeredAtMs?: number }>(
 			this.buildCooldownKey(userId)
 		)
+		const existingTriggeredAtMs =
+			typeof cooldownEntry?.lastTriggeredAtMs === 'number' && Number.isFinite(cooldownEntry.lastTriggeredAtMs)
+				? cooldownEntry.lastTriggeredAtMs
+				: null
 		const activeStatus = await this.readStatus(userId)
 		const isActiveWorkflow =
 			activeStatus !== null &&
 			(activeStatus.status === 'queued' || activeStatus.status === 'running')
 
 		if (isActiveWorkflow) {
+			const activeCooldownUntil =
+				existingTriggeredAtMs !== null ? existingTriggeredAtMs + cooldownMs : cooldownUntil
 			return {
 				allowed: false,
-				retryAfterMs: cooldownMs,
-				cooldownUntil: activeStatus.updatedAt ?? new Date(cooldownUntil).toISOString(),
+				retryAfterMs: Math.max(0, activeCooldownUntil - now),
+				cooldownUntil: new Date(activeCooldownUntil).toISOString(),
 			}
 		}
 
-		const existingTriggeredAtMs =
-			typeof cooldownEntry?.lastTriggeredAtMs === 'number' && Number.isFinite(cooldownEntry.lastTriggeredAtMs)
-				? cooldownEntry.lastTriggeredAtMs
-				: null
 		if (existingTriggeredAtMs !== null && now - existingTriggeredAtMs < cooldownMs) {
 			const retryAfterMs = Math.max(0, cooldownMs - (now - existingTriggeredAtMs))
 			return {

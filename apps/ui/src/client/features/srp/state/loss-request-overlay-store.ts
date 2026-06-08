@@ -1,3 +1,4 @@
+import { createStore } from '@tanstack/store'
 import { useSyncExternalStore } from 'react'
 
 import type { RequestStatus, SRPRequestResponse } from '../types'
@@ -14,8 +15,6 @@ interface LossRequestOverlayState {
 }
 
 const STORAGE_KEY = 'srp.loss-request-overlay.v1'
-
-const listeners = new Set<() => void>()
 
 function readStateFromStorage(): LossRequestOverlayState {
 	if (typeof window === 'undefined') {
@@ -37,25 +36,23 @@ function readStateFromStorage(): LossRequestOverlayState {
 	}
 }
 
-let state: LossRequestOverlayState = readStateFromStorage()
-
-function emitChange(): void {
-	for (const listener of listeners) listener()
-}
+const lossRequestOverlayStore = createStore<LossRequestOverlayState>(readStateFromStorage())
 
 function persistState(): void {
 	if (typeof window === 'undefined') return
 	try {
-		window.sessionStorage.setItem(STORAGE_KEY, JSON.stringify(state))
+		window.sessionStorage.setItem(STORAGE_KEY, JSON.stringify(lossRequestOverlayStore.state))
 	} catch {
 		// Ignore storage failures; store still works in-memory for this session.
 	}
 }
 
-function setState(next: LossRequestOverlayState): void {
-	state = next
+lossRequestOverlayStore.subscribe(() => {
 	persistState()
-	emitChange()
+})
+
+function setState(next: LossRequestOverlayState): void {
+	lossRequestOverlayStore.setState(() => next)
 }
 
 export function upsertLossRequestOverlay(params: {
@@ -66,7 +63,7 @@ export function upsertLossRequestOverlay(params: {
 	const { killmailId, requestId, requestStatus } = params
 	const next: LossRequestOverlayState = {
 		byKillmailId: {
-			...state.byKillmailId,
+			...lossRequestOverlayStore.state.byKillmailId,
 			[killmailId]: {
 				requestId,
 				requestStatus,
@@ -74,7 +71,7 @@ export function upsertLossRequestOverlay(params: {
 			},
 		},
 		killmailIdByRequestId: {
-			...state.killmailIdByRequestId,
+			...lossRequestOverlayStore.state.killmailIdByRequestId,
 			[requestId]: killmailId,
 		},
 	}
@@ -86,29 +83,29 @@ export function updateOverlayRequestStatus(params: {
 	requestStatus: RequestStatus | string
 }): void {
 	const { requestId, requestStatus } = params
-	const killmailId = state.killmailIdByRequestId[requestId]
+	const killmailId = lossRequestOverlayStore.state.killmailIdByRequestId[requestId]
 	if (!killmailId) return
-	const existing = state.byKillmailId[killmailId]
+	const existing = lossRequestOverlayStore.state.byKillmailId[killmailId]
 	if (!existing) return
 	setState({
 		byKillmailId: {
-			...state.byKillmailId,
+			...lossRequestOverlayStore.state.byKillmailId,
 			[killmailId]: {
 				...existing,
 				requestStatus,
 				updatedAt: Date.now(),
 			},
 		},
-		killmailIdByRequestId: state.killmailIdByRequestId,
+		killmailIdByRequestId: lossRequestOverlayStore.state.killmailIdByRequestId,
 	})
 }
 
 export function removeOverlayByKillmailId(killmailId: string): void {
-	const existing = state.byKillmailId[killmailId]
+	const existing = lossRequestOverlayStore.state.byKillmailId[killmailId]
 	if (!existing) return
-	const nextByKillmailId = { ...state.byKillmailId }
+	const nextByKillmailId = { ...lossRequestOverlayStore.state.byKillmailId }
 	delete nextByKillmailId[killmailId]
-	const nextKillmailIdByRequestId = { ...state.killmailIdByRequestId }
+	const nextKillmailIdByRequestId = { ...lossRequestOverlayStore.state.killmailIdByRequestId }
 	delete nextKillmailIdByRequestId[existing.requestId]
 	setState({
 		byKillmailId: nextByKillmailId,
@@ -117,7 +114,7 @@ export function removeOverlayByKillmailId(killmailId: string): void {
 }
 
 export function removeOverlayByRequestId(requestId: string): void {
-	const killmailId = state.killmailIdByRequestId[requestId]
+	const killmailId = lossRequestOverlayStore.state.killmailIdByRequestId[requestId]
 	if (!killmailId) return
 	removeOverlayByKillmailId(killmailId)
 }
@@ -132,7 +129,7 @@ export function mergeLossesWithOverlay<
 >(losses: T[] | undefined): T[] | undefined {
 	if (!losses) return losses
 	return losses.map((loss) => {
-		const entry = state.byKillmailId[loss.killmailId]
+		const entry = lossRequestOverlayStore.state.byKillmailId[loss.killmailId]
 		if (!entry) return loss
 		return {
 			...loss,
@@ -156,15 +153,15 @@ export function reconcileOverlayFromServerLosses(
 	const ensureMutable = () => {
 		if (nextState) return nextState
 		nextState = {
-			byKillmailId: { ...state.byKillmailId },
-			killmailIdByRequestId: { ...state.killmailIdByRequestId },
+			byKillmailId: { ...lossRequestOverlayStore.state.byKillmailId },
+			killmailIdByRequestId: { ...lossRequestOverlayStore.state.killmailIdByRequestId },
 		}
 		return nextState
 	}
 
 	for (const loss of losses) {
 		if (!loss.hasSRPRequest || !loss.srpRequestId) {
-			const existing = state.byKillmailId[loss.killmailId]
+			const existing = lossRequestOverlayStore.state.byKillmailId[loss.killmailId]
 			if (!existing) continue
 			const mutable = ensureMutable()
 			delete mutable.byKillmailId[loss.killmailId]
@@ -172,7 +169,7 @@ export function reconcileOverlayFromServerLosses(
 			continue
 		}
 
-		const existing = state.byKillmailId[loss.killmailId]
+		const existing = lossRequestOverlayStore.state.byKillmailId[loss.killmailId]
 		const incomingStatus = loss.srpRequestStatus ?? 'pending'
 		if (
 			existing &&
@@ -198,9 +195,9 @@ export function mergeRequestsWithOverlay<T extends { id: string; requestStatus: 
 	requests: T[]
 ): T[] {
 	return requests.map((request) => {
-		const killmailId = state.killmailIdByRequestId[request.id]
+		const killmailId = lossRequestOverlayStore.state.killmailIdByRequestId[request.id]
 		if (!killmailId) return request
-		const entry = state.byKillmailId[killmailId]
+		const entry = lossRequestOverlayStore.state.byKillmailId[killmailId]
 		if (!entry) return request
 		return {
 			...request,
@@ -216,17 +213,12 @@ export function seedOverlayFromRequest(request: Pick<SRPRequestResponse, 'id' | 
 	})
 }
 
-function subscribe(listener: () => void): () => void {
-	listeners.add(listener)
-	return () => listeners.delete(listener)
-}
-
-function getSnapshot(): LossRequestOverlayState {
-	return state
-}
-
 export function useLossRequestOverlaySnapshot(): LossRequestOverlayState {
-	return useSyncExternalStore(subscribe, getSnapshot, getSnapshot)
+	return useSyncExternalStore(
+		(listener) => lossRequestOverlayStore.subscribe(listener).unsubscribe,
+		() => lossRequestOverlayStore.state,
+		() => lossRequestOverlayStore.state
+	)
 }
 
 export function __resetLossRequestOverlayStoreForTests(): void {

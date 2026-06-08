@@ -1,7 +1,9 @@
-import type { RequestStatus, RequestListResponse } from '../types'
-import type { SRPRequestResponse } from '../types'
+import { createStore } from '@tanstack/store'
+import { useSyncExternalStore } from 'react'
 
-type ReviewQueueParams = {
+import type { RequestStatus, RequestListResponse, SRPRequestResponse } from '../types'
+
+export type ReviewQueueParams = {
 	limit?: number
 	offset?: number
 	characterName?: string
@@ -11,6 +13,9 @@ type ReviewQueueParams = {
 	dateTo?: string
 }
 
+export type ReviewQueueSortBy = 'submitted' | 'loss'
+export type ReviewQueueSortDirection = 'asc' | 'desc'
+
 export interface ReviewQueueSnapshotEntry {
 	status: RequestStatus
 	params: ReviewQueueParams
@@ -18,31 +23,42 @@ export interface ReviewQueueSnapshotEntry {
 	updatedAt: number
 }
 
-export type ReviewQueueSnapshotState = Record<string, ReviewQueueSnapshotEntry>
-
-const STORAGE_KEY = 'srp.review-queue-snapshot.v1'
-
-let state: ReviewQueueSnapshotState = readStateFromStorage()
-
-function readStateFromStorage(): ReviewQueueSnapshotState {
-	if (typeof window === 'undefined') return {}
-	try {
-		const raw = window.sessionStorage.getItem(STORAGE_KEY)
-		if (!raw) return {}
-		const parsed = JSON.parse(raw) as ReviewQueueSnapshotState
-		return parsed && typeof parsed === 'object' ? parsed : {}
-	} catch {
-		return {}
-	}
+export type ReviewQueueUiState = {
+	activeTab: RequestStatus
+	filters: ReviewQueueParams
+	page: number
+	pageSize: number
+	sortBy: ReviewQueueSortBy
+	sortDirection: ReviewQueueSortDirection
 }
 
-function persistState(): void {
-	if (typeof window === 'undefined') return
-	try {
-		window.sessionStorage.setItem(STORAGE_KEY, JSON.stringify(state))
-	} catch {
-		// Ignore storage failures; keep in-memory fallback for current session.
-	}
+export type ReviewQueueSnapshotState = Record<string, ReviewQueueSnapshotEntry>
+export type ReviewQueueEntityState = Record<string, SRPRequestResponse>
+
+export interface ReviewQueueStoreState {
+	ui: ReviewQueueUiState
+	snapshots: ReviewQueueSnapshotState
+	entities: ReviewQueueEntityState
+}
+
+export const REVIEW_QUEUE_CACHE_TTL_MS = 1000 * 60 * 5
+
+const STORAGE_KEY = 'srp.review-queue-state.v1'
+const LEGACY_SNAPSHOT_STORAGE_KEY = 'srp.review-queue-snapshot.v1'
+const LEGACY_ACTIVE_TAB_STORAGE_KEY = 'srp:review-queue:active-tab'
+
+const REVIEW_QUEUE_TAB_VALUES = new Set<RequestStatus>([
+	'pending',
+	'needs_context',
+	'rejected',
+	'approved',
+	'paid',
+])
+
+const listeners = new Set<() => void>()
+
+function getDefaultSortDirectionForStatus(status: RequestStatus): ReviewQueueSortDirection {
+	return status === 'approved' || status === 'rejected' || status === 'paid' ? 'desc' : 'asc'
 }
 
 function normalizeParams(params: ReviewQueueParams): ReviewQueueParams {
@@ -57,19 +73,266 @@ function normalizeParams(params: ReviewQueueParams): ReviewQueueParams {
 	}
 }
 
-export function getReviewQueueSnapshotKey(
-	status: RequestStatus,
-	params: ReviewQueueParams
-): string {
+function isUnfilteredParams(params: ReviewQueueParams): boolean {
+	return !(
+		params.characterName ||
+		params.shipTypeName ||
+		params.solarSystemName ||
+		params.dateFrom ||
+		params.dateTo
+	)
+}
+
+function getSnapshotKey(status: RequestStatus, params: ReviewQueueParams): string {
 	return `${status}:${JSON.stringify(normalizeParams(params))}`
 }
 
-export function getReviewQueueSnapshot(
-	status: RequestStatus,
-	params: ReviewQueueParams
-): RequestListResponse | undefined {
-	const key = getReviewQueueSnapshotKey(status, params)
-	return state[key]?.data
+function isFresh(updatedAt: number, maxAgeMs: number): boolean {
+	return Date.now() - updatedAt <= maxAgeMs
+}
+
+function mergeEntities(
+	existing: ReviewQueueEntityState,
+	requests: readonly SRPRequestResponse[]
+): ReviewQueueEntityState {
+	if (requests.length === 0) return existing
+
+	let changed = false
+	const nextEntities = { ...existing }
+	for (const request of requests) {
+		if (nextEntities[request.id] === request) continue
+		nextEntities[request.id] = request
+		changed = true
+	}
+
+	return changed ? nextEntities : existing
+}
+
+function defaultUiState(): ReviewQueueUiState {
+	return {
+		activeTab: 'pending',
+		filters: {},
+		page: 1,
+		pageSize: 25,
+		sortBy: 'submitted',
+		sortDirection: getDefaultSortDirectionForStatus('pending'),
+	}
+}
+
+function readLegacyStateFromStorage(): Partial<ReviewQueueStoreState> {
+	if (typeof window === 'undefined') return {}
+
+	try {
+		const snapshotsRaw = window.sessionStorage.getItem(LEGACY_SNAPSHOT_STORAGE_KEY)
+		const activeTabRaw = window.sessionStorage.getItem(LEGACY_ACTIVE_TAB_STORAGE_KEY)
+
+		let snapshots: ReviewQueueSnapshotState = {}
+		if (snapshotsRaw) {
+			const parsed = JSON.parse(snapshotsRaw) as ReviewQueueSnapshotState
+			if (parsed && typeof parsed === 'object') snapshots = parsed
+		}
+
+		const legacyActiveTab =
+			activeTabRaw && REVIEW_QUEUE_TAB_VALUES.has(activeTabRaw as RequestStatus)
+				? (activeTabRaw as RequestStatus)
+				: undefined
+
+		return {
+			ui: {
+				...defaultUiState(),
+				activeTab: legacyActiveTab ?? defaultUiState().activeTab,
+				sortDirection: getDefaultSortDirectionForStatus(legacyActiveTab ?? 'pending'),
+			},
+			snapshots,
+		}
+	} catch {
+		return {}
+	}
+}
+
+function readStateFromStorage(): ReviewQueueStoreState {
+	if (typeof window === 'undefined') {
+		return {
+			ui: defaultUiState(),
+			snapshots: {},
+			entities: {},
+		}
+	}
+
+	try {
+		const raw = window.sessionStorage.getItem(STORAGE_KEY)
+		if (raw) {
+			const parsed = JSON.parse(raw) as ReviewQueueStoreState
+			if (parsed && typeof parsed === 'object') {
+				const snapshots = parsed.snapshots ?? {}
+				return {
+					ui: {
+						...defaultUiState(),
+						...parsed.ui,
+						filters: normalizeParams(parsed.ui?.filters ?? {}),
+						sortDirection:
+							parsed.ui?.sortDirection ?? getDefaultSortDirectionForStatus(parsed.ui?.activeTab ?? 'pending'),
+					},
+					snapshots,
+					entities: parsed.entities ?? {},
+				}
+			}
+		}
+	} catch {
+		// Fall through to legacy state or defaults.
+	}
+
+	const legacy = readLegacyStateFromStorage()
+	return {
+		ui: {
+			...defaultUiState(),
+			...legacy.ui,
+			filters: normalizeParams(legacy.ui?.filters ?? {}),
+		},
+		snapshots: legacy.snapshots ?? {},
+		entities: {},
+	}
+}
+
+const reviewQueueStore = createStore<ReviewQueueStoreState>(readStateFromStorage())
+
+function emitChange(): void {
+	for (const listener of listeners) listener()
+}
+
+function persistState(): void {
+	if (typeof window === 'undefined') return
+	try {
+		window.sessionStorage.setItem(STORAGE_KEY, JSON.stringify(reviewQueueStore.state))
+	} catch {
+		// Ignore storage failures; keep in-memory state for this session.
+	}
+}
+
+reviewQueueStore.subscribe(() => {
+	persistState()
+	emitChange()
+})
+
+function updateState(
+	updater: (previous: ReviewQueueStoreState) => ReviewQueueStoreState
+): void {
+	reviewQueueStore.setState((previous) => {
+		const next = updater(previous)
+		if (next === previous) return previous
+		return next
+	})
+}
+
+function normalizeUiFilters(filters: ReviewQueueParams): ReviewQueueParams {
+	return normalizeParams(filters)
+}
+
+export function useReviewQueueStore<TSelected>(
+	selector: (state: ReviewQueueStoreState) => TSelected
+): TSelected {
+	return useSyncExternalStore(
+		(listener) => {
+			listeners.add(listener)
+			return () => listeners.delete(listener)
+		},
+		() => selector(reviewQueueStore.state),
+		() => selector(reviewQueueStore.state)
+	)
+}
+
+export function useReviewQueueUiState<TSelected>(
+	selector: (state: ReviewQueueUiState) => TSelected
+): TSelected {
+	return useReviewQueueStore((state) => selector(state.ui))
+}
+
+export function getReviewQueueUiState(): ReviewQueueUiState {
+	return reviewQueueStore.state.ui
+}
+
+export function setReviewQueueActiveTab(nextTab: RequestStatus): void {
+	updateState((previous) => ({
+		...previous,
+		ui: {
+			...previous.ui,
+			activeTab: nextTab,
+			page: 1,
+			sortDirection: getDefaultSortDirectionForStatus(nextTab),
+		},
+	}))
+}
+
+export function updateReviewQueueFilters(
+	patch: Partial<ReviewQueueParams> | ((previous: ReviewQueueParams) => ReviewQueueParams)
+): void {
+	updateState((previous) => {
+		const nextFilters =
+			typeof patch === 'function' ? patch(previous.ui.filters) : { ...previous.ui.filters, ...patch }
+		return {
+			...previous,
+			ui: {
+				...previous.ui,
+				filters: normalizeUiFilters(nextFilters),
+				page: 1,
+			},
+		}
+	})
+}
+
+export function setReviewQueuePage(page: number): void {
+	updateState((previous) => ({
+		...previous,
+		ui: {
+			...previous.ui,
+			page: Math.max(1, page),
+		},
+	}))
+}
+
+export function setReviewQueuePageSize(pageSize: number): void {
+	updateState((previous) => ({
+		...previous,
+		ui: {
+			...previous.ui,
+			pageSize: Math.max(1, pageSize),
+			page: 1,
+		},
+	}))
+}
+
+export function toggleReviewQueueSort(nextSortBy: ReviewQueueSortBy): void {
+	updateState((previous) => {
+		const nextSortDirection: ReviewQueueSortDirection =
+			previous.ui.sortBy === nextSortBy
+				? previous.ui.sortDirection === 'asc'
+					? 'desc'
+					: 'asc'
+				: getDefaultSortDirectionForStatus(previous.ui.activeTab)
+
+		return {
+			...previous,
+			ui: {
+				...previous.ui,
+				sortBy: nextSortBy,
+				sortDirection: nextSortDirection,
+			},
+		}
+	})
+}
+
+export function setReviewQueueSort(
+	sortBy: ReviewQueueSortBy,
+	sortDirection: ReviewQueueSortDirection
+): void {
+	updateState((previous) => ({
+		...previous,
+		ui: {
+			...previous.ui,
+			sortBy,
+			sortDirection,
+		},
+	}))
 }
 
 export function setReviewQueueSnapshot(
@@ -77,24 +340,47 @@ export function setReviewQueueSnapshot(
 	params: ReviewQueueParams,
 	data: RequestListResponse
 ): void {
-	const key = getReviewQueueSnapshotKey(status, params)
-	state = {
-		...state,
-		[key]: {
-			status,
-			params: normalizeParams(params),
-			data,
-			updatedAt: Date.now(),
+	const key = getSnapshotKey(status, params)
+	updateState((previous) => ({
+		...previous,
+		snapshots: {
+			...previous.snapshots,
+			[key]: {
+				status,
+				params: normalizeParams(params),
+				data,
+				updatedAt: Date.now(),
+			},
 		},
-	}
-	persistState()
+		entities: mergeEntities(previous.entities, data.requests),
+	}))
+}
+
+export function useReviewQueueEntityMap(): ReviewQueueEntityState {
+	return useReviewQueueStore((state) => state.entities)
+}
+
+export function useReviewQueueStatusCount(status: RequestStatus): number | undefined {
+	return useReviewQueueStore((state) => {
+		let latestMatch: ReviewQueueSnapshotEntry | undefined
+		for (const entry of Object.values(state.snapshots)) {
+			if (entry.status !== status) continue
+			if (!isUnfilteredParams(entry.params)) continue
+			if (!isFresh(entry.updatedAt, REVIEW_QUEUE_CACHE_TTL_MS)) continue
+			if (!latestMatch || entry.updatedAt > latestMatch.updatedAt) {
+				latestMatch = entry
+			}
+		}
+		return latestMatch?.data.total
+	})
 }
 
 export function clearReviewQueueSnapshots(): void {
-	state = {}
-	if (typeof window !== 'undefined') {
-		window.sessionStorage.removeItem(STORAGE_KEY)
-	}
+	updateState((previous) => ({
+		...previous,
+		snapshots: {},
+		entities: {},
+	}))
 }
 
 function matchesSnapshotFilters(
@@ -123,53 +409,62 @@ function matchesSnapshotFilters(
 
 export function upsertRequestAcrossReviewQueueSnapshots(request: SRPRequestResponse): void {
 	let changed = false
-	const nextState: ReviewQueueSnapshotState = {}
-	for (const [key, entry] of Object.entries(state)) {
-		let entryChanged = false
-		const idx = entry.data.requests.findIndex((row) => row.id === request.id)
-		let nextRequests = entry.data.requests
-		let nextTotal = entry.data.total
+	updateState((previous) => {
+		const nextSnapshots: ReviewQueueSnapshotState = {}
 
-		const shouldInclude =
-			entry.status === request.requestStatus && matchesSnapshotFilters(request, entry.params)
+		for (const [key, entry] of Object.entries(previous.snapshots)) {
+			let nextRequests = entry.data.requests
+			let nextTotal = entry.data.total
 
-		if (idx >= 0) {
-			changed = true
-			entryChanged = true
-			if (shouldInclude) {
-				nextRequests = [...entry.data.requests]
-				nextRequests[idx] = request
-			} else {
-				nextRequests = entry.data.requests.filter((row) => row.id !== request.id)
-				nextTotal = Math.max(0, nextTotal - 1)
+			const idx = entry.data.requests.findIndex((row) => row.id === request.id)
+			const shouldInclude =
+				entry.status === request.requestStatus && matchesSnapshotFilters(request, entry.params)
+
+			if (idx >= 0) {
+				changed = true
+				if (shouldInclude) {
+					nextRequests = [...entry.data.requests]
+					nextRequests[idx] = request
+				} else {
+					nextRequests = entry.data.requests.filter((row) => row.id !== request.id)
+					nextTotal = Math.max(0, nextTotal - 1)
+				}
+			} else if (
+				shouldInclude &&
+				(entry.params.offset === undefined || entry.params.offset === 0)
+			) {
+				changed = true
+				nextRequests = [request, ...entry.data.requests]
+				if (entry.params.limit && nextRequests.length > entry.params.limit) {
+					nextRequests = nextRequests.slice(0, entry.params.limit)
+				}
+				nextTotal = nextTotal + 1
 			}
-		} else if (
-			shouldInclude &&
-			(entry.params.offset === undefined || entry.params.offset === 0)
-		) {
-			changed = true
-			entryChanged = true
-			nextRequests = [request, ...entry.data.requests]
-			if (entry.params.limit && nextRequests.length > entry.params.limit) {
-				nextRequests = nextRequests.slice(0, entry.params.limit)
+
+			nextSnapshots[key] = {
+				...entry,
+				data: {
+					...entry.data,
+					requests: nextRequests,
+					total: nextTotal,
+				},
+				updatedAt: nextRequests === entry.data.requests && nextTotal === entry.data.total ? entry.updatedAt : Date.now(),
 			}
-			nextTotal = nextTotal + 1
 		}
 
-		nextState[key] = {
-			...entry,
-			data: {
-				...entry.data,
-				requests: nextRequests,
-				total: nextTotal,
-			},
-			updatedAt: entryChanged ? Date.now() : entry.updatedAt,
+		if (!changed) return previous
+		return {
+			...previous,
+			snapshots: nextSnapshots,
+			entities:
+				previous.entities[request.id] === request
+					? previous.entities
+					: {
+							...previous.entities,
+							[request.id]: request,
+						},
 		}
-	}
-
-	if (!changed) return
-	state = nextState
-	persistState()
+	})
 }
 
 export function transitionRequestStatusAcrossReviewQueueSnapshots(
@@ -177,86 +472,94 @@ export function transitionRequestStatusAcrossReviewQueueSnapshots(
 	nextStatus: RequestStatus
 ): void {
 	let changed = false
-	const nextState: ReviewQueueSnapshotState = {}
-	const candidatesToInsert: SRPRequestResponse[] = []
+	updateState((previous) => {
+		const nextSnapshots: ReviewQueueSnapshotState = {}
+		const candidatesToInsert: SRPRequestResponse[] = []
 
-	for (const [key, entry] of Object.entries(state)) {
-		const idx = entry.data.requests.findIndex((row) => row.id === requestId)
-		if (idx < 0) {
-			nextState[key] = entry
-			continue
-		}
+		for (const [key, entry] of Object.entries(previous.snapshots)) {
+			const idx = entry.data.requests.findIndex((row) => row.id === requestId)
+			if (idx < 0) {
+				nextSnapshots[key] = entry
+				continue
+			}
 
-		changed = true
-		const current = entry.data.requests[idx]
-		const transitioned: SRPRequestResponse = {
-			...current,
-			requestStatus: nextStatus,
-		}
-		candidatesToInsert.push(transitioned)
+			changed = true
+			const current = entry.data.requests[idx]
+			const transitioned: SRPRequestResponse = {
+				...current,
+				requestStatus: nextStatus,
+			}
+			candidatesToInsert.push(transitioned)
 
-		const keepInPlace =
-			entry.status === nextStatus && matchesSnapshotFilters(transitioned, entry.params)
-		if (keepInPlace) {
-			const nextRequests = [...entry.data.requests]
-			nextRequests[idx] = transitioned
-			nextState[key] = {
+			const keepInPlace =
+				entry.status === nextStatus && matchesSnapshotFilters(transitioned, entry.params)
+			if (keepInPlace) {
+				const nextRequests = [...entry.data.requests]
+				nextRequests[idx] = transitioned
+				nextSnapshots[key] = {
+					...entry,
+					data: {
+						...entry.data,
+						requests: nextRequests,
+					},
+					updatedAt: Date.now(),
+				}
+				continue
+			}
+
+			nextSnapshots[key] = {
 				...entry,
 				data: {
 					...entry.data,
-					requests: nextRequests,
+					requests: entry.data.requests.filter((row) => row.id !== requestId),
+					total: Math.max(0, entry.data.total - 1),
 				},
 				updatedAt: Date.now(),
 			}
-			continue
 		}
 
-		nextState[key] = {
-			...entry,
-			data: {
-				...entry.data,
-				requests: entry.data.requests.filter((row) => row.id !== requestId),
-				total: Math.max(0, entry.data.total - 1),
-			},
-			updatedAt: Date.now(),
+		if (!changed) return previous
+
+		for (const [key, entry] of Object.entries(nextSnapshots)) {
+			if (entry.status !== nextStatus) continue
+			if (entry.params.offset != null && entry.params.offset > 0) continue
+			const alreadyPresent = entry.data.requests.some((row) => row.id === requestId)
+			if (alreadyPresent) continue
+			const candidate = candidatesToInsert.find((row) => matchesSnapshotFilters(row, entry.params))
+			if (!candidate) continue
+			const nextRequests = [candidate, ...entry.data.requests]
+			const limit = entry.params.limit
+			nextSnapshots[key] = {
+				...entry,
+				data: {
+					...entry.data,
+					requests: limit ? nextRequests.slice(0, limit) : nextRequests,
+					total: entry.data.total + 1,
+				},
+				updatedAt: Date.now(),
+			}
 		}
-	}
 
-	if (!changed) return
-
-	for (const [key, entry] of Object.entries(nextState)) {
-		if (entry.status !== nextStatus) continue
-		if (entry.params.offset != null && entry.params.offset > 0) continue
-		const alreadyPresent = entry.data.requests.some((row) => row.id === requestId)
-		if (alreadyPresent) continue
-		const candidate = candidatesToInsert.find((row) => matchesSnapshotFilters(row, entry.params))
-		if (!candidate) continue
-		const nextRequests = [candidate, ...entry.data.requests]
-		const limit = entry.params.limit
-		nextState[key] = {
-			...entry,
-			data: {
-				...entry.data,
-				requests: limit ? nextRequests.slice(0, limit) : nextRequests,
-				total: entry.data.total + 1,
-			},
-			updatedAt: Date.now(),
+		return {
+			...previous,
+			snapshots: nextSnapshots,
+			entities: mergeEntities(previous.entities, candidatesToInsert),
 		}
-	}
-
-	state = nextState
-	persistState()
+	})
 }
 
-export function snapshotReviewQueueStateForRollback(): ReviewQueueSnapshotState {
-	return structuredClone(state)
+export function snapshotReviewQueueStateForRollback(): ReviewQueueStoreState {
+	return structuredClone(reviewQueueStore.state)
 }
 
-export function restoreReviewQueueStateFromRollback(next: ReviewQueueSnapshotState): void {
-	state = structuredClone(next)
-	persistState()
+export function restoreReviewQueueStateFromRollback(next: ReviewQueueStoreState): void {
+	reviewQueueStore.setState(() => structuredClone(next))
 }
 
 export function __resetReviewQueueSnapshotStoreForTests(): void {
-	clearReviewQueueSnapshots()
+	updateState(() => ({
+		ui: defaultUiState(),
+		snapshots: {},
+		entities: {},
+	}))
 }

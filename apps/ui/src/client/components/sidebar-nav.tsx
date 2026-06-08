@@ -26,20 +26,19 @@ import {
 	Truck,
 	Users,
 } from 'lucide-react'
+import { useQuery } from '@tanstack/react-query'
 import { useEffect, useState } from 'react'
 import { Link, useLocation } from 'react-router-dom'
 
 import { useHrAccessibleCorporations } from '@/features/hr'
 import { useHasCorporationAccess } from '@/features/corporations'
-import { useRequestsByStatus, useSrpPaymentMismatchAlerts } from '@/features/srp/hooks'
-import {
-	updateSrpNavQueueCounts,
-	useSrpNavQueueCountsSnapshot,
-} from '@/features/srp/state/nav-queue-counts-store'
+import { useSrpPaymentMismatchAlerts } from '@/features/srp/hooks'
+import { useReviewQueueStatusCount } from '@/features/srp/state/review-queue-snapshot-store'
 import { useTaxAlerts } from '@/hooks/corporation-tax'
 import { useAuth, useLogout } from '@/hooks/useAuth'
 import { usePendingInvitations } from '@/hooks/useGroups'
 import { useUserPermissions } from '@/hooks/useUserPermissions'
+import { api } from '@/lib/api'
 import { characterPortraitUrl } from '@/lib/eve-images'
 import { extractCorporationIdFromTaxViewerScopedUrn } from '@/lib/tax-permissions'
 import { cn } from '@/lib/utils'
@@ -88,45 +87,32 @@ export function SidebarNav({ onNavigate, isSidebarOpen = true, onToggleSidebar }
 	const shouldFetchSrpReviewCount = previewSrpState.shouldFetchSrpReviewCount
 	const shouldFetchSrpPaymentCount = previewSrpState.shouldFetchSrpPaymentCount
 	const shouldFetchSrpAlertCount = previewSrpState.shouldFetchSrpAlertCount
-	const { data: reviewQueueData } = useRequestsByStatus(
-		'pending',
-		{ limit: 1 },
-		{ enabled: shouldFetchSrpReviewCount }
-	)
-	const { data: paymentQueueData } = useRequestsByStatus(
-		'approved',
-		{ limit: 1 },
-		{ enabled: shouldFetchSrpPaymentCount }
-	)
+	const derivedReviewQueueCount = useReviewQueueStatusCount('pending')
+	const derivedPaymentQueueCount = useReviewQueueStatusCount('approved')
+	const { data: reviewQueueData } = useQuery({
+		queryKey: ['srp', 'sidebar-review-count'],
+		queryFn: () => api.get<{ total: number }>('/srp/requests/by-status?status=pending&limit=1&offset=0'),
+		placeholderData: (previousData) => previousData,
+		staleTime: 1000 * 60 * 5,
+		gcTime: 1000 * 60 * 5,
+		enabled: shouldFetchSrpReviewCount && derivedReviewQueueCount === undefined,
+	})
+	const { data: paymentQueueData } = useQuery({
+		queryKey: ['srp', 'sidebar-payment-count'],
+		queryFn: () => api.get<{ total: number }>('/srp/requests/by-status?status=approved&limit=1&offset=0'),
+		placeholderData: (previousData) => previousData,
+		staleTime: 1000 * 60 * 5,
+		gcTime: 1000 * 60 * 5,
+		enabled: shouldFetchSrpPaymentCount && derivedPaymentQueueCount === undefined,
+	})
 	const { data: srpAlertData } = useSrpPaymentMismatchAlerts({
 		includeAcknowledged: false,
 		limit: 1,
 		offset: 0,
 	}, { enabled: shouldFetchSrpAlertCount })
-	const {
-		reviewQueueCount: storedReviewQueueCount,
-		paymentQueueCount: storedPaymentQueueCount,
-		srpAlertCount: storedSrpAlertCount,
-	} = useSrpNavQueueCountsSnapshot()
-
-	useEffect(() => {
-		updateSrpNavQueueCounts({
-			reviewQueueCount: shouldFetchSrpReviewCount ? reviewQueueData?.total : 0,
-			paymentQueueCount: shouldFetchSrpPaymentCount ? paymentQueueData?.total : 0,
-			srpAlertCount: shouldFetchSrpAlertCount ? srpAlertData?.total : 0,
-		})
-	}, [
-		shouldFetchSrpReviewCount,
-		shouldFetchSrpPaymentCount,
-		shouldFetchSrpAlertCount,
-		reviewQueueData?.total,
-		paymentQueueData?.total,
-		srpAlertData?.total,
-	])
-
-	const reviewQueueCount = shouldFetchSrpReviewCount ? storedReviewQueueCount : 0
-	const paymentQueueCount = shouldFetchSrpPaymentCount ? storedPaymentQueueCount : 0
-	const srpAlertCount = shouldFetchSrpAlertCount ? storedSrpAlertCount : 0
+	const reviewQueueCount = shouldFetchSrpReviewCount ? (derivedReviewQueueCount ?? reviewQueueData?.total ?? 0) : 0
+	const paymentQueueCount = shouldFetchSrpPaymentCount ? (derivedPaymentQueueCount ?? paymentQueueData?.total ?? 0) : 0
+	const srpAlertCount = shouldFetchSrpAlertCount ? (srpAlertData?.total ?? 0) : 0
 	const srpNavState = resolveSrpNavState({
 		isSiteAdmin,
 		hasSrpReviewerPermission,

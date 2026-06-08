@@ -3097,6 +3097,19 @@ export class ApiClient {
 			solarSystemName?: string
 			victimCharacterId: string
 			victimCharacterName?: string
+			victimItems?: Array<{
+				flag: number
+				item_type_id: string
+				quantity_destroyed?: number
+				quantity_dropped?: number
+				items?: Array<{
+					flag: number
+					item_type_id: string
+					quantity_destroyed?: number
+					quantity_dropped?: number
+					items?: never
+				}>
+			}>
 			hasSRPRequest: boolean
 			srpRequestId?: string
 			srpRequestStatus?: string

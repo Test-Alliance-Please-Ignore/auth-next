@@ -67,14 +67,6 @@ const SRP_REQUEST_ID_IN_REASON_REGEX = /KM#(\d+)/i
  */
 const permissionCache = new TimeCache<boolean>(15000)
 
-/**
- * Helper function to get Cloudflare request ID for DO instance isolation
- * Falls back to random UUID if cf-ray header is not present
- */
-function getRequestId(c: any): string {
-	return c.req.header('cf-ray') || crypto.randomUUID()
-}
-
 /** Get the primary character name for the session user */
 function getPrimaryCharacterName(user: any): string {
 	return user.characters.find((c: any) => c.is_primary)?.characterName ?? 'Unknown'
@@ -699,7 +691,7 @@ srp.use('*', async (c, next) => {
  */
 srp.get('/losses', async (c) => {
 	const user = c.get('user')!
-	const srpStub = getStub<Srp>(c.env.SRP, "default")
+	const srpStub = getStub<Srp>(c.env.SRP, 'default')
 	const config = await srpStub.getConfig()
 	const configuredLookbackDays = config?.maxLossAgeDays ?? 30
 
@@ -747,8 +739,7 @@ srp.post('/losses/:killmailId/dismiss', async (c) => {
 		return c.json({ error: 'Invalid killmail id' }, 400)
 	}
 
-	const requestId = getRequestId(c)
-	const srpStub = getStub<Srp>(c.env.SRP, requestId)
+	const srpStub = getStub<Srp>(c.env.SRP, 'default')
 	await srpStub.dismissLoss(user.id, killmailId)
 	return c.json({ success: true })
 })
@@ -825,7 +816,7 @@ srp.get('/losses/preview', async (c) => {
 		return c.json({ error: 'Not authorized' }, 403)
 	}
 
-	const srpStub = getStub<Srp>(c.env.SRP, "default")
+	const srpStub = getStub<Srp>(c.env.SRP, 'default')
 	const preview = await srpStub.previewValuation(characterId, killmailId, killmailHash)
 
 	if (!preview) return c.json(null)
@@ -858,7 +849,7 @@ srp.post('/requests', async (c) => {
 		return c.json({ error: 'Not authorized to create request for this character' }, 403)
 	}
 
-	const srpStub = getStub<Srp>(c.env.SRP, "default")
+	const srpStub = getStub<Srp>(c.env.SRP, 'default')
 	let request: Awaited<ReturnType<Srp['createRequest']>>
 	try {
 		request = await srpStub.createRequest(
@@ -888,7 +879,7 @@ srp.get('/requests', async (c) => {
 	const limit = c.req.query('limit') ? Number.parseInt(c.req.query('limit')!, 10) : 50
 	const offset = c.req.query('offset') ? Number.parseInt(c.req.query('offset')!, 10) : 0
 
-	const srpStub = getStub<Srp>(c.env.SRP, "default")
+	const srpStub = getStub<Srp>(c.env.SRP, 'default')
 	const requestsRaw = await srpStub.getUserRequests(user.id, limit, offset)
 	const withCharacterRoles = await hydrateRequestCharacterRoles(
 		requestsRaw as RequestWithCharacterRole[],
@@ -928,7 +919,7 @@ srp.get('/requests/by-status', async (c) => {
 	const canAccessReviewQueue = await hasSrpTierPermission(c.env, user.id, 'reviewer', user.is_admin)
 	if (!canAccessReviewQueue) return c.json({ error: 'Requires SRP staff permissions' }, 403)
 
-	const srpStub = getStub<Srp>(c.env.SRP, "default")
+	const srpStub = getStub<Srp>(c.env.SRP, 'default')
 	const result = await srpStub.getRequestsByStatus(status, {
 		limit,
 		offset,
@@ -976,7 +967,7 @@ srp.get('/requests/search-values', async (c) => {
 	)
 	if (!canAccessReviewQueueSearch) return c.json({ error: 'Requires SRP staff permissions' }, 403)
 
-	const srpStub = getStub<Srp>(c.env.SRP, "default")
+	const srpStub = getStub<Srp>(c.env.SRP, 'default')
 	const values = await srpStub.getSearchValues(statusParsed.data, fieldParsed.data, query)
 	return c.json(values)
 })
@@ -992,7 +983,7 @@ srp.get('/requests/:id', async (c) => {
 		return c.json({ error: 'Invalid request id' }, 400)
 	}
 
-	const srpStub = getStub<Srp>(c.env.SRP, "default")
+	const srpStub = getStub<Srp>(c.env.SRP, 'default')
 	const request = await srpStub.getRequest(requestId, user.id)
 
 	if (!request) {
@@ -1068,7 +1059,7 @@ srp.get('/pending', async (c) => {
 		return c.json({ error: 'Requires SRP staff permissions' }, 403)
 	}
 
-	const srpStub = getStub<Srp>(c.env.SRP, "default")
+	const srpStub = getStub<Srp>(c.env.SRP, 'default')
 	const requestsRaw = await srpStub.getPendingRequests(corporationId || '', limit, offset)
 	const requests = await enrichRequestsWithMilitarySrp(
 		requestsRaw as RequestWithCharacterRole[],
@@ -1109,7 +1100,7 @@ srp.post('/requests/:id/approve', async (c) => {
 
 	const { approvedAmount, reviewNotes } = validation.data
 
-	const srpStub = getStub<Srp>(c.env.SRP, "default")
+	const srpStub = getStub<Srp>(c.env.SRP, 'default')
 	const existingRequest = await srpStub.getRequest(requestId, user.id)
 	if (!existingRequest) return c.json({ error: 'Request not found' }, 404)
 	const request = await srpStub.approveRequest(existingRequest.id, user.id, approvedAmount, reviewNotes)
@@ -1143,7 +1134,7 @@ srp.post('/requests/:id/partially-approve', async (c) => {
 
 	const { approvedAmount, rejectionReason, reviewNotes } = validation.data
 
-	const srpStub = getStub<Srp>(c.env.SRP, "default")
+	const srpStub = getStub<Srp>(c.env.SRP, 'default')
 	const existingRequest = await srpStub.getRequest(requestId, user.id)
 	if (!existingRequest) return c.json({ error: 'Request not found' }, 404)
 	const request = await srpStub.partiallyApproveRequest(
@@ -1183,7 +1174,7 @@ srp.post('/requests/:id/reject', async (c) => {
 
 	const { rejectionReason, reviewNotes } = validation.data
 
-	const srpStub = getStub<Srp>(c.env.SRP, "default")
+	const srpStub = getStub<Srp>(c.env.SRP, 'default')
 	const existingRequest = await srpStub.getRequest(requestId, user.id)
 	if (!existingRequest) return c.json({ error: 'Request not found' }, 404)
 	const request = await srpStub.rejectRequest(
@@ -1216,7 +1207,7 @@ srp.post('/requests/:id/review', async (c) => {
 	const canReview = await hasSrpTierPermission(c.env, user.id, 'reviewer', user.is_admin)
 	if (!canReview) return c.json({ error: 'Requires SRP staff permissions' }, 403)
 
-	const srpStub = getStub<Srp>(c.env.SRP, "default")
+	const srpStub = getStub<Srp>(c.env.SRP, 'default')
 	const existingRequest = await srpStub.getRequest(requestId, user.id)
 	if (!existingRequest) return c.json({ error: 'Request not found' }, 404)
 	try {
@@ -1263,7 +1254,7 @@ srp.patch('/requests/:id/state', async (c) => {
 		}, 403)
 	}
 
-	const srpStub = getStub<Srp>(c.env.SRP, "default")
+	const srpStub = getStub<Srp>(c.env.SRP, 'default')
 	const existingRequest = await srpStub.getRequest(requestId, user.id)
 	if (!existingRequest) return c.json({ error: 'Request not found' }, 404)
 	const request = await srpStub.updateReviewState(
@@ -1293,7 +1284,7 @@ srp.post('/requests/:id/withdraw', async (c) => {
 		return c.json({ error: 'Invalid request data', details: validation.error }, 400)
 	}
 
-	const srpStub = getStub<Srp>(c.env.SRP, "default")
+	const srpStub = getStub<Srp>(c.env.SRP, 'default')
 	const existingRequest = await srpStub.getRequest(requestId, user.id)
 	if (!existingRequest) return c.json({ error: 'Request not found' }, 404)
 	if (existingRequest.userId !== user.id) {
@@ -1334,7 +1325,7 @@ srp.get('/requests/:id/comments', async (c) => {
 	const includeInternal = c.req.query('includeInternal') === 'true'
 
 	// Verify access to request
-	const srpStub = getStub<Srp>(c.env.SRP, "default")
+	const srpStub = getStub<Srp>(c.env.SRP, 'default')
 	const request = await srpStub.getRequest(requestId, user.id)
 
 	if (!request) {
@@ -1383,7 +1374,7 @@ srp.post('/requests/:id/comments', async (c) => {
 	}
 
 	// Verify access to request
-	const srpStub = getStub<Srp>(c.env.SRP, "default")
+	const srpStub = getStub<Srp>(c.env.SRP, 'default')
 	const request = await srpStub.getRequest(requestId, user.id)
 
 	if (!request) {
@@ -1433,7 +1424,7 @@ srp.patch('/comments/:id', async (c) => {
 
 	const { content } = validation.data
 
-	const srpStub = getStub<Srp>(c.env.SRP, "default")
+	const srpStub = getStub<Srp>(c.env.SRP, 'default')
 	const comment = await srpStub.editComment(commentId, user.id, content)
 
 	return c.json(comment)
@@ -1447,7 +1438,7 @@ srp.delete('/comments/:id', async (c) => {
 	const user = c.get('user')!
 	const commentId = c.req.param('id')
 
-	const srpStub = getStub<Srp>(c.env.SRP, "default")
+	const srpStub = getStub<Srp>(c.env.SRP, 'default')
 	await srpStub.deleteComment(commentId, user.id)
 
 	return c.json({ success: true })
@@ -1474,7 +1465,7 @@ srp.get('/payments/pending', async (c) => {
 		return c.json({ error: 'Requires payer-or-higher permissions' }, 403)
 	}
 
-	const srpStub = getStub<Srp>(c.env.SRP, "default")
+	const srpStub = getStub<Srp>(c.env.SRP, 'default')
 	const requestsRaw = await srpStub.getPendingPayments(corporationId, limit, offset)
 	const requests = await enrichRequestsWithMilitarySrp(
 		requestsRaw as RequestWithCharacterRole[],
@@ -1502,7 +1493,7 @@ srp.get('/payments/pending-total', async (c) => {
 	const canPay = await hasSrpTierPermission(c.env, user.id, 'payer', user.is_admin)
 	if (!canPay) return c.json({ error: 'Requires payer-or-higher permissions' }, 403)
 
-	const srpStub = getStub<Srp>(c.env.SRP, "default")
+	const srpStub = getStub<Srp>(c.env.SRP, 'default')
 	const pendingPayoutTotal = await srpStub.getPendingPayoutTotal(corporationId)
 
 	return c.json({ pendingPayoutTotal })
@@ -1534,7 +1525,7 @@ srp.get('/payments/wallet-history', async (c) => {
 		return c.json({ error: 'offset must be >= 0' }, 400)
 	}
 
-	const srpStub = getStub<Srp>(c.env.SRP, "default")
+	const srpStub = getStub<Srp>(c.env.SRP, 'default')
 	const config = await srpStub.getConfig()
 	const processorCorporationId = config?.paymentProcessorCorporationId?.trim() ?? ''
 	if (!processorCorporationId) {
@@ -1794,7 +1785,7 @@ srp.get('/payments/wallet-history/search-values', async (c) => {
 	const q = c.req.query('q')?.trim() ?? ''
 	if (q.length < 2) return c.json({ values: [] })
 
-	const srpStub = getStub<Srp>(c.env.SRP, "default")
+	const srpStub = getStub<Srp>(c.env.SRP, 'default')
 	const config = await srpStub.getConfig()
 	const processorCorporationId = config?.paymentProcessorCorporationId?.trim() ?? ''
 	if (!processorCorporationId) {
@@ -1878,7 +1869,7 @@ srp.get('/alerts/payment-mismatches', async (c) => {
 	const canPay = await hasSrpTierPermission(c.env, user.id, 'payer', user.is_admin)
 	if (!canPay) return c.json({ error: 'Requires payer-or-higher permissions' }, 403)
 
-	const srpStub = getStub<Srp>(c.env.SRP, "default")
+	const srpStub = getStub<Srp>(c.env.SRP, 'default')
 	const result = await srpStub.listPaymentMismatchAlerts({
 		includeAcknowledged,
 		limit,
@@ -1901,7 +1892,7 @@ srp.post('/alerts/payment-mismatches/:id/acknowledge', async (c) => {
 	const canPay = await hasSrpTierPermission(c.env, user.id, 'payer', user.is_admin)
 	if (!canPay) return c.json({ error: 'Requires payer-or-higher permissions' }, 403)
 
-	const srpStub = getStub<Srp>(c.env.SRP, "default")
+	const srpStub = getStub<Srp>(c.env.SRP, 'default')
 	const alert = await srpStub.acknowledgePaymentMismatchAlert(
 		alertId,
 		user.id,
@@ -1926,7 +1917,7 @@ srp.post('/requests/:id/mark-paid', async (c) => {
 	const canPay = await hasSrpTierPermission(c.env, user.id, 'payer', false)
 	if (!canPay) return c.json({ error: 'Requires payer-or-higher permissions' }, 403)
 
-	const srpStub = getStub<Srp>(c.env.SRP, "default")
+	const srpStub = getStub<Srp>(c.env.SRP, 'default')
 	const existingRequest = await srpStub.getRequest(requestId, user.id)
 	if (!existingRequest) return c.json({ error: 'Request not found' }, 404)
 	const request = await srpStub.markPaid(
@@ -1958,7 +1949,7 @@ srp.post('/requests/:id/verify-paid', async (c) => {
 	const canManage = await hasSrpTierPermission(c.env, user.id, 'manager', user.is_admin)
 	if (!canManage) return c.json({ error: 'Requires manager-or-higher permissions' }, 403)
 
-	const srpStub = getStub<Srp>(c.env.SRP, "default")
+	const srpStub = getStub<Srp>(c.env.SRP, 'default')
 	const existingRequest = await srpStub.getRequest(requestId, user.id)
 	if (!existingRequest) return c.json({ error: 'Request not found' }, 404)
 	if (existingRequest.requestStatus !== 'payment_pending') {
@@ -2023,7 +2014,7 @@ srp.get('/config/payment-processor-corporations/search', async (c) => {
  * GET /api/srp/config
  */
 srp.get('/config', async (c) => {
-	const srpStub = getStub<Srp>(c.env.SRP, "default")
+	const srpStub = getStub<Srp>(c.env.SRP, 'default')
 	const config = await srpStub.getConfig()
 
 	if (!config) {
@@ -2050,7 +2041,7 @@ srp.patch('/config', async (c) => {
 	const canManage = await hasSrpTierPermission(c.env, user.id, 'manager', user.is_admin)
 	if (!canManage) return c.json({ error: 'Requires manager-or-higher permissions' }, 403)
 
-	const srpStub = getStub<Srp>(c.env.SRP, "default")
+	const srpStub = getStub<Srp>(c.env.SRP, 'default')
 	const config = await srpStub.updateConfig(user.id, validation.data)
 
 	return c.json(config)
@@ -2075,7 +2066,7 @@ srp.get('/stats', async (c) => {
 		return c.json({ error: 'Requires admin permissions' }, 403)
 	}
 
-	const srpStub = getStub<Srp>(c.env.SRP, "default")
+	const srpStub = getStub<Srp>(c.env.SRP, 'default')
 	const stats = await srpStub.getStats(startDate, endDate, corporationId)
 
 	return c.json(stats)
@@ -2094,7 +2085,7 @@ srp.get('/policies', async (c) => {
 	const canReview = await hasSrpTierPermission(c.env, user.id, 'reviewer', user.is_admin)
 	if (!canReview) return c.json({ error: 'Requires SRP staff permissions' }, 403)
 
-	const srpStub = getStub<Srp>(c.env.SRP, "default")
+	const srpStub = getStub<Srp>(c.env.SRP, 'default')
 	return c.json(await srpStub.listPolicies())
 })
 
@@ -2112,7 +2103,7 @@ srp.post('/policies', async (c) => {
 	if (!validation.success)
 		return c.json({ error: 'Invalid policy data', details: validation.error }, 400)
 
-	const srpStub = getStub<Srp>(c.env.SRP, "default")
+	const srpStub = getStub<Srp>(c.env.SRP, 'default')
 	return c.json(await srpStub.createPolicy(user.id, validation.data), 201)
 })
 
@@ -2131,7 +2122,7 @@ srp.patch('/policies/:id', async (c) => {
 	if (!validation.success)
 		return c.json({ error: 'Invalid policy data', details: validation.error }, 400)
 
-	const srpStub = getStub<Srp>(c.env.SRP, "default")
+	const srpStub = getStub<Srp>(c.env.SRP, 'default')
 	return c.json(await srpStub.updatePolicy(id, user.id, validation.data))
 })
 
@@ -2145,7 +2136,7 @@ srp.delete('/policies/:id', async (c) => {
 	if (!canManage) return c.json({ error: 'Requires manager-or-higher permissions' }, 403)
 
 	const id = c.req.param('id')
-	const srpStub = getStub<Srp>(c.env.SRP, "default")
+	const srpStub = getStub<Srp>(c.env.SRP, 'default')
 	await srpStub.deletePolicy(id, user.id)
 	return c.json({ ok: true })
 })
