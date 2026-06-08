@@ -204,6 +204,20 @@ export interface CharacterPublicData {
 }
 
 /**
+ * Result from refreshing public character data.
+ */
+export interface CharacterPublicRefreshResult {
+	success: boolean
+	isDeleted?: boolean
+	characterName?: string
+	affiliationChanged?: boolean
+	previousCorporationId?: EveCorporationId | null
+	currentCorporationId?: EveCorporationId | null
+	previousAllianceId?: EveAllianceId | null
+	currentAllianceId?: EveAllianceId | null
+}
+
+/**
  * Character corporation history entry stored in database
  */
 export interface CharacterCorporationHistoryData {
@@ -471,6 +485,16 @@ export interface EveCharacterData {
 	fetchCharacterData(characterId: string, forceRefresh?: boolean): Promise<void>
 
 	/**
+	 * Fetch, store, and classify public character data (no auth required)
+	 * @param characterId - EVE character ID
+	 * @param forceRefresh - Force refresh even if cached
+	 */
+	refreshPublicCharacterData(
+		characterId: string,
+		forceRefresh?: boolean
+	): Promise<CharacterPublicRefreshResult>
+
+	/**
 	 * Store pre-fetched public info without making an ESI call.
 	 * @param characterId - EVE character ID
 	 * @param data - ESI public info already fetched by the caller
@@ -676,6 +700,10 @@ export class EveCharacterDataInstance extends RpcTarget {
 
 	async fetchCharacterData(forceRefresh?: boolean): Promise<void> {
 		await this.characterDataObject.fetchCharacterData(this.characterId, forceRefresh)
+	}
+
+	async refreshPublicCharacterData(forceRefresh?: boolean): Promise<CharacterPublicRefreshResult> {
+		return await this.characterDataObject.refreshPublicCharacterData(this.characterId, forceRefresh)
 	}
 
 	async storePublicInfo(data: EsiCharacterPublicInfo): Promise<void> {

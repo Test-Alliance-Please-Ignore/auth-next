@@ -28,12 +28,14 @@ export async function validateAndSyncCharacterTokenValidity({
 	characterId,
 	previousHasValidToken,
 	touchLastCharacterRefresh = false,
+	forceValidate = false,
 }: {
 	db: DbClient<typeof schema>
 	tokenStore: EveTokenStore
 	characterId: string
 	previousHasValidToken?: boolean | null
 	touchLastCharacterRefresh?: boolean
+	forceValidate?: boolean
 }): Promise<{
 	previousHasValidToken: boolean | null
 	nextHasValidToken: boolean | null
@@ -48,7 +50,7 @@ export async function validateAndSyncCharacterTokenValidity({
 		previous = existingCharacter?.hasValidToken ?? null
 	}
 
-	const validation = await tokenStore.validateToken(characterId)
+	const validation = await tokenStore.validateToken(characterId, undefined, { force: forceValidate })
 	const next = resolveNextTokenValidity(previous, validation)
 	const shouldWrite =
 		touchLastCharacterRefresh || previous !== next

@@ -8,8 +8,10 @@ import { logger } from '@repo/hono-helpers'
 import { userCharacters } from '../db/schema'
 import { waitUntilWithTelemetry } from '../lib/background-task'
 import { validateAndSyncCharacterTokenValidity } from '../lib/token-validity'
+import { triggerUserRefreshWorkflow } from '../lib/workflow-triggers'
 import { requireAuth } from '../middleware/session'
 import { checkAndUpdateDirectorStatus } from '../services/corporation-auto-register.service'
+import { markCharacterDeletedEverywhere } from '../services/character-deletion.service'
 import { EntityResolverService } from '../services/entity-resolver.service'
 import { shouldTreatSensitiveDataAsLive } from './characters-utils'
 
@@ -657,11 +659,18 @@ app.post('/:characterId/refresh', requireAuth(), async (c) => {
 
 	// Get EVE Token Store DO stub for authenticated data
 	const eveTokenStoreStub = c.get('eveTokenStore')
+	const db = c.get('db')
 
 	if (!eveTokenStoreStub) {
 		logger.error('eveTokenStore not found in context!')
 		return c.json({ error: 'Token store not initialized' }, 500)
 	}
+	if (!db) {
+		logger.error('Database not found in context!')
+		return c.json({ error: 'Database not initialized' }, 500)
+	}
+
+	let isDeletedCharacter = false
 
 	try {
 		// Check token info first to verify scopes
@@ -669,16 +678,40 @@ app.post('/:characterId/refresh', requireAuth(), async (c) => {
 
 		// Always fetch public data (doesn't require auth)
 		try {
-			logger.info(
-				'Calling fetchCharacterData with characterId:',
-				characterIdStr,
-				'type:',
-				typeof characterIdStr
-			)
-			await eveCharacterData.fetchCharacterData(true)
-			logger.info('fetchCharacterData completed successfully')
+			logger.info('Calling refreshPublicCharacterData with characterId:', characterIdStr)
+			const publicRefreshResult = await eveCharacterData.refreshPublicCharacterData(true)
+			isDeletedCharacter = publicRefreshResult.isDeleted === true
+			logger.info('refreshPublicCharacterData completed successfully', {
+				characterId: characterIdStr,
+				isDeleted: isDeletedCharacter,
+				affiliationChanged: publicRefreshResult.affiliationChanged === true,
+			})
+
+			if (isDeletedCharacter) {
+				await markCharacterDeletedEverywhere(db, c.env, characterIdStr)
+
+				const ownerUserId = character
+					? user.id
+					: (
+							await db.query.userCharacters.findFirst({
+								where: eq(userCharacters.characterId, characterIdStr),
+								columns: { userId: true },
+							})
+						)?.userId
+
+				if (ownerUserId) {
+					await triggerUserRefreshWorkflow({
+						db,
+						env: c.env,
+						userId: ownerUserId,
+						source: 'character-refresh-deleted',
+						bypassThrottle: true,
+						refreshMode: 'manual',
+					})
+				}
+			}
 		} catch (error) {
-			logger.error('Failed to fetch public character data:', error)
+			logger.error('Failed to refresh public character data:', error)
 			logger.error(
 				'Error details - characterId:',
 				characterId,
@@ -688,11 +721,10 @@ app.post('/:characterId/refresh', requireAuth(), async (c) => {
 				typeof error
 			)
 			throw new Error(
-				`Failed to fetch public character data: ${error && typeof error === 'object' && 'remote' in error ? 'Durable Object connection failed' : error instanceof Error ? error.message : String(error)}`
+				`Failed to refresh public character data: ${error instanceof Error ? error.message : String(error)}`
 			)
 		}
 
-		const db = c.get('db')
 		const tokenStatus = db
 			? await validateAndSyncCharacterTokenValidity({
 					db,
@@ -707,8 +739,8 @@ app.post('/:characterId/refresh', requireAuth(), async (c) => {
 			: fallbackValidation?.isValid === true
 		let authError: string | undefined = tokenStatus?.validation.error ?? fallbackValidation?.error
 
-		// Try to fetch authenticated data if token is valid.
-		if (hasValidToken) {
+		// Try to fetch authenticated data if token is valid and the character is still live.
+		if (hasValidToken && !isDeletedCharacter) {
 			try {
 				await eveCharacterData.fetchAuthenticatedData(true)
 			} catch (error) {
@@ -756,11 +788,13 @@ app.post('/:characterId/refresh', requireAuth(), async (c) => {
 
 		return c.json({
 			success: true,
-			message: hasValidToken
+			message: isDeletedCharacter
+				? 'Character marked as deleted during refresh'
+				: hasValidToken
 				? 'Character data refreshed successfully'
 				: 'Public character data refreshed (no valid token for private data)',
 			lastUpdated,
-			hasValidToken,
+			hasValidToken: isDeletedCharacter ? false : hasValidToken,
 			tokenInfo: tokenInfo
 				? {
 						hasToken: true,

@@ -5,22 +5,20 @@
 import { eq } from 'drizzle-orm'
 
 import { getStub } from '@repo/do-utils'
-import { CharacterDeletedError, getEsiInstanceForCharacter } from '@repo/esi'
 
 import { userCharacters } from '../../../db/schema'
+import { markCharacterDeletedEverywhere } from '../../../services/character-deletion.service'
 import { getWorkflowLogger } from '../../context'
 
 import type { EveCharacterData } from '@repo/eve-character-data'
-import type { EveTokenStore } from '@repo/eve-token-store'
-import type { CharacterPublicInfo, EsiTypeResolver } from '@repo/esi'
+import type { EsiTypeResolver } from '@repo/esi'
 import type { WorkflowContext } from '../../context'
 
 /**
  * Refresh and persist the user's authoritative character affiliation state.
  *
  * Source of truth breakdown:
- * - ESI public character info (`GET /characters/{id}`) is the source of truth for
- *   `characterName`, `corporationId`, and `allianceId` during refresh.
+ * - `eve-character-data` owns the public ESI fetch/classification logic.
  * - `user_characters` is the persisted source of truth used by downstream core
  *   workflows after this step completes.
  * - Corporation/alliance display names are best-effort cached metadata and are not
@@ -42,118 +40,51 @@ export async function updateCharacterPublicInfo(
 	affiliationChanged: boolean
 }> {
 	const logger = getWorkflowLogger(ctx, 'update-character-public-info')
+	const eveCharDataStub = getStub<EveCharacterData>(ctx.env.EVE_CHARACTER_DATA, characterId)
 
-	let characterInfo: CharacterPublicInfo | null = null
-	const esiStub = getEsiInstanceForCharacter(ctx.env.ESI, characterId)
-	const cacheMode = ctx.refreshMode === 'manual' ? 'no-store' : 'default'
+	const publicRefreshResult = await eveCharDataStub.refreshPublicCharacterData(characterId, true)
 
-	// Fetch public info and affiliation in parallel. Affiliation has a shorter ESI
-	// cache (~1h vs 24h) so we prefer it for corporation_id/alliance_id when available.
-	const [publicInfoResult, affiliationResult] = await Promise.allSettled([
-		esiStub.fetchCharacterPublicInfo(characterId, { cacheMode }),
-		esiStub.fetchCharacterAffiliation(characterId, [characterId], { cacheMode: 'no-store' }),
-	])
-
-	if (publicInfoResult.status === 'rejected') {
-		const error = publicInfoResult.reason
-		const errorMessage = error instanceof Error ? error.message : String(error)
-		logger.error('[Workflow] Failed to fetch character public info', {
-			characterId,
-			error: errorMessage,
+	if (publicRefreshResult.isDeleted) {
+		await markCharacterDeletedEverywhere(ctx.db, ctx.env, characterId, {
+			reconcileCorporationMembership: false,
 		})
 
-		const isDeletedCharacterError =
-			error instanceof CharacterDeletedError ||
-			errorMessage.includes('Character has been deleted!') ||
-			/character .* has been deleted/i.test(errorMessage)
-
-		if (isDeletedCharacterError) {
-			await ctx.db
-				.update(userCharacters)
-				.set({
-					isDeleted: true,
-					hasValidToken: false,
-					updatedAt: new Date(),
-				})
-				.where(eq(userCharacters.characterId, characterId))
-
-			// Keep eve-token-store in sync: deleted characters should not retain usable tokens.
-			try {
-				const tokenStore = getStub<EveTokenStore>(ctx.env.EVE_TOKEN_STORE, 'default')
-				await tokenStore.markCharacterDeleted(characterId)
-			} catch (tokenStoreError) {
-				logger.warn('[Workflow] Failed to mark deleted character in token store', {
-					characterId,
-					error:
-						tokenStoreError instanceof Error
-							? tokenStoreError.message
-							: String(tokenStoreError),
-				})
-			}
-
-			logger.info('[Workflow] Character marked as deleted during public info refresh', {
-				characterId,
-			})
-
-			return {
-				characterId: characterId,
-				characterName: '',
-				corporationId: '',
-				corporationName: '',
-				allianceId: null,
-				allianceName: null,
-				isDeleted: true,
-				affiliationChanged: true,
-			}
-		}
-
-		throw error
-	}
-
-	characterInfo = publicInfoResult.value
-
-	if (!characterInfo) {
-		throw new Error(`No character public info found for character ID: ${characterId}`)
-	}
-
-	// Prefer affiliation data for corporation/alliance — shorter ESI cache means fresher data.
-	// Fall back to public info if affiliation failed.
-	let affiliationCorporationId = characterInfo.corporation_id
-	let affiliationAllianceId = characterInfo.alliance_id
-
-	if (affiliationResult.status === 'fulfilled') {
-		const affiliation = affiliationResult.value.find((a) => a.character_id === characterId)
-		if (affiliation) {
-			affiliationCorporationId = affiliation.corporation_id
-			affiliationAllianceId = affiliation.alliance_id
-		} else {
-			logger.warn('[Workflow] Character not found in affiliation response, falling back to public info', {
-				characterId,
-			})
-		}
-	} else {
-		logger.warn('[Workflow] Failed to fetch character affiliation, falling back to public info', {
+		logger.info('[Workflow] Character marked as deleted during public info refresh', {
 			characterId,
-			error: affiliationResult.reason instanceof Error ? affiliationResult.reason.message : String(affiliationResult.reason),
 		})
+
+		return {
+			characterId,
+			characterName: '',
+			corporationId: '',
+			corporationName: '',
+			allianceId: null,
+			allianceName: null,
+			isDeleted: true,
+			affiliationChanged: true,
+		}
 	}
 
+	const characterName = publicRefreshResult.characterName ?? ''
+	const affiliationCorporationId = publicRefreshResult.currentCorporationId ?? ''
+	const affiliationAllianceId = publicRefreshResult.currentAllianceId ?? null
 	const allianceId = affiliationAllianceId ? String(affiliationAllianceId) : null
 	const existingCharacter = await ctx.db.query.userCharacters.findFirst({
 		where: eq(userCharacters.characterId, characterId),
 		columns: { corporationId: true, allianceId: true, isDeleted: true },
 	})
 	const affiliationChanged =
-		!existingCharacter ||
-		existingCharacter.isDeleted === true ||
-		existingCharacter.corporationId !== affiliationCorporationId ||
-		(existingCharacter.allianceId ?? null) !== allianceId
+		publicRefreshResult.affiliationChanged ??
+		(!existingCharacter ||
+			existingCharacter.isDeleted === true ||
+			existingCharacter.corporationId !== affiliationCorporationId ||
+			(existingCharacter.allianceId ?? null) !== allianceId)
 
 	// Persist the authoritative affiliation IDs before any best-effort name resolution.
 	await ctx.db
 		.update(userCharacters)
 		.set({
-			characterName: characterInfo.name,
+			characterName,
 			corporationId: affiliationCorporationId,
 			allianceId,
 			isDeleted: false,
@@ -192,28 +123,6 @@ export async function updateCharacterPublicInfo(
 		})
 	}
 
-	// Sync to eve-character-data store (drives character detail page).
-	// Non-blocking: failure here must not prevent the workflow from continuing.
-	try {
-		const eveCharDataStub = getStub<EveCharacterData>(ctx.env.EVE_CHARACTER_DATA, characterId)
-		await Promise.all([
-			eveCharDataStub.storePublicInfo(characterId, {
-				...characterInfo,
-				corporation_id: affiliationCorporationId,
-				alliance_id: affiliationAllianceId,
-			}),
-			eveCharDataStub.fetchCorporationHistory(characterId),
-		])
-		logger.info('[Workflow] Synced character public data to eve-character-data', {
-			characterId,
-		})
-	} catch (error) {
-		logger.warn('[Workflow] Failed to sync to eve-character-data; continuing', {
-			characterId,
-			error: error instanceof Error ? error.message : String(error),
-		})
-	}
-
 	logger.info('[Workflow] Updated character public info', {
 		characterId,
 		userId: ctx.userId,
@@ -221,8 +130,8 @@ export async function updateCharacterPublicInfo(
 	})
 
 	return {
-		characterId: characterId,
-		characterName: characterInfo.name,
+		characterId,
+		characterName,
 		corporationId: affiliationCorporationId,
 		corporationName,
 		allianceId,

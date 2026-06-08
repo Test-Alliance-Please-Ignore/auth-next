@@ -121,8 +121,60 @@ export class EveCharacterSyncWorkflow extends WorkflowEntrypoint<Env, EveCharact
 			let characterMarkedDeleted = false
 			const stepSuffix = `${index + 1}-${characterId}`
 			try {
+				let publicInfoResult: refreshHelpers.RefreshPublicInfoResult | null = null
+				let tokenValidation: {
+					hasValidToken: boolean
+					status: string
+					refreshAttempted: boolean
+					refreshSucceeded: boolean
+				} = {
+					hasValidToken: false,
+					status: 'unknown',
+					refreshAttempted: false,
+					refreshSucceeded: false,
+				}
+				if (shouldSync('public-info')) {
+					try {
+						publicInfoResult = await step.do(
+							`fetch-public-info-${stepSuffix}`,
+							{
+								...esiRetryOptions,
+								timeout: '1 minute',
+							},
+							() =>
+								withEsiRetryClassification('fetch-public-info', async () => {
+									logger.debug('[Step] Fetching public info', { characterId, userId: userId ?? null })
+									return await refreshHelpers.refreshPublicInfo(this.env, characterId)
+								})
+						)
+						syncStats.publicInfoSuccess++
+						publicInfoRefreshedCharacterIds.push(characterId)
+						if (publicInfoResult.isDeleted) {
+							await step.do(`mark-character-deleted-${stepSuffix}`, async () => {
+								const tokenStoreStub = getStub<EveTokenStore>(this.env.EVE_TOKEN_STORE, 'default')
+								await tokenStoreStub.markCharacterDeleted(characterId)
+							})
+							characterMarkedDeleted = true
+							syncStats.deleted++
+						} else if (publicInfoResult.affiliationChanged) {
+							affiliationChangedCharacterIds.push(characterId)
+						}
+					} catch (error) {
+						const message = error instanceof Error ? error.message : String(error)
+						logger.error('[EveCharacterSyncWorkflow] fetch-public-info step failed', {
+							characterId,
+							userId: userId ?? null,
+							error: message,
+							errorDetails: extractErrorDetails(error),
+						})
+						throw error
+					}
+				}
+
 				// Sub-step: Validate token per character — attempts refresh when needed.
-				const tokenValidation = await step.do(
+				// This runs after public refresh so deleted-character detection is not blocked
+				// by token cooldown or invalid token state.
+				tokenValidation = await step.do(
 					`validate-token-${stepSuffix}`,
 					{
 						retries: { limit: 2, delay: '5 seconds', backoff: 'exponential' },
@@ -142,54 +194,6 @@ export class EveCharacterSyncWorkflow extends WorkflowEntrypoint<Env, EveCharact
 						}
 					}
 				)
-
-				let publicInfoResult: refreshHelpers.RefreshPublicInfoResult | null = null
-				if (shouldSync('public-info')) {
-					try {
-						publicInfoResult = await step.do(
-							`fetch-public-info-${stepSuffix}`,
-							{
-								...esiRetryOptions,
-								timeout: '1 minute',
-							},
-							() =>
-								withEsiRetryClassification('fetch-public-info', async () => {
-									logger.debug('[Step] Fetching public info', { characterId, userId: userId ?? null })
-									return await refreshHelpers.refreshPublicInfo(this.env, characterId)
-								})
-						)
-						syncStats.publicInfoSuccess++
-						publicInfoRefreshedCharacterIds.push(characterId)
-						if (publicInfoResult.affiliationChanged) {
-							affiliationChangedCharacterIds.push(characterId)
-						}
-					} catch (error) {
-						const message = error instanceof Error ? error.message : String(error)
-						const lowerMessage = message.toLowerCase()
-						const isDeletedCharacterError =
-							lowerMessage.includes('has been deleted') ||
-							lowerMessage.includes('character deleted') ||
-							lowerMessage.includes('character_deleted') ||
-							lowerMessage.includes('esi request failed: 404')
-
-						if (!isDeletedCharacterError) {
-							logger.error('[EveCharacterSyncWorkflow] fetch-public-info step failed', {
-								characterId,
-								userId: userId ?? null,
-								error: message,
-								errorDetails: extractErrorDetails(error),
-							})
-							throw error
-						}
-
-						await step.do(`mark-character-deleted-${stepSuffix}`, async () => {
-							const tokenStoreStub = getStub<EveTokenStore>(this.env.EVE_TOKEN_STORE, 'default')
-							await tokenStoreStub.markCharacterDeleted(characterId)
-						})
-						characterMarkedDeleted = true
-						syncStats.deleted++
-					}
-				}
 
 				if (shouldSync('authenticated') && !characterMarkedDeleted) {
 					if (!tokenValidation.hasValidToken) {

@@ -4,20 +4,15 @@ import { hydrateCharacterAffiliation } from '../character-affiliation-hydration.
 
 const hoisted = vi.hoisted(() => ({
 	mocks: {
-		fetchCharacterPublicInfo: vi.fn(),
+		refreshPublicCharacterData: vi.fn(),
 		resolveIds: vi.fn(),
 		reconcileCharacterCorporationMembership: vi.fn(),
 	},
 	namespaces: {
 		esiTypeResolver: Symbol('ESI_TYPE_RESOLVER'),
+		eveCharacterData: Symbol('EVE_CHARACTER_DATA'),
 		eveCorporationData: Symbol('EVE_CORPORATION_DATA'),
 	},
-}))
-
-vi.mock('@repo/esi', () => ({
-	getEsiInstanceForCharacter: vi.fn(() => ({
-		fetchCharacterPublicInfo: hoisted.mocks.fetchCharacterPublicInfo,
-	})),
 }))
 
 vi.mock('@repo/do-utils', () => ({
@@ -25,6 +20,11 @@ vi.mock('@repo/do-utils', () => ({
 		if (namespace === hoisted.namespaces.esiTypeResolver) {
 			return {
 				resolveIds: hoisted.mocks.resolveIds,
+			}
+		}
+		if (namespace === hoisted.namespaces.eveCharacterData) {
+			return {
+				refreshPublicCharacterData: hoisted.mocks.refreshPublicCharacterData,
 			}
 		}
 		if (namespace === hoisted.namespaces.eveCorporationData) {
@@ -63,10 +63,15 @@ describe('hydrateCharacterAffiliation', () => {
 	})
 
 	it('persists affiliation IDs immediately and resolves names in background', async () => {
-		hoisted.mocks.fetchCharacterPublicInfo.mockResolvedValue({
-			name: 'Zenith',
-			corporation_id: '1000165',
-			alliance_id: '498125261',
+		hoisted.mocks.refreshPublicCharacterData.mockResolvedValue({
+			success: true,
+			isDeleted: false,
+			characterName: 'Zenith',
+			currentCorporationId: '1000165',
+			currentAllianceId: '498125261',
+			previousCorporationId: null,
+			previousAllianceId: null,
+			affiliationChanged: true,
 		})
 		hoisted.mocks.resolveIds.mockResolvedValue({
 			'1000165': 'Hedion University',
@@ -78,8 +83,10 @@ describe('hydrateCharacterAffiliation', () => {
 		const result = await hydrateCharacterAffiliation({
 			db: recorder.db as never,
 			env: {
-				ESI: {} as DurableObjectNamespace,
 				ESI_TYPE_RESOLVER: hoisted.namespaces.esiTypeResolver as unknown as DurableObjectNamespace,
+				EVE_TOKEN_STORE: {} as DurableObjectNamespace,
+				EVE_CHARACTER_DATA:
+					hoisted.namespaces.eveCharacterData as unknown as DurableObjectNamespace,
 				EVE_CORPORATION_DATA:
 					hoisted.namespaces.eveCorporationData as unknown as DurableObjectNamespace,
 			},
@@ -114,18 +121,59 @@ describe('hydrateCharacterAffiliation', () => {
 		})
 	})
 
+	it('returns deleted fallback when the shared public refresh reports deletion', async () => {
+		hoisted.mocks.refreshPublicCharacterData.mockResolvedValue({
+			success: false,
+			isDeleted: true,
+			characterName: '',
+		})
+		const recorder = createDbRecorder()
+
+		const result = await hydrateCharacterAffiliation({
+			db: recorder.db as never,
+			env: {
+				ESI_TYPE_RESOLVER: hoisted.namespaces.esiTypeResolver as unknown as DurableObjectNamespace,
+				EVE_TOKEN_STORE: {} as DurableObjectNamespace,
+				EVE_CHARACTER_DATA:
+					hoisted.namespaces.eveCharacterData as unknown as DurableObjectNamespace,
+			},
+			characterId: '93705729',
+			cacheMode: 'no-store',
+		})
+
+		expect(result).toMatchObject({
+			characterId: '93705729',
+			characterName: '',
+			corporationId: '1000001',
+			allianceId: null,
+		})
+		expect(recorder.update).toHaveBeenCalledTimes(1)
+		expect(recorder.updates[0]).toMatchObject({
+			isDeleted: true,
+		})
+		expect(hoisted.mocks.reconcileCharacterCorporationMembership).not.toHaveBeenCalled()
+	})
+
 	it('skips name resolution when no execution context is provided', async () => {
-		hoisted.mocks.fetchCharacterPublicInfo.mockResolvedValue({
-			name: 'Zenith',
-			corporation_id: '1000165',
+		hoisted.mocks.refreshPublicCharacterData.mockResolvedValue({
+			success: true,
+			isDeleted: false,
+			characterName: 'Zenith',
+			currentCorporationId: '1000165',
+			currentAllianceId: null,
+			previousCorporationId: null,
+			previousAllianceId: null,
+			affiliationChanged: true,
 		})
 		const recorder = createDbRecorder()
 
 		await hydrateCharacterAffiliation({
 			db: recorder.db as never,
 			env: {
-				ESI: {} as DurableObjectNamespace,
 				ESI_TYPE_RESOLVER: hoisted.namespaces.esiTypeResolver as unknown as DurableObjectNamespace,
+				EVE_TOKEN_STORE: {} as DurableObjectNamespace,
+				EVE_CHARACTER_DATA:
+					hoisted.namespaces.eveCharacterData as unknown as DurableObjectNamespace,
 			},
 			characterId: '93705729',
 			cacheMode: 'no-store',

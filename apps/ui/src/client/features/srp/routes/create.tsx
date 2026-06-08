@@ -62,6 +62,10 @@ export default function CreateRequest() {
 	}
 
 	if (loss.hasSRPRequest) {
+		if (loss.srpRequestId) {
+			return <Navigate to={`/srp/request/${loss.srpRequestId}`} replace />
+		}
+
 		return (
 			<Container>
 				<PageHeader title="Submit SRP Request" description="Request ship replacement" />

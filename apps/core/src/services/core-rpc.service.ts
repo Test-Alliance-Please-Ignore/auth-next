@@ -75,6 +75,7 @@ export class CoreRpcService {
 					select 1
 					from user_characters uc
 					where uc.user_id = ${users.id}
+					and uc.deleted = false
 					and (
 						uc.character_name ilike ${searchLike}
 						${isSearchNumeric ? sql`or uc.character_id = ${search}` : sql``}
@@ -109,7 +110,10 @@ export class CoreRpcService {
 				mainCharacterName: userCharacters.characterName,
 			})
 			.from(users)
-			.leftJoin(userCharacters, eq(users.mainCharacterId, userCharacters.characterId))
+			.leftJoin(
+				userCharacters,
+				and(eq(users.mainCharacterId, userCharacters.characterId), eq(userCharacters.isDeleted, false))
+			)
 
 		if (whereCondition) {
 			usersQuery.where(whereCondition)
@@ -130,7 +134,7 @@ export class CoreRpcService {
 					count: sql<number>`count(*)`,
 				})
 				.from(userCharacters)
-				.where(inArray(userCharacters.userId, pageUserIds))
+				.where(and(inArray(userCharacters.userId, pageUserIds), eq(userCharacters.isDeleted, false)))
 				.groupBy(userCharacters.userId)
 
 			for (const row of characterCounts) {
@@ -145,7 +149,7 @@ export class CoreRpcService {
 		const discordUsernameByUserId = new Map<string, string>()
 		if (search && pageUserIds.length > 0) {
 			const pageCharacters = await this.db.query.userCharacters.findMany({
-				where: inArray(userCharacters.userId, pageUserIds),
+				where: and(inArray(userCharacters.userId, pageUserIds), eq(userCharacters.isDeleted, false)),
 				columns: {
 					userId: true,
 					characterId: true,
@@ -305,7 +309,7 @@ export class CoreRpcService {
 
 		// 2. Query all user's characters
 		const chars = await this.db.query.userCharacters.findMany({
-			where: eq(userCharacters.userId, userId),
+			where: and(eq(userCharacters.userId, userId), eq(userCharacters.isDeleted, false)),
 		})
 
 		// 3. Get EVE Token Store stub for token validation

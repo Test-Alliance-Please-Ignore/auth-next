@@ -67,6 +67,7 @@ export async function tryCharacterAuthenticatedFetch(
 			characterId,
 			previousHasValidToken: existingCharacter?.hasValidToken ?? null,
 			touchLastCharacterRefresh: true,
+			forceValidate: ctx.forceTokenValidation === true,
 		})
 
 	logger.info('[Workflow] Evaluated character token validity', {

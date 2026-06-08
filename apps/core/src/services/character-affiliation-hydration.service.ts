@@ -1,18 +1,20 @@
 import { eq } from '@repo/db-utils'
 import { getStub } from '@repo/do-utils'
-import { getEsiInstanceForCharacter } from '@repo/esi'
 
 import { userCharacters } from '../db/schema'
 import { waitUntilWithTelemetry } from '../lib/background-task'
+import { markCharacterDeletedEverywhere } from './character-deletion.service'
 
 import type { EsiTypeResolver } from '@repo/esi'
+import type { EveCharacterData } from '@repo/eve-character-data'
 import type { EveCorporationData } from '@repo/eve-corporation-data'
 import type { Env } from '../context'
 import type { createDb } from '../db'
 
 type CharacterAffiliationHydrationParams = {
 	db: ReturnType<typeof createDb>
-	env: Pick<Env, 'ESI' | 'ESI_TYPE_RESOLVER'> & Partial<Pick<Env, 'EVE_CORPORATION_DATA'>>
+	env: Pick<Env, 'ESI_TYPE_RESOLVER' | 'EVE_TOKEN_STORE' | 'EVE_CHARACTER_DATA'> &
+		Partial<Pick<Env, 'EVE_CORPORATION_DATA'>>
 	characterId: string
 	cacheMode?: 'default' | 'no-store'
 	executionCtx?: ExecutionContext
@@ -37,17 +39,28 @@ export interface HydratedCharacterAffiliation {
 export async function hydrateCharacterAffiliation(
 	params: CharacterAffiliationHydrationParams
 ): Promise<HydratedCharacterAffiliation> {
-	const { db, env, characterId, cacheMode = 'no-store', executionCtx } = params
-	const esiStub = getEsiInstanceForCharacter(env.ESI, characterId)
+	const { db, env, characterId, executionCtx } = params
+	const eveCharacterData = getStub<EveCharacterData>(env.EVE_CHARACTER_DATA, characterId)
 
-	const characterInfo = await esiStub.fetchCharacterPublicInfo(characterId, { cacheMode })
-	const corporationId = String(characterInfo.corporation_id)
-	const allianceId = characterInfo.alliance_id ? String(characterInfo.alliance_id) : null
+	const publicRefreshResult = await eveCharacterData.refreshPublicCharacterData(characterId, true)
+
+	if (publicRefreshResult.isDeleted) {
+		await markCharacterDeletedEverywhere(db, env, characterId)
+		return {
+			characterId,
+			characterName: publicRefreshResult.characterName ?? '',
+			corporationId: '1000001',
+			allianceId: null,
+		}
+	}
+
+	const corporationId = publicRefreshResult.currentCorporationId ?? ''
+	const allianceId = publicRefreshResult.currentAllianceId ?? null
 
 	await db
 		.update(userCharacters)
 		.set({
-			characterName: characterInfo.name,
+			characterName: publicRefreshResult.characterName ?? '',
 			corporationId,
 			allianceId,
 			lastCharacterRefresh: new Date(),
@@ -91,7 +104,7 @@ export async function hydrateCharacterAffiliation(
 
 	return {
 		characterId,
-		characterName: characterInfo.name,
+		characterName: publicRefreshResult.characterName ?? '',
 		corporationId,
 		allianceId,
 	}
