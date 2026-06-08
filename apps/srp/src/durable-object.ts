@@ -23,7 +23,7 @@ import { computeSrpPayout } from './lib/payout'
 import {
 	doesRecentLossCacheCoverCutoff,
 	mergeRecentLosses,
-	shouldInvalidateRecentLossCache,
+	isRecentLossRequestable,
 	selectRecentKillmailsUntilKnown,
 	type RecentLossCacheRecord,
 	type RecentLossCacheStorageRecord,
@@ -39,12 +39,17 @@ import type { srpRequests as srpRequestsTable } from './db/schema'
 
 type KillmailDataJson = NonNullable<typeof srpRequestsTable.$inferInsert.killmailData>
 
-import type { CharacterLossData, EveCharacterData } from '@repo/eve-character-data'
+import type { CharacterLossData, CharacterLossItemData, EveCharacterData } from '@repo/eve-character-data'
 import type { EveCorporationData } from '@repo/eve-corporation-data'
+import type { EveTokenStore } from '@repo/eve-token-store'
 import type { LatestMarketPrice, Markets } from '@repo/markets'
 import type {
 	AppliedModifier,
 	CreateSRPPolicy,
+	RecentLossRefreshCharacterFailure,
+	RecentLossRefreshCharacterInput,
+	RecentLossRefreshCharacterResult,
+	RecentLossesResponse,
 	LossWithSRPStatus,
 	RequestStatus,
 	Srp,
@@ -61,6 +66,19 @@ import type {
 } from '@repo/srp'
 import type { KillmailDetail, Universe } from '@repo/universe'
 import type { Env } from './context'
+
+const SRP_REQUIRED_KILLMAIL_SCOPES = ['esi-killmails.read_killmails.v1']
+
+function serializeLossItems(items?: KillmailDetail['victim']['items']): CharacterLossItemData[] | undefined {
+	if (!items || items.length === 0) return undefined
+	return items.map((item) => ({
+		flag: item.flag,
+		item_type_id: item.item_type_id,
+		quantity_destroyed: item.quantity_destroyed,
+		quantity_dropped: item.quantity_dropped,
+		items: serializeLossItems(item.items),
+	}))
+}
 
 /**
  * SRP Durable Object
@@ -134,6 +152,7 @@ export class SrpDO extends DurableObject<Env> implements Srp {
 			totalValue: '0',
 			solarSystemId: killmail.solar_system_id,
 			victimCharacterId,
+			victimItems: serializeLossItems(killmail.victim.items),
 		}
 	}
 
@@ -519,42 +538,64 @@ export class SrpDO extends DurableObject<Env> implements Srp {
 	 * Get recent losses for multiple characters with SRP status
 	 */
 	async getRecentLosses(
-		characterIds: string[],
+		characters: RecentLossRefreshCharacterInput[],
 		userId: string,
 		daysBack = 30,
 		_excludeNonSrpEligible = true
-	): Promise<LossWithSRPStatus[]> {
+	): Promise<RecentLossesResponse> {
 		const config = await this.getConfig()
 		const maxLossAgeDays = config?.maxLossAgeDays ?? daysBack
 		const effectiveDaysBack = Math.max(1, Math.min(daysBack, maxLossAgeDays))
 		const cutoffMs = Date.now() - effectiveDaysBack * SrpDO.MS_PER_DAY
 		const cacheCutoffMs = Date.now() - maxLossAgeDays * SrpDO.MS_PER_DAY
-
-		// Read cached losses first so we only page ESI until we reach the known boundary.
-		const allLosses = new Map<string, CharacterLossData>()
+		const tokenStore = getStub<EveTokenStore>(this.env.EVE_TOKEN_STORE, 'default')
 		const universeStub = getStub<Universe>(this.env.UNIVERSE, 'default')
-		for (const characterId of characterIds) {
-			let cached = await this.readRecentLossCache(characterId)
-			if (shouldInvalidateRecentLossCache(cached, maxLossAgeDays)) {
-				await this.storage.delete(this.buildRecentLossCacheKey(characterId))
-				cached = null
+		const allLosses = new Map<string, CharacterLossData>()
+		const failedCharacters: RecentLossRefreshCharacterFailure[] = []
+
+		for (const character of characters) {
+			const cached = await this.readRecentLossCache(character.characterId)
+			if (!cached) {
+				const tokenValidation = await tokenStore.validateToken(
+					character.characterId,
+					SRP_REQUIRED_KILLMAIL_SCOPES
+				)
+				if (!tokenValidation.isValid) {
+					failedCharacters.push({
+						characterId: character.characterId,
+						characterName: character.characterName,
+						reason: 'invalid_token',
+						message: 'ESI token is invalid or expired. Please re-authenticate this character.',
+					})
+				} else {
+					failedCharacters.push({
+						characterId: character.characterId,
+						characterName: character.characterName,
+						reason: 'cache_missing',
+						message: 'Recent losses have not been refreshed yet. Use Refresh to fetch them.',
+					})
+				}
+				continue
 			}
-			const cachedLosses = cached?.losses ?? []
-			const cacheCoversRequestedWindow = doesRecentLossCacheCoverCutoff(
-				cached,
-				cacheCutoffMs,
-				maxLossAgeDays
-			)
-			const knownKillmailIds = cacheCoversRequestedWindow
-				? new Set(cachedLosses.map((loss) => String(loss.killmailId)))
-				: new Set<string>()
-			const freshLosses = await this.fetchRecentLossesFromEsi(characterId, knownKillmailIds)
-			const cachedLossesMerged = mergeRecentLosses(cachedLosses, freshLosses, cacheCutoffMs)
-			await this.writeRecentLossCache(characterId, cachedLossesMerged, cacheCutoffMs, maxLossAgeDays)
-			for (const loss of cachedLossesMerged) {
+
+			if (cached.losses.length > 0 && !doesRecentLossCacheCoverCutoff(cached, cacheCutoffMs, maxLossAgeDays)) {
+				failedCharacters.push({
+					characterId: character.characterId,
+					characterName: character.characterName,
+					reason: 'cache_incomplete',
+					message:
+						'Cached recent losses do not reach the current lookback window. Use Refresh to backfill older losses.',
+				})
+			}
+
+			for (const loss of cached.losses) {
+				if (_excludeNonSrpEligible && !isRecentLossRequestable(loss)) {
+					continue
+				}
 				allLosses.set(loss.killmailId, loss)
 			}
 		}
+
 		const mergedLosses = [...allLosses.values()]
 			.filter((loss) => new Date(loss.killmailTime).getTime() >= cutoffMs)
 			.sort((a, b) => new Date(b.killmailTime).getTime() - new Date(a.killmailTime).getTime())
@@ -587,7 +628,10 @@ export class SrpDO extends DurableObject<Env> implements Srp {
 		const killmailIds = mergedLosses.map((l) => String(l.killmailId))
 
 		if (killmailIds.length === 0) {
-			return []
+			return {
+				losses: [],
+				failedCharacters,
+			}
 		}
 
 		const existingRequests = await this.db.query.srpRequests.findMany({
@@ -635,35 +679,39 @@ export class SrpDO extends DurableObject<Env> implements Srp {
 		}
 
 		// Annotate losses with SRP status and sort by time descending
-		return mergedLosses
-			.filter((loss) => !dismissedKillmailIds.has(String(loss.killmailId)))
-			.filter((loss) => !legacyPaidKillmailIds.has(String(loss.killmailId)))
-			.filter((loss) => {
-				const shipTypeId = String(loss.shipTypeId)
-				const marketGroupId = typeMetaMap[shipTypeId]?.marketGroupId ?? null
-				const shipTypeName = resolved[shipTypeId] ?? ''
-				const looksLikeShuttleByName = shipTypeName.toLowerCase().includes('shuttle')
-				return !(this.isShuttleMarketGroupId(marketGroupId) || looksLikeShuttleByName)
-			})
-			.map((loss) => {
-				const lossKillmailId = String(loss.killmailId)
-				const request = requestMap.get(lossKillmailId)
-				return {
-					killmailId: lossKillmailId,
-					killmailHash: loss.killmailHash ?? '',
-					killmailTime: new Date(loss.killmailTime).toISOString(),
-					shipTypeId: loss.shipTypeId,
-					shipTypeName: resolved[String(loss.shipTypeId)],
-					totalValue: loss.totalValue ?? '0',
-					solarSystemId: loss.solarSystemId,
-					solarSystemName: resolved[String(loss.solarSystemId)],
-					victimCharacterId: String(loss.victimCharacterId ?? ''),
-					hasSRPRequest: !!request,
-					srpRequestId: request?.id,
-					srpRequestStatus: request?.status,
-				}
-			})
-			.sort((a, b) => new Date(b.killmailTime).getTime() - new Date(a.killmailTime).getTime())
+		return {
+			losses: mergedLosses
+				.filter((loss) => !dismissedKillmailIds.has(String(loss.killmailId)))
+				.filter((loss) => !legacyPaidKillmailIds.has(String(loss.killmailId)))
+				.filter((loss) => {
+					const shipTypeId = String(loss.shipTypeId)
+					const marketGroupId = typeMetaMap[shipTypeId]?.marketGroupId ?? null
+					const shipTypeName = resolved[shipTypeId] ?? ''
+					const looksLikeShuttleByName = shipTypeName.toLowerCase().includes('shuttle')
+					return !(this.isShuttleMarketGroupId(marketGroupId) || looksLikeShuttleByName)
+				})
+				.map((loss) => {
+					const lossKillmailId = String(loss.killmailId)
+					const request = requestMap.get(lossKillmailId)
+					return {
+						killmailId: lossKillmailId,
+						killmailHash: loss.killmailHash ?? '',
+						killmailTime: new Date(loss.killmailTime).toISOString(),
+						shipTypeId: loss.shipTypeId,
+						shipTypeName: resolved[String(loss.shipTypeId)],
+						totalValue: loss.totalValue ?? '0',
+						solarSystemId: loss.solarSystemId,
+						solarSystemName: resolved[String(loss.solarSystemId)],
+						victimCharacterId: String(loss.victimCharacterId ?? ''),
+						victimItems: loss.victimItems,
+						hasSRPRequest: !!request,
+						srpRequestId: request?.id,
+						srpRequestStatus: request?.status,
+					}
+				})
+				.sort((a, b) => new Date(b.killmailTime).getTime() - new Date(a.killmailTime).getTime()),
+			failedCharacters,
+		}
 	}
 
 	async dismissLoss(userId: string, killmailId: string): Promise<void> {
@@ -681,6 +729,35 @@ export class SrpDO extends DurableObject<Env> implements Srp {
 			.onConflictDoNothing({
 				target: [srpDismissedLosses.userId, srpDismissedLosses.killmailId],
 			})
+	}
+
+	async refreshRecentLossesForCharacter(
+		_userId: string,
+		characterId: string,
+		_characterName: string,
+		maxLossAgeDays: number
+	): Promise<RecentLossRefreshCharacterResult> {
+		const cached = await this.readRecentLossCache(characterId)
+		const cacheCutoffMs = Date.now() - maxLossAgeDays * SrpDO.MS_PER_DAY
+		const cacheCoversRequestedWindow = doesRecentLossCacheCoverCutoff(
+			cached,
+			cacheCutoffMs,
+			maxLossAgeDays
+		)
+		const knownKillmailIds = cacheCoversRequestedWindow
+			? new Set((cached?.losses ?? []).map((loss) => String(loss.killmailId)))
+			: new Set<string>()
+
+		const freshLosses = await this.fetchRecentLossesFromEsi(characterId, knownKillmailIds)
+		const cachedLosses = cached?.losses ?? []
+		const mergedLosses = mergeRecentLosses(cachedLosses, freshLosses, cacheCutoffMs)
+		await this.writeRecentLossCache(characterId, mergedLosses, cacheCutoffMs, maxLossAgeDays)
+
+		return {
+			characterId,
+			characterName: _characterName,
+			success: true,
+		}
 	}
 
 	private extractLegacyPaidKillmailId(reason: string | null | undefined): string | null {

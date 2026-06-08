@@ -1,5 +1,5 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { useEffect, useMemo } from 'react'
+import { useEffect, useMemo, useRef } from 'react'
 
 import { NotFoundError, api } from '@/lib/api'
 
@@ -23,10 +23,8 @@ import {
 	useLossRequestOverlaySnapshot,
 } from './state/loss-request-overlay-store'
 import {
-	getReviewQueueSnapshot,
 	restoreReviewQueueStateFromRollback,
 	snapshotReviewQueueStateForRollback,
-	setReviewQueueSnapshot,
 	transitionRequestStatusAcrossReviewQueueSnapshots,
 	upsertRequestAcrossReviewQueueSnapshots,
 } from './state/review-queue-snapshot-store'
@@ -92,8 +90,8 @@ function invalidateLossQueries(queryClient: ReturnType<typeof useQueryClient>) {
 }
 
 function refreshQueuePagesHard(queryClient: ReturnType<typeof useQueryClient>) {
-	// Queue pages use requests/by-status with arbitrary status + filter objects.
-	// Remove all cached variants so navigating back always fetches fresh queue data.
+	// Queue pages now use both the legacy shared by-status queries and the
+	// dedicated review queue query family.
 	queryClient.removeQueries({
 		predicate: (query) => {
 			const key = query.queryKey
@@ -101,7 +99,7 @@ function refreshQueuePagesHard(queryClient: ReturnType<typeof useQueryClient>) {
 				Array.isArray(key) &&
 				key[0] === 'srp' &&
 				key[1] === 'requests' &&
-				key[2] === 'by-status'
+				(key[2] === 'by-status' || key[2] === 'review-by-status')
 			)
 		},
 	})
@@ -113,7 +111,7 @@ function refreshQueuePagesHard(queryClient: ReturnType<typeof useQueryClient>) {
 				Array.isArray(key) &&
 				key[0] === 'srp' &&
 				key[1] === 'requests' &&
-				key[2] === 'by-status' &&
+				(key[2] === 'by-status' || key[2] === 'review-by-status') &&
 				(key[3] === 'pending' || key[3] === 'approved' || key[3] === 'paid')
 			)
 		},
@@ -134,7 +132,7 @@ function refreshQueueBadgesSoft(
 				Array.isArray(key) &&
 				key[0] === 'srp' &&
 				key[1] === 'requests' &&
-				key[2] === 'by-status' &&
+				(key[2] === 'by-status' || key[2] === 'review-by-status') &&
 				typeof key[3] === 'string' &&
 				statuses.includes(key[3] as RequestStatus)
 			)
@@ -171,10 +169,10 @@ function adjustPendingPayoutTotalCaches(
 
 // ===== Query Hooks =====
 
-export function useRecentLosses(daysBack: number = 30) {
+export function useRecentLosses() {
 	const overlay = useLossRequestOverlaySnapshot()
 	const query = useQuery({
-		queryKey: srpKeys.losses(daysBack),
+		queryKey: srpKeys.losses(),
 		queryFn: () => api.getRecentLosses(),
 		staleTime: 1000 * 60 * 5,
 	})
@@ -188,6 +186,31 @@ export function useRecentLosses(daysBack: number = 30) {
 		data: mergedData,
 		failedCharacters: query.data?.failedCharacters ?? [],
 	}
+}
+
+export function useRecentLossRefreshStatus() {
+	const queryClient = useQueryClient()
+	const handledCompletionWorkflowIdRef = useRef<string | null>(null)
+	const query = useQuery({
+		queryKey: srpKeys.lossRefreshStatus(),
+		queryFn: () => api.getRecentLossRefreshStatus(),
+		staleTime: 0,
+		refetchInterval: (query) => {
+			const data = query.state.data
+			return data?.status?.status === 'queued' || data?.status?.status === 'running' ? 10000 : false
+		},
+		refetchOnWindowFocus: false,
+	})
+
+	useEffect(() => {
+		if (!query.data?.status) return
+		if (query.data.status.status !== 'completed' && query.data.status.status !== 'failed') return
+		if (handledCompletionWorkflowIdRef.current === query.data.status.workflowInstanceId) return
+		handledCompletionWorkflowIdRef.current = query.data.status.workflowInstanceId
+		invalidateLossQueries(queryClient)
+	}, [query.data, queryClient])
+
+	return query
 }
 
 export function useMyRequests(
@@ -235,47 +258,6 @@ export function usePendingRequests(
 		queryFn: () => api.getPendingRequests(params),
 		staleTime: 1000 * 30,
 	})
-}
-
-export function useRequestsByStatus(
-	status: RequestStatus,
-	params: {
-		limit?: number
-		offset?: number
-		characterName?: string
-		shipTypeName?: string
-		solarSystemName?: string
-		dateFrom?: string
-		dateTo?: string
-	} = {},
-	options?: {
-		enabled?: boolean
-	}
-) {
-	const reviewQueueSnapshotKey = `${status}:${JSON.stringify({
-		limit: params.limit,
-		offset: params.offset,
-		characterName: params.characterName,
-		shipTypeName: params.shipTypeName,
-		solarSystemName: params.solarSystemName,
-		dateFrom: params.dateFrom,
-		dateTo: params.dateTo,
-	})}`
-	const query = useQuery({
-		queryKey: srpKeys.requestsByStatus(status, params),
-		queryFn: () => api.getRequestsByStatus({ status, ...params }),
-		placeholderData: (previousData) =>
-			previousData ?? getReviewQueueSnapshot(status, params),
-		staleTime: 1000 * 30,
-		enabled: options?.enabled ?? true,
-	})
-
-	useEffect(() => {
-		if (!query.data) return
-		setReviewQueueSnapshot(status, params, query.data)
-	}, [query.data, status, reviewQueueSnapshotKey])
-
-	return query
 }
 
 export function usePendingPayments(
@@ -363,7 +345,7 @@ export function useRefreshKillmails() {
 	return useMutation({
 		mutationFn: () => api.refreshLosses(),
 		onSuccess: () => {
-			invalidateLossQueries(queryClient)
+			void queryClient.invalidateQueries({ queryKey: srpKeys.lossRefreshStatus() })
 		},
 	})
 }

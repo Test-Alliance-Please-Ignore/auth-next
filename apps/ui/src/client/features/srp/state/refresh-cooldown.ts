@@ -1,4 +1,4 @@
-export const REFRESH_COOLDOWN_MS = 60_000
+export const REFRESH_COOLDOWN_MS = 15 * 60_000
 export const REFRESH_COOLDOWN_STORAGE_KEY = 'srp.losses.refresh.cooldown_until'
 
 interface StorageLike {

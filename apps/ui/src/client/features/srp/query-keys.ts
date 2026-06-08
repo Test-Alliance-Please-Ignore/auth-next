@@ -4,7 +4,8 @@ export const srpKeys = {
 	all: ['srp'] as const,
 
 	// Losses
-	losses: (daysBack?: number) => [...srpKeys.all, 'losses', daysBack] as const,
+	losses: () => [...srpKeys.all, 'losses'] as const,
+	lossRefreshStatus: () => [...srpKeys.losses(), 'refresh-status'] as const,
 
 	// Requests
 	requests: () => [...srpKeys.all, 'requests'] as const,

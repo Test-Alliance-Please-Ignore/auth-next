@@ -43,6 +43,8 @@ export type Env = SharedHonoEnv & {
 	SKILLS: DurableObjectNamespace
 	/** SRP (Ship Replacement Program) Durable Object binding */
 	SRP: DurableObjectNamespace
+	/** SRP recent-loss refresh coordinator Durable Object binding */
+	SRP_RECENT_LOSS_REFRESH_COORDINATOR: DurableObjectNamespace
 	/** Features Durable Object binding */
 	FEATURES?: DurableObjectNamespace
 	/** Universe Durable Object binding (canonical EVE static data source) */

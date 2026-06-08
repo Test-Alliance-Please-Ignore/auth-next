@@ -48,8 +48,28 @@ interface CreateRequestFormProps {
 	shipTypeId: string
 	shipTypeName: string
 	lossDate: string
+	lossVictimItems?: Array<{
+		flag: number
+		item_type_id: string
+		quantity_destroyed?: number
+		quantity_dropped?: number
+		items?: Array<{
+			flag: number
+			item_type_id: string
+			quantity_destroyed?: number
+			quantity_dropped?: number
+			items?: never
+		}>
+	}>
 	preview: KillmailPreview | null
 	previewLoading: boolean
+}
+
+type NormalizedVictimItem = {
+	item_type_id: string
+	flag: number
+	quantity_destroyed?: number
+	quantity_dropped?: number
 }
 
 export function CreateRequestForm({
@@ -59,6 +79,7 @@ export function CreateRequestForm({
 	shipTypeId,
 	shipTypeName,
 	lossDate,
+	lossVictimItems,
 	preview,
 	previewLoading,
 }: CreateRequestFormProps) {
@@ -70,33 +91,43 @@ export function CreateRequestForm({
 		defaultValues: { killmailId, killmailHash, characterId, contextText: '' },
 	})
 
-	const fittingItems = preview
-		? transformKillmailToFittingItems(
-				preview.victimItems.map((i) => ({
-					item_type_id: Number(i.typeId),
-					flag: i.flag,
-					quantity_destroyed: i.quantityDestroyed,
-					quantity_dropped: i.quantityDropped,
-				})),
-				preview.itemPrices.map((p) => ({
-					typeId: p.typeId,
-					price: p.unitPrice,
-					isConsumable: p.isConsumable,
-				})),
-				preview.itemNames
-			)
-		: []
-	const cargoItems = preview
-		? transformKillmailToCargoItems(
-				preview.victimItems.map((i) => ({
-					item_type_id: Number(i.typeId),
-					flag: i.flag,
-					quantity_destroyed: i.quantityDestroyed,
-					quantity_dropped: i.quantityDropped,
-				})),
-				preview.itemNames
-			)
-		: []
+	const displayVictimItems: NormalizedVictimItem[] =
+		lossVictimItems?.map((i) => ({
+			item_type_id: i.item_type_id,
+			flag: i.flag,
+			quantity_destroyed: i.quantity_destroyed,
+			quantity_dropped: i.quantity_dropped,
+		})) ??
+		preview?.victimItems.map((i) => ({
+			item_type_id: i.typeId,
+			flag: i.flag,
+			quantity_destroyed: i.quantityDestroyed,
+			quantity_dropped: i.quantityDropped,
+		})) ??
+		[]
+	const fittingItems = transformKillmailToFittingItems(
+		displayVictimItems.map((i) => ({
+			item_type_id: Number(i.item_type_id),
+			flag: i.flag,
+			quantity_destroyed: i.quantity_destroyed,
+			quantity_dropped: i.quantity_dropped,
+		})),
+		preview?.itemPrices.map((p) => ({
+			typeId: p.typeId,
+			price: p.unitPrice,
+			isConsumable: p.isConsumable,
+		})) ?? [],
+		preview?.itemNames ?? {}
+	)
+	const cargoItems = transformKillmailToCargoItems(
+		displayVictimItems.map((i) => ({
+			item_type_id: Number(i.item_type_id),
+			flag: i.flag,
+			quantity_destroyed: i.quantity_destroyed,
+			quantity_dropped: i.quantity_dropped,
+		})),
+		preview?.itemNames ?? {}
+	)
 
 	const onSubmit = form.handleSubmit(async (data) => {
 		try {

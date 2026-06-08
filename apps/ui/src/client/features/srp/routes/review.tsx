@@ -1,4 +1,6 @@
-import { useEffect, useState } from 'react'
+import { Loader2, RefreshCw } from 'lucide-react'
+import { useQuery } from '@tanstack/react-query'
+import { useEffect, useMemo, useState } from 'react'
 import { Link, Navigate } from 'react-router-dom'
 
 import { UserSearchPaginationControls } from '@/components/user-search-pagination-controls'
@@ -25,7 +27,16 @@ import { typeIconUrl } from '@/lib/eve-images'
 
 import { RequestStatusBadge } from '../components/RequestStatusBadge'
 import { CharacterRoleBadge } from '../components/CharacterRoleBadge'
-import { useRequestsByStatus } from '../hooks'
+import {
+	setReviewQueueActiveTab,
+	setReviewQueuePage,
+	setReviewQueuePageSize,
+	setReviewQueueSnapshot,
+	toggleReviewQueueSort,
+	useReviewQueueEntityMap,
+	useReviewQueueUiState,
+	updateReviewQueueFilters,
+} from '../state/review-queue-snapshot-store'
 import { formatISKShort, formatRelativeTime, getRequestCharacterRole } from '../utils'
 
 import type { RequestStatus, SRPRequestResponse } from '../types'
@@ -37,8 +48,8 @@ const TABS: Array<{ value: RequestStatus; label: string }> = [
 	{ value: 'approved', label: 'Approved' },
 	{ value: 'paid', label: 'Paid' },
 ]
-const REVIEW_QUEUE_ACTIVE_TAB_STORAGE_KEY = 'srp:review-queue:active-tab'
-const REVIEW_QUEUE_TAB_VALUES = new Set(TABS.map((tab) => tab.value))
+
+type ReviewQueueSortBy = 'submitted' | 'loss'
 
 type ReviewQueueFilters = {
 	characterName?: string
@@ -46,13 +57,6 @@ type ReviewQueueFilters = {
 	solarSystemName?: string
 	dateFrom?: string
 	dateTo?: string
-}
-
-type ReviewQueueSortBy = 'submitted' | 'loss'
-type ReviewQueueSortDirection = 'asc' | 'desc'
-
-function getDefaultSortDirectionForStatus(status: RequestStatus): ReviewQueueSortDirection {
-	return status === 'approved' || status === 'rejected' || status === 'paid' ? 'desc' : 'asc'
 }
 
 function toTimestamp(value: string | null | undefined): number {
@@ -65,29 +69,10 @@ export default function ReviewQueue() {
 	usePageTitle('SRP - Review Queue')
 
 	const { hasPermission, isAdmin } = useUserPermissions()
-	const [activeTab, setActiveTab] = useState<RequestStatus>(() => {
-		if (typeof window === 'undefined') return 'pending'
-
-		const stored = window.sessionStorage.getItem(REVIEW_QUEUE_ACTIVE_TAB_STORAGE_KEY)
-		if (stored && REVIEW_QUEUE_TAB_VALUES.has(stored as RequestStatus)) {
-			return stored as RequestStatus
-		}
-
-		return 'pending'
-	})
-	const [filters, setFilters] = useState<ReviewQueueFilters>({})
-	const [page, setPage] = useState(1)
-	const [pageSize, setPageSize] = useState(25)
-
-	useEffect(() => {
-		setPage(1)
-	}, [
-		filters.characterName,
-		filters.shipTypeName,
-		filters.solarSystemName,
-		filters.dateFrom,
-		filters.dateTo,
-	])
+	const activeTab = useReviewQueueUiState((state) => state.activeTab)
+	const filters = useReviewQueueUiState((state) => state.filters)
+	const page = useReviewQueueUiState((state) => state.page)
+	const pageSize = useReviewQueueUiState((state) => state.pageSize)
 
 	const canAccessReviewQueue =
 		isAdmin ||
@@ -100,13 +85,16 @@ export default function ReviewQueue() {
 	}
 
 	const handleTabChange = (value: string) => {
-		const nextTab = value as RequestStatus
-		setActiveTab(nextTab)
-		setPage(1)
-		if (typeof window !== 'undefined') {
-			window.sessionStorage.setItem(REVIEW_QUEUE_ACTIVE_TAB_STORAGE_KEY, nextTab)
-		}
+		setReviewQueueActiveTab(value as RequestStatus)
 	}
+	const reviewQueueContentKey = [
+		activeTab,
+		filters.characterName ?? '',
+		filters.shipTypeName ?? '',
+		filters.solarSystemName ?? '',
+		filters.dateFrom ?? '',
+		filters.dateTo ?? '',
+	].join(':')
 
 	return (
 		<Container>
@@ -119,10 +107,7 @@ export default function ReviewQueue() {
 							options={[]}
 							value={filters.characterName ?? ''}
 							onValueChange={(value) =>
-								setFilters((prev) => ({
-									...prev,
-									characterName: value || undefined,
-								}))
+								updateReviewQueueFilters({ characterName: value || undefined })
 							}
 							searchable
 							searchDelegate={async (query) => {
@@ -151,10 +136,7 @@ export default function ReviewQueue() {
 							options={[]}
 							value={filters.shipTypeName ?? ''}
 							onValueChange={(value) =>
-								setFilters((prev) => ({
-									...prev,
-									shipTypeName: value || undefined,
-								}))
+								updateReviewQueueFilters({ shipTypeName: value || undefined })
 							}
 							searchable
 							searchDelegate={async (query) => {
@@ -175,10 +157,7 @@ export default function ReviewQueue() {
 							options={[]}
 							value={filters.solarSystemName ?? ''}
 							onValueChange={(value) =>
-								setFilters((prev) => ({
-									...prev,
-									solarSystemName: value || undefined,
-								}))
+								updateReviewQueueFilters({ solarSystemName: value || undefined })
 							}
 							searchable
 							searchDelegate={async (query) => {
@@ -201,11 +180,10 @@ export default function ReviewQueue() {
 								toDate: filters.dateTo ?? '',
 							}}
 							onChange={({ fromDate, toDate }) =>
-								setFilters((prev) => ({
-									...prev,
+								updateReviewQueueFilters({
 									dateFrom: fromDate || undefined,
 									dateTo: toDate || undefined,
-								}))
+								})
 							}
 							placeholder="Loss date range"
 							className="[&_.themed-date-picker__input]:h-10"
@@ -223,14 +201,14 @@ export default function ReviewQueue() {
 					</Tabs>
 
 					<ReviewTabContent
+						key={reviewQueueContentKey}
 						status={activeTab}
 						filters={filters}
 						page={page}
 						pageSize={pageSize}
-						onPageChange={setPage}
+						onPageChange={setReviewQueuePage}
 						onPageSizeChange={(nextPageSize) => {
-							setPageSize(nextPageSize)
-							setPage(1)
+							setReviewQueuePageSize(nextPageSize)
 						}}
 					/>
 				</CardContent>
@@ -254,20 +232,10 @@ function ReviewTabContent({
 	onPageChange: (page: number) => void
 	onPageSizeChange: (pageSize: number) => void
 }) {
-	const [sortBy, setSortBy] = useState<ReviewQueueSortBy>('submitted')
-	const [sortDirection, setSortDirection] = useState<ReviewQueueSortDirection>(
-		getDefaultSortDirectionForStatus(status)
-	)
-	useEffect(() => {
-		setSortDirection(getDefaultSortDirectionForStatus(status))
-	}, [status])
+	const sortBy = useReviewQueueUiState((state) => state.sortBy)
+	const sortDirection = useReviewQueueUiState((state) => state.sortDirection)
 	const toggleSort = (nextSortBy: ReviewQueueSortBy) => {
-		if (sortBy === nextSortBy) {
-			setSortDirection((prev) => (prev === 'asc' ? 'desc' : 'asc'))
-			return
-		}
-		setSortBy(nextSortBy)
-		setSortDirection(getDefaultSortDirectionForStatus(status))
+		toggleReviewQueueSort(nextSortBy)
 	}
 	const sortIndicator = (field: ReviewQueueSortBy) => {
 		if (sortBy !== field) return '↕'
@@ -275,17 +243,50 @@ function ReviewTabContent({
 	}
 
 	const offset = (page - 1) * pageSize
-	const { data, isLoading, isFetching, error, refetch } = useRequestsByStatus(status, {
-		limit: pageSize,
+	const searchParams = new URLSearchParams()
+	searchParams.set('status', status)
+	searchParams.set('limit', String(pageSize))
+	searchParams.set('offset', String(offset))
+	if (filters.characterName) searchParams.set('characterName', filters.characterName)
+	if (filters.shipTypeName) searchParams.set('shipTypeName', filters.shipTypeName)
+	if (filters.solarSystemName) searchParams.set('solarSystemName', filters.solarSystemName)
+	if (filters.dateFrom) searchParams.set('dateFrom', filters.dateFrom)
+	if (filters.dateTo) searchParams.set('dateTo', filters.dateTo)
+	const requestPath = `/srp/requests/by-status?${searchParams.toString()}`
+	const queryKey = [
+		'srp',
+		'requests',
+		'review-by-status',
+		status,
+		pageSize,
 		offset,
-		...filters,
+		filters.characterName ?? '',
+		filters.shipTypeName ?? '',
+		filters.solarSystemName ?? '',
+		filters.dateFrom ?? '',
+		filters.dateTo ?? '',
+	] as const
+	const { data, isLoading, isFetching, error, refetch } = useQuery({
+		queryKey,
+		queryFn: async () => {
+			return api.get<{
+				requests: SRPRequestResponse[]
+				total: number
+				limit: number
+				offset: number
+			}>(requestPath)
+		},
+		placeholderData: (previousData) => previousData,
+		staleTime: 1000 * 60 * 5,
+		gcTime: 1000 * 60 * 5,
 	})
-	const [lastSuccessfulData, setLastSuccessfulData] = useState<typeof data | null>(null)
 	const [showLoadWarning, setShowLoadWarning] = useState(false)
 
 	useEffect(() => {
-		if (data) setLastSuccessfulData(data)
-	}, [data])
+		if (!data) return
+		if (data.limit !== pageSize || data.offset !== offset) return
+		setReviewQueueSnapshot(status, { limit: pageSize, offset, ...filters }, data)
+	}, [data, status, pageSize, offset, filters])
 
 	useEffect(() => {
 		if (!isLoading && !isFetching) {
@@ -304,15 +305,44 @@ function ReviewTabContent({
 			filters.dateFrom ||
 			filters.dateTo
 	)
-	const effectiveData = data ?? lastSuccessfulData
+	const effectiveData = data
+	const baseRequests = effectiveData?.requests ?? []
+	const entities = useReviewQueueEntityMap()
+	const requestEntities = useMemo(
+		() =>
+			baseRequests
+				.map((request) => entities[request.id] ?? request)
+				.filter((request): request is SRPRequestResponse => Boolean(request)),
+		[baseRequests, entities]
+	)
 	const totalCount = effectiveData?.total ?? 0
 	const hasPagination = Math.ceil(totalCount / pageSize) > 1
+	const isSoftLoading = Boolean(effectiveData) && (isLoading || isFetching)
+	const refreshButton = (
+		<Button
+			type="button"
+			variant="secondary"
+			size="sm"
+			className="h-8"
+			onClick={() => void refetch()}
+			disabled={isFetching}
+		>
+			{isFetching ? <Loader2 className="h-4 w-4 animate-spin" /> : <RefreshCw className="h-4 w-4" />}
+			<span className="ml-2">Refresh</span>
+		</Button>
+	)
 
 	if (!effectiveData && (isLoading || isFetching)) {
 		if (showLoadWarning) {
 			return (
 				<div className="rounded-lg border border-muted p-6 text-center">
-					<p className="text-sm text-muted-foreground">Queue is taking longer than expected.</p>
+					<div className="mx-auto flex w-fit items-center gap-2 rounded-full border border-muted bg-muted/20 px-3 py-1.5 text-sm text-muted-foreground">
+						<Loader2 className="h-4 w-4 animate-spin" />
+						<span>Loading requests...</span>
+					</div>
+					<p className="mt-3 text-sm text-muted-foreground">
+						Queue is taking longer than expected.
+					</p>
 					<Button
 						variant="secondary"
 						size="sm"
@@ -327,10 +357,11 @@ function ReviewTabContent({
 			)
 		}
 		return (
-			<div className="space-y-2">
-				{[...Array(3)].map((_, i) => (
-					<div key={i} className="h-16 animate-pulse rounded-md bg-muted/30" />
-				))}
+			<div className="rounded-lg border border-dashed p-12 text-center">
+				<div className="mx-auto flex w-fit items-center gap-2 rounded-full border border-muted bg-muted/20 px-3 py-1.5 text-sm text-muted-foreground">
+					<Loader2 className="h-4 w-4 animate-spin" />
+					<span>Loading requests...</span>
+				</div>
 			</div>
 		)
 	}
@@ -353,13 +384,13 @@ function ReviewTabContent({
 		)
 	}
 
-	const requests: SRPRequestResponse[] = [...(effectiveData?.requests ?? [])].sort((a, b) => {
+	const visibleRequests: SRPRequestResponse[] = [...requestEntities].sort((a, b) => {
 		const left = sortBy === 'submitted' ? toTimestamp(a.createdAt) : toTimestamp(a.lossDate)
 		const right = sortBy === 'submitted' ? toTimestamp(b.createdAt) : toTimestamp(b.lossDate)
 		return sortDirection === 'asc' ? left - right : right - left
 	})
 
-	if (requests.length === 0) {
+	if (visibleRequests.length === 0) {
 		return (
 			<div className="rounded-lg border border-dashed p-12 text-center">
 				<p className="text-muted-foreground">
@@ -367,6 +398,7 @@ function ReviewTabContent({
 						? 'No requests match the current filters'
 						: `No ${status.replace('_', ' ')} requests`}
 				</p>
+				<div className="mt-4 flex justify-center">{refreshButton}</div>
 			</div>
 		)
 	}
@@ -389,136 +421,12 @@ function ReviewTabContent({
 					</div>
 				</div>
 			)}
-				{hasPagination && (
-					<div className="mb-3 rounded-md border p-3">
-						<UserSearchPaginationControls
-						totalCount={totalCount}
-						page={page}
-						pageSize={pageSize}
-						onPageChange={onPageChange}
-							onPageSizeChange={onPageSizeChange}
-							pageSizeOptions={[10, 25, 50, 100]}
-							itemLabel="requests"
-							nextButtonLoading={isFetching}
-						/>
-					</div>
+			<div className="relative">
+				{isSoftLoading && (
+					<div className="pointer-events-none absolute inset-0 z-10 rounded-md bg-background/60 backdrop-blur-[1px]" />
 				)}
-			<div className="rounded-md border">
-				<Table>
-					<TableHeader>
-						<TableRow>
-							<TableHead className="w-14" />
-							<TableHead>Ship</TableHead>
-							<TableHead>Pilot</TableHead>
-							<TableHead className="text-right">Payout / Value</TableHead>
-							<TableHead>System</TableHead>
-							<TableHead>
-								<button
-									type="button"
-									className="inline-flex items-center gap-1 text-left hover:text-foreground"
-									onClick={() => toggleSort('loss')}
-								>
-									Lost
-									<span className="text-xs text-muted-foreground">{sortIndicator('loss')}</span>
-								</button>
-							</TableHead>
-							<TableHead>
-								<button
-									type="button"
-									className="inline-flex items-center gap-1 text-left hover:text-foreground"
-									onClick={() => toggleSort('submitted')}
-								>
-									Submitted
-									<span className="text-xs text-muted-foreground">
-										{sortIndicator('submitted')}
-									</span>
-								</button>
-							</TableHead>
-							<TableHead>Status</TableHead>
-							<TableHead className="text-right">Actions</TableHead>
-						</TableRow>
-					</TableHeader>
-					<TableBody>
-						{requests.map((req) => (
-							<TableRow key={req.id}>
-								<TableCell className="py-2">
-									{req.shipTypeId && (
-										<div className="h-10 w-10 overflow-hidden rounded border border-border/50">
-											<img
-												src={typeIconUrl(req.shipTypeId, 32)}
-												alt={req.shipTypeName ?? ''}
-												className="h-full w-full object-contain"
-												loading="lazy"
-											/>
-										</div>
-									)}
-								</TableCell>
-								<TableCell className="font-semibold">
-									<Link
-										to={`/srp/review/${req.id}`}
-										className="underline-offset-4 hover:underline focus-visible:underline"
-									>
-										{req.shipTypeName ?? '—'}
-									</Link>
-								</TableCell>
-								<TableCell className="text-sm">
-									<div className="inline-flex items-center gap-2">
-										<span>{req.characterName}</span>
-										<CharacterRoleBadge
-											role={getRequestCharacterRole(req)}
-											mainCharacterName={req.mainCharacterName}
-											mainCharacterId={req.mainCharacterId}
-										/>
-									</div>
-									{req.corporationName && req.corporationName !== 'Unknown' && (
-										<div className="text-xs text-muted-foreground">{req.corporationName}</div>
-									)}
-								</TableCell>
-								<TableCell className="text-right font-mono text-sm tabular-nums">
-									{formatISKShort(
-										req.approvedAmount ?? req.srpEquipmentValue ?? req.shipValue,
-										{ showDecimals: false }
-									)}
-								</TableCell>
-								<TableCell className="text-sm text-muted-foreground">
-									<div>{req.solarSystemName ?? '—'}</div>
-									{req.solarSystemRegionName ? (
-										<div className="text-xs text-muted-foreground/80">
-											{req.solarSystemRegionName}
-										</div>
-									) : null}
-								</TableCell>
-								<TableCell className="text-sm text-muted-foreground">
-									{req.lossDate ? (
-										<EveTimeDisplay
-											dateStr={req.lossDate}
-											format="compact"
-											className="whitespace-nowrap text-sm text-muted-foreground"
-										/>
-									) : (
-										'—'
-									)}
-								</TableCell>
-								<TableCell className="text-sm text-muted-foreground">
-									{formatRelativeTime(req.createdAt)}
-								</TableCell>
-								<TableCell>
-									<RequestStatusBadge status={req.requestStatus as any} />
-								</TableCell>
-								<TableCell className="text-right">
-									<Button size="sm" variant="secondary" asChild>
-										<Link to={`/srp/review/${req.id}`}>
-											View
-										</Link>
-									</Button>
-								</TableCell>
-							</TableRow>
-						))}
-					</TableBody>
-				</Table>
-			</div>
-			{hasPagination && (
-				<div className="mt-3 rounded-md border p-3">
+				<div className={isSoftLoading ? 'opacity-60 transition-opacity' : 'transition-opacity'}>
+					<div className="mb-3 rounded-md border p-3">
 						<UserSearchPaginationControls
 							totalCount={totalCount}
 							page={page}
@@ -528,9 +436,123 @@ function ReviewTabContent({
 							pageSizeOptions={[10, 25, 50, 100]}
 							itemLabel="requests"
 							nextButtonLoading={isFetching}
+							summaryAction={refreshButton}
 						/>
 					</div>
-				)}
+					<div className="rounded-md border">
+						<Table>
+							<TableHeader>
+								<TableRow>
+									<TableHead className="w-14" />
+									<TableHead>Ship</TableHead>
+									<TableHead>Pilot</TableHead>
+									<TableHead className="text-right">Payout / Value</TableHead>
+									<TableHead>System</TableHead>
+									<TableHead>
+										<button
+											type="button"
+											className="inline-flex items-center gap-1 text-left hover:text-foreground"
+											onClick={() => toggleSort('loss')}
+										>
+											Lost
+											<span className="text-xs text-muted-foreground">{sortIndicator('loss')}</span>
+										</button>
+									</TableHead>
+									<TableHead>
+										<button
+											type="button"
+											className="inline-flex items-center gap-1 text-left hover:text-foreground"
+											onClick={() => toggleSort('submitted')}
+										>
+											Submitted
+											<span className="text-xs text-muted-foreground">
+												{sortIndicator('submitted')}
+											</span>
+										</button>
+									</TableHead>
+									<TableHead>Status</TableHead>
+									<TableHead className="text-right">Actions</TableHead>
+								</TableRow>
+							</TableHeader>
+							<TableBody>
+								{visibleRequests.map((req) => (
+									<TableRow key={req.id}>
+										<TableCell className="py-2">
+											{req.shipTypeId && (
+												<div className="h-10 w-10 overflow-hidden rounded border border-border/50">
+													<img
+														src={typeIconUrl(req.shipTypeId, 32)}
+														alt={req.shipTypeName ?? ''}
+														className="h-full w-full object-contain"
+														loading="lazy"
+													/>
+												</div>
+											)}
+										</TableCell>
+										<TableCell className="font-semibold">
+											<Link
+												to={`/srp/review/${req.id}`}
+												className="underline-offset-4 hover:underline focus-visible:underline"
+											>
+												{req.shipTypeName ?? '—'}
+											</Link>
+										</TableCell>
+										<TableCell className="text-sm">
+											<div className="inline-flex items-center gap-2">
+												<span>{req.characterName}</span>
+												<CharacterRoleBadge
+													role={getRequestCharacterRole(req)}
+													mainCharacterName={req.mainCharacterName}
+													mainCharacterId={req.mainCharacterId}
+												/>
+											</div>
+											{req.corporationName && req.corporationName !== 'Unknown' && (
+												<div className="text-xs text-muted-foreground">{req.corporationName}</div>
+											)}
+										</TableCell>
+										<TableCell className="text-right font-mono text-sm tabular-nums">
+											{formatISKShort(
+												req.approvedAmount ?? req.srpEquipmentValue ?? req.shipValue,
+												{ showDecimals: false }
+											)}
+										</TableCell>
+										<TableCell className="text-sm text-muted-foreground">
+											<div>{req.solarSystemName ?? '—'}</div>
+											{req.solarSystemRegionName ? (
+												<div className="text-xs text-muted-foreground/80">
+													{req.solarSystemRegionName}
+												</div>
+											) : null}
+										</TableCell>
+										<TableCell className="text-sm text-muted-foreground">
+											{req.lossDate ? (
+												<EveTimeDisplay
+													dateStr={req.lossDate}
+													format="compact"
+													className="whitespace-nowrap text-sm text-muted-foreground"
+												/>
+											) : (
+												'—'
+											)}
+										</TableCell>
+										<TableCell className="text-sm text-muted-foreground">
+											{formatRelativeTime(req.createdAt)}
+										</TableCell>
+										<TableCell>
+											<RequestStatusBadge status={req.requestStatus as any} />
+										</TableCell>
+										<TableCell className="text-right">
+											<Button size="sm" variant="secondary" asChild>
+												<Link to={`/srp/review/${req.id}`}>View</Link>
+											</Button>
+										</TableCell>
+									</TableRow>
+								))}
+							</TableBody>
+						</Table>
+					</div>
+				</div>
+			</div>
 		</div>
 	)
 }

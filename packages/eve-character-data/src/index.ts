@@ -342,6 +342,14 @@ export interface CharacterKillmailData {
 /**
  * Detailed loss data for SRP system
  */
+export interface CharacterLossItemData {
+	flag: number
+	item_type_id: string
+	quantity_destroyed?: number
+	quantity_dropped?: number
+	items?: CharacterLossItemData[]
+}
+
 export interface CharacterLossData {
 	killmailId: string
 	killmailHash: string
@@ -350,6 +358,7 @@ export interface CharacterLossData {
 	totalValue: string // ISK value as text
 	solarSystemId: string
 	victimCharacterId: string
+	victimItems?: CharacterLossItemData[]
 	// Optional fields from killmail data
 	shipTypeName?: string // Resolved from static data
 	solarSystemName?: string // Resolved from static data
