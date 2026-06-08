@@ -133,7 +133,7 @@ export function CreateRequestForm({
 		try {
 			const result = await createMutation.mutateAsync(data)
 			toast.success('SRP request submitted')
-			void navigate(`/srp/request/${result.id}`)
+			void navigate(`/srp/request/${result.id}`, { replace: true })
 		} catch (error: any) {
 			toast.error('Failed to create request', { description: error.message || 'Please try again' })
 		}
