@@ -14,6 +14,90 @@ export const MAX_SRP_LOSS_AGE_DAYS = 90
  * ============================================================================
  */
 
+export interface RecentLossRefreshThrottleResult {
+	allowed: boolean
+	retryAfterMs: number
+	cooldownUntil: string
+}
+
+export interface RecentLossRefreshCharacterInput {
+	characterId: string
+	characterName: string
+}
+
+export interface RecentLossRefreshCharacterFailure {
+	characterId: string
+	characterName: string
+	reason: 'invalid_token' | 'cache_missing' | 'cache_incomplete' | 'fetch_failed'
+	message: string
+	error?: string
+}
+
+export interface RecentLossesResponse {
+	losses: LossWithSRPStatus[]
+	failedCharacters: RecentLossRefreshCharacterFailure[]
+}
+
+export interface RecentLossRefreshCharacterResult {
+	characterId: string
+	characterName: string
+	success: boolean
+	reason?: 'invalid_token' | 'fetch_failed'
+	error?: string
+}
+
+export type RecentLossRefreshStatus =
+	| 'queued'
+	| 'running'
+	| 'completed'
+	| 'failed'
+
+export interface RecentLossRefreshStatusRecord {
+	userId: string
+	workflowInstanceId: string
+	status: RecentLossRefreshStatus
+	totalCharacters: number
+	processedCharacters: number
+	successfulCharacters: number
+	failedCharacters: number
+	queuedAt: string
+	updatedAt: string
+	startedAt?: string
+	completedAt?: string
+	currentCharacterId?: string
+	currentCharacterName?: string
+	lastError?: string
+	failures: RecentLossRefreshCharacterFailure[]
+	maxLossAgeDays: number
+}
+
+export interface RecentLossRefreshStatusResponse {
+	status: RecentLossRefreshStatusRecord | null
+	cooldownUntil: string | null
+}
+
+export interface RecentLossRefreshStartResult {
+	allowed: boolean
+	retryAfterMs: number
+	cooldownUntil: string
+	workflowInstanceId?: string
+	status?: RecentLossRefreshStatus
+	totalCharacters?: number
+}
+
+export interface RecentLossRefreshCoordinator {
+	startRecentLossRefresh(
+		userId: string,
+		characters: RecentLossRefreshCharacterInput[],
+		maxLossAgeDays: number
+	): Promise<RecentLossRefreshStartResult>
+	getRecentLossRefreshStatus(userId: string): Promise<RecentLossRefreshStatusResponse>
+	updateRecentLossRefreshStatus(
+		userId: string,
+		status: RecentLossRefreshStatusRecord
+	): Promise<void>
+}
+
 /**
  * Public RPC interface for SRP Durable Object
  *
@@ -38,12 +122,28 @@ export interface Srp {
 	getRequest(requestId: string, userId: string): Promise<SRPRequestResponse | null>
 	getUserRequests(userId: string, limit?: number, offset?: number): Promise<SRPRequestResponse[]>
 	getRecentLosses(
-		characterIds: string[],
+		characters: RecentLossRefreshCharacterInput[],
 		userId: string,
 		daysBack?: number,
 		excludeNonSrpEligible?: boolean
-	): Promise<LossWithSRPStatus[]>
+	): Promise<RecentLossesResponse>
 	dismissLoss(userId: string, killmailId: string): Promise<void>
+	startRecentLossRefresh(
+		userId: string,
+		characters: RecentLossRefreshCharacterInput[],
+		maxLossAgeDays: number
+	): Promise<RecentLossRefreshStartResult>
+	getRecentLossRefreshStatus(userId: string): Promise<RecentLossRefreshStatusResponse>
+	updateRecentLossRefreshStatus(
+		userId: string,
+		status: RecentLossRefreshStatusRecord
+	): Promise<void>
+	refreshRecentLossesForCharacter(
+		userId: string,
+		characterId: string,
+		characterName: string,
+		maxLossAgeDays: number
+	): Promise<RecentLossRefreshCharacterResult>
 
 	// Legacy review methods (kept for backward compat)
 	getPendingRequests(

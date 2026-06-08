@@ -32,6 +32,11 @@ const env = {
 		idFromName: vi.fn(),
 		get: vi.fn(),
 	},
+	SRP_RECENT_LOSS_REFRESH_COORDINATOR: {
+		name: 'SRP_RECENT_LOSS_REFRESH_COORDINATOR',
+		idFromName: vi.fn(),
+		get: vi.fn(),
+	},
 	EVE_TOKEN_STORE: { name: 'EVE_TOKEN_STORE' },
 	DOCTRINES: { name: 'DOCTRINES' },
 	UNIVERSE: { name: 'UNIVERSE' },
@@ -80,8 +85,10 @@ function createApp(user?: SessionUser) {
 
 function makeSrpStub() {
 	return {
+		getConfig: vi.fn().mockResolvedValue({ maxLossAgeDays: 30 }),
 		getUserRequests: vi.fn().mockResolvedValue([]),
-		getRecentLosses: vi.fn().mockResolvedValue([]),
+		getRecentLosses: vi.fn().mockResolvedValue({ losses: [], failedCharacters: [] }),
+		getRecentLossRefreshStatus: vi.fn().mockResolvedValue({ status: null, cooldownUntil: null }),
 		getRequest: vi.fn(),
 		getRequestsByStatus: vi.fn().mockResolvedValue({ requests: [], total: 0 }),
 		getPendingPayments: vi.fn().mockResolvedValue([]),
@@ -90,6 +97,29 @@ function makeSrpStub() {
 		getComments: vi.fn().mockResolvedValue([]),
 		addComment: vi.fn(),
 		approveRequest: vi.fn(),
+		startRecentLossRefresh: vi.fn().mockResolvedValue({
+			allowed: true,
+			retryAfterMs: 0,
+			cooldownUntil: new Date(Date.now() + 15 * 60 * 1000).toISOString(),
+			workflowInstanceId: 'workflow-1',
+			status: 'queued',
+			totalCharacters: 1,
+		}),
+	}
+}
+
+function makeRefreshCoordinatorStub() {
+	return {
+		startRecentLossRefresh: vi.fn().mockResolvedValue({
+			allowed: true,
+			retryAfterMs: 0,
+			cooldownUntil: new Date(Date.now() + 15 * 60 * 1000).toISOString(),
+			workflowInstanceId: 'workflow-1',
+			status: 'queued',
+			totalCharacters: 1,
+		}),
+		getRecentLossRefreshStatus: vi.fn().mockResolvedValue({ status: null, cooldownUntil: null }),
+		updateRecentLossRefreshStatus: vi.fn().mockResolvedValue(undefined),
 	}
 }
 
@@ -123,6 +153,7 @@ function mockDbPrimaryCharacterRows(
 
 describe('srp routes - permissions', () => {
 	let srpStub: ReturnType<typeof makeSrpStub>
+	let refreshCoordinatorStub: ReturnType<typeof makeRefreshCoordinatorStub>
 	let tokenStoreStub: { validateToken: ReturnType<typeof vi.fn> }
 	let doctrinesStub: { getFittings: ReturnType<typeof vi.fn>; getFitting: ReturnType<typeof vi.fn> }
 	let universeStub: {
@@ -134,6 +165,7 @@ describe('srp routes - permissions', () => {
 		vi.clearAllMocks()
 
 		srpStub = makeSrpStub()
+		refreshCoordinatorStub = makeRefreshCoordinatorStub()
 		tokenStoreStub = {
 			validateToken: vi.fn().mockResolvedValue({
 				isValid: true,
@@ -151,6 +183,7 @@ describe('srp routes - permissions', () => {
 
 		getStubMock.mockImplementation((binding: any) => {
 			if (binding === env.SRP) return srpStub as any
+			if (binding === env.SRP_RECENT_LOSS_REFRESH_COORDINATOR) return refreshCoordinatorStub as any
 			if (binding === env.EVE_TOKEN_STORE) return tokenStoreStub as any
 			if (binding === env.DOCTRINES) return doctrinesStub as any
 			if (binding === env.UNIVERSE) return universeStub as any
@@ -195,11 +228,8 @@ describe('srp routes - permissions', () => {
 			})
 		)
 
-		srpStub.getRecentLosses.mockImplementation(async (characterIds: string[]) => {
-			if (characterIds[0] === '7002') {
-				throw new Error('killmail fetch failed')
-			}
-			return [
+		srpStub.getRecentLosses.mockResolvedValue({
+			losses: [
 				{
 					killmailId: '123',
 					killmailHash: 'hash-123',
@@ -212,15 +242,29 @@ describe('srp routes - permissions', () => {
 					victimCharacterId: '7001',
 					hasSRPRequest: false,
 				},
-			]
+			],
+			failedCharacters: [
+				{
+					characterId: '7002',
+					characterName: 'Pilot Two',
+					reason: 'cache_missing',
+					message: 'Recent losses have not been refreshed yet. Use Refresh to fetch them.',
+				},
+			],
 		})
 
 		const response = await app.request('/api/srp/losses?daysBack=60', {}, env)
 		const body = await response.json<any>()
 
 		expect(response.status).toBe(200)
-		expect(srpStub.getRecentLosses).toHaveBeenCalledWith(['7001'], 'loss-user', 60)
-		expect(srpStub.getRecentLosses).toHaveBeenCalledWith(['7002'], 'loss-user', 60)
+		expect(srpStub.getRecentLosses).toHaveBeenCalledWith(
+			[
+				{ characterId: '7001', characterName: 'Pilot One' },
+				{ characterId: '7002', characterName: 'Pilot Two' },
+			],
+			'loss-user',
+			30
+		)
 		expect(body.losses).toHaveLength(1)
 		expect(body.losses[0]).toMatchObject({
 			killmailId: '123',
@@ -231,9 +275,8 @@ describe('srp routes - permissions', () => {
 			{
 				characterId: '7002',
 				characterName: 'Pilot Two',
-				reason: 'fetch_failed',
-				message: 'Could not load losses right now. Please try again shortly.',
-				error: 'killmail fetch failed',
+				reason: 'cache_missing',
+				message: 'Recent losses have not been refreshed yet. Use Refresh to fetch them.',
 			},
 		])
 	})
@@ -273,26 +316,43 @@ describe('srp routes - permissions', () => {
 			}
 			return { isValid: true, status: 'valid' }
 		})
-		srpStub.getRecentLosses.mockResolvedValue([
-			{
-				killmailId: '123',
-				killmailHash: 'hash-123',
-				killmailTime: '2026-04-01T00:00:00.000Z',
-				shipTypeId: '587',
-				shipTypeName: 'Rifter',
-				totalValue: '1000000',
-				solarSystemId: '30000142',
-				solarSystemName: 'Jita',
-				victimCharacterId: '7001',
-				hasSRPRequest: false,
-			},
-		])
+		srpStub.getRecentLosses.mockResolvedValue({
+			losses: [
+				{
+					killmailId: '123',
+					killmailHash: 'hash-123',
+					killmailTime: '2026-04-01T00:00:00.000Z',
+					shipTypeId: '587',
+					shipTypeName: 'Rifter',
+					totalValue: '1000000',
+					solarSystemId: '30000142',
+					solarSystemName: 'Jita',
+					victimCharacterId: '7001',
+					hasSRPRequest: false,
+				},
+			],
+			failedCharacters: [
+				{
+					characterId: '7002',
+					characterName: 'Pilot Two',
+					reason: 'invalid_token',
+					message: 'ESI token is invalid or expired. Please re-authenticate this character.',
+				},
+			],
+		})
 
 		const response = await app.request('/api/srp/losses?daysBack=60', {}, env)
 		const body = await response.json<any>()
 
 		expect(response.status).toBe(200)
-		expect(srpStub.getRecentLosses).toHaveBeenCalledWith(['7001'], 'loss-user-invalid-token', 60)
+		expect(srpStub.getRecentLosses).toHaveBeenCalledWith(
+			[
+				{ characterId: '7001', characterName: 'Pilot One' },
+				{ characterId: '7002', characterName: 'Pilot Two' },
+			],
+			'loss-user-invalid-token',
+			30
+		)
 		expect(body.losses).toHaveLength(1)
 		expect(body.failedCharacters).toEqual([
 			{
@@ -302,6 +362,105 @@ describe('srp routes - permissions', () => {
 				message: 'ESI token is invalid or expired. Please re-authenticate this character.',
 			},
 		])
+	})
+
+	it('throttles recent loss refreshes per user for 15 minutes', async () => {
+		const app = createApp(makeUser({ id: 'loss-refresh-throttle' }))
+		refreshCoordinatorStub.startRecentLossRefresh.mockResolvedValue({
+			allowed: false,
+			retryAfterMs: 14 * 60 * 1000,
+			cooldownUntil: new Date(Date.now() + 14 * 60 * 1000).toISOString(),
+		})
+
+		const response = await app.request('/api/srp/losses/refresh', { method: 'POST' }, env)
+		const body = await response.json<any>()
+
+		expect(response.status).toBe(429)
+		expect(response.headers.get('Retry-After')).toBe('840')
+		expect(body).toMatchObject({
+			error: 'Recent loss refresh is on cooldown',
+			retryAfterMs: 14 * 60 * 1000,
+		})
+		expect(srpStub.getRecentLosses).not.toHaveBeenCalled()
+	})
+
+	it('allows recent loss refreshes when cooldown has expired', async () => {
+		const app = createApp(
+			makeUser({
+				id: 'loss-refresh-allowed',
+				characters: [
+					{
+						id: 'char-link-1',
+						characterOwnerHash: 'owner-hash-1',
+						characterId: '7001',
+						characterName: 'Pilot One',
+						is_primary: true,
+						hasValidToken: true,
+					},
+				],
+			})
+		)
+
+		refreshCoordinatorStub.startRecentLossRefresh.mockResolvedValue({
+			allowed: true,
+			retryAfterMs: 0,
+			cooldownUntil: new Date(Date.now() + 15 * 60 * 1000).toISOString(),
+			workflowInstanceId: 'workflow-1',
+			status: 'queued',
+			totalCharacters: 1,
+		})
+
+		const response = await app.request('/api/srp/losses/refresh', { method: 'POST' }, env)
+		const body = await response.json<any>()
+
+		expect(response.status).toBe(200)
+		expect(refreshCoordinatorStub.startRecentLossRefresh).toHaveBeenCalledWith(
+			'loss-refresh-allowed',
+			[{ characterId: '7001', characterName: 'Pilot One' }],
+			30
+		)
+		expect(body).toMatchObject({
+			allowed: true,
+			workflowInstanceId: 'workflow-1',
+			status: 'queued',
+			totalCharacters: 1,
+		})
+	})
+
+	it('returns current recent-loss refresh status', async () => {
+		const app = createApp(makeUser({ id: 'loss-refresh-status' }))
+		refreshCoordinatorStub.getRecentLossRefreshStatus.mockResolvedValue({
+			status: {
+				userId: 'loss-refresh-status',
+				workflowInstanceId: 'workflow-123',
+				status: 'running',
+				totalCharacters: 2,
+				processedCharacters: 1,
+				successfulCharacters: 1,
+				failedCharacters: 0,
+				queuedAt: new Date().toISOString(),
+				updatedAt: new Date().toISOString(),
+				startedAt: new Date().toISOString(),
+				failures: [],
+				maxLossAgeDays: 30,
+			},
+			cooldownUntil: new Date(Date.now() + 15 * 60 * 1000).toISOString(),
+		})
+
+		const response = await app.request('/api/srp/losses/refresh/status', {}, env)
+		const body = await response.json<any>()
+
+		expect(response.status).toBe(200)
+		expect(refreshCoordinatorStub.getRecentLossRefreshStatus).toHaveBeenCalledWith('loss-refresh-status')
+		expect(body).toMatchObject({
+			cooldownUntil: expect.any(String),
+			status: {
+				status: 'running',
+				workflowInstanceId: 'workflow-123',
+				processedCharacters: 1,
+				totalCharacters: 2,
+			},
+		})
 	})
 
 	it('denies non-owner non-staff from viewing another request', async () => {

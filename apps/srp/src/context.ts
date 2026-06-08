@@ -1,11 +1,14 @@
 import type { HonoApp } from '@repo/hono-helpers'
 import type { SharedHonoEnv, SharedHonoVariables } from '@repo/hono-helpers/src/types'
+import type { SrpRecentLossRefreshWorkflowParams } from './workflows/recent-loss-refresh.workflow'
 import type { createDb } from './db'
 
 export type Env = SharedHonoEnv & {
 	DATABASE_URL: string
 	SRP: DurableObjectNamespace
+	SRP_RECENT_LOSS_REFRESH_COORDINATOR: DurableObjectNamespace
 	SRP_PAYMENT_STATUS_CHECK: Workflow<{ requestId: string }>
+	SRP_RECENT_LOSS_REFRESH_WORKFLOW: Workflow<SrpRecentLossRefreshWorkflowParams>
 	DISCORD: DurableObjectNamespace
 	// Durable Object bindings for integration with other services
 	MARKETS: DurableObjectNamespace

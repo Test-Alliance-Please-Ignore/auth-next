@@ -32,6 +32,10 @@
 				"class_name": "Srp"
 			},
 			{
+				"name": "SRP_RECENT_LOSS_REFRESH_COORDINATOR",
+				"class_name": "RecentLossRefreshCoordinatorDO"
+			},
+			{
 				"name": "MARKETS",
 				"class_name": "Markets",
 				"script_name": "markets"
@@ -73,12 +77,17 @@
 			"name": "srp-payment-status-check",
 			"binding": "SRP_PAYMENT_STATUS_CHECK",
 			"class_name": "SrpPaymentStatusCheckWorkflow"
+		},
+		{
+			"name": "srp-recent-loss-refresh",
+			"binding": "SRP_RECENT_LOSS_REFRESH_WORKFLOW",
+			"class_name": "SrpRecentLossRefreshWorkflow"
 		}
 	],
 	"migrations": [
 		{
 			"tag": "v1",
-			"new_sqlite_classes": ["Srp"]
+			"new_sqlite_classes": ["Srp", "RecentLossRefreshCoordinatorDO"]
 		}
 	]
 }

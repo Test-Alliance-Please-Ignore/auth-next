@@ -5,8 +5,10 @@ import { getStub } from '@repo/do-utils'
 import { withNotFound, withOnError } from '@repo/hono-helpers'
 
 import { SrpDO } from './durable-object'
+import { RecentLossRefreshCoordinatorDO } from './recent-loss-refresh-coordinator'
 import { scheduledHandler } from './scheduled'
 import { SrpPaymentStatusCheckWorkflow } from './workflows/srp-payment-status-check'
+import { SrpRecentLossRefreshWorkflow } from './workflows/recent-loss-refresh.workflow'
 
 import type { Srp } from '@repo/srp'
 import type { App, Env } from './context'
@@ -59,5 +61,7 @@ export default {
 
 // Export the Durable Object class
 export { SrpDO as Srp }
+export { RecentLossRefreshCoordinatorDO }
 export { SrpPaymentStatusCheckWorkflow }
+export { SrpRecentLossRefreshWorkflow }
 export { scheduledHandler }

@@ -23,7 +23,6 @@ import { computeSrpPayout } from './lib/payout'
 import {
 	doesRecentLossCacheCoverCutoff,
 	mergeRecentLosses,
-	shouldInvalidateRecentLossCache,
 	selectRecentKillmailsUntilKnown,
 	type RecentLossCacheRecord,
 	type RecentLossCacheStorageRecord,
@@ -41,10 +40,18 @@ type KillmailDataJson = NonNullable<typeof srpRequestsTable.$inferInsert.killmai
 
 import type { CharacterLossData, EveCharacterData } from '@repo/eve-character-data'
 import type { EveCorporationData } from '@repo/eve-corporation-data'
+import type { EveTokenStore } from '@repo/eve-token-store'
 import type { LatestMarketPrice, Markets } from '@repo/markets'
 import type {
 	AppliedModifier,
 	CreateSRPPolicy,
+	RecentLossRefreshCharacterFailure,
+	RecentLossRefreshCharacterInput,
+	RecentLossRefreshCharacterResult,
+	RecentLossRefreshStartResult,
+	RecentLossRefreshStatusRecord,
+	RecentLossRefreshStatusResponse,
+	RecentLossesResponse,
 	LossWithSRPStatus,
 	RequestStatus,
 	Srp,
@@ -62,6 +69,8 @@ import type {
 import type { KillmailDetail, Universe } from '@repo/universe'
 import type { Env } from './context'
 
+const SRP_REQUIRED_KILLMAIL_SCOPES = ['esi-killmails.read_killmails.v1']
+
 /**
  * SRP Durable Object
  *
@@ -70,6 +79,11 @@ import type { Env } from './context'
  */
 export class SrpDO extends DurableObject<Env> implements Srp {
 	private static readonly MS_PER_DAY = 86_400_000
+	private static readonly RECENT_LOSS_REFRESH_COOLDOWN_MS = 15 * 60 * 1000
+	private static readonly RECENT_LOSS_REFRESH_STORAGE_KEY_PREFIX = 'recent-loss-refresh:'
+	private static readonly RECENT_LOSS_REFRESH_STATUS_STORAGE_KEY_PREFIX =
+		'recent-loss-refresh-status:'
+	private static readonly RECENT_LOSS_REFRESH_STATUS_RETENTION_MS = 10 * 60 * 1000
 	private static readonly REVIEW_QUEUE_COUNT_CACHE_TTL_MS = 60_000
 	private static readonly RECENT_LOSS_CACHE_KEY_PREFIX = 'recent-losses:'
 	private db: ReturnType<typeof createDb>
@@ -101,6 +115,85 @@ export class SrpDO extends DurableObject<Env> implements Srp {
 
 	private clearReviewQueueCountCache(): void {
 		this.reviewQueueCountCache.clear()
+	}
+
+	private buildRecentLossRefreshKey(userId: string): string {
+		return `${SrpDO.RECENT_LOSS_REFRESH_STORAGE_KEY_PREFIX}${userId}`
+	}
+
+	private getRecentLossRefreshExpiryMs(lastTriggeredAtMs: number): number {
+		return lastTriggeredAtMs + SrpDO.RECENT_LOSS_REFRESH_COOLDOWN_MS
+	}
+
+	private async rescheduleRecentLossRefreshCleanup(): Promise<void> {
+		const entries = await this.storage.list<{ lastTriggeredAtMs?: number }>({
+			prefix: SrpDO.RECENT_LOSS_REFRESH_STORAGE_KEY_PREFIX,
+		})
+
+		let nextExpiryMs: number | null = null
+		const now = Date.now()
+
+		for (const record of entries.values()) {
+			const lastTriggeredAtMs =
+				typeof record?.lastTriggeredAtMs === 'number' && Number.isFinite(record.lastTriggeredAtMs)
+					? record.lastTriggeredAtMs
+					: null
+			if (lastTriggeredAtMs === null) continue
+			const expiryMs = this.getRecentLossRefreshExpiryMs(lastTriggeredAtMs)
+			if (expiryMs <= now) continue
+			if (nextExpiryMs === null || expiryMs < nextExpiryMs) {
+				nextExpiryMs = expiryMs
+			}
+		}
+
+		if (nextExpiryMs === null) {
+			await this.storage.deleteAlarm()
+			return
+		}
+
+		await this.storage.setAlarm(nextExpiryMs)
+	}
+
+	private buildRecentLossRefreshStatusKey(userId: string): string {
+		return `${SrpDO.RECENT_LOSS_REFRESH_STATUS_STORAGE_KEY_PREFIX}${userId}`
+	}
+
+	private async readRecentLossRefreshStatus(
+		userId: string
+	): Promise<RecentLossRefreshStatusRecord | null> {
+		const key = this.buildRecentLossRefreshStatusKey(userId)
+		const status = await this.storage.get<RecentLossRefreshStatusRecord>(key)
+		if (!status || typeof status !== 'object') return null
+		if (status.userId !== userId) return null
+		if (
+			(status.status === 'completed' || status.status === 'failed') &&
+			status.completedAt &&
+			Date.now() - Date.parse(status.completedAt) > SrpDO.RECENT_LOSS_REFRESH_STATUS_RETENTION_MS
+		) {
+			await this.storage.delete(key)
+			return null
+		}
+		return status
+	}
+
+	private async readRecentLossRefreshCooldownUntil(userId: string): Promise<string | null> {
+		const key = this.buildRecentLossRefreshKey(userId)
+		const record = await this.storage.get<{ lastTriggeredAtMs?: number }>(key)
+		const lastTriggeredAtMs =
+			typeof record?.lastTriggeredAtMs === 'number' && Number.isFinite(record.lastTriggeredAtMs)
+				? record.lastTriggeredAtMs
+				: null
+		if (lastTriggeredAtMs === null) return null
+		const cooldownUntilMs = this.getRecentLossRefreshExpiryMs(lastTriggeredAtMs)
+		if (cooldownUntilMs <= Date.now()) return null
+		return new Date(cooldownUntilMs).toISOString()
+	}
+
+	private async writeRecentLossRefreshStatus(
+		status: RecentLossRefreshStatusRecord | null
+	): Promise<void> {
+		if (!status) return
+		await this.storage.put(this.buildRecentLossRefreshStatusKey(status.userId), status)
 	}
 
 	private buildReviewQueueCountCacheKey(input: {
@@ -519,42 +612,63 @@ export class SrpDO extends DurableObject<Env> implements Srp {
 	 * Get recent losses for multiple characters with SRP status
 	 */
 	async getRecentLosses(
-		characterIds: string[],
+		characters: RecentLossRefreshCharacterInput[],
 		userId: string,
 		daysBack = 30,
 		_excludeNonSrpEligible = true
-	): Promise<LossWithSRPStatus[]> {
+	): Promise<RecentLossesResponse> {
 		const config = await this.getConfig()
 		const maxLossAgeDays = config?.maxLossAgeDays ?? daysBack
 		const effectiveDaysBack = Math.max(1, Math.min(daysBack, maxLossAgeDays))
 		const cutoffMs = Date.now() - effectiveDaysBack * SrpDO.MS_PER_DAY
 		const cacheCutoffMs = Date.now() - maxLossAgeDays * SrpDO.MS_PER_DAY
-
-		// Read cached losses first so we only page ESI until we reach the known boundary.
-		const allLosses = new Map<string, CharacterLossData>()
+		const tokenStore = getStub<EveTokenStore>(this.env.EVE_TOKEN_STORE, 'default')
 		const universeStub = getStub<Universe>(this.env.UNIVERSE, 'default')
-		for (const characterId of characterIds) {
-			let cached = await this.readRecentLossCache(characterId)
-			if (shouldInvalidateRecentLossCache(cached, maxLossAgeDays)) {
-				await this.storage.delete(this.buildRecentLossCacheKey(characterId))
-				cached = null
-			}
-			const cachedLosses = cached?.losses ?? []
-			const cacheCoversRequestedWindow = doesRecentLossCacheCoverCutoff(
-				cached,
-				cacheCutoffMs,
-				maxLossAgeDays
+		const allLosses = new Map<string, CharacterLossData>()
+		const failedCharacters: RecentLossRefreshCharacterFailure[] = []
+
+		for (const character of characters) {
+			const tokenValidation = await tokenStore.validateToken(
+				character.characterId,
+				SRP_REQUIRED_KILLMAIL_SCOPES
 			)
-			const knownKillmailIds = cacheCoversRequestedWindow
-				? new Set(cachedLosses.map((loss) => String(loss.killmailId)))
-				: new Set<string>()
-			const freshLosses = await this.fetchRecentLossesFromEsi(characterId, knownKillmailIds)
-			const cachedLossesMerged = mergeRecentLosses(cachedLosses, freshLosses, cacheCutoffMs)
-			await this.writeRecentLossCache(characterId, cachedLossesMerged, cacheCutoffMs, maxLossAgeDays)
-			for (const loss of cachedLossesMerged) {
+			if (!tokenValidation.isValid) {
+				failedCharacters.push({
+					characterId: character.characterId,
+					characterName: character.characterName,
+					reason: 'invalid_token',
+					message: 'ESI token is invalid or expired. Please re-authenticate this character.',
+				})
+			}
+
+			const cached = await this.readRecentLossCache(character.characterId)
+			if (!cached) {
+				if (tokenValidation.isValid) {
+					failedCharacters.push({
+						characterId: character.characterId,
+						characterName: character.characterName,
+						reason: 'cache_missing',
+						message: 'Recent losses have not been refreshed yet. Use Refresh to fetch them.',
+					})
+				}
+				continue
+			}
+
+			if (cached.losses.length > 0 && !doesRecentLossCacheCoverCutoff(cached, cacheCutoffMs, maxLossAgeDays)) {
+				failedCharacters.push({
+					characterId: character.characterId,
+					characterName: character.characterName,
+					reason: 'cache_incomplete',
+					message:
+						'Cached recent losses do not reach the current lookback window. Use Refresh to backfill older losses.',
+				})
+			}
+
+			for (const loss of cached.losses) {
 				allLosses.set(loss.killmailId, loss)
 			}
 		}
+
 		const mergedLosses = [...allLosses.values()]
 			.filter((loss) => new Date(loss.killmailTime).getTime() >= cutoffMs)
 			.sort((a, b) => new Date(b.killmailTime).getTime() - new Date(a.killmailTime).getTime())
@@ -587,7 +701,10 @@ export class SrpDO extends DurableObject<Env> implements Srp {
 		const killmailIds = mergedLosses.map((l) => String(l.killmailId))
 
 		if (killmailIds.length === 0) {
-			return []
+			return {
+				losses: [],
+				failedCharacters,
+			}
 		}
 
 		const existingRequests = await this.db.query.srpRequests.findMany({
@@ -635,35 +752,38 @@ export class SrpDO extends DurableObject<Env> implements Srp {
 		}
 
 		// Annotate losses with SRP status and sort by time descending
-		return mergedLosses
-			.filter((loss) => !dismissedKillmailIds.has(String(loss.killmailId)))
-			.filter((loss) => !legacyPaidKillmailIds.has(String(loss.killmailId)))
-			.filter((loss) => {
-				const shipTypeId = String(loss.shipTypeId)
-				const marketGroupId = typeMetaMap[shipTypeId]?.marketGroupId ?? null
-				const shipTypeName = resolved[shipTypeId] ?? ''
-				const looksLikeShuttleByName = shipTypeName.toLowerCase().includes('shuttle')
-				return !(this.isShuttleMarketGroupId(marketGroupId) || looksLikeShuttleByName)
-			})
-			.map((loss) => {
-				const lossKillmailId = String(loss.killmailId)
-				const request = requestMap.get(lossKillmailId)
-				return {
-					killmailId: lossKillmailId,
-					killmailHash: loss.killmailHash ?? '',
-					killmailTime: new Date(loss.killmailTime).toISOString(),
-					shipTypeId: loss.shipTypeId,
-					shipTypeName: resolved[String(loss.shipTypeId)],
-					totalValue: loss.totalValue ?? '0',
-					solarSystemId: loss.solarSystemId,
-					solarSystemName: resolved[String(loss.solarSystemId)],
-					victimCharacterId: String(loss.victimCharacterId ?? ''),
-					hasSRPRequest: !!request,
-					srpRequestId: request?.id,
-					srpRequestStatus: request?.status,
-				}
-			})
-			.sort((a, b) => new Date(b.killmailTime).getTime() - new Date(a.killmailTime).getTime())
+		return {
+			losses: mergedLosses
+				.filter((loss) => !dismissedKillmailIds.has(String(loss.killmailId)))
+				.filter((loss) => !legacyPaidKillmailIds.has(String(loss.killmailId)))
+				.filter((loss) => {
+					const shipTypeId = String(loss.shipTypeId)
+					const marketGroupId = typeMetaMap[shipTypeId]?.marketGroupId ?? null
+					const shipTypeName = resolved[shipTypeId] ?? ''
+					const looksLikeShuttleByName = shipTypeName.toLowerCase().includes('shuttle')
+					return !(this.isShuttleMarketGroupId(marketGroupId) || looksLikeShuttleByName)
+				})
+				.map((loss) => {
+					const lossKillmailId = String(loss.killmailId)
+					const request = requestMap.get(lossKillmailId)
+					return {
+						killmailId: lossKillmailId,
+						killmailHash: loss.killmailHash ?? '',
+						killmailTime: new Date(loss.killmailTime).toISOString(),
+						shipTypeId: loss.shipTypeId,
+						shipTypeName: resolved[String(loss.shipTypeId)],
+						totalValue: loss.totalValue ?? '0',
+						solarSystemId: loss.solarSystemId,
+						solarSystemName: resolved[String(loss.solarSystemId)],
+						victimCharacterId: String(loss.victimCharacterId ?? ''),
+						hasSRPRequest: !!request,
+						srpRequestId: request?.id,
+						srpRequestStatus: request?.status,
+					}
+				})
+				.sort((a, b) => new Date(b.killmailTime).getTime() - new Date(a.killmailTime).getTime()),
+			failedCharacters,
+		}
 	}
 
 	async dismissLoss(userId: string, killmailId: string): Promise<void> {
@@ -681,6 +801,182 @@ export class SrpDO extends DurableObject<Env> implements Srp {
 			.onConflictDoNothing({
 				target: [srpDismissedLosses.userId, srpDismissedLosses.killmailId],
 			})
+	}
+
+	async startRecentLossRefresh(
+		userId: string,
+		characters: RecentLossRefreshCharacterInput[],
+		maxLossAgeDays: number
+	): Promise<RecentLossRefreshStartResult> {
+		const now = Date.now()
+		const cooldownMs = SrpDO.RECENT_LOSS_REFRESH_COOLDOWN_MS
+		const cooldownUntil = now + cooldownMs
+		const cooldownEntry = await this.storage.get<{ lastTriggeredAtMs?: number }>(
+			this.buildRecentLossRefreshKey(userId)
+		)
+		const activeStatus = await this.readRecentLossRefreshStatus(userId)
+		const isActiveWorkflow =
+			activeStatus !== null &&
+			(activeStatus.status === 'queued' || activeStatus.status === 'running')
+
+		if (isActiveWorkflow) {
+			return {
+				allowed: false,
+				retryAfterMs: cooldownMs,
+				cooldownUntil: activeStatus.updatedAt ?? new Date(cooldownUntil).toISOString(),
+			}
+		}
+
+		const existingTriggeredAtMs =
+			typeof cooldownEntry?.lastTriggeredAtMs === 'number' && Number.isFinite(cooldownEntry.lastTriggeredAtMs)
+				? cooldownEntry.lastTriggeredAtMs
+				: null
+		if (existingTriggeredAtMs !== null && now - existingTriggeredAtMs < cooldownMs) {
+			const retryAfterMs = Math.max(0, cooldownMs - (now - existingTriggeredAtMs))
+			return {
+				allowed: false,
+				retryAfterMs,
+				cooldownUntil: new Date(existingTriggeredAtMs + cooldownMs).toISOString(),
+			}
+		}
+
+		const workflowInstanceId = `srp-recent-loss-refresh-${userId.replace(/-/g, '').slice(0, 12)}-${Date.now().toString(36)}`
+		const queuedStatus: RecentLossRefreshStatusRecord = {
+			userId,
+			workflowInstanceId,
+			status: 'queued',
+			totalCharacters: characters.length,
+			processedCharacters: 0,
+			successfulCharacters: 0,
+			failedCharacters: 0,
+			queuedAt: new Date(now).toISOString(),
+			updatedAt: new Date(now).toISOString(),
+			failures: [],
+			maxLossAgeDays,
+		}
+
+		await this.storage.put(this.buildRecentLossRefreshKey(userId), {
+			lastTriggeredAtMs: now,
+		})
+		await this.writeRecentLossRefreshStatus(queuedStatus)
+		await this.rescheduleRecentLossRefreshCleanup()
+
+		try {
+			await this.env.SRP_RECENT_LOSS_REFRESH_WORKFLOW.create({
+				id: workflowInstanceId,
+				params: {
+					userId,
+					workflowInstanceId,
+					characters,
+					maxLossAgeDays,
+				},
+			})
+		} catch (error) {
+			await this.storage.delete(this.buildRecentLossRefreshKey(userId))
+			await this.storage.delete(this.buildRecentLossRefreshStatusKey(userId))
+			await this.rescheduleRecentLossRefreshCleanup()
+			throw error
+		}
+
+		return {
+			allowed: true,
+			retryAfterMs: 0,
+			cooldownUntil: new Date(cooldownUntil).toISOString(),
+			workflowInstanceId,
+			status: 'queued',
+			totalCharacters: characters.length,
+		}
+	}
+
+	async getRecentLossRefreshStatus(
+		userId: string
+	): Promise<RecentLossRefreshStatusResponse> {
+		const [status, cooldownUntil] = await Promise.all([
+			this.readRecentLossRefreshStatus(userId),
+			this.readRecentLossRefreshCooldownUntil(userId),
+		])
+		return { status, cooldownUntil }
+	}
+
+	async updateRecentLossRefreshStatus(
+		userId: string,
+		status: RecentLossRefreshStatusRecord
+	): Promise<void> {
+		if (status.userId !== userId) {
+			throw new Error('Recent loss refresh status user mismatch')
+		}
+		await this.writeRecentLossRefreshStatus(status)
+	}
+
+	async refreshRecentLossesForCharacter(
+		_userId: string,
+		characterId: string,
+		_characterName: string,
+		maxLossAgeDays: number
+	): Promise<RecentLossRefreshCharacterResult> {
+		const cached = await this.readRecentLossCache(characterId)
+		const cacheCutoffMs = Date.now() - maxLossAgeDays * SrpDO.MS_PER_DAY
+		const cacheCoversRequestedWindow = doesRecentLossCacheCoverCutoff(
+			cached,
+			cacheCutoffMs,
+			maxLossAgeDays
+		)
+		const knownKillmailIds = cacheCoversRequestedWindow
+			? new Set((cached?.losses ?? []).map((loss) => String(loss.killmailId)))
+			: new Set<string>()
+
+		const freshLosses = await this.fetchRecentLossesFromEsi(characterId, knownKillmailIds)
+		const cachedLosses = cached?.losses ?? []
+		const mergedLosses = mergeRecentLosses(cachedLosses, freshLosses, cacheCutoffMs)
+		await this.writeRecentLossCache(characterId, mergedLosses, cacheCutoffMs, maxLossAgeDays)
+
+		return {
+			characterId,
+			characterName: _characterName,
+			success: true,
+		}
+	}
+
+	async alarm(): Promise<void> {
+		const now = Date.now()
+		const entries = await this.storage.list<{ lastTriggeredAtMs?: number }>({
+			prefix: SrpDO.RECENT_LOSS_REFRESH_STORAGE_KEY_PREFIX,
+		})
+
+		const expiredKeys: string[] = []
+		let nextExpiryMs: number | null = null
+
+		for (const [key, record] of entries) {
+			const lastTriggeredAtMs =
+				typeof record?.lastTriggeredAtMs === 'number' && Number.isFinite(record.lastTriggeredAtMs)
+					? record.lastTriggeredAtMs
+					: null
+			if (lastTriggeredAtMs === null) {
+				expiredKeys.push(key)
+				continue
+			}
+
+			const expiryMs = this.getRecentLossRefreshExpiryMs(lastTriggeredAtMs)
+			if (expiryMs <= now) {
+				expiredKeys.push(key)
+				continue
+			}
+
+			if (nextExpiryMs === null || expiryMs < nextExpiryMs) {
+				nextExpiryMs = expiryMs
+			}
+		}
+
+		if (expiredKeys.length > 0) {
+			await this.storage.delete(expiredKeys)
+		}
+
+		if (nextExpiryMs === null) {
+			await this.storage.deleteAlarm()
+			return
+		}
+
+		await this.storage.setAlarm(nextExpiryMs)
 	}
 
 	private extractLegacyPaidKillmailId(reason: string | null | undefined): string | null {

@@ -110,7 +110,9 @@ describe('srp cache updates', () => {
 					srpRequestStatus: 'pending',
 				},
 			],
-			failedCharacters: [{ characterId: 'c1', characterName: 'Char One', error: 'fetch failed' }],
+			failedCharacters: [
+				{ characterId: 'c1', characterName: 'Char One', reason: 'fetch_failed', error: 'fetch failed' },
+			],
 		}
 		const patched = patchLossesByRequestStatus(data, '111', 'approved')
 		expect(Array.isArray(patched)).toBe(false)

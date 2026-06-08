@@ -1,5 +1,5 @@
 import { ExternalLink, RefreshCw } from 'lucide-react'
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useState } from 'react'
 import { Link } from 'react-router-dom'
 
 import { useConfirmationDialog } from '@/hooks/useConfirmationDialog'
@@ -17,22 +17,13 @@ import { typeIconUrl } from '@/lib/eve-images'
 
 import {
 	REFRESH_COOLDOWN_MS,
-	REFRESH_COOLDOWN_STORAGE_KEY,
 	persistRefreshCooldownUntilMs,
 	readRefreshCooldownUntilMs,
 } from '../state/refresh-cooldown'
 import { getKillmailUrl } from '../utils'
 import { RequestStatusBadge } from './RequestStatusBadge'
 
-import type { LossWithSRPStatus, SRPConfigResponse } from '../types'
-
-export interface CharacterRefreshResult {
-	characterId: string
-	characterName: string
-	success: boolean
-	reason?: 'invalid_token' | 'fetch_failed'
-	error?: string
-}
+import type { LossWithSRPStatus, RecentLossRefreshStatusRecord, SRPConfigResponse } from '../types'
 
 interface LossTableProps {
 	losses: LossWithSRPStatus[]
@@ -40,11 +31,12 @@ interface LossTableProps {
 	isRefreshing?: boolean
 	onRefresh?: () => void
 	config?: SRPConfigResponse | null
-	refreshResults?: CharacterRefreshResult[]
+	refreshStatus?: RecentLossRefreshStatusRecord | null
+	refreshCooldownUntil?: string | null
 	loadFailures?: Array<{
 		characterId: string
 		characterName: string
-		reason?: 'invalid_token' | 'fetch_failed'
+		reason?: 'invalid_token' | 'cache_missing' | 'cache_incomplete' | 'fetch_failed'
 		message?: string
 		error?: string
 	}>
@@ -58,7 +50,8 @@ export function LossTable({
 	isRefreshing,
 	onRefresh,
 	config,
-	refreshResults,
+	refreshStatus,
+	refreshCooldownUntil,
 	loadFailures,
 	onDismissLoss,
 	dismissingKillmailId,
@@ -66,25 +59,10 @@ export function LossTable({
 	const { requestConfirmation, confirmationDialog } = useConfirmationDialog()
 	const maxLossAgeDays = config?.maxLossAgeDays ?? 30
 	const [nowMs, setNowMs] = useState(() => Date.now())
-	const initialFetchCooldownAppliedRef = useRef(false)
 	const [cooldownUntilMs, setCooldownUntilMs] = useState(() => {
 		if (typeof window === 'undefined') return 0
 		return readRefreshCooldownUntilMs(window.localStorage)
 	})
-
-	useEffect(() => {
-		if (!isLoading) {
-			initialFetchCooldownAppliedRef.current = false
-			return
-		}
-		if (initialFetchCooldownAppliedRef.current) return
-		initialFetchCooldownAppliedRef.current = true
-		const nextCooldownUntilMs = Date.now() + REFRESH_COOLDOWN_MS
-		if (typeof window !== 'undefined') {
-			persistRefreshCooldownUntilMs(window.localStorage, nextCooldownUntilMs)
-		}
-		setCooldownUntilMs((current) => Math.max(current, nextCooldownUntilMs))
-	}, [isLoading])
 
 	useEffect(() => {
 		if (cooldownUntilMs <= Date.now()) return
@@ -97,9 +75,24 @@ export function LossTable({
 		persistRefreshCooldownUntilMs(window.localStorage, cooldownUntilMs)
 	}, [cooldownUntilMs])
 
+	useEffect(() => {
+		if (!refreshCooldownUntil) return
+		const serverCooldownUntilMs = Date.parse(refreshCooldownUntil)
+		if (!Number.isFinite(serverCooldownUntilMs)) return
+		setCooldownUntilMs((current) => {
+			const next = Math.max(current, serverCooldownUntilMs)
+			if (typeof window !== 'undefined') {
+				persistRefreshCooldownUntilMs(window.localStorage, next)
+			}
+			return next
+		})
+	}, [refreshCooldownUntil])
+
 	const cooldownRemainingMs = Math.max(0, cooldownUntilMs - nowMs)
 	const isCooldownActive = cooldownRemainingMs > 0
-	const refreshDisabled = Boolean(isRefreshing || isCooldownActive)
+	const isWorkflowRefreshing =
+		refreshStatus?.status === 'queued' || refreshStatus?.status === 'running'
+	const refreshDisabled = Boolean(isRefreshing || isCooldownActive || isWorkflowRefreshing)
 	const remainingSeconds = Math.ceil(cooldownRemainingMs / 1000)
 	const remainingMinutesPart = String(Math.floor(remainingSeconds / 60)).padStart(2, '0')
 	const remainingSecondsPart = String(remainingSeconds % 60).padStart(2, '0')
@@ -115,7 +108,9 @@ export function LossTable({
 		onRefresh()
 	}
 
-	const hasLoadFailures = Boolean(loadFailures && loadFailures.length > 0)
+	const actionableLoadFailures =
+		loadFailures?.filter((failure) => failure.reason === 'invalid_token' || failure.reason === 'fetch_failed') ?? []
+	const hasLoadFailures = actionableLoadFailures.length > 0
 
 	if (isLoading) {
 		return (
@@ -145,12 +140,18 @@ export function LossTable({
 						title={
 							isCooldownActive
 								? `Refresh available in ${remainingMinutesPart}:${remainingSecondsPart}`
+								: isWorkflowRefreshing
+									? 'Recent loss refresh is already in progress'
 								: undefined
 						}
 					>
-						<RefreshCw className={`mr-2 h-4 w-4 ${isRefreshing ? 'animate-spin' : ''}`} />
+						<RefreshCw
+							className={`mr-2 h-4 w-4 ${isRefreshing || isWorkflowRefreshing ? 'animate-spin' : ''}`}
+						/>
 						{isRefreshing
-							? 'Refreshing…'
+							? 'Starting…'
+							: isWorkflowRefreshing
+								? `Fetching… ${refreshStatus.processedCharacters}/${refreshStatus.totalCharacters}`
 							: isCooldownActive
 								? `Refresh in ${remainingMinutesPart}:${remainingSecondsPart}`
 								: 'Refresh Losses'}
@@ -158,33 +159,66 @@ export function LossTable({
 				</div>
 			)}
 
-			{refreshResults && refreshResults.some((r) => !r.success) && (
+			{isWorkflowRefreshing && (
+				<div className="rounded-md border border-sky-500/40 bg-sky-500/10 px-4 py-3 text-sm">
+					<p className="mb-1 font-medium text-sky-400">
+						Refreshing recent losses for {refreshStatus.processedCharacters}/{refreshStatus.totalCharacters}{' '}
+						characters
+					</p>
+					<p className="text-xs text-muted-foreground">
+						{refreshStatus.currentCharacterName
+							? `Currently fetching ${refreshStatus.currentCharacterName}.`
+							: 'Starting background refresh workflow.'}
+					</p>
+				</div>
+			)}
+
+			{refreshStatus?.status === 'completed' && (
+				<div className="rounded-md border border-emerald-500/40 bg-emerald-500/10 px-4 py-3 text-sm">
+					<p className="mb-1 font-medium text-emerald-400">Recent losses refreshed</p>
+					<p className="text-xs text-muted-foreground">
+						{refreshStatus.successfulCharacters} characters refreshed, {refreshStatus.failedCharacters}{' '}
+						characters reported warnings.
+					</p>
+				</div>
+			)}
+
+			{refreshStatus?.status === 'failed' && (
+				<div className="rounded-md border border-red-500/40 bg-red-500/10 px-4 py-3 text-sm">
+					<p className="mb-1 font-medium text-red-400">Recent loss refresh failed</p>
+					<p className="text-xs text-muted-foreground">{refreshStatus.lastError ?? 'Unknown error'}</p>
+				</div>
+			)}
+
+			{refreshStatus && refreshStatus.failures.length > 0 && (
 				<div className="rounded-md border border-amber-500/40 bg-amber-500/10 px-4 py-3 text-sm">
 					<p className="mb-1 font-medium text-amber-400">Some characters could not be refreshed</p>
 					<ul className="space-y-0.5">
-						{refreshResults
-							.filter((r) => !r.success)
-							.map((r) => (
-								<li key={r.characterId} className="flex items-center gap-2 text-xs text-muted-foreground">
-									<span className="font-medium text-foreground">{r.characterName}</span>
-									{r.reason === 'invalid_token'
-										? '— token expired or invalid (re-auth required)'
-										: r.error
-											? `— ${r.error}`
-											: '— fetch failed'}
-								</li>
-							))}
+						{refreshStatus.failures.map((failure) => (
+							<li key={failure.characterId} className="flex items-center gap-2 text-xs text-muted-foreground">
+								<span className="font-medium text-foreground">{failure.characterName}</span>
+								{failure.reason === 'invalid_token'
+									? '— token expired or invalid (re-auth required)'
+									: failure.reason === 'cache_incomplete'
+										? '— recent losses need a refresh to cover the full lookback window'
+										: failure.reason === 'cache_missing'
+											? '— recent losses have not been loaded yet'
+											: failure.error
+												? `— ${failure.error}`
+												: `— ${failure.message}`}
+							</li>
+						))}
 					</ul>
 				</div>
 			)}
 
-			{loadFailures && loadFailures.length > 0 && (
+			{hasLoadFailures && (
 				<div className="rounded-md border border-amber-500/40 bg-amber-500/10 px-4 py-3 text-sm">
 					<p className="mb-1 font-medium text-amber-400">
-						Some character losses could not be loaded
+						Some character losses could not be fetched
 					</p>
 					<ul className="space-y-0.5">
-						{loadFailures.map((failure) => (
+						{actionableLoadFailures.map((failure) => (
 							<li
 								key={failure.characterId}
 								className="flex items-center gap-2 text-xs text-muted-foreground"
@@ -194,7 +228,7 @@ export function LossTable({
 									? `— ${failure.message}`
 									: failure.reason === 'invalid_token'
 										? '— ESI token is invalid or expired. Please re-authenticate this character.'
-										: '— Could not load losses right now. Please try again shortly.'}
+											: '— Could not load losses right now. Please try again shortly.'}
 							</li>
 						))}
 					</ul>

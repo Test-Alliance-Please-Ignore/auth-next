@@ -12,7 +12,7 @@ export interface RecentLossesQueryData {
 	failedCharacters: Array<{
 		characterId: string
 		characterName: string
-		reason?: 'invalid_token' | 'fetch_failed'
+		reason: 'invalid_token' | 'cache_missing' | 'cache_incomplete' | 'fetch_failed'
 		message?: string
 		error?: string
 	}>

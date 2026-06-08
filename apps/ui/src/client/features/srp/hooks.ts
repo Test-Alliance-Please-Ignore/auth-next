@@ -1,5 +1,5 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { useEffect, useMemo } from 'react'
+import { useEffect, useMemo, useRef } from 'react'
 
 import { NotFoundError, api } from '@/lib/api'
 
@@ -171,10 +171,10 @@ function adjustPendingPayoutTotalCaches(
 
 // ===== Query Hooks =====
 
-export function useRecentLosses(daysBack: number = 30) {
+export function useRecentLosses() {
 	const overlay = useLossRequestOverlaySnapshot()
 	const query = useQuery({
-		queryKey: srpKeys.losses(daysBack),
+		queryKey: srpKeys.losses(),
 		queryFn: () => api.getRecentLosses(),
 		staleTime: 1000 * 60 * 5,
 	})
@@ -188,6 +188,31 @@ export function useRecentLosses(daysBack: number = 30) {
 		data: mergedData,
 		failedCharacters: query.data?.failedCharacters ?? [],
 	}
+}
+
+export function useRecentLossRefreshStatus() {
+	const queryClient = useQueryClient()
+	const handledCompletionWorkflowIdRef = useRef<string | null>(null)
+	const query = useQuery({
+		queryKey: srpKeys.lossRefreshStatus(),
+		queryFn: () => api.getRecentLossRefreshStatus(),
+		staleTime: 0,
+		refetchInterval: (query) => {
+			const data = query.state.data
+			return data?.status?.status === 'queued' || data?.status?.status === 'running' ? 10000 : false
+		},
+		refetchOnWindowFocus: false,
+	})
+
+	useEffect(() => {
+		if (!query.data?.status) return
+		if (query.data.status.status !== 'completed' && query.data.status.status !== 'failed') return
+		if (handledCompletionWorkflowIdRef.current === query.data.status.workflowInstanceId) return
+		handledCompletionWorkflowIdRef.current = query.data.status.workflowInstanceId
+		invalidateLossQueries(queryClient)
+	}, [query.data, queryClient])
+
+	return query
 }
 
 export function useMyRequests(
@@ -363,7 +388,7 @@ export function useRefreshKillmails() {
 	return useMutation({
 		mutationFn: () => api.refreshLosses(),
 		onSuccess: () => {
-			invalidateLossQueries(queryClient)
+			void queryClient.invalidateQueries({ queryKey: srpKeys.lossRefreshStatus() })
 		},
 	})
 }

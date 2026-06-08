@@ -10,6 +10,7 @@ import {
 	useDismissRecentLoss,
 	useMyRequests,
 	useRecentLosses,
+	useRecentLossRefreshStatus,
 	useRefreshKillmails,
 	useSRPConfig,
 } from '../hooks'
@@ -19,14 +20,14 @@ import type { LossWithSRPStatus } from '../types'
 export default function SRPIndex() {
 	usePageTitle('SRP')
 	const { data: config } = useSRPConfig()
-	const recentLossLookbackDays = config?.maxLossAgeDays ?? 30
 
 	const {
 		data: losses,
 		isLoading: lossesLoading,
 		error: lossesError,
 		failedCharacters: loadFailures,
-	} = useRecentLosses(recentLossLookbackDays)
+	} = useRecentLosses()
+	const refreshStatusQuery = useRecentLossRefreshStatus()
 	const refreshMutation = useRefreshKillmails()
 	const dismissLossMutation = useDismissRecentLoss()
 	const {
@@ -60,13 +61,14 @@ export default function SRPIndex() {
 									</p>
 								</div>
 							) : (
-								<LossTable
+							<LossTable
 									losses={(losses || []) as LossWithSRPStatus[]}
 									isLoading={lossesLoading}
 									isRefreshing={refreshMutation.isPending}
 									onRefresh={() => refreshMutation.mutate()}
 									config={config}
-									refreshResults={refreshMutation.data?.results}
+									refreshStatus={refreshStatusQuery.data?.status ?? null}
+									refreshCooldownUntil={refreshStatusQuery.data?.cooldownUntil ?? null}
 									loadFailures={loadFailures}
 									onDismissLoss={async (killmailId) => {
 										await dismissLossMutation.mutateAsync({ killmailId })

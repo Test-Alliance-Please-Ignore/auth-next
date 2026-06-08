@@ -103,6 +103,11 @@
 				"script_name": "srp"
 			},
 			{
+				"name": "SRP_RECENT_LOSS_REFRESH_COORDINATOR",
+				"class_name": "RecentLossRefreshCoordinatorDO",
+				"script_name": "srp"
+			},
+			{
 				"name": "FEATURES",
 				"class_name": "Features",
 				"script_name": "features"

@@ -3104,7 +3104,7 @@ export class ApiClient {
 		failedCharacters: Array<{
 			characterId: string
 			characterName: string
-			reason?: 'invalid_token' | 'fetch_failed'
+			reason: 'invalid_token' | 'cache_missing' | 'cache_incomplete' | 'fetch_failed'
 			message?: string
 			error?: string
 		}>
@@ -3420,15 +3420,44 @@ export class ApiClient {
 	}
 
 	async refreshLosses(): Promise<{
-		results: Array<{
-			characterId: string
-			characterName: string
-			success: boolean
-			reason?: 'invalid_token' | 'fetch_failed'
-			error?: string
-		}>
+		allowed: boolean
+		retryAfterMs: number
+		cooldownUntil: string
+		workflowInstanceId?: string
+		status?: 'queued' | 'running' | 'completed' | 'failed'
+		totalCharacters?: number
 	}> {
 		return this.post('/srp/losses/refresh', {})
+	}
+
+	async getRecentLossRefreshStatus(): Promise<{
+		status: {
+			userId: string
+			workflowInstanceId: string
+			status: 'queued' | 'running' | 'completed' | 'failed'
+			totalCharacters: number
+			processedCharacters: number
+			successfulCharacters: number
+			failedCharacters: number
+			queuedAt: string
+			updatedAt: string
+			startedAt?: string
+			completedAt?: string
+			currentCharacterId?: string
+			currentCharacterName?: string
+			lastError?: string
+			failures: Array<{
+				characterId: string
+				characterName: string
+				reason: 'invalid_token' | 'cache_missing' | 'cache_incomplete' | 'fetch_failed'
+				message: string
+				error?: string
+			}>
+			maxLossAgeDays: number
+		} | null
+		cooldownUntil: string | null
+	} | null> {
+		return this.get('/srp/losses/refresh/status')
 	}
 
 	async getRequestsByStatus(params: {

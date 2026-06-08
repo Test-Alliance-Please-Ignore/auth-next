@@ -6,7 +6,7 @@ import { PageHeader } from '@/components/ui/page-header'
 import { usePageTitle } from '@/hooks/usePageTitle'
 
 import { CreateRequestForm } from '../components/CreateRequestForm'
-import { useKillmailPreview, useRecentLosses, useSRPConfig } from '../hooks'
+import { useKillmailPreview, useRecentLosses } from '../hooks'
 
 export default function CreateRequest() {
 	usePageTitle('SRP - Submit Request')
@@ -15,10 +15,8 @@ export default function CreateRequest() {
 
 	const killmailId = searchParams.get('killmailId')
 	const killmailHash = searchParams.get('killmailHash')
-	const { data: config } = useSRPConfig()
-	const recentLossLookbackDays = config?.maxLossAgeDays ?? 30
 
-	const { data: losses, isLoading: lossesLoading } = useRecentLosses(recentLossLookbackDays)
+	const { data: losses, isLoading: lossesLoading } = useRecentLosses()
 	const loss = losses?.find((l: any) => l.killmailId === killmailId)
 
 	const { data: preview, isLoading: previewLoading } = useKillmailPreview(
