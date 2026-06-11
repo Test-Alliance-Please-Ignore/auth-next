@@ -2,6 +2,7 @@ import { DurableObject } from 'cloudflare:workers'
 
 import { and, asc, desc, eq, gte, ilike, inArray, lte, sql } from '@repo/db-utils'
 import { getStub } from '@repo/do-utils'
+import type { CharacterKillmailBasic } from '@repo/esi'
 import { buildPublicEsiUserKey, EsiRateLimitGuard, EsiRateLimitStore } from '@repo/esi-rate-limit'
 import { createEveRegionId, createEveTypeId } from '@repo/eve-types'
 import { generateKillmailUrl, roundToMillion, MAX_SRP_LOSS_AGE_DAYS } from '@repo/srp'
@@ -90,6 +91,7 @@ export class SrpDO extends DurableObject<Env> implements Srp {
 	private static readonly MS_PER_DAY = 86_400_000
 	private static readonly REVIEW_QUEUE_COUNT_CACHE_TTL_MS = 60_000
 	private static readonly RECENT_LOSS_CACHE_KEY_PREFIX = 'recent-losses:'
+	private static readonly RECENT_LOSS_DETAIL_CONCURRENCY = 5
 	private db: ReturnType<typeof createDb>
 	private readonly storage: DurableObjectStorage
 	private readonly esiRateLimits: EsiRateLimitGuard
@@ -207,25 +209,55 @@ export class SrpDO extends DurableObject<Env> implements Srp {
 			const pageResult = await this.killmailEsi.fetchCharacterKillmailPage(characterId, page)
 			totalPages = Math.max(1, pageResult.pages)
 			const selection = selectRecentKillmailsUntilKnown(pageResult.data, knownKillmailIds)
-			for (const killmail of selection.killmails) {
-				const detail = await this.killmailEsi.fetchCharacterKillmailDetail(
-					characterId,
-					String(killmail.killmail_id),
-					killmail.killmail_hash
-				)
-				if (!detail || detail.victim.character_id !== characterId) continue
-				const loss = this.convertKillmailDetailToLoss({
-					...detail,
-					killmail_hash: killmail.killmail_hash,
-				})
-				if (!loss) continue
-				losses.push(loss)
-			}
+			const pageLosses = await this.fetchLossDetailsForKillmails(characterId, selection.killmails)
+			losses.push(...pageLosses)
 			if (selection.reachedKnownKillmail) break
 			page += 1
 		}
 
 		return losses
+	}
+
+	private async fetchLossDetailsForKillmails(
+		characterId: string,
+		killmails: CharacterKillmailBasic[]
+	): Promise<CharacterLossData[]> {
+		if (killmails.length === 0) {
+			return []
+		}
+
+		const losses: CharacterLossData[] = []
+		const concurrency = Math.min(
+			SrpDO.RECENT_LOSS_DETAIL_CONCURRENCY,
+			killmails.length
+		)
+		let nextIndex = 0
+
+		const worker = async () => {
+			while (nextIndex < killmails.length) {
+				const currentIndex = nextIndex++
+				const killmail = killmails[currentIndex]
+				const detail = await this.killmailEsi.fetchCharacterKillmailDetail(
+					characterId,
+					String(killmail.killmail_id),
+					killmail.killmail_hash
+				)
+				if (!detail || detail.victim.character_id !== characterId) {
+					continue
+				}
+				const loss = this.convertKillmailDetailToLoss({
+					...detail,
+					killmail_hash: killmail.killmail_hash,
+				})
+				if (!loss) {
+					continue
+				}
+				losses[currentIndex] = loss
+			}
+		}
+
+		await Promise.all(Array.from({ length: concurrency }, () => worker()))
+		return losses.filter((loss): loss is CharacterLossData => Boolean(loss))
 	}
 
 	/**

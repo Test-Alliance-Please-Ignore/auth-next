@@ -7,6 +7,7 @@ import type { DbClient, schema } from '../db'
 
 const NON_DEGRADING_TOKEN_STATUSES: TokenValidationStatus[] = ['transient_error']
 const DEFAULT_TOKEN_VALIDITY_CACHE_MS = 86_400_000
+const AUTHENTICATED_ESI_FAILURE_STATUSES = new Set([400, 401, 403])
 
 export function isNonDegradingTokenStatus(status: TokenValidationStatus): boolean {
 	return NON_DEGRADING_TOKEN_STATUSES.includes(status)
@@ -20,6 +21,79 @@ export function resolveNextTokenValidity(
 		return previousHasValidToken
 	}
 	return validation.isValid
+}
+
+function extractErrorMessage(error: unknown): string {
+	return error instanceof Error ? error.message : String(error)
+}
+
+function extractEsiMetadataStatus(message: string): number | null {
+	const marker = ' | metadata='
+	const idx = message.lastIndexOf(marker)
+	if (idx === -1) return null
+
+	try {
+		const parsed = JSON.parse(message.slice(idx + marker.length).trim()) as { status?: unknown }
+		return typeof parsed?.status === 'number' ? parsed.status : null
+	} catch {
+		return null
+	}
+}
+
+export function isAuthenticatedEsiTokenFailure(error: unknown): boolean {
+	const message = extractErrorMessage(error)
+	const status = extractEsiMetadataStatus(message)
+	if (status !== null) {
+		return AUTHENTICATED_ESI_FAILURE_STATUSES.has(status)
+	}
+
+	const normalized = message.toLowerCase()
+	return (
+		normalized.includes('esi request failed: 400') ||
+		normalized.includes('esi request failed: 401') ||
+		normalized.includes('esi request failed: 403') ||
+		normalized.includes('unauthorized') ||
+		normalized.includes('forbidden') ||
+		normalized.includes('invalid token') ||
+		normalized.includes('token expired') ||
+		normalized.includes('no token provided')
+	)
+}
+
+export async function markCharacterTokenInvalidFromAuthFailure({
+	db,
+	characterId,
+	error,
+	touchLastCharacterRefresh = false,
+}: {
+	db: DbClient<typeof schema>
+	characterId: string
+	error: unknown
+	touchLastCharacterRefresh?: boolean
+}): Promise<boolean> {
+	if (!isAuthenticatedEsiTokenFailure(error)) {
+		return false
+	}
+
+	const updateValues: {
+		hasValidToken: boolean
+		updatedAt: Date
+		lastCharacterRefresh?: Date
+	} = {
+		hasValidToken: false,
+		updatedAt: new Date(),
+	}
+
+	if (touchLastCharacterRefresh) {
+		updateValues.lastCharacterRefresh = new Date()
+	}
+
+	await db
+		.update(userCharacters)
+		.set(updateValues)
+		.where(eq(userCharacters.characterId, characterId))
+
+	return true
 }
 
 export async function validateAndSyncCharacterTokenValidity({

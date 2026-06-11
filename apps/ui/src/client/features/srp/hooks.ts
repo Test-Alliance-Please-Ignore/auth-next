@@ -197,7 +197,7 @@ export function useRecentLossRefreshStatus() {
 		staleTime: 0,
 		refetchInterval: (query) => {
 			const data = query.state.data
-			return data?.status?.status === 'queued' || data?.status?.status === 'running' ? 10000 : false
+			return data?.status?.status === 'queued' || data?.status?.status === 'running' ? 5000 : false
 		},
 		refetchOnWindowFocus: false,
 	})

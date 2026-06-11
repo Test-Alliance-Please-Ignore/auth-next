@@ -25,6 +25,13 @@ export interface MyRequestsQueryData {
 	offset: number
 }
 
+function getRequestRows(data: MyRequestsQueryData | undefined): SRPRequestResponse[] {
+	if (!data || !Array.isArray(data.requests)) {
+		return []
+	}
+	return data.requests
+}
+
 export function isSrpLossesQueryKey(queryKey: readonly unknown[]): boolean {
 	return Array.isArray(queryKey) && queryKey[0] === 'srp' && queryKey[1] === 'losses'
 }
@@ -102,9 +109,10 @@ export function patchMyRequestsStatus(
 	request: SRPRequestResponse
 ): MyRequestsQueryData | undefined {
 	if (!data) return data
+	const requests = getRequestRows(data)
 	return {
 		...data,
-		requests: data.requests.map((row) =>
+		requests: requests.map((row) =>
 			row.id === request.id
 				? {
 						...row,
@@ -126,16 +134,17 @@ export function prependMyRequest(
 	request: SRPRequestResponse
 ): MyRequestsQueryData | undefined {
 	if (!data) return data
-	const existing = data.requests.find((row) => row.id === request.id)
+	const requests = getRequestRows(data)
+	const existing = requests.find((row) => row.id === request.id)
 	if (existing) {
 		return {
 			...data,
-			requests: data.requests.map((row) => (row.id === request.id ? request : row)),
+			requests: requests.map((row) => (row.id === request.id ? request : row)),
 		}
 	}
 	return {
 		...data,
-		requests: [request, ...data.requests],
-		total: data.total + 1,
+		requests: [request, ...requests],
+		total: typeof data.total === 'number' ? data.total + 1 : requests.length + 1,
 	}
 }
