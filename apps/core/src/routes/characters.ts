@@ -8,6 +8,7 @@ import { logger } from '@repo/hono-helpers'
 import { userCharacters } from '../db/schema'
 import { waitUntilWithTelemetry } from '../lib/background-task'
 import { validateAndSyncCharacterTokenValidity } from '../lib/token-validity'
+import { markCharacterTokenInvalidFromAuthFailure } from '../lib/token-validity'
 import { triggerUserRefreshWorkflow } from '../lib/workflow-triggers'
 import { requireAuth } from '../middleware/session'
 import { checkAndUpdateDirectorStatus } from '../services/corporation-auto-register.service'
@@ -731,10 +732,11 @@ app.post('/:characterId/refresh', requireAuth(), async (c) => {
 					tokenStore: eveTokenStoreStub,
 					characterId: characterIdStr,
 					touchLastCharacterRefresh: true,
+					forceValidate: true,
 				})
 			: null
 		const fallbackValidation = tokenStatus ? null : await eveTokenStoreStub.validateToken(characterIdStr)
-		const hasValidToken = tokenStatus
+		let hasValidToken = tokenStatus
 			? tokenStatus.nextHasValidToken === true
 			: fallbackValidation?.isValid === true
 		let authError: string | undefined = tokenStatus?.validation.error ?? fallbackValidation?.error
@@ -744,6 +746,17 @@ app.post('/:characterId/refresh', requireAuth(), async (c) => {
 			try {
 				await eveCharacterData.fetchAuthenticatedData(true)
 			} catch (error) {
+				const downgradedToken = db
+					? await markCharacterTokenInvalidFromAuthFailure({
+							db,
+							characterId: characterIdStr,
+							error,
+							touchLastCharacterRefresh: true,
+						})
+					: false
+				if (downgradedToken) {
+					hasValidToken = false
+				}
 				authError =
 					error instanceof Error
 						? error.message

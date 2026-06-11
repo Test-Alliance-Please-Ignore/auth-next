@@ -7,7 +7,10 @@ import { eq } from 'drizzle-orm'
 import { getStub } from '@repo/do-utils'
 
 import { userCharacters } from '../../../db/schema'
-import { validateAndSyncCharacterTokenValidity } from '../../../lib/token-validity'
+import {
+	markCharacterTokenInvalidFromAuthFailure,
+	validateAndSyncCharacterTokenValidity,
+} from '../../../lib/token-validity'
 import { getWorkflowLogger } from '../../context'
 
 import type { EveCharacterData } from '@repo/eve-character-data'
@@ -90,15 +93,22 @@ export async function tryCharacterAuthenticatedFetch(
 			})
 		} catch (error) {
 			const errorMessage = error instanceof Error ? error.message : String(error)
+			const downgradedToken = await markCharacterTokenInvalidFromAuthFailure({
+				db: ctx.db,
+				characterId,
+				error,
+				touchLastCharacterRefresh: true,
+			})
 			logger.error('[Workflow] Failed to refresh authenticated character data', {
 				characterId,
+				downgradedToken,
 				error: errorMessage,
 				errorDetails: extractErrorDetails(error),
 			})
 			return {
 				characterId,
 				error: errorMessage,
-				status: validation.status,
+				status: downgradedToken ? 'invalid_token' : validation.status,
 				success: false,
 			}
 		}

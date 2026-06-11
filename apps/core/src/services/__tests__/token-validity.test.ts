@@ -1,6 +1,8 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
 import {
+	isAuthenticatedEsiTokenFailure,
+	markCharacterTokenInvalidFromAuthFailure,
 	resolveNextTokenValidity,
 	validateAndSyncCharacterTokenValidity,
 	validateAndSyncCharacterTokenValidityBatch,
@@ -80,6 +82,35 @@ describe('token-validity helper', () => {
 				}) as any
 			)
 		).toBe(false)
+	})
+
+	it('classifies authenticated ESI 401 failures as token failures', () => {
+		expect(
+			isAuthenticatedEsiTokenFailure(
+				new Error(
+					'ESI request failed: 401 Unauthorized - {"error":"Unauthorized"} | metadata={"status":401,"path":"/characters/123/wallet"}'
+				)
+			)
+		).toBe(true)
+	})
+
+	it('marks character token invalid from authenticated ESI auth failures', async () => {
+		const recorder = makeDbRecorder(true)
+
+		const marked = await markCharacterTokenInvalidFromAuthFailure({
+			db: recorder.db as any,
+			characterId: '2001',
+			error: new Error(
+				'ESI request failed: 401 Unauthorized - {"error":"Unauthorized"} | metadata={"status":401,"path":"/characters/123/wallet"}'
+			),
+			touchLastCharacterRefresh: true,
+		})
+
+		expect(marked).toBe(true)
+		expect(recorder.updates[0]).toMatchObject({
+			hasValidToken: false,
+		})
+		expect(recorder.updates[0]).toHaveProperty('lastCharacterRefresh')
 	})
 
 	it('writes updated hasValidToken from live validation', async () => {
@@ -227,7 +258,7 @@ describe('token-validity helper', () => {
 		})
 
 		expect(results.get('2001')).toBe(false)
-		expect(tokenStore.validateToken).toHaveBeenCalledWith('2001')
+		expect(tokenStore.validateToken).toHaveBeenCalledWith('2001', undefined, { force: false })
 		expect(recorder.updates[0]).toHaveProperty('lastCharacterRefresh')
 	})
 })

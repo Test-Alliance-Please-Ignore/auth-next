@@ -36,6 +36,7 @@ const TOKEN_STEP_OPTIONS = {
 	retries: { limit: 2, delay: '3 seconds', backoff: 'exponential' as const },
 	timeout: '1 minute' as const,
 } satisfies WorkflowStepConfig
+const CHARACTER_BATCH_CONCURRENCY = 4
 
 function buildFailure(
 	character: RecentLossRefreshCharacterInput,
@@ -70,6 +71,66 @@ export class SrpRecentLossRefreshWorkflow extends WorkflowEntrypoint<
 		let successfulCharacters = 0
 		let failedCharacters = 0
 
+		const refreshCharacter = async (
+			character: RecentLossRefreshCharacterInput
+		): Promise<{
+			characterId: string
+			characterName: string
+			success: boolean
+			failure?: RecentLossRefreshCharacterFailure
+		}> => {
+			const tokenValidation = await step.do(
+				`validate-token-${character.characterId}`,
+				TOKEN_STEP_OPTIONS,
+				async () =>
+					tokenStore.validateToken(character.characterId, ['esi-killmails.read_killmails.v1'])
+			)
+
+			if (!tokenValidation.isValid) {
+				return {
+					characterId: character.characterId,
+					characterName: character.characterName,
+					success: false,
+					failure: buildFailure(
+						character,
+						'invalid_token',
+						'ESI token is invalid or expired. Please re-authenticate this character.'
+					),
+				}
+			}
+
+			try {
+				await step.do(
+					`refresh-character-${character.characterId}`,
+					CHARACTER_STEP_OPTIONS,
+					async () =>
+						srpStub.refreshRecentLossesForCharacter(
+							userId,
+							character.characterId,
+							character.characterName,
+							maxLossAgeDays
+						)
+				)
+				return {
+					characterId: character.characterId,
+					characterName: character.characterName,
+					success: true,
+				}
+			} catch (error) {
+				return {
+					characterId: character.characterId,
+					characterName: character.characterName,
+					success: false,
+					failure: buildFailure(
+						character,
+						'fetch_failed',
+						'Could not refresh recent losses right now.',
+						error
+					),
+				}
+			}
+		}
+
 		try {
 			const currentStatus = await coordinator.getRecentLossRefreshStatus(userId)
 			if (!currentStatus.status || currentStatus.status.workflowInstanceId !== workflowInstanceId) {
@@ -90,82 +151,37 @@ export class SrpRecentLossRefreshWorkflow extends WorkflowEntrypoint<
 				await coordinator.updateRecentLossRefreshStatus(userId, runningStatus)
 			})
 
-			for (const [index, character] of characters.entries()) {
-				if (index > 0) {
-					const jitterSeconds = 1 + Math.floor(Math.random() * 3)
-					await step.sleep(`jitter-${character.characterId}`, `${jitterSeconds} seconds`)
-				}
+			for (let batchStart = 0; batchStart < characters.length; batchStart += CHARACTER_BATCH_CONCURRENCY) {
+				const batch = characters.slice(batchStart, batchStart + CHARACTER_BATCH_CONCURRENCY)
+				const batchResults = await Promise.all(batch.map((character) => refreshCharacter(character)))
 
-				const tokenValidation = await step.do(
-					`validate-token-${character.characterId}`,
-					TOKEN_STEP_OPTIONS,
-					async () =>
-						tokenStore.validateToken(character.characterId, ['esi-killmails.read_killmails.v1'])
-				)
-
-				if (!tokenValidation.isValid) {
-					const failure = buildFailure(
-						character,
-						'invalid_token',
-						'ESI token is invalid or expired. Please re-authenticate this character.'
-					)
-					failures.push(failure)
+				for (const result of batchResults) {
 					processedCharacters++
-					failedCharacters++
-					const updatedStatus: RecentLossRefreshStatusRecord = {
-						...runningStatus,
-						processedCharacters,
-						successfulCharacters,
-						failedCharacters,
-						updatedAt: new Date().toISOString(),
-						currentCharacterId: character.characterId,
-						currentCharacterName: character.characterName,
-						failures: failures.slice(),
-						lastError: failure.message,
+					if (result.success) {
+						successfulCharacters++
+						continue
 					}
-					await step.do(`update-status-${character.characterId}-invalid`, STATUS_STEP_OPTIONS, async () =>
-						coordinator.updateRecentLossRefreshStatus(userId, updatedStatus)
-					)
-					continue
+					if (result.failure) {
+						failures.push(result.failure)
+						failedCharacters++
+					}
 				}
 
-				try {
-					await step.do(
-						`refresh-character-${character.characterId}`,
-						CHARACTER_STEP_OPTIONS,
-						async () =>
-							srpStub.refreshRecentLossesForCharacter(
-								userId,
-								character.characterId,
-								character.characterName,
-								maxLossAgeDays
-							)
-					)
-					successfulCharacters++
-				} catch (error) {
-					const failure = buildFailure(
-						character,
-						'fetch_failed',
-						'Could not refresh recent losses right now.',
-						error
-					)
-					failures.push(failure)
-					failedCharacters++
-				}
-
-				processedCharacters++
+				const lastCharacter = batch[batch.length - 1]
 				const updatedStatus: RecentLossRefreshStatusRecord = {
 					...runningStatus,
 					processedCharacters,
 					successfulCharacters,
 					failedCharacters,
 					updatedAt: new Date().toISOString(),
-					currentCharacterId: character.characterId,
-					currentCharacterName: character.characterName,
+					currentCharacterId:
+						processedCharacters < characters.length ? lastCharacter?.characterId : undefined,
+					currentCharacterName:
+						processedCharacters < characters.length ? lastCharacter?.characterName : undefined,
 					failures: failures.slice(),
 					lastError: failures[failures.length - 1]?.message,
 				}
-				await step.do(`update-status-${character.characterId}`, STATUS_STEP_OPTIONS, async () =>
+				await step.do(`update-status-batch-${batchStart}`, STATUS_STEP_OPTIONS, async () =>
 					coordinator.updateRecentLossRefreshStatus(userId, updatedStatus)
 				)
 			}

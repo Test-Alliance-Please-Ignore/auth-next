@@ -136,4 +136,33 @@ describe('tryCharacterAuthenticatedFetch', () => {
 			hasValidToken: true,
 		})
 	})
+
+	it('marks the character token invalid when authenticated ESI fetch returns 401', async () => {
+		validateToken.mockResolvedValue({
+			characterId: '123',
+			isValid: true,
+			missingScopes: [],
+			refreshAttempted: false,
+			refreshSucceeded: false,
+			scopes: ['esi-location.read_location.v1'],
+			status: 'valid',
+		})
+		fetchAuthenticatedData.mockRejectedValue(
+			new Error(
+				'ESI request failed: 401 Unauthorized - {"error":"Unauthorized"} | metadata={"status":401,"path":"/characters/123/wallet"}'
+			)
+		)
+		const recorder = createDbRecorder(true)
+
+		const result = await tryCharacterAuthenticatedFetch(
+			createCtx(recorder.db as unknown as WorkflowContext['db']),
+			'123'
+		)
+
+		expect(result.success).toBe(false)
+		expect(result.status).toBe('invalid_token')
+		expect(recorder.updates.at(-1)).toMatchObject({
+			hasValidToken: false,
+		})
+	})
 })
