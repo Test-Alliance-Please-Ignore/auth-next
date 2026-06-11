@@ -44,6 +44,7 @@ interface KillmailItem {
 	flag: number
 	quantity_destroyed?: number
 	quantity_dropped?: number
+	items?: KillmailItem[]
 }
 
 export interface SRPCargoItem {
@@ -59,6 +60,31 @@ interface SRPItemPrice {
 	isConsumable?: boolean
 }
 
+function flattenKillmailItemsForDisplay(
+	items: KillmailItem[],
+	inheritedFlag?: number
+): KillmailItem[] {
+	const flattened: KillmailItem[] = []
+
+	for (const item of items) {
+		const slot = flagToSlot(item.flag)
+		const displayFlag = slot ? item.flag : (inheritedFlag ?? item.flag)
+
+		flattened.push({
+			item_type_id: item.item_type_id,
+			flag: displayFlag,
+			quantity_destroyed: item.quantity_destroyed,
+			quantity_dropped: item.quantity_dropped,
+		})
+
+		if (item.items?.length) {
+			flattened.push(...flattenKillmailItemsForDisplay(item.items, displayFlag))
+		}
+	}
+
+	return flattened
+}
+
 export function transformKillmailToFittingItems(
 	killmailItems: KillmailItem[],
 	srpItemPrices: SRPItemPrice[],
@@ -72,8 +98,9 @@ export function transformKillmailToFittingItems(
 	}
 
 	const result: SRPFittingItem[] = []
+	const flattenedItems = flattenKillmailItemsForDisplay(killmailItems)
 
-	for (const item of killmailItems) {
+	for (const item of flattenedItems) {
 		const slot = flagToSlot(item.flag)
 		if (!slot) continue
 
@@ -109,8 +136,9 @@ export function transformKillmailToCargoItems(
 	itemNames: Record<string, string> = {}
 ): SRPCargoItem[] {
 	const byType = new Map<string, SRPCargoItem>()
+	const flattenedItems = flattenKillmailItemsForDisplay(killmailItems)
 
-	for (const item of killmailItems) {
+	for (const item of flattenedItems) {
 		if (item.flag !== 5) continue
 		const typeId = String(item.item_type_id)
 		const quantity = (item.quantity_destroyed ?? 0) + (item.quantity_dropped ?? 0) || 1

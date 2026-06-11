@@ -218,6 +218,94 @@ export class SrpDO extends DurableObject<Env> implements Srp {
 		return losses
 	}
 
+	private async findCachedRecentLoss(
+		characterId: string,
+		killmailId: string,
+		killmailHash: string
+	): Promise<CharacterLossData | null> {
+		const cached = await this.readRecentLossCache(characterId)
+		if (!cached?.losses?.length) {
+			return null
+		}
+
+		return (
+			cached.losses.find(
+				(loss) => loss.killmailId === killmailId && loss.killmailHash === killmailHash
+			) ?? null
+		)
+	}
+
+	private flattenVictimItemsForPreview(
+		items: Array<{
+			item_type_id?: number | string
+			flag?: number
+			quantity_destroyed?: number
+			quantity_dropped?: number
+			items?: Array<any>
+		}>,
+		inheritedFlag?: number
+	): Array<{
+		typeId: string
+		flag: number
+		quantityDestroyed: number
+		quantityDropped: number
+	}> {
+		const flattened: Array<{
+			typeId: string
+			flag: number
+			quantityDestroyed: number
+			quantityDropped: number
+		}> = []
+
+		for (const item of items) {
+			const itemTypeId = item.item_type_id
+			const flag = item.flag
+			if (itemTypeId != null && flag != null) {
+				const displayFlag = inheritedFlag ?? flag
+				flattened.push({
+					typeId: String(itemTypeId),
+					flag: displayFlag,
+					quantityDestroyed: item.quantity_destroyed ?? 0,
+					quantityDropped: item.quantity_dropped ?? 0,
+				})
+
+				if (item.items?.length) {
+					flattened.push(...this.flattenVictimItemsForPreview(item.items, displayFlag))
+				}
+				continue
+			}
+
+			if (item.items?.length) {
+				flattened.push(...this.flattenVictimItemsForPreview(item.items, inheritedFlag))
+			}
+		}
+
+		return flattened
+	}
+
+	private collectVictimItemTypeIds(
+		items: Array<{
+			item_type_id?: number | string
+			items?: Array<any>
+		}>
+	): string[] {
+		const typeIds = new Set<string>()
+
+		const walk = (rows: Array<{ item_type_id?: number | string; items?: Array<any> }>) => {
+			for (const row of rows) {
+				if (row.item_type_id != null) {
+					typeIds.add(String(row.item_type_id))
+				}
+				if (row.items?.length) {
+					walk(row.items)
+				}
+			}
+		}
+
+		walk(items)
+		return [...typeIds]
+	}
+
 	private async fetchLossDetailsForKillmails(
 		characterId: string,
 		killmails: CharacterKillmailBasic[]
@@ -450,22 +538,38 @@ export class SrpDO extends DurableObject<Env> implements Srp {
 		killmailId: string,
 		killmailHash: string
 	): Promise<SRPValuationPreview | null> {
-		const killmailData = await this.killmailEsi.fetchCharacterKillmailDetail(
-			characterId,
-			killmailId,
-			killmailHash
-		)
+		const cachedLoss = await this.findCachedRecentLoss(characterId, killmailId, killmailHash)
+		const cachedVictimItems = cachedLoss?.victimItems ?? []
+		const canUseCachedLoss = cachedLoss !== null && cachedVictimItems.length > 0
 
-		if (!killmailData || killmailData.victim.character_id !== characterId) {
+		const killmailData = canUseCachedLoss
+			? ({
+					killmail_time: cachedLoss.killmailTime.toISOString(),
+					solar_system_id: Number(cachedLoss.solarSystemId),
+					victim: {
+						character_id: Number(characterId),
+						ship_type_id: Number(cachedLoss.shipTypeId),
+						items: cachedVictimItems,
+					},
+				} as unknown as KillmailDataJson)
+			: await this.killmailEsi.fetchCharacterKillmailDetail(
+					characterId,
+					killmailId,
+					killmailHash
+				)
+
+		const victim = killmailData?.victim
+		const killmailTime = killmailData?.killmail_time
+		if (!killmailData || !victim || !killmailTime || String(victim.character_id) !== characterId) {
 			throw new Error('Killmail not found or is not a loss')
 		}
 
 		const config = await this.getConfig()
-		const lossDate = new Date(killmailData.killmail_time)
+		const lossDate = new Date(killmailTime)
 		const valuation = await this.calculateSrpValuation(
 			killmailData as any,
 			lossDate,
-			String(killmailData.victim.ship_type_id),
+			String(victim.ship_type_id),
 			config
 		)
 
@@ -476,20 +580,13 @@ export class SrpDO extends DurableObject<Env> implements Srp {
 			.filter((item) => item.unitPrice === '0')
 			.map((item) => item.typeId)
 
-		const rawItems = killmailData.victim.items ?? []
-		const victimItems = rawItems
-			.filter((i: any) => i.item_type_id != null && i.flag != null)
-			.map((i: any) => ({
-				typeId: String(i.item_type_id),
-				flag: i.flag as number,
-				quantityDestroyed: i.quantity_destroyed ?? 0,
-				quantityDropped: i.quantity_dropped ?? 0,
-			}))
+		const rawItems = victim.items ?? []
+		const victimItems = this.flattenVictimItemsForPreview(rawItems)
 
 		const allTypeIds = [
 			...new Set([
-				String(killmailData.victim.ship_type_id),
-				...victimItems.map((i: { typeId: string }) => i.typeId),
+				String(victim.ship_type_id),
+				...this.collectVictimItemTypeIds(rawItems),
 			]),
 		]
 		const universeStub = getStub<Universe>(this.env.UNIVERSE, 'default')

@@ -127,6 +127,13 @@ function SlotSection({
 		(sum, i) => sum + (i.isConsumable ? 0 : parseFloat(i.lineTotal || '0')),
 		0
 	)
+	const groupedItems = new Map<number, SRPFittingItem[]>()
+	for (const item of items) {
+		const group = groupedItems.get(item.slotIndex) ?? []
+		group.push(item)
+		groupedItems.set(item.slotIndex, group)
+	}
+	const orderedSlotIndexes = [...groupedItems.keys()].sort((a, b) => a - b)
 
 	return (
 		<div>
@@ -141,14 +148,30 @@ function SlotSection({
 				)}
 			</div>
 			<div className="space-y-1 rounded-md border border-border/40 bg-muted/10 p-1">
-				{items.map((item, i) => (
-					<ItemRow
-						key={`${item.typeId}-${item.slotIndex}-${i}`}
-						item={item}
-						severity={slotHighlights[`${item.slotType}:${item.slotIndex}`]}
-						showPricing={showPricing}
-					/>
-				))}
+				{orderedSlotIndexes.map((slotIndex) => {
+					const slotItems = [...(groupedItems.get(slotIndex) ?? [])].sort((left, right) => {
+						if (left.isConsumable === right.isConsumable) return left.typeName.localeCompare(right.typeName)
+						return left.isConsumable ? 1 : -1
+					})
+					const anchorItem = slotItems.find((item) => !item.isConsumable) ?? slotItems[0]
+					const severity = anchorItem
+						? slotHighlights[`${anchorItem.slotType}:${anchorItem.slotIndex}`]
+						: undefined
+
+					return (
+						<div key={`${slotType ?? 'slot'}:${slotIndex}`} className="space-y-1">
+							{slotItems.map((item, itemIndex) => (
+								<ItemRow
+									key={`${item.typeId}-${item.slotIndex}-${itemIndex}`}
+									item={item}
+									severity={severity}
+									showPricing={showPricing}
+									indented={item.isConsumable === true && itemIndex > 0}
+								/>
+							))}
+						</div>
+					)
+				})}
 				{slotType && typeof slotCapacity === 'number' && slotCapacity > 0 && (
 					<>
 						{Array.from({ length: slotCapacity }, (_, slotIndex) => slotIndex)
@@ -183,10 +206,12 @@ function ItemRow({
 	item,
 	severity,
 	showPricing = true,
+	indented = false,
 }: {
 	item: SRPFittingItem
 	severity?: 'destructive' | 'warning' | 'secondary'
 	showPricing?: boolean
+	indented?: boolean
 }) {
 	const severityClass =
 		severity === 'destructive'
@@ -197,7 +222,9 @@ function ItemRow({
 					? 'bg-secondary/12'
 					: 'hover:bg-muted/20'
 	return (
-		<div className={`flex items-center gap-2 rounded px-1 py-0.5 ${severityClass} ${item.isConsumable ? 'opacity-50' : ''}`}>
+		<div
+			className={`flex items-center gap-2 rounded px-1 py-0.5 ${severityClass} ${item.isConsumable ? 'opacity-50' : ''} ${indented ? 'ml-6 border-l border-border/50 pl-3' : ''}`}
+		>
 			<img
 				src={typeIconUrl(item.typeId, 32)}
 				alt={item.typeName}
