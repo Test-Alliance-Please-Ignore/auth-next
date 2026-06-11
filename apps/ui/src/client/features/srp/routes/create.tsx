@@ -18,12 +18,11 @@ export default function CreateRequest() {
 
 	const { data: losses, isLoading: lossesLoading } = useRecentLosses()
 	const loss = losses?.find((l: any) => l.killmailId === killmailId)
-	const hasVictimItems = Boolean(loss?.victimItems && loss.victimItems.length > 0)
 
 	const { data: preview, isLoading: previewLoading } = useKillmailPreview(
 		killmailId,
 		killmailHash,
-		!hasVictimItems ? loss?.victimCharacterId ?? null : null
+		loss?.victimCharacterId ?? null
 	)
 
 	if (!killmailId || !killmailHash) {
