@@ -85,7 +85,8 @@ export function TemplateSelector({
 						placeholder="Use template..."
 						className="text-xs"
 						inputClassName="h-8 text-xs"
-						contentClassName="text-xs"
+						contentClassName="w-[min(90vw,26rem)] text-xs"
+						listMaxHeight="40rem"
 						emptyText="No templates available"
 					/>
 				</div>

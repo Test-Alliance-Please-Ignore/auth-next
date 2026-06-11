@@ -5,6 +5,8 @@ import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover
 import { Separator } from '@/components/ui/separator'
 import { characterPortraitUrl } from '@/lib/eve-images'
 
+import { CharacterRoleBadge } from './character-role-badge'
+
 // ============================================================================
 // Types & config
 // ============================================================================
@@ -216,7 +218,10 @@ export function ApplicationCharacterStack({
 								className="h-8 w-8 rounded object-cover"
 								loading="lazy"
 							/>
-							<span className="text-sm font-medium">{mainCharacterName}</span>
+							<span className="inline-flex min-w-0 items-center gap-2">
+								<span className="truncate text-sm font-medium">{mainCharacterName}</span>
+								<CharacterRoleBadge role="main" />
+							</span>
 						</div>
 					</div>
 
@@ -236,7 +241,10 @@ export function ApplicationCharacterStack({
 												className="h-8 w-8 rounded object-cover"
 												loading="lazy"
 											/>
-											<span className="text-sm">{altCharacterNames[altId] ?? altId}</span>
+											<span className="inline-flex min-w-0 items-center gap-2">
+												<span className="truncate text-sm">{altCharacterNames[altId] ?? altId}</span>
+												<CharacterRoleBadge role="alt" />
+											</span>
 										</div>
 									))}
 								</div>

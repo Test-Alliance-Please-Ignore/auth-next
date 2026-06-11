@@ -22,6 +22,7 @@ import {
 	BreadcrumbPage,
 	BreadcrumbSeparator,
 } from '@/components/ui/breadcrumb'
+import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Checkbox } from '@/components/ui/checkbox'
@@ -303,8 +304,16 @@ export default function ApplicationDetail() {
 
 						{/* Application Header Info */}
 						<div className="flex-1 min-w-0">
-							<h1 className="text-2xl font-bold text-foreground mb-1">
-								{application.characterName}
+							<h1 className="mb-1 flex flex-wrap items-center gap-2 text-2xl font-bold text-foreground">
+								<span className="min-w-0 truncate">{application.characterName}</span>
+								{application.isFirstApplication !== undefined && (
+									<Badge
+										variant={application.isFirstApplication ? 'success' : 'default'}
+										className="h-5 px-1.5 text-[10px] font-semibold leading-none shrink-0"
+									>
+										{application.isFirstApplication ? 'First' : 'Repeat'}
+									</Badge>
+								)}
 								{altCharacterIds.length > 0 && (
 									<span className="ml-2 text-lg font-normal text-muted-foreground">
 										(+{altCharacterIds.length} {altCharacterIds.length === 1 ? 'Alt' : 'Alts'})
@@ -396,12 +405,12 @@ export default function ApplicationDetail() {
 										<div className="space-y-2">
 											{altCharacterIds.map((altId) => (
 												<div key={altId} className="flex items-center justify-between gap-3 rounded-md border px-3 py-2">
-													<div className="flex items-center gap-2">
-														<MemberAvatar characterId={altId} characterName={altCharacterNames[altId] ?? altId} size="sm" />
-														<span className="text-sm font-medium">
-															{altCharacterNames[altId] ?? altId}
-														</span>
-													</div>
+												<div className="flex items-center gap-2">
+													<MemberAvatar characterId={altId} characterName={altCharacterNames[altId] ?? altId} size="sm" />
+													<span className="truncate text-sm font-medium">
+														{altCharacterNames[altId] ?? altId}
+													</span>
+												</div>
 													<Button
 														variant="ghost"
 														size="sm"
@@ -448,7 +457,7 @@ export default function ApplicationDetail() {
 										{altCharacterIds.map((altId) => (
 											<div key={altId} className="flex items-center gap-2 rounded-md border px-3 py-2">
 												<MemberAvatar characterId={altId} characterName={altCharacterNames[altId] ?? altId} size="sm" />
-												<span className="text-sm font-medium">
+												<span className="truncate text-sm font-medium">
 													{altCharacterNames[altId] ?? altId}
 												</span>
 											</div>

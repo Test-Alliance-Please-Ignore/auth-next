@@ -1,4 +1,4 @@
-import { and, desc, eq, ilike, inArray, or, sql } from '@repo/db-utils'
+import { and, asc, desc, eq, ilike, inArray, or, sql } from '@repo/db-utils'
 import { isActiveApplicationStatus, isApplicationStatus } from '@repo/hr'
 
 import { applicationActivityLog, applicationAlts, applicationRecommendations, applications } from '../db/schema'
@@ -83,6 +83,26 @@ export class ApplicationService {
 		}
 
 		return conditions.length > 0 ? and(...conditions) : undefined
+	}
+
+	private async resolveFirstApplicationIds(userIds: string[]): Promise<Set<string>> {
+		if (userIds.length === 0) return new Set()
+
+		const rows = await this.ctx.db.query.applications.findMany({
+			where: inArray(applications.userId, [...new Set(userIds)]),
+			columns: { id: true, userId: true },
+			orderBy: [asc(applications.userId), asc(applications.createdAt), asc(applications.id)],
+		})
+
+		const firstApplicationIds = new Set<string>()
+		const seenUsers = new Set<string>()
+		for (const row of rows) {
+			if (seenUsers.has(row.userId)) continue
+			seenUsers.add(row.userId)
+			firstApplicationIds.add(row.id)
+		}
+
+		return firstApplicationIds
 	}
 
 	/**
@@ -170,7 +190,11 @@ export class ApplicationService {
 			with: { alts: true },
 		})
 
-		return results.map((app) => this.mapToApplication(app, app.alts.map((a) => a.characterId)))
+		const firstApplicationIds = await this.resolveFirstApplicationIds(results.map((app) => app.userId))
+
+		return results.map((app) =>
+			this.mapToApplication(app, app.alts.map((a) => a.characterId), firstApplicationIds.has(app.id))
+		)
 	}
 
 	async listApplicationsPaged(
@@ -203,6 +227,7 @@ export class ApplicationService {
 			offset,
 			with: { alts: true },
 		})
+		const firstApplicationIds = await this.resolveFirstApplicationIds(results.map((app) => app.userId))
 
 		const groupedCounts = await this.ctx.db
 			.select({
@@ -228,7 +253,9 @@ export class ApplicationService {
 		}
 
 		return {
-			items: results.map((app) => this.mapToApplication(app, app.alts.map((a) => a.characterId))),
+			items: results.map((app) =>
+				this.mapToApplication(app, app.alts.map((a) => a.characterId), firstApplicationIds.has(app.id))
+			),
 			total: countRow?.total ?? 0,
 			limit,
 			offset,
@@ -286,8 +313,10 @@ export class ApplicationService {
 			})
 		}
 
+		const firstApplicationIds = await this.resolveFirstApplicationIds([application.userId])
+
 		return {
-			...this.mapToApplication(application),
+			...this.mapToApplication(application, undefined, firstApplicationIds.has(application.id)),
 			altCharacterIds: alts.map((alt) => alt.characterId),
 			recommendations: recommendations.map((rec) => ({
 				id: rec.id,
@@ -704,7 +733,11 @@ export class ApplicationService {
 	/**
 	 * Map database record to Application DTO
 	 */
-	private mapToApplication(app: typeof applications.$inferSelect, altCharacterIds?: string[]): Application {
+	private mapToApplication(
+		app: typeof applications.$inferSelect,
+		altCharacterIds?: string[],
+		isFirstApplication?: boolean
+	): Application {
 		return {
 			id: app.id,
 			corporationId: app.corporationId,
@@ -721,6 +754,7 @@ export class ApplicationService {
 			updatedAt: app.updatedAt,
 			lastStaffInteractionAt: app.lastStaffInteractionAt,
 			altCharacterIds,
+			isFirstApplication,
 		}
 	}
 }

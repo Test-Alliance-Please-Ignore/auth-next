@@ -24,6 +24,7 @@ import { Link } from 'react-router-dom'
 
 import { MemberAvatar } from '@/components/member-avatar'
 import { Button } from '@/components/ui/button'
+import { cn } from '@/lib/utils'
 
 import { ApplicationStatusBadge } from './application-status-badge'
 
@@ -71,8 +72,22 @@ function buildColumns(
 						size="sm"
 					/>
 					<div className="flex flex-col min-w-0">
-						<span className="truncate text-left font-medium text-foreground">
-							{row.original.characterName}
+						<span className="inline-flex min-w-0 items-center gap-2">
+							<span className="truncate text-left font-medium text-foreground">
+								{row.original.characterName}
+							</span>
+							{row.original.isFirstApplication !== undefined && (
+								<span
+									className={cn(
+										'inline-flex h-5 w-fit items-center rounded-full border px-1.5 text-[10px] font-semibold leading-none',
+										row.original.isFirstApplication
+											? 'border-success/30 bg-success/20 text-success'
+											: 'border-primary/30 bg-primary/20 text-primary'
+									)}
+								>
+									{row.original.isFirstApplication ? 'First' : 'Repeat'}
+								</span>
+							)}
 						</span>
 						{(row.original.altCharacterIds?.length ?? 0) > 0 && (
 							<span className="text-xs text-muted-foreground">

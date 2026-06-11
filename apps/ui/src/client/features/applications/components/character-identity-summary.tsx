@@ -207,11 +207,7 @@ export function CharacterIdentitySummary({
 							>
 								{corporationName}
 							</span>
-							{npcCorp && (
-								<Badge variant="ghost" className="h-5 px-1.5 text-[10px]">
-									NPC Corp
-								</Badge>
-							)}
+							{npcCorp && <Badge variant="ghost" className="h-5 px-1.5 text-[10px]">NPC Corp</Badge>}
 						</div>
 					) : (
 						<span className="text-xs text-muted-foreground">Corporation unknown</span>

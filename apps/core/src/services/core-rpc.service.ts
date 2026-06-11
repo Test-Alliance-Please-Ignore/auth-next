@@ -7,7 +7,6 @@ import * as discordService from '../services/discord.service'
 
 import type { SQL } from 'drizzle-orm'
 import type {
-	CharacterDetails,
 	CharacterOwnerInfo,
 	DeleteCharacterResult,
 	DeleteUserResult,
@@ -112,7 +111,10 @@ export class CoreRpcService {
 			.from(users)
 			.leftJoin(
 				userCharacters,
-				and(eq(users.mainCharacterId, userCharacters.characterId), eq(userCharacters.isDeleted, false))
+				and(
+					eq(users.mainCharacterId, userCharacters.characterId),
+					eq(userCharacters.isDeleted, false)
+				)
 			)
 
 		if (whereCondition) {
@@ -134,7 +136,9 @@ export class CoreRpcService {
 					count: sql<number>`count(*)`,
 				})
 				.from(userCharacters)
-				.where(and(inArray(userCharacters.userId, pageUserIds), eq(userCharacters.isDeleted, false)))
+				.where(
+					and(inArray(userCharacters.userId, pageUserIds), eq(userCharacters.isDeleted, false))
+				)
 				.groupBy(userCharacters.userId)
 
 			for (const row of characterCounts) {
@@ -149,7 +153,10 @@ export class CoreRpcService {
 		const discordUsernameByUserId = new Map<string, string>()
 		if (search && pageUserIds.length > 0) {
 			const pageCharacters = await this.db.query.userCharacters.findMany({
-				where: and(inArray(userCharacters.userId, pageUserIds), eq(userCharacters.isDeleted, false)),
+				where: and(
+					inArray(userCharacters.userId, pageUserIds),
+					eq(userCharacters.isDeleted, false)
+				),
 				columns: {
 					userId: true,
 					characterId: true,
@@ -624,7 +631,9 @@ export class CoreRpcService {
 			},
 		})
 
-		const dueCharacterIndex = new Map(dueCharacterIds.map((characterId, index) => [characterId, index]))
+		const dueCharacterIndex = new Map(
+			dueCharacterIds.map((characterId, index) => [characterId, index])
+		)
 		const userOrder = new Map<string, number>()
 		const dueUserIds = new Set<string>()
 
@@ -638,7 +647,9 @@ export class CoreRpcService {
 		}
 
 		const ownedCharacterIdSet = new Set(dueCharacterOwners.map((row) => row.characterId))
-		const unownedCharacterIds = dueCharacterIds.filter((characterId) => !ownedCharacterIdSet.has(characterId))
+		const unownedCharacterIds = dueCharacterIds.filter(
+			(characterId) => !ownedCharacterIdSet.has(characterId)
+		)
 
 		if (dueUserIds.size === 0) {
 			return { userBatches: [], unownedCharacterIds }
@@ -875,7 +886,7 @@ export class CoreRpcService {
 	 * @returns Main character id/name, or null if user/character not found
 	 */
 	async getUserMainCharacter(
-		userId: string,
+		userId: string
 	): Promise<{ characterId: string; characterName: string } | null> {
 		const user = await this.db.query.users.findFirst({
 			where: eq(users.id, userId),

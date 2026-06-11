@@ -49,6 +49,7 @@ import { FulcrumPanel } from '../components/fulcrum-panel'
 import { HRNotesList } from '../components/hr-notes-list'
 import { MessagesPanel } from '../components/messages-panel'
 import { Button } from '@/components/ui/button'
+import { Badge } from '@/components/ui/badge'
 import { RecommendationList } from '../components/recommendation-list'
 import {
 	useApplication,
@@ -386,24 +387,32 @@ export default function HrApplicationReview() {
 
 						{/* Application Header Info */}
 						<div className="flex-1 min-w-0">
-							<h1 className="text-2xl font-bold text-foreground mb-1">
-								{memberProfilePath && memberProfileState ? (
-									<Link
-										to={memberProfilePath}
-										state={memberProfileState}
-										className="truncate text-left transition-colors hover:text-primary focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring rounded-sm"
-									>
-										{application.characterName}
-									</Link>
-								) : (
-									<span className="truncate">{application.characterName}</span>
-								)}
-								{altCharacterIds.length > 0 && (
-									<span className="ml-2 text-lg font-normal text-muted-foreground">
-										(+{altCharacterIds.length} {altCharacterIds.length === 1 ? 'Alt' : 'Alts'})
-									</span>
-								)}
-							</h1>
+			<h1 className="mb-1 flex flex-wrap items-center gap-2 text-2xl font-bold text-foreground">
+				{memberProfilePath && memberProfileState ? (
+					<Link
+						to={memberProfilePath}
+						state={memberProfileState}
+						className="truncate text-left transition-colors hover:text-primary focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring rounded-sm"
+					>
+						{application.characterName}
+					</Link>
+				) : (
+					<span className="min-w-0 truncate">{application.characterName}</span>
+				)}
+				{application.isFirstApplication !== undefined && (
+					<Badge
+						variant={application.isFirstApplication ? 'success' : 'default'}
+						className="h-5 shrink-0 px-1.5 text-[10px] font-semibold leading-none"
+					>
+						{application.isFirstApplication ? 'First' : 'Repeat'}
+					</Badge>
+				)}
+				{altCharacterIds.length > 0 && (
+					<span className="ml-2 text-lg font-normal text-muted-foreground">
+						(+{altCharacterIds.length} {altCharacterIds.length === 1 ? 'Alt' : 'Alts'})
+					</span>
+				)}
+			</h1>
 							{application.corporationName && (
 								<p className="text-lg text-muted-foreground mb-3">
 									Applied to: <span className="font-medium">{application.corporationName}</span>
@@ -423,7 +432,7 @@ export default function HrApplicationReview() {
 
 			{/* Tabbed Content */}
 			<Tabs defaultValue={initialTab} className="space-y-6">
-				<TabsList className="w-full sm:w-auto">
+				<TabsList className="w-full flex-wrap gap-2 sm:w-auto sm:flex-nowrap">
 					<TabsTrigger
 						value="details"
 						className={reviewTabTriggerClassName}
@@ -576,10 +585,10 @@ export default function HrApplicationReview() {
 						</CardHeader>
 						<CardContent>
 							<div className="card-gradient rounded-md border border-border/50 bg-card p-3 shadow-elevated">
-								<CharacterIdentitySummary
-									characterId={application.characterId}
-									characterName={application.characterName}
-									hasValidToken={esiStateByCharacterId[application.characterId]}
+						<CharacterIdentitySummary
+							characterId={application.characterId}
+							characterName={application.characterName}
+							hasValidToken={esiStateByCharacterId[application.characterId]}
 									corporationId={fulcrumCharacterById.get(application.characterId)?.corporationId ?? null}
 									corporationName={fulcrumCharacterById.get(application.characterId)?.corporationName ?? null}
 									allianceId={fulcrumCharacterById.get(application.characterId)?.allianceId ?? null}
@@ -613,10 +622,10 @@ export default function HrApplicationReview() {
 											key={charId}
 											className="card-gradient rounded-md border border-border/50 bg-card p-3 shadow-elevated"
 										>
-											<CharacterIdentitySummary
-												characterId={charId}
-												characterName={altCharacterNames[charId] ?? charId}
-												hasValidToken={esiStateByCharacterId[charId]}
+						<CharacterIdentitySummary
+							characterId={charId}
+							characterName={altCharacterNames[charId] ?? charId}
+							hasValidToken={esiStateByCharacterId[charId]}
 												corporationId={fulcrumCharacterById.get(charId)?.corporationId ?? null}
 												corporationName={fulcrumCharacterById.get(charId)?.corporationName ?? null}
 												allianceId={fulcrumCharacterById.get(charId)?.allianceId ?? null}
