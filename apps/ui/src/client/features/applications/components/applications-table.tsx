@@ -39,7 +39,7 @@ export interface ApplicationsTableProps {
 	applications: Application[]
 	loading?: boolean
 	/** Build the href for an application row. Enables right-click "Open in new tab". */
-	getApplicationHref?: (app: Application) => string
+	getApplicationHref: (app: Application) => string
 	onApplicationClick?: (app: Application) => void
 	canManage?: boolean
 	totalCount?: number
@@ -56,47 +56,55 @@ export interface ApplicationsTableProps {
 const col = createMRTColumnHelper<Application>()
 
 function buildColumns(
+	getApplicationHref: (app: Application) => string,
 	onApplicationClick?: (app: Application) => void,
-	getApplicationHref?: (app: Application) => string,
 	canManage?: boolean,
 ): MRT_ColumnDef<Application>[] {
 	const base: MRT_ColumnDef<Application>[] = [
 		col.accessor('characterName', {
 			header: 'Character',
 			size: 220,
-			Cell: ({ row }) => (
-				<div className="flex items-center gap-3">
-					<MemberAvatar
-						characterId={row.original.characterId}
-						characterName={row.original.characterName}
-						size="sm"
-					/>
-					<div className="flex flex-col min-w-0">
-						<span className="inline-flex min-w-0 items-center gap-2">
-							<span className="truncate text-left font-medium text-foreground">
-								{row.original.characterName}
-							</span>
-							{row.original.isFirstApplication !== undefined && (
-								<span
-									className={cn(
-										'inline-flex h-5 w-fit items-center rounded-full border px-1.5 text-[10px] font-semibold leading-none',
-										row.original.isFirstApplication
-											? 'border-success/30 bg-success/20 text-success'
-											: 'border-primary/30 bg-primary/20 text-primary'
-									)}
+			Cell: ({ row }) => {
+				const href = getApplicationHref(row.original)
+
+				return (
+					<div className="flex items-center gap-3">
+						<MemberAvatar
+							characterId={row.original.characterId}
+							characterName={row.original.characterName}
+							size="sm"
+						/>
+						<div className="flex flex-col min-w-0">
+							<span className="inline-flex min-w-0 items-center gap-2">
+								<Link
+									to={href}
+									onClick={(event) => event.stopPropagation()}
+									className="truncate text-left font-medium text-foreground hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
 								>
-									{row.original.isFirstApplication ? 'First' : 'Repeat'}
+									{row.original.characterName}
+								</Link>
+								{row.original.isFirstApplication !== undefined && (
+									<span
+										className={cn(
+											'inline-flex h-5 w-fit items-center rounded-full border px-1.5 text-[10px] font-semibold leading-none',
+											row.original.isFirstApplication
+												? 'border-success/30 bg-success/20 text-success'
+												: 'border-primary/30 bg-primary/20 text-primary'
+										)}
+									>
+										{row.original.isFirstApplication ? 'First' : 'Repeat'}
+									</span>
+								)}
+							</span>
+							{(row.original.altCharacterIds?.length ?? 0) > 0 && (
+								<span className="text-xs text-muted-foreground">
+									+{row.original.altCharacterIds!.length} {row.original.altCharacterIds!.length === 1 ? 'Alt' : 'Alts'}
 								</span>
 							)}
-						</span>
-						{(row.original.altCharacterIds?.length ?? 0) > 0 && (
-							<span className="text-xs text-muted-foreground">
-								+{row.original.altCharacterIds!.length} {row.original.altCharacterIds!.length === 1 ? 'Alt' : 'Alts'}
-							</span>
-						)}
+						</div>
 					</div>
-				</div>
-			),
+				)
+			},
 		}),
 		col.accessor('corporationName', {
 			header: 'Corporation',
@@ -162,24 +170,10 @@ function buildColumns(
 				header: 'Actions',
 				size: 80,
 				Cell: ({ row }) => {
-					const href = getApplicationHref?.(row.original)
-					if (href) {
-						return (
-							<Button asChild variant="ghost" size="sm">
-								<Link to={href} onClick={(e) => e.stopPropagation()}>View</Link>
-							</Button>
-						)
-					}
+					const href = getApplicationHref(row.original)
 					return (
-						<Button
-							variant="ghost"
-							size="sm"
-							onClick={(e) => {
-								e.stopPropagation()
-								onApplicationClick?.(row.original)
-							}}
-						>
-							View
+						<Button asChild variant="ghost" size="sm">
+							<Link to={href} onClick={(e) => e.stopPropagation()}>View</Link>
 						</Button>
 					)
 				},
@@ -221,8 +215,8 @@ export function ApplicationsTable({
 	const rows = applications
 
 	const columns = useMemo(
-		() => buildColumns(onApplicationClick, getApplicationHref, canManage),
-		[onApplicationClick, getApplicationHref, canManage],
+		() => buildColumns(getApplicationHref, onApplicationClick, canManage),
+		[getApplicationHref, onApplicationClick, canManage],
 	)
 
 	const table = useMantineReactTable({
