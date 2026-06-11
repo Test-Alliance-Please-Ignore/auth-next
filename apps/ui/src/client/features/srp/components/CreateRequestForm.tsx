@@ -140,9 +140,11 @@ export function CreateRequestForm({
 	})
 
 	return (
-		<form onSubmit={(e) => void onSubmit(e)} className="grid gap-6 lg:grid-cols-2">
-			{/* Left: loss summary + context form */}
-			<Card className="self-start p-6">
+		<form
+			onSubmit={(e) => void onSubmit(e)}
+			className="mx-auto flex w-full flex-col gap-6 lg:max-w-[50vw]"
+		>
+			<Card className="w-full p-6">
 				<div className="mb-4 flex items-center justify-between">
 					<div>
 						<h3 className="font-semibold">{shipTypeName}</h3>
@@ -161,7 +163,8 @@ export function CreateRequestForm({
 						<Textarea
 							id="contextText"
 							placeholder="Describe the circumstances —FC name, discord ping, SRP token,  what happened, etc."
-							rows={4}
+							rows={6}
+							className="min-h-40"
 							{...form.register('contextText')}
 						/>
 						<p className="mt-1 text-xs text-muted-foreground">
@@ -191,7 +194,6 @@ export function CreateRequestForm({
 				</div>
 			</Card>
 
-			{/* Right: fitting display (moves below on small screens) */}
 			<SRPFittingDisplay
 				shipTypeId={shipTypeId}
 				shipTypeName={shipTypeName}
