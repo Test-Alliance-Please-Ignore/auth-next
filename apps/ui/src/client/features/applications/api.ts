@@ -48,6 +48,7 @@ export interface Application {
 	lastStaffInteractionAt?: string | null
 	recommendationCount?: number
 	altCharacterIds?: string[]
+	isFirstApplication?: boolean
 }
 
 export interface ApplicationStaffNote {

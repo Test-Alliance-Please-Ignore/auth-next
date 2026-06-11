@@ -9,6 +9,7 @@ import { formatDistanceToNow } from 'date-fns'
 import { MessageSquare } from 'lucide-react'
 
 import { useEntityNames } from '@/hooks/useEntityNames'
+import { Badge } from '@/components/ui/badge'
 import { Card, CardContent } from '@/components/ui/card'
 import { cn } from '@/lib/utils'
 
@@ -82,14 +83,22 @@ export function ApplicationCard({ application, onClick, className }: Application
 						{/* Character Name and Status */}
 						<div className="flex items-start justify-between gap-3">
 							<div className="flex-1 min-w-0">
-								<h3 className="text-base font-semibold text-foreground truncate">
-									{application.characterName}
-									{altCharacterIds.length > 0 && (
-										<span className="ml-1.5 text-sm font-normal text-muted-foreground">
-											(+{altCharacterIds.length} {altCharacterIds.length === 1 ? 'Alt' : 'Alts'})
-										</span>
+								<h3 className="flex items-center gap-2 text-base font-semibold text-foreground">
+									<span className="min-w-0 truncate">{application.characterName}</span>
+									{application.isFirstApplication !== undefined && (
+										<Badge
+											variant={application.isFirstApplication ? 'success' : 'default'}
+											className="h-5 px-1.5 text-[10px] font-semibold leading-none"
+										>
+											{application.isFirstApplication ? 'First' : 'Repeat'}
+										</Badge>
 									)}
 								</h3>
+								{altCharacterIds.length > 0 && (
+									<div className="text-sm font-normal text-muted-foreground">
+										(+{altCharacterIds.length} {altCharacterIds.length === 1 ? 'Alt' : 'Alts'})
+									</div>
+								)}
 								{application.corporationName && (
 									<p className="text-sm text-muted-foreground truncate">
 										{application.corporationName}

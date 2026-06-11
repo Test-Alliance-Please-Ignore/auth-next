@@ -117,6 +117,7 @@ export interface Application {
 	updatedAt: Date
 	lastStaffInteractionAt: Date | null
 	altCharacterIds?: string[]
+	isFirstApplication?: boolean
 }
 
 /**
