@@ -338,9 +338,9 @@ app.post('/applications', requireAuth(), async (c) => {
 		const application = await hr.submitApplication(
 			user.id,
 			characterId,
+			characterName,
 			corporationId,
 			applicationText,
-			characterName,
 			validAltIds
 		)
 

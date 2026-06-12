@@ -6,6 +6,7 @@ import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
+import { useConfirmationDialog } from '@/hooks/useConfirmationDialog'
 import { Select } from '@/components/ui/select'
 import { Switch } from '@/components/ui/switch'
 import toast from '@/lib/toast'
@@ -18,14 +19,15 @@ import {
 	useUpdateCorporationAlertDestination,
 } from '@/hooks/useCorporationAlerts'
 
-import type { CorporationAlertDestination } from '@/lib/api'
+import type { CorporationAlertDestination, CorporationAlertDestinationType } from '@/lib/api'
 
 type EditableRow = {
 	id: string
 	alertType: string
-	destinationType: 'discord_channel'
+	destinationType: CorporationAlertDestinationType
 	discordServerId: string
 	channelId: string
+	coreUserId: string
 	isEnabled: boolean
 }
 
@@ -33,9 +35,10 @@ function getDefaultRowFromDestination(destination: CorporationAlertDestination):
 	return {
 		id: destination.id,
 		alertType: destination.alertType,
-		destinationType: 'discord_channel',
+		destinationType: destination.destinationType === 'discord_user' ? 'discord_user' : 'discord_channel',
 		discordServerId: destination.discordServerId ?? '',
 		channelId: destination.channelId ?? '',
+		coreUserId: destination.coreUserId ?? '',
 		isEnabled: destination.isEnabled,
 	}
 }
@@ -47,6 +50,7 @@ function getNewRow(alertType: string): EditableRow {
 		destinationType: 'discord_channel',
 		discordServerId: '',
 		channelId: '',
+		coreUserId: '',
 		isEnabled: true,
 	}
 }
@@ -58,6 +62,7 @@ export function CorporationAlertsCard({ corporationId }: { corporationId: string
 	const createDestination = useCreateCorporationAlertDestination()
 	const updateDestination = useUpdateCorporationAlertDestination()
 	const deleteDestination = useDeleteCorporationAlertDestination()
+	const { requestConfirmation, confirmationDialog } = useConfirmationDialog()
 
 	const [draftRows, setDraftRows] = useState<Record<string, EditableRow>>({})
 	const [newRows, setNewRows] = useState<EditableRow[]>([])
@@ -116,10 +121,26 @@ export function CorporationAlertsCard({ corporationId }: { corporationId: string
 		)
 	}
 
+	const handleValidateDestination = (row: EditableRow): string | null => {
+		if (row.destinationType === 'discord_channel') {
+			if (!row.discordServerId || !row.channelId) {
+				return 'Discord server and channel ID are required.'
+			}
+			return null
+		}
+
+		if (!row.coreUserId) {
+			return 'Core user ID is required for direct user destinations.'
+		}
+
+		return null
+	}
+
 	const handleSaveExisting = async (destination: CorporationAlertDestination) => {
 		const draft = draftRows[destination.id] ?? getDefaultRowFromDestination(destination)
-		if (!draft.discordServerId || !draft.channelId) {
-			toast.error('Discord server and channel ID are required.')
+		const validationError = handleValidateDestination(draft)
+		if (validationError) {
+			toast.error(validationError)
 			return
 		}
 
@@ -130,8 +151,9 @@ export function CorporationAlertsCard({ corporationId }: { corporationId: string
 				data: {
 					alertType: draft.alertType,
 					destinationType: draft.destinationType,
-					discordServerId: draft.discordServerId,
-					channelId: draft.channelId,
+					discordServerId: draft.destinationType === 'discord_channel' ? draft.discordServerId : null,
+					channelId: draft.destinationType === 'discord_channel' ? draft.channelId : null,
+					coreUserId: draft.destinationType === 'discord_user' ? draft.coreUserId : null,
 					isEnabled: draft.isEnabled,
 				},
 			})
@@ -142,8 +164,9 @@ export function CorporationAlertsCard({ corporationId }: { corporationId: string
 	}
 
 	const handleSaveNew = async (row: EditableRow) => {
-		if (!row.discordServerId || !row.channelId) {
-			toast.error('Discord server and channel ID are required.')
+		const validationError = handleValidateDestination(row)
+		if (validationError) {
+			toast.error(validationError)
 			return
 		}
 
@@ -153,8 +176,9 @@ export function CorporationAlertsCard({ corporationId }: { corporationId: string
 				data: {
 					alertType: row.alertType,
 					destinationType: row.destinationType,
-					discordServerId: row.discordServerId,
-					channelId: row.channelId,
+					discordServerId: row.destinationType === 'discord_channel' ? row.discordServerId : null,
+					channelId: row.destinationType === 'discord_channel' ? row.channelId : null,
+					coreUserId: row.destinationType === 'discord_user' ? row.coreUserId : null,
 					isEnabled: row.isEnabled,
 				},
 			})
@@ -165,13 +189,21 @@ export function CorporationAlertsCard({ corporationId }: { corporationId: string
 		}
 	}
 
-	const handleClearExisting = async (destinationId: string) => {
-		try {
-			await deleteDestination.mutateAsync({ corporationId, destinationId })
-			toast.success('Alert destination removed.')
-		} catch (error) {
-			toast.error(error instanceof Error ? error.message : 'Failed to remove alert destination.')
-		}
+	const handleDeleteExisting = (destination: CorporationAlertDestination) => {
+		requestConfirmation({
+			title: 'Delete destination?',
+			description: 'This will remove the destination from this alert type.',
+			confirmLabel: 'Delete Destination',
+			intent: 'destructive',
+			onConfirm: async () => {
+				try {
+					await deleteDestination.mutateAsync({ corporationId, destinationId: destination.id })
+					toast.success('Alert destination deleted.')
+				} catch (error) {
+					toast.error(error instanceof Error ? error.message : 'Failed to delete alert destination.')
+				}
+			},
+		})
 	}
 
 	const handleClearNew = (rowId: string) => {
@@ -184,6 +216,11 @@ export function CorporationAlertsCard({ corporationId }: { corporationId: string
 		}
 		return 'Discord Channel'
 	}
+
+	const getDestinationTypeOptions = () => [
+		{ value: 'discord_channel', label: 'Discord Channel' },
+		{ value: 'discord_user', label: 'Discord User' },
+	]
 
 	if (isLoading) {
 		return (
@@ -224,7 +261,7 @@ export function CorporationAlertsCard({ corporationId }: { corporationId: string
 										<p className="text-sm text-muted-foreground">{definition.description}</p>
 									</div>
 									<Button
-										variant="secondary"
+										variant="primary"
 										size="sm"
 										onClick={() => handleAddRow(definition.type)}
 										disabled={createDestination.isPending}
@@ -241,22 +278,22 @@ export function CorporationAlertsCard({ corporationId }: { corporationId: string
 								) : null}
 
 								<div className="space-y-3">
-								{destinationsForType.map((destination) => {
-									const draft = draftRows[destination.id] ?? getDefaultRowFromDestination(destination)
-									return (
-										<div key={destination.id} className="rounded-md border bg-muted/20 p-3">
-											<div className="flex flex-wrap items-center justify-between gap-2">
-												<div className="flex items-center gap-2">
-													<Badge variant="ghost">
-														{getDestinationTypeLabel(draft.destinationType)}
-													</Badge>
-													<Badge variant={draft.isEnabled ? 'success' : 'secondary'}>
-														{draft.isEnabled ? 'Enabled' : 'Disabled'}
-													</Badge>
+									{destinationsForType.map((destination) => {
+										const draft = draftRows[destination.id] ?? getDefaultRowFromDestination(destination)
+										return (
+											<div key={destination.id} className="rounded-md border bg-muted/20 p-3">
+												<div className="flex flex-wrap items-center justify-between gap-2">
+													<div className="flex items-center gap-2">
+														<Badge variant="ghost">
+															{getDestinationTypeLabel(draft.destinationType)}
+														</Badge>
+														<Badge variant={draft.isEnabled ? 'success' : 'secondary'}>
+															{draft.isEnabled ? 'Enabled' : 'Disabled'}
+														</Badge>
 													</div>
 													<div className="flex gap-2">
 														<Button
-															variant="secondary"
+															variant="primary"
 															size="sm"
 															onClick={() => void handleSaveExisting(destination)}
 															disabled={updateDestination.isPending}
@@ -265,65 +302,99 @@ export function CorporationAlertsCard({ corporationId }: { corporationId: string
 															Save
 														</Button>
 														<Button
-															variant="ghost"
+															variant="destructive"
 															size="sm"
-															onClick={() => void handleClearExisting(destination.id)}
+															onClick={() => handleDeleteExisting(destination)}
 															disabled={deleteDestination.isPending}
 														>
-															<Trash2 className="h-4 w-4 text-destructive" />
-															Clear
+															<Trash2 className="h-4 w-4" />
+															Delete
 														</Button>
 													</div>
 												</div>
 
-												<div className="mt-4 grid gap-3 md:grid-cols-[minmax(0,1fr)_minmax(0,1fr)]">
-													<div className="space-y-2">
-														<Label htmlFor={`alert-server-${destination.id}`}>Discord Server</Label>
-														<Select
-															inputId={`alert-server-${destination.id}`}
-															value={draft.discordServerId}
-															onValueChange={(value) =>
-																handleUpdateExistingDraft(destination.id, {
-																	discordServerId: value,
-																})
-															}
-															options={discordServers.map((server) => ({
-																value: server.id,
-																label: `${server.guildName} (${server.guildId})`,
-															}))}
-															placeholder="Select a Discord server"
-															className="w-full"
-															contentClassName="w-[min(90vw,32rem)]"
-															listMaxHeight="24rem"
-														/>
+												<div className="mt-4 space-y-3">
+													<div className="grid gap-3 md:grid-cols-[minmax(11rem,14rem)_minmax(0,1fr)]">
+														<div className="space-y-2">
+															<Label htmlFor={`alert-destination-type-${destination.id}`}>Destination Type</Label>
+															<Select
+																inputId={`alert-destination-type-${destination.id}`}
+																value={draft.destinationType}
+																onValueChange={(value) =>
+																	handleUpdateExistingDraft(destination.id, {
+																		destinationType: value as CorporationAlertDestinationType,
+																		...(value === 'discord_channel'
+																			? { coreUserId: '' }
+																			: { discordServerId: '', channelId: '' }),
+																	})
+																}
+																options={getDestinationTypeOptions()}
+																placeholder="Select destination type"
+																className="w-full"
+															/>
+														</div>
+
+														<div className="space-y-2">
+															<Label htmlFor={`alert-target-${destination.id}`}>
+																{draft.destinationType === 'discord_channel' ? 'Channel Destination' : 'User Destination'}
+															</Label>
+															{draft.destinationType === 'discord_channel' ? (
+																<div className="grid gap-3 md:grid-cols-[minmax(0,1fr)_minmax(0,1fr)]">
+																	<Select
+																		inputId={`alert-server-${destination.id}`}
+																		value={draft.discordServerId}
+																		onValueChange={(value) =>
+																			handleUpdateExistingDraft(destination.id, {
+																				discordServerId: value,
+																			})
+																		}
+																		options={discordServers.map((server) => ({
+																			value: server.id,
+																			label: `${server.guildName} (${server.guildId})`,
+																		}))}
+																		placeholder="Select a Discord server"
+																		className="w-full"
+																		contentClassName="w-[min(90vw,32rem)]"
+																		listMaxHeight="24rem"
+																	/>
+																	<Input
+																		id={`alert-channel-${destination.id}`}
+																		value={draft.channelId}
+																		onChange={(event) =>
+																			handleUpdateExistingDraft(destination.id, {
+																				channelId: event.target.value,
+																			})
+																		}
+																		placeholder="Discord channel ID"
+																	/>
+																</div>
+															) : (
+																<Input
+																	id={`alert-user-${destination.id}`}
+																	value={draft.coreUserId}
+																	onChange={(event) =>
+																		handleUpdateExistingDraft(destination.id, {
+																			coreUserId: event.target.value,
+																		})
+																	}
+																	placeholder="Core user ID"
+																/>
+															)}
+														</div>
 													</div>
 
-													<div className="space-y-2">
-														<Label htmlFor={`alert-channel-${destination.id}`}>Channel ID</Label>
-														<Input
-															id={`alert-channel-${destination.id}`}
-															value={draft.channelId}
-															onChange={(event) =>
+													<div className="flex items-center gap-2">
+														<Switch
+															id={`alert-enabled-${destination.id}`}
+															checked={draft.isEnabled}
+															onCheckedChange={(checked) =>
 																handleUpdateExistingDraft(destination.id, {
-																	channelId: event.target.value,
+																	isEnabled: checked,
 																})
 															}
-															placeholder="Discord channel ID"
 														/>
+														<Label htmlFor={`alert-enabled-${destination.id}`}>Enabled</Label>
 													</div>
-												</div>
-
-												<div className="mt-4 flex items-center gap-2">
-													<Switch
-														id={`alert-enabled-${destination.id}`}
-														checked={draft.isEnabled}
-														onCheckedChange={(checked) =>
-															handleUpdateExistingDraft(destination.id, {
-																isEnabled: checked,
-															})
-														}
-													/>
-													<Label htmlFor={`alert-enabled-${destination.id}`}>Enabled</Label>
 												</div>
 											</div>
 										)
@@ -342,7 +413,7 @@ export function CorporationAlertsCard({ corporationId }: { corporationId: string
 												</div>
 												<div className="flex gap-2">
 													<Button
-														variant="secondary"
+														variant="primary"
 														size="sm"
 														onClick={() => void handleSaveNew(row)}
 														disabled={createDestination.isPending}
@@ -357,52 +428,86 @@ export function CorporationAlertsCard({ corporationId }: { corporationId: string
 												</div>
 											</div>
 
-											<div className="mt-4 grid gap-3 md:grid-cols-[minmax(0,1fr)_minmax(0,1fr)]">
-												<div className="space-y-2">
-													<Label htmlFor={`new-alert-server-${row.id}`}>Discord Server</Label>
-													<Select
-														inputId={`new-alert-server-${row.id}`}
-														value={row.discordServerId}
-														onValueChange={(value) =>
-															handleUpdateNewDraft(row.id, { discordServerId: value })
-														}
-														options={discordServers.map((server) => ({
-															value: server.id,
-															label: `${server.guildName} (${server.guildId})`,
-														}))}
-														placeholder="Select a Discord server"
-														className="w-full"
-														contentClassName="w-[min(90vw,32rem)]"
-														listMaxHeight="24rem"
-													/>
+											<div className="mt-4 space-y-3">
+												<div className="grid gap-3 md:grid-cols-[minmax(11rem,14rem)_minmax(0,1fr)]">
+													<div className="space-y-2">
+														<Label htmlFor={`new-alert-destination-type-${row.id}`}>Destination Type</Label>
+														<Select
+															inputId={`new-alert-destination-type-${row.id}`}
+															value={row.destinationType}
+															onValueChange={(value) =>
+																handleUpdateNewDraft(row.id, {
+																	destinationType: value as CorporationAlertDestinationType,
+																	...(value === 'discord_channel'
+																		? { coreUserId: '' }
+																		: { discordServerId: '', channelId: '' }),
+																})
+															}
+															options={getDestinationTypeOptions()}
+															placeholder="Select destination type"
+															className="w-full"
+														/>
+													</div>
+
+													<div className="space-y-2">
+														<Label htmlFor={`new-alert-target-${row.id}`}>
+															{row.destinationType === 'discord_channel' ? 'Channel Destination' : 'User Destination'}
+														</Label>
+														{row.destinationType === 'discord_channel' ? (
+															<div className="grid gap-3 md:grid-cols-[minmax(0,1fr)_minmax(0,1fr)]">
+																<Select
+																	inputId={`new-alert-server-${row.id}`}
+																	value={row.discordServerId}
+																	onValueChange={(value) =>
+																		handleUpdateNewDraft(row.id, { discordServerId: value })
+																	}
+																	options={discordServers.map((server) => ({
+																		value: server.id,
+																		label: `${server.guildName} (${server.guildId})`,
+																	}))}
+																	placeholder="Select a Discord server"
+																	className="w-full"
+																	contentClassName="w-[min(90vw,32rem)]"
+																	listMaxHeight="24rem"
+																/>
+																<Input
+																	id={`new-alert-channel-${row.id}`}
+																	value={row.channelId}
+																	onChange={(event) =>
+																		handleUpdateNewDraft(row.id, {
+																			channelId: event.target.value,
+																		})
+																	}
+																	placeholder="Discord channel ID"
+																/>
+															</div>
+														) : (
+															<Input
+																id={`new-alert-user-${row.id}`}
+																value={row.coreUserId}
+																onChange={(event) =>
+																	handleUpdateNewDraft(row.id, {
+																		coreUserId: event.target.value,
+																	})
+																}
+																placeholder="Core user ID"
+															/>
+														)}
+													</div>
 												</div>
 
-												<div className="space-y-2">
-													<Label htmlFor={`new-alert-channel-${row.id}`}>Channel ID</Label>
-													<Input
-														id={`new-alert-channel-${row.id}`}
-														value={row.channelId}
-														onChange={(event) =>
+												<div className="flex items-center gap-2">
+													<Switch
+														id={`new-alert-enabled-${row.id}`}
+														checked={row.isEnabled}
+														onCheckedChange={(checked) =>
 															handleUpdateNewDraft(row.id, {
-																channelId: event.target.value,
+																isEnabled: checked,
 															})
 														}
-														placeholder="Discord channel ID"
 													/>
+													<Label htmlFor={`new-alert-enabled-${row.id}`}>Enabled</Label>
 												</div>
-											</div>
-
-											<div className="mt-4 flex items-center gap-2">
-												<Switch
-													id={`new-alert-enabled-${row.id}`}
-													checked={row.isEnabled}
-													onCheckedChange={(checked) =>
-														handleUpdateNewDraft(row.id, {
-															isEnabled: checked,
-														})
-													}
-												/>
-												<Label htmlFor={`new-alert-enabled-${row.id}`}>Enabled</Label>
 											</div>
 										</div>
 									))}
@@ -412,6 +517,7 @@ export function CorporationAlertsCard({ corporationId }: { corporationId: string
 					})
 				)}
 			</CardContent>
+			{confirmationDialog}
 		</Card>
 	)
 }
