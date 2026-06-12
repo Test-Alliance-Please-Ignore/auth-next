@@ -12,7 +12,7 @@ import {
 	dispatchGroupInvitationAlert,
 } from '../services/group-alerts.service'
 import { clearUserCache, getCachedUserMemberships } from '../lib/groups-cache'
-import { triggerDiscordRefreshWorkflow } from '../lib/workflow-triggers'
+import { triggerDiscordRefreshWorkflow, triggerMumbleRefreshWorkflow } from '../lib/workflow-triggers'
 import { requireAdmin, requireAuth } from '../middleware/session'
 
 import type { Discord } from '@repo/discord'
@@ -393,6 +393,23 @@ groups.post(
 				}
 			)
 
+			// Sync Mumble groups — membership change updates the user's projected voice groups
+			waitUntilWithTelemetry(
+				c.executionCtx,
+				'groups.mumble-refresh.accept-invitation',
+				() =>
+					triggerMumbleRefreshWorkflow({
+						env: c.env,
+						userIds: [user.id],
+						source: 'group-invitation-accepted',
+					}),
+				{
+					userId: user.id,
+					groupId: invitationId,
+					source: 'group-invitation-accepted',
+				}
+			)
+
 			return c.json({ success: true }, 200)
 		} catch (error) {
 			if (error instanceof Error) {
@@ -573,6 +590,22 @@ groups.post(
 						source: 'group-invite-code-redeemed',
 					}
 				)
+
+				// Sync Mumble groups — membership change updates the user's projected voice groups
+				waitUntilWithTelemetry(
+					c.executionCtx,
+					'groups.mumble-refresh.redeem-invite-code',
+					() =>
+						triggerMumbleRefreshWorkflow({
+							env: c.env,
+							userIds: [user.id],
+							source: 'group-invite-code-redeemed',
+						}),
+					{
+						userId: user.id,
+						source: 'group-invite-code-redeemed',
+					}
+				)
 			}
 
 			return c.json(result, 200)
@@ -610,6 +643,23 @@ groups.post(
 					triggerDiscordRefreshWorkflow({
 						env: c.env,
 						userId: approvedUserId,
+						source: 'group-join-request-approved',
+					}),
+				{
+					userId: approvedUserId,
+					requestId,
+					source: 'group-join-request-approved',
+				}
+			)
+
+			// Sync Mumble groups — membership change updates the user's projected voice groups
+			waitUntilWithTelemetry(
+				c.executionCtx,
+				'groups.mumble-refresh.approve-join-request',
+				() =>
+					triggerMumbleRefreshWorkflow({
+						env: c.env,
+						userIds: [approvedUserId],
 						source: 'group-join-request-approved',
 					}),
 				{
@@ -1276,7 +1326,35 @@ groups.delete(
 		const groupsDO = getStub<Groups>(c.env.GROUPS, 'default')
 
 		try {
+			// Capture member list before deletion so their Mumble groups can be re-pushed
+			let memberUserIds: string[] = []
+			try {
+				memberUserIds = await groupsDO.getGroupMemberUserIds(groupId)
+			} catch {
+				// Best effort — deletion proceeds even if the member list is unavailable
+			}
+
 			await groupsDO.deleteGroup(groupId, user.id)
+
+			if (memberUserIds.length > 0) {
+				// Sync Mumble groups for all former members in one batched workflow run
+				waitUntilWithTelemetry(
+					c.executionCtx,
+					'groups.mumble-refresh.delete-group',
+					() =>
+						triggerMumbleRefreshWorkflow({
+							env: c.env,
+							userIds: memberUserIds,
+							source: 'group-deleted',
+						}),
+					{
+						groupId,
+						memberCount: memberUserIds.length,
+						source: 'group-deleted',
+					}
+				)
+			}
+
 			return c.json({ success: true }, 200)
 		} catch (error) {
 			if (error instanceof Error) {
@@ -1352,6 +1430,23 @@ groups.delete(
 					groupId,
 					source: 'group-member-removed',
 					allowRemoval: true,
+				}
+			)
+
+			// Sync Mumble groups — removal revokes the group from the user's projected voice groups
+			waitUntilWithTelemetry(
+				c.executionCtx,
+				'groups.mumble-refresh.remove-member',
+				() =>
+					triggerMumbleRefreshWorkflow({
+						env: c.env,
+						userIds: [memberUserId],
+						source: 'group-member-removed',
+					}),
+				{
+					userId: memberUserId,
+					groupId,
+					source: 'group-member-removed',
 				}
 			)
 
@@ -1460,6 +1555,19 @@ groups.post('/:id/join', requireAuth({ any: [ROLE_CORE_ALLIANCE_MEMBER] }), asyn
 			}
 		)
 
+		// Sync Mumble groups — joining a group updates the user's projected voice groups
+		waitUntilWithTelemetry(
+			c.executionCtx,
+			'groups.mumble-refresh.join-group',
+			() =>
+				triggerMumbleRefreshWorkflow({ env: c.env, userIds: [user.id], source: 'group-joined' }),
+			{
+				userId: user.id,
+				groupId,
+				source: 'group-joined',
+			}
+		)
+
 		return c.json({ success: true }, 200)
 	} catch (error) {
 		if (error instanceof Error) {
@@ -1500,6 +1608,19 @@ groups.post('/:id/leave', requireAuth({ any: [ROLE_CORE_ALLIANCE_MEMBER] }), asy
 				groupId,
 				source: 'group-left',
 				allowRemoval: true,
+			}
+		)
+
+		// Sync Mumble groups — leaving a group revokes it from the user's projected voice groups
+		waitUntilWithTelemetry(
+			c.executionCtx,
+			'groups.mumble-refresh.leave-group',
+			() =>
+				triggerMumbleRefreshWorkflow({ env: c.env, userIds: [user.id], source: 'group-left' }),
+			{
+				userId: user.id,
+				groupId,
+				source: 'group-left',
 			}
 		)
 

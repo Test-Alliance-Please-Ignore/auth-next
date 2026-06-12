@@ -1,0 +1,151 @@
+import { eq } from '@repo/db-utils'
+import { getStub } from '@repo/do-utils'
+import { logger } from '@repo/hono-helpers'
+
+import { createDb } from '../db'
+import { userCharacters, users } from '../db/schema'
+
+import type { Groups } from '@repo/groups'
+import type {
+	Mumble,
+	MumbleAccountStatus,
+	MumbleDeleteResult,
+	MumbleGroupAssignment,
+	MumbleSyncGroupsResult,
+} from '@repo/mumble'
+import type { Env } from '../context'
+
+const MAX_LOGIN_NAME_LENGTH = 60
+
+/**
+ * Derive a Mumble login name from a character name.
+ * Spaces become underscores; anything outside [A-Za-z0-9_.-] is stripped;
+ * repeated underscores collapse. Falls back to a userId-derived name when
+ * nothing usable remains. The mumble worker handles collisions.
+ */
+export function deriveLoginName(characterName: string, userId: string): string {
+	const derived = characterName
+		.trim()
+		.replace(/\s+/g, '_')
+		.replace(/[^A-Za-z0-9_.-]/g, '')
+		.replace(/_+/g, '_')
+		.replace(/^[_.-]+|[_.-]+$/g, '')
+		.slice(0, MAX_LOGIN_NAME_LENGTH)
+
+	if (derived.length > 0) {
+		return derived
+	}
+	return `user_${userId.replace(/-/g, '').slice(0, 8)}`
+}
+
+function getMumbleStub(env: Env) {
+	return getStub<Mumble>(env.MUMBLE, env.MUMBLE_SERVER_ID)
+}
+
+/** Connection info shown to users alongside their credentials. */
+export function getMumbleConnectionInfo(env: Env): { host: string; port: number } {
+	return { host: env.MUMBLE_HOST, port: Number(env.MUMBLE_PORT) }
+}
+
+/** Fetch the user's current auth-next group names. */
+async function getUserGroupNames(env: Env, userId: string): Promise<string[]> {
+	const groupsStub = getStub<Groups>(env.GROUPS, 'default')
+	const memberships = await groupsStub.getUserMemberships(userId)
+	return memberships.map((membership) => membership.groupName)
+}
+
+/** Get the user's Mumble account status, or null when not provisioned. */
+export async function getMumbleAccount(
+	env: Env,
+	userId: string
+): Promise<MumbleAccountStatus | null> {
+	return getMumbleStub(env).getAccount(env.MUMBLE_SERVER_ID, userId)
+}
+
+/**
+ * Provision a Mumble account for a user with their current groups.
+ * Returns the one-time plaintext password — it is never stored.
+ */
+export async function provisionMumbleAccount(
+	env: Env,
+	userId: string
+): Promise<{ account: MumbleAccountStatus; password: string }> {
+	const db = createDb(env.DATABASE_URL)
+	const user = await db.query.users.findFirst({ where: eq(users.id, userId) })
+	if (!user) {
+		throw new Error(`User ${userId} not found`)
+	}
+
+	const mainCharacter = await db.query.userCharacters.findFirst({
+		where: eq(userCharacters.characterId, user.mainCharacterId),
+	})
+	const displayName = mainCharacter?.characterName ?? `Unknown Pilot`
+
+	const groups = await getUserGroupNames(env, userId)
+
+	return getMumbleStub(env).provisionAccount(env.MUMBLE_SERVER_ID, {
+		subjectId: userId,
+		loginName: deriveLoginName(displayName, userId),
+		displayName,
+		groups,
+	})
+}
+
+/** Rotate a user's Mumble password; returns the new one-time password. */
+export async function resetMumblePassword(env: Env, userId: string): Promise<{ password: string }> {
+	return getMumbleStub(env).resetPassword(env.MUMBLE_SERVER_ID, userId)
+}
+
+/**
+ * Push current group memberships for the given users to murmur-control.
+ * Batch-first: gathers each user's groups, then makes a single mumble RPC
+ * which the worker maps to chunked murmur-control requests. Users without a
+ * Mumble account are skipped inside the worker.
+ */
+export async function syncUsersMumbleGroups(
+	env: Env,
+	userIds: string[],
+	reason?: string
+): Promise<MumbleSyncGroupsResult> {
+	if (userIds.length === 0) {
+		return { synced: [], skipped: [] }
+	}
+
+	const assignments: MumbleGroupAssignment[] = []
+	for (const userId of userIds) {
+		try {
+			assignments.push({ subjectId: userId, groups: await getUserGroupNames(env, userId) })
+		} catch (error) {
+			logger.error('[Mumble] Failed to gather groups for user', {
+				userId,
+				error: error instanceof Error ? error.message : String(error),
+			})
+		}
+	}
+
+	return getMumbleStub(env).syncUserGroups(env.MUMBLE_SERVER_ID, assignments, reason)
+}
+
+/**
+ * Best-effort deletion of Mumble accounts (used from user-deletion paths).
+ * Never throws — deletion of the auth-next user must not be blocked.
+ */
+export async function deleteMumbleAccounts(
+	env: Env,
+	userIds: string[]
+): Promise<MumbleDeleteResult | null> {
+	try {
+		const result = await getMumbleStub(env).deleteAccounts(env.MUMBLE_SERVER_ID, userIds)
+		logger.info('[Mumble] Deleted accounts', {
+			deleted: result.deleted,
+			notFound: result.notFound,
+		})
+		return result
+	} catch (error) {
+		logger.error('[Mumble] Failed to delete accounts', {
+			userIds,
+			error: error instanceof Error ? error.message : String(error),
+		})
+		return null
+	}
+}

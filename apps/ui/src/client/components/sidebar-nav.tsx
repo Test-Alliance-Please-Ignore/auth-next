@@ -14,6 +14,7 @@ import {
 	LayoutDashboard,
 	LogOut,
 	Mail,
+	Mic,
 	Moon,
 	Package,
 	Radar,
@@ -315,6 +316,11 @@ export function SidebarNav({ onNavigate, isSidebarOpen = true, onToggleSidebar }
 			label: 'My Bills',
 			href: '/my-bills',
 			icon: Receipt,
+		},
+		{
+			label: 'Mumble',
+			href: '/mumble',
+			icon: Mic,
 		},
 
 		{

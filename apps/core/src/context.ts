@@ -9,6 +9,7 @@ import type { Skills } from '@repo/skills'
 import type { PasteWorker } from '@repo/paste'
 import type { createDb } from './db'
 import type { UserDiscordRefreshWorkflowParams } from './workflows/user-discord-refresh.workflow'
+import type { UserMumbleRefreshWorkflowParams } from './workflows/user-mumble-refresh.workflow'
 import type { DiscordMemberAuditWorkflowParams } from './workflows/discord-member-audit.workflow'
 import type { UserRefreshWorkflowParams } from './workflows/user-refresh.workflow'
 
@@ -62,6 +63,8 @@ export type Env = SharedHonoEnv & {
 	USER_DISCORD_REFRESH_WORKFLOW: Workflow<UserDiscordRefreshWorkflowParams>
 	/** Discord Member Audit Workflow binding */
 	DISCORD_MEMBER_AUDIT_WORKFLOW: Workflow<DiscordMemberAuditWorkflowParams>
+	/** User Mumble Refresh Workflow binding */
+	USER_MUMBLE_REFRESH_WORKFLOW: Workflow<UserMumbleRefreshWorkflowParams>
 	/** ESI Type Resolver Durable Object binding */
 	ESI_TYPE_RESOLVER: DurableObjectNamespace
 	/** Industry Durable Object binding */
@@ -80,6 +83,14 @@ export type Env = SharedHonoEnv & {
 	MOON_SCAN: DurableObjectNamespace
 	/** Markets Durable Object binding */
 	MARKETS: DurableObjectNamespace
+	/** Mumble Durable Object binding */
+	MUMBLE: DurableObjectNamespace
+	/** Murmur server id accounts are provisioned under */
+	MUMBLE_SERVER_ID: string
+	/** Mumble server host shown to users for connecting */
+	MUMBLE_HOST: string
+	/** Mumble server port shown to users for connecting */
+	MUMBLE_PORT: string
 	/** Legacy Auth OAuth Client ID (set as Wrangler secret) */
 	LEGACY_AUTH_CLIENT_ID: string
 	/** Legacy Auth OAuth Client Secret (set as Wrangler secret) */

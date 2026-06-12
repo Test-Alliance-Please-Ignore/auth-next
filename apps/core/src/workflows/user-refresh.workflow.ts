@@ -6,6 +6,7 @@ import { esiRetryOptions } from '@repo/workflow-utils'
 
 import { createDb } from '../db'
 import { userCharacters } from '../db/schema'
+import { triggerMumbleRefreshWorkflow } from '../lib/workflow-triggers'
 import { checkUserBlacklisted, disableBlacklistedUser } from './steps/check-user-blacklisted'
 import {
 	reconcileCharacterCorporationMembership,
@@ -576,6 +577,14 @@ export class UserRefreshWorkflow extends WorkflowEntrypoint<Env, UserRefreshWork
 						removedGroupCount: groupCleanupResult.removedGroupIds.length,
 						transferredOwnershipGroupCount: groupCleanupResult.transferredOwnershipGroupIds.length,
 						deletedGroupCount: groupCleanupResult.deletedGroupIds.length,
+					})
+
+					// Stripped memberships must also be removed from the user's projected
+					// Mumble groups. Fire-and-forget; failures are logged by the trigger.
+					await triggerMumbleRefreshWorkflow({
+						env: this.env,
+						userIds: [userId],
+						source: 'affiliation-groups-stripped',
 					})
 				}
 			}

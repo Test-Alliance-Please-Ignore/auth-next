@@ -1,0 +1,283 @@
+import { describe, expect, it, vi } from 'vitest'
+
+import { parseMumbleError } from '@repo/mumble'
+
+import { MumbleDO } from '../durable-object'
+
+vi.mock('cloudflare:workers', () => ({
+	DurableObject: class {},
+}))
+
+vi.mock('@repo/hono-helpers', () => ({
+	captureException: vi.fn(),
+}))
+
+const SNAPSHOT = {
+	subjectId: 'user-1',
+	loginName: 'pilot_one',
+	displayName: 'Pilot One',
+	enabled: true,
+	groups: ['alpha'],
+	comment: null,
+	hasPassword: true,
+	lastCertificateHash: null,
+	lastAuthenticatedAt: null,
+	lastClientRelease: null,
+	lastClientVersion: null,
+}
+
+interface FakeClient {
+	getLocalAccount: ReturnType<typeof vi.fn>
+	getUserState: ReturnType<typeof vi.fn>
+	batchSync: ReturnType<typeof vi.fn>
+	assignGroups: ReturnType<typeof vi.fn>
+	enable: ReturnType<typeof vi.fn>
+	disable: ReturnType<typeof vi.fn>
+	delete: ReturnType<typeof vi.fn>
+}
+
+function makeFakeClient(): FakeClient {
+	return {
+		getLocalAccount: vi.fn(),
+		getUserState: vi.fn(),
+		batchSync: vi.fn(),
+		assignGroups: vi.fn(),
+		enable: vi.fn(),
+		disable: vi.fn(),
+		delete: vi.fn(),
+	}
+}
+
+function makeFakeThis(client: FakeClient, overrides: Record<string, unknown> = {}) {
+	return {
+		env: {},
+		bucketTokens: 10,
+		bucketLastRefill: Date.now(),
+		client: () => client,
+		takeToken: MumbleDO.prototype['takeToken' as keyof MumbleDO],
+		handleError: MumbleDO.prototype['handleError' as keyof MumbleDO],
+		resolveLoginName: MumbleDO.prototype['resolveLoginName' as keyof MumbleDO],
+		findProvisionedSubjects: MumbleDO.prototype['findProvisionedSubjects' as keyof MumbleDO],
+		...overrides,
+	}
+}
+
+async function expectMumbleError(promise: Promise<unknown>, code: string) {
+	const error = await promise.then(
+		() => null,
+		(e: unknown) => e
+	)
+	expect(error).toBeInstanceOf(Error)
+	expect(parseMumbleError(error)?.code).toBe(code)
+}
+
+describe('MumbleDO.provisionAccount', () => {
+	const input = {
+		subjectId: 'user-1',
+		loginName: 'Pilot One',
+		displayName: 'Pilot One',
+		groups: ['alpha'],
+	}
+
+	it('throws already_exists when the subject has an account', async () => {
+		const client = makeFakeClient()
+		client.getLocalAccount.mockResolvedValue(SNAPSHOT)
+
+		await expectMumbleError(
+			MumbleDO.prototype.provisionAccount.call(makeFakeThis(client) as any, 'srv', input),
+			'already_exists'
+		)
+		expect(client.batchSync).not.toHaveBeenCalled()
+	})
+
+	it('provisions with a lowercased login name and one-time password', async () => {
+		const client = makeFakeClient()
+		client.getLocalAccount.mockResolvedValue(null)
+		client.getUserState.mockResolvedValue({ serverId: 'srv', users: [] })
+		client.batchSync.mockResolvedValue({ serverId: 'srv', updated: [SNAPSHOT] })
+
+		const result = await MumbleDO.prototype.provisionAccount.call(
+			makeFakeThis(client) as any,
+			'srv',
+			input
+		)
+
+		expect(result.password).toMatch(/^[A-Za-z0-9]{24}$/)
+		expect(result.account.subjectId).toBe('user-1')
+
+		const synced = client.batchSync.mock.calls[0]![1][0]
+		expect(synced.loginName).toBe('pilot one')
+		expect(synced.enabled).toBe(true)
+		expect(synced.groups).toEqual(['alpha'])
+		expect(synced.passwordVerifier.algorithm).toBe('pbkdf2-sha256')
+		expect(atob(synced.passwordVerifier.hash).length).toBe(32)
+	})
+
+	it('resolves login name collisions with numeric suffixes', async () => {
+		const client = makeFakeClient()
+		client.getLocalAccount.mockResolvedValue(null)
+		client.getUserState.mockImplementation(
+			async (_serverId: string, filter: { loginName?: string }) => ({
+				serverId: 'srv',
+				users:
+					filter.loginName === 'pilot one'
+						? [{ ...SNAPSHOT, subjectId: 'someone-else', loginName: 'pilot one' }]
+						: [],
+			})
+		)
+		client.batchSync.mockResolvedValue({ serverId: 'srv', updated: [SNAPSHOT] })
+
+		await MumbleDO.prototype.provisionAccount.call(makeFakeThis(client) as any, 'srv', input)
+
+		expect(client.batchSync.mock.calls[0]![1][0].loginName).toBe('pilot one_2')
+	})
+
+	it('throws login_name_taken when all candidates are held by others', async () => {
+		const client = makeFakeClient()
+		client.getLocalAccount.mockResolvedValue(null)
+		client.getUserState.mockResolvedValue({
+			serverId: 'srv',
+			users: [{ ...SNAPSHOT, subjectId: 'someone-else' }],
+		})
+
+		await expectMumbleError(
+			MumbleDO.prototype.provisionAccount.call(makeFakeThis(client) as any, 'srv', input),
+			'login_name_taken'
+		)
+	})
+
+	it('throws busy when the token bucket is exhausted', async () => {
+		const client = makeFakeClient()
+
+		await expectMumbleError(
+			MumbleDO.prototype.provisionAccount.call(
+				makeFakeThis(client, { bucketTokens: 0, bucketLastRefill: Date.now() }) as any,
+				'srv',
+				input
+			),
+			'busy'
+		)
+		expect(client.getLocalAccount).not.toHaveBeenCalled()
+	})
+})
+
+describe('MumbleDO.resetPassword', () => {
+	it('throws not_found for unprovisioned subjects', async () => {
+		const client = makeFakeClient()
+		client.getLocalAccount.mockResolvedValue(null)
+
+		await expectMumbleError(
+			MumbleDO.prototype.resetPassword.call(makeFakeThis(client) as any, 'srv', 'user-1'),
+			'not_found'
+		)
+	})
+
+	it('echoes the current account with fresh verifier material', async () => {
+		const client = makeFakeClient()
+		client.getLocalAccount.mockResolvedValue(SNAPSHOT)
+		client.batchSync.mockResolvedValue({ serverId: 'srv', updated: [SNAPSHOT] })
+
+		const result = await MumbleDO.prototype.resetPassword.call(
+			makeFakeThis(client) as any,
+			'srv',
+			'user-1'
+		)
+
+		expect(result.password).toMatch(/^[A-Za-z0-9]{24}$/)
+		const synced = client.batchSync.mock.calls[0]![1][0]
+		expect(synced.loginName).toBe('pilot_one')
+		expect(synced.enabled).toBe(true)
+		expect(synced.groups).toEqual(['alpha'])
+		expect(synced.passwordVerifier.iterations).toBeGreaterThanOrEqual(200_000)
+	})
+})
+
+describe('MumbleDO.syncUserGroups', () => {
+	it('filters unprovisioned subjects with per-subject reads for small batches', async () => {
+		const client = makeFakeClient()
+		client.getLocalAccount.mockImplementation(async (_serverId: string, subjectId: string) =>
+			subjectId === 'user-1' ? SNAPSHOT : null
+		)
+		client.assignGroups.mockResolvedValue({ serverId: 'srv', disconnectedSessions: 0, updated: [] })
+
+		const result = await MumbleDO.prototype.syncUserGroups.call(
+			makeFakeThis(client) as any,
+			'srv',
+			[
+				{ subjectId: 'user-1', groups: ['alpha'] },
+				{ subjectId: 'user-2', groups: ['beta'] },
+			]
+		)
+
+		expect(result).toEqual({ synced: ['user-1'], skipped: ['user-2'] })
+		expect(client.getUserState).not.toHaveBeenCalled()
+		expect(client.assignGroups).toHaveBeenCalledTimes(1)
+		expect(client.assignGroups.mock.calls[0]![1]).toEqual([
+			{ subjectId: 'user-1', groups: ['alpha'] },
+		])
+	})
+
+	it('uses a single user-state read for larger batches and chunks writes', async () => {
+		const provisionedIds = Array.from({ length: 250 }, (_, i) => `user-${i}`)
+		const client = makeFakeClient()
+		client.getUserState.mockResolvedValue({
+			serverId: 'srv',
+			users: provisionedIds.map((subjectId) => ({ ...SNAPSHOT, subjectId })),
+		})
+		client.assignGroups.mockResolvedValue({ serverId: 'srv', disconnectedSessions: 0, updated: [] })
+
+		const assignments = [
+			...provisionedIds.map((subjectId) => ({ subjectId, groups: ['alpha'] })),
+			{ subjectId: 'unprovisioned', groups: ['beta'] },
+		]
+		const result = await MumbleDO.prototype.syncUserGroups.call(
+			makeFakeThis(client) as any,
+			'srv',
+			assignments
+		)
+
+		expect(client.getLocalAccount).not.toHaveBeenCalled()
+		expect(client.getUserState).toHaveBeenCalledTimes(1)
+		// 250 provisioned assignments => 2 chunks of <=200
+		expect(client.assignGroups).toHaveBeenCalledTimes(2)
+		expect(client.assignGroups.mock.calls[0]![1]).toHaveLength(200)
+		expect(client.assignGroups.mock.calls[1]![1]).toHaveLength(50)
+		expect(result.synced).toHaveLength(250)
+		expect(result.skipped).toEqual(['unprovisioned'])
+	})
+
+	it('returns immediately for empty input', async () => {
+		const client = makeFakeClient()
+		const result = await MumbleDO.prototype.syncUserGroups.call(
+			makeFakeThis(client) as any,
+			'srv',
+			[]
+		)
+		expect(result).toEqual({ synced: [], skipped: [] })
+		expect(client.assignGroups).not.toHaveBeenCalled()
+	})
+})
+
+describe('MumbleDO.deleteAccounts', () => {
+	it('pre-filters missing accounts and reports them as notFound', async () => {
+		const client = makeFakeClient()
+		client.getLocalAccount.mockImplementation(async (_serverId: string, subjectId: string) =>
+			subjectId === 'user-1' ? SNAPSHOT : null
+		)
+		client.delete.mockResolvedValue({
+			serverId: 'srv',
+			deletedSubjectIds: ['user-1'],
+			disconnectedSessions: 1,
+		})
+
+		const result = await MumbleDO.prototype.deleteAccounts.call(
+			makeFakeThis(client) as any,
+			'srv',
+			['user-1', 'user-2']
+		)
+
+		expect(result).toEqual({ deleted: ['user-1'], notFound: ['user-2'] })
+		expect(client.delete).toHaveBeenCalledTimes(1)
+		expect(client.delete.mock.calls[0]![1]).toEqual(['user-1'])
+	})
+})

@@ -1,0 +1,36 @@
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
+
+import { api } from '@/lib/api'
+
+import { mumbleKeys } from './query-keys'
+
+/** Current user's Mumble account status + connection info. */
+export function useMumbleAccount() {
+	return useQuery({
+		queryKey: mumbleKeys.account(),
+		queryFn: () => api.getMumbleAccount(),
+		staleTime: 1000 * 30,
+	})
+}
+
+/** Provision a Mumble account. The response password is shown exactly once. */
+export function useProvisionMumbleAccount() {
+	const queryClient = useQueryClient()
+	return useMutation({
+		mutationFn: () => api.createMumbleAccount(),
+		onSuccess: () => {
+			void queryClient.invalidateQueries({ queryKey: mumbleKeys.account() })
+		},
+	})
+}
+
+/** Rotate the Mumble password. The response password is shown exactly once. */
+export function useResetMumblePassword() {
+	const queryClient = useQueryClient()
+	return useMutation({
+		mutationFn: () => api.resetMumblePassword(),
+		onSuccess: () => {
+			void queryClient.invalidateQueries({ queryKey: mumbleKeys.account() })
+		},
+	})
+}

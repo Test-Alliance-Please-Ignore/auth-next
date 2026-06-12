@@ -1,14 +1,40 @@
 # mumble
 
-Cloudflare Worker with Mumble Durable Object.
+Cloudflare Worker that manages Mumble (Murmur) voice accounts via the external
+[murmur-control](https://github.com/pleaseignore/murmur-control) control plane.
 
-## Features
+auth-next is the upstream desired-state authority: it owns accounts, enabled
+state, deletions, and group memberships. This worker projects that state into
+murmur-control over its REST API.
 
-- **Durable Object**: SQLite-backed Durable Object with RPC support
-- **WebSocket Support**: WebSocket hibernation API handlers
-- **Database**: PostgreSQL with Drizzle ORM
-- **Web Framework**: Hono
-- **Testing**: Vitest with Cloudflare Workers pool
+## Architecture
+
+- **No public HTTP surface** — all access is via the `Mumble` Durable Object
+  RPC interface defined in `@repo/mumble`. Public routes live in `core`
+  (`/api/mumble/...`).
+- **One DO instance per Murmur server** (instance name = `serverId`). All
+  murmur-control writes funnel through it, serializing them and applying a
+  token-bucket throttle to interactive operations (provision/password reset).
+- **Stateless** — murmur-control is the authoritative store of account state;
+  this worker keeps no local tables.
+- `subjectId` = core user UUID (`users.id`). `loginName` is derived from the
+  main character name by core; collisions are resolved here.
+- Passwords are generated inside the DO, converted to PBKDF2-SHA256 verifier
+  material (`src/hazmat.ts`), and returned exactly once — never stored.
+
+## Configuration
+
+| Name | Kind | Purpose |
+| --- | --- | --- |
+| `MURMUR_CONTROL_API_URL` | var | Base URL of the murmur-control API |
+| `MURMUR_CONTROL_TOKEN` | secret | Static bearer token for murmur-control |
+
+```bash
+pnpm -F mumble wrangler secret put MURMUR_CONTROL_TOKEN
+```
+
+The serverId and user-facing connection info (`MUMBLE_SERVER_ID`,
+`MUMBLE_HOST`, `MUMBLE_PORT`) are configured on the core worker.
 
 ## Development
 
@@ -23,40 +49,7 @@ pnpm test
 just deploy -F mumble
 ```
 
-## Database
-
-```bash
-# Generate migrations
-just db-generate mumble
-
-# Run migrations
-just db-migrate mumble
-
-# Push schema changes (dev only)
-just db-push mumble
-
-# Open Drizzle Studio
-just db-studio mumble
-```
-
-## Using the Durable Object
-
-The Mumble Durable Object is available to this worker via the `MUMBLE` binding.
-
-### From within this worker:
-
-```typescript
-import type { Mumble } from '@repo/mumble'
-import { getStub } from '@repo/do-utils'
-
-// Get a stub to the Durable Object
-const stub = getStub<Mumble>(c.env.MUMBLE, 'unique-id')
-
-// Call RPC methods
-const result = await stub.exampleMethod('hello')
-```
-
-### From other workers:
+## Using the Durable Object from other workers
 
 1. Add the binding to `wrangler.jsonc`:
 
@@ -80,4 +73,13 @@ const result = await stub.exampleMethod('hello')
    pnpm -F your-worker add '@repo/mumble@workspace:*'
    ```
 
-3. Add the binding to your context types and use it!
+3. Use it:
+
+   ```typescript
+   import { getStub } from '@repo/do-utils'
+
+   import type { Mumble } from '@repo/mumble'
+
+   const stub = getStub<Mumble>(env.MUMBLE, serverId)
+   const account = await stub.getAccount(serverId, userId)
+   ```

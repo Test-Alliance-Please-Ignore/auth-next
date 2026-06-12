@@ -4497,6 +4497,55 @@ export class ApiClient {
 		return this.post(`/services/${slug}/reset`)
 	}
 
+	// ===== Mumble API Methods =====
+
+	/**
+	 * Get current user's Mumble account status and connection info
+	 */
+	async getMumbleAccount(): Promise<{
+		account: {
+			subjectId: string
+			loginName: string
+			displayName: string
+			enabled: boolean
+			groups: string[]
+			hasPassword: boolean
+			lastAuthenticatedAt: string | null
+		} | null
+		connection: { host: string; port: number }
+	}> {
+		return this.get('/mumble/account')
+	}
+
+	/**
+	 * Provision a Mumble account. The returned password is shown exactly once.
+	 */
+	async createMumbleAccount(): Promise<{
+		account: {
+			subjectId: string
+			loginName: string
+			displayName: string
+			enabled: boolean
+			groups: string[]
+			hasPassword: boolean
+			lastAuthenticatedAt: string | null
+		}
+		password: string
+		connection: { host: string; port: number }
+	}> {
+		return this.post('/mumble/account')
+	}
+
+	/**
+	 * Rotate the Mumble password. The returned password is shown exactly once.
+	 */
+	async resetMumblePassword(): Promise<{
+		password: string
+		connection: { host: string; port: number }
+	}> {
+		return this.post('/mumble/account/reset-password')
+	}
+
 	// ===== Freight API Methods =====
 
 	/**

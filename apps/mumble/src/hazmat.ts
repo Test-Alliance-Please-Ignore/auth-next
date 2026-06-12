@@ -1,47 +1,82 @@
+import type { PasswordVerifier } from '@repo/mumble'
+
 /**
- * Convert a Uint8Array to a hex string
+ * PBKDF2 iteration count for generated verifiers.
+ * The murmur-control contract floor is 200,000; we use 600,000.
  */
-function uint8ArrayToHex(bytes: Uint8Array): string {
-	return Array.from(bytes)
-		.map((b) => b.toString(16).padStart(2, '0'))
-		.join('')
+export const VERIFIER_ITERATIONS = 600_000
+
+const PASSWORD_ALPHABET = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789'
+const PASSWORD_LENGTH = 24
+
+/**
+ * Convert a Uint8Array to a standard base64 string
+ */
+function uint8ArrayToBase64(bytes: Uint8Array): string {
+	let binary = ''
+	for (const byte of bytes) {
+		binary += String.fromCharCode(byte)
+	}
+	return btoa(binary)
 }
 
 /**
- * Hash a password using PBKDF2-HMAC with SHA-384
- * @param password - The plaintext password to hash
- * @param iterations - The number of PBKDF2 iterations to perform
- * @returns A tuple containing [hexHash, hexSalt, iterations]
+ * Generate a random base62 password.
+ * Uses rejection sampling to avoid modulo bias.
  */
-export async function hashPassword(
+export function generatePassword(): string {
+	const chars: string[] = []
+	while (chars.length < PASSWORD_LENGTH) {
+		const buf = crypto.getRandomValues(new Uint8Array(PASSWORD_LENGTH * 2))
+		for (const byte of buf) {
+			// Reject bytes outside the largest multiple of alphabet length (62 * 4 = 248)
+			if (byte < 248) {
+				chars.push(PASSWORD_ALPHABET[byte % PASSWORD_ALPHABET.length]!)
+				if (chars.length === PASSWORD_LENGTH) break
+			}
+		}
+	}
+	return chars.join('')
+}
+
+/**
+ * Create an imported password verifier for murmur-control.
+ *
+ * Contract requirements (INTEGRATION_CONTRACT.md):
+ * - algorithm: pbkdf2-sha256
+ * - hash: standard base64, decoding to exactly 32 bytes
+ * - salt: standard base64, decoding to at least 16 bytes
+ * - iterations: at least 200,000
+ */
+export async function createPasswordVerifier(
 	password: string,
-	iterations: number
-): Promise<{ salt: string; hash: string; iterations: number }> {
-	// Generate a 20-byte random salt
-	const binSalt = crypto.getRandomValues(new Uint8Array(20))
-	const hexSalt = uint8ArrayToHex(binSalt)
+	iterations: number = VERIFIER_ITERATIONS
+): Promise<PasswordVerifier> {
+	const salt = crypto.getRandomValues(new Uint8Array(16))
 
-	// Encode the password as UTF-8
-	const passwordData = new TextEncoder().encode(password)
-
-	// Import the password as a key for PBKDF2
-	const keyMaterial = await crypto.subtle.importKey('raw', passwordData, 'PBKDF2', false, [
-		'deriveBits',
-	])
-
-	// Derive the hash using PBKDF2 with SHA-384
-	const binHash = await crypto.subtle.deriveBits(
-		{
-			name: 'PBKDF2',
-			salt: binSalt,
-			iterations,
-			hash: 'SHA-384',
-		},
-		keyMaterial,
-		384 // SHA-384 produces 384 bits (48 bytes)
+	const keyMaterial = await crypto.subtle.importKey(
+		'raw',
+		new TextEncoder().encode(password),
+		'PBKDF2',
+		false,
+		['deriveBits']
 	)
 
-	const hexHash = uint8ArrayToHex(new Uint8Array(binHash))
+	const hashBits = await crypto.subtle.deriveBits(
+		{
+			name: 'PBKDF2',
+			salt,
+			iterations,
+			hash: 'SHA-256',
+		},
+		keyMaterial,
+		256 // 32 bytes
+	)
 
-	return { salt: hexSalt, hash: hexHash, iterations }
+	return {
+		algorithm: 'pbkdf2-sha256',
+		hash: uint8ArrayToBase64(new Uint8Array(hashBits)),
+		salt: uint8ArrayToBase64(salt),
+		iterations,
+	}
 }
