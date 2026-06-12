@@ -70,7 +70,7 @@ export const structureStateEvents = pgTable(
 	{
 		id: uuid('id').defaultRandom().primaryKey(),
 		structureId: text('structure_id').notNull(),
-		ownerId: text('owner_id')
+		corporationId: text('corporation_id')
 			.notNull()
 			.references(() => managedCorporations.corporationId, { onDelete: 'cascade' }),
 		previousState: text('previous_state').notNull(),
@@ -81,7 +81,7 @@ export const structureStateEvents = pgTable(
 	},
 	(table) => [
 		index('structure_state_events_structure_id_idx').on(table.structureId),
-		index('structure_state_events_owner_id_idx').on(table.ownerId),
+		index('structure_state_events_corporation_id_idx').on(table.corporationId),
 		index('structure_state_events_detected_at_idx').on(table.detectedAt),
 	]
 )

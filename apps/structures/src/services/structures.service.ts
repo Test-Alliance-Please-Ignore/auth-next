@@ -98,7 +98,7 @@ interface StructureAccessScope {
 
 export interface StructureListItem {
 	structureId: string
-	ownerId: string
+	corporationId: string
 	corporationName: string
 	name: string
 	typeId: string
@@ -297,9 +297,9 @@ function buildStructureListItem(context: VisibleStructureContext): StructureList
 
 	return {
 		structureId: structure.structureId,
-		ownerId: structure.ownerId,
+		corporationId: structure.corporationId,
 		corporationName,
-		name: structure.name,
+		name: structure.name ?? structure.structureId,
 		typeId: structure.typeId,
 		typeName: structure.typeName,
 		systemId: structure.systemId,
@@ -608,9 +608,9 @@ async function getVisibleStructureContext(
 			const conditions = [eq(corporationStructures.structureId, structureId)]
 			if (!access.viewAll) {
 				if (access.viewCorporationIds.size === 0) {
-					return and(...conditions, eq(corporationStructures.ownerId, '__no_access__'))
+					return and(...conditions, eq(corporationStructures.corporationId, '__no_access__'))
 				}
-				conditions.push(inArray(corporationStructures.ownerId, [...access.viewCorporationIds]))
+				conditions.push(inArray(corporationStructures.corporationId, [...access.viewCorporationIds]))
 			}
 			return and(...conditions)
 		})(),
@@ -624,20 +624,21 @@ async function getVisibleStructureContext(
 		where: eq(structureConfigs.structureId, structureId),
 	})
 	const corporation = await db.query.managedCorporations.findFirst({
-		where: eq(managedCorporations.corporationId, structure.ownerId),
+		where: eq(managedCorporations.corporationId, structure.corporationId),
 		columns: {
 			corporationId: true,
 			name: true,
 		},
 	})
-	const canViewSensitive = user.is_admin || access.managerAll || access.managerCorporationIds.has(structure.ownerId)
+	const canViewSensitive =
+		user.is_admin || access.managerAll || access.managerCorporationIds.has(structure.corporationId)
 	if (config?.hidden && !canViewSensitive) {
 		return null
 	}
 
 	return {
 		structure,
-		corporationName: corporation?.name ?? structure.ownerId,
+		corporationName: corporation?.name ?? structure.corporationId,
 		config: config ?? null,
 		canViewSensitive,
 	}
@@ -740,7 +741,7 @@ function buildStructureFilterOptions(items: StructureListItem[]): StructureListF
 	const types = new Map<string, string>()
 
 	for (const structure of items) {
-		corporations.set(structure.ownerId, structure.corporationName)
+		corporations.set(structure.corporationId, structure.corporationName)
 		if (structure.assignedGroupId) {
 			assignedGroups.set(structure.assignedGroupId, structure.assignedGroupId)
 		}
@@ -828,9 +829,9 @@ export async function listVisibleStructures(
 	const corpWhere = (() => {
 		const conditions: any[] = []
 		if (query.corporationId) {
-			conditions.push(eq(corporationStructures.ownerId, query.corporationId))
+			conditions.push(eq(corporationStructures.corporationId, query.corporationId))
 		} else if (!access.viewAll && access.viewCorporationIds.size > 0) {
-			conditions.push(inArray(corporationStructures.ownerId, [...access.viewCorporationIds]))
+			conditions.push(inArray(corporationStructures.corporationId, [...access.viewCorporationIds]))
 		}
 		if (query.lowPower === 'true') {
 			conditions.push(eq(corporationStructures.lowPower, true))
@@ -863,7 +864,7 @@ export async function listVisibleStructures(
 			})
 		: []
 	const configsByStructureId = new Map(configRows.map((row) => [row.structureId, row]))
-	const corporationIds = [...new Set(corpStructures.map((structure) => structure.ownerId))]
+	const corporationIds = [...new Set(corpStructures.map((structure) => structure.corporationId))]
 	const corporationRows = corporationIds.length
 		? await db.query.managedCorporations.findMany({
 				where: inArray(managedCorporations.corporationId, corporationIds),
@@ -879,14 +880,14 @@ export async function listVisibleStructures(
 		.map<VisibleStructureContext | null>((structure) => {
 			const config = configsByStructureId.get(structure.structureId) ?? null
 			const canViewSensitive =
-				user.is_admin || access.managerAll || access.managerCorporationIds.has(structure.ownerId)
+				user.is_admin || access.managerAll || access.managerCorporationIds.has(structure.corporationId)
 			if (config?.hidden && !canViewSensitive) {
 				return null
 			}
 
 			return {
 				structure,
-				corporationName: corporationNamesById.get(structure.ownerId) ?? structure.ownerId,
+				corporationName: corporationNamesById.get(structure.corporationId) ?? structure.corporationId,
 				config,
 				canViewSensitive,
 			}
@@ -964,7 +965,7 @@ export async function updateStructureConfig(
 	const canEdit =
 		user.is_admin ||
 		access.managerAll ||
-		access.managerCorporationIds.has(context.structure.ownerId)
+		access.managerCorporationIds.has(context.structure.corporationId)
 	if (!canEdit) {
 		return null
 	}
@@ -1042,14 +1043,14 @@ export async function syncCorporationStructures(
 		stateChangeCount += 1
 		await db.insert(structureStateEvents).values({
 			structureId: structure.structureId,
-			ownerId: corporationId,
+			corporationId,
 			previousState: previous.state,
 			newState: structure.state,
 			detectedAt: now,
 			sourceSyncAt: structure.lastSyncedAt ?? now,
 			rawPayload: {
 				structureId: structure.structureId,
-				ownerId: corporationId,
+				corporationId,
 				name: structure.name,
 				systemId: structure.systemId,
 				state: structure.state,

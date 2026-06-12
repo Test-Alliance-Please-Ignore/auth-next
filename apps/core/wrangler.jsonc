@@ -166,7 +166,8 @@
 		},
 		{
 			"binding": "STRUCTURES",
-			"service": "structures"
+			"service": "structures",
+			"entrypoint": "StructuresWorkerEntrypoint"
 		},
 		{
 			"binding": "PASTE",

@@ -67,12 +67,10 @@ export function UserSearchPaginationControls({
 						inputClassName="h-9"
 					/>
 				</div>
-				<Button
-					variant="ghost"
-					size="sm"
-					disabled={!canGoPrev}
-					onClick={() => onPageChange(page - 1)}
-				>
+				<Button variant="ghost" size="sm" disabled={!canGoPrev} onClick={() => onPageChange(1)}>
+					First
+				</Button>
+				<Button variant="ghost" size="sm" disabled={!canGoPrev} onClick={() => onPageChange(page - 1)}>
 					Prev
 				</Button>
 				{visiblePages.map((pageNumber) => (
@@ -89,7 +87,8 @@ export function UserSearchPaginationControls({
 					variant="ghost"
 					size="sm"
 					className="relative w-16"
-					disabled={!canGoNext || nextButtonLoading}
+					disabled={!canGoNext}
+					aria-busy={nextButtonLoading}
 					onClick={() => onPageChange(page + 1)}
 				>
 					<span className={nextButtonLoading ? 'opacity-0' : undefined}>Next</span>
@@ -99,6 +98,9 @@ export function UserSearchPaginationControls({
 							className="absolute left-1/2 top-1/2 h-4 w-4 -translate-x-1/2 -translate-y-1/2 animate-spin"
 						/>
 					) : null}
+				</Button>
+				<Button variant="ghost" size="sm" disabled={!canGoNext} onClick={() => onPageChange(totalPages)}>
+					Last
 				</Button>
 			</div>
 		</div>

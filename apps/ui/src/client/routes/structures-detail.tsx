@@ -11,6 +11,7 @@ import { LoadingPage } from '@/components/ui/loading'
 import { PageHeader } from '@/components/ui/page-header'
 import { Select, type SelectOption } from '@/components/ui/select'
 import { Switch } from '@/components/ui/switch'
+import { StructureStateBadge } from '@/components/structure-state-badge'
 import { useApiMutation } from '@/hooks/useApiMutation'
 import { useAuth } from '@/hooks/useAuth'
 import { useGroups } from '@/hooks/useGroups'
@@ -172,7 +173,9 @@ export default function StructuresDetailPage() {
 							</div>
 							<div>
 								<div className="text-muted-foreground">State</div>
-								<div className="font-medium">{structure.state}</div>
+								<div className="font-medium">
+									<StructureStateBadge state={structure.state} />
+								</div>
 							</div>
 							<div>
 								<div className="text-muted-foreground">Next State</div>
@@ -272,9 +275,9 @@ export default function StructuresDetailPage() {
 						</div>
 						<div className="rounded-lg border border-border/60 p-4">
 							<div className="text-xs uppercase tracking-wide text-muted-foreground">
-								Owner Corporation
+								Corporation ID
 							</div>
-							<div className="mt-2 font-medium">{structure.ownerId}</div>
+							<div className="mt-2 font-medium">{structure.corporationId}</div>
 						</div>
 						<div className="rounded-lg border border-border/60 p-4">
 							<div className="text-xs uppercase tracking-wide text-muted-foreground">Structure ID</div>

@@ -1433,21 +1433,7 @@ app.post('/:corporationId/fetch', requireAuth(), requireAdmin(), async (c) => {
 				break
 			case 'structures':
 				logger.info('[Corporations] Fetching structures', { corporationId })
-				{
-					const structuresSyncUrl = new URL(
-						`/internal/sync/${encodeURIComponent(corporationId)}?forceRefresh=${forceRefresh ? 'true' : 'false'}`,
-						'https://structures.internal'
-					)
-					const response = await c.env.STRUCTURES.fetch(structuresSyncUrl, {
-						method: 'POST',
-					})
-					if (!response.ok) {
-						const errorBody = await response.text()
-						throw new Error(
-							`Failed to sync structures: ${response.status} ${response.statusText} ${errorBody}`
-						)
-					}
-				}
+				await c.env.STRUCTURES.syncCorporationStructures(corporationId, forceRefresh)
 				break
 			case 'all':
 			default:

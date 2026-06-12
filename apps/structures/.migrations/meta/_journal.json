@@ -8,6 +8,13 @@
       "when": 1781292236938,
       "tag": "0000_big_spiral",
       "breakpoints": true
+    },
+    {
+      "idx": 1,
+      "version": "7",
+      "when": 1781296204834,
+      "tag": "0001_misty_george_stacy",
+      "breakpoints": true
     }
   ]
 }

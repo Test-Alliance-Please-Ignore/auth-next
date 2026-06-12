@@ -345,11 +345,11 @@ export const corporationStructures = pgTable(
 	'corporation_structures',
 	{
 		id: uuid('id').defaultRandom().primaryKey(),
-		ownerId: text('owner_id')
+		corporationId: text('corporation_id')
 			.notNull()
 			.references(() => corporationConfig.corporationId),
 		structureId: text('structure_id').notNull(),
-		name: text('name').notNull(),
+		name: text('name'),
 		typeId: text('type_id').notNull(),
 		typeName: text('type_name'),
 		systemId: text('system_id').notNull(),
@@ -378,7 +378,7 @@ export const corporationStructures = pgTable(
 		>(),
 		updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow().notNull(),
 	},
-	(table) => [unique().on(table.ownerId, table.structureId)]
+	(table) => [unique().on(table.corporationId, table.structureId)]
 )
 
 // ============================================================================

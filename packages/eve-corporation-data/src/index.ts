@@ -482,9 +482,9 @@ export interface CorporationAssetData {
  */
 export interface CorporationStructureData {
 	id: string
-	ownerId: string
+	corporationId: string
 	structureId: string
-	name: string
+	name: string | null
 	typeId: string
 	typeName: string | null
 	systemId: string
@@ -518,21 +518,6 @@ export interface CorporationStructureQuery {
 	systemId?: string
 	state?: string
 	typeId?: string
-}
-
-/**
- * Structure details data - union of all ESI lookups
- * Includes structure info, system name, type name, and owner name
- */
-export interface StructureDetailsData {
-	name: string
-	owner_id: string
-	type_id: string
-	position: { x: number; y: number; z: number }
-	solar_system_id: string
-	systemName: string | null
-	typeName: string | null
-	ownerName: string | null
 }
 
 /**
@@ -1387,15 +1372,15 @@ export interface EveCorporationData {
 	): Promise<CorporationStructureData[]>
 
 	/**
-	 * Get structure details - union of all ESI lookups
+	 * Get structure details from the synced corporation snapshot.
 	 * @param corporationId - The corporation ID
 	 * @param structureId - The structure ID
-	 * @returns Structure details including structure info, system name, type name, and owner name, or null if not found
+	 * @returns The stored structure snapshot, or null if not found
 	 */
 	getStructureDetails(
 		corporationId: string,
 		structureId: string
-	): Promise<StructureDetailsData | null>
+	): Promise<CorporationStructureData | null>
 
 	/**
 	 * Get complete assets data

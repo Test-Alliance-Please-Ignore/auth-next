@@ -97,9 +97,9 @@ export class StructureMonitorDO extends DurableObject<Env> implements StructureM
 			initialized: 1,
 			structureName: structureDetails?.name ?? null,
 			structureTypeName: structureDetails?.typeName ?? null,
-			structureSolarSystemId: structureDetails?.solar_system_id ?? null,
+			structureSolarSystemId: structureDetails?.systemId ?? null,
 			structureSolarSystemName: structureDetails?.systemName ?? null,
-			structureOwnerName: structureDetails?.ownerName ?? null,
+			structureOwnerName: null,
 		}
 	}
 
