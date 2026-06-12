@@ -374,6 +374,17 @@ export default function StructuresPage() {
 								searchable
 							/>
 						</FilterField>
+						<FilterField label="System">
+							<Select
+								options={systemOptions}
+								value={tableState.filters.systemId ?? ''}
+								onValueChange={(value) =>
+									setStructureTableFilters({ systemId: value || undefined })
+								}
+								placeholder="All Systems"
+								searchable
+							/>
+						</FilterField>
 						<FilterField label="Corporation">
 							<Select
 								options={corporationOptions}
@@ -433,17 +444,6 @@ export default function StructuresPage() {
 									})
 								}
 								placeholder="All Groups"
-								searchable
-							/>
-						</FilterField>
-						<FilterField label="System">
-							<Select
-								options={systemOptions}
-								value={tableState.filters.systemId ?? ''}
-								onValueChange={(value) =>
-									setStructureTableFilters({ systemId: value || undefined })
-								}
-								placeholder="All Systems"
 								searchable
 							/>
 						</FilterField>
