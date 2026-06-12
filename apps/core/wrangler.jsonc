@@ -18,7 +18,7 @@
 	},
 	"workers_dev": false,
 	"triggers": {
-		// Runs 3 minutes after the orchestrator's corp-data-refresh cron (*/5),
+		// Runs 3 minutes after the 5-minute corporation data refresh cron,
 		// giving corp sync time to detect departures and enqueue pending refreshes.
 		// Also runs daily at midnight UTC for Discord member audit cleanup.
 		"crons": ["3-58/5 * * * *", "0 0 * * *"]

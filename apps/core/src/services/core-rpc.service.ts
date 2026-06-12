@@ -747,7 +747,7 @@ export class CoreRpcService {
 
 	/**
 	 * Get users that have Discord linked and need refresh
-	 * Used by the orchestrator worker to refresh Discord access
+	 * Used by the scheduled refresh pipeline to refresh Discord access
 	 *
 	 * Returns users where:
 	 * - Discord is linked (discordUserId is not null)
