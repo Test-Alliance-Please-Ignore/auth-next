@@ -212,3 +212,92 @@ export interface GetMultiGroupMemberPermissionsResponse {
 	/** Map of userId to their permissions across all specified groups */
 	userPermissions: Record<string, UserPermission[]>
 }
+
+/**
+ * Structure permission URNs
+ *
+ * Structure permissions are scoped either to all structures or to a specific corporation.
+ * The scope is encoded directly into the URN so the UI and authorization helpers can
+ * reason about the visibility target without needing extra lookup state.
+ */
+export const STRUCTURE_PERMISSION_ROLES = ['viewer', 'manager', 'sensitive'] as const
+export type StructurePermissionRole = (typeof STRUCTURE_PERMISSION_ROLES)[number]
+
+export const STRUCTURE_PERMISSION_SCOPE_ALL = 'all' as const
+export type StructurePermissionScope = string
+
+export interface PermissionLike {
+	urn: string
+}
+
+export interface ParsedStructurePermissionUrn {
+	scope: 'all' | 'corp'
+	corporationId: string | null
+	role: StructurePermissionRole
+}
+
+export const STRUCTURE_PERMISSION_URN_PREFIX = 'urn:structures:' as const
+
+export function buildStructurePermissionUrn(
+	scope: StructurePermissionScope | typeof STRUCTURE_PERMISSION_SCOPE_ALL,
+	role: StructurePermissionRole
+): string {
+	return `${STRUCTURE_PERMISSION_URN_PREFIX}${scope}:${role}`
+}
+
+export function isStructurePermissionUrn(value: string): boolean {
+	return value.startsWith(STRUCTURE_PERMISSION_URN_PREFIX)
+}
+
+export function parseStructurePermissionUrn(value: string): ParsedStructurePermissionUrn | null {
+	if (!isStructurePermissionUrn(value)) {
+		return null
+	}
+
+	const remainder = value.slice(STRUCTURE_PERMISSION_URN_PREFIX.length)
+	const [scope, role] = remainder.split(':')
+	if (!scope || !role) return null
+	if (!STRUCTURE_PERMISSION_ROLES.includes(role as StructurePermissionRole)) {
+		return null
+	}
+
+	if (scope === STRUCTURE_PERMISSION_SCOPE_ALL) {
+		return {
+			scope: 'all',
+			corporationId: null,
+			role: role as StructurePermissionRole,
+		}
+	}
+
+	return {
+		scope: 'corp',
+		corporationId: scope,
+		role: role as StructurePermissionRole,
+	}
+}
+
+export function hasAnyStructurePermission(permissions: Array<PermissionLike>): boolean {
+	return permissions.some((permission) => isStructurePermissionUrn(permission.urn))
+}
+
+export function hasStructureManagerPermission(permissions: Array<PermissionLike>): boolean {
+	return permissions.some((permission) => {
+		const parsed = parseStructurePermissionUrn(permission.urn)
+		if (!parsed) {
+			return false
+		}
+
+		return parsed.role === 'manager' || parsed.role === 'sensitive'
+	})
+}
+
+export function hasAllStructureManagerPermission(permissions: Array<PermissionLike>): boolean {
+	return permissions.some((permission) => {
+		const parsed = parseStructurePermissionUrn(permission.urn)
+		if (!parsed || parsed.scope !== 'all') {
+			return false
+		}
+
+		return parsed.role === 'manager' || parsed.role === 'sensitive'
+	})
+}

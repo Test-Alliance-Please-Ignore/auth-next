@@ -13,6 +13,10 @@ import {
 	varchar,
 } from 'drizzle-orm/pg-core'
 
+import { alertDestinations } from '@repo/core-db-schema'
+
+export { alertDestinations }
+
 /**
  * Users table - Root user accounts
  *
@@ -689,6 +693,34 @@ export const corporationAlertDestinations = pgTable(
 )
 
 /**
+ * Corporation Alert Configs
+ *
+ * Corporation-owned alert-type configuration that references shared destinations.
+ */
+export const corporationAlertConfigs = pgTable(
+	'corporation_alert_configs',
+	{
+		id: uuid('id').defaultRandom().primaryKey(),
+		corporationId: text('corporation_id')
+			.notNull()
+			.references(() => managedCorporations.corporationId, { onDelete: 'cascade' }),
+		alertType: text('alert_type').notNull(),
+		destinationIds: uuid('destination_ids').array().notNull().default([]),
+		config: jsonb('config').$type<Record<string, unknown>>().notNull().default({}),
+		isEnabled: boolean('is_enabled').notNull().default(true),
+		createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
+		updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow().notNull(),
+	},
+	(table) => [
+		index('corporation_alert_configs_corp_idx').on(table.corporationId),
+		index('corporation_alert_configs_alert_type_idx').on(table.alertType),
+		index('corporation_alert_configs_enabled_idx').on(table.isEnabled),
+		index('corporation_alert_configs_corp_alert_type_idx').on(table.corporationId, table.alertType),
+		unique('corporation_alert_configs_corp_alert_type_unique').on(table.corporationId, table.alertType),
+	]
+)
+
+/**
  * Discord Member Audit Runs
  *
  * Persisted async audit snapshots per Discord server.
@@ -1071,6 +1103,21 @@ export const corporationAlertDestinationsRelations = relations(
 	})
 )
 
+export const alertDestinationsRelations = relations(alertDestinations, ({ one }) => ({
+	discordServer: one(discordServers, {
+		fields: [alertDestinations.discordServerId],
+		references: [discordServers.id],
+	}),
+	createdByUser: one(users, {
+		fields: [alertDestinations.createdBy],
+		references: [users.id],
+	}),
+	updatedByUser: one(users, {
+		fields: [alertDestinations.updatedBy],
+		references: [users.id],
+	}),
+}))
+
 export const dkpTransactionsRelations = relations(dkpTransactions, ({ one }) => ({
 	awardedByUser: one(users, {
 		fields: [dkpTransactions.awardedBy],
@@ -1108,7 +1155,9 @@ export const schema = {
 	corporationDiscordServers,
 	corporationDiscordServerRoles,
 	corporationDiscordInvites,
+	alertDestinations,
 	corporationAlertDestinations,
+	corporationAlertConfigs,
 	dkpTransactions,
 	dkpDecayConfig,
 	usersRelations,
@@ -1129,6 +1178,7 @@ export const schema = {
 	corporationDiscordServerRolesRelations,
 	corporationDiscordInvitesRelations,
 	corporationAlertDestinationsRelations,
+	alertDestinationsRelations,
 	dkpTransactionsRelations,
 	dkpDecayConfigRelations,
 }

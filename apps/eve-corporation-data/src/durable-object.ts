@@ -1,6 +1,6 @@
 import { DurableObject } from 'cloudflare:workers'
 
-import { and, desc, eq, gt, gte, inArray, lte, sql } from '@repo/db-utils'
+import { and, desc, eq, gt, gte, inArray, lte, notInArray, sql } from '@repo/db-utils'
 import { getStub } from '@repo/do-utils'
 import { logger } from '@repo/hono-helpers'
 
@@ -49,6 +49,7 @@ import type {
 	CorporationMemberTrackingData,
 	CorporationOrderData,
 	CorporationPublicData,
+	CorporationStructureQuery,
 	CorporationRole,
 	CorporationStructureData,
 	CorporationSyncHealth,
@@ -77,7 +78,7 @@ import type {
 } from '@repo/eve-corporation-data'
 import type { EsiResponse, EveTokenStore } from '@repo/eve-token-store'
 import type { EveCharacterId, EveStructureId } from '@repo/eve-types'
-import type { Universe } from '@repo/universe'
+import type { Universe, UniverseSolarSystem } from '@repo/universe'
 import type { Env } from './context'
 
 type CorporationConfigRow = typeof corporationConfig.$inferSelect
@@ -1487,20 +1488,109 @@ export class EveCorporationDataDO extends DurableObject<Env> implements EveCorpo
 		return { assetsCount }
 	}
 
-	/**
-	 * Store structures (workflow-friendly)
-	 */
-	async storeStructures(corporationId: string, structures: any[]): Promise<void> {
-		const BATCH_SIZE = 10
-		for (let i = 0; i < structures.length; i += BATCH_SIZE) {
-			const batch = structures.slice(i, i + BATCH_SIZE)
-			const valuesToInsert = batch.map((structure) => ({
-				corporationId: String(corporationId),
+	private async hydrateStructureRows(
+		corporationId: string,
+		structures: EsiCorporationStructure[]
+	): Promise<
+		Array<{
+			ownerId: string
+			structureId: string
+			name: string
+			typeId: string
+			typeName: string | null
+			systemId: string
+			systemName: string | null
+			regionId: string | null
+			regionName: string | null
+			profileId: string
+			fuelExpires: Date | null
+			fuelAmount: number | null
+			nextReinforceApply: Date | null
+			nextReinforceHour: number | null
+			reinforceHour: number | null
+			state: string
+			stateTimerEnd: Date | null
+			stateTimerStart: Date | null
+			unanchorsAt: Date | null
+			lowPower: boolean
+			syncStatus: 'ok' | 'warning' | 'error'
+			syncFailureReason: string | null
+			lastSyncedAt: Date | null
+			services: Array<{ name: string; state: string }> | null
+			updatedAt: Date
+		}>
+	> {
+		if (structures.length === 0) {
+			return []
+		}
+
+		const tokenStore = getStub<EveTokenStore>(this.env.EVE_TOKEN_STORE, 'default')
+		const directorManager = new DirectorManager(
+			this.getDb(),
+			corporationId,
+			tokenStore,
+			this.onDirectorAffiliationMismatch.bind(this)
+		)
+		const director = await directorManager.selectDirector()
+		const characterId = director ? String(director.characterId) : null
+		const universe = getStub<Universe>(this.env.UNIVERSE, 'default')
+		const systemIds = [...new Set(structures.map((structure) => structure.system_id))]
+		const typeIds = [...new Set(structures.map((structure) => structure.type_id))]
+
+		const [systemsById, regionsBySystemId, typeNamesById, structureInfos] = await Promise.all([
+			systemIds.length > 0
+				? universe.resolveSolarSystemsByIds(systemIds)
+				: Promise.resolve({} as Record<string, UniverseSolarSystem | null>),
+			systemIds.length > 0
+				? universe.getRegionsBySystemIds(systemIds)
+				: Promise.resolve({} as Record<string, { regionId: string; regionName: string }>),
+			typeIds.length > 0
+				? tokenStore.resolveIds(typeIds)
+				: Promise.resolve({} as Record<string, string>),
+			characterId
+				? Promise.all(
+						structures.map(async (structure) => {
+							try {
+								return await universe.getStructureInfo(
+									structure.structure_id as EveStructureId,
+									characterId as EveCharacterId
+								)
+							} catch (error) {
+								logger.warn('[EveCorporationData] Failed to hydrate structure name', {
+									corporationId,
+									structureId: structure.structure_id,
+									error: error instanceof Error ? error.message : String(error),
+								})
+								return null
+							}
+						})
+					)
+				: Promise.resolve(structures.map(() => null)),
+		])
+
+		return structures.map((structure, index) => {
+			const structureInfo = structureInfos[index]
+			const system = systemsById[structure.system_id]
+			const region = regionsBySystemId[structure.system_id]
+			const lowPower = !structure.services?.some((service) => service.state === 'online')
+			const syncStatus: 'ok' | 'warning' | 'error' = structureInfo ? 'ok' : 'warning'
+			const syncFailureReason = structureInfo
+				? null
+				: 'Structure details could not be fully hydrated during sync'
+
+			return {
+				ownerId: String(structureInfo?.owner_id ?? corporationId),
 				structureId: structure.structure_id,
+				name: structureInfo?.name ?? structure.structure_id,
 				typeId: structure.type_id,
+				typeName: typeNamesById[structure.type_id] ?? null,
 				systemId: structure.system_id,
+				systemName: system?.solarSystemName ?? null,
+				regionId: region?.regionId ?? null,
+				regionName: region?.regionName ?? null,
 				profileId: structure.profile_id,
 				fuelExpires: structure.fuel_expires ? new Date(structure.fuel_expires) : null,
+				fuelAmount: null,
 				nextReinforceApply: structure.next_reinforce_apply
 					? new Date(structure.next_reinforce_apply)
 					: null,
@@ -1510,29 +1600,77 @@ export class EveCorporationDataDO extends DurableObject<Env> implements EveCorpo
 				stateTimerEnd: structure.state_timer_end ? new Date(structure.state_timer_end) : null,
 				stateTimerStart: structure.state_timer_start ? new Date(structure.state_timer_start) : null,
 				unanchorsAt: structure.unanchors_at ? new Date(structure.unanchors_at) : null,
+				lowPower,
+				syncStatus,
+				syncFailureReason,
+				lastSyncedAt: new Date(),
 				services: structure.services || null,
 				updatedAt: new Date(),
-			}))
+			}
+		})
+	}
+
+	/**
+	 * Store structures (workflow-friendly)
+	 */
+	async storeStructures(corporationId: string, structures: any[]): Promise<void> {
+		const hydratedStructures = await this.hydrateStructureRows(
+			corporationId,
+			structures as EsiCorporationStructure[]
+		)
+		const structureIds = hydratedStructures.map((structure) => structure.structureId)
+		if (structureIds.length === 0) {
+			await this.getDb()
+				.delete(corporationStructures)
+				.where(eq(corporationStructures.ownerId, corporationId))
+			return
+		}
+		const BATCH_SIZE = 10
+
+		for (let i = 0; i < hydratedStructures.length; i += BATCH_SIZE) {
+			const batch = hydratedStructures.slice(i, i + BATCH_SIZE)
 
 			await this.getDb()
 				.insert(corporationStructures)
-				.values(valuesToInsert)
+				.values(batch)
 				.onConflictDoUpdate({
-					target: [corporationStructures.corporationId, corporationStructures.structureId],
+					target: [corporationStructures.ownerId, corporationStructures.structureId],
 					set: {
-						state: sql`excluded.state`,
+						name: sql`excluded.name`,
+						typeId: sql`excluded.type_id`,
+						typeName: sql`excluded.type_name`,
+						systemId: sql`excluded.system_id`,
+						systemName: sql`excluded.system_name`,
+						regionId: sql`excluded.region_id`,
+						regionName: sql`excluded.region_name`,
+						profileId: sql`excluded.profile_id`,
 						fuelExpires: sql`excluded.fuel_expires`,
+						fuelAmount: sql`excluded.fuel_amount`,
 						nextReinforceApply: sql`excluded.next_reinforce_apply`,
 						nextReinforceHour: sql`excluded.next_reinforce_hour`,
 						reinforceHour: sql`excluded.reinforce_hour`,
+						state: sql`excluded.state`,
 						stateTimerEnd: sql`excluded.state_timer_end`,
 						stateTimerStart: sql`excluded.state_timer_start`,
 						unanchorsAt: sql`excluded.unanchors_at`,
+						lowPower: sql`excluded.low_power`,
+						syncStatus: sql`excluded.sync_status`,
+						syncFailureReason: sql`excluded.sync_failure_reason`,
+						lastSyncedAt: sql`excluded.last_synced_at`,
 						services: sql`excluded.services`,
 						updatedAt: sql`excluded.updated_at`,
 					},
 				})
 		}
+
+		await this.getDb()
+			.delete(corporationStructures)
+			.where(
+				and(
+					eq(corporationStructures.ownerId, corporationId),
+					notInArray(corporationStructures.structureId, structureIds)
+				)
+			)
 	}
 
 	/**
@@ -2386,49 +2524,7 @@ export class EveCorporationDataDO extends DurableObject<Env> implements EveCorpo
 			characterId
 		)
 
-		// Batch insert to prevent timeouts
-		const BATCH_SIZE = 10 // Structures have more fields, use smaller batch
-		for (let i = 0; i < structures.length; i += BATCH_SIZE) {
-			const batch = structures.slice(i, i + BATCH_SIZE)
-			const valuesToInsert = batch.map((structure) => ({
-				corporationId: String(corporationId),
-				structureId: structure.structure_id,
-				typeId: structure.type_id,
-				systemId: structure.system_id,
-				profileId: structure.profile_id,
-				fuelExpires: structure.fuel_expires ? new Date(structure.fuel_expires) : null,
-				nextReinforceApply: structure.next_reinforce_apply
-					? new Date(structure.next_reinforce_apply)
-					: null,
-				nextReinforceHour: structure.next_reinforce_hour ?? null,
-				reinforceHour: structure.reinforce_hour ?? null,
-				state: structure.state,
-				stateTimerEnd: structure.state_timer_end ? new Date(structure.state_timer_end) : null,
-				stateTimerStart: structure.state_timer_start ? new Date(structure.state_timer_start) : null,
-				unanchorsAt: structure.unanchors_at ? new Date(structure.unanchors_at) : null,
-				services: structure.services || null,
-				updatedAt: new Date(),
-			}))
-
-			await this.getDb()
-				.insert(corporationStructures)
-				.values(valuesToInsert)
-				.onConflictDoUpdate({
-					target: [corporationStructures.corporationId, corporationStructures.structureId],
-					set: {
-						state: sql`excluded.state`,
-						fuelExpires: sql`excluded.fuel_expires`,
-						nextReinforceApply: sql`excluded.next_reinforce_apply`,
-						nextReinforceHour: sql`excluded.next_reinforce_hour`,
-						reinforceHour: sql`excluded.reinforce_hour`,
-						stateTimerEnd: sql`excluded.state_timer_end`,
-						stateTimerStart: sql`excluded.state_timer_start`,
-						unanchorsAt: sql`excluded.unanchors_at`,
-						services: sql`excluded.services`,
-						updatedAt: sql`excluded.updated_at`,
-					},
-				})
-		}
+		await this.storeStructures(corporationId, structures)
 	}
 
 	/**
@@ -2812,6 +2908,14 @@ export class EveCorporationDataDO extends DurableObject<Env> implements EveCorpo
 				logger.error('Structures fetch failed:', e.message)
 			),
 		])
+	}
+
+	/**
+	 * Fetch corporation structures
+	 */
+	async fetchStructures(corporationId: string, forceRefresh = false): Promise<void> {
+		this.assertNonNpcCorporation(corporationId)
+		await this.fetchAndStoreStructures(corporationId, forceRefresh)
 	}
 
 	/**
@@ -3707,19 +3811,47 @@ export class EveCorporationDataDO extends DurableObject<Env> implements EveCorpo
 	/**
 	 * Get corporation structures
 	 */
-	async getStructures(corporationId: string): Promise<CorporationStructureData[]> {
+	async getStructures(
+		corporationId: string,
+		filters?: CorporationStructureQuery
+	): Promise<CorporationStructureData[]> {
+		const conditions = [eq(corporationStructures.ownerId, corporationId)]
+		if (filters?.lowPower === 'true') {
+			conditions.push(eq(corporationStructures.lowPower, true))
+		} else if (filters?.lowPower === 'false') {
+			conditions.push(eq(corporationStructures.lowPower, false))
+		}
+		if (filters?.regionId) {
+			conditions.push(eq(corporationStructures.regionId, filters.regionId))
+		}
+		if (filters?.systemId) {
+			conditions.push(eq(corporationStructures.systemId, filters.systemId))
+		}
+		if (filters?.state) {
+			conditions.push(eq(corporationStructures.state, filters.state))
+		}
+		if (filters?.typeId) {
+			conditions.push(eq(corporationStructures.typeId, filters.typeId))
+		}
+
 		const results = await this.getDb().query.corporationStructures.findMany({
-			where: eq(corporationStructures.corporationId, corporationId),
+			where: conditions.length > 1 ? and(...conditions) : conditions[0],
 		})
 
 		return results.map((r) => ({
 			id: r.id,
-			corporationId: r.corporationId,
+			ownerId: r.ownerId,
 			structureId: r.structureId,
+			name: r.name,
 			typeId: r.typeId,
+			typeName: r.typeName,
 			systemId: r.systemId,
+			systemName: r.systemName,
+			regionId: r.regionId,
+			regionName: r.regionName,
 			profileId: r.profileId,
 			fuelExpires: r.fuelExpires,
+			fuelAmount: r.fuelAmount,
 			nextReinforceApply: r.nextReinforceApply,
 			nextReinforceHour: r.nextReinforceHour,
 			reinforceHour: r.reinforceHour,
@@ -3727,6 +3859,10 @@ export class EveCorporationDataDO extends DurableObject<Env> implements EveCorpo
 			stateTimerEnd: r.stateTimerEnd,
 			stateTimerStart: r.stateTimerStart,
 			unanchorsAt: r.unanchorsAt,
+			lowPower: r.lowPower,
+			syncStatus: r.syncStatus,
+			syncFailureReason: r.syncFailureReason,
+			lastSyncedAt: r.lastSyncedAt,
 			services: r.services,
 			updatedAt: r.updatedAt,
 		}))
@@ -3742,7 +3878,7 @@ export class EveCorporationDataDO extends DurableObject<Env> implements EveCorpo
 		// Get structure from database
 		const structure = await this.getDb().query.corporationStructures.findFirst({
 			where: and(
-				eq(corporationStructures.corporationId, corporationId),
+				eq(corporationStructures.ownerId, corporationId),
 				eq(corporationStructures.structureId, structureId)
 			),
 		})
@@ -3774,72 +3910,51 @@ export class EveCorporationDataDO extends DurableObject<Env> implements EveCorpo
 
 		const characterId = String(director.characterId)
 
-		// Get structure info and resolve names in parallel
-		const [structureInfo, resolvedNames] = await Promise.all([
+		// Get the remaining live structure info we do not store directly.
+		const structureInfo = await (async () => {
 			// Get structure info from Universe service
-			(async () => {
-				try {
-					const universe = await getStub<Universe>(this.env.UNIVERSE, 'default')
-					return await universe.getStructureInfo(
-						structureId as EveStructureId,
-						characterId as EveCharacterId
-					)
-				} catch (error) {
-					logger.error('[EveCorporationData] Failed to get structure info', {
-						structureId,
-						error: error instanceof Error ? error.message : String(error),
-					})
-					return null
-				}
-			})(),
-			// Resolve system name from EveTokenStore
-			(async () => {
-				try {
-					const tokenStore = await getStub<EveTokenStore>(this.env.EVE_TOKEN_STORE, 'default')
-					return await tokenStore.resolveIds([structure.systemId])
-				} catch (error) {
-					logger.error('[EveCorporationData] Failed to resolve location name', {
-						systemId: structure.systemId,
-						error: error instanceof Error ? error.message : String(error),
-					})
-					return {}
-				}
-			})(),
-		])
+			try {
+				const universe = await getStub<Universe>(this.env.UNIVERSE, 'default')
+				return await universe.getStructureInfo(
+					structureId as EveStructureId,
+					characterId as EveCharacterId
+				)
+			} catch (error) {
+				logger.error('[EveCorporationData] Failed to get structure info', {
+					structureId,
+					error: error instanceof Error ? error.message : String(error),
+				})
+				return null
+			}
+		})()
 
 		if (!structureInfo) {
 			return null
 		}
 
-		// Resolve type and owner names
-		const [typeAndOwnerNames] = await Promise.all([
-			(async () => {
-				try {
-					const tokenStore = await getStub<EveTokenStore>(this.env.EVE_TOKEN_STORE, 'default')
-					const idsToResolve = [structureInfo.type_id, structureInfo.owner_id].filter(
-						Boolean
-					) as string[]
-					if (idsToResolve.length === 0) {
-						return {}
-					}
-					return await tokenStore.resolveIds(idsToResolve)
-				} catch (error) {
-					logger.error('[EveCorporationData] Failed to resolve type and owner names', {
-						typeId: structureInfo.type_id,
-						ownerId: structureInfo.owner_id,
-						error: error instanceof Error ? error.message : String(error),
-					})
-					return {}
-				}
-			})(),
-		])
+		const ownerNames = await (async () => {
+			try {
+				const tokenStore = await getStub<EveTokenStore>(this.env.EVE_TOKEN_STORE, 'default')
+				return await tokenStore.resolveIds([structure.ownerId])
+			} catch (error) {
+				logger.error('[EveCorporationData] Failed to resolve owner name', {
+					ownerId: structure.ownerId,
+					error: error instanceof Error ? error.message : String(error),
+				})
+				return {}
+			}
+		})()
 
-		// Return union of all three ESI lookups
+		// Return union of stored structure snapshot and live position metadata.
 		return {
-			...structureInfo,
-			systemName: resolvedNames[structure.systemId] ?? null,
-			typeName: typeAndOwnerNames[structureInfo.type_id] ?? null,
-			ownerName: typeAndOwnerNames[structureInfo.owner_id] ?? null,
+			name: structure.name,
+			owner_id: structure.ownerId,
+			type_id: structure.typeId,
+			position: structureInfo.position,
+			solar_system_id: structureInfo.solar_system_id,
+			systemName: structure.systemName,
+			typeName: structure.typeName,
+			ownerName: ownerNames[structure.ownerId] ?? null,
 		}
 	}
 

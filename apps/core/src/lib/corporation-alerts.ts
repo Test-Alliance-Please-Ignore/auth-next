@@ -1,32 +1,25 @@
 import type { DiscordEmbed, MessageContent } from '@repo/discord'
 
+import {
+	ALERT_DESTINATION_TYPES,
+	type AlertDestinationRecord,
+	type AlertDestinationType,
+	type AlertRegistryEntry,
+	type AlertTypeDefinition,
+} from './alert-routing'
+
 export const CORPORATION_ALERT_TYPES = ['corp_application_submitted'] as const
 export type CorporationAlertType = (typeof CORPORATION_ALERT_TYPES)[number]
 
-export const CORPORATION_ALERT_DESTINATION_TYPES = ['discord_channel', 'discord_user'] as const
-export type CorporationAlertDestinationType = (typeof CORPORATION_ALERT_DESTINATION_TYPES)[number]
+export const CORPORATION_ALERT_DESTINATION_TYPES = ALERT_DESTINATION_TYPES
+export type CorporationAlertDestinationType = AlertDestinationType
 
-export interface CorporationAlertTypeDefinition {
+export interface CorporationAlertTypeDefinition extends AlertTypeDefinition<CorporationAlertType> {
 	type: CorporationAlertType
-	label: string
-	description: string
-	supportedDestinationTypes: CorporationAlertDestinationType[]
 }
 
-export interface CorporationAlertDestinationRecord {
-	id: string
+export interface CorporationAlertDestinationRecord extends AlertDestinationRecord {
 	corporationId: string
-	alertType: string
-	destinationType: string
-	discordServerId: string | null
-	channelId: string | null
-	coreUserId: string | null
-	destinationConfig: Record<string, unknown>
-	isEnabled: boolean
-	createdBy: string | null
-	updatedBy: string | null
-	createdAt: Date
-	updatedAt: Date
 }
 
 export interface CorporationAlertApplicationSubmittedPayload {
@@ -49,7 +42,7 @@ const ALERT_TYPE_DEFINITIONS: CorporationAlertTypeDefinition[] = [
 		type: 'corp_application_submitted',
 		label: 'Corporation Application Submitted',
 		description: 'Sent when a new HR application is submitted to this corporation.',
-		supportedDestinationTypes: ['discord_channel', 'discord_user'],
+		supportedDestinationTypes: ['discord_channel', 'discord_user', 'group'],
 	},
 ]
 
@@ -119,4 +112,4 @@ export const corporationAlertRegistry = {
 		definition: ALERT_TYPE_DEFINITIONS[0],
 		buildMessage: buildCorporationApplicationSubmittedMessage,
 	},
-} as const
+} satisfies Record<CorporationAlertType, AlertRegistryEntry<CorporationAlertApplicationSubmittedPayload>>

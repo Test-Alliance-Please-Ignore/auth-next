@@ -1,28 +1,18 @@
+import { formatDurationBetween as formatDurationBetweenShared, formatDurationMs } from '@/lib/duration-utils'
+
 /**
  * Format a duration in milliseconds as a short human-readable string.
  * Examples: "12s", "4m 30s", "1h 23m", "2d 4h".
  */
 export function formatDuration(ms: number): string {
-	if (ms < 0) ms = 0
-	const totalSeconds = Math.floor(ms / 1000)
-	const days = Math.floor(totalSeconds / 86_400)
-	const hours = Math.floor((totalSeconds % 86_400) / 3600)
-	const minutes = Math.floor((totalSeconds % 3600) / 60)
-	const seconds = totalSeconds % 60
-
-	if (days > 0) return `${days}d ${hours}h`
-	if (hours > 0) return `${hours}h ${minutes}m`
-	if (minutes > 0) return `${minutes}m ${seconds}s`
-	return `${seconds}s`
+	return formatDurationMs(ms, { maxUnits: 2, style: 'short' })
 }
 
 /**
  * Format a duration between two ISO timestamps; uses "now" if endIso is null.
  */
 export function formatDurationBetween(startIso: string, endIso: string | null): string {
-	const start = new Date(startIso).getTime()
-	const end = endIso ? new Date(endIso).getTime() : Date.now()
-	return formatDuration(end - start)
+	return formatDurationBetweenShared(startIso, endIso, { maxUnits: 2, style: 'short' })
 }
 
 /**

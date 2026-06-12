@@ -14,6 +14,7 @@ import { triggerDiscordRefreshWorkflow, triggerUserRefreshWorkflow } from './lib
 import { csrfProtection } from './middleware/csrf'
 import { sessionMiddleware } from './middleware/session'
 import adminRoutes from './routes/admin'
+import adminStructuresRoutes from './routes/admin/structures'
 import authRoutes from './routes/auth'
 import billsAdminRoutes from './routes/bills-admin'
 import billsUserRoutes from './routes/bills-user'
@@ -46,6 +47,7 @@ import flagsRoutes from './routes/flags'
 import { moonScanRoutes } from './routes/moon-scan'
 import pastesRoutes, { publicPasteRoutes } from './routes/pastes'
 import srpRoutes from './routes/srp'
+import structuresRoutes from './routes/structures'
 import usersRoutes from './routes/users'
 import universeRoutes from './routes/universe'
 import { CoreRpcService } from './services/core-rpc.service'
@@ -106,6 +108,7 @@ const app = new Hono<App>()
 
 	// API routes - mounted under /api prefix
 	.route('/api/admin', adminRoutes)
+	.route('/api/admin/structures', adminStructuresRoutes)
 	.route('/api/admin/bills', billsAdminRoutes) // Admin bills API
 	.route('/api/admin', industryAdminRoutes) // Admin industry API
 	.route('/api/auth', authRoutes)
@@ -134,6 +137,7 @@ const app = new Hono<App>()
 	.route('/api/flags', flagsRoutes)
 	.route('/api/srp', srpRoutes)
 	.route('/api/moon-scan', moonScanRoutes)
+	.route('/api/structures', structuresRoutes)
 	.route('/api/bills', billsUserRoutes)
 	.route('/api/session', sessionRoutes)
 	.route('/api/pastes', pastesRoutes)

@@ -83,6 +83,11 @@ export function AdminNav({ onNavigate }: AdminNavProps) {
 			icon: Building2,
 		},
 		{
+			label: 'Structures',
+			href: '/admin/structures',
+			icon: Building2,
+		},
+		{
 			label: 'Discord',
 			href: '/admin/discord',
 			icon: MessageSquare,

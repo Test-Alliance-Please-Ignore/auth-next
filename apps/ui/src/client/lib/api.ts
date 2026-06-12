@@ -545,7 +545,7 @@ export interface CorporationDiscordServer {
 	}>
 }
 
-export type CorporationAlertDestinationType = 'discord_channel' | 'discord_user'
+export type CorporationAlertDestinationType = 'discord_channel' | 'discord_user' | 'group'
 
 export interface CorporationAlertTypeDefinition {
 	type: string
@@ -556,12 +556,15 @@ export interface CorporationAlertTypeDefinition {
 
 export interface CorporationAlertDestination {
 	id: string
-	corporationId: string
+	corporationId?: string | null
+	scopeType?: 'corporation' | 'structure_group'
+	scopeId?: string
 	alertType: string
 	destinationType: CorporationAlertDestinationType | string
 	discordServerId: string | null
 	channelId: string | null
 	coreUserId: string | null
+	groupId?: string | null
 	destinationConfig: Record<string, unknown>
 	isEnabled: boolean
 	createdBy: string | null
@@ -581,8 +584,126 @@ export interface CreateCorporationAlertDestinationRequest {
 	discordServerId?: string | null
 	channelId?: string | null
 	coreUserId?: string | null
+	groupId?: string | null
 	destinationConfig?: Record<string, unknown>
 	isEnabled?: boolean
+}
+
+export type StructurePermissionRole = 'viewer' | 'manager' | 'sensitive'
+export type StructureListSortBy =
+	| 'updatedAt'
+	| 'nextStateAt'
+	| 'fuel'
+	| 'name'
+	| 'corporation'
+	| 'region'
+	| 'system'
+	| 'type'
+	| 'state'
+export type StructureListSortDirection = 'asc' | 'desc'
+
+export interface StructureListQuery {
+	page?: number
+	pageSize?: number
+	corporationId?: string
+	assignedGroupId?: string
+	lowPower?: 'true' | 'false'
+	lowPowerAllowed?: 'true' | 'false'
+	regionId?: string
+	systemId?: string
+	state?: string
+	typeId?: string
+	sortBy?: StructureListSortBy
+	sortDirection?: StructureListSortDirection
+}
+
+export interface StructureListFilterOption {
+	value: string
+	label: string
+}
+
+export interface StructureListFilterOptions {
+	corporations: StructureListFilterOption[]
+	assignedGroups: StructureListFilterOption[]
+	regions: StructureListFilterOption[]
+	systems: StructureListFilterOption[]
+	states: StructureListFilterOption[]
+	types: StructureListFilterOption[]
+}
+
+export interface StructureListSummary {
+	total: number
+	lowFuel: number
+	lowPower: number
+	reinforced: number
+}
+
+export interface StructureListItem {
+	structureId: string
+	ownerId: string
+	corporationName: string
+	name: string
+	typeId: string
+	typeName: string | null
+	systemId: string
+	systemName: string | null
+	regionId: string | null
+	regionName: string | null
+	profileId: string
+	state: string
+	nextStateAt: string | null
+	fuelExpires: string | null
+	fuelAmount: number | null
+	lowPower: boolean
+	hidden: boolean
+	lowPowerAllowed: boolean
+	assignedGroupId: string | null
+	syncStatus: 'ok' | 'warning' | 'error'
+	syncFailureReason: string | null
+	lastSyncedAt: string | null
+	updatedAt: string
+	canViewSensitive: boolean
+	canEdit: boolean
+}
+
+export interface StructureDetailResult extends StructureListItem {
+	stateTimerStart: string | null
+	stateTimerEnd: string | null
+	unanchorsAt: string | null
+	nextReinforceApply: string | null
+	nextReinforceHour: number | null
+	reinforceHour: number | null
+}
+
+export interface StructureListResponse {
+	items: StructureListItem[]
+	pagination: {
+		page: number
+		pageSize: number
+		totalCount: number
+		totalPages: number
+		hasNextPage: boolean
+		hasPreviousPage: boolean
+	}
+	filterOptions: StructureListFilterOptions
+	summary: StructureListSummary
+}
+
+export interface UpdateStructureConfigRequest {
+	hidden?: boolean
+	lowPowerAllowed?: boolean
+	assignedGroupId?: string | null
+}
+
+export interface StructureModuleConfig {
+	id: string
+	lowFuelTimeThresholdHours: number
+	criticalFuelTimeThresholdHours: number
+	lowFuelAmountThreshold: number
+	criticalFuelAmountThreshold: number
+	updatedBy: string | null
+	createdAt: string
+	updatedAt: string
 }
 
 export interface UpdateCorporationAlertDestinationRequest {
@@ -591,7 +712,86 @@ export interface UpdateCorporationAlertDestinationRequest {
 	discordServerId?: string | null
 	channelId?: string | null
 	coreUserId?: string | null
+	groupId?: string | null
 	destinationConfig?: Record<string, unknown>
+	isEnabled?: boolean
+}
+
+export interface StructureAlertTypeDefinition {
+	type: string
+	label: string
+	description: string
+	supportedDestinationTypes: CorporationAlertDestinationType[]
+}
+
+export interface StructureGroupSetting {
+	id: string
+	groupId: string
+	createdBy: string | null
+	updatedBy: string | null
+	createdAt: string
+	updatedAt: string
+}
+
+export interface StructureCorporationGroupDefault {
+	corporationId: string
+	groupId: string | null
+	updatedBy: string | null
+	createdAt: string
+	updatedAt: string
+}
+
+export interface StructureGroupAlertConfig {
+	id: string
+	groupId: string
+	alertType: string
+	destinationIds: string[]
+	config: Record<string, unknown>
+	isEnabled: boolean
+	createdAt: string
+	updatedAt: string
+}
+
+export interface CreateStructureAlertDestinationRequest {
+	alertType: string
+	destinationType: CorporationAlertDestinationType | string
+	discordServerId?: string | null
+	channelId?: string | null
+	coreUserId?: string | null
+	groupId?: string | null
+	destinationConfig?: Record<string, unknown>
+	isEnabled?: boolean
+}
+
+export interface UpdateStructureAlertDestinationRequest {
+	alertType?: string
+	destinationType?: CorporationAlertDestinationType | string
+	discordServerId?: string | null
+	channelId?: string | null
+	coreUserId?: string | null
+	groupId?: string | null
+	destinationConfig?: Record<string, unknown>
+	isEnabled?: boolean
+}
+
+export interface UpdateStructureModuleConfigRequest {
+	lowFuelTimeThresholdHours?: number
+	criticalFuelTimeThresholdHours?: number
+	lowFuelAmountThreshold?: number
+	criticalFuelAmountThreshold?: number
+}
+
+export interface CreateStructureGroupAlertConfigRequest {
+	alertType: string
+	destinationIds: string[]
+	config?: Record<string, unknown>
+	isEnabled?: boolean
+}
+
+export interface UpdateStructureGroupAlertConfigRequest {
+	alertType?: string
+	destinationIds?: string[]
+	config?: Record<string, unknown>
 	isEnabled?: boolean
 }
 
@@ -2421,6 +2621,124 @@ export class ApiClient {
 		destinationId: string
 	): Promise<{ success: boolean }> {
 		return this.delete(`/corporations/${corporationId}/alerts/${destinationId}`)
+	}
+
+	async getAdminStructureAlertTypes(): Promise<StructureAlertTypeDefinition[]> {
+		return this.get('/admin/structures/alert-types')
+	}
+
+	async getAdminStructureGroupSettings(): Promise<StructureGroupSetting[]> {
+		return this.get('/admin/structures/group-settings')
+	}
+
+	async updateAdminStructureGroupSetting(groupId: string): Promise<StructureGroupSetting> {
+		return this.patch(`/admin/structures/group-settings/${groupId}`, {})
+	}
+
+	async deleteAdminStructureGroupSetting(groupId: string): Promise<{ success: boolean }> {
+		return this.delete(`/admin/structures/group-settings/${groupId}`)
+	}
+
+	async getAdminStructureCorporationDefaults(): Promise<StructureCorporationGroupDefault[]> {
+		return this.get('/admin/structures/corporation-defaults')
+	}
+
+	async updateAdminStructureCorporationDefault(
+		corporationId: string,
+		data: { groupId: string | null }
+	): Promise<StructureCorporationGroupDefault> {
+		return this.patch(`/admin/structures/corporation-defaults/${corporationId}`, data)
+	}
+
+	async getAdminStructureAlertDestinations(groupId: string): Promise<CorporationAlertDestination[]> {
+		return this.get(`/admin/structures/groups/${groupId}/destinations`)
+	}
+
+	async createAdminStructureAlertDestination(
+		groupId: string,
+		data: CreateStructureAlertDestinationRequest
+	): Promise<CorporationAlertDestination> {
+		return this.post(`/admin/structures/groups/${groupId}/destinations`, data)
+	}
+
+	async updateAdminStructureAlertDestination(
+		groupId: string,
+		destinationId: string,
+		data: UpdateStructureAlertDestinationRequest
+	): Promise<CorporationAlertDestination> {
+		return this.put(`/admin/structures/groups/${groupId}/destinations/${destinationId}`, data)
+	}
+
+	async deleteAdminStructureAlertDestination(
+		groupId: string,
+		destinationId: string
+	): Promise<{ success: boolean }> {
+		return this.delete(`/admin/structures/groups/${groupId}/destinations/${destinationId}`)
+	}
+
+	async getAdminStructureAlertConfigs(groupId: string): Promise<StructureGroupAlertConfig[]> {
+		return this.get(`/admin/structures/groups/${groupId}/alert-configs`)
+	}
+
+	async createAdminStructureAlertConfig(
+		groupId: string,
+		data: CreateStructureGroupAlertConfigRequest
+	): Promise<StructureGroupAlertConfig> {
+		return this.post(`/admin/structures/groups/${groupId}/alert-configs`, data)
+	}
+
+	async updateAdminStructureAlertConfig(
+		groupId: string,
+		configId: string,
+		data: UpdateStructureGroupAlertConfigRequest
+	): Promise<StructureGroupAlertConfig> {
+		return this.put(`/admin/structures/groups/${groupId}/alert-configs/${configId}`, data)
+	}
+
+	async deleteAdminStructureAlertConfig(
+		groupId: string,
+		configId: string
+	): Promise<{ success: boolean }> {
+		return this.delete(`/admin/structures/groups/${groupId}/alert-configs/${configId}`)
+	}
+
+	async getStructures(query: StructureListQuery = {}): Promise<StructureListResponse> {
+		const params = new URLSearchParams()
+		if (query.page) params.set('page', String(query.page))
+		if (query.pageSize) params.set('pageSize', String(query.pageSize))
+		if (query.corporationId) params.set('corporationId', query.corporationId)
+		if (query.assignedGroupId) params.set('assignedGroupId', query.assignedGroupId)
+		if (query.lowPower) params.set('lowPower', query.lowPower)
+		if (query.lowPowerAllowed) params.set('lowPowerAllowed', query.lowPowerAllowed)
+		if (query.regionId) params.set('regionId', query.regionId)
+		if (query.systemId) params.set('systemId', query.systemId)
+		if (query.state) params.set('state', query.state)
+		if (query.typeId) params.set('typeId', query.typeId)
+		if (query.sortBy) params.set('sortBy', query.sortBy)
+		if (query.sortDirection) params.set('sortDirection', query.sortDirection)
+		const queryString = params.toString()
+		return this.get(`/structures${queryString ? `?${queryString}` : ''}`)
+	}
+
+	async getStructure(structureId: string): Promise<StructureDetailResult> {
+		return this.get(`/structures/${structureId}`)
+	}
+
+	async updateStructureConfig(
+		structureId: string,
+		data: UpdateStructureConfigRequest
+	): Promise<StructureDetailResult> {
+		return this.patch(`/structures/${structureId}/config`, data)
+	}
+
+	async getStructureModuleConfig(): Promise<StructureModuleConfig> {
+		return this.get('/structures/config')
+	}
+
+	async updateStructureModuleConfig(
+		data: UpdateStructureModuleConfigRequest
+	): Promise<StructureModuleConfig> {
+		return this.patch('/structures/config', data)
 	}
 
 	// ===== Directors API Methods =====

@@ -165,6 +165,10 @@
 			"service": "admin"
 		},
 		{
+			"binding": "STRUCTURES",
+			"service": "structures"
+		},
+		{
 			"binding": "PASTE",
 			"service": "paste",
 			"entrypoint": "PasteWorkerEntrypoint"

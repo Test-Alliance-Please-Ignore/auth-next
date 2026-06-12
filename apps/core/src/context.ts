@@ -65,6 +65,8 @@ export type Env = SharedHonoEnv & {
 	ESI_TYPE_RESOLVER: DurableObjectNamespace
 	/** Industry Durable Object binding */
 	INDUSTRY: DurableObjectNamespace
+	/** Structures worker service binding */
+	STRUCTURES: Fetcher
 	/** Fulcrum (Character Reports) Durable Object binding */
 	FULCRUM: DurableObjectNamespace
 	/** Legacy migration Durable Object binding */

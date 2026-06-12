@@ -65,6 +65,9 @@ const HrAuditorUserGroupsPage = lazy(
 )
 const HrLegacyHistoryPage = lazy(() => import('./routes/hr-legacy-history'))
 const HrLegacyHistoryDetailPage = lazy(() => import('./routes/hr-legacy-history-detail'))
+const StructuresPage = lazy(() => import('./routes/structures'))
+const StructuresDetailPage = lazy(() => import('./routes/structures-detail'))
+const StructuresConfigPage = lazy(() => import('./routes/structures-config'))
 
 // Lazy load the Skill Plans feature for code splitting
 const TrackingSessionsList = lazy(
@@ -236,6 +239,30 @@ export default function App() {
 							<Route path="/character/:characterId" element={<CharacterDetailPage />} />
 							<Route path="/groups" element={<GroupsPage />} />
 							<Route path="/groups/:groupId" element={<GroupDetailPage />} />
+							<Route
+								path="/structures"
+								element={
+									<Suspense fallback={<LoadingPage />}>
+										<StructuresPage />
+									</Suspense>
+								}
+							/>
+							<Route
+								path="/structures/:structureId"
+								element={
+									<Suspense fallback={<LoadingPage />}>
+										<StructuresDetailPage />
+									</Suspense>
+								}
+							/>
+							<Route
+								path="/structures/settings"
+								element={
+									<Suspense fallback={<LoadingPage />}>
+										<StructuresConfigPage />
+									</Suspense>
+								}
+							/>
 							<Route path="/my-groups" element={<MyGroupsPage />} />
 							<Route path="/pastes" element={<PastesPage />} />
 							<Route path="/pastes/:id/edit" element={<PasteEditPage />} />

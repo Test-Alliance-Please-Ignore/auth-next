@@ -1,0 +1,27 @@
+{
+	"$schema": "node_modules/wrangler/config-schema.json",
+	"name": "structures",
+	"main": "src/index.ts",
+	"compatibility_date": "2025-04-28",
+	"compatibility_flags": ["nodejs_compat"],
+	"routes": [],
+	"logpush": false,
+	"workers_dev": false,
+	"observability": {
+		"enabled": true
+	},
+	"vars": {
+		"NAME": "structures",
+		"ENVIRONMENT": "production",
+		"SENTRY_RELEASE": "unknown"
+	},
+	"durable_objects": {
+		"bindings": [
+			{
+				"name": "EVE_CORPORATION_DATA",
+				"class_name": "EveCorporationData",
+				"script_name": "eve-corporation-data"
+			}
+		]
+	}
+}
