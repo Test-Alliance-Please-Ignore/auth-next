@@ -13,6 +13,11 @@ const serviceMocks = vi.hoisted(() => ({
 	waitUntilWithTelemetry: vi.fn((_: unknown, __: string, task: () => Promise<unknown>) => {
 		void task()
 	}),
+	submitApplication: vi.fn().mockResolvedValue({
+		id: 'app-1',
+		createdAt: new Date('2026-06-11T12:00:00.000Z'),
+		isFirstApplication: true,
+	}),
 }))
 
 vi.mock('@repo/do-utils', () => ({
@@ -102,11 +107,7 @@ describe('HR application submission alerts', () => {
 		vi.clearAllMocks()
 		getStubMock.mockImplementation(() => {
 			return {
-				submitApplication: vi.fn().mockResolvedValue({
-					id: 'app-1',
-					createdAt: new Date('2026-06-11T12:00:00.000Z'),
-					isFirstApplication: true,
-				}),
+				submitApplication: serviceMocks.submitApplication,
 			}
 		})
 		serviceMocks.dispatchCorporationAlert.mockResolvedValue({
@@ -139,6 +140,14 @@ describe('HR application submission alerts', () => {
 		)
 
 		expect(response.status).toBe(201)
+		expect(serviceMocks.submitApplication).toHaveBeenCalledWith(
+			'user-1',
+			'main-1',
+			'corp-1',
+			'Let me in.',
+			'Main Pilot',
+			['alt-1']
+		)
 		expect(serviceMocks.waitUntilWithTelemetry).toHaveBeenCalled()
 		expect(serviceMocks.dispatchCorporationAlert).toHaveBeenCalledWith(
 			expect.anything(),
