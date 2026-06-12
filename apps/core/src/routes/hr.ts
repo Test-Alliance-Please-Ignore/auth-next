@@ -11,7 +11,9 @@ import {
 	hasHrAuditorPermission as hasHrAuditorPermissionForUser,
 	resolveHrAccessState,
 } from '../lib/hr-access'
+import { waitUntilWithTelemetry } from '../lib/background-task'
 import { getIpHashMatches, getUserIpHistory } from '../lib/ip-history'
+import { dispatchCorporationAlert } from '../services/corporation-alerts.service'
 import { validatePagination } from '../lib/validation'
 import { requireAdmin, requireAuth } from '../middleware/session'
 
@@ -297,7 +299,12 @@ async function getHrRoleManagementAccess(
  */
 app.post('/applications', requireAuth(), async (c) => {
 	const user = c.get('user')!
+	const db = c.get('db')
 	const { characterId, corporationId, applicationText, altCharacterIds } = await c.req.json()
+
+	if (!db) {
+		return c.json({ error: 'Database not available' }, 500)
+	}
 
 	// Validate character ownership
 	const ownsCharacter = user.characters.some((char) => char.characterId === characterId)
@@ -319,6 +326,12 @@ app.post('/applications', requireAuth(), async (c) => {
 	}
 
 	const characterName = getCharacterName(user, characterId)
+	const corporation = await db.query.managedCorporations.findFirst({
+		where: eq(managedCorporations.corporationId, corporationId),
+		columns: {
+			name: true,
+		},
+	})
 
 	try {
 		const hr = getHrStub(c)
@@ -329,6 +342,28 @@ app.post('/applications', requireAuth(), async (c) => {
 			applicationText,
 			characterName,
 			validAltIds
+		)
+
+		waitUntilWithTelemetry(
+			c.executionCtx,
+			'hr-application-submitted-alert',
+			async () => {
+				await dispatchCorporationAlert(c.env, db, {
+					corporationId,
+					alertType: 'corp_application_submitted',
+					payload: {
+						applicationId: application.id,
+						corporationId,
+						corporationName: corporation?.name ?? corporationId,
+						applicantCharacterId: characterId,
+						applicantCharacterName: characterName,
+						altCharacterCount: validAltIds.length,
+						isFirstApplication: application.isFirstApplication ?? false,
+						submittedAt: application.createdAt.toISOString(),
+					},
+				})
+			},
+			{ corporationId, applicationId: application.id, characterId, userId: user.id }
 		)
 
 		return c.json(application, 201)

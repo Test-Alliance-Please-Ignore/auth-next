@@ -239,6 +239,13 @@
       "when": 1777698988442,
       "tag": "0033_hot_queen_noir",
       "breakpoints": true
+    },
+    {
+      "idx": 34,
+      "version": "7",
+      "when": 1781224998664,
+      "tag": "0034_hard_wallflower",
+      "breakpoints": true
     }
   ]
 }
