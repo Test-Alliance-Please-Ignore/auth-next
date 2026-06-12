@@ -25,6 +25,7 @@ import AdminBroadcastTemplatesPage from '@/routes/admin/broadcasts-templates'
 import AdminCategoriesPage from '@/routes/admin/categories'
 import AdminCorporationDetailPage from '@/routes/admin/corporation-detail'
 import AdminCorporationsPage from '@/routes/admin/corporations'
+import AdminStructuresPage from '@/routes/admin/structures'
 import AdminDiscordCommandCategoriesPage from '@/routes/admin/discord-command-categories'
 import AdminDiscordCommandsPage from '@/routes/admin/discord-commands'
 import AdminDiscordAuditPage from '@/routes/admin/discord-audit'
@@ -71,6 +72,7 @@ export const adminRouteElements = (
 		<Route path="groups/:groupId" element={<AdminGroupDetailPage />} />
 		<Route path="corporations" element={<AdminCorporationsPage />} />
 		<Route path="corporations/:corporationId" element={<AdminCorporationDetailPage />} />
+		<Route path="structures" element={<AdminStructuresPage />} />
 		<Route path="discord-servers" element={<AdminDiscordServersPage />} />
 		<Route path="discord-audit" element={<AdminDiscordAuditPage />} />
 		<Route path="eve-character-sync" element={<AdminEveCharacterSyncPage />} />

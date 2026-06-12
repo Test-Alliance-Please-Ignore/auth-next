@@ -20,7 +20,7 @@ const getStubMock = vi.mocked(getStub)
 function makeDb() {
 	return {
 		query: {
-			corporationAlertDestinations: {
+			alertDestinations: {
 				findMany: vi.fn(),
 				findFirst: vi.fn(),
 			},
@@ -60,15 +60,17 @@ describe('corporation-alerts service', () => {
 
 	it('lists alert destinations with attached discord server data', async () => {
 		const db = makeDb()
-		db.query.corporationAlertDestinations.findMany.mockResolvedValue([
+		db.query.alertDestinations.findMany.mockResolvedValue([
 			{
 				id: 'dest-1',
-				corporationId: 'corp-1',
+				scopeType: 'corporation',
+				scopeId: 'corp-1',
 				alertType: 'corp_application_submitted',
 				destinationType: 'discord_channel',
 				discordServerId: 'server-1',
 				channelId: 'channel-1',
 				coreUserId: null,
+				groupId: null,
 				destinationConfig: {},
 				isEnabled: true,
 				createdBy: null,
@@ -99,7 +101,15 @@ describe('corporation-alerts service', () => {
 
 	it('creates alert destinations and normalizes payload defaults', async () => {
 		const db = makeDb()
-		const values = vi.fn().mockReturnValue({ returning: vi.fn().mockResolvedValue([{ id: 'dest-1' }]) })
+		const values = vi.fn().mockReturnValue({
+			returning: vi.fn().mockResolvedValue([
+				{
+					id: 'dest-1',
+					scopeType: 'corporation',
+					scopeId: 'corp-1',
+				},
+			]),
+		})
 		db.insert.mockReturnValue({ values })
 
 		const result = await createCorporationAlertDestination(db as any, {
@@ -124,17 +134,49 @@ describe('corporation-alerts service', () => {
 				updatedBy: 'user-1',
 			})
 		)
-		expect(result).toEqual({ id: 'dest-1' })
+		expect(result).toEqual(
+			expect.objectContaining({
+				id: 'dest-1',
+				corporationId: 'corp-1',
+			})
+		)
 	})
 
 	it('updates alert destinations in place', async () => {
 		const db = makeDb()
-		db.query.corporationAlertDestinations.findFirst.mockResolvedValue({
+		db.query.alertDestinations.findFirst.mockResolvedValue({
 			id: 'dest-1',
-			corporationId: 'corp-1',
+			scopeType: 'corporation',
+			scopeId: 'corp-1',
+			alertType: 'corp_application_submitted',
+			destinationType: 'discord_channel',
+			discordServerId: 'server-1',
+			channelId: 'channel-1',
+			coreUserId: null,
+			groupId: null,
+			destinationConfig: {},
+			isEnabled: true,
 			updatedBy: 'user-1',
 		})
-		const set = vi.fn().mockReturnValue({ where: vi.fn().mockReturnValue({ returning: vi.fn().mockResolvedValue([{ id: 'dest-1', isEnabled: false }]) }) })
+		const set = vi.fn().mockReturnValue({
+			where: vi.fn().mockReturnValue({
+				returning: vi.fn().mockResolvedValue([
+					{
+						id: 'dest-1',
+						scopeType: 'corporation',
+						scopeId: 'corp-1',
+						alertType: 'corp_application_submitted',
+						destinationType: 'discord_channel',
+						discordServerId: 'server-1',
+						channelId: 'channel-1',
+						coreUserId: null,
+						groupId: null,
+						destinationConfig: {},
+						isEnabled: false,
+					},
+				]),
+			}),
+		})
 		db.update.mockReturnValue({ set })
 
 		const result = await updateCorporationAlertDestination(db as any, 'corp-1', 'dest-1', {
@@ -147,14 +189,29 @@ describe('corporation-alerts service', () => {
 				updatedBy: 'user-1',
 			})
 		)
-		expect(result).toEqual({ id: 'dest-1', isEnabled: false })
+		expect(result).toEqual(
+			expect.objectContaining({
+				id: 'dest-1',
+				corporationId: 'corp-1',
+				isEnabled: false,
+			})
+		)
 	})
 
 	it('deletes alert destinations for the requested corporation', async () => {
 		const db = makeDb()
-		db.query.corporationAlertDestinations.findFirst.mockResolvedValue({
+		db.query.alertDestinations.findFirst.mockResolvedValue({
 			id: 'dest-1',
-			corporationId: 'corp-1',
+			scopeType: 'corporation',
+			scopeId: 'corp-1',
+			alertType: 'corp_application_submitted',
+			destinationType: 'discord_channel',
+			discordServerId: 'server-1',
+			channelId: 'channel-1',
+			coreUserId: null,
+			groupId: null,
+			destinationConfig: {},
+			isEnabled: true,
 		})
 		const where = vi.fn().mockResolvedValue(undefined)
 		db.delete.mockReturnValue({ where })
@@ -171,15 +228,17 @@ describe('corporation-alerts service', () => {
 			corporationId: 'corp-1',
 			name: 'Test Corporation',
 		})
-		db.query.corporationAlertDestinations.findMany.mockResolvedValue([
+		db.query.alertDestinations.findMany.mockResolvedValue([
 			{
 				id: 'dest-1',
-				corporationId: 'corp-1',
+				scopeType: 'corporation',
+				scopeId: 'corp-1',
 				alertType: 'corp_application_submitted',
 				destinationType: 'discord_channel',
 				discordServerId: 'server-1',
 				channelId: 'channel-1',
 				coreUserId: null,
+				groupId: null,
 				destinationConfig: {},
 				isEnabled: true,
 				createdBy: null,

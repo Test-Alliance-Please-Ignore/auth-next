@@ -482,12 +482,18 @@ export interface CorporationAssetData {
  */
 export interface CorporationStructureData {
 	id: string
-	corporationId: string
+	ownerId: string
 	structureId: string
+	name: string
 	typeId: string
+	typeName: string | null
 	systemId: string
+	systemName: string | null
+	regionId: string | null
+	regionName: string | null
 	profileId: string
 	fuelExpires: Date | null
+	fuelAmount: number | null
 	nextReinforceApply: Date | null
 	nextReinforceHour: number | null
 	reinforceHour: number | null
@@ -495,8 +501,23 @@ export interface CorporationStructureData {
 	stateTimerEnd: Date | null
 	stateTimerStart: Date | null
 	unanchorsAt: Date | null
+	lowPower: boolean
+	syncStatus: 'ok' | 'warning' | 'error'
+	syncFailureReason: string | null
+	lastSyncedAt: Date | null
 	services: Array<{ name: string; state: string }> | null
 	updatedAt: Date
+}
+
+/**
+ * Filters supported by corporation structure snapshot reads.
+ */
+export interface CorporationStructureQuery {
+	lowPower?: 'true' | 'false'
+	regionId?: string
+	systemId?: string
+	state?: string
+	typeId?: string
 }
 
 /**
@@ -1176,6 +1197,15 @@ export interface EveCorporationData {
 	fetchAssetsData(corporationId: string, forceRefresh?: boolean): Promise<void>
 
 	/**
+	 * Fetch corporation structures only.
+	 * Requires: esi-corporations.read_structures.v1
+	 * Requires role: Station_Manager
+	 * @param corporationId - The corporation ID
+	 * @param forceRefresh - Skip cache and fetch fresh data
+	 */
+	fetchStructures(corporationId: string, forceRefresh?: boolean): Promise<void>
+
+	/**
 	 * Fetch market and industry data (orders, contracts, jobs)
 	 * Requires various scopes and roles
 	 * @param corporationId - The corporation ID
@@ -1348,9 +1378,13 @@ export interface EveCorporationData {
 	/**
 	 * Get corporation structures
 	 * @param corporationId - The corporation ID
+	 * @param filters - Optional server-side filters for the returned snapshot
 	 * @returns Array of structure data
 	 */
-	getStructures(corporationId: string): Promise<CorporationStructureData[]>
+	getStructures(
+		corporationId: string,
+		filters?: CorporationStructureQuery
+	): Promise<CorporationStructureData[]>
 
 	/**
 	 * Get structure details - union of all ESI lookups

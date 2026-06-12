@@ -29,6 +29,7 @@ const createAlertDestinationSchema = z.object({
 	discordServerId: z.string().min(1).optional().nullable(),
 	channelId: z.string().min(1).optional().nullable(),
 	coreUserId: z.string().min(1).optional().nullable(),
+	groupId: z.string().min(1).optional().nullable(),
 	destinationConfig: z.record(z.string(), z.unknown()).optional(),
 	isEnabled: z.boolean().optional(),
 })
@@ -120,6 +121,10 @@ app.post('/:corporationId/alerts', requireAuth(), requireAdmin(), async (c) => {
 			return c.json({ error: 'coreUserId is required for discord_user destinations' }, 400)
 		}
 
+		if (body.destinationType === 'group' && !body.groupId) {
+			return c.json({ error: 'groupId is required for group destinations' }, 400)
+		}
+
 		const destination = await createCorporationAlertDestination(db, {
 			corporationId,
 			alertType: body.alertType,
@@ -127,6 +132,7 @@ app.post('/:corporationId/alerts', requireAuth(), requireAdmin(), async (c) => {
 			discordServerId: body.discordServerId ?? null,
 			channelId: body.channelId ?? null,
 			coreUserId: body.coreUserId ?? null,
+			groupId: body.groupId ?? null,
 			destinationConfig: body.destinationConfig,
 			isEnabled: body.isEnabled,
 			createdBy: user.id,
@@ -195,6 +201,7 @@ app.put('/:corporationId/alerts/:destinationId', requireAuth(), requireAdmin(), 
 			discordServerId: body.discordServerId,
 			channelId: body.channelId,
 			coreUserId: body.coreUserId,
+			groupId: body.groupId,
 			destinationConfig: body.destinationConfig,
 			isEnabled: body.isEnabled,
 			updatedBy: user.id,

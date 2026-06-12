@@ -20,6 +20,7 @@ import {
 	TableRow,
 } from '@/components/ui/table'
 import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs'
+import { TableRefreshFrame } from '@/components/table-refresh-frame'
 import { useUserPermissions } from '@/hooks/useUserPermissions'
 import { usePageTitle } from '@/hooks/usePageTitle'
 import { api } from '@/lib/api'
@@ -403,29 +404,15 @@ function ReviewTabContent({
 		)
 	}
 
-	return (
-		<div>
-			{error && effectiveData && (
-				<div className="mb-3 rounded-md border border-amber-500/40 bg-amber-500/10 p-3 text-sm text-amber-700">
-					<div className="flex items-center justify-between gap-3">
-						<span>Latest refresh failed. Showing last loaded results.</span>
-						<Button
-							variant="secondary"
-							size="sm"
-							onClick={() => void refetch()}
-							disabled={isFetching}
-							loading={isFetching}
-						>
-							Retry
-						</Button>
-					</div>
-				</div>
-			)}
-			<div className="relative">
-				{isSoftLoading && (
-					<div className="pointer-events-none absolute inset-0 z-10 rounded-md bg-background/60 backdrop-blur-[1px]" />
-				)}
-				<div className={isSoftLoading ? 'opacity-60 transition-opacity' : 'transition-opacity'}>
+		return (
+			<div>
+				<TableRefreshFrame
+					isRefreshing={isSoftLoading}
+					refreshMessage="Refreshing recent losses..."
+					errorMessage={error && effectiveData ? (error instanceof Error ? error.message : 'Failed to refresh requests.') : null}
+					onRetry={error && effectiveData ? () => void refetch() : undefined}
+					retryDisabled={isFetching}
+				>
 					<div className="mb-3 rounded-md border p-3">
 						<UserSearchPaginationControls
 							totalCount={totalCount}
@@ -551,8 +538,7 @@ function ReviewTabContent({
 							</TableBody>
 						</Table>
 					</div>
-				</div>
+				</TableRefreshFrame>
 			</div>
-		</div>
-	)
-}
+		)
+	}

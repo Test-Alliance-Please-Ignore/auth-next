@@ -1371,7 +1371,7 @@ app.post('/:corporationId/verify', requireAuth(), requireAdmin(), async (c) => {
  * Trigger data fetch for corporation
  *
  * Body: {
- *   category?: 'all' | 'public' | 'core' | 'financial' | 'assets' | 'market' | 'killmails'
+ *   category?: 'all' | 'public' | 'core' | 'financial' | 'assets' | 'structures' | 'market' | 'killmails'
  *   forceRefresh?: boolean
  * }
  */
@@ -1430,6 +1430,24 @@ app.post('/:corporationId/fetch', requireAuth(), requireAdmin(), async (c) => {
 			case 'killmails':
 				logger.info('[Corporations] Fetching killmails', { corporationId })
 				await stub.fetchKillmails(corporationId, forceRefresh)
+				break
+			case 'structures':
+				logger.info('[Corporations] Fetching structures', { corporationId })
+				{
+					const structuresSyncUrl = new URL(
+						`/internal/sync/${encodeURIComponent(corporationId)}?forceRefresh=${forceRefresh ? 'true' : 'false'}`,
+						'https://structures.internal'
+					)
+					const response = await c.env.STRUCTURES.fetch(structuresSyncUrl, {
+						method: 'POST',
+					})
+					if (!response.ok) {
+						const errorBody = await response.text()
+						throw new Error(
+							`Failed to sync structures: ${response.status} ${response.statusText} ${errorBody}`
+						)
+					}
+				}
 				break
 			case 'all':
 			default:

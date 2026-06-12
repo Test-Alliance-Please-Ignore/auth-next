@@ -42,6 +42,10 @@ import { api } from '@/lib/api'
 import { characterPortraitUrl } from '@/lib/eve-images'
 import { extractCorporationIdFromTaxViewerScopedUrn } from '@/lib/tax-permissions'
 import { cn } from '@/lib/utils'
+import {
+	hasAnyStructurePermission,
+	hasAllStructureManagerPermission,
+} from '@repo/groups'
 
 import { Badge } from './ui/badge'
 import { Button } from './ui/button'
@@ -72,6 +76,7 @@ export function SidebarNav({ onNavigate, isSidebarOpen = true, onToggleSidebar }
 	const { data: hrCorporations } = useHrAccessibleCorporations()
 	const { permissions, hasAnyPermission } = useUserPermissions()
 	const isSiteAdmin = user?.is_admin === true
+	const canViewStructures = isSiteAdmin || hasAnyStructurePermission(permissions)
 	const hasSrpManagerPermission = hasAnyPermission('urn:srp:manager')
 	const hasSrpPayerPermission = hasAnyPermission('urn:srp:payer')
 	const hasSrpReviewerPermission = hasAnyPermission('urn:srp:reviewer')
@@ -141,6 +146,8 @@ export function SidebarNav({ onNavigate, isSidebarOpen = true, onToggleSidebar }
 		location.pathname === '/recommendations' ||
 		location.pathname.startsWith('/recommendations/') ||
 		/^\/corporations\/\d+\/hr/.test(location.pathname)
+	const isStructuresRoute =
+		location.pathname === '/structures' || location.pathname.startsWith('/structures/')
 	const [openMenus, setOpenMenus] = useState<Record<string, boolean>>({
 		'/tax': isTaxRoute,
 		'/freight': isFreightRoute,
@@ -199,6 +206,16 @@ export function SidebarNav({ onNavigate, isSidebarOpen = true, onToggleSidebar }
 			href: '/groups',
 			icon: Users,
 		},
+		...(canViewStructures
+			? [
+					{
+						label: 'Structures',
+						href: '/structures',
+						icon: Building2,
+						isActive: isStructuresRoute,
+					},
+				]
+			: []),
 	]
 
 	// HR section - always visible with at least My Applications and Join

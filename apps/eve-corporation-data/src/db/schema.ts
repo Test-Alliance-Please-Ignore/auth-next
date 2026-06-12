@@ -345,14 +345,20 @@ export const corporationStructures = pgTable(
 	'corporation_structures',
 	{
 		id: uuid('id').defaultRandom().primaryKey(),
-		corporationId: text('corporation_id')
+		ownerId: text('owner_id')
 			.notNull()
 			.references(() => corporationConfig.corporationId),
 		structureId: text('structure_id').notNull(),
+		name: text('name').notNull(),
 		typeId: text('type_id').notNull(),
+		typeName: text('type_name'),
 		systemId: text('system_id').notNull(),
+		systemName: text('system_name'),
+		regionId: text('region_id'),
+		regionName: text('region_name'),
 		profileId: text('profile_id').notNull(),
 		fuelExpires: timestamp('fuel_expires', { withTimezone: true }),
+		fuelAmount: integer('fuel_amount'),
 		nextReinforceApply: timestamp('next_reinforce_apply', { withTimezone: true }),
 		nextReinforceHour: integer('next_reinforce_hour'),
 		reinforceHour: integer('reinforce_hour'),
@@ -360,6 +366,10 @@ export const corporationStructures = pgTable(
 		stateTimerEnd: timestamp('state_timer_end', { withTimezone: true }),
 		stateTimerStart: timestamp('state_timer_start', { withTimezone: true }),
 		unanchorsAt: timestamp('unanchors_at', { withTimezone: true }),
+		lowPower: boolean('low_power').notNull().default(false),
+		syncStatus: text('sync_status', { enum: ['ok', 'warning', 'error'] }).notNull().default('ok'),
+		syncFailureReason: text('sync_failure_reason'),
+		lastSyncedAt: timestamp('last_synced_at', { withTimezone: true }),
 		services: jsonb('services').$type<
 			Array<{
 				name: string
@@ -368,7 +378,7 @@ export const corporationStructures = pgTable(
 		>(),
 		updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow().notNull(),
 	},
-	(table) => [unique().on(table.corporationId, table.structureId)]
+	(table) => [unique().on(table.ownerId, table.structureId)]
 )
 
 // ============================================================================

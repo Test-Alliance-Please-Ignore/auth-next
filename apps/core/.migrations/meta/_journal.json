@@ -246,6 +246,13 @@
       "when": 1781224998664,
       "tag": "0034_hard_wallflower",
       "breakpoints": true
+    },
+    {
+      "idx": 35,
+      "version": "7",
+      "when": 1781286042235,
+      "tag": "0035_white_vivisector",
+      "breakpoints": true
     }
   ]
 }

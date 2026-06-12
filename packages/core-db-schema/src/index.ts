@@ -1,5 +1,5 @@
 import { relations, sql } from 'drizzle-orm'
-import { boolean, index, integer, pgTable, text, timestamp, uuid, varchar } from 'drizzle-orm/pg-core'
+import { boolean, index, integer, jsonb, pgTable, text, timestamp, uuid, varchar } from 'drizzle-orm/pg-core'
 
 export const users = pgTable(
 	'users',
@@ -116,6 +116,59 @@ export const discordRoles = pgTable(
 	(table) => [index('discord_roles_server_id_idx').on(table.discordServerId)]
 )
 
+/**
+ * Shared Alert Destinations
+ *
+ * Reusable delivery definitions referenced by corporation and structure alert config tables.
+ * Destinations are scoped by a logical owner type/id pair so multiple alert families can
+ * share the same destination records without duplicating Discord channel/user/group routing.
+ */
+export const alertDestinations = pgTable(
+	'alert_destinations',
+	{
+		id: uuid('id').defaultRandom().primaryKey(),
+		scopeType: text('scope_type', { enum: ['corporation', 'structure_group'] }).notNull(),
+		scopeId: text('scope_id').notNull(),
+		alertType: text('alert_type').notNull(),
+		destinationType: text('destination_type', {
+			enum: ['discord_channel', 'discord_user', 'group'],
+		}).notNull(),
+		discordServerId: uuid('discord_server_id').references(() => discordServers.id, {
+			onDelete: 'cascade',
+		}),
+		channelId: text('channel_id'),
+		coreUserId: uuid('core_user_id').references(() => users.id, { onDelete: 'cascade' }),
+		groupId: text('group_id'),
+		destinationConfig: jsonb('destination_config').$type<Record<string, unknown>>().notNull().default({}),
+		isEnabled: boolean('is_enabled').notNull().default(true),
+		createdBy: uuid('created_by').references(() => users.id, { onDelete: 'set null' }),
+		updatedBy: uuid('updated_by').references(() => users.id, { onDelete: 'set null' }),
+		createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
+		updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow().notNull(),
+	},
+	(table) => [
+		index('alert_destinations_scope_idx').on(table.scopeType, table.scopeId),
+		index('alert_destinations_alert_type_idx').on(table.alertType),
+		index('alert_destinations_type_idx').on(table.destinationType),
+		index('alert_destinations_enabled_idx').on(table.isEnabled),
+	]
+)
+
+export const alertDestinationsRelations = relations(alertDestinations, ({ one }) => ({
+	discordServer: one(discordServers, {
+		fields: [alertDestinations.discordServerId],
+		references: [discordServers.id],
+	}),
+	createdBy: one(users, {
+		fields: [alertDestinations.createdBy],
+		references: [users.id],
+	}),
+	updatedBy: one(users, {
+		fields: [alertDestinations.updatedBy],
+		references: [users.id],
+	}),
+}))
+
 export const discordServersRelations = relations(discordServers, ({ many }) => ({
 	roles: many(discordRoles),
 }))
@@ -133,6 +186,8 @@ export const schema = {
 	managedCorporations,
 	discordServers,
 	discordRoles,
+	alertDestinations,
 	discordServersRelations,
 	discordRolesRelations,
+	alertDestinationsRelations,
 }
