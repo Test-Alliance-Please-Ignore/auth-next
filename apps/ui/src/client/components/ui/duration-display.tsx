@@ -10,6 +10,7 @@ interface DurationDisplayProps {
 	endDate: string
 	className?: string
 	format?: 'full' | 'compact'
+	durationStyle?: 'long' | 'short' | 'compact'
 	maxUnits?: number
 	referenceTimeMs?: number
 }
@@ -18,6 +19,7 @@ export function DurationDisplay({
 	endDate,
 	className,
 	format = 'compact',
+	durationStyle = 'long',
 	maxUnits = 3,
 	referenceTimeMs,
 }: DurationDisplayProps) {
@@ -46,7 +48,7 @@ export function DurationDisplay({
 	const formattedDuration = formatDurationUntil(endDate, {
 		expiredLabel: 'Expired',
 		maxUnits,
-		style: 'long',
+		style: durationStyle,
 		referenceTimeMs,
 	})
 

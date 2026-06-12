@@ -640,7 +640,7 @@ export interface StructureListSummary {
 
 export interface StructureListItem {
 	structureId: string
-	ownerId: string
+	corporationId: string
 	corporationName: string
 	name: string
 	typeId: string

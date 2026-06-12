@@ -72,7 +72,6 @@ import type {
 	EsiCorporationWalletTransaction,
 	EveCorporationData,
 	SearchAssetsFilters,
-	StructureDetailsData,
 	WalletJournalWindowFilters,
 	WalletTransactionWindowFilters,
 } from '@repo/eve-corporation-data'
@@ -1493,7 +1492,7 @@ export class EveCorporationDataDO extends DurableObject<Env> implements EveCorpo
 		structures: EsiCorporationStructure[]
 	): Promise<
 		Array<{
-			ownerId: string
+			corporationId: string
 			structureId: string
 			name: string
 			typeId: string
@@ -1579,7 +1578,7 @@ export class EveCorporationDataDO extends DurableObject<Env> implements EveCorpo
 				: 'Structure details could not be fully hydrated during sync'
 
 			return {
-				ownerId: String(structureInfo?.owner_id ?? corporationId),
+				corporationId: String(corporationId),
 				structureId: structure.structure_id,
 				name: structureInfo?.name ?? structure.structure_id,
 				typeId: structure.type_id,
@@ -1622,7 +1621,7 @@ export class EveCorporationDataDO extends DurableObject<Env> implements EveCorpo
 		if (structureIds.length === 0) {
 			await this.getDb()
 				.delete(corporationStructures)
-				.where(eq(corporationStructures.ownerId, corporationId))
+				.where(eq(corporationStructures.corporationId, corporationId))
 			return
 		}
 		const BATCH_SIZE = 10
@@ -1634,7 +1633,7 @@ export class EveCorporationDataDO extends DurableObject<Env> implements EveCorpo
 				.insert(corporationStructures)
 				.values(batch)
 				.onConflictDoUpdate({
-					target: [corporationStructures.ownerId, corporationStructures.structureId],
+					target: [corporationStructures.corporationId, corporationStructures.structureId],
 					set: {
 						name: sql`excluded.name`,
 						typeId: sql`excluded.type_id`,
@@ -1667,7 +1666,7 @@ export class EveCorporationDataDO extends DurableObject<Env> implements EveCorpo
 			.delete(corporationStructures)
 			.where(
 				and(
-					eq(corporationStructures.ownerId, corporationId),
+					eq(corporationStructures.corporationId, corporationId),
 					notInArray(corporationStructures.structureId, structureIds)
 				)
 			)
@@ -3815,7 +3814,7 @@ export class EveCorporationDataDO extends DurableObject<Env> implements EveCorpo
 		corporationId: string,
 		filters?: CorporationStructureQuery
 	): Promise<CorporationStructureData[]> {
-		const conditions = [eq(corporationStructures.ownerId, corporationId)]
+		const conditions = [eq(corporationStructures.corporationId, corporationId)]
 		if (filters?.lowPower === 'true') {
 			conditions.push(eq(corporationStructures.lowPower, true))
 		} else if (filters?.lowPower === 'false') {
@@ -3840,7 +3839,7 @@ export class EveCorporationDataDO extends DurableObject<Env> implements EveCorpo
 
 		return results.map((r) => ({
 			id: r.id,
-			ownerId: r.ownerId,
+			corporationId: r.corporationId,
 			structureId: r.structureId,
 			name: r.name,
 			typeId: r.typeId,
@@ -3869,16 +3868,15 @@ export class EveCorporationDataDO extends DurableObject<Env> implements EveCorpo
 	}
 
 	/**
-	 * Get structure details - union of all ESI lookups
+	 * Get structure details from the synced corporation snapshot.
 	 */
 	async getStructureDetails(
 		corporationId: string,
 		structureId: string
-	): Promise<StructureDetailsData | null> {
-		// Get structure from database
+	): Promise<CorporationStructureData | null> {
 		const structure = await this.getDb().query.corporationStructures.findFirst({
 			where: and(
-				eq(corporationStructures.ownerId, corporationId),
+				eq(corporationStructures.corporationId, corporationId),
 				eq(corporationStructures.structureId, structureId)
 			),
 		})
@@ -3887,74 +3885,33 @@ export class EveCorporationDataDO extends DurableObject<Env> implements EveCorpo
 			return null
 		}
 
-		// Get character ID for Universe service access using DirectorManager
-		const tokenStoreStub = getStub<EveTokenStore>(this.env.EVE_TOKEN_STORE, 'default')
-		const directorManager = new DirectorManager(
-			this.getDb(),
-			corporationId,
-			tokenStoreStub,
-			this.onDirectorAffiliationMismatch.bind(this)
-		)
-		const director = await directorManager.selectDirector()
-
-		if (!director) {
-			logger.error(
-				'[EveCorporationData] No healthy directors available for structure details lookup',
-				{
-					corporationId,
-					structureId,
-				}
-			)
-			return null
-		}
-
-		const characterId = String(director.characterId)
-
-		// Get the remaining live structure info we do not store directly.
-		const structureInfo = await (async () => {
-			// Get structure info from Universe service
-			try {
-				const universe = await getStub<Universe>(this.env.UNIVERSE, 'default')
-				return await universe.getStructureInfo(
-					structureId as EveStructureId,
-					characterId as EveCharacterId
-				)
-			} catch (error) {
-				logger.error('[EveCorporationData] Failed to get structure info', {
-					structureId,
-					error: error instanceof Error ? error.message : String(error),
-				})
-				return null
-			}
-		})()
-
-		if (!structureInfo) {
-			return null
-		}
-
-		const ownerNames = await (async () => {
-			try {
-				const tokenStore = await getStub<EveTokenStore>(this.env.EVE_TOKEN_STORE, 'default')
-				return await tokenStore.resolveIds([structure.ownerId])
-			} catch (error) {
-				logger.error('[EveCorporationData] Failed to resolve owner name', {
-					ownerId: structure.ownerId,
-					error: error instanceof Error ? error.message : String(error),
-				})
-				return {}
-			}
-		})()
-
-		// Return union of stored structure snapshot and live position metadata.
 		return {
+			id: structure.id,
+			corporationId: structure.corporationId,
+			structureId: structure.structureId,
 			name: structure.name,
-			owner_id: structure.ownerId,
-			type_id: structure.typeId,
-			position: structureInfo.position,
-			solar_system_id: structureInfo.solar_system_id,
-			systemName: structure.systemName,
+			typeId: structure.typeId,
 			typeName: structure.typeName,
-			ownerName: ownerNames[structure.ownerId] ?? null,
+			systemId: structure.systemId,
+			systemName: structure.systemName,
+			regionId: structure.regionId,
+			regionName: structure.regionName,
+			profileId: structure.profileId,
+			fuelExpires: structure.fuelExpires,
+			fuelAmount: structure.fuelAmount,
+			nextReinforceApply: structure.nextReinforceApply,
+			nextReinforceHour: structure.nextReinforceHour,
+			reinforceHour: structure.reinforceHour,
+			state: structure.state,
+			stateTimerEnd: structure.stateTimerEnd,
+			stateTimerStart: structure.stateTimerStart,
+			unanchorsAt: structure.unanchorsAt,
+			lowPower: structure.lowPower,
+			syncStatus: structure.syncStatus,
+			syncFailureReason: structure.syncFailureReason,
+			lastSyncedAt: structure.lastSyncedAt,
+			services: structure.services,
+			updatedAt: structure.updatedAt,
 		}
 	}
 

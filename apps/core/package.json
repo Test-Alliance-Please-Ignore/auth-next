@@ -53,6 +53,7 @@
 			"@repo/markets": "workspace:*",
 		"@repo/moon-scan": "workspace:*",
 		"@repo/paste": "workspace:*",
+		"@repo/structures": "workspace:*",
 		"@repo/skills": "workspace:*",
 		"@repo/srp": "workspace:*",
 		"@repo/universe": "workspace:*",

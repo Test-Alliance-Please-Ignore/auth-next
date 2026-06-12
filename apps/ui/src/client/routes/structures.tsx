@@ -13,11 +13,13 @@ import { Link, Navigate } from 'react-router-dom'
 import { hasAllStructureManagerPermission, hasAnyStructurePermission } from '@repo/groups'
 
 import { TableRefreshFrame } from '@/components/table-refresh-frame'
+import { CorporationLogo } from '@/components/corporation-logo'
+import { StructureStateBadge } from '@/components/structure-state-badge'
+import { DurationDisplay } from '@/components/ui/duration-display'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Container } from '@/components/ui/container'
-import { DurationDisplay } from '@/components/ui/duration-display'
 import { FilterField } from '@/components/ui/filter-field'
 import { LoadingSpinner } from '@/components/ui/loading'
 import { PageHeader } from '@/components/ui/page-header'
@@ -36,7 +38,6 @@ import { useGroups } from '@/hooks/useGroups'
 import { usePageTitle } from '@/hooks/usePageTitle'
 import { useUserPermissions } from '@/hooks/useUserPermissions'
 import { type StructureListItem, type StructureListSortBy } from '@/lib/api'
-import { formatDateTimeLong } from '@/lib/date-utils'
 import { cn } from '@/lib/utils'
 
 import { useStructureModuleConfig, useStructures } from '../features/structures/hooks'
@@ -121,16 +122,6 @@ export default function StructuresPage() {
 	const isSoftLoading = Boolean(structuresResponse) && isFetching
 
 	useEffect(() => {
-		if (!pagination) return
-		if (pagination.page !== tableState.page) {
-			setStructureTablePage(pagination.page)
-		}
-		if (pagination.pageSize !== tableState.pageSize) {
-			setStructureTablePageSize(pagination.pageSize)
-		}
-	}, [pagination, tableState.page, tableState.pageSize])
-
-	useEffect(() => {
 		const timer = window.setInterval(() => {
 			setNowMs(Date.now())
 		}, 60_000)
@@ -210,6 +201,20 @@ export default function StructuresPage() {
 			),
 		[filterOptions]
 	)
+	const structuresContentKey = [
+		tableState.page,
+		tableState.pageSize,
+		tableState.sortBy,
+		tableState.sortDirection,
+		tableState.filters.corporationId ?? '',
+		tableState.filters.assignedGroupId ?? '',
+		tableState.filters.lowPower ?? '',
+		tableState.filters.lowPowerAllowed ?? '',
+		tableState.filters.regionId ?? '',
+		tableState.filters.systemId ?? '',
+		tableState.filters.state ?? '',
+		tableState.filters.typeId ?? '',
+	].join(':')
 
 	const activeFilterCount = [
 		tableState.filters.corporationId,
@@ -277,7 +282,7 @@ export default function StructuresPage() {
 	}
 
 	return (
-		<Container className="space-y-6 py-6">
+		<Container className="space-y-6 py-6 2xl:!max-w-none">
 			<PageHeader
 				title="Structures"
 				description="Track visible structures, review their current state, and fuel posture."
@@ -459,6 +464,7 @@ export default function StructuresPage() {
 							/>
 						</div>
 						<TableRefreshFrame
+							key={structuresContentKey}
 							isRefreshing={isSoftLoading}
 							refreshMessage="Refreshing structure list..."
 							errorMessage={
@@ -497,7 +503,7 @@ export default function StructuresPage() {
 									No structures were returned for the selected filters.
 								</div>
 							) : (
-								<Table>
+								<Table className="min-w-[96rem]">
 									<TableHeader>
 										<TableRow>
 											<SortableHead field="region" label="Region" />
@@ -512,7 +518,9 @@ export default function StructuresPage() {
 											<SortableHead field="nextStateAt" label="Next State In" />
 											<TableHead>Group</TableHead>
 											<TableHead>Sync</TableHead>
-											<TableHead className="text-right">Action</TableHead>
+											<TableHead className="sticky right-0 z-20 table-header-bg border-l border-border/50 text-right">
+												Actions
+											</TableHead>
 										</TableRow>
 									</TableHeader>
 									<TableBody>
@@ -524,6 +532,7 @@ export default function StructuresPage() {
 													endDate={structure.fuelExpires}
 													referenceTimeMs={nowMs}
 													maxUnits={3}
+													durationStyle="compact"
 												/>
 											) : structure.fuelAmount !== null ? (
 												`${structure.fuelAmount.toLocaleString()} units`
@@ -550,12 +559,20 @@ export default function StructuresPage() {
 															{structure.structureId}
 														</div>
 													</TableCell>
-													<TableCell>{structure.corporationName}</TableCell>
-													<TableCell>{structure.typeName ?? structure.typeId}</TableCell>
-													<TableCell>
-														<div className="flex flex-wrap gap-2">
-															<Badge variant="secondary">{structure.state}</Badge>
+													<TableCell className="max-w-[18rem]">
+														<div className="flex min-w-0 items-center gap-2">
+															<CorporationLogo
+																corporationId={structure.corporationId}
+																corporationName={structure.corporationName}
+															/>
+															<span className="truncate font-medium" title={structure.corporationName}>
+																{structure.corporationName}
+															</span>
 														</div>
+													</TableCell>
+													<TableCell>{structure.typeName ?? structure.typeId}</TableCell>
+											<TableCell>
+														<StructureStateBadge state={structure.state} />
 													</TableCell>
 													<TableCell>{fuelLabel}</TableCell>
 													<TableCell>
@@ -569,9 +586,17 @@ export default function StructuresPage() {
 														</Badge>
 													</TableCell>
 													<TableCell>
-														{structure.nextStateAt
-															? formatDateTimeLong(structure.nextStateAt)
-															: '-'}
+														{structure.nextStateAt ? (
+															<DurationDisplay
+																endDate={structure.nextStateAt}
+																referenceTimeMs={nowMs}
+																maxUnits={3}
+																durationStyle="compact"
+																format="compact"
+															/>
+														) : (
+															'-'
+														)}
 													</TableCell>
 													<TableCell>{groupLabel}</TableCell>
 													<TableCell>
@@ -582,7 +607,7 @@ export default function StructuresPage() {
 															{structure.syncStatus}
 														</Badge>
 													</TableCell>
-													<TableCell className="text-right">
+													<TableCell className="sticky right-0 z-10 border-l border-border/50 bg-card text-right">
 														{structure.canEdit ? (
 															<Button asChild size="sm" variant="ghost">
 																<Link to={`/structures/${structure.structureId}`}>

@@ -47,6 +47,15 @@ describe('duration utils', () => {
 		expect(formatDurationBetween(start, end)).toBe('1 minute 22 seconds')
 	})
 
+	it('supports compact unit abbreviations', () => {
+		const durationMs =
+			3 * MONTH_MS +
+			2 * WEEK_MS +
+			4 * DAY_MS
+
+		expect(formatDurationMs(durationMs, { style: 'compact' })).toBe('3mo 2w 4d')
+	})
+
 	it('respects the expired label for past end dates', () => {
 		expect(formatDurationUntil('2026-01-01T00:00:00.000Z', {
 			referenceTimeMs: Date.parse('2026-01-01T00:00:01.000Z'),

@@ -4,6 +4,7 @@ import type { EveTokenStore } from '@repo/eve-token-store'
 import type { Groups } from '@repo/groups'
 import type { HonoApp } from '@repo/hono-helpers'
 import type { SharedHonoEnv, SharedHonoVariables } from '@repo/hono-helpers/src/types'
+import type { StructuresWorker } from '@repo/structures'
 import type { Skills } from '@repo/skills'
 import type { PasteWorker } from '@repo/paste'
 import type { createDb } from './db'
@@ -66,7 +67,7 @@ export type Env = SharedHonoEnv & {
 	/** Industry Durable Object binding */
 	INDUSTRY: DurableObjectNamespace
 	/** Structures worker service binding */
-	STRUCTURES: Fetcher
+	STRUCTURES: StructuresWorker
 	/** Fulcrum (Character Reports) Durable Object binding */
 	FULCRUM: DurableObjectNamespace
 	/** Legacy migration Durable Object binding */

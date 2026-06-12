@@ -1,22 +1,11 @@
-import type { HonoApp } from '@repo/hono-helpers'
-import type { SharedHonoEnv, SharedHonoVariables } from '@repo/hono-helpers/src/types'
+import type { StructureActor } from '@repo/structures'
 
-export interface SessionUser {
-	id: string
-	is_admin: boolean
-	roles: string[]
-}
+export type SessionUser = StructureActor
 
-export type Env = SharedHonoEnv & {
+export type Env = {
 	DATABASE_URL: string
 	EVE_CORPORATION_DATA: DurableObjectNamespace
-}
-
-export type Variables = SharedHonoVariables & {
-	user?: SessionUser
-}
-
-export interface App extends HonoApp {
-	Bindings: Env
-	Variables: Variables
+	NAME: string
+	ENVIRONMENT: string
+	SENTRY_RELEASE: string
 }

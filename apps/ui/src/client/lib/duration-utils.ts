@@ -2,7 +2,7 @@ import { parseDateOrNull } from '@repo/worker-utils'
 
 export interface FormatDurationOptions {
 	maxUnits?: number
-	style?: 'long' | 'short'
+	style?: 'long' | 'short' | 'compact'
 }
 
 export interface FormatDurationUntilOptions extends FormatDurationOptions {
@@ -11,6 +11,7 @@ export interface FormatDurationUntilOptions extends FormatDurationOptions {
 }
 
 type DurationUnit = 'year' | 'month' | 'week' | 'day' | 'hour' | 'minute' | 'second'
+type DurationFormatStyle = 'long' | 'short' | 'compact'
 
 const SECOND_MS = 1000
 const MINUTE_MS = 60 * SECOND_MS
@@ -20,8 +21,8 @@ const WEEK_MS = 7 * DAY_MS
 const MONTH_MS = 30 * DAY_MS
 const YEAR_MS = 365 * DAY_MS
 
-function formatUnit(value: number, unit: DurationUnit, style: 'long' | 'short'): string {
-	if (style === 'short') {
+function formatUnit(value: number, unit: DurationUnit, style: DurationFormatStyle): string {
+	if (style === 'short' || style === 'compact') {
 		switch (unit) {
 			case 'year':
 				return `${value}y`
@@ -105,7 +106,7 @@ function formatDurationParts(parts: Partial<Record<DurationUnit, number>>, optio
 		.map(([unit, value]) => formatUnit(value!, unit, style))
 
 	if (rendered.length === 0) {
-		return style === 'short' ? '0s' : '0 seconds'
+		return style === 'long' ? '0 seconds' : '0s'
 	}
 
 	return rendered.join(' ')

@@ -29,6 +29,7 @@
 		"@repo/discord": "workspace:*",
 		"@repo/groups": "workspace:*",
 		"@repo/structure-states": "workspace:*",
+		"@repo/structures": "workspace:*",
 		"@repo/eve-corporation-data-db-schema": "workspace:*",
 		"@repo/eve-corporation-data": "workspace:*",
 		"@repo/hono-helpers": "workspace:*",
