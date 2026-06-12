@@ -140,13 +140,34 @@ async function enrichApplications<T extends { corporationId: string; reviewedBy:
 ): Promise<Array<T & { corporationName: string; reviewedByCharacterName: string | null }>> {
 	const corpIds = [...new Set(items.map((a) => a.corporationId))]
 	const corpNames = corpIds.length > 0 ? await resolver.resolveIds(corpIds) : {}
+	const managedCorpNames =
+		corpIds.length > 0
+			? await db.query.managedCorporations.findMany({
+					where: inArray(managedCorporations.corporationId, corpIds),
+					columns: {
+						corporationId: true,
+						name: true,
+					},
+				})
+			: []
+	const corpNameMap = new Map<string, string>()
+	for (const [corporationId, corporationName] of Object.entries(corpNames)) {
+		if (corporationName) {
+			corpNameMap.set(corporationId, corporationName)
+		}
+	}
+	for (const corp of managedCorpNames) {
+		if (!corpNameMap.has(corp.corporationId)) {
+			corpNameMap.set(corp.corporationId, corp.name)
+		}
+	}
 
 	const reviewerIds = items.map((a) => a.reviewedBy).filter((id): id is string => id !== null)
 	const reviewerNames = await resolveUserCharacterNames(db, reviewerIds)
 
 	return items.map((a) => ({
 		...a,
-		corporationName: corpNames[a.corporationId] ?? 'Unknown',
+		corporationName: corpNameMap.get(a.corporationId) ?? `Corporation ${a.corporationId}`,
 		reviewedByCharacterName: a.reviewedBy ? (reviewerNames[a.reviewedBy] ?? null) : null,
 	}))
 }
@@ -338,9 +359,9 @@ app.post('/applications', requireAuth(), async (c) => {
 		const application = await hr.submitApplication(
 			user.id,
 			characterId,
-			characterName,
 			corporationId,
 			applicationText,
+			characterName,
 			validAltIds
 		)
 
