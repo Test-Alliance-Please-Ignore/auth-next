@@ -109,6 +109,12 @@ export interface MumbleDeleteResult {
 	deleted: string[]
 	/** Subjects that had no account to delete */
 	notFound: string[]
+	/**
+	 * Subjects whose deletion could not be confirmed (murmur-control failure).
+	 * These are persisted in the DO and retried by alarm until confirmed —
+	 * callers may treat them as eventually deleted.
+	 */
+	queued: string[]
 }
 
 /**
@@ -161,7 +167,10 @@ export interface Mumble extends DurableObject {
 
 	/**
 	 * Delete the listed accounts (disconnects sessions, unregisters Murmur
-	 * users). Missing accounts are reported as notFound, not errors.
+	 * users). Missing accounts are reported as notFound, not errors. Subjects
+	 * that cannot be confirmed deleted are queued in the DO and retried by
+	 * alarm until murmur-control confirms them gone — this method never
+	 * throws for control-plane outages.
 	 */
 	deleteAccounts(serverId: string, subjectIds: string[]): Promise<MumbleDeleteResult>
 }

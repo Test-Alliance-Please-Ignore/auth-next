@@ -48,16 +48,45 @@ function makeFakeClient(): FakeClient {
 	}
 }
 
+function makeFakeStorage() {
+	const data = new Map<string, unknown>()
+	return {
+		data,
+		put: vi.fn(async (entries: Record<string, unknown>) => {
+			for (const [key, value] of Object.entries(entries)) data.set(key, value)
+		}),
+		delete: vi.fn(async (keys: string[]) => {
+			for (const key of keys) data.delete(key)
+		}),
+		list: vi.fn(async ({ prefix }: { prefix: string }) => {
+			const result = new Map<string, unknown>()
+			for (const [key, value] of data) {
+				if (key.startsWith(prefix)) result.set(key, value)
+			}
+			return result
+		}),
+		getAlarm: vi.fn(async () => null),
+		setAlarm: vi.fn(async () => undefined),
+	}
+}
+
 function makeFakeThis(client: FakeClient, overrides: Record<string, unknown> = {}) {
+	const proto = MumbleDO.prototype as unknown as Record<string, unknown>
 	return {
 		env: {},
 		bucketTokens: 10,
 		bucketLastRefill: Date.now(),
+		writeLock: Promise.resolve(),
+		state: { storage: makeFakeStorage() },
 		client: () => client,
-		takeToken: MumbleDO.prototype['takeToken' as keyof MumbleDO],
-		handleError: MumbleDO.prototype['handleError' as keyof MumbleDO],
-		resolveLoginName: MumbleDO.prototype['resolveLoginName' as keyof MumbleDO],
-		findProvisionedSubjects: MumbleDO.prototype['findProvisionedSubjects' as keyof MumbleDO],
+		serialize: proto.serialize,
+		takeToken: proto.takeToken,
+		handleError: proto.handleError,
+		resolveLoginName: proto.resolveLoginName,
+		findProvisionedSubjects: proto.findProvisionedSubjects,
+		deleteAccountsInner: proto.deleteAccountsInner,
+		queuePendingDeletes: proto.queuePendingDeletes,
+		alarm: proto.alarm,
 		...overrides,
 	}
 }
@@ -276,8 +305,108 @@ describe('MumbleDO.deleteAccounts', () => {
 			['user-1', 'user-2']
 		)
 
-		expect(result).toEqual({ deleted: ['user-1'], notFound: ['user-2'] })
+		expect(result).toEqual({ deleted: ['user-1'], notFound: ['user-2'], queued: [] })
 		expect(client.delete).toHaveBeenCalledTimes(1)
 		expect(client.delete.mock.calls[0]![1]).toEqual(['user-1'])
+	})
+
+	it('queues unresolved subjects for alarm retry when murmur-control fails', async () => {
+		const client = makeFakeClient()
+		client.getLocalAccount.mockResolvedValue(SNAPSHOT)
+		client.delete.mockRejectedValue(new Error('connection refused'))
+
+		const fakeThis = makeFakeThis(client)
+		const result = await MumbleDO.prototype.deleteAccounts.call(fakeThis as any, 'srv', ['user-1'])
+
+		expect(result).toEqual({ deleted: [], notFound: [], queued: ['user-1'] })
+		// Pending deletion persisted and alarm armed
+		expect(fakeThis.state.storage.put).toHaveBeenCalledTimes(1)
+		expect(fakeThis.state.storage.data.has('pending-delete:srv:user-1')).toBe(true)
+		expect(fakeThis.state.storage.setAlarm).toHaveBeenCalledTimes(1)
+	})
+
+	it('queues all subjects when even the existence pre-check fails', async () => {
+		const client = makeFakeClient()
+		client.getLocalAccount.mockRejectedValue(new Error('connection refused'))
+
+		const fakeThis = makeFakeThis(client)
+		const result = await MumbleDO.prototype.deleteAccounts.call(fakeThis as any, 'srv', [
+			'user-1',
+			'user-2',
+		])
+
+		expect(result.queued).toEqual(['user-1', 'user-2'])
+		expect(fakeThis.state.storage.data.has('pending-delete:srv:user-1')).toBe(true)
+		expect(fakeThis.state.storage.data.has('pending-delete:srv:user-2')).toBe(true)
+	})
+})
+
+describe('MumbleDO.alarm', () => {
+	it('retries queued deletions and clears confirmed entries', async () => {
+		const client = makeFakeClient()
+		client.getLocalAccount.mockResolvedValue(SNAPSHOT)
+		client.delete.mockResolvedValue({
+			serverId: 'srv',
+			deletedSubjectIds: ['user-1'],
+			disconnectedSessions: 0,
+		})
+
+		const fakeThis = makeFakeThis(client)
+		fakeThis.state.storage.data.set('pending-delete:srv:user-1', Date.now())
+
+		await (MumbleDO.prototype.alarm as () => Promise<void>).call(fakeThis as any)
+
+		expect(client.delete).toHaveBeenCalledTimes(1)
+		expect(fakeThis.state.storage.data.has('pending-delete:srv:user-1')).toBe(false)
+		// Queue drained — no follow-up alarm
+		expect(fakeThis.state.storage.setAlarm).not.toHaveBeenCalled()
+	})
+
+	it('reschedules the alarm while deletions keep failing', async () => {
+		const client = makeFakeClient()
+		client.getLocalAccount.mockRejectedValue(new Error('still down'))
+
+		const fakeThis = makeFakeThis(client)
+		fakeThis.state.storage.data.set('pending-delete:srv:user-1', Date.now())
+
+		await (MumbleDO.prototype.alarm as () => Promise<void>).call(fakeThis as any)
+
+		expect(fakeThis.state.storage.data.has('pending-delete:srv:user-1')).toBe(true)
+		expect(fakeThis.state.storage.setAlarm).toHaveBeenCalledTimes(1)
+	})
+})
+
+describe('MumbleDO mutation serialization', () => {
+	it('serializes concurrent provisions so the second sees the first account', async () => {
+		const client = makeFakeClient()
+		// Simulated remote state: account exists only after a batchSync lands
+		let stored: typeof SNAPSHOT | null = null
+		client.getLocalAccount.mockImplementation(async () => stored)
+		client.getUserState.mockResolvedValue({ serverId: 'srv', users: [] })
+		client.batchSync.mockImplementation(async () => {
+			// Yield first so an unserialized implementation would interleave here
+			await new Promise((resolve) => setTimeout(resolve, 5))
+			stored = SNAPSHOT
+			return { serverId: 'srv', updated: [SNAPSHOT] }
+		})
+
+		const fakeThis = makeFakeThis(client)
+		const input = {
+			subjectId: 'user-1',
+			loginName: 'Pilot One',
+			displayName: 'Pilot One',
+			groups: ['alpha'],
+		}
+
+		const [first, second] = await Promise.allSettled([
+			MumbleDO.prototype.provisionAccount.call(fakeThis as any, 'srv', input),
+			MumbleDO.prototype.provisionAccount.call(fakeThis as any, 'srv', input),
+		])
+
+		// Exactly one provision succeeds; the other gets a typed already_exists
+		expect(first!.status).toBe('fulfilled')
+		expect(second!.status).toBe('rejected')
+		expect(parseMumbleError((second as PromiseRejectedResult).reason)?.code).toBe('already_exists')
+		expect(client.batchSync).toHaveBeenCalledTimes(1)
 	})
 })

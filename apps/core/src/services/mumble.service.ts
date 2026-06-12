@@ -128,7 +128,9 @@ export async function syncUsersMumbleGroups(
 
 /**
  * Best-effort deletion of Mumble accounts (used from user-deletion paths).
- * Never throws — deletion of the auth-next user must not be blocked.
+ * Never throws — deletion of the auth-next user must not be blocked. On
+ * murmur-control failure the mumble DO queues the deletion and retries by
+ * alarm until confirmed, so a `queued` outcome is still eventually deleted.
  */
 export async function deleteMumbleAccounts(
 	env: Env,
@@ -136,12 +138,20 @@ export async function deleteMumbleAccounts(
 ): Promise<MumbleDeleteResult | null> {
 	try {
 		const result = await getMumbleStub(env).deleteAccounts(env.MUMBLE_SERVER_ID, userIds)
+		if (result.queued.length > 0) {
+			logger.warn('[Mumble] Account deletion queued for retry', {
+				queued: result.queued,
+			})
+		}
 		logger.info('[Mumble] Deleted accounts', {
 			deleted: result.deleted,
 			notFound: result.notFound,
+			queued: result.queued,
 		})
 		return result
 	} catch (error) {
+		// Unexpected: deleteAccounts queues control-plane failures internally.
+		// Only RPC transport failures (mumble worker unreachable) land here.
 		logger.error('[Mumble] Failed to delete accounts', {
 			userIds,
 			error: error instanceof Error ? error.message : String(error),

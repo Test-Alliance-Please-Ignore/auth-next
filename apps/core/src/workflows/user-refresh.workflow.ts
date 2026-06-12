@@ -580,11 +580,14 @@ export class UserRefreshWorkflow extends WorkflowEntrypoint<Env, UserRefreshWork
 					})
 
 					// Stripped memberships must also be removed from the user's projected
-					// Mumble groups. Fire-and-forget; failures are logged by the trigger.
-					await triggerMumbleRefreshWorkflow({
-						env: this.env,
-						userIds: [userId],
-						source: 'affiliation-groups-stripped',
+					// Mumble groups. Wrapped in step.do so workflow replays do not
+					// re-fire the trigger; failures are logged by the trigger itself.
+					await step.do('trigger-mumble-group-refresh', async () => {
+						return triggerMumbleRefreshWorkflow({
+							env: this.env,
+							userIds: [userId],
+							source: 'affiliation-groups-stripped',
+						})
 					})
 				}
 			}
