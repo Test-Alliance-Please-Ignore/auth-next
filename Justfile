@@ -88,7 +88,6 @@ db-generate-all:
   cd apps/groups && bun run db:generate
   cd apps/admin && bun run db:generate
   cd apps/bills && bun run db:generate
-  cd apps/orchestrator && bun run db:generate
   cd apps/broadcasts && bun run db:generate
   cd apps/features && bun run db:generate
   cd apps/fleets && bun run db:generate
@@ -121,7 +120,6 @@ db-push-all:
   cd apps/groups && bun run db:push
   cd apps/admin && bun run db:push
   cd apps/bills && bun run db:push
-  cd apps/orchestrator && bun run db:push
   cd apps/broadcasts && bun run db:push
   cd apps/features && bun run db:push
   cd apps/fleets && bun run db:push
@@ -153,7 +151,6 @@ db-migrate-all:
   cd apps/groups && bun run db:migrate
   cd apps/admin && bun run db:migrate
   cd apps/bills && bun run db:migrate
-  cd apps/orchestrator && bun run db:migrate
   cd apps/broadcasts && bun run db:migrate
   cd apps/features && bun run db:migrate
   cd apps/fleets && bun run db:migrate

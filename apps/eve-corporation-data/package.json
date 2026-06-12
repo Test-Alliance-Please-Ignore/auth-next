@@ -32,7 +32,6 @@
 		"@repo/eve-types": "workspace:*",
 		"@repo/hazmat": "workspace:*",
 		"@repo/hono-helpers": "workspace:*",
-		"@repo/orchestrator": "workspace:*",
 		"@repo/queue-utils": "workspace:*",
 		"@repo/universe": "workspace:*",
 		"@repo/worker-utils": "workspace:*",

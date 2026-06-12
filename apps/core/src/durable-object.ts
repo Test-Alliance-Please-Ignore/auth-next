@@ -1681,7 +1681,7 @@ export class CoreDO extends DurableObject<Env> implements Core {
 
 		const db = this.getDb()
 		// Spread workflows across a 10-minute window using per-workflow jitter,
-		// matching the orchestrator's approach. All workflows are created immediately;
+		// matching the existing refresh pipeline. All workflows are created immediately;
 		// each sleeps for its own random duration before executing.
 		const JITTER_MAX_SECONDS = 600
 

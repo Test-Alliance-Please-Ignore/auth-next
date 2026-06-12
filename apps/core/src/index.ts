@@ -760,7 +760,7 @@ export class CoreWorker extends WorkerEntrypoint<Env> {
 	}
 
 	/**
-	 * Trigger user refresh workflow from internal callers (for example orchestrator)
+	 * Trigger user refresh workflow from internal callers
 	 */
 	async triggerUserRefresh(
 		userId: string,

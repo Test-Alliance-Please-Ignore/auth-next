@@ -51,7 +51,7 @@ export { EveCorporationDataDO as EveCorporationData }
 
 /**
  * Eve Corporation Data Worker RPC service
- * Exposes workflow dispatch methods for orchestrator and other callers.
+ * Exposes workflow dispatch methods for internal callers.
  */
 export class EveCorporationDataWorker extends WorkerEntrypoint<Env> {
 	/**
