@@ -9,6 +9,7 @@ import { isNpcCorporationId } from '../../lib/corporation-id'
 import { getCachedUserPermissions } from '../../lib/groups-cache'
 import { validateAndSyncCharacterTokenValidityBatch } from '../../lib/token-validity'
 import { requireAdmin, requireAuth } from '../../middleware/session'
+import corporationsAlertsRoutes from './alerts-routes'
 import corporationsDirectorsRoutes from './directors-routes'
 import corporationsDiscordRoutes from './discord-routes'
 import corporationsPermissionsRoutes from './permissions-routes'
@@ -2342,6 +2343,7 @@ app.patch('/:corporationId/members/:characterId/status', requireAuth(), async (c
 })
 
 app.route('/', corporationsDirectorsRoutes)
+app.route('/', corporationsAlertsRoutes)
 app.route('/', corporationsDiscordRoutes)
 app.route('/', corporationsPermissionsRoutes)
 

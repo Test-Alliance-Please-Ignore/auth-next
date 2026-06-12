@@ -41,6 +41,7 @@ import { LoadingSpinner } from '@/components/ui/loading'
 import { Select } from '@/components/ui/select'
 import { Switch } from '@/components/ui/switch'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
+import { CorporationAlertsCard } from '@/components/admin/corporation-alerts-card'
 import { useBreadcrumb } from '@/hooks/useBreadcrumb'
 import {
 	useAttachCorporationPermission,
@@ -879,6 +880,8 @@ export default function CorporationDetailPage() {
 							</Dialog>
 						</CardContent>
 					</Card>
+
+					<CorporationAlertsCard corporationId={corpId} />
 				</TabsContent>
 
 				{/* Data Summary Tab */}

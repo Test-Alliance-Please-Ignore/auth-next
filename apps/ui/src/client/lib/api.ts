@@ -545,6 +545,56 @@ export interface CorporationDiscordServer {
 	}>
 }
 
+export type CorporationAlertDestinationType = 'discord_channel' | 'discord_user'
+
+export interface CorporationAlertTypeDefinition {
+	type: string
+	label: string
+	description: string
+	supportedDestinationTypes: CorporationAlertDestinationType[]
+}
+
+export interface CorporationAlertDestination {
+	id: string
+	corporationId: string
+	alertType: string
+	destinationType: CorporationAlertDestinationType | string
+	discordServerId: string | null
+	channelId: string | null
+	coreUserId: string | null
+	destinationConfig: Record<string, unknown>
+	isEnabled: boolean
+	createdBy: string | null
+	updatedBy: string | null
+	createdAt: string
+	updatedAt: string
+	discordServer?: {
+		id: string
+		guildId: string
+		guildName: string
+	} | null
+}
+
+export interface CreateCorporationAlertDestinationRequest {
+	alertType: string
+	destinationType: CorporationAlertDestinationType | string
+	discordServerId?: string | null
+	channelId?: string | null
+	coreUserId?: string | null
+	destinationConfig?: Record<string, unknown>
+	isEnabled?: boolean
+}
+
+export interface UpdateCorporationAlertDestinationRequest {
+	alertType?: string
+	destinationType?: CorporationAlertDestinationType | string
+	discordServerId?: string | null
+	channelId?: string | null
+	coreUserId?: string | null
+	destinationConfig?: Record<string, unknown>
+	isEnabled?: boolean
+}
+
 export interface CreateDiscordServerRequest {
 	guildId: string
 	guildName: string
@@ -2339,6 +2389,38 @@ export class ApiClient {
 
 	async getCorporationDataSummary(corporationId: string): Promise<CorporationDataSummary> {
 		return this.get(`/corporations/${corporationId}/data`)
+	}
+
+	async getCorporationAlertTypes(): Promise<CorporationAlertTypeDefinition[]> {
+		return this.get('/corporations/alerts/types')
+	}
+
+	async getCorporationAlertDestinations(
+		corporationId: string
+	): Promise<CorporationAlertDestination[]> {
+		return this.get(`/corporations/${corporationId}/alerts`)
+	}
+
+	async createCorporationAlertDestination(
+		corporationId: string,
+		data: CreateCorporationAlertDestinationRequest
+	): Promise<CorporationAlertDestination> {
+		return this.post(`/corporations/${corporationId}/alerts`, data)
+	}
+
+	async updateCorporationAlertDestination(
+		corporationId: string,
+		destinationId: string,
+		data: UpdateCorporationAlertDestinationRequest
+	): Promise<CorporationAlertDestination> {
+		return this.put(`/corporations/${corporationId}/alerts/${destinationId}`, data)
+	}
+
+	async deleteCorporationAlertDestination(
+		corporationId: string,
+		destinationId: string
+	): Promise<{ success: boolean }> {
+		return this.delete(`/corporations/${corporationId}/alerts/${destinationId}`)
 	}
 
 	// ===== Directors API Methods =====

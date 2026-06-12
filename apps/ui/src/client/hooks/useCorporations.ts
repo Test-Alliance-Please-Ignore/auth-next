@@ -25,6 +25,8 @@ export const corporationKeys = {
 		[...corporationKeys.detail(corporationId), 'directors'] as const,
 	permissions: (corporationId: string) =>
 		[...corporationKeys.detail(corporationId), 'permissions'] as const,
+	alerts: (corporationId: string) => [...corporationKeys.detail(corporationId), 'alerts'] as const,
+	alertTypes: () => [...corporationKeys.all, 'alert-types'] as const,
 	public: () => ['corporations', 'public'] as const,
 }
 
