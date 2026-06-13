@@ -2671,24 +2671,12 @@ export class EveTokenStoreDO extends DurableObject<Env> implements EveTokenStore
 	}
 
 	/**
-	 * Get a batch of characters whose ESI data needs a full sync.
-	 * Returns characters not synced in the last 20 hours, skipping any that
-	 * had a sync attempted within the last hour (deduplication guard).
+	 * Get the characters that should be included in the daily ESI data sync.
+	 * The daily cron already provides the cadence, so this returns all active
+	 * characters and orders them by least-recently synced first.
 	 */
 	async getCharactersNeedingDataSync(limit?: number): Promise<string[]> {
-		const TWENTY_HOURS_MS = 20 * 60 * 60 * 1000
-		const ONE_HOUR_MS = 60 * 60 * 1000
-		const whereClause = and(
-			isNull(eveCharacters.deletedAt),
-			or(
-				isNull(eveCharacters.lastDataSyncAt),
-				lt(eveCharacters.lastDataSyncAt, new Date(Date.now() - TWENTY_HOURS_MS))
-			),
-			or(
-				isNull(eveCharacters.lastDataSyncAttemptAt),
-				lt(eveCharacters.lastDataSyncAttemptAt, new Date(Date.now() - ONE_HOUR_MS))
-			)
-		)
+		const whereClause = isNull(eveCharacters.deletedAt)
 
 		const characters =
 			typeof limit === 'number' && limit > 0
@@ -2702,16 +2690,7 @@ export class EveTokenStoreDO extends DurableObject<Env> implements EveTokenStore
 						orderBy: (table) => [asc(table.lastDataSyncAt), asc(table.characterId)],
 					})
 
-		const characterIds = characters.map((c) => c.characterId)
-
-		if (characterIds.length > 0) {
-			await this.db
-				.update(eveCharacters)
-				.set({ lastDataSyncAttemptAt: new Date() })
-				.where(inArray(eveCharacters.characterId, characterIds))
-		}
-
-		return characterIds
+		return characters.map((c) => c.characterId)
 	}
 
 	/**

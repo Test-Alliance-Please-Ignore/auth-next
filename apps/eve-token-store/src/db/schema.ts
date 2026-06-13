@@ -44,7 +44,7 @@ export const eveCharacters = pgTable(
 
 		/** When character ESI data was last successfully synced */
 		lastDataSyncAt: timestamp('last_data_sync_at', { withTimezone: true }),
-		/** When a data sync was last attempted (used to prevent duplicate dispatch) */
+		/** When a data sync was last attempted */
 		lastDataSyncAttemptAt: timestamp('last_data_sync_attempt_at', { withTimezone: true }),
 
 		/**
