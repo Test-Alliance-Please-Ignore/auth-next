@@ -7,6 +7,7 @@ export async function buildCharacterSyncWorkflowOptions(params: {
 	resolveCharacterOwner: (characterId: string) => Promise<{ userId: string; isPrimary: boolean } | null>
 	resolveUserCharacterIds: (userId: string) => Promise<string[]>
 	trigger: EveCharacterSyncParams['trigger']
+	jitterWindowSeconds?: number
 }): Promise<Array<{ id: string; params: EveCharacterSyncParams }>> {
 	const perUserCharacterIds = new Map<string, string[]>()
 	const unownedCharacterIds: string[] = []
@@ -48,7 +49,7 @@ export async function buildCharacterSyncWorkflowOptions(params: {
 	)
 
 	const total = perUserEntries.length + unownedCharacterIds.length
-	const JITTER_WINDOW_SECONDS = 7200
+	const jitterWindowSeconds = params.jitterWindowSeconds ?? 7200
 
 	return [
 		...perUserEntries.map(({ userId, characterIds: userCharacterIds }) => ({
@@ -73,7 +74,7 @@ export async function buildCharacterSyncWorkflowOptions(params: {
 		...workflow,
 		params: {
 			...workflow.params,
-			jitterDelaySeconds: total > 0 ? Math.floor((index / total) * JITTER_WINDOW_SECONDS) : 0,
+			jitterDelaySeconds: total > 0 ? Math.floor((index / total) * jitterWindowSeconds) : 0,
 		},
 	}))
 }

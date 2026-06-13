@@ -600,7 +600,7 @@ export class CoreRpcService {
 	 */
 	async getUserCharacterIds(userId: string): Promise<string[]> {
 		const characters = await this.db.query.userCharacters.findMany({
-			where: eq(userCharacters.userId, userId),
+			where: and(eq(userCharacters.userId, userId), eq(userCharacters.isDeleted, false)),
 			columns: {
 				characterId: true,
 			},
@@ -656,7 +656,10 @@ export class CoreRpcService {
 		}
 
 		const allUserCharacters = await this.db.query.userCharacters.findMany({
-			where: inArray(userCharacters.userId, Array.from(dueUserIds)),
+			where: and(
+				inArray(userCharacters.userId, Array.from(dueUserIds)),
+				eq(userCharacters.isDeleted, false)
+			),
 			columns: {
 				userId: true,
 				characterId: true,

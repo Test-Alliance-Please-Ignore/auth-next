@@ -188,7 +188,7 @@ export class CoreDO extends DurableObject<Env> implements Core {
 
 	async getUserCharacterIds(userId: string): Promise<string[]> {
 		const characters = await this.getDb().query.userCharacters.findMany({
-			where: eq(userCharacters.userId, userId),
+			where: and(eq(userCharacters.userId, userId), eq(userCharacters.isDeleted, false)),
 			columns: {
 				characterId: true,
 			},
@@ -237,7 +237,10 @@ export class CoreDO extends DurableObject<Env> implements Core {
 		}
 
 		const allUserCharacters = await this.getDb().query.userCharacters.findMany({
-			where: inArray(userCharacters.userId, Array.from(dueUserIds)),
+			where: and(
+				inArray(userCharacters.userId, Array.from(dueUserIds)),
+				eq(userCharacters.isDeleted, false)
+			),
 			columns: {
 				userId: true,
 				characterId: true,

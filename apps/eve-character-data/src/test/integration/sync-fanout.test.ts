@@ -53,4 +53,19 @@ describe('buildCharacterSyncWorkflowOptions', () => {
 		expect(standalone.map((option) => option.params.characterId).sort()).toEqual(['500', '999'])
 		expect(standalone.map((option) => option.params.jitterDelaySeconds)).toEqual([2400, 4800])
 	})
+
+	it('supports a shorter jitter window for manual fanout', async () => {
+		const options = await buildCharacterSyncWorkflowOptions({
+			characterIds: ['100', '200', '300'],
+			resolveCharacterOwner: async (characterId) => ({
+				userId: `user-${characterId}`,
+				isPrimary: true,
+			}),
+			resolveUserCharacterIds: async (userId) => [userId.replace('user-', '')],
+			trigger: 'api',
+			jitterWindowSeconds: 600,
+		})
+
+		expect(options.map((option) => option.params.jitterDelaySeconds)).toEqual([0, 200, 400])
+	})
 })

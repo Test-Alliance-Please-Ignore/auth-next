@@ -7,6 +7,7 @@ import { createEveAllianceId, createEveCharacterId, createEveCorporationId } fro
 import { parseJsonResponse } from '@repo/worker-utils'
 
 import { createDb } from './db'
+import { buildCharacterSyncWorkflowOptions } from './workflows/build-character-sync-workflow-options'
 import {
 	characterAssets,
 	characterAttributes,
@@ -1748,25 +1749,15 @@ export class EveCharacterDataDO extends DurableObject<Env> implements EveCharact
 	}> {
 		const startedAt = new Date().toISOString()
 		const userEntries = await this.env.CORE.listUsersWithActiveCharacters()
-		const total = userEntries.length
-		const JITTER_WINDOW_SECONDS = 7200
-		const workflows = [
-			...userEntries.map(({ userId, characterIds }) => ({
-				id: `user-character-sync-${userId}-${crypto.randomUUID()}`,
-				params: {
-					userId,
-					characterIds,
-					trigger: 'api' as const,
-					jitterDelaySeconds: 0,
-				},
-			})),
-		].map((workflow, index) => ({
-			...workflow,
-			params: {
-				...workflow.params,
-				jitterDelaySeconds: total > 0 ? Math.floor((index / total) * JITTER_WINDOW_SECONDS) : 0,
-			},
-		}))
+		// Manual runs should stay near-immediate, but still avoid a perfectly synchronized spike.
+		const JITTER_WINDOW_SECONDS = 5
+		const workflows = await buildCharacterSyncWorkflowOptions({
+			characterIds: userEntries.flatMap(({ characterIds }) => characterIds),
+			resolveCharacterOwner: async (characterId) => this.env.CORE.getCharacterOwner(characterId),
+			resolveUserCharacterIds: async (userId) => this.env.CORE.getUserCharacterIds(userId),
+			trigger: 'api',
+			jitterWindowSeconds: JITTER_WINDOW_SECONDS,
+		})
 
 		const BATCH_SIZE = 75
 		let created = 0
@@ -1797,8 +1788,8 @@ export class EveCharacterDataDO extends DurableObject<Env> implements EveCharact
 			batchId,
 			totalWorkflowInstances: workflows.length,
 			totalCharacters: userEntries.reduce((sum, entry) => sum + entry.characterIds.length, 0),
-			ownedUserWorkflows: userEntries.length,
-			unownedCharacterWorkflows: 0,
+			ownedUserWorkflows: workflows.filter((workflow) => Boolean(workflow.params.userId)).length,
+			unownedCharacterWorkflows: workflows.filter((workflow) => !workflow.params.userId).length,
 			created,
 			failed,
 			workflowInstanceIds: createdIds,
