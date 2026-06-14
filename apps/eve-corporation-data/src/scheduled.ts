@@ -1,5 +1,7 @@
 import { logger } from '@repo/hono-helpers'
 
+import { refreshSharedSovereigntySystems } from './workflows/utils/sovereignty-systems-cache'
+
 import type { Env } from './context'
 
 const BACKGROUND_REFRESH_QUEUE_KEY = 'background-refresh:workflow-create-queue:v1'
@@ -76,6 +78,20 @@ export async function scheduledHandler(event: ScheduledEvent, env: Env, _ctx: Ex
 		if (corporations.length === 0) {
 			logger.info('[BackgroundRefresh] No corporations to refresh, exiting')
 			return
+		}
+
+		// Warm the shared sovereignty snapshot once before creating corp workflows.
+		// Corp workflows read this from the global corporation-data DO instead of
+		// refetching the same system map independently.
+		try {
+			const sovereigntySystems = await refreshSharedSovereigntySystems(env)
+			logger.info('[BackgroundRefresh] Warmed shared sovereignty systems cache', {
+				count: sovereigntySystems.length,
+			})
+		} catch (error) {
+			logger.warn('[BackgroundRefresh] Failed to warm shared sovereignty systems cache', {
+				error: error instanceof Error ? error.message : String(error),
+			})
 		}
 
 		const configuredCorpsById = new Map(

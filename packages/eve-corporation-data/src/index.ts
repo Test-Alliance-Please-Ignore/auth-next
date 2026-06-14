@@ -168,6 +168,163 @@ export interface EsiCorporationStructure {
 }
 
 /**
+ * ESI Sovereignty system claim details
+ * GET /sovereignty/systems
+ *
+ * The OpenAPI response nests the current claim under `claim`.
+ */
+export interface EsiSovereigntySystem {
+	system_id: string
+	claim_type: 'alliance' | 'faction' | 'unclaimed'
+	alliance_id?: string | null
+	corporation_id?: string | null
+	faction_id?: string | null
+	claimed_since?: string | null
+	is_capital_system?: boolean | null
+	sovereignty_hub_structure_id?: string | null
+	vulnerability_window?: {
+		start: string
+		end: string
+	} | null
+	activity_defense_multiplier?: string | number | null
+	military_level?: number | null
+	industrial_level?: number | null
+	strategic_level?: number | null
+	raw?: Record<string, unknown>
+}
+
+/**
+ * ESI sovereignty hub details enriched with universe metadata.
+ * GET /corporations/{corporation_id}/structures/sovereignty-hubs/{sovereignty_hub_id}
+ */
+export interface EsiSovereigntyHub {
+	structure_id: string
+	system_id: string
+	name: string | null
+	owner_id: string | null
+	type_id: string
+	controller_alliance_id?: string | null
+	fuel_access_list_id?: string | null
+	reagent_bay: {
+		last_updated: string
+		reagents: Array<{
+			type_id: string
+			secured_stock: number
+			unsecured_stock: number
+			last_cycle: string
+		}>
+	}
+	resources: {
+		power: {
+			allocated: number
+			available: number
+		}
+		workforce: {
+			allocated: number
+			available: number
+		}
+	}
+	upgrades: Array<{
+		type_id: string
+		power_state: string
+	}>
+	vulnerability_window?: {
+		start: string
+		end: string
+	} | null
+	workforce_transport: {
+		configuration:
+			| {
+					import: {
+						sources: Array<{
+							amount: number
+							solar_system_id?: number
+						}>
+					}
+			  }
+			| {
+					export: {
+						amount: number
+						solar_system_id?: number
+					}
+			  }
+			| {
+					transit: boolean | null
+			  }
+		state:
+			| {
+					import: {
+						sources: Array<{
+							amount: number
+							solar_system_id?: number
+						}>
+					}
+			  }
+			| {
+					export: {
+						amount: number
+						solar_system_id?: number
+					}
+			  }
+			| {
+					transit: boolean | null
+			  }
+	}
+	raw?: Record<string, unknown>
+}
+
+/**
+ * ESI corporation skyhook details enriched with universe metadata.
+ * GET /corporations/{corporation_id}/structures/skyhooks/{skyhook_id}
+ */
+export interface EsiCorporationSkyhook {
+	structure_id: string
+	planet_id: string
+	system_id: string
+	type_id: string
+	name: string | null
+	owner_id: string | null
+	state: string
+	is_active: boolean
+	effective_workforce?: number | null
+	reagents: Array<{
+		type_id: string
+		secured_stock: number
+		unsecured_stock: number
+		last_cycle: string
+	}>
+	reinforcement_timer?: {
+		end: string
+	} | null
+	theft_vulnerability?: {
+		start: string
+		end: string
+	} | null
+	is_raidable?: boolean
+	becomes_raidable_at?: string | null
+	vulnerable_at?: string | null
+	raw?: Record<string, unknown>
+}
+
+/**
+ * ESI mining-oriented structure state
+ * Derived from the corp skyhook detail feed during sync.
+ */
+export interface EsiCorporationMiningState {
+	structure_id: string
+	planet_id: string
+	system_id: string
+	type_id: string
+	current_stock_volume?: number | null
+	capacity_volume?: number | null
+	fill_rate_per_hour?: string | number | null
+	last_emptied_at?: string | null
+	estimated_full_at?: string | null
+	last_observed_volume?: number | null
+	raw?: Record<string, unknown>
+}
+
+/**
  * ESI Corporation Market Order
  * GET /corporations/{corporation_id}/orders
  */
@@ -478,6 +635,22 @@ export interface CorporationAssetData {
 }
 
 /**
+ * Corporation structure inventory data
+ */
+export interface CorporationStructureInventoryData {
+	id: string
+	corporationId: string
+	structureId: string
+	itemId: string
+	isSingleton: boolean
+	locationFlag: string
+	locationType: string
+	quantity: number
+	typeId: string
+	updatedAt: Date
+}
+
+/**
  * Corporation structure data
  */
 export interface CorporationStructureData {
@@ -682,6 +855,7 @@ export interface CorporationFinancialData {
 export interface CorporationAssetsData {
 	assets: CorporationAssetData[]
 	structures: CorporationStructureData[]
+	structureInventory: CorporationStructureInventoryData[]
 }
 
 /**
@@ -1074,6 +1248,24 @@ export interface EveCorporationData {
 	storeAssets(corporationId: string, assets: any[]): Promise<void>
 
 	/**
+	 * Store structure inventory rows derived from corp assets.
+	 * @param corporationId - The corporation ID
+	 * @param inventory - Pre-filtered structure inventory rows
+	 */
+	storeStructureInventory(
+		corporationId: string,
+		inventory: Array<{
+			structureId: string
+			itemId: string
+			isSingleton: boolean
+			locationFlag: string
+			locationType: string
+			quantity: number
+			typeId: string
+		}>
+	): Promise<void>
+
+	/**
 	 * Fetch and store corporation assets using a specific director character.
 	 * Designed for workflow usage to avoid large asset payloads crossing RPC boundaries.
 	 *
@@ -1092,6 +1284,38 @@ export interface EveCorporationData {
 	 * @param structures - Pre-fetched structures from ESI
 	 */
 	storeStructures(corporationId: string, structures: any[]): Promise<void>
+
+	/**
+	 * Store sovereignty system snapshots (workflow-friendly)
+	 */
+	storeSovereigntySystems(corporationId: string, systems: EsiSovereigntySystem[]): Promise<void>
+
+	/**
+	 * Get a cached sovereignty system snapshot if it is still fresh enough.
+	 *
+	 * @param corporationId - The corporation ID
+	 * @param maxAgeSeconds - Maximum acceptable age for the cached snapshot
+	 * @returns Cached snapshot or null when missing/stale
+	 */
+	getSovereigntySystems(
+		corporationId: string,
+		maxAgeSeconds?: number
+	): Promise<EsiSovereigntySystem[] | null>
+
+	/**
+	 * Store sovereignty hub snapshots (workflow-friendly)
+	 */
+	storeSovereigntyHubs(corporationId: string, hubs: EsiSovereigntyHub[]): Promise<void>
+
+	/**
+	 * Store skyhook snapshots (workflow-friendly)
+	 */
+	storeSkyhooks(corporationId: string, skyhooks: EsiCorporationSkyhook[]): Promise<void>
+
+	/**
+	 * Store mining-specific structure snapshots (workflow-friendly)
+	 */
+	storeMiningStates(corporationId: string, miningStates: EsiCorporationMiningState[]): Promise<void>
 
 	/**
 	 * Store market orders (workflow-friendly)
@@ -1359,6 +1583,18 @@ export interface EveCorporationData {
 	 * @returns Array of asset data
 	 */
 	getAssets(corporationId: string, limit?: number): Promise<CorporationAssetData[]>
+
+	/**
+	 * Get corp structure inventory rows derived from assets.
+	 * @param corporationId - The corporation ID
+	 * @param structureId - Optional structure ID to narrow the result set
+	 * @param limit - Maximum number of rows to return
+	 */
+	getStructureInventory(
+		corporationId: string,
+		structureId?: string,
+		limit?: number
+	): Promise<CorporationStructureInventoryData[]>
 
 	/**
 	 * Get corporation structures

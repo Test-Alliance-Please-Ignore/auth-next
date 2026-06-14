@@ -1,6 +1,10 @@
 import { createDbClient } from '@repo/db-utils'
 import { alertDestinations, discordServers, managedCorporations, users } from '@repo/core-db-schema'
-import { corporationStructures } from '@repo/eve-corporation-data-db-schema'
+import {
+	corporationStructureInventory,
+	corporationStructures,
+	structureFuelLog,
+} from '@repo/eve-corporation-data-db-schema'
 
 import * as schema from './schema'
 
@@ -13,6 +17,8 @@ export const querySchema = {
 	users,
 	managedCorporations,
 	corporationStructures,
+	corporationStructureInventory,
+	structureFuelLog,
 }
 
 export type DbSchema = typeof querySchema

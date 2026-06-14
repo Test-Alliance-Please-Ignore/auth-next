@@ -9,6 +9,7 @@ import {
 	withEsiRetryClassification,
 } from '@repo/workflow-utils'
 
+import * as esiFetch from '../services/esi-fetch'
 import { syncAssets } from './steps/assets'
 import {
 	clearTaxProjectionRetryIntent,
@@ -33,7 +34,12 @@ import { fetchMemberTracking, storeMemberTracking } from './steps/member-trackin
 import { fetchMembers, sendMembershipChangedMessages, storeMembers } from './steps/members'
 import { fetchOrders, storeOrders } from './steps/orders'
 import { fetchPublicInfo, storePublicInfo } from './steps/public-info'
-import { fetchStructures, storeStructures } from './steps/structures'
+import {
+	fetchStructureEnrichment,
+	fetchStructures,
+	storeStructureEnrichment,
+	storeStructures,
+} from './steps/structures'
 import { syncWalletJournal } from './steps/wallet-journal'
 import { syncWalletTransactions } from './steps/wallet-transactions'
 import { fetchWallets, storeWallets } from './steps/wallets'
@@ -43,7 +49,6 @@ import {
 	buildTaxProjectionRefreshInput,
 	createTaxProjectionTriggerRunId,
 } from './utils/tax-projection-trigger'
-
 import type { WorkflowEvent, WorkflowStep } from 'cloudflare:workers'
 import type { CorporationRole, EveCorporationSyncDataType } from '@repo/eve-corporation-data'
 import type { EveCorporationData } from '@repo/eve-corporation-data'
@@ -56,7 +61,7 @@ import type {
 } from './types'
 
 const STEP_RETRY_OPTIONS = esiRetryOptions
-const ASSETS_SYNC_ENABLED = false
+const ASSETS_SYNC_ENABLED = true
 
 const ROLE_REQUIREMENTS_BY_DATA_TYPE: Partial<Record<EveCorporationSyncDataType, CorporationRole[]>> =
 	{
@@ -626,6 +631,39 @@ export class EveCorporationSyncWorkflow extends WorkflowEntrypoint<Env, EveCorpo
 			)
 		}
 
+		if (shouldSyncAuthenticated('structures')) {
+			const structures = await runDirectorStepWithFailover({
+				stepName: 'fetch-structures',
+				timeout: '1 minute',
+				requiredRoles: ['Station_Manager'],
+				run: (directorCharacterId) =>
+					fetchStructures(this.env, corporationId, directorCharacterId),
+			})
+
+			const structureEnrichment = await runDirectorStepWithFailover({
+				stepName: 'fetch-structure-enrichment',
+				timeout: '5 minutes',
+				requiredRoles: ['Station_Manager'],
+				run: (directorCharacterId) =>
+					fetchStructureEnrichment(this.env, corporationId, directorCharacterId),
+			})
+
+			structuresSync = await step.do('store-structures', {}, async () => {
+				await storeStructures(this.env, corporationId, structures)
+				await storeStructureEnrichment(this.env, corporationId, structureEnrichment)
+					return {
+						dataType: 'structures' as const,
+						stats: {
+							structuresCount: structures.length,
+							sovereigntySystemsCount: structureEnrichment.sovereigntySystems.length,
+							sovereigntyHubsCount: structureEnrichment.sovereigntyHubs.length,
+							skyhooksCount: structureEnrichment.skyhooks.length,
+							miningStatesCount: structureEnrichment.miningStates.length,
+						},
+					}
+				})
+		}
+
 		if (shouldSyncAuthenticated('assets')) {
 			assetsSync = await step.do(
 				'sync-assets',
@@ -644,24 +682,6 @@ export class EveCorporationSyncWorkflow extends WorkflowEntrypoint<Env, EveCorpo
 					}
 				}
 			)
-		}
-
-		if (shouldSyncAuthenticated('structures')) {
-			const structures = await runDirectorStepWithFailover({
-				stepName: 'fetch-structures',
-				timeout: '1 minute',
-				requiredRoles: ['Station_Manager'],
-				run: (directorCharacterId) =>
-					fetchStructures(this.env, corporationId, directorCharacterId),
-			})
-
-			structuresSync = await step.do('store-structures', {}, async () => {
-				await storeStructures(this.env, corporationId, structures)
-				return {
-					dataType: 'structures' as const,
-					stats: { structuresCount: structures.length },
-				}
-			})
 		}
 
 		if (shouldSyncAuthenticated('orders')) {

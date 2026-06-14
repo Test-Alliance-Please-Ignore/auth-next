@@ -212,6 +212,7 @@ export default function GlobalPermissionsPage() {
 									setSelectedCategoryId(value === 'all' ? undefined : value)
 								}
 								inputId="category-filter"
+								searchable
 								options={[
 									{ value: 'all', label: 'All categories' },
 									{ value: 'uncategorized', label: 'Uncategorized' },

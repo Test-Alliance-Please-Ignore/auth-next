@@ -1,5 +1,6 @@
 export type StructurePermissionRole = 'viewer' | 'manager' | 'sensitive'
 export type CorporationAlertDestinationType = 'discord_channel' | 'discord_user' | 'group'
+export type StructureTab = 'citadels' | 'sovereignty' | 'skyhooks' | 'navigation' | 'mining'
 export type StructureListSortBy =
 	| 'updatedAt'
 	| 'nextStateAt'
@@ -12,15 +13,72 @@ export type StructureListSortBy =
 	| 'state'
 export type StructureListSortDirection = 'asc' | 'desc'
 
+export interface StructureTabDefinition {
+	tab: StructureTab
+	label: string
+}
+
+export const SOVEREIGNTY_HUB_TYPE_ID = '32458'
+export const ORBITAL_SKYHOOK_TYPE_ID = '81080'
+export const ANSIBLEX_JUMP_GATE_TYPE_ID = '35841'
+export const TENEBREX_CYNO_JAMMER_TYPE_ID = '37534'
+export const PHAROLUX_CYNO_BEACON_TYPE_ID = '35840'
+export const METENOX_MOON_DRILL_TYPE_ID = '81826'
+
+export const SOVEREIGNTY_STRUCTURE_TYPE_IDS = new Set([SOVEREIGNTY_HUB_TYPE_ID])
+export const SKYHOOK_STRUCTURE_TYPE_IDS = new Set([ORBITAL_SKYHOOK_TYPE_ID])
+export const NAVIGATION_STRUCTURE_TYPE_IDS = new Set([
+	ANSIBLEX_JUMP_GATE_TYPE_ID,
+	TENEBREX_CYNO_JAMMER_TYPE_ID,
+	PHAROLUX_CYNO_BEACON_TYPE_ID,
+])
+export const MINING_STRUCTURE_TYPE_IDS = new Set([METENOX_MOON_DRILL_TYPE_ID])
+
+export const STRUCTURE_TABS: StructureTabDefinition[] = [
+	{ tab: 'citadels', label: 'Citadels' },
+	{ tab: 'sovereignty', label: 'Sovereignty' },
+	{ tab: 'skyhooks', label: 'Skyhooks' },
+	{ tab: 'navigation', label: 'Navigation' },
+	{ tab: 'mining', label: 'Mining' },
+]
+
+function normalizeStructureTypeId(value: string | null | undefined): string {
+	return (value ?? '').trim()
+}
+
+export function getStructureTabForTypeId(typeId: string | null | undefined): StructureTab {
+	const normalized = normalizeStructureTypeId(typeId)
+
+	if (MINING_STRUCTURE_TYPE_IDS.has(normalized)) {
+		return 'mining'
+	}
+	if (SOVEREIGNTY_STRUCTURE_TYPE_IDS.has(normalized)) {
+		return 'sovereignty'
+	}
+	if (SKYHOOK_STRUCTURE_TYPE_IDS.has(normalized)) {
+		return 'skyhooks'
+	}
+	if (NAVIGATION_STRUCTURE_TYPE_IDS.has(normalized)) {
+		return 'navigation'
+	}
+
+	return 'citadels'
+}
+
 export interface StructureActor {
 	id: string
 	is_admin: boolean
 	roles: string[]
 }
 
-export interface StructureListQuery {
+export interface StructureListPagingQuery {
 	page?: number
 	pageSize?: number
+	sortBy?: StructureListSortBy
+	sortDirection?: StructureListSortDirection
+}
+
+export interface StructureCitadelListQuery extends StructureListPagingQuery {
 	corporationId?: string
 	assignedGroupId?: string
 	lowPower?: 'true' | 'false'
@@ -29,9 +87,46 @@ export interface StructureListQuery {
 	systemId?: string
 	state?: string
 	typeId?: string
-	sortBy?: StructureListSortBy
-	sortDirection?: StructureListSortDirection
 }
+
+export interface StructureNavigationListQuery extends StructureListPagingQuery {
+	corporationId?: string
+	systemId?: string
+	state?: string
+	typeId?: string
+}
+
+export interface StructureSovereigntyListQuery extends StructureListPagingQuery {
+	corporationId?: string
+	systemId?: string
+	allianceId?: string
+}
+
+export interface StructureOverviewMetrics {
+	total: number
+	lowFuel: number
+	lowPower: number
+	reinforced: number
+	estimatedFuelBurnRatePerHour: string | null
+	fuelBurnRateSampleCount: number
+}
+
+export interface StructureSkyhookListQuery extends StructureListPagingQuery {
+	corporationId?: string
+	systemId?: string
+	planetId?: string
+	state?: string
+	isRaidable?: 'true' | 'false'
+}
+
+export interface StructureMiningListQuery extends StructureListPagingQuery {
+	corporationId?: string
+	systemId?: string
+	planetId?: string
+	typeId?: string
+}
+
+export type StructureListQuery = StructureCitadelListQuery
 
 export interface UpdateStructureConfigInput {
 	hidden?: boolean
@@ -101,6 +196,12 @@ export interface UpdateStructureGroupAlertConfigRequest {
 
 export interface StructuresWorker {
 	listVisibleStructures(actor: StructureActor, query?: StructureListQuery): Promise<unknown>
+	listCitadelStructures(actor: StructureActor, query?: StructureCitadelListQuery): Promise<unknown>
+	listNavigationStructures(actor: StructureActor, query?: StructureNavigationListQuery): Promise<unknown>
+	listSovereigntyStructures(actor: StructureActor, query?: StructureSovereigntyListQuery): Promise<unknown>
+	listSkyhookStructures(actor: StructureActor, query?: StructureSkyhookListQuery): Promise<unknown>
+	listMiningStructures(actor: StructureActor, query?: StructureMiningListQuery): Promise<unknown>
+	getStructureOverviewMetrics(actor: StructureActor): Promise<StructureOverviewMetrics>
 	getVisibleStructureDetail(actor: StructureActor, structureId: string): Promise<unknown>
 	updateStructureConfig(
 		actor: StructureActor,

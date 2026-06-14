@@ -11,6 +11,20 @@ import {
 	uuid,
 } from 'drizzle-orm/pg-core'
 
+import {
+	structureMiningStates,
+	structureSkyhookStates,
+	structureSovereigntyHubs,
+	structureSovereigntySystems,
+} from '@repo/structures-db-schema'
+
+export {
+	structureMiningStates,
+	structureSkyhookStates,
+	structureSovereigntyHubs,
+	structureSovereigntySystems,
+} from '@repo/structures-db-schema'
+
 /**
  * Database schema for the eve-corporation-data worker
  *
@@ -90,7 +104,7 @@ export const corporationDirectors = pgTable(
 		id: uuid('id').defaultRandom().primaryKey(),
 		corporationId: text('corporation_id')
 			.notNull()
-			.references(() => corporationConfig.corporationId, { onDelete: 'cascade' }),
+			.references(() => corporationConfig.corporationId),
 		characterId: text('character_id').notNull(),
 		characterName: text('character_name').notNull(),
 		/** Priority for director selection (lower = higher priority, used for tie-breaking) */
@@ -212,7 +226,7 @@ export const corporationMemberTracking = pgTable(
 		id: uuid('id').defaultRandom().primaryKey(),
 		corporationId: text('corporation_id')
 			.notNull()
-			.references(() => corporationConfig.corporationId),
+			.references(() => corporationConfig.corporationId, { onDelete: 'cascade' }),
 		characterId: text('character_id').notNull(),
 		baseId: text('base_id'),
 		locationId: text('location_id'),
@@ -347,7 +361,7 @@ export const corporationStructures = pgTable(
 		id: uuid('id').defaultRandom().primaryKey(),
 		corporationId: text('corporation_id')
 			.notNull()
-			.references(() => corporationConfig.corporationId),
+			.references(() => corporationConfig.corporationId, { onDelete: 'cascade' }),
 		structureId: text('structure_id').notNull(),
 		name: text('name'),
 		typeId: text('type_id').notNull(),
@@ -359,6 +373,7 @@ export const corporationStructures = pgTable(
 		profileId: text('profile_id').notNull(),
 		fuelExpires: timestamp('fuel_expires', { withTimezone: true }),
 		fuelAmount: integer('fuel_amount'),
+		lastRefilledAt: timestamp('last_refilled_at', { withTimezone: true }),
 		nextReinforceApply: timestamp('next_reinforce_apply', { withTimezone: true }),
 		nextReinforceHour: integer('next_reinforce_hour'),
 		reinforceHour: integer('reinforce_hour'),
@@ -378,7 +393,57 @@ export const corporationStructures = pgTable(
 		>(),
 		updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow().notNull(),
 	},
-	(table) => [unique().on(table.corporationId, table.structureId)]
+	(table) => [unique().on(table.structureId)]
+)
+
+export const corporationStructureInventory = pgTable(
+	'corporation_structure_inventory',
+	{
+		id: uuid('id').defaultRandom().primaryKey(),
+		corporationId: text('corporation_id')
+			.notNull()
+			.references(() => corporationConfig.corporationId),
+		structureId: text('structure_id')
+			.notNull()
+			.references(() => corporationStructures.structureId, { onDelete: 'cascade' }),
+		itemId: text('item_id').notNull(),
+		isSingleton: boolean('is_singleton').default(false).notNull(),
+		locationFlag: text('location_flag').notNull(),
+		locationType: text('location_type').notNull(),
+		quantity: integer('quantity').notNull(),
+		typeId: text('type_id').notNull(),
+		updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow().notNull(),
+	},
+	(table) => [
+		unique().on(table.corporationId, table.itemId),
+		index('corporation_structure_inventory_corp_structure_idx').on(
+			table.corporationId,
+			table.structureId
+		),
+	]
+)
+
+export const structureFuelLog = pgTable(
+	'structure_fuel_log',
+	{
+		id: uuid('id').defaultRandom().primaryKey(),
+		corporationId: text('corporation_id')
+			.notNull()
+			.references(() => corporationConfig.corporationId, { onDelete: 'cascade' }),
+		structureId: text('structure_id')
+			.notNull()
+			.references(() => corporationStructures.structureId, { onDelete: 'cascade' }),
+		fuelBlockUnits: integer('fuel_block_units').notNull(),
+		observedAt: timestamp('observed_at', { withTimezone: true }).notNull(),
+		updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow().notNull(),
+	},
+	(table) => [
+		index('structure_fuel_log_corp_structure_observed_idx').on(
+			table.corporationId,
+			table.structureId,
+			table.observedAt
+		),
+	]
 )
 
 // ============================================================================
@@ -539,4 +604,10 @@ export const schema = {
 	corporationContracts,
 	corporationIndustryJobs,
 	corporationKillmails,
+	structureSovereigntySystems,
+	structureSovereigntyHubs,
+	structureSkyhookStates,
+	structureMiningStates,
+	corporationStructureInventory,
+	structureFuelLog,
 }

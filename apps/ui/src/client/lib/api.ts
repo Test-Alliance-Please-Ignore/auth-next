@@ -3,6 +3,15 @@
  */
 
 import type { FreightRoute } from '@repo/freight'
+import type { InventoryDisplayBay as SharedInventoryDisplayBay } from '@repo/inventory-display'
+import type {
+	StructureCitadelListQuery as RepoStructureCitadelListQuery,
+	StructureMiningListQuery as RepoStructureMiningListQuery,
+	StructureNavigationListQuery as RepoStructureNavigationListQuery,
+	StructureOverviewMetrics as RepoStructureOverviewMetrics,
+	StructureSkyhookListQuery as RepoStructureSkyhookListQuery,
+	StructureSovereigntyListQuery as RepoStructureSovereigntyListQuery,
+} from '@repo/structures'
 
 const API_BASE_URL =
 	import.meta.env.VITE_API_BASE_URL || '/api'
@@ -602,20 +611,24 @@ export type StructureListSortBy =
 	| 'state'
 export type StructureListSortDirection = 'asc' | 'desc'
 
-export interface StructureListQuery {
+export interface StructureListPagingQuery {
 	page?: number
 	pageSize?: number
-	corporationId?: string
-	assignedGroupId?: string
-	lowPower?: 'true' | 'false'
-	lowPowerAllowed?: 'true' | 'false'
-	regionId?: string
-	systemId?: string
-	state?: string
-	typeId?: string
 	sortBy?: StructureListSortBy
 	sortDirection?: StructureListSortDirection
 }
+
+export interface StructureCitadelListQuery extends RepoStructureCitadelListQuery {}
+
+export interface StructureListQuery extends StructureCitadelListQuery {}
+
+export interface StructureNavigationListQuery extends RepoStructureNavigationListQuery {}
+
+export interface StructureSovereigntyListQuery extends RepoStructureSovereigntyListQuery {}
+
+export interface StructureSkyhookListQuery extends RepoStructureSkyhookListQuery {}
+
+export interface StructureMiningListQuery extends RepoStructureMiningListQuery {}
 
 export interface StructureListFilterOption {
 	value: string
@@ -629,6 +642,9 @@ export interface StructureListFilterOptions {
 	systems: StructureListFilterOption[]
 	states: StructureListFilterOption[]
 	types: StructureListFilterOption[]
+	alliances: StructureListFilterOption[]
+	planets: StructureListFilterOption[]
+	raidableStates: StructureListFilterOption[]
 }
 
 export interface StructureListSummary {
@@ -638,7 +654,9 @@ export interface StructureListSummary {
 	reinforced: number
 }
 
-export interface StructureListItem {
+export interface StructureOverviewMetrics extends RepoStructureOverviewMetrics {}
+
+export interface StructureListBaseItem {
 	structureId: string
 	corporationId: string
 	corporationName: string
@@ -649,15 +667,7 @@ export interface StructureListItem {
 	systemName: string | null
 	regionId: string | null
 	regionName: string | null
-	profileId: string
 	state: string
-	nextStateAt: string | null
-	fuelExpires: string | null
-	fuelAmount: number | null
-	lowPower: boolean
-	hidden: boolean
-	lowPowerAllowed: boolean
-	assignedGroupId: string | null
 	syncStatus: 'ok' | 'warning' | 'error'
 	syncFailureReason: string | null
 	lastSyncedAt: string | null
@@ -666,17 +676,155 @@ export interface StructureListItem {
 	canEdit: boolean
 }
 
-export interface StructureDetailResult extends StructureListItem {
+export interface StructureCitadelListItem extends StructureListBaseItem {
+	profileId: string
+	nextStateAt: string | null
+	fuelExpires: string | null
+	fuelAmount: number | null
+	lowPower: boolean
+	hidden: boolean
+	lowPowerAllowed: boolean
+	assignedGroupId: string | null
+}
+
+export interface StructureNavigationListItem extends StructureCitadelListItem {}
+
+export interface StructureSovereigntyHubSummary {
+	fuelAccessListId: string | null
+	controllerAllianceId: string | null
+	reagentBayLastUpdated: string | null
+	reagentCount: number
+	totalSecuredStock: number
+	totalUnsecuredStock: number
+	resourcePowerAllocated: number
+	resourcePowerAvailable: number
+	resourceWorkforceAllocated: number
+	resourceWorkforceAvailable: number
+	upgradeCount: number
+	vulnerabilityWindowStart: string | null
+	vulnerabilityWindowEnd: string | null
+}
+
+export interface StructureSovereigntySummary {
+	claimType: 'alliance' | 'faction' | 'unclaimed'
+	allianceId: string | null
+	corporationClaimantId: string | null
+	factionId: string | null
+	claimedSince: string | null
+	sovereigntyHubStructureId: string | null
+	isCapitalSystem: boolean | null
+	vulnerabilityWindowStart: string | null
+	vulnerabilityWindowEnd: string | null
+	activityDefenseMultiplier: string | null
+	militaryLevel: number | null
+	industrialLevel: number | null
+	strategicLevel: number | null
+	hub: StructureSovereigntyHubSummary | null
+}
+
+export interface StructureSkyhookSummary {
+	planetId: string
+	state: string
+	isActive: boolean
+	effectiveWorkforce: number | null
+	totalReagents: number
+	totalSecuredStock: number
+	totalUnsecuredStock: number
+	reinforcementTimerEnd: string | null
+	theftVulnerabilityStart: string | null
+	theftVulnerabilityEnd: string | null
+	isRaidable: boolean
+	becomesRaidableAt: string | null
+	vulnerableAt: string | null
+}
+
+export interface StructureMiningSummary {
+	planetId: string
+	currentStockVolume: number | null
+	capacityVolume: number | null
+	fillRatePerHour: string | null
+	lastEmptiedAt: string | null
+	estimatedFullAt: string | null
+	lastObservedVolume: number | null
+	lastObservedAt: string | null
+}
+
+export interface StructureSovereigntyListItem extends StructureListBaseItem {
+	claimType: 'alliance' | 'faction' | 'unclaimed'
+	allianceId: string | null
+	corporationClaimantId: string | null
+	factionId: string | null
+	claimedSince: string | null
+	sovereigntyHubStructureId: string | null
+	vulnerabilityWindowStart: string | null
+	vulnerabilityWindowEnd: string | null
+	activityDefenseMultiplier: string | null
+	militaryLevel: number | null
+	industrialLevel: number | null
+	strategicLevel: number | null
+	fuelAccessListId: string | null
+	controllerAllianceId: string | null
+	reagentBayLastUpdated: string | null
+	reagentCount: number
+	totalSecuredStock: number
+	totalUnsecuredStock: number
+	resourcePowerAllocated: number
+	resourcePowerAvailable: number
+	resourceWorkforceAllocated: number
+	resourceWorkforceAvailable: number
+	upgradeCount: number
+}
+
+export interface StructureSkyhookListItem extends StructureListBaseItem {
+	planetId: string
+	state: string
+	isActive: boolean
+	effectiveWorkforce: number | null
+	totalReagents: number
+	totalSecuredStock: number
+	totalUnsecuredStock: number
+	reinforcementTimerEnd: string | null
+	theftVulnerabilityStart: string | null
+	theftVulnerabilityEnd: string | null
+	isRaidable: boolean
+	becomesRaidableAt: string | null
+	vulnerableAt: string | null
+}
+
+export interface StructureMiningListItem extends StructureListBaseItem {
+	planetId: string
+	currentStockVolume: number | null
+	capacityVolume: number | null
+	fillRatePerHour: string | null
+	lastEmptiedAt: string | null
+	estimatedFullAt: string | null
+	lastObservedVolume: number | null
+	lastObservedAt: string | null
+}
+
+export type StructureInventoryBay = SharedInventoryDisplayBay
+export type StructureInventoryItem = StructureInventoryBay['items'][number]
+
+export interface StructureDetailResult extends StructureCitadelListItem {
+	services: Array<{
+		name: string
+		state: string
+	}>
 	stateTimerStart: string | null
 	stateTimerEnd: string | null
 	unanchorsAt: string | null
 	nextReinforceApply: string | null
 	nextReinforceHour: number | null
 	reinforceHour: number | null
+	lastRefilledAt: string | null
+	sovereignty?: StructureSovereigntySummary | null
+	skyhook?: StructureSkyhookSummary | null
+	mining?: StructureMiningSummary | null
+	inventoryBays?: StructureInventoryBay[]
 }
 
-export interface StructureListResponse {
-	items: StructureListItem[]
+export interface StructureListResponse<TItem = StructureCitadelListItem> {
+	items: TItem[]
 	pagination: {
 		page: number
 		pageSize: number
@@ -688,6 +836,12 @@ export interface StructureListResponse {
 	filterOptions: StructureListFilterOptions
 	summary: StructureListSummary
 }
+
+export interface StructureCitadelListResponse extends StructureListResponse<StructureCitadelListItem> {}
+export interface StructureNavigationListResponse extends StructureListResponse<StructureNavigationListItem> {}
+export interface StructureSovereigntyListResponse extends StructureListResponse<StructureSovereigntyListItem> {}
+export interface StructureSkyhookListResponse extends StructureListResponse<StructureSkyhookListItem> {}
+export interface StructureMiningListResponse extends StructureListResponse<StructureMiningListItem> {}
 
 export interface UpdateStructureConfigRequest {
 	hidden?: boolean
@@ -2702,10 +2856,12 @@ export class ApiClient {
 		return this.delete(`/admin/structures/groups/${groupId}/alert-configs/${configId}`)
 	}
 
-	async getStructures(query: StructureListQuery = {}): Promise<StructureListResponse> {
+	async getCitadelStructures(query: StructureCitadelListQuery = {}): Promise<StructureCitadelListResponse> {
 		const params = new URLSearchParams()
 		if (query.page) params.set('page', String(query.page))
 		if (query.pageSize) params.set('pageSize', String(query.pageSize))
+		if (query.sortBy) params.set('sortBy', query.sortBy)
+		if (query.sortDirection) params.set('sortDirection', query.sortDirection)
 		if (query.corporationId) params.set('corporationId', query.corporationId)
 		if (query.assignedGroupId) params.set('assignedGroupId', query.assignedGroupId)
 		if (query.lowPower) params.set('lowPower', query.lowPower)
@@ -2714,10 +2870,78 @@ export class ApiClient {
 		if (query.systemId) params.set('systemId', query.systemId)
 		if (query.state) params.set('state', query.state)
 		if (query.typeId) params.set('typeId', query.typeId)
+		const queryString = params.toString()
+		return this.get(`/structures/citadels${queryString ? `?${queryString}` : ''}`)
+	}
+
+	async getNavigationStructures(
+		query: StructureNavigationListQuery = {}
+	): Promise<StructureNavigationListResponse> {
+		const params = new URLSearchParams()
+		if (query.page) params.set('page', String(query.page))
+		if (query.pageSize) params.set('pageSize', String(query.pageSize))
 		if (query.sortBy) params.set('sortBy', query.sortBy)
 		if (query.sortDirection) params.set('sortDirection', query.sortDirection)
+		if (query.corporationId) params.set('corporationId', query.corporationId)
+		if (query.systemId) params.set('systemId', query.systemId)
+		if (query.state) params.set('state', query.state)
+		if (query.typeId) params.set('typeId', query.typeId)
 		const queryString = params.toString()
-		return this.get(`/structures${queryString ? `?${queryString}` : ''}`)
+		return this.get(`/structures/navigation${queryString ? `?${queryString}` : ''}`)
+	}
+
+	async getSovereigntyStructures(
+		query: StructureSovereigntyListQuery = {}
+	): Promise<StructureSovereigntyListResponse> {
+		const params = new URLSearchParams()
+		if (query.page) params.set('page', String(query.page))
+		if (query.pageSize) params.set('pageSize', String(query.pageSize))
+		if (query.sortBy) params.set('sortBy', query.sortBy)
+		if (query.sortDirection) params.set('sortDirection', query.sortDirection)
+		if (query.corporationId) params.set('corporationId', query.corporationId)
+		if (query.systemId) params.set('systemId', query.systemId)
+		if (query.allianceId) params.set('allianceId', query.allianceId)
+		const queryString = params.toString()
+		return this.get(`/structures/sovereignty${queryString ? `?${queryString}` : ''}`)
+	}
+
+	async getSkyhookStructures(
+		query: StructureSkyhookListQuery = {}
+	): Promise<StructureSkyhookListResponse> {
+		const params = new URLSearchParams()
+		if (query.page) params.set('page', String(query.page))
+		if (query.pageSize) params.set('pageSize', String(query.pageSize))
+		if (query.sortBy) params.set('sortBy', query.sortBy)
+		if (query.sortDirection) params.set('sortDirection', query.sortDirection)
+		if (query.corporationId) params.set('corporationId', query.corporationId)
+		if (query.systemId) params.set('systemId', query.systemId)
+		if (query.planetId) params.set('planetId', query.planetId)
+		if (query.state) params.set('state', query.state)
+		if (query.isRaidable) params.set('isRaidable', query.isRaidable)
+		const queryString = params.toString()
+		return this.get(`/structures/skyhooks${queryString ? `?${queryString}` : ''}`)
+	}
+
+	async getMiningStructures(query: StructureMiningListQuery = {}): Promise<StructureMiningListResponse> {
+		const params = new URLSearchParams()
+		if (query.page) params.set('page', String(query.page))
+		if (query.pageSize) params.set('pageSize', String(query.pageSize))
+		if (query.sortBy) params.set('sortBy', query.sortBy)
+		if (query.sortDirection) params.set('sortDirection', query.sortDirection)
+		if (query.corporationId) params.set('corporationId', query.corporationId)
+		if (query.systemId) params.set('systemId', query.systemId)
+		if (query.planetId) params.set('planetId', query.planetId)
+		if (query.typeId) params.set('typeId', query.typeId)
+		const queryString = params.toString()
+		return this.get(`/structures/mining${queryString ? `?${queryString}` : ''}`)
+	}
+
+	async getStructureOverviewMetrics(): Promise<StructureOverviewMetrics> {
+		return this.get('/structures/overview')
+	}
+
+	async getStructures(query: StructureCitadelListQuery = {}): Promise<StructureCitadelListResponse> {
+		return this.getCitadelStructures(query)
 	}
 
 	async getStructure(structureId: string): Promise<StructureDetailResult> {

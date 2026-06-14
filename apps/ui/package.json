@@ -40,6 +40,8 @@
 		"@repo/hono-helpers": "workspace:*",
 		"@repo/groups": "workspace:*",
 		"@repo/moon-scan": "workspace:*",
+		"@repo/inventory-display": "workspace:*",
+		"@repo/structures": "workspace:*",
 		"@repo/structure-states": "workspace:*",
 		"@repo/srp": "workspace:*",
 		"@repo/worker-utils": "workspace:*",

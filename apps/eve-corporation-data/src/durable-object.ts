@@ -3,6 +3,7 @@ import { DurableObject } from 'cloudflare:workers'
 import { and, desc, eq, gt, gte, inArray, lte, notInArray, sql } from '@repo/db-utils'
 import { getStub } from '@repo/do-utils'
 import { logger } from '@repo/hono-helpers'
+import { parseDateOrNull } from '@repo/worker-utils'
 
 import { createDb } from './db'
 import {
@@ -17,10 +18,16 @@ import {
 	corporationMemberTracking,
 	corporationOrders,
 	corporationPublicInfo,
+	corporationStructureInventory,
+	structureFuelLog,
 	corporationStructures,
 	corporationWalletJournal,
 	corporationWallets,
 	corporationWalletTransactions,
+	structureMiningStates,
+	structureSkyhookStates,
+	structureSovereigntyHubs,
+	structureSovereigntySystems,
 } from './db/schema'
 import { syncAssetsPaged } from './services/assets-paging-sync'
 import { DirectorManager } from './services/director-manager'
@@ -49,6 +56,7 @@ import type {
 	CorporationMemberTrackingData,
 	CorporationOrderData,
 	CorporationPublicData,
+	CorporationStructureInventoryData,
 	CorporationStructureQuery,
 	CorporationRole,
 	CorporationStructureData,
@@ -66,7 +74,11 @@ import type {
 	EsiCorporationMembers,
 	EsiCorporationMemberTracking,
 	EsiCorporationOrder,
+	EsiCorporationSkyhook,
 	EsiCorporationStructure,
+	EsiCorporationMiningState,
+	EsiSovereigntyHub,
+	EsiSovereigntySystem,
 	EsiCorporationWallet,
 	EsiCorporationWalletJournalEntry,
 	EsiCorporationWalletTransaction,
@@ -79,6 +91,11 @@ import type { EsiResponse, EveTokenStore } from '@repo/eve-token-store'
 import type { EveCharacterId, EveStructureId } from '@repo/eve-types'
 import type { Universe, UniverseSolarSystem } from '@repo/universe'
 import type { Env } from './context'
+import {
+	filterStructureInventoryAssets,
+	summarizeFuelBlockUnitsByStructure,
+	type StructureInventoryRowInput,
+} from './services/structure-inventory'
 
 type CorporationConfigRow = typeof corporationConfig.$inferSelect
 
@@ -93,7 +110,25 @@ const CHARACTER_WALLET_SCOPE = 'esi-wallet.read_character_wallet.v1'
 const CORPORATION_MEMBERSHIP_SCOPE = 'esi-corporations.read_corporation_membership.v1'
 const NPC_CORPORATION_ID_MIN = 1_000_000
 const NPC_CORPORATION_ID_MAX = 1_999_999
-const ASSETS_FETCH_ENABLED = false
+
+function parseNumberOrNull(value: unknown): number | null {
+	if (value === null || value === undefined || value === '') {
+		return null
+	}
+	if (typeof value === 'number') {
+		return Number.isFinite(value) ? value : null
+	}
+	const parsed = Number.parseFloat(String(value))
+	return Number.isFinite(parsed) ? parsed : null
+}
+
+function addHours(date: Date, hours: number): Date {
+	return new Date(date.getTime() + hours * 60 * 60 * 1000)
+}
+
+function hoursBetween(start: Date, end: Date): number {
+	return (end.getTime() - start.getTime()) / (60 * 60 * 1000)
+}
 
 /**
  * EveCorporationData Durable Object
@@ -400,23 +435,24 @@ export class EveCorporationDataDO extends DurableObject<Env> implements EveCorpo
 
 	async getCorporationsNeedingRefresh(): Promise<string[]> {
 		const tooOld = minutesAgo(20)
+		const assetsTooOld = minutesAgo(60)
 
 		const configs = await this.getDb().query.corporationConfig.findMany({
 			where: and(eq(corporationConfig.includeInBackgroundRefresh, true)),
 		})
 
 		const syncTargets = [
-			{ field: 'membersLastSync' as const },
-			{ field: 'memberTrackingLastSync' as const },
-			{ field: 'walletsLastSync' as const },
-			{ field: 'walletJournalLastSync' as const },
-			{ field: 'walletTransactionsLastSync' as const },
-			{ field: 'assetsLastSync' as const },
-			{ field: 'structuresLastSync' as const },
-			{ field: 'ordersLastSync' as const },
-			{ field: 'contractsLastSync' as const },
-			{ field: 'industryJobsLastSync' as const },
-			{ field: 'killmailsLastSync' as const },
+			{ field: 'membersLastSync' as const, cutoff: tooOld },
+			{ field: 'memberTrackingLastSync' as const, cutoff: tooOld },
+			{ field: 'walletsLastSync' as const, cutoff: tooOld },
+			{ field: 'walletJournalLastSync' as const, cutoff: tooOld },
+			{ field: 'walletTransactionsLastSync' as const, cutoff: tooOld },
+			{ field: 'assetsLastSync' as const, cutoff: assetsTooOld },
+			{ field: 'structuresLastSync' as const, cutoff: tooOld },
+			{ field: 'ordersLastSync' as const, cutoff: tooOld },
+			{ field: 'contractsLastSync' as const, cutoff: tooOld },
+			{ field: 'industryJobsLastSync' as const, cutoff: tooOld },
+			{ field: 'killmailsLastSync' as const, cutoff: tooOld },
 		]
 
 		const isStale = (lastSync: Date | null | undefined, cutoff: Date) =>
@@ -427,8 +463,8 @@ export class EveCorporationDataDO extends DurableObject<Env> implements EveCorpo
 
 		for (const corp of configs) {
 			// Check if any data type needs refresh
-			for (const { field } of syncTargets) {
-				if (isStale(corp[field], tooOld)) {
+			for (const { field, cutoff } of syncTargets) {
+				if (isStale(corp[field], cutoff)) {
 					corporationIds.add(corp.corporationId)
 					break // No need to check other fields for this corporation
 				}
@@ -1473,8 +1509,123 @@ export class EveCorporationDataDO extends DurableObject<Env> implements EveCorpo
 		}
 	}
 
+	private async getOwnedStructureIds(corporationId: string): Promise<Set<string>> {
+		const rows = await this.getDb().query.corporationStructures.findMany({
+			where: eq(corporationStructures.corporationId, corporationId),
+			columns: {
+				structureId: true,
+			},
+		})
+
+		return new Set(rows.map((row) => row.structureId))
+	}
+
+	async storeStructureInventory(
+		corporationId: string,
+		inventory: Array<StructureInventoryRowInput>
+	): Promise<void> {
+		const observedAt = new Date()
+		const ownedStructureIds = await this.getOwnedStructureIds(corporationId)
+		const fuelBlockUnitsByStructure = summarizeFuelBlockUnitsByStructure(ownedStructureIds, inventory)
+		const previousFuelRows = ownedStructureIds.size
+			? await this.getDb().query.structureFuelLog.findMany({
+					where: and(
+						eq(structureFuelLog.corporationId, corporationId),
+						inArray(structureFuelLog.structureId, [...ownedStructureIds])
+					),
+					orderBy: desc(structureFuelLog.observedAt),
+				})
+			: []
+		const previousFuelBlockUnitsByStructure = new Map<string, number>()
+		for (const row of previousFuelRows) {
+			if (previousFuelBlockUnitsByStructure.has(row.structureId)) {
+				continue
+			}
+			previousFuelBlockUnitsByStructure.set(row.structureId, row.fuelBlockUnits)
+		}
+		const refilledStructureIds = Array.from(fuelBlockUnitsByStructure.entries())
+			.filter(([structureId, fuelBlockUnits]) => {
+				const previousFuelBlockUnits = previousFuelBlockUnitsByStructure.get(structureId)
+				return previousFuelBlockUnits !== undefined && fuelBlockUnits > previousFuelBlockUnits
+			})
+			.map(([structureId]) => structureId)
+
+		await this.getDb().transaction(async (tx) => {
+			await tx
+				.delete(corporationStructureInventory)
+				.where(eq(corporationStructureInventory.corporationId, corporationId))
+
+			const BATCH_SIZE = 100
+			for (let i = 0; i < inventory.length; i += BATCH_SIZE) {
+				const batch = inventory.slice(i, i + BATCH_SIZE)
+				const valuesToInsert = batch.map((row) => ({
+					corporationId: String(corporationId),
+					structureId: row.structureId,
+					itemId: row.itemId,
+					isSingleton: row.isSingleton,
+					locationFlag: row.locationFlag,
+					locationType: row.locationType,
+					quantity: row.quantity,
+					typeId: row.typeId,
+					updatedAt: observedAt,
+				}))
+
+				await tx.insert(corporationStructureInventory).values(valuesToInsert)
+			}
+
+			if (ownedStructureIds.size > 0) {
+				const fuelHistoryRows = Array.from(fuelBlockUnitsByStructure.entries()).map(
+					([structureId, fuelBlockUnits]) => ({
+						corporationId: String(corporationId),
+						structureId,
+						fuelBlockUnits,
+						observedAt,
+						updatedAt: observedAt,
+					})
+				)
+
+				await tx.insert(structureFuelLog).values(fuelHistoryRows)
+			}
+
+			if (refilledStructureIds.length > 0) {
+				await tx
+					.update(corporationStructures)
+					.set({ lastRefilledAt: observedAt })
+					.where(
+						and(
+							eq(corporationStructures.corporationId, corporationId),
+							inArray(corporationStructures.structureId, refilledStructureIds)
+						)
+					)
+			}
+
+			await tx
+				.delete(structureFuelLog)
+				.where(
+					and(
+						eq(structureFuelLog.corporationId, corporationId),
+						lte(structureFuelLog.observedAt, new Date(observedAt.getTime() - 30 * 24 * 60 * 60 * 1000))
+					)
+				)
+		})
+	}
+
+	private async getStructureInventoryNextAllowedAt(
+		corporationId: string
+	): Promise<Date | null> {
+		const config = await this.getDb().query.corporationConfig.findFirst({
+			where: eq(corporationConfig.corporationId, corporationId),
+		})
+		if (!config?.assetsLastSync) {
+			return null
+		}
+
+		const nextAllowedAt = addHours(config.assetsLastSync, 1)
+		return nextAllowedAt > new Date() ? nextAllowedAt : null
+	}
+
 	/**
-	 * Fetch and store assets using a specific director character.
+	 * Fetch and store structure inventory using a specific director character.
 	 * This avoids transferring large asset arrays across RPC boundaries.
 	 */
 	async syncAssetsWithDirector(
@@ -1482,8 +1633,19 @@ export class EveCorporationDataDO extends DurableObject<Env> implements EveCorpo
 		directorCharacterId: string
 	): Promise<{ assetsCount: number }> {
 		this.assertNonNpcCorporation(corporationId)
+		const nextAllowedAt = await this.getStructureInventoryNextAllowedAt(corporationId)
+		if (nextAllowedAt) {
+			logger.info('[EveCorporationData] Skipping structure inventory sync due to cooldown', {
+				corporationId,
+				nextAllowedAt: nextAllowedAt.toISOString(),
+			})
+			return { assetsCount: 0 }
+		}
 		await this.verifyRole(directorCharacterId, ['Director'])
-		const assetsCount = await this.fetchAndStoreAssetsByCharacter(corporationId, directorCharacterId)
+		const assetsCount = await this.fetchAndStoreStructureInventoryByCharacter(
+			corporationId,
+			directorCharacterId
+		)
 		return { assetsCount }
 	}
 
@@ -1892,30 +2054,461 @@ export class EveCorporationDataDO extends DurableObject<Env> implements EveCorpo
 				.where(eq(corporationMembers.corporationId, corporationId))
 			const characterIds = members.map((row) => row.characterId)
 
-			if (characterIds.length > 0) {
-				try {
-					const result = await this.env.CORE.addPendingDiscordRefreshesForCharacters(characterIds)
-					logger.info('[EveCorporationData] Queued Discord refresh after alliance affiliation change', {
-						corporationId,
+				if (characterIds.length > 0) {
+					try {
+						const result = await this.env.CORE.addPendingDiscordRefreshesForCharacters(characterIds)
+						logger.info('[EveCorporationData] Queued Discord refresh after alliance affiliation change', {
+							corporationId,
 						previousAllianceId,
 						nextAllianceId,
 						charactersMatched: characterIds.length,
 						usersQueued: result.usersQueued,
-						pendingCount: result.pendingCount,
-					})
-				} catch (error) {
-					logger.error(
-						'[EveCorporationData] Failed to queue Discord refresh after alliance affiliation change',
-						{
-							corporationId,
-							previousAllianceId,
-							nextAllianceId,
-							error: error instanceof Error ? error.message : String(error),
-						}
-					)
+							pendingCount: result.pendingCount,
+						})
+					} catch (error) {
+						logger.error(
+							'[EveCorporationData] Failed to queue Discord refresh after alliance affiliation change',
+							{
+								corporationId,
+								previousAllianceId,
+								nextAllianceId,
+								error: error instanceof Error ? error.message : String(error),
+							}
+						)
+					}
 				}
 			}
 		}
+
+	/**
+	 * Store sovereignty system snapshots (workflow-friendly)
+	 */
+	async storeSovereigntySystems(corporationId: string, systems: EsiSovereigntySystem[]): Promise<void> {
+		const now = new Date()
+		const values = systems.map((system) => {
+			const claimedSince = parseDateOrNull(system.claimed_since) ?? null
+			const vulnerabilityWindowStart = parseDateOrNull(system.vulnerability_window?.start) ?? null
+			const vulnerabilityWindowEnd = parseDateOrNull(system.vulnerability_window?.end) ?? null
+
+			return {
+				systemId: system.system_id,
+				corporationId,
+				claimType: system.claim_type,
+				allianceId: system.alliance_id ?? null,
+				corporationClaimantId: system.corporation_id ?? null,
+				factionId: system.faction_id ?? null,
+				claimedSince,
+				sovereigntyHubStructureId: system.sovereignty_hub_structure_id ?? null,
+				isCapitalSystem: system.is_capital_system ?? null,
+				vulnerabilityWindowStart,
+				vulnerabilityWindowEnd,
+				activityDefenseMultiplier:
+					parseNumberOrNull(system.activity_defense_multiplier)?.toString() ?? null,
+				militaryLevel: system.military_level ?? null,
+				industrialLevel: system.industrial_level ?? null,
+				strategicLevel: system.strategic_level ?? null,
+				sourceSyncAt: now,
+				lastSyncedAt: now,
+				rawPayload: system.raw ?? {
+					...system,
+				},
+				updatedAt: now,
+			}
+		})
+
+		if (values.length === 0) {
+			await this.getDb()
+				.delete(structureSovereigntySystems)
+				.where(eq(structureSovereigntySystems.corporationId, corporationId))
+			return
+		}
+
+		const BATCH_SIZE = 25
+		for (let i = 0; i < values.length; i += BATCH_SIZE) {
+			const batch = values.slice(i, i + BATCH_SIZE)
+			await this.getDb()
+				.insert(structureSovereigntySystems)
+				.values(batch)
+				.onConflictDoUpdate({
+					target: structureSovereigntySystems.systemId,
+					set: {
+						corporationId: sql`excluded.corporation_id`,
+						claimType: sql`excluded.claim_type`,
+						allianceId: sql`excluded.alliance_id`,
+						corporationClaimantId: sql`excluded.corporation_claimant_id`,
+						factionId: sql`excluded.faction_id`,
+						claimedSince: sql`excluded.claimed_since`,
+						sovereigntyHubStructureId: sql`excluded.sovereignty_hub_structure_id`,
+						isCapitalSystem: sql`excluded.is_capital_system`,
+						vulnerabilityWindowStart: sql`excluded.vulnerability_window_start`,
+						vulnerabilityWindowEnd: sql`excluded.vulnerability_window_end`,
+						activityDefenseMultiplier: sql`excluded.activity_defense_multiplier`,
+						militaryLevel: sql`excluded.military_level`,
+						industrialLevel: sql`excluded.industrial_level`,
+						strategicLevel: sql`excluded.strategic_level`,
+						sourceSyncAt: sql`excluded.source_sync_at`,
+						lastSyncedAt: sql`excluded.last_synced_at`,
+						rawPayload: sql`excluded.raw_payload`,
+						updatedAt: sql`excluded.updated_at`,
+					},
+				})
+		}
+
+		await this.getDb()
+			.delete(structureSovereigntySystems)
+			.where(
+				and(
+					eq(structureSovereigntySystems.corporationId, corporationId),
+					notInArray(
+						structureSovereigntySystems.systemId,
+						values.map((row) => row.systemId)
+					)
+				)
+			)
+	}
+
+	/**
+	 * Get a cached sovereignty system snapshot if it is still within TTL.
+	 */
+	async getSovereigntySystems(
+		corporationId: string,
+		maxAgeSeconds = 300
+	): Promise<EsiSovereigntySystem[] | null> {
+		const rows = await this.getDb().query.structureSovereigntySystems.findMany({
+			where: eq(structureSovereigntySystems.corporationId, corporationId),
+		})
+
+		if (rows.length === 0) {
+			return null
+		}
+
+		const newestSyncAt = rows.reduce<Date | null>((latest, row) => {
+			const candidate = row.lastSyncedAt ?? row.sourceSyncAt ?? null
+			if (!candidate) return latest
+			if (!latest || candidate.getTime() > latest.getTime()) {
+				return candidate
+			}
+			return latest
+		}, null)
+
+		if (!newestSyncAt) {
+			return null
+		}
+
+		const ageMs = Date.now() - newestSyncAt.getTime()
+		if (ageMs > maxAgeSeconds * 1000) {
+			return null
+		}
+
+		return rows.map((row) => ({
+			system_id: row.systemId,
+			claim_type: row.claimType as EsiSovereigntySystem['claim_type'],
+			alliance_id: row.allianceId ?? null,
+			corporation_id: row.corporationClaimantId ?? null,
+			faction_id: row.factionId ?? null,
+			claimed_since: row.claimedSince?.toISOString() ?? null,
+			is_capital_system: row.isCapitalSystem ?? null,
+			sovereignty_hub_structure_id: row.sovereigntyHubStructureId ?? null,
+			vulnerability_window:
+				row.vulnerabilityWindowStart !== null || row.vulnerabilityWindowEnd !== null
+					? {
+							start: row.vulnerabilityWindowStart?.toISOString() ?? '',
+							end: row.vulnerabilityWindowEnd?.toISOString() ?? '',
+						}
+					: null,
+			activity_defense_multiplier: row.activityDefenseMultiplier ?? null,
+			military_level: row.militaryLevel ?? null,
+			industrial_level: row.industrialLevel ?? null,
+			strategic_level: row.strategicLevel ?? null,
+			raw: row.rawPayload ?? {},
+		}))
+	}
+
+	/**
+	 * Store sovereignty hub snapshots (workflow-friendly)
+	 */
+	async storeSovereigntyHubs(corporationId: string, hubs: EsiSovereigntyHub[]): Promise<void> {
+		const now = new Date()
+		const values = hubs.map((hub) => ({
+			structureId: hub.structure_id,
+			corporationId,
+			systemId: hub.system_id,
+			name: hub.name,
+			ownerId: hub.owner_id,
+			typeId: hub.type_id,
+			fuelAccessListId: hub.fuel_access_list_id ?? null,
+			controllerAllianceId: hub.controller_alliance_id ?? null,
+			reagentBayLastUpdated: parseDateOrNull(hub.reagent_bay.last_updated) ?? null,
+			reagentBay: {
+				lastUpdated: hub.reagent_bay.last_updated,
+				reagents: hub.reagent_bay.reagents.map((reagent) => ({
+					typeId: reagent.type_id,
+					securedStock: reagent.secured_stock,
+					unsecuredStock: reagent.unsecured_stock,
+					lastCycle: reagent.last_cycle,
+				})),
+			},
+			resources: hub.resources,
+			upgrades: hub.upgrades.map((upgrade) => ({
+				typeId: upgrade.type_id,
+				powerState: upgrade.power_state,
+			})),
+			vulnerabilityWindowStart: parseDateOrNull(hub.vulnerability_window?.start) ?? null,
+			vulnerabilityWindowEnd: parseDateOrNull(hub.vulnerability_window?.end) ?? null,
+			workforceTransport: hub.workforce_transport,
+			sourceSyncAt: now,
+			lastSyncedAt: now,
+			rawPayload: hub.raw ?? { ...hub },
+			updatedAt: now,
+		}))
+
+		if (values.length === 0) {
+			await this.getDb()
+				.delete(structureSovereigntyHubs)
+				.where(eq(structureSovereigntyHubs.corporationId, corporationId))
+			return
+		}
+
+		const BATCH_SIZE = 25
+		for (let i = 0; i < values.length; i += BATCH_SIZE) {
+			const batch = values.slice(i, i + BATCH_SIZE)
+			await this.getDb()
+				.insert(structureSovereigntyHubs)
+				.values(batch)
+				.onConflictDoUpdate({
+					target: structureSovereigntyHubs.structureId,
+					set: {
+						corporationId: sql`excluded.corporation_id`,
+						systemId: sql`excluded.system_id`,
+						name: sql`excluded.name`,
+						ownerId: sql`excluded.owner_id`,
+						typeId: sql`excluded.type_id`,
+						fuelAccessListId: sql`excluded.fuel_access_list_id`,
+						controllerAllianceId: sql`excluded.controller_alliance_id`,
+						reagentBayLastUpdated: sql`excluded.reagent_bay_last_updated`,
+						reagentBay: sql`excluded.reagent_bay`,
+						resources: sql`excluded.resources`,
+						upgrades: sql`excluded.upgrades`,
+						vulnerabilityWindowStart: sql`excluded.vulnerability_window_start`,
+						vulnerabilityWindowEnd: sql`excluded.vulnerability_window_end`,
+						workforceTransport: sql`excluded.workforce_transport`,
+						sourceSyncAt: sql`excluded.source_sync_at`,
+						lastSyncedAt: sql`excluded.last_synced_at`,
+						rawPayload: sql`excluded.raw_payload`,
+						updatedAt: sql`excluded.updated_at`,
+					},
+				})
+		}
+
+		await this.getDb()
+			.delete(structureSovereigntyHubs)
+			.where(
+				and(
+					eq(structureSovereigntyHubs.corporationId, corporationId),
+					notInArray(structureSovereigntyHubs.structureId, values.map((row) => row.structureId))
+				)
+			)
+	}
+
+	/**
+	 * Store skyhook snapshots (workflow-friendly)
+	 */
+	async storeSkyhooks(corporationId: string, skyhooks: EsiCorporationSkyhook[]): Promise<void> {
+		const now = new Date()
+		const values = skyhooks.map((skyhook) => {
+			return {
+				structureId: skyhook.structure_id,
+				corporationId,
+				planetId: skyhook.planet_id,
+				systemId: skyhook.system_id,
+				name: skyhook.name,
+				ownerId: skyhook.owner_id,
+				typeId: skyhook.type_id,
+				state: skyhook.state,
+				isActive: skyhook.is_active,
+				effectiveWorkforce: skyhook.effective_workforce ?? null,
+				reagents:
+					skyhook.reagents.map((reagent) => ({
+						typeId: reagent.type_id,
+						securedStock: reagent.secured_stock,
+						unsecuredStock: reagent.unsecured_stock,
+						lastCycle: reagent.last_cycle,
+					})) ?? [],
+				reinforcementTimerEnd: parseDateOrNull(skyhook.reinforcement_timer?.end) ?? null,
+				theftVulnerabilityStart: parseDateOrNull(skyhook.theft_vulnerability?.start) ?? null,
+				theftVulnerabilityEnd: parseDateOrNull(skyhook.theft_vulnerability?.end) ?? null,
+				isRaidable: skyhook.is_raidable ?? false,
+				becomesRaidableAt: parseDateOrNull(skyhook.becomes_raidable_at) ?? null,
+				vulnerableAt: parseDateOrNull(skyhook.vulnerable_at) ?? null,
+				lastObservedAt: now,
+				sourceSyncAt: now,
+				lastSyncedAt: now,
+				rawPayload: skyhook.raw ?? { ...skyhook },
+				updatedAt: now,
+			}
+		})
+
+		if (values.length === 0) {
+			await this.getDb()
+				.delete(structureSkyhookStates)
+				.where(eq(structureSkyhookStates.corporationId, corporationId))
+			return
+		}
+
+		const BATCH_SIZE = 25
+		for (let i = 0; i < values.length; i += BATCH_SIZE) {
+			const batch = values.slice(i, i + BATCH_SIZE)
+			await this.getDb()
+				.insert(structureSkyhookStates)
+				.values(batch)
+				.onConflictDoUpdate({
+					target: structureSkyhookStates.structureId,
+					set: {
+						corporationId: sql`excluded.corporation_id`,
+						planetId: sql`excluded.planet_id`,
+						systemId: sql`excluded.system_id`,
+						name: sql`excluded.name`,
+						ownerId: sql`excluded.owner_id`,
+						typeId: sql`excluded.type_id`,
+						state: sql`excluded.state`,
+						isActive: sql`excluded.is_active`,
+						effectiveWorkforce: sql`excluded.effective_workforce`,
+						reagents: sql`excluded.reagents`,
+						reinforcementTimerEnd: sql`excluded.reinforcement_timer_end`,
+						theftVulnerabilityStart: sql`excluded.theft_vulnerability_start`,
+						theftVulnerabilityEnd: sql`excluded.theft_vulnerability_end`,
+						isRaidable: sql`excluded.is_raidable`,
+						becomesRaidableAt: sql`excluded.becomes_raidable_at`,
+						vulnerableAt: sql`excluded.vulnerable_at`,
+						lastObservedAt: sql`excluded.last_observed_at`,
+						sourceSyncAt: sql`excluded.source_sync_at`,
+						lastSyncedAt: sql`excluded.last_synced_at`,
+						rawPayload: sql`excluded.raw_payload`,
+						updatedAt: sql`excluded.updated_at`,
+					},
+				})
+		}
+
+		await this.getDb()
+			.delete(structureSkyhookStates)
+			.where(
+				and(
+					eq(structureSkyhookStates.corporationId, corporationId),
+					notInArray(structureSkyhookStates.structureId, values.map((row) => row.structureId))
+				)
+			)
+	}
+
+	/**
+	 * Store mining-oriented structure snapshots (workflow-friendly)
+	 */
+	async storeMiningStates(
+		corporationId: string,
+		miningStates: EsiCorporationMiningState[]
+	): Promise<void> {
+		const now = new Date()
+		const existingRows = await this.getDb().query.structureMiningStates.findMany({
+			where: eq(structureMiningStates.corporationId, corporationId),
+		})
+		const existingByStructureId = new Map(existingRows.map((row) => [row.structureId, row]))
+
+		const values = miningStates.map((state) => {
+			const previous = existingByStructureId.get(state.structure_id)
+			const currentVolume = state.current_stock_volume ?? null
+			const previousVolume = previous?.lastObservedVolume ?? previous?.currentStockVolume ?? null
+			const previousObservedAt = previous?.lastObservedAt ?? previous?.sourceSyncAt ?? null
+			const observedAt = now
+			const capacityVolume = state.capacity_volume ?? previous?.capacityVolume ?? 30_000
+			let fillRatePerHour = previous?.fillRatePerHour ?? null
+			let estimatedFullAt = previous?.estimatedFullAt ?? null
+			let lastEmptiedAt = previous?.lastEmptiedAt ?? null
+
+			if (currentVolume !== null && previousVolume !== null) {
+				if (currentVolume < previousVolume) {
+					lastEmptiedAt = observedAt
+					fillRatePerHour = null
+					estimatedFullAt = null
+				} else if (
+					currentVolume > previousVolume &&
+					previousObservedAt !== null &&
+					observedAt.getTime() > previousObservedAt.getTime()
+				) {
+					const delta = currentVolume - previousVolume
+					const elapsedHours = hoursBetween(previousObservedAt, observedAt)
+					if (elapsedHours > 0) {
+						const rate = delta / elapsedHours
+						fillRatePerHour = rate.toFixed(4)
+						if (rate > 0 && currentVolume < capacityVolume) {
+							const remainingHours = (capacityVolume - currentVolume) / rate
+							estimatedFullAt = addHours(observedAt, remainingHours)
+						}
+					}
+				}
+			}
+
+			return {
+				structureId: state.structure_id,
+				corporationId,
+				planetId: state.planet_id,
+				systemId: state.system_id,
+				typeId: state.type_id,
+				currentStockVolume: currentVolume,
+				capacityVolume,
+				fillRatePerHour,
+				lastEmptiedAt,
+				estimatedFullAt,
+				lastObservedVolume: currentVolume,
+				lastObservedAt: observedAt,
+				sourceSyncAt: observedAt,
+				lastSyncedAt: observedAt,
+				rawPayload: state.raw ?? { ...state },
+				updatedAt: observedAt,
+			}
+		})
+
+		if (values.length === 0) {
+			await this.getDb()
+				.delete(structureMiningStates)
+				.where(eq(structureMiningStates.corporationId, corporationId))
+			return
+		}
+
+		const BATCH_SIZE = 25
+		for (let i = 0; i < values.length; i += BATCH_SIZE) {
+			const batch = values.slice(i, i + BATCH_SIZE)
+			await this.getDb()
+				.insert(structureMiningStates)
+				.values(batch)
+				.onConflictDoUpdate({
+					target: structureMiningStates.structureId,
+					set: {
+						corporationId: sql`excluded.corporation_id`,
+						planetId: sql`excluded.planet_id`,
+						systemId: sql`excluded.system_id`,
+						typeId: sql`excluded.type_id`,
+						currentStockVolume: sql`excluded.current_stock_volume`,
+						capacityVolume: sql`excluded.capacity_volume`,
+						fillRatePerHour: sql`excluded.fill_rate_per_hour`,
+						lastEmptiedAt: sql`excluded.last_emptied_at`,
+						estimatedFullAt: sql`excluded.estimated_full_at`,
+						lastObservedVolume: sql`excluded.last_observed_volume`,
+						lastObservedAt: sql`excluded.last_observed_at`,
+						sourceSyncAt: sql`excluded.source_sync_at`,
+						lastSyncedAt: sql`excluded.last_synced_at`,
+						rawPayload: sql`excluded.raw_payload`,
+						updatedAt: sql`excluded.updated_at`,
+					},
+				})
+		}
+
+		await this.getDb()
+			.delete(structureMiningStates)
+			.where(
+				and(
+					eq(structureMiningStates.corporationId, corporationId),
+					notInArray(structureMiningStates.structureId, values.map((row) => row.structureId))
+				)
+			)
 	}
 
 	/**
@@ -2506,6 +3099,127 @@ export class EveCorporationDataDO extends DurableObject<Env> implements EveCorpo
 		return result.assetsCount
 	}
 
+	private async fetchAndStoreStructureInventory(
+		corporationId: string,
+		forceRefresh = false
+	): Promise<number> {
+		if (!forceRefresh) {
+			const nextAllowedAt = await this.getStructureInventoryNextAllowedAt(corporationId)
+			if (nextAllowedAt) {
+				logger.info('[EveCorporationData] Skipping structure inventory refresh due to cooldown', {
+					corporationId,
+					nextAllowedAt: nextAllowedAt.toISOString(),
+				})
+				return 0
+			}
+		}
+
+		const { characterId } = await this.getConfiguredCharacter(corporationId)
+		logger.info('[EveCorporationData] fetchAndStoreStructureInventory: Selected character', {
+			corporationId,
+			characterId,
+		})
+
+		await this.verifyRole(characterId, ['Director'])
+
+		logger.info('[EveCorporationData] fetchAndStoreStructureInventory: Role verified', {
+			corporationId,
+			characterId,
+		})
+
+		return await this.fetchAndStoreStructureInventoryByCharacter(corporationId, characterId, {
+			forceRefresh,
+		})
+	}
+
+	private async fetchAndStoreStructureInventoryByCharacter(
+		corporationId: string,
+		characterId: string,
+		options?: { forceRefresh?: boolean }
+	): Promise<number> {
+		const config = await this.getDb().query.corporationConfig.findFirst({
+			where: eq(corporationConfig.corporationId, corporationId),
+		})
+		if (!options?.forceRefresh && config?.assetsLastSync) {
+			const nextAllowedAt = addHours(config.assetsLastSync, 1)
+			if (nextAllowedAt > new Date()) {
+				logger.info('[EveCorporationData] Skipping structure inventory refresh due to cooldown', {
+					corporationId,
+					lastSyncAt: config.assetsLastSync.toISOString(),
+					nextAllowedAt: nextAllowedAt.toISOString(),
+				})
+				return 0
+			}
+		}
+
+		const ownedStructureIds = await this.getOwnedStructureIds(corporationId)
+		if (ownedStructureIds.size === 0) {
+			logger.info('[EveCorporationData] No owned structures found; clearing structure inventory snapshot', {
+				corporationId,
+			})
+			await this.storeStructureInventory(corporationId, [])
+			await this.updateCorporationSyncTimestamp(corporationId, 'assetsLastSync')
+			return 0
+		}
+
+		const tokenStore = getStub<EveTokenStore>(this.env.EVE_TOKEN_STORE, 'default')
+		const basePath = `/corporations/${corporationId}/assets`
+		const inventoryRows: StructureInventoryRowInput[] = []
+		try {
+			const result = await syncAssetsPaged({
+				fetchPage: (page) =>
+					tokenStore.fetchEsi(`${basePath}?page=${page}`, characterId, {
+						cacheMode: 'no-store',
+					}) as Promise<EsiResponse<RawEsiAsset[]>>,
+				storeAssets: async (assets) => {
+					inventoryRows.push(
+						...filterStructureInventoryAssets(corporationId, ownedStructureIds, assets)
+					)
+				},
+				onProgress: ({ page, totalPages, totalAssets }) => {
+					if (page % 10 === 0 || page === totalPages) {
+						logger.debug('[fetchAndStoreStructureInventory] Page progress', {
+							corporationId,
+							page,
+							totalPages,
+							totalAssets,
+						})
+					}
+				},
+			})
+
+			await this.storeStructureInventory(corporationId, inventoryRows)
+			await this.updateCorporationSyncTimestamp(corporationId, 'assetsLastSync')
+			logger.info('[EveCorporationData] Stored structure inventory snapshot', {
+				corporationId,
+				fetchedAssetCount: result.assetsCount,
+				storedInventoryCount: inventoryRows.length,
+			})
+
+			return inventoryRows.length
+		} catch (error) {
+			logger.error('[fetchAndStoreStructureInventory] Failed to insert structure inventory', {
+				corporationId,
+				error: error instanceof Error ? error.message : String(error),
+				errorStack: error instanceof Error ? error.stack : undefined,
+			})
+
+			const path = `/corporations/${corporationId}/assets`
+			try {
+				await tokenStore.clearEsiCache(path, characterId)
+				logger.debug('[fetchAndStoreStructureInventory] Cleared ESI cache after error', {
+					path,
+				})
+			} catch (clearError) {
+				logger.error('[fetchAndStoreStructureInventory] Failed to clear cache', {
+					error: clearError instanceof Error ? clearError.message : String(clearError),
+				})
+			}
+
+			throw error
+		}
+	}
+
 	/**
 	 * Fetch and store corporation structures
 	 */
@@ -2889,24 +3603,16 @@ export class EveCorporationDataDO extends DurableObject<Env> implements EveCorpo
 	}
 
 	/**
-	 * Fetch assets and structures
+	 * Fetch structure inventory and structures
 	 */
 	async fetchAssetsData(corporationId: string, forceRefresh = false): Promise<void> {
 		this.assertNonNpcCorporation(corporationId)
-		if (!ASSETS_FETCH_ENABLED) {
-			logger.warn('[EveCorporationData] Assets fetch is temporarily disabled; skipping', {
-				corporationId,
-			})
-			return
-		}
-		await Promise.all([
-			this.fetchAndStoreAssets(corporationId, forceRefresh).catch((e) =>
-				logger.error('Assets fetch failed:', e.message)
-			),
-			this.fetchAndStoreStructures(corporationId, forceRefresh).catch((e) =>
-				logger.error('Structures fetch failed:', e.message)
-			),
-		])
+		await this.fetchAndStoreStructures(corporationId, forceRefresh).catch((e) =>
+			logger.error('Structures fetch failed:', e instanceof Error ? e.message : String(e))
+		)
+		await this.fetchAndStoreStructureInventory(corporationId, forceRefresh).catch((e) =>
+			logger.error('Structure inventory fetch failed:', e instanceof Error ? e.message : String(e))
+		)
 	}
 
 	/**
@@ -3807,6 +4513,37 @@ export class EveCorporationDataDO extends DurableObject<Env> implements EveCorpo
 		}))
 	}
 
+	async getStructureInventory(
+		corporationId: string,
+		structureId?: string,
+		limit = 10000
+	): Promise<CorporationStructureInventoryData[]> {
+		const where = structureId
+			? and(
+				eq(corporationStructureInventory.corporationId, corporationId),
+				eq(corporationStructureInventory.structureId, structureId)
+			)
+			: eq(corporationStructureInventory.corporationId, corporationId)
+
+		const results = await this.getDb().query.corporationStructureInventory.findMany({
+			where,
+			limit,
+		})
+
+		return results.map((row) => ({
+			id: row.id,
+			corporationId: row.corporationId,
+			structureId: row.structureId,
+			itemId: row.itemId,
+			isSingleton: row.isSingleton,
+			locationFlag: row.locationFlag,
+			locationType: row.locationType,
+			quantity: row.quantity,
+			typeId: row.typeId,
+			updatedAt: row.updatedAt,
+		}))
+	}
+
 	/**
 	 * Get corporation structures
 	 */
@@ -3919,18 +4656,20 @@ export class EveCorporationDataDO extends DurableObject<Env> implements EveCorpo
 	 * Get complete assets data
 	 */
 	async getAssetsData(corporationId: string): Promise<CorporationAssetsData | null> {
-		const [assets, structures] = await Promise.all([
+		const [assets, structures, structureInventory] = await Promise.all([
 			this.getAssets(corporationId),
 			this.getStructures(corporationId),
+			this.getStructureInventory(corporationId),
 		])
 
-		if (assets.length === 0 && structures.length === 0) {
+		if (assets.length === 0 && structures.length === 0 && structureInventory.length === 0) {
 			return null
 		}
 
 		return {
 			assets,
 			structures,
+			structureInventory,
 		}
 	}
 

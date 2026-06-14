@@ -1,4 +1,10 @@
 {
 	"extends": "@repo/typescript-config/workers.json",
+	"compilerOptions": {
+		"baseUrl": ".",
+		"paths": {
+			"@repo/inventory-display": ["../../packages/inventory-display/src/index.ts"]
+		}
+	},
 	"include": ["src/**/*", "env.d.ts", "../core/worker-configuration.d.ts"]
 }
