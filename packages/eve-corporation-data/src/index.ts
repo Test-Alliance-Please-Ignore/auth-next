@@ -1291,6 +1291,16 @@ export interface EveCorporationData {
 	storeSovereigntySystems(corporationId: string, systems: EsiSovereigntySystem[]): Promise<void>
 
 	/**
+	 * Store the shared sovereignty system snapshot used during workflow fan-out.
+	 */
+	storeSharedSovereigntySystems(systems: EsiSovereigntySystem[]): Promise<void>
+
+	/**
+	 * Read the shared sovereignty system snapshot if it is still fresh.
+	 */
+	getSharedSovereigntySystems(maxAgeSeconds?: number): Promise<EsiSovereigntySystem[] | null>
+
+	/**
 	 * Get a cached sovereignty system snapshot if it is still fresh enough.
 	 *
 	 * @param corporationId - The corporation ID
