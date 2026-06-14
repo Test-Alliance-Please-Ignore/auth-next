@@ -11,9 +11,11 @@ import { CharacterSkills } from '../components/character-skills'
 import { Button } from '../components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '../components/ui/card'
 import { Container } from '../components/ui/container'
+import { useHrPermissionCheck } from '../features/hr/hooks'
 import { useAuth } from '../hooks/useAuth'
 import { useRefreshCharacter } from '../hooks/useCharacters'
 import { usePageTitle } from '../hooks/usePageTitle'
+import { useUserPermissions } from '../hooks/useUserPermissions'
 import { api } from '../lib/api'
 import { allianceLogoUrl, characterPortraitUrl, corporationLogoUrl } from '../lib/eve-images'
 
@@ -47,6 +49,8 @@ export default function CharacterDetailPage() {
 	const { characterId } = useParams<{ characterId: string }>()
 	const location = useLocation()
 	const { user } = useAuth()
+	const { hasAnyPermission } = useUserPermissions()
+	const isHrAuditor = hasAnyPermission('urn:hr:auditor')
 	const navigationState = location.state as {
 		source?: CharacterDetailSource
 		backTo?: string
@@ -99,6 +103,9 @@ export default function CharacterDetailPage() {
 		retry: false,
 		staleTime: 1000 * 60,
 	})
+	const { data: hrPermission } = useHrPermissionCheck(
+		hrCorporationId ? { corporationId: hrCorporationId } : null
+	)
 
 	// Set page title based on character name
 	usePageTitle(character?.public?.info?.name ? `${character.public.info.name}` : 'Character')
@@ -170,6 +177,12 @@ export default function CharacterDetailPage() {
 		user?.is_admin && corporationIdForAdminLink && isManagedCorporation
 	)
 	const showAdminRefresh = Boolean(user?.is_admin)
+	const canViewPrivateSections =
+		character.isOwner ||
+		character.viewedAsAdmin ||
+		isHrAuditor ||
+		hrPermission?.currentRole === 'hr_admin' ||
+		hrPermission?.currentRole === 'hr_reviewer'
 
 	return (
 		<Container className="p-8 space-y-6">
@@ -328,8 +341,8 @@ export default function CharacterDetailPage() {
 				</CardHeader>
 			</Card>
 
-			{/* Owner-only sensitive information */}
-			{character.isOwner && character.private && (
+			{/* Sensitive information */}
+			{canViewPrivateSections && character.private && (
 				<CharacterPrivateInfo
 					sensitiveDataIsLive={character.private.sensitiveDataIsLive}
 					location={character.private.location}
@@ -350,8 +363,8 @@ export default function CharacterDetailPage() {
 				)}
 			</div>
 
-			{/* Skill Queue (Owner only) */}
-			{character.isOwner && character.private?.skillQueue && (
+			{/* Skill Queue */}
+			{canViewPrivateSections && character.private?.skillQueue && (
 				<CharacterSkillQueue queue={character.private.skillQueue} />
 			)}
 
@@ -361,9 +374,9 @@ export default function CharacterDetailPage() {
 					characterId={characterId || ''}
 					skills={character.public.skills}
 					allSkills={character.public.allSkills}
-					showProgress={character.isOwner}
+					showProgress={canViewPrivateSections}
 				/>
-			) : character.isOwner ? (
+			) : canViewPrivateSections ? (
 				<Card>
 					<CardHeader>
 						<CardTitle>Skills</CardTitle>
