@@ -12,7 +12,7 @@
 		"head_sampling_rate": 1
 	},
 	"triggers": {
-		"crons": ["0 13 * * *"]
+		"crons": ["*/30 * * * *"]
 	},
 	"vars": {},
 	"services": [
