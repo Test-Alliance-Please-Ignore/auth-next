@@ -12,7 +12,7 @@
 		"head_sampling_rate": 1
 	},
 	"triggers": {
-		"crons": ["*/30 * * * *"]
+		"crons": ["0 */6 * * *"]
 	},
 	"vars": {},
 	"services": [
@@ -32,7 +32,7 @@
 				"name": "EVE_TOKEN_STORE",
 				"class_name": "EveTokenStore",
 				"script_name": "eve-token-store"
-			},
+			}
 		]
 	},
 	"workflows": [
