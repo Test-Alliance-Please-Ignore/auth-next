@@ -1,7 +1,9 @@
 import { getStub } from '@repo/do-utils'
 import { stripHtmlToPlainText } from './html-stripper'
+import type { EntityLinkCoordinator } from './entity-links'
 
 import type { CharacterPublicInfo, EsiTypeResolver } from '@repo/esi'
+import type { CoreBinding } from '../../../types/core-binding'
 
 /**
  * Data enrichment functions for public character information
@@ -14,11 +16,14 @@ import type { CharacterPublicInfo, EsiTypeResolver } from '@repo/esi'
 export interface ProcessedPublicInfo {
 	characterId: string
 	characterName: string
+	characterDisplayHref?: string
 	birthday: string
 	corporationId: string
 	corporationName?: string
+	corporationDisplayHref?: string
 	allianceId?: string
 	allianceName?: string
+	allianceDisplayHref?: string
 	securityStatus?: string
 	gender: 'male' | 'female'
 	raceId: string
@@ -41,9 +46,10 @@ export interface ProcessedPublicInfo {
  * @returns Enriched data with resolved names
  */
 export async function enrichPublicInfo(
-	env: { ESI_TYPE_RESOLVER: DurableObjectNamespace },
+	env: { ESI_TYPE_RESOLVER: DurableObjectNamespace; CORE: CoreBinding },
 	data: CharacterPublicInfo,
 	characterId: string,
+	entityLinkCoordinator?: EntityLinkCoordinator,
 ): Promise<ProcessedPublicInfo> {
 	// Collect all IDs that need resolution
 	const idsToResolve: string[] = [data.corporation_id]
@@ -70,15 +76,31 @@ export async function enrichPublicInfo(
 		allianceName: data.alliance_id ? nameMap[data.alliance_id] : undefined,
 	})
 
+	const displayHrefMap =
+		entityLinkCoordinator && idsToResolve.length > 0
+			? await entityLinkCoordinator.resolveDisplayHrefs(
+					env.CORE,
+					[
+						{ entityId: characterId, entityType: 'character' },
+						{ entityId: data.corporation_id, entityType: 'corporation' },
+						...(data.alliance_id ? [{ entityId: data.alliance_id, entityType: 'alliance' }] : []),
+					],
+					'enrichPublicInfo',
+				)
+			: {}
+
 	// Build enriched data with resolved names
 	return {
 		characterId,
 		characterName: data.name,
+		characterDisplayHref: displayHrefMap[characterId],
 		birthday: data.birthday,
 		corporationId: data.corporation_id,
 		corporationName: nameMap[data.corporation_id],
+		corporationDisplayHref: displayHrefMap[data.corporation_id],
 		allianceId: data.alliance_id,
 		allianceName: data.alliance_id ? nameMap[data.alliance_id] : undefined,
+		allianceDisplayHref: data.alliance_id ? displayHrefMap[data.alliance_id] : undefined,
 		securityStatus: data.security_status,
 		gender: data.gender,
 		raceId: data.race_id,

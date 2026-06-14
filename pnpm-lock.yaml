@@ -1427,6 +1427,9 @@ importers:
       '@repo/esi':
         specifier: workspace:*
         version: link:../../packages/esi
+      '@repo/eve-types':
+        specifier: workspace:*
+        version: link:../../packages/eve-types
       '@repo/fulcrum':
         specifier: workspace:*
         version: link:../../packages/fulcrum

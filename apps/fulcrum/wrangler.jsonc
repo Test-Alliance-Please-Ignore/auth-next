@@ -39,6 +39,11 @@
 				"script_name": "esi"
 			},
 			{
+				"name": "EVE_TOKEN_STORE",
+				"class_name": "EveTokenStore",
+				"script_name": "eve-token-store"
+			},
+			{
 				"name": "UNIVERSE",
 				"class_name": "Universe",
 				"script_name": "universe"

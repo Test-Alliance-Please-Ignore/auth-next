@@ -1,4 +1,5 @@
 import type {
+	AlliancePublicInfo,
 	CharacterAffiliation,
 	CharacterAgentResearch,
 	CharacterAsset,
@@ -51,6 +52,7 @@ import type {
 	CorporationWalletJournalEntry,
 	CorporationWalletTransaction,
 	EsiCharacterAffiliation,
+	EsiAlliancePublicInfo,
 	EsiCharacterAgentResearch,
 	EsiCharacterAsset,
 	EsiCharacterAssetName,
@@ -134,6 +136,19 @@ export function transformCorporationPublicInfo(
 		shares: data.shares ? String(data.shares) : undefined,
 		tax_rate: String(data.tax_rate),
 		alliance_id: data.alliance_id ? String(data.alliance_id) : undefined,
+		faction_id: data.faction_id ? String(data.faction_id) : undefined,
+	}
+}
+
+export function transformAlliancePublicInfo(data: EsiAlliancePublicInfo): AlliancePublicInfo {
+	return {
+		...data,
+		creator_corporation_id: String(data.creator_corporation_id),
+		creator_id: String(data.creator_id),
+		date_founded: data.date_founded,
+		executor_corporation_id: data.executor_corporation_id
+			? String(data.executor_corporation_id)
+			: undefined,
 		faction_id: data.faction_id ? String(data.faction_id) : undefined,
 	}
 }

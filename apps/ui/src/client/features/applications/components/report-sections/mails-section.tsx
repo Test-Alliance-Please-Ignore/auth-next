@@ -15,6 +15,7 @@ import { cn } from '@/lib/utils'
 
 import { fulcrumApi } from '../../api'
 import { BlacklistHighlight } from './blacklist-highlighting'
+import { EntityNameLink } from './entity-name-link'
 import type { BlacklistHighlights } from './blacklist-highlighting'
 
 // ---------------------------------------------------------------------------
@@ -25,12 +26,16 @@ interface MailRecipient {
 	recipient_id: string
 	recipient_type: 'alliance' | 'character' | 'corporation' | 'mailing_list'
 	recipientName?: string
+	recipientDisplayName?: string
+	recipientDisplayHref?: string
 }
 
 interface ProcessedMail {
 	mail_id?: string
 	from?: string
 	fromName?: string
+	fromDisplayName?: string
+	fromDisplayHref?: string
 	subject?: string
 	labels?: string[]
 	recipients?: MailRecipient[]
@@ -144,8 +149,10 @@ function searchMails(mails: ProcessedMail[], query: string): ProcessedMail[] {
 	if (!q) return mails
 	return mails.filter((m) => {
 		if (m.subject?.toLowerCase().includes(q)) return true
+		if (m.fromDisplayName?.toLowerCase().includes(q)) return true
 		if (m.fromName?.toLowerCase().includes(q)) return true
 		if (m.bodyPlainText?.toLowerCase().includes(q)) return true
+		if (m.recipients?.some((r) => r.recipientDisplayName?.toLowerCase().includes(q))) return true
 		if (m.recipients?.some((r) => r.recipientName?.toLowerCase().includes(q))) return true
 		return false
 	})
@@ -163,11 +170,30 @@ function formatShortDate(timestamp?: string): string {
 	return formatMonthDay(d)
 }
 
-function recipientSummary(recipients?: MailRecipient[]): string {
-	if (!recipients || recipients.length === 0) return ''
-	return recipients
-		.map((r) => r.recipientName || `ID:${r.recipient_id}`)
-		.join(', ')
+function renderRecipientLinks(
+	recipients: MailRecipient[] | undefined,
+	highlightedCharacterName: string | undefined,
+	blacklistHighlights?: BlacklistHighlights,
+) {
+	if (!recipients || recipients.length === 0) return null
+	return recipients.map((recipient, index) => {
+		const recipientLabel =
+			recipient.recipientDisplayName || recipient.recipientName || `ID: ${recipient.recipient_id}`
+		return (
+			<span key={`${recipient.recipient_id}:${index}`} className="inline-flex items-center">
+				{index > 0 ? <span className="mx-1">, </span> : null}
+				<BlacklistHighlight value={recipient.recipient_id} blacklist={blacklistHighlights}>
+					<EntityNameLink
+						entityId={recipient.recipient_id}
+						entityType={recipient.recipient_type}
+						href={recipient.recipientDisplayHref}
+					>
+						{highlightText(recipientLabel, highlightedCharacterName)}
+					</EntityNameLink>
+				</BlacklistHighlight>
+			</span>
+		)
+	})
 }
 
 // ---------------------------------------------------------------------------
@@ -199,9 +225,10 @@ function hasCharacterMention(mail: ProcessedMail, highlightedCharacterName?: str
 	const needle = highlightedCharacterName.toLowerCase()
 	return (
 		(mail.fromName ?? '').toLowerCase().includes(needle)
+		|| (mail.fromDisplayName ?? '').toLowerCase().includes(needle)
 		|| (mail.subject ?? '').toLowerCase().includes(needle)
 		|| (mail.bodyPlainText ?? '').toLowerCase().includes(needle)
-		|| (mail.recipients?.some((recipient) => (recipient.recipientName ?? '').toLowerCase().includes(needle)) ?? false)
+		|| (mail.recipients?.some((recipient) => (recipient.recipientDisplayName ?? recipient.recipientName ?? '').toLowerCase().includes(needle)) ?? false)
 	)
 }
 
@@ -417,10 +444,16 @@ export function MailsSection({
 												<span className={cn(hasCharacterMention(mail, highlightedCharacterName) && 'font-semibold text-foreground')}>
 													From:{' '}
 													<BlacklistHighlight
-														value={mail.from ?? mail.fromName}
+														value={mail.from ?? mail.fromDisplayName ?? mail.fromName}
 														blacklist={blacklistHighlights}
 													>
-														{highlightText(mail.fromName || 'Unknown', highlightedCharacterName)}
+														<EntityNameLink
+															entityId={mail.from}
+															entityType="character"
+															href={mail.fromDisplayHref}
+														>
+															{highlightText(mail.fromDisplayName || mail.fromName || 'Unknown', highlightedCharacterName)}
+														</EntityNameLink>
 													</BlacklistHighlight>
 												</span>
 												{mail.recipients && mail.recipients.length > 0 && (
@@ -430,7 +463,11 @@ export function MailsSection({
 															hasCharacterMention(mail, highlightedCharacterName) && 'font-semibold text-foreground',
 														)}
 													>
-														→ {highlightText(recipientSummary(mail.recipients), highlightedCharacterName)}
+														→ {renderRecipientLinks(
+															mail.recipients,
+															highlightedCharacterName,
+															blacklistHighlights,
+														)}
 													</span>
 												)}
 											</div>
@@ -447,17 +484,25 @@ export function MailsSection({
 					{selectedMail ? (
 						<>
 							<div className="border-b border-border bg-card/80 px-4 py-2">
-								<h3 className="text-base font-semibold text-foreground">
+												<h3 className="text-base font-semibold text-foreground">
 									{selectedMail.subject || '(No Subject)'}
 								</h3>
 								<div className="mt-1 flex flex-wrap items-center gap-2 text-sm text-muted-foreground">
 									<span className={cn(hasCharacterMention(selectedMail, highlightedCharacterName) && 'font-semibold text-foreground')}>
 										From:{' '}
-										<BlacklistHighlight
-											value={selectedMail.from ?? selectedMail.fromName}
+											<BlacklistHighlight
+											value={selectedMail.from ?? selectedMail.fromDisplayName ?? selectedMail.fromName}
 											blacklist={blacklistHighlights}
 										>
-											<strong>{selectedMail.fromName || 'Unknown'}</strong>
+											<strong>
+												<EntityNameLink
+													entityId={selectedMail.from}
+													entityType="character"
+													href={selectedMail.fromDisplayHref}
+												>
+													{selectedMail.fromDisplayName || selectedMail.fromName || 'Unknown'}
+												</EntityNameLink>
+											</strong>
 										</BlacklistHighlight>
 									</span>
 									{selectedMail.recipients && selectedMail.recipients.length > 0 && (
@@ -470,10 +515,19 @@ export function MailsSection({
 													className="text-xs py-0"
 												>
 													<BlacklistHighlight
-														value={r.recipient_id ?? r.recipientName}
+														value={r.recipient_id ?? r.recipientDisplayName ?? r.recipientName}
 														blacklist={blacklistHighlights}
 													>
-														{highlightText(r.recipientName || `ID: ${r.recipient_id}`, highlightedCharacterName)}
+														<EntityNameLink
+															entityId={r.recipient_id}
+															entityType={r.recipient_type}
+															href={r.recipientDisplayHref}
+														>
+															{highlightText(
+																r.recipientDisplayName || r.recipientName || `ID: ${r.recipient_id}`,
+																highlightedCharacterName,
+															)}
+														</EntityNameLink>
 													</BlacklistHighlight>
 												</Badge>
 											))}

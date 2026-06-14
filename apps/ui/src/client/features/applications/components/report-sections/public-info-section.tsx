@@ -7,15 +7,19 @@ import { ExternalLink } from 'lucide-react'
 import { MemberAvatar } from '@/components/member-avatar'
 import { Card, CardContent } from '@/components/ui/card'
 import { allianceLogoUrl, corporationLogoUrl } from '@/lib/eve-images'
+import { EntityNameLink } from './entity-name-link'
 
 interface ProcessedPublicInfo {
 	characterId: string
 	characterName: string
+	characterDisplayHref?: string
 	birthday: string
 	corporationId: string
 	corporationName?: string
+	corporationDisplayHref?: string
 	allianceId?: string
 	allianceName?: string
+	allianceDisplayHref?: string
 	securityStatus?: string
 	gender: 'male' | 'female'
 	raceId: string
@@ -56,7 +60,11 @@ export function PublicInfoHeader({ data }: { data: ProcessedPublicInfo }) {
 				size="lg"
 			/>
 			<div>
-				<h3 className="text-xl font-bold text-foreground">{data.characterName}</h3>
+				<h3 className="text-xl font-bold text-foreground">
+					<EntityNameLink entityId={data.characterId} href={data.characterDisplayHref}>
+						{data.characterName}
+					</EntityNameLink>
+				</h3>
 				{data.title && <p className="text-sm text-muted-foreground">{data.title}</p>}
 			</div>
 		</div>
@@ -81,9 +89,11 @@ export function PublicInfoCard({ data }: { data: ProcessedPublicInfo }) {
 								alt=""
 								className="h-5 w-5 rounded"
 							/>
-							<span className="text-sm font-medium text-foreground">
-								{data.corporationName || data.corporationId}
-							</span>
+							<EntityNameLink entityId={data.corporationId} href={data.corporationDisplayHref}>
+								<span className="text-sm font-medium text-foreground">
+									{data.corporationName || data.corporationId}
+								</span>
+							</EntityNameLink>
 						</InfoRow>
 					)}
 					{data.allianceId && (
@@ -93,9 +103,11 @@ export function PublicInfoCard({ data }: { data: ProcessedPublicInfo }) {
 								alt=""
 								className="h-5 w-5 rounded"
 							/>
-							<span className="text-sm font-medium text-foreground">
-								{data.allianceName}
-							</span>
+							<EntityNameLink entityId={data.allianceId} href={data.allianceDisplayHref}>
+								<span className="text-sm font-medium text-foreground">
+									{data.allianceName}
+								</span>
+							</EntityNameLink>
 						</InfoRow>
 					)}
 					<SimpleInfoRow label="Faction" value={data.factionName} />

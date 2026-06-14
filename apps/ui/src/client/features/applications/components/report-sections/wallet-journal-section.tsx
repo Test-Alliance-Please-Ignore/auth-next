@@ -8,17 +8,25 @@ import { MantineReactTable } from 'mantine-react-table'
 import { EveTimeDisplay } from '@/components/ui/eve-time-display'
 import { Select } from '@/components/ui/select'
 import { useFulcrumTable } from './use-fulcrum-table'
+import { EntityNameLink } from './entity-name-link'
 
 import type { MRT_ColumnDef } from 'mantine-react-table'
 
 interface ProcessedWalletJournalEntry {
 	id: string
 	date: string
+	first_party_id?: string
 	refTypeLabel?: string
 	amountFormatted?: string
 	balanceFormatted?: string
 	firstPartyName?: string
+	firstPartyDisplayName?: string
+	firstPartyDisplayHref?: string
+	second_party_id?: string
 	secondPartyName?: string
+	secondPartyDisplayName?: string
+	secondPartyDisplayHref?: string
+	tax_receiver_id?: string
 	amount?: number
 	description?: string
 }
@@ -38,7 +46,8 @@ function isHighlightedJournalType(entry: ProcessedWalletJournalEntry): boolean {
 	)
 }
 
-const columns: MRT_ColumnDef<ProcessedWalletJournalEntry>[] = [
+function buildWalletJournalColumns(): MRT_ColumnDef<ProcessedWalletJournalEntry>[] {
+	return [
 	{
 		accessorKey: 'date',
 		header: 'Date/Time',
@@ -57,22 +66,34 @@ const columns: MRT_ColumnDef<ProcessedWalletJournalEntry>[] = [
 		Cell: ({ row }) => row.original.refTypeLabel || '-',
 	},
 	{
-		accessorKey: 'firstPartyName',
+		accessorKey: 'firstPartyDisplayName',
 		header: 'From',
 		filterVariant: 'autocomplete',
+		accessorFn: (row) => row.firstPartyDisplayName ?? row.firstPartyName ?? '',
 		Cell: ({ row }) => (
 			<span className={isHighlightedJournalType(row.original) ? 'font-semibold text-foreground' : undefined}>
-				{row.original.firstPartyName || '-'}
+				<EntityNameLink
+					entityId={row.original.first_party_id}
+					href={row.original.firstPartyDisplayHref}
+				>
+					{row.original.firstPartyDisplayName || row.original.firstPartyName || '-'}
+				</EntityNameLink>
 			</span>
 		),
 	},
 	{
-		accessorKey: 'secondPartyName',
+		accessorKey: 'secondPartyDisplayName',
 		header: 'To',
 		filterVariant: 'autocomplete',
+		accessorFn: (row) => row.secondPartyDisplayName ?? row.secondPartyName ?? '',
 		Cell: ({ row }) => (
 			<span className={isHighlightedJournalType(row.original) ? 'font-semibold text-foreground' : undefined}>
-				{row.original.secondPartyName || '-'}
+				<EntityNameLink
+					entityId={row.original.second_party_id}
+					href={row.original.secondPartyDisplayHref}
+				>
+					{row.original.secondPartyDisplayName || row.original.secondPartyName || '-'}
+				</EntityNameLink>
 			</span>
 		),
 	},
@@ -112,10 +133,12 @@ const columns: MRT_ColumnDef<ProcessedWalletJournalEntry>[] = [
 			<div className="text-right font-mono text-sm">{row.original.balanceFormatted || '-'}</div>
 		),
 	},
-]
+	]
+}
 
 export function WalletJournalSection({ data }: { data: ProcessedWalletJournalEntry[] }) {
 	const [refTypeFilter, setRefTypeFilter] = useState<string>('all')
+	const columns = useMemo(() => buildWalletJournalColumns(), [])
 	const availableRefTypes = useMemo(
 		() =>
 			Array.from(

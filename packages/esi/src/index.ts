@@ -2,6 +2,7 @@ import { getStub } from '@repo/do-utils'
 import { KillmailDetail, killmailDetailSchema } from '@repo/universe'
 
 import type {
+	AlliancePublicInfo,
 	CharacterAffiliation,
 	CharacterAgentResearch,
 	CharacterAsset,
@@ -170,6 +171,7 @@ export interface Esi {
 
 	// Corporation endpoints
 	fetchCorporationPublicInfo(corporationId: string): Promise<CorporationPublicInfo>
+	fetchAlliancePublicInfo(allianceId: string): Promise<AlliancePublicInfo>
 	fetchCorporationMembers(corporationId: string): Promise<CorporationMembers>
 	fetchCorporationMemberRoles(corporationId: string): Promise<CorporationMemberRole[]>
 	fetchCorporationMemberTracking(corporationId: string): Promise<CorporationMemberTracking[]>

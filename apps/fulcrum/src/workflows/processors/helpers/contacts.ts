@@ -6,6 +6,9 @@
 import { getStub } from '@repo/do-utils'
 
 import type { CharacterContact, EsiTypeResolver } from '@repo/esi'
+import type { CharacterAffiliationCoordinator } from './character-affiliation'
+import type { EntityLinkCoordinator } from './entity-links'
+import type { CoreBinding } from '../../../types/core-binding'
 
 /**
  * Enriched character contact with resolved names
@@ -17,6 +20,8 @@ export interface StandingDisplay {
 
 export interface ProcessedContact extends CharacterContact {
 	contactName?: string
+	contactDisplayName?: string
+	contactDisplayHref?: string
 	standingDisplay?: StandingDisplay
 	processedAt: string
 }
@@ -124,9 +129,16 @@ function formatStanding(standing: number): StandingDisplay {
  * @returns Enriched contacts with resolved names and formatted standing
  */
 export async function enrichContacts(
-	env: { ESI_TYPE_RESOLVER: DurableObjectNamespace },
+	env: {
+		ESI_TYPE_RESOLVER: DurableObjectNamespace
+		ESI: DurableObjectNamespace
+		EVE_TOKEN_STORE: DurableObjectNamespace
+		CORE: CoreBinding
+	},
 	contacts: CharacterContact[],
-	characterId: string
+	characterId: string,
+	affiliationCoordinator?: CharacterAffiliationCoordinator,
+	entityLinkCoordinator?: EntityLinkCoordinator,
 ): Promise<ProcessedContacts> {
 	if (contacts.length === 0) {
 		return []
@@ -163,13 +175,45 @@ export async function enrichContacts(
 
 	// Build enriched contacts with resolved names and formatted standing
 	const processedAt = new Date().toISOString()
+	const displayNameMap =
+		affiliationCoordinator && Object.keys(nameMap).length > 0
+			? await affiliationCoordinator.resolveDisplayNames(
+					{ ESI: env.ESI },
+					characterId,
+					contacts
+						.filter((contact) => contact.contact_type === 'character')
+						.map((contact) => ({
+							characterId: contact.contact_id,
+							characterName: nameMap[contact.contact_id],
+							forceCharacter: true,
+						})),
+					'enrichContacts',
+				)
+			: {}
+
+	const displayHrefMap =
+		entityLinkCoordinator && contacts.length > 0
+			? await entityLinkCoordinator.resolveDisplayHrefs(
+					env.CORE,
+					contacts.map((contact) => ({
+						entityId: String(contact.contact_id),
+						entityType: contact.contact_type,
+					})),
+					'enrichContacts',
+				)
+			: {}
+
 	return contacts.map((contact) => {
 		const contactName = nameMap[contact.contact_id]
+		const contactDisplayName = displayNameMap[contact.contact_id] ?? contactName
+		const contactDisplayHref = displayHrefMap[contact.contact_id]
 		const standingDisplay = formatStanding(contact.standing)
 
 		return {
 			...contact,
 			contactName,
+			contactDisplayName,
+			contactDisplayHref,
 			standingDisplay,
 			processedAt,
 		}

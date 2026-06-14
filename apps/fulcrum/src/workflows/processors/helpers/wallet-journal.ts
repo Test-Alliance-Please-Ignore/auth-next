@@ -1,8 +1,11 @@
 import { getStub } from '@repo/do-utils'
-import { getIdClassification, isStructureId, normalizeIdToString } from '@repo/esi'
+import { getIdClassification, isStructureId, normalizeIdToString } from '@repo/eve-types'
 
 import { formatCurrency, toTitleCase } from '../../utils/formatting'
+import type { CharacterAffiliationCoordinator } from './character-affiliation'
+import type { EntityLinkCoordinator } from './entity-links'
 import { StructureResolutionCoordinator } from './structure-resolution'
+import type { CoreBinding } from '../../../types/core-binding'
 
 import type { CharacterWalletJournalEntry, Esi, EsiTypeResolver } from '@repo/esi'
 
@@ -23,9 +26,16 @@ export interface ProcessedWalletJournalEntry extends CharacterWalletJournalEntry
 	balanceFormatted?: string
 	taxFormatted?: string
 	firstPartyName?: string
+	firstPartyDisplayName?: string
+	firstPartyDisplayHref?: string
 	secondPartyName?: string
+	secondPartyDisplayName?: string
+	secondPartyDisplayHref?: string
 	taxReceiverName?: string
+	taxReceiverDisplayName?: string
+	taxReceiverDisplayHref?: string
 	contextName?: string
+	contextDisplayHref?: string
 	contextResolvedType?: string
 	processedAt: string
 }
@@ -36,10 +46,14 @@ export async function enrichWalletJournalEntries(
 	env: {
 		ESI_TYPE_RESOLVER: DurableObjectNamespace
 		ESI: DurableObjectNamespace
+		EVE_TOKEN_STORE: DurableObjectNamespace
+		CORE: CoreBinding
 	},
 	entries: CharacterWalletJournalEntry[],
 	characterId: string,
-	structureResolutionCoordinator?: StructureResolutionCoordinator
+	structureResolutionCoordinator?: StructureResolutionCoordinator,
+	affiliationCoordinator?: CharacterAffiliationCoordinator,
+	entityLinkCoordinator?: EntityLinkCoordinator,
 ): Promise<ProcessedWalletJournalEntries> {
 	if (entries.length === 0) {
 		return []
@@ -95,6 +109,68 @@ export async function enrichWalletJournalEntries(
 					characterId,
 					structureIds,
 					'enrichWalletJournalEntries'
+			)
+			: {}
+
+	const displayNameMap =
+		affiliationCoordinator && idsToResolve.size > 0
+			? await affiliationCoordinator.resolveDisplayNames(
+					{ ESI: env.ESI },
+					characterId,
+					entries.flatMap((entry) => {
+						const candidates = []
+						const firstPartyId = normalizeIdToString(entry.first_party_id)
+						if (firstPartyId && nameMap[firstPartyId]) {
+							candidates.push({
+								characterId: firstPartyId,
+								characterName: nameMap[firstPartyId],
+							})
+						}
+						const secondPartyId = normalizeIdToString(entry.second_party_id)
+						if (secondPartyId && nameMap[secondPartyId]) {
+							candidates.push({
+								characterId: secondPartyId,
+								characterName: nameMap[secondPartyId],
+							})
+						}
+						const taxReceiverId = normalizeIdToString(entry.tax_receiver_id)
+						if (taxReceiverId && nameMap[taxReceiverId]) {
+							candidates.push({
+								characterId: taxReceiverId,
+								characterName: nameMap[taxReceiverId],
+							})
+						}
+						return candidates
+					}),
+					'enrichWalletJournalEntries',
+				)
+			: {}
+
+	const displayHrefMap =
+		entityLinkCoordinator && idsToResolve.size > 0
+			? await entityLinkCoordinator.resolveDisplayHrefs(
+					env.CORE,
+					entries.flatMap((entry) => {
+						const candidates: Array<{ entityId: string; entityType?: string | null }> = []
+						const firstPartyId = normalizeIdToString(entry.first_party_id)
+						if (firstPartyId) {
+							candidates.push({ entityId: firstPartyId })
+						}
+						const secondPartyId = normalizeIdToString(entry.second_party_id)
+						if (secondPartyId) {
+							candidates.push({ entityId: secondPartyId })
+						}
+						const taxReceiverId = normalizeIdToString(entry.tax_receiver_id)
+						if (taxReceiverId) {
+							candidates.push({ entityId: taxReceiverId })
+						}
+						const contextId = normalizeIdToString(entry.context_id)
+						if (contextId) {
+							candidates.push({ entityId: contextId, entityType: entry.context_id_type })
+						}
+						return candidates
+					}),
+					'enrichWalletJournalEntries',
 				)
 			: {}
 
@@ -154,9 +230,16 @@ export async function enrichWalletJournalEntries(
 			balanceFormatted: formatCurrency(balanceNumber ?? fallbackBalance),
 			taxFormatted: formatCurrency(taxNumber),
 			firstPartyName,
+			firstPartyDisplayName: firstPartyId ? displayNameMap[firstPartyId] ?? firstPartyName : undefined,
+			firstPartyDisplayHref: firstPartyId ? displayHrefMap[firstPartyId] : undefined,
 			secondPartyName,
+			secondPartyDisplayName: secondPartyId ? displayNameMap[secondPartyId] ?? secondPartyName : undefined,
+			secondPartyDisplayHref: secondPartyId ? displayHrefMap[secondPartyId] : undefined,
 			taxReceiverName,
+			taxReceiverDisplayName: taxReceiverId ? displayNameMap[taxReceiverId] ?? taxReceiverName : undefined,
+			taxReceiverDisplayHref: taxReceiverId ? displayHrefMap[taxReceiverId] : undefined,
 			contextName,
+			contextDisplayHref: contextId ? displayHrefMap[contextId] : undefined,
 			contextResolvedType: entry.context_id_type ?? derivedContextType,
 			processedAt,
 		}

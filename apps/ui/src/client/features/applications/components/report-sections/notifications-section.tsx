@@ -9,6 +9,7 @@ import { useMemo, useState } from 'react'
 
 import { formatMonthDay, formatTime } from '@/lib/date-utils'
 import { cn } from '@/lib/utils'
+import { EntityNameLink } from './entity-name-link'
 
 // ---------------------------------------------------------------------------
 // Types
@@ -20,6 +21,8 @@ interface ProcessedNotification {
     sender_id?: string
     sender_type?: 'character' | 'corporation' | 'alliance' | 'faction' | 'other'
     senderName?: string
+    senderDisplayName?: string
+    senderDisplayHref?: string
     text?: string
     parsedText?: Record<string, string>
     timestamp?: string
@@ -140,6 +143,7 @@ function searchNotifications(
     const q = query.toLowerCase().trim()
     if (!q) return notifications
     return notifications.filter((n) => {
+        if (n.senderDisplayName?.toLowerCase().includes(q)) return true
         if (n.senderName?.toLowerCase().includes(q)) return true
         if (n.type?.toLowerCase().includes(q)) return true
         if (humanType(n.type).toLowerCase().includes(q)) return true
@@ -338,7 +342,14 @@ export function NotificationsSection({ data: raw }: { data: unknown }) {
                                             </div>
                                             <div className="mt-0.5 text-xs text-muted-foreground">
                                                 <span className="truncate">
-                                                    From: {n.senderName || n.sender_type || 'Unknown'}
+                                                    From:{' '}
+                                                    <EntityNameLink
+                                                        entityId={n.sender_id}
+                                                        entityType={n.sender_type}
+                                                        href={n.senderDisplayHref}
+                                                    >
+                                                        {n.senderDisplayName || n.senderName || n.sender_type || 'Unknown'}
+                                                    </EntityNameLink>
                                                 </span>
                                             </div>
                                         </div>
@@ -361,9 +372,16 @@ export function NotificationsSection({ data: raw }: { data: unknown }) {
                                     <span>
                                         From:{' '}
                                         <strong>
-                                            {selectedNotification.senderName ||
-                                                selectedNotification.sender_type ||
-                                                'Unknown'}
+                                            <EntityNameLink
+                                                entityId={selectedNotification.sender_id}
+                                                entityType={selectedNotification.sender_type}
+                                                href={selectedNotification.senderDisplayHref}
+                                            >
+                                                {selectedNotification.senderDisplayName ||
+                                                    selectedNotification.senderName ||
+                                                    selectedNotification.sender_type ||
+                                                    'Unknown'}
+                                            </EntityNameLink>
                                         </strong>
                                     </span>
                                     <span className="ml-auto">

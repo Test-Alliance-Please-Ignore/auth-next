@@ -1,11 +1,16 @@
 import { retrieveData, storeOrReturn, type StepResult } from '../../utils/storage'
 import { enrichNotifications } from '../../processors/helpers/notifications'
+import type { CharacterAffiliationCoordinator } from '../../processors/helpers/character-affiliation'
+import type { EntityLinkCoordinator } from '../../processors/helpers/entity-links'
+import type { CoreBinding } from '../../../types/core-binding'
 import type { NotificationFetchResult } from './fetch-notifications'
 
 export async function processNotifications(
     env: {
         ESI_TYPE_RESOLVER: DurableObjectNamespace
         ESI: DurableObjectNamespace
+        EVE_TOKEN_STORE: DurableObjectNamespace
+        CORE: CoreBinding
     },
     getBucket: (name: string) => R2Bucket,
     bucket: R2Bucket,
@@ -13,6 +18,8 @@ export async function processNotifications(
     fetchResult: StepResult,
     workflowInstanceId: string,
     characterId: string,
+    affiliationCoordinator?: CharacterAffiliationCoordinator,
+    entityLinkCoordinator?: EntityLinkCoordinator,
 ): Promise<StepResult> {
     try {
         if (!fetchResult.success) {
@@ -39,7 +46,13 @@ export async function processNotifications(
             count: notifications.length,
         })
 
-        const enrichedData = await enrichNotifications(env, notifications, characterId)
+        const enrichedData = await enrichNotifications(
+            env,
+            notifications,
+            characterId,
+            affiliationCoordinator,
+            entityLinkCoordinator,
+        )
 
         console.log('[processNotifications] Enrichment complete', {
             count: enrichedData.notifications.length,

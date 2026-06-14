@@ -20,6 +20,7 @@ import {
 import { cn } from '@/lib/utils'
 
 import { useFulcrumTable } from './use-fulcrum-table'
+import { EntityNameLink } from './entity-name-link'
 
 import type { MRT_ColumnDef } from 'mantine-react-table'
 
@@ -41,10 +42,20 @@ interface ProcessedContract {
 	contract_id: string
 	type: string
 	status: string
+	issuer_id?: string
 	issuerName?: string
+	issuerDisplayName?: string
+	issuerDisplayHref?: string
 	issuerCorporationName?: string
+	issuerCorporationDisplayHref?: string
+	acceptor_id?: string
 	acceptorName?: string
+	acceptorDisplayName?: string
+	acceptorDisplayHref?: string
+	assignee_id?: string
 	assigneeName?: string
+	assigneeDisplayName?: string
+	assigneeDisplayHref?: string
 	date_issued: string
 	date_expired: string
 	date_accepted?: string
@@ -169,7 +180,12 @@ function ContractDetails({ contract }: { contract: ProcessedContract }) {
 				{contract.for_corporation && contract.issuerCorporationName && (
 					<div>
 						<span className="text-muted-foreground">On behalf of: </span>
-						{contract.issuerCorporationName}
+						<EntityNameLink
+							entityId={contract.issuer_corporation_id}
+							href={contract.issuerCorporationDisplayHref}
+						>
+							{contract.issuerCorporationName}
+						</EntityNameLink>
 					</div>
 				)}
 				{contract.date_accepted && (
@@ -339,7 +355,8 @@ function FilterButton({
 // Column Definitions
 // ============================================================================
 
-const contractColumns: MRT_ColumnDef<ProcessedContract>[] = [
+function buildContractColumns(): MRT_ColumnDef<ProcessedContract>[] {
+	return [
 	{
 		accessorKey: 'type',
 		header: 'Type',
@@ -359,16 +376,36 @@ const contractColumns: MRT_ColumnDef<ProcessedContract>[] = [
 		Cell: ({ row }) => <StatusBadge status={row.original.status} />,
 	},
 	{
-		accessorKey: 'issuerName',
+		accessorKey: 'issuerDisplayName',
 		header: 'From',
 		filterVariant: 'autocomplete',
-		Cell: ({ row }) => row.original.issuerName || '-',
+		accessorFn: (row) => row.issuerDisplayName ?? row.issuerName ?? '',
+		Cell: ({ row }) => (
+			<EntityNameLink
+				entityId={row.original.issuer_id}
+				href={row.original.issuerDisplayHref}
+			>
+				{row.original.issuerDisplayName || row.original.issuerName || '-'}
+			</EntityNameLink>
+		),
 	},
 	{
-		accessorKey: 'acceptorName',
+		accessorKey: 'acceptorDisplayName',
 		header: 'To',
 		filterVariant: 'autocomplete',
-		Cell: ({ row }) => row.original.acceptorName || row.original.assigneeName || '-',
+		accessorFn: (row) => row.acceptorDisplayName ?? row.acceptorName ?? row.assigneeDisplayName ?? row.assigneeName ?? '',
+		Cell: ({ row }) => (
+			<EntityNameLink
+				entityId={row.original.acceptor_id ?? row.original.assignee_id}
+				href={row.original.acceptorDisplayHref ?? row.original.assigneeDisplayHref}
+			>
+				{row.original.acceptorDisplayName ||
+					row.original.acceptorName ||
+					row.original.assigneeDisplayName ||
+					row.original.assigneeName ||
+					'-'}
+			</EntityNameLink>
+		),
 	},
 	{
 		accessorKey: 'title',
@@ -403,7 +440,8 @@ const contractColumns: MRT_ColumnDef<ProcessedContract>[] = [
 			</span>
 		),
 	},
-]
+	]
+}
 
 // ============================================================================
 // Main Component
@@ -412,6 +450,7 @@ const contractColumns: MRT_ColumnDef<ProcessedContract>[] = [
 export function ContractsSection({ data }: { data: ProcessedContract[] }) {
 	const [typeFilter, setTypeFilter] = useState<ContractType>('all')
 	const [statusFilter, setStatusFilter] = useState<ContractStatus>('all')
+	const contractColumns = useMemo(() => buildContractColumns(), [])
 
 	const typeCounts = useMemo(() => {
 		const counts: Record<string, number> = {}

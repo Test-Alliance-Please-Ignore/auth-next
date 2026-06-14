@@ -1,6 +1,6 @@
 import { shipTypeIds } from './ship-types'
 
-import { isStructureId } from '@repo/esi'
+import { isStructureId } from '@repo/eve-types'
 
 import type { CharacterAsset } from '@repo/esi'
 

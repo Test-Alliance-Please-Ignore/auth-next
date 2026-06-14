@@ -8,6 +8,9 @@ import { getStub } from '@repo/do-utils'
 import { getEsiInstanceForCharacter } from '@repo/esi'
 
 import type { CharacterContract, CharacterContractItem, EsiTypeResolver } from '@repo/esi'
+import type { CharacterAffiliationCoordinator } from './character-affiliation'
+import type { EntityLinkCoordinator } from './entity-links'
+import type { CoreBinding } from '../../../types/core-binding'
 
 /**
  * Contract item with resolved type name
@@ -21,9 +24,16 @@ export interface ProcessedContractItem extends CharacterContractItem {
  */
 export interface ProcessedContract extends CharacterContract {
 	issuerName?: string
+	issuerDisplayName?: string
+	issuerDisplayHref?: string
 	issuerCorporationName?: string
+	issuerCorporationDisplayHref?: string
 	acceptorName?: string
+	acceptorDisplayName?: string
+	acceptorDisplayHref?: string
 	assigneeName?: string
+	assigneeDisplayName?: string
+	assigneeDisplayHref?: string
 	startLocationName?: string
 	endLocationName?: string
 	items?: ProcessedContractItem[]
@@ -105,9 +115,16 @@ async function fetchContractItems(
  * @returns Enriched contracts with resolved names and items
  */
 export async function enrichContracts(
-	env: { ESI_TYPE_RESOLVER: DurableObjectNamespace; ESI: DurableObjectNamespace },
+	env: {
+		ESI_TYPE_RESOLVER: DurableObjectNamespace
+		ESI: DurableObjectNamespace
+		EVE_TOKEN_STORE: DurableObjectNamespace
+		CORE: CoreBinding
+	},
 	contracts: CharacterContract[],
 	characterId: string,
+	affiliationCoordinator?: CharacterAffiliationCoordinator,
+	entityLinkCoordinator?: EntityLinkCoordinator,
 ): Promise<ProcessedContracts> {
 	if (contracts.length === 0) {
 		return []
@@ -125,6 +142,64 @@ export async function enrichContracts(
 		}),
 		resolveEntityNames(env, contracts),
 	])
+
+	const displayNameMap =
+		affiliationCoordinator && contracts.length > 0
+			? await affiliationCoordinator.resolveDisplayNames(
+					{ ESI: env.ESI },
+					characterId,
+					contracts.flatMap((contract) => {
+						const candidates: Array<{
+							characterId: string
+							characterName?: string
+							forceCharacter?: boolean
+						}> = []
+						if (nameMap[contract.issuer_id]) {
+							candidates.push({
+								characterId: contract.issuer_id,
+								characterName: nameMap[contract.issuer_id],
+								forceCharacter: true,
+							})
+						}
+						if (contract.acceptor_id && nameMap[contract.acceptor_id]) {
+							candidates.push({
+								characterId: contract.acceptor_id,
+								characterName: nameMap[contract.acceptor_id],
+								forceCharacter: true,
+							})
+						}
+						if (
+							contract.assignee_id &&
+							nameMap[contract.assignee_id] &&
+							contract.availability === 'personal'
+						) {
+							candidates.push({
+								characterId: contract.assignee_id,
+								characterName: nameMap[contract.assignee_id],
+								forceCharacter: true,
+							})
+						}
+						return candidates
+					}),
+					'enrichContracts',
+				)
+			: {}
+
+	const displayHrefMap =
+		entityLinkCoordinator && contracts.length > 0
+			? await entityLinkCoordinator.resolveDisplayHrefs(
+					env.CORE,
+					contracts.flatMap((contract) => {
+						const candidates: Array<{ entityId: string; entityType?: string | null }> = []
+						candidates.push({ entityId: contract.issuer_id, entityType: 'character' })
+						if (contract.acceptor_id) candidates.push({ entityId: contract.acceptor_id })
+						if (contract.assignee_id) candidates.push({ entityId: contract.assignee_id })
+						candidates.push({ entityId: contract.issuer_corporation_id, entityType: 'corporation' })
+						return candidates
+					}),
+					'enrichContracts',
+				)
+			: {}
 
 	const { itemsMap: contractItemsMap, errorsMap, topLevelError } = contractItemsResult
 
@@ -167,9 +242,20 @@ export async function enrichContracts(
 		return {
 			...contract,
 			issuerName: nameMap[contract.issuer_id],
+			issuerDisplayName: displayNameMap[contract.issuer_id] ?? nameMap[contract.issuer_id],
+			issuerDisplayHref: displayHrefMap[contract.issuer_id],
 			issuerCorporationName: nameMap[contract.issuer_corporation_id],
+			issuerCorporationDisplayHref: displayHrefMap[contract.issuer_corporation_id],
 			acceptorName: contract.acceptor_id ? nameMap[contract.acceptor_id] : undefined,
+			acceptorDisplayName: contract.acceptor_id
+				? displayNameMap[contract.acceptor_id] ?? nameMap[contract.acceptor_id]
+				: undefined,
+			acceptorDisplayHref: contract.acceptor_id ? displayHrefMap[contract.acceptor_id] : undefined,
 			assigneeName: contract.assignee_id ? nameMap[contract.assignee_id] : undefined,
+			assigneeDisplayName: contract.assignee_id
+				? displayNameMap[contract.assignee_id] ?? nameMap[contract.assignee_id]
+				: undefined,
+			assigneeDisplayHref: contract.assignee_id ? displayHrefMap[contract.assignee_id] : undefined,
 			items,
 			_itemsFetchError: itemsFetchError,
 			processedAt,

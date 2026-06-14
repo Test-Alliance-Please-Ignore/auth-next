@@ -213,3 +213,6 @@ export * from './skills'
 
 // Re-export inventory types and utilities
 export * from './inventory'
+
+// Re-export ID classification helpers
+export * from './id-ranges'

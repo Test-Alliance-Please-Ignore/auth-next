@@ -2314,6 +2314,10 @@ export class ApiClient {
 		return this.get(`/characters/${characterId}${query}`)
 	}
 
+	async getCharacterOwnerships(characterIds: string[]): Promise<Record<string, { userId: string }>> {
+		return this.post('/characters/ownership', { characterIds })
+	}
+
 	async refreshCharacterById(characterId: string): Promise<{
 		success: boolean
 		message: string
