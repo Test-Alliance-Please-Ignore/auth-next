@@ -3,9 +3,8 @@
  */
 
 import { Package, Truck } from 'lucide-react'
-import { useMemo, useState } from 'react'
-
 import { MantineReactTable } from 'mantine-react-table'
+import { useMemo, useState } from 'react'
 
 import { Badge } from '@/components/ui/badge'
 import { Card, CardContent } from '@/components/ui/card'
@@ -19,8 +18,8 @@ import {
 } from '@/components/ui/table'
 import { cn } from '@/lib/utils'
 
-import { useFulcrumTable } from './use-fulcrum-table'
 import { EntityNameLink } from './entity-name-link'
+import { useFulcrumTable } from './use-fulcrum-table'
 
 import type { MRT_ColumnDef } from 'mantine-react-table'
 
@@ -46,6 +45,7 @@ interface ProcessedContract {
 	issuerName?: string
 	issuerDisplayName?: string
 	issuerDisplayHref?: string
+	issuerCorporationId?: string
 	issuerCorporationName?: string
 	issuerCorporationDisplayHref?: string
 	acceptor_id?: string
@@ -157,12 +157,9 @@ function TypeBadge({ type }: { type: string }) {
 }
 
 function StatusBadge({ status }: { status: string }) {
-	if (status === 'outstanding')
-		return <Badge variant="default">Outstanding</Badge>
-	if (isFinishedStatus(status))
-		return <Badge variant="success">Finished</Badge>
-	if (status === 'in_progress')
-		return <Badge variant="secondary">In Progress</Badge>
+	if (status === 'outstanding') return <Badge variant="default">Outstanding</Badge>
+	if (isFinishedStatus(status)) return <Badge variant="success">Finished</Badge>
+	if (status === 'in_progress') return <Badge variant="secondary">In Progress</Badge>
 	if (isCancelledStatus(status))
 		return <Badge variant="destructive">{STATUS_LABELS[status] ?? status}</Badge>
 	return <Badge variant="secondary">{status}</Badge>
@@ -340,13 +337,11 @@ function FilterButton({
 				'rounded-md px-2.5 py-1 text-xs font-medium transition-colors',
 				active
 					? 'bg-primary text-primary-foreground'
-					: 'bg-muted/50 text-muted-foreground hover:bg-muted hover:text-foreground',
+					: 'bg-muted/50 text-muted-foreground hover:bg-muted hover:text-foreground'
 			)}
 		>
 			{children}
-			{count != null && (
-				<span className="ml-1 opacity-70">({count})</span>
-			)}
+			{count != null && <span className="ml-1 opacity-70">({count})</span>}
 		</button>
 	)
 }
@@ -357,89 +352,91 @@ function FilterButton({
 
 function buildContractColumns(): MRT_ColumnDef<ProcessedContract>[] {
 	return [
-	{
-		accessorKey: 'type',
-		header: 'Type',
-		filterVariant: 'multi-select',
-		mantineFilterMultiSelectProps: {
-			data: Object.entries(TYPE_LABELS).map(([value, label]) => ({ value, label })),
+		{
+			accessorKey: 'type',
+			header: 'Type',
+			filterVariant: 'multi-select',
+			mantineFilterMultiSelectProps: {
+				data: Object.entries(TYPE_LABELS).map(([value, label]) => ({ value, label })),
+			},
+			Cell: ({ row }) => <TypeBadge type={row.original.type} />,
 		},
-		Cell: ({ row }) => <TypeBadge type={row.original.type} />,
-	},
-	{
-		accessorKey: 'status',
-		header: 'Status',
-		filterVariant: 'multi-select',
-		mantineFilterMultiSelectProps: {
-			data: Object.entries(STATUS_LABELS).map(([value, label]) => ({ value, label })),
+		{
+			accessorKey: 'status',
+			header: 'Status',
+			filterVariant: 'multi-select',
+			mantineFilterMultiSelectProps: {
+				data: Object.entries(STATUS_LABELS).map(([value, label]) => ({ value, label })),
+			},
+			Cell: ({ row }) => <StatusBadge status={row.original.status} />,
 		},
-		Cell: ({ row }) => <StatusBadge status={row.original.status} />,
-	},
-	{
-		accessorKey: 'issuerDisplayName',
-		header: 'From',
-		filterVariant: 'autocomplete',
-		accessorFn: (row) => row.issuerDisplayName ?? row.issuerName ?? '',
-		Cell: ({ row }) => (
-			<EntityNameLink
-				entityId={row.original.issuer_id}
-				href={row.original.issuerDisplayHref}
-			>
-				{row.original.issuerDisplayName || row.original.issuerName || '-'}
-			</EntityNameLink>
-		),
-	},
-	{
-		accessorKey: 'acceptorDisplayName',
-		header: 'To',
-		filterVariant: 'autocomplete',
-		accessorFn: (row) => row.acceptorDisplayName ?? row.acceptorName ?? row.assigneeDisplayName ?? row.assigneeName ?? '',
-		Cell: ({ row }) => (
-			<EntityNameLink
-				entityId={row.original.acceptor_id ?? row.original.assignee_id}
-				href={row.original.acceptorDisplayHref ?? row.original.assigneeDisplayHref}
-			>
-				{row.original.acceptorDisplayName ||
-					row.original.acceptorName ||
-					row.original.assigneeDisplayName ||
-					row.original.assigneeName ||
-					'-'}
-			</EntityNameLink>
-		),
-	},
-	{
-		accessorKey: 'title',
-		header: 'Title / Info',
-		Cell: ({ row }) => (
-			<span className="max-w-[200px] truncate block">
-				{row.original.title || contractSummary(row.original)}
-			</span>
-		),
-	},
-	{
-		accessorKey: 'price',
-		header: 'Price',
-		enableGlobalFilter: false,
-		filterVariant: 'range',
-		accessorFn: (row) => row.price ?? row.reward ?? 0,
-		mantineTableHeadCellProps: { style: { textAlign: 'right' } },
-		Cell: ({ row }) => (
-			<div className="text-right tabular-nums">
-				{formatIsk(row.original.price || row.original.reward)}
-			</div>
-		),
-	},
-	{
-		accessorKey: 'date_issued',
-		header: 'Issued',
-		filterVariant: 'date-range',
-		accessorFn: (row) => new Date(row.date_issued),
-		Cell: ({ row }) => (
-			<span className="text-muted-foreground whitespace-nowrap">
-				{new Date(row.original.date_issued).toLocaleDateString()}
-			</span>
-		),
-	},
+		{
+			accessorKey: 'issuerDisplayName',
+			header: 'From',
+			filterVariant: 'autocomplete',
+			accessorFn: (row) => row.issuerDisplayName ?? row.issuerName ?? '',
+			Cell: ({ row }) => (
+				<EntityNameLink entityId={row.original.issuer_id} href={row.original.issuerDisplayHref}>
+					{row.original.issuerDisplayName || row.original.issuerName || '-'}
+				</EntityNameLink>
+			),
+		},
+		{
+			accessorKey: 'acceptorDisplayName',
+			header: 'To',
+			filterVariant: 'autocomplete',
+			accessorFn: (row) =>
+				row.acceptorDisplayName ??
+				row.acceptorName ??
+				row.assigneeDisplayName ??
+				row.assigneeName ??
+				'',
+			Cell: ({ row }) => (
+				<EntityNameLink
+					entityId={row.original.acceptor_id ?? row.original.assignee_id}
+					href={row.original.acceptorDisplayHref ?? row.original.assigneeDisplayHref}
+				>
+					{row.original.acceptorDisplayName ||
+						row.original.acceptorName ||
+						row.original.assigneeDisplayName ||
+						row.original.assigneeName ||
+						'-'}
+				</EntityNameLink>
+			),
+		},
+		{
+			accessorKey: 'title',
+			header: 'Title / Info',
+			Cell: ({ row }) => (
+				<span className="max-w-[200px] truncate block">
+					{row.original.title || contractSummary(row.original)}
+				</span>
+			),
+		},
+		{
+			accessorKey: 'price',
+			header: 'Price',
+			enableGlobalFilter: false,
+			filterVariant: 'range',
+			accessorFn: (row) => row.price ?? row.reward ?? 0,
+			mantineTableHeadCellProps: { style: { textAlign: 'right' } },
+			Cell: ({ row }) => (
+				<div className="text-right tabular-nums">
+					{formatIsk(row.original.price || row.original.reward)}
+				</div>
+			),
+		},
+		{
+			accessorKey: 'date_issued',
+			header: 'Issued',
+			filterVariant: 'date-range',
+			accessorFn: (row) => new Date(row.date_issued),
+			Cell: ({ row }) => (
+				<span className="text-muted-foreground whitespace-nowrap">
+					{new Date(row.original.date_issued).toLocaleDateString()}
+				</span>
+			),
+		},
 	]
 }
 
@@ -546,14 +543,12 @@ export function ContractsSection({ data }: { data: ProcessedContract[] }) {
 								<FilterButton
 									key={type}
 									active={typeFilter === type}
-									onClick={() =>
-										setTypeFilter(typeFilter === type ? 'all' : type)
-									}
+									onClick={() => setTypeFilter(typeFilter === type ? 'all' : type)}
 									count={typeCounts[type]}
 								>
 									{TYPE_LABELS[type]}
 								</FilterButton>
-							),
+							)
 					)}
 				</div>
 
@@ -566,13 +561,11 @@ export function ContractsSection({ data }: { data: ProcessedContract[] }) {
 							<FilterButton
 								key={status}
 								active={statusFilter === status}
-								onClick={() =>
-									setStatusFilter(statusFilter === status ? 'all' : status)
-								}
+								onClick={() => setStatusFilter(statusFilter === status ? 'all' : status)}
 							>
-								{status === 'all' ? 'Any Status' : STATUS_LABELS[status] ?? status}
+								{status === 'all' ? 'Any Status' : (STATUS_LABELS[status] ?? status)}
 							</FilterButton>
-						),
+						)
 					)}
 				</div>
 			</div>
