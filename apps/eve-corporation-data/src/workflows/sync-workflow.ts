@@ -61,7 +61,16 @@ import type {
 } from './types'
 
 const STEP_RETRY_OPTIONS = esiRetryOptions
-const ASSETS_SYNC_ENABLED = true
+
+function readEnvFlag(value: boolean | string | undefined, defaultValue: boolean): boolean {
+	if (typeof value === 'boolean') return value
+	if (typeof value === 'string') {
+		const normalized = value.trim().toLowerCase()
+		if (normalized === 'true' || normalized === '1' || normalized === 'yes') return true
+		if (normalized === 'false' || normalized === '0' || normalized === 'no') return false
+	}
+	return defaultValue
+}
 
 const ROLE_REQUIREMENTS_BY_DATA_TYPE: Partial<Record<EveCorporationSyncDataType, CorporationRole[]>> =
 	{
@@ -134,6 +143,11 @@ export class EveCorporationSyncWorkflow extends WorkflowEntrypoint<Env, EveCorpo
 	async run(event: WorkflowEvent<EveCorporationSyncParams>, step: WorkflowStep) {
 		const { corporationId, dataTypes, trigger } = event.payload
 		const workflowInstanceId = event.instanceId
+		const assetsSyncEnabled = readEnvFlag(this.env.ASSETS_SYNC_ENABLED, true)
+		const structureEnrichmentEnabled = readEnvFlag(
+			this.env.STRUCTURE_ENRICHMENT_ENABLED,
+			false
+		)
 
 		logger.info('[EveCorporationSyncWorkflow] Starting sync', {
 			corporationId,
@@ -145,13 +159,13 @@ export class EveCorporationSyncWorkflow extends WorkflowEntrypoint<Env, EveCorpo
 		this.validateEnv()
 
 		const shouldSync = createShouldSyncPredicate(dataTypes, {
-			disabledDataTypes: ASSETS_SYNC_ENABLED ? [] : ['assets'],
+			disabledDataTypes: assetsSyncEnabled ? [] : ['assets'],
 		})
 		const requiredRoleSets = getRequiredRoleSets(shouldSync)
 
 		const wantsAssets =
 			!dataTypes || dataTypes.length === 0 || dataTypes.includes('assets')
-		if (!ASSETS_SYNC_ENABLED && wantsAssets) {
+		if (!assetsSyncEnabled && wantsAssets) {
 			logger.warn('[EveCorporationSyncWorkflow] Asset sync is temporarily disabled', {
 				corporationId,
 				requestedDataTypes: dataTypes ?? 'all',
@@ -640,25 +654,29 @@ export class EveCorporationSyncWorkflow extends WorkflowEntrypoint<Env, EveCorpo
 					fetchStructures(this.env, corporationId, directorCharacterId),
 			})
 
-			const structureEnrichment = await runDirectorStepWithFailover({
-				stepName: 'fetch-structure-enrichment',
-				timeout: '5 minutes',
-				requiredRoles: ['Station_Manager'],
-				run: (directorCharacterId) =>
-					fetchStructureEnrichment(this.env, corporationId, directorCharacterId),
-			})
+			const structureEnrichment = structureEnrichmentEnabled
+				? await runDirectorStepWithFailover({
+						stepName: 'fetch-structure-enrichment',
+						timeout: '5 minutes',
+						requiredRoles: ['Station_Manager'],
+						run: (directorCharacterId) =>
+							fetchStructureEnrichment(this.env, corporationId, directorCharacterId),
+					})
+				: null
 
 			structuresSync = await step.do('store-structures', {}, async () => {
 				await storeStructures(this.env, corporationId, structures)
-				await storeStructureEnrichment(this.env, corporationId, structureEnrichment)
+				if (structureEnrichment) {
+					await storeStructureEnrichment(this.env, corporationId, structureEnrichment)
+				}
 					return {
 						dataType: 'structures' as const,
 						stats: {
 							structuresCount: structures.length,
-							sovereigntySystemsCount: structureEnrichment.sovereigntySystems?.length ?? 0,
-							sovereigntyHubsCount: structureEnrichment.sovereigntyHubs.length,
-							skyhooksCount: structureEnrichment.skyhooks.length,
-							miningStatesCount: structureEnrichment.miningStates.length,
+							sovereigntySystemsCount: structureEnrichment?.sovereigntySystems?.length ?? 0,
+							sovereigntyHubsCount: structureEnrichment?.sovereigntyHubs.length ?? 0,
+							skyhooksCount: structureEnrichment?.skyhooks.length ?? 0,
+							miningStatesCount: structureEnrichment?.miningStates.length ?? 0,
 						},
 					}
 				})
