@@ -178,7 +178,7 @@ function ContractDetails({ contract }: { contract: ProcessedContract }) {
 					<div>
 						<span className="text-muted-foreground">On behalf of: </span>
 						<EntityNameLink
-							entityId={contract.issuer_corporation_id}
+							entityId={contract.issuerCorporationId}
 							href={contract.issuerCorporationDisplayHref}
 						>
 							{contract.issuerCorporationName}
