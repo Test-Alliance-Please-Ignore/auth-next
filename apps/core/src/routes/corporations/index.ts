@@ -1415,14 +1415,12 @@ app.post('/:corporationId/fetch', requireAuth(), requireAdmin(), async (c) => {
 				await stub.fetchFinancialData(corporationId, undefined, forceRefresh)
 				break
 			case 'assets':
-				logger.warn('[Corporations] Assets fetch is temporarily disabled', { corporationId })
-				return c.json(
-					{
-						error: 'Assets fetch is temporarily disabled',
-						category: 'assets',
-					},
-					409
-				)
+				logger.info('[Corporations] Fetching assets and structure inventory', {
+					corporationId,
+					forceRefresh: true,
+				})
+				await stub.fetchAssetsData(corporationId, true)
+				break
 			case 'market':
 				logger.info('[Corporations] Fetching market data', { corporationId })
 				await stub.fetchMarketData(corporationId, forceRefresh)

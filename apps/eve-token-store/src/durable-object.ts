@@ -198,7 +198,7 @@ export class EveTokenStoreDO extends DurableObject<Env> implements EveTokenStore
 			cache: this,
 			baseUrl: 'https://esi.evetech.net',
 			debugLogger: logger,
-			compatibilityDate: '2025-09-30',
+			compatibilityDate: '2026-05-19',
 		})
 
 		// Load cached metadata from DO storage once on startup.

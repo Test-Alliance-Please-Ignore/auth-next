@@ -665,6 +665,11 @@ export class EveCorporationSyncWorkflow extends WorkflowEntrypoint<Env, EveCorpo
 		}
 
 		if (shouldSyncAuthenticated('assets')) {
+			logger.info('[EveCorporationSyncWorkflow] Asset sync selected for this run', {
+				corporationId,
+				trigger,
+				hasDirector: director !== null,
+			})
 			assetsSync = await step.do(
 				'sync-assets',
 				{ ...STEP_RETRY_OPTIONS, timeout: '10 minutes' },
