@@ -3,18 +3,23 @@
  */
 
 import { MantineReactTable } from 'mantine-react-table'
+import { useMemo } from 'react'
 
 import { Badge } from '@/components/ui/badge'
 import { EveTimeDisplay } from '@/components/ui/eve-time-display'
 
 import { useFulcrumTable } from './use-fulcrum-table'
+import { EntityNameLink } from './entity-name-link'
 
 import type { MRT_ColumnDef } from 'mantine-react-table'
 
 interface ProcessedWalletTransaction {
 	transaction_id: string
+	client_id?: string
 	typeName?: string
 	clientName?: string
+	clientDisplayName?: string
+	clientDisplayHref?: string
 	locationName?: string
 	quantity: number
 	unit_price: string
@@ -37,7 +42,8 @@ function formatIsk(value: string | number): string {
 	return num.toFixed(0)
 }
 
-const columns: MRT_ColumnDef<ProcessedWalletTransaction>[] = [
+function buildWalletTransactionColumns(): MRT_ColumnDef<ProcessedWalletTransaction>[] {
+	return [
 	{
 		accessorKey: 'date',
 		header: 'Date/Time',
@@ -75,10 +81,18 @@ const columns: MRT_ColumnDef<ProcessedWalletTransaction>[] = [
 		),
 	},
 	{
-		accessorKey: 'clientName',
+		accessorKey: 'clientDisplayName',
 		header: 'With',
 		filterVariant: 'autocomplete',
-		Cell: ({ row }) => row.original.clientName || '-',
+		accessorFn: (row) => row.clientDisplayName ?? row.clientName ?? '',
+		Cell: ({ row }) => (
+			<EntityNameLink
+				entityId={row.original.client_id}
+				href={row.original.clientDisplayHref}
+			>
+				{row.original.clientDisplayName || row.original.clientName || '-'}
+			</EntityNameLink>
+		),
 	},
 	{
 		accessorKey: 'locationName',
@@ -128,7 +142,8 @@ const columns: MRT_ColumnDef<ProcessedWalletTransaction>[] = [
 			<div className="text-right font-mono font-medium">{formatIsk(row.original.totalValue)} ISK</div>
 		),
 	},
-]
+	]
+}
 
 export function WalletTransactionsSection({
 	data: rawData,
@@ -137,6 +152,7 @@ export function WalletTransactionsSection({
 }) {
 	const data = Array.isArray(rawData) ? rawData : rawData.transactions
 	const truncated = Array.isArray(rawData) ? false : rawData.truncated ?? false
+	const columns = useMemo(() => buildWalletTransactionColumns(), [])
 
 	const table = useFulcrumTable({
 		columns,

@@ -1,16 +1,23 @@
 import { getStub } from '@repo/do-utils'
-import { normalizeIdToString } from '@repo/esi'
+import { normalizeIdToString } from '@repo/eve-types'
 import { stripHtmlToPlainText } from './html-stripper'
+import type { CharacterAffiliationCoordinator } from './character-affiliation'
+import type { EntityLinkCoordinator } from './entity-links'
 
 import type { EsiTypeResolver, MailingList, MailLabelsResponse } from '@repo/esi'
 import type { MailWithContent } from '../../steps/mails/fetch-mails'
+import type { CoreBinding } from '../../../types/core-binding'
 
 export interface ProcessedMail extends MailWithContent {
 	fromName?: string
+	fromDisplayName?: string
+	fromDisplayHref?: string
 	recipients?: Array<{
 		recipient_id: string
 		recipient_type: 'alliance' | 'character' | 'corporation' | 'mailing_list'
 		recipientName?: string
+		recipientDisplayName?: string
+		recipientDisplayHref?: string
 	}>
 	bodyPlainText?: string
 	timestampFormatted?: string
@@ -49,11 +56,15 @@ export async function enrichMails(
 	env: {
 		ESI_TYPE_RESOLVER: DurableObjectNamespace
 		ESI: DurableObjectNamespace
+		EVE_TOKEN_STORE: DurableObjectNamespace
+		CORE: CoreBinding
 	},
 	mails: MailWithContent[],
 	characterId: string,
 	mailingLists: MailingList[] = [],
 	labels: MailLabelsResponse = { labels: [], total_unread_count: 0 },
+	affiliationCoordinator?: CharacterAffiliationCoordinator,
+	entityLinkCoordinator?: EntityLinkCoordinator,
 ): Promise<EnrichedMailData> {
 	if (mails.length === 0) {
 		return { mails: [], mailingLists, labels }
@@ -98,29 +109,100 @@ export async function enrichMails(
 		}
 	}
 
+	const characterDisplayNameMap =
+		affiliationCoordinator && idsToResolve.size > 0
+			? await affiliationCoordinator.resolveDisplayNames(
+					{ ESI: env.ESI },
+					characterId,
+					mails.flatMap((mail) => {
+						const candidates: Array<{
+							characterId: string
+							characterName?: string
+							forceCharacter?: boolean
+						}> = []
+						const fromId = normalizeIdToString(mail.from)
+						if (fromId && nameMap[fromId]) {
+							candidates.push({
+								characterId: fromId,
+								characterName: nameMap[fromId],
+								forceCharacter: true,
+							})
+						}
+						for (const recipient of mail.recipients ?? []) {
+							if (recipient.recipient_type !== 'character') continue
+							const recipientId = normalizeIdToString(recipient.recipient_id)
+							if (recipientId && nameMap[recipientId]) {
+								candidates.push({
+									characterId: recipientId,
+									characterName: nameMap[recipientId],
+									forceCharacter: true,
+								})
+							}
+						}
+						return candidates
+					}),
+					'enrichMails',
+				)
+			: {}
+
+	const displayHrefMap =
+		entityLinkCoordinator && idsToResolve.size > 0
+			? await entityLinkCoordinator.resolveDisplayHrefs(
+					env.CORE,
+					mails.flatMap((mail) => {
+						const candidates: Array<{ entityId: string; entityType?: string | null }> = []
+						const fromId = normalizeIdToString(mail.from)
+						if (fromId) {
+							candidates.push({ entityId: fromId })
+						}
+						for (const recipient of mail.recipients ?? []) {
+							if (recipient.recipient_type === 'mailing_list') continue
+							const recipientId = normalizeIdToString(recipient.recipient_id)
+							if (recipientId) {
+								candidates.push({ entityId: recipientId, entityType: recipient.recipient_type })
+							}
+						}
+						return candidates
+					}),
+					'enrichMails',
+				)
+			: {}
+
 	// Process each mail with resolved names
 	const processedMails: ProcessedMail[] = mails.map((mail) => {
 		const fromId = normalizeIdToString(mail.from)
 		const fromName = fromId ? nameMap[fromId] : undefined
+		const fromDisplayName = fromId ? characterDisplayNameMap[fromId] ?? fromName : undefined
+		const fromDisplayHref = fromId ? displayHrefMap[fromId] : undefined
 
 		// Process recipients with resolved names
 		const processedRecipients = mail.recipients?.map(recipient => {
 			const recipientId = normalizeIdToString(recipient.recipient_id)
 			let recipientName: string | undefined
+			let recipientDisplayName: string | undefined
+			let recipientDisplayHref: string | undefined
 			if (recipient.recipient_type === 'mailing_list' && recipientId) {
 				recipientName = mailingListNames.get(recipientId)
 			} else if (recipientId) {
 				recipientName = nameMap[recipientId]
+				if (recipient.recipient_type === 'character') {
+					recipientDisplayName = characterDisplayNameMap[recipientId] ?? recipientName
+				}
+				recipientDisplayHref = displayHrefMap[recipientId]
 			}
 			return {
 				...recipient,
 				recipientName,
+				recipientDisplayName,
+				recipientDisplayHref,
 			}
 		})
 
 		return {
 			...mail,
 			fromName,
+			fromDisplayName,
+			fromDisplayHref,
 			recipients: processedRecipients,
 			bodyPlainText: stripHtmlToPlainText(mail.body),
 			timestampFormatted: formatTimestamp(mail.timestamp),

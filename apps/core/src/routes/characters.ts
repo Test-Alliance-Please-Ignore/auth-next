@@ -1,4 +1,4 @@
-import { eq, ilike, or } from 'drizzle-orm'
+import { eq, ilike, inArray, or } from 'drizzle-orm'
 import { Hono } from 'hono'
 
 import { getStub } from '@repo/do-utils'
@@ -200,6 +200,59 @@ app.get('/search', requireAuth(), async (c) => {
 })
 
 /**
+ * POST /characters/ownership
+ * Resolve ownership for a batch of character IDs.
+ *
+ * Request body: { characterIds: string[] }
+ * Response: { ownerships: Record<string, { userId: string }> }
+ */
+app.post('/ownership', requireAuth(), async (c) => {
+	const db = c.get('db')
+	if (!db) {
+		return c.json({ error: 'Database not available' }, 500)
+	}
+
+	let body: unknown
+	try {
+		body = await c.req.json()
+	} catch {
+		return c.json({ error: 'Invalid request body' }, 400)
+	}
+
+	const characterIds = Array.isArray((body as { characterIds?: unknown } | null)?.characterIds)
+		? [...new Set(
+				((body as { characterIds?: unknown }).characterIds as unknown[])
+					.map((characterId) => String(characterId).trim())
+					.filter(Boolean),
+			)]
+		: []
+
+	if (characterIds.length === 0) {
+		return c.json({ ownerships: {} }, 200)
+	}
+
+	try {
+		const rows = await db
+			.select({
+				characterId: userCharacters.characterId,
+				userId: userCharacters.userId,
+			})
+			.from(userCharacters)
+			.where(inArray(userCharacters.characterId, characterIds))
+
+		const ownerships: Record<string, { userId: string }> = {}
+		for (const row of rows) {
+			ownerships[row.characterId] = { userId: row.userId }
+		}
+
+		return c.json({ ownerships })
+	} catch (error) {
+		logger.error('Error resolving character ownership:', error)
+		return c.json({ error: 'Failed to resolve character ownership' }, 500)
+	}
+})
+
+/**
  * GET /characters/:characterId
  * Get detailed character information with access control
  *
@@ -345,6 +398,7 @@ app.get('/:characterId', requireAuth(), async (c) => {
 	let actualOwner: { userId: string; characterName: string } | null = null
 	const viewedAsAdmin = isAdmin && !isActualOwner
 	const viewedAsCeoOrDirector = isCeoOrDirector && !isActualOwner
+	const viewedAsHrViewer = hasHrViewerAccess && !isActualOwner && !isAdmin && !isCeoOrDirector
 
 	if (viewedAsAdmin) {
 		try {
@@ -513,6 +567,7 @@ app.get('/:characterId', requireAuth(), async (c) => {
 			isOwner,
 			viewedAsAdmin,
 			viewedAsCeoOrDirector,
+			viewedAsHrViewer,
 			viewerRole,
 			public: {
 				info: enrichedInfo,

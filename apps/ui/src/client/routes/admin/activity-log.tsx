@@ -265,6 +265,11 @@ export default function ActivityLogPage() {
 																	<span className="text-muted-foreground">Character: </span>
 																	<Link
 																		to={`/character/${log.characterId}`}
+																		state={{
+																			source: 'admin-activity-log',
+																			backTo: '/admin/activity-log',
+																			backLabel: 'Back to Activity Log',
+																		}}
 																		className="text-primary hover:underline"
 																	>
 																		{log.characterName}

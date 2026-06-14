@@ -1,10 +1,18 @@
 import { getStub } from '@repo/do-utils'
-import { normalizeIdToString } from '@repo/esi'
+import { normalizeIdToString } from '@repo/eve-types'
 
 import type { EsiTypeResolver, CharacterNotification } from '@repo/esi'
+import type {
+    CharacterAffiliationCoordinator,
+    CharacterAffiliationDisplayCandidate,
+} from './character-affiliation'
+import type { EntityLinkCoordinator } from './entity-links'
+import type { CoreBinding } from '../../../types/core-binding'
 
 export interface ProcessedNotification extends CharacterNotification {
     senderName?: string
+    senderDisplayName?: string
+    senderDisplayHref?: string
     /** Parsed text content as key-value pairs (IDs resolved to names where possible) */
     parsedText?: Record<string, string>
     processedAt: string
@@ -107,7 +115,7 @@ function isPlausibleId(value: string): boolean {
  * Collect all entity IDs from parsedText that need resolution.
  */
 function collectParsedTextIds(
-    notifications: { parsedText?: Record<string, string> }[],
+    notifications: Array<{ parsedText?: Record<string, string> }>,
 ): Set<string> {
     const ids = new Set<string>()
     for (const n of notifications) {
@@ -142,9 +150,14 @@ function annotateParsedText(
 export async function enrichNotifications(
     env: {
         ESI_TYPE_RESOLVER: DurableObjectNamespace
+        ESI: DurableObjectNamespace
+        EVE_TOKEN_STORE: DurableObjectNamespace
+        CORE: CoreBinding
     },
     notifications: CharacterNotification[],
     characterId?: string,
+    affiliationCoordinator?: CharacterAffiliationCoordinator,
+    entityLinkCoordinator?: EntityLinkCoordinator,
 ): Promise<EnrichedNotificationData> {
     if (notifications.length === 0) {
         return { notifications: [], types: [] }
@@ -178,12 +191,50 @@ export async function enrichNotifications(
         }
     }
 
+    const senderDisplayNameMap =
+        affiliationCoordinator && notifications.length > 0
+            ? await affiliationCoordinator.resolveDisplayNames(
+                    { ESI: env.ESI },
+                    characterId ?? 'default',
+                    (() => {
+                        const candidates: CharacterAffiliationDisplayCandidate[] = []
+                        for (const notification of parsed) {
+                            if (notification.sender_type !== 'character') continue
+                            const senderId = normalizeIdToString(notification.sender_id)
+                            if (senderId && nameMap[senderId]) {
+                                candidates.push({
+                                    characterId: senderId,
+                                    characterName: nameMap[senderId],
+                                    forceCharacter: true,
+                                })
+                            }
+                        }
+                        return candidates
+                    })(),
+                    'enrichNotifications',
+                )
+            : {}
+
+    const displayHrefMap =
+        entityLinkCoordinator && notifications.length > 0
+            ? await entityLinkCoordinator.resolveDisplayHrefs(
+                    env.CORE,
+                    notifications.map((notification) => ({
+                        entityId: String(notification.sender_id ?? ''),
+                        entityType: notification.sender_type ?? null,
+                    })),
+                    'enrichNotifications',
+                )
+            : {}
+
     // Second pass: build processed notifications with resolved names
     const processed: ProcessedNotification[] = parsed.map((n) => {
         const senderId = normalizeIdToString(n.sender_id)
         return {
             ...n,
             senderName: senderId ? nameMap[senderId] : undefined,
+            senderDisplayName: senderId ? senderDisplayNameMap[senderId] ?? nameMap[senderId] : undefined,
+            senderDisplayHref: senderId ? displayHrefMap[senderId] : undefined,
             parsedText: n.parsedText
                 ? annotateParsedText(n.parsedText, nameMap)
                 : undefined,

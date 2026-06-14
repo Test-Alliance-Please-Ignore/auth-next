@@ -4,12 +4,15 @@
  */
 
 import { getStub } from '@repo/do-utils'
-import { isStructureId } from '@repo/esi'
+import { isStructureId } from '@repo/eve-types'
 
 import { formatCurrency } from '../../utils/formatting'
+import type { CharacterAffiliationCoordinator } from './character-affiliation'
+import type { EntityLinkCoordinator } from './entity-links'
 import { StructureResolutionCoordinator } from './structure-resolution'
+import type { CoreBinding } from '../../../types/core-binding'
 
-import type { CharacterMarketTransaction, Esi, EsiTypeResolver } from '@repo/esi'
+import type { CharacterMarketTransaction, EsiTypeResolver } from '@repo/esi'
 import type { Universe } from '@repo/universe'
 
 /**
@@ -18,6 +21,8 @@ import type { Universe } from '@repo/universe'
 export interface ProcessedWalletTransaction extends CharacterMarketTransaction {
 	typeName?: string
 	clientName?: string
+	clientDisplayName?: string
+	clientDisplayHref?: string
 	locationName?: string
 	marketGroupName?: string | null
 	categoryName?: string
@@ -45,10 +50,14 @@ export async function enrichWalletTransactions(
 		ESI_TYPE_RESOLVER: DurableObjectNamespace
 		UNIVERSE: DurableObjectNamespace
 		ESI: DurableObjectNamespace
+		EVE_TOKEN_STORE: DurableObjectNamespace
+		CORE: CoreBinding
 	},
 	transactions: CharacterMarketTransaction[],
 	characterId: string,
-	structureResolutionCoordinator?: StructureResolutionCoordinator
+	structureResolutionCoordinator?: StructureResolutionCoordinator,
+	affiliationCoordinator?: CharacterAffiliationCoordinator,
+	entityLinkCoordinator?: EntityLinkCoordinator,
 ): Promise<ProcessedWalletTransactions> {
 	if (transactions.length === 0) {
 		return []
@@ -144,6 +153,28 @@ export async function enrichWalletTransactions(
 				)
 			: {}
 
+	const displayNameMap =
+		affiliationCoordinator && uniqueClientIds.length > 0
+			? await affiliationCoordinator.resolveDisplayNames(
+					{ ESI: env.ESI },
+					characterId,
+					uniqueClientIds.map((clientId) => ({
+						characterId: clientId,
+						characterName: nameMap[clientId],
+					})),
+					'enrichWalletTransactions',
+				)
+			: {}
+
+	const displayHrefMap =
+		entityLinkCoordinator && uniqueClientIds.length > 0
+			? await entityLinkCoordinator.resolveDisplayHrefs(
+					env.CORE,
+					uniqueClientIds.map((clientId) => ({ entityId: clientId })),
+					'enrichWalletTransactions',
+				)
+			: {}
+
 	if (structureLocationIds.length > 0) {
 		console.log('[enrichWalletTransactions] Structure resolution complete', {
 			requested: structureLocationIds.length,
@@ -181,6 +212,8 @@ export async function enrichWalletTransactions(
 			...transaction,
 			typeName,
 			clientName,
+			clientDisplayName: displayNameMap[transaction.client_id] ?? clientName,
+			clientDisplayHref: displayHrefMap[transaction.client_id],
 			locationName,
 			marketGroupName: typeMetadata?.marketGroupName ?? null,
 			categoryName: typeMetadata?.categoryName,

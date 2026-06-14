@@ -964,10 +964,18 @@ export default function UserDetailPage() {
 						</TableHeader>
 						<TableBody>
 							{user.characters.map((character) => (
-								<TableRow
+													<TableRow
 									key={character.characterId}
 									className="cursor-pointer"
-									onClick={() => navigate(`/character/${character.characterId}`)}
+									onClick={() =>
+										navigate(`/character/${character.characterId}`, {
+											state: {
+												source: 'admin-user-detail',
+												backTo: `/admin/users/${userId}`,
+												backLabel: 'Back to User Details',
+											},
+										})
+									}
 								>
 										<TableCell>
 											<div className="flex items-center gap-3">
@@ -1038,7 +1046,14 @@ export default function UserDetailPage() {
 											className="flex items-center justify-end gap-2"
 											onClick={(event) => event.stopPropagation()}
 										>
-											<Link to={`/character/${character.characterId}`}>
+											<Link
+												to={`/character/${character.characterId}`}
+												state={{
+													source: 'admin-user-detail',
+													backTo: `/admin/users/${userId}`,
+													backLabel: 'Back to User Details',
+												}}
+											>
 												<Button variant="ghost" size="sm">
 													<ExternalLink className="h-4 w-4" />
 												</Button>

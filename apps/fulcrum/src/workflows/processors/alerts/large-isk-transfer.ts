@@ -75,10 +75,10 @@ export function checkLargeIskTransfer(
         const amount = entry.amountNumber
         if (Math.abs(amount) < LOW_THRESHOLD) continue
 
-        const isIncoming = amount > 0
-        const otherPartyName = isIncoming
-            ? (entry.firstPartyName ?? 'Unknown')
-            : (entry.secondPartyName ?? 'Unknown')
+		const isIncoming = amount > 0
+		const otherPartyName = isIncoming
+			? (entry.firstPartyDisplayName ?? entry.firstPartyName ?? 'Unknown')
+			: (entry.secondPartyDisplayName ?? entry.secondPartyName ?? 'Unknown')
 
         transfers.push({
             id: entry.id,

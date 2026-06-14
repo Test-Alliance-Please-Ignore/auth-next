@@ -302,8 +302,10 @@ export default function HrAuditorUserProfilePage() {
 	const handleViewDetails = (character: AuditorCharacterRow) => {
 		navigate(`/character/${character.characterId}`, {
 			state: {
+				source: 'hr-auditor-user-profile',
 				backTo: `/hr/users/${userId}`,
 				backLabel: 'Back to User Details',
+				corporationId: character.corporationId ?? undefined,
 			},
 		})
 	}

@@ -27,6 +27,7 @@
 		"@repo/discord": "workspace:*",
 		"@repo/do-utils": "workspace:*",
 		"@repo/esi": "workspace:*",
+		"@repo/eve-types": "workspace:*",
 		"@repo/fulcrum": "workspace:*",
 		"@repo/hono-helpers": "workspace:*",
 		"@repo/hr": "workspace:*",

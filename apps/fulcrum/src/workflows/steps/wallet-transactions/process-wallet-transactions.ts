@@ -4,7 +4,10 @@
  */
 
 import type { CharacterMarketTransaction } from '@repo/esi'
+import type { CharacterAffiliationCoordinator } from '../../processors/helpers/character-affiliation'
+import type { EntityLinkCoordinator } from '../../processors/helpers/entity-links'
 import type { StructureResolutionCoordinator } from '../../processors/helpers/structure-resolution'
+import type { CoreBinding } from '../../../types/core-binding'
 import { retrieveData, storeOrReturn, type StepResult } from '../../utils/storage'
 import { enrichWalletTransactions } from '../../processors/helpers/wallet-transactions'
 
@@ -26,6 +29,8 @@ export async function processWalletTransactions(
 		ESI_TYPE_RESOLVER: DurableObjectNamespace
 		ESI: DurableObjectNamespace
 		UNIVERSE: DurableObjectNamespace
+		EVE_TOKEN_STORE: DurableObjectNamespace
+		CORE: CoreBinding
 	},
 	getBucket: (name: string) => R2Bucket,
 	bucket: R2Bucket,
@@ -34,6 +39,8 @@ export async function processWalletTransactions(
 	workflowInstanceId: string,
 	characterId: string,
 	structureResolutionCoordinator?: StructureResolutionCoordinator,
+	affiliationCoordinator?: CharacterAffiliationCoordinator,
+	entityLinkCoordinator?: EntityLinkCoordinator,
 ): Promise<StepResult> {
 	try {
 		// Check if fetch was successful
@@ -88,7 +95,9 @@ export async function processWalletTransactions(
 			env,
 			transactions,
 			characterId,
-			structureResolutionCoordinator
+			structureResolutionCoordinator,
+			affiliationCoordinator,
+			entityLinkCoordinator,
 		)
 
 		console.log('[processWalletTransactions] Enrichment complete', {

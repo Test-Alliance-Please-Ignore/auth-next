@@ -25,6 +25,8 @@ import { fetchSkills, processSkills } from './steps/skills'
 import { fetchWalletJournal, processWalletJournal } from './steps/wallet-journal'
 import { fetchWalletTransactions, processWalletTransactions } from './steps/wallet-transactions'
 import { fetchClones, processClones } from './steps/clones'
+import { CharacterAffiliationCoordinator } from './processors/helpers/character-affiliation'
+import { EntityLinkCoordinator } from './processors/helpers/entity-links'
 import { StructureResolutionCoordinator } from './processors/helpers/structure-resolution'
 
 import { getStub } from '@repo/do-utils'
@@ -103,6 +105,8 @@ export class CharacterReportWorkflow extends WorkflowEntrypoint<Env, WorkflowPar
 		const stepDurationsMs: Record<string, number> = {}
 		let failedStep: string | null = null
 		const structureResolutionCoordinator = new StructureResolutionCoordinator()
+		const characterAffiliationCoordinator = new CharacterAffiliationCoordinator()
+		const entityLinkCoordinator = new EntityLinkCoordinator()
 
 		assertRequiredBinding('DATABASE_URL', this.env.DATABASE_URL)
 		assertRequiredBinding('CHARACTER_REPORTS', this.env.CHARACTER_REPORTS)
@@ -180,6 +184,7 @@ export class CharacterReportWorkflow extends WorkflowEntrypoint<Env, WorkflowPar
 					fetchResult,
 					workflowInstanceId,
 					characterId,
+					entityLinkCoordinator,
 				),
 			)
 
@@ -282,6 +287,8 @@ export class CharacterReportWorkflow extends WorkflowEntrypoint<Env, WorkflowPar
 					workflowInstanceId,
 					characterId,
 					structureResolutionCoordinator,
+					characterAffiliationCoordinator,
+					entityLinkCoordinator,
 				),
 			)
 
@@ -307,6 +314,8 @@ export class CharacterReportWorkflow extends WorkflowEntrypoint<Env, WorkflowPar
 					workflowInstanceId,
 					characterId,
 					structureResolutionCoordinator,
+					characterAffiliationCoordinator,
+					entityLinkCoordinator,
 				),
 			)
 
@@ -331,6 +340,8 @@ export class CharacterReportWorkflow extends WorkflowEntrypoint<Env, WorkflowPar
 					fetchMailsResult,
 					workflowInstanceId,
 					characterId,
+					characterAffiliationCoordinator,
+					entityLinkCoordinator,
 				),
 			)
 
@@ -355,6 +366,8 @@ export class CharacterReportWorkflow extends WorkflowEntrypoint<Env, WorkflowPar
 					fetchContactsResult,
 					workflowInstanceId,
 					characterId,
+					characterAffiliationCoordinator,
+					entityLinkCoordinator,
 				),
 			)
 
@@ -427,6 +440,7 @@ export class CharacterReportWorkflow extends WorkflowEntrypoint<Env, WorkflowPar
 					fetchContractsResult,
 					workflowInstanceId,
 					characterId,
+					characterAffiliationCoordinator,
 				),
 			)
 
@@ -451,6 +465,7 @@ export class CharacterReportWorkflow extends WorkflowEntrypoint<Env, WorkflowPar
 					fetchNotificationsResult,
 					workflowInstanceId,
 					characterId,
+					characterAffiliationCoordinator,
 				),
 			)
 

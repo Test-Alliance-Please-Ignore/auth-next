@@ -1,5 +1,14 @@
 import { formatDistanceToNow } from 'date-fns'
-import { ChevronDown, ExternalLink, FileText, Loader2, MessageSquarePlus, Scan, User, Users } from 'lucide-react'
+import {
+	ChevronDown,
+	ExternalLink,
+	FileText,
+	Loader2,
+	MessageSquarePlus,
+	Scan,
+	User,
+	Users,
+} from 'lucide-react'
 
 import { getEsiStatusBadgeState } from '@/components/esi-status-badge'
 import { MemberAvatar } from '@/components/member-avatar'
@@ -123,8 +132,16 @@ export function ProfileCharactersSection({
 							return (
 								<div
 									key={character.characterId}
-									className="card-gradient space-y-2 rounded-lg border border-border/50 bg-card px-3 py-2 shadow-elevated"
+									className="card-gradient relative space-y-2 rounded-lg border border-border/50 bg-card px-3 py-2 shadow-elevated"
 								>
+									{showViewDetailsButton && onViewDetails && (
+										<div className="absolute right-2 top-2">
+											<Button variant="ghost" size="sm" onClick={() => onViewDetails(character)}>
+												<ExternalLink className="mr-1.5 h-3.5 w-3.5" />
+												View Details
+											</Button>
+										</div>
+									)}
 									<CharacterIdentitySummary
 										characterId={character.characterId}
 										characterName={character.characterName}
@@ -187,15 +204,15 @@ export function ProfileCharactersSection({
 									<div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-muted-foreground">
 										{character.joinDate && (
 											<span>
-												Joined {formatDistanceToNow(new Date(character.joinDate), { addSuffix: true })}
+												Joined{' '}
+												{formatDistanceToNow(new Date(character.joinDate), { addSuffix: true })}
 											</span>
 										)}
 										{character.joinDate && character.lastLogin && <span>•</span>}
 										{character.lastLogin && (
-											<span
-												title="Last active is based on the most recent ESI member-tracking login timestamp."
-											>
-												Last active {formatDistanceToNow(new Date(character.lastLogin), { addSuffix: true })}
+											<span title="Last active is based on the most recent ESI member-tracking login timestamp.">
+												Last active{' '}
+												{formatDistanceToNow(new Date(character.lastLogin), { addSuffix: true })}
 											</span>
 										)}
 									</div>
@@ -210,14 +227,18 @@ export function ProfileCharactersSection({
 											onClick={() => onViewReport(character)}
 										>
 											<Scan className="h-3 w-3 shrink-0 text-muted-foreground" />
-											<span className="shrink-0 font-medium text-muted-foreground">Fulcrum Report</span>
+											<span className="shrink-0 font-medium text-muted-foreground">
+												Fulcrum Report
+											</span>
 											<span className="shrink-0 text-muted-foreground">·</span>
 											{character.latestReport ? (
 												character.latestReport.status === 'completed' ? (
 													<>
 														<span className="truncate text-foreground">
 															View latest report (
-															{formatDistanceToNow(new Date(character.latestReport.createdAt), { addSuffix: true })}
+															{formatDistanceToNow(new Date(character.latestReport.createdAt), {
+																addSuffix: true,
+															})}
 															)
 														</span>
 														<ExternalLink className="ml-auto h-3 w-3 shrink-0 text-muted-foreground" />
@@ -226,13 +247,17 @@ export function ProfileCharactersSection({
 												  character.latestReport.status === 'processing' ? (
 													<span className="truncate text-muted-foreground">
 														Processing... (
-														{formatDistanceToNow(new Date(character.latestReport.createdAt), { addSuffix: true })}
+														{formatDistanceToNow(new Date(character.latestReport.createdAt), {
+															addSuffix: true,
+														})}
 														)
 													</span>
 												) : (
 													<span className="truncate text-muted-foreground">
 														Failed (
-														{formatDistanceToNow(new Date(character.latestReport.createdAt), { addSuffix: true })}
+														{formatDistanceToNow(new Date(character.latestReport.createdAt), {
+															addSuffix: true,
+														})}
 														)
 													</span>
 												)
@@ -240,12 +265,7 @@ export function ProfileCharactersSection({
 												<span className="truncate text-muted-foreground">No report yet</span>
 											)}
 										</div>
-										{showViewDetailsButton && onViewDetails && (
-											<Button variant="ghost" size="sm" onClick={() => onViewDetails(character)}>
-												<ExternalLink className="mr-1.5 h-3.5 w-3.5" />
-												View Details
-											</Button>
-										)}
+
 										<Button
 											variant={character.latestReport ? 'ghost' : 'primary'}
 											size="sm"

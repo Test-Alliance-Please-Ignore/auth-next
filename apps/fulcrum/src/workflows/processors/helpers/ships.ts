@@ -1,5 +1,5 @@
 import { getStub } from '@repo/do-utils'
-import { isStructureId } from '@repo/esi'
+import { isStructureId } from '@repo/eve-types'
 import type { Universe } from '@repo/universe'
 
 import { buildAssetMap, resolveTopLevelLocation } from './location'

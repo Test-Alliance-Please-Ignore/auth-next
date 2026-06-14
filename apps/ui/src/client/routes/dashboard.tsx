@@ -322,7 +322,14 @@ export default function DashboardPage() {
 													<p className="text-sm text-muted-foreground">Loading...</p>
 												)}
 											</div>
-											<Link to={`/character/${mainCharacter.characterId}`}>
+											<Link
+												to={`/character/${mainCharacter.characterId}`}
+												state={{
+													source: 'dashboard',
+													backTo: '/dashboard',
+													backLabel: 'Back to Dashboard',
+												}}
+											>
 												<Button size="sm" variant="ghost" className="gap-2">
 													View Details
 													<ExternalLink className="h-3 w-3" />
@@ -502,7 +509,15 @@ export default function DashboardPage() {
 							{user.characters.map((character) => (
 								<Card key={character.characterId} className="group relative">
 									<CardContent className="p-4">
-										<Link to={`/character/${character.characterId}`} className="block">
+										<Link
+											to={`/character/${character.characterId}`}
+											state={{
+												source: 'dashboard',
+												backTo: '/dashboard',
+												backLabel: 'Back to Dashboard',
+											}}
+											className="block"
+										>
 											<div className="flex items-center gap-3">
 												<img
 													src={characterPortraitUrl(character.characterId, 64)}

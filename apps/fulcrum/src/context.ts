@@ -12,6 +12,7 @@ export type Env = SharedHonoEnv & {
 	MARKETS: DurableObjectNamespace
 	ESI: DurableObjectNamespace
 	ESI_TYPE_RESOLVER: DurableObjectNamespace
+	EVE_TOKEN_STORE: DurableObjectNamespace
 	UNIVERSE: DurableObjectNamespace
 	CORE: CoreBinding
 	CHARACTER_REPORTS: R2Bucket

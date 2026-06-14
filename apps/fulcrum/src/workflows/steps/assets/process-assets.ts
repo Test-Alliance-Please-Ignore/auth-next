@@ -13,7 +13,7 @@ import {
 import type { StructureResolutionCoordinator } from '../../processors/helpers/structure-resolution'
 import { retrieveData, storeOrReturn } from '../../utils/storage'
 
-import { isStructureId } from '@repo/esi'
+import { isStructureId } from '@repo/eve-types'
 
 import type { CharacterAsset } from '@repo/esi'
 import type { StepResult } from '../../utils/storage'

@@ -1,4 +1,4 @@
-import { getIdClassification } from '@repo/esi'
+import { getIdClassification } from '@repo/eve-types'
 
 /**
  * Determine whether a corporation ID belongs to an NPC corporation.
@@ -7,4 +7,3 @@ import { getIdClassification } from '@repo/esi'
 export function isNpcCorporationId(corporationId: string): boolean {
 	return getIdClassification(corporationId).type === 'npc_corporation'
 }
-

@@ -6,6 +6,8 @@
 import type { CharacterPublicInfo } from '@repo/esi'
 import { retrieveData, storeOrReturn, type StepResult } from '../../utils/storage'
 import { enrichPublicInfo } from '../../processors/helpers/public-info'
+import type { EntityLinkCoordinator } from '../../processors/helpers/entity-links'
+import type { CoreBinding } from '../../../types/core-binding'
 
 /**
  * Process public character info by enriching with resolved names
@@ -20,13 +22,14 @@ import { enrichPublicInfo } from '../../processors/helpers/public-info'
  * @returns StepResult with enriched character public info data
  */
 export async function processPublicInfo(
-	env: { ESI_TYPE_RESOLVER: DurableObjectNamespace },
+	env: { ESI_TYPE_RESOLVER: DurableObjectNamespace; CORE: CoreBinding },
 	getBucket: (name: string) => R2Bucket,
 	bucket: R2Bucket,
 	bucketName: string,
 	fetchResult: StepResult,
 	workflowInstanceId: string,
 	characterId: string,
+	entityLinkCoordinator?: EntityLinkCoordinator,
 ): Promise<StepResult> {
 	try {
 		// Check if fetch was successful
@@ -59,7 +62,7 @@ export async function processPublicInfo(
 		}
 
 		// Enrich data by resolving IDs to names
-		const enrichedData = await enrichPublicInfo(env, publicInfo, characterId)
+		const enrichedData = await enrichPublicInfo(env, publicInfo, characterId, entityLinkCoordinator)
 
 		// Store in R2
 		return await storeOrReturn(

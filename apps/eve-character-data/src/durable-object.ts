@@ -7,8 +7,6 @@ import { createEveAllianceId, createEveCharacterId, createEveCorporationId } fro
 import { parseJsonResponse } from '@repo/worker-utils'
 
 import { createDb } from './db'
-import { buildUserSyncWorkflowOptions } from './workflows/build-user-sync-workflow-options'
-import { buildCharacterSyncWorkflowOptions } from './workflows/build-character-sync-workflow-options'
 import {
 	characterAssets,
 	characterAttributes,
@@ -23,6 +21,8 @@ import {
 	characterWallet,
 	characterWalletJournal,
 } from './db/schema'
+import { buildCharacterSyncWorkflowOptions } from './workflows/build-character-sync-workflow-options'
+import { buildUserSyncWorkflowOptions } from './workflows/build-user-sync-workflow-options'
 
 import type {
 	CharacterAttributesData,
@@ -164,10 +164,6 @@ export class EveCharacterDataDO extends DurableObject<Env> implements EveCharact
 			const affiliationChanged =
 				previousCorporationId !== currentCorporationId || previousAllianceId !== currentAllianceId
 			const isDeleted = String(currentCorporationId ?? '') === '1000001'
-
-			if (!isDeleted) {
-				await this.fetchAndStoreCorporationHistory(characterId)
-			}
 
 			return {
 				success: !isDeleted,
@@ -551,7 +547,7 @@ export class EveCharacterDataDO extends DurableObject<Env> implements EveCharact
 				: '1000001'
 			const allianceId = affiliation?.alliance_id
 				? String(affiliation.alliance_id)
-				: existingPublicInfo.allianceId ?? null
+				: (existingPublicInfo.allianceId ?? null)
 
 			try {
 				await this.db
@@ -670,14 +666,15 @@ export class EveCharacterDataDO extends DurableObject<Env> implements EveCharact
 	): Promise<CharacterCorporationHistoryData[]> {
 		const tokenStoreStub = getStub<EveTokenStore>(this.env.EVE_TOKEN_STORE, 'default')
 		// ESI returns numbers for IDs, but we need strings
-		const response = await tokenStoreStub.fetchEsi<
+		// This endpoint is public per the ESI OpenAPI spec — no auth required
+		const response = await tokenStoreStub.fetchPublicEsi<
 			Array<{
 				corporation_id: number
 				is_deleted?: boolean
 				record_id: number
 				start_date: string
 			}>
-		>(`/characters/${String(characterId)}/corporationhistory`, String(characterId))
+		>(`/characters/${String(characterId)}/corporationhistory`)
 
 		const rawEntries = response.data
 
@@ -1805,14 +1802,11 @@ export class EveCharacterDataDO extends DurableObject<Env> implements EveCharact
 		}
 
 		const batchId = crypto.randomUUID()
-		await this.state.storage.put(
-			`${EveCharacterDataDO.MANUAL_BATCH_STORAGE_PREFIX}${batchId}`,
-			{
-				batchId,
-				startedAt,
-				workflowInstanceIds: createdIds,
-			}
-		)
+		await this.state.storage.put(`${EveCharacterDataDO.MANUAL_BATCH_STORAGE_PREFIX}${batchId}`, {
+			batchId,
+			startedAt,
+			workflowInstanceIds: createdIds,
+		})
 
 		return {
 			batchId,

@@ -1,11 +1,16 @@
 import { retrieveData, storeOrReturn, type StepResult } from '../../utils/storage'
 import { enrichMails } from '../../processors/helpers/mails'
+import type { CharacterAffiliationCoordinator } from '../../processors/helpers/character-affiliation'
+import type { EntityLinkCoordinator } from '../../processors/helpers/entity-links'
+import type { CoreBinding } from '../../../types/core-binding'
 import type { MailFetchResult } from './fetch-mails'
 
 export async function processMails(
 	env: {
 		ESI_TYPE_RESOLVER: DurableObjectNamespace
 		ESI: DurableObjectNamespace
+		EVE_TOKEN_STORE: DurableObjectNamespace
+		CORE: CoreBinding
 	},
 	getBucket: (name: string) => R2Bucket,
 	bucket: R2Bucket,
@@ -13,6 +18,8 @@ export async function processMails(
 	fetchResult: StepResult,
 	workflowInstanceId: string,
 	characterId: string,
+	affiliationCoordinator?: CharacterAffiliationCoordinator,
+	entityLinkCoordinator?: EntityLinkCoordinator,
 ): Promise<StepResult> {
 	try {
 		if (!fetchResult.success) {
@@ -48,7 +55,15 @@ export async function processMails(
 				: null,
 		})
 
-		const enrichedData = await enrichMails(env, mails, characterId, mailingLists, labels)
+		const enrichedData = await enrichMails(
+			env,
+			mails,
+			characterId,
+			mailingLists,
+			labels,
+			affiliationCoordinator,
+			entityLinkCoordinator,
+		)
 
 		console.log('[processMails] Enrichment complete', {
 			count: enrichedData.mails.length,

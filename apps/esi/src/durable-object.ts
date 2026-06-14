@@ -6,6 +6,7 @@ import { KillmailDetail, killmailDetailSchema } from '@repo/universe'
 
 import { EsiFetcher } from './lib/esi-fetch'
 import {
+	transformAlliancePublicInfo,
 	transformCharacterAgentResearch,
 	transformCharacterAsset,
 	transformCharacterAssetNames,
@@ -107,6 +108,7 @@ import type {
 	CorporationMembers,
 	CorporationMemberTracking,
 	CorporationOrder,
+	AlliancePublicInfo,
 	CorporationPublicInfo,
 	CorporationRole,
 	CorporationShareholder,
@@ -162,6 +164,7 @@ import type {
 	EsiCorporationMembers,
 	EsiCorporationMemberTracking,
 	EsiCorporationOrder,
+	EsiAlliancePublicInfo,
 	EsiCorporationPublicInfo,
 	EsiCorporationRole,
 	EsiCorporationShareholder,
@@ -891,6 +894,23 @@ export class EsiDO extends DurableObject<Env> implements Esi {
 			throw new Error(`No corporation public info found for corporation ID: ${corporationId}`)
 		}
 		return transformCorporationPublicInfo(result.data)
+	}
+
+	/**
+	 * Retrieves public alliance information.
+	 * This is a public ESI endpoint that does not require authentication.
+	 * @param allianceId - The EVE alliance identifier.
+	 * @returns Public alliance information.
+	 */
+	async fetchAlliancePublicInfo(allianceId: string): Promise<AlliancePublicInfo> {
+		const result = await this.esiFetcher.fetchEsi<EsiAlliancePublicInfo>(
+			`/alliances/${allianceId}`,
+			{ maxLocalCacheTtl: REVALIDATE_15_MIN }
+		)
+		if (!result.data) {
+			throw new Error(`No alliance public info found for alliance ID: ${allianceId}`)
+		}
+		return transformAlliancePublicInfo(result.data)
 	}
 
 	/**

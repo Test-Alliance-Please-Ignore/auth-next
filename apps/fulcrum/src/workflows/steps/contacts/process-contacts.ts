@@ -6,6 +6,9 @@
 import type { CharacterContact } from '@repo/esi'
 import { retrieveData, storeOrReturn, type StepResult } from '../../utils/storage'
 import { enrichContacts } from '../../processors/helpers/contacts'
+import type { CharacterAffiliationCoordinator } from '../../processors/helpers/character-affiliation'
+import type { EntityLinkCoordinator } from '../../processors/helpers/entity-links'
+import type { CoreBinding } from '../../../types/core-binding'
 
 /**
  * Process character contacts by enriching with resolved names
@@ -23,6 +26,9 @@ import { enrichContacts } from '../../processors/helpers/contacts'
 export async function processContacts(
 	env: {
 		ESI_TYPE_RESOLVER: DurableObjectNamespace
+		ESI: DurableObjectNamespace
+		EVE_TOKEN_STORE: DurableObjectNamespace
+		CORE: CoreBinding
 	},
 	getBucket: (name: string) => R2Bucket,
 	bucket: R2Bucket,
@@ -30,6 +36,8 @@ export async function processContacts(
 	fetchResult: StepResult,
 	workflowInstanceId: string,
 	characterId: string,
+	affiliationCoordinator?: CharacterAffiliationCoordinator,
+	entityLinkCoordinator?: EntityLinkCoordinator,
 ): Promise<StepResult> {
 	try {
 		// Check if fetch was successful
@@ -73,7 +81,13 @@ export async function processContacts(
 		})
 
 		// Enrich data by resolving IDs to names
-		const enrichedData = await enrichContacts(env, contacts, characterId)
+		const enrichedData = await enrichContacts(
+			env,
+			contacts,
+			characterId,
+			affiliationCoordinator,
+			entityLinkCoordinator,
+		)
 
 		console.log('[processContacts] Enrichment complete', {
 			enrichedCount: enrichedData.length,

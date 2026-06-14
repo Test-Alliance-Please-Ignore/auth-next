@@ -2285,6 +2285,7 @@ export class ApiClient {
 		isOwner: boolean
 		viewedAsAdmin: boolean
 		viewedAsCeoOrDirector: boolean
+		viewedAsHrViewer: boolean
 		viewerRole: 'CEO' | 'Director' | null
 		public: {
 			info: any
@@ -2311,6 +2312,10 @@ export class ApiClient {
 			? `?corporationId=${encodeURIComponent(corporationId)}`
 			: ''
 		return this.get(`/characters/${characterId}${query}`)
+	}
+
+	async getCharacterOwnerships(characterIds: string[]): Promise<Record<string, { userId: string }>> {
+		return this.post('/characters/ownership', { characterIds })
 	}
 
 	async refreshCharacterById(characterId: string): Promise<{

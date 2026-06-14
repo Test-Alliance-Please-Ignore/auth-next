@@ -1,6 +1,6 @@
 import { useQuery } from '@tanstack/react-query'
 import { formatDistanceToNow } from 'date-fns'
-import { ArrowLeft, RefreshCw, Shield, User } from 'lucide-react'
+import { ArrowLeft, RefreshCw, Shield, User, Users } from 'lucide-react'
 import { Link, Navigate, useLocation, useParams } from 'react-router-dom'
 
 import { CharacterAttributes } from '../components/character-attributes'
@@ -11,19 +11,55 @@ import { CharacterSkills } from '../components/character-skills'
 import { Button } from '../components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '../components/ui/card'
 import { Container } from '../components/ui/container'
+import { useHrPermissionCheck } from '../features/hr/hooks'
 import { useAuth } from '../hooks/useAuth'
 import { useRefreshCharacter } from '../hooks/useCharacters'
 import { usePageTitle } from '../hooks/usePageTitle'
+import { useUserPermissions } from '../hooks/useUserPermissions'
 import { api } from '../lib/api'
 import { allianceLogoUrl, characterPortraitUrl, corporationLogoUrl } from '../lib/eve-images'
+
+type CharacterDetailSource =
+	| 'admin-user-detail'
+	| 'admin-activity-log'
+	| 'dashboard'
+	| 'corporation-members'
+	| 'hr-auditor-user-profile'
+	| 'hr-member-profile'
+
+function resolveBackLabel(source?: CharacterDetailSource): string | null {
+	switch (source) {
+		case 'dashboard':
+			return 'Back to Dashboard'
+		case 'admin-activity-log':
+			return 'Back to Activity Log'
+		case 'admin-user-detail':
+		case 'hr-auditor-user-profile':
+			return 'Back to User Details'
+		case 'corporation-members':
+			return 'Back to Members'
+		case 'hr-member-profile':
+			return 'Back to User Profile'
+		default:
+			return null
+	}
+}
 
 export default function CharacterDetailPage() {
 	const { characterId } = useParams<{ characterId: string }>()
 	const location = useLocation()
 	const { user } = useAuth()
-	const navigationState = location.state as { backTo?: string; backLabel?: string } | null
+	const { hasAnyPermission } = useUserPermissions()
+	const isHrAuditor = hasAnyPermission('urn:hr:auditor')
+	const navigationState = location.state as {
+		source?: CharacterDetailSource
+		backTo?: string
+		backLabel?: string
+		corporationId?: string
+	} | null
 	const backTo = navigationState?.backTo
-	const backLabel = navigationState?.backLabel ?? 'Back'
+	const backLabel = navigationState?.backLabel ?? resolveBackLabel(navigationState?.source) ?? 'Back'
+	const hrCorporationId = navigationState?.corporationId
 
 	if (!characterId) {
 		return <Navigate to="/dashboard" replace />
@@ -35,8 +71,8 @@ export default function CharacterDetailPage() {
 		isLoading,
 		error,
 	} = useQuery({
-		queryKey: ['character', characterId],
-		queryFn: () => api.getCharacterDetail(characterId),
+		queryKey: ['character', characterId, hrCorporationId],
+		queryFn: () => api.getCharacterDetail(characterId, hrCorporationId),
 		enabled: !!characterId,
 	})
 
@@ -67,6 +103,9 @@ export default function CharacterDetailPage() {
 		retry: false,
 		staleTime: 1000 * 60,
 	})
+	const { data: hrPermission } = useHrPermissionCheck(
+		hrCorporationId ? { corporationId: hrCorporationId } : null
+	)
 
 	// Set page title based on character name
 	usePageTitle(character?.public?.info?.name ? `${character.public.info.name}` : 'Character')
@@ -137,6 +176,13 @@ export default function CharacterDetailPage() {
 	const canLinkToAdminCorporation = Boolean(
 		user?.is_admin && corporationIdForAdminLink && isManagedCorporation
 	)
+	const showAdminRefresh = Boolean(user?.is_admin)
+	const canViewPrivateSections =
+		character.isOwner ||
+		character.viewedAsAdmin ||
+		isHrAuditor ||
+		hrPermission?.currentRole === 'hr_admin' ||
+		hrPermission?.currentRole === 'hr_reviewer'
 
 	return (
 		<Container className="p-8 space-y-6">
@@ -160,14 +206,20 @@ export default function CharacterDetailPage() {
 								<p className="font-medium">Viewing as Site Administrator</p>
 								{character.owner && (
 									<p className="text-sm text-muted-foreground">
-										This character belongs to: {character.owner.mainCharacterName}
+										This character belongs to:{' '}
+										<Link
+											to={`/admin/users/${character.owner.userId}`}
+											className="font-medium text-foreground underline-offset-2 hover:underline"
+										>
+											{character.owner.mainCharacterName}
+										</Link>
 									</p>
 								)}
 							</div>
 						</div>
-					</CardContent>
-				</Card>
-			)}
+				</CardContent>
+			</Card>
+		)}
 
 			{/* CEO/Director View Alert */}
 			{character.viewedAsCeoOrDirector && (
@@ -180,6 +232,23 @@ export default function CharacterDetailPage() {
 								<p className="text-sm text-muted-foreground">
 									You can view public character information (skills, attributes, corporation
 									history). Private data (wallet, location, assets) is not available.
+								</p>
+							</div>
+						</div>
+				</CardContent>
+			</Card>
+		)}
+
+			{/* HR Viewer Alert */}
+			{character.viewedAsHrViewer && (
+				<Card className="border-emerald-500/50 bg-emerald-500/10">
+					<CardContent className="pt-6">
+						<div className="flex items-center gap-2 text-emerald-600 dark:text-emerald-400">
+							<Users className="h-5 w-5" />
+							<div>
+								<p className="font-medium">Viewing as HR Viewer</p>
+								<p className="text-sm text-muted-foreground">
+									You can view public character information and HR-accessible private data.
 								</p>
 							</div>
 						</div>
@@ -249,7 +318,7 @@ export default function CharacterDetailPage() {
 						</div>
 					</div>
 					<div className="flex items-center gap-2">
-						{(character.isOwner || character.viewedAsAdmin) && (
+						{showAdminRefresh && (
 							<Button
 								onClick={handleRefresh}
 								size="sm"
@@ -262,30 +331,18 @@ export default function CharacterDetailPage() {
 								{refreshCharacter.isPending ? 'Refreshing...' : 'Refresh'}
 							</Button>
 						)}
-						{character.viewedAsAdmin ? (
-							<span className="text-sm text-amber-600 dark:text-amber-400 font-medium flex items-center">
-								<Shield className="h-4 w-4 mr-1" />
-								Admin View
+						{character.isOwner && !character.viewedAsAdmin && !character.viewedAsCeoOrDirector && !character.viewedAsHrViewer && (
+							<span className="text-sm text-success font-medium flex items-center">
+								<User className="h-4 w-4 mr-1" />
+								Owner
 							</span>
-						) : character.viewedAsCeoOrDirector ? (
-							<span className="text-sm text-blue-600 dark:text-blue-400 font-medium flex items-center">
-								<Shield className="h-4 w-4 mr-1" />
-								{character.viewerRole} View
-							</span>
-						) : (
-							character.isOwner && (
-								<span className="text-sm text-success font-medium flex items-center">
-									<User className="h-4 w-4 mr-1" />
-									Owner
-								</span>
-							)
 						)}
 					</div>
 				</CardHeader>
 			</Card>
 
-			{/* Owner-only sensitive information */}
-			{character.isOwner && character.private && (
+			{/* Sensitive information */}
+			{canViewPrivateSections && character.private && (
 				<CharacterPrivateInfo
 					sensitiveDataIsLive={character.private.sensitiveDataIsLive}
 					location={character.private.location}
@@ -306,8 +363,8 @@ export default function CharacterDetailPage() {
 				)}
 			</div>
 
-			{/* Skill Queue (Owner only) */}
-			{character.isOwner && character.private?.skillQueue && (
+			{/* Skill Queue */}
+			{canViewPrivateSections && character.private?.skillQueue && (
 				<CharacterSkillQueue queue={character.private.skillQueue} />
 			)}
 
@@ -317,9 +374,9 @@ export default function CharacterDetailPage() {
 					characterId={characterId || ''}
 					skills={character.public.skills}
 					allSkills={character.public.allSkills}
-					showProgress={character.isOwner}
+					showProgress={canViewPrivateSections}
 				/>
-			) : character.isOwner ? (
+			) : canViewPrivateSections ? (
 				<Card>
 					<CardHeader>
 						<CardTitle>Skills</CardTitle>

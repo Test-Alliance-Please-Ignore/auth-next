@@ -18,12 +18,15 @@ import {
 import { cn } from '@/lib/utils'
 
 import { BlacklistHighlight } from './blacklist-highlighting'
+import { EntityNameLink } from './entity-name-link'
 import type { BlacklistHighlights } from './blacklist-highlighting'
 import { formatStandingLabel, getStandingColorClass } from '../../utils/standing'
 
 interface ProcessedContact {
 	contact_id: number
 	contactName?: string
+	contactDisplayName?: string
+	contactDisplayHref?: string
 	contact_type?: string
 	standing?: number
 	standingDisplay?: {
@@ -116,11 +119,12 @@ export function ContactsSection({
 
 		if (search.trim()) {
 			const q = search.toLowerCase()
-			result = result.filter(
-				(c) =>
-					c.contactName?.toLowerCase().includes(q) ||
-					c.contact_type?.toLowerCase().includes(q),
-			)
+				result = result.filter(
+					(c) =>
+						c.contactDisplayName?.toLowerCase().includes(q) ||
+						c.contactName?.toLowerCase().includes(q) ||
+						c.contact_type?.toLowerCase().includes(q),
+				)
 		}
 
 		return result
@@ -226,18 +230,25 @@ export function ContactsSection({
 						<TableBody>
 							{visible.map((contact) => (
 								<TableRow key={contact.contact_id}>
-									<TableCell
-										className={cn(
-											'font-medium',
-										)}
+								<TableCell
+									className={cn(
+										'font-medium',
+									)}
+								>
+									<BlacklistHighlight
+										value={contact.contact_id}
+										blacklist={blacklistHighlights}
 									>
-										<BlacklistHighlight
-											value={contact.contactName ?? contact.contact_id}
-											blacklist={blacklistHighlights}
+										<EntityNameLink
+											entityId={contact.contact_id}
+											entityType={contact.contact_type}
+											href={contact.contactDisplayHref}
+											className="hover:underline underline-offset-2"
 										>
-											{contact.contactName || `ID: ${contact.contact_id}`}
-										</BlacklistHighlight>
-									</TableCell>
+											{contact.contactDisplayName || contact.contactName || `ID: ${contact.contact_id}`}
+										</EntityNameLink>
+									</BlacklistHighlight>
+								</TableCell>
 									<TableCell className="text-sm capitalize text-muted-foreground">
 										{contact.contact_type?.replace('_', ' ') || '-'}
 									</TableCell>

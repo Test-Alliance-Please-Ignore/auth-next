@@ -7,6 +7,9 @@ import type { CharacterContract } from '@repo/esi'
 
 import { retrieveData, storeOrReturn } from '../../utils/storage'
 import { enrichContracts } from '../../processors/helpers/contracts'
+import type { CharacterAffiliationCoordinator } from '../../processors/helpers/character-affiliation'
+import type { EntityLinkCoordinator } from '../../processors/helpers/entity-links'
+import type { CoreBinding } from '../../../types/core-binding'
 
 import type { StepResult } from '../../utils/storage'
 
@@ -26,6 +29,8 @@ export async function processContracts(
 	env: {
 		ESI_TYPE_RESOLVER: DurableObjectNamespace
 		ESI: DurableObjectNamespace
+		EVE_TOKEN_STORE: DurableObjectNamespace
+		CORE: CoreBinding
 	},
 	getBucket: (name: string) => R2Bucket,
 	bucket: R2Bucket,
@@ -33,6 +38,8 @@ export async function processContracts(
 	fetchResult: StepResult,
 	workflowInstanceId: string,
 	characterId: string,
+	affiliationCoordinator?: CharacterAffiliationCoordinator,
+	entityLinkCoordinator?: EntityLinkCoordinator,
 ): Promise<StepResult> {
 	try {
 		if (!fetchResult.success) {
@@ -61,7 +68,13 @@ export async function processContracts(
 			}
 		}
 
-		const enrichedData = await enrichContracts(env, contracts, characterId)
+		const enrichedData = await enrichContracts(
+			env,
+			contracts,
+			characterId,
+			affiliationCoordinator,
+			entityLinkCoordinator,
+		)
 
 		return await storeOrReturn(
 			bucket,

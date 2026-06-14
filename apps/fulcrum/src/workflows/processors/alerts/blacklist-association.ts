@@ -119,7 +119,7 @@ export function checkBlacklistAssociation(
 			if (isBlacklisted(entry.first_party_id)) {
 				matches.push({
 					characterId: entry.first_party_id,
-					characterName: entry.firstPartyName,
+					characterName: entry.firstPartyDisplayName ?? entry.firstPartyName,
 					source: 'wallet-journal',
 					detail: `${entry.refTypeLabel} for ${entry.amountFormatted}`,
 					occurredAt: entry.date,
@@ -127,7 +127,7 @@ export function checkBlacklistAssociation(
 			} else if (isBlacklistedByName(false, entry.firstPartyName)) {
 				matches.push({
 					characterId: entry.first_party_id ?? `name:${entry.firstPartyName}`,
-					characterName: entry.firstPartyName,
+					characterName: entry.firstPartyDisplayName ?? entry.firstPartyName,
 					source: 'wallet-journal',
 					detail: `${entry.refTypeLabel} for ${entry.amountFormatted}`,
 					occurredAt: entry.date,
@@ -136,7 +136,7 @@ export function checkBlacklistAssociation(
 			if (isBlacklisted(entry.second_party_id)) {
 				matches.push({
 					characterId: entry.second_party_id,
-					characterName: entry.secondPartyName,
+					characterName: entry.secondPartyDisplayName ?? entry.secondPartyName,
 					source: 'wallet-journal',
 					detail: `${entry.refTypeLabel} for ${entry.amountFormatted}`,
 					occurredAt: entry.date,
@@ -144,7 +144,7 @@ export function checkBlacklistAssociation(
 			} else if (isBlacklistedByName(false, entry.secondPartyName)) {
 				matches.push({
 					characterId: entry.second_party_id ?? `name:${entry.secondPartyName}`,
-					characterName: entry.secondPartyName,
+					characterName: entry.secondPartyDisplayName ?? entry.secondPartyName,
 					source: 'wallet-journal',
 					detail: `${entry.refTypeLabel} for ${entry.amountFormatted}`,
 					occurredAt: entry.date,
@@ -164,7 +164,7 @@ export function checkBlacklistAssociation(
 			if (isBlacklisted(tx.client_id)) {
 				matches.push({
 					characterId: tx.client_id,
-					characterName: tx.clientName,
+					characterName: tx.clientDisplayName ?? tx.clientName,
 					source: 'wallet-transactions',
 					detail: `${tx.is_buy ? 'Bought' : 'Sold'} ${tx.quantity}x ${tx.typeName ?? tx.type_id} for ${tx.totalValue} ISK`,
 					occurredAt: tx.date,
@@ -172,7 +172,7 @@ export function checkBlacklistAssociation(
 			} else if (isBlacklistedByName(false, tx.clientName)) {
 				matches.push({
 					characterId: tx.client_id ?? `name:${tx.clientName}`,
-					characterName: tx.clientName,
+					characterName: tx.clientDisplayName ?? tx.clientName,
 					source: 'wallet-transactions',
 					detail: `${tx.is_buy ? 'Bought' : 'Sold'} ${tx.quantity}x ${tx.typeName ?? tx.type_id} for ${tx.totalValue} ISK`,
 					occurredAt: tx.date,
@@ -187,7 +187,7 @@ export function checkBlacklistAssociation(
 			if (isBlacklisted(contract.issuer_id)) {
 				matches.push({
 					characterId: contract.issuer_id,
-					characterName: contract.issuerName,
+					characterName: contract.issuerDisplayName ?? contract.issuerName,
 					source: 'contracts',
 					detail: `Issuer of ${contract.type} contract (${contract.status})`,
 					occurredAt: contract.date_issued,
@@ -195,7 +195,7 @@ export function checkBlacklistAssociation(
 			} else if (isBlacklistedByName(false, contract.issuerName)) {
 				matches.push({
 					characterId: contract.issuer_id ?? `name:${contract.issuerName}`,
-					characterName: contract.issuerName,
+					characterName: contract.issuerDisplayName ?? contract.issuerName,
 					source: 'contracts',
 					detail: `Issuer of ${contract.type} contract (${contract.status})`,
 					occurredAt: contract.date_issued,
@@ -204,7 +204,7 @@ export function checkBlacklistAssociation(
 			if (isBlacklisted(contract.acceptor_id)) {
 				matches.push({
 					characterId: contract.acceptor_id,
-					characterName: contract.acceptorName,
+					characterName: contract.acceptorDisplayName ?? contract.acceptorName,
 					source: 'contracts',
 					detail: `Acceptor of ${contract.type} contract (${contract.status})`,
 					occurredAt: contract.date_issued,
@@ -212,7 +212,7 @@ export function checkBlacklistAssociation(
 			} else if (isBlacklistedByName(false, contract.acceptorName)) {
 				matches.push({
 					characterId: contract.acceptor_id ?? `name:${contract.acceptorName}`,
-					characterName: contract.acceptorName,
+					characterName: contract.acceptorDisplayName ?? contract.acceptorName,
 					source: 'contracts',
 					detail: `Acceptor of ${contract.type} contract (${contract.status})`,
 					occurredAt: contract.date_issued,
@@ -221,7 +221,7 @@ export function checkBlacklistAssociation(
 			if (isBlacklisted(contract.assignee_id) && contract.assignee_id !== contract.issuer_id) {
 				matches.push({
 					characterId: contract.assignee_id,
-					characterName: contract.assigneeName,
+					characterName: contract.assigneeDisplayName ?? contract.assigneeName,
 					source: 'contracts',
 					detail: `Assignee of ${contract.type} contract (${contract.status})`,
 					occurredAt: contract.date_issued,
@@ -232,7 +232,7 @@ export function checkBlacklistAssociation(
 			) {
 				matches.push({
 					characterId: contract.assignee_id ?? `name:${contract.assigneeName}`,
-					characterName: contract.assigneeName,
+					characterName: contract.assigneeDisplayName ?? contract.assigneeName,
 					source: 'contracts',
 					detail: `Assignee of ${contract.type} contract (${contract.status})`,
 					occurredAt: contract.date_issued,
@@ -247,7 +247,7 @@ export function checkBlacklistAssociation(
 			if (contact.contact_type === 'character' && isBlacklisted(contact.contact_id)) {
 				matches.push({
 					characterId: contact.contact_id,
-					characterName: contact.contactName,
+					characterName: contact.contactDisplayName ?? contact.contactName,
 					standing: contact.standingDisplay,
 					source: 'contacts',
 					detail: `In contacts with standing ${contact.standingDisplay?.label ?? String(contact.standing)}`,
@@ -258,7 +258,7 @@ export function checkBlacklistAssociation(
 			) {
 				matches.push({
 					characterId: contact.contact_id ?? `name:${contact.contactName}`,
-					characterName: contact.contactName,
+					characterName: contact.contactDisplayName ?? contact.contactName,
 					standing: contact.standingDisplay,
 					source: 'contacts',
 					detail: `In contacts with standing ${contact.standingDisplay?.label ?? String(contact.standing)}`,
@@ -273,7 +273,7 @@ export function checkBlacklistAssociation(
 			if (isBlacklisted(mail.from)) {
 				matches.push({
 					characterId: mail.from!,
-					characterName: mail.fromName,
+					characterName: mail.fromDisplayName ?? mail.fromName,
 					source: 'mails',
 					detail: `Sent mail "${mail.subject ?? '(no subject)'}"`,
 					occurredAt: mail.timestamp,
@@ -281,7 +281,7 @@ export function checkBlacklistAssociation(
 			} else if (isBlacklistedByName(false, mail.fromName)) {
 				matches.push({
 					characterId: mail.from ?? `name:${mail.fromName}`,
-					characterName: mail.fromName,
+					characterName: mail.fromDisplayName ?? mail.fromName,
 					source: 'mails',
 					detail: `Sent mail "${mail.subject ?? '(no subject)'}"`,
 					occurredAt: mail.timestamp,
@@ -292,7 +292,7 @@ export function checkBlacklistAssociation(
 					if (recipient.recipient_type === 'character' && isBlacklisted(recipient.recipient_id)) {
 						matches.push({
 							characterId: recipient.recipient_id,
-							characterName: recipient.recipientName,
+							characterName: recipient.recipientDisplayName ?? recipient.recipientName,
 							source: 'mails',
 							detail: `Received mail "${mail.subject ?? '(no subject)'}"`,
 							occurredAt: mail.timestamp,
@@ -303,7 +303,7 @@ export function checkBlacklistAssociation(
 					) {
 						matches.push({
 							characterId: recipient.recipient_id ?? `name:${recipient.recipientName}`,
-							characterName: recipient.recipientName,
+							characterName: recipient.recipientDisplayName ?? recipient.recipientName,
 							source: 'mails',
 							detail: `Received mail "${mail.subject ?? '(no subject)'}"`,
 							occurredAt: mail.timestamp,
