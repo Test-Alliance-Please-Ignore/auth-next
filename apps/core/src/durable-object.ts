@@ -1,7 +1,7 @@
 import { DurableObject } from 'cloudflare:workers'
 
 import { CORE_ROLES, SERVICE_CORE } from '@repo/core'
-import { and, asc, eq, inArray, isNull, lt, ne, or } from '@repo/db-utils'
+import { and, asc, eq, inArray, isNull, lt, ne, or, sql } from '@repo/db-utils'
 import { getStub } from '@repo/do-utils'
 import { getEsiInstanceForCharacter, getEsiInstanceForCorporation } from '@repo/esi'
 import { logger } from '@repo/hono-helpers'
@@ -195,6 +195,67 @@ export class CoreDO extends DurableObject<Env> implements Core {
 		})
 
 		return characters.map((character) => character.characterId)
+	}
+
+	async listUsersWithActiveCharactersPage(input: {
+		limit: number
+		offset: number
+	}): Promise<{
+		users: Array<{ userId: string; characterIds: string[] }>
+		totalCount: number
+	}> {
+		const limit = Math.max(1, Math.min(500, Math.floor(input.limit)))
+		const offset = Math.max(0, Math.floor(input.offset))
+		const db = this.getDb()
+
+		const countRows = await db
+			.select({ count: sql<number>`count(distinct ${userCharacters.userId})::int` })
+			.from(userCharacters)
+			.where(eq(userCharacters.isDeleted, false))
+		const totalCount = countRows[0]?.count ?? 0
+		if (totalCount === 0) {
+			return { users: [], totalCount }
+		}
+
+		const paginatedUserRows = await db
+			.select({
+				userId: userCharacters.userId,
+			})
+			.from(userCharacters)
+			.where(eq(userCharacters.isDeleted, false))
+			.groupBy(userCharacters.userId)
+			.orderBy(asc(userCharacters.userId))
+			.limit(limit)
+			.offset(offset)
+
+		const userIds = paginatedUserRows.map((row) => row.userId)
+		if (userIds.length === 0) {
+			return { users: [], totalCount }
+		}
+
+		const pageCharacters = await db.query.userCharacters.findMany({
+			where: and(inArray(userCharacters.userId, userIds), eq(userCharacters.isDeleted, false)),
+			columns: {
+				userId: true,
+				characterId: true,
+			},
+			orderBy: (table, operators) => [operators.asc(table.userId), operators.asc(table.characterId)],
+		})
+
+		const characterIdsByUserId = new Map<string, string[]>()
+		for (const row of pageCharacters) {
+			const bucket = characterIdsByUserId.get(row.userId) ?? []
+			bucket.push(row.characterId)
+			characterIdsByUserId.set(row.userId, bucket)
+		}
+
+		return {
+			users: userIds.map((userId) => ({
+				userId,
+				characterIds: [...new Set(characterIdsByUserId.get(userId) ?? [])],
+			})),
+			totalCount,
+		}
 	}
 
 	async getUsersNeedingCharacterDataSync(): Promise<{

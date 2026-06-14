@@ -8,6 +8,16 @@
 export interface Core {
 	getCharacterOwner(characterId: string): Promise<{ userId: string; isPrimary: boolean } | null>
 	getUserCharacterIds(userId: string): Promise<string[]>
+	listUsersWithActiveCharactersPage(input: {
+		limit: number
+		offset: number
+	}): Promise<{
+		users: Array<{
+			userId: string
+			characterIds: string[]
+		}>
+		totalCount: number
+	}>
 	getUsersNeedingCharacterDataSync(): Promise<{
 		userBatches: Array<{
 			userId: string
