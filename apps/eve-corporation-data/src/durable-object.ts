@@ -1798,12 +1798,12 @@ export class EveCorporationDataDO extends DurableObject<Env> implements EveCorpo
 		for (let i = 0; i < hydratedStructures.length; i += BATCH_SIZE) {
 			const batch = hydratedStructures.slice(i, i + BATCH_SIZE)
 
-			await this.getDb()
-				.insert(corporationStructures)
-				.values(batch)
-				.onConflictDoUpdate({
-					target: [corporationStructures.corporationId, corporationStructures.structureId],
-					set: {
+				await this.getDb()
+					.insert(corporationStructures)
+					.values(batch)
+					.onConflictDoUpdate({
+						target: corporationStructures.structureId,
+						set: {
 						name: sql`excluded.name`,
 						typeId: sql`excluded.type_id`,
 						typeName: sql`excluded.type_name`,
