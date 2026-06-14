@@ -110,13 +110,9 @@ const CHARACTER_WALLET_SCOPE = 'esi-wallet.read_character_wallet.v1'
 const CORPORATION_MEMBERSHIP_SCOPE = 'esi-corporations.read_corporation_membership.v1'
 const NPC_CORPORATION_ID_MIN = 1_000_000
 const NPC_CORPORATION_ID_MAX = 1_999_999
-const SHARED_SOVEREIGNTY_SYSTEMS_CACHE_KEY = 'shared:sovereignty-systems'
+const SHARED_SOVEREIGNTY_SYSTEMS_CACHE_META_KEY = 'shared:sovereignty-systems:observed-at'
+const SHARED_SOVEREIGNTY_SYSTEMS_CACHE_ROW_PREFIX = 'shared:sovereignty-systems:row:'
 const SHARED_SOVEREIGNTY_SYSTEMS_CACHE_MAX_AGE_SECONDS = 300
-
-type SharedSovereigntySystemsSnapshot = {
-	observedAt: string
-	systemsById: Record<string, EsiSovereigntySystem>
-}
 
 function parseNumberOrNull(value: unknown): number | null {
 	if (value === null || value === undefined || value === '') {
@@ -2182,27 +2178,38 @@ export class EveCorporationDataDO extends DurableObject<Env> implements EveCorpo
 	 * Store the shared sovereignty system snapshot used by workflow fan-out.
 	 */
 	async storeSharedSovereigntySystems(systems: EsiSovereigntySystem[]): Promise<void> {
-		const snapshot: SharedSovereigntySystemsSnapshot = {
-			observedAt: new Date().toISOString(),
-			systemsById: Object.fromEntries(systems.map((system) => [system.system_id, system])),
-		}
-		await this.state.storage.put(SHARED_SOVEREIGNTY_SYSTEMS_CACHE_KEY, snapshot)
+		const observedAt = new Date().toISOString()
+		const rowEntries = Object.fromEntries(
+			systems.map((system) => [`${SHARED_SOVEREIGNTY_SYSTEMS_CACHE_ROW_PREFIX}${system.system_id}`, system])
+		)
+
+		await this.state.storage.transaction(async (txn) => {
+			const existing = await txn.list<EsiSovereigntySystem>({
+				prefix: SHARED_SOVEREIGNTY_SYSTEMS_CACHE_ROW_PREFIX,
+			})
+			if (existing.size > 0) {
+				await txn.delete([...existing.keys()])
+			}
+			await txn.put(SHARED_SOVEREIGNTY_SYSTEMS_CACHE_META_KEY, observedAt)
+			if (systems.length > 0) {
+				await txn.put(rowEntries)
+			}
+		})
 	}
 
 	/**
-	 * Get the shared sovereignty system snapshot if it is still within TTL.
+	 * Get shared sovereignty system snapshots for the requested system IDs if they are still within TTL.
 	 */
-	async getSharedSovereigntySystems(
+	async getSharedSovereigntySystemsByIds(
+		systemIds: string[],
 		maxAgeSeconds = SHARED_SOVEREIGNTY_SYSTEMS_CACHE_MAX_AGE_SECONDS
 	): Promise<EsiSovereigntySystem[] | null> {
-		const snapshot = await this.state.storage.get<SharedSovereigntySystemsSnapshot>(
-			SHARED_SOVEREIGNTY_SYSTEMS_CACHE_KEY
-		)
-		if (!snapshot) {
+		const observedAtRaw = await this.state.storage.get<string>(SHARED_SOVEREIGNTY_SYSTEMS_CACHE_META_KEY)
+		if (!observedAtRaw) {
 			return null
 		}
 
-		const observedAt = parseDateOrNull(snapshot.observedAt)
+		const observedAt = parseDateOrNull(observedAtRaw)
 		if (!observedAt) {
 			return null
 		}
@@ -2212,7 +2219,16 @@ export class EveCorporationDataDO extends DurableObject<Env> implements EveCorpo
 			return null
 		}
 
-		return Object.values(snapshot.systemsById ?? {})
+		const uniqueSystemIds = [...new Set(systemIds.filter((systemId) => Boolean(systemId)))]
+		if (uniqueSystemIds.length === 0) {
+			return []
+		}
+
+		const rows = await this.state.storage.get<EsiSovereigntySystem>(
+			uniqueSystemIds.map((systemId) => `${SHARED_SOVEREIGNTY_SYSTEMS_CACHE_ROW_PREFIX}${systemId}`)
+		)
+
+		return [...rows.values()]
 	}
 
 	/**

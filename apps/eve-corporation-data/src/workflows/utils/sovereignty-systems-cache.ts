@@ -7,13 +7,17 @@ import type { Env } from '../../context'
 const SHARED_SOVEREIGNTY_SYSTEMS_CACHE_TTL_SECONDS = 300
 
 /**
- * Read the shared sovereignty snapshot if it is still fresh enough.
+ * Read the shared sovereignty snapshot subset for the requested system IDs if it is still fresh enough.
  */
-export async function readSharedSovereigntySystems(
-	env: Env
+export async function readSharedSovereigntySystemsByIds(
+	env: Env,
+	systemIds: string[]
 ): Promise<EsiSovereigntySystem[] | null> {
 	const globalCorpData = getGlobalCorporationDataStub(env)
-	return await globalCorpData.getSharedSovereigntySystems(SHARED_SOVEREIGNTY_SYSTEMS_CACHE_TTL_SECONDS)
+	return await globalCorpData.getSharedSovereigntySystemsByIds(
+		systemIds,
+		SHARED_SOVEREIGNTY_SYSTEMS_CACHE_TTL_SECONDS
+	)
 }
 
 /**
@@ -27,16 +31,4 @@ export async function refreshSharedSovereigntySystems(
 	const globalCorpData = getGlobalCorporationDataStub(env)
 	await globalCorpData.storeSharedSovereigntySystems(sovereigntySystems)
 	return sovereigntySystems
-}
-
-/**
- * Return the shared sovereignty snapshot, refreshing it only when missing or stale.
- */
-export async function getSharedSovereigntySystems(env: Env): Promise<EsiSovereigntySystem[]> {
-	const cachedSovereigntySystems = await readSharedSovereigntySystems(env)
-	if (cachedSovereigntySystems) {
-		return cachedSovereigntySystems
-	}
-
-	return await refreshSharedSovereigntySystems(env)
 }

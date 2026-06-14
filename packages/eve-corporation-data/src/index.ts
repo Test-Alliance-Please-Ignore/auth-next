@@ -1296,9 +1296,12 @@ export interface EveCorporationData {
 	storeSharedSovereigntySystems(systems: EsiSovereigntySystem[]): Promise<void>
 
 	/**
-	 * Read the shared sovereignty system snapshot if it is still fresh.
+	 * Read a subset of the shared sovereignty system snapshot by system ID if it is still fresh.
 	 */
-	getSharedSovereigntySystems(maxAgeSeconds?: number): Promise<EsiSovereigntySystem[] | null>
+	getSharedSovereigntySystemsByIds(
+		systemIds: string[],
+		maxAgeSeconds?: number
+	): Promise<EsiSovereigntySystem[] | null>
 
 	/**
 	 * Get a cached sovereignty system snapshot if it is still fresh enough.

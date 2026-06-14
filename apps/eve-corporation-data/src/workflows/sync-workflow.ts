@@ -655,7 +655,7 @@ export class EveCorporationSyncWorkflow extends WorkflowEntrypoint<Env, EveCorpo
 						dataType: 'structures' as const,
 						stats: {
 							structuresCount: structures.length,
-							sovereigntySystemsCount: structureEnrichment.sovereigntySystems.length,
+							sovereigntySystemsCount: structureEnrichment.sovereigntySystems?.length ?? 0,
 							sovereigntyHubsCount: structureEnrichment.sovereigntyHubs.length,
 							skyhooksCount: structureEnrichment.skyhooks.length,
 							miningStatesCount: structureEnrichment.miningStates.length,
