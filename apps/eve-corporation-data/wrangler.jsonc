@@ -13,7 +13,10 @@
 	"observability": {
 		"enabled": true
 	},
-	"vars": {},
+	"vars": {
+		"ASSETS_SYNC_ENABLED": true,
+		"STRUCTURE_ENRICHMENT_ENABLED": false
+	},
 	"kv_namespaces": [
 		{
 			"binding": "CACHE",
