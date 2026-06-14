@@ -47,17 +47,15 @@ export function TableRefreshFrame({
 
 			<div className="relative">
 				{isRefreshing && (
-					<div className="pointer-events-none absolute inset-0 z-10 rounded-md bg-background/60 backdrop-blur-[1px]" />
+					<div className="pointer-events-none absolute inset-0 z-10 flex items-center justify-center rounded-md bg-background/60 backdrop-blur-[1px]">
+						<div className="flex items-center gap-2 rounded-md border border-border/60 bg-background/90 px-3 py-2 text-sm text-muted-foreground shadow-sm">
+							<Loader2 className="h-4 w-4 animate-spin" />
+							<span>{refreshMessage}</span>
+						</div>
+					</div>
 				)}
 				<div className={isRefreshing ? 'opacity-60 transition-opacity' : 'transition-opacity'}>{children}</div>
 			</div>
-
-			{isRefreshing && (
-				<div className="flex items-center gap-2 text-sm text-muted-foreground">
-					<Loader2 className="h-4 w-4 animate-spin" />
-					<span>{refreshMessage}</span>
-				</div>
-			)}
 		</div>
 	)
 }

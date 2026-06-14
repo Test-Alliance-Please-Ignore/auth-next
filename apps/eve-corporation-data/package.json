@@ -32,6 +32,7 @@
 		"@repo/eve-types": "workspace:*",
 		"@repo/hazmat": "workspace:*",
 		"@repo/hono-helpers": "workspace:*",
+		"@repo/structures-db-schema": "workspace:*",
 		"@repo/queue-utils": "workspace:*",
 		"@repo/universe": "workspace:*",
 		"@repo/worker-utils": "workspace:*",

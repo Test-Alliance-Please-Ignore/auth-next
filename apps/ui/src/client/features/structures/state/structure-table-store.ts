@@ -1,14 +1,25 @@
 import { createStore } from '@tanstack/store'
 import { useSyncExternalStore } from 'react'
 
-import type { StructureListQuery, StructureListSortBy, StructureListSortDirection } from '@/lib/api'
+import type { StructureTab } from '@repo/structures'
+import type { StructureListSortBy, StructureListSortDirection } from '@/lib/api'
 
-export type StructureTableFilters = Pick<
-	StructureListQuery,
-	'corporationId' | 'assignedGroupId' | 'lowPower' | 'lowPowerAllowed' | 'regionId' | 'systemId' | 'state' | 'typeId'
->
+export interface StructureTableFilters {
+	corporationId?: string
+	assignedGroupId?: string
+	lowPower?: 'true' | 'false'
+	lowPowerAllowed?: 'true' | 'false'
+	regionId?: string
+	systemId?: string
+	state?: string
+	typeId?: string
+	allianceId?: string
+	planetId?: string
+	isRaidable?: 'true' | 'false'
+}
 
 export interface StructureTableUiState {
+	tab: StructureTab
 	filters: StructureTableFilters
 	page: number
 	pageSize: number
@@ -20,6 +31,7 @@ const STORAGE_KEY = 'structures.table-state.v1'
 
 function defaultState(): StructureTableUiState {
 	return {
+		tab: 'citadels',
 		filters: {},
 		page: 1,
 		pageSize: 25,
@@ -38,7 +50,36 @@ function normalizeFilters(filters: StructureTableFilters): StructureTableFilters
 		systemId: filters.systemId,
 		state: filters.state,
 		typeId: filters.typeId,
+		allianceId: filters.allianceId,
+		planetId: filters.planetId,
+		isRaidable: filters.isRaidable,
 	}
+}
+
+const TAB_FILTER_FIELDS: Record<StructureTab, Array<keyof StructureTableFilters>> = {
+	citadels: [
+		'corporationId',
+		'assignedGroupId',
+		'lowPower',
+		'lowPowerAllowed',
+		'regionId',
+		'systemId',
+		'state',
+		'typeId',
+	],
+	navigation: ['corporationId', 'systemId', 'state', 'typeId'],
+	sovereignty: ['corporationId', 'systemId', 'allianceId'],
+	skyhooks: ['corporationId', 'systemId', 'planetId', 'state', 'isRaidable'],
+	mining: ['corporationId', 'systemId', 'planetId', 'typeId'],
+}
+
+function normalizeTab(tab: unknown): StructureTab {
+	return tab === 'sovereignty' ||
+		tab === 'skyhooks' ||
+		tab === 'navigation' ||
+		tab === 'mining'
+		? tab
+		: 'citadels'
 }
 
 function readStateFromStorage(): StructureTableUiState {
@@ -51,6 +92,7 @@ function readStateFromStorage(): StructureTableUiState {
 		return {
 			...defaultState(),
 			...parsed,
+			tab: normalizeTab(parsed.tab),
 			filters: normalizeFilters(parsed.filters ?? {}),
 		}
 	} catch {
@@ -105,6 +147,21 @@ export function setStructureTableFilters(
 			page: 1,
 		}
 	})
+}
+
+export function setStructureTableTab(tab: StructureTab): void {
+	updateState((previous) => ({
+		...previous,
+		tab,
+		filters: normalizeFilters(
+			Object.fromEntries(
+				TAB_FILTER_FIELDS[tab]
+					.filter((field) => previous.filters[field] !== undefined)
+					.map((field) => [field, previous.filters[field]])
+			) as StructureTableFilters
+		),
+		page: 1,
+	}))
 }
 
 export function clearStructureTableFilters(): void {

@@ -120,6 +120,27 @@
       "when": 1781300366548,
       "tag": "0016_numerous_molly_hayes",
       "breakpoints": true
+    },
+    {
+      "idx": 17,
+      "version": "7",
+      "when": 1781388311665,
+      "tag": "0017_stormy_queen_noir",
+      "breakpoints": true
+    },
+    {
+      "idx": 18,
+      "version": "7",
+      "when": 1781388451291,
+      "tag": "0018_lame_risque",
+      "breakpoints": true
+    },
+    {
+      "idx": 19,
+      "version": "7",
+      "when": 1781407594809,
+      "tag": "0019_free_lethal_legion",
+      "breakpoints": true
     }
   ]
 }

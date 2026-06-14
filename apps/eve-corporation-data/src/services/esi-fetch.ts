@@ -34,12 +34,28 @@ import type {
 	EsiCorporationMembers,
 	EsiCorporationMemberTracking,
 	EsiCorporationOrder,
+	EsiCorporationSkyhook,
 	EsiCorporationStructure,
+	EsiCorporationMiningState,
+	EsiSovereigntyHub,
+	EsiSovereigntySystem,
 	EsiCorporationWallet,
 	EsiCorporationWalletJournalEntry,
 	EsiCorporationWalletTransaction,
 } from '@repo/eve-corporation-data'
 import type { EsiResponse, EveTokenStore } from '@repo/eve-token-store'
+
+type RawUniverseStructureInfo = {
+	name: string
+	owner_id: number
+	position: {
+		x: number
+		y: number
+		z: number
+	}
+	solar_system_id: number
+	type_id: number
+}
 
 // ========================================================================
 // PUBLIC DATA FETCHING
@@ -249,6 +265,386 @@ export async function fetchStructures(
 	>(`/corporations/${corporationId}/structures`, characterId)
 
 	return transformStructures(response.data)
+}
+
+export async function fetchSovereigntySystems(
+	tokenStore: EveTokenStore
+): Promise<EsiSovereigntySystem[]> {
+	type RawSovereigntySystemsResponse = {
+		solar_systems: Array<
+			| {
+					solar_system_id: number
+					claim: {
+						alliance: {
+							alliance_id: number
+							corporation_id: number
+							claimed_since: string
+							is_capital_system: boolean
+							sovereignty_hub: {
+								id: number
+								vulnerability_window?: {
+									start: string
+									end: string
+								}
+							}
+							development: {
+								activity_defense_multiplier: number
+								military_level: number
+								industrial_level: number
+								strategic_level: number
+							}
+						}
+					}
+			  }
+			| {
+					solar_system_id: number
+					claim: {
+						faction: {
+							faction_id: number
+						}
+					}
+			  }
+			| {
+					solar_system_id: number
+					claim: {
+						unclaimed: boolean
+					}
+			  }
+		>
+	}
+
+	const response = await tokenStore.fetchPublicEsi<RawSovereigntySystemsResponse>(
+		'/sovereignty/systems'
+	)
+
+	return response.data.solar_systems.map((system) => {
+		if ('alliance' in system.claim) {
+			const claim = system.claim.alliance
+			return {
+				system_id: String(system.solar_system_id),
+				claim_type: 'alliance' as const,
+				alliance_id: String(claim.alliance_id),
+				corporation_id: String(claim.corporation_id),
+				claimed_since: claim.claimed_since,
+				is_capital_system: claim.is_capital_system,
+				sovereignty_hub_structure_id: String(claim.sovereignty_hub.id),
+				vulnerability_window: claim.sovereignty_hub.vulnerability_window ?? null,
+				activity_defense_multiplier: String(claim.development.activity_defense_multiplier),
+				military_level: claim.development.military_level,
+				industrial_level: claim.development.industrial_level,
+				strategic_level: claim.development.strategic_level,
+				raw: system as Record<string, unknown>,
+			}
+		}
+
+		if ('faction' in system.claim) {
+			return {
+				system_id: String(system.solar_system_id),
+				claim_type: 'faction' as const,
+				faction_id: String(system.claim.faction.faction_id),
+				raw: system as Record<string, unknown>,
+			}
+		}
+
+		return {
+			system_id: String(system.solar_system_id),
+			claim_type: 'unclaimed' as const,
+			raw: system as Record<string, unknown>,
+		}
+	})
+}
+
+export async function fetchSovereigntyHubs(
+	tokenStore: EveTokenStore,
+	corporationId: string,
+	characterId: string
+): Promise<EsiSovereigntyHub[]> {
+	type RawSovereigntyHubsListing = {
+		sovereignty_hubs: Array<{
+			id: number
+			solar_system_id: number
+		}>
+	}
+
+	type RawSovereigntyHubDetail = {
+		id: number
+		solar_system_id: number
+		fuel_access_list_id?: number | null
+		reagent_bay: {
+			last_updated: string
+			reagents: Array<{
+				type_id: number
+				secured_stock: number
+				unsecured_stock: number
+				last_cycle: string
+			}>
+		}
+		resources: {
+			power: {
+				allocated: number
+				available: number
+			}
+			workforce: {
+				allocated: number
+				available: number
+			}
+		}
+		upgrades: Array<{
+			type_id: number
+			power_state: string
+		}>
+		vulnerability_window?: {
+			start: string
+			end: string
+		} | null
+		workforce_transport: {
+			configuration:
+				| {
+						import: {
+							sources: Array<{
+								amount: number
+								solar_system_id?: number
+							}>
+						}
+				  }
+				| {
+						export: {
+							amount: number
+							solar_system_id?: number
+						}
+				  }
+				| {
+						transit: boolean | null
+				  }
+			state:
+				| {
+						import: {
+							sources: Array<{
+								amount: number
+								solar_system_id?: number
+							}>
+						}
+				  }
+				| {
+						export: {
+							amount: number
+							solar_system_id?: number
+						}
+				  }
+				| {
+						transit: boolean | null
+				  }
+		}
+	}
+
+	const firstPage = await tokenStore.fetchEsi<RawSovereigntyHubsListing>(
+		`/corporations/${corporationId}/structures/sovereignty-hubs?page=1`,
+		characterId,
+		{ cacheMode: 'no-store' }
+	)
+	const sovereigntyHubs = [...firstPage.data.sovereignty_hubs]
+
+	for (let page = 2; page <= (firstPage.pages ?? 1); page += 1) {
+		const pageResponse = await tokenStore.fetchEsi<RawSovereigntyHubsListing>(
+			`/corporations/${corporationId}/structures/sovereignty-hubs?page=${page}`,
+			characterId,
+			{ cacheMode: 'no-store' }
+		)
+		sovereigntyHubs.push(...pageResponse.data.sovereignty_hubs)
+	}
+
+	const details = await Promise.all(
+		sovereigntyHubs.map(async (hub) => {
+			const [detailResult, universeResult] = await Promise.all([
+				tokenStore.fetchEsi<RawSovereigntyHubDetail>(
+					`/corporations/${corporationId}/structures/sovereignty-hubs/${hub.id}`,
+					characterId,
+					{ cacheMode: 'no-store' }
+				),
+				tokenStore.fetchPublicEsi<RawUniverseStructureInfo>(`/universe/structures/${hub.id}`),
+			])
+
+			const detail = detailResult.data
+			const universe = universeResult.data
+
+			return {
+				structure_id: String(detail.id),
+				system_id: String(detail.solar_system_id),
+				name: universe.name ?? null,
+				owner_id: String(universe.owner_id),
+				type_id: String(universe.type_id),
+				fuel_access_list_id:
+					detail.fuel_access_list_id !== undefined && detail.fuel_access_list_id !== null
+						? String(detail.fuel_access_list_id)
+						: null,
+				reagent_bay: {
+					last_updated: detail.reagent_bay.last_updated,
+					reagents: detail.reagent_bay.reagents.map((reagent) => ({
+						type_id: String(reagent.type_id),
+						secured_stock: reagent.secured_stock,
+						unsecured_stock: reagent.unsecured_stock,
+						last_cycle: reagent.last_cycle,
+					})),
+				},
+				resources: detail.resources,
+				upgrades: detail.upgrades.map((upgrade) => ({
+					type_id: String(upgrade.type_id),
+					power_state: upgrade.power_state,
+				})),
+				vulnerability_window: detail.vulnerability_window ?? null,
+				workforce_transport: {
+					configuration: detail.workforce_transport.configuration,
+					state: detail.workforce_transport.state,
+				},
+				raw: {
+					detail,
+					universe,
+				},
+			}
+		})
+	)
+
+	return details
+}
+
+export async function fetchCorporationSkyhooks(
+	tokenStore: EveTokenStore,
+	corporationId: string,
+	characterId: string
+): Promise<EsiCorporationSkyhook[]> {
+	type RawCorporationSkyhooksListing = {
+		skyhooks: Array<{
+			id: number
+			planet_id: number
+		}>
+	}
+
+	type RawCorporationSkyhookDetail = {
+		id: number
+		planet_id: number
+		state: string
+		is_active: boolean
+		effective_workforce?: number | null
+		reagents?: Array<{
+			type_id: number
+			secured_stock: number
+			unsecured_stock: number
+			last_cycle: string
+		}>
+		reinforcement_timer?: {
+			end: string
+		} | null
+		theft_vulnerability?: {
+			start: string
+			end: string
+		} | null
+	}
+
+	const listing = await tokenStore.fetchEsi<RawCorporationSkyhooksListing>(
+		`/corporations/${corporationId}/structures/skyhooks?page=1`,
+		characterId,
+		{ cacheMode: 'no-store' }
+	)
+
+	const skyhookListing = [...listing.data.skyhooks]
+	for (let page = 2; page <= (listing.pages ?? 1); page += 1) {
+		const pageResponse = await tokenStore.fetchEsi<RawCorporationSkyhooksListing>(
+			`/corporations/${corporationId}/structures/skyhooks?page=${page}`,
+			characterId,
+			{ cacheMode: 'no-store' }
+		)
+		skyhookListing.push(...pageResponse.data.skyhooks)
+	}
+
+	const nowMs = Date.now()
+
+	const skyhooks = await Promise.all(
+		skyhookListing.map(async (skyhook) => {
+			const [detailResult, universeResult] = await Promise.all([
+				tokenStore.fetchEsi<RawCorporationSkyhookDetail>(
+					`/corporations/${corporationId}/structures/skyhooks/${skyhook.id}`,
+					characterId,
+					{ cacheMode: 'no-store' }
+				),
+				tokenStore.fetchPublicEsi<RawUniverseStructureInfo>(`/universe/structures/${skyhook.id}`),
+			])
+
+			const detail = detailResult.data
+			const universe = universeResult.data
+			const theftVulnerability = detail.theft_vulnerability ?? null
+			const becomesRaidableAt = theftVulnerability?.start
+				? new Date(theftVulnerability.start)
+				: null
+			const vulnerableAt = theftVulnerability?.end ? new Date(theftVulnerability.end) : null
+			const isRaidable =
+				becomesRaidableAt !== null &&
+				vulnerableAt !== null &&
+				!Number.isNaN(becomesRaidableAt.getTime()) &&
+				!Number.isNaN(vulnerableAt.getTime()) &&
+				nowMs >= becomesRaidableAt.getTime() &&
+				nowMs <= vulnerableAt.getTime()
+
+			return {
+				structure_id: String(detail.id),
+				planet_id: String(detail.planet_id),
+				system_id: String(universe.solar_system_id),
+				type_id: String(universe.type_id),
+				name: universe.name ?? null,
+				owner_id: String(universe.owner_id),
+				state: detail.state,
+				is_active: detail.is_active,
+				effective_workforce: detail.effective_workforce ?? null,
+				reagents:
+					detail.reagents?.map((reagent) => ({
+						type_id: String(reagent.type_id),
+						secured_stock: reagent.secured_stock,
+						unsecured_stock: reagent.unsecured_stock,
+						last_cycle: reagent.last_cycle,
+					})) ?? [],
+				reinforcement_timer: detail.reinforcement_timer ?? null,
+				theft_vulnerability: theftVulnerability,
+				is_raidable: isRaidable,
+				becomes_raidable_at: becomesRaidableAt?.toISOString() ?? null,
+				vulnerable_at: vulnerableAt?.toISOString() ?? null,
+				raw: {
+					detail,
+					universe,
+				},
+			}
+		})
+	)
+
+	return skyhooks
+}
+
+export function deriveMiningStatesFromSkyhooks(
+	skyhooks: EsiCorporationSkyhook[]
+): EsiCorporationMiningState[] {
+	return skyhooks.map((skyhook) => {
+		const currentStockVolume =
+			skyhook.reagents.length > 0
+				? skyhook.reagents.reduce(
+						(total, reagent) => total + reagent.secured_stock + reagent.unsecured_stock,
+						0
+					)
+				: null
+
+		return {
+			structure_id: skyhook.structure_id,
+			planet_id: skyhook.planet_id,
+			system_id: skyhook.system_id,
+			type_id: skyhook.type_id,
+			current_stock_volume: currentStockVolume,
+			capacity_volume: 30_000,
+			fill_rate_per_hour: null,
+			last_emptied_at: null,
+			estimated_full_at: null,
+			last_observed_volume: currentStockVolume,
+			raw: skyhook.raw ?? {
+				...skyhook,
+			},
+		}
+	})
 }
 
 // ========================================================================

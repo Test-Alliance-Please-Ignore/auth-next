@@ -3,7 +3,8 @@
 	"compilerOptions": {
 		"baseUrl": ".",
 		"paths": {
-			"@/*": ["./src/client/*"]
+			"@/*": ["./src/client/*"],
+			"@repo/inventory-display": ["../../packages/inventory-display/src/index.ts"]
 		}
 	},
 	"include": [

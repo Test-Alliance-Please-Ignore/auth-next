@@ -2,8 +2,33 @@ import { and, desc, eq, inArray, isNotNull } from '@repo/db-utils'
 import { getStub } from '@repo/do-utils'
 import { logger } from '@repo/hono-helpers'
 
-import { corporationStructures } from '@repo/eve-corporation-data-db-schema'
+import {
+	corporationStructureInventory,
+	corporationStructures,
+	structureFuelLog,
+} from '@repo/eve-corporation-data-db-schema'
 import { managedCorporations } from '@repo/core-db-schema'
+import {
+	structureMiningStates,
+	structureSkyhookStates,
+	structureSovereigntyHubs,
+	structureSovereigntySystems,
+} from '@repo/structures-db-schema'
+import {
+	summarizeInventoryRows,
+	type InventoryDisplayBay,
+} from '@repo/inventory-display'
+import type {
+	StructureCitadelListQuery,
+	StructureMiningListQuery,
+	StructureNavigationListQuery,
+	StructureSkyhookListQuery,
+	StructureSovereigntyListQuery,
+	StructureOverviewMetrics,
+	StructureTab,
+} from '@repo/structures'
+import { getStructureTabForTypeId } from '@repo/structures'
+import type { EveCorporationData } from '@repo/eve-corporation-data'
 import {
 	STRUCTURE_PERMISSION_ROLES,
 	STRUCTURE_PERMISSION_SCOPE_ALL,
@@ -21,8 +46,11 @@ import {
 import type { DbSchema } from '../db'
 
 import type { DbClient } from '@repo/db-utils'
-import type { EveCorporationData } from '@repo/eve-corporation-data'
 import type { Env, SessionUser } from '../context'
+import {
+	aggregateFuelBurnRatePerHour,
+	type StructureFuelHistorySample,
+} from './structure-fuel-history'
 
 const STRUCTURE_REINFORCED_STATES = new Set(['shield', 'armor', 'hull', 'anchoring', 'unanchoring'])
 const STRUCTURE_LIST_PAGE_SIZE_MAX = 100
@@ -51,6 +79,9 @@ export interface StructureListFilterOptions {
 	states: StructureListFilterOptionsEntry[]
 	types: StructureListFilterOptionsEntry[]
 	assignedGroups: StructureListFilterOptionsEntry[]
+	alliances: StructureListFilterOptionsEntry[]
+	planets: StructureListFilterOptionsEntry[]
+	raidableStates: StructureListFilterOptionsEntry[]
 }
 
 export interface StructureListSummary {
@@ -60,23 +91,10 @@ export interface StructureListSummary {
 	reinforced: number
 }
 
-export interface StructureListQuery {
-	page?: number
-	pageSize?: number
-	corporationId?: string
-	assignedGroupId?: string
-	lowPower?: 'true' | 'false'
-	lowPowerAllowed?: 'true' | 'false'
-	regionId?: string
-	systemId?: string
-	state?: string
-	typeId?: string
-	sortBy?: StructureListSortField
-	sortDirection?: StructureListSortDirection
-}
+export type StructureListQuery = StructureCitadelListQuery
 
-export interface StructureListResponse {
-	items: StructureListItem[]
+export interface StructureListResponse<TItem = StructureListItem> {
+	items: TItem[]
 	pagination: {
 		page: number
 		pageSize: number
@@ -124,13 +142,199 @@ export interface StructureListItem {
 	canEdit: boolean
 }
 
+export interface StructureNavigationListItem extends StructureListItem {
+	navigationType: StructureTab
+}
+
+export interface StructureSovereigntyListItem {
+	structureId: string
+	corporationId: string
+	corporationName: string
+	name: string
+	typeId: string
+	typeName: string | null
+	systemId: string
+	systemName: string | null
+	regionId: string | null
+	regionName: string | null
+	state: string
+	claimType: 'alliance' | 'faction' | 'unclaimed'
+	allianceId: string | null
+	corporationClaimantId: string | null
+	factionId: string | null
+	claimedSince: string | null
+	sovereigntyHubStructureId: string | null
+	vulnerabilityWindowStart: string | null
+	vulnerabilityWindowEnd: string | null
+	activityDefenseMultiplier: string | null
+	militaryLevel: number | null
+	industrialLevel: number | null
+	strategicLevel: number | null
+	fuelAccessListId: string | null
+	controllerAllianceId: string | null
+	reagentBayLastUpdated: string | null
+	reagentCount: number
+	totalSecuredStock: number
+	totalUnsecuredStock: number
+	resourcePowerAllocated: number
+	resourcePowerAvailable: number
+	resourceWorkforceAllocated: number
+	resourceWorkforceAvailable: number
+	upgradeCount: number
+	syncStatus: 'ok' | 'warning' | 'error'
+	syncFailureReason: string | null
+	lastSyncedAt: string | null
+	updatedAt: string
+	canViewSensitive: boolean
+	canEdit: boolean
+}
+
+export interface StructureSkyhookListItem {
+	structureId: string
+	corporationId: string
+	corporationName: string
+	name: string
+	typeId: string
+	typeName: string | null
+	systemId: string
+	systemName: string | null
+	regionId: string | null
+	regionName: string | null
+	planetId: string
+	state: string
+	isActive: boolean
+	effectiveWorkforce: number | null
+	totalReagents: number
+	totalSecuredStock: number
+	totalUnsecuredStock: number
+	reinforcementTimerEnd: string | null
+	theftVulnerabilityStart: string | null
+	theftVulnerabilityEnd: string | null
+	isRaidable: boolean
+	becomesRaidableAt: string | null
+	vulnerableAt: string | null
+	syncStatus: 'ok' | 'warning' | 'error'
+	syncFailureReason: string | null
+	lastSyncedAt: string | null
+	updatedAt: string
+	canViewSensitive: boolean
+	canEdit: boolean
+}
+
+export interface StructureMiningListItem {
+	structureId: string
+	corporationId: string
+	corporationName: string
+	name: string
+	typeId: string
+	typeName: string | null
+	systemId: string
+	systemName: string | null
+	regionId: string | null
+	regionName: string | null
+	state: string
+	planetId: string
+	currentStockVolume: number | null
+	capacityVolume: number | null
+	fillRatePerHour: string | null
+	lastEmptiedAt: string | null
+	estimatedFullAt: string | null
+	lastObservedVolume: number | null
+	lastObservedAt: string | null
+	syncStatus: 'ok' | 'warning' | 'error'
+	syncFailureReason: string | null
+	lastSyncedAt: string | null
+	updatedAt: string
+	canViewSensitive: boolean
+	canEdit: boolean
+}
+
+export interface StructureSovereigntyHubSummary {
+	fuelAccessListId: string | null
+	controllerAllianceId: string | null
+	reagentBayLastUpdated: string | null
+	reagentCount: number
+	totalSecuredStock: number
+	totalUnsecuredStock: number
+	resourcePowerAllocated: number
+	resourcePowerAvailable: number
+	resourceWorkforceAllocated: number
+	resourceWorkforceAvailable: number
+	upgradeCount: number
+	vulnerabilityWindowStart: string | null
+	vulnerabilityWindowEnd: string | null
+}
+
+export interface StructureSovereigntySummary {
+	claimType: 'alliance' | 'faction' | 'unclaimed'
+	allianceId: string | null
+	corporationClaimantId: string | null
+	factionId: string | null
+	claimedSince: string | null
+	sovereigntyHubStructureId: string | null
+	isCapitalSystem: boolean | null
+	vulnerabilityWindowStart: string | null
+	vulnerabilityWindowEnd: string | null
+	activityDefenseMultiplier: string | null
+	militaryLevel: number | null
+	industrialLevel: number | null
+	strategicLevel: number | null
+	hub: StructureSovereigntyHubSummary | null
+}
+
+export interface StructureSkyhookSummary {
+	planetId: string
+	state: string
+	isActive: boolean
+	effectiveWorkforce: number | null
+	totalReagents: number
+	totalSecuredStock: number
+	totalUnsecuredStock: number
+	reinforcementTimerEnd: string | null
+	theftVulnerabilityStart: string | null
+	theftVulnerabilityEnd: string | null
+	isRaidable: boolean
+	becomesRaidableAt: string | null
+	vulnerableAt: string | null
+}
+
+export interface StructureMiningSummary {
+	planetId: string
+	currentStockVolume: number | null
+	capacityVolume: number | null
+	fillRatePerHour: string | null
+	lastEmptiedAt: string | null
+	estimatedFullAt: string | null
+	lastObservedVolume: number | null
+	lastObservedAt: string | null
+}
+
+export type StructureInventoryItemSummary = InventoryDisplayBay['items'][number]
+export type StructureInventoryBaySummary = InventoryDisplayBay
+
+interface StructureTabData {
+	sovereignty?: StructureSovereigntySummary | null
+	skyhook?: StructureSkyhookSummary | null
+	mining?: StructureMiningSummary | null
+	inventoryBays?: StructureInventoryBaySummary[]
+}
+
 export interface StructureDetailResult extends StructureListItem {
+	services: Array<{
+		name: string
+		state: string
+	}>
 	stateTimerStart: string | null
 	stateTimerEnd: string | null
 	unanchorsAt: string | null
 	nextReinforceApply: string | null
 	nextReinforceHour: number | null
 	reinforceHour: number | null
+	lastRefilledAt: string | null
+	sovereignty?: StructureSovereigntySummary | null
+	skyhook?: StructureSkyhookSummary | null
+	mining?: StructureMiningSummary | null
+	inventoryBays?: StructureInventoryBaySummary[]
 }
 
 export interface UpdateStructureConfigInput {
@@ -268,6 +472,17 @@ function compareNullableNumbers(
 	return left - right
 }
 
+type StructureWhereCondition = NonNullable<Parameters<typeof and>[number]>
+
+function combineWhereConditions(
+	conditions: Array<StructureWhereCondition | undefined>
+): any {
+	const defined = conditions.filter((condition): condition is StructureWhereCondition => condition !== undefined)
+	if (defined.length === 0) return undefined
+	if (defined.length === 1) return defined[0]
+	return and(...defined)
+}
+
 function isFuelBelowThreshold(
 	structure: Pick<StructureListItem, 'fuelAmount' | 'fuelExpires'>,
 	moduleConfig: Pick<
@@ -289,6 +504,123 @@ function isFuelBelowThreshold(
 
 function isReinforcedStructureState(state: string): boolean {
 	return STRUCTURE_REINFORCED_STATES.has(state.toLowerCase())
+}
+
+function summarizeStructureSovereigntyHub(
+	hub: typeof structureSovereigntyHubs.$inferSelect
+): StructureSovereigntyHubSummary {
+	const reagentTotals = hub.reagentBay.reagents.reduce(
+		(accumulator: { secured: number; unsecured: number }, reagent: { securedStock: number; unsecuredStock: number }) => {
+			accumulator.secured += reagent.securedStock
+			accumulator.unsecured += reagent.unsecuredStock
+			return accumulator
+		},
+		{ secured: 0, unsecured: 0 }
+	)
+
+	return {
+		fuelAccessListId: hub.fuelAccessListId ?? null,
+		controllerAllianceId: hub.controllerAllianceId ?? null,
+		reagentBayLastUpdated: hub.reagentBayLastUpdated ? hub.reagentBayLastUpdated.toISOString() : null,
+		reagentCount: hub.reagentBay.reagents.length,
+		totalSecuredStock: reagentTotals.secured,
+		totalUnsecuredStock: reagentTotals.unsecured,
+		resourcePowerAllocated: hub.resources.power.allocated,
+		resourcePowerAvailable: hub.resources.power.available,
+		resourceWorkforceAllocated: hub.resources.workforce.allocated,
+		resourceWorkforceAvailable: hub.resources.workforce.available,
+		upgradeCount: hub.upgrades.length,
+		vulnerabilityWindowStart: hub.vulnerabilityWindowStart ? hub.vulnerabilityWindowStart.toISOString() : null,
+		vulnerabilityWindowEnd: hub.vulnerabilityWindowEnd ? hub.vulnerabilityWindowEnd.toISOString() : null,
+	}
+}
+
+function summarizeStructureSovereignty(
+	system: typeof structureSovereigntySystems.$inferSelect | null,
+	hub: typeof structureSovereigntyHubs.$inferSelect | null
+): StructureSovereigntySummary | null {
+	if (!system) {
+		return null
+	}
+
+	return {
+		claimType: system.claimType,
+		allianceId: system.allianceId ?? null,
+		corporationClaimantId: system.corporationClaimantId ?? null,
+		factionId: system.factionId ?? null,
+		claimedSince: system.claimedSince ? system.claimedSince.toISOString() : null,
+		sovereigntyHubStructureId: system.sovereigntyHubStructureId ?? null,
+		isCapitalSystem: system.isCapitalSystem ?? null,
+		vulnerabilityWindowStart: system.vulnerabilityWindowStart
+			? system.vulnerabilityWindowStart.toISOString()
+			: null,
+		vulnerabilityWindowEnd: system.vulnerabilityWindowEnd
+			? system.vulnerabilityWindowEnd.toISOString()
+			: null,
+		activityDefenseMultiplier:
+			system.activityDefenseMultiplier !== null && system.activityDefenseMultiplier !== undefined
+				? String(system.activityDefenseMultiplier)
+				: null,
+		militaryLevel: system.militaryLevel ?? null,
+		industrialLevel: system.industrialLevel ?? null,
+		strategicLevel: system.strategicLevel ?? null,
+		hub: hub ? summarizeStructureSovereigntyHub(hub) : null,
+	}
+}
+
+function summarizeStructureSkyhook(
+	skyhook: typeof structureSkyhookStates.$inferSelect | null
+): StructureSkyhookSummary | null {
+	if (!skyhook) {
+		return null
+	}
+
+	const reagentTotals = skyhook.reagents.reduce(
+		(accumulator: { secured: number; unsecured: number }, reagent: { securedStock: number; unsecuredStock: number }) => {
+			accumulator.secured += reagent.securedStock
+			accumulator.unsecured += reagent.unsecuredStock
+			return accumulator
+		},
+		{ secured: 0, unsecured: 0 }
+	)
+
+	return {
+		planetId: skyhook.planetId,
+		state: skyhook.state,
+		isActive: skyhook.isActive,
+		effectiveWorkforce: skyhook.effectiveWorkforce ?? null,
+		totalReagents: skyhook.reagents.length,
+		totalSecuredStock: reagentTotals.secured,
+		totalUnsecuredStock: reagentTotals.unsecured,
+		reinforcementTimerEnd: skyhook.reinforcementTimerEnd ? skyhook.reinforcementTimerEnd.toISOString() : null,
+		theftVulnerabilityStart: skyhook.theftVulnerabilityStart ? skyhook.theftVulnerabilityStart.toISOString() : null,
+		theftVulnerabilityEnd: skyhook.theftVulnerabilityEnd ? skyhook.theftVulnerabilityEnd.toISOString() : null,
+		isRaidable: skyhook.isRaidable,
+		becomesRaidableAt: skyhook.becomesRaidableAt ? skyhook.becomesRaidableAt.toISOString() : null,
+		vulnerableAt: skyhook.vulnerableAt ? skyhook.vulnerableAt.toISOString() : null,
+	}
+}
+
+function summarizeStructureMining(
+	mining: typeof structureMiningStates.$inferSelect | null
+): StructureMiningSummary | null {
+	if (!mining) {
+		return null
+	}
+
+	return {
+		planetId: mining.planetId,
+		currentStockVolume: mining.currentStockVolume ?? null,
+		capacityVolume: mining.capacityVolume ?? null,
+		fillRatePerHour:
+			mining.fillRatePerHour !== null && mining.fillRatePerHour !== undefined
+				? String(mining.fillRatePerHour)
+				: null,
+		lastEmptiedAt: mining.lastEmptiedAt ? mining.lastEmptiedAt.toISOString() : null,
+		estimatedFullAt: mining.estimatedFullAt ? mining.estimatedFullAt.toISOString() : null,
+		lastObservedVolume: mining.lastObservedVolume ?? null,
+		lastObservedAt: mining.lastObservedAt ? mining.lastObservedAt.toISOString() : null,
+	}
 }
 
 function buildStructureListItem(context: VisibleStructureContext): StructureListItem {
@@ -322,6 +654,64 @@ function buildStructureListItem(context: VisibleStructureContext): StructureList
 		canViewSensitive,
 		canEdit: canViewSensitive,
 	}
+}
+
+async function loadStructureTabDetailData(
+	db: DbClient<DbSchema>,
+	structure: DirectCorporationStructureRecord
+): Promise<StructureTabData | null> {
+	const tab = getStructureTab(structure)
+
+	if (tab === 'citadels') {
+		return null
+	}
+
+	if (tab === 'sovereignty') {
+		const [systemRow, hubRow] = await Promise.all([
+			db.query.structureSovereigntySystems.findFirst({
+				where: eq(structureSovereigntySystems.systemId, structure.systemId),
+			}),
+			db.query.structureSovereigntyHubs.findFirst({
+				where: eq(structureSovereigntyHubs.structureId, structure.structureId),
+			}),
+		])
+		return {
+			sovereignty: summarizeStructureSovereignty(systemRow ?? null, hubRow ?? null),
+		}
+	}
+
+	if (tab === 'skyhooks') {
+		const skyhookRow = await db.query.structureSkyhookStates.findFirst({
+			where: eq(structureSkyhookStates.structureId, structure.structureId),
+		})
+		return {
+			skyhook: skyhookRow ? summarizeStructureSkyhook(skyhookRow) : null,
+		}
+	}
+
+	if (tab === 'mining') {
+		const miningRow = await db.query.structureMiningStates.findFirst({
+			where: eq(structureMiningStates.structureId, structure.structureId),
+		})
+		return {
+			mining: miningRow ? summarizeStructureMining(miningRow) : null,
+		}
+	}
+
+	return null
+}
+
+async function loadStructureInventoryDetailData(
+	db: DbClient<DbSchema>,
+	structure: DirectCorporationStructureRecord
+): Promise<StructureInventoryBaySummary[]> {
+	const rows = await db.query.corporationStructureInventory.findMany({
+		where: and(
+			eq(corporationStructureInventory.corporationId, structure.corporationId),
+			eq(corporationStructureInventory.structureId, structure.structureId)
+		),
+	})
+	return summarizeInventoryRows(rows)
 }
 
 export async function assertStructureGroupConfigured(
@@ -582,18 +972,31 @@ interface VisibleStructureContext {
 	corporationName: string
 	config: typeof structureConfigs.$inferSelect | null
 	canViewSensitive: boolean
+	tabData: StructureTabData | null
+	lastRefilledAt: Date | null
+}
+
+export function getStructureTab(structure: Pick<StructureListItem, 'typeId'>): StructureTab {
+	return getStructureTabForTypeId(structure.typeId)
+}
+
+function matchesStructureTab(structure: Pick<StructureListItem, 'typeId'>, tab: StructureTab): boolean {
+	return getStructureTab(structure) === tab
 }
 
 function buildStructureDetailResult(context: VisibleStructureContext): StructureDetailResult {
 	const structure = buildStructureListItem(context)
 	return {
 		...structure,
+		services: context.structure.services ?? [],
 		stateTimerStart: toIso(context.structure.stateTimerStart),
 		stateTimerEnd: toIso(context.structure.stateTimerEnd),
 		unanchorsAt: toIso(context.structure.unanchorsAt),
 		nextReinforceApply: toIso(context.structure.nextReinforceApply),
 		nextReinforceHour: context.structure.nextReinforceHour,
 		reinforceHour: context.structure.reinforceHour,
+		lastRefilledAt: toIso(context.lastRefilledAt),
+		...(context.tabData ?? {}),
 	}
 }
 
@@ -636,11 +1039,21 @@ async function getVisibleStructureContext(
 		return null
 	}
 
+	const [tabData, inventoryBays] = await Promise.all([
+		loadStructureTabDetailData(db, structure),
+		loadStructureInventoryDetailData(db, structure),
+	])
+
 	return {
 		structure,
 		corporationName: corporation?.name ?? structure.corporationId,
 		config: config ?? null,
 		canViewSensitive,
+		tabData: {
+			...(tabData ?? {}),
+			inventoryBays,
+		},
+		lastRefilledAt: structure.lastRefilledAt ?? null,
 	}
 }
 
@@ -732,13 +1145,25 @@ function sortStructures(
 	})
 }
 
-function buildStructureFilterOptions(items: StructureListItem[]): StructureListFilterOptions {
+function buildStructureFilterOptions<
+	TItem extends Pick<StructureListItem, 'corporationId' | 'corporationName' | 'systemId' | 'systemName' | 'state' | 'typeId' | 'typeName'> & {
+		assignedGroupId?: string | null
+		regionId?: string | null
+		regionName?: string | null
+		allianceId?: string | null
+		planetId?: string | null
+		isRaidable?: boolean | null
+	}
+>(items: TItem[]): StructureListFilterOptions {
 	const corporations = new Map<string, string>()
 	const assignedGroups = new Map<string, string>()
 	const regions = new Map<string, string>()
 	const systems = new Map<string, string>()
 	const states = new Set<string>()
 	const types = new Map<string, string>()
+	const alliances = new Set<string>()
+	const planets = new Map<string, string>()
+	const raidableStates = new Set<string>()
 
 	for (const structure of items) {
 		corporations.set(structure.corporationId, structure.corporationName)
@@ -751,6 +1176,15 @@ function buildStructureFilterOptions(items: StructureListItem[]): StructureListF
 		systems.set(structure.systemId, structure.systemName ?? structure.systemId)
 		states.add(structure.state)
 		types.set(structure.typeId, structure.typeName ?? structure.typeId)
+		if (structure.allianceId) {
+			alliances.add(structure.allianceId)
+		}
+		if (structure.planetId) {
+			planets.set(structure.planetId, structure.planetId)
+		}
+		if (structure.isRaidable !== null && structure.isRaidable !== undefined) {
+			raidableStates.add(structure.isRaidable ? 'true' : 'false')
+		}
 	}
 
 	return {
@@ -772,6 +1206,15 @@ function buildStructureFilterOptions(items: StructureListItem[]): StructureListF
 		types: Array.from(types.entries())
 			.sort((left, right) => left[1].localeCompare(right[1]))
 			.map(([value, label]) => ({ value, label })),
+		alliances: Array.from(alliances.values())
+			.sort((left, right) => left.localeCompare(right))
+			.map((value) => ({ value, label: value })),
+		planets: Array.from(planets.entries())
+			.sort((left, right) => left[1].localeCompare(right[1]))
+			.map(([value, label]) => ({ value, label })),
+		raidableStates: Array.from(raidableStates.values())
+			.sort((left, right) => left.localeCompare(right))
+			.map((value) => ({ value, label: value === 'true' ? 'Raidable' : 'Not raidable' })),
 	}
 }
 
@@ -790,44 +1233,95 @@ function buildStructureSummary(
 	}
 }
 
-export async function listVisibleStructures(
+async function loadFuelHistorySamplesByStructure(
+	db: DbClient<DbSchema>,
+	structureIds: string[]
+): Promise<Map<string, StructureFuelHistorySample[]>> {
+	const samplesByStructure = new Map<string, StructureFuelHistorySample[]>()
+	if (structureIds.length === 0) {
+		return samplesByStructure
+	}
+
+	const rows = await db.query.structureFuelLog.findMany({
+		where: inArray(structureFuelLog.structureId, structureIds),
+	})
+
+	for (const row of rows) {
+		const sample: StructureFuelHistorySample = {
+			structureId: row.structureId,
+			fuelBlockUnits: row.fuelBlockUnits,
+			observedAt: row.observedAt,
+			updatedAt: row.updatedAt,
+		}
+		const existing = samplesByStructure.get(row.structureId)
+		if (existing) {
+			existing.push(sample)
+		} else {
+			samplesByStructure.set(row.structureId, [sample])
+		}
+	}
+
+	return samplesByStructure
+}
+
+function emptyStructureFilterOptions(): StructureListFilterOptions {
+	return {
+		corporations: [],
+		regions: [],
+		systems: [],
+		states: [],
+		types: [],
+		assignedGroups: [],
+		alliances: [],
+		planets: [],
+		raidableStates: [],
+	}
+}
+
+function emptyStructureOverviewMetrics(): StructureOverviewMetrics {
+	return {
+		total: 0,
+		lowFuel: 0,
+		lowPower: 0,
+		reinforced: 0,
+		estimatedFuelBurnRatePerHour: null,
+		fuelBurnRateSampleCount: 0,
+	}
+}
+
+interface StructureBaseFilterQuery {
+	corporationId?: string
+	assignedGroupId?: string
+	lowPower?: 'true' | 'false'
+	lowPowerAllowed?: 'true' | 'false'
+	regionId?: string
+	systemId?: string
+	state?: string
+	typeId?: string
+}
+
+async function loadVisibleStructureContexts(
 	db: DbClient<DbSchema>,
 	user: SessionUser,
-	query: StructureListQuery = {}
-): Promise<StructureListResponse> {
+	query: StructureBaseFilterQuery
+): Promise<{
+	moduleConfig: StructureModuleConfigResult
+	access: StructureAccessScope
+	contexts: VisibleStructureContext[]
+}> {
 	const moduleConfig = await getStructureModuleConfig(db)
 	const access = computeStructureAccess(user.roles, user.is_admin)
 
 	if (!access.viewAll && access.viewCorporationIds.size === 0) {
 		return {
-			items: [],
-			pagination: {
-				page: 1,
-				pageSize: query.pageSize ?? 25,
-				totalCount: 0,
-				totalPages: 1,
-				hasNextPage: false,
-				hasPreviousPage: false,
-			},
-			filterOptions: {
-				corporations: [],
-				regions: [],
-				systems: [],
-				states: [],
-				types: [],
-				assignedGroups: [],
-			},
-			summary: {
-				total: 0,
-				lowFuel: 0,
-				lowPower: 0,
-				reinforced: 0,
-			},
+			moduleConfig,
+			access,
+			contexts: [],
 		}
 	}
 
 	const corpWhere = (() => {
-		const conditions: any[] = []
+		const conditions: StructureWhereCondition[] = []
 		if (query.corporationId) {
 			conditions.push(eq(corporationStructures.corporationId, query.corporationId))
 		} else if (!access.viewAll && access.viewCorporationIds.size > 0) {
@@ -850,7 +1344,7 @@ export async function listVisibleStructures(
 		if (query.typeId) {
 			conditions.push(eq(corporationStructures.typeId, query.typeId))
 		}
-		return conditions.length > 0 ? and(...conditions) : undefined
+		return combineWhereConditions(conditions)
 	})()
 
 	const corpStructures = await db.query.corporationStructures.findMany({
@@ -876,42 +1370,79 @@ export async function listVisibleStructures(
 		: []
 	const corporationNamesById = new Map(corporationRows.map((row) => [row.corporationId, row.name]))
 
-	const contexts = corpStructures
-		.map<VisibleStructureContext | null>((structure) => {
-			const config = configsByStructureId.get(structure.structureId) ?? null
-			const canViewSensitive =
-				user.is_admin || access.managerAll || access.managerCorporationIds.has(structure.corporationId)
-			if (config?.hidden && !canViewSensitive) {
-				return null
-			}
+	return {
+		moduleConfig,
+		access,
+		contexts: corpStructures
+			.map<VisibleStructureContext | null>((structure) => {
+				const config = configsByStructureId.get(structure.structureId) ?? null
+				const canViewSensitive =
+					user.is_admin || access.managerAll || access.managerCorporationIds.has(structure.corporationId)
+				if (config?.hidden && !canViewSensitive) {
+					return null
+				}
 
-			return {
-				structure,
-				corporationName: corporationNamesById.get(structure.corporationId) ?? structure.corporationId,
-				config,
-				canViewSensitive,
-			}
-		})
-		.filter((item): item is VisibleStructureContext => item !== null)
-		.filter((context) => {
-			if (query.assignedGroupId === '__unassigned__' && context.config?.assignedGroupId !== null) {
-				return false
-			}
-			if (
-				query.assignedGroupId &&
-				query.assignedGroupId !== '__unassigned__' &&
-				context.config?.assignedGroupId !== query.assignedGroupId
-			) {
-				return false
-			}
-			if (query.lowPowerAllowed === 'true' && !context.config?.lowPowerAllowed) return false
-			if (query.lowPowerAllowed === 'false' && context.config?.lowPowerAllowed) return false
-			return true
-		})
+				return {
+					structure,
+					corporationName: corporationNamesById.get(structure.corporationId) ?? structure.corporationId,
+					config,
+					canViewSensitive,
+					tabData: null,
+					lastRefilledAt: null,
+				}
+			})
+			.filter((item): item is VisibleStructureContext => item !== null)
+			.filter((context) => {
+				if (query.assignedGroupId === '__unassigned__' && context.config?.assignedGroupId !== null) {
+					return false
+				}
+				if (
+					query.assignedGroupId &&
+					query.assignedGroupId !== '__unassigned__' &&
+					context.config?.assignedGroupId !== query.assignedGroupId
+				) {
+					return false
+				}
+				if (query.lowPowerAllowed === 'true' && !context.config?.lowPowerAllowed) return false
+				if (query.lowPowerAllowed === 'false' && context.config?.lowPowerAllowed) return false
+				return true
+			}),
+	}
+}
 
-	const items = contexts.map((context) => buildStructureListItem(context))
-	const filterOptions = buildStructureFilterOptions(items)
-	const filteredItems = items
+async function listVisibleOperationalStructures(
+	db: DbClient<DbSchema>,
+	user: SessionUser,
+	query: StructureListQuery = {},
+	activeTab: StructureTab
+): Promise<StructureListResponse> {
+	const { moduleConfig, access, contexts } = await loadVisibleStructureContexts(db, user, query)
+	if (contexts.length === 0 && !access.viewAll && access.viewCorporationIds.size === 0) {
+		return {
+			items: [],
+			pagination: {
+				page: 1,
+				pageSize: query.pageSize ?? 25,
+				totalCount: 0,
+				totalPages: 1,
+				hasNextPage: false,
+				hasPreviousPage: false,
+			},
+			filterOptions: emptyStructureFilterOptions(),
+			summary: {
+				total: 0,
+				lowFuel: 0,
+				lowPower: 0,
+				reinforced: 0,
+			},
+		}
+	}
+
+	const baseItems = contexts
+		.map((context) => buildStructureListItem(context))
+		.filter((item) => matchesStructureTab(item, activeTab))
+	const filterOptions = buildStructureFilterOptions(baseItems)
+	const filteredItems = baseItems
 	const sortBy = query.sortBy ?? 'updatedAt'
 	const sortDirection = query.sortDirection ?? 'desc'
 	const sortedItems = sortStructures(filteredItems, sortBy, sortDirection)
@@ -922,9 +1453,10 @@ export async function listVisibleStructures(
 	const page = Math.min(Math.max(query.page ?? 1, 1), totalPages)
 	const start = (page - 1) * pageSize
 	const end = start + pageSize
+	const pageItems = sortedItems.slice(start, end)
 
 	return {
-		items: sortedItems.slice(start, end),
+		items: pageItems,
 		pagination: {
 			page,
 			pageSize,
@@ -935,6 +1467,641 @@ export async function listVisibleStructures(
 		},
 		filterOptions,
 		summary,
+	}
+}
+
+export async function getStructureOverviewMetrics(
+	db: DbClient<DbSchema>,
+	user: SessionUser
+): Promise<StructureOverviewMetrics> {
+	const { moduleConfig, access, contexts } = await loadVisibleStructureContexts(db, user, {})
+	if (contexts.length === 0 && !access.viewAll && access.viewCorporationIds.size === 0) {
+		return emptyStructureOverviewMetrics()
+	}
+
+	const items = contexts.map((context) => buildStructureListItem(context))
+	const summary = buildStructureSummary(items, moduleConfig)
+	const fuelHistorySamplesByStructure = await loadFuelHistorySamplesByStructure(
+		db,
+		contexts.map((context) => context.structure.structureId)
+	)
+	const burnRate = aggregateFuelBurnRatePerHour(fuelHistorySamplesByStructure)
+
+	return {
+		...summary,
+		...burnRate,
+	}
+}
+
+export async function listVisibleStructures(
+	db: DbClient<DbSchema>,
+	user: SessionUser,
+	query: StructureListQuery = {}
+): Promise<StructureListResponse> {
+	return listVisibleOperationalStructures(db, user, query, 'citadels')
+}
+
+export async function listCitadelStructures(
+	db: DbClient<DbSchema>,
+	user: SessionUser,
+	query: StructureCitadelListQuery = {}
+): Promise<StructureListResponse> {
+	return listVisibleOperationalStructures(db, user, query, 'citadels')
+}
+
+export async function listNavigationStructures(
+	db: DbClient<DbSchema>,
+	user: SessionUser,
+	query: StructureNavigationListQuery = {}
+): Promise<StructureListResponse> {
+	return listVisibleOperationalStructures(db, user, query as StructureListQuery, 'navigation')
+}
+
+function getSnapshotSyncStatus(lastSyncedAt: Date | null | undefined): 'ok' | 'warning' | 'error' {
+	return lastSyncedAt ? 'ok' : 'warning'
+}
+
+function buildStructureRowIdentity(
+	corporationId: string,
+	corporationName: string,
+	name: string | null | undefined,
+	typeId: string,
+	typeName: string | null,
+	systemId: string,
+	systemName: string | null,
+	regionId: string | null,
+	regionName: string | null
+) {
+	return {
+		corporationId,
+		corporationName,
+		name: name ?? typeName ?? typeId,
+		typeId,
+		typeName,
+		systemId,
+		systemName,
+		regionId,
+		regionName,
+	}
+}
+
+function buildSovereigntyListItem(input: {
+	systemRow: typeof structureSovereigntySystems.$inferSelect | null
+	hubRow: typeof structureSovereigntyHubs.$inferSelect | null
+	structureRow: typeof corporationStructures.$inferSelect
+	corporationName: string
+	canViewSensitive: boolean
+}): StructureSovereigntyListItem {
+	const { systemRow, hubRow, structureRow, corporationName, canViewSensitive } = input
+	const hasSystemSnapshot = systemRow !== null
+	const lastSyncedAt = systemRow?.lastSyncedAt ?? hubRow?.lastSyncedAt ?? structureRow.lastSyncedAt ?? null
+	const sourceUpdatedAt = systemRow?.updatedAt ?? hubRow?.updatedAt ?? structureRow.updatedAt
+
+	const hubSummary = hubRow ? summarizeStructureSovereigntyHub(hubRow) : null
+	const structureIdentity = buildStructureRowIdentity(
+		structureRow.corporationId,
+		corporationName,
+		structureRow?.name ?? hubRow?.name ?? null,
+		structureRow.typeId ?? hubRow?.typeId ?? systemRow?.sovereigntyHubStructureId ?? 'sovereignty hub',
+		structureRow?.typeName ?? hubRow?.name ?? 'Sovereignty Hub',
+		structureRow.systemId,
+		structureRow.systemName ?? null,
+		structureRow.regionId ?? null,
+		structureRow.regionName ?? null
+	)
+
+	return {
+		structureId: structureRow.structureId,
+		...structureIdentity,
+		state: systemRow?.claimType ?? 'unknown',
+		claimType: systemRow?.claimType ?? 'unclaimed',
+		allianceId: systemRow?.allianceId ?? null,
+		corporationClaimantId: systemRow?.corporationClaimantId ?? null,
+		factionId: systemRow?.factionId ?? null,
+		claimedSince: toIso(systemRow?.claimedSince ?? null),
+		sovereigntyHubStructureId: systemRow?.sovereigntyHubStructureId ?? hubRow?.structureId ?? null,
+		vulnerabilityWindowStart: toIso(systemRow?.vulnerabilityWindowStart ?? null),
+		vulnerabilityWindowEnd: toIso(systemRow?.vulnerabilityWindowEnd ?? null),
+		activityDefenseMultiplier:
+			systemRow?.activityDefenseMultiplier !== null && systemRow?.activityDefenseMultiplier !== undefined
+				? String(systemRow.activityDefenseMultiplier)
+				: null,
+		militaryLevel: systemRow?.militaryLevel ?? null,
+		industrialLevel: systemRow?.industrialLevel ?? null,
+		strategicLevel: systemRow?.strategicLevel ?? null,
+		fuelAccessListId: hubSummary?.fuelAccessListId ?? null,
+		controllerAllianceId: hubSummary?.controllerAllianceId ?? null,
+		reagentBayLastUpdated: hubSummary?.reagentBayLastUpdated ?? null,
+		reagentCount: hubSummary?.reagentCount ?? 0,
+		totalSecuredStock: hubSummary?.totalSecuredStock ?? 0,
+		totalUnsecuredStock: hubSummary?.totalUnsecuredStock ?? 0,
+		resourcePowerAllocated: hubSummary?.resourcePowerAllocated ?? 0,
+		resourcePowerAvailable: hubSummary?.resourcePowerAvailable ?? 0,
+		resourceWorkforceAllocated: hubSummary?.resourceWorkforceAllocated ?? 0,
+		resourceWorkforceAvailable: hubSummary?.resourceWorkforceAvailable ?? 0,
+		upgradeCount: hubSummary?.upgradeCount ?? 0,
+		syncStatus: hasSystemSnapshot ? getSnapshotSyncStatus(lastSyncedAt) : 'warning',
+		syncFailureReason: hasSystemSnapshot
+			? null
+			: 'Sovereignty snapshot has not been ingested yet for this structure.',
+		lastSyncedAt: toIso(lastSyncedAt),
+		updatedAt: sourceUpdatedAt ? sourceUpdatedAt.toISOString() : structureRow.updatedAt.toISOString(),
+		canViewSensitive,
+		canEdit: canViewSensitive,
+	}
+}
+
+function buildSkyhookListItem(input: {
+	skyhookRow: typeof structureSkyhookStates.$inferSelect | null
+	structureRow: typeof corporationStructures.$inferSelect
+	corporationName: string
+	canViewSensitive: boolean
+}): StructureSkyhookListItem {
+	const { skyhookRow, structureRow, corporationName, canViewSensitive } = input
+	const hasSkyhookSnapshot = skyhookRow !== null
+	const reagentTotals = skyhookRow?.reagents.reduce(
+		(accumulator: { secured: number; unsecured: number }, reagent: { securedStock: number; unsecuredStock: number }) => {
+			accumulator.secured += reagent.securedStock
+			accumulator.unsecured += reagent.unsecuredStock
+			return accumulator
+		},
+		{ secured: 0, unsecured: 0 }
+	) ?? { secured: 0, unsecured: 0 }
+
+	return {
+		structureId: structureRow.structureId,
+		corporationId: structureRow.corporationId,
+		corporationName,
+		name: structureRow.name ?? structureRow.structureId,
+		typeId: structureRow.typeId,
+		typeName: structureRow.typeName ?? null,
+		systemId: structureRow.systemId,
+		systemName: structureRow.systemName ?? null,
+		regionId: structureRow.regionId ?? null,
+		regionName: structureRow.regionName ?? null,
+		planetId: skyhookRow?.planetId ?? '',
+		state: skyhookRow?.state ?? 'unknown',
+		isActive: skyhookRow?.isActive ?? false,
+		effectiveWorkforce: skyhookRow?.effectiveWorkforce ?? null,
+		totalReagents: skyhookRow?.reagents.length ?? 0,
+		totalSecuredStock: reagentTotals.secured,
+		totalUnsecuredStock: reagentTotals.unsecured,
+		reinforcementTimerEnd: toIso(skyhookRow?.reinforcementTimerEnd ?? null),
+		theftVulnerabilityStart: toIso(skyhookRow?.theftVulnerabilityStart ?? null),
+		theftVulnerabilityEnd: toIso(skyhookRow?.theftVulnerabilityEnd ?? null),
+		isRaidable: skyhookRow?.isRaidable ?? false,
+		becomesRaidableAt: toIso(skyhookRow?.becomesRaidableAt ?? null),
+		vulnerableAt: toIso(skyhookRow?.vulnerableAt ?? null),
+		syncStatus: hasSkyhookSnapshot ? getSnapshotSyncStatus(skyhookRow.lastSyncedAt) : 'warning',
+		syncFailureReason: hasSkyhookSnapshot
+			? null
+			: 'Skyhook snapshot has not been ingested yet for this structure.',
+		lastSyncedAt: toIso(skyhookRow?.lastSyncedAt ?? structureRow.lastSyncedAt),
+		updatedAt: (skyhookRow?.updatedAt ?? structureRow.updatedAt).toISOString(),
+		canViewSensitive,
+		canEdit: canViewSensitive,
+	}
+}
+
+function buildMiningListItem(input: {
+	miningRow: typeof structureMiningStates.$inferSelect | null
+	structureRow: typeof corporationStructures.$inferSelect
+	corporationName: string
+	canViewSensitive: boolean
+}): StructureMiningListItem {
+	const { miningRow, structureRow, corporationName, canViewSensitive } = input
+	const hasMiningSnapshot = miningRow !== null
+
+	return {
+		structureId: structureRow.structureId,
+		corporationId: structureRow.corporationId,
+		corporationName,
+		name: structureRow.name ?? structureRow.structureId,
+		typeId: structureRow.typeId,
+		typeName: structureRow.typeName ?? null,
+		systemId: structureRow.systemId,
+		systemName: structureRow.systemName ?? null,
+		regionId: structureRow.regionId ?? null,
+		regionName: structureRow.regionName ?? null,
+		state: 'mining',
+		planetId: miningRow?.planetId ?? '',
+		currentStockVolume: miningRow?.currentStockVolume ?? null,
+		capacityVolume: miningRow?.capacityVolume ?? null,
+		fillRatePerHour:
+			miningRow?.fillRatePerHour !== null && miningRow?.fillRatePerHour !== undefined
+				? String(miningRow.fillRatePerHour)
+				: null,
+		lastEmptiedAt: toIso(miningRow?.lastEmptiedAt ?? null),
+		estimatedFullAt: toIso(miningRow?.estimatedFullAt ?? null),
+		lastObservedVolume: miningRow?.lastObservedVolume ?? null,
+		lastObservedAt: toIso(miningRow?.lastObservedAt ?? null),
+		syncStatus: hasMiningSnapshot ? getSnapshotSyncStatus(miningRow.lastSyncedAt) : 'warning',
+		syncFailureReason: hasMiningSnapshot
+			? null
+			: 'Mining state snapshot has not been ingested yet for this structure.',
+		lastSyncedAt: toIso(miningRow?.lastSyncedAt ?? structureRow.lastSyncedAt),
+		updatedAt: (miningRow?.updatedAt ?? structureRow.updatedAt).toISOString(),
+		canViewSensitive,
+		canEdit: canViewSensitive,
+	}
+}
+
+export async function listSovereigntyStructures(
+	db: DbClient<DbSchema>,
+	user: SessionUser,
+	query: StructureSovereigntyListQuery = {}
+): Promise<StructureListResponse<StructureSovereigntyListItem>> {
+	const { contexts, access } = await loadVisibleStructureContexts(db, user, {
+		corporationId: query.corporationId,
+		systemId: query.systemId,
+	})
+
+	if (!access.viewAll && access.viewCorporationIds.size === 0) {
+		return {
+			items: [],
+			pagination: {
+				page: 1,
+				pageSize: query.pageSize ?? 25,
+				totalCount: 0,
+				totalPages: 1,
+				hasNextPage: false,
+				hasPreviousPage: false,
+			},
+			filterOptions: emptyStructureFilterOptions(),
+			summary: {
+				total: 0,
+				lowFuel: 0,
+				lowPower: 0,
+				reinforced: 0,
+			},
+		}
+	}
+
+	const sovereigntyContexts = contexts.filter((context) => getStructureTab(context.structure) === 'sovereignty')
+	const structureIds = sovereigntyContexts.map((context) => context.structure.structureId)
+
+	if (structureIds.length === 0) {
+		return {
+			items: [],
+			pagination: {
+				page: 1,
+				pageSize: query.pageSize ?? 25,
+				totalCount: 0,
+				totalPages: 1,
+				hasNextPage: false,
+				hasPreviousPage: false,
+			},
+			filterOptions: emptyStructureFilterOptions(),
+			summary: {
+				total: 0,
+				lowFuel: 0,
+				lowPower: 0,
+				reinforced: 0,
+			},
+		}
+	}
+
+	const systemWhere = (() => {
+		const conditions: StructureWhereCondition[] = []
+		if (query.allianceId) {
+			conditions.push(eq(structureSovereigntySystems.allianceId, query.allianceId))
+		}
+		return combineWhereConditions(conditions)
+	})()
+
+	const systemRows = await db.query.structureSovereigntySystems.findMany({
+		where: combineWhereConditions([
+			inArray(structureSovereigntySystems.sovereigntyHubStructureId, structureIds),
+			systemWhere,
+		]),
+		orderBy: desc(structureSovereigntySystems.updatedAt),
+	})
+	const systemByHubStructureId = new Map(
+		systemRows
+			.filter((row): row is typeof structureSovereigntySystems.$inferSelect & { sovereigntyHubStructureId: string } =>
+				Boolean(row.sovereigntyHubStructureId)
+			)
+			.map((row) => [row.sovereigntyHubStructureId, row])
+	)
+	const hubRows = await db.query.structureSovereigntyHubs.findMany({
+		where: inArray(structureSovereigntyHubs.structureId, structureIds),
+	})
+	const hubById = new Map(hubRows.map((row) => [row.structureId, row]))
+
+	const items = sovereigntyContexts.map((context) => {
+		const systemRow = systemByHubStructureId.get(context.structure.structureId) ?? null
+		const hubRow = hubById.get(context.structure.structureId) ?? null
+		return buildSovereigntyListItem({
+			systemRow,
+			hubRow,
+			structureRow: context.structure,
+			corporationName: context.corporationName,
+			canViewSensitive: context.canViewSensitive,
+		})
+	})
+
+	const sortBy = query.sortBy ?? 'updatedAt'
+	const sortDirection = query.sortDirection ?? 'desc'
+	const sortedItems = sortStructures(
+		items.map((item) => ({
+			...item,
+			lowPower: false,
+			fuelExpires: null,
+			fuelAmount: null,
+			hidden: false,
+			lowPowerAllowed: false,
+			assignedGroupId: null,
+			profileId: '',
+			nextStateAt: item.vulnerabilityWindowEnd,
+		})) as StructureListItem[],
+		sortBy,
+		sortDirection
+	)
+	const pageSize = Math.min(Math.max(query.pageSize ?? 25, 1), STRUCTURE_LIST_PAGE_SIZE_MAX)
+	const totalCount = sortedItems.length
+	const totalPages = Math.max(1, Math.ceil(totalCount / pageSize))
+	const page = Math.min(Math.max(query.page ?? 1, 1), totalPages)
+	const start = (page - 1) * pageSize
+	const end = start + pageSize
+
+	return {
+		items: sortedItems.slice(start, end).map((item) => items.find((row) => row.structureId === item.structureId)!) as StructureSovereigntyListItem[],
+		pagination: {
+			page,
+			pageSize,
+			totalCount,
+			totalPages,
+			hasNextPage: page < totalPages,
+			hasPreviousPage: page > 1,
+		},
+		filterOptions: buildStructureFilterOptions(items),
+		summary: {
+			total: items.length,
+			lowFuel: 0,
+			lowPower: 0,
+			reinforced: 0,
+		},
+	}
+}
+
+export async function listSkyhookStructures(
+	db: DbClient<DbSchema>,
+	user: SessionUser,
+	query: StructureSkyhookListQuery = {}
+): Promise<StructureListResponse<StructureSkyhookListItem>> {
+	const { contexts, access } = await loadVisibleStructureContexts(db, user, {
+		corporationId: query.corporationId,
+		systemId: query.systemId,
+	})
+
+	if (!access.viewAll && access.viewCorporationIds.size === 0) {
+		return {
+			items: [],
+			pagination: {
+				page: 1,
+				pageSize: query.pageSize ?? 25,
+				totalCount: 0,
+				totalPages: 1,
+				hasNextPage: false,
+				hasPreviousPage: false,
+			},
+			filterOptions: emptyStructureFilterOptions(),
+			summary: {
+				total: 0,
+				lowFuel: 0,
+				lowPower: 0,
+				reinforced: 0,
+			},
+		}
+	}
+
+	const skyhookContexts = contexts.filter((context) => getStructureTab(context.structure) === 'skyhooks')
+	const structureIds = skyhookContexts.map((context) => context.structure.structureId)
+
+	if (structureIds.length === 0) {
+		return {
+			items: [],
+			pagination: {
+				page: 1,
+				pageSize: query.pageSize ?? 25,
+				totalCount: 0,
+				totalPages: 1,
+				hasNextPage: false,
+				hasPreviousPage: false,
+			},
+			filterOptions: emptyStructureFilterOptions(),
+			summary: {
+				total: 0,
+				lowFuel: 0,
+				lowPower: 0,
+				reinforced: 0,
+			},
+		}
+	}
+
+	const skyhookWhere = (() => {
+		const conditions: StructureWhereCondition[] = []
+		if (query.planetId) {
+			conditions.push(eq(structureSkyhookStates.planetId, query.planetId))
+		}
+		if (query.state) {
+			conditions.push(eq(structureSkyhookStates.state, query.state))
+		}
+		if (query.isRaidable === 'true') {
+			conditions.push(eq(structureSkyhookStates.isRaidable, true))
+		} else if (query.isRaidable === 'false') {
+			conditions.push(eq(structureSkyhookStates.isRaidable, false))
+		}
+		return combineWhereConditions(conditions)
+	})()
+
+	const skyhookRows = await db.query.structureSkyhookStates.findMany({
+		where: combineWhereConditions([
+			inArray(structureSkyhookStates.structureId, structureIds),
+			skyhookWhere,
+		]),
+		orderBy: desc(structureSkyhookStates.updatedAt),
+	})
+	const skyhookByStructureId = new Map(skyhookRows.map((row) => [row.structureId, row]))
+
+	const items = skyhookContexts.map((context) => {
+		const skyhookRow = skyhookByStructureId.get(context.structure.structureId) ?? null
+		return buildSkyhookListItem({
+			skyhookRow,
+			structureRow: context.structure,
+			corporationName: context.corporationName,
+			canViewSensitive: context.canViewSensitive,
+		})
+	})
+
+	const sortBy = query.sortBy ?? 'updatedAt'
+	const sortDirection = query.sortDirection ?? 'desc'
+	const sortedItems = sortStructures(
+		items.map((item) => ({
+			...item,
+			state: item.state,
+			lowPower: false,
+			fuelExpires: null,
+			fuelAmount: null,
+			hidden: false,
+			lowPowerAllowed: false,
+			assignedGroupId: null,
+			profileId: '',
+			nextStateAt: item.theftVulnerabilityEnd,
+		})) as StructureListItem[],
+		sortBy,
+		sortDirection
+	)
+	const pageSize = Math.min(Math.max(query.pageSize ?? 25, 1), STRUCTURE_LIST_PAGE_SIZE_MAX)
+	const totalCount = sortedItems.length
+	const totalPages = Math.max(1, Math.ceil(totalCount / pageSize))
+	const page = Math.min(Math.max(query.page ?? 1, 1), totalPages)
+	const start = (page - 1) * pageSize
+	const end = start + pageSize
+
+	return {
+		items: sortedItems.slice(start, end).map((item) => items.find((row) => row.structureId === item.structureId)!) as StructureSkyhookListItem[],
+		pagination: {
+			page,
+			pageSize,
+			totalCount,
+			totalPages,
+			hasNextPage: page < totalPages,
+			hasPreviousPage: page > 1,
+		},
+		filterOptions: buildStructureFilterOptions(items),
+		summary: {
+			total: items.length,
+			lowFuel: 0,
+			lowPower: 0,
+			reinforced: 0,
+		},
+	}
+}
+
+export async function listMiningStructures(
+	db: DbClient<DbSchema>,
+	user: SessionUser,
+	query: StructureMiningListQuery = {}
+): Promise<StructureListResponse<StructureMiningListItem>> {
+	const { contexts, access } = await loadVisibleStructureContexts(db, user, {
+		corporationId: query.corporationId,
+		systemId: query.systemId,
+		typeId: query.typeId,
+	})
+
+	if (!access.viewAll && access.viewCorporationIds.size === 0) {
+		return {
+			items: [],
+			pagination: {
+				page: 1,
+				pageSize: query.pageSize ?? 25,
+				totalCount: 0,
+				totalPages: 1,
+				hasNextPage: false,
+				hasPreviousPage: false,
+			},
+			filterOptions: emptyStructureFilterOptions(),
+			summary: {
+				total: 0,
+				lowFuel: 0,
+				lowPower: 0,
+				reinforced: 0,
+			},
+		}
+	}
+
+	const miningContexts = contexts.filter((context) => getStructureTab(context.structure) === 'mining')
+	const structureIds = miningContexts.map((context) => context.structure.structureId)
+
+	if (structureIds.length === 0) {
+		return {
+			items: [],
+			pagination: {
+				page: 1,
+				pageSize: query.pageSize ?? 25,
+				totalCount: 0,
+				totalPages: 1,
+				hasNextPage: false,
+				hasPreviousPage: false,
+			},
+			filterOptions: emptyStructureFilterOptions(),
+			summary: {
+				total: 0,
+				lowFuel: 0,
+				lowPower: 0,
+				reinforced: 0,
+			},
+		}
+	}
+
+	const miningWhere = (() => {
+		const conditions: StructureWhereCondition[] = []
+		if (query.planetId) {
+			conditions.push(eq(structureMiningStates.planetId, query.planetId))
+		}
+		return combineWhereConditions(conditions)
+	})()
+
+	const miningRows = await db.query.structureMiningStates.findMany({
+		where: combineWhereConditions([
+			inArray(structureMiningStates.structureId, structureIds),
+			miningWhere,
+		]),
+		orderBy: desc(structureMiningStates.updatedAt),
+	})
+	const miningByStructureId = new Map(miningRows.map((row) => [row.structureId, row]))
+	const items = miningContexts.map((context) =>
+		buildMiningListItem({
+			miningRow: miningByStructureId.get(context.structure.structureId) ?? null,
+			structureRow: context.structure,
+			corporationName: context.corporationName,
+			canViewSensitive: context.canViewSensitive,
+		})
+	)
+
+	const sortBy = query.sortBy ?? 'updatedAt'
+	const sortDirection = query.sortDirection ?? 'desc'
+	const sortedItems = sortStructures(
+		items.map((item) => ({
+			...item,
+			state: item.typeName ?? 'mining',
+			lowPower: false,
+			fuelExpires: null,
+			fuelAmount: null,
+			hidden: false,
+			lowPowerAllowed: false,
+			assignedGroupId: null,
+			profileId: '',
+			nextStateAt: item.estimatedFullAt,
+		})) as StructureListItem[],
+		sortBy,
+		sortDirection
+	)
+	const pageSize = Math.min(Math.max(query.pageSize ?? 25, 1), STRUCTURE_LIST_PAGE_SIZE_MAX)
+	const totalCount = sortedItems.length
+	const totalPages = Math.max(1, Math.ceil(totalCount / pageSize))
+	const page = Math.min(Math.max(query.page ?? 1, 1), totalPages)
+	const start = (page - 1) * pageSize
+	const end = start + pageSize
+
+	return {
+		items: sortedItems.slice(start, end).map((item) => items.find((row) => row.structureId === item.structureId)!) as StructureMiningListItem[],
+		pagination: {
+			page,
+			pageSize,
+			totalCount,
+			totalPages,
+			hasNextPage: page < totalPages,
+			hasPreviousPage: page > 1,
+		},
+		filterOptions: buildStructureFilterOptions(items),
+		summary: {
+			total: items.length,
+			lowFuel: 0,
+			lowPower: 0,
+			reinforced: 0,
+		},
 	}
 }
 

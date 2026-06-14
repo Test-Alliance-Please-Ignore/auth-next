@@ -1044,6 +1044,9 @@ importers:
       '@repo/queue-utils':
         specifier: workspace:*
         version: link:../../packages/queue-utils
+      '@repo/structures-db-schema':
+        specifier: workspace:*
+        version: link:../../packages/structures-db-schema
       '@repo/universe':
         specifier: workspace:*
         version: link:../../packages/universe
@@ -2400,12 +2403,18 @@ importers:
       '@repo/hono-helpers':
         specifier: workspace:*
         version: link:../../packages/hono-helpers
+      '@repo/inventory-display':
+        specifier: workspace:*
+        version: link:../../packages/inventory-display
       '@repo/structure-states':
         specifier: workspace:*
         version: link:../../packages/structure-states
       '@repo/structures':
         specifier: workspace:*
         version: link:../../packages/structures
+      '@repo/structures-db-schema':
+        specifier: workspace:*
+        version: link:../../packages/structures-db-schema
       drizzle-orm:
         specifier: 0.44.7
         version: 0.44.7(@cloudflare/workers-types@4.20260501.1)(@neondatabase/serverless@1.0.2)(@opentelemetry/api@1.9.0)(@types/pg@8.15.6)(bun-types@1.3.2(@types/react@19.2.6))(mysql2@3.15.3)
@@ -2515,6 +2524,9 @@ importers:
       '@repo/hono-helpers':
         specifier: workspace:*
         version: link:../../packages/hono-helpers
+      '@repo/inventory-display':
+        specifier: workspace:*
+        version: link:../../packages/inventory-display
       '@repo/moon-scan':
         specifier: workspace:*
         version: link:../../packages/moon-scan
@@ -2524,6 +2536,9 @@ importers:
       '@repo/structure-states':
         specifier: workspace:*
         version: link:../../packages/structure-states
+      '@repo/structures':
+        specifier: workspace:*
+        version: link:../../packages/structures
       '@repo/worker-utils':
         specifier: workspace:*
         version: link:../../packages/worker-utils
@@ -3318,6 +3333,18 @@ importers:
       '@cloudflare/workers-types':
         specifier: 4.20260501.1
         version: 4.20260501.1
+      '@repo/eslint-config':
+        specifier: workspace:*
+        version: link:../eslint-config
+      '@repo/tools':
+        specifier: workspace:*
+        version: link:../tools
+      '@repo/typescript-config':
+        specifier: workspace:*
+        version: link:../typescript-config
+
+  packages/inventory-display:
+    devDependencies:
       '@repo/eslint-config':
         specifier: workspace:*
         version: link:../eslint-config

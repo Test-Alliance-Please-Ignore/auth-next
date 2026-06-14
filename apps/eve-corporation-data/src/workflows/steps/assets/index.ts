@@ -16,7 +16,7 @@ export async function syncAssets(
 	const corpData = getCorporationDataStub(env, corporationId)
 
 	const result = await corpData.syncAssetsWithDirector(corporationId, directorCharacterId)
-	logger.info('[AssetsStep] Synced assets', { corporationId, count: result.assetsCount })
+	logger.info('[AssetsStep] Synced structure inventory', { corporationId, count: result.assetsCount })
 
 	return {
 		assetsCount: result.assetsCount,

@@ -11,7 +11,13 @@ import {
 	deleteStructureGroupAlertConfig,
 	deleteStructureGroupSetting,
 	getStructureModuleConfig,
+	getStructureOverviewMetrics,
 	getVisibleStructureDetail,
+	listCitadelStructures,
+	listMiningStructures,
+	listNavigationStructures,
+	listSkyhookStructures,
+	listSovereigntyStructures,
 	listStructureCorporationGroupDefaults,
 	listStructureGroupAlertConfigs,
 	listStructureGroupSettings,
@@ -27,8 +33,14 @@ import {
 import type {
 	CreateStructureAlertDestinationRequest,
 	CreateStructureGroupAlertConfigRequest,
+	StructureCitadelListQuery,
 	StructureActor,
+	StructureMiningListQuery,
+	StructureNavigationListQuery,
+	StructureSkyhookListQuery,
+	StructureSovereigntyListQuery,
 	StructureListQuery,
+	StructureOverviewMetrics,
 	StructuresWorker,
 	UpdateStructureAlertDestinationRequest,
 	UpdateStructureConfigInput,
@@ -43,15 +55,6 @@ import type { Env } from './context'
 export class StructuresWorkerEntrypoint extends WorkerEntrypoint<Env> implements StructuresWorker {
 	constructor(ctx: ExecutionContext, env: Env) {
 		super(ctx, env)
-		try {
-			const databaseUrl = new URL(env.DATABASE_URL)
-			console.log('[StructuresWorker] DATABASE_URL host', databaseUrl.host)
-		} catch (error) {
-			console.log(
-				'[StructuresWorker] Failed to parse DATABASE_URL for startup logging',
-				error instanceof Error ? error.message : String(error)
-			)
-		}
 	}
 
 	private getDb() {
@@ -60,6 +63,36 @@ export class StructuresWorkerEntrypoint extends WorkerEntrypoint<Env> implements
 
 	async listVisibleStructures(actor: StructureActor, query: StructureListQuery = {}): Promise<unknown> {
 		return listVisibleStructures(this.getDb(), actor, query)
+	}
+
+	async listCitadelStructures(actor: StructureActor, query: StructureCitadelListQuery = {}): Promise<unknown> {
+		return listCitadelStructures(this.getDb(), actor, query)
+	}
+
+	async listNavigationStructures(
+		actor: StructureActor,
+		query: StructureNavigationListQuery = {}
+	): Promise<unknown> {
+		return listNavigationStructures(this.getDb(), actor, query)
+	}
+
+	async listSovereigntyStructures(
+		actor: StructureActor,
+		query: StructureSovereigntyListQuery = {}
+	): Promise<unknown> {
+		return listSovereigntyStructures(this.getDb(), actor, query)
+	}
+
+	async listSkyhookStructures(actor: StructureActor, query: StructureSkyhookListQuery = {}): Promise<unknown> {
+		return listSkyhookStructures(this.getDb(), actor, query)
+	}
+
+	async listMiningStructures(actor: StructureActor, query: StructureMiningListQuery = {}): Promise<unknown> {
+		return listMiningStructures(this.getDb(), actor, query)
+	}
+
+	async getStructureOverviewMetrics(actor: StructureActor): Promise<StructureOverviewMetrics> {
+		return getStructureOverviewMetrics(this.getDb(), actor)
 	}
 
 	async getVisibleStructureDetail(actor: StructureActor, structureId: string): Promise<unknown> {
