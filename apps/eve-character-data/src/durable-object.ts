@@ -7,6 +7,7 @@ import { createEveAllianceId, createEveCharacterId, createEveCorporationId } fro
 import { parseJsonResponse } from '@repo/worker-utils'
 
 import { createDb } from './db'
+import { buildUserSyncWorkflowOptions } from './workflows/build-user-sync-workflow-options'
 import { buildCharacterSyncWorkflowOptions } from './workflows/build-character-sync-workflow-options'
 import {
 	characterAssets,
@@ -1748,29 +1749,58 @@ export class EveCharacterDataDO extends DurableObject<Env> implements EveCharact
 		startedAt: string
 	}> {
 		const startedAt = new Date().toISOString()
-		const userEntries = await this.env.CORE.listUsersWithActiveCharacters()
-		// Manual runs should stay near-immediate, but still avoid a perfectly synchronized spike.
-		const JITTER_WINDOW_SECONDS = 5
-		const workflows = await buildCharacterSyncWorkflowOptions({
-			characterIds: userEntries.flatMap(({ characterIds }) => characterIds),
-			resolveCharacterOwner: async (characterId) => this.env.CORE.getCharacterOwner(characterId),
-			resolveUserCharacterIds: async (userId) => this.env.CORE.getUserCharacterIds(userId),
-			trigger: 'api',
-			jitterWindowSeconds: JITTER_WINDOW_SECONDS,
-		})
-
+		const PAGE_SIZE = 100
 		const BATCH_SIZE = 75
+		// Manual runs should stay near-immediate, but still avoid a perfectly synchronized spike.
+		const JITTER_WINDOW_SECONDS = 60
+
+		let totalUsers = 0
+		let totalCharacters = 0
 		let created = 0
 		let failed = 0
+		let processedUsers = 0
 		const createdIds: string[] = []
-		for (let i = 0; i < workflows.length; i += BATCH_SIZE) {
-			const batch = workflows.slice(i, i + BATCH_SIZE)
-			try {
-				await this.env.EVE_CHARACTER_SYNC.createBatch(batch)
-				created += batch.length
-				createdIds.push(...batch.map((entry) => entry.id))
-			} catch {
-				failed += batch.length
+
+		let offset = 0
+		let pageIndex = 0
+
+		while (true) {
+			const page = await this.env.CORE.listUsersWithActiveCharactersPage({
+				limit: PAGE_SIZE,
+				offset,
+			})
+			if (pageIndex === 0) {
+				totalUsers = page.totalCount
+			}
+			if (page.users.length === 0) {
+				break
+			}
+
+			totalCharacters += page.users.reduce((sum, entry) => sum + entry.characterIds.length, 0)
+			const workflows = buildUserSyncWorkflowOptions({
+				userBatches: page.users,
+				trigger: 'api',
+				totalCount: totalUsers,
+				startIndex: processedUsers,
+				jitterWindowSeconds: JITTER_WINDOW_SECONDS,
+			})
+
+			for (let i = 0; i < workflows.length; i += BATCH_SIZE) {
+				const batch = workflows.slice(i, i + BATCH_SIZE)
+				try {
+					await this.env.EVE_CHARACTER_SYNC.createBatch(batch)
+					created += batch.length
+					createdIds.push(...batch.map((entry: { id: string }) => entry.id))
+				} catch {
+					failed += batch.length
+				}
+			}
+
+			processedUsers += page.users.length
+			offset += page.users.length
+			pageIndex += 1
+			if (offset >= totalUsers) {
+				break
 			}
 		}
 
@@ -1786,10 +1816,10 @@ export class EveCharacterDataDO extends DurableObject<Env> implements EveCharact
 
 		return {
 			batchId,
-			totalWorkflowInstances: workflows.length,
-			totalCharacters: userEntries.reduce((sum, entry) => sum + entry.characterIds.length, 0),
-			ownedUserWorkflows: workflows.filter((workflow) => Boolean(workflow.params.userId)).length,
-			unownedCharacterWorkflows: workflows.filter((workflow) => !workflow.params.userId).length,
+			totalWorkflowInstances: created + failed,
+			totalCharacters,
+			ownedUserWorkflows: totalUsers,
+			unownedCharacterWorkflows: 0,
 			created,
 			failed,
 			workflowInstanceIds: createdIds,

@@ -214,6 +214,19 @@ export class CoreWorker extends WorkerEntrypoint<Env> {
 	}
 
 	/**
+	 * List a page of users that currently have at least one active linked character.
+	 */
+	async listUsersWithActiveCharactersPage(input: {
+		limit: number
+		offset: number
+	}): Promise<{
+		users: Array<{ userId: string; characterIds: string[] }>
+		totalCount: number
+	}> {
+		return this.getService().listUsersWithActiveCharactersPage(input)
+	}
+
+	/**
 	 * List every core user that currently has at least one active linked character.
 	 */
 	async listUsersWithActiveCharacters(): Promise<Array<{ userId: string; characterIds: string[] }>> {
