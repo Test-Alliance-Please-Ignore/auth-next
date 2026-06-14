@@ -182,7 +182,13 @@ export default function CorporationMembers() {
 				}
 				navigate(`/corporations/${corporationId}/members/${member.authUserId}`)
 			} else {
-				navigate(`/character/${member.characterId}`)
+				navigate(`/character/${member.characterId}`, {
+					state: {
+						source: 'corporation-members',
+						backTo: `/corporations/${corporationId}/members`,
+						backLabel: 'Back to Members',
+					},
+				})
 			}
 		},
 		[navigate, corporationId, isAuditor, hasCorpAccess, user]

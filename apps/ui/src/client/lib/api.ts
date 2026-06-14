@@ -2285,6 +2285,7 @@ export class ApiClient {
 		isOwner: boolean
 		viewedAsAdmin: boolean
 		viewedAsCeoOrDirector: boolean
+		viewedAsHrViewer: boolean
 		viewerRole: 'CEO' | 'Director' | null
 		public: {
 			info: any

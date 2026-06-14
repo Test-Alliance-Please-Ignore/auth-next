@@ -345,6 +345,7 @@ app.get('/:characterId', requireAuth(), async (c) => {
 	let actualOwner: { userId: string; characterName: string } | null = null
 	const viewedAsAdmin = isAdmin && !isActualOwner
 	const viewedAsCeoOrDirector = isCeoOrDirector && !isActualOwner
+	const viewedAsHrViewer = hasHrViewerAccess && !isActualOwner && !isAdmin && !isCeoOrDirector
 
 	if (viewedAsAdmin) {
 		try {
@@ -513,6 +514,7 @@ app.get('/:characterId', requireAuth(), async (c) => {
 			isOwner,
 			viewedAsAdmin,
 			viewedAsCeoOrDirector,
+			viewedAsHrViewer,
 			viewerRole,
 			public: {
 				info: enrichedInfo,
