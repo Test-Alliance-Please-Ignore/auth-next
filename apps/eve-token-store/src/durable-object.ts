@@ -2679,7 +2679,7 @@ export class EveTokenStoreDO extends DurableObject<Env> implements EveTokenStore
 	/**
 	 * Get the characters that should be included in the daily ESI data sync.
 	 * The daily cron already provides the cadence, so this returns all active
-	 * characters and orders them by least-recently synced first.
+	 * characters without filtering on prior sync timestamps.
 	 */
 	async getCharactersNeedingDataSync(limit?: number): Promise<string[]> {
 		const whereClause = isNull(eveCharacters.deletedAt)
@@ -2688,12 +2688,12 @@ export class EveTokenStoreDO extends DurableObject<Env> implements EveTokenStore
 			typeof limit === 'number' && limit > 0
 				? await this.db.query.eveCharacters.findMany({
 						where: whereClause,
-						orderBy: (table) => [asc(table.lastDataSyncAt), asc(table.characterId)],
+						orderBy: (table) => [asc(table.characterId)],
 						limit,
 					})
 				: await this.db.query.eveCharacters.findMany({
 						where: whereClause,
-						orderBy: (table) => [asc(table.lastDataSyncAt), asc(table.characterId)],
+						orderBy: (table) => [asc(table.characterId)],
 					})
 
 		return characters.map((c) => c.characterId)

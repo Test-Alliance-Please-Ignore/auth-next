@@ -34,6 +34,22 @@ import type {
 } from '@repo/bills'
 import type { BillsDb } from '../db'
 
+function parseISKToMinorUnits(value: string): bigint | null {
+	const normalized = value.trim()
+	if (!/^-?\d+(\.\d+)?$/.test(normalized)) {
+		return null
+	}
+
+	const [wholePart, fractionPart = ''] = normalized.split('.')
+	const paddedFraction = `${fractionPart}00`.slice(0, 2)
+
+	try {
+		return BigInt(`${wholePart}${paddedFraction}`)
+	} catch {
+		return null
+	}
+}
+
 /**
  * Bill Service
  *
@@ -939,12 +955,21 @@ export class BillService {
 		if (!bill) {
 			throw new Error('Bill not found')
 		}
-		const totalAmount = BigInt(bill.amount) + BigInt(bill.lateFee)
-		const paidAmount = bill.payments.reduce(
-			(acc, payment) => acc + BigInt(payment.amount),
-			BigInt(0)
-		)
-		return paidAmount >= totalAmount ? true : false
+		const totalAmount = parseISKToMinorUnits(bill.amount)
+		const lateFeeAmount = parseISKToMinorUnits(bill.lateFee)
+		if (totalAmount === null || lateFeeAmount === null) {
+			throw new Error('Bill amount or late fee is invalid')
+		}
+
+		const paidAmount = bill.payments.reduce((acc, payment) => {
+			const paymentAmount = parseISKToMinorUnits(payment.amount)
+			if (paymentAmount === null) {
+				throw new Error(`Invalid payment amount for bill ${billId}`)
+			}
+			return acc + paymentAmount
+		}, BigInt(0))
+
+		return paidAmount >= totalAmount + lateFeeAmount
 	}
 
 	async markBillAsPaid(billId: string, actorUserId: string | null = null): Promise<Bill> {
