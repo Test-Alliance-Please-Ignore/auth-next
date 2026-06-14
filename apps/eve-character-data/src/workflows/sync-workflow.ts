@@ -5,10 +5,10 @@ import { logger } from '@repo/hono-helpers'
 import { createWorkflowInstanceUpdater } from '@repo/orchestrator'
 import { esiRetryOptions, withEsiRetryClassification } from '@repo/workflow-utils'
 
-import * as refreshHelpers from './helpers/refresh-public-info'
 import * as refreshAuthenticatedData from './helpers/refresh-authenticated-data'
+import * as refreshHelpers from './helpers/refresh-public-info'
 
-import type { EveCharacterSyncDataType } from '@repo/eve-character-data'
+import type { EveCharacterData, EveCharacterSyncDataType } from '@repo/eve-character-data'
 import type { EveTokenStore } from '@repo/eve-token-store'
 import type { Env } from '../context'
 
@@ -143,7 +143,10 @@ export class EveCharacterSyncWorkflow extends WorkflowEntrypoint<Env, EveCharact
 							},
 							() =>
 								withEsiRetryClassification('fetch-public-info', async () => {
-									logger.debug('[Step] Fetching public info', { characterId, userId: userId ?? null })
+									logger.debug('[Step] Fetching public info', {
+										characterId,
+										userId: userId ?? null,
+									})
 									return await refreshHelpers.refreshPublicInfo(this.env, characterId)
 								})
 						)
@@ -158,6 +161,42 @@ export class EveCharacterSyncWorkflow extends WorkflowEntrypoint<Env, EveCharact
 							syncStats.deleted++
 						} else if (publicInfoResult.affiliationChanged) {
 							affiliationChangedCharacterIds.push(characterId)
+						}
+						// Fetch corporation history in a separate step with its own retry config.
+						// This is a public ESI endpoint so it doesn't require auth, but it can
+						// still fail (rate limits, ESI downtime) without impacting the critical
+						// public-info and affiliation detection for this character.
+						if (!publicInfoResult.isDeleted) {
+							try {
+								await step.do(
+									`fetch-corporation-history-${stepSuffix}`,
+									{
+										retries: { limit: 2, delay: '10 seconds', backoff: 'exponential' },
+										timeout: '30 seconds',
+									},
+									async () => {
+										const characterDataStub = getStub<EveCharacterData>(
+											this.env.EVE_CHARACTER_DATA,
+											characterId
+										)
+										logger.debug('[Step] Fetching corporation history', {
+											characterId,
+											userId: userId ?? null,
+										})
+										return await characterDataStub.fetchCorporationHistory(characterId)
+									}
+								)
+							} catch (error) {
+								const message = error instanceof Error ? error.message : String(error)
+								logger.warn(
+									'[EveCharacterSyncWorkflow] Corporation history fetch failed (non-fatal)',
+									{
+										characterId,
+										userId: userId ?? null,
+										error: message,
+									}
+								)
+							}
 						}
 					} catch (error) {
 						const message = error instanceof Error ? error.message : String(error)
@@ -226,12 +265,15 @@ export class EveCharacterSyncWorkflow extends WorkflowEntrypoint<Env, EveCharact
 				}
 			} catch (error) {
 				syncStats.characterFailures++
-				logger.error('[EveCharacterSyncWorkflow] Character sync failed; continuing with next character', {
-					characterId,
-					userId: userId ?? null,
-					error: error instanceof Error ? error.message : String(error),
-					errorDetails: extractErrorDetails(error),
-				})
+				logger.error(
+					'[EveCharacterSyncWorkflow] Character sync failed; continuing with next character',
+					{
+						characterId,
+						userId: userId ?? null,
+						error: error instanceof Error ? error.message : String(error),
+						errorDetails: extractErrorDetails(error),
+					}
+				)
 			}
 		}
 
