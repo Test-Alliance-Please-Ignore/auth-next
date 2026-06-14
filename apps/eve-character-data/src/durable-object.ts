@@ -21,10 +21,7 @@ import {
 	characterWallet,
 	characterWalletJournal,
 } from './db/schema'
-import {
-	buildCharacterSyncWorkflowOptions,
-	buildCharacterSyncWorkflowOptions,
-} from './workflows/build-character-sync-workflow-options'
+import { buildCharacterSyncWorkflowOptions } from './workflows/build-character-sync-workflow-options'
 import { buildUserSyncWorkflowOptions } from './workflows/build-user-sync-workflow-options'
 
 import type {
