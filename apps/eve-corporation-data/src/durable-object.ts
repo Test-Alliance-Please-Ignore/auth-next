@@ -110,6 +110,13 @@ const CHARACTER_WALLET_SCOPE = 'esi-wallet.read_character_wallet.v1'
 const CORPORATION_MEMBERSHIP_SCOPE = 'esi-corporations.read_corporation_membership.v1'
 const NPC_CORPORATION_ID_MIN = 1_000_000
 const NPC_CORPORATION_ID_MAX = 1_999_999
+const SHARED_SOVEREIGNTY_SYSTEMS_CACHE_KEY = 'shared:sovereignty-systems'
+const SHARED_SOVEREIGNTY_SYSTEMS_CACHE_MAX_AGE_SECONDS = 300
+
+type SharedSovereigntySystemsSnapshot = {
+	observedAt: string
+	systemsById: Record<string, EsiSovereigntySystem>
+}
 
 function parseNumberOrNull(value: unknown): number | null {
 	if (value === null || value === undefined || value === '') {
@@ -2172,7 +2179,44 @@ export class EveCorporationDataDO extends DurableObject<Env> implements EveCorpo
 	}
 
 	/**
-	 * Get a cached sovereignty system snapshot if it is still within TTL.
+	 * Store the shared sovereignty system snapshot used by workflow fan-out.
+	 */
+	async storeSharedSovereigntySystems(systems: EsiSovereigntySystem[]): Promise<void> {
+		const snapshot: SharedSovereigntySystemsSnapshot = {
+			observedAt: new Date().toISOString(),
+			systemsById: Object.fromEntries(systems.map((system) => [system.system_id, system])),
+		}
+		await this.state.storage.put(SHARED_SOVEREIGNTY_SYSTEMS_CACHE_KEY, snapshot)
+	}
+
+	/**
+	 * Get the shared sovereignty system snapshot if it is still within TTL.
+	 */
+	async getSharedSovereigntySystems(
+		maxAgeSeconds = SHARED_SOVEREIGNTY_SYSTEMS_CACHE_MAX_AGE_SECONDS
+	): Promise<EsiSovereigntySystem[] | null> {
+		const snapshot = await this.state.storage.get<SharedSovereigntySystemsSnapshot>(
+			SHARED_SOVEREIGNTY_SYSTEMS_CACHE_KEY
+		)
+		if (!snapshot) {
+			return null
+		}
+
+		const observedAt = parseDateOrNull(snapshot.observedAt)
+		if (!observedAt) {
+			return null
+		}
+
+		const ageMs = Date.now() - observedAt.getTime()
+		if (ageMs > maxAgeSeconds * 1000) {
+			return null
+		}
+
+		return Object.values(snapshot.systemsById ?? {})
+	}
+
+	/**
+	 * Get a cached sovereignty system snapshot for a specific corporation if it is still within TTL.
 	 */
 	async getSovereigntySystems(
 		corporationId: string,
