@@ -2,7 +2,7 @@ import { logger } from '@repo/hono-helpers'
 
 import * as esiFetch from '../../../services/esi-fetch'
 import { createTokenStore, getCorporationDataStub } from '../../utils/services'
-import { getSharedSovereigntySystems } from '../../utils/sovereignty-systems-cache'
+import { readSharedSovereigntySystemsByIds } from '../../utils/sovereignty-systems-cache'
 
 import type { Env } from '../../../context'
 
@@ -13,7 +13,7 @@ export type CorporationSkyhooksData = Awaited<ReturnType<typeof esiFetch.fetchCo
 export type MiningStatesData = Awaited<ReturnType<typeof esiFetch.deriveMiningStatesFromSkyhooks>>
 
 export interface StructuresEnrichmentData {
-	sovereigntySystems: SovereigntySystemsData
+	sovereigntySystems: SovereigntySystemsData | null
 	sovereigntyHubs: SovereigntyHubsData
 	skyhooks: CorporationSkyhooksData
 	miningStates: MiningStatesData
@@ -55,14 +55,22 @@ export async function fetchStructureEnrichment(
 	directorCharacterId: string
 ): Promise<StructuresEnrichmentData> {
 	const tokenStore = createTokenStore(env)
-	const sovereigntySystems = await getSharedSovereigntySystems(env)
 	const [sovereigntyHubs, skyhooks] = await Promise.all([
 		esiFetch.fetchSovereigntyHubs(tokenStore, corporationId, directorCharacterId),
 		esiFetch.fetchCorporationSkyhooks(tokenStore, corporationId, directorCharacterId),
 	])
+	const sovereigntySystems = await readSharedSovereigntySystemsByIds(
+		env,
+		sovereigntyHubs.map((hub) => hub.system_id)
+	)
+	if (!sovereigntySystems) {
+		logger.warn('[StructuresStep] Shared sovereignty snapshot missing or stale; skipping system enrichment', {
+			corporationId,
+		})
+	}
 
 	const allianceBySystemId = new Map(
-		sovereigntySystems
+		(sovereigntySystems ?? [])
 			.filter((system) => system.claim_type === 'alliance' && system.alliance_id !== undefined)
 			.map((system) => [system.system_id, system.alliance_id ?? null])
 	)
@@ -77,7 +85,7 @@ export async function fetchStructureEnrichment(
 
 	logger.debug('[StructuresStep] Fetched structure enrichment', {
 		corporationId,
-		sovereigntySystems: sovereigntySystems.length,
+		sovereigntySystems: sovereigntySystems?.length ?? 0,
 		sovereigntyHubs: sovereigntyHubs.length,
 		skyhooks: mergedSkyhooks.length,
 		miningStates: miningStates.length,
@@ -97,16 +105,19 @@ export async function storeStructureEnrichment(
 	enrichment: StructuresEnrichmentData
 ): Promise<void> {
 	const corpData = getCorporationDataStub(env, corporationId)
-	await Promise.all([
-		corpData.storeSovereigntySystems(corporationId, enrichment.sovereigntySystems),
+	const writes = [
+		enrichment.sovereigntySystems
+			? corpData.storeSovereigntySystems(corporationId, enrichment.sovereigntySystems)
+			: Promise.resolve(),
 		corpData.storeSovereigntyHubs(corporationId, enrichment.sovereigntyHubs),
 		corpData.storeSkyhooks(corporationId, enrichment.skyhooks),
 		corpData.storeMiningStates(corporationId, enrichment.miningStates),
-	])
+	]
+	await Promise.all(writes)
 
 	logger.info('[StructuresStep] Stored structure enrichment', {
 		corporationId,
-		sovereigntySystems: enrichment.sovereigntySystems.length,
+		sovereigntySystems: enrichment.sovereigntySystems?.length ?? 0,
 		sovereigntyHubs: enrichment.sovereigntyHubs.length,
 		skyhooks: enrichment.skyhooks.length,
 		miningStates: enrichment.miningStates.length,
