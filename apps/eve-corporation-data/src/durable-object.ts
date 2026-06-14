@@ -1633,6 +1633,10 @@ export class EveCorporationDataDO extends DurableObject<Env> implements EveCorpo
 		directorCharacterId: string
 	): Promise<{ assetsCount: number }> {
 		this.assertNonNpcCorporation(corporationId)
+		logger.info('[EveCorporationData] syncAssetsWithDirector invoked', {
+			corporationId,
+			directorCharacterId,
+		})
 		const nextAllowedAt = await this.getStructureInventoryNextAllowedAt(corporationId)
 		if (nextAllowedAt) {
 			logger.info('[EveCorporationData] Skipping structure inventory sync due to cooldown', {
@@ -3166,6 +3170,10 @@ export class EveCorporationDataDO extends DurableObject<Env> implements EveCorpo
 		const basePath = `/corporations/${corporationId}/assets`
 		const inventoryRows: StructureInventoryRowInput[] = []
 		try {
+			logger.info('[EveCorporationData] fetchAndStoreStructureInventoryByCharacter: Fetching structure inventory', {
+				corporationId,
+				ownedStructureCount: ownedStructureIds.size,
+			})
 			const result = await syncAssetsPaged({
 				fetchPage: (page) =>
 					tokenStore.fetchEsi(`${basePath}?page=${page}`, characterId, {
