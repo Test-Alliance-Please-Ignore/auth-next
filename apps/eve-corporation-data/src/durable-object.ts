@@ -1553,64 +1553,63 @@ export class EveCorporationDataDO extends DurableObject<Env> implements EveCorpo
 			})
 			.map(([structureId]) => structureId)
 
-		await this.getDb().transaction(async (tx) => {
-			await tx
-				.delete(corporationStructureInventory)
-				.where(eq(corporationStructureInventory.corporationId, corporationId))
+		const db = this.getDb()
+		await db
+			.delete(corporationStructureInventory)
+			.where(eq(corporationStructureInventory.corporationId, corporationId))
 
-			const BATCH_SIZE = 100
-			for (let i = 0; i < inventory.length; i += BATCH_SIZE) {
-				const batch = inventory.slice(i, i + BATCH_SIZE)
-				const valuesToInsert = batch.map((row) => ({
+		const BATCH_SIZE = 100
+		for (let i = 0; i < inventory.length; i += BATCH_SIZE) {
+			const batch = inventory.slice(i, i + BATCH_SIZE)
+			const valuesToInsert = batch.map((row) => ({
+				corporationId: String(corporationId),
+				structureId: row.structureId,
+				itemId: row.itemId,
+				isSingleton: row.isSingleton,
+				locationFlag: row.locationFlag,
+				locationType: row.locationType,
+				quantity: row.quantity,
+				typeId: row.typeId,
+				updatedAt: observedAt,
+			}))
+
+			await db.insert(corporationStructureInventory).values(valuesToInsert)
+		}
+
+		if (ownedStructureIds.size > 0) {
+			const fuelHistoryRows = Array.from(fuelBlockUnitsByStructure.entries()).map(
+				([structureId, fuelBlockUnits]) => ({
 					corporationId: String(corporationId),
-					structureId: row.structureId,
-					itemId: row.itemId,
-					isSingleton: row.isSingleton,
-					locationFlag: row.locationFlag,
-					locationType: row.locationType,
-					quantity: row.quantity,
-					typeId: row.typeId,
+					structureId,
+					fuelBlockUnits,
+					observedAt,
 					updatedAt: observedAt,
-				}))
+				})
+			)
 
-				await tx.insert(corporationStructureInventory).values(valuesToInsert)
-			}
+			await db.insert(structureFuelLog).values(fuelHistoryRows)
+		}
 
-			if (ownedStructureIds.size > 0) {
-				const fuelHistoryRows = Array.from(fuelBlockUnitsByStructure.entries()).map(
-					([structureId, fuelBlockUnits]) => ({
-						corporationId: String(corporationId),
-						structureId,
-						fuelBlockUnits,
-						observedAt,
-						updatedAt: observedAt,
-					})
-				)
-
-				await tx.insert(structureFuelLog).values(fuelHistoryRows)
-			}
-
-			if (refilledStructureIds.length > 0) {
-				await tx
-					.update(corporationStructures)
-					.set({ lastRefilledAt: observedAt })
-					.where(
-						and(
-							eq(corporationStructures.corporationId, corporationId),
-							inArray(corporationStructures.structureId, refilledStructureIds)
-						)
-					)
-			}
-
-			await tx
-				.delete(structureFuelLog)
+		if (refilledStructureIds.length > 0) {
+			await db
+				.update(corporationStructures)
+				.set({ lastRefilledAt: observedAt })
 				.where(
 					and(
-						eq(structureFuelLog.corporationId, corporationId),
-						lte(structureFuelLog.observedAt, new Date(observedAt.getTime() - 30 * 24 * 60 * 60 * 1000))
+						eq(corporationStructures.corporationId, corporationId),
+						inArray(corporationStructures.structureId, refilledStructureIds)
 					)
 				)
-		})
+		}
+
+		await db
+			.delete(structureFuelLog)
+			.where(
+				and(
+					eq(structureFuelLog.corporationId, corporationId),
+					lte(structureFuelLog.observedAt, new Date(observedAt.getTime() - 30 * 24 * 60 * 60 * 1000))
+				)
+			)
 	}
 
 	private async getStructureInventoryNextAllowedAt(
