@@ -3096,7 +3096,7 @@ export class EveCorporationDataDO extends DurableObject<Env> implements EveCorpo
 	/**
 	 * Fetch and store corporation assets (paginated)
 	 */
-	private async fetchAndStoreAssets(corporationId: string, _forceRefresh = false): Promise<void> {
+	private async fetchAndStoreAssets(corporationId: string, _forceRefresh = false): Promise<number> {
 		logger.debug('[fetchAndStoreAssets] Starting asset fetch', { corporationId })
 
 		const { characterId } = await this.getConfiguredCharacter(corporationId)
@@ -3119,6 +3119,7 @@ export class EveCorporationDataDO extends DurableObject<Env> implements EveCorpo
 				totalInserted: insertedCount,
 				totalAssets: insertedCount,
 			})
+			return insertedCount
 		} catch (error) {
 			logger.error('[fetchAndStoreAssets] Failed to insert assets', {
 				corporationId,
