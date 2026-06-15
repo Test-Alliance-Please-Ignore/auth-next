@@ -825,6 +825,7 @@ export interface StructureFittingItem {
 	typeId: string
 	typeName: string | null
 	quantity: number
+	isConsumable?: boolean
 }
 
 export interface StructureDetailResult extends StructureCitadelListItem {
