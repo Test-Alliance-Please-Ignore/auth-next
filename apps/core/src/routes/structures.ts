@@ -17,7 +17,7 @@ import type {
 	UpdateStructureModuleConfigInput,
 } from '@repo/structures'
 import type { EveCorporationData } from '@repo/eve-corporation-data'
-import type { Universe } from '@repo/universe'
+import type { TypeMetadata, Universe } from '@repo/universe'
 import type { Context } from 'hono'
 import type { App } from '../context'
 import { getCachedUserPermissions } from '../lib/groups-cache'
@@ -117,6 +117,7 @@ interface StructureFittingItemView {
 	typeId: string
 	typeName: string | null
 	quantity: number
+	isConsumable?: boolean
 }
 
 interface StructureDetailResponse {
@@ -214,13 +215,20 @@ async function enrichStructureDetailTypeNames(
 
 	const universe = getUniverseStub(env)
 	const typeNameMap: Record<string, string> = {}
+	const typeMetaMap: Record<string, TypeMetadata> = {}
 	const batchSize = 1000
 
 	for (let index = 0; index < typeIds.length; index += batchSize) {
 		const batch = typeIds.slice(index, index + batchSize)
-		const resolved = await universe.resolveTypeNamesByIds(batch)
-		for (const [typeId, typeData] of Object.entries(resolved)) {
+		const [resolvedNames, resolvedMeta] = await Promise.all([
+			universe.resolveTypeNamesByIds(batch).catch(() => ({} as Record<string, null>)),
+			universe.resolveTypeMetadataByIds(batch).catch(() => ({} as Record<string, TypeMetadata>)),
+		])
+		for (const [typeId, typeData] of Object.entries(resolvedNames)) {
 			typeNameMap[typeId] = typeData?.typeName ?? typeId
+		}
+		for (const [typeId, typeMeta] of Object.entries(resolvedMeta)) {
+			typeMetaMap[typeId] = typeMeta
 		}
 	}
 
@@ -241,6 +249,7 @@ async function enrichStructureDetailTypeNames(
 		fittingItems: structure.fittingItems?.map((item) => ({
 			...item,
 			typeName: typeNameMap[item.typeId] ?? item.typeId,
+			...(typeMetaMap[item.typeId]?.categoryName === 'Charge' ? { isConsumable: true } : {}),
 		})),
 	}
 }

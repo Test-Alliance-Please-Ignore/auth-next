@@ -255,6 +255,9 @@ function groupShipItems(items: FittingDisplayItem[]) {
 	}
 
 	for (const item of items) {
+		if (item.isConsumable) {
+			continue
+		}
 		if (item.slotType in groups) {
 			groups[item.slotType as FittingShipSlotType].push(item)
 		}
@@ -283,7 +286,7 @@ function countShipSlots(groups: Record<FittingShipSlotType, FittingDisplayItem[]
 
 function groupPodItems(items: FittingDisplayItem[]) {
 	return items
-		.filter((item) => item.slotType === 'implant')
+		.filter((item) => item.slotType === 'implant' && !item.isConsumable)
 		.slice()
 		.sort((left, right) => left.slotIndex - right.slotIndex)
 }

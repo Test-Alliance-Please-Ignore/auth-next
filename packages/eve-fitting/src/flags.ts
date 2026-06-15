@@ -12,6 +12,7 @@ export interface FittingDisplayItem {
 	quantity: number
 	slotType: FittingSlotType
 	slotIndex: number
+	isConsumable?: boolean
 }
 
 export type FittingSlotFlagName = 'High Slot' | 'Mid Slot' | 'Low Slot' | 'Rig Slot' | 'Subsystem Slot'

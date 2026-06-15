@@ -115,12 +115,11 @@ export function InventoryBaysTable({
 													<div className="mt-0.5 text-muted-foreground">
 														{isExpanded ? <ChevronDown className="h-4 w-4" /> : <ChevronRight className="h-4 w-4" />}
 													</div>
-													<div className="min-w-0">
-														<div className="font-medium">{bay.label}</div>
-														<div className="text-xs text-muted-foreground">{bay.locationFlag}</div>
-													</div>
-												</div>
-											</TableCell>
+											<div className="min-w-0">
+												<div className="font-medium">{bay.label}</div>
+											</div>
+										</div>
+									</TableCell>
 											<TableCell className="text-right font-mono">{formatCount(bay.totalStacks)}</TableCell>
 											<TableCell className="text-right font-mono">{formatCount(bay.totalQuantity)}</TableCell>
 										</TableRow>
@@ -147,7 +146,6 @@ export function InventoryBaysTable({
 																					) : null}
 																					<div className="min-w-0">
 																						<div className="font-medium">{item.typeName ?? item.typeId}</div>
-																						<div className="text-xs text-muted-foreground">{item.typeId}</div>
 																					</div>
 																				</div>
 																			</TableCell>

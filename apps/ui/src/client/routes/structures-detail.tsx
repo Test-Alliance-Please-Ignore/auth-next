@@ -172,6 +172,7 @@ function structureFittingItemsToDisplayItems(structure: StructureDetailResult): 
 		quantity: Math.max(1, item.quantity),
 		slotType: FITTING_SLOT_TYPE_BY_NAME[item.flagName],
 		slotIndex: item.slotIndex ?? index,
+		...(item.isConsumable ? { isConsumable: true } : {}),
 	}))
 }
 
@@ -334,7 +335,7 @@ export default function StructuresDetailPage() {
 				<Card>
 					<CardHeader className="gap-4 sm:flex-row sm:items-start sm:justify-between">
 						<div className="space-y-1.5">
-							<CardTitle>Structure Summary</CardTitle>
+							<CardTitle>Summary</CardTitle>
 							<CardDescription>Current synced state and operational metadata.</CardDescription>
 						</div>
 						{isAdmin && (
@@ -365,6 +366,10 @@ export default function StructuresDetailPage() {
 								<div className="font-medium">{structure.typeName ?? structure.typeId}</div>
 							</div>
 							<div>
+								<div className="text-muted-foreground">Low Power</div>
+								<div className="font-medium">{structure.lowPower ? 'Yes' : 'No'}</div>
+							</div>
+							<div>
 								<div className="text-muted-foreground">Fuel</div>
 								<div className="font-medium">
 									{structure.fuelAmount !== null ? (
@@ -381,10 +386,6 @@ export default function StructuresDetailPage() {
 								<div className="font-medium">{formatNullableDateTime(structure.lastRefilledAt)}</div>
 							</div>
 							<div>
-								<div className="text-muted-foreground">Reinforcement Hour</div>
-								<div className="font-medium">{formatReinforcementHourUtc(structure.reinforceHour)}</div>
-							</div>
-							<div>
 								<div className="text-muted-foreground">State</div>
 								<div className="font-medium">
 									<StructureStateBadge state={structure.state} />
@@ -396,49 +397,91 @@ export default function StructuresDetailPage() {
 									{structure.nextStateAt ? formatDateTimeLong(structure.nextStateAt) : '-'}
 								</div>
 							</div>
-							<div>
-								<div className="text-muted-foreground">Last Synced</div>
-								<div className="font-medium">
-									{structure.lastSyncedAt ? formatDateTimeLong(structure.lastSyncedAt) : '-'}
-								</div>
-							</div>
-							<div>
-								<div className="text-muted-foreground">Low Power</div>
-								<div className="font-medium">{structure.lowPower ? 'Yes' : 'No'}</div>
-							</div>
-							<div className="col-span-2 rounded-lg border border-border/60 p-4">
-								<div className="text-muted-foreground">Sync Status</div>
-								<div className="mt-2">
-									<StructureSyncStatusBadge status={structure.syncStatus} description={syncDescription} />
-								</div>
-								<div className="mt-2 text-sm text-muted-foreground">{syncDescription}</div>
-							</div>
 						</div>
-						{structure.nextReinforceHour !== null && structure.nextReinforceApply ? (
-							<div className="grid gap-4 md:grid-cols-2">
-								<div>
-									<div className="text-muted-foreground">Next Reinforcement Hour</div>
-									<div className="font-medium">{formatReinforcementHourUtc(structure.nextReinforceHour)}</div>
-								</div>
-								<div>
-									<div className="text-muted-foreground">Next Reinforcement Applies</div>
-									<div className="font-medium">
-										<EveTimeDisplay dateStr={structure.nextReinforceApply} format="compact" />
-									</div>
-								</div>
-							</div>
-						) : null}
 						<div className="flex flex-wrap gap-2 pt-2">
 							{structure.hidden && <Badge variant="ghost">Hidden</Badge>}
 							{structure.lowPowerAllowed && <Badge variant="success">Low Power Alerts Suppressed</Badge>}
 							{structure.assignedGroupId && <Badge variant="special">Group Assigned</Badge>}
+						</div>
+						<div className="space-y-3">
+							<div className="space-y-2">
+								<div className="text-xs uppercase tracking-wider text-muted-foreground">Reinforcement</div>
+								<div className="rounded-lg border border-border/60 bg-muted/20 p-3 text-sm">
+									<div className="grid gap-3">
+										<div>
+											<div className="text-xs text-muted-foreground">Reinforcement Hour</div>
+											<div className="font-medium">
+												{formatReinforcementHourUtc(structure.reinforceHour)}
+											</div>
+										</div>
+										<div>
+											<div className="text-xs text-muted-foreground">Next Reinforcement Hour</div>
+											<div className="font-medium">
+												{structure.nextReinforceHour !== null
+													? formatReinforcementHourUtc(structure.nextReinforceHour)
+													: '-'}
+											</div>
+										</div>
+										<div>
+											<div className="text-xs text-muted-foreground">Next Reinforcement Applies</div>
+											<div className="font-medium">
+												{structure.nextReinforceApply ? (
+													<EveTimeDisplay dateStr={structure.nextReinforceApply} format="compact" />
+												) : (
+													'-'
+												)}
+											</div>
+										</div>
+									</div>
+								</div>
+							</div>
+							<div className="space-y-2">
+								<div className="text-xs uppercase tracking-wider text-muted-foreground">
+									Structure Services
+								</div>
+								{structure.services.length > 0 ? (
+									<div className="space-y-1.5">
+										{structure.services.map((service) => (
+											<div
+												key={`${service.name}-${service.state}`}
+												className="flex items-center justify-between gap-3 rounded-lg border border-border/60 bg-muted/20 px-3 py-2"
+											>
+												<div className="flex min-w-0 items-center gap-2">
+													<div className="flex h-7 w-7 shrink-0 items-center justify-center rounded-md border border-border/60 bg-muted/50 text-muted-foreground">
+														{renderServiceIcon(service.name)}
+													</div>
+													<div className="min-w-0">
+														<div className="truncate text-sm font-medium">{service.name}</div>
+													</div>
+												</div>
+												<Badge variant={serviceBadgeVariant(service.state)} className="shrink-0">
+													{formatServiceStateLabel(service.state)}
+												</Badge>
+											</div>
+										))}
+									</div>
+								) : (
+									<div className="rounded-lg border border-border/60 bg-muted/20 px-3 py-2 text-sm text-muted-foreground">
+										No structure services were reported for this structure.
+									</div>
+								)}
+							</div>
+							<div className="space-y-2">
+								<div className="text-xs uppercase tracking-wider text-muted-foreground">Sync Status</div>
+								<div className="rounded-lg border border-border/60 p-4">
+									<div className="mt-0.5">
+										<StructureSyncStatusBadge status={structure.syncStatus} description={syncDescription} />
+									</div>
+									<div className="mt-2 text-sm text-muted-foreground">{syncDescription}</div>
+								</div>
+							</div>
 						</div>
 					</CardContent>
 				</Card>
 
 				<Card>
 					<CardHeader>
-						<CardTitle>Structure Configuration</CardTitle>
+						<CardTitle>Configuration</CardTitle>
 						<CardDescription>
 							Manager-level settings for visibility, alert suppression, and group assignment.
 						</CardDescription>
@@ -489,82 +532,6 @@ export default function StructuresDetailPage() {
 								<Save className="h-4 w-4" />
 								Save Changes
 							</Button>
-						</div>
-					</CardContent>
-				</Card>
-			</div>
-
-			<div className="grid gap-4 md:grid-cols-2">
-				{hasStructureFitting ? (
-					<Card>
-						<CardHeader>
-							<CardTitle>Structure Fitting</CardTitle>
-							<CardDescription>
-								Current structure fitting and detected high, mid, and low slot modules from the latest
-								corporation asset snapshot.
-							</CardDescription>
-						</CardHeader>
-						<CardContent className="space-y-6">
-							<div className="overflow-x-auto">
-								<FittingPanel
-									shipTypeId={structure.typeId}
-									shipTypeName={structure.typeName ?? structure.name}
-									items={fittingItems}
-									getIconUrl={typeIconUrl}
-									getRenderUrl={typeRenderUrl}
-								/>
-							</div>
-							<div className="space-y-3 border-t border-border/60 pt-6">
-								<div>
-									<div className="text-sm font-medium">Slot Layout</div>
-									<div className="text-sm text-muted-foreground">
-										High, mid, and low slot fittings from the latest structure asset snapshot.
-									</div>
-								</div>
-								<FittingSlotTable
-									items={fittingItems}
-									getIconUrl={typeIconUrl}
-									slotTypes={STRUCTURE_SLOT_TABLE_TYPES}
-								/>
-							</div>
-						</CardContent>
-					</Card>
-				) : null}
-
-				<Card>
-					<CardHeader>
-						<CardTitle>Services & Reinforcement</CardTitle>
-						<CardDescription>Synced structure services.</CardDescription>
-					</CardHeader>
-					<CardContent className="space-y-6">
-						<div className="space-y-3">
-							<div className="text-sm font-medium">Structure Services</div>
-							{structure.services.length > 0 ? (
-								<div className="space-y-2">
-									{structure.services.map((service) => (
-										<div
-											key={`${service.name}-${service.state}`}
-											className="flex flex-col gap-3 rounded-lg border border-border/60 p-4 sm:flex-row sm:items-center sm:justify-between"
-										>
-											<div className="flex min-w-0 items-center gap-3">
-												<div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-md border border-border/60 bg-muted/40 text-muted-foreground">
-													{renderServiceIcon(service.name)}
-												</div>
-												<div className="min-w-0">
-													<div className="font-medium">{service.name}</div>
-												</div>
-											</div>
-											<Badge variant={serviceBadgeVariant(service.state)} className="shrink-0">
-												{formatServiceStateLabel(service.state)}
-											</Badge>
-										</div>
-									))}
-								</div>
-							) : (
-								<div className="rounded-lg border border-border/60 p-4 text-sm text-muted-foreground">
-									No structure services were reported for this structure.
-								</div>
-							)}
 						</div>
 					</CardContent>
 				</Card>
@@ -715,27 +682,66 @@ export default function StructuresDetailPage() {
 				</Card>
 			)}
 
-			{structure.inventoryBays && structure.inventoryBays.length > 0 && (
-				<Card>
-					<CardHeader>
-						<CardTitle>Structure Inventory</CardTitle>
-						<CardDescription>
-							Aggregated bay contents from the latest corp asset projection for this structure.
-						</CardDescription>
-					</CardHeader>
-					<CardContent className="space-y-4">
-						<InventoryBaysTable
-							bays={structure.inventoryBays}
-							renderItemIcon={(item) => <InventoryItemIcon typeId={item.typeId} />}
-						/>
-					</CardContent>
-				</Card>
-			)}
+			<div className="grid gap-4 md:grid-cols-2">
+				{hasStructureFitting ? (
+					<Card>
+						<CardHeader>
+							<CardTitle>Fitting</CardTitle>
+							<CardDescription>
+								Structure fitting from the latest known snapshot.
+							</CardDescription>
+						</CardHeader>
+						<CardContent className="space-y-6">
+							<div className="overflow-x-auto">
+								<FittingPanel
+									shipTypeId={structure.typeId}
+									shipTypeName={structure.typeName ?? structure.name}
+									items={fittingItems}
+									getIconUrl={typeIconUrl}
+									getRenderUrl={typeRenderUrl}
+								/>
+							</div>
+							<div className="space-y-3 border-t border-border/60 pt-6">
+								<div>
+									<div className="text-sm font-medium">Slot Layout</div>
+									<div className="text-sm text-muted-foreground">
+										High, mid, low, and rig slot fittings from the latest structure asset snapshot, with
+										loaded charges and scripts shown beneath their parent modules.
+									</div>
+								</div>
+								<FittingSlotTable
+									items={fittingItems}
+									getIconUrl={typeIconUrl}
+									slotTypes={STRUCTURE_SLOT_TABLE_TYPES}
+									emptyState="No high, mid, low, or rig slot items detected."
+								/>
+							</div>
+						</CardContent>
+					</Card>
+				) : null}
 
-			{isAdmin && assetsDebug && (
+				{structure.inventoryBays && structure.inventoryBays.length > 0 ? (
+					<Card>
+						<CardHeader>
+							<CardTitle>Inventory</CardTitle>
+							<CardDescription>
+								Aggregated bay contents from the latest corp asset projection for this structure.
+							</CardDescription>
+						</CardHeader>
+						<CardContent className="space-y-4">
+							<InventoryBaysTable
+								bays={structure.inventoryBays}
+								renderItemIcon={(item) => <InventoryItemIcon typeId={item.typeId} />}
+							/>
+						</CardContent>
+					</Card>
+				) : null}
+			</div>
+
+			{isAdmin && assetsDebug && assetsDebug.items.length > 0 ? (
 				<Card>
 					<CardHeader>
-						<CardTitle>Structure Asset Debug</CardTitle>
+						<CardTitle>Asset Debug</CardTitle>
 						<CardDescription>
 							Raw corporation assets fetched for this structure&apos;s owning corporation and filtered to
 							this structure ID. This is a direct asset snapshot, not the grouped inventory view.
@@ -808,7 +814,7 @@ export default function StructuresDetailPage() {
 						)}
 					</CardContent>
 				</Card>
-			)}
+			) : null}
 
 		</Container>
 	)
