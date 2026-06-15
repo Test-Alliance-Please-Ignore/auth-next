@@ -1,4 +1,4 @@
-import { ArrowLeft, CircleHelp, Factory, Package, Recycle, Save, Store, Users } from 'lucide-react'
+import { ArrowLeft, CircleHelp, Factory, Package, Recycle, Save, Search, Store, Users } from 'lucide-react'
 import { useEffect, useMemo, useState } from 'react'
 import { Link, Navigate, useParams } from 'react-router-dom'
 
@@ -21,9 +21,21 @@ import { useGroups } from '@/hooks/useGroups'
 import { usePageTitle } from '@/hooks/usePageTitle'
 import { useUserPermissions } from '@/hooks/useUserPermissions'
 import { InventoryBaysTable } from '@/components/inventory-bays-table'
-import { api, type StructureDetailResult } from '@/lib/api'
+import {
+	api,
+	type StructureAssetsDebugResult,
+	type StructureDetailResult,
+} from '@/lib/api'
 import { typeImageUrl } from '@/lib/eve-images'
 import { formatDateTimeLong } from '@/lib/date-utils'
+import {
+	Table,
+	TableBody,
+	TableCell,
+	TableHead,
+	TableHeader,
+	TableRow,
+} from '@/components/ui/table'
 
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { hasAnyStructurePermission } from '@repo/groups'
@@ -159,6 +171,9 @@ export default function StructuresDetailPage() {
 	const [hidden, setHidden] = useState(false)
 	const [lowPowerAllowed, setLowPowerAllowed] = useState(false)
 	const [assignedGroupId, setAssignedGroupId] = useState('')
+	const [assetsDebug, setAssetsDebug] = useState<StructureAssetsDebugResult | null>(null)
+
+	const isAdmin = user?.is_admin === true
 
 	usePageTitle(structure ? `Structure - ${structure.name}` : 'Structure Details')
 
@@ -168,6 +183,10 @@ export default function StructuresDetailPage() {
 		setLowPowerAllowed(structure.lowPowerAllowed)
 		setAssignedGroupId(structure.assignedGroupId ?? '')
 	}, [structure])
+
+	useEffect(() => {
+		setAssetsDebug(null)
+	}, [structureId])
 
 	const groupOptions = useMemo<SelectOption[]>(() => {
 		return [
@@ -188,6 +207,15 @@ export default function StructuresDetailPage() {
 				queryClient.invalidateQueries({ queryKey: ['structures'] }),
 				queryClient.invalidateQueries({ queryKey: ['structures', structureId] }),
 			])
+		},
+	})
+
+	const debugAssetsMutation = useApiMutation({
+		mutationFn: () => api.fetchStructureAssetsDebug(structureId!),
+		successMessage: (result) =>
+			`Fetched ${result.fetchedAssetCount.toLocaleString()} raw assets and found ${result.itemCount.toLocaleString()} rows for this structure.`,
+		onSuccess: (result) => {
+			setAssetsDebug(result)
 		},
 	})
 
@@ -264,9 +292,23 @@ export default function StructuresDetailPage() {
 
 			<div className="grid gap-4 md:grid-cols-2">
 				<Card>
-					<CardHeader>
-						<CardTitle>Structure Summary</CardTitle>
-						<CardDescription>Current synced state and operational metadata.</CardDescription>
+					<CardHeader className="gap-4 sm:flex-row sm:items-start sm:justify-between">
+						<div className="space-y-1.5">
+							<CardTitle>Structure Summary</CardTitle>
+							<CardDescription>Current synced state and operational metadata.</CardDescription>
+						</div>
+						{isAdmin && (
+							<Button
+								variant="ghost"
+								size="sm"
+								onClick={() => void debugAssetsMutation.mutateAsync()}
+								loading={debugAssetsMutation.isPending}
+								loadingText="Fetching..."
+							>
+								<Search className="h-4 w-4" />
+								Debug Assets
+							</Button>
+						)}
 					</CardHeader>
 					<CardContent className="space-y-4 text-sm">
 						<div className="grid grid-cols-2 gap-4">
@@ -403,6 +445,84 @@ export default function StructuresDetailPage() {
 					</CardContent>
 				</Card>
 			</div>
+
+			{isAdmin && assetsDebug && (
+				<Card>
+					<CardHeader>
+						<CardTitle>Structure Asset Debug</CardTitle>
+						<CardDescription>
+							Raw corporation assets fetched for this structure&apos;s owning corporation and filtered to
+							this structure ID. This is a direct asset snapshot, not the grouped inventory view.
+						</CardDescription>
+					</CardHeader>
+					<CardContent className="space-y-4">
+						<div className="grid gap-4 sm:grid-cols-3 text-sm">
+							<div>
+								<div className="text-muted-foreground">Fetched At</div>
+								<div className="font-medium">{formatDateTimeLong(assetsDebug.fetchedAt)}</div>
+							</div>
+							<div>
+								<div className="text-muted-foreground">Raw Assets Fetched</div>
+								<div className="font-medium">{assetsDebug.fetchedAssetCount.toLocaleString()}</div>
+							</div>
+							<div>
+								<div className="text-muted-foreground">Matching Rows</div>
+								<div className="font-medium">{assetsDebug.itemCount.toLocaleString()}</div>
+							</div>
+						</div>
+
+						{assetsDebug.items.length > 0 ? (
+							<div className="overflow-x-auto rounded-lg border border-border/60">
+								<Table>
+									<TableHeader>
+										<TableRow className="bg-muted/40">
+											<TableHead>Item</TableHead>
+											<TableHead className="text-right">Qty</TableHead>
+											<TableHead>Flag</TableHead>
+											<TableHead>Location</TableHead>
+											<TableHead className="text-right">Singleton</TableHead>
+											<TableHead>Item ID</TableHead>
+											<TableHead>Updated</TableHead>
+										</TableRow>
+									</TableHeader>
+									<TableBody>
+										{assetsDebug.items.map((item) => (
+											<TableRow key={item.itemId}>
+												<TableCell>
+													<div className="flex items-start gap-2">
+														<div className="mt-0.5 shrink-0">
+															<InventoryItemIcon typeId={item.typeId} />
+														</div>
+														<div className="min-w-0">
+															<div className="font-medium">{item.typeName ?? item.typeId}</div>
+															<div className="text-xs text-muted-foreground">{item.typeId}</div>
+														</div>
+													</div>
+												</TableCell>
+												<TableCell className="text-right font-mono">{item.quantity.toLocaleString()}</TableCell>
+												<TableCell>
+													<div className="font-medium">{item.locationFlagLabel}</div>
+													<div className="text-xs text-muted-foreground">{item.locationFlag}</div>
+												</TableCell>
+												<TableCell>{item.locationType}</TableCell>
+												<TableCell className="text-right">{item.isSingleton ? 'Yes' : 'No'}</TableCell>
+												<TableCell className="font-mono text-xs">{item.itemId}</TableCell>
+												<TableCell className="text-xs text-muted-foreground">
+													{formatDateTimeLong(item.updatedAt)}
+												</TableCell>
+											</TableRow>
+										))}
+									</TableBody>
+								</Table>
+							</div>
+						) : (
+							<p className="text-sm text-muted-foreground">
+								No raw assets matched this structure ID.
+							</p>
+						)}
+					</CardContent>
+				</Card>
+			)}
 
 			{hasSovereigntySummary && (
 				<Card>

@@ -1,6 +1,7 @@
 import { Hono } from 'hono'
 import { z } from 'zod'
 
+import { getInventoryBayLabel } from '@repo/inventory-display'
 import { getStub } from '@repo/do-utils'
 import { hasAllStructureManagerPermission } from '@repo/groups'
 
@@ -14,6 +15,7 @@ import type {
 	UpdateStructureConfigInput,
 	UpdateStructureModuleConfigInput,
 } from '@repo/structures'
+import type { EveCorporationData } from '@repo/eve-corporation-data'
 import type { Universe } from '@repo/universe'
 import type { Context } from 'hono'
 import type { App } from '../context'
@@ -112,6 +114,30 @@ interface StructureDetailResponse {
 	[key: string]: unknown
 }
 
+interface StructureAssetsDebugItemView {
+	itemId: string
+	typeId: string
+	typeName: string | null
+	quantity: number
+	isSingleton: boolean
+	locationId: string
+	locationType: string
+	locationFlag: string
+	locationFlagLabel: string
+	updatedAt: string
+}
+
+interface StructureAssetsDebugResponse {
+	corporationId: string
+	corporationName: string
+	structureId: string
+	structureName: string
+	fetchedAt: string
+	fetchedAssetCount: number
+	itemCount: number
+	items: StructureAssetsDebugItemView[]
+}
+
 async function getStructureActor(c: Context<App>) {
 	const user = c.get('user')
 	if (!user) {
@@ -186,6 +212,37 @@ async function enrichStructureInventoryTypeNames(
 	}
 }
 
+async function enrichStructureAssetsDebugTypeNames(
+	env: App['Bindings'],
+	items: StructureAssetsDebugItemView[]
+): Promise<StructureAssetsDebugItemView[]> {
+	if (items.length === 0) {
+		return items
+	}
+
+	const typeIds = Array.from(new Set(items.map((item) => item.typeId)))
+	if (typeIds.length === 0) {
+		return items
+	}
+
+	const universe = getUniverseStub(env)
+	const typeNameMap: Record<string, string> = {}
+	const batchSize = 1000
+
+	for (let index = 0; index < typeIds.length; index += batchSize) {
+		const batch = typeIds.slice(index, index + batchSize)
+		const resolved = await universe.resolveTypeNamesByIds(batch)
+		for (const [typeId, typeData] of Object.entries(resolved)) {
+			typeNameMap[typeId] = typeData?.typeName ?? typeId
+		}
+	}
+
+	return items.map((item) => ({
+		...item,
+		typeName: typeNameMap[item.typeId] ?? item.typeId,
+	}))
+}
+
 app.get('/', async (c) => {
 	return handleCitadelStructuresRequest(c)
 })
@@ -212,6 +269,82 @@ app.get('/mining', async (c) => {
 
 app.get('/overview', async (c) => {
 	return handleStructureOverviewRequest(c)
+})
+
+app.post('/:structureId/assets-debug', async (c) => {
+	const user = c.get('user')
+	if (!user) {
+		return c.json({ error: 'Unauthorized' }, 401)
+	}
+	if (!user.is_admin) {
+		return c.json({ error: 'Requires site administrator permission' }, 403)
+	}
+
+	const structureId = c.req.param('structureId')
+	try {
+		const actor = await getStructureActor(c)
+		const structure = (await c.env.STRUCTURES.getVisibleStructureDetail(actor, structureId)) as
+			| {
+					corporationId: string
+					corporationName: string | null
+					structureId: string
+					name: string | null
+			  }
+			| null
+		if (!structure) {
+			return c.json({ error: 'Structure not found' }, 404)
+		}
+
+		const corpData = getStub<EveCorporationData>(c.env.EVE_CORPORATION_DATA, structure.corporationId)
+		const { assetsCount } = await corpData.fetchAssets(structure.corporationId, true)
+		const rawItems = await corpData.searchAssets(structure.corporationId, {
+			locationId: structure.structureId,
+			locationType: 'item',
+			limit: 10000,
+		})
+
+		const items = await enrichStructureAssetsDebugTypeNames(
+			c.env,
+			rawItems
+				.map((item) => ({
+					itemId: item.itemId,
+					typeId: item.typeId,
+					typeName: null,
+					quantity: item.quantity,
+					isSingleton: item.isSingleton,
+					locationId: item.locationId,
+					locationType: item.locationType,
+					locationFlag: item.locationFlag,
+					locationFlagLabel: getInventoryBayLabel(item.locationFlag),
+					updatedAt: item.updatedAt.toISOString(),
+				}))
+				.sort((left, right) =>
+					left.locationFlagLabel.localeCompare(right.locationFlagLabel) ||
+					left.typeId.localeCompare(right.typeId) ||
+					left.itemId.localeCompare(right.itemId)
+				)
+		)
+
+		const response: StructureAssetsDebugResponse = {
+			corporationId: structure.corporationId,
+			corporationName: structure.corporationName ?? structure.corporationId,
+			structureId: structure.structureId,
+			structureName: structure.name ?? structure.structureId,
+			fetchedAt: new Date().toISOString(),
+			fetchedAssetCount: assetsCount,
+			itemCount: items.length,
+			items,
+		}
+
+		return c.json(response)
+	} catch (error) {
+		return c.json(
+			{
+				error: error instanceof Error ? error.message : 'Failed to fetch structure assets debug data',
+			},
+			500
+		)
+	}
 })
 
 async function handleCitadelStructuresRequest(c: Context<App>): Promise<Response> {
