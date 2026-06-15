@@ -13,6 +13,7 @@ import { LoadingPage } from '@/components/ui/loading'
 import { PageHeader } from '@/components/ui/page-header'
 import { Select, type SelectOption } from '@/components/ui/select'
 import { EveTimeDisplay } from '@/components/ui/eve-time-display'
+import { DurationDisplay } from '@/components/ui/duration-display'
 import { Switch } from '@/components/ui/switch'
 import { StructureStateBadge } from '@/components/structure-state-badge'
 import { useApiMutation } from '@/hooks/useApiMutation'
@@ -292,12 +293,6 @@ export default function StructuresDetailPage() {
 	const hasSovereigntySummary = structureFamily === 'sovereignty' && structure.sovereignty
 	const hasSkyhookSummary = structureFamily === 'skyhooks' && structure.skyhook
 	const hasMiningSummary = structureFamily === 'mining' && structure.mining
-	const fuelLabel =
-		structure.fuelAmount !== null
-			? `${structure.fuelAmount.toLocaleString()} units`
-			: structure.fuelExpires
-				? formatDateTimeLong(structure.fuelExpires)
-				: '-'
 
 	const handleSave = async () => {
 		await updateMutation.mutateAsync({
@@ -371,7 +366,15 @@ export default function StructuresDetailPage() {
 							</div>
 							<div>
 								<div className="text-muted-foreground">Fuel</div>
-								<div className="font-medium">{fuelLabel}</div>
+								<div className="font-medium">
+									{structure.fuelAmount !== null ? (
+										`${structure.fuelAmount.toLocaleString()} units`
+									) : structure.fuelExpires ? (
+										<DurationDisplay endDate={structure.fuelExpires} format="compact" />
+									) : (
+										'-'
+									)}
+								</div>
 							</div>
 							<div>
 								<div className="text-muted-foreground">Last Refilled</div>
