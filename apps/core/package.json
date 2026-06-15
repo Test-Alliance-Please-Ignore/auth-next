@@ -35,6 +35,7 @@
 		"@repo/discord": "workspace:*",
 		"@repo/do-utils": "workspace:*",
 		"@repo/doctrines": "workspace:*",
+		"@repo/eve-fitting": "workspace:*",
 		"@repo/esi": "workspace:*",
 		"@repo/esi-rate-limit": "workspace:*",
 		"@repo/eve-character-data": "workspace:*",

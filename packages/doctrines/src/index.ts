@@ -7,7 +7,13 @@
 
 import { z } from 'zod'
 
-export { CATEGORY_SLOT_OVERRIDES, CATEGORY_SUBSYSTEM, EFT_SECTION_ORDER, SLOT_FLAGS } from './flags'
+export {
+	CATEGORY_SLOT_OVERRIDES,
+	CATEGORY_SUBSYSTEM,
+	EFT_SECTION_ORDER,
+	SLOT_FLAGS,
+	parseFittingSlotFlag,
+} from './flags'
 export type { SlotFlag } from './flags'
 
 // --- Database Models ---

@@ -13,6 +13,7 @@ import { LoadingPage } from '@/components/ui/loading'
 import { PageHeader } from '@/components/ui/page-header'
 import { Select, type SelectOption } from '@/components/ui/select'
 import { EveTimeDisplay } from '@/components/ui/eve-time-display'
+import { DurationDisplay } from '@/components/ui/duration-display'
 import { Switch } from '@/components/ui/switch'
 import { StructureStateBadge } from '@/components/structure-state-badge'
 import { useApiMutation } from '@/hooks/useApiMutation'
@@ -21,12 +22,16 @@ import { useGroups } from '@/hooks/useGroups'
 import { usePageTitle } from '@/hooks/usePageTitle'
 import { useUserPermissions } from '@/hooks/useUserPermissions'
 import { InventoryBaysTable } from '@/components/inventory-bays-table'
+import { CorporationLogo } from '@/components/corporation-logo'
+import { FittingPanel } from '@repo/eve-fitting/fitting-panel'
+import { FittingSlotTable } from '@repo/eve-fitting/fitting-slot-table'
+import type { FittingDisplayItem, FittingShipSlotType } from '@repo/eve-fitting/flags'
 import {
 	api,
 	type StructureAssetsDebugResult,
 	type StructureDetailResult,
 } from '@/lib/api'
-import { typeImageUrl } from '@/lib/eve-images'
+import { typeIconUrl, typeImageUrl, typeRenderUrl } from '@/lib/eve-images'
 import { formatDateTimeLong } from '@/lib/date-utils'
 import {
 	Table,
@@ -150,6 +155,26 @@ function InventoryItemIcon({ typeId }: { typeId: string }) {
 	)
 }
 
+const FITTING_SLOT_TYPE_BY_NAME: Record<string, FittingShipSlotType> = {
+	'High Slot': 'high',
+	'Mid Slot': 'mid',
+	'Low Slot': 'low',
+	'Rig Slot': 'rig',
+	'Subsystem Slot': 'sub',
+}
+
+const STRUCTURE_SLOT_TABLE_TYPES: FittingShipSlotType[] = ['high', 'mid', 'low', 'rig']
+
+function structureFittingItemsToDisplayItems(structure: StructureDetailResult): FittingDisplayItem[] {
+	return (structure.fittingItems ?? []).map((item, index) => ({
+		typeId: item.typeId,
+		typeName: item.typeName ?? item.typeId,
+		quantity: Math.max(1, item.quantity),
+		slotType: FITTING_SLOT_TYPE_BY_NAME[item.flagName],
+		slotIndex: item.slotIndex ?? index,
+	}))
+}
+
 export default function StructuresDetailPage() {
 	const { structureId } = useParams<{ structureId: string }>()
 	const queryClient = useQueryClient()
@@ -218,6 +243,14 @@ export default function StructuresDetailPage() {
 			setAssetsDebug(result)
 		},
 	})
+	const fittingItems = useMemo(() => {
+		if (!structure) {
+			return []
+		}
+
+		return structureFittingItemsToDisplayItems(structure)
+	}, [structure])
+	const hasStructureFitting = fittingItems.length > 0
 
 	if (!authLoading && !permissionsLoading && !canViewStructures) {
 		return <Navigate to="/dashboard" replace />
@@ -260,12 +293,6 @@ export default function StructuresDetailPage() {
 	const hasSovereigntySummary = structureFamily === 'sovereignty' && structure.sovereignty
 	const hasSkyhookSummary = structureFamily === 'skyhooks' && structure.skyhook
 	const hasMiningSummary = structureFamily === 'mining' && structure.mining
-	const fuelLabel =
-		structure.fuelAmount !== null
-			? `${structure.fuelAmount.toLocaleString()} units`
-			: structure.fuelExpires
-				? formatDateTimeLong(structure.fuelExpires)
-				: '-'
 
 	const handleSave = async () => {
 		await updateMutation.mutateAsync({
@@ -279,7 +306,20 @@ export default function StructuresDetailPage() {
 		<Container className="space-y-6 py-6">
 			<PageHeader
 				title={structure.name}
-				description={`${structure.corporationName} · ${structure.systemName ?? structure.systemId}`}
+				description={
+					<div className="flex flex-wrap items-center gap-x-2 gap-y-1">
+						<div className="inline-flex items-center gap-2">
+							<CorporationLogo
+								corporationId={structure.corporationId}
+								corporationName={structure.corporationName}
+								size="sm"
+							/>
+							<span className="font-semibold text-white">{structure.corporationName}</span>
+						</div>
+						<span className="text-muted-foreground">·</span>
+						<span>{structure.systemName ?? structure.systemId}</span>
+					</div>
+				}
 				action={
 					<Button asChild variant="ghost" size="sm">
 						<Link to="/structures">
@@ -326,7 +366,15 @@ export default function StructuresDetailPage() {
 							</div>
 							<div>
 								<div className="text-muted-foreground">Fuel</div>
-								<div className="font-medium">{fuelLabel}</div>
+								<div className="font-medium">
+									{structure.fuelAmount !== null ? (
+										`${structure.fuelAmount.toLocaleString()} units`
+									) : structure.fuelExpires ? (
+										<DurationDisplay endDate={structure.fuelExpires} format="compact" />
+									) : (
+										'-'
+									)}
+								</div>
 							</div>
 							<div>
 								<div className="text-muted-foreground">Last Refilled</div>
@@ -446,83 +494,81 @@ export default function StructuresDetailPage() {
 				</Card>
 			</div>
 
-			{isAdmin && assetsDebug && (
+			<div className="grid gap-4 md:grid-cols-2">
+				{hasStructureFitting ? (
+					<Card>
+						<CardHeader>
+							<CardTitle>Structure Fitting</CardTitle>
+							<CardDescription>
+								Current structure fitting and detected high, mid, and low slot modules from the latest
+								corporation asset snapshot.
+							</CardDescription>
+						</CardHeader>
+						<CardContent className="space-y-6">
+							<div className="overflow-x-auto">
+								<FittingPanel
+									shipTypeId={structure.typeId}
+									shipTypeName={structure.typeName ?? structure.name}
+									items={fittingItems}
+									getIconUrl={typeIconUrl}
+									getRenderUrl={typeRenderUrl}
+								/>
+							</div>
+							<div className="space-y-3 border-t border-border/60 pt-6">
+								<div>
+									<div className="text-sm font-medium">Slot Layout</div>
+									<div className="text-sm text-muted-foreground">
+										High, mid, and low slot fittings from the latest structure asset snapshot.
+									</div>
+								</div>
+								<FittingSlotTable
+									items={fittingItems}
+									getIconUrl={typeIconUrl}
+									slotTypes={STRUCTURE_SLOT_TABLE_TYPES}
+								/>
+							</div>
+						</CardContent>
+					</Card>
+				) : null}
+
 				<Card>
 					<CardHeader>
-						<CardTitle>Structure Asset Debug</CardTitle>
-						<CardDescription>
-							Raw corporation assets fetched for this structure&apos;s owning corporation and filtered to
-							this structure ID. This is a direct asset snapshot, not the grouped inventory view.
-						</CardDescription>
+						<CardTitle>Services & Reinforcement</CardTitle>
+						<CardDescription>Synced structure services.</CardDescription>
 					</CardHeader>
-					<CardContent className="space-y-4">
-						<div className="grid gap-4 sm:grid-cols-3 text-sm">
-							<div>
-								<div className="text-muted-foreground">Fetched At</div>
-								<div className="font-medium">{formatDateTimeLong(assetsDebug.fetchedAt)}</div>
-							</div>
-							<div>
-								<div className="text-muted-foreground">Raw Assets Fetched</div>
-								<div className="font-medium">{assetsDebug.fetchedAssetCount.toLocaleString()}</div>
-							</div>
-							<div>
-								<div className="text-muted-foreground">Matching Rows</div>
-								<div className="font-medium">{assetsDebug.itemCount.toLocaleString()}</div>
-							</div>
+					<CardContent className="space-y-6">
+						<div className="space-y-3">
+							<div className="text-sm font-medium">Structure Services</div>
+							{structure.services.length > 0 ? (
+								<div className="space-y-2">
+									{structure.services.map((service) => (
+										<div
+											key={`${service.name}-${service.state}`}
+											className="flex flex-col gap-3 rounded-lg border border-border/60 p-4 sm:flex-row sm:items-center sm:justify-between"
+										>
+											<div className="flex min-w-0 items-center gap-3">
+												<div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-md border border-border/60 bg-muted/40 text-muted-foreground">
+													{renderServiceIcon(service.name)}
+												</div>
+												<div className="min-w-0">
+													<div className="font-medium">{service.name}</div>
+												</div>
+											</div>
+											<Badge variant={serviceBadgeVariant(service.state)} className="shrink-0">
+												{formatServiceStateLabel(service.state)}
+											</Badge>
+										</div>
+									))}
+								</div>
+							) : (
+								<div className="rounded-lg border border-border/60 p-4 text-sm text-muted-foreground">
+									No structure services were reported for this structure.
+								</div>
+							)}
 						</div>
-
-						{assetsDebug.items.length > 0 ? (
-							<div className="overflow-x-auto rounded-lg border border-border/60">
-								<Table>
-									<TableHeader>
-										<TableRow className="bg-muted/40">
-											<TableHead>Item</TableHead>
-											<TableHead className="text-right">Qty</TableHead>
-											<TableHead>Flag</TableHead>
-											<TableHead>Location</TableHead>
-											<TableHead className="text-right">Singleton</TableHead>
-											<TableHead>Item ID</TableHead>
-											<TableHead>Updated</TableHead>
-										</TableRow>
-									</TableHeader>
-									<TableBody>
-										{assetsDebug.items.map((item) => (
-											<TableRow key={item.itemId}>
-												<TableCell>
-													<div className="flex items-start gap-2">
-														<div className="mt-0.5 shrink-0">
-															<InventoryItemIcon typeId={item.typeId} />
-														</div>
-														<div className="min-w-0">
-															<div className="font-medium">{item.typeName ?? item.typeId}</div>
-															<div className="text-xs text-muted-foreground">{item.typeId}</div>
-														</div>
-													</div>
-												</TableCell>
-												<TableCell className="text-right font-mono">{item.quantity.toLocaleString()}</TableCell>
-												<TableCell>
-													<div className="font-medium">{item.locationFlagLabel}</div>
-													<div className="text-xs text-muted-foreground">{item.locationFlag}</div>
-												</TableCell>
-												<TableCell>{item.locationType}</TableCell>
-												<TableCell className="text-right">{item.isSingleton ? 'Yes' : 'No'}</TableCell>
-												<TableCell className="font-mono text-xs">{item.itemId}</TableCell>
-												<TableCell className="text-xs text-muted-foreground">
-													{formatDateTimeLong(item.updatedAt)}
-												</TableCell>
-											</TableRow>
-										))}
-									</TableBody>
-								</Table>
-							</div>
-						) : (
-							<p className="text-sm text-muted-foreground">
-								No raw assets matched this structure ID.
-							</p>
-						)}
 					</CardContent>
 				</Card>
-			)}
+			</div>
 
 			{hasSovereigntySummary && (
 				<Card>
@@ -686,44 +732,84 @@ export default function StructuresDetailPage() {
 				</Card>
 			)}
 
-			<Card>
-				<CardHeader>
-					<CardTitle>Services & Reinforcement</CardTitle>
-					<CardDescription>Synced structure services.</CardDescription>
-				</CardHeader>
-				<CardContent className="space-y-6">
-					<div className="space-y-3">
-						<div className="text-sm font-medium">Structure Services</div>
-						{structure.services.length > 0 ? (
-							<div className="space-y-2">
-								{structure.services.map((service) => (
-									<div
-										key={`${service.name}-${service.state}`}
-										className="flex flex-col gap-3 rounded-lg border border-border/60 p-4 sm:flex-row sm:items-center sm:justify-between"
-									>
-										<div className="flex min-w-0 items-center gap-3">
-											<div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-md border border-border/60 bg-muted/40 text-muted-foreground">
-												{renderServiceIcon(service.name)}
-											</div>
-											<div className="min-w-0">
-												<div className="font-medium">{service.name}</div>
-											</div>
-										</div>
-										<Badge variant={serviceBadgeVariant(service.state)} className="shrink-0">
-											{formatServiceStateLabel(service.state)}
-										</Badge>
-									</div>
-								))}
+			{isAdmin && assetsDebug && (
+				<Card>
+					<CardHeader>
+						<CardTitle>Structure Asset Debug</CardTitle>
+						<CardDescription>
+							Raw corporation assets fetched for this structure&apos;s owning corporation and filtered to
+							this structure ID. This is a direct asset snapshot, not the grouped inventory view.
+						</CardDescription>
+					</CardHeader>
+					<CardContent className="space-y-4">
+						<div className="grid gap-4 sm:grid-cols-3 text-sm">
+							<div>
+								<div className="text-muted-foreground">Fetched At</div>
+								<div className="font-medium">{formatDateTimeLong(assetsDebug.fetchedAt)}</div>
+							</div>
+							<div>
+								<div className="text-muted-foreground">Raw Assets Fetched</div>
+								<div className="font-medium">{assetsDebug.fetchedAssetCount.toLocaleString()}</div>
+							</div>
+							<div>
+								<div className="text-muted-foreground">Matching Rows</div>
+								<div className="font-medium">{assetsDebug.itemCount.toLocaleString()}</div>
+							</div>
+						</div>
+
+						{assetsDebug.items.length > 0 ? (
+							<div className="overflow-x-auto rounded-lg border border-border/60">
+								<Table>
+									<TableHeader>
+										<TableRow className="bg-muted/40">
+											<TableHead>Item</TableHead>
+											<TableHead className="text-right">Qty</TableHead>
+											<TableHead>Flag</TableHead>
+											<TableHead>Location</TableHead>
+											<TableHead className="text-right">Singleton</TableHead>
+											<TableHead>Item ID</TableHead>
+											<TableHead>Updated</TableHead>
+										</TableRow>
+									</TableHeader>
+									<TableBody>
+										{assetsDebug.items.map((item) => (
+											<TableRow key={item.itemId}>
+												<TableCell>
+													<div className="flex items-start gap-2">
+														<div className="mt-0.5 shrink-0">
+															<InventoryItemIcon typeId={item.typeId} />
+														</div>
+														<div className="min-w-0">
+															<div className="font-medium">{item.typeName ?? item.typeId}</div>
+															<div className="text-xs text-muted-foreground">{item.typeId}</div>
+														</div>
+													</div>
+												</TableCell>
+												<TableCell className="text-right font-mono">{item.quantity.toLocaleString()}</TableCell>
+												<TableCell>
+													<div className="font-medium">{item.locationFlagLabel}</div>
+													<div className="text-xs text-muted-foreground">{item.locationFlag}</div>
+												</TableCell>
+												<TableCell>{item.locationType}</TableCell>
+												<TableCell className="text-right">{item.isSingleton ? 'Yes' : 'No'}</TableCell>
+												<TableCell className="font-mono text-xs">{item.itemId}</TableCell>
+												<TableCell className="text-xs text-muted-foreground">
+													{formatDateTimeLong(item.updatedAt)}
+												</TableCell>
+											</TableRow>
+										))}
+									</TableBody>
+								</Table>
 							</div>
 						) : (
-							<div className="rounded-lg border border-border/60 p-4 text-sm text-muted-foreground">
-								No structure services were reported for this structure.
-							</div>
+							<p className="text-sm text-muted-foreground">
+								No raw assets matched this structure ID.
+							</p>
 						)}
-					</div>
+					</CardContent>
+				</Card>
+			)}
 
-				</CardContent>
-			</Card>
 		</Container>
 	)
 }

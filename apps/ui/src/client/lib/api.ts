@@ -818,6 +818,15 @@ export interface StructureAssetsDebugItem {
 	updatedAt: string
 }
 
+export interface StructureFittingItem {
+	locationFlag: string
+	slotIndex: number
+	flagName: 'High Slot' | 'Mid Slot' | 'Low Slot' | 'Rig Slot' | 'Subsystem Slot'
+	typeId: string
+	typeName: string | null
+	quantity: number
+}
+
 export interface StructureDetailResult extends StructureCitadelListItem {
 	services: Array<{
 		name: string
@@ -834,6 +843,7 @@ export interface StructureDetailResult extends StructureCitadelListItem {
 	skyhook?: StructureSkyhookSummary | null
 	mining?: StructureMiningSummary | null
 	inventoryBays?: StructureInventoryBay[]
+	fittingItems?: StructureFittingItem[]
 }
 
 export interface StructureAssetsDebugResult {

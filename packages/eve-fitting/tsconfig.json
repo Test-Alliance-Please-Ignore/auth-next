@@ -1,0 +1,11 @@
+{
+	"extends": "@repo/typescript-config/base.json",
+	"compilerOptions": {
+		"outDir": "dist",
+		"rootDir": "src",
+		"jsx": "react-jsx",
+		"lib": ["ES2022", "DOM", "DOM.Iterable"],
+		"types": ["react"]
+	},
+	"include": ["src/**/*"]
+}

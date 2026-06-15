@@ -18,6 +18,7 @@ import {
 	summarizeInventoryRows,
 	type InventoryDisplayBay,
 } from '@repo/inventory-display'
+import { parseFittingSlotFlag } from '@repo/eve-fitting/flags'
 import type {
 	StructureCitadelListQuery,
 	StructureMiningListQuery,
@@ -312,6 +313,15 @@ export interface StructureMiningSummary {
 export type StructureInventoryItemSummary = InventoryDisplayBay['items'][number]
 export type StructureInventoryBaySummary = InventoryDisplayBay
 
+export interface StructureFittingItemSummary {
+	locationFlag: string
+	slotIndex: number
+	flagName: 'High Slot' | 'Mid Slot' | 'Low Slot' | 'Rig Slot' | 'Subsystem Slot'
+	typeId: string
+	typeName: string | null
+	quantity: number
+}
+
 interface StructureTabData {
 	sovereignty?: StructureSovereigntySummary | null
 	skyhook?: StructureSkyhookSummary | null
@@ -335,6 +345,7 @@ export interface StructureDetailResult extends StructureListItem {
 	skyhook?: StructureSkyhookSummary | null
 	mining?: StructureMiningSummary | null
 	inventoryBays?: StructureInventoryBaySummary[]
+	fittingItems?: StructureFittingItemSummary[]
 }
 
 export interface UpdateStructureConfigInput {
@@ -714,6 +725,78 @@ async function loadStructureInventoryDetailData(
 	return summarizeInventoryRows(rows)
 }
 
+const STRUCTURE_FITTING_SLOT_ORDER: Array<StructureFittingItemSummary['flagName']> = [
+	'High Slot',
+	'Mid Slot',
+	'Low Slot',
+	'Rig Slot',
+	'Subsystem Slot',
+]
+
+function compareStructureFittingItems(
+	left: StructureFittingItemSummary,
+	right: StructureFittingItemSummary
+): number {
+	const leftOrder = STRUCTURE_FITTING_SLOT_ORDER.indexOf(left.flagName)
+	const rightOrder = STRUCTURE_FITTING_SLOT_ORDER.indexOf(right.flagName)
+	if (leftOrder !== rightOrder) {
+		return leftOrder - rightOrder
+	}
+
+	if (left.slotIndex !== right.slotIndex) {
+		return left.slotIndex - right.slotIndex
+	}
+
+	return left.typeId.localeCompare(right.typeId)
+}
+
+async function loadStructureFittingDetailData(
+	env: Env,
+	structure: DirectCorporationStructureRecord
+): Promise<StructureFittingItemSummary[]> {
+	const structureTab = getStructureTab(structure)
+	if (structureTab !== 'citadels') {
+		return []
+	}
+
+	try {
+		const corpData = getStub<EveCorporationData>(env.EVE_CORPORATION_DATA, structure.corporationId)
+		const rawAssets = await corpData.searchAssets(structure.corporationId, {
+			locationId: structure.structureId,
+			locationType: 'item',
+			limit: 10000,
+		})
+
+		return rawAssets
+			.flatMap((asset) => {
+				const slot = parseFittingSlotFlag(asset.locationFlag)
+				if (!slot) {
+					return []
+				}
+
+				return [
+					{
+						locationFlag: asset.locationFlag,
+						slotIndex: slot.slotIndex,
+						flagName: slot.flagName,
+						typeId: asset.typeId,
+						typeName: null,
+						quantity: asset.quantity,
+					},
+				]
+			})
+			.sort(compareStructureFittingItems)
+	} catch (error) {
+		logger.error('[loadStructureFittingDetailData] Failed to load structure fitting items', {
+			corporationId: structure.corporationId,
+			structureId: structure.structureId,
+			error: error instanceof Error ? error.message : String(error),
+			errorStack: error instanceof Error ? error.stack : undefined,
+		})
+		return []
+	}
+}
+
 export async function assertStructureGroupConfigured(
 	db: DbClient<DbSchema>,
 	groupId: string
@@ -973,6 +1056,7 @@ interface VisibleStructureContext {
 	config: typeof structureConfigs.$inferSelect | null
 	canViewSensitive: boolean
 	tabData: StructureTabData | null
+	fittingItems: StructureFittingItemSummary[] | null
 	lastRefilledAt: Date | null
 }
 
@@ -997,10 +1081,12 @@ function buildStructureDetailResult(context: VisibleStructureContext): Structure
 		reinforceHour: context.structure.reinforceHour,
 		lastRefilledAt: toIso(context.lastRefilledAt),
 		...(context.tabData ?? {}),
+		fittingItems: context.fittingItems ?? [],
 	}
 }
 
 async function getVisibleStructureContext(
+	env: Env,
 	db: DbClient<DbSchema>,
 	user: SessionUser,
 	structureId: string
@@ -1039,9 +1125,10 @@ async function getVisibleStructureContext(
 		return null
 	}
 
-	const [tabData, inventoryBays] = await Promise.all([
+	const [tabData, inventoryBays, fittingItems] = await Promise.all([
 		loadStructureTabDetailData(db, structure),
 		loadStructureInventoryDetailData(db, structure),
+		loadStructureFittingDetailData(env, structure),
 	])
 
 	return {
@@ -1053,6 +1140,7 @@ async function getVisibleStructureContext(
 			...(tabData ?? {}),
 			inventoryBays,
 		},
+		fittingItems,
 		lastRefilledAt: structure.lastRefilledAt ?? null,
 	}
 }
@@ -1388,6 +1476,7 @@ async function loadVisibleStructureContexts(
 					config,
 					canViewSensitive,
 					tabData: null,
+					fittingItems: null,
 					lastRefilledAt: null,
 				}
 			})
@@ -2106,11 +2195,12 @@ export async function listMiningStructures(
 }
 
 export async function getVisibleStructureDetail(
+	env: Env,
 	db: DbClient<DbSchema>,
 	user: SessionUser,
 	structureId: string
 ): Promise<StructureDetailResult | null> {
-	const context = await getVisibleStructureContext(db, user, structureId)
+	const context = await getVisibleStructureContext(env, db, user, structureId)
 	if (!context) {
 		return null
 	}
@@ -2118,12 +2208,13 @@ export async function getVisibleStructureDetail(
 }
 
 export async function updateStructureConfig(
+	env: Env,
 	db: DbClient<DbSchema>,
 	user: SessionUser,
 	structureId: string,
 	input: UpdateStructureConfigInput
 ): Promise<StructureDetailResult | null> {
-	const context = await getVisibleStructureContext(db, user, structureId)
+	const context = await getVisibleStructureContext(env, db, user, structureId)
 	if (!context) {
 		return null
 	}

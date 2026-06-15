@@ -1,21 +1,27 @@
 {
-	"name": "@repo/doctrines",
+	"name": "@repo/eve-fitting",
 	"version": "0.1.0",
 	"private": true,
 	"sideEffects": false,
 	"type": "module",
 	"main": "src/index.ts",
+	"exports": {
+		".": "./src/index.ts",
+		"./flags": "./src/flags.ts",
+		"./fitting-panel": "./src/fitting-panel.tsx",
+		"./fitting-slot-table": "./src/fitting-slot-table.tsx"
+	},
 	"scripts": {
 		"check:lint": "run-eslint",
 		"check:types": "run-tsc"
 	},
 	"dependencies": {
-		"@repo/eve-fitting": "workspace:*",
-		"zod": "4.1.12"
+		"react": "19.2.0"
 	},
 	"devDependencies": {
 		"@repo/eslint-config": "workspace:*",
 		"@repo/tools": "workspace:*",
-		"@repo/typescript-config": "workspace:*"
+		"@repo/typescript-config": "workspace:*",
+		"@types/react": "19.2.6"
 	}
 }

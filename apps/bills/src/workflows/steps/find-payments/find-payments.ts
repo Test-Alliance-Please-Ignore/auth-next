@@ -59,7 +59,11 @@ async function findPaymentTransactionsForCorporationFromDb(
 	})
 
 	if (!corporationId) {
-		throw new Error('Corporation ID is required')
+		logger.warn('[Workflow] Skipping corporation payment transaction lookup because corporation ID is missing', {
+			billId: ctx.billId,
+			workflowInstanceId: ctx.workflowInstanceId,
+		})
+		return []
 	}
 
 	const tokenNeedle = `%${billData.paymentToken}%`
@@ -98,7 +102,11 @@ async function findPaymentTransactionsForCharacterFromDb(
 	})
 
 	if (!characterId) {
-		throw new Error('Character ID is required')
+		logger.warn('[Workflow] Skipping character payment transaction lookup because character ID is missing', {
+			billId: ctx.billId,
+			workflowInstanceId: ctx.workflowInstanceId,
+		})
+		return []
 	}
 
 	const tokenNeedle = `%${billData.paymentToken}%`
@@ -137,7 +145,12 @@ export async function findPaymentsForBill(
 	const payeeType = billData.payeeType
 
 	if (!payeeType) {
-		throw new Error('Payee type is required')
+		logger.warn('[Workflow] Skipping payment transaction lookup because payee type is missing', {
+			billId: ctx.billId,
+			workflowInstanceId: ctx.workflowInstanceId,
+			payeeId: billData.payeeId,
+		})
+		return { newPaymentsRecorded }
 	}
 
 	if (payeeType === 'corporation') {
