@@ -805,6 +805,19 @@ export interface StructureMiningListItem extends StructureListBaseItem {
 export type StructureInventoryBay = SharedInventoryDisplayBay
 export type StructureInventoryItem = StructureInventoryBay['items'][number]
 
+export interface StructureAssetsDebugItem {
+	itemId: string
+	typeId: string
+	typeName: string | null
+	quantity: number
+	isSingleton: boolean
+	locationId: string
+	locationType: string
+	locationFlag: string
+	locationFlagLabel: string
+	updatedAt: string
+}
+
 export interface StructureDetailResult extends StructureCitadelListItem {
 	services: Array<{
 		name: string
@@ -821,6 +834,17 @@ export interface StructureDetailResult extends StructureCitadelListItem {
 	skyhook?: StructureSkyhookSummary | null
 	mining?: StructureMiningSummary | null
 	inventoryBays?: StructureInventoryBay[]
+}
+
+export interface StructureAssetsDebugResult {
+	corporationId: string
+	corporationName: string
+	structureId: string
+	structureName: string
+	fetchedAt: string
+	fetchedAssetCount: number
+	itemCount: number
+	items: StructureAssetsDebugItem[]
 }
 
 export interface StructureListResponse<TItem = StructureCitadelListItem> {
@@ -2951,6 +2975,10 @@ export class ApiClient {
 
 	async getStructure(structureId: string): Promise<StructureDetailResult> {
 		return this.get(`/structures/${structureId}`)
+	}
+
+	async fetchStructureAssetsDebug(structureId: string): Promise<StructureAssetsDebugResult> {
+		return this.post(`/structures/${structureId}/assets-debug`)
 	}
 
 	async updateStructureConfig(

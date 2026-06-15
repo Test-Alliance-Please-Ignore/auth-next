@@ -1587,6 +1587,15 @@ export class EveCorporationDataDO extends DurableObject<Env> implements EveCorpo
 				})
 			)
 
+			logger.info('[EveCorporationData] Writing structure fuel log snapshot', {
+				corporationId,
+				ownedStructureCount: ownedStructureIds.size,
+				inventoryRowCount: inventory.length,
+				fuelLogRowCount: fuelHistoryRows.length,
+				refilledStructureCount: refilledStructureIds.length,
+				zeroFuelStructureCount: fuelHistoryRows.filter((row) => row.fuelBlockUnits === 0).length,
+			})
+
 			await db.insert(structureFuelLog).values(fuelHistoryRows)
 		}
 
@@ -3087,7 +3096,7 @@ export class EveCorporationDataDO extends DurableObject<Env> implements EveCorpo
 	/**
 	 * Fetch and store corporation assets (paginated)
 	 */
-	private async fetchAndStoreAssets(corporationId: string, _forceRefresh = false): Promise<void> {
+	private async fetchAndStoreAssets(corporationId: string, _forceRefresh = false): Promise<number> {
 		logger.debug('[fetchAndStoreAssets] Starting asset fetch', { corporationId })
 
 		const { characterId } = await this.getConfiguredCharacter(corporationId)
@@ -3110,6 +3119,7 @@ export class EveCorporationDataDO extends DurableObject<Env> implements EveCorpo
 				totalInserted: insertedCount,
 				totalAssets: insertedCount,
 			})
+			return insertedCount
 		} catch (error) {
 			logger.error('[fetchAndStoreAssets] Failed to insert assets', {
 				corporationId,
@@ -3680,6 +3690,16 @@ export class EveCorporationDataDO extends DurableObject<Env> implements EveCorpo
 		await this.fetchAndStoreStructureInventory(corporationId, forceRefresh).catch((e) =>
 			logger.error('Structure inventory fetch failed:', e instanceof Error ? e.message : String(e))
 		)
+	}
+
+	/**
+	 * Fetch and store corporation assets using a specific director character.
+	 * This writes the raw corp asset snapshot and leaves filtering to callers.
+	 */
+	async fetchAssets(corporationId: string, forceRefresh = false): Promise<{ assetsCount: number }> {
+		this.assertNonNpcCorporation(corporationId)
+		const assetsCount = await this.fetchAndStoreAssets(corporationId, forceRefresh)
+		return { assetsCount }
 	}
 
 	/**

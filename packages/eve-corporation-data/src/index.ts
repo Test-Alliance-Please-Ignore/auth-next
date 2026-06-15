@@ -1410,6 +1410,15 @@ export interface EveCorporationData {
 	): Promise<CorporationAssetData[]>
 
 	/**
+	 * Fetch and store corporation assets using a specific director character.
+	 * Requires: esi-assets.read_corporation_assets.v1
+	 * Requires role: Director
+	 * @param corporationId - The corporation ID
+	 * @param forceRefresh - Skip cache and fetch fresh data
+	 */
+	fetchAssets(corporationId: string, forceRefresh?: boolean): Promise<{ assetsCount: number }>
+
+	/**
 	 * Fetch assets and structures
 	 * Requires: esi-assets.read_corporation_assets.v1, esi-corporations.read_structures.v1
 	 * Requires role: Director (assets), Station_Manager (structures)
