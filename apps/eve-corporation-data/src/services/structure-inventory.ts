@@ -6,6 +6,7 @@ const STRUCTURE_INVENTORY_LOCATION_FLAG_PREFIXES = [
 	'StructureFuel',
 	'SpecializedFuelBay',
 	'SpecializedAmmoHold',
+	'Cargo',
 	'DroneBay',
 	'FighterBay',
 	'FighterTube',

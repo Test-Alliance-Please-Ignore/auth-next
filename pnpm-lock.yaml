@@ -443,6 +443,9 @@ importers:
       '@repo/eve-corporation-data':
         specifier: workspace:*
         version: link:../../packages/eve-corporation-data
+      '@repo/eve-fitting':
+        specifier: workspace:*
+        version: link:../../packages/eve-fitting
       '@repo/eve-token-store':
         specifier: workspace:*
         version: link:../../packages/eve-token-store
@@ -2403,6 +2406,9 @@ importers:
       '@repo/eve-corporation-data-db-schema':
         specifier: workspace:*
         version: link:../../packages/eve-corporation-data-db-schema
+      '@repo/eve-fitting':
+        specifier: workspace:*
+        version: link:../../packages/eve-fitting
       '@repo/groups':
         specifier: workspace:*
         version: link:../../packages/groups
@@ -2518,6 +2524,9 @@ importers:
       '@repo/corporation-tax':
         specifier: workspace:*
         version: link:../../packages/corporation-tax
+      '@repo/eve-fitting':
+        specifier: workspace:*
+        version: link:../../packages/eve-fitting
       '@repo/eve-types':
         specifier: workspace:*
         version: link:../../packages/eve-types
@@ -2913,6 +2922,9 @@ importers:
 
   packages/doctrines:
     dependencies:
+      '@repo/eve-fitting':
+        specifier: workspace:*
+        version: link:../eve-fitting
       zod:
         specifier: 4.1.12
         version: 4.1.12
@@ -3106,6 +3118,25 @@ importers:
       '@repo/typescript-config':
         specifier: workspace:*
         version: link:../typescript-config
+
+  packages/eve-fitting:
+    dependencies:
+      react:
+        specifier: 19.2.0
+        version: 19.2.0
+    devDependencies:
+      '@repo/eslint-config':
+        specifier: workspace:*
+        version: link:../eslint-config
+      '@repo/tools':
+        specifier: workspace:*
+        version: link:../tools
+      '@repo/typescript-config':
+        specifier: workspace:*
+        version: link:../typescript-config
+      '@types/react':
+        specifier: 19.2.6
+        version: 19.2.6
 
   packages/eve-parsers:
     dependencies:

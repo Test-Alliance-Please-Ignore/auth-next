@@ -96,7 +96,7 @@ export class StructuresWorkerEntrypoint extends WorkerEntrypoint<Env> implements
 	}
 
 	async getVisibleStructureDetail(actor: StructureActor, structureId: string): Promise<unknown> {
-		return getVisibleStructureDetail(this.getDb(), actor, structureId)
+		return getVisibleStructureDetail(this.env, this.getDb(), actor, structureId)
 	}
 
 	async updateStructureConfig(
@@ -104,7 +104,7 @@ export class StructuresWorkerEntrypoint extends WorkerEntrypoint<Env> implements
 		structureId: string,
 		input: UpdateStructureConfigInput
 	): Promise<unknown> {
-		return updateStructureConfig(this.getDb(), actor, structureId, input)
+		return updateStructureConfig(this.env, this.getDb(), actor, structureId, input)
 	}
 
 	async getStructureModuleConfig(_actor: StructureActor): Promise<unknown> {

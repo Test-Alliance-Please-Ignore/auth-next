@@ -1,9 +1,17 @@
-export type SlotType = 'high' | 'mid' | 'low' | 'rig' | 'sub' | 'implant'
-export type SRPSlotHighlightSeverity = 'destructive' | 'warning' | 'secondary'
-export type SRPSlotHighlightMap = Record<string, SRPSlotHighlightSeverity>
-export type SRPShipSlotType = Exclude<SlotType, 'implant'>
-export type SRPSlotCapacityType = SRPShipSlotType | 'implant'
-export type SRPShipSlotCapacities = Partial<Record<SRPSlotCapacityType, number>>
+import type {
+	FittingShipSlotType,
+	FittingSlotCapacities,
+	FittingSlotHighlightMap,
+	FittingSlotSeverity,
+	FittingSlotType,
+} from '@repo/eve-fitting/flags'
+
+export type SlotType = FittingSlotType
+export type SRPSlotHighlightSeverity = FittingSlotSeverity
+export type SRPSlotHighlightMap = FittingSlotHighlightMap
+export type SRPShipSlotType = FittingShipSlotType
+export type SRPSlotCapacityType = FittingShipSlotType | 'implant'
+export type SRPShipSlotCapacities = FittingSlotCapacities
 
 export interface SRPFittingItem {
 	typeId: string

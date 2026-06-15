@@ -1,6 +1,7 @@
 import { Hono } from 'hono'
 import { z } from 'zod'
 
+import { parseFittingSlotFlag } from '@repo/eve-fitting/flags'
 import { getInventoryBayLabel } from '@repo/inventory-display'
 import { getStub } from '@repo/do-utils'
 import { hasAllStructureManagerPermission } from '@repo/groups'
@@ -109,8 +110,18 @@ interface StructureInventoryBayView {
 	items: StructureInventoryItemView[]
 }
 
+interface StructureFittingItemView {
+	locationFlag: string
+	slotIndex: number
+	flagName: 'High Slot' | 'Mid Slot' | 'Low Slot' | 'Rig Slot' | 'Subsystem Slot'
+	typeId: string
+	typeName: string | null
+	quantity: number
+}
+
 interface StructureDetailResponse {
 	inventoryBays?: StructureInventoryBayView[]
+	fittingItems?: StructureFittingItemView[]
 	[key: string]: unknown
 }
 
@@ -171,16 +182,31 @@ function getUniverseStub(env: App['Bindings']): Universe {
 	return getStub<Universe>(env.UNIVERSE, 'default')
 }
 
-async function enrichStructureInventoryTypeNames(
+function getStructureAssetLocationLabel(locationFlag: string): string {
+	const fittingSlot = parseFittingSlotFlag(locationFlag)
+	if (fittingSlot) {
+		return `${fittingSlot.flagName} ${fittingSlot.slotIndex}`
+	}
+
+	return getInventoryBayLabel(locationFlag)
+}
+
+async function enrichStructureDetailTypeNames(
 	env: App['Bindings'],
 	structure: StructureDetailResponse
 ): Promise<StructureDetailResponse> {
-	if (!structure.inventoryBays || structure.inventoryBays.length === 0) {
+	if (
+		(!structure.inventoryBays || structure.inventoryBays.length === 0) &&
+		(!structure.fittingItems || structure.fittingItems.length === 0)
+	) {
 		return structure
 	}
 
 	const typeIds = Array.from(
-		new Set(structure.inventoryBays.flatMap((bay) => bay.items.map((item) => item.typeId)))
+		new Set([
+			...(structure.inventoryBays?.flatMap((bay) => bay.items.map((item) => item.typeId)) ?? []),
+			...(structure.fittingItems?.map((item) => item.typeId) ?? []),
+		])
 	)
 	if (typeIds.length === 0) {
 		return structure
@@ -200,14 +226,21 @@ async function enrichStructureInventoryTypeNames(
 
 	return {
 		...structure,
-		inventoryBays: structure.inventoryBays.map((bay) => ({
+		inventoryBays: structure.inventoryBays?.map((bay) => ({
 			...bay,
 			items: bay.items
 				.map((item) => ({
 					...item,
 					typeName: typeNameMap[item.typeId] ?? item.typeId,
 				}))
-				.sort((left, right) => left.typeName.localeCompare(right.typeName) || left.typeId.localeCompare(right.typeId)),
+				.sort(
+					(left, right) =>
+						left.typeName.localeCompare(right.typeName) || left.typeId.localeCompare(right.typeId)
+				),
+		})),
+		fittingItems: structure.fittingItems?.map((item) => ({
+			...item,
+			typeName: typeNameMap[item.typeId] ?? item.typeId,
 		})),
 	}
 }
@@ -315,7 +348,7 @@ app.post('/:structureId/assets-debug', async (c) => {
 					locationId: item.locationId,
 					locationType: item.locationType,
 					locationFlag: item.locationFlag,
-					locationFlagLabel: getInventoryBayLabel(item.locationFlag),
+					locationFlagLabel: getStructureAssetLocationLabel(item.locationFlag),
 					updatedAt: item.updatedAt.toISOString(),
 				}))
 				.sort((left, right) =>
@@ -553,7 +586,7 @@ app.get('/:structureId', async (c) => {
 		if (!structure) {
 			return c.json({ error: 'Structure not found' }, 404)
 		}
-		return c.json(await enrichStructureInventoryTypeNames(c.env, structure as StructureDetailResponse))
+		return c.json(await enrichStructureDetailTypeNames(c.env, structure as StructureDetailResponse))
 	} catch (error) {
 		return c.json(
 			{
@@ -578,7 +611,7 @@ app.patch('/:structureId/config', async (c) => {
 		if (!structure) {
 			return c.json({ error: 'Structure not found' }, 404)
 		}
-		return c.json(await enrichStructureInventoryTypeNames(c.env, structure as StructureDetailResponse))
+		return c.json(await enrichStructureDetailTypeNames(c.env, structure as StructureDetailResponse))
 	} catch (error) {
 		if (error instanceof z.ZodError) {
 			return c.json({ error: 'Invalid structure config payload', issues: error.issues }, 400)

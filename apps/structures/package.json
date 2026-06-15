@@ -28,6 +28,7 @@
 		"@repo/db-utils": "workspace:*",
 		"@repo/discord": "workspace:*",
 		"@repo/groups": "workspace:*",
+		"@repo/eve-fitting": "workspace:*",
 		"@repo/inventory-display": "workspace:*",
 		"@repo/structure-states": "workspace:*",
 		"@repo/structures-db-schema": "workspace:*",

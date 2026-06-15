@@ -17,7 +17,7 @@ export function PageHeader({ title, description, action, className }: PageHeader
 					<h1 className="py-1 text-4xl md:text-5xl font-bold leading-[1.2] gradient-text">
 						{title}
 					</h1>
-					{description && <p className="text-muted-foreground text-lg">{description}</p>}
+					{description && <div className="text-muted-foreground text-lg">{description}</div>}
 				</div>
 				{action && <div className="flex-shrink-0">{action}</div>}
 			</div>

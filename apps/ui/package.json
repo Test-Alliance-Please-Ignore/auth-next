@@ -35,6 +35,7 @@
 		"@repo/bills": "workspace:*",
 		"@repo/broadcasts": "workspace:*",
 		"@repo/corporation-tax": "workspace:*",
+		"@repo/eve-fitting": "workspace:*",
 		"@repo/eve-types": "workspace:*",
 		"@repo/freight": "workspace:*",
 		"@repo/hono-helpers": "workspace:*",
