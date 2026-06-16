@@ -37,6 +37,83 @@ import type { App } from '../context'
  */
 const auth = new Hono<App>()
 
+interface AuthSessionPermissionView {
+	permissionId: string | null
+	urn: string
+	name: string
+	description: string | null
+}
+
+interface AuthSessionUserView {
+	id: string
+	mainCharacterId: string
+	characters: Array<{
+		characterId: string
+		characterName: string
+		hasValidToken: boolean
+	}>
+	is_admin: boolean
+	discord: Awaited<ReturnType<typeof getDiscordStatus>>
+	legacyAuth: {
+		userId: string | null
+		username: string | null
+		isLinked: boolean
+	}
+}
+
+export interface AuthSessionResponse {
+	authenticated: boolean
+	user: AuthSessionUserView | null
+	permissions: AuthSessionPermissionView[]
+}
+
+export function buildAuthSessionResponse(
+	user: AuthSessionUserView,
+	permissions: Array<{
+		permissionId?: string | null
+		urn: string
+		name: string
+		description: string | null
+	}>
+): AuthSessionResponse
+export function buildAuthSessionResponse(
+	user: null,
+	permissions?: Array<{
+		permissionId?: string | null
+		urn: string
+		name: string
+		description: string | null
+	}>
+): AuthSessionResponse
+export function buildAuthSessionResponse(
+	user: AuthSessionUserView | null,
+	permissions: Array<{
+		permissionId?: string | null
+		urn: string
+		name: string
+		description: string | null
+	}> = []
+): AuthSessionResponse {
+	if (!user) {
+		return {
+			authenticated: false,
+			user: null,
+			permissions: [],
+		}
+	}
+
+	return {
+		authenticated: true,
+		user,
+		permissions: permissions.map((permission) => ({
+			permissionId: permission.permissionId ?? null,
+			urn: permission.urn,
+			name: permission.name,
+			description: permission.description,
+		})),
+	}
+}
+
 /**
  * Helper to extract request metadata
  */
@@ -930,7 +1007,7 @@ auth.get('/session', async (c) => {
 	const user = c.get('user')
 
 	if (!user) {
-		return c.json({ authenticated: false, user: null, permissions: [] })
+		return c.json(buildAuthSessionResponse(null))
 	}
 
 	// Fetch user permissions (cached for 15 seconds)
@@ -963,23 +1040,19 @@ auth.get('/session', async (c) => {
 		isLinked,
 	}
 
-	return c.json({
-		authenticated: true,
-		user: {
-			id: user.id,
-			mainCharacterId: user.mainCharacterId,
-			characters: user.characters,
-			is_admin: user.is_admin,
-			discord: discordStatus,
-			legacyAuth,
-		},
-		permissions: permissions.map((p) => ({
-			permissionId: p.permissionId ?? null,
-			urn: p.urn,
-			name: p.name,
-			description: p.description,
-		})),
-	})
+	return c.json(
+		buildAuthSessionResponse(
+			{
+				id: user.id,
+				mainCharacterId: user.mainCharacterId,
+				characters: user.characters,
+				is_admin: user.is_admin,
+				discord: discordStatus,
+				legacyAuth,
+			},
+			permissions
+		)
+	)
 })
 
 /**
