@@ -39,11 +39,11 @@ const structureListSortFields = [
 const structureListPagingSchema = z.object({
 	page: z.coerce.number().int().min(1).default(1),
 	pageSize: z.coerce.number().int().min(1).max(100).default(25),
-	sortBy: z.enum(structureListSortFields).default('updatedAt'),
-	sortDirection: z.enum(['asc', 'desc']).default('desc'),
+	sortBy: z.enum(structureListSortFields).default('fuel'),
+	sortDirection: z.enum(['asc', 'desc']).default('asc'),
 })
 
-const citadelStructureListQuerySchema = structureListPagingSchema.extend({
+const structureCommonListQuerySchema = structureListPagingSchema.extend({
 	corporationId: z.string().trim().min(1).optional(),
 	assignedGroupId: z.string().trim().min(1).optional(),
 	lowPower: z.enum(['true', 'false']).optional(),
@@ -54,32 +54,21 @@ const citadelStructureListQuerySchema = structureListPagingSchema.extend({
 	typeId: z.string().trim().min(1).optional(),
 })
 
-const navigationStructureListQuerySchema = structureListPagingSchema.extend({
-	corporationId: z.string().trim().min(1).optional(),
-	systemId: z.string().trim().min(1).optional(),
-	state: z.string().trim().min(1).optional(),
-	typeId: z.string().trim().min(1).optional(),
-})
+const citadelStructureListQuerySchema = structureCommonListQuerySchema
 
-const sovereigntyStructureListQuerySchema = structureListPagingSchema.extend({
-	corporationId: z.string().trim().min(1).optional(),
-	systemId: z.string().trim().min(1).optional(),
+const navigationStructureListQuerySchema = structureCommonListQuerySchema
+
+const sovereigntyStructureListQuerySchema = structureCommonListQuerySchema.extend({
 	allianceId: z.string().trim().min(1).optional(),
 })
 
-const skyhookStructureListQuerySchema = structureListPagingSchema.extend({
-	corporationId: z.string().trim().min(1).optional(),
-	systemId: z.string().trim().min(1).optional(),
+const skyhookStructureListQuerySchema = structureCommonListQuerySchema.extend({
 	planetId: z.string().trim().min(1).optional(),
-	state: z.string().trim().min(1).optional(),
 	isRaidable: z.enum(['true', 'false']).optional(),
 })
 
-const miningStructureListQuerySchema = structureListPagingSchema.extend({
-	corporationId: z.string().trim().min(1).optional(),
-	systemId: z.string().trim().min(1).optional(),
+const miningStructureListQuerySchema = structureCommonListQuerySchema.extend({
 	planetId: z.string().trim().min(1).optional(),
-	typeId: z.string().trim().min(1).optional(),
 })
 
 const updateStructureConfigSchema = z.object({
@@ -436,6 +425,10 @@ async function handleNavigationStructuresRequest(c: Context<App>): Promise<Respo
 			sortBy: c.req.query('sortBy') || undefined,
 			sortDirection: c.req.query('sortDirection') || undefined,
 			corporationId: c.req.query('corporationId') || undefined,
+			assignedGroupId: c.req.query('assignedGroupId') || undefined,
+			lowPower: c.req.query('lowPower') || undefined,
+			lowPowerAllowed: c.req.query('lowPowerAllowed') || undefined,
+			regionId: c.req.query('regionId') || undefined,
 			systemId: c.req.query('systemId') || undefined,
 			state: c.req.query('state') || undefined,
 			typeId: c.req.query('typeId') || undefined,
@@ -464,7 +457,13 @@ async function handleSovereigntyStructuresRequest(c: Context<App>): Promise<Resp
 			sortBy: c.req.query('sortBy') || undefined,
 			sortDirection: c.req.query('sortDirection') || undefined,
 			corporationId: c.req.query('corporationId') || undefined,
+			assignedGroupId: c.req.query('assignedGroupId') || undefined,
+			lowPower: c.req.query('lowPower') || undefined,
+			lowPowerAllowed: c.req.query('lowPowerAllowed') || undefined,
+			regionId: c.req.query('regionId') || undefined,
 			systemId: c.req.query('systemId') || undefined,
+			state: c.req.query('state') || undefined,
+			typeId: c.req.query('typeId') || undefined,
 			allianceId: c.req.query('allianceId') || undefined,
 		}) satisfies StructureSovereigntyListQuery
 		return c.json(await c.env.STRUCTURES.listSovereigntyStructures(await getStructureActor(c), query))
@@ -491,9 +490,14 @@ async function handleSkyhookStructuresRequest(c: Context<App>): Promise<Response
 			sortBy: c.req.query('sortBy') || undefined,
 			sortDirection: c.req.query('sortDirection') || undefined,
 			corporationId: c.req.query('corporationId') || undefined,
+			assignedGroupId: c.req.query('assignedGroupId') || undefined,
+			lowPower: c.req.query('lowPower') || undefined,
+			lowPowerAllowed: c.req.query('lowPowerAllowed') || undefined,
+			regionId: c.req.query('regionId') || undefined,
 			systemId: c.req.query('systemId') || undefined,
-			planetId: c.req.query('planetId') || undefined,
 			state: c.req.query('state') || undefined,
+			typeId: c.req.query('typeId') || undefined,
+			planetId: c.req.query('planetId') || undefined,
 			isRaidable: c.req.query('isRaidable') || undefined,
 		}) satisfies StructureSkyhookListQuery
 		return c.json(await c.env.STRUCTURES.listSkyhookStructures(await getStructureActor(c), query))
@@ -520,9 +524,14 @@ async function handleMiningStructuresRequest(c: Context<App>): Promise<Response>
 			sortBy: c.req.query('sortBy') || undefined,
 			sortDirection: c.req.query('sortDirection') || undefined,
 			corporationId: c.req.query('corporationId') || undefined,
+			assignedGroupId: c.req.query('assignedGroupId') || undefined,
+			lowPower: c.req.query('lowPower') || undefined,
+			lowPowerAllowed: c.req.query('lowPowerAllowed') || undefined,
+			regionId: c.req.query('regionId') || undefined,
 			systemId: c.req.query('systemId') || undefined,
-			planetId: c.req.query('planetId') || undefined,
+			state: c.req.query('state') || undefined,
 			typeId: c.req.query('typeId') || undefined,
+			planetId: c.req.query('planetId') || undefined,
 		}) satisfies StructureMiningListQuery
 		return c.json(await c.env.STRUCTURES.listMiningStructures(await getStructureActor(c), query))
 	} catch (error) {

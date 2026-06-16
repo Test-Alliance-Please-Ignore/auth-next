@@ -672,15 +672,6 @@ export interface StructureListBaseItem {
 	regionId: string | null
 	regionName: string | null
 	state: string
-	syncStatus: 'ok' | 'warning' | 'error'
-	syncFailureReason: string | null
-	lastSyncedAt: string | null
-	updatedAt: string
-	canViewSensitive: boolean
-	canEdit: boolean
-}
-
-export interface StructureCitadelListItem extends StructureListBaseItem {
 	profileId: string
 	nextStateAt: string | null
 	fuelExpires: string | null
@@ -689,7 +680,15 @@ export interface StructureCitadelListItem extends StructureListBaseItem {
 	hidden: boolean
 	lowPowerAllowed: boolean
 	assignedGroupId: string | null
+	syncStatus: 'ok' | 'warning' | 'error'
+	syncFailureReason: string | null
+	lastSyncedAt: string | null
+	updatedAt: string
+	canViewSensitive: boolean
+	canEdit: boolean
 }
+
+export interface StructureCitadelListItem extends StructureListBaseItem {}
 
 export interface StructureNavigationListItem extends StructureCitadelListItem {}
 
@@ -786,7 +785,6 @@ export interface StructureSovereigntyListItem extends StructureListBaseItem {
 export interface StructureSkyhookListItem extends StructureListBaseItem {
 	planetId: string
 	planetName: string | null
-	state: string
 	isActive: boolean
 	effectiveWorkforce: number | null
 	totalReagents: number
