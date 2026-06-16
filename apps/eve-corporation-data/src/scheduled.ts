@@ -136,7 +136,23 @@ export async function scheduledHandler(event: ScheduledEvent, env: Env, _ctx: Ex
 			})
 			.filter((entry): entry is EnrichedQueueEntry => entry !== null)
 		const deferred = queue.filter((entry) => entry.nextAttemptAtMs > now)
-		const { draining, remainingDue } = selectPriorityDrain(due, BACKGROUND_REFRESH_DRAIN_LIMIT)
+		const dueSelection = selectPriorityDrain(due, BACKGROUND_REFRESH_DRAIN_LIMIT)
+		let draining = [...dueSelection.draining]
+
+		if (draining.length < BACKGROUND_REFRESH_DRAIN_LIMIT && deferred.length > 0) {
+			const deferredEntries = deferred
+				.map((entry) => {
+					const corporation = corporationsById.get(entry.corporationId)
+					if (!corporation) return null
+					return enrichQueueEntry(entry, corporation, now)
+				})
+				.filter((entry): entry is EnrichedQueueEntry => entry !== null)
+			const deferredSelection = selectPriorityDrain(
+				deferredEntries,
+				BACKGROUND_REFRESH_DRAIN_LIMIT - draining.length
+			)
+			draining = [...draining, ...deferredSelection.draining]
+		}
 
 		let workflowsCreated = 0
 		let alreadyRunning = 0
@@ -174,7 +190,11 @@ export async function scheduledHandler(event: ScheduledEvent, env: Env, _ctx: Ex
 			}
 		}
 
-		const nextQueue = [...remainingDue, ...deferred, ...requeued].sort(
+		const drainingIds = new Set(draining.map((entry) => entry.corporationId))
+		const nextQueue = [
+			...queue.filter((entry) => !drainingIds.has(entry.corporationId)),
+			...requeued,
+		].sort(
 			(a, b) => a.nextAttemptAtMs - b.nextAttemptAtMs
 		)
 		await saveQueue(env.CACHE, nextQueue)

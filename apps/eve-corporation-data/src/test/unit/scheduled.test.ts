@@ -178,7 +178,19 @@ function simulateRefreshRuns(
 			})
 		.filter((entry): entry is NonNullable<typeof entry> => entry !== null)
 
-		const { draining } = selectPriorityDrain(due, batchSize)
+		let { draining } = selectPriorityDrain(due, batchSize)
+		if (draining.length < batchSize) {
+			const deferred = queueEntries
+				.filter((entry) => entry.nextAttemptAtMs > runAt)
+				.map((entry) => {
+					const corporation = corpStateById.get(entry.corporationId)
+					if (!corporation) return null
+					return enrichQueueEntry(entry, corporation, runAt)
+				})
+				.filter((entry): entry is NonNullable<typeof entry> => entry !== null)
+			const fallback = selectPriorityDrain(deferred, batchSize - draining.length)
+			draining = [...draining, ...fallback.draining]
+		}
 		selectedByRun.push(draining)
 
 		for (const entry of draining) {
