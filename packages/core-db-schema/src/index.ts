@@ -60,6 +60,7 @@ export const managedCorporations = pgTable(
 		assignedCharacterName: varchar('assigned_character_name', { length: 255 }),
 		isActive: boolean('is_active').default(true).notNull(),
 		includeInBackgroundRefresh: boolean('include_in_background_refresh').default(false).notNull(),
+		includeInStructureAssetSync: boolean('include_in_structure_asset_sync').default(false).notNull(),
 		lastSync: timestamp('last_sync', { withTimezone: true }),
 		lastVerified: timestamp('last_verified', { withTimezone: true }),
 		isVerified: boolean('is_verified').default(false).notNull(),
@@ -74,7 +75,15 @@ export const managedCorporations = pgTable(
 		createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
 		updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow().notNull(),
 	},
-	(table) => [index('managed_corporations_name_idx').on(table.name)]
+	(table) => [
+		index('managed_corporations_name_idx').on(table.name),
+		index('managed_corporations_include_in_background_refresh_idx').on(
+			table.includeInBackgroundRefresh
+		),
+		index('managed_corporations_include_in_structure_asset_sync_idx').on(
+			table.includeInStructureAssetSync
+		),
+	]
 )
 
 export const discordServers = pgTable(

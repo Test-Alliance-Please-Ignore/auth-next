@@ -474,7 +474,15 @@ export class CoreWorker extends WorkerEntrypoint<Env> {
 	 * Get corporations that should be included in background refresh
 	 */
 	async getCorporationsForBackgroundRefresh(): Promise<
-		Array<{ corporationId: string; name: string }>
+		Array<{
+			corporationId: string
+			name: string
+			lastSync: string | null
+			includeInStructureAssetSync: boolean
+			isMemberCorporation: boolean
+			isAltCorp: boolean
+			isSpecialPurpose: boolean
+		}>
 	> {
 		return this.getService().getCorporationsForBackgroundRefresh()
 	}

@@ -289,6 +289,18 @@ export default function CorporationDetailPage() {
 		}
 	}
 
+	const handleUpdateStructureAssetSync = async (enabled: boolean) => {
+		try {
+			await updateCorporation.mutateAsync({
+				corporationId: corpId,
+				data: { includeInStructureAssetSync: enabled },
+			})
+			showSuccess(`Structure asset sync ${enabled ? 'enabled' : 'disabled'}`)
+		} catch (error) {
+			showError(error instanceof Error ? error.message : 'Failed to update setting')
+		}
+	}
+
 	const handleUpdateMemberCorporation = async (enabled: boolean) => {
 		if (!enabled) {
 			requestConfirmation({
@@ -498,7 +510,8 @@ export default function CorporationDetailPage() {
 								<CardTitle>Data Collection Settings</CardTitle>
 							</div>
 							<CardDescription>
-								Configure automatic data fetching and synchronization behavior
+								Configure automatic data fetching, synchronization behavior, and structure asset
+								snapshots.
 							</CardDescription>
 						</CardHeader>
 						<CardContent className="space-y-4">
@@ -518,6 +531,25 @@ export default function CorporationDetailPage() {
 									<p className="text-sm text-muted-foreground ml-11">
 										When enabled, corporation data will be automatically fetched and updated on a
 										regular schedule
+									</p>
+								</div>
+							</div>
+
+							<div className="flex items-center justify-between">
+								<div className="space-y-1">
+									<div className="flex items-center space-x-2">
+										<Switch
+											id="structure-asset-sync"
+											checked={corporation.includeInStructureAssetSync}
+											onCheckedChange={(checked) => handleUpdateStructureAssetSync(checked)}
+											disabled={updateCorporation.isPending}
+										/>
+										<Label htmlFor="structure-asset-sync" className="cursor-pointer font-medium">
+											Include in Structure Asset Sync
+										</Label>
+									</div>
+									<p className="text-sm text-muted-foreground ml-11">
+										When enabled, structure asset snapshots are fetched during corporation sync
 									</p>
 								</div>
 							</div>

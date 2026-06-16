@@ -1,17 +1,17 @@
 import { Plus } from 'lucide-react'
-import { useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useState } from 'react'
 
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import {
 	useCreateTaxBillingConfig,
 	useDeleteTaxBillingConfig,
 	useSearchTaxBillingPayeeCharacters,
-	useSearchTaxBillingPayeeCorporations,
 	useSetDefaultTaxBillingConfig,
 	useTaxBillingConfigs,
 	useUpdateTaxBillingConfig,
 } from '@/hooks/corporation-tax'
 import { useEntityNames } from '@/hooks/useEntityNames'
+import { corporationTaxApi } from '@/lib/tax-api'
 
 import { BillingConfigurationForm } from './billing-configuration-form'
 import { BillingConfigurationTable } from './billing-configuration-table'
@@ -35,9 +35,7 @@ export function BillingConfigurationCard({
 	const [billingIssuerUserIdInput, setBillingIssuerUserIdInput] = useState('')
 	const [billingPayeeIdInput, setBillingPayeeIdInput] = useState('')
 	const [billingCharacterSearchInput, setBillingCharacterSearchInput] = useState('')
-	const [billingCharacterSearchDebounced, setBillingCharacterSearchDebounced] = useState('')
 	const [billingCorporationSearchInput, setBillingCorporationSearchInput] = useState('')
-	const [billingCorporationSearchDebounced, setBillingCorporationSearchDebounced] = useState('')
 	const [billingPayeeTypeInput, setBillingPayeeTypeInput] = useState<TaxBillingPayeeType>()
 	const [billingDueDaysInput, setBillingDueDaysInput] = useState('14')
 	const [billingIsDefaultInput, setBillingIsDefaultInput] = useState(false)
@@ -69,37 +67,18 @@ export function BillingConfigurationCard({
 	const { data: billingCharacterSearchResults = [], isLoading: billingCharacterSearchLoading } =
 		useSearchTaxBillingPayeeCharacters(
 			effectiveCorporationId,
-			billingCharacterSearchDebounced,
+			billingCharacterSearchInput,
 			billingPayeeTypeInput === 'character'
 		)
-	const { data: billingCorporationSearchResults = [], isLoading: billingCorporationSearchLoading } =
-		useSearchTaxBillingPayeeCorporations(
-			effectiveCorporationId,
-			billingCorporationSearchDebounced,
-			billingPayeeTypeInput === 'corporation'
-		)
-
-	useEffect(() => {
-		if (billingPayeeTypeInput !== 'character') {
-			setBillingCharacterSearchDebounced('')
-			return
-		}
-		const timer = setTimeout(() => {
-			setBillingCharacterSearchDebounced(billingCharacterSearchInput.trim())
-		}, 300)
-		return () => clearTimeout(timer)
-	}, [billingCharacterSearchInput, billingPayeeTypeInput])
-
-	useEffect(() => {
-		if (billingPayeeTypeInput !== 'corporation') {
-			setBillingCorporationSearchDebounced('')
-			return
-		}
-		const timer = setTimeout(() => {
-			setBillingCorporationSearchDebounced(billingCorporationSearchInput.trim())
-		}, 300)
-		return () => clearTimeout(timer)
-	}, [billingCorporationSearchInput, billingPayeeTypeInput])
+	const searchBillingCorporationPayees = useCallback(
+		(query: string) => {
+			if (!effectiveCorporationId) {
+				return Promise.resolve([])
+			}
+			return corporationTaxApi.searchActivePayeeCorporations(effectiveCorporationId, query)
+		},
+		[effectiveCorporationId]
+	)
 
 	const isCreatingFirstBillingConfig =
 		showBillingConfigForm &&
@@ -129,9 +108,7 @@ export function BillingConfigurationCard({
 		setBillingIssuerUserIdInput('')
 		setBillingPayeeIdInput('')
 		setBillingCharacterSearchInput('')
-		setBillingCharacterSearchDebounced('')
 		setBillingCorporationSearchInput('')
-		setBillingCorporationSearchDebounced('')
 		setBillingPayeeTypeInput(undefined)
 		setBillingDueDaysInput('14')
 		setBillingIsDefaultInput(false)
@@ -274,9 +251,7 @@ export function BillingConfigurationCard({
 								billingEnabledInput={billingEnabledInput}
 								billingIssuerUserIdInput={billingIssuerUserIdInput}
 								billingCharacterSearchInput={billingCharacterSearchInput}
-								billingCharacterSearchDebounced={billingCharacterSearchDebounced}
 								billingCorporationSearchInput={billingCorporationSearchInput}
-								billingCorporationSearchDebounced={billingCorporationSearchDebounced}
 								billingPayeeTypeInput={billingPayeeTypeInput}
 								billingPayeeIdInput={billingPayeeIdInput}
 								billingDueDaysInput={billingDueDaysInput}
@@ -286,21 +261,13 @@ export function BillingConfigurationCard({
 								isBillingDueDaysValid={isBillingDueDaysValid}
 								isBillingPayeeSelectionValid={isBillingPayeeSelectionValid}
 								billingCharacterSearchLoading={billingCharacterSearchLoading}
-								billingCorporationSearchLoading={billingCorporationSearchLoading}
 								billingCharacterSearchResults={billingCharacterSearchResults.map((character) => ({
 									id: character.characterId,
 									value: character.characterId,
 									label: character.characterName,
 									description: character.characterId,
 								}))}
-								billingCorporationSearchResults={billingCorporationSearchResults.map(
-									(corporation) => ({
-										id: corporation.corporationId,
-										value: corporation.corporationId,
-										label: corporation.name ?? corporation.corporationId,
-										description: corporation.corporationId,
-									})
-								)}
+								searchBillingCorporationPayees={searchBillingCorporationPayees}
 								isCreatePending={createBillingConfigMutation.isPending}
 								isUpdatePending={updateBillingConfigMutation.isPending}
 								canIssue={canIssue && Boolean(effectiveCorporationId)}

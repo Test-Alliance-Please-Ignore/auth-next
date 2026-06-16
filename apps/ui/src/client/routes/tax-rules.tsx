@@ -112,19 +112,6 @@ export default function TaxRulesPage() {
 		return map
 	}, [corporationAccess?.corporations, taxCorporations, entityNames])
 
-	const corporationSearchOptions = useMemo<SelectOption[]>(
-		() =>
-			Array.from(corporationNameById.entries())
-				.filter(([corporationId]) => !excludedCorporationIdSet.has(corporationId))
-				.map(([corporationId, name]) => ({
-					id: corporationId,
-					value: corporationId,
-					label: name,
-					description: corporationId,
-				})),
-		[corporationNameById, excludedCorporationIdSet]
-	)
-
 	if (!canManage) {
 		return (
 			<Container>
@@ -171,7 +158,7 @@ export default function TaxRulesPage() {
 				<RuleGroupCorporationAttachmentsCard
 					effectiveRuleGroupId={effectiveRuleGroupId}
 					attachments={attachments}
-					corporationSearchOptions={corporationSearchOptions}
+					excludeCorporationIds={excludedCorporationIdSet}
 					resolveCorporationName={(corporationId) =>
 						corporationNameById.get(corporationId) ?? entityNames[corporationId] ?? corporationId
 					}

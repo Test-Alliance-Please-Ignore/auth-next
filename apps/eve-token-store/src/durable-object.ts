@@ -2,25 +2,21 @@ import { DurableObject } from 'cloudflare:workers'
 import { createRemoteJWKSet, jwtVerify } from 'jose'
 import * as z4 from 'zod/v4/core'
 
-import { getStub } from '@repo/do-utils'
 import { and, asc, eq, gt, gte, inArray, isNull, lt, lte, or } from '@repo/db-utils'
-import {
-	EsiRequestClient,
-	type EsiCacheScopeContext,
-	type EsiResponse as SharedEsiResponse,
-} from '@repo/esi'
-import { EsiRateLimitStore, buildEsiUserKey, buildPublicEsiUserKey } from '@repo/esi-rate-limit'
+import { getStub } from '@repo/do-utils'
+import { EsiRequestClient } from '@repo/esi'
+import { buildEsiUserKey, buildPublicEsiUserKey, EsiRateLimitStore } from '@repo/esi-rate-limit'
 import { logger } from '@repo/hono-helpers'
 import { parseJsonResponse } from '@repo/worker-utils'
 
 import { createDb } from './db'
 import { eveCharacters, eveTokens } from './db/schema'
+import { computeCircuitOpenUntil } from './lib/auth-esi-breaker'
 import {
 	computeEffectiveAuthEsiBudgetLimits,
 	isAuthEsiBudgetExceeded,
 	normalizeAuthEsiRouteKey,
 } from './lib/auth-esi-budget'
-import { computeCircuitOpenUntil } from './lib/auth-esi-breaker'
 import { shouldOpenRouteCircuitForResponse } from './lib/auth-esi-circuit-policy'
 import { computeRampRetryAfterSeconds } from './lib/auth-esi-ramp'
 import {
@@ -30,6 +26,7 @@ import {
 	shouldForcePermanentByInvalidAge,
 } from './lib/token-health'
 
+import type { EsiCacheScopeContext, EsiResponse as SharedEsiResponse } from '@repo/esi'
 import type {
 	AuthorizationUrlResponse,
 	CachedEveMetadata,
@@ -87,7 +84,7 @@ const TOKEN_REFRESH_TRANSIENT_COOLDOWN_MS = 5 * 60 * 1000
  */
 const EVE_SCOPES_ALL = [
 	'publicData',
-	// 'esi-access.read_lists.v1',
+	'esi-access.read_lists.v1',
 	// 'esi-activities.read_character.v1',
 	'esi-calendar.respond_calendar_events.v1',
 	'esi-calendar.read_calendar_events.v1',
@@ -154,8 +151,8 @@ const EVE_SCOPES_ALL = [
 	'esi-alliances.read_contacts.v1',
 	'esi-characters.read_fw_stats.v1',
 	'esi-corporations.read_fw_stats.v1',
-	// 'esi-structures.read_character.v1',
-	// 'esi-structures.read_corporation.v1',
+	'esi-structures.read_character.v1',
+	'esi-structures.read_corporation.v1',
 	'esi-corporations.read_projects.v1',
 ] as const
 
@@ -319,9 +316,7 @@ export class EveTokenStoreDO extends DurableObject<Env> implements EveTokenStore
 	}
 
 	private async getTokenRefreshCooldownUntil(characterId: string): Promise<number> {
-		return (
-			(await this.state.storage.get<number>(this.getTokenRefreshCooldownKey(characterId))) ?? 0
-		)
+		return (await this.state.storage.get<number>(this.getTokenRefreshCooldownKey(characterId))) ?? 0
 	}
 
 	private async setTokenRefreshCooldownUntil(
@@ -500,12 +495,11 @@ export class EveTokenStoreDO extends DurableObject<Env> implements EveTokenStore
 			const cooldownUntilMs = await this.getTokenRefreshCooldownUntil(characterId)
 			const nowMs = Date.now()
 			if (cooldownUntilMs > nowMs) {
-				logger.withTags({ operation: 'refreshToken', characterId }).warn(
-					'Skipping refresh: token is in cooldown window',
-					{
+				logger
+					.withTags({ operation: 'refreshToken', characterId })
+					.warn('Skipping refresh: token is in cooldown window', {
 						cooldownUntil: new Date(cooldownUntilMs).toISOString(),
-					}
-				)
+					})
 				return false
 			}
 
@@ -533,13 +527,12 @@ export class EveTokenStoreDO extends DurableObject<Env> implements EveTokenStore
 				return false
 			}
 			if (tokenRecord.permanentInvalidAt) {
-				logger.withTags({ operation: 'refreshToken', characterId }).warn(
-					'Skipping refresh: token is permanently invalid',
-					{
+				logger
+					.withTags({ operation: 'refreshToken', characterId })
+					.warn('Skipping refresh: token is permanently invalid', {
 						permanentInvalidAt: tokenRecord.permanentInvalidAt.toISOString(),
 						reason: tokenRecord.permanentInvalidReason,
-					}
-				)
+					})
 				return false
 			}
 			if (shouldForcePermanentByInvalidAge(tokenRecord.invalidSince)) {
@@ -548,8 +541,7 @@ export class EveTokenStoreDO extends DurableObject<Env> implements EveTokenStore
 					.set({
 						permanentInvalidAt: new Date(),
 						permanentInvalidReason:
-							tokenRecord.permanentInvalidReason ??
-							'Invalid state exceeded 7-day backstop',
+							tokenRecord.permanentInvalidReason ?? 'Invalid state exceeded 7-day backstop',
 						updatedAt: new Date(),
 					})
 					.where(eq(eveTokens.id, tokenRecord.id))
@@ -889,10 +881,10 @@ export class EveTokenStoreDO extends DurableObject<Env> implements EveTokenStore
 			} else {
 				accessToken = await this.decrypt(tokenRecord.accessToken)
 			}
-			} catch (error) {
-				const errorMessage = error instanceof Error ? error.message : String(error)
-				const status = classifySsoError(errorMessage)
-				if (refreshAttempted && isPermanentRefreshFailure(errorMessage)) {
+		} catch (error) {
+			const errorMessage = error instanceof Error ? error.message : String(error)
+			const status = classifySsoError(errorMessage)
+			if (refreshAttempted && isPermanentRefreshFailure(errorMessage)) {
 				await this.db
 					.update(eveTokens)
 					.set({
@@ -906,24 +898,27 @@ export class EveTokenStoreDO extends DurableObject<Env> implements EveTokenStore
 						updatedAt: new Date(),
 					})
 					.where(eq(eveTokens.id, tokenRecord.id))
-					logger
-						.withTags({ operation: 'validateToken', characterId })
-						.warn('Permanent token refresh failure during validation; disabled further refresh attempts', {
+				logger
+					.withTags({ operation: 'validateToken', characterId })
+					.warn(
+						'Permanent token refresh failure during validation; disabled further refresh attempts',
+						{
 							error: errorMessage,
-						})
-					return {
-						characterId,
-						error: errorMessage,
-						isValid: false,
-						missingScopes: [],
-						refreshAttempted,
-						refreshSucceeded: false,
-						scopes: [],
-						status: 'permanent_invalid',
-					}
+						}
+					)
+				return {
+					characterId,
+					error: errorMessage,
+					isValid: false,
+					missingScopes: [],
+					refreshAttempted,
+					refreshSucceeded: false,
+					scopes: [],
+					status: 'permanent_invalid',
 				}
+			}
 
-				if (refreshAttempted) {
+			if (refreshAttempted) {
 				await this.db
 					.update(eveTokens)
 					.set({
@@ -1056,17 +1051,17 @@ export class EveTokenStoreDO extends DurableObject<Env> implements EveTokenStore
 				return null
 			}
 
-				// Check if token is expired
-				const now = new Date()
-				const isExpired = tokenRecord.expiresAt < now
+			// Check if token is expired
+			const now = new Date()
+			const isExpired = tokenRecord.expiresAt < now
 
-				if (isExpired) {
-					if (!tokenRecord.refreshToken) {
-						return null
-					}
-					// Try to refresh
-					const refreshed = await this.refreshToken(characterId)
-					if (!refreshed) {
+			if (isExpired) {
+				if (!tokenRecord.refreshToken) {
+					return null
+				}
+				// Try to refresh
+				const refreshed = await this.refreshToken(characterId)
+				if (!refreshed) {
 					return null
 				}
 
@@ -1179,17 +1174,17 @@ export class EveTokenStoreDO extends DurableObject<Env> implements EveTokenStore
 				const scopes = JSON.parse(character.scopes) as string[]
 				const isExpired = tokenRecord.expiresAt < new Date()
 
-					tokens.push({
-						characterId: character.characterId,
-						characterName: character.characterName,
-						characterOwnerHash: character.characterOwnerHash,
-						expiresAt: tokenRecord.expiresAt,
-						scopes,
-						isExpired,
-						hasRefreshToken: Boolean(tokenRecord.refreshToken),
-					})
-				}
+				tokens.push({
+					characterId: character.characterId,
+					characterName: character.characterName,
+					characterOwnerHash: character.characterOwnerHash,
+					expiresAt: tokenRecord.expiresAt,
+					scopes,
+					isExpired,
+					hasRefreshToken: Boolean(tokenRecord.refreshToken),
+				})
 			}
+		}
 
 		return tokens
 	}
@@ -1431,7 +1426,6 @@ export class EveTokenStoreDO extends DurableObject<Env> implements EveTokenStore
 				}
 			}
 		}
-
 	}
 
 	private async assertAuthenticatedEsiCircuitClosed(path: string): Promise<void> {
@@ -1470,9 +1464,10 @@ export class EveTokenStoreDO extends DurableObject<Env> implements EveTokenStore
 		const now = Date.now()
 		const currentOpenUntilMs =
 			this.authEsiRouteBreakerOpenUntilMs.get(routeKey) ??
-			((await this.state.storage.get<number>(
+			(await this.state.storage.get<number>(
 				`${AUTH_ESI_ROUTE_BREAKER_OPEN_UNTIL_PREFIX}${routeKey}`
-			)) ?? 0)
+			)) ??
+			0
 		const nextOpenUntil = computeCircuitOpenUntil({
 			nowMs: now,
 			retryAfterSeconds,
@@ -1492,22 +1487,21 @@ export class EveTokenStoreDO extends DurableObject<Env> implements EveTokenStore
 			`${AUTH_ESI_ROUTE_BREAKER_LAST_OPEN_UNTIL_PREFIX}${routeKey}`,
 			nextOpenUntil
 		)
-		logger.withTags({ operation: 'esi_auth_route_breaker_open' }).warn(
-			'Opened auth ESI route circuit breaker',
-			{
+		logger
+			.withTags({ operation: 'esi_auth_route_breaker_open' })
+			.warn('Opened auth ESI route circuit breaker', {
 				reason,
 				routeKey,
 				retryAfterSeconds,
 				openForMs: nextOpenUntil - now,
 				openUntil: new Date(nextOpenUntil).toISOString(),
-			}
-		)
+			})
 	}
 
 	private normalizeCharacterIds(characterIds: string[]): number[] {
-		return [...new Set(characterIds.map((id) => Number.parseInt(id, 10)).filter(Number.isFinite))].sort(
-			(a, b) => a - b
-		)
+		return [
+			...new Set(characterIds.map((id) => Number.parseInt(id, 10)).filter(Number.isFinite)),
+		].sort((a, b) => a - b)
 	}
 
 	private buildEsiRequestError(path: string, response: Response, errorText: string): Error {
@@ -1548,12 +1542,18 @@ export class EveTokenStoreDO extends DurableObject<Env> implements EveTokenStore
 		const cacheMode = options?.cacheMode ?? 'default'
 		const scope = { scope: 'character', scopeId: characterId } as const
 		const cached =
-			cacheMode === 'no-store' ? null : await this.getCachedResponse<T>(scope, path, undefined, true)
+			cacheMode === 'no-store'
+				? null
+				: await this.getCachedResponse<T>(scope, path, undefined, true)
 		if (cached) {
 			const now = Date.now()
 			const lastModified = cached.lastModified?.getTime()
 			const cacheAge = lastModified ? now - lastModified : Infinity
-			if (cached.expiresAt?.getTime() && cached.expiresAt.getTime() > now && cacheAge <= EveTokenStoreDO.MAX_CACHE_TTL_MS) {
+			if (
+				cached.expiresAt?.getTime() &&
+				cached.expiresAt.getTime() > now &&
+				cacheAge <= EveTokenStoreDO.MAX_CACHE_TTL_MS
+			) {
 				return {
 					data: cached.data,
 					cached: true,
@@ -1659,7 +1659,11 @@ export class EveTokenStoreDO extends DurableObject<Env> implements EveTokenStore
 			const now = Date.now()
 			const lastModified = cached.lastModified?.getTime()
 			const cacheAge = lastModified ? now - lastModified : Infinity
-			if (cached.expiresAt?.getTime() && cached.expiresAt.getTime() > now && cacheAge <= EveTokenStoreDO.MAX_CACHE_TTL_MS) {
+			if (
+				cached.expiresAt?.getTime() &&
+				cached.expiresAt.getTime() > now &&
+				cacheAge <= EveTokenStoreDO.MAX_CACHE_TTL_MS
+			) {
 				return {
 					data: cached.data,
 					cached: true,
@@ -1701,31 +1705,29 @@ export class EveTokenStoreDO extends DurableObject<Env> implements EveTokenStore
 		}
 	}
 
-	async fetchCharacterAffiliations(
-		characterIds: string[]
-	): Promise<EsiCharacterAffiliation[]> {
+	async fetchCharacterAffiliations(characterIds: string[]): Promise<EsiCharacterAffiliation[]> {
 		const normalizedIds = this.normalizeCharacterIds(characterIds)
 		if (normalizedIds.length === 0) {
 			throw new Error('fetchCharacterAffiliations requires at least one valid character ID')
 		}
 
 		const esiStub = getStub<EsiHelperStub>(this.env.ESI, 'default')
-		return await esiStub.fetchCharacterAffiliation(
-			String(normalizedIds[0]),
-			normalizedIds.map(String),
-			{ cacheMode: 'no-store' }
-		).then((affiliations) =>
-			affiliations.map((affiliation) => ({
-				character_id: Number.parseInt(String(affiliation.character_id), 10),
-				corporation_id: Number.parseInt(String(affiliation.corporation_id), 10),
-				alliance_id: affiliation.alliance_id
-					? Number.parseInt(String(affiliation.alliance_id), 10)
-					: undefined,
-				faction_id: affiliation.faction_id
-					? Number.parseInt(String(affiliation.faction_id), 10)
-					: undefined,
-			}))
-		)
+		return await esiStub
+			.fetchCharacterAffiliation(String(normalizedIds[0]), normalizedIds.map(String), {
+				cacheMode: 'no-store',
+			})
+			.then((affiliations) =>
+				affiliations.map((affiliation) => ({
+					character_id: Number.parseInt(String(affiliation.character_id), 10),
+					corporation_id: Number.parseInt(String(affiliation.corporation_id), 10),
+					alliance_id: affiliation.alliance_id
+						? Number.parseInt(String(affiliation.alliance_id), 10)
+						: undefined,
+					faction_id: affiliation.faction_id
+						? Number.parseInt(String(affiliation.faction_id), 10)
+						: undefined,
+				}))
+			)
 	}
 
 	/**
@@ -2426,9 +2428,7 @@ export class EveTokenStoreDO extends DurableObject<Env> implements EveTokenStore
 		const sub = payload.sub ?? ''
 		const subMatch = /^CHARACTER:EVE:(\d+)$/.exec(sub)
 		if (!subMatch) {
-			logger
-				.withTags({ operation: 'verifyToken' })
-				.error('Invalid "sub" claim value', { sub })
+			logger.withTags({ operation: 'verifyToken' }).error('Invalid "sub" claim value', { sub })
 			throw new Error('Invalid claim value')
 		}
 		const characterId = subMatch[1]

@@ -47,6 +47,10 @@ describe('EveCorporationData Durable Object', () => {
 
 		// Set configuration
 		await stub.setCharacter(String(testCorp), '2119123456', 'Test Character')
+		await stub.updateCorporationConfig(String(testCorp), {
+			includeInBackgroundRefresh: true,
+			includeInStructureAssetSync: true,
+		})
 
 		// Should return configuration after setting
 		const configAfter = await stub.getConfiguration()
@@ -55,6 +59,14 @@ describe('EveCorporationData Durable Object', () => {
 		expect(configAfter?.characterId).toBe('2119123456')
 		expect(configAfter?.characterName).toBe('Test Character')
 		expect(configAfter?.isVerified).toBe(false)
+		expect(configAfter?.includeInBackgroundRefresh).toBe(true)
+		expect(configAfter?.includeInStructureAssetSync).toBe(true)
+
+		const syncConfig = await stub.getCorporationSyncConfig(String(testCorp))
+		expect(syncConfig).toEqual({
+			includeInBackgroundRefresh: true,
+			includeInStructureAssetSync: true,
+		})
 	})
 
 	it('can get corporation info when configured', async () => {

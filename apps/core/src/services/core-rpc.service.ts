@@ -751,7 +751,15 @@ export class CoreRpcService {
 	 * Get corporations that should be included in background refresh
 	 */
 	async getCorporationsForBackgroundRefresh(): Promise<
-		Array<{ corporationId: string; name: string }>
+		Array<{
+			corporationId: string
+			name: string
+			lastSync: string | null
+			includeInStructureAssetSync: boolean
+			isMemberCorporation: boolean
+			isAltCorp: boolean
+			isSpecialPurpose: boolean
+		}>
 	> {
 		const { managedCorporations } = await import('../db/schema')
 
@@ -765,12 +773,29 @@ export class CoreRpcService {
 			columns: {
 				corporationId: true,
 				name: true,
+				lastSync: true,
+				includeInStructureAssetSync: true,
+				isMemberCorporation: true,
+				isAltCorp: true,
+				isSpecialPurpose: true,
 			},
+			orderBy: [
+				managedCorporations.lastSync,
+				managedCorporations.includeInStructureAssetSync,
+				managedCorporations.isMemberCorporation,
+				managedCorporations.isAltCorp,
+				managedCorporations.isSpecialPurpose,
+			],
 		})
 
 		return corporations.map((c) => ({
 			corporationId: c.corporationId,
 			name: c.name,
+			lastSync: c.lastSync?.toISOString() ?? null,
+			includeInStructureAssetSync: c.includeInStructureAssetSync,
+			isMemberCorporation: c.isMemberCorporation,
+			isAltCorp: c.isAltCorp,
+			isSpecialPurpose: c.isSpecialPurpose,
 		}))
 	}
 

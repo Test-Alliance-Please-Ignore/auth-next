@@ -60,6 +60,7 @@ export const corporationConfig = pgTable(
 		createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
 		updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow().notNull(),
 		includeInBackgroundRefresh: boolean('include_in_background_refresh').default(false).notNull(),
+		includeInStructureAssetSync: boolean('include_in_structure_asset_sync').default(false).notNull(),
 		corporationType: corporationTypeEnum('corporation_type').default('other').notNull(),
 		membersLastSync: timestamp('members_last_sync', { withTimezone: true }),
 		memberTrackingLastSync: timestamp('member_tracking_last_sync', { withTimezone: true }),
@@ -76,6 +77,9 @@ export const corporationConfig = pgTable(
 	(table) => [
 		index('corporation_config_include_in_background_refresh_idx').on(
 			table.includeInBackgroundRefresh
+		),
+		index('corporation_config_include_in_structure_asset_sync_idx').on(
+			table.includeInStructureAssetSync
 		),
 		index('corporation_config_corporation_type_idx').on(table.corporationType),
 		index('corporation_config_member_tracking_last_sync_idx').on(table.memberTrackingLastSync),

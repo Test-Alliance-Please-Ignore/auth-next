@@ -923,6 +923,7 @@ app.post('/', requireAuth(), requireAdmin(), async (c) => {
 			assignedCharacterId,
 			assignedCharacterName,
 			includeInBackgroundRefresh,
+			includeInStructureAssetSync,
 		} = body
 
 		if (!corporationId || !name || !ticker) {
@@ -952,6 +953,7 @@ app.post('/', requireAuth(), requireAdmin(), async (c) => {
 				assignedCharacterName: assignedCharacterName || null,
 				isActive: true,
 				includeInBackgroundRefresh: includeInBackgroundRefresh ?? false,
+				includeInStructureAssetSync: includeInStructureAssetSync ?? false,
 				isVerified: false,
 				configuredBy: user.id,
 			})
@@ -972,12 +974,16 @@ app.post('/', requireAuth(), requireAdmin(), async (c) => {
 				logger.info('[Corporations] Character set in DO successfully', { corporationId })
 			}
 
-			// Sync includeInBackgroundRefresh setting
-			if (includeInBackgroundRefresh !== undefined) {
-				await stub.updateCorporationConfig(corporationId, { includeInBackgroundRefresh })
-				logger.info('[Corporations] Synced includeInBackgroundRefresh to eve-corporation-data', {
+			// Sync corporation config settings
+			if (includeInBackgroundRefresh !== undefined || includeInStructureAssetSync !== undefined) {
+				await stub.updateCorporationConfig(corporationId, {
+					includeInBackgroundRefresh,
+					includeInStructureAssetSync,
+				})
+				logger.info('[Corporations] Synced corporation config to eve-corporation-data', {
 					corporationId,
 					includeInBackgroundRefresh,
+					includeInStructureAssetSync,
 				})
 			}
 		} catch (error) {
@@ -1071,6 +1077,7 @@ app.put('/:corporationId', requireAuth(), requireAdmin(), async (c) => {
 			assignedCharacterName,
 			isActive,
 			includeInBackgroundRefresh,
+			includeInStructureAssetSync,
 			isMemberCorporation,
 			isAltCorp,
 			isSpecialPurpose,
@@ -1228,6 +1235,7 @@ app.put('/:corporationId', requireAuth(), requireAdmin(), async (c) => {
 				...(assignedCharacterName !== undefined && { assignedCharacterName }),
 				...(isActive !== undefined && { isActive }),
 				...(includeInBackgroundRefresh !== undefined && { includeInBackgroundRefresh }),
+				...(includeInStructureAssetSync !== undefined && { includeInStructureAssetSync }),
 				...(isMemberCorporation !== undefined && { isMemberCorporation }),
 				...(isAltCorp !== undefined && { isAltCorp }),
 				...(isSpecialPurpose !== undefined && { isSpecialPurpose }),
@@ -1259,17 +1267,21 @@ app.put('/:corporationId', requireAuth(), requireAdmin(), async (c) => {
 			}
 		}
 
-		// Sync includeInBackgroundRefresh to eve-corporation-data DB
-		if (includeInBackgroundRefresh !== undefined) {
+		// Sync corporation config settings to eve-corporation-data DB
+		if (includeInBackgroundRefresh !== undefined || includeInStructureAssetSync !== undefined) {
 			try {
 				const stub = getStub<EveCorporationData>(c.env.EVE_CORPORATION_DATA, corporationId)
-				await stub.updateCorporationConfig(corporationId, { includeInBackgroundRefresh })
-				logger.info('[Corporations] Synced includeInBackgroundRefresh to eve-corporation-data', {
+				await stub.updateCorporationConfig(corporationId, {
+					includeInBackgroundRefresh,
+					includeInStructureAssetSync,
+				})
+				logger.info('[Corporations] Synced corporation config to eve-corporation-data', {
 					corporationId,
 					includeInBackgroundRefresh,
+					includeInStructureAssetSync,
 				})
 			} catch (error) {
-				logger.error('[Corporations] Failed to sync includeInBackgroundRefresh', {
+				logger.error('[Corporations] Failed to sync corporation config', {
 					corporationId,
 					error: error instanceof Error ? error.message : String(error),
 				})

@@ -330,6 +330,8 @@ export const managedCorporations = pgTable(
 		isActive: boolean('is_active').default(true).notNull(),
 		/** Whether this corporation should be included in background data refresh */
 		includeInBackgroundRefresh: boolean('include_in_background_refresh').default(false).notNull(),
+		/** Whether this corporation should be included in structure asset snapshots */
+		includeInStructureAssetSync: boolean('include_in_structure_asset_sync').default(false).notNull(),
 		/** Last successful data sync timestamp */
 		lastSync: timestamp('last_sync', { withTimezone: true }),
 		/** Last verification timestamp (any director verified) */
@@ -362,6 +364,9 @@ export const managedCorporations = pgTable(
 		index('managed_corporations_is_active_idx').on(table.isActive),
 		index('managed_corporations_include_in_background_refresh_idx').on(
 			table.includeInBackgroundRefresh
+		),
+		index('managed_corporations_include_in_structure_asset_sync_idx').on(
+			table.includeInStructureAssetSync
 		),
 		index('managed_corporations_corporation_id_is_member_idx').on(
 			table.corporationId,

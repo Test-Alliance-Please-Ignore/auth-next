@@ -1,0 +1,2 @@
+ALTER TABLE "corporation_config" ADD COLUMN "include_in_structure_asset_sync" boolean DEFAULT false NOT NULL;--> statement-breakpoint
+CREATE INDEX "corporation_config_include_in_structure_asset_sync_idx" ON "corporation_config" USING btree ("include_in_structure_asset_sync");

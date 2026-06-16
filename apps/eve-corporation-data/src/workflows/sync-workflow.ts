@@ -35,9 +35,11 @@ import { fetchMembers, sendMembershipChangedMessages, storeMembers } from './ste
 import { fetchOrders, storeOrders } from './steps/orders'
 import { fetchPublicInfo, storePublicInfo } from './steps/public-info'
 import {
-	fetchStructureEnrichment,
 	fetchStructures,
-	storeStructureEnrichment,
+	fetchStructureSkyhookEnrichment,
+	fetchStructureSovereigntyEnrichment,
+	storeSkyhookEnrichment,
+	storeSovereigntyEnrichment,
 	storeStructures,
 } from './steps/structures'
 import { syncWalletJournal } from './steps/wallet-journal'
@@ -157,19 +159,44 @@ export class EveCorporationSyncWorkflow extends WorkflowEntrypoint<Env, EveCorpo
 		})
 
 		this.validateEnv()
+		const corpData = getStub<EveCorporationData>(this.env.EVE_CORPORATION_DATA, corporationId)
 
+		const corporationConfig = await step.do(
+			'load-corporation-sync-config',
+			{ timeout: '30 seconds' },
+			async () => {
+				try {
+					return await corpData.getCorporationSyncConfig(corporationId)
+				} catch (error) {
+					logger.warn('[EveCorporationSyncWorkflow] Failed to load corporation config for asset gating', {
+						corporationId,
+						error: error instanceof Error ? error.message : String(error),
+					})
+					return null
+				}
+			}
+		)
+
+		const structureAssetSyncEnabled = corporationConfig?.includeInStructureAssetSync ?? false
 		const shouldSync = createShouldSyncPredicate(dataTypes, {
-			disabledDataTypes: assetsSyncEnabled ? [] : ['assets'],
+			disabledDataTypes: assetsSyncEnabled && structureAssetSyncEnabled ? [] : ['assets'],
 		})
 		const requiredRoleSets = getRequiredRoleSets(shouldSync)
 
 		const wantsAssets =
 			!dataTypes || dataTypes.length === 0 || dataTypes.includes('assets')
-		if (!assetsSyncEnabled && wantsAssets) {
-			logger.warn('[EveCorporationSyncWorkflow] Asset sync is temporarily disabled', {
+		if (wantsAssets && (!assetsSyncEnabled || !structureAssetSyncEnabled)) {
+			const assetSyncLog = {
 				corporationId,
 				requestedDataTypes: dataTypes ?? 'all',
-			})
+				assetsSyncEnabled,
+				structureAssetSyncEnabled,
+			}
+			if (assetsSyncEnabled) {
+				logger.info('[EveCorporationSyncWorkflow] Asset sync skipped by configuration', assetSyncLog)
+			} else {
+				logger.warn('[EveCorporationSyncWorkflow] Asset sync skipped by configuration', assetSyncLog)
+			}
 		}
 
 		await step.do(
@@ -654,29 +681,52 @@ export class EveCorporationSyncWorkflow extends WorkflowEntrypoint<Env, EveCorpo
 					fetchStructures(this.env, corporationId, directorCharacterId),
 			})
 
-			const structureEnrichment = structureEnrichmentEnabled
+			const structureSovereigntyEnrichment = structureEnrichmentEnabled
 				? await runDirectorStepWithFailover({
-						stepName: 'fetch-structure-enrichment',
+						stepName: 'fetch-structure-sovereignty-enrichment',
 						timeout: '5 minutes',
 						requiredRoles: ['Station_Manager'],
 						run: (directorCharacterId) =>
-							fetchStructureEnrichment(this.env, corporationId, directorCharacterId),
+							fetchStructureSovereigntyEnrichment(
+								this.env,
+								corporationId,
+								directorCharacterId
+							),
+					})
+				: null
+			const structureSkyhookEnrichment = structureEnrichmentEnabled
+				? await runDirectorStepWithFailover({
+						stepName: 'fetch-structure-skyhook-enrichment',
+						timeout: '5 minutes',
+						requiredRoles: ['Station_Manager'],
+						run: (directorCharacterId) =>
+							fetchStructureSkyhookEnrichment(this.env, corporationId, directorCharacterId),
 					})
 				: null
 
 			structuresSync = await step.do('store-structures', {}, async () => {
 				await storeStructures(this.env, corporationId, structures)
-				if (structureEnrichment) {
-					await storeStructureEnrichment(this.env, corporationId, structureEnrichment)
+				if (structureSovereigntyEnrichment) {
+					await storeSovereigntyEnrichment(
+						this.env,
+						corporationId,
+						structureSovereigntyEnrichment
+					)
+				}
+				if (structureSkyhookEnrichment) {
+					await storeSkyhookEnrichment(this.env, corporationId, structureSkyhookEnrichment)
 				}
 					return {
 						dataType: 'structures' as const,
 						stats: {
 							structuresCount: structures.length,
-							sovereigntySystemsCount: structureEnrichment?.sovereigntySystems?.length ?? 0,
-							sovereigntyHubsCount: structureEnrichment?.sovereigntyHubs.length ?? 0,
-							skyhooksCount: structureEnrichment?.skyhooks.length ?? 0,
-							miningStatesCount: structureEnrichment?.miningStates.length ?? 0,
+							sovereigntySystemsCount:
+								structureSovereigntyEnrichment?.sovereigntySystems?.length ?? 0,
+							sovereigntyHubsCount:
+								structureSovereigntyEnrichment?.sovereigntyHubs.length ?? 0,
+							skyhooksCount: structureSkyhookEnrichment?.skyhooks.length ?? 0,
+							miningStatesCount:
+								structureSkyhookEnrichment?.miningStates.length ?? 0,
 						},
 					}
 				})
@@ -687,6 +737,7 @@ export class EveCorporationSyncWorkflow extends WorkflowEntrypoint<Env, EveCorpo
 				corporationId,
 				trigger,
 				hasDirector: director !== null,
+				structureAssetSyncEnabled,
 			})
 			assetsSync = await step.do(
 				'sync-assets',
