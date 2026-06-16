@@ -110,8 +110,10 @@ export interface StructureListResponse<TItem = StructureListItem> {
 
 interface StructureAccessScope {
 	viewAll: boolean
+	sensitiveAll: boolean
 	managerAll: boolean
 	viewCorporationIds: Set<string>
+	sensitiveCorporationIds: Set<string>
 	managerCorporationIds: Set<string>
 }
 
@@ -402,15 +404,19 @@ function computeStructureAccess(roles: string[], isAdmin: boolean): StructureAcc
 	if (isAdmin) {
 		return {
 			viewAll: true,
+			sensitiveAll: true,
 			managerAll: true,
 			viewCorporationIds: new Set<string>(),
+			sensitiveCorporationIds: new Set<string>(),
 			managerCorporationIds: new Set<string>(),
 		}
 	}
 
 	const viewCorporationIds = new Set<string>()
+	const sensitiveCorporationIds = new Set<string>()
 	const managerCorporationIds = new Set<string>()
 	let viewAll = false
+	let sensitiveAll = false
 	let managerAll = false
 
 	for (const roleUrn of roles) {
@@ -419,6 +425,9 @@ function computeStructureAccess(roles: string[], isAdmin: boolean): StructureAcc
 		if (parsed.scope === STRUCTURE_PERMISSION_SCOPE_ALL) {
 			viewAll = true
 			if (parsed.role === 'manager' || parsed.role === 'sensitive') {
+				sensitiveAll = true
+			}
+			if (parsed.role === 'manager') {
 				managerAll = true
 			}
 			continue
@@ -429,6 +438,9 @@ function computeStructureAccess(roles: string[], isAdmin: boolean): StructureAcc
 				viewCorporationIds.add(parsed.corporationId)
 			}
 			if (parsed.role === 'manager' || parsed.role === 'sensitive') {
+				sensitiveCorporationIds.add(parsed.corporationId)
+			}
+			if (parsed.role === 'manager') {
 				managerCorporationIds.add(parsed.corporationId)
 			}
 		}
@@ -436,8 +448,10 @@ function computeStructureAccess(roles: string[], isAdmin: boolean): StructureAcc
 
 	return {
 		viewAll,
+		sensitiveAll,
 		managerAll,
 		viewCorporationIds,
+		sensitiveCorporationIds,
 		managerCorporationIds,
 	}
 }
@@ -445,6 +459,19 @@ function computeStructureAccess(roles: string[], isAdmin: boolean): StructureAcc
 export function canManageStructureModule(user: SessionUser): boolean {
 	const access = computeStructureAccess(user.roles, user.is_admin)
 	return user.is_admin || access.managerAll
+}
+
+function canViewSensitiveStructure(access: StructureAccessScope, corporationId: string): boolean {
+	return (
+		access.sensitiveAll ||
+		access.managerAll ||
+		access.sensitiveCorporationIds.has(corporationId) ||
+		access.managerCorporationIds.has(corporationId)
+	)
+}
+
+function canEditStructure(access: StructureAccessScope, corporationId: string): boolean {
+	return access.managerAll || access.managerCorporationIds.has(corporationId)
 }
 
 function toIso(value: Date | null | undefined): string | null {
@@ -635,7 +662,7 @@ function summarizeStructureMining(
 }
 
 function buildStructureListItem(context: VisibleStructureContext): StructureListItem {
-	const { structure, corporationName, config, canViewSensitive } = context
+	const { structure, corporationName, config, canViewSensitive, canEdit } = context
 	const nextStateAt = structure.stateTimerEnd ?? structure.nextReinforceApply ?? structure.unanchorsAt
 
 	return {
@@ -663,7 +690,7 @@ function buildStructureListItem(context: VisibleStructureContext): StructureList
 		lastSyncedAt: toIso(structure.lastSyncedAt),
 		updatedAt: structure.updatedAt.toISOString(),
 		canViewSensitive,
-		canEdit: canViewSensitive,
+		canEdit,
 	}
 }
 
@@ -1055,6 +1082,7 @@ interface VisibleStructureContext {
 	corporationName: string
 	config: typeof structureConfigs.$inferSelect | null
 	canViewSensitive: boolean
+	canEdit: boolean
 	tabData: StructureTabData | null
 	fittingItems: StructureFittingItemSummary[] | null
 	lastRefilledAt: Date | null
@@ -1119,8 +1147,8 @@ async function getVisibleStructureContext(
 			name: true,
 		},
 	})
-	const canViewSensitive =
-		user.is_admin || access.managerAll || access.managerCorporationIds.has(structure.corporationId)
+	const canViewSensitive = user.is_admin || canViewSensitiveStructure(access, structure.corporationId)
+	const canEdit = user.is_admin || canEditStructure(access, structure.corporationId)
 	if (config?.hidden && !canViewSensitive) {
 		return null
 	}
@@ -1136,6 +1164,7 @@ async function getVisibleStructureContext(
 		corporationName: corporation?.name ?? structure.corporationId,
 		config: config ?? null,
 		canViewSensitive,
+		canEdit,
 		tabData: {
 			...(tabData ?? {}),
 			inventoryBays,
@@ -1464,8 +1493,8 @@ async function loadVisibleStructureContexts(
 		contexts: corpStructures
 			.map<VisibleStructureContext | null>((structure) => {
 				const config = configsByStructureId.get(structure.structureId) ?? null
-				const canViewSensitive =
-					user.is_admin || access.managerAll || access.managerCorporationIds.has(structure.corporationId)
+				const canViewSensitive = user.is_admin || canViewSensitiveStructure(access, structure.corporationId)
+				const canEdit = user.is_admin || canEditStructure(access, structure.corporationId)
 				if (config?.hidden && !canViewSensitive) {
 					return null
 				}
@@ -1475,6 +1504,7 @@ async function loadVisibleStructureContexts(
 					corporationName: corporationNamesById.get(structure.corporationId) ?? structure.corporationId,
 					config,
 					canViewSensitive,
+					canEdit,
 					tabData: null,
 					fittingItems: null,
 					lastRefilledAt: null,
@@ -1640,8 +1670,9 @@ function buildSovereigntyListItem(input: {
 	structureRow: typeof corporationStructures.$inferSelect
 	corporationName: string
 	canViewSensitive: boolean
+	canEdit: boolean
 }): StructureSovereigntyListItem {
-	const { systemRow, hubRow, structureRow, corporationName, canViewSensitive } = input
+	const { systemRow, hubRow, structureRow, corporationName, canViewSensitive, canEdit } = input
 	const hasSystemSnapshot = systemRow !== null
 	const lastSyncedAt = systemRow?.lastSyncedAt ?? hubRow?.lastSyncedAt ?? structureRow.lastSyncedAt ?? null
 	const sourceUpdatedAt = systemRow?.updatedAt ?? hubRow?.updatedAt ?? structureRow.updatedAt
@@ -1696,7 +1727,7 @@ function buildSovereigntyListItem(input: {
 		lastSyncedAt: toIso(lastSyncedAt),
 		updatedAt: sourceUpdatedAt ? sourceUpdatedAt.toISOString() : structureRow.updatedAt.toISOString(),
 		canViewSensitive,
-		canEdit: canViewSensitive,
+		canEdit,
 	}
 }
 
@@ -1705,8 +1736,9 @@ function buildSkyhookListItem(input: {
 	structureRow: typeof corporationStructures.$inferSelect
 	corporationName: string
 	canViewSensitive: boolean
+	canEdit: boolean
 }): StructureSkyhookListItem {
-	const { skyhookRow, structureRow, corporationName, canViewSensitive } = input
+	const { skyhookRow, structureRow, corporationName, canViewSensitive, canEdit } = input
 	const hasSkyhookSnapshot = skyhookRow !== null
 	const reagentTotals = skyhookRow?.reagents.reduce(
 		(accumulator: { secured: number; unsecured: number }, reagent: { securedStock: number; unsecuredStock: number }) => {
@@ -1748,7 +1780,7 @@ function buildSkyhookListItem(input: {
 		lastSyncedAt: toIso(skyhookRow?.lastSyncedAt ?? structureRow.lastSyncedAt),
 		updatedAt: (skyhookRow?.updatedAt ?? structureRow.updatedAt).toISOString(),
 		canViewSensitive,
-		canEdit: canViewSensitive,
+		canEdit,
 	}
 }
 
@@ -1757,8 +1789,9 @@ function buildMiningListItem(input: {
 	structureRow: typeof corporationStructures.$inferSelect
 	corporationName: string
 	canViewSensitive: boolean
+	canEdit: boolean
 }): StructureMiningListItem {
-	const { miningRow, structureRow, corporationName, canViewSensitive } = input
+	const { miningRow, structureRow, corporationName, canViewSensitive, canEdit } = input
 	const hasMiningSnapshot = miningRow !== null
 
 	return {
@@ -1791,7 +1824,7 @@ function buildMiningListItem(input: {
 		lastSyncedAt: toIso(miningRow?.lastSyncedAt ?? structureRow.lastSyncedAt),
 		updatedAt: (miningRow?.updatedAt ?? structureRow.updatedAt).toISOString(),
 		canViewSensitive,
-		canEdit: canViewSensitive,
+		canEdit,
 	}
 }
 
@@ -1886,6 +1919,7 @@ export async function listSovereigntyStructures(
 			structureRow: context.structure,
 			corporationName: context.corporationName,
 			canViewSensitive: context.canViewSensitive,
+			canEdit: context.canEdit,
 		})
 	})
 
@@ -2020,6 +2054,7 @@ export async function listSkyhookStructures(
 			structureRow: context.structure,
 			corporationName: context.corporationName,
 			canViewSensitive: context.canViewSensitive,
+			canEdit: context.canEdit,
 		})
 	})
 
@@ -2146,6 +2181,7 @@ export async function listMiningStructures(
 			structureRow: context.structure,
 			corporationName: context.corporationName,
 			canViewSensitive: context.canViewSensitive,
+			canEdit: context.canEdit,
 		})
 	)
 

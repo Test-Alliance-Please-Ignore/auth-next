@@ -287,11 +287,33 @@ export function hasStructureManagerPermission(permissions: Array<PermissionLike>
 			return false
 		}
 
+		return parsed.role === 'manager'
+	})
+}
+
+export function hasStructureSensitivePermission(permissions: Array<PermissionLike>): boolean {
+	return permissions.some((permission) => {
+		const parsed = parseStructurePermissionUrn(permission.urn)
+		if (!parsed) {
+			return false
+		}
+
 		return parsed.role === 'manager' || parsed.role === 'sensitive'
 	})
 }
 
 export function hasAllStructureManagerPermission(permissions: Array<PermissionLike>): boolean {
+	return permissions.some((permission) => {
+		const parsed = parseStructurePermissionUrn(permission.urn)
+		if (!parsed || parsed.scope !== 'all') {
+			return false
+		}
+
+		return parsed.role === 'manager'
+	})
+}
+
+export function hasAllStructureSensitivePermission(permissions: Array<PermissionLike>): boolean {
 	return permissions.some((permission) => {
 		const parsed = parseStructurePermissionUrn(permission.urn)
 		if (!parsed || parsed.scope !== 'all') {
