@@ -15,7 +15,7 @@
 	},
 	"vars": {
 		"ASSETS_SYNC_ENABLED": true,
-		"STRUCTURE_ENRICHMENT_ENABLED": false
+		"STRUCTURE_ENRICHMENT_ENABLED": true
 	},
 	"kv_namespaces": [
 		{
