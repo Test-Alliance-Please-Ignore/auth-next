@@ -9,7 +9,6 @@ import {
 	withEsiRetryClassification,
 } from '@repo/workflow-utils'
 
-import * as esiFetch from '../services/esi-fetch'
 import { syncAssets } from './steps/assets'
 import {
 	clearTaxProjectionRetryIntent,
@@ -36,9 +35,11 @@ import { fetchOrders, storeOrders } from './steps/orders'
 import { fetchPublicInfo, storePublicInfo } from './steps/public-info'
 import {
 	fetchStructures,
-	fetchStructureSkyhookEnrichment,
-	fetchStructureSovereigntyEnrichment,
+	fetchSkyhookEnrichment,
+	fetchSovereigntyEnrichment,
+	fetchMiningEnrichment,
 	storeSkyhookEnrichment,
+	storeMiningEnrichment,
 	storeSovereigntyEnrichment,
 	storeStructures,
 } from './steps/structures'
@@ -431,6 +432,7 @@ export class EveCorporationSyncWorkflow extends WorkflowEntrypoint<Env, EveCorpo
 		let contractsSync: SyncStepResult<'contracts'> | null = null
 		let industryJobsSync: SyncStepResult<'industry-jobs'> | null = null
 		let killmailsSync: SyncStepResult<'killmails'> | null = null
+		let ownedStructureIdsForAssets: string[] | undefined = undefined
 
 		if (shouldSync('public-info')) {
 			const publicInfo = await step.do(
@@ -680,53 +682,55 @@ export class EveCorporationSyncWorkflow extends WorkflowEntrypoint<Env, EveCorpo
 				run: (directorCharacterId) =>
 					fetchStructures(this.env, corporationId, directorCharacterId),
 			})
+			ownedStructureIdsForAssets = structures.map((structure) => String(structure.structure_id))
 
-			const structureSovereigntyEnrichment = structureEnrichmentEnabled
+			const sovereigntyEnrichment = structureEnrichmentEnabled
 				? await runDirectorStepWithFailover({
 						stepName: 'fetch-structure-sovereignty-enrichment',
 						timeout: '5 minutes',
 						requiredRoles: ['Station_Manager'],
 						run: (directorCharacterId) =>
-							fetchStructureSovereigntyEnrichment(
-								this.env,
-								corporationId,
-								directorCharacterId
-							),
+							fetchSovereigntyEnrichment(this.env, corporationId, directorCharacterId),
 					})
 				: null
-			const structureSkyhookEnrichment = structureEnrichmentEnabled
+			const skyhookEnrichment = structureEnrichmentEnabled
 				? await runDirectorStepWithFailover({
 						stepName: 'fetch-structure-skyhook-enrichment',
 						timeout: '5 minutes',
 						requiredRoles: ['Station_Manager'],
 						run: (directorCharacterId) =>
-							fetchStructureSkyhookEnrichment(this.env, corporationId, directorCharacterId),
+							fetchSkyhookEnrichment(this.env, corporationId, directorCharacterId),
+					})
+				: null
+			const miningExtractions = structureEnrichmentEnabled
+				? await runDirectorStepWithFailover({
+						stepName: 'fetch-structure-mining-enrichment',
+						timeout: '5 minutes',
+						requiredRoles: ['Station_Manager'],
+						run: (directorCharacterId) =>
+							fetchMiningEnrichment(this.env, corporationId, directorCharacterId),
 					})
 				: null
 
 			structuresSync = await step.do('store-structures', {}, async () => {
 				await storeStructures(this.env, corporationId, structures)
-				if (structureSovereigntyEnrichment) {
-					await storeSovereigntyEnrichment(
-						this.env,
-						corporationId,
-						structureSovereigntyEnrichment
-					)
+				if (sovereigntyEnrichment) {
+					await storeSovereigntyEnrichment(this.env, corporationId, sovereigntyEnrichment)
 				}
-				if (structureSkyhookEnrichment) {
-					await storeSkyhookEnrichment(this.env, corporationId, structureSkyhookEnrichment)
+				if (skyhookEnrichment) {
+					await storeSkyhookEnrichment(this.env, corporationId, skyhookEnrichment)
+				}
+				if (miningExtractions) {
+					await storeMiningEnrichment(this.env, corporationId, miningExtractions)
 				}
 					return {
 						dataType: 'structures' as const,
 						stats: {
 							structuresCount: structures.length,
-							sovereigntySystemsCount:
-								structureSovereigntyEnrichment?.sovereigntySystems?.length ?? 0,
-							sovereigntyHubsCount:
-								structureSovereigntyEnrichment?.sovereigntyHubs.length ?? 0,
-							skyhooksCount: structureSkyhookEnrichment?.skyhooks.length ?? 0,
-							miningStatesCount:
-								structureSkyhookEnrichment?.miningStates.length ?? 0,
+							sovereigntySystemsCount: sovereigntyEnrichment?.sovereigntySystems?.length ?? 0,
+							sovereigntyHubsCount: sovereigntyEnrichment?.sovereigntyHubs.length ?? 0,
+							skyhooksCount: skyhookEnrichment?.skyhooks.length ?? 0,
+							miningExtractionsCount: miningExtractions?.length ?? 0,
 						},
 					}
 				})
@@ -748,7 +752,12 @@ export class EveCorporationSyncWorkflow extends WorkflowEntrypoint<Env, EveCorpo
 						timeout: '10 minutes',
 						requiredRoles: ['Director'],
 						run: (directorCharacterId) =>
-							syncAssets(this.env, corporationId, directorCharacterId),
+							syncAssets(
+								this.env,
+								corporationId,
+								directorCharacterId,
+								ownedStructureIdsForAssets
+							),
 					})
 					return {
 						dataType: 'assets' as const,

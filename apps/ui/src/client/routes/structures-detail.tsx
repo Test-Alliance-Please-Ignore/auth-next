@@ -23,6 +23,7 @@ import { usePageTitle } from '@/hooks/usePageTitle'
 import { useUserPermissions } from '@/hooks/useUserPermissions'
 import { InventoryBaysTable } from '@/components/inventory-bays-table'
 import { CorporationLogo } from '@/components/corporation-logo'
+import { StructureFuelUsageChart } from '@/components/structure-fuel-usage-chart'
 import { FittingPanel } from '@repo/eve-fitting/fitting-panel'
 import { FittingSlotTable } from '@repo/eve-fitting/fitting-slot-table'
 import type { FittingDisplayItem, FittingShipSlotType } from '@repo/eve-fitting/flags'
@@ -131,6 +132,11 @@ function formatNullableDateTime(value: string | null | undefined): string {
 function formatNullableNumber(value: number | null | undefined): string {
 	if (value === null || value === undefined) return '-'
 	return value.toLocaleString()
+}
+
+function formatBurnRate(value: number | null | undefined): string {
+	if (value === null || value === undefined) return '-'
+	return `${value.toLocaleString(undefined, { maximumFractionDigits: 2 })}/hr`
 }
 
 function InventoryItemIcon({ typeId }: { typeId: string }) {
@@ -293,7 +299,7 @@ export default function StructuresDetailPage() {
 	const structureFamily = getStructureTabForTypeId(structure.typeId)
 	const hasSovereigntySummary = structureFamily === 'sovereignty' && structure.sovereignty
 	const hasSkyhookSummary = structureFamily === 'skyhooks' && structure.skyhook
-	const hasMiningSummary = structureFamily === 'mining' && structure.mining
+	const hasMiningSummary = structureFamily === 'mining'
 
 	const handleSave = async () => {
 		await updateMutation.mutateAsync({
@@ -402,9 +408,6 @@ export default function StructuresDetailPage() {
 							{structure.hidden && <Badge variant="ghost">Hidden</Badge>}
 							{structure.lowPowerAllowed && <Badge variant="success">Low Power Alerts Suppressed</Badge>}
 							{structure.assignedGroupId && <Badge variant="special">Group Assigned</Badge>}
-							{structure.includeInStructureAssetSync && (
-								<Badge variant="success">Asset Sync Enabled</Badge>
-							)}
 						</div>
 						<div className="space-y-3">
 							<div className="space-y-2">
@@ -472,6 +475,11 @@ export default function StructuresDetailPage() {
 							<div className="space-y-2">
 								<div className="text-xs uppercase tracking-wider text-muted-foreground">Sync Status</div>
 								<div className="rounded-lg border border-border/60 p-4">
+									{structure.includeInStructureAssetSync && (
+										<div className="mb-3 flex flex-wrap gap-2">
+											<Badge variant="success">Asset Sync Enabled</Badge>
+										</div>
+									)}
 									<div className="mt-0.5">
 										<StructureSyncStatusBadge status={structure.syncStatus} description={syncDescription} />
 									</div>
@@ -603,7 +611,15 @@ export default function StructuresDetailPage() {
 					<CardContent className="grid gap-4 md:grid-cols-2 text-sm">
 						<div>
 							<div className="text-muted-foreground">Planet</div>
-							<div className="font-medium">{structure.skyhook?.planetId ?? '-'}</div>
+							<div className="font-medium">
+								{structure.skyhook?.planetName ?? structure.skyhook?.planetId ?? '-'}
+							</div>
+						</div>
+						<div>
+							<div className="text-muted-foreground">System</div>
+							<div className="font-medium">
+								{structure.skyhook?.systemName ?? structure.systemName ?? '-'}
+							</div>
 						</div>
 						<div>
 							<div className="text-muted-foreground">Effective Workforce</div>
@@ -646,40 +662,52 @@ export default function StructuresDetailPage() {
 			{hasMiningSummary && (
 				<Card>
 					<CardHeader>
-						<CardTitle>Mining State</CardTitle>
-						<CardDescription>Tracked fill state for this mining structure.</CardDescription>
+						<CardTitle>Mining Extraction</CardTitle>
+						<CardDescription>Last known moon extraction snapshot for this structure.</CardDescription>
 					</CardHeader>
-					<CardContent className="grid gap-4 md:grid-cols-2 text-sm">
+					<CardContent className="space-y-4 text-sm">
+						{!structure.mining ? (
+							<div className="rounded-md border border-yellow-500/30 bg-yellow-500/10 px-3 py-2 text-yellow-50">
+								Mining extraction snapshot has not been ingested yet for this structure.
+							</div>
+						) : null}
+						<div className="grid gap-4 md:grid-cols-2">
+						<div>
+							<div className="text-muted-foreground">Moon</div>
+							<div className="font-medium">
+								{structure.mining?.moonName ?? structure.mining?.moonId ?? '-'}
+							</div>
+						</div>
 						<div>
 							<div className="text-muted-foreground">Planet</div>
-							<div className="font-medium">{structure.mining?.planetId ?? '-'}</div>
-						</div>
-						<div>
-							<div className="text-muted-foreground">Current Stock</div>
 							<div className="font-medium">
-								{structure.mining?.currentStockVolume !== null &&
-								structure.mining?.currentStockVolume !== undefined
-									? `${structure.mining.currentStockVolume.toLocaleString()} / ${formatNullableNumber(structure.mining.capacityVolume)} m3`
-									: '-'}
+								{structure.mining?.planetName ?? structure.mining?.planetId ?? '-'}
 							</div>
 						</div>
 						<div>
-							<div className="text-muted-foreground">Fill Rate</div>
+							<div className="text-muted-foreground">System</div>
 							<div className="font-medium">
-								{structure.mining?.fillRatePerHour ? `${structure.mining.fillRatePerHour} / hr` : '-'}
+								{structure.mining?.systemName ?? structure.mining?.systemId ?? '-'}
 							</div>
 						</div>
 						<div>
-							<div className="text-muted-foreground">Last Emptied</div>
-							<div className="font-medium">{formatNullableDateTime(structure.mining?.lastEmptiedAt)}</div>
+							<div className="text-muted-foreground">Extraction Start</div>
+							<div className="font-medium">
+								{formatNullableDateTime(structure.mining?.extractionStartTime)}
+							</div>
 						</div>
 						<div>
-							<div className="text-muted-foreground">Estimated Full</div>
-							<div className="font-medium">{formatNullableDateTime(structure.mining?.estimatedFullAt)}</div>
+							<div className="text-muted-foreground">Chunk Arrival</div>
+							<div className="font-medium">
+								{formatNullableDateTime(structure.mining?.chunkArrivalTime)}
+							</div>
 						</div>
 						<div>
-							<div className="text-muted-foreground">Last Observed</div>
-							<div className="font-medium">{formatNullableDateTime(structure.mining?.lastObservedAt)}</div>
+							<div className="text-muted-foreground">Natural Decay</div>
+							<div className="font-medium">
+								{formatNullableDateTime(structure.mining?.naturalDecayTime)}
+							</div>
+						</div>
 						</div>
 					</CardContent>
 				</Card>
@@ -740,6 +768,34 @@ export default function StructuresDetailPage() {
 					</Card>
 				) : null}
 			</div>
+
+			<Card>
+				<CardHeader>
+					<CardTitle>Fuel Usage</CardTitle>
+					<CardDescription>
+						Hourly fuel block count and burn rate over the last 7 days.
+					</CardDescription>
+				</CardHeader>
+				<CardContent className="space-y-5">
+					<div className="grid gap-4 md:grid-cols-3 text-sm">
+						<div>
+							<div className="text-muted-foreground">Current Burn Rate</div>
+							<div className="font-medium">{formatBurnRate(structure.fuelUsage?.fuelBurnRatePerHour)}</div>
+						</div>
+						<div>
+							<div className="text-muted-foreground">Hourly Samples</div>
+							<div className="font-medium">{structure.fuelUsage?.sampleCount ?? 0}</div>
+						</div>
+						<div>
+							<div className="text-muted-foreground">Last Refilled</div>
+							<div className="font-medium">
+								{formatNullableDateTime(structure.fuelUsage?.lastRefilledAt)}
+							</div>
+						</div>
+					</div>
+					<StructureFuelUsageChart points={structure.fuelUsage?.points ?? []} />
+				</CardContent>
+			</Card>
 
 			{isAdmin && assetsDebug && assetsDebug.items.length > 0 ? (
 				<Card>

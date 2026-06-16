@@ -50,7 +50,9 @@ import type { DbClient } from '@repo/db-utils'
 import type { Env, SessionUser } from '../context'
 import {
 	aggregateFuelBurnRatePerHour,
+	buildStructureFuelUsageHistory,
 	type StructureFuelHistorySample,
+	type StructureFuelUsageHistory,
 } from './structure-fuel-history'
 
 const STRUCTURE_REINFORCED_STATES = new Set(['shield', 'armor', 'hull', 'anchoring', 'unanchoring'])
@@ -204,6 +206,7 @@ export interface StructureSkyhookListItem {
 	regionId: string | null
 	regionName: string | null
 	planetId: string
+	planetName: string | null
 	state: string
 	isActive: boolean
 	effectiveWorkforce: number | null
@@ -236,14 +239,13 @@ export interface StructureMiningListItem {
 	regionId: string | null
 	regionName: string | null
 	state: string
-	planetId: string
-	currentStockVolume: number | null
-	capacityVolume: number | null
-	fillRatePerHour: string | null
-	lastEmptiedAt: string | null
-	estimatedFullAt: string | null
-	lastObservedVolume: number | null
-	lastObservedAt: string | null
+	moonId: string
+	moonName: string | null
+	planetId: string | null
+	planetName: string | null
+	extractionStartTime: string | null
+	chunkArrivalTime: string | null
+	naturalDecayTime: string | null
 	syncStatus: 'ok' | 'warning' | 'error'
 	syncFailureReason: string | null
 	lastSyncedAt: string | null
@@ -286,7 +288,10 @@ export interface StructureSovereigntySummary {
 }
 
 export interface StructureSkyhookSummary {
-	planetId: string
+	planetId: string | null
+	planetName: string | null
+	systemId: string | null
+	systemName: string | null
 	state: string
 	isActive: boolean
 	effectiveWorkforce: number | null
@@ -302,14 +307,15 @@ export interface StructureSkyhookSummary {
 }
 
 export interface StructureMiningSummary {
-	planetId: string
-	currentStockVolume: number | null
-	capacityVolume: number | null
-	fillRatePerHour: string | null
-	lastEmptiedAt: string | null
-	estimatedFullAt: string | null
-	lastObservedVolume: number | null
-	lastObservedAt: string | null
+	moonId: string
+	moonName: string | null
+	planetId: string | null
+	planetName: string | null
+	systemId: string | null
+	systemName: string | null
+	extractionStartTime: string | null
+	chunkArrivalTime: string | null
+	naturalDecayTime: string | null
 }
 
 export type StructureInventoryItemSummary = InventoryDisplayBay['items'][number]
@@ -344,6 +350,16 @@ export interface StructureDetailResult extends StructureListItem {
 	nextReinforceHour: number | null
 	reinforceHour: number | null
 	lastRefilledAt: string | null
+	fuelUsage: {
+		points: Array<{
+			observedAt: string
+			fuelBlockUnits: number | null
+			fuelBurnRatePerHour: number | null
+		}>
+		fuelBurnRatePerHour: number | null
+		lastRefilledAt: string | null
+		sampleCount: number
+	} | null
 	sovereignty?: StructureSovereigntySummary | null
 	skyhook?: StructureSkyhookSummary | null
 	mining?: StructureMiningSummary | null
@@ -624,7 +640,10 @@ function summarizeStructureSkyhook(
 	)
 
 	return {
-		planetId: skyhook.planetId,
+		planetId: skyhook.planetId ?? null,
+		planetName: skyhook.planetName ?? null,
+		systemId: skyhook.systemId,
+		systemName: skyhook.systemName ?? null,
 		state: skyhook.state,
 		isActive: skyhook.isActive,
 		effectiveWorkforce: skyhook.effectiveWorkforce ?? null,
@@ -648,17 +667,17 @@ function summarizeStructureMining(
 	}
 
 	return {
-		planetId: mining.planetId,
-		currentStockVolume: mining.currentStockVolume ?? null,
-		capacityVolume: mining.capacityVolume ?? null,
-		fillRatePerHour:
-			mining.fillRatePerHour !== null && mining.fillRatePerHour !== undefined
-				? String(mining.fillRatePerHour)
-				: null,
-		lastEmptiedAt: mining.lastEmptiedAt ? mining.lastEmptiedAt.toISOString() : null,
-		estimatedFullAt: mining.estimatedFullAt ? mining.estimatedFullAt.toISOString() : null,
-		lastObservedVolume: mining.lastObservedVolume ?? null,
-		lastObservedAt: mining.lastObservedAt ? mining.lastObservedAt.toISOString() : null,
+		moonId: mining.moonId,
+		moonName: mining.moonName ?? null,
+		planetId: mining.planetId ?? null,
+		planetName: mining.planetName ?? null,
+		systemId: mining.systemId ?? null,
+		systemName: mining.systemName ?? null,
+		extractionStartTime: mining.extractionStartTime
+			? mining.extractionStartTime.toISOString()
+			: null,
+		chunkArrivalTime: mining.chunkArrivalTime ? mining.chunkArrivalTime.toISOString() : null,
+		naturalDecayTime: mining.naturalDecayTime ? mining.naturalDecayTime.toISOString() : null,
 	}
 }
 
@@ -1106,6 +1125,14 @@ interface VisibleStructureContext {
 	tabData: StructureTabData | null
 	fittingItems: StructureFittingItemSummary[] | null
 	lastRefilledAt: Date | null
+	fuelUsage: StructureFuelUsageHistory | null
+}
+
+const EMPTY_STRUCTURE_FUEL_USAGE_HISTORY: StructureFuelUsageHistory = {
+	points: [],
+	fuelBurnRatePerHour: null,
+	lastRefilledAt: null,
+	sampleCount: 0,
 }
 
 export function getStructureTab(structure: Pick<StructureListItem, 'typeId'>): StructureTab {
@@ -1129,6 +1156,20 @@ function buildStructureDetailResult(context: VisibleStructureContext): Structure
 		nextReinforceHour: context.structure.nextReinforceHour,
 		reinforceHour: context.structure.reinforceHour,
 		lastRefilledAt: toIso(context.lastRefilledAt),
+		fuelUsage: context.fuelUsage
+			? {
+					points: context.fuelUsage.points.map((point) => ({
+						observedAt: point.observedAt.toISOString(),
+						fuelBlockUnits: point.fuelBlockUnits,
+						fuelBurnRatePerHour: point.fuelBurnRatePerHour,
+					})),
+					fuelBurnRatePerHour: context.fuelUsage.fuelBurnRatePerHour,
+					lastRefilledAt: context.fuelUsage.lastRefilledAt
+						? context.fuelUsage.lastRefilledAt.toISOString()
+						: null,
+					sampleCount: context.fuelUsage.sampleCount,
+				}
+			: null,
 		...(context.tabData ?? {}),
 		fittingItems: context.fittingItems ?? [],
 	}
@@ -1194,6 +1235,7 @@ async function getVisibleStructureContext(
 		},
 		fittingItems,
 		lastRefilledAt: structure.lastRefilledAt ?? null,
+		fuelUsage: null,
 	}
 }
 
@@ -1404,6 +1446,33 @@ async function loadFuelHistorySamplesByStructure(
 	return samplesByStructure
 }
 
+async function loadFuelUsageForStructure(
+	db: DbClient<DbSchema>,
+	corporationId: string,
+	structureId: string
+): Promise<StructureFuelUsageHistory | null> {
+	const rows = await db.query.structureFuelLog.findMany({
+		where: and(
+			eq(structureFuelLog.corporationId, corporationId),
+			eq(structureFuelLog.structureId, structureId)
+		),
+		orderBy: desc(structureFuelLog.observedAt),
+	})
+
+	if (rows.length === 0) {
+		return null
+	}
+
+	const samples: StructureFuelHistorySample[] = rows.map((row) => ({
+		structureId: row.structureId,
+		fuelBlockUnits: row.fuelBlockUnits,
+		observedAt: row.observedAt,
+		updatedAt: row.updatedAt,
+	}))
+
+	return buildStructureFuelUsageHistory(samples)
+}
+
 function emptyStructureFilterOptions(): StructureListFilterOptions {
 	return {
 		corporations: [],
@@ -1535,8 +1604,9 @@ async function loadVisibleStructureContexts(
 					tabData: null,
 					fittingItems: null,
 					lastRefilledAt: null,
+					fuelUsage: null,
 				}
-				})
+			})
 			.filter((item): item is VisibleStructureContext => item !== null)
 			.filter((context) => {
 				if (query.assignedGroupId === '__unassigned__' && context.config?.assignedGroupId !== null) {
@@ -1784,10 +1854,11 @@ function buildSkyhookListItem(input: {
 		typeId: structureRow.typeId,
 		typeName: structureRow.typeName ?? null,
 		systemId: structureRow.systemId,
-		systemName: structureRow.systemName ?? null,
+		systemName: skyhookRow?.systemName ?? structureRow.systemName ?? null,
 		regionId: structureRow.regionId ?? null,
 		regionName: structureRow.regionName ?? null,
 		planetId: skyhookRow?.planetId ?? '',
+		planetName: skyhookRow?.planetName ?? null,
 		state: skyhookRow?.state ?? 'unknown',
 		isActive: skyhookRow?.isActive ?? false,
 		effectiveWorkforce: skyhookRow?.effectiveWorkforce ?? null,
@@ -1828,22 +1899,18 @@ function buildMiningListItem(input: {
 		name: structureRow.name ?? structureRow.structureId,
 		typeId: structureRow.typeId,
 		typeName: structureRow.typeName ?? null,
-		systemId: structureRow.systemId,
-		systemName: structureRow.systemName ?? null,
+		systemId: miningRow?.systemId ?? structureRow.systemId,
+		systemName: miningRow?.systemName ?? structureRow.systemName ?? null,
 		regionId: structureRow.regionId ?? null,
 		regionName: structureRow.regionName ?? null,
 		state: 'mining',
-		planetId: miningRow?.planetId ?? '',
-		currentStockVolume: miningRow?.currentStockVolume ?? null,
-		capacityVolume: miningRow?.capacityVolume ?? null,
-		fillRatePerHour:
-			miningRow?.fillRatePerHour !== null && miningRow?.fillRatePerHour !== undefined
-				? String(miningRow.fillRatePerHour)
-				: null,
-		lastEmptiedAt: toIso(miningRow?.lastEmptiedAt ?? null),
-		estimatedFullAt: toIso(miningRow?.estimatedFullAt ?? null),
-		lastObservedVolume: miningRow?.lastObservedVolume ?? null,
-		lastObservedAt: toIso(miningRow?.lastObservedAt ?? null),
+		moonId: miningRow?.moonId ?? '',
+		moonName: miningRow?.moonName ?? null,
+		planetId: miningRow?.planetId ?? null,
+		planetName: miningRow?.planetName ?? null,
+		extractionStartTime: toIso(miningRow?.extractionStartTime ?? null),
+		chunkArrivalTime: toIso(miningRow?.chunkArrivalTime ?? null),
+		naturalDecayTime: toIso(miningRow?.naturalDecayTime ?? null),
 		syncStatus: hasMiningSnapshot ? getSnapshotSyncStatus(miningRow.lastSyncedAt) : 'warning',
 		syncFailureReason: hasMiningSnapshot
 			? null
@@ -2217,7 +2284,7 @@ export async function listMiningStructures(
 	const sortedItems = sortStructures(
 		items.map((item) => ({
 			...item,
-			state: item.typeName ?? 'mining',
+			state: item.state,
 			lowPower: false,
 			fuelExpires: null,
 			fuelAmount: null,
@@ -2225,7 +2292,7 @@ export async function listMiningStructures(
 			lowPowerAllowed: false,
 			assignedGroupId: null,
 			profileId: '',
-			nextStateAt: item.estimatedFullAt,
+			nextStateAt: item.chunkArrivalTime ?? item.naturalDecayTime,
 		})) as StructureListItem[],
 		sortBy,
 		sortDirection
@@ -2267,6 +2334,9 @@ export async function getVisibleStructureDetail(
 	if (!context) {
 		return null
 	}
+	context.fuelUsage =
+		(await loadFuelUsageForStructure(db, context.structure.corporationId, context.structure.structureId)) ??
+		EMPTY_STRUCTURE_FUEL_USAGE_HISTORY
 	return buildStructureDetailResult(context)
 }
 

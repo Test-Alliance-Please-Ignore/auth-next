@@ -52,11 +52,13 @@ import type {
 	InvType,
 	UniverseNpcStation,
 	UniversePlanet,
+	UniversePlanetGeography,
 	UniverseConstellation,
 	UniverseRegion,
 	UniverseSolarSystem,
 	UniverseStargate,
 	UniverseStaticMoon,
+	UniverseMoonGeography,
 	TypeMaterial,
 	TypeMetadata,
 	Universe,
@@ -443,6 +445,112 @@ export class UniverseDO extends DurableObject<Env, {}> implements Universe {
 			})
 		} catch (error) {
 			console.error(`Failed to get moon with resources ${normalizedMoonId}`, error)
+			throw error
+		}
+	}
+
+	/**
+	 * Resolve moon geography contexts by moon IDs.
+	 */
+	async resolveMoonGeographyByIds(
+		moonIds: string[]
+	): Promise<Record<string, UniverseMoonGeography | null>> {
+		try {
+			if (moonIds.length === 0) {
+				return {}
+			}
+
+			const result: Record<string, UniverseMoonGeography | null> = {}
+			const uniqueMoonIds = [...new Set(moonIds)]
+			const moonMap = await this.resolveStaticMoonsByIds(uniqueMoonIds)
+			const planetIds = [
+				...new Set(
+					Object.values(moonMap)
+						.filter((moon): moon is UniverseStaticMoon => moon !== null)
+						.map((moon) => moon.planetId)
+				),
+			]
+			const planetMap =
+				planetIds.length > 0 ? await this.resolvePlanetGeographyByIds(planetIds) : {}
+
+			for (const moonId of moonIds) {
+				const moon = moonMap[moonId]
+				if (!moon) {
+					result[moonId] = null
+					continue
+				}
+
+				const planet = planetMap[moon.planetId]
+				if (!planet) {
+					result[moonId] = null
+					continue
+				}
+
+				result[moonId] = {
+					moonId: moon.moonId,
+					moonName: moon.moonName,
+					planetId: planet.planetId,
+					planetName: planet.planetName,
+					solarSystemId: planet.solarSystemId,
+					solarSystemName: planet.solarSystemName,
+				}
+			}
+
+			return result
+		} catch (error) {
+			console.error('Failed to resolve moon geography by IDs', error)
+			throw error
+		}
+	}
+
+	/**
+	 * Resolve planet geography contexts by planet IDs.
+	 */
+	async resolvePlanetGeographyByIds(
+		planetIds: string[]
+	): Promise<Record<string, UniversePlanetGeography | null>> {
+		try {
+			if (planetIds.length === 0) {
+				return {}
+			}
+
+			const result: Record<string, UniversePlanetGeography | null> = {}
+			const uniquePlanetIds = [...new Set(planetIds)]
+			const planetMap = await this.resolvePlanetsByIds(uniquePlanetIds)
+			const solarSystemIds = [
+				...new Set(
+					Object.values(planetMap)
+						.filter((planet): planet is UniversePlanet => planet !== null)
+						.map((planet) => planet.solarSystemId)
+				),
+			]
+			const solarSystemMap =
+				solarSystemIds.length > 0 ? await this.resolveSolarSystemsByIds(solarSystemIds) : {}
+
+			for (const planetId of planetIds) {
+				const planet = planetMap[planetId]
+				if (!planet) {
+					result[planetId] = null
+					continue
+				}
+
+				const solarSystem = solarSystemMap[planet.solarSystemId]
+				if (!solarSystem) {
+					result[planetId] = null
+					continue
+				}
+
+				result[planetId] = {
+					planetId: planet.planetId,
+					planetName: planet.planetName,
+					solarSystemId: planet.solarSystemId,
+					solarSystemName: solarSystem.solarSystemName,
+				}
+			}
+
+			return result
+		} catch (error) {
+			console.error('Failed to resolve planet geography by IDs', error)
 			throw error
 		}
 	}

@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest'
 
 import {
 	aggregateFuelBurnRatePerHour,
+	buildStructureFuelUsageHistory,
 	deriveStructureFuelHistoryMetrics,
 	type StructureFuelHistorySample,
 } from '../../../services/structure-fuel-history'
@@ -86,5 +87,35 @@ describe('structure fuel history metrics', () => {
 
 		expect(aggregate.estimatedFuelBurnRatePerHour).toBe('2.0000')
 		expect(aggregate.fuelBurnRateSampleCount).toBe(1)
+	})
+
+	it('builds an hourly fuel usage history over a fixed window', () => {
+		const history = buildStructureFuelUsageHistory(
+			[
+				sample('1004', 240, '2026-01-03T06:30:00Z'),
+				sample('1004', 220, '2026-01-03T08:15:00Z'),
+				sample('1004', 200, '2026-01-03T09:40:00Z'),
+			],
+			{
+				now: new Date('2026-01-03T10:45:00Z'),
+				windowHours: 4,
+			}
+		)
+
+		expect(history.points).toHaveLength(4)
+		expect(history.points.map((point) => point.observedAt.toISOString())).toEqual([
+			'2026-01-03T07:00:00.000Z',
+			'2026-01-03T08:00:00.000Z',
+			'2026-01-03T09:00:00.000Z',
+			'2026-01-03T10:00:00.000Z',
+		])
+		expect(history.points.map((point) => point.fuelBlockUnits)).toEqual([240, 240, 220, 200])
+		expect(history.points[0]?.fuelBurnRatePerHour).toBeNull()
+		expect(history.points[1]?.fuelBurnRatePerHour).toBeNull()
+		expect(history.points[2]?.fuelBurnRatePerHour).toBeCloseTo(11.428571, 6)
+		expect(history.points[3]?.fuelBurnRatePerHour).toBeCloseTo(14.117647, 6)
+		expect(history.fuelBurnRatePerHour).toBeCloseTo(14.117647, 6)
+		expect(history.lastRefilledAt).toBeNull()
+		expect(history.sampleCount).toBe(2)
 	})
 })
