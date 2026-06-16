@@ -38,6 +38,28 @@ export interface UniversePlanet {
 }
 
 /**
+ * Flattened moon geography context used by snapshot writers.
+ */
+export interface UniverseMoonGeography {
+	moonId: string
+	moonName: string
+	planetId: string
+	planetName: string
+	solarSystemId: string
+	solarSystemName: string
+}
+
+/**
+ * Flattened planet geography context used by snapshot writers.
+ */
+export interface UniversePlanetGeography {
+	planetId: string
+	planetName: string
+	solarSystemId: string
+	solarSystemName: string
+}
+
+/**
  * Moon metadata for static geography resolution.
  */
 export interface UniverseStaticMoon {

@@ -727,7 +727,10 @@ export interface StructureSovereigntySummary {
 }
 
 export interface StructureSkyhookSummary {
-	planetId: string
+	planetId: string | null
+	planetName: string | null
+	systemId: string | null
+	systemName: string | null
 	state: string
 	isActive: boolean
 	effectiveWorkforce: number | null
@@ -743,14 +746,15 @@ export interface StructureSkyhookSummary {
 }
 
 export interface StructureMiningSummary {
-	planetId: string
-	currentStockVolume: number | null
-	capacityVolume: number | null
-	fillRatePerHour: string | null
-	lastEmptiedAt: string | null
-	estimatedFullAt: string | null
-	lastObservedVolume: number | null
-	lastObservedAt: string | null
+	moonId: string
+	moonName: string | null
+	planetId: string | null
+	planetName: string | null
+	systemId: string | null
+	systemName: string | null
+	extractionStartTime: string | null
+	chunkArrivalTime: string | null
+	naturalDecayTime: string | null
 }
 
 export interface StructureSovereigntyListItem extends StructureListBaseItem {
@@ -781,6 +785,7 @@ export interface StructureSovereigntyListItem extends StructureListBaseItem {
 
 export interface StructureSkyhookListItem extends StructureListBaseItem {
 	planetId: string
+	planetName: string | null
 	state: string
 	isActive: boolean
 	effectiveWorkforce: number | null
@@ -796,14 +801,13 @@ export interface StructureSkyhookListItem extends StructureListBaseItem {
 }
 
 export interface StructureMiningListItem extends StructureListBaseItem {
-	planetId: string
-	currentStockVolume: number | null
-	capacityVolume: number | null
-	fillRatePerHour: string | null
-	lastEmptiedAt: string | null
-	estimatedFullAt: string | null
-	lastObservedVolume: number | null
-	lastObservedAt: string | null
+	moonId: string
+	moonName: string | null
+	planetId: string | null
+	planetName: string | null
+	extractionStartTime: string | null
+	chunkArrivalTime: string | null
+	naturalDecayTime: string | null
 }
 
 export type StructureInventoryBay = SharedInventoryDisplayBay
@@ -845,6 +849,16 @@ export interface StructureDetailResult extends StructureCitadelListItem {
 	nextReinforceHour: number | null
 	reinforceHour: number | null
 	lastRefilledAt: string | null
+	fuelUsage: {
+		points: Array<{
+			observedAt: string
+			fuelBlockUnits: number | null
+			fuelBurnRatePerHour: number | null
+		}>
+		fuelBurnRatePerHour: number | null
+		lastRefilledAt: string | null
+		sampleCount: number
+	} | null
 	sovereignty?: StructureSovereigntySummary | null
 	skyhook?: StructureSkyhookSummary | null
 	mining?: StructureMiningSummary | null

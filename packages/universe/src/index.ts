@@ -8,7 +8,9 @@ import type {
 	UniverseConstellation,
 	UniverseNpcStation,
 	UniversePlanet,
+	UniversePlanetGeography,
 	UniverseRegion,
+	UniverseMoonGeography,
 	UniverseSolarSystem,
 	UniverseStargate,
 	UniverseStaticMoon,
@@ -141,6 +143,22 @@ export interface Universe {
 	 * @returns Moon info with resources or null if not found
 	 */
 	getMoonWithResourcesById(moonId: EveMoonId): Promise<UniverseMoonWithResources | null>
+
+	/**
+	 * Resolve moon geography contexts by moon IDs.
+	 * Returns flattened hydrated moon / planet / solar-system context for snapshot writers.
+	 */
+	resolveMoonGeographyByIds(
+		moonIds: string[]
+	): Promise<Record<string, UniverseMoonGeography | null>>
+
+	/**
+	 * Resolve planet geography contexts by planet IDs.
+	 * Returns flattened hydrated planet / solar-system context for snapshot writers.
+	 */
+	resolvePlanetGeographyByIds(
+		planetIds: string[]
+	): Promise<Record<string, UniversePlanetGeography | null>>
 
 	/**
 	 * Resolve multiple inventory flags by their IDs

@@ -175,6 +175,7 @@ export interface EsiCorporationStructure {
  */
 export interface EsiSovereigntySystem {
 	system_id: string
+	system_name?: string | null
 	claim_type: 'alliance' | 'faction' | 'unclaimed'
 	alliance_id?: string | null
 	corporation_id?: string | null
@@ -200,6 +201,7 @@ export interface EsiSovereigntySystem {
 export interface EsiSovereigntyHub {
 	structure_id: string
 	system_id: string
+	system_name?: string | null
 	name: string | null
 	owner_id: string | null
 	type_id: string
@@ -280,7 +282,9 @@ export interface EsiSovereigntyHub {
 export interface EsiCorporationSkyhook {
 	structure_id: string
 	planet_id: string
+	planet_name?: string | null
 	system_id: string
+	system_name?: string | null
 	type_id: string
 	name: string | null
 	owner_id: string | null
@@ -307,20 +311,20 @@ export interface EsiCorporationSkyhook {
 }
 
 /**
- * ESI mining-oriented structure state
- * Derived from the corp skyhook detail feed during sync.
+ * ESI corporation moon extraction state.
+ * GET /corporation/{corporation_id}/mining/extractions
  */
-export interface EsiCorporationMiningState {
+export interface EsiCorporationMiningExtraction {
 	structure_id: string
-	planet_id: string
-	system_id: string
-	type_id: string
-	current_stock_volume?: number | null
-	capacity_volume?: number | null
-	fill_rate_per_hour?: string | number | null
-	last_emptied_at?: string | null
-	estimated_full_at?: string | null
-	last_observed_volume?: number | null
+	moon_id: string
+	moon_name?: string | null
+	planet_id?: string | null
+	planet_name?: string | null
+	system_id?: string | null
+	system_name?: string | null
+	extraction_start_time?: string | null
+	chunk_arrival_time?: string | null
+	natural_decay_time?: string | null
 	raw?: Record<string, unknown>
 }
 
@@ -1281,7 +1285,8 @@ export interface EveCorporationData {
 	 */
 	syncAssetsWithDirector(
 		corporationId: string,
-		directorCharacterId: string
+		directorCharacterId: string,
+		ownedStructureIds?: string[]
 	): Promise<{ assetsCount: number }>
 
 	/**
@@ -1332,9 +1337,12 @@ export interface EveCorporationData {
 	storeSkyhooks(corporationId: string, skyhooks: EsiCorporationSkyhook[]): Promise<void>
 
 	/**
-	 * Store mining-specific structure snapshots (workflow-friendly)
+	 * Store mining extraction snapshots (workflow-friendly)
 	 */
-	storeMiningStates(corporationId: string, miningStates: EsiCorporationMiningState[]): Promise<void>
+	storeMiningExtractions(
+		corporationId: string,
+		extractions: EsiCorporationMiningExtraction[]
+	): Promise<void>
 
 	/**
 	 * Store market orders (workflow-friendly)

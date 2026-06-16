@@ -21,4 +21,17 @@ describe('assets workflow step', () => {
 		expect(syncAssetsWithDirector).toHaveBeenCalledWith('98000001', '90000001')
 		expect(result).toEqual({ assetsCount: 4321 })
 	})
+
+	it('forwards preloaded owned structure ids when provided', async () => {
+		const syncAssetsWithDirector = vi.fn().mockResolvedValue({ assetsCount: 7 })
+		getCorporationDataStubMock.mockReturnValue({
+			syncAssetsWithDirector,
+		})
+
+		const env = {} as any
+		const result = await syncAssets(env, '98000001', '90000001', ['1001', '1002'])
+
+		expect(syncAssetsWithDirector).toHaveBeenCalledWith('98000001', '90000001', ['1001', '1002'])
+		expect(result).toEqual({ assetsCount: 7 })
+	})
 })

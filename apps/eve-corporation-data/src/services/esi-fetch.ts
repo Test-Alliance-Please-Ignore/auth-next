@@ -33,10 +33,10 @@ import type {
 	EsiCorporationKillmail,
 	EsiCorporationMembers,
 	EsiCorporationMemberTracking,
+	EsiCorporationMiningExtraction,
 	EsiCorporationOrder,
 	EsiCorporationSkyhook,
 	EsiCorporationStructure,
-	EsiCorporationMiningState,
 	EsiSovereigntyHub,
 	EsiSovereigntySystem,
 	EsiCorporationWallet,
@@ -617,34 +617,36 @@ export async function fetchCorporationSkyhooks(
 	return skyhooks
 }
 
-export function deriveMiningStatesFromSkyhooks(
-	skyhooks: EsiCorporationSkyhook[]
-): EsiCorporationMiningState[] {
-	return skyhooks.map((skyhook) => {
-		const currentStockVolume =
-			skyhook.reagents.length > 0
-				? skyhook.reagents.reduce(
-						(total, reagent) => total + reagent.secured_stock + reagent.unsecured_stock,
-						0
-					)
-				: null
+/**
+ * Fetch corporation moon extraction timers from ESI.
+ */
+export async function fetchCorporationMiningExtractions(
+	tokenStore: EveTokenStore,
+	corporationId: string,
+	characterId: string
+): Promise<EsiCorporationMiningExtraction[]> {
+	type RawCorporationMiningExtraction = {
+		structure_id: number
+		moon_id: number
+		extraction_start_time: string
+		chunk_arrival_time: string
+		natural_decay_time: string
+	}
 
-		return {
-			structure_id: skyhook.structure_id,
-			planet_id: skyhook.planet_id,
-			system_id: skyhook.system_id,
-			type_id: skyhook.type_id,
-			current_stock_volume: currentStockVolume,
-			capacity_volume: 30_000,
-			fill_rate_per_hour: null,
-			last_emptied_at: null,
-			estimated_full_at: null,
-			last_observed_volume: currentStockVolume,
-			raw: skyhook.raw ?? {
-				...skyhook,
-			},
-		}
-	})
+	const result = await tokenStore.fetchEsiAllPages<RawCorporationMiningExtraction>(
+		`/corporation/${corporationId}/mining/extractions`,
+		characterId,
+		{ cacheMode: 'no-store' }
+	)
+
+	return result.data.map((extraction) => ({
+		structure_id: String(extraction.structure_id),
+		moon_id: String(extraction.moon_id),
+		extraction_start_time: extraction.extraction_start_time,
+		chunk_arrival_time: extraction.chunk_arrival_time,
+		natural_decay_time: extraction.natural_decay_time,
+		raw: extraction as Record<string, unknown>,
+	}))
 }
 
 // ========================================================================

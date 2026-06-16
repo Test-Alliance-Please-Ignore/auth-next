@@ -1,0 +1,2 @@
+ALTER TABLE "structure_configs" ADD CONSTRAINT "structure_configs_structure_id_corporation_structures_structure_id_fk" FOREIGN KEY ("structure_id") REFERENCES "public"."corporation_structures"("structure_id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
+ALTER TABLE "structure_state_events" ADD CONSTRAINT "structure_state_events_structure_id_corporation_structures_structure_id_fk" FOREIGN KEY ("structure_id") REFERENCES "public"."corporation_structures"("structure_id") ON DELETE cascade ON UPDATE no action;

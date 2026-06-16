@@ -11,23 +11,17 @@ export type StructuresData = Awaited<ReturnType<typeof esiFetch.fetchStructures>
 export type SovereigntySystemsData = Awaited<ReturnType<typeof esiFetch.fetchSovereigntySystems>>
 export type SovereigntyHubsData = Awaited<ReturnType<typeof esiFetch.fetchSovereigntyHubs>>
 export type CorporationSkyhooksData = Awaited<ReturnType<typeof esiFetch.fetchCorporationSkyhooks>>
-export type MiningStatesData = Awaited<ReturnType<typeof esiFetch.deriveMiningStatesFromSkyhooks>>
+export type MiningExtractionsData = Awaited<
+	ReturnType<typeof esiFetch.fetchCorporationMiningExtractions>
+>
 
-export interface StructuresEnrichmentData {
-	sovereigntySystems: SovereigntySystemsData | null
-	sovereigntyHubs: SovereigntyHubsData
-	skyhooks: CorporationSkyhooksData
-	miningStates: MiningStatesData
-}
-
-export interface StructureSovereigntyEnrichmentData {
+export interface SovereigntyEnrichmentData {
 	sovereigntySystems: SovereigntySystemsData | null
 	sovereigntyHubs: SovereigntyHubsData
 }
 
-export interface StructureSkyhookEnrichmentData {
+export interface SkyhookEnrichmentData {
 	skyhooks: CorporationSkyhooksData
-	miningStates: MiningStatesData
 }
 
 export async function fetchStructures(
@@ -60,29 +54,11 @@ export async function storeStructures(
 	})
 }
 
-export async function fetchStructureEnrichment(
+export async function fetchSovereigntyEnrichment(
 	env: Env,
 	corporationId: string,
 	directorCharacterId: string
-): Promise<StructuresEnrichmentData> {
-	const [sovereigntyEnrichment, skyhookEnrichment] = await Promise.all([
-		fetchStructureSovereigntyEnrichment(env, corporationId, directorCharacterId),
-		fetchStructureSkyhookEnrichment(env, corporationId, directorCharacterId),
-	])
-
-	return {
-		sovereigntySystems: sovereigntyEnrichment?.sovereigntySystems ?? null,
-		sovereigntyHubs: sovereigntyEnrichment?.sovereigntyHubs ?? [],
-		skyhooks: skyhookEnrichment?.skyhooks ?? [],
-		miningStates: skyhookEnrichment?.miningStates ?? [],
-	}
-}
-
-export async function fetchStructureSovereigntyEnrichment(
-	env: Env,
-	corporationId: string,
-	directorCharacterId: string
-): Promise<StructureSovereigntyEnrichmentData | null> {
+): Promise<SovereigntyEnrichmentData | null> {
 	const tokenStore = createTokenStore(env)
 
 	try {
@@ -135,11 +111,11 @@ export async function fetchStructureSovereigntyEnrichment(
 	}
 }
 
-export async function fetchStructureSkyhookEnrichment(
+export async function fetchSkyhookEnrichment(
 	env: Env,
 	corporationId: string,
 	directorCharacterId: string
-): Promise<StructureSkyhookEnrichmentData | null> {
+): Promise<SkyhookEnrichmentData | null> {
 	const tokenStore = createTokenStore(env)
 
 	try {
@@ -148,18 +124,14 @@ export async function fetchStructureSkyhookEnrichment(
 			corporationId,
 			directorCharacterId
 		)
-		const mergedSkyhooks = skyhooks.map((skyhook) => ({ ...skyhook }))
-		const miningStates = esiFetch.deriveMiningStatesFromSkyhooks(mergedSkyhooks)
 
 		logger.debug('[StructuresStep] Fetched skyhook enrichment', {
 			corporationId,
-			skyhooks: mergedSkyhooks.length,
-			miningStates: miningStates.length,
+			skyhooks: skyhooks.length,
 		})
 
 		return {
-			skyhooks: mergedSkyhooks,
-			miningStates,
+			skyhooks,
 		}
 	} catch (error) {
 		if (shouldSuppressDirectorUnhealthyOnStructureEnrichmentAuthFailure(error)) {
@@ -174,35 +146,10 @@ export async function fetchStructureSkyhookEnrichment(
 	}
 }
 
-export async function storeStructureEnrichment(
-	env: Env,
-	corporationId: string,
-	enrichment: StructuresEnrichmentData
-): Promise<void> {
-	const corpData = getCorporationDataStub(env, corporationId)
-	const writes = [
-		enrichment.sovereigntySystems
-			? corpData.storeSovereigntySystems(corporationId, enrichment.sovereigntySystems)
-			: Promise.resolve(),
-		corpData.storeSovereigntyHubs(corporationId, enrichment.sovereigntyHubs),
-		corpData.storeSkyhooks(corporationId, enrichment.skyhooks),
-		corpData.storeMiningStates(corporationId, enrichment.miningStates),
-	]
-	await Promise.all(writes)
-
-	logger.info('[StructuresStep] Stored structure enrichment', {
-		corporationId,
-		sovereigntySystems: enrichment.sovereigntySystems?.length ?? 0,
-		sovereigntyHubs: enrichment.sovereigntyHubs.length,
-		skyhooks: enrichment.skyhooks.length,
-		miningStates: enrichment.miningStates.length,
-	})
-}
-
 export async function storeSovereigntyEnrichment(
 	env: Env,
 	corporationId: string,
-	enrichment: StructureSovereigntyEnrichmentData
+	enrichment: SovereigntyEnrichmentData
 ): Promise<void> {
 	const corpData = getCorporationDataStub(env, corporationId)
 	await Promise.all([
@@ -222,17 +169,49 @@ export async function storeSovereigntyEnrichment(
 export async function storeSkyhookEnrichment(
 	env: Env,
 	corporationId: string,
-	enrichment: StructureSkyhookEnrichmentData
+	enrichment: SkyhookEnrichmentData
 ): Promise<void> {
 	const corpData = getCorporationDataStub(env, corporationId)
 	await Promise.all([
 		corpData.storeSkyhooks(corporationId, enrichment.skyhooks),
-		corpData.storeMiningStates(corporationId, enrichment.miningStates),
 	])
 
 	logger.info('[StructuresStep] Stored skyhook enrichment', {
 		corporationId,
 		skyhooks: enrichment.skyhooks.length,
-		miningStates: enrichment.miningStates.length,
+	})
+}
+
+export async function fetchMiningEnrichment(
+	env: Env,
+	corporationId: string,
+	directorCharacterId: string
+): Promise<MiningExtractionsData> {
+	const tokenStore = createTokenStore(env)
+	const miningExtractions = await esiFetch.fetchCorporationMiningExtractions(
+		tokenStore,
+		corporationId,
+		directorCharacterId
+	)
+
+	logger.debug('[StructuresStep] Fetched mining enrichment', {
+		corporationId,
+		miningExtractions: miningExtractions.length,
+	})
+
+	return miningExtractions
+}
+
+export async function storeMiningEnrichment(
+	env: Env,
+	corporationId: string,
+	enrichment: MiningExtractionsData
+): Promise<void> {
+	const corpData = getCorporationDataStub(env, corporationId)
+	await corpData.storeMiningExtractions(corporationId, enrichment)
+
+	logger.info('[StructuresStep] Stored mining enrichment', {
+		corporationId,
+		miningExtractions: enrichment.length,
 	})
 }

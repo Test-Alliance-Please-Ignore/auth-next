@@ -925,10 +925,10 @@ export default function StructuresPage() {
 												</>
 											) : isMiningTab ? (
 												<>
-													<TableHead>Stock</TableHead>
-													<TableHead>Fill Rate</TableHead>
-													<TableHead>Last Emptied</TableHead>
-													<TableHead>Full At</TableHead>
+													<TableHead>Moon</TableHead>
+													<TableHead>Planet</TableHead>
+													<TableHead>Chunk Arrival</TableHead>
+													<TableHead>Natural Decay</TableHead>
 												</>
 											) : null}
 											<TableHead>Sync</TableHead>
@@ -1045,7 +1045,7 @@ export default function StructuresPage() {
 														</>
 													) : isSkyhooksTab ? (
 														<>
-															<TableCell>{skyhookStructure.planetId}</TableCell>
+															<TableCell>{skyhookStructure.planetName ?? skyhookStructure.planetId}</TableCell>
 															<TableCell>
 																{formatNullableNumber(skyhookStructure.effectiveWorkforce)}
 															</TableCell>
@@ -1064,16 +1064,13 @@ export default function StructuresPage() {
 													) : isMiningTab ? (
 														<>
 															<TableCell>
-																{miningStructure.currentStockVolume !== null &&
-																miningStructure.currentStockVolume !== undefined
-																	? `${miningStructure.currentStockVolume.toLocaleString()} / ${formatNullableNumber(miningStructure.capacityVolume)}`
-																	: '-'}
+																{(miningStructure.moonName ?? miningStructure.moonId) || '-'}
 															</TableCell>
 															<TableCell>
-																{miningStructure.fillRatePerHour ? `${miningStructure.fillRatePerHour}/hr` : '-'}
+																{miningStructure.planetName ?? miningStructure.planetId ?? '-'}
 															</TableCell>
-															<TableCell>{formatNullableDateTime(miningStructure.lastEmptiedAt)}</TableCell>
-															<TableCell>{formatNullableDateTime(miningStructure.estimatedFullAt)}</TableCell>
+															<TableCell>{formatNullableDateTime(miningStructure.chunkArrivalTime)}</TableCell>
+															<TableCell>{formatNullableDateTime(miningStructure.naturalDecayTime)}</TableCell>
 														</>
 													) : null}
 													<TableCell>

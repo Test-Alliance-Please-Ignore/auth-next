@@ -95,15 +95,13 @@ export const structureSovereigntySystems = pgTable(
 	'structure_sovereignty_systems',
 	{
 		systemId: text('system_id').primaryKey(),
+		systemName: text('system_name'),
 		corporationId: text('corporation_id')
 			.notNull()
-			.references(() => managedCorporations.corporationId, {
-				onDelete: 'cascade',
-			}),
+			.references(() => managedCorporations.corporationId, { onDelete: 'cascade' }),
 		claimType: text('claim_type', {
 			enum: ['alliance', 'faction', 'unclaimed'],
-		})
-			.notNull(),
+		}).notNull(),
 		allianceId: text('alliance_id'),
 		corporationClaimantId: text('corporation_claimant_id'),
 		factionId: text('faction_id'),
@@ -144,40 +142,50 @@ export const structureSovereigntyHubs = pgTable(
 			.notNull()
 			.references(() => managedCorporations.corporationId, { onDelete: 'cascade' }),
 		systemId: text('system_id').notNull(),
+		systemName: text('system_name'),
 		name: text('name'),
 		ownerId: text('owner_id'),
 		typeId: text('type_id').notNull(),
 		fuelAccessListId: text('fuel_access_list_id'),
 		controllerAllianceId: text('controller_alliance_id'),
 		reagentBayLastUpdated: timestamp('reagent_bay_last_updated', { withTimezone: true }),
-		reagentBay: jsonb('reagent_bay').$type<{
-			lastUpdated: string
-			reagents: Array<{
-				typeId: string
-				securedStock: number
-				unsecuredStock: number
-				lastCycle: string
-			}>
-		}>().notNull().default({ lastUpdated: '', reagents: [] }),
-		resources: jsonb('resources').$type<{
-			power: {
-				allocated: number
-				available: number
-			}
-			workforce: {
-				allocated: number
-				available: number
-			}
-		}>().notNull().default({
-			power: { allocated: 0, available: 0 },
-			workforce: { allocated: 0, available: 0 },
-		}),
-		upgrades: jsonb('upgrades').$type<
-			Array<{
-				typeId: string
-				powerState: string
-			}>
-		>().notNull().default([]),
+		reagentBay: jsonb('reagent_bay')
+			.$type<{
+				lastUpdated: string
+				reagents: Array<{
+					typeId: string
+					securedStock: number
+					unsecuredStock: number
+					lastCycle: string
+				}>
+			}>()
+			.notNull()
+			.default({ lastUpdated: '', reagents: [] }),
+		resources: jsonb('resources')
+			.$type<{
+				power: {
+					allocated: number
+					available: number
+				}
+				workforce: {
+					allocated: number
+					available: number
+				}
+			}>()
+			.notNull()
+			.default({
+				power: { allocated: 0, available: 0 },
+				workforce: { allocated: 0, available: 0 },
+			}),
+		upgrades: jsonb('upgrades')
+			.$type<
+				Array<{
+					typeId: string
+					powerState: string
+				}>
+			>()
+			.notNull()
+			.default([]),
 		vulnerabilityWindowStart: timestamp('vulnerability_window_start', { withTimezone: true }),
 		vulnerabilityWindowEnd: timestamp('vulnerability_window_end', { withTimezone: true }),
 		workforceTransport: jsonb('workforce_transport').$type<Record<string, unknown>>().notNull().default({}),
@@ -203,22 +211,27 @@ export const structureSkyhookStates = pgTable(
 		corporationId: text('corporation_id')
 			.notNull()
 			.references(() => managedCorporations.corporationId, { onDelete: 'cascade' }),
-		planetId: text('planet_id').notNull(),
-		systemId: text('system_id').notNull(),
+		planetId: text('planet_id'),
+		planetName: text('planet_name'),
+		systemId: text('system_id'),
+		systemName: text('system_name'),
 		name: text('name'),
 		ownerId: text('owner_id'),
 		typeId: text('type_id').notNull(),
 		state: text('state').notNull(),
 		isActive: boolean('is_active').notNull().default(false),
 		effectiveWorkforce: integer('effective_workforce'),
-		reagents: jsonb('reagents').$type<
-			Array<{
-				typeId: string
-				securedStock: number
-				unsecuredStock: number
-				lastCycle: string
-			}>
-		>().notNull().default([]),
+		reagents: jsonb('reagents')
+			.$type<
+				Array<{
+					typeId: string
+					securedStock: number
+					unsecuredStock: number
+					lastCycle: string
+				}>
+			>()
+			.notNull()
+			.default([]),
 		reinforcementTimerEnd: timestamp('reinforcement_timer_end', { withTimezone: true }),
 		theftVulnerabilityStart: timestamp('theft_vulnerability_start', { withTimezone: true }),
 		theftVulnerabilityEnd: timestamp('theft_vulnerability_end', { withTimezone: true }),
@@ -250,16 +263,15 @@ export const structureMiningStates = pgTable(
 		corporationId: text('corporation_id')
 			.notNull()
 			.references(() => managedCorporations.corporationId, { onDelete: 'cascade' }),
-		planetId: text('planet_id').notNull(),
-		systemId: text('system_id').notNull(),
-		typeId: text('type_id').notNull(),
-		currentStockVolume: integer('current_stock_volume'),
-		capacityVolume: integer('capacity_volume'),
-		fillRatePerHour: numeric('fill_rate_per_hour', { precision: 12, scale: 4 }),
-		lastEmptiedAt: timestamp('last_emptied_at', { withTimezone: true }),
-		estimatedFullAt: timestamp('estimated_full_at', { withTimezone: true }),
-		lastObservedVolume: integer('last_observed_volume'),
-		lastObservedAt: timestamp('last_observed_at', { withTimezone: true }),
+		moonId: text('moon_id').notNull(),
+		moonName: text('moon_name'),
+		planetId: text('planet_id'),
+		planetName: text('planet_name'),
+		systemId: text('system_id'),
+		systemName: text('system_name'),
+		extractionStartTime: timestamp('extraction_start_time', { withTimezone: true }),
+		chunkArrivalTime: timestamp('chunk_arrival_time', { withTimezone: true }),
+		naturalDecayTime: timestamp('natural_decay_time', { withTimezone: true }),
 		sourceSyncAt: timestamp('source_sync_at', { withTimezone: true }),
 		lastSyncedAt: timestamp('last_synced_at', { withTimezone: true }),
 		rawPayload: jsonb('raw_payload').$type<Record<string, unknown>>().notNull().default({}),
@@ -267,8 +279,9 @@ export const structureMiningStates = pgTable(
 	},
 	(table) => [
 		index('structure_mining_states_corporation_id_idx').on(table.corporationId),
+		index('structure_mining_states_moon_id_idx').on(table.moonId),
+		index('structure_mining_states_planet_id_idx').on(table.planetId),
 		index('structure_mining_states_system_id_idx').on(table.systemId),
-		index('structure_mining_states_type_id_idx').on(table.typeId),
 		index('structure_mining_states_last_synced_at_idx').on(table.lastSyncedAt),
 	]
 )
