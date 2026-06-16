@@ -114,6 +114,13 @@ const LEDGER_RETENTION_DAYS = 90
 const DEFAULT_ESS_ALERT_THRESHOLD_ISK = 1_000_000_000
 const SCHEDULED_CORPORATION_CONCURRENCY = 5
 const TRIGGERED_INGEST_OVERLAP_WINDOW_MS = 48 * 60 * 60 * 1000
+const TAX_PROJECTION_RETRY_TTL_MS = 7 * 24 * 60 * 60 * 1000
+const TAX_PROJECTION_RETRY_KEY_PREFIX = 'tax-projection-retry-intent:'
+
+type TaxProjectionRetryIntentEnvelope = {
+	value: string
+	expiresAt: number
+}
 export class CorporationTaxDO extends DurableObject<Env, {}> implements CorporationTax {
 	private readonly logger = logger.withTags({ service: 'corporation-tax-durable-object' })
 	private db: CorporationTaxDb
@@ -457,6 +464,48 @@ export class CorporationTaxDO extends DurableObject<Env, {}> implements Corporat
 			})
 			throw error
 		}
+	}
+
+	async getTaxProjectionRetryIntent(corporationId: string): Promise<string | null> {
+		const value = await this.state.storage.get(this.getTaxProjectionRetryKey(corporationId))
+		if (typeof value !== 'string') {
+			return null
+		}
+
+		try {
+			const parsed = JSON.parse(value) as Partial<TaxProjectionRetryIntentEnvelope>
+			if (
+				typeof parsed.value === 'string' &&
+				typeof parsed.expiresAt === 'number' &&
+				Number.isFinite(parsed.expiresAt)
+			) {
+				if (Date.now() >= parsed.expiresAt) {
+					await this.state.storage.delete(this.getTaxProjectionRetryKey(corporationId))
+					return null
+				}
+
+				return parsed.value
+			}
+		} catch {
+			// Fall through to legacy raw-string compatibility.
+		}
+
+		return value
+	}
+
+	async putTaxProjectionRetryIntent(corporationId: string, payload: string): Promise<void> {
+		const envelope: TaxProjectionRetryIntentEnvelope = {
+			value: payload,
+			expiresAt: Date.now() + TAX_PROJECTION_RETRY_TTL_MS,
+		}
+		await this.state.storage.put(
+			this.getTaxProjectionRetryKey(corporationId),
+			JSON.stringify(envelope)
+		)
+	}
+
+	async deleteTaxProjectionRetryIntent(corporationId: string): Promise<void> {
+		await this.state.storage.delete(this.getTaxProjectionRetryKey(corporationId))
 	}
 
 	async listLedgerEntries(
@@ -953,6 +1002,10 @@ export class CorporationTaxDO extends DurableObject<Env, {}> implements Corporat
 				this.corporationIngestLocks.delete(corporationId)
 			}
 		}
+	}
+
+	private getTaxProjectionRetryKey(corporationId: string): string {
+		return `${TAX_PROJECTION_RETRY_KEY_PREFIX}${corporationId}`
 	}
 
 	private async getCorporationEsiAuthStatus(corporationId: string) {

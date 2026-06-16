@@ -475,13 +475,13 @@ export default function StructuresDetailPage() {
 							<div className="space-y-2">
 								<div className="text-xs uppercase tracking-wider text-muted-foreground">Sync Status</div>
 								<div className="rounded-lg border border-border/60 p-4">
-									{structure.includeInStructureAssetSync && (
-										<div className="mb-3 flex flex-wrap gap-2">
+									<div className="mb-3 flex flex-wrap items-center gap-2">
+										{structure.includeInStructureAssetSync && (
 											<Badge variant="success">Asset Sync Enabled</Badge>
-										</div>
-									)}
+										)}
 									<div className="mt-0.5">
 										<StructureSyncStatusBadge status={structure.syncStatus} description={syncDescription} />
+									</div>
 									</div>
 									<div className="mt-2 text-sm text-muted-foreground">{syncDescription}</div>
 								</div>
