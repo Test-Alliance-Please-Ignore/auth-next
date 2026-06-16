@@ -78,6 +78,17 @@ export interface StructureListPagingQuery {
 	sortDirection?: StructureListSortDirection
 }
 
+export interface StructureCommonListQuery extends StructureListPagingQuery {
+	corporationId?: string
+	assignedGroupId?: string
+	lowPower?: 'true' | 'false'
+	lowPowerAllowed?: 'true' | 'false'
+	regionId?: string
+	systemId?: string
+	state?: string
+	typeId?: string
+}
+
 export interface StructureCitadelListQuery extends StructureListPagingQuery {
 	corporationId?: string
 	assignedGroupId?: string
@@ -89,14 +100,12 @@ export interface StructureCitadelListQuery extends StructureListPagingQuery {
 	typeId?: string
 }
 
-export interface StructureNavigationListQuery extends StructureListPagingQuery {
+export interface StructureNavigationListQuery extends StructureCommonListQuery {
 	corporationId?: string
 	systemId?: string
-	state?: string
-	typeId?: string
 }
 
-export interface StructureSovereigntyListQuery extends StructureListPagingQuery {
+export interface StructureSovereigntyListQuery extends StructureCommonListQuery {
 	corporationId?: string
 	systemId?: string
 	allianceId?: string
@@ -111,19 +120,17 @@ export interface StructureOverviewMetrics {
 	fuelBurnRateSampleCount: number
 }
 
-export interface StructureSkyhookListQuery extends StructureListPagingQuery {
+export interface StructureSkyhookListQuery extends StructureCommonListQuery {
 	corporationId?: string
 	systemId?: string
 	planetId?: string
-	state?: string
 	isRaidable?: 'true' | 'false'
 }
 
-export interface StructureMiningListQuery extends StructureListPagingQuery {
+export interface StructureMiningListQuery extends StructureCommonListQuery {
 	corporationId?: string
 	systemId?: string
 	planetId?: string
-	typeId?: string
 }
 
 export type StructureListQuery = StructureCitadelListQuery

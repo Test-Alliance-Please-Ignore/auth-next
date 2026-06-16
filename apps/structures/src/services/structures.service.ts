@@ -151,18 +151,7 @@ export interface StructureNavigationListItem extends StructureListItem {
 	navigationType: StructureTab
 }
 
-export interface StructureSovereigntyListItem {
-	structureId: string
-	corporationId: string
-	corporationName: string
-	name: string
-	typeId: string
-	typeName: string | null
-	systemId: string
-	systemName: string | null
-	regionId: string | null
-	regionName: string | null
-	state: string
+export interface StructureSovereigntyListItem extends StructureListItem {
 	claimType: 'alliance' | 'faction' | 'unclaimed'
 	allianceId: string | null
 	corporationClaimantId: string | null
@@ -194,20 +183,9 @@ export interface StructureSovereigntyListItem {
 	canEdit: boolean
 }
 
-export interface StructureSkyhookListItem {
-	structureId: string
-	corporationId: string
-	corporationName: string
-	name: string
-	typeId: string
-	typeName: string | null
-	systemId: string
-	systemName: string | null
-	regionId: string | null
-	regionName: string | null
+export interface StructureSkyhookListItem extends StructureListItem {
 	planetId: string
 	planetName: string | null
-	state: string
 	isActive: boolean
 	effectiveWorkforce: number | null
 	totalReagents: number
@@ -227,18 +205,7 @@ export interface StructureSkyhookListItem {
 	canEdit: boolean
 }
 
-export interface StructureMiningListItem {
-	structureId: string
-	corporationId: string
-	corporationName: string
-	name: string
-	typeId: string
-	typeName: string | null
-	systemId: string
-	systemName: string | null
-	regionId: string | null
-	regionName: string | null
-	state: string
+export interface StructureMiningListItem extends StructureListItem {
 	moonId: string
 	moonName: string | null
 	planetId: string | null
@@ -1264,12 +1231,7 @@ function getStructureSortValue(structure: StructureListItem, field: StructureLis
 	}
 }
 
-function compareFuelStructures(
-	left: StructureListItem,
-	right: StructureListItem,
-	sortDirection: StructureListSortDirection
-): number {
-	const direction = sortDirection === 'asc' ? 1 : -1
+function compareFuelStructures(left: StructureListItem, right: StructureListItem): number {
 	const leftHasExpiry = left.fuelExpires !== null
 	const rightHasExpiry = right.fuelExpires !== null
 	if (leftHasExpiry !== rightHasExpiry) {
@@ -1277,10 +1239,10 @@ function compareFuelStructures(
 	}
 
 	if (leftHasExpiry && rightHasExpiry) {
-		return compareNullableDates(left.fuelExpires, right.fuelExpires) * direction
+		return compareNullableDates(left.fuelExpires, right.fuelExpires)
 	}
 
-	return compareNullableNumbers(left.fuelAmount, right.fuelAmount) * direction
+	return compareNullableNumbers(left.fuelAmount, right.fuelAmount)
 }
 
 function sortStructures(
@@ -1299,8 +1261,8 @@ function sortStructures(
 					getStructureSortValue(right, sortBy) as string | null | undefined
 				)
 				break
-			case 'fuel':
-				comparison = compareFuelStructures(left, right, sortDirection)
+		case 'fuel':
+				comparison = compareFuelStructures(left, right)
 				break
 			case 'name':
 				comparison = left.name.localeCompare(right.name)
@@ -1659,8 +1621,8 @@ async function listVisibleOperationalStructures(
 		.filter((item) => matchesStructureTab(item, activeTab))
 	const filterOptions = buildStructureFilterOptions(baseItems)
 	const filteredItems = baseItems
-	const sortBy = query.sortBy ?? 'updatedAt'
-	const sortDirection = query.sortDirection ?? 'desc'
+	const sortBy = query.sortBy ?? 'fuel'
+	const sortDirection = query.sortDirection ?? 'asc'
 	const sortedItems = sortStructures(filteredItems, sortBy, sortDirection)
 	const summary = buildStructureSummary(filteredItems, moduleConfig)
 	const pageSize = Math.min(Math.max(query.pageSize ?? 25, 1), STRUCTURE_LIST_PAGE_SIZE_MAX)
@@ -1762,14 +1724,12 @@ function buildStructureRowIdentity(
 }
 
 function buildSovereigntyListItem(input: {
+	context: VisibleStructureContext
 	systemRow: typeof structureSovereigntySystems.$inferSelect | null
 	hubRow: typeof structureSovereigntyHubs.$inferSelect | null
-	structureRow: typeof corporationStructures.$inferSelect
-	corporationName: string
-	canViewSensitive: boolean
-	canEdit: boolean
 }): StructureSovereigntyListItem {
-	const { systemRow, hubRow, structureRow, corporationName, canViewSensitive, canEdit } = input
+	const { context, systemRow, hubRow } = input
+	const { structure: structureRow, corporationName, canViewSensitive, canEdit } = context
 	const hasSystemSnapshot = systemRow !== null
 	const lastSyncedAt = systemRow?.lastSyncedAt ?? hubRow?.lastSyncedAt ?? structureRow.lastSyncedAt ?? null
 	const sourceUpdatedAt = systemRow?.updatedAt ?? hubRow?.updatedAt ?? structureRow.updatedAt
@@ -1788,9 +1748,8 @@ function buildSovereigntyListItem(input: {
 	)
 
 	return {
-		structureId: structureRow.structureId,
+		...buildStructureListItem(context),
 		...structureIdentity,
-		state: systemRow?.claimType ?? 'unknown',
 		claimType: systemRow?.claimType ?? 'unclaimed',
 		allianceId: systemRow?.allianceId ?? null,
 		corporationClaimantId: systemRow?.corporationClaimantId ?? null,
@@ -1829,13 +1788,11 @@ function buildSovereigntyListItem(input: {
 }
 
 function buildSkyhookListItem(input: {
+	context: VisibleStructureContext
 	skyhookRow: typeof structureSkyhookStates.$inferSelect | null
-	structureRow: typeof corporationStructures.$inferSelect
-	corporationName: string
-	canViewSensitive: boolean
-	canEdit: boolean
 }): StructureSkyhookListItem {
-	const { skyhookRow, structureRow, corporationName, canViewSensitive, canEdit } = input
+	const { context, skyhookRow } = input
+	const { structure: structureRow } = context
 	const hasSkyhookSnapshot = skyhookRow !== null
 	const reagentTotals = skyhookRow?.reagents.reduce(
 		(accumulator: { secured: number; unsecured: number }, reagent: { securedStock: number; unsecuredStock: number }) => {
@@ -1847,19 +1804,10 @@ function buildSkyhookListItem(input: {
 	) ?? { secured: 0, unsecured: 0 }
 
 	return {
-		structureId: structureRow.structureId,
-		corporationId: structureRow.corporationId,
-		corporationName,
-		name: structureRow.name ?? structureRow.structureId,
-		typeId: structureRow.typeId,
-		typeName: structureRow.typeName ?? null,
-		systemId: structureRow.systemId,
+		...buildStructureListItem(context),
 		systemName: skyhookRow?.systemName ?? structureRow.systemName ?? null,
-		regionId: structureRow.regionId ?? null,
-		regionName: structureRow.regionName ?? null,
 		planetId: skyhookRow?.planetId ?? '',
 		planetName: skyhookRow?.planetName ?? null,
-		state: skyhookRow?.state ?? 'unknown',
 		isActive: skyhookRow?.isActive ?? false,
 		effectiveWorkforce: skyhookRow?.effectiveWorkforce ?? null,
 		totalReagents: skyhookRow?.reagents.length ?? 0,
@@ -1877,33 +1825,21 @@ function buildSkyhookListItem(input: {
 			: 'Skyhook snapshot has not been ingested yet for this structure.',
 		lastSyncedAt: toIso(skyhookRow?.lastSyncedAt ?? structureRow.lastSyncedAt),
 		updatedAt: (skyhookRow?.updatedAt ?? structureRow.updatedAt).toISOString(),
-		canViewSensitive,
-		canEdit,
 	}
 }
 
 function buildMiningListItem(input: {
+	context: VisibleStructureContext
 	miningRow: typeof structureMiningStates.$inferSelect | null
-	structureRow: typeof corporationStructures.$inferSelect
-	corporationName: string
-	canViewSensitive: boolean
-	canEdit: boolean
 }): StructureMiningListItem {
-	const { miningRow, structureRow, corporationName, canViewSensitive, canEdit } = input
+	const { context, miningRow } = input
+	const { structure: structureRow } = context
 	const hasMiningSnapshot = miningRow !== null
 
 	return {
-		structureId: structureRow.structureId,
-		corporationId: structureRow.corporationId,
-		corporationName,
-		name: structureRow.name ?? structureRow.structureId,
-		typeId: structureRow.typeId,
-		typeName: structureRow.typeName ?? null,
+		...buildStructureListItem(context),
 		systemId: miningRow?.systemId ?? structureRow.systemId,
 		systemName: miningRow?.systemName ?? structureRow.systemName ?? null,
-		regionId: structureRow.regionId ?? null,
-		regionName: structureRow.regionName ?? null,
-		state: 'mining',
 		moonId: miningRow?.moonId ?? '',
 		moonName: miningRow?.moonName ?? null,
 		planetId: miningRow?.planetId ?? null,
@@ -1917,8 +1853,6 @@ function buildMiningListItem(input: {
 			: 'Mining state snapshot has not been ingested yet for this structure.',
 		lastSyncedAt: toIso(miningRow?.lastSyncedAt ?? structureRow.lastSyncedAt),
 		updatedAt: (miningRow?.updatedAt ?? structureRow.updatedAt).toISOString(),
-		canViewSensitive,
-		canEdit,
 	}
 }
 
@@ -1927,9 +1861,15 @@ export async function listSovereigntyStructures(
 	user: SessionUser,
 	query: StructureSovereigntyListQuery = {}
 ): Promise<StructureListResponse<StructureSovereigntyListItem>> {
-	const { contexts, access } = await loadVisibleStructureContexts(db, user, {
+	const { moduleConfig, contexts, access } = await loadVisibleStructureContexts(db, user, {
 		corporationId: query.corporationId,
+		assignedGroupId: query.assignedGroupId,
+		lowPower: query.lowPower,
+		lowPowerAllowed: query.lowPowerAllowed,
+		regionId: query.regionId,
 		systemId: query.systemId,
+		state: query.state,
+		typeId: query.typeId,
 	})
 
 	if (!access.viewAll && access.viewCorporationIds.size === 0) {
@@ -2008,32 +1948,15 @@ export async function listSovereigntyStructures(
 		const systemRow = systemByHubStructureId.get(context.structure.structureId) ?? null
 		const hubRow = hubById.get(context.structure.structureId) ?? null
 		return buildSovereigntyListItem({
+			context,
 			systemRow,
 			hubRow,
-			structureRow: context.structure,
-			corporationName: context.corporationName,
-			canViewSensitive: context.canViewSensitive,
-			canEdit: context.canEdit,
 		})
 	})
 
-	const sortBy = query.sortBy ?? 'updatedAt'
-	const sortDirection = query.sortDirection ?? 'desc'
-	const sortedItems = sortStructures(
-		items.map((item) => ({
-			...item,
-			lowPower: false,
-			fuelExpires: null,
-			fuelAmount: null,
-			hidden: false,
-			lowPowerAllowed: false,
-			assignedGroupId: null,
-			profileId: '',
-			nextStateAt: item.vulnerabilityWindowEnd,
-		})) as StructureListItem[],
-		sortBy,
-		sortDirection
-	)
+	const sortBy = query.sortBy ?? 'fuel'
+	const sortDirection = query.sortDirection ?? 'asc'
+	const sortedItems = sortStructures(items, sortBy, sortDirection)
 	const pageSize = Math.min(Math.max(query.pageSize ?? 25, 1), STRUCTURE_LIST_PAGE_SIZE_MAX)
 	const totalCount = sortedItems.length
 	const totalPages = Math.max(1, Math.ceil(totalCount / pageSize))
@@ -2052,12 +1975,7 @@ export async function listSovereigntyStructures(
 			hasPreviousPage: page > 1,
 		},
 		filterOptions: buildStructureFilterOptions(items),
-		summary: {
-			total: items.length,
-			lowFuel: 0,
-			lowPower: 0,
-			reinforced: 0,
-		},
+		summary: buildStructureSummary(items, moduleConfig),
 	}
 }
 
@@ -2066,9 +1984,15 @@ export async function listSkyhookStructures(
 	user: SessionUser,
 	query: StructureSkyhookListQuery = {}
 ): Promise<StructureListResponse<StructureSkyhookListItem>> {
-	const { contexts, access } = await loadVisibleStructureContexts(db, user, {
+	const { moduleConfig, contexts, access } = await loadVisibleStructureContexts(db, user, {
 		corporationId: query.corporationId,
+		assignedGroupId: query.assignedGroupId,
+		lowPower: query.lowPower,
+		lowPowerAllowed: query.lowPowerAllowed,
+		regionId: query.regionId,
 		systemId: query.systemId,
+		state: query.state,
+		typeId: query.typeId,
 	})
 
 	if (!access.viewAll && access.viewCorporationIds.size === 0) {
@@ -2144,32 +2068,14 @@ export async function listSkyhookStructures(
 	const items = skyhookContexts.map((context) => {
 		const skyhookRow = skyhookByStructureId.get(context.structure.structureId) ?? null
 		return buildSkyhookListItem({
+			context,
 			skyhookRow,
-			structureRow: context.structure,
-			corporationName: context.corporationName,
-			canViewSensitive: context.canViewSensitive,
-			canEdit: context.canEdit,
 		})
 	})
 
-	const sortBy = query.sortBy ?? 'updatedAt'
-	const sortDirection = query.sortDirection ?? 'desc'
-	const sortedItems = sortStructures(
-		items.map((item) => ({
-			...item,
-			state: item.state,
-			lowPower: false,
-			fuelExpires: null,
-			fuelAmount: null,
-			hidden: false,
-			lowPowerAllowed: false,
-			assignedGroupId: null,
-			profileId: '',
-			nextStateAt: item.theftVulnerabilityEnd,
-		})) as StructureListItem[],
-		sortBy,
-		sortDirection
-	)
+	const sortBy = query.sortBy ?? 'fuel'
+	const sortDirection = query.sortDirection ?? 'asc'
+	const sortedItems = sortStructures(items, sortBy, sortDirection)
 	const pageSize = Math.min(Math.max(query.pageSize ?? 25, 1), STRUCTURE_LIST_PAGE_SIZE_MAX)
 	const totalCount = sortedItems.length
 	const totalPages = Math.max(1, Math.ceil(totalCount / pageSize))
@@ -2188,12 +2094,7 @@ export async function listSkyhookStructures(
 			hasPreviousPage: page > 1,
 		},
 		filterOptions: buildStructureFilterOptions(items),
-		summary: {
-			total: items.length,
-			lowFuel: 0,
-			lowPower: 0,
-			reinforced: 0,
-		},
+		summary: buildStructureSummary(items, moduleConfig),
 	}
 }
 
@@ -2202,9 +2103,14 @@ export async function listMiningStructures(
 	user: SessionUser,
 	query: StructureMiningListQuery = {}
 ): Promise<StructureListResponse<StructureMiningListItem>> {
-	const { contexts, access } = await loadVisibleStructureContexts(db, user, {
+	const { moduleConfig, contexts, access } = await loadVisibleStructureContexts(db, user, {
 		corporationId: query.corporationId,
+		assignedGroupId: query.assignedGroupId,
+		lowPower: query.lowPower,
+		lowPowerAllowed: query.lowPowerAllowed,
+		regionId: query.regionId,
 		systemId: query.systemId,
+		state: query.state,
 		typeId: query.typeId,
 	})
 
@@ -2271,32 +2177,14 @@ export async function listMiningStructures(
 	const miningByStructureId = new Map(miningRows.map((row) => [row.structureId, row]))
 	const items = miningContexts.map((context) =>
 		buildMiningListItem({
+			context,
 			miningRow: miningByStructureId.get(context.structure.structureId) ?? null,
-			structureRow: context.structure,
-			corporationName: context.corporationName,
-			canViewSensitive: context.canViewSensitive,
-			canEdit: context.canEdit,
 		})
 	)
 
-	const sortBy = query.sortBy ?? 'updatedAt'
-	const sortDirection = query.sortDirection ?? 'desc'
-	const sortedItems = sortStructures(
-		items.map((item) => ({
-			...item,
-			state: item.state,
-			lowPower: false,
-			fuelExpires: null,
-			fuelAmount: null,
-			hidden: false,
-			lowPowerAllowed: false,
-			assignedGroupId: null,
-			profileId: '',
-			nextStateAt: item.chunkArrivalTime ?? item.naturalDecayTime,
-		})) as StructureListItem[],
-		sortBy,
-		sortDirection
-	)
+	const sortBy = query.sortBy ?? 'fuel'
+	const sortDirection = query.sortDirection ?? 'asc'
+	const sortedItems = sortStructures(items, sortBy, sortDirection)
 	const pageSize = Math.min(Math.max(query.pageSize ?? 25, 1), STRUCTURE_LIST_PAGE_SIZE_MAX)
 	const totalCount = sortedItems.length
 	const totalPages = Math.max(1, Math.ceil(totalCount / pageSize))
@@ -2315,12 +2203,7 @@ export async function listMiningStructures(
 			hasPreviousPage: page > 1,
 		},
 		filterOptions: buildStructureFilterOptions(items),
-		summary: {
-			total: items.length,
-			lowFuel: 0,
-			lowPower: 0,
-			reinforced: 0,
-		},
+		summary: buildStructureSummary(items, moduleConfig),
 	}
 }
 

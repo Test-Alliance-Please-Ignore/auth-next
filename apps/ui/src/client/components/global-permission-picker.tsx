@@ -61,6 +61,7 @@ export function GlobalPermissionPicker({
 						value={categoryFilter || 'all'}
 						onValueChange={(value) => setCategoryFilter(value === 'all' ? undefined : value)}
 						inputId="category-filter-attach"
+						searchable
 						options={[
 							{ value: 'all', label: 'All categories' },
 							{ value: 'uncategorized', label: 'Uncategorized' },

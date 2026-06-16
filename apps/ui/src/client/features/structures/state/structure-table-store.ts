@@ -35,8 +35,8 @@ function defaultState(): StructureTableUiState {
 		filters: {},
 		page: 1,
 		pageSize: 25,
-		sortBy: 'updatedAt',
-		sortDirection: 'desc',
+		sortBy: 'fuel',
+		sortDirection: 'asc',
 	}
 }
 
@@ -56,21 +56,27 @@ function normalizeFilters(filters: StructureTableFilters): StructureTableFilters
 	}
 }
 
+const COMMON_TAB_FILTER_FIELDS = [
+	'corporationId',
+	'assignedGroupId',
+	'lowPower',
+	'lowPowerAllowed',
+	'regionId',
+	'systemId',
+	'state',
+	'typeId',
+] as const satisfies Array<keyof StructureTableFilters>
+
+const SKYHOOK_TAB_FILTER_FIELDS = COMMON_TAB_FILTER_FIELDS.filter(
+	(field) => field !== 'typeId'
+) as Array<keyof StructureTableFilters>
+
 const TAB_FILTER_FIELDS: Record<StructureTab, Array<keyof StructureTableFilters>> = {
-	citadels: [
-		'corporationId',
-		'assignedGroupId',
-		'lowPower',
-		'lowPowerAllowed',
-		'regionId',
-		'systemId',
-		'state',
-		'typeId',
-	],
-	navigation: ['corporationId', 'systemId', 'state', 'typeId'],
-	sovereignty: ['corporationId', 'systemId', 'allianceId'],
-	skyhooks: ['corporationId', 'systemId', 'planetId', 'state', 'isRaidable'],
-	mining: ['corporationId', 'systemId', 'planetId', 'typeId'],
+	citadels: [...COMMON_TAB_FILTER_FIELDS],
+	navigation: [...COMMON_TAB_FILTER_FIELDS],
+	sovereignty: [...COMMON_TAB_FILTER_FIELDS.filter((field) => field !== 'typeId'), 'allianceId'],
+	skyhooks: [...SKYHOOK_TAB_FILTER_FIELDS, 'isRaidable'],
+	mining: [...COMMON_TAB_FILTER_FIELDS],
 }
 
 function normalizeTab(tab: unknown): StructureTab {

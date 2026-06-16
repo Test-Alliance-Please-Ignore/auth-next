@@ -42,7 +42,6 @@ import { useGroups } from '@/hooks/useGroups'
 import { usePageTitle } from '@/hooks/usePageTitle'
 import { useUserPermissions } from '@/hooks/useUserPermissions'
 import {
-	type StructureCitadelListItem,
 	type StructureListBaseItem,
 	type StructureListSortBy,
 	type StructureMiningListItem,
@@ -119,6 +118,13 @@ function formatNullableNumber(value: number | null | undefined): string {
 	return value.toLocaleString()
 }
 
+function formatSovereigntyClaimType(value: 'alliance' | 'faction' | 'unclaimed' | null | undefined): string {
+	if (!value) return '-'
+	return value[0].toUpperCase() + value.slice(1)
+}
+
+type PrimaryStructureFilterSlot = 'type' | 'raidable' | 'alliance'
+
 export default function StructuresPage() {
 	usePageTitle('Structures')
 
@@ -146,51 +152,46 @@ export default function StructuresPage() {
 			sortBy: tableState.sortBy,
 			sortDirection: tableState.sortDirection,
 		}
+		const common = {
+			corporationId: tableState.filters.corporationId,
+			assignedGroupId: tableState.filters.assignedGroupId,
+			lowPower: tableState.filters.lowPower,
+			lowPowerAllowed: tableState.filters.lowPowerAllowed,
+			regionId: tableState.filters.regionId,
+			systemId: tableState.filters.systemId,
+			state: tableState.filters.state,
+			typeId: tableState.filters.typeId,
+		}
 
 		switch (tableState.tab) {
 			case 'citadels':
 				return {
 					...base,
-					corporationId: tableState.filters.corporationId,
-					assignedGroupId: tableState.filters.assignedGroupId,
-					lowPower: tableState.filters.lowPower,
-					lowPowerAllowed: tableState.filters.lowPowerAllowed,
-					regionId: tableState.filters.regionId,
-					systemId: tableState.filters.systemId,
-					state: tableState.filters.state,
-					typeId: tableState.filters.typeId,
+					...common,
 				}
 			case 'navigation':
 				return {
 					...base,
-					corporationId: tableState.filters.corporationId,
-					systemId: tableState.filters.systemId,
-					state: tableState.filters.state,
-					typeId: tableState.filters.typeId,
+					...common,
 				}
 			case 'sovereignty':
 				return {
 					...base,
-					corporationId: tableState.filters.corporationId,
-					systemId: tableState.filters.systemId,
+					...common,
 					allianceId: tableState.filters.allianceId,
 				}
 			case 'skyhooks':
 				return {
 					...base,
-					corporationId: tableState.filters.corporationId,
-					systemId: tableState.filters.systemId,
+					...common,
 					planetId: tableState.filters.planetId,
-					state: tableState.filters.state,
 					isRaidable: tableState.filters.isRaidable,
 				}
 			case 'mining':
 				return {
 					...base,
-					corporationId: tableState.filters.corporationId,
-					systemId: tableState.filters.systemId,
+					...common,
 					planetId: tableState.filters.planetId,
-					typeId: tableState.filters.typeId,
 				}
 		}
 		throw new Error(`Unknown structures tab: ${tableState.tab}`)
@@ -306,17 +307,6 @@ export default function StructuresPage() {
 			),
 		[filterOptions]
 	)
-	const planetOptions = useMemo<SelectOption[]>(
-		() =>
-			withAllOption(
-				(filterOptions?.planets ?? []).map((option) => ({
-					value: option.value,
-					label: option.label,
-				})),
-				'All Planets'
-			),
-		[filterOptions]
-	)
 	const raidableStateOptions = useMemo<SelectOption[]>(
 		() =>
 			withAllOption(
@@ -411,291 +401,136 @@ export default function StructuresPage() {
 		</TableHead>
 	)
 
-	const showLegacySummaryCards = tableState.tab === 'citadels' || tableState.tab === 'navigation'
 	const isSovereigntyTab = tableState.tab === 'sovereignty'
 	const isSkyhooksTab = tableState.tab === 'skyhooks'
 	const isMiningTab = tableState.tab === 'mining'
-	const tabFilterControls = (() => {
+	const primaryFilterSlot: PrimaryStructureFilterSlot = (() => {
 		switch (tableState.tab) {
-			case 'citadels':
-				return (
-					<div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4 2xl:grid-cols-4">
-						<FilterField label="Region">
-							<Select
-								options={regionOptions}
-								value={tableState.filters.regionId ?? ''}
-								onValueChange={(value) =>
-									setStructureTableFilters({ regionId: value || undefined })
-								}
-								placeholder="All Regions"
-								searchable
-							/>
-						</FilterField>
-						<FilterField label="System">
-							<Select
-								options={systemOptions}
-								value={tableState.filters.systemId ?? ''}
-								onValueChange={(value) =>
-									setStructureTableFilters({ systemId: value || undefined })
-								}
-								placeholder="All Systems"
-								searchable
-							/>
-						</FilterField>
-						<FilterField label="Corporation">
-							<Select
-								options={corporationOptions}
-								value={tableState.filters.corporationId ?? ''}
-								onValueChange={(value) =>
-									setStructureTableFilters({ corporationId: value || undefined })
-								}
-								placeholder="All Corporations"
-								searchable
-							/>
-						</FilterField>
-						<FilterField label="Type">
-							<Select
-								options={typeOptions}
-								value={tableState.filters.typeId ?? ''}
-								onValueChange={(value) => setStructureTableFilters({ typeId: value || undefined })}
-								placeholder="All Types"
-								searchable
-							/>
-						</FilterField>
-						<FilterField label="State">
-							<Select
-								options={stateOptions}
-								value={tableState.filters.state ?? ''}
-								onValueChange={(value) => setStructureTableFilters({ state: value || undefined })}
-								placeholder="All States"
-								searchable
-							/>
-						</FilterField>
-						<FilterField label="Low Power">
-							<Select
-								options={withAllOption(BOOLEAN_FILTER_OPTIONS, 'All Power Statuses')}
-								value={tableState.filters.lowPower ?? ''}
-								onValueChange={(value) =>
-									setStructureTableFilters({ lowPower: toBooleanFilterValue(value) })
-								}
-								placeholder="All Power Statuses"
-							/>
-						</FilterField>
-						<FilterField label="Low Power Allowed">
-							<Select
-								options={withAllOption(BOOLEAN_FILTER_OPTIONS, 'All LP Preferences')}
-								value={tableState.filters.lowPowerAllowed ?? ''}
-								onValueChange={(value) =>
-									setStructureTableFilters({ lowPowerAllowed: toBooleanFilterValue(value) })
-								}
-								placeholder="All LP Preferences"
-							/>
-						</FilterField>
-						<FilterField label="Group">
-							<Select
-								options={assignedGroupOptions}
-								value={tableState.filters.assignedGroupId ?? ''}
-								onValueChange={(value) =>
-									setStructureTableFilters({
-										assignedGroupId: value || undefined,
-									})
-								}
-								placeholder="All Groups"
-								searchable
-							/>
-						</FilterField>
-					</div>
-				)
-			case 'navigation':
-				return (
-					<div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
-						<FilterField label="Corporation">
-							<Select
-								options={corporationOptions}
-								value={tableState.filters.corporationId ?? ''}
-								onValueChange={(value) =>
-									setStructureTableFilters({ corporationId: value || undefined })
-								}
-								placeholder="All Corporations"
-								searchable
-							/>
-						</FilterField>
-						<FilterField label="System">
-							<Select
-								options={systemOptions}
-								value={tableState.filters.systemId ?? ''}
-								onValueChange={(value) =>
-									setStructureTableFilters({ systemId: value || undefined })
-								}
-								placeholder="All Systems"
-								searchable
-							/>
-						</FilterField>
-						<FilterField label="Type">
-							<Select
-								options={typeOptions}
-								value={tableState.filters.typeId ?? ''}
-								onValueChange={(value) => setStructureTableFilters({ typeId: value || undefined })}
-								placeholder="All Types"
-								searchable
-							/>
-						</FilterField>
-						<FilterField label="State">
-							<Select
-								options={stateOptions}
-								value={tableState.filters.state ?? ''}
-								onValueChange={(value) => setStructureTableFilters({ state: value || undefined })}
-								placeholder="All States"
-								searchable
-							/>
-						</FilterField>
-					</div>
-				)
 			case 'sovereignty':
-				return (
-					<div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
-						<FilterField label="Corporation">
-							<Select
-								options={corporationOptions}
-								value={tableState.filters.corporationId ?? ''}
-								onValueChange={(value) =>
-									setStructureTableFilters({ corporationId: value || undefined })
-								}
-								placeholder="All Corporations"
-								searchable
-							/>
-						</FilterField>
-						<FilterField label="System">
-							<Select
-								options={systemOptions}
-								value={tableState.filters.systemId ?? ''}
-								onValueChange={(value) =>
-									setStructureTableFilters({ systemId: value || undefined })
-								}
-								placeholder="All Systems"
-								searchable
-							/>
-						</FilterField>
-						<FilterField label="Alliance">
-							<Select
-								options={allianceOptions}
-								value={tableState.filters.allianceId ?? ''}
-								onValueChange={(value) =>
-									setStructureTableFilters({ allianceId: value || undefined })
-								}
-								placeholder="All Alliances"
-								searchable
-							/>
-						</FilterField>
-					</div>
-				)
+				return 'alliance'
 			case 'skyhooks':
-				return (
-					<div className="grid gap-4 md:grid-cols-2 xl:grid-cols-5">
-						<FilterField label="Corporation">
-							<Select
-								options={corporationOptions}
-								value={tableState.filters.corporationId ?? ''}
-								onValueChange={(value) =>
-									setStructureTableFilters({ corporationId: value || undefined })
-								}
-								placeholder="All Corporations"
-								searchable
-							/>
-						</FilterField>
-						<FilterField label="System">
-							<Select
-								options={systemOptions}
-								value={tableState.filters.systemId ?? ''}
-								onValueChange={(value) =>
-									setStructureTableFilters({ systemId: value || undefined })
-								}
-								placeholder="All Systems"
-								searchable
-							/>
-						</FilterField>
-						<FilterField label="Planet">
-							<Select
-								options={planetOptions}
-								value={tableState.filters.planetId ?? ''}
-								onValueChange={(value) =>
-									setStructureTableFilters({ planetId: value || undefined })
-								}
-								placeholder="All Planets"
-								searchable
-							/>
-						</FilterField>
-						<FilterField label="State">
-							<Select
-								options={stateOptions}
-								value={tableState.filters.state ?? ''}
-								onValueChange={(value) => setStructureTableFilters({ state: value || undefined })}
-								placeholder="All States"
-								searchable
-							/>
-						</FilterField>
-						<FilterField label="Raidable">
-							<Select
-								options={raidableStateOptions}
-								value={tableState.filters.isRaidable ?? ''}
-								onValueChange={(value) =>
-									setStructureTableFilters({ isRaidable: toBooleanFilterValue(value) })
-								}
-								placeholder="All Raidable States"
-							/>
-						</FilterField>
-					</div>
-				)
+				return 'raidable'
+			case 'citadels':
+			case 'navigation':
 			case 'mining':
+				return 'type'
+		}
+	})()
+	const primaryFilterControl = (() => {
+		switch (primaryFilterSlot) {
+			case 'alliance':
 				return (
-					<div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
-						<FilterField label="Corporation">
-							<Select
-								options={corporationOptions}
-								value={tableState.filters.corporationId ?? ''}
-								onValueChange={(value) =>
-									setStructureTableFilters({ corporationId: value || undefined })
-								}
-								placeholder="All Corporations"
-								searchable
-							/>
-						</FilterField>
-						<FilterField label="System">
-							<Select
-								options={systemOptions}
-								value={tableState.filters.systemId ?? ''}
-								onValueChange={(value) =>
-									setStructureTableFilters({ systemId: value || undefined })
-								}
-								placeholder="All Systems"
-								searchable
-							/>
-						</FilterField>
-						<FilterField label="Planet">
-							<Select
-								options={planetOptions}
-								value={tableState.filters.planetId ?? ''}
-								onValueChange={(value) =>
-									setStructureTableFilters({ planetId: value || undefined })
-								}
-								placeholder="All Planets"
-								searchable
-							/>
-						</FilterField>
-						<FilterField label="Type">
-							<Select
-								options={typeOptions}
-								value={tableState.filters.typeId ?? ''}
-								onValueChange={(value) => setStructureTableFilters({ typeId: value || undefined })}
-								placeholder="All Types"
-								searchable
-							/>
-						</FilterField>
-					</div>
+					<FilterField label="Alliance">
+						<Select
+							options={allianceOptions}
+							value={tableState.filters.allianceId ?? ''}
+							onValueChange={(value) =>
+								setStructureTableFilters({ allianceId: value || undefined })
+							}
+							placeholder="All Alliances"
+							searchable
+						/>
+					</FilterField>
+				)
+			case 'raidable':
+				return (
+					<FilterField label="Raidable">
+						<Select
+							options={raidableStateOptions}
+							value={tableState.filters.isRaidable ?? ''}
+							onValueChange={(value) =>
+								setStructureTableFilters({ isRaidable: toBooleanFilterValue(value) })
+							}
+							placeholder="All Raidable States"
+						/>
+					</FilterField>
+				)
+			case 'type':
+				return (
+					<FilterField label="Type">
+						<Select
+							options={typeOptions}
+							value={tableState.filters.typeId ?? ''}
+							onValueChange={(value) => setStructureTableFilters({ typeId: value || undefined })}
+							placeholder="All Types"
+							searchable
+						/>
+					</FilterField>
 				)
 		}
-		throw new Error(`Unknown structures tab: ${tableState.tab}`)
 	})()
+	const commonFilterControls = (
+		<div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4 2xl:grid-cols-4">
+			<FilterField label="Region">
+				<Select
+					options={regionOptions}
+					value={tableState.filters.regionId ?? ''}
+					onValueChange={(value) => setStructureTableFilters({ regionId: value || undefined })}
+					placeholder="All Regions"
+					searchable
+				/>
+			</FilterField>
+			<FilterField label="System">
+				<Select
+					options={systemOptions}
+					value={tableState.filters.systemId ?? ''}
+					onValueChange={(value) => setStructureTableFilters({ systemId: value || undefined })}
+					placeholder="All Systems"
+					searchable
+				/>
+			</FilterField>
+			<FilterField label="Corporation">
+				<Select
+					options={corporationOptions}
+					value={tableState.filters.corporationId ?? ''}
+					onValueChange={(value) => setStructureTableFilters({ corporationId: value || undefined })}
+					placeholder="All Corporations"
+					searchable
+				/>
+			</FilterField>
+			{primaryFilterControl}
+			<FilterField label="State">
+				<Select
+					options={stateOptions}
+					value={tableState.filters.state ?? ''}
+					onValueChange={(value) => setStructureTableFilters({ state: value || undefined })}
+					placeholder="All States"
+					searchable
+				/>
+			</FilterField>
+			<FilterField label="Low Power">
+				<Select
+					options={withAllOption(BOOLEAN_FILTER_OPTIONS, 'All Power Statuses')}
+					value={tableState.filters.lowPower ?? ''}
+					onValueChange={(value) => setStructureTableFilters({ lowPower: toBooleanFilterValue(value) })}
+					placeholder="All Power Statuses"
+				/>
+			</FilterField>
+			<FilterField label="Low Power Allowed">
+				<Select
+					options={withAllOption(BOOLEAN_FILTER_OPTIONS, 'All LP Preferences')}
+					value={tableState.filters.lowPowerAllowed ?? ''}
+					onValueChange={(value) =>
+						setStructureTableFilters({ lowPowerAllowed: toBooleanFilterValue(value) })
+					}
+					placeholder="All LP Preferences"
+				/>
+			</FilterField>
+			<FilterField label="Group">
+				<Select
+					options={assignedGroupOptions}
+					value={tableState.filters.assignedGroupId ?? ''}
+					onValueChange={(value) =>
+						setStructureTableFilters({
+							assignedGroupId: value || undefined,
+						})
+					}
+					placeholder="All Groups"
+					searchable
+				/>
+			</FilterField>
+		</div>
+	)
 
 	if (!authLoading && !permissionsLoading && !canViewStructures) {
 		return <Navigate to="/dashboard" replace />
@@ -831,7 +666,9 @@ export default function StructuresPage() {
 							</Button>
 						</div>
 					)}
-					{tabFilterControls}
+					<div className="space-y-4">
+						{commonFilterControls}
+					</div>
 					<div className="space-y-4 border-t border-border/60 pt-4">
 						<div className="border-b p-3">
 							<UserSearchPaginationControls
@@ -888,10 +725,10 @@ export default function StructuresPage() {
 							) : (
 								<Table
 									className={cn(
-										'min-w-[96rem]',
-										isSovereigntyTab && 'min-w-[88rem]',
-										isSkyhooksTab && 'min-w-[84rem]',
-										isMiningTab && 'min-w-[86rem]'
+										'min-w-[118rem]',
+										isSovereigntyTab && 'min-w-[128rem]',
+										isSkyhooksTab && 'min-w-[126rem]',
+										isMiningTab && 'min-w-[124rem]'
 									)}
 								>
 									<TableHeader>
@@ -902,16 +739,14 @@ export default function StructuresPage() {
 											<SortableHead field="corporation" label="Corporation" />
 											<SortableHead field="type" label="Type" />
 											<SortableHead field="state" label="State" />
-											{showLegacySummaryCards ? (
+											<SortableHead field="fuel" label="Fuel" />
+											<TableHead>LP</TableHead>
+											<TableHead>LP Allowed</TableHead>
+											<SortableHead field="nextStateAt" label="Next State In" />
+											<TableHead>Group</TableHead>
+											{isSovereigntyTab ? (
 												<>
-													<SortableHead field="fuel" label="Fuel" />
-													<TableHead>LP</TableHead>
-													<TableHead>LP Allowed</TableHead>
-													<SortableHead field="nextStateAt" label="Next State In" />
-													<TableHead>Group</TableHead>
-												</>
-											) : isSovereigntyTab ? (
-												<>
+													<TableHead>Claim Type</TableHead>
 													<TableHead>ADM</TableHead>
 													<TableHead>Hub</TableHead>
 													<TableHead>Vulnerability</TableHead>
@@ -939,27 +774,27 @@ export default function StructuresPage() {
 									</TableHeader>
 									<TableBody>
 										{structures.map((structure) => {
-											const citadelStructure = structure as StructureCitadelListItem
+											const structureBase = structure as StructureListBaseItem
 											const sovereigntyStructure = structure as StructureSovereigntyListItem
 											const skyhookStructure = structure as StructureSkyhookListItem
 											const miningStructure = structure as StructureMiningListItem
-											const fuelLabel = citadelStructure.fuelExpires ? (
+											const fuelLabel = structureBase.fuelExpires ? (
 												<DurationDisplay
-													endDate={citadelStructure.fuelExpires}
+													endDate={structureBase.fuelExpires}
 													referenceTimeMs={nowMs}
 													maxUnits={3}
 													durationStyle="compact"
 												/>
-											) : citadelStructure.fuelAmount != null ? (
-												`${citadelStructure.fuelAmount.toLocaleString()} units`
+											) : structureBase.fuelAmount != null ? (
+												`${structureBase.fuelAmount.toLocaleString()} units`
 											) : (
 												'-'
 											)
-											const groupLabel = citadelStructure.assignedGroupId
-												? (groupNameById.get(citadelStructure.assignedGroupId) ??
-													citadelStructure.assignedGroupId)
+											const groupLabel = structureBase.assignedGroupId
+												? (groupNameById.get(structureBase.assignedGroupId) ??
+													structureBase.assignedGroupId)
 												: '-'
-											const isHidden = showLegacySummaryCards ? citadelStructure.hidden : false
+											const isHidden = structureBase.hidden
 
 											return (
 												<TableRow key={structure.structureId}>
@@ -991,36 +826,36 @@ export default function StructuresPage() {
 													<TableCell>
 														<StructureStateBadge state={structure.state} />
 													</TableCell>
-													{showLegacySummaryCards ? (
+													<TableCell>{fuelLabel}</TableCell>
+													<TableCell>
+														<Badge variant={structureBase.lowPower ? 'warning' : 'ghost'}>
+															{structureBase.lowPower ? 'Yes' : 'No'}
+														</Badge>
+													</TableCell>
+													<TableCell>
+														<Badge variant={structureBase.lowPowerAllowed ? 'success' : 'ghost'}>
+															{structureBase.lowPowerAllowed ? 'Yes' : 'No'}
+														</Badge>
+													</TableCell>
+													<TableCell>
+														{structureBase.nextStateAt ? (
+															<DurationDisplay
+																endDate={structureBase.nextStateAt}
+																referenceTimeMs={nowMs}
+																maxUnits={3}
+																durationStyle="compact"
+																format="compact"
+															/>
+														) : (
+															'-'
+														)}
+													</TableCell>
+													<TableCell>{groupLabel}</TableCell>
+													{isSovereigntyTab ? (
 														<>
-															<TableCell>{fuelLabel}</TableCell>
 															<TableCell>
-																<Badge variant={citadelStructure.lowPower ? 'warning' : 'ghost'}>
-																	{citadelStructure.lowPower ? 'Yes' : 'No'}
-																</Badge>
+																{formatSovereigntyClaimType(sovereigntyStructure.claimType)}
 															</TableCell>
-															<TableCell>
-																<Badge variant={citadelStructure.lowPowerAllowed ? 'success' : 'ghost'}>
-																	{citadelStructure.lowPowerAllowed ? 'Yes' : 'No'}
-																</Badge>
-															</TableCell>
-															<TableCell>
-																{citadelStructure.nextStateAt ? (
-																	<DurationDisplay
-																		endDate={citadelStructure.nextStateAt}
-																		referenceTimeMs={nowMs}
-																		maxUnits={3}
-																		durationStyle="compact"
-																		format="compact"
-																	/>
-																) : (
-																	'-'
-																)}
-															</TableCell>
-															<TableCell>{groupLabel}</TableCell>
-														</>
-													) : isSovereigntyTab ? (
-														<>
 															<TableCell>
 																{sovereigntyStructure.activityDefenseMultiplier ?? '-'}
 															</TableCell>
