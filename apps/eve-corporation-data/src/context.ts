@@ -5,7 +5,17 @@ import type { EveCorporationSyncParams } from './workflows/types'
 
 // Define CoreWorker RPC interface
 export interface CoreWorker {
-	getCorporationsForBackgroundRefresh(): Promise<Array<{ corporationId: string; name: string }>>
+	getCorporationsForBackgroundRefresh(): Promise<
+		Array<{
+			corporationId: string
+			name: string
+			lastSync: string | null
+			includeInStructureAssetSync: boolean
+			isMemberCorporation: boolean
+			isAltCorp: boolean
+			isSpecialPurpose: boolean
+		}>
+	>
 	updateCorporationLastSync(corporationId: string): Promise<void>
 	updateCorporationAuthHealth(
 		corporationId: string,

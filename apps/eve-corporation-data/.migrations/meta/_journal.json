@@ -141,6 +141,13 @@
       "when": 1781407594809,
       "tag": "0019_free_lethal_legion",
       "breakpoints": true
+    },
+    {
+      "idx": 20,
+      "version": "7",
+      "when": 1781594825288,
+      "tag": "0020_flippant_vapor",
+      "breakpoints": true
     }
   ]
 }

@@ -55,9 +55,14 @@ describe('structure permission utilities', () => {
 		expect(parseStructurePermissionUrn('urn:structures:')).toBeNull()
 	})
 
-	it('treats any structure URN as structure access', () => {
+	it('only treats syntactically valid structure URNs as structure access', () => {
 		expect(hasAnyStructurePermission([{ urn: 'urn:structures:all:viewer' }])).toBe(true)
 		expect(hasAnyStructurePermission([{ urn: 'urn:structures:1001:viewer' }])).toBe(true)
+		expect(hasAnyStructurePermission([{ urn: 'urn:structures:all:view' }])).toBe(false)
+		expect(hasAnyStructurePermission([{ urn: 'urn:structures:all:manager' }])).toBe(true)
+		expect(hasAnyStructurePermission([{ urn: 'urn:structures:1001:sensitive' }])).toBe(true)
+		expect(hasAnyStructurePermission([{ urn: 'urn:structures:all:not-a-role' }])).toBe(false)
+		expect(hasAnyStructurePermission([{ urn: 'urn:structures:' }])).toBe(false)
 		expect(hasAnyStructurePermission([{ urn: 'urn:srp:reviewer' }])).toBe(false)
 		expect(hasAnyStructurePermission([])).toBe(false)
 	})

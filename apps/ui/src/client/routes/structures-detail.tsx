@@ -402,6 +402,9 @@ export default function StructuresDetailPage() {
 							{structure.hidden && <Badge variant="ghost">Hidden</Badge>}
 							{structure.lowPowerAllowed && <Badge variant="success">Low Power Alerts Suppressed</Badge>}
 							{structure.assignedGroupId && <Badge variant="special">Group Assigned</Badge>}
+							{structure.includeInStructureAssetSync && (
+								<Badge variant="success">Asset Sync Enabled</Badge>
+							)}
 						</div>
 						<div className="space-y-3">
 							<div className="space-y-2">

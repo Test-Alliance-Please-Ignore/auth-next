@@ -485,11 +485,35 @@ export class EveCorporationDataDO extends DurableObject<Env> implements EveCorpo
 	}
 
 	/**
+	 * Get the lightweight corporation sync configuration for workflow gating
+	 */
+	async getCorporationSyncConfig(
+		corporationId: string
+	): Promise<{ includeInBackgroundRefresh: boolean; includeInStructureAssetSync: boolean } | null> {
+		const config = await this.getDb().query.corporationConfig.findFirst({
+			where: eq(corporationConfig.corporationId, corporationId),
+			columns: {
+				includeInBackgroundRefresh: true,
+				includeInStructureAssetSync: true,
+			},
+		})
+
+		if (!config) {
+			return null
+		}
+
+		return {
+			includeInBackgroundRefresh: config.includeInBackgroundRefresh,
+			includeInStructureAssetSync: config.includeInStructureAssetSync,
+		}
+	}
+
+	/**
 	 * Update corporation configuration settings
 	 */
 	async updateCorporationConfig(
 		corporationId: string,
-		updates: { includeInBackgroundRefresh?: boolean }
+		updates: { includeInBackgroundRefresh?: boolean; includeInStructureAssetSync?: boolean }
 	): Promise<void> {
 		this.assertNonNpcCorporation(corporationId)
 
@@ -507,6 +531,7 @@ export class EveCorporationDataDO extends DurableObject<Env> implements EveCorpo
 					isVerified: false,
 					lastVerified: null,
 					includeInBackgroundRefresh: updates.includeInBackgroundRefresh ?? false,
+					includeInStructureAssetSync: updates.includeInStructureAssetSync ?? false,
 					updatedAt: new Date(),
 				})
 		} else {
@@ -516,6 +541,9 @@ export class EveCorporationDataDO extends DurableObject<Env> implements EveCorpo
 				.set({
 					...(updates.includeInBackgroundRefresh !== undefined && {
 						includeInBackgroundRefresh: updates.includeInBackgroundRefresh,
+					}),
+					...(updates.includeInStructureAssetSync !== undefined && {
+						includeInStructureAssetSync: updates.includeInStructureAssetSync,
 					}),
 					updatedAt: new Date(),
 				})
@@ -696,6 +724,7 @@ export class EveCorporationDataDO extends DurableObject<Env> implements EveCorpo
 			createdAt: config.createdAt,
 			updatedAt: config.updatedAt,
 			includeInBackgroundRefresh: config.includeInBackgroundRefresh,
+			includeInStructureAssetSync: config.includeInStructureAssetSync,
 			corporationType: config.corporationType as CorporationType,
 			membersLastSync: config.membersLastSync,
 			memberTrackingLastSync: config.memberTrackingLastSync,

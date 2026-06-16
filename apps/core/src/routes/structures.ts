@@ -123,6 +123,7 @@ interface StructureFittingItemView {
 interface StructureDetailResponse {
 	inventoryBays?: StructureInventoryBayView[]
 	fittingItems?: StructureFittingItemView[]
+	includeInStructureAssetSync?: boolean
 	[key: string]: unknown
 }
 

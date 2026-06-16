@@ -1,20 +1,23 @@
 import { logger } from '@repo/hono-helpers'
 
+import {
+	computeNextAttemptAtMs,
+	enrichQueueEntry,
+	selectPriorityDrain,
+	type EnrichedQueueEntry,
+	type QueueEntry,
+	type RefreshBucket,
+} from './workflows/utils/background-refresh-batching'
 import { refreshSharedSovereigntySystems } from './workflows/utils/sovereignty-systems-cache'
 
 import type { Env } from './context'
 
 const BACKGROUND_REFRESH_QUEUE_KEY = 'background-refresh:workflow-create-queue:v1'
+// Keep the per-run fan-out small so the workflow creator does not overwhelm
+// Workers or ESI. The KV queue retains the remainder for later cron ticks.
 const BACKGROUND_REFRESH_DRAIN_LIMIT = 20
 const RATE_LIMIT_BACKOFF_BASE_MS = 15_000
 const RATE_LIMIT_BACKOFF_MAX_MS = 10 * 60 * 1000
-
-type QueueEntry = {
-	corporationId: string
-	name: string
-	nextAttemptAtMs: number
-	attempt: number
-}
 
 function isWorkflowCreationRateLimitError(error: unknown): boolean {
 	const msg = error instanceof Error ? error.message : String(error)
@@ -94,7 +97,7 @@ export async function scheduledHandler(event: ScheduledEvent, env: Env, _ctx: Ex
 			})
 		}
 
-		const configuredCorpsById = new Map(
+		const corporationsById = new Map(
 			corporations.map((corp) => [corp.corporationId, corp] as const)
 		)
 		const existingQueue = await loadQueue(env.CACHE)
@@ -102,11 +105,12 @@ export async function scheduledHandler(event: ScheduledEvent, env: Env, _ctx: Ex
 		// Keep only currently configured corps, then merge in new corps not already queued.
 		const queueByCorpId = new Map<string, QueueEntry>()
 		for (const queued of existingQueue) {
-			const configured = configuredCorpsById.get(queued.corporationId)
+			const configured = corporationsById.get(queued.corporationId)
 			if (!configured) continue
 			queueByCorpId.set(queued.corporationId, {
 				...queued,
 				name: configured.name,
+				nextAttemptAtMs: computeNextAttemptAtMs(configured, now, queued.nextAttemptAtMs),
 			})
 		}
 		for (const corp of corporations) {
@@ -114,17 +118,25 @@ export async function scheduledHandler(event: ScheduledEvent, env: Env, _ctx: Ex
 				queueByCorpId.set(corp.corporationId, {
 					corporationId: corp.corporationId,
 					name: corp.name,
-					nextAttemptAtMs: now,
+					nextAttemptAtMs: computeNextAttemptAtMs(corp, now),
 					attempt: 0,
 				})
 			}
 		}
 
 		const queue = [...queueByCorpId.values()].sort((a, b) => a.nextAttemptAtMs - b.nextAttemptAtMs)
-		const due = queue.filter((entry) => entry.nextAttemptAtMs <= now)
+		// The queue is persisted across cron ticks. Each run drains up to the
+		// configured limit, then requeues anything that was not selected.
+		const due = queue
+			.filter((entry) => entry.nextAttemptAtMs <= now)
+			.map((entry) => {
+				const corporation = corporationsById.get(entry.corporationId)
+				if (!corporation) return null
+				return enrichQueueEntry(entry, corporation, now)
+			})
+			.filter((entry): entry is EnrichedQueueEntry => entry !== null)
 		const deferred = queue.filter((entry) => entry.nextAttemptAtMs > now)
-		const draining = due.slice(0, BACKGROUND_REFRESH_DRAIN_LIMIT)
-		const remainingDue = due.slice(BACKGROUND_REFRESH_DRAIN_LIMIT)
+		const { draining, remainingDue } = selectPriorityDrain(due, BACKGROUND_REFRESH_DRAIN_LIMIT)
 
 		let workflowsCreated = 0
 		let alreadyRunning = 0
@@ -174,9 +186,16 @@ export async function scheduledHandler(event: ScheduledEvent, env: Env, _ctx: Ex
 			workflowsCreated,
 			alreadyRunning,
 			failed,
+			drainByBucket: draining.reduce(
+				(acc, entry) => {
+					acc[entry.bucket] = (acc[entry.bucket] ?? 0) + 1
+					return acc
+				},
+				{} as Record<RefreshBucket, number>
+			),
 			queueDepth: nextQueue.length,
 			drained: draining.length,
-			deferred: nextQueue.length,
+			deferred: deferred.length,
 			durationMs: duration,
 		})
 

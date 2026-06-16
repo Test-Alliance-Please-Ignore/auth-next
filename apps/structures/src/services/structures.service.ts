@@ -332,6 +332,7 @@ interface StructureTabData {
 }
 
 export interface StructureDetailResult extends StructureListItem {
+	includeInStructureAssetSync: boolean
 	services: Array<{
 		name: string
 		state: string
@@ -887,10 +888,28 @@ export async function deleteStructureGroupSetting(db: DbClient<DbSchema>, input:
 }
 
 export async function listStructureCorporationGroupDefaults(db: DbClient<DbSchema>) {
-	return db.query.structureCorporationGroupDefaults.findMany({
+	const rows = await db.query.structureCorporationGroupDefaults.findMany({
 		where: isNotNull(structureCorporationGroupDefaults.groupId),
 		orderBy: desc(structureCorporationGroupDefaults.updatedAt),
 	})
+
+	const corporationIds = [...new Set(rows.map((row) => row.corporationId))]
+	const corporationRows = corporationIds.length
+		? await db.query.managedCorporations.findMany({
+				where: inArray(managedCorporations.corporationId, corporationIds),
+				columns: {
+					corporationId: true,
+					name: true,
+					includeInStructureAssetSync: true,
+				},
+			})
+		: []
+	const corporationById = new Map(corporationRows.map((row) => [row.corporationId, row] as const))
+
+	return rows.map((row) => ({
+		...row,
+		corporationName: corporationById.get(row.corporationId)?.name ?? row.corporationId,
+	}))
 }
 
 const STRUCTURE_MODULE_CONFIG_ID = 'default'
@@ -1080,6 +1099,7 @@ type DirectCorporationStructureRecord = typeof corporationStructures.$inferSelec
 interface VisibleStructureContext {
 	structure: DirectCorporationStructureRecord
 	corporationName: string
+	includeInStructureAssetSync: boolean
 	config: typeof structureConfigs.$inferSelect | null
 	canViewSensitive: boolean
 	canEdit: boolean
@@ -1100,6 +1120,7 @@ function buildStructureDetailResult(context: VisibleStructureContext): Structure
 	const structure = buildStructureListItem(context)
 	return {
 		...structure,
+		includeInStructureAssetSync: context.includeInStructureAssetSync,
 		services: context.structure.services ?? [],
 		stateTimerStart: toIso(context.structure.stateTimerStart),
 		stateTimerEnd: toIso(context.structure.stateTimerEnd),
@@ -1145,6 +1166,7 @@ async function getVisibleStructureContext(
 		columns: {
 			corporationId: true,
 			name: true,
+			includeInStructureAssetSync: true,
 		},
 	})
 	const canViewSensitive = user.is_admin || canViewSensitiveStructure(access, structure.corporationId)
@@ -1162,6 +1184,7 @@ async function getVisibleStructureContext(
 	return {
 		structure,
 		corporationName: corporation?.name ?? structure.corporationId,
+		includeInStructureAssetSync: corporation?.includeInStructureAssetSync ?? false,
 		config: config ?? null,
 		canViewSensitive,
 		canEdit,
@@ -1482,10 +1505,11 @@ async function loadVisibleStructureContexts(
 				columns: {
 					corporationId: true,
 					name: true,
+					includeInStructureAssetSync: true,
 				},
 			})
 		: []
-	const corporationNamesById = new Map(corporationRows.map((row) => [row.corporationId, row.name]))
+	const corporationById = new Map(corporationRows.map((row) => [row.corporationId, row] as const))
 
 	return {
 		moduleConfig,
@@ -1499,9 +1523,12 @@ async function loadVisibleStructureContexts(
 					return null
 				}
 
+				const corporation = corporationById.get(structure.corporationId)
+
 				return {
 					structure,
-					corporationName: corporationNamesById.get(structure.corporationId) ?? structure.corporationId,
+					corporationName: corporation?.name ?? structure.corporationId,
+					includeInStructureAssetSync: corporation?.includeInStructureAssetSync ?? false,
 					config,
 					canViewSensitive,
 					canEdit,
@@ -1509,7 +1536,7 @@ async function loadVisibleStructureContexts(
 					fittingItems: null,
 					lastRefilledAt: null,
 				}
-			})
+				})
 			.filter((item): item is VisibleStructureContext => item !== null)
 			.filter((context) => {
 				if (query.assignedGroupId === '__unassigned__' && context.config?.assignedGroupId !== null) {

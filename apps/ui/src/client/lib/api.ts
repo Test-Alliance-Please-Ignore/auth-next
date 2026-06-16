@@ -419,6 +419,7 @@ export interface ManagedCorporation {
 	assignedCharacterName: string | null
 	isActive: boolean
 	includeInBackgroundRefresh: boolean
+	includeInStructureAssetSync: boolean
 	isMemberCorporation: boolean
 	isAltCorp: boolean
 	isSpecialPurpose: boolean
@@ -443,6 +444,7 @@ export interface CorporationWithConfig extends ManagedCorporation {
 		isVerified: boolean
 		createdAt: Date
 		updatedAt: Date
+		includeInStructureAssetSync: boolean
 	} | null
 }
 
@@ -453,6 +455,7 @@ export interface CreateCorporationRequest {
 	assignedCharacterId?: string
 	assignedCharacterName?: string
 	includeInBackgroundRefresh?: boolean
+	includeInStructureAssetSync?: boolean
 }
 
 export interface UpdateCorporationRequest {
@@ -460,6 +463,7 @@ export interface UpdateCorporationRequest {
 	assignedCharacterName?: string
 	isActive?: boolean
 	includeInBackgroundRefresh?: boolean
+	includeInStructureAssetSync?: boolean
 	isMemberCorporation?: boolean
 	isAltCorp?: boolean
 	isSpecialPurpose?: boolean
@@ -829,6 +833,7 @@ export interface StructureFittingItem {
 }
 
 export interface StructureDetailResult extends StructureCitadelListItem {
+	includeInStructureAssetSync: boolean
 	services: Array<{
 		name: string
 		state: string
@@ -924,6 +929,7 @@ export interface StructureGroupSetting {
 
 export interface StructureCorporationGroupDefault {
 	corporationId: string
+	corporationName?: string
 	groupId: string | null
 	updatedBy: string | null
 	createdAt: string
@@ -2710,6 +2716,10 @@ export class ApiClient {
 
 		const query = params.toString()
 		return this.get(`/corporations${query ? `?${query}` : ''}`)
+	}
+
+	async searchManagedCorporations(query: string): Promise<ManagedCorporation[]> {
+		return this.get(`/corporations/search?q=${encodeURIComponent(query)}`)
 	}
 
 	async getCorporation(corporationId: string): Promise<CorporationWithConfig> {

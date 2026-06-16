@@ -1,18 +1,17 @@
 import { X } from 'lucide-react'
-import { useMemo, useState } from 'react'
+import { useMemo } from 'react'
 
+import { CorporationSearchSelect } from '@/components/corporation-search-select'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
-import { Select } from '@/components/ui/select'
 
 import type { TaxRuleGroupAttachment } from '@repo/corporation-tax'
-import type { SelectOption } from '@/components/ui/select'
 
 export function RuleGroupCorporationAttachmentsCard({
 	effectiveRuleGroupId,
 	attachments,
-	corporationSearchOptions,
+	excludeCorporationIds,
 	resolveCorporationName,
 	isAttaching,
 	isDetaching,
@@ -21,22 +20,16 @@ export function RuleGroupCorporationAttachmentsCard({
 }: {
 	effectiveRuleGroupId?: string
 	attachments: TaxRuleGroupAttachment[]
-	corporationSearchOptions: SelectOption[]
+	excludeCorporationIds?: Set<string>
 	resolveCorporationName: (corporationId: string) => string
 	isAttaching: boolean
 	isDetaching: boolean
 	onAttach: (input: { ruleGroupId: string; corporationId: string }) => Promise<unknown> | void
 	onDetach: (input: { ruleGroupId: string; corporationId: string }) => Promise<unknown> | void
 }) {
-	const [corpAttachQuery, setCorpAttachQuery] = useState('')
-
 	const attachedIds = useMemo(
 		() => new Set(attachments.map((attachment) => attachment.corporationId)),
 		[attachments]
-	)
-	const attachableCorporationOptions = useMemo(
-		() => corporationSearchOptions.filter((option) => !attachedIds.has(option.value)),
-		[attachedIds, corporationSearchOptions]
 	)
 
 	return (
@@ -53,21 +46,18 @@ export function RuleGroupCorporationAttachmentsCard({
 					<div className="text-sm text-muted-foreground">Select a rule group first.</div>
 				) : (
 					<>
-						<Select
+						<CorporationSearchSelect
 							value=""
+							excludeCorporationIds={
+								excludeCorporationIds ? new Set([...attachedIds, ...excludeCorporationIds]) : attachedIds
+							}
 							onValueChange={(nextValue) => {
-								setCorpAttachQuery('')
 								void onAttach({
 									ruleGroupId: effectiveRuleGroupId,
 									corporationId: nextValue,
 								})
 							}}
-							query={corpAttachQuery}
-							onQueryChange={setCorpAttachQuery}
-							searchable
-							options={attachableCorporationOptions}
 							placeholder="Attach corporation by name or ID"
-							emptyText="No matching corporations"
 							disabled={isAttaching}
 						/>
 						<div className="flex flex-wrap gap-2">

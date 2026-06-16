@@ -1,3 +1,4 @@
+import { CorporationSearchSelect } from '@/components/corporation-search-select'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Select } from '@/components/ui/select'
@@ -17,9 +18,7 @@ type BillingConfigurationFormProps = {
 	billingEnabledInput: boolean
 	billingIssuerUserIdInput: string
 	billingCharacterSearchInput: string
-	billingCharacterSearchDebounced: string
 	billingCorporationSearchInput: string
-	billingCorporationSearchDebounced: string
 	billingPayeeTypeInput: TaxBillingPayeeType | undefined
 	billingPayeeIdInput: string
 	billingDueDaysInput: string
@@ -29,9 +28,8 @@ type BillingConfigurationFormProps = {
 	isBillingDueDaysValid: boolean
 	isBillingPayeeSelectionValid: boolean
 	billingCharacterSearchLoading: boolean
-	billingCorporationSearchLoading: boolean
 	billingCharacterSearchResults: BillingPayeeSearchResult[]
-	billingCorporationSearchResults: BillingPayeeSearchResult[]
+	searchBillingCorporationPayees: (query: string) => Promise<Array<{ corporationId: string; name: string | null }>>
 	isCreatePending: boolean
 	isUpdatePending: boolean
 	canIssue: boolean
@@ -53,9 +51,7 @@ export function BillingConfigurationForm({
 	billingEnabledInput,
 	billingIssuerUserIdInput,
 	billingCharacterSearchInput,
-	billingCharacterSearchDebounced,
 	billingCorporationSearchInput,
-	billingCorporationSearchDebounced,
 	billingPayeeTypeInput,
 	billingPayeeIdInput,
 	billingDueDaysInput,
@@ -65,9 +61,8 @@ export function BillingConfigurationForm({
 	isBillingDueDaysValid,
 	isBillingPayeeSelectionValid,
 	billingCharacterSearchLoading,
-	billingCorporationSearchLoading,
 	billingCharacterSearchResults,
-	billingCorporationSearchResults,
+	searchBillingCorporationPayees,
 	isCreatePending,
 	isUpdatePending,
 	canIssue,
@@ -138,22 +133,19 @@ export function BillingConfigurationForm({
 							placeholder="Character name or ID"
 							loading={
 								billingCharacterSearchInput.trim().length >= 2 &&
-								(billingCharacterSearchLoading ||
-									billingCharacterSearchInput.trim() !== billingCharacterSearchDebounced)
+								billingCharacterSearchLoading
 							}
 							queryHintText="Type at least 2 characters"
 							loadingText="Searching characters..."
 							emptyText="No matching characters found"
 						/>
 					) : billingPayeeTypeInput === 'corporation' ? (
-						<Select
+						<CorporationSearchSelect
 							value={billingPayeeIdInput}
-							onValueChange={(nextValue, option) => {
-								if (!option) {
-									return
-								}
+							label={billingCorporationSearchInput || undefined}
+							onValueChange={(nextValue, corporationName) => {
 								onValidationErrorChange(null)
-								onBillingCorporationSearchInputChange(option.label)
+								onBillingCorporationSearchInputChange(corporationName)
 								onBillingPayeeIdChange(nextValue)
 							}}
 							query={billingCorporationSearchInput}
@@ -162,20 +154,8 @@ export function BillingConfigurationForm({
 								onBillingCorporationSearchInputChange(value)
 								onBillingPayeeIdChange('')
 							}}
-							searchable
-							searchDelegate={() => billingCorporationSearchResults}
-							options={billingCorporationSearchResults}
-							minQueryLength={2}
-							debounceMs={0}
 							placeholder="Corporation name or ID"
-							loading={
-								billingCorporationSearchInput.trim().length >= 2 &&
-								(billingCorporationSearchLoading ||
-									billingCorporationSearchInput.trim() !== billingCorporationSearchDebounced)
-							}
-							queryHintText="Type at least 2 characters"
-							loadingText="Searching corporations..."
-							emptyText="No matching corporations found"
+							searchCorporations={searchBillingCorporationPayees}
 						/>
 					) : (
 						<Input value="" disabled placeholder="Select payee type first" />

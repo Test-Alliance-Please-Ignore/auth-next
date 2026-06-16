@@ -277,7 +277,7 @@ export function parseStructurePermissionUrn(value: string): ParsedStructurePermi
 }
 
 export function hasAnyStructurePermission(permissions: Array<PermissionLike>): boolean {
-	return permissions.some((permission) => isStructurePermissionUrn(permission.urn))
+	return permissions.some((permission) => parseStructurePermissionUrn(permission.urn) !== null)
 }
 
 export function hasStructureManagerPermission(permissions: Array<PermissionLike>): boolean {

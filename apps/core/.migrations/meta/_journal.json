@@ -253,6 +253,13 @@
       "when": 1781286042235,
       "tag": "0035_white_vivisector",
       "breakpoints": true
+    },
+    {
+      "idx": 36,
+      "version": "7",
+      "when": 1781594812115,
+      "tag": "0036_sharp_nomad",
+      "breakpoints": true
     }
   ]
 }

@@ -76,6 +76,7 @@ export default function CorporationsPage() {
 		assignedCharacterId: undefined,
 		assignedCharacterName: undefined,
 		includeInBackgroundRefresh: false,
+		includeInStructureAssetSync: false,
 	})
 
 	// Search state
@@ -124,6 +125,7 @@ export default function CorporationsPage() {
 				assignedCharacterId: undefined,
 				assignedCharacterName: undefined,
 				includeInBackgroundRefresh: false,
+				includeInStructureAssetSync: false,
 			})
 			showSuccess('Corporation added successfully!')
 		} catch (error) {
@@ -163,6 +165,18 @@ export default function CorporationsPage() {
 				data: { includeInBackgroundRefresh: enabled },
 			})
 			showSuccess(`Background refresh ${enabled ? 'enabled' : 'disabled'}`)
+		} catch (error) {
+			showError(error instanceof Error ? error.message : 'Failed to update setting')
+		}
+	}
+
+	const handleToggleStructureAssetSync = async (corporationId: string, enabled: boolean) => {
+		try {
+			await updateCorporation.mutateAsync({
+				corporationId,
+				data: { includeInStructureAssetSync: enabled },
+			})
+			showSuccess(`Structure asset sync ${enabled ? 'enabled' : 'disabled'}`)
 		} catch (error) {
 			showError(error instanceof Error ? error.message : 'Failed to update setting')
 		}
@@ -329,6 +343,7 @@ export default function CorporationsPage() {
 										<TableHead>Directors</TableHead>
 										<TableHead>Status</TableHead>
 										<TableHead>Auto-Sync</TableHead>
+										<TableHead>Asset Sync</TableHead>
 										<TableHead>Last Sync</TableHead>
 										<TableHead>Last Verified</TableHead>
 										<TableHead className="text-right">Actions</TableHead>
@@ -348,12 +363,12 @@ export default function CorporationsPage() {
 													<div className="text-sm text-muted-foreground">[{corp.ticker}]</div>
 												</div>
 											</TableCell>
-									<TableCell>
-												<div className="text-sm">
-													<div>{`${corp.healthyDirectorCount} healthy`}</div>
-													{corp.healthyDirectorCount === 0 && (
-														<div className="text-amber-600 text-xs">Needs verification</div>
-													)}
+											<TableCell>
+													<div className="text-sm">
+														<div>{`${corp.healthyDirectorCount} healthy`}</div>
+														{corp.healthyDirectorCount === 0 && (
+															<div className="text-amber-600 text-xs">Needs verification</div>
+														)}
 												</div>
 											</TableCell>
 											<TableCell>{getVerificationBadge(corp)}</TableCell>
@@ -362,6 +377,15 @@ export default function CorporationsPage() {
 													checked={corp.includeInBackgroundRefresh}
 													onCheckedChange={(checked) =>
 														handleToggleBackgroundRefresh(corp.corporationId, checked)
+													}
+													disabled={updateCorporation.isPending}
+												/>
+											</TableCell>
+											<TableCell>
+												<Switch
+													checked={corp.includeInStructureAssetSync}
+													onCheckedChange={(checked) =>
+														handleToggleStructureAssetSync(corp.corporationId, checked)
 													}
 													disabled={updateCorporation.isPending}
 												/>
@@ -475,20 +499,37 @@ export default function CorporationsPage() {
 								/>
 							</div>
 							<div className="space-y-2">
+									<div className="flex items-center space-x-2">
+										<Switch
+											id="includeInBackgroundRefresh"
+											checked={formData.includeInBackgroundRefresh ?? false}
+											onCheckedChange={(checked) =>
+												setFormData({ ...formData, includeInBackgroundRefresh: checked })
+											}
+										/>
+										<Label htmlFor="includeInBackgroundRefresh" className="cursor-pointer">
+											Include in Background Refresh
+										</Label>
+									</div>
+									<p className="text-sm text-muted-foreground">
+										Automatically fetch and sync corporation data on a regular schedule
+									</p>
+								</div>
+							<div className="space-y-2">
 								<div className="flex items-center space-x-2">
 									<Switch
-										id="includeInBackgroundRefresh"
-										checked={formData.includeInBackgroundRefresh ?? false}
+										id="includeInStructureAssetSync"
+										checked={formData.includeInStructureAssetSync ?? false}
 										onCheckedChange={(checked) =>
-											setFormData({ ...formData, includeInBackgroundRefresh: checked })
+											setFormData({ ...formData, includeInStructureAssetSync: checked })
 										}
 									/>
-									<Label htmlFor="includeInBackgroundRefresh" className="cursor-pointer">
-										Include in Background Refresh
+									<Label htmlFor="includeInStructureAssetSync" className="cursor-pointer">
+										Include in Structure Asset Sync
 									</Label>
 								</div>
 								<p className="text-sm text-muted-foreground">
-									Automatically fetch and sync corporation data on a regular schedule
+									Fetch structure assets for this corporation during sync runs
 								</p>
 							</div>
 						</div>

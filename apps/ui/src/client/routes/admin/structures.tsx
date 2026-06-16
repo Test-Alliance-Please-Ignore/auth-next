@@ -21,8 +21,8 @@ import {
 	alertDestinationEditorRowFromDestination,
 	createAlertDestinationEditorRow,
 } from '@/components/admin/alert-destination-editor'
+import { CorporationSearchSelect } from '@/components/corporation-search-select'
 import { useApiMutation } from '@/hooks/useApiMutation'
-import { useCorporations } from '@/hooks/useCorporations'
 import { useDiscordServers } from '@/hooks/useDiscord'
 import { useConfirmationDialog } from '@/hooks/useConfirmationDialog'
 import { useGroups } from '@/hooks/useGroups'
@@ -59,6 +59,7 @@ type StructureGroupSettingDraft = {
 type CorporationDefaultDraft = {
 	id: string
 	corporationId: string
+	corporationName: string | null
 	groupId: string | null
 }
 
@@ -98,7 +99,13 @@ function syncCorporationDefaultDrafts(
 	const next = Object.fromEntries(
 		rows
 			.filter((row) => row.groupId !== null)
-			.map((row) => [row.corporationId, row] as const)
+			.map((row) => [
+				row.corporationId,
+				{
+					...row,
+					corporationName: row.corporationName ?? row.corporationId,
+				},
+			] as const)
 	)
 	const currentKeys = Object.keys(current)
 	const nextKeys = Object.keys(next)
@@ -110,6 +117,7 @@ function syncCorporationDefaultDrafts(
 		if (
 			!currentRow ||
 			currentRow.corporationId !== nextRow.corporationId ||
+			currentRow.corporationName !== nextRow.corporationName ||
 			currentRow.groupId !== nextRow.groupId ||
 			currentRow.updatedBy !== nextRow.updatedBy ||
 			currentRow.createdAt !== nextRow.createdAt ||
@@ -193,7 +201,6 @@ export default function AdminStructuresPage() {
 	usePageTitle('Admin - Structures')
 	const queryClient = useQueryClient()
 	const { data: groups = EMPTY_ARRAY, isLoading: groupsLoading } = useGroups({ limit: 100 })
-	const { data: corporations = EMPTY_ARRAY, isLoading: corporationsLoading } = useCorporations()
 	const { data: discordServers = EMPTY_ARRAY } = useDiscordServers()
 
 	const [selectedGroupId, setSelectedGroupId] = useState('')
@@ -267,14 +274,6 @@ export default function AdminStructuresPage() {
 	}, [alertTypes])
 
 	const groupOptions = useMemo(() => groups.map((group) => ({ value: group.id, label: group.name })), [groups])
-	const corporationOptions = useMemo(
-		() =>
-			corporations.map((corporation) => ({
-				value: corporation.corporationId,
-				label: corporation.name,
-			})),
-		[corporations]
-	)
 	const configuredGroupIds = useMemo(
 		() => new Set(structureGroupSettings.map((setting) => setting.groupId)),
 		[structureGroupSettings]
@@ -290,10 +289,6 @@ export default function AdminStructuresPage() {
 	const availableGroupOptions = useMemo(
 		() => groupOptions.filter((option) => !configuredGroupIds.has(option.value)),
 		[groupOptions, configuredGroupIds]
-	)
-	const availableCorporationOptions = useMemo(
-		() => corporationOptions.filter((option) => !configuredCorporationIds.has(option.value)),
-		[corporationOptions, configuredCorporationIds]
 	)
 	const alertTypeOptions = useMemo(
 		() => alertTypes.map((type) => ({ value: type.type, label: type.label })),
@@ -450,8 +445,7 @@ export default function AdminStructuresPage() {
 		},
 	})
 
-	const canShowAdminData =
-		!groupsLoading && !corporationsLoading && !groupSettingsLoading && !corporationDefaultsLoading
+	const canShowAdminData = !groupsLoading && !groupSettingsLoading && !corporationDefaultsLoading
 
 	if (!canShowAdminData) {
 		return (
@@ -617,11 +611,11 @@ export default function AdminStructuresPage() {
 											{
 												id: crypto.randomUUID(),
 												corporationId: '',
+												corporationName: null,
 												groupId: null,
 											},
 										])
 									}
-									disabled={availableCorporationOptions.length === 0}
 								>
 									<Plus className="h-4 w-4" />
 									Add Default
@@ -634,18 +628,20 @@ export default function AdminStructuresPage() {
 									<div className="text-sm font-medium">New corporation default</div>
 									{newCorporationDefaultRows.map((row) => (
 										<div key={row.id} className="grid gap-3 lg:grid-cols-[minmax(0,2fr)_minmax(0,2fr)_auto]">
-											<Select
-												options={availableCorporationOptions}
+											<CorporationSearchSelect
 												value={row.corporationId}
-												onValueChange={(value) =>
+												label={row.corporationName}
+												excludeCorporationIds={configuredCorporationIds}
+												placeholder="Select corporation"
+												onValueChange={(corporationId, corporationName) =>
 													setNewCorporationDefaultRows((current) =>
 														current.map((currentRow) =>
-															currentRow.id === row.id ? { ...currentRow, corporationId: value } : currentRow
+															currentRow.id === row.id
+																? { ...currentRow, corporationId, corporationName }
+																: currentRow
 														)
 													)
 												}
-												placeholder="Select corporation"
-												searchable
 											/>
 											<Select
 												options={configuredGroupOptions}
@@ -710,11 +706,11 @@ export default function AdminStructuresPage() {
 									</thead>
 									<tbody>
 										{Object.values(corporationDefaultDrafts).map((draft) => {
-											const corporation = corporations.find((corp) => corp.corporationId === draft.corporationId)
-											if (!corporation) return null
 											return (
-												<tr key={corporation.corporationId} className="border-b border-border/50 hover:bg-muted/20">
-													<td className="px-3 py-3 font-medium text-foreground">{corporation.name}</td>
+												<tr key={draft.corporationId} className="border-b border-border/50 hover:bg-muted/20">
+													<td className="px-3 py-3 font-medium text-foreground">
+														{draft.corporationName ?? draft.corporationId}
+													</td>
 													<td className="px-3 py-3">
 														<Select
 															options={configuredGroupOptions}
@@ -722,9 +718,10 @@ export default function AdminStructuresPage() {
 															onValueChange={(value) =>
 																setCorporationDefaultDrafts((current) => ({
 																	...current,
-																	[corporation.corporationId]: {
-																		...(current[corporation.corporationId] ?? {
-																			corporationId: corporation.corporationId,
+																	[draft.corporationId]: {
+																		...(current[draft.corporationId] ?? {
+																			corporationId: draft.corporationId,
+																			corporationName: draft.corporationName ?? draft.corporationId,
 																			groupId: null,
 																			updatedBy: null,
 																			createdAt: new Date().toISOString(),
@@ -745,7 +742,7 @@ export default function AdminStructuresPage() {
 																showIcon={false}
 																onClick={async () => {
 																	await saveCorporationDefault.mutateAsync({
-																		corporationId: corporation.corporationId,
+																		corporationId: draft.corporationId,
 																		groupId: draft?.groupId ?? null,
 																	})
 																}}
@@ -760,7 +757,7 @@ export default function AdminStructuresPage() {
 																showIcon={false}
 																onClick={async () => {
 																	await saveCorporationDefault.mutateAsync({
-																		corporationId: corporation.corporationId,
+																		corporationId: draft.corporationId,
 																		groupId: null,
 																	})
 																}}

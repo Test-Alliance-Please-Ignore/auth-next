@@ -457,7 +457,13 @@ export interface CorporationConfigData extends CorporationLastSyncData {
 	createdAt: Date
 	updatedAt: Date
 	includeInBackgroundRefresh: boolean
+	includeInStructureAssetSync: boolean
 	corporationType: CorporationType
+}
+
+export interface CorporationSyncConfigData {
+	includeInBackgroundRefresh: boolean
+	includeInStructureAssetSync: boolean
 }
 
 export interface CorporationNeedingRefreshData {
@@ -1721,12 +1727,18 @@ export interface EveCorporationData {
 	getCorporationsNeedingRefresh(): Promise<string[]>
 
 	/**
+	 * Get the lightweight corporation sync configuration for gating workflow steps
+	 * @param corporationId - The corporation ID
+	 */
+	getCorporationSyncConfig(corporationId: string): Promise<CorporationSyncConfigData | null>
+
+	/**
 	 * Update corporation configuration settings
 	 * @param corporationId - The corporation ID
 	 * @param updates - Partial configuration updates
 	 */
 	updateCorporationConfig(
 		corporationId: string,
-		updates: { includeInBackgroundRefresh?: boolean }
+		updates: { includeInBackgroundRefresh?: boolean; includeInStructureAssetSync?: boolean }
 	): Promise<void>
 }
