@@ -18,22 +18,27 @@ vi.mock('../../../workflows/utils/services', () => {
 
 type KvStore = Map<string, string>
 
-function createKvNamespace(store: KvStore): KVNamespace {
+function createTaxStub(store: KvStore) {
 	return {
-		get: vi.fn(async (key: string) => store.get(key) ?? null),
-		put: vi.fn(async (key: string, value: string) => {
-			store.set(key, value)
+		getTaxProjectionRetryIntent: vi.fn(async (corporationId: string) => {
+			return store.get(`tax-projection-retry-intent:${corporationId}`) ?? null
 		}),
-		delete: vi.fn(async (key: string) => {
-			store.delete(key)
+		putTaxProjectionRetryIntent: vi.fn(async (corporationId: string, value: string) => {
+			store.set(`tax-projection-retry-intent:${corporationId}`, value)
 		}),
-	} as unknown as KVNamespace
+		deleteTaxProjectionRetryIntent: vi.fn(async (corporationId: string) => {
+			store.delete(`tax-projection-retry-intent:${corporationId}`)
+		}),
+		triggerProjectionRefreshFromWalletSync: vi.fn(),
+	}
 }
 
 function createEnv(store: KvStore) {
-	return {
-		CACHE: createKvNamespace(store),
+	const env = {
+		CORPORATION_TAX: createTaxStub(store),
 	} as any
+	getCorporationTaxStubMock.mockReturnValue(env.CORPORATION_TAX)
+	return env
 }
 
 function createInput(corporationId = '98000001') {
@@ -62,6 +67,7 @@ describe('workflow common tax projection retry utilities', () => {
 		const input = createInput()
 
 		getCorporationTaxStubMock.mockReturnValue({
+			...createTaxStub(store),
 			triggerProjectionRefreshFromWalletSync: vi.fn().mockResolvedValue({
 				corporationId: input.corporationId,
 				triggered: true,
@@ -103,6 +109,7 @@ describe('workflow common tax projection retry utilities', () => {
 		await recordTaxProjectionRetryIntent(env, input.corporationId, 'director-1', input, 'boom')
 
 		getCorporationTaxStubMock.mockReturnValue({
+			...createTaxStub(store),
 			triggerProjectionRefreshFromWalletSync,
 		})
 
@@ -125,6 +132,7 @@ describe('workflow common tax projection retry utilities', () => {
 		await recordTaxProjectionRetryIntent(env, input.corporationId, 'director-1', input, 'boom')
 
 		getCorporationTaxStubMock.mockReturnValue({
+			...createTaxStub(store),
 			triggerProjectionRefreshFromWalletSync: vi.fn().mockRejectedValue(new Error('still bad')),
 		})
 

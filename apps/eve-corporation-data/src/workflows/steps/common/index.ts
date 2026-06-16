@@ -10,9 +10,6 @@ import type {
 import type { EveCorporationSyncDataType } from '@repo/eve-corporation-data'
 import type { Env } from '../../../context'
 
-const TAX_PROJECTION_RETRY_KEY_PREFIX = 'tax-projection-retry-intent:'
-const TAX_PROJECTION_RETRY_TTL_SECONDS = 7 * 24 * 60 * 60
-
 type TaxProjectionRetryIntent = {
 	corporationId: string
 	actorUserId: string
@@ -207,10 +204,6 @@ export async function triggerTaxProjectionRefresh(
 	}
 }
 
-function getTaxProjectionRetryKey(corporationId: string): string {
-	return `${TAX_PROJECTION_RETRY_KEY_PREFIX}${corporationId}`
-}
-
 export async function recordTaxProjectionRetryIntent(
 	env: Env,
 	corporationId: string,
@@ -218,8 +211,8 @@ export async function recordTaxProjectionRetryIntent(
 	input: TriggerTaxProjectionRefreshInput,
 	errorMessage: string
 ): Promise<void> {
-	const key = getTaxProjectionRetryKey(corporationId)
-	const existingRaw = await env.CACHE.get(key)
+	const taxStub = getCorporationTaxStub(env)
+	const existingRaw = await taxStub.getTaxProjectionRetryIntent(corporationId)
 	const existing = existingRaw ? (JSON.parse(existingRaw) as TaxProjectionRetryIntent) : null
 	const retryCount = existing ? existing.retryCount + 1 : 1
 
@@ -232,9 +225,7 @@ export async function recordTaxProjectionRetryIntent(
 		retryCount,
 	}
 
-	await env.CACHE.put(key, JSON.stringify(payload), {
-		expirationTtl: TAX_PROJECTION_RETRY_TTL_SECONDS,
-	})
+	await taxStub.putTaxProjectionRetryIntent(corporationId, JSON.stringify(payload))
 
 	logger.warn('[CommonStep] Recorded tax projection retry intent', {
 		corporationId,
@@ -246,7 +237,8 @@ export async function clearTaxProjectionRetryIntent(
 	env: Env,
 	corporationId: string
 ): Promise<void> {
-	await env.CACHE.delete(getTaxProjectionRetryKey(corporationId))
+	const taxStub = getCorporationTaxStub(env)
+	await taxStub.deleteTaxProjectionRetryIntent(corporationId)
 }
 
 export async function replayTaxProjectionRetryIntent(
@@ -258,8 +250,8 @@ export async function replayTaxProjectionRetryIntent(
 	retryCount: number
 	reason: string
 }> {
-	const key = getTaxProjectionRetryKey(corporationId)
-	const raw = await env.CACHE.get(key)
+	const taxStub = getCorporationTaxStub(env)
+	const raw = await taxStub.getTaxProjectionRetryIntent(corporationId)
 	if (!raw) {
 		return { replayed: false, succeeded: false, retryCount: 0, reason: 'none' }
 	}

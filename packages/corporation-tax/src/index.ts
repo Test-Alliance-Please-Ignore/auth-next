@@ -388,6 +388,21 @@ export interface CorporationTax {
 	): Promise<TriggerTaxProjectionRefreshResult>
 
 	/**
+	 * Read the serialized retry intent for a corporation, if one exists.
+	 */
+	getTaxProjectionRetryIntent(corporationId: string): Promise<string | null>
+
+	/**
+	 * Store the serialized retry intent for a corporation.
+	 */
+	putTaxProjectionRetryIntent(corporationId: string, payload: string): Promise<void>
+
+	/**
+	 * Delete the serialized retry intent for a corporation.
+	 */
+	deleteTaxProjectionRetryIntent(corporationId: string): Promise<void>
+
+	/**
 	 * List tax ledger entries for a corporation.
 	 */
 	listLedgerEntries(
