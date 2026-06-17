@@ -27,6 +27,11 @@ import {
 } from './lib/token-health'
 
 import type { EsiCacheScopeContext, EsiResponse as SharedEsiResponse } from '@repo/esi'
+import {
+	EVE_SSO_SCOPES_ALL,
+	hasAllScopes,
+	getMissingScopes,
+} from '@repo/eve-token-store'
 import type {
 	AuthorizationUrlResponse,
 	CachedEveMetadata,
@@ -78,83 +83,6 @@ const AUTH_ESI_ROUTE_WINDOW_LIMIT = 60
 const AUTH_ESI_RAMP_WINDOW_MS = 60 * 1000
 const TOKEN_REFRESH_COOLDOWN_PREFIX = 'token:refresh:cooldown:'
 const TOKEN_REFRESH_TRANSIENT_COOLDOWN_MS = 5 * 60 * 1000
-
-/**
- * EVE SSO Scopes
- */
-const EVE_SCOPES_ALL = [
-	'publicData',
-	'esi-access.read_lists.v1',
-	// 'esi-activities.read_character.v1',
-	'esi-calendar.respond_calendar_events.v1',
-	'esi-calendar.read_calendar_events.v1',
-	'esi-location.read_location.v1',
-	'esi-location.read_ship_type.v1',
-	'esi-mail.read_mail.v1',
-	'esi-skills.read_skills.v1',
-	'esi-skills.read_skillqueue.v1',
-	'esi-wallet.read_character_wallet.v1',
-	'esi-search.search_structures.v1',
-	'esi-clones.read_clones.v1',
-	'esi-characters.read_contacts.v1',
-	'esi-universe.read_structures.v1',
-	'esi-killmails.read_killmails.v1',
-	'esi-corporations.read_corporation_membership.v1',
-	'esi-assets.read_assets.v1',
-	'esi-planets.manage_planets.v1',
-	'esi-fleets.read_fleet.v1',
-	'esi-fleets.write_fleet.v1',
-	'esi-ui.open_window.v1',
-	'esi-ui.write_waypoint.v1',
-	'esi-characters.write_contacts.v1',
-	'esi-fittings.read_fittings.v1',
-	'esi-fittings.write_fittings.v1',
-	'esi-markets.structure_markets.v1',
-	'esi-corporations.read_structures.v1',
-	'esi-characters.read_loyalty.v1',
-	'esi-characters.read_medals.v1',
-	'esi-characters.read_standings.v1',
-	'esi-characters.read_agents_research.v1',
-	// 'esi-characters.read_freelance_jobs.v1',
-	'esi-industry.read_character_jobs.v1',
-	'esi-markets.read_character_orders.v1',
-	'esi-characters.read_blueprints.v1',
-	'esi-characters.read_corporation_roles.v1',
-	'esi-location.read_online.v1',
-	'esi-contracts.read_character_contracts.v1',
-	'esi-clones.read_implants.v1',
-	'esi-characters.read_fatigue.v1',
-	'esi-killmails.read_corporation_killmails.v1',
-	'esi-corporations.track_members.v1',
-	'esi-wallet.read_corporation_wallets.v1',
-	'esi-characters.read_notifications.v1',
-	'esi-corporations.read_divisions.v1',
-	'esi-corporations.read_contacts.v1',
-	'esi-assets.read_corporation_assets.v1',
-	'esi-corporations.read_titles.v1',
-	'esi-corporations.read_blueprints.v1',
-	'esi-contracts.read_corporation_contracts.v1',
-	'esi-corporations.read_standings.v1',
-	'esi-corporations.read_starbases.v1',
-	'esi-industry.read_corporation_jobs.v1',
-	'esi-markets.read_corporation_orders.v1',
-	'esi-corporations.read_container_logs.v1',
-	// 'esi-corporations.read_freelance_jobs.v1',
-	'esi-industry.read_character_mining.v1',
-	'esi-industry.read_corporation_mining.v1',
-	// 'esi-mail.organize_mail.v1',
-	// 'esi-mail.send_mail.v1',
-	'esi-planets.read_customs_offices.v1',
-	'esi-corporations.read_facilities.v1',
-	'esi-corporations.read_medals.v1',
-	'esi-characters.read_titles.v1',
-	'esi-alliances.read_contacts.v1',
-	'esi-characters.read_fw_stats.v1',
-	'esi-corporations.read_fw_stats.v1',
-	'esi-structures.read_character.v1',
-	'esi-structures.read_corporation.v1',
-	'esi-corporations.read_projects.v1',
-] as const
 
 /**
  * EveTokenStore Durable Object
@@ -412,7 +340,7 @@ export class EveTokenStoreDO extends DurableObject<Env> implements EveTokenStore
 	 */
 	async startLoginFlow(state?: string): Promise<AuthorizationUrlResponse> {
 		try {
-			const result = this.generateAuthUrl(EVE_SCOPES_ALL, state)
+			const result = this.generateAuthUrl(EVE_SSO_SCOPES_ALL, state)
 			return result
 		} catch (error) {
 			logger
@@ -427,7 +355,7 @@ export class EveTokenStoreDO extends DurableObject<Env> implements EveTokenStore
 	 */
 	async startCharacterFlow(state?: string): Promise<AuthorizationUrlResponse> {
 		try {
-			const result = this.generateAuthUrl(EVE_SCOPES_ALL, state)
+			const result = this.generateAuthUrl(EVE_SSO_SCOPES_ALL, state)
 			return result
 		} catch (error) {
 			logger
@@ -450,6 +378,17 @@ export class EveTokenStoreDO extends DurableObject<Env> implements EveTokenStore
 
 			// Parse scopes
 			const scopes = verifyResponse.Scopes ? verifyResponse.Scopes.split(' ') : []
+			if (!hasAllScopes(scopes, EVE_SSO_SCOPES_ALL)) {
+				const missingScopes = getMissingScopes(scopes, EVE_SSO_SCOPES_ALL)
+				logger.withTags({ operation: 'handleCallback', state }).warn('Callback token missing scopes', {
+					characterId: verifyResponse.CharacterID,
+					missingScopes,
+				})
+				return {
+					success: false,
+					error: `Missing required scopes: ${missingScopes.join(', ')}`,
+				}
+			}
 
 			// Calculate token expiration
 			const expiresAt = new Date(Date.now() + tokenResponse.expires_in * 1000)
@@ -713,7 +652,7 @@ export class EveTokenStoreDO extends DurableObject<Env> implements EveTokenStore
 	 */
 	async validateToken(
 		characterId: string,
-		requiredScopes: readonly string[] = EVE_SCOPES_ALL,
+		requiredScopes: readonly string[] = EVE_SSO_SCOPES_ALL,
 		options?: { force?: boolean }
 	): Promise<TokenValidationResult> {
 		const character = await this.db.query.eveCharacters.findFirst({
@@ -945,7 +884,7 @@ export class EveTokenStoreDO extends DurableObject<Env> implements EveTokenStore
 		try {
 			const verification = await this.verifyToken(accessToken)
 			const scopes = verification.Scopes ? verification.Scopes.split(' ') : []
-			const missingScopes = requiredScopes.filter((scope) => !scopes.includes(scope))
+			const missingScopes = getMissingScopes(scopes, requiredScopes)
 
 			await this.db
 				.update(eveCharacters)

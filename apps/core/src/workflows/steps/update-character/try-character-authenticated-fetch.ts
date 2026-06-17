@@ -54,6 +54,7 @@ export async function tryCharacterAuthenticatedFetch(
 	success: boolean
 	error?: string
 	status?: TokenValidationStatus
+	tokenInvalidated?: boolean
 }> {
 	const logger = getWorkflowLogger(ctx, 'validate-character-token')
 	const eveTokenStore = getStub<EveTokenStore>(ctx.env.EVE_TOKEN_STORE, 'default')
@@ -110,6 +111,7 @@ export async function tryCharacterAuthenticatedFetch(
 				error: errorMessage,
 				status: downgradedToken ? 'invalid_token' : validation.status,
 				success: false,
+				tokenInvalidated: downgradedToken && previousHasValidToken === true,
 			}
 		}
 	}
@@ -119,5 +121,9 @@ export async function tryCharacterAuthenticatedFetch(
 		error: validation.error,
 		status: validation.status,
 		success: validation.isValid,
+		tokenInvalidated:
+			previousHasValidToken === true &&
+			(nextHasValidToken === false ||
+				(validation.isValid === false && validation.status !== 'transient_error')),
 	}
 }

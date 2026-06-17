@@ -18,6 +18,7 @@ import { shouldTreatSensitiveDataAsLive } from './characters-utils'
 
 import type { EveCharacterData } from '@repo/eve-character-data'
 import type { EveCorporationData } from '@repo/eve-corporation-data'
+import type { Core as CoreRpc } from '@repo/core'
 import type { Hr } from '@repo/hr'
 import type { App } from '../context'
 
@@ -795,6 +796,8 @@ app.post('/:characterId/refresh', requireAuth(), async (c) => {
 			? tokenStatus.nextHasValidToken === true
 			: fallbackValidation?.isValid === true
 		let authError: string | undefined = tokenStatus?.validation.error ?? fallbackValidation?.error
+		let tokenInvalidated =
+			tokenStatus?.previousHasValidToken === true && tokenStatus.nextHasValidToken === false
 
 		// Try to fetch authenticated data if token is valid and the character is still live.
 		if (hasValidToken && !isDeletedCharacter) {
@@ -811,6 +814,7 @@ app.post('/:characterId/refresh', requireAuth(), async (c) => {
 					: false
 				if (downgradedToken) {
 					hasValidToken = false
+					tokenInvalidated = tokenStatus?.previousHasValidToken === true || tokenInvalidated
 				}
 				authError =
 					error instanceof Error
@@ -821,6 +825,25 @@ app.post('/:characterId/refresh', requireAuth(), async (c) => {
 				logger.error('Could not fetch authenticated data:', authError)
 				logger.error('Full error:', error)
 			}
+		}
+
+		if (tokenInvalidated && tokenStatus) {
+			waitUntilWithTelemetry(
+				c.executionCtx,
+				'characters.token-invalid-alert',
+				async () => {
+					const coreStub = getStub<CoreRpc>(c.env.CORE, 'default')
+					await coreStub.queueTokenInvalidationAlerts({
+						userId: user.id,
+						characterIds: [characterIdStr],
+						source: 'character-refresh-token-invalidated',
+					})
+				},
+				{
+					userId: user.id,
+					characterId: characterIdStr,
+				}
+			)
 		}
 
 		// Get the updated data

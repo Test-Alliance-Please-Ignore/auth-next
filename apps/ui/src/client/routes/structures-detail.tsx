@@ -45,6 +45,7 @@ import {
 
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { hasAnyStructurePermission } from '@repo/groups'
+import { isReinforcedStructureState } from '@repo/structures'
 import { getStructureTabForTypeId } from '@repo/structures'
 
 function structureSyncStatusDescription(
@@ -258,6 +259,7 @@ export default function StructuresDetailPage() {
 		return structureFittingItemsToDisplayItems(structure)
 	}, [structure])
 	const hasStructureFitting = fittingItems.length > 0
+	const isReinforced = structure ? isReinforcedStructureState(structure.state) : false
 
 	if (!authLoading && !permissionsLoading && !canViewStructures) {
 		return <Navigate to="/dashboard" replace />
@@ -389,7 +391,13 @@ export default function StructuresDetailPage() {
 							</div>
 							<div>
 								<div className="text-muted-foreground">Last Refilled</div>
-								<div className="font-medium">{formatNullableDateTime(structure.lastRefilledAt)}</div>
+								<div className="font-medium">
+									{structure.lastRefilledAt ? (
+										<EveTimeDisplay dateStr={structure.lastRefilledAt} format="compact" />
+									) : (
+										'-'
+									)}
+								</div>
 							</div>
 							<div>
 								<div className="text-muted-foreground">State</div>
@@ -398,9 +406,15 @@ export default function StructuresDetailPage() {
 								</div>
 							</div>
 							<div>
-								<div className="text-muted-foreground">Next State</div>
+								<div className="text-muted-foreground">
+									{isReinforced ? 'Reinforced until' : 'Next State'}
+								</div>
 								<div className="font-medium">
-									{structure.nextStateAt ? formatDateTimeLong(structure.nextStateAt) : '-'}
+									{structure.nextStateAt ? (
+										<EveTimeDisplay dateStr={structure.nextStateAt} format="compact" />
+									) : (
+										'-'
+									)}
 								</div>
 							</div>
 						</div>

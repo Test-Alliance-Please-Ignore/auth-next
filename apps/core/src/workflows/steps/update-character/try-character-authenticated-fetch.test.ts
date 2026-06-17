@@ -82,6 +82,7 @@ describe('tryCharacterAuthenticatedFetch', () => {
 
 		expect(result.success).toBe(true)
 		expect(result.status).toBe('valid')
+		expect(result.tokenInvalidated).toBe(false)
 		expect(recorder.updates[0]).toMatchObject({
 			hasValidToken: true,
 		})
@@ -107,6 +108,7 @@ describe('tryCharacterAuthenticatedFetch', () => {
 
 		expect(result.success).toBe(false)
 		expect(result.status).toBe('missing_scopes')
+		expect(result.tokenInvalidated).toBe(true)
 		expect(recorder.updates[0]).toMatchObject({
 			hasValidToken: false,
 		})
@@ -132,6 +134,7 @@ describe('tryCharacterAuthenticatedFetch', () => {
 
 		expect(result.success).toBe(false)
 		expect(result.status).toBe('transient_error')
+		expect(result.tokenInvalidated).toBe(false)
 		expect(recorder.updates[0]).toMatchObject({
 			hasValidToken: true,
 		})
@@ -161,6 +164,7 @@ describe('tryCharacterAuthenticatedFetch', () => {
 
 		expect(result.success).toBe(false)
 		expect(result.status).toBe('invalid_token')
+		expect(result.tokenInvalidated).toBe(true)
 		expect(recorder.updates.at(-1)).toMatchObject({
 			hasValidToken: false,
 		})

@@ -2,6 +2,7 @@ import { WorkflowEntrypoint } from 'cloudflare:workers'
 import { and, eq } from 'drizzle-orm'
 
 import { ROLE_CORE_ALLIANCE_MEMBER, ROLE_CORE_CORP_MEMBER } from '@repo/core'
+import { getStub } from '@repo/do-utils'
 import { esiRetryOptions } from '@repo/workflow-utils'
 
 import { createDb } from '../db'
@@ -20,6 +21,7 @@ import {
 } from './steps/user-roles'
 
 import type { WorkflowEvent, WorkflowStep } from 'cloudflare:workers'
+import type { Core } from '@repo/core'
 import type { Env } from '../context'
 import type { WorkflowContext } from './context'
 
@@ -41,6 +43,7 @@ interface CharacterRefreshOutcome {
 	status: CharacterRefreshStatus
 	affiliationChanged?: boolean
 	authenticatedSuccess?: boolean
+	tokenInvalidated?: boolean
 	error?: string
 }
 
@@ -286,7 +289,7 @@ export class UserRefreshWorkflow extends WorkflowEntrypoint<Env, UserRefreshWork
 				}
 			)
 
-			const authenticatedFetchResult = await step.do(
+		const authenticatedFetchResult = await step.do(
 				`validate-character-token-${characterId}`,
 				CHARACTER_STEP_OPTIONS,
 				async () => {
@@ -315,6 +318,7 @@ export class UserRefreshWorkflow extends WorkflowEntrypoint<Env, UserRefreshWork
 				status: 'success',
 				affiliationChanged: updateCharacterPublicInfoResult.affiliationChanged,
 				authenticatedSuccess: authenticatedFetchResult.success,
+				tokenInvalidated: authenticatedFetchResult.tokenInvalidated,
 				error: authenticatedFetchResult.error,
 			}
 		} catch (error) {
@@ -461,6 +465,47 @@ export class UserRefreshWorkflow extends WorkflowEntrypoint<Env, UserRefreshWork
 						error: outcome.error,
 					})),
 			})
+
+			const invalidatedCharacterIds = [
+				...new Set(
+					characterOutcomes
+						.filter((outcome) => outcome.tokenInvalidated === true)
+						.map((outcome) => outcome.characterId)
+				),
+			]
+			if (invalidatedCharacterIds.length > 0) {
+				try {
+					await step.do(
+						'queue-token-invalidation-alerts',
+						{
+							retries: { limit: 2, delay: '5 seconds', backoff: 'exponential' },
+							timeout: '30 seconds',
+						},
+						async () => {
+							const coreStub = getStub<Core>(this.env.CORE, 'default')
+							const queueResult = await coreStub.queueTokenInvalidationAlerts({
+								userId,
+								characterIds: invalidatedCharacterIds,
+								source: 'user-refresh-token-invalidated',
+							})
+							console.log('[Workflow] Queued token invalidation alert', {
+								...logContext,
+								invalidatedCharacterIds,
+								queueResult,
+							})
+						}
+					)
+					steps['queue-token-invalidation-alerts'] = 'ok'
+				} catch (error) {
+					steps['queue-token-invalidation-alerts'] = 'failed'
+					console.warn('[Workflow] Failed to queue token invalidation alert; continuing', {
+						...logContext,
+						error: error instanceof Error ? error.message : String(error),
+					})
+				}
+			} else {
+				steps['queue-token-invalidation-alerts'] = 'skipped'
+			}
 
 			if (checkUserBlacklistedResult.isBlacklisted) {
 				steps['get-user-role-attachments'] = 'skipped'

@@ -178,8 +178,30 @@ function makeDbStub() {
 		query: {
 			managedCorporations: {
 				findMany: vi.fn().mockResolvedValue([
-					{ corporationId: '2001', name: 'Bravo Corp', ticker: 'BRV' },
-					{ corporationId: '1001', name: 'Alpha Corp', ticker: 'ALP' },
+					{
+						corporationId: '1001',
+						name: 'Alpha Corp',
+						ticker: 'ALP',
+						isMemberCorporation: true,
+						isAltCorp: false,
+						isSpecialPurpose: false,
+					},
+					{
+						corporationId: '2001',
+						name: 'Bravo Corp',
+						ticker: 'BRV',
+						isMemberCorporation: false,
+						isAltCorp: true,
+						isSpecialPurpose: false,
+					},
+					{
+						corporationId: '3001',
+						name: 'Charlie Corp',
+						ticker: 'CHR',
+						isMemberCorporation: false,
+						isAltCorp: false,
+						isSpecialPurpose: true,
+					},
 				]),
 			},
 			users: {
@@ -319,8 +341,33 @@ describe('hr route access matrix', () => {
 
 		expect(res.status).toBe(200)
 		expect(await res.json()).toEqual([
-			{ corporationId: '1001', name: 'Alpha Corp', ticker: 'ALP', currentRole: 'hr_viewer' },
-			{ corporationId: '2001', name: 'Bravo Corp', ticker: 'BRV', currentRole: 'hr_viewer' },
+			{
+				corporationId: '1001',
+				name: 'Alpha Corp',
+				ticker: 'ALP',
+				isMemberCorporation: true,
+				isAltCorp: false,
+				isSpecialPurpose: false,
+				currentRole: 'hr_viewer',
+			},
+			{
+				corporationId: '2001',
+				name: 'Bravo Corp',
+				ticker: 'BRV',
+				isMemberCorporation: false,
+				isAltCorp: true,
+				isSpecialPurpose: false,
+				currentRole: 'hr_viewer',
+			},
+			{
+				corporationId: '3001',
+				name: 'Charlie Corp',
+				ticker: 'CHR',
+				isMemberCorporation: false,
+				isAltCorp: false,
+				isSpecialPurpose: true,
+				currentRole: 'hr_viewer',
+			},
 		])
 	})
 
@@ -330,16 +377,62 @@ describe('hr route access matrix', () => {
 
 		expect(res.status).toBe(200)
 		expect(await res.json()).toEqual([
-			{ corporationId: '1001', name: 'Alpha Corp', ticker: 'ALP', currentRole: 'hr_admin' },
-			{ corporationId: '2001', name: 'Bravo Corp', ticker: 'BRV', currentRole: 'hr_admin' },
+			{
+				corporationId: '1001',
+				name: 'Alpha Corp',
+				ticker: 'ALP',
+				isMemberCorporation: true,
+				isAltCorp: false,
+				isSpecialPurpose: false,
+				currentRole: 'hr_admin',
+			},
+			{
+				corporationId: '2001',
+				name: 'Bravo Corp',
+				ticker: 'BRV',
+				isMemberCorporation: false,
+				isAltCorp: true,
+				isSpecialPurpose: false,
+				currentRole: 'hr_admin',
+			},
+			{
+				corporationId: '3001',
+				name: 'Charlie Corp',
+				ticker: 'CHR',
+				isMemberCorporation: false,
+				isAltCorp: false,
+				isSpecialPurpose: true,
+				currentRole: 'hr_admin',
+			},
 		])
 	})
 
 	it('preserves mixed per-corporation roles for non-admin non-auditor users on /corporations', async () => {
 		dbStub.query.managedCorporations.findMany.mockResolvedValue([
-			{ corporationId: '1001', name: 'Alpha Corp', ticker: 'ALP' },
-			{ corporationId: '2001', name: 'Bravo Corp', ticker: 'BRV' },
-			{ corporationId: '3001', name: 'Charlie Corp', ticker: 'CHR' },
+			{
+				corporationId: '1001',
+				name: 'Alpha Corp',
+				ticker: 'ALP',
+				isMemberCorporation: true,
+				isAltCorp: false,
+				isSpecialPurpose: false,
+			},
+			{
+				corporationId: '2001',
+				name: 'Bravo Corp',
+				ticker: 'BRV',
+				isMemberCorporation: false,
+				isAltCorp: true,
+				isSpecialPurpose: false,
+			},
+			{
+				corporationId: '3001',
+				name: 'Charlie Corp',
+				ticker: 'CHR',
+				isMemberCorporation: false,
+				isAltCorp: false,
+				isSpecialPurpose: true,
+			},
 		])
 		hrStub.getUserHrCorporations.mockResolvedValue(['1001', '2001', '3001'])
 		hrStub.getUserRoles.mockResolvedValue([
@@ -368,9 +461,33 @@ describe('hr route access matrix', () => {
 
 		expect(res.status).toBe(200)
 		expect(await res.json()).toEqual([
-			{ corporationId: '1001', name: 'Alpha Corp', ticker: 'ALP', currentRole: 'hr_viewer' },
-			{ corporationId: '2001', name: 'Bravo Corp', ticker: 'BRV', currentRole: 'hr_reviewer' },
-			{ corporationId: '3001', name: 'Charlie Corp', ticker: 'CHR', currentRole: 'hr_admin' },
+			{
+				corporationId: '1001',
+				name: 'Alpha Corp',
+				ticker: 'ALP',
+				isMemberCorporation: true,
+				isAltCorp: false,
+				isSpecialPurpose: false,
+				currentRole: 'hr_viewer',
+			},
+			{
+				corporationId: '2001',
+				name: 'Bravo Corp',
+				ticker: 'BRV',
+				isMemberCorporation: false,
+				isAltCorp: true,
+				isSpecialPurpose: false,
+				currentRole: 'hr_reviewer',
+			},
+			{
+				corporationId: '3001',
+				name: 'Charlie Corp',
+				ticker: 'CHR',
+				isMemberCorporation: false,
+				isAltCorp: false,
+				isSpecialPurpose: true,
+				currentRole: 'hr_admin',
+			},
 		])
 		expect(hrStub.getUserRoles).toHaveBeenCalledTimes(1)
 		expect(hrStub.getUserRoles).toHaveBeenCalledWith('user-1')

@@ -155,6 +155,11 @@ export default {
 			console.log('[Core:Scheduled] Processed pending Discord refreshes', result)
 		}
 
+		const tokenAlertResult = await coreStub.processPendingTokenInvalidationAlerts()
+		if (tokenAlertResult.processed > 0) {
+			console.log('[Core:Scheduled] Processed pending token invalidation alerts', tokenAlertResult)
+		}
+
 		// Daily full cleanup of Discord member audit history at midnight UTC.
 		if (event.cron === '0 0 * * *') {
 			const db = createDb(env.DATABASE_URL)

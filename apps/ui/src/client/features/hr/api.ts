@@ -67,6 +67,9 @@ export interface HrAccessibleCorporation {
 	name: string
 	ticker: string
 	currentRole: HrRoleType
+	isMemberCorporation: boolean
+	isAltCorp: boolean
+	isSpecialPurpose: boolean
 }
 
 /**
