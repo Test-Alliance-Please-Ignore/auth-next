@@ -6,7 +6,7 @@ import { and, asc, eq, gt, gte, inArray, isNull, lt, lte, or } from '@repo/db-ut
 import { getStub } from '@repo/do-utils'
 import { EsiRequestClient } from '@repo/esi'
 import { buildEsiUserKey, buildPublicEsiUserKey, EsiRateLimitStore } from '@repo/esi-rate-limit'
-import { logger } from '@repo/hono-helpers'
+import { logger, toErrorLogDetails } from '@repo/hono-helpers'
 import { parseJsonResponse } from '@repo/worker-utils'
 
 import { createDb } from './db'
@@ -252,11 +252,36 @@ export class EveTokenStoreDO extends DurableObject<Env> implements EveTokenStore
 		characterId: string,
 		cooldownUntilMs: number
 	): Promise<void> {
-		await this.state.storage.put(this.getTokenRefreshCooldownKey(characterId), cooldownUntilMs)
+		const storageKey = this.getTokenRefreshCooldownKey(characterId)
+		try {
+			await this.state.storage.put(storageKey, cooldownUntilMs)
+		} catch (error) {
+			logger
+				.withTags({ operation: 'setTokenRefreshCooldownUntil', characterId })
+				.error('Failed to persist token refresh cooldown to Durable Object storage', {
+					storageKey,
+					cooldownUntil: new Date(cooldownUntilMs).toISOString(),
+					error: error instanceof Error ? error.message : String(error),
+					errorDetails: toErrorLogDetails(error),
+				})
+			throw error
+		}
 	}
 
 	private async clearTokenRefreshCooldown(characterId: string): Promise<void> {
-		await this.state.storage.delete(this.getTokenRefreshCooldownKey(characterId))
+		const storageKey = this.getTokenRefreshCooldownKey(characterId)
+		try {
+			await this.state.storage.delete(storageKey)
+		} catch (error) {
+			logger
+				.withTags({ operation: 'clearTokenRefreshCooldown', characterId })
+				.error('Failed to clear token refresh cooldown from Durable Object storage', {
+					storageKey,
+					error: error instanceof Error ? error.message : String(error),
+					errorDetails: toErrorLogDetails(error),
+				})
+			throw error
+		}
 	}
 
 	/**
@@ -475,6 +500,14 @@ export class EveTokenStoreDO extends DurableObject<Env> implements EveTokenStore
 					})
 				return false
 			}
+			if (tokenRecord.nextRetryAt && tokenRecord.nextRetryAt.getTime() > nowMs) {
+				logger
+					.withTags({ operation: 'refreshToken', characterId })
+					.warn('Skipping refresh: token retry cooldown is active', {
+						nextRetryAt: tokenRecord.nextRetryAt.toISOString(),
+					})
+				return false
+			}
 			if (shouldForcePermanentByInvalidAge(tokenRecord.invalidSince)) {
 				await this.db
 					.update(eveTokens)
@@ -557,12 +590,26 @@ export class EveTokenStoreDO extends DurableObject<Env> implements EveTokenStore
 				// Cooldown cleanup is advisory; never fail a successful refresh because storage is transiently unhealthy.
 				logger
 					.withTags({ operation: 'refreshToken', characterId })
-					.warn('Failed to clear token refresh cooldown', error)
+					.warn('Failed to clear token refresh cooldown', {
+						error: error instanceof Error ? error.message : String(error),
+						errorDetails: toErrorLogDetails(error),
+					})
 			})
 
 			return true
 		} catch (error) {
 			const message = error instanceof Error ? error.message : String(error)
+			let tokenState:
+				| {
+						expiresAt: string
+						hasRefreshToken: boolean
+						invalidSince: string | null
+						lastValidationStatus: string | null
+						nextRetryAt: string | null
+						permanentInvalidAt: string | null
+						permanentInvalidReason: string | null
+				  }
+				| null = null
 			if (isPermanentRefreshFailure(message)) {
 				const character = await this.db.query.eveCharacters.findFirst({
 					where: eq(eveCharacters.characterId, String(characterId)),
@@ -586,6 +633,7 @@ export class EveTokenStoreDO extends DurableObject<Env> implements EveTokenStore
 					.withTags({ operation: 'refreshToken', characterId })
 					.warn('Permanent token refresh failure; disabled further refresh attempts', {
 						error: message,
+						errorDetails: toErrorLogDetails(error),
 					})
 				return false
 			}
@@ -596,6 +644,17 @@ export class EveTokenStoreDO extends DurableObject<Env> implements EveTokenStore
 				const existingToken = await this.db.query.eveTokens.findFirst({
 					where: eq(eveTokens.characterId, character.id),
 				})
+				tokenState = existingToken
+					? {
+							expiresAt: existingToken.expiresAt.toISOString(),
+							hasRefreshToken: Boolean(existingToken.refreshToken),
+							invalidSince: existingToken.invalidSince?.toISOString() ?? null,
+							lastValidationStatus: existingToken.lastValidationStatus,
+							nextRetryAt: existingToken.nextRetryAt?.toISOString() ?? null,
+							permanentInvalidAt: existingToken.permanentInvalidAt?.toISOString() ?? null,
+							permanentInvalidReason: existingToken.permanentInvalidReason ?? null,
+						}
+					: null
 				await this.db
 					.update(eveTokens)
 					.set({
@@ -614,11 +673,21 @@ export class EveTokenStoreDO extends DurableObject<Env> implements EveTokenStore
 				// Cooldown persistence is advisory; never fail the refresh path if storage is temporarily unhealthy.
 				logger
 					.withTags({ operation: 'refreshToken', characterId })
-					.warn('Failed to persist token refresh cooldown', error)
+					.warn('Failed to persist token refresh cooldown', {
+						error: error instanceof Error ? error.message : String(error),
+						errorDetails: toErrorLogDetails(error),
+					})
 			})
 			logger
 				.withTags({ operation: 'refreshToken', characterId })
-				.error('Token refresh failed', error)
+				.error('Token refresh failed', {
+					error: message,
+					errorDetails: toErrorLogDetails(error),
+					tokenState,
+					transientCooldownUntil: new Date(
+						Date.now() + TOKEN_REFRESH_TRANSIENT_COOLDOWN_MS
+					).toISOString(),
+				})
 			return false
 		}
 	}
@@ -2250,7 +2319,8 @@ export class EveTokenStoreDO extends DurableObject<Env> implements EveTokenStore
 			const expiringTokens = await this.db.query.eveTokens.findMany({
 				where: and(
 					gt(eveTokens.expiresAt, now), // Not already expired
-					lte(eveTokens.expiresAt, fiveMinutesFromNow) // Expires within 5 minutes
+					lte(eveTokens.expiresAt, fiveMinutesFromNow), // Expires within 5 minutes
+					or(isNull(eveTokens.nextRetryAt), lte(eveTokens.nextRetryAt, now))
 				),
 			})
 
