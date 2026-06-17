@@ -151,4 +151,15 @@ describe('EsiRateLimitStore', () => {
 		await expect(write).resolves.toBeUndefined()
 		expect(warnSpy).toHaveBeenCalled()
 	})
+
+	it('coalesces repeated route-group writes for the same route key', async () => {
+		const kv = new DeferredKv()
+		const store = new EsiRateLimitStore(kv as never)
+
+		void store.rememberRouteGroup('/corporations/:id/wallets/:id/journal', 'corp-wallet')
+		void store.rememberRouteGroup('/corporations/:id/wallets/:id/journal', 'corp-wallet')
+
+		await Promise.resolve()
+		expect(kv.peekPutCount()).toBe(1)
+	})
 })
