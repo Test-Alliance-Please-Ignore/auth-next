@@ -552,7 +552,12 @@ export class EveTokenStoreDO extends DurableObject<Env> implements EveTokenStore
 				.update(eveCharacters)
 				.set({ lastRefreshAt: new Date() })
 				.where(eq(eveCharacters.characterId, String(characterId)))
-			await this.clearTokenRefreshCooldown(characterId)
+			await this.clearTokenRefreshCooldown(characterId).catch((error) => {
+				// Cooldown cleanup is advisory; never fail a successful refresh because storage is transiently unhealthy.
+				logger
+					.withTags({ operation: 'refreshToken', characterId })
+					.warn('Failed to clear token refresh cooldown', error)
+			})
 
 			return true
 		} catch (error) {
@@ -604,7 +609,12 @@ export class EveTokenStoreDO extends DurableObject<Env> implements EveTokenStore
 			await this.setTokenRefreshCooldownUntil(
 				characterId,
 				Date.now() + TOKEN_REFRESH_TRANSIENT_COOLDOWN_MS
-			)
+			).catch((error) => {
+				// Cooldown persistence is advisory; never fail the refresh path if storage is temporarily unhealthy.
+				logger
+					.withTags({ operation: 'refreshToken', characterId })
+					.warn('Failed to persist token refresh cooldown', error)
+			})
 			logger
 				.withTags({ operation: 'refreshToken', characterId })
 				.error('Token refresh failed', error)

@@ -286,6 +286,14 @@ export class EsiRateLimitStore {
 			pendingSnapshot: EsiRateLimitSnapshot | null
 		}
 	>()
+	private readonly routeGroupWriteStates = new Map<
+		string,
+		{
+			flushPromise: Promise<void> | null
+			lastPersistedAtMs: number
+			pendingGroup: string | null
+		}
+	>()
 
 	constructor(private readonly kv: EsiRateLimitKVLike) {}
 
@@ -305,6 +313,25 @@ export class EsiRateLimitStore {
 			pendingSnapshot: null,
 		}
 		this.bucketWriteStates.set(key, created)
+		return created
+	}
+
+	private getRouteGroupWriteState(key: string): {
+		flushPromise: Promise<void> | null
+		lastPersistedAtMs: number
+		pendingGroup: string | null
+	} {
+		const existing = this.routeGroupWriteStates.get(key)
+		if (existing) {
+			return existing
+		}
+
+		const created = {
+			flushPromise: null,
+			lastPersistedAtMs: 0,
+			pendingGroup: null,
+		}
+		this.routeGroupWriteStates.set(key, created)
 		return created
 	}
 
@@ -409,10 +436,72 @@ export class EsiRateLimitStore {
 		}
 	}
 
+	private async persistRouteGroup(routeKey: string, group: string): Promise<void> {
+		try {
+			await this.kv.put(buildEsiRouteGroupMappingKey(routeKey), group, {
+				expirationTtl: ESI_RATE_LIMIT_ROUTE_GROUP_MAPPING_TTL_SECONDS,
+			})
+		} catch (error) {
+			// Route-group mappings are best-effort limiter hints. If KV is briefly
+			// saturated, keep serving requests and let the in-memory state on this
+			// instance guide the current burst instead of failing the request path.
+			warnLimiterWrite('[ESIRateLimitStore] Failed to persist route group mapping', {
+				routeKey,
+				group,
+				error: error instanceof Error ? error.message : String(error),
+			})
+		}
+	}
+
+	private async flushRouteGroup(routeKey: string): Promise<void> {
+		const state = this.getRouteGroupWriteState(routeKey)
+
+		while (state.pendingGroup) {
+			const pending = state.pendingGroup
+			if (!pending) {
+				break
+			}
+
+			const elapsedMs = state.lastPersistedAtMs > 0 ? Date.now() - state.lastPersistedAtMs : 0
+			if (elapsedMs > 0 && elapsedMs < 1000) {
+				await sleep(1000 - elapsedMs)
+			}
+
+			const nextGroup = state.pendingGroup
+			if (!nextGroup) {
+				break
+			}
+
+			state.pendingGroup = null
+			await this.persistRouteGroup(routeKey, nextGroup)
+			state.lastPersistedAtMs = Date.now()
+		}
+	}
+
 	async rememberRouteGroup(routeKey: string, group: string): Promise<void> {
-		await this.kv.put(buildEsiRouteGroupMappingKey(routeKey), group, {
-			expirationTtl: ESI_RATE_LIMIT_ROUTE_GROUP_MAPPING_TTL_SECONDS,
-		})
+		const state = this.getRouteGroupWriteState(routeKey)
+		state.pendingGroup = group
+
+		if (state.flushPromise) {
+			return
+		}
+
+		state.flushPromise = this.flushRouteGroup(routeKey)
+			.catch((error) => {
+				warnLimiterWrite('[ESIRateLimitStore] Route group flush failed', {
+					routeKey,
+					group,
+					error: error instanceof Error ? error.message : String(error),
+				})
+			})
+			.finally(() => {
+				state.flushPromise = null
+				if (!state.pendingGroup) {
+					this.routeGroupWriteStates.delete(routeKey)
+				}
+			})
+
+		await state.flushPromise
 	}
 
 	async getBucketSnapshot(group: string, userKey: string): Promise<EsiRateLimitSnapshot | null> {
