@@ -140,10 +140,11 @@ export class EveTokenStoreDO extends DurableObject<Env> implements EveTokenStore
 				this.jwksUri = this.metadata.jwks_uri
 				this.jwks = createRemoteJWKSet(new URL(this.metadata.jwks_uri))
 			}
-		})
 
-		// Initialize SQLite cache table for ESI responses
-		void this.initializeEsiCache()
+			// Initialize the SQLite-backed cache tables before the DO can serve requests.
+			// This avoids cache clear/read paths racing a cold start and resetting the object.
+			await this.initializeEsiCache()
+		})
 
 		// Schedule alarm for token refresh (check every 5 minutes)
 		void this.state.storage.setAlarm(Date.now() + 5 * 60 * 1000)

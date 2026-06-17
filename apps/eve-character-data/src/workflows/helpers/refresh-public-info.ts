@@ -33,10 +33,13 @@ function extractErrorDetails(error: unknown): Record<string, unknown> {
 /**
  * Refresh public character data (public info, portrait, corporation history)
  * Creates its own Durable Object stubs to avoid sharing invalidated stubs
+ * `forceRefresh` is reserved for manual refresh paths that need to bypass cache
+ * and should remain false for the normal character sync workflow.
  */
 export async function refreshPublicInfo(
 	env: Env,
-	characterId: string
+	characterId: string,
+	forceRefresh = false
 ): Promise<RefreshPublicInfoResult> {
 	const normalizedCharacterId = String(characterId)
 
@@ -44,7 +47,10 @@ export async function refreshPublicInfo(
 	const characterDataStub = getStub<EveCharacterData>(env.EVE_CHARACTER_DATA, normalizedCharacterId)
 
 	try {
-		const result = await characterDataStub.refreshPublicCharacterData(normalizedCharacterId, true)
+		const result = await characterDataStub.refreshPublicCharacterData(
+			normalizedCharacterId,
+			forceRefresh
+		)
 
 		logger.info('[refreshPublicInfo] Public info refreshed', {
 			characterId: normalizedCharacterId,

@@ -143,12 +143,12 @@ export class EveCharacterSyncWorkflow extends WorkflowEntrypoint<Env, EveCharact
 							},
 							() =>
 								withEsiRetryClassification('fetch-public-info', async () => {
-									logger.debug('[Step] Fetching public info', {
-										characterId,
-										userId: userId ?? null,
+										logger.debug('[Step] Fetching public info', {
+											characterId,
+											userId: userId ?? null,
+										})
+										return await refreshHelpers.refreshPublicInfo(this.env, characterId)
 									})
-									return await refreshHelpers.refreshPublicInfo(this.env, characterId)
-								})
 						)
 						syncStats.publicInfoSuccess++
 						publicInfoRefreshedCharacterIds.push(characterId)
