@@ -50,6 +50,10 @@ const DISCORD_ALERT_COLORS = {
 	applicationSubmitted: 0x3b82f6,
 }
 
+function formatDiscordTimestamp(date: Date): string {
+	return `<t:${Math.floor(date.getTime() / 1000)}:F>`
+}
+
 export function getCorporationAlertTypeDefinitions(): CorporationAlertTypeDefinition[] {
 	return [...ALERT_TYPE_DEFINITIONS]
 }
@@ -69,6 +73,7 @@ export function buildCorporationApplicationSubmittedMessage(
 ): MessageContent {
 	const applicantPortrait = `https://images.evetech.net/characters/${payload.applicantCharacterId}/portrait?size=256`
 	const applicationUrl = `https://pleaseignore.app/corporations/${payload.corporationId}/applications/${payload.applicationId}`
+	const submittedAt = new Date(payload.submittedAt)
 	const applicantLabel =
 		payload.altCharacterCount > 0
 			? `${payload.applicantCharacterName} (+${payload.altCharacterCount} alts)`
@@ -98,10 +103,7 @@ export function buildCorporationApplicationSubmittedMessage(
 					url: applicantPortrait,
 				},
 				fields,
-				footer: {
-					text: `Submitted at ${new Date(payload.submittedAt).toISOString()}`,
-				},
-				timestamp: new Date(payload.submittedAt).toISOString(),
+				timestamp: submittedAt.toISOString(),
 			},
 		],
 	}

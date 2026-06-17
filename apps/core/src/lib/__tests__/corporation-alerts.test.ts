@@ -25,9 +25,6 @@ describe('corporation alerts embed builder', () => {
 			thumbnail: {
 				url: 'https://images.evetech.net/characters/char-789/portrait?size=256',
 			},
-			footer: {
-				text: 'Submitted at 2026-06-11T12:00:00.000Z',
-			},
 			timestamp: '2026-06-11T12:00:00.000Z',
 		})
 
@@ -71,4 +68,3 @@ describe('corporation alerts embed builder', () => {
 		])
 	})
 })
-

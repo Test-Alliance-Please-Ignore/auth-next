@@ -54,6 +54,10 @@ const DEFAULT_STRUCTURAL_DESTINATIONS: AlertDestinationType[] = [
 	'group',
 ]
 
+function formatDiscordTimestamp(date: Date): string {
+	return `<t:${Math.floor(date.getTime() / 1000)}:F>`
+}
+
 export const STRUCTURE_ALERT_TYPE_DEFINITIONS: StructureAlertTypeDefinition[] = [
 	{
 		type: 'structure_state_changed',
@@ -94,15 +98,18 @@ const structureStateChangedAlert: AlertRegistryEntry<StructureAlertStateChangedP
 
 const structureFuelTimeStatusAlert: AlertRegistryEntry<StructureAlertFuelTimeStatusPayload> = {
 	definition: STRUCTURE_ALERT_TYPE_DEFINITIONS[1],
-	buildMessage: (payload) => ({
-		content: '',
-		embeds: [
-			{
-				title: `Structure fuel warning: ${payload.structureName}`,
-				description: `Remaining time: ${payload.remainingHours}h (${payload.status})`,
-			},
-		],
-	}),
+	buildMessage: (payload) => {
+		const fuelRunsOutAt = new Date(Date.now() + payload.remainingHours * 60 * 60 * 1000)
+		return {
+			content: '',
+			embeds: [
+				{
+					title: `Structure fuel warning: ${payload.structureName}`,
+					description: `Fuel runs out at ${formatDiscordTimestamp(fuelRunsOutAt)} (${payload.status})`,
+				},
+			],
+		}
+	},
 }
 
 const structureFuelAmountStatusAlert: AlertRegistryEntry<StructureAlertFuelAmountStatusPayload> = {
