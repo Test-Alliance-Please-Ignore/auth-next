@@ -6,11 +6,17 @@ import type { WorkflowContext } from '../../context'
 
 const validateToken = vi.fn()
 const fetchAuthenticatedData = vi.fn().mockResolvedValue(undefined)
+const queueTokenInvalidationAlerts = vi.fn().mockResolvedValue({
+	added: 1,
+	skipped: 0,
+	pendingCount: 1,
+})
 
 vi.mock('@repo/do-utils', () => ({
 	getStub: vi.fn(() => ({
 		validateToken,
 		fetchAuthenticatedData,
+		queueTokenInvalidationAlerts,
 	})),
 }))
 
@@ -47,6 +53,7 @@ function createCtx(db: WorkflowContext['db']): WorkflowContext {
 	return {
 		db,
 		env: {
+			CORE: {} as DurableObjectNamespace,
 			ESI: {} as DurableObjectNamespace,
 			ESI_TYPE_RESOLVER: {} as DurableObjectNamespace,
 			EVE_TOKEN_STORE: {} as DurableObjectNamespace,
@@ -61,6 +68,11 @@ describe('tryCharacterAuthenticatedFetch', () => {
 	beforeEach(() => {
 		vi.clearAllMocks()
 		fetchAuthenticatedData.mockResolvedValue(undefined)
+		queueTokenInvalidationAlerts.mockResolvedValue({
+			added: 1,
+			skipped: 0,
+			pendingCount: 1,
+		})
 	})
 
 	it('marks the character token valid when verification succeeds', async () => {
@@ -86,6 +98,7 @@ describe('tryCharacterAuthenticatedFetch', () => {
 		expect(recorder.updates[0]).toMatchObject({
 			hasValidToken: true,
 		})
+		expect(queueTokenInvalidationAlerts).not.toHaveBeenCalled()
 	})
 
 	it('marks the character token invalid when required scopes are missing', async () => {
@@ -111,6 +124,11 @@ describe('tryCharacterAuthenticatedFetch', () => {
 		expect(result.tokenInvalidated).toBe(true)
 		expect(recorder.updates[0]).toMatchObject({
 			hasValidToken: false,
+		})
+		expect(queueTokenInvalidationAlerts).toHaveBeenCalledWith({
+			userId: 'user-1',
+			characterIds: ['123'],
+			source: 'character-refresh-token-invalidated',
 		})
 	})
 
@@ -138,6 +156,7 @@ describe('tryCharacterAuthenticatedFetch', () => {
 		expect(recorder.updates[0]).toMatchObject({
 			hasValidToken: true,
 		})
+		expect(queueTokenInvalidationAlerts).not.toHaveBeenCalled()
 	})
 
 	it('marks the character token invalid when authenticated ESI fetch returns 401', async () => {
@@ -167,6 +186,11 @@ describe('tryCharacterAuthenticatedFetch', () => {
 		expect(result.tokenInvalidated).toBe(true)
 		expect(recorder.updates.at(-1)).toMatchObject({
 			hasValidToken: false,
+		})
+		expect(queueTokenInvalidationAlerts).toHaveBeenCalledWith({
+			userId: 'user-1',
+			characterIds: ['123'],
+			source: 'character-refresh-token-invalidated',
 		})
 	})
 })

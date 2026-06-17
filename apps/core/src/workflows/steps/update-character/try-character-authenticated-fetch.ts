@@ -5,6 +5,7 @@
 import { eq } from 'drizzle-orm'
 
 import { getStub } from '@repo/do-utils'
+import { queueTokenInvalidationAlertsForUser } from '../../../lib/token-invalid-alerts'
 
 import { userCharacters } from '../../../db/schema'
 import {
@@ -13,6 +14,7 @@ import {
 } from '../../../lib/token-validity'
 import { getWorkflowLogger } from '../../context'
 
+import type { Core as CoreRpc } from '@repo/core'
 import type { EveCharacterData } from '@repo/eve-character-data'
 import type { EveTokenStore, TokenValidationStatus } from '@repo/eve-token-store'
 import type { WorkflowContext } from '../../context'
@@ -72,7 +74,10 @@ export async function tryCharacterAuthenticatedFetch(
 			previousHasValidToken: existingCharacter?.hasValidToken ?? null,
 			touchLastCharacterRefresh: true,
 			forceValidate: ctx.forceTokenValidation === true,
-		})
+	})
+
+	let tokenInvalidated =
+		previousHasValidToken === true && nextHasValidToken === false
 
 	logger.info('[Workflow] Evaluated character token validity', {
 		characterId,
@@ -106,6 +111,27 @@ export async function tryCharacterAuthenticatedFetch(
 				error: errorMessage,
 				errorDetails: extractErrorDetails(error),
 			})
+			if (downgradedToken && previousHasValidToken === true) {
+				try {
+					const coreStub = getStub<CoreRpc>(ctx.env.CORE, 'default')
+					const queueResult = await queueTokenInvalidationAlertsForUser(coreStub, {
+						userId: ctx.userId,
+						characterIds: [characterId],
+						source: 'character-refresh-token-invalidated',
+					})
+					logger.info('[Workflow] Queued token invalidation alert', {
+						characterId,
+						userId: ctx.userId,
+						queueResult,
+					})
+				} catch (queueError) {
+					logger.warn('[Workflow] Failed to queue token invalidation alert; continuing', {
+						characterId,
+						userId: ctx.userId,
+						error: queueError instanceof Error ? queueError.message : String(queueError),
+					})
+				}
+			}
 			return {
 				characterId,
 				error: errorMessage,
@@ -113,6 +139,28 @@ export async function tryCharacterAuthenticatedFetch(
 				success: false,
 				tokenInvalidated: downgradedToken && previousHasValidToken === true,
 			}
+		}
+	}
+
+	if (tokenInvalidated) {
+		try {
+			const coreStub = getStub<CoreRpc>(ctx.env.CORE, 'default')
+			const queueResult = await queueTokenInvalidationAlertsForUser(coreStub, {
+				userId: ctx.userId,
+				characterIds: [characterId],
+				source: 'character-refresh-token-invalidated',
+			})
+			logger.info('[Workflow] Queued token invalidation alert', {
+				characterId,
+				userId: ctx.userId,
+				queueResult,
+			})
+		} catch (error) {
+			logger.warn('[Workflow] Failed to queue token invalidation alert; continuing', {
+				characterId,
+				userId: ctx.userId,
+				error: error instanceof Error ? error.message : String(error),
+			})
 		}
 	}
 

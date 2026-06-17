@@ -1,8 +1,39 @@
+import type { Core } from '@repo/core'
 import type { DiscordEmbed, MessageContent } from '@repo/discord'
 
 export const TOKEN_INVALID_ALERT_COOLDOWN_MS = 12 * 60 * 60 * 1000
 export const TOKEN_INVALID_ALERT_TTL_MS = 7 * 24 * 60 * 60 * 1000
 export const TOKEN_INVALID_ALERT_RETRY_MS = 60 * 60 * 1000
+
+export async function queueTokenInvalidationAlertsForUser(
+	core: Pick<Core, 'queueTokenInvalidationAlerts'>,
+	input: {
+		userId: string
+		characterIds: string[]
+		source?: string
+	}
+): Promise<
+	| {
+			added: number
+			skipped: number
+			pendingCount: number
+	  }
+	| null
+> {
+	const normalizedCharacterIds = [
+		...new Set(input.characterIds.map((characterId) => String(characterId).trim())),
+	].filter(Boolean)
+
+	if (normalizedCharacterIds.length === 0) {
+		return null
+	}
+
+	return core.queueTokenInvalidationAlerts({
+		userId: input.userId,
+		characterIds: normalizedCharacterIds,
+		source: input.source,
+	})
+}
 
 function formatCharacterList(names: string[], maxItems = 8): string {
 	if (names.length === 0) {

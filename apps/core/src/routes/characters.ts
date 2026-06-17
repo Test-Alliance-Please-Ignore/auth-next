@@ -7,6 +7,7 @@ import { logger } from '@repo/hono-helpers'
 
 import { userCharacters } from '../db/schema'
 import { waitUntilWithTelemetry } from '../lib/background-task'
+import { queueTokenInvalidationAlertsForUser } from '../lib/token-invalid-alerts'
 import { validateAndSyncCharacterTokenValidity } from '../lib/token-validity'
 import { markCharacterTokenInvalidFromAuthFailure } from '../lib/token-validity'
 import { triggerUserRefreshWorkflow } from '../lib/workflow-triggers'
@@ -833,7 +834,7 @@ app.post('/:characterId/refresh', requireAuth(), async (c) => {
 				'characters.token-invalid-alert',
 				async () => {
 					const coreStub = getStub<CoreRpc>(c.env.CORE, 'default')
-					await coreStub.queueTokenInvalidationAlerts({
+					await queueTokenInvalidationAlertsForUser(coreStub, {
 						userId: user.id,
 						characterIds: [characterIdStr],
 						source: 'character-refresh-token-invalidated',
