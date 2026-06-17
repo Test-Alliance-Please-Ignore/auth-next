@@ -7,6 +7,10 @@ import { getStub } from '@repo/do-utils'
 
 import { createDb } from '../db'
 import { waitUntilWithTelemetry } from '../lib/background-task'
+import {
+	dispatchGroupApplicationSubmittedAlert,
+	dispatchGroupInvitationAlert,
+} from '../services/group-alerts.service'
 import { clearUserCache, getCachedUserMemberships } from '../lib/groups-cache'
 import { triggerDiscordRefreshWorkflow } from '../lib/workflow-triggers'
 import { requireAdmin, requireAuth } from '../middleware/session'
@@ -316,6 +320,34 @@ groups.post(
 					characterName: body.characterName,
 				},
 				user.id
+			)
+
+			waitUntilWithTelemetry(
+				c.executionCtx,
+				'groups.discord-alert.invitation',
+				async () => {
+					const db = createDb(c.env.DATABASE_URL)
+					const [groupMeta] = await groupsDO.getGroupMetadataByIds([groupId])
+					const alertResult = await dispatchGroupInvitationAlert(c.env, db, {
+						groupId,
+						groupName: groupMeta?.name ?? 'Unknown group',
+						invitationId: invitation.id,
+						inviterUserId: user.id,
+						inviteeUserId: invitation.inviteeUserId ?? '',
+						createdAt: invitation.createdAt,
+					})
+					console.log('[Groups] Dispatched group invitation alert', {
+						groupId,
+						invitationId: invitation.id,
+						alertResult,
+					})
+				},
+				{
+					userId: user.id,
+					groupId,
+					invitationId: invitation.id,
+					source: 'group-invitation-created',
+				}
 			)
 			return c.json(invitation, 201)
 		} catch (error) {
@@ -1526,6 +1558,34 @@ groups.post('/:id/join-requests', requireAuth({ any: [ROLE_CORE_ALLIANCE_MEMBER]
 				reason: body.reason,
 			},
 			user.id
+		)
+
+		waitUntilWithTelemetry(
+			c.executionCtx,
+			'groups.discord-alert.join-request',
+			async () => {
+				const db = createDb(c.env.DATABASE_URL)
+				const [groupMeta] = await groupsDO.getGroupMetadataByIds([groupId])
+				const alertResult = await dispatchGroupApplicationSubmittedAlert(c.env, db, {
+					groupId,
+					groupName: groupMeta?.name ?? 'Unknown group',
+					applicationId: request.id,
+					applicantUserId: user.id,
+					applicationNote: request.reason,
+					submittedAt: request.createdAt,
+				})
+				console.log('[Groups] Dispatched group application alert', {
+					groupId,
+					applicationId: request.id,
+					alertResult,
+				})
+			},
+			{
+				userId: user.id,
+				groupId,
+				applicationId: request.id,
+				source: 'group-application-submitted',
+			}
 		)
 		return c.json(request, 201)
 	} catch (error) {

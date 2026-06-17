@@ -1,4 +1,4 @@
-import { ExternalLink, RefreshCw, UserPlus } from 'lucide-react'
+import { AlertTriangle, ExternalLink, RefreshCw, UserPlus } from 'lucide-react'
 import { useEffect, useMemo, useState } from 'react'
 import { Link, useNavigate, useSearchParams } from 'react-router-dom'
 
@@ -374,7 +374,27 @@ export default function DashboardPage() {
 										</div>
 									</>
 								) : (
-									<p className="text-muted-foreground">No main character found</p>
+									<div className="rounded-lg border border-warning/30 bg-warning/10 p-4">
+										<div className="flex items-start gap-3">
+											<AlertTriangle className="mt-0.5 h-5 w-5 text-warning" />
+											<div className="space-y-3">
+												<div>
+													<div className="flex items-center gap-2">
+														<h3 className="text-lg font-semibold">Main character unavailable</h3>
+														<Badge variant="warning">Missing</Badge>
+													</div>
+													<p className="mt-1 text-sm text-muted-foreground">
+														The character set as your main is no longer available in your active
+														character list. Link a character to restore the main-character card.
+													</p>
+												</div>
+												<Button size="sm" variant="primary" onClick={handleLinkCharacter}>
+													<UserPlus className="h-4 w-4" />
+													Link Character
+												</Button>
+											</div>
+										</div>
+									</div>
 								)}
 							</CardContent>
 						</Card>

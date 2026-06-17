@@ -326,6 +326,12 @@ export interface Groups {
 	/** Get minimal group metadata by ID for internal cross-worker resolution. */
 	getGroupMetadataByIds(ids: string[]): Promise<Array<{ id: string; name: string }>>
 
+	/**
+	 * Get the user IDs that should receive moderation alerts for a group.
+	 * Includes the owner and all explicit admins.
+	 */
+	getGroupOwnerAndAdminUserIds(groupId: string): Promise<string[]>
+
 	/** Update a group (owner or site admin) */
 	updateGroup(
 		id: string,

@@ -109,7 +109,12 @@ export class UserService {
 	 * Get full user profile with characters and preferences
 	 * Optimized to fetch all data in parallel rather than sequentially
 	 */
-	async getUserProfile(userId: string): Promise<UserProfileDTO> {
+	async getUserProfile(userId: string, options?: { includeDeleted?: boolean }): Promise<UserProfileDTO> {
+		const includeDeleted = options?.includeDeleted === true
+		const characterWhere = includeDeleted
+			? eq(userCharacters.userId, userId)
+			: and(eq(userCharacters.userId, userId), eq(userCharacters.isDeleted, false))
+
 		// Execute all 3 queries in parallel for better performance
 		let user, characters, preferences
 		try {
@@ -118,7 +123,7 @@ export class UserService {
 					where: eq(users.id, userId),
 				}),
 				this.db.query.userCharacters.findMany({
-					where: eq(userCharacters.userId, userId),
+					where: characterWhere,
 					orderBy: [asc(userCharacters.linkedAt)],
 					columns: {
 						id: true,
@@ -128,6 +133,7 @@ export class UserService {
 						characterName: true,
 						is_primary: true,
 						hasValidToken: true,
+						isDeleted: true,
 						linkedAt: true,
 					},
 				}),
@@ -149,7 +155,9 @@ export class UserService {
 			throw new Error('User not found')
 		}
 
-		const charactersDTO: UserCharacterDTO[] = characters.map((char) => ({
+		const activeCharacters = includeDeleted ? characters : characters.filter((char) => !char.isDeleted)
+
+		const charactersDTO: UserCharacterDTO[] = activeCharacters.map((char) => ({
 			id: char.id,
 			characterOwnerHash: char.characterOwnerHash,
 			characterId: char.characterId,

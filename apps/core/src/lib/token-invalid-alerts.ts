@@ -68,7 +68,7 @@ export function buildTokenInvalidationMessage(input: {
 		{
 			name: 'What this means',
 			value:
-				'Automated character data syncs may pause for affected characters until you reauthenticate them.',
+				'This may soon affect your access to alliance services until you reauthenticate the affected characters: https://pleaseignore.app',
 			inline: false,
 		},
 	]
