@@ -446,7 +446,29 @@ export class GroupsDO extends DurableObject<Env> implements Groups {
 		return rows.map((row) => ({
 			id: row.id,
 			name: row.name,
-		}))
+			}))
+	}
+
+	async getGroupOwnerAndAdminUserIds(groupId: string): Promise<string[]> {
+		const group = await this.db.query.groups.findFirst({
+			where: eq(groups.id, groupId),
+			columns: {
+				ownerId: true,
+			},
+		})
+
+		if (!group) {
+			throw new Error('Group not found')
+		}
+
+		const adminRows = await this.db.query.groupAdmins.findMany({
+			where: eq(groupAdmins.groupId, groupId),
+			columns: {
+				userId: true,
+			},
+		})
+
+		return [...new Set([group.ownerId, ...adminRows.map((row) => row.userId)])]
 	}
 
 	async updateGroup(id: string, data: UpdateGroupRequest, actorId: string): Promise<Group> {

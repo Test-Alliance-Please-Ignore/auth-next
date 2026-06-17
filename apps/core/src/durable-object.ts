@@ -9,11 +9,18 @@ import { logger } from '@repo/hono-helpers'
 import { createDb } from './db'
 import { managedCorporations, userCharacters, userIpAddresses, users } from './db/schema'
 import { recordUserIpAddress } from './lib/ip-tracking'
+import {
+	buildTokenInvalidationMessage,
+	TOKEN_INVALID_ALERT_COOLDOWN_MS,
+	TOKEN_INVALID_ALERT_RETRY_MS,
+	TOKEN_INVALID_ALERT_TTL_MS,
+} from './lib/token-invalid-alerts'
 import { validateAndSyncCharacterTokenValidity } from './lib/token-validity'
 import { triggerDiscordRefreshWorkflow, triggerUserRefreshWorkflow } from './lib/workflow-triggers'
 import { updateCharacterPublicInfo } from './workflows/steps/update-character'
 
 import type { Core } from '@repo/core'
+import type { Discord } from '@repo/discord'
 import type { CharacterPublicInfo } from '@repo/esi'
 import type { EveTokenStore } from '@repo/eve-token-store'
 import type { CreateRoleRequest, Groups } from '@repo/groups'
@@ -53,6 +60,19 @@ export class CoreDO extends DurableObject<Env> implements Core {
 	>()
 	private static readonly PENDING_TTL_MS = 15 * 60 * 1000 // 15 minutes
 	private static readonly STORAGE_PREFIX = 'pending-discord:'
+	private pendingTokenInvalidationAlerts = new Map<
+		string,
+		{
+			expiresAt: number
+			pendingCharacterIds: string[]
+			lastNotifiedAt: number | null
+			nextEligibleAt: number
+			attemptCount: number
+			lastError?: string
+			source?: string
+		}
+	>()
+	private static readonly TOKEN_ALERT_STORAGE_PREFIX = 'pending-token-invalid:'
 
 	constructor(
 		public state: DurableObjectState,
@@ -61,7 +81,11 @@ export class CoreDO extends DurableObject<Env> implements Core {
 		super(state, env)
 
 		void this.state.blockConcurrencyWhile(async () => {
-			await Promise.all([this.ensureRolesExist(), this.loadPendingDiscordRefreshes()])
+			await Promise.all([
+				this.ensureRolesExist(),
+				this.loadPendingDiscordRefreshes(),
+				this.loadPendingTokenInvalidationAlerts(),
+			])
 		})
 	}
 
@@ -85,6 +109,35 @@ export class CoreDO extends DurableObject<Env> implements Core {
 		}
 		this.logger.info('[CoreDO] Loaded pending Discord refreshes from storage', {
 			count: this.pendingDiscordRefreshes.size,
+		})
+	}
+
+	private async loadPendingTokenInvalidationAlerts(): Promise<void> {
+		const stored = await this.state.storage.list<{
+			expiresAt: number
+			pendingCharacterIds: string[]
+			lastNotifiedAt: number | null
+			nextEligibleAt: number
+			attemptCount: number
+			lastError?: string
+			source?: string
+		}>({
+			prefix: CoreDO.TOKEN_ALERT_STORAGE_PREFIX,
+		})
+		for (const [key, value] of stored) {
+			const userId = key.slice(CoreDO.TOKEN_ALERT_STORAGE_PREFIX.length)
+			this.pendingTokenInvalidationAlerts.set(userId, {
+				expiresAt: value.expiresAt,
+				pendingCharacterIds: value.pendingCharacterIds ?? [],
+				lastNotifiedAt: value.lastNotifiedAt ?? null,
+				nextEligibleAt: value.nextEligibleAt ?? 0,
+				attemptCount: value.attemptCount ?? 0,
+				lastError: value.lastError,
+				source: value.source,
+			})
+		}
+		this.logger.info('[CoreDO] Loaded pending token invalidation alerts from storage', {
+			count: this.pendingTokenInvalidationAlerts.size,
 		})
 	}
 
@@ -1622,6 +1675,119 @@ export class CoreDO extends DurableObject<Env> implements Core {
 		this.logger.info('[CoreDO] Evicted pending Discord refresh entry', { userId, reason })
 	}
 
+	private async evictPendingTokenInvalidationAlert(userId: string, reason: string): Promise<void> {
+		this.pendingTokenInvalidationAlerts.delete(userId)
+		await this.state.storage.delete(`${CoreDO.TOKEN_ALERT_STORAGE_PREFIX}${userId}`)
+		this.logger.info('[CoreDO] Evicted pending token invalidation alert entry', {
+			userId,
+			reason,
+		})
+	}
+
+	private async getCharacterNamesForUser(
+		userId: string,
+		characterIds: string[]
+	): Promise<Array<{ characterId: string; characterName: string; hasValidToken: boolean }>> {
+		if (characterIds.length === 0) {
+			return []
+		}
+
+		const normalized = [...new Set(characterIds.map((characterId) => String(characterId).trim()))].filter(Boolean)
+		if (normalized.length === 0) {
+			return []
+		}
+
+		const rows = await this.getDb().query.userCharacters.findMany({
+			where: and(
+				eq(userCharacters.userId, userId),
+				inArray(userCharacters.characterId, normalized)
+			),
+			columns: {
+				characterId: true,
+				characterName: true,
+				hasValidToken: true,
+			},
+		})
+
+		return rows.map((row) => ({
+			characterId: row.characterId,
+			characterName: row.characterName,
+			hasValidToken: row.hasValidToken === true,
+		}))
+	}
+
+	async queueTokenInvalidationAlerts(input: {
+		userId: string
+		characterIds: string[]
+		source?: string
+	}): Promise<{
+		added: number
+		skipped: number
+		pendingCount: number
+	}> {
+		const normalizedCharacterIds = [
+			...new Set(input.characterIds.map((characterId) => String(characterId).trim())),
+		].filter(Boolean)
+		if (normalizedCharacterIds.length === 0) {
+			return { added: 0, skipped: 0, pendingCount: this.pendingTokenInvalidationAlerts.size }
+		}
+
+		const now = Date.now()
+		const expiresAt = now + TOKEN_INVALID_ALERT_TTL_MS
+		const existing = this.pendingTokenInvalidationAlerts.get(input.userId)
+		const pendingCharacterIds = new Set(existing?.pendingCharacterIds ?? [])
+		const beforeSize = pendingCharacterIds.size
+		for (const characterId of normalizedCharacterIds) {
+			pendingCharacterIds.add(characterId)
+		}
+		const added = pendingCharacterIds.size - beforeSize
+		const skipped = normalizedCharacterIds.length - added
+
+		const nextEligibleAt =
+			existing?.nextEligibleAt && existing.nextEligibleAt > now
+				? existing.nextEligibleAt
+				: now
+
+		this.pendingTokenInvalidationAlerts.set(input.userId, {
+			expiresAt,
+			pendingCharacterIds: [...pendingCharacterIds],
+			lastNotifiedAt: existing?.lastNotifiedAt ?? null,
+			nextEligibleAt,
+			attemptCount: existing?.attemptCount ?? 0,
+			lastError: existing?.lastError,
+			source: input.source ?? existing?.source,
+		})
+
+		await this.state.storage.put({
+			[`${CoreDO.TOKEN_ALERT_STORAGE_PREFIX}${input.userId}`]:
+				this.pendingTokenInvalidationAlerts.get(input.userId)!,
+		})
+
+		this.logger.info('[CoreDO] Queued token invalidation alerts', {
+			userId: input.userId,
+			added,
+			skipped,
+			pendingCount: this.pendingTokenInvalidationAlerts.size,
+			source: input.source ?? existing?.source ?? 'unknown',
+		})
+
+		return {
+			added,
+			skipped,
+			pendingCount: this.pendingTokenInvalidationAlerts.size,
+		}
+	}
+
+	private buildPendingTokenInvalidationMessage(characterNames: string[]): ReturnType<
+		typeof buildTokenInvalidationMessage
+	> {
+		return buildTokenInvalidationMessage({
+			characterNames,
+			invalidCharacterCount: characterNames.length,
+			updatedAt: new Date(),
+		})
+	}
+
 	private async waitForUserRefreshWorkflowCompletion(workflowInstanceId: string): Promise<{
 		status: 'completed' | 'completed_with_errors' | 'failed' | 'unknown'
 		affiliationChanged: boolean
@@ -1903,5 +2069,173 @@ export class CoreDO extends DurableObject<Env> implements Core {
 		})
 
 		return { processed: userIds.length, triggered: triggeredCount, failed: failedCount }
+	}
+
+	/**
+	 * Drain queued token invalidation alerts and DM the affected users.
+	 * Alerts are deduplicated per user and rate-limited to one delivery per 12 hours.
+	 */
+	async processPendingTokenInvalidationAlerts(): Promise<{
+		processed: number
+		sent: number
+		failed: number
+	}> {
+		const now = Date.now()
+
+		const expiredKeys: string[] = []
+		for (const [userId, entry] of this.pendingTokenInvalidationAlerts) {
+			if (entry.expiresAt <= now) {
+				this.pendingTokenInvalidationAlerts.delete(userId)
+				expiredKeys.push(`${CoreDO.TOKEN_ALERT_STORAGE_PREFIX}${userId}`)
+			}
+		}
+		if (expiredKeys.length > 0) {
+			await this.state.storage.delete(expiredKeys)
+		}
+
+		const dueUserIds = [...this.pendingTokenInvalidationAlerts.entries()]
+			.filter(([, entry]) => entry.pendingCharacterIds.length > 0 && entry.nextEligibleAt <= now)
+			.sort((a, b) => a[1].nextEligibleAt - b[1].nextEligibleAt)
+			.slice(0, 20)
+			.map(([userId]) => userId)
+
+		if (dueUserIds.length === 0) {
+			return { processed: 0, sent: 0, failed: 0 }
+		}
+
+		const discordStub = getStub<Discord>(this.env.DISCORD, 'default')
+		const db = this.getDb()
+		let sent = 0
+		let failed = 0
+		const toStore: Record<
+			string,
+			{
+				expiresAt: number
+				pendingCharacterIds: string[]
+				lastNotifiedAt: number | null
+				nextEligibleAt: number
+				attemptCount: number
+				lastError?: string
+				source?: string
+			}
+		> = {}
+
+		for (const userId of dueUserIds) {
+			const entry = this.pendingTokenInvalidationAlerts.get(userId)
+			if (!entry) {
+				continue
+			}
+
+			const user = await db.query.users.findFirst({
+				where: eq(users.id, userId),
+				columns: {
+					id: true,
+					discordUserId: true,
+				},
+			})
+
+			if (!user) {
+				await this.evictPendingTokenInvalidationAlert(
+					userId,
+					'queue entry no longer has a matching core user'
+				)
+				this.logger.info('[CoreDO] Dropped token invalidation alert for missing core user', {
+					userId,
+				})
+				continue
+			}
+
+			if (!user.discordUserId) {
+				await this.evictPendingTokenInvalidationAlert(
+					userId,
+					'discord account is not linked for this user'
+				)
+				this.logger.info('[CoreDO] Dropped token invalidation alert due to missing Discord link', {
+					userId,
+					pendingCharacterIds: entry.pendingCharacterIds.length,
+				})
+				continue
+			}
+
+			const characterRows = await this.getCharacterNamesForUser(userId, entry.pendingCharacterIds)
+			const invalidCharacterNames = characterRows
+				.filter((character) => character.hasValidToken === false)
+				.map((character) => character.characterName)
+
+			if (invalidCharacterNames.length === 0) {
+				if (entry.lastNotifiedAt === null) {
+					await this.evictPendingTokenInvalidationAlert(
+						userId,
+						'all pending characters recovered before delivery'
+					)
+				} else {
+					const nextEntry = {
+						...entry,
+						pendingCharacterIds: [],
+						attemptCount: 0,
+						lastError: undefined,
+						expiresAt: now + TOKEN_INVALID_ALERT_TTL_MS,
+						nextEligibleAt: now + TOKEN_INVALID_ALERT_COOLDOWN_MS,
+					}
+					this.pendingTokenInvalidationAlerts.set(userId, nextEntry)
+					toStore[`${CoreDO.TOKEN_ALERT_STORAGE_PREFIX}${userId}`] = nextEntry
+				}
+				continue
+			}
+
+			const message = this.buildPendingTokenInvalidationMessage(invalidCharacterNames)
+			const result = await discordStub.sendDirectMessage(userId, message)
+			if (!result.success) {
+				const retryAfterMs =
+					typeof result.retryAfter === 'number' && result.retryAfter > 0
+						? result.retryAfter * 1000
+						: TOKEN_INVALID_ALERT_RETRY_MS
+				const nextEntry = {
+					...entry,
+					attemptCount: entry.attemptCount + 1,
+					lastError: result.error ?? 'Failed to deliver token invalidation alert',
+					nextEligibleAt: now + retryAfterMs,
+					expiresAt: now + TOKEN_INVALID_ALERT_TTL_MS,
+				}
+				this.pendingTokenInvalidationAlerts.set(userId, nextEntry)
+				toStore[`${CoreDO.TOKEN_ALERT_STORAGE_PREFIX}${userId}`] = nextEntry
+				failed++
+				this.logger.warn('[CoreDO] Failed to send token invalidation alert', {
+					userId,
+					error: result.error ?? 'Unknown Discord delivery error',
+					retryAfterMs,
+				})
+				continue
+			}
+
+			const nextEntry = {
+				...entry,
+				pendingCharacterIds: [],
+				lastNotifiedAt: now,
+				nextEligibleAt: now + TOKEN_INVALID_ALERT_COOLDOWN_MS,
+				attemptCount: 0,
+				lastError: undefined,
+				expiresAt: now + TOKEN_INVALID_ALERT_TTL_MS,
+			}
+			this.pendingTokenInvalidationAlerts.set(userId, nextEntry)
+			toStore[`${CoreDO.TOKEN_ALERT_STORAGE_PREFIX}${userId}`] = nextEntry
+			sent++
+		}
+
+		if (Object.keys(toStore).length > 0) {
+			await this.state.storage.put(toStore)
+		}
+
+		this.logger.info('[CoreDO] Processed pending token invalidation alerts', {
+			processed: dueUserIds.length,
+			sent,
+			failed,
+		})
+
+		return {
+			processed: dueUserIds.length,
+			sent,
+			failed,
+		}
 	}
 }

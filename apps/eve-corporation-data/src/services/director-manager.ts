@@ -5,7 +5,12 @@ import { parseEsiErrorMetadata, retryWithBackoff } from '@repo/workflow-utils'
 import { characterCorporationRoles, corporationConfig, corporationDirectors } from '../db/schema'
 
 import type { CorporationRole, EsiCharacterRoles } from '@repo/eve-corporation-data'
-import type { EsiCharacterAffiliation, EsiResponse, EveTokenStore } from '@repo/eve-token-store'
+import type {
+	EsiCharacterAffiliation,
+	EsiResponse,
+	EveTokenStore,
+	TokenValidationResult,
+} from '@repo/eve-token-store'
 import type { createDb } from '../db'
 
 /**
@@ -55,6 +60,18 @@ const FULL_SYNC_REQUIRED_ROLE_SETS: CorporationRole[][] = [
 	['Accountant', 'Junior_Accountant', 'Trader'],
 	['Factory_Manager'],
 ]
+
+function describeTokenValidationFailure(validation: TokenValidationResult): string {
+	if (validation.status === 'missing_scopes' && validation.missingScopes.length > 0) {
+		return `Director token is missing required ESI scopes: ${validation.missingScopes.join(', ')}`
+	}
+
+	if (validation.error) {
+		return `Director token validation failed: ${validation.error}`
+	}
+
+	return `Director token validation failed: ${validation.status}`
+}
 
 /**
  * DirectorManager handles director selection, health tracking, and failover logic
@@ -847,6 +864,20 @@ export class DirectorManager {
 				directorId,
 				characterId: director.characterId,
 			})
+
+			const tokenValidation = await this.tokenStore.validateToken(String(director.characterId))
+			if (!tokenValidation.isValid) {
+				const reason = describeTokenValidationFailure(tokenValidation)
+				await this.recordFailure(directorId, reason, { forceUnhealthy: true })
+				logger.warn('[DirectorManager] Director token validation failed', {
+					corporationId: this.corporationId,
+					directorId,
+					characterId: director.characterId,
+					status: tokenValidation.status,
+					missingScopes: tokenValidation.missingScopes,
+				})
+				return false
+			}
 
 			const affiliationCheck = await this.checkAffiliation(String(director.characterId))
 			if (!affiliationCheck.matches) {

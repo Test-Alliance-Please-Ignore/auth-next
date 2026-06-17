@@ -1210,6 +1210,7 @@ app.get('/corporations', requireAuth(), async (c) => {
 					eq(managedCorporations.isActive, true),
 					or(
 						eq(managedCorporations.isMemberCorporation, true),
+						eq(managedCorporations.isAltCorp, true),
 						eq(managedCorporations.isSpecialPurpose, true)
 					)
 				),
@@ -1217,6 +1218,9 @@ app.get('/corporations', requireAuth(), async (c) => {
 					corporationId: true,
 					name: true,
 					ticker: true,
+					isMemberCorporation: true,
+					isAltCorp: true,
+					isSpecialPurpose: true,
 				},
 			})
 			return corporations
@@ -1230,6 +1234,9 @@ app.get('/corporations', requireAuth(), async (c) => {
 						corporationId: corp.corporationId,
 						name: corp.name,
 						ticker: corp.ticker,
+						isMemberCorporation: corp.isMemberCorporation,
+						isAltCorp: corp.isAltCorp,
+						isSpecialPurpose: corp.isSpecialPurpose,
 						currentRole: 'hr_admin' as const,
 					}))
 					.sort((a, b) => a.name.localeCompare(b.name))
@@ -1244,6 +1251,9 @@ app.get('/corporations', requireAuth(), async (c) => {
 						corporationId: corp.corporationId,
 						name: corp.name,
 						ticker: corp.ticker,
+						isMemberCorporation: corp.isMemberCorporation,
+						isAltCorp: corp.isAltCorp,
+						isSpecialPurpose: corp.isSpecialPurpose,
 						currentRole: 'hr_viewer' as const,
 					}))
 					.sort((a, b) => a.name.localeCompare(b.name))
@@ -1264,6 +1274,9 @@ app.get('/corporations', requireAuth(), async (c) => {
 				corporationId: true,
 				name: true,
 				ticker: true,
+				isMemberCorporation: true,
+				isAltCorp: true,
+				isSpecialPurpose: true,
 			},
 		})
 		const corporationMap = new Map(corporations.map((corp) => [corp.corporationId, corp]))
@@ -1297,6 +1310,9 @@ app.get('/corporations', requireAuth(), async (c) => {
 					corporationId,
 					name: corporation?.name ?? `Corporation ${corporationId}`,
 					ticker: corporation?.ticker ?? '',
+					isMemberCorporation: corporation?.isMemberCorporation ?? false,
+					isAltCorp: corporation?.isAltCorp ?? false,
+					isSpecialPurpose: corporation?.isSpecialPurpose ?? false,
 					currentRole,
 				}
 			})

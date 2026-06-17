@@ -1,7 +1,8 @@
-import { ChevronDown, ChevronRight, Search } from 'lucide-react'
-import { Fragment, useMemo, useState } from 'react'
+import { ChevronDown, ChevronRight, ChevronsUpDown, Search } from 'lucide-react'
+import { Fragment, useEffect, useMemo, useState } from 'react'
 import type { ReactNode } from 'react'
 
+import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import {
 	Table,
@@ -62,6 +63,21 @@ export function InventoryBaysTable({
 			.filter((bay): bay is InventoryDisplayBay => bay !== null)
 	}, [bays, search])
 
+	useEffect(() => {
+		const query = search.trim()
+		if (!query) {
+			return
+		}
+
+		setExpandedBays((previous) => {
+			const next = new Set(previous)
+			for (const bay of visibleBays) {
+				next.add(bay.locationFlag)
+			}
+			return next
+		})
+	}, [search, visibleBays])
+
 	const toggleBay = (locationFlag: string) => {
 		setExpandedBays((previous) => {
 			const next = new Set(previous)
@@ -74,21 +90,52 @@ export function InventoryBaysTable({
 		})
 	}
 
+	const allVisibleExpanded =
+		visibleBays.length > 0 && visibleBays.every((bay) => expandedBays.has(bay.locationFlag))
+
+	const toggleAllVisible = () => {
+		setExpandedBays((previous) => {
+			const next = new Set(previous)
+			if (allVisibleExpanded) {
+				for (const bay of visibleBays) {
+					next.delete(bay.locationFlag)
+				}
+			} else {
+				for (const bay of visibleBays) {
+					next.add(bay.locationFlag)
+				}
+			}
+			return next
+		})
+	}
+
 	if (bays.length === 0) {
 		return <p className="text-sm text-muted-foreground">{emptyLabel}</p>
 	}
 
 	return (
 		<div className={cn('space-y-4', className)}>
-			<div className="relative max-w-md">
-				<Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
-				<Input
-					type="search"
-					value={search}
-					onChange={(event) => setSearch(event.target.value)}
-					placeholder={searchPlaceholder}
-					className="pl-9"
-				/>
+			<div className="flex flex-wrap items-center gap-3">
+				<div className="relative max-w-md flex-1">
+					<Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+					<Input
+						type="search"
+						value={search}
+						onChange={(event) => setSearch(event.target.value)}
+						placeholder={searchPlaceholder}
+						className="pl-9"
+					/>
+				</div>
+				<Button
+					type="button"
+					variant="ghost"
+					size="sm"
+					onClick={toggleAllVisible}
+					disabled={visibleBays.length === 0}
+				>
+					<ChevronsUpDown className="h-4 w-4" />
+					{allVisibleExpanded ? 'Contract all' : 'Expand all'}
+				</Button>
 			</div>
 
 			<div className="overflow-hidden rounded-lg border border-border/60">
@@ -103,7 +150,7 @@ export function InventoryBaysTable({
 					<TableBody>
 						{visibleBays.length > 0 ? (
 							visibleBays.map((bay) => {
-								const isExpanded = search.trim().length > 0 || expandedBays.has(bay.locationFlag)
+								const isExpanded = expandedBays.has(bay.locationFlag)
 								return (
 									<Fragment key={bay.locationFlag}>
 										<TableRow

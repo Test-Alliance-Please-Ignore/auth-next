@@ -356,6 +356,15 @@ describe('DirectorManager.verifyDirectorHealth', () => {
 			update,
 		}
 		const tokenStore = {
+			validateToken: vi.fn().mockResolvedValue({
+				characterId: '111',
+				isValid: true,
+				missingScopes: [],
+				scopes: ['publicData'],
+				refreshAttempted: false,
+				refreshSucceeded: false,
+				status: 'valid',
+			}),
 			fetchCharacterAffiliations: vi.fn().mockResolvedValue({
 				data: [{ character_id: 111, corporation_id: 98000001 }],
 			}),
@@ -377,6 +386,7 @@ describe('DirectorManager.verifyDirectorHealth', () => {
 		})
 
 		expect(result).toBe(true)
+		expect(tokenStore.validateToken).toHaveBeenCalledWith('111')
 		expect(tokenStore.fetchCharacterAffiliations).toHaveBeenCalledWith(['111'])
 		expect(tokenStore.fetchEsi).toHaveBeenCalledWith('/characters/111/roles', '111')
 		expect(rolesValues).toHaveBeenCalledWith(
@@ -416,6 +426,15 @@ describe('DirectorManager.verifyDirectorHealth', () => {
 			update,
 		}
 		const tokenStore = {
+			validateToken: vi.fn().mockResolvedValue({
+				characterId: '111',
+				isValid: true,
+				missingScopes: [],
+				scopes: ['publicData'],
+				refreshAttempted: false,
+				refreshSucceeded: false,
+				status: 'valid',
+			}),
 			fetchCharacterAffiliations: vi.fn().mockResolvedValue({
 				data: [{ character_id: 111, corporation_id: 98000001 }],
 			}),
@@ -456,6 +475,15 @@ describe('DirectorManager.verifyDirectorHealth', () => {
 			},
 		}
 		const tokenStore = {
+			validateToken: vi.fn().mockResolvedValue({
+				characterId: '111',
+				isValid: true,
+				missingScopes: [],
+				scopes: ['publicData'],
+				refreshAttempted: false,
+				refreshSucceeded: false,
+				status: 'valid',
+			}),
 			fetchCharacterAffiliations: vi.fn().mockResolvedValue({
 				data: [{ character_id: 111, corporation_id: 98000001 }],
 			}),
@@ -474,6 +502,52 @@ describe('DirectorManager.verifyDirectorHealth', () => {
 		expect(recordFailure).toHaveBeenCalledWith('dir-1', 'ESI request failed: 403 Forbidden')
 	})
 
+	it('records failure when the director token is missing required scopes', async () => {
+		const db = {
+			query: {
+				corporationDirectors: {
+					findFirst: vi.fn().mockResolvedValue({
+						id: 'dir-1',
+						characterId: '111',
+					}),
+				},
+			},
+		}
+		const tokenStore = {
+			validateToken: vi.fn().mockResolvedValue({
+				characterId: '111',
+				isValid: false,
+				missingScopes: ['esi-corporations.read_structures.v1'],
+				scopes: ['publicData'],
+				refreshAttempted: false,
+				refreshSucceeded: false,
+				status: 'missing_scopes',
+			}),
+			fetchCharacterAffiliations: vi.fn(),
+			fetchEsi: vi.fn(),
+		}
+		const manager = new DirectorManager(
+			db as never,
+			'98000001',
+			tokenStore as never
+		)
+		const recordFailure = vi.spyOn(manager, 'recordFailure').mockResolvedValue(undefined)
+		const removeDirector = vi.spyOn(manager, 'removeDirector').mockResolvedValue(undefined)
+
+		const result = await manager.verifyDirectorHealth('dir-1')
+
+		expect(result).toBe(false)
+		expect(tokenStore.validateToken).toHaveBeenCalledWith('111')
+		expect(tokenStore.fetchCharacterAffiliations).not.toHaveBeenCalled()
+		expect(tokenStore.fetchEsi).not.toHaveBeenCalled()
+		expect(removeDirector).not.toHaveBeenCalled()
+		expect(recordFailure).toHaveBeenCalledWith(
+			'dir-1',
+			expect.stringContaining('Director token is missing required ESI scopes'),
+			{ forceUnhealthy: true }
+		)
+	})
+
 	it('auto-prunes director when affiliation check fails during verify health', async () => {
 		const db = {
 			query: {
@@ -487,6 +561,15 @@ describe('DirectorManager.verifyDirectorHealth', () => {
 		}
 		const onAffiliationMismatch = vi.fn().mockResolvedValue(undefined)
 		const tokenStore = {
+			validateToken: vi.fn().mockResolvedValue({
+				characterId: '111',
+				isValid: true,
+				missingScopes: [],
+				scopes: ['publicData'],
+				refreshAttempted: false,
+				refreshSucceeded: false,
+				status: 'valid',
+			}),
 			fetchCharacterAffiliations: vi.fn().mockResolvedValue({
 				data: [{ character_id: 111, corporation_id: 98000002 }],
 			}),

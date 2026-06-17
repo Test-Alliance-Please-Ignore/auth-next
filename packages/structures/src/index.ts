@@ -33,6 +33,14 @@ export const NAVIGATION_STRUCTURE_TYPE_IDS = new Set([
 	PHAROLUX_CYNO_BEACON_TYPE_ID,
 ])
 export const MINING_STRUCTURE_TYPE_IDS = new Set([METENOX_MOON_DRILL_TYPE_ID])
+export const STRUCTURE_REINFORCED_STATES = new Set([
+	'shield',
+	'armor',
+	'hull',
+	'anchoring',
+	'unanchoring',
+	'reinforced',
+])
 
 export const STRUCTURE_TABS: StructureTabDefinition[] = [
 	{ tab: 'citadels', label: 'Citadels' },
@@ -63,6 +71,10 @@ export function getStructureTabForTypeId(typeId: string | null | undefined): Str
 	}
 
 	return 'citadels'
+}
+
+export function isReinforcedStructureState(state: string): boolean {
+	return STRUCTURE_REINFORCED_STATES.has(state.trim().toLowerCase())
 }
 
 export interface StructureActor {

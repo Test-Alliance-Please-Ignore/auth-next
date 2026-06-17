@@ -1,14 +1,17 @@
 import { useQueries } from '@tanstack/react-query'
 import { AlertCircle, Building2, FileText, Users } from 'lucide-react'
+import { useMemo, useState } from 'react'
 import { Link, Navigate } from 'react-router-dom'
 
 import { Badge } from '@/components/ui/badge'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Container } from '@/components/ui/container'
+import { Label } from '@/components/ui/label'
 import { Progress } from '@/components/ui/progress'
 import { Skeleton } from '@/components/ui/skeleton'
 import { LoadingSpinner } from '@/components/ui/loading'
 import { PageHeader } from '@/components/ui/page-header'
+import { Select } from '@/components/ui/select'
 import { useHrAccessibleCorporations } from '@/features/hr'
 import { HrRoleBadge } from '@/features/hr/components/hr-role-badge'
 import { useAuth } from '@/hooks/useAuth'
@@ -19,8 +22,30 @@ import { applicationsApi } from '../api'
 import { Button } from '@/components/ui/button'
 import { useCorporationAccess, useMyCorporations } from '../../corporations/hooks'
 
+type CorporationTypeFilter = 'member' | 'alt' | 'special'
+
+function matchesCorporationType(
+	corporation: {
+		isMemberCorporation: boolean
+		isAltCorp: boolean
+		isSpecialPurpose: boolean
+	},
+	filter: CorporationTypeFilter
+): boolean {
+	if (filter === 'member') return corporation.isMemberCorporation
+	if (filter === 'alt') return corporation.isAltCorp
+	return corporation.isSpecialPurpose
+}
+
 export default function CorporationsPage() {
-	const { user, isAuthenticated, isLoading: authLoading } = useAuth()
+	const { user, isAuthenticated, isLoading: authLoading, permissions } = useAuth()
+	const isAuditor = useMemo(
+		() => permissions.some((permission) => permission.urn === 'urn:hr:auditor'),
+		[permissions]
+	)
+	const canFilterCorporations = user?.is_admin === true || isAuditor
+	const [corporationTypeFilter, setCorporationTypeFilter] =
+		useState<CorporationTypeFilter>('member')
 	const {
 		data: corporations = [],
 		isLoading: corporationsLoading,
@@ -28,8 +53,16 @@ export default function CorporationsPage() {
 	} = useHrAccessibleCorporations()
 	const { data: corporationAccess } = useCorporationAccess()
 	const { data: myCorporations = [] } = useMyCorporations()
+	const visibleCorporations = useMemo(() => {
+		if (!canFilterCorporations) {
+			return corporations
+		}
+		return corporations.filter((corporation) =>
+			matchesCorporationType(corporation, corporationTypeFilter)
+		)
+	}, [canFilterCorporations, corporationTypeFilter, corporations])
 	const applicationQueries = useQueries({
-		queries: corporations.map((corporation) => ({
+		queries: visibleCorporations.map((corporation) => ({
 			queryKey: ['hr', 'corporation-application-counts', corporation.corporationId],
 			queryFn: () => applicationsApi.getApplications({ corporationId: corporation.corporationId }),
 			staleTime: 1000 * 30, // 30s
@@ -102,8 +135,38 @@ export default function CorporationsPage() {
 				description="Select a corporation to access members and application review tools"
 			/>
 
+			{canFilterCorporations && (
+				<Card className="mt-6">
+					<CardContent className="flex flex-col gap-3 p-4 sm:flex-row sm:items-center">
+						<Label htmlFor="corporation-type-filter" className="shrink-0">
+							Show corporations
+						</Label>
+						<Select
+							inputId="corporation-type-filter"
+							value={corporationTypeFilter}
+							onValueChange={(value) => setCorporationTypeFilter(value as CorporationTypeFilter)}
+							options={[
+								{ value: 'member', label: 'Member Corps' },
+								{ value: 'alt', label: 'Alt Corps' },
+								{ value: 'special', label: 'Special Purpose Corps' },
+							]}
+							className="sm:w-72"
+							contentClassName="sm:w-72"
+						/>
+					</CardContent>
+				</Card>
+			)}
+
+			{canFilterCorporations && visibleCorporations.length === 0 ? (
+				<Card className="mt-6">
+					<CardContent className="py-10 text-center text-muted-foreground">
+						No corporations match the selected type.
+					</CardContent>
+				</Card>
+			) : null}
+
 			<div className="mt-6 grid grid-cols-1 gap-4 md:grid-cols-2">
-				{corporations.map((corporation, index) => {
+				{visibleCorporations.map((corporation, index) => {
 					const applicationQuery = applicationQueries[index]
 					const applications = applicationQuery?.data ?? []
 					const myCorporation = myCorporations.find((c) => c.corporationId === corporation.corporationId)
@@ -111,7 +174,9 @@ export default function CorporationsPage() {
 						(corp) => corp.corporationId === corporation.corporationId
 					)
 					const canAccessMembers =
-						user?.is_admin === true || accessibleCorporationIds.has(corporation.corporationId)
+						user?.is_admin === true ||
+						isAuditor ||
+						accessibleCorporationIds.has(corporation.corporationId)
 					const pendingCount = applications.filter(
 						(application) => application.status === 'pending'
 					).length

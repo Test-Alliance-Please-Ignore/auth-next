@@ -41,6 +41,7 @@ interface CharacterRefreshOutcome {
 	status: CharacterRefreshStatus
 	affiliationChanged?: boolean
 	authenticatedSuccess?: boolean
+	tokenInvalidated?: boolean
 	error?: string
 }
 
@@ -286,7 +287,7 @@ export class UserRefreshWorkflow extends WorkflowEntrypoint<Env, UserRefreshWork
 				}
 			)
 
-			const authenticatedFetchResult = await step.do(
+		const authenticatedFetchResult = await step.do(
 				`validate-character-token-${characterId}`,
 				CHARACTER_STEP_OPTIONS,
 				async () => {
@@ -315,6 +316,7 @@ export class UserRefreshWorkflow extends WorkflowEntrypoint<Env, UserRefreshWork
 				status: 'success',
 				affiliationChanged: updateCharacterPublicInfoResult.affiliationChanged,
 				authenticatedSuccess: authenticatedFetchResult.success,
+				tokenInvalidated: authenticatedFetchResult.tokenInvalidated,
 				error: authenticatedFetchResult.error,
 			}
 		} catch (error) {

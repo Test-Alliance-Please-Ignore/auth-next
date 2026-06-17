@@ -28,7 +28,7 @@ import type {
 	StructureOverviewMetrics,
 	StructureTab,
 } from '@repo/structures'
-import { getStructureTabForTypeId } from '@repo/structures'
+import { getStructureTabForTypeId, isReinforcedStructureState } from '@repo/structures'
 import type { EveCorporationData } from '@repo/eve-corporation-data'
 import {
 	STRUCTURE_PERMISSION_ROLES,
@@ -55,7 +55,6 @@ import {
 	type StructureFuelUsageHistory,
 } from './structure-fuel-history'
 
-const STRUCTURE_REINFORCED_STATES = new Set(['shield', 'armor', 'hull', 'anchoring', 'unanchoring'])
 const STRUCTURE_LIST_PAGE_SIZE_MAX = 100
 
 export type StructureListSortField =
@@ -522,10 +521,6 @@ function isFuelBelowThreshold(
 
 	const hoursRemaining = (new Date(structure.fuelExpires).getTime() - Date.now()) / (60 * 60 * 1000)
 	return hoursRemaining <= moduleConfig.lowFuelTimeThresholdHours
-}
-
-function isReinforcedStructureState(state: string): boolean {
-	return STRUCTURE_REINFORCED_STATES.has(state.toLowerCase())
 }
 
 function summarizeStructureSovereigntyHub(

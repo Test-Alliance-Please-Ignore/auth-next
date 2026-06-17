@@ -48,6 +48,15 @@ export interface Core {
 	): Promise<Map<string, Array<{ corporationId: string; corporationName: string }>>>
 	getUserAlliances(userId: string): Promise<Array<{ allianceId: string; allianceName: string }>>
 	getUserDiscordUserId(userId: string): Promise<string | null>
+	queueTokenInvalidationAlerts(input: {
+		userId: string
+		characterIds: string[]
+		source?: string
+	}): Promise<{
+		added: number
+		skipped: number
+		pendingCount: number
+	}>
 	updateCorporationAuthHealth(
 		corporationId: string,
 		input: {
@@ -80,6 +89,11 @@ export interface Core {
 	processPendingDiscordRefreshes(): Promise<{
 		processed: number
 		triggered: number
+		failed: number
+	}>
+	processPendingTokenInvalidationAlerts(): Promise<{
+		processed: number
+		sent: number
 		failed: number
 	}>
 	createUserBlacklist(input: {
