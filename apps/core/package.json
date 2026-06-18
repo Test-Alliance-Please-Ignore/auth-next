@@ -51,6 +51,7 @@
 		"@repo/hr": "workspace:*",
 		"@repo/industry": "workspace:*",
 		"@repo/inventory-display": "workspace:*",
+		"@repo/mumble": "workspace:*",
 		"@repo/legacy": "workspace:*",
 		"@repo/markets": "workspace:*",
 		"@repo/moon-scan": "workspace:*",

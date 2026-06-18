@@ -2,12 +2,19 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 
 import { disableBlacklistedUser } from './disable-blacklisted-user'
 
-const { enforceBlacklistedDiscordAccessMock } = vi.hoisted(() => ({
-	enforceBlacklistedDiscordAccessMock: vi.fn(),
-}))
+const { enforceBlacklistedDiscordAccessMock, enforceBlacklistedMumbleAccessMock } = vi.hoisted(
+	() => ({
+		enforceBlacklistedDiscordAccessMock: vi.fn(),
+		enforceBlacklistedMumbleAccessMock: vi.fn(),
+	})
+)
 
 vi.mock('../../../services/discord.service', () => ({
 	enforceBlacklistedDiscordAccess: enforceBlacklistedDiscordAccessMock,
+}))
+
+vi.mock('../../../services/mumble.service', () => ({
+	enforceBlacklistedMumbleAccess: enforceBlacklistedMumbleAccessMock,
 }))
 
 describe('disableBlacklistedUser', () => {
@@ -22,6 +29,7 @@ describe('disableBlacklistedUser', () => {
 			totalUpdated: 3,
 			totalFailed: 1,
 		})
+		enforceBlacklistedMumbleAccessMock.mockResolvedValue(undefined)
 
 		const result = await disableBlacklistedUser({
 			env: {} as any,
@@ -32,6 +40,11 @@ describe('disableBlacklistedUser', () => {
 		})
 
 		expect(enforceBlacklistedDiscordAccessMock).toHaveBeenCalledWith(
+			{} as any,
+			'user-1',
+			'User is blacklisted (user-refresh workflow enforcement)'
+		)
+		expect(enforceBlacklistedMumbleAccessMock).toHaveBeenCalledWith(
 			{} as any,
 			'user-1',
 			'User is blacklisted (user-refresh workflow enforcement)'

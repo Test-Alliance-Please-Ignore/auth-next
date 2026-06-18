@@ -2103,6 +2103,43 @@ export interface ResetServicePasswordResponse {
 	newPassword?: string
 }
 
+export interface MumbleConnectionInfo {
+	host: string
+	port: number
+}
+
+export interface MumbleAccountStatus {
+	subjectId: string
+	loginName: string
+	displayName: string
+	enabled: boolean
+	groups: string[]
+	hasPassword: boolean
+	lastAuthenticatedAt: string | null
+}
+
+export interface MumbleAccountResponse {
+	account: MumbleAccountStatus | null
+	connection: MumbleConnectionInfo
+}
+
+export interface MumbleProvisionResponse {
+	account: MumbleAccountStatus
+	password: string
+	connection: MumbleConnectionInfo
+}
+
+export interface MumbleSyncGroupsResponse {
+	synced: string[]
+	skipped: string[]
+}
+
+export interface MumbleDeleteResponse {
+	deleted: string[]
+	notFound: string[]
+	queued: string[]
+}
+
 export interface PasteRecord {
 	id: string
 	name: string
@@ -3344,6 +3381,10 @@ export class ApiClient {
 		return this.get(`/admin/users/${userId}`)
 	}
 
+	async getAdminMumbleAccount(userId: string): Promise<MumbleAccountResponse> {
+		return this.get(`/admin/users/${userId}/mumble`)
+	}
+
 	async getAdminUserIpHistory(userId: string): Promise<UserIpHistoryResponse> {
 		return this.get(`/admin/users/${userId}/ip-history`)
 	}
@@ -3378,6 +3419,14 @@ export class ApiClient {
 
 	async syncUser(userId: string): Promise<{ success: boolean; message: string }> {
 		return this.post(`/admin/users/${userId}/sync`, {})
+	}
+
+	async syncAdminMumbleGroups(userId: string): Promise<MumbleSyncGroupsResponse> {
+		return this.post(`/admin/users/${userId}/mumble/sync-groups`)
+	}
+
+	async deleteAdminMumbleAccount(userId: string): Promise<MumbleDeleteResponse> {
+		return this.delete(`/admin/users/${userId}/mumble`)
 	}
 
 	async deleteUserCharacter(userId: string, characterId: string): Promise<{ success: boolean }> {
@@ -4495,6 +4544,29 @@ export class ApiClient {
 	 */
 	async resetServicePassword(slug: string): Promise<ResetServicePasswordResponse> {
 		return this.post(`/services/${slug}/reset`)
+	}
+
+	// ===== Mumble API Methods =====
+
+	/**
+	 * Get current user's Mumble account status and connection info
+	 */
+	async getMumbleAccount(): Promise<MumbleAccountResponse> {
+		return this.get('/mumble/account')
+	}
+
+	/**
+	 * Provision a Mumble account. The returned password is shown exactly once.
+	 */
+	async createMumbleAccount(): Promise<MumbleProvisionResponse> {
+		return this.post('/mumble/account')
+	}
+
+	/**
+	 * Rotate the Mumble password. The returned password is shown exactly once.
+	 */
+	async resetMumblePassword(): Promise<{ password: string; connection: MumbleConnectionInfo }> {
+		return this.post('/mumble/account/reset-password')
 	}
 
 	// ===== Freight API Methods =====

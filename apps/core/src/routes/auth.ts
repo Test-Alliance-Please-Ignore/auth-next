@@ -53,6 +53,7 @@ interface AuthSessionUserView {
 		hasValidToken: boolean
 	}>
 	is_admin: boolean
+	roles: string[]
 	discord: Awaited<ReturnType<typeof getDiscordStatus>>
 	legacyAuth: {
 		userId: string | null
@@ -1047,6 +1048,7 @@ auth.get('/session', async (c) => {
 				mainCharacterId: user.mainCharacterId,
 				characters: user.characters,
 				is_admin: user.is_admin,
+				roles: user.roles,
 				discord: discordStatus,
 				legacyAuth,
 			},

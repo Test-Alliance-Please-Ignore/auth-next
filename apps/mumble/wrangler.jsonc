@@ -9,7 +9,14 @@
 	"observability": {
 		"enabled": true
 	},
-	"vars": {},
+	"vars": {
+		"NAME": "mumble",
+		"ENVIRONMENT": "production",
+		"SENTRY_RELEASE": "unknown",
+		// Base URL of the murmur-control control plane API
+		"MURMUR_CONTROL_API_URL": "http://localhost:8788"
+		// MURMUR_CONTROL_TOKEN is a secret: pnpm -F mumble wrangler secret put MURMUR_CONTROL_TOKEN
+	},
 	"durable_objects": {
 		"bindings": [
 			{

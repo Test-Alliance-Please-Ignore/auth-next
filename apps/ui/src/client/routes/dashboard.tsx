@@ -502,8 +502,8 @@ export default function DashboardPage() {
 				{/* Linked Characters */}
 				<Card variant="default">
 					<CardHeader>
-						<div className="flex justify-between items-center">
-							<div>
+						<div className="flex items-start justify-between gap-4">
+							<div className="space-y-1.5">
 								<CardTitle className="text-xl md:text-2xl">Linked Characters</CardTitle>
 								<CardDescription>All your authenticated EVE Online characters</CardDescription>
 							</div>

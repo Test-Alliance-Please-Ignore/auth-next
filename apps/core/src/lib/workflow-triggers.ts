@@ -6,6 +6,7 @@ import { users } from '../db/schema'
 import type { Env } from '../context'
 import type { createDb } from '../db'
 import type { UserDiscordRefreshWorkflowParams } from '../workflows/user-discord-refresh.workflow'
+import type { UserMumbleRefreshWorkflowParams } from '../workflows/user-mumble-refresh.workflow'
 
 const THROTTLE_MS = 5 * 60 * 1000 // 5 minutes
 
@@ -110,6 +111,83 @@ export async function triggerDiscordRefreshWorkflow({
 	} catch (error) {
 		logger.error('[WorkflowTrigger] Failed to trigger Discord refresh workflow', {
 			userId,
+			source,
+			error: error instanceof Error ? error.message : String(error),
+		})
+		return {
+			status: 'failed',
+			triggered: false,
+			error: error instanceof Error ? error.message : String(error),
+		}
+	}
+}
+
+export interface TriggerMumbleRefreshOptions {
+	env: Env
+	/** Users whose Mumble groups should be re-pushed (1 for events, N for bulk changes) */
+	userIds: string[]
+	/** Source identifier for observability (e.g. 'group-joined', 'group-left', 'group-deleted') */
+	source: string
+	/** Optional jitter delay (seconds) to stagger batch runs. Passed through to the workflow's sleep step. */
+	jitterDelaySeconds?: number
+}
+
+export interface TriggerMumbleRefreshResult {
+	status: 'triggered' | 'failed'
+	triggered: boolean
+	workflowInstanceId?: string
+	error?: string
+}
+
+export function createMumbleRefreshWorkflowId(source: string, userIds: string[]): string {
+	const normalizedSource = source
+		.toLowerCase()
+		.replace(/[^a-z0-9]+/g, '-')
+		.replace(/^-+|-+$/g, '')
+	const sourceToken = (normalizedSource || 'unknown').slice(0, 20)
+	const userToken =
+		userIds.length === 1
+			? (userIds[0]?.replace(/-/g, '').slice(0, 12) ?? 'unknown')
+			: `batch${userIds.length}`
+	const timeToken = Date.now().toString(36)
+	return `mumble-refresh-${sourceToken}-${userToken}-${timeToken}`
+}
+
+/**
+ * Trigger a Mumble group refresh workflow for one or more users.
+ * Returns immediately — does not block on workflow creation.
+ * Logs errors but does not throw.
+ */
+export async function triggerMumbleRefreshWorkflow({
+	env,
+	userIds,
+	source,
+	jitterDelaySeconds,
+}: TriggerMumbleRefreshOptions): Promise<TriggerMumbleRefreshResult> {
+	try {
+		const params: UserMumbleRefreshWorkflowParams = {
+			userIds,
+			source,
+			jitterDelaySeconds,
+		}
+		const instance = await env.USER_MUMBLE_REFRESH_WORKFLOW.create({
+			id: createMumbleRefreshWorkflowId(source, userIds),
+			params,
+		})
+
+		logger.info('[WorkflowTrigger] Triggered Mumble refresh workflow', {
+			userIds,
+			source,
+			workflowInstanceId: instance.id,
+		})
+		return {
+			status: 'triggered',
+			triggered: true,
+			workflowInstanceId: instance.id,
+		}
+	} catch (error) {
+		logger.error('[WorkflowTrigger] Failed to trigger Mumble refresh workflow', {
+			userIds,
 			source,
 			error: error instanceof Error ? error.message : String(error),
 		})

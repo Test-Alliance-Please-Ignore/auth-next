@@ -40,6 +40,7 @@ import industryOrdersRoutes from './routes/industry-orders'
 import inventoryRoutes from './routes/inventory'
 import inviteRoutes from './routes/invite'
 import loginRoutes from './routes/login'
+import mumbleRoutes from './routes/mumble'
 import sessionRoutes from './routes/session'
 import skillPlansRoutes from './routes/skill-plans'
 import skillsRoutes from './routes/skills'
@@ -138,6 +139,7 @@ const app = new Hono<App>()
 	.route('/api/srp', srpRoutes)
 	.route('/api/moon-scan', moonScanRoutes)
 	.route('/api/structures', structuresRoutes)
+	.route('/api/mumble', mumbleRoutes)
 	.route('/api/bills', billsUserRoutes)
 	.route('/api/session', sessionRoutes)
 	.route('/api/pastes', pastesRoutes)
@@ -990,3 +992,4 @@ export { CoreDO as Core }
 export { UserRefreshWorkflow } from './workflows/user-refresh.workflow'
 export { UserDiscordRefreshWorkflow } from './workflows/user-discord-refresh.workflow'
 export { DiscordMemberAuditWorkflow } from './workflows/discord-member-audit.workflow'
+export { UserMumbleRefreshWorkflow } from './workflows/user-mumble-refresh.workflow'

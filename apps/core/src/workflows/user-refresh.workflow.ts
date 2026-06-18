@@ -5,7 +5,9 @@ import { ROLE_CORE_ALLIANCE_MEMBER, ROLE_CORE_CORP_MEMBER } from '@repo/core'
 import { esiRetryOptions } from '@repo/workflow-utils'
 
 import { createDb } from '../db'
-import { userCharacters } from '../db/schema'
+import { userCharacters, users } from '../db/schema'
+import { triggerMumbleRefreshWorkflow } from '../lib/workflow-triggers'
+import { syncUsersMumbleProfiles } from '../services/mumble.service'
 import { checkUserBlacklisted, disableBlacklistedUser } from './steps/check-user-blacklisted'
 import {
 	reconcileCharacterCorporationMembership,
@@ -287,7 +289,7 @@ export class UserRefreshWorkflow extends WorkflowEntrypoint<Env, UserRefreshWork
 				}
 			)
 
-		const authenticatedFetchResult = await step.do(
+			const authenticatedFetchResult = await step.do(
 				`validate-character-token-${characterId}`,
 				CHARACTER_STEP_OPTIONS,
 				async () => {
@@ -425,6 +427,18 @@ export class UserRefreshWorkflow extends WorkflowEntrypoint<Env, UserRefreshWork
 				characterIds: characters.map((character) => character.characterId),
 			})
 
+			const mainCharacterId = await step.do('fetch-user-main-character', async () => {
+				const db = createDb(this.env.DATABASE_URL)
+				const user = await db.query.users.findFirst({
+					where: eq(users.id, userId),
+					columns: {
+						mainCharacterId: true,
+					},
+				})
+				return user?.mainCharacterId ?? null
+			})
+			steps['fetch-user-main-character'] = 'ok'
+
 			// Process characters in bounded parallel, isolating failures per character.
 			characterOutcomes = await runWithConcurrencyLimit(
 				characters,
@@ -463,6 +477,30 @@ export class UserRefreshWorkflow extends WorkflowEntrypoint<Env, UserRefreshWork
 						error: outcome.error,
 					})),
 			})
+
+			if (
+				mainCharacterId &&
+				characterOutcomes.some(
+					(outcome) =>
+						outcome.characterId === mainCharacterId &&
+						outcome.status === 'success' &&
+						outcome.affiliationChanged === true
+				)
+			) {
+				try {
+					await syncUsersMumbleProfiles(this.env, [userId])
+					console.log('[Workflow] Refreshed Mumble profile metadata for main character change', {
+						...logContext,
+						mainCharacterId,
+					})
+				} catch (error) {
+					console.warn('[Workflow] Failed to refresh Mumble profile metadata; continuing', {
+						...logContext,
+						mainCharacterId,
+						error: error instanceof Error ? error.message : String(error),
+					})
+				}
+			}
 
 			if (checkUserBlacklistedResult.isBlacklisted) {
 				steps['get-user-role-attachments'] = 'skipped'
@@ -504,8 +542,9 @@ export class UserRefreshWorkflow extends WorkflowEntrypoint<Env, UserRefreshWork
 				console.log('[Workflow] Got user role attachments', {
 					...logContext,
 					roleAttachments: getUserRoleAttachmentsResult.roleAttachments.length,
-					coreRoleAttachments: toCoreAttachmentSummaries(getUserRoleAttachmentsResult.roleAttachments)
-						.length,
+					coreRoleAttachments: toCoreAttachmentSummaries(
+						getUserRoleAttachmentsResult.roleAttachments
+					).length,
 				})
 
 				// Step 5: Attach user roles
@@ -564,10 +603,13 @@ export class UserRefreshWorkflow extends WorkflowEntrypoint<Env, UserRefreshWork
 					steps['reconcile-affiliation-group-memberships'] = 'ok'
 				} catch (error) {
 					steps['reconcile-affiliation-group-memberships'] = 'failed'
-					console.warn('[Workflow] Failed to reconcile affiliation-based group memberships; continuing', {
-						...logContext,
-						error: error instanceof Error ? error.message : String(error),
-					})
+					console.warn(
+						'[Workflow] Failed to reconcile affiliation-based group memberships; continuing',
+						{
+							...logContext,
+							error: error instanceof Error ? error.message : String(error),
+						}
+					)
 				}
 
 				if (groupCleanupResult.shouldStripGroups) {
@@ -576,6 +618,17 @@ export class UserRefreshWorkflow extends WorkflowEntrypoint<Env, UserRefreshWork
 						removedGroupCount: groupCleanupResult.removedGroupIds.length,
 						transferredOwnershipGroupCount: groupCleanupResult.transferredOwnershipGroupIds.length,
 						deletedGroupCount: groupCleanupResult.deletedGroupIds.length,
+					})
+
+					// Stripped memberships must also be removed from the user's projected
+					// Mumble groups. Wrapped in step.do so workflow replays do not
+					// re-fire the trigger; failures are logged by the trigger itself.
+					await step.do('trigger-mumble-group-refresh', async () => {
+						return triggerMumbleRefreshWorkflow({
+							env: this.env,
+							userIds: [userId],
+							source: 'affiliation-groups-stripped',
+						})
 					})
 				}
 			}
@@ -600,7 +653,9 @@ export class UserRefreshWorkflow extends WorkflowEntrypoint<Env, UserRefreshWork
 				characterCount,
 				success: characterOutcomes.filter((outcome) => outcome.status === 'success').length,
 				deleted: characterOutcomes.filter((outcome) => outcome.status === 'deleted').length,
-				affiliationChanged: characterOutcomes.filter((outcome) => outcome.affiliationChanged === true).length,
+				affiliationChanged: characterOutcomes.filter(
+					(outcome) => outcome.affiliationChanged === true
+				).length,
 				transientFailedAfterRetries: characterOutcomes.filter(
 					(outcome) => outcome.status === 'transient_failed_after_retries'
 				).length,

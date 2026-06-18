@@ -13,5 +13,8 @@
 		"@repo/eslint-config": "workspace:*",
 		"@repo/tools": "workspace:*",
 		"@repo/typescript-config": "workspace:*"
+	},
+	"dependencies": {
+		"zod": "4.1.12"
 	}
 }

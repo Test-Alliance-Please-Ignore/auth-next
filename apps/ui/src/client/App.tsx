@@ -23,6 +23,7 @@ import InventoryParserPage from './routes/inventory-parser'
 import InvitationsPage from './routes/invitations'
 import LandingPage from './routes/landing'
 import LegacyAuthCallbackPage from './routes/legacy-auth-callback'
+import MumblePage from './routes/mumble'
 import MyGroupsPage from './routes/my-groups'
 import PasteViewPage from './routes/paste-view'
 import PasteEditPage from './routes/paste-edit'
@@ -264,6 +265,7 @@ export default function App() {
 								}
 							/>
 							<Route path="/my-groups" element={<MyGroupsPage />} />
+							<Route path="/mumble" element={<MumblePage />} />
 							<Route path="/pastes" element={<PastesPage />} />
 							<Route path="/pastes/:id/edit" element={<PasteEditPage />} />
 

@@ -10,6 +10,7 @@ describe('/auth/session response shaping', () => {
 				mainCharacterId: '7001',
 				characters: [],
 				is_admin: false,
+				roles: ['urn:service:core:role:alliance-member'],
 				discord: null as never,
 				legacyAuth: {
 					userId: null,
@@ -40,6 +41,7 @@ describe('/auth/session response shaping', () => {
 				mainCharacterId: '7001',
 				characters: [],
 				is_admin: false,
+				roles: ['urn:service:core:role:alliance-member'],
 				discord: null,
 				legacyAuth: {
 					userId: null,

@@ -16,6 +16,7 @@ export interface User {
 		hasValidToken: boolean
 	}>
 	is_admin: boolean
+	roles?: string[]
 	permissions?: UserPermission[]
 	discord?: {
 		userId: string
@@ -54,6 +55,7 @@ export function useAuth() {
 			? null
 			: {
 					...data.user,
+					roles: data.user.roles ?? [],
 					permissions: data.permissions ?? [],
 			  }
 

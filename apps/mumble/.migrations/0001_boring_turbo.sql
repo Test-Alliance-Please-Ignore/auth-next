@@ -1,1 +1,0 @@
-ALTER TABLE "minder_users" ADD COLUMN "user_name" text NOT NULL;

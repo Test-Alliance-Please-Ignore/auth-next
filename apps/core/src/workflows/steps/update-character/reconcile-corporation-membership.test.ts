@@ -6,6 +6,9 @@ import type { WorkflowContext } from '../../context'
 
 const reconcileCharacterCorporationMembershipMock = vi.fn()
 const addPendingDiscordRefreshes = vi.fn()
+const hoisted = vi.hoisted(() => ({
+	triggerMumbleRefreshWorkflow: vi.fn(),
+}))
 
 const EVE_CORPORATION_DATA_NS = Symbol('EVE_CORPORATION_DATA')
 const CORE_NS = Symbol('CORE')
@@ -24,12 +27,17 @@ vi.mock('@repo/do-utils', () => ({
 	}),
 }))
 
+vi.mock('../../../lib/workflow-triggers', () => ({
+	triggerMumbleRefreshWorkflow: hoisted.triggerMumbleRefreshWorkflow,
+}))
+
 function createCtx(): WorkflowContext {
 	return {
 		db: {} as WorkflowContext['db'],
 		env: {
 			CORE: CORE_NS as unknown as WorkflowContext['env']['CORE'],
-			EVE_CORPORATION_DATA: EVE_CORPORATION_DATA_NS as unknown as WorkflowContext['env']['EVE_CORPORATION_DATA'],
+			EVE_CORPORATION_DATA:
+				EVE_CORPORATION_DATA_NS as unknown as WorkflowContext['env']['EVE_CORPORATION_DATA'],
 		} as WorkflowContext['env'],
 		refreshMode: 'event',
 		userId: 'user-123',
@@ -53,6 +61,11 @@ describe('reconcileCharacterCorporationMembership', () => {
 		expect(addPendingDiscordRefreshes).toHaveBeenCalledWith(['user-123'], {
 			source: 'corp-membership-reconciled',
 		})
+		expect(hoisted.triggerMumbleRefreshWorkflow).toHaveBeenCalledWith({
+			env: createCtx().env,
+			userIds: ['user-123'],
+			source: 'corp-membership-reconciled',
+		})
 		expect(result).toEqual({
 			removedFromCorporationIds: ['1234'],
 			addedToCorporationId: '5678',
@@ -68,5 +81,6 @@ describe('reconcileCharacterCorporationMembership', () => {
 		await reconcileCharacterCorporationMembership(createCtx(), '9001', '5678')
 
 		expect(addPendingDiscordRefreshes).not.toHaveBeenCalled()
+		expect(hoisted.triggerMumbleRefreshWorkflow).not.toHaveBeenCalled()
 	})
 })

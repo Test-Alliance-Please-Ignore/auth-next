@@ -28,7 +28,10 @@
 		"ENVIRONMENT": "production",
 		"SENTRY_RELEASE": "unknown",
 		"SENTRY_DSN": "https://8a3d31a3a18e448f97e19e3d9930547d@app.glitchtip.com/13711",
-		"LEGACY_AUTH_CALLBACK_URL": "https://pleaseignore.app/api/auth/legacy-auth/callback"
+		"LEGACY_AUTH_CALLBACK_URL": "https://pleaseignore.app/api/auth/legacy-auth/callback",
+		"MUMBLE_SERVER_ID": "default",
+		"MUMBLE_HOST": "voice.pleaseignore.app",
+		"MUMBLE_PORT": "64738"
 	},
 	"durable_objects": {
 		"bindings": [
@@ -156,6 +159,11 @@
 				"name": "MARKETS",
 				"class_name": "Markets",
 				"script_name": "markets"
+			},
+			{
+				"name": "MUMBLE",
+				"class_name": "Mumble",
+				"script_name": "mumble"
 			}
 		]
 	},
@@ -196,6 +204,11 @@
 			"name": "discord-member-audit-workflow",
 			"binding": "DISCORD_MEMBER_AUDIT_WORKFLOW",
 			"class_name": "DiscordMemberAuditWorkflow"
+		},
+		{
+			"name": "user-mumble-refresh-workflow",
+			"binding": "USER_MUMBLE_REFRESH_WORKFLOW",
+			"class_name": "UserMumbleRefreshWorkflow"
 		}
 	]
 }

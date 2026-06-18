@@ -4,6 +4,7 @@ import { getStub } from '@repo/do-utils'
 import { userCharacters, users } from '../db/schema'
 import { validateAndSyncCharacterTokenValidity } from '../lib/token-validity'
 import * as discordService from '../services/discord.service'
+import * as mumbleService from '../services/mumble.service'
 
 import type { SQL } from 'drizzle-orm'
 import type {
@@ -446,10 +447,14 @@ export class CoreRpcService {
 			}
 		}
 
-		// 4. Delete user (CASCADE handles userCharacters, userSessions, userPreferences)
+		// 4. Best-effort Mumble account deletion (disconnects sessions, unregisters
+		// the Murmur user). Never blocks auth-next user deletion.
+		await mumbleService.deleteMumbleAccounts(this.env, [userId])
+
+		// 5. Delete user (CASCADE handles userCharacters, userSessions, userPreferences)
 		await this.db.delete(users).where(eq(users.id, userId))
 
-		// 5. Return result
+		// 6. Return result
 		return {
 			success: true,
 			deletedUserId: userId,
