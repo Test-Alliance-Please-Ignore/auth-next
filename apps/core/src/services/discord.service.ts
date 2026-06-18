@@ -1616,6 +1616,17 @@ export async function updateUserDiscordRoles(
 
 	const updateResults = await discordStub.updateUserRoles(userId, updateRequests, allowRemoval)
 
+	// Best-effort nickname sync for servers that opt into nickname management.
+	// This is scoped to the servers included in this role refresh.
+	try {
+		await updateUserDiscordNickname(env, userId, serversToUpdate)
+	} catch (error) {
+		logger.error('[Discord] updateUserDiscordRoles: Nickname update failed', {
+			userId,
+			error: error instanceof Error ? error.message : String(error),
+		})
+	}
+
 	// Resolve role names for display/debug output.
 	const serverRecords = await db.query.discordServers.findMany({
 		where: and(inArray(discordServers.guildId, serversToUpdate), eq(discordServers.isActive, true)),
@@ -2123,7 +2134,11 @@ export async function enforceRevokedAuthorizationDiscordAccess(
  * @param env - Worker environment
  * @param userId - Core user ID
  */
-export async function updateUserDiscordNickname(env: Env, userId: string): Promise<void> {
+export async function updateUserDiscordNickname(
+	env: Env,
+	userId: string,
+	guildIds?: string[]
+): Promise<void> {
 	const db = createDb(env.DATABASE_URL)
 
 	// Get user
@@ -2146,9 +2161,17 @@ export async function updateUserDiscordNickname(env: Env, userId: string): Promi
 
 	const nickname = primaryChar.characterName
 
-	// Get all servers with nickname management enabled
+	// Get all servers with nickname management enabled.
+	// When guildIds are provided, only inspect that subset.
 	const serverSettings = await db.query.discordServers.findMany({
-		where: and(eq(discordServers.manageNicknames, true), eq(discordServers.isActive, true)),
+		where:
+			guildIds && guildIds.length > 0
+				? and(
+						eq(discordServers.manageNicknames, true),
+						eq(discordServers.isActive, true),
+						inArray(discordServers.guildId, guildIds)
+					)
+				: and(eq(discordServers.manageNicknames, true), eq(discordServers.isActive, true)),
 		columns: { guildId: true },
 	})
 

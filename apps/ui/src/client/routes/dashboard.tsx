@@ -362,6 +362,7 @@ export default function DashboardPage() {
 												onClick={() => handleRefreshCharacter(mainCharacter.characterId)}
 												disabled={refreshingCharacters.has(mainCharacter.characterId)}
 												aria-label={`Refresh ${mainCharacter.characterName} character data`}
+												title="Refresh character data"
 											>
 												<RefreshCw
 													className={`h-4 w-4 ${
@@ -620,6 +621,7 @@ export default function DashboardPage() {
 												onClick={() => handleRefreshCharacter(character.characterId)}
 												disabled={refreshingCharacters.has(character.characterId)}
 												aria-label={`Refresh ${character.characterName} character data`}
+												title="Refresh character data"
 											>
 												<RefreshCw
 													className={`h-4 w-4 ${
