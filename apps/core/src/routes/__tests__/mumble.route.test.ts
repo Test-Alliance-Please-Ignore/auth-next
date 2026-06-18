@@ -83,6 +83,17 @@ describe('GET /api/mumble/account', () => {
 		expect(body.account.loginName).toBe('pilot')
 		expect(body.connection).toEqual({ host: 'voice.test', port: 64738 })
 	})
+
+	it('falls back to an empty state when the Mumble RPC transport is unavailable', async () => {
+		getMumbleAccountMock.mockRejectedValue(new Error('Network connection lost.'))
+
+		const res = await makeApp(makeUser()).request('/api/mumble/account', {}, env)
+
+		expect(res.status).toBe(200)
+		const body = (await res.json()) as any
+		expect(body.account).toBeNull()
+		expect(body.connection).toEqual({ host: 'voice.test', port: 64738 })
+	})
 })
 
 describe('POST /api/mumble/account', () => {

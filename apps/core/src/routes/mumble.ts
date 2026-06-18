@@ -39,6 +39,10 @@ function mumbleErrorResponse(c: Context<App>, error: unknown) {
 	}
 }
 
+function isRpcTransportLoss(error: unknown): boolean {
+	return error instanceof Error && error.message.includes('Network connection lost')
+}
+
 /**
  * GET /api/mumble/account
  * Current user's Mumble account status plus connection info.
@@ -53,6 +57,16 @@ mumble.get('/account', requireAuth(), async (c) => {
 			connection: mumbleService.getMumbleConnectionInfo(c.env),
 		})
 	} catch (error) {
+		if (isRpcTransportLoss(error)) {
+			logger.warn('[Mumble] Account read fell back to empty state', {
+				userId: user.id,
+				error: error instanceof Error ? error.message : String(error),
+			})
+			return c.json({
+				account: null,
+				connection: mumbleService.getMumbleConnectionInfo(c.env),
+			})
+		}
 		const response = mumbleErrorResponse(c, error)
 		if (response) return response
 		throw error

@@ -1,4 +1,4 @@
-import { Check, Copy, KeyRound, Mic, RefreshCw, Users } from 'lucide-react'
+import { Check, Copy, ExternalLink, KeyRound, Mic, RefreshCw, Users } from 'lucide-react'
 import { useState } from 'react'
 
 import { Badge } from '@/components/ui/badge'
@@ -14,30 +14,22 @@ import {
 	useResetMumblePassword,
 } from '@/features/mumble/hooks'
 import { usePageTitle } from '@/hooks/usePageTitle'
+import toast from '@/lib/toast'
 
 import type { MumbleOneTimeCredentials } from '@/features/mumble/types'
 
-function CopyButton({ value }: { value: string }) {
-	const [copied, setCopied] = useState(false)
+function OneTimeCredentialsCard({ credentials }: { credentials: MumbleOneTimeCredentials }) {
+	const [copiedField, setCopiedField] = useState<string | null>(null)
+	const mumbleUrl = buildMumbleUrl(credentials)
 
-	const copy = async () => {
-		try {
-			await navigator.clipboard.writeText(value)
-			setCopied(true)
-			setTimeout(() => setCopied(false), 2000)
-		} catch {
-			// Clipboard access denied — user can select the text manually
-		}
+	const copyToClipboard = (text: string, field: string, label: string) => {
+		void navigator.clipboard.writeText(text).then(() => {
+			toast.success(`${label} copied`)
+			setCopiedField(field)
+			setTimeout(() => setCopiedField(null), 2000)
+		})
 	}
 
-	return (
-		<Button variant="ghost" size="sm" onClick={copy} aria-label="Copy to clipboard">
-			{copied ? <Check className="h-4 w-4 text-green-500" /> : <Copy className="h-4 w-4" />}
-		</Button>
-	)
-}
-
-function OneTimeCredentialsCard({ credentials }: { credentials: MumbleOneTimeCredentials }) {
 	return (
 		<Card variant="default" className="border-amber-500/50">
 			<CardHeader>
@@ -50,34 +42,86 @@ function OneTimeCredentialsCard({ credentials }: { credentials: MumbleOneTimeCre
 					regenerate a new one later if you lose it.
 				</CardDescription>
 			</CardHeader>
-			<CardContent className="space-y-3">
-				<div className="grid gap-2">
-					<div className="flex items-center justify-between rounded-md border px-3 py-2">
-						<div>
-							<div className="text-xs text-muted-foreground">Username</div>
-							<div className="font-mono">{credentials.loginName}</div>
-						</div>
-						<CopyButton value={credentials.loginName} />
-					</div>
-					<div className="flex items-center justify-between rounded-md border px-3 py-2">
-						<div>
-							<div className="text-xs text-muted-foreground">Password</div>
-							<div className="font-mono break-all">{credentials.password}</div>
-						</div>
-						<CopyButton value={credentials.password} />
-					</div>
-					<div className="flex items-center justify-between rounded-md border px-3 py-2">
-						<div>
-							<div className="text-xs text-muted-foreground">Server</div>
-							<div className="font-mono">
-								{credentials.connection.host}:{credentials.connection.port}
-							</div>
-						</div>
-						<CopyButton value={`${credentials.connection.host}:${credentials.connection.port}`} />
-					</div>
+			<CardContent className="space-y-1.5">
+				<CopyRow
+					label="Username"
+					value={credentials.loginName}
+					copied={copiedField === 'username'}
+					onCopy={() => copyToClipboard(credentials.loginName, 'username', 'Username')}
+				/>
+				<CopyRow
+					label="Password"
+					value={credentials.password}
+					copied={copiedField === 'password'}
+					onCopy={() => copyToClipboard(credentials.password, 'password', 'Password')}
+				/>
+				<CopyRow
+					label="Server"
+					value={`${credentials.connection.host}:${credentials.connection.port}`}
+					copied={copiedField === 'server'}
+					onCopy={() =>
+						copyToClipboard(
+							`${credentials.connection.host}:${credentials.connection.port}`,
+							'server',
+							'Server'
+					)
+				}
+				/>
+				<div className="pt-3">
+					<Button asChild variant="primary" className="justify-center gap-2">
+						<a href={mumbleUrl}>
+							<ExternalLink className="h-4 w-4" />
+							Connect in Mumble
+						</a>
+					</Button>
 				</div>
 			</CardContent>
 		</Card>
+	)
+}
+
+function buildMumbleUrl(credentials: MumbleOneTimeCredentials): string {
+	const username = encodeURIComponent(credentials.loginName)
+	const password = encodeURIComponent(credentials.password)
+	const host = encodeURIComponent(credentials.connection.host)
+	return `mumble://${username}:${password}@${host}:${credentials.connection.port}/`
+}
+
+function CopyRow({
+	label,
+	value,
+	copied,
+	onCopy,
+}: {
+	label: string
+	value: string
+	copied: boolean
+	onCopy: () => void
+}) {
+	return (
+		<div className="flex items-center gap-2">
+			<span className="w-20 shrink-0 text-xs text-muted-foreground">{label}</span>
+			<div
+				role="button"
+				tabIndex={0}
+				onClick={onCopy}
+				onKeyDown={(e) => {
+					if (e.key === 'Enter' || e.key === ' ') {
+						e.preventDefault()
+						onCopy()
+					}
+				}}
+				className={`flex cursor-pointer items-center gap-2.5 rounded-md border-2 px-3 py-2 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 ${
+					copied
+						? 'border-teal-500 bg-teal-500/30 shadow-[inset_0_0_0_1px_rgba(255,255,255,0.18)]'
+						: 'border-zinc-500/50 bg-zinc-500/20 shadow-sm hover:border-zinc-500/70 hover:bg-zinc-500/30'
+				}`}
+			>
+				<Copy className="h-4 w-4 shrink-0 text-muted-foreground" />
+				<span className="font-mono text-base">{value}</span>
+				{copied ? <Check className="h-4 w-4 shrink-0 text-teal-300" /> : null}
+			</div>
+		</div>
 	)
 }
 
