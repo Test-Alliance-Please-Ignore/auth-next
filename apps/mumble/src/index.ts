@@ -1,34 +1,14 @@
 import { Hono } from 'hono'
-import { useWorkersLogger } from 'workers-tagged-logger'
-
-import { withNotFound, withOnError, withSentry } from '@repo/hono-helpers'
 
 import { MumbleDO } from './durable-object'
 
 import type { App } from './context'
 
-const app = new Hono<App>()
-	.use(
-		'*',
-		// middleware
-		(c, next) =>
-			useWorkersLogger(c.env.NAME, {
-				environment: c.env.ENVIRONMENT,
-				release: c.env.SENTRY_RELEASE,
-			})(c, next)
-	)
+const app = new Hono<App>().get('/', async (c) => {
+	return c.text('Mumble Durable Object Worker')
+})
 
-	.onError(withOnError())
-	.notFound(withNotFound())
-
-	.get('/', async (c) => {
-		return c.text('Mumble Durable Object Worker')
-	})
-
-// Export Hono app wrapped with Sentry for automatic error tracking
-export default withSentry(app)
+export default app
 
 // Export Durable Object class
-// Note: Automatic Sentry instrumentation for DOs is not supported in Cloudflare Workers
-// Use manual captureException() in DO methods for error tracking
 export { MumbleDO as Mumble }

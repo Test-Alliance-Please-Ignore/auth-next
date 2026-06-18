@@ -16,6 +16,7 @@ import type {
 import type { Env } from '../context'
 
 const MAX_LOGIN_NAME_LENGTH = 60
+const USER_GROUP_LOOKUP_CONCURRENCY = 5
 
 /**
  * Derive a Mumble login name from a character name.
@@ -40,6 +41,31 @@ export function deriveLoginName(characterName: string, userId: string): string {
 
 function getMumbleStub(env: Env) {
 	return getStub<Mumble>(env.MUMBLE, env.MUMBLE_SERVER_ID)
+}
+
+async function runWithConcurrencyLimit<T, R>(
+	items: T[],
+	limit: number,
+	worker: (item: T) => Promise<R>
+): Promise<R[]> {
+	if (items.length === 0) return []
+
+	const results = new Array<R>(items.length)
+	let index = 0
+	const workerCount = Math.max(1, Math.min(limit, items.length))
+
+	await Promise.all(
+		Array.from({ length: workerCount }, async () => {
+			while (true) {
+				const currentIndex = index
+				index += 1
+				if (currentIndex >= items.length) return
+				results[currentIndex] = await worker(items[currentIndex])
+			}
+		})
+	)
+
+	return results
 }
 
 /** Connection info shown to users alongside their credentials. */
@@ -111,19 +137,51 @@ export async function syncUsersMumbleGroups(
 		return { synced: [], skipped: [] }
 	}
 
+	const lookupResults = await runWithConcurrencyLimit(
+		userIds,
+		USER_GROUP_LOOKUP_CONCURRENCY,
+		async (userId) => {
+			try {
+				return {
+					status: 'ok' as const,
+					userId,
+					groups: await getUserGroupNames(env, userId),
+				}
+			} catch (error) {
+				logger.error('[Mumble] Failed to gather groups for user', {
+					userId,
+					error: error instanceof Error ? error.message : String(error),
+				})
+				return { status: 'failed' as const, userId }
+			}
+		}
+	)
+
 	const assignments: MumbleGroupAssignment[] = []
-	for (const userId of userIds) {
-		try {
-			assignments.push({ subjectId: userId, groups: await getUserGroupNames(env, userId) })
-		} catch (error) {
-			logger.error('[Mumble] Failed to gather groups for user', {
-				userId,
-				error: error instanceof Error ? error.message : String(error),
-			})
+	const failedUserIds: string[] = []
+	for (const result of lookupResults) {
+		if (result.status === 'ok') {
+			assignments.push({ subjectId: result.userId, groups: result.groups })
+		} else {
+			failedUserIds.push(result.userId)
 		}
 	}
 
-	return getMumbleStub(env).syncUserGroups(env.MUMBLE_SERVER_ID, assignments, reason)
+	if (failedUserIds.length > 0 && assignments.length === 0) {
+		throw new Error(
+			`Failed to gather groups for ${failedUserIds.length} user(s): ${failedUserIds.join(', ')}`
+		)
+	}
+
+	const syncResult = await getMumbleStub(env).syncUserGroups(env.MUMBLE_SERVER_ID, assignments, reason)
+
+	if (failedUserIds.length > 0) {
+		throw new Error(
+			`Failed to gather groups for ${failedUserIds.length} user(s): ${failedUserIds.join(', ')}`
+		)
+	}
+
+	return syncResult
 }
 
 /**

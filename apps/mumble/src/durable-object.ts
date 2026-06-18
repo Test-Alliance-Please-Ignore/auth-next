@@ -281,7 +281,11 @@ export class MumbleDO extends DurableObject<Env> implements Mumble {
 		}
 
 		const state = await client.getUserState(serverId)
-		const known = new Set(state.users.map((user) => user.subjectId))
+		const known = new Set(
+			state.users
+				.filter((user) => user.status === 'reconciled')
+				.map((user) => user.subjectId)
+		)
 		for (const subjectId of subjectIds) {
 			if (known.has(subjectId)) provisioned.add(subjectId)
 		}

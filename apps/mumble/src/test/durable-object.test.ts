@@ -18,6 +18,7 @@ const SNAPSHOT = {
 	displayName: 'Pilot One',
 	enabled: true,
 	groups: ['alpha'],
+	status: 'reconciled',
 	comment: null,
 	hasPassword: true,
 	lastCertificateHash: null,
@@ -251,12 +252,16 @@ describe('MumbleDO.syncUserGroups', () => {
 		const client = makeFakeClient()
 		client.getUserState.mockResolvedValue({
 			serverId: 'srv',
-			users: provisionedIds.map((subjectId) => ({ ...SNAPSHOT, subjectId })),
+			users: [
+				...provisionedIds.map((subjectId) => ({ ...SNAPSHOT, subjectId, status: 'reconciled' })),
+				{ ...SNAPSHOT, subjectId: 'queued-user', status: 'queued' },
+			],
 		})
 		client.assignGroups.mockResolvedValue({ serverId: 'srv', disconnectedSessions: 0, updated: [] })
 
 		const assignments = [
 			...provisionedIds.map((subjectId) => ({ subjectId, groups: ['alpha'] })),
+			{ subjectId: 'queued-user', groups: ['gamma'] },
 			{ subjectId: 'unprovisioned', groups: ['beta'] },
 		]
 		const result = await MumbleDO.prototype.syncUserGroups.call(
@@ -272,7 +277,7 @@ describe('MumbleDO.syncUserGroups', () => {
 		expect(client.assignGroups.mock.calls[0]![1]).toHaveLength(200)
 		expect(client.assignGroups.mock.calls[1]![1]).toHaveLength(50)
 		expect(result.synced).toHaveLength(250)
-		expect(result.skipped).toEqual(['unprovisioned'])
+		expect(result.skipped).toEqual(['queued-user', 'unprovisioned'])
 	})
 
 	it('returns immediately for empty input', async () => {
