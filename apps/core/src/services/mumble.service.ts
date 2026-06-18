@@ -3,6 +3,7 @@ import { getStub } from '@repo/do-utils'
 import { logger } from '@repo/hono-helpers'
 
 import { createDb } from '../db'
+import { isMumbleFeatureEnabled } from '../lib/mumble-feature'
 import { managedCorporations, userCharacters, users } from '../db/schema'
 
 import type { EveCorporationData } from '@repo/eve-corporation-data'
@@ -300,6 +301,14 @@ export async function enforceBlacklistedMumbleAccess(
 	userId: string,
 	reason = 'user-blacklisted'
 ): Promise<void> {
+	if (!(await isMumbleFeatureEnabled(env))) {
+		logger.info('[Mumble] Skipped blacklist enforcement because feature is disabled', {
+			userId,
+			reason,
+		})
+		return
+	}
+
 	const account = await getMumbleAccount(env, userId).catch((error) => {
 		logger.error('[Mumble] Failed to read account during blacklist enforcement', {
 			userId,
@@ -346,6 +355,13 @@ export async function syncUsersMumbleProfiles(
 ): Promise<MumbleSyncProfilesResult> {
 	if (userIds.length === 0) {
 		return { synced: [], skipped: [] }
+	}
+
+	if (!(await isMumbleFeatureEnabled(env))) {
+		logger.info('[Mumble] Skipped profile sync because feature is disabled', {
+			userIds,
+		})
+		return { synced: [], skipped: userIds }
 	}
 
 	const lookupResults = await runWithConcurrencyLimit(
@@ -407,6 +423,13 @@ export async function deleteMumbleAccounts(
 	userIds: string[]
 ): Promise<MumbleDeleteResult | null> {
 	try {
+		if (!(await isMumbleFeatureEnabled(env))) {
+			logger.info('[Mumble] Skipped account deletion because feature is disabled', {
+				userIds,
+			})
+			return { deleted: [], notFound: [], queued: [] }
+		}
+
 		const result = await getMumbleStub(env).deleteAccounts(env.MUMBLE_SERVER_ID, userIds)
 		if (result.queued.length > 0) {
 			logger.warn('[Mumble] Account deletion queued for retry', {

@@ -2,6 +2,7 @@ import { eq } from '@repo/db-utils'
 import { logger } from '@repo/hono-helpers'
 
 import { users } from '../db/schema'
+import { isMumbleFeatureEnabled } from './mumble-feature'
 
 import type { Env } from '../context'
 import type { createDb } from '../db'
@@ -133,7 +134,7 @@ export interface TriggerMumbleRefreshOptions {
 }
 
 export interface TriggerMumbleRefreshResult {
-	status: 'triggered' | 'failed'
+	status: 'triggered' | 'failed' | 'skipped'
 	triggered: boolean
 	workflowInstanceId?: string
 	error?: string
@@ -165,6 +166,17 @@ export async function triggerMumbleRefreshWorkflow({
 	jitterDelaySeconds,
 }: TriggerMumbleRefreshOptions): Promise<TriggerMumbleRefreshResult> {
 	try {
+		if (!(await isMumbleFeatureEnabled(env))) {
+			logger.info('[WorkflowTrigger] Skipped Mumble refresh workflow because feature is disabled', {
+				userIds,
+				source,
+			})
+			return {
+				status: 'skipped',
+				triggered: false,
+			}
+		}
+
 		const params: UserMumbleRefreshWorkflowParams = {
 			userIds,
 			source,
