@@ -13,9 +13,12 @@ import type {
 	MumbleDeleteResult,
 	MumbleErrorCode,
 	MumbleGroupAssignment,
+	MumbleProfileAssignment,
 	MumbleProvisionInput,
 	MumbleProvisionResult,
 	MumbleSyncGroupsResult,
+	MumbleSyncProfilesResult,
+	UserProjectionSnapshot,
 } from '@repo/mumble'
 import type { Env } from './context'
 
@@ -282,14 +285,27 @@ export class MumbleDO extends DurableObject<Env> implements Mumble {
 
 		const state = await client.getUserState(serverId)
 		const known = new Set(
-			state.users
-				.filter((user) => user.status === 'reconciled')
-				.map((user) => user.subjectId)
+			state.users.filter((user) => user.status === 'reconciled').map((user) => user.subjectId)
 		)
 		for (const subjectId of subjectIds) {
 			if (known.has(subjectId)) provisioned.add(subjectId)
 		}
 		return provisioned
+	}
+
+	/**
+	 * Fetch reconciled projected users for the given server, keyed by subjectId.
+	 * Only reconciled rows are authoritative enough for profile/group sync.
+	 */
+	private async getReconciledProjectedUsers(
+		serverId: string
+	): Promise<Map<string, UserProjectionSnapshot>> {
+		const state = await this.client().getUserState(serverId)
+		return new Map(
+			state.users
+				.filter((user) => user.status === 'reconciled')
+				.map((user) => [user.subjectId, user])
+		)
 	}
 
 	async syncUserGroups(
@@ -321,6 +337,45 @@ export class MumbleDO extends DurableObject<Env> implements Mumble {
 				return { synced: toSync.map((assignment) => assignment.subjectId), skipped }
 			} catch (error) {
 				this.handleError(error, 'syncUserGroups', serverId)
+			}
+		})
+	}
+
+	async syncAccountProfiles(
+		serverId: string,
+		assignments: MumbleProfileAssignment[]
+	): Promise<MumbleSyncProfilesResult> {
+		if (assignments.length === 0) {
+			return { synced: [], skipped: [] }
+		}
+
+		return this.serialize(async () => {
+			try {
+				const reconciled = await this.getReconciledProjectedUsers(serverId)
+				const toSync = assignments.filter((assignment) => reconciled.has(assignment.subjectId))
+				const skipped = assignments
+					.filter((assignment) => !reconciled.has(assignment.subjectId))
+					.map((assignment) => assignment.subjectId)
+
+				const client = this.client()
+				for (const batch of chunk(toSync, CHUNK_SIZE)) {
+					const accounts = batch.map((assignment) => {
+						const current = reconciled.get(assignment.subjectId)!
+						return {
+							subjectId: current.subjectId,
+							loginName: current.loginName,
+							displayName: assignment.displayName,
+							enabled: current.enabled,
+							groups: current.groups,
+							...(current.comment !== null ? { comment: current.comment } : {}),
+						}
+					})
+					await client.batchSync(serverId, accounts)
+				}
+
+				return { synced: toSync.map((assignment) => assignment.subjectId), skipped }
+			} catch (error) {
+				this.handleError(error, 'syncAccountProfiles', serverId)
 			}
 		})
 	}

@@ -1,5 +1,5 @@
 import { enforceBlacklistedDiscordAccess } from '../../../services/discord.service'
-
+import { enforceBlacklistedMumbleAccess } from '../../../services/mumble.service'
 import { getWorkflowLogger } from '../../context'
 
 import type { WorkflowContext } from '../../context'
@@ -15,6 +15,12 @@ export async function disableBlacklistedUser(
 ): Promise<DisableBlacklistedUserResult> {
 	const logger = getWorkflowLogger(ctx, 'disable-blacklisted-user')
 	const enforcement = await enforceBlacklistedDiscordAccess(
+		ctx.env,
+		ctx.userId,
+		'User is blacklisted (user-refresh workflow enforcement)'
+	)
+
+	await enforceBlacklistedMumbleAccess(
 		ctx.env,
 		ctx.userId,
 		'User is blacklisted (user-refresh workflow enforcement)'

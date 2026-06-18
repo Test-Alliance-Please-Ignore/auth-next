@@ -7,6 +7,7 @@ import {
 	ChevronDown,
 	ExternalLink,
 	History,
+	Mic,
 	LogOut,
 	MessageSquare,
 	MessageSquarePlus,
@@ -16,6 +17,7 @@ import {
 	ShieldOff,
 	Trash2,
 	Users,
+	Server,
 	XCircle,
 } from 'lucide-react'
 import { useEffect, useState } from 'react'
@@ -33,6 +35,7 @@ import {
 	DialogHeader,
 	DialogTitle,
 } from '@/components/ui/dialog'
+import { ConfirmationDialog } from '@/components/ui/confirmation-dialog'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import {
@@ -48,14 +51,17 @@ import { AddHRNoteDialog } from '@/features/applications/components/add-hr-note-
 import { HRNoteCard } from '@/features/applications/components/hr-note-card'
 import { useHRNotes } from '@/features/applications/hooks'
 import {
+	useAdminMumbleAccount,
 	useAdminUser,
 	useAdminUserIpHistory,
+	useDeleteAdminMumbleAccount,
 	useClearUserSessions,
 	useDeleteUserCharacter,
 	useRevokeDiscordLink,
 	useSetUserAdmin,
 	useSetUserPrimaryCharacter,
 	useSyncUser,
+	useSyncAdminMumbleGroups,
 	useUnlinkDiscordAccount,
 	useUpdateDiscordAccess,
 } from '@/hooks/useAdminUsers'
@@ -89,6 +95,9 @@ export default function UserDetailPage() {
 
 	const { data: user, isLoading, refetch } = useAdminUser(userId!)
 	const { data: ipHistoryData } = useAdminUserIpHistory(userId!)
+	const { data: mumbleAccountData, isLoading: isLoadingMumbleAccount } = useAdminMumbleAccount(
+		userId!
+	)
 	const setUserAdmin = useSetUserAdmin()
 	const deleteCharacter = useDeleteUserCharacter()
 	const setPrimaryCharacter = useSetUserPrimaryCharacter()
@@ -97,6 +106,8 @@ export default function UserDetailPage() {
 	const clearSessions = useClearUserSessions()
 	const syncUser = useSyncUser()
 	const updateDiscordAccess = useUpdateDiscordAccess()
+	const syncMumbleGroups = useSyncAdminMumbleGroups()
+	const deleteMumbleAccount = useDeleteAdminMumbleAccount()
 	const { data: managedCorporations = [] } = useCorporations()
 	const managedCorporationIds = new Set(managedCorporations.map((corp) => corp.corporationId))
 
@@ -142,6 +153,7 @@ export default function UserDetailPage() {
 	const [clearSessionsDialogOpen, setClearSessionsDialogOpen] = useState(false)
 	const [syncUserDialogOpen, setSyncUserDialogOpen] = useState(false)
 	const [updateDiscordDialogOpen, setUpdateDiscordDialogOpen] = useState(false)
+	const [deleteMumbleDialogOpen, setDeleteMumbleDialogOpen] = useState(false)
 	const [blacklistDialogOpen, setBlacklistDialogOpen] = useState(false)
 	const [removeBlacklistDialogOpen, setRemoveBlacklistDialogOpen] = useState(false)
 	const [blacklistReason, setBlacklistReason] = useState('')
@@ -394,6 +406,44 @@ export default function UserDetailPage() {
 			setMessage({
 				type: 'error',
 				text: error instanceof Error ? error.message : 'Failed to update Discord access',
+			})
+			setTimeout(() => setMessage(null), 5000)
+		}
+	}
+
+	const handleSyncMumbleGroups = async () => {
+		try {
+			const result = await syncMumbleGroups.mutateAsync(user.id)
+			setMessage({
+				type: 'success',
+				text: `Mumble groups synced successfully (${result.synced.length} updated, ${result.skipped.length} skipped).`,
+			})
+			setTimeout(() => setMessage(null), 4000)
+		} catch (error) {
+			setMessage({
+				type: 'error',
+				text: error instanceof Error ? error.message : 'Failed to sync Mumble groups',
+			})
+			setTimeout(() => setMessage(null), 5000)
+		}
+	}
+
+	const handleDeleteMumbleConfirm = async () => {
+		try {
+			const result = await deleteMumbleAccount.mutateAsync(user.id)
+			setDeleteMumbleDialogOpen(false)
+			setMessage({
+				type: 'success',
+				text:
+					result.queued.length > 0
+						? 'Mumble account deletion queued for retry'
+						: 'Mumble account deleted successfully',
+			})
+			setTimeout(() => setMessage(null), 4000)
+		} catch (error) {
+			setMessage({
+				type: 'error',
+				text: error instanceof Error ? error.message : 'Failed to delete Mumble account',
 			})
 			setTimeout(() => setMessage(null), 5000)
 		}
@@ -860,6 +910,120 @@ export default function UserDetailPage() {
 				</Card>
 			)}
 
+			{/* Mumble Services */}
+			{!isLoadingMumbleAccount && mumbleAccountData?.account && (
+				<Card>
+					<CardHeader>
+						<CardTitle>Services</CardTitle>
+						<CardDescription>Mumble account status and admin controls</CardDescription>
+					</CardHeader>
+					<CardContent>
+						<Card variant="flat" className="border-border/50">
+							<CardContent className="p-4">
+								<div className="flex flex-col gap-4">
+									<div className="flex items-start justify-between gap-4">
+										<div className="flex items-center gap-3 min-w-0">
+											<div className="flex h-12 w-12 items-center justify-center rounded-full bg-muted">
+												<Mic className="h-6 w-6 text-muted-foreground" />
+											</div>
+											<div className="min-w-0">
+												<div className="flex flex-wrap items-center gap-2">
+													<p className="font-semibold text-lg">Mumble</p>
+													<Badge
+														variant="default"
+														className={cn(
+															'text-xs',
+															mumbleAccountData.account.enabled
+																? 'bg-green-500/20 text-green-500'
+																: 'bg-muted text-muted-foreground'
+														)}
+													>
+														{mumbleAccountData.account.enabled ? 'Active' : 'Disabled'}
+													</Badge>
+												</div>
+												<p className="text-sm text-muted-foreground">
+													Login: {mumbleAccountData.account.loginName}
+												</p>
+												<p className="text-xs text-muted-foreground">
+													Display: {mumbleAccountData.account.displayName}
+												</p>
+											</div>
+										</div>
+										<div className="flex items-center gap-2">
+											<Button
+												variant="primary"
+												size="sm"
+												onClick={handleSyncMumbleGroups}
+												disabled={syncMumbleGroups.isPending}
+												showIcon={false}
+											>
+												<RefreshCw
+													className={cn(
+														'h-4 w-4',
+														syncMumbleGroups.isPending && 'animate-spin'
+													)}
+												/>
+												Sync Groups
+											</Button>
+											<Button
+												variant="destructive"
+												size="sm"
+												onClick={() => setDeleteMumbleDialogOpen(true)}
+												disabled={deleteMumbleAccount.isPending}
+												showIcon={false}
+											>
+												<Trash2 className="h-4 w-4" />
+												Delete Account
+											</Button>
+										</div>
+									</div>
+
+									<div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
+										<div>
+											<div className="text-xs uppercase tracking-wide text-muted-foreground">
+												Status
+											</div>
+											<div className="text-sm font-medium mt-1">
+												{mumbleAccountData.account.enabled ? 'Enabled' : 'Disabled'}
+											</div>
+										</div>
+										<div>
+											<div className="text-xs uppercase tracking-wide text-muted-foreground">
+												Groups
+											</div>
+											<div className="text-sm font-medium mt-1">
+												{mumbleAccountData.account.groups.length}
+											</div>
+										</div>
+										<div>
+											<div className="text-xs uppercase tracking-wide text-muted-foreground">
+												Connection
+											</div>
+											<div className="text-sm font-medium mt-1 flex items-center gap-1">
+												<Server className="h-3.5 w-3.5 text-muted-foreground" />
+												<span>
+													{mumbleAccountData.connection.host}:{mumbleAccountData.connection.port}
+												</span>
+											</div>
+										</div>
+										<div>
+											<div className="text-xs uppercase tracking-wide text-muted-foreground">
+												Last Auth
+											</div>
+											<div className="text-sm font-medium mt-1">
+												{mumbleAccountData.account.lastAuthenticatedAt
+													? formatRelativeTime(mumbleAccountData.account.lastAuthenticatedAt)
+													: 'Never'}
+											</div>
+										</div>
+									</div>
+								</div>
+							</CardContent>
+						</Card>
+					</CardContent>
+				</Card>
+			)}
+
 			{/* Blacklist Information */}
 			{activeBlacklist && (
 				<Card className="border-red-500/20 bg-red-500/5">
@@ -1211,6 +1375,18 @@ export default function UserDetailPage() {
 					</DialogFooter>
 				</DialogContent>
 			</Dialog>
+
+			{/* Delete Mumble Account Confirmation Dialog */}
+			<ConfirmationDialog
+				open={deleteMumbleDialogOpen}
+				title="Delete Mumble Account"
+				description={`Are you sure you want to delete the Mumble account for ${primaryCharacterName}? This will remove the user's voice account from the Mumble control plane and clear access to the service. If the control plane is temporarily unavailable, the deletion may be queued for retry.`}
+				confirmLabel="Delete Mumble Account"
+				intent="destructive"
+				pending={deleteMumbleAccount.isPending}
+				onCancel={() => setDeleteMumbleDialogOpen(false)}
+				onConfirm={handleDeleteMumbleConfirm}
+			/>
 
 			{/* Clear Sessions Confirmation Dialog */}
 			<Dialog open={clearSessionsDialogOpen} onOpenChange={setClearSessionsDialogOpen}>

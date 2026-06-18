@@ -1,5 +1,6 @@
 import { getStub } from '@repo/do-utils'
 
+import { triggerMumbleRefreshWorkflow } from '../../../lib/workflow-triggers'
 import { getWorkflowLogger } from '../../context'
 
 import type { Core } from '@repo/core'
@@ -37,6 +38,11 @@ export async function reconcileCharacterCorporationMembership(
 		if (!ctx.suppressDiscordRefresh) {
 			const coreStub = getStub<Core>(ctx.env.CORE, 'default')
 			await coreStub.addPendingDiscordRefreshes([ctx.userId], {
+				source: 'corp-membership-reconciled',
+			})
+			await triggerMumbleRefreshWorkflow({
+				env: ctx.env,
+				userIds: [ctx.userId],
 				source: 'corp-membership-reconciled',
 			})
 		}

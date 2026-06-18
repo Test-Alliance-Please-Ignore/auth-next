@@ -14,12 +14,21 @@ import { logger } from '@repo/hono-helpers'
 
 import { createDb } from '../db'
 import { corporationDiscordServers, userActivityLog, userCharacters, users } from '../db/schema'
+import { waitUntilWithTelemetry } from '../lib/background-task'
 import { getIpHashMatches, getUserIpHistory } from '../lib/ip-history'
 import { recordUserIpAddress } from '../lib/ip-tracking'
 import { validatePagination } from '../lib/validation'
 import { triggerUserRefreshWorkflow } from '../lib/workflow-triggers'
 import { requireAdmin, requireAuth } from '../middleware/session'
 import * as discordService from '../services/discord.service'
+import {
+	deleteMumbleAccounts,
+	enforceBlacklistedMumbleAccess,
+	getMumbleAccount,
+	getMumbleConnectionInfo,
+	syncUsersMumbleGroups,
+	syncUsersMumbleProfiles,
+} from '../services/mumble.service'
 import { SessionService } from '../services/session.service'
 import { UserService } from '../services/user.service'
 
@@ -205,9 +214,7 @@ async function rejectUnpaidSrpRequestsForBlacklistedUser(
 app.get('/fleets/test', requireAuth(), requireAdmin(), async (c) => {
 	const baseUrl =
 		c.env.FLEETS_MONITOR_BASE_URL?.trim() ||
-		(new URL(c.req.url).origin.includes('localhost')
-			? 'http://127.0.0.1:8788'
-			: '')
+		(new URL(c.req.url).origin.includes('localhost') ? 'http://127.0.0.1:8788' : '')
 	return c.html(buildFleetMonitorTestPageHtml(baseUrl))
 })
 
@@ -404,7 +411,10 @@ app.post('/legacy/migrations/:id/dismiss', requireAuth(), requireAdmin(), async 
 app.post('/legacy/migrations/:id/resolve', requireAuth(), requireAdmin(), async (c) => {
 	const id = c.req.param('id')
 	const user = c.get('user')!
-	const body = (await c.req.json()) as { decision: 'accept' | 'reject' | 'needs_review'; note?: string }
+	const body = (await c.req.json()) as {
+		decision: 'accept' | 'reject' | 'needs_review'
+		note?: string
+	}
 	const stub = getStub<Legacy>(c.env.LEGACY, 'default')
 	const result = await stub.resolveMigration(id, body, user.id)
 	if (!result) return c.json({ error: 'Migration queue item not found' }, 404)
@@ -436,7 +446,8 @@ app.post('/legacy/import-character-links', requireAuth(), requireAdmin(), async 
 		),
 	})
 	const parsed = schema.safeParse(await c.req.json())
-	if (!parsed.success) return c.json({ error: 'Invalid payload', details: parsed.error.flatten() }, 400)
+	if (!parsed.success)
+		return c.json({ error: 'Invalid payload', details: parsed.error.flatten() }, 400)
 
 	const { modernUserId, legacyAuthUserId, characters } = parsed.data
 	const uniqueCharacters = [...new Map(characters.map((ch) => [ch.characterId, ch])).values()]
@@ -516,7 +527,8 @@ app.post('/legacy/import-notes', requireAuth(), requireAdmin(), async (c) => {
 		),
 	})
 	const parsed = schema.safeParse(await c.req.json())
-	if (!parsed.success) return c.json({ error: 'Invalid payload', details: parsed.error.flatten() }, 400)
+	if (!parsed.success)
+		return c.json({ error: 'Invalid payload', details: parsed.error.flatten() }, 400)
 
 	const hrStub = getStub<Hr>(c.env.HR, 'default')
 	const primaryCharacter = user.characters.find((ch) => ch.is_primary)
@@ -580,7 +592,8 @@ app.post('/legacy/import-ip-associations', requireAuth(), requireAdmin(), async 
 		),
 	})
 	const parsed = schema.safeParse(await c.req.json())
-	if (!parsed.success) return c.json({ error: 'Invalid payload', details: parsed.error.flatten() }, 400)
+	if (!parsed.success)
+		return c.json({ error: 'Invalid payload', details: parsed.error.flatten() }, 400)
 
 	const aggregatedByIp = new Map<
 		string,
@@ -593,7 +606,11 @@ app.post('/legacy/import-ip-associations', requireAuth(), requireAdmin(), async 
 		const parsedLastSeenAt = row.lastSeenAt ? new Date(row.lastSeenAt) : null
 		const existing = aggregatedByIp.get(ipAddress)
 		if (!existing) {
-			aggregatedByIp.set(ipAddress, { ipAddress, firstSeenAt: parsedFirstSeenAt, lastSeenAt: parsedLastSeenAt })
+			aggregatedByIp.set(ipAddress, {
+				ipAddress,
+				firstSeenAt: parsedFirstSeenAt,
+				lastSeenAt: parsedLastSeenAt,
+			})
 			continue
 		}
 		const firstSeenAt =
@@ -601,13 +618,13 @@ app.post('/legacy/import-ip-associations', requireAuth(), requireAdmin(), async 
 				? existing.firstSeenAt < parsedFirstSeenAt
 					? existing.firstSeenAt
 					: parsedFirstSeenAt
-				: existing.firstSeenAt ?? parsedFirstSeenAt
+				: (existing.firstSeenAt ?? parsedFirstSeenAt)
 		const lastSeenAt =
 			existing.lastSeenAt && parsedLastSeenAt
 				? existing.lastSeenAt > parsedLastSeenAt
 					? existing.lastSeenAt
 					: parsedLastSeenAt
-				: existing.lastSeenAt ?? parsedLastSeenAt
+				: (existing.lastSeenAt ?? parsedLastSeenAt)
 		aggregatedByIp.set(ipAddress, { ipAddress, firstSeenAt, lastSeenAt })
 	}
 	const uniqueIps = [...aggregatedByIp.values()]
@@ -966,6 +983,16 @@ app.post(
 				characterId,
 			})
 
+			waitUntilWithTelemetry(
+				c.executionCtx,
+				'admin.users.set-primary.mumble-profile-refresh',
+				() => syncUsersMumbleProfiles(c.env, [userId]),
+				{
+					userId,
+					source: 'admin-primary-character-changed',
+				}
+			)
+
 			return c.json({ success: true })
 		} catch (error) {
 			if (error instanceof Error && error.message.includes('Character not found')) {
@@ -1034,6 +1061,79 @@ app.get('/users/:userId/discord/inspect', requireAuth(), requireAdmin(), async (
 })
 
 /**
+ * GET /admin/users/:userId/mumble
+ * Inspect Mumble account status for a specific user (admin action)
+ */
+app.get('/users/:userId/mumble', requireAuth(), requireAdmin(), async (c) => {
+	const userId = c.req.param('userId')
+
+	try {
+		const account = await getMumbleAccount(c.env, userId).catch((error) => {
+			if (error instanceof Error && error.message === 'Network connection lost.') {
+				logger.warn('[Admin] Mumble account lookup transport unavailable', {
+					userId,
+					error: error.message,
+				})
+				return null
+			}
+			throw error
+		})
+
+		return c.json({
+			account,
+			connection: getMumbleConnectionInfo(c.env),
+		})
+	} catch (error) {
+		logger.error('[Admin] Failed to fetch Mumble account status', {
+			userId,
+			error: error instanceof Error ? error.message : String(error),
+		})
+		return c.json({ error: 'Failed to fetch Mumble account status' }, 500)
+	}
+})
+
+/**
+ * POST /admin/users/:userId/mumble/sync-groups
+ * Force a refresh of the user's Mumble group memberships.
+ */
+app.post('/users/:userId/mumble/sync-groups', requireAuth(), requireAdmin(), async (c) => {
+	const userId = c.req.param('userId')
+
+	try {
+		const result = await syncUsersMumbleGroups(c.env, [userId], 'admin-manual-mumble-sync')
+		return c.json(result)
+	} catch (error) {
+		logger.error('[Admin] Failed to sync Mumble groups', {
+			userId,
+			error: error instanceof Error ? error.message : String(error),
+		})
+		return c.json({ error: 'Failed to sync Mumble groups' }, 500)
+	}
+})
+
+/**
+ * DELETE /admin/users/:userId/mumble
+ * Delete the user's Mumble account from murmur-control.
+ */
+app.delete('/users/:userId/mumble', requireAuth(), requireAdmin(), async (c) => {
+	const userId = c.req.param('userId')
+
+	try {
+		const result = await deleteMumbleAccounts(c.env, [userId])
+		if (!result) {
+			return c.json({ error: 'Failed to delete Mumble account' }, 502)
+		}
+		return c.json(result)
+	} catch (error) {
+		logger.error('[Admin] Failed to delete Mumble account', {
+			userId,
+			error: error instanceof Error ? error.message : String(error),
+		})
+		return c.json({ error: 'Failed to delete Mumble account' }, 500)
+	}
+})
+
+/**
  * POST /admin/users/:userId/discord/revoke
  * Manually revoke a user's Discord authorization (admin action)
  *
@@ -1071,10 +1171,7 @@ app.post('/users/:userId/discord/revoke', requireAuth(), requireAdmin(), async (
 
 		// Authorization revoked now supersedes role attachments.
 		// Apply a managed-role strip pass immediately (no bans in this path).
-		const stripResult = await discordService.enforceRevokedAuthorizationDiscordAccess(
-			c.env,
-			userId
-		)
+		const stripResult = await discordService.enforceRevokedAuthorizationDiscordAccess(c.env, userId)
 
 		logger.info('[Admin] Discord authorization revoked by admin', {
 			adminUserId: user.id,
@@ -1364,8 +1461,7 @@ app.post('/blacklist/user', requireAuth(), requireAdmin(), async (c) => {
 				...(extraMetadata ?? {}),
 				...(targetUser?.discordUserId ? { discordUserId: targetUser.discordUserId } : {}),
 			}
-			const metadataForEntry =
-				Object.keys(mergedMetadata).length > 0 ? mergedMetadata : undefined
+			const metadataForEntry = Object.keys(mergedMetadata).length > 0 ? mergedMetadata : undefined
 
 			// 1. Create user blacklist
 			const userBlacklistEntry = await hrStub.createUserBlacklist({
@@ -1410,6 +1506,11 @@ app.post('/blacklist/user', requireAuth(), requireAdmin(), async (c) => {
 					error: error instanceof Error ? error.message : String(error),
 				})
 			}
+			await enforceBlacklistedMumbleAccess(
+				c.env,
+				targetUserId,
+				`Blacklisted by admin ${blacklistedByUserId}`
+			)
 
 			// 3. Get all characters for this user
 			const userChars = await db.query.userCharacters.findMany({
@@ -1433,9 +1534,7 @@ app.post('/blacklist/user', requireAuth(), requireAdmin(), async (c) => {
 					triggeredBy: userBlacklistEntry.id,
 					metadata: {
 						triggeredByUserBlacklist: userBlacklistEntry.id,
-						...(targetUser?.discordUserId
-							? { discordUserId: targetUser.discordUserId }
-							: {}),
+						...(targetUser?.discordUserId ? { discordUserId: targetUser.discordUserId } : {}),
 					},
 				})
 				blacklistedCharacters.push(char.characterId)
@@ -1505,15 +1604,17 @@ app.post('/blacklist/character', requireAuth(), requireAdmin(), async (c) => {
 	}
 
 	try {
-		const bodySchema = z.object({
-			characterId: z.string().optional(),
-			characterName: z.string().min(1).optional(),
-			reason: z.string().min(1),
-			metadata: z.record(z.string(), z.unknown()).optional(),
-		}).refine((data) => Boolean(data.characterId || data.characterName), {
-			message: 'Either characterId or characterName is required',
-			path: ['characterId'],
-		})
+		const bodySchema = z
+			.object({
+				characterId: z.string().optional(),
+				characterName: z.string().min(1).optional(),
+				reason: z.string().min(1),
+				metadata: z.record(z.string(), z.unknown()).optional(),
+			})
+			.refine((data) => Boolean(data.characterId || data.characterName), {
+				message: 'Either characterId or characterName is required',
+				path: ['characterId'],
+			})
 
 		const body = await c.req.json()
 		const validation = bodySchema.safeParse(body)
@@ -1528,7 +1629,12 @@ app.post('/blacklist/character', requireAuth(), requireAdmin(), async (c) => {
 			)
 		}
 
-		const { characterId: inputCharacterId, characterName: inputCharacterName, reason, metadata } = validation.data
+		const {
+			characterId: inputCharacterId,
+			characterName: inputCharacterName,
+			reason,
+			metadata,
+		} = validation.data
 
 		const db = createDb(c.env.DATABASE_URL)
 		let characterId = inputCharacterId
@@ -1626,11 +1732,14 @@ app.post('/blacklist/character', requireAuth(), requireAdmin(), async (c) => {
 					)
 				}
 			} catch (error) {
-				logger.error('[Admin] Failed to remove character-linked user from groups during blacklist', {
-					characterId,
-					userId: char.userId,
-					error: error instanceof Error ? error.message : String(error),
-				})
+				logger.error(
+					'[Admin] Failed to remove character-linked user from groups during blacklist',
+					{
+						characterId,
+						userId: char.userId,
+						error: error instanceof Error ? error.message : String(error),
+					}
+				)
 			}
 			try {
 				await discordService.enforceBlacklistedDiscordAccess(
@@ -1645,6 +1754,11 @@ app.post('/blacklist/character', requireAuth(), requireAdmin(), async (c) => {
 					error: error instanceof Error ? error.message : String(error),
 				})
 			}
+			await enforceBlacklistedMumbleAccess(
+				c.env,
+				char.userId,
+				`Blacklisted via character ${characterId}`
+			)
 			autoBlacklistedUsers.push(char.userId)
 		}
 
@@ -1815,7 +1929,9 @@ app.post('/blacklist/check-characters', requireAuth(), requireAdmin(), async (c)
 		const hrStub = getStub<Hr>(c.env.HR, 'default')
 		const [idMatches, nameMatches] = await Promise.all([
 			uniqueIds.length > 0 ? hrStub.checkCharactersBlacklisted(uniqueIds) : Promise.resolve({}),
-			uniqueNames.length > 0 ? hrStub.checkCharacterNamesBlacklisted(uniqueNames) : Promise.resolve({}),
+			uniqueNames.length > 0
+				? hrStub.checkCharacterNamesBlacklisted(uniqueNames)
+				: Promise.resolve({}),
 		])
 		return c.json({
 			characterIds: idMatches,

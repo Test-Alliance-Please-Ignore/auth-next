@@ -1,22 +1,37 @@
-import { eq } from '@repo/db-utils'
+import { and, eq } from '@repo/db-utils'
 import { getStub } from '@repo/do-utils'
 import { logger } from '@repo/hono-helpers'
 
 import { createDb } from '../db'
-import { userCharacters, users } from '../db/schema'
+import { managedCorporations, userCharacters, users } from '../db/schema'
 
+import type { EveCorporationData } from '@repo/eve-corporation-data'
 import type { Groups } from '@repo/groups'
+import type { Hr } from '@repo/hr'
 import type {
 	Mumble,
 	MumbleAccountStatus,
 	MumbleDeleteResult,
 	MumbleGroupAssignment,
+	MumbleProfileAssignment,
 	MumbleSyncGroupsResult,
+	MumbleSyncProfilesResult,
 } from '@repo/mumble'
 import type { Env } from '../context'
 
 const MAX_LOGIN_NAME_LENGTH = 60
 const USER_GROUP_LOOKUP_CONCURRENCY = 5
+const USER_PROFILE_LOOKUP_CONCURRENCY = 5
+
+interface MumbleIdentity {
+	characterName: string
+	displayName: string
+	loginName: string
+}
+
+interface GetUserGroupNamesOptions {
+	forceEmptyGroups?: boolean
+}
 
 /**
  * Derive a Mumble login name from a character name.
@@ -41,6 +56,82 @@ export function deriveLoginName(characterName: string, userId: string): string {
 
 function getMumbleStub(env: Env) {
 	return getStub<Mumble>(env.MUMBLE, env.MUMBLE_SERVER_ID)
+}
+
+async function buildMumbleIdentity(env: Env, userId: string): Promise<MumbleIdentity> {
+	const db = createDb(env.DATABASE_URL)
+	const user = await db.query.users.findFirst({
+		where: eq(users.id, userId),
+		columns: {
+			mainCharacterId: true,
+		},
+	})
+	if (!user) {
+		throw new Error(`User ${userId} not found`)
+	}
+
+	const mainCharacter = await db.query.userCharacters.findFirst({
+		where: eq(userCharacters.characterId, user.mainCharacterId),
+		columns: {
+			characterName: true,
+			corporationId: true,
+		},
+	})
+	if (!mainCharacter) {
+		throw new Error(`Main character ${user.mainCharacterId} not found for user ${userId}`)
+	}
+
+	let displayName = mainCharacter.characterName
+	if (mainCharacter.corporationId) {
+		const corpStub = getStub<EveCorporationData>(
+			env.EVE_CORPORATION_DATA,
+			mainCharacter.corporationId
+		)
+		const corpInfo = await corpStub.getCorporationInfo(mainCharacter.corporationId)
+		const ticker = corpInfo?.ticker?.trim()
+		if (ticker) {
+			displayName = `${mainCharacter.characterName} [${ticker}]`
+		}
+	}
+
+	return {
+		characterName: mainCharacter.characterName,
+		displayName,
+		loginName: deriveLoginName(mainCharacter.characterName, userId),
+	}
+}
+
+async function hasAllianceMemberAttachment(env: Env, userId: string): Promise<boolean> {
+	const db = createDb(env.DATABASE_URL)
+	const [characters, memberCorporations] = await Promise.all([
+		db.query.userCharacters.findMany({
+			where: and(eq(userCharacters.userId, userId), eq(userCharacters.isDeleted, false)),
+			columns: {
+				corporationId: true,
+				allianceId: true,
+			},
+		}),
+		db.query.managedCorporations.findMany({
+			where: eq(managedCorporations.isMemberCorporation, true),
+			columns: {
+				corporationId: true,
+			},
+		}),
+	])
+
+	const memberCorporationIds = new Set(
+		memberCorporations.map((corporation) => corporation.corporationId)
+	)
+	return characters.some(
+		(character) =>
+			(!!character.corporationId && memberCorporationIds.has(character.corporationId)) ||
+			!!character.allianceId
+	)
+}
+
+async function isUserBlacklisted(env: Env, userId: string): Promise<boolean> {
+	const hrStub = getStub<Hr>(env.HR, 'default')
+	return hrStub.isUserBlacklisted(userId)
 }
 
 async function runWithConcurrencyLimit<T, R>(
@@ -74,7 +165,23 @@ export function getMumbleConnectionInfo(env: Env): { host: string; port: number 
 }
 
 /** Fetch the user's current auth-next group names. */
-async function getUserGroupNames(env: Env, userId: string): Promise<string[]> {
+async function getUserGroupNames(
+	env: Env,
+	userId: string,
+	options?: GetUserGroupNamesOptions
+): Promise<string[]> {
+	if (options?.forceEmptyGroups === true) {
+		return []
+	}
+
+	if (await isUserBlacklisted(env, userId)) {
+		return []
+	}
+
+	if (!(await hasAllianceMemberAttachment(env, userId))) {
+		return []
+	}
+
 	const groupsStub = getStub<Groups>(env.GROUPS, 'default')
 	const memberships = await groupsStub.getUserMemberships(userId)
 	return memberships.map((membership) => membership.groupName)
@@ -96,23 +203,14 @@ export async function provisionMumbleAccount(
 	env: Env,
 	userId: string
 ): Promise<{ account: MumbleAccountStatus; password: string }> {
-	const db = createDb(env.DATABASE_URL)
-	const user = await db.query.users.findFirst({ where: eq(users.id, userId) })
-	if (!user) {
-		throw new Error(`User ${userId} not found`)
-	}
-
-	const mainCharacter = await db.query.userCharacters.findFirst({
-		where: eq(userCharacters.characterId, user.mainCharacterId),
-	})
-	const displayName = mainCharacter?.characterName ?? `Unknown Pilot`
+	const identity = await buildMumbleIdentity(env, userId)
 
 	const groups = await getUserGroupNames(env, userId)
 
 	return getMumbleStub(env).provisionAccount(env.MUMBLE_SERVER_ID, {
 		subjectId: userId,
-		loginName: deriveLoginName(displayName, userId),
-		displayName,
+		loginName: identity.loginName,
+		displayName: identity.displayName,
 		groups,
 	})
 }
@@ -131,7 +229,8 @@ export async function resetMumblePassword(env: Env, userId: string): Promise<{ p
 export async function syncUsersMumbleGroups(
 	env: Env,
 	userIds: string[],
-	reason?: string
+	reason?: string,
+	options?: GetUserGroupNamesOptions
 ): Promise<MumbleSyncGroupsResult> {
 	if (userIds.length === 0) {
 		return { synced: [], skipped: [] }
@@ -145,7 +244,7 @@ export async function syncUsersMumbleGroups(
 				return {
 					status: 'ok' as const,
 					userId,
-					groups: await getUserGroupNames(env, userId),
+					groups: await getUserGroupNames(env, userId, options),
 				}
 			} catch (error) {
 				logger.error('[Mumble] Failed to gather groups for user', {
@@ -173,11 +272,124 @@ export async function syncUsersMumbleGroups(
 		)
 	}
 
-	const syncResult = await getMumbleStub(env).syncUserGroups(env.MUMBLE_SERVER_ID, assignments, reason)
+	const syncResult = await getMumbleStub(env).syncUserGroups(
+		env.MUMBLE_SERVER_ID,
+		assignments,
+		reason
+	)
 
 	if (failedUserIds.length > 0) {
 		throw new Error(
 			`Failed to gather groups for ${failedUserIds.length} user(s): ${failedUserIds.join(', ')}`
+		)
+	}
+
+	return syncResult
+}
+
+/**
+ * Revoke a blacklisted user's Mumble access.
+ *
+ * This intentionally strips all groups and rotates the password, but it never
+ * reveals the new password. Existing sessions should already be invalidated by
+ * the blacklist flow; the password reset prevents reuse if credentials were
+ * previously known.
+ */
+export async function enforceBlacklistedMumbleAccess(
+	env: Env,
+	userId: string,
+	reason = 'user-blacklisted'
+): Promise<void> {
+	const account = await getMumbleAccount(env, userId).catch((error) => {
+		logger.error('[Mumble] Failed to read account during blacklist enforcement', {
+			userId,
+			reason,
+			error: error instanceof Error ? error.message : String(error),
+		})
+		return null
+	})
+	if (!account) {
+		return
+	}
+
+	await syncUsersMumbleGroups(env, [userId], reason, {
+		forceEmptyGroups: true,
+	}).catch((error) => {
+		logger.error('[Mumble] Failed to strip groups for blacklisted user', {
+			userId,
+			reason,
+			error: error instanceof Error ? error.message : String(error),
+		})
+	})
+
+	await resetMumblePassword(env, userId).catch((error) => {
+		logger.error('[Mumble] Failed to rotate password for blacklisted user', {
+			userId,
+			reason,
+			error: error instanceof Error ? error.message : String(error),
+		})
+	})
+
+	logger.info('[Mumble] Enforced blacklisted access', {
+		userId,
+		reason,
+	})
+}
+
+/**
+ * Push refreshed display metadata for the given users to murmur-control.
+ * The current login name, enabled state, password, and groups are preserved.
+ */
+export async function syncUsersMumbleProfiles(
+	env: Env,
+	userIds: string[]
+): Promise<MumbleSyncProfilesResult> {
+	if (userIds.length === 0) {
+		return { synced: [], skipped: [] }
+	}
+
+	const lookupResults = await runWithConcurrencyLimit(
+		userIds,
+		USER_PROFILE_LOOKUP_CONCURRENCY,
+		async (userId) => {
+			try {
+				const identity = await buildMumbleIdentity(env, userId)
+				return {
+					status: 'ok' as const,
+					userId,
+					displayName: identity.displayName,
+				}
+			} catch (error) {
+				logger.error('[Mumble] Failed to gather profile metadata for user', {
+					userId,
+					error: error instanceof Error ? error.message : String(error),
+				})
+				return { status: 'failed' as const, userId }
+			}
+		}
+	)
+
+	const assignments: MumbleProfileAssignment[] = []
+	const failedUserIds: string[] = []
+	for (const result of lookupResults) {
+		if (result.status === 'ok') {
+			assignments.push({ subjectId: result.userId, displayName: result.displayName })
+		} else {
+			failedUserIds.push(result.userId)
+		}
+	}
+
+	if (failedUserIds.length > 0 && assignments.length === 0) {
+		throw new Error(
+			`Failed to gather profile metadata for ${failedUserIds.length} user(s): ${failedUserIds.join(', ')}`
+		)
+	}
+
+	const syncResult = await getMumbleStub(env).syncAccountProfiles(env.MUMBLE_SERVER_ID, assignments)
+
+	if (failedUserIds.length > 0) {
+		throw new Error(
+			`Failed to gather profile metadata for ${failedUserIds.length} user(s): ${failedUserIds.join(', ')}`
 		)
 	}
 

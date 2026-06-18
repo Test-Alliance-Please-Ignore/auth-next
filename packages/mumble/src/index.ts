@@ -91,6 +91,11 @@ export interface MumbleGroupAssignment {
 	groups: string[]
 }
 
+export interface MumbleProfileAssignment {
+	subjectId: string
+	displayName: string
+}
+
 export interface MumbleProvisionResult {
 	account: MumbleAccountStatus
 	/** One-time plaintext password — returned exactly once, never stored */
@@ -99,6 +104,13 @@ export interface MumbleProvisionResult {
 
 export interface MumbleSyncGroupsResult {
 	/** Subjects whose groups were pushed to murmur-control */
+	synced: string[]
+	/** Subjects skipped because they have no Mumble account */
+	skipped: string[]
+}
+
+export interface MumbleSyncProfilesResult {
+	/** Subjects whose profiles were pushed to murmur-control */
 	synced: string[]
 	/** Subjects skipped because they have no Mumble account */
 	skipped: string[]
@@ -158,6 +170,15 @@ export interface Mumble extends DurableObject {
 		assignments: MumbleGroupAssignment[],
 		reason?: string
 	): Promise<MumbleSyncGroupsResult>
+
+	/**
+	 * Update profile metadata for the listed accounts (batch-first; pass 1 or N).
+	 * Subjects without an account are filtered out and reported as skipped.
+	 */
+	syncAccountProfiles(
+		serverId: string,
+		assignments: MumbleProfileAssignment[]
+	): Promise<MumbleSyncProfilesResult>
 
 	/** Enable the listed accounts (explicit-only; omitted accounts untouched). */
 	enableAccounts(serverId: string, subjectIds: string[]): Promise<void>

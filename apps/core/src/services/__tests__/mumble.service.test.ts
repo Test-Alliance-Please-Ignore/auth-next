@@ -2,7 +2,8 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 
 import { getStub } from '@repo/do-utils'
 
-import { deriveLoginName, syncUsersMumbleGroups } from '../mumble.service'
+import { createDb } from '../../db'
+import { deriveLoginName, syncUsersMumbleGroups, syncUsersMumbleProfiles } from '../mumble.service'
 
 // @neondatabase/api-client (pulled in via @repo/db-utils test helpers) breaks
 // the workers-pool CJS shim; it is irrelevant to these tests.
@@ -15,13 +16,46 @@ vi.mock('@repo/do-utils', () => ({
 	getStub: vi.fn(),
 }))
 
-vi.mock('../db', () => ({
+vi.mock('../../db', () => ({
 	createDb: vi.fn(),
 }))
 
 const getStubMock = vi.mocked(getStub)
+const createDbMock = vi.mocked(createDb)
 
 const USER_ID = '123e4567-e89b-12d3-a456-426614174000'
+const MAIN_CHARACTER_ID = '9001'
+
+function setEligibleDbMock() {
+	createDbMock.mockReturnValue({
+		query: {
+			users: {
+				findFirst: vi.fn().mockResolvedValue({
+					mainCharacterId: MAIN_CHARACTER_ID,
+				}),
+			},
+			userCharacters: {
+				findFirst: vi.fn().mockResolvedValue({
+					characterName: 'Main Pilot',
+					corporationId: 'corp-1',
+				}),
+				findMany: vi.fn().mockResolvedValue([
+					{
+						corporationId: 'corp-1',
+						allianceId: null,
+					},
+				]),
+			},
+			managedCorporations: {
+				findMany: vi.fn().mockResolvedValue([
+					{
+						corporationId: 'corp-1',
+					},
+				]),
+			},
+		},
+	} as any)
+}
 
 beforeEach(() => {
 	vi.clearAllMocks()
@@ -58,12 +92,111 @@ describe('deriveLoginName', () => {
 
 describe('syncUsersMumbleGroups', () => {
 	const env = {
+		DATABASE_URL: 'postgres://example',
+		HR: {},
 		GROUPS: {},
 		MUMBLE: {},
 		MUMBLE_SERVER_ID: 'srv',
 	} as any
 
+	it('short-circuits to empty groups when the user lacks qualifying affiliation', async () => {
+		createDbMock.mockReturnValue({
+			query: {
+				users: {
+					findFirst: vi.fn().mockResolvedValue({ mainCharacterId: MAIN_CHARACTER_ID }),
+				},
+				userCharacters: {
+					findMany: vi.fn().mockResolvedValue([
+						{
+							corporationId: 'corp-2',
+							allianceId: null,
+						},
+					]),
+				},
+				managedCorporations: {
+					findMany: vi.fn().mockResolvedValue([
+						{
+							corporationId: 'corp-1',
+						},
+					]),
+				},
+			},
+		} as any)
+
+		const hrStub = {
+			isUserBlacklisted: vi.fn().mockResolvedValue(false),
+		}
+		const groupsStub = {
+			getUserMemberships: vi.fn(),
+		}
+
+		const mumbleStub = {
+			syncUserGroups: vi.fn().mockResolvedValue({ synced: ['user-1'], skipped: [] }),
+		}
+
+		getStubMock.mockImplementation((binding: unknown) => {
+			if (binding === env.HR) return hrStub as any
+			if (binding === env.GROUPS) return groupsStub as any
+			if (binding === env.MUMBLE) return mumbleStub as any
+			throw new Error('unexpected stub binding')
+		})
+
+		await syncUsersMumbleGroups(env, ['user-1'])
+
+		expect(groupsStub.getUserMemberships).not.toHaveBeenCalled()
+		expect(mumbleStub.syncUserGroups).toHaveBeenCalledWith(
+			'srv',
+			[{ subjectId: 'user-1', groups: [] }],
+			undefined
+		)
+	})
+
+	it('short-circuits to empty groups when the user is blacklisted', async () => {
+		createDbMock.mockReturnValue({
+			query: {
+				users: {
+					findFirst: vi.fn().mockResolvedValue({ mainCharacterId: MAIN_CHARACTER_ID }),
+				},
+				userCharacters: {
+					findMany: vi.fn(),
+				},
+				managedCorporations: {
+					findMany: vi.fn(),
+				},
+			},
+		} as any)
+
+		const hrStub = {
+			isUserBlacklisted: vi.fn().mockResolvedValue(true),
+		}
+		const groupsStub = {
+			getUserMemberships: vi.fn(),
+		}
+		const mumbleStub = {
+			syncUserGroups: vi.fn().mockResolvedValue({ synced: ['user-1'], skipped: [] }),
+		}
+
+		getStubMock.mockImplementation((binding: unknown) => {
+			if (binding === env.HR) return hrStub as any
+			if (binding === env.GROUPS) return groupsStub as any
+			if (binding === env.MUMBLE) return mumbleStub as any
+			throw new Error('unexpected stub binding')
+		})
+
+		await syncUsersMumbleGroups(env, ['user-1'])
+
+		expect(hrStub.isUserBlacklisted).toHaveBeenCalledWith('user-1')
+		expect(groupsStub.getUserMemberships).not.toHaveBeenCalled()
+		expect(mumbleStub.syncUserGroups).toHaveBeenCalledWith(
+			'srv',
+			[{ subjectId: 'user-1', groups: [] }],
+			undefined
+		)
+	})
+
 	it('uses bounded concurrency when collecting memberships', async () => {
+		setEligibleDbMock()
+
 		let inFlight = 0
 		let maxInFlight = 0
 
@@ -76,12 +209,16 @@ describe('syncUsersMumbleGroups', () => {
 				return [{ groupName: `group-${userId}` }]
 			}),
 		}
+		const hrStub = {
+			isUserBlacklisted: vi.fn().mockResolvedValue(false),
+		}
 
 		const mumbleStub = {
 			syncUserGroups: vi.fn().mockResolvedValue({ synced: [], skipped: [] }),
 		}
 
 		getStubMock.mockImplementation((binding: unknown) => {
+			if (binding === env.HR) return hrStub as any
 			if (binding === env.GROUPS) return groupsStub as any
 			if (binding === env.MUMBLE) return mumbleStub as any
 			throw new Error('unexpected stub binding')
@@ -99,6 +236,8 @@ describe('syncUsersMumbleGroups', () => {
 	})
 
 	it('syncs successful users and still fails when any group lookup fails', async () => {
+		setEligibleDbMock()
+
 		const groupsStub = {
 			getUserMemberships: vi.fn(async (userId: string) => {
 				if (userId === 'user-2') {
@@ -107,12 +246,16 @@ describe('syncUsersMumbleGroups', () => {
 				return [{ groupName: `group-${userId}` }]
 			}),
 		}
+		const hrStub = {
+			isUserBlacklisted: vi.fn().mockResolvedValue(false),
+		}
 
 		const mumbleStub = {
 			syncUserGroups: vi.fn().mockResolvedValue({ synced: ['user-1', 'user-3'], skipped: [] }),
 		}
 
 		getStubMock.mockImplementation((binding: unknown) => {
+			if (binding === env.HR) return hrStub as any
 			if (binding === env.GROUPS) return groupsStub as any
 			if (binding === env.MUMBLE) return mumbleStub as any
 			throw new Error('unexpected stub binding')
@@ -130,5 +273,58 @@ describe('syncUsersMumbleGroups', () => {
 			],
 			undefined
 		)
+	})
+})
+
+describe('syncUsersMumbleProfiles', () => {
+	const env = {
+		DATABASE_URL: 'postgres://example',
+		EVE_CORPORATION_DATA: {},
+		MUMBLE: {},
+		MUMBLE_SERVER_ID: 'srv',
+	} as any
+
+	it('updates display metadata with the corporation ticker', async () => {
+		createDbMock.mockReturnValue({
+			query: {
+				users: {
+					findFirst: vi.fn().mockResolvedValue({
+						mainCharacterId: MAIN_CHARACTER_ID,
+					}),
+				},
+				userCharacters: {
+					findFirst: vi.fn().mockResolvedValue({
+						characterName: 'Main Pilot',
+						corporationId: 'corp-1',
+					}),
+				},
+			},
+		} as any)
+
+		const corpStub = {
+			getCorporationInfo: vi.fn().mockResolvedValue({
+				corporationId: 'corp-1',
+				name: 'Alpha',
+				ticker: 'ALP',
+			}),
+		}
+
+		const mumbleStub = {
+			syncAccountProfiles: vi.fn().mockResolvedValue({ synced: ['user-1'], skipped: [] }),
+		}
+
+		getStubMock.mockImplementation((binding: unknown) => {
+			if (binding === env.EVE_CORPORATION_DATA) return corpStub as any
+			if (binding === env.MUMBLE) return mumbleStub as any
+			throw new Error('unexpected stub binding')
+		})
+
+		const result = await syncUsersMumbleProfiles(env, ['user-1'])
+
+		expect(corpStub.getCorporationInfo).toHaveBeenCalledWith('corp-1')
+		expect(mumbleStub.syncAccountProfiles).toHaveBeenCalledWith('srv', [
+			{ subjectId: 'user-1', displayName: 'Main Pilot [ALP]' },
+		])
+		expect(result).toEqual({ synced: ['user-1'], skipped: [] })
 	})
 })

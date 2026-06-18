@@ -5,20 +5,21 @@ import { getStub } from '@repo/do-utils'
 import { logger } from '@repo/hono-helpers'
 
 import { createDb } from '../db'
-import { waitUntilWithTelemetry } from '../lib/background-task'
 import { managedCorporations, userCharacters } from '../db/schema'
+import { waitUntilWithTelemetry } from '../lib/background-task'
 import { isNpcCorporationId } from '../lib/corporation-id'
 import { getDiscordStatus } from '../lib/discord-helpers'
 import { triggerUserRefreshWorkflow } from '../lib/workflow-triggers'
 import { requireAuth } from '../middleware/session'
 import { ActivityService } from '../services/activity.service'
+import { syncUsersMumbleProfiles } from '../services/mumble.service'
 import { UserService } from '../services/user.service'
 
+import type { RequestMetadata, UserPreferencesDTO } from '@repo/core'
 import type { EveCharacterData } from '@repo/eve-character-data'
 import type { EveCorporationData } from '@repo/eve-corporation-data'
 import type { Hr } from '@repo/hr'
 import type { App } from '../context'
-import type { RequestMetadata, UserPreferencesDTO } from '@repo/core'
 
 /**
  * Cache duration for user corporation data (5 minutes)
@@ -312,6 +313,16 @@ users.post('/me/characters/:characterId/set-primary', async (c) => {
 			}
 		}
 
+		waitUntilWithTelemetry(
+			c.executionCtx,
+			'users.me.set-primary.mumble-profile-refresh',
+			() => syncUsersMumbleProfiles(c.env, [user.id]),
+			{
+				userId: user.id,
+				source: 'primary-character-changed',
+			}
+		)
+
 		return c.json({
 			success: true,
 		})
@@ -349,15 +360,17 @@ users.get('/has-corporation-access', async (c) => {
 		}
 
 		// Get all active managed corporations (member and special purpose only)
-		const managedCorps = filterManagedNonNpcCorps(await db.query.managedCorporations.findMany({
-			where: and(
-				eq(managedCorporations.isActive, true),
-				or(
-					eq(managedCorporations.isMemberCorporation, true),
-					eq(managedCorporations.isSpecialPurpose, true)
-				)
-			),
-		}))
+		const managedCorps = filterManagedNonNpcCorps(
+			await db.query.managedCorporations.findMany({
+				where: and(
+					eq(managedCorporations.isActive, true),
+					or(
+						eq(managedCorporations.isMemberCorporation, true),
+						eq(managedCorporations.isSpecialPurpose, true)
+					)
+				),
+			})
+		)
 
 		if (!managedCorps.length) {
 			return c.json({ hasAccess: false })
@@ -457,15 +470,17 @@ users.get('/corporation-access', async (c) => {
 		}
 
 		// Get all managed corporations (member and special purpose only)
-		const managedCorps = filterManagedNonNpcCorps(await db.query.managedCorporations.findMany({
-			where: and(
-				eq(managedCorporations.isActive, true),
-				or(
-					eq(managedCorporations.isMemberCorporation, true),
-					eq(managedCorporations.isSpecialPurpose, true)
-				)
-			),
-		}))
+		const managedCorps = filterManagedNonNpcCorps(
+			await db.query.managedCorporations.findMany({
+				where: and(
+					eq(managedCorporations.isActive, true),
+					or(
+						eq(managedCorporations.isMemberCorporation, true),
+						eq(managedCorporations.isSpecialPurpose, true)
+					)
+				),
+			})
+		)
 
 		// Get all user's characters
 		const characters = await db.query.userCharacters.findMany({
@@ -550,7 +565,10 @@ users.get('/corporation-access', async (c) => {
 			// Process corporations in parallel instead of sequential loop
 			const corpCheckPromises = relevantCorps.map(async (corp) => {
 				try {
-					const corpStub = getStub<EveCorporationData>(c.env.EVE_CORPORATION_DATA, corp.corporationId)
+					const corpStub = getStub<EveCorporationData>(
+						c.env.EVE_CORPORATION_DATA,
+						corp.corporationId
+					)
 
 					// Get corporation info and directors in parallel
 					const [corpInfo, directors] = await Promise.all([
@@ -565,7 +583,8 @@ users.get('/corporation-access', async (c) => {
 					const corpCharacters = charactersByCorpId.get(corp.corporationId) || []
 
 					// Find highest priority role for this corporation
-					let bestRole: { role: 'CEO' | 'Director'; character: (typeof characters)[0] } | null = null
+					let bestRole: { role: 'CEO' | 'Director'; character: (typeof characters)[0] } | null =
+						null
 
 					for (const character of corpCharacters) {
 						let role: 'CEO' | 'Director' | null = null
@@ -616,9 +635,7 @@ users.get('/corporation-access', async (c) => {
 
 			// Wait for all corporation checks in parallel
 			const corpResults = await Promise.all(corpCheckPromises)
-			accessibleCorporations.push(
-				...corpResults.filter((result) => result !== null)
-			)
+			accessibleCorporations.push(...corpResults.filter((result) => result !== null))
 		}
 
 		// Site admins have access to all managed corporations, but leadership roles
@@ -652,7 +669,10 @@ users.get('/corporation-access', async (c) => {
 					hr_viewer: 1,
 				}
 				const explicitHrRoles = await hrStub.getUserRoles(user.id)
-				const highestExplicitRoleByCorp = new Map<string, 'hr_admin' | 'hr_reviewer' | 'hr_viewer'>()
+				const highestExplicitRoleByCorp = new Map<
+					string,
+					'hr_admin' | 'hr_reviewer' | 'hr_viewer'
+				>()
 				for (const role of explicitHrRoles.filter((r) => r.isActive)) {
 					const corpId = role.corporationId
 					if (!corpId) continue
@@ -668,8 +688,7 @@ users.get('/corporation-access', async (c) => {
 					if (!corp) return null
 					// getUserHrCorporations() includes inferred leadership access (CEO/Director),
 					// which maps to admin-level HR access when no explicit attachment exists.
-					const highestRole =
-						highestExplicitRoleByCorp.get(corpId) ?? 'hr_admin'
+					const highestRole = highestExplicitRoleByCorp.get(corpId) ?? 'hr_admin'
 					return {
 						corporationId: corpId,
 						name: corp.name,
@@ -744,15 +763,17 @@ users.get('/my-corporations', async (c) => {
 
 		// Site admins have access to ALL corporations (member and special purpose only)
 		if (user.is_admin) {
-			const managedCorps = filterManagedNonNpcCorps(await db.query.managedCorporations.findMany({
-				where: and(
-					eq(managedCorporations.isActive, true),
-					or(
-						eq(managedCorporations.isMemberCorporation, true),
-						eq(managedCorporations.isSpecialPurpose, true)
-					)
-				),
-			}))
+			const managedCorps = filterManagedNonNpcCorps(
+				await db.query.managedCorporations.findMany({
+					where: and(
+						eq(managedCorporations.isActive, true),
+						or(
+							eq(managedCorporations.isMemberCorporation, true),
+							eq(managedCorporations.isSpecialPurpose, true)
+						)
+					),
+				})
+			)
 
 			// Fetch all corporation data in parallel
 			const corpDataPromises = managedCorps.map(async (corp) => {
@@ -914,12 +935,12 @@ users.get('/my-corporations', async (c) => {
 		const linkedCharacters =
 			allMemberCharIds.size > 0
 				? await db.query.userCharacters.findMany({
-					where: inArray(userCharacters.characterId, Array.from(allMemberCharIds)),
-					columns: {
-						characterId: true,
-						status: true,
-					},
-				})
+						where: inArray(userCharacters.characterId, Array.from(allMemberCharIds)),
+						columns: {
+							characterId: true,
+							status: true,
+						},
+					})
 				: []
 
 		// Create fast lookup set (excluding emeritus characters from statistics)

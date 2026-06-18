@@ -8,6 +8,7 @@ import type {
 	AdminUser,
 	AdminUserDetail,
 	AdminUsersFilters,
+	MumbleAccountResponse,
 	PaginatedResponse,
 } from '@/lib/api'
 
@@ -23,6 +24,7 @@ export const adminUserKeys = {
 		[...adminUserKeys.all, 'ip-history', ipAddressHash, 'matches'] as const,
 	discordInspection: (userId: string) =>
 		[...adminUserKeys.detail(userId), 'discord-inspection'] as const,
+	mumble: (userId: string) => [...adminUserKeys.detail(userId), 'mumble'] as const,
 	activityLogs: () => ['admin', 'activity-logs'] as const,
 	activityLog: (filters?: AdminActivityLogFilters) =>
 		[...adminUserKeys.activityLogs(), filters] as const,
@@ -80,6 +82,15 @@ export function useAdminDiscordInspection(userId: string, enabled: boolean) {
 		queryKey: adminUserKeys.discordInspection(userId),
 		queryFn: () => api.inspectDiscordAccess(userId),
 		enabled: !!userId && enabled,
+		staleTime: 1000 * 30, // 30 seconds
+	})
+}
+
+export function useAdminMumbleAccount(userId: string) {
+	return useQuery<MumbleAccountResponse>({
+		queryKey: adminUserKeys.mumble(userId),
+		queryFn: () => api.getAdminMumbleAccount(userId),
+		enabled: !!userId,
 		staleTime: 1000 * 30, // 30 seconds
 	})
 }
@@ -191,6 +202,7 @@ export function useSyncUser() {
 		onSuccess: (_, userId) => {
 			// Invalidate user detail to reflect any changes after sync completes
 			void queryClient.invalidateQueries({ queryKey: adminUserKeys.detail(userId) })
+			void queryClient.invalidateQueries({ queryKey: adminUserKeys.mumble(userId) })
 			// Also invalidate user lists in case character data changed
 			void queryClient.invalidateQueries({ queryKey: adminUserKeys.lists() })
 		},
@@ -209,6 +221,28 @@ export function useUpdateDiscordAccess() {
 		onSuccess: (_, userId) => {
 			// Invalidate user detail to refetch Discord status
 			void queryClient.invalidateQueries({ queryKey: adminUserKeys.detail(userId) })
+		},
+	})
+}
+
+export function useSyncAdminMumbleGroups() {
+	const queryClient = useQueryClient()
+
+	return useMutation({
+		mutationFn: (userId: string) => api.syncAdminMumbleGroups(userId),
+		onSuccess: (_, userId) => {
+			void queryClient.invalidateQueries({ queryKey: adminUserKeys.mumble(userId) })
+		},
+	})
+}
+
+export function useDeleteAdminMumbleAccount() {
+	const queryClient = useQueryClient()
+
+	return useMutation({
+		mutationFn: (userId: string) => api.deleteAdminMumbleAccount(userId),
+		onSuccess: (_, userId) => {
+			void queryClient.invalidateQueries({ queryKey: adminUserKeys.mumble(userId) })
 		},
 	})
 }
@@ -247,6 +281,7 @@ export function useDeleteUserCharacter() {
 				exact: true,
 				type: 'active',
 			})
+			void queryClient.invalidateQueries({ queryKey: adminUserKeys.mumble(userId) })
 		},
 	})
 }
@@ -279,6 +314,7 @@ export function useSetUserPrimaryCharacter() {
 
 			// Invalidate to refetch and ensure consistency
 			void queryClient.invalidateQueries({ queryKey: adminUserKeys.detail(userId) })
+			void queryClient.invalidateQueries({ queryKey: adminUserKeys.mumble(userId) })
 		},
 	})
 }
