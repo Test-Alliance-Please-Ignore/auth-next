@@ -86,11 +86,11 @@ export function useAdminDiscordInspection(userId: string, enabled: boolean) {
 	})
 }
 
-export function useAdminMumbleAccount(userId: string) {
+export function useAdminMumbleAccount(userId: string, enabled = true) {
 	return useQuery<MumbleAccountResponse>({
 		queryKey: adminUserKeys.mumble(userId),
 		queryFn: () => api.getAdminMumbleAccount(userId),
-		enabled: !!userId,
+		enabled: !!userId && enabled,
 		staleTime: 1000 * 30, // 30 seconds
 	})
 }

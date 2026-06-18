@@ -1,6 +1,7 @@
 import { Hono } from 'hono'
 
 import { getStub } from '@repo/do-utils'
+import { MUMBLE_FEATURE_FLAG_KEY } from '@repo/features'
 
 import type { Features } from '@repo/features'
 import type { App } from '../context'
@@ -9,10 +10,11 @@ const app = new Hono<App>()
 
 export const SRP_FEATURE_FLAG_KEY = 'srp.enabled'
 export const PRICING_INGEST_FLAG_KEY = 'markets.pricing.ingest.enabled'
+export { MUMBLE_FEATURE_FLAG_KEY }
 
-const UI_FLAGS = [SRP_FEATURE_FLAG_KEY] as const
+const UI_FLAGS = [SRP_FEATURE_FLAG_KEY, MUMBLE_FEATURE_FLAG_KEY] as const
 
-async function resolveFlag(
+export async function resolveFlag(
 	featuresNamespace: DurableObjectNamespace | undefined,
 	key: string,
 	defaultValue = false

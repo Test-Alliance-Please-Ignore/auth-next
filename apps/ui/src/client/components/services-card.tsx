@@ -11,6 +11,7 @@ import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Skeleton } from '@/components/ui/skeleton'
 import { canAccessMumble } from '@/features/mumble/access'
+import { useMumbleFeatureEnabled } from '@/features/mumble/feature'
 import { useMumbleAccount } from '@/features/mumble/hooks'
 import { useApiMutation } from '@/hooks/useApiMutation'
 import { useAuth } from '@/hooks/useAuth'
@@ -27,18 +28,24 @@ interface ServicesCardProps {
 export function ServicesCard({ isLegacyAuthLinked }: ServicesCardProps) {
 	const queryClient = useQueryClient()
 	const { user } = useAuth()
+	const { isEnabled: isMumbleFeatureEnabled, isLoading: isLoadingMumbleFeature } =
+		useMumbleFeatureEnabled()
 	const hasMumbleAccess = canAccessMumble(user)
+	const canSeeMumbleService = isMumbleFeatureEnabled && hasMumbleAccess
 	const { data: services, isLoading, error } = useUserServices(isLegacyAuthLinked)
 	const {
 		data: mumbleAccount,
 		isLoading: isLoadingMumble,
 		error: mumbleError,
-	} = useMumbleAccount(hasMumbleAccess)
+	} = useMumbleAccount(canSeeMumbleService)
 	const [selectedService, setSelectedService] = useState<UserService | null>(null)
 	const [resetResult, setResetResult] = useState<ResetServicePasswordResponse | null>(null)
 	const legacyServices = services ?? []
 	const hasLegacyServices = legacyServices.length > 0
-	const hasMumbleAccount = mumbleAccount?.account != null
+	const visibleMumbleAccount = canSeeMumbleService ? mumbleAccount : null
+	const hasMumbleAccount = visibleMumbleAccount?.account != null
+	const isMumbleLoading = canSeeMumbleService && isLoadingMumble
+	const mumbleLoadError = canSeeMumbleService ? mumbleError : null
 
 	const resetMutation = useApiMutation({
 		mutationFn: (slug: string) => apiClient.resetServicePassword(slug),
@@ -62,7 +69,7 @@ export function ServicesCard({ isLegacyAuthLinked }: ServicesCardProps) {
 		}
 	}
 
-	if (isLoading) {
+	if (isLoading || isLoadingMumbleFeature) {
 		return (
 			<Card variant="elevated">
 				<CardHeader>
@@ -120,7 +127,7 @@ export function ServicesCard({ isLegacyAuthLinked }: ServicesCardProps) {
 									/>
 								))}
 							</div>
-						) : !hasMumbleAccount && !isLoadingMumble && !mumbleError ? (
+						) : !hasMumbleAccount && !isMumbleLoading && !mumbleLoadError ? (
 							<div className="rounded-lg border border-border/50 bg-muted/20 p-4">
 								<div className="flex items-center gap-3">
 									<div className="flex items-center justify-center w-12 h-12 rounded-full bg-muted">

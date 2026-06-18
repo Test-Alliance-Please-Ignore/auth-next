@@ -15,6 +15,7 @@ import {
 	useResetMumblePassword,
 } from '@/features/mumble/hooks'
 import { canAccessMumble } from '@/features/mumble/access'
+import { useMumbleFeatureEnabled } from '@/features/mumble/feature'
 import { useAuth } from '@/hooks/useAuth'
 import { usePageTitle } from '@/hooks/usePageTitle'
 import toast from '@/lib/toast'
@@ -132,8 +133,11 @@ export default function MumblePage() {
 	usePageTitle('Mumble')
 
 	const { user, isLoading: authLoading, isAuthenticated } = useAuth()
+	const { isEnabled: isMumbleFeatureEnabled, isLoading: isLoadingMumbleFeature } =
+		useMumbleFeatureEnabled()
 	const hasMumbleAccess = canAccessMumble(user)
-	const { data, isLoading, error } = useMumbleAccount(hasMumbleAccess)
+	const canViewMumblePage = hasMumbleAccess && isMumbleFeatureEnabled
+	const { data, isLoading, error } = useMumbleAccount(canViewMumblePage)
 	const provision = useProvisionMumbleAccount()
 	const resetPassword = useResetMumblePassword()
 
@@ -144,7 +148,7 @@ export default function MumblePage() {
 	const account = data?.account ?? null
 	const connection = data?.connection
 
-	if (authLoading || (hasMumbleAccess && isLoading)) {
+	if (authLoading || isLoadingMumbleFeature || (canViewMumblePage && isLoading)) {
 		return (
 			<div className="flex items-center justify-center min-h-[400px]">
 				<p className="text-muted-foreground">Loading Mumble account...</p>
@@ -156,7 +160,7 @@ export default function MumblePage() {
 		return <Navigate to="/" replace />
 	}
 
-	if (!hasMumbleAccess) {
+	if (!isMumbleFeatureEnabled || !hasMumbleAccess) {
 		return <Navigate to="/dashboard" replace />
 	}
 

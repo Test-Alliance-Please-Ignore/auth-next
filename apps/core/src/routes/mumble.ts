@@ -2,8 +2,10 @@ import { Hono } from 'hono'
 
 import { logger } from '@repo/hono-helpers'
 import { parseMumbleError } from '@repo/mumble'
+import { MUMBLE_FEATURE_FLAG_KEY } from '@repo/features'
 
 import { requireAllianceMember } from '../middleware/session'
+import { resolveFlag } from './flags'
 import * as mumbleService from '../services/mumble.service'
 
 import type { Context } from 'hono'
@@ -17,6 +19,13 @@ import type { App } from '../context'
  * accessed via the mumble worker's Durable Object RPC.
  */
 const mumble = new Hono<App>()
+	.use('*', async (c, next) => {
+		const enabled = await resolveFlag(c.env.FEATURES, MUMBLE_FEATURE_FLAG_KEY, false)
+		if (!enabled) {
+			return c.json({ error: 'Mumble feature is disabled' }, 404)
+		}
+		await next()
+	})
 	.use('*', requireAllianceMember())
 
 /** Map typed mumble errors onto HTTP responses; returns null for unknown errors. */

@@ -6,6 +6,8 @@
  */
 import type { DurableObject } from 'cloudflare:workers'
 
+export const MUMBLE_FEATURE_FLAG_KEY = 'mumble.enabled'
+
 /**
  * Value types supported by feature flags
  */

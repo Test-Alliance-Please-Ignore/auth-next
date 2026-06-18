@@ -50,6 +50,7 @@ import { Textarea } from '@/components/ui/textarea'
 import { AddHRNoteDialog } from '@/features/applications/components/add-hr-note-dialog'
 import { HRNoteCard } from '@/features/applications/components/hr-note-card'
 import { useHRNotes } from '@/features/applications/hooks'
+import { useMumbleFeatureEnabled } from '@/features/mumble/feature'
 import {
 	useAdminMumbleAccount,
 	useAdminUser,
@@ -92,11 +93,14 @@ export default function UserDetailPage() {
 	const navigate = useNavigate()
 	const queryClient = useQueryClient()
 	const { setCustomLabel, clearCustomLabel } = useBreadcrumb()
+	const { isEnabled: isMumbleFeatureEnabled, isLoading: isLoadingMumbleFeature } =
+		useMumbleFeatureEnabled()
 
 	const { data: user, isLoading, refetch } = useAdminUser(userId!)
 	const { data: ipHistoryData } = useAdminUserIpHistory(userId!)
 	const { data: mumbleAccountData, isLoading: isLoadingMumbleAccount } = useAdminMumbleAccount(
-		userId!
+		userId!,
+		isMumbleFeatureEnabled
 	)
 	const setUserAdmin = useSetUserAdmin()
 	const deleteCharacter = useDeleteUserCharacter()
@@ -911,7 +915,7 @@ export default function UserDetailPage() {
 			)}
 
 			{/* Mumble Services */}
-			{!isLoadingMumbleAccount && mumbleAccountData?.account && (
+			{isMumbleFeatureEnabled && !isLoadingMumbleFeature && !isLoadingMumbleAccount && mumbleAccountData?.account && (
 				<Card>
 					<CardHeader>
 						<CardTitle>Services</CardTitle>

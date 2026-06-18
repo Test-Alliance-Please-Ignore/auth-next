@@ -13,11 +13,17 @@ const {
 	provisionMumbleAccountMock,
 	resetMumblePasswordMock,
 	getMumbleConnectionInfoMock,
+	getStubMock,
+	featuresStub,
 } = vi.hoisted(() => ({
 	getMumbleAccountMock: vi.fn(),
 	provisionMumbleAccountMock: vi.fn(),
 	resetMumblePasswordMock: vi.fn(),
 	getMumbleConnectionInfoMock: vi.fn(() => ({ host: 'voice.test', port: 64738 })),
+	getStubMock: vi.fn(),
+	featuresStub: {
+		checkFlag: vi.fn(),
+	},
 }))
 
 vi.mock('../../services/mumble.service', () => ({
@@ -31,6 +37,10 @@ vi.mock('../../db', () => ({
 	createDb: vi.fn(),
 }))
 
+vi.mock('@repo/do-utils', () => ({
+	getStub: getStubMock,
+}))
+
 // @neondatabase/api-client (pulled in via @repo/db-utils test helpers) breaks
 // the workers-pool CJS shim; it is irrelevant to these tests.
 vi.mock('@neondatabase/api-client', () => ({
@@ -38,7 +48,9 @@ vi.mock('@neondatabase/api-client', () => ({
 	EndpointType: {},
 }))
 
-const env = {} as any
+const env = {
+	FEATURES: { name: 'FEATURES' },
+} as any
 
 function makeUser(): SessionUser {
 	return {
@@ -66,9 +78,22 @@ function makeApp(user?: SessionUser) {
 beforeEach(() => {
 	vi.clearAllMocks()
 	getMumbleConnectionInfoMock.mockReturnValue({ host: 'voice.test', port: 64738 })
+	getStubMock.mockImplementation((namespace: any) => {
+		if (namespace === env.FEATURES) return featuresStub as any
+		throw new Error('Unexpected namespace')
+	})
+	featuresStub.checkFlag.mockResolvedValue(true)
 })
 
 describe('GET /api/mumble/account', () => {
+	it('returns 404 when the mumble feature flag is disabled', async () => {
+		featuresStub.checkFlag.mockResolvedValue(false)
+
+		const res = await makeApp(makeUser()).request('/api/mumble/account', {}, env)
+
+		expect(res.status).toBe(404)
+	})
+
 	it('returns 401 when unauthenticated', async () => {
 		const res = await makeApp().request('/api/mumble/account', {}, env)
 		expect(res.status).toBe(401)
