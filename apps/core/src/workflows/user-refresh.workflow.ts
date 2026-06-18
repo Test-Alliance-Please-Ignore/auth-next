@@ -2,6 +2,7 @@ import { WorkflowEntrypoint } from 'cloudflare:workers'
 import { and, eq } from 'drizzle-orm'
 
 import { ROLE_CORE_ALLIANCE_MEMBER, ROLE_CORE_CORP_MEMBER } from '@repo/core'
+import { getStub } from '@repo/do-utils'
 import { esiRetryOptions } from '@repo/workflow-utils'
 
 import { createDb } from '../db'
@@ -22,6 +23,7 @@ import {
 } from './steps/user-roles'
 
 import type { WorkflowEvent, WorkflowStep } from 'cloudflare:workers'
+import type { Core } from '@repo/core'
 import type { Env } from '../context'
 import type { WorkflowContext } from './context'
 
@@ -573,6 +575,9 @@ export class UserRefreshWorkflow extends WorkflowEntrypoint<Env, UserRefreshWork
 						...attachUserRolesResult.allianceRoleAttachments,
 					]
 				)
+				const coreAttachmentChanged =
+					coreAttachmentDelta.addedCoreAttachments > 0 ||
+					coreAttachmentDelta.removedCoreAttachments > 0
 				console.log('[Workflow] Core role attachment reconciliation delta', {
 					...logContext,
 					...coreAttachmentDelta,
@@ -612,23 +617,41 @@ export class UserRefreshWorkflow extends WorkflowEntrypoint<Env, UserRefreshWork
 					)
 				}
 
+				if (coreAttachmentChanged && !suppressDiscordRefresh) {
+					await step.do('queue-role-attachment-discord-refresh', async () => {
+						const coreStub = getStub<Core>(this.env.CORE, 'default')
+						return coreStub.addPendingDiscordRefreshes([userId], {
+							source: 'user-role-attachments-changed',
+							force: true,
+							userRefreshWorkflowInstanceIdByUserId: {
+								[userId]: workflowInstanceId,
+							},
+						})
+					})
+					steps['queue-role-attachment-discord-refresh'] = 'ok'
+				} else if (coreAttachmentChanged) {
+					steps['queue-role-attachment-discord-refresh'] = 'skipped'
+				}
+
+				if (coreAttachmentChanged || groupCleanupResult.shouldStripGroups) {
+					await step.do('trigger-role-attachment-mumble-refresh', async () => {
+						return triggerMumbleRefreshWorkflow({
+							env: this.env,
+							userIds: [userId],
+							source: coreAttachmentChanged
+								? 'user-role-attachments-changed'
+								: 'affiliation-groups-stripped',
+						})
+					})
+					steps['trigger-role-attachment-mumble-refresh'] = 'ok'
+				}
+
 				if (groupCleanupResult.shouldStripGroups) {
 					console.log('[Workflow] Stripped affiliation-based group memberships', {
 						...logContext,
 						removedGroupCount: groupCleanupResult.removedGroupIds.length,
 						transferredOwnershipGroupCount: groupCleanupResult.transferredOwnershipGroupIds.length,
 						deletedGroupCount: groupCleanupResult.deletedGroupIds.length,
-					})
-
-					// Stripped memberships must also be removed from the user's projected
-					// Mumble groups. Wrapped in step.do so workflow replays do not
-					// re-fire the trigger; failures are logged by the trigger itself.
-					await step.do('trigger-mumble-group-refresh', async () => {
-						return triggerMumbleRefreshWorkflow({
-							env: this.env,
-							userIds: [userId],
-							source: 'affiliation-groups-stripped',
-						})
 					})
 				}
 			}

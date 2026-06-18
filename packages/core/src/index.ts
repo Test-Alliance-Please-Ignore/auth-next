@@ -68,7 +68,11 @@ export interface Core {
 	listUsersNeedingRefresh(limit: number): Promise<string[]>
 	addPendingDiscordRefreshes(
 		userIds: string[],
-		options?: { source?: string; force?: boolean }
+		options?: {
+			source?: string
+			force?: boolean
+			userRefreshWorkflowInstanceIdByUserId?: Record<string, string>
+		}
 	): Promise<{ pendingCount: number; added: number; skipped: number }>
 	handleCharacterAffiliationChange(
 		characterId: string,

@@ -10,6 +10,7 @@ import {
 	inviteUserToDiscordServers,
 	syncUserDiscordAccess,
 	updateUserDiscordRoles,
+	updateUserDiscordNickname,
 } from '../discord.service'
 
 /**
@@ -30,6 +31,7 @@ import {
 const discordStubMethods = {
 	joinUserToServers: vi.fn(),
 	updateUserRoles: vi.fn(),
+	updateUserNickname: vi.fn(),
 	checkGuildMembershipWithBot: vi.fn(),
 	getUserGuildMembershipDetails: vi.fn(),
 	getDiscordUserStatus: vi.fn(),
@@ -262,6 +264,7 @@ beforeEach(() => {
 	dbQueryMocks.discordRoles.findMany.mockResolvedValue([])
 	// Default: Discord stubs return success
 	discordStubMethods.updateUserRoles.mockResolvedValue([])
+	discordStubMethods.updateUserNickname.mockResolvedValue(undefined)
 	discordStubMethods.joinUserToServers.mockResolvedValue([])
 	discordStubMethods.checkGuildMembershipWithBot.mockResolvedValue([])
 	discordStubMethods.getUserGuildMembershipDetails.mockResolvedValue([])
@@ -578,6 +581,41 @@ describe('updateUserDiscordRoles', () => {
 			expect(discordStubMethods.updateUserRoles).toHaveBeenCalled()
 			const requests = discordStubMethods.updateUserRoles.mock.calls[0][1]
 			expect(requests[0].roleIds).toContain('auto-role-1')
+		})
+	})
+
+	describe('Nickname sync', () => {
+		it('should only update nicknames for opted-in servers included in the scope', async () => {
+			dbQueryMocks.users.findFirst.mockReset()
+			dbQueryMocks.userCharacters.findFirst.mockReset()
+			dbQueryMocks.discordServers.findMany.mockReset()
+			discordStubMethods.checkGuildMembershipWithBot.mockReset()
+			discordStubMethods.updateUserNickname.mockReset()
+
+			dbQueryMocks.users.findFirst.mockResolvedValue(makeUser())
+			dbQueryMocks.userCharacters.findFirst.mockResolvedValue(makeCharacter())
+			dbQueryMocks.discordServers.findMany.mockResolvedValue([
+				makeDiscordServer({
+					id: 'ds-1',
+					guildId: 'guild-1',
+					guildName: 'Nick Server',
+					manageNicknames: true,
+				}),
+			])
+
+			discordStubMethods.checkGuildMembershipWithBot.mockResolvedValue(['guild-1', 'guild-2'])
+
+			await updateUserDiscordNickname(mockEnv, 'user-1', ['guild-1', 'guild-2'])
+
+			expect(dbQueryMocks.discordServers.findMany).toHaveBeenCalled()
+			const query = dbQueryMocks.discordServers.findMany.mock.calls[0][0]
+			const scopedGuildIds = query.where._and.find((clause: any) => clause?._inArray)?._inArray
+			expect(scopedGuildIds).toEqual(['guild-1', 'guild-2'])
+			expect(discordStubMethods.updateUserNickname).toHaveBeenCalledWith(
+				'user-1',
+				['guild-1', 'guild-2'],
+				'Test Pilot'
+			)
 		})
 	})
 
@@ -1376,9 +1414,10 @@ describe('syncUserDiscordAccess', () => {
 
 	it('should run invite then role sync and pass allowRemoval through to role updates', async () => {
 		dbQueryMocks.discordServers.findMany.mockResolvedValue([
-			makeDiscordServer({ id: 'ds-1', guildId: 'guild-1' }),
+			makeDiscordServer({ id: 'ds-1', guildId: 'guild-1', manageNicknames: true }),
 		])
 		discordStubMethods.checkGuildMembershipWithBot.mockResolvedValue(['guild-1'])
+		dbQueryMocks.userCharacters.findFirst.mockResolvedValue(makeCharacter())
 
 		// Call order across sync:
 		// 1) invite: corp autoInvite attachment
@@ -1426,6 +1465,11 @@ describe('syncUserDiscordAccess', () => {
 
 		expect(discordStubMethods.joinUserToServers).toHaveBeenCalledTimes(1)
 		expect(discordStubMethods.updateUserRoles).toHaveBeenCalledTimes(1)
+		expect(discordStubMethods.updateUserNickname).toHaveBeenCalledWith(
+			'user-1',
+			['guild-1'],
+			'Test Pilot'
+		)
 		expect(discordStubMethods.updateUserRoles.mock.calls[0][2]).toBe(true)
 		expect(discordStubMethods.updateLastRefreshed).toHaveBeenCalledWith('user-1')
 

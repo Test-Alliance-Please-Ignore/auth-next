@@ -56,13 +56,18 @@ describe('reconcileCharacterCorporationMembership', () => {
 			addedToCorporationId: '5678',
 		})
 
-		const result = await reconcileCharacterCorporationMembership(createCtx(), '9001', '5678')
+		const ctx = createCtx()
+		const result = await reconcileCharacterCorporationMembership(ctx, '9001', '5678')
 
 		expect(addPendingDiscordRefreshes).toHaveBeenCalledWith(['user-123'], {
 			source: 'corp-membership-reconciled',
+			force: true,
+			userRefreshWorkflowInstanceIdByUserId: {
+				'user-123': 'wf-123',
+			},
 		})
 		expect(hoisted.triggerMumbleRefreshWorkflow).toHaveBeenCalledWith({
-			env: createCtx().env,
+			env: ctx.env,
 			userIds: ['user-123'],
 			source: 'corp-membership-reconciled',
 		})

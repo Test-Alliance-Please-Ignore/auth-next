@@ -983,6 +983,19 @@ app.post(
 				characterId,
 			})
 
+			// Best-effort nickname sync for Discord servers that manage nicknames.
+			// Do not fail the primary-character change if Discord is temporarily unhealthy.
+			if (user.discordUserId) {
+				try {
+					await discordService.updateUserDiscordNickname(c.env, userId)
+				} catch (discordError) {
+					logger.error('[Admin] Discord nickname update failed after primary character change', {
+						userId,
+						error: discordError instanceof Error ? discordError.message : String(discordError),
+					})
+				}
+			}
+
 			waitUntilWithTelemetry(
 				c.executionCtx,
 				'admin.users.set-primary.mumble-profile-refresh',
