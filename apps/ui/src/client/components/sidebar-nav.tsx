@@ -35,6 +35,7 @@ import { useHrAccessibleCorporations } from '@/features/hr'
 import { useHasCorporationAccess } from '@/features/corporations'
 import { useSrpPaymentMismatchAlerts } from '@/features/srp/hooks'
 import { useReviewQueueStatusCount } from '@/features/srp/state/review-queue-snapshot-store'
+import { canAccessMumble } from '@/features/mumble/access'
 import { useTaxAlerts } from '@/hooks/corporation-tax'
 import { useAuth, useLogout } from '@/hooks/useAuth'
 import { usePendingInvitations } from '@/hooks/useGroups'
@@ -131,6 +132,7 @@ export function SidebarNav({ onNavigate, isSidebarOpen = true, onToggleSidebar }
 
 	const pendingCount = invitations?.length || 0
 	const mainCharacter = user?.characters.find((c) => c.characterId === user.mainCharacterId)
+	const canSeeMumble = canAccessMumble(user)
 	const isTaxRoute = location.pathname === '/tax' || location.pathname.startsWith('/tax/')
 	const isFreightRoute =
 		location.pathname === '/freight' || location.pathname.startsWith('/freight/')
@@ -317,11 +319,15 @@ export function SidebarNav({ onNavigate, isSidebarOpen = true, onToggleSidebar }
 			href: '/my-bills',
 			icon: Receipt,
 		},
-		{
-			label: 'Mumble',
-			href: '/mumble',
-			icon: Mic,
-		},
+		...(canSeeMumble
+			? [
+					{
+						label: 'Mumble',
+						href: '/mumble',
+						icon: Mic,
+					},
+				]
+			: []),
 
 		{
 			label: 'Freight',

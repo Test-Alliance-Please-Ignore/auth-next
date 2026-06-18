@@ -4,11 +4,12 @@ import { mumbleKeys } from './query-keys'
 import { apiClient } from '@/lib/api'
 
 /** Current user's Mumble account status + connection info. */
-export function useMumbleAccount() {
+export function useMumbleAccount(enabled = true) {
 	return useQuery({
 		queryKey: mumbleKeys.account(),
 		queryFn: () => apiClient.getMumbleAccount(),
 		staleTime: 1000 * 30,
+		enabled,
 	})
 }
 

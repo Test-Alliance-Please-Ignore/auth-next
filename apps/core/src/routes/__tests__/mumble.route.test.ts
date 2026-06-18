@@ -1,6 +1,7 @@
 import { Hono } from 'hono'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
+import { ROLE_CORE_ALLIANCE_MEMBER } from '@repo/core'
 import { formatMumbleError } from '@repo/mumble'
 
 import mumbleRoutes from '../mumble'
@@ -46,7 +47,7 @@ function makeUser(): SessionUser {
 		sessionId: 'session-1',
 		characters: [],
 		is_admin: false,
-		roles: [],
+		roles: [ROLE_CORE_ALLIANCE_MEMBER],
 		discordUserId: null,
 	}
 }
@@ -71,6 +72,11 @@ describe('GET /api/mumble/account', () => {
 	it('returns 401 when unauthenticated', async () => {
 		const res = await makeApp().request('/api/mumble/account', {}, env)
 		expect(res.status).toBe(401)
+	})
+
+	it('returns 403 when authenticated but not an alliance member', async () => {
+		const res = await makeApp({ ...makeUser(), roles: [] }).request('/api/mumble/account', {}, env)
+		expect(res.status).toBe(403)
 	})
 
 	it('returns account and connection info', async () => {
@@ -100,6 +106,15 @@ describe('POST /api/mumble/account', () => {
 	it('returns 401 when unauthenticated', async () => {
 		const res = await makeApp().request('/api/mumble/account', { method: 'POST' }, env)
 		expect(res.status).toBe(401)
+	})
+
+	it('returns 403 when authenticated but not an alliance member', async () => {
+		const res = await makeApp({ ...makeUser(), roles: [] }).request(
+			'/api/mumble/account',
+			{ method: 'POST' },
+			env
+		)
+		expect(res.status).toBe(403)
 	})
 
 	it('returns the one-time password on provision', async () => {
@@ -143,6 +158,15 @@ describe('POST /api/mumble/account', () => {
 })
 
 describe('POST /api/mumble/account/reset-password', () => {
+	it('returns 403 when authenticated but not an alliance member', async () => {
+		const res = await makeApp({ ...makeUser(), roles: [] }).request(
+			'/api/mumble/account/reset-password',
+			{ method: 'POST' },
+			env
+		)
+		expect(res.status).toBe(403)
+	})
+
 	it('maps not_found to 404', async () => {
 		resetMumblePasswordMock.mockRejectedValue(
 			new Error(formatMumbleError('not_found', 'no account'))

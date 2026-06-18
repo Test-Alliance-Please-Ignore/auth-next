@@ -1,5 +1,6 @@
 import { Check, Copy, ExternalLink, KeyRound, Mic, RefreshCw, Users } from 'lucide-react'
 import { useState } from 'react'
+import { Navigate } from 'react-router-dom'
 
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
@@ -13,6 +14,8 @@ import {
 	useProvisionMumbleAccount,
 	useResetMumblePassword,
 } from '@/features/mumble/hooks'
+import { canAccessMumble } from '@/features/mumble/access'
+import { useAuth } from '@/hooks/useAuth'
 import { usePageTitle } from '@/hooks/usePageTitle'
 import toast from '@/lib/toast'
 
@@ -128,7 +131,9 @@ function CopyRow({
 export default function MumblePage() {
 	usePageTitle('Mumble')
 
-	const { data, isLoading, error } = useMumbleAccount()
+	const { user, isLoading: authLoading, isAuthenticated } = useAuth()
+	const hasMumbleAccess = canAccessMumble(user)
+	const { data, isLoading, error } = useMumbleAccount(hasMumbleAccess)
 	const provision = useProvisionMumbleAccount()
 	const resetPassword = useResetMumblePassword()
 
@@ -138,6 +143,22 @@ export default function MumblePage() {
 
 	const account = data?.account ?? null
 	const connection = data?.connection
+
+	if (authLoading || (hasMumbleAccess && isLoading)) {
+		return (
+			<div className="flex items-center justify-center min-h-[400px]">
+				<p className="text-muted-foreground">Loading Mumble account...</p>
+			</div>
+		)
+	}
+
+	if (!isAuthenticated) {
+		return <Navigate to="/" replace />
+	}
+
+	if (!hasMumbleAccess) {
+		return <Navigate to="/dashboard" replace />
+	}
 
 	const handleProvision = () => {
 		provision.mutate(undefined, {
@@ -167,14 +188,6 @@ export default function MumblePage() {
 				setResetDialogOpen(false)
 			},
 		})
-	}
-
-	if (isLoading) {
-		return (
-			<div className="flex items-center justify-center min-h-[400px]">
-				<p className="text-muted-foreground">Loading Mumble account...</p>
-			</div>
-		)
 	}
 
 	const mutationError = provision.error ?? resetPassword.error

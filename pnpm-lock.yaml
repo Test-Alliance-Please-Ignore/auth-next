@@ -2509,6 +2509,9 @@ importers:
       '@repo/broadcasts':
         specifier: workspace:*
         version: link:../../packages/broadcasts
+      '@repo/core':
+        specifier: workspace:*
+        version: link:../../packages/core
       '@repo/corporation-tax':
         specifier: workspace:*
         version: link:../../packages/corporation-tax

@@ -3,7 +3,7 @@ import { Hono } from 'hono'
 import { logger } from '@repo/hono-helpers'
 import { parseMumbleError } from '@repo/mumble'
 
-import { requireAuth } from '../middleware/session'
+import { requireAllianceMember } from '../middleware/session'
 import * as mumbleService from '../services/mumble.service'
 
 import type { Context } from 'hono'
@@ -17,6 +17,7 @@ import type { App } from '../context'
  * accessed via the mumble worker's Durable Object RPC.
  */
 const mumble = new Hono<App>()
+	.use('*', requireAllianceMember())
 
 /** Map typed mumble errors onto HTTP responses; returns null for unknown errors. */
 function mumbleErrorResponse(c: Context<App>, error: unknown) {
@@ -47,7 +48,7 @@ function isRpcTransportLoss(error: unknown): boolean {
  * GET /api/mumble/account
  * Current user's Mumble account status plus connection info.
  */
-mumble.get('/account', requireAuth(), async (c) => {
+mumble.get('/account', async (c) => {
 	const user = c.get('user')!
 
 	try {
@@ -78,7 +79,7 @@ mumble.get('/account', requireAuth(), async (c) => {
  * Provision a Mumble account for the current user.
  * Returns the one-time password — it is never stored or shown again.
  */
-mumble.post('/account', requireAuth(), async (c) => {
+mumble.post('/account', async (c) => {
 	const user = c.get('user')!
 
 	try {
@@ -104,7 +105,7 @@ mumble.post('/account', requireAuth(), async (c) => {
  * Rotate the current user's Mumble password.
  * Returns the new one-time password — it is never stored or shown again.
  */
-mumble.post('/account/reset-password', requireAuth(), async (c) => {
+mumble.post('/account/reset-password', async (c) => {
 	const user = c.get('user')!
 
 	try {
