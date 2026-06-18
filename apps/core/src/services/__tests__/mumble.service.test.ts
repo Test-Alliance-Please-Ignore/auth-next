@@ -279,6 +279,7 @@ describe('syncUsersMumbleGroups', () => {
 describe('syncUsersMumbleProfiles', () => {
 	const env = {
 		DATABASE_URL: 'postgres://example',
+		FEATURES: {},
 		EVE_CORPORATION_DATA: {},
 		MUMBLE: {},
 		MUMBLE_SERVER_ID: 'srv',
@@ -312,8 +313,12 @@ describe('syncUsersMumbleProfiles', () => {
 		const mumbleStub = {
 			syncAccountProfiles: vi.fn().mockResolvedValue({ synced: ['user-1'], skipped: [] }),
 		}
+		const featuresStub = {
+			checkFlag: vi.fn().mockResolvedValue(true),
+		}
 
 		getStubMock.mockImplementation((binding: unknown) => {
+			if (binding === env.FEATURES) return featuresStub as any
 			if (binding === env.EVE_CORPORATION_DATA) return corpStub as any
 			if (binding === env.MUMBLE) return mumbleStub as any
 			throw new Error('unexpected stub binding')
@@ -326,5 +331,37 @@ describe('syncUsersMumbleProfiles', () => {
 			{ subjectId: 'user-1', displayName: 'Main Pilot [ALP]' },
 		])
 		expect(result).toEqual({ synced: ['user-1'], skipped: [] })
+	})
+
+	it('skips profile sync when the mumble feature is disabled', async () => {
+		createDbMock.mockReturnValue({
+			query: {
+				users: {
+					findFirst: vi.fn(),
+				},
+				userCharacters: {
+					findFirst: vi.fn(),
+				},
+			},
+		} as any)
+
+		const featuresStub = {
+			checkFlag: vi.fn().mockResolvedValue(false),
+		}
+		const mumbleStub = {
+			syncAccountProfiles: vi.fn(),
+		}
+
+		getStubMock.mockImplementation((binding: unknown) => {
+			if (binding === env.FEATURES) return featuresStub as any
+			if (binding === env.MUMBLE) return mumbleStub as any
+			throw new Error('unexpected stub binding')
+		})
+
+		const result = await syncUsersMumbleProfiles(env, ['user-1'])
+
+		expect(featuresStub.checkFlag).toHaveBeenCalledWith('mumble.enabled')
+		expect(mumbleStub.syncAccountProfiles).not.toHaveBeenCalled()
+		expect(result).toEqual({ synced: [], skipped: ['user-1'] })
 	})
 })
