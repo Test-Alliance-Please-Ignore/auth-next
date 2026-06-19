@@ -22,7 +22,7 @@ function base64ByteLength(value: string): number | null {
  * Imported PBKDF2-SHA256 verifier material.
  * hash: base64, must decode to exactly 32 bytes.
  * salt: base64, must decode to at least 16 bytes.
- * iterations: at least 200000.
+ * iterations: at most 100000 on Cloudflare Workers WebCrypto.
  */
 export type PasswordVerifier = z.infer<typeof PasswordVerifierSchema>
 export const PasswordVerifierSchema = z.object({
@@ -33,7 +33,7 @@ export const PasswordVerifierSchema = z.object({
 	salt: z.string().refine((value) => (base64ByteLength(value) ?? 0) >= 16, {
 		error: 'salt must be standard base64 decoding to at least 16 bytes',
 	}),
-	iterations: z.number().int().min(200_000),
+	iterations: z.number().int().min(1).max(100_000),
 })
 
 /**

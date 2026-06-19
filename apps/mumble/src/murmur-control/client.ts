@@ -6,6 +6,7 @@ import {
 	BatchSyncLocalAccountsResponseSchema,
 	LocalAccountResponseSchema,
 	MurmurControlErrorResponseSchema,
+	formatMumbleError,
 	UserProjectionStateResponseSchema,
 } from '@repo/mumble'
 
@@ -58,6 +59,10 @@ export class MurmurControlApiError extends Error {
 	}
 }
 
+function typedUnavailable(message: string): Error {
+	return new Error(formatMumbleError('unavailable', message))
+}
+
 export interface MurmurControlClientOptions {
 	baseUrl: string
 	fetcher?: MurmurControlFetcher | null
@@ -76,7 +81,11 @@ export class MurmurControlClient {
 	private readonly environment?: string | null
 
 	constructor(options: MurmurControlClientOptions) {
-		this.baseUrl = options.baseUrl.replace(/\/+$/, '')
+		const baseUrl = options.baseUrl?.trim()
+		if (!baseUrl) {
+			throw typedUnavailable('murmur-control base URL is not configured')
+		}
+		this.baseUrl = baseUrl.replace(/\/+$/, '')
 		this.fetcher = options.fetcher
 		this.token = options.token
 		this.environment = options.environment
