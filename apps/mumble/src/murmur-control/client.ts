@@ -82,14 +82,14 @@ export class MurmurControlClient {
 		this.environment = options.environment
 	}
 
-	private isProductionLike(): boolean {
+	private isDevLike(): boolean {
 		const environment = this.environment?.trim().toLowerCase()
 		if (!environment) return false
-		return !['dev', 'development', 'local', 'test', 'vitest'].includes(environment)
+		return ['dev', 'development', 'local', 'test', 'vitest'].includes(environment)
 	}
 
 	private validateTransport(): void {
-		if (!this.isProductionLike()) return
+		if (this.isDevLike()) return
 
 		if (!this.baseUrl.startsWith('https://')) {
 			throw new Error('murmur-control requires an HTTPS base URL in production-like environments')

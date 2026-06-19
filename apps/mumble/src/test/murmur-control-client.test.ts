@@ -179,6 +179,7 @@ describe('MurmurControlClient', () => {
 		const client = new MurmurControlClient({
 			baseUrl: 'https://murmur.test/',
 			token: 'secret-token',
+			environment: 'development',
 		})
 
 		await client.getUserState('srv')
@@ -209,6 +210,16 @@ describe('MurmurControlClient', () => {
 		const client = new MurmurControlClient({
 			baseUrl: 'https://murmur.test/',
 			environment: 'production',
+		})
+
+		await expect(client.getUserState('srv')).rejects.toThrow(
+			'murmur-control requires mTLS or a bearer token in production-like environments'
+			)
+	})
+
+	it('rejects missing environment in the absence of a dev marker', async () => {
+		const client = new MurmurControlClient({
+			baseUrl: 'https://murmur.test/',
 		})
 
 		await expect(client.getUserState('srv')).rejects.toThrow(
