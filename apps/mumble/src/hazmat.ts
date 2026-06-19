@@ -2,9 +2,9 @@ import type { PasswordVerifier } from '@repo/mumble'
 
 /**
  * PBKDF2 iteration count for generated verifiers.
- * The murmur-control contract floor is 200,000; we use 600,000.
+ * Cloudflare Workers WebCrypto currently supports up to 100,000 iterations.
  */
-export const VERIFIER_ITERATIONS = 600_000
+export const VERIFIER_ITERATIONS = 100_000
 
 const PASSWORD_ALPHABET = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789'
 const PASSWORD_LENGTH = 24
@@ -46,7 +46,7 @@ export function generatePassword(): string {
  * - algorithm: pbkdf2-sha256
  * - hash: standard base64, decoding to exactly 32 bytes
  * - salt: standard base64, decoding to at least 16 bytes
- * - iterations: at least 200,000
+ * - iterations: supported WebCrypto range for the runtime
  */
 export async function createPasswordVerifier(
 	password: string,

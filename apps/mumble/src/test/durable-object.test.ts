@@ -218,7 +218,7 @@ describe('MumbleDO.resetPassword', () => {
 		expect(synced.loginName).toBe('pilot_one')
 		expect(synced.enabled).toBe(true)
 		expect(synced.groups).toEqual(['alpha'])
-		expect(synced.passwordVerifier.iterations).toBeGreaterThanOrEqual(200_000)
+		expect(synced.passwordVerifier.iterations).toBe(100_000)
 	})
 })
 

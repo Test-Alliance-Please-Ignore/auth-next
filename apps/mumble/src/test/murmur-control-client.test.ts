@@ -226,4 +226,13 @@ describe('MurmurControlClient', () => {
 			'murmur-control requires mTLS or a bearer token in production-like environments'
 		)
 	})
+
+	it('rejects a missing murmur-control base URL', () => {
+		expect(
+			() =>
+				new MurmurControlClient({
+					baseUrl: undefined as unknown as string,
+				})
+		).toThrow('MUMBLE_ERROR:unavailable:murmur-control base URL is not configured')
+	})
 })
