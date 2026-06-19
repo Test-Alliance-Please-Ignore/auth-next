@@ -16,13 +16,8 @@ const ACCOUNT_SNAPSHOT = {
 	lastClientVersion: null,
 }
 
-function makeClient() {
-	return new MurmurControlClient({ baseUrl: 'https://murmur.test/', token: 'secret-token' })
-}
-
 describe('MurmurControlClient', () => {
 	afterEach(() => {
-		vi.unstubAllGlobals()
 		vi.restoreAllMocks()
 	})
 
@@ -32,7 +27,11 @@ describe('MurmurControlClient', () => {
 				status: 200,
 			})
 		)
-		vi.stubGlobal('fetch', fetchMock)
+		const client = new MurmurControlClient({
+			baseUrl: 'https://murmur.test/',
+			token: 'secret-token',
+			fetcher: { fetch: fetchMock },
+		})
 
 		const account = {
 			subjectId: 'user-1',
@@ -41,7 +40,7 @@ describe('MurmurControlClient', () => {
 			enabled: true,
 			groups: ['alpha'],
 		}
-		const result = await makeClient().batchSync('srv', [account])
+		const result = await client.batchSync('srv', [account])
 
 		expect(fetchMock).toHaveBeenCalledWith(
 			'https://murmur.test/v1/servers/srv/local-accounts:batchSync',
@@ -66,9 +65,13 @@ describe('MurmurControlClient', () => {
 					{ status: 200 }
 				)
 			)
-		vi.stubGlobal('fetch', fetchMock)
+		const client = new MurmurControlClient({
+			baseUrl: 'https://murmur.test/',
+			token: 'secret-token',
+			fetcher: { fetch: fetchMock },
+		})
 
-		await makeClient().assignGroups('srv', [{ subjectId: 'user-1', groups: ['alpha'] }], 'sync')
+		await client.assignGroups('srv', [{ subjectId: 'user-1', groups: ['alpha'] }], 'sync')
 
 		expect(fetchMock).toHaveBeenCalledWith(
 			'https://murmur.test/v1/servers/srv/local-accounts:groups',
@@ -88,9 +91,13 @@ describe('MurmurControlClient', () => {
 				status: 404,
 			})
 		)
-		vi.stubGlobal('fetch', fetchMock)
+		const client = new MurmurControlClient({
+			baseUrl: 'https://murmur.test/',
+			token: 'secret-token',
+			fetcher: { fetch: fetchMock },
+		})
 
-		const result = await makeClient().getLocalAccount('srv', 'missing-user')
+		const result = await client.getLocalAccount('srv', 'missing-user')
 		expect(result).toBeNull()
 	})
 
@@ -108,9 +115,13 @@ describe('MurmurControlClient', () => {
 				.mockResolvedValue(
 					new Response(JSON.stringify({ error: 'boom', details: null }), { status })
 				)
-			vi.stubGlobal('fetch', fetchMock)
+			const client = new MurmurControlClient({
+				baseUrl: 'https://murmur.test/',
+				token: 'secret-token',
+				fetcher: { fetch: fetchMock },
+			})
 
-			const error = await makeClient()
+			const error = await client
 				.getUserState('srv')
 				.then(
 					() => null,
@@ -128,13 +139,57 @@ describe('MurmurControlClient', () => {
 			.mockResolvedValue(
 				new Response(JSON.stringify({ serverId: 'srv', users: [] }), { status: 200 })
 			)
-		vi.stubGlobal('fetch', fetchMock)
+		const client = new MurmurControlClient({
+			baseUrl: 'https://murmur.test/',
+			token: 'secret-token',
+			fetcher: { fetch: fetchMock },
+		})
 
-		await makeClient().getUserState('srv', { loginName: 'pilot_one' })
+		await client.getUserState('srv', { loginName: 'pilot_one' })
 
 		expect(fetchMock).toHaveBeenCalledWith(
 			'https://murmur.test/v1/servers/srv/state/users?loginName=pilot_one',
 			expect.anything()
+		)
+	})
+
+	it('omits the authorization header when no token is configured', async () => {
+		const fetchMock = vi.fn().mockResolvedValue(
+			new Response(JSON.stringify({ serverId: 'srv', users: [] }), { status: 200 })
+		)
+		const client = new MurmurControlClient({
+			baseUrl: 'https://murmur.test/',
+			fetcher: { fetch: fetchMock },
+		})
+
+		await client.getUserState('srv')
+
+		const init = fetchMock.mock.calls[0]?.[1]
+		expect(fetchMock).toHaveBeenCalledWith('https://murmur.test/v1/servers/srv/state/users', init)
+		expect(init?.headers).toBeDefined()
+		expect((init?.headers as Record<string, string> | undefined)?.Authorization).toBeUndefined()
+	})
+
+	it('falls back to global fetch when no mTLS binding is configured', async () => {
+		const fetchMock = vi.fn().mockResolvedValue(
+			new Response(JSON.stringify({ serverId: 'srv', users: [] }), { status: 200 })
+		)
+		vi.stubGlobal('fetch', fetchMock)
+
+		const client = new MurmurControlClient({
+			baseUrl: 'https://murmur.test/',
+			token: 'secret-token',
+		})
+
+		await client.getUserState('srv')
+
+		expect(fetchMock).toHaveBeenCalledWith(
+			'https://murmur.test/v1/servers/srv/state/users',
+			expect.objectContaining({
+				headers: expect.objectContaining({
+					Authorization: 'Bearer secret-token',
+				}),
+			})
 		)
 	})
 })

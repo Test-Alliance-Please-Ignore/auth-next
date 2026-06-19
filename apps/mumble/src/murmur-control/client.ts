@@ -22,6 +22,10 @@ import type {
 	UserProjectionStateResponse,
 } from '@repo/mumble'
 
+export interface MurmurControlFetcher {
+	fetch(input: RequestInfo | URL, init?: RequestInit): Promise<Response>
+}
+
 export type MurmurControlErrorCode =
 	| 'unauthorized'
 	| 'validation'
@@ -56,7 +60,8 @@ export class MurmurControlApiError extends Error {
 
 export interface MurmurControlClientOptions {
 	baseUrl: string
-	token: string
+	fetcher?: MurmurControlFetcher | null
+	token?: string | null
 }
 
 /**
@@ -65,10 +70,12 @@ export interface MurmurControlClientOptions {
  */
 export class MurmurControlClient {
 	private readonly baseUrl: string
-	private readonly token: string
+	private readonly fetcher?: MurmurControlFetcher | null
+	private readonly token?: string | null
 
 	constructor(options: MurmurControlClientOptions) {
 		this.baseUrl = options.baseUrl.replace(/\/+$/, '')
+		this.fetcher = options.fetcher
 		this.token = options.token
 	}
 
@@ -78,14 +85,17 @@ export class MurmurControlClient {
 		schema: ZodType<T>,
 		body?: unknown
 	): Promise<T> {
-		const headers: Record<string, string> = {
-			Authorization: `Bearer ${this.token}`,
+		const headers: Record<string, string> = {}
+		const token = this.token?.trim()
+		if (token !== undefined && token.length > 0) {
+			headers.Authorization = `Bearer ${token}`
 		}
 		if (body !== undefined) {
 			headers['Content-Type'] = 'application/json'
 		}
 
-		const response = await fetch(`${this.baseUrl}${path}`, {
+		const fetcher = this.fetcher?.fetch ?? fetch
+		const response = await fetcher(`${this.baseUrl}${path}`, {
 			method,
 			headers,
 			body: body !== undefined ? JSON.stringify(body) : undefined,
