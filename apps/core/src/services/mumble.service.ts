@@ -23,6 +23,7 @@ import type { Env } from '../context'
 const MAX_LOGIN_NAME_LENGTH = 60
 const USER_GROUP_LOOKUP_CONCURRENCY = 5
 const USER_PROFILE_LOOKUP_CONCURRENCY = 5
+const SERVER_ADMIN_GROUP_NAME = 'Server Admin'
 
 interface MumbleIdentity {
 	characterName: string
@@ -135,6 +136,24 @@ async function isUserBlacklisted(env: Env, userId: string): Promise<boolean> {
 	return hrStub.isUserBlacklisted(userId)
 }
 
+async function getAffiliationGroupNames(
+	env: Env,
+	userId: string,
+	options?: GetUserGroupNamesOptions
+): Promise<string[]> {
+	if (options?.forceEmptyGroups === true) {
+		return []
+	}
+
+	if (!(await hasAllianceMemberAttachment(env, userId))) {
+		return []
+	}
+
+	const groupsStub = getStub<Groups>(env.GROUPS, 'default')
+	const memberships = await groupsStub.getUserMemberships(userId)
+	return memberships.map((membership) => membership.groupName)
+}
+
 async function runWithConcurrencyLimit<T, R>(
 	items: T[],
 	limit: number,
@@ -179,13 +198,23 @@ async function getUserGroupNames(
 		return []
 	}
 
-	if (!(await hasAllianceMemberAttachment(env, userId))) {
-		return []
+	const db = createDb(env.DATABASE_URL)
+	const [user, affiliationGroups] = await Promise.all([
+		db.query.users.findFirst({
+			where: eq(users.id, userId),
+			columns: {
+				is_admin: true,
+			},
+		}),
+		getAffiliationGroupNames(env, userId, options),
+	])
+
+	const groups = [...affiliationGroups]
+	if (user?.is_admin) {
+		groups.push(SERVER_ADMIN_GROUP_NAME)
 	}
 
-	const groupsStub = getStub<Groups>(env.GROUPS, 'default')
-	const memberships = await groupsStub.getUserMemberships(userId)
-	return memberships.map((membership) => membership.groupName)
+	return [...new Set(groups)]
 }
 
 /** Get the user's Mumble account status, or null when not provisioned. */

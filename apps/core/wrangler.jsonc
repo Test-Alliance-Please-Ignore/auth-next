@@ -30,7 +30,7 @@
 		"SENTRY_RELEASE": "unknown",
 		"SENTRY_DSN": "https://8a3d31a3a18e448f97e19e3d9930547d@app.glitchtip.com/13711",
 		"LEGACY_AUTH_CALLBACK_URL": "https://pleaseignore.app/api/auth/legacy-auth/callback",
-		"MUMBLE_SERVER_ID": "default",
+		"MUMBLE_SERVER_ID": "srv-1",
 		"MUMBLE_HOST": "numumble.pleaseignore.com",
 		"MUMBLE_PORT": "64737"
 	},
