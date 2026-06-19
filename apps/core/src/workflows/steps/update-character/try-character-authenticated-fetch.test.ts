@@ -132,6 +132,30 @@ describe('tryCharacterAuthenticatedFetch', () => {
 		})
 	})
 
+	it('does not queue invalidation alerts when the token was already invalid', async () => {
+		validateToken.mockResolvedValue({
+			characterId: '123',
+			error: 'Missing required scopes: esi-location.read_location.v1',
+			isValid: false,
+			missingScopes: ['esi-location.read_location.v1'],
+			refreshAttempted: false,
+			refreshSucceeded: false,
+			scopes: ['publicData'],
+			status: 'missing_scopes',
+		})
+		const recorder = createDbRecorder(false)
+
+		const result = await tryCharacterAuthenticatedFetch(
+			createCtx(recorder.db as unknown as WorkflowContext['db']),
+			'123'
+		)
+
+		expect(result.success).toBe(false)
+		expect(result.status).toBe('missing_scopes')
+		expect(result.tokenInvalidated).toBe(false)
+		expect(queueTokenInvalidationAlerts).not.toHaveBeenCalled()
+	})
+
 	it('preserves the prior token validity on transient verification failures', async () => {
 		validateToken.mockResolvedValue({
 			characterId: '123',

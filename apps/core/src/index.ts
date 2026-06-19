@@ -8,6 +8,7 @@ import { withNotFound, withOnError, withSentry } from '@repo/hono-helpers'
 
 import { createDb } from './db'
 import { waitUntilWithTelemetry } from './lib/background-task'
+import { TOKEN_INVALID_ALERT_DRAIN_CRON } from './lib/token-invalid-alerts'
 import { discordMemberAuditRuns, userCharacters, userIpAddresses, users } from './db/schema'
 import { CoreDO } from './durable-object'
 import { triggerDiscordRefreshWorkflow, triggerUserRefreshWorkflow } from './lib/workflow-triggers'
@@ -152,14 +153,21 @@ export default {
 	fetch: sentryApp.fetch.bind(sentryApp),
 	async scheduled(event: ScheduledEvent, env: Env, _ctx: ExecutionContext): Promise<void> {
 		const coreStub = getStub<Core>(env.CORE, 'default')
-		const result = await coreStub.processPendingDiscordRefreshes()
-		if (result.processed > 0) {
-			console.log('[Core:Scheduled] Processed pending Discord refreshes', result)
+		if (event.cron === '3-58/5 * * * *') {
+			const result = await coreStub.processPendingDiscordRefreshes()
+			if (result.processed > 0) {
+				console.log('[Core:Scheduled] Processed pending Discord refreshes', result)
+			}
 		}
 
-		const tokenAlertResult = await coreStub.processPendingTokenInvalidationAlerts()
-		if (tokenAlertResult.processed > 0) {
-			console.log('[Core:Scheduled] Processed pending token invalidation alerts', tokenAlertResult)
+		if (event.cron === TOKEN_INVALID_ALERT_DRAIN_CRON) {
+			const tokenAlertResult = await coreStub.processPendingTokenInvalidationAlerts()
+			if (tokenAlertResult.processed > 0) {
+				console.log(
+					'[Core:Scheduled] Processed pending token invalidation alerts',
+					tokenAlertResult
+				)
+			}
 		}
 
 		// Daily full cleanup of Discord member audit history at midnight UTC.

@@ -4,6 +4,14 @@ import type { DiscordEmbed, MessageContent } from '@repo/discord'
 export const TOKEN_INVALID_ALERT_COOLDOWN_MS = 12 * 60 * 60 * 1000
 export const TOKEN_INVALID_ALERT_TTL_MS = 7 * 24 * 60 * 60 * 1000
 export const TOKEN_INVALID_ALERT_RETRY_MS = 60 * 60 * 1000
+export const TOKEN_INVALID_ALERT_DRAIN_CRON = '15,45 * * * *'
+
+export function didTokenTransitionFromValidToInvalid(
+	previousHasValidToken: boolean | null | undefined,
+	nextHasValidToken: boolean | null | undefined
+): boolean {
+	return previousHasValidToken === true && nextHasValidToken === false
+}
 
 export async function queueTokenInvalidationAlertsForUser(
 	core: Pick<Core, 'queueTokenInvalidationAlerts'>,

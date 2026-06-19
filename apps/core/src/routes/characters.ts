@@ -7,7 +7,10 @@ import { logger } from '@repo/hono-helpers'
 
 import { userCharacters } from '../db/schema'
 import { waitUntilWithTelemetry } from '../lib/background-task'
-import { queueTokenInvalidationAlertsForUser } from '../lib/token-invalid-alerts'
+import {
+	didTokenTransitionFromValidToInvalid,
+	queueTokenInvalidationAlertsForUser,
+} from '../lib/token-invalid-alerts'
 import { validateAndSyncCharacterTokenValidity } from '../lib/token-validity'
 import { markCharacterTokenInvalidFromAuthFailure } from '../lib/token-validity'
 import { triggerUserRefreshWorkflow } from '../lib/workflow-triggers'
@@ -797,8 +800,10 @@ app.post('/:characterId/refresh', requireAuth(), async (c) => {
 			? tokenStatus.nextHasValidToken === true
 			: fallbackValidation?.isValid === true
 		let authError: string | undefined = tokenStatus?.validation.error ?? fallbackValidation?.error
-		let tokenInvalidated =
-			tokenStatus?.previousHasValidToken === true && tokenStatus.nextHasValidToken === false
+		let tokenInvalidated = didTokenTransitionFromValidToInvalid(
+			tokenStatus?.previousHasValidToken,
+			tokenStatus?.nextHasValidToken
+		)
 
 		// Try to fetch authenticated data if token is valid and the character is still live.
 		if (hasValidToken && !isDeletedCharacter) {
@@ -815,7 +820,11 @@ app.post('/:characterId/refresh', requireAuth(), async (c) => {
 					: false
 				if (downgradedToken) {
 					hasValidToken = false
-					tokenInvalidated = tokenStatus?.previousHasValidToken === true || tokenInvalidated
+					tokenInvalidated =
+						didTokenTransitionFromValidToInvalid(
+							tokenStatus?.previousHasValidToken,
+							false
+						) || tokenInvalidated
 				}
 				authError =
 					error instanceof Error

@@ -1,6 +1,9 @@
 import { describe, expect, it } from 'vitest'
 
-import { buildTokenInvalidationMessage } from '../lib/token-invalid-alerts'
+import {
+	buildTokenInvalidationMessage,
+	didTokenTransitionFromValidToInvalid,
+} from '../lib/token-invalid-alerts'
 
 describe('token invalid alerts message builder', () => {
 	it('summarizes character names and truncates long lists', () => {
@@ -31,5 +34,13 @@ describe('token invalid alerts message builder', () => {
 		})
 		expect(message.embeds?.[0]?.fields?.[0]?.value).toContain('• Alpha One')
 		expect(message.embeds?.[0]?.fields?.[0]?.value).toContain('• +1 more')
+	})
+
+	it('only treats valid-to-invalid transitions as queueable', () => {
+		expect(didTokenTransitionFromValidToInvalid(true, false)).toBe(true)
+		expect(didTokenTransitionFromValidToInvalid(true, true)).toBe(false)
+		expect(didTokenTransitionFromValidToInvalid(false, false)).toBe(false)
+		expect(didTokenTransitionFromValidToInvalid(null, false)).toBe(false)
+		expect(didTokenTransitionFromValidToInvalid(undefined, false)).toBe(false)
 	})
 })
