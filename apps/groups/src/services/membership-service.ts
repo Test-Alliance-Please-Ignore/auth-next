@@ -309,6 +309,7 @@ export class MembershipService {
 			categoryName: membership.group.category.name,
 			isOwner: membership.group.ownerId === userId,
 			isAdmin: adminGroupIds.has(membership.groupId),
+			mumbleSyncEnabled: membership.group.mumbleSyncEnabled,
 			joinedAt: membership.joinedAt,
 		}))
 	}

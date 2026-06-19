@@ -66,6 +66,7 @@ export class GroupService {
 				description: data.description || null,
 				visibility: data.visibility || 'public',
 				joinMode: data.joinMode || 'open',
+				mumbleSyncEnabled: data.mumbleSyncEnabled ?? false,
 				ownerId: userId,
 			})
 			.returning()
@@ -250,6 +251,7 @@ export class GroupService {
 		if (data.description !== undefined) updates.description = data.description
 		if (data.visibility !== undefined) updates.visibility = data.visibility
 		if (data.joinMode !== undefined) updates.joinMode = data.joinMode
+		if (data.mumbleSyncEnabled !== undefined) updates.mumbleSyncEnabled = data.mumbleSyncEnabled
 		if (data.categoryId !== undefined) updates.categoryId = data.categoryId
 
 		updates.updatedAt = new Date()

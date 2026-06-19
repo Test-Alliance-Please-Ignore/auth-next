@@ -157,6 +157,7 @@ describe('Groups Durable Object - Groups', () => {
 		expect(group.name).toBe('My Test Group')
 		expect(group.ownerId).toBe(USER_1_ID)
 		expect(group.joinMode).toBe('open')
+		expect(group.mumbleSyncEnabled).toBe(false)
 	})
 
 	it('should list groups', async () => {
@@ -295,12 +296,14 @@ describe('Groups Durable Object - Groups', () => {
 			{
 				name: 'Updated Group Name',
 				joinMode: 'approval',
+				mumbleSyncEnabled: true,
 			},
 			USER_1_ID
 		)
 
 		expect(updated.name).toBe('Updated Group Name')
 		expect(updated.joinMode).toBe('approval')
+		expect(updated.mumbleSyncEnabled).toBe(true)
 	})
 
 	it('should delete a group', async () => {
