@@ -1297,7 +1297,48 @@ groups.patch(
 		const groupsDO = getStub<Groups>(c.env.GROUPS, 'default')
 
 		try {
+			const previousGroup = await groupsDO.getGroup(groupId, user.id)
 			const group = await groupsDO.updateGroup(groupId, body, user.id)
+
+			const shouldRefreshMumbleMembers =
+				previousGroup !== null &&
+				(previousGroup.name !== group.name ||
+					previousGroup.mumbleSyncEnabled !== group.mumbleSyncEnabled) &&
+				(previousGroup.mumbleSyncEnabled || group.mumbleSyncEnabled)
+
+			if (shouldRefreshMumbleMembers) {
+				let memberUserIds: string[] = []
+				try {
+					memberUserIds = await groupsDO.getGroupMemberUserIds(groupId)
+				} catch (error) {
+					// Best effort: the group update already succeeded, so we only log and move on.
+					console.warn('[Groups] Failed to load members for Mumble refresh after group update', {
+						groupId,
+						error: error instanceof Error ? error.message : String(error),
+					})
+				}
+
+				if (memberUserIds.length > 0) {
+					waitUntilWithTelemetry(
+						c.executionCtx,
+						'groups.mumble-refresh.update-group',
+						() =>
+							triggerMumbleRefreshWorkflow({
+								env: c.env,
+								userIds: memberUserIds,
+								source: 'group-updated',
+							}),
+						{
+							groupId,
+							memberCount: memberUserIds.length,
+							source: 'group-updated',
+							mumbleSyncEnabled: group.mumbleSyncEnabled,
+							groupName: group.name,
+						}
+					)
+				}
+			}
+
 			return c.json(group)
 		} catch (error) {
 			if (error instanceof Error) {
