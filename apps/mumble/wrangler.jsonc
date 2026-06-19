@@ -12,9 +12,7 @@
 	"vars": {
 		"NAME": "mumble",
 		"ENVIRONMENT": "production",
-		"SENTRY_RELEASE": "unknown",
-		// Base URL of the murmur-control control plane API
-		"MURMUR_CONTROL_API_URL": "http://localhost:8788",
+		"SENTRY_RELEASE": "0.1.0-1d563e5",
 		// Optional bearer token if murmur-control still expects app-layer auth.
 		// MURMUR_CONTROL_TOKEN is a secret: pnpm -F mumble wrangler secret put MURMUR_CONTROL_TOKEN
 	},
