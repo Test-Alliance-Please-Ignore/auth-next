@@ -32,6 +32,7 @@ function setEligibleDbMock() {
 			users: {
 				findFirst: vi.fn().mockResolvedValue({
 					mainCharacterId: MAIN_CHARACTER_ID,
+					is_admin: false,
 				}),
 			},
 			userCharacters: {
@@ -147,6 +148,59 @@ describe('syncUsersMumbleGroups', () => {
 		expect(mumbleStub.syncUserGroups).toHaveBeenCalledWith(
 			'srv',
 			[{ subjectId: 'user-1', groups: [] }],
+			undefined
+		)
+	})
+
+	it('adds Server Admin for site admins alongside affiliation groups', async () => {
+		createDbMock.mockReturnValue({
+			query: {
+				users: {
+					findFirst: vi.fn().mockResolvedValue({
+						mainCharacterId: MAIN_CHARACTER_ID,
+						is_admin: true,
+					}),
+				},
+				userCharacters: {
+					findMany: vi.fn().mockResolvedValue([
+						{
+							corporationId: 'corp-1',
+							allianceId: null,
+						},
+					]),
+				},
+				managedCorporations: {
+					findMany: vi.fn().mockResolvedValue([
+						{
+							corporationId: 'corp-1',
+						},
+					]),
+				},
+			},
+		} as any)
+
+		const hrStub = {
+			isUserBlacklisted: vi.fn().mockResolvedValue(false),
+		}
+		const groupsStub = {
+			getUserMemberships: vi.fn().mockResolvedValue([{ groupName: 'Fleet' }]),
+		}
+		const mumbleStub = {
+			syncUserGroups: vi.fn().mockResolvedValue({ synced: ['user-1'], skipped: [] }),
+		}
+
+		getStubMock.mockImplementation((binding: unknown) => {
+			if (binding === env.HR) return hrStub as any
+			if (binding === env.GROUPS) return groupsStub as any
+			if (binding === env.MUMBLE) return mumbleStub as any
+			throw new Error('unexpected stub binding')
+		})
+
+		await syncUsersMumbleGroups(env, ['user-1'])
+
+		expect(mumbleStub.syncUserGroups).toHaveBeenCalledWith(
+			'srv',
+			[{ subjectId: 'user-1', groups: ['Fleet', 'Server Admin'] }],
 			undefined
 		)
 	})
