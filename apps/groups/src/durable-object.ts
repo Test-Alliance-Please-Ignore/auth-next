@@ -251,6 +251,7 @@ export class GroupsDO extends DurableObject<Env> implements Groups {
 				description: data.description || null,
 				visibility: data.visibility || 'public',
 				joinMode: data.joinMode || 'open',
+				mumbleSyncEnabled: data.mumbleSyncEnabled ?? false,
 				ownerId: actorId,
 			})
 			.returning()
@@ -502,6 +503,7 @@ export class GroupsDO extends DurableObject<Env> implements Groups {
 		if (data.description !== undefined) updates.description = data.description
 		if (data.visibility !== undefined) updates.visibility = data.visibility
 		if (data.joinMode !== undefined) updates.joinMode = data.joinMode
+		if (data.mumbleSyncEnabled !== undefined) updates.mumbleSyncEnabled = data.mumbleSyncEnabled
 		if (data.categoryId !== undefined) updates.categoryId = data.categoryId
 
 		updates.updatedAt = new Date()
@@ -774,6 +776,7 @@ export class GroupsDO extends DurableObject<Env> implements Groups {
 			categoryName: membership.group.category.name,
 			isOwner: membership.group.ownerId === userId,
 			isAdmin: adminGroupIds.has(membership.groupId),
+			mumbleSyncEnabled: membership.group.mumbleSyncEnabled,
 			joinedAt: membership.joinedAt,
 		}))
 	}
@@ -3710,6 +3713,7 @@ export class GroupsDO extends DurableObject<Env> implements Groups {
 			description: group.description,
 			visibility: group.visibility,
 			joinMode: group.joinMode,
+			mumbleSyncEnabled: group.mumbleSyncEnabled,
 			ownerId: group.ownerId,
 			createdAt: group.createdAt,
 			updatedAt: group.updatedAt,

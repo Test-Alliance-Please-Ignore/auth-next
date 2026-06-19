@@ -1,6 +1,7 @@
 import { Check, Copy, UserCog, Users } from 'lucide-react'
 import { useState } from 'react'
 
+import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 
@@ -37,6 +38,7 @@ export function GroupCard({ group }: GroupCardProps) {
 					<div className="flex gap-2 items-center">
 						<VisibilityBadge visibility={group.visibility} />
 						<JoinModeBadge joinMode={group.joinMode} />
+						{group.mumbleSyncEnabled ? <Badge variant="secondary">Mumble</Badge> : null}
 						<Button
 							variant="ghost"
 							size="icon"

@@ -1,0 +1,1 @@
+ALTER TABLE "groups" ADD COLUMN "mumble_sync_enabled" boolean DEFAULT false NOT NULL;

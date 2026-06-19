@@ -183,7 +183,9 @@ describe('syncUsersMumbleGroups', () => {
 			isUserBlacklisted: vi.fn().mockResolvedValue(false),
 		}
 		const groupsStub = {
-			getUserMemberships: vi.fn().mockResolvedValue([{ groupName: 'Fleet' }]),
+			getUserMemberships: vi.fn().mockResolvedValue([
+				{ groupName: 'Fleet', mumbleSyncEnabled: true },
+			]),
 		}
 		const mumbleStub = {
 			syncUserGroups: vi.fn().mockResolvedValue({ synced: ['user-1'], skipped: [] }),
@@ -260,7 +262,7 @@ describe('syncUsersMumbleGroups', () => {
 				maxInFlight = Math.max(maxInFlight, inFlight)
 				await new Promise((resolve) => setTimeout(resolve, 5))
 				inFlight -= 1
-				return [{ groupName: `group-${userId}` }]
+				return [{ groupName: `group-${userId}`, mumbleSyncEnabled: true }]
 			}),
 		}
 		const hrStub = {
@@ -297,7 +299,7 @@ describe('syncUsersMumbleGroups', () => {
 				if (userId === 'user-2') {
 					throw new Error('boom')
 				}
-				return [{ groupName: `group-${userId}` }]
+				return [{ groupName: `group-${userId}`, mumbleSyncEnabled: true }]
 			}),
 		}
 		const hrStub = {
@@ -325,6 +327,38 @@ describe('syncUsersMumbleGroups', () => {
 				{ subjectId: 'user-1', groups: ['group-user-1'] },
 				{ subjectId: 'user-3', groups: ['group-user-3'] },
 			],
+			undefined
+		)
+	})
+
+	it('ignores groups that are not opted in for mumble sync', async () => {
+		setEligibleDbMock()
+
+		const groupsStub = {
+			getUserMemberships: vi.fn().mockResolvedValue([
+				{ groupName: 'Fleet', mumbleSyncEnabled: true },
+				{ groupName: 'Ops', mumbleSyncEnabled: false },
+			]),
+		}
+		const hrStub = {
+			isUserBlacklisted: vi.fn().mockResolvedValue(false),
+		}
+		const mumbleStub = {
+			syncUserGroups: vi.fn().mockResolvedValue({ synced: ['user-1'], skipped: [] }),
+		}
+
+		getStubMock.mockImplementation((binding: unknown) => {
+			if (binding === env.HR) return hrStub as any
+			if (binding === env.GROUPS) return groupsStub as any
+			if (binding === env.MUMBLE) return mumbleStub as any
+			throw new Error('unexpected stub binding')
+		})
+
+		await syncUsersMumbleGroups(env, ['user-1'])
+
+		expect(mumbleStub.syncUserGroups).toHaveBeenCalledWith(
+			'srv',
+			[{ subjectId: 'user-1', groups: ['Fleet'] }],
 			undefined
 		)
 	})
