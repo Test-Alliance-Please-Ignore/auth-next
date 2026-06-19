@@ -26,12 +26,13 @@ murmur-control over its REST API.
 
 | Name | Kind | Purpose |
 | --- | --- | --- |
-| `MURMUR_CONTROL_API_URL` | var | Base URL of the murmur-control API |
+| `MURMUR_CONTROL_API_URL` | secret | Base URL of the murmur-control API |
 | `MURMUR_CONTROL_MTLS` | mTLS binding | Optional outbound client certificate for murmur-control |
 | `MURMUR_CONTROL_TOKEN` | secret | Optional bearer token for murmur-control |
 
 ```bash
 pnpm -F mumble wrangler mtls-certificate upload --cert cert.pem --key key.pem --name murmur-control-client
+pnpm -F mumble wrangler secret put MURMUR_CONTROL_API_URL
 pnpm -F mumble wrangler secret put MURMUR_CONTROL_TOKEN
 ```
 
@@ -45,6 +46,12 @@ The bearer token is optional in either mode and is only attached when
 In production-like environments, the client requires:
 - an `https://` murmur-control base URL
 - at least one auth mechanism: mTLS binding or bearer token
+
+`MURMUR_CONTROL_API_URL` is provided as a Cloudflare secret rather than
+hardcoded in `wrangler.jsonc`.
+`SENTRY_RELEASE` is declared in the static Wrangler config to match the
+currently deployed release; the deploy tooling still injects the build release
+at deploy time.
 
 The serverId and user-facing connection info (`MUMBLE_SERVER_ID`,
 `MUMBLE_HOST`, `MUMBLE_PORT`) are configured on the core worker.
