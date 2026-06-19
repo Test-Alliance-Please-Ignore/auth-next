@@ -192,4 +192,27 @@ describe('MurmurControlClient', () => {
 			})
 		)
 	})
+
+	it('rejects production-like plaintext control-plane URLs', async () => {
+		const client = new MurmurControlClient({
+			baseUrl: 'http://murmur.test/',
+			token: 'secret-token',
+			environment: 'production',
+		})
+
+		await expect(client.getUserState('srv')).rejects.toThrow(
+			'murmur-control requires an HTTPS base URL in production-like environments'
+		)
+	})
+
+	it('rejects production-like control-plane access without auth', async () => {
+		const client = new MurmurControlClient({
+			baseUrl: 'https://murmur.test/',
+			environment: 'production',
+		})
+
+		await expect(client.getUserState('srv')).rejects.toThrow(
+			'murmur-control requires mTLS or a bearer token in production-like environments'
+		)
+	})
 })

@@ -100,6 +100,7 @@ export class MumbleDO extends DurableObject<Env> implements Mumble {
 			baseUrl: this.env.MURMUR_CONTROL_API_URL,
 			fetcher: this.env.MURMUR_CONTROL_MTLS ?? undefined,
 			token: this.env.MURMUR_CONTROL_TOKEN,
+			environment: this.env.ENVIRONMENT,
 		})
 	}
 

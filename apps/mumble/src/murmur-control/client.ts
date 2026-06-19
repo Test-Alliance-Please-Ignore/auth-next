@@ -62,6 +62,7 @@ export interface MurmurControlClientOptions {
 	baseUrl: string
 	fetcher?: MurmurControlFetcher | null
 	token?: string | null
+	environment?: string | null
 }
 
 /**
@@ -72,11 +73,33 @@ export class MurmurControlClient {
 	private readonly baseUrl: string
 	private readonly fetcher?: MurmurControlFetcher | null
 	private readonly token?: string | null
+	private readonly environment?: string | null
 
 	constructor(options: MurmurControlClientOptions) {
 		this.baseUrl = options.baseUrl.replace(/\/+$/, '')
 		this.fetcher = options.fetcher
 		this.token = options.token
+		this.environment = options.environment
+	}
+
+	private isProductionLike(): boolean {
+		const environment = this.environment?.trim().toLowerCase()
+		if (!environment) return false
+		return !['dev', 'development', 'local', 'test', 'vitest'].includes(environment)
+	}
+
+	private validateTransport(): void {
+		if (!this.isProductionLike()) return
+
+		if (!this.baseUrl.startsWith('https://')) {
+			throw new Error('murmur-control requires an HTTPS base URL in production-like environments')
+		}
+
+		const hasMtls = this.fetcher != null
+		const hasToken = (this.token?.trim().length ?? 0) > 0
+		if (!hasMtls && !hasToken) {
+			throw new Error('murmur-control requires mTLS or a bearer token in production-like environments')
+		}
 	}
 
 	private async request<T>(
@@ -85,6 +108,8 @@ export class MurmurControlClient {
 		schema: ZodType<T>,
 		body?: unknown
 	): Promise<T> {
+		this.validateTransport()
+
 		const headers: Record<string, string> = {}
 		const token = this.token?.trim()
 		if (token !== undefined && token.length > 0) {
@@ -94,12 +119,14 @@ export class MurmurControlClient {
 			headers['Content-Type'] = 'application/json'
 		}
 
-		const fetcher = this.fetcher?.fetch ?? fetch
-		const response = await fetcher(`${this.baseUrl}${path}`, {
+		const requestInit: RequestInit = {
 			method,
 			headers,
 			body: body !== undefined ? JSON.stringify(body) : undefined,
-		})
+		}
+		const response = this.fetcher
+			? await this.fetcher.fetch(`${this.baseUrl}${path}`, requestInit)
+			: await fetch(`${this.baseUrl}${path}`, requestInit)
 
 		if (!response.ok) {
 			let message = `murmur-control request failed: ${response.status}`

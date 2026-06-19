@@ -42,6 +42,10 @@ plain `fetch()`.
 The bearer token is optional in either mode and is only attached when
 `MURMUR_CONTROL_TOKEN` is present in the environment.
 
+In production-like environments, the client requires:
+- an `https://` murmur-control base URL
+- at least one auth mechanism: mTLS binding or bearer token
+
 The serverId and user-facing connection info (`MUMBLE_SERVER_ID`,
 `MUMBLE_HOST`, `MUMBLE_PORT`) are configured on the core worker.
 
