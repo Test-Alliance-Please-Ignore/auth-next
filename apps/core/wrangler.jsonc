@@ -31,8 +31,8 @@
 		"SENTRY_DSN": "https://8a3d31a3a18e448f97e19e3d9930547d@app.glitchtip.com/13711",
 		"LEGACY_AUTH_CALLBACK_URL": "https://pleaseignore.app/api/auth/legacy-auth/callback",
 		"MUMBLE_SERVER_ID": "default",
-		"MUMBLE_HOST": "voice.pleaseignore.app",
-		"MUMBLE_PORT": "64738"
+		"MUMBLE_HOST": "numumble.pleaseignore.com",
+		"MUMBLE_PORT": "64737"
 	},
 	"durable_objects": {
 		"bindings": [
