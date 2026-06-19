@@ -16,13 +16,6 @@
 		// Optional bearer token if murmur-control still expects app-layer auth.
 		// MURMUR_CONTROL_TOKEN is a secret: pnpm -F mumble wrangler secret put MURMUR_CONTROL_TOKEN
 	},
-	"mtls_certificates": [
-		{
-			"binding": "MURMUR_CONTROL_MTLS",
-			"certificate_id": "<CERTIFICATE_ID>",
-			"remote": true
-		}
-	],
 	"durable_objects": {
 		"bindings": [
 			{
