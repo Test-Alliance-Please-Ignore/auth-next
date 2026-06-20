@@ -295,7 +295,6 @@ export default function HrMemberProfile() {
 					corporationId: groupCorporationId,
 					requestSource: 'hr',
 					userId: authUserId,
-					targetUserId: authUserId,
 					sendDm: sendDmForBatch,
 				})
 				if (sendDmForBatch) sentDmForAnyBatch = true
@@ -659,7 +658,6 @@ export default function HrMemberProfile() {
 								corporationId: character.corporationId,
 								requestSource: 'hr',
 								userId: authUserId,
-								targetUserId: authUserId,
 							})
 						}}
 					/>

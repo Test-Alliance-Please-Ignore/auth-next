@@ -47,7 +47,11 @@ function getExecutionContextOrNull(c: Context<App>): ExecutionContext | null {
 	}
 }
 
-async function getImmunitasReportTarget(db: any, characterId: string): Promise<{
+async function getImmunitasReportTarget(
+	c: Context<App>,
+	db: any,
+	characterId: string
+): Promise<{
 	userId: string
 	characterLabel: string
 	immunitas: boolean
@@ -74,6 +78,31 @@ async function getImmunitasReportTarget(db: any, characterId: string): Promise<{
 		userId: owner.userId,
 		characterLabel: owner.characterName,
 		immunitas: user?.immunitas === true,
+	}
+}
+
+type ReportCorporationCandidates = {
+	requestorCorporations: Array<{ corporationId: string }>
+	targetCorporations: Array<{ corporationId: string }>
+	sharedCorporationIds: string[]
+}
+
+async function getReportCorporationCandidates(
+	core: Core,
+	requestorUserId: string,
+	targetUserId: string
+): Promise<ReportCorporationCandidates> {
+	const [requestorCorporations, targetCorporations] = await Promise.all([
+		core.getUserCorporations(requestorUserId),
+		core.getUserCorporations(targetUserId),
+	])
+	const targetCorporationIds = new Set(targetCorporations.map((corporation) => corporation.corporationId))
+	return {
+		requestorCorporations,
+		targetCorporations,
+		sharedCorporationIds: requestorCorporations
+			.map((corporation) => corporation.corporationId)
+			.filter((corporationId) => targetCorporationIds.has(corporationId)),
 	}
 }
 
@@ -365,16 +394,10 @@ app.post('/characters/:characterId/reports', requireAuth(), async (c) => {
 	const user = c.get('user')!
 	const characterId = c.req.param('characterId')
 	const body = await c.req.json<{
-		corporationId: string
 		requestSource: ReportRequestSource
 		applicationId?: string
-		targetUserId?: string
 		sendDm?: boolean
 	}>()
-
-	if (!body.corporationId) {
-		return c.json({ error: 'corporationId is required' }, 400)
-	}
 
 	if (!body.requestSource || !VALID_REQUEST_SOURCES.includes(body.requestSource)) {
 		return c.json({ error: 'Valid requestSource is required' }, 400)
@@ -386,12 +409,22 @@ app.post('/characters/:characterId/reports', requireAuth(), async (c) => {
 			return c.json({ error: 'Database not available' }, 500)
 		}
 
-		const immunitasTarget = await getImmunitasReportTarget(db, characterId)
+		const core = getCoreStub(c)
+		const auditor = await isHrAuditorUser(c, user)
+		const immunitasTarget = await getImmunitasReportTarget(c, db, characterId)
+		const resolvedTargetUserId = immunitasTarget?.userId
+		if (!resolvedTargetUserId) {
+			return c.json(
+				{ error: 'Fulcrum report requests are not allowed for this character' },
+				403,
+			)
+		}
+		const isSelfImmunitasTarget = immunitasTarget?.immunitas && resolvedTargetUserId === user.id
 		const requestorCharacterLabel =
 			user.characters.find((char) => char.is_primary)?.characterName ??
 			user.characters[0]?.characterName ??
 			user.mainCharacterId
-		if (immunitasTarget?.immunitas) {
+		if (immunitasTarget?.immunitas && !isSelfImmunitasTarget) {
 			const executionCtx = getExecutionContextOrNull(c)
 			const queueTask = async () => {
 				const coreStub = getCoreStub(c)
@@ -425,46 +458,96 @@ app.post('/characters/:characterId/reports', requireAuth(), async (c) => {
 			)
 		}
 
-		const auditor = await isHrAuditorUser(c, user)
-
-		// Check HR permission for creating reports (auditors/admins can request)
-		if (!auditor && !user.is_admin) {
-			const hr = getHrStub(c)
-			const hasReviewerAccess = await hr.checkPermission(user.id, body.corporationId, 'hr_reviewer')
-			if (!hasReviewerAccess) {
-				return c.json({ error: 'HR reviewer or admin role required' }, 403)
+		const requireSharedCorporation = !auditor && !user.is_admin && !isSelfImmunitasTarget
+		const hr = getHrStub(c)
+		const corporationCandidates = await getReportCorporationCandidates(core, user.id, resolvedTargetUserId)
+		let resolvedCorporationId: string | null = null
+		if (requireSharedCorporation) {
+			if (corporationCandidates.sharedCorporationIds.length === 0) {
+				return c.json(
+					{ error: 'Fulcrum report requests are not allowed for this character' },
+					403,
+				)
 			}
 
-			const roles = await hr.getUserRoles(user.id, body.corporationId)
-			const highestRole = resolveHighestFulcrumReportAccessRole(roles)
-			if (highestRole === 'hr_reviewer') {
-				if (!body.targetUserId) {
-					return c.json(
-						{ error: 'targetUserId is required for HR reviewer report requests' },
-						400
-					)
+			let hasReviewerAccess = false
+			let sawReviewerWithoutOpenApplication = false
+			for (const corporationId of corporationCandidates.sharedCorporationIds) {
+				const hasPermission = await hr.checkPermission(user.id, corporationId, 'hr_reviewer')
+				if (!hasPermission) {
+					continue
+				}
+				hasReviewerAccess = true
+
+				const roles = await hr.getUserRoles(user.id, corporationId)
+				const highestRole = resolveHighestFulcrumReportAccessRole(roles)
+				if (highestRole === 'hr_admin') {
+					resolvedCorporationId = corporationId
+					break
 				}
 
-				const hasOpenApplication = await hasOpenApplicationForTargetUser(
-					hr,
-					user,
-					body.corporationId,
-					body.targetUserId
-				)
-				if (!hasOpenApplication) {
-					return c.json(
-						{
-							error:
-								'An open application is required to request Fulcrum reports for this user',
-						},
-						403,
+				if (highestRole === 'hr_reviewer') {
+					const hasOpenApplication = await hasOpenApplicationForTargetUser(
+						hr,
+						user,
+						corporationId,
+						resolvedTargetUserId,
 					)
+					if (hasOpenApplication) {
+						resolvedCorporationId = corporationId
+						break
+					}
+					sawReviewerWithoutOpenApplication = true
 				}
-			} else if (highestRole !== 'hr_admin') {
-				return c.json({ error: 'HR reviewer or admin role required' }, 403)
+			}
+
+			if (!resolvedCorporationId) {
+				const error = !hasReviewerAccess
+					? 'HR reviewer or admin role required'
+					: sawReviewerWithoutOpenApplication
+						? 'An open application is required to request Fulcrum reports for this user'
+						: 'HR reviewer or admin role required'
+				return c.json({ error }, 403)
+			}
+		} else {
+			resolvedCorporationId =
+				corporationCandidates.sharedCorporationIds[0] ??
+				corporationCandidates.requestorCorporations[0]?.corporationId ??
+				corporationCandidates.targetCorporations[0]?.corporationId ??
+				null
+			if (!resolvedCorporationId) {
+				return c.json(
+					{ error: 'Fulcrum report requests are not allowed for this character' },
+					403,
+				)
 			}
 		}
 
+		if (isSelfImmunitasTarget) {
+			const fulcrum = getFulcrumStub(c)
+			const reportId = await fulcrum.createCharacterReport({
+				characterId,
+				requestorUserId: user.id,
+				requestorCorporationId: resolvedCorporationId,
+				requestSource: body.requestSource,
+				applicationId: body.applicationId,
+				targetUserId: resolvedTargetUserId,
+				sendDm: body.sendDm ?? true,
+			})
+
+			logger.info('[Fulcrum] Report requested', {
+				reportId,
+				characterId,
+				requestSource: body.requestSource,
+				applicationId: body.applicationId,
+				sendDm: body.sendDm ?? true,
+				requestedBy: user.id,
+			})
+
+			return c.json({ reportId, status: 'pending' }, 201)
+		}
+
+		// Check HR permission for creating reports (auditors/admins can request)
 		if (!auditor && !user.is_admin && (await isMemberCorpCeo(c, characterId))) {
 			return c.json(
 				{ error: 'Only auditors or site admins can request reports for member corp CEOs' },
@@ -473,13 +556,16 @@ app.post('/characters/:characterId/reports', requireAuth(), async (c) => {
 		}
 
 		const fulcrum = getFulcrumStub(c)
+		if (!resolvedCorporationId) {
+			return c.json({ error: 'Fulcrum report requests are not allowed for this character' }, 403)
+		}
 		const reportId = await fulcrum.createCharacterReport({
 			characterId,
 			requestorUserId: user.id,
-			requestorCorporationId: body.corporationId,
+			requestorCorporationId: resolvedCorporationId,
 			requestSource: body.requestSource,
 			applicationId: body.applicationId,
-			targetUserId: body.targetUserId,
+			targetUserId: resolvedTargetUserId,
 			sendDm: body.sendDm ?? true,
 		})
 
@@ -488,7 +574,7 @@ app.post('/characters/:characterId/reports', requireAuth(), async (c) => {
 			characterId,
 			requestSource: body.requestSource,
 			applicationId: body.applicationId,
-			targetUserId: body.targetUserId,
+			targetUserId: resolvedTargetUserId,
 			sendDm: body.sendDm ?? true,
 			requestedBy: user.id,
 		})
@@ -514,17 +600,11 @@ app.post('/characters/:characterId/reports', requireAuth(), async (c) => {
 app.post('/reports/batch', requireAuth(), async (c) => {
 	const user = c.get('user')!
 	const body = await c.req.json<{
-		corporationId: string
 		requestSource: ReportRequestSource
 		characterIds: string[]
 		applicationId?: string
 		sendDm?: boolean
-		targetUserId?: string
 	}>()
-
-	if (!body.corporationId) {
-		return c.json({ error: 'corporationId is required' }, 400)
-	}
 
 	if (!Array.isArray(body.characterIds) || body.characterIds.length === 0) {
 		return c.json({ error: 'characterIds is required' }, 400)
@@ -540,25 +620,66 @@ app.post('/reports/batch', requireAuth(), async (c) => {
 			return c.json({ error: 'Database not available' }, 500)
 		}
 
+		const core = getCoreStub(c)
+		const auditor = await isHrAuditorUser(c, user)
 		const requestorCharacterLabel =
 			user.characters.find((char) => char.is_primary)?.characterName ??
 			user.characters[0]?.characterName ??
 			user.mainCharacterId
 		const immunitasTargets = new Map<string, string[]>()
+		let hasSelfImmunitasTarget = false
+		const unresolvedTargetCharacterIds: string[] = []
+		const resolvedTargets: Array<{
+			characterId: string
+			userId: string
+			characterLabel: string
+			immunitas: boolean
+		}> = []
 		for (const targetCharacterId of body.characterIds) {
-			const target = await getImmunitasReportTarget(db, targetCharacterId)
-			if (!target?.immunitas) {
+			const target = await getImmunitasReportTarget(c, db, targetCharacterId)
+			if (!target) {
+				unresolvedTargetCharacterIds.push(targetCharacterId)
+				continue
+			}
+			resolvedTargets.push({
+				characterId: targetCharacterId,
+				userId: target.userId,
+				characterLabel: target.characterLabel,
+				immunitas: target.immunitas,
+			})
+			if (!target.immunitas) {
+				continue
+			}
+			if (target.userId === user.id) {
+				hasSelfImmunitasTarget = true
 				continue
 			}
 			const labels = immunitasTargets.get(target.userId) ?? []
 			labels.push(target.characterLabel)
 			immunitasTargets.set(target.userId, labels)
 		}
-		if (immunitasTargets.size > 0) {
+		if (unresolvedTargetCharacterIds.length > 0) {
+			return c.json(
+				{ error: 'Fulcrum report requests are not allowed for one or more targeted characters' },
+				403,
+			)
+		}
+		const resolvedTargetUserIds = [...new Set(resolvedTargets.map((target) => target.userId))]
+		if (resolvedTargetUserIds.length > 1) {
+			return c.json(
+				{ error: 'Batch report requests must target characters owned by the same user' },
+				400,
+			)
+		}
+		const resolvedTargetUserId = resolvedTargetUserIds[0] ?? null
+		const blockedImmunitasTargets = new Map(
+			[...immunitasTargets.entries()].filter(([targetUserId]) => targetUserId !== user.id),
+		)
+		if (blockedImmunitasTargets.size > 0) {
 			const executionCtx = getExecutionContextOrNull(c)
 			const queueTask = async () => {
 				const coreStub = getCoreStub(c)
-				for (const [targetUserId, targetLabels] of immunitasTargets) {
+				for (const [targetUserId, targetLabels] of blockedImmunitasTargets) {
 					for (const targetCharacterLabel of targetLabels) {
 						await queueImmunitasAccessAlertForUser(coreStub, {
 							targetUserId,
@@ -579,7 +700,7 @@ app.post('/reports/batch', requireAuth(), async (c) => {
 					{
 						userId: user.id,
 						characterCount: body.characterIds.length,
-						targetUserIds: [...immunitasTargets.keys()],
+						targetUserIds: [...blockedImmunitasTargets.keys()],
 						accessType: 'fulcrum-report',
 					}
 				)
@@ -591,47 +712,102 @@ app.post('/reports/batch', requireAuth(), async (c) => {
 				403
 			)
 		}
-
-		const auditor = await isHrAuditorUser(c, user)
-		if (!auditor && !user.is_admin) {
-			const hr = getHrStub(c)
-			const hasReviewerAccess = await hr.checkPermission(
-				user.id,
-				body.corporationId,
-				'hr_reviewer',
-			)
-			if (!hasReviewerAccess) {
-				return c.json({ error: 'HR reviewer or admin role required' }, 403)
-			}
-
-			const roles = await hr.getUserRoles(user.id, body.corporationId)
-			const highestRole = resolveHighestFulcrumReportAccessRole(roles)
-			if (highestRole === 'hr_reviewer') {
-				if (!body.targetUserId) {
-					return c.json(
-						{ error: 'targetUserId is required for HR reviewer report requests' },
-						400,
-					)
+		const isSelfImmunitasBatch =
+			hasSelfImmunitasTarget &&
+			immunitasTargets.size === 0 &&
+			resolvedTargets.every((target) => target.userId === user.id)
+		const requireSharedCorporation = !auditor && !user.is_admin && !isSelfImmunitasBatch
+		const hr = getHrStub(c)
+		const corporationCandidates = resolvedTargetUserId
+			? await getReportCorporationCandidates(core, user.id, resolvedTargetUserId)
+			: {
+					requestorCorporations: [],
+					targetCorporations: [],
+					sharedCorporationIds: [],
 				}
-
-				const hasOpenApplication = await hasOpenApplicationForTargetUser(
-					hr,
-					user,
-					body.corporationId,
-					body.targetUserId,
+		let resolvedCorporationId: string | null = null
+		if (requireSharedCorporation) {
+			if (corporationCandidates.sharedCorporationIds.length === 0) {
+				return c.json(
+					{ error: 'Fulcrum report requests are not allowed for these characters' },
+					403,
 				)
-				if (!hasOpenApplication) {
-					return c.json(
-						{
-							error:
-								'An open application is required to request Fulcrum reports for this user',
-						},
-						403,
-					)
-				}
-			} else if (highestRole !== 'hr_admin') {
-				return c.json({ error: 'HR reviewer or admin role required' }, 403)
 			}
+
+			let hasReviewerAccess = false
+			let sawReviewerWithoutOpenApplication = false
+			for (const corporationId of corporationCandidates.sharedCorporationIds) {
+				const hasPermission = await hr.checkPermission(user.id, corporationId, 'hr_reviewer')
+				if (!hasPermission) {
+					continue
+				}
+				hasReviewerAccess = true
+
+				const roles = await hr.getUserRoles(user.id, corporationId)
+				const highestRole = resolveHighestFulcrumReportAccessRole(roles)
+				if (highestRole === 'hr_admin') {
+					resolvedCorporationId = corporationId
+					break
+				}
+
+				if (highestRole === 'hr_reviewer') {
+					const hasOpenApplication = await hasOpenApplicationForTargetUser(
+						hr,
+						user,
+						corporationId,
+						resolvedTargetUserId!,
+					)
+					if (hasOpenApplication) {
+						resolvedCorporationId = corporationId
+						break
+					}
+					sawReviewerWithoutOpenApplication = true
+				}
+			}
+
+			if (!resolvedCorporationId) {
+				const error = !hasReviewerAccess
+					? 'HR reviewer or admin role required'
+					: sawReviewerWithoutOpenApplication
+						? 'An open application is required to request Fulcrum reports for this user'
+						: 'HR reviewer or admin role required'
+				return c.json({ error }, 403)
+			}
+		} else {
+			resolvedCorporationId =
+				corporationCandidates.sharedCorporationIds[0] ??
+				corporationCandidates.requestorCorporations[0]?.corporationId ??
+				corporationCandidates.targetCorporations[0]?.corporationId ??
+				null
+			if (!resolvedCorporationId) {
+				return c.json(
+					{ error: 'Fulcrum report requests are not allowed for these characters' },
+					403,
+				)
+			}
+		}
+		if (isSelfImmunitasBatch) {
+			const fulcrum = getFulcrumStub(c)
+			const result = await fulcrum.createBulkCharacterReports({
+				characterIds: body.characterIds,
+				requestorUserId: user.id,
+				requestorCorporationId: resolvedCorporationId,
+				requestSource: body.requestSource,
+				applicationId: body.applicationId,
+				targetUserId: resolvedTargetUserId,
+				sendDm: body.sendDm ?? true,
+			})
+
+			logger.info('[Fulcrum] Bulk report batch requested', {
+				batchId: result.batchId,
+				characterCount: body.characterIds.length,
+				requestSource: body.requestSource,
+				sendDm: body.sendDm ?? true,
+				targetUserId: resolvedTargetUserId,
+				requestedBy: user.id,
+			})
+
+			return c.json(result, 201)
 		}
 
 		for (const targetCharacterId of body.characterIds) {
@@ -647,11 +823,11 @@ app.post('/reports/batch', requireAuth(), async (c) => {
 		const result = await fulcrum.createBulkCharacterReports({
 			characterIds: body.characterIds,
 			requestorUserId: user.id,
-			requestorCorporationId: body.corporationId,
+			requestorCorporationId: resolvedCorporationId,
 			requestSource: body.requestSource,
 			applicationId: body.applicationId,
 			sendDm: body.sendDm ?? true,
-			targetUserId: body.targetUserId,
+			targetUserId: resolvedTargetUserId ?? user.id,
 		})
 
 		logger.info('[Fulcrum] Bulk report batch requested', {
@@ -660,7 +836,7 @@ app.post('/reports/batch', requireAuth(), async (c) => {
 			requestSource: body.requestSource,
 			applicationId: body.applicationId,
 			sendDm: body.sendDm ?? true,
-			targetUserId: body.targetUserId,
+			targetUserId: resolvedTargetUserIds[0] ?? user.id,
 			requestedBy: user.id,
 		})
 

@@ -1008,7 +1008,6 @@ export function useRequestFulcrumReport() {
 			corporationId,
 			requestSource,
 			applicationId,
-			targetUserId,
 			sendDm,
 			userId,
 		}: {
@@ -1016,19 +1015,11 @@ export function useRequestFulcrumReport() {
 			corporationId: string
 			requestSource: ReportRequestSource
 			applicationId?: string
-			targetUserId?: string
 			sendDm?: boolean
 			/** Pass userId to invalidate the user-characters query (application Fulcrum panel) */
 			userId?: string
 		}) =>
-			fulcrumApi.requestReport(
-				characterId,
-				corporationId,
-				requestSource,
-				applicationId,
-				targetUserId ?? userId,
-				sendDm,
-			),
+			fulcrumApi.requestReport(characterId, requestSource, applicationId, sendDm),
 		errorMessage: 'You do not have permission to request a Fulcrum report for this character.',
 		onMutate: ({ characterId, corporationId, userId }) => {
 			if (!userId) return
@@ -1107,7 +1098,6 @@ export function useRequestFulcrumReportBatch() {
 			applicationId,
 			sendDm,
 			userId,
-			targetUserId,
 		}: {
 			characterIds: string[]
 			corporationId: string
@@ -1115,16 +1105,8 @@ export function useRequestFulcrumReportBatch() {
 			applicationId?: string
 			sendDm?: boolean
 			userId?: string
-			targetUserId?: string
 		}) =>
-			fulcrumApi.requestBulkReports(
-				characterIds,
-				corporationId,
-				requestSource,
-				applicationId,
-				sendDm,
-				targetUserId,
-			),
+			fulcrumApi.requestBulkReports(characterIds, requestSource, applicationId, sendDm),
 		errorMessage: 'You do not have permission to request Fulcrum reports for these characters.',
 		onMutate: ({ characterIds, corporationId, userId }) => {
 			if (!userId || characterIds.length === 0) return

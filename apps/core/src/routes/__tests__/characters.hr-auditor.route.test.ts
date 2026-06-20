@@ -252,4 +252,5 @@ describe('character detail access for HR page viewers', () => {
 			source: 'character-detail-private-data',
 		})
 	})
+
 })
