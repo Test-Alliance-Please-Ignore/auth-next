@@ -38,7 +38,11 @@ export function GroupCard({ group }: GroupCardProps) {
 					<div className="flex gap-2 items-center">
 						<VisibilityBadge visibility={group.visibility} />
 						<JoinModeBadge joinMode={group.joinMode} />
-						{group.mumbleSyncEnabled ? <Badge variant="secondary">Mumble</Badge> : null}
+						{group.mumbleSyncEnabled ? (
+							<Badge variant="secondary">
+								{group.mumbleTicker ? `Mumble ${group.mumbleTicker}` : 'Mumble'}
+							</Badge>
+						) : null}
 						<Button
 							variant="ghost"
 							size="icon"

@@ -20,6 +20,27 @@ import type {
 } from '@repo/groups'
 import type { ServiceContext } from './context'
 
+function normalizeMumbleTicker(ticker?: string | null): string | null {
+	const trimmed = ticker?.trim()
+	if (!trimmed) {
+		return null
+	}
+
+	const normalized = trimmed.toUpperCase()
+	if (!/^[A-Z0-9]{1,5}$/.test(normalized)) {
+		throw new Error('Mumble ticker must be 1 to 5 alphanumeric characters')
+	}
+
+	return normalized
+}
+
+function hasMumbleSettingsInput(data: {
+	mumbleSyncEnabled?: boolean
+	mumbleTicker?: string | null
+}): boolean {
+	return data.mumbleSyncEnabled !== undefined || data.mumbleTicker !== undefined
+}
+
 export class GroupService {
 	constructor(private ctx: ServiceContext) {}
 
@@ -57,6 +78,10 @@ export class GroupService {
 			throw new Error('Not allowed to create groups in this category')
 		}
 
+		if (!isAdmin && hasMumbleSettingsInput(data)) {
+			throw new Error('Only site admins can configure Mumble settings')
+		}
+
 		// Create the group
 		const [group] = await this.ctx.db
 			.insert(groups)
@@ -67,6 +92,7 @@ export class GroupService {
 				visibility: data.visibility || 'public',
 				joinMode: data.joinMode || 'open',
 				mumbleSyncEnabled: data.mumbleSyncEnabled ?? false,
+				mumbleTicker: normalizeMumbleTicker(data.mumbleTicker),
 				ownerId: userId,
 			})
 			.returning()
@@ -245,6 +271,10 @@ export class GroupService {
 			}
 		}
 
+		if (!isAdmin && hasMumbleSettingsInput(data)) {
+			throw new Error('Only site admins can configure Mumble settings')
+		}
+
 		const updates: Partial<typeof groups.$inferInsert> = {}
 
 		if (data.name !== undefined) updates.name = data.name
@@ -252,6 +282,7 @@ export class GroupService {
 		if (data.visibility !== undefined) updates.visibility = data.visibility
 		if (data.joinMode !== undefined) updates.joinMode = data.joinMode
 		if (data.mumbleSyncEnabled !== undefined) updates.mumbleSyncEnabled = data.mumbleSyncEnabled
+		if (data.mumbleTicker !== undefined) updates.mumbleTicker = normalizeMumbleTicker(data.mumbleTicker)
 		if (data.categoryId !== undefined) updates.categoryId = data.categoryId
 
 		updates.updatedAt = new Date()

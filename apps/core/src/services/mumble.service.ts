@@ -21,6 +21,8 @@ import type {
 import type { Env } from '../context'
 
 const MAX_LOGIN_NAME_LENGTH = 60
+const MAX_MUMBLE_TICKER_LENGTH = 5
+const SITE_ADMIN_MUMBLE_TICKER = 'SA'
 const USER_GROUP_LOOKUP_CONCURRENCY = 5
 const USER_PROFILE_LOOKUP_CONCURRENCY = 5
 interface MumbleIdentity {
@@ -54,6 +56,23 @@ export function deriveLoginName(characterName: string, userId: string): string {
 	return `user_${userId.replace(/-/g, '').slice(0, 8)}`
 }
 
+function normalizeMumbleTicker(ticker?: string | null): string | null {
+	const normalized = ticker?.trim().toUpperCase().replace(/[^A-Z0-9]/g, '')
+	if (!normalized) {
+		return null
+	}
+
+	return normalized.slice(0, MAX_MUMBLE_TICKER_LENGTH)
+}
+
+function appendMumbleDisplaySuffixes(baseName: string, suffixes: string[]): string {
+	if (suffixes.length === 0) {
+		return baseName
+	}
+
+	return `${baseName} ${suffixes.map((suffix) => `[${suffix}]`).join(' ')}`
+}
+
 function getMumbleStub(env: Env) {
 	return getStub<Mumble>(env.MUMBLE, env.MUMBLE_SERVER_ID)
 }
@@ -64,6 +83,7 @@ async function buildMumbleIdentity(env: Env, userId: string): Promise<MumbleIden
 		where: eq(users.id, userId),
 		columns: {
 			mainCharacterId: true,
+			is_admin: true,
 		},
 	})
 	if (!user) {
@@ -81,22 +101,48 @@ async function buildMumbleIdentity(env: Env, userId: string): Promise<MumbleIden
 		throw new Error(`Main character ${user.mainCharacterId} not found for user ${userId}`)
 	}
 
-	let displayName = mainCharacter.characterName
-	if (mainCharacter.corporationId) {
-		const corpStub = getStub<EveCorporationData>(
-			env.EVE_CORPORATION_DATA,
-			mainCharacter.corporationId
-		)
-		const corpInfo = await corpStub.getCorporationInfo(mainCharacter.corporationId)
-		const ticker = corpInfo?.ticker?.trim()
-		if (ticker) {
-			displayName = `${mainCharacter.characterName} [${ticker}]`
+	const corporationId = mainCharacter.corporationId
+	const [corpTicker, groupTickers] = await Promise.all([
+		corporationId
+			? (async () => {
+					const corpStub = getStub<EveCorporationData>(
+						env.EVE_CORPORATION_DATA,
+						corporationId
+					)
+					const corpInfo = await corpStub.getCorporationInfo(corporationId)
+					return normalizeMumbleTicker(corpInfo?.ticker)
+				})()
+			: Promise.resolve(null),
+		(async () => {
+			const memberships = await getStub<Groups>(env.GROUPS, 'default').getUserMemberships(userId)
+			return memberships
+				.filter((membership) => membership.mumbleSyncEnabled)
+				.map((membership) => normalizeMumbleTicker(membership.mumbleTicker))
+				.filter((ticker): ticker is string => ticker !== null)
+				.sort((left, right) => left.localeCompare(right))
+		})(),
+	])
+
+	const suffixes: string[] = []
+	if (corpTicker) {
+		suffixes.push(corpTicker)
+	}
+	for (const ticker of groupTickers) {
+		if (!suffixes.includes(ticker)) {
+			suffixes.push(ticker)
 		}
+	}
+	if (corporationId) {
+		if (user.is_admin && !suffixes.includes(SITE_ADMIN_MUMBLE_TICKER)) {
+			suffixes.push(SITE_ADMIN_MUMBLE_TICKER)
+		}
+	} else if (user.is_admin && !suffixes.includes(SITE_ADMIN_MUMBLE_TICKER)) {
+		suffixes.push(SITE_ADMIN_MUMBLE_TICKER)
 	}
 
 	return {
 		characterName: mainCharacter.characterName,
-		displayName,
+		displayName: appendMumbleDisplaySuffixes(mainCharacter.characterName, suffixes),
 		loginName: deriveLoginName(mainCharacter.characterName, userId),
 	}
 }
@@ -106,14 +152,13 @@ async function isUserBlacklisted(env: Env, userId: string): Promise<boolean> {
 	return hrStub.isUserBlacklisted(userId)
 }
 
-async function hasAllianceMemberAttachment(env: Env, userId: string): Promise<boolean> {
+async function hasMemberCorporationAttachment(env: Env, userId: string): Promise<boolean> {
 	const db = createDb(env.DATABASE_URL)
 	const [characters, memberCorporations] = await Promise.all([
 		db.query.userCharacters.findMany({
 			where: and(eq(userCharacters.userId, userId), eq(userCharacters.isDeleted, false)),
 			columns: {
 				corporationId: true,
-				allianceId: true,
 			},
 		}),
 		db.query.managedCorporations.findMany({
@@ -128,9 +173,7 @@ async function hasAllianceMemberAttachment(env: Env, userId: string): Promise<bo
 		memberCorporations.map((corporation) => corporation.corporationId)
 	)
 	return characters.some(
-		(character) =>
-			(!!character.corporationId && memberCorporationIds.has(character.corporationId)) ||
-			!!character.allianceId
+		(character) => !!character.corporationId && memberCorporationIds.has(character.corporationId)
 	)
 }
 
@@ -186,7 +229,7 @@ async function getUserGroupNames(
 				is_admin: true,
 			},
 		}),
-		hasAllianceMemberAttachment(env, userId),
+		hasMemberCorporationAttachment(env, userId),
 	])
 
 	if (!hasAttachment && !user?.is_admin) {

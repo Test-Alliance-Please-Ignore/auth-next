@@ -27,6 +27,8 @@ export interface UserMumbleRefreshWorkflowResult {
 	steps: Record<string, WorkflowStepStatus>
 	totalSynced?: number
 	totalSkipped?: number
+	totalProfileSynced?: number
+	totalProfileSkipped?: number
 	error?: {
 		message: string
 		stack?: string
@@ -98,6 +100,28 @@ export class UserMumbleRefreshWorkflow extends WorkflowEntrypoint<
 				totalSkipped: syncResult.skipped.length,
 			})
 
+			const profileSyncResult = await step.do(
+				'sync-mumble-profiles',
+				{
+					retries: {
+						limit: 3,
+						delay: '2 seconds',
+						backoff: 'exponential',
+					},
+					timeout: '1 minute',
+				},
+				async () => {
+					return mumbleService.syncUsersMumbleProfiles(this.env, userIds)
+				}
+			)
+			steps['sync-mumble-profiles'] = 'ok'
+
+			console.log('[UserMumbleRefreshWorkflow] Mumble profile sync completed', {
+				...logContext,
+				totalSynced: profileSyncResult.synced.length,
+				totalSkipped: profileSyncResult.skipped.length,
+			})
+
 			return {
 				status: 'completed',
 				userIds,
@@ -106,6 +130,8 @@ export class UserMumbleRefreshWorkflow extends WorkflowEntrypoint<
 				steps,
 				totalSynced: syncResult.synced.length,
 				totalSkipped: syncResult.skipped.length,
+				totalProfileSynced: profileSyncResult.synced.length,
+				totalProfileSkipped: profileSyncResult.skipped.length,
 			}
 		} catch (error) {
 			const errorMessage = error instanceof Error ? error.message : String(error)

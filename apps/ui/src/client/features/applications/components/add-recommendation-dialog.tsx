@@ -6,7 +6,7 @@
  */
 
 import { AlertCircle, Minus, ThumbsDown, ThumbsUp } from 'lucide-react'
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 
 import { Button } from '@/components/ui/button'
 import {
@@ -152,6 +152,7 @@ export function AddRecommendationDialog({
 }: AddRecommendationDialogProps) {
 	const { user } = useAuth()
 	const { showSuccess, showError } = useMessage()
+	const recommendationTextRef = useRef<HTMLTextAreaElement | null>(null)
 
 	// Form state
 	const [characterId, setCharacterId] = useState('')
@@ -166,6 +167,9 @@ export function AddRecommendationDialog({
 	const isEditMode = !!existingRecommendation
 	const isPending = addMutation.isPending || updateMutation.isPending
 
+	// Keep the form initialization tied to the dialog lifecycle, not to auth object identity.
+	const mainCharacterId = user?.mainCharacterId ?? ''
+
 	// Initialize form when dialog opens or recommendation changes
 	useEffect(() => {
 		if (open) {
@@ -177,13 +181,13 @@ export function AddRecommendationDialog({
 				setIsPublic(existingRecommendation.isPublic)
 			} else {
 				// Add mode - reset to defaults
-				setCharacterId(user?.mainCharacterId || '')
+				setCharacterId(mainCharacterId)
 				setSentiment('positive')
 				setRecommendationText('')
 				setIsPublic(false)
 			}
 		}
-	}, [open, existingRecommendation, user])
+	}, [open, existingRecommendation?.id, mainCharacterId])
 
 	// Validation
 	const textLength = recommendationText.trim().length
@@ -253,7 +257,15 @@ export function AddRecommendationDialog({
 
 	return (
 		<Dialog open={open} onOpenChange={onOpenChange}>
-			<DialogContent className="sm:max-w-[600px]">
+			<DialogContent
+				className="sm:max-w-[600px]"
+				onOpenAutoFocus={(event) => {
+					event.preventDefault()
+					requestAnimationFrame(() => {
+						recommendationTextRef.current?.focus()
+					})
+				}}
+			>
 				<DialogHeader>
 					<DialogTitle>{isEditMode ? 'Edit Recommendation' : 'Add Recommendation'}</DialogTitle>
 					<DialogDescription>
@@ -327,6 +339,7 @@ export function AddRecommendationDialog({
 							Recommendation Text <span className="text-destructive">*</span>
 						</Label>
 						<Textarea
+							ref={recommendationTextRef}
 							id="recommendation-text"
 							placeholder="Share your thoughts about this applicant..."
 							value={recommendationText}

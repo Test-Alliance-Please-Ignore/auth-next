@@ -158,6 +158,56 @@ describe('Groups Durable Object - Groups', () => {
 		expect(group.ownerId).toBe(USER_1_ID)
 		expect(group.joinMode).toBe('open')
 		expect(group.mumbleSyncEnabled).toBe(false)
+		expect(group.mumbleTicker).toBeNull()
+	})
+
+	it('should allow a site admin to create a group with mumble settings', async () => {
+		const stub = getStub<Groups>(testEnv.GROUPS, 'test-group-create-admin-mumble')
+
+		const category = await stub.createCategory(
+			{
+				name: 'Admin Mumble Category',
+				visibility: 'public',
+			},
+			ADMIN_USER_ID
+		)
+
+		const group = await stub.createGroup(
+			{
+				categoryId: category.id,
+				name: 'Admin Mumble Group',
+				mumbleSyncEnabled: true,
+				mumbleTicker: 'fc-1234!',
+			},
+			ADMIN_USER_ID
+		)
+
+		expect(group).toBeDefined()
+		expect(group.mumbleSyncEnabled).toBe(true)
+		expect(group.mumbleTicker).toBe('FC123')
+	})
+
+	it('should reject an invalid mumble ticker when creating a group', async () => {
+		const stub = getStub<Groups>(testEnv.GROUPS, 'test-group-create-invalid-ticker')
+
+		const category = await stub.createCategory(
+			{
+				name: 'Invalid Ticker Category',
+				visibility: 'public',
+			},
+			ADMIN_USER_ID
+		)
+
+		await expect(
+			stub.createGroup(
+				{
+					categoryId: category.id,
+					name: 'Bad Group',
+					mumbleTicker: 'fc-1234!',
+				},
+				ADMIN_USER_ID
+			)
+		).rejects.toThrow('Mumble ticker must be 1 to 5 alphanumeric characters')
 	})
 
 	it('should list groups', async () => {
@@ -296,14 +346,76 @@ describe('Groups Durable Object - Groups', () => {
 			{
 				name: 'Updated Group Name',
 				joinMode: 'approval',
-				mumbleSyncEnabled: true,
 			},
 			USER_1_ID
 		)
 
 		expect(updated.name).toBe('Updated Group Name')
 		expect(updated.joinMode).toBe('approval')
+		expect(updated.mumbleSyncEnabled).toBe(false)
+		expect(updated.mumbleTicker).toBeNull()
+	})
+
+	it('should allow a site admin to update mumble settings', async () => {
+		const stub = getStub<Groups>(testEnv.GROUPS, 'test-group-update-admin-mumble')
+
+		const category = await stub.createCategory(
+			{
+				name: 'Admin Update Mumble Category',
+				visibility: 'public',
+			},
+			ADMIN_USER_ID
+		)
+
+		const group = await stub.createGroup(
+			{
+				categoryId: category.id,
+				name: 'Admin Update Group',
+			},
+			USER_1_ID
+		)
+
+		const updated = await stub.updateGroup(
+			group.id,
+			{
+				mumbleSyncEnabled: true,
+				mumbleTicker: 'fc-1234!',
+			},
+			ADMIN_USER_ID
+		)
+
 		expect(updated.mumbleSyncEnabled).toBe(true)
+		expect(updated.mumbleTicker).toBe('FC123')
+	})
+
+	it('should reject an invalid mumble ticker when updating a group', async () => {
+		const stub = getStub<Groups>(testEnv.GROUPS, 'test-group-update-invalid-ticker')
+
+		const category = await stub.createCategory(
+			{
+				name: 'Update Invalid Ticker Category',
+				visibility: 'public',
+			},
+			ADMIN_USER_ID
+		)
+
+		const group = await stub.createGroup(
+			{
+				categoryId: category.id,
+				name: 'Original Group Name',
+			},
+			USER_1_ID
+		)
+
+		await expect(
+			stub.updateGroup(
+				group.id,
+				{
+					mumbleTicker: 'fc-1234!',
+				},
+				ADMIN_USER_ID
+			)
+		).rejects.toThrow('Mumble ticker must be 1 to 5 alphanumeric characters')
 	})
 
 	it('should delete a group', async () => {

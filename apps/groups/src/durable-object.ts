@@ -114,6 +114,27 @@ import type { ServiceContext } from './services/context' // Added
 
 const FALLBACK_OWNER = '4a16f141-ddd2-4179-8e3f-7d64a6548f74'
 
+function normalizeMumbleTicker(ticker?: string | null): string | null {
+	const trimmed = ticker?.trim()
+	if (!trimmed) {
+		return null
+	}
+
+	const normalized = trimmed.toUpperCase()
+	if (!/^[A-Z0-9]{1,5}$/.test(normalized)) {
+		throw new Error('Mumble ticker must be 1 to 5 alphanumeric characters')
+	}
+
+	return normalized
+}
+
+function hasMumbleSettingsInput(data: {
+	mumbleSyncEnabled?: boolean
+	mumbleTicker?: string | null
+}): boolean {
+	return data.mumbleSyncEnabled !== undefined || data.mumbleTicker !== undefined
+}
+
 /**
  * Groups Durable Object
  *
@@ -242,6 +263,10 @@ export class GroupsDO extends DurableObject<Env> implements Groups {
 			throw new Error('Not allowed to create groups in this category')
 		}
 
+		if (!isSiteAdmin && hasMumbleSettingsInput(data)) {
+			throw new Error('Only site admins can configure Mumble settings')
+		}
+
 		// Create the group
 		const [group] = await this.db
 			.insert(groups)
@@ -252,6 +277,7 @@ export class GroupsDO extends DurableObject<Env> implements Groups {
 				visibility: data.visibility || 'public',
 				joinMode: data.joinMode || 'open',
 				mumbleSyncEnabled: data.mumbleSyncEnabled ?? false,
+				mumbleTicker: normalizeMumbleTicker(data.mumbleTicker),
 				ownerId: actorId,
 			})
 			.returning()
@@ -497,6 +523,10 @@ export class GroupsDO extends DurableObject<Env> implements Groups {
 			}
 		}
 
+		if (!isSiteAdmin && hasMumbleSettingsInput(data)) {
+			throw new Error('Only site admins can configure Mumble settings')
+		}
+
 		const updates: Partial<typeof groups.$inferInsert> = {}
 
 		if (data.name !== undefined) updates.name = data.name
@@ -504,6 +534,7 @@ export class GroupsDO extends DurableObject<Env> implements Groups {
 		if (data.visibility !== undefined) updates.visibility = data.visibility
 		if (data.joinMode !== undefined) updates.joinMode = data.joinMode
 		if (data.mumbleSyncEnabled !== undefined) updates.mumbleSyncEnabled = data.mumbleSyncEnabled
+		if (data.mumbleTicker !== undefined) updates.mumbleTicker = normalizeMumbleTicker(data.mumbleTicker)
 		if (data.categoryId !== undefined) updates.categoryId = data.categoryId
 
 		updates.updatedAt = new Date()
