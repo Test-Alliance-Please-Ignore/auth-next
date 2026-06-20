@@ -24,6 +24,7 @@ import { AttachPermissionDialog } from '@/components/attach-permission-dialog'
 import { EditGroupDescriptionDialog } from '@/components/edit-group-description-dialog'
 import { EditGroupDialog } from '@/components/edit-group-dialog'
 import { EditGroupNameDialog } from '@/components/edit-group-name-dialog'
+import { EditGroupMumbleDialog } from '@/components/edit-group-mumble-dialog'
 import { GroupCard } from '@/components/group-card'
 import { GroupPermissionCard } from '@/components/group-permission-card'
 import { GroupPermissionForm } from '@/components/group-permission-form'
@@ -127,6 +128,7 @@ export default function GroupDetailPage() {
 	const [reassignCategoryDialogOpen, setReassignCategoryDialogOpen] = useState(false)
 	const [editNameDialogOpen, setEditNameDialogOpen] = useState(false)
 	const [editDescriptionDialogOpen, setEditDescriptionDialogOpen] = useState(false)
+	const [editMumbleDialogOpen, setEditMumbleDialogOpen] = useState(false)
 	const [editGroupDialogOpen, setEditGroupDialogOpen] = useState(false)
 	const [deleteGroupDialogOpen, setDeleteGroupDialogOpen] = useState(false)
 	const [deleteConfirmationText, setDeleteConfirmationText] = useState('')
@@ -635,6 +637,12 @@ export default function GroupDetailPage() {
 							<Pencil className="h-4 w-4" />
 							Edit Description
 						</Button>
+						{user?.is_admin && (
+							<Button variant="ghost" size="sm" onClick={() => setEditMumbleDialogOpen(true)}>
+								<Settings className="h-4 w-4" />
+								Edit Mumble Settings
+							</Button>
+						)}
 						<Button variant="ghost" size="sm" onClick={() => setReassignCategoryDialogOpen(true)}>
 							<FolderEdit className="h-4 w-4" />
 							Reassign Category
@@ -1431,6 +1439,19 @@ export default function GroupDetailPage() {
 					onOpenChange={setEditDescriptionDialogOpen}
 					onSuccess={() => {
 						setMessage({ type: 'success', text: 'Group description updated successfully!' })
+						setTimeout(() => setMessage(null), 3000)
+					}}
+				/>
+			)}
+
+			{/* Edit Group Mumble Dialog */}
+			{group && (
+				<EditGroupMumbleDialog
+					group={group}
+					open={editMumbleDialogOpen}
+					onOpenChange={setEditMumbleDialogOpen}
+					onSuccess={() => {
+						setMessage({ type: 'success', text: 'Group Mumble settings updated successfully!' })
 						setTimeout(() => setMessage(null), 3000)
 					}}
 				/>

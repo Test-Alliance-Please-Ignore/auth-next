@@ -310,6 +310,7 @@ export class MembershipService {
 			isOwner: membership.group.ownerId === userId,
 			isAdmin: adminGroupIds.has(membership.groupId),
 			mumbleSyncEnabled: membership.group.mumbleSyncEnabled,
+			mumbleTicker: membership.group.mumbleTicker,
 			joinedAt: membership.joinedAt,
 		}))
 	}

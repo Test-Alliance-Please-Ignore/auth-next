@@ -11,7 +11,6 @@ import {
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Select } from '@/components/ui/select'
-import { Switch } from '@/components/ui/switch'
 import { Textarea } from '@/components/ui/textarea'
 
 import type { Category, Group, UpdateGroupRequest } from '@/lib/api'
@@ -38,7 +37,6 @@ export function EditGroupDialog({
 		description: group.description || '',
 		visibility: group.visibility,
 		joinMode: group.joinMode,
-		mumbleSyncEnabled: group.mumbleSyncEnabled,
 	})
 
 	const [errors, setErrors] = useState<Partial<Record<keyof UpdateGroupRequest, string>>>({})
@@ -52,7 +50,6 @@ export function EditGroupDialog({
 			description: group.description || '',
 			visibility: group.visibility,
 			joinMode: group.joinMode,
-			mumbleSyncEnabled: group.mumbleSyncEnabled,
 		})
 		setErrors({})
 	}, [group])
@@ -205,35 +202,15 @@ export function EditGroupDialog({
 						/>
 					</div>
 
-					{/* Mumble Sync Toggle */}
-					<div className="flex items-center justify-between rounded-lg border border-border/60 bg-muted/20 px-4 py-3">
-						<div className="space-y-1">
-							<Label htmlFor="mumbleSyncEnabled" className="text-sm font-medium">
-								Enable as Mumble Group
-							</Label>
-							<p className="text-xs text-muted-foreground">
-								When enabled, this group will be assigned to members in Mumble.
-							</p>
-						</div>
-						<Switch
-							id="mumbleSyncEnabled"
-							checked={formData.mumbleSyncEnabled ?? false}
-							onCheckedChange={(checked) =>
-								setFormData({ ...formData, mumbleSyncEnabled: checked })
-							}
-							disabled={isSubmitting}
-						/>
-					</div>
-
-					<DialogFooter>
-						<Button variant="cancel" type="button" onClick={() => onOpenChange(false)} disabled={isSubmitting}>
-							Cancel
-						</Button>
-						<Button variant="confirm" type="submit" loading={isSubmitting} loadingText="Updating...">
-							Update Group
-						</Button>
-					</DialogFooter>
-				</form>
+				<DialogFooter>
+					<Button variant="cancel" type="button" onClick={() => onOpenChange(false)} disabled={isSubmitting}>
+						Cancel
+					</Button>
+					<Button variant="confirm" type="submit" loading={isSubmitting} loadingText="Updating...">
+						Update Group
+					</Button>
+				</DialogFooter>
+			</form>
 			</DialogContent>
 		</Dialog>
 	)

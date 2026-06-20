@@ -36,6 +36,7 @@ export function mapGroup(group: typeof groups.$inferSelect): Group {
 		visibility: group.visibility,
 		joinMode: group.joinMode,
 		mumbleSyncEnabled: group.mumbleSyncEnabled,
+		mumbleTicker: group.mumbleTicker,
 		ownerId: group.ownerId,
 		createdAt: group.createdAt,
 		updatedAt: group.updatedAt,

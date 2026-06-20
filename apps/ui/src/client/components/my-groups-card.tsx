@@ -32,6 +32,11 @@ export function MyGroupsCard({ membership, onClick }: MyGroupsCardProps) {
 									Admin
 								</Badge>
 							)}
+							{membership.mumbleSyncEnabled ? (
+								<Badge variant="secondary">
+									{membership.mumbleTicker ? `Mumble ${membership.mumbleTicker}` : 'Mumble'}
+								</Badge>
+							) : null}
 						</div>
 						<CardDescription>{membership.categoryName}</CardDescription>
 					</div>

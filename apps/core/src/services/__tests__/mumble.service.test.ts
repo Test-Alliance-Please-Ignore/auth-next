@@ -110,7 +110,7 @@ describe('syncUsersMumbleGroups', () => {
 					findMany: vi.fn().mockResolvedValue([
 						{
 							corporationId: 'corp-2',
-							allianceId: null,
+							allianceId: 'alliance-1',
 						},
 					]),
 				},
@@ -379,6 +379,7 @@ describe('syncUsersMumbleProfiles', () => {
 				users: {
 					findFirst: vi.fn().mockResolvedValue({
 						mainCharacterId: MAIN_CHARACTER_ID,
+						is_admin: false,
 					}),
 				},
 				userCharacters: {
@@ -397,6 +398,11 @@ describe('syncUsersMumbleProfiles', () => {
 				ticker: 'ALP',
 			}),
 		}
+		const groupsStub = {
+			getUserMemberships: vi.fn().mockResolvedValue([
+				{ groupName: 'Fleet', mumbleSyncEnabled: true, mumbleTicker: 'fc-123!' },
+			]),
+		}
 
 		const mumbleStub = {
 			syncAccountProfiles: vi.fn().mockResolvedValue({ synced: ['user-1'], skipped: [] }),
@@ -408,6 +414,7 @@ describe('syncUsersMumbleProfiles', () => {
 		getStubMock.mockImplementation((binding: unknown) => {
 			if (binding === env.FEATURES) return featuresStub as any
 			if (binding === env.EVE_CORPORATION_DATA) return corpStub as any
+			if (binding === env.GROUPS) return groupsStub as any
 			if (binding === env.MUMBLE) return mumbleStub as any
 			throw new Error('unexpected stub binding')
 		})
@@ -416,9 +423,62 @@ describe('syncUsersMumbleProfiles', () => {
 
 		expect(corpStub.getCorporationInfo).toHaveBeenCalledWith('corp-1')
 		expect(mumbleStub.syncAccountProfiles).toHaveBeenCalledWith('srv', [
-			{ subjectId: 'user-1', displayName: 'Main Pilot [ALP]' },
+			{ subjectId: 'user-1', displayName: 'Main Pilot [ALP] [FC123]' },
 		])
 		expect(result).toEqual({ synced: ['user-1'], skipped: [] })
+	})
+
+	it('appends SA to admin display metadata after the ticker', async () => {
+		createDbMock.mockReturnValue({
+			query: {
+				users: {
+					findFirst: vi.fn().mockResolvedValue({
+						mainCharacterId: MAIN_CHARACTER_ID,
+						is_admin: true,
+					}),
+				},
+				userCharacters: {
+					findFirst: vi.fn().mockResolvedValue({
+						characterName: 'Main Pilot',
+						corporationId: 'corp-1',
+					}),
+				},
+			},
+		} as any)
+
+		const corpStub = {
+			getCorporationInfo: vi.fn().mockResolvedValue({
+				corporationId: 'corp-1',
+				name: 'Alpha',
+				ticker: 'ALP',
+			}),
+		}
+		const groupsStub = {
+			getUserMemberships: vi.fn().mockResolvedValue([
+				{ groupName: 'Fleet', mumbleSyncEnabled: true, mumbleTicker: 'fc-123!' },
+			]),
+		}
+
+		const mumbleStub = {
+			syncAccountProfiles: vi.fn().mockResolvedValue({ synced: ['user-1'], skipped: [] }),
+		}
+		const featuresStub = {
+			checkFlag: vi.fn().mockResolvedValue(true),
+		}
+
+		getStubMock.mockImplementation((binding: unknown) => {
+			if (binding === env.FEATURES) return featuresStub as any
+			if (binding === env.EVE_CORPORATION_DATA) return corpStub as any
+			if (binding === env.GROUPS) return groupsStub as any
+			if (binding === env.MUMBLE) return mumbleStub as any
+			throw new Error('unexpected stub binding')
+		})
+
+		await syncUsersMumbleProfiles(env, ['user-1'])
+
+		expect(mumbleStub.syncAccountProfiles).toHaveBeenCalledWith('srv', [
+			{ subjectId: 'user-1', displayName: 'Main Pilot [ALP] [FC123] [SA]' },
+		])
 	})
 
 	it('skips profile sync when the mumble feature is disabled', async () => {

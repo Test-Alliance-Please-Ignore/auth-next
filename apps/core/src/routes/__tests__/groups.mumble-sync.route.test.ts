@@ -93,6 +93,7 @@ describe('groups mumble sync triggers on update', () => {
 	} as any
 
 	let groupsStub: {
+		createGroup: ReturnType<typeof vi.fn>
 		getGroup: ReturnType<typeof vi.fn>
 		updateGroup: ReturnType<typeof vi.fn>
 		getGroupMemberUserIds: ReturnType<typeof vi.fn>
@@ -101,6 +102,7 @@ describe('groups mumble sync triggers on update', () => {
 	beforeEach(() => {
 		vi.clearAllMocks()
 		groupsStub = {
+			createGroup: vi.fn(),
 			getGroup: vi.fn(),
 			updateGroup: vi.fn(),
 			getGroupMemberUserIds: vi.fn(),
@@ -206,6 +208,82 @@ describe('groups mumble sync triggers on update', () => {
 				env,
 				userIds: ['user-3'],
 				source: 'group-updated',
+			})
+		)
+	})
+
+	it('queues a mumble refresh when the group ticker changes', async () => {
+		groupsStub.getGroup.mockResolvedValue({
+			id: 'group-1',
+			name: 'Fleet',
+			mumbleSyncEnabled: true,
+			mumbleTicker: 'OLD',
+		})
+		groupsStub.updateGroup.mockResolvedValue({
+			id: 'group-1',
+			name: 'Fleet',
+			mumbleSyncEnabled: true,
+			mumbleTicker: 'FC',
+		})
+		groupsStub.getGroupMemberUserIds.mockResolvedValue(['user-4'])
+
+		const app = createApp(makeUser())
+		const executionCtx = createExecutionContext()
+		const response = await app.request(
+			'/api/groups/group-1',
+			{
+				method: 'PATCH',
+				headers: { 'Content-Type': 'application/json' },
+				body: JSON.stringify({ mumbleTicker: 'FC' }),
+			},
+			env,
+			executionCtx
+		)
+
+		expect(response.status).toBe(200)
+		expect(serviceMocks.triggerMumbleRefreshWorkflow).toHaveBeenCalledWith(
+			expect.objectContaining({
+				env,
+				userIds: ['user-4'],
+				source: 'group-updated',
+			})
+		)
+	})
+
+	it('queues a mumble refresh when a mumble-enabled group is created', async () => {
+		groupsStub.createGroup.mockResolvedValue({
+			id: 'group-1',
+			name: 'Fleet',
+			mumbleSyncEnabled: true,
+		})
+
+		const app = createApp(makeUser())
+		const executionCtx = createExecutionContext()
+		const response = await app.request(
+			'/api/groups',
+			{
+				method: 'POST',
+				headers: { 'Content-Type': 'application/json' },
+				body: JSON.stringify({
+					categoryId: 'category-1',
+					name: 'Fleet',
+					mumbleSyncEnabled: true,
+				}),
+			},
+			env,
+			executionCtx
+		)
+
+		expect(response.status).toBe(201)
+		expect(groupsStub.createGroup).toHaveBeenCalledWith(
+			{ categoryId: 'category-1', name: 'Fleet', mumbleSyncEnabled: true },
+			'admin-user'
+		)
+		expect(serviceMocks.triggerMumbleRefreshWorkflow).toHaveBeenCalledWith(
+			expect.objectContaining({
+				env,
+				userIds: ['admin-user'],
+				source: 'group-created',
 			})
 		)
 	})

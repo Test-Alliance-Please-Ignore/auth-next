@@ -100,6 +100,8 @@ export const categories = pgTable(
 			joinMode: joinModeEnum('join_mode').notNull().default('open'),
 			/** Whether this group should be synced to Mumble */
 			mumbleSyncEnabled: boolean('mumble_sync_enabled').notNull().default(false),
+			/** Optional addendum appended to Mumble display names */
+			mumbleTicker: text('mumble_ticker'),
 			/** User ID of the group owner (references core.users.id) */
 			ownerId: varchar('owner_id', { length: 255 }).notNull(),
 			createdAt: timestamp('created_at').defaultNow().notNull(),

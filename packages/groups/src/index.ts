@@ -75,6 +75,7 @@ export interface Group {
 	visibility: Visibility
 	joinMode: JoinMode
 	mumbleSyncEnabled: boolean
+	mumbleTicker?: string | null
 	ownerId: string
 	createdAt: Date
 	updatedAt: Date
@@ -195,6 +196,7 @@ export interface CreateGroupRequest {
 	visibility?: Visibility
 	joinMode?: JoinMode
 	mumbleSyncEnabled?: boolean
+	mumbleTicker?: string | null
 }
 
 export interface UpdateGroupRequest {
@@ -203,6 +205,7 @@ export interface UpdateGroupRequest {
 	visibility?: Visibility
 	joinMode?: JoinMode
 	mumbleSyncEnabled?: boolean
+	mumbleTicker?: string | null
 	categoryId?: string
 }
 
@@ -267,6 +270,7 @@ export interface GroupMembershipSummary {
 	isOwner: boolean
 	isAdmin: boolean
 	mumbleSyncEnabled: boolean
+	mumbleTicker?: string | null
 	joinedAt: Date
 }
 

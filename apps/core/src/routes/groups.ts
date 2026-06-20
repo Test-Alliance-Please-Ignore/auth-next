@@ -232,6 +232,27 @@ groups.post('/', requireAuth({ any: [ROLE_CORE_ALLIANCE_MEMBER] }), requireAdmin
 
 	try {
 		const group = await groupsDO.createGroup(body, user.id)
+
+		if (group.mumbleSyncEnabled) {
+			waitUntilWithTelemetry(
+				c.executionCtx,
+				'groups.mumble-refresh.create-group',
+				() =>
+					triggerMumbleRefreshWorkflow({
+						env: c.env,
+						userIds: [user.id],
+						source: 'group-created',
+					}),
+				{
+					userId: user.id,
+					groupId: group.id,
+					source: 'group-created',
+					mumbleSyncEnabled: group.mumbleSyncEnabled,
+					groupName: group.name,
+				}
+			)
+		}
+
 		return c.json(group, 201)
 	} catch (error) {
 		if (error instanceof Error) {
@@ -1303,7 +1324,8 @@ groups.patch(
 			const shouldRefreshMumbleMembers =
 				previousGroup !== null &&
 				(previousGroup.name !== group.name ||
-					previousGroup.mumbleSyncEnabled !== group.mumbleSyncEnabled) &&
+					previousGroup.mumbleSyncEnabled !== group.mumbleSyncEnabled ||
+					previousGroup.mumbleTicker !== group.mumbleTicker) &&
 				(previousGroup.mumbleSyncEnabled || group.mumbleSyncEnabled)
 
 			if (shouldRefreshMumbleMembers) {
