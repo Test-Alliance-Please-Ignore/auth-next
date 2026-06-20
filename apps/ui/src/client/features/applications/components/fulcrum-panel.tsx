@@ -234,7 +234,6 @@ export function FulcrumPanel({
 			requestSource: 'hr',
 			applicationId,
 			userId,
-			targetUserId: userId,
 			sendDm,
 		})
 	}
@@ -321,7 +320,6 @@ export function FulcrumPanel({
 				requestSource: 'hr',
 				applicationId,
 				userId,
-				targetUserId: userId,
 				sendDm: sendDmForScanRequests,
 			})
 		} finally {

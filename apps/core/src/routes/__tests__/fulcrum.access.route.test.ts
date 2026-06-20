@@ -85,6 +85,12 @@ function makeCoreStub() {
 				allianceName: null,
 			},
 		]),
+		getUserCorporations: vi.fn().mockResolvedValue([
+			{
+				corporationId: '1001',
+				corporationName: 'Corp 1001',
+			},
+		]),
 		queueImmunitasAccessAlert: vi.fn().mockResolvedValue({
 			added: 1,
 			skipped: 0,
@@ -100,7 +106,10 @@ function makeDbStub() {
 				findFirst: vi.fn().mockResolvedValue({ isMemberCorporation: true }),
 			},
 			userCharacters: {
-				findFirst: vi.fn().mockResolvedValue(null),
+				findFirst: vi.fn().mockResolvedValue({
+					userId: 'user-1',
+					characterName: 'Main Pilot',
+				}),
 			},
 			users: {
 				findFirst: vi.fn().mockResolvedValue(null),
@@ -167,14 +176,14 @@ describe('fulcrum route access matrix', () => {
 		eveCharacterDataInstance = {
 			getCharacterInfo: vi.fn().mockResolvedValue({
 				characterId: '3001',
-				corporationId: '2001',
+				corporationId: '1001',
 			}),
 		}
 		eveCharacterDataStub = {
 			getInstance: vi.fn().mockResolvedValue(eveCharacterDataInstance),
 		}
 		eveCorporationDataStub = {
-			getCorporationInfo: vi.fn().mockResolvedValue({ ceoId: '3001' }),
+			getCorporationInfo: vi.fn().mockResolvedValue({ ceoId: '9999' }),
 			getDirectors: vi.fn().mockResolvedValue([]),
 			getMemberTracking: vi.fn().mockResolvedValue([]),
 		}
@@ -240,7 +249,7 @@ describe('fulcrum route access matrix', () => {
 
 		const app = createApp(makeUser(), dbStub)
 		const res = await app.request(
-			'/api/fulcrum/characters/3001/reports',
+			'/api/fulcrum/characters/1001/reports',
 			{
 				method: 'POST',
 				headers: { 'content-type': 'application/json' },
@@ -270,6 +279,341 @@ describe('fulcrum route access matrix', () => {
 		})
 	})
 
+	it('allows self-targeted immunitas report requests without alerting', async () => {
+		dbStub.query.userCharacters.findFirst.mockResolvedValue({
+			userId: 'user-1',
+			characterName: 'Main Pilot',
+		} as any)
+		dbStub.query.users.findFirst.mockResolvedValue({ immunitas: true } as any)
+		hrStub.checkPermission.mockResolvedValue(true)
+		hrStub.getUserRoles.mockResolvedValue([
+			{
+				id: 'role-1',
+				corporationId: '1001',
+				userId: 'user-1',
+				characterId: 'user-1',
+				characterName: 'Main Pilot',
+				role: 'hr_admin',
+				grantedBy: 'granted-by',
+				grantedAt: new Date(),
+				expiresAt: null,
+				isActive: true,
+				createdAt: new Date(),
+				updatedAt: new Date(),
+			},
+		] as any)
+
+		const app = createApp(makeUser(), dbStub)
+		const res = await app.request(
+			'/api/fulcrum/characters/1001/reports',
+			{
+				method: 'POST',
+				headers: { 'content-type': 'application/json' },
+				body: JSON.stringify({
+					corporationId: '1001',
+					requestSource: 'hr',
+					targetUserId: 'user-1',
+				}),
+			},
+			env
+		)
+
+		expect(res.status).toBe(201)
+		expect(fulcrumStub.createCharacterReport).toHaveBeenCalledWith({
+			characterId: '1001',
+			requestorUserId: 'user-1',
+			requestorCorporationId: '1001',
+			requestSource: 'hr',
+			applicationId: undefined,
+			targetUserId: 'user-1',
+			sendDm: true,
+		})
+		expect(coreStub.queueImmunitasAccessAlert).not.toHaveBeenCalled()
+	})
+
+	it('allows self-targeted immunitas report requests without HR roles or alerts', async () => {
+		dbStub.query.userCharacters.findFirst.mockResolvedValue({
+			userId: 'user-1',
+			characterName: 'Main Pilot',
+		} as any)
+		dbStub.query.users.findFirst.mockResolvedValue({ immunitas: true } as any)
+		hrStub.checkPermission.mockResolvedValue(false)
+		hrStub.getUserRoles.mockResolvedValue([])
+
+		const app = createApp(makeUser(), dbStub)
+		const res = await app.request(
+			'/api/fulcrum/characters/1001/reports',
+			{
+				method: 'POST',
+				headers: { 'content-type': 'application/json' },
+				body: JSON.stringify({
+					requestSource: 'hr',
+				}),
+			},
+			env
+		)
+
+		expect(res.status).toBe(201)
+		expect(fulcrumStub.createCharacterReport).toHaveBeenCalledWith({
+			characterId: '1001',
+			requestorUserId: 'user-1',
+			requestorCorporationId: '1001',
+			requestSource: 'hr',
+			applicationId: undefined,
+			targetUserId: 'user-1',
+			sendDm: true,
+		})
+		expect(coreStub.queueImmunitasAccessAlert).not.toHaveBeenCalled()
+	})
+
+	it('blocks report creation when the target user does not share the request corporation', async () => {
+		dbStub.query.userCharacters.findFirst.mockResolvedValue({
+			userId: 'target-user',
+			characterName: 'Target Pilot',
+		} as any)
+		coreStub.getUserCorporations.mockImplementation(async (userId: string) =>
+			userId === 'user-1'
+				? [
+						{
+							corporationId: '1001',
+							corporationName: 'Corp 1001',
+						},
+					]
+				: [
+						{
+							corporationId: '2002',
+							corporationName: 'Corp 2002',
+						},
+					]
+		)
+		hrStub.checkPermission.mockResolvedValue(true)
+		hrStub.getUserRoles.mockResolvedValue([
+			{
+				id: 'role-1',
+				corporationId: '1001',
+				userId: 'user-1',
+				characterId: 'user-1',
+				characterName: 'Main Pilot',
+				role: 'hr_admin',
+				grantedBy: 'granted-by',
+				grantedAt: new Date(),
+				expiresAt: null,
+				isActive: true,
+				createdAt: new Date(),
+				updatedAt: new Date(),
+			},
+		] as any)
+
+		const app = createApp(makeUser(), dbStub)
+		const res = await app.request(
+			'/api/fulcrum/characters/3001/reports',
+			{
+				method: 'POST',
+				headers: { 'content-type': 'application/json' },
+				body: JSON.stringify({
+					corporationId: '1001',
+					requestSource: 'hr',
+					targetUserId: 'target-user',
+				}),
+			},
+			env
+		)
+
+		expect(res.status).toBe(403)
+		expect(await res.json()).toEqual({
+			error: 'Fulcrum report requests are not allowed for this character',
+		})
+		expect(fulcrumStub.createCharacterReport).not.toHaveBeenCalled()
+	})
+
+	it('uses the actual target owner for reviewer open-application checks', async () => {
+		dbStub.query.userCharacters.findFirst.mockResolvedValue({
+			userId: 'target-user',
+			characterName: 'Target Pilot',
+		} as any)
+		coreStub.getUserCorporations.mockImplementation(async (userId: string) =>
+			userId === 'user-1'
+				? [
+						{
+							corporationId: '1001',
+							corporationName: 'Corp 1001',
+						},
+						{
+							corporationId: '2002',
+							corporationName: 'Corp 2002',
+						},
+					]
+				: [
+						{
+							corporationId: '1001',
+							corporationName: 'Corp 1001',
+						},
+						{
+							corporationId: '2002',
+							corporationName: 'Corp 2002',
+						},
+					]
+		)
+		hrStub.checkPermission.mockImplementation(async (_userId: string, corporationId: string) =>
+			corporationId === '2002'
+		)
+		hrStub.getUserRoles.mockResolvedValue([
+			{
+				id: 'role-1',
+				corporationId: '2002',
+				userId: 'user-1',
+				characterId: 'user-1',
+				characterName: 'Main Pilot',
+				role: 'hr_reviewer',
+				grantedBy: 'granted-by',
+				grantedAt: new Date(),
+				expiresAt: null,
+				isActive: true,
+				createdAt: new Date(),
+				updatedAt: new Date(),
+			},
+		] as any)
+		hrStub.listApplications.mockImplementation(async (filters: any) =>
+			filters.userId === 'target-user'
+				? []
+				: [
+						{
+							id: 'app-1',
+							corporationId: '1001',
+							userId: 'target-1',
+							characterId: '3001',
+							characterName: 'Alt Pilot',
+							applicationText: 'app',
+							status: 'under_review',
+							reviewedBy: null,
+							reviewedByCharacterName: null,
+							reviewedAt: null,
+							reviewNotes: null,
+							createdAt: new Date(),
+							updatedAt: new Date(),
+							lastStaffInteractionAt: null,
+							altCharacterIds: [],
+						},
+					]
+		)
+
+		const app = createApp(makeUser(), dbStub)
+		const res = await app.request(
+			'/api/fulcrum/characters/3001/reports',
+			{
+				method: 'POST',
+				headers: { 'content-type': 'application/json' },
+				body: JSON.stringify({
+					corporationId: '1001',
+					requestSource: 'hr',
+					targetUserId: 'target-1',
+				}),
+			},
+			env
+		)
+
+		expect(res.status).toBe(403)
+		expect(await res.json()).toEqual({
+			error: 'An open application is required to request Fulcrum reports for this user',
+		})
+		expect(fulcrumStub.createCharacterReport).not.toHaveBeenCalled()
+	})
+
+	it('allows hr_reviewer report creation when the target user has an open application', async () => {
+		dbStub.query.userCharacters.findFirst.mockResolvedValue({
+			userId: 'target-user',
+			characterName: 'Target Pilot',
+		} as any)
+		coreStub.getUserCorporations.mockImplementation(async (userId: string) =>
+			userId === 'user-1'
+				? [
+						{
+							corporationId: '1001',
+							corporationName: 'Corp 1001',
+						},
+						{
+							corporationId: '2002',
+							corporationName: 'Corp 2002',
+						},
+					]
+				: [
+						{
+							corporationId: '1001',
+							corporationName: 'Corp 1001',
+						},
+						{
+							corporationId: '2002',
+							corporationName: 'Corp 2002',
+						},
+					]
+		)
+		hrStub.checkPermission.mockResolvedValue(true)
+		hrStub.getUserRoles.mockResolvedValue([
+			{
+				id: 'role-1',
+				corporationId: '2002',
+				userId: 'user-1',
+				characterId: 'user-1',
+				characterName: 'Main Pilot',
+				role: 'hr_reviewer',
+				grantedBy: 'granted-by',
+				grantedAt: new Date(),
+				expiresAt: null,
+				isActive: true,
+				createdAt: new Date(),
+				updatedAt: new Date(),
+			},
+		] as any)
+		hrStub.listApplications.mockImplementation(async (filters: any) =>
+			filters.userId === 'target-user' && filters.corporationId === '2002'
+				? [
+						{
+							id: 'app-1',
+							corporationId: '2002',
+							userId: 'target-user',
+							characterId: '3001',
+							characterName: 'Target Pilot',
+							applicationText: 'app',
+							status: 'under_review',
+							reviewedBy: null,
+							reviewedByCharacterName: null,
+							reviewedAt: null,
+							reviewNotes: null,
+							createdAt: new Date(),
+							updatedAt: new Date(),
+							lastStaffInteractionAt: null,
+							altCharacterIds: [],
+						},
+					]
+				: []
+		)
+
+		const app = createApp(makeUser(), dbStub)
+		const res = await app.request(
+			'/api/fulcrum/characters/3001/reports',
+			{
+				method: 'POST',
+				headers: { 'content-type': 'application/json' },
+				body: JSON.stringify({
+					requestSource: 'hr',
+					sendDm: false,
+				}),
+			},
+			env
+		)
+
+		expect(res.status).toBe(201)
+		expect(fulcrumStub.createCharacterReport).toHaveBeenCalledWith({
+			characterId: '3001',
+			requestorUserId: 'user-1',
+			requestorCorporationId: '2002',
+			requestSource: 'hr',
+			applicationId: undefined,
+			targetUserId: 'target-user',
+			sendDm: false,
+		})
+	})
+
 	it('blocks batch report creation for immunitas targets and queues alerts', async () => {
 		dbStub.query.userCharacters.findFirst
 			.mockResolvedValueOnce({
@@ -277,7 +621,7 @@ describe('fulcrum route access matrix', () => {
 				characterName: 'Immunitas Pilot',
 			} as any)
 			.mockResolvedValueOnce({
-				userId: 'other-user',
+				userId: 'target-user',
 				characterName: 'Regular Pilot',
 			} as any)
 		dbStub.query.users.findFirst
@@ -317,7 +661,308 @@ describe('fulcrum route access matrix', () => {
 		})
 	})
 
+	it('allows self-targeted immunitas batch report requests without alerting', async () => {
+		dbStub.query.userCharacters.findFirst.mockResolvedValue({
+			userId: 'user-1',
+			characterName: 'Main Pilot',
+		} as any)
+		dbStub.query.users.findFirst.mockResolvedValue({ immunitas: true } as any)
+		hrStub.checkPermission.mockResolvedValue(true)
+		hrStub.getUserRoles.mockResolvedValue([
+			{
+				id: 'role-1',
+				corporationId: '1001',
+				userId: 'user-1',
+				characterId: 'user-1',
+				characterName: 'Main Pilot',
+				role: 'hr_admin',
+				grantedBy: 'granted-by',
+				grantedAt: new Date(),
+				expiresAt: null,
+				isActive: true,
+				createdAt: new Date(),
+				updatedAt: new Date(),
+			},
+		] as any)
+
+		const app = createApp(makeUser(), dbStub)
+		const res = await app.request(
+			'/api/fulcrum/reports/batch',
+			{
+				method: 'POST',
+				headers: { 'content-type': 'application/json' },
+				body: JSON.stringify({
+					corporationId: '1001',
+					requestSource: 'hr',
+					characterIds: ['1001'],
+					targetUserId: 'user-1',
+				}),
+			},
+			env
+		)
+
+		expect(res.status).toBe(201)
+		expect(fulcrumStub.createBulkCharacterReports).toHaveBeenCalledWith({
+			characterIds: ['1001'],
+			requestorUserId: 'user-1',
+			requestorCorporationId: '1001',
+			requestSource: 'hr',
+			applicationId: undefined,
+			targetUserId: 'user-1',
+			sendDm: true,
+		})
+		expect(coreStub.queueImmunitasAccessAlert).not.toHaveBeenCalled()
+	})
+
+	it('allows batch report creation when the target user has characters in different corporations but shares one with the requester', async () => {
+		dbStub.query.userCharacters.findFirst
+			.mockResolvedValueOnce({
+				userId: 'target-user',
+				characterName: 'Target Pilot One',
+			} as any)
+			.mockResolvedValueOnce({
+				userId: 'target-user',
+				characterName: 'Target Pilot Two',
+			} as any)
+		coreStub.getUserCorporations.mockImplementation(async (userId: string) =>
+			userId === 'user-1'
+				? [
+						{
+							corporationId: '1001',
+							corporationName: 'Corp 1001',
+						},
+						{
+							corporationId: '2002',
+							corporationName: 'Corp 2002',
+						},
+					]
+				: [
+						{
+							corporationId: '1001',
+							corporationName: 'Corp 1001',
+						},
+						{
+							corporationId: '2002',
+							corporationName: 'Corp 2002',
+						},
+					]
+		)
+		hrStub.checkPermission.mockImplementation(async (_userId: string, corporationId: string) =>
+			corporationId === '2002'
+		)
+		hrStub.getUserRoles.mockResolvedValue([
+			{
+				id: 'role-1',
+				corporationId: '2002',
+				userId: 'user-1',
+				characterId: 'user-1',
+				characterName: 'Main Pilot',
+				role: 'hr_admin',
+				grantedBy: 'granted-by',
+				grantedAt: new Date(),
+				expiresAt: null,
+				isActive: true,
+				createdAt: new Date(),
+				updatedAt: new Date(),
+			},
+		] as any)
+
+		const app = createApp(makeUser(), dbStub)
+		const res = await app.request(
+			'/api/fulcrum/reports/batch',
+			{
+				method: 'POST',
+				headers: { 'content-type': 'application/json' },
+				body: JSON.stringify({
+					requestSource: 'hr',
+					characterIds: ['3001', '3002'],
+					sendDm: false,
+				}),
+			},
+			env
+		)
+
+		expect(res.status).toBe(201)
+		expect(fulcrumStub.createBulkCharacterReports).toHaveBeenCalledWith({
+			characterIds: ['3001', '3002'],
+			requestorUserId: 'user-1',
+			requestorCorporationId: '2002',
+			requestSource: 'hr',
+			applicationId: undefined,
+			targetUserId: 'target-user',
+			sendDm: false,
+		})
+	})
+
+	it('allows batch report creation when reviewer access and the open application exist in a non-first shared corporation', async () => {
+		dbStub.query.userCharacters.findFirst
+			.mockResolvedValueOnce({
+				userId: 'target-user',
+				characterName: 'Target Pilot One',
+			} as any)
+			.mockResolvedValueOnce({
+				userId: 'target-user',
+				characterName: 'Target Pilot Two',
+			} as any)
+		coreStub.getUserCorporations.mockImplementation(async (userId: string) =>
+			userId === 'user-1'
+				? [
+						{
+							corporationId: '1001',
+							corporationName: 'Corp 1001',
+						},
+						{
+							corporationId: '2002',
+							corporationName: 'Corp 2002',
+						},
+					]
+				: [
+						{
+							corporationId: '1001',
+							corporationName: 'Corp 1001',
+						},
+						{
+							corporationId: '2002',
+							corporationName: 'Corp 2002',
+						},
+					]
+		)
+		hrStub.checkPermission.mockImplementation(async (_userId: string, corporationId: string) =>
+			corporationId === '2002'
+		)
+		hrStub.getUserRoles.mockResolvedValue([
+			{
+				id: 'role-1',
+				corporationId: '2002',
+				userId: 'user-1',
+				characterId: 'user-1',
+				characterName: 'Main Pilot',
+				role: 'hr_reviewer',
+				grantedBy: 'granted-by',
+				grantedAt: new Date(),
+				expiresAt: null,
+				isActive: true,
+				createdAt: new Date(),
+				updatedAt: new Date(),
+			},
+		] as any)
+		hrStub.listApplications.mockImplementation(async (filters: any) =>
+			filters.userId === 'target-user' && filters.corporationId === '2002'
+				? [
+						{
+							id: 'app-1',
+							corporationId: '2002',
+							userId: 'target-user',
+							characterId: '3001',
+							characterName: 'Target Pilot One',
+							applicationText: 'app',
+							status: 'under_review',
+							reviewedBy: null,
+							reviewedByCharacterName: null,
+							reviewedAt: null,
+							reviewNotes: null,
+							createdAt: new Date(),
+							updatedAt: new Date(),
+							lastStaffInteractionAt: null,
+							altCharacterIds: [],
+						},
+					]
+				: []
+		)
+
+		const app = createApp(makeUser(), dbStub)
+		const res = await app.request(
+			'/api/fulcrum/reports/batch',
+			{
+				method: 'POST',
+				headers: { 'content-type': 'application/json' },
+				body: JSON.stringify({
+					requestSource: 'hr',
+					characterIds: ['3001', '3002'],
+					sendDm: false,
+				}),
+			},
+			env
+		)
+
+		expect(res.status).toBe(201)
+		expect(fulcrumStub.createBulkCharacterReports).toHaveBeenCalledWith({
+			characterIds: ['3001', '3002'],
+			requestorUserId: 'user-1',
+			requestorCorporationId: '2002',
+			requestSource: 'hr',
+			applicationId: undefined,
+			targetUserId: 'target-user',
+			sendDm: false,
+		})
+	})
+
+	it('blocks batch report creation when the target user does not share the request corporation', async () => {
+		dbStub.query.userCharacters.findFirst.mockResolvedValue({
+			userId: 'target-user',
+			characterName: 'Target Pilot',
+		} as any)
+		coreStub.getUserCorporations.mockImplementation(async (userId: string) =>
+			userId === 'user-1'
+				? [
+						{
+							corporationId: '1001',
+							corporationName: 'Corp 1001',
+						},
+					]
+				: [
+						{
+							corporationId: '2002',
+							corporationName: 'Corp 2002',
+						},
+					]
+		)
+		hrStub.checkPermission.mockResolvedValue(true)
+		hrStub.getUserRoles.mockResolvedValue([
+			{
+				id: 'role-1',
+				corporationId: '1001',
+				userId: 'user-1',
+				characterId: 'user-1',
+				characterName: 'Main Pilot',
+				role: 'hr_admin',
+				grantedBy: 'granted-by',
+				grantedAt: new Date(),
+				expiresAt: null,
+				isActive: true,
+				createdAt: new Date(),
+				updatedAt: new Date(),
+			},
+		] as any)
+
+		const app = createApp(makeUser(), dbStub)
+		const res = await app.request(
+			'/api/fulcrum/reports/batch',
+			{
+				method: 'POST',
+				headers: { 'content-type': 'application/json' },
+				body: JSON.stringify({
+					corporationId: '1001',
+					requestSource: 'hr',
+					characterIds: ['3001', '3002'],
+					targetUserId: 'target-user',
+				}),
+			},
+			env
+		)
+
+		expect(res.status).toBe(403)
+		expect(await res.json()).toEqual({
+			error: 'Fulcrum report requests are not allowed for these characters',
+		})
+		expect(fulcrumStub.createBulkCharacterReports).not.toHaveBeenCalled()
+	})
+
 	it('blocks report creation for non-auditor without hr_reviewer+', async () => {
+		dbStub.query.userCharacters.findFirst.mockResolvedValue({
+			userId: 'target-user',
+			characterName: 'Target Pilot',
+		} as any)
 		const app = createApp(makeUser())
 		const res = await app.request(
 			'/api/fulcrum/characters/3001/reports',
@@ -334,11 +979,18 @@ describe('fulcrum route access matrix', () => {
 		)
 
 		expect(res.status).toBe(403)
-		expect(await res.json()).toEqual({ error: 'HR reviewer or admin role required' })
+		expect(await res.json()).toEqual({
+			error: 'HR reviewer or admin role required',
+		})
 		expect(fulcrumStub.createCharacterReport).not.toHaveBeenCalled()
 	})
 
 	it('blocks hr_admin report creation for member corp CEOs unless auditor or admin', async () => {
+		dbStub.query.userCharacters.findFirst.mockResolvedValue({
+			userId: 'target-user',
+			characterName: 'Target Pilot',
+		} as any)
+		eveCorporationDataStub.getCorporationInfo.mockResolvedValue({ ceoId: '3001' })
 		hrStub.checkPermission.mockResolvedValue(true)
 		hrStub.getUserRoles.mockResolvedValue([
 			{
@@ -379,6 +1031,56 @@ describe('fulcrum route access matrix', () => {
 		expect(fulcrumStub.createCharacterReport).not.toHaveBeenCalled()
 	})
 
+	it('blocks batch report creation for member corp CEOs unless auditor or admin', async () => {
+		dbStub.query.userCharacters.findFirst
+			.mockResolvedValueOnce({
+				userId: 'target-user',
+				characterName: 'Target Pilot One',
+			} as any)
+			.mockResolvedValueOnce({
+				userId: 'target-user',
+				characterName: 'Target Pilot Two',
+			} as any)
+		eveCorporationDataStub.getCorporationInfo.mockResolvedValue({ ceoId: '3001' })
+		hrStub.checkPermission.mockResolvedValue(true)
+		hrStub.getUserRoles.mockResolvedValue([
+			{
+				id: 'role-1',
+				corporationId: '1001',
+				userId: 'user-1',
+				characterId: 'user-1',
+				characterName: 'Main Pilot',
+				role: 'hr_admin',
+				grantedBy: 'granted-by',
+				grantedAt: new Date(),
+				expiresAt: null,
+				isActive: true,
+				createdAt: new Date(),
+				updatedAt: new Date(),
+			},
+		] as any)
+
+		const app = createApp(makeUser(), dbStub)
+		const res = await app.request(
+			'/api/fulcrum/reports/batch',
+			{
+				method: 'POST',
+				headers: { 'content-type': 'application/json' },
+				body: JSON.stringify({
+					requestSource: 'hr',
+					characterIds: ['3001', '3002'],
+				}),
+			},
+			env
+		)
+
+		expect(res.status).toBe(403)
+		expect(await res.json()).toEqual({
+			error: 'Only auditors or site admins can request reports for member corp CEOs',
+		})
+		expect(fulcrumStub.createBulkCharacterReports).not.toHaveBeenCalled()
+	})
+
 	it('allows auditor to create reports without hr role check', async () => {
 		getCachedUserPermissionsMock.mockResolvedValue([
 			{
@@ -417,6 +1119,7 @@ describe('fulcrum route access matrix', () => {
 			requestorCorporationId: '1001',
 			requestSource: 'hr',
 			applicationId: undefined,
+			targetUserId: 'user-1',
 			sendDm: true,
 		})
 	})
@@ -524,6 +1227,10 @@ describe('fulcrum route access matrix', () => {
 	})
 
 	it('blocks hr_viewer bulk report creation even when the target user has an open application', async () => {
+		dbStub.query.userCharacters.findFirst.mockResolvedValue({
+			userId: 'target-user',
+			characterName: 'Target Pilot',
+		} as any)
 		hrStub.checkPermission.mockResolvedValue(true)
 		hrStub.getUserRoles.mockResolvedValue([
 			{
@@ -579,8 +1286,88 @@ describe('fulcrum route access matrix', () => {
 		)
 
 		expect(res.status).toBe(403)
-		expect(await res.json()).toEqual({ error: 'HR reviewer or admin role required' })
+		expect(await res.json()).toEqual({
+			error: 'HR reviewer or admin role required',
+		})
 		expect(fulcrumStub.createBulkCharacterReports).not.toHaveBeenCalled()
+	})
+
+	it('allows hr_reviewer bulk report creation when the target user has an open application', async () => {
+		dbStub.query.userCharacters.findFirst
+			.mockResolvedValueOnce({
+				userId: 'target-user',
+				characterName: 'Target Pilot One',
+			} as any)
+			.mockResolvedValueOnce({
+				userId: 'target-user',
+				characterName: 'Target Pilot Two',
+			} as any)
+		hrStub.checkPermission.mockResolvedValue(true)
+		hrStub.getUserRoles.mockResolvedValue([
+			{
+				id: 'role-1',
+				corporationId: '1001',
+				userId: 'user-1',
+				characterId: 'user-1',
+				characterName: 'Main Pilot',
+				role: 'hr_reviewer',
+				grantedBy: 'granted-by',
+				grantedAt: new Date(),
+				expiresAt: null,
+				isActive: true,
+				createdAt: new Date(),
+				updatedAt: new Date(),
+			},
+		] as any)
+		hrStub.listApplications.mockImplementation(async (filters: any) =>
+			filters.userId === 'target-user'
+				? [
+						{
+							id: 'app-1',
+							corporationId: '1001',
+							userId: 'target-user',
+							characterId: '3001',
+							characterName: 'Target Pilot One',
+							applicationText: 'app',
+							status: 'under_review',
+							reviewedBy: null,
+							reviewedByCharacterName: null,
+							reviewedAt: null,
+							reviewNotes: null,
+							createdAt: new Date(),
+							updatedAt: new Date(),
+							lastStaffInteractionAt: null,
+							altCharacterIds: [],
+						},
+					]
+				: []
+		)
+
+		const app = createApp(makeUser(), dbStub)
+		const res = await app.request(
+			'/api/fulcrum/reports/batch',
+			{
+				method: 'POST',
+				headers: { 'content-type': 'application/json' },
+				body: JSON.stringify({
+					requestSource: 'hr',
+					characterIds: ['3001', '3002'],
+					sendDm: false,
+				}),
+			},
+			env
+		)
+
+		expect(res.status).toBe(201)
+		expect(fulcrumStub.createBulkCharacterReports).toHaveBeenCalledWith({
+			characterIds: ['3001', '3002'],
+			requestorUserId: 'user-1',
+			requestorCorporationId: '1001',
+			requestSource: 'hr',
+			applicationId: undefined,
+			targetUserId: 'target-user',
+			sendDm: false,
+		})
 	})
 
 	it('passes sendDm=false through to report creation', async () => {
@@ -620,6 +1407,7 @@ describe('fulcrum route access matrix', () => {
 			requestorCorporationId: '1001',
 			requestSource: 'hr',
 			applicationId: undefined,
+			targetUserId: 'user-1',
 			sendDm: false,
 		})
 	})
@@ -662,6 +1450,7 @@ describe('fulcrum route access matrix', () => {
 			requestorCorporationId: '1001',
 			requestSource: 'hr',
 			applicationId: undefined,
+			targetUserId: 'user-1',
 			sendDm: false,
 		})
 	})
@@ -703,6 +1492,7 @@ describe('fulcrum route access matrix', () => {
 			requestorCorporationId: '1001',
 			requestSource: 'hr',
 			applicationId: undefined,
+			targetUserId: 'user-1',
 			sendDm: true,
 		})
 	})

@@ -518,7 +518,9 @@ app.get('/:characterId', requireAuth(), async (c) => {
 	// Treat admins/HR viewers as privileged for private data access purposes,
 	// but immunitas targets never expose private sections.
 	const canViewSensitiveData =
-		(isActualOwner || isAdmin || hasHrViewerAccess || hasHrPageAccess) && !targetOwner?.immunitas
+		isActualOwner ||
+		isAdmin ||
+		((hasHrViewerAccess || hasHrPageAccess) && !targetOwner?.immunitas)
 	const isOwner = isActualOwner || isAdmin
 
 	// Get EVE Character Data DO stub

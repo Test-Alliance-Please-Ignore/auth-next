@@ -51,6 +51,13 @@ Scope notes:
 ## Support Notes
 
 - If a user can open the HR user profile page, they can see private character data for the target user across corp boundaries when the page logic allows it. This includes SP, wallet, and other private character sections that are tied to the page audience.
+- On the character detail surface, "private data" means:
+	- location
+	- wallet balance
+	- assets
+	- online/offline status and login metadata
+	- skill queue
+	- live-versus-last-known sensitive-data state
 - Fulcrum report permissions are user-scoped for the open-application exception: if the target user has an open application, that exception applies to all of that user's characters in that corporation context.
 - The open-application exception does not override CEO restrictions. HR reviewers still cannot request reports for member-corp CEOs. Only auditors and site admins can.
 - `HR Viewer` can view the HR profile page, but cannot request Fulcrum reports.

@@ -291,7 +291,6 @@ export default function HrAuditorUserProfilePage() {
 				characterId: character.characterId,
 				corporationId: character.corporationId,
 				requestSource: 'hr',
-				targetUserId: userId,
 				userId,
 				sendDm,
 			},
@@ -361,7 +360,6 @@ export default function HrAuditorUserProfilePage() {
 					corporationId,
 					requestSource: 'hr',
 					userId,
-					targetUserId: userId,
 					sendDm: sendDmForBatch,
 				})
 				if (sendDmForBatch) {
