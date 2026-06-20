@@ -8,6 +8,7 @@ import { withNotFound, withOnError, withSentry } from '@repo/hono-helpers'
 
 import { createDb } from './db'
 import { waitUntilWithTelemetry } from './lib/background-task'
+import { IMMUNITAS_ALERT_DRAIN_CRON } from './lib/immunitas-alerts'
 import { TOKEN_INVALID_ALERT_DRAIN_CRON } from './lib/token-invalid-alerts'
 import { discordMemberAuditRuns, userCharacters, userIpAddresses, users } from './db/schema'
 import { CoreDO } from './durable-object'
@@ -166,6 +167,16 @@ export default {
 				console.log(
 					'[Core:Scheduled] Processed pending token invalidation alerts',
 					tokenAlertResult
+				)
+			}
+		}
+
+		if (event.cron === IMMUNITAS_ALERT_DRAIN_CRON) {
+			const immunitasAlertResult = await coreStub.processPendingImmunitasAccessAlerts()
+			if (immunitasAlertResult.processed > 0) {
+				console.log(
+					'[Core:Scheduled] Processed pending immunitas access alerts',
+					immunitasAlertResult
 				)
 			}
 		}

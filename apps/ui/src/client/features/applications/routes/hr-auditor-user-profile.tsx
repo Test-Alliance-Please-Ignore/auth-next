@@ -118,6 +118,10 @@ export default function HrAuditorUserProfilePage() {
 
 	const accountName = mainCharacter?.characterName ?? userId ?? 'Unknown'
 	const canAddNote = isAuditor || user?.is_admin === true
+	const canRequestCeoReports = user?.is_admin || isAuditor
+	const canRequestCharacterReport = (character: {
+		role?: 'CEO' | 'Director' | 'Member' | null
+	}) => canRequestCeoReports || character.role !== 'CEO'
 	usePageTitle(userDetails ? `${accountName} | Auditor` : 'Auditor Profile')
 
 	const sortedApps = useMemo(() => {
@@ -172,6 +176,9 @@ export default function HrAuditorUserProfilePage() {
 		queries: rows.map((character) => ({
 			queryKey: ['character', character.characterId, 'auditor-profile', character.corporationId],
 			queryFn: () => apiClient.getCharacterDetail(character.characterId, character.corporationId ?? undefined),
+			meta: {
+				suppressErrorToast: true,
+			},
 			enabled: !!character.corporationId,
 			staleTime: 5 * 60 * 1000,
 		})),
@@ -326,7 +333,8 @@ export default function HrAuditorUserProfilePage() {
 	}
 
 	const scanEligibleCharacters = rows.filter(
-		(character) => !!character.corporationId && !character.hasPendingReport
+		(character) =>
+			!!character.corporationId && !character.hasPendingReport && (canRequestCeoReports || character.role !== 'CEO')
 	)
 
 	const handleScanAllCharacters = async (sendDm: boolean) => {
@@ -537,6 +545,7 @@ export default function HrAuditorUserProfilePage() {
 							const full = rows.find((row) => row.characterId === character.characterId)
 							if (full) handleOpenSingleScanDialog(full)
 						}}
+						canRequestCharacterReport={canRequestCharacterReport}
 					/>
 
 					<ProfileNotesSection

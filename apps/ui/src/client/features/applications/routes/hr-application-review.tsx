@@ -152,6 +152,9 @@ export default function HrApplicationReview() {
 		queries: allCharacterIds.map((charId) => ({
 			queryKey: ['character', charId, 'hr-review', corporationId],
 			queryFn: () => apiClient.getCharacterDetail(charId, corporationId),
+			meta: {
+				suppressErrorToast: true,
+			},
 			enabled: !!application,
 			staleTime: 5 * 60 * 1000,
 		})),
@@ -798,6 +801,9 @@ export default function HrApplicationReview() {
 									applicationId={applicationId!}
 									mainCharacterId={application.characterId}
 									altCharacterIds={altCharacterIds}
+									canRequestCharacterReport={(character) =>
+										user?.is_admin || character.role !== 'CEO'
+									}
 								/>
 							</CardContent>
 						</Card>

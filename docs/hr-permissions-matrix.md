@@ -1,6 +1,6 @@
 # HR Permissions Matrix
 
-Last updated: 2026-04-10
+Last updated: 2026-06-20
 
 Scope notes:
 - Corporation-scoped unless explicitly marked global.
@@ -47,6 +47,13 @@ Scope notes:
 | `/hr/auditor/users/:userId` | ❌ | ❌ | ❌ | ❌ | ❌ | ✅ | ✅ |
 | `/hr/auditor/users/:userId/groups` | ❌ | ❌ | ❌ | ❌ | ❌ | ✅ | ✅ |
 | `/fulcrum/reports/:reportId` | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ |
+
+## Support Notes
+
+- If a user can open the HR user profile page, they can see private character data for the target user across corp boundaries when the page logic allows it. This includes SP, wallet, and other private character sections that are tied to the page audience.
+- Fulcrum report permissions are user-scoped for the open-application exception: if the target user has an open application, that exception applies to all of that user's characters in that corporation context.
+- The open-application exception does not override CEO restrictions. HR reviewers still cannot request reports for member-corp CEOs. Only auditors and site admins can.
+- `HR Viewer` can view the HR profile page, but cannot request Fulcrum reports.
 
 ## API Access Matrix (Core routes)
 

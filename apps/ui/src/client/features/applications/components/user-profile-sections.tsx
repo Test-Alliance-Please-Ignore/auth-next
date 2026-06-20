@@ -74,6 +74,7 @@ export function ProfileCharactersSection({
 	scanAllLabel,
 	scanAllDisabled = false,
 	canRequestReports = true,
+	canRequestCharacterReport,
 	onScanAll,
 	isScanPendingFor,
 	onScan,
@@ -89,6 +90,7 @@ export function ProfileCharactersSection({
 	scanAllLabel?: string
 	scanAllDisabled?: boolean
 	canRequestReports?: boolean
+	canRequestCharacterReport?: (character: SharedProfileCharacter) => boolean
 	onScanAll?: () => void
 	isScanPendingFor?: (characterId: string) => boolean
 	onScan: (character: SharedProfileCharacter) => void
@@ -129,6 +131,7 @@ export function ProfileCharactersSection({
 						{characters.map((character) => {
 							const esiBadge = resolveEsiBadge(character)
 							const isScanPending = isScanPendingFor?.(character.characterId) ?? false
+							const canRequestCharacter = canRequestCharacterReport?.(character) ?? true
 							return (
 								<div
 									key={character.characterId}
@@ -271,6 +274,7 @@ export function ProfileCharactersSection({
 											size="sm"
 											disabled={
 												!canRequestReports ||
+												!canRequestCharacter ||
 												!character.corporationId ||
 												character.hasPendingReport ||
 												isScanPending

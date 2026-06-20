@@ -1,0 +1,1 @@
+ALTER TABLE "users" ADD COLUMN "immunitas" boolean DEFAULT false NOT NULL;
