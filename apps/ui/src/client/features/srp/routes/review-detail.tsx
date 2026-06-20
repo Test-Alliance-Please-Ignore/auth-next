@@ -99,6 +99,7 @@ export default function ReviewRequestDetail() {
 	const isPaid = request.requestStatus === 'paid' || request.requestStatus === 'payment_pending'
 	const canManuallyVerifyPaid =
 		hasPermission('urn:srp:manager') && request.requestStatus === 'payment_pending'
+	const appliedModifiers = request.appliedModifiers ?? []
 
 	const handleManualVerifyPaid = async () => {
 		requestConfirmation({
@@ -365,15 +366,15 @@ export default function ReviewRequestDetail() {
 								</div>
 							</div>
 
-							<div className="mt-4">
-								<div className="text-sm text-muted-foreground">Bonuses / Deductions</div>
-								{request.appliedModifiers && request.appliedModifiers.length > 0 ? (
-									<ul className="mt-2 space-y-1 text-sm">
-										{request.appliedModifiers.map((modifier: {
-											id: string
-											modifierType: 'deduction' | 'bonus'
-											mode: 'percentage' | 'value'
-											amount: number
+					<div className="mt-4">
+						<div className="text-sm text-muted-foreground">Bonuses / Deductions</div>
+						{appliedModifiers.length > 0 ? (
+							<ul className="mt-2 space-y-1 text-sm">
+								{appliedModifiers.map((modifier: {
+									id: string
+									modifierType: 'deduction' | 'bonus'
+									mode: 'percentage' | 'value'
+									amount: number
 											reason: string
 											computedAmountISK: string
 										}) => (

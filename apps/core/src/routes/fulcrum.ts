@@ -1,13 +1,18 @@
+import { eq } from 'drizzle-orm'
 import { Hono } from 'hono'
 
 import { getStub } from '@repo/do-utils'
 import { logger } from '@repo/hono-helpers'
 
+import { managedCorporations, userCharacters, users } from '../db/schema'
+import { waitUntilWithTelemetry } from '../lib/background-task'
+import { queueImmunitasAccessAlertForUser } from '../lib/immunitas-alerts'
 import { getCachedUserPermissions } from '../lib/groups-cache'
 import { requireAuth } from '../middleware/session'
 
 import type { Context } from 'hono'
 import type { Core } from '@repo/core'
+import type { EveCharacterData } from '@repo/eve-character-data'
 import type { EveCorporationData } from '@repo/eve-corporation-data'
 import type { Fulcrum, ReportRequestSource, ReportSectionName } from '@repo/fulcrum'
 import { ACTIVE_APPLICATION_STATUSES } from '@repo/hr'
@@ -32,6 +37,44 @@ function getHrStub(c: Context<App>): Hr {
 
 function getCoreStub(c: Context<App>): Core {
 	return getStub<Core>(c.env.CORE, 'default')
+}
+
+function getExecutionContextOrNull(c: Context<App>): ExecutionContext | null {
+	try {
+		return c.executionCtx
+	} catch {
+		return null
+	}
+}
+
+async function getImmunitasReportTarget(db: any, characterId: string): Promise<{
+	userId: string
+	characterLabel: string
+	immunitas: boolean
+} | null> {
+	const owner = await db.query.userCharacters.findFirst({
+		where: eq(userCharacters.characterId, characterId),
+		columns: {
+			userId: true,
+			characterName: true,
+		},
+	})
+	if (!owner) {
+		return null
+	}
+
+	const user = await db.query.users.findFirst({
+		where: eq(users.id, owner.userId),
+		columns: {
+			immunitas: true,
+		},
+	})
+
+	return {
+		userId: owner.userId,
+		characterLabel: owner.characterName,
+		immunitas: user?.immunitas === true,
+	}
 }
 
 type FulcrumReportAccessRole = 'hr_admin' | 'hr_reviewer' | null
@@ -71,6 +114,33 @@ async function hasOpenApplicationForTargetUser(
 	}
 
 	return false
+}
+
+async function isMemberCorpCeo(c: Context<App>, characterId: string): Promise<boolean> {
+	const db = c.get('db')
+	if (!db) {
+		throw new Error('Database not available')
+	}
+
+	const characterStub = getStub<EveCharacterData>(c.env.EVE_CHARACTER_DATA, characterId)
+	const characterInstance = await characterStub.getInstance(characterId)
+	const characterInfo = await characterInstance.getCharacterInfo()
+	if (!characterInfo?.corporationId) {
+		return false
+	}
+
+	const corporationId = String(characterInfo.corporationId)
+	const managedCorp = await db.query.managedCorporations.findFirst({
+		where: eq(managedCorporations.corporationId, corporationId),
+		columns: { isMemberCorporation: true },
+	})
+	if (!managedCorp?.isMemberCorporation) {
+		return false
+	}
+
+	const corpStub = getStub<EveCorporationData>(c.env.EVE_CORPORATION_DATA, corporationId)
+	const corpInfo = await corpStub.getCorporationInfo(corporationId)
+	return corpInfo?.ceoId === characterId
 }
 
 /**
@@ -311,6 +381,50 @@ app.post('/characters/:characterId/reports', requireAuth(), async (c) => {
 	}
 
 	try {
+		const db = c.get('db')
+		if (!db) {
+			return c.json({ error: 'Database not available' }, 500)
+		}
+
+		const immunitasTarget = await getImmunitasReportTarget(db, characterId)
+		const requestorCharacterLabel =
+			user.characters.find((char) => char.is_primary)?.characterName ??
+			user.characters[0]?.characterName ??
+			user.mainCharacterId
+		if (immunitasTarget?.immunitas) {
+			const executionCtx = getExecutionContextOrNull(c)
+			const queueTask = async () => {
+				const coreStub = getCoreStub(c)
+				await queueImmunitasAccessAlertForUser(coreStub, {
+					targetUserId: immunitasTarget.userId,
+					targetCharacterLabel: immunitasTarget.characterLabel,
+					requestorUserId: user.id,
+					requestorCharacterLabel,
+					accessType: 'fulcrum-report',
+					source: 'fulcrum-report-request',
+				})
+			}
+			if (executionCtx) {
+				waitUntilWithTelemetry(
+					executionCtx,
+					'fulcrum.immunitas-report-alert',
+					queueTask,
+					{
+						userId: user.id,
+						characterId,
+						targetUserId: immunitasTarget.userId,
+						accessType: 'fulcrum-report',
+					}
+				)
+			} else {
+				await queueTask()
+			}
+			return c.json(
+				{ error: 'Fulcrum report requests are not allowed for this character' },
+				403
+			)
+		}
+
 		const auditor = await isHrAuditorUser(c, user)
 
 		// Check HR permission for creating reports (auditors/admins can request)
@@ -346,10 +460,17 @@ app.post('/characters/:characterId/reports', requireAuth(), async (c) => {
 						403,
 					)
 				}
-				} else if (highestRole !== 'hr_admin') {
-					return c.json({ error: 'HR reviewer or admin role required' }, 403)
-				}
+			} else if (highestRole !== 'hr_admin') {
+				return c.json({ error: 'HR reviewer or admin role required' }, 403)
 			}
+		}
+
+		if (!auditor && !user.is_admin && (await isMemberCorpCeo(c, characterId))) {
+			return c.json(
+				{ error: 'Only auditors or site admins can request reports for member corp CEOs' },
+				403,
+			)
+		}
 
 		const fulcrum = getFulcrumStub(c)
 		const reportId = await fulcrum.createCharacterReport({
@@ -413,48 +534,114 @@ app.post('/reports/batch', requireAuth(), async (c) => {
 		return c.json({ error: 'Valid requestSource is required' }, 400)
 	}
 
-		try {
-			const auditor = await isHrAuditorUser(c, user)
-			if (!auditor && !user.is_admin) {
-				const hr = getHrStub(c)
-				const hasReviewerAccess = await hr.checkPermission(
-					user.id,
-					body.corporationId,
-					'hr_reviewer',
-				)
-				if (!hasReviewerAccess) {
-					return c.json({ error: 'HR reviewer or admin role required' }, 403)
-				}
+	try {
+		const db = c.get('db')
+		if (!db) {
+			return c.json({ error: 'Database not available' }, 500)
+		}
 
-				const roles = await hr.getUserRoles(user.id, body.corporationId)
-				const highestRole = resolveHighestFulcrumReportAccessRole(roles)
-				if (highestRole === 'hr_reviewer') {
-					if (!body.targetUserId) {
-						return c.json(
-							{ error: 'targetUserId is required for HR reviewer report requests' },
-							400,
-						)
+		const requestorCharacterLabel =
+			user.characters.find((char) => char.is_primary)?.characterName ??
+			user.characters[0]?.characterName ??
+			user.mainCharacterId
+		const immunitasTargets = new Map<string, string[]>()
+		for (const targetCharacterId of body.characterIds) {
+			const target = await getImmunitasReportTarget(db, targetCharacterId)
+			if (!target?.immunitas) {
+				continue
+			}
+			const labels = immunitasTargets.get(target.userId) ?? []
+			labels.push(target.characterLabel)
+			immunitasTargets.set(target.userId, labels)
+		}
+		if (immunitasTargets.size > 0) {
+			const executionCtx = getExecutionContextOrNull(c)
+			const queueTask = async () => {
+				const coreStub = getCoreStub(c)
+				for (const [targetUserId, targetLabels] of immunitasTargets) {
+					for (const targetCharacterLabel of targetLabels) {
+						await queueImmunitasAccessAlertForUser(coreStub, {
+							targetUserId,
+							targetCharacterLabel,
+							requestorUserId: user.id,
+							requestorCharacterLabel,
+							accessType: 'fulcrum-report',
+							source: 'fulcrum-report-batch-request',
+						})
 					}
-
-					const hasOpenApplication = await hasOpenApplicationForTargetUser(
-						hr,
-						user,
-						body.corporationId,
-						body.targetUserId,
-					)
-					if (!hasOpenApplication) {
-						return c.json(
-							{
-								error:
-									'An open application is required to request Fulcrum reports for this user',
-							},
-							403,
-						)
-					}
-				} else if (highestRole !== 'hr_admin') {
-					return c.json({ error: 'HR reviewer or admin role required' }, 403)
 				}
 			}
+			if (executionCtx) {
+				waitUntilWithTelemetry(
+					executionCtx,
+					'fulcrum.immunitas-report-batch-alert',
+					queueTask,
+					{
+						userId: user.id,
+						characterCount: body.characterIds.length,
+						targetUserIds: [...immunitasTargets.keys()],
+						accessType: 'fulcrum-report',
+					}
+				)
+			} else {
+				await queueTask()
+			}
+			return c.json(
+				{ error: 'Fulcrum report requests are not allowed for one or more targeted characters' },
+				403
+			)
+		}
+
+		const auditor = await isHrAuditorUser(c, user)
+		if (!auditor && !user.is_admin) {
+			const hr = getHrStub(c)
+			const hasReviewerAccess = await hr.checkPermission(
+				user.id,
+				body.corporationId,
+				'hr_reviewer',
+			)
+			if (!hasReviewerAccess) {
+				return c.json({ error: 'HR reviewer or admin role required' }, 403)
+			}
+
+			const roles = await hr.getUserRoles(user.id, body.corporationId)
+			const highestRole = resolveHighestFulcrumReportAccessRole(roles)
+			if (highestRole === 'hr_reviewer') {
+				if (!body.targetUserId) {
+					return c.json(
+						{ error: 'targetUserId is required for HR reviewer report requests' },
+						400,
+					)
+				}
+
+				const hasOpenApplication = await hasOpenApplicationForTargetUser(
+					hr,
+					user,
+					body.corporationId,
+					body.targetUserId,
+				)
+				if (!hasOpenApplication) {
+					return c.json(
+						{
+							error:
+								'An open application is required to request Fulcrum reports for this user',
+						},
+						403,
+					)
+				}
+			} else if (highestRole !== 'hr_admin') {
+				return c.json({ error: 'HR reviewer or admin role required' }, 403)
+			}
+		}
+
+		for (const targetCharacterId of body.characterIds) {
+			if (!auditor && !user.is_admin && (await isMemberCorpCeo(c, targetCharacterId))) {
+				return c.json(
+					{ error: 'Only auditors or site admins can request reports for member corp CEOs' },
+					403,
+				)
+			}
+		}
 
 		const fulcrum = getFulcrumStub(c)
 		const result = await fulcrum.createBulkCharacterReports({

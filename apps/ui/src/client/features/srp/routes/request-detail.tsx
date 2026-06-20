@@ -94,6 +94,7 @@ export default function RequestDetails() {
 		user?.id === request.userId &&
 		(request.requestStatus === 'pending' || request.requestStatus === 'needs_context')
 	const canReopen = user?.id === request.userId && request.requestStatus === 'withdrawn'
+	const appliedModifiers = request.appliedModifiers ?? []
 
 	const handleWithdraw = async () => {
 		if (!id) return
@@ -278,9 +279,9 @@ export default function RequestDetails() {
 
 					<div className="mt-4">
 						<div className="text-sm text-muted-foreground">Bonuses / Deductions</div>
-						{request.appliedModifiers && request.appliedModifiers.length > 0 ? (
+						{appliedModifiers.length > 0 ? (
 							<ul className="mt-2 space-y-1 text-sm">
-								{request.appliedModifiers.map((modifier: {
+								{appliedModifiers.map((modifier: {
 									id: string
 									modifierType: 'deduction' | 'bonus'
 									mode: 'percentage' | 'value'

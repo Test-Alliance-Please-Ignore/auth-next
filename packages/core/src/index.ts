@@ -48,6 +48,18 @@ export interface Core {
 	): Promise<Map<string, Array<{ corporationId: string; corporationName: string }>>>
 	getUserAlliances(userId: string): Promise<Array<{ allianceId: string; allianceName: string }>>
 	getUserDiscordUserId(userId: string): Promise<string | null>
+	queueImmunitasAccessAlert(input: {
+		targetUserId: string
+		targetCharacterLabel: string
+		requestorUserId: string
+		requestorCharacterLabel: string | null
+		accessType: 'profile-data' | 'fulcrum-report'
+		source?: string
+	}): Promise<{
+		added: number
+		skipped: number
+		pendingCount: number
+	}>
 	queueTokenInvalidationAlerts(input: {
 		userId: string
 		characterIds: string[]
@@ -93,6 +105,11 @@ export interface Core {
 	processPendingDiscordRefreshes(): Promise<{
 		processed: number
 		triggered: number
+		failed: number
+	}>
+	processPendingImmunitasAccessAlerts(): Promise<{
+		processed: number
+		sent: number
 		failed: number
 	}>
 	processPendingTokenInvalidationAlerts(): Promise<{

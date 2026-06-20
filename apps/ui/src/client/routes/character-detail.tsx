@@ -73,6 +73,9 @@ export default function CharacterDetailPage() {
 	} = useQuery({
 		queryKey: ['character', characterId, hrCorporationId],
 		queryFn: () => api.getCharacterDetail(characterId, hrCorporationId),
+		meta: {
+			suppressErrorToast: true,
+		},
 		enabled: !!characterId,
 	})
 

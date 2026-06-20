@@ -19,6 +19,18 @@ vi.mock('../../lib/groups-cache', () => ({
 const getStubMock = vi.mocked(getStub)
 const getCachedUserPermissionsMock = vi.mocked(getCachedUserPermissions)
 
+const backgroundTasks: Promise<unknown>[] = []
+
+vi.mock('../../lib/background-task', () => ({
+	waitUntilWithTelemetry: (
+		_executionCtx: unknown,
+		_label: string,
+		task: () => Promise<unknown>
+	) => {
+		backgroundTasks.push(task().catch(() => undefined))
+	},
+}))
+
 function makeUser(overrides: Partial<SessionUser> = {}): SessionUser {
 	return {
 		id: 'user-1',
@@ -73,18 +85,45 @@ function makeCoreStub() {
 				allianceName: null,
 			},
 		]),
+		queueImmunitasAccessAlert: vi.fn().mockResolvedValue({
+			added: 1,
+			skipped: 0,
+			pendingCount: 1,
+		}),
 	}
 }
 
-function createApp(user?: SessionUser) {
+function makeDbStub() {
+	return {
+		query: {
+			managedCorporations: {
+				findFirst: vi.fn().mockResolvedValue({ isMemberCorporation: true }),
+			},
+			userCharacters: {
+				findFirst: vi.fn().mockResolvedValue(null),
+			},
+			users: {
+				findFirst: vi.fn().mockResolvedValue(null),
+			},
+		},
+	}
+}
+
+function createApp(
+	user?: SessionUser,
+	db: ReturnType<typeof makeDbStub> = makeDbStub()
+) {
 	const app = new Hono<{
 		Bindings: any
-		Variables: { user?: SessionUser }
+		Variables: { user?: SessionUser; db?: ReturnType<typeof makeDbStub> }
 	}>()
 
 	if (user) {
 		app.use('*', async (c, next) => {
 			c.set('user', user)
+			if (db) {
+				c.set('db', db)
+			}
 			await next()
 		})
 	}
@@ -98,30 +137,56 @@ describe('fulcrum route access matrix', () => {
 		FULCRUM: { name: 'FULCRUM' },
 		HR: { name: 'HR' },
 		CORE: { name: 'CORE' },
+		EVE_CHARACTER_DATA: { name: 'EVE_CHARACTER_DATA' },
 		EVE_CORPORATION_DATA: { name: 'EVE_CORPORATION_DATA' },
 	} as any
 
 	let hrStub: ReturnType<typeof makeHrStub>
 	let fulcrumStub: ReturnType<typeof makeFulcrumStub>
 	let coreStub: ReturnType<typeof makeCoreStub>
+	let dbStub: ReturnType<typeof makeDbStub>
+	let eveCharacterDataStub: {
+		getInstance: ReturnType<typeof vi.fn>
+	}
+	let eveCharacterDataInstance: {
+		getCharacterInfo: ReturnType<typeof vi.fn>
+	}
+	let eveCorporationDataStub: {
+		getCorporationInfo: ReturnType<typeof vi.fn>
+		getDirectors: ReturnType<typeof vi.fn>
+		getMemberTracking: ReturnType<typeof vi.fn>
+	}
 
 	beforeEach(() => {
 		vi.clearAllMocks()
+		backgroundTasks.length = 0
 		hrStub = makeHrStub()
 		fulcrumStub = makeFulcrumStub()
 		coreStub = makeCoreStub()
+		dbStub = makeDbStub()
+		eveCharacterDataInstance = {
+			getCharacterInfo: vi.fn().mockResolvedValue({
+				characterId: '3001',
+				corporationId: '2001',
+			}),
+		}
+		eveCharacterDataStub = {
+			getInstance: vi.fn().mockResolvedValue(eveCharacterDataInstance),
+		}
+		eveCorporationDataStub = {
+			getCorporationInfo: vi.fn().mockResolvedValue({ ceoId: '3001' }),
+			getDirectors: vi.fn().mockResolvedValue([]),
+			getMemberTracking: vi.fn().mockResolvedValue([]),
+		}
 
 		getCachedUserPermissionsMock.mockResolvedValue([])
 		getStubMock.mockImplementation((binding: unknown) => {
 			if (binding === env.HR) return hrStub as any
 			if (binding === env.FULCRUM) return fulcrumStub as any
 			if (binding === env.CORE) return coreStub as any
+			if (binding === env.EVE_CHARACTER_DATA) return eveCharacterDataStub as any
 			if (binding === env.EVE_CORPORATION_DATA) {
-				return {
-					getCorporationInfo: vi.fn(),
-					getDirectors: vi.fn().mockResolvedValue([]),
-					getMemberTracking: vi.fn().mockResolvedValue([]),
-				} as any
+				return eveCorporationDataStub as any
 			}
 			throw new Error('Unexpected binding')
 		})
@@ -166,6 +231,92 @@ describe('fulcrum route access matrix', () => {
 		expect(body[0]).toMatchObject({ characterId: '3001', hasValidToken: true })
 	})
 
+	it('blocks report creation for immunitas targets and queues an alert', async () => {
+		dbStub.query.userCharacters.findFirst.mockResolvedValue({
+			userId: 'target-user',
+			characterName: 'Immunitas Pilot',
+		} as any)
+		dbStub.query.users.findFirst.mockResolvedValue({ immunitas: true } as any)
+
+		const app = createApp(makeUser(), dbStub)
+		const res = await app.request(
+			'/api/fulcrum/characters/3001/reports',
+			{
+				method: 'POST',
+				headers: { 'content-type': 'application/json' },
+				body: JSON.stringify({
+					corporationId: '1001',
+					requestSource: 'hr',
+					userId: 'target-1',
+				}),
+			},
+			env
+		)
+
+		await Promise.all(backgroundTasks.splice(0, backgroundTasks.length))
+
+		expect(res.status).toBe(403)
+		expect(await res.json()).toEqual({
+			error: 'Fulcrum report requests are not allowed for this character',
+		})
+		expect(fulcrumStub.createCharacterReport).not.toHaveBeenCalled()
+		expect(coreStub.queueImmunitasAccessAlert).toHaveBeenCalledWith({
+			targetUserId: 'target-user',
+			targetCharacterLabel: 'Immunitas Pilot',
+			requestorUserId: 'user-1',
+			requestorCharacterLabel: 'Main Pilot',
+			accessType: 'fulcrum-report',
+			source: 'fulcrum-report-request',
+		})
+	})
+
+	it('blocks batch report creation for immunitas targets and queues alerts', async () => {
+		dbStub.query.userCharacters.findFirst
+			.mockResolvedValueOnce({
+				userId: 'target-user',
+				characterName: 'Immunitas Pilot',
+			} as any)
+			.mockResolvedValueOnce({
+				userId: 'other-user',
+				characterName: 'Regular Pilot',
+			} as any)
+		dbStub.query.users.findFirst
+			.mockResolvedValueOnce({ immunitas: true } as any)
+			.mockResolvedValueOnce({ immunitas: false } as any)
+
+		const app = createApp(makeUser(), dbStub)
+		const res = await app.request(
+			'/api/fulcrum/reports/batch',
+			{
+				method: 'POST',
+				headers: { 'content-type': 'application/json' },
+				body: JSON.stringify({
+					corporationId: '1001',
+					requestSource: 'hr',
+					characterIds: ['3001', '3002'],
+					targetUserId: 'target-1',
+				}),
+			},
+			env
+		)
+
+		await Promise.all(backgroundTasks.splice(0, backgroundTasks.length))
+
+		expect(res.status).toBe(403)
+		expect(await res.json()).toEqual({
+			error: 'Fulcrum report requests are not allowed for one or more targeted characters',
+		})
+		expect(fulcrumStub.createBulkCharacterReports).not.toHaveBeenCalled()
+		expect(coreStub.queueImmunitasAccessAlert).toHaveBeenCalledWith({
+			targetUserId: 'target-user',
+			targetCharacterLabel: 'Immunitas Pilot',
+			requestorUserId: 'user-1',
+			requestorCharacterLabel: 'Main Pilot',
+			accessType: 'fulcrum-report',
+			source: 'fulcrum-report-batch-request',
+		})
+	})
+
 	it('blocks report creation for non-auditor without hr_reviewer+', async () => {
 		const app = createApp(makeUser())
 		const res = await app.request(
@@ -184,6 +335,47 @@ describe('fulcrum route access matrix', () => {
 
 		expect(res.status).toBe(403)
 		expect(await res.json()).toEqual({ error: 'HR reviewer or admin role required' })
+		expect(fulcrumStub.createCharacterReport).not.toHaveBeenCalled()
+	})
+
+	it('blocks hr_admin report creation for member corp CEOs unless auditor or admin', async () => {
+		hrStub.checkPermission.mockResolvedValue(true)
+		hrStub.getUserRoles.mockResolvedValue([
+			{
+				id: 'role-1',
+				corporationId: '1001',
+				userId: 'user-1',
+				characterId: 'user-1',
+				characterName: 'Main Pilot',
+				role: 'hr_admin',
+				grantedBy: 'granted-by',
+				grantedAt: new Date(),
+				expiresAt: null,
+				isActive: true,
+				createdAt: new Date(),
+				updatedAt: new Date(),
+			},
+		] as any)
+
+		const app = createApp(makeUser(), dbStub)
+		const res = await app.request(
+			'/api/fulcrum/characters/3001/reports',
+			{
+				method: 'POST',
+				headers: { 'content-type': 'application/json' },
+				body: JSON.stringify({
+					corporationId: '1001',
+					requestSource: 'hr',
+					userId: 'target-1',
+				}),
+			},
+			env
+		)
+
+		expect(res.status).toBe(403)
+		expect(await res.json()).toEqual({
+			error: 'Only auditors or site admins can request reports for member corp CEOs',
+		})
 		expect(fulcrumStub.createCharacterReport).not.toHaveBeenCalled()
 	})
 
@@ -327,9 +519,7 @@ describe('fulcrum route access matrix', () => {
 		)
 
 		expect(res.status).toBe(403)
-		expect(await res.json()).toEqual({
-			error: 'An open application is required to request Fulcrum reports for this user',
-		})
+		expect(await res.json()).toEqual({ error: 'HR reviewer or admin role required' })
 		expect(fulcrumStub.createCharacterReport).not.toHaveBeenCalled()
 	})
 

@@ -92,6 +92,7 @@ interface CharacterReportCardProps {
 	}
 	isRequesting: boolean
 	requestingCharacterId: string | null
+	canRequest: boolean
 }
 
 function CharacterReportCard({
@@ -100,9 +101,9 @@ function CharacterReportCard({
 	getReportTarget,
 	isRequesting,
 	requestingCharacterId,
+	canRequest,
 }: CharacterReportCardProps) {
 	const latestReport = getLatestReport(character.reports)
-	const canRequest = canRequestNewReport(character.reports)
 	const isThisRequesting =
 		isRequesting && (requestingCharacterId === null || requestingCharacterId === character.characterId)
 
@@ -200,9 +201,17 @@ interface FulcrumPanelProps {
 	applicationId?: string
 	mainCharacterId?: string
 	altCharacterIds?: string[]
+	canRequestCharacterReport?: (character: FulcrumCharacterData) => boolean
 }
 
-export function FulcrumPanel({ userId, corporationId, applicationId, mainCharacterId, altCharacterIds = [] }: FulcrumPanelProps) {
+export function FulcrumPanel({
+	userId,
+	corporationId,
+	applicationId,
+	mainCharacterId,
+	altCharacterIds = [],
+	canRequestCharacterReport,
+}: FulcrumPanelProps) {
 	const { corporationId: routeCorporationId } = useParams<{ corporationId: string }>()
 	const { data: characters, isLoading, error } = useApplicationFulcrum(userId, corporationId)
 	const requestReport = useRequestFulcrumReport()
@@ -286,7 +295,11 @@ export function FulcrumPanel({ userId, corporationId, applicationId, mainCharact
 		)
 	}
 
-	const requestableCharacters = characters.filter((c) => canRequestNewReport(c.reports))
+	const requestableCharacters = characters.filter(
+		(character) =>
+			canRequestNewReport(character.reports) &&
+			(canRequestCharacterReport?.(character) ?? true)
+	)
 
 	const handleConfirmSingle = () => {
 		if (!scanSingleDialogCharacter || isRequestingAll || requestReport.isPending || requestReportBatch.isPending) return
@@ -321,7 +334,8 @@ export function FulcrumPanel({ userId, corporationId, applicationId, mainCharact
 			isRequestingAll ||
 			requestReport.isPending ||
 			requestReportBatch.isPending ||
-			!canRequestNewReport(character.reports)
+			!canRequestNewReport(character.reports) ||
+			!(canRequestCharacterReport?.(character) ?? true)
 		) {
 			return
 		}
@@ -361,6 +375,7 @@ export function FulcrumPanel({ userId, corporationId, applicationId, mainCharact
 				onRequest={() => handleOpenSingleDialog(character)}
 				getReportTarget={getReportTarget}
 				isRequesting={isAnyRequestPending}
+				canRequest={canRequestNewReport(character.reports) && (canRequestCharacterReport?.(character) ?? true)}
 				requestingCharacterId={
 					requestReport.isPending
 						? (requestReport.variables?.characterId ?? null)

@@ -9,6 +9,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 
 import { applicationsApi, fulcrumApi } from './api'
 import { auditorUserKeys } from '@/hooks/useAuditorUsers'
+import { useApiMutation } from '@/hooks/useApiMutation'
 
 import type {
 	AddHRNoteRequest,
@@ -1001,7 +1002,7 @@ export function useCharacterReports(characterId: string, corporationId: string, 
 export function useRequestFulcrumReport() {
 	const queryClient = useQueryClient()
 
-	return useMutation({
+	return useApiMutation({
 		mutationFn: ({
 			characterId,
 			corporationId,
@@ -1028,6 +1029,7 @@ export function useRequestFulcrumReport() {
 				targetUserId ?? userId,
 				sendDm,
 			),
+		errorMessage: 'You do not have permission to request a Fulcrum report for this character.',
 		onMutate: ({ characterId, corporationId, userId }) => {
 			if (!userId) return
 			const optimisticPendingReport: CharacterReportMetadata = {
@@ -1097,7 +1099,7 @@ export function useRequestFulcrumReport() {
 export function useRequestFulcrumReportBatch() {
 	const queryClient = useQueryClient()
 
-	return useMutation({
+	return useApiMutation({
 		mutationFn: ({
 			characterIds,
 			corporationId,
@@ -1123,6 +1125,7 @@ export function useRequestFulcrumReportBatch() {
 				sendDm,
 				targetUserId,
 			),
+		errorMessage: 'You do not have permission to request Fulcrum reports for these characters.',
 		onMutate: ({ characterIds, corporationId, userId }) => {
 			if (!userId || characterIds.length === 0) return
 			const now = new Date().toISOString()

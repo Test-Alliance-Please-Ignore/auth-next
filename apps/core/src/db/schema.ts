@@ -33,6 +33,8 @@ export const users = pgTable(
 		discordUserId: varchar('discord_user_id', { length: 255 }).unique(),
 		/** Whether this user is an admin */
 		is_admin: boolean('is_admin').default(false).notNull(),
+		/** Whether this user is exempt from private-data access and Fulcrum targeting */
+		immunitas: boolean('immunitas').default(false).notNull(),
 		/** Last time Discord access was refreshed (tokens, roles, server membership) */
 		lastDiscordRefresh: timestamp('last_discord_refresh', { withTimezone: true }),
 		createdAt: timestamp('created_at').defaultNow().notNull(),

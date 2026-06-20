@@ -73,6 +73,7 @@ interface UnifiedCharacter {
 	characterId: string
 	characterName: string
 	isInCorp: boolean
+	role?: 'CEO' | 'Director' | 'Member' | null
 	member?: CorporationMember
 	fulcrum?: FulcrumCharacterData
 }
@@ -214,6 +215,9 @@ export default function HrMemberProfile() {
 		queries: unifiedCharacters.map((character) => ({
 			queryKey: ['character', character.characterId, 'hr-member-profile', corporationId],
 			queryFn: () => apiClient.getCharacterDetail(character.characterId, corporationId),
+			meta: {
+				suppressErrorToast: true,
+			},
 			enabled: Boolean(corporationId),
 			staleTime: 5 * 60 * 1000,
 		})),
@@ -248,9 +252,13 @@ export default function HrMemberProfile() {
 					character.fulcrum?.reports.some(
 						(report) => report.status === 'pending' || report.status === 'processing'
 					) ?? false
-				return Boolean(character.fulcrum?.corporationId) && !hasPending
+				return (
+					Boolean(character.fulcrum?.corporationId) &&
+					!hasPending &&
+					((user?.is_admin || isAuditor) || character.role !== 'CEO')
+				)
 			}),
-		[unifiedCharacters]
+		[isAuditor, unifiedCharacters, user?.is_admin]
 	)
 	const canRequestFulcrumReports = useMemo(() => {
 		if (user?.is_admin || isAuditor) return true
@@ -260,6 +268,9 @@ export default function HrMemberProfile() {
 		}
 		return false
 	}, [hasActiveApplication, isAuditor, permission?.currentRole, user?.is_admin])
+	const canRequestCeoReports = user?.is_admin || isAuditor
+	const canRequestCharacterReport = (character: { role?: 'CEO' | 'Director' | 'Member' | null }) =>
+		canRequestFulcrumReports && (canRequestCeoReports || character.role !== 'CEO')
 
 	const handleScanAllCharacters = async (sendDm: boolean) => {
 		if (!authUserId || scanEligibleCharacters.length === 0 || !canRequestFulcrumReports) return
@@ -614,14 +625,15 @@ export default function HrMemberProfile() {
 						scanAllLabel={
 							isScanningAll ? 'Scanning All...' : `Scan All (${scanEligibleCharacters.length})`
 						}
-						scanAllDisabled={
-							isScanningAll ||
-							requestReport.isPending ||
-							requestReportBatch.isPending ||
-							scanEligibleCharacters.length === 0
-						}
-						canRequestReports={canRequestFulcrumReports}
-						onScanAll={handleOpenScanAllDialog}
+							scanAllDisabled={
+								isScanningAll ||
+								requestReport.isPending ||
+								requestReportBatch.isPending ||
+								scanEligibleCharacters.length === 0
+							}
+							canRequestReports={canRequestFulcrumReports}
+							canRequestCharacterReport={canRequestCharacterReport}
+							onScanAll={handleOpenScanAllDialog}
 						isScanPendingFor={(characterId) =>
 							requestReport.isPending &&
 							(requestReport.variables as { characterId?: string } | undefined)?.characterId ===
