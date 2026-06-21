@@ -60,8 +60,6 @@ import {
 	useRequestFulcrumReport,
 	useRequestFulcrumReportBatch,
 } from '../hooks'
-import { ACTIVE_APPLICATION_STATUSES } from '../constants'
-
 import type { CorporationMember } from '../../corporations/api'
 import type { FulcrumCharacterData } from '../api'
 
@@ -177,11 +175,6 @@ export default function HrMemberProfile() {
 			(a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime(),
 		)
 	}, [applications])
-	const hasActiveApplication = useMemo(
-		() => sortedApps.some((app) => ACTIVE_APPLICATION_STATUSES.includes(app.status)),
-		[sortedApps]
-	)
-
 	// Build a unified character list: in-corp members first, then external alts
 	const unifiedCharacters = useMemo(() => {
 		if (!account) return []
@@ -262,12 +255,8 @@ export default function HrMemberProfile() {
 	)
 	const canRequestFulcrumReports = useMemo(() => {
 		if (user?.is_admin || isAuditor) return true
-		if (permission?.currentRole === 'hr_admin') return true
-		if (permission?.currentRole === 'hr_reviewer') {
-			return hasActiveApplication
-		}
-		return false
-	}, [hasActiveApplication, isAuditor, permission?.currentRole, user?.is_admin])
+		return permission?.currentRole === 'hr_admin' || permission?.currentRole === 'hr_reviewer'
+	}, [isAuditor, permission?.currentRole, user?.is_admin])
 	const canRequestCeoReports = user?.is_admin || isAuditor
 	const canRequestCharacterReport = (character: { role?: 'CEO' | 'Director' | 'Member' | null }) =>
 		canRequestFulcrumReports && (canRequestCeoReports || character.role !== 'CEO')

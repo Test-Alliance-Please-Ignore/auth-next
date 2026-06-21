@@ -34,6 +34,10 @@ export interface CreateReportOptions {
 	requestorUserId: string
 	requestorCorporationId: string
 	requestSource: ReportRequestSource
+	/**
+	 * Metadata only: used to scope the completed-report DM / back-navigation.
+	 * Never trust this for authorization.
+	 */
 	applicationId?: string
 	targetUserId?: string
 	sendDm?: boolean
@@ -44,6 +48,10 @@ export interface CreateBulkReportOptions {
 	requestorUserId: string
 	requestorCorporationId: string
 	requestSource: ReportRequestSource
+	/**
+	 * Metadata only: used to scope the completed-report DM / back-navigation.
+	 * Never trust this for authorization.
+	 */
 	applicationId?: string
 	sendDm?: boolean
 	targetUserId?: string
@@ -60,6 +68,10 @@ export interface CharacterReportMetadata {
 	requestorUserId: string
 	requestorCorporationId: string
 	requestSource: ReportRequestSource
+	/**
+	 * Metadata only: used to scope the completed-report DM / back-navigation.
+	 * Never trust this for authorization.
+	 */
 	applicationId?: string
 	retentionDays: number
 	workflowInstanceId?: string

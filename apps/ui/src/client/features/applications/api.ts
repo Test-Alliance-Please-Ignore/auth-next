@@ -814,7 +814,9 @@ export const fulcrumApi = {
 	},
 
 	/**
-	 * Request a new Fulcrum report for a character
+	 * Request a new Fulcrum report for a character.
+	 * `applicationId` is metadata only for report-link / back-navigation context.
+	 * It is not used for authorization or corp scoping.
 	 */
 	async requestReport(
 		characterId: string,
@@ -830,7 +832,9 @@ export const fulcrumApi = {
 	},
 
 	/**
-	 * Request a new batch of Fulcrum reports for multiple characters
+	 * Request a new batch of Fulcrum reports for multiple characters.
+	 * `applicationId` is metadata only for report-link / back-navigation context.
+	 * It is not used for authorization or corp scoping.
 	 */
 	async requestBulkReports(
 		characterIds: string[],

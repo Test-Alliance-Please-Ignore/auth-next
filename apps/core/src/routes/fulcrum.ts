@@ -81,68 +81,164 @@ async function getImmunitasReportTarget(
 	}
 }
 
-type ReportCorporationCandidates = {
-	requestorCorporations: Array<{ corporationId: string }>
-	targetCorporations: Array<{ corporationId: string }>
-	sharedCorporationIds: string[]
+async function getCharacterCorporationId(c: Context<App>, characterId: string): Promise<string | null> {
+	const characterStub = getStub<EveCharacterData>(c.env.EVE_CHARACTER_DATA, characterId)
+	const characterInstance = await characterStub.getInstance(characterId)
+	const characterInfo = await characterInstance.getCharacterInfo()
+	return characterInfo?.corporationId ? String(characterInfo.corporationId) : null
 }
 
-async function getReportCorporationCandidates(
-	core: Core,
-	requestorUserId: string,
-	targetUserId: string
-): Promise<ReportCorporationCandidates> {
-	const [requestorCorporations, targetCorporations] = await Promise.all([
-		core.getUserCorporations(requestorUserId),
-		core.getUserCorporations(targetUserId),
-	])
-	const targetCorporationIds = new Set(targetCorporations.map((corporation) => corporation.corporationId))
-	return {
-		requestorCorporations,
-		targetCorporations,
-		sharedCorporationIds: requestorCorporations
-			.map((corporation) => corporation.corporationId)
-			.filter((corporationId) => targetCorporationIds.has(corporationId)),
-	}
+type FulcrumCorporationResolution = {
+	corporationId: string | null
+	sawPermission: boolean
+	sawOpenApplication: boolean
 }
 
-type FulcrumReportAccessRole = 'hr_admin' | 'hr_reviewer' | null
-
-function resolveHighestFulcrumReportAccessRole(
-	roles: Array<{ role: string; isActive: boolean }>
-): FulcrumReportAccessRole {
-	const activeRoles = roles.filter((role) => role.isActive)
-	if (activeRoles.some((role) => role.role === 'hr_admin')) return 'hr_admin'
-	if (activeRoles.some((role) => role.role === 'hr_reviewer')) return 'hr_reviewer'
-	return null
-}
-
-async function hasOpenApplicationForTargetUser(
+async function resolveApplicationFulcrumCorporationForTargetUser(
 	hr: Hr,
 	requestor: SessionUser,
-	corporationId: string,
 	targetUserId: string
-): Promise<boolean> {
-	for (const status of ACTIVE_APPLICATION_STATUSES) {
-		const applications = await hr.listApplications(
-			{
-				corporationId,
-				userId: targetUserId,
-				status,
-				limit: 1,
-			},
-			requestor.id,
-			{
-				isAdmin: requestor.is_admin,
-				isAuditor: false,
+): Promise<FulcrumCorporationResolution> {
+	const applications = await hr.listApplications(
+		{ userId: targetUserId },
+		requestor.id,
+		{
+			isAdmin: false,
+			isAuditor: false,
+		}
+	)
+
+	let sawPermission = false
+	let sawOpenApplication = false
+	for (const application of applications) {
+		const hasPermission = await hr.checkPermission(requestor.id, application.corporationId, 'hr_reviewer')
+		if (!hasPermission) {
+			continue
+		}
+		sawPermission = true
+		if (ACTIVE_APPLICATION_STATUSES.includes(application.status)) {
+			sawOpenApplication = true
+			return {
+				corporationId: application.corporationId,
+				sawPermission,
+				sawOpenApplication,
 			}
-		)
-		if (applications.length > 0) {
-			return true
 		}
 	}
 
-	return false
+	return {
+		corporationId: null,
+		sawPermission,
+		sawOpenApplication,
+	}
+}
+
+type FulcrumSharedCorporationResolution = {
+	corporationId: string | null
+	sawPermission: boolean
+}
+
+type FulcrumReportAccessResolution = {
+	corporationId: string | null
+	error: 'open_application_required' | 'unauthorized' | null
+}
+
+async function resolveSharedFulcrumCorporationForTargetUser(
+	c: Context<App>,
+	hr: Hr,
+	requestor: SessionUser,
+	targetUserId: string
+): Promise<FulcrumSharedCorporationResolution> {
+	const core = getCoreStub(c)
+	const corporations = await core.getUserCorporations(targetUserId)
+	if (corporations.length === 0) {
+		return {
+			corporationId: null,
+			sawPermission: false,
+		}
+	}
+
+	for (const corporation of corporations) {
+		const hasPermission = await hr.checkPermission(requestor.id, corporation.corporationId, 'hr_reviewer')
+		if (hasPermission) {
+			return {
+				corporationId: corporation.corporationId,
+				sawPermission: true,
+			}
+		}
+	}
+
+	return {
+		corporationId: null,
+		sawPermission: false,
+	}
+}
+
+async function resolveFulcrumReportAccessForTargetUser(
+	c: Context<App>,
+	hr: Hr,
+	requestor: SessionUser,
+	targetUserId: string
+): Promise<FulcrumReportAccessResolution> {
+	const applicationResolution = await resolveApplicationFulcrumCorporationForTargetUser(
+		hr,
+		requestor,
+		targetUserId
+	)
+	if (applicationResolution.corporationId) {
+		return {
+			corporationId: applicationResolution.corporationId,
+			error: null,
+		}
+	}
+
+	const sharedResolution = await resolveSharedFulcrumCorporationForTargetUser(
+		c,
+		hr,
+		requestor,
+		targetUserId
+	)
+	if (sharedResolution.corporationId) {
+		return {
+			corporationId: sharedResolution.corporationId,
+			error: null,
+		}
+	}
+
+	if (applicationResolution.sawPermission) {
+		return {
+			corporationId: null,
+			error: 'open_application_required',
+		}
+	}
+
+	return {
+		corporationId: null,
+		error: 'unauthorized',
+	}
+}
+
+async function resolveFallbackFulcrumCorporationId(
+	c: Context<App>,
+	hr: Hr,
+	requestor: SessionUser,
+	targetUserId: string,
+	characterId: string
+): Promise<string | null> {
+	const applications = await hr.listApplications(
+		{ userId: targetUserId },
+		requestor.id,
+		{
+			isAdmin: requestor.is_admin,
+			isAuditor: await isHrAuditorUser(c, requestor),
+		}
+	)
+	const applicationCorporationId = applications[0]?.corporationId ?? null
+	if (applicationCorporationId) {
+		return applicationCorporationId
+	}
+
+	return await getCharacterCorporationId(c, characterId)
 }
 
 async function isMemberCorpCeo(c: Context<App>, characterId: string): Promise<boolean> {
@@ -458,72 +554,22 @@ app.post('/characters/:characterId/reports', requireAuth(), async (c) => {
 			)
 		}
 
-		const requireSharedCorporation = !auditor && !user.is_admin && !isSelfImmunitasTarget
 		const hr = getHrStub(c)
-		const corporationCandidates = await getReportCorporationCandidates(core, user.id, resolvedTargetUserId)
-		let resolvedCorporationId: string | null = null
-		if (requireSharedCorporation) {
-			if (corporationCandidates.sharedCorporationIds.length === 0) {
-				return c.json(
-					{ error: 'Fulcrum report requests are not allowed for this character' },
-					403,
-				)
-			}
-
-			let hasReviewerAccess = false
-			let sawReviewerWithoutOpenApplication = false
-			for (const corporationId of corporationCandidates.sharedCorporationIds) {
-				const hasPermission = await hr.checkPermission(user.id, corporationId, 'hr_reviewer')
-				if (!hasPermission) {
-					continue
-				}
-				hasReviewerAccess = true
-
-				const roles = await hr.getUserRoles(user.id, corporationId)
-				const highestRole = resolveHighestFulcrumReportAccessRole(roles)
-				if (highestRole === 'hr_admin') {
-					resolvedCorporationId = corporationId
-					break
-				}
-
-				if (highestRole === 'hr_reviewer') {
-					const hasOpenApplication = await hasOpenApplicationForTargetUser(
-						hr,
-						user,
-						corporationId,
-						resolvedTargetUserId,
-					)
-					if (hasOpenApplication) {
-						resolvedCorporationId = corporationId
-						break
-					}
-					sawReviewerWithoutOpenApplication = true
-				}
-			}
-
-			if (!resolvedCorporationId) {
-				const error = !hasReviewerAccess
-					? 'HR reviewer or admin role required'
-					: sawReviewerWithoutOpenApplication
-						? 'An open application is required to request Fulcrum reports for this user'
-						: 'HR reviewer or admin role required'
-				return c.json({ error }, 403)
-			}
-		} else {
-			resolvedCorporationId =
-				corporationCandidates.sharedCorporationIds[0] ??
-				corporationCandidates.requestorCorporations[0]?.corporationId ??
-				corporationCandidates.targetCorporations[0]?.corporationId ??
-				null
-			if (!resolvedCorporationId) {
-				return c.json(
-					{ error: 'Fulcrum report requests are not allowed for this character' },
-					403,
-				)
-			}
-		}
-
 		if (isSelfImmunitasTarget) {
+			const resolvedCorporationId = await resolveFallbackFulcrumCorporationId(
+				c,
+				hr,
+				user,
+				resolvedTargetUserId,
+				characterId
+			)
+			if (!resolvedCorporationId) {
+				return c.json(
+					{ error: 'Fulcrum report requests are not allowed for this character' },
+					403,
+				)
+			}
+
 			const fulcrum = getFulcrumStub(c)
 			const reportId = await fulcrum.createCharacterReport({
 				characterId,
@@ -547,12 +593,48 @@ app.post('/characters/:characterId/reports', requireAuth(), async (c) => {
 			return c.json({ reportId, status: 'pending' }, 201)
 		}
 
-		// Check HR permission for creating reports (auditors/admins can request)
 		if (!auditor && !user.is_admin && (await isMemberCorpCeo(c, characterId))) {
 			return c.json(
 				{ error: 'Only auditors or site admins can request reports for member corp CEOs' },
 				403,
 			)
+		}
+
+		let resolvedCorporationId: string | null = null
+		if (auditor || user.is_admin) {
+			resolvedCorporationId = await resolveFallbackFulcrumCorporationId(
+				c,
+				hr,
+				user,
+				resolvedTargetUserId,
+				characterId
+			)
+			if (!resolvedCorporationId) {
+				return c.json(
+					{ error: 'Fulcrum report requests are not allowed for this character' },
+					403,
+				)
+			}
+		} else {
+			const accessResolution = await resolveFulcrumReportAccessForTargetUser(
+				c,
+				hr,
+				user,
+				resolvedTargetUserId
+			)
+			if (accessResolution.corporationId) {
+				resolvedCorporationId = accessResolution.corporationId
+			} else if (accessResolution.error === 'open_application_required') {
+				return c.json(
+					{ error: 'An open application is required to request Fulcrum reports for this user' },
+					403,
+				)
+			} else {
+				return c.json(
+					{ error: 'Fulcrum report requests are not allowed for this character' },
+					403,
+				)
+			}
 		}
 
 		const fulcrum = getFulcrumStub(c)
@@ -716,77 +798,22 @@ app.post('/reports/batch', requireAuth(), async (c) => {
 			hasSelfImmunitasTarget &&
 			immunitasTargets.size === 0 &&
 			resolvedTargets.every((target) => target.userId === user.id)
-		const requireSharedCorporation = !auditor && !user.is_admin && !isSelfImmunitasBatch
 		const hr = getHrStub(c)
-		const corporationCandidates = resolvedTargetUserId
-			? await getReportCorporationCandidates(core, user.id, resolvedTargetUserId)
-			: {
-					requestorCorporations: [],
-					targetCorporations: [],
-					sharedCorporationIds: [],
-				}
-		let resolvedCorporationId: string | null = null
-		if (requireSharedCorporation) {
-			if (corporationCandidates.sharedCorporationIds.length === 0) {
-				return c.json(
-					{ error: 'Fulcrum report requests are not allowed for these characters' },
-					403,
-				)
-			}
 
-			let hasReviewerAccess = false
-			let sawReviewerWithoutOpenApplication = false
-			for (const corporationId of corporationCandidates.sharedCorporationIds) {
-				const hasPermission = await hr.checkPermission(user.id, corporationId, 'hr_reviewer')
-				if (!hasPermission) {
-					continue
-				}
-				hasReviewerAccess = true
-
-				const roles = await hr.getUserRoles(user.id, corporationId)
-				const highestRole = resolveHighestFulcrumReportAccessRole(roles)
-				if (highestRole === 'hr_admin') {
-					resolvedCorporationId = corporationId
-					break
-				}
-
-				if (highestRole === 'hr_reviewer') {
-					const hasOpenApplication = await hasOpenApplicationForTargetUser(
-						hr,
-						user,
-						corporationId,
-						resolvedTargetUserId!,
-					)
-					if (hasOpenApplication) {
-						resolvedCorporationId = corporationId
-						break
-					}
-					sawReviewerWithoutOpenApplication = true
-				}
-			}
-
-			if (!resolvedCorporationId) {
-				const error = !hasReviewerAccess
-					? 'HR reviewer or admin role required'
-					: sawReviewerWithoutOpenApplication
-						? 'An open application is required to request Fulcrum reports for this user'
-						: 'HR reviewer or admin role required'
-				return c.json({ error }, 403)
-			}
-		} else {
-			resolvedCorporationId =
-				corporationCandidates.sharedCorporationIds[0] ??
-				corporationCandidates.requestorCorporations[0]?.corporationId ??
-				corporationCandidates.targetCorporations[0]?.corporationId ??
-				null
-			if (!resolvedCorporationId) {
-				return c.json(
-					{ error: 'Fulcrum report requests are not allowed for these characters' },
-					403,
-				)
-			}
-		}
 		if (isSelfImmunitasBatch) {
+			const resolvedCorporationId = await resolveFallbackFulcrumCorporationId(
+				c,
+				hr,
+				user,
+				resolvedTargetUserId!,
+				body.characterIds[0]!
+			)
+			if (!resolvedCorporationId) {
+				return c.json(
+					{ error: 'Fulcrum report requests are not allowed for these characters' },
+					403,
+				)
+			}
 			const fulcrum = getFulcrumStub(c)
 			const result = await fulcrum.createBulkCharacterReports({
 				characterIds: body.characterIds,
@@ -810,10 +837,47 @@ app.post('/reports/batch', requireAuth(), async (c) => {
 			return c.json(result, 201)
 		}
 
-		for (const targetCharacterId of body.characterIds) {
-			if (!auditor && !user.is_admin && (await isMemberCorpCeo(c, targetCharacterId))) {
+		let resolvedCorporationId: string | null = null
+		if (auditor || user.is_admin) {
+			resolvedCorporationId = await resolveFallbackFulcrumCorporationId(
+				c,
+				hr,
+				user,
+				resolvedTargetUserId!,
+				body.characterIds[0]!
+			)
+			if (!resolvedCorporationId) {
 				return c.json(
-					{ error: 'Only auditors or site admins can request reports for member corp CEOs' },
+					{ error: 'Fulcrum report requests are not allowed for these characters' },
+					403,
+				)
+			}
+		} else {
+			for (const targetCharacterId of body.characterIds) {
+				if (!auditor && !user.is_admin && (await isMemberCorpCeo(c, targetCharacterId))) {
+					return c.json(
+						{ error: 'Only auditors or site admins can request reports for member corp CEOs' },
+						403,
+					)
+				}
+			}
+
+			const accessResolution = await resolveFulcrumReportAccessForTargetUser(
+				c,
+				hr,
+				user,
+				resolvedTargetUserId!
+			)
+			if (accessResolution.corporationId) {
+				resolvedCorporationId = accessResolution.corporationId
+			} else if (accessResolution.error === 'open_application_required') {
+				return c.json(
+					{ error: 'An open application is required to request Fulcrum reports for this user' },
+					403,
+				)
+			} else {
+				return c.json(
+					{ error: 'Fulcrum report requests are not allowed for these characters' },
 					403,
 				)
 			}
