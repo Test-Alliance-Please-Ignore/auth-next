@@ -42,11 +42,15 @@ function OneTimeCredentialsCard({ credentials }: { credentials: MumbleOneTimeCre
 					Your Mumble credentials
 				</CardTitle>
 				<CardDescription>
-					This password is shown only once and cannot be recovered. Store it now — you can
-					regenerate a new one later if you lose it.
+					The password below is shown only once and cannot be recovered. Save the server,
+					username, and password somewhere safe before you leave this page.
 				</CardDescription>
 			</CardHeader>
-			<CardContent className="space-y-1.5">
+			<CardContent className="space-y-3">
+				<div className="rounded-md border border-amber-500/40 bg-amber-500/10 px-3 py-2 text-sm">
+					Once you close or refresh this page, the password will no longer be visible. If you
+					lose it, you will need to generate a new one.
+				</div>
 				<CopyRow
 					label="Username"
 					value={credentials.loginName}
