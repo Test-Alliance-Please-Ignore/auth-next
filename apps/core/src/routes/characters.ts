@@ -516,12 +516,12 @@ app.get('/:characterId', requireAuth(), async (c) => {
 	}
 
 	// Treat admins/HR viewers as privileged for private data access purposes,
-	// but immunitas targets never expose private sections.
+	// but immunitas targets never expose private sections to anyone except the owner.
 	const canViewSensitiveData =
 		isActualOwner ||
-		isAdmin ||
-		((hasHrViewerAccess || hasHrPageAccess) && !targetOwner?.immunitas)
+		((isAdmin || hasHrViewerAccess || hasHrPageAccess) && !targetOwner?.immunitas)
 	const isOwner = isActualOwner || isAdmin
+	const canViewSkillData = isActualOwner || !targetOwner?.immunitas
 
 	// Get EVE Character Data DO stub
 	const eveCharacterDataStub = getStub<EveCharacterData>(c.env.EVE_CHARACTER_DATA, characterId)
@@ -643,22 +643,26 @@ app.get('/:characterId', requireAuth(), async (c) => {
 				)
 			: []
 
-		// Enrich skills with metadata and fetch full skill catalog
-		const skillsStub = getStub<any>(c.env.SKILLS, 'default')
-		const [enrichedSkills, allSkills] = await Promise.all([
-			transformAndEnrichSkillsData(skills, c.env),
-			skillsStub.getAllSkills().catch((error: unknown) => {
-				logger.warn('[Character Detail] Failed to fetch skill catalog, falling back to trained-only', {
-					characterId: characterIdStr,
-					requestingUserId: user.id,
-					isOwner,
-					viewedAsAdmin,
-					viewedAsCeoOrDirector,
-					error: error instanceof Error ? error.message : String(error),
-				})
-				return []
-			}),
-		])
+		let enrichedSkills: any = null
+		let allSkills: any[] = []
+		if (canViewSkillData) {
+			// Enrich skills with metadata and fetch full skill catalog
+			const skillsStub = getStub<any>(c.env.SKILLS, 'default')
+			;[enrichedSkills, allSkills] = await Promise.all([
+				transformAndEnrichSkillsData(skills, c.env),
+				skillsStub.getAllSkills().catch((error: unknown) => {
+					logger.warn('[Character Detail] Failed to fetch skill catalog, falling back to trained-only', {
+						characterId: characterIdStr,
+						requestingUserId: user.id,
+						isOwner,
+						viewedAsAdmin,
+						viewedAsCeoOrDirector,
+						error: error instanceof Error ? error.message : String(error),
+					})
+					return []
+				}),
+			])
+		}
 
 		// Build response with public data
 		const response: any = {

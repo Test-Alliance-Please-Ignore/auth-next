@@ -225,6 +225,33 @@ describe('character detail access for HR page viewers', () => {
 	})
 
 	it('suppresses private data and queues an immunitas alert for non-owner access', async () => {
+		hoisted.characterInstance.getSkills.mockResolvedValue({
+			skills: [
+				{
+					active_skill_level: 5,
+					skill_id: 123,
+					skillpoints_in_skill: 256000,
+					trained_skill_level: 5,
+				},
+			],
+			total_sp: 123456,
+		})
+		hoisted.skills.getAllSkills.mockResolvedValue([
+			{
+				id: 123,
+				skillId: 123,
+				name: 'Test Skill',
+				description: 'Test',
+				rank: 1,
+				primaryAttribute: null,
+				secondaryAttribute: null,
+				published: true,
+				canNotBeTrained: false,
+				groupId: 1,
+				groupName: 'Test Group',
+			},
+		])
+
 		vi.mocked(db.query.userCharacters.findFirst).mockResolvedValue({
 			userId: 'target-user',
 			characterName: 'Target Pilot',
@@ -242,6 +269,63 @@ describe('character detail access for HR page viewers', () => {
 
 		expect(res.status).toBe(200)
 		const body = (await res.json()) as any
+		expect(body.public.skills).toBeNull()
+		expect(body.private).toBeUndefined()
+		expect(hoisted.core.queueImmunitasAccessAlert).toHaveBeenCalledWith({
+			targetUserId: 'target-user',
+			targetCharacterLabel: 'Target Pilot',
+			requestorUserId: 'user-1',
+			requestorCharacterLabel: 'Auditor Pilot',
+			accessType: 'profile-data',
+			source: 'character-detail-private-data',
+		})
+	})
+
+	it('blocks private data and skills for site admins viewing immunitas targets', async () => {
+		hoisted.characterInstance.getSkills.mockResolvedValue({
+			skills: [
+				{
+					active_skill_level: 5,
+					skill_id: 123,
+					skillpoints_in_skill: 256000,
+					trained_skill_level: 5,
+				},
+			],
+			total_sp: 123456,
+		})
+		hoisted.skills.getAllSkills.mockResolvedValue([
+			{
+				id: 123,
+				skillId: 123,
+				name: 'Test Skill',
+				description: 'Test',
+				rank: 1,
+				primaryAttribute: null,
+				secondaryAttribute: null,
+				published: true,
+				canNotBeTrained: false,
+				groupId: 1,
+				groupName: 'Test Group',
+			},
+		])
+		vi.mocked(db.query.userCharacters.findFirst).mockResolvedValue({
+			userId: 'target-user',
+			characterName: 'Target Pilot',
+		} as any)
+		vi.mocked(db.query.users.findFirst).mockResolvedValue({ immunitas: true } as any)
+
+		const app = createApp(makeUser({ is_admin: true }), db)
+		const res = await app.request(
+			'/api/characters/2001?corporationId=2001',
+			{},
+			env
+		)
+
+		await Promise.all(backgroundTasks.splice(0, backgroundTasks.length))
+
+		expect(res.status).toBe(200)
+		const body = (await res.json()) as any
+		expect(body.public.skills).toBeNull()
 		expect(body.private).toBeUndefined()
 		expect(hoisted.core.queueImmunitasAccessAlert).toHaveBeenCalledWith({
 			targetUserId: 'target-user',
