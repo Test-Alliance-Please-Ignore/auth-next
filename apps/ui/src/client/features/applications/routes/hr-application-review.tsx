@@ -592,16 +592,16 @@ export default function HrApplicationReview() {
 							characterId={application.characterId}
 							characterName={application.characterName}
 							hasValidToken={esiStateByCharacterId[application.characterId]}
-									corporationId={fulcrumCharacterById.get(application.characterId)?.corporationId ?? null}
-									corporationName={fulcrumCharacterById.get(application.characterId)?.corporationName ?? null}
-									allianceId={fulcrumCharacterById.get(application.characterId)?.allianceId ?? null}
-									allianceName={fulcrumCharacterById.get(application.characterId)?.allianceName ?? null}
-									skillPoints={spByCharacterId[application.characterId]}
-									walletBalance={walletByCharacterId[application.characterId]}
-									isMetricsLoading={metricsLoadingByCharacterId[application.characterId]}
-									enableCopyName
-									isNameCopied={copiedCharacterIds.has(application.characterId)}
-									onCopyName={() =>
+							corporationId={fulcrumCharacterById.get(application.characterId)?.corporationId ?? null}
+							corporationName={fulcrumCharacterById.get(application.characterId)?.corporationName ?? null}
+							allianceId={fulcrumCharacterById.get(application.characterId)?.allianceId ?? null}
+							allianceName={fulcrumCharacterById.get(application.characterId)?.allianceName ?? null}
+							skillPoints={spByCharacterId[application.characterId]}
+							walletBalance={walletByCharacterId[application.characterId]}
+							isMetricsLoading={metricsLoadingByCharacterId[application.characterId]}
+							enableCopyName
+							isNameCopied={copiedCharacterIds.has(application.characterId)}
+							onCopyName={() =>
 										void markCharacterNameCopied(application.characterId, application.characterName)
 									}
 								/>

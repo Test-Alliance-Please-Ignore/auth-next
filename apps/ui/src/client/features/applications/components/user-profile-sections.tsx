@@ -145,19 +145,19 @@ export function ProfileCharactersSection({
 											</Button>
 										</div>
 									)}
-									<CharacterIdentitySummary
-										characterId={character.characterId}
-										characterName={character.characterName}
-										hasValidToken={character.hasValidToken}
-										corporationId={character.corporationId}
-										corporationName={character.corporationName}
-										allianceId={character.allianceId}
-										allianceName={character.allianceName}
-										skillPoints={character.skillPoints}
-										walletBalance={character.walletBalance}
-										isMetricsLoading={character.isMetricsLoading}
-										nameBadges={
-											<>
+							<CharacterIdentitySummary
+								characterId={character.characterId}
+								characterName={character.characterName}
+								hasValidToken={character.hasValidToken}
+								corporationId={character.corporationId}
+								corporationName={character.corporationName}
+								allianceId={character.allianceId}
+								allianceName={character.allianceName}
+								skillPoints={character.skillPoints}
+								walletBalance={character.walletBalance}
+								isMetricsLoading={character.isMetricsLoading}
+								nameBadges={
+									<>
 												{character.isPrimary && (
 													<Badge
 														variant="default"
