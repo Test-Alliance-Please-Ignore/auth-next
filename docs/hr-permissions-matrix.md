@@ -1,6 +1,6 @@
 # HR Permissions Matrix
 
-Last updated: 2026-06-20
+Last updated: 2026-06-21
 
 Scope notes:
 - Corporation-scoped unless explicitly marked global.
@@ -58,9 +58,21 @@ Scope notes:
 	- online/offline status and login metadata
 	- skill queue
 	- live-versus-last-known sensitive-data state
-- Fulcrum report permissions are user-scoped for the open-application exception: if the target user has an open application, that exception applies to all of that user's characters in that corporation context.
-- The open-application exception does not override CEO restrictions. HR reviewers still cannot request reports for member-corp CEOs. Only auditors and site admins can.
+- Fulcrum report permissions are user-scoped in two places:
+	- the open-application allowance applies to all of that user's characters
+	- the shared-corp fallback is also evaluated against the target user's full character set, not just the one character being requested
+- `applicationId` on Fulcrum request creation is metadata only. It is used for report-link/back-navigation context, not for authorization.
+- The open-application and shared-corp allowances do not override CEO restrictions. HR reviewers still cannot request reports for member-corp CEOs. Only auditors and site admins can.
 - `HR Viewer` can view the HR profile page, but cannot request Fulcrum reports.
+
+## Fulcrum Authorization Matrix
+
+| Scenario | HR Reviewer | HR Admin | HR Auditor | Site Admin | Notes |
+| --- | --- | --- | --- | --- | --- |
+| Target user has an active application (`pending` / `under_review`) in a corp where the requester has HR permission | ✅ | ✅ | ✅ | ✅ | The allowance is user-scoped and applies to all of that user's characters. |
+| No active application, but the target user has any character in a corp shared with the requester | ✅ | ✅ | ✅ | ✅ | The fallback is also user-scoped; the requested character does not need to be in the shared corp. |
+| Target is a member-corp CEO | ❌ | ❌ | ✅ | ✅ | CEO gating supersedes the normal HR allowance path. |
+| No active application and no shared corp | ❌ | ❌ | ✅ | ✅ | Auditors and site admins bypass the corp-match requirement; HR staff do not. |
 
 ## API Access Matrix (Core routes)
 
