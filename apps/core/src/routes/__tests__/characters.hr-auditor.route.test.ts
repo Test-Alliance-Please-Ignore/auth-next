@@ -8,15 +8,15 @@ import charactersRoutes from '../characters'
 import type { SessionUser } from '../../context'
 
 const hoisted = vi.hoisted(() => ({
-	core: {
-		queueImmunitasAccessAlert: vi.fn(),
-	},
 	hrAccess: {
 		resolveHrAccessState: vi.fn(),
 	},
 	hr: {
 		checkPermission: vi.fn(),
 		getUserHrCorporations: vi.fn(),
+	},
+	core: {
+		queueImmunitasAccessAlert: vi.fn(),
 	},
 	resolver: {
 		resolveEntityNames: vi.fn(),
@@ -191,6 +191,9 @@ describe('character detail access for HR page viewers', () => {
 			if (binding === env.HR) {
 				return hoisted.hr as any
 			}
+			if (binding === env.CORE) {
+				return hoisted.core as any
+			}
 			if (binding === env.EVE_CHARACTER_DATA) {
 				return hoisted.characterData as any
 			}
@@ -200,14 +203,11 @@ describe('character detail access for HR page viewers', () => {
 			if (binding === env.ESI_TYPE_RESOLVER) {
 				return hoisted.resolver as any
 			}
-			if (binding === env.CORE) {
-				return hoisted.core as any
-			}
 			throw new Error('Unexpected binding')
 		})
 	})
 
-	it('allows an HR user to see private character data across corp boundaries', async () => {
+	it('returns public overview data without private fields', async () => {
 		const app = createApp(makeUser(), db)
 		const res = await app.request(
 			'/api/characters/2001?corporationId=2001',
@@ -220,11 +220,11 @@ describe('character detail access for HR page viewers', () => {
 		expect(res.status).toBe(200)
 		const body = (await res.json()) as any
 		expect(body.viewedAsHrViewer).toBe(true)
-		expect(body.private.wallet).toBe(123456789)
-		expect(body.private.status).toEqual({ state: 'active' })
+		expect(body.public.skills).toBeUndefined()
+		expect(body.private).toBeUndefined()
 	})
 
-	it('suppresses private data and queues an immunitas alert for non-owner access', async () => {
+	it('returns private data for authorized HR users on the private route', async () => {
 		hoisted.characterInstance.getSkills.mockResolvedValue({
 			skills: [
 				{
@@ -236,31 +236,15 @@ describe('character detail access for HR page viewers', () => {
 			],
 			total_sp: 123456,
 		})
-		hoisted.skills.getAllSkills.mockResolvedValue([
-			{
-				id: 123,
-				skillId: 123,
-				name: 'Test Skill',
-				description: 'Test',
-				rank: 1,
-				primaryAttribute: null,
-				secondaryAttribute: null,
-				published: true,
-				canNotBeTrained: false,
-				groupId: 1,
-				groupName: 'Test Group',
-			},
-		])
 
 		vi.mocked(db.query.userCharacters.findFirst).mockResolvedValue({
 			userId: 'target-user',
 			characterName: 'Target Pilot',
 		} as any)
-		vi.mocked(db.query.users.findFirst).mockResolvedValue({ immunitas: true } as any)
 
 		const app = createApp(makeUser(), db)
 		const res = await app.request(
-			'/api/characters/2001?corporationId=2001',
+			'/api/characters/2001/private?corporationId=2001',
 			{},
 			env
 		)
@@ -269,19 +253,12 @@ describe('character detail access for HR page viewers', () => {
 
 		expect(res.status).toBe(200)
 		const body = (await res.json()) as any
-		expect(body.public.skills).toBeNull()
-		expect(body.private).toBeUndefined()
-		expect(hoisted.core.queueImmunitasAccessAlert).toHaveBeenCalledWith({
-			targetUserId: 'target-user',
-			targetCharacterLabel: 'Target Pilot',
-			requestorUserId: 'user-1',
-			requestorCharacterLabel: 'Auditor Pilot',
-			accessType: 'profile-data',
-			source: 'character-detail-private-data',
-		})
+		expect(body.skills?.totalSp).toBe(123456)
+		expect(body.private.wallet).toBe(123456789)
+		expect(body.private.status).toEqual({ state: 'active' })
 	})
 
-	it('blocks private data and skills for site admins viewing immunitas targets', async () => {
+	it('blocks private data on the private route and queues an alert for immunitas targets', async () => {
 		hoisted.characterInstance.getSkills.mockResolvedValue({
 			skills: [
 				{
@@ -293,21 +270,6 @@ describe('character detail access for HR page viewers', () => {
 			],
 			total_sp: 123456,
 		})
-		hoisted.skills.getAllSkills.mockResolvedValue([
-			{
-				id: 123,
-				skillId: 123,
-				name: 'Test Skill',
-				description: 'Test',
-				rank: 1,
-				primaryAttribute: null,
-				secondaryAttribute: null,
-				published: true,
-				canNotBeTrained: false,
-				groupId: 1,
-				groupName: 'Test Group',
-			},
-		])
 		vi.mocked(db.query.userCharacters.findFirst).mockResolvedValue({
 			userId: 'target-user',
 			characterName: 'Target Pilot',
@@ -316,25 +278,47 @@ describe('character detail access for HR page viewers', () => {
 
 		const app = createApp(makeUser({ is_admin: true }), db)
 		const res = await app.request(
-			'/api/characters/2001?corporationId=2001',
+			'/api/characters/2001/private?corporationId=2001',
 			{},
 			env
 		)
 
 		await Promise.all(backgroundTasks.splice(0, backgroundTasks.length))
 
-		expect(res.status).toBe(200)
-		const body = (await res.json()) as any
-		expect(body.public.skills).toBeNull()
-		expect(body.private).toBeUndefined()
+		expect(res.status).toBe(403)
 		expect(hoisted.core.queueImmunitasAccessAlert).toHaveBeenCalledWith({
 			targetUserId: 'target-user',
 			targetCharacterLabel: 'Target Pilot',
 			requestorUserId: 'user-1',
 			requestorCharacterLabel: 'Auditor Pilot',
 			accessType: 'profile-data',
-			source: 'character-detail-private-data',
+			source: 'characters.private',
 		})
+	})
+
+	it('returns skill levels from the dedicated skill route without alerting', async () => {
+		hoisted.characterInstance.getSkills.mockResolvedValue({
+			skills: [
+				{
+					active_skill_level: 5,
+					skill_id: 123,
+					skillpoints_in_skill: 256000,
+					trained_skill_level: 5,
+				},
+			],
+			total_sp: 123456,
+		})
+
+		const app = createApp(makeUser(), db)
+		const res = await app.request('/api/characters/9001/skills', {}, env)
+
+		await Promise.all(backgroundTasks.splice(0, backgroundTasks.length))
+
+		expect(res.status).toBe(200)
+		const body = (await res.json()) as any
+		expect(body.characterName).toBe('Target Pilot')
+		expect(body.totalSp).toBe(123456)
+		expect(hoisted.core.queueImmunitasAccessAlert).not.toHaveBeenCalled()
 	})
 
 })

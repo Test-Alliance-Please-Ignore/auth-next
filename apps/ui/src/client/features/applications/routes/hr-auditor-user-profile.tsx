@@ -174,8 +174,8 @@ export default function HrAuditorUserProfilePage() {
 
 	const characterDetailQueries = useQueries({
 		queries: rows.map((character) => ({
-			queryKey: ['character', character.characterId, 'auditor-profile', character.corporationId],
-			queryFn: () => apiClient.getCharacterDetail(character.characterId, character.corporationId ?? undefined),
+			queryKey: ['character', character.characterId, 'auditor-profile-private', character.corporationId],
+			queryFn: () => apiClient.getCharacterPrivateDetail(character.characterId, character.corporationId ?? undefined),
 			meta: {
 				suppressErrorToast: true,
 			},
@@ -221,7 +221,7 @@ export default function HrAuditorUserProfilePage() {
 	rows.forEach((character, index) => {
 		const query = characterDetailQueries[index]
 		const detail = query?.data
-		spByCharacterId.set(character.characterId, detail?.public?.skills?.totalSp ?? null)
+		spByCharacterId.set(character.characterId, detail?.skills?.totalSp ?? null)
 		walletByCharacterId.set(character.characterId, detail?.private?.wallet?.balance ?? null)
 		metricsLoadingByCharacterId.set(
 			character.characterId,

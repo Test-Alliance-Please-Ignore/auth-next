@@ -150,8 +150,8 @@ export default function HrApplicationReview() {
 	}
 	const spQueries = useQueries({
 		queries: allCharacterIds.map((charId) => ({
-			queryKey: ['character', charId, 'hr-review', corporationId],
-			queryFn: () => apiClient.getCharacterDetail(charId, corporationId),
+			queryKey: ['character', charId, 'hr-review-private', corporationId],
+			queryFn: () => apiClient.getCharacterPrivateDetail(charId, corporationId),
 			meta: {
 				suppressErrorToast: true,
 			},
@@ -164,7 +164,7 @@ export default function HrApplicationReview() {
 	const metricsLoadingByCharacterId: Record<string, boolean> = {}
 	for (let i = 0; i < allCharacterIds.length; i++) {
 		const query = spQueries[i]
-		spByCharacterId[allCharacterIds[i]] = query?.data?.public?.skills?.totalSp ?? null
+		spByCharacterId[allCharacterIds[i]] = query?.data?.skills?.totalSp ?? null
 		walletByCharacterId[allCharacterIds[i]] = query?.data?.private?.wallet?.balance ?? null
 		metricsLoadingByCharacterId[allCharacterIds[i]] =
 			(query?.isPending ?? false) && query?.data == null

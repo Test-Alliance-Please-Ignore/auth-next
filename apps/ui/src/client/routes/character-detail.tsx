@@ -71,8 +71,16 @@ export default function CharacterDetailPage() {
 		isLoading,
 		error,
 	} = useQuery({
-		queryKey: ['character', characterId, hrCorporationId],
+		queryKey: ['character', characterId, hrCorporationId, 'overview'],
 		queryFn: () => api.getCharacterDetail(characterId, hrCorporationId),
+		meta: {
+			suppressErrorToast: true,
+		},
+		enabled: !!characterId,
+	})
+	const { data: characterPrivate, isLoading: isPrivateLoading } = useQuery({
+		queryKey: ['character', characterId, hrCorporationId, 'private'],
+		queryFn: () => api.getCharacterPrivateDetail(characterId, hrCorporationId),
 		meta: {
 			suppressErrorToast: true,
 		},
@@ -233,8 +241,7 @@ export default function CharacterDetailPage() {
 							<div>
 								<p className="font-medium">Viewing as Corporation {character.viewerRole}</p>
 								<p className="text-sm text-muted-foreground">
-									You can view public character information (skills, attributes, corporation
-									history). Private data (wallet, location, assets) is not available.
+									You can view public character information (attributes, corporation history).
 								</p>
 							</div>
 						</div>
@@ -251,7 +258,7 @@ export default function CharacterDetailPage() {
 							<div>
 								<p className="font-medium">Viewing as HR Viewer</p>
 								<p className="text-sm text-muted-foreground">
-									You can view public character information and HR-accessible private data.
+									You can view public character information.
 								</p>
 							</div>
 						</div>
@@ -345,12 +352,12 @@ export default function CharacterDetailPage() {
 			</Card>
 
 			{/* Sensitive information */}
-			{canViewPrivateSections && character.private && (
+			{canViewPrivateSections && characterPrivate?.private && (
 				<CharacterPrivateInfo
-					sensitiveDataIsLive={character.private.sensitiveDataIsLive}
-					location={character.private.location}
-					wallet={character.private.wallet}
-					status={character.private.status}
+					sensitiveDataIsLive={characterPrivate.private.sensitiveDataIsLive}
+					location={characterPrivate.private.location}
+					wallet={characterPrivate.private.wallet}
+					status={characterPrivate.private.status}
 				/>
 			)}
 
@@ -367,40 +374,45 @@ export default function CharacterDetailPage() {
 			</div>
 
 			{/* Skill Queue */}
-			{canViewPrivateSections && character.private?.skillQueue && (
-				<CharacterSkillQueue queue={character.private.skillQueue} />
+			{canViewPrivateSections && characterPrivate?.private?.skillQueue && (
+				<CharacterSkillQueue queue={characterPrivate.private.skillQueue} />
 			)}
 
 			{/* Character Skills */}
-			{character.public.skills ? (
+			{characterPrivate?.skills ? (
 				<CharacterSkills
 					characterId={characterId || ''}
-					skills={character.public.skills}
-					allSkills={character.public.allSkills}
+					skills={characterPrivate.skills}
+					allSkills={characterPrivate.allSkills}
 					showProgress={canViewPrivateSections}
 				/>
 			) : canViewPrivateSections ? (
 				<Card>
 					<CardHeader>
 						<CardTitle>Skills</CardTitle>
-						<CardDescription>Skill data not available</CardDescription>
+						<CardDescription>
+							{isPrivateLoading ? 'Loading skill data' : 'Skill data not available'}
+						</CardDescription>
 					</CardHeader>
 					<CardContent>
 						<div className="text-center py-8">
 							<p className="text-muted-foreground mb-4">
-								Skills data hasn't been fetched yet. Click the Refresh button above to load your
-								character's skills.
+								{isPrivateLoading
+									? 'Loading character data needed to render skills.'
+									: 'Character data is not available for this view.'}
 							</p>
-							<Button
-								onClick={handleRefresh}
-								variant="primary"
-								disabled={refreshCharacter.isPending}
-							>
-								<RefreshCw
-									className={`h-4 w-4 ${refreshCharacter.isPending ? 'animate-spin' : ''}`}
-								/>
-								{refreshCharacter.isPending ? 'Refreshing...' : 'Refresh Character Data'}
-							</Button>
+							{isPrivateLoading && (
+								<Button
+									onClick={handleRefresh}
+									variant="primary"
+									disabled={refreshCharacter.isPending}
+								>
+									<RefreshCw
+										className={`h-4 w-4 ${refreshCharacter.isPending ? 'animate-spin' : ''}`}
+									/>
+									{refreshCharacter.isPending ? 'Refreshing...' : 'Refresh Character Data'}
+								</Button>
+							)}
 						</div>
 					</CardContent>
 				</Card>

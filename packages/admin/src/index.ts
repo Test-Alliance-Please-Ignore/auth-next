@@ -113,6 +113,25 @@ export interface DiscordStatus {
 
 export type UserGroupMembershipLevel = 'member' | 'admin' | 'owner'
 
+export type ResolvedPermissionGrantSource = 'global' | 'group_scoped'
+
+export type ResolvedPermissionGrantTargetType =
+	| 'all_members'
+	| 'all_admins'
+	| 'owner_only'
+	| 'owner_and_admins'
+
+export interface ResolvedPermissionGrant {
+	permissionId?: string | null
+	urn: string
+	name: string
+	description: string | null
+	groupId: string
+	groupName: string
+	targetType: ResolvedPermissionGrantTargetType
+	source: ResolvedPermissionGrantSource
+}
+
 export interface UserGroupMembershipSummary {
 	groupId: string
 	groupName: string
@@ -131,6 +150,7 @@ export interface UserDetails {
 	discord: DiscordStatus | null
 	characters: CharacterSummary[]
 	groupMemberships: UserGroupMembershipSummary[]
+	permissionGrants: ResolvedPermissionGrant[]
 	createdAt: Date
 	updatedAt: Date
 }

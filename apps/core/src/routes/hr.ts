@@ -228,12 +228,71 @@ async function hasAnyHrAccess(c: Context<App>): Promise<boolean> {
 	return access.hasHrAccess
 }
 
+/**
+ * Check if the current user has an explicit HR role on any member corporation.
+ * Unlike hasAnyHrAccess(), this intentionally ignores inferred leadership access.
+ */
+async function hasExplicitMemberCorpHrAccess(c: Context<App>): Promise<boolean> {
+	const user = c.get('user')!
+	const db = c.get('db')
+	if (!db) {
+		return false
+	}
+
+	const hr = getHrStub(c)
+	const memberCorporations = (await db.query.managedCorporations.findMany({
+		where: and(
+			eq(managedCorporations.isActive, true),
+			eq(managedCorporations.isMemberCorporation, true)
+		),
+		columns: {
+			corporationId: true,
+			isMemberCorporation: true,
+		},
+	})) as Array<{ corporationId: string; isMemberCorporation: boolean }>
+	if (memberCorporations.length === 0) {
+		return false
+	}
+
+	const memberCorpIds = new Set(memberCorporations.map((corp) => corp.corporationId))
+	const explicitRoles = await hr.getUserRoles(user.id)
+	return explicitRoles.some(
+		(role) =>
+			role.isActive &&
+			role.corporationId !== null &&
+			memberCorpIds.has(role.corporationId) &&
+			(role.role === 'hr_viewer' || role.role === 'hr_reviewer' || role.role === 'hr_admin')
+	)
+}
+
 async function hasHrAuditorPermission(c: Context<App>): Promise<boolean> {
 	const user = c.get('user')!
 	return hasHrAuditorPermissionForUser({
 		env: c.env,
 		userId: user.id,
 	})
+}
+
+async function canManageHrRolesForCorporation(c: Context<App>, corporationId: string): Promise<boolean> {
+	const db = c.get('db')
+	if (!db) {
+		throw new Error('Database not available')
+	}
+
+	const memberCorporations = (await db.query.managedCorporations.findMany({
+		where: and(
+			eq(managedCorporations.isActive, true),
+			eq(managedCorporations.isMemberCorporation, true)
+		),
+		columns: {
+			corporationId: true,
+			isMemberCorporation: true,
+		},
+	})) as Array<{ corporationId: string; isMemberCorporation: boolean }>
+
+	return memberCorporations.some(
+		(corp) => corp.corporationId === corporationId && corp.isMemberCorporation === true
+	)
 }
 
 type HrRoleManagementAccess = 'site_admin' | 'ceo' | 'hr_admin' | null
@@ -1713,6 +1772,10 @@ app.post('/:corporationId/roles', requireAuth(), async (c) => {
 	const corporationId = c.req.param('corporationId')
 	const { userId, characterId, role, expiresAt } = await c.req.json()
 
+	if (!(await canManageHrRolesForCorporation(c, corporationId))) {
+		return c.json({ error: 'Access denied. HR roles can only be managed for member corporations.' }, 403)
+	}
+
 	// Authorization check
 	const managementAccess = await getHrRoleManagementAccess(c, corporationId)
 	if (!managementAccess) {
@@ -1777,6 +1840,10 @@ app.get('/:corporationId/roles', requireAuth(), async (c) => {
 	const corporationId = c.req.param('corporationId')
 	const userId = c.req.query('userId')
 	const db = c.get('db')
+
+	if (!(await canManageHrRolesForCorporation(c, corporationId))) {
+		return c.json({ error: 'Access denied. HR roles can only be managed for member corporations.' }, 403)
+	}
 
 	const managementAccess = await getHrRoleManagementAccess(c, corporationId)
 	if (!managementAccess) {
@@ -1958,6 +2025,10 @@ app.delete('/:corporationId/roles/:roleId', requireAuth(), async (c) => {
 	const corporationId = c.req.param('corporationId')
 	const roleId = c.req.param('roleId')
 
+	if (!(await canManageHrRolesForCorporation(c, corporationId))) {
+		return c.json({ error: 'Access denied. HR roles can only be managed for member corporations.' }, 403)
+	}
+
 	// Authorization check
 	const managementAccess = await getHrRoleManagementAccess(c, corporationId)
 	if (!managementAccess) {
@@ -2124,7 +2195,7 @@ app.get('/audit/ip-history/:ipAddressHash/matches', requireAuth(), async (c) => 
  */
 app.get('/legacy/history', requireAuth(), async (c) => {
 	const user = c.get('user')!
-	if (!user.is_admin && !(await hasAnyHrAccess(c))) {
+	if (!user.is_admin && !(await hasHrAuditorPermission(c)) && !(await hasExplicitMemberCorpHrAccess(c))) {
 		return c.json({ error: 'Forbidden' }, 403)
 	}
 
@@ -2146,7 +2217,7 @@ app.get('/legacy/history', requireAuth(), async (c) => {
  */
 app.get('/legacy/history/:legacyApplicationId', requireAuth(), async (c) => {
 	const user = c.get('user')!
-	if (!user.is_admin && !(await hasAnyHrAccess(c))) {
+	if (!user.is_admin && !(await hasHrAuditorPermission(c)) && !(await hasExplicitMemberCorpHrAccess(c))) {
 		return c.json({ error: 'Forbidden' }, 403)
 	}
 

@@ -93,9 +93,15 @@ export default function HrRolesManagement() {
 
 	// Check if current user can manage HR roles (CEO, site admin, or HR admin)
 	const canManageHrRoles = useMemo(() => {
-		return userRole === 'CEO' || userRole === 'admin' || userRole === 'hr_admin'
-	}, [userRole])
-	const canRevokeHrAdmin = useMemo(() => userRole === 'CEO' || userRole === 'admin', [userRole])
+		return (
+			(corporation?.isMemberCorporation ?? false) &&
+			(userRole === 'CEO' || userRole === 'admin' || userRole === 'hr_admin')
+		)
+	}, [corporation?.isMemberCorporation, userRole])
+	const canRevokeHrAdmin = useMemo(
+		() => (corporation?.isMemberCorporation ?? false) && (userRole === 'CEO' || userRole === 'admin'),
+		[corporation?.isMemberCorporation, userRole]
+	)
 
 	const memberByUserId = useMemo(() => {
 		const map = new Map<string, CorporationMember>()
@@ -207,6 +213,9 @@ export default function HrRolesManagement() {
 
 	// Access denied
 	if (!canAccess || !canManageHrRoles) {
+		const accessMessage = corporation?.isMemberCorporation
+			? "You don't have permission to manage HR roles for this corporation. CEO, HR admin, or site admin access is required."
+			: 'HR roles can only be managed for member corporations.'
 		return (
 			<Container>
 				<Card className="max-w-2xl mx-auto border-red-200 bg-red-50 dark:border-red-800 dark:bg-red-950">
@@ -214,8 +223,7 @@ export default function HrRolesManagement() {
 						<AlertCircle className="h-16 w-16 mx-auto text-red-500 mb-4" />
 						<CardTitle className="text-2xl text-red-900 dark:text-red-100">Access Denied</CardTitle>
 						<CardDescription className="mt-2 text-red-700 dark:text-red-300">
-							You don't have permission to manage HR roles for this corporation. CEO, HR admin,
-							or site admin access is required.
+							{accessMessage}
 						</CardDescription>
 					</CardHeader>
 					<CardContent className="text-center">

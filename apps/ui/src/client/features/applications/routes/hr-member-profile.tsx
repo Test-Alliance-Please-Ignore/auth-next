@@ -206,8 +206,8 @@ export default function HrMemberProfile() {
 	}, [account, fulcrumCharacters])
 	const characterDetailQueries = useQueries({
 		queries: unifiedCharacters.map((character) => ({
-			queryKey: ['character', character.characterId, 'hr-member-profile', corporationId],
-			queryFn: () => apiClient.getCharacterDetail(character.characterId, corporationId),
+			queryKey: ['character', character.characterId, 'hr-member-profile-private', corporationId],
+			queryFn: () => apiClient.getCharacterPrivateDetail(character.characterId, corporationId),
 			meta: {
 				suppressErrorToast: true,
 			},
@@ -221,7 +221,7 @@ export default function HrMemberProfile() {
 	unifiedCharacters.forEach((character, index) => {
 		const query = characterDetailQueries[index]
 		const detail = query?.data
-		spByCharacterId.set(character.characterId, detail?.public?.skills?.totalSp ?? null)
+		spByCharacterId.set(character.characterId, detail?.skills?.totalSp ?? null)
 		walletByCharacterId.set(character.characterId, detail?.private?.wallet?.balance ?? null)
 		metricsLoadingByCharacterId.set(
 			character.characterId,

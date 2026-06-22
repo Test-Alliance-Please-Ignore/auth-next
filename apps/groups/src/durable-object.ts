@@ -3240,19 +3240,8 @@ export class GroupsDO extends DurableObject<Env> implements Groups {
 		return Array.from(new Map(permissions.map((p) => [p.urn, p])).values())
 	}
 
-	async getUserPermissions(userId: string): Promise<UserPermission[]> {
-		console.log('[getUserPermissions] Fetching permissions for user', { userId })
-
-		// Check cache first
-		const cached = this.getCachedUserPermissions(userId)
-		if (cached) {
-			console.log('[getUserPermissions] Returning cached permissions', {
-				userId,
-				count: cached.length,
-				permissions: cached.map((p) => p.urn),
-			})
-			return cached
-		}
+	private async resolveUserPermissionGrants(userId: string): Promise<UserPermission[]> {
+		console.log('[resolveUserPermissionGrants] Fetching permission grants for user', { userId })
 
 		// Get all groups the user is a member of and user's corporations in parallel
 		const [memberships, { corporations }] = await Promise.all([
@@ -3305,22 +3294,42 @@ export class GroupsDO extends DurableObject<Env> implements Groups {
 		// Combine group and corporation permissions
 		const allPermissions = [...groupPermissions, ...corporationPermissions]
 
-		// Deduplicate by URN (in case user has same permission from multiple groups or corporations)
-		const deduped = this.deduplicatePermissionsByUrn(allPermissions)
-
-		console.log('[getUserPermissions] Resolved user permissions', {
+		console.log('[resolveUserPermissionGrants] Resolved user permission grants', {
 			userId,
 			groupPermissions: groupPermissions.length,
 			corporationPermissions: corporationPermissions.length,
 			totalPermissions: allPermissions.length,
-			dedupedCount: deduped.length,
-			permissions: deduped.map((p) => ({ urn: p.urn, groupId: p.groupId, source: p.source })),
+			permissions: allPermissions.map((p) => ({ urn: p.urn, groupId: p.groupId, source: p.source })),
 		})
+
+		return allPermissions
+	}
+
+	async getUserPermissions(userId: string): Promise<UserPermission[]> {
+		console.log('[getUserPermissions] Fetching permissions for user', { userId })
+
+		// Check cache first
+		const cached = this.getCachedUserPermissions(userId)
+		if (cached) {
+			console.log('[getUserPermissions] Returning cached permissions', {
+				userId,
+				count: cached.length,
+				permissions: cached.map((p) => p.urn),
+			})
+			return cached
+		}
+
+		const allPermissions = await this.resolveUserPermissionGrants(userId)
+		const deduped = this.deduplicatePermissionsByUrn(allPermissions)
 
 		// Cache the result
 		this.cacheUserPermissions(userId, deduped)
 
 		return deduped
+	}
+
+	async getUserPermissionGrants(userId: string): Promise<UserPermission[]> {
+		return await this.resolveUserPermissionGrants(userId)
 	}
 
 	/**
