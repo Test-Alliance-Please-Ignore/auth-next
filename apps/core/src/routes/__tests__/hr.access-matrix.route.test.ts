@@ -415,7 +415,7 @@ describe('hr route access matrix', () => {
 		])
 	})
 
-	it('preserves mixed per-corporation roles for non-admin non-auditor users on /corporations', async () => {
+	it('returns only member corporations for non-admin non-auditor users on /corporations', async () => {
 		dbStub.query.managedCorporations.findMany.mockResolvedValue([
 			{
 				corporationId: '1001',
@@ -477,24 +477,6 @@ describe('hr route access matrix', () => {
 				isAltCorp: false,
 				isSpecialPurpose: false,
 				currentRole: 'hr_viewer',
-			},
-			{
-				corporationId: '2001',
-				name: 'Bravo Corp',
-				ticker: 'BRV',
-				isMemberCorporation: false,
-				isAltCorp: true,
-				isSpecialPurpose: false,
-				currentRole: 'hr_reviewer',
-			},
-			{
-				corporationId: '3001',
-				name: 'Charlie Corp',
-				ticker: 'CHR',
-				isMemberCorporation: false,
-				isAltCorp: false,
-				isSpecialPurpose: true,
-				currentRole: 'hr_admin',
 			},
 		])
 		expect(hrStub.getUserRoles).toHaveBeenCalledTimes(1)

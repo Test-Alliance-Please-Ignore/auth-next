@@ -180,7 +180,31 @@ describe('corporations members access matrix', () => {
 
 	it('denies members access for non-auditor without corp/hr role', async () => {
 		const app = createApp({ user: makeUser(), db: dbStub })
-		const res = await app.request('/api/corporations/1001/members', {}, env)
+		const res = await app.request(
+			'/api/corporations/1001/members?page=1&limit=25&sortField=role&sortOrder=asc',
+			{},
+			env
+		)
+
+		expect(res.status).toBe(403)
+		expect(await res.json()).toEqual({
+			error:
+				'Access denied. Corporation CEO, Director, site admin, HR role, or HR auditor permission required.',
+		})
+	})
+
+	it('denies HR-only access for non-member corporations', async () => {
+		dbStub.query.managedCorporations.findFirst.mockResolvedValue({
+			corporationId: '2001',
+			name: 'Bravo Corp',
+			ticker: 'BRV',
+			isActive: true,
+			isMemberCorporation: false,
+		} as any)
+		hrStub.checkPermission.mockResolvedValue(true)
+
+		const app = createApp({ user: makeUser(), db: dbStub })
+		const res = await app.request('/api/corporations/2001/members', {}, env)
 
 		expect(res.status).toBe(403)
 		expect(await res.json()).toEqual({
@@ -394,6 +418,13 @@ describe('corporations members access matrix', () => {
 			},
 		] as any)
 
+		dbStub.query.managedCorporations.findFirst.mockResolvedValue({
+			corporationId: '9001',
+			name: 'Cacheless Corp',
+			ticker: 'CCH',
+			isActive: true,
+			isMemberCorporation: true,
+		} as any)
 		dbStub.query.userCharacters.findMany.mockResolvedValue([
 			{ characterId: '2001', userId: 'target-user-1', status: 'active', hasValidToken: true },
 		])
@@ -419,7 +450,11 @@ describe('corporations members access matrix', () => {
 		})
 
 		const app = createApp({ user: makeUser(), db: dbStub })
-		const res = await app.request('/api/corporations/1001/members', {}, env)
+		const res = await app.request(
+			'/api/corporations/9001/members?page=1&limit=25&sortField=role&sortOrder=asc',
+			{},
+			env
+		)
 
 		expect(res.status).toBe(200)
 		const body = (await res.json()) as {

@@ -119,6 +119,9 @@ export interface CorporationAccessResult {
 		userRole: 'CEO' | 'Director' | 'admin' | 'hr_admin' | 'hr_reviewer' | 'hr_viewer'
 		characterId: string | null
 		characterName: string | null
+		isMemberCorporation: boolean
+		isAltCorp: boolean
+		isSpecialPurpose: boolean
 	}>
 }
 

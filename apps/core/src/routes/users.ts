@@ -47,7 +47,7 @@ function getUserCorpsCacheKey(userId: string): string {
 }
 
 function getCorporationAccessCacheKey(userId: string): string {
-	return `https://cache.local/users/${userId}/corporation-access`
+	return `https://cache.local/users/${userId}/corporation-access/v2`
 }
 
 /**
@@ -463,6 +463,9 @@ users.get('/corporation-access', async (c) => {
 				userRole: 'CEO' | 'Director' | 'admin' | 'hr_admin' | 'hr_reviewer' | 'hr_viewer'
 				characterId: string | null
 				characterName: string | null
+				isMemberCorporation: boolean
+				isAltCorp: boolean
+				isSpecialPurpose: boolean
 			}>
 		}>(cacheKey)
 		if (cached) {
@@ -505,6 +508,9 @@ users.get('/corporation-access', async (c) => {
 			userRole: 'CEO' | 'Director' | 'admin' | 'hr_admin' | 'hr_reviewer' | 'hr_viewer'
 			characterId: string | null
 			characterName: string | null
+			isMemberCorporation: boolean
+			isAltCorp: boolean
+			isSpecialPurpose: boolean
 		}> = []
 
 		if (characters.length > 0 && managedCorps.length > 0) {
@@ -622,6 +628,9 @@ users.get('/corporation-access', async (c) => {
 							userRole: bestRole.role,
 							characterId: bestRole.character.characterId,
 							characterName: bestRole.character.characterName,
+							isMemberCorporation: corp.isMemberCorporation,
+							isAltCorp: corp.isAltCorp,
+							isSpecialPurpose: corp.isSpecialPurpose,
 						}
 					}
 				} catch (error) {
@@ -651,16 +660,23 @@ users.get('/corporation-access', async (c) => {
 					userRole: 'admin',
 					characterId: null,
 					characterName: null,
+					isMemberCorporation: corp.isMemberCorporation,
+					isAltCorp: corp.isAltCorp,
+					isSpecialPurpose: corp.isSpecialPurpose,
 				})
 			}
 		}
 
-		// Also check HR roles across all managed corporations (non-admin users only)
+		// Also check HR roles across member corporations only (non-admin users only)
 		if (!user.is_admin) {
 			const accessibleCorpIds = new Set(accessibleCorporations.map((c) => c.corporationId))
 			const hrStub = getStub<Hr>(c.env.HR, 'default')
 			const hrCorpIds = await hrStub.getUserHrCorporations(user.id)
-			const uniqueHrCorpIds = [...new Set(hrCorpIds)].filter((id) => !accessibleCorpIds.has(id))
+			const managedCorpById = new Map(managedCorps.map((corp) => [corp.corporationId, corp]))
+			const uniqueHrCorpIds = [...new Set(hrCorpIds)].filter((id) => {
+				if (accessibleCorpIds.has(id)) return false
+				return managedCorpById.get(id)?.isMemberCorporation === true
+			})
 
 			if (uniqueHrCorpIds.length > 0) {
 				const roleHierarchy: Record<string, number> = {
@@ -682,7 +698,6 @@ users.get('/corporation-access', async (c) => {
 					}
 				}
 
-				const managedCorpById = new Map(managedCorps.map((corp) => [corp.corporationId, corp]))
 				const hrCorpResults = uniqueHrCorpIds.map((corpId) => {
 					const corp = managedCorpById.get(corpId)
 					if (!corp) return null
@@ -696,6 +711,9 @@ users.get('/corporation-access', async (c) => {
 						userRole: highestRole,
 						characterId: null,
 						characterName: null,
+						isMemberCorporation: corp.isMemberCorporation,
+						isAltCorp: corp.isAltCorp,
+						isSpecialPurpose: corp.isSpecialPurpose,
 					}
 				})
 

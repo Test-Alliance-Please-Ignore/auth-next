@@ -55,6 +55,7 @@ import {
 	useCanAccessCorporation,
 	useCorporationMembers,
 	useMyCorporation,
+	formatCorporationRoleLabel,
 } from '../../corporations/hooks'
 
 import type { GrantHrRoleRequest, HrRoleGrant, RevokeHrRoleRequest } from '@/features/hr'
@@ -167,7 +168,9 @@ export default function HrRolesManagement() {
 			assignableUsers
 				.map((member) => {
 					const existing = member.authUserId ? activeRoleByUserId.get(member.authUserId) : undefined
-					const roleHint = existing ? `Current: ${existing.role.replace('hr_', 'HR ')}` : 'No HR role'
+					const roleHint = existing
+						? `Current: ${formatCorporationRoleLabel(existing.role)}`
+						: 'No HR role'
 					return {
 						value: member.authUserId!,
 						label: member.mainCharacterName || member.characterName,
@@ -425,7 +428,7 @@ export default function HrRolesManagement() {
 						</p>
 						{userRole && (
 							<p className="text-sm text-muted-foreground mt-1">
-								Your role: <span className="font-medium">{userRole}</span>
+								Your role: <span className="font-medium">{formatCorporationRoleLabel(userRole)}</span>
 							</p>
 						)}
 					</div>

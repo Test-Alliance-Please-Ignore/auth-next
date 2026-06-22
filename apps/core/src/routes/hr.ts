@@ -1321,24 +1321,29 @@ app.get('/corporations', requireAuth(), async (c) => {
 
 		const hr = getHrStub(c)
 		const corporationIds = await hr.getUserHrCorporations(user.id)
-		const uniqueCorporationIds = [...new Set(corporationIds)]
+		const corporationMap = new Map(
+			(
+				await db.query.managedCorporations.findMany({
+					where: inArray(managedCorporations.corporationId, [...new Set(corporationIds)]),
+					columns: {
+						corporationId: true,
+						name: true,
+						ticker: true,
+						isMemberCorporation: true,
+						isAltCorp: true,
+						isSpecialPurpose: true,
+					},
+				})
+			).map((corp) => [corp.corporationId, corp])
+		)
+		// HR role grants are intentionally scoped to member corporations only.
+		const uniqueCorporationIds = [...new Set(corporationIds)].filter(
+			(corporationId) => corporationMap.get(corporationId)?.isMemberCorporation === true
+		)
 
 		if (uniqueCorporationIds.length === 0) {
 			return c.json([])
 		}
-
-		const corporations = await db.query.managedCorporations.findMany({
-			where: inArray(managedCorporations.corporationId, uniqueCorporationIds),
-			columns: {
-				corporationId: true,
-				name: true,
-				ticker: true,
-				isMemberCorporation: true,
-				isAltCorp: true,
-				isSpecialPurpose: true,
-			},
-		})
-		const corporationMap = new Map(corporations.map((corp) => [corp.corporationId, corp]))
 
 		const roleHierarchy: Record<'hr_viewer' | 'hr_reviewer' | 'hr_admin', number> = {
 			hr_admin: 3,
@@ -1360,21 +1365,21 @@ app.get('/corporations', requireAuth(), async (c) => {
 		}
 
 		const results = uniqueCorporationIds.map((corporationId) => {
-				const explicitRole = highestExplicitRoleByCorp.get(corporationId)
-				// getUserHrCorporations() also includes inferred leadership access (CEO/Director),
-				// which currently maps to admin-level HR capability.
-				const currentRole = explicitRole ?? 'hr_admin'
-				const corporation = corporationMap.get(corporationId)
-				return {
-					corporationId,
-					name: corporation?.name ?? `Corporation ${corporationId}`,
-					ticker: corporation?.ticker ?? '',
-					isMemberCorporation: corporation?.isMemberCorporation ?? false,
-					isAltCorp: corporation?.isAltCorp ?? false,
-					isSpecialPurpose: corporation?.isSpecialPurpose ?? false,
-					currentRole,
-				}
-			})
+			const explicitRole = highestExplicitRoleByCorp.get(corporationId)
+			// getUserHrCorporations() also includes inferred leadership access (CEO/Director),
+			// which currently maps to admin-level HR capability.
+			const currentRole = explicitRole ?? 'hr_admin'
+			const corporation = corporationMap.get(corporationId)
+			return {
+				corporationId,
+				name: corporation?.name ?? `Corporation ${corporationId}`,
+				ticker: corporation?.ticker ?? '',
+				isMemberCorporation: corporation?.isMemberCorporation ?? false,
+				isAltCorp: corporation?.isAltCorp ?? false,
+				isSpecialPurpose: corporation?.isSpecialPurpose ?? false,
+				currentRole,
+			}
+		})
 
 		return c.json(
 			results
