@@ -1737,6 +1737,9 @@ app.get('/:corporationId/members', requireAuth(), async (c) => {
 					? await hrStub.checkCharactersBlacklisted(pageCharacterIds)
 					: {}
 
+			// These are lightweight member-summary fields used by list/search pages.
+			// They intentionally stop short of private character hydration so they
+			// remain non-alerting and safe to use in incidental list views.
 			const pageMembers: CorporationMemberListItem[] = paged.items.map((item) => {
 				const linkedChar = linkedCharacterMap.get(item.characterId)
 				return {

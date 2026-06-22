@@ -7,6 +7,7 @@ import { logger } from '@repo/hono-helpers'
 
 import { userCharacters, users } from '../db/schema'
 import { waitUntilWithTelemetry } from '../lib/background-task'
+import { queueImmunitasAccessAlertForUser } from '../lib/immunitas-alerts'
 import {
 	didTokenTransitionFromValidToInvalid,
 	queueTokenInvalidationAlertsForUser,
@@ -25,7 +26,7 @@ import type { EveCharacterData } from '@repo/eve-character-data'
 import type { EveCorporationData } from '@repo/eve-corporation-data'
 import type { Core as CoreRpc } from '@repo/core'
 import type { Hr } from '@repo/hr'
-import type { App } from '../context'
+import type { App, SessionUser } from '../context'
 
 // Helper to transform and enrich skills data
 async function transformAndEnrichSkillsData(skills: any, env: any) {
@@ -92,6 +93,31 @@ async function transformAndEnrichSkillsData(skills: any, env: any) {
 	}
 
 	return transformed
+}
+
+function transformCharacterSkills(skills: any): {
+	skills: Array<{
+		activeSkillLevel: number
+		skillId: number | string
+		skillpointsInSkill: number
+		trainedSkillLevel: number
+	}>
+	totalSp: number
+	unallocatedSp: number | undefined
+} | null {
+	if (!skills) return null
+
+	return {
+		skills:
+			skills.skills?.map((skill: any) => ({
+				activeSkillLevel: skill.active_skill_level ?? skill.activeSkillLevel,
+				skillId: skill.skill_id ?? skill.skillId,
+				skillpointsInSkill: skill.skillpoints_in_skill ?? skill.skillpointsInSkill,
+				trainedSkillLevel: skill.trained_skill_level ?? skill.trainedSkillLevel,
+			})) ?? [],
+		totalSp: skills.total_sp ?? skills.totalSp ?? 0,
+		unallocatedSp: skills.unallocated_sp ?? skills.unallocatedSp,
+	}
 }
 
 // Helper to transform and enrich skill queue data
@@ -184,6 +210,238 @@ async function getImmunitasCharacterOwner(db: any, characterId: string): Promise
 		userId: owner.userId,
 		characterName: owner.characterName,
 		immunitas: user?.immunitas === true,
+	}
+}
+
+type CharacterAccessContext = {
+	db: any
+	user: SessionUser
+	targetOwner: {
+		userId: string
+		characterName: string
+		immunitas: boolean
+	} | null
+	isActualOwner: boolean
+	isAdmin: boolean
+	isCeoOrDirector: boolean
+	viewerRole: 'CEO' | 'Director' | null
+	hasHrViewerAccess: boolean
+	hasHrPageAccess: boolean
+	actualOwner: {
+		userId: string
+		characterName: string
+	} | null
+	viewedAsAdmin: boolean
+	viewedAsCeoOrDirector: boolean
+	viewedAsHrViewer: boolean
+}
+
+function canViewCharacterSharedDetails(access: {
+	isActualOwner: boolean
+	isAdmin: boolean
+	hasHrViewerAccess: boolean
+	hasHrPageAccess: boolean
+	isCeoOrDirector: boolean
+}): boolean {
+	return (
+		access.isActualOwner ||
+		access.isAdmin ||
+		access.hasHrPageAccess ||
+		access.hasHrViewerAccess ||
+		access.isCeoOrDirector
+	)
+}
+
+function canViewCharacterPrivateDetails(access: CharacterAccessContext): boolean {
+	return canViewCharacterSharedDetails(access)
+}
+
+function shouldBlockCharacterPrivateAccess(access: Pick<CharacterAccessContext, 'isActualOwner' | 'targetOwner'>): boolean {
+	return access.targetOwner?.immunitas === true && !access.isActualOwner
+}
+
+async function resolveCharacterAccessContext(
+	c: Context<App>,
+	characterIdStr: string,
+	characterId: ReturnType<typeof createEveCharacterId>,
+	hrCorporationId: string | null
+): Promise<CharacterAccessContext | Response> {
+	const user = c.get('user')!
+	const db = c.get('db')
+
+	if (!db) {
+		return c.json({ error: 'Database not available' }, 500)
+	}
+
+	const targetOwner = await getImmunitasCharacterOwner(db, characterIdStr)
+	const isActualOwner = user.characters.some(
+		(char) => char.characterId.toString() === characterIdStr
+	)
+	const isAdmin = user.is_admin
+
+	let isCeoOrDirector = false
+	let viewerRole: 'CEO' | 'Director' | null = null
+	let hasHrViewerAccess = false
+	let hasHrPageAccess = false
+
+	if (!isActualOwner && !isAdmin) {
+		if (hrCorporationId) {
+			try {
+				const hrStub = getStub<Hr>(c.env.HR, 'default')
+				const accessState = await resolveHrAccessState({
+					env: c.env,
+					userId: user.id,
+					isSiteAdmin: user.is_admin,
+					hrStub,
+				})
+				hasHrPageAccess = accessState.hasHrAccess
+
+				if (!hasHrPageAccess) {
+					hasHrViewerAccess = await hrStub.checkPermission(user.id, hrCorporationId, 'hr_viewer')
+				}
+			} catch (error) {
+				logger.warn('[Character Detail] Error checking HR access:', {
+					characterId: characterIdStr,
+					hrCorporationId,
+					error: error instanceof Error ? error.message : String(error),
+				})
+			}
+		}
+
+		if (!hasHrPageAccess) {
+			const eveCharacterDataStubForAuth = getStub<EveCharacterData>(
+				c.env.EVE_CHARACTER_DATA,
+				characterId
+			)
+			try {
+				const charInfoInstance = await eveCharacterDataStubForAuth.getInstance(characterId)
+				const charInfo = await charInfoInstance.getCharacterInfo()
+
+				if (charInfo?.corporationId) {
+					const corporationId = String(charInfo.corporationId)
+
+					for (const userChar of user.characters) {
+						const userCharStub = getStub<EveCharacterData>(
+							c.env.EVE_CHARACTER_DATA,
+							userChar.characterId
+						)
+						try {
+							const userCharInstance = await userCharStub.getInstance(userChar.characterId)
+							const userCharInfo = await userCharInstance.getCharacterInfo()
+
+							if (!userCharInfo || String(userCharInfo.corporationId) !== corporationId) {
+								continue
+							}
+
+							const corpStub = getStub<EveCorporationData>(
+								c.env.EVE_CORPORATION_DATA,
+								corporationId
+							)
+							try {
+								const [corpInfo, directors] = await Promise.all([
+									corpStub.getCorporationInfo(corporationId),
+									corpStub.getDirectors(corporationId),
+								])
+
+								if (corpInfo && String(corpInfo.ceoId) === userChar.characterId) {
+									isCeoOrDirector = true
+									viewerRole = 'CEO'
+									logger.info('[Character Detail] CEO access granted', {
+										characterId: characterIdStr,
+										viewerCharacterId: userChar.characterId,
+										corporationId,
+									})
+									break
+								}
+
+								const isDirector = directors.some(
+									(d: { characterId: string }) => d.characterId === userChar.characterId
+								)
+								if (isDirector) {
+									isCeoOrDirector = true
+									viewerRole = 'Director'
+									logger.info('[Character Detail] Director access granted', {
+										characterId: characterIdStr,
+										viewerCharacterId: userChar.characterId,
+										corporationId,
+									})
+									break
+								}
+							} catch (error) {
+								logger.warn('[Character Detail] Error checking corporation access:', {
+									characterId: characterIdStr,
+									error: error instanceof Error ? error.message : String(error),
+								})
+							}
+						} catch (error) {
+							logger.warn('[Character Detail] Error checking character access:', {
+								characterId: characterIdStr,
+								error: error instanceof Error ? error.message : String(error),
+							})
+						}
+						if (isCeoOrDirector) break
+					}
+				}
+			} catch (error) {
+				logger.warn('[Character Detail] Error checking corporation access:', {
+					characterId: characterIdStr,
+					error: error instanceof Error ? error.message : String(error),
+				})
+			}
+		}
+	}
+
+	const hasSharedCharacterAccess = canViewCharacterSharedDetails({
+		isActualOwner,
+		isAdmin,
+		hasHrViewerAccess,
+		hasHrPageAccess,
+		isCeoOrDirector,
+	})
+
+	if (!hasSharedCharacterAccess) {
+		return c.json({ error: 'You do not have permission to view this character' }, 403)
+	}
+
+	let actualOwner: { userId: string; characterName: string } | null = null
+	const viewedAsAdmin = isAdmin && !isActualOwner
+	const viewedAsCeoOrDirector = isCeoOrDirector && !isActualOwner
+	const viewedAsHrViewer =
+		(hasHrViewerAccess || hasHrPageAccess) && !isActualOwner && !isAdmin && !isCeoOrDirector
+
+	if (viewedAsAdmin) {
+		try {
+			const ownerRecord = await db
+				.select({
+					userId: userCharacters.userId,
+					characterName: userCharacters.characterName,
+				})
+				.from(userCharacters)
+				.where(eq(userCharacters.characterId, characterIdStr))
+				.limit(1)
+
+			if (ownerRecord.length > 0) {
+				actualOwner = ownerRecord[0]
+			}
+		} catch (error) {
+			logger.error('Error fetching character owner:', error)
+		}
+	}
+
+	return {
+		db,
+		user,
+		targetOwner,
+		isActualOwner,
+		isAdmin,
+		isCeoOrDirector,
+		viewerRole,
+		hasHrViewerAccess,
+		hasHrPageAccess,
+		actualOwner,
+		viewedAsAdmin,
+		viewedAsCeoOrDirector,
+		viewedAsHrViewer,
 	}
 }
 
@@ -297,377 +555,109 @@ app.post('/ownership', requireAuth(), async (c) => {
 })
 
 /**
- * GET /characters/:characterId
- * Get detailed character information with access control
- *
- * Authorization:
- * - Character owner can view their own character
- * - Site admins can view any character
- * - All others receive 403 Forbidden
- *
- * Returns:
- * - Sensitive data for owner or admin
- * - viewedAsAdmin flag when admin views another user's character
+ * GET /characters/:characterId/private
+ * Fetch private profile data and skills for intentional profile-detail hydration only.
+ * This route shares the same visibility matrix as the overview route, with the
+ * additional immunitas gate for non-owner access. It is the only character
+ * profile route that queues profile-data immunitas access alerts.
  */
-app.get('/:characterId', requireAuth(), async (c) => {
+app.get('/:characterId/private', requireAuth(), async (c) => {
 	const characterIdStr = c.req.param('characterId')
 	const characterId = createEveCharacterId(characterIdStr)
 	const hrCorporationId = c.req.query('corporationId')?.trim() || null
-	const user = c.get('user')!
-	const db = c.get('db')
+	const accessOrResponse = await resolveCharacterAccessContext(c, characterIdStr, characterId, hrCorporationId)
 
-	if (!db) {
-		return c.json({ error: 'Database not available' }, 500)
+	if (accessOrResponse instanceof Response) {
+		return accessOrResponse
 	}
 
-	const targetOwner = await getImmunitasCharacterOwner(db, characterIdStr)
-
-	// Check if user owns this character
-	const isActualOwner = user.characters.some(
-		(char) => char.characterId.toString() === characterIdStr
-	)
-	const isAdmin = user.is_admin
-
-	// Check if user is CEO/Director of character's corporation
-	let isCeoOrDirector = false
-	let viewerRole: 'CEO' | 'Director' | null = null
-	let hasHrViewerAccess = false
-	let hasHrPageAccess = false
-
-	if (!isActualOwner && !isAdmin) {
-		if (hrCorporationId) {
-			try {
-				const hrStub = getStub<Hr>(c.env.HR, 'default')
-				const accessState = await resolveHrAccessState({
-					env: c.env,
-					userId: user.id,
-					isSiteAdmin: user.is_admin,
-					hrStub,
-				})
-				hasHrPageAccess = accessState.hasHrAccess
-
-				if (!hasHrPageAccess) {
-					hasHrViewerAccess = await hrStub.checkPermission(user.id, hrCorporationId, 'hr_viewer')
-				}
-			} catch (error) {
-				logger.warn('[Character Detail] Error checking HR access:', {
-					characterId: characterIdStr,
-					hrCorporationId,
-					error: error instanceof Error ? error.message : String(error),
-				})
-			}
-		}
-
-		if (!hasHrPageAccess) {
-			// Get character's corporation to check CEO/Director access
-			const eveCharacterDataStubForAuth = getStub<EveCharacterData>(
-				c.env.EVE_CHARACTER_DATA,
-				characterId
-			)
-			try {
-				const charInfoInstance = await eveCharacterDataStubForAuth.getInstance(characterId)
-				const charInfo = await charInfoInstance.getCharacterInfo()
-
-				if (charInfo?.corporationId) {
-					const corporationId = String(charInfo.corporationId)
-
-					// Check if any of user's characters are CEO/Director of this corporation
-					for (const userChar of user.characters) {
-						const userCharStub = getStub<EveCharacterData>(
-							c.env.EVE_CHARACTER_DATA,
-							userChar.characterId
-						)
-						try {
-							const userCharInstance = await userCharStub.getInstance(userChar.characterId)
-							const userCharInfo = await userCharInstance.getCharacterInfo()
-
-							// Skip if user's character not in the same corporation
-							if (!userCharInfo || String(userCharInfo.corporationId) !== corporationId) {
-								continue
-							}
-
-							// Get corporation info and directors
-							const corpStub = getStub<EveCorporationData>(c.env.EVE_CORPORATION_DATA, corporationId)
-							try {
-								const [corpInfo, directors] = await Promise.all([
-									corpStub.getCorporationInfo(corporationId),
-									corpStub.getDirectors(corporationId),
-								])
-
-								// Check if CEO
-								if (corpInfo && String(corpInfo.ceoId) === userChar.characterId) {
-									isCeoOrDirector = true
-									viewerRole = 'CEO'
-									logger.info('[Character Detail] CEO access granted', {
-										characterId: characterIdStr,
-										viewerCharacterId: userChar.characterId,
-										corporationId,
-									})
-									break
-								}
-
-								// Check if Director
-								const isDirector = directors.some(
-									(d: { characterId: string }) => d.characterId === userChar.characterId
-								)
-								if (isDirector) {
-									isCeoOrDirector = true
-									viewerRole = 'Director'
-									logger.info('[Character Detail] Director access granted', {
-										characterId: characterIdStr,
-										viewerCharacterId: userChar.characterId,
-										corporationId,
-									})
-									break
-								}
-							} catch (error) {
-								logger.warn('[Character Detail] Error checking corporation access:', {
-									characterId: characterIdStr,
-									error: error instanceof Error ? error.message : String(error),
-								})
-								// Continue to authorization check below
-							}
-						} catch (error) {
-							logger.warn('[Character Detail] Error checking character access:', {
-								characterId: characterIdStr,
-								error: error instanceof Error ? error.message : String(error),
-							})
-							// Continue to authorization check below
-						}
-						// If we found CEO/Director access, break out of the loop
-						if (isCeoOrDirector) break
-					}
-				}
-			} catch (error) {
-				logger.warn('[Character Detail] Error checking corporation access:', {
-					characterId: characterIdStr,
-					error: error instanceof Error ? error.message : String(error),
-				})
-				// Continue to authorization check below
-			}
-		}
-	}
-
-	// Authorization: Must be owner OR admin OR HR page viewer (any HR access in page context)
-	// OR corp-scoped HR viewer OR CEO/Director of same corp.
-	if (!isActualOwner && !isAdmin && !hasHrPageAccess && !hasHrViewerAccess && !isCeoOrDirector) {
-		return c.json({ error: 'You do not have permission to view this character' }, 403)
-	}
-
-	// For admins viewing someone else's character, fetch the actual owner info
-	let actualOwner: { userId: string; characterName: string } | null = null
-	const viewedAsAdmin = isAdmin && !isActualOwner
-	const viewedAsCeoOrDirector = isCeoOrDirector && !isActualOwner
-	const viewedAsHrViewer =
-		(hasHrViewerAccess || hasHrPageAccess) && !isActualOwner && !isAdmin && !isCeoOrDirector
-
-	if (viewedAsAdmin) {
-		try {
-			const ownerRecord = await db
-				.select({
-					userId: userCharacters.userId,
-					characterName: userCharacters.characterName,
-				})
-				.from(userCharacters)
-				.where(eq(userCharacters.characterId, characterIdStr))
-				.limit(1)
-
-			if (ownerRecord.length > 0) {
-				actualOwner = ownerRecord[0]
-			}
-		} catch (error) {
-			logger.error('Error fetching character owner:', error)
-			// Continue anyway - this is just for context
-		}
-	}
-
-	// Treat admins/HR viewers as privileged for private data access purposes,
-	// but immunitas targets never expose private sections to anyone except the owner.
-	const canViewSensitiveData =
-		isActualOwner ||
-		((isAdmin || hasHrViewerAccess || hasHrPageAccess) && !targetOwner?.immunitas)
-	const isOwner = isActualOwner || isAdmin
-	const canViewSkillData = isActualOwner || !targetOwner?.immunitas
-
-	// Get EVE Character Data DO stub
+	const access = accessOrResponse
 	const eveCharacterDataStub = getStub<EveCharacterData>(c.env.EVE_CHARACTER_DATA, characterId)
 	const eveCharacterData = await eveCharacterDataStub.getInstance(characterId)
+	const eveTokenStore = c.get('eveTokenStore')
+
+	if (!eveTokenStore) {
+		logger.error('eveTokenStore not found in context!')
+		return c.json({ error: 'Token store not initialized' }, 500)
+	}
 
 	try {
-		// Fetch all public character data pieces
-		let [info, corporationHistory, skills, attributes, lastUpdated] = await Promise.all([
-			eveCharacterData.getCharacterInfo(),
-			eveCharacterData.getCorporationHistory(),
+		const targetOwner = access.targetOwner
+		if (targetOwner && shouldBlockCharacterPrivateAccess(access)) {
+			const coreStub = getStub<CoreRpc>(c.env.CORE, 'default')
+			const requestorCharacterLabel =
+				access.user.characters.find((char) => char.characterId === access.user.mainCharacterId)
+					?.characterName ??
+				access.user.characters.find((char) => char.is_primary)?.characterName ??
+				access.user.characters[0]?.characterName ??
+				null
+			const executionCtx = getExecutionContextOrNull(c)
+			const queueAlert = () =>
+				queueImmunitasAccessAlertForUser(coreStub, {
+					targetUserId: targetOwner.userId,
+					targetCharacterLabel: targetOwner.characterName,
+					requestorUserId: access.user.id,
+					requestorCharacterLabel,
+					accessType: 'profile-data',
+					source: 'characters.private',
+				})
+			if (executionCtx) {
+				await waitUntilWithTelemetry(executionCtx, 'characters.immunitas-profile-alert', queueAlert)
+			} else {
+				await queueAlert()
+			}
+			return c.json({ error: 'You do not have permission to view this character' }, 403)
+		}
+
+		const canViewSensitiveData = canViewCharacterPrivateDetails(access)
+
+		if (!canViewSensitiveData) {
+			return c.json({ error: 'You do not have permission to view this character' }, 403)
+		}
+
+		const [skills, allSkills] = await Promise.all([
 			eveCharacterData.getSkills(),
-			eveCharacterData.getAttributes(),
-			eveCharacterData.getLastUpdated(),
-		])
-
-		// If character not found in database, try to auto-fetch from ESI
-		if (!info) {
-			logger.info('[Character Detail] Character not in database, attempting auto-fetch', {
-				characterId: characterIdStr,
-			})
-
-			try {
-				// Fetch public character data from ESI and store in database
-				await eveCharacterData.fetchCharacterData()
-
-				// Retry fetching from database after auto-fetch
-				const [newInfo, newCorporationHistory] = await Promise.all([
-					eveCharacterData.getCharacterInfo(),
-					eveCharacterData.getCorporationHistory(),
-				])
-
-				if (newInfo) {
-					// Successfully fetched and stored - update variables
-					info = newInfo
-					corporationHistory = newCorporationHistory
-
-					logger.info('[Character Detail] Auto-fetch successful', {
-						characterId: characterIdStr,
-						characterName: newInfo.name,
-					})
-				} else {
-					// Still not found after fetch - character doesn't exist in ESI
-					logger.warn('[Character Detail] Character not found in ESI', {
-						characterId: characterIdStr,
-					})
-					return c.json({ error: 'Character not found' }, 404)
-				}
-			} catch (error) {
-				// Auto-fetch failed - log and return 404
-				logger.error('[Character Detail] Auto-fetch failed', {
+			getStub<any>(c.env.SKILLS, 'default').getAllSkills().catch((error: unknown) => {
+				logger.warn('[Character Detail] Failed to fetch skill catalog, falling back to trained-only', {
 					characterId: characterIdStr,
+					requestingUserId: access.user.id,
 					error: error instanceof Error ? error.message : String(error),
 				})
-				return c.json({ error: 'Character not found' }, 404)
-			}
-		}
+				return []
+			}),
+		])
 
-		// Initialize entity resolver service
-		const eveTokenStore = c.get('eveTokenStore')
+		const [enrichedSkills, sensitiveData] = await Promise.all([
+			transformAndEnrichSkillsData(skills, c.env),
+			eveCharacterData.getSensitiveData(),
+		])
 
-		if (!eveTokenStore) {
-			logger.error('eveTokenStore not found in context!')
-			return c.json({ error: 'Token store not initialized' }, 500)
-		}
-
-		const resolver = new EntityResolverService(eveTokenStore)
-
-		// Collect all entity IDs that need resolution
-		const idsToResolve: string[] = [String(info.corporationId)]
-		if (info.allianceId) {
-			idsToResolve.push(String(info.allianceId))
-		}
-
-		// Add corporation history IDs
-		if (corporationHistory && corporationHistory.length > 0) {
-			const historyCorpIds: string[] = [
-				...new Set<string>(
-					corporationHistory.map(
-						(entry: {
-							corporationId: string
-							recordId: string
-							startDate: string
-							isDeleted?: boolean
-						}) => String(entry.corporationId)
-					)
-				),
-			]
-			idsToResolve.push(...historyCorpIds)
-		}
-
-		// Deduplicate all IDs (alliance might be same as a corp in history)
-		const uniqueIds = [...new Set(idsToResolve)]
-
-		// Resolve all entity names in bulk
-		const entityNames = await resolver.resolveEntityNames(uniqueIds)
-
-		// Enrich character info with resolved names
-		const enrichedInfo = {
-			...info,
-			corporationName: entityNames.get(String(info.corporationId)) || undefined,
-			allianceName: info.allianceId
-				? entityNames.get(String(info.allianceId)) || undefined
-				: undefined,
-		}
-
-		// Enrich corporation history with resolved names
-		const enrichedCorporationHistory = corporationHistory
-			? corporationHistory.map(
-					(entry: {
-						corporationId: string
-						recordId: string
-						startDate: string
-						isDeleted?: boolean
-					}) => ({
-						...entry,
-						corporationName:
-							entityNames.get(String(entry.corporationId)) || `Corporation #${entry.corporationId}`,
-					})
-				)
-			: []
-
-		let enrichedSkills: any = null
-		let allSkills: any[] = []
-		if (canViewSkillData) {
-			// Enrich skills with metadata and fetch full skill catalog
-			const skillsStub = getStub<any>(c.env.SKILLS, 'default')
-			;[enrichedSkills, allSkills] = await Promise.all([
-				transformAndEnrichSkillsData(skills, c.env),
-				skillsStub.getAllSkills().catch((error: unknown) => {
-					logger.warn('[Character Detail] Failed to fetch skill catalog, falling back to trained-only', {
-						characterId: characterIdStr,
-						requestingUserId: user.id,
-						isOwner,
-						viewedAsAdmin,
-						viewedAsCeoOrDirector,
-						error: error instanceof Error ? error.message : String(error),
-					})
-					return []
-				}),
-			])
-		}
-
-		// Build response with public data
 		const response: any = {
 			characterId: characterIdStr,
-			isOwner,
-			viewedAsAdmin,
-			viewedAsCeoOrDirector,
-			viewedAsHrViewer,
-			viewerRole,
-			public: {
-				info: enrichedInfo,
-				corporationHistory: enrichedCorporationHistory,
-				skills: enrichedSkills,
-				allSkills,
-				attributes,
-			},
-			lastUpdated,
+			isOwner: access.isActualOwner || access.isAdmin,
+			viewedAsAdmin: access.viewedAsAdmin,
+			viewedAsCeoOrDirector: access.viewedAsCeoOrDirector,
+			viewedAsHrViewer: access.viewedAsHrViewer,
+			viewerRole: access.viewerRole,
+			skills: enrichedSkills,
+			allSkills,
 		}
 
-		// Add owner info when admin views someone else's character
-		if (viewedAsAdmin && actualOwner) {
+		if (access.viewedAsAdmin && access.actualOwner) {
 			response.owner = {
-				userId: actualOwner.userId,
-				mainCharacterName: actualOwner.characterName,
+				userId: access.actualOwner.userId,
+				mainCharacterName: access.actualOwner.characterName,
 			}
 		}
 
-		// Add sensitive data for owner/admin/authorized HR viewers
-		if (canViewSensitiveData) {
-			const tokenState = await db
+		if (sensitiveData) {
+			const tokenState = await access.db
 				.select({ hasValidToken: userCharacters.hasValidToken })
 				.from(userCharacters)
 				.where(eq(userCharacters.characterId, characterIdStr))
 				.limit(1)
 			const sensitiveDataIsLive = shouldTreatSensitiveDataAsLive(tokenState[0]?.hasValidToken)
 
-			// Fetch live location and status only when the character still has a valid token.
-			// If the token is invalid, we keep the stored snapshot as "last known" state and
-			// let the UI render it as stale rather than overwriting it with misleading live state.
 			if (sensitiveDataIsLive) {
 				await Promise.all([
 					(async () => {
@@ -693,64 +683,231 @@ app.get('/:characterId', requireAuth(), async (c) => {
 				])
 			}
 
-			const sensitiveData = await eveCharacterData.getSensitiveData()
+			// Fetch live snapshot data for the profile detail panel.
+			if (sensitiveData.location) {
+				const locationIds: string[] = []
 
-			if (sensitiveData) {
-				// Enrich skill queue with metadata
-				const enrichedSkillQueue = await transformAndEnrichSkillQueue(
-					sensitiveData.skillQueue,
-					c.env
-				)
+				if (sensitiveData.location.solarSystemId) {
+					locationIds.push(String(sensitiveData.location.solarSystemId))
+				}
+				if (sensitiveData.location.stationId) {
+					locationIds.push(String(sensitiveData.location.stationId))
+				}
 
-				// Resolve location names if available
-				if (sensitiveData.location) {
-					const locationIds: string[] = []
+				if (locationIds.length > 0) {
+					const resolver = new EntityResolverService(eveTokenStore)
+					const locationNames = await resolver.resolveEntityNames(locationIds)
 
-					if (sensitiveData.location.solarSystemId) {
-						locationIds.push(String(sensitiveData.location.solarSystemId))
-					}
-					if (sensitiveData.location.stationId) {
-						locationIds.push(String(sensitiveData.location.stationId))
-					}
-
-					if (locationIds.length > 0) {
-						const locationNames = await resolver.resolveEntityNames(locationIds)
-
-						response.private = {
-							location: {
-								...sensitiveData.location,
-								solarSystemName: sensitiveData.location.solarSystemId
-									? locationNames.get(String(sensitiveData.location.solarSystemId)) || undefined
-									: undefined,
-								stationName: sensitiveData.location.stationId
-									? locationNames.get(String(sensitiveData.location.stationId)) || undefined
-									: undefined,
-							},
-							wallet: sensitiveData.wallet,
-							assets: sensitiveData.assets,
-							status: sensitiveData.status,
-							sensitiveDataIsLive,
-							skillQueue: enrichedSkillQueue,
-						}
-					} else {
-						response.private = {
-							location: sensitiveData.location,
-							wallet: sensitiveData.wallet,
-							assets: sensitiveData.assets,
-							status: sensitiveData.status,
-							sensitiveDataIsLive,
-							skillQueue: enrichedSkillQueue,
-						}
-					}
-				} else {
 					response.private = {
+						location: {
+							...sensitiveData.location,
+							solarSystemName: sensitiveData.location.solarSystemId
+								? locationNames.get(String(sensitiveData.location.solarSystemId)) || undefined
+								: undefined,
+							stationName: sensitiveData.location.stationId
+								? locationNames.get(String(sensitiveData.location.stationId)) || undefined
+								: undefined,
+						},
 						wallet: sensitiveData.wallet,
 						assets: sensitiveData.assets,
 						status: sensitiveData.status,
 						sensitiveDataIsLive,
-						skillQueue: enrichedSkillQueue,
+						skillQueue: await transformAndEnrichSkillQueue(sensitiveData.skillQueue, c.env),
+					}
+				} else {
+					response.private = {
+						location: sensitiveData.location,
+						wallet: sensitiveData.wallet,
+						assets: sensitiveData.assets,
+						status: sensitiveData.status,
+						sensitiveDataIsLive,
+						skillQueue: await transformAndEnrichSkillQueue(sensitiveData.skillQueue, c.env),
 					}
 				}
+			} else {
+				response.private = {
+					wallet: sensitiveData.wallet,
+					assets: sensitiveData.assets,
+					status: sensitiveData.status,
+					sensitiveDataIsLive,
+					skillQueue: await transformAndEnrichSkillQueue(sensitiveData.skillQueue, c.env),
+				}
+			}
+		}
+
+		return c.json(response)
+	} catch (error) {
+		logger.error('Error fetching private character data:', error)
+		return c.json({ error: 'Failed to fetch character data' }, 500)
+	}
+})
+
+/**
+ * GET /characters/:characterId/skills
+ * Fetch trained skill levels for owned characters and skill-planning UIs.
+ * This route is intentionally separate from profile hydration and does not queue alerts.
+ */
+app.get('/:characterId/skills', requireAuth(), async (c) => {
+	const characterIdStr = c.req.param('characterId')
+	const characterId = createEveCharacterId(characterIdStr)
+	const accessOrResponse = await resolveCharacterAccessContext(c, characterIdStr, characterId, null)
+
+	if (accessOrResponse instanceof Response) {
+		return accessOrResponse
+	}
+
+	const access = accessOrResponse
+	if (!access.isActualOwner && !access.isAdmin) {
+		return c.json({ error: 'You do not have permission to view this character' }, 403)
+	}
+
+	const eveCharacterDataStub = getStub<EveCharacterData>(c.env.EVE_CHARACTER_DATA, characterId)
+	const eveCharacterData = await eveCharacterDataStub.getInstance(characterId)
+
+	try {
+		let info = await eveCharacterData.getCharacterInfo()
+		if (!info) {
+			await eveCharacterData.fetchCharacterData()
+			info = await eveCharacterData.getCharacterInfo()
+		}
+
+		if (!info) {
+			return c.json({ error: 'Character not found' }, 404)
+		}
+
+		const skillsData = transformCharacterSkills(await eveCharacterData.getSkills())
+
+		return c.json({
+			characterId: characterIdStr,
+			characterName: info.name,
+			skills: skillsData?.skills ?? [],
+			totalSp: skillsData?.totalSp ?? 0,
+			unallocatedSp: skillsData?.unallocatedSp ?? null,
+		})
+	} catch (error) {
+		logger.error('Error fetching character skills:', error)
+		return c.json({ error: 'Failed to fetch character skills' }, 500)
+	}
+})
+
+/**
+ * GET /characters/:characterId
+ * Public overview for character detail pages and lightweight cards.
+ * This route intentionally excludes private profile fields and skill data.
+ */
+app.get('/:characterId', requireAuth(), async (c) => {
+	const characterIdStr = c.req.param('characterId')
+	const characterId = createEveCharacterId(characterIdStr)
+	const hrCorporationId = c.req.query('corporationId')?.trim() || null
+	const accessOrResponse = await resolveCharacterAccessContext(c, characterIdStr, characterId, hrCorporationId)
+
+	if (accessOrResponse instanceof Response) {
+		return accessOrResponse
+	}
+
+	const access = accessOrResponse
+	const eveCharacterDataStub = getStub<EveCharacterData>(c.env.EVE_CHARACTER_DATA, characterId)
+	const eveCharacterData = await eveCharacterDataStub.getInstance(characterId)
+
+	try {
+		let [info, corporationHistory, attributes, lastUpdated] = await Promise.all([
+			eveCharacterData.getCharacterInfo(),
+			eveCharacterData.getCorporationHistory(),
+			eveCharacterData.getAttributes(),
+			eveCharacterData.getLastUpdated(),
+		])
+
+		if (!info) {
+			logger.info('[Character Detail] Character not in database, attempting auto-fetch', {
+				characterId: characterIdStr,
+			})
+
+			try {
+				await eveCharacterData.fetchCharacterData()
+
+				const [newInfo, newCorporationHistory] = await Promise.all([
+					eveCharacterData.getCharacterInfo(),
+					eveCharacterData.getCorporationHistory(),
+				])
+
+				if (newInfo) {
+					info = newInfo
+					corporationHistory = newCorporationHistory
+
+					logger.info('[Character Detail] Auto-fetch successful', {
+						characterId: characterIdStr,
+						characterName: newInfo.name,
+					})
+				} else {
+					logger.warn('[Character Detail] Character not found in ESI', {
+						characterId: characterIdStr,
+					})
+					return c.json({ error: 'Character not found' }, 404)
+				}
+			} catch (error) {
+				logger.error('[Character Detail] Auto-fetch failed', {
+					characterId: characterIdStr,
+					error: error instanceof Error ? error.message : String(error),
+				})
+				return c.json({ error: 'Character not found' }, 404)
+			}
+		}
+
+		const eveTokenStore = c.get('eveTokenStore')
+		if (!eveTokenStore) {
+			logger.error('eveTokenStore not found in context!')
+			return c.json({ error: 'Token store not initialized' }, 500)
+		}
+
+		const resolver = new EntityResolverService(eveTokenStore)
+		const idsToResolve: string[] = [String(info.corporationId)]
+		if (info.allianceId) {
+			idsToResolve.push(String(info.allianceId))
+		}
+
+		if (corporationHistory && corporationHistory.length > 0) {
+			const historyCorpIds: string[] = [
+				...new Set<string>(
+					corporationHistory.map((entry: { corporationId: string }) => String(entry.corporationId))
+				),
+			]
+			idsToResolve.push(...historyCorpIds)
+		}
+
+		const uniqueIds = [...new Set(idsToResolve)]
+		const entityNames = await resolver.resolveEntityNames(uniqueIds)
+
+		const response: any = {
+			characterId: characterIdStr,
+			isOwner: access.isActualOwner || access.isAdmin,
+			viewedAsAdmin: access.viewedAsAdmin,
+			viewedAsCeoOrDirector: access.viewedAsCeoOrDirector,
+			viewedAsHrViewer: access.viewedAsHrViewer,
+			viewerRole: access.viewerRole,
+			public: {
+				info: {
+					...info,
+					corporationName: entityNames.get(String(info.corporationId)) || undefined,
+					allianceName: info.allianceId
+						? entityNames.get(String(info.allianceId)) || undefined
+						: undefined,
+				},
+				corporationHistory: corporationHistory
+					? corporationHistory.map((entry: { corporationId: string; recordId: string; startDate: string; isDeleted?: boolean }) => ({
+							...entry,
+							corporationName:
+								entityNames.get(String(entry.corporationId)) || `Corporation #${entry.corporationId}`,
+						}))
+					: [],
+				attributes,
+			},
+			lastUpdated,
+		}
+
+		if (access.viewedAsAdmin && access.actualOwner) {
+			response.owner = {
+				userId: access.actualOwner.userId,
+				mainCharacterName: access.actualOwner.characterName,
 			}
 		}
 

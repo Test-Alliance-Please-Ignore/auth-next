@@ -32,6 +32,10 @@ function getAccessTypeLabel(accessType: ImmunitasAccessType): string {
 	return accessType === 'profile-data' ? 'Profile data' : 'Fulcrum report'
 }
 
+function getAccessTypeColor(accessType: ImmunitasAccessType): number {
+	return accessType === 'profile-data' ? 0xf59e0b : 0xef4444
+}
+
 function formatRequestorGroups(groups: ImmunitasAccessRequestorGroup[], maxGroups = 6): string {
 	if (groups.length === 0) {
 		return 'Unknown'
@@ -74,11 +78,11 @@ export function buildImmunitasAccessAlertMessage(input: {
 }): MessageContent {
 	const accessTypeLabel = getAccessTypeLabel(input.accessType)
 	const attemptLabel =
-		input.attemptCount === 1 ? 'One blocked attempt' : `${input.attemptCount} blocked attempts`
+		input.attemptCount === 1 ? 'One unauthorized attempt' : `${input.attemptCount} unauthorized attempts`
 	const description =
 		input.attemptCount === 1
-			? 'One blocked attempt against an immunitas account was blocked.'
-			: `${input.attemptCount} blocked attempts against an immunitas account were blocked.`
+			? 'One unauthorized attempt to access an immunitas account was blocked.'
+			: `${input.attemptCount} unauthorized attempts to access an immunitas account were blocked.`
 	const fields: DiscordEmbed['fields'] = [
 		{
 			name: 'Access Type',
@@ -104,7 +108,7 @@ export function buildImmunitasAccessAlertMessage(input: {
 			{
 				title: `Unauthorized ${accessTypeLabel.toLowerCase()} access blocked`,
 				description,
-				color: 0xef4444,
+				color: getAccessTypeColor(input.accessType),
 				fields,
 				footer: {
 					text: 'Immunitas access notice',

@@ -26,6 +26,7 @@ describe('immunitas alerts message builder', () => {
 		expect(message.embeds?.[0]).toMatchObject({
 			title: 'Unauthorized fulcrum report access blocked',
 			timestamp: '2026-06-21T00:00:00.000Z',
+			color: 0xef4444,
 		})
 		expect(message.embeds?.[0]?.fields?.[2]?.name).toBe('Attempted By')
 		expect(message.embeds?.[0]?.fields?.[2]?.value).toContain(
@@ -35,5 +36,26 @@ describe('immunitas alerts message builder', () => {
 		expect(message.embeds?.[0]?.fields?.[2]?.value).toContain(
 			'• Requester Beta (1 blocked attempt)'
 		)
+	})
+
+	it('colors profile alerts differently from fulcrum alerts', () => {
+		const message = buildImmunitasAccessAlertMessage({
+			accessType: 'profile-data',
+			targetCharacterLabels: ['Target Pilot'],
+			requestorGroups: [
+				{
+					requestorUserId: 'requestor-1',
+					requestorLabels: ['Requester Alpha'],
+					attemptCount: 1,
+				},
+			],
+			attemptCount: 1,
+			updatedAt: new Date('2026-06-21T00:00:00.000Z'),
+		})
+
+		expect(message.embeds?.[0]).toMatchObject({
+			title: 'Unauthorized profile data access blocked',
+			color: 0xf59e0b,
+		})
 	})
 })

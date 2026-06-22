@@ -2378,6 +2378,11 @@ export class ApiClient {
 		}
 	}
 
+	/**
+	 * Get the public character overview used by list rows and summary cards.
+	 * This endpoint intentionally omits private profile fields such as wallet,
+	 * location, status, skills, and skill queue.
+	 */
 	async getCharacterDetail(characterId: string, corporationId?: string): Promise<{
 		characterId: string
 		isOwner: boolean
@@ -2388,10 +2393,33 @@ export class ApiClient {
 		public: {
 			info: any
 			corporationHistory: any[]
-			skills: any
-			allSkills: any
 			attributes: any
 		}
+		owner?: {
+			userId: string
+			mainCharacterName: string
+		}
+		lastUpdated: string | null
+	}> {
+		const query = corporationId
+			? `?corporationId=${encodeURIComponent(corporationId)}`
+			: ''
+		return this.get(`/characters/${characterId}${query}`)
+	}
+
+	/**
+	 * Get the private character-profile hydration for explicit detail-page views.
+	 * This is the only profile-data fetch that can trigger the private-profile alert.
+	 */
+	async getCharacterPrivateDetail(characterId: string, corporationId?: string): Promise<{
+		characterId: string
+		isOwner: boolean
+		viewedAsAdmin: boolean
+		viewedAsCeoOrDirector: boolean
+		viewedAsHrViewer: boolean
+		viewerRole: 'CEO' | 'Director' | null
+		skills: any
+		allSkills: any[]
 		private?: {
 			location?: any
 			wallet?: any
@@ -2404,12 +2432,30 @@ export class ApiClient {
 			userId: string
 			mainCharacterName: string
 		}
-		lastUpdated: string | null
 	}> {
 		const query = corporationId
 			? `?corporationId=${encodeURIComponent(corporationId)}`
 			: ''
-		return this.get(`/characters/${characterId}${query}`)
+		return this.get(`/characters/${characterId}/private${query}`)
+	}
+
+	/**
+	 * Get trained skill levels only for planner and skill-specific views.
+	 * This route is separate from profile hydration and does not alert.
+	 */
+	async getCharacterSkillLevels(characterId: string): Promise<{
+		characterId: string
+		characterName: string
+		skills: Array<{
+			activeSkillLevel: number
+			skillId: number | string
+			skillpointsInSkill: number
+			trainedSkillLevel: number
+		}>
+		totalSp: number
+		unallocatedSp: number | null
+	}> {
+		return this.get(`/characters/${characterId}/skills`)
 	}
 
 	async getCharacterOwnerships(characterIds: string[]): Promise<Record<string, { userId: string }>> {

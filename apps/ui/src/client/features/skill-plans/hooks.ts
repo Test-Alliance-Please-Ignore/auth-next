@@ -293,8 +293,8 @@ export function useCharacterSkillLevels(characterId?: string) {
 				throw new Error('Character ID is required')
 			}
 
-			const detail = await apiClient.getCharacterDetail(characterId)
-			const trainedSkills = detail.public.skills?.skills ?? []
+			const detail = await apiClient.getCharacterSkillLevels(characterId)
+			const trainedSkills = detail.skills ?? []
 
 			const levels: Record<string, number> = {}
 			for (const skill of trainedSkills) {
@@ -303,7 +303,7 @@ export function useCharacterSkillLevels(characterId?: string) {
 
 			return {
 				characterId,
-				characterName: detail.public.info?.name ?? characterId,
+				characterName: detail.characterName ?? characterId,
 				levels,
 			}
 		},
@@ -319,8 +319,8 @@ export function useCharacterSkillLevelsForCharacters(
 		queries: characters.map((character) => ({
 			queryKey: skillPlanKeys.characterSkills(character.characterId),
 			queryFn: async () => {
-				const detail = await apiClient.getCharacterDetail(character.characterId)
-				const trainedSkills = detail.public.skills?.skills ?? []
+				const detail = await apiClient.getCharacterSkillLevels(character.characterId)
+				const trainedSkills = detail.skills ?? []
 
 				const levels: Record<string, number> = {}
 				for (const skill of trainedSkills) {
@@ -329,7 +329,7 @@ export function useCharacterSkillLevelsForCharacters(
 
 				return {
 					characterId: character.characterId,
-					characterName: detail.public.info?.name ?? character.characterId,
+					characterName: detail.characterName ?? character.characterId,
 					levels,
 				} satisfies CharacterSkillLevels
 			},

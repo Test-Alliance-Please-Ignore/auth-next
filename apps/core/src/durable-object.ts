@@ -2352,18 +2352,6 @@ export class CoreDO extends DurableObject<Env> implements Core {
 		> = {}
 
 		for (const [queueKey, entry] of dueEntries) {
-			if (entry.accessType === 'profile-data') {
-				await this.evictPendingImmunitasAccessAlert(
-					queueKey,
-					'profile-data alerting is no longer enabled'
-				)
-				this.logger.info('[CoreDO] Dropped legacy immunitas profile-data alert', {
-					queueKey,
-					targetUserId: entry.targetUserId,
-				})
-				continue
-			}
-
 			const user = await db.query.users.findFirst({
 				where: eq(users.id, entry.targetUserId),
 				columns: {

@@ -160,7 +160,9 @@ export const myCorporationsApi = {
 	},
 
 	/**
-	 * Get all members of a specific corporation
+	 * Get all members of a specific corporation.
+	 * This is member-summary metadata only; it is not the private-profile
+	 * hydration path and does not expose wallet, location, or skill data.
 	 * Requires CEO/director access
 	 */
 	async getCorporationMembers(
@@ -192,6 +194,11 @@ export const myCorporationsApi = {
 		return apiClient.post(`/corporations/${corporationId}/members/refresh`)
 	},
 
+	/**
+	 * Get the linked account summary for a corporation member.
+	 * This returns list/detail metadata like last login and location system,
+	 * not the private-profile fields that come from /characters/:id/private.
+	 */
 	async getCorporationMemberAccount(
 		corporationId: string,
 		accountId: string
