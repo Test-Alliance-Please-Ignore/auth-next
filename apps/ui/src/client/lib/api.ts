@@ -1448,6 +1448,16 @@ export interface AdminUserDetail {
 		membershipLevel: 'member' | 'admin' | 'owner'
 		joinedAt: string
 	}>
+	permissionGrants: Array<{
+		permissionId?: string | null
+		urn: string
+		name: string
+		description: string | null
+		groupId: string
+		groupName: string
+		targetType: 'all_members' | 'all_admins' | 'owner_only' | 'owner_and_admins'
+		source: 'global' | 'group_scoped'
+	}>
 	createdAt: string
 	updatedAt: string
 }

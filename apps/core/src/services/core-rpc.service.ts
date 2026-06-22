@@ -346,6 +346,24 @@ export class CoreRpcService {
 			console.error(`Failed to load groups for user ${userId}:`, error)
 		}
 
+		// 5.6 Fetch resolved permission grants for admin visibility.
+		let permissionGrants: UserDetails['permissionGrants'] = []
+		try {
+			const grants = await groupsStub.getUserPermissionGrants(userId)
+			permissionGrants = grants.map((grant) => ({
+				permissionId: grant.permissionId ?? null,
+				urn: grant.urn,
+				name: grant.name,
+				description: grant.description,
+				groupId: grant.groupId,
+				groupName: grant.groupName,
+				targetType: grant.targetType,
+				source: grant.source,
+			}))
+		} catch (error) {
+			console.error(`Failed to load permission grants for user ${userId}:`, error)
+		}
+
 		// 6. Build character summaries with token validation and blacklist status
 		const characterSummaries = await Promise.all(
 			chars.map(async (char) => {
@@ -406,6 +424,7 @@ export class CoreRpcService {
 			discord: discordStatus,
 			characters: characterSummaries,
 			groupMemberships,
+			permissionGrants,
 			createdAt: user.createdAt,
 			updatedAt: user.updatedAt,
 		}

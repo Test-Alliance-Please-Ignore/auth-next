@@ -613,6 +613,9 @@ export interface Groups {
 	/** Get all permissions for a specific user across all their groups */
 	getUserPermissions(userId: string): Promise<UserPermission[]>
 
+	/** Get all resolved permission grants for a specific user, including duplicate sources */
+	getUserPermissionGrants(userId: string): Promise<UserPermission[]>
+
 	/** Get permissions for all members of a specific group */
 	getGroupMemberPermissions(groupId: string): Promise<GetGroupMemberPermissionsResponse>
 
