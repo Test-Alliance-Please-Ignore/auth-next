@@ -11,7 +11,6 @@ import {
 	didTokenTransitionFromValidToInvalid,
 	queueTokenInvalidationAlertsForUser,
 } from '../lib/token-invalid-alerts'
-import { queueImmunitasAccessAlertForUser } from '../lib/immunitas-alerts'
 import { resolveHrAccessState } from '../lib/hr-access'
 import { validateAndSyncCharacterTokenValidity } from '../lib/token-validity'
 import { markCharacterTokenInvalidFromAuthFailure } from '../lib/token-validity'
@@ -322,39 +321,6 @@ app.get('/:characterId', requireAuth(), async (c) => {
 	}
 
 	const targetOwner = await getImmunitasCharacterOwner(db, characterIdStr)
-	const requestorCharacterName =
-		user.characters.find((char) => char.is_primary)?.characterName ??
-		user.characters[0]?.characterName ??
-		user.mainCharacterId
-	if (targetOwner?.immunitas && targetOwner.userId !== user.id) {
-		const executionCtx = getExecutionContextOrNull(c)
-		const queueTask = async () => {
-			const coreStub = getStub<CoreRpc>(c.env.CORE, 'default')
-			await queueImmunitasAccessAlertForUser(coreStub, {
-				targetUserId: targetOwner.userId,
-				targetCharacterLabel: targetOwner.characterName,
-				requestorUserId: user.id,
-				requestorCharacterLabel: requestorCharacterName,
-				accessType: 'profile-data',
-				source: 'character-detail-private-data',
-			})
-		}
-		if (executionCtx) {
-			waitUntilWithTelemetry(
-				executionCtx,
-				'characters.immunitas-profile-alert',
-				queueTask,
-				{
-					userId: user.id,
-					characterId: characterIdStr,
-					targetUserId: targetOwner.userId,
-					accessType: 'profile-data',
-				}
-			)
-		} else {
-			await queueTask()
-		}
-	}
 
 	// Check if user owns this character
 	const isActualOwner = user.characters.some(

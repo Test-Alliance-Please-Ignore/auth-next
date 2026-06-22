@@ -754,6 +754,7 @@ users.get('/my-corporations', async (c) => {
 				linkedMemberCount: number
 				unlinkedMemberCount: number
 				allianceId?: string
+				isMemberCorporation: boolean
 			}>
 		>(cacheKey)
 
@@ -810,6 +811,7 @@ users.get('/my-corporations', async (c) => {
 						corporationId: corp.corporationId,
 						name: corp.name,
 						ticker: corp.ticker,
+						isMemberCorporation: corp.isMemberCorporation,
 						userRole: 'admin' as const,
 						memberCount: coreData?.members?.length || 0,
 						linkedMemberCount,
@@ -958,6 +960,7 @@ users.get('/my-corporations', async (c) => {
 			corporationId: string
 			name: string
 			ticker: string
+			isMemberCorporation: boolean
 			userRole: 'CEO' | 'Director' | 'Both'
 			memberCount: number
 			linkedMemberCount: number
@@ -1018,6 +1021,7 @@ users.get('/my-corporations', async (c) => {
 				corporationId: corp.corporationId,
 				name: corp.name,
 				ticker: corp.ticker,
+				isMemberCorporation: corp.isMemberCorporation,
 				userRole: role,
 				memberCount: totalActiveMemberCount, // Only count active members (excludes emeritus)
 				linkedMemberCount,

@@ -95,6 +95,7 @@ export default function CorporationMembers() {
 	const isHrAdmin = userRole === 'hr_admin'
 	const isHrOnly =
 		userRole === 'hr_admin' || userRole === 'hr_reviewer' || userRole === 'hr_viewer' || isAuditor
+	const isMemberCorporation = corporation?.isMemberCorporation ?? false
 
 	// Can refresh data: CEO/Director/admin only
 	const canRefresh = isLeadership
@@ -102,18 +103,26 @@ export default function CorporationMembers() {
 	// Can export CSV: CEO/Director/admin/hr_admin
 	const canExport = isLeadership || isHrAdmin
 
-	// Can manage HR roles: CEO/admin/hr_admin
+	// Can manage HR roles: member corp only, with CEO/admin/hr_admin access
 	const canManageHrRoles = useMemo(() => {
-		return userRole === 'CEO' || userRole === 'admin' || userRole === 'hr_admin'
-	}, [userRole])
+		return (
+			isMemberCorporation &&
+			(userRole === 'CEO' || userRole === 'admin' || userRole === 'hr_admin')
+		)
+	}, [isMemberCorporation, userRole])
 	const grantableHrRoles = useMemo(
 		() =>
-			userRole === 'CEO'
-				? (['hr_admin', 'hr_reviewer', 'hr_viewer'] as const)
-				: (['hr_reviewer', 'hr_viewer'] as const),
-		[userRole]
+			!isMemberCorporation
+				? ([] as const)
+				: userRole === 'CEO'
+					? (['hr_admin', 'hr_reviewer', 'hr_viewer'] as const)
+					: (['hr_reviewer', 'hr_viewer'] as const),
+		[isMemberCorporation, userRole]
 	)
-	const canRevokeHrAdmin = useMemo(() => userRole === 'CEO' || userRole === 'admin', [userRole])
+	const canRevokeHrAdmin = useMemo(
+		() => isMemberCorporation && (userRole === 'CEO' || userRole === 'admin'),
+		[isMemberCorporation, userRole]
+	)
 
 	// Can manage emeritus status: CEO/site admin
 	const canManageEmeritus = userRole === 'CEO' || userRole === 'admin'

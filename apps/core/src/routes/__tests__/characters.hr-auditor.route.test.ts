@@ -8,9 +8,6 @@ import charactersRoutes from '../characters'
 import type { SessionUser } from '../../context'
 
 const hoisted = vi.hoisted(() => ({
-	core: {
-		queueImmunitasAccessAlert: vi.fn(),
-	},
 	hrAccess: {
 		resolveHrAccessState: vi.fn(),
 	},
@@ -154,11 +151,6 @@ describe('character detail access for HR page viewers', () => {
 		})
 		hoisted.hr.checkPermission.mockResolvedValue(false)
 		hoisted.hr.getUserHrCorporations.mockResolvedValue([])
-		hoisted.core.queueImmunitasAccessAlert.mockResolvedValue({
-			added: 1,
-			skipped: 0,
-			pendingCount: 1,
-		})
 		hoisted.resolver.resolveEntityNames.mockResolvedValue(
 			new Map([
 				['2001', 'Target Corp'],
@@ -200,9 +192,6 @@ describe('character detail access for HR page viewers', () => {
 			if (binding === env.ESI_TYPE_RESOLVER) {
 				return hoisted.resolver as any
 			}
-			if (binding === env.CORE) {
-				return hoisted.core as any
-			}
 			throw new Error('Unexpected binding')
 		})
 	})
@@ -224,7 +213,7 @@ describe('character detail access for HR page viewers', () => {
 		expect(body.private.status).toEqual({ state: 'active' })
 	})
 
-	it('suppresses private data and queues an immunitas alert for non-owner access', async () => {
+	it('suppresses private data for non-owner access', async () => {
 		hoisted.characterInstance.getSkills.mockResolvedValue({
 			skills: [
 				{
@@ -271,14 +260,6 @@ describe('character detail access for HR page viewers', () => {
 		const body = (await res.json()) as any
 		expect(body.public.skills).toBeNull()
 		expect(body.private).toBeUndefined()
-		expect(hoisted.core.queueImmunitasAccessAlert).toHaveBeenCalledWith({
-			targetUserId: 'target-user',
-			targetCharacterLabel: 'Target Pilot',
-			requestorUserId: 'user-1',
-			requestorCharacterLabel: 'Auditor Pilot',
-			accessType: 'profile-data',
-			source: 'character-detail-private-data',
-		})
 	})
 
 	it('blocks private data and skills for site admins viewing immunitas targets', async () => {
@@ -327,14 +308,6 @@ describe('character detail access for HR page viewers', () => {
 		const body = (await res.json()) as any
 		expect(body.public.skills).toBeNull()
 		expect(body.private).toBeUndefined()
-		expect(hoisted.core.queueImmunitasAccessAlert).toHaveBeenCalledWith({
-			targetUserId: 'target-user',
-			targetCharacterLabel: 'Target Pilot',
-			requestorUserId: 'user-1',
-			requestorCharacterLabel: 'Auditor Pilot',
-			accessType: 'profile-data',
-			source: 'character-detail-private-data',
-		})
 	})
 
 })

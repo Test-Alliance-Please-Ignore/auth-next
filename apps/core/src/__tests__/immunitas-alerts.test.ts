@@ -5,7 +5,7 @@ import { buildImmunitasAccessAlertMessage } from '../lib/immunitas-alerts'
 describe('immunitas alerts message builder', () => {
 	it('groups requestors by accessor user in the attempted by field', () => {
 		const message = buildImmunitasAccessAlertMessage({
-			accessType: 'profile-data',
+			accessType: 'fulcrum-report',
 			targetCharacterLabels: ['Target Pilot One', 'Target Pilot Two'],
 			requestorGroups: [
 				{
@@ -24,7 +24,7 @@ describe('immunitas alerts message builder', () => {
 		})
 
 		expect(message.embeds?.[0]).toMatchObject({
-			title: 'Unauthorized profile data access blocked',
+			title: 'Unauthorized fulcrum report access blocked',
 			timestamp: '2026-06-21T00:00:00.000Z',
 		})
 		expect(message.embeds?.[0]?.fields?.[2]?.name).toBe('Attempted By')

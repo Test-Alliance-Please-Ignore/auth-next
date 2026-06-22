@@ -98,6 +98,7 @@ export interface MyCorporation {
 	corporationId: string
 	name: string
 	ticker: string
+	isMemberCorporation: boolean
 	userRole: 'CEO' | 'Director' | 'Both' | 'admin'
 	memberCount: number
 	linkedMemberCount: number

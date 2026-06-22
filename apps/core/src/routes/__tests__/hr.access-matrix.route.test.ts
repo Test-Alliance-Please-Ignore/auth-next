@@ -253,8 +253,15 @@ describe('hr route access matrix', () => {
 		ADMIN: {
 			searchUsers: vi.fn().mockResolvedValue({ users: [], total: 0 }),
 			getUserDetails: vi.fn().mockResolvedValue(null),
-		},
-	} as any
+	},
+	LEGACY: {
+		listHistory: vi.fn().mockResolvedValue({
+			items: [],
+			pagination: { total: 0, page: 1, pageSize: 25 },
+		}),
+		getHistoryApplication: vi.fn().mockResolvedValue(null),
+	},
+} as any
 
 	let hrStub: ReturnType<typeof makeHrStub>
 	let resolverStub: ReturnType<typeof makeResolverStub>
@@ -274,6 +281,7 @@ describe('hr route access matrix', () => {
 			if (binding === env.ESI_TYPE_RESOLVER) return resolverStub as any
 			if (binding === env.ESI) return esiStub as any
 			if (binding === env.CORE) return env.CORE as any
+			if (binding === env.LEGACY) return env.LEGACY as any
 			throw new Error('Unexpected binding')
 		})
 	})
@@ -914,6 +922,39 @@ describe('hr route access matrix', () => {
 		expect(hrStub.createNote).toHaveBeenCalled()
 	})
 
+	it('denies legacy history to inferred leadership without an explicit member corp HR role', async () => {
+		hrStub.getUserRoles.mockResolvedValue([])
+		const app = createApp({ user: makeUser(), db: dbStub })
+		const res = await app.request('/api/hr/legacy/history', {}, env)
+
+		expect(res.status).toBe(403)
+		expect(hrStub.getUserRoles).toHaveBeenCalledWith('user-1')
+	})
+
+	it('allows legacy history for explicit HR roles on member corporations', async () => {
+		hrStub.getUserRoles.mockResolvedValue([
+			{
+				id: 'role-1',
+				corporationId: '1001',
+				userId: 'user-1',
+				characterId: '1001',
+				characterName: 'Main Pilot',
+				role: 'hr_viewer',
+				grantedBy: 'groups',
+				grantedAt: new Date().toISOString(),
+				expiresAt: null,
+				isActive: true,
+				createdAt: new Date().toISOString(),
+				updatedAt: new Date().toISOString(),
+			},
+		])
+		const app = createApp({ user: makeUser(), db: dbStub })
+		const res = await app.request('/api/hr/legacy/history', {}, env)
+
+		expect(res.status).toBe(200)
+		expect(hrStub.getUserRoles).toHaveBeenCalledWith('user-1')
+	})
+
 	it('keeps edit-note gate admin-only', async () => {
 		const app = createApp({ user: makeUser({ is_admin: false }), db: dbStub })
 		const res = await app.request(
@@ -1007,5 +1048,29 @@ describe('hr route access matrix', () => {
 
 		expect(res.status).toBe(201)
 		expect(hrStub.grantRole).toHaveBeenCalledWith('1001', 'target-user-1', 'hr_admin', 'user-1', undefined)
+	})
+
+	it('denies HR role management for alt corporations even for site admins', async () => {
+		const app = createApp({ user: makeUser({ is_admin: true }), db: dbStub })
+		const res = await app.request(
+			'/api/hr/2001/roles',
+			{
+				method: 'POST',
+				body: JSON.stringify({
+					userId: 'target-user-1',
+					characterId: '2001',
+					role: 'hr_reviewer',
+				}),
+				headers: { 'content-type': 'application/json' },
+			},
+			env
+		)
+
+		expect(res.status).toBe(403)
+		expect(await res.json()).toEqual({
+			error: 'Access denied. HR roles can only be managed for member corporations.',
+		})
+		expect(hrStub.grantRole).not.toHaveBeenCalled()
+		expect(esiStub.fetchCorporationPublicInfo).not.toHaveBeenCalled()
 	})
 })
