@@ -18,6 +18,8 @@ const serviceMocks = vi.hoisted(() => ({
 		createdAt: new Date('2026-06-11T12:00:00.000Z'),
 		isFirstApplication: true,
 	}),
+	getApplication: vi.fn(),
+	updateApplicationStatus: vi.fn().mockResolvedValue(undefined),
 }))
 
 vi.mock('@repo/do-utils', () => ({
@@ -108,6 +110,8 @@ describe('HR application submission alerts', () => {
 		getStubMock.mockImplementation(() => {
 			return {
 				submitApplication: serviceMocks.submitApplication,
+				getApplication: serviceMocks.getApplication,
+				updateApplicationStatus: serviceMocks.updateApplicationStatus,
 			}
 		})
 		serviceMocks.dispatchCorporationAlert.mockResolvedValue({
@@ -115,6 +119,27 @@ describe('HR application submission alerts', () => {
 			destinationCount: 1,
 			sentCount: 1,
 			failedCount: 0,
+		})
+		serviceMocks.getApplication.mockResolvedValue({
+			id: 'app-1',
+			corporationId: 'corp-1',
+			userId: 'user-1',
+			characterId: 'main-1',
+			characterName: 'Main Pilot',
+			applicationText: 'Let me in.',
+			status: 'pending',
+			reviewedBy: null,
+			reviewedByCharacterName: null,
+			reviewedAt: null,
+			reviewNotes: null,
+			createdAt: new Date('2026-06-11T12:00:00.000Z'),
+			updatedAt: new Date('2026-06-11T12:00:00.000Z'),
+			lastStaffInteractionAt: null,
+			altCharacterIds: ['alt-1'],
+			isFirstApplication: true,
+			recommendations: [],
+			recommendationCount: 0,
+			activityLog: [],
 		})
 	})
 
@@ -165,6 +190,105 @@ describe('HR application submission alerts', () => {
 					isFirstApplication: true,
 					submittedAt: '2026-06-11T12:00:00.000Z',
 				}),
+			})
+		)
+	})
+
+	it('dispatches a first-time acceptance alert after acceptance', async () => {
+		const app = createApp(makeUser(), createDb())
+		const executionCtx = createExecutionContext()
+		const response = await app.request(
+			'/api/hr/applications/app-1',
+			{
+				method: 'PATCH',
+				headers: { 'Content-Type': 'application/json' },
+				body: JSON.stringify({
+					status: 'accepted',
+					reviewNotes: 'Looks good.',
+				}),
+			},
+			{
+				HR: { name: 'HR' },
+			} as any,
+			executionCtx
+		)
+
+		expect(response.status).toBe(200)
+		expect(serviceMocks.updateApplicationStatus).toHaveBeenCalledWith(
+			'app-1',
+			'accepted',
+			'user-1',
+			'main-1',
+			'Main Pilot',
+			'Looks good.'
+		)
+		expect(serviceMocks.dispatchCorporationAlert).toHaveBeenCalledWith(
+			expect.anything(),
+			expect.anything(),
+			expect.objectContaining({
+				corporationId: 'corp-1',
+				alertType: 'corp_application_first_time_accepted',
+				payload: expect.objectContaining({
+					applicationId: 'app-1',
+					corporationId: 'corp-1',
+					corporationName: 'Test Corporation',
+					applicantCharacterId: 'main-1',
+					applicantCharacterName: 'Main Pilot',
+					altCharacterCount: 1,
+					isFirstApplication: true,
+					acceptedAt: expect.any(String),
+				}),
+			})
+		)
+	})
+
+	it('does not dispatch a first-time acceptance alert for repeat applications', async () => {
+		serviceMocks.getApplication.mockResolvedValueOnce({
+			id: 'app-1',
+			corporationId: 'corp-1',
+			userId: 'user-1',
+			characterId: 'main-1',
+			characterName: 'Main Pilot',
+			applicationText: 'Let me in.',
+			status: 'under_review',
+			reviewedBy: null,
+			reviewedByCharacterName: null,
+			reviewedAt: null,
+			reviewNotes: null,
+			createdAt: new Date('2026-06-11T12:00:00.000Z'),
+			updatedAt: new Date('2026-06-11T12:00:00.000Z'),
+			lastStaffInteractionAt: null,
+			altCharacterIds: ['alt-1'],
+			isFirstApplication: false,
+			recommendations: [],
+			recommendationCount: 0,
+			activityLog: [],
+		})
+
+		const app = createApp(makeUser(), createDb())
+		const executionCtx = createExecutionContext()
+		const response = await app.request(
+			'/api/hr/applications/app-1',
+			{
+				method: 'PATCH',
+				headers: { 'Content-Type': 'application/json' },
+				body: JSON.stringify({
+					status: 'accepted',
+					reviewNotes: 'Looks good.',
+				}),
+			},
+			{
+				HR: { name: 'HR' },
+			} as any,
+			executionCtx
+		)
+
+		expect(response.status).toBe(200)
+		expect(serviceMocks.dispatchCorporationAlert).not.toHaveBeenCalledWith(
+			expect.anything(),
+			expect.anything(),
+			expect.objectContaining({
+				alertType: 'corp_application_first_time_accepted',
 			})
 		)
 	})

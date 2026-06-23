@@ -47,7 +47,7 @@ function getUserCorpsCacheKey(userId: string): string {
 }
 
 function getCorporationAccessCacheKey(userId: string): string {
-	return `https://cache.local/users/${userId}/corporation-access/v2`
+	return `https://cache.local/users/${userId}/corporation-access`
 }
 
 /**

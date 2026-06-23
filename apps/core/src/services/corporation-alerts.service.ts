@@ -16,6 +16,7 @@ import {
 	type CorporationAlertPayloadByType,
 	type CorporationAlertType,
 } from '../lib/corporation-alerts'
+import type { AlertRegistryEntry } from '../lib/alert-routing'
 import { alertDestinations, managedCorporations, discordServers } from '../db/schema'
 import type * as schema from '../db/schema'
 import {
@@ -71,10 +72,10 @@ export interface UpdateCorporationAlertDestinationInput {
 	updatedBy?: string | null
 }
 
-export interface DispatchCorporationAlertInput {
+export interface DispatchCorporationAlertInput<T extends CorporationAlertType = CorporationAlertType> {
 	corporationId: string
-	alertType: CorporationAlertType
-	payload: CorporationAlertPayloadByType[CorporationAlertType]
+	alertType: T
+	payload: CorporationAlertPayloadByType[T]
 }
 
 export function listCorporationAlertTypes() {
@@ -156,17 +157,19 @@ export async function deleteCorporationAlertDestination(
 	await deleteAlertDestination(db, 'corporation', corporationId, destinationId)
 }
 
-export async function dispatchCorporationAlert(
+export async function dispatchCorporationAlert<T extends CorporationAlertType>(
 	env: Env,
 	db: DbClient<typeof schema>,
-	input: DispatchCorporationAlertInput
+	input: DispatchCorporationAlertInput<T>
 ): Promise<{
 	alertType: CorporationAlertType
 	destinationCount: number
 	sentCount: number
 	failedCount: number
 }> {
-	const alertDefinition = corporationAlertRegistry[input.alertType]
+	const alertDefinition = corporationAlertRegistry[input.alertType] as AlertRegistryEntry<
+		CorporationAlertPayloadByType[T]
+	>
 	if (!alertDefinition) {
 		logger.warn('[CorporationAlerts] Unsupported alert type requested', {
 			alertType: input.alertType,
@@ -212,7 +215,7 @@ export async function dispatchCorporationAlert(
 		}
 	}
 
-	const payload = {
+	const payload: CorporationAlertPayloadByType[T] = {
 		...input.payload,
 		corporationName: corporation.name,
 	}

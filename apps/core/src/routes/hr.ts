@@ -622,7 +622,56 @@ app.patch('/applications/:id', requireAuth(), async (c) => {
 
 	try {
 		const hr = getHrStub(c)
+		const isAuditor = await hasHrAuditorPermission(c)
+		const applicationBeforeUpdate =
+			status === 'accepted'
+				? await hr.getApplication(applicationId, user.id, {
+						isAdmin: user.is_admin,
+						isAuditor,
+					})
+				: null
 		await hr.updateApplicationStatus(applicationId, status, user.id, characterId, characterName, reviewNotes)
+
+		if (
+			applicationBeforeUpdate &&
+			applicationBeforeUpdate.status !== 'accepted' &&
+			applicationBeforeUpdate.isFirstApplication
+		) {
+			const db = c.get('db')!
+			const corporation = await db.query.managedCorporations.findFirst({
+				where: eq(managedCorporations.corporationId, applicationBeforeUpdate.corporationId),
+				columns: {
+					name: true,
+				},
+			})
+
+			waitUntilWithTelemetry(
+				c.executionCtx,
+				'hr-application-first-time-accepted-alert',
+				async () => {
+					await dispatchCorporationAlert(c.env, db, {
+						corporationId: applicationBeforeUpdate.corporationId,
+						alertType: 'corp_application_first_time_accepted',
+						payload: {
+							applicationId: applicationBeforeUpdate.id,
+							corporationId: applicationBeforeUpdate.corporationId,
+							corporationName: corporation?.name ?? applicationBeforeUpdate.corporationId,
+							applicantCharacterId: applicationBeforeUpdate.characterId,
+							applicantCharacterName: applicationBeforeUpdate.characterName,
+							altCharacterCount: applicationBeforeUpdate.altCharacterIds.length,
+							isFirstApplication: true,
+							acceptedAt: new Date().toISOString(),
+						},
+					})
+				},
+				{
+					corporationId: applicationBeforeUpdate.corporationId,
+					applicationId,
+					characterId,
+					userId: user.id,
+				}
+			)
+		}
 
 		return c.json({ success: true })
 	} catch (error) {

@@ -24,6 +24,25 @@ import type { CorporationAlertDestination } from '@/lib/api'
 
 type EditableRow = AlertDestinationEditorRow
 
+const CORP_APPLICATION_ALERT_TYPES = [
+	'corp_application_submitted',
+	'corp_application_first_time_accepted',
+] as const
+
+function isCorpApplicationAlertType(alertType: string): boolean {
+	return (CORP_APPLICATION_ALERT_TYPES as readonly string[]).includes(alertType)
+}
+
+function buildCorporationAlertDestinationInput(row: EditableRow) {
+	return {
+		destinationType: row.destinationType,
+		discordServerId: row.destinationType === 'discord_channel' ? row.discordServerId : null,
+		channelId: row.destinationType === 'discord_channel' ? row.channelId : null,
+		coreUserId: row.destinationType === 'discord_user' ? row.coreUserId : null,
+		isEnabled: row.isEnabled,
+	}
+}
+
 function getDefaultRowFromDestination(destination: CorporationAlertDestination): EditableRow {
 	return alertDestinationEditorRowFromDestination(destination)
 }
@@ -54,9 +73,29 @@ export function CorporationAlertsCard({ corporationId }: { corporationId: string
 		})
 	}, [alertDestinations])
 
+	const corpApplicationDestinations = useMemo(
+		() => alertDestinations.filter((destination) => isCorpApplicationAlertType(destination.alertType)),
+		[alertDestinations]
+	)
+	const corpApplicationRepresentativeDestination =
+		corpApplicationDestinations.find(
+			(destination) => destination.alertType === 'corp_application_submitted'
+		) ?? corpApplicationDestinations[0] ?? null
+	const corpApplicationDraft = corpApplicationRepresentativeDestination
+		? (draftRows[corpApplicationRepresentativeDestination.id] ??
+			getDefaultRowFromDestination(corpApplicationRepresentativeDestination))
+		: null
+	const corpApplicationNewRows = newRows.filter((row) => isCorpApplicationAlertType(row.alertType))
+	const regularAlertTypes = useMemo(
+		() => alertTypes.filter((definition) => !isCorpApplicationAlertType(definition.type)),
+		[alertTypes]
+	)
+
 	const rowsByType = useMemo(() => {
 		const grouped = new Map<string, CorporationAlertDestination[]>()
-		for (const destination of alertDestinations) {
+		for (const destination of alertDestinations.filter(
+			(destination) => !isCorpApplicationAlertType(destination.alertType)
+		)) {
 			const list = grouped.get(destination.alertType) ?? []
 			list.push(destination)
 			grouped.set(destination.alertType, list)
@@ -66,7 +105,7 @@ export function CorporationAlertsCard({ corporationId }: { corporationId: string
 
 	const newRowsByType = useMemo(() => {
 		const grouped = new Map<string, EditableRow[]>()
-		for (const row of newRows) {
+		for (const row of newRows.filter((row) => !isCorpApplicationAlertType(row.alertType))) {
 			const list = grouped.get(row.alertType) ?? []
 			list.push(row)
 			grouped.set(row.alertType, list)
@@ -76,6 +115,10 @@ export function CorporationAlertsCard({ corporationId }: { corporationId: string
 
 	const handleAddRow = (alertType: string) => {
 		setNewRows((current) => [...current, getNewRow(alertType)])
+	}
+
+	const handleAddCorpApplicationRow = () => {
+		setNewRows((current) => [...current, getNewRow('corp_application_submitted')])
 	}
 
 	const handleUpdateExistingDraft = (destinationId: string, patch: Partial<EditableRow>) => {
@@ -140,6 +183,49 @@ export function CorporationAlertsCard({ corporationId }: { corporationId: string
 		}
 	}
 
+	const handleSaveCorpApplicationRow = async (row: EditableRow, rowId?: string) => {
+		const validationError = handleValidateDestination(row)
+		if (validationError) {
+			toast.error(validationError)
+			return
+		}
+
+		try {
+			await Promise.all(
+				CORP_APPLICATION_ALERT_TYPES.map(async (alertType) => {
+					const existing = corpApplicationDestinations.find(
+						(destination) => destination.alertType === alertType
+					)
+					const data = {
+						alertType,
+						...buildCorporationAlertDestinationInput(row),
+					}
+
+					if (existing) {
+						await updateDestination.mutateAsync({
+							corporationId,
+							destinationId: existing.id,
+							data,
+						})
+						return
+					}
+
+					await createDestination.mutateAsync({
+						corporationId,
+						data,
+					})
+				})
+			)
+
+			if (rowId) {
+				setNewRows((current) => current.filter((currentRow) => currentRow.id !== rowId))
+			}
+			toast.success('Corp application alerts saved.')
+		} catch (error) {
+			toast.error(error instanceof Error ? error.message : 'Failed to save corp application alerts.')
+		}
+	}
+
 	const handleSaveNew = async (row: EditableRow) => {
 		const validationError = handleValidateDestination(row)
 		if (validationError) {
@@ -183,6 +269,27 @@ export function CorporationAlertsCard({ corporationId }: { corporationId: string
 		})
 	}
 
+	const handleDeleteCorpApplicationRow = () => {
+		requestConfirmation({
+			title: 'Delete destination?',
+			description: 'This will remove the destination from corp application alerts.',
+			confirmLabel: 'Delete Destination',
+			intent: 'destructive',
+			onConfirm: async () => {
+				try {
+					await Promise.all(
+						corpApplicationDestinations.map((destination) =>
+							deleteDestination.mutateAsync({ corporationId, destinationId: destination.id })
+						)
+					)
+					toast.success('Corp application alerts deleted.')
+				} catch (error) {
+					toast.error(error instanceof Error ? error.message : 'Failed to delete corp application alerts.')
+				}
+			},
+		})
+	}
+
 	const handleClearNew = (rowId: string) => {
 		setNewRows((current) => current.filter((row) => row.id !== rowId))
 	}
@@ -219,11 +326,76 @@ export function CorporationAlertsCard({ corporationId }: { corporationId: string
 				{alertTypes.length === 0 ? (
 					<p className="text-sm text-muted-foreground">No alert types are currently registered.</p>
 				) : (
-					alertTypes.map((definition) => {
-						const destinationsForType = rowsByType.get(definition.type) ?? []
-						const draftRowsForType = newRowsByType.get(definition.type) ?? []
+					<>
+						<div className="space-y-4 rounded-lg border p-4">
+							<div className="flex flex-wrap items-start justify-between gap-3">
+								<div className="space-y-1">
+									<h3 className="text-sm font-semibold">Corp Application Alerts</h3>
+									<p className="text-sm text-muted-foreground">
+										Alerts for application submissions and first-time approvals.
+									</p>
+								</div>
+								<Button
+									variant="primary"
+									size="sm"
+									onClick={handleAddCorpApplicationRow}
+									disabled={createDestination.isPending || updateDestination.isPending}
+								>
+									<Plus className="h-4 w-4" />
+									Add Destination
+								</Button>
+							</div>
 
-						return (
+							{corpApplicationDestinations.length === 0 && corpApplicationNewRows.length === 0 ? (
+								<p className="text-sm text-muted-foreground">
+									No destination configured for corp application alerts.
+								</p>
+							) : null}
+
+							<div className="space-y-3">
+								{corpApplicationRepresentativeDestination && corpApplicationDraft ? (
+									<AlertDestinationEditor
+										key={corpApplicationRepresentativeDestination.id}
+										row={corpApplicationDraft}
+										showAlertTypeSelector={false}
+										destinationTypeOptions={getDestinationTypeOptions()}
+										discordServers={discordServers}
+										onChange={(patch) =>
+											handleUpdateExistingDraft(corpApplicationRepresentativeDestination.id, patch)
+										}
+										onSave={async () => handleSaveCorpApplicationRow(corpApplicationDraft)}
+										onRemove={handleDeleteCorpApplicationRow}
+										isSaving={updateDestination.isPending || createDestination.isPending}
+										isExisting
+										saveButtonVariant="primary"
+										removeButtonVariant="destructive"
+										className="rounded-md border bg-muted/20 p-3"
+									/>
+								) : null}
+
+								{corpApplicationNewRows.map((row) => (
+									<AlertDestinationEditor
+										key={row.id}
+										row={row}
+										showAlertTypeSelector={false}
+										destinationTypeOptions={getDestinationTypeOptions()}
+										discordServers={discordServers}
+										onChange={(patch) => handleUpdateNewDraft(row.id, patch)}
+										onSave={async () => handleSaveCorpApplicationRow(row, row.id)}
+										onRemove={() => handleClearNew(row.id)}
+										isSaving={createDestination.isPending || updateDestination.isPending}
+										removeButtonVariant="cancel"
+										className="rounded-md border border-dashed bg-muted/10 p-3"
+									/>
+								))}
+							</div>
+						</div>
+
+						{regularAlertTypes.map((definition) => {
+							const destinationsForType = rowsByType.get(definition.type) ?? []
+							const draftRowsForType = newRowsByType.get(definition.type) ?? []
+
+							return (
 							<div key={definition.type} className="space-y-4 rounded-lg border p-4">
 								<div className="flex flex-wrap items-start justify-between gap-3">
 									<div className="space-y-1">
@@ -285,9 +457,10 @@ export function CorporationAlertsCard({ corporationId }: { corporationId: string
 										/>
 									))}
 								</div>
-							</div>
-						)
-					})
+								</div>
+							)
+						})}
+					</>
 				)}
 			</CardContent>
 			{confirmationDialog}
