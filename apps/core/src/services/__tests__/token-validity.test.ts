@@ -6,6 +6,7 @@ import {
 	resolveNextTokenValidity,
 	validateAndSyncCharacterTokenValidity,
 	validateAndSyncCharacterTokenValidityBatch,
+	validateAndSyncCharacterTokenValidityBatchTransitions,
 } from '../../lib/token-validity'
 
 function makeValidationResult(overrides: Record<string, unknown> = {}) {
@@ -260,5 +261,57 @@ describe('token-validity helper', () => {
 		expect(results.get('2001')).toBe(false)
 		expect(tokenStore.validateToken).toHaveBeenCalledWith('2001', undefined, { force: false })
 		expect(recorder.updates[0]).toHaveProperty('lastCharacterRefresh')
+	})
+
+	it('batch transition helper preserves input order and reports cached rows without validation', async () => {
+		const recorder = makeDbRecorder(null)
+		recorder.findMany.mockResolvedValue([
+			{
+				characterId: '2001',
+				hasValidToken: true,
+				lastCharacterRefresh: new Date(Date.now() - 25 * 60 * 60 * 1000),
+			},
+			{
+				characterId: '2002',
+				hasValidToken: false,
+				lastCharacterRefresh: new Date(Date.now() - 60 * 60 * 1000),
+			},
+		])
+		const tokenStore = {
+			validateToken: vi.fn().mockResolvedValue(
+				makeValidationResult({
+					characterId: '2001',
+					isValid: false,
+					status: 'invalid_token',
+				})
+			),
+		}
+
+		const transitions = await validateAndSyncCharacterTokenValidityBatchTransitions({
+			db: recorder.db as any,
+			tokenStore: tokenStore as any,
+			characters: [
+				{ characterId: '2001', hasValidToken: true },
+				{ characterId: '2002', hasValidToken: false },
+			],
+			maxConcurrency: 1,
+		})
+
+		expect(transitions).toHaveLength(2)
+		expect(transitions[0]).toMatchObject({
+			characterId: '2001',
+			previousHasValidToken: true,
+			nextHasValidToken: false,
+			validationError: null,
+		})
+		expect(transitions[1]).toMatchObject({
+			characterId: '2002',
+			previousHasValidToken: false,
+			nextHasValidToken: false,
+			validation: null,
+			validationError: null,
+		})
+		expect(tokenStore.validateToken).toHaveBeenCalledTimes(1)
+		expect(tokenStore.validateToken).toHaveBeenCalledWith('2001', undefined, { force: false })
 	})
 })

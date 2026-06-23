@@ -2,7 +2,7 @@ import { and, asc, desc, eq, gt, ilike, inArray, or, sql } from '@repo/db-utils'
 import { getStub } from '@repo/do-utils'
 
 import { userCharacters, users } from '../db/schema'
-import { validateAndSyncCharacterTokenValidity } from '../lib/token-validity'
+import { validateAndSyncCharacterTokenValidityBatchTransitions } from '../lib/token-validity'
 import * as discordService from '../services/discord.service'
 import * as mumbleService from '../services/mumble.service'
 
@@ -364,35 +364,36 @@ export class CoreRpcService {
 			console.error(`Failed to load permission grants for user ${userId}:`, error)
 		}
 
-		// 6. Build character summaries with token validation and blacklist status
-		const characterSummaries = await Promise.all(
-			chars.map(async (char) => {
-				let hasValidToken = char.hasValidToken === true
-				try {
-					const tokenStatus = await validateAndSyncCharacterTokenValidity({
-						db: this.db,
-						tokenStore: eveTokenStore,
+		// 6. Build character summaries with batch token validation and blacklist status.
+		const tokenValidityByCharacterId = new Map<string, boolean | null>()
+		if (chars.length > 0) {
+			try {
+				const tokenValidityTransitions = await validateAndSyncCharacterTokenValidityBatchTransitions({
+					db: this.db,
+					tokenStore: eveTokenStore,
+					characters: chars.map((char) => ({
 						characterId: char.characterId,
-						previousHasValidToken: char.hasValidToken ?? null,
-					})
-					hasValidToken = tokenStatus.nextHasValidToken === true
-				} catch (error) {
-					console.error(`Failed to check token for character ${char.characterId}:`, error)
+						hasValidToken: char.hasValidToken ?? null,
+					})),
+				})
+				for (const transition of tokenValidityTransitions) {
+					tokenValidityByCharacterId.set(transition.characterId, transition.nextHasValidToken)
 				}
-
-				return {
-					characterId: char.characterId,
-					characterName: char.characterName,
-					characterOwnerHash: char.characterOwnerHash,
-					corporationId: char.corporationId,
-					corporationName: char.corporationName,
-					is_primary: char.is_primary,
-					linkedAt: char.linkedAt,
-					hasValidToken,
-					isBlacklisted: blacklistStatuses[char.characterId] || false,
-				}
-			})
-		)
+			} catch (error) {
+				console.error(`Failed to batch-check tokens for user ${userId}:`, error)
+			}
+		}
+		const characterSummaries = chars.map((char) => ({
+			characterId: char.characterId,
+			characterName: char.characterName,
+			characterOwnerHash: char.characterOwnerHash,
+			corporationId: char.corporationId,
+			corporationName: char.corporationName,
+			is_primary: char.is_primary,
+			linkedAt: char.linkedAt,
+			hasValidToken: tokenValidityByCharacterId.get(char.characterId) ?? (char.hasValidToken === true),
+			isBlacklisted: blacklistStatuses[char.characterId] || false,
+		}))
 
 		// 7. Get Discord status if linked
 		let discordStatus = null
@@ -428,6 +429,74 @@ export class CoreRpcService {
 			createdAt: user.createdAt,
 			updatedAt: user.updatedAt,
 		}
+	}
+
+	async syncUserCharacterTokenValidityBatch(input: {
+		userId: string
+		characterIds: string[]
+		forceValidate?: boolean
+	}): Promise<
+		Array<{
+			characterId: string
+			previousHasValidToken: boolean | null
+			nextHasValidToken: boolean | null
+			validationStatus: string | null
+			validationError: string | null
+			refreshAttempted: boolean
+			refreshSucceeded: boolean
+		}>
+	> {
+		const normalizedCharacterIds = [...new Set(input.characterIds.map((id) => String(id).trim()))].filter(Boolean)
+		if (normalizedCharacterIds.length === 0) {
+			return []
+		}
+
+		const rows = await this.db.query.userCharacters.findMany({
+			where: and(
+				eq(userCharacters.userId, input.userId),
+				inArray(userCharacters.characterId, normalizedCharacterIds)
+			),
+			columns: {
+				characterId: true,
+				hasValidToken: true,
+			},
+		})
+
+		const matchedIds = new Set(rows.map((row) => row.characterId))
+		const missingCharacterIds = normalizedCharacterIds.filter((id) => !matchedIds.has(id))
+		if (missingCharacterIds.length > 0) {
+			console.warn('[CoreRpcService] Some requested characters were not owned by the target user', {
+				userId: input.userId,
+				requestedCount: normalizedCharacterIds.length,
+				matchedCount: rows.length,
+				missingCharacterIds,
+			})
+		}
+
+		if (rows.length === 0) {
+			return []
+		}
+
+		const eveTokenStore = getStub<EveTokenStore>(this.env.EVE_TOKEN_STORE, 'default')
+		const transitions = await validateAndSyncCharacterTokenValidityBatchTransitions({
+			db: this.db,
+			tokenStore: eveTokenStore,
+			characters: rows.map((row) => ({
+				characterId: row.characterId,
+				hasValidToken: row.hasValidToken ?? null,
+			})),
+			forceValidate: input.forceValidate === true,
+		})
+
+		return transitions.map((transition) => ({
+			characterId: transition.characterId,
+			previousHasValidToken: transition.previousHasValidToken,
+			nextHasValidToken: transition.nextHasValidToken,
+			validationStatus: transition.validation?.status ?? null,
+			validationError: transition.validationError ?? transition.validation?.error ?? null,
+			refreshAttempted: transition.validation?.refreshAttempted ?? false,
+			refreshSucceeded: transition.validation?.refreshSucceeded ?? false,
+		}))
 	}
 
 	/**

@@ -9,6 +9,14 @@ const NON_DEGRADING_TOKEN_STATUSES: TokenValidationStatus[] = ['transient_error'
 const DEFAULT_TOKEN_VALIDITY_CACHE_MS = 86_400_000
 const AUTHENTICATED_ESI_FAILURE_STATUSES = new Set([400, 401, 403])
 
+export type CharacterTokenValidityBatchTransition = {
+	characterId: string
+	previousHasValidToken: boolean | null
+	nextHasValidToken: boolean | null
+	validation: TokenValidationResult | null
+	validationError: string | null
+}
+
 export function isNonDegradingTokenStatus(status: TokenValidationStatus): boolean {
 	return NON_DEGRADING_TOKEN_STATUSES.includes(status)
 }
@@ -170,8 +178,35 @@ export async function validateAndSyncCharacterTokenValidityBatch({
 	validityCacheMs?: number
 	forceValidate?: boolean
 }): Promise<Map<string, boolean | null>> {
-	const results = new Map<string, boolean | null>()
-	if (characters.length === 0) return results
+	const transitions = await validateAndSyncCharacterTokenValidityBatchTransitions({
+		db,
+		tokenStore,
+		characters,
+		maxConcurrency,
+		validityCacheMs,
+		forceValidate,
+	})
+
+	return new Map(transitions.map((transition) => [transition.characterId, transition.nextHasValidToken]))
+}
+
+export async function validateAndSyncCharacterTokenValidityBatchTransitions({
+	db,
+	tokenStore,
+	characters,
+	maxConcurrency = 10,
+	validityCacheMs = DEFAULT_TOKEN_VALIDITY_CACHE_MS,
+	forceValidate = false,
+}: {
+	db: DbClient<typeof schema>
+	tokenStore: EveTokenStore
+	characters: Array<{ characterId: string; hasValidToken?: boolean | null }>
+	maxConcurrency?: number
+	validityCacheMs?: number
+	forceValidate?: boolean
+}): Promise<CharacterTokenValidityBatchTransition[]> {
+	const results: Array<CharacterTokenValidityBatchTransition | undefined> = new Array(characters.length)
+	if (characters.length === 0) return []
 
 	const uniqueCharacterIds = [...new Set(characters.map((character) => character.characterId))]
 	const existingRows =
@@ -208,7 +243,13 @@ export async function validateAndSyncCharacterTokenValidityBatch({
 					Date.now() - existing.lastCharacterRefresh.getTime() <= validityCacheMs
 
 				if (isFresh) {
-					results.set(character.characterId, previousHasValidToken)
+					results[index] = {
+						characterId: character.characterId,
+						previousHasValidToken,
+						nextHasValidToken: previousHasValidToken,
+						validation: null,
+						validationError: null,
+					}
 					continue
 				}
 
@@ -220,13 +261,27 @@ export async function validateAndSyncCharacterTokenValidityBatch({
 						previousHasValidToken,
 						touchLastCharacterRefresh: true,
 					})
-					results.set(character.characterId, result.nextHasValidToken)
+					results[index] = {
+						characterId: character.characterId,
+						previousHasValidToken: result.previousHasValidToken,
+						nextHasValidToken: result.nextHasValidToken,
+						validation: result.validation,
+						validationError: null,
+					}
 				} catch {
-					results.set(character.characterId, previousHasValidToken)
+					results[index] = {
+						characterId: character.characterId,
+						previousHasValidToken,
+						nextHasValidToken: previousHasValidToken,
+						validation: null,
+						validationError: 'Failed to validate token',
+					}
 				}
 			}
 		})
 	)
 
-	return results
+	return results.filter(
+		(transition): transition is CharacterTokenValidityBatchTransition => transition !== undefined
+	)
 }

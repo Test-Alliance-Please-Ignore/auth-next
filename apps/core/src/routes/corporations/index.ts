@@ -7,7 +7,6 @@ import { logger } from '@repo/hono-helpers'
 import { managedCorporations, userCharacters, users } from '../../db/schema'
 import { isNpcCorporationId } from '../../lib/corporation-id'
 import { getCachedUserPermissions } from '../../lib/groups-cache'
-import { validateAndSyncCharacterTokenValidityBatch } from '../../lib/token-validity'
 import { requireAdmin, requireAuth } from '../../middleware/session'
 import corporationsAlertsRoutes from './alerts-routes'
 import corporationsDirectorsRoutes from './directors-routes'
@@ -325,63 +324,6 @@ function buildUnpaginatedMembersResponse(members: CorporationMemberListItem[]) {
 			directors: members.filter((m) => m.role === 'Director').length,
 		},
 	}
-}
-
-async function enrichMembersPageLiveTokenStatus(
-	db: NonNullable<Context<App>['var']['db']>,
-	tokenStore: EveTokenStore,
-	response: ReturnType<typeof filterSortAndPaginateMembers>
-) {
-	const linkedPageItems = response.items.filter((item) => item.hasAuthAccount)
-	if (linkedPageItems.length === 0) {
-		return response
-	}
-
-	try {
-		const liveTokenValidityByCharacterId = await validateAndSyncCharacterTokenValidityBatch({
-			db,
-			tokenStore,
-			characters: linkedPageItems.map((item) => ({
-				characterId: item.characterId,
-				hasValidToken: item.hasValidToken ?? null,
-			})),
-			maxConcurrency: 20,
-		})
-
-		return {
-			...response,
-			items: response.items.map((item) => {
-				if (!item.hasAuthAccount) {
-					return item
-				}
-				const liveStatus = liveTokenValidityByCharacterId.get(item.characterId)
-				if (liveStatus === undefined) {
-					return item
-				}
-				return {
-					...item,
-					hasValidToken: liveStatus,
-				}
-			}),
-		}
-	} catch (error) {
-		logger.warn('[Corporations] Failed live token status enrichment for member page', {
-			error: error instanceof Error ? error.message : String(error),
-			pageSize: response.items.length,
-		})
-		return response
-	}
-}
-
-function shouldEnrichMembersPageLiveTokenStatus(
-	returnUnpaginated: boolean,
-	query: MembersQuery
-): boolean {
-	// Keep search-as-you-type responsive by avoiding live token validation for
-	// interactive filtered/sorted queries and unpaginated "all members" payloads.
-	// In those cases we return persisted hasValidToken values from core.user_characters.
-	if (returnUnpaginated) return false
-	return canUseBackendPaginatedMembersPath(query)
 }
 
 /**
@@ -1838,12 +1780,7 @@ app.get('/:corporationId/members', requireAuth(), async (c) => {
 				},
 			}
 
-			if (!shouldEnrichMembersPageLiveTokenStatus(returnUnpaginated, query)) {
-				return c.json(response)
-			}
-
-			const enriched = await enrichMembersPageLiveTokenStatus(db, tokenStoreStub, response)
-			return c.json(enriched)
+			return c.json(response)
 		}
 
 		if (cached) {
@@ -1857,11 +1794,7 @@ app.get('/:corporationId/members', requireAuth(), async (c) => {
 			const response = returnUnpaginated
 				? buildUnpaginatedMembersResponse(cached)
 				: filterSortAndPaginateMembers(cached, query)
-			if (!shouldEnrichMembersPageLiveTokenStatus(returnUnpaginated, query)) {
-				return c.json(response)
-			}
-			const enriched = await enrichMembersPageLiveTokenStatus(db, tokenStoreStub, response)
-			return c.json(enriched)
+			return c.json(response)
 		}
 
 		// Get corporation members from DO
@@ -2006,11 +1939,7 @@ app.get('/:corporationId/members', requireAuth(), async (c) => {
 		const response = returnUnpaginated
 			? buildUnpaginatedMembersResponse(membersWithDetails)
 			: filterSortAndPaginateMembers(membersWithDetails, query)
-		if (!shouldEnrichMembersPageLiveTokenStatus(returnUnpaginated, query)) {
-			return c.json(response)
-		}
-		const enriched = await enrichMembersPageLiveTokenStatus(db, tokenStoreStub, response)
-		return c.json(enriched)
+		return c.json(response)
 	} catch (error) {
 		logger.error('[Corporations] Error fetching corporation members', {
 			corporationId,
@@ -2149,25 +2078,7 @@ app.get('/:corporationId/members/:accountId', requireAuth(), async (c) => {
 			}
 		})
 
-		const enriched = await enrichMembersPageLiveTokenStatus(db, tokenStoreStub, {
-			items: memberRows,
-			pagination: {
-				page: 1,
-				limit: memberRows.length,
-				totalItems: memberRows.length,
-				totalPages: 1,
-				hasNextPage: false,
-				hasPreviousPage: false,
-			},
-			summary: {
-				total: memberRows.length,
-				linked: memberRows.length,
-				active: memberRows.filter((row) => row.activityStatus === 'active').length,
-				inactive: memberRows.filter((row) => row.activityStatus === 'inactive').length,
-				directors: memberRows.filter((row) => row.role === 'Director').length,
-			},
-		})
-		const rows = enriched.items
+		const rows = memberRows
 		const mainName =
 			rows.find((row) => row.mainCharacterName)?.mainCharacterName ?? rows[0]?.characterName ?? 'Unknown'
 		const representative =

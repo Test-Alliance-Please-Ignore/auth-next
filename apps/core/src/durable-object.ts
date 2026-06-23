@@ -26,7 +26,9 @@ import {
 	TOKEN_INVALID_ALERT_RETRY_MS,
 	TOKEN_INVALID_ALERT_TTL_MS,
 } from './lib/token-invalid-alerts'
-import { validateAndSyncCharacterTokenValidity } from './lib/token-validity'
+import {
+	validateAndSyncCharacterTokenValidityBatchTransitions,
+} from './lib/token-validity'
 import { triggerDiscordRefreshWorkflow, triggerUserRefreshWorkflow } from './lib/workflow-triggers'
 import { updateCharacterPublicInfo } from './workflows/steps/update-character'
 
@@ -492,39 +494,84 @@ export class CoreDO extends DurableObject<Env> implements Core {
 		const characters = await this.getDb().query.userCharacters.findMany({
 			where: and(eq(userCharacters.isDeleted, includeDeleted), eq(userCharacters.userId, userId)),
 		})
-		const db = this.getDb()
-		const tokenStore = getStub<EveTokenStore>(this.env.EVE_TOKEN_STORE, 'default')
-		return Promise.all(
-			characters.map(async (c) => {
-				let hasValidToken = c.hasValidToken === true
-				try {
-					const tokenStatus = await validateAndSyncCharacterTokenValidity({
-						db,
-						tokenStore,
-						characterId: c.characterId,
-						previousHasValidToken: c.hasValidToken ?? null,
-					})
-					hasValidToken = tokenStatus.nextHasValidToken === true
-				} catch (error) {
-					this.logger.warn('[CoreDO] Failed to validate token while listing user characters', {
-						userId,
-						characterId: c.characterId,
-						error: error instanceof Error ? error.message : String(error),
-					})
-				}
+		return characters.map((c) => ({
+			characterId: c.characterId,
+			characterName: c.characterName,
+			hasValidToken: c.hasValidToken === true,
+			isDeleted: c.isDeleted,
+			corporationId: c.corporationId,
+			corporationName: c.corporationName,
+			allianceId: c.allianceId,
+			allianceName: c.allianceName,
+		}))
+	}
 
-				return {
-					characterId: c.characterId,
-					characterName: c.characterName,
-					hasValidToken,
-					isDeleted: c.isDeleted,
-					corporationId: c.corporationId,
-					corporationName: c.corporationName,
-					allianceId: c.allianceId,
-					allianceName: c.allianceName,
-				}
+	async syncUserCharacterTokenValidityBatch(input: {
+		userId: string
+		characterIds: string[]
+		forceValidate?: boolean
+	}): Promise<
+		Array<{
+			characterId: string
+			previousHasValidToken: boolean | null
+			nextHasValidToken: boolean | null
+			validationStatus: string | null
+			validationError: string | null
+			refreshAttempted: boolean
+			refreshSucceeded: boolean
+		}>
+	> {
+		const normalizedCharacterIds = [...new Set(input.characterIds.map((id) => String(id).trim()))].filter(Boolean)
+		if (normalizedCharacterIds.length === 0) {
+			return []
+		}
+
+		const rows = await this.getDb().query.userCharacters.findMany({
+			where: and(
+				eq(userCharacters.userId, input.userId),
+				inArray(userCharacters.characterId, normalizedCharacterIds)
+			),
+			columns: {
+				characterId: true,
+				hasValidToken: true,
+			},
+		})
+
+		const matchedIds = new Set(rows.map((row) => row.characterId))
+		const missingCharacterIds = normalizedCharacterIds.filter((id) => !matchedIds.has(id))
+		if (missingCharacterIds.length > 0) {
+			this.logger.warn('[CoreDO] Some requested characters were not owned by the target user', {
+				userId: input.userId,
+				requestedCount: normalizedCharacterIds.length,
+				matchedCount: rows.length,
+				missingCharacterIds,
 			})
-		)
+		}
+
+		if (rows.length === 0) {
+			return []
+		}
+
+		const tokenStore = getStub<EveTokenStore>(this.env.EVE_TOKEN_STORE, 'default')
+		const transitions = await validateAndSyncCharacterTokenValidityBatchTransitions({
+			db: this.getDb(),
+			tokenStore,
+			characters: rows.map((row) => ({
+				characterId: row.characterId,
+				hasValidToken: row.hasValidToken ?? null,
+			})),
+			forceValidate: input.forceValidate === true,
+		})
+
+		return transitions.map((transition) => ({
+			characterId: transition.characterId,
+			previousHasValidToken: transition.previousHasValidToken,
+			nextHasValidToken: transition.nextHasValidToken,
+			validationStatus: transition.validation?.status ?? null,
+			validationError: transition.validationError ?? transition.validation?.error ?? null,
+			refreshAttempted: transition.validation?.refreshAttempted ?? false,
+			refreshSucceeded: transition.validation?.refreshSucceeded ?? false,
+		}))
 	}
 
 	async getUserCorporations(
