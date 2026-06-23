@@ -27,6 +27,19 @@ export default function AdminUserGroupsPage() {
 	const { userId } = useParams<{ userId: string }>()
 	const navigate = useNavigate()
 	const { data: user, isLoading } = useAdminUser(userId!)
+	const memberships = user?.groupMemberships ?? []
+	const rawPermissionGrants = user?.permissionGrants ?? []
+	const permissionGrants = useMemo(
+		() =>
+			[...rawPermissionGrants].sort((a, b) => {
+				const urnDiff = a.urn.localeCompare(b.urn)
+				if (urnDiff !== 0) return urnDiff
+				const sourceDiff = a.source.localeCompare(b.source)
+				if (sourceDiff !== 0) return sourceDiff
+				return a.groupName.localeCompare(b.groupName)
+			}),
+		[rawPermissionGrants]
+	)
 
 	if (isLoading) {
 		return <div className="text-center py-8 text-muted-foreground">Loading user group memberships...</div>
@@ -35,19 +48,6 @@ export default function AdminUserGroupsPage() {
 	if (!user) {
 		return <div className="text-center py-8 text-muted-foreground">User not found</div>
 	}
-
-	const memberships = user.groupMemberships ?? []
-	const permissionGrants = useMemo(
-		() =>
-			[...((user.permissionGrants ?? []) as typeof user.permissionGrants)].sort((a, b) => {
-				const urnDiff = a.urn.localeCompare(b.urn)
-				if (urnDiff !== 0) return urnDiff
-				const sourceDiff = a.source.localeCompare(b.source)
-				if (sourceDiff !== 0) return sourceDiff
-				return a.groupName.localeCompare(b.groupName)
-			}),
-		[user.permissionGrants]
-	)
 
 	return (
 		<div className="space-y-6">
