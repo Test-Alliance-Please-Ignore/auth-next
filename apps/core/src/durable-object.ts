@@ -3,7 +3,11 @@ import { DurableObject } from 'cloudflare:workers'
 import { CORE_ROLES, SERVICE_CORE } from '@repo/core'
 import { and, asc, eq, inArray, isNull, lt, ne, or, sql } from '@repo/db-utils'
 import { getStub } from '@repo/do-utils'
-import { getEsiInstanceForCharacter, getEsiInstanceForCorporation } from '@repo/esi'
+import {
+	getEsiInstance,
+	getEsiInstanceForCharacter,
+	getEsiInstanceForCorporation,
+} from '@repo/esi'
 import { logger } from '@repo/hono-helpers'
 
 import { createDb } from './db'
@@ -286,23 +290,34 @@ export class CoreDO extends DurableObject<Env> implements Core {
 		return characterInfo
 	}
 
+	private async getCorporationName(corporationId: string): Promise<string | null> {
+		const instance = getEsiInstanceForCorporation(this.env.ESI, corporationId)
+		const corporationInfo = await instance.fetchCorporationPublicInfo(corporationId)
+		return corporationInfo?.name ?? null
+	}
+
+	private async getAllianceName(allianceId: string): Promise<string | null> {
+		const instance = getEsiInstance(this.env.ESI, allianceId)
+		const allianceInfo = await instance.fetchAlliancePublicInfo(allianceId)
+		return allianceInfo?.name ?? null
+	}
+
 	private async getCharacterAllianceInfo(
 		characterId: string
 	): Promise<{ allianceId: string; allianceName: string } | null> {
 		const characterInfo = await this.getCharacterInfo(characterId)
-		if (!characterInfo) {
+		if (!characterInfo?.alliance_id) {
 			return null
 		}
-		const instance = getEsiInstanceForCorporation(this.env.ESI, characterInfo.corporation_id)
-		const corporationInfo = await instance.fetchCorporationPublicInfo(characterInfo.corporation_id)
 
-		if (!corporationInfo.alliance_id) {
+		const allianceName = await this.getAllianceName(characterInfo.alliance_id)
+		if (!allianceName) {
 			return null
 		}
 
 		return {
-			allianceId: String(corporationInfo.alliance_id),
-			allianceName: corporationInfo.name,
+			allianceId: String(characterInfo.alliance_id),
+			allianceName,
 		}
 	}
 
@@ -527,7 +542,7 @@ export class CoreDO extends DurableObject<Env> implements Core {
 			where: eq(userCharacters.userId, userId),
 		})
 
-		const corporations = (
+		const characterInfos = (
 			await Promise.all(
 				characters.map(async (c) => {
 					try {
@@ -536,8 +551,8 @@ export class CoreDO extends DurableObject<Env> implements Core {
 							return null
 						}
 						return {
+							characterId: c.characterId,
 							corporationId: characterInfo.corporation_id,
-							corporationName: characterInfo.name,
 						}
 					} catch (error) {
 						// One bad/expired character token must not break the entire user's
@@ -554,7 +569,29 @@ export class CoreDO extends DurableObject<Env> implements Core {
 			)
 		).filter((c): c is NonNullable<typeof c> => c !== null)
 
-		return corporations
+		const corporationIds = [...new Set(characterInfos.map((info) => info.corporationId))]
+		const corporationNames = new Map<string, string>()
+		await Promise.all(
+			corporationIds.map(async (corporationId) => {
+				try {
+					const corporationName = await this.getCorporationName(corporationId)
+					if (corporationName) {
+						corporationNames.set(corporationId, corporationName)
+					}
+				} catch (error) {
+					this.logger.warn('Skipping corporation during corporation name resolution', {
+						userId,
+						corporationId,
+						error: error instanceof Error ? error.message : String(error),
+					})
+				}
+			})
+		)
+
+		return corporationIds.map((corporationId) => ({
+			corporationId,
+			corporationName: corporationNames.get(corporationId) ?? corporationId,
+		}))
 	}
 
 	async getUserCorporationsBatch(
@@ -603,6 +640,24 @@ export class CoreDO extends DurableObject<Env> implements Core {
 			})
 		)
 
+		const corporationIds = [...new Set(Array.from(characterInfoMap.values()).map((info) => info.corporation_id))]
+		const corporationNames = new Map<string, string>()
+		await Promise.all(
+			corporationIds.map(async (corporationId) => {
+				try {
+					const corporationName = await this.getCorporationName(corporationId)
+					if (corporationName) {
+						corporationNames.set(corporationId, corporationName)
+					}
+				} catch (error) {
+					this.logger.warn('Skipping corporation during batch corporation name resolution', {
+						corporationId,
+						error: error instanceof Error ? error.message : String(error),
+					})
+				}
+			})
+		)
+
 		// Build per-user corporation lists from fetched character info.
 		for (const userId of userIds) {
 			const userCharactersForId = charactersByUser.get(userId) ?? []
@@ -614,7 +669,8 @@ export class CoreDO extends DurableObject<Env> implements Core {
 					}
 					return {
 						corporationId: String(info.corporation_id),
-						corporationName: info.name,
+						corporationName:
+							corporationNames.get(String(info.corporation_id)) ?? String(info.corporation_id),
 					}
 				})
 				.filter((corp): corp is NonNullable<typeof corp> => corp !== null)
