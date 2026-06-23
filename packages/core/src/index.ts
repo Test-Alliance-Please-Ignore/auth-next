@@ -40,6 +40,21 @@ export interface Core {
 			allianceName?: string | null
 		}>
 	>
+	syncUserCharacterTokenValidityBatch(input: {
+		userId: string
+		characterIds: string[]
+		forceValidate?: boolean
+	}): Promise<
+		Array<{
+			characterId: string
+			previousHasValidToken: boolean | null
+			nextHasValidToken: boolean | null
+			validationStatus: string | null
+			validationError: string | null
+			refreshAttempted: boolean
+			refreshSucceeded: boolean
+		}>
+	>
 	getUserCorporations(
 		userId: string
 	): Promise<Array<{ corporationId: string; corporationName: string }>>

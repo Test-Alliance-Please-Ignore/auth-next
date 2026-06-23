@@ -12,6 +12,41 @@ import type { EveCharacterData, EveCharacterSyncDataType } from '@repo/eve-chara
 import type { EveTokenStore } from '@repo/eve-token-store'
 import type { Env } from '../context'
 
+type CoreTokenSyncStub = {
+	syncUserCharacterTokenValidityBatch(input: {
+		userId: string
+		characterIds: string[]
+		forceValidate?: boolean
+	}): Promise<CoreTokenValidityTransition[]>
+	queueTokenInvalidationAlerts(input: {
+		userId: string
+		characterIds: string[]
+		source?: string
+	}): Promise<{
+		added: number
+		skipped: number
+		pendingCount: number
+	}>
+}
+
+type TokenValidationSummary = {
+	hasValidToken: boolean
+	status: string
+	refreshAttempted: boolean
+	refreshSucceeded: boolean
+	error?: string
+}
+
+type CoreTokenValidityTransition = {
+	characterId: string
+	previousHasValidToken: boolean | null
+	nextHasValidToken: boolean | null
+	validationStatus: string | null
+	validationError: string | null
+	refreshAttempted: boolean
+	refreshSucceeded: boolean
+}
+
 /**
  * Workflow parameters for character data synchronization
  */
@@ -117,17 +152,61 @@ export class EveCharacterSyncWorkflow extends WorkflowEntrypoint<Env, EveCharact
 			characterFailures: 0,
 		}
 
+		let tokenValidityByCharacterId = new Map<string, CoreTokenValidityTransition>()
+		if (userId) {
+			try {
+				const coreStub = getStub<CoreTokenSyncStub>(this.env.CORE, 'default')
+				const transitions = await step.do(
+					'sync-token-validity-batch',
+					{
+						retries: { limit: 2, delay: '5 seconds', backoff: 'exponential' },
+						timeout: '1 minute',
+					},
+					async () =>
+						await coreStub.syncUserCharacterTokenValidityBatch({
+							userId,
+							characterIds,
+							forceValidate: trigger === 'cron',
+						})
+				)
+				tokenValidityByCharacterId = new Map(
+					transitions.map((transition) => [transition.characterId, transition])
+				)
+
+				const invalidatedCharacterIds = transitions
+					.filter(
+						(transition) =>
+							transition.previousHasValidToken === true &&
+							transition.nextHasValidToken === false
+					)
+					.map((transition) => transition.characterId)
+
+				if (invalidatedCharacterIds.length > 0) {
+					const queueResult = await coreStub.queueTokenInvalidationAlerts({
+						userId,
+						characterIds: invalidatedCharacterIds,
+						source: 'character-refresh-token-invalidated',
+					})
+					logger.info('[EveCharacterSyncWorkflow] Queued token invalidation alerts from batch sync', {
+						userId,
+						invalidatedCharacterIds,
+						queueResult,
+					})
+				}
+			} catch (error) {
+				logger.warn('[EveCharacterSyncWorkflow] Failed to batch-sync token validity; falling back to per-character validation', {
+					userId,
+					error: error instanceof Error ? error.message : String(error),
+				})
+			}
+		}
+
 		for (const [index, characterId] of characterIds.entries()) {
 			let characterMarkedDeleted = false
 			const stepSuffix = `${index + 1}-${characterId}`
 			try {
 				let publicInfoResult: refreshHelpers.RefreshPublicInfoResult | null = null
-				let tokenValidation: {
-					hasValidToken: boolean
-					status: string
-					refreshAttempted: boolean
-					refreshSucceeded: boolean
-				} = {
+				let tokenValidation: TokenValidationSummary = {
 					hasValidToken: false,
 					status: 'unknown',
 					refreshAttempted: false,
@@ -210,29 +289,40 @@ export class EveCharacterSyncWorkflow extends WorkflowEntrypoint<Env, EveCharact
 					}
 				}
 
-				// Sub-step: Validate token per character — attempts refresh when needed.
-				// This runs after public refresh so deleted-character detection is not blocked
-				// by token cooldown or invalid token state.
-				tokenValidation = await step.do(
-					`validate-token-${stepSuffix}`,
-					{
-						retries: { limit: 2, delay: '5 seconds', backoff: 'exponential' },
-						timeout: '30 seconds',
-					},
-					async () => {
-						const tokenStoreStub = getStub<EveTokenStore>(this.env.EVE_TOKEN_STORE, 'default')
-						const validation = await tokenStoreStub.validateToken(characterId)
-						if (validation.status === 'transient_error') {
-							throw new Error(`Transient token validation error for character ${characterId}`)
-						}
-						return {
-							hasValidToken: validation.isValid,
-							status: validation.status,
-							refreshAttempted: validation.refreshAttempted,
-							refreshSucceeded: validation.refreshSucceeded,
-						}
+				const batchTokenValidation = tokenValidityByCharacterId.get(characterId)
+				if (batchTokenValidation) {
+					tokenValidation = {
+						hasValidToken: batchTokenValidation.nextHasValidToken === true,
+						status: batchTokenValidation.validationStatus ?? 'cached',
+						refreshAttempted: batchTokenValidation.refreshAttempted,
+						refreshSucceeded: batchTokenValidation.refreshSucceeded,
+						error: batchTokenValidation.validationError ?? undefined,
 					}
-				)
+				} else {
+					// Sub-step: Validate token per character — attempts refresh when needed.
+					// This runs after public refresh so deleted-character detection is not blocked
+					// by token cooldown or invalid token state.
+					tokenValidation = await step.do(
+						`validate-token-${stepSuffix}`,
+						{
+							retries: { limit: 2, delay: '5 seconds', backoff: 'exponential' },
+							timeout: '30 seconds',
+						},
+						async () => {
+							const tokenStoreStub = getStub<EveTokenStore>(this.env.EVE_TOKEN_STORE, 'default')
+							const validation = await tokenStoreStub.validateToken(characterId)
+							if (validation.status === 'transient_error') {
+								throw new Error(`Transient token validation error for character ${characterId}`)
+							}
+							return {
+								hasValidToken: validation.isValid,
+								status: validation.status,
+								refreshAttempted: validation.refreshAttempted,
+								refreshSucceeded: validation.refreshSucceeded,
+							}
+						}
+					)
+				}
 
 				if (shouldSync('authenticated') && !characterMarkedDeleted) {
 					if (!tokenValidation.hasValidToken) {

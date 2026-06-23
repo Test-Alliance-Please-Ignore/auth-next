@@ -293,6 +293,27 @@ export class CoreWorker extends WorkerEntrypoint<Env> {
 	}
 
 	/**
+	 * Reconcile token validity for a user's characters and return per-character transitions.
+	 */
+	async syncUserCharacterTokenValidityBatch(input: {
+		userId: string
+		characterIds: string[]
+		forceValidate?: boolean
+	}): Promise<
+		Array<{
+			characterId: string
+			previousHasValidToken: boolean | null
+			nextHasValidToken: boolean | null
+			validationStatus: string | null
+			validationError: string | null
+			refreshAttempted: boolean
+			refreshSucceeded: boolean
+		}>
+	> {
+		return this.getService().syncUserCharacterTokenValidityBatch(input)
+	}
+
+	/**
 	 * Delete a user and all associated data
 	 */
 	async deleteUser(userId: string): Promise<DeleteUserResult> {

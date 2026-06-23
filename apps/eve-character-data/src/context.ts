@@ -43,6 +43,30 @@ interface CoreWorker {
 		workflowsTriggered: number
 		discordUsersQueued: number
 	}>
+	queueTokenInvalidationAlerts(input: {
+		userId: string
+		characterIds: string[]
+		source?: string
+	}): Promise<{
+		added: number
+		skipped: number
+		pendingCount: number
+	}>
+	syncUserCharacterTokenValidityBatch(input: {
+		userId: string
+		characterIds: string[]
+		forceValidate?: boolean
+	}): Promise<
+		Array<{
+			characterId: string
+			previousHasValidToken: boolean | null
+			nextHasValidToken: boolean | null
+			validationStatus: string | null
+			validationError: string | null
+			refreshAttempted: boolean
+			refreshSucceeded: boolean
+		}>
+	>
 }
 
 export type Env = SharedHonoEnv & {

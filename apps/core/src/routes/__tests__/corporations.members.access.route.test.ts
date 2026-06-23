@@ -403,7 +403,7 @@ describe('corporations members access matrix', () => {
 		})
 	})
 
-	it('overrides stale linked token cache with live validation result', async () => {
+	it('reads persisted linked token state without live validation', async () => {
 		getCachedUserPermissionsMock.mockResolvedValue([
 			{
 				permissionId: 'perm-auditor',
@@ -462,9 +462,9 @@ describe('corporations members access matrix', () => {
 		}
 		expect(body.items[0]).toMatchObject({
 			characterId: '2001',
-			hasValidToken: false,
+			hasValidToken: true,
 		})
-		expect(dbStub.update).toHaveBeenCalled()
+		expect(dbStub.update).not.toHaveBeenCalled()
 	})
 
 	it('denies members refresh for HR-only access (no CEO/director/admin leadership)', async () => {
