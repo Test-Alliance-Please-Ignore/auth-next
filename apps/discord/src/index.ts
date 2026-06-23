@@ -1,11 +1,13 @@
 import { zValidator } from '@hono/zod-validator'
 import { Hono } from 'hono'
+import { getStub } from '@repo/do-utils'
 import { useWorkersLogger } from 'workers-tagged-logger'
 import { z } from 'zod'
 
 import { logger, withNotFound, withOnError, withSentry } from '@repo/hono-helpers'
 
-import { DiscordDO } from './durable-object'
+import { DiscordDO, DiscordGatewayDO } from './durable-object'
+import type { DiscordGateway } from './gateway/types'
 import * as discordService from './services/discord.service'
 
 import type { App, DiscordInteractionOption } from './context'
@@ -76,9 +78,9 @@ const app = new Hono<App>()
 		'*',
 		// middleware
 		(c, next) =>
-			useWorkersLogger(c.env.NAME, {
-				environment: c.env.ENVIRONMENT,
-				release: c.env.SENTRY_RELEASE,
+			useWorkersLogger(c.env.NAME ?? 'discord', {
+				environment: c.env.ENVIRONMENT ?? 'development',
+				release: c.env.SENTRY_RELEASE ?? 'unknown',
 			})(c, next)
 	)
 
@@ -297,10 +299,36 @@ const app = new Hono<App>()
 		return c.json({ success })
 	})
 
+const sentryApp = withSentry(app)
+
+async function scheduled(event: ScheduledEvent, env: App['Bindings'], _ctx: ExecutionContext): Promise<void> {
+	try {
+		const gatewayStub = getStub<DiscordGateway>(env.DISCORD_GATEWAY, 'gateway')
+		const result = await gatewayStub.ensureConnected()
+
+		logger.info('[DiscordScheduled] Gateway bootstrap checked', {
+			cron: event.cron,
+			scheduledTime: new Date(event.scheduledTime).toISOString(),
+			status: result.status,
+			reason: result.reason ?? null,
+		})
+	} catch (error) {
+		logger.error('[DiscordScheduled] Gateway bootstrap failed', {
+			cron: event.cron,
+			scheduledTime: new Date(event.scheduledTime).toISOString(),
+			error: error instanceof Error ? error.message : String(error),
+		})
+	}
+}
+
 // Export Hono app wrapped with Sentry for automatic error tracking
-export default withSentry(app)
+export default {
+	fetch: sentryApp.fetch.bind(sentryApp),
+	scheduled,
+}
 
 // Export Durable Object class
 // Note: Automatic Sentry instrumentation for DOs is not supported in Cloudflare Workers
 // Use manual captureException() in DO methods for error tracking
 export { DiscordDO as Discord }
+export { DiscordGatewayDO as DiscordGateway }

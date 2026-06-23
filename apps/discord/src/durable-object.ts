@@ -1,6 +1,7 @@
 import { DurableObject } from 'cloudflare:workers'
 
 import { and, eq, ilike, isNotNull, sql } from '@repo/db-utils'
+import { getStub } from '@repo/do-utils'
 import {
 	DiscordAPIError,
 	DiscordFetch,
@@ -15,6 +16,7 @@ import { parseJsonResponse } from '@repo/worker-utils'
 import { createDb } from './db'
 import { createDiscordRateLimitKvStore } from './lib/discord-rate-limit-store'
 import { discordTokens, discordUsers } from './db/schema'
+import { DiscordGatewayClient } from './gateway/client'
 import { DiscordBotService, fetchWithRetry } from './services/discord-bot.service'
 import { augmentRequestedRoleIdsForRefresh, calculateRoleChanges } from './utils/role-calculation'
 
@@ -29,6 +31,10 @@ import type {
 	SendMessageResult,
 } from '@repo/discord'
 import type { Env } from './context'
+import type {
+	DiscordGateway,
+	DiscordGatewayJoinSuppressionLookupResult,
+} from './gateway/types'
 
 const DISCORD_MEMBERSHIP_RETRY_MAX_ATTEMPTS = 3
 const DISCORD_MEMBERSHIP_RETRY_BASE_DELAY_MS = 1000
@@ -763,7 +769,25 @@ export class DiscordDO extends DurableObject<Env> implements Discord {
 
 		// Process each guild
 		const botService = new DiscordBotService(this.env)
-		const results = await Promise.all(
+		const gatewayStub = getStub<DiscordGateway>(this.env.DISCORD_GATEWAY, 'gateway')
+		let reservedGuildIds: string[] = []
+		try {
+			const reservation = await gatewayStub.reserveJoinSuppressions({
+				discordUserId: user.userId,
+				guildIds,
+				expiresInMs: 2 * 60 * 1000,
+				reason: 'auto-invite',
+			})
+			reservedGuildIds = reservation.reservedGuildIds
+		} catch (error) {
+			logger.warn('[DiscordDO] Failed to reserve join suppression markers', {
+				coreUserId,
+				discordUserId: user.userId,
+				error: error instanceof Error ? error.message : String(error),
+			})
+		}
+
+		const settledResults = await Promise.allSettled(
 			guildIds.map(async (guildId) => {
 				const result = await botService.addGuildMember(guildId, user.userId, accessToken)
 				return {
@@ -772,6 +796,46 @@ export class DiscordDO extends DurableObject<Env> implements Discord {
 				}
 			})
 		)
+
+		const results = settledResults.map((settledResult, index) => {
+			if (settledResult.status === 'fulfilled') {
+				return settledResult.value
+			}
+
+			return {
+				guildId: guildIds[index],
+				success: false,
+				errorMessage:
+					settledResult.reason instanceof Error
+						? settledResult.reason.message
+						: String(settledResult.reason),
+			}
+		})
+
+		const failedGuildIds = results
+			.filter((result) => !result.success)
+			.map((result) => result.guildId)
+
+		if (reservedGuildIds.length > 0 && failedGuildIds.length > 0) {
+			try {
+				const releaseResult = await gatewayStub.releaseJoinSuppressions({
+					discordUserId: user.userId,
+					guildIds: failedGuildIds,
+				})
+				logger.debug('[DiscordDO] Released join suppression markers for failed invites', {
+					coreUserId,
+					discordUserId: user.userId,
+					releasedGuildIds: releaseResult.releasedGuildIds,
+				})
+			} catch (error) {
+				logger.warn('[DiscordDO] Failed to release join suppression markers after invite failure', {
+					coreUserId,
+					discordUserId: user.userId,
+					guildIds: failedGuildIds,
+					error: error instanceof Error ? error.message : String(error),
+				})
+			}
+		}
 
 		// Track auth status
 		await this.handleAuthResults(results, user.id, coreUserId)
@@ -2022,5 +2086,52 @@ export class DiscordDO extends DurableObject<Env> implements Discord {
 		const decryptedData = await crypto.subtle.decrypt({ name: 'AES-GCM', iv }, key, data)
 
 		return new TextDecoder().decode(decryptedData)
+	}
+}
+
+export class DiscordGatewayDO extends DurableObject<Env> implements DiscordGateway {
+	private readonly gateway: DiscordGatewayClient
+
+	constructor(
+		public state: DurableObjectState,
+		public env: Env
+	) {
+		super(state, env)
+		this.gateway = new DiscordGatewayClient(state, env)
+	}
+
+	async ensureConnected() {
+		return await this.gateway.ensureConnected()
+	}
+
+	async getGatewayStatus() {
+		return await this.gateway.getGatewayStatus()
+	}
+
+	async alarm(): Promise<void> {
+		await this.gateway.alarm()
+	}
+
+	async reserveJoinSuppressions(input: {
+		discordUserId: string
+		guildIds: string[]
+		expiresInMs?: number
+		reason?: string
+	}): Promise<{ reservedGuildIds: string[] }> {
+		return await this.gateway.reserveJoinSuppressions(input)
+	}
+
+	async releaseJoinSuppressions(input: {
+		discordUserId: string
+		guildIds: string[]
+	}): Promise<{ releasedGuildIds: string[] }> {
+		return await this.gateway.releaseJoinSuppressions(input)
+	}
+
+	async consumeJoinSuppression(input: {
+		discordUserId: string
+		guildId: string
+	}): Promise<DiscordGatewayJoinSuppressionLookupResult> {
+		return await this.gateway.consumeJoinSuppression(input)
 	}
 }

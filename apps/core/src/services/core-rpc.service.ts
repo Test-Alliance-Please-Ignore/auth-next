@@ -1,7 +1,7 @@
 import { and, asc, desc, eq, gt, ilike, inArray, or, sql } from '@repo/db-utils'
 import { getStub } from '@repo/do-utils'
 
-import { userCharacters, users } from '../db/schema'
+import { discordServers, userCharacters, users } from '../db/schema'
 import { validateAndSyncCharacterTokenValidityBatchTransitions } from '../lib/token-validity'
 import * as discordService from '../services/discord.service'
 import * as mumbleService from '../services/mumble.service'
@@ -1039,6 +1039,18 @@ export class CoreRpcService {
 		totalFailed: number
 	}> {
 		return await discordService.syncUserDiscordAccess(this.env, userId)
+	}
+
+	/**
+	 * Check whether a Discord guild is active in the registry.
+	 */
+	async isActiveDiscordGuild(guildId: string): Promise<boolean> {
+		const server = await this.db.query.discordServers.findFirst({
+			where: and(eq(discordServers.guildId, guildId), eq(discordServers.isActive, true)),
+			columns: { id: true },
+		})
+
+		return server !== null
 	}
 
 	/**
