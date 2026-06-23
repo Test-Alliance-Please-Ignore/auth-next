@@ -107,6 +107,7 @@ export interface Application {
 	userId: string
 	characterId: string
 	characterName: string
+	discordUsername?: string | null
 	applicationText: string
 	status: ApplicationStatus
 	reviewedBy: string | null

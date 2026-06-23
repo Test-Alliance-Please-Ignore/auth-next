@@ -421,6 +421,12 @@ export default function HrApplicationReview() {
 									Applied to: <span className="font-medium">{application.corporationName}</span>
 								</p>
 							)}
+							<div className="mb-3 text-sm text-muted-foreground">
+								Discord Username:{' '}
+								<span className="font-medium text-foreground">
+									{application.discordUsername ? `@${application.discordUsername}` : 'Not linked'}
+								</span>
+							</div>
 							<div className="flex items-center gap-3">
 								<ApplicationStatusBadge status={application.status} size="md" />
 								<span className="text-sm text-muted-foreground">

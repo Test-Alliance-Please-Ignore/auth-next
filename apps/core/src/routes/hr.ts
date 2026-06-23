@@ -3,6 +3,7 @@ import { z } from 'zod'
 
 import { and, eq, ilike, inArray, or } from '@repo/db-utils'
 import { getStub } from '@repo/do-utils'
+import type { Discord } from '@repo/discord'
 import { captureException, logger } from '@repo/hono-helpers'
 import { APPLICATION_STATUSES } from '@repo/hr'
 
@@ -47,6 +48,34 @@ function getHrStub(c: Context<App>): Hr {
  */
 function getCoreStub(c: Context<App>): Core {
 	return getStub<Core>(c.env.CORE, 'default')
+}
+
+async function resolveApplicationDiscordUsername(
+	c: Context<App>,
+	userId: string
+): Promise<string | null> {
+	const db = c.get('db')
+	if (!db) return null
+
+	const [user] = await db
+		.select({
+			discordUserId: users.discordUserId,
+		})
+		.from(users)
+		.where(eq(users.id, userId))
+		.limit(1)
+
+	if (!user?.discordUserId) {
+		return null
+	}
+
+	try {
+		const discordStub = getStub<Discord>(c.env.DISCORD, 'default')
+		const status = await discordStub.getDiscordUserStatus(userId)
+		return status?.username ?? null
+	} catch {
+		return null
+	}
 }
 
 function getLegacyStub(c: Context<App>): Legacy {
@@ -574,9 +603,9 @@ app.get('/applications/paged', requireAuth(), async (c) => {
  * GET /api/hr/applications/:id
  * Get a single application with recommendations
  */
-app.get('/applications/:id', requireAuth(), async (c) => {
-	const user = c.get('user')!
-	const applicationId = c.req.param('id')
+	app.get('/applications/:id', requireAuth(), async (c) => {
+		const user = c.get('user')!
+		const applicationId = c.req.param('id')
 
 	try {
 		const hr = getHrStub(c)
@@ -585,10 +614,12 @@ app.get('/applications/:id', requireAuth(), async (c) => {
 			isAdmin: user.is_admin,
 			isAuditor,
 		})
+		const discordUsername =
+			application.userId === user.id ? null : await resolveApplicationDiscordUsername(c, application.userId)
 
 		const resolver = getStub<EsiTypeResolver>(c.env.ESI_TYPE_RESOLVER, 'global')
 		const db = c.get('db')!
-		const [enriched] = await enrichApplications([application], resolver, db)
+		const [enriched] = await enrichApplications([{ ...application, discordUsername }], resolver, db)
 
 		return c.json(enriched)
 	} catch (error) {
