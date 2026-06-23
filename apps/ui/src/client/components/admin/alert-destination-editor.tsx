@@ -111,7 +111,7 @@ export function AlertDestinationEditor({
 		>
 			<div className="flex items-center justify-between gap-3">
 				<div className="space-y-1">
-					<div className="font-medium">{isExisting ? 'Existing Destination' : 'New Destination'}</div>
+					<div className="font-medium">{isExisting ? 'Current Destination' : 'New Destination'}</div>
 					<div className="text-xs text-muted-foreground">Alert type and delivery target.</div>
 				</div>
 				<div className="flex items-center gap-2">

@@ -316,7 +316,11 @@ export class ApplicationService {
 		const firstApplicationIds = await this.resolveFirstApplicationIds([application.userId])
 
 		return {
-			...this.mapToApplication(application, undefined, firstApplicationIds.has(application.id)),
+			...this.mapToApplication(
+				application,
+				undefined,
+				firstApplicationIds.has(application.id)
+			),
 			altCharacterIds: alts.map((alt) => alt.characterId),
 			recommendations: recommendations.map((rec) => ({
 				id: rec.id,
