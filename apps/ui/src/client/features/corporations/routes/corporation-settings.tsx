@@ -30,6 +30,7 @@ import { useMessage } from '@/hooks/useMessage'
 import { usePageTitle } from '@/hooks/usePageTitle'
 import { api } from '@/lib/api'
 import { Button } from '@/components/ui/button'
+import { useCanAccessCorporation } from '../hooks'
 
 // ============================================================================
 // Component
@@ -40,7 +41,7 @@ export default function CorporationSettings() {
 	const navigate = useNavigate()
 	const { showSuccess, showError } = useMessage()
 	const queryClient = useQueryClient()
-	const { isAuthenticated, isLoading: authLoading } = useAuth()
+	const { user, isAuthenticated, isLoading: authLoading } = useAuth()
 
 	// Form state
 	const [isRecruiting, setIsRecruiting] = useState(true)
@@ -48,6 +49,12 @@ export default function CorporationSettings() {
 	const [fullDescription, setFullDescription] = useState('')
 	const [hasChanges, setHasChanges] = useState(false)
 	const [shortDescError, setShortDescError] = useState('')
+	const { isLoading: accessLoading, userRole } = useCanAccessCorporation(corporationId ?? '')
+	const canManageSettings =
+		user?.is_admin === true ||
+		userRole === 'CEO' ||
+		userRole === 'Director' ||
+		userRole === 'hr_admin'
 
 	// Fetch corporation details
 	const {
@@ -57,7 +64,7 @@ export default function CorporationSettings() {
 	} = useQuery({
 		queryKey: ['corporations', corporationId],
 		queryFn: () => api.getCorporationDetail(corporationId!),
-		enabled: !!corporationId,
+		enabled: !!corporationId && canManageSettings,
 	})
 
 	// Set page title
@@ -133,12 +140,34 @@ export default function CorporationSettings() {
 	}
 
 	// Loading state
-	if (authLoading || corpLoading) {
+	if (authLoading || accessLoading || corpLoading) {
 		return (
 			<Container>
 				<div className="flex items-center justify-center min-h-[400px]">
 					<LoadingSpinner size="lg" />
 				</div>
+			</Container>
+		)
+	}
+
+	if (!canManageSettings) {
+		return (
+			<Container>
+				<Card className="max-w-2xl mx-auto border-red-200 bg-red-50 dark:border-red-800 dark:bg-red-950">
+					<CardHeader className="text-center">
+						<AlertCircle className="h-16 w-16 mx-auto text-red-500 mb-4" />
+						<CardTitle className="text-2xl text-red-900 dark:text-red-100">Access Denied</CardTitle>
+						<CardDescription className="mt-2 text-red-700 dark:text-red-300">
+							You do not have permission to manage settings for this corporation.
+						</CardDescription>
+					</CardHeader>
+					<CardContent className="text-center">
+						<Button variant="ghost" onClick={() => navigate('/corporations')}>
+							<ArrowLeft className="h-4 w-4" />
+							Back to Corporations
+						</Button>
+					</CardContent>
+				</Card>
 			</Container>
 		)
 	}

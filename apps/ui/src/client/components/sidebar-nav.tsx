@@ -241,10 +241,13 @@ export function SidebarNav({ onNavigate, isSidebarOpen = true, onToggleSidebar }
 		]
 
 		const isAuditor = hasAnyPermission('urn:hr:auditor')
-		const isHrOnlyUser = !corporationAccess?.hasAccess && ((hrCorporations?.length ?? 0) > 0 || isAuditor)
+		const hasCorporationModuleAccess =
+			(corporationAccess?.hasAccess ?? false) || (hrCorporations?.length ?? 0) > 0 || isAuditor
+		const isHrOnlyUser =
+			!(corporationAccess?.hasAccess ?? false) && ((hrCorporations?.length ?? 0) > 0 || isAuditor)
 		const isOnCorpHrRoute = /^\/corporations\/[^/]+\/hr/.test(location.pathname)
 
-		if ((hrCorporations?.length ?? 0) > 0 || isAuditor) {
+		if (hasCorporationModuleAccess) {
 			hrItems.push({
 				label: 'Corporations',
 				href: '/corporations',

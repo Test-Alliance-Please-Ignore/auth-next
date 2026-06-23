@@ -53,6 +53,30 @@ export function useHasCorporationAccess() {
 }
 
 /**
+ * Format a corporation role for user-facing display.
+ */
+export function formatCorporationRoleLabel(
+	role: 'CEO' | 'Director' | 'admin' | 'hr_admin' | 'hr_reviewer' | 'hr_viewer' | null | undefined
+): string {
+	switch (role) {
+		case 'CEO':
+			return 'CEO'
+		case 'Director':
+			return 'Director'
+		case 'admin':
+			return 'Site Admin'
+		case 'hr_admin':
+			return 'HR Admin'
+		case 'hr_reviewer':
+			return 'HR Reviewer'
+		case 'hr_viewer':
+			return 'HR Viewer'
+		default:
+			return 'Unknown'
+	}
+}
+
+/**
  * Hook to get full corporation access details
  * This returns the complete list of accessible corporations
  */
@@ -80,14 +104,18 @@ export function useMyCorporations() {
 /**
  * Hook to fetch corporation members
  */
-export function useCorporationMembers(corporationId: string, query: CorporationMembersQuery) {
+export function useCorporationMembers(
+	corporationId: string,
+	query: CorporationMembersQuery,
+	options?: { enabled?: boolean }
+) {
 	return useQuery<CorporationMembersResponse>({
 		queryKey: corporationKeys.members(corporationId, query),
 		queryFn: () => myCorporationsApi.getCorporationMembers(corporationId, query),
 		placeholderData: (previousData) => previousData,
 		staleTime: 1000 * 60, // 1 minute
 		gcTime: 1000 * 60 * 3, // 3 minutes
-		enabled: !!corporationId,
+		enabled: options?.enabled ?? !!corporationId,
 	})
 }
 

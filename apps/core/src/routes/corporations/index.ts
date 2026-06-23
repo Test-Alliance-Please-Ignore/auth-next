@@ -47,6 +47,25 @@ function getCorpMembersCacheKey(corporationId: string): string {
 	return `https://cache.local/corporations/${corporationId}/members`
 }
 
+type MemberCorpHrAccess = {
+	isMemberCorporation: boolean
+}
+
+async function hasMemberCorpHrPermission(
+	c: Context<App>,
+	userId: string,
+	corporationId: string,
+	managedCorp: MemberCorpHrAccess | null,
+	requiredRole: 'hr_viewer' | 'hr_admin'
+): Promise<boolean> {
+	if (!managedCorp?.isMemberCorporation) {
+		return false
+	}
+
+	const hr = getStub<Hr>(c.env.HR, 'default')
+	return hr.checkPermission(userId, corporationId, requiredRole)
+}
+
 type CorporationMemberListItem = {
 	characterId: string
 	characterName: string
@@ -741,7 +760,8 @@ app.get('/browse/search', requireAuth(), async (c) => {
  * GET /corporations/browse/:corporationId
  * Get detailed information about a specific corporation for the detail page
  * Returns full corporation details including description and application instructions
- * CEOs, Directors, and site admins can access their corporation even if not recruiting
+ * CEOs, Directors, site admins, and member-corp HR staff can access their corporation
+ * even if not recruiting
  */
 app.get('/browse/:corporationId', requireAuth(), async (c) => {
 	const corporationId = c.req.param('corporationId')
@@ -760,8 +780,22 @@ app.get('/browse/:corporationId', requireAuth(), async (c) => {
 			hasManagementAccess = true
 		} catch {
 			// CEO/Director/Admin check failed — fall back to HR role check
-			const hr = getStub<Hr>(c.env.HR, 'default')
-			const hasHrRole = await hr.checkPermission(user.id, corporationId, 'hr_viewer')
+			const managedCorp = await db.query.managedCorporations.findFirst({
+				where: and(
+					eq(managedCorporations.corporationId, corporationId),
+					eq(managedCorporations.isActive, true)
+				),
+				columns: {
+					isMemberCorporation: true,
+				},
+			})
+			const hasHrRole = await hasMemberCorpHrPermission(
+				c,
+				user.id,
+				corporationId,
+				managedCorp ?? null,
+				'hr_viewer'
+			)
 			if (hasHrRole) {
 				hasManagementAccess = true
 			}
@@ -791,7 +825,7 @@ app.get('/browse/:corporationId', requireAuth(), async (c) => {
 
 /**
  * PATCH /:corporationId/settings
- * Update corporation recruiting settings (CEO, admin, or HR admin)
+ * Update corporation recruiting settings (CEO, admin, or member-corp HR admin)
  * Updates isRecruiting, shortDescription, and fullDescription fields
  */
 app.patch('/:corporationId/settings', requireAuth(), async (c) => {
@@ -803,13 +837,28 @@ app.patch('/:corporationId/settings', requireAuth(), async (c) => {
 		return c.json({ error: 'Database not available' }, 500)
 	}
 
+	const managedCorp = await db.query.managedCorporations.findFirst({
+		where: and(
+			eq(managedCorporations.corporationId, corporationId),
+			eq(managedCorporations.isActive, true)
+		),
+		columns: {
+			isMemberCorporation: true,
+		},
+	})
+
 	// Authorization check - user must be CEO, site admin, or HR admin
 	try {
 		await checkCorporationAccess(c, corporationId)
 	} catch {
 		// CEO/Director/Admin check failed — fall back to HR admin check
-		const hr = getStub<Hr>(c.env.HR, 'default')
-		const hasHrAdmin = await hr.checkPermission(user.id, corporationId, 'hr_admin')
+		const hasHrAdmin = await hasMemberCorpHrPermission(
+			c,
+			user.id,
+			corporationId,
+			managedCorp ?? null,
+			'hr_admin'
+		)
 		if (!hasHrAdmin) {
 			return c.json({ error: 'Access denied. Corporation CEO, site admin, or HR admin required.' }, 403)
 		}
@@ -1640,7 +1689,9 @@ app.get('/:corporationId/members', requireAuth(), async (c) => {
 		} catch {
 			// CEO/Director/Admin check failed — fall back to HR role / auditor check
 			const hr = getStub<Hr>(c.env.HR, 'default')
-			const hasHrAccess = await hr.checkPermission(user.id, corporationId, 'hr_viewer')
+			const hasHrAccess = managedCorp.isMemberCorporation
+				? await hr.checkPermission(user.id, corporationId, 'hr_viewer')
+				: false
 			const isAuditor = !hasHrAccess && await isHrAuditorUser(c)
 			if (!hasHrAccess && !isAuditor) {
 				return c.json(
@@ -2000,7 +2051,9 @@ app.get('/:corporationId/members/:accountId', requireAuth(), async (c) => {
 			await checkCorporationAccess(c, corporationId)
 		} catch {
 			const hr = getStub<Hr>(c.env.HR, 'default')
-			const hasHrAccess = await hr.checkPermission(user.id, corporationId, 'hr_viewer')
+			const hasHrAccess = managedCorp.isMemberCorporation
+				? await hr.checkPermission(user.id, corporationId, 'hr_viewer')
+				: false
 			const isAuditor = !hasHrAccess && await isHrAuditorUser(c)
 			if (!hasHrAccess && !isAuditor) {
 				return c.json(
