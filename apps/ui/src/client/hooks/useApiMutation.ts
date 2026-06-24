@@ -11,6 +11,7 @@ import {
 	NotFoundError,
 	ServerError,
 	ValidationError,
+	logApiError,
 } from '../lib/api'
 import toast from '../lib/toast'
 
@@ -144,6 +145,8 @@ export function useApiMutation<TData = unknown, TVariables = void, TContext = un
 			onSuccess?.(data, variables, context)
 		},
 		onError: (error, variables, context) => {
+			logApiError(error)
+
 			// Show error toast if enabled
 			if (showErrorToast) {
 				const message = errorMessage

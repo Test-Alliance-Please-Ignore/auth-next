@@ -20,6 +20,15 @@ const API_REQUEST_TIMEOUT_MS = 30_000
 export interface ApiError {
 	message: string
 	status: number
+	requestInfo?: ApiRequestDebugInfo
+}
+
+export interface ApiRequestDebugInfo {
+	url: string
+	method: string
+	payload?: unknown
+	status?: number
+	responseBody?: unknown
 }
 
 /**
@@ -28,7 +37,8 @@ export interface ApiError {
 export class BaseApiError extends Error {
 	constructor(
 		message: string,
-		public status: number
+		public status: number,
+		public requestInfo?: ApiRequestDebugInfo
 	) {
 		super(message)
 		this.name = 'BaseApiError'
@@ -39,8 +49,11 @@ export class BaseApiError extends Error {
  * Network-related errors (fetch failures, timeouts, etc.)
  */
 export class NetworkError extends Error {
-	constructor(message: string = 'Unable to connect. Please check your internet connection.') {
-		super(message)
+	constructor(
+		message?: string,
+		public requestInfo?: ApiRequestDebugInfo
+	) {
+		super(message ?? 'Unable to connect. Please check your internet connection.')
 		this.name = 'NetworkError'
 	}
 }
@@ -49,8 +62,11 @@ export class NetworkError extends Error {
  * Authentication errors (401)
  */
 export class AuthenticationError extends BaseApiError {
-	constructor(message: string = 'Your session has expired. Please log in again.') {
-		super(message, 401)
+	constructor(
+		message: string = 'Your session has expired. Please log in again.',
+		requestInfo?: ApiRequestDebugInfo
+	) {
+		super(message, 401, requestInfo)
 		this.name = 'AuthenticationError'
 	}
 }
@@ -59,8 +75,11 @@ export class AuthenticationError extends BaseApiError {
  * Authorization errors (403)
  */
 export class AuthorizationError extends BaseApiError {
-	constructor(message: string = 'You do not have permission to perform this action.') {
-		super(message, 403)
+	constructor(
+		message: string = 'You do not have permission to perform this action.',
+		requestInfo?: ApiRequestDebugInfo
+	) {
+		super(message, 403, requestInfo)
 		this.name = 'AuthorizationError'
 	}
 }
@@ -71,9 +90,10 @@ export class AuthorizationError extends BaseApiError {
 export class ValidationError extends BaseApiError {
 	constructor(
 		message: string,
-		public fields?: Record<string, string[]>
+		public fields?: Record<string, string[]>,
+		requestInfo?: ApiRequestDebugInfo
 	) {
-		super(message, 400)
+		super(message, 400, requestInfo)
 		this.name = 'ValidationError'
 	}
 }
@@ -82,8 +102,11 @@ export class ValidationError extends BaseApiError {
  * Not found errors (404)
  */
 export class NotFoundError extends BaseApiError {
-	constructor(message: string = 'The requested resource was not found.') {
-		super(message, 404)
+	constructor(
+		message: string = 'The requested resource was not found.',
+		requestInfo?: ApiRequestDebugInfo
+	) {
+		super(message, 404, requestInfo)
 		this.name = 'NotFoundError'
 	}
 }
@@ -92,10 +115,64 @@ export class NotFoundError extends BaseApiError {
  * Server errors (500+)
  */
 export class ServerError extends BaseApiError {
-	constructor(message: string = 'Something went wrong on the server. Please try again later.') {
-		super(message, 500)
+	constructor(
+		message: string = 'Something went wrong on the server. Please try again later.',
+		requestInfo?: ApiRequestDebugInfo
+	) {
+		super(message, 500, requestInfo)
 		this.name = 'ServerError'
 	}
+}
+
+const API_ERROR_LOGGED_SYMBOL = Symbol('apiErrorLogged')
+
+type ApiErrorWithLogMarker = Error & {
+	[API_ERROR_LOGGED_SYMBOL]?: boolean
+}
+
+function maskRequestInfo(requestInfo: ApiRequestDebugInfo | undefined): ApiRequestDebugInfo | undefined {
+	if (!requestInfo) return undefined
+	return {
+		...requestInfo,
+		payload:
+			typeof requestInfo.payload === 'string' && requestInfo.payload.length > 1000
+				? `${requestInfo.payload.slice(0, 1000)}…`
+				: requestInfo.payload,
+		responseBody:
+			typeof requestInfo.responseBody === 'string' && requestInfo.responseBody.length > 1000
+				? `${requestInfo.responseBody.slice(0, 1000)}…`
+				: requestInfo.responseBody,
+	}
+}
+
+export function logApiError(error: unknown, fallbackRequestInfo?: ApiRequestDebugInfo): void {
+	const requestInfo =
+		error instanceof BaseApiError || error instanceof NetworkError
+			? error.requestInfo ?? fallbackRequestInfo
+			: fallbackRequestInfo
+
+	if (error instanceof Error) {
+		const errorWithMarker = error as ApiErrorWithLogMarker
+		if (errorWithMarker[API_ERROR_LOGGED_SYMBOL]) return
+		Object.defineProperty(errorWithMarker, API_ERROR_LOGGED_SYMBOL, {
+			value: true,
+			configurable: true,
+		})
+
+		console.error('[API] Request failed', {
+			name: error.name,
+			message: error.message,
+			stack: error.stack,
+			request: maskRequestInfo(requestInfo),
+			fields: error instanceof ValidationError ? error.fields : undefined,
+		})
+		return
+	}
+
+	console.error('[API] Request failed', {
+		error,
+		request: maskRequestInfo(requestInfo),
+	})
 }
 
 /**
@@ -2224,8 +2301,33 @@ export class ApiClient {
 		return fallback
 	}
 
+	private parseRequestPayload(body: RequestInit['body']): unknown {
+		if (typeof body === 'string') {
+			try {
+				return JSON.parse(body) as unknown
+			} catch {
+				return body
+			}
+		}
+
+		if (body instanceof URLSearchParams) {
+			return Object.fromEntries(body.entries())
+		}
+
+		return body ?? undefined
+	}
+
+	private buildRequestDebugInfo(url: string, options?: RequestInit): ApiRequestDebugInfo {
+		return {
+			url,
+			method: (options?.method ?? 'GET').toUpperCase(),
+			payload: this.parseRequestPayload(options?.body),
+		}
+	}
+
 	private async request<T>(endpoint: string, options?: RequestInit): Promise<T> {
 		const url = `${this.baseUrl}${endpoint}`
+		const requestInfo = this.buildRequestDebugInfo(url, options)
 		const timeoutController = new AbortController()
 		const timeout = setTimeout(() => timeoutController.abort(), API_REQUEST_TIMEOUT_MS)
 		if (options?.signal) {
@@ -2261,43 +2363,79 @@ export class ApiClient {
 					response.statusText || `Request failed (${response.status})`
 				)
 				errorFields = errorData?.fields
+				requestInfo.status = response.status
+				requestInfo.responseBody = errorData
 
 				// Throw appropriate error type based on status code
 				switch (response.status) {
 					case 400:
-						throw new ValidationError(errorMessage, errorFields)
+						{
+							const error = new ValidationError(errorMessage, errorFields, requestInfo)
+							logApiError(error)
+							throw error
+						}
 					case 401:
-						throw new AuthenticationError(errorMessage)
+						{
+							const error = new AuthenticationError(errorMessage, requestInfo)
+							logApiError(error)
+							throw error
+						}
 					case 403:
-						throw new AuthorizationError(errorMessage)
+						{
+							const error = new AuthorizationError(errorMessage, requestInfo)
+							logApiError(error)
+							throw error
+						}
 					case 404:
-						throw new NotFoundError(errorMessage)
+						{
+							const error = new NotFoundError(errorMessage, requestInfo)
+							logApiError(error)
+							throw error
+						}
 					case 500:
 					case 502:
 					case 503:
 					case 504:
-						throw new ServerError(errorMessage)
+						{
+							const error = new ServerError(errorMessage, requestInfo)
+							logApiError(error)
+							throw error
+						}
 					default:
-						throw new BaseApiError(errorMessage, response.status)
+						{
+							const error = new BaseApiError(errorMessage, response.status, requestInfo)
+							logApiError(error)
+							throw error
+						}
 				}
 			}
 
 			const data = await this.readResponseBody<T>(response)
 			if (data === null) {
-				throw new BaseApiError(
+				const error = new BaseApiError(
 					`Expected JSON response but received ${response.headers.get('content-type') || 'unknown content-type'}`,
 					response.status,
+					{
+						...requestInfo,
+						status: response.status,
+					},
 				)
+				logApiError(error)
+				throw error
 			}
 			return data
-			} catch (error) {
-				if (error instanceof Error && error.name === 'AbortError') {
-					throw new NetworkError('Request timed out. Please try again.')
-				}
+		} catch (error) {
+			if (error instanceof Error && error.name === 'AbortError') {
+				const timeoutError = new NetworkError('Request timed out. Please try again.', requestInfo)
+				logApiError(timeoutError)
+				throw timeoutError
+			}
 
-				// Handle network errors (fetch failures, timeouts, etc.)
-				if (error instanceof TypeError && error.message.includes('fetch')) {
-					throw new NetworkError()
+			// Handle network errors (fetch failures, timeouts, etc.)
+			if (error instanceof TypeError && error.message.includes('fetch')) {
+				const networkError = new NetworkError(undefined, requestInfo)
+				logApiError(networkError)
+				throw networkError
 			}
 
 			// Re-throw API errors
@@ -2310,15 +2448,18 @@ export class ApiClient {
 				error instanceof NotFoundError ||
 				error instanceof ServerError
 			) {
+				logApiError(error)
 				throw error
 			}
 
-				// Unknown error
-				throw new NetworkError('An unexpected error occurred. Please try again.')
-			} finally {
-				clearTimeout(timeout)
-			}
+			// Unknown error
+			const unexpectedError = new NetworkError('An unexpected error occurred. Please try again.', requestInfo)
+			logApiError(unexpectedError)
+			throw unexpectedError
+		} finally {
+			clearTimeout(timeout)
 		}
+	}
 
 	async get<T>(endpoint: string): Promise<T> {
 		return this.request<T>(endpoint, { method: 'GET' })
@@ -2351,6 +2492,7 @@ export class ApiClient {
 
 	private async requestPublic<T>(endpoint: string, options?: RequestInit): Promise<T> {
 		const url = `${this.publicBaseUrl}${endpoint}`
+		const requestInfo = this.buildRequestDebugInfo(url, options)
 		const timeoutController = new AbortController()
 		const timeout = setTimeout(() => timeoutController.abort(), API_REQUEST_TIMEOUT_MS)
 		if (options?.signal) {
@@ -2368,21 +2510,54 @@ export class ApiClient {
 				},
 			})
 			if (!response.ok) {
-			const data = await this.readResponseBody<{ error?: unknown; message?: unknown }>(response)
-			const message = this.toErrorMessage(
-				data?.error ?? data?.message,
-				response.statusText || `Request failed (${response.status})`
-			)
-			throw new BaseApiError(message, response.status)
+				const data = await this.readResponseBody<{ error?: unknown; message?: unknown }>(response)
+				const message = this.toErrorMessage(
+					data?.error ?? data?.message,
+					response.statusText || `Request failed (${response.status})`
+				)
+				const error = new BaseApiError(message, response.status, {
+					...requestInfo,
+					status: response.status,
+					responseBody: data,
+				})
+				logApiError(error)
+				throw error
 			}
 			const data = await this.readResponseBody<T>(response)
 			if (data === null) {
-				throw new BaseApiError(
+				const error = new BaseApiError(
 					`Expected JSON response but received ${response.headers.get('content-type') || 'unknown content-type'}`,
 					response.status,
+					{
+						...requestInfo,
+						status: response.status,
+					},
 				)
+				logApiError(error)
+				throw error
 			}
 			return data
+		} catch (error) {
+			if (error instanceof Error && error.name === 'AbortError') {
+				const timeoutError = new NetworkError('Request timed out. Please try again.', requestInfo)
+				logApiError(timeoutError)
+				throw timeoutError
+			}
+
+			if (error instanceof TypeError && error.message.includes('fetch')) {
+				const networkError = new NetworkError(undefined, requestInfo)
+				logApiError(networkError)
+				throw networkError
+			}
+
+			if (error instanceof BaseApiError || error instanceof NetworkError) {
+				logApiError(error)
+				throw error
+			}
+
+			const unexpectedError = new NetworkError('An unexpected error occurred. Please try again.', requestInfo)
+			logApiError(unexpectedError)
+			throw unexpectedError
 		} finally {
 			clearTimeout(timeout)
 		}
@@ -2393,7 +2568,7 @@ export class ApiClient {
 	 * This endpoint intentionally omits private profile fields such as wallet,
 	 * location, status, skills, and skill queue.
 	 */
-	async getCharacterDetail(characterId: string, corporationId?: string): Promise<{
+	async getCharacterDetail(characterId: string): Promise<{
 		characterId: string
 		isOwner: boolean
 		viewedAsAdmin: boolean
@@ -2411,17 +2586,14 @@ export class ApiClient {
 		}
 		lastUpdated: string | null
 	}> {
-		const query = corporationId
-			? `?corporationId=${encodeURIComponent(corporationId)}`
-			: ''
-		return this.get(`/characters/${characterId}${query}`)
+		return this.get(`/characters/${characterId}`)
 	}
 
 	/**
 	 * Get the private character-profile hydration for explicit detail-page views.
 	 * This is the only profile-data fetch that can trigger the private-profile alert.
 	 */
-	async getCharacterPrivateDetail(characterId: string, corporationId?: string): Promise<{
+	async getCharacterPrivateDetail(characterId: string): Promise<{
 		characterId: string
 		isOwner: boolean
 		viewedAsAdmin: boolean
@@ -2443,10 +2615,7 @@ export class ApiClient {
 			mainCharacterName: string
 		}
 	}> {
-		const query = corporationId
-			? `?corporationId=${encodeURIComponent(corporationId)}`
-			: ''
-		return this.get(`/characters/${characterId}/private${query}`)
+		return this.get(`/characters/${characterId}/private`)
 	}
 
 	/**

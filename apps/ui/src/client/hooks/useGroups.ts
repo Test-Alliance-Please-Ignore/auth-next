@@ -284,10 +284,11 @@ export function useRejectJoinRequest() {
 /**
  * Get pending invitations for the current user
  */
-export function usePendingInvitations() {
+export function usePendingInvitations(options?: { enabled?: boolean }) {
 	return useQuery({
 		queryKey: groupKeys.invitations(),
 		queryFn: () => api.getPendingInvitations(),
+		enabled: options?.enabled ?? true,
 	})
 }
 

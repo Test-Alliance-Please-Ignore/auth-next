@@ -31,6 +31,7 @@ import { useQuery } from '@tanstack/react-query'
 import { useEffect, useState } from 'react'
 import { Link, useLocation } from 'react-router-dom'
 
+import { ROLE_CORE_ALLIANCE_MEMBER } from '@repo/core'
 import { useHrAccessibleCorporations } from '@/features/hr'
 import { useHasCorporationAccess } from '@/features/corporations'
 import { useSrpPaymentMismatchAlerts } from '@/features/srp/hooks'
@@ -74,11 +75,13 @@ export function SidebarNav({ onNavigate, isSidebarOpen = true, onToggleSidebar }
 	const location = useLocation()
 	const { user } = useAuth()
 	const logout = useLogout()
-	const { data: invitations } = usePendingInvitations()
 	const { data: corporationAccess } = useHasCorporationAccess()
 	const { data: hrCorporations } = useHrAccessibleCorporations()
 	const { permissions, hasAnyPermission } = useUserPermissions()
 	const isSiteAdmin = user?.is_admin === true
+	const isAllianceMember = user?.roles?.includes(ROLE_CORE_ALLIANCE_MEMBER) ?? false
+	const canSeeAllianceMemberNav = isSiteAdmin || isAllianceMember
+	const { data: invitations } = usePendingInvitations({ enabled: canSeeAllianceMemberNav })
 	const { isEnabled: isMumbleFeatureEnabled } = useMumbleFeatureEnabled()
 	const canViewStructures = isSiteAdmin || hasAnyStructurePermission(permissions)
 	const hasSrpManagerPermission = hasAnyPermission('urn:srp:manager')
@@ -157,7 +160,7 @@ export function SidebarNav({ onNavigate, isSidebarOpen = true, onToggleSidebar }
 		'/tax': isTaxRoute,
 		'/freight': isFreightRoute,
 		'/srp': isSrpRoute,
-		'#hr': isHrRoute,
+		'#hr': isHrRoute || !canSeeAllianceMemberNav,
 		'#external': true,
 	})
 
@@ -184,10 +187,10 @@ export function SidebarNav({ onNavigate, isSidebarOpen = true, onToggleSidebar }
 	}, [isSrpRoute])
 
 	useEffect(() => {
-		if (isHrRoute) {
+		if (isHrRoute || !canSeeAllianceMemberNav) {
 			setOpenMenus((prev) => ({ ...prev, '#hr': true }))
 		}
-	}, [isHrRoute])
+	}, [isHrRoute, canSeeAllianceMemberNav])
 
 	const navItems: SidebarNavItem[] = [
 		{
@@ -195,32 +198,6 @@ export function SidebarNav({ onNavigate, isSidebarOpen = true, onToggleSidebar }
 			href: '/dashboard',
 			icon: LayoutDashboard,
 		},
-		{
-			label: 'Invitations',
-			href: '/invitations',
-			icon: Mail,
-			badge: pendingCount > 0 ? pendingCount : undefined,
-		},
-		{
-			label: 'My Groups',
-			href: '/my-groups',
-			icon: FolderHeart,
-		},
-		{
-			label: 'Groups',
-			href: '/groups',
-			icon: Users,
-		},
-		...(canViewStructures
-			? [
-					{
-						label: 'Structures',
-						href: '/structures',
-						icon: Building2,
-						isActive: isStructuresRoute,
-					},
-				]
-			: []),
 	]
 
 	// HR section - always visible with at least My Applications and Join
@@ -234,11 +211,13 @@ export function SidebarNav({ onNavigate, isSidebarOpen = true, onToggleSidebar }
 				label: 'Join Corporations',
 				href: '/join',
 			},
-			{
+		]
+		if (canSeeAllianceMemberNav) {
+			hrItems.push({
 				label: 'Recommendations',
 				href: '/recommendations',
-			},
-		]
+			})
+		}
 
 		const isAuditor = hasAnyPermission('urn:hr:auditor')
 		const hasCorporationModuleAccess =
@@ -281,210 +260,234 @@ export function SidebarNav({ onNavigate, isSidebarOpen = true, onToggleSidebar }
 		})
 	}
 
-	navItems.push(
-		{
-			label: 'Skill Plans',
-			href: '/skill-plans',
-			icon: BookOpen,
-		},
-		{
-			label: 'Doctrines',
-			href: '/doctrines',
-			icon: Swords,
-		},
-	)
-
-	const canSeeFleetTracking =
-		isSiteAdmin ||
-		hasAnyPermission('urn:fleet-tracking:create') ||
-		hasAnyPermission('urn:fleet-tracking:view-fleets') ||
-		hasAnyPermission('urn:fleet-tracking:view-all')
-	const canSeeFleetStats = isSiteAdmin || hasAnyPermission('urn:fleet-tracking:view-all')
-	if (canSeeFleetTracking) {
-		navItems.push({
-			label: 'Fleet Tracking',
-			href: '/fleet-tracking',
-			icon: Radar,
-			children: canSeeFleetStats
+	if (canSeeAllianceMemberNav) {
+		navItems.push(
+			{
+				label: 'Invitations',
+				href: '/invitations',
+				icon: Mail,
+				badge: pendingCount > 0 ? pendingCount : undefined,
+			},
+			{
+				label: 'My Groups',
+				href: '/my-groups',
+				icon: FolderHeart,
+			},
+			{
+				label: 'Groups',
+				href: '/groups',
+				icon: Users,
+			},
+			...(canViewStructures
 				? [
-						{ label: 'Fleets', href: '/fleet-tracking' },
-						{ label: 'Statistics', href: '/fleet-tracking/stats' },
+						{
+							label: 'Structures',
+							href: '/structures',
+							icon: Building2,
+							isActive: isStructuresRoute,
+						},
 					]
-				: undefined,
-		})
-	}
+				: []),
+			{
+				label: 'Skill Plans',
+				href: '/skill-plans',
+				icon: BookOpen,
+			},
+			{
+				label: 'Doctrines',
+				href: '/doctrines',
+				icon: Swords,
+			},
+		)
 
-	navItems.push(
-		{
-			...srpNavState.navItem,
-			icon: CircleDollarSign,
-		},
-		{
-			label: 'My Bills',
-			href: '/my-bills',
-			icon: Receipt,
-		},
-		...(canSeeMumble
-			? [
-					{
-						label: 'Mumble',
-						href: '/mumble',
-						icon: Mic,
-					},
-				]
-			: []),
-
-		{
-			label: 'Freight',
-			href: '/freight',
-			icon: Truck,
-			children: [
-				{ label: 'Calculator', href: '/freight' },
-				{ label: 'Open Contracts', href: '/freight/contracts' },
-				{ label: 'Leaderboard', href: '/freight/leaderboard' },
-				...(isSiteAdmin || hasAnyPermission('urn:freight:manager')
-					? [{ label: 'Manage Routes', href: '/freight/manage' }]
-					: []),
-			],
-		},
-	)
-
-	if (isSiteAdmin || hasAnyPermission('urn:moons:view')) {
-		navItems.push({
-			label: 'Moon Scanning',
-			href: '/moon-scan',
-			icon: Moon,
-			children: [
-				{ label: 'Regions', href: '/moon-scan' },
-				{ label: 'Scanned Moons', href: '/moon-scan/scanned' },
-				{ label: 'Leaderboard', href: '/moon-scan/leaderboard' },
-				...(isSiteAdmin || hasAnyPermission('urn:moons:scan:submit')
+		const canSeeFleetTracking =
+			isSiteAdmin ||
+			hasAnyPermission('urn:fleet-tracking:create') ||
+			hasAnyPermission('urn:fleet-tracking:view-fleets') ||
+			hasAnyPermission('urn:fleet-tracking:view-all')
+		const canSeeFleetStats = isSiteAdmin || hasAnyPermission('urn:fleet-tracking:view-all')
+		if (canSeeFleetTracking) {
+			navItems.push({
+				label: 'Fleet Tracking',
+				href: '/fleet-tracking',
+				icon: Radar,
+				children: canSeeFleetStats
 					? [
-							{ label: 'Submit Scan', href: '/moon-scan/submit' },
-							{ label: 'My Scans', href: '/moon-scan/my-scans' },
+							{ label: 'Fleets', href: '/fleet-tracking' },
+							{ label: 'Statistics', href: '/fleet-tracking/stats' },
 						]
-					: []),
-				...(isSiteAdmin || hasAnyPermission('urn:moons:scan:validate')
-					? [{ label: 'Validation Queue', href: '/moon-scan/queue' }]
-					: []),
-				...(isSiteAdmin || hasAnyPermission('urn:moons:admin')
-					? [{ label: 'Configuration', href: '/moon-scan/settings' }]
-					: []),
-			],
-		})
-	}
-
-	// Continue with other nav items
-	navItems.push({
-		label: 'Broadcasts',
-		href: '/broadcasts',
-		icon: Radio,
-	})
-
-	// Utilities section
-	navItems.push({
-		label: 'Inventory Parser',
-		href: '/inventory-parser',
-		icon: Package,
-	})
-
-	navItems.push({
-		label: 'Pastes',
-		href: '/pastes',
-		icon: FileText,
-	})
-
-	// External links section
-	navItems.push({
-		label: 'External',
-		href: '#external',
-		icon: ExternalLink,
-		children: [
-			{
-				label: 'Timerboard',
-				href: 'https://timers.pleaseignore.app/',
-				icon: Timer,
-				external: true,
-			},
-			{
-				label: 'Wiki',
-				href: 'https://wiki.pleaseignore.com/start',
-				icon: BookMarked,
-				external: true,
-			},
-			{
-				label: 'WinterCo Services',
-				href: 'https://auth.wintercoalition.space/',
-				icon: Globe,
-				external: true,
-			},
-		],
-	})
-
-	const canReadTaxFeature =
-		isSiteAdmin ||
-		permissions.some(
-			(permission) => extractCorporationIdFromTaxViewerScopedUrn(permission.urn) !== null
-		) ||
-		hasAnyPermission('urn:tax:auditor', 'urn:tax:admin') ||
-		!!corporationAccess?.hasAccess
-	const canAuditTaxFeature = isSiteAdmin || hasAnyPermission('urn:tax:auditor', 'urn:tax:admin')
-	const canManageTaxFeature = isSiteAdmin || hasAnyPermission('urn:tax:admin')
-	const { data: openTaxAlerts = [] } = useTaxAlerts({
-		status: 'open',
-		limit: 200,
-		enabled: canManageTaxFeature,
-	})
-	const openTaxAlertCount = openTaxAlerts.length
-
-	if (canReadTaxFeature) {
-		const taxItems: SidebarNavItem[] = []
-		taxItems.push({
-			label: 'Member Summary',
-			href: '/tax/member-summary',
-		})
-
-		if (canAuditTaxFeature) {
-			taxItems.push({
-				label: 'Reports',
-				href: '/tax/reports',
-			})
-			taxItems.push({
-				label: 'Billing',
-				href: '/tax/bills',
+					: undefined,
 			})
 		}
 
-		if (canManageTaxFeature) {
-			taxItems.push({
-				label: 'Alerts',
-				href: '/tax/alerts',
-				badge: openTaxAlertCount > 0 ? openTaxAlertCount : undefined,
-			})
-			taxItems.push({
-				label: 'Ledger',
-				href: '/tax/ledger',
-			})
-			taxItems.push({
-				label: 'Rules',
-				href: '/tax/rules',
-			})
-			taxItems.push({
-				label: 'Exclusions',
-				href: '/tax/exclusions',
-			})
-			taxItems.push({
-				label: 'Audit Log',
-				href: '/tax/audit-log',
+		navItems.push(
+			{
+				...srpNavState.navItem,
+				icon: CircleDollarSign,
+			},
+			{
+				label: 'My Bills',
+				href: '/my-bills',
+				icon: Receipt,
+			},
+			...(canSeeMumble
+				? [
+						{
+							label: 'Mumble',
+							href: '/mumble',
+							icon: Mic,
+						},
+					]
+				: []),
+			{
+				label: 'Freight',
+				href: '/freight',
+				icon: Truck,
+				children: [
+					{ label: 'Calculator', href: '/freight' },
+					{ label: 'Open Contracts', href: '/freight/contracts' },
+					{ label: 'Leaderboard', href: '/freight/leaderboard' },
+					...(isSiteAdmin || hasAnyPermission('urn:freight:manager')
+						? [{ label: 'Manage Routes', href: '/freight/manage' }]
+						: []),
+				],
+			},
+		)
+
+		if (isSiteAdmin || hasAnyPermission('urn:moons:view')) {
+			navItems.push({
+				label: 'Moon Scanning',
+				href: '/moon-scan',
+				icon: Moon,
+				children: [
+					{ label: 'Regions', href: '/moon-scan' },
+					{ label: 'Scanned Moons', href: '/moon-scan/scanned' },
+					{ label: 'Leaderboard', href: '/moon-scan/leaderboard' },
+					...(isSiteAdmin || hasAnyPermission('urn:moons:scan:submit')
+						? [
+								{ label: 'Submit Scan', href: '/moon-scan/submit' },
+								{ label: 'My Scans', href: '/moon-scan/my-scans' },
+							]
+						: []),
+					...(isSiteAdmin || hasAnyPermission('urn:moons:scan:validate')
+						? [{ label: 'Validation Queue', href: '/moon-scan/queue' }]
+						: []),
+					...(isSiteAdmin || hasAnyPermission('urn:moons:admin')
+						? [{ label: 'Configuration', href: '/moon-scan/settings' }]
+						: []),
+				],
 			})
 		}
 
 		navItems.push({
-			label: 'Tax',
-			href: '/tax',
-			icon: Scale,
-			children: taxItems,
+			label: 'Broadcasts',
+			href: '/broadcasts',
+			icon: Radio,
 		})
+
+		navItems.push({
+			label: 'Inventory Parser',
+			href: '/inventory-parser',
+			icon: Package,
+		})
+
+		navItems.push({
+			label: 'Pastes',
+			href: '/pastes',
+			icon: FileText,
+		})
+
+		navItems.push({
+			label: 'External',
+			href: '#external',
+			icon: ExternalLink,
+			children: [
+				{
+					label: 'Timerboard',
+					href: 'https://timers.pleaseignore.app/',
+					icon: Timer,
+					external: true,
+				},
+				{
+					label: 'Wiki',
+					href: 'https://wiki.pleaseignore.com/start',
+					icon: BookMarked,
+					external: true,
+				},
+				{
+					label: 'WinterCo Services',
+					href: 'https://auth.wintercoalition.space/',
+					icon: Globe,
+					external: true,
+				},
+			],
+		})
+
+		const canReadTaxFeature =
+			isSiteAdmin ||
+			permissions.some(
+				(permission) => extractCorporationIdFromTaxViewerScopedUrn(permission.urn) !== null
+			) ||
+			hasAnyPermission('urn:tax:auditor', 'urn:tax:admin') ||
+			!!corporationAccess?.hasAccess
+		const canAuditTaxFeature = isSiteAdmin || hasAnyPermission('urn:tax:auditor', 'urn:tax:admin')
+		const canManageTaxFeature = isSiteAdmin || hasAnyPermission('urn:tax:admin')
+		const { data: openTaxAlerts = [] } = useTaxAlerts({
+			status: 'open',
+			limit: 200,
+			enabled: canManageTaxFeature,
+		})
+		const openTaxAlertCount = openTaxAlerts.length
+
+		if (canReadTaxFeature) {
+			const taxItems: SidebarNavItem[] = []
+			taxItems.push({
+				label: 'Member Summary',
+				href: '/tax/member-summary',
+			})
+
+			if (canAuditTaxFeature) {
+				taxItems.push({
+					label: 'Reports',
+					href: '/tax/reports',
+				})
+				taxItems.push({
+					label: 'Billing',
+					href: '/tax/bills',
+				})
+			}
+
+			if (canManageTaxFeature) {
+				taxItems.push({
+					label: 'Alerts',
+					href: '/tax/alerts',
+					badge: openTaxAlertCount > 0 ? openTaxAlertCount : undefined,
+				})
+				taxItems.push({
+					label: 'Ledger',
+					href: '/tax/ledger',
+				})
+				taxItems.push({
+					label: 'Rules',
+					href: '/tax/rules',
+				})
+				taxItems.push({
+					label: 'Exclusions',
+					href: '/tax/exclusions',
+				})
+				taxItems.push({
+					label: 'Audit Log',
+					href: '/tax/audit-log',
+				})
+			}
+
+			navItems.push({
+				label: 'Tax',
+				href: '/tax',
+				icon: Scale,
+				children: taxItems,
+			})
+		}
 	}
 
 	// Add admin nav item if user is admin (bottom)
