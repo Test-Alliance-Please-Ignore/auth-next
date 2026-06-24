@@ -1,7 +1,7 @@
 import { WorkflowEntrypoint, WorkflowEvent, WorkflowStep } from 'cloudflare:workers'
 
-import { getStub } from '@repo/do-utils'
 import { logger } from '@repo/hono-helpers'
+import { getStub } from '@repo/do-utils'
 import { createWorkflowInstanceUpdater } from '@repo/orchestrator'
 import { esiRetryOptions, withEsiRetryClassification } from '@repo/workflow-utils'
 
@@ -12,39 +12,12 @@ import type { EveCharacterData, EveCharacterSyncDataType } from '@repo/eve-chara
 import type { EveTokenStore } from '@repo/eve-token-store'
 import type { Env } from '../context'
 
-type CoreTokenSyncStub = {
-	syncUserCharacterTokenValidityBatch(input: {
-		userId: string
-		characterIds: string[]
-		forceValidate?: boolean
-	}): Promise<CoreTokenValidityTransition[]>
-	queueTokenInvalidationAlerts(input: {
-		userId: string
-		characterIds: string[]
-		source?: string
-	}): Promise<{
-		added: number
-		skipped: number
-		pendingCount: number
-	}>
-}
-
 type TokenValidationSummary = {
 	hasValidToken: boolean
 	status: string
 	refreshAttempted: boolean
 	refreshSucceeded: boolean
 	error?: string
-}
-
-type CoreTokenValidityTransition = {
-	characterId: string
-	previousHasValidToken: boolean | null
-	nextHasValidToken: boolean | null
-	validationStatus: string | null
-	validationError: string | null
-	refreshAttempted: boolean
-	refreshSucceeded: boolean
 }
 
 /**
@@ -152,10 +125,20 @@ export class EveCharacterSyncWorkflow extends WorkflowEntrypoint<Env, EveCharact
 			characterFailures: 0,
 		}
 
-		let tokenValidityByCharacterId = new Map<string, CoreTokenValidityTransition>()
+		let tokenValidityByCharacterId = new Map<
+			string,
+			{
+				characterId: string
+				previousHasValidToken: boolean | null
+				nextHasValidToken: boolean | null
+				validationStatus: string | null
+				validationError: string | null
+				refreshAttempted: boolean
+				refreshSucceeded: boolean
+			}
+		>()
 		if (userId) {
 			try {
-				const coreStub = getStub<CoreTokenSyncStub>(this.env.CORE, 'default')
 				const transitions = await step.do(
 					'sync-token-validity-batch',
 					{
@@ -163,7 +146,7 @@ export class EveCharacterSyncWorkflow extends WorkflowEntrypoint<Env, EveCharact
 						timeout: '1 minute',
 					},
 					async () =>
-						await coreStub.syncUserCharacterTokenValidityBatch({
+						await this.env.CORE.syncUserCharacterTokenValidityBatch({
 							userId,
 							characterIds,
 							forceValidate: trigger === 'cron',
@@ -182,7 +165,7 @@ export class EveCharacterSyncWorkflow extends WorkflowEntrypoint<Env, EveCharact
 					.map((transition) => transition.characterId)
 
 				if (invalidatedCharacterIds.length > 0) {
-					const queueResult = await coreStub.queueTokenInvalidationAlerts({
+					const queueResult = await this.env.CORE.queueTokenInvalidationAlerts({
 						userId,
 						characterIds: invalidatedCharacterIds,
 						source: 'character-refresh-token-invalidated',
