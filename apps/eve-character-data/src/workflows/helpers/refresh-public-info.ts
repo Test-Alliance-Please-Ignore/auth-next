@@ -46,6 +46,11 @@ export async function refreshPublicInfo(
 	// Create fresh stubs for this operation
 	const characterDataStub = getStub<EveCharacterData>(env.EVE_CHARACTER_DATA, normalizedCharacterId)
 
+	logger.info('[refreshPublicInfo] Starting public info refresh', {
+		characterId: normalizedCharacterId,
+		forceRefresh,
+	})
+
 	try {
 		const result = await characterDataStub.refreshPublicCharacterData(
 			normalizedCharacterId,
@@ -64,9 +69,11 @@ export async function refreshPublicInfo(
 
 		return result
 	} catch (error) {
+		const errorMessage = error instanceof Error ? error.message : String(error)
 		logger.error('[refreshPublicInfo] Failed to refresh public info', {
 			characterId: normalizedCharacterId,
-			error: error instanceof Error ? error.message : String(error),
+			forceRefresh,
+			error: errorMessage,
 			errorDetails: extractErrorDetails(error),
 		})
 		throw error

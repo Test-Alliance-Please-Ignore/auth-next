@@ -60,6 +60,25 @@ import type { Env } from './context'
 export class EveCharacterDataDO extends DurableObject<Env> implements EveCharacterData {
 	private db: ReturnType<typeof createDb>
 	private static readonly MANUAL_BATCH_STORAGE_PREFIX = 'manual-sync-batch:'
+	private static readonly MANUAL_BATCH_STORAGE_CHUNK_SIZE = 250
+
+	private getManualBatchMetaKey(batchId: string): string {
+		return `${EveCharacterDataDO.MANUAL_BATCH_STORAGE_PREFIX}${batchId}:meta`
+	}
+
+	private getManualBatchChunkKey(batchId: string, chunkIndex: number): string {
+		return `${EveCharacterDataDO.MANUAL_BATCH_STORAGE_PREFIX}${batchId}:chunk:${chunkIndex}`
+	}
+
+	private chunkWorkflowInstanceIds(workflowInstanceIds: string[]): string[][] {
+		const chunks: string[][] = []
+		for (let index = 0; index < workflowInstanceIds.length; index += EveCharacterDataDO.MANUAL_BATCH_STORAGE_CHUNK_SIZE) {
+			chunks.push(
+				workflowInstanceIds.slice(index, index + EveCharacterDataDO.MANUAL_BATCH_STORAGE_CHUNK_SIZE)
+			)
+		}
+		return chunks
+	}
 
 	private extractDbErrorDetails(error: unknown): Record<string, unknown> {
 		if (!error || typeof error !== 'object') {
@@ -141,12 +160,21 @@ export class EveCharacterDataDO extends DurableObject<Env> implements EveCharact
 		characterId: string,
 		forceRefresh = false
 	): Promise<CharacterPublicRefreshResult> {
+		console.info('[EveCharacterDataDO] refreshPublicCharacterData started', {
+			characterId,
+			forceRefresh,
+		})
 		const previousCharacterInfo = await this.getCharacterInfo(characterId)
 		let currentCharacterInfo: CharacterPublicData | null = null
 
 		try {
 			currentCharacterInfo = await this.fetchAndStorePublicInfo(characterId, forceRefresh)
 			if (currentCharacterInfo === null) {
+				console.info('[EveCharacterDataDO] refreshPublicCharacterData resolved deleted character', {
+					characterId,
+					forceRefresh,
+					hadPreviousCharacterInfo: previousCharacterInfo !== null,
+				})
 				return {
 					success: false,
 					isDeleted: true,
@@ -164,6 +192,18 @@ export class EveCharacterDataDO extends DurableObject<Env> implements EveCharact
 			const affiliationChanged =
 				previousCorporationId !== currentCorporationId || previousAllianceId !== currentAllianceId
 			const isDeleted = String(currentCorporationId ?? '') === '1000001'
+
+			console.info('[EveCharacterDataDO] refreshPublicCharacterData completed', {
+				characterId,
+				forceRefresh,
+				characterName: currentCharacterInfo.name,
+				previousCorporationId,
+				currentCorporationId,
+				previousAllianceId,
+				currentAllianceId,
+				affiliationChanged,
+				isDeleted,
+			})
 
 			return {
 				success: !isDeleted,
@@ -185,8 +225,24 @@ export class EveCharacterDataDO extends DurableObject<Env> implements EveCharact
 				lowerMessage.includes('esi request failed: 404')
 
 			if (!isDeletedCharacterError) {
+				console.error('[EveCharacterDataDO] refreshPublicCharacterData failed', {
+					characterId,
+					forceRefresh,
+					previousCorporationId: previousCharacterInfo?.corporationId ?? null,
+					previousAllianceId: previousCharacterInfo?.allianceId ?? null,
+					error: errorMessage,
+					errorDetails: this.extractDbErrorDetails(error),
+				})
 				throw error
 			}
+
+			console.info('[EveCharacterDataDO] refreshPublicCharacterData treated missing character as deleted', {
+				characterId,
+				forceRefresh,
+				previousCorporationId: previousCharacterInfo?.corporationId ?? null,
+				previousAllianceId: previousCharacterInfo?.allianceId ?? null,
+				error: errorMessage,
+			})
 
 			return {
 				success: false,
@@ -1802,10 +1858,16 @@ export class EveCharacterDataDO extends DurableObject<Env> implements EveCharact
 		}
 
 		const batchId = crypto.randomUUID()
-		await this.state.storage.put(`${EveCharacterDataDO.MANUAL_BATCH_STORAGE_PREFIX}${batchId}`, {
+		const workflowIdChunks = this.chunkWorkflowInstanceIds(createdIds)
+		// Keep each storage value bounded so a large manual run doesn't trip DO storage limits.
+		for (const [chunkIndex, chunk] of workflowIdChunks.entries()) {
+			await this.state.storage.put(this.getManualBatchChunkKey(batchId, chunkIndex), chunk)
+		}
+		await this.state.storage.put(this.getManualBatchMetaKey(batchId), {
 			batchId,
 			startedAt,
-			workflowInstanceIds: createdIds,
+			workflowInstanceCount: createdIds.length,
+			chunkCount: workflowIdChunks.length,
 		})
 
 		return {
@@ -1840,13 +1902,38 @@ export class EveCharacterDataDO extends DurableObject<Env> implements EveCharact
 			error?: string
 		}>
 	}> {
+		const metaKey = this.getManualBatchMetaKey(batchId)
 		const stored = await this.state.storage.get<{
 			batchId: string
 			startedAt: string
-			workflowInstanceIds: string[]
-		}>(`${EveCharacterDataDO.MANUAL_BATCH_STORAGE_PREFIX}${batchId}`)
-		if (!stored) {
+			workflowInstanceCount?: number
+			chunkCount?: number
+		}>(metaKey)
+
+		const legacyStored = !stored
+			? await this.state.storage.get<{
+					batchId: string
+					startedAt: string
+					workflowInstanceIds: string[]
+				}>(`${EveCharacterDataDO.MANUAL_BATCH_STORAGE_PREFIX}${batchId}`)
+			: null
+
+		if (!stored && !legacyStored) {
 			throw new Error('Manual sync batch not found')
+		}
+
+		const workflowInstanceIds: string[] = []
+		if (stored) {
+			for (let chunkIndex = 0; chunkIndex < (stored.chunkCount ?? 0); chunkIndex += 1) {
+				const chunk = await this.state.storage.get<string[]>(
+					this.getManualBatchChunkKey(batchId, chunkIndex)
+				)
+				if (chunk?.length) {
+					workflowInstanceIds.push(...chunk)
+				}
+			}
+		} else if (legacyStored) {
+			workflowInstanceIds.push(...legacyStored.workflowInstanceIds)
 		}
 
 		const statusCounts = {
@@ -1860,7 +1947,7 @@ export class EveCharacterDataDO extends DurableObject<Env> implements EveCharact
 		}
 		const failedInstances: Array<{ id: string; status: string; error?: string }> = []
 
-		for (const workflowId of stored.workflowInstanceIds) {
+		for (const workflowId of workflowInstanceIds) {
 			try {
 				const instance = await this.env.EVE_CHARACTER_SYNC.get(workflowId)
 				const status = await instance.status()
@@ -1891,9 +1978,9 @@ export class EveCharacterDataDO extends DurableObject<Env> implements EveCharact
 		}
 
 		return {
-			batchId: stored.batchId,
-			startedAt: stored.startedAt,
-			total: stored.workflowInstanceIds.length,
+			batchId: stored?.batchId ?? legacyStored!.batchId,
+			startedAt: stored?.startedAt ?? legacyStored!.startedAt,
+			total: workflowInstanceIds.length,
 			statusCounts,
 			failedInstances,
 		}
