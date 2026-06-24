@@ -542,6 +542,14 @@ auth.get('/callback', async (c) => {
 		if (oauthState) {
 			// Check if state has expired
 			if (new Date() > oauthState.expiresAt) {
+				await db.delete(oauthStates).where(eq(oauthStates.state, state))
+				// Guest temp-op flows render in the SPA, so surface a usable error
+				// on the landing page rather than a raw JSON response.
+				if (oauthState.flowType === 'mumble-tempop') {
+					const expiredKey =
+						typeof oauthState.metadata?.key === 'string' ? oauthState.metadata.key : ''
+					return c.redirect(`/tempop/${expiredKey}?error=expired`)
+				}
 				return c.json({ error: 'OAuth state has expired. Please try again.' }, 400)
 			}
 

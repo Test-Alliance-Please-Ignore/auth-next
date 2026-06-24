@@ -47,14 +47,18 @@ export default function TempopGuestPage() {
 		retry: false,
 	})
 
-	// One-time handoff exchange — never retried or refetched (single use).
+	// One-time handoff exchange — single use. The handoff is consumed server-side
+	// on first fetch, and we drop the result from cache as soon as the page
+	// unmounts (gcTime: 0) so the password can't be re-shown on back-navigation
+	// or remount; a remount re-fetches and the now-consumed handoff returns 404.
+	// We never refetch within the same view, so the credentials stay visible
+	// while the page is open.
 	const credentialsQuery = useQuery({
 		queryKey: ['tempop-credentials', key, handoff],
 		queryFn: () => apiClient.getTempopCredentials(key, handoff ?? ''),
 		enabled: provisioned && !!handoff,
 		retry: false,
-		staleTime: Infinity,
-		gcTime: Infinity,
+		gcTime: 0,
 		refetchOnWindowFocus: false,
 		refetchOnMount: false,
 	})

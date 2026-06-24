@@ -546,6 +546,44 @@ interface TempopGuestCredentials {
  * than failing. Affiliation is captured on the guest row for display only and
  * never written to core user/character tables.
  */
+/**
+ * Re-validate that a temp-op is still active after provisioning work. If it was
+ * closed (deleted or expired) concurrently — e.g. an SSO callback that lands
+ * after the temp-op was finalized — disconnect and remove the just-issued guest
+ * so a late callback cannot leave an active guest attached to a dead temp-op,
+ * then throw so the caller surfaces an error instead of returning credentials.
+ */
+async function rollbackIfTempopClosed(
+	env: Env,
+	db: ReturnType<typeof createDb>,
+	tempopId: string,
+	subjectId: string
+): Promise<void> {
+	const current = await db.query.mumbleTempops.findFirst({
+		where: eq(mumbleTempops.id, tempopId),
+		columns: { status: true, expiresAt: true },
+	})
+	if (current && current.status === 'active' && current.expiresAt.getTime() > Date.now()) {
+		return
+	}
+
+	await getMumbleStub(env)
+		.deleteAccounts(env.MUMBLE_SERVER_ID, [subjectId])
+		.catch((error) => {
+			logger.error('[Mumble] Failed to roll back orphaned temp-op guest', {
+				tempopId,
+				subjectId,
+				error: error instanceof Error ? error.message : String(error),
+			})
+		})
+	await db
+		.update(mumbleTempopGuests)
+		.set({ status: 'deleted' })
+		.where(eq(mumbleTempopGuests.subjectId, subjectId))
+
+	throw new Error(`Temp-op ${tempopId} closed during provisioning`)
+}
+
 export async function provisionTempopGuest(
 	env: Env,
 	params: { tempopId: string; characterId: string }
@@ -555,10 +593,13 @@ export async function provisionTempopGuest(
 
 	const tempop = await db.query.mumbleTempops.findFirst({
 		where: eq(mumbleTempops.id, tempopId),
-		columns: { id: true, shortCode: true, groupName: true },
+		columns: { id: true, shortCode: true, groupName: true, status: true, expiresAt: true },
 	})
 	if (!tempop) {
 		throw new Error(`Temp-op ${tempopId} not found`)
+	}
+	if (tempop.status !== 'active' || tempop.expiresAt.getTime() <= Date.now()) {
+		throw new Error(`Temp-op ${tempopId} is not active`)
 	}
 
 	const subjectId = `tempop:${tempopId}:${characterId}`
@@ -576,6 +617,7 @@ export async function provisionTempopGuest(
 	if (existingGuest && existingGuest.status === 'active') {
 		try {
 			const { password } = await mumbleStub.resetPassword(env.MUMBLE_SERVER_ID, subjectId)
+			await rollbackIfTempopClosed(env, db, tempopId, subjectId)
 			return { loginName: existingGuest.loginName, password, connection }
 		} catch (error) {
 			// Account vanished on the control plane — fall through and re-provision.
@@ -658,6 +700,10 @@ export async function provisionTempopGuest(
 				status: 'active',
 			},
 		})
+
+	// Close the TOCTOU window: if the temp-op was deleted/expired while we were
+	// fetching ESI data and talking to murmur-control, undo this guest now.
+	await rollbackIfTempopClosed(env, db, tempopId, subjectId)
 
 	logger.info('[Mumble] Provisioned temp-op guest', {
 		tempopId,
