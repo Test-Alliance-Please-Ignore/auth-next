@@ -1,9 +1,11 @@
+import { ROLE_CORE_ALLIANCE_MEMBER } from '@repo/core'
 import { and, eq } from '@repo/db-utils'
 import { getStub } from '@repo/do-utils'
 import { logger } from '@repo/hono-helpers'
 import { parseMumbleError } from '@repo/mumble'
 
 import { createDb } from '../db'
+import { getCachedUserRoles } from '../lib/groups-cache'
 import { isMumbleFeatureEnabled } from '../lib/mumble-feature'
 import {
 	managedCorporations,
@@ -32,9 +34,9 @@ const MAX_LOGIN_NAME_LENGTH = 60
 const MAX_MUMBLE_TICKER_LENGTH = 5
 const SITE_ADMIN_MUMBLE_TICKER = 'SA'
 /**
- * Mumble ACL group synthesized for users attached to a member corporation
- * (the same signal as the alliance-member role). Must exist on the Murmur
- * server with channel ACLs referencing it; auth-next only assigns the name.
+ * Mumble ACL group synthesized for users holding the alliance-member role
+ * (ROLE_CORE_ALLIANCE_MEMBER). Must exist on the Murmur server with channel
+ * ACLs referencing it; auth-next only assigns the name.
  */
 const ALLIANCE_MEMBER_MUMBLE_GROUP = 'Test Alliance'
 /**
@@ -242,7 +244,7 @@ async function getUserGroupNames(
 	}
 
 	const db = createDb(env.DATABASE_URL)
-	const [user, hasAttachment] = await Promise.all([
+	const [user, hasAttachment, roleAttachments] = await Promise.all([
 		db.query.users.findFirst({
 			where: eq(users.id, userId),
 			columns: {
@@ -250,7 +252,11 @@ async function getUserGroupNames(
 			},
 		}),
 		hasMemberCorporationAttachment(env, userId),
+		getCachedUserRoles(env, userId),
 	])
+	const isAllianceMember = roleAttachments.some(
+		(attachment) => attachment.role.name === ROLE_CORE_ALLIANCE_MEMBER
+	)
 
 	if (!hasAttachment && !user?.is_admin) {
 		return []
@@ -264,7 +270,7 @@ async function getUserGroupNames(
 		.filter((membership) => membership.mumbleSyncEnabled)
 		.map((membership) => membership.groupName)
 
-	if (hasAttachment) {
+	if (isAllianceMember) {
 		groups.push(ALLIANCE_MEMBER_MUMBLE_GROUP)
 	}
 	if (user?.is_admin) {
