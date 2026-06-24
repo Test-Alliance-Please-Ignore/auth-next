@@ -64,7 +64,6 @@ export default function CorporationMembers() {
 	const { canAccess: hasCorpAccess, userRole, corporation: accessCorp } = useCanAccessCorporation(corporationId!)
 	const canAccess = hasCorpAccess || isAuditor
 	const { data: corporation, isLoading: corpLoading } = useMyCorporation(corporationId!)
-	const { data: hrRoles, isLoading: hrRolesLoading } = useHrRoles(corporationId!)
 	const { invalidateMembers } = useCorporationManager()
 	const [isRefreshing, setIsRefreshing] = useState(false)
 	const [membersQuery, setMembersQuery] = useState<CorporationMembersQuery>({
@@ -111,6 +110,10 @@ export default function CorporationMembers() {
 			(userRole === 'CEO' || userRole === 'admin' || userRole === 'hr_admin')
 		)
 	}, [isMemberCorporation, userRole])
+	const canViewHrManagementCard = Boolean(userRole || isAuditor || user?.is_admin)
+	const { data: hrRoles, isLoading: hrRolesLoading } = useHrRoles(corporationId!, {
+		enabled: canManageHrRoles,
+	})
 	const grantableHrRoles = useMemo(
 		() =>
 			!isMemberCorporation
@@ -130,12 +133,6 @@ export default function CorporationMembers() {
 
 	// Can access settings: CEO/Director/admin/hr_admin
 	const canAccessSettings = isLeadership || isHrAdmin
-
-	// Check if current user has HR role
-	const currentUserHrRole = useMemo(() => {
-		if (!hrRoles || !user) return null
-		return hrRoles.find((role) => role.userId === user.id)
-	}, [hrRoles, user])
 
 	// Enhance members with HR role data
 	const membersWithHrRoles = useMemo(() => {
@@ -180,16 +177,6 @@ export default function CorporationMembers() {
 		(member: CorporationMember) => {
 			// Navigate to HR member profile if user has an auth account
 			if (member.hasAuthAccount && member.authUserId) {
-				if (isAuditor && !hasCorpAccess && !user?.is_admin) {
-					navigate(`/hr/users/${member.authUserId}`, {
-						state: {
-							source: 'members',
-							returnTo: `/corporations/${corporationId}/members`,
-							corporationId,
-						},
-					})
-					return
-				}
 				navigate(`/corporations/${corporationId}/members/${member.authUserId}`)
 			} else {
 				navigate(`/character/${member.characterId}`, {
@@ -201,7 +188,7 @@ export default function CorporationMembers() {
 				})
 			}
 		},
-		[navigate, corporationId, isAuditor, hasCorpAccess, user]
+		[navigate, corporationId]
 	)
 
 	const handleLinkAccount = useCallback(
@@ -402,8 +389,8 @@ export default function CorporationMembers() {
 				</div>
 			</div>
 
-			{/* HR Navigation - Show if user has HR role, is CEO, or is site admin */}
-			{(currentUserHrRole || canManageHrRoles || user?.is_admin) && (
+			{/* HR Navigation - Show for any HR/management-capable viewer */}
+			{canViewHrManagementCard && (
 				<Card className="mb-6 bg-primary/5 border-primary/20">
 					<CardHeader>
 						<CardTitle className="text-lg flex items-center gap-2">

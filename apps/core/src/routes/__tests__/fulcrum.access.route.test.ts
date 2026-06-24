@@ -207,11 +207,47 @@ describe('fulcrum route access matrix', () => {
 		expect(res.status).toBe(401)
 	})
 
-	it('requires corporationId for non-auditor user character report listing', async () => {
+	it('denies non-auditor user character report listing when no backend access scope exists', async () => {
 		const app = createApp(makeUser())
 		const res = await app.request('/api/fulcrum/users/target-1/characters', {}, env)
-		expect(res.status).toBe(400)
-		expect(await res.json()).toEqual({ error: 'corporationId query parameter is required' })
+		expect(res.status).toBe(403)
+		expect(await res.json()).toEqual({
+			error: 'HR staff access requires a shared corporation or an open application',
+		})
+		expect(hrStub.listApplications).toHaveBeenCalledWith(
+			{ userId: 'target-1' },
+			'user-1',
+			{
+				isAdmin: false,
+				isAuditor: false,
+			}
+		)
+		expect(coreStub.getUserCorporations).toHaveBeenCalledWith('target-1')
+	})
+
+	it('allows non-auditor to list user characters without corporationId when the target has an open application', async () => {
+		hrStub.listApplications.mockResolvedValue([
+			{
+				id: 'app-1',
+				userId: 'target-1',
+				characterId: '3001',
+				characterName: 'Alt Pilot',
+				corporationId: '2001',
+				status: 'under_review',
+			},
+		] as any)
+		hrStub.checkPermission.mockImplementation(async (_userId, corporationId, role) => {
+			return corporationId === '2001' && role === 'hr_reviewer'
+		})
+
+		const app = createApp(makeUser())
+		const res = await app.request('/api/fulcrum/users/target-1/characters', {}, env)
+
+		expect(res.status).toBe(200)
+		expect(hrStub.checkPermission).toHaveBeenCalledWith('user-1', '2001', 'hr_reviewer')
+		expect(coreStub.getUserCorporations).not.toHaveBeenCalled()
+		expect(coreStub.getUserCharacters).toHaveBeenCalledWith('target-1', false)
+		expect(fulcrumStub.listReports).toHaveBeenCalledWith({ characterId: '3001' }, 50)
 	})
 
 	it('allows auditor to list user characters without corporationId', async () => {

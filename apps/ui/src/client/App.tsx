@@ -7,6 +7,7 @@ import { LoadingPage } from './components/ui/loading'
 import { installTaxDemoWindow } from './dev/tax-demo-mode'
 import { useAuth } from './hooks/useAuth'
 import { useSessionSync } from './hooks/useSessionSync'
+import { useUserPermissions } from './hooks/useUserPermissions'
 import AuthCallbackPage from './routes/auth-callback'
 import BroadcastDetailPage from './routes/broadcast-detail'
 import BroadcastsPage from './routes/broadcasts'
@@ -30,6 +31,7 @@ import PasteEditPage from './routes/paste-edit'
 import PastesPage from './routes/pastes'
 import { adminRouteElements } from './routes/route-groups/admin-routes'
 import { taxRouteElements } from './routes/route-groups/tax-routes'
+import { logApiError } from './lib/api'
 import toast from './lib/toast'
 
 const CorporationMembers = lazy(() => import('./features/corporations/routes/corporation-members'))
@@ -50,6 +52,7 @@ const HrApplicationReview = lazy(
 const CorporationsPage = lazy(() => import('./features/applications/routes/corporations'))
 const HrRolesManagement = lazy(() => import('./features/applications/routes/hr-roles-management'))
 const HrMemberProfile = lazy(() => import('./features/applications/routes/hr-member-profile'))
+const HrUserProfilePage = lazy(() => import('./features/applications/routes/hr-user-profile'))
 const FulcrumReport = lazy(() => import('./features/applications/routes/fulcrum-report'))
 const RecommendationsList = lazy(
 	() => import('./features/applications/routes/recommendations-list')
@@ -154,6 +157,8 @@ const queryClient = new QueryClient({
 			if (query.getObserversCount() === 0) return
 			if (query.meta?.suppressErrorToast) return
 
+			logApiError(error)
+
 			const message =
 				error instanceof Error ? error.message : 'Something went wrong while loading data.'
 			toast.error(message, {
@@ -205,6 +210,27 @@ function NavigateHrAuditorUsersToHrUsers() {
 function NavigateHrAuditorUserProfileToHrUsers() {
 	const { userId } = useParams<{ userId: string }>()
 	return <Navigate to={`/hr/users/${userId}`} replace />
+}
+
+function HrUserProfileRoute() {
+	const { isLoading, isAdmin, hasAnyPermission } = useUserPermissions()
+	if (isLoading) {
+		return <LoadingPage />
+	}
+
+	if (isAdmin || hasAnyPermission('urn:hr:auditor')) {
+		return (
+			<Suspense fallback={<LoadingPage />}>
+				<HrAuditorUserProfilePage />
+			</Suspense>
+		)
+	}
+
+	return (
+		<Suspense fallback={<LoadingPage />}>
+			<HrUserProfilePage />
+		</Suspense>
+	)
 }
 
 function NavigateHrAuditorUserGroupsToHrUsers() {
@@ -414,11 +440,7 @@ export default function App() {
 							/>
 							<Route
 								path="/hr/users/:userId"
-								element={
-									<Suspense fallback={<LoadingPage />}>
-										<HrAuditorUserProfilePage />
-									</Suspense>
-								}
+								element={<HrUserProfileRoute />}
 							/>
 							<Route
 								path="/hr/users/:userId/reports/:reportId"

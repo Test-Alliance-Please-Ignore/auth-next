@@ -319,17 +319,21 @@ app.get('/users/:userId/characters', requireAuth(), async (c) => {
 	try {
 		const auditor = await isHrAuditorUser(c, user)
 
-		if (!corporationId && !auditor) {
-			return c.json({ error: 'corporationId query parameter is required' }, 400)
-		}
-
-		// Check HR permission (auditors bypass corp-scoped check)
+		// Auditors bypass corp-scoped checks. For regular HR staff, derive the
+		// allowed corporation from backend state so the caller does not need to
+		// supply a scoping query parameter.
 		if (!auditor) {
 			const hr = getHrStub(c)
-			const hasPermission = await hr.checkPermission(user.id, corporationId!, 'hr_viewer')
-			if (!hasPermission) {
-				return c.json({ error: 'HR role required' }, 403)
+			const accessResolution = await resolveFulcrumReportAccessForTargetUser(c, hr, user, userId)
+			if (!accessResolution.corporationId) {
+				return c.json(
+					{ error: 'HR staff access requires a shared corporation or an open application' },
+					403,
+				)
 			}
+		} else if (corporationId) {
+			// Keep the old query parameter accepted for auditor-driven callers, but
+			// do not rely on it for authorization decisions.
 		}
 
 		// Get all linked characters from Core DO

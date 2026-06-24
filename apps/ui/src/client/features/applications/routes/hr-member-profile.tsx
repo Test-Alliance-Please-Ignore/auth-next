@@ -17,7 +17,7 @@ import {
 } from 'lucide-react'
 import { useQueries } from '@tanstack/react-query'
 import { useMemo, useState } from 'react'
-import { Navigate, useLocation, useNavigate, useParams, useSearchParams } from 'react-router-dom'
+import { Navigate, useNavigate, useParams } from 'react-router-dom'
 import { formatDistanceToNow } from 'date-fns'
 
 import { MemberAvatar } from '@/components/member-avatar'
@@ -111,13 +111,14 @@ export function resolveEsiBadgeState({
 
 export default function HrMemberProfile() {
 	const { corporationId, accountId } = useParams<{ corporationId: string; accountId: string }>()
-	const location = useLocation()
-	const [searchParams] = useSearchParams()
 	const navigate = useNavigate()
 	const { user, isAuthenticated, isLoading: authLoading } = useAuth()
 	const { hasAnyPermission } = useUserPermissions()
 	const isAuditor = hasAnyPermission('urn:hr:auditor')
-	const { canAccess: hasCorporationAccess } = useCanAccessCorporation(corporationId ?? '')
+	const {
+		canAccess: hasCorporationAccess,
+		isLoading: corporationAccessLoading,
+	} = useCanAccessCorporation(corporationId ?? '')
 	const [addNoteOpen, setAddNoteOpen] = useState(false)
 	const [scanAllDialogOpen, setScanAllDialogOpen] = useState(false)
 	const [isScanningAll, setIsScanningAll] = useState(false)
@@ -206,12 +207,12 @@ export default function HrMemberProfile() {
 	}, [account, fulcrumCharacters])
 	const characterDetailQueries = useQueries({
 		queries: unifiedCharacters.map((character) => ({
-			queryKey: ['character', character.characterId, 'hr-member-profile-private', corporationId],
-			queryFn: () => apiClient.getCharacterPrivateDetail(character.characterId, corporationId),
+			queryKey: ['character', character.characterId, 'hr-member-profile-private'],
+			queryFn: () => apiClient.getCharacterPrivateDetail(character.characterId),
 			meta: {
 				suppressErrorToast: true,
 			},
-			enabled: Boolean(corporationId),
+			enabled: Boolean(character.characterId),
 			staleTime: 5 * 60 * 1000,
 		})),
 	})
@@ -312,46 +313,18 @@ export default function HrMemberProfile() {
 		void handleScanAllCharacters(sendDmForScanRequests)
 	}
 
-	const accountName = account?.mainName ?? searchParams.get('name') ?? 'Member'
+	const accountName = account?.mainName ?? 'Member'
 
 	usePageTitle(accountName)
 
 	// Navigation helpers
-	const hasSupersedingCorpAccess = user?.is_admin || hasCorporationAccess
-	const navState = location.state as
-		| {
-				source?: 'applications' | 'members'
-				returnTo?: string
-				backLabel?: string
-				breadcrumbParentLabel?: string
-			}
-		| null
-	const isApplicationSource =
-		navState?.source === 'applications' ||
-		searchParams.get('from') === 'applications' ||
-		searchParams.get('source') === 'applications' ||
-		navState?.returnTo?.includes('/applications/') === true ||
-		searchParams.get('returnTo')?.includes('/applications/') === true
-	const isHrNavigationRestricted = permission?.currentRole === 'hr_reviewer' || permission?.currentRole === 'hr_viewer'
-	const applicationBackPath =
-		navState?.returnTo ??
-		searchParams.get('returnTo') ??
-		(isApplicationSource ? `/corporations/${corporationId}/applications` : undefined)
-	const backPath = applicationBackPath ?? (isHrNavigationRestricted
-		? `/corporations/${corporationId}/applications`
-		: `/corporations/${corporationId}/members`)
-	const backLabel =
-		navState?.backLabel ??
-		(isHrNavigationRestricted
-			? isApplicationSource
-				? 'Back to Application'
-				: 'Back to Applications'
-			: 'Back to Members')
-	const breadcrumbParentLabel =
-		navState?.breadcrumbParentLabel ??
-		(isHrNavigationRestricted ? (isApplicationSource ? 'Application' : 'Applications') : 'Members')
+	const canViewCorpMemberPage = user?.is_admin || hasCorporationAccess || isAuditor
+	const backPath = `/corporations/${corporationId}/members`
+	const backLabel = 'Back to Members'
+	const breadcrumbParentLabel = 'Members'
 	const rootCorporationsPath = '/corporations'
 	const rootCorporationsLabel = 'Corporations'
+	const isCorporationAccessPending = !isAuditor && corporationAccessLoading
 
 	if (!authLoading && !isAuthenticated) {
 		return <Navigate to="/login" replace />
@@ -361,7 +334,7 @@ export default function HrMemberProfile() {
 		return <Navigate to="/corporations" replace />
 	}
 
-	if (authLoading || permissionLoading || membersLoading) {
+	if (authLoading || permissionLoading || membersLoading || isCorporationAccessPending) {
 		return (
 			<Container>
 				<div className="flex items-center justify-center min-h-[400px]">
@@ -371,7 +344,7 @@ export default function HrMemberProfile() {
 		)
 	}
 
-	if (!permission?.hasPermission && !user?.is_admin && !isAuditor) {
+	if (!canViewCorpMemberPage) {
 		return (
 			<Container>
 				<Card className="max-w-2xl mx-auto border-red-200 bg-red-50 dark:border-red-800 dark:bg-red-950">
@@ -382,7 +355,7 @@ export default function HrMemberProfile() {
 					</CardHeader>
 					<CardContent className="text-center">
 						<p className="text-red-700 dark:text-red-300 mb-4">
-							You don't have HR permissions for this corporation.
+							You don't have permission to view members of this corporation.
 						</p>
 						<Button variant="ghost" onClick={() => navigate(rootCorporationsPath)}>
 							<ArrowLeft className="h-4 w-4" />
@@ -391,32 +364,6 @@ export default function HrMemberProfile() {
 					</CardContent>
 				</Card>
 			</Container>
-		)
-	}
-
-	if (!hasSupersedingCorpAccess) {
-		const queryReturnTo = searchParams.get('returnTo')
-		const source =
-			searchParams.get('from') === 'applications' ||
-			searchParams.get('source') === 'applications' ||
-			queryReturnTo?.includes('/applications')
-				? 'applications'
-				: 'members'
-		const returnTo =
-			queryReturnTo ??
-			(source === 'applications' && corporationId
-				? `/corporations/${corporationId}/applications`
-				: '/hr/users')
-		return (
-			<Navigate
-				to={`/hr/users/${accountId}`}
-				replace
-				state={{
-					source,
-					returnTo,
-					corporationId,
-				}}
-			/>
 		)
 	}
 

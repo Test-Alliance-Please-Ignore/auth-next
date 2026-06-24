@@ -150,8 +150,8 @@ export default function HrApplicationReview() {
 	}
 	const spQueries = useQueries({
 		queries: allCharacterIds.map((charId) => ({
-			queryKey: ['character', charId, 'hr-review-private', corporationId],
-			queryFn: () => apiClient.getCharacterPrivateDetail(charId, corporationId),
+			queryKey: ['character', charId, 'hr-review-private'],
+			queryFn: () => apiClient.getCharacterPrivateDetail(charId),
 			meta: {
 				suppressErrorToast: true,
 			},
@@ -182,7 +182,7 @@ export default function HrApplicationReview() {
 
 	const applicationsPath = `/corporations/${corporationId}/applications`
 	const memberProfilePath = application
-		? `/corporations/${corporationId}/members/${application.userId}`
+		? `/hr/users/${application.userId}`
 		: null
 	const memberProfileState = application
 		? {
@@ -190,7 +190,6 @@ export default function HrApplicationReview() {
 				returnTo: `/corporations/${corporationId}/applications/${application.id}`,
 				backLabel: 'Back to Application',
 				breadcrumbParentLabel: 'Application',
-				corporationId,
 			}
 		: null
 

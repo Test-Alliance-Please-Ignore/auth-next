@@ -8,15 +8,17 @@ import charactersRoutes from '../characters'
 import type { SessionUser } from '../../context'
 
 const hoisted = vi.hoisted(() => ({
-	hrAccess: {
-		resolveHrAccessState: vi.fn(),
-	},
 	hr: {
 		checkPermission: vi.fn(),
 		getUserHrCorporations: vi.fn(),
+		listApplications: vi.fn(),
 	},
 	core: {
 		queueImmunitasAccessAlert: vi.fn(),
+		getUserCorporations: vi.fn(),
+	},
+	groups: {
+		getUserPermissions: vi.fn(),
 	},
 	resolver: {
 		resolveEntityNames: vi.fn(),
@@ -53,10 +55,6 @@ vi.mock('../../lib/background-task', () => ({
 	) => {
 		backgroundTasks.push(task().catch(() => undefined))
 	},
-}))
-
-vi.mock('../../lib/hr-access', () => ({
-	resolveHrAccessState: hoisted.hrAccess.resolveHrAccessState,
 }))
 
 const getStubMock = vi.mocked(getStub)
@@ -134,6 +132,7 @@ function createApp(user?: SessionUser, db?: ReturnType<typeof createDb>) {
 describe('character detail access for HR page viewers', () => {
 	const env = {
 		CORE: { name: 'CORE' },
+		GROUPS: { name: 'GROUPS' },
 		HR: { name: 'HR' },
 		EVE_CHARACTER_DATA: { name: 'EVE_CHARACTER_DATA' },
 		SKILLS: { name: 'SKILLS' },
@@ -147,18 +146,29 @@ describe('character detail access for HR page viewers', () => {
 		backgroundTasks.length = 0
 		db = createDb()
 
-		hoisted.hrAccess.resolveHrAccessState.mockResolvedValue({
-			hasHrAccess: true,
-			isHrAuditor: false,
-			isSiteAdmin: false,
-		})
-		hoisted.hr.checkPermission.mockResolvedValue(false)
+		hoisted.hr.checkPermission.mockResolvedValue(true)
 		hoisted.hr.getUserHrCorporations.mockResolvedValue([])
+		hoisted.hr.listApplications.mockResolvedValue([])
+		hoisted.groups.getUserPermissions.mockResolvedValue([])
 		hoisted.core.queueImmunitasAccessAlert.mockResolvedValue({
 			added: 1,
 			skipped: 0,
 			pendingCount: 1,
 		})
+		hoisted.core.getUserCorporations.mockImplementation(async (userId: string) => {
+			if (userId === 'user-1') {
+				return [{ corporationId: '2001', corporationName: 'Target Corp' }]
+			}
+			if (userId === 'target-user') {
+				return [{ corporationId: '2001', corporationName: 'Target Corp' }]
+			}
+			return []
+		})
+		vi.mocked(db.query.userCharacters.findFirst).mockResolvedValue({
+			userId: 'target-user',
+			characterName: 'Target Pilot',
+		} as any)
+		vi.mocked(db.query.users.findFirst).mockResolvedValue({ immunitas: false } as any)
 		hoisted.resolver.resolveEntityNames.mockResolvedValue(
 			new Map([
 				['2001', 'Target Corp'],
@@ -194,6 +204,9 @@ describe('character detail access for HR page viewers', () => {
 			if (binding === env.CORE) {
 				return hoisted.core as any
 			}
+			if (binding === env.GROUPS) {
+				return hoisted.groups as any
+			}
 			if (binding === env.EVE_CHARACTER_DATA) {
 				return hoisted.characterData as any
 			}
@@ -210,7 +223,7 @@ describe('character detail access for HR page viewers', () => {
 	it('returns public overview data without private fields', async () => {
 		const app = createApp(makeUser(), db)
 		const res = await app.request(
-			'/api/characters/2001?corporationId=2001',
+			'/api/characters/2001',
 			{},
 			env
 		)
@@ -244,10 +257,46 @@ describe('character detail access for HR page viewers', () => {
 
 		const app = createApp(makeUser(), db)
 		const res = await app.request(
-			'/api/characters/2001/private?corporationId=2001',
+			'/api/characters/2001/private',
 			{},
 			env
 		)
+
+		await Promise.all(backgroundTasks.splice(0, backgroundTasks.length))
+
+		expect(res.status).toBe(200)
+		const body = (await res.json()) as any
+		expect(body.skills?.totalSp).toBe(123456)
+		expect(body.private.wallet).toBe(123456789)
+		expect(body.private.status).toEqual({ state: 'active' })
+	})
+
+	it('returns private data for HR users via open applications without shared corp membership', async () => {
+		hoisted.characterInstance.getSkills.mockResolvedValue({
+			skills: [
+				{
+					active_skill_level: 5,
+					skill_id: 123,
+					skillpoints_in_skill: 256000,
+					trained_skill_level: 5,
+				},
+			],
+			total_sp: 123456,
+		})
+		vi.mocked(db.query.userCharacters.findFirst).mockResolvedValue({
+			userId: 'target-user',
+			characterName: 'Target Pilot',
+		} as any)
+		vi.mocked(db.query.users.findFirst).mockResolvedValue({ immunitas: false } as any)
+		hoisted.core.getUserCorporations.mockResolvedValue([])
+		hoisted.hr.listApplications.mockImplementation(async (_filters: any, _userId: string, access: any) => {
+			if (access.isAdmin || access.isAuditor) return []
+			return [{ corporationId: '2001', status: 'pending' }]
+		})
+		hoisted.hr.checkPermission.mockResolvedValue(true)
+
+		const app = createApp(makeUser(), db)
+		const res = await app.request('/api/characters/2001/private', {}, env)
 
 		await Promise.all(backgroundTasks.splice(0, backgroundTasks.length))
 
@@ -278,7 +327,7 @@ describe('character detail access for HR page viewers', () => {
 
 		const app = createApp(makeUser({ is_admin: true }), db)
 		const res = await app.request(
-			'/api/characters/2001/private?corporationId=2001',
+			'/api/characters/2001/private',
 			{},
 			env
 		)

@@ -26,11 +26,11 @@ export const hrKeys = {
  * Hook to fetch HR roles for a corporation
  * @param corporationId - The corporation ID to fetch roles for
  */
-export function useHrRoles(corporationId: string) {
+export function useHrRoles(corporationId: string, options?: { enabled?: boolean }) {
 	return useQuery({
 		queryKey: hrKeys.roles(corporationId),
 		queryFn: () => hrApi.listHrRoles(corporationId),
-		enabled: !!corporationId,
+		enabled: options?.enabled ?? !!corporationId,
 		staleTime: 10 * 60 * 1000, // 10 minutes (HR roles change infrequently)
 	})
 }

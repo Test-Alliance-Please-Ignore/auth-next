@@ -11,7 +11,6 @@ import { CharacterSkills } from '../components/character-skills'
 import { Button } from '../components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '../components/ui/card'
 import { Container } from '../components/ui/container'
-import { useHrPermissionCheck } from '../features/hr/hooks'
 import { useAuth } from '../hooks/useAuth'
 import { useRefreshCharacter } from '../hooks/useCharacters'
 import { usePageTitle } from '../hooks/usePageTitle'
@@ -55,11 +54,9 @@ export default function CharacterDetailPage() {
 		source?: CharacterDetailSource
 		backTo?: string
 		backLabel?: string
-		corporationId?: string
 	} | null
 	const backTo = navigationState?.backTo
 	const backLabel = navigationState?.backLabel ?? resolveBackLabel(navigationState?.source) ?? 'Back'
-	const hrCorporationId = navigationState?.corporationId
 
 	if (!characterId) {
 		return <Navigate to="/dashboard" replace />
@@ -71,16 +68,16 @@ export default function CharacterDetailPage() {
 		isLoading,
 		error,
 	} = useQuery({
-		queryKey: ['character', characterId, hrCorporationId, 'overview'],
-		queryFn: () => api.getCharacterDetail(characterId, hrCorporationId),
+		queryKey: ['character', characterId, 'overview'],
+		queryFn: () => api.getCharacterDetail(characterId),
 		meta: {
 			suppressErrorToast: true,
 		},
 		enabled: !!characterId,
 	})
 	const { data: characterPrivate, isLoading: isPrivateLoading } = useQuery({
-		queryKey: ['character', characterId, hrCorporationId, 'private'],
-		queryFn: () => api.getCharacterPrivateDetail(characterId, hrCorporationId),
+		queryKey: ['character', characterId, 'private'],
+		queryFn: () => api.getCharacterPrivateDetail(characterId),
 		meta: {
 			suppressErrorToast: true,
 		},
@@ -114,10 +111,6 @@ export default function CharacterDetailPage() {
 		retry: false,
 		staleTime: 1000 * 60,
 	})
-	const { data: hrPermission } = useHrPermissionCheck(
-		hrCorporationId ? { corporationId: hrCorporationId } : null
-	)
-
 	// Set page title based on character name
 	usePageTitle(character?.public?.info?.name ? `${character.public.info.name}` : 'Character')
 
@@ -192,8 +185,8 @@ export default function CharacterDetailPage() {
 		character.isOwner ||
 		character.viewedAsAdmin ||
 		isHrAuditor ||
-		hrPermission?.currentRole === 'hr_admin' ||
-		hrPermission?.currentRole === 'hr_reviewer'
+		character.viewedAsCeoOrDirector ||
+		character.viewedAsHrViewer
 
 	return (
 		<Container className="p-8 space-y-6">

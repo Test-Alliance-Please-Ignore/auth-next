@@ -5,14 +5,15 @@ import { getStub } from '@repo/do-utils'
 import { createEveCharacterId } from '@repo/eve-types'
 import { logger } from '@repo/hono-helpers'
 
-import { userCharacters, users } from '../db/schema'
+import { userCharacters } from '../db/schema'
 import { waitUntilWithTelemetry } from '../lib/background-task'
-import { queueImmunitasAccessAlertForUser } from '../lib/immunitas-alerts'
 import {
-	didTokenTransitionFromValidToInvalid,
-	queueTokenInvalidationAlertsForUser,
-} from '../lib/token-invalid-alerts'
-import { resolveHrAccessState } from '../lib/hr-access'
+	canViewCharacterPrivateDetails,
+	resolveCharacterAccessContext,
+	shouldBlockCharacterPrivateAccess,
+} from '../lib/character-access'
+import { queueImmunitasAccessAlertForUser } from '../lib/immunitas-alerts'
+import { didTokenTransitionFromValidToInvalid, queueTokenInvalidationAlertsForUser } from '../lib/token-invalid-alerts'
 import { validateAndSyncCharacterTokenValidity } from '../lib/token-validity'
 import { markCharacterTokenInvalidFromAuthFailure } from '../lib/token-validity'
 import { triggerUserRefreshWorkflow } from '../lib/workflow-triggers'
@@ -23,10 +24,8 @@ import { EntityResolverService } from '../services/entity-resolver.service'
 import { shouldTreatSensitiveDataAsLive } from './characters-utils'
 
 import type { EveCharacterData } from '@repo/eve-character-data'
-import type { EveCorporationData } from '@repo/eve-corporation-data'
 import type { Core as CoreRpc } from '@repo/core'
-import type { Hr } from '@repo/hr'
-import type { App, SessionUser } from '../context'
+import type { App } from '../context'
 
 // Helper to transform and enrich skills data
 async function transformAndEnrichSkillsData(skills: any, env: any) {
@@ -183,269 +182,8 @@ async function transformAndEnrichSkillQueue(queue: any, env: any) {
 	}
 }
 
-async function getImmunitasCharacterOwner(db: any, characterId: string): Promise<{
-	userId: string
-	characterName: string
-	immunitas: boolean
-} | null> {
-	const owner = await db.query.userCharacters.findFirst({
-		where: eq(userCharacters.characterId, characterId),
-		columns: {
-			userId: true,
-			characterName: true,
-		},
-	})
-	if (!owner) {
-		return null
-	}
-
-	const user = await db.query.users.findFirst({
-		where: eq(users.id, owner.userId),
-		columns: {
-			immunitas: true,
-		},
-	})
-
-	return {
-		userId: owner.userId,
-		characterName: owner.characterName,
-		immunitas: user?.immunitas === true,
-	}
-}
-
-type CharacterAccessContext = {
-	db: any
-	user: SessionUser
-	targetOwner: {
-		userId: string
-		characterName: string
-		immunitas: boolean
-	} | null
-	isActualOwner: boolean
-	isAdmin: boolean
-	isCeoOrDirector: boolean
-	viewerRole: 'CEO' | 'Director' | null
-	hasHrViewerAccess: boolean
-	hasHrPageAccess: boolean
-	actualOwner: {
-		userId: string
-		characterName: string
-	} | null
-	viewedAsAdmin: boolean
-	viewedAsCeoOrDirector: boolean
-	viewedAsHrViewer: boolean
-}
-
-function canViewCharacterSharedDetails(access: {
-	isActualOwner: boolean
-	isAdmin: boolean
-	hasHrViewerAccess: boolean
-	hasHrPageAccess: boolean
-	isCeoOrDirector: boolean
-}): boolean {
-	return (
-		access.isActualOwner ||
-		access.isAdmin ||
-		access.hasHrPageAccess ||
-		access.hasHrViewerAccess ||
-		access.isCeoOrDirector
-	)
-}
-
-function canViewCharacterPrivateDetails(access: CharacterAccessContext): boolean {
-	return canViewCharacterSharedDetails(access)
-}
-
-function shouldBlockCharacterPrivateAccess(access: Pick<CharacterAccessContext, 'isActualOwner' | 'targetOwner'>): boolean {
-	return access.targetOwner?.immunitas === true && !access.isActualOwner
-}
-
-async function resolveCharacterAccessContext(
-	c: Context<App>,
-	characterIdStr: string,
-	characterId: ReturnType<typeof createEveCharacterId>,
-	hrCorporationId: string | null
-): Promise<CharacterAccessContext | Response> {
-	const user = c.get('user')!
-	const db = c.get('db')
-
-	if (!db) {
-		return c.json({ error: 'Database not available' }, 500)
-	}
-
-	const targetOwner = await getImmunitasCharacterOwner(db, characterIdStr)
-	const isActualOwner = user.characters.some(
-		(char) => char.characterId.toString() === characterIdStr
-	)
-	const isAdmin = user.is_admin
-
-	let isCeoOrDirector = false
-	let viewerRole: 'CEO' | 'Director' | null = null
-	let hasHrViewerAccess = false
-	let hasHrPageAccess = false
-
-	if (!isActualOwner && !isAdmin) {
-		if (hrCorporationId) {
-			try {
-				const hrStub = getStub<Hr>(c.env.HR, 'default')
-				const accessState = await resolveHrAccessState({
-					env: c.env,
-					userId: user.id,
-					isSiteAdmin: user.is_admin,
-					hrStub,
-				})
-				hasHrPageAccess = accessState.hasHrAccess
-
-				if (!hasHrPageAccess) {
-					hasHrViewerAccess = await hrStub.checkPermission(user.id, hrCorporationId, 'hr_viewer')
-				}
-			} catch (error) {
-				logger.warn('[Character Detail] Error checking HR access:', {
-					characterId: characterIdStr,
-					hrCorporationId,
-					error: error instanceof Error ? error.message : String(error),
-				})
-			}
-		}
-
-		if (!hasHrPageAccess) {
-			const eveCharacterDataStubForAuth = getStub<EveCharacterData>(
-				c.env.EVE_CHARACTER_DATA,
-				characterId
-			)
-			try {
-				const charInfoInstance = await eveCharacterDataStubForAuth.getInstance(characterId)
-				const charInfo = await charInfoInstance.getCharacterInfo()
-
-				if (charInfo?.corporationId) {
-					const corporationId = String(charInfo.corporationId)
-
-					for (const userChar of user.characters) {
-						const userCharStub = getStub<EveCharacterData>(
-							c.env.EVE_CHARACTER_DATA,
-							userChar.characterId
-						)
-						try {
-							const userCharInstance = await userCharStub.getInstance(userChar.characterId)
-							const userCharInfo = await userCharInstance.getCharacterInfo()
-
-							if (!userCharInfo || String(userCharInfo.corporationId) !== corporationId) {
-								continue
-							}
-
-							const corpStub = getStub<EveCorporationData>(
-								c.env.EVE_CORPORATION_DATA,
-								corporationId
-							)
-							try {
-								const [corpInfo, directors] = await Promise.all([
-									corpStub.getCorporationInfo(corporationId),
-									corpStub.getDirectors(corporationId),
-								])
-
-								if (corpInfo && String(corpInfo.ceoId) === userChar.characterId) {
-									isCeoOrDirector = true
-									viewerRole = 'CEO'
-									logger.info('[Character Detail] CEO access granted', {
-										characterId: characterIdStr,
-										viewerCharacterId: userChar.characterId,
-										corporationId,
-									})
-									break
-								}
-
-								const isDirector = directors.some(
-									(d: { characterId: string }) => d.characterId === userChar.characterId
-								)
-								if (isDirector) {
-									isCeoOrDirector = true
-									viewerRole = 'Director'
-									logger.info('[Character Detail] Director access granted', {
-										characterId: characterIdStr,
-										viewerCharacterId: userChar.characterId,
-										corporationId,
-									})
-									break
-								}
-							} catch (error) {
-								logger.warn('[Character Detail] Error checking corporation access:', {
-									characterId: characterIdStr,
-									error: error instanceof Error ? error.message : String(error),
-								})
-							}
-						} catch (error) {
-							logger.warn('[Character Detail] Error checking character access:', {
-								characterId: characterIdStr,
-								error: error instanceof Error ? error.message : String(error),
-							})
-						}
-						if (isCeoOrDirector) break
-					}
-				}
-			} catch (error) {
-				logger.warn('[Character Detail] Error checking corporation access:', {
-					characterId: characterIdStr,
-					error: error instanceof Error ? error.message : String(error),
-				})
-			}
-		}
-	}
-
-	const hasSharedCharacterAccess = canViewCharacterSharedDetails({
-		isActualOwner,
-		isAdmin,
-		hasHrViewerAccess,
-		hasHrPageAccess,
-		isCeoOrDirector,
-	})
-
-	if (!hasSharedCharacterAccess) {
-		return c.json({ error: 'You do not have permission to view this character' }, 403)
-	}
-
-	let actualOwner: { userId: string; characterName: string } | null = null
-	const viewedAsAdmin = isAdmin && !isActualOwner
-	const viewedAsCeoOrDirector = isCeoOrDirector && !isActualOwner
-	const viewedAsHrViewer =
-		(hasHrViewerAccess || hasHrPageAccess) && !isActualOwner && !isAdmin && !isCeoOrDirector
-
-	if (viewedAsAdmin) {
-		try {
-			const ownerRecord = await db
-				.select({
-					userId: userCharacters.userId,
-					characterName: userCharacters.characterName,
-				})
-				.from(userCharacters)
-				.where(eq(userCharacters.characterId, characterIdStr))
-				.limit(1)
-
-			if (ownerRecord.length > 0) {
-				actualOwner = ownerRecord[0]
-			}
-		} catch (error) {
-			logger.error('Error fetching character owner:', error)
-		}
-	}
-
-	return {
-		db,
-		user,
-		targetOwner,
-		isActualOwner,
-		isAdmin,
-		isCeoOrDirector,
-		viewerRole,
-		hasHrViewerAccess,
-		hasHrPageAccess,
-		actualOwner,
-		viewedAsAdmin,
-		viewedAsCeoOrDirector,
-		viewedAsHrViewer,
-	}
-}
-
 function getExecutionContextOrNull(c: Context<App>): ExecutionContext | null {
+
 	try {
 		return c.executionCtx
 	} catch {
@@ -558,14 +296,15 @@ app.post('/ownership', requireAuth(), async (c) => {
  * GET /characters/:characterId/private
  * Fetch private profile data and skills for intentional profile-detail hydration only.
  * This route shares the same visibility matrix as the overview route, with the
- * additional immunitas gate for non-owner access. It is the only character
- * profile route that queues profile-data immunitas access alerts.
+ * additional immunitas gate for non-owner access. The backend derives HR scope
+ * from viewer/target corp attachments and active applications; no frontend corp
+ * scope is accepted. It is the only character profile route that queues
+ * profile-data immunitas access alerts.
  */
 app.get('/:characterId/private', requireAuth(), async (c) => {
 	const characterIdStr = c.req.param('characterId')
 	const characterId = createEveCharacterId(characterIdStr)
-	const hrCorporationId = c.req.query('corporationId')?.trim() || null
-	const accessOrResponse = await resolveCharacterAccessContext(c, characterIdStr, characterId, hrCorporationId)
+	const accessOrResponse = await resolveCharacterAccessContext(c, characterIdStr)
 
 	if (accessOrResponse instanceof Response) {
 		return accessOrResponse
@@ -750,7 +489,7 @@ app.get('/:characterId/private', requireAuth(), async (c) => {
 app.get('/:characterId/skills', requireAuth(), async (c) => {
 	const characterIdStr = c.req.param('characterId')
 	const characterId = createEveCharacterId(characterIdStr)
-	const accessOrResponse = await resolveCharacterAccessContext(c, characterIdStr, characterId, null)
+	const accessOrResponse = await resolveCharacterAccessContext(c, characterIdStr)
 
 	if (accessOrResponse instanceof Response) {
 		return accessOrResponse
@@ -798,8 +537,7 @@ app.get('/:characterId/skills', requireAuth(), async (c) => {
 app.get('/:characterId', requireAuth(), async (c) => {
 	const characterIdStr = c.req.param('characterId')
 	const characterId = createEveCharacterId(characterIdStr)
-	const hrCorporationId = c.req.query('corporationId')?.trim() || null
-	const accessOrResponse = await resolveCharacterAccessContext(c, characterIdStr, characterId, hrCorporationId)
+	const accessOrResponse = await resolveCharacterAccessContext(c, characterIdStr)
 
 	if (accessOrResponse instanceof Response) {
 		return accessOrResponse

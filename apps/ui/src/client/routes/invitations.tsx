@@ -1,5 +1,5 @@
 import { Mail } from 'lucide-react'
-import { useNavigate } from 'react-router-dom'
+import { Navigate, useNavigate } from 'react-router-dom'
 
 import { InvitationCard } from '@/components/invitation-card'
 import { Button } from '@/components/ui/button'
@@ -7,15 +7,23 @@ import { Card, CardContent } from '@/components/ui/card'
 import { Container } from '@/components/ui/container'
 import { PageHeader } from '@/components/ui/page-header'
 import { Section } from '@/components/ui/section'
+import { ROLE_CORE_ALLIANCE_MEMBER } from '@repo/core'
+import { useAuth } from '@/hooks/useAuth'
 import { usePendingInvitations } from '@/hooks/useGroups'
 import { usePageTitle } from '@/hooks/usePageTitle'
 
 export default function InvitationsPage() {
 	usePageTitle('Group Invitations')
 	const navigate = useNavigate()
-	const { data: invitations, isLoading } = usePendingInvitations()
+	const { user, isLoading: authLoading } = useAuth()
+	const canViewInvitations = user?.is_admin === true || user?.roles?.includes(ROLE_CORE_ALLIANCE_MEMBER) === true
+	const { data: invitations, isLoading } = usePendingInvitations({ enabled: canViewInvitations })
 
-	if (isLoading) {
+	if (!authLoading && !canViewInvitations) {
+		return <Navigate to="/dashboard" replace />
+	}
+
+	if (authLoading || isLoading) {
 		return (
 			<div className="flex items-center justify-center min-h-[400px]">
 				<p className="text-muted-foreground">Loading invitations...</p>

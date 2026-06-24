@@ -1,33 +1,28 @@
 import { useQueries, useQueryClient } from '@tanstack/react-query'
 import { formatDistanceToNow } from 'date-fns'
-import { ArrowLeft, Scan, Shield, Users } from 'lucide-react'
+import { Scan, Shield, Users } from 'lucide-react'
 import { useMemo, useState } from 'react'
-import { Link, Navigate, useLocation, useNavigate, useParams } from 'react-router-dom'
+import { Navigate, Link, useLocation, useNavigate, useParams } from 'react-router-dom'
 
-import { MemberAvatar } from '@/components/member-avatar'
 import { IpHistoryCard } from '@/components/ip-history-card'
-import { Badge } from '@/components/ui/badge'
-import {
-	Breadcrumb,
-	BreadcrumbItem,
-	BreadcrumbLink,
-	BreadcrumbList,
-	BreadcrumbPage,
-	BreadcrumbSeparator,
-} from '@/components/ui/breadcrumb'
+import { ArrowLeft } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Container } from '@/components/ui/container'
 import { LoadingSpinner } from '@/components/ui/loading'
-import { Separator } from '@/components/ui/separator'
 import { useAuth } from '@/hooks/useAuth'
 import { usePageTitle } from '@/hooks/usePageTitle'
 import { useUserPermissions } from '@/hooks/useUserPermissions'
 import { apiClient } from '@/lib/api'
-import { cn } from '@/lib/utils'
 
 import { ApplicationStatusBadge } from '../components/application-status-badge'
 import { AddHRNoteDialog } from '../components/add-hr-note-dialog'
+import {
+	UserProfilePageShell,
+	UserProfileStatRow,
+	UserProfileStatusBadge,
+	UserProfileStatsSeparator,
+} from '../components/user-profile-page-shell'
 import {
 	ProfileApplicationHistorySection,
 	ProfileCharactersSection,
@@ -174,12 +169,12 @@ export default function HrAuditorUserProfilePage() {
 
 	const characterDetailQueries = useQueries({
 		queries: rows.map((character) => ({
-			queryKey: ['character', character.characterId, 'auditor-profile-private', character.corporationId],
-			queryFn: () => apiClient.getCharacterPrivateDetail(character.characterId, character.corporationId ?? undefined),
+			queryKey: ['character', character.characterId, 'auditor-profile-private'],
+			queryFn: () => apiClient.getCharacterPrivateDetail(character.characterId),
 			meta: {
 				suppressErrorToast: true,
 			},
-			enabled: !!character.corporationId,
+			enabled: !!character.characterId,
 			staleTime: 5 * 60 * 1000,
 		})),
 	})
@@ -399,100 +394,55 @@ export default function HrAuditorUserProfilePage() {
 	}
 
 	return (
-		<Container>
-			<div className="flex items-center justify-between mb-6">
-				<Breadcrumb>
-					<BreadcrumbList>
-						<BreadcrumbItem>
-							<BreadcrumbLink to="/corporations">Corporations</BreadcrumbLink>
-						</BreadcrumbItem>
-						<BreadcrumbSeparator />
-						<BreadcrumbItem>
-							<BreadcrumbLink to={backTarget}>{breadcrumbMidLabel}</BreadcrumbLink>
-						</BreadcrumbItem>
-						<BreadcrumbSeparator />
-						<BreadcrumbItem>
-							<BreadcrumbPage>{accountName}</BreadcrumbPage>
-						</BreadcrumbItem>
-					</BreadcrumbList>
-				</Breadcrumb>
-				<Button variant="ghost" asChild>
-					<Link to={backTarget}>
-						<ArrowLeft className="h-4 w-4" />
-						{backLabel}
+		<UserProfilePageShell
+			rootLabel="Corporations"
+			rootTo="/corporations"
+			midLabel={breadcrumbMidLabel}
+			backTarget={backTarget}
+			backLabel={backLabel}
+			accountName={accountName}
+			userId={userDetails.id}
+			mainCharacterId={mainCharacter?.characterId}
+			mainCharacterName={mainCharacter?.characterName}
+			sidebarBadges={
+				<>
+					{userDetails.is_admin && (
+						<UserProfileStatusBadge variant="default">Site Admin</UserProfileStatusBadge>
+					)}
+					{userDetails.discordUserId ? (
+						<UserProfileStatusBadge variant="success">Discord Linked</UserProfileStatusBadge>
+					) : (
+						<UserProfileStatusBadge variant="secondary">No Discord</UserProfileStatusBadge>
+					)}
+				</>
+			}
+			sidebarStats={
+				<>
+					<UserProfileStatRow label="Characters" value={rows.length} />
+					<UserProfileStatsSeparator />
+					<UserProfileStatRow label="Groups" value={userDetails.groupMemberships.length} />
+					<UserProfileStatsSeparator />
+					<UserProfileStatRow
+						label="Created"
+						value={formatDistanceToNow(new Date(userDetails.createdAt), { addSuffix: true })}
+					/>
+					<UserProfileStatsSeparator />
+					<UserProfileStatRow
+						label="Updated"
+						value={formatDistanceToNow(new Date(userDetails.updatedAt), { addSuffix: true })}
+					/>
+				</>
+			}
+			sidebarFooter={
+				<Button variant="ghost" asChild className="w-full">
+					<Link to={`/hr/users/${userDetails.id}/groups`}>
+						<Users className="h-4 w-4" />
+						View Group Memberships
 					</Link>
 				</Button>
-			</div>
-
-			<div className="grid grid-cols-1 lg:grid-cols-[320px_1fr] gap-6">
-				<div className="space-y-4 lg:sticky lg:top-8 lg:self-start">
-					<Card>
-						<CardContent className="pt-6">
-							<div className="flex flex-col items-center text-center space-y-3">
-								{mainCharacter && (
-									<MemberAvatar
-										characterId={mainCharacter.characterId}
-										characterName={mainCharacter.characterName}
-										size="lg"
-									/>
-								)}
-								<div className="space-y-1">
-									<h1 className="text-xl font-bold">{accountName}</h1>
-									<p className="font-mono text-xs text-muted-foreground">User ID: {userDetails.id}</p>
-								</div>
-								<div className="flex items-center gap-2">
-									{userDetails.is_admin && (
-										<Badge variant="default" className="gap-1">
-											<Shield className="h-3 w-3" />
-											Site Admin
-										</Badge>
-									)}
-									{userDetails.discordUserId ? (
-										<Badge variant="success">Discord Linked</Badge>
-									) : (
-										<Badge variant="secondary">No Discord</Badge>
-									)}
-								</div>
-							</div>
-						</CardContent>
-					</Card>
-
-					<Card>
-						<CardContent className="pt-6 space-y-3">
-							<div className="flex justify-between text-sm">
-								<span className="text-muted-foreground">Characters</span>
-								<span className="font-medium">{rows.length}</span>
-							</div>
-							<Separator />
-							<div className="flex justify-between text-sm">
-								<span className="text-muted-foreground">Groups</span>
-								<span className="font-medium">{userDetails.groupMemberships.length}</span>
-							</div>
-							<Separator />
-							<div className="flex justify-between text-sm">
-								<span className="text-muted-foreground">Created</span>
-								<span className="font-medium">
-									{formatDistanceToNow(new Date(userDetails.createdAt), { addSuffix: true })}
-								</span>
-							</div>
-							<Separator />
-							<div className="flex justify-between text-sm">
-								<span className="text-muted-foreground">Updated</span>
-								<span className="font-medium">
-									{formatDistanceToNow(new Date(userDetails.updatedAt), { addSuffix: true })}
-								</span>
-							</div>
-						</CardContent>
-					</Card>
-
-					<Button variant="ghost" asChild className="w-full">
-						<Link to={`/hr/users/${userDetails.id}/groups`}>
-							<Users className="h-4 w-4" />
-							View Group Memberships
-						</Link>
-					</Button>
-				</div>
-
+			}
+		>
+			<>
 				<div className="space-y-6">
 					<ProfileCharactersSection
 						characters={rows.map((character) => ({
@@ -576,12 +526,11 @@ export default function HrAuditorUserProfilePage() {
 						}
 					/>
 				</div>
-			</div>
-			{userId && (
-				<AddHRNoteDialog
-					open={addNoteDialogOpen}
-					onOpenChange={setAddNoteDialogOpen}
-					subjectUserId={userId}
+				{userId && (
+					<AddHRNoteDialog
+						open={addNoteDialogOpen}
+						onOpenChange={setAddNoteDialogOpen}
+						subjectUserId={userId}
 					subjectCharacterId={mainCharacter?.characterId}
 					subjectCharacterName={mainCharacter?.characterName}
 					onSuccess={() => {
@@ -606,7 +555,8 @@ export default function HrAuditorUserProfilePage() {
 				sendDmForScanRequests={sendDmForScanRequests}
 				setSendDmForScanRequests={setSendDmForScanRequests}
 				onConfirm={handleConfirmSingleScan}
-			/>
-		</Container>
+				/>
+			</>
+		</UserProfilePageShell>
 	)
 }
