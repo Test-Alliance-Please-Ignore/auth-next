@@ -160,12 +160,21 @@ export class EveCharacterDataDO extends DurableObject<Env> implements EveCharact
 		characterId: string,
 		forceRefresh = false
 	): Promise<CharacterPublicRefreshResult> {
+		console.info('[EveCharacterDataDO] refreshPublicCharacterData started', {
+			characterId,
+			forceRefresh,
+		})
 		const previousCharacterInfo = await this.getCharacterInfo(characterId)
 		let currentCharacterInfo: CharacterPublicData | null = null
 
 		try {
 			currentCharacterInfo = await this.fetchAndStorePublicInfo(characterId, forceRefresh)
 			if (currentCharacterInfo === null) {
+				console.info('[EveCharacterDataDO] refreshPublicCharacterData resolved deleted character', {
+					characterId,
+					forceRefresh,
+					hadPreviousCharacterInfo: previousCharacterInfo !== null,
+				})
 				return {
 					success: false,
 					isDeleted: true,
@@ -183,6 +192,18 @@ export class EveCharacterDataDO extends DurableObject<Env> implements EveCharact
 			const affiliationChanged =
 				previousCorporationId !== currentCorporationId || previousAllianceId !== currentAllianceId
 			const isDeleted = String(currentCorporationId ?? '') === '1000001'
+
+			console.info('[EveCharacterDataDO] refreshPublicCharacterData completed', {
+				characterId,
+				forceRefresh,
+				characterName: currentCharacterInfo.name,
+				previousCorporationId,
+				currentCorporationId,
+				previousAllianceId,
+				currentAllianceId,
+				affiliationChanged,
+				isDeleted,
+			})
 
 			return {
 				success: !isDeleted,
@@ -204,8 +225,24 @@ export class EveCharacterDataDO extends DurableObject<Env> implements EveCharact
 				lowerMessage.includes('esi request failed: 404')
 
 			if (!isDeletedCharacterError) {
+				console.error('[EveCharacterDataDO] refreshPublicCharacterData failed', {
+					characterId,
+					forceRefresh,
+					previousCorporationId: previousCharacterInfo?.corporationId ?? null,
+					previousAllianceId: previousCharacterInfo?.allianceId ?? null,
+					error: errorMessage,
+					errorDetails: this.extractDbErrorDetails(error),
+				})
 				throw error
 			}
+
+			console.info('[EveCharacterDataDO] refreshPublicCharacterData treated missing character as deleted', {
+				characterId,
+				forceRefresh,
+				previousCorporationId: previousCharacterInfo?.corporationId ?? null,
+				previousAllianceId: previousCharacterInfo?.allianceId ?? null,
+				error: errorMessage,
+			})
 
 			return {
 				success: false,
