@@ -1,0 +1,79 @@
+import { generateKillmailUrl } from '@repo/srp'
+
+import type { AppliedModifier, SRPRequestResponse } from '@repo/srp'
+
+export function formatSrpRequest(request: any): SRPRequestResponse {
+	const effectiveApprovedAmount =
+		request.requestStatus === 'rejected' ? '0' : request.approvedAmount
+
+	return {
+		id: request.id,
+		userId: request.userId,
+		characterId: request.characterId,
+		characterName: request.characterName,
+		corporationId: request.corporationId,
+		corporationName: request.corporationName,
+		killmailHash: request.killmailHash,
+		killmailUrl: generateKillmailUrl(request.id),
+		lossDate: request.lossDate.toISOString(),
+		shipTypeId: request.shipTypeId,
+		shipTypeName: request.shipTypeName,
+		shipValue: request.shipValue,
+		solarSystemId: request.solarSystemId ?? undefined,
+		solarSystemName: request.solarSystemName ?? undefined,
+		contextText: request.contextText ?? undefined,
+		requestStatus: request.requestStatus,
+		approvedAmount: effectiveApprovedAmount ?? undefined,
+		reviewerId: request.reviewerId ?? undefined,
+		reviewerCharacterName: request.reviewerCharacterName ?? undefined,
+		reviewedAt: request.reviewedAt?.toISOString(),
+		reviewNotes: request.reviewNotes ?? undefined,
+		paymentDate: request.paymentDate?.toISOString(),
+		paymentCharacterName: request.paymentCharacterName ?? undefined,
+		appliedModifierPolicyId: request.appliedModifierPolicyId ?? undefined,
+		appliedModifierPolicyName: request.appliedModifierPolicyName ?? undefined,
+		appliedCapPolicyId: request.appliedCapPolicyId ?? undefined,
+		appliedCapPolicyName: request.appliedCapPolicyName ?? undefined,
+		appliedModifiers: (request.appliedModifiers as AppliedModifier[] | null) ?? undefined,
+		reviewerOverrideMillions: request.reviewerOverrideMillions ?? undefined,
+		fleetId: request.fleetId ?? undefined,
+		srpEquipmentValue: request.srpEquipmentValue ?? undefined,
+		srpInsurancePremium: request.srpInsurancePremium ?? undefined,
+		srpInsurancePayout: request.srpInsurancePayout ?? undefined,
+		srpNetInsurance: request.srpNetInsurance ?? undefined,
+		srpCalculatedValue: request.srpCalculatedValue ?? undefined,
+		srpFinalValue: request.srpFinalValue ?? undefined,
+		srpPriceSnapshotTime: request.srpPriceSnapshotTime?.toISOString() ?? undefined,
+		srpItemPrices: (request.srpItemPrices as any) ?? undefined,
+		killmailItems: (request.killmailData as any)?.victim?.items ?? undefined,
+		createdAt: request.createdAt.toISOString(),
+		updatedAt: request.updatedAt.toISOString(),
+		comments: request.comments?.map((c: any) => ({
+			id: c.id,
+			requestId: c.requestId,
+			authorUserId: c.authorUserId,
+			authorCharacterName: c.authorCharacterName,
+			content: c.content,
+			visibility: c.visibility,
+			isEdited: c.isEdited,
+			editedAt: c.editedAt?.toISOString(),
+			createdAt: c.createdAt.toISOString(),
+		})),
+		history: (request.history ?? [])
+			.filter((h: any) => h.action !== 'payment_scan_cursor_updated')
+			.map((h: any) => ({
+				id: h.id,
+				requestId: h.requestId,
+				actorUserId: h.actorUserId,
+				actorCharacterName: h.actorCharacterName,
+				action: h.action,
+				previousRequestStatus: h.previousRequestStatus,
+				newRequestStatus: h.newRequestStatus,
+				previousApprovedAmount: h.previousApprovedAmount,
+				newApprovedAmount: h.newApprovedAmount,
+				metadata: h.metadata as Record<string, unknown>,
+				visibility: h.visibility,
+				timestamp: h.timestamp.toISOString(),
+			})),
+	}
+}
