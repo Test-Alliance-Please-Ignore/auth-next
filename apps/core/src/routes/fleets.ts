@@ -11,6 +11,7 @@ import { createDb, schema } from '../db'
 import { getCachedCharacterPermissions, getCachedUserPermissions } from '../lib/groups-cache'
 import { validatePagination } from '../lib/validation'
 import { requireAuth } from '../middleware/session'
+import { hasCorporationSelfServiceAccess } from '../middleware/tax-permissions'
 
 import type { EsiTypeResolver } from '@repo/esi'
 import type { Broadcasts } from '@repo/broadcasts'
@@ -1438,13 +1439,21 @@ app.get('/tracking/stats/users/:userId', async (c) => {
  * Per-corporation stats (current members). Requires :view-all.
  */
 app.get('/tracking/stats/corporations/:corpId', async (c) => {
+	const corpId = c.req.param('corpId')
 	const { canViewAll } = await resolveTrackingPerms(c)
-	if (!canViewAll) return c.json({ error: 'view-all required' }, 403)
+	// Org-wide viewers/admins see any corp; otherwise fall back to corp
+	// self-service (CEO/Director of this specific corp). The short-circuit
+	// keeps view-all viewers from paying the extra Durable Object lookups.
+	const user = c.get('user')!
+	const isCorpLeader =
+		canViewAll || (await hasCorporationSelfServiceAccess(c.env, user, corpId))
+	if (!isCorpLeader) {
+		return c.json({ error: 'Not authorized to view this corporation' }, 403)
+	}
 
 	const rangeResult = parseStatsRange(c)
 	if (!rangeResult.success) return c.json({ error: rangeResult.error }, 400)
 	const range = rangeResult.data
-	const corpId = c.req.param('corpId')
 	const fleetsStub = getStub<Fleets>(c.env.FLEETS, 'default')
 
 	const data = await withStatsCache(c, 'view-all', async () => {
