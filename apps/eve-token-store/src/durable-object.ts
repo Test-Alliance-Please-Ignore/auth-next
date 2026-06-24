@@ -30,6 +30,7 @@ import {
 import type { EsiCacheScopeContext, EsiResponse as SharedEsiResponse } from '@repo/esi'
 import {
 	EVE_SSO_SCOPES_ALL,
+	EVE_SSO_SCOPES_PUBLIC_ONLY,
 	hasAllScopes,
 	getMissingScopes,
 } from '@repo/eve-token-store'
@@ -46,6 +47,7 @@ import type {
 	EveTokenStore,
 	EveVerifyResponse,
 	TokenRefreshResult,
+	PublicDataVerifyResult,
 	TokenInfo,
 	TokenValidationResult,
 } from '@repo/eve-token-store'
@@ -405,6 +407,43 @@ export class EveTokenStoreDO extends DurableObject<Env> implements EveTokenStore
 				.withTags({ operation: 'startCharacterFlow', state })
 				.error('Failed to start character flow', error)
 			throw error
+		}
+	}
+
+	/**
+	 * Start a minimal identification-only OAuth flow (publicData scope only).
+	 * Used by ephemeral flows (e.g. Mumble temp-op guests) — no token is stored.
+	 */
+	async startPublicDataFlow(state?: string): Promise<AuthorizationUrlResponse> {
+		try {
+			return this.generateAuthUrl(EVE_SSO_SCOPES_PUBLIC_ONLY, state)
+		} catch (error) {
+			logger
+				.withTags({ operation: 'startPublicDataFlow', state })
+				.error('Failed to start publicData flow', error)
+			throw error
+		}
+	}
+
+	/**
+	 * Verify a publicData OAuth callback and return the character identity only.
+	 * Exchanges the code and verifies the JWT signature/claims, but intentionally
+	 * does NOT persist a token or create an eveCharacters row — the caller (e.g.
+	 * the Mumble temp-op guest flow) only needs the verified id + name.
+	 */
+	async verifyPublicDataCallback(code: string): Promise<PublicDataVerifyResult> {
+		try {
+			const tokenResponse = await this.exchangeCodeForToken(code)
+			const verified = await this.verifyToken(tokenResponse.access_token)
+			return {
+				characterId: verified.CharacterID,
+				characterName: verified.CharacterName,
+			}
+		} catch (error) {
+			logger
+				.withTags({ operation: 'verifyPublicDataCallback' })
+				.error('Failed to verify publicData callback', error)
+			return { error: 'Failed to verify EVE login' }
 		}
 	}
 

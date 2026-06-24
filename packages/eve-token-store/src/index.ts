@@ -92,6 +92,12 @@ export const EVE_SSO_SCOPES_ALL = [
 ] as const
 
 /**
+ * Minimal scope set for identification-only flows (e.g. Mumble temp-op guests).
+ * Yields character id + name with no ESI data access.
+ */
+export const EVE_SSO_SCOPES_PUBLIC_ONLY = ['publicData'] as const
+
+/**
  * Compute the scopes missing from a granted scope set.
  */
 export function getMissingScopes(
@@ -184,6 +190,15 @@ export interface AuthorizationUrlResponse {
 	/** State parameter for CSRF protection */
 	state: string
 }
+
+/**
+ * Result of verifying a minimal publicData OAuth callback.
+ * Returns the verified character identity, or an error message — no token is
+ * persisted and no eveCharacters row is created (fully ephemeral).
+ */
+export type PublicDataVerifyResult =
+	| { characterId: string; characterName: string }
+	| { error: string }
 
 /**
  * Stored token data with character information
@@ -451,6 +466,24 @@ export interface EveTokenStore {
 	 * @returns Authorization URL and state
 	 */
 	startCharacterFlow(state?: string): Promise<AuthorizationUrlResponse>
+
+	/**
+	 * Start a minimal identification-only OAuth flow (publicData scope).
+	 * Used by ephemeral flows such as Mumble temp-op guests where we only need
+	 * the character's id + name for display, never ESI data or a stored token.
+	 * @param state - Optional state parameter for CSRF protection
+	 * @returns Authorization URL and state
+	 */
+	startPublicDataFlow(state?: string): Promise<AuthorizationUrlResponse>
+
+	/**
+	 * Verify a publicData OAuth callback without persisting anything.
+	 * Exchanges the code, verifies the JWT, and returns the character identity.
+	 * Does NOT store a token or create an eveCharacters row.
+	 * @param code - Authorization code from EVE SSO
+	 * @returns Verified character identity, or an error
+	 */
+	verifyPublicDataCallback(code: string): Promise<PublicDataVerifyResult>
 
 	/**
 	 * Handle OAuth callback - exchange code for tokens and store them

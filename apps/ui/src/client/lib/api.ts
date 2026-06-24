@@ -2231,6 +2231,65 @@ export interface MumbleSyncGroupsResponse {
 	skipped: string[]
 }
 
+/** A temp-op row as returned by the authed list endpoint. */
+export interface TempopListItem {
+	id: string
+	shortCode: string
+	creatorUserId: string
+	creatorName: string | null
+	groupName: string
+	ttlSeconds: number
+	status: string
+	guestCount: number
+	createdAt: string
+	expiresAt: string
+	deletedAt: string | null
+	canDelete: boolean
+}
+
+export interface TempopCreatorOption {
+	id: string
+	name: string | null
+}
+
+export interface TempopListResponse {
+	items: TempopListItem[]
+	creators: TempopCreatorOption[]
+	limit: number
+	offset: number
+	hasMore: boolean
+}
+
+export interface CreateTempopResponse {
+	tempopId: string
+	shortCode: string
+	/** One-time URL token — build the link client-side, then it's unrecoverable. */
+	token: string
+	expiresAt: string
+}
+
+export interface TempopListFilters {
+	status?: 'active' | 'expired' | 'deleted' | 'all'
+	creatorId?: string
+	mine?: boolean
+	limit?: number
+	offset?: number
+}
+
+/** Public temp-op metadata shown on the guest landing page. */
+export interface TempopInfo {
+	valid: boolean
+	expired: boolean
+	groupName?: string
+	expiresAt?: string
+}
+
+export interface TempopCredentialsResponse {
+	loginName: string
+	password: string
+	connection: MumbleConnectionInfo
+}
+
 export interface MumbleDeleteResponse {
 	deleted: string[]
 	notFound: string[]
@@ -4804,6 +4863,55 @@ export class ApiClient {
 	 */
 	async resetMumblePassword(): Promise<{ password: string; connection: MumbleConnectionInfo }> {
 		return this.post('/mumble/account/reset-password')
+	}
+
+	// ===== Mumble Temp-Op API Methods =====
+
+	/** Create a temp-op. The returned token is shown exactly once. */
+	async createTempop(input: {
+		ttlPreset?: '1h' | '4h' | '6h'
+		customHours?: number
+	}): Promise<CreateTempopResponse> {
+		return this.post('/mumble-tempop', input)
+	}
+
+	/** List temp-ops with optional filters. */
+	async listTempops(filters: TempopListFilters = {}): Promise<TempopListResponse> {
+		const params = new URLSearchParams()
+		if (filters.status) params.set('status', filters.status)
+		if (filters.creatorId) params.set('creatorId', filters.creatorId)
+		if (filters.mine) params.set('mine', 'true')
+		if (filters.limit != null) params.set('limit', String(filters.limit))
+		if (filters.offset != null) params.set('offset', String(filters.offset))
+		const qs = params.toString()
+		return this.get(`/mumble-tempop${qs ? `?${qs}` : ''}`)
+	}
+
+	/** Delete a temp-op, disconnecting all of its guests. */
+	async deleteTempop(id: string): Promise<{ success: boolean; disconnected: number }> {
+		return this.delete(`/mumble-tempop/${encodeURIComponent(id)}`)
+	}
+
+	/** Public: resolve a temp-op by its URL token (no auth). */
+	async getTempopInfo(key: string): Promise<TempopInfo> {
+		return this.requestPublic(`/api/public/mumble-tempop/${encodeURIComponent(key)}`, {
+			method: 'GET',
+		})
+	}
+
+	/** Public: begin the guest publicData SSO; returns the authorization URL. */
+	async startTempopSso(key: string): Promise<{ authorizationUrl: string }> {
+		return this.requestPublic(`/api/public/mumble-tempop/${encodeURIComponent(key)}/start-sso`, {
+			method: 'POST',
+		})
+	}
+
+	/** Public: exchange a single-use handoff token for the guest credentials. */
+	async getTempopCredentials(key: string, handoff: string): Promise<TempopCredentialsResponse> {
+		return this.requestPublic(
+			`/api/public/mumble-tempop/${encodeURIComponent(key)}/credentials?h=${encodeURIComponent(handoff)}`,
+			{ method: 'GET' }
+		)
 	}
 
 	// ===== Freight API Methods =====

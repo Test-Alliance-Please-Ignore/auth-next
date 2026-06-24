@@ -299,6 +299,8 @@ export const oauthStates = pgTable(
 		userId: uuid('user_id').references(() => users.id, { onDelete: 'cascade' }),
 		/** Optional redirect URL after successful authentication */
 		redirectUrl: varchar('redirect_url', { length: 500 }),
+		/** Flow-specific context (e.g. mumble temp-op key/id for the guest SSO flow) */
+		metadata: jsonb('metadata').$type<Record<string, unknown>>(),
 		/** When this state was created */
 		createdAt: timestamp('created_at').defaultNow().notNull(),
 		/** When this state expires (15 minutes from creation) */
@@ -1140,6 +1142,115 @@ export const dkpDecayConfigRelations = relations(dkpDecayConfig, ({ one }) => ({
 }))
 
 /**
+ * Mumble temp-ops table - TTL-bound public links granting temporary voice access
+ *
+ * A permitted user generates a temp-op with a TTL; anyone with the link identifies
+ * via a minimal-scope EVE SSO and receives an ephemeral, per-guest Mumble credential
+ * scoped to a dedicated group. Deleting the temp-op (or expiry) disconnects every guest.
+ */
+export const mumbleTempops = pgTable(
+	'mumble_tempops',
+	{
+		id: uuid('id').defaultRandom().primaryKey(),
+		/** Short, human-friendly code surfaced in the guest's Mumble display name */
+		shortCode: varchar('short_code', { length: 8 }).notNull().unique(),
+		/** SHA-256 hex of the URL token; the raw token is never stored */
+		keyHash: varchar('key_hash', { length: 64 }).notNull().unique(),
+		/** User who created the temp-op */
+		creatorUserId: uuid('creator_user_id')
+			.notNull()
+			.references(() => users.id, { onDelete: 'cascade' }),
+		/** Target Mumble group, snapshotted at creation */
+		groupName: varchar('group_name', { length: 120 }).notNull(),
+		/** Chosen TTL in seconds (<= 43200 = 12h) */
+		ttlSeconds: integer('ttl_seconds').notNull(),
+		/** Lifecycle status: 'active' | 'expired' | 'deleted' */
+		status: varchar('status', { length: 20 }).default('active').notNull(),
+		createdAt: timestamp('created_at').defaultNow().notNull(),
+		expiresAt: timestamp('expires_at').notNull(),
+		/** Set when manually deleted or swept by the expiry job */
+		deletedAt: timestamp('deleted_at'),
+	},
+	(table) => [
+		index('mumble_tempops_status_expires_at_idx').on(table.status, table.expiresAt),
+		index('mumble_tempops_creator_user_id_idx').on(table.creatorUserId),
+	]
+)
+
+/**
+ * Mumble temp-op guests table - Per-guest ephemeral accounts created via a temp-op link
+ *
+ * Each guest who completes the publicData SSO gets a row here plus a murmur-control
+ * local account keyed by `subjectId`. Affiliation is captured for display only.
+ */
+export const mumbleTempopGuests = pgTable(
+	'mumble_tempop_guests',
+	{
+		id: uuid('id').defaultRandom().primaryKey(),
+		tempopId: uuid('tempop_id')
+			.notNull()
+			.references(() => mumbleTempops.id, { onDelete: 'cascade' }),
+		/** EVE character ID (string form, matches userCharacters.characterId) */
+		characterId: varchar('character_id', { length: 32 }).notNull(),
+		characterName: varchar('character_name', { length: 255 }).notNull(),
+		corporationId: varchar('corporation_id', { length: 32 }),
+		allianceId: varchar('alliance_id', { length: 32 }),
+		corpTicker: varchar('corp_ticker', { length: 8 }),
+		/** murmur-control subject key: `tempop:<tempopId>:<characterId>` */
+		subjectId: varchar('subject_id', { length: 255 }).notNull().unique(),
+		loginName: varchar('login_name', { length: 60 }).notNull(),
+		/** Lifecycle status: 'active' | 'deleted' */
+		status: varchar('status', { length: 20 }).default('active').notNull(),
+		createdAt: timestamp('created_at').defaultNow().notNull(),
+	},
+	(table) => [
+		index('mumble_tempop_guests_tempop_id_idx').on(table.tempopId),
+		unique('mumble_tempop_guests_tempop_character_uq').on(table.tempopId, table.characterId),
+	]
+)
+
+/**
+ * Mumble temp-op credential handoff table - Short-lived single-use credential bridge
+ *
+ * The guest's one-time Mumble password is provisioned inside the SSO callback and must
+ * not leak via query strings/logs. The callback stores the credentials keyed by the
+ * SHA-256 of a random handoff token (60s TTL), redirects with only the token, and the
+ * SPA exchanges it exactly once. Expired rows are swept by the temp-op expiry job.
+ */
+export const mumbleTempopCredentialHandoffs = pgTable(
+	'mumble_tempop_credential_handoffs',
+	{
+		/** SHA-256 hex of the single-use handoff token */
+		tokenHash: varchar('token_hash', { length: 64 }).primaryKey(),
+		tempopId: uuid('tempop_id')
+			.notNull()
+			.references(() => mumbleTempops.id, { onDelete: 'cascade' }),
+		/** One-time plaintext credentials payload { loginName, password, host, port } */
+		credentials: jsonb('credentials')
+			.$type<{ loginName: string; password: string; host: string; port: number }>()
+			.notNull(),
+		createdAt: timestamp('created_at').defaultNow().notNull(),
+		expiresAt: timestamp('expires_at').notNull(),
+	},
+	(table) => [index('mumble_tempop_credential_handoffs_expires_at_idx').on(table.expiresAt)]
+)
+
+export const mumbleTempopsRelations = relations(mumbleTempops, ({ one, many }) => ({
+	creator: one(users, {
+		fields: [mumbleTempops.creatorUserId],
+		references: [users.id],
+	}),
+	guests: many(mumbleTempopGuests),
+}))
+
+export const mumbleTempopGuestsRelations = relations(mumbleTempopGuests, ({ one }) => ({
+	tempop: one(mumbleTempops, {
+		fields: [mumbleTempopGuests.tempopId],
+		references: [mumbleTempops.id],
+	}),
+}))
+
+/**
  * Export schema for db client
  */
 export const schema = {
@@ -1167,6 +1278,9 @@ export const schema = {
 	corporationAlertConfigs,
 	dkpTransactions,
 	dkpDecayConfig,
+	mumbleTempops,
+	mumbleTempopGuests,
+	mumbleTempopCredentialHandoffs,
 	usersRelations,
 	userCharactersRelations,
 	userSessionsRelations,
@@ -1188,4 +1302,6 @@ export const schema = {
 	alertDestinationsRelations,
 	dkpTransactionsRelations,
 	dkpDecayConfigRelations,
+	mumbleTempopsRelations,
+	mumbleTempopGuestsRelations,
 }

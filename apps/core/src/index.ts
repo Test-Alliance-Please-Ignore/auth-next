@@ -43,6 +43,8 @@ import inventoryRoutes from './routes/inventory'
 import inviteRoutes from './routes/invite'
 import loginRoutes from './routes/login'
 import mumbleRoutes from './routes/mumble'
+import mumbleTempopRoutes from './routes/mumble-tempop'
+import publicMumbleTempopRoutes from './routes/mumble-tempop-public'
 import sessionRoutes from './routes/session'
 import skillPlansRoutes from './routes/skill-plans'
 import skillsRoutes from './routes/skills'
@@ -108,6 +110,7 @@ const app = new Hono<App>()
 	// Public image proxy (no auth, aggressive CDN caching)
 	.route('/images', imagesRoutes)
 	.route('/api/public/paste', publicPasteRoutes)
+	.route('/api/public/mumble-tempop', publicMumbleTempopRoutes)
 
 	// API routes - mounted under /api prefix
 	.route('/api/admin', adminRoutes)
@@ -142,6 +145,7 @@ const app = new Hono<App>()
 	.route('/api/moon-scan', moonScanRoutes)
 	.route('/api/structures', structuresRoutes)
 	.route('/api/mumble', mumbleRoutes)
+	.route('/api/mumble-tempop', mumbleTempopRoutes)
 	.route('/api/bills', billsUserRoutes)
 	.route('/api/session', sessionRoutes)
 	.route('/api/pastes', pastesRoutes)
@@ -158,6 +162,11 @@ export default {
 			const result = await coreStub.processPendingDiscordRefreshes()
 			if (result.processed > 0) {
 				console.log('[Core:Scheduled] Processed pending Discord refreshes', result)
+			}
+
+			const tempopResult = await coreStub.processExpiredTempops()
+			if (tempopResult.expired > 0) {
+				console.log('[Core:Scheduled] Expired Mumble temp-ops', tempopResult)
 			}
 		}
 

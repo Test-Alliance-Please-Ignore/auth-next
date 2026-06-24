@@ -1,4 +1,4 @@
-import { Check, Copy, ExternalLink, KeyRound, Mic, RefreshCw, Users } from 'lucide-react'
+import { Mic, RefreshCw, Users } from 'lucide-react'
 import { useState } from 'react'
 import { Navigate } from 'react-router-dom'
 
@@ -9,6 +9,8 @@ import { ConfirmationDialog } from '@/components/ui/confirmation-dialog'
 import { Container } from '@/components/ui/container'
 import { PageHeader } from '@/components/ui/page-header'
 import { Section } from '@/components/ui/section'
+import { OneTimeCredentialsCard } from '@/features/mumble/components/credentials-card'
+import { TempopSection } from '@/features/mumble/components/tempop-section'
 import {
 	useMumbleAccount,
 	useProvisionMumbleAccount,
@@ -18,120 +20,12 @@ import { canAccessMumble } from '@/features/mumble/access'
 import { useMumbleFeatureEnabled } from '@/features/mumble/feature'
 import { useAuth } from '@/hooks/useAuth'
 import { usePageTitle } from '@/hooks/usePageTitle'
-import toast from '@/lib/toast'
+import { useUserPermissions } from '@/hooks/useUserPermissions'
 
 import type { MumbleOneTimeCredentials } from '@/features/mumble/types'
 
-function OneTimeCredentialsCard({ credentials }: { credentials: MumbleOneTimeCredentials }) {
-	const [copiedField, setCopiedField] = useState<string | null>(null)
-	const mumbleUrl = buildMumbleUrl(credentials)
-
-	const copyToClipboard = (text: string, field: string, label: string) => {
-		void navigator.clipboard.writeText(text).then(() => {
-			toast.success(`${label} copied`)
-			setCopiedField(field)
-			setTimeout(() => setCopiedField(null), 2000)
-		})
-	}
-
-	return (
-		<Card variant="default" className="border-amber-500/50">
-			<CardHeader>
-				<CardTitle className="flex items-center gap-2">
-					<KeyRound className="h-5 w-5" />
-					Your Mumble credentials
-				</CardTitle>
-				<CardDescription>
-					The password below is shown only once and cannot be recovered. Save the server,
-					username, and password somewhere safe before you leave this page.
-				</CardDescription>
-			</CardHeader>
-			<CardContent className="space-y-3">
-				<div className="rounded-md border border-amber-500/40 bg-amber-500/10 px-3 py-2 text-sm">
-					Once you close or refresh this page, the password will no longer be visible. If you
-					lose it, you will need to generate a new one.
-				</div>
-				<CopyRow
-					label="Username"
-					value={credentials.loginName}
-					copied={copiedField === 'username'}
-					onCopy={() => copyToClipboard(credentials.loginName, 'username', 'Username')}
-				/>
-				<CopyRow
-					label="Password"
-					value={credentials.password}
-					copied={copiedField === 'password'}
-					onCopy={() => copyToClipboard(credentials.password, 'password', 'Password')}
-				/>
-				<CopyRow
-					label="Server"
-					value={`${credentials.connection.host}:${credentials.connection.port}`}
-					copied={copiedField === 'server'}
-					onCopy={() =>
-						copyToClipboard(
-							`${credentials.connection.host}:${credentials.connection.port}`,
-							'server',
-							'Server'
-					)
-				}
-				/>
-				<div className="pt-3">
-					<Button asChild variant="primary" className="justify-center gap-2">
-						<a href={mumbleUrl}>
-							<ExternalLink className="h-4 w-4" />
-							Connect in Mumble
-						</a>
-					</Button>
-				</div>
-			</CardContent>
-		</Card>
-	)
-}
-
-function buildMumbleUrl(credentials: MumbleOneTimeCredentials): string {
-	const username = encodeURIComponent(credentials.loginName)
-	const password = encodeURIComponent(credentials.password)
-	const host = encodeURIComponent(credentials.connection.host)
-	return `mumble://${username}:${password}@${host}:${credentials.connection.port}/`
-}
-
-function CopyRow({
-	label,
-	value,
-	copied,
-	onCopy,
-}: {
-	label: string
-	value: string
-	copied: boolean
-	onCopy: () => void
-}) {
-	return (
-		<div className="flex items-center gap-2">
-			<span className="w-20 shrink-0 text-xs text-muted-foreground">{label}</span>
-			<div
-				role="button"
-				tabIndex={0}
-				onClick={onCopy}
-				onKeyDown={(e) => {
-					if (e.key === 'Enter' || e.key === ' ') {
-						e.preventDefault()
-						onCopy()
-					}
-				}}
-				className={`flex cursor-pointer items-center gap-2.5 rounded-md border-2 px-3 py-2 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 ${
-					copied
-						? 'border-teal-500 bg-teal-500/30 shadow-[inset_0_0_0_1px_rgba(255,255,255,0.18)]'
-						: 'border-zinc-500/50 bg-zinc-500/20 shadow-sm hover:border-zinc-500/70 hover:bg-zinc-500/30'
-				}`}
-			>
-				<Copy className="h-4 w-4 shrink-0 text-muted-foreground" />
-				<span className="font-mono text-base">{value}</span>
-				{copied ? <Check className="h-4 w-4 shrink-0 text-teal-300" /> : null}
-			</div>
-		</div>
-	)
-}
+const TEMPOP_CREATE_URN = 'urn:mumble:tempop:create'
+const TEMPOP_DELETE_URN = 'urn:mumble:tempop:delete'
 
 export default function MumblePage() {
 	usePageTitle('Mumble')
@@ -144,6 +38,10 @@ export default function MumblePage() {
 	const { data, isLoading, error } = useMumbleAccount(canViewMumblePage)
 	const provision = useProvisionMumbleAccount()
 	const resetPassword = useResetMumblePassword()
+	const { hasPermission, isAdmin } = useUserPermissions()
+	const canCreateTempop = isAdmin || hasPermission(TEMPOP_CREATE_URN)
+	const canDeleteTempop = isAdmin || hasPermission(TEMPOP_DELETE_URN)
+	const showTempopSection = canCreateTempop || canDeleteTempop
 
 	// One-time credentials live only in component state, never persisted
 	const [credentials, setCredentials] = useState<MumbleOneTimeCredentials | null>(null)
@@ -309,6 +207,15 @@ export default function MumblePage() {
 					) : null}
 				</div>
 			</Section>
+
+			{showTempopSection ? (
+				<Section>
+					<TempopSection
+						canCreate={canCreateTempop}
+						canManageAll={isAdmin || canDeleteTempop}
+					/>
+				</Section>
+			) : null}
 
 			<ConfirmationDialog
 				open={resetDialogOpen}

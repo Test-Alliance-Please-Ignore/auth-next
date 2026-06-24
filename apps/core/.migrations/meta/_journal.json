@@ -267,6 +267,13 @@
       "when": 1781947722061,
       "tag": "0037_flowery_human_fly",
       "breakpoints": true
+    },
+    {
+      "idx": 38,
+      "version": "7",
+      "when": 1782291915460,
+      "tag": "0038_unique_shinko_yamashiro",
+      "breakpoints": true
     }
   ]
 }

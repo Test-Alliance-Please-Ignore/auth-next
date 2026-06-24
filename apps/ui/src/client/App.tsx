@@ -27,6 +27,7 @@ import LegacyAuthCallbackPage from './routes/legacy-auth-callback'
 import MumblePage from './routes/mumble'
 import MyGroupsPage from './routes/my-groups'
 import PasteViewPage from './routes/paste-view'
+import TempopGuestPage from './routes/tempop-guest'
 import PasteEditPage from './routes/paste-edit'
 import PastesPage from './routes/pastes'
 import { adminRouteElements } from './routes/route-groups/admin-routes'
@@ -259,6 +260,7 @@ export default function App() {
 						<Route path="/claim-main" element={<ClaimMainPage />} />
 						<Route path="/paste" element={<NavigatePasteRootToLogin />} />
 						<Route path="/paste/:id" element={<PasteViewPage />} />
+						<Route path="/tempop/:key" element={<TempopGuestPage />} />
 
 						{/* Protected routes with layout */}
 						<Route element={<Layout />}>
