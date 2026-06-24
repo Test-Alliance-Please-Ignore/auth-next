@@ -32,6 +32,12 @@ const MAX_LOGIN_NAME_LENGTH = 60
 const MAX_MUMBLE_TICKER_LENGTH = 5
 const SITE_ADMIN_MUMBLE_TICKER = 'SA'
 /**
+ * Mumble ACL group synthesized for users attached to a member corporation
+ * (the same signal as the alliance-member role). Must exist on the Murmur
+ * server with channel ACLs referencing it; auth-next only assigns the name.
+ */
+const ALLIANCE_MEMBER_MUMBLE_GROUP = 'Test Alliance'
+/**
  * Mumble ACL group that temp-op guests are assigned to. Must exist on the
  * Murmur server with channel ACLs referencing it; auth-next only assigns the
  * group name. Snapshotted onto each temp-op row at creation.
@@ -258,6 +264,9 @@ async function getUserGroupNames(
 		.filter((membership) => membership.mumbleSyncEnabled)
 		.map((membership) => membership.groupName)
 
+	if (hasAttachment) {
+		groups.push(ALLIANCE_MEMBER_MUMBLE_GROUP)
+	}
 	if (user?.is_admin) {
 		groups.push('Server Admin')
 	}
