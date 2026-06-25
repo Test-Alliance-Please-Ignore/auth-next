@@ -108,13 +108,13 @@ Note: fleet tracking authorization is enforced by the Core API routes in `apps/c
 |---|---:|---:|---:|---:|---|
 | `POST /tracking` | Yes | No | No | Yes | Must own selected character |
 | `GET /tracking` | Yes | Yes | Yes | Yes | create-only forced to own `startedByUserId` |
-| `GET /tracking/:sessionId` | Yes | Yes | Yes | Yes | create-only limited to own sessions |
-| `GET /tracking/:sessionId/live` | Yes | Yes | Yes | Conditional | create-only: own session + active |
-| `GET /tracking/:sessionId/current-members` | Yes | Yes | Yes | Conditional | create-only: own session + active |
-| `GET /tracking/:sessionId/timeline` | Yes | Yes | Yes | Conditional | create-only: own session + active |
-| `GET /tracking/:sessionId/members/:characterId/ship-history` | Yes | Yes | Yes | Conditional | create-only: own session + active |
-| `GET /tracking/:sessionId/roster` | Yes | Yes | Yes | Conditional | create-only: own session + active |
-| `GET /tracking/:sessionId/summary` | Yes | Yes | Yes | Yes | Owner/admin/view-fleets |
+| `GET /tracking/:sessionId` | Yes | Yes | Yes | Yes | create-only limited to own/commander sessions |
+| `GET /tracking/:sessionId/live` | Yes | Yes | Yes | Conditional | create-only: own/commander session; live data only meaningful while active |
+| `GET /tracking/:sessionId/current-members` | Yes | Yes | Yes | Conditional | create-only: own/commander session; live data only meaningful while active |
+| `GET /tracking/:sessionId/timeline` | Yes | Yes | Yes | Conditional | create-only: own/commander session |
+| `GET /tracking/:sessionId/members/:characterId/ship-history` | Yes | Yes | Yes | Conditional | create-only: own/commander session |
+| `GET /tracking/:sessionId/roster` | Yes | Yes | Yes | Conditional | create-only: own/commander session |
+| `GET /tracking/:sessionId/summary` | Yes | Yes | Yes | Yes | Owner/commander/admin/view-fleets |
 | `DELETE /tracking/:sessionId` | Yes | No (unless owner) | No (unless owner) | No (unless owner) | Owner of active session or admin |
 | `POST /tracking/:sessionId/kick-members` | Yes | No (unless owner) | No (unless owner) | No (unless owner) | Owner of active session or admin |
 

@@ -93,9 +93,9 @@ function isFresh(updatedAt: number, maxAgeMs: number): boolean {
 
 function mergeEntities(
 	existing: ReviewQueueEntityState,
-	requests: readonly SRPRequestResponse[]
+	requests: readonly SRPRequestResponse[] | undefined
 ): ReviewQueueEntityState {
-	if (requests.length === 0) return existing
+	if (!Array.isArray(requests) || requests.length === 0) return existing
 
 	let changed = false
 	const nextEntities = { ...existing }
@@ -106,6 +106,24 @@ function mergeEntities(
 	}
 
 	return changed ? nextEntities : existing
+}
+
+function normalizeSnapshotEntry(entry: ReviewQueueSnapshotEntry): ReviewQueueSnapshotEntry {
+	const requests = Array.isArray(entry.data.requests) ? entry.data.requests : []
+	const total = typeof entry.data.total === 'number' ? entry.data.total : requests.length
+	const limit = typeof entry.data.limit === 'number' ? entry.data.limit : requests.length
+	const offset = typeof entry.data.offset === 'number' ? entry.data.offset : 0
+
+	return {
+		...entry,
+		data: {
+			...entry.data,
+			requests,
+			total,
+			limit,
+			offset,
+		},
+	}
 }
 
 function defaultUiState(): ReviewQueueUiState {
@@ -164,7 +182,12 @@ function readStateFromStorage(): ReviewQueueStoreState {
 		if (raw) {
 			const parsed = JSON.parse(raw) as ReviewQueueStoreState
 			if (parsed && typeof parsed === 'object') {
-				const snapshots = parsed.snapshots ?? {}
+				const snapshots = Object.fromEntries(
+					Object.entries(parsed.snapshots ?? {}).flatMap(([key, entry]) => {
+						if (!entry || typeof entry !== 'object' || !('data' in entry)) return []
+						return [[key, normalizeSnapshotEntry(entry as ReviewQueueSnapshotEntry)]]
+					})
+				)
 				return {
 					ui: {
 						...defaultUiState(),
@@ -341,6 +364,10 @@ export function setReviewQueueSnapshot(
 	data: RequestListResponse
 ): void {
 	const key = getSnapshotKey(status, params)
+	const normalizedData: RequestListResponse = {
+		...data,
+		requests: Array.isArray(data.requests) ? data.requests : [],
+	}
 	updateState((previous) => ({
 		...previous,
 		snapshots: {
@@ -348,11 +375,11 @@ export function setReviewQueueSnapshot(
 			[key]: {
 				status,
 				params: normalizeParams(params),
-				data,
+				data: normalizedData,
 				updatedAt: Date.now(),
 			},
 		},
-		entities: mergeEntities(previous.entities, data.requests),
+		entities: mergeEntities(previous.entities, normalizedData.requests),
 	}))
 }
 
@@ -413,20 +440,21 @@ export function upsertRequestAcrossReviewQueueSnapshots(request: SRPRequestRespo
 		const nextSnapshots: ReviewQueueSnapshotState = {}
 
 		for (const [key, entry] of Object.entries(previous.snapshots)) {
-			let nextRequests = entry.data.requests
-			let nextTotal = entry.data.total
+			const currentRequests = Array.isArray(entry.data.requests) ? entry.data.requests : []
+			let nextRequests = currentRequests
+			let nextTotal = typeof entry.data.total === 'number' ? entry.data.total : currentRequests.length
 
-			const idx = entry.data.requests.findIndex((row) => row.id === request.id)
+			const idx = currentRequests.findIndex((row) => row.id === request.id)
 			const shouldInclude =
 				entry.status === request.requestStatus && matchesSnapshotFilters(request, entry.params)
 
 			if (idx >= 0) {
 				changed = true
 				if (shouldInclude) {
-					nextRequests = [...entry.data.requests]
+					nextRequests = [...currentRequests]
 					nextRequests[idx] = request
 				} else {
-					nextRequests = entry.data.requests.filter((row) => row.id !== request.id)
+					nextRequests = currentRequests.filter((row) => row.id !== request.id)
 					nextTotal = Math.max(0, nextTotal - 1)
 				}
 			} else if (
@@ -434,7 +462,7 @@ export function upsertRequestAcrossReviewQueueSnapshots(request: SRPRequestRespo
 				(entry.params.offset === undefined || entry.params.offset === 0)
 			) {
 				changed = true
-				nextRequests = [request, ...entry.data.requests]
+				nextRequests = [request, ...currentRequests]
 				if (entry.params.limit && nextRequests.length > entry.params.limit) {
 					nextRequests = nextRequests.slice(0, entry.params.limit)
 				}
@@ -477,7 +505,8 @@ export function transitionRequestStatusAcrossReviewQueueSnapshots(
 		const candidatesToInsert: SRPRequestResponse[] = []
 
 		for (const [key, entry] of Object.entries(previous.snapshots)) {
-			const idx = entry.data.requests.findIndex((row) => row.id === requestId)
+			const currentRequests = Array.isArray(entry.data.requests) ? entry.data.requests : []
+			const idx = currentRequests.findIndex((row) => row.id === requestId)
 			if (idx < 0) {
 				nextSnapshots[key] = entry
 				continue
@@ -494,7 +523,7 @@ export function transitionRequestStatusAcrossReviewQueueSnapshots(
 			const keepInPlace =
 				entry.status === nextStatus && matchesSnapshotFilters(transitioned, entry.params)
 			if (keepInPlace) {
-				const nextRequests = [...entry.data.requests]
+				const nextRequests = [...currentRequests]
 				nextRequests[idx] = transitioned
 				nextSnapshots[key] = {
 					...entry,
@@ -511,8 +540,11 @@ export function transitionRequestStatusAcrossReviewQueueSnapshots(
 				...entry,
 				data: {
 					...entry.data,
-					requests: entry.data.requests.filter((row) => row.id !== requestId),
-					total: Math.max(0, entry.data.total - 1),
+					requests: currentRequests.filter((row) => row.id !== requestId),
+					total: Math.max(
+						0,
+						(typeof entry.data.total === 'number' ? entry.data.total : currentRequests.length) - 1
+					),
 				},
 				updatedAt: Date.now(),
 			}
@@ -523,18 +555,19 @@ export function transitionRequestStatusAcrossReviewQueueSnapshots(
 		for (const [key, entry] of Object.entries(nextSnapshots)) {
 			if (entry.status !== nextStatus) continue
 			if (entry.params.offset != null && entry.params.offset > 0) continue
-			const alreadyPresent = entry.data.requests.some((row) => row.id === requestId)
+			const currentRequests = Array.isArray(entry.data.requests) ? entry.data.requests : []
+			const alreadyPresent = currentRequests.some((row) => row.id === requestId)
 			if (alreadyPresent) continue
 			const candidate = candidatesToInsert.find((row) => matchesSnapshotFilters(row, entry.params))
 			if (!candidate) continue
-			const nextRequests = [candidate, ...entry.data.requests]
+			const nextRequests = [candidate, ...currentRequests]
 			const limit = entry.params.limit
 			nextSnapshots[key] = {
 				...entry,
 				data: {
 					...entry.data,
 					requests: limit ? nextRequests.slice(0, limit) : nextRequests,
-					total: entry.data.total + 1,
+					total: (typeof entry.data.total === 'number' ? entry.data.total : currentRequests.length) + 1,
 				},
 				updatedAt: Date.now(),
 			}

@@ -79,6 +79,8 @@ describe('fleets tracking routes', () => {
 		listTrackingSessions: ReturnType<typeof vi.fn>
 		getTrackingSession: ReturnType<typeof vi.fn>
 		getSessionLiveSnapshot: ReturnType<typeof vi.fn>
+		getSessionTimeline: ReturnType<typeof vi.fn>
+		getSessionRoster: ReturnType<typeof vi.fn>
 		getSessionSummary: ReturnType<typeof vi.fn>
 		getStatsOverview: ReturnType<typeof vi.fn>
 	}
@@ -95,6 +97,8 @@ describe('fleets tracking routes', () => {
 			listTrackingSessions: vi.fn(),
 			getTrackingSession: vi.fn(),
 			getSessionLiveSnapshot: vi.fn(),
+			getSessionTimeline: vi.fn(),
+			getSessionRoster: vi.fn(),
 			getSessionSummary: vi.fn(),
 			getStatsOverview: vi.fn(),
 		}
@@ -190,7 +194,7 @@ describe('fleets tracking routes', () => {
 		)
 	})
 
-	it('denies historical live detail to owner without view-fleets', async () => {
+	it('allows ended-session owner to access historical detail without view-fleets', async () => {
 		getCachedUserPermissionsMock.mockResolvedValue([{ urn: 'urn:fleet-tracking:create' }] as any)
 		fleetsStub.getTrackingSession.mockResolvedValue({
 			id: 's1',
@@ -198,12 +202,75 @@ describe('fleets tracking routes', () => {
 			startedByUserId: 'user-1',
 			characterId: '1001',
 		})
+		fleetsStub.getSessionTimeline.mockResolvedValue({
+			items: [],
+			total: 0,
+			limit: 25,
+			offset: 0,
+		})
 
 		const app = createApp(makeUser({ id: 'user-1' }))
-		const res = await app.request('/api/fleets/tracking/s1/live', {}, env)
+		const res = await app.request('/api/fleets/tracking/s1/timeline?limit=25&offset=0', {}, env)
 
-		expect(res.status).toBe(403)
-		expect(fleetsStub.getSessionLiveSnapshot).not.toHaveBeenCalled()
+		expect(res.status).toBe(200)
+		expect(fleetsStub.getSessionTimeline).toHaveBeenCalledWith({
+			sessionId: 's1',
+			eventType: undefined,
+			characterId: undefined,
+			limit: 25,
+			offset: 0,
+		})
+	})
+
+	it('allows commander-owned sessions to access historical detail without view-fleets', async () => {
+		getCachedUserPermissionsMock.mockResolvedValue([{ urn: 'urn:fleet-tracking:create' }] as any)
+		fleetsStub.getTrackingSession.mockResolvedValue({
+			id: 's1',
+			status: 'ended',
+			startedByUserId: 'other-user',
+			characterId: '2002',
+		})
+		fleetsStub.getSessionTimeline.mockResolvedValue({
+			items: [],
+			total: 0,
+			limit: 25,
+			offset: 0,
+		})
+
+		const app = createApp(
+			makeUser({
+				id: 'user-1',
+				mainCharacterId: '1001',
+				characters: [
+					{
+						id: 'uc-1',
+						characterOwnerHash: 'owner-hash-1',
+						characterId: '1001',
+						characterName: 'Pilot One',
+						is_primary: true,
+						hasValidToken: true,
+					},
+					{
+						id: 'uc-2',
+						characterOwnerHash: 'owner-hash-2',
+						characterId: '2002',
+						characterName: 'Pilot Two',
+						is_primary: false,
+						hasValidToken: true,
+					},
+				],
+			})
+		)
+		const res = await app.request('/api/fleets/tracking/s1/timeline?limit=25&offset=0', {}, env)
+
+		expect(res.status).toBe(200)
+		expect(fleetsStub.getSessionTimeline).toHaveBeenCalledWith({
+			sessionId: 's1',
+			eventType: undefined,
+			characterId: undefined,
+			limit: 25,
+			offset: 0,
+		})
 	})
 
 	it('allows :view-fleets users to view ended sessions belonging to other users', async () => {

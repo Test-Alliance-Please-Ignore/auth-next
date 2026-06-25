@@ -390,25 +390,35 @@ export function useCreateRequest() {
 			contextText: string
 		}) => api.createSRPRequest(data),
 		onSuccess: (request: SRPRequestResponse) => {
-			upsertLossRequestOverlay({
-				killmailId: request.id,
-				requestId: request.id,
-				requestStatus: request.requestStatus,
-			})
-			setLossStateAcrossCaches(queryClient, {
-				killmailId: request.id,
-				requestId: request.id,
-				requestStatus: request.requestStatus,
-			})
-			queryClient.setQueryData(srpKeys.request(request.id), request)
-			queryClient.setQueriesData(
-				{
-					predicate: (query) => isSrpMyRequestsQueryKey(query.queryKey),
-				},
-				(old) => prependMyRequest(old as MyRequestsQueryData | undefined, request)
-			)
-			void queryClient.invalidateQueries({ queryKey: srpKeys.requests() })
-			invalidateLossQueries(queryClient)
+			try {
+				upsertLossRequestOverlay({
+					killmailId: request.id,
+					requestId: request.id,
+					requestStatus: request.requestStatus,
+				})
+				setLossStateAcrossCaches(queryClient, {
+					killmailId: request.id,
+					requestId: request.id,
+					requestStatus: request.requestStatus,
+				})
+				queryClient.setQueryData(srpKeys.request(request.id), request)
+				queryClient.setQueriesData(
+					{
+						predicate: (query) => isSrpMyRequestsQueryKey(query.queryKey),
+					},
+					(old) => prependMyRequest(old as MyRequestsQueryData | undefined, request)
+				)
+				void queryClient.invalidateQueries({ queryKey: srpKeys.requests() })
+				invalidateLossQueries(queryClient)
+			} catch (error) {
+				console.error('[SRP] Failed to sync create-request caches after successful submit', {
+					requestId: request.id,
+					characterId: request.characterId,
+					killmailId: request.id,
+					requestStatus: request.requestStatus,
+					error,
+				})
+			}
 		},
 	})
 }

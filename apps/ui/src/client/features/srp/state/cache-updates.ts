@@ -32,6 +32,12 @@ function getRequestRows(data: MyRequestsQueryData | undefined): SRPRequestRespon
 	return data.requests
 }
 
+function getLossRows(losses: LossListEntry[] | RecentLossesQueryData | undefined): LossListEntry[] {
+	if (!losses) return []
+	if (Array.isArray(losses)) return losses
+	return Array.isArray(losses.losses) ? losses.losses : []
+}
+
 export function isSrpLossesQueryKey(queryKey: readonly unknown[]): boolean {
 	return Array.isArray(queryKey) && queryKey[0] === 'srp' && queryKey[1] === 'losses'
 }
@@ -50,7 +56,7 @@ export function patchLossesForRequest(
 	request: { killmailId: string; requestId: string; requestStatus: string }
 ): LossListEntry[] | RecentLossesQueryData | undefined {
 	if (!losses) return losses
-	const list = Array.isArray(losses) ? losses : losses.losses
+	const list = getLossRows(losses)
 	const patched = list.map((loss) =>
 		loss.killmailId === request.killmailId
 			? {
@@ -74,7 +80,7 @@ export function patchLossesByRequestStatus(
 	requestStatus: string
 ): LossListEntry[] | RecentLossesQueryData | undefined {
 	if (!losses) return losses
-	const list = Array.isArray(losses) ? losses : losses.losses
+	const list = getLossRows(losses)
 	const patched = list.map((loss) =>
 		loss.srpRequestId === requestId
 			? {
@@ -95,7 +101,7 @@ export function removeLossByKillmailId(
 	killmailId: string
 ): LossListEntry[] | RecentLossesQueryData | undefined {
 	if (!losses) return losses
-	const list = Array.isArray(losses) ? losses : losses.losses
+	const list = getLossRows(losses)
 	const patched = list.filter((loss) => loss.killmailId !== killmailId)
 	if (Array.isArray(losses)) return patched
 	return {
