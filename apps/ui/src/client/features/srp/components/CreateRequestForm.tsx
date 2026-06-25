@@ -98,7 +98,7 @@ export function CreateRequestForm({
 			quantity_destroyed: i.quantity_destroyed,
 			quantity_dropped: i.quantity_dropped,
 		})) ??
-		preview?.victimItems.map((i) => ({
+		preview?.victimItems?.map((i) => ({
 			item_type_id: i.typeId,
 			flag: i.flag,
 			quantity_destroyed: i.quantityDestroyed,
@@ -112,7 +112,7 @@ export function CreateRequestForm({
 			quantity_destroyed: i.quantity_destroyed,
 			quantity_dropped: i.quantity_dropped,
 		})),
-		preview?.itemPrices.map((p) => ({
+		preview?.itemPrices?.map((p) => ({
 			typeId: p.typeId,
 			price: p.unitPrice,
 			isConsumable: p.isConsumable,
