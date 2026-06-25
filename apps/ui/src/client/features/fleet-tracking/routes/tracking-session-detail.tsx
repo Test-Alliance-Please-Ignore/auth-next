@@ -61,9 +61,10 @@ export default function TrackingSessionDetail() {
 	}
 
 	const isOwner = !!user && session.startedByUserId === user.id
+	const isCommander = !!user && user.characters.some((char) => char.characterId === session.characterId)
 	const canViewAll = isAdmin || hasPermission('urn:fleet-tracking:view-all')
 	const canViewFleets = canViewAll || hasPermission('urn:fleet-tracking:view-fleets')
-	const canViewDetail = canViewFleets || (isOwner && session.status === 'active')
+	const canViewDetail = canViewFleets || isOwner || isCommander
 	const canStop = session.status === 'active' && (isOwner || isAdmin)
 
 	return (

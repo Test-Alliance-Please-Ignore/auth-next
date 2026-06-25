@@ -617,6 +617,9 @@ app.get('/tracking', async (c) => {
  * Helper: load a session and decide whether the caller is allowed to see
  * (a) the summary and (b) the detail tabs.
  *
+ * The session's FC character counts as an owner-equivalent path even when the
+ * viewer is not asking through the global fleet-tracking permissions.
+ *
  * Returns either { mode: 'allow', session, detail } or a Response to short-circuit.
  */
 async function resolveSessionAccess(
@@ -633,12 +636,15 @@ async function resolveSessionAccess(
 
 	const { canViewFleets, isAdmin } = await resolveTrackingPerms(c)
 	const isOwner = session.startedByUserId === user.id
+	const isCommander = user.characters.some(
+		(character) => character.characterId.toString() === session.characterId
+	)
 
-	if (!isOwner && !canViewFleets && !isAdmin) {
+	if (!isOwner && !isCommander && !canViewFleets && !isAdmin) {
 		return c.json({ error: 'Session not found' }, 404)
 	}
 
-	const canViewDetail = canViewFleets || isAdmin || (isOwner && session.status === 'active')
+	const canViewDetail = canViewFleets || isAdmin || isOwner || isCommander
 	return { mode: 'allow', session, canViewDetail }
 }
 
