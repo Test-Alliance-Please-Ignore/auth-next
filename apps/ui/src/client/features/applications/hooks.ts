@@ -98,7 +98,7 @@ export const applicationKeys = {
  * Hook to fetch applications with optional filters
  * @param params - Query parameters for filtering applications
  */
-export function useApplications(params?: ApplicationsParams) {
+export function useApplications(params?: ApplicationsParams, options?: { enabled?: boolean }) {
 	const filterKey = params ? JSON.stringify(params) : 'all'
 
 	return useQuery<Application[]>({
@@ -106,10 +106,11 @@ export function useApplications(params?: ApplicationsParams) {
 		queryFn: () => applicationsApi.getApplications(params),
 		staleTime: 1000 * 60 * 2, // 2 minutes
 		gcTime: 1000 * 60 * 5, // 5 minutes
+		enabled: options?.enabled ?? true,
 	})
 }
 
-export function useApplicationsPaged(params?: ApplicationsParams) {
+export function useApplicationsPaged(params?: ApplicationsParams, options?: { enabled?: boolean }) {
 	const filterKey = params ? JSON.stringify(params) : 'all'
 
 	return useQuery<ApplicationsListResult>({
@@ -118,6 +119,7 @@ export function useApplicationsPaged(params?: ApplicationsParams) {
 		placeholderData: (previousData) => previousData,
 		staleTime: 1000 * 60 * 2,
 		gcTime: 1000 * 60 * 5,
+		enabled: options?.enabled ?? true,
 	})
 }
 
@@ -125,13 +127,13 @@ export function useApplicationsPaged(params?: ApplicationsParams) {
  * Hook to fetch a single application by ID
  * @param applicationId - The application ID to fetch
  */
-export function useApplication(applicationId: string) {
+export function useApplication(applicationId: string, options?: { enabled?: boolean }) {
 	return useQuery<Application>({
 		queryKey: applicationKeys.detail(applicationId),
 		queryFn: () => applicationsApi.getApplication(applicationId),
 		staleTime: 1000 * 60, // 1 minute
 		gcTime: 1000 * 60 * 3, // 3 minutes
-		enabled: !!applicationId,
+		enabled: options?.enabled ?? !!applicationId,
 	})
 }
 
@@ -171,13 +173,13 @@ export function useUserApplicationHistory(userId: string, excludeApplicationId: 
  * Hook to fetch recommendations for an application
  * @param applicationId - The application ID
  */
-export function useRecommendations(applicationId: string) {
+export function useRecommendations(applicationId: string, options?: { enabled?: boolean }) {
 	return useQuery<Recommendation[]>({
 		queryKey: applicationKeys.recommendations(applicationId),
 		queryFn: () => applicationsApi.getRecommendations(applicationId),
 		staleTime: 1000 * 60, // 1 minute
 		gcTime: 1000 * 60 * 3, // 3 minutes
-		enabled: !!applicationId,
+		enabled: options?.enabled ?? !!applicationId,
 	})
 }
 
@@ -185,13 +187,13 @@ export function useRecommendations(applicationId: string) {
  * Hook to fetch activity log for an application
  * @param applicationId - The application ID
  */
-export function useApplicationActivity(applicationId: string) {
+export function useApplicationActivity(applicationId: string, options?: { enabled?: boolean }) {
 	return useQuery<ApplicationActivityLogEntry[]>({
 		queryKey: applicationKeys.activity(applicationId),
 		queryFn: () => applicationsApi.getApplicationActivity(applicationId),
 		staleTime: 1000 * 60, // 1 minute
 		gcTime: 1000 * 60 * 3, // 3 minutes
-		enabled: !!applicationId,
+		enabled: options?.enabled ?? !!applicationId,
 	})
 }
 
@@ -199,13 +201,13 @@ export function useApplicationActivity(applicationId: string) {
  * Hook to fetch messages for an application
  * @param applicationId - The application ID
  */
-export function useMessages(applicationId: string) {
+export function useMessages(applicationId: string, options?: { enabled?: boolean }) {
 	return useQuery<ApplicationMessage[]>({
 		queryKey: applicationKeys.messages(applicationId),
 		queryFn: () => applicationsApi.getMessages(applicationId),
 		staleTime: 1000 * 60, // 1 minute
 		gcTime: 1000 * 60 * 3, // 3 minutes
-		enabled: !!applicationId,
+		enabled: options?.enabled ?? !!applicationId,
 	})
 }
 
@@ -213,38 +215,39 @@ export function useMessages(applicationId: string) {
  * Hook to fetch message count for an application (for badge display)
  * @param applicationId - The application ID
  */
-export function useMessageCount(applicationId: string) {
+export function useMessageCount(applicationId: string, options?: { enabled?: boolean }) {
 	return useQuery<number>({
 		queryKey: applicationKeys.messageCount(applicationId),
 		queryFn: () => applicationsApi.getMessageCount(applicationId),
 		staleTime: 1000 * 30, // 30 seconds (more frequent for counts)
 		gcTime: 1000 * 60 * 2, // 2 minutes
-		enabled: !!applicationId,
+		enabled: options?.enabled ?? !!applicationId,
 	})
 }
 
 /**
  * Hook to fetch pending applications for recommendation (corp members)
  */
-export function usePendingRecommendations() {
+export function usePendingRecommendations(options?: { enabled?: boolean }) {
 	return useQuery<RecommendableApplication[]>({
 		queryKey: applicationKeys.recommendationsPending(),
 		queryFn: () => applicationsApi.getPendingRecommendations(),
 		staleTime: 1000 * 60 * 2, // 2 minutes
 		gcTime: 1000 * 60 * 5, // 5 minutes
+		enabled: options?.enabled ?? true,
 	})
 }
 
 /**
  * Hook to fetch application detail for writing a recommendation
  */
-export function useApplicationForRecommender(applicationId: string) {
+export function useApplicationForRecommender(applicationId: string, options?: { enabled?: boolean }) {
 	return useQuery<RecommenderApplicationDetail>({
 		queryKey: applicationKeys.recommendationsDetail(applicationId),
 		queryFn: () => applicationsApi.getApplicationForRecommender(applicationId),
 		staleTime: 1000 * 60, // 1 minute
 		gcTime: 1000 * 60 * 3, // 3 minutes
-		enabled: !!applicationId,
+		enabled: options?.enabled ?? !!applicationId,
 	})
 }
 
@@ -635,13 +638,13 @@ export function useSendMessage() {
 	})
 }
 
-export function useApplicationStaffNotes(applicationId: string) {
+export function useApplicationStaffNotes(applicationId: string, options?: { enabled?: boolean }) {
 	return useQuery<ApplicationStaffNote[]>({
 		queryKey: applicationKeys.staffNotes(applicationId),
 		queryFn: () => applicationsApi.getApplicationStaffNotes(applicationId),
 		staleTime: 1000 * 60,
 		gcTime: 1000 * 60 * 3,
-		enabled: !!applicationId,
+		enabled: options?.enabled ?? !!applicationId,
 	})
 }
 

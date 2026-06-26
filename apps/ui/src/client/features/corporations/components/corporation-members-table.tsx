@@ -57,6 +57,7 @@ import { EmeritusConfirmationDialog } from './emeritus-confirmation-dialog'
 import type {
 	CorporationMember,
 	CorporationMembersQuery,
+	CorporationMembersResponse,
 	CorporationMembersSortField,
 } from '../api'
 import type { HrRoleType } from '../../hr'
@@ -83,13 +84,7 @@ interface CorporationMembersTableProps {
 		hasNextPage: boolean
 		hasPreviousPage: boolean
 	}
-	summary?: {
-		total: number
-		linked: number
-		active: number
-		inactive: number
-		directors: number
-	}
+	summary?: CorporationMembersResponse['summary']
 }
 
 type SortField = CorporationMembersSortField
@@ -303,6 +298,11 @@ export default function CorporationMembersTable({
 	const stats = summary ?? {
 		total: members.length,
 		linked: members.filter((m) => m.hasAuthAccount).length,
+		linkedUsers: new Set(
+			members
+				.map((member) => member.authUserId)
+				.filter((authUserId): authUserId is string => Boolean(authUserId))
+		).size,
 		active: members.filter((m) => m.activityStatus === 'active').length,
 		inactive: members.filter((m) => m.activityStatus === 'inactive').length,
 		directors: members.filter((m) => m.role === 'Director').length,
@@ -338,10 +338,13 @@ export default function CorporationMembersTable({
 	return (
 		<div className="space-y-4">
 			{/* Statistics Bar */}
-			<div className="grid grid-cols-2 sm:grid-cols-5 gap-4">
+			<div className="grid grid-cols-2 gap-4 sm:grid-cols-5">
 				<Card className="p-3">
 					<div className="text-sm text-muted-foreground">Total Members</div>
 					<div className="text-2xl font-bold">{stats.total}</div>
+					<div className="mt-1 text-xs text-muted-foreground">
+						({stats.linkedUsers} linked users)
+					</div>
 				</Card>
 				<Card className="p-3">
 					<div className="text-sm text-muted-foreground">Linked</div>

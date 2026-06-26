@@ -217,6 +217,7 @@ export function useCorporationMemberStats(corporationId: string) {
 			return {
 				total: 0,
 				linked: 0,
+				linkedUsers: 0,
 				unlinked: 0,
 				active: 0,
 				inactive: 0,
@@ -228,6 +229,7 @@ export function useCorporationMemberStats(corporationId: string) {
 
 		const total = members.summary.total
 		const linked = members.summary.linked
+		const linkedUsers = members.summary.linkedUsers
 		const unlinked = total - linked
 		const active = members.summary.active
 		const inactive = members.summary.inactive
@@ -237,6 +239,7 @@ export function useCorporationMemberStats(corporationId: string) {
 		return {
 			total,
 			linked,
+			linkedUsers,
 			unlinked,
 			active,
 			inactive,

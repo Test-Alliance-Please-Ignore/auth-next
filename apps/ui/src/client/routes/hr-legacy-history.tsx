@@ -1,7 +1,7 @@
 import { useState } from 'react'
 
 import { useQuery } from '@tanstack/react-query'
-import { useSearchParams } from 'react-router-dom'
+import { Navigate, useSearchParams } from 'react-router-dom'
 
 import { Button } from '@/components/ui/button'
 import { UserSearchPaginationControls } from '@/components/user-search-pagination-controls'
@@ -9,11 +9,25 @@ import { Badge } from '@/components/ui/badge'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Input } from '@/components/ui/input'
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
+import { LoadingPage } from '@/components/ui/loading'
+import { useHrAccessibleCorporations } from '@/features/hr'
+import { useAuth } from '@/hooks/useAuth'
 import { usePageTitle } from '@/hooks/usePageTitle'
+import { useUserPermissions } from '@/hooks/useUserPermissions'
 import { api } from '@/lib/api'
 
 export default function AdminLegacyHistoryPage() {
 	usePageTitle('HR - Legacy History')
+	const { user, isAuthenticated, isLoading: authLoading } = useAuth()
+	const { hasAnyPermission } = useUserPermissions()
+	const isAuditor = hasAnyPermission('urn:hr:auditor')
+	const canCheckAccessibleCorporations = isAuthenticated && !user?.is_admin && !isAuditor
+	const {
+		data: accessibleCorporations,
+		isLoading: accessibleCorporationsLoading,
+	} = useHrAccessibleCorporations({
+		enabled: canCheckAccessibleCorporations,
+	})
 	const [searchParams] = useSearchParams()
 	const initialCharacterIds = searchParams.get('characterIds') ?? ''
 	const initialCharacterName = searchParams.get('characterName') ?? ''
@@ -23,6 +37,10 @@ export default function AdminLegacyHistoryPage() {
 	const [characterIds, setCharacterIds] = useState(initialCharacterIds)
 	const [characterName, setCharacterName] = useState(initialCharacterName)
 	const [corporationName, setCorporationName] = useState(initialCorporationName)
+	const canAccessLegacyHistory =
+		user?.is_admin === true ||
+		isAuditor ||
+		(accessibleCorporations?.some((corp) => corp.isMemberCorporation) ?? false)
 
 	const listQuery = useQuery({
 		queryKey: ['hr', 'legacy-history', page, pageSize, characterIds, characterName, corporationName],
@@ -34,7 +52,20 @@ export default function AdminLegacyHistoryPage() {
 				characterName: characterName.trim() || undefined,
 				corporationName: corporationName.trim() || undefined,
 			}),
+		enabled: canAccessLegacyHistory,
 	})
+
+	if (!authLoading && !isAuthenticated) {
+		return <Navigate to="/dashboard" replace />
+	}
+
+	if (authLoading || accessibleCorporationsLoading) {
+		return <LoadingPage label="Loading legacy history..." />
+	}
+
+	if (!canAccessLegacyHistory) {
+		return <Navigate to="/dashboard" replace />
+	}
 
 	const hasPagination = (listQuery.data?.pagination.total ?? 0) > pageSize
 	const currentSearchParams = new URLSearchParams()

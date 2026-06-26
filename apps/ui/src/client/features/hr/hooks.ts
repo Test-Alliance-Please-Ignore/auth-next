@@ -54,11 +54,12 @@ export function useHrPermissionCheck(request: CheckHrPermissionRequest | null) {
 /**
  * Hook to list corporations where current user has HR access
  */
-export function useHrAccessibleCorporations() {
+export function useHrAccessibleCorporations(options?: { enabled?: boolean }) {
 	return useQuery<HrAccessibleCorporation[]>({
 		queryKey: hrKeys.corporations(),
 		queryFn: () => hrApi.listAccessibleCorporations(),
 		staleTime: 5 * 60 * 1000,
+		enabled: options?.enabled ?? true,
 	})
 }
 

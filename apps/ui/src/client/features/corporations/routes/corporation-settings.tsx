@@ -49,12 +49,14 @@ export default function CorporationSettings() {
 	const [fullDescription, setFullDescription] = useState('')
 	const [hasChanges, setHasChanges] = useState(false)
 	const [shortDescError, setShortDescError] = useState('')
-	const { isLoading: accessLoading, userRole } = useCanAccessCorporation(corporationId ?? '')
+	const { isLoading: accessLoading, userRole, corporation: accessCorp } = useCanAccessCorporation(corporationId ?? '')
+	const isMemberCorporation = accessCorp?.isMemberCorporation === true
 	const canManageSettings =
 		user?.is_admin === true ||
-		userRole === 'CEO' ||
-		userRole === 'Director' ||
-		userRole === 'hr_admin'
+		(isMemberCorporation &&
+			(userRole === 'CEO' ||
+				userRole === 'Director' ||
+				userRole === 'hr_admin'))
 
 	// Fetch corporation details
 	const {

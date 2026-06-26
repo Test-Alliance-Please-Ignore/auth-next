@@ -79,9 +79,13 @@ export default function HrApplicationReview() {
 	const location = useLocation()
 	const [searchParams] = useSearchParams()
 	const initialTab = searchParams.get('tab') || 'details'
-	const { user, isAuthenticated, isLoading: authLoading } = useAuth()
-	const { canAccess: hasCorporationAccess, isLoading: corporationAccessLoading } =
+	const { user, isAuthenticated, isLoading: authLoading, permissions } = useAuth()
+	const isAuditor = permissions.some((permission) => permission.urn === 'urn:hr:auditor')
+	const { canAccess: hasCorporationAccess, isLoading: corporationAccessLoading, corporation: accessCorp } =
 		useCanAccessCorporation(corporationId ?? '')
+	const isMemberCorporation = accessCorp?.isMemberCorporation === true
+	const canViewCorporationApplications =
+		user?.is_admin === true || isAuditor || isMemberCorporation
 
 	// Dialog state for HR Notes
 	const [addNoteDialogOpen, setAddNoteDialogOpen] = useState(false)
@@ -93,8 +97,9 @@ export default function HrApplicationReview() {
 	const deleteHrNote = useDeleteHRNote()
 
 	// Check HR permission (userId derived from authenticated session)
+	const shouldCheckPermission = !!corporationId && canViewCorporationApplications && user?.is_admin !== true
 	const { data: permission, isLoading: permissionLoading } = useHrPermissionCheck(
-		corporationId ? { corporationId } : null
+		shouldCheckPermission ? { corporationId } : null
 	)
 
 	// Fetch application data
@@ -102,23 +107,36 @@ export default function HrApplicationReview() {
 		data: application,
 		isLoading: applicationLoading,
 		error: applicationError,
-	} = useApplication(applicationId!)
+	} = useApplication(applicationId!, { enabled: canViewCorporationApplications })
 
 	// Fetch activity log, recommendations, and message count
-	const { data: activityLog, isLoading: activityLoading } = useApplicationActivity(applicationId!)
-	const { data: recommendations } = useRecommendations(applicationId!)
-	const { data: messageCount = 0 } = useMessageCount(applicationId!)
-	const { data: staffNotes = [] } = useApplicationStaffNotes(applicationId!)
+	const { data: activityLog, isLoading: activityLoading } = useApplicationActivity(applicationId!, {
+		enabled: canViewCorporationApplications,
+	})
+	const { data: recommendations } = useRecommendations(applicationId!, {
+		enabled: canViewCorporationApplications,
+	})
+	const { data: messageCount = 0 } = useMessageCount(applicationId!, {
+		enabled: canViewCorporationApplications,
+	})
+	const { data: staffNotes = [] } = useApplicationStaffNotes(applicationId!, {
+		enabled: canViewCorporationApplications,
+	})
 	const staffNotesCount = staffNotes.length
 	const { data: globalUserNotes = [] } = useHRNotes(
 		{ subjectUserId: application?.userId },
-		{ enabled: !!application?.userId && (!!user?.is_admin || !!permission?.hasPermission) }
+		{
+			enabled:
+				!!application?.userId &&
+				!!canViewCorporationApplications &&
+				(!!user?.is_admin || !!permission?.hasPermission),
+		}
 	)
 	const globalUserNotesCount = globalUserNotes.length
 	const { data: fulcrumCharacters = [] } = useApplicationFulcrum(
 		application?.userId ?? '',
 		corporationId ?? '',
-		!!application?.userId && !!corporationId,
+		!!application?.userId && !!corporationId && canViewCorporationApplications,
 	)
 
 	// Fetch selected HR note for edit/delete
@@ -155,7 +173,7 @@ export default function HrApplicationReview() {
 			meta: {
 				suppressErrorToast: true,
 			},
-			enabled: !!application,
+			enabled: !!application && canViewCorporationApplications,
 			staleTime: 5 * 60 * 1000,
 		})),
 	})
@@ -248,7 +266,7 @@ export default function HrApplicationReview() {
 	}
 
 	// Loading state
-	if (authLoading || permissionLoading || applicationLoading || corporationAccessLoading) {
+	if (authLoading || corporationAccessLoading || (shouldCheckPermission && permissionLoading) || (canViewCorporationApplications && applicationLoading)) {
 		return (
 			<Container>
 				<div className="flex items-center justify-center min-h-[400px]">
@@ -260,7 +278,7 @@ export default function HrApplicationReview() {
 
 	// Access denied - no HR role
 	// Check permission - site admins always have access
-	if (!permission?.hasPermission && !user?.is_admin) {
+	if (!canViewCorporationApplications || (!permission?.hasPermission && !user?.is_admin && !isAuditor)) {
 		return (
 			<Container>
 				<AccessDeniedCard

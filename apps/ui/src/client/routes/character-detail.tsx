@@ -17,6 +17,7 @@ import { usePageTitle } from '../hooks/usePageTitle'
 import { useUserPermissions } from '../hooks/useUserPermissions'
 import { api } from '../lib/api'
 import { allianceLogoUrl, characterPortraitUrl, corporationLogoUrl } from '../lib/eve-images'
+import { useCorporationAccess } from '../features/corporations/hooks'
 
 type CharacterDetailSource =
 	| 'admin-user-detail'
@@ -84,17 +85,18 @@ export default function CharacterDetailPage() {
 		enabled: !!characterId,
 	})
 
-	const corporationIdForAdminLink = character?.public.info?.corporationId
+	const corporationIdForLink = character?.public.info?.corporationId
 		? String(character.public.info.corporationId)
 		: null
+	const { data: corporationAccess } = useCorporationAccess()
 
 	const { data: isManagedCorporation = false } = useQuery({
-		queryKey: ['admin-corporation-exists', corporationIdForAdminLink],
-		enabled: Boolean(user?.is_admin && corporationIdForAdminLink),
+		queryKey: ['admin-corporation-exists', corporationIdForLink],
+		enabled: Boolean(user?.is_admin && corporationIdForLink),
 		queryFn: async () => {
-			if (!corporationIdForAdminLink) return false
+			if (!corporationIdForLink) return false
 			try {
-				await api.getCorporation(corporationIdForAdminLink)
+				await api.getCorporation(corporationIdForLink)
 				return true
 			} catch (queryError) {
 				if (
@@ -178,7 +180,7 @@ export default function CharacterDetailPage() {
 		? `Updated ${formatDistanceToNow(new Date(character.lastUpdated), { addSuffix: true })}`
 		: 'Never updated'
 	const canLinkToAdminCorporation = Boolean(
-		user?.is_admin && corporationIdForAdminLink && isManagedCorporation
+		user?.is_admin && corporationIdForLink && isManagedCorporation
 	)
 	const showAdminRefresh = Boolean(user?.is_admin)
 	const canViewPrivateSections =
@@ -187,6 +189,12 @@ export default function CharacterDetailPage() {
 		isHrAuditor ||
 		character.viewedAsCeoOrDirector ||
 		character.viewedAsHrViewer
+	const corporationMembersLink =
+		!user?.is_admin &&
+		corporationIdForLink &&
+		corporationAccess?.corporations.some((corp) => corp.corporationId === corporationIdForLink)
+			? `/corporations/${corporationIdForLink}/members`
+			: null
 
 	return (
 		<Container className="p-8 space-y-6">
@@ -282,6 +290,15 @@ export default function CharacterDetailPage() {
 										{canLinkToAdminCorporation ? (
 											<Link
 												to={`/admin/corporations/${character.public.info.corporationId}`}
+												className="text-sm font-medium underline-offset-2 hover:underline"
+												title={`Corporation ID: ${character.public.info.corporationId}`}
+											>
+												{character.public.info.corporationName ||
+													`Corporation #${character.public.info.corporationId}`}
+											</Link>
+										) : corporationMembersLink ? (
+											<Link
+												to={corporationMembersLink}
 												className="text-sm font-medium underline-offset-2 hover:underline"
 												title={`Corporation ID: ${character.public.info.corporationId}`}
 											>

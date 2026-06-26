@@ -55,6 +55,10 @@ function makeDbStub() {
 			},
 			users: {
 				findMany: vi.fn().mockResolvedValue([]),
+				findFirst: vi.fn().mockResolvedValue({
+					id: 'target-user-1',
+					mainCharacterId: '2001',
+				}),
 			},
 		},
 		update: vi.fn().mockReturnValue({
@@ -133,6 +137,7 @@ describe('corporations members access matrix', () => {
 	let corpStub: {
 		getCorporationInfo: ReturnType<typeof vi.fn>
 		getCoreData: ReturnType<typeof vi.fn>
+		getMembers: ReturnType<typeof vi.fn>
 		getDirectors: ReturnType<typeof vi.fn>
 		fetchCoreData: ReturnType<typeof vi.fn>
 	}
@@ -154,6 +159,9 @@ describe('corporations members access matrix', () => {
 		tokenStoreStub = makeTokenStoreStub()
 		corpStub = {
 			getCorporationInfo: vi.fn().mockResolvedValue({ ceoId: '9999', allianceId: null }),
+			getMembers: vi.fn().mockResolvedValue([
+				{ characterId: '2001', updatedAt: new Date('2026-04-01T00:00:00.000Z') },
+			]),
 			getCoreData: vi.fn().mockResolvedValue({
 				members: [{ characterId: '2001', updatedAt: new Date('2026-04-01T00:00:00.000Z') }],
 				memberTracking: [],
@@ -213,6 +221,97 @@ describe('corporations members access matrix', () => {
 		})
 	})
 
+	it('allows HR auditors to view a non-member corporation member account detail', async () => {
+		getCachedUserPermissionsMock.mockResolvedValue([
+			{
+				permissionId: 'perm-auditor',
+				urn: 'urn:hr:auditor',
+				name: 'HR Auditor',
+				description: null,
+				category: null,
+				groupId: 'g-1',
+				groupName: 'HR',
+				targetType: 'all_members',
+				source: 'global',
+			},
+		] as any)
+		dbStub.query.managedCorporations.findFirst.mockResolvedValue({
+			corporationId: '2001',
+			name: 'Bravo Corp',
+			ticker: 'BRV',
+			isActive: true,
+			isMemberCorporation: false,
+		} as any)
+		dbStub.query.userCharacters.findMany.mockResolvedValue([
+			{
+				id: 'uc-1',
+				userId: 'target-user-1',
+				characterId: '2001',
+				characterName: 'Pilot One',
+				corporationId: null,
+				corporationName: null,
+				allianceId: null,
+				allianceName: null,
+				is_primary: true,
+				hasValidToken: true,
+				status: 'active',
+				linkedAt: new Date('2026-04-01T00:00:00.000Z'),
+				updatedAt: new Date('2026-04-01T00:00:00.000Z'),
+				isDeleted: false,
+			},
+		] as any)
+		corpStub.getCoreData.mockResolvedValue({
+			members: [],
+			memberTracking: [],
+		})
+		corpStub.getMembers.mockResolvedValue([
+			{ characterId: '2001', updatedAt: new Date('2026-04-01T00:00:00.000Z') },
+		])
+
+		const app = createApp({ user: makeUser(), db: dbStub })
+		const res = await app.request('/api/corporations/2001/members/target-user-1', {}, env)
+
+		expect(res.status).toBe(200)
+		expect(await res.json()).toMatchObject({
+			account: {
+				accountId: 'target-user-1',
+				isLinked: true,
+				characters: [
+					{
+						authUserId: 'target-user-1',
+						characterId: '2001',
+					},
+				],
+			},
+		})
+	})
+
+	it('denies corporation settings access for non-member corporation leadership', async () => {
+		dbStub.query.managedCorporations.findFirst.mockResolvedValue({
+			corporationId: '2001',
+			name: 'Bravo Corp',
+			ticker: 'BRV',
+			isActive: true,
+			isMemberCorporation: false,
+		} as any)
+
+		const app = createApp({ user: makeUser(), db: dbStub })
+		const res = await app.request(
+			'/api/corporations/2001/settings',
+			{
+				method: 'PATCH',
+				body: JSON.stringify({ isRecruiting: true }),
+				headers: { 'content-type': 'application/json' },
+			},
+			env
+		)
+
+		expect(res.status).toBe(403)
+		expect(await res.json()).toEqual({
+			error: 'Access denied. Corporation CEO, site admin, or HR admin required.',
+		})
+	})
+
 	it('allows hr auditor to view members without corp/hr role', async () => {
 		getCachedUserPermissionsMock.mockResolvedValue([
 			{
@@ -265,15 +364,43 @@ describe('corporations members access matrix', () => {
 			members: [
 				{ characterId: '2001', updatedAt: new Date('2026-04-01T00:00:00.000Z') },
 				{ characterId: '2002', updatedAt: new Date('2026-04-01T00:00:00.000Z') },
+				{ characterId: '2003', updatedAt: new Date('2026-04-01T00:00:00.000Z') },
+				{ characterId: '2004', updatedAt: new Date('2026-04-01T00:00:00.000Z') },
+				{ characterId: '2005', updatedAt: new Date('2026-04-01T00:00:00.000Z') },
 			],
 			memberTracking: [],
 		})
+		corpStub.getMembers.mockResolvedValue([
+			{ characterId: '2001', updatedAt: new Date('2026-04-01T00:00:00.000Z') },
+			{ characterId: '2002', updatedAt: new Date('2026-04-01T00:00:00.000Z') },
+			{ characterId: '2003', updatedAt: new Date('2026-04-01T00:00:00.000Z') },
+			{ characterId: '2004', updatedAt: new Date('2026-04-01T00:00:00.000Z') },
+			{ characterId: '2005', updatedAt: new Date('2026-04-01T00:00:00.000Z') },
+		])
 		dbStub.query.userCharacters.findMany.mockResolvedValue([
 			{
 				characterId: '2001',
-				userId: 'target-user-1',
+				userId: 'target-user-a',
 				status: 'active',
 				hasValidToken: true,
+			},
+			{
+				characterId: '2002',
+				userId: 'target-user-a',
+				status: 'active',
+				hasValidToken: true,
+			},
+			{
+				characterId: '2003',
+				userId: 'target-user-b',
+				status: 'active',
+				hasValidToken: true,
+			},
+			{
+				characterId: '2004',
+				userId: 'target-user-b',
+				status: 'active',
+				hasValidToken: false,
 			},
 		])
 		getStubMock.mockImplementation((binding: unknown) => {
@@ -310,7 +437,18 @@ describe('corporations members access matrix', () => {
 				hasNextPage: boolean
 				hasPreviousPage: boolean
 			}
-			summary: { total: number; linked: number }
+			summary: {
+				total: number
+				linked: number
+				linkedUsers: number
+				esiCoverage: {
+					full: number
+					partial: number
+					none: number
+					unlinked: number
+					linkedUsers: number
+				}
+			}
 		}
 		expect(body.items).toHaveLength(1)
 		expect(body.items[0]).toMatchObject({
@@ -328,7 +466,15 @@ describe('corporations members access matrix', () => {
 		})
 		expect(body.summary).toMatchObject({
 			total: 2,
-			linked: 1,
+			linked: 2,
+			linkedUsers: 1,
+			esiCoverage: {
+				full: 1,
+				partial: 1,
+				none: 0,
+				unlinked: 1,
+				linkedUsers: 2,
+			},
 		})
 	})
 
@@ -394,6 +540,7 @@ describe('corporations members access matrix', () => {
 		const body = (await res.json()) as {
 			items: Array<{ characterId: string; hasValidToken?: boolean | null }>
 			pagination: { totalItems: number }
+			summary: { linkedUsers: number }
 		}
 		expect(body.pagination.totalItems).toBe(1)
 		expect(body.items).toHaveLength(1)
@@ -401,6 +548,7 @@ describe('corporations members access matrix', () => {
 			characterId: '2002',
 			hasValidToken: false,
 		})
+		expect(body.summary.linkedUsers).toBe(1)
 	})
 
 	it('reads persisted linked token state without live validation', async () => {
