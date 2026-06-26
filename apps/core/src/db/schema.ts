@@ -300,7 +300,7 @@ export const oauthStates = pgTable(
 		/** Optional redirect URL after successful authentication */
 		redirectUrl: varchar('redirect_url', { length: 500 }),
 		/** Flow-specific context (e.g. mumble temp-op key/id for the guest SSO flow) */
-		metadata: jsonb('metadata').$type<Record<string, unknown>>(),
+		metadata: jsonb('metadata').$type<TempopOAuthMetadata | null>(),
 		/** When this state was created */
 		createdAt: timestamp('created_at').defaultNow().notNull(),
 		/** When this state expires (15 minutes from creation) */
@@ -308,6 +308,11 @@ export const oauthStates = pgTable(
 	},
 	(table) => [index('oauth_states_expires_at_idx').on(table.expiresAt)]
 )
+
+export interface TempopOAuthMetadata {
+	key: string
+	tempopId: string
+}
 
 /**
  * Managed Corporations table - Global corporation registry for admin management
@@ -1193,11 +1198,11 @@ export const mumbleTempopGuests = pgTable(
 		/** EVE character ID (string form, matches userCharacters.characterId) */
 		characterId: varchar('character_id', { length: 32 }).notNull(),
 		characterName: varchar('character_name', { length: 255 }).notNull(),
-		corporationId: varchar('corporation_id', { length: 32 }),
-		allianceId: varchar('alliance_id', { length: 32 }),
-		corpTicker: varchar('corp_ticker', { length: 8 }),
-		/** murmur-control subject key: `tempop:<tempopId>:<characterId>` */
-		subjectId: varchar('subject_id', { length: 255 }).notNull().unique(),
+	corporationId: varchar('corporation_id', { length: 32 }),
+	allianceId: varchar('alliance_id', { length: 32 }),
+	corpTicker: varchar('corp_ticker', { length: 8 }),
+	/** murmur-control subject key: `tempop:<tempopId>:<characterId>` */
+	subjectId: varchar('subject_id', { length: 255 }).notNull().unique(),
 		loginName: varchar('login_name', { length: 60 }).notNull(),
 		/** Lifecycle status: 'active' | 'deleted' */
 		status: varchar('status', { length: 20 }).default('active').notNull(),

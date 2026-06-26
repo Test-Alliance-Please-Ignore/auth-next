@@ -17,6 +17,7 @@ import {
 
 import type { EveCharacterData } from '@repo/eve-character-data'
 import type { EveCorporationData } from '@repo/eve-corporation-data'
+import type { EveTokenStore } from '@repo/eve-token-store'
 import type { Groups } from '@repo/groups'
 import type { Hr } from '@repo/hr'
 import type {
@@ -650,6 +651,7 @@ export async function provisionTempopGuest(
 	const allianceId = publicData.currentAllianceId ?? null
 
 	let corpTicker: string | null = null
+	let allianceTicker: string | null = null
 	if (corporationId) {
 		try {
 			const corpStub = getStub<EveCorporationData>(env.EVE_CORPORATION_DATA, corporationId)
@@ -663,9 +665,26 @@ export async function provisionTempopGuest(
 			})
 		}
 	}
+	if (allianceId) {
+		try {
+			const tokenStoreStub = getStub<EveTokenStore>(env.EVE_TOKEN_STORE, 'default')
+			const allianceInfo = await tokenStoreStub.getAllianceById(allianceId)
+			allianceTicker = normalizeMumbleTicker(allianceInfo?.ticker)
+		} catch (error) {
+			logger.warn('[Mumble] Failed to resolve temp-op guest alliance ticker', {
+				characterId,
+				allianceId,
+				error: error instanceof Error ? error.message : String(error),
+			})
+		}
+	}
 
 	const loginName = deriveLoginName(characterName, characterId)
-	const displayName = `[T] ${characterName} [${tempop.shortCode}]`
+	const displayTicker = allianceTicker ?? corpTicker
+	const displayName = appendMumbleDisplaySuffixes(`[T] ${characterName}`, [
+		...(displayTicker ? [displayTicker] : []),
+		tempop.shortCode,
+	])
 
 	let password: string
 	let resolvedLoginName = loginName

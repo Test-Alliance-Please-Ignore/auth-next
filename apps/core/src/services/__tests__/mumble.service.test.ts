@@ -3,7 +3,12 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { getStub } from '@repo/do-utils'
 
 import { createDb } from '../../db'
-import { deriveLoginName, syncUsersMumbleGroups, syncUsersMumbleProfiles } from '../mumble.service'
+import {
+	deriveLoginName,
+	provisionTempopGuest,
+	syncUsersMumbleGroups,
+	syncUsersMumbleProfiles,
+} from '../mumble.service'
 
 // @neondatabase/api-client (pulled in via @repo/db-utils test helpers) breaks
 // the workers-pool CJS shim; it is irrelevant to these tests.
@@ -129,6 +134,7 @@ describe('syncUsersMumbleGroups', () => {
 		}
 		const groupsStub = {
 			getUserMemberships: vi.fn(),
+			getRolesFor: vi.fn().mockResolvedValue([]),
 		}
 
 		const mumbleStub = {
@@ -186,6 +192,7 @@ describe('syncUsersMumbleGroups', () => {
 			getUserMemberships: vi.fn().mockResolvedValue([
 				{ groupName: 'Fleet', mumbleSyncEnabled: true },
 			]),
+			getRolesFor: vi.fn().mockResolvedValue([]),
 		}
 		const mumbleStub = {
 			syncUserGroups: vi.fn().mockResolvedValue({ synced: ['user-1'], skipped: [] }),
@@ -227,6 +234,7 @@ describe('syncUsersMumbleGroups', () => {
 		}
 		const groupsStub = {
 			getUserMemberships: vi.fn(),
+			getRolesFor: vi.fn().mockResolvedValue([]),
 		}
 		const mumbleStub = {
 			syncUserGroups: vi.fn().mockResolvedValue({ synced: ['user-1'], skipped: [] }),
@@ -264,6 +272,7 @@ describe('syncUsersMumbleGroups', () => {
 				inFlight -= 1
 				return [{ groupName: `group-${userId}`, mumbleSyncEnabled: true }]
 			}),
+			getRolesFor: vi.fn().mockResolvedValue([]),
 		}
 		const hrStub = {
 			isUserBlacklisted: vi.fn().mockResolvedValue(false),
@@ -301,6 +310,7 @@ describe('syncUsersMumbleGroups', () => {
 				}
 				return [{ groupName: `group-${userId}`, mumbleSyncEnabled: true }]
 			}),
+			getRolesFor: vi.fn().mockResolvedValue([]),
 		}
 		const hrStub = {
 			isUserBlacklisted: vi.fn().mockResolvedValue(false),
@@ -339,6 +349,7 @@ describe('syncUsersMumbleGroups', () => {
 				{ groupName: 'Fleet', mumbleSyncEnabled: true },
 				{ groupName: 'Ops', mumbleSyncEnabled: false },
 			]),
+			getRolesFor: vi.fn().mockResolvedValue([]),
 		}
 		const hrStub = {
 			isUserBlacklisted: vi.fn().mockResolvedValue(false),
@@ -402,6 +413,7 @@ describe('syncUsersMumbleProfiles', () => {
 			getUserMemberships: vi.fn().mockResolvedValue([
 				{ groupName: 'Fleet', mumbleSyncEnabled: true, mumbleTicker: 'fc-123!' },
 			]),
+			getRolesFor: vi.fn().mockResolvedValue([]),
 		}
 
 		const mumbleStub = {
@@ -457,6 +469,7 @@ describe('syncUsersMumbleProfiles', () => {
 			getUserMemberships: vi.fn().mockResolvedValue([
 				{ groupName: 'Fleet', mumbleSyncEnabled: true, mumbleTicker: 'fc-123!' },
 			]),
+			getRolesFor: vi.fn().mockResolvedValue([]),
 		}
 
 		const mumbleStub = {
@@ -511,5 +524,200 @@ describe('syncUsersMumbleProfiles', () => {
 		expect(featuresStub.checkFlag).toHaveBeenCalledWith('mumble.enabled')
 		expect(mumbleStub.syncAccountProfiles).not.toHaveBeenCalled()
 		expect(result).toEqual({ synced: [], skipped: ['user-1'] })
+	})
+})
+
+describe('provisionTempopGuest', () => {
+	const env = {
+		DATABASE_URL: 'postgres://example',
+		EVE_CHARACTER_DATA: {},
+		EVE_CORPORATION_DATA: {},
+		EVE_TOKEN_STORE: {},
+		MUMBLE: {},
+		MUMBLE_SERVER_ID: 'srv',
+		MUMBLE_HOST: 'voice.test',
+		MUMBLE_PORT: '64738',
+	} as any
+
+	it('prefers alliance ticker over corp ticker for the temp-op guest display name', async () => {
+		const onConflictDoUpdateMock = vi.fn().mockResolvedValue(undefined)
+		const valuesMock = vi.fn(() => ({ onConflictDoUpdate: onConflictDoUpdateMock }))
+		const insertMock = vi.fn(() => ({
+			values: valuesMock,
+		}))
+		createDbMock.mockReturnValue({
+			query: {
+				mumbleTempops: {
+					findFirst: vi.fn().mockResolvedValue({
+						id: 'tempop-1',
+						shortCode: 'TP1',
+						groupName: 'TempOp',
+						status: 'active',
+						expiresAt: new Date('2099-06-26T14:00:00.000Z'),
+					}),
+				},
+				mumbleTempopGuests: {
+					findFirst: vi.fn().mockResolvedValue(null),
+				},
+			},
+			insert: insertMock,
+		} as any)
+
+		const characterStub = {
+			refreshPublicCharacterData: vi.fn().mockResolvedValue({
+				characterName: 'Temp Pilot',
+				currentCorporationId: 'corp-1',
+				currentAllianceId: 'ally-1',
+			}),
+		}
+		const corpStub = {
+			getCorporationInfo: vi.fn().mockResolvedValue({
+				ticker: 'Corp',
+			}),
+		}
+		const tokenStoreStub = {
+			getAllianceById: vi.fn().mockResolvedValue({
+				ticker: 'Alliance',
+			}),
+		}
+		const mumbleStub = {
+			provisionAccount: vi.fn().mockResolvedValue({
+				account: { loginName: 'Temp_Pilot' },
+				password: 'one-time-password',
+			}),
+			resetPassword: vi.fn(),
+		}
+
+		getStubMock.mockImplementation((binding: unknown) => {
+			if (binding === env.EVE_CHARACTER_DATA) return characterStub as any
+			if (binding === env.EVE_CORPORATION_DATA) return corpStub as any
+			if (binding === env.EVE_TOKEN_STORE) return tokenStoreStub as any
+			if (binding === env.MUMBLE) return mumbleStub as any
+			throw new Error('unexpected stub binding')
+		})
+
+		const result = await provisionTempopGuest(env, {
+			tempopId: 'tempop-1',
+			characterId: 'char-1',
+		})
+
+		expect(characterStub.refreshPublicCharacterData).toHaveBeenCalledWith('char-1', true)
+		expect(corpStub.getCorporationInfo).toHaveBeenCalledWith('corp-1')
+		expect(tokenStoreStub.getAllianceById).toHaveBeenCalledWith('ally-1')
+		expect(mumbleStub.provisionAccount).toHaveBeenCalledWith('srv', {
+			subjectId: 'tempop:tempop-1:char-1',
+			loginName: 'Temp_Pilot',
+			displayName: '[T] Temp Pilot [ALLIA] [TP1]',
+			groups: ['TempOp'],
+			comment: 'tempop tempop-1',
+		})
+		expect(valuesMock).toHaveBeenCalledWith(
+			expect.objectContaining({
+				tempopId: 'tempop-1',
+				characterId: 'char-1',
+				characterName: 'Temp Pilot',
+				corporationId: 'corp-1',
+				allianceId: 'ally-1',
+				corpTicker: 'CORP',
+				subjectId: 'tempop:tempop-1:char-1',
+				loginName: 'Temp_Pilot',
+				status: 'active',
+			})
+		)
+		expect(result).toEqual({
+			loginName: 'Temp_Pilot',
+			password: 'one-time-password',
+			connection: { host: 'voice.test', port: 64738 },
+		})
+	})
+
+	it('falls back to the corp ticker when there is no alliance affiliation', async () => {
+		const onConflictDoUpdateMock = vi.fn().mockResolvedValue(undefined)
+		const valuesMock = vi.fn(() => ({ onConflictDoUpdate: onConflictDoUpdateMock }))
+		const insertMock = vi.fn(() => ({
+			values: valuesMock,
+		}))
+		createDbMock.mockReturnValue({
+			query: {
+				mumbleTempops: {
+					findFirst: vi.fn().mockResolvedValue({
+						id: 'tempop-1',
+						shortCode: 'TP1',
+						groupName: 'TempOp',
+						status: 'active',
+						expiresAt: new Date('2099-06-26T14:00:00.000Z'),
+					}),
+				},
+				mumbleTempopGuests: {
+					findFirst: vi.fn().mockResolvedValue(null),
+				},
+			},
+			insert: insertMock,
+		} as any)
+
+		const characterStub = {
+			refreshPublicCharacterData: vi.fn().mockResolvedValue({
+				characterName: 'Temp Pilot',
+				currentCorporationId: 'corp-1',
+				currentAllianceId: null,
+			}),
+		}
+		const corpStub = {
+			getCorporationInfo: vi.fn().mockResolvedValue({
+				ticker: 'Corp',
+			}),
+		}
+		const tokenStoreStub = {
+			getAllianceById: vi.fn(),
+		}
+		const mumbleStub = {
+			provisionAccount: vi.fn().mockResolvedValue({
+				account: { loginName: 'Temp_Pilot' },
+				password: 'one-time-password',
+			}),
+			resetPassword: vi.fn(),
+		}
+
+		getStubMock.mockImplementation((binding: unknown) => {
+			if (binding === env.EVE_CHARACTER_DATA) return characterStub as any
+			if (binding === env.EVE_CORPORATION_DATA) return corpStub as any
+			if (binding === env.EVE_TOKEN_STORE) return tokenStoreStub as any
+			if (binding === env.MUMBLE) return mumbleStub as any
+			throw new Error('unexpected stub binding')
+		})
+
+		const result = await provisionTempopGuest(env, {
+			tempopId: 'tempop-1',
+			characterId: 'char-1',
+		})
+
+		expect(characterStub.refreshPublicCharacterData).toHaveBeenCalledWith('char-1', true)
+		expect(corpStub.getCorporationInfo).toHaveBeenCalledWith('corp-1')
+		expect(tokenStoreStub.getAllianceById).not.toHaveBeenCalled()
+		expect(mumbleStub.provisionAccount).toHaveBeenCalledWith('srv', {
+			subjectId: 'tempop:tempop-1:char-1',
+			loginName: 'Temp_Pilot',
+			displayName: '[T] Temp Pilot [CORP] [TP1]',
+			groups: ['TempOp'],
+			comment: 'tempop tempop-1',
+		})
+		expect(valuesMock).toHaveBeenCalledWith(
+			expect.objectContaining({
+				tempopId: 'tempop-1',
+				characterId: 'char-1',
+				characterName: 'Temp Pilot',
+				corporationId: 'corp-1',
+				allianceId: null,
+				corpTicker: 'CORP',
+				subjectId: 'tempop:tempop-1:char-1',
+				loginName: 'Temp_Pilot',
+				status: 'active',
+			})
+		)
+		expect(result).toEqual({
+			loginName: 'Temp_Pilot',
+			password: 'one-time-password',
+			connection: { host: 'voice.test', port: 64738 },
+		})
 	})
 })

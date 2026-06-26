@@ -260,6 +260,7 @@ export default function App() {
 						<Route path="/claim-main" element={<ClaimMainPage />} />
 						<Route path="/paste" element={<NavigatePasteRootToLogin />} />
 						<Route path="/paste/:id" element={<PasteViewPage />} />
+						<Route path="/tempop" element={<TempopGuestPage />} />
 						<Route path="/tempop/:key" element={<TempopGuestPage />} />
 
 						{/* Protected routes with layout */}

@@ -35,6 +35,7 @@ import type { EveCharacterData } from '@repo/eve-character-data'
 import type { EveTokenStore } from '@repo/eve-token-store'
 import type { BlacklistEntry, Hr } from '@repo/hr'
 import type { Legacy } from '@repo/legacy'
+import type { TempopOAuthMetadata } from '../db/schema'
 import type { App } from '../context'
 
 /**
@@ -357,10 +358,10 @@ async function blacklistUserLinkedTargets(
 async function handleMumbleTempopCallback(
 	c: Context<App>,
 	code: string,
-	metadata: Record<string, unknown> | null
+	metadata: TempopOAuthMetadata | null
 ): Promise<Response> {
-	const key = typeof metadata?.key === 'string' ? metadata.key : null
-	const tempopId = typeof metadata?.tempopId === 'string' ? metadata.tempopId : null
+	const key = metadata?.key ?? null
+	const tempopId = metadata?.tempopId ?? null
 
 	const landing = (params: string) => c.redirect(`/tempop/${key ?? ''}?${params}`)
 
@@ -532,7 +533,7 @@ auth.get('/callback', async (c) => {
 	let flowType: string | null = null
 	let stateUserId: string | null = null
 	let redirectUrl: string | null = null
-	let stateMetadata: Record<string, unknown> | null = null
+	let stateMetadata: TempopOAuthMetadata | null = null
 
 	if (state) {
 		const oauthState = await db.query.oauthStates.findFirst({

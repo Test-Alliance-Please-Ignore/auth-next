@@ -9,7 +9,16 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { ConfirmationDialog } from '@/components/ui/confirmation-dialog'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
+import {
+	Table,
+	TableBody,
+	TableCell,
+	TableHead,
+	TableHeader,
+	TableRow,
+} from '@/components/ui/table'
 import { Select } from '@/components/ui/select'
+import { UserSearchPaginationControls } from '@/components/user-search-pagination-controls'
 import toast from '@/lib/toast'
 
 import type { CreateTempopResponse, TempopListFilters, TempopListItem } from '@/lib/api'
@@ -145,8 +154,8 @@ function CreateTempopCard() {
 	)
 }
 
-/** A single temp-op row with an optional delete control. */
-function TempopRow({ item }: { item: TempopListItem }) {
+/** A single temp-op table row with an optional delete control. */
+function TempopTableRow({ item }: { item: TempopListItem }) {
 	const del = useDeleteTempop()
 	const [confirmOpen, setConfirmOpen] = useState(false)
 
@@ -168,22 +177,22 @@ function TempopRow({ item }: { item: TempopListItem }) {
 	}
 
 	return (
-		<Card variant="default">
-			<CardContent className="flex flex-wrap items-center justify-between gap-3 py-4">
-				<div className="space-y-1">
-					<div className="flex items-center gap-2">
-						<span className="font-mono text-base">{item.shortCode}</span>
-						<Badge variant={statusBadgeVariant(item.status)}>{item.status}</Badge>
-					</div>
-					<div className="text-sm text-muted-foreground">
-						{item.creatorName ?? 'Unknown'} · {item.groupName} · {formatExpiry(item)}
-					</div>
-				</div>
-				<div className="flex items-center gap-3">
-					<span className="flex items-center gap-1 text-sm text-muted-foreground">
-						<Users className="h-4 w-4" />
+		<>
+			<TableRow>
+				<TableCell className="font-mono font-medium">{item.shortCode}</TableCell>
+				<TableCell>{item.creatorName ?? 'Unknown'}</TableCell>
+				<TableCell>{item.groupName}</TableCell>
+				<TableCell>
+					<Badge variant={statusBadgeVariant(item.status)}>{item.status}</Badge>
+				</TableCell>
+				<TableCell>
+					<span className="flex items-center gap-1">
+						<Users className="h-4 w-4 text-muted-foreground" />
 						{item.guestCount}
 					</span>
+				</TableCell>
+				<TableCell>{formatExpiry(item)}</TableCell>
+				<TableCell className="text-right">
 					{item.canDelete && item.status !== 'deleted' ? (
 						<Button
 							variant="destructive"
@@ -194,9 +203,11 @@ function TempopRow({ item }: { item: TempopListItem }) {
 							<Trash2 className="mr-1 h-4 w-4" />
 							Delete
 						</Button>
-					) : null}
-				</div>
-			</CardContent>
+					) : (
+						<span className="text-sm text-muted-foreground">—</span>
+					)}
+				</TableCell>
+			</TableRow>
 
 			<ConfirmationDialog
 				open={confirmOpen}
@@ -207,7 +218,33 @@ function TempopRow({ item }: { item: TempopListItem }) {
 				onCancel={() => setConfirmOpen(false)}
 				onConfirm={handleDelete}
 			/>
-		</Card>
+		</>
+	)
+}
+
+function PaginationControls({
+	totalCount,
+	page,
+	pageSize,
+	onPageChange,
+	onPageSizeChange,
+}: {
+	totalCount: number
+	page: number
+	pageSize: number
+	onPageChange: (page: number) => void
+	onPageSizeChange: (pageSize: number) => void
+}) {
+	return (
+		<UserSearchPaginationControls
+			totalCount={totalCount}
+			page={page}
+			pageSize={pageSize}
+			onPageChange={onPageChange}
+			onPageSizeChange={onPageSizeChange}
+			pageSizeOptions={[10, 25, 50, 100]}
+			itemLabel="temp-ops"
+		/>
 	)
 }
 
@@ -226,18 +263,24 @@ export function TempopSection({
 	const [status, setStatus] = useState<StatusFilter>('active')
 	const [creatorId, setCreatorId] = useState('')
 	const [mine, setMine] = useState(false)
+	const [page, setPage] = useState(1)
+	const [pageSize, setPageSize] = useState(25)
 
 	const filters: TempopListFilters = useMemo(
 		() => ({
 			status,
 			...(canManageAll && !mine && creatorId ? { creatorId } : {}),
 			...(mine ? { mine: true } : {}),
-			limit: 50,
+			page,
+			pageSize,
 		}),
-		[status, creatorId, mine, canManageAll]
+		[status, creatorId, mine, canManageAll, page, pageSize]
 	)
 
 	const { data, isLoading, error } = useTempops(filters)
+	const totalCount = data?.pagination.totalCount ?? 0
+	const totalPages = data?.pagination.totalPages ?? 0
+	const hasPagination = totalPages > 1
 
 	const creatorOptions = useMemo(
 		() => [
@@ -249,6 +292,8 @@ export function TempopSection({
 		],
 		[data?.creators]
 	)
+
+	const resetPage = () => setPage(1)
 
 	return (
 		<div className="space-y-4">
@@ -270,7 +315,10 @@ export function TempopSection({
 								inputId="tempop-status"
 								options={STATUS_OPTIONS}
 								value={status}
-								onValueChange={(value) => setStatus(value as StatusFilter)}
+								onValueChange={(value) => {
+									setStatus(value as StatusFilter)
+									resetPage()
+								}}
 								className="w-36"
 							/>
 						</div>
@@ -282,7 +330,10 @@ export function TempopSection({
 									options={creatorOptions}
 									value={creatorId === '' ? ALL_CREATORS : creatorId}
 									onValueChange={(value) =>
-										setCreatorId(value === ALL_CREATORS ? '' : value)
+										{
+											setCreatorId(value === ALL_CREATORS ? '' : value)
+											resetPage()
+										}
 									}
 									disabled={mine}
 									className="w-56"
@@ -290,7 +341,13 @@ export function TempopSection({
 							</div>
 						) : null}
 						{canManageAll ? (
-							<Button variant={mine ? 'primary' : 'secondary'} onClick={() => setMine((v) => !v)}>
+							<Button
+								variant={mine ? 'primary' : 'secondary'}
+								onClick={() => {
+									setMine((v) => !v)
+									resetPage()
+								}}
+							>
 								{mine ? 'Mine only ✓' : 'Mine only'}
 							</Button>
 						) : null}
@@ -301,10 +358,53 @@ export function TempopSection({
 					) : isLoading ? (
 						<p className="text-sm text-muted-foreground">Loading temp-ops…</p>
 					) : data && data.items.length > 0 ? (
-						<div className="space-y-2">
-							{data.items.map((item) => (
-								<TempopRow key={item.id} item={item} />
-							))}
+						<div className="space-y-4">
+							<PaginationControls
+								totalCount={totalCount}
+								page={page}
+								pageSize={pageSize}
+								onPageChange={setPage}
+								onPageSizeChange={(nextPageSize) => {
+									setPageSize(nextPageSize)
+									setPage(1)
+								}}
+							/>
+
+							<div className="rounded-md border bg-card">
+								<Table>
+									<TableHeader>
+										<TableRow>
+											<TableHead>Short Code</TableHead>
+											<TableHead>Creator</TableHead>
+											<TableHead>Group</TableHead>
+											<TableHead>Status</TableHead>
+											<TableHead>Guests</TableHead>
+											<TableHead>Expires</TableHead>
+											<TableHead className="text-right">Actions</TableHead>
+										</TableRow>
+									</TableHeader>
+									<TableBody>
+										{data.items.map((item) => (
+											<TempopTableRow key={item.id} item={item} />
+										))}
+									</TableBody>
+								</Table>
+							</div>
+
+							{hasPagination ? (
+								<div className="border-t border-border pt-4">
+									<PaginationControls
+										totalCount={totalCount}
+										page={page}
+										pageSize={pageSize}
+										onPageChange={setPage}
+										onPageSizeChange={(nextPageSize) => {
+											setPageSize(nextPageSize)
+											setPage(1)
+										}}
+									/>
+								</div>
+							) : null}
 						</div>
 					) : (
 						<p className="text-sm text-muted-foreground">No temp-ops match these filters.</p>

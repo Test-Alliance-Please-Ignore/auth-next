@@ -1,7 +1,7 @@
 import { Hono } from 'hono'
 import { z } from 'zod'
 
-import { and, desc, eq, gt, inArray, lte, or } from '@repo/db-utils'
+import { and, desc, eq, gt, inArray, lte, or, sql } from '@repo/db-utils'
 import { MUMBLE_FEATURE_FLAG_KEY } from '@repo/features'
 
 import { createDb } from '../db'
@@ -77,8 +77,8 @@ const listQuerySchema = z.object({
 	status: z.enum(['active', 'expired', 'deleted', 'all']).default('active'),
 	creatorId: z.string().optional(),
 	mine: z.string().optional(),
-	limit: z.coerce.number().int().min(1).max(100).default(50),
-	offset: z.coerce.number().int().min(0).default(0),
+	page: z.coerce.number().int().min(1).default(1),
+	pageSize: z.coerce.number().int().min(1).max(100).default(25),
 })
 
 /**
@@ -136,7 +136,7 @@ tempop.get('/', async (c) => {
 	if (!parsed.success) {
 		return c.json({ error: 'Invalid query', issues: parsed.error.issues }, 400)
 	}
-	const { status, creatorId, limit, offset } = parsed.data
+	const { status, creatorId, page, pageSize } = parsed.data
 	const mine = parsed.data.mine === 'true'
 
 	const db = createDb(c.env.DATABASE_URL)
@@ -166,12 +166,19 @@ tempop.get('/', async (c) => {
 	}
 
 	const whereClause = conditions.length > 0 ? and(...conditions) : undefined
+	const totalCountRow = await db
+		.select({
+			count: sql<number>`count(*)::int`.as('count'),
+		})
+		.from(mumbleTempops)
+		.where(whereClause)
+		.then((rows) => rows[0] ?? { count: 0 })
 
 	const rows = await db.query.mumbleTempops.findMany({
 		where: whereClause,
 		orderBy: [desc(mumbleTempops.createdAt)],
-		limit,
-		offset,
+		limit: pageSize,
+		offset: (page - 1) * pageSize,
 	})
 
 	// Live active-guest counts for the listed temp-ops.
@@ -220,7 +227,20 @@ tempop.get('/', async (c) => {
 		? await listDistinctCreators(db)
 		: [{ id: user.id, name: creatorNames.get(user.id) ?? null }]
 
-	return c.json({ items, creators, limit, offset, hasMore: rows.length === limit })
+	const totalPages = totalCountRow.count === 0 ? 0 : Math.ceil(totalCountRow.count / pageSize)
+
+	return c.json({
+		items,
+		creators,
+		pagination: {
+			page,
+			pageSize,
+			totalCount: totalCountRow.count,
+			totalPages,
+			hasNextPage: page < totalPages,
+			hasPreviousPage: page > 1,
+		},
+	})
 })
 
 /**

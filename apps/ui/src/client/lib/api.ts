@@ -2255,9 +2255,14 @@ export interface TempopCreatorOption {
 export interface TempopListResponse {
 	items: TempopListItem[]
 	creators: TempopCreatorOption[]
-	limit: number
-	offset: number
-	hasMore: boolean
+	pagination: {
+		page: number
+		pageSize: number
+		totalCount: number
+		totalPages: number
+		hasNextPage: boolean
+		hasPreviousPage: boolean
+	}
 }
 
 export interface CreateTempopResponse {
@@ -2272,8 +2277,8 @@ export interface TempopListFilters {
 	status?: 'active' | 'expired' | 'deleted' | 'all'
 	creatorId?: string
 	mine?: boolean
-	limit?: number
-	offset?: number
+	page?: number
+	pageSize?: number
 }
 
 /** Public temp-op metadata shown on the guest landing page. */
@@ -4881,8 +4886,8 @@ export class ApiClient {
 		if (filters.status) params.set('status', filters.status)
 		if (filters.creatorId) params.set('creatorId', filters.creatorId)
 		if (filters.mine) params.set('mine', 'true')
-		if (filters.limit != null) params.set('limit', String(filters.limit))
-		if (filters.offset != null) params.set('offset', String(filters.offset))
+		if (filters.page != null) params.set('page', String(filters.page))
+		if (filters.pageSize != null) params.set('pageSize', String(filters.pageSize))
 		const qs = params.toString()
 		return this.get(`/mumble-tempop${qs ? `?${qs}` : ''}`)
 	}
