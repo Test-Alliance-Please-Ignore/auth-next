@@ -5,6 +5,7 @@ import { Container } from '@/components/ui/container'
 import { LoadingPage } from '@/components/ui/loading'
 import { PageHeader } from '@/components/ui/page-header'
 import { Section } from '@/components/ui/section'
+import { useCorporationAccess } from '@/features/corporations'
 import { usePageTitle } from '@/hooks/usePageTitle'
 import { useUserPermissions } from '@/hooks/useUserPermissions'
 import { corporationLogoUrl } from '@/lib/eve-images'
@@ -20,16 +21,65 @@ export default function StatsOverview() {
 	usePageTitle('Fleet Tracking — Stats')
 	const { isAdmin, hasPermission } = useUserPermissions()
 	const canView = isAdmin || hasPermission('urn:fleet-tracking:view-all')
+	const { data: corporationAccess, isLoading: corporationAccessLoading } = useCorporationAccess()
 	const { range } = useRangeFromSearchParams()
+	const memberCorporations =
+		corporationAccess?.corporations.filter((corp) => corp.isMemberCorporation) ?? []
+	const canViewMemberCorporationStats = !canView && memberCorporations.length > 0
 
-	const { data, isLoading, isError } = useStatsOverview(range)
+	const { data, isLoading, isError } = useStatsOverview(range, { enabled: canView })
 
-	if (!canView) {
+	if (!canView && corporationAccessLoading) {
+		return <LoadingPage />
+	}
+
+	if (!canView && !canViewMemberCorporationStats) {
 		return (
 			<Container>
 				<div className="py-12 text-center text-muted-foreground">
 					You do not have permission to view fleet tracking statistics.
 				</div>
+			</Container>
+		)
+	}
+
+	if (canViewMemberCorporationStats) {
+		return (
+			<Container>
+				<PageHeader
+					title="Fleet Tracking — Statistics"
+					description="Choose one of your corporations to view fleet stats."
+				/>
+
+				<Section>
+					<Card>
+						<CardHeader className="pb-3">
+							<CardTitle>Your Corporations</CardTitle>
+						</CardHeader>
+						<CardContent>
+							<div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
+								{memberCorporations.map((corp) => (
+									<Link
+										key={corp.corporationId}
+										to={`/fleet-tracking/stats/corporations/${corp.corporationId}`}
+										className="flex items-center gap-3 rounded-lg border border-border/70 bg-muted/20 px-4 py-3 transition-colors hover:bg-muted/40"
+									>
+										<img
+											src={corporationLogoUrl(corp.corporationId, 32)}
+											alt={corp.name}
+											className="h-8 w-8 rounded-sm border border-border/60 shrink-0"
+											loading="lazy"
+										/>
+										<div className="min-w-0">
+											<div className="truncate font-medium">{corp.name}</div>
+											<div className="text-xs text-muted-foreground">{corp.ticker}</div>
+										</div>
+									</Link>
+								))}
+							</div>
+						</CardContent>
+					</Card>
+				</Section>
 			</Container>
 		)
 	}

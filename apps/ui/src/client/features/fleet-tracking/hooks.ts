@@ -177,11 +177,15 @@ export const fleetStatsKeys = {
 
 const STATS_STALE_TIME = 60_000
 
-export function useStatsOverview(range?: Partial<StatsRange>) {
+export function useStatsOverview(
+	range?: Partial<StatsRange>,
+	options?: { enabled?: boolean }
+) {
 	return useQuery({
 		queryKey: fleetStatsKeys.overview(range),
 		queryFn: () => fleetTrackingApi.getStatsOverview(range),
 		staleTime: STATS_STALE_TIME,
+		enabled: options?.enabled ?? true,
 	})
 }
 
@@ -205,12 +209,13 @@ export function useUserStats(userId: string | undefined, range?: Partial<StatsRa
 
 export function useCorporationStats(
 	corporationId: string | undefined,
-	range?: Partial<StatsRange>
+	range?: Partial<StatsRange>,
+	options?: { enabled?: boolean }
 ) {
 	return useQuery({
 		queryKey: fleetStatsKeys.corporation(corporationId ?? '', range),
 		queryFn: () => fleetTrackingApi.getCorporationStats(corporationId!, range),
-		enabled: !!corporationId,
+		enabled: options?.enabled ?? !!corporationId,
 		staleTime: STATS_STALE_TIME,
 	})
 }

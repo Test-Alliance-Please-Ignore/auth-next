@@ -4,9 +4,11 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { getStub } from '@repo/do-utils'
 
 import fleetsRoutes from '../fleets'
+import { createDb } from '../../db'
 import { getCachedUserPermissions } from '../../lib/groups-cache'
 
 import type { SessionUser } from '../../context'
+import type * as DbModule from '../../db'
 
 vi.mock('@repo/do-utils', () => ({
 	getStub: vi.fn(),
@@ -25,8 +27,29 @@ vi.mock('../../lib/groups-cache', () => ({
 	getCachedCharacterPermissions: vi.fn(),
 }))
 
+// Preserve the real Drizzle `schema` (table definitions, no DB connection) but
+// stub `createDb` so the corp-stats handler doesn't hit a real database.
+vi.mock('../../db', async (importOriginal) => {
+	const actual = await importOriginal<typeof DbModule>()
+	return { ...actual, createDb: vi.fn() }
+})
+
 const getStubMock = vi.mocked(getStub)
 const getCachedUserPermissionsMock = vi.mocked(getCachedUserPermissions)
+const createDbMock = vi.mocked(createDb)
+
+/**
+ * Chainable Drizzle `select().from().where().limit()` stub that resolves to the
+ * provided rows. Used for the corp-name lookup in the corp-stats handler.
+ */
+function makeDbStub(rows: unknown[]): any {
+	const chain = {
+		from: () => chain,
+		where: () => chain,
+		limit: () => Promise.resolve(rows),
+	}
+	return { select: () => chain }
+}
 
 function makeUser(overrides: Partial<SessionUser> = {}): SessionUser {
 	return {
@@ -69,9 +92,12 @@ function createApp(user: SessionUser) {
 
 describe('fleets tracking routes', () => {
 	const env = {
+		DATABASE_URL: 'postgres://test',
 		FLEETS: { name: 'FLEETS' },
 		BROADCASTS: { name: 'BROADCASTS' },
 		ESI_TYPE_RESOLVER: { name: 'ESI_TYPE_RESOLVER' },
+		EVE_CORPORATION_DATA: { name: 'EVE_CORPORATION_DATA' },
+		EVE_CHARACTER_DATA: { name: 'EVE_CHARACTER_DATA' },
 	} as any
 
 	let fleetsStub: {
@@ -83,11 +109,18 @@ describe('fleets tracking routes', () => {
 		getSessionRoster: ReturnType<typeof vi.fn>
 		getSessionSummary: ReturnType<typeof vi.fn>
 		getStatsOverview: ReturnType<typeof vi.fn>
+		getCharactersByCorpInWindow: ReturnType<typeof vi.fn>
+		getStatsForCharacters: ReturnType<typeof vi.fn>
 	}
 	let broadcastsStub: {
 		getBroadcastByFleetSessionId: ReturnType<typeof vi.fn>
 	}
 	let resolverStub: { resolveIds: ReturnType<typeof vi.fn> }
+	let corpDataStub: {
+		getCorporationInfo: ReturnType<typeof vi.fn>
+		getDirectors: ReturnType<typeof vi.fn>
+	}
+	let charDataStub: { getCharacterInfo: ReturnType<typeof vi.fn> }
 
 	beforeEach(() => {
 		vi.clearAllMocks()
@@ -101,6 +134,8 @@ describe('fleets tracking routes', () => {
 			getSessionRoster: vi.fn(),
 			getSessionSummary: vi.fn(),
 			getStatsOverview: vi.fn(),
+			getCharactersByCorpInWindow: vi.fn().mockResolvedValue([]),
+			getStatsForCharacters: vi.fn().mockResolvedValue({}),
 		}
 		broadcastsStub = {
 			getBroadcastByFleetSessionId: vi.fn().mockResolvedValue(null),
@@ -108,11 +143,23 @@ describe('fleets tracking routes', () => {
 		resolverStub = {
 			resolveIds: vi.fn().mockResolvedValue({ '1001': 'Pilot One' }),
 		}
+		corpDataStub = {
+			getCorporationInfo: vi.fn().mockResolvedValue(null),
+			getDirectors: vi.fn().mockResolvedValue([]),
+		}
+		charDataStub = {
+			getCharacterInfo: vi.fn().mockResolvedValue(null),
+		}
+
+		// Default: corp-name lookup returns one row.
+		createDbMock.mockReturnValue(makeDbStub([{ name: 'Test Corp' }]))
 
 		getStubMock.mockImplementation((binding: unknown) => {
 			if (binding === env.FLEETS) return fleetsStub as any
 			if (binding === env.BROADCASTS) return broadcastsStub as any
 			if (binding === env.ESI_TYPE_RESOLVER) return resolverStub as any
+			if (binding === env.EVE_CORPORATION_DATA) return corpDataStub as any
+			if (binding === env.EVE_CHARACTER_DATA) return charDataStub as any
 			throw new Error('Unexpected binding')
 		})
 	})
@@ -379,5 +426,101 @@ describe('fleets tracking routes', () => {
 				srpToken: 'token-123',
 			},
 		})
+	})
+
+	// ------------------------------------------------------------------
+	// Corp stats access: view-all/admin OR corp self-service (CEO/Director).
+	// Each case uses distinct user + corp ids to avoid the module-level
+	// 60s self-service cache (keyed by `${user.id}:${corporationId}`) and the
+	// 5min response cache (keyed by corpId) bleeding across tests.
+	// ------------------------------------------------------------------
+
+	function makeLeaderUser(id: string, characterId: string): SessionUser {
+		return makeUser({
+			id,
+			characters: [
+				{
+					id: 'uc-lead',
+					characterOwnerHash: `hash-${characterId}`,
+					characterId,
+					characterName: 'Leader',
+					is_primary: true,
+					hasValidToken: true,
+				},
+			],
+		})
+	}
+
+	it('allows a corp CEO to view their own corp stats without view-all', async () => {
+		getCachedUserPermissionsMock.mockResolvedValue([])
+		corpDataStub.getCorporationInfo.mockResolvedValue({ ceoId: '2001' })
+		charDataStub.getCharacterInfo.mockResolvedValue({ corporationId: '500' })
+
+		const app = createApp(makeLeaderUser('ceo-user', '2001'))
+		const res = await app.request('/api/fleets/tracking/stats/corporations/500', {}, env)
+
+		expect(res.status).toBe(200)
+		expect(fleetsStub.getCharactersByCorpInWindow).toHaveBeenCalledWith('500', expect.anything())
+	})
+
+	it('allows a corp Director to view their own corp stats without view-all', async () => {
+		getCachedUserPermissionsMock.mockResolvedValue([])
+		corpDataStub.getCorporationInfo.mockResolvedValue({ ceoId: '9999' })
+		corpDataStub.getDirectors.mockResolvedValue([{ characterId: '2002' }])
+		charDataStub.getCharacterInfo.mockResolvedValue({ corporationId: '501' })
+
+		const app = createApp(makeLeaderUser('director-user', '2002'))
+		const res = await app.request('/api/fleets/tracking/stats/corporations/501', {}, env)
+
+		expect(res.status).toBe(200)
+		expect(fleetsStub.getCharactersByCorpInWindow).toHaveBeenCalledWith('501', expect.anything())
+	})
+
+	it('denies a plain corp member (not CEO/Director) from corp stats', async () => {
+		getCachedUserPermissionsMock.mockResolvedValue([])
+		corpDataStub.getCorporationInfo.mockResolvedValue({ ceoId: '9999' })
+		corpDataStub.getDirectors.mockResolvedValue([])
+		charDataStub.getCharacterInfo.mockResolvedValue({ corporationId: '502' })
+
+		const app = createApp(makeLeaderUser('member-user', '2003'))
+		const res = await app.request('/api/fleets/tracking/stats/corporations/502', {}, env)
+
+		expect(res.status).toBe(403)
+		expect(fleetsStub.getCharactersByCorpInWindow).not.toHaveBeenCalled()
+	})
+
+	it('denies a CEO of a different corp from viewing another corp stats', async () => {
+		getCachedUserPermissionsMock.mockResolvedValue([])
+		// CEO of their own corp (600), but they request corp 503.
+		corpDataStub.getCorporationInfo.mockResolvedValue({ ceoId: '2004' })
+		charDataStub.getCharacterInfo.mockResolvedValue({ corporationId: '600' })
+
+		const app = createApp(makeLeaderUser('other-corp-ceo', '2004'))
+		const res = await app.request('/api/fleets/tracking/stats/corporations/503', {}, env)
+
+		expect(res.status).toBe(403)
+		expect(fleetsStub.getCharactersByCorpInWindow).not.toHaveBeenCalled()
+	})
+
+	it('still allows view-all viewers to see any corp stats (no corp-leadership lookup)', async () => {
+		getCachedUserPermissionsMock.mockResolvedValue([{ urn: 'urn:fleet-tracking:view-all' }] as any)
+
+		const app = createApp(makeUser({ id: 'viewall-user' }))
+		const res = await app.request('/api/fleets/tracking/stats/corporations/504', {}, env)
+
+		expect(res.status).toBe(200)
+		expect(fleetsStub.getCharactersByCorpInWindow).toHaveBeenCalledWith('504', expect.anything())
+		// Org-wide viewers short-circuit before any corp Durable Object lookup.
+		expect(corpDataStub.getCorporationInfo).not.toHaveBeenCalled()
+	})
+
+	it('still allows site admins to see any corp stats (no corp-leadership lookup)', async () => {
+		getCachedUserPermissionsMock.mockResolvedValue([])
+
+		const app = createApp(makeUser({ id: 'admin-user', is_admin: true }))
+		const res = await app.request('/api/fleets/tracking/stats/corporations/505', {}, env)
+
+		expect(res.status).toBe(200)
+		expect(corpDataStub.getCorporationInfo).not.toHaveBeenCalled()
 	})
 })
