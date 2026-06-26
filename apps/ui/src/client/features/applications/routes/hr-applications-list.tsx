@@ -69,9 +69,14 @@ const FILTER_TABS: FilterTabConfig[] = [
 export default function HrApplicationsList() {
 	const { corporationId } = useParams<{ corporationId: string }>()
 	const navigate = useNavigate()
-	const { user, isAuthenticated, isLoading: authLoading } = useAuth()
-	const { canAccess: hasCorporationAccess, isLoading: corporationAccessLoading } =
+	const { user, isAuthenticated, isLoading: authLoading, permissions } = useAuth()
+	const isAuditor = useMemo(
+		() => permissions.some((permission) => permission.urn === 'urn:hr:auditor'),
+		[permissions]
+	)
+	const { canAccess: hasCorporationAccess, isLoading: corporationAccessLoading, corporation: accessCorp } =
 		useCanAccessCorporation(corporationId ?? '')
+	const isMemberCorporation = accessCorp?.isMemberCorporation === true
 
 	// Local state
 	const [activeFilter, setActiveFilter] = useState<FilterTab>('all')
@@ -81,8 +86,9 @@ export default function HrApplicationsList() {
 	const [pageSize, setPageSize] = useState(10)
 
 	// Check HR permission (userId derived from authenticated session)
+	const shouldCheckPermission = !!corporationId && user?.is_admin !== true && isMemberCorporation
 	const { data: permission, isLoading: permissionLoading } = useHrPermissionCheck(
-		corporationId ? { corporationId } : null
+		shouldCheckPermission ? { corporationId } : null
 	)
 
 	useEffect(() => {
@@ -96,6 +102,8 @@ export default function HrApplicationsList() {
 	const offset = (page - 1) * pageSize
 
 	// Fetch applications for this corporation (server-side paginated/filterable)
+	const canViewCorporationApplications =
+		user?.is_admin === true || isAuditor || isMemberCorporation
 	const {
 		data: applicationsResult,
 		isLoading: applicationsLoading,
@@ -107,6 +115,8 @@ export default function HrApplicationsList() {
 		search: debouncedSearch.trim() || undefined,
 		limit: pageSize,
 		offset,
+	}, {
+		enabled: canViewCorporationApplications && (user?.is_admin === true || isAuditor || permission?.hasPermission === true),
 	})
 
 	// Set page title
@@ -151,7 +161,7 @@ export default function HrApplicationsList() {
 	}
 
 	// Loading state
-	if (authLoading || permissionLoading || corporationAccessLoading) {
+	if (authLoading || corporationAccessLoading || (shouldCheckPermission && permissionLoading)) {
 		return (
 			<Container>
 				<div className="flex items-center justify-center min-h-[400px]">
@@ -163,7 +173,7 @@ export default function HrApplicationsList() {
 
 	// Access denied - no HR role
 	// Check permission - site admins always have access
-	if (!permission?.hasPermission && !user?.is_admin) {
+	if (!canViewCorporationApplications || (!permission?.hasPermission && !user?.is_admin && !isAuditor)) {
 		return (
 			<Container>
 				<Card className="max-w-2xl mx-auto border-red-200 bg-red-50 dark:border-red-800 dark:bg-red-950">

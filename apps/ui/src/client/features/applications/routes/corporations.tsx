@@ -1,6 +1,6 @@
 import { useQueries } from '@tanstack/react-query'
 import { AlertCircle, Building2, FileText, Users } from 'lucide-react'
-import { useMemo, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { Link, Navigate } from 'react-router-dom'
 
 import { Badge } from '@/components/ui/badge'
@@ -24,6 +24,15 @@ import { useCorporationAccess, useMyCorporations } from '../../corporations/hook
 
 type CorporationTypeFilter = 'member' | 'alt' | 'special'
 
+const CORPORATION_TYPE_OPTIONS: Array<{
+	value: CorporationTypeFilter
+	label: string
+}> = [
+	{ value: 'member', label: 'Member Corps' },
+	{ value: 'alt', label: 'Alt Corps' },
+	{ value: 'special', label: 'Special Purpose Corps' },
+]
+
 function matchesCorporationType(
 	corporation: {
 		isMemberCorporation: boolean
@@ -43,9 +52,8 @@ export default function CorporationsPage() {
 		() => permissions.some((permission) => permission.urn === 'urn:hr:auditor'),
 		[permissions]
 	)
-	const canFilterCorporations = user?.is_admin === true || isAuditor
 	const [corporationTypeFilter, setCorporationTypeFilter] =
-		useState<CorporationTypeFilter>('member')
+		useState<CorporationTypeFilter | null>(null)
 	const {
 		data: corporations = [],
 		isLoading: corporationsLoading,
@@ -53,22 +61,72 @@ export default function CorporationsPage() {
 	} = useHrAccessibleCorporations()
 	const { data: corporationAccess } = useCorporationAccess()
 	const { data: myCorporations = [] } = useMyCorporations()
+	const availableCorporationTypes = useMemo(() => {
+		const types = new Set<CorporationTypeFilter>()
+		for (const corporation of corporations) {
+			if (corporation.isMemberCorporation) types.add('member')
+			if (corporation.isAltCorp) types.add('alt')
+			if (corporation.isSpecialPurpose) types.add('special')
+		}
+		return [...types]
+	}, [corporations])
+	const defaultCorporationTypeFilter = useMemo(() => {
+		return (
+			CORPORATION_TYPE_OPTIONS.find((option) =>
+				availableCorporationTypes.includes(option.value)
+			)?.value ?? null
+		)
+	}, [availableCorporationTypes])
+	const canFilterCorporations =
+		user?.is_admin === true || isAuditor || availableCorporationTypes.length > 1
+	const accessibleCorporationIds = useMemo(
+		() => new Set((corporationAccess?.corporations ?? []).map((corp) => corp.corporationId)),
+		[corporationAccess]
+	)
+
+	useEffect(() => {
+		if (!canFilterCorporations) return
+		if (!defaultCorporationTypeFilter) return
+		if (corporationTypeFilter && availableCorporationTypes.includes(corporationTypeFilter)) return
+
+		setCorporationTypeFilter(defaultCorporationTypeFilter)
+	}, [
+		availableCorporationTypes,
+		canFilterCorporations,
+		corporationTypeFilter,
+		defaultCorporationTypeFilter,
+	])
+
+	const activeCorporationTypeFilter = canFilterCorporations
+		? corporationTypeFilter ?? defaultCorporationTypeFilter
+		: null
+
 	const visibleCorporations = useMemo(() => {
 		if (!canFilterCorporations) {
 			return corporations
 		}
+		if (!activeCorporationTypeFilter) {
+			return corporations
+		}
 		return corporations.filter((corporation) =>
-			matchesCorporationType(corporation, corporationTypeFilter)
+			matchesCorporationType(corporation, activeCorporationTypeFilter)
 		)
-	}, [canFilterCorporations, corporationTypeFilter, corporations])
+	}, [activeCorporationTypeFilter, canFilterCorporations, corporations])
 	const applicationQueries = useQueries({
-		queries: visibleCorporations.map((corporation) => ({
-			queryKey: ['hr', 'corporation-application-counts', corporation.corporationId],
-			queryFn: () => applicationsApi.getApplications({ corporationId: corporation.corporationId }),
-			staleTime: 1000 * 30, // 30s
-			gcTime: 1000 * 60 * 2, // 2m
-			enabled: !!corporation.corporationId,
-		})),
+		queries: visibleCorporations.map((corporation) => {
+			const canViewApplications =
+				corporation.isMemberCorporation &&
+				(user?.is_admin === true ||
+					isAuditor ||
+					accessibleCorporationIds.has(corporation.corporationId))
+			return {
+				queryKey: ['hr', 'corporation-application-counts', corporation.corporationId],
+				queryFn: () => applicationsApi.getApplications({ corporationId: corporation.corporationId }),
+				staleTime: 1000 * 30, // 30s
+				gcTime: 1000 * 60 * 2, // 2m
+				enabled: Boolean(corporation.corporationId && canViewApplications),
+			}
+		}),
 	})
 
 	usePageTitle('Corporations')
@@ -124,10 +182,6 @@ export default function CorporationsPage() {
 		)
 	}
 
-	const accessibleCorporationIds = new Set(
-		(corporationAccess?.corporations ?? []).map((corp) => corp.corporationId)
-	)
-
 	return (
 		<Container>
 			<PageHeader
@@ -143,13 +197,11 @@ export default function CorporationsPage() {
 						</Label>
 						<Select
 							inputId="corporation-type-filter"
-							value={corporationTypeFilter}
+							value={activeCorporationTypeFilter ?? CORPORATION_TYPE_OPTIONS[0].value}
 							onValueChange={(value) => setCorporationTypeFilter(value as CorporationTypeFilter)}
-							options={[
-								{ value: 'member', label: 'Member Corps' },
-								{ value: 'alt', label: 'Alt Corps' },
-								{ value: 'special', label: 'Special Purpose Corps' },
-							]}
+							options={CORPORATION_TYPE_OPTIONS.filter((option) =>
+								availableCorporationTypes.includes(option.value)
+							)}
 							className="sm:w-72"
 							contentClassName="sm:w-72"
 						/>
@@ -177,13 +229,18 @@ export default function CorporationsPage() {
 						user?.is_admin === true ||
 						isAuditor ||
 						accessibleCorporationIds.has(corporation.corporationId)
-					const pendingCount = applications.filter(
-						(application) => application.status === 'pending'
-					).length
-					const underReviewCount = applications.filter(
-						(application) => application.status === 'under_review'
-					).length
-					const hasVisibleCounts = pendingCount > 0 || underReviewCount > 0
+					const canViewApplications =
+						corporation.isMemberCorporation &&
+						(user?.is_admin === true ||
+							isAuditor ||
+							accessibleCorporationIds.has(corporation.corporationId))
+					const pendingCount = canViewApplications
+						? applications.filter((application) => application.status === 'pending').length
+						: 0
+					const underReviewCount = canViewApplications
+						? applications.filter((application) => application.status === 'under_review').length
+						: 0
+					const hasVisibleCounts = canViewApplications && (pendingCount > 0 || underReviewCount > 0)
 
 					return (
 						<Card key={corporation.corporationId} className="h-full">
@@ -223,12 +280,14 @@ export default function CorporationsPage() {
 												</Link>
 											</Button>
 										)}
-										<Button variant={canAccessMembers ? 'ghost' : 'primary'} asChild>
-											<Link to={`/corporations/${corporation.corporationId}/applications`}>
-												<FileText className="h-4 w-4" />
-												Applications
-											</Link>
-										</Button>
+										{canViewApplications && (
+											<Button variant={canAccessMembers ? 'ghost' : 'primary'} asChild>
+												<Link to={`/corporations/${corporation.corporationId}/applications`}>
+													<FileText className="h-4 w-4" />
+													Applications
+												</Link>
+											</Button>
+										)}
 									</div>
 								</div>
 								<div className="justify-self-end self-end">

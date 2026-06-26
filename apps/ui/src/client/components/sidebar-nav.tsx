@@ -222,6 +222,8 @@ export function SidebarNav({ onNavigate, isSidebarOpen = true, onToggleSidebar }
 		const isAuditor = hasAnyPermission('urn:hr:auditor')
 		const hasCorporationModuleAccess =
 			(corporationAccess?.hasAccess ?? false) || (hrCorporations?.length ?? 0) > 0 || isAuditor
+		const canSeeLegacyApplications =
+			isSiteAdmin || isAuditor || (hrCorporations?.some((corp) => corp.isMemberCorporation) ?? false)
 		const isHrOnlyUser =
 			!(corporationAccess?.hasAccess ?? false) && ((hrCorporations?.length ?? 0) > 0 || isAuditor)
 		const isOnCorpHrRoute = /^\/corporations\/[^/]+\/hr/.test(location.pathname)
@@ -245,7 +247,7 @@ export function SidebarNav({ onNavigate, isSidebarOpen = true, onToggleSidebar }
 			})
 		}
 
-		if ((hrCorporations?.length ?? 0) > 0 || isAuditor || isSiteAdmin) {
+		if (canSeeLegacyApplications) {
 			hrItems.push({
 				label: 'Legacy Applications',
 				href: '/hr/legacy-history',

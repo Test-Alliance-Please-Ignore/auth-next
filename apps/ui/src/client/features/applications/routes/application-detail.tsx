@@ -47,6 +47,7 @@ import { usePageTitle } from '@/hooks/usePageTitle'
 
 import { canWithdrawApplication } from '../api'
 import { useHrPermissionCheck } from '../../hr/hooks'
+import { useCanAccessCorporation } from '../../corporations/hooks'
 import { AccessDeniedCard } from '../components/access-denied-card'
 import { AddRecommendationDialog } from '../components/add-recommendation-dialog'
 import { ApplicationStatusBadge } from '../components/application-status-badge'
@@ -97,6 +98,10 @@ export default function ApplicationDetail() {
 		isLoading: applicationLoading,
 		error: applicationError,
 	} = useApplication(applicationId!)
+	const {
+		corporation: applicationCorporation,
+		isLoading: applicationCorporationLoading,
+	} = useCanAccessCorporation(application?.corporationId ?? '')
 	const { data: activityLog, isLoading: activityLoading } = useApplicationActivity(applicationId!)
 	const { data: recommendations } = useRecommendations(applicationId!)
 	const { data: messageCount = 0 } = useMessageCount(applicationId!)
@@ -122,9 +127,13 @@ export default function ApplicationDetail() {
 	// Check if user owns this application
 	const isOwner = user?.id === application?.userId
 	const { data: hrPermission, isLoading: hrPermissionLoading } = useHrPermissionCheck(
-		application?.corporationId ? { corporationId: application.corporationId } : null
+		application?.corporationId && applicationCorporation?.isMemberCorporation
+			? { corporationId: application.corporationId }
+			: null
 	)
-	const canViewAsHr = user?.is_admin === true || hrPermission?.hasPermission === true
+	const canViewAsHr =
+		user?.is_admin === true ||
+		(applicationCorporation?.isMemberCorporation === true && hrPermission?.hasPermission === true)
 
 	// Check if application can be withdrawn
 	const canWithdraw = application ? canWithdrawApplication(application) : false
@@ -193,7 +202,7 @@ export default function ApplicationDetail() {
 	}
 
 	// Loading state
-	if (authLoading || applicationLoading) {
+	if (authLoading || applicationLoading || applicationCorporationLoading) {
 		return (
 			<Container>
 				<div className="flex items-center justify-center min-h-[400px]">
@@ -228,7 +237,7 @@ export default function ApplicationDetail() {
 	}
 
 	// Wait for HR permission check before denying non-owner access
-	if (application && !isOwner && !user?.is_admin && hrPermissionLoading) {
+	if (application && !isOwner && applicationCorporation?.isMemberCorporation && !user?.is_admin && hrPermissionLoading) {
 		return (
 			<Container>
 				<div className="flex items-center justify-center min-h-[400px]">

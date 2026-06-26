@@ -51,6 +51,7 @@ import { AddHRNoteDialog } from '@/features/applications/components/add-hr-note-
 import { HRNoteCard } from '@/features/applications/components/hr-note-card'
 import { useHRNotes } from '@/features/applications/hooks'
 import { useMumbleFeatureEnabled } from '@/features/mumble/feature'
+import { useAuth } from '@/hooks/useAuth'
 import {
 	useAdminMumbleAccount,
 	useAdminUser,
@@ -93,6 +94,7 @@ export default function UserDetailPage() {
 	const navigate = useNavigate()
 	const queryClient = useQueryClient()
 	const { setCustomLabel, clearCustomLabel } = useBreadcrumb()
+	const { user: sessionUser } = useAuth()
 	const { isEnabled: isMumbleFeatureEnabled, isLoading: isLoadingMumbleFeature } =
 		useMumbleFeatureEnabled()
 
@@ -195,6 +197,9 @@ export default function UserDetailPage() {
 	const primaryCharacter =
 		user?.characters.find((character) => character.is_primary) ?? user?.characters[0] ?? null
 	const primaryCharacterName = primaryCharacter?.characterName || 'this user'
+	const corporationLinkForCurrentUser = sessionUser?.is_admin === true
+		? (corporationId: string) => `/admin/corporations/${corporationId}`
+		: (corporationId: string) => `/corporations/${corporationId}/members`
 
 	useEffect(() => {
 		if (!userId) return
@@ -1174,7 +1179,7 @@ export default function UserDetailPage() {
 												{character.corporationId &&
 												managedCorporationIds.has(character.corporationId) ? (
 													<Link
-														to={`/admin/corporations/${character.corporationId}`}
+														to={corporationLinkForCurrentUser(character.corporationId)}
 														className="font-medium underline-offset-2 hover:underline"
 													>
 														{character.corporationName || 'Unknown'}

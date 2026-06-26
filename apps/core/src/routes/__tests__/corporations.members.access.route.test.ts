@@ -55,6 +55,10 @@ function makeDbStub() {
 			},
 			users: {
 				findMany: vi.fn().mockResolvedValue([]),
+				findFirst: vi.fn().mockResolvedValue({
+					id: 'target-user-1',
+					mainCharacterId: '2001',
+				}),
 			},
 		},
 		update: vi.fn().mockReturnValue({
@@ -214,6 +218,97 @@ describe('corporations members access matrix', () => {
 		expect(await res.json()).toEqual({
 			error:
 				'Access denied. Corporation CEO, Director, site admin, HR role, or HR auditor permission required.',
+		})
+	})
+
+	it('allows HR auditors to view a non-member corporation member account detail', async () => {
+		getCachedUserPermissionsMock.mockResolvedValue([
+			{
+				permissionId: 'perm-auditor',
+				urn: 'urn:hr:auditor',
+				name: 'HR Auditor',
+				description: null,
+				category: null,
+				groupId: 'g-1',
+				groupName: 'HR',
+				targetType: 'all_members',
+				source: 'global',
+			},
+		] as any)
+		dbStub.query.managedCorporations.findFirst.mockResolvedValue({
+			corporationId: '2001',
+			name: 'Bravo Corp',
+			ticker: 'BRV',
+			isActive: true,
+			isMemberCorporation: false,
+		} as any)
+		dbStub.query.userCharacters.findMany.mockResolvedValue([
+			{
+				id: 'uc-1',
+				userId: 'target-user-1',
+				characterId: '2001',
+				characterName: 'Pilot One',
+				corporationId: null,
+				corporationName: null,
+				allianceId: null,
+				allianceName: null,
+				is_primary: true,
+				hasValidToken: true,
+				status: 'active',
+				linkedAt: new Date('2026-04-01T00:00:00.000Z'),
+				updatedAt: new Date('2026-04-01T00:00:00.000Z'),
+				isDeleted: false,
+			},
+		] as any)
+		corpStub.getCoreData.mockResolvedValue({
+			members: [],
+			memberTracking: [],
+		})
+		corpStub.getMembers.mockResolvedValue([
+			{ characterId: '2001', updatedAt: new Date('2026-04-01T00:00:00.000Z') },
+		])
+
+		const app = createApp({ user: makeUser(), db: dbStub })
+		const res = await app.request('/api/corporations/2001/members/target-user-1', {}, env)
+
+		expect(res.status).toBe(200)
+		expect(await res.json()).toMatchObject({
+			account: {
+				accountId: 'target-user-1',
+				isLinked: true,
+				characters: [
+					{
+						authUserId: 'target-user-1',
+						characterId: '2001',
+					},
+				],
+			},
+		})
+	})
+
+	it('denies corporation settings access for non-member corporation leadership', async () => {
+		dbStub.query.managedCorporations.findFirst.mockResolvedValue({
+			corporationId: '2001',
+			name: 'Bravo Corp',
+			ticker: 'BRV',
+			isActive: true,
+			isMemberCorporation: false,
+		} as any)
+
+		const app = createApp({ user: makeUser(), db: dbStub })
+		const res = await app.request(
+			'/api/corporations/2001/settings',
+			{
+				method: 'PATCH',
+				body: JSON.stringify({ isRecruiting: true }),
+				headers: { 'content-type': 'application/json' },
+			},
+			env
+		)
+
+		expect(res.status).toBe(403)
+		expect(await res.json()).toEqual({
+			error: 'Access denied. Corporation CEO, site admin, or HR admin required.',
 		})
 	})
 

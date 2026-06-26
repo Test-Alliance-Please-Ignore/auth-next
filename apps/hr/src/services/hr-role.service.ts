@@ -248,10 +248,22 @@ export class HrRoleService {
 
 		try {
 			const corpStub = getStub<EveCorporationData>(this.ctx.env.EVE_CORPORATION_DATA, corporationId)
-			const corpInfo = await corpStub.getCorporationInfo(corporationId)
+			const [corpInfo, directors] = await Promise.all([
+				corpStub.getCorporationInfo(corporationId),
+				corpStub.getDirectors(corporationId),
+			])
 
 			const userCharacterSet = new Set(userCharacterIds)
 			if (corpInfo && userCharacterSet.has(String(corpInfo.ceoId))) {
+				return 'hr_admin'
+			}
+
+			// Directors are treated as leadership for access-listing purposes as well,
+			// even when the corporation is not a member corp with full HR tooling.
+			const directorIds = new Set(
+				directors.map((director) => String(director.characterId))
+			)
+			if (userCharacterIds.some((characterId) => directorIds.has(characterId))) {
 				return 'hr_admin'
 			}
 		} catch (error) {

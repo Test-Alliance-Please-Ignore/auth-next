@@ -61,7 +61,12 @@ export default function CorporationMembers() {
 	const { user, isAuthenticated, isLoading: authLoading } = useAuth()
 	const { hasAnyPermission } = useUserPermissions()
 	const isAuditor = hasAnyPermission('urn:hr:auditor')
-	const { canAccess: hasCorpAccess, userRole, corporation: accessCorp } = useCanAccessCorporation(corporationId!)
+	const {
+		canAccess: hasCorpAccess,
+		isLoading: accessLoading,
+		userRole,
+		corporation: accessCorp,
+	} = useCanAccessCorporation(corporationId!)
 	const canAccess = hasCorpAccess || isAuditor
 	const { data: corporation, isLoading: corpLoading } = useMyCorporation(corporationId!)
 	const { invalidateMembers } = useCorporationManager()
@@ -100,8 +105,8 @@ export default function CorporationMembers() {
 	// Can refresh data: CEO/Director/admin only
 	const canRefresh = isLeadership
 
-	// Can export CSV: CEO/Director/admin/hr_admin
-	const canExport = isLeadership || isHrAdmin
+	// Can export CSV: site admins or member corporations only, for leadership or HR admin
+	const canExport = user?.is_admin === true || (isMemberCorporation && (isLeadership || isHrAdmin))
 
 	// Can manage HR roles: member corp only, with CEO/admin/hr_admin access
 	const canManageHrRoles = useMemo(() => {
@@ -110,7 +115,6 @@ export default function CorporationMembers() {
 			(userRole === 'CEO' || userRole === 'admin' || userRole === 'hr_admin')
 		)
 	}, [isMemberCorporation, userRole])
-	const canViewHrManagementCard = Boolean(userRole || isAuditor || user?.is_admin)
 	const { data: hrRoles, isLoading: hrRolesLoading } = useHrRoles(corporationId!, {
 		enabled: canManageHrRoles,
 	})
@@ -128,11 +132,12 @@ export default function CorporationMembers() {
 		[isMemberCorporation, userRole]
 	)
 
-	// Can manage emeritus status: CEO/site admin
-	const canManageEmeritus = userRole === 'CEO' || userRole === 'admin'
+	// Can manage emeritus status: site admins or member corporations only, CEO/site admin
+	const canManageEmeritus = user?.is_admin === true || (isMemberCorporation && (userRole === 'CEO' || userRole === 'admin'))
 
-	// Can access settings: CEO/Director/admin/hr_admin
-	const canAccessSettings = isLeadership || isHrAdmin
+	// Can access settings: site admins or member corporations only
+	const canAccessSettings = user?.is_admin === true || (isMemberCorporation && (isLeadership || isHrAdmin))
+	const canUseHrTools = isMemberCorporation
 
 	// Enhance members with HR role data
 	const membersWithHrRoles = useMemo(() => {
@@ -153,6 +158,11 @@ export default function CorporationMembers() {
 	const corpName = corporation?.name ?? accessCorp?.name ?? 'Corporation'
 	const corpTicker = corporation?.ticker ?? accessCorp?.ticker
 	const corpAllianceName = corporation?.allianceName
+	const corpTypeLabel = accessCorp?.isAltCorp
+		? 'Alt'
+		: accessCorp?.isSpecialPurpose
+			? 'Special-purpose'
+			: 'Corporation'
 	const esiCoverage = membersResponse?.summary?.esiCoverage ?? {
 		full: 0,
 		partial: 0,
@@ -266,7 +276,7 @@ export default function CorporationMembers() {
 	}
 
 	// Loading state
-	if (corpLoading || hrRolesLoading || (membersLoading && !membersResponse)) {
+	if (accessLoading || corpLoading || hrRolesLoading || (membersLoading && !membersResponse)) {
 		return (
 			<Container>
 				<div className="flex items-center justify-center min-h-[400px]">
@@ -277,7 +287,7 @@ export default function CorporationMembers() {
 	}
 
 	// Access denied
-	if (!canAccess) {
+	if (!accessLoading && !canAccess) {
 		return (
 			<Container>
 				<Card className="max-w-2xl mx-auto border-red-200 bg-red-50 dark:border-red-800 dark:bg-red-950">
@@ -400,15 +410,15 @@ export default function CorporationMembers() {
 				</div>
 			</div>
 
-			{/* HR Navigation - Show for any HR/management-capable viewer */}
-			{canViewHrManagementCard && (
-				<div className="mb-6 grid gap-4 xl:grid-cols-[minmax(0,1fr)_20rem] xl:items-stretch">
-					<Card className="h-full bg-primary/5 border-primary/20">
-						<CardHeader>
-							<CardTitle className="text-lg flex items-center gap-2">
-								<Settings className="h-5 w-5" />
-								HR Management
-							</CardTitle>
+			{/* HR Navigation - Show for any access-capable viewer */}
+			<div className="mb-6 grid gap-4 xl:grid-cols-[minmax(0,1fr)_20rem] xl:items-stretch">
+				<Card className="h-full bg-primary/5 border-primary/20">
+					<CardHeader>
+						<CardTitle className="text-lg flex items-center gap-2">
+							<Settings className="h-5 w-5" />
+							HR Management
+						</CardTitle>
+						{canUseHrTools ? (
 							<CardDescription>
 								{isHrOnly && !isLeadership
 									? `You have ${formatCorporationRoleLabel(userRole ?? 'hr_viewer')} access for this corporation`
@@ -416,8 +426,10 @@ export default function CorporationMembers() {
 										? 'You have CEO access to all HR features'
 										: 'You have site admin access to all HR features'}
 							</CardDescription>
-						</CardHeader>
-						<CardContent>
+						) : null}
+					</CardHeader>
+					<CardContent>
+						{canUseHrTools ? (
 							<div className="flex flex-wrap gap-2">
 								<Button variant="primary" asChild>
 									<Link to={`/corporations/${corporationId}/applications`}>
@@ -442,56 +454,69 @@ export default function CorporationMembers() {
 									</Button>
 								)}
 							</div>
-						</CardContent>
-					</Card>
-
-					<Card className="h-full w-full max-w-sm justify-self-end bg-primary/5 border-primary/20">
-						<CardHeader className="pb-3">
-							<CardTitle className="text-lg">ESI Coverage</CardTitle>
-						</CardHeader>
-						<CardContent className="space-y-3 pt-0">
-							<div className="grid grid-cols-2 gap-2">
-								<div className="rounded-md border bg-background/80 px-2 py-2 text-center">
-									<div className="text-[11px] uppercase tracking-wide text-muted-foreground">Full</div>
-									<div className="text-base font-bold text-success leading-none">
-										{esiCoverage.full}
+						) : (
+							<div className="flex min-h-[7rem] items-center justify-center rounded-lg border border-dashed border-border/60 bg-background/40 px-4 py-6 text-center">
+								<div className="max-w-sm space-y-2">
+									<div className="flex items-center justify-center gap-2 text-sm font-medium text-muted-foreground">
+										<AlertCircle className="h-4 w-4" />
+										HR tools unavailable
 									</div>
-									<div className="text-[10px] text-muted-foreground">
-										{esiCoveragePercentage(esiCoverage.full)}%
-									</div>
-								</div>
-								<div className="rounded-md border bg-background/80 px-2 py-2 text-center">
-									<div className="text-[11px] uppercase tracking-wide text-muted-foreground">Partial</div>
-									<div className="text-base font-bold text-warning leading-none">
-										{esiCoverage.partial}
-									</div>
-									<div className="text-[10px] text-muted-foreground">
-										{esiCoveragePercentage(esiCoverage.partial)}%
-									</div>
-								</div>
-								<div className="rounded-md border bg-background/80 px-2 py-2 text-center">
-									<div className="text-[11px] uppercase tracking-wide text-muted-foreground">None</div>
-									<div className="text-base font-bold text-destructive leading-none">
-										{esiCoverage.none}
-									</div>
-									<div className="text-[10px] text-muted-foreground">
-										{esiCoveragePercentage(esiCoverage.none)}%
-									</div>
-								</div>
-								<div className="rounded-md border bg-background/80 px-2 py-2 text-center">
-									<div className="text-[11px] uppercase tracking-wide text-muted-foreground">Unlinked</div>
-									<div className="text-base font-bold text-muted-foreground leading-none">
-										{esiCoverage.unlinked}
-									</div>
-									<div className="text-[10px] text-muted-foreground">
-										{esiCoveragePercentage(esiCoverage.unlinked)}%
-									</div>
+									<p className="text-sm text-muted-foreground">
+										{corpTypeLabel} corporations do not expose HR management tools. You can still review
+										member details and ESI coverage here.
+									</p>
 								</div>
 							</div>
-						</CardContent>
-					</Card>
-				</div>
-			)}
+						)}
+					</CardContent>
+				</Card>
+
+				<Card className="h-full w-full max-w-sm justify-self-end bg-primary/5 border-primary/20">
+					<CardHeader className="pb-3">
+						<CardTitle className="text-lg">ESI Coverage</CardTitle>
+					</CardHeader>
+					<CardContent className="space-y-3 pt-0">
+						<div className="grid grid-cols-2 gap-2">
+							<div className="rounded-md border bg-background/80 px-2 py-2 text-center">
+								<div className="text-[11px] uppercase tracking-wide text-muted-foreground">Full</div>
+								<div className="text-base font-bold text-success leading-none">
+									{esiCoverage.full}
+								</div>
+								<div className="text-[10px] text-muted-foreground">
+									{esiCoveragePercentage(esiCoverage.full)}%
+								</div>
+							</div>
+							<div className="rounded-md border bg-background/80 px-2 py-2 text-center">
+								<div className="text-[11px] uppercase tracking-wide text-muted-foreground">Partial</div>
+								<div className="text-base font-bold text-warning leading-none">
+									{esiCoverage.partial}
+								</div>
+								<div className="text-[10px] text-muted-foreground">
+									{esiCoveragePercentage(esiCoverage.partial)}%
+								</div>
+							</div>
+							<div className="rounded-md border bg-background/80 px-2 py-2 text-center">
+								<div className="text-[11px] uppercase tracking-wide text-muted-foreground">None</div>
+								<div className="text-base font-bold text-destructive leading-none">
+									{esiCoverage.none}
+								</div>
+								<div className="text-[10px] text-muted-foreground">
+									{esiCoveragePercentage(esiCoverage.none)}%
+								</div>
+							</div>
+							<div className="rounded-md border bg-background/80 px-2 py-2 text-center">
+								<div className="text-[11px] uppercase tracking-wide text-muted-foreground">Unlinked</div>
+								<div className="text-base font-bold text-muted-foreground leading-none">
+									{esiCoverage.unlinked}
+								</div>
+								<div className="text-[10px] text-muted-foreground">
+									{esiCoveragePercentage(esiCoverage.unlinked)}%
+								</div>
+							</div>
+						</div>
+					</CardContent>
+				</Card>
+			</div>
 
 			{/* Members Table */}
 			<Suspense
@@ -521,15 +546,6 @@ export default function CorporationMembers() {
 				/>
 			</Suspense>
 
-			{/* Help Text */}
-			<div className="mt-8 text-center">
-				<p className="text-sm text-muted-foreground">
-					This view shows all members of the corporation with their current auth status.
-				</p>
-				<p className="text-sm text-muted-foreground mt-1">
-					Members highlighted in yellow need their auth accounts linked.
-				</p>
-			</div>
 		</Container>
 	)
 }

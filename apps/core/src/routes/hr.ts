@@ -324,6 +324,20 @@ async function canManageHrRolesForCorporation(c: Context<App>, corporationId: st
 	)
 }
 
+async function canUseHrToolsForCorporation(c: Context<App>, corporationId: string): Promise<boolean> {
+	const user = c.get('user')!
+
+	if (user.is_admin) {
+		return true
+	}
+
+	if (await hasHrAuditorPermission(c)) {
+		return true
+	}
+
+	return canManageHrRolesForCorporation(c, corporationId)
+}
+
 type HrRoleManagementAccess = 'site_admin' | 'ceo' | 'hr_admin' | null
 
 /**
@@ -504,13 +518,26 @@ app.get('/applications', requireAuth(), async (c) => {
 					limit: 200,
 				})
 			).map((character) => character.characterId)
-			: []
+		: []
 
 	// Parse query params
+	const corporationId = c.req.query('corporationId')
+	const userId = c.req.query('userId')
+	const characterId = c.req.query('characterId')
+	if (corporationId && !userId && !characterId) {
+		const canUseHrTools = await canUseHrToolsForCorporation(c, corporationId)
+		if (!canUseHrTools) {
+			return c.json(
+				{ error: 'Access denied. HR tools are only available for member corporations.' },
+				403
+			)
+		}
+	}
+
 	const filters: ApplicationFilters = {
-		corporationId: c.req.query('corporationId'),
-		userId: c.req.query('userId'),
-		characterId: c.req.query('characterId'),
+		corporationId,
+		userId,
+		characterId,
 		status: c.req.query('status') as ApplicationFilters['status'],
 		search: searchQuery,
 		characterIds: searchCharacterIds.length > 0 ? searchCharacterIds : undefined,
@@ -551,6 +578,18 @@ app.get('/applications/paged', requireAuth(), async (c) => {
 
 	const searchQuery = c.req.query('search')?.trim() || undefined
 	const db = c.get('db')!
+	const corporationId = c.req.query('corporationId')
+	const userId = c.req.query('userId')
+	const characterId = c.req.query('characterId')
+	if (corporationId && !userId && !characterId) {
+		const canUseHrTools = await canUseHrToolsForCorporation(c, corporationId)
+		if (!canUseHrTools) {
+			return c.json(
+				{ error: 'Access denied. HR tools are only available for member corporations.' },
+				403
+			)
+		}
+	}
 	const searchCharacterIds =
 		searchQuery && searchQuery.length > 0
 			? (
@@ -563,9 +602,9 @@ app.get('/applications/paged', requireAuth(), async (c) => {
 			: []
 
 	const filters: ApplicationFilters = {
-		corporationId: c.req.query('corporationId'),
-		userId: c.req.query('userId'),
-		characterId: c.req.query('characterId'),
+		corporationId,
+		userId,
+		characterId,
 		status: c.req.query('status') as ApplicationFilters['status'],
 		search: searchQuery,
 		characterIds: searchCharacterIds.length > 0 ? searchCharacterIds : undefined,
@@ -603,9 +642,9 @@ app.get('/applications/paged', requireAuth(), async (c) => {
  * GET /api/hr/applications/:id
  * Get a single application with recommendations
  */
-	app.get('/applications/:id', requireAuth(), async (c) => {
-		const user = c.get('user')!
-		const applicationId = c.req.param('id')
+app.get('/applications/:id', requireAuth(), async (c) => {
+	const user = c.get('user')!
+	const applicationId = c.req.param('id')
 
 	try {
 		const hr = getHrStub(c)
@@ -614,6 +653,15 @@ app.get('/applications/paged', requireAuth(), async (c) => {
 			isAdmin: user.is_admin,
 			isAuditor,
 		})
+		if (application.userId !== user.id) {
+			const canUseHrTools = await canUseHrToolsForCorporation(c, application.corporationId)
+			if (!canUseHrTools) {
+				return c.json(
+					{ error: 'Access denied. HR tools are only available for member corporations.' },
+					403
+				)
+			}
+		}
 		const discordUsername =
 			application.userId === user.id ? null : await resolveApplicationDiscordUsername(c, application.userId)
 
@@ -654,13 +702,16 @@ app.patch('/applications/:id', requireAuth(), async (c) => {
 	try {
 		const hr = getHrStub(c)
 		const isAuditor = await hasHrAuditorPermission(c)
-		const applicationBeforeUpdate =
-			status === 'accepted'
-				? await hr.getApplication(applicationId, user.id, {
-						isAdmin: user.is_admin,
-						isAuditor,
-					})
-				: null
+		const applicationBeforeUpdate = await hr.getApplication(applicationId, user.id, {
+			isAdmin: user.is_admin,
+			isAuditor,
+		})
+		if (!(await canUseHrToolsForCorporation(c, applicationBeforeUpdate.corporationId))) {
+			return c.json(
+				{ error: 'Access denied. HR tools are only available for member corporations.' },
+				403
+			)
+		}
 		await hr.updateApplicationStatus(applicationId, status, user.id, characterId, characterName, reviewNotes)
 
 		if (
@@ -844,6 +895,8 @@ app.delete('/applications/:id', requireAdmin(), async (c) => {
 app.get('/recommendations/pending', requireAuth(), async (c) => {
 	const user = c.get('user')!
 	const db = c.get('db')!
+	const isAdmin = user.is_admin
+	const isAuditor = await hasHrAuditorPermission(c)
 
 	// Resolve corporation IDs from the database (session user doesn't carry corporationId)
 	const userChars = await db.query.userCharacters.findMany({
@@ -859,7 +912,24 @@ app.get('/recommendations/pending', requireAuth(), async (c) => {
 
 	try {
 		const hr = getHrStub(c)
-		const applications = await hr.listCorpApplicationsForRecommendation(corporationIds, user.id)
+		const accessibleCorporationIds = isAdmin || isAuditor
+			? corporationIds
+			: (
+				await db.query.managedCorporations.findMany({
+					where: and(
+						eq(managedCorporations.isActive, true),
+						eq(managedCorporations.isMemberCorporation, true),
+						inArray(managedCorporations.corporationId, corporationIds)
+					),
+					columns: { corporationId: true },
+				})
+			).map((corp) => corp.corporationId)
+
+		if (accessibleCorporationIds.length === 0) {
+			return c.json([])
+		}
+
+		const applications = await hr.listCorpApplicationsForRecommendation(accessibleCorporationIds, user.id)
 		return c.json(applications)
 	} catch (error) {
 		return c.json(
@@ -878,6 +948,8 @@ app.get('/recommendations/applications/:id', requireAuth(), async (c) => {
 	const user = c.get('user')!
 	const applicationId = c.req.param('id')
 	const db = c.get('db')!
+	const isAdmin = user.is_admin
+	const isAuditor = await hasHrAuditorPermission(c)
 
 	// Resolve corporation IDs from the database (session user doesn't carry corporationId)
 	const userChars = await db.query.userCharacters.findMany({
@@ -894,6 +966,12 @@ app.get('/recommendations/applications/:id', requireAuth(), async (c) => {
 			user.id,
 			corporationIds
 		)
+		if (!isAdmin && !isAuditor && !(await canUseHrToolsForCorporation(c, application.corporationId))) {
+			return c.json(
+				{ error: 'Access denied. HR tools are only available for member corporations.' },
+				403
+			)
+		}
 		return c.json(application)
 	} catch (error) {
 		return c.json(
@@ -922,6 +1000,16 @@ app.post('/applications/:applicationId/recommendations', requireAuth(), async (c
 
 	try {
 		const hr = getHrStub(c)
+		const application = await hr.getApplication(applicationId, user.id, {
+			isAdmin: user.is_admin,
+			isAuditor: false,
+		})
+		if (!(await canUseHrToolsForCorporation(c, application.corporationId))) {
+			return c.json(
+				{ error: 'Access denied. HR tools are only available for member corporations.' },
+				403
+			)
+		}
 		const recommendation = await hr.addRecommendation(
 			applicationId,
 			user.id,
@@ -950,11 +1038,22 @@ app.post('/applications/:applicationId/recommendations', requireAuth(), async (c
  */
 app.patch('/applications/:applicationId/recommendations/:id', requireAuth(), async (c) => {
 	const user = c.get('user')!
+	const applicationId = c.req.param('applicationId')
 	const recommendationId = c.req.param('id')
 	const { characterId, recommendationText, sentiment, isPublic } = await c.req.json()
 
 	try {
 		const hr = getHrStub(c)
+		const application = await hr.getApplication(applicationId, user.id, {
+			isAdmin: user.is_admin,
+			isAuditor: false,
+		})
+		if (!(await canUseHrToolsForCorporation(c, application.corporationId))) {
+			return c.json(
+				{ error: 'Access denied. HR tools are only available for member corporations.' },
+				403
+			)
+		}
 		await hr.updateRecommendation(
 			recommendationId,
 			user.id,
@@ -983,6 +1082,7 @@ app.patch('/applications/:applicationId/recommendations/:id', requireAuth(), asy
  */
 app.delete('/applications/:applicationId/recommendations/:id', requireAuth(), async (c) => {
 	const user = c.get('user')!
+	const applicationId = c.req.param('applicationId')
 	const recommendationId = c.req.param('id')
 
 	// Get primary character for logging
@@ -991,6 +1091,16 @@ app.delete('/applications/:applicationId/recommendations/:id', requireAuth(), as
 
 	try {
 		const hr = getHrStub(c)
+		const application = await hr.getApplication(applicationId, user.id, {
+			isAdmin: user.is_admin,
+			isAuditor: false,
+		})
+		if (!(await canUseHrToolsForCorporation(c, application.corporationId))) {
+			return c.json(
+				{ error: 'Access denied. HR tools are only available for member corporations.' },
+				403
+			)
+		}
 		await hr.deleteRecommendation(recommendationId, user.id, characterId, user.is_admin)
 
 		return c.json({ success: true })
@@ -1027,6 +1137,12 @@ app.post('/applications/:applicationId/messages', requireAuth(), async (c) => {
 			isAuditor: false,
 		})
 		const isApplicant = application.userId === user.id
+		if (!isApplicant && !(await canUseHrToolsForCorporation(c, application.corporationId))) {
+			return c.json(
+				{ error: 'Access denied. HR tools are only available for member corporations.' },
+				403
+			)
+		}
 
 		if (!isApplicant && !user.is_admin) {
 			const hasPermission = await hr.checkPermission(
@@ -1110,6 +1226,16 @@ app.get('/applications/:applicationId/messages/count', requireAuth(), async (c) 
 	try {
 		const hr = getHrStub(c)
 		const isAuditor = await hasHrAuditorPermission(c)
+		const application = await hr.getApplication(applicationId, user.id, {
+			isAdmin: user.is_admin,
+			isAuditor,
+		})
+		if (application.userId !== user.id && !(await canUseHrToolsForCorporation(c, application.corporationId))) {
+			return c.json(
+				{ error: 'Access denied. HR tools are only available for member corporations.' },
+				403
+			)
+		}
 		const count = await hr.getMessageCount(applicationId, user.id, {
 			isAdmin: user.is_admin,
 			isAuditor,
@@ -1142,6 +1268,12 @@ app.get('/applications/:applicationId/staff-notes', requireAuth(), async (c) => 
 			isAdmin: user.is_admin,
 			isAuditor,
 		})
+		if (!(await canUseHrToolsForCorporation(c, application.corporationId))) {
+			return c.json(
+				{ error: 'Access denied. HR tools are only available for member corporations.' },
+				403
+			)
+		}
 
 		const hasHrPermission =
 			user.is_admin ||
@@ -1182,6 +1314,12 @@ app.post('/applications/:applicationId/staff-notes', requireAuth(), async (c) =>
 			isAdmin: user.is_admin,
 			isAuditor,
 		})
+		if (!(await canUseHrToolsForCorporation(c, application.corporationId))) {
+			return c.json(
+				{ error: 'Access denied. HR tools are only available for member corporations.' },
+				403
+			)
+		}
 
 		const managementAccess = await getHrRoleManagementAccess(c, application.corporationId)
 		const hasHrStaffPermission = await hr.checkPermission(user.id, application.corporationId, 'hr_viewer')
@@ -1235,6 +1373,12 @@ app.patch('/applications/:applicationId/staff-notes/:noteId', requireAuth(), asy
 			isAdmin: user.is_admin,
 			isAuditor,
 		})
+		if (!(await canUseHrToolsForCorporation(c, application.corporationId))) {
+			return c.json(
+				{ error: 'Access denied. HR tools are only available for member corporations.' },
+				403
+			)
+		}
 
 		const managementAccess = await getHrRoleManagementAccess(c, application.corporationId)
 		const hasHrStaffPermission = await hr.checkPermission(user.id, application.corporationId, 'hr_viewer')
@@ -1294,6 +1438,12 @@ app.delete('/applications/:applicationId/staff-notes/:noteId', requireAuth(), as
 			isAdmin: user.is_admin,
 			isAuditor,
 		})
+		if (!(await canUseHrToolsForCorporation(c, application.corporationId))) {
+			return c.json(
+				{ error: 'Access denied. HR tools are only available for member corporations.' },
+				403
+			)
+		}
 
 		const managementAccess = await getHrRoleManagementAccess(c, application.corporationId)
 		const hasHrStaffPermission = await hr.checkPermission(user.id, application.corporationId, 'hr_viewer')
@@ -1416,9 +1566,10 @@ app.get('/corporations', requireAuth(), async (c) => {
 				})
 			).map((corp) => [corp.corporationId, corp])
 		)
-		// HR role grants are intentionally scoped to member corporations only.
-		const uniqueCorporationIds = [...new Set(corporationIds)].filter(
-			(corporationId) => corporationMap.get(corporationId)?.isMemberCorporation === true
+		// Keep all active managed corporations that the HR service says the user can access.
+		// That includes inferred CEO/director leadership access for alt/special purpose corps.
+		const uniqueCorporationIds = [...new Set(corporationIds)].filter((corporationId) =>
+			corporationMap.has(corporationId)
 		)
 
 		if (uniqueCorporationIds.length === 0) {

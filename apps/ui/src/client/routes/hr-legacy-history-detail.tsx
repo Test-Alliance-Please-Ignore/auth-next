@@ -1,11 +1,15 @@
 import { useQuery } from '@tanstack/react-query'
-import { Link, useParams, useSearchParams } from 'react-router-dom'
+import { Link, Navigate, useParams, useSearchParams } from 'react-router-dom'
 
 import { MemberAvatar } from '@/components/member-avatar'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
+import { LoadingPage } from '@/components/ui/loading'
+import { useHrAccessibleCorporations } from '@/features/hr'
+import { useAuth } from '@/hooks/useAuth'
 import { usePageTitle } from '@/hooks/usePageTitle'
+import { useUserPermissions } from '@/hooks/useUserPermissions'
 import { api } from '@/lib/api'
 import { corporationLogoUrl } from '@/lib/eve-images'
 import { ArrowLeft } from 'lucide-react'
@@ -19,15 +23,41 @@ function formatLegacyEventType(eventType: string): string {
 
 export default function HrLegacyHistoryDetailPage() {
 	usePageTitle('HR - Legacy History Detail')
+	const { user, isAuthenticated, isLoading: authLoading } = useAuth()
+	const { hasAnyPermission } = useUserPermissions()
+	const isAuditor = hasAnyPermission('urn:hr:auditor')
+	const canCheckAccessibleCorporations = isAuthenticated && !user?.is_admin && !isAuditor
+	const {
+		data: accessibleCorporations,
+		isLoading: accessibleCorporationsLoading,
+	} = useHrAccessibleCorporations({
+		enabled: canCheckAccessibleCorporations,
+	})
 	const { legacyApplicationId } = useParams<{ legacyApplicationId: string }>()
 	const [searchParams] = useSearchParams()
 	const returnTo = searchParams.get('returnTo') || '/hr/legacy-history'
+	const canAccessLegacyHistory =
+		user?.is_admin === true ||
+		isAuditor ||
+		(accessibleCorporations?.some((corp) => corp.isMemberCorporation) ?? false)
 
 	const detailQuery = useQuery({
 		queryKey: ['hr', 'legacy-history-detail', legacyApplicationId],
 		queryFn: () => api.getLegacyHistoryApplication(legacyApplicationId as string),
-		enabled: Boolean(legacyApplicationId),
+		enabled: Boolean(legacyApplicationId) && canAccessLegacyHistory,
 	})
+
+	if (!authLoading && !isAuthenticated) {
+		return <Navigate to="/dashboard" replace />
+	}
+
+	if (authLoading || accessibleCorporationsLoading) {
+		return <LoadingPage label="Loading legacy history detail..." />
+	}
+
+	if (!canAccessLegacyHistory) {
+		return <Navigate to="/dashboard" replace />
+	}
 
 	const selected = detailQuery.data?.application
 	const events = detailQuery.data?.events ?? []

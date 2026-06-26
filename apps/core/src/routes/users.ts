@@ -359,13 +359,14 @@ users.get('/has-corporation-access', async (c) => {
 			return c.json({ hasAccess: false })
 		}
 
-		// Get all active managed corporations (member and special purpose only)
+		// Get all active managed corporations that can be led by the current user.
 		const managedCorps = filterManagedNonNpcCorps(
 			await db.query.managedCorporations.findMany({
 				where: and(
 					eq(managedCorporations.isActive, true),
 					or(
 						eq(managedCorporations.isMemberCorporation, true),
+						eq(managedCorporations.isAltCorp, true),
 						eq(managedCorporations.isSpecialPurpose, true)
 					)
 				),
@@ -472,13 +473,14 @@ users.get('/corporation-access', async (c) => {
 			return c.json(cached)
 		}
 
-		// Get all managed corporations (member and special purpose only)
+		// Get all active managed corporations that can be led by the current user.
 		const managedCorps = filterManagedNonNpcCorps(
 			await db.query.managedCorporations.findMany({
 				where: and(
 					eq(managedCorporations.isActive, true),
 					or(
 						eq(managedCorporations.isMemberCorporation, true),
+						eq(managedCorporations.isAltCorp, true),
 						eq(managedCorporations.isSpecialPurpose, true)
 					)
 				),
@@ -667,7 +669,7 @@ users.get('/corporation-access', async (c) => {
 			}
 		}
 
-		// Also check HR roles across member corporations only (non-admin users only)
+		// Also check HR roles across member corporations only (non-admin users only).
 		if (!user.is_admin) {
 			const accessibleCorpIds = new Set(accessibleCorporations.map((c) => c.corporationId))
 			const hrStub = getStub<Hr>(c.env.HR, 'default')
@@ -780,7 +782,7 @@ users.get('/my-corporations', async (c) => {
 			return c.json(cached)
 		}
 
-		// Site admins have access to ALL corporations (member and special purpose only)
+		// Site admins have access to all managed corporations.
 		if (user.is_admin) {
 			const managedCorps = filterManagedNonNpcCorps(
 				await db.query.managedCorporations.findMany({

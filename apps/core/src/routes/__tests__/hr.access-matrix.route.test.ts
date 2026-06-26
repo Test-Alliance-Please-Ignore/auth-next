@@ -174,7 +174,15 @@ function makeEsiStub() {
 }
 
 function makeDbStub() {
+	const selectResult = [{ discordUserId: null }]
+	const selectChain = {
+		from: vi.fn().mockReturnThis(),
+		where: vi.fn().mockReturnThis(),
+		limit: vi.fn().mockResolvedValue(selectResult),
+	}
+
 	return {
+		select: vi.fn().mockReturnValue(selectChain),
 		query: {
 			managedCorporations: {
 				findMany: vi.fn().mockResolvedValue([
@@ -478,6 +486,24 @@ describe('hr route access matrix', () => {
 				isSpecialPurpose: false,
 				currentRole: 'hr_viewer',
 			},
+			{
+				corporationId: '2001',
+				name: 'Bravo Corp',
+				ticker: 'BRV',
+				isMemberCorporation: false,
+				isAltCorp: true,
+				isSpecialPurpose: false,
+				currentRole: 'hr_reviewer',
+			},
+			{
+				corporationId: '3001',
+				name: 'Charlie Corp',
+				ticker: 'CHR',
+				isMemberCorporation: false,
+				isAltCorp: false,
+				isSpecialPurpose: true,
+				currentRole: 'hr_admin',
+			},
 		])
 		expect(hrStub.getUserRoles).toHaveBeenCalledTimes(1)
 		expect(hrStub.getUserRoles).toHaveBeenCalledWith('user-1')
@@ -531,6 +557,50 @@ describe('hr route access matrix', () => {
 			expect.objectContaining({ corporationId: '1001', limit: 10, offset: 0 }),
 			'user-1',
 			{ isAdmin: false, isAuditor: true }
+		)
+	})
+
+	it('denies /applications/paged for non-member corporations', async () => {
+		dbStub.query.managedCorporations.findMany.mockResolvedValue([
+			{
+				corporationId: '2001',
+				name: 'Bravo Corp',
+				ticker: 'BRV',
+				isMemberCorporation: false,
+				isAltCorp: true,
+				isSpecialPurpose: false,
+			},
+		])
+		const app = createApp({ user: makeUser(), db: dbStub })
+		const res = await app.request('/api/hr/applications/paged?corporationId=2001&limit=10&offset=0', {}, env)
+
+		expect(res.status).toBe(403)
+		expect(await res.json()).toEqual({
+			error: 'Access denied. HR tools are only available for member corporations.',
+		})
+		expect(hrStub.listApplicationsPaged).not.toHaveBeenCalled()
+	})
+
+	it('allows corp-user application history queries even for non-member corporations', async () => {
+		dbStub.query.managedCorporations.findMany.mockResolvedValue([
+			{
+				corporationId: '2001',
+				name: 'Bravo Corp',
+				ticker: 'BRV',
+				isMemberCorporation: false,
+				isAltCorp: true,
+				isSpecialPurpose: false,
+			},
+		])
+
+		const app = createApp({ user: makeUser(), db: dbStub })
+		const res = await app.request('/api/hr/applications?corporationId=2001&userId=target-user-1', {}, env)
+
+		expect(res.status).toBe(200)
+		expect(hrStub.listApplications).toHaveBeenCalledWith(
+			expect.objectContaining({ corporationId: '2001', userId: 'target-user-1' }),
+			'user-1',
+			{ isAdmin: false, isAuditor: false }
 		)
 	})
 
@@ -593,6 +663,28 @@ describe('hr route access matrix', () => {
 			isAdmin: false,
 			isAuditor: true,
 		})
+	})
+
+	it('denies /applications/:id read for non-member corporations', async () => {
+		dbStub.query.managedCorporations.findMany.mockResolvedValue([
+			{
+				corporationId: '2001',
+				name: 'Bravo Corp',
+				ticker: 'BRV',
+				isMemberCorporation: false,
+				isAltCorp: true,
+				isSpecialPurpose: false,
+			},
+		])
+
+		const app = createApp({ user: makeUser(), db: dbStub })
+		const res = await app.request('/api/hr/applications/app-1', {}, env)
+
+		expect(res.status).toBe(403)
+		expect(await res.json()).toEqual({
+			error: 'Access denied. HR tools are only available for member corporations.',
+		})
+		expect(hrStub.getApplication).toHaveBeenCalledTimes(1)
 	})
 
 	it('allows /applications/:id/messages read for auditor', async () => {

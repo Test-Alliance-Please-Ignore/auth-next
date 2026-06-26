@@ -859,6 +859,13 @@ app.patch('/:corporationId/settings', requireAuth(), async (c) => {
 			isMemberCorporation: true,
 		},
 	})
+	const isAuditor = await isHrAuditorUser(c)
+	if (!managedCorp?.isMemberCorporation && !user.is_admin && !isAuditor) {
+		return c.json(
+			{ error: 'Access denied. Corporation CEO, site admin, or HR admin required.' },
+			403
+		)
+	}
 
 	// Authorization check - user must be CEO, site admin, or HR admin
 	try {
@@ -2108,11 +2115,11 @@ app.get('/:corporationId/members/:accountId', requireAuth(), async (c) => {
 			}
 		}
 
+		// The linked-account page is user-scoped first, then intersected with the
+		// corporation's current member roster. This avoids relying on a stored
+		// corporationId on user_characters for CEO/director or auditor access paths.
 		const linkedCharacters = await db.query.userCharacters.findMany({
-			where: and(
-				eq(userCharacters.corporationId, corporationId),
-				eq(userCharacters.userId, accountId)
-			),
+			where: eq(userCharacters.userId, accountId),
 		})
 		if (linkedCharacters.length === 0) {
 			return c.json({ error: 'Member account not found in corporation' }, 404)
@@ -2121,17 +2128,20 @@ app.get('/:corporationId/members/:accountId', requireAuth(), async (c) => {
 		const memberCharIdSet = new Set(linkedCharacters.map((row) => row.characterId))
 		const corpStub = getStub<EveCorporationData>(c.env.EVE_CORPORATION_DATA, corporationId)
 		const tokenStoreStub = getStub<EveTokenStore>(c.env.EVE_TOKEN_STORE, 'default')
-		const [corpInfo, coreData, directors] = await Promise.all([
+		const [corpInfo, coreData, currentMembers, directors] = await Promise.all([
 			corpStub.getCorporationInfo(corporationId),
 			corpStub.getCoreData(corporationId),
+			corpStub.getMembers(corporationId),
 			corpStub.getDirectors(corporationId),
 		])
-		if (!coreData?.members) {
+
+		const directorIds = new Set(directors.map((d) => d.characterId))
+		const rosterMembers = currentMembers.length > 0 ? currentMembers : (coreData?.members ?? [])
+		if (rosterMembers.length === 0) {
 			return c.json({ error: 'Member account not found in corporation' }, 404)
 		}
 
-		const directorIds = new Set(directors.map((d) => d.characterId))
-		const matchingMembers = coreData.members.filter((member) =>
+		const matchingMembers = rosterMembers.filter((member) =>
 			memberCharIdSet.has(String(member.characterId))
 		)
 		if (matchingMembers.length === 0) {
@@ -2159,7 +2169,7 @@ app.get('/:corporationId/members/:accountId', requireAuth(), async (c) => {
 		const memberRows: CorporationMemberListItem[] = matchingMembers.map((member) => {
 			const characterId = String(member.characterId)
 			const linkedChar = linkedCharacters.find((row) => row.characterId === characterId)
-			const tracking = coreData.memberTracking?.find((row) => row.characterId === characterId)
+			const tracking = coreData?.memberTracking?.find((row) => row.characterId === characterId)
 			let role: 'CEO' | 'Director' | 'Member' = 'Member'
 			if (corpInfo && String(corpInfo.ceoId) === characterId) {
 				role = 'CEO'
@@ -2175,7 +2185,7 @@ app.get('/:corporationId/members/:accountId', requireAuth(), async (c) => {
 				role,
 				hasAuthAccount: true,
 				hasValidToken: linkedChar ? (linkedChar.hasValidToken ?? null) : null,
-				authUserId: accountId,
+				authUserId: linkedChar?.userId,
 				mainCharacterName,
 				status: linkedChar?.status,
 				joinDate: tracking?.startDate?.toISOString() || member.updatedAt.toISOString(),
