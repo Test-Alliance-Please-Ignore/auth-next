@@ -166,7 +166,8 @@ export class ApplicationService {
 			corporationId,
 		})
 
-		return this.mapToApplication(application)
+		const firstApplicationIds = await this.resolveFirstApplicationIds([application.userId])
+		return this.mapToApplication(application, altCharacterIds, firstApplicationIds.has(application.id))
 	}
 
 	/**
