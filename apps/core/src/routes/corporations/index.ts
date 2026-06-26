@@ -110,8 +110,75 @@ type MembersQuery = {
 	sortOrder: MembersSortOrder
 }
 
+type CorporationMemberCoverageInput = {
+	characterId: string
+	authUserId?: string
+	hasValidToken?: boolean | null
+}
+
+type CorporationMemberCoverageSummary = {
+	full: number
+	partial: number
+	none: number
+	unlinked: number
+	linkedUsers: number
+}
+
+function countDistinctLinkedUsers(members: { authUserId?: string | null }[]): number {
+	return new Set(
+		members
+			.map((member) => member.authUserId)
+			.filter((authUserId): authUserId is string => Boolean(authUserId))
+	).size
+}
+
 function parseBoolean(value: string | undefined): boolean {
 	return value === 'true' || value === '1'
+}
+
+function buildCorporationMemberCoverageSummary(
+	members: CorporationMemberCoverageInput[]
+): CorporationMemberCoverageSummary {
+	const coverage = {
+		full: 0,
+		partial: 0,
+		none: 0,
+		unlinked: 0,
+		linkedUsers: 0,
+	}
+
+	const bucketMap = new Map<string, { total: number; valid: number }>()
+
+	for (const member of members) {
+		if (!member.authUserId) {
+			coverage.unlinked += 1
+			continue
+		}
+
+		const bucketKey = `user:${member.authUserId}`
+		const bucket = bucketMap.get(bucketKey) ?? { total: 0, valid: 0 }
+
+		bucket.total += 1
+		if (member.hasValidToken === true) {
+			bucket.valid += 1
+		}
+
+		bucketMap.set(bucketKey, bucket)
+	}
+
+	for (const bucket of bucketMap.values()) {
+		if (bucket.valid === 0) {
+			coverage.none += 1
+		} else if (bucket.valid === bucket.total) {
+			coverage.full += 1
+		} else {
+			coverage.partial += 1
+		}
+	}
+
+	coverage.linkedUsers = bucketMap.size
+
+	return coverage
 }
 
 function hasAnyMembersQueryParams(c: Context<App>): boolean {
@@ -298,9 +365,11 @@ function filterSortAndPaginateMembers(members: CorporationMemberListItem[], quer
 		summary: {
 			total: totalItems,
 			linked: filtered.filter((m) => m.hasAuthAccount).length,
+			linkedUsers: countDistinctLinkedUsers(filtered),
 			active: filtered.filter((m) => m.activityStatus === 'active').length,
 			inactive: filtered.filter((m) => m.activityStatus === 'inactive').length,
 			directors: filtered.filter((m) => m.role === 'Director').length,
+			esiCoverage: buildCorporationMemberCoverageSummary(members),
 		},
 	}
 }
@@ -319,9 +388,11 @@ function buildUnpaginatedMembersResponse(members: CorporationMemberListItem[]) {
 		summary: {
 			total: members.length,
 			linked: members.filter((m) => m.hasAuthAccount).length,
+			linkedUsers: countDistinctLinkedUsers(members),
 			active: members.filter((m) => m.activityStatus === 'active').length,
 			inactive: members.filter((m) => m.activityStatus === 'inactive').length,
 			directors: members.filter((m) => m.role === 'Director').length,
+			esiCoverage: buildCorporationMemberCoverageSummary(members),
 		},
 	}
 }
@@ -1767,6 +1838,49 @@ app.get('/:corporationId/members', requireAuth(), async (c) => {
 				.from(userCharacters)
 				.where(eq(userCharacters.corporationId, corporationId))
 				.then((rows) => rows[0] ?? { count: 0 })
+			const linkedUserSummaryRow = await db
+				.select({
+					count: sql<number>`count(distinct ${userCharacters.userId})`.as('count'),
+				})
+				.from(userCharacters)
+				.where(eq(userCharacters.corporationId, corporationId))
+				.then((rows) => rows[0] ?? { count: 0 })
+
+			let esiCoverage: CorporationMemberCoverageSummary = {
+				full: 0,
+				partial: 0,
+				none: 0,
+				unlinked: 0,
+				linkedUsers: 0,
+			}
+			try {
+				const coverageMemberRows = await corpStub.getMembers(corporationId)
+				const coverageMemberIds = coverageMemberRows.map((row) => String(row.characterId))
+				const coverageLinkedCharacters =
+					coverageMemberIds.length > 0
+						? await db.query.userCharacters.findMany({
+							where: inArray(userCharacters.characterId, coverageMemberIds),
+						})
+						: []
+				const coverageLinkedCharacterMap = new Map(
+					coverageLinkedCharacters.map((row) => [row.characterId, row])
+				)
+				esiCoverage = buildCorporationMemberCoverageSummary(
+					coverageMemberIds.map((characterId) => {
+						const linkedChar = coverageLinkedCharacterMap.get(characterId)
+						return {
+							characterId,
+							authUserId: linkedChar?.userId,
+							hasValidToken: linkedChar ? (linkedChar.hasValidToken ?? null) : null,
+						}
+					})
+				)
+			} catch (error) {
+				logger.warn('[Corporations] Failed to calculate member ESI coverage summary', {
+					corporationId,
+					error: error instanceof Error ? error.message : String(error),
+				})
+			}
 
 			const response = {
 				items: pageMembers,
@@ -1774,9 +1888,11 @@ app.get('/:corporationId/members', requireAuth(), async (c) => {
 				summary: {
 					total: paged.summary.total,
 					linked: Number(linkedSummaryRow.count ?? 0),
+					linkedUsers: Number(linkedUserSummaryRow.count ?? 0),
 					active: paged.summary.active,
 					inactive: paged.summary.inactive,
 					directors: paged.summary.directors,
+					esiCoverage,
 				},
 			}
 

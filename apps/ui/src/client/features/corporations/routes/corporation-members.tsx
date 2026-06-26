@@ -153,6 +153,17 @@ export default function CorporationMembers() {
 	const corpName = corporation?.name ?? accessCorp?.name ?? 'Corporation'
 	const corpTicker = corporation?.ticker ?? accessCorp?.ticker
 	const corpAllianceName = corporation?.allianceName
+	const esiCoverage = membersResponse?.summary?.esiCoverage ?? {
+		full: 0,
+		partial: 0,
+		none: 0,
+		unlinked: 0,
+		linkedUsers: 0,
+	}
+	const esiCoverageTotal =
+		esiCoverage.full + esiCoverage.partial + esiCoverage.none + esiCoverage.unlinked
+	const esiCoveragePercentage = (value: number) =>
+		esiCoverageTotal > 0 ? Math.round((value / esiCoverageTotal) * 100) : 0
 
 	// Set page title
 	usePageTitle(
@@ -391,12 +402,13 @@ export default function CorporationMembers() {
 
 			{/* HR Navigation - Show for any HR/management-capable viewer */}
 			{canViewHrManagementCard && (
-				<Card className="mb-6 bg-primary/5 border-primary/20">
-					<CardHeader>
-						<CardTitle className="text-lg flex items-center gap-2">
-							<Settings className="h-5 w-5" />
-							HR Management
-						</CardTitle>
+				<div className="mb-6 grid gap-4 xl:grid-cols-[minmax(0,1fr)_20rem] xl:items-stretch">
+					<Card className="h-full bg-primary/5 border-primary/20">
+						<CardHeader>
+							<CardTitle className="text-lg flex items-center gap-2">
+								<Settings className="h-5 w-5" />
+								HR Management
+							</CardTitle>
 							<CardDescription>
 								{isHrOnly && !isLeadership
 									? `You have ${formatCorporationRoleLabel(userRole ?? 'hr_viewer')} access for this corporation`
@@ -404,34 +416,81 @@ export default function CorporationMembers() {
 										? 'You have CEO access to all HR features'
 										: 'You have site admin access to all HR features'}
 							</CardDescription>
-					</CardHeader>
-					<CardContent>
-						<div className="flex flex-wrap gap-2">
-							<Button variant="primary" asChild>
-								<Link to={`/corporations/${corporationId}/applications`}>
-									<FileText className="h-4 w-4" />
-									Review Applications
-								</Link>
-							</Button>
-							{canManageHrRoles && (
-								<Button variant="ghost" asChild>
-									<Link to={`/corporations/${corporationId}/hr/roles`}>
-										<Settings className="h-4 w-4" />
-										Manage HR Roles
+						</CardHeader>
+						<CardContent>
+							<div className="flex flex-wrap gap-2">
+								<Button variant="primary" asChild>
+									<Link to={`/corporations/${corporationId}/applications`}>
+										<FileText className="h-4 w-4" />
+										Review Applications
 									</Link>
 								</Button>
-							)}
-							{canAccessSettings && (
-								<Button variant="ghost" asChild>
-									<Link to={`/corporations/${corporationId}/settings`}>
-										<Settings className="h-4 w-4" />
-										Corporation Settings
-									</Link>
-								</Button>
-							)}
-						</div>
-					</CardContent>
-				</Card>
+								{canManageHrRoles && (
+									<Button variant="ghost" asChild>
+										<Link to={`/corporations/${corporationId}/hr/roles`}>
+											<Settings className="h-4 w-4" />
+											Manage HR Roles
+										</Link>
+									</Button>
+								)}
+								{canAccessSettings && (
+									<Button variant="ghost" asChild>
+										<Link to={`/corporations/${corporationId}/settings`}>
+											<Settings className="h-4 w-4" />
+											Corporation Settings
+										</Link>
+									</Button>
+								)}
+							</div>
+						</CardContent>
+					</Card>
+
+					<Card className="h-full w-full max-w-sm justify-self-end bg-primary/5 border-primary/20">
+						<CardHeader className="pb-3">
+							<CardTitle className="text-lg">ESI Coverage</CardTitle>
+						</CardHeader>
+						<CardContent className="space-y-3 pt-0">
+							<div className="grid grid-cols-2 gap-2">
+								<div className="rounded-md border bg-background/80 px-2 py-2 text-center">
+									<div className="text-[11px] uppercase tracking-wide text-muted-foreground">Full</div>
+									<div className="text-base font-bold text-success leading-none">
+										{esiCoverage.full}
+									</div>
+									<div className="text-[10px] text-muted-foreground">
+										{esiCoveragePercentage(esiCoverage.full)}%
+									</div>
+								</div>
+								<div className="rounded-md border bg-background/80 px-2 py-2 text-center">
+									<div className="text-[11px] uppercase tracking-wide text-muted-foreground">Partial</div>
+									<div className="text-base font-bold text-warning leading-none">
+										{esiCoverage.partial}
+									</div>
+									<div className="text-[10px] text-muted-foreground">
+										{esiCoveragePercentage(esiCoverage.partial)}%
+									</div>
+								</div>
+								<div className="rounded-md border bg-background/80 px-2 py-2 text-center">
+									<div className="text-[11px] uppercase tracking-wide text-muted-foreground">None</div>
+									<div className="text-base font-bold text-destructive leading-none">
+										{esiCoverage.none}
+									</div>
+									<div className="text-[10px] text-muted-foreground">
+										{esiCoveragePercentage(esiCoverage.none)}%
+									</div>
+								</div>
+								<div className="rounded-md border bg-background/80 px-2 py-2 text-center">
+									<div className="text-[11px] uppercase tracking-wide text-muted-foreground">Unlinked</div>
+									<div className="text-base font-bold text-muted-foreground leading-none">
+										{esiCoverage.unlinked}
+									</div>
+									<div className="text-[10px] text-muted-foreground">
+										{esiCoveragePercentage(esiCoverage.unlinked)}%
+									</div>
+								</div>
+							</div>
+						</CardContent>
+					</Card>
+				</div>
 			)}
 
 			{/* Members Table */}

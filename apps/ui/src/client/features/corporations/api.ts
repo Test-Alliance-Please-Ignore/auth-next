@@ -73,9 +73,17 @@ export interface CorporationMembersResponse {
 	summary: {
 		total: number
 		linked: number
+		linkedUsers: number
 		active: number
 		inactive: number
 		directors: number
+		esiCoverage: {
+			full: number
+			partial: number
+			none: number
+			unlinked: number
+			linkedUsers: number
+		}
 	}
 }
 
