@@ -138,6 +138,14 @@ export function SidebarNav({ onNavigate, isSidebarOpen = true, onToggleSidebar }
 	const pendingCount = invitations?.length || 0
 	const mainCharacter = user?.characters.find((c) => c.characterId === user.mainCharacterId)
 	const canSeeMumble = isMumbleFeatureEnabled && canAccessMumble(user)
+	const hasMemberCorporationAccess = hrCorporations?.some((corp) => corp.isMemberCorporation) ?? false
+	const canSeeFleetTrackingList =
+		isSiteAdmin ||
+		hasAnyPermission('urn:fleet-tracking:create') ||
+		hasAnyPermission('urn:fleet-tracking:view-fleets') ||
+		hasAnyPermission('urn:fleet-tracking:view-all')
+	const canSeeFleetTrackingStats =
+		isSiteAdmin || hasAnyPermission('urn:fleet-tracking:view-all') || hasMemberCorporationAccess
 	const isTaxRoute = location.pathname === '/tax' || location.pathname.startsWith('/tax/')
 	const isFreightRoute =
 		location.pathname === '/freight' || location.pathname.startsWith('/freight/')
@@ -191,6 +199,12 @@ export function SidebarNav({ onNavigate, isSidebarOpen = true, onToggleSidebar }
 			setOpenMenus((prev) => ({ ...prev, '#hr': true }))
 		}
 	}, [isHrRoute, canSeeAllianceMemberNav])
+
+	useEffect(() => {
+		if (location.pathname.startsWith('/fleet-tracking')) {
+			setOpenMenus((prev) => ({ ...prev, '/fleet-tracking': true }))
+		}
+	}, [location.pathname])
 
 	const navItems: SidebarNavItem[] = [
 		{
@@ -262,6 +276,23 @@ export function SidebarNav({ onNavigate, isSidebarOpen = true, onToggleSidebar }
 		})
 	}
 
+	if (canSeeFleetTrackingList || canSeeFleetTrackingStats) {
+		const fleetTrackingItems: SidebarNavItem[] = []
+		if (canSeeFleetTrackingList) {
+			fleetTrackingItems.push({ label: 'Fleets', href: '/fleet-tracking' })
+		}
+		if (canSeeFleetTrackingStats) {
+			fleetTrackingItems.push({ label: 'Statistics', href: '/fleet-tracking/stats' })
+		}
+
+		navItems.push({
+			label: 'Fleet Tracking',
+			href: canSeeFleetTrackingList ? '/fleet-tracking' : '/fleet-tracking/stats',
+			icon: Radar,
+			children: fleetTrackingItems.length > 0 ? fleetTrackingItems : undefined,
+		})
+	}
+
 	if (canSeeAllianceMemberNav) {
 		navItems.push(
 			{
@@ -301,26 +332,6 @@ export function SidebarNav({ onNavigate, isSidebarOpen = true, onToggleSidebar }
 				icon: Swords,
 			},
 		)
-
-		const canSeeFleetTracking =
-			isSiteAdmin ||
-			hasAnyPermission('urn:fleet-tracking:create') ||
-			hasAnyPermission('urn:fleet-tracking:view-fleets') ||
-			hasAnyPermission('urn:fleet-tracking:view-all')
-		const canSeeFleetStats = isSiteAdmin || hasAnyPermission('urn:fleet-tracking:view-all')
-		if (canSeeFleetTracking) {
-			navItems.push({
-				label: 'Fleet Tracking',
-				href: '/fleet-tracking',
-				icon: Radar,
-				children: canSeeFleetStats
-					? [
-							{ label: 'Fleets', href: '/fleet-tracking' },
-							{ label: 'Statistics', href: '/fleet-tracking/stats' },
-						]
-					: undefined,
-			})
-		}
 
 		navItems.push(
 			{

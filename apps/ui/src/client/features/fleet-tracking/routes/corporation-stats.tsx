@@ -5,6 +5,7 @@ import { Button } from '@/components/ui/button'
 import { Container } from '@/components/ui/container'
 import { LoadingPage } from '@/components/ui/loading'
 import { PageHeader } from '@/components/ui/page-header'
+import { useCorporationAccess } from '@/features/corporations'
 import { usePageTitle } from '@/hooks/usePageTitle'
 import { useUserPermissions } from '@/hooks/useUserPermissions'
 import { RankingList } from '../components/ranking-list'
@@ -18,12 +19,23 @@ export default function CorporationStats() {
 	const { corpId } = useParams<{ corpId: string }>()
 	const { range } = useRangeFromSearchParams()
 	const { isAdmin, hasPermission } = useUserPermissions()
-	const canView = isAdmin || hasPermission('urn:fleet-tracking:view-all')
+	const canViewAll = isAdmin || hasPermission('urn:fleet-tracking:view-all')
+	const { data: corporationAccess, isLoading: corporationAccessLoading } = useCorporationAccess()
+	const memberCorporation = corporationAccess?.corporations.find(
+		(corp) => corp.corporationId === corpId && corp.isMemberCorporation
+	)
+	const canView = canViewAll || !!memberCorporation
 
-	const { data, isLoading } = useCorporationStats(canView ? corpId : undefined, range)
+	const { data, isLoading } = useCorporationStats(canView ? corpId : undefined, range, {
+		enabled: canView,
+	})
 	usePageTitle(data?.corporationName ? `${data.corporationName} — Corporation Stats` : 'Corporation Stats')
 
 	if (!corpId) return <Navigate to="/fleet-tracking/stats" replace />
+
+	if (!canView && corporationAccessLoading) {
+		return <LoadingPage />
+	}
 
 	if (!canView) {
 		return (
