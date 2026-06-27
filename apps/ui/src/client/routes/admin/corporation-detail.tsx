@@ -21,10 +21,11 @@ import {
 	X,
 	XCircle,
 } from 'lucide-react'
-import { useEffect, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { Link, useParams } from 'react-router-dom'
 
 import { DirectorList } from '@/components/DirectorList'
+import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import {
@@ -68,7 +69,18 @@ import { useMessage } from '@/hooks/useMessage'
 import { usePageTitle } from '@/hooks/usePageTitle'
 import { useGlobalPermissions } from '@/hooks/usePermissions'
 
-import type { UpdateCorporationRequest } from '@/lib/api'
+import type { CorporationAccessVerification, UpdateCorporationRequest } from '@/lib/api'
+
+const ACCESS_ROLE_GROUPS = [
+	{ label: 'Director', roles: ['Director'] },
+	{ label: 'Accountant / Junior Accountant', roles: ['Accountant', 'Junior_Accountant'] },
+	{ label: 'Station Manager', roles: ['Station_Manager'] },
+	{
+		label: 'Accountant / Junior Accountant / Trader',
+		roles: ['Accountant', 'Junior_Accountant', 'Trader'],
+	},
+	{ label: 'Factory Manager', roles: ['Factory_Manager'] },
+] as const
 
 export default function CorporationDetailPage() {
 	const { corporationId } = useParams<{ corporationId: string }>()
@@ -114,8 +126,23 @@ export default function CorporationDetailPage() {
 	}, [corporation, corpId, setCustomLabel, clearCustomLabel])
 
 	// Message handling with automatic cleanup
-	const { message, showSuccess, showError } = useMessage()
+	const { message, showSuccess, showError, clearMessage } = useMessage()
+	const [accessVerification, setAccessVerification] = useState<CorporationAccessVerification | null>(
+		null
+	)
 	const { requestConfirmation, confirmationDialog } = useConfirmationDialog()
+
+	const accessRoleStatuses = useMemo(() => {
+		const verifiedRoles = new Set(accessVerification?.verifiedRoles ?? [])
+
+		return ACCESS_ROLE_GROUPS.map((group) => ({
+			...group,
+			satisfied: group.roles.some((role) => verifiedRoles.has(role)),
+		}))
+	}, [accessVerification])
+
+	const satisfiedAccessRoleGroups = accessRoleStatuses.filter((group) => group.satisfied)
+	const missingAccessRoleGroups = accessRoleStatuses.filter((group) => !group.satisfied)
 
 	// Discord UI state
 	const [showAddServerDialog, setShowAddServerDialog] = useState(false)
@@ -254,19 +281,11 @@ export default function CorporationDetailPage() {
 	}
 
 	const handleVerify = async () => {
+		clearMessage()
+		setAccessVerification(null)
 		try {
 			const result = await verifyAccess.mutateAsync(corpId)
-			if (result.hasAccess) {
-				showSuccess(`Access verified! Roles: ${result.verifiedRoles.join(', ')}`)
-			} else {
-				const missingRoles =
-					result.missingRoles && result.missingRoles.length > 0
-						? result.missingRoles.join(', ')
-						: 'No matching role details were reported'
-				showError(
-					`Verification failed. Missing roles: ${missingRoles}`
-				)
-			}
+			setAccessVerification(result)
 		} catch (error) {
 			showError(error instanceof Error ? error.message : 'Failed to verify access')
 		}
@@ -363,7 +382,7 @@ export default function CorporationDetailPage() {
 		}
 	}
 
-	const formatDate = (date: string | null) => {
+	const formatDate = (date: string | Date | null) => {
 		if (!date) return 'Never'
 		return formatDistanceToNow(new Date(date), { addSuffix: true })
 	}
@@ -420,6 +439,91 @@ export default function CorporationDetailPage() {
 			</div>
 
 			{/* Success/Error Message */}
+			{accessVerification && (
+				<Card
+					className={
+						accessVerification.hasAccess
+							? 'border-success/30 bg-success/5'
+							: 'border-destructive/30 bg-destructive/5'
+					}
+				>
+					<CardHeader className="pb-3">
+						<div className="flex items-start justify-between gap-4">
+							<div className="space-y-1">
+								<div className="flex flex-wrap items-center gap-2">
+									<CardTitle className="text-base">Access verification</CardTitle>
+									<Badge
+										variant={accessVerification.hasAccess ? 'success' : 'destructive'}
+										className="gap-1"
+									>
+										{accessVerification.hasAccess ? (
+											<CheckCircle2 className="h-3 w-3" />
+										) : (
+											<ShieldAlert className="h-3 w-3" />
+										)}
+										{accessVerification.hasAccess ? 'Access verified' : 'Access missing'}
+									</Badge>
+								</div>
+								<CardDescription>
+									{accessVerification.hasAccess
+										? `Verified via ${accessVerification.characterName ?? 'an eligible director'}`
+										: 'No healthy director satisfied the required role matrix.'}
+								</CardDescription>
+							</div>
+							<p className="text-xs text-muted-foreground">
+								{accessVerification.lastVerified
+									? `Checked ${formatDate(accessVerification.lastVerified)}`
+									: 'Not checked'}
+							</p>
+						</div>
+					</CardHeader>
+					<CardContent className="space-y-4">
+						<div className="space-y-2">
+							<div className="flex items-center justify-between gap-3">
+								<p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
+									What we check for
+								</p>
+								<p className="text-xs text-muted-foreground">
+									{satisfiedAccessRoleGroups.length} / {ACCESS_ROLE_GROUPS.length} satisfied
+								</p>
+							</div>
+							<div className="flex flex-wrap gap-2">
+								{accessRoleStatuses.map((group) => (
+									<Badge
+										key={group.label}
+										variant={group.satisfied ? 'success' : 'destructive'}
+										className="gap-1"
+									>
+										{group.satisfied ? (
+											<CheckCircle2 className="h-3 w-3" />
+										) : (
+											<XCircle className="h-3 w-3" />
+										)}
+										{group.label}
+									</Badge>
+								))}
+							</div>
+						</div>
+
+						{missingAccessRoleGroups.length > 0 && (
+							<div className="space-y-2">
+								<p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
+									What we don&apos;t have
+								</p>
+								<div className="flex flex-wrap gap-2">
+									{missingAccessRoleGroups.map((group) => (
+										<Badge key={group.label} variant="destructive" className="gap-1">
+											<XCircle className="h-3 w-3" />
+											{group.label}
+										</Badge>
+									))}
+								</div>
+							</div>
+						)}
+					</CardContent>
+				</Card>
+			)}
+
 			{message && (
 				<Card
 					className={

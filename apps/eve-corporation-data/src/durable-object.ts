@@ -745,9 +745,11 @@ export class EveCorporationDataDO extends DurableObject<Env> implements EveCorpo
 	 * Verify that the configured character has access to corporation data
 	 * @deprecated Use verifyAllDirectorsHealth() instead for multi-director support
 	 */
-	async verifyAccess(): Promise<CorporationAccessVerification> {
-		console.log('[EveCorporationData] verifyAccess: Starting verification')
-		const config = await this.getDb().query.corporationConfig.findFirst()
+	async verifyAccess(corporationId: string): Promise<CorporationAccessVerification> {
+		logger.info('[EveCorporationData] verifyAccess started', { corporationId })
+		const config = await this.getDb().query.corporationConfig.findFirst({
+			where: eq(corporationConfig.corporationId, corporationId),
+		})
 		const fallbackMissingRoles = ['Required corporation sync roles were not satisfied by any healthy director']
 
 		const extractMissingRoles = (failureReasons: Array<string | null | undefined>): string[] => {
@@ -776,7 +778,9 @@ export class EveCorporationDataDO extends DurableObject<Env> implements EveCorpo
 		}
 
 		if (!config) {
-			console.log('[EveCorporationData] verifyAccess: No configuration found')
+			logger.warn('[EveCorporationData] verifyAccess failed: no corporation config', {
+				corporationId,
+			})
 			return {
 				hasAccess: false,
 				characterId: null,
@@ -790,7 +794,7 @@ export class EveCorporationDataDO extends DurableObject<Env> implements EveCorpo
 		const tokenStoreStub = getStub<EveTokenStore>(this.env.EVE_TOKEN_STORE, 'default')
 		const directorManager = new DirectorManager(
 			this.getDb(),
-			config.corporationId,
+			corporationId,
 			tokenStoreStub,
 			this.onDirectorAffiliationMismatch.bind(this)
 		)
@@ -801,11 +805,6 @@ export class EveCorporationDataDO extends DurableObject<Env> implements EveCorpo
 		)
 		const missingRoles =
 			missingRolesFromFailures.length > 0 ? missingRolesFromFailures : fallbackMissingRoles
-
-		console.log('[EveCorporationData] verifyAccess: Verification complete', {
-			verified: result.verified,
-			failed: result.failed,
-		})
 
 		// Get the first healthy director for backwards compatibility
 		const healthyDirectors = await directorManager.getHealthyDirectors()
@@ -836,7 +835,7 @@ export class EveCorporationDataDO extends DurableObject<Env> implements EveCorpo
 			]
 			: []
 
-		return {
+		const verification = {
 			hasAccess: result.verified > 0,
 			characterId: primaryDirector.characterId,
 			characterName: primaryDirector.characterName,
@@ -844,6 +843,27 @@ export class EveCorporationDataDO extends DurableObject<Env> implements EveCorpo
 			missingRoles: result.verified > 0 ? undefined : missingRoles,
 			lastVerified: config.lastVerified,
 		}
+
+		if (verification.hasAccess) {
+			logger.info('[EveCorporationData] verifyAccess completed', {
+				corporationId,
+				hasAccess: true,
+				verifiedCount: result.verified,
+				failedCount: result.failed,
+				characterId: verification.characterId,
+				characterName: verification.characterName,
+			})
+		} else {
+			logger.warn('[EveCorporationData] verifyAccess completed without access', {
+				corporationId,
+				hasAccess: false,
+				verifiedCount: result.verified,
+				failedCount: result.failed,
+				missingRoles: verification.missingRoles,
+			})
+		}
+
+		return verification
 	}
 
 	// ========================================================================

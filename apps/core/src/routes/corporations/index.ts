@@ -1402,24 +1402,13 @@ app.post('/:corporationId/verify', requireAuth(), requireAdmin(), async (c) => {
 	}
 
 	try {
-		// Verify access via Durable Object
-		logger.info('[Corporations] Getting DO stub', { corporationId, stubId: corporationId })
 		const stub = getStub<EveCorporationData>(c.env.EVE_CORPORATION_DATA, corporationId)
 
-		logger.info('[Corporations] Calling verifyAccess on DO', { corporationId })
-		const verification = await stub.verifyAccess()
+		logger.info('[Corporations] Verifying corporation access', { corporationId })
+		const verification = await stub.verifyAccess(corporationId)
 
-		logger.info('[Corporations] Verification result received', {
-			corporationId,
-			hasAccess: verification.hasAccess,
-			characterId: verification.characterId,
-			rolesCount: verification.verifiedRoles.length,
-			roles: verification.verifiedRoles,
-		})
 		const healthyDirectorCount = (await stub.getHealthyDirectors(corporationId)).length
 
-		// Update database with verification result
-		logger.info('[Corporations] Updating database with verification result', { corporationId })
 		await db
 			.update(managedCorporations)
 			.set({
@@ -1430,11 +1419,19 @@ app.post('/:corporationId/verify', requireAuth(), requireAdmin(), async (c) => {
 			})
 			.where(eq(managedCorporations.corporationId, corporationId))
 
-		logger.info('[Corporations] Verification complete', {
-			corporationId,
-			hasAccess: verification.hasAccess,
-			missingRoles: verification.missingRoles,
-		})
+		if (verification.hasAccess) {
+			logger.info('[Corporations] Corporation access verified', {
+				corporationId,
+				healthyDirectorCount,
+				verifiedRoles: verification.verifiedRoles,
+			})
+		} else {
+			logger.warn('[Corporations] Corporation access verification failed', {
+				corporationId,
+				healthyDirectorCount,
+				missingRoles: verification.missingRoles,
+			})
+		}
 
 		return c.json(verification)
 	} catch (error) {

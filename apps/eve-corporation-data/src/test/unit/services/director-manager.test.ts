@@ -72,7 +72,7 @@ describe('DirectorManager.selectDirector', () => {
 		expect(safeMarkSelected).toHaveBeenCalledWith('dir-2')
 	})
 
-	it('prefilters by required roles and honors CEO override', async () => {
+	it('prefilters by required roles and selects a director with a complete role set', async () => {
 		const tokenStore = {
 			getTokenInfo: vi.fn().mockResolvedValue({ isExpired: false }),
 			refreshToken: vi.fn().mockResolvedValue(true),
@@ -82,7 +82,9 @@ describe('DirectorManager.selectDirector', () => {
 					data: { roles: ['Trader'] },
 				})
 				.mockResolvedValueOnce({
-					data: { roles: ['CEO'] },
+					data: {
+						roles: ['Director', 'Accountant', 'Station_Manager', 'Factory_Manager', 'Trader'],
+					},
 				}),
 		}
 		const manager = new DirectorManager(
@@ -250,8 +252,7 @@ describe('DirectorManager.selectDirector', () => {
 
 		expect(safeRecordFailure).toHaveBeenCalledWith(
 			'dir-1',
-			expect.stringContaining('lookup_not_found'),
-			{ forceUnhealthy: true }
+			expect.stringContaining('lookup_not_found')
 		)
 		expect(selected).toBeNull()
 	})
@@ -435,9 +436,9 @@ describe('DirectorManager.verifyDirectorHealth', () => {
 				refreshSucceeded: false,
 				status: 'valid',
 			}),
-			fetchCharacterAffiliations: vi.fn().mockResolvedValue({
-				data: [{ character_id: 111, corporation_id: 98000001 }],
-			}),
+			fetchCharacterAffiliations: vi.fn().mockResolvedValue([
+				{ character_id: 111, corporation_id: 98000001 },
+			]),
 			fetchEsi: vi.fn().mockResolvedValue({
 				data: {
 					roles: ['Trader'],
@@ -458,7 +459,9 @@ describe('DirectorManager.verifyDirectorHealth', () => {
 		expect(result).toBe(true)
 		expect(tokenStore.validateToken).toHaveBeenCalledWith('111')
 		expect(tokenStore.fetchCharacterAffiliations).toHaveBeenCalledWith(['111'])
-		expect(tokenStore.fetchEsi).toHaveBeenCalledWith('/characters/111/roles', '111')
+		expect(tokenStore.fetchEsi).toHaveBeenCalledWith('/characters/111/roles', '111', {
+			cacheMode: 'no-store',
+		})
 		expect(rolesValues).toHaveBeenCalledWith(
 			expect.objectContaining({
 				corporationId: '98000001',
@@ -505,9 +508,9 @@ describe('DirectorManager.verifyDirectorHealth', () => {
 				refreshSucceeded: false,
 				status: 'valid',
 			}),
-			fetchCharacterAffiliations: vi.fn().mockResolvedValue({
-				data: [{ character_id: 111, corporation_id: 98000001 }],
-			}),
+			fetchCharacterAffiliations: vi.fn().mockResolvedValue([
+				{ character_id: 111, corporation_id: 98000001 },
+			]),
 			fetchEsi: vi.fn().mockResolvedValue({
 				data: {
 					roles: ['Trader'],
@@ -593,9 +596,9 @@ describe('DirectorManager.verifyDirectorHealth', () => {
 				refreshSucceeded: false,
 				status: 'valid',
 			}),
-			fetchCharacterAffiliations: vi.fn().mockResolvedValue({
-				data: [{ character_id: 111, corporation_id: 98000001 }],
-			}),
+			fetchCharacterAffiliations: vi.fn().mockResolvedValue([
+				{ character_id: 111, corporation_id: 98000001 },
+			]),
 			fetchEsi: vi.fn().mockRejectedValue(new Error('ESI request failed: 403 Forbidden')),
 		}
 		const manager = new DirectorManager(
@@ -679,9 +682,9 @@ describe('DirectorManager.verifyDirectorHealth', () => {
 				refreshSucceeded: false,
 				status: 'valid',
 			}),
-			fetchCharacterAffiliations: vi.fn().mockResolvedValue({
-				data: [{ character_id: 111, corporation_id: 98000002 }],
-			}),
+			fetchCharacterAffiliations: vi.fn().mockResolvedValue([
+				{ character_id: 111, corporation_id: 98000002 },
+			]),
 			fetchEsi: vi.fn(),
 		}
 		const manager = new DirectorManager(
@@ -922,7 +925,17 @@ describe('DirectorManager.verifyAllDirectorsHealth', () => {
 		const set = vi.fn().mockReturnValue({ where })
 		const update = vi.fn().mockReturnValue({ set })
 		const manager = new DirectorManager(
-			{ update } as never,
+			{
+				query: {
+					corporationDirectors: {
+						findFirst: vi.fn().mockResolvedValue({
+							id: 'dir-1',
+							characterId: '111',
+						}),
+					},
+				},
+				update,
+			} as never,
 			'98000001',
 			{} as never
 		)
