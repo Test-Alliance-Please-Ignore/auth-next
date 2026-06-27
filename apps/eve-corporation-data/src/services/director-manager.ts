@@ -264,15 +264,24 @@ export class DirectorManager {
 							)
 							continue
 						}
-						const refreshSucceeded = await this.tokenStore.refreshToken(candidate.characterId)
-						if (!refreshSucceeded) {
-							await this.safeRecordFailure(
-								candidate.directorId,
-								'Director token expired and refresh failed'
+							const refreshResult = await this.tokenStore.refreshTokenWithResult(
+								candidate.characterId
 							)
-							continue
+							if (!refreshResult.success) {
+								const reason =
+									refreshResult.status === 'transient_error'
+										? `Director token refresh transient failure: ${refreshResult.error ?? 'unknown'}`
+										: refreshResult.error ?? 'Director token expired and refresh failed'
+								await this.safeRecordFailure(
+									candidate.directorId,
+									reason,
+									refreshResult.status === 'transient_error'
+										? undefined
+										: { forceUnhealthy: true }
+								)
+								continue
+							}
 						}
-					}
 
 					const affiliationCheck = await this.checkAffiliation(candidate.characterId)
 					if (!affiliationCheck.matches) {
@@ -642,6 +651,7 @@ export class DirectorManager {
 		if (lower.includes('rate limit')) return true
 		if (lower.includes('timeout')) return true
 		if (lower.includes('temporarily unavailable')) return true
+		if (lower.includes('token refresh transient failure')) return true
 
 		return false
 	}
@@ -865,11 +875,25 @@ export class DirectorManager {
 				characterId: director.characterId,
 			})
 
-			const tokenValidation = await this.tokenStore.validateToken(String(director.characterId))
-			if (!tokenValidation.isValid) {
-				const reason = describeTokenValidationFailure(tokenValidation)
-				await this.recordFailure(directorId, reason, { forceUnhealthy: true })
-				logger.warn('[DirectorManager] Director token validation failed', {
+				const tokenValidation = await this.tokenStore.validateToken(String(director.characterId))
+				if (!tokenValidation.isValid) {
+					if (tokenValidation.status === 'transient_error') {
+						await this.recordFailure(
+							directorId,
+							`Director token refresh transient failure: ${tokenValidation.error ?? 'unknown'}`
+						)
+						logger.warn('[DirectorManager] Director token validation failed', {
+							corporationId: this.corporationId,
+							directorId,
+							characterId: director.characterId,
+							status: tokenValidation.status,
+							missingScopes: tokenValidation.missingScopes,
+						})
+						return false
+					}
+					const reason = describeTokenValidationFailure(tokenValidation)
+					await this.recordFailure(directorId, reason, { forceUnhealthy: true })
+					logger.warn('[DirectorManager] Director token validation failed', {
 					corporationId: this.corporationId,
 					directorId,
 					characterId: director.characterId,

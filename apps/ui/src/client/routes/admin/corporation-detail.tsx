@@ -259,8 +259,12 @@ export default function CorporationDetailPage() {
 			if (result.hasAccess) {
 				showSuccess(`Access verified! Roles: ${result.verifiedRoles.join(', ')}`)
 			} else {
+				const missingRoles =
+					result.missingRoles && result.missingRoles.length > 0
+						? result.missingRoles.join(', ')
+						: 'No matching role details were reported'
 				showError(
-					`Verification failed. Missing roles: ${result.missingRoles?.join(', ') || 'Unknown'}`
+					`Verification failed. Missing roles: ${missingRoles}`
 				)
 			}
 		} catch (error) {
