@@ -15,6 +15,10 @@ interface SessionCardProps {
 
 export function SessionCard({ session }: SessionCardProps) {
 	const isActive = session.status === 'active'
+	const trackedFleetBossName =
+		session.currentFleetBossCharacterName ?? session.currentCommanderCharacterName ?? session.characterName
+	const trackedFleetBossId =
+		session.currentFleetBossCharacterId ?? session.currentCommanderCharacterId ?? session.characterId
 
 	return (
 		<Link
@@ -30,10 +34,8 @@ export function SessionCard({ session }: SessionCardProps) {
 								<h3 className="font-semibold truncate">{session.name}</h3>
 							</div>
 							<div className="text-sm text-muted-foreground">
-								FC:{' '}
-								{session.characterName ?? (
-									<span className="font-mono">{session.characterId}</span>
-								)}
+								Tracked FC:{' '}
+								{trackedFleetBossName ?? <span className="font-mono">{trackedFleetBossId}</span>}
 								{' • '}
 								{isActive ? (
 									<>Running {formatDurationBetween(session.startedAt, null)}</>
@@ -52,6 +54,12 @@ export function SessionCard({ session }: SessionCardProps) {
 									</>
 								)}
 							</div>
+							{trackedFleetBossId !== session.characterId ? (
+								<div className="text-xs text-muted-foreground">
+									Initial FC:{' '}
+									{session.characterName ?? <span className="font-mono">{session.characterId}</span>}
+								</div>
+							) : null}
 							{isActive && (
 								<div className="text-xs text-muted-foreground">
 									Started {formatRelativeTime(session.startedAt)}

@@ -185,6 +185,7 @@ export interface Fleets extends DurableObject {
 		characterId: string
 		startedByUserId: string
 		name: string
+		action?: 'new' | 'take_over'
 	}): Promise<StartTrackingSessionResult>
 
 	/**
@@ -205,6 +206,16 @@ export interface Fleets extends DurableObject {
 	 * Get a single tracking session by id (summary metadata only).
 	 */
 	getTrackingSession(sessionId: string): Promise<TrackingSession | null>
+
+	/**
+	 * Get the active tracking session for a fleet, if one exists.
+	 */
+	getActiveTrackingSessionByFleetId(fleetId: string): Promise<TrackingSession | null>
+
+	/**
+	 * Get the most recent tracking session for a fleet, regardless of status.
+	 */
+	getLatestTrackingSessionByFleetId(fleetId: string): Promise<TrackingSession | null>
 
 	/**
 	 * Get the live cache snapshot for a session's fleet.
@@ -230,6 +241,11 @@ export interface Fleets extends DurableObject {
 		sessionId: string
 		characterId: string
 	}): Promise<SessionMemberShipHistoryRow[]>
+
+	/**
+	 * Get commander handoff events for a session.
+	 */
+	getSessionCommanderHistory(sessionId: string): Promise<SessionCommanderEvent[]>
 
 	/**
 	 * Get the session summary (one row from fleet_summaries), if it has been
@@ -349,6 +365,8 @@ export interface TopShipRow {
 export interface TopCharacterRow {
 	characterId: string
 	count: number
+	/** Total active minutes attributed to this fleet boss. */
+	minutesAsFC?: number
 }
 
 export interface TopCharacterHoursRow {
@@ -398,6 +416,8 @@ export interface CharacterStatsResult {
 		fleetsJoined: number
 		minutesInFleet: number
 		timesFC: number
+		/** Total active minutes this character was the fleet boss. */
+		minutesAsFC: number
 		avgFleetDurationMinutes: number | null
 	}
 	shipsFlown: CharacterShipBreakdownRow[]
@@ -425,8 +445,19 @@ export interface SessionTimelineRow {
 	/**
 	 * 'join' | 'leave' from fleet_member_history.
 	 * 'ship_change' synthesized from fleet_member_ship_events with previousShipTypeId set.
+	 * 'fleet_boss_initial' / 'fleet_boss_change' come from fleet_commander_events.
+	 * 'tracking_started' / 'tracking_resumed' / 'tracking_ended' come from
+	 * fleet_tracking_session_events and are merged into the same timeline stream.
 	 */
-	eventType: 'join' | 'leave' | 'ship_change'
+	eventType:
+		| 'join'
+		| 'leave'
+		| 'ship_change'
+		| 'fleet_boss_initial'
+		| 'fleet_boss_change'
+		| 'tracking_started'
+		| 'tracking_resumed'
+		| 'tracking_ended'
 	shipTypeId: number
 	shipTypeName: string | null
 	/** Only set for ship_change events — the ship the pilot was in before. */
@@ -438,6 +469,8 @@ export interface SessionTimelineRow {
 	role: string
 	roleName: string
 	characterName: string | null
+	previousFleetBossCharacterId?: string | null
+	previousFleetBossCharacterName?: string | null
 	eventTimestamp: string
 }
 
@@ -490,6 +523,16 @@ export interface SessionSummary {
 	motd: string | null
 }
 
+export interface SessionCommanderEvent {
+	id: string
+	fleetId: string
+	trackingSessionId: string | null
+	previousCommanderCharacterId: string | null
+	commanderCharacterId: string
+	eventType: 'initial' | 'change'
+	observedAt: string
+}
+
 // ===== Tracking-session types =====
 
 export type TrackingSessionStatus = 'active' | 'ended'
@@ -507,6 +550,19 @@ export interface TrackingSession {
 	id: string
 	name: string
 	characterId: string
+	/** Live fleet boss character ID, when available from the fleet cache. */
+	currentFleetBossCharacterId?: string | null
+	/** Resolved name for the live fleet boss, when available. */
+	currentFleetBossCharacterName?: string | null
+	/** Fleet boss character IDs associated with this fleet for access purposes. */
+	fleetBossCharacterIds?: string[]
+	/**
+	 * Legacy aliases retained for older callers; prefer the fleetBoss* fields
+	 * above in new code.
+	 */
+	currentCommanderCharacterId?: string | null
+	currentCommanderCharacterName?: string | null
+	commanderCharacterIds?: string[]
 	startedByUserId: string
 	fleetId: string | null
 	status: TrackingSessionStatus
@@ -525,6 +581,10 @@ export interface StartTrackingSessionResult {
 export interface TrackingSessionListFilter {
 	characterId?: string
 	startedByUserId?: string
+	/** Preferred boss-based access filter. */
+	fleetBossCharacterIds?: string[]
+	/** Legacy alias retained for compatibility. */
+	commanderCharacterIds?: string[]
 	status?: TrackingSessionStatus
 	/** ISO timestamp inclusive; filters by sessions.startedAt >= from. */
 	from?: string

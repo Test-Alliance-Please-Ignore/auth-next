@@ -13,6 +13,7 @@ import {
 	isNotNull,
 	lt,
 	lte,
+	or,
 	sql,
 } from '@repo/db-utils'
 import { getStub } from '@repo/do-utils'
@@ -41,6 +42,7 @@ import {
 	SessionMemberShipHistoryRow,
 	SessionRosterRow,
 	SessionSummary,
+	SessionCommanderEvent,
 	SessionTimelineResult,
 	SessionTimelineRow,
 	StartTrackingSessionError,
@@ -56,9 +58,12 @@ import { logger } from '@repo/hono-helpers'
 import { Env } from './context'
 import {
 	fleetInvitations,
+	fleetCommanderAccessAnchors,
+	fleetCommanderEvents,
 	fleetMemberHistory,
 	fleetMemberships,
 	fleetMemberShipEvents,
+	fleetTrackingSessionEvents,
 	fleetStateCache,
 	fleetSummaries,
 	fleetTrackingSessions,
@@ -142,6 +147,28 @@ export class FleetsDO extends DurableObject implements Fleets {
 			.join('')
 	}
 
+	private async recordSessionLifecycleEvent(args: {
+		fleetId: string
+		trackingSessionId: string
+		characterId: string
+		previousCharacterId?: string | null
+		eventType: 'started' | 'ended' | 'resumed'
+		observedAt: Date
+	}): Promise<void> {
+		const { fleetId, trackingSessionId, characterId, previousCharacterId, eventType, observedAt } =
+			args
+
+		await this.db.insert(fleetTrackingSessionEvents).values({
+			fleetId,
+			trackingSessionId,
+			previousCharacterId: previousCharacterId ?? null,
+			characterId,
+			eventType,
+			observedAt,
+			createdAt: observedAt,
+		})
+	}
+
 	async getCharacterFleetInformation(characterId: EveCharacterId): Promise<FleetInformation> {
 		const tokenStore = getStub<EveTokenStore>(this.env.EVE_TOKEN_STORE, 'default')
 
@@ -172,11 +199,9 @@ export class FleetsDO extends DurableObject implements Fleets {
 				wingId: validatedData.wing_id,
 			})
 
-			const fleetDetailsResponse = await this.getFleetDetails(
-				String(validatedData.fleet_id),
-				String(validatedData.fleet_boss_id)
-			)
-			// Ensure IDs are returned as strings for consistency
+			// Keep this path independent from fleet-level cache state.
+			// A stale fleetId 404 cache must not suppress a valid per-character
+			// "is this character in a fleet?" lookup when leadership changes.
 			return {
 				fleet_id: String(validatedData.fleet_id),
 				fleet_boss_id: String(validatedData.fleet_boss_id),
@@ -212,7 +237,7 @@ export class FleetsDO extends DurableObject implements Fleets {
 					return {
 						fleet_boss_id: '0',
 						fleet_id: '0',
-						role: 'fleet_commander',
+						role: 'squad_member',
 						squad_id: 0,
 						wing_id: 0,
 						lastUpdated: new Date().toISOString(),
@@ -444,7 +469,6 @@ export class FleetsDO extends DurableObject implements Fleets {
 				.onConflictDoUpdate({
 					target: fleetStateCache.fleetId,
 					set: {
-						fleetBossId: characterId,
 						isActive: true,
 						motd: fleetInfo.motd || null,
 						isFreeMove: fleetInfo.is_free_move,
@@ -806,7 +830,6 @@ export class FleetsDO extends DurableObject implements Fleets {
 				.onConflictDoUpdate({
 					target: fleetStateCache.fleetId,
 					set: {
-						fleetBossId: characterId,
 						isActive: true,
 						motd: fleetInfo.motd || null,
 						isFreeMove: fleetInfo.is_free_move,
@@ -938,7 +961,6 @@ export class FleetsDO extends DurableObject implements Fleets {
 				.onConflictDoUpdate({
 					target: fleetStateCache.fleetId,
 					set: {
-						fleetBossId: characterId,
 						isActive: true,
 						motd: fleetInfo.motd || null,
 						isFreeMove: fleetInfo.is_free_move,
@@ -1020,8 +1042,9 @@ export class FleetsDO extends DurableObject implements Fleets {
 		characterId: string
 		startedByUserId: string
 		name: string
+		action?: 'new' | 'take_over'
 	}): Promise<StartTrackingSessionResult> {
-		const { characterId, startedByUserId, name } = args
+		const { characterId, startedByUserId, name, action = 'new' } = args
 
 		// 1. Pre-flight ESI
 		let fleetInfo: FleetInformation
@@ -1046,51 +1069,88 @@ export class FleetsDO extends DurableObject implements Fleets {
 
 		const fleetId = fleetInfo.fleet_id
 
-		// 2. Reject duplicates (character + fleet)
-		const existingByCharacter = await this.db
-			.select({ id: fleetTrackingSessions.id })
-			.from(fleetTrackingSessions)
-			.where(
-				and(
-					eq(fleetTrackingSessions.characterId, characterId),
-					eq(fleetTrackingSessions.status, 'active')
-				)
-			)
-			.limit(1)
-		if (existingByCharacter.length > 0) {
-			throw new StartTrackingSessionError('character_session_active')
-		}
-
-		const existingByFleet = await this.db
-			.select({ id: fleetTrackingSessions.id })
-			.from(fleetTrackingSessions)
-			.where(
-				and(
-					eq(fleetTrackingSessions.fleetId, fleetId),
-					eq(fleetTrackingSessions.status, 'active')
-				)
-			)
-			.limit(1)
-		if (existingByFleet.length > 0) {
-			throw new StartTrackingSessionError('fleet_session_active')
-		}
-
-		// 3. Insert the session row
-		const [inserted] = await this.db
-			.insert(fleetTrackingSessions)
-			.values({
-				name,
-				characterId,
-				startedByUserId,
-				fleetId,
-				status: 'active',
+		const [mostRecentByFleet] = await this.db
+			.select({
+				id: fleetTrackingSessions.id,
+				status: fleetTrackingSessions.status,
+				characterId: fleetTrackingSessions.characterId,
 			})
-			.returning({ id: fleetTrackingSessions.id })
+			.from(fleetTrackingSessions)
+			.where(eq(fleetTrackingSessions.fleetId, fleetId))
+			.orderBy(desc(fleetTrackingSessions.startedAt))
+			.limit(1)
 
-		if (!inserted) {
-			throw new Error('Failed to insert tracking session row')
+		const now = new Date()
+		let sessionId: string
+		let previousFleetBossCharacterId: string | null = null
+		let resumedExistingSession = false
+
+		if (action === 'take_over' && mostRecentByFleet) {
+			previousFleetBossCharacterId = mostRecentByFleet.characterId
+			const [resumed] = await this.db
+				.update(fleetTrackingSessions)
+				.set({
+					name,
+					characterId,
+					status: 'active',
+					endedAt: null,
+					endedReason: null,
+					endedByUserId: null,
+					updatedAt: now,
+				})
+				.where(eq(fleetTrackingSessions.id, mostRecentByFleet.id))
+				.returning({ id: fleetTrackingSessions.id })
+
+			if (!resumed) {
+				throw new Error('Failed to take over tracking session row')
+			}
+
+			sessionId = resumed.id
+			resumedExistingSession = mostRecentByFleet.status === 'ended'
+
+			if (mostRecentByFleet.status === 'ended') {
+				await this.recordSessionLifecycleEvent({
+					fleetId,
+					trackingSessionId: sessionId,
+					characterId,
+					previousCharacterId: previousFleetBossCharacterId,
+					eventType: 'resumed',
+					observedAt: now,
+				})
+				await this.db
+					.delete(fleetSummaries)
+					.where(eq(fleetSummaries.trackingSessionId, sessionId))
+			}
+		} else {
+			if (action === 'new' && mostRecentByFleet?.status === 'active') {
+				throw new StartTrackingSessionError('fleet_session_active')
+			}
+
+			// 3. Insert the session row
+			const [inserted] = await this.db
+				.insert(fleetTrackingSessions)
+				.values({
+					name,
+					characterId,
+					startedByUserId,
+					fleetId,
+					status: 'active',
+				})
+				.returning({ id: fleetTrackingSessions.id })
+
+			if (!inserted) {
+				throw new Error('Failed to insert tracking session row')
+			}
+			sessionId = inserted.id
+
+			await this.recordSessionLifecycleEvent({
+				fleetId,
+				trackingSessionId: sessionId,
+				characterId,
+				eventType: 'started',
+				observedAt: now,
+			})
 		}
-		const sessionId = inserted.id
 
 		// 4. Spawn the FleetMonitor DO and initialize it
 		try {
@@ -1098,7 +1158,11 @@ export class FleetsDO extends DurableObject implements Fleets {
 				this.env.FLEET_MONITOR,
 				`fleet-${fleetId}`
 			)
-			await fleetMonitorStub.initializeMonitoring(fleetId, characterId, sessionId)
+			await fleetMonitorStub.initializeMonitoring(fleetId, characterId, sessionId, {
+				force: true,
+				previousFleetBossCharacterId,
+				resumedExistingSession,
+			})
 		} catch (error) {
 			logger.error('[FleetsDO startTrackingSession] Failed to initialize FleetMonitor', {
 				characterId,
@@ -1175,13 +1239,37 @@ export class FleetsDO extends DurableObject implements Fleets {
 	async listTrackingSessions(filter: TrackingSessionListFilter): Promise<TrackingSessionListResult> {
 		const limit = Math.min(Math.max(filter.limit ?? 50, 1), 200)
 		const offset = Math.max(filter.offset ?? 0, 0)
+		const fleetBossCharacterIds =
+			filter.fleetBossCharacterIds ?? filter.commanderCharacterIds ?? []
 
 		const conditions = []
 		if (filter.characterId) {
 			conditions.push(eq(fleetTrackingSessions.characterId, filter.characterId))
 		}
+		const accessConditions = []
 		if (filter.startedByUserId) {
-			conditions.push(eq(fleetTrackingSessions.startedByUserId, filter.startedByUserId))
+			accessConditions.push(eq(fleetTrackingSessions.startedByUserId, filter.startedByUserId))
+		}
+		if (fleetBossCharacterIds.length > 0) {
+			const commanderMatches = or(
+				inArray(fleetStateCache.fleetBossId, fleetBossCharacterIds),
+				sql<boolean>`exists (
+					select 1
+					from fleet_commander_access_anchors
+					where fleet_commander_access_anchors.fleet_id = ${fleetTrackingSessions.fleetId}
+						and ${or(
+							...fleetBossCharacterIds.map((id) =>
+								eq(fleetCommanderAccessAnchors.commanderCharacterId, id)
+							)
+						)}
+				)`
+			)
+			accessConditions.push(commanderMatches)
+		}
+		if (accessConditions.length === 1) {
+			conditions.push(accessConditions[0])
+		} else if (accessConditions.length > 1) {
+			conditions.push(or(...accessConditions))
 		}
 		if (filter.status) {
 			conditions.push(eq(fleetTrackingSessions.status, filter.status))
@@ -1195,8 +1283,12 @@ export class FleetsDO extends DurableObject implements Fleets {
 		const where = conditions.length > 0 ? and(...conditions) : undefined
 
 		const items = await this.db
-			.select()
+			.select({
+				session: fleetTrackingSessions,
+				currentCommanderCharacterId: fleetStateCache.fleetBossId,
+			})
 			.from(fleetTrackingSessions)
+			.leftJoin(fleetStateCache, eq(fleetTrackingSessions.fleetId, fleetStateCache.fleetId))
 			.where(where)
 			.orderBy(desc(fleetTrackingSessions.startedAt))
 			.limit(limit)
@@ -1205,11 +1297,14 @@ export class FleetsDO extends DurableObject implements Fleets {
 		const totalResult = await this.db
 			.select({ count: sql<number>`count(*)::int` })
 			.from(fleetTrackingSessions)
+			.leftJoin(fleetStateCache, eq(fleetTrackingSessions.fleetId, fleetStateCache.fleetId))
 			.where(where)
 		const total = totalResult[0]?.count ?? 0
 
 		return {
-			items: items.map(this.serializeSession),
+			items: items.map((row) =>
+				this.serializeSession(row.session, row.currentCommanderCharacterId ?? null)
+			),
 			total,
 			limit,
 			offset,
@@ -1221,11 +1316,102 @@ export class FleetsDO extends DurableObject implements Fleets {
 	 */
 	async getTrackingSession(sessionId: string): Promise<TrackingSession | null> {
 		const [row] = await this.db
-			.select()
+			.select({
+				session: fleetTrackingSessions,
+				currentCommanderCharacterId: fleetStateCache.fleetBossId,
+			})
 			.from(fleetTrackingSessions)
+			.leftJoin(fleetStateCache, eq(fleetTrackingSessions.fleetId, fleetStateCache.fleetId))
 			.where(eq(fleetTrackingSessions.id, sessionId))
 			.limit(1)
-		return row ? this.serializeSession(row) : null
+		if (!row) return null
+
+		const commanderRows = row.session.fleetId
+			? await this.db
+				.select({
+					commanderCharacterId: fleetCommanderAccessAnchors.commanderCharacterId,
+				})
+				.from(fleetCommanderAccessAnchors)
+				.where(eq(fleetCommanderAccessAnchors.fleetId, row.session.fleetId))
+				.orderBy(asc(fleetCommanderAccessAnchors.firstSeenAt))
+			: []
+		const commanderCharacterIds = Array.from(
+			new Set(commanderRows.map((r) => r.commanderCharacterId))
+		)
+
+		return this.serializeSession(
+			row.session,
+			row.currentCommanderCharacterId ?? null,
+			commanderCharacterIds
+		)
+	}
+
+	/**
+	 * Get the currently active tracking session for a fleet, if one exists.
+	 */
+	async getActiveTrackingSessionByFleetId(fleetId: string): Promise<TrackingSession | null> {
+		const [row] = await this.db
+			.select({
+				session: fleetTrackingSessions,
+				currentCommanderCharacterId: fleetStateCache.fleetBossId,
+			})
+			.from(fleetTrackingSessions)
+			.leftJoin(fleetStateCache, eq(fleetTrackingSessions.fleetId, fleetStateCache.fleetId))
+			.where(and(eq(fleetTrackingSessions.fleetId, fleetId), eq(fleetTrackingSessions.status, 'active')))
+			.orderBy(desc(fleetTrackingSessions.startedAt))
+			.limit(1)
+		if (!row) return null
+
+		const commanderRows = await this.db
+			.select({
+				commanderCharacterId: fleetCommanderAccessAnchors.commanderCharacterId,
+			})
+			.from(fleetCommanderAccessAnchors)
+			.where(eq(fleetCommanderAccessAnchors.fleetId, fleetId))
+			.orderBy(asc(fleetCommanderAccessAnchors.firstSeenAt))
+		const commanderCharacterIds = Array.from(
+			new Set(commanderRows.map((r) => r.commanderCharacterId))
+		)
+
+		return this.serializeSession(
+			row.session,
+			row.currentCommanderCharacterId ?? null,
+			commanderCharacterIds
+		)
+	}
+
+	/**
+	 * Get the most recent tracking session for a fleet, regardless of status.
+	 */
+	async getLatestTrackingSessionByFleetId(fleetId: string): Promise<TrackingSession | null> {
+		const [row] = await this.db
+			.select({
+				session: fleetTrackingSessions,
+				currentCommanderCharacterId: fleetStateCache.fleetBossId,
+			})
+			.from(fleetTrackingSessions)
+			.leftJoin(fleetStateCache, eq(fleetTrackingSessions.fleetId, fleetStateCache.fleetId))
+			.where(eq(fleetTrackingSessions.fleetId, fleetId))
+			.orderBy(desc(fleetTrackingSessions.startedAt))
+			.limit(1)
+		if (!row) return null
+
+		const commanderRows = await this.db
+			.select({
+				commanderCharacterId: fleetCommanderAccessAnchors.commanderCharacterId,
+			})
+			.from(fleetCommanderAccessAnchors)
+			.where(eq(fleetCommanderAccessAnchors.fleetId, fleetId))
+			.orderBy(asc(fleetCommanderAccessAnchors.firstSeenAt))
+		const commanderCharacterIds = Array.from(
+			new Set(commanderRows.map((r) => r.commanderCharacterId))
+		)
+
+		return this.serializeSession(
+			row.session,
+			row.currentCommanderCharacterId ?? null,
+			commanderCharacterIds
+		)
 	}
 
 	/**
@@ -1327,6 +1513,53 @@ export class FleetsDO extends DurableObject implements Fleets {
 					.where(and(...histConditions))
 			: []
 
+		// --- 1.25) Lifecycle rows from fleet_tracking_session_events ---
+		const wantLifecycleEvents = !args.eventType
+		const lifecycleWhere = args.characterId
+			? and(
+					eq(fleetTrackingSessionEvents.trackingSessionId, args.sessionId),
+					or(
+						eq(fleetTrackingSessionEvents.characterId, args.characterId),
+						eq(fleetTrackingSessionEvents.previousCharacterId, args.characterId)
+					)
+				)!
+			: eq(fleetTrackingSessionEvents.trackingSessionId, args.sessionId)
+		const lifecycleRows = wantLifecycleEvents
+			? await this.db
+					.select({
+						id: fleetTrackingSessionEvents.id,
+						trackingSessionId: fleetTrackingSessionEvents.trackingSessionId,
+						previousCharacterId: fleetTrackingSessionEvents.previousCharacterId,
+						characterId: fleetTrackingSessionEvents.characterId,
+						eventType: fleetTrackingSessionEvents.eventType,
+						observedAt: fleetTrackingSessionEvents.observedAt,
+					})
+					.from(fleetTrackingSessionEvents)
+					.where(lifecycleWhere)
+					.orderBy(asc(fleetTrackingSessionEvents.observedAt))
+			: []
+
+		// --- 1.5) Fleet-boss handoff rows from fleet_commander_events ---
+		// These are merged into the same timeline stream so callers see one
+		// contiguous session history.
+		const wantBossChanges = !args.eventType
+		const bossWhere = args.characterId
+			? and(
+					eq(fleetCommanderEvents.trackingSessionId, args.sessionId),
+					or(
+						eq(fleetCommanderEvents.previousCommanderCharacterId, args.characterId),
+						eq(fleetCommanderEvents.commanderCharacterId, args.characterId)
+					)
+				)!
+			: eq(fleetCommanderEvents.trackingSessionId, args.sessionId)
+		const bossChangeRows = wantBossChanges
+			? await this.db
+					.select()
+					.from(fleetCommanderEvents)
+					.where(bossWhere)
+					.orderBy(asc(fleetCommanderEvents.observedAt))
+			: []
+
 		// --- 2) Ship-change rows from fleet_member_ship_events ---
 		// A ship-change is any ship-event row whose startedAt is strictly
 		// after the session's startedAt (i.e. not the initial seed row).
@@ -1383,6 +1616,50 @@ export class FleetsDO extends DurableObject implements Fleets {
 			}
 		}
 
+		const bossChangeItems: SessionTimelineRow[] = bossChangeRows.map((row) => ({
+			id: `boss-${row.id}`,
+			characterId: row.commanderCharacterId,
+			eventType:
+				row.eventType === 'initial' ? ('fleet_boss_initial' as const) : ('fleet_boss_change' as const),
+			shipTypeId: 0,
+			shipTypeName: null,
+			previousShipTypeId: null,
+			previousShipTypeName: null,
+			solarSystemId: 0,
+			systemName: null,
+			stationId: null,
+			role: '',
+			roleName: '',
+			characterName: null,
+			previousFleetBossCharacterId: row.previousCommanderCharacterId,
+			previousFleetBossCharacterName: null,
+			eventTimestamp: row.observedAt.toISOString(),
+		}))
+
+		const lifecycleItems: SessionTimelineRow[] = lifecycleRows.map((row) => ({
+			id: `lifecycle-${row.id}`,
+			characterId: row.characterId,
+			eventType:
+				row.eventType === 'started'
+					? ('tracking_started' as const)
+					: row.eventType === 'resumed'
+						? ('tracking_resumed' as const)
+						: ('tracking_ended' as const),
+			shipTypeId: 0,
+			shipTypeName: null,
+			previousShipTypeId: null,
+			previousShipTypeName: null,
+			solarSystemId: 0,
+			systemName: null,
+			stationId: null,
+			role: '',
+			roleName: '',
+			characterName: null,
+			previousFleetBossCharacterId: row.previousCharacterId,
+			previousFleetBossCharacterName: null,
+			eventTimestamp: row.observedAt.toISOString(),
+		}))
+
 		// --- 3) Merge + sort + paginate in memory ---
 		const historyItems: SessionTimelineRow[] = historyRows.map((row) => ({
 			id: row.id,
@@ -1398,7 +1675,7 @@ export class FleetsDO extends DurableObject implements Fleets {
 			characterName: row.characterName,
 			eventTimestamp: row.eventTimestamp.toISOString(),
 		}))
-		const merged = [...historyItems, ...shipChangeItems].sort((a, b) =>
+		const merged = [...historyItems, ...lifecycleItems, ...bossChangeItems, ...shipChangeItems].sort((a, b) =>
 			b.eventTimestamp.localeCompare(a.eventTimestamp)
 		)
 		const total = merged.length
@@ -1432,6 +1709,191 @@ export class FleetsDO extends DurableObject implements Fleets {
 			startedAt: row.startedAt.toISOString(),
 			endedAt: row.endedAt ? row.endedAt.toISOString() : null,
 		}))
+	}
+
+	/**
+	 * Get commander handoff events for a session.
+	 */
+	async getSessionCommanderHistory(sessionId: string): Promise<SessionCommanderEvent[]> {
+		const rows = await this.db
+			.select()
+			.from(fleetCommanderEvents)
+			.where(eq(fleetCommanderEvents.trackingSessionId, sessionId))
+			.orderBy(asc(fleetCommanderEvents.observedAt))
+
+		return rows.map((row) => ({
+			id: row.id,
+			fleetId: row.fleetId,
+			trackingSessionId: row.trackingSessionId,
+			previousCommanderCharacterId: row.previousCommanderCharacterId,
+			commanderCharacterId: row.commanderCharacterId,
+			eventType: row.eventType as SessionCommanderEvent['eventType'],
+			observedAt: row.observedAt.toISOString(),
+		}))
+	}
+
+	private async getFleetBossAttributionBySession(range: StatsRange): Promise<
+		Map<string, Map<string, { minutes: number; hasActiveTime: boolean }>>
+	> {
+		const from = new Date(range.from)
+		const to = new Date(range.to)
+
+		const sessions = await this.db
+			.select({
+				id: fleetTrackingSessions.id,
+				characterId: fleetTrackingSessions.characterId,
+				startedAt: fleetTrackingSessions.startedAt,
+				endedAt: fleetTrackingSessions.endedAt,
+				status: fleetTrackingSessions.status,
+			})
+			.from(fleetTrackingSessions)
+			.where(
+				and(
+					lt(fleetTrackingSessions.startedAt, to),
+					or(
+						eq(fleetTrackingSessions.status, 'active'),
+						and(isNotNull(fleetTrackingSessions.endedAt), gt(fleetTrackingSessions.endedAt, from))
+					)
+				)
+			)
+
+		if (sessions.length === 0) {
+			return new Map()
+		}
+
+		const sessionIds = sessions.map((session) => session.id)
+		const lifecycleRows = await this.db
+			.select({
+				trackingSessionId: fleetTrackingSessionEvents.trackingSessionId,
+				characterId: fleetTrackingSessionEvents.characterId,
+				eventType: fleetTrackingSessionEvents.eventType,
+				observedAt: fleetTrackingSessionEvents.observedAt,
+			})
+			.from(fleetTrackingSessionEvents)
+			.where(inArray(fleetTrackingSessionEvents.trackingSessionId, sessionIds))
+			.orderBy(asc(fleetTrackingSessionEvents.observedAt))
+
+		const bossRows = await this.db
+			.select({
+				trackingSessionId: fleetCommanderEvents.trackingSessionId,
+				commanderCharacterId: fleetCommanderEvents.commanderCharacterId,
+				observedAt: fleetCommanderEvents.observedAt,
+			})
+			.from(fleetCommanderEvents)
+			.where(
+				and(
+					inArray(fleetCommanderEvents.trackingSessionId, sessionIds),
+					lt(fleetCommanderEvents.observedAt, to)
+				)
+			)
+			.orderBy(asc(fleetCommanderEvents.observedAt))
+
+		const lifecycleBySession = new Map<
+			string,
+			Array<{ characterId: string; eventType: 'started' | 'ended' | 'resumed'; observedAt: Date }>
+		>()
+		for (const row of lifecycleRows) {
+			if (!row.trackingSessionId) continue
+			const list = lifecycleBySession.get(row.trackingSessionId) ?? []
+			list.push({
+				characterId: row.characterId,
+				eventType: row.eventType as 'started' | 'ended' | 'resumed',
+				observedAt: row.observedAt,
+			})
+			lifecycleBySession.set(row.trackingSessionId, list)
+		}
+
+		const bossBySession = new Map<
+			string,
+			Array<{ commanderCharacterId: string; observedAt: Date }>
+		>()
+		for (const row of bossRows) {
+			if (!row.trackingSessionId) continue
+			const list = bossBySession.get(row.trackingSessionId) ?? []
+			list.push({
+				commanderCharacterId: row.commanderCharacterId,
+				observedAt: row.observedAt,
+			})
+			bossBySession.set(row.trackingSessionId, list)
+		}
+
+		const bySession = new Map<string, Map<string, { minutes: number; hasActiveTime: boolean }>>()
+		const addMinutes = (
+			sessionMap: Map<string, { minutes: number; hasActiveTime: boolean }>,
+			characterId: string,
+			deltaMs: number
+		): void => {
+			if (deltaMs <= 0) return
+			const deltaMinutes = deltaMs / 60_000
+			const existing = sessionMap.get(characterId) ?? { minutes: 0, hasActiveTime: false }
+			existing.minutes += deltaMinutes
+			existing.hasActiveTime = true
+			sessionMap.set(characterId, existing)
+		}
+
+		for (const session of sessions) {
+			const sessionMap = new Map<string, { minutes: number; hasActiveTime: boolean }>()
+			const timeline: Array<
+				| { kind: 'lifecycle'; eventType: 'started' | 'ended' | 'resumed'; observedAt: Date }
+				| { kind: 'boss'; commanderCharacterId: string; observedAt: Date }
+			> = []
+
+			for (const row of lifecycleBySession.get(session.id) ?? []) {
+				timeline.push({
+					kind: 'lifecycle',
+					eventType: row.eventType,
+					observedAt: row.observedAt,
+				})
+			}
+			for (const row of bossBySession.get(session.id) ?? []) {
+				timeline.push({
+					kind: 'boss',
+					commanderCharacterId: row.commanderCharacterId,
+					observedAt: row.observedAt,
+				})
+			}
+
+			timeline.sort((a, b) => {
+				const diff = a.observedAt.getTime() - b.observedAt.getTime()
+				if (diff !== 0) return diff
+				if (a.kind === b.kind) return 0
+				return a.kind === 'lifecycle' ? -1 : 1
+			})
+
+			let active = true
+			let currentBossId = session.characterId
+			let cursor = session.startedAt.getTime()
+			const windowStart = from.getTime()
+			const windowEnd = Math.min(session.endedAt?.getTime() ?? to.getTime(), to.getTime())
+
+			for (const event of timeline) {
+				const eventTime = Math.max(event.observedAt.getTime(), session.startedAt.getTime())
+				if (eventTime > windowEnd) break
+
+				if (active && eventTime > windowStart) {
+					addMinutes(
+						sessionMap,
+						currentBossId,
+						eventTime - Math.max(cursor, windowStart)
+					)
+				}
+
+				cursor = eventTime
+				if (event.kind === 'lifecycle') {
+					active = event.eventType !== 'ended'
+				} else {
+					currentBossId = event.commanderCharacterId
+				}
+			}
+
+			if (active && windowEnd > windowStart) {
+				addMinutes(sessionMap, currentBossId, windowEnd - Math.max(cursor, windowStart))
+			}
+
+			bySession.set(session.id, sessionMap)
+		}
+
+		return bySession
 	}
 
 	/**
@@ -1752,22 +2214,25 @@ export class FleetsDO extends DurableObject implements Fleets {
 				)
 			)
 
-		// Top FCs by session count (characterId of the FC on each session)
-		const topFCs = await this.db
-			.select({
-				characterId: fleetTrackingSessions.characterId,
-				count: sql<number>`count(*)::int`,
-			})
-			.from(fleetTrackingSessions)
-			.where(
-				and(
-					gte(fleetTrackingSessions.startedAt, from),
-					lt(fleetTrackingSessions.startedAt, to)
-				)
-			)
-			.groupBy(fleetTrackingSessions.characterId)
-			.orderBy(desc(sql`count(*)`))
-			.limit(10)
+		const bossAttributionBySession = await this.getFleetBossAttributionBySession(range)
+		const topFCMap = new Map<string, { characterId: string; count: number; minutesAsFC: number }>()
+		for (const session of bossAttributionBySession.values()) {
+			for (const [characterId, stats] of session.entries()) {
+				const entry = topFCMap.get(characterId) ?? {
+					characterId,
+					count: 0,
+					minutesAsFC: 0,
+				}
+				if (stats.hasActiveTime) {
+					entry.count += 1
+				}
+				entry.minutesAsFC += stats.minutes
+				topFCMap.set(characterId, entry)
+			}
+		}
+		const topFCs = Array.from(topFCMap.values())
+			.sort((a, b) => b.minutesAsFC - a.minutesAsFC)
+			.slice(0, 10)
 
 		// Top pilots by minutes in fleet (sum of ship-event durations clamped to window)
 		const topPilots = await this.db
@@ -1857,7 +2322,11 @@ export class FleetsDO extends DurableObject implements Fleets {
 				avgPeakMembers: sessionTotals[0]?.avgPeak ?? null,
 				largestFleetPeak: sessionTotals[0]?.maxPeak ?? null,
 			},
-			topFCs: topFCs.map((r) => ({ characterId: r.characterId, count: r.count })),
+			topFCs: topFCs.map((r) => ({
+				characterId: r.characterId,
+				count: r.count,
+				minutesAsFC: Math.round(r.minutesAsFC),
+			})),
 			topPilots: topPilots.map((r) => ({
 				characterId: r.characterId,
 				minutesInFleet: r.minutesInFleet ?? 0,
@@ -1884,6 +2353,7 @@ export class FleetsDO extends DurableObject implements Fleets {
 					fleetsJoined: 0,
 					minutesInFleet: 0,
 					timesFC: 0,
+					minutesAsFC: 0,
 					avgFleetDurationMinutes: null,
 				},
 				shipsFlown: [],
@@ -1906,6 +2376,7 @@ export class FleetsDO extends DurableObject implements Fleets {
 		const to = new Date(range.to)
 		const fromIso = from.toISOString()
 		const toIso = to.toISOString()
+		const bossAttributionBySession = await this.getFleetBossAttributionBySession(range)
 
 		// Distinct sessions joined per character, derived from join events
 		const fleetsJoinedRows = await this.db
@@ -1946,22 +2417,6 @@ export class FleetsDO extends DurableObject implements Fleets {
 				)
 			)
 			.groupBy(fleetMemberShipEvents.characterId)
-
-		// Times FC'd: sessions where this character was the FC
-		const fcRows = await this.db
-			.select({
-				characterId: fleetTrackingSessions.characterId,
-				count: sql<number>`count(*)::int`,
-			})
-			.from(fleetTrackingSessions)
-			.where(
-				and(
-					inArray(fleetTrackingSessions.characterId, characterIds),
-					gte(fleetTrackingSessions.startedAt, from),
-					lt(fleetTrackingSessions.startedAt, to)
-				)
-			)
-			.groupBy(fleetTrackingSessions.characterId)
 
 		// Ships flown per character — total time in each ship (clamped to window)
 		const shipRows = await this.db
@@ -2051,6 +2506,7 @@ export class FleetsDO extends DurableObject implements Fleets {
 						fleetsJoined: 0,
 						minutesInFleet: 0,
 						timesFC: 0,
+						minutesAsFC: 0,
 						avgFleetDurationMinutes: null,
 					},
 					shipsFlown: [],
@@ -2066,8 +2522,24 @@ export class FleetsDO extends DurableObject implements Fleets {
 		for (const row of minutesRows) {
 			ensure(row.characterId).totals.minutesInFleet = row.minutes ?? 0
 		}
-		for (const row of fcRows) {
-			ensure(row.characterId).totals.timesFC = row.count
+		const bossAggregates = new Map<string, { minutesAsFC: number; sessionIds: Set<string> }>()
+		for (const [sessionId, sessionMap] of bossAttributionBySession.entries()) {
+			for (const [bossCharacterId, stats] of sessionMap.entries()) {
+				if (!stats.hasActiveTime) continue
+				const entry =
+					bossAggregates.get(bossCharacterId) ?? {
+						minutesAsFC: 0,
+						sessionIds: new Set<string>(),
+					}
+				entry.minutesAsFC += stats.minutes
+				entry.sessionIds.add(sessionId)
+				bossAggregates.set(bossCharacterId, entry)
+			}
+		}
+
+		for (const [characterId, stats] of bossAggregates.entries()) {
+			ensure(characterId).totals.timesFC = stats.sessionIds.size
+			ensure(characterId).totals.minutesAsFC = Math.round(stats.minutesAsFC)
 		}
 		for (const row of shipRows) {
 			ensure(row.characterId).shipsFlown.push({
@@ -2076,11 +2548,14 @@ export class FleetsDO extends DurableObject implements Fleets {
 			})
 		}
 		for (const row of recentRows) {
+			const bossMinutes = row.sessionId
+				? bossAttributionBySession.get(row.sessionId)?.get(row.characterId)?.minutes ?? 0
+				: 0
 			const recent: CharacterRecentSessionRow = {
 				sessionId: row.sessionId,
 				sessionName: row.sessionName,
 				fleetId: row.fleetId,
-				wasFC: row.fcCharacterId === row.characterId,
+				wasFC: bossMinutes > 0,
 				startedAt: row.startedAt.toISOString(),
 				endedAt: row.endedAt ? row.endedAt.toISOString() : null,
 				totalMinutes: row.totalMinutes ?? 0,
@@ -2258,11 +2733,19 @@ export class FleetsDO extends DurableObject implements Fleets {
 	 * Dates become ISO strings so they survive the DO RPC boundary cleanly.
 	 */
 	private serializeSession = (
-		row: typeof fleetTrackingSessions.$inferSelect
+		row: typeof fleetTrackingSessions.$inferSelect,
+		currentFleetBossCharacterId: string | null,
+		fleetBossCharacterIds: string[] = []
 	): TrackingSession => ({
 		id: row.id,
 		name: row.name,
 		characterId: row.characterId,
+		currentFleetBossCharacterId,
+		currentFleetBossCharacterName: null,
+		fleetBossCharacterIds,
+		currentCommanderCharacterId: currentFleetBossCharacterId,
+		currentCommanderCharacterName: null,
+		commanderCharacterIds: fleetBossCharacterIds,
 		startedByUserId: row.startedByUserId,
 		fleetId: row.fleetId,
 		status: row.status as TrackingSession['status'],
@@ -2502,7 +2985,7 @@ export class FleetsDO extends DurableObject implements Fleets {
 				fleetId,
 				activeSession.characterId,
 				activeSession.id,
-				true
+				{ force: true }
 			)
 
 			logger.info('[FleetsDO Watchdog] Recovered FleetMonitor via forced re-initialize', {

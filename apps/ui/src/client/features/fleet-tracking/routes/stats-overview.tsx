@@ -16,6 +16,7 @@ import { StatsEntitySearch } from '../components/stats-entity-search'
 import { ShipDistributionChart } from '../components/ship-distribution-chart'
 import { StatsRangePicker, useRangeFromSearchParams } from '../components/stats-range-picker'
 import { useStatsOverview } from '../hooks'
+import { formatDuration } from '../utils/format'
 
 export default function StatsOverview() {
 	usePageTitle('Fleet Tracking — Stats')
@@ -24,7 +25,11 @@ export default function StatsOverview() {
 	const { data: corporationAccess, isLoading: corporationAccessLoading } = useCorporationAccess()
 	const { range } = useRangeFromSearchParams()
 	const memberCorporations =
-		corporationAccess?.corporations.filter((corp) => corp.isMemberCorporation) ?? []
+		corporationAccess?.corporations.filter(
+			(corp) =>
+				corp.isMemberCorporation &&
+				(corp.userRole === 'CEO' || corp.userRole === 'Director' || corp.userRole === 'admin')
+		) ?? []
 	const canViewMemberCorporationStats = !canView && memberCorporations.length > 0
 
 	const { data, isLoading, isError } = useStatsOverview(range, { enabled: canView })
@@ -151,14 +156,19 @@ export default function StatsOverview() {
 										items={data.topFCs}
 										emptyText="No FCs in this range."
 										renderItem={(r) => (
-											<div className="flex items-center justify-between">
-												<Link
-													to={`/fleet-tracking/stats/characters/${r.characterId}`}
-													className="hover:underline"
-												>
-													{r.characterName ?? r.characterId}
-												</Link>
-												<span className="text-muted-foreground">{r.count} fleets</span>
+											<div className="flex items-center justify-between gap-3">
+												<div className="min-w-0">
+													<Link
+														to={`/fleet-tracking/stats/characters/${r.characterId}`}
+														className="hover:underline"
+													>
+														{r.characterName ?? r.characterId}
+													</Link>
+													<div className="text-xs text-muted-foreground">
+														{formatDuration((r.minutesAsFC ?? 0) * 60_000)} active
+													</div>
+												</div>
+												<span className="text-muted-foreground">{r.count} sessions</span>
 											</div>
 										)}
 									/>

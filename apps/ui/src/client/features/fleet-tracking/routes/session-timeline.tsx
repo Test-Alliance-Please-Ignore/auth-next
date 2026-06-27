@@ -23,7 +23,98 @@ import { usePageTitle } from '@/hooks/usePageTitle'
 import { api } from '@/lib/api'
 import { useSessionTimeline, useTrackingSession } from '../hooks'
 
+import type { SessionTimelineRow } from '../types'
+
 type Filter = 'all' | 'join' | 'leave' | 'ship_change'
+
+function formatTimelineCharacterRef(
+	name: string | null | undefined,
+	id: string | null | undefined
+) {
+	return name ?? (id ? <span className="font-mono">{id}</span> : '—')
+}
+
+function getTimelineEventLabel(eventType: SessionTimelineRow['eventType']): string {
+	switch (eventType) {
+		case 'join':
+			return 'Join'
+		case 'leave':
+			return 'Leave'
+		case 'ship_change':
+			return 'Ship Change'
+		case 'fleet_boss_initial':
+			return 'Initial Fleet Boss'
+		case 'fleet_boss_change':
+			return 'Fleet Boss Change'
+		case 'tracking_started':
+			return 'Tracking Started'
+		case 'tracking_resumed':
+			return 'Tracking Resumed'
+		case 'tracking_ended':
+			return 'Tracking Ended'
+	}
+}
+
+function renderTimelineEventDetails(ev: SessionTimelineRow) {
+	if (ev.eventType === 'fleet_boss_initial') {
+		return <>Initial boss: {formatTimelineCharacterRef(ev.characterName, ev.characterId)}</>
+	}
+
+	if (ev.eventType === 'fleet_boss_change') {
+		return (
+			<>
+				{formatTimelineCharacterRef(
+					ev.previousFleetBossCharacterName,
+					ev.previousFleetBossCharacterId
+				)}{' '}
+				→ {formatTimelineCharacterRef(ev.characterName, ev.characterId)}
+			</>
+		)
+	}
+
+	if (ev.eventType === 'tracking_started') {
+		return <>Tracking started with {formatTimelineCharacterRef(ev.characterName, ev.characterId)}</>
+	}
+
+	if (ev.eventType === 'tracking_resumed') {
+		const isTakeover =
+			!!ev.previousFleetBossCharacterId &&
+			ev.previousFleetBossCharacterId !== ev.characterId
+
+		return isTakeover ? (
+			<>
+				Taken over from{' '}
+				{formatTimelineCharacterRef(
+					ev.previousFleetBossCharacterName,
+					ev.previousFleetBossCharacterId
+				)}{' '}
+				→ {formatTimelineCharacterRef(ev.characterName, ev.characterId)}
+			</>
+		) : (
+			<>Tracking resumed by {formatTimelineCharacterRef(ev.characterName, ev.characterId)}</>
+		)
+	}
+
+	if (ev.eventType === 'tracking_ended') {
+		return <>Tracking ended by {formatTimelineCharacterRef(ev.characterName, ev.characterId)}</>
+	}
+
+	if (ev.eventType === 'ship_change') {
+		return (
+			<>
+				{ev.previousShipTypeName || `type #${ev.previousShipTypeId ?? '?'}`} →{' '}
+				{ev.shipTypeName || `type #${ev.shipTypeId}`} in{' '}
+				{ev.systemName || `system #${ev.solarSystemId}`}
+			</>
+		)
+	}
+
+	return (
+		<>
+			{ev.shipTypeName || `type #${ev.shipTypeId}`} at {ev.systemName || `system #${ev.solarSystemId}`}
+		</>
+	)
+}
 
 export default function SessionTimeline() {
 	usePageTitle('Fleet Tracking Timeline')
@@ -143,35 +234,22 @@ export default function SessionTimeline() {
 							</TableHeader>
 							<TableBody>
 								{timeline.items.map((ev) => (
-									<TableRow key={ev.id}>
-										<TableCell className="text-muted-foreground">
-											<EveTimeDisplay dateStr={ev.eventTimestamp} />
-										</TableCell>
-										<TableCell className="font-medium">
-											{ev.eventType === 'join' ? 'Join' : ev.eventType === 'leave' ? 'Leave' : 'Ship Change'}
-										</TableCell>
-										<TableCell>
-											<Link
-												to={`/fleet-tracking/${sessionId}/members/${ev.characterId}`}
-												className="hover:underline"
-											>
-												{ev.characterName || ev.characterId}
-											</Link>
-										</TableCell>
-										<TableCell className="text-muted-foreground">
-											{ev.eventType === 'ship_change' ? (
-												<>
-													{ev.previousShipTypeName || `type #${ev.previousShipTypeId ?? '?'}`} →{' '}
-													{ev.shipTypeName || `type #${ev.shipTypeId}`} in{' '}
-													{ev.systemName || `system #${ev.solarSystemId}`}
-												</>
-											) : (
-												<>
-													{ev.shipTypeName || `type #${ev.shipTypeId}`} at{' '}
-													{ev.systemName || `system #${ev.solarSystemId}`}
-												</>
-											)}
-										</TableCell>
+								<TableRow key={ev.id}>
+									<TableCell className="text-muted-foreground">
+										<EveTimeDisplay dateStr={ev.eventTimestamp} />
+									</TableCell>
+									<TableCell className="font-medium">{getTimelineEventLabel(ev.eventType)}</TableCell>
+									<TableCell>
+										<Link
+											to={`/fleet-tracking/${sessionId}/members/${ev.characterId}`}
+											className="hover:underline"
+										>
+											{ev.characterName || ev.characterId}
+										</Link>
+									</TableCell>
+									<TableCell className="text-muted-foreground">
+										{renderTimelineEventDetails(ev)}
+									</TableCell>
 									</TableRow>
 								))}
 							</TableBody>

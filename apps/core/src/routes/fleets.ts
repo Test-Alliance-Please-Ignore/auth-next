@@ -123,14 +123,25 @@ app.get('/character/:characterId', async (c) => {
 			isBoss: fleetInfo.fleet_boss_id === characterId,
 		})
 
-			return c.json({
-				isInFleet,
-				fleet_id: String(fleetInfo.fleet_id),
-				fleet_boss_id: String(fleetInfo.fleet_boss_id),
-				role: fleetInfo.role,
-				squad_id: fleetInfo.squad_id,
-				wing_id: fleetInfo.wing_id,
-			})
+		let activeSession = null
+		let existingSession = null
+		if (isInFleet && fleetInfo.fleet_id !== '0') {
+			;[activeSession, existingSession] = await Promise.all([
+				fleetsStub.getActiveTrackingSessionByFleetId(fleetInfo.fleet_id),
+				fleetsStub.getLatestTrackingSessionByFleetId(fleetInfo.fleet_id),
+			])
+		}
+
+		return c.json({
+			isInFleet,
+			fleet_id: String(fleetInfo.fleet_id),
+			fleet_boss_id: String(fleetInfo.fleet_boss_id),
+			role: fleetInfo.role,
+			squad_id: fleetInfo.squad_id,
+			wing_id: fleetInfo.wing_id,
+			activeSession,
+			existingSession,
+		})
 	} catch (error) {
 		logger.error('Failed to get character fleet info:', error)
 		return c.json({ error: 'Failed to get fleet information' }, 500)
@@ -418,10 +429,15 @@ async function resolveNames(
  */
 app.post('/tracking', async (c) => {
 	const user = c.get('user')!
-	const body = await c.req.json<{ characterId?: string; name?: string }>()
+	const body = await c.req.json<{
+		characterId?: string
+		name?: string
+		action?: 'new' | 'take_over'
+	}>()
 
 	const characterId = body.characterId?.trim()
 	const name = body.name?.trim()
+	const action = body.action === 'take_over' ? 'take_over' : 'new'
 
 	if (!characterId) return c.json({ error: 'characterId is required' }, 400)
 	if (!name) return c.json({ error: 'name is required' }, 400)
@@ -442,12 +458,49 @@ app.post('/tracking', async (c) => {
 	}
 
 	const fleetsStub = getStub<Fleets>(c.env.FLEETS, 'default')
+	const eveCharacterId = createEveCharacterId(characterId)
+
+	let fleetInfo:
+		| Awaited<ReturnType<Fleets['getCharacterFleetInformation']>>
+		| null = null
+	try {
+		fleetInfo = await fleetsStub.getCharacterFleetInformation(eveCharacterId)
+	} catch (error) {
+		logger.error('Failed to preflight character fleet info', {
+			characterId,
+			userId: user.id,
+			error: error instanceof Error ? error.message : String(error),
+		})
+		return c.json({ error: 'Failed to get fleet information' }, 502)
+	}
+
+	if (!fleetInfo.fleet_id || fleetInfo.fleet_id === '0') {
+		return c.json({ error: 'not_in_fleet' }, 400)
+	}
+	if (fleetInfo.fleet_boss_id !== characterId) {
+		return c.json({ error: 'not_fleet_boss' }, 400)
+	}
+
+	if (action !== 'take_over') {
+		const activeSession = await fleetsStub.getActiveTrackingSessionByFleetId(fleetInfo.fleet_id)
+		if (activeSession) {
+			return c.json(
+				{
+					error: 'fleet_session_active',
+					message: 'This fleet is already being tracked.',
+					session: activeSession,
+				},
+				409
+			)
+		}
+	}
 
 	try {
 		const result = await fleetsStub.startTrackingSession({
 			characterId,
 			startedByUserId: user.id,
 			name,
+			action,
 		})
 		return c.json({ sessionId: result.sessionId }, 201)
 	} catch (error) {
@@ -458,6 +511,19 @@ app.post('/tracking', async (c) => {
 					: error.code === 'character_session_active' || error.code === 'fleet_session_active'
 					? 409
 					: 502
+			if (error.code === 'fleet_session_active') {
+				const existingSession = fleetInfo?.fleet_id
+					? await fleetsStub.getActiveTrackingSessionByFleetId(fleetInfo.fleet_id)
+					: null
+				return c.json(
+					{
+						error: error.code,
+						message: error.message,
+						session: existingSession,
+					},
+					status
+				)
+			}
 			return c.json({ error: error.code, message: error.message }, status)
 		}
 		logger.error('startTrackingSession failed', {
@@ -471,7 +537,7 @@ app.post('/tracking', async (c) => {
 
 /**
  * DELETE /fleets/tracking/:sessionId
- * Stop an active session. Only the session owner or an admin can stop.
+ * Stop an active session. Only the current fleet boss, or an admin, can stop.
  */
 app.delete('/tracking/:sessionId', async (c) => {
 	const user = c.get('user')!
@@ -485,15 +551,15 @@ app.delete('/tracking/:sessionId', async (c) => {
 	}
 
 	const { isAdmin } = await resolveTrackingPerms(c)
-	const isOwner = session.startedByUserId === user.id
-	if (!isOwner && !isAdmin) {
-		return c.json({ error: 'You can only stop your own sessions' }, 403)
+	const isCurrentBoss = isCurrentFleetBossForUser(session, user)
+	if (!isCurrentBoss && !isAdmin) {
+		return c.json({ error: 'You can only stop sessions you command right now' }, 403)
 	}
 
 	try {
 		await fleetsStub.stopTrackingSession({
 			sessionId,
-			endedReason: isOwner ? 'user_stopped' : 'admin_stopped',
+			endedReason: isAdmin ? 'admin_stopped' : 'user_stopped',
 			endedByUserId: user.id,
 		})
 		return c.json({ ok: true })
@@ -510,7 +576,7 @@ app.delete('/tracking/:sessionId', async (c) => {
 /**
  * POST /fleets/tracking/:sessionId/kick-members
  * Remove one or more members from the active tracked fleet via ESI.
- * Owner of the session or admin only.
+ * Current fleet boss, or admin, only.
  */
 app.post('/tracking/:sessionId/kick-members', async (c) => {
 	const user = c.get('user')!
@@ -531,9 +597,9 @@ app.post('/tracking/:sessionId/kick-members', async (c) => {
 	}
 
 	const { isAdmin } = await resolveTrackingPerms(c)
-	const isOwner = session.startedByUserId === user.id
-	if (!isOwner && !isAdmin) {
-		return c.json({ error: 'You can only manage your own active sessions' }, 403)
+	const isCurrentBoss = isCurrentFleetBossForUser(session, user)
+	if (!isCurrentBoss && !isAdmin) {
+		return c.json({ error: 'You can only manage sessions you command right now' }, 403)
 	}
 
 	try {
@@ -597,12 +663,19 @@ app.get('/tracking', async (c) => {
 	} else {
 		// :create-only viewers see only their own sessions, regardless of query
 		filter.startedByUserId = user.id
+		filter.fleetBossCharacterIds = user.characters.map((char) => char.characterId.toString())
 	}
 
 	const result = await fleetsStub.listTrackingSessions(filter)
 
-	// Resolve FC character IDs to names so the list shows pilot names instead of IDs.
-	const characterIds = Array.from(new Set(result.items.map((s) => s.characterId)))
+	// Resolve fleet-boss character IDs to names so the list shows pilot names instead of IDs.
+	const characterIds = Array.from(
+		new Set(
+			result.items
+				.flatMap((s) => [s.characterId, s.currentFleetBossCharacterId ?? s.currentCommanderCharacterId])
+				.filter((id): id is string => !!id)
+		)
+	)
 	const names = await resolveNames(c, characterIds)
 
 	return c.json({
@@ -610,6 +683,16 @@ app.get('/tracking', async (c) => {
 		items: result.items.map((s) => ({
 			...s,
 			characterName: names[s.characterId] ?? null,
+			currentFleetBossCharacterName: s.currentFleetBossCharacterId
+				? names[s.currentFleetBossCharacterId] ?? null
+				: s.currentCommanderCharacterId
+					? names[s.currentCommanderCharacterId] ?? null
+					: null,
+			currentCommanderCharacterName: s.currentFleetBossCharacterId
+				? names[s.currentFleetBossCharacterId] ?? null
+				: s.currentCommanderCharacterId
+					? names[s.currentCommanderCharacterId] ?? null
+					: null,
 		})),
 	})
 })
@@ -618,8 +701,8 @@ app.get('/tracking', async (c) => {
  * Helper: load a session and decide whether the caller is allowed to see
  * (a) the summary and (b) the detail tabs.
  *
- * The session's FC character counts as an owner-equivalent path even when the
- * viewer is not asking through the global fleet-tracking permissions.
+ * The current fleet boss counts as an owner-equivalent path when the
+ * viewer also has the create permission, even if the original starter differs.
  *
  * Returns either { mode: 'allow', session, detail } or a Response to short-circuit.
  */
@@ -635,18 +718,32 @@ async function resolveSessionAccess(
 	const session = await fleetsStub.getTrackingSession(sessionId)
 	if (!session) return c.json({ error: 'Session not found' }, 404)
 
-	const { canViewFleets, isAdmin } = await resolveTrackingPerms(c)
+	const { canCreate, canViewFleets, isAdmin } = await resolveTrackingPerms(c)
 	const isOwner = session.startedByUserId === user.id
-	const isCommander = user.characters.some(
-		(character) => character.characterId.toString() === session.characterId
-	)
+	const bossCharacterIds = session.fleetBossCharacterIds?.length
+		? session.fleetBossCharacterIds
+		: session.commanderCharacterIds?.length
+			? session.commanderCharacterIds
+			: [session.currentFleetBossCharacterId ?? session.currentCommanderCharacterId ?? session.characterId]
+	const isBoss =
+		canCreate &&
+		user.characters.some((character) => bossCharacterIds.includes(character.characterId.toString()))
 
-	if (!isOwner && !isCommander && !canViewFleets && !isAdmin) {
+	if (!isOwner && !isBoss && !canViewFleets && !isAdmin) {
 		return c.json({ error: 'Session not found' }, 404)
 	}
 
-	const canViewDetail = canViewFleets || isAdmin || isOwner || isCommander
+	const canViewDetail = canViewFleets || isAdmin || isOwner || isBoss
 	return { mode: 'allow', session, canViewDetail }
+}
+
+function isCurrentFleetBossForUser(
+	session: NonNullable<Awaited<ReturnType<Fleets['getTrackingSession']>>>,
+	user: { characters: Array<{ characterId: string | number }> }
+): boolean {
+	const currentFleetBossCharacterId = session.currentFleetBossCharacterId ?? null
+	if (!currentFleetBossCharacterId) return false
+	return user.characters.some((character) => character.characterId.toString() === currentFleetBossCharacterId)
 }
 
 /**
@@ -659,7 +756,12 @@ app.get('/tracking/:sessionId', async (c) => {
 	const result = await resolveSessionAccess(c, c.req.param('sessionId'))
 	if (result instanceof Response) return result
 
-	const names = await resolveNames(c, [result.session.characterId])
+	const names = await resolveNames(c, [
+		result.session.characterId,
+		result.session.currentFleetBossCharacterId ??
+			result.session.currentCommanderCharacterId ??
+			result.session.characterId,
+	])
 	let broadcast: {
 		id: string
 		title: string
@@ -696,6 +798,16 @@ app.get('/tracking/:sessionId', async (c) => {
 	return c.json({
 		...result.session,
 		characterName: names[result.session.characterId] ?? null,
+		currentFleetBossCharacterName: result.session.currentFleetBossCharacterId
+			? names[result.session.currentFleetBossCharacterId] ?? null
+			: result.session.currentCommanderCharacterId
+				? names[result.session.currentCommanderCharacterId] ?? null
+				: null,
+		currentCommanderCharacterName: result.session.currentFleetBossCharacterId
+			? names[result.session.currentFleetBossCharacterId] ?? null
+			: result.session.currentCommanderCharacterId
+				? names[result.session.currentCommanderCharacterId] ?? null
+				: null,
 		broadcast,
 	})
 })
@@ -863,9 +975,19 @@ app.get('/tracking/:sessionId/timeline', async (c) => {
 	// Resolve all distinct character / ship / system / station IDs in the page.
 	const ids: Array<string | number> = []
 	for (const row of timeline.items) {
-		ids.push(row.characterId, row.shipTypeId, row.solarSystemId)
-		if (row.stationId) ids.push(row.stationId)
-		if (row.previousShipTypeId) ids.push(row.previousShipTypeId)
+		ids.push(row.characterId)
+		if (
+			row.eventType !== 'fleet_boss_change' &&
+			row.eventType !== 'fleet_boss_initial' &&
+			row.eventType !== 'tracking_started' &&
+			row.eventType !== 'tracking_resumed' &&
+			row.eventType !== 'tracking_ended'
+		) {
+			ids.push(row.shipTypeId, row.solarSystemId)
+			if (row.stationId) ids.push(row.stationId)
+			if (row.previousShipTypeId) ids.push(row.previousShipTypeId)
+		}
+		if (row.previousFleetBossCharacterId) ids.push(row.previousFleetBossCharacterId)
 	}
 	const names = await resolveNames(c, ids)
 
@@ -874,12 +996,35 @@ app.get('/tracking/:sessionId/timeline', async (c) => {
 		items: timeline.items.map((row) => ({
 			...row,
 			characterName: row.characterName ?? names[row.characterId] ?? null,
-			shipTypeName: row.shipTypeName ?? names[String(row.shipTypeId)] ?? null,
-			systemName: row.systemName ?? names[String(row.solarSystemId)] ?? null,
+			shipTypeName:
+				row.eventType === 'fleet_boss_change' ||
+				row.eventType === 'fleet_boss_initial' ||
+				row.eventType === 'tracking_started' ||
+				row.eventType === 'tracking_resumed' ||
+				row.eventType === 'tracking_ended'
+					? null
+					: row.shipTypeName ?? names[String(row.shipTypeId)] ?? null,
+			systemName:
+				row.eventType === 'fleet_boss_change' ||
+				row.eventType === 'fleet_boss_initial' ||
+				row.eventType === 'tracking_started' ||
+				row.eventType === 'tracking_resumed' ||
+				row.eventType === 'tracking_ended'
+					? null
+					: row.systemName ?? names[String(row.solarSystemId)] ?? null,
 			previousShipTypeName:
-				row.previousShipTypeId != null
-					? names[String(row.previousShipTypeId)] ?? null
-					: null,
+				row.eventType === 'fleet_boss_change' ||
+				row.eventType === 'fleet_boss_initial' ||
+				row.eventType === 'tracking_started' ||
+				row.eventType === 'tracking_resumed' ||
+				row.eventType === 'tracking_ended'
+					? null
+					: row.previousShipTypeId != null
+						? names[String(row.previousShipTypeId)] ?? null
+						: null,
+			previousFleetBossCharacterName: row.previousFleetBossCharacterId
+				? names[row.previousFleetBossCharacterId] ?? null
+				: null,
 		})),
 	})
 })
@@ -967,6 +1112,41 @@ app.get('/tracking/:sessionId/summary', async (c) => {
 	const fleetsStub = getStub<Fleets>(c.env.FLEETS, 'default')
 	const summary = await fleetsStub.getSessionSummary(c.req.param('sessionId'))
 	return c.json({ summary })
+})
+
+/**
+ * GET /fleets/tracking/:sessionId/commander-history
+ * Commander handoff timeline for the session.
+ */
+app.get('/tracking/:sessionId/commander-history', async (c) => {
+	const result = await resolveSessionAccess(c, c.req.param('sessionId'))
+	if (result instanceof Response) return result
+	if (!result.canViewDetail) {
+		return c.json({ error: 'historical_detail_requires_view_all' }, 403)
+	}
+
+	const fleetsStub = getStub<Fleets>(c.env.FLEETS, 'default')
+	const events = await fleetsStub.getSessionCommanderHistory(c.req.param('sessionId'))
+	if (events.length === 0) {
+		return c.json({ items: [] })
+	}
+
+	const commanderIds = Array.from(
+		new Set(
+			events.flatMap((event) => [event.previousCommanderCharacterId, event.commanderCharacterId])
+		)
+	).filter((id): id is string => !!id)
+	const names = await resolveNames(c, commanderIds)
+
+	return c.json({
+		items: events.map((event) => ({
+			...event,
+			previousCommanderCharacterName: event.previousCommanderCharacterId
+				? names[event.previousCommanderCharacterId] ?? null
+				: null,
+			commanderCharacterName: names[event.commanderCharacterId] ?? null,
+		})),
+	})
 })
 
 // ============================================================================
@@ -1337,6 +1517,7 @@ app.get('/tracking/stats/users/:userId', async (c) => {
 					fleetsJoined: 0,
 					minutesInFleet: 0,
 					timesFC: 0,
+					minutesAsFC: 0,
 					avgFleetDurationMinutes: null,
 				},
 				perCharacter: [],
@@ -1352,6 +1533,7 @@ app.get('/tracking/stats/users/:userId', async (c) => {
 			fleetsJoined: 0,
 			minutesInFleet: 0,
 			timesFC: 0,
+			minutesAsFC: 0,
 			avgFleetDurationMinutes: null as number | null,
 		}
 		const shipsAcc = new Map<number, { totalMinutes: number }>()
@@ -1371,6 +1553,7 @@ app.get('/tracking/stats/users/:userId', async (c) => {
 					fleetsJoined: 0,
 					minutesInFleet: 0,
 					timesFC: 0,
+					minutesAsFC: 0,
 					avgFleetDurationMinutes: null,
 				},
 				shipsFlown: [],
@@ -1379,6 +1562,7 @@ app.get('/tracking/stats/users/:userId', async (c) => {
 			totals.fleetsJoined += stats.totals.fleetsJoined
 			totals.minutesInFleet += stats.totals.minutesInFleet
 			totals.timesFC += stats.totals.timesFC
+			totals.minutesAsFC += stats.totals.minutesAsFC
 			for (const s of stats.shipsFlown) {
 				const cur = shipsAcc.get(s.shipTypeId) ?? { totalMinutes: 0 }
 				shipsAcc.set(s.shipTypeId, {
@@ -1484,7 +1668,6 @@ app.get('/tracking/stats/corporations/:corpId', async (c) => {
 
 		let pilotsActive = 0
 		let totalMinutes = 0
-		let totalTimesFC = 0
 		const sessionIds = new Set<string>()
 		const shipsAcc = new Map<number, { totalMinutes: number }>()
 		const topMembers: Array<{
@@ -1493,14 +1676,18 @@ app.get('/tracking/stats/corporations/:corpId', async (c) => {
 			fleetsJoined: number
 			minutesInFleet: number
 		}> = []
-		const topFCs: Array<{ characterId: string; characterName: string; sessions: number }> = []
+		const topFCs: Array<{
+			characterId: string
+			characterName: string
+			sessions: number
+			minutesAsFC: number
+		}> = []
 
 		for (const cid of characterIds) {
 			const s = perCharStats[cid]
 			if (!s) continue
 			pilotsActive += 1
 			totalMinutes += s.totals.minutesInFleet
-			totalTimesFC += s.totals.timesFC
 			for (const sh of s.shipsFlown) {
 				const cur = shipsAcc.get(sh.shipTypeId) ?? { totalMinutes: 0 }
 				shipsAcc.set(sh.shipTypeId, {
@@ -1519,12 +1706,13 @@ app.get('/tracking/stats/corporations/:corpId', async (c) => {
 					characterId: cid,
 					characterName: characterNames.get(cid) ?? cid,
 					sessions: s.totals.timesFC,
+					minutesAsFC: s.totals.minutesAsFC,
 				})
 			}
 		}
 
 		topMembers.sort((a, b) => b.minutesInFleet - a.minutesInFleet)
-		topFCs.sort((a, b) => b.sessions - a.sessions)
+		topFCs.sort((a, b) => (b.minutesAsFC ?? 0) - (a.minutesAsFC ?? 0))
 
 		const sessionsWithPresence = sessionIds.size
 		const avgPilotsPerSession =

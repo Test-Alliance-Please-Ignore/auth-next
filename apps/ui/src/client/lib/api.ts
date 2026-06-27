@@ -13,6 +13,8 @@ import type {
 	StructureSovereigntyListQuery as RepoStructureSovereigntyListQuery,
 } from '@repo/structures'
 
+import type { TrackingSession } from '../features/fleet-tracking/types'
+
 const API_BASE_URL =
 	import.meta.env.VITE_API_BASE_URL || '/api'
 const API_REQUEST_TIMEOUT_MS = 30_000
@@ -4033,6 +4035,8 @@ export class ApiClient {
 		role: string
 		squad_id: number
 		wing_id: number
+		activeSession?: TrackingSession | null
+		existingSession?: TrackingSession | null
 	}> {
 		return this.get(`/fleets/character/${characterId}`)
 	}

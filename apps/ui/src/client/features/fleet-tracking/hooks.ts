@@ -11,6 +11,7 @@ export const fleetTrackingKeys = {
 	sessions: () => [...fleetTrackingKeys.all, 'session'] as const,
 	session: (id: string) => [...fleetTrackingKeys.sessions(), id] as const,
 	live: (id: string) => [...fleetTrackingKeys.session(id), 'live'] as const,
+	commanderHistory: (id: string) => [...fleetTrackingKeys.session(id), 'commander-history'] as const,
 	timeline: (
 		id: string,
 		opts: { eventType?: 'join' | 'leave' | 'ship_change'; characterId?: string; limit?: number; offset?: number }
@@ -30,11 +31,15 @@ export function useTrackingSessions(filter: ListSessionsFilter = {}) {
 	})
 }
 
-export function useTrackingSession(sessionId: string | undefined) {
+export function useTrackingSession(
+	sessionId: string | undefined,
+	options: { refetchInterval?: number | false } = {}
+) {
 	return useQuery({
 		queryKey: fleetTrackingKeys.session(sessionId ?? ''),
 		queryFn: () => fleetTrackingApi.getSession(sessionId!),
 		enabled: !!sessionId,
+		refetchInterval: options.refetchInterval,
 	})
 }
 
@@ -110,6 +115,18 @@ export function useSessionSummary(sessionId: string | undefined) {
 		queryKey: fleetTrackingKeys.summary(sessionId ?? ''),
 		queryFn: () => fleetTrackingApi.getSummary(sessionId!),
 		enabled: !!sessionId,
+	})
+}
+
+export function useSessionCommanderHistory(
+	sessionId: string | undefined,
+	options: { refetchInterval?: number | false } = {}
+) {
+	return useQuery({
+		queryKey: fleetTrackingKeys.commanderHistory(sessionId ?? ''),
+		queryFn: () => fleetTrackingApi.getCommanderHistory(sessionId!),
+		enabled: !!sessionId,
+		refetchInterval: options.refetchInterval,
 	})
 }
 

@@ -8,6 +8,11 @@ import { EsiGetFleetInformation, EsiGetFleetMembers } from './esi'
 export interface FleetDetailsResponse {
 	fleetInfo: EsiGetFleetInformation
 	members?: EsiGetFleetMembers
+	/**
+	 * Live fleet boss character ID as reported by the character-level ESI
+	 * fleet lookup.
+	 */
+	fleetBossId?: string
 	fleetBossName?: string
 	memberCount: number
 	/**
@@ -25,6 +30,7 @@ export interface FleetMonitorStateRow extends Record<string, string | number | n
 	fleet_id: string
 	character_id: string
 	tracking_session_id: string | null
+	last_synced_fleet_boss_id: string | null
 	is_initialized: number
 	last_checked: string | null
 	peak_member_count: number
@@ -38,6 +44,7 @@ export interface FleetMonitorState {
 	fleetId: string
 	characterId: string
 	trackingSessionId: string | null
+	lastSyncedFleetBossId: string | null
 	isInitialized: boolean
 	lastChecked: string | null
 	peakMemberCount: number
@@ -72,7 +79,11 @@ export interface FleetMonitor extends DurableObject {
 		fleetId: string,
 		characterId: string,
 		trackingSessionId: string,
-		force?: boolean
+		options?: {
+			force?: boolean
+			previousFleetBossCharacterId?: string | null
+			resumedExistingSession?: boolean
+		}
 	): Promise<void>
 
 	/**

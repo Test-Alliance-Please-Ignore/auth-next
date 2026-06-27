@@ -205,19 +205,24 @@ export default function TrackingSessionsList() {
 										</TableHeader>
 										<TableBody>
 											{sessions.map((session) => (
-												<TableRow key={session.id}>
-													<TableCell>
-														<SessionStatusPill status={session.status} />
-													</TableCell>
-													<TableCell className="font-medium">{session.name}</TableCell>
-													<TableCell>
-														<div className="leading-tight">
-															<div>{session.characterName ?? 'Unknown'}</div>
-															<div className="text-xs text-muted-foreground font-mono">
-																{session.characterId}
-															</div>
-														</div>
-													</TableCell>
+										<TableRow key={session.id}>
+											<TableCell>
+												<SessionStatusPill status={session.status} />
+											</TableCell>
+											<TableCell className="font-medium">{session.name}</TableCell>
+											<TableCell>
+												<div className="leading-tight">
+													<div>
+														{session.currentFleetBossCharacterName ??
+															session.currentCommanderCharacterName ??
+															session.characterName ??
+															'Unknown'}
+													</div>
+													<div className="text-xs text-muted-foreground font-mono">
+														Tracked from: {session.characterId}
+													</div>
+												</div>
+											</TableCell>
 													<TableCell className="text-muted-foreground">
 														<EveTimeDisplay dateStr={session.startedAt} />
 													</TableCell>

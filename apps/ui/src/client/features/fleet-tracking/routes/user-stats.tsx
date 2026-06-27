@@ -96,7 +96,11 @@ export default function UserStats() {
 						stats={[
 							{ label: 'Fleets joined', value: data.totals.fleetsJoined },
 							{ label: 'Time in fleet', value: formatDuration(data.totals.minutesInFleet * 60_000) },
-							{ label: "Times FC'd", value: data.totals.timesFC },
+							{
+								label: 'FC time',
+								value: formatDuration(data.totals.minutesAsFC * 60_000),
+								sublabel: `${data.totals.timesFC} periods`,
+							},
 							{
 								label: 'Avg fleet duration',
 								value:
