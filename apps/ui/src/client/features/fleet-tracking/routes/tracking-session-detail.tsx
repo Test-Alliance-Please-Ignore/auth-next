@@ -42,12 +42,103 @@ import { motdToPlainText } from '../utils/motd'
 
 import type { SessionTimelineRow } from '../types'
 
+function formatTimelineCharacterRef(
+	name: string | null | undefined,
+	id: string | null | undefined
+) {
+	return name ?? (id ? <span className="font-mono">{id}</span> : '—')
+}
+
+function getTimelineEventLabel(eventType: SessionTimelineRow['eventType']): string {
+	switch (eventType) {
+		case 'join':
+			return 'Join'
+		case 'leave':
+			return 'Leave'
+		case 'ship_change':
+			return 'Ship Change'
+		case 'fleet_boss_initial':
+			return 'Initial Fleet Boss'
+		case 'fleet_boss_change':
+			return 'Fleet Boss Change'
+		case 'tracking_started':
+			return 'Tracking Started'
+		case 'tracking_resumed':
+			return 'Tracking Resumed'
+		case 'tracking_ended':
+			return 'Tracking Ended'
+	}
+}
+
+function renderTimelineEventDetails(ev: SessionTimelineRow) {
+	if (ev.eventType === 'fleet_boss_initial') {
+		return <>Initial boss: {formatTimelineCharacterRef(ev.characterName, ev.characterId)}</>
+	}
+
+	if (ev.eventType === 'fleet_boss_change') {
+		return (
+			<>
+				{formatTimelineCharacterRef(
+					ev.previousFleetBossCharacterName,
+					ev.previousFleetBossCharacterId
+				)}{' '}
+				→ {formatTimelineCharacterRef(ev.characterName, ev.characterId)}
+			</>
+		)
+	}
+
+	if (ev.eventType === 'tracking_started') {
+		return <>Tracking started with {formatTimelineCharacterRef(ev.characterName, ev.characterId)}</>
+	}
+
+	if (ev.eventType === 'tracking_resumed') {
+		const isTakeover =
+			!!ev.previousFleetBossCharacterId &&
+			ev.previousFleetBossCharacterId !== ev.characterId
+
+		return isTakeover ? (
+			<>
+				Taken over from{' '}
+				{formatTimelineCharacterRef(
+					ev.previousFleetBossCharacterName,
+					ev.previousFleetBossCharacterId
+				)}{' '}
+				→ {formatTimelineCharacterRef(ev.characterName, ev.characterId)}
+			</>
+		) : (
+			<>Tracking resumed by {formatTimelineCharacterRef(ev.characterName, ev.characterId)}</>
+		)
+	}
+
+	if (ev.eventType === 'tracking_ended') {
+		return <>Tracking ended by {formatTimelineCharacterRef(ev.characterName, ev.characterId)}</>
+	}
+
+	if (ev.eventType === 'ship_change') {
+		return (
+			<>
+				{ev.previousShipTypeName || `type #${ev.previousShipTypeId ?? '?'}`} →{' '}
+				{ev.shipTypeName || `type #${ev.shipTypeId}`} in{' '}
+				{ev.systemName || `system #${ev.solarSystemId}`}
+			</>
+		)
+	}
+
+	return (
+		<>
+			{ev.shipTypeName || `type #${ev.shipTypeId}`} at {ev.systemName || `system #${ev.solarSystemId}`}
+		</>
+	)
+}
+
 export default function TrackingSessionDetail() {
 	const { sessionId } = useParams<{ sessionId: string }>()
 	const { user } = useAuth()
 	const { hasPermission, isAdmin } = useUserPermissions()
 
-	const { data: session, isLoading } = useTrackingSession(sessionId)
+	const { data: session, isLoading } = useTrackingSession(sessionId, {
+		refetchInterval: 5_000,
+	})
 	usePageTitle(session?.name ?? 'Fleet Tracking Session')
 
 	if (!sessionId) return <Navigate to="/fleet-tracking" replace />
@@ -60,12 +151,34 @@ export default function TrackingSessionDetail() {
 		)
 	}
 
+	const canCreate = hasPermission('urn:fleet-tracking:create')
 	const isOwner = !!user && session.startedByUserId === user.id
-	const isCommander = !!user && user.characters.some((char) => char.characterId === session.characterId)
+	const fleetBossCharacterIds = session.fleetBossCharacterIds?.length
+		? session.fleetBossCharacterIds
+		: session.commanderCharacterIds?.length
+			? session.commanderCharacterIds
+		: [session.currentCommanderCharacterId ?? session.characterId]
+	const isCommander =
+		!!user &&
+		canCreate &&
+		user.characters.some((char) => fleetBossCharacterIds.includes(char.characterId))
 	const canViewAll = isAdmin || hasPermission('urn:fleet-tracking:view-all')
 	const canViewFleets = canViewAll || hasPermission('urn:fleet-tracking:view-fleets')
 	const canViewDetail = canViewFleets || isOwner || isCommander
-	const canStop = session.status === 'active' && (isOwner || isAdmin)
+	const currentFleetBossCharacterId = session.currentFleetBossCharacterId ?? null
+	const trackedFleetBossCharacterId =
+		currentFleetBossCharacterId ??
+		session.currentCommanderCharacterId ??
+		session.characterId
+	const currentFleetBossCharacterName =
+		session.currentFleetBossCharacterName ??
+		session.currentCommanderCharacterName ??
+		session.characterName
+	const isCurrentFleetBoss =
+		!!user &&
+		!!currentFleetBossCharacterId &&
+		user.characters.some((char) => char.characterId === currentFleetBossCharacterId)
+	const canStop = session.status === 'active' && (isAdmin || isCurrentFleetBoss)
 
 	return (
 		<Container>
@@ -81,7 +194,14 @@ export default function TrackingSessionDetail() {
 				}
 			/>
 
-			<HeaderBlock session={session} canStop={canStop} />
+			<HeaderBlock
+				session={session}
+				canStop={canStop}
+				initialFleetBossCharacterId={session.characterId}
+				initialFleetBossCharacterName={session.characterName}
+				currentFleetBossCharacterId={trackedFleetBossCharacterId}
+				currentFleetBossCharacterName={currentFleetBossCharacterName}
+			/>
 
 			{canViewDetail ? (
 				<DetailView
@@ -101,9 +221,17 @@ export default function TrackingSessionDetail() {
 function HeaderBlock({
 	session,
 	canStop,
+	initialFleetBossCharacterName,
+	initialFleetBossCharacterId,
+	currentFleetBossCharacterName,
+	currentFleetBossCharacterId,
 }: {
 	session: NonNullable<ReturnType<typeof useTrackingSession>['data']>
 	canStop: boolean
+	initialFleetBossCharacterName: string | null | undefined
+	initialFleetBossCharacterId: string
+	currentFleetBossCharacterName: string | null | undefined
+	currentFleetBossCharacterId: string
 }) {
 	const stop = useStopTracking()
 	const [dialogOpen, setDialogOpen] = useState(false)
@@ -126,9 +254,18 @@ function HeaderBlock({
 						<span className="inline-flex items-center">
 							<SessionStatusPill status={session.status} />
 						</span>
-						<span className="text-muted-foreground">FC:</span>{' '}
+						<span className="text-muted-foreground">Initial FC:</span>{' '}
 						<span className="font-semibold text-foreground">
-							{session.characterName ?? <span className="font-mono">{session.characterId}</span>}
+							{initialFleetBossCharacterName ?? (
+								<span className="font-mono">{initialFleetBossCharacterId}</span>
+							)}
+						</span>
+						<span className="text-muted-foreground">•</span>
+						<span className="text-muted-foreground">Tracked FC:</span>{' '}
+						<span className="font-semibold text-foreground">
+							{currentFleetBossCharacterName ?? (
+								<span className="font-mono">{currentFleetBossCharacterId}</span>
+							)}
 						</span>
 						<span className="text-muted-foreground">•</span>
 						<span className="font-medium text-foreground">
@@ -473,9 +610,7 @@ function TimelinePanel({
 									<TableCell className="text-muted-foreground">
 										<EveTimeDisplay dateStr={ev.eventTimestamp} />
 									</TableCell>
-									<TableCell className="font-medium">
-										{ev.eventType === 'join' ? 'Join' : ev.eventType === 'leave' ? 'Leave' : 'Ship Change'}
-									</TableCell>
+									<TableCell className="font-medium">{getTimelineEventLabel(ev.eventType)}</TableCell>
 									<TableCell>
 										<Link
 											to={`/fleet-tracking/${sessionId}/members/${ev.characterId}`}
@@ -485,18 +620,7 @@ function TimelinePanel({
 										</Link>
 									</TableCell>
 									<TableCell className="text-muted-foreground">
-										{ev.eventType === 'ship_change' ? (
-											<>
-												{ev.previousShipTypeName || `type #${ev.previousShipTypeId ?? '?'}`} →{' '}
-												{ev.shipTypeName || `type #${ev.shipTypeId}`} in{' '}
-												{ev.systemName || `system #${ev.solarSystemId}`}
-											</>
-										) : (
-											<>
-												{ev.shipTypeName || `type #${ev.shipTypeId}`} at{' '}
-												{ev.systemName || `system #${ev.solarSystemId}`}
-											</>
-										)}
+										{renderTimelineEventDetails(ev)}
 									</TableCell>
 								</TableRow>
 							))}

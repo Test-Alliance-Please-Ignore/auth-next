@@ -6,6 +6,7 @@ import type {
 	ListSessionsFilter,
 	SessionCurrentMembersResponse,
 	KickTrackingMembersResponse,
+	SessionCommanderHistoryResponse,
 	SessionRosterResponse,
 	SessionLiveSnapshot,
 	SessionMemberShipHistoryResponse,
@@ -127,6 +128,9 @@ export const fleetTrackingApi = {
 		apiClient.get(
 			`/fleets/tracking/${encodeURIComponent(sessionId)}/members/${encodeURIComponent(characterId)}/ship-history`
 		),
+
+	getCommanderHistory: (sessionId: string): Promise<SessionCommanderHistoryResponse> =>
+		apiClient.get(`/fleets/tracking/${encodeURIComponent(sessionId)}/commander-history`),
 
 	getSummary: (sessionId: string): Promise<{ summary: SessionSummary | null }> =>
 		apiClient.get(`/fleets/tracking/${encodeURIComponent(sessionId)}/summary`),

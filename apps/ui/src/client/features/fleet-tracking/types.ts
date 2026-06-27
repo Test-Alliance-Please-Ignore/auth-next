@@ -15,6 +15,13 @@ export interface TrackingSession {
 	characterId: string
 	/** Resolved FC name, when available. */
 	characterName?: string | null
+	currentFleetBossCharacterId?: string | null
+	currentFleetBossCharacterName?: string | null
+	fleetBossCharacterIds?: string[]
+	/** Legacy aliases retained for compatibility. */
+	currentCommanderCharacterId?: string | null
+	currentCommanderCharacterName?: string | null
+	commanderCharacterIds?: string[]
 	startedByUserId: string
 	fleetId: string | null
 	status: TrackingSessionStatus
@@ -60,7 +67,15 @@ export interface SessionLiveSnapshot {
 export interface SessionTimelineRow {
 	id: string
 	characterId: string
-	eventType: 'join' | 'leave' | 'ship_change'
+	eventType:
+		| 'join'
+		| 'leave'
+		| 'ship_change'
+		| 'fleet_boss_initial'
+		| 'fleet_boss_change'
+		| 'tracking_started'
+		| 'tracking_resumed'
+		| 'tracking_ended'
 	shipTypeId: number
 	shipTypeName: string | null
 	previousShipTypeId?: number | null
@@ -71,6 +86,8 @@ export interface SessionTimelineRow {
 	role: string
 	roleName: string
 	characterName: string | null
+	previousFleetBossCharacterId?: string | null
+	previousFleetBossCharacterName?: string | null
 	eventTimestamp: string
 }
 
@@ -96,6 +113,22 @@ export interface SessionMemberShipHistoryResponse {
 	characterId: string
 	characterName: string | null
 	items: SessionMemberShipHistoryRow[]
+}
+
+export interface SessionCommanderHistoryRow {
+	id: string
+	fleetId: string
+	trackingSessionId: string | null
+	previousCommanderCharacterId: string | null
+	previousCommanderCharacterName: string | null
+	commanderCharacterId: string
+	commanderCharacterName: string | null
+	eventType: 'initial' | 'change'
+	observedAt: string
+}
+
+export interface SessionCommanderHistoryResponse {
+	items: SessionCommanderHistoryRow[]
 }
 
 export interface SessionCurrentMember {
@@ -163,6 +196,7 @@ export interface SessionSummary {
 export interface StartSessionRequest {
 	characterId: string
 	name: string
+	action?: 'new' | 'take_over'
 }
 
 export interface ListSessionsFilter {
@@ -185,6 +219,7 @@ export interface StatsRange {
 export interface TopCharacterWithMeta {
 	characterId: string
 	count: number
+	minutesAsFC?: number
 	characterName: string | null
 	corporationId: string | null
 	corporationName: string | null
@@ -260,6 +295,7 @@ export interface CharacterStatsResponse {
 		fleetsJoined: number
 		minutesInFleet: number
 		timesFC: number
+		minutesAsFC: number
 		avgFleetDurationMinutes: number | null
 	}
 	shipsFlown: CharacterShipBreakdownRow[]
@@ -314,6 +350,6 @@ export interface CorporationStatsResponse {
 		fleetsJoined: number
 		minutesInFleet: number
 	}>
-	topFCs: Array<{ characterId: string; characterName: string; sessions: number }>
+	topFCs: Array<{ characterId: string; characterName: string; sessions: number; minutesAsFC?: number }>
 	shipsFlown: CharacterShipBreakdownRow[]
 }

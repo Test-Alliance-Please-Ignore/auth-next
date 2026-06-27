@@ -114,14 +114,19 @@ export default function CorporationStats() {
 							items={data.topFCs}
 							emptyText="No FCs in this range."
 							renderItem={(r) => (
-								<div className="flex items-center justify-between">
-									<Link
-										to={`/fleet-tracking/stats/characters/${r.characterId}`}
-										className="hover:underline"
-									>
-										{r.characterName}
-									</Link>
-									<span className="text-muted-foreground">{r.sessions} fleets</span>
+								<div className="flex items-center justify-between gap-3">
+									<div className="min-w-0">
+										<Link
+											to={`/fleet-tracking/stats/characters/${r.characterId}`}
+											className="hover:underline"
+										>
+											{r.characterName}
+										</Link>
+										<div className="text-xs text-muted-foreground">
+											{formatDuration((r.minutesAsFC ?? 0) * 60_000)} active
+										</div>
+									</div>
+									<span className="text-muted-foreground">{r.sessions} sessions</span>
 								</div>
 							)}
 						/>

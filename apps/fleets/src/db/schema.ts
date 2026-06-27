@@ -1,4 +1,4 @@
-import { boolean, index, integer, pgTable, text, timestamp, uuid } from 'drizzle-orm/pg-core'
+import { boolean, index, integer, pgTable, text, timestamp, uniqueIndex, uuid } from 'drizzle-orm/pg-core'
 
 /**
  * Database schema for the fleets worker
@@ -92,6 +92,103 @@ export const fleetTrackingSessions = pgTable(
 		statusIdx: index('fleet_tracking_sessions_status_idx').on(table.status),
 		startedAtIdx: index('fleet_tracking_sessions_started_at_idx').on(table.startedAt),
 	})
+)
+
+/**
+ * Fleet tracking session lifecycle events
+ *
+ * Records pause/resume boundaries for a tracking session so analytics can
+ * attribute FC time only to the active portions of the session timeline.
+ */
+export const fleetTrackingSessionEvents = pgTable(
+	'fleet_tracking_session_events',
+	{
+		id: uuid('id').defaultRandom().primaryKey(),
+		fleetId: text('fleet_id').notNull(),
+		trackingSessionId: uuid('tracking_session_id').references(() => fleetTrackingSessions.id, {
+			onDelete: 'set null',
+		}),
+		previousCharacterId: text('previous_character_id'),
+		characterId: text('character_id').notNull(),
+		eventType: text('event_type').notNull(),
+		observedAt: timestamp('observed_at').defaultNow().notNull(),
+		createdAt: timestamp('created_at').defaultNow().notNull(),
+	},
+	(table) => ({
+		fleetIdIdx: index('fleet_tracking_session_events_fleet_id_idx').on(table.fleetId),
+		trackingSessionIdIdx: index('fleet_tracking_session_events_tracking_session_id_idx').on(
+			table.trackingSessionId
+		),
+		characterIdIdx: index('fleet_tracking_session_events_character_id_idx').on(table.characterId),
+		observedAtIdx: index('fleet_tracking_session_events_observed_at_idx').on(table.observedAt),
+	}),
+)
+
+/**
+ * Fleet commander events table
+ *
+ * Audit log of commander changes observed for a tracked fleet.
+ * This records the commander handoff history separately from the session row.
+ */
+export const fleetCommanderEvents = pgTable(
+	'fleet_commander_events',
+	{
+		id: uuid('id').defaultRandom().primaryKey(),
+		fleetId: text('fleet_id').notNull(),
+		trackingSessionId: uuid('tracking_session_id').references(() => fleetTrackingSessions.id, {
+			onDelete: 'set null',
+		}),
+		previousCommanderCharacterId: text('previous_commander_character_id'),
+		commanderCharacterId: text('commander_character_id').notNull(),
+		eventType: text('event_type').notNull(),
+		observedAt: timestamp('observed_at').defaultNow().notNull(),
+		createdAt: timestamp('created_at').defaultNow().notNull(),
+	},
+	(table) => ({
+		fleetIdIdx: index('fleet_commander_events_fleet_id_idx').on(table.fleetId),
+		trackingSessionIdIdx: index('fleet_commander_events_tracking_session_id_idx').on(
+			table.trackingSessionId
+		),
+		commanderCharacterIdIdx: index('fleet_commander_events_commander_character_id_idx').on(
+			table.commanderCharacterId
+		),
+		observedAtIdx: index('fleet_commander_events_observed_at_idx').on(table.observedAt),
+	}),
+)
+
+/**
+ * Fleet commander access anchors table
+ *
+ * Current and historical commander-to-fleet associations used for access checks.
+ * Multiple commanders can be associated with the same fleet ID over time.
+ */
+export const fleetCommanderAccessAnchors = pgTable(
+	'fleet_commander_access_anchors',
+	{
+		id: uuid('id').defaultRandom().primaryKey(),
+		fleetId: text('fleet_id').notNull(),
+		trackingSessionId: uuid('tracking_session_id').references(() => fleetTrackingSessions.id, {
+			onDelete: 'set null',
+		}),
+		commanderCharacterId: text('commander_character_id').notNull(),
+		firstSeenAt: timestamp('first_seen_at').defaultNow().notNull(),
+		lastSeenAt: timestamp('last_seen_at').defaultNow().notNull(),
+		createdAt: timestamp('created_at').defaultNow().notNull(),
+		updatedAt: timestamp('updated_at').defaultNow().notNull(),
+	},
+	(table) => ({
+		fleetIdIdx: index('fleet_commander_access_anchors_fleet_id_idx').on(table.fleetId),
+		fleetCommanderUniqueIdx: uniqueIndex(
+			'fleet_commander_access_anchors_fleet_id_commander_character_id_unique'
+		).on(table.fleetId, table.commanderCharacterId),
+		trackingSessionIdIdx: index('fleet_commander_access_anchors_tracking_session_id_idx').on(
+			table.trackingSessionId
+		),
+		commanderCharacterIdIdx: index(
+			'fleet_commander_access_anchors_commander_character_id_idx'
+		).on(table.commanderCharacterId),
+		lastSeenAtIdx: index('fleet_commander_access_anchors_last_seen_at_idx').on(table.lastSeenAt),
+	}),
 )
 
 /**
@@ -274,6 +371,8 @@ export const schema = {
 	fleetInvitations,
 	fleetMemberships,
 	fleetTrackingSessions,
+	fleetCommanderEvents,
+	fleetCommanderAccessAnchors,
 	fleetStateCache,
 	fleetSummaries,
 	fleetMemberHistory,

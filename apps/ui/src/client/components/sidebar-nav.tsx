@@ -32,6 +32,7 @@ import { useEffect, useState } from 'react'
 import { Link, useLocation } from 'react-router-dom'
 
 import { ROLE_CORE_ALLIANCE_MEMBER } from '@repo/core'
+import { useCorporationAccess } from '@/features/corporations'
 import { useHrAccessibleCorporations } from '@/features/hr'
 import { useHasCorporationAccess } from '@/features/corporations'
 import { useSrpPaymentMismatchAlerts } from '@/features/srp/hooks'
@@ -76,6 +77,7 @@ export function SidebarNav({ onNavigate, isSidebarOpen = true, onToggleSidebar }
 	const { user } = useAuth()
 	const logout = useLogout()
 	const { data: corporationAccess } = useHasCorporationAccess()
+	const { data: leadershipCorporationAccess } = useCorporationAccess()
 	const { data: hrCorporations } = useHrAccessibleCorporations()
 	const { permissions, hasAnyPermission } = useUserPermissions()
 	const isSiteAdmin = user?.is_admin === true
@@ -139,13 +141,19 @@ export function SidebarNav({ onNavigate, isSidebarOpen = true, onToggleSidebar }
 	const mainCharacter = user?.characters.find((c) => c.characterId === user.mainCharacterId)
 	const canSeeMumble = isMumbleFeatureEnabled && canAccessMumble(user)
 	const hasMemberCorporationAccess = hrCorporations?.some((corp) => corp.isMemberCorporation) ?? false
+	const hasFleetStatsAccess =
+		leadershipCorporationAccess?.corporations.some(
+			(corp) =>
+				corp.isMemberCorporation &&
+				(corp.userRole === 'CEO' || corp.userRole === 'Director' || corp.userRole === 'admin')
+		) ?? false
 	const canSeeFleetTrackingList =
 		isSiteAdmin ||
 		hasAnyPermission('urn:fleet-tracking:create') ||
 		hasAnyPermission('urn:fleet-tracking:view-fleets') ||
 		hasAnyPermission('urn:fleet-tracking:view-all')
 	const canSeeFleetTrackingStats =
-		isSiteAdmin || hasAnyPermission('urn:fleet-tracking:view-all') || hasMemberCorporationAccess
+		isSiteAdmin || hasAnyPermission('urn:fleet-tracking:view-all') || hasFleetStatsAccess
 	const isTaxRoute = location.pathname === '/tax' || location.pathname.startsWith('/tax/')
 	const isFreightRoute =
 		location.pathname === '/freight' || location.pathname.startsWith('/freight/')

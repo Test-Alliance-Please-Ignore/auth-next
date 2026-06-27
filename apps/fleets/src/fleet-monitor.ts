@@ -1,12 +1,16 @@
 import { DurableObject } from 'cloudflare:workers'
 
-import { and, createDbClient, createDbClientWs, eq, isNull, sql } from '@repo/db-utils'
+import { and, createDbClient, createDbClientWs, desc, eq, isNull, sql } from '@repo/db-utils'
 import { getStub } from '@repo/do-utils'
 import {
-	EsiGetFleetInformation,
+	esiGetCharacterFleetInformationSchema,
 	esiGetFleetInformationSchema,
-	EsiGetFleetMembers,
 	esiGetFleetMembersSchema,
+} from '@repo/fleets'
+import type {
+	EsiGetCharacterFleetInformation,
+	EsiGetFleetInformation,
+	EsiGetFleetMembers,
 	FleetDetailsResponse,
 	FleetMonitorState,
 	FleetMonitorStateRow,
@@ -17,6 +21,9 @@ import { Env } from './context'
 import {
 	fleetMemberHistory,
 	fleetMemberShipEvents,
+	fleetCommanderAccessAnchors,
+	fleetCommanderEvents,
+	fleetTrackingSessionEvents,
 	fleetStateCache,
 	fleetSummaries,
 	fleetTrackingSessions,
@@ -54,6 +61,94 @@ function normalizeStationId(value: number | null | undefined | string): number |
 	}
 	// Return number if valid
 	return typeof value === 'number' ? value : null
+}
+
+async function resolveFleetBossAccessCharacterId(
+	tokenStore: EveTokenStore,
+	currentCharacterId: string,
+	fleetBossCharacterId: string
+): Promise<{ accessCharacterId: string; switchedToFleetBoss: boolean }> {
+	if (!fleetBossCharacterId || fleetBossCharacterId === currentCharacterId) {
+		return { accessCharacterId: currentCharacterId, switchedToFleetBoss: false }
+	}
+
+	const accessToken = await tokenStore.getAccessToken(fleetBossCharacterId)
+	if (accessToken === null) {
+		return { accessCharacterId: currentCharacterId, switchedToFleetBoss: false }
+	}
+
+	return { accessCharacterId: fleetBossCharacterId, switchedToFleetBoss: true }
+}
+
+async function syncFleetBossAccess(
+	db: ReturnType<typeof createDbClientWs<typeof schema>>,
+	args: {
+		fleetId: string
+		trackingSessionId: string
+		previousFleetBossCharacterId: string | null
+		currentFleetBossCharacterId: string
+		observedAt: Date
+	}
+): Promise<void> {
+	const {
+		fleetId,
+		trackingSessionId,
+		previousFleetBossCharacterId,
+		currentFleetBossCharacterId,
+		observedAt,
+	} = args
+
+	const [lastRecordedEvent] = await db
+		.select({
+			commanderCharacterId: fleetCommanderEvents.commanderCharacterId,
+		})
+		.from(fleetCommanderEvents)
+		.where(eq(fleetCommanderEvents.trackingSessionId, trackingSessionId))
+		.orderBy(desc(fleetCommanderEvents.observedAt))
+		.limit(1)
+
+	const lastRecordedCommanderId = lastRecordedEvent?.commanderCharacterId ?? null
+	const previousCommanderCharacterId =
+		lastRecordedCommanderId ?? previousFleetBossCharacterId ?? null
+	const eventType = previousCommanderCharacterId ? 'change' : 'initial'
+	if (lastRecordedCommanderId !== currentFleetBossCharacterId) {
+		await db.insert(fleetCommanderEvents).values({
+			fleetId,
+			trackingSessionId,
+			previousCommanderCharacterId,
+			commanderCharacterId: currentFleetBossCharacterId,
+			eventType,
+			observedAt,
+			createdAt: observedAt,
+		})
+	}
+
+	await db
+		.insert(fleetCommanderAccessAnchors)
+		.values({
+			fleetId,
+			trackingSessionId,
+			commanderCharacterId: currentFleetBossCharacterId,
+			firstSeenAt: observedAt,
+			lastSeenAt: observedAt,
+			createdAt: observedAt,
+			updatedAt: observedAt,
+		})
+		.onConflictDoNothing()
+
+	await db
+		.update(fleetCommanderAccessAnchors)
+		.set({
+			trackingSessionId,
+			lastSeenAt: observedAt,
+			updatedAt: observedAt,
+		})
+		.where(
+			and(
+				eq(fleetCommanderAccessAnchors.fleetId, fleetId),
+				eq(fleetCommanderAccessAnchors.commanderCharacterId, currentFleetBossCharacterId)
+			)
+		)
 }
 
 /**
@@ -108,7 +203,7 @@ export class FleetMonitorDO extends DurableObject {
 			.toArray()
 
 		const currentVersion = versionResult.length > 0 ? versionResult[0].version : 0
-		const targetVersion = 3 // Current schema version
+		const targetVersion = 4 // Current schema version
 
 		// Run migrations if needed
 		if (currentVersion < targetVersion) {
@@ -266,6 +361,33 @@ export class FleetMonitorDO extends DurableObject {
 			)
 		}
 
+		// Migration 3 -> 4: Persist the last synced boss separately so boss-change
+		// detection does not depend on cache rows that other helpers can rewrite.
+		if (currentVersion < 4) {
+			try {
+				this.state.storage.sql.exec(
+					`ALTER TABLE monitor_state ADD COLUMN last_synced_fleet_boss_id TEXT`
+				)
+			} catch (error) {
+				const message = error instanceof Error ? error.message : String(error)
+				if (!message.includes('duplicate column')) {
+					logger.warn('[FleetMonitor] Could not add last_synced_fleet_boss_id column', {
+						error: message,
+					})
+				}
+			}
+
+			this.state.storage.sql.exec(`
+				INSERT INTO schema_version (id, version)
+				VALUES (1, 4)
+				ON CONFLICT(id) DO UPDATE SET version = 4
+			`)
+
+			logger.info(
+				'[FleetMonitor] Migration 3 -> 4 completed (added last_synced_fleet_boss_id)'
+			)
+		}
+
 		logger.info('[FleetMonitor] Schema migrations completed', {
 			finalVersion: targetVersion,
 		})
@@ -280,12 +402,22 @@ export class FleetMonitorDO extends DurableObject {
 		fleetId: string,
 		characterId: string,
 		trackingSessionId: string,
-		force: boolean = false
+		options: {
+			force?: boolean
+			previousFleetBossCharacterId?: string | null
+			resumedExistingSession?: boolean
+		} = {}
 	): Promise<void> {
+		const force = options.force ?? false
 		// Check if already initialized for this fleet (unless forcing re-initialization)
 		if (!force) {
 			const existingState = await this.getState()
-			if (existingState && existingState.isInitialized && existingState.fleetId === fleetId) {
+			if (
+				existingState &&
+				existingState.isInitialized &&
+				existingState.fleetId === fleetId &&
+				existingState.trackingSessionId === trackingSessionId
+			) {
 				logger.debug(`[FleetMonitor ${fleetId}] Already initialized, skipping re-initialization`, {
 					fleetId,
 					characterId,
@@ -320,12 +452,13 @@ export class FleetMonitorDO extends DurableObject {
 		const now = new Date().toISOString()
 		await this.state.storage.sql.exec(
 			`
-			INSERT INTO monitor_state (id, fleet_id, character_id, tracking_session_id, is_initialized, last_checked, peak_member_count)
-			VALUES (1, ?, ?, ?, 1, ?, 0)
+			INSERT INTO monitor_state (id, fleet_id, character_id, tracking_session_id, last_synced_fleet_boss_id, is_initialized, last_checked, peak_member_count)
+			VALUES (1, ?, ?, ?, NULL, 1, ?, 0)
 			ON CONFLICT(id) DO UPDATE SET
 				fleet_id = excluded.fleet_id,
 				character_id = excluded.character_id,
 				tracking_session_id = excluded.tracking_session_id,
+				last_synced_fleet_boss_id = excluded.last_synced_fleet_boss_id,
 				is_initialized = excluded.is_initialized,
 				last_checked = excluded.last_checked,
 				peak_member_count = 0
@@ -340,12 +473,52 @@ export class FleetMonitorDO extends DurableObject {
 		try {
 			const initialStatus = await this.getFleetStatus()
 			if (initialStatus) {
+				const currentFleetBossId = initialStatus.fleetBossId ?? characterId
+				const observedAt = new Date()
+				let openShipEventCount = 0
+				let shipEventCount = 0
+				try {
+					const [totalCount] = await this.db
+						.select({ count: sql<number>`count(*)::int` })
+						.from(fleetMemberShipEvents)
+						.where(eq(fleetMemberShipEvents.trackingSessionId, trackingSessionId))
+					const [openCount] = await this.db
+						.select({ count: sql<number>`count(*)::int` })
+						.from(fleetMemberShipEvents)
+						.where(
+							and(
+								eq(fleetMemberShipEvents.trackingSessionId, trackingSessionId),
+								isNull(fleetMemberShipEvents.endedAt)
+							)
+						)
+					openShipEventCount = openCount?.count ?? 0
+					shipEventCount = totalCount?.count ?? 0
+				} catch (error) {
+					logger.warn(`[FleetMonitor ${fleetId}] Could not count open ship-event rows`, {
+						fleetId,
+						trackingSessionId,
+						error: error instanceof Error ? error.message : String(error),
+					})
+				}
+
+				await syncFleetBossAccess(this.db, {
+					fleetId,
+					trackingSessionId,
+					previousFleetBossCharacterId:
+						options.previousFleetBossCharacterId ?? (options.resumedExistingSession ? characterId : null),
+					currentFleetBossCharacterId: currentFleetBossId,
+					observedAt,
+				})
+				this.state.storage.sql.exec(
+					`UPDATE monitor_state SET last_synced_fleet_boss_id = ? WHERE id = 1`,
+					currentFleetBossId
+				)
 				// Update fleet cache immediately to clear inactive/ended state
 				await this.db
 					.insert(fleetStateCache)
 					.values({
 						fleetId,
-						fleetBossId: characterId,
+						fleetBossId: currentFleetBossId,
 						trackingSessionId,
 						isActive: true,
 						memberCount: initialStatus.memberCount,
@@ -356,11 +529,12 @@ export class FleetMonitorDO extends DurableObject {
 						notFound: false,
 						notFoundAt: null,
 						endedAt: null,
-						lastChecked: new Date(),
+						lastChecked: observedAt,
 					})
 					.onConflictDoUpdate({
 						target: fleetStateCache.fleetId,
 						set: {
+							fleetBossId: currentFleetBossId,
 							trackingSessionId,
 							isActive: true,
 							memberCount: initialStatus.memberCount,
@@ -371,8 +545,8 @@ export class FleetMonitorDO extends DurableObject {
 							notFound: false,
 							notFoundAt: null,
 							endedAt: null,
-							lastChecked: new Date(),
-							updatedAt: new Date(),
+							lastChecked: observedAt,
+							updatedAt: observedAt,
 						},
 					})
 
@@ -387,13 +561,16 @@ export class FleetMonitorDO extends DurableObject {
 					memberCount: initialStatus.memberCount,
 				})
 
+				const shouldSeedInitialHistorySnapshot = shipEventCount === 0
+				const shouldSeedOpenShipRows = openShipEventCount === 0
 				if (initialStatus.members) {
-					// Create initial snapshot of all members as "joins" since this is the first check
+					// Create the initial historical snapshot only for brand-new sessions.
+					// Resumed/taken-over sessions should restore live ship rows without
+					// duplicating the join history for members who were already present.
 					const now = new Date()
 					const eventTimestamp = now.toISOString()
 
-					// Store initial joins for all current members (batched to avoid parameter limits)
-					if (initialStatus.members.length > 0) {
+					if (initialStatus.members.length > 0 && shouldSeedInitialHistorySnapshot) {
 						const BATCH_SIZE = 20 // Reduced from 50 to avoid parameter limit issues
 						// Resolve corp IDs once for the whole roster.
 						const initialCharIds = new Set(
@@ -445,32 +622,11 @@ export class FleetMonitorDO extends DurableObject {
 						this.state.waitUntil(
 							this.backfillInitialSnapshotNames(fleetId, initialStatus.members, now)
 						)
+					}
 
-						// Create initial snapshot in SQLite
-						for (const member of initialStatus.members) {
-							const charId = String(member.character_id)
-							this.state.storage.sql.exec(
-								`
-								INSERT INTO previous_members (
-									character_id, ship_type_id, solar_system_id, station_id,
-									role, role_name, squad_id, wing_id, join_time, last_seen
-								)
-								VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-							`,
-								charId,
-								member.ship_type_id,
-								member.solar_system_id,
-								member.station_id ?? null,
-								member.role,
-								member.role_name,
-								member.squad_id,
-								member.wing_id,
-								member.join_time,
-								eventTimestamp
-							)
-						}
-
-						// Open initial ship-event rows for every starting member
+					if (initialStatus.members.length > 0 && shouldSeedOpenShipRows) {
+						// Restore open ship-event rows so live member state continues to
+						// render correctly, but only seed history rows once per session.
 						try {
 							const shipEventRows = initialStatus.members.map((member) => ({
 								trackingSessionId,
@@ -483,7 +639,6 @@ export class FleetMonitorDO extends DurableObject {
 								endedAt: null,
 								eventTimestamp: now,
 							}))
-							// Use the existing batching helper to avoid parameter-limit issues
 							const BATCH_SIZE = 50
 							for (let i = 0; i < shipEventRows.length; i += BATCH_SIZE) {
 								const batch = shipEventRows.slice(i, i + BATCH_SIZE)
@@ -507,12 +662,51 @@ export class FleetMonitorDO extends DurableObject {
 						}
 
 						logger.info(
-							`[FleetMonitor ${fleetId}] Created initial snapshot with ${initialStatus.members.length} members`,
+							`[FleetMonitor ${fleetId}] Restored current members with ${initialStatus.members.length} open ship-event rows`,
 							{
 								fleetId,
 								memberCount: initialStatus.members.length,
+								restoredHistory: shouldSeedInitialHistorySnapshot,
 							}
 						)
+					} else if (initialStatus.members.length > 0) {
+						logger.info(
+							`[FleetMonitor ${fleetId}] Skipped duplicate ship-event seeding because open ship-event rows already exist`,
+							{
+								fleetId,
+								trackingSessionId,
+								memberCount: initialStatus.members.length,
+								openShipEventCount,
+							}
+						)
+					}
+
+					if (initialStatus.members.length > 0) {
+						// Always refresh the previous-member snapshot so the next poll
+						// compares against the current live roster, even if this is a
+						// takeover/rebind where ship-event rows already exist.
+						for (const member of initialStatus.members) {
+							const charId = String(member.character_id)
+							this.state.storage.sql.exec(
+								`
+								INSERT INTO previous_members (
+									character_id, ship_type_id, solar_system_id, station_id,
+									role, role_name, squad_id, wing_id, join_time, last_seen
+								)
+								VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+							`,
+								charId,
+								member.ship_type_id,
+								member.solar_system_id,
+								member.station_id ?? null,
+								member.role,
+								member.role_name,
+								member.squad_id,
+								member.wing_id,
+								member.join_time,
+								eventTimestamp
+							)
+						}
 					}
 				}
 			}
@@ -546,11 +740,58 @@ export class FleetMonitorDO extends DurableObject {
 
 		try {
 			const tokenStore = getStub<EveTokenStore>(this.env.EVE_TOKEN_STORE, 'default')
+			const currentCharacterFleetResponse = await tokenStore.fetchEsi<EsiGetCharacterFleetInformation>(
+				`/characters/${characterId}/fleet/`,
+				characterId,
+				LIVE_FLEET_ESI_OPTIONS
+			)
+			const currentCharacterFleetInfo = esiGetCharacterFleetInformationSchema.parse(
+				currentCharacterFleetResponse.data
+			)
+			const liveFleetBossId = String(currentCharacterFleetInfo.fleet_boss_id)
+			const liveFleetId = String(currentCharacterFleetInfo.fleet_id)
+
+			if (liveFleetId !== fleetId) {
+				logger.warn(`[FleetMonitor ${fleetId}] Character fleet lookup returned a different fleet`, {
+					fleetId,
+					monitorFleetId: fleetId,
+					reportedFleetId: liveFleetId,
+					reportedBossId: liveFleetBossId,
+					characterId,
+				})
+			}
+
+			let accessCharacterId = characterId
+			if (liveFleetBossId !== characterId) {
+				const resolvedAccess = await resolveFleetBossAccessCharacterId(
+					tokenStore,
+					characterId,
+					liveFleetBossId
+				)
+				if (resolvedAccess.switchedToFleetBoss) {
+					accessCharacterId = resolvedAccess.accessCharacterId
+					await this.state.storage.sql.exec(
+						`UPDATE monitor_state SET character_id = ? WHERE id = 1`,
+						accessCharacterId
+					)
+					logger.info(`[FleetMonitor ${fleetId}] Rebound ESI source to live fleet boss`, {
+						fleetId,
+						previousCharacterId: characterId,
+						liveFleetBossId,
+					})
+				} else {
+					logger.debug(`[FleetMonitor ${fleetId}] Live fleet boss has no usable token yet`, {
+						fleetId,
+						liveFleetBossId,
+						currentCharacterId: characterId,
+					})
+				}
+			}
 
 			// Fetch fleet info
 			const fleetResponse = await tokenStore.fetchEsi<EsiGetFleetInformation>(
 				`/fleets/${fleetId}/`,
-				characterId,
+				accessCharacterId,
 				LIVE_FLEET_ESI_OPTIONS
 			)
 			const fleetInfo = esiGetFleetInformationSchema.parse(fleetResponse.data)
@@ -562,7 +803,7 @@ export class FleetMonitorDO extends DurableObject {
 			try {
 				const membersResponse = await tokenStore.fetchEsi<EsiGetFleetMembers>(
 					`/fleets/${fleetId}/members/`,
-					characterId,
+					accessCharacterId,
 					LIVE_FLEET_ESI_OPTIONS
 				)
 				members = esiGetFleetMembersSchema.parse(membersResponse.data)
@@ -578,9 +819,11 @@ export class FleetMonitorDO extends DurableObject {
 				members = undefined
 			}
 
-			// Get fleet boss name
-			const characterStub = getStub<EveCharacterData>(this.env.EVE_CHARACTER_DATA, characterId)
-			const characterInfo = await characterStub.getCharacterInfo(characterId)
+			// Resolve the live fleet boss name independently of the ESI source so
+			// the display and access paths stay aligned even across leadership
+			// handoffs.
+			const characterStub = getStub<EveCharacterData>(this.env.EVE_CHARACTER_DATA, liveFleetBossId)
+			const characterInfo = await characterStub.getCharacterInfo(liveFleetBossId)
 
 			// Resolve ship type IDs, character IDs, system IDs, and station IDs to names if members are available
 			let resolvedShipTypes: Record<string, string> | undefined
@@ -591,9 +834,13 @@ export class FleetMonitorDO extends DurableObject {
 				// Collect unique IDs
 				const uniqueShipTypeIds = new Set(members.map((m) => String(m.ship_type_id)))
 				const uniqueCharacterIds = new Set(members.map((m) => String(m.character_id)))
-				// Also include fleet boss if not already in the list
-				if (characterId && !uniqueCharacterIds.has(characterId)) {
-					uniqueCharacterIds.add(characterId)
+				// Also include the live fleet boss and access character if they are not
+				// already in the list.
+				if (liveFleetBossId && !uniqueCharacterIds.has(liveFleetBossId)) {
+					uniqueCharacterIds.add(liveFleetBossId)
+				}
+				if (accessCharacterId && !uniqueCharacterIds.has(accessCharacterId)) {
+					uniqueCharacterIds.add(accessCharacterId)
 				}
 				const uniqueSystemIds = new Set(members.map((m) => String(m.solar_system_id)))
 				const stationIds = members.map((m) => m.station_id)
@@ -660,6 +907,7 @@ export class FleetMonitorDO extends DurableObject {
 			return {
 				fleetInfo,
 				members,
+				fleetBossId: liveFleetBossId,
 				fleetBossName: characterInfo?.name,
 				memberCount,
 				nextPollAt: nextPollAt.toISOString(),
@@ -727,10 +975,16 @@ export class FleetMonitorDO extends DurableObject {
 		}
 
 		const endedAt = new Date()
+		const [cachedState] = await this.db
+			.select({ fleetBossId: fleetStateCache.fleetBossId })
+			.from(fleetStateCache)
+			.where(eq(fleetStateCache.fleetId, fleetId))
+			.limit(1)
+		const currentFleetBossId = cachedState?.fleetBossId ?? characterId
 
 		await this.finalizeSession({
 			fleetId,
-			characterId,
+			fleetBossId: currentFleetBossId,
 			trackingSessionId,
 			endedAt,
 			endedReason: args.endedReason,
@@ -743,7 +997,7 @@ export class FleetMonitorDO extends DurableObject {
 			.insert(fleetStateCache)
 			.values({
 				fleetId,
-				fleetBossId: characterId,
+				fleetBossId: currentFleetBossId,
 				trackingSessionId,
 				isActive: false,
 				memberCount: 0,
@@ -853,7 +1107,7 @@ export class FleetMonitorDO extends DurableObject {
 		const result = this.state.storage.sql
 			.exec<FleetMonitorStateRow>(
 				`
-				SELECT fleet_id, character_id, tracking_session_id, is_initialized, last_checked, peak_member_count
+				SELECT fleet_id, character_id, tracking_session_id, last_synced_fleet_boss_id, is_initialized, last_checked, peak_member_count
 				FROM monitor_state
 				WHERE id = 1
 			`
@@ -869,6 +1123,7 @@ export class FleetMonitorDO extends DurableObject {
 			fleetId: row.fleet_id,
 			characterId: row.character_id,
 			trackingSessionId: row.tracking_session_id,
+			lastSyncedFleetBossId: row.last_synced_fleet_boss_id,
 			isInitialized: row.is_initialized === 1,
 			lastChecked: row.last_checked,
 			peakMemberCount: row.peak_member_count ?? 0,
@@ -890,7 +1145,7 @@ export class FleetMonitorDO extends DurableObject {
 	 */
 	private async finalizeSession(args: {
 		fleetId: string
-		characterId: string
+		fleetBossId: string
 		trackingSessionId: string
 		endedAt: Date
 		endedReason:
@@ -902,7 +1157,33 @@ export class FleetMonitorDO extends DurableObject {
 		endedByUserId: string | null
 		peakMemberCount: number
 	}): Promise<void> {
-		const { fleetId, characterId, trackingSessionId, endedAt, endedReason, endedByUserId, peakMemberCount } = args
+		const {
+			fleetId,
+			fleetBossId,
+			trackingSessionId,
+			endedAt,
+			endedReason,
+			endedByUserId,
+			peakMemberCount,
+		} = args
+
+		try {
+			await this.db.insert(fleetTrackingSessionEvents).values({
+				fleetId,
+				trackingSessionId,
+				previousCharacterId: null,
+				characterId: fleetBossId,
+				eventType: 'ended',
+				observedAt: endedAt,
+				createdAt: endedAt,
+			})
+		} catch (error) {
+			logger.warn(`[FleetMonitor ${fleetId}] Failed to record session end event`, {
+				fleetId,
+				trackingSessionId,
+				error: error instanceof Error ? error.message : String(error),
+			})
+		}
 
 		// 1. Close all open ship-event rows for this session.
 		try {
@@ -949,7 +1230,7 @@ export class FleetMonitorDO extends DurableObject {
 		}
 
 		// 3. Archive the fleet summary.
-		await this.archiveFleetToSummary(fleetId, characterId, endedAt, {
+		await this.archiveFleetToSummary(fleetId, fleetBossId, endedAt, {
 			trackingSessionId,
 			peakMemberCount,
 		})
@@ -957,7 +1238,7 @@ export class FleetMonitorDO extends DurableObject {
 
 	private async archiveFleetToSummary(
 		fleetId: string,
-		characterId: string,
+		fleetBossId: string,
 		endedAt: Date,
 		options?: {
 			trackingSessionId?: string
@@ -975,7 +1256,7 @@ export class FleetMonitorDO extends DurableObject {
 			if (!cached) {
 				logger.warn(`[FleetMonitor ${fleetId}] No cache entry found to archive`, {
 					fleetId,
-					characterId,
+					fleetBossId,
 				})
 				return
 			}
@@ -1010,7 +1291,7 @@ export class FleetMonitorDO extends DurableObject {
 			// Create summary entry
 			await this.db.insert(fleetSummaries).values({
 				fleetId,
-				fleetBossId: characterId,
+				fleetBossId,
 				trackingSessionId: options?.trackingSessionId ?? null,
 				startedAt,
 				endedAt,
@@ -1025,7 +1306,7 @@ export class FleetMonitorDO extends DurableObject {
 
 			logger.info(`[FleetMonitor ${fleetId}] Archived fleet to summaries`, {
 				fleetId,
-				characterId,
+				fleetBossId,
 				startedAt: startedAt.toISOString(),
 				endedAt: endedAt.toISOString(),
 				durationMinutes,
@@ -1035,7 +1316,7 @@ export class FleetMonitorDO extends DurableObject {
 			// Log error but don't throw - we don't want to prevent fleet cleanup
 			logger.error(`[FleetMonitor ${fleetId}] Failed to archive fleet to summary`, {
 				fleetId,
-				characterId,
+				fleetBossId,
 				error: error instanceof Error ? error.message : String(error),
 			})
 		}
@@ -1852,7 +2133,8 @@ export class FleetMonitorDO extends DurableObject {
 			return
 		}
 
-		const { fleetId, characterId, peakMemberCount } = state
+		const { fleetId, peakMemberCount } = state
+		let characterId = state.characterId
 		let trackingSessionId = state.trackingSessionId
 
 		// Validate that we have required IDs
@@ -1913,6 +2195,7 @@ export class FleetMonitorDO extends DurableObject {
 		// Schedule next alarm early to ensure it runs even if current execution times out
 		// This prevents IoContext timeout issues in large fleets
 		const nextAlarmPromise = this.scheduleNextAlarm()
+		let lastKnownFleetBossId = characterId
 
 		try {
 			logger.info(`[FleetMonitor ${fleetId}] Fetching fleet status update`)
@@ -1926,21 +2209,22 @@ export class FleetMonitorDO extends DurableObject {
 				return
 			}
 
-			// Legacy DO recovery: if this session has no open ship-event rows but
+			const updatedState = await this.getState()
+			if (updatedState?.characterId) {
+				characterId = updatedState.characterId
+			}
+			lastKnownFleetBossId = updatedState?.lastSyncedFleetBossId ?? characterId
+
+			// Legacy DO recovery: if this session has no ship-event rows yet but
 			// the fleet has live members, seed them now. This catches DOs created
 			// before the ship-event seeding was added in initializeMonitoring.
 			if (fleetStatus.members && fleetStatus.members.length > 0) {
 				try {
-					const [openCount] = await this.db
+					const [shipEventCount] = await this.db
 						.select({ count: sql<number>`count(*)::int` })
 						.from(fleetMemberShipEvents)
-						.where(
-							and(
-								eq(fleetMemberShipEvents.trackingSessionId, trackingSessionId),
-								isNull(fleetMemberShipEvents.endedAt)
-							)
-						)
-					if ((openCount?.count ?? 0) === 0) {
+						.where(eq(fleetMemberShipEvents.trackingSessionId, trackingSessionId))
+					if ((shipEventCount?.count ?? 0) === 0) {
 						const now = new Date()
 						const seedRows = fleetStatus.members.map((member) => ({
 							trackingSessionId,
@@ -1992,12 +2276,33 @@ export class FleetMonitorDO extends DurableObject {
 				)
 			}
 
+			const observedAt = new Date()
+			const previousFleetBossCharacterId = lastKnownFleetBossId
 			// Update fleet cache in PostgreSQL (cross-instance data)
+			const liveFleetBossId = fleetStatus.fleetBossId ?? characterId
+			await syncFleetBossAccess(this.db, {
+				fleetId,
+				trackingSessionId,
+				previousFleetBossCharacterId,
+				currentFleetBossCharacterId: liveFleetBossId,
+				observedAt,
+			})
+			if (liveFleetBossId !== characterId) {
+				this.state.storage.sql.exec(
+					`UPDATE monitor_state SET character_id = ? WHERE id = 1`,
+					liveFleetBossId
+				)
+				characterId = liveFleetBossId
+			}
+			this.state.storage.sql.exec(
+				`UPDATE monitor_state SET last_synced_fleet_boss_id = ? WHERE id = 1`,
+				liveFleetBossId
+			)
 			await this.db
 				.insert(fleetStateCache)
 				.values({
 					fleetId,
-					fleetBossId: characterId,
+					fleetBossId: liveFleetBossId,
 					trackingSessionId,
 					isActive: true,
 					memberCount: fleetStatus.memberCount,
@@ -2008,11 +2313,12 @@ export class FleetMonitorDO extends DurableObject {
 					notFound: false,
 					notFoundAt: null,
 					endedAt: null,
-					lastChecked: new Date(),
+					lastChecked: observedAt,
 				})
 				.onConflictDoUpdate({
 					target: fleetStateCache.fleetId,
 					set: {
+						fleetBossId: liveFleetBossId,
 						trackingSessionId,
 						isActive: true,
 						memberCount: fleetStatus.memberCount,
@@ -2023,8 +2329,8 @@ export class FleetMonitorDO extends DurableObject {
 						notFound: false,
 						notFoundAt: null,
 						endedAt: null,
-						lastChecked: new Date(),
-						updatedAt: new Date(),
+						lastChecked: observedAt,
+						updatedAt: observedAt,
 					},
 				})
 
@@ -2179,12 +2485,13 @@ export class FleetMonitorDO extends DurableObject {
 
 					// Mark fleet as not found in PostgreSQL cache
 					const endedAt = new Date()
+					const liveFleetBossId = lastKnownFleetBossId
 
 					// Finalize the session: close ship-events, mark session ended, archive
 					if (trackingSessionId) {
 						await this.finalizeSession({
 							fleetId,
-							characterId,
+							fleetBossId: liveFleetBossId,
 							trackingSessionId,
 							endedAt,
 							endedReason: 'fleet_disbanded',
@@ -2193,14 +2500,14 @@ export class FleetMonitorDO extends DurableObject {
 						})
 					} else {
 						// Defensive: pre-session DOs with no associated session row
-						await this.archiveFleetToSummary(fleetId, characterId, endedAt)
+						await this.archiveFleetToSummary(fleetId, liveFleetBossId, endedAt)
 					}
 
 					await this.db
 						.insert(fleetStateCache)
 						.values({
 							fleetId,
-							fleetBossId: characterId,
+							fleetBossId: liveFleetBossId,
 							isActive: false,
 							memberCount: 0,
 							notFound: true,
@@ -2211,6 +2518,7 @@ export class FleetMonitorDO extends DurableObject {
 						.onConflictDoUpdate({
 							target: fleetStateCache.fleetId,
 							set: {
+								fleetBossId: liveFleetBossId,
 								isActive: false,
 								notFound: true,
 								notFoundAt: endedAt,

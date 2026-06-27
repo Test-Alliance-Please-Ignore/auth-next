@@ -102,10 +102,14 @@ describe('fleets tracking routes', () => {
 
 	let fleetsStub: {
 		startTrackingSession: ReturnType<typeof vi.fn>
+		getCharacterFleetInformation: ReturnType<typeof vi.fn>
+		getActiveTrackingSessionByFleetId: ReturnType<typeof vi.fn>
+		getLatestTrackingSessionByFleetId: ReturnType<typeof vi.fn>
 		listTrackingSessions: ReturnType<typeof vi.fn>
 		getTrackingSession: ReturnType<typeof vi.fn>
 		getSessionLiveSnapshot: ReturnType<typeof vi.fn>
 		getSessionTimeline: ReturnType<typeof vi.fn>
+		getSessionCommanderHistory: ReturnType<typeof vi.fn>
 		getSessionRoster: ReturnType<typeof vi.fn>
 		getSessionSummary: ReturnType<typeof vi.fn>
 		getStatsOverview: ReturnType<typeof vi.fn>
@@ -127,10 +131,14 @@ describe('fleets tracking routes', () => {
 
 		fleetsStub = {
 			startTrackingSession: vi.fn(),
+			getCharacterFleetInformation: vi.fn(),
+			getActiveTrackingSessionByFleetId: vi.fn(),
+			getLatestTrackingSessionByFleetId: vi.fn(),
 			listTrackingSessions: vi.fn(),
 			getTrackingSession: vi.fn(),
 			getSessionLiveSnapshot: vi.fn(),
 			getSessionTimeline: vi.fn(),
+			getSessionCommanderHistory: vi.fn(),
 			getSessionRoster: vi.fn(),
 			getSessionSummary: vi.fn(),
 			getStatsOverview: vi.fn(),
@@ -184,6 +192,14 @@ describe('fleets tracking routes', () => {
 
 	it('starts tracking when user has create permission and owns character', async () => {
 		getCachedUserPermissionsMock.mockResolvedValue([{ urn: 'urn:fleet-tracking:create' }] as any)
+		fleetsStub.getCharacterFleetInformation.mockResolvedValue({
+			fleet_id: 'fleet-1',
+			fleet_boss_id: '1001',
+			role: 'fleet_commander',
+			squad_id: 0,
+			wing_id: 0,
+		})
+		fleetsStub.getActiveTrackingSessionByFleetId.mockResolvedValue(null)
 		fleetsStub.startTrackingSession.mockResolvedValue({ sessionId: 'session-abc' })
 		const app = createApp(makeUser())
 
@@ -202,13 +218,177 @@ describe('fleets tracking routes', () => {
 			characterId: '1001',
 			startedByUserId: 'user-1',
 			name: 'Op Fleet',
+			action: 'new',
+		})
+	})
+
+	it('takes over an existing tracked fleet when requested', async () => {
+		getCachedUserPermissionsMock.mockResolvedValue([{ urn: 'urn:fleet-tracking:create' }] as any)
+		fleetsStub.getCharacterFleetInformation.mockResolvedValue({
+			fleet_id: 'fleet-1',
+			fleet_boss_id: '1001',
+			role: 'fleet_commander',
+			squad_id: 0,
+			wing_id: 0,
+		})
+		fleetsStub.startTrackingSession.mockResolvedValue({ sessionId: 'session-abc' })
+		const app = createApp(makeUser())
+
+		const res = await app.request(
+			'/api/fleets/tracking',
+			{
+				method: 'POST',
+				headers: { 'Content-Type': 'application/json' },
+				body: JSON.stringify({ characterId: '1001', name: 'Op Fleet', action: 'take_over' }),
+			},
+			env
+		)
+
+		expect(res.status).toBe(201)
+		expect(fleetsStub.startTrackingSession).toHaveBeenCalledWith({
+			characterId: '1001',
+			startedByUserId: 'user-1',
+			name: 'Op Fleet',
+			action: 'take_over',
+		})
+	})
+
+	it('includes an active tracked session in the character fleet info lookup', async () => {
+		getCachedUserPermissionsMock.mockResolvedValue([])
+		fleetsStub.getCharacterFleetInformation.mockResolvedValue({
+			fleet_id: 'fleet-1',
+			fleet_boss_id: '1001',
+			role: 'fleet_commander',
+			squad_id: 0,
+			wing_id: 0,
+		})
+		fleetsStub.getActiveTrackingSessionByFleetId.mockResolvedValue({
+			id: 'session-existing',
+			name: 'Existing Fleet',
+			characterId: '1001',
+			currentCommanderCharacterId: '1001',
+			commanderCharacterIds: ['1001'],
+			startedByUserId: 'user-1',
+			fleetId: 'fleet-1',
+			status: 'active',
+			startedAt: '2026-05-25T10:00:00.000Z',
+			endedAt: null,
+			endedReason: null,
+			endedByUserId: null,
+			createdAt: '2026-05-25T10:00:00.000Z',
+			updatedAt: '2026-05-25T10:00:00.000Z',
+		} as any)
+		fleetsStub.getLatestTrackingSessionByFleetId.mockResolvedValue({
+			id: 'session-existing',
+			name: 'Existing Fleet',
+			characterId: '1001',
+			currentCommanderCharacterId: '1001',
+			commanderCharacterIds: ['1001'],
+			startedByUserId: 'user-1',
+			fleetId: 'fleet-1',
+			status: 'active',
+			startedAt: '2026-05-25T10:00:00.000Z',
+			endedAt: null,
+			endedReason: null,
+			endedByUserId: null,
+			createdAt: '2026-05-25T10:00:00.000Z',
+			updatedAt: '2026-05-25T10:00:00.000Z',
+		} as any)
+
+		const app = createApp(makeUser())
+		const res = await app.request('/api/fleets/character/1001', {}, env)
+
+		expect(res.status).toBe(200)
+		expect(fleetsStub.getActiveTrackingSessionByFleetId).toHaveBeenCalledWith('fleet-1')
+		expect(fleetsStub.getLatestTrackingSessionByFleetId).toHaveBeenCalledWith('fleet-1')
+		await expect(res.json()).resolves.toMatchObject({
+			isInFleet: true,
+			fleet_id: 'fleet-1',
+			activeSession: {
+				id: 'session-existing',
+				name: 'Existing Fleet',
+			},
+			existingSession: {
+				id: 'session-existing',
+				name: 'Existing Fleet',
+			},
+		})
+	})
+
+	it('returns the existing active session when the fleet is already tracked', async () => {
+		getCachedUserPermissionsMock.mockResolvedValue([{ urn: 'urn:fleet-tracking:create' }] as any)
+		fleetsStub.getCharacterFleetInformation.mockResolvedValue({
+			fleet_id: 'fleet-1',
+			fleet_boss_id: '1001',
+			role: 'fleet_commander',
+			squad_id: 0,
+			wing_id: 0,
+		})
+		fleetsStub.getActiveTrackingSessionByFleetId.mockResolvedValue({
+			id: 'session-existing',
+			name: 'Existing Fleet',
+			characterId: '2002',
+			currentCommanderCharacterId: '1001',
+			commanderCharacterIds: ['1001', '2002'],
+			startedByUserId: 'other-user',
+			fleetId: 'fleet-1',
+			status: 'active',
+			startedAt: '2026-05-25T10:00:00.000Z',
+			endedAt: null,
+			endedReason: null,
+			endedByUserId: null,
+			createdAt: '2026-05-25T10:00:00.000Z',
+			updatedAt: '2026-05-25T10:00:00.000Z',
+		} as any)
+		const app = createApp(makeUser())
+
+		const res = await app.request(
+			'/api/fleets/tracking',
+			{
+				method: 'POST',
+				headers: { 'Content-Type': 'application/json' },
+				body: JSON.stringify({ characterId: '1001', name: 'Op Fleet' }),
+			},
+			env
+		)
+
+		expect(res.status).toBe(409)
+		expect(fleetsStub.startTrackingSession).not.toHaveBeenCalled()
+		await expect(res.json()).resolves.toMatchObject({
+			error: 'fleet_session_active',
+			session: {
+				id: 'session-existing',
+				name: 'Existing Fleet',
+			},
 		})
 	})
 
 	it('scopes tracking list to self when user lacks view-fleets permission', async () => {
 		getCachedUserPermissionsMock.mockResolvedValue([{ urn: 'urn:fleet-tracking:create' }] as any)
 		fleetsStub.listTrackingSessions.mockResolvedValue({ items: [], total: 0 })
-		const app = createApp(makeUser({ id: 'self-user' }))
+		const app = createApp(
+			makeUser({
+				id: 'self-user',
+				characters: [
+					{
+						id: 'uc-1',
+						characterOwnerHash: 'owner-hash-1',
+						characterId: '1001',
+						characterName: 'Pilot One',
+						is_primary: true,
+						hasValidToken: true,
+					},
+					{
+						id: 'uc-2',
+						characterOwnerHash: 'owner-hash-2',
+						characterId: '2002',
+						characterName: 'Pilot Two',
+						is_primary: false,
+						hasValidToken: true,
+					},
+				],
+			})
+		)
 
 		const res = await app.request('/api/fleets/tracking?userId=other-user&limit=25&offset=0', {}, env)
 
@@ -216,6 +396,7 @@ describe('fleets tracking routes', () => {
 		expect(fleetsStub.listTrackingSessions).toHaveBeenCalledWith(
 			expect.objectContaining({
 				startedByUserId: 'self-user',
+				commanderCharacterIds: ['1001', '2002'],
 				limit: 25,
 				offset: 0,
 			})
@@ -275,7 +456,9 @@ describe('fleets tracking routes', () => {
 			id: 's1',
 			status: 'ended',
 			startedByUserId: 'other-user',
-			characterId: '2002',
+			characterId: '1001',
+			currentCommanderCharacterId: '2002',
+			commanderCharacterIds: ['1001', '2002'],
 		})
 		fleetsStub.getSessionTimeline.mockResolvedValue({
 			items: [],
@@ -317,6 +500,80 @@ describe('fleets tracking routes', () => {
 			characterId: undefined,
 			limit: 25,
 			offset: 0,
+		})
+	})
+
+	it('returns commander handoff history for detailed viewers', async () => {
+		getCachedUserPermissionsMock.mockResolvedValue([{ urn: 'urn:fleet-tracking:create' }] as any)
+		resolverStub.resolveIds.mockResolvedValue({
+			'1001': 'Pilot One',
+			'2002': 'Pilot Two',
+			'3003': 'Pilot Three',
+		})
+		fleetsStub.getTrackingSession.mockResolvedValue({
+			id: 's1',
+			status: 'ended',
+			startedByUserId: 'other-user',
+			characterId: '1001',
+			currentCommanderCharacterId: '2002',
+			commanderCharacterIds: ['1001', '2002', '3003'],
+		})
+		fleetsStub.getSessionCommanderHistory.mockResolvedValue([
+			{
+				id: 'event-1',
+				fleetId: 'fleet-1',
+				trackingSessionId: 's1',
+				previousCommanderCharacterId: null,
+				commanderCharacterId: '1001',
+				eventType: 'initial',
+				observedAt: '2026-05-25T10:00:00.000Z',
+			},
+			{
+				id: 'event-2',
+				fleetId: 'fleet-1',
+				trackingSessionId: 's1',
+				previousCommanderCharacterId: '1001',
+				commanderCharacterId: '2002',
+				eventType: 'change',
+				observedAt: '2026-05-25T10:12:00.000Z',
+			},
+		])
+
+		const app = createApp(
+			makeUser({
+				id: 'user-1',
+				mainCharacterId: '2002',
+				characters: [
+					{
+						id: 'uc-1',
+						characterOwnerHash: 'owner-hash-1',
+						characterId: '2002',
+						characterName: 'Pilot Two',
+						is_primary: true,
+						hasValidToken: true,
+					},
+				],
+			})
+		)
+		const res = await app.request('/api/fleets/tracking/s1/commander-history', {}, env)
+
+		expect(res.status).toBe(200)
+		expect(fleetsStub.getSessionCommanderHistory).toHaveBeenCalledWith('s1')
+		await expect(res.json()).resolves.toMatchObject({
+			items: [
+				{
+					id: 'event-1',
+					eventType: 'initial',
+					previousCommanderCharacterName: null,
+					commanderCharacterName: 'Pilot One',
+				},
+				{
+					id: 'event-2',
+					eventType: 'change',
+					previousCommanderCharacterName: 'Pilot One',
+					commanderCharacterName: 'Pilot Two',
+				},
+			],
 		})
 	})
 
@@ -385,10 +642,13 @@ describe('fleets tracking routes', () => {
 
 	it('hydrates linked broadcast SRP/doctrine on session detail', async () => {
 		getCachedUserPermissionsMock.mockResolvedValue([{ urn: 'urn:fleet-tracking:view-all' }] as any)
+		resolverStub.resolveIds.mockResolvedValue({ '1001': 'Pilot One', '2002': 'Pilot Two' })
 		fleetsStub.getTrackingSession.mockResolvedValue({
 			id: 's-broadcast',
 			name: 'Fleet Op',
 			characterId: '1001',
+			currentCommanderCharacterId: '2002',
+			commanderCharacterIds: ['1001', '2002'],
 			startedByUserId: 'user-1',
 			fleetId: 'fleet-1',
 			status: 'ended',
@@ -416,6 +676,7 @@ describe('fleets tracking routes', () => {
 		await expect(res.json()).resolves.toMatchObject({
 			id: 's-broadcast',
 			characterName: 'Pilot One',
+			currentCommanderCharacterName: 'Pilot Two',
 			broadcast: {
 				id: 'b-1',
 				title: 'Ping',

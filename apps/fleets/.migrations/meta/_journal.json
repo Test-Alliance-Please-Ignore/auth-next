@@ -71,6 +71,13 @@
       "when": 1779743453154,
       "tag": "0009_mighty_sabretooth",
       "breakpoints": true
+    },
+    {
+      "idx": 10,
+      "version": "7",
+      "when": 1782568399721,
+      "tag": "0010_mixed_purifiers",
+      "breakpoints": true
     }
   ]
 }
