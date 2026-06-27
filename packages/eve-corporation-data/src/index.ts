@@ -1028,7 +1028,7 @@ export interface CorporationAuthStatus {
  * await stub.setCharacter(corporationId, '2119123456', 'Character Name')
  *
  * // Verify access and fetch data
- * const verification = await stub.verifyAccess()
+ * const verification = await stub.verifyAccess(corporationId)
  * if (verification.hasAccess) {
  *   await stub.fetchAllCorporationData(corporationId)
  * }
@@ -1058,7 +1058,7 @@ export interface EveCorporationData {
 	 * Fetches character roles from ESI and caches them
 	 * @returns Verification result with roles and access status
 	 */
-	verifyAccess(): Promise<CorporationAccessVerification>
+	verifyAccess(corporationId: string): Promise<CorporationAccessVerification>
 
 	/**
 	 * Update corporation sync timestamp for a specific property

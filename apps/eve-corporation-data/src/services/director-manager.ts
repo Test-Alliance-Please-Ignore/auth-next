@@ -2,7 +2,11 @@ import { and, asc, eq } from '@repo/db-utils'
 import { logger } from '@repo/hono-helpers'
 import { parseEsiErrorMetadata, retryWithBackoff } from '@repo/workflow-utils'
 
-import { characterCorporationRoles, corporationConfig, corporationDirectors } from '../db/schema'
+import {
+	characterCorporationRoles,
+	corporationConfig,
+	corporationDirectors,
+} from '../db/schema'
 
 import type { CorporationRole, EsiCharacterRoles } from '@repo/eve-corporation-data'
 import type {
@@ -315,7 +319,8 @@ export class DirectorManager {
 								},
 							}
 						)
-						const roleSet = this.buildEffectiveRoleSet(rolesResponse.data)
+						const rawRoles = rolesResponse.data
+						const roleSet = this.buildEffectiveRoleSet(rawRoles)
 						const missingRoleSets = this.getMissingRoleSets(roleSet, options.requiredRoleSets)
 						if (missingRoleSets.length > 0) {
 							await this.safeRecordFailure(
@@ -413,18 +418,6 @@ export class DirectorManager {
 			throw new Error(`Director affiliation lookup failed for character ${characterId}: ${message}`)
 		}
 
-		logger.debug('[DirectorManager] Affiliation lookup response received', {
-			corporationId: this.corporationId,
-			characterId,
-			responseCount: affiliations.length,
-			responseSample: affiliations.slice(0, 3).map((entry) => ({
-				characterId: entry.character_id,
-				corporationId: entry.corporation_id,
-				allianceId: entry.alliance_id ?? null,
-				factionId: entry.faction_id ?? null,
-			})),
-		})
-
 		if (!Array.isArray(affiliations) || affiliations.length === 0) {
 			throw new Error(
 				`Director affiliation lookup returned no affiliations for character ${characterId}`
@@ -438,11 +431,6 @@ export class DirectorManager {
 		}
 
 		const corporationId = String(affiliation.corporation_id)
-		logger.debug('[DirectorManager] Affiliation lookup matched character', {
-			corporationId: this.corporationId,
-			characterId,
-			matchedCorporationId: corporationId,
-		})
 		return {
 			matches: corporationId === this.corporationId,
 			corporationId,
@@ -518,14 +506,10 @@ export class DirectorManager {
 		])
 	}
 
-	private hasHierarchyOverride(roleSet: Set<string>): boolean {
-		return roleSet.has('CEO') || roleSet.has('Director')
-	}
-
-	private satisfiesAnyRequiredRoles(roleSet: Set<string>, anyOf: CorporationRole[]): boolean {
-		if (this.hasHierarchyOverride(roleSet)) {
-			return true
-		}
+	private satisfiesAnyRequiredRoles(
+		roleSet: Set<string>,
+		anyOf: CorporationRole[]
+	): boolean {
 		return anyOf.some((role) => roleSet.has(role))
 	}
 
@@ -750,12 +734,6 @@ export class DirectorManager {
 			})
 			.where(eq(corporationDirectors.id, directorId))
 
-		if (shouldRecover) {
-			console.log('[DirectorManager] Director recovered to healthy state', {
-				directorId,
-				characterId: director.characterId,
-			})
-		}
 	}
 
 	/**
@@ -870,30 +848,25 @@ export class DirectorManager {
 		}
 
 		try {
-			console.log('[DirectorManager] Verifying director health', {
-				directorId,
-				characterId: director.characterId,
-			})
-
-				const tokenValidation = await this.tokenStore.validateToken(String(director.characterId))
-				if (!tokenValidation.isValid) {
-					if (tokenValidation.status === 'transient_error') {
-						await this.recordFailure(
-							directorId,
-							`Director token refresh transient failure: ${tokenValidation.error ?? 'unknown'}`
-						)
-						logger.warn('[DirectorManager] Director token validation failed', {
-							corporationId: this.corporationId,
-							directorId,
-							characterId: director.characterId,
-							status: tokenValidation.status,
-							missingScopes: tokenValidation.missingScopes,
-						})
-						return false
-					}
-					const reason = describeTokenValidationFailure(tokenValidation)
-					await this.recordFailure(directorId, reason, { forceUnhealthy: true })
+			const tokenValidation = await this.tokenStore.validateToken(String(director.characterId))
+			if (!tokenValidation.isValid) {
+				if (tokenValidation.status === 'transient_error') {
+					await this.recordFailure(
+						directorId,
+						`Director token refresh transient failure: ${tokenValidation.error ?? 'unknown'}`
+					)
 					logger.warn('[DirectorManager] Director token validation failed', {
+						corporationId: this.corporationId,
+						directorId,
+						characterId: director.characterId,
+						status: tokenValidation.status,
+						missingScopes: tokenValidation.missingScopes,
+					})
+					return false
+				}
+				const reason = describeTokenValidationFailure(tokenValidation)
+				await this.recordFailure(directorId, reason, { forceUnhealthy: true })
+				logger.warn('[DirectorManager] Director token validation failed', {
 					corporationId: this.corporationId,
 					directorId,
 					characterId: director.characterId,
@@ -990,11 +963,6 @@ export class DirectorManager {
 				})
 				return false
 			}
-
-			console.log('[DirectorManager] Director health verified successfully', {
-				directorId,
-				characterId: director.characterId,
-			})
 
 			return true
 		} catch (error) {
@@ -1112,11 +1080,6 @@ export class DirectorManager {
 
 		for (const director of healthyDirectors) {
 			try {
-				console.log('[DirectorManager] Attempting ESI request with director', {
-					directorId: director.directorId,
-					characterId: director.characterId,
-				})
-
 				const result = await operation(director.characterId)
 
 				// Success! Record it and return
