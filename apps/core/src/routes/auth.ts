@@ -7,7 +7,7 @@ import { assertEveCharacterId } from '@repo/eve-types'
 import { toErrorMessage } from '@repo/hono-helpers'
 
 import { createDb } from '../db'
-import { oauthStates, userCharacters, users } from '../db/schema'
+import { managedCorporations, oauthStates, userCharacters, users } from '../db/schema'
 import { waitUntilWithTelemetry } from '../lib/background-task'
 import { getDiscordStatus } from '../lib/discord-helpers'
 import { getCachedUserPermissions } from '../lib/groups-cache'
@@ -17,6 +17,11 @@ import { requireAuth } from '../middleware/session'
 import { ActivityService } from '../services/activity.service'
 import { AuthService } from '../services/auth.service'
 import { hydrateCharacterAffiliation } from '../services/character-affiliation-hydration.service'
+import {
+	recheckDirectorHealthAfterTokenReauth,
+	type DirectorHealthRecheckStub,
+	type ManagedCorporationSummary,
+} from '../services/director-health-recheck.service'
 import { reconcileUserCoreMembershipRoles } from '../services/core-role-reconciliation.service'
 import { autoRegisterDirectorCorporation } from '../services/corporation-auto-register.service'
 import { SessionService } from '../services/session.service'
@@ -192,6 +197,89 @@ async function hydrateAndReconcileUserRoles(
 			error: toErrorMessage(error),
 		})
 	}
+}
+
+async function scheduleDirectorHealthRecheckAfterTokenReauth(
+	c: Context<App>,
+	db: ReturnType<typeof createDb>,
+	characterId: string,
+	characterName: string
+): Promise<void> {
+	try {
+		const corporations: ManagedCorporationSummary[] = await db.query.managedCorporations.findMany({
+			where: eq(managedCorporations.isActive, true),
+			columns: {
+				corporationId: true,
+				name: true,
+			},
+		})
+
+		if (corporations.length === 0) {
+			return
+		}
+		const result = await recheckDirectorHealthAfterTokenReauth({
+			characterId,
+			characterName,
+			corporations,
+			getCorporationStub: (corporationId): DirectorHealthRecheckStub =>
+				getStub<DirectorHealthRecheckStub>(c.env.EVE_CORPORATION_DATA, corporationId),
+			updateManagedCorporationHealth: async ({ corporationId, healthyDirectorCount }) => {
+				await db
+					.update(managedCorporations)
+					.set({
+						healthyDirectorCount,
+						isVerified: healthyDirectorCount > 0,
+						lastVerified: new Date(),
+						updatedAt: new Date(),
+					})
+					.where(eq(managedCorporations.corporationId, corporationId))
+			},
+		})
+
+		if (result.matchedCorporations.length === 0) {
+			return
+		}
+
+		if (result.matchedCorporations.length > 1) {
+			console.warn('[Auth] Character is configured as director in multiple corporations', {
+				characterId,
+				characterName,
+				corporationIds: result.matchedCorporations,
+			})
+		}
+
+		for (const corporationId of result.verifiedCorporations) {
+			console.log('[Auth] Director recovered after token reauth', {
+				characterId,
+				characterName,
+				corporationId,
+			})
+		}
+	} catch (error) {
+		console.error('[Auth] Failed to schedule director health recheck after token reauth', {
+			characterId,
+			characterName,
+			error: toErrorMessage(error),
+		})
+	}
+}
+
+function triggerDirectorHealthRecheckAfterTokenReauth(
+	c: Context<App>,
+	db: ReturnType<typeof createDb>,
+	characterId: string,
+	characterName: string
+): void {
+	waitUntilWithTelemetry(
+		c.executionCtx,
+		'auth.director-health-recheck',
+		() => scheduleDirectorHealthRecheckAfterTokenReauth(c, db, characterId, characterName),
+		{
+			characterId,
+			characterName,
+			source: 'oauth-callback',
+		}
+	)
 }
 
 function triggerLegacyMigrationRecheck(c: Context<App>, userId: string): void {
@@ -481,6 +569,12 @@ auth.get('/callback', async (c) => {
 			.update(userCharacters)
 			.set({ hasValidToken: true })
 			.where(eq(userCharacters.characterId, characterId))
+		triggerDirectorHealthRecheckAfterTokenReauth(
+			c,
+			db,
+			characterId,
+			characterInfo.characterName
+		)
 
 		await activityService.logCharacterLinked(stateUserId, characterId, getRequestMetadata(c))
 		triggerLegacyMigrationRecheck(c, stateUserId)
@@ -601,6 +695,12 @@ auth.get('/callback', async (c) => {
 			.update(userCharacters)
 			.set({ hasValidToken: true })
 			.where(eq(userCharacters.characterId, characterId))
+		triggerDirectorHealthRecheckAfterTokenReauth(
+			c,
+			db,
+			characterId,
+			characterInfo.characterName
+		)
 
 		await activityService.logLogin(user.id, characterId, getRequestMetadata(c))
 

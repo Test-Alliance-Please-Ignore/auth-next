@@ -39,3 +39,14 @@ export function isPermanentRefreshFailure(errorMessage: string): boolean {
 		normalizedError.includes('token missing/expired')
 	)
 }
+
+export function isPermanentTokenDecryptionFailure(errorMessage: string): boolean {
+	const normalizedError = errorMessage.toLowerCase()
+	return (
+		normalizedError.includes('token decryption failed') ||
+		normalizedError.includes('encryption key format invalid') ||
+		normalizedError.includes('invalid initialization vector') ||
+		normalizedError.includes('operationerror') ||
+		normalizedError.includes('operation error')
+	)
+}

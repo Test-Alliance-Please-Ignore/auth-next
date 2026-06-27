@@ -247,6 +247,32 @@ export type TokenValidationStatus =
 	| 'transient_error'
 
 /**
+ * Token refresh outcome for consumers that need to distinguish retryable
+ * refresh failures from hard token invalidation.
+ */
+export type TokenRefreshStatus =
+	| 'refreshed'
+	| 'token_missing'
+	| 'character_deleted'
+	| 'invalid_token'
+	| 'permanent_invalid'
+	| 'transient_error'
+
+/**
+ * Structured refresh result.
+ */
+export interface TokenRefreshResult {
+	/** Character ID being refreshed */
+	characterId: string
+	/** Whether the refresh completed successfully */
+	success: boolean
+	/** High-level refresh outcome */
+	status: TokenRefreshStatus
+	/** Optional diagnostic message */
+	error?: string
+}
+
+/**
  * Structured token validation result.
  */
 export interface TokenValidationResult {
@@ -440,6 +466,13 @@ export interface EveTokenStore {
 	 * @returns Whether refresh was successful
 	 */
 	refreshToken(characterId: string): Promise<boolean>
+
+	/**
+	 * Refresh a token and return a structured outcome.
+	 * @param characterId - EVE character ID
+	 * @returns Refresh outcome with retryability information
+	 */
+	refreshTokenWithResult(characterId: string): Promise<TokenRefreshResult>
 
 	/**
 	 * Get token information (without actual token values)

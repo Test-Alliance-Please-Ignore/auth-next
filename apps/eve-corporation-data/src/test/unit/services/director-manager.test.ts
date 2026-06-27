@@ -143,6 +143,76 @@ describe('DirectorManager.selectDirector', () => {
 		expect(safeMarkSelected).toHaveBeenCalledWith('dir-2')
 	})
 
+	it('treats transient refresh failures as retryable without forcing unhealthy', async () => {
+		const tokenStore = {
+			getTokenInfo: vi
+				.fn()
+				.mockResolvedValueOnce({ isExpired: true, hasRefreshToken: true })
+				.mockResolvedValueOnce({ isExpired: false, hasRefreshToken: true }),
+			refreshTokenWithResult: vi.fn().mockResolvedValueOnce({
+				characterId: '111',
+				success: false,
+				status: 'transient_error',
+				error: 'Network timeout while refreshing token',
+			}),
+		}
+		const manager = new DirectorManager(
+			{} as never,
+			'98000001',
+			tokenStore as never
+		)
+
+		vi.spyOn(manager as any, 'getHealthyDirectors').mockResolvedValue([
+			{
+				directorId: 'dir-1',
+				characterId: '111',
+				characterName: 'Transient Director',
+				isHealthy: true,
+				lastHealthCheck: null,
+				lastUsed: null,
+				failureCount: 0,
+				lastFailureReason: null,
+				priority: 1,
+			},
+			{
+				directorId: 'dir-2',
+				characterId: '222',
+				characterName: 'Backup Director',
+				isHealthy: true,
+				lastHealthCheck: null,
+				lastUsed: null,
+				failureCount: 0,
+				lastFailureReason: null,
+				priority: 2,
+			},
+		])
+		vi.spyOn(manager as any, 'checkAffiliation').mockResolvedValue({
+			matches: true,
+			corporationId: '98000001',
+		})
+		const safeRecordFailure = vi
+			.spyOn(manager as any, 'safeRecordFailure')
+			.mockResolvedValue(undefined)
+		const safeMarkSelected = vi
+			.spyOn(manager as any, 'safeMarkSelected')
+			.mockResolvedValue(undefined)
+
+		const selected = await manager.selectDirector()
+
+		expect(tokenStore.refreshTokenWithResult).toHaveBeenCalledWith('111')
+		expect(safeRecordFailure).toHaveBeenCalledWith(
+			'dir-1',
+			expect.stringContaining('transient failure'),
+			undefined
+		)
+		expect(selected).toEqual({
+			directorId: 'dir-2',
+			characterId: '222',
+			characterName: 'Backup Director',
+		})
+		expect(safeMarkSelected).toHaveBeenCalledWith('dir-2')
+	})
+
 	it('records a lookup_not_found failure when affiliation lookup returns 404 during selection', async () => {
 		const tokenStore = {
 			getTokenInfo: vi.fn().mockResolvedValue({ isExpired: false }),
@@ -460,6 +530,45 @@ describe('DirectorManager.verifyDirectorHealth', () => {
 			'dir-1',
 			expect.stringContaining('Director missing required roles'),
 			{ forceUnhealthy: true }
+		)
+	})
+
+	it('treats transient validation failures as retryable without forcing unhealthy', async () => {
+		const db = {
+			query: {
+				corporationDirectors: {
+					findFirst: vi.fn().mockResolvedValue({
+						id: 'dir-1',
+						characterId: '111',
+					}),
+				},
+			},
+		}
+		const tokenStore = {
+			validateToken: vi.fn().mockResolvedValue({
+				characterId: '111',
+				isValid: false,
+				missingScopes: [],
+				refreshAttempted: true,
+				refreshSucceeded: false,
+				scopes: [],
+				status: 'transient_error',
+				error: 'Network timeout while refreshing token',
+			}),
+		}
+		const manager = new DirectorManager(
+			db as never,
+			'98000001',
+			tokenStore as never
+		)
+		const recordFailure = vi.spyOn(manager, 'recordFailure').mockResolvedValue(undefined)
+
+		const result = await manager.verifyDirectorHealth('dir-1')
+
+		expect(result).toBe(false)
+		expect(recordFailure).toHaveBeenCalledWith(
+			'dir-1',
+			expect.stringContaining('transient failure')
 		)
 	})
 

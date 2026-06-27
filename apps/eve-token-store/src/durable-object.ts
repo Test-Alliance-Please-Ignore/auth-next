@@ -22,6 +22,7 @@ import { computeRampRetryAfterSeconds } from './lib/auth-esi-ramp'
 import {
 	classifySsoError,
 	isPermanentRefreshFailure,
+	isPermanentTokenDecryptionFailure,
 	isRefreshBackstopExpired,
 	shouldForcePermanentByInvalidAge,
 } from './lib/token-health'
@@ -44,6 +45,7 @@ import type {
 	EveTokenResponse,
 	EveTokenStore,
 	EveVerifyResponse,
+	TokenRefreshResult,
 	TokenInfo,
 	TokenValidationResult,
 } from '@repo/eve-token-store'
@@ -83,6 +85,21 @@ const AUTH_ESI_ROUTE_WINDOW_LIMIT = 60
 const AUTH_ESI_RAMP_WINDOW_MS = 60 * 1000
 const TOKEN_REFRESH_COOLDOWN_PREFIX = 'token:refresh:cooldown:'
 const TOKEN_REFRESH_TRANSIENT_COOLDOWN_MS = 5 * 60 * 1000
+
+type AccessTokenLookupResult =
+	| {
+			status: 'ok'
+			accessToken: string
+	  }
+	| {
+			status:
+				| 'token_missing'
+				| 'character_deleted'
+				| 'invalid_token'
+				| 'permanent_invalid'
+				| 'transient_error'
+			error: string
+	  }
 
 /**
  * EveTokenStore Durable Object
@@ -456,74 +473,123 @@ export class EveTokenStoreDO extends DurableObject<Env> implements EveTokenStore
 	 * Manually refresh a token
 	 */
 	async refreshToken(characterId: string): Promise<boolean> {
+		const result = await this.refreshTokenWithResult(characterId)
+		return result.success
+	}
+
+	/**
+	 * Manually refresh a token with structured outcome metadata.
+	 */
+	async refreshTokenWithResult(characterId: string): Promise<TokenRefreshResult> {
 		try {
 			const cooldownUntilMs = await this.getTokenRefreshCooldownUntil(characterId)
 			const nowMs = Date.now()
 			if (cooldownUntilMs > nowMs) {
 				logger
 					.withTags({ operation: 'refreshToken', characterId })
-					.warn('Skipping refresh: token is in cooldown window', {
-						cooldownUntil: new Date(cooldownUntilMs).toISOString(),
-					})
-				return false
-			}
+						.warn('Skipping refresh: token is in cooldown window', {
+							cooldownUntil: new Date(cooldownUntilMs).toISOString(),
+						})
+					return {
+						characterId,
+						success: false,
+						status: 'transient_error',
+						error: `Token refresh cooldown active until ${new Date(cooldownUntilMs).toISOString()}`,
+					}
+				}
 
-			const character = await this.db.query.eveCharacters.findFirst({
-				where: eq(eveCharacters.characterId, String(characterId)),
-			})
+				const character = await this.db.query.eveCharacters.findFirst({
+					where: eq(eveCharacters.characterId, String(characterId)),
+				})
 
-			if (!character) {
-				logger.withTags({ operation: 'refreshToken', characterId }).error('Character not found')
-				return false
-			}
+				if (!character) {
+					logger.withTags({ operation: 'refreshToken', characterId }).error('Character not found')
+					return {
+						characterId,
+						success: false,
+						status: 'token_missing',
+						error: 'Character not found',
+					}
+				}
+				if (character.deletedAt) {
+					logger.withTags({ operation: 'refreshToken', characterId }).error(
+						'Character is marked deleted'
+					)
+					return {
+						characterId,
+						success: false,
+						status: 'character_deleted',
+						error: 'Character is marked deleted',
+					}
+				}
 
-			// Get token record
-			const tokenRecord = await this.db.query.eveTokens.findFirst({
-				where: eq(eveTokens.characterId, character.id),
+				// Get token record
+				const tokenRecord = await this.db.query.eveTokens.findFirst({
+					where: eq(eveTokens.characterId, character.id),
 			})
 
 			if (!tokenRecord) {
 				logger
 					.withTags({ operation: 'refreshToken', characterId })
-					.error('Token or refresh token not found', {
-						hasTokenRecord: false,
-						hasRefreshToken: false,
-					})
-				return false
-			}
-			if (tokenRecord.permanentInvalidAt) {
-				logger
-					.withTags({ operation: 'refreshToken', characterId })
-					.warn('Skipping refresh: token is permanently invalid', {
-						permanentInvalidAt: tokenRecord.permanentInvalidAt.toISOString(),
-						reason: tokenRecord.permanentInvalidReason,
-					})
-				return false
-			}
-			if (tokenRecord.nextRetryAt && tokenRecord.nextRetryAt.getTime() > nowMs) {
-				logger
-					.withTags({ operation: 'refreshToken', characterId })
-					.warn('Skipping refresh: token retry cooldown is active', {
-						nextRetryAt: tokenRecord.nextRetryAt.toISOString(),
-					})
-				return false
-			}
-			if (shouldForcePermanentByInvalidAge(tokenRecord.invalidSince)) {
-				await this.db
-					.update(eveTokens)
+						.error('Token or refresh token not found', {
+							hasTokenRecord: false,
+							hasRefreshToken: false,
+						})
+					return {
+						characterId,
+						success: false,
+						status: 'token_missing',
+						error: 'Token or refresh token not found',
+					}
+				}
+				if (tokenRecord.permanentInvalidAt) {
+					logger
+						.withTags({ operation: 'refreshToken', characterId })
+						.warn('Skipping refresh: token is permanently invalid', {
+							permanentInvalidAt: tokenRecord.permanentInvalidAt.toISOString(),
+							reason: tokenRecord.permanentInvalidReason,
+						})
+					return {
+						characterId,
+						success: false,
+						status: 'permanent_invalid',
+						error: tokenRecord.permanentInvalidReason ?? 'Token is permanently invalid',
+					}
+				}
+				if (tokenRecord.nextRetryAt && tokenRecord.nextRetryAt.getTime() > nowMs) {
+					logger
+						.withTags({ operation: 'refreshToken', characterId })
+						.warn('Skipping refresh: token retry cooldown is active', {
+							nextRetryAt: tokenRecord.nextRetryAt.toISOString(),
+						})
+					return {
+						characterId,
+						success: false,
+						status: 'transient_error',
+						error: `Token refresh cooldown active until ${tokenRecord.nextRetryAt.toISOString()}`,
+					}
+				}
+				if (shouldForcePermanentByInvalidAge(tokenRecord.invalidSince)) {
+					await this.db
+						.update(eveTokens)
 					.set({
 						permanentInvalidAt: new Date(),
-						permanentInvalidReason:
-							tokenRecord.permanentInvalidReason ?? 'Invalid state exceeded 7-day backstop',
-						updatedAt: new Date(),
-					})
-					.where(eq(eveTokens.id, tokenRecord.id))
-				return false
-			}
-			if (!tokenRecord.refreshToken) {
-				const permanentlyInvalid = isRefreshBackstopExpired(tokenRecord.expiresAt)
-				await this.db
-					.update(eveTokens)
+							permanentInvalidReason:
+								tokenRecord.permanentInvalidReason ?? 'Invalid state exceeded 7-day backstop',
+							updatedAt: new Date(),
+						})
+						.where(eq(eveTokens.id, tokenRecord.id))
+					return {
+						characterId,
+						success: false,
+						status: 'permanent_invalid',
+						error: 'Invalid state exceeded 7-day backstop',
+					}
+				}
+				if (!tokenRecord.refreshToken) {
+					const permanentlyInvalid = isRefreshBackstopExpired(tokenRecord.expiresAt)
+					await this.db
+						.update(eveTokens)
 					.set({
 						invalidSince: tokenRecord.invalidSince ?? new Date(),
 						lastValidationAt: new Date(),
@@ -535,15 +601,20 @@ export class EveTokenStoreDO extends DurableObject<Env> implements EveTokenStore
 						updatedAt: new Date(),
 					})
 					.where(eq(eveTokens.id, tokenRecord.id))
-				logger
-					.withTags({ operation: 'refreshToken', characterId })
-					.error('Token or refresh token not found', {
-						hasTokenRecord: true,
-						hasRefreshToken: false,
-						permanentlyInvalid,
-					})
-				return false
-			}
+					logger
+						.withTags({ operation: 'refreshToken', characterId })
+						.error('Token or refresh token not found', {
+							hasTokenRecord: true,
+							hasRefreshToken: false,
+							permanentlyInvalid,
+						})
+					return {
+						characterId,
+						success: false,
+						status: permanentlyInvalid ? 'permanent_invalid' : 'invalid_token',
+						error: 'Token is expired and has no refresh token',
+					}
+				}
 
 			// Decrypt refresh token
 			const refreshToken = await this.decrypt(tokenRecord.refreshToken)
@@ -586,20 +657,55 @@ export class EveTokenStoreDO extends DurableObject<Env> implements EveTokenStore
 				.update(eveCharacters)
 				.set({ lastRefreshAt: new Date() })
 				.where(eq(eveCharacters.characterId, String(characterId)))
-			await this.clearTokenRefreshCooldown(characterId).catch((error) => {
-				// Cooldown cleanup is advisory; never fail a successful refresh because storage is transiently unhealthy.
-				logger
-					.withTags({ operation: 'refreshToken', characterId })
+				await this.clearTokenRefreshCooldown(characterId).catch((error) => {
+					// Cooldown cleanup is advisory; never fail a successful refresh because storage is transiently unhealthy.
+					logger
+						.withTags({ operation: 'refreshToken', characterId })
 					.warn('Failed to clear token refresh cooldown', {
 						error: error instanceof Error ? error.message : String(error),
 						errorDetails: toErrorLogDetails(error),
-					})
-			})
+						})
+				})
 
-			return true
-		} catch (error) {
-			const message = error instanceof Error ? error.message : String(error)
-			let tokenState:
+				return {
+					characterId,
+					success: true,
+					status: 'refreshed',
+				}
+			} catch (error) {
+				const message = error instanceof Error ? error.message : String(error)
+				if (isPermanentTokenDecryptionFailure(message)) {
+					const character = await this.db.query.eveCharacters.findFirst({
+						where: eq(eveCharacters.characterId, String(characterId)),
+					})
+					if (character) {
+						await this.db
+							.update(eveTokens)
+							.set({
+								invalidSince: new Date(),
+								lastValidationAt: new Date(),
+								lastValidationStatus: 'permanent_invalid',
+								nextRetryAt: null,
+								permanentInvalidAt: new Date(),
+								permanentInvalidReason: message,
+								updatedAt: new Date(),
+							})
+							.where(eq(eveTokens.characterId, character.id))
+					}
+					logger
+						.withTags({ operation: 'refreshToken', characterId })
+						.warn('Permanent token decryption failure; disabled further refresh attempts', {
+							error: message,
+							errorDetails: toErrorLogDetails(error),
+						})
+					return {
+						characterId,
+						success: false,
+						status: 'permanent_invalid',
+						error: message,
+					}
+				}
+				let tokenState:
 				| {
 						expiresAt: string
 						hasRefreshToken: boolean
@@ -629,13 +735,18 @@ export class EveTokenStoreDO extends DurableObject<Env> implements EveTokenStore
 						})
 						.where(eq(eveTokens.characterId, character.id))
 				}
-				logger
-					.withTags({ operation: 'refreshToken', characterId })
-					.warn('Permanent token refresh failure; disabled further refresh attempts', {
+					logger
+						.withTags({ operation: 'refreshToken', characterId })
+						.warn('Permanent token refresh failure; disabled further refresh attempts', {
+							error: message,
+							errorDetails: toErrorLogDetails(error),
+						})
+					return {
+						characterId,
+						success: false,
+						status: 'permanent_invalid',
 						error: message,
-						errorDetails: toErrorLogDetails(error),
-					})
-				return false
+					}
 			}
 			const character = await this.db.query.eveCharacters.findFirst({
 				where: eq(eveCharacters.characterId, String(characterId)),
@@ -678,19 +789,24 @@ export class EveTokenStoreDO extends DurableObject<Env> implements EveTokenStore
 						errorDetails: toErrorLogDetails(error),
 					})
 			})
-			logger
-				.withTags({ operation: 'refreshToken', characterId })
-				.error('Token refresh failed', {
-					error: message,
-					errorDetails: toErrorLogDetails(error),
+				logger
+					.withTags({ operation: 'refreshToken', characterId })
+					.error('Token refresh failed', {
+						error: message,
+						errorDetails: toErrorLogDetails(error),
 					tokenState,
 					transientCooldownUntil: new Date(
 						Date.now() + TOKEN_REFRESH_TRANSIENT_COOLDOWN_MS
 					).toISOString(),
 				})
-			return false
+				return {
+					characterId,
+					success: false,
+					status: 'transient_error',
+					error: message,
+				}
+			}
 		}
-	}
 
 	/**
 	 * Get token information (without actual token values)
@@ -902,6 +1018,30 @@ export class EveTokenStoreDO extends DurableObject<Env> implements EveTokenStore
 			}
 		} catch (error) {
 			const errorMessage = error instanceof Error ? error.message : String(error)
+			if (isPermanentTokenDecryptionFailure(errorMessage)) {
+				await this.db
+					.update(eveTokens)
+					.set({
+						invalidSince: tokenRecord.invalidSince ?? new Date(),
+						lastValidationAt: new Date(),
+						lastValidationStatus: 'permanent_invalid',
+						nextRetryAt: null,
+						permanentInvalidAt: new Date(),
+						permanentInvalidReason: errorMessage,
+						updatedAt: new Date(),
+					})
+					.where(eq(eveTokens.id, tokenRecord.id))
+				return {
+					characterId,
+					error: errorMessage,
+					isValid: false,
+					missingScopes: [],
+					refreshAttempted,
+					refreshSucceeded: false,
+					scopes: [],
+					status: 'permanent_invalid',
+				}
+			}
 			const status = classifySsoError(errorMessage)
 			if (refreshAttempted && isPermanentRefreshFailure(errorMessage)) {
 				await this.db
@@ -1039,9 +1179,18 @@ export class EveTokenStoreDO extends DurableObject<Env> implements EveTokenStore
 
 	/**
 	 * Get access token for use (decrypted)
-	 * Returns null if character is not found or has been marked as deleted
+	 * Returns null when no token can be produced.
 	 */
 	async getAccessToken(characterId: string): Promise<string | null> {
+		const result = await this.getAccessTokenResult(characterId)
+		return result.status === 'ok' ? result.accessToken : null
+	}
+
+	/**
+	 * Internal access-token lookup that preserves retryable refresh failures so
+	 * authenticated callers can distinguish transient outages from hard auth loss.
+	 */
+	private async getAccessTokenResult(characterId: string): Promise<AccessTokenLookupResult> {
 		try {
 			const character = await this.db.query.eveCharacters.findFirst({
 				where: and(
@@ -1051,7 +1200,10 @@ export class EveTokenStoreDO extends DurableObject<Env> implements EveTokenStore
 			})
 
 			if (!character) {
-				return null
+				return {
+					status: 'token_missing',
+					error: 'Character not found',
+				}
 			}
 
 			// Select only fields required by this path to remain resilient while
@@ -1067,7 +1219,10 @@ export class EveTokenStoreDO extends DurableObject<Env> implements EveTokenStore
 			})
 
 			if (!tokenRecord) {
-				return null
+				return {
+					status: 'token_missing',
+					error: 'Token record not found',
+				}
 			}
 
 			// Check if token is expired
@@ -1076,12 +1231,20 @@ export class EveTokenStoreDO extends DurableObject<Env> implements EveTokenStore
 
 			if (isExpired) {
 				if (!tokenRecord.refreshToken) {
-					return null
+					return {
+						status: 'invalid_token',
+						error: 'Token is expired and has no refresh token',
+					}
 				}
-				// Try to refresh
-				const refreshed = await this.refreshToken(characterId)
-				if (!refreshed) {
-					return null
+				// Try to refresh. Preserve retryable failures so callers can treat
+				// them as transient instead of converting them into hard 401s.
+				const refreshed = await this.refreshTokenWithResult(characterId)
+				if (!refreshed.success) {
+					return {
+						status:
+							refreshed.status === 'refreshed' ? 'transient_error' : refreshed.status,
+						error: refreshed.error ?? 'Token refresh failed',
+					}
 				}
 
 				// Fetch updated token
@@ -1093,20 +1256,39 @@ export class EveTokenStoreDO extends DurableObject<Env> implements EveTokenStore
 					logger
 						.withTags({ operation: 'getAccessToken', characterId })
 						.error('Updated token not found after refresh')
-					return null
+					return {
+						status: 'transient_error',
+						error: 'Updated token not found after refresh',
+					}
 				}
 
 				const decryptedToken = await this.decrypt(updatedToken.accessToken)
-				return decryptedToken
+				return {
+					status: 'ok',
+					accessToken: decryptedToken,
+				}
 			}
 
 			const decryptedToken = await this.decrypt(tokenRecord.accessToken)
-			return decryptedToken
+			return {
+				status: 'ok',
+				accessToken: decryptedToken,
+			}
 		} catch (error) {
 			logger
 				.withTags({ operation: 'getAccessToken', characterId })
 				.error('Failed to get access token', error)
-			return null
+			const errorMessage = error instanceof Error ? error.message : String(error)
+			if (isPermanentTokenDecryptionFailure(errorMessage)) {
+				return {
+					status: 'permanent_invalid',
+					error: errorMessage,
+				}
+			}
+			return {
+				status: 'transient_error',
+				error: errorMessage,
+			}
 		}
 	}
 
@@ -1603,15 +1785,22 @@ export class EveTokenStoreDO extends DurableObject<Env> implements EveTokenStore
 		await this.assertAuthenticatedEsiRampPermit(path)
 		await this.assertAuthenticatedEsiBudget(path)
 
-		const accessToken = await this.getAccessToken(character.characterId)
-		if (!accessToken) {
+		const accessTokenResult = await this.getAccessTokenResult(character.characterId)
+		if (accessTokenResult.status !== 'ok') {
+			const isTransient = accessTokenResult.status === 'transient_error'
 			const metadata = JSON.stringify({
-				status: 401,
+				status: isTransient ? 503 : 401,
 				path,
-				reasonCode: 'no_token_provided',
+				reasonCode: isTransient ? 'token_refresh_transient_failure' : 'no_token_provided',
 			})
+			const errorBody = isTransient
+				? '{"error":"Service Unavailable - Token refresh failed transiently"}'
+				: '{"error":"Unauthorized - No token provided"}'
+			const errorText = isTransient
+				? 'Service Unavailable - Token refresh failed transiently'
+				: 'Unauthorized - No token provided'
 			throw new Error(
-				`ESI request failed: 401 Unauthorized - {"error":"Unauthorized - No token provided"} | metadata=${metadata}`
+				`ESI request failed: ${isTransient ? 503 : 401} ${errorText} - ${errorBody} | metadata=${metadata}`
 			)
 		}
 
@@ -1621,7 +1810,7 @@ export class EveTokenStoreDO extends DurableObject<Env> implements EveTokenStore
 			cacheScope: scope,
 			cacheMode,
 			cachedResponse: cached,
-			accessToken,
+			accessToken: accessTokenResult.accessToken,
 			maxLocalCacheTtl: EveTokenStoreDO.MAX_CACHE_TTL_SECONDS,
 			onResponse: async ({ response: esiResponse }) => {
 				await this.updateAuthenticatedEsiDynamicBudgetFromHeaders(
@@ -2627,8 +2816,10 @@ export class EveTokenStoreDO extends DurableObject<Env> implements EveTokenStore
 			const result = new TextDecoder().decode(decryptedData)
 			return result
 		} catch (error) {
-			logger.withTags({ operation: 'decrypt' }).error('Decryption failed', error)
-			throw error
+			const errorMessage = error instanceof Error ? error.message : String(error)
+			const wrappedError = new Error(`Token decryption failed: ${errorMessage}`)
+			logger.withTags({ operation: 'decrypt' }).error('Decryption failed', wrappedError)
+			throw wrappedError
 		}
 	}
 

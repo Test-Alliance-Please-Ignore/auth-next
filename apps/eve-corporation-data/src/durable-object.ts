@@ -748,6 +748,32 @@ export class EveCorporationDataDO extends DurableObject<Env> implements EveCorpo
 	async verifyAccess(): Promise<CorporationAccessVerification> {
 		console.log('[EveCorporationData] verifyAccess: Starting verification')
 		const config = await this.getDb().query.corporationConfig.findFirst()
+		const fallbackMissingRoles = ['Required corporation sync roles were not satisfied by any healthy director']
+
+		const extractMissingRoles = (failureReasons: Array<string | null | undefined>): string[] => {
+			const missingRoles = new Set<string>()
+
+			for (const reason of failureReasons) {
+				if (!reason) continue
+
+				const match = reason.match(/Director missing required roles(?: for selection)?:\s*(.+)$/)
+				if (!match) continue
+
+				const roleGroups = [...match[1].matchAll(/\[([^\]]+)\]/g)].map((group) => group[1])
+				for (const group of roleGroups) {
+					const label = group
+						.split('|')
+						.map((role) => role.trim())
+						.filter(Boolean)
+						.join(' or ')
+					if (label) {
+						missingRoles.add(label)
+					}
+				}
+			}
+
+			return [...missingRoles]
+		}
 
 		if (!config) {
 			console.log('[EveCorporationData] verifyAccess: No configuration found')
@@ -756,6 +782,7 @@ export class EveCorporationDataDO extends DurableObject<Env> implements EveCorpo
 				characterId: null,
 				characterName: null,
 				verifiedRoles: [],
+				missingRoles: fallbackMissingRoles,
 				lastVerified: null,
 			}
 		}
@@ -768,6 +795,12 @@ export class EveCorporationDataDO extends DurableObject<Env> implements EveCorpo
 			this.onDirectorAffiliationMismatch.bind(this)
 		)
 		const result = await directorManager.verifyAllDirectorsHealth()
+		const unhealthyDirectors = await directorManager.getUnhealthyDirectors()
+		const missingRolesFromFailures = extractMissingRoles(
+			unhealthyDirectors.map((director) => director.lastFailureReason)
+		)
+		const missingRoles =
+			missingRolesFromFailures.length > 0 ? missingRolesFromFailures : fallbackMissingRoles
 
 		console.log('[EveCorporationData] verifyAccess: Verification complete', {
 			verified: result.verified,
@@ -784,6 +817,7 @@ export class EveCorporationDataDO extends DurableObject<Env> implements EveCorpo
 				characterId: null,
 				characterName: null,
 				verifiedRoles: [],
+				missingRoles,
 				lastVerified: config.lastVerified,
 			}
 		}
@@ -807,6 +841,7 @@ export class EveCorporationDataDO extends DurableObject<Env> implements EveCorpo
 			characterId: primaryDirector.characterId,
 			characterName: primaryDirector.characterName,
 			verifiedRoles,
+			missingRoles: result.verified > 0 ? undefined : missingRoles,
 			lastVerified: config.lastVerified,
 		}
 	}

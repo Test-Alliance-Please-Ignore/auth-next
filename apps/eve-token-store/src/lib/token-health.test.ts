@@ -3,6 +3,7 @@ import { describe, expect, it } from 'vitest'
 import {
 	classifySsoError,
 	isPermanentRefreshFailure,
+	isPermanentTokenDecryptionFailure,
 	isRefreshBackstopExpired,
 	shouldForcePermanentByInvalidAge,
 } from './token-health'
@@ -43,5 +44,17 @@ describe('token-health helpers', () => {
 		expect(isPermanentRefreshFailure('invalid refresh token')).toBe(true)
 		expect(isPermanentRefreshFailure('token missing/expired')).toBe(true)
 		expect(isPermanentRefreshFailure('429 Too Many Requests')).toBe(false)
+	})
+
+	it('flags permanent token decryption failures', () => {
+		expect(isPermanentTokenDecryptionFailure('Token decryption failed: OperationError')).toBe(
+			true
+		)
+		expect(isPermanentTokenDecryptionFailure('Token decryption failed: ENCRYPTION_KEY format invalid')).toBe(
+			true
+		)
+		expect(isPermanentTokenDecryptionFailure('Network timeout while refreshing token')).toBe(
+			false
+		)
 	})
 })
