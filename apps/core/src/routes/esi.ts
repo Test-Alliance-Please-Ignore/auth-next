@@ -99,21 +99,4 @@ app.get('/universe/stations/:stationId', async (c) => {
 	}
 })
 
-/**
- * GET /esi/universe/structures/:structureId
- * Get structure details by ID (requires authentication)
- */
-app.get('/universe/structures/:structureId', async (c) => {
-	try {
-		const structureId = c.req.param('structureId')
-
-		const esiService = new EsiService(c.env)
-		const details = await esiService.getStructureDetails(structureId)
-		return c.json(details)
-	} catch (error) {
-		logger.error('Error getting structure details:', error)
-		return c.json({ error: 'Failed to get structure details' }, 500)
-	}
-})
-
 export default app

@@ -59,18 +59,6 @@ export function useStationDetails(stationId: string | undefined) {
 	})
 }
 
-/**
- * Get structure details by ID
- */
-export function useStructureDetails(structureId: string | undefined) {
-	return useQuery({
-		queryKey: ['structure-details', structureId] as const,
-		queryFn: () => esiApi.getStructureDetails(structureId!),
-		enabled: !!structureId,
-		staleTime: 1000 * 60 * 5, // 5 minutes - structures can be renamed
-	})
-}
-
 // Query keys for system-only search
 export const systemSearchKeys = {
 	all: ['system-search'] as const,

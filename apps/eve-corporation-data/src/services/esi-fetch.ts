@@ -62,6 +62,34 @@ function getUniverseStructureCorporationId(universe: RawUniverseStructureInfo): 
 	return String(universe.owner_id)
 }
 
+async function fetchUniverseStructureMetadata(
+	tokenStore: EveTokenStore,
+	structureId: string,
+	characterId: string,
+	context: 'sovereignty hub' | 'skyhook'
+): Promise<RawUniverseStructureInfo | null> {
+	try {
+		const result = await tokenStore.fetchEsi<RawUniverseStructureInfo>(
+			`/universe/structures/${structureId}`,
+			characterId,
+			{ cacheMode: 'no-store' }
+		)
+		return result.data
+	} catch (error) {
+		const message = error instanceof Error ? error.message.toLowerCase() : String(error).toLowerCase()
+		if (message.includes('403') || message.includes('404')) {
+			logger.warn(`[ESI Fetch] Skipping ${context} enrichment for inaccessible universe metadata`, {
+				structureId,
+				characterId,
+				error: error instanceof Error ? error.message : String(error),
+			})
+			return null
+		}
+
+		throw error
+	}
+}
+
 // ========================================================================
 // PUBLIC DATA FETCHING
 // ========================================================================
@@ -464,12 +492,15 @@ export async function fetchSovereigntyHubs(
 
 	const details: Array<EsiSovereigntyHub | null> = await Promise.all(
 		sovereigntyHubs.map(async (hub) => {
-			const universeResult = await tokenStore.fetchEsi<RawUniverseStructureInfo>(
-				`/universe/structures/${hub.id}`,
+			const universe = await fetchUniverseStructureMetadata(
+				tokenStore,
+				String(hub.id),
 				characterId,
-				{ cacheMode: 'no-store' }
+				'sovereignty hub'
 			)
-			const universe = universeResult.data
+			if (!universe) {
+				return null
+			}
 			const universeCorporationId = getUniverseStructureCorporationId(universe)
 
 			if (universeCorporationId !== corporationId) {
@@ -586,12 +617,15 @@ export async function fetchCorporationSkyhooks(
 
 	const skyhooks: Array<EsiCorporationSkyhook | null> = await Promise.all(
 		skyhookListing.map(async (skyhook) => {
-			const universeResult = await tokenStore.fetchEsi<RawUniverseStructureInfo>(
-				`/universe/structures/${skyhook.id}`,
+			const universe = await fetchUniverseStructureMetadata(
+				tokenStore,
+				String(skyhook.id),
 				characterId,
-				{ cacheMode: 'no-store' }
+				'skyhook'
 			)
-			const universe = universeResult.data
+			if (!universe) {
+				return null
+			}
 			const universeCorporationId = getUniverseStructureCorporationId(universe)
 
 			if (universeCorporationId !== corporationId) {

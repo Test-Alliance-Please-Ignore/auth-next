@@ -140,4 +140,41 @@ describe('esi structure enrichment ownership handling', () => {
 		)
 		expect(hubs).toEqual([])
 	})
+
+	it('skips skyhook enrichment when universe metadata access is forbidden', async () => {
+		const tokenStore = {
+			fetchEsi: vi
+				.fn()
+				.mockResolvedValueOnce({
+					data: { skyhooks: [{ id: 71001, planet_id: 401 }] },
+					pages: 1,
+				})
+				.mockRejectedValueOnce(
+					new Error(
+						'ESI request failed: 403 Forbidden - {"error":"Forbidden"} | metadata={"status":403,"path":"/universe/structures/71001","reasonCode":"forbidden"}'
+					)
+				),
+		}
+
+		const skyhooks = await fetchCorporationSkyhooks(
+			tokenStore as never,
+			'98000001',
+			'211'
+		)
+
+		expect(tokenStore.fetchEsi).toHaveBeenCalledTimes(2)
+		expect(tokenStore.fetchEsi).toHaveBeenNthCalledWith(
+			1,
+			'/corporations/98000001/structures/skyhooks?page=1',
+			'211',
+			{ cacheMode: 'no-store' }
+		)
+		expect(tokenStore.fetchEsi).toHaveBeenNthCalledWith(
+			2,
+			'/universe/structures/71001',
+			'211',
+			{ cacheMode: 'no-store' }
+		)
+		expect(skyhooks).toEqual([])
+	})
 })
