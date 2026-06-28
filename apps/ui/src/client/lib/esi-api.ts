@@ -35,14 +35,6 @@ export interface EsiStationDetails {
 	owner?: number
 }
 
-export interface EsiStructureDetails {
-	structure_id: number
-	name: string
-	solar_system_id: number
-	type_id?: number
-	owner_id?: number
-}
-
 export class EsiApiClient extends ApiClient {
 	/**
 	 * Search for solar systems by name
@@ -117,13 +109,6 @@ export class EsiApiClient extends ApiClient {
 	 */
 	async getStationDetails(stationId: string): Promise<EsiStationDetails> {
 		return this.get(`${ESI_API_BASE}/universe/stations/${stationId}`)
-	}
-
-	/**
-	 * Get structure details by ID
-	 */
-	async getStructureDetails(structureId: string): Promise<EsiStructureDetails> {
-		return this.get(`${ESI_API_BASE}/universe/structures/${structureId}`)
 	}
 }
 
