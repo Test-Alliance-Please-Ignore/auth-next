@@ -327,6 +327,8 @@ describe('DirectorManager.recordFailure', () => {
 		const where = vi.fn().mockResolvedValue(undefined)
 		const set = vi.fn().mockReturnValue({ where })
 		const update = vi.fn().mockReturnValue({ set })
+		const deleteWhere = vi.fn().mockResolvedValue(undefined)
+		const deleteBuilder = vi.fn().mockReturnValue({ where: deleteWhere })
 		const db = {
 			query: {
 				corporationDirectors: {
@@ -338,6 +340,7 @@ describe('DirectorManager.recordFailure', () => {
 					}),
 				},
 			},
+			delete: deleteBuilder,
 			update,
 		}
 		const manager = new DirectorManager(
@@ -359,12 +362,56 @@ describe('DirectorManager.recordFailure', () => {
 			})
 		)
 		expect(set.mock.calls[0][0].failureCount).toBeGreaterThanOrEqual(3)
+		expect(deleteBuilder).toHaveBeenCalledWith(expect.anything())
+		expect(deleteWhere).toHaveBeenCalled()
+	})
+
+	it('clears cached roles when a director becomes unhealthy through repeated failures', async () => {
+		const where = vi.fn().mockResolvedValue(undefined)
+		const set = vi.fn().mockReturnValue({ where })
+		const update = vi.fn().mockReturnValue({ set })
+		const deleteWhere = vi.fn().mockResolvedValue(undefined)
+		const deleteBuilder = vi.fn().mockReturnValue({ where: deleteWhere })
+		const db = {
+			query: {
+				corporationDirectors: {
+					findFirst: vi.fn().mockResolvedValue({
+						id: 'dir-1',
+						characterId: '111',
+						failureCount: 2,
+						isHealthy: true,
+						permanentFailureAt: null,
+					}),
+				},
+			},
+			delete: deleteBuilder,
+			update,
+		}
+		const manager = new DirectorManager(
+			db as never,
+			'98000001',
+			{} as never
+		)
+		vi.spyOn(manager, 'getHealthyDirectorsCount').mockResolvedValue(0)
+
+		await manager.recordFailure('dir-1', 'Director missing required roles: [Station_Manager]')
+
+		expect(set).toHaveBeenCalledWith(
+			expect.objectContaining({
+				isHealthy: false,
+				lastFailureReason: 'Director missing required roles: [Station_Manager]',
+			})
+		)
+		expect(deleteBuilder).toHaveBeenCalledWith(expect.anything())
+		expect(deleteWhere).toHaveBeenCalled()
 	})
 
 	it('applies transient cooldown on 429 failures instead of permanent unhealthy marking', async () => {
 		const where = vi.fn().mockResolvedValue(undefined)
 		const set = vi.fn().mockReturnValue({ where })
 		const update = vi.fn().mockReturnValue({ set })
+		const deleteWhere = vi.fn().mockResolvedValue(undefined)
+		const deleteBuilder = vi.fn().mockReturnValue({ where: deleteWhere })
 		const db = {
 			query: {
 				corporationDirectors: {
@@ -377,6 +424,7 @@ describe('DirectorManager.recordFailure', () => {
 					}),
 				},
 			},
+			delete: deleteBuilder,
 			update,
 		}
 		const manager = new DirectorManager(
@@ -399,6 +447,7 @@ describe('DirectorManager.recordFailure', () => {
 		)
 		const args = set.mock.calls[0][0]
 		expect(args.permanentFailureAt).toBeUndefined()
+		expect(deleteBuilder).not.toHaveBeenCalled()
 	})
 
 	it('propagates a corp auth health snapshot when the last healthy director becomes unhealthy', async () => {

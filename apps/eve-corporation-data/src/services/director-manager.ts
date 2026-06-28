@@ -841,6 +841,23 @@ export class DirectorManager {
 				failureCount: newFailureCount,
 				reason: normalizedReason,
 			})
+			try {
+				await this.db
+					.delete(characterCorporationRoles)
+					.where(
+						and(
+							eq(characterCorporationRoles.corporationId, this.corporationId),
+							eq(characterCorporationRoles.characterId, director.characterId)
+						)
+					)
+			} catch (error) {
+				logger.warn('[DirectorManager] Failed to clear stale director role cache after unhealthy transition', {
+					corporationId: this.corporationId,
+					directorId,
+					characterId: director.characterId,
+					error: error instanceof Error ? error.message : String(error),
+				})
+			}
 			await this.syncHealthSnapshot()
 		}
 

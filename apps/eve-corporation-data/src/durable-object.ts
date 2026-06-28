@@ -4,6 +4,7 @@ import { and, desc, eq, gt, gte, inArray, lte, notInArray, sql } from '@repo/db-
 import { getStub } from '@repo/do-utils'
 import { logger } from '@repo/hono-helpers'
 import { parseDateOrNull } from '@repo/worker-utils'
+import { retryWithBackoff } from '@repo/workflow-utils'
 
 import { createDb } from './db'
 import {
@@ -68,6 +69,7 @@ import type {
 	CorporationWalletTransactionData,
 	DirectorHealth,
 	EsiCorporationAsset,
+	EsiCharacterRoles,
 	EsiCorporationContract,
 	EsiCorporationIndustryJob,
 	EsiCorporationKillmail,
@@ -316,6 +318,17 @@ export class EveCorporationDataDO extends DurableObject<Env> implements EveCorpo
 		actualCorporationId: string | null
 	): Promise<void> {
 		try {
+			await this.clearCharacterRolesSnapshot(characterId)
+		} catch (error) {
+			logger.warn('[EveCorporationData] Failed to clear stale director role cache after affiliation mismatch', {
+				characterId,
+				expectedCorporationId,
+				actualCorporationId,
+				error: error instanceof Error ? error.message : String(error),
+			})
+		}
+
+		try {
 			await this.env.CORE.handleCharacterAffiliationChanges([characterId], {
 				source: `director-affiliation-mismatch:${expectedCorporationId}:${actualCorporationId ?? 'unknown'}`,
 				bypassThrottle: true,
@@ -401,40 +414,127 @@ export class EveCorporationDataDO extends DurableObject<Env> implements EveCorpo
 	/**
 	 * Check if character has a required role
 	 */
-	private async hasRequiredRole(
+	private async storeCharacterRolesSnapshot(
+		corporationId: string,
+		characterId: string,
+		roles: EsiCharacterRoles
+	): Promise<void> {
+		await this.getDb()
+			.insert(characterCorporationRoles)
+			.values({
+				corporationId,
+				characterId,
+				roles: roles.roles || [],
+				rolesAtHq: roles.roles_at_hq,
+				rolesAtBase: roles.roles_at_base,
+				rolesAtOther: roles.roles_at_other,
+				updatedAt: new Date(),
+			})
+			.onConflictDoUpdate({
+				target: [characterCorporationRoles.corporationId, characterCorporationRoles.characterId],
+				set: {
+					roles: roles.roles || [],
+					rolesAtHq: roles.roles_at_hq,
+					rolesAtBase: roles.roles_at_base,
+					rolesAtOther: roles.roles_at_other,
+					updatedAt: new Date(),
+				},
+			})
+	}
+
+	private async hasRequiredCorpRole(
+		corporationId: string,
 		characterId: string,
 		requiredRole: CorporationRole
 	): Promise<boolean> {
-		logger.info('[EveCorporationData] hasRequiredRole: Checking role', {
+		logger.info('[EveCorporationData] hasRequiredCorpRole: Checking corp role', {
+			corporationId,
 			characterId,
 			requiredRole,
 		})
 
-		const rolesData = await this.getDb().query.characterCorporationRoles.findFirst({
-			where: eq(characterCorporationRoles.characterId, characterId),
-		})
+		const getRolesSnapshot = async (): Promise<EsiCharacterRoles | null> => {
+			const rolesData = await this.getDb().query.characterCorporationRoles.findFirst({
+				where: and(
+					eq(characterCorporationRoles.corporationId, corporationId),
+					eq(characterCorporationRoles.characterId, characterId)
+				),
+			})
 
-		if (!rolesData) {
-			return false
+			if (!rolesData) {
+				return null
+			}
+
+			return {
+				roles: rolesData.roles || undefined,
+				roles_at_hq: rolesData.rolesAtHq || undefined,
+				roles_at_base: rolesData.rolesAtBase || undefined,
+				roles_at_other: rolesData.rolesAtOther || undefined,
+			}
 		}
 
-		// Check all role types
-		const allRoles = [
-			...(rolesData.roles || []),
-			...(rolesData.rolesAtHq || []),
-			...(rolesData.rolesAtBase || []),
-			...(rolesData.rolesAtOther || []),
-		]
+		const hasRole = (rolesData: EsiCharacterRoles | null): boolean => {
+			if (!rolesData) {
+				return false
+			}
+			const allRoles = [
+				...(rolesData.roles || []),
+				...(rolesData.roles_at_hq || []),
+				...(rolesData.roles_at_base || []),
+				...(rolesData.roles_at_other || []),
+			]
+			return allRoles.includes(requiredRole)
+		}
 
-		return allRoles.includes(requiredRole)
+		const cachedRoles = await getRolesSnapshot()
+		if (hasRole(cachedRoles)) {
+			return true
+		}
+
+		try {
+			const response: EsiResponse<EsiCharacterRoles> = await retryWithBackoff(
+				() =>
+					this.getEveTokenStoreStub().fetchEsi(
+						`/characters/${characterId}/roles`,
+						characterId,
+						{ cacheMode: 'no-store' }
+					),
+				{
+					onRetry: (attempt, error, delayMs) => {
+						logger.warn('[EveCorporationData] Retrying role refresh after ESI throttling', {
+							corporationId,
+							characterId,
+							requiredRole,
+							attempt,
+							delayMs,
+							error: error.message,
+						})
+					},
+				}
+			)
+			await this.storeCharacterRolesSnapshot(corporationId, characterId, response.data)
+			return hasRole(response.data)
+		} catch (error) {
+			logger.warn('[EveCorporationData] Failed to refresh roles while checking corp role', {
+				corporationId,
+				characterId,
+				requiredRole,
+				error: error instanceof Error ? error.message : String(error),
+			})
+			return false
+		}
 	}
 
 	/**
-	 * Verify character has one of the required roles
+	 * Require character to have one of the given corporation roles.
 	 */
-	private async verifyRole(characterId: string, roles: CorporationRole[]): Promise<void> {
+	private async requireCorpRole(
+		corporationId: string,
+		characterId: string,
+		roles: CorporationRole[]
+	): Promise<void> {
 		for (const role of roles) {
-			if (await this.hasRequiredRole(characterId, role)) {
+			if (await this.hasRequiredCorpRole(corporationId, characterId, role)) {
 				return // Has at least one required role
 			}
 		}
@@ -698,6 +798,12 @@ export class EveCorporationDataDO extends DurableObject<Env> implements EveCorpo
 		}
 	}
 
+	private async clearCharacterRolesSnapshot(characterId: string): Promise<void> {
+		await this.getDb()
+			.delete(characterCorporationRoles)
+			.where(eq(characterCorporationRoles.characterId, characterId))
+	}
+
 	/**
 	 * Get the configured character for this corporation
 	 * @deprecated Use getDirectors() instead for multi-director support
@@ -812,9 +918,12 @@ export class EveCorporationDataDO extends DurableObject<Env> implements EveCorpo
 			}
 		}
 
-		// Get roles for the primary director
+		// Get roles for the primary director in the current corporation context
 		const rolesData = await this.getDb().query.characterCorporationRoles.findFirst({
-			where: eq(characterCorporationRoles.characterId, primaryDirector.characterId),
+			where: and(
+				eq(characterCorporationRoles.corporationId, corporationId),
+				eq(characterCorporationRoles.characterId, primaryDirector.characterId)
+			),
 		})
 
 		const verifiedRoles = rolesData
@@ -1692,7 +1801,7 @@ export class EveCorporationDataDO extends DurableObject<Env> implements EveCorpo
 			})
 			return { assetsCount: 0 }
 		}
-		await this.verifyRole(directorCharacterId, ['Director'])
+		await this.requireCorpRole(corporationId, directorCharacterId, ['Director'])
 		const assetsCount = await this.fetchAndStoreStructureInventoryByCharacter(
 			corporationId,
 			directorCharacterId,
@@ -2801,7 +2910,7 @@ export class EveCorporationDataDO extends DurableObject<Env> implements EveCorpo
 		_forceRefresh = false
 	): Promise<void> {
 		const { characterId } = await this.getConfiguredCharacter(corporationId)
-		await this.verifyRole(characterId, ['Director'])
+		await this.requireCorpRole(corporationId, characterId, ['Director'])
 
 		const tokenStore = getStub<EveTokenStore>(this.env.EVE_TOKEN_STORE, 'default')
 		const trackingData: EsiCorporationMemberTracking[] = await esiFetch.fetchMemberTracking(
@@ -2878,7 +2987,7 @@ export class EveCorporationDataDO extends DurableObject<Env> implements EveCorpo
 	 */
 	private async fetchAndStoreWallets(corporationId: string, _forceRefresh = false): Promise<void> {
 		const { characterId } = await this.getConfiguredCharacter(corporationId)
-		await this.verifyRole(characterId, ['Accountant', 'Junior_Accountant'])
+		await this.requireCorpRole(corporationId, characterId, ['Accountant', 'Junior_Accountant'])
 
 		const tokenStore = getStub<EveTokenStore>(this.env.EVE_TOKEN_STORE, 'default')
 		const wallets = await esiFetch.fetchWallets(tokenStore, corporationId, characterId)
@@ -2921,7 +3030,7 @@ export class EveCorporationDataDO extends DurableObject<Env> implements EveCorpo
 			.debug('Starting wallet journal fetch')
 
 		const { characterId } = await this.getConfiguredCharacter(corporationId)
-		await this.verifyRole(characterId, ['Accountant', 'Junior_Accountant'])
+		await this.requireCorpRole(corporationId, characterId, ['Accountant', 'Junior_Accountant'])
 
 		const tokenStore = getStub<EveTokenStore>(this.env.EVE_TOKEN_STORE, 'default')
 		const entries = await esiFetch.fetchWalletJournal(
@@ -3070,7 +3179,7 @@ export class EveCorporationDataDO extends DurableObject<Env> implements EveCorpo
 			.debug('Starting wallet transactions fetch')
 
 		const { characterId } = await this.getConfiguredCharacter(corporationId)
-		await this.verifyRole(characterId, ['Accountant', 'Junior_Accountant'])
+		await this.requireCorpRole(corporationId, characterId, ['Accountant', 'Junior_Accountant'])
 
 		const tokenStore = getStub<EveTokenStore>(this.env.EVE_TOKEN_STORE, 'default')
 		const transactions: EsiCorporationWalletTransaction[] = await esiFetch.fetchWalletTransactions(
@@ -3198,7 +3307,7 @@ export class EveCorporationDataDO extends DurableObject<Env> implements EveCorpo
 			characterId,
 		})
 
-		await this.verifyRole(characterId, ['Director'])
+		await this.requireCorpRole(corporationId, characterId, ['Director'])
 
 		logger.info('[EveCorporationData] fetchAndStoreAssets: Role verified', {
 			corporationId,
@@ -3286,7 +3395,7 @@ export class EveCorporationDataDO extends DurableObject<Env> implements EveCorpo
 			characterId,
 		})
 
-		await this.verifyRole(characterId, ['Director'])
+		await this.requireCorpRole(corporationId, characterId, ['Director'])
 
 		logger.info('[EveCorporationData] fetchAndStoreStructureInventory: Role verified', {
 			corporationId,
@@ -3423,7 +3532,7 @@ export class EveCorporationDataDO extends DurableObject<Env> implements EveCorpo
 		_forceRefresh = false
 	): Promise<void> {
 		const { characterId } = await this.getConfiguredCharacter(corporationId)
-		await this.verifyRole(characterId, ['Station_Manager'])
+		await this.requireCorpRole(corporationId, characterId, ['Station_Manager'])
 
 		const tokenStore = getStub<EveTokenStore>(this.env.EVE_TOKEN_STORE, 'default')
 		const structures: EsiCorporationStructure[] = await esiFetch.fetchStructures(
@@ -3440,7 +3549,7 @@ export class EveCorporationDataDO extends DurableObject<Env> implements EveCorpo
 	 */
 	private async fetchAndStoreOrders(corporationId: string, _forceRefresh = false): Promise<void> {
 		const { characterId } = await this.getConfiguredCharacter(corporationId)
-		await this.verifyRole(characterId, ['Accountant', 'Junior_Accountant', 'Trader'])
+		await this.requireCorpRole(corporationId, characterId, ['Accountant', 'Junior_Accountant', 'Trader'])
 
 		const tokenStore = getStub<EveTokenStore>(this.env.EVE_TOKEN_STORE, 'default')
 		const orders: EsiCorporationOrder[] = await esiFetch.fetchOrders(
@@ -3495,7 +3604,7 @@ export class EveCorporationDataDO extends DurableObject<Env> implements EveCorpo
 		_forceRefresh = false
 	): Promise<void> {
 		const { characterId } = await this.getConfiguredCharacter(corporationId)
-		await this.verifyRole(characterId, ['Director'])
+		await this.requireCorpRole(corporationId, characterId, ['Director'])
 
 		const tokenStore = getStub<EveTokenStore>(this.env.EVE_TOKEN_STORE, 'default')
 		const contracts: EsiCorporationContract[] = await esiFetch.fetchContracts(
@@ -3558,7 +3667,7 @@ export class EveCorporationDataDO extends DurableObject<Env> implements EveCorpo
 		_forceRefresh = false
 	): Promise<void> {
 		const { characterId } = await this.getConfiguredCharacter(corporationId)
-		await this.verifyRole(characterId, ['Factory_Manager'])
+		await this.requireCorpRole(corporationId, characterId, ['Factory_Manager'])
 
 		const tokenStore = getStub<EveTokenStore>(this.env.EVE_TOKEN_STORE, 'default')
 		const jobs: EsiCorporationIndustryJob[] = await esiFetch.fetchIndustryJobs(
@@ -3623,7 +3732,7 @@ export class EveCorporationDataDO extends DurableObject<Env> implements EveCorpo
 		_forceRefresh = false
 	): Promise<void> {
 		const { characterId } = await this.getConfiguredCharacter(corporationId)
-		await this.verifyRole(characterId, ['Director'])
+		await this.requireCorpRole(corporationId, characterId, ['Director'])
 
 		const tokenStore = getStub<EveTokenStore>(this.env.EVE_TOKEN_STORE, 'default')
 		const killmails: EsiCorporationKillmail[] = await esiFetch.fetchKillmails(
@@ -5169,9 +5278,15 @@ export class EveCorporationDataDO extends DurableObject<Env> implements EveCorpo
 	/**
 	 * Get character's corporation roles
 	 */
-	async getCharacterRoles(characterId: string): Promise<CharacterCorporationRolesData | null> {
+	async getCharacterRoles(
+		corporationId: string,
+		characterId: string
+	): Promise<CharacterCorporationRolesData | null> {
 		const result = await this.getDb().query.characterCorporationRoles.findFirst({
-			where: eq(characterCorporationRoles.characterId, characterId),
+			where: and(
+				eq(characterCorporationRoles.corporationId, corporationId),
+				eq(characterCorporationRoles.characterId, characterId)
+			),
 		})
 
 		if (!result) {
