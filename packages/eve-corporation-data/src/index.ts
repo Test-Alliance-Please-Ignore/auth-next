@@ -1723,10 +1723,14 @@ export interface EveCorporationData {
 
 	/**
 	 * Get character's corporation roles
+	 * @param corporationId - The corporation ID
 	 * @param characterId - The character ID
 	 * @returns Roles data or null if not found
 	 */
-	getCharacterRoles(characterId: string): Promise<CharacterCorporationRolesData | null>
+	getCharacterRoles(
+		corporationId: string,
+		characterId: string
+	): Promise<CharacterCorporationRolesData | null>
 
 	/**
 	 * Get corporations that need to be refreshed
