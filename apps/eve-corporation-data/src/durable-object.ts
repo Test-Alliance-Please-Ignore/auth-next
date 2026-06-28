@@ -91,7 +91,7 @@ import type {
 } from '@repo/eve-corporation-data'
 import type { EsiResponse, EveTokenStore } from '@repo/eve-token-store'
 import type { EveCharacterId, EveStructureId } from '@repo/eve-types'
-import type { Universe, UniverseSolarSystem } from '@repo/universe'
+import type { Universe, UniversePlanetGeography, UniverseRegion, UniverseSolarSystem } from '@repo/universe'
 import type { Env } from './context'
 import {
 	filterStructureInventoryAssets,
@@ -116,6 +116,7 @@ const NPC_CORPORATION_ID_MAX = 1_999_999
 const SHARED_SOVEREIGNTY_SYSTEMS_CACHE_META_KEY = 'shared:sovereignty-systems:observed-at'
 const SHARED_SOVEREIGNTY_SYSTEMS_CACHE_ROW_PREFIX = 'shared:sovereignty-systems:row:'
 const SHARED_SOVEREIGNTY_SYSTEMS_CACHE_MAX_AGE_SECONDS = 300
+const ORBITAL_SKYHOOK_TYPE_ID = '81080'
 
 function parseNumberOrNull(value: unknown): number | null {
 	if (value === null || value === undefined || value === '') {
@@ -126,6 +127,120 @@ function parseNumberOrNull(value: unknown): number | null {
 	}
 	const parsed = Number.parseFloat(String(value))
 	return Number.isFinite(parsed) ? parsed : null
+}
+
+type CorporationStructureRow = typeof corporationStructures.$inferSelect
+type SkyhookStateRow = typeof structureSkyhookStates.$inferSelect
+type SkyhookStorageRow = {
+	structureId: string
+	corporationId: string
+	planetId: string
+	planetName: string | null
+	systemId: string
+	systemName: string | null
+	name: string | null
+	typeId: string
+	state: string
+	isActive: boolean
+	effectiveWorkforce: number | null
+	reagents: Array<{
+		typeId: string
+		securedStock: number
+		unsecuredStock: number
+		lastCycle: string
+	}>
+	reinforcementTimerEnd: Date | null
+	theftVulnerabilityStart: Date | null
+	theftVulnerabilityEnd: Date | null
+	isRaidable: boolean
+	becomesRaidableAt: Date | null
+	vulnerableAt: Date | null
+	lastObservedAt: Date
+	sourceSyncAt: Date
+	lastSyncedAt: Date
+	rawPayload: Record<string, unknown>
+}
+type SkyhookStorageInsertRow = SkyhookStorageRow & { updatedAt: Date }
+type SkyhookBaseStructureRow = {
+	structureId: string
+	corporationId: string
+	name: string | null
+	typeId: string
+	typeName: string | null
+	systemId: string
+	systemName: string | null
+	regionId: string | null
+	regionName: string | null
+	profileId: string
+	fuelExpires: Date | null
+	fuelAmount: number | null
+	lastRefilledAt: Date | null
+	nextReinforceApply: Date | null
+	nextReinforceHour: number | null
+	reinforceHour: number | null
+	state: string
+	stateTimerEnd: Date | null
+	stateTimerStart: Date | null
+	unanchorsAt: Date | null
+	lowPower: boolean
+	syncStatus: 'ok' | 'warning' | 'error'
+	syncFailureReason: string | null
+	lastSyncedAt: Date | null
+	services: Array<{ name: string; state: string }> | null
+	updatedAt: Date
+}
+type SkyhookPlanetGeography = Pick<UniversePlanetGeography, 'planetId' | 'planetName' | 'solarSystemName'> | null
+
+export function buildSkyhookStorageRow(input: {
+	corporationId: string
+	skyhook: EsiCorporationSkyhook
+	baseStructure: Pick<
+		SkyhookBaseStructureRow,
+		'corporationId' | 'structureId' | 'typeId' | 'systemId' | 'systemName' | 'name'
+	>
+	existingRow: Pick<SkyhookStateRow, 'planetName' | 'systemName' | 'name'> | null
+	planet: SkyhookPlanetGeography
+	observedAt: Date
+}): SkyhookStorageRow | null {
+	const { corporationId, skyhook, baseStructure, existingRow, planet, observedAt } = input
+
+	if (baseStructure.corporationId !== corporationId) {
+		return null
+	}
+
+	const resolvedPlanetName = planet?.planetName ?? existingRow?.planetName ?? null
+	const resolvedSystemName = planet?.solarSystemName ?? baseStructure.systemName ?? existingRow?.systemName ?? null
+
+	return {
+		structureId: skyhook.structure_id,
+		corporationId,
+		planetId: planet?.planetId ?? skyhook.planet_id,
+		planetName: resolvedPlanetName,
+		systemId: baseStructure.systemId,
+		systemName: resolvedSystemName,
+		name: baseStructure.name ?? existingRow?.name ?? null,
+		typeId: baseStructure.typeId,
+		state: skyhook.state,
+		isActive: skyhook.is_active,
+		effectiveWorkforce: skyhook.effective_workforce ?? null,
+		reagents:
+			skyhook.reagents.map((reagent) => ({
+				typeId: reagent.type_id,
+				securedStock: reagent.secured_stock,
+				unsecuredStock: reagent.unsecured_stock,
+				lastCycle: reagent.last_cycle,
+			})) ?? [],
+		reinforcementTimerEnd: parseDateOrNull(skyhook.reinforcement_timer?.end) ?? null,
+		theftVulnerabilityStart: parseDateOrNull(skyhook.theft_vulnerability?.start) ?? null,
+		theftVulnerabilityEnd: parseDateOrNull(skyhook.theft_vulnerability?.end) ?? null,
+		isRaidable: skyhook.is_raidable ?? false,
+		becomesRaidableAt: parseDateOrNull(skyhook.becomes_raidable_at) ?? null,
+		vulnerableAt: parseDateOrNull(skyhook.vulnerable_at) ?? null,
+		lastObservedAt: observedAt,
+		sourceSyncAt: observedAt,
+		lastSyncedAt: observedAt,
+		rawPayload: skyhook.raw ?? { ...skyhook },
+	} satisfies SkyhookStorageRow
 }
 
 function addHours(date: Date, hours: number): Date {
@@ -2509,7 +2624,6 @@ export class EveCorporationDataDO extends DurableObject<Env> implements EveCorpo
 				systemId: hub.system_id,
 				systemName: resolvedSystemName ?? existing?.systemName ?? null,
 				name: hub.name ?? existing?.name ?? null,
-				ownerId: hub.corporation_id ?? existing?.ownerId ?? null,
 				typeId: hub.type_id,
 				fuelAccessListId: hub.fuel_access_list_id ?? null,
 				controllerAllianceId: hub.controller_alliance_id ?? null,
@@ -2558,7 +2672,6 @@ export class EveCorporationDataDO extends DurableObject<Env> implements EveCorpo
 						systemId: sql`excluded.system_id`,
 						systemName: sql`excluded.system_name`,
 						name: sql`excluded.name`,
-						ownerId: sql`excluded.owner_id`,
 						typeId: sql`excluded.type_id`,
 						fuelAccessListId: sql`excluded.fuel_access_list_id`,
 						controllerAllianceId: sql`excluded.controller_alliance_id`,
@@ -2597,63 +2710,176 @@ export class EveCorporationDataDO extends DurableObject<Env> implements EveCorpo
 			where: eq(structureSkyhookStates.corporationId, corporationId),
 		})
 		const existingByStructureId = new Map(existingRows.map((row) => [row.structureId, row]))
+		const structureIds = [...new Set(skyhooks.map((skyhook) => skyhook.structure_id))]
+		const existingBaseStructures =
+			structureIds.length > 0
+				? await this.getDb().query.corporationStructures.findMany({
+						where: and(
+							eq(corporationStructures.corporationId, corporationId),
+							inArray(corporationStructures.structureId, structureIds)
+						),
+					})
+				: []
+		const baseStructureById = new Map(existingBaseStructures.map((row) => [row.structureId, row]))
 		const planetGeography: Awaited<ReturnType<Universe['resolvePlanetGeographyByIds']>> =
 			skyhooks.length > 0
 				? await universe.resolvePlanetGeographyByIds([
 						...new Set(skyhooks.map((skyhook) => skyhook.planet_id)),
 					])
 				: {}
+		const resolvedPlanetGeographies = Object.values(planetGeography).filter(
+			(planet): planet is UniversePlanetGeography => planet !== null
+		)
+		const systemIds = [...new Set(resolvedPlanetGeographies.map((planet) => planet.solarSystemId))]
+		const systemGeography: Awaited<ReturnType<Universe['resolveSolarSystemsByIds']>> =
+			systemIds.length > 0 ? await universe.resolveSolarSystemsByIds(systemIds) : {}
+		const regionIds = [
+			...new Set(
+				Object.values(systemGeography)
+					.filter((system): system is UniverseSolarSystem => system !== null)
+					.map((system) => system.regionId)
+					.filter((regionId): regionId is string => Boolean(regionId))
+			),
+		]
+		const regionGeography: Awaited<ReturnType<Universe['resolveRegionsByIds']>> =
+			regionIds.length > 0 ? await universe.resolveRegionsByIds(regionIds) : {}
 
-		const values = skyhooks.map((skyhook) => {
-			const existing = existingByStructureId.get(skyhook.structure_id) ?? null
-			const resolvedPlanet = planetGeography[skyhook.planet_id]
-			const resolvedPlanetName = resolvedPlanet?.planetName ?? skyhook.planet_name ?? null
-			const resolvedSystemName = resolvedPlanet?.solarSystemName ?? skyhook.system_name ?? null
+		const synthesizedRows = skyhooks
+			.map((skyhook) => {
+				const existingBaseStructure = baseStructureById.get(skyhook.structure_id) ?? null
+				const existing = existingByStructureId.get(skyhook.structure_id) ?? null
+				const resolvedPlanet = planetGeography[skyhook.planet_id] ?? null
+				const resolvedSystem = resolvedPlanet?.solarSystemId
+					? systemGeography[resolvedPlanet.solarSystemId] ?? null
+					: null
+				const resolvedRegion = resolvedSystem?.regionId
+					? regionGeography[resolvedSystem.regionId] ?? null
+					: null
+				const baseStructure = buildSkyhookBaseStructureRow({
+					corporationId,
+					skyhook,
+					planet: resolvedPlanet,
+					system: resolvedSystem,
+					region: resolvedRegion,
+					existingRow: existingBaseStructure
+						? {
+								name: existingBaseStructure.name,
+								systemId: existingBaseStructure.systemId,
+								systemName: existingBaseStructure.systemName,
+								regionId: existingBaseStructure.regionId,
+								regionName: existingBaseStructure.regionName,
+								updatedAt: existingBaseStructure.updatedAt,
+							}
+						: null,
+					observedAt: now,
+				})
+				if (!baseStructure) {
+					logger.warn('[storeSkyhooks] Skipping skyhook without resolvable base structure geography', {
+						corporationId,
+						structureId: skyhook.structure_id,
+						planetId: skyhook.planet_id,
+					})
+					return null
+				}
+				const storageRow = buildSkyhookStorageRow({
+					corporationId,
+					skyhook,
+					baseStructure,
+					existingRow: existing
+						? {
+								planetName: existing.planetName,
+								systemName: existing.systemName,
+								name: existing.name,
+							}
+						: null,
+					planet: resolvedPlanet
+						? {
+								planetId: resolvedPlanet.planetId,
+								planetName: resolvedPlanet.planetName,
+								solarSystemName: resolvedPlanet.solarSystemName,
+							}
+						: null,
+					observedAt: now,
+				})
+				if (!storageRow) {
+					return null
+				}
 
-			return {
-				structureId: skyhook.structure_id,
-				corporationId,
-				planetId: resolvedPlanet?.planetId ?? skyhook.planet_id,
-				planetName: resolvedPlanetName ?? existing?.planetName ?? null,
-				systemId: resolvedPlanet?.solarSystemId ?? skyhook.system_id,
-				systemName: resolvedSystemName ?? existing?.systemName ?? null,
-				name: skyhook.name ?? existing?.name ?? null,
-				ownerId: skyhook.corporation_id ?? existing?.ownerId ?? null,
-				typeId: skyhook.type_id,
-				state: skyhook.state,
-				isActive: skyhook.is_active,
-				effectiveWorkforce: skyhook.effective_workforce ?? null,
-				reagents:
-					skyhook.reagents.map((reagent) => ({
-						typeId: reagent.type_id,
-						securedStock: reagent.secured_stock,
-						unsecuredStock: reagent.unsecured_stock,
-						lastCycle: reagent.last_cycle,
-					})) ?? [],
-				reinforcementTimerEnd: parseDateOrNull(skyhook.reinforcement_timer?.end) ?? null,
-				theftVulnerabilityStart: parseDateOrNull(skyhook.theft_vulnerability?.start) ?? null,
-				theftVulnerabilityEnd: parseDateOrNull(skyhook.theft_vulnerability?.end) ?? null,
-				isRaidable: skyhook.is_raidable ?? false,
-				becomesRaidableAt: parseDateOrNull(skyhook.becomes_raidable_at) ?? null,
-				vulnerableAt: parseDateOrNull(skyhook.vulnerable_at) ?? null,
-				lastObservedAt: now,
-				sourceSyncAt: now,
-				lastSyncedAt: now,
-				rawPayload: skyhook.raw ?? { ...skyhook },
-				updatedAt: now,
-			}
-		})
+				return {
+					baseStructure,
+					storageRow: {
+						...storageRow,
+						updatedAt: now,
+					},
+				}
+			})
+			.filter(
+				(
+					row
+				): row is {
+					baseStructure: SkyhookBaseStructureRow
+					storageRow: SkyhookStorageInsertRow
+				} => row !== null
+			)
 
-		if (values.length === 0) {
+		if (synthesizedRows.length === 0) {
 			await this.getDb()
 				.delete(structureSkyhookStates)
 				.where(eq(structureSkyhookStates.corporationId, corporationId))
+			await this.getDb()
+				.delete(corporationStructures)
+				.where(
+					and(
+						eq(corporationStructures.corporationId, corporationId),
+						eq(corporationStructures.typeId, ORBITAL_SKYHOOK_TYPE_ID)
+					)
+				)
 			return
 		}
 
-		const BATCH_SIZE = 25
-		for (let i = 0; i < values.length; i += BATCH_SIZE) {
-			const batch = values.slice(i, i + BATCH_SIZE)
+		const baseValues = synthesizedRows.map((row) => row.baseStructure)
+		const values = synthesizedRows.map((row) => row.storageRow)
+
+		const BASE_BATCH_SIZE = 25
+		for (let i = 0; i < baseValues.length; i += BASE_BATCH_SIZE) {
+			const batch = baseValues.slice(i, i + BASE_BATCH_SIZE)
+			await this.getDb()
+				.insert(corporationStructures)
+				.values(batch)
+				.onConflictDoUpdate({
+					target: corporationStructures.structureId,
+					set: {
+						corporationId: sql`excluded.corporation_id`,
+						name: sql`excluded.name`,
+						typeId: sql`excluded.type_id`,
+						typeName: sql`excluded.type_name`,
+						systemId: sql`excluded.system_id`,
+						systemName: sql`excluded.system_name`,
+						regionId: sql`excluded.region_id`,
+						regionName: sql`excluded.region_name`,
+						profileId: sql`excluded.profile_id`,
+						fuelExpires: sql`excluded.fuel_expires`,
+						fuelAmount: sql`excluded.fuel_amount`,
+						lastRefilledAt: sql`excluded.last_refilled_at`,
+						nextReinforceApply: sql`excluded.next_reinforce_apply`,
+						nextReinforceHour: sql`excluded.next_reinforce_hour`,
+						reinforceHour: sql`excluded.reinforce_hour`,
+						state: sql`excluded.state`,
+						stateTimerEnd: sql`excluded.state_timer_end`,
+						stateTimerStart: sql`excluded.state_timer_start`,
+						unanchorsAt: sql`excluded.unanchors_at`,
+						lowPower: sql`excluded.low_power`,
+						syncStatus: sql`excluded.sync_status`,
+						syncFailureReason: sql`excluded.sync_failure_reason`,
+						lastSyncedAt: sql`excluded.last_synced_at`,
+						services: sql`excluded.services`,
+						updatedAt: sql`excluded.updated_at`,
+					},
+				})
+		}
+		const STATE_BATCH_SIZE = 25
+		for (let i = 0; i < values.length; i += STATE_BATCH_SIZE) {
+			const batch = values.slice(i, i + STATE_BATCH_SIZE)
 			await this.getDb()
 				.insert(structureSkyhookStates)
 				.values(batch)
@@ -2666,7 +2892,6 @@ export class EveCorporationDataDO extends DurableObject<Env> implements EveCorpo
 						systemId: sql`excluded.system_id`,
 						systemName: sql`excluded.system_name`,
 						name: sql`excluded.name`,
-						ownerId: sql`excluded.owner_id`,
 						typeId: sql`excluded.type_id`,
 						state: sql`excluded.state`,
 						isActive: sql`excluded.is_active`,
@@ -2686,6 +2911,19 @@ export class EveCorporationDataDO extends DurableObject<Env> implements EveCorpo
 					},
 				})
 		}
+
+		await this.getDb()
+			.delete(corporationStructures)
+			.where(
+				and(
+					eq(corporationStructures.corporationId, corporationId),
+					eq(corporationStructures.typeId, ORBITAL_SKYHOOK_TYPE_ID),
+					notInArray(
+						corporationStructures.structureId,
+						baseValues.map((row) => row.structureId)
+					)
+				)
+			)
 
 		await this.getDb()
 			.delete(structureSkyhookStates)
@@ -5311,5 +5549,58 @@ export class EveCorporationDataDO extends DurableObject<Env> implements EveCorpo
 	 */
 	async fetch(_request: Request): Promise<Response> {
 		return new Response('EveCorporationData Durable Object', { status: 200 })
+	}
+}
+
+export function buildSkyhookBaseStructureRow(input: {
+	corporationId: string
+	skyhook: EsiCorporationSkyhook
+	planet: UniversePlanetGeography | null
+	system: UniverseSolarSystem | null
+	region: UniverseRegion | null
+	existingRow: Pick<
+		SkyhookBaseStructureRow,
+		'name' | 'systemId' | 'systemName' | 'regionId' | 'regionName' | 'updatedAt'
+	> | null
+	observedAt: Date
+}): SkyhookBaseStructureRow | null {
+	const { corporationId, skyhook, planet, system, region, existingRow, observedAt } = input
+	const resolvedSystemId = planet?.solarSystemId ?? existingRow?.systemId ?? null
+	if (!resolvedSystemId) {
+		return null
+	}
+
+	const resolvedSystemName = planet?.solarSystemName ?? system?.solarSystemName ?? existingRow?.systemName ?? null
+	const resolvedRegionId = system?.regionId ?? existingRow?.regionId ?? null
+	const resolvedRegionName = region?.regionName ?? existingRow?.regionName ?? null
+	const resolvedName = existingRow?.name ?? planet?.planetName ?? `Skyhook ${skyhook.structure_id}`
+
+	return {
+		structureId: skyhook.structure_id,
+		corporationId,
+		name: resolvedName,
+		typeId: ORBITAL_SKYHOOK_TYPE_ID,
+		typeName: 'Orbital Skyhook',
+		systemId: resolvedSystemId,
+		systemName: resolvedSystemName,
+		regionId: resolvedRegionId,
+		regionName: resolvedRegionName,
+		profileId: 'skyhook',
+		fuelExpires: null,
+		fuelAmount: null,
+		lastRefilledAt: null,
+		nextReinforceApply: null,
+		nextReinforceHour: null,
+		reinforceHour: null,
+		state: skyhook.state,
+		stateTimerEnd: skyhook.reinforcement_timer?.end ? new Date(skyhook.reinforcement_timer.end) : null,
+		stateTimerStart: null,
+		unanchorsAt: null,
+		lowPower: false,
+		syncStatus: 'ok',
+		syncFailureReason: null,
+		lastSyncedAt: observedAt,
+		services: [],
+		updatedAt: observedAt,
 	}
 }
