@@ -400,6 +400,46 @@ describe('DirectorManager.recordFailure', () => {
 		const args = set.mock.calls[0][0]
 		expect(args.permanentFailureAt).toBeUndefined()
 	})
+
+	it('propagates a corp auth health snapshot when the last healthy director becomes unhealthy', async () => {
+		const where = vi.fn().mockResolvedValue(undefined)
+		const set = vi.fn().mockReturnValue({ where })
+		const update = vi.fn().mockReturnValue({ set })
+		const db = {
+			query: {
+				corporationDirectors: {
+					findFirst: vi.fn().mockResolvedValue({
+						id: 'dir-1',
+						characterId: '111',
+						failureCount: 2,
+						isHealthy: true,
+						permanentFailureAt: null,
+					}),
+					findMany: vi.fn().mockResolvedValue([]),
+				},
+			},
+			update,
+		}
+		const onHealthSnapshotChanged = vi.fn().mockResolvedValue(undefined)
+		const manager = new DirectorManager(
+			db as never,
+			'98000001',
+			{} as never,
+			undefined,
+			undefined,
+			onHealthSnapshotChanged
+		)
+
+		await manager.recordFailure('dir-1', 'ESI request failed: 403 Forbidden', {
+			forceUnhealthy: true,
+		})
+
+		expect(onHealthSnapshotChanged).toHaveBeenCalledWith({
+			corporationId: '98000001',
+			healthyDirectorCount: 0,
+			isVerified: false,
+		})
+	})
 })
 
 describe('DirectorManager.verifyDirectorHealth', () => {

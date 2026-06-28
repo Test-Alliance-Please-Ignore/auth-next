@@ -286,6 +286,30 @@ export class EveCorporationDataDO extends DurableObject<Env> implements EveCorpo
 		return getStub<EveTokenStore>(this.env.EVE_TOKEN_STORE, 'default')
 	}
 
+	private createDirectorManager(corporationId: string): DirectorManager {
+		const tokenStoreStub = this.getEveTokenStoreStub()
+		return new DirectorManager(
+			this.getDb(),
+			corporationId,
+			tokenStoreStub,
+			this.onDirectorAffiliationMismatch.bind(this),
+			undefined,
+			async ({ corporationId: targetCorporationId, healthyDirectorCount, isVerified }) => {
+				try {
+					await this.env.CORE.updateCorporationAuthHealth(targetCorporationId, {
+						healthyDirectorCount,
+						isVerified,
+					})
+				} catch (error) {
+					logger.warn('[EveCorporationData] Failed to propagate corporation auth health snapshot', {
+						corporationId: targetCorporationId,
+						error: error instanceof Error ? error.message : String(error),
+					})
+				}
+			}
+		)
+	}
+
 	private async onDirectorAffiliationMismatch(
 		characterId: string,
 		expectedCorporationId: string,
@@ -347,16 +371,7 @@ export class EveCorporationDataDO extends DurableObject<Env> implements EveCorpo
 			throw new Error('Corporation not configured.')
 		}
 
-		const tokenStoreStub = getStub<EveTokenStore>(this.env.EVE_TOKEN_STORE, 'default')
-
-		const directorManager = new DirectorManager(
-			this.getDb(),
-
-			config.corporationId,
-
-			tokenStoreStub,
-			this.onDirectorAffiliationMismatch.bind(this)
-		)
+		const directorManager = this.createDirectorManager(config.corporationId)
 
 		const director = await directorManager.selectDirector()
 
@@ -380,13 +395,7 @@ export class EveCorporationDataDO extends DurableObject<Env> implements EveCorpo
 			throw new Error('Corporation not configured.')
 		}
 
-		const tokenStoreStub = getStub<EveTokenStore>(this.env.EVE_TOKEN_STORE, 'default')
-		return new DirectorManager(
-			this.getDb(),
-			config.corporationId,
-			tokenStoreStub,
-			this.onDirectorAffiliationMismatch.bind(this)
-		)
+		return this.createDirectorManager(config.corporationId)
 	}
 
 	/**
@@ -671,13 +680,7 @@ export class EveCorporationDataDO extends DurableObject<Env> implements EveCorpo
 				})
 		}
 
-		const tokenStoreStub = getStub<EveTokenStore>(this.env.EVE_TOKEN_STORE, 'default')
-		const directorManager = new DirectorManager(
-			this.getDb(),
-			corporationId,
-			tokenStoreStub,
-			this.onDirectorAffiliationMismatch.bind(this)
-		)
+		const directorManager = this.createDirectorManager(corporationId)
 
 		// Check if director already exists
 		const directors = await directorManager.getAllDirectors()
@@ -706,13 +709,7 @@ export class EveCorporationDataDO extends DurableObject<Env> implements EveCorpo
 			return null
 		}
 
-		const tokenStoreStub = getStub<EveTokenStore>(this.env.EVE_TOKEN_STORE, 'default')
-		const directorManager = new DirectorManager(
-			this.getDb(),
-			config.corporationId,
-			tokenStoreStub,
-			this.onDirectorAffiliationMismatch.bind(this)
-		)
+		const directorManager = this.createDirectorManager(config.corporationId)
 		const directors = await directorManager.getAllDirectors()
 		const primaryDirector = directors[0] // First director by priority
 
@@ -791,13 +788,7 @@ export class EveCorporationDataDO extends DurableObject<Env> implements EveCorpo
 			}
 		}
 
-		const tokenStoreStub = getStub<EveTokenStore>(this.env.EVE_TOKEN_STORE, 'default')
-		const directorManager = new DirectorManager(
-			this.getDb(),
-			corporationId,
-			tokenStoreStub,
-			this.onDirectorAffiliationMismatch.bind(this)
-		)
+		const directorManager = this.createDirectorManager(corporationId)
 		const result = await directorManager.verifyAllDirectorsHealth()
 		const unhealthyDirectors = await directorManager.getUnhealthyDirectors()
 		const missingRolesFromFailures = extractMissingRoles(
@@ -876,13 +867,7 @@ export class EveCorporationDataDO extends DurableObject<Env> implements EveCorpo
 	 * @returns A load-balanced director character ID or null if no healthy directors are available
 	 */
 	async getLoadBalancedDirector(corporationId: string): Promise<string | null> {
-		const tokenStoreStub = getStub<EveTokenStore>(this.env.EVE_TOKEN_STORE, 'default')
-		const directorManager = new DirectorManager(
-			this.getDb(),
-			corporationId,
-			tokenStoreStub,
-			this.onDirectorAffiliationMismatch.bind(this)
-		)
+		const directorManager = this.createDirectorManager(corporationId)
 		const selected = await directorManager.selectDirector()
 		logger.info('[EveCorporationData] getLoadBalancedDirector: Selected director', {
 			corporationId,
@@ -924,13 +909,7 @@ export class EveCorporationDataDO extends DurableObject<Env> implements EveCorpo
 				})
 		}
 
-		const tokenStoreStub = getStub<EveTokenStore>(this.env.EVE_TOKEN_STORE, 'default')
-		const directorManager = new DirectorManager(
-			this.getDb(),
-			corporationId,
-			tokenStoreStub,
-			this.onDirectorAffiliationMismatch.bind(this)
-		)
+		const directorManager = this.createDirectorManager(corporationId)
 		await directorManager.addDirector(characterId, characterName, priority)
 
 		const inserted = (await directorManager.getAllDirectors()).find(
@@ -950,13 +929,7 @@ export class EveCorporationDataDO extends DurableObject<Env> implements EveCorpo
 	async removeDirector(corporationId: string, characterId: string): Promise<void> {
 		this.assertNonNpcCorporation(corporationId)
 
-		const tokenStoreStub = getStub<EveTokenStore>(this.env.EVE_TOKEN_STORE, 'default')
-		const directorManager = new DirectorManager(
-			this.getDb(),
-			corporationId,
-			tokenStoreStub,
-			this.onDirectorAffiliationMismatch.bind(this)
-		)
+		const directorManager = this.createDirectorManager(corporationId)
 		await directorManager.removeDirector(characterId)
 
 		// Invalidate directors cache
@@ -973,13 +946,7 @@ export class EveCorporationDataDO extends DurableObject<Env> implements EveCorpo
 	): Promise<void> {
 		this.assertNonNpcCorporation(corporationId)
 
-		const tokenStoreStub = getStub<EveTokenStore>(this.env.EVE_TOKEN_STORE, 'default')
-		const directorManager = new DirectorManager(
-			this.getDb(),
-			corporationId,
-			tokenStoreStub,
-			this.onDirectorAffiliationMismatch.bind(this)
-		)
+		const directorManager = this.createDirectorManager(corporationId)
 		await directorManager.updateDirectorPriority(characterId, priority)
 
 		// Invalidate directors cache
@@ -1009,13 +976,7 @@ export class EveCorporationDataDO extends DurableObject<Env> implements EveCorpo
 			logger.warn('[Directors Cache] Failed to read from KV', { corporationId, error })
 		}
 
-		const tokenStoreStub = getStub<EveTokenStore>(this.env.EVE_TOKEN_STORE, 'default')
-		const directorManager = new DirectorManager(
-			this.getDb(),
-			corporationId,
-			tokenStoreStub,
-			this.onDirectorAffiliationMismatch.bind(this)
-		)
+		const directorManager = this.createDirectorManager(corporationId)
 		const directors = await directorManager.getAllDirectors()
 
 		// Store in KV cache with 30 minute TTL
@@ -1035,13 +996,7 @@ export class EveCorporationDataDO extends DurableObject<Env> implements EveCorpo
 	 * Get healthy directors for this corporation
 	 */
 	async getHealthyDirectors(corporationId: string): Promise<DirectorHealth[]> {
-		const tokenStoreStub = getStub<EveTokenStore>(this.env.EVE_TOKEN_STORE, 'default')
-		const directorManager = new DirectorManager(
-			this.getDb(),
-			corporationId,
-			tokenStoreStub,
-			this.onDirectorAffiliationMismatch.bind(this)
-		)
+		const directorManager = this.createDirectorManager(corporationId)
 		return await directorManager.getHealthyDirectors()
 	}
 
@@ -1049,13 +1004,7 @@ export class EveCorporationDataDO extends DurableObject<Env> implements EveCorpo
 	 * Verify health of a specific director
 	 */
 	async verifyDirectorHealth(corporationId: string, directorId: string): Promise<boolean> {
-		const tokenStoreStub = getStub<EveTokenStore>(this.env.EVE_TOKEN_STORE, 'default')
-		const directorManager = new DirectorManager(
-			this.getDb(),
-			corporationId,
-			tokenStoreStub,
-			this.onDirectorAffiliationMismatch.bind(this)
-		)
+		const directorManager = this.createDirectorManager(corporationId)
 		const result = await directorManager.verifyDirectorHealth(directorId)
 
 		// Invalidate cache so next fetch returns fresh data
@@ -1071,13 +1020,7 @@ export class EveCorporationDataDO extends DurableObject<Env> implements EveCorpo
 		corporationId: string,
 		options?: { includePermanent?: boolean; bypassPermanentFailures?: boolean }
 	): Promise<{ verified: number; failed: number }> {
-		const tokenStoreStub = getStub<EveTokenStore>(this.env.EVE_TOKEN_STORE, 'default')
-		const directorManager = new DirectorManager(
-			this.getDb(),
-			corporationId,
-			tokenStoreStub,
-			this.onDirectorAffiliationMismatch.bind(this)
-		)
+		const directorManager = this.createDirectorManager(corporationId)
 		const result = await directorManager.verifyAllDirectorsHealth(options)
 
 		// Invalidate cache so next fetch returns fresh data
@@ -1805,16 +1748,11 @@ export class EveCorporationDataDO extends DurableObject<Env> implements EveCorpo
 			existingStructures.map((structure) => [structure.structureId, structure] as const)
 		)
 
-		const tokenStore = getStub<EveTokenStore>(this.env.EVE_TOKEN_STORE, 'default')
-		const directorManager = new DirectorManager(
-			this.getDb(),
-			corporationId,
-			tokenStore,
-			this.onDirectorAffiliationMismatch.bind(this)
-		)
+		const directorManager = this.createDirectorManager(corporationId)
 		const director = await directorManager.selectDirector()
 		const characterId = director ? String(director.characterId) : null
 		const universe = getStub<Universe>(this.env.UNIVERSE, 'default')
+		const tokenStore = this.getEveTokenStoreStub()
 		const systemIds = [...new Set(structures.map((structure) => structure.system_id))]
 		const typeIds = [...new Set(structures.map((structure) => structure.type_id))]
 

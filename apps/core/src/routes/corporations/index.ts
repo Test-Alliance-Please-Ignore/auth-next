@@ -644,7 +644,6 @@ app.get('/', requireAuth(), requireAdmin(), async (c) => {
 					return {
 						...corp,
 						healthyDirectorCount,
-						isVerified: healthyDirectorCount > 0,
 					}
 				} catch (error) {
 					logger.warn('[Corporations] Failed to enrich live director health for list item', {

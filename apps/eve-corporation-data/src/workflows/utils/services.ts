@@ -50,6 +50,19 @@ export function createDirectorManager(env: Env, corporationId: string): Director
 					error: error instanceof Error ? error.message : String(error),
 				})
 			}
+		},
+		async ({ corporationId: targetCorporationId, healthyDirectorCount, isVerified }) => {
+			try {
+				await env.CORE.updateCorporationAuthHealth(targetCorporationId, {
+					healthyDirectorCount,
+					isVerified,
+				})
+			} catch (error) {
+				logger.warn('[DirectorManager] Failed to propagate corporation auth health snapshot', {
+					corporationId: targetCorporationId,
+					error: error instanceof Error ? error.message : String(error),
+				})
+			}
 		}
 	)
 }
