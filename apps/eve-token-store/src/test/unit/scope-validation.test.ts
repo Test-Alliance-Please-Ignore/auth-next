@@ -15,4 +15,10 @@ describe('token scope validation', () => {
 		expect(getMissingScopes([...EVE_SSO_SCOPES_ALL])).toEqual([])
 		expect(hasAllScopes([...EVE_SSO_SCOPES_ALL])).toBe(true)
 	})
+
+	it('includes the structure read scopes required for corp structure enrichment', () => {
+		expect(EVE_SSO_SCOPES_ALL).toContain('esi-universe.read_structures.v1')
+		expect(EVE_SSO_SCOPES_ALL).toContain('esi-structures.read_corporation.v1')
+		expect(EVE_SSO_SCOPES_ALL).toContain('esi-corporations.read_structures.v1')
+	})
 })

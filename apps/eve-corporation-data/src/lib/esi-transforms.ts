@@ -99,9 +99,10 @@ export function transformAssets(assets: any[]): EsiCorporationAsset[] {
 	}))
 }
 
-export function transformStructures(structures: any[]): EsiCorporationStructure[] {
+export function transformStructures(structures: any[], corporationId: string): EsiCorporationStructure[] {
 	return structures.map((structure) => ({
 		structure_id: String(structure.structure_id),
+		corporation_id: String(corporationId),
 		type_id: String(structure.type_id),
 		system_id: String(structure.system_id),
 		profile_id: String(structure.profile_id),

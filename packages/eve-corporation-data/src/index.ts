@@ -150,6 +150,7 @@ export interface EsiCorporationAsset {
  */
 export interface EsiCorporationStructure {
 	structure_id: string
+	corporation_id: string
 	type_id: string
 	system_id: string
 	profile_id: string
@@ -200,13 +201,13 @@ export interface EsiSovereigntySystem {
  */
 export interface EsiSovereigntyHub {
 	structure_id: string
+	corporation_id: string
 	system_id: string
 	system_name?: string | null
 	name: string | null
-	owner_id: string | null
 	type_id: string
 	controller_alliance_id?: string | null
-	fuel_access_list_id?: string | null
+	fuel_access_list_id: string | null
 	reagent_bay: {
 		last_updated: string
 		reagents: Array<{
@@ -230,7 +231,7 @@ export interface EsiSovereigntyHub {
 		type_id: string
 		power_state: string
 	}>
-	vulnerability_window?: {
+	vulnerability_window: {
 		start: string
 		end: string
 	} | null
@@ -272,7 +273,7 @@ export interface EsiSovereigntyHub {
 					transit: boolean | null
 			  }
 	}
-	raw?: Record<string, unknown>
+	raw: Record<string, unknown>
 }
 
 /**
@@ -283,31 +284,31 @@ export interface EsiCorporationSkyhook {
 	structure_id: string
 	planet_id: string
 	planet_name?: string | null
+	corporation_id: string
 	system_id: string
 	system_name?: string | null
 	type_id: string
 	name: string | null
-	owner_id: string | null
 	state: string
 	is_active: boolean
-	effective_workforce?: number | null
+	effective_workforce: number | null
 	reagents: Array<{
 		type_id: string
 		secured_stock: number
 		unsecured_stock: number
 		last_cycle: string
 	}>
-	reinforcement_timer?: {
+	reinforcement_timer: {
 		end: string
 	} | null
-	theft_vulnerability?: {
+	theft_vulnerability: {
 		start: string
 		end: string
 	} | null
-	is_raidable?: boolean
-	becomes_raidable_at?: string | null
-	vulnerable_at?: string | null
-	raw?: Record<string, unknown>
+	is_raidable: boolean
+	becomes_raidable_at: string | null
+	vulnerable_at: string | null
+	raw: Record<string, unknown>
 }
 
 /**
