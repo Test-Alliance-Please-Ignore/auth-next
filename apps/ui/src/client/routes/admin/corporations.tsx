@@ -189,14 +189,6 @@ export default function CorporationsPage() {
 
 	// Get verification status badge (memoized for performance)
 	const getVerificationBadge = useCallback((corp: any) => {
-		if (corp.healthyDirectorCount <= 0) {
-			return (
-				<Badge variant="ghost" className="gap-1">
-					<ShieldAlert className="h-3 w-3" />
-					Unverified
-				</Badge>
-			)
-		}
 		if (corp.isVerified) {
 			return (
 				<Badge variant="success" className="gap-1">

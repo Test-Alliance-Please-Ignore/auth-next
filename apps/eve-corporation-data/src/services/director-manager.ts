@@ -94,7 +94,12 @@ export class DirectorManager {
 			characterId: string,
 			corporationId: string,
 			reason: string
-		) => Promise<void>
+		) => Promise<void>,
+		private readonly onHealthSnapshotChanged?: (params: {
+			corporationId: string
+			healthyDirectorCount: number
+			isVerified: boolean
+		}) => Promise<void>
 	) {}
 
 	/**
@@ -133,6 +138,7 @@ export class DirectorManager {
 					eq(corporationDirectors.characterId, characterId)
 				)
 			)
+		await this.syncHealthSnapshot()
 	}
 
 	/**
@@ -537,6 +543,26 @@ export class DirectorManager {
 		}
 	}
 
+	private async syncHealthSnapshot(): Promise<void> {
+		if (!this.onHealthSnapshotChanged) {
+			return
+		}
+
+		try {
+			const healthyDirectorCount = await this.getHealthyDirectorsCount()
+			await this.onHealthSnapshotChanged({
+				corporationId: this.corporationId,
+				healthyDirectorCount,
+				isVerified: healthyDirectorCount > 0,
+			})
+		} catch (error) {
+			console.error('[DirectorManager] Failed to propagate corp auth health snapshot', {
+				corporationId: this.corporationId,
+				error: error instanceof Error ? error.message : String(error),
+			})
+		}
+	}
+
 	private async verifyPermanentDirectorAffiliation(directorId: string): Promise<void> {
 		const director = await this.db.query.corporationDirectors.findFirst({
 			where: eq(corporationDirectors.id, directorId),
@@ -734,6 +760,9 @@ export class DirectorManager {
 			})
 			.where(eq(corporationDirectors.id, directorId))
 
+		if (shouldRecover) {
+			await this.syncHealthSnapshot()
+		}
 	}
 
 	/**
@@ -812,6 +841,7 @@ export class DirectorManager {
 				failureCount: newFailureCount,
 				reason: normalizedReason,
 			})
+			await this.syncHealthSnapshot()
 		}
 
 		// Check if all directors are now unhealthy
@@ -950,6 +980,8 @@ export class DirectorManager {
 					updatedAt: new Date(),
 				})
 				.where(eq(corporationDirectors.id, directorId))
+
+			await this.syncHealthSnapshot()
 
 			if (missingRoleSets.length > 0) {
 				const reason = `Director missing required roles: ${missingRoleSets
