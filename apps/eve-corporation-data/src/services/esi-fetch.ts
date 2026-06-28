@@ -11,6 +11,7 @@
  * - Reusability across different contexts
  */
 
+import { logger } from '@repo/hono-helpers'
 import {
 	transformAssets,
 	transformContracts,
@@ -46,7 +47,7 @@ import type {
 import type { EsiResponse, EveTokenStore } from '@repo/eve-token-store'
 
 type RawUniverseStructureInfo = {
-	name: string
+	name: string | null
 	owner_id: number
 	position: {
 		x: number
@@ -55,6 +56,10 @@ type RawUniverseStructureInfo = {
 	}
 	solar_system_id: number
 	type_id: number
+}
+
+function getUniverseStructureCorporationId(universe: RawUniverseStructureInfo): string {
+	return String(universe.owner_id)
 }
 
 // ========================================================================
@@ -264,7 +269,7 @@ export async function fetchStructures(
 		}>
 	>(`/corporations/${corporationId}/structures`, characterId)
 
-	return transformStructures(response.data)
+	return transformStructures(response.data, corporationId)
 }
 
 export async function fetchSovereigntySystems(
@@ -453,25 +458,42 @@ export async function fetchSovereigntyHubs(
 		sovereigntyHubs.push(...pageResponse.data.sovereignty_hubs)
 	}
 
-	const details = await Promise.all(
+	if (sovereigntyHubs.length === 0) {
+		return []
+	}
+
+	const details: Array<EsiSovereigntyHub | null> = await Promise.all(
 		sovereigntyHubs.map(async (hub) => {
-			const [detailResult, universeResult] = await Promise.all([
-				tokenStore.fetchEsi<RawSovereigntyHubDetail>(
-					`/corporations/${corporationId}/structures/sovereignty-hubs/${hub.id}`,
-					characterId,
-					{ cacheMode: 'no-store' }
-				),
-				tokenStore.fetchPublicEsi<RawUniverseStructureInfo>(`/universe/structures/${hub.id}`),
-			])
+			const universeResult = await tokenStore.fetchEsi<RawUniverseStructureInfo>(
+				`/universe/structures/${hub.id}`,
+				characterId,
+				{ cacheMode: 'no-store' }
+			)
+			const universe = universeResult.data
+			const universeCorporationId = getUniverseStructureCorporationId(universe)
+
+			if (universeCorporationId !== corporationId) {
+				logger.warn('[ESI Fetch] Skipping sovereignty hub enrichment for mismatched owner', {
+					corporationId,
+					structureId: String(hub.id),
+					universeCorporationId,
+				})
+				return null
+			}
+
+			const detailResult = await tokenStore.fetchEsi<RawSovereigntyHubDetail>(
+				`/corporations/${corporationId}/structures/sovereignty-hubs/${hub.id}`,
+				characterId,
+				{ cacheMode: 'no-store' }
+			)
 
 			const detail = detailResult.data
-			const universe = universeResult.data
 
 			return {
 				structure_id: String(detail.id),
+				corporation_id: universeCorporationId,
 				system_id: String(detail.solar_system_id),
 				name: universe.name ?? null,
-				owner_id: String(universe.owner_id),
 				type_id: String(universe.type_id),
 				fuel_access_list_id:
 					detail.fuel_access_list_id !== undefined && detail.fuel_access_list_id !== null
@@ -500,11 +522,11 @@ export async function fetchSovereigntyHubs(
 					detail,
 					universe,
 				},
-			}
+			} as EsiSovereigntyHub
 		})
 	)
 
-	return details
+	return details.filter((hub): hub is EsiSovereigntyHub => hub !== null)
 }
 
 export async function fetchCorporationSkyhooks(
@@ -556,21 +578,38 @@ export async function fetchCorporationSkyhooks(
 		skyhookListing.push(...pageResponse.data.skyhooks)
 	}
 
+	if (skyhookListing.length === 0) {
+		return []
+	}
+
 	const nowMs = Date.now()
 
-	const skyhooks = await Promise.all(
+	const skyhooks: Array<EsiCorporationSkyhook | null> = await Promise.all(
 		skyhookListing.map(async (skyhook) => {
-			const [detailResult, universeResult] = await Promise.all([
-				tokenStore.fetchEsi<RawCorporationSkyhookDetail>(
-					`/corporations/${corporationId}/structures/skyhooks/${skyhook.id}`,
-					characterId,
-					{ cacheMode: 'no-store' }
-				),
-				tokenStore.fetchPublicEsi<RawUniverseStructureInfo>(`/universe/structures/${skyhook.id}`),
-			])
+			const universeResult = await tokenStore.fetchEsi<RawUniverseStructureInfo>(
+				`/universe/structures/${skyhook.id}`,
+				characterId,
+				{ cacheMode: 'no-store' }
+			)
+			const universe = universeResult.data
+			const universeCorporationId = getUniverseStructureCorporationId(universe)
+
+			if (universeCorporationId !== corporationId) {
+				logger.warn('[ESI Fetch] Skipping skyhook enrichment for mismatched owner', {
+					corporationId,
+					structureId: String(skyhook.id),
+					universeCorporationId,
+				})
+				return null
+			}
+
+			const detailResult = await tokenStore.fetchEsi<RawCorporationSkyhookDetail>(
+				`/corporations/${corporationId}/structures/skyhooks/${skyhook.id}`,
+				characterId,
+				{ cacheMode: 'no-store' }
+			)
 
 			const detail = detailResult.data
-			const universe = universeResult.data
 			const theftVulnerability = detail.theft_vulnerability ?? null
 			const becomesRaidableAt = theftVulnerability?.start
 				? new Date(theftVulnerability.start)
@@ -587,10 +626,10 @@ export async function fetchCorporationSkyhooks(
 			return {
 				structure_id: String(detail.id),
 				planet_id: String(detail.planet_id),
+				corporation_id: universeCorporationId,
 				system_id: String(universe.solar_system_id),
 				type_id: String(universe.type_id),
 				name: universe.name ?? null,
-				owner_id: String(universe.owner_id),
 				state: detail.state,
 				is_active: detail.is_active,
 				effective_workforce: detail.effective_workforce ?? null,
@@ -610,11 +649,11 @@ export async function fetchCorporationSkyhooks(
 					detail,
 					universe,
 				},
-			}
+			} as EsiCorporationSkyhook
 		})
 	)
 
-	return skyhooks
+	return skyhooks.filter((skyhook): skyhook is EsiCorporationSkyhook => skyhook !== null)
 }
 
 /**

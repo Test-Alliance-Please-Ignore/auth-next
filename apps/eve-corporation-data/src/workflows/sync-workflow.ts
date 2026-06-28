@@ -684,6 +684,10 @@ export class EveCorporationSyncWorkflow extends WorkflowEntrypoint<Env, EveCorpo
 			})
 			ownedStructureIdsForAssets = structures.map((structure) => String(structure.structure_id))
 
+			await step.do('store-structures', {}, async () => {
+				await storeStructures(this.env, corporationId, structures)
+			})
+
 			const sovereigntyEnrichment = structureEnrichmentEnabled
 				? await runDirectorStepWithFailover({
 						stepName: 'fetch-structure-sovereignty-enrichment',
@@ -712,28 +716,32 @@ export class EveCorporationSyncWorkflow extends WorkflowEntrypoint<Env, EveCorpo
 					})
 				: null
 
-			structuresSync = await step.do('store-structures', {}, async () => {
-				await storeStructures(this.env, corporationId, structures)
-				if (sovereigntyEnrichment) {
+			if (sovereigntyEnrichment) {
+				await step.do('store-structure-sovereignty-enrichment', {}, async () => {
 					await storeSovereigntyEnrichment(this.env, corporationId, sovereigntyEnrichment)
-				}
-				if (skyhookEnrichment) {
-					await storeSkyhookEnrichment(this.env, corporationId, skyhookEnrichment)
-				}
-				if (miningExtractions) {
-					await storeMiningEnrichment(this.env, corporationId, miningExtractions)
-				}
-					return {
-						dataType: 'structures' as const,
-						stats: {
-							structuresCount: structures.length,
-							sovereigntySystemsCount: sovereigntyEnrichment?.sovereigntySystems?.length ?? 0,
-							sovereigntyHubsCount: sovereigntyEnrichment?.sovereigntyHubs.length ?? 0,
-							skyhooksCount: skyhookEnrichment?.skyhooks.length ?? 0,
-							miningExtractionsCount: miningExtractions?.length ?? 0,
-						},
-					}
 				})
+			}
+			if (skyhookEnrichment) {
+				await step.do('store-structure-skyhook-enrichment', {}, async () => {
+					await storeSkyhookEnrichment(this.env, corporationId, skyhookEnrichment)
+				})
+			}
+			if (miningExtractions) {
+				await step.do('store-structure-mining-enrichment', {}, async () => {
+					await storeMiningEnrichment(this.env, corporationId, miningExtractions)
+				})
+			}
+
+			structuresSync = {
+				dataType: 'structures' as const,
+				stats: {
+					structuresCount: structures.length,
+					sovereigntySystemsCount: sovereigntyEnrichment?.sovereigntySystems?.length ?? 0,
+					sovereigntyHubsCount: sovereigntyEnrichment?.sovereigntyHubs.length ?? 0,
+					skyhooksCount: skyhookEnrichment?.skyhooks.length ?? 0,
+					miningExtractionsCount: miningExtractions?.length ?? 0,
+				},
+			}
 		}
 
 		if (shouldSyncAuthenticated('assets')) {

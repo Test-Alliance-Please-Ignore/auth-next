@@ -39,6 +39,10 @@ export interface SyncStats {
 	walletTransactionsMaxDate?: string | null
 	assetsCount?: number
 	structuresCount?: number
+	sovereigntySystemsCount?: number
+	sovereigntyHubsCount?: number
+	skyhooksCount?: number
+	miningExtractionsCount?: number
 	ordersCount?: number
 	contractsCount?: number
 	industryJobsCount?: number
