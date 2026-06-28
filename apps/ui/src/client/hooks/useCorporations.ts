@@ -243,7 +243,7 @@ export function useDirectors(corporationId: string) {
 		queryKey: corporationKeys.directors(corporationId),
 		queryFn: () => api.getDirectors(corporationId),
 		enabled: !!corporationId,
-		staleTime: 1000 * 30, // 30 seconds
+		staleTime: 30_000, // 30 seconds
 	})
 }
 

@@ -302,6 +302,7 @@ export class EveCorporationDataDO extends DurableObject<Env> implements EveCorpo
 						healthyDirectorCount,
 						isVerified,
 					})
+					await this.invalidateDirectorsCache(targetCorporationId)
 				} catch (error) {
 					logger.warn('[EveCorporationData] Failed to propagate corporation auth health snapshot', {
 						corporationId: targetCorporationId,
