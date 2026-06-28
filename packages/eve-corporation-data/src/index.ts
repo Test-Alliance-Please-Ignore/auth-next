@@ -277,18 +277,14 @@ export interface EsiSovereigntyHub {
 }
 
 /**
- * ESI corporation skyhook details enriched with universe metadata.
+ * ESI corporation skyhook snapshot.
+ * GET /corporations/{corporation_id}/structures/skyhooks
  * GET /corporations/{corporation_id}/structures/skyhooks/{skyhook_id}
  */
 export interface EsiCorporationSkyhook {
 	structure_id: string
 	planet_id: string
-	planet_name?: string | null
 	corporation_id: string
-	system_id: string
-	system_name?: string | null
-	type_id: string
-	name: string | null
 	state: string
 	is_active: boolean
 	effective_workforce: number | null

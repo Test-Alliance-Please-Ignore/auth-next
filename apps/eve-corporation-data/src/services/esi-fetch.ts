@@ -617,26 +617,6 @@ export async function fetchCorporationSkyhooks(
 
 	const skyhooks: Array<EsiCorporationSkyhook | null> = await Promise.all(
 		skyhookListing.map(async (skyhook) => {
-			const universe = await fetchUniverseStructureMetadata(
-				tokenStore,
-				String(skyhook.id),
-				characterId,
-				'skyhook'
-			)
-			if (!universe) {
-				return null
-			}
-			const universeCorporationId = getUniverseStructureCorporationId(universe)
-
-			if (universeCorporationId !== corporationId) {
-				logger.warn('[ESI Fetch] Skipping skyhook enrichment for mismatched owner', {
-					corporationId,
-					structureId: String(skyhook.id),
-					universeCorporationId,
-				})
-				return null
-			}
-
 			const detailResult = await tokenStore.fetchEsi<RawCorporationSkyhookDetail>(
 				`/corporations/${corporationId}/structures/skyhooks/${skyhook.id}`,
 				characterId,
@@ -660,10 +640,7 @@ export async function fetchCorporationSkyhooks(
 			return {
 				structure_id: String(detail.id),
 				planet_id: String(detail.planet_id),
-				corporation_id: universeCorporationId,
-				system_id: String(universe.solar_system_id),
-				type_id: String(universe.type_id),
-				name: universe.name ?? null,
+				corporation_id: String(corporationId),
 				state: detail.state,
 				is_active: detail.is_active,
 				effective_workforce: detail.effective_workforce ?? null,
@@ -680,8 +657,8 @@ export async function fetchCorporationSkyhooks(
 				becomes_raidable_at: becomesRaidableAt?.toISOString() ?? null,
 				vulnerable_at: vulnerableAt?.toISOString() ?? null,
 				raw: {
+					listing: skyhook,
 					detail,
-					universe,
 				},
 			} as EsiCorporationSkyhook
 		})
