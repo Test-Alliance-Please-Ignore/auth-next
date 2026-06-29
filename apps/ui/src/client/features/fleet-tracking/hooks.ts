@@ -67,6 +67,18 @@ export function useSessionCurrentMembers(
 	})
 }
 
+export function useSessionLiveMemberLocations(
+	sessionId: string | undefined,
+	options: { refetchInterval?: number | false } = {}
+) {
+	return useQuery({
+		queryKey: [...fleetTrackingKeys.session(sessionId ?? ''), 'current-members', 'live'] as const,
+		queryFn: () => fleetTrackingApi.getLiveMemberLocations(sessionId!),
+		enabled: !!sessionId,
+		refetchInterval: options.refetchInterval,
+	})
+}
+
 export function useSessionRoster(sessionId: string | undefined) {
 	return useQuery({
 		queryKey: [...fleetTrackingKeys.session(sessionId ?? ''), 'roster'] as const,

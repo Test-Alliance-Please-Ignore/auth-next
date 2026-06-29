@@ -38,6 +38,7 @@ import {
 	CharacterStatsResult,
 	CorpRollupRow,
 	SessionCurrentMemberRow,
+	SessionLiveMemberLocation,
 	SessionLiveSnapshot,
 	SessionMemberShipHistoryRow,
 	SessionRosterRow,
@@ -1948,6 +1949,62 @@ export class FleetsDO extends DurableObject implements Fleets {
 			stationId: row.stationId,
 			sinceTime: row.startedAt.toISOString(),
 		}))
+	}
+
+	/**
+	 * Get the live location overlay for a session's current members.
+	 *
+	 * This reads the FleetMonitor's live ESI snapshot and returns the current
+	 * solar system / station for each active fleet member without mutating the
+	 * historical ship-event rows.
+	 */
+	async getSessionLiveMemberLocations(sessionId: string): Promise<SessionLiveMemberLocation[]> {
+		const [session] = await this.db
+			.select({
+				fleetId: fleetTrackingSessions.fleetId,
+				status: fleetTrackingSessions.status,
+			})
+			.from(fleetTrackingSessions)
+			.where(eq(fleetTrackingSessions.id, sessionId))
+			.limit(1)
+
+		if (!session?.fleetId || session.status !== 'active') {
+			return []
+		}
+
+		try {
+			const monitorStub = getStub<FleetMonitor>(
+				this.env.FLEET_MONITOR,
+				`fleet-${session.fleetId}`
+			)
+			const status = await monitorStub.getFleetStatus()
+			if (!status?.members?.length) {
+				return []
+			}
+
+			const systemNames = (status as { systemNames?: Record<string, string> }).systemNames ?? {}
+			const stationNames = (status as { stationNames?: Record<string, string> }).stationNames ?? {}
+			const updatedAt = new Date().toISOString()
+
+			return status.members.map((member) => ({
+				characterId: String(member.character_id),
+				solarSystemId: member.solar_system_id,
+				systemName: systemNames[String(member.solar_system_id)] ?? null,
+				stationId: member.station_id ?? null,
+				stationName:
+					member.station_id !== null && member.station_id !== undefined
+						? stationNames[String(member.station_id)] ?? null
+						: null,
+				updatedAt,
+			}))
+		} catch (error) {
+			logger.warn('[FleetsDO] Failed to read live member locations from monitor', {
+				sessionId,
+				fleetId: session.fleetId,
+				error: error instanceof Error ? error.message : String(error),
+			})
+			return []
+		}
 	}
 
 	/**

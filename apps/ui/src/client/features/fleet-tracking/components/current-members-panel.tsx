@@ -17,7 +17,11 @@ import {
 import { formatDurationBetween } from '../utils/format'
 import { useConfirmationDialog } from '@/hooks/useConfirmationDialog'
 
-import type { SessionCurrentMember, SessionGroupCount } from '../types'
+import type {
+	SessionCurrentMember,
+	SessionGroupCount,
+	SessionLiveMemberLocation,
+} from '../types'
 
 type SortKey = 'characterName' | 'shipTypeName' | 'groupName' | 'systemName' | 'sinceTime'
 
@@ -25,6 +29,7 @@ interface CurrentMembersPanelProps {
 	sessionId: string
 	members: SessionCurrentMember[]
 	groupCounts: SessionGroupCount[]
+	liveLocations?: SessionLiveMemberLocation[]
 	doctrineShipTypeIds?: Set<string>
 	canKickMembers?: boolean
 	onKickMembers?: (memberCharacterIds: string[]) => Promise<void>
@@ -35,6 +40,7 @@ export function CurrentMembersPanel({
 	sessionId,
 	members,
 	groupCounts,
+	liveLocations = [],
 	doctrineShipTypeIds,
 	canKickMembers = false,
 	onKickMembers,
@@ -45,10 +51,28 @@ export function CurrentMembersPanel({
 	const [asc, setAsc] = useState(true)
 	const { requestConfirmation, confirmationDialog } = useConfirmationDialog()
 	const trimmed = query.trim().toLowerCase()
+	const liveLocationByCharacterId = useMemo(
+		() => new Map(liveLocations.map((location) => [location.characterId, location])),
+		[liveLocations]
+	)
+	const mergedMembers = useMemo(() => {
+		return members.map((member) => {
+			const liveLocation = liveLocationByCharacterId.get(member.characterId)
+			if (!liveLocation) {
+				return member
+			}
+			return {
+				...member,
+				solarSystemId: liveLocation.solarSystemId,
+				systemName: liveLocation.systemName ?? member.systemName,
+				stationId: liveLocation.stationId,
+			}
+		})
+	}, [liveLocationByCharacterId, members])
 
 	const filteredMembers = useMemo(() => {
-		if (!trimmed) return members
-		return members.filter((m) => {
+		if (!trimmed) return mergedMembers
+		return mergedMembers.filter((m) => {
 			const fields = [
 				m.characterName,
 				m.shipTypeName,
@@ -57,7 +81,7 @@ export function CurrentMembersPanel({
 			]
 			return fields.some((f) => f?.toLowerCase().includes(trimmed))
 		})
-	}, [members, trimmed])
+	}, [mergedMembers, trimmed])
 
 	const sortedMembers = useMemo(() => {
 		const out = [...filteredMembers]
@@ -157,7 +181,7 @@ export function CurrentMembersPanel({
 						</div>
 					</CardHeader>
 					<CardContent className="p-0">
-						{members.length === 0 ? (
+										{members.length === 0 ? (
 							<div className="py-8 text-center text-sm text-muted-foreground">
 								No members in fleet right now.
 							</div>
@@ -260,8 +284,8 @@ export function CurrentMembersPanel({
 												{m.groupName ?? '—'}
 											</TableCell>
 											<TableCell className="text-muted-foreground">
-												{m.systemName ?? `system #${m.solarSystemId}`}
-											</TableCell>
+											{m.systemName ?? `system #${m.solarSystemId}`}
+										</TableCell>
 											<TableCell className="text-muted-foreground">
 												{formatDurationBetween(m.sinceTime, null)}
 											</TableCell>

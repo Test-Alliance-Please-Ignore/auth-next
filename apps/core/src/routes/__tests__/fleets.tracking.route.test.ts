@@ -108,6 +108,7 @@ describe('fleets tracking routes', () => {
 		listTrackingSessions: ReturnType<typeof vi.fn>
 		getTrackingSession: ReturnType<typeof vi.fn>
 		getSessionLiveSnapshot: ReturnType<typeof vi.fn>
+		getSessionLiveMemberLocations: ReturnType<typeof vi.fn>
 		getSessionTimeline: ReturnType<typeof vi.fn>
 		getSessionCommanderHistory: ReturnType<typeof vi.fn>
 		getSessionRoster: ReturnType<typeof vi.fn>
@@ -137,6 +138,7 @@ describe('fleets tracking routes', () => {
 			listTrackingSessions: vi.fn(),
 			getTrackingSession: vi.fn(),
 			getSessionLiveSnapshot: vi.fn(),
+			getSessionLiveMemberLocations: vi.fn(),
 			getSessionTimeline: vi.fn(),
 			getSessionCommanderHistory: vi.fn(),
 			getSessionRoster: vi.fn(),
@@ -396,7 +398,7 @@ describe('fleets tracking routes', () => {
 		expect(fleetsStub.listTrackingSessions).toHaveBeenCalledWith(
 			expect.objectContaining({
 				startedByUserId: 'self-user',
-				commanderCharacterIds: ['1001', '2002'],
+				fleetBossCharacterIds: ['1001', '2002'],
 				limit: 25,
 				offset: 0,
 			})
@@ -611,6 +613,41 @@ describe('fleets tracking routes', () => {
 
 		expect(res.status).toBe(200)
 		expect(fleetsStub.getSessionLiveSnapshot).toHaveBeenCalledWith('s-active')
+	})
+
+	it('returns live member locations for detailed viewers without mutating ship events', async () => {
+		getCachedUserPermissionsMock.mockResolvedValue([{ urn: 'urn:fleet-tracking:view-fleets' }] as any)
+		fleetsStub.getTrackingSession.mockResolvedValue({
+			id: 's-live',
+			status: 'active',
+			startedByUserId: 'other-user',
+			characterId: '1001',
+		})
+		fleetsStub.getSessionLiveMemberLocations.mockResolvedValue([
+			{
+				characterId: '1001',
+				solarSystemId: 30000142,
+				systemName: 'Jita',
+				stationId: 60003760,
+				stationName: 'Jita IV - Moon 4 - Caldari Navy Assembly Plant',
+				updatedAt: '2026-05-25T10:00:15.000Z',
+			},
+		])
+
+		const app = createApp(makeUser({ id: 'viewer-1' }))
+		const res = await app.request('/api/fleets/tracking/s-live/current-members/live', {}, env)
+
+		expect(res.status).toBe(200)
+		expect(fleetsStub.getSessionLiveMemberLocations).toHaveBeenCalledWith('s-live')
+		await expect(res.json()).resolves.toMatchObject({
+			members: [
+				{
+					characterId: '1001',
+					systemName: 'Jita',
+					stationName: 'Jita IV - Moon 4 - Caldari Navy Assembly Plant',
+				},
+			],
+		})
 	})
 
 	it('allows ended-session owner to access summary endpoint', async () => {
