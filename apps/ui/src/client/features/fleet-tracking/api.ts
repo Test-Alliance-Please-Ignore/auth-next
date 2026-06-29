@@ -8,6 +8,7 @@ import type {
 	KickTrackingMembersResponse,
 	SessionCommanderHistoryResponse,
 	SessionRosterResponse,
+	SessionLiveMemberLocation,
 	SessionLiveSnapshot,
 	SessionMemberShipHistoryResponse,
 	SessionSummary,
@@ -96,6 +97,11 @@ export const fleetTrackingApi = {
 
 	getCurrentMembers: (sessionId: string): Promise<SessionCurrentMembersResponse> =>
 		apiClient.get(`/fleets/tracking/${encodeURIComponent(sessionId)}/current-members`),
+
+	getLiveMemberLocations: (
+		sessionId: string
+	): Promise<{ members: SessionLiveMemberLocation[] }> =>
+		apiClient.get(`/fleets/tracking/${encodeURIComponent(sessionId)}/current-members/live`),
 
 	kickMembers: (
 		sessionId: string,

@@ -260,6 +260,11 @@ export interface Fleets extends DurableObject {
 	getSessionCurrentMembers(sessionId: string): Promise<SessionCurrentMemberRow[]>
 
 	/**
+	 * Get the live location overlay for a session's current members.
+	 */
+	getSessionLiveMemberLocations(sessionId: string): Promise<SessionLiveMemberLocation[]>
+
+	/**
 	 * Get the full roster for any session (active or ended). One row per
 	 * character that ever appeared, with aggregate timing + final-ship info.
 	 */
@@ -496,6 +501,15 @@ export interface SessionCurrentMemberRow {
 	stationId: number | null
 	/** When the pilot boarded their current ship. */
 	sinceTime: string
+}
+
+export interface SessionLiveMemberLocation {
+	characterId: string
+	solarSystemId: number
+	systemName: string | null
+	stationId: number | null
+	stationName: string | null
+	updatedAt: string
 }
 
 export interface SessionRosterRow {

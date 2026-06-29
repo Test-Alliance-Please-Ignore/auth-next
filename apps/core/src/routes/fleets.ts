@@ -945,6 +945,23 @@ app.get('/tracking/:sessionId/current-members', async (c) => {
 })
 
 /**
+ * GET /fleets/tracking/:sessionId/current-members/live
+ * Live location overlay for current members.
+ */
+app.get('/tracking/:sessionId/current-members/live', async (c) => {
+	const result = await resolveSessionAccess(c, c.req.param('sessionId'))
+	if (result instanceof Response) return result
+	if (!result.canViewDetail) {
+		return c.json({ error: 'historical_detail_requires_view_all' }, 403)
+	}
+
+	const fleetsStub = getStub<Fleets>(c.env.FLEETS, 'default')
+	const members = await fleetsStub.getSessionLiveMemberLocations(c.req.param('sessionId'))
+
+	return c.json({ members })
+})
+
+/**
  * GET /fleets/tracking/:sessionId/timeline
  * Join/leave events for the session, paginated.
  */

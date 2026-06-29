@@ -144,6 +144,15 @@ export interface SessionCurrentMember {
 	sinceTime: string
 }
 
+export interface SessionLiveMemberLocation {
+	characterId: string
+	solarSystemId: number
+	systemName: string | null
+	stationId: number | null
+	stationName: string | null
+	updatedAt: string
+}
+
 export interface SessionGroupCount {
 	groupId: string
 	groupName: string | null

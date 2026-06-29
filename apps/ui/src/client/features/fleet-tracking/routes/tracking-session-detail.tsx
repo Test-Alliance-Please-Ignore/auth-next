@@ -29,6 +29,7 @@ import { SessionStatusPill } from '../components/session-status-pill'
 import { SessionStatsGrid } from '../components/session-stats-grid'
 import {
 	useSessionCurrentMembers,
+	useSessionLiveMemberLocations,
 	useSessionLiveSnapshot,
 	useSessionRoster,
 	useSessionSummary,
@@ -341,6 +342,7 @@ function DetailView({
 
 	const isLive = status === 'active'
 	const LIVE_POLL_MS = 5_000
+	const LIVE_LOCATION_POLL_MS = 15_000
 	const { data: liveResp } = useSessionLiveSnapshot(sessionId, {
 		refetchInterval: isLive ? LIVE_POLL_MS : false,
 	})
@@ -364,6 +366,9 @@ function DetailView({
 	)
 	const { data: currentMembers } = useSessionCurrentMembers(sessionId, {
 		refetchInterval: pollInterval,
+	})
+	const { data: liveLocations } = useSessionLiveMemberLocations(sessionId, {
+		refetchInterval: isLive ? LIVE_LOCATION_POLL_MS : false,
 	})
 	const { data: roster } = useSessionRoster(isLive ? undefined : sessionId)
 	const kickMembersMutation = useKickTrackingMembers()
@@ -503,6 +508,7 @@ function DetailView({
 							sessionId={sessionId}
 							members={currentMembers.members}
 							groupCounts={currentMembers.groupCounts}
+							liveLocations={liveLocations?.members ?? []}
 							doctrineShipTypeIds={doctrineShipTypeIds}
 							canKickMembers={canKickMembers}
 							isKickingMembers={kickMembersMutation.isPending}
