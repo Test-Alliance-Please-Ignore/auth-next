@@ -1,12 +1,23 @@
+import { ROLE_CORE_ALLIANCE_MEMBER } from '@repo/core'
 import { and, eq } from '@repo/db-utils'
 import { getStub } from '@repo/do-utils'
 import { logger } from '@repo/hono-helpers'
+import { parseMumbleError } from '@repo/mumble'
 
 import { createDb } from '../db'
+import { getCachedUserRoles } from '../lib/groups-cache'
 import { isMumbleFeatureEnabled } from '../lib/mumble-feature'
-import { managedCorporations, userCharacters, users } from '../db/schema'
+import {
+	managedCorporations,
+	mumbleTempopGuests,
+	mumbleTempops,
+	userCharacters,
+	users,
+} from '../db/schema'
 
+import type { EveCharacterData } from '@repo/eve-character-data'
 import type { EveCorporationData } from '@repo/eve-corporation-data'
+import type { EveTokenStore } from '@repo/eve-token-store'
 import type { Groups } from '@repo/groups'
 import type { Hr } from '@repo/hr'
 import type {
@@ -23,6 +34,18 @@ import type { Env } from '../context'
 const MAX_LOGIN_NAME_LENGTH = 60
 const MAX_MUMBLE_TICKER_LENGTH = 5
 const SITE_ADMIN_MUMBLE_TICKER = 'SA'
+/**
+ * Mumble ACL group synthesized for users holding the alliance-member role
+ * (ROLE_CORE_ALLIANCE_MEMBER). Must exist on the Murmur server with channel
+ * ACLs referencing it; auth-next only assigns the name.
+ */
+const ALLIANCE_MEMBER_MUMBLE_GROUP = 'Test Alliance'
+/**
+ * Mumble ACL group that temp-op guests are assigned to. Must exist on the
+ * Murmur server with channel ACLs referencing it; auth-next only assigns the
+ * group name. Snapshotted onto each temp-op row at creation.
+ */
+export const TEMPOP_GROUP_NAME = 'TempOp'
 const USER_GROUP_LOOKUP_CONCURRENCY = 5
 const USER_PROFILE_LOOKUP_CONCURRENCY = 5
 interface MumbleIdentity {
@@ -222,7 +245,7 @@ async function getUserGroupNames(
 	}
 
 	const db = createDb(env.DATABASE_URL)
-	const [user, hasAttachment] = await Promise.all([
+	const [user, hasAttachment, roleAttachments] = await Promise.all([
 		db.query.users.findFirst({
 			where: eq(users.id, userId),
 			columns: {
@@ -230,7 +253,11 @@ async function getUserGroupNames(
 			},
 		}),
 		hasMemberCorporationAttachment(env, userId),
+		getCachedUserRoles(env, userId),
 	])
+	const isAllianceMember = roleAttachments.some(
+		(attachment) => attachment.role.name === ROLE_CORE_ALLIANCE_MEMBER
+	)
 
 	if (!hasAttachment && !user?.is_admin) {
 		return []
@@ -244,6 +271,9 @@ async function getUserGroupNames(
 		.filter((membership) => membership.mumbleSyncEnabled)
 		.map((membership) => membership.groupName)
 
+	if (isAllianceMember) {
+		groups.push(ALLIANCE_MEMBER_MUMBLE_GROUP)
+	}
 	if (user?.is_admin) {
 		groups.push('Server Admin')
 	}
@@ -514,4 +544,206 @@ export async function deleteMumbleAccounts(
 		})
 		return null
 	}
+}
+
+interface TempopGuestCredentials {
+	loginName: string
+	password: string
+	connection: { host: string; port: number }
+}
+
+/**
+ * Provision (or re-issue) an ephemeral Mumble account for a temp-op guest.
+ *
+ * The guest is identified only by an EVE character id obtained from a minimal
+ * publicData SSO. Their account is scoped under the temp-op via a synthetic
+ * `subjectId` (`tempop:<tempopId>:<characterId>`) and assigned the temp-op's
+ * group. Re-opening the link for the same character rotates the password rather
+ * than failing. Affiliation is captured on the guest row for display only and
+ * never written to core user/character tables.
+ */
+/**
+ * Re-validate that a temp-op is still active after provisioning work. If it was
+ * closed (deleted or expired) concurrently — e.g. an SSO callback that lands
+ * after the temp-op was finalized — disconnect and remove the just-issued guest
+ * so a late callback cannot leave an active guest attached to a dead temp-op,
+ * then throw so the caller surfaces an error instead of returning credentials.
+ */
+async function rollbackIfTempopClosed(
+	env: Env,
+	db: ReturnType<typeof createDb>,
+	tempopId: string,
+	subjectId: string
+): Promise<void> {
+	const current = await db.query.mumbleTempops.findFirst({
+		where: eq(mumbleTempops.id, tempopId),
+		columns: { status: true, expiresAt: true },
+	})
+	if (current && current.status === 'active' && current.expiresAt.getTime() > Date.now()) {
+		return
+	}
+
+	await getMumbleStub(env)
+		.deleteAccounts(env.MUMBLE_SERVER_ID, [subjectId])
+		.catch((error) => {
+			logger.error('[Mumble] Failed to roll back orphaned temp-op guest', {
+				tempopId,
+				subjectId,
+				error: error instanceof Error ? error.message : String(error),
+			})
+		})
+	await db
+		.update(mumbleTempopGuests)
+		.set({ status: 'deleted' })
+		.where(eq(mumbleTempopGuests.subjectId, subjectId))
+
+	throw new Error(`Temp-op ${tempopId} closed during provisioning`)
+}
+
+export async function provisionTempopGuest(
+	env: Env,
+	params: { tempopId: string; characterId: string }
+): Promise<TempopGuestCredentials> {
+	const { tempopId, characterId } = params
+	const db = createDb(env.DATABASE_URL)
+
+	const tempop = await db.query.mumbleTempops.findFirst({
+		where: eq(mumbleTempops.id, tempopId),
+		columns: { id: true, shortCode: true, groupName: true, status: true, expiresAt: true },
+	})
+	if (!tempop) {
+		throw new Error(`Temp-op ${tempopId} not found`)
+	}
+	if (tempop.status !== 'active' || tempop.expiresAt.getTime() <= Date.now()) {
+		throw new Error(`Temp-op ${tempopId} is not active`)
+	}
+
+	const subjectId = `tempop:${tempopId}:${characterId}`
+	const connection = getMumbleConnectionInfo(env)
+	const mumbleStub = getMumbleStub(env)
+
+	// Re-open: an existing guest row means the account was already provisioned —
+	// rotate the password and return the stored login name.
+	const existingGuest = await db.query.mumbleTempopGuests.findFirst({
+		where: and(
+			eq(mumbleTempopGuests.tempopId, tempopId),
+			eq(mumbleTempopGuests.characterId, characterId)
+		),
+	})
+	if (existingGuest && existingGuest.status === 'active') {
+		try {
+			const { password } = await mumbleStub.resetPassword(env.MUMBLE_SERVER_ID, subjectId)
+			await rollbackIfTempopClosed(env, db, tempopId, subjectId)
+			return { loginName: existingGuest.loginName, password, connection }
+		} catch (error) {
+			// Account vanished on the control plane — fall through and re-provision.
+			if (parseMumbleError(error)?.code !== 'not_found') {
+				throw error
+			}
+		}
+	}
+
+	// Fetch identity + affiliation (no persistence to core tables).
+	const characterStub = getStub<EveCharacterData>(env.EVE_CHARACTER_DATA, characterId)
+	const publicData = await characterStub.refreshPublicCharacterData(characterId, true)
+	const characterName = publicData.characterName ?? `Pilot ${characterId}`
+	const corporationId = publicData.currentCorporationId ?? null
+	const allianceId = publicData.currentAllianceId ?? null
+
+	let corpTicker: string | null = null
+	let allianceTicker: string | null = null
+	if (corporationId) {
+		try {
+			const corpStub = getStub<EveCorporationData>(env.EVE_CORPORATION_DATA, corporationId)
+			const corpInfo = await corpStub.getCorporationInfo(corporationId)
+			corpTicker = normalizeMumbleTicker(corpInfo?.ticker)
+		} catch (error) {
+			logger.warn('[Mumble] Failed to resolve temp-op guest corp ticker', {
+				characterId,
+				corporationId,
+				error: error instanceof Error ? error.message : String(error),
+			})
+		}
+	}
+	if (allianceId) {
+		try {
+			const tokenStoreStub = getStub<EveTokenStore>(env.EVE_TOKEN_STORE, 'default')
+			const allianceInfo = await tokenStoreStub.getAllianceById(allianceId)
+			allianceTicker = normalizeMumbleTicker(allianceInfo?.ticker)
+		} catch (error) {
+			logger.warn('[Mumble] Failed to resolve temp-op guest alliance ticker', {
+				characterId,
+				allianceId,
+				error: error instanceof Error ? error.message : String(error),
+			})
+		}
+	}
+
+	const loginName = deriveLoginName(characterName, characterId)
+	const displayTicker = allianceTicker ?? corpTicker
+	const displayName = appendMumbleDisplaySuffixes(`[T] ${characterName}`, [
+		...(displayTicker ? [displayTicker] : []),
+		tempop.shortCode,
+	])
+
+	let password: string
+	let resolvedLoginName = loginName
+	try {
+		const result = await mumbleStub.provisionAccount(env.MUMBLE_SERVER_ID, {
+			subjectId,
+			loginName,
+			displayName,
+			groups: [tempop.groupName],
+			comment: `tempop ${tempopId}`,
+		})
+		password = result.password
+		resolvedLoginName = result.account.loginName
+	} catch (error) {
+		// A stale account exists without an active guest row — rotate instead.
+		if (parseMumbleError(error)?.code === 'already_exists') {
+			const reset = await mumbleStub.resetPassword(env.MUMBLE_SERVER_ID, subjectId)
+			password = reset.password
+		} else {
+			throw error
+		}
+	}
+
+	// Upsert the guest row (idempotent on (tempopId, characterId)).
+	await db
+		.insert(mumbleTempopGuests)
+		.values({
+			tempopId,
+			characterId,
+			characterName,
+			corporationId,
+			allianceId,
+			corpTicker,
+			subjectId,
+			loginName: resolvedLoginName,
+			status: 'active',
+		})
+		.onConflictDoUpdate({
+			target: [mumbleTempopGuests.tempopId, mumbleTempopGuests.characterId],
+			set: {
+				characterName,
+				corporationId,
+				allianceId,
+				corpTicker,
+				subjectId,
+				loginName: resolvedLoginName,
+				status: 'active',
+			},
+		})
+
+	// Close the TOCTOU window: if the temp-op was deleted/expired while we were
+	// fetching ESI data and talking to murmur-control, undo this guest now.
+	await rollbackIfTempopClosed(env, db, tempopId, subjectId)
+
+	logger.info('[Mumble] Provisioned temp-op guest', {
+		tempopId,
+		characterId,
+		loginName: resolvedLoginName,
+	})
+
+	return { loginName: resolvedLoginName, password, connection }
 }

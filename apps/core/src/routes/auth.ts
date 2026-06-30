@@ -7,7 +7,7 @@ import { assertEveCharacterId } from '@repo/eve-types'
 import { toErrorMessage } from '@repo/hono-helpers'
 
 import { createDb } from '../db'
-import { managedCorporations, oauthStates, userCharacters, users } from '../db/schema'
+import { managedCorporations, mumbleTempops, oauthStates, userCharacters, users } from '../db/schema'
 import { waitUntilWithTelemetry } from '../lib/background-task'
 import { getDiscordStatus } from '../lib/discord-helpers'
 import { getCachedUserPermissions } from '../lib/groups-cache'
@@ -23,6 +23,8 @@ import {
 	type ManagedCorporationSummary,
 } from '../services/director-health-recheck.service'
 import { reconcileUserCoreMembershipRoles } from '../services/core-role-reconciliation.service'
+import { provisionTempopGuest } from '../services/mumble.service'
+import { storeCredentialHandoff } from '../services/mumble-tempop.service'
 import { autoRegisterDirectorCorporation } from '../services/corporation-auto-register.service'
 import { SessionService } from '../services/session.service'
 import { UserService } from '../services/user.service'
@@ -33,6 +35,7 @@ import type { EveCharacterData } from '@repo/eve-character-data'
 import type { EveTokenStore } from '@repo/eve-token-store'
 import type { BlacklistEntry, Hr } from '@repo/hr'
 import type { Legacy } from '@repo/legacy'
+import type { TempopOAuthMetadata } from '../db/schema'
 import type { App } from '../context'
 
 /**
@@ -345,6 +348,79 @@ async function blacklistUserLinkedTargets(
 }
 
 /**
+ * Handle the EVE SSO callback for a Mumble temp-op guest.
+ *
+ * Verifies the minimal publicData token (no persistence), re-validates the
+ * temp-op, provisions the ephemeral guest account, and redirects back to the
+ * public landing page with a single-use credential handoff token. All failure
+ * paths redirect to the landing page with an error code rather than JSON.
+ */
+async function handleMumbleTempopCallback(
+	c: Context<App>,
+	code: string,
+	metadata: TempopOAuthMetadata | null
+): Promise<Response> {
+	const key = metadata?.key ?? null
+	const tempopId = metadata?.tempopId ?? null
+
+	const landing = (params: string) => c.redirect(`/tempop/${key ?? ''}?${params}`)
+
+	if (!key || !tempopId) {
+		return c.redirect('/tempop?error=invalid')
+	}
+
+	try {
+		const db = createDb(c.env.DATABASE_URL)
+
+		// Re-validate the temp-op is still live before provisioning.
+		const tempop = await db.query.mumbleTempops.findFirst({
+			where: eq(mumbleTempops.id, tempopId),
+			columns: { id: true, status: true, expiresAt: true },
+		})
+		if (!tempop || tempop.status !== 'active' || tempop.expiresAt.getTime() <= Date.now()) {
+			return landing('error=expired')
+		}
+
+		const eveTokenStoreStub = getStub<EveTokenStore>(c.env.EVE_TOKEN_STORE, 'default')
+		const verified = await eveTokenStoreStub.verifyPublicDataCallback(code)
+		if ('error' in verified) {
+			return landing('error=sso')
+		}
+
+		// Refuse blacklisted characters from joining voice via a temp-op.
+		const hrStub = getStub<Hr>(c.env.HR, 'default')
+		const blacklisted = await findBlacklistedCharacterTrigger(
+			hrStub,
+			verified.characterId,
+			verified.characterName
+		)
+		if (blacklisted) {
+			return landing('error=blacklisted')
+		}
+
+		const credentials = await provisionTempopGuest(c.env, {
+			tempopId,
+			characterId: verified.characterId,
+		})
+
+		const handoff = await storeCredentialHandoff(c.env, tempopId, {
+			loginName: credentials.loginName,
+			password: credentials.password,
+			host: credentials.connection.host,
+			port: credentials.connection.port,
+		})
+
+		return landing(`provisioned=1&h=${encodeURIComponent(handoff)}`)
+	} catch (error) {
+		console.error('[Mumble] Temp-op guest provisioning failed', {
+			tempopId,
+			error: error instanceof Error ? error.message : String(error),
+		})
+		return landing('error=provision')
+	}
+}
+
+/**
  * GET /auth/login
  *
  * Initiate EVE SSO login flow and redirect user to EVE SSO.
@@ -457,6 +533,7 @@ auth.get('/callback', async (c) => {
 	let flowType: string | null = null
 	let stateUserId: string | null = null
 	let redirectUrl: string | null = null
+	let stateMetadata: TempopOAuthMetadata | null = null
 
 	if (state) {
 		const oauthState = await db.query.oauthStates.findFirst({
@@ -466,16 +543,32 @@ auth.get('/callback', async (c) => {
 		if (oauthState) {
 			// Check if state has expired
 			if (new Date() > oauthState.expiresAt) {
+				await db.delete(oauthStates).where(eq(oauthStates.state, state))
+				// Guest temp-op flows render in the SPA, so surface a usable error
+				// on the landing page rather than a raw JSON response.
+				if (oauthState.flowType === 'mumble-tempop') {
+					const expiredKey =
+						typeof oauthState.metadata?.key === 'string' ? oauthState.metadata.key : ''
+					return c.redirect(`/tempop/${expiredKey}?error=expired`)
+				}
 				return c.json({ error: 'OAuth state has expired. Please try again.' }, 400)
 			}
 
 			flowType = oauthState.flowType
 			stateUserId = oauthState.userId
 			redirectUrl = oauthState.redirectUrl
+			stateMetadata = oauthState.metadata
 
 			// Delete the state after use (one-time use)
 			await db.delete(oauthStates).where(eq(oauthStates.state, state))
 		}
+	}
+
+	// Mumble temp-op guest flow: minimal publicData identity → ephemeral voice
+	// credentials. Handled separately because guests never carry full scopes and
+	// no token is persisted (handleCallback would reject and over-persist).
+	if (flowType === 'mumble-tempop') {
+		return handleMumbleTempopCallback(c, code, stateMetadata)
 	}
 
 	// Handle callback with eve-token-store

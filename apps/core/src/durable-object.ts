@@ -30,6 +30,7 @@ import {
 	validateAndSyncCharacterTokenValidityBatchTransitions,
 } from './lib/token-validity'
 import { triggerDiscordRefreshWorkflow, triggerUserRefreshWorkflow } from './lib/workflow-triggers'
+import { processExpiredTempops } from './services/mumble-tempop.service'
 import { updateCharacterPublicInfo } from './workflows/steps/update-character'
 
 import type { Core } from '@repo/core'
@@ -2396,6 +2397,14 @@ export class CoreDO extends DurableObject<Env> implements Core {
 		})
 
 		return { processed: userIds.length, triggered: triggeredCount, failed: failedCount }
+	}
+
+	/**
+	 * Expire Mumble temp-ops whose TTL has elapsed, disconnecting their guests,
+	 * and sweep stale credential handoffs. Called by the scheduled handler (cron).
+	 */
+	async processExpiredTempops(): Promise<{ expired: number; disconnected: number }> {
+		return processExpiredTempops(this.env)
 	}
 
 	/**
