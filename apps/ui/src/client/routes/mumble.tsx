@@ -209,7 +209,7 @@ export default function MumblePage() {
 			</Section>
 
 			{showTempopSection ? (
-				<Section>
+				<Section className="mt-8">
 					<TempopSection
 						canCreate={canCreateTempop}
 						canManageAll={isAdmin || canDeleteTempop}
