@@ -351,9 +351,9 @@ async function blacklistUserLinkedTargets(
  * Handle the EVE SSO callback for a Mumble temp-op guest.
  *
  * Verifies the minimal publicData token (no persistence), re-validates the
- * temp-op, provisions the ephemeral guest account, and redirects back to the
- * public landing page with a single-use credential handoff token. All failure
- * paths redirect to the landing page with an error code rather than JSON.
+ * temp-op, provisions the ephemeral guest account, and returns JSON with a
+ * temp-op landing URL. The SPA then navigates to the public landing page with
+ * a single-use credential handoff token.
  */
 async function handleMumbleTempopCallback(
 	c: Context<App>,
@@ -363,10 +363,14 @@ async function handleMumbleTempopCallback(
 	const key = metadata?.key ?? null
 	const tempopId = metadata?.tempopId ?? null
 
-	const landing = (params: string) => c.redirect(`/tempop/${key ?? ''}?${params}`)
-
 	if (!key || !tempopId) {
-		return c.redirect('/tempop?error=invalid')
+		return c.json(
+			{
+				success: false,
+				error: 'Invalid temp-op authentication state',
+			},
+			400
+		)
 	}
 
 	try {
@@ -378,13 +382,25 @@ async function handleMumbleTempopCallback(
 			columns: { id: true, status: true, expiresAt: true },
 		})
 		if (!tempop || tempop.status !== 'active' || tempop.expiresAt.getTime() <= Date.now()) {
-			return landing('error=expired')
+			return c.json(
+				{
+					success: false,
+					error: 'This temp-op link has expired.',
+				},
+				400
+			)
 		}
 
 		const eveTokenStoreStub = getStub<EveTokenStore>(c.env.EVE_TOKEN_STORE, 'default')
 		const verified = await eveTokenStoreStub.verifyPublicDataCallback(code)
 		if ('error' in verified) {
-			return landing('error=sso')
+			return c.json(
+				{
+					success: false,
+					error: 'EVE login failed. Please try again.',
+				},
+				400
+			)
 		}
 
 		// Refuse blacklisted characters from joining voice via a temp-op.
@@ -395,7 +411,13 @@ async function handleMumbleTempopCallback(
 			verified.characterName
 		)
 		if (blacklisted) {
-			return landing('error=blacklisted')
+			return c.json(
+				{
+					success: false,
+					error: 'This character is not permitted to join this voice server.',
+				},
+				403
+			)
 		}
 
 		const credentials = await provisionTempopGuest(c.env, {
@@ -410,13 +432,22 @@ async function handleMumbleTempopCallback(
 			port: credentials.connection.port,
 		})
 
-		return landing(`provisioned=1&h=${encodeURIComponent(handoff)}`)
+		return c.json({
+			success: true,
+			redirectUrl: `/tempop/${key}?provisioned=1&h=${encodeURIComponent(handoff)}`,
+		})
 	} catch (error) {
 		console.error('[Mumble] Temp-op guest provisioning failed', {
 			tempopId,
 			error: error instanceof Error ? error.message : String(error),
 		})
-		return landing('error=provision')
+		return c.json(
+			{
+				success: false,
+				error: 'Could not create your voice account. Please try again.',
+			},
+			500
+		)
 	}
 }
 
