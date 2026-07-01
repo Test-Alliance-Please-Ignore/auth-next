@@ -229,7 +229,7 @@ export default function MoonPage() {
 	const { moonId } = useParams<{ moonId: string }>()
 	const { canView } = useMoonScanPermissions()
 
-	const { data: detail, isLoading, error } = useMoonDetail(moonId!)
+	const { data: detail, isLoading, error } = useMoonDetail(moonId!, canView)
 	usePageTitle(detail?.moon?.moonName ? `${detail.moon.moonName} — Moon` : 'Moon Detail')
 
 	if (!canView) {

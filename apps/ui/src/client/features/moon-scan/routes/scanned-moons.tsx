@@ -123,8 +123,8 @@ export default function ScannedMoonsPage() {
 		search,
 		sortBy,
 		sortDir,
-	})
-	const { data: regionsData } = useMoonRegions()
+	}, canView)
+	const { data: regionsData } = useMoonRegions(canView)
 
 	const regions = useMemo(() => {
 		if (!regionsData) return []

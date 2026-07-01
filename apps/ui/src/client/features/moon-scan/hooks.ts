@@ -48,28 +48,31 @@ export function useScannedMoons(params: {
 	search?: string
 	sortBy?: string
 	sortDir?: 'asc' | 'desc'
-} = {}) {
+} = {}, enabled = true) {
 	return useQuery({
 		queryKey: moonScanKeys.verifiedMoons(params),
 		queryFn: () => getScannedMoons(params),
 		staleTime: STALE_5M,
+		enabled,
 		placeholderData: keepPreviousData,
 	})
 }
 
-export function useMoonRegions() {
+export function useMoonRegions(enabled = true) {
 	return useQuery({
 		queryKey: moonScanKeys.regions(),
 		queryFn: getRegions,
 		staleTime: STALE_5M,
+		enabled,
 	})
 }
 
-export function useMoonRegionDetail(regionId: string) {
+export function useMoonRegionDetail(regionId: string, enabled = true) {
 	return useQuery({
 		queryKey: moonScanKeys.region(regionId),
 		queryFn: () => getRegionDetail(regionId),
 		staleTime: STALE_5M,
+		enabled,
 	})
 }
 
@@ -82,19 +85,21 @@ export function useDotlanRegionCoords(regionFile: string, enabled: boolean) {
 	})
 }
 
-export function useMoonSystemDetail(systemId: string) {
+export function useMoonSystemDetail(systemId: string, enabled = true) {
 	return useQuery({
 		queryKey: moonScanKeys.system(systemId),
 		queryFn: () => getSystemDetail(systemId),
 		staleTime: STALE_1M,
+		enabled,
 	})
 }
 
-export function useMoonDetail(moonId: string) {
+export function useMoonDetail(moonId: string, enabled = true) {
 	return useQuery({
 		queryKey: moonScanKeys.moon(moonId),
 		queryFn: () => getMoonDetail(moonId),
 		staleTime: STALE_1M,
+		enabled,
 	})
 }
 
@@ -103,51 +108,57 @@ export function useScanList(params: {
 	moonId?: string
 	page?: number
 	pageSize?: number
-}) {
+}, enabled = true) {
 	return useQuery({
 		queryKey: moonScanKeys.scanList(params),
 		queryFn: () => getScans(params),
 		staleTime: STALE_1M,
+		enabled,
 	})
 }
 
-export function useScanQueue(params: { page?: number; pageSize?: number } = {}) {
+export function useScanQueue(params: { page?: number; pageSize?: number } = {}, enabled = true) {
 	return useQuery({
 		queryKey: moonScanKeys.queue(params),
 		queryFn: () => getScanQueue(params),
 		staleTime: STALE_1M,
+		enabled,
 	})
 }
 
-export function useMyScans(params: { page?: number; pageSize?: number } = {}) {
+export function useMyScans(params: { page?: number; pageSize?: number } = {}, enabled = true) {
 	return useQuery({
 		queryKey: moonScanKeys.myScans(params),
 		queryFn: () => getMyScans(params),
 		staleTime: STALE_1M,
+		enabled,
 	})
 }
 
-export function useScan(id: string) {
+export function useScan(id: string, enabled = true) {
 	return useQuery({
 		queryKey: moonScanKeys.scan(id),
 		queryFn: () => getScan(id),
 		staleTime: STALE_1M,
+		enabled,
 	})
 }
 
-export function useLeaderboard(window: LeaderboardWindow = 'all') {
+export function useLeaderboard(window: LeaderboardWindow = 'all', enabled = true) {
 	return useQuery({
 		queryKey: moonScanKeys.leaderboard(window),
 		queryFn: () => getLeaderboard(window),
 		staleTime: STALE_5M,
+		enabled,
 	})
 }
 
-export function useAdminSettings() {
+export function useAdminSettings(enabled = true) {
 	return useQuery({
 		queryKey: moonScanKeys.adminSettings(),
 		queryFn: getAdminSettings,
 		staleTime: STALE_5M,
+		enabled,
 	})
 }
 

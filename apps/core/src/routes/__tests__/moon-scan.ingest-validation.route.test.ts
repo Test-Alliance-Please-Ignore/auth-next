@@ -151,7 +151,7 @@ describe('moon-scan ingest sanitization', () => {
 		expect(moonScanStub.submitScans).not.toHaveBeenCalled()
 	})
 
-	it('hard-rejects quantity sum outliers', async () => {
+	it('accepts observed quantity sums without requiring them to total exactly one', async () => {
 		const app = createApp(makeUser({ id: 'submit-user-sum' }))
 		const raw = buildRawWithOres([
 			{ oreName: 'Bitumens', quantity: '0.8', oreTypeId: '45490' },
@@ -164,10 +164,10 @@ describe('moon-scan ingest sanitization', () => {
 			body: JSON.stringify({ raw }),
 		}, env)
 
-		expect(res.status).toBe(400)
-		const body = await res.json() as { parseErrors?: string[] }
-		expect(body.parseErrors?.some((error) => error.includes('quantities sum'))).toBe(true)
-		expect(moonScanStub.submitScans).not.toHaveBeenCalled()
+		expect(res.status).toBe(200)
+		const body = await res.json() as { submitted?: number }
+		expect(body.submitted).toBe(0)
+		expect(moonScanStub.submitScans).toHaveBeenCalled()
 	})
 
 	it('hard-rejects non-whitelisted ore type IDs', async () => {
@@ -186,6 +186,35 @@ describe('moon-scan ingest sanitization', () => {
 		expect(res.status).toBe(400)
 		const body = await res.json() as { parseErrors?: string[] }
 		expect(body.parseErrors?.some((error) => error.includes('not allowed for moon scans'))).toBe(true)
+		expect(moonScanStub.submitScans).not.toHaveBeenCalled()
+	})
+
+	it('rejects validators from previewing or submitting scans', async () => {
+		getCachedUserPermissionsMock.mockResolvedValue([
+			{ urn: 'urn:moons:scan:validate' },
+		] as any)
+
+		const app = createApp(makeUser({ id: 'validate-only-user' }))
+		const body = JSON.stringify({ raw: buildRawWithOres([
+			{ oreName: 'Bitumens', quantity: '0.5', oreTypeId: '45490' },
+			{ oreName: 'Coesite', quantity: '0.5', oreTypeId: '45491' },
+		], '40161739') })
+
+		const parseRes = await app.request('/api/moon-scan/scans/parse', {
+			method: 'POST',
+			headers: { 'content-type': 'application/json' },
+			body,
+		}, env)
+		const submitRes = await app.request('/api/moon-scan/scans/submit', {
+			method: 'POST',
+			headers: { 'content-type': 'application/json' },
+			body,
+		}, env)
+
+		expect(parseRes.status).toBe(403)
+		expect(submitRes.status).toBe(403)
+		expect(await parseRes.json()).toEqual({ error: 'Forbidden' })
+		expect(await submitRes.json()).toEqual({ error: 'Forbidden' })
 		expect(moonScanStub.submitScans).not.toHaveBeenCalled()
 	})
 })

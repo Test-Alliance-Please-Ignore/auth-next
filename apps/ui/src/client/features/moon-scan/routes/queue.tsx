@@ -23,9 +23,9 @@ import { formatMoonScanDate } from '../date'
 import { useRejectScan, useScanQueue, useVerifyScan } from '../hooks'
 import { useMoonScanPermissions } from '../permissions'
 
-import type { MoonScan } from '../types'
+import type { ScanQueueEntry } from '../types'
 
-function ValidationActions({ scan }: { scan: MoonScan }) {
+function ValidationActions({ scan }: { scan: ScanQueueEntry }) {
 	const [notes, setNotes] = useState('')
 	const [expanded, setExpanded] = useState(false)
 
@@ -85,24 +85,28 @@ function ValidationActions({ scan }: { scan: MoonScan }) {
 	)
 }
 
-function QueueRow({ scan }: { scan: MoonScan }) {
+function QueueRow({ scan, canViewMoon }: { scan: ScanQueueEntry; canViewMoon: boolean }) {
 	const submittedAt = formatMoonScanDate(scan.submittedAt)
 	return (
 		<TableRow>
-			<TableCell className="font-mono text-xs">
-				<Link to={`/moon-scan/moon/${scan.moonId}`} className="hover:underline text-foreground">
-					{scan.moonId}
-				</Link>
+			<TableCell className="text-xs font-medium">
+				{canViewMoon ? (
+					<Link to={`/moon-scan/moon/${scan.moonId}`} className="hover:underline text-foreground">
+						{scan.moonName}
+					</Link>
+				) : (
+					<span>{scan.moonName}</span>
+				)}
 			</TableCell>
 			<TableCell className="text-muted-foreground text-xs">
-				{scan.submittedBy ?? '—'}
+				{scan.submittedByName ?? '—'}
 			</TableCell>
 			<TableCell className="text-xs">{submittedAt}</TableCell>
 			<TableCell>
 				<div className="flex flex-wrap gap-1">
 					{scan.ores.map((ore) => (
-						<Badge key={ore.oreTypeId} variant="ghost" className="font-mono text-xs">
-							{ore.oreTypeId} {(parseFloat(ore.quantity) * 100).toFixed(1)}%
+						<Badge key={ore.oreTypeId} variant="ghost" className="text-xs">
+							{ore.oreTypeName} {(parseFloat(ore.quantity) * 100).toFixed(1)}%
 						</Badge>
 					))}
 				</div>
@@ -117,12 +121,12 @@ function QueueRow({ scan }: { scan: MoonScan }) {
 export default function QueuePage() {
 	usePageTitle('Moon Scan Review Queue')
 
-	const { canValidate } = useMoonScanPermissions()
+	const { canValidate, canView } = useMoonScanPermissions()
 
 	const [page, setPage] = useState(1)
 	const [pageSize, setPageSize] = useState(20)
 
-	const { data, isLoading, error } = useScanQueue({ page, pageSize })
+	const { data, isLoading, error } = useScanQueue({ page, pageSize }, canValidate)
 
 	if (!canValidate) {
 		return (
@@ -186,7 +190,7 @@ export default function QueuePage() {
 										))}
 									</TableRow>
 								))
-							: (data?.items ?? []).map((scan) => <QueueRow key={scan.id} scan={scan} />)}
+							: (data?.items ?? []).map((scan) => <QueueRow key={scan.id} scan={scan} canViewMoon={canView} />)}
 						{!isLoading && data?.items.length === 0 && (
 							<TableRow>
 								<TableCell colSpan={5} className="py-8 text-center text-sm text-muted-foreground">

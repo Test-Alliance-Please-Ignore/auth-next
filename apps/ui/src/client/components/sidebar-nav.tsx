@@ -39,6 +39,7 @@ import { useSrpPaymentMismatchAlerts } from '@/features/srp/hooks'
 import { useReviewQueueStatusCount } from '@/features/srp/state/review-queue-snapshot-store'
 import { canAccessMumble } from '@/features/mumble/access'
 import { useMumbleFeatureEnabled } from '@/features/mumble/feature'
+import { useMoonScanPermissions } from '@/features/moon-scan/permissions'
 import { useTaxAlerts } from '@/hooks/corporation-tax'
 import { useAuth, useLogout } from '@/hooks/useAuth'
 import { usePendingInvitations } from '@/hooks/useGroups'
@@ -80,6 +81,7 @@ export function SidebarNav({ onNavigate, isSidebarOpen = true, onToggleSidebar }
 	const { data: leadershipCorporationAccess } = useCorporationAccess()
 	const { data: hrCorporations } = useHrAccessibleCorporations()
 	const { permissions, hasAnyPermission } = useUserPermissions()
+	const moonScanPermissions = useMoonScanPermissions()
 	const isSiteAdmin = user?.is_admin === true
 	const isAllianceMember = user?.roles?.includes(ROLE_CORE_ALLIANCE_MEMBER) ?? false
 	const canSeeAllianceMemberNav = isSiteAdmin || isAllianceMember
@@ -375,25 +377,33 @@ export function SidebarNav({ onNavigate, isSidebarOpen = true, onToggleSidebar }
 			},
 		)
 
-		if (isSiteAdmin || hasAnyPermission('urn:moons:view')) {
+		const canSeeMoonScanNav = moonScanPermissions.canAccessMoonScan
+
+		if (canSeeMoonScanNav) {
 			navItems.push({
 				label: 'Moon Scanning',
 				href: '/moon-scan',
 				icon: Moon,
 				children: [
-					{ label: 'Regions', href: '/moon-scan' },
-					{ label: 'Scanned Moons', href: '/moon-scan/scanned' },
-					{ label: 'Leaderboard', href: '/moon-scan/leaderboard' },
-					...(isSiteAdmin || hasAnyPermission('urn:moons:scan:submit')
+					...(moonScanPermissions.canView
+						? [
+								{ label: 'Regions', href: '/moon-scan' },
+								{ label: 'Scanned Moons', href: '/moon-scan/scanned' },
+							]
+						: []),
+					...(moonScanPermissions.canSubmit
 						? [
 								{ label: 'Submit Scan', href: '/moon-scan/submit' },
 								{ label: 'My Scans', href: '/moon-scan/my-scans' },
 							]
 						: []),
-					...(isSiteAdmin || hasAnyPermission('urn:moons:scan:validate')
+					...(moonScanPermissions.canLeaderboard
+						? [{ label: 'Leaderboard', href: '/moon-scan/leaderboard' }]
+						: []),
+					...(moonScanPermissions.canValidate
 						? [{ label: 'Validation Queue', href: '/moon-scan/queue' }]
 						: []),
-					...(isSiteAdmin || hasAnyPermission('urn:moons:admin')
+					...(moonScanPermissions.canAdmin
 						? [{ label: 'Configuration', href: '/moon-scan/settings' }]
 						: []),
 				],

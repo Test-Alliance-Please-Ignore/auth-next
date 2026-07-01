@@ -18,11 +18,11 @@ export const groupMemberKeys = {
 /**
  * Fetch members of a group
  */
-export function useGroupMembers(groupId: string) {
+export function useGroupMembers(groupId: string, enabled = true) {
 	return useQuery({
 		queryKey: groupMemberKeys.list(groupId),
 		queryFn: () => api.getGroupMembers(groupId),
-		enabled: !!groupId,
+		enabled: !!groupId && enabled,
 	})
 }
 

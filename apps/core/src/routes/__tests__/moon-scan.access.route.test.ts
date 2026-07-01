@@ -82,156 +82,307 @@ function createApp(user: SessionUser) {
 	return app
 }
 
-describe('moon-scan scan detail access', () => {
+describe('moon-scan access matrix', () => {
 	const env = {
 		MOON_SCAN: { name: 'MOON_SCAN' },
+		UNIVERSE: { name: 'UNIVERSE' },
 	} as any
 
-	let moonScanStub: {
-		getScan: ReturnType<typeof vi.fn>
-	}
+	let moonScanStub: Record<string, ReturnType<typeof vi.fn>>
+	let universeStub: Record<string, ReturnType<typeof vi.fn>>
 
 	beforeEach(() => {
 		vi.clearAllMocks()
 		moonScanStub = {
+			getLeaderboard: vi.fn(),
 			getScan: vi.fn(),
+			getScanSummary: vi.fn(),
+			getScans: vi.fn(),
+			resolveCharacterNames: vi.fn(),
+		}
+		universeStub = {
+			getMoonRegionIds: vi.fn(),
+			getRegionConnections: vi.fn(),
+			getRegionStats: vi.fn(),
+			resolveStaticMoonsByIds: vi.fn(),
+			resolveRegionsByIds: vi.fn(),
+			resolveTypeNamesByIds: vi.fn(),
 		}
 		getStubMock.mockImplementation((binding: unknown) => {
 			if (binding === env.MOON_SCAN) return moonScanStub as any
+			if (binding === env.UNIVERSE) return universeStub as any
 			throw new Error('Unexpected binding')
 		})
 	})
 
-	it('allows viewers to read verified scans', async () => {
-		const user = makeUser({ id: 'viewer-verified' })
-		moonScanStub.getScan.mockResolvedValue(makeScan('verified'))
-		getCachedUserPermissionsMock.mockResolvedValue([
-			{ urn: 'urn:moons:view' },
-		] as any)
+	it('allows moon viewers to read regions', async () => {
+		getCachedUserPermissionsMock.mockResolvedValue([{ urn: 'urn:moons:view' }] as any)
+		moonScanStub.getScanSummary.mockResolvedValue({ scannedMoonIds: [], verifiedMoonIds: [] })
+		universeStub.resolveRegionsByIds.mockImplementation(async (ids: string[]) =>
+			Object.fromEntries(ids.map((id) => [id, { regionId: id, regionName: `Region ${id}` }]))
+		)
+		universeStub.getRegionStats.mockImplementation(async (ids: string[]) =>
+			Object.fromEntries(ids.map((id) => [id, { systemCount: 1, moonCount: 2 }]))
+		)
+		universeStub.getRegionConnections.mockResolvedValue([])
 
-		const app = createApp(user)
-		const res = await app.request('/api/moon-scan/scans/scan-1', {}, env)
-
-		expect(res.status).toBe(200)
-		expect(await res.json()).toMatchObject({ id: 'scan-1', status: 'verified' })
-	})
-
-	it('allows submitters to read verified scans via implied view access', async () => {
-		const user = makeUser({ id: 'submitter-verified' })
-		moonScanStub.getScan.mockResolvedValue(makeScan('verified'))
-		getCachedUserPermissionsMock.mockResolvedValue([
-			{ urn: 'urn:moons:scan:submit' },
-		] as any)
-
-		const app = createApp(user)
-		const res = await app.request('/api/moon-scan/scans/scan-1', {}, env)
+		const app = createApp(makeUser({ id: 'view-regions' }))
+		const res = await app.request('/api/moon-scan/moons/regions', {}, env)
 
 		expect(res.status).toBe(200)
-		expect(await res.json()).toMatchObject({ id: 'scan-1', status: 'verified' })
+		const body = await res.json() as { regions: Array<{ regionId: string }> }
+		expect(body.regions.length).toBeGreaterThan(0)
 	})
 
-	it('denies plain viewers from reading pending scans', async () => {
-		const user = makeUser({ id: 'viewer-pending' })
-		moonScanStub.getScan.mockResolvedValue(makeScan('pending'))
-		getCachedUserPermissionsMock.mockResolvedValue([
-			{ urn: 'urn:moons:view' },
-		] as any)
-
-		const app = createApp(user)
-		const res = await app.request('/api/moon-scan/scans/scan-1', {}, env)
-
-		expect(res.status).toBe(403)
-		expect(await res.json()).toEqual({ error: 'Forbidden' })
-	})
-
-	it('allows validator to read pending scans', async () => {
-		const user = makeUser({ id: 'validator-pending' })
-		moonScanStub.getScan.mockResolvedValue(makeScan('pending'))
-		getCachedUserPermissionsMock.mockResolvedValue([
-			{ urn: 'urn:moons:scan:validate' },
-		] as any)
-
-		const app = createApp(user)
-		const res = await app.request('/api/moon-scan/scans/scan-1', {}, env)
-
-		expect(res.status).toBe(200)
-		expect(await res.json()).toMatchObject({ id: 'scan-1', status: 'pending' })
-	})
-
-	it('allows moons admin urn to read pending scans via implied validate access', async () => {
-		const user = makeUser({ id: 'moon-admin-pending' })
-		moonScanStub.getScan.mockResolvedValue(makeScan('pending'))
-		getCachedUserPermissionsMock.mockResolvedValue([
-			{ urn: 'urn:moons:admin' },
-		] as any)
-
-		const app = createApp(user)
-		const res = await app.request('/api/moon-scan/scans/scan-1', {}, env)
-
-		expect(res.status).toBe(200)
-		expect(await res.json()).toMatchObject({ id: 'scan-1', status: 'pending' })
-	})
-
-	it('denies scan owner without moon scan urns', async () => {
-		const user = makeUser({
-			id: 'owner-pending',
-			characters: [
-				{
-					id: 'uc-42',
-					characterOwnerHash: 'owner-42',
-					characterId: '4242',
-					characterName: 'Owner Pilot',
-					is_primary: true,
-					hasValidToken: true,
-				},
-			],
-		})
-		moonScanStub.getScan.mockResolvedValue(makeScan('pending', '4242'))
-		getCachedUserPermissionsMock.mockResolvedValue([] as any)
-
-		const app = createApp(user)
-		const res = await app.request('/api/moon-scan/scans/scan-1', {}, env)
-
-		expect(res.status).toBe(403)
-		expect(await res.json()).toEqual({ error: 'Forbidden' })
-	})
-
-	it('allows scan owner with submit urn to read their own pending scan', async () => {
-		const user = makeUser({
-			id: 'owner-pending-with-submit',
-			characters: [
-				{
-					id: 'uc-42',
-					characterOwnerHash: 'owner-42',
-					characterId: '4242',
-					characterName: 'Owner Pilot',
-					is_primary: true,
-					hasValidToken: true,
-				},
-			],
-		})
-		moonScanStub.getScan.mockResolvedValue(makeScan('pending', '4242'))
+	it('denies submitters from reading regions', async () => {
 		getCachedUserPermissionsMock.mockResolvedValue([{ urn: 'urn:moons:scan:submit' }] as any)
 
-		const app = createApp(user)
-		const res = await app.request('/api/moon-scan/scans/scan-1', {}, env)
+		const app = createApp(makeUser({ id: 'submit-regions' }))
+		const res = await app.request('/api/moon-scan/moons/regions', {}, env)
 
-		expect(res.status).toBe(200)
-		expect(await res.json()).toMatchObject({ id: 'scan-1', submittedBy: '4242' })
+		expect(res.status).toBe(403)
+		expect(await res.json()).toEqual({ error: 'Forbidden' })
 	})
 
-	it('allows admin to read pending scans without moon permissions', async () => {
-		const user = makeUser({
-			id: 'admin-pending',
-			is_admin: true,
-		})
-		moonScanStub.getScan.mockResolvedValue(makeScan('pending'))
-		getCachedUserPermissionsMock.mockResolvedValue([] as any)
+	it('allows submitters to read the leaderboard', async () => {
+		getCachedUserPermissionsMock.mockResolvedValue([{ urn: 'urn:moons:scan:submit' }] as any)
+		moonScanStub.getLeaderboard.mockResolvedValue([])
 
-		const app = createApp(user)
+		const app = createApp(makeUser({ id: 'submit-leaderboard' }))
+		const res = await app.request('/api/moon-scan/leaderboard', {}, env)
+
+		expect(res.status).toBe(200)
+		expect(await res.json()).toEqual([])
+	})
+
+	it('allows moon viewers to read the leaderboard', async () => {
+		getCachedUserPermissionsMock.mockResolvedValue([{ urn: 'urn:moons:view' }] as any)
+		moonScanStub.getLeaderboard.mockResolvedValue([])
+
+		const app = createApp(makeUser({ id: 'view-leaderboard' }))
+		const res = await app.request('/api/moon-scan/leaderboard', {}, env)
+
+		expect(res.status).toBe(200)
+		expect(await res.json()).toEqual([])
+	})
+
+	it('allows validators to read the leaderboard', async () => {
+		getCachedUserPermissionsMock.mockResolvedValue([{ urn: 'urn:moons:scan:validate' }] as any)
+		moonScanStub.getLeaderboard.mockResolvedValue([])
+
+		const app = createApp(makeUser({ id: 'validate-leaderboard' }))
+		const res = await app.request('/api/moon-scan/leaderboard', {}, env)
+
+		expect(res.status).toBe(200)
+		expect(await res.json()).toEqual([])
+	})
+
+	it('allows validators to read regions', async () => {
+		getCachedUserPermissionsMock.mockResolvedValue([{ urn: 'urn:moons:scan:validate' }] as any)
+		moonScanStub.getScanSummary.mockResolvedValue({ scannedMoonIds: [], verifiedMoonIds: [] })
+		universeStub.resolveRegionsByIds.mockImplementation(async (ids: string[]) =>
+			Object.fromEntries(ids.map((id) => [id, { regionId: id, regionName: `Region ${id}` }]))
+		)
+		universeStub.getRegionStats.mockImplementation(async (ids: string[]) =>
+			Object.fromEntries(ids.map((id) => [id, { systemCount: 1, moonCount: 2 }]))
+		)
+		universeStub.getRegionConnections.mockResolvedValue([])
+
+		const app = createApp(makeUser({ id: 'validate-regions' }))
+		const res = await app.request('/api/moon-scan/moons/regions', {}, env)
+
+		expect(res.status).toBe(200)
+		const body = await res.json() as { regions: Array<{ regionId: string }> }
+		expect(body.regions.length).toBeGreaterThan(0)
+	})
+
+	it('allows validators to read the review queue', async () => {
+		getCachedUserPermissionsMock.mockResolvedValue([{ urn: 'urn:moons:scan:validate' }] as any)
+		moonScanStub.getScans.mockResolvedValue({ items: [], total: 0, page: 1, pageSize: 20 })
+
+		const app = createApp(makeUser({ id: 'validate-queue' }))
+		const res = await app.request('/api/moon-scan/scans/queue', {}, env)
+
+		expect(res.status).toBe(200)
+		expect(await res.json()).toMatchObject({ items: [], total: 0, page: 1, pageSize: 20 })
+	})
+
+	it('allows submitters to read their scans', async () => {
+		getCachedUserPermissionsMock.mockResolvedValue([{ urn: 'urn:moons:scan:submit' }] as any)
+		moonScanStub.getScans.mockResolvedValue({ items: [], total: 0, page: 1, pageSize: 20 })
+
+		const app = createApp(makeUser({ id: 'submit-my-scans' }))
+		const res = await app.request('/api/moon-scan/scans/mine', {}, env)
+
+		expect(res.status).toBe(200)
+		expect(await res.json()).toMatchObject({ items: [], total: 0, page: 1, pageSize: 20 })
+	})
+
+	it('allows viewers to read their scans via the submitter tier', async () => {
+		getCachedUserPermissionsMock.mockResolvedValue([{ urn: 'urn:moons:view' }] as any)
+		moonScanStub.getScans.mockResolvedValue({ items: [], total: 0, page: 1, pageSize: 20 })
+
+		const app = createApp(makeUser({ id: 'view-my-scans' }))
+		const res = await app.request('/api/moon-scan/scans/mine', {}, env)
+
+		expect(res.status).toBe(200)
+		expect(await res.json()).toMatchObject({ items: [], total: 0, page: 1, pageSize: 20 })
+	})
+
+	it('allows validators to read their scans via the submitter tier', async () => {
+		getCachedUserPermissionsMock.mockResolvedValue([{ urn: 'urn:moons:scan:validate' }] as any)
+		moonScanStub.getScans.mockResolvedValue({ items: [], total: 0, page: 1, pageSize: 20 })
+
+		const app = createApp(makeUser({ id: 'validate-my-scans' }))
+		const res = await app.request('/api/moon-scan/scans/mine', {}, env)
+
+		expect(res.status).toBe(200)
+		expect(await res.json()).toMatchObject({ items: [], total: 0, page: 1, pageSize: 20 })
+	})
+
+	it('enriches the review queue with moon, submitter, and ore type names', async () => {
+		getCachedUserPermissionsMock.mockResolvedValue([{ urn: 'urn:moons:scan:validate' }] as any)
+		moonScanStub.getScans.mockResolvedValue({
+			items: [
+				{
+					...makeScan('pending', '7777'),
+					ores: [{ oreTypeId: '45490', quantity: '0.5' }],
+				},
+			],
+			total: 1,
+			page: 1,
+			pageSize: 20,
+		})
+		moonScanStub.resolveCharacterNames.mockResolvedValue({ '7777': 'Submitting Pilot' })
+		universeStub.resolveStaticMoonsByIds.mockResolvedValue({
+			'40161739': {
+				moonId: '40161739',
+				moonName: 'Jita IV - Moon 4',
+				solarSystemId: '30000142',
+				solarSystemName: 'Jita',
+			},
+		})
+		universeStub.resolveTypeNamesByIds.mockResolvedValue({
+			'45490': {
+				typeId: '45490',
+				typeName: 'Bitumens',
+			},
+		})
+
+		const app = createApp(makeUser({ id: 'validate-queue-enriched' }))
+		const res = await app.request('/api/moon-scan/scans/queue', {}, env)
+
+		expect(res.status).toBe(200)
+		const body = await res.json() as {
+			items: Array<{
+				moonName: string
+				submittedByName: string | null
+				ores: Array<{ oreTypeName: string }>
+			}>
+		}
+		expect(body.items).toHaveLength(1)
+		expect(body.items[0]?.moonName).toBe('Jita IV - Moon 4')
+		expect(body.items[0]?.submittedByName).toBe('Submitting Pilot')
+		expect(body.items[0]?.ores[0]?.oreTypeName).toBe('Bitumens')
+		expect(moonScanStub.resolveCharacterNames).toHaveBeenCalledWith(['7777'])
+		expect(universeStub.resolveStaticMoonsByIds).toHaveBeenCalledWith(['40161739'])
+		expect(universeStub.resolveTypeNamesByIds).toHaveBeenCalledWith(['45490'])
+	})
+
+	it('allows validators to read the scan list', async () => {
+		getCachedUserPermissionsMock.mockResolvedValue([{ urn: 'urn:moons:scan:validate' }] as any)
+		moonScanStub.getScans.mockResolvedValue({ items: [], total: 0, page: 1, pageSize: 20 })
+
+		const app = createApp(makeUser({ id: 'validate-scan-list' }))
+		const res = await app.request('/api/moon-scan/scans', {}, env)
+
+		expect(res.status).toBe(200)
+		expect(await res.json()).toMatchObject({ items: [], total: 0, page: 1, pageSize: 20 })
+	})
+
+	it('denies submitters from reading the review queue', async () => {
+		getCachedUserPermissionsMock.mockResolvedValue([{ urn: 'urn:moons:scan:submit' }] as any)
+
+		const app = createApp(makeUser({ id: 'submit-queue' }))
+		const res = await app.request('/api/moon-scan/scans/queue', {}, env)
+
+		expect(res.status).toBe(403)
+		expect(await res.json()).toEqual({ error: 'Forbidden' })
+	})
+
+	it('denies submitters from reading the scan list', async () => {
+		getCachedUserPermissionsMock.mockResolvedValue([{ urn: 'urn:moons:scan:submit' }] as any)
+
+		const app = createApp(makeUser({ id: 'submit-scan-list' }))
+		const res = await app.request('/api/moon-scan/scans', {}, env)
+
+		expect(res.status).toBe(403)
+		expect(await res.json()).toEqual({ error: 'Forbidden' })
+	})
+
+	it('allows validators to read individual scans for review', async () => {
+		getCachedUserPermissionsMock.mockResolvedValue([{ urn: 'urn:moons:scan:validate' }] as any)
+		moonScanStub.getScan.mockResolvedValue(makeScan('pending'))
+
+		const app = createApp(makeUser({ id: 'validate-scan' }))
 		const res = await app.request('/api/moon-scan/scans/scan-1', {}, env)
 
 		expect(res.status).toBe(200)
 		expect(await res.json()).toMatchObject({ id: 'scan-1', status: 'pending' })
+	})
+
+	it('denies submitters from reading individual scans', async () => {
+		getCachedUserPermissionsMock.mockResolvedValue([{ urn: 'urn:moons:scan:submit' }] as any)
+		moonScanStub.getScan.mockResolvedValue(makeScan('pending'))
+
+		const app = createApp(makeUser({ id: 'submit-scan' }))
+		const res = await app.request('/api/moon-scan/scans/scan-1', {}, env)
+
+		expect(res.status).toBe(403)
+		expect(await res.json()).toEqual({ error: 'Forbidden' })
+	})
+
+	it('denies moon viewers from reading individual scans', async () => {
+		getCachedUserPermissionsMock.mockResolvedValue([{ urn: 'urn:moons:view' }] as any)
+		moonScanStub.getScan.mockResolvedValue(makeScan('verified'))
+
+		const app = createApp(makeUser({ id: 'view-scan' }))
+		const res = await app.request('/api/moon-scan/scans/scan-1', {}, env)
+
+		expect(res.status).toBe(403)
+		expect(await res.json()).toEqual({ error: 'Forbidden' })
+	})
+
+	it('allows moon admins to read individual scans', async () => {
+		getCachedUserPermissionsMock.mockResolvedValue([{ urn: 'urn:moons:admin' }] as any)
+		moonScanStub.getScan.mockResolvedValue(makeScan('pending'))
+
+		const app = createApp(makeUser({ id: 'moon-admin', is_admin: false }))
+		const res = await app.request('/api/moon-scan/scans/scan-1', {}, env)
+
+		expect(res.status).toBe(200)
+		expect(await res.json()).toMatchObject({ id: 'scan-1', status: 'pending' })
+	})
+
+	it('allows moon admins to access configuration', async () => {
+		getCachedUserPermissionsMock.mockResolvedValue([{ urn: 'urn:moons:admin' }] as any)
+		moonScanStub.getExtractionSettings = vi.fn().mockResolvedValue({
+			defaultReprocessingYield: '0.5',
+			defaultCycleDays: 7,
+			fuelBlockPriceOverride: null,
+			magmaticGasPriceOverride: null,
+		})
+		moonScanStub.getStructureProfiles = vi.fn().mockResolvedValue([])
+
+		const app = createApp(makeUser({ id: 'moon-admin-settings' }))
+		const res = await app.request('/api/moon-scan/admin/settings', {}, env)
+
+		expect(res.status).toBe(200)
+		expect(await res.json()).toMatchObject({
+			settings: {
+				defaultReprocessingYield: '0.5',
+				defaultCycleDays: 7,
+			},
+		})
 	})
 })

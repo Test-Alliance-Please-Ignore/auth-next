@@ -40,14 +40,15 @@ export default function GroupDetailPage() {
 	const { user } = useAuth()
 	const { showSuccess, showError } = useMessage()
 	const { data: group, isLoading } = useGroup(groupId!)
-	const { data: members, isLoading: membersLoading } = useGroupMembers(groupId!)
+	const canManageGroup = Boolean(group?.isOwner || group?.isAdmin)
+	const { data: members, isLoading: membersLoading } = useGroupMembers(groupId!, canManageGroup)
 
 	// Member management hooks
 	const removeMember = useRemoveMember()
 	const toggleAdmin = useToggleAdmin()
 
 	// Invite code hooks
-	const { data: inviteCodes = [] } = useGroupInviteCodes(groupId!)
+	const { data: inviteCodes = [] } = useGroupInviteCodes(groupId!, canManageGroup)
 	const createInviteCode = useCreateInviteCode()
 	const revokeInviteCode = useRevokeInviteCode()
 
@@ -201,7 +202,7 @@ export default function GroupDetailPage() {
 				)}
 
 				{/* Members List - Only show to group owners and admins */}
-				{(group.isOwner || group.isAdmin) && (
+				{canManageGroup && (
 					<Card>
 						<CardHeader>
 							<CardTitle className="flex items-center gap-2">
@@ -225,13 +226,13 @@ export default function GroupDetailPage() {
 				)}
 
 				{/* Pending Join Requests - Owner/Admin Only */}
-				{(group.isOwner || group.isAdmin) && <PendingJoinRequestsList groupId={groupId!} />}
+				{canManageGroup && <PendingJoinRequestsList groupId={groupId!} />}
 
 				{/* Invite Member Form - Owner/Admin Only */}
-				{(group.isOwner || group.isAdmin) && <InviteMemberForm groupId={groupId!} />}
+				{canManageGroup && <InviteMemberForm groupId={groupId!} />}
 
 				{/* Invite Codes - Owner/Admin Only */}
-				{(group.isOwner || group.isAdmin) && (
+				{canManageGroup && (
 					<Card>
 						<CardHeader>
 							<div className="flex items-center justify-between">
