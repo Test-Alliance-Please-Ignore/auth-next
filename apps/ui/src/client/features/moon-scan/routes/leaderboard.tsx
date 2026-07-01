@@ -28,12 +28,12 @@ const WINDOWS: Array<{ value: LeaderboardWindow; label: string }> = [
 export default function LeaderboardPage() {
 	usePageTitle('Moon Scan Leaderboard')
 
-	const { canView } = useMoonScanPermissions()
+	const { canLeaderboard } = useMoonScanPermissions()
 
 	const [window, setWindow] = useState<LeaderboardWindow>('all')
-	const { data: entries, isLoading, error } = useLeaderboard(window)
+	const { data: entries, isLoading, error } = useLeaderboard(window, canLeaderboard)
 
-	if (!canView) {
+	if (!canLeaderboard) {
 		return (
 			<Container>
 				<PageHeader title="Scan Leaderboard" description="You do not have permission to view this page." />

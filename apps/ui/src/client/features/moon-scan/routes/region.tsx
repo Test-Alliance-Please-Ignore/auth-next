@@ -51,8 +51,8 @@ export default function RegionPage() {
 	const { canView } = useMoonScanPermissions()
 	const [systemSearch, setSystemSearch] = useState('')
 
-	const { data: regionsData } = useMoonRegions()
-	const { data: detail, isLoading, error } = useMoonRegionDetail(regionId!)
+	const { data: regionsData } = useMoonRegions(canView)
+	const { data: detail, isLoading, error } = useMoonRegionDetail(regionId!, canView)
 
 	const regionName =
 		regionsData?.regions.find((r) => r.regionId === regionId)?.regionName ?? regionId
@@ -63,7 +63,7 @@ export default function RegionPage() {
 	)
 	const { data: coords, error: coordsError } = useDotlanRegionCoords(
 		dotlanFile,
-		dotlanFile.length > 0
+		canView && dotlanFile.length > 0
 	)
 
 	if (!canView) {

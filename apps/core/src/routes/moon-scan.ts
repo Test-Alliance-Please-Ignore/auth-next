@@ -12,7 +12,9 @@ import {
 	RARITY_ORDER,
 	getOreVolume,
 	parseMoonScanTsv,
+	type PaginatedScanQueue,
 	type MoonScanDO,
+	type ScanQueueEntry,
 	type MoonProfitability,
 	type OreRarity,
 	type OreWithProfitability,
@@ -26,7 +28,7 @@ import { requireAllianceMember } from '../middleware/session'
 import { createEveRegionId, createEveTypeId } from '@repo/eve-types'
 import type { Markets } from '@repo/markets'
 import type { Universe } from '@repo/universe'
-import type { App, SessionUser } from '../context'
+import type { App } from '../context'
 
 // ─── Permission URNs ─────────────────────────────────────────────────────────
 
@@ -74,8 +76,6 @@ async function hasMoonPerm(
 		if (urn === MOON_URNS.view) {
 			return perms.some((p) =>
 				p.urn === MOON_URNS.view
-				|| p.urn === MOON_URNS.submit
-				|| p.urn === MOON_URNS.validate
 				|| p.urn === MOON_URNS.admin
 			)
 		}
@@ -99,11 +99,6 @@ function resolveEffectivePrice(override: string | null | undefined, livePrice: n
 	const parsed = Number.parseFloat(override)
 	if (Number.isNaN(parsed) || parsed <= 0) return livePrice
 	return parsed
-}
-
-function isScanOwner(scan: { submittedBy: string | null }, user: SessionUser): boolean {
-	if (!scan.submittedBy) return false
-	return user.characters.some((character) => character.characterId === scan.submittedBy)
 }
 
 function isRawPayloadTooLarge(raw: string): boolean {
@@ -982,8 +977,44 @@ moonScanRoutes.get('/scans/queue', async (c) => {
 	const pageSize = Number(c.req.query('pageSize') ?? 20)
 
 	const moonScan = getMoonScanStub(c.env)
+	const universe = getUniverseStub(c.env)
 	const result = await moonScan.getScans({ status: 'pending', page, pageSize })
-	return c.json(result)
+	if (result.items.length === 0) {
+		return c.json(result as PaginatedScanQueue)
+	}
+
+	const moonIds = [...new Set(result.items.map((scan) => scan.moonId))]
+	const submitterIds = [...new Set(
+		result.items
+			.map((scan) => scan.submittedBy)
+			.filter((characterId): characterId is string => characterId !== null)
+	)]
+	const oreTypeIds = [...new Set(result.items.flatMap((scan) => scan.ores.map((ore) => ore.oreTypeId)))]
+
+	const [moonsById, characterNames, typeNamesById] = await Promise.all([
+		universe.resolveStaticMoonsByIds(moonIds),
+		submitterIds.length > 0
+			? moonScan.resolveCharacterNames(submitterIds)
+			: Promise.resolve({} as Record<string, string>),
+		oreTypeIds.length > 0
+			? universe.resolveTypeNamesByIds(oreTypeIds)
+			: Promise.resolve({} as Record<string, { typeName: string } | null>),
+	])
+
+	const items: ScanQueueEntry[] = result.items.map((scan) => ({
+		...scan,
+		moonName: moonsById[scan.moonId]?.moonName ?? 'Unknown Moon',
+		submittedByName: scan.submittedBy ? (characterNames[scan.submittedBy] ?? 'Unknown Pilot') : null,
+		ores: scan.ores.map((ore) => ({
+			...ore,
+			oreTypeName: typeNamesById[ore.oreTypeId]?.typeName ?? 'Unknown Ore',
+		})),
+	}))
+
+	return c.json<PaginatedScanQueue>({
+		...result,
+		items,
+	})
 })
 
 // ─── My scans ────────────────────────────────────────────────────────────────
@@ -1009,17 +1040,12 @@ moonScanRoutes.get('/scans/mine', async (c) => {
 
 moonScanRoutes.get('/scans/:id', async (c) => {
 	const user = c.get('user')!
-	const canView = await hasMoonPerm(c.env, user.id, MOON_URNS.view, user.is_admin)
-	const canSubmit = await hasMoonPerm(c.env, user.id, MOON_URNS.submit, user.is_admin)
 	const canValidate = await hasMoonPerm(c.env, user.id, MOON_URNS.validate, user.is_admin)
 	const moonScan = getMoonScanStub(c.env)
 	const scan = await moonScan.getScan(c.req.param('id'))
 	if (!scan) return c.json({ error: 'Not found' }, 404)
 
-	const owner = isScanOwner(scan, user)
-	const canReadVerified = scan.status === 'verified' && canView
-	const canReadOwned = owner && canSubmit
-	if (!canReadVerified && !canValidate && !canReadOwned && !user.is_admin) {
+	if (!canValidate && !user.is_admin) {
 		return c.json({ error: 'Forbidden' }, 403)
 	}
 
@@ -1068,7 +1094,7 @@ moonScanRoutes.post('/scans/:id/reject', async (c) => {
 
 moonScanRoutes.get('/leaderboard', async (c) => {
 	const user = c.get('user')!
-	if (!await hasMoonPerm(c.env, user.id, MOON_URNS.view, user.is_admin)) {
+	if (!await hasMoonPerm(c.env, user.id, MOON_URNS.submit, user.is_admin)) {
 		return c.json({ error: 'Forbidden' }, 403)
 	}
 

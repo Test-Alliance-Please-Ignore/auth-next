@@ -9,6 +9,10 @@ export interface MoonScanOre {
 	quantity: string
 }
 
+export interface ScanQueueOre extends MoonScanOre {
+	oreTypeName: string
+}
+
 export interface MoonScan {
 	id: string
 	moonId: string
@@ -21,6 +25,12 @@ export interface MoonScan {
 	verifiedAt: string | null
 	notes: string | null
 	ores: MoonScanOre[]
+}
+
+export interface ScanQueueEntry extends MoonScan {
+	moonName: string
+	submittedByName: string | null
+	ores: ScanQueueOre[]
 }
 
 export interface VerifiedComposition {
@@ -60,6 +70,13 @@ export interface StructureProfile {
 
 export interface PaginatedScans {
 	items: MoonScan[]
+	total: number
+	page: number
+	pageSize: number
+}
+
+export interface PaginatedScanQueue {
+	items: ScanQueueEntry[]
 	total: number
 	page: number
 	pageSize: number

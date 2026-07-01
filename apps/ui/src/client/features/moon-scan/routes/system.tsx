@@ -26,7 +26,7 @@ export default function SystemPage() {
 	const { systemId } = useParams<{ systemId: string }>()
 	const { canView } = useMoonScanPermissions()
 
-	const { data: detail, isLoading, error } = useMoonSystemDetail(systemId!)
+	const { data: detail, isLoading, error } = useMoonSystemDetail(systemId!, canView)
 	usePageTitle(detail?.system?.solarSystemName ? `${detail.system.solarSystemName}` : 'System')
 	if (!canView) {
 		return (

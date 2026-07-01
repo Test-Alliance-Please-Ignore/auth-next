@@ -375,22 +375,37 @@ export function SidebarNav({ onNavigate, isSidebarOpen = true, onToggleSidebar }
 			},
 		)
 
-		if (isSiteAdmin || hasAnyPermission('urn:moons:view')) {
+		const canSeeMoonScanNav =
+			isSiteAdmin ||
+			hasAnyPermission(
+				'urn:moons:view',
+				'urn:moons:scan:submit',
+				'urn:moons:scan:validate',
+				'urn:moons:admin'
+			)
+
+		if (canSeeMoonScanNav) {
 			navItems.push({
 				label: 'Moon Scanning',
 				href: '/moon-scan',
 				icon: Moon,
 				children: [
-					{ label: 'Regions', href: '/moon-scan' },
-					{ label: 'Scanned Moons', href: '/moon-scan/scanned' },
-					{ label: 'Leaderboard', href: '/moon-scan/leaderboard' },
-					...(isSiteAdmin || hasAnyPermission('urn:moons:scan:submit')
+					...(isSiteAdmin || hasAnyPermission('urn:moons:view', 'urn:moons:admin')
+						? [
+								{ label: 'Regions', href: '/moon-scan' },
+								{ label: 'Scanned Moons', href: '/moon-scan/scanned' },
+							]
+						: []),
+					...(isSiteAdmin || hasAnyPermission('urn:moons:scan:submit', 'urn:moons:admin')
 						? [
 								{ label: 'Submit Scan', href: '/moon-scan/submit' },
 								{ label: 'My Scans', href: '/moon-scan/my-scans' },
 							]
 						: []),
-					...(isSiteAdmin || hasAnyPermission('urn:moons:scan:validate')
+					...(isSiteAdmin || hasAnyPermission('urn:moons:scan:submit', 'urn:moons:admin')
+						? [{ label: 'Leaderboard', href: '/moon-scan/leaderboard' }]
+						: []),
+					...(isSiteAdmin || hasAnyPermission('urn:moons:scan:validate', 'urn:moons:admin')
 						? [{ label: 'Validation Queue', href: '/moon-scan/queue' }]
 						: []),
 					...(isSiteAdmin || hasAnyPermission('urn:moons:admin')

@@ -23,14 +23,18 @@ import { useMoonScanPermissions } from '../permissions'
 
 import type { MoonScan } from '../types'
 
-function ScanRow({ scan }: { scan: MoonScan }) {
+function ScanRow({ scan, canViewMoon }: { scan: MoonScan; canViewMoon: boolean }) {
 	const submittedAt = formatMoonScanDate(scan.submittedAt)
 	return (
 		<TableRow>
 			<TableCell className="font-mono text-xs text-muted-foreground">
-				<Link to={`/moon-scan/moon/${scan.moonId}`} className="hover:underline text-foreground">
-					{scan.moonId}
-				</Link>
+				{canViewMoon ? (
+					<Link to={`/moon-scan/moon/${scan.moonId}`} className="hover:underline text-foreground">
+						{scan.moonId}
+					</Link>
+				) : (
+					<span>{scan.moonId}</span>
+				)}
 			</TableCell>
 				<TableCell>{scan.ores.length} ore{scan.ores.length !== 1 ? 's' : ''}</TableCell>
 				<TableCell>{submittedAt}</TableCell>
@@ -42,12 +46,12 @@ function ScanRow({ scan }: { scan: MoonScan }) {
 export default function MyScansPage() {
 	usePageTitle('My Moon Scans')
 
-	const { canSubmit } = useMoonScanPermissions()
+	const { canSubmit, canView } = useMoonScanPermissions()
 
 	const [page, setPage] = useState(1)
 	const [pageSize, setPageSize] = useState(20)
 
-	const { data, isLoading, error } = useMyScans({ page, pageSize })
+	const { data, isLoading, error } = useMyScans({ page, pageSize }, canSubmit)
 
 	if (!canSubmit) {
 		return (
@@ -110,7 +114,7 @@ export default function MyScansPage() {
 										))}
 									</TableRow>
 								))
-							: (data?.items ?? []).map((scan) => <ScanRow key={scan.id} scan={scan} />)}
+							: (data?.items ?? []).map((scan) => <ScanRow key={scan.id} scan={scan} canViewMoon={canView} />)}
 						{!isLoading && data?.items.length === 0 && (
 							<TableRow>
 								<TableCell colSpan={4} className="py-8 text-center text-sm text-muted-foreground">

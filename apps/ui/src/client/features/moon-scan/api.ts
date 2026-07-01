@@ -8,6 +8,7 @@ import type {
 	MoonDetail,
 	MoonScan,
 	MoonScanStatus,
+	PaginatedScanQueue,
 	PaginatedScans,
 	ParseResult,
 	RegionDetail,
@@ -95,7 +96,7 @@ export async function getScans(params: {
 	return apiClient.get(`/moon-scan/scans${query ? `?${query}` : ''}`)
 }
 
-export async function getScanQueue(params: { page?: number; pageSize?: number } = {}): Promise<PaginatedScans> {
+export async function getScanQueue(params: { page?: number; pageSize?: number } = {}): Promise<PaginatedScanQueue> {
 	const qs = new URLSearchParams()
 	if (params.page) qs.set('page', String(params.page))
 	if (params.pageSize) qs.set('pageSize', String(params.pageSize))

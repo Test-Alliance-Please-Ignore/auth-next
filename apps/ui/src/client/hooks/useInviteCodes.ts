@@ -13,12 +13,13 @@ export const inviteCodeKeys = {
 /**
  * Fetch invite codes for a group
  */
-export function useGroupInviteCodes(groupId: string) {
+export function useGroupInviteCodes(groupId: string, enabled = true) {
 	return useQuery({
 		queryKey: inviteCodeKeys.group(groupId),
 		queryFn: () => apiClient.getGroupInviteCodes(groupId),
 		staleTime: 1000 * 30, // 30 seconds
 		gcTime: 1000 * 60 * 5, // Keep in cache for 5 minutes
+		enabled: !!groupId && enabled,
 	})
 }
 

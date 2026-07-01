@@ -1,7 +1,7 @@
 import { useRef, useState } from 'react'
-import { useNavigate } from 'react-router-dom'
+import { Link, useNavigate } from 'react-router-dom'
 
-import { Card } from '@/components/ui/card'
+import { Card, CardContent } from '@/components/ui/card'
 import { Container } from '@/components/ui/container'
 import { Input } from '@/components/ui/input'
 import { PageHeader } from '@/components/ui/page-header'
@@ -142,14 +142,34 @@ function RegionNode({ region, dimmed = false, onHover, onClick }: RegionNodeProp
 	)
 }
 
+function AccessTile({
+	to,
+	title,
+	description,
+}: {
+	to: string
+	title: string
+	description: string
+}) {
+	return (
+		<Link
+			to={to}
+			className="rounded-md border border-border/70 bg-background/60 p-4 transition-colors hover:border-primary/60 hover:bg-accent/30"
+		>
+			<div className="text-sm font-medium">{title}</div>
+			<div className="mt-1 text-xs text-muted-foreground">{description}</div>
+		</Link>
+	)
+}
+
 export default function MoonScanIndex() {
 	usePageTitle('Moon Scanning')
 
-	const { canView } = useMoonScanPermissions()
+	const { canView, canSubmit, canValidate, canAdmin, canAccessMoonScan } = useMoonScanPermissions()
 	const navigate = useNavigate()
 	const mapWrapRef = useRef<HTMLDivElement>(null)
 
-	const { data, isLoading, error } = useMoonRegions()
+	const { data, isLoading, error } = useMoonRegions(canView)
 	const regions = data?.regions
 	const connections = data?.connections ?? []
 
@@ -157,10 +177,56 @@ export default function MoonScanIndex() {
 	const [tooltipPx, setTooltipPx] = useState<{ x: number; y: number } | null>(null)
 	const [regionSearch, setRegionSearch] = useState('')
 
-	if (!canView) {
+	if (!canAccessMoonScan) {
 		return (
 			<Container>
 				<PageHeader title="Moon Scanning" description="You do not have permission to view moon data." />
+			</Container>
+		)
+	}
+
+	const accessTiles: Array<{ to: string; title: string; description: string }> = []
+	if (canSubmit) {
+		accessTiles.push(
+			{ to: '/moon-scan/submit', title: 'Submit Scan', description: 'Paste and submit moon scan results.' },
+			{ to: '/moon-scan/my-scans', title: 'My Scans', description: 'Review scans you have submitted.' },
+			{ to: '/moon-scan/leaderboard', title: 'Leaderboard', description: 'View verified scan contributor rankings.' }
+		)
+	}
+	if (canValidate) {
+		accessTiles.push({
+			to: '/moon-scan/queue',
+			title: 'Validation Queue',
+			description: 'Review and approve pending moon scans.',
+		})
+	}
+	if (canView) {
+		accessTiles.push(
+			{ to: '/moon-scan', title: 'Regions', description: 'Browse k-space regions and coverage.' },
+			{ to: '/moon-scan/scanned', title: 'Scanned Moons', description: 'Inspect verified moon compositions.' }
+		)
+	}
+	if (canAdmin) {
+		accessTiles.push({
+			to: '/moon-scan/settings',
+			title: 'Configuration',
+			description: 'Manage moon scan extraction defaults and profiles.',
+		})
+	}
+
+	if (!canView) {
+		return (
+			<Container>
+				<div className="mb-4">
+					<PageHeader title="Moon Scanning" description="Choose one of the available moon scan tools." />
+				</div>
+				<Card className="mt-section">
+					<CardContent className="grid gap-3 p-4 sm:grid-cols-2 xl:grid-cols-3">
+						{accessTiles.map((tile) => (
+							<AccessTile key={tile.to} {...tile} />
+						))}
+					</CardContent>
+				</Card>
 			</Container>
 		)
 	}
