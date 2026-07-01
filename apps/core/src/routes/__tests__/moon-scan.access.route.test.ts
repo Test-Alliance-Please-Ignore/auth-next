@@ -155,14 +155,45 @@ describe('moon-scan access matrix', () => {
 		expect(await res.json()).toEqual([])
 	})
 
-	it('denies moon viewers from reading the leaderboard', async () => {
+	it('allows moon viewers to read the leaderboard', async () => {
 		getCachedUserPermissionsMock.mockResolvedValue([{ urn: 'urn:moons:view' }] as any)
+		moonScanStub.getLeaderboard.mockResolvedValue([])
 
 		const app = createApp(makeUser({ id: 'view-leaderboard' }))
 		const res = await app.request('/api/moon-scan/leaderboard', {}, env)
 
-		expect(res.status).toBe(403)
-		expect(await res.json()).toEqual({ error: 'Forbidden' })
+		expect(res.status).toBe(200)
+		expect(await res.json()).toEqual([])
+	})
+
+	it('allows validators to read the leaderboard', async () => {
+		getCachedUserPermissionsMock.mockResolvedValue([{ urn: 'urn:moons:scan:validate' }] as any)
+		moonScanStub.getLeaderboard.mockResolvedValue([])
+
+		const app = createApp(makeUser({ id: 'validate-leaderboard' }))
+		const res = await app.request('/api/moon-scan/leaderboard', {}, env)
+
+		expect(res.status).toBe(200)
+		expect(await res.json()).toEqual([])
+	})
+
+	it('allows validators to read regions', async () => {
+		getCachedUserPermissionsMock.mockResolvedValue([{ urn: 'urn:moons:scan:validate' }] as any)
+		moonScanStub.getScanSummary.mockResolvedValue({ scannedMoonIds: [], verifiedMoonIds: [] })
+		universeStub.resolveRegionsByIds.mockImplementation(async (ids: string[]) =>
+			Object.fromEntries(ids.map((id) => [id, { regionId: id, regionName: `Region ${id}` }]))
+		)
+		universeStub.getRegionStats.mockImplementation(async (ids: string[]) =>
+			Object.fromEntries(ids.map((id) => [id, { systemCount: 1, moonCount: 2 }]))
+		)
+		universeStub.getRegionConnections.mockResolvedValue([])
+
+		const app = createApp(makeUser({ id: 'validate-regions' }))
+		const res = await app.request('/api/moon-scan/moons/regions', {}, env)
+
+		expect(res.status).toBe(200)
+		const body = await res.json() as { regions: Array<{ regionId: string }> }
+		expect(body.regions.length).toBeGreaterThan(0)
 	})
 
 	it('allows validators to read the review queue', async () => {
@@ -171,6 +202,39 @@ describe('moon-scan access matrix', () => {
 
 		const app = createApp(makeUser({ id: 'validate-queue' }))
 		const res = await app.request('/api/moon-scan/scans/queue', {}, env)
+
+		expect(res.status).toBe(200)
+		expect(await res.json()).toMatchObject({ items: [], total: 0, page: 1, pageSize: 20 })
+	})
+
+	it('allows submitters to read their scans', async () => {
+		getCachedUserPermissionsMock.mockResolvedValue([{ urn: 'urn:moons:scan:submit' }] as any)
+		moonScanStub.getScans.mockResolvedValue({ items: [], total: 0, page: 1, pageSize: 20 })
+
+		const app = createApp(makeUser({ id: 'submit-my-scans' }))
+		const res = await app.request('/api/moon-scan/scans/mine', {}, env)
+
+		expect(res.status).toBe(200)
+		expect(await res.json()).toMatchObject({ items: [], total: 0, page: 1, pageSize: 20 })
+	})
+
+	it('allows viewers to read their scans via the submitter tier', async () => {
+		getCachedUserPermissionsMock.mockResolvedValue([{ urn: 'urn:moons:view' }] as any)
+		moonScanStub.getScans.mockResolvedValue({ items: [], total: 0, page: 1, pageSize: 20 })
+
+		const app = createApp(makeUser({ id: 'view-my-scans' }))
+		const res = await app.request('/api/moon-scan/scans/mine', {}, env)
+
+		expect(res.status).toBe(200)
+		expect(await res.json()).toMatchObject({ items: [], total: 0, page: 1, pageSize: 20 })
+	})
+
+	it('allows validators to read their scans via the submitter tier', async () => {
+		getCachedUserPermissionsMock.mockResolvedValue([{ urn: 'urn:moons:scan:validate' }] as any)
+		moonScanStub.getScans.mockResolvedValue({ items: [], total: 0, page: 1, pageSize: 20 })
+
+		const app = createApp(makeUser({ id: 'validate-my-scans' }))
+		const res = await app.request('/api/moon-scan/scans/mine', {}, env)
 
 		expect(res.status).toBe(200)
 		expect(await res.json()).toMatchObject({ items: [], total: 0, page: 1, pageSize: 20 })

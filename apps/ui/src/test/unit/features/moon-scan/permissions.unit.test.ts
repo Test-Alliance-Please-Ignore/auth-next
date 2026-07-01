@@ -3,7 +3,7 @@ import { describe, expect, it } from 'vitest'
 import { getMoonScanPermissionState } from '@/features/moon-scan/permissions'
 
 describe('moon scan permission state', () => {
-	it('keeps submit, validate, and view permissions separate', () => {
+	it('reflects the moon-scan permission cascade', () => {
 		const submitState = getMoonScanPermissionState([{ urn: 'urn:moons:scan:submit' }], false)
 		expect(submitState).toMatchObject({
 			canSubmit: true,
@@ -16,20 +16,20 @@ describe('moon scan permission state', () => {
 
 		const validateState = getMoonScanPermissionState([{ urn: 'urn:moons:scan:validate' }], false)
 		expect(validateState).toMatchObject({
-			canSubmit: false,
+			canSubmit: true,
 			canValidate: true,
-			canView: false,
-			canLeaderboard: false,
+			canView: true,
+			canLeaderboard: true,
 			canAccessMoonScan: true,
 			canAdmin: false,
 		})
 
 		const viewState = getMoonScanPermissionState([{ urn: 'urn:moons:view' }], false)
 		expect(viewState).toMatchObject({
-			canSubmit: false,
+			canSubmit: true,
 			canValidate: false,
 			canView: true,
-			canLeaderboard: false,
+			canLeaderboard: true,
 			canAccessMoonScan: true,
 			canAdmin: false,
 		})

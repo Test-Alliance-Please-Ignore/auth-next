@@ -165,7 +165,8 @@ function AccessTile({
 export default function MoonScanIndex() {
 	usePageTitle('Moon Scanning')
 
-	const { canView, canSubmit, canValidate, canAdmin, canAccessMoonScan } = useMoonScanPermissions()
+	const { canView, canSubmit, canValidate, canAdmin, canAccessMoonScan, canLeaderboard } =
+		useMoonScanPermissions()
 	const navigate = useNavigate()
 	const mapWrapRef = useRef<HTMLDivElement>(null)
 
@@ -190,8 +191,14 @@ export default function MoonScanIndex() {
 		accessTiles.push(
 			{ to: '/moon-scan/submit', title: 'Submit Scan', description: 'Paste and submit moon scan results.' },
 			{ to: '/moon-scan/my-scans', title: 'My Scans', description: 'Review scans you have submitted.' },
-			{ to: '/moon-scan/leaderboard', title: 'Leaderboard', description: 'View verified scan contributor rankings.' }
 		)
+	}
+	if (canLeaderboard) {
+		accessTiles.push({
+			to: '/moon-scan/leaderboard',
+			title: 'Leaderboard',
+			description: 'View verified scan contributor rankings.',
+		})
 	}
 	if (canValidate) {
 		accessTiles.push({

@@ -39,6 +39,13 @@ const MOON_URNS = {
 	admin: 'urn:moons:admin',
 } as const
 
+const MOON_ACCESS_LEVELS = {
+	submit: 0,
+	view: 1,
+	validate: 2,
+	admin: 3,
+} as const
+
 // Region IDs to exclude from the moon map (non-k-space)
 // Wormhole regions: all IDs starting with '110' (11000xxx)
 // Pochven (Triglavian): 10000070
@@ -73,16 +80,36 @@ async function hasMoonPerm(
 	const cacheKey = `moon-perm:${userId}:${urn}`
 	return permissionCache.getOrSet(cacheKey, async () => {
 		const perms = await getCachedUserPermissions(env, userId)
-		if (urn === MOON_URNS.view) {
-			return perms.some((p) =>
-				p.urn === MOON_URNS.view
-				|| p.urn === MOON_URNS.admin
-			)
+		let accessLevel = -1
+		for (const permission of perms) {
+			switch (permission.urn) {
+				case MOON_URNS.submit:
+					accessLevel = Math.max(accessLevel, MOON_ACCESS_LEVELS.submit)
+					break
+				case MOON_URNS.view:
+					accessLevel = Math.max(accessLevel, MOON_ACCESS_LEVELS.view)
+					break
+				case MOON_URNS.validate:
+					accessLevel = Math.max(accessLevel, MOON_ACCESS_LEVELS.validate)
+					break
+				case MOON_URNS.admin:
+					accessLevel = Math.max(accessLevel, MOON_ACCESS_LEVELS.admin)
+					break
+			}
 		}
-		if (urn === MOON_URNS.submit || urn === MOON_URNS.validate) {
-			return perms.some((p) => p.urn === urn || p.urn === MOON_URNS.admin)
+
+		switch (urn) {
+			case MOON_URNS.submit:
+				return accessLevel >= MOON_ACCESS_LEVELS.submit
+			case MOON_URNS.view:
+				return accessLevel >= MOON_ACCESS_LEVELS.view
+			case MOON_URNS.validate:
+				return accessLevel >= MOON_ACCESS_LEVELS.validate
+			case MOON_URNS.admin:
+				return accessLevel >= MOON_ACCESS_LEVELS.admin
+			default:
+				return perms.some((p) => p.urn === urn)
 		}
-		return perms.some((p) => p.urn === urn)
 	})
 }
 
