@@ -90,6 +90,7 @@ vi.mock('@repo/do-utils', () => ({
 }))
 
 vi.mock('@repo/discord', () => ({
+	DISCORD_EXCLUDED_AUTH_ROLE_IDS: new Set(['585546446120419328', '1431816436640256060']),
 	getDiscordStub: vi.fn(() => discordStubMethods),
 }))
 
@@ -868,6 +869,46 @@ describe('updateUserDiscordRoles', () => {
 			)
 		})
 
+		it('should keep excluded auth roles out of managedRoleIds so refreshes do not strip them', async () => {
+			setupUserInGuild('guild-1')
+
+			dbQueryMocks.corporationDiscordServers.findMany
+				.mockResolvedValueOnce([
+					makeCorpAttachment({
+						corporationId: 'corp-1',
+						discordServerId: 'ds-1',
+						guildId: 'guild-1',
+						roleIds: ['corp-role-1', '1431816436640256060'],
+					}),
+				])
+				.mockResolvedValueOnce([{ discordServerId: 'ds-1' }])
+				.mockResolvedValueOnce([
+					makeCorpAttachment({
+						corporationId: 'corp-1',
+						discordServerId: 'ds-1',
+						guildId: 'guild-1',
+						roleIds: ['corp-role-1', '1431816436640256060'],
+					}),
+				])
+
+			groupsStubMethods.getGroupsWithDiscordAutoInvite.mockResolvedValue([])
+			groupsStubMethods.getGroupsByDiscordServer.mockResolvedValue([])
+			dbQueryMocks.discordServers.findFirst.mockResolvedValue(
+				makeDiscordServer({ id: 'ds-1', guildId: 'guild-1' })
+			)
+			dbQueryMocks.discordRoles.findMany.mockResolvedValueOnce([])
+
+			discordStubMethods.updateUserRoles.mockResolvedValue([
+				{ guildId: 'guild-1', success: true, rolesAdded: [], rolesRemoved: [] },
+			])
+
+			await updateUserDiscordRoles(mockEnv, 'user-1')
+
+			expect(discordStubMethods.updateUserRoles).toHaveBeenCalled()
+			const requests = discordStubMethods.updateUserRoles.mock.calls[0][1]
+			expect(requests[0].managedRoleIds).not.toContain('1431816436640256060')
+		})
+
 		it('should pass scoped managedRoleIds on removal so only configured managed roles are removable', async () => {
 			setupUserInGuild('guild-1')
 
@@ -1538,6 +1579,57 @@ describe('inspectUserDiscordAccess', () => {
 		expect(guild.currentUnmanagedRoles.map((r) => r.roleId)).toEqual(
 			expect.arrayContaining(['managed-unconfigured', 'manual-role'])
 		)
+	})
+
+	it('should skip non-member guilds without auto-invite from drift inspection', async () => {
+		dbQueryMocks.discordServers.findMany.mockResolvedValue([
+			makeDiscordServer({ id: 'ds-1', guildId: 'guild-1', guildName: 'Guild One' }),
+		])
+		discordStubMethods.getUserGuildMembershipDetails.mockResolvedValue([
+			{
+				guildId: 'guild-1',
+				isMember: false,
+				currentRoleIds: [],
+				currentRoles: [],
+			},
+		])
+
+		dbQueryMocks.userCharacters.findMany.mockResolvedValue([
+			{
+				userId: 'user-1',
+				characterId: 'char-1',
+			},
+		] as any)
+		eveCorpStubMethods.getCorporationIdsByCharacterIds.mockResolvedValue({
+			'char-1': 'corp-1',
+		})
+
+		dbQueryMocks.corporationDiscordServers.findMany
+			.mockResolvedValueOnce([
+				// Expected-role lookup: guild has corp roles but no auto-invite.
+				makeCorpAttachment({
+					corporationId: 'corp-1',
+					discordServerId: 'ds-1',
+					guildId: 'guild-1',
+					autoInvite: false,
+					autoAssignRoles: true,
+					roleIds: ['corp-role-db'],
+				}),
+			])
+			.mockResolvedValueOnce([{ discordServerId: 'ds-1' }]) // corp-gating scan
+			.mockResolvedValueOnce([]) // invite-capable corp scan
+
+		groupsStubMethods.getGroupsWithDiscordAutoInvite.mockResolvedValue([])
+		groupsStubMethods.getGroupsByDiscordServer.mockResolvedValue([])
+		dbQueryMocks.discordRoles.findMany.mockResolvedValue([]) // auto-apply roles
+
+		const result = await inspectUserDiscordAccess(mockEnv, 'user-1')
+
+		expect(result.guilds).toHaveLength(0)
+		expect(result.summary.guildsInspected).toBe(0)
+		expect(result.summary.guildsWithDrift).toBe(0)
+		expect(result.summary.totalMissingExpectedManagedRoles).toBe(0)
+		expect(result.summary.totalUnexpectedManagedRoles).toBe(0)
 	})
 
 	it('should expect no roles when user is blacklisted', async () => {

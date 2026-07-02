@@ -192,15 +192,16 @@ export default function AdminUserDiscordAccessPage() {
 												>
 													{hasDrift ? 'Drift Detected' : 'In Sync'}
 												</Badge>
-												<Button
-													variant="destructive"
-													size="sm"
-													onClick={() => void stripRolesForGuild(guild.guildId)}
-													disabled={
-														!discordServers.some((server) => server.guildId === guild.guildId) ||
-														stripRoles.isPending
-													}
-												>
+											<Button
+												variant="destructive"
+												size="sm"
+												onClick={() => void stripRolesForGuild(guild.guildId)}
+												disabled={
+													!guild.isMember ||
+													!discordServers.some((server) => server.guildId === guild.guildId) ||
+													stripRoles.isPending
+												}
+											>
 													Strip Roles
 												</Button>
 											</div>
