@@ -1,5 +1,5 @@
 import { Plus, RotateCcw, Trash2 } from 'lucide-react'
-import { useMemo, useState } from 'react'
+import { useMemo, useState, type KeyboardEvent } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 
 import {
@@ -9,8 +9,15 @@ import {
 } from '@repo/admin'
 
 import { Button } from '@/components/ui/button'
+import { Badge } from '@/components/ui/badge'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Checkbox } from '@/components/ui/checkbox'
+import {
+	Accordion,
+	AccordionContent,
+	AccordionItem,
+	AccordionTrigger,
+} from '@/components/ui/accordion'
 import {
 	Dialog,
 	DialogContent,
@@ -21,8 +28,23 @@ import {
 } from '@/components/ui/dialog'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
+import {
+	Table,
+	TableBody,
+	TableCell,
+	TableHead,
+	TableHeader,
+	TableRow,
+} from '@/components/ui/table'
 import { Textarea } from '@/components/ui/textarea'
 import { usePageTitle } from '@/hooks/usePageTitle'
+import {
+	groupThirdPartyAppScopeOptions,
+	getThirdPartyAppScopeAccessLevel,
+	THIRD_PARTY_APP_REQUIRED_SCOPES,
+	type ThirdPartyAppScopeDomainGroup,
+	type ThirdPartyAppScopeRow,
+} from './third-party-apps.helpers'
 
 type OAuthClient = {
 	clientId: string
@@ -86,7 +108,12 @@ export default function AdminThirdPartyAppsPage() {
 	const [clientName, setClientName] = useState('')
 	const [redirectUrisText, setRedirectUrisText] = useState('')
 	const [selectedScopes, setSelectedScopes] = useState<Set<ThirdPartyAppScope>>(
-		() => new Set(['profile'])
+		() =>
+			new Set(
+				THIRD_PARTY_APP_SUPPORTED_SCOPES.filter(
+					(scope) => getThirdPartyAppScopeMetadata(scope).category === 'identity'
+				)
+			)
 	)
 	const [secretDialogOpen, setSecretDialogOpen] = useState(false)
 	const [latestSecret, setLatestSecret] = useState<{ clientId: string; clientSecret: string } | null>(null)
@@ -104,6 +131,23 @@ export default function AdminThirdPartyAppsPage() {
 		() => THIRD_PARTY_APP_SUPPORTED_SCOPES.map((scope) => getThirdPartyAppScopeMetadata(scope)),
 		[]
 	)
+	const scopeSections = useMemo(() => groupThirdPartyAppScopeOptions(scopeOptions), [scopeOptions])
+	const authPlatformSection = scopeSections.find((section) => section.key === 'auth-platform')
+	const esiProxySection = scopeSections.find((section) => section.key === 'esi-proxy')
+	const authPlatformScopeNames = authPlatformSection?.scopes.map((scope) => scope.scope) ?? []
+	const authPlatformOptionalScopeNames = authPlatformScopeNames.filter(
+		(scope) => !THIRD_PARTY_APP_REQUIRED_SCOPES.includes(scope as (typeof THIRD_PARTY_APP_REQUIRED_SCOPES)[number])
+	)
+	const defaultAuthPlatformScopes = useMemo(
+		() =>
+			new Set(
+				THIRD_PARTY_APP_SUPPORTED_SCOPES.filter(
+					(scope) => getThirdPartyAppScopeMetadata(scope).category === 'identity'
+				)
+			),
+		[]
+	)
+	const selectedScopeCount = selectedScopes.size
 
 	const createClientMutation = useMutation({
 		mutationFn: (payload: CreateClientInput) =>
@@ -116,7 +160,7 @@ export default function AdminThirdPartyAppsPage() {
 			setError(null)
 			setClientName('')
 			setRedirectUrisText('')
-			setSelectedScopes(new Set(['profile']))
+			setSelectedScopes(defaultAuthPlatformScopes)
 			if (data.clientSecret) {
 				setLatestSecret({ clientId: data.clientId, clientSecret: data.clientSecret })
 				setSecretDialogOpen(true)
@@ -193,6 +237,11 @@ export default function AdminThirdPartyAppsPage() {
 	}
 
 	const toggleScope = (scope: ThirdPartyAppScope, checked: boolean) => {
+		if (
+			THIRD_PARTY_APP_REQUIRED_SCOPES.includes(scope as (typeof THIRD_PARTY_APP_REQUIRED_SCOPES)[number])
+		) {
+			return
+		}
 		setSelectedScopes((previous) => {
 			const next = new Set(previous)
 			if (checked) {
@@ -203,6 +252,148 @@ export default function AdminThirdPartyAppsPage() {
 			return next
 		})
 	}
+
+	const setScopes = (scopes: readonly ThirdPartyAppScope[], checked: boolean) => {
+		setSelectedScopes((previous) => {
+			const next = new Set(previous)
+			for (const scope of scopes) {
+				if (
+					THIRD_PARTY_APP_REQUIRED_SCOPES.includes(
+						scope as (typeof THIRD_PARTY_APP_REQUIRED_SCOPES)[number]
+					)
+				) {
+					next.add(scope)
+					continue
+				}
+				if (checked) {
+					next.add(scope)
+				} else {
+					next.delete(scope)
+				}
+			}
+			return next
+		})
+	}
+
+	const getScopeSelectionState = (scopes: readonly ThirdPartyAppScope[]) => {
+		const selectedCount = scopes.filter((scope) => selectedScopes.has(scope)).length
+		return {
+			totalCount: scopes.length,
+			selectedCount,
+			allSelected: scopes.length > 0 && selectedCount === scopes.length,
+			someSelected: selectedCount > 0 && selectedCount < scopes.length,
+		}
+	}
+	const authPlatformSelectionState = getScopeSelectionState(authPlatformScopeNames)
+	const esiReadScopeNames =
+		esiProxySection?.scopes.filter((scope) => scope.accessLevel === 'read').map((scope) => scope.scope) ??
+		[]
+	const esiWriteScopeNames =
+		esiProxySection?.scopes.filter((scope) => scope.accessLevel === 'write').map((scope) => scope.scope) ??
+		[]
+	const esiReadSelectionState = getScopeSelectionState(esiReadScopeNames)
+	const esiWriteSelectionState = getScopeSelectionState(esiWriteScopeNames)
+
+	const renderScopeRows = (scopes: ThirdPartyAppScopeRow[]) => (
+		<Table>
+			<TableHeader>
+				<TableRow>
+					<TableHead className="w-10" />
+					<TableHead className="w-[18rem]">Scope</TableHead>
+					<TableHead className="w-24">Access</TableHead>
+					<TableHead>Details</TableHead>
+				</TableRow>
+			</TableHeader>
+			<TableBody>
+				{scopes.map((scopeRow) => {
+					const accessLevel = getThirdPartyAppScopeAccessLevel(scopeRow.scope)
+					const isSelected = selectedScopes.has(scopeRow.scope)
+					const isRequired = THIRD_PARTY_APP_REQUIRED_SCOPES.includes(
+						scopeRow.scope as (typeof THIRD_PARTY_APP_REQUIRED_SCOPES)[number]
+					)
+					const rowInteractionProps = isRequired
+						? ({
+								'aria-disabled': true,
+								onClick: undefined,
+								onKeyDown: undefined,
+							} as const)
+						: ({
+								role: 'button' as const,
+								tabIndex: 0,
+								onClick: () => toggleScope(scopeRow.scope, !isSelected),
+								onKeyDown: (event: KeyboardEvent<HTMLTableRowElement>) => {
+									if (event.key === 'Enter' || event.key === ' ') {
+										event.preventDefault()
+										toggleScope(scopeRow.scope, !isSelected)
+									}
+								},
+							} as const)
+					return (
+						<TableRow
+							key={scopeRow.scope}
+							data-selected={isSelected}
+							{...rowInteractionProps}
+							className={`align-top transition-colors ${
+								isRequired ? 'cursor-not-allowed bg-muted/30' : 'cursor-pointer hover:bg-muted/40'
+							} data-[selected=true]:!bg-success/10 data-[selected=true]:outline data-[selected=true]:outline-1 data-[selected=true]:outline-success/40 data-[selected=true]:shadow-[inset_0_0_0_1px_hsl(var(--success)/0.35)]`}
+						>
+							<TableCell className="pt-3">
+								<Checkbox
+									onClick={(event) => event.stopPropagation()}
+									checked={selectedScopes.has(scopeRow.scope)}
+									disabled={isRequired}
+									onCheckedChange={(checked) => toggleScope(scopeRow.scope, checked === true)}
+								/>
+							</TableCell>
+							<TableCell className="pt-3 font-mono text-xs font-semibold text-foreground">
+								<span className="flex items-center gap-2">
+									<span>{scopeRow.scope}</span>
+									{isRequired ? <Badge variant="ghost">Required</Badge> : null}
+								</span>
+							</TableCell>
+							<TableCell className="pt-2">
+								<Badge variant={accessLevel === 'read' ? 'success' : 'warning'}>
+									{accessLevel === 'read' ? 'Read' : 'Write'}
+								</Badge>
+							</TableCell>
+							<TableCell className="pt-3">
+								<div className="space-y-1">
+									<div className="font-medium text-foreground">{scopeRow.name}</div>
+									<div className="text-xs leading-5 text-muted-foreground">
+										{scopeRow.description}
+									</div>
+								</div>
+							</TableCell>
+						</TableRow>
+					)
+				})}
+			</TableBody>
+		</Table>
+	)
+
+	const renderDomainGroups = (domainGroups: ThirdPartyAppScopeDomainGroup[]) => (
+		<Accordion type="multiple" className="space-y-2">
+			{domainGroups.map((domainGroup, index) => (
+				<AccordionItem
+					key={domainGroup.key}
+					value={domainGroup.key}
+					className={`rounded-lg border border-border/60 border-b-0 px-3 ${index % 2 === 0 ? 'bg-background/40' : 'bg-card/60'}`}
+				>
+					<AccordionTrigger className="cursor-pointer py-3 text-sm font-medium text-foreground hover:no-underline">
+						<span className="flex min-w-0 flex-1 items-center gap-2">
+							<span className="truncate">{domainGroup.label}</span>
+							<Badge variant="ghost" className="text-[10px] uppercase tracking-wide">
+								{domainGroup.scopes.length} scopes
+							</Badge>
+						</span>
+					</AccordionTrigger>
+					<AccordionContent className="pb-0">
+						<div className="pb-3">{renderScopeRows(domainGroup.scopes)}</div>
+					</AccordionContent>
+				</AccordionItem>
+			))}
+		</Accordion>
+	)
 
 	return (
 		<div className="space-y-6">
@@ -250,31 +441,144 @@ export default function AdminThirdPartyAppsPage() {
 							placeholder={'https://example.app/callback\nhttps://example.app/oauth/callback'}
 						/>
 					</div>
-					<div className="space-y-3">
-						<Label>Allowed Scopes</Label>
-						<div className="grid gap-2 sm:grid-cols-2">
-							{scopeOptions.map((scopeOption) => (
-								<label
-									key={scopeOption.scope}
-									className="flex items-start gap-3 rounded-md border border-border/60 px-3 py-2 text-sm"
-								>
-									<Checkbox
-										checked={selectedScopes.has(scopeOption.scope)}
-										onCheckedChange={(checked) => toggleScope(scopeOption.scope, checked === true)}
-										className="mt-1"
-									/>
-									<span className="min-w-0 space-y-1">
-										<span className="block font-medium text-foreground">{scopeOption.name}</span>
-										<span className="block text-xs leading-5 text-muted-foreground">
-											{scopeOption.description}
-										</span>
-										<span className="block break-all font-mono text-[11px] text-muted-foreground">
-											{scopeOption.scope}
-										</span>
-									</span>
-								</label>
-							))}
+					<div className="space-y-4">
+						<div className="rounded-lg border border-border/60 bg-card/40 px-3 py-3">
+							<div className="flex flex-wrap items-center justify-between gap-3">
+								<div>
+									<div className="text-sm font-medium text-foreground">Allowed Scopes</div>
+									<div className="text-xs text-muted-foreground">
+										{selectedScopeCount} selected of{' '}
+										{scopeSections.reduce((total, section) => total + section.scopes.length, 0)} total
+									</div>
+								</div>
+							</div>
 						</div>
+
+						{authPlatformSection ? (
+							<Card className="border-border/60 bg-card/40">
+								<CardHeader className="space-y-3 pb-3">
+									<div className="flex flex-wrap items-center justify-between gap-3">
+										<div>
+											<CardTitle className="text-base">{authPlatformSection.label}</CardTitle>
+											<CardDescription>{authPlatformSection.description}</CardDescription>
+										</div>
+										<div
+											className="flex cursor-pointer items-center gap-2 rounded-md border border-border/60 px-3 py-2 transition-colors hover:bg-muted/40"
+											role="button"
+											tabIndex={0}
+											onClick={() =>
+												setScopes(authPlatformOptionalScopeNames, !authPlatformSelectionState.allSelected)
+											}
+											onKeyDown={(event) => {
+												if (event.key === 'Enter' || event.key === ' ') {
+													event.preventDefault()
+													setScopes(
+														authPlatformOptionalScopeNames,
+														!authPlatformSelectionState.allSelected
+													)
+												}
+											}}
+										>
+											<Checkbox
+												checked={
+													authPlatformSelectionState.allSelected
+														? true
+														: authPlatformSelectionState.someSelected
+															? 'indeterminate'
+															: false
+												}
+												onClick={(event) => event.stopPropagation()}
+												onCheckedChange={(checked) =>
+													setScopes(authPlatformOptionalScopeNames, checked === true)
+												}
+											/>
+											<span className="text-sm font-medium text-foreground">Select all</span>
+											<Badge variant="ghost" className="text-xs">
+												{authPlatformSelectionState.selectedCount}/{authPlatformScopeNames.length}
+											</Badge>
+										</div>
+									</div>
+								</CardHeader>
+								<CardContent>{renderScopeRows(authPlatformSection.scopes)}</CardContent>
+							</Card>
+						) : null}
+
+						{esiProxySection ? (
+							<Card className="border-border/60 bg-card/40">
+								<CardHeader className="space-y-3 pb-3">
+									<div className="flex flex-wrap items-center justify-between gap-3">
+										<div>
+											<CardTitle className="text-base">{esiProxySection.label}</CardTitle>
+											<CardDescription>{esiProxySection.description}</CardDescription>
+										</div>
+										<div className="flex flex-wrap items-center gap-2">
+											{(['read', 'write'] as const).map((accessLevel) => {
+												const selectionState =
+													accessLevel === 'read' ? esiReadSelectionState : esiWriteSelectionState
+												const accessScopes =
+													accessLevel === 'read' ? esiReadScopeNames : esiWriteScopeNames
+												return (
+													<div
+														key={accessLevel}
+														className="flex cursor-pointer items-center gap-2 rounded-md border border-border/60 px-3 py-2 transition-colors hover:bg-muted/40"
+														role="button"
+														tabIndex={0}
+														onClick={() => setScopes(accessScopes, !selectionState.allSelected)}
+														onKeyDown={(event) => {
+															if (event.key === 'Enter' || event.key === ' ') {
+																event.preventDefault()
+																setScopes(accessScopes, !selectionState.allSelected)
+															}
+														}}
+													>
+														<Checkbox
+															checked={
+																selectionState.allSelected
+																	? true
+																	: selectionState.someSelected
+																		? 'indeterminate'
+																		: false
+															}
+															onClick={(event) => event.stopPropagation()}
+															onCheckedChange={(checked) => setScopes(accessScopes, checked === true)}
+														/>
+														<span className="text-sm font-medium text-foreground">
+															Select all {accessLevel}
+														</span>
+														<Badge variant={accessLevel === 'read' ? 'success' : 'warning'} className="text-xs">
+															{selectionState.selectedCount}/{selectionState.totalCount}
+														</Badge>
+													</div>
+												)
+											})}
+										</div>
+									</div>
+								</CardHeader>
+								<CardContent>
+									<Accordion type="multiple" className="space-y-2">
+										{esiProxySection.domainGroups.map((domainGroup) => (
+											<AccordionItem
+												key={domainGroup.key}
+												value={domainGroup.key}
+												className="rounded-lg border border-border/60 border-b-0 bg-background/40 px-3"
+											>
+												<AccordionTrigger className="py-3 text-sm font-medium text-foreground hover:no-underline">
+													<span className="flex min-w-0 flex-1 items-center gap-2">
+														<span className="truncate">{domainGroup.label}</span>
+														<Badge variant="ghost" className="text-[10px] uppercase tracking-wide">
+															{domainGroup.scopes.length} scopes
+														</Badge>
+													</span>
+												</AccordionTrigger>
+												<AccordionContent className="pb-0">
+													<div className="pb-3">{renderScopeRows(domainGroup.scopes)}</div>
+												</AccordionContent>
+											</AccordionItem>
+										))}
+									</Accordion>
+								</CardContent>
+							</Card>
+						) : null}
 					</div>
 					<Button
 						onClick={handleCreate}
