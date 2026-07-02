@@ -1,6 +1,7 @@
 import { Hono } from 'hono'
 import { z } from 'zod'
 
+import { validateAlertDestinationRequirements } from '@repo/alert-destinations'
 import { STRUCTURE_ALERT_TYPES } from '@repo/structures'
 
 import type {
@@ -11,6 +12,7 @@ import type {
 	UpsertStructureCorporationDefaultInput,
 	UpsertStructureGroupSettingInput,
 } from '@repo/structures'
+import type { AlertDestinationType } from '@repo/alert-destinations'
 import type { App } from '../../context'
 
 const app = new Hono<App>()
@@ -114,6 +116,17 @@ app.post('/groups/:groupId/destinations', async (c) => {
 	const user = c.get('user')
 	const groupId = c.req.param('groupId')
 	const body = createStructureAlertDestinationSchema.parse(await c.req.json()) satisfies CreateStructureAlertDestinationRequest
+	const destinationValidationError = validateAlertDestinationRequirements({
+		destinationType: body.destinationType as AlertDestinationType,
+		discordServerId: body.discordServerId,
+		channelId: body.channelId,
+		coreUserId: body.coreUserId,
+		groupId: body.groupId,
+		destinationConfig: body.destinationConfig,
+	})
+	if (destinationValidationError) {
+		return c.json({ error: destinationValidationError }, 400)
+	}
 	return c.json(await c.env.STRUCTURES.createStructureAlertDestination(getActor(user), groupId, body))
 })
 
@@ -122,6 +135,26 @@ app.put('/groups/:groupId/destinations/:destinationId', async (c) => {
 	const groupId = c.req.param('groupId')
 	const destinationId = c.req.param('destinationId')
 	const body = updateStructureAlertDestinationSchema.parse(await c.req.json()) satisfies UpdateStructureAlertDestinationRequest
+	const existingDestinations = await c.env.STRUCTURES.listStructureGroupAlertDestinations(getActor(user), groupId)
+	const existing = Array.isArray(existingDestinations)
+		? existingDestinations.find((destination: any) => destination?.id === destinationId)
+		: null
+
+	if (!existing) {
+		return c.json({ error: 'Alert destination not found' }, 404)
+	}
+
+	const destinationValidationError = validateAlertDestinationRequirements({
+		destinationType: (body.destinationType ?? existing.destinationType) as AlertDestinationType,
+		discordServerId: body.discordServerId ?? existing.discordServerId,
+		channelId: body.channelId ?? existing.channelId,
+		coreUserId: body.coreUserId ?? existing.coreUserId,
+		groupId: body.groupId ?? existing.groupId,
+		destinationConfig: body.destinationConfig ?? existing.destinationConfig,
+	})
+	if (destinationValidationError) {
+		return c.json({ error: destinationValidationError }, 400)
+	}
 	return c.json(
 		await c.env.STRUCTURES.updateStructureAlertDestination(getActor(user), groupId, destinationId, body)
 	)

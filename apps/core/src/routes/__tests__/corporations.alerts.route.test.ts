@@ -31,6 +31,9 @@ function makeUser(overrides: Partial<SessionUser> = {}): SessionUser {
 function makeDb() {
 	return {
 		query: {
+			alertDestinations: {
+				findFirst: vi.fn(),
+			},
 			managedCorporations: {
 				findFirst: vi.fn(),
 			},
@@ -65,7 +68,7 @@ describe('corporation alerts routes', () => {
 				type: 'corp_application_submitted',
 				label: 'Corporation Application Submitted',
 				description: 'Sent when a new HR application is submitted to this corporation.',
-				supportedDestinationTypes: ['discord_channel', 'discord_user'],
+				supportedDestinationTypes: ['discord_channel', 'discord_user', 'discord_webhook'],
 			},
 		])
 		serviceMocks.listCorporationAlertDestinations.mockResolvedValue([])
@@ -132,6 +135,44 @@ describe('corporation alerts routes', () => {
 		)
 	})
 
+	it('creates a discord webhook alert destination', async () => {
+		const db = makeDb()
+		db.query.managedCorporations.findFirst.mockResolvedValue({ corporationId: 'corp-1' })
+		const app = createApp(makeUser({ id: 'user-9' }), db)
+
+		const response = await app.request(
+			'/api/corporations/corp-1/alerts',
+			{
+				method: 'POST',
+				headers: { 'Content-Type': 'application/json' },
+				body: JSON.stringify({
+					alertType: 'corp_application_submitted',
+					destinationType: 'discord_webhook',
+					destinationConfig: {
+						webhookUrl: 'https://discord.com/api/webhooks/123/abc',
+					},
+					isEnabled: true,
+				}),
+			},
+			{} as any
+		)
+
+		expect(response.status).toBe(201)
+		expect(serviceMocks.createCorporationAlertDestination).toHaveBeenCalledWith(
+			db,
+			expect.objectContaining({
+				corporationId: 'corp-1',
+				alertType: 'corp_application_submitted',
+				destinationType: 'discord_webhook',
+				destinationConfig: {
+					webhookUrl: 'https://discord.com/api/webhooks/123/abc',
+				},
+				createdBy: 'user-9',
+				updatedBy: 'user-9',
+			})
+		)
+	})
+
 	it('rejects incomplete discord channel destinations before service calls', async () => {
 		const db = makeDb()
 		db.query.managedCorporations.findFirst.mockResolvedValue({ corporationId: 'corp-1' })
@@ -151,9 +192,72 @@ describe('corporation alerts routes', () => {
 		expect(serviceMocks.createCorporationAlertDestination).not.toHaveBeenCalled()
 	})
 
+	it('rejects incomplete discord webhook destinations before service calls', async () => {
+		const db = makeDb()
+		db.query.managedCorporations.findFirst.mockResolvedValue({ corporationId: 'corp-1' })
+		const app = createApp(makeUser(), db)
+
+		const response = await app.request(
+			'/api/corporations/corp-1/alerts',
+			{
+				method: 'POST',
+				headers: { 'Content-Type': 'application/json' },
+				body: JSON.stringify({
+					alertType: 'corp_application_submitted',
+					destinationType: 'discord_webhook',
+				}),
+			},
+			{} as any
+		)
+
+		expect(response.status).toBe(400)
+		expect(serviceMocks.createCorporationAlertDestination).not.toHaveBeenCalled()
+	})
+
+	it('rejects invalid discord webhook urls before service calls', async () => {
+		const db = makeDb()
+		db.query.managedCorporations.findFirst.mockResolvedValue({ corporationId: 'corp-1' })
+		const app = createApp(makeUser(), db)
+
+		const response = await app.request(
+			'/api/corporations/corp-1/alerts',
+			{
+				method: 'POST',
+				headers: { 'Content-Type': 'application/json' },
+				body: JSON.stringify({
+					alertType: 'corp_application_submitted',
+					destinationType: 'discord_webhook',
+					destinationConfig: {
+						webhookUrl: 'https://example.com/not-a-discord-webhook',
+					},
+				}),
+			},
+			{} as any
+		)
+
+		expect(response.status).toBe(400)
+		expect(await response.json()).toEqual(
+			expect.objectContaining({
+				error: 'webhookUrl must be a valid Discord webhook URL for discord_webhook destinations',
+			})
+		)
+		expect(serviceMocks.createCorporationAlertDestination).not.toHaveBeenCalled()
+	})
+
 	it('updates an alert destination', async () => {
 		const db = makeDb()
 		db.query.managedCorporations.findFirst.mockResolvedValue({ corporationId: 'corp-1' })
+		db.query.alertDestinations.findFirst.mockResolvedValue({
+			id: 'dest-1',
+			scopeType: 'corporation',
+			scopeId: 'corp-1',
+			destinationType: 'discord_channel',
+			discordServerId: 'server-1',
+			channelId: 'channel-1',
+			coreUserId: null,
+			groupId: null,
+			destinationConfig: {},
+		})
 		const app = createApp(makeUser({ id: 'user-2' }), db)
 
 		const response = await app.request('/api/corporations/corp-1/alerts/dest-1', {
@@ -189,4 +293,3 @@ describe('corporation alerts routes', () => {
 		expect(serviceMocks.deleteCorporationAlertDestination).toHaveBeenCalledWith(db, 'corp-1', 'dest-1')
 	})
 })
-

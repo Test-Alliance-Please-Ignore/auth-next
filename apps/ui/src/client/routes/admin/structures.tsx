@@ -31,6 +31,11 @@ import { api } from '@/lib/api'
 import toast from '@/lib/toast'
 
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
+import {
+	getAlertDestinationTypeOptions,
+	validateAlertDestinationRequirements,
+	type AlertDestinationType,
+} from '@repo/alert-destinations'
 import { STRUCTURE_STATE_OPTIONS } from '@repo/structure-states'
 
 import type {
@@ -64,9 +69,7 @@ type CorporationDefaultDraft = {
 }
 
 const DESTINATION_TYPE_OPTIONS: SelectOption[] = [
-	{ value: 'discord_channel', label: 'Discord Channel' },
-	{ value: 'discord_user', label: 'Discord User' },
-	{ value: 'group', label: 'Group Broadcast' },
+	...getAlertDestinationTypeOptions(['discord_channel', 'discord_user', 'discord_webhook', 'group']),
 ]
 
 function alertConfigDraftFromRow(config: StructureGroupAlertConfig): AlertConfigDraft {
@@ -153,6 +156,7 @@ function syncDestinationDrafts(
 			currentRow.channelId !== nextRow.channelId ||
 			currentRow.coreUserId !== nextRow.coreUserId ||
 			currentRow.groupId !== nextRow.groupId ||
+			currentRow.webhookUrl !== nextRow.webhookUrl ||
 			currentRow.isEnabled !== nextRow.isEnabled ||
 			currentRow.sendToAdmins !== nextRow.sendToAdmins ||
 			currentRow.sendToOwners !== nextRow.sendToOwners ||
@@ -845,6 +849,11 @@ export default function AdminStructuresPage() {
 												)
 											}
 											onSave={async () => {
+												const validationError = validateDestinationRow(row)
+												if (validationError) {
+													toast.error(validationError)
+													return
+												}
 												const payload = buildDestinationPayload(row)
 												await createDestination.mutateAsync({ groupId: selectedGroupId, payload })
 												setNewDestinationRows((current) => current.filter((currentRow) => currentRow.id !== row.id))
@@ -881,6 +890,11 @@ export default function AdminStructuresPage() {
 														}))
 													}
 													onSave={async () => {
+														const validationError = validateDestinationRow(draft)
+														if (validationError) {
+															toast.error(validationError)
+															return
+														}
 														const payload = buildDestinationPayload(draft)
 														await updateDestination.mutateAsync({
 															groupId: selectedGroupId,
@@ -1156,15 +1170,35 @@ function buildDestinationPayload(row: AlertDestinationEditorRow): CreateStructur
 		coreUserId: row.destinationType === 'discord_user' ? row.coreUserId || null : null,
 		groupId: row.destinationType === 'group' ? row.groupId || null : null,
 		destinationConfig:
-			row.destinationType === 'group'
+			row.destinationType === 'discord_webhook'
 				? {
-						sendToAdmins: row.sendToAdmins,
-						sendToOwners: row.sendToOwners,
-						sendToMembers: row.sendToMembers,
+						webhookUrl: row.webhookUrl.trim(),
 					}
-				: {},
+				: row.destinationType === 'group'
+					? {
+							sendToAdmins: row.sendToAdmins,
+							sendToOwners: row.sendToOwners,
+							sendToMembers: row.sendToMembers,
+						}
+					: {},
 		isEnabled: row.isEnabled,
 	}
+}
+
+function validateDestinationRow(row: AlertDestinationEditorRow): string | null {
+	return validateAlertDestinationRequirements({
+		destinationType: row.destinationType as AlertDestinationType,
+		discordServerId: row.discordServerId,
+		channelId: row.channelId,
+		coreUserId: row.coreUserId,
+		groupId: row.groupId,
+		destinationConfig:
+			row.destinationType === 'discord_webhook'
+				? {
+						webhookUrl: row.webhookUrl,
+					}
+				: null,
+	})
 }
 
 function buildAlertConfigPayload(row: AlertConfigDraft): CreateStructureGroupAlertConfigRequest {

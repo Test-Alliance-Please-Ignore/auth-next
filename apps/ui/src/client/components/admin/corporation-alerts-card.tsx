@@ -13,6 +13,11 @@ import {
 	createAlertDestinationEditorRow,
 } from '@/components/admin/alert-destination-editor'
 import {
+	getAlertDestinationTypeOptions,
+	validateAlertDestinationRequirements,
+	type AlertDestinationType,
+} from '@repo/alert-destinations'
+import {
 	useCorporationAlertDestinations,
 	useCorporationAlertTypes,
 	useCreateCorporationAlertDestination,
@@ -46,10 +51,17 @@ const CORP_APPLICATION_ALERT_SECTIONS = [
 
 function buildCorporationAlertDestinationInput(row: EditableRow) {
 	return {
+		alertType: row.alertType,
 		destinationType: row.destinationType,
 		discordServerId: row.destinationType === 'discord_channel' ? row.discordServerId : null,
 		channelId: row.destinationType === 'discord_channel' ? row.channelId : null,
 		coreUserId: row.destinationType === 'discord_user' ? row.coreUserId : null,
+		destinationConfig:
+			row.destinationType === 'discord_webhook'
+				? {
+						webhookUrl: row.webhookUrl.trim(),
+					}
+				: undefined,
 		isEnabled: row.isEnabled,
 	}
 }
@@ -136,18 +148,19 @@ export function CorporationAlertsCard({ corporationId }: { corporationId: string
 	}
 
 	const handleValidateDestination = (row: EditableRow): string | null => {
-		if (row.destinationType === 'discord_channel') {
-			if (!row.discordServerId || !row.channelId) {
-				return 'Discord server and channel ID are required.'
-			}
-			return null
-		}
-
-		if (!row.coreUserId) {
-			return 'Core user ID is required for direct user destinations.'
-		}
-
-		return null
+		return validateAlertDestinationRequirements({
+			destinationType: row.destinationType as AlertDestinationType,
+			discordServerId: row.discordServerId,
+			channelId: row.channelId,
+			coreUserId: row.coreUserId,
+			groupId: row.groupId,
+			destinationConfig:
+				row.destinationType === 'discord_webhook'
+					? {
+							webhookUrl: row.webhookUrl,
+						}
+					: null,
+		})
 	}
 
 	const handleSaveExisting = async (destination: CorporationAlertDestination) => {
@@ -162,14 +175,7 @@ export function CorporationAlertsCard({ corporationId }: { corporationId: string
 			await updateDestination.mutateAsync({
 				corporationId,
 				destinationId: destination.id,
-				data: {
-					alertType: draft.alertType,
-					destinationType: draft.destinationType,
-					discordServerId: draft.destinationType === 'discord_channel' ? draft.discordServerId : null,
-					channelId: draft.destinationType === 'discord_channel' ? draft.channelId : null,
-					coreUserId: draft.destinationType === 'discord_user' ? draft.coreUserId : null,
-					isEnabled: draft.isEnabled,
-				},
+				data: buildCorporationAlertDestinationInput(draft),
 			})
 			toast.success('Alert destination saved.')
 		} catch (error) {
@@ -187,14 +193,7 @@ export function CorporationAlertsCard({ corporationId }: { corporationId: string
 		try {
 			await createDestination.mutateAsync({
 				corporationId,
-				data: {
-					alertType: row.alertType,
-					destinationType: row.destinationType,
-					discordServerId: row.destinationType === 'discord_channel' ? row.discordServerId : null,
-					channelId: row.destinationType === 'discord_channel' ? row.channelId : null,
-					coreUserId: row.destinationType === 'discord_user' ? row.coreUserId : null,
-					isEnabled: row.isEnabled,
-				},
+				data: buildCorporationAlertDestinationInput(row),
 			})
 			setNewRows((current) => current.filter((currentRow) => currentRow.id !== row.id))
 			toast.success('Alert destination created.')
@@ -225,8 +224,7 @@ export function CorporationAlertsCard({ corporationId }: { corporationId: string
 	}
 
 	const getDestinationTypeOptions = () => [
-		{ value: 'discord_channel', label: 'Discord Channel' },
-		{ value: 'discord_user', label: 'Discord User' },
+		...getAlertDestinationTypeOptions(['discord_channel', 'discord_user', 'discord_webhook']),
 	]
 
 	if (isLoading) {

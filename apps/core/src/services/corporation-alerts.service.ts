@@ -29,7 +29,12 @@ import {
 	type AlertDestinationRow,
 } from './alert-destinations.service'
 
-import type { Discord } from '@repo/discord'
+import type {
+	Discord,
+	MessageContent,
+	SendMessageResult,
+} from '@repo/discord'
+import { buildDiscordWebhookMessagePayload } from '@repo/discord'
 import type { Groups } from '@repo/groups'
 import type { DbClient } from '../db'
 import type { Env } from '../context'
@@ -76,6 +81,47 @@ export interface DispatchCorporationAlertInput<T extends CorporationAlertType = 
 	corporationId: string
 	alertType: T
 	payload: CorporationAlertPayloadByType[T]
+}
+
+function getDiscordWebhookUrl(destinationConfig: Record<string, unknown>): string | null {
+	const webhookUrl = destinationConfig.webhookUrl
+	if (typeof webhookUrl !== 'string') {
+		return null
+	}
+
+	const trimmed = webhookUrl.trim()
+	return trimmed.length > 0 ? trimmed : null
+}
+
+async function sendDiscordWebhookMessage(
+	webhookUrl: string,
+	message: MessageContent
+): Promise<SendMessageResult> {
+	try {
+		const payload = buildDiscordWebhookMessagePayload(message)
+		const response = await fetch(webhookUrl, {
+			method: 'POST',
+			headers: {
+				'Content-Type': 'application/json',
+			},
+			body: JSON.stringify(payload),
+		})
+
+		if (!response.ok) {
+			const responseText = await response.text().catch(() => '')
+			return {
+				success: false,
+				error: responseText || `Discord webhook request failed with status ${response.status}`,
+			}
+		}
+
+		return { success: true }
+	} catch (error) {
+		return {
+			success: false,
+			error: error instanceof Error ? error.message : String(error),
+		}
+	}
 }
 
 export function listCorporationAlertTypes() {
@@ -252,6 +298,15 @@ export async function dispatchCorporationAlert<T extends CorporationAlertType>(
 				}
 
 				return discordStub.sendDirectMessage(destination.coreUserId, message)
+			}
+
+			if (destination.destinationType === 'discord_webhook') {
+				const webhookUrl = getDiscordWebhookUrl(destination.destinationConfig)
+				if (!webhookUrl) {
+					throw new Error('Discord webhook destination is missing webhook URL')
+				}
+
+				return sendDiscordWebhookMessage(webhookUrl, message)
 			}
 
 			if (destination.destinationType === 'group') {

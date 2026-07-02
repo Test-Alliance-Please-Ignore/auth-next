@@ -4,6 +4,16 @@ import { getMoonScanPermissionState } from '@/features/moon-scan/permissions'
 
 describe('moon scan permission state', () => {
 	it('reflects the moon-scan permission cascade', () => {
+		const noneState = getMoonScanPermissionState([], false)
+		expect(noneState).toMatchObject({
+			canSubmit: false,
+			canValidate: false,
+			canView: false,
+			canLeaderboard: false,
+			canAccessMoonScan: false,
+			canAdmin: false,
+		})
+
 		const submitState = getMoonScanPermissionState([{ urn: 'urn:moons:scan:submit' }], false)
 		expect(submitState).toMatchObject({
 			canSubmit: true,

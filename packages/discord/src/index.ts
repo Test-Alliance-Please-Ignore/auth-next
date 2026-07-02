@@ -137,6 +137,44 @@ export interface MessageContent {
 	allowEveryone?: boolean
 }
 
+export interface DiscordWebhookAllowedMentions {
+	parse: Array<'everyone' | 'roles' | 'users'>
+}
+
+export interface DiscordWebhookMessagePayload {
+	content: string
+	embeds?: DiscordEmbed[]
+	allowed_mentions?: DiscordWebhookAllowedMentions
+}
+
+export function buildDiscordWebhookMessagePayload(
+	message: MessageContent
+): DiscordWebhookMessagePayload {
+	const payload: DiscordWebhookMessagePayload = {
+		content: message.content,
+	}
+
+	if (message.embeds && message.embeds.length > 0) {
+		payload.embeds = message.embeds
+	}
+
+	if (message.allowEveryone === false) {
+		payload.allowed_mentions = {
+			parse: [],
+		}
+	} else if (message.allowEveryone === true) {
+		payload.allowed_mentions = {
+			parse: ['everyone', 'roles', 'users'],
+		}
+	} else {
+		payload.allowed_mentions = {
+			parse: ['roles', 'users'],
+		}
+	}
+
+	return payload
+}
+
 /**
  * Result of sending a message
  */
