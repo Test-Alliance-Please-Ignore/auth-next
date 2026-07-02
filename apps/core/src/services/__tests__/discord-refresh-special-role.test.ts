@@ -1,6 +1,9 @@
 import { describe, expect, it } from 'vitest'
 
-import { augmentRequestedRoleIdsForRefresh } from '../../../../discord/src/utils/role-calculation'
+import {
+	augmentRequestedRoleIdsForRefresh,
+	calculateRoleChanges,
+} from '../../../../discord/src/utils/role-calculation'
 
 describe('augmentRequestedRoleIdsForRefresh', () => {
 	it('adds special refresh roles when the guild exposes them', () => {
@@ -31,5 +34,18 @@ describe('augmentRequestedRoleIdsForRefresh', () => {
 		})
 
 		expect(result).toEqual(['managed-role', '1431816436640256060'])
+	})
+
+	it('preserves the special auth role during removal-mode updates', () => {
+		const result = calculateRoleChanges({
+			currentRoleIds: ['managed-role', '1431816436640256060'],
+			requestedRoleIds: ['managed-role'],
+			managedRoleIds: ['managed-role', '1431816436640256060'],
+			preserveRoleIds: ['1431816436640256060'],
+			isAddOnlyMode: false,
+		})
+
+		expect(result.newRoleIds).toContain('1431816436640256060')
+		expect(result.rolesRemoved).not.toContain('1431816436640256060')
 	})
 })

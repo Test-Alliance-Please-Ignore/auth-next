@@ -209,6 +209,11 @@ export interface DiscordGuildMembershipDetail {
 	errorMessage?: string
 }
 
+export interface DiscordGuildRoleSummary {
+	id: string
+	name: string
+}
+
 export interface DiscordGuildMemberSnapshot {
 	/** Discord user ID */
 	discordUserId: string
@@ -489,6 +494,11 @@ export interface Discord {
 		coreUserId: string,
 		guildIds: string[]
 	): Promise<DiscordGuildMembershipDetail[]>
+
+	/**
+	 * List the roles available in a Discord guild.
+	 */
+	getGuildRoles(guildId: string): Promise<DiscordGuildRoleSummary[]>
 
 	/**
 	 * List guild members using bot access.

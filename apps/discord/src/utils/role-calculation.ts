@@ -12,13 +12,15 @@ export function calculateRoleChanges(params: {
 	currentRoleIds: string[]
 	requestedRoleIds: string[]
 	managedRoleIds: string[]
+	preserveRoleIds?: string[]
 	isAddOnlyMode: boolean
 }): {
 	newRoleIds: string[]
 	rolesAdded: string[]
 	rolesRemoved: string[]
 } {
-	const { currentRoleIds, requestedRoleIds, managedRoleIds, isAddOnlyMode } = params
+	const { currentRoleIds, requestedRoleIds, managedRoleIds, preserveRoleIds = [], isAddOnlyMode } = params
+	const preserveRoleSet = new Set(preserveRoleIds)
 
 	// Calculate new roles based on mode:
 	// - Add-only mode: merge all roles (preserve everything)
@@ -26,9 +28,12 @@ export function calculateRoleChanges(params: {
 	const newRoleIds = isAddOnlyMode
 		? [...new Set([...currentRoleIds, ...requestedRoleIds])] // Merge + dedupe
 		: (() => {
-				// In normal mode: only remove managed roles, keep manually-assigned roles
-				const nonManagedRoles = currentRoleIds.filter((id) => !managedRoleIds.includes(id))
-				return [...new Set([...nonManagedRoles, ...requestedRoleIds])]
+				// In normal mode: only remove managed roles, keep manually-assigned roles.
+				// Some roles are explicitly preserved even if the system manages them.
+				const nonManagedRoles = currentRoleIds.filter(
+					(id) => !managedRoleIds.includes(id) || preserveRoleSet.has(id)
+				)
+				return [...new Set([...nonManagedRoles, ...requestedRoleIds, ...preserveRoleSet])]
 			})()
 
 	// Calculate what roles are being added/removed
