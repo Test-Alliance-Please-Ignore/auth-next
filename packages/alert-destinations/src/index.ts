@@ -1,4 +1,4 @@
-import { and, desc, eq } from '@repo/db-utils'
+import { and, desc, eq } from 'drizzle-orm'
 
 import type { DbClient } from '@repo/db-utils'
 
