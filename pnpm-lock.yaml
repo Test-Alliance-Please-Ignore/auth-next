@@ -2503,6 +2503,9 @@ importers:
       '@radix-ui/react-switch':
         specifier: 1.2.6
         version: 1.2.6(@types/react-dom@19.2.3(@types/react@19.2.6))(@types/react@19.2.6)(react-dom@19.2.0(react@19.2.0))(react@19.2.0)
+      '@repo/alert-destinations':
+        specifier: workspace:*
+        version: link:../../packages/alert-destinations
       '@repo/bills':
         specifier: workspace:*
         version: link:../../packages/bills
