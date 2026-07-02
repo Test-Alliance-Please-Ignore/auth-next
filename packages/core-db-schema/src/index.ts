@@ -140,7 +140,7 @@ export const alertDestinations = pgTable(
 		scopeId: text('scope_id').notNull(),
 		alertType: text('alert_type').notNull(),
 		destinationType: text('destination_type', {
-			enum: ['discord_channel', 'discord_user', 'group'],
+			enum: ['discord_channel', 'discord_user', 'discord_webhook', 'group'],
 		}).notNull(),
 		discordServerId: uuid('discord_server_id').references(() => discordServers.id, {
 			onDelete: 'cascade',

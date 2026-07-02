@@ -8,6 +8,7 @@ export default defineConfig({
 	resolve: {
 		alias: {
 			'@': path.resolve(__dirname, './src/client'),
+			'@repo/alert-destinations': path.resolve(__dirname, '../../packages/alert-destinations/src/index.ts'),
 			'@repo/inventory-display': path.resolve(__dirname, '../../packages/inventory-display/src/index.ts'),
 		},
 	},

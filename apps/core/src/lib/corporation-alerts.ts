@@ -61,13 +61,13 @@ const ALERT_TYPE_DEFINITIONS: CorporationAlertTypeDefinition[] = [
 		type: 'corp_application_submitted',
 		label: 'Corporation Application Submitted',
 		description: 'Sent when a new HR application is submitted to this corporation.',
-		supportedDestinationTypes: ['discord_channel', 'discord_user', 'group'],
+		supportedDestinationTypes: ['discord_channel', 'discord_user', 'discord_webhook', 'group'],
 	},
 	{
 		type: 'corp_application_first_time_accepted',
 		label: 'Corporation Application Accepted (First-Time)',
 		description: 'Sent when a first-time HR application is accepted for this corporation.',
-		supportedDestinationTypes: ['discord_channel', 'discord_user', 'group'],
+		supportedDestinationTypes: ['discord_channel', 'discord_user', 'discord_webhook', 'group'],
 	},
 ]
 

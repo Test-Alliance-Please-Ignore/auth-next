@@ -1,5 +1,5 @@
 export type StructurePermissionRole = 'viewer' | 'manager' | 'sensitive'
-export type CorporationAlertDestinationType = 'discord_channel' | 'discord_user' | 'group'
+export type CorporationAlertDestinationType = 'discord_channel' | 'discord_user' | 'discord_webhook' | 'group'
 export type StructureTab = 'citadels' | 'sovereignty' | 'skyhooks' | 'navigation' | 'mining'
 export type StructureListSortBy =
 	| 'updatedAt'
@@ -295,18 +295,18 @@ export const STRUCTURE_ALERT_TYPES: StructureAlertTypeDefinition[] = [
 		type: 'structure_state_changed',
 		label: 'Structure State Changed',
 		description: 'Trigger alerts when a structure enters a configured destination state.',
-		supportedDestinationTypes: ['discord_channel', 'discord_user', 'group'],
+		supportedDestinationTypes: ['discord_channel', 'discord_user', 'discord_webhook', 'group'],
 	},
 	{
 		type: 'structure_fuel_time_status',
 		label: 'Structure Fuel Status',
 		description: 'Trigger alerts for time-based structures when the configured thresholds are crossed.',
-		supportedDestinationTypes: ['discord_channel', 'discord_user', 'group'],
+		supportedDestinationTypes: ['discord_channel', 'discord_user', 'discord_webhook', 'group'],
 	},
 	{
 		type: 'structure_fuel_amount_status',
 		label: 'Jump Gate Fuel Status',
 		description: 'Trigger alerts for fuel-unit structures when the configured thresholds are crossed.',
-		supportedDestinationTypes: ['discord_channel', 'discord_user', 'group'],
+		supportedDestinationTypes: ['discord_channel', 'discord_user', 'discord_webhook', 'group'],
 	},
 ]

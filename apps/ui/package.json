@@ -34,6 +34,7 @@
 		"@radix-ui/react-switch": "1.2.6",
 		"@repo/bills": "workspace:*",
 		"@repo/broadcasts": "workspace:*",
+		"@repo/alert-destinations": "workspace:*",
 		"@repo/core": "workspace:*",
 		"@repo/corporation-tax": "workspace:*",
 		"@repo/eve-fitting": "workspace:*",

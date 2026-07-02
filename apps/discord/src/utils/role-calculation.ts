@@ -43,3 +43,28 @@ export function calculateRoleChanges(params: {
 		rolesRemoved,
 	}
 }
+
+/**
+ * Ensures special refresh roles are requested when the guild actually has them configured.
+ * This is used for roles that should be granted by refresh but not removed during drift cleanup.
+ */
+export function augmentRequestedRoleIdsForRefresh(params: {
+	requestedRoleIds: string[]
+	guildRoleIds: string[]
+	specialRoleIds: string[]
+}): string[] {
+	const { requestedRoleIds, guildRoleIds, specialRoleIds } = params
+	if (specialRoleIds.length === 0 || guildRoleIds.length === 0) {
+		return [...new Set(requestedRoleIds)]
+	}
+
+	const guildRoleSet = new Set(guildRoleIds)
+	const augmented = [...requestedRoleIds]
+	for (const roleId of specialRoleIds) {
+		if (guildRoleSet.has(roleId)) {
+			augmented.push(roleId)
+		}
+	}
+
+	return [...new Set(augmented)]
+}

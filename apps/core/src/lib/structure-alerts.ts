@@ -51,6 +51,7 @@ export type StructureAlertPayloadByType = {
 const DEFAULT_STRUCTURAL_DESTINATIONS: AlertDestinationType[] = [
 	'discord_channel',
 	'discord_user',
+	'discord_webhook',
 	'group',
 ]
 

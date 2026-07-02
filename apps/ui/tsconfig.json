@@ -4,6 +4,7 @@
 		"baseUrl": ".",
 		"paths": {
 			"@/*": ["./src/client/*"],
+			"@repo/alert-destinations": ["../../packages/alert-destinations/src/index.ts"],
 			"@repo/inventory-display": ["../../packages/inventory-display/src/index.ts"]
 		}
 	},

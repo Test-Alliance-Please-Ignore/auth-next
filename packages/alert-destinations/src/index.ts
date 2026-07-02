@@ -1,11 +1,11 @@
-import { and, desc, eq } from '@repo/db-utils'
+import { and, desc, eq } from 'drizzle-orm'
 
 import type { DbClient } from '@repo/db-utils'
 
 export const ALERT_SCOPE_TYPES = ['corporation', 'structure_group'] as const
 export type AlertScopeType = (typeof ALERT_SCOPE_TYPES)[number]
 
-export const ALERT_DESTINATION_TYPES = ['discord_channel', 'discord_user', 'group'] as const
+export const ALERT_DESTINATION_TYPES = ['discord_channel', 'discord_user', 'discord_webhook', 'group'] as const
 export type AlertDestinationType = (typeof ALERT_DESTINATION_TYPES)[number]
 
 export interface AlertDestinationRecord {
@@ -72,29 +72,100 @@ export interface AlertDestinationHelperOptions {
 	validateScope?: (db: DbClient<any>, scopeType: AlertScopeType, scopeId: string) => Promise<void> | void
 }
 
+export interface AlertDestinationTypeOption {
+	value: AlertDestinationType
+	label: string
+}
+
+const ALERT_DESTINATION_TYPE_LABELS: Record<AlertDestinationType, string> = {
+	discord_channel: 'Discord Channel',
+	discord_user: 'Discord User',
+	discord_webhook: 'Discord Webhook',
+	group: 'Group',
+}
+
+export function isAlertDestinationType(value: string): value is AlertDestinationType {
+	return (ALERT_DESTINATION_TYPES as readonly string[]).includes(value)
+}
+
+export function validateDiscordWebhookDestinationConfig(
+	destinationConfig?: Record<string, unknown> | null
+): string | null {
+	const webhookUrl = destinationConfig?.webhookUrl
+	if (typeof webhookUrl !== 'string' || !webhookUrl.trim()) {
+		return 'webhookUrl is required for discord_webhook destinations'
+	}
+
+	try {
+		const parsedUrl = new URL(webhookUrl.trim())
+		const isDiscordHost =
+			parsedUrl.hostname === 'discord.com' ||
+			parsedUrl.hostname.endsWith('.discord.com') ||
+			parsedUrl.hostname === 'discordapp.com' ||
+			parsedUrl.hostname.endsWith('.discordapp.com')
+		if (parsedUrl.protocol !== 'https:' || !isDiscordHost || !parsedUrl.pathname.startsWith('/api/webhooks/')) {
+			return 'webhookUrl must be a valid Discord webhook URL for discord_webhook destinations'
+		}
+	} catch {
+		return 'webhookUrl must be a valid Discord webhook URL for discord_webhook destinations'
+	}
+
+	return null
+}
+
+export function getAlertDestinationTypeOptions(
+	allowedTypes: readonly AlertDestinationType[]
+): AlertDestinationTypeOption[] {
+	return allowedTypes.map((type) => ({
+		value: type,
+		label: ALERT_DESTINATION_TYPE_LABELS[type],
+	}))
+}
+
+export function validateAlertDestinationRequirements(input: {
+	destinationType: AlertDestinationType
+	discordServerId?: string | null
+	channelId?: string | null
+	coreUserId?: string | null
+	groupId?: string | null
+	destinationConfig?: Record<string, unknown> | null
+}): string | null {
+	if (input.destinationType === 'discord_channel') {
+		if (!input.discordServerId || !input.channelId) {
+			return 'discordServerId and channelId are required for discord_channel destinations'
+		}
+		return null
+	}
+
+	if (input.destinationType === 'discord_user') {
+		if (!input.coreUserId) {
+			return 'coreUserId is required for discord_user destinations'
+		}
+		return null
+	}
+
+	if (input.destinationType === 'discord_webhook') {
+		return validateDiscordWebhookDestinationConfig(input.destinationConfig)
+	}
+
+	if (input.destinationType === 'group' && !input.groupId) {
+		return 'groupId is required for group destinations'
+	}
+
+	return null
+}
+
 function validateDestinationShape(input: {
 	destinationType: AlertDestinationType
 	discordServerId?: string | null
 	channelId?: string | null
 	coreUserId?: string | null
 	groupId?: string | null
+	destinationConfig?: Record<string, unknown> | null
 }): void {
-	if (input.destinationType === 'discord_channel') {
-		if (!input.discordServerId || !input.channelId) {
-			throw new Error('discordServerId and channelId are required for discord_channel destinations')
-		}
-		return
-	}
-
-	if (input.destinationType === 'discord_user') {
-		if (!input.coreUserId) {
-			throw new Error('coreUserId is required for discord_user destinations')
-		}
-		return
-	}
-
-	if (input.destinationType === 'group' && !input.groupId) {
-		throw new Error('groupId is required for group destinations')
+	const error = validateAlertDestinationRequirements(input)
+	if (error) {
+		throw new Error(error)
 	}
 }
 
@@ -237,6 +308,8 @@ export async function updateAlertDestination(
 		channelId: input.channelId ?? (existing.channelId as string | null),
 		coreUserId: input.coreUserId ?? (existing.coreUserId as string | null),
 		groupId: input.groupId ?? (existing.groupId as string | null),
+		destinationConfig:
+			input.destinationConfig ?? (existing.destinationConfig as Record<string, unknown> | null),
 	})
 	await options?.validateScope?.(db, scopeType, scopeId)
 

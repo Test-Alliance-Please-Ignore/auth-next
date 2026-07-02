@@ -48,7 +48,12 @@ export type StructureAlertPayloadByType = {
 	structure_fuel_amount_status: StructureAlertFuelAmountStatusPayload
 }
 
-const DEFAULT_STRUCTURAL_DESTINATIONS: AlertDestinationType[] = ['discord_channel', 'discord_user', 'group']
+const DEFAULT_STRUCTURAL_DESTINATIONS: AlertDestinationType[] = [
+	'discord_channel',
+	'discord_user',
+	'discord_webhook',
+	'group',
+]
 
 function formatDiscordTimestamp(date: Date): string {
 	return `<t:${Math.floor(date.getTime() / 1000)}:F>`

@@ -1,5 +1,5 @@
 import { and, eq, inArray } from '@repo/db-utils'
-import { getDiscordStub } from '@repo/discord'
+import { DISCORD_EXCLUDED_AUTH_ROLE_IDS, getDiscordStub } from '@repo/discord'
 import { getStub } from '@repo/do-utils'
 import { logger } from '@repo/hono-helpers'
 
@@ -455,6 +455,7 @@ async function getAllManagedRolesForGuild(
 	}
 
 	const result = Array.from(managedRoleIds)
+		.filter((roleId) => !DISCORD_EXCLUDED_AUTH_ROLE_IDS.has(roleId))
 
 	// Store in cache
 	cache?.set(guildId, result)
@@ -1770,6 +1771,7 @@ export async function inspectUserDiscordAccess(
 	const serverByDbId = new Map(knownServers.map((server) => [server.id, server]))
 	const serverByGuildId = new Map(knownServers.map((server) => [server.guildId, server]))
 	let expectedRoleIdsByGuild = new Map<string, Set<string>>()
+	const inviteCapableGuildIds = new Set<string>()
 
 	const membershipDetails = await discordStub.getUserGuildMembershipDetails(userId, knownGuildIds)
 	const membershipByGuild = new Map(
@@ -1778,13 +1780,49 @@ export async function inspectUserDiscordAccess(
 
 	if (!isBlacklisted && !isAuthorizationRevoked) {
 		expectedRoleIdsByGuild = await getExpectedManagedRoleIdsByGuild(env, userId)
+
+		if (knownServerDbIds.length > 0) {
+			const corpInviteAttachments = await db.query.corporationDiscordServers.findMany({
+				where: and(
+					inArray(corporationDiscordServers.discordServerId, knownServerDbIds),
+					eq(corporationDiscordServers.autoInvite, true)
+				),
+				columns: { discordServerId: true },
+			})
+			for (const attachment of corpInviteAttachments) {
+				const server = serverByDbId.get(attachment.discordServerId)
+				if (server) {
+					inviteCapableGuildIds.add(server.guildId)
+				}
+			}
+		}
+
+		try {
+			const groupsStub = getStub<Groups>(env.GROUPS, 'default')
+			const groupsWithDiscord = await groupsStub.getGroupsWithDiscordAutoInvite()
+			for (const group of groupsWithDiscord) {
+				for (const attachment of group.discordServers) {
+					if (!attachment.autoInvite) continue
+					const server = serverByDbId.get(attachment.discordServerId)
+					if (server) {
+						inviteCapableGuildIds.add(server.guildId)
+					}
+				}
+			}
+		} catch (error) {
+			logger.error('[Discord] Error resolving invite-capable guilds for Discord access inspection', {
+				userId,
+				error: String(error),
+			})
+		}
 	}
 
+	// Only inspect guilds the user is actually in, plus invite-capable guilds where we can
+	// surface a non-drift informational card. Guilds with no auto-invite path are suppressed.
 	const inspectGuildIds = new Set<string>()
 	for (const guildId of knownGuildIds) {
 		const member = membershipByGuild.get(guildId)
-		const expectedRoleCount = expectedRoleIdsByGuild.get(guildId)?.size ?? 0
-		if (member?.isMember || expectedRoleCount > 0) {
+		if (member?.isMember || inviteCapableGuildIds.has(guildId)) {
 			inspectGuildIds.add(guildId)
 		}
 	}
@@ -1864,8 +1902,13 @@ export async function inspectUserDiscordAccess(
 		if (!server) continue
 
 		const membership = membershipByGuild.get(guildId)
-		const expectedRoleIds = Array.from(expectedRoleIdsByGuild.get(guildId) ?? [])
-		const currentRoleIds = membership?.currentRoleIds ?? []
+		const isMember = membership?.isMember ?? false
+		const expectedRoleIds = Array.from(expectedRoleIdsByGuild.get(guildId) ?? []).filter(
+			(roleId) => !DISCORD_EXCLUDED_AUTH_ROLE_IDS.has(roleId)
+		)
+		const currentRoleIds = (membership?.currentRoleIds ?? []).filter(
+			(roleId) => !DISCORD_EXCLUDED_AUTH_ROLE_IDS.has(roleId)
+		)
 		const managedRoleIds = managedRoleIdsByGuild.get(guildId) ?? new Set<string>()
 
 		const currentRoleSet = new Set(currentRoleIds)
@@ -1873,15 +1916,17 @@ export async function inspectUserDiscordAccess(
 
 		const currentManagedRoleIds = currentRoleIds.filter((roleId) => managedRoleIds.has(roleId))
 		const currentUnmanagedRoleIds = currentRoleIds.filter((roleId) => !managedRoleIds.has(roleId))
-		const missingExpectedRoleIds = expectedRoleIds.filter((roleId) => !currentRoleSet.has(roleId))
-		const unexpectedManagedRoleIds = currentManagedRoleIds.filter(
-			(roleId) => !expectedRoleSet.has(roleId)
-		)
+		const missingExpectedRoleIds = isMember
+			? expectedRoleIds.filter((roleId) => !currentRoleSet.has(roleId))
+			: []
+		const unexpectedManagedRoleIds = isMember
+			? currentManagedRoleIds.filter((roleId) => !expectedRoleSet.has(roleId))
+			: []
 
 		guilds.push({
 			guildId,
 			guildName: server.guildName,
-			isMember: membership?.isMember ?? false,
+			isMember,
 			membershipError: membership?.errorMessage,
 			expectedManagedRoles: toRoleItems(guildId, expectedRoleIds),
 			currentManagedRoles: toRoleItems(guildId, currentManagedRoleIds),
@@ -1893,19 +1938,19 @@ export async function inspectUserDiscordAccess(
 	guilds.sort((a, b) => a.guildName.localeCompare(b.guildName))
 
 	const memberGuilds = guilds.filter((guild) => guild.isMember).length
-	const guildsWithDrift = guilds.filter(
-		(guild) =>
-			guild.missingExpectedManagedRoles.length > 0 || guild.unexpectedManagedRoles.length > 0
+	const memberGuildRows = guilds.filter((guild) => guild.isMember)
+	const guildsWithDrift = memberGuildRows.filter(
+		(guild) => guild.missingExpectedManagedRoles.length > 0 || guild.unexpectedManagedRoles.length > 0
 	).length
-	const totalMissingExpectedManagedRoles = guilds.reduce(
+	const totalMissingExpectedManagedRoles = memberGuildRows.reduce(
 		(total, guild) => total + guild.missingExpectedManagedRoles.length,
 		0
 	)
-	const totalUnexpectedManagedRoles = guilds.reduce(
+	const totalUnexpectedManagedRoles = memberGuildRows.reduce(
 		(total, guild) => total + guild.unexpectedManagedRoles.length,
 		0
 	)
-	const totalUnmanagedCurrentRoles = guilds.reduce(
+	const totalUnmanagedCurrentRoles = memberGuildRows.reduce(
 		(total, guild) => total + guild.currentUnmanagedRoles.length,
 		0
 	)

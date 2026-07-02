@@ -72,9 +72,10 @@ describe('corporation-alerts service', () => {
 			}),
 			expect.objectContaining({
 				type: 'corp_application_first_time_accepted',
-				label: 'Corporation Application Accepted',
+				label: 'Corporation Application Accepted (First-Time)',
 			}),
 		])
+		expect(listCorporationAlertTypes()[0]?.supportedDestinationTypes).toContain('discord_webhook')
 	})
 
 	it('lists alert destinations with attached discord server data', async () => {
@@ -145,6 +146,38 @@ describe('corporation-alerts service', () => {
 				isEnabled: undefined,
 				createdBy: 'user-1',
 				updatedBy: undefined,
+			})
+		)
+		expect(result).toEqual(
+			expect.objectContaining({
+				id: 'dest-1',
+				corporationId: 'corp-1',
+			})
+		)
+	})
+
+	it('creates webhook alert destinations and preserves webhook config', async () => {
+		const db = makeDb()
+		const result = await createCorporationAlertDestination(db as any, {
+			corporationId: 'corp-1',
+			alertType: 'corp_application_submitted',
+			destinationType: 'discord_webhook',
+			destinationConfig: {
+				webhookUrl: 'https://discord.com/api/webhooks/123/abc',
+			},
+			createdBy: 'user-1',
+		})
+
+		expect(alertDestinationMocks.createAlertDestination).toHaveBeenCalledWith(
+			db,
+			expect.objectContaining({
+				scopeType: 'corporation',
+				scopeId: 'corp-1',
+				alertType: 'corp_application_submitted',
+				destinationType: 'discord_webhook',
+				destinationConfig: {
+					webhookUrl: 'https://discord.com/api/webhooks/123/abc',
+				},
 			})
 		)
 		expect(result).toEqual(
@@ -392,6 +425,91 @@ describe('corporation-alerts service', () => {
 		)
 		expect(result).toEqual({
 			alertType: 'corp_application_first_time_accepted',
+			destinationCount: 1,
+			sentCount: 1,
+			failedCount: 0,
+		})
+	})
+
+	it('dispatches webhook alerts to configured webhook destinations', async () => {
+		const db = makeDb()
+		db.query.managedCorporations.findFirst.mockResolvedValue({
+			corporationId: 'corp-1',
+			name: 'Test Corporation',
+		})
+		db.query.alertDestinations.findMany.mockResolvedValue([
+			{
+				id: 'dest-1',
+				scopeType: 'corporation',
+				scopeId: 'corp-1',
+				alertType: 'corp_application_submitted',
+				destinationType: 'discord_webhook',
+				discordServerId: null,
+				channelId: null,
+				coreUserId: null,
+				groupId: null,
+				destinationConfig: {
+					webhookUrl: 'https://discord.com/api/webhooks/123/abc',
+				},
+				isEnabled: true,
+				createdBy: null,
+				updatedBy: null,
+				createdAt: new Date('2026-06-11T00:00:00.000Z'),
+				updatedAt: new Date('2026-06-11T00:00:00.000Z'),
+			},
+		])
+
+		const fetchSpy = vi.spyOn(globalThis, 'fetch').mockResolvedValue(
+			new Response(null, { status: 204 })
+		)
+
+		const result = await dispatchCorporationAlert(
+			{
+				DISCORD: { name: 'DISCORD' },
+			} as any,
+			db as any,
+			{
+				corporationId: 'corp-1',
+				alertType: 'corp_application_submitted',
+				payload: {
+					applicationId: 'app-1',
+					corporationId: 'corp-1',
+					corporationName: 'Placeholder',
+					applicantCharacterId: 'char-1',
+					applicantCharacterName: 'Pilot One',
+					altCharacterCount: 0,
+					isFirstApplication: true,
+					submittedAt: '2026-06-11T12:00:00.000Z',
+				},
+			}
+		)
+
+		expect(fetchSpy).toHaveBeenCalledWith(
+			'https://discord.com/api/webhooks/123/abc',
+			expect.objectContaining({
+				method: 'POST',
+				headers: expect.objectContaining({
+					'Content-Type': 'application/json',
+				}),
+			})
+		)
+		const [, fetchInit] = fetchSpy.mock.calls[0] ?? []
+		expect(fetchInit?.body).toBeTruthy()
+		expect(JSON.parse(String(fetchInit?.body))).toEqual(
+			expect.objectContaining({
+				content: '',
+				embeds: [
+					expect.objectContaining({
+						title: 'New application to Test Corporation submitted',
+					}),
+				],
+				allowed_mentions: {
+					parse: ['roles', 'users'],
+				},
+			})
+		)
+		expect(result).toEqual({
+			alertType: 'corp_application_submitted',
 			destinationCount: 1,
 			sentCount: 1,
 			failedCount: 0,

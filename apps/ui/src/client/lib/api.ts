@@ -645,7 +645,7 @@ export interface CorporationDiscordServer {
 	}>
 }
 
-export type CorporationAlertDestinationType = 'discord_channel' | 'discord_user' | 'group'
+export type CorporationAlertDestinationType = 'discord_channel' | 'discord_user' | 'discord_webhook' | 'group'
 
 export interface CorporationAlertTypeDefinition {
 	type: string

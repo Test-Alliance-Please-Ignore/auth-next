@@ -21,6 +21,7 @@ export type AlertDestinationEditorRow = {
 	channelId: string
 	coreUserId: string
 	groupId: string
+	webhookUrl: string
 	isEnabled: boolean
 	sendToAdmins: boolean
 	sendToOwners: boolean
@@ -36,6 +37,7 @@ export function createAlertDestinationEditorRow(alertType: string): AlertDestina
 		channelId: '',
 		coreUserId: '',
 		groupId: '',
+		webhookUrl: '',
 		isEnabled: true,
 		sendToAdmins: true,
 		sendToOwners: true,
@@ -55,6 +57,7 @@ export function alertDestinationEditorRowFromDestination(
 		channelId: destination.channelId ?? '',
 		coreUserId: destination.coreUserId ?? '',
 		groupId: destination.groupId ?? '',
+		webhookUrl: typeof config.webhookUrl === 'string' ? config.webhookUrl : '',
 		isEnabled: destination.isEnabled,
 		sendToAdmins: Boolean(config.sendToAdmins),
 		sendToOwners: Boolean(config.sendToOwners),
@@ -97,6 +100,7 @@ export function AlertDestinationEditor({
 }) {
 	const showChannelFields = row.destinationType === 'discord_channel'
 	const showUserFields = row.destinationType === 'discord_user'
+	const showWebhookFields = row.destinationType === 'discord_webhook'
 	const showGroupFields = row.destinationType === 'group'
 	const hasAlertTypeSelector = showAlertTypeSelector && (alertTypeOptions?.length ?? 0) > 0
 	const removeButtonLabel = removeButtonVariant === 'cancel' ? 'Cancel' : 'Remove'
@@ -151,6 +155,7 @@ export function AlertDestinationEditor({
 								channelId: value === 'discord_channel' ? row.channelId : '',
 								coreUserId: value === 'discord_user' ? row.coreUserId : '',
 								groupId: value === 'group' ? row.groupId : '',
+								webhookUrl: value === 'discord_webhook' ? row.webhookUrl : '',
 							})
 						}
 						placeholder="Select destination type"
@@ -198,6 +203,18 @@ export function AlertDestinationEditor({
 							value={row.coreUserId}
 							onChange={(event) => onChange({ coreUserId: event.target.value })}
 							placeholder="Core user ID"
+						/>
+					</div>
+				)}
+
+				{showWebhookFields && (
+					<div className="space-y-2 md:col-span-2 lg:col-span-2">
+						<Label htmlFor={`webhook-url-${row.id}`}>Webhook URL</Label>
+						<Input
+							id={`webhook-url-${row.id}`}
+							value={row.webhookUrl}
+							onChange={(event) => onChange({ webhookUrl: event.target.value })}
+							placeholder="https://discord.com/api/webhooks/..."
 						/>
 					</div>
 				)}

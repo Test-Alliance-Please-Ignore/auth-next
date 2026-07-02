@@ -4,8 +4,9 @@ import { z } from 'zod'
 
 import { eq } from '@repo/db-utils'
 import { logger } from '@repo/hono-helpers'
+import { validateAlertDestinationRequirements } from '@repo/alert-destinations'
 
-import { managedCorporations } from '../../db/schema'
+import { alertDestinations, managedCorporations } from '../../db/schema'
 import {
 	CORPORATION_ALERT_DESTINATION_TYPES,
 	CORPORATION_ALERT_TYPES,
@@ -125,6 +126,18 @@ app.post('/:corporationId/alerts', requireAuth(), requireAdmin(), async (c) => {
 			return c.json({ error: 'groupId is required for group destinations' }, 400)
 		}
 
+		const destinationValidationError = validateAlertDestinationRequirements({
+			destinationType: body.destinationType,
+			discordServerId: body.discordServerId,
+			channelId: body.channelId,
+			coreUserId: body.coreUserId,
+			groupId: body.groupId,
+			destinationConfig: body.destinationConfig,
+		})
+		if (destinationValidationError) {
+			return c.json({ error: destinationValidationError }, 400)
+		}
+
 		const destination = await createCorporationAlertDestination(db, {
 			corporationId,
 			alertType: body.alertType,
@@ -146,6 +159,10 @@ app.post('/:corporationId/alerts', requireAuth(), requireAdmin(), async (c) => {
 		}
 
 		if (error instanceof Error && error.message.startsWith('Unsupported alert')) {
+			return c.json({ error: error.message }, 400)
+		}
+
+		if (error instanceof Error && error.message.includes('webhookUrl')) {
 			return c.json({ error: error.message }, 400)
 		}
 
@@ -180,6 +197,27 @@ app.put('/:corporationId/alerts/:destinationId', requireAuth(), requireAdmin(), 
 			return c.json({ error: 'Corporation not found' }, 404)
 		}
 
+		const existing = await db.query.alertDestinations.findFirst({
+			where: (fields, { and, eq }) =>
+				and(
+					eq(fields.id, destinationId),
+					eq(fields.scopeType, 'corporation'),
+					eq(fields.scopeId, corporationId)
+				),
+			columns: {
+				destinationType: true,
+				discordServerId: true,
+				channelId: true,
+				coreUserId: true,
+				groupId: true,
+				destinationConfig: true,
+			},
+		})
+
+		if (!existing) {
+			return c.json({ error: 'Alert destination not found' }, 404)
+		}
+
 		const body = updateAlertDestinationSchema.parse(await c.req.json())
 
 		if (body.destinationType === 'discord_channel') {
@@ -193,6 +231,18 @@ app.put('/:corporationId/alerts/:destinationId', requireAuth(), requireAdmin(), 
 
 		if (body.destinationType === 'discord_user' && body.coreUserId !== undefined && body.coreUserId === null) {
 			return c.json({ error: 'coreUserId cannot be cleared for discord_user destinations' }, 400)
+		}
+
+		const destinationValidationError = validateAlertDestinationRequirements({
+			destinationType: body.destinationType ?? 'discord_channel',
+			discordServerId: body.discordServerId ?? existing.discordServerId,
+			channelId: body.channelId ?? existing.channelId,
+			coreUserId: body.coreUserId ?? existing.coreUserId,
+			groupId: body.groupId ?? existing.groupId,
+			destinationConfig: body.destinationConfig ?? existing.destinationConfig,
+		})
+		if (destinationValidationError) {
+			return c.json({ error: destinationValidationError }, 400)
 		}
 
 		const destination = await updateCorporationAlertDestination(db, corporationId, destinationId, {
@@ -214,6 +264,10 @@ app.put('/:corporationId/alerts/:destinationId', requireAuth(), requireAdmin(), 
 		}
 
 		if (error instanceof Error && error.message.startsWith('Unsupported alert')) {
+			return c.json({ error: error.message }, 400)
+		}
+
+		if (error instanceof Error && error.message.includes('webhookUrl')) {
 			return c.json({ error: error.message }, 400)
 		}
 

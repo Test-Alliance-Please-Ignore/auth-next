@@ -5,6 +5,7 @@ import {
 	DiscordAPIError,
 	DiscordFetch,
 	DiscordRoutes,
+	DISCORD_EXCLUDED_AUTH_GIGACHAD_ROLE_ID,
 	discordRateLimitGuard,
 } from '@repo/discord'
 import { generateShardKey } from '@repo/hazmat'
@@ -15,7 +16,7 @@ import { createDb } from './db'
 import { createDiscordRateLimitKvStore } from './lib/discord-rate-limit-store'
 import { discordTokens, discordUsers } from './db/schema'
 import { DiscordBotService, fetchWithRetry } from './services/discord-bot.service'
-import { calculateRoleChanges } from './utils/role-calculation'
+import { augmentRequestedRoleIdsForRefresh, calculateRoleChanges } from './utils/role-calculation'
 
 import type {
 	Discord,
@@ -1041,11 +1042,26 @@ export class DiscordDO extends DurableObject<Env> implements Discord {
 							rolesAdded = []
 							rolesRemoved = currentRoleIds
 						} else {
+							let requestedRoleIds = req.roleIds || []
+							try {
+								const guildRoles = await botService.getGuildRoles(req.guildId)
+								requestedRoleIds = augmentRequestedRoleIdsForRefresh({
+									requestedRoleIds,
+									guildRoleIds: guildRoles.map((role) => role.id),
+									specialRoleIds: [DISCORD_EXCLUDED_AUTH_GIGACHAD_ROLE_ID],
+								})
+							} catch (error) {
+								logger.warn('[DiscordDO] Failed to inspect guild roles for refresh augmentation', {
+									guildId: req.guildId,
+									userId: user.userId,
+									error: String(error),
+								})
+							}
 							const managedRoleIds = req.managedRoleIds || []
 							// Calculate role changes using testable helper function
 							const roleChanges = calculateRoleChanges({
 								currentRoleIds,
-								requestedRoleIds: req.roleIds,
+								requestedRoleIds,
 								managedRoleIds,
 								isAddOnlyMode,
 							})
