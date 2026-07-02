@@ -37,16 +37,16 @@ export function DiscordCard({ user }: DiscordCardProps) {
 		try {
 			const result = await apiClient.joinDiscordServers()
 
-			if (result.totalInvited > 0) {
+			if (result.totalFailed > 0) {
+				setJoinError(
+					`Failed to refresh ${result.totalFailed} server${result.totalFailed > 1 ? 's' : ''}. ${result.results.find((r) => !r.success)?.errorMessage ?? ''}`
+				)
+			} else if (result.totalInvited > 0) {
 				setJoinMessage(
 					`Successfully joined ${result.totalInvited} Discord server${result.totalInvited > 1 ? 's' : ''}!`
 				)
-			} else if (result.results.length === 0) {
-				setJoinMessage('You are not a member of any corporations with Discord servers configured.')
-			} else if (result.totalFailed > 0) {
-				setJoinError(
-					`Failed to join ${result.totalFailed} server${result.totalFailed > 1 ? 's' : ''}. ${result.results.find((r) => !r.success)?.errorMessage ?? ''}`
-				)
+			} else {
+				setJoinMessage('Discord access refreshed successfully.')
 			}
 		} catch (error) {
 			console.error('Failed to join Discord servers:', error)
