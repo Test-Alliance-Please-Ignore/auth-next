@@ -34,6 +34,7 @@ const discordStubMethods = {
 	updateUserNickname: vi.fn(),
 	checkGuildMembershipWithBot: vi.fn(),
 	getUserGuildMembershipDetails: vi.fn(),
+	getGuildRoles: vi.fn().mockResolvedValue([]),
 	getDiscordUserStatus: vi.fn(),
 	revokeAccessAndBan: vi.fn(),
 	updateLastRefreshed: vi.fn(),
@@ -90,6 +91,7 @@ vi.mock('@repo/do-utils', () => ({
 }))
 
 vi.mock('@repo/discord', () => ({
+	DISCORD_EXCLUDED_AUTH_GIGACHAD_ROLE_ID: '1431816436640256060',
 	DISCORD_EXCLUDED_AUTH_ROLE_IDS: new Set(['585546446120419328', '1431816436640256060']),
 	getDiscordStub: vi.fn(() => discordStubMethods),
 }))
@@ -269,6 +271,7 @@ beforeEach(() => {
 	discordStubMethods.joinUserToServers.mockResolvedValue([])
 	discordStubMethods.checkGuildMembershipWithBot.mockResolvedValue([])
 	discordStubMethods.getUserGuildMembershipDetails.mockResolvedValue([])
+	discordStubMethods.getGuildRoles.mockResolvedValue([])
 	discordStubMethods.getDiscordUserStatus.mockResolvedValue({
 		authRevoked: false,
 	})
@@ -869,7 +872,7 @@ describe('updateUserDiscordRoles', () => {
 			)
 		})
 
-		it('should keep excluded auth roles out of managedRoleIds so refreshes do not strip them', async () => {
+		it('should keep the special auth role in managedRoleIds so refreshes can grant it', async () => {
 			setupUserInGuild('guild-1')
 
 			dbQueryMocks.corporationDiscordServers.findMany
@@ -897,6 +900,9 @@ describe('updateUserDiscordRoles', () => {
 				makeDiscordServer({ id: 'ds-1', guildId: 'guild-1' })
 			)
 			dbQueryMocks.discordRoles.findMany.mockResolvedValueOnce([])
+			discordStubMethods.getGuildRoles.mockResolvedValue([
+				{ id: '1431816436640256060', name: 'Auth Gigachad' },
+			])
 
 			discordStubMethods.updateUserRoles.mockResolvedValue([
 				{ guildId: 'guild-1', success: true, rolesAdded: [], rolesRemoved: [] },
@@ -906,7 +912,7 @@ describe('updateUserDiscordRoles', () => {
 
 			expect(discordStubMethods.updateUserRoles).toHaveBeenCalled()
 			const requests = discordStubMethods.updateUserRoles.mock.calls[0][1]
-			expect(requests[0].managedRoleIds).not.toContain('1431816436640256060')
+			expect(requests[0].managedRoleIds).toContain('1431816436640256060')
 		})
 
 		it('should pass scoped managedRoleIds on removal so only configured managed roles are removable', async () => {
@@ -1622,6 +1628,7 @@ describe('inspectUserDiscordAccess', () => {
 		groupsStubMethods.getGroupsWithDiscordAutoInvite.mockResolvedValue([])
 		groupsStubMethods.getGroupsByDiscordServer.mockResolvedValue([])
 		dbQueryMocks.discordRoles.findMany.mockResolvedValue([]) // auto-apply roles
+		discordStubMethods.getGuildRoles.mockResolvedValue([])
 
 		const result = await inspectUserDiscordAccess(mockEnv, 'user-1')
 
@@ -1630,6 +1637,49 @@ describe('inspectUserDiscordAccess', () => {
 		expect(result.summary.guildsWithDrift).toBe(0)
 		expect(result.summary.totalMissingExpectedManagedRoles).toBe(0)
 		expect(result.summary.totalUnexpectedManagedRoles).toBe(0)
+	})
+
+	it('should show the special auth role as expected and managed when present in the guild', async () => {
+		dbQueryMocks.discordServers.findMany.mockResolvedValue([
+			makeDiscordServer({ id: 'ds-1', guildId: 'guild-1', guildName: 'Guild One' }),
+		])
+		discordStubMethods.getUserGuildMembershipDetails.mockResolvedValue([
+			{
+				guildId: 'guild-1',
+				isMember: true,
+				currentRoleIds: [],
+				currentRoles: [],
+			},
+		])
+		discordStubMethods.getGuildRoles.mockResolvedValue([
+			{ id: '1431816436640256060', name: 'Auth Gigachad' },
+		])
+
+		dbQueryMocks.userCharacters.findMany.mockResolvedValue([
+			{
+				userId: 'user-1',
+				characterId: 'char-1',
+			},
+		] as any)
+		eveCorpStubMethods.getCorporationIdsByCharacterIds.mockResolvedValue({
+			'char-1': 'corp-1',
+		})
+
+		dbQueryMocks.corporationDiscordServers.findMany.mockResolvedValue([])
+		dbQueryMocks.discordRoles.findMany.mockResolvedValue([])
+		groupsStubMethods.getGroupsWithDiscordAutoInvite.mockResolvedValue([])
+		groupsStubMethods.getGroupsByDiscordServer.mockResolvedValue([])
+
+		const result = await inspectUserDiscordAccess(mockEnv, 'user-1')
+
+		expect(result.guilds).toHaveLength(1)
+		const guild = result.guilds[0]
+		expect(guild.expectedManagedRoles.map((r) => r.roleId)).toContain('1431816436640256060')
+		expect(guild.currentManagedRoles.map((r) => r.roleId)).not.toContain('1431816436640256060')
+		expect(guild.missingExpectedManagedRoles.map((r) => r.roleId)).toContain(
+			'1431816436640256060'
+		)
+		expect(guild.unexpectedManagedRoles).toHaveLength(0)
 	})
 
 	it('should expect no roles when user is blacklisted', async () => {

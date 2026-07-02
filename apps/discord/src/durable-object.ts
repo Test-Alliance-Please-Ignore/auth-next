@@ -940,6 +940,11 @@ export class DiscordDO extends DurableObject<Env> implements Discord {
 		}
 	}
 
+	async getGuildRoles(guildId: string): Promise<Array<{ id: string; name: string }>> {
+		const botService = new DiscordBotService(this.env)
+		return botService.getGuildRoles(guildId)
+	}
+
 	async listGuildMembers(
 		guildId: string,
 		options?: {
@@ -1063,6 +1068,7 @@ export class DiscordDO extends DurableObject<Env> implements Discord {
 								currentRoleIds,
 								requestedRoleIds,
 								managedRoleIds,
+								preserveRoleIds: [DISCORD_EXCLUDED_AUTH_GIGACHAD_ROLE_ID],
 								isAddOnlyMode,
 							})
 							newRoleIds = roleChanges.newRoleIds
