@@ -13,6 +13,7 @@ import type {
 import type { App, SessionUser } from '../context'
 
 const app = new Hono<App>()
+const OAUTH_CONSENT_MAX_SESSION_AGE_MS = 15 * 60 * 1000
 
 const authorizeActionSchema = z.object({
 	requestUrl: z.string().url(),
@@ -53,6 +54,7 @@ function toOAuthSessionUser(user: SessionUser): OAuthSessionUser {
 		id: user.id,
 		mainCharacterId: user.mainCharacterId,
 		isAdmin: user.is_admin,
+		sessionCreatedAt: user.sessionCreatedAt,
 		characters: user.characters.map((character) => ({
 			id: character.id,
 			characterOwnerHash: character.characterOwnerHash,
@@ -62,6 +64,14 @@ function toOAuthSessionUser(user: SessionUser): OAuthSessionUser {
 			hasValidToken: character.hasValidToken,
 		})),
 	}
+}
+
+function isFreshOAuthConsentSession(sessionCreatedAt?: string | null): boolean {
+	if (!sessionCreatedAt) return false
+	const createdAtMs = Date.parse(sessionCreatedAt)
+	if (Number.isNaN(createdAtMs)) return false
+	// Consent should require a recent interactive login, not just any active session.
+	return Date.now() - createdAtMs <= OAUTH_CONSENT_MAX_SESSION_AGE_MS
 }
 
 function getThirdPartyAppsClient(c: App['Bindings']) {
@@ -88,6 +98,7 @@ app.get('/authorize', requireAuth(), async (c) => {
 		return c.json({
 			requestUrl,
 			...preview,
+			requiresFreshSession: !isFreshOAuthConsentSession(c.get('user')?.sessionCreatedAt),
 		})
 	} catch (error) {
 		logger.error('[OAuthRoute.authorize.preview] Failed', {
@@ -110,6 +121,15 @@ app.post('/authorize', requireAuth(), async (c) => {
 	const user = c.get('user')
 	if (!user) {
 		return c.json({ error: 'Unauthorized' }, 401)
+	}
+	if (!isFreshOAuthConsentSession(user.sessionCreatedAt)) {
+		return c.json(
+			{
+				error: 'Reauthentication required. Please sign in again to continue.',
+				reauthRequired: true,
+			},
+			401
+		)
 	}
 
 	try {

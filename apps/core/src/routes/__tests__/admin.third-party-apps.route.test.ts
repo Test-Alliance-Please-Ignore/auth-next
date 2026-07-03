@@ -100,7 +100,12 @@ describe('admin third-party apps rpc routes', () => {
 			env
 		)
 		expect(response.status).toBe(201)
-		expect(thirdPartyAppsStub.createClient).toHaveBeenCalled()
+		expect(thirdPartyAppsStub.createClient).toHaveBeenCalledWith(
+			expect.objectContaining({
+				clientName: 'Client One',
+				redirectUris: ['https://example.app/callback'],
+			})
+		)
 	})
 
 	it('updates clients via rpc', async () => {
@@ -109,14 +114,18 @@ describe('admin third-party apps rpc routes', () => {
 			'/api/admin/third-party-apps/clients/client-1',
 			{
 				method: 'PATCH',
-				body: JSON.stringify({ clientName: 'Client One Updated' }),
+				body: JSON.stringify({
+					clientName: 'Client One Updated',
+				}),
 			},
 			env
 		)
 		expect(response.status).toBe(200)
 		expect(thirdPartyAppsStub.updateClient).toHaveBeenCalledWith(
 			'client-1',
-			expect.objectContaining({ clientName: 'Client One Updated' })
+			expect.objectContaining({
+				clientName: 'Client One Updated',
+			})
 		)
 	})
 

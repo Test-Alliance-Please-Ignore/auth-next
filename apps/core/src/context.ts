@@ -112,6 +112,7 @@ export interface SessionUser {
 	id: string
 	mainCharacterId: string
 	sessionId: string
+	sessionCreatedAt?: string
 	characters: Array<{
 		id: string
 		characterOwnerHash: string

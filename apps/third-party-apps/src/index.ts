@@ -17,7 +17,6 @@ import type {
 	ThirdPartyAppsAdminWorker,
 	ThirdPartyAppScope,
 } from '@repo/admin'
-import { THIRD_PARTY_APP_SUPPORTED_SCOPES } from '@repo/admin'
 
 import {
 	extractCharacterIdFromEsiPath,
@@ -28,6 +27,15 @@ import {
 	requiredScopeForEsiRequest,
 } from './proxy-policy'
 import { proxyEsiRequest } from './esi-proxy'
+import {
+	THIRD_PARTY_APPS_OAUTH_PROVIDER_CONTRACT,
+	deleteClientMetadata,
+	getClientMetadata,
+	mapClientSummary as sharedMapClientSummary,
+	normalizeScopes,
+	requestedScopesAreAllowed,
+	setClientMetadata,
+} from './oauth-contract'
 import type { Groups } from '@repo/groups'
 import type { EveTokenStoreClient, Env } from './context'
 
@@ -35,58 +43,6 @@ type OAuthGrantProps = {
 	sub: string
 	scope: ThirdPartyAppScope[]
 	clientId: string
-}
-
-type OAuthClientMetadata = {
-	scopes: ThirdPartyAppScope[]
-}
-
-const CLIENT_METADATA_PREFIX = 'oauth-client-meta:'
-const SUPPORTED_SCOPE_SET = new Set<string>(THIRD_PARTY_APP_SUPPORTED_SCOPES)
-
-function clientMetadataKey(clientId: string): string {
-	return `${CLIENT_METADATA_PREFIX}${clientId}`
-}
-
-function normalizeScopes(scopes: string[] | undefined): ThirdPartyAppScope[] {
-	const unique = [...new Set(scopes ?? [])].filter(Boolean)
-	if (unique.length === 0) {
-		throw new Error('At least one OAuth scope is required')
-	}
-	const unsupported = unique.filter((scope) => !SUPPORTED_SCOPE_SET.has(scope))
-	if (unsupported.length > 0) {
-		throw new Error(`Unsupported OAuth scope(s): ${unsupported.join(', ')}`)
-	}
-	return unique as ThirdPartyAppScope[]
-}
-
-async function getClientMetadata(env: Env, clientId: string): Promise<OAuthClientMetadata> {
-	const stored = await env.OAUTH_KV.get<OAuthClientMetadata>(clientMetadataKey(clientId), 'json')
-	return {
-		scopes: stored?.scopes ? normalizeScopes(stored.scopes) : [],
-	}
-}
-
-async function setClientMetadata(
-	env: Env,
-	clientId: string,
-	metadata: OAuthClientMetadata
-): Promise<void> {
-	await env.OAUTH_KV.put(clientMetadataKey(clientId), JSON.stringify({
-		scopes: normalizeScopes(metadata.scopes),
-	}))
-}
-
-async function deleteClientMetadata(env: Env, clientId: string): Promise<void> {
-	await env.OAUTH_KV.delete(clientMetadataKey(clientId))
-}
-
-function requestedScopesAreAllowed(
-	requestedScopes: string[],
-	allowedScopes: ThirdPartyAppScope[]
-): requestedScopes is ThirdPartyAppScope[] {
-	const allowed = new Set(allowedScopes)
-	return requestedScopes.every((scope) => allowed.has(scope as ThirdPartyAppScope))
 }
 
 function isLocalDev(env: Env): boolean {
@@ -119,45 +75,11 @@ function validateAuthorizeRequestUrl(
 	}
 }
 
-function buildProps(
-	user: OAuthSessionUser,
-	scope: ThirdPartyAppScope[],
-	clientId: string
-): OAuthGrantProps {
+function buildProps(user: OAuthSessionUser, scope: ThirdPartyAppScope[], clientId: string): OAuthGrantProps {
 	return {
 		sub: user.id,
 		scope,
 		clientId,
-	}
-}
-
-async function mapClientSummary(
-	env: Env,
-	client: {
-		clientId: string
-		clientSecret?: string
-		clientName?: string
-		redirectUris: string[]
-		tokenEndpointAuthMethod: string
-		grantTypes?: string[]
-		responseTypes?: string[]
-		registrationDate?: number
-	},
-	options?: { includeClientSecret?: boolean }
-): Promise<OAuthClientSummary> {
-	const createdAt = client.registrationDate ? new Date(client.registrationDate * 1000).toISOString() : undefined
-	const metadata = await getClientMetadata(env, client.clientId)
-	return {
-		clientId: client.clientId,
-		...(options?.includeClientSecret && client.clientSecret ? { clientSecret: client.clientSecret } : {}),
-		clientName: client.clientName,
-		redirectUris: client.redirectUris,
-		scopes: metadata.scopes,
-		tokenEndpointAuthMethod: client.tokenEndpointAuthMethod,
-		grantTypes: client.grantTypes,
-		responseTypes: client.responseTypes,
-		createdAt,
-		updatedAt: createdAt,
 	}
 }
 
@@ -386,7 +308,7 @@ class ThirdPartyAppsWorkerEntrypoint extends WorkerEntrypoint<Env> implements Th
 			cursor: options?.cursor,
 		})
 		return {
-			items: await Promise.all(result.items.map((client) => mapClientSummary(this.env, client))),
+			items: await Promise.all(result.items.map((client) => sharedMapClientSummary(this.env, client))),
 			cursor: result.cursor,
 		}
 	}
@@ -396,7 +318,7 @@ class ThirdPartyAppsWorkerEntrypoint extends WorkerEntrypoint<Env> implements Th
 		const { scopes: _scopes, ...clientInput } = input
 		const created = await this.env.OAUTH_PROVIDER.createClient(clientInput)
 		await setClientMetadata(this.env, created.clientId, { scopes })
-		return mapClientSummary(this.env, created, { includeClientSecret: true })
+		return sharedMapClientSummary(this.env, created, { includeClientSecret: true })
 	}
 
 	async updateClient(
@@ -410,7 +332,7 @@ class ThirdPartyAppsWorkerEntrypoint extends WorkerEntrypoint<Env> implements Th
 		if (normalizedScopes) {
 			await setClientMetadata(this.env, clientId, { scopes: normalizedScopes })
 		}
-		return mapClientSummary(this.env, updated)
+		return sharedMapClientSummary(this.env, updated)
 	}
 
 	async deleteClient(clientId: string): Promise<void> {
@@ -482,19 +404,18 @@ class ThirdPartyAppsWorkerEntrypoint extends WorkerEntrypoint<Env> implements Th
 	}
 }
 
-const oauthProvider = new OAuthProvider({
-	apiRoute: '/oauth/api/',
+export const THIRD_PARTY_APPS_OAUTH_PROVIDER_OPTIONS = {
+	...THIRD_PARTY_APPS_OAUTH_PROVIDER_CONTRACT,
 	apiHandler: OAuthApiHandler,
 	defaultHandler: {
 		fetch: async () => new Response('Not found', { status: 404 }),
 	},
-	authorizeEndpoint: '/authorize',
-	tokenEndpoint: '/oauth/token',
-	scopesSupported: [...THIRD_PARTY_APP_SUPPORTED_SCOPES],
-	allowImplicitFlow: false,
-	disallowPublicClientRegistration: true,
-})
+	scopesSupported: [...THIRD_PARTY_APPS_OAUTH_PROVIDER_CONTRACT.scopesSupported],
+}
 
+const oauthProvider = new OAuthProvider(THIRD_PARTY_APPS_OAUTH_PROVIDER_OPTIONS)
+
+export { sharedMapClientSummary as mapClientSummary }
 export { ThirdPartyAppsWorkerEntrypoint }
 export { ThirdPartyAppQuota } from './quota'
 

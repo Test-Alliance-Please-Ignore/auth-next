@@ -1,5 +1,5 @@
 import { Hono } from 'hono'
-import { beforeEach, describe, expect, it, vi } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 import oauthRoutes from '../oauth'
 
@@ -10,6 +10,7 @@ function makeUser(overrides: Partial<SessionUser> = {}): SessionUser {
 		id: '00000000-0000-0000-0000-000000000001',
 		mainCharacterId: '7001',
 		sessionId: 'session-1',
+		sessionCreatedAt: '2026-06-01T00:00:00.000Z',
 		characters: [
 			{
 				id: 'char-1',
@@ -55,6 +56,8 @@ describe('oauth authorize routes', () => {
 	} as any
 
 	beforeEach(() => {
+		vi.useFakeTimers()
+		vi.setSystemTime(new Date('2026-06-01T00:10:00.000Z'))
 		vi.clearAllMocks()
 		thirdPartyAppsStub.previewAuthorization.mockResolvedValue({
 			clientId: 'client-1',
@@ -76,10 +79,20 @@ describe('oauth authorize routes', () => {
 		)
 
 		expect(response.status).toBe(200)
+		expect(await response.json()).toEqual(
+			expect.objectContaining({
+				requestUrl: 'https://pleaseignore.app/authorize?client_id=client-1',
+			requiresFreshSession: false,
+			})
+		)
 		expect(thirdPartyAppsStub.previewAuthorization).toHaveBeenCalledWith(
 			'https://pleaseignore.app/authorize?client_id=client-1',
 			'https://pleaseignore.app'
 		)
+	})
+
+	afterEach(() => {
+		vi.useRealTimers()
 	})
 
 	it('resolves approval via rpc', async () => {
@@ -104,6 +117,7 @@ describe('oauth authorize routes', () => {
 				id: '00000000-0000-0000-0000-000000000001',
 				mainCharacterId: '7001',
 				isAdmin: false,
+				sessionCreatedAt: '2026-06-01T00:00:00.000Z',
 				characters: expect.arrayContaining([
 					expect.objectContaining({
 						characterId: '7001',
@@ -114,5 +128,46 @@ describe('oauth authorize routes', () => {
 			}),
 			'approve'
 		)
+	})
+
+	it('requires a fresh session before completing authorization', async () => {
+		const app = createApp(
+			makeUser({
+				sessionCreatedAt: '2026-05-01T00:00:00.000Z',
+			})
+		)
+		const previewResponse = await app.request(
+			'https://pleaseignore.app/api/oauth/authorize?requestUrl=https%3A%2F%2Fpleaseignore.app%2Fauthorize%3Fclient_id%3Dclient-1',
+			{},
+			env
+		)
+		expect(previewResponse.status).toBe(200)
+		expect(await previewResponse.json()).toEqual(
+			expect.objectContaining({
+				requestUrl: 'https://pleaseignore.app/authorize?client_id=client-1',
+				requiresFreshSession: true,
+			})
+		)
+
+		const response = await app.request(
+			'https://pleaseignore.app/api/oauth/authorize',
+			{
+				method: 'POST',
+				body: JSON.stringify({
+					requestUrl: 'https://pleaseignore.app/authorize?client_id=client-1',
+					action: 'approve',
+				}),
+			},
+			env
+		)
+
+		expect(response.status).toBe(401)
+		expect(await response.json()).toEqual(
+			expect.objectContaining({
+				error: 'Reauthentication required. Please sign in again to continue.',
+				reauthRequired: true,
+			})
+		)
+		expect(thirdPartyAppsStub.resolveAuthorization).not.toHaveBeenCalled()
 	})
 })

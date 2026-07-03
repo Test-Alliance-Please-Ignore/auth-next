@@ -24,12 +24,6 @@ const clientCreateSchema = z.object({
 	tokenEndpointAuthMethod: z.enum(['client_secret_basic', 'client_secret_post', 'none']),
 	grantTypes: z.array(z.enum(['authorization_code', 'refresh_token'])).min(1),
 	responseTypes: z.array(z.enum(['code'])).min(1),
-	clientUri: z.string().url().optional(),
-	logoUri: z.string().url().optional(),
-	contacts: z.array(z.string().email()).optional(),
-	policyUri: z.string().url().optional(),
-	tosUri: z.string().url().optional(),
-	jwksUri: z.string().url().optional(),
 })
 
 const clientUpdateSchema = clientCreateSchema

@@ -5,6 +5,9 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import {
 	THIRD_PARTY_APP_SUPPORTED_SCOPES,
 	getThirdPartyAppScopeMetadata,
+	type OAuthClientCreateInput,
+	type OAuthClientSummary,
+	type OAuthClientUpdateInput,
 	type ThirdPartyAppScope,
 } from '@repo/admin'
 
@@ -28,6 +31,8 @@ import {
 } from '@/components/ui/dialog'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
+import { HoverPopover } from '@/components/ui/hover-popover'
+import { Select, type SelectOption } from '@/components/ui/select'
 import {
 	Table,
 	TableBody,
@@ -46,32 +51,238 @@ import {
 	type ThirdPartyAppScopeRow,
 } from './third-party-apps.helpers'
 
-type OAuthClient = {
-	clientId: string
-	clientSecret?: string
-	clientName?: string
-	redirectUris?: string[]
-	scopes?: ThirdPartyAppScope[]
-	tokenEndpointAuthMethod?: string
-	grantTypes?: string[]
-	responseTypes?: string[]
-	createdAt?: string
-	updatedAt?: string
-}
-
 type OAuthClientListResponse = {
-	clients?: OAuthClient[]
-	data?: OAuthClient[]
-	items?: OAuthClient[]
+	clients?: OAuthClientSummary[]
+	data?: OAuthClientSummary[]
+	items?: OAuthClientSummary[]
 }
 
-type CreateClientInput = {
+type OAuthTokenEndpointAuthMethod = 'client_secret_basic' | 'client_secret_post' | 'none'
+type OAuthGrantType = 'authorization_code' | 'refresh_token'
+
+const OAUTH_TOKEN_ENDPOINT_AUTH_METHOD_OPTIONS: SelectOption[] = [
+	{
+		value: 'client_secret_basic',
+		label: 'Client Secret Basic',
+		description: 'Confidential client authentication using HTTP Basic credentials.',
+	},
+	{
+		value: 'client_secret_post',
+		label: 'Client Secret Post',
+		description: 'Confidential client authentication using form-encoded credentials.',
+	},
+	{
+		value: 'none',
+		label: 'Public Client',
+		description: 'No client secret at the token endpoint. Use PKCE for browser flows.',
+	},
+]
+
+const TOKEN_ENDPOINT_AUTH_HELP =
+	'Choose how the client authenticates at the token endpoint. Public clients do not use a secret and should rely on PKCE.'
+
+const OAUTH_GRANT_TYPE_DETAILS: Record<OAuthGrantType, { label: string; description: string }> = {
+	authorization_code: {
+		label: 'Authorization Code',
+		description: 'Allow the app to complete the browser consent flow.',
+	},
+	refresh_token: {
+		label: 'Refresh Token',
+		description: 'Allow the app to refresh tokens after initial consent.',
+	},
+}
+
+interface ClientFormState {
 	clientName: string
-	redirectUris: string[]
-	scopes: ThirdPartyAppScope[]
-	tokenEndpointAuthMethod: 'client_secret_basic' | 'client_secret_post' | 'none'
-	grantTypes: string[]
-	responseTypes: string[]
+	redirectUrisText: string
+	tokenEndpointAuthMethod: OAuthTokenEndpointAuthMethod
+	grantTypes: Set<OAuthGrantType>
+	selectedScopes: Set<ThirdPartyAppScope>
+}
+
+function createDefaultClientFormState(): ClientFormState {
+	return {
+		clientName: '',
+		redirectUrisText: '',
+		tokenEndpointAuthMethod: 'client_secret_basic',
+		grantTypes: new Set(['authorization_code', 'refresh_token']),
+		selectedScopes: new Set(
+			THIRD_PARTY_APP_SUPPORTED_SCOPES.filter(
+				(scope) => getThirdPartyAppScopeMetadata(scope).category === 'identity'
+			)
+		),
+	}
+}
+
+function clientSummaryToFormState(client: OAuthClientSummary): ClientFormState {
+	return {
+		clientName: client.clientName ?? '',
+		redirectUrisText: client.redirectUris?.join('\n') ?? '',
+		tokenEndpointAuthMethod:
+			client.tokenEndpointAuthMethod === 'client_secret_post' || client.tokenEndpointAuthMethod === 'none'
+				? client.tokenEndpointAuthMethod
+				: 'client_secret_basic',
+		grantTypes: new Set(
+			(client.grantTypes ?? ['authorization_code', 'refresh_token']).filter(
+				(grant): grant is OAuthGrantType => grant === 'authorization_code' || grant === 'refresh_token'
+			)
+		),
+		selectedScopes: new Set([...(client.scopes ?? []), ...THIRD_PARTY_APP_REQUIRED_SCOPES]),
+	}
+}
+
+function parseMultilineValues(value: string): string[] {
+	return value
+		.split('\n')
+		.map((entry) => entry.trim())
+		.filter(Boolean)
+}
+
+function getGrantTypes(grantTypes: Set<OAuthGrantType>): OAuthGrantType[] {
+	const values: OAuthGrantType[] = []
+	if (grantTypes.has('authorization_code')) values.push('authorization_code')
+	if (grantTypes.has('refresh_token')) values.push('refresh_token')
+	return values
+}
+
+function updateGrantTypeSet(
+	previous: Set<OAuthGrantType>,
+	grantTypes: readonly OAuthGrantType[],
+	checked: boolean
+): Set<OAuthGrantType> {
+	const next = new Set(previous)
+	for (const grantType of grantTypes) {
+		if (checked) {
+			next.add(grantType)
+		} else {
+			next.delete(grantType)
+		}
+	}
+	return next
+}
+
+interface ClientAccessSettingsProps {
+	form: ClientFormState
+	idPrefix: string
+	onChange: (updater: (previous: ClientFormState) => ClientFormState) => void
+}
+
+function ClientAccessSettings({ form, idPrefix, onChange }: ClientAccessSettingsProps) {
+	const isPublicClient = form.tokenEndpointAuthMethod === 'none'
+	const grantTypeEntries = (['authorization_code', 'refresh_token'] as const).map((grantType) => ({
+		grantType,
+		...OAUTH_GRANT_TYPE_DETAILS[grantType],
+	}))
+
+	return (
+		<div className="grid gap-4 rounded-lg border border-border/60 bg-card/40 p-4 md:grid-cols-2">
+			<div className="space-y-2">
+				<Label htmlFor={`${idPrefix}-token-endpoint-auth-method`} className="inline-flex items-center gap-1.5">
+					<HoverPopover
+						trigger={<span className="cursor-help">Token Endpoint Authentication</span>}
+						side="top"
+						align="start"
+						className="w-80 border border-border bg-popover p-3 text-popover-foreground shadow-lg"
+					>
+						<div className="space-y-1">
+							<div className="text-sm font-medium">Token Endpoint Authentication</div>
+							<div className="text-sm text-muted-foreground">{TOKEN_ENDPOINT_AUTH_HELP}</div>
+						</div>
+					</HoverPopover>
+				</Label>
+				<Select
+					inputId={`${idPrefix}-token-endpoint-auth-method`}
+					options={OAUTH_TOKEN_ENDPOINT_AUTH_METHOD_OPTIONS}
+					value={form.tokenEndpointAuthMethod}
+					onValueChange={(value) =>
+						onChange((previous) => ({
+							...previous,
+							tokenEndpointAuthMethod: value as OAuthTokenEndpointAuthMethod,
+						}))
+					}
+					placeholder="Select authentication method"
+					className="w-full"
+				/>
+				<p className="text-xs leading-5 text-muted-foreground">
+					{isPublicClient
+						? 'Public clients do not use a secret at the token endpoint.'
+						: 'Confidential clients authenticate with a client secret at the token endpoint.'}
+				</p>
+			</div>
+			<div className="space-y-2">
+				<Label className="inline-flex items-center gap-1.5">
+					<HoverPopover
+						trigger={<span className="cursor-help">Grant Types</span>}
+						side="top"
+						align="start"
+						className="w-80 border border-border bg-popover p-3 text-popover-foreground shadow-lg"
+					>
+						<div className="space-y-1">
+							<div className="text-sm font-medium">Grant Types</div>
+							<div className="text-sm text-muted-foreground">
+								Choose how the client can obtain and renew tokens.
+							</div>
+						</div>
+					</HoverPopover>
+				</Label>
+				<div className="space-y-2 rounded-md border border-border/60 bg-background/50 p-3">
+					{grantTypeEntries.map(({ grantType, label, description }) => {
+						const checked = form.grantTypes.has(grantType)
+						return (
+							<label
+								key={grantType}
+								className="flex cursor-pointer items-center gap-3 rounded-md px-2 py-1.5 transition-colors hover:bg-muted/40"
+							>
+								<Checkbox
+									checked={checked}
+									onCheckedChange={(nextChecked) =>
+										onChange((previous) => ({
+											...previous,
+											grantTypes: updateGrantTypeSet(previous.grantTypes, [grantType], nextChecked === true),
+										}))
+									}
+								/>
+								<div className="space-y-0.5">
+									<HoverPopover
+										trigger={<div className="text-sm font-medium text-foreground cursor-help">{label}</div>}
+										side="top"
+										align="start"
+										className="w-80 border border-border bg-popover p-3 text-popover-foreground shadow-lg"
+									>
+										<div className="space-y-1">
+											<div className="text-sm font-medium">{label}</div>
+											<div className="text-sm text-muted-foreground">{description}</div>
+										</div>
+									</HoverPopover>
+									<div className="text-xs text-muted-foreground">{description}</div>
+								</div>
+							</label>
+						)
+					})}
+				</div>
+			</div>
+		</div>
+	)
+}
+
+function updateSelectedScopeSet(
+	previous: Set<ThirdPartyAppScope>,
+	scopes: readonly ThirdPartyAppScope[],
+	checked: boolean
+): Set<ThirdPartyAppScope> {
+	const next = new Set(previous)
+	for (const scope of scopes) {
+		if (THIRD_PARTY_APP_REQUIRED_SCOPES.includes(scope as (typeof THIRD_PARTY_APP_REQUIRED_SCOPES)[number])) {
+			next.add(scope)
+			continue
+		}
+		if (checked) {
+			next.add(scope)
+		} else {
+			next.delete(scope)
+		}
+	}
+	return next
 }
 
 async function thirdPartyAppsAdminRequest<T>(path: string, init?: RequestInit): Promise<T> {
@@ -105,16 +316,10 @@ export default function AdminThirdPartyAppsPage() {
 	const queryClient = useQueryClient()
 	const [message, setMessage] = useState<string | null>(null)
 	const [error, setError] = useState<string | null>(null)
-	const [clientName, setClientName] = useState('')
-	const [redirectUrisText, setRedirectUrisText] = useState('')
-	const [selectedScopes, setSelectedScopes] = useState<Set<ThirdPartyAppScope>>(
-		() =>
-			new Set(
-				THIRD_PARTY_APP_SUPPORTED_SCOPES.filter(
-					(scope) => getThirdPartyAppScopeMetadata(scope).category === 'identity'
-				)
-			)
-	)
+	const [createForm, setCreateForm] = useState<ClientFormState>(() => createDefaultClientFormState())
+	const [editForm, setEditForm] = useState<ClientFormState | null>(null)
+	const [editingClient, setEditingClient] = useState<OAuthClientSummary | null>(null)
+	const [editDialogOpen, setEditDialogOpen] = useState(false)
 	const [secretDialogOpen, setSecretDialogOpen] = useState(false)
 	const [latestSecret, setLatestSecret] = useState<{ clientId: string; clientSecret: string } | null>(null)
 
@@ -138,29 +343,18 @@ export default function AdminThirdPartyAppsPage() {
 	const authPlatformOptionalScopeNames = authPlatformScopeNames.filter(
 		(scope) => !THIRD_PARTY_APP_REQUIRED_SCOPES.includes(scope as (typeof THIRD_PARTY_APP_REQUIRED_SCOPES)[number])
 	)
-	const defaultAuthPlatformScopes = useMemo(
-		() =>
-			new Set(
-				THIRD_PARTY_APP_SUPPORTED_SCOPES.filter(
-					(scope) => getThirdPartyAppScopeMetadata(scope).category === 'identity'
-				)
-			),
-		[]
-	)
-	const selectedScopeCount = selectedScopes.size
+	const selectedScopeCount = createForm.selectedScopes.size
 
 	const createClientMutation = useMutation({
-		mutationFn: (payload: CreateClientInput) =>
-			thirdPartyAppsAdminRequest<OAuthClient>('/clients', {
+		mutationFn: (payload: OAuthClientCreateInput) =>
+			thirdPartyAppsAdminRequest<OAuthClientSummary>('/clients', {
 				method: 'POST',
 				body: JSON.stringify(payload),
 			}),
 		onSuccess: async (data) => {
 			setMessage('Client created')
 			setError(null)
-			setClientName('')
-			setRedirectUrisText('')
-			setSelectedScopes(defaultAuthPlatformScopes)
+			setCreateForm(createDefaultClientFormState())
 			if (data.clientSecret) {
 				setLatestSecret({ clientId: data.clientId, clientSecret: data.clientSecret })
 				setSecretDialogOpen(true)
@@ -172,6 +366,85 @@ export default function AdminThirdPartyAppsPage() {
 			setMessage(null)
 		},
 	})
+
+	const updateClientMutation = useMutation({
+		mutationFn: ({ clientId, payload }: { clientId: string; payload: OAuthClientUpdateInput }) =>
+			thirdPartyAppsAdminRequest<OAuthClientSummary>(`/clients/${encodeURIComponent(clientId)}`, {
+				method: 'PATCH',
+				body: JSON.stringify(payload),
+			}),
+		onSuccess: async () => {
+			setMessage('Client updated')
+			setError(null)
+			setEditDialogOpen(false)
+			setEditingClient(null)
+			setEditForm(null)
+			await queryClient.invalidateQueries({ queryKey: ['admin-third-party-oauth-clients'] })
+		},
+		onError: (updateError) => {
+			setError(updateError instanceof Error ? updateError.message : 'Failed to update client')
+			setMessage(null)
+		},
+	})
+
+	const openEditClientDialog = (client: OAuthClientSummary) => {
+		setEditingClient(client)
+		setEditForm(clientSummaryToFormState(client))
+		setEditDialogOpen(true)
+	}
+
+	const setEditScopes = (scopes: readonly ThirdPartyAppScope[], checked: boolean) => {
+		setEditForm((previous) =>
+			previous
+				? {
+						...previous,
+						selectedScopes: updateSelectedScopeSet(previous.selectedScopes, scopes, checked),
+					}
+				: previous
+		)
+	}
+
+	const toggleEditScope = (scope: ThirdPartyAppScope, checked: boolean) => {
+		if (
+			THIRD_PARTY_APP_REQUIRED_SCOPES.includes(scope as (typeof THIRD_PARTY_APP_REQUIRED_SCOPES)[number])
+		) {
+			return
+		}
+		setEditScopes([scope], checked)
+	}
+
+	const handleUpdate = () => {
+		if (!editingClient || !editForm) {
+			setError('No client selected for editing')
+			setMessage(null)
+			return
+		}
+
+		const redirectUris = parseMultilineValues(editForm.redirectUrisText)
+		if (!editForm.clientName.trim() || redirectUris.length === 0) {
+			setError('Client name and at least one redirect URI are required')
+			setMessage(null)
+			return
+		}
+		const scopes = [...editForm.selectedScopes]
+		if (scopes.length === 0) {
+			setError('At least one scope is required')
+			setMessage(null)
+			return
+		}
+
+		updateClientMutation.mutate({
+			clientId: editingClient.clientId,
+			payload: {
+				clientName: editForm.clientName.trim(),
+				redirectUris,
+				scopes,
+				tokenEndpointAuthMethod: editForm.tokenEndpointAuthMethod,
+				grantTypes: getGrantTypes(editForm.grantTypes),
+				responseTypes: editingClient.responseTypes ?? ['code'],
+			},
+		})
+	}
 
 	const deleteClientMutation = useMutation({
 		mutationFn: (targetClientId: string) =>
@@ -210,16 +483,13 @@ export default function AdminThirdPartyAppsPage() {
 	})
 
 	const handleCreate = () => {
-		const redirectUris = redirectUrisText
-			.split('\n')
-			.map((entry) => entry.trim())
-			.filter(Boolean)
-		if (!clientName.trim() || redirectUris.length === 0) {
+		const redirectUris = parseMultilineValues(createForm.redirectUrisText)
+		if (!createForm.clientName.trim() || redirectUris.length === 0) {
 			setError('Client name and at least one redirect URI are required')
 			setMessage(null)
 			return
 		}
-		const scopes = [...selectedScopes]
+		const scopes = [...createForm.selectedScopes]
 		if (scopes.length === 0) {
 			setError('At least one scope is required')
 			setMessage(null)
@@ -227,11 +497,11 @@ export default function AdminThirdPartyAppsPage() {
 		}
 
 		createClientMutation.mutate({
-			clientName: clientName.trim(),
+			clientName: createForm.clientName.trim(),
 			redirectUris,
 			scopes,
-			tokenEndpointAuthMethod: 'client_secret_basic',
-			grantTypes: ['authorization_code', 'refresh_token'],
+			tokenEndpointAuthMethod: createForm.tokenEndpointAuthMethod,
+			grantTypes: getGrantTypes(createForm.grantTypes),
 			responseTypes: ['code'],
 		})
 	}
@@ -242,40 +512,27 @@ export default function AdminThirdPartyAppsPage() {
 		) {
 			return
 		}
-		setSelectedScopes((previous) => {
-			const next = new Set(previous)
-			if (checked) {
-				next.add(scope)
-			} else {
-				next.delete(scope)
+		setCreateForm((previous) => {
+			return {
+				...previous,
+				selectedScopes: updateSelectedScopeSet(previous.selectedScopes, [scope], checked),
 			}
-			return next
 		})
 	}
 
 	const setScopes = (scopes: readonly ThirdPartyAppScope[], checked: boolean) => {
-		setSelectedScopes((previous) => {
-			const next = new Set(previous)
-			for (const scope of scopes) {
-				if (
-					THIRD_PARTY_APP_REQUIRED_SCOPES.includes(
-						scope as (typeof THIRD_PARTY_APP_REQUIRED_SCOPES)[number]
-					)
-				) {
-					next.add(scope)
-					continue
-				}
-				if (checked) {
-					next.add(scope)
-				} else {
-					next.delete(scope)
-				}
+		setCreateForm((previous) => {
+			return {
+				...previous,
+				selectedScopes: updateSelectedScopeSet(previous.selectedScopes, scopes, checked),
 			}
-			return next
 		})
 	}
 
-	const getScopeSelectionState = (scopes: readonly ThirdPartyAppScope[]) => {
+	const getScopeSelectionState = (
+		scopes: readonly ThirdPartyAppScope[],
+		selectedScopes = createForm.selectedScopes
+	) => {
 		const selectedCount = scopes.filter((scope) => selectedScopes.has(scope)).length
 		return {
 			totalCount: scopes.length,
@@ -293,8 +550,23 @@ export default function AdminThirdPartyAppsPage() {
 		[]
 	const esiReadSelectionState = getScopeSelectionState(esiReadScopeNames)
 	const esiWriteSelectionState = getScopeSelectionState(esiWriteScopeNames)
+	const editAuthPlatformSelectionState = editForm
+		? getScopeSelectionState(authPlatformScopeNames, editForm.selectedScopes)
+		: authPlatformSelectionState
+	const editEsiReadSelectionState = editForm
+		? getScopeSelectionState(esiReadScopeNames, editForm.selectedScopes)
+		: esiReadSelectionState
+	const editEsiWriteSelectionState = editForm
+		? getScopeSelectionState(esiWriteScopeNames, editForm.selectedScopes)
+		: esiWriteSelectionState
+	const createGrantTypes = createForm.grantTypes
+	const editGrantTypes = editForm?.grantTypes ?? createGrantTypes
 
-	const renderScopeRows = (scopes: ThirdPartyAppScopeRow[]) => (
+	const renderScopeRows = (
+		scopes: ThirdPartyAppScopeRow[],
+		selectedScopesSet: Set<ThirdPartyAppScope> = createForm.selectedScopes,
+		onToggleScope: (scope: ThirdPartyAppScope, checked: boolean) => void = toggleScope
+	) => (
 		<Table>
 			<TableHeader>
 				<TableRow>
@@ -307,7 +579,7 @@ export default function AdminThirdPartyAppsPage() {
 			<TableBody>
 				{scopes.map((scopeRow) => {
 					const accessLevel = getThirdPartyAppScopeAccessLevel(scopeRow.scope)
-					const isSelected = selectedScopes.has(scopeRow.scope)
+					const isSelected = selectedScopesSet.has(scopeRow.scope)
 					const isRequired = THIRD_PARTY_APP_REQUIRED_SCOPES.includes(
 						scopeRow.scope as (typeof THIRD_PARTY_APP_REQUIRED_SCOPES)[number]
 					)
@@ -340,9 +612,9 @@ export default function AdminThirdPartyAppsPage() {
 							<TableCell className="pt-3">
 								<Checkbox
 									onClick={(event) => event.stopPropagation()}
-									checked={selectedScopes.has(scopeRow.scope)}
+									checked={selectedScopesSet.has(scopeRow.scope)}
 									disabled={isRequired}
-									onCheckedChange={(checked) => toggleScope(scopeRow.scope, checked === true)}
+									onCheckedChange={(checked) => onToggleScope(scopeRow.scope, checked === true)}
 								/>
 							</TableCell>
 							<TableCell className="pt-3 font-mono text-xs font-semibold text-foreground">
@@ -427,8 +699,10 @@ export default function AdminThirdPartyAppsPage() {
 						<Label htmlFor="oauth-client-name">Client Name</Label>
 						<Input
 							id="oauth-client-name"
-							value={clientName}
-							onChange={(event) => setClientName(event.target.value)}
+							value={createForm.clientName}
+							onChange={(event) =>
+								setCreateForm((previous) => ({ ...previous, clientName: event.target.value }))
+							}
 							placeholder="Alliance Auth Tooling"
 						/>
 					</div>
@@ -436,150 +710,154 @@ export default function AdminThirdPartyAppsPage() {
 						<Label htmlFor="oauth-redirect-uris">Redirect URIs (one per line)</Label>
 						<Textarea
 							id="oauth-redirect-uris"
-							value={redirectUrisText}
-							onChange={(event) => setRedirectUrisText(event.target.value)}
+							value={createForm.redirectUrisText}
+							onChange={(event) =>
+								setCreateForm((previous) => ({ ...previous, redirectUrisText: event.target.value }))
+							}
 							placeholder={'https://example.app/callback\nhttps://example.app/oauth/callback'}
-						/>
+							/>
 					</div>
-					<div className="space-y-4">
-						<div className="rounded-lg border border-border/60 bg-card/40 px-3 py-3">
-							<div className="flex flex-wrap items-center justify-between gap-3">
-								<div>
-									<div className="text-sm font-medium text-foreground">Allowed Scopes</div>
-									<div className="text-xs text-muted-foreground">
-										{selectedScopeCount} selected of{' '}
-										{scopeSections.reduce((total, section) => total + section.scopes.length, 0)} total
-									</div>
-								</div>
-							</div>
-						</div>
-
-						{authPlatformSection ? (
-							<Card className="border-border/60 bg-card/40">
-								<CardHeader className="space-y-3 pb-3">
-									<div className="flex flex-wrap items-center justify-between gap-3">
-										<div>
-											<CardTitle className="text-base">{authPlatformSection.label}</CardTitle>
-											<CardDescription>{authPlatformSection.description}</CardDescription>
-										</div>
-										<div
-											className="flex cursor-pointer items-center gap-2 rounded-md border border-border/60 px-3 py-2 transition-colors hover:bg-muted/40"
-											role="button"
-											tabIndex={0}
-											onClick={() =>
-												setScopes(authPlatformOptionalScopeNames, !authPlatformSelectionState.allSelected)
-											}
-											onKeyDown={(event) => {
-												if (event.key === 'Enter' || event.key === ' ') {
-													event.preventDefault()
-													setScopes(
-														authPlatformOptionalScopeNames,
-														!authPlatformSelectionState.allSelected
-													)
+					<ClientAccessSettings
+						form={createForm}
+						idPrefix="create"
+						onChange={(updater) => setCreateForm((previous) => updater(previous))}
+					/>
+					<details className="rounded-lg border border-border/60 bg-card/40 px-3 py-3">
+						<summary className="cursor-pointer text-sm font-medium text-foreground">
+							Allowed Scopes
+							<span className="ml-2 text-xs text-muted-foreground">
+								{selectedScopeCount} selected of{' '}
+								{scopeSections.reduce((total, section) => total + section.scopes.length, 0)} total
+							</span>
+						</summary>
+						<div className="mt-4 space-y-4">
+							{authPlatformSection ? (
+								<Card className="border-border/60 bg-card/40">
+									<CardHeader className="space-y-3 pb-3">
+										<div className="flex flex-wrap items-center justify-between gap-3">
+											<div>
+												<CardTitle className="text-base">{authPlatformSection.label}</CardTitle>
+												<CardDescription>{authPlatformSection.description}</CardDescription>
+											</div>
+											<div
+												className="flex cursor-pointer items-center gap-2 rounded-md border border-border/60 px-3 py-2 transition-colors hover:bg-muted/40"
+												role="button"
+												tabIndex={0}
+												onClick={() =>
+													setScopes(authPlatformOptionalScopeNames, !authPlatformSelectionState.allSelected)
 												}
-											}}
-										>
-											<Checkbox
-												checked={
-													authPlatformSelectionState.allSelected
-														? true
-														: authPlatformSelectionState.someSelected
-															? 'indeterminate'
-															: false
-												}
-												onClick={(event) => event.stopPropagation()}
-												onCheckedChange={(checked) =>
-													setScopes(authPlatformOptionalScopeNames, checked === true)
-												}
-											/>
-											<span className="text-sm font-medium text-foreground">Select all</span>
-											<Badge variant="ghost" className="text-xs">
-												{authPlatformSelectionState.selectedCount}/{authPlatformScopeNames.length}
-											</Badge>
-										</div>
-									</div>
-								</CardHeader>
-								<CardContent>{renderScopeRows(authPlatformSection.scopes)}</CardContent>
-							</Card>
-						) : null}
-
-						{esiProxySection ? (
-							<Card className="border-border/60 bg-card/40">
-								<CardHeader className="space-y-3 pb-3">
-									<div className="flex flex-wrap items-center justify-between gap-3">
-										<div>
-											<CardTitle className="text-base">{esiProxySection.label}</CardTitle>
-											<CardDescription>{esiProxySection.description}</CardDescription>
-										</div>
-										<div className="flex flex-wrap items-center gap-2">
-											{(['read', 'write'] as const).map((accessLevel) => {
-												const selectionState =
-													accessLevel === 'read' ? esiReadSelectionState : esiWriteSelectionState
-												const accessScopes =
-													accessLevel === 'read' ? esiReadScopeNames : esiWriteScopeNames
-												return (
-													<div
-														key={accessLevel}
-														className="flex cursor-pointer items-center gap-2 rounded-md border border-border/60 px-3 py-2 transition-colors hover:bg-muted/40"
-														role="button"
-														tabIndex={0}
-														onClick={() => setScopes(accessScopes, !selectionState.allSelected)}
-														onKeyDown={(event) => {
-															if (event.key === 'Enter' || event.key === ' ') {
-																event.preventDefault()
-																setScopes(accessScopes, !selectionState.allSelected)
-															}
-														}}
-													>
-														<Checkbox
-															checked={
-																selectionState.allSelected
-																	? true
-																	: selectionState.someSelected
-																		? 'indeterminate'
-																		: false
-															}
-															onClick={(event) => event.stopPropagation()}
-															onCheckedChange={(checked) => setScopes(accessScopes, checked === true)}
-														/>
-														<span className="text-sm font-medium text-foreground">
-															Select all {accessLevel}
-														</span>
-														<Badge variant={accessLevel === 'read' ? 'success' : 'warning'} className="text-xs">
-															{selectionState.selectedCount}/{selectionState.totalCount}
-														</Badge>
-													</div>
-												)
-											})}
-										</div>
-									</div>
-								</CardHeader>
-								<CardContent>
-									<Accordion type="multiple" className="space-y-2">
-										{esiProxySection.domainGroups.map((domainGroup) => (
-											<AccordionItem
-												key={domainGroup.key}
-												value={domainGroup.key}
-												className="rounded-lg border border-border/60 border-b-0 bg-background/40 px-3"
+												onKeyDown={(event) => {
+													if (event.key === 'Enter' || event.key === ' ') {
+														event.preventDefault()
+														setScopes(
+															authPlatformOptionalScopeNames,
+															!authPlatformSelectionState.allSelected
+														)
+													}
+												}}
 											>
-												<AccordionTrigger className="py-3 text-sm font-medium text-foreground hover:no-underline">
-													<span className="flex min-w-0 flex-1 items-center gap-2">
-														<span className="truncate">{domainGroup.label}</span>
-														<Badge variant="ghost" className="text-[10px] uppercase tracking-wide">
-															{domainGroup.scopes.length} scopes
-														</Badge>
-													</span>
-												</AccordionTrigger>
-												<AccordionContent className="pb-0">
-													<div className="pb-3">{renderScopeRows(domainGroup.scopes)}</div>
-												</AccordionContent>
-											</AccordionItem>
-										))}
-									</Accordion>
-								</CardContent>
-							</Card>
-						) : null}
-					</div>
+												<Checkbox
+													checked={
+														authPlatformSelectionState.allSelected
+															? true
+															: authPlatformSelectionState.someSelected
+																? 'indeterminate'
+																: false
+													}
+													onClick={(event) => event.stopPropagation()}
+													onCheckedChange={(checked) =>
+														setScopes(authPlatformOptionalScopeNames, checked === true)
+													}
+												/>
+												<span className="text-sm font-medium text-foreground">Select all</span>
+												<Badge variant="ghost" className="text-xs">
+													{authPlatformSelectionState.selectedCount}/{authPlatformScopeNames.length}
+												</Badge>
+											</div>
+										</div>
+									</CardHeader>
+									<CardContent>{renderScopeRows(authPlatformSection.scopes)}</CardContent>
+								</Card>
+							) : null}
+
+							{esiProxySection ? (
+								<Card className="border-border/60 bg-card/40">
+									<CardHeader className="space-y-3 pb-3">
+										<div className="flex flex-wrap items-center justify-between gap-3">
+											<div>
+												<CardTitle className="text-base">{esiProxySection.label}</CardTitle>
+												<CardDescription>{esiProxySection.description}</CardDescription>
+											</div>
+											<div className="flex flex-wrap items-center gap-2">
+												{(['read', 'write'] as const).map((accessLevel) => {
+													const selectionState =
+														accessLevel === 'read' ? esiReadSelectionState : esiWriteSelectionState
+													const accessScopes =
+														accessLevel === 'read' ? esiReadScopeNames : esiWriteScopeNames
+													return (
+														<div
+															key={accessLevel}
+															className="flex cursor-pointer items-center gap-2 rounded-md border border-border/60 px-3 py-2 transition-colors hover:bg-muted/40"
+															role="button"
+															tabIndex={0}
+															onClick={() => setScopes(accessScopes, !selectionState.allSelected)}
+															onKeyDown={(event) => {
+																if (event.key === 'Enter' || event.key === ' ') {
+																	event.preventDefault()
+																	setScopes(accessScopes, !selectionState.allSelected)
+																}
+															}}
+														>
+															<Checkbox
+																checked={
+																	selectionState.allSelected
+																		? true
+																		: selectionState.someSelected
+																			? 'indeterminate'
+																			: false
+																}
+																onClick={(event) => event.stopPropagation()}
+																onCheckedChange={(checked) => setScopes(accessScopes, checked === true)}
+															/>
+															<span className="text-sm font-medium text-foreground">
+																Select all {accessLevel}
+															</span>
+															<Badge variant={accessLevel === 'read' ? 'success' : 'warning'} className="text-xs">
+																{selectionState.selectedCount}/{selectionState.totalCount}
+															</Badge>
+														</div>
+													)
+												})}
+											</div>
+										</div>
+									</CardHeader>
+									<CardContent>
+										<Accordion type="multiple" className="space-y-2">
+											{esiProxySection.domainGroups.map((domainGroup) => (
+												<AccordionItem
+													key={domainGroup.key}
+													value={domainGroup.key}
+													className="rounded-lg border border-border/60 border-b-0 bg-background/40 px-3"
+												>
+													<AccordionTrigger className="py-3 text-sm font-medium text-foreground hover:no-underline">
+														<span className="flex min-w-0 flex-1 items-center gap-2">
+															<span className="truncate">{domainGroup.label}</span>
+															<Badge variant="ghost" className="text-[10px] uppercase tracking-wide">
+																{domainGroup.scopes.length} scopes
+															</Badge>
+														</span>
+													</AccordionTrigger>
+													<AccordionContent className="pb-0">
+														<div className="pb-3">{renderScopeRows(domainGroup.scopes)}</div>
+													</AccordionContent>
+												</AccordionItem>
+											))}
+										</Accordion>
+									</CardContent>
+								</Card>
+							) : null}
+						</div>
+					</details>
 					<Button
 						onClick={handleCreate}
 						loading={createClientMutation.isPending}
@@ -616,8 +894,8 @@ export default function AdminThirdPartyAppsPage() {
 									key={client.clientId}
 									className="rounded-lg border border-border/60 bg-card/60 p-4"
 								>
-									<div className="flex items-start justify-between gap-3">
-										<div className="space-y-1">
+									<div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
+										<div className="space-y-3">
 											<p className="font-semibold">{client.clientName ?? client.clientId}</p>
 											<p className="text-xs text-muted-foreground font-mono">{client.clientId}</p>
 											{client.redirectUris?.length ? (
@@ -642,7 +920,15 @@ export default function AdminThirdPartyAppsPage() {
 												</div>
 											) : null}
 										</div>
-										<div className="flex items-center gap-2">
+										<div className="flex flex-wrap items-center gap-2 lg:justify-end">
+											<Button
+												variant="secondary"
+												size="sm"
+												onClick={() => openEditClientDialog(client)}
+												showIcon={false}
+											>
+												Edit
+											</Button>
 											<Button
 												variant="secondary"
 												size="sm"
@@ -673,6 +959,220 @@ export default function AdminThirdPartyAppsPage() {
 					)}
 				</CardContent>
 			</Card>
+
+			<Dialog
+				open={editDialogOpen}
+				onOpenChange={(open) => {
+					setEditDialogOpen(open)
+					if (!open) {
+						setEditingClient(null)
+						setEditForm(null)
+					}
+				}}
+			>
+				<DialogContent className="max-h-[90vh] overflow-y-auto sm:max-w-3xl">
+					<DialogHeader>
+						<DialogTitle>Edit OAuth Client</DialogTitle>
+						<DialogDescription>
+							Update registered client details, redirect URIs, and allowed scopes.
+						</DialogDescription>
+					</DialogHeader>
+					{editForm ? (
+						<div className="space-y-4">
+							<div className="space-y-2">
+								<Label htmlFor="edit-client-name">Client Name</Label>
+								<Input
+									id="edit-client-name"
+									value={editForm.clientName}
+									onChange={(event) =>
+										setEditForm((previous) =>
+											previous ? { ...previous, clientName: event.target.value } : previous
+										)
+									}
+								/>
+							</div>
+							<div className="space-y-2">
+								<Label htmlFor="edit-redirect-uris">Redirect URIs (one per line)</Label>
+								<Textarea
+									id="edit-redirect-uris"
+									value={editForm.redirectUrisText}
+									onChange={(event) =>
+										setEditForm((previous) =>
+											previous ? { ...previous, redirectUrisText: event.target.value } : previous
+										)
+									}
+								/>
+							</div>
+							<ClientAccessSettings
+								form={editForm}
+								idPrefix="edit"
+								onChange={(updater) =>
+									setEditForm((previous) => (previous ? updater(previous) : previous))
+								}
+							/>
+							<details className="rounded-lg border border-border/60 bg-card/40 px-3 py-3">
+								<summary className="cursor-pointer text-sm font-medium text-foreground">
+									Allowed Scopes
+									<span className="ml-2 text-xs text-muted-foreground">
+										{editForm.selectedScopes.size} selected of{' '}
+										{scopeSections.reduce((total, section) => total + section.scopes.length, 0)} total
+									</span>
+								</summary>
+								<div className="mt-4 space-y-4">
+									{authPlatformSection ? (
+										<Card className="border-border/60 bg-card/40">
+											<CardHeader className="space-y-3 pb-3">
+												<div className="flex flex-wrap items-center justify-between gap-3">
+													<div>
+														<CardTitle className="text-base">{authPlatformSection.label}</CardTitle>
+														<CardDescription>{authPlatformSection.description}</CardDescription>
+													</div>
+													<div
+														className="flex cursor-pointer items-center gap-2 rounded-md border border-border/60 px-3 py-2 transition-colors hover:bg-muted/40"
+														role="button"
+														tabIndex={0}
+														onClick={() =>
+															setEditScopes(
+																authPlatformOptionalScopeNames,
+																!editAuthPlatformSelectionState.allSelected
+															)
+														}
+														onKeyDown={(event) => {
+															if (event.key === 'Enter' || event.key === ' ') {
+																event.preventDefault()
+																setEditScopes(
+																	authPlatformOptionalScopeNames,
+																	!editAuthPlatformSelectionState.allSelected
+																)
+															}
+														}}
+													>
+														<Checkbox
+															checked={
+																editAuthPlatformSelectionState.allSelected
+																	? true
+																	: editAuthPlatformSelectionState.someSelected
+																		? 'indeterminate'
+																		: false
+															}
+															onClick={(event) => event.stopPropagation()}
+															onCheckedChange={(checked) =>
+																setEditScopes(authPlatformOptionalScopeNames, checked === true)
+															}
+														/>
+														<span className="text-sm font-medium text-foreground">Select all</span>
+														<Badge variant="ghost" className="text-xs">
+															{editAuthPlatformSelectionState.selectedCount}/{authPlatformScopeNames.length}
+														</Badge>
+													</div>
+												</div>
+											</CardHeader>
+											<CardContent>
+												{renderScopeRows(
+													authPlatformSection.scopes,
+													editForm.selectedScopes,
+													toggleEditScope
+												)}
+											</CardContent>
+										</Card>
+									) : null}
+									{esiProxySection ? (
+										<Card className="border-border/60 bg-card/40">
+											<CardHeader className="space-y-3 pb-3">
+												<div className="flex flex-wrap items-center justify-between gap-3">
+													<div>
+														<CardTitle className="text-base">{esiProxySection.label}</CardTitle>
+														<CardDescription>{esiProxySection.description}</CardDescription>
+													</div>
+													<div className="flex flex-wrap items-center gap-2">
+														{(['read', 'write'] as const).map((accessLevel) => {
+															const selectionState =
+																accessLevel === 'read' ? editEsiReadSelectionState : editEsiWriteSelectionState
+															const accessScopes =
+																accessLevel === 'read' ? esiReadScopeNames : esiWriteScopeNames
+															return (
+																<div
+																	key={accessLevel}
+																	className="flex cursor-pointer items-center gap-2 rounded-md border border-border/60 px-3 py-2 transition-colors hover:bg-muted/40"
+																	role="button"
+																	tabIndex={0}
+																	onClick={() =>
+																		setEditScopes(accessScopes, !selectionState.allSelected)
+																	}
+																	onKeyDown={(event) => {
+																		if (event.key === 'Enter' || event.key === ' ') {
+																			event.preventDefault()
+																			setEditScopes(accessScopes, !selectionState.allSelected)
+																		}
+																	}}
+																>
+																	<Checkbox
+																		checked={
+																			selectionState.allSelected
+																				? true
+																				: selectionState.someSelected
+																					? 'indeterminate'
+																					: false
+																		}
+																		onClick={(event) => event.stopPropagation()}
+																		onCheckedChange={(checked) => setEditScopes(accessScopes, checked === true)}
+																	/>
+																	<span className="text-sm font-medium text-foreground">
+																		Select all {accessLevel}
+																	</span>
+																	<Badge
+																		variant={accessLevel === 'read' ? 'success' : 'warning'}
+																		className="text-xs"
+																	>
+																		{selectionState.selectedCount}/{selectionState.totalCount}
+																	</Badge>
+																</div>
+															)
+														})}
+													</div>
+												</div>
+											</CardHeader>
+											<CardContent>
+												<Accordion type="multiple" className="space-y-2">
+													{esiProxySection.domainGroups.map((domainGroup) => (
+														<AccordionItem
+															key={domainGroup.key}
+															value={domainGroup.key}
+															className="rounded-lg border border-border/60 border-b-0 bg-background/40 px-3"
+														>
+															<AccordionTrigger className="py-3 text-sm font-medium text-foreground hover:no-underline">
+																<span className="flex min-w-0 flex-1 items-center gap-2">
+																	<span className="truncate">{domainGroup.label}</span>
+																	<Badge variant="ghost" className="text-[10px] uppercase tracking-wide">
+																		{domainGroup.scopes.length} scopes
+																	</Badge>
+																</span>
+															</AccordionTrigger>
+															<AccordionContent className="pb-0">
+																<div className="pb-3">
+																	{renderScopeRows(domainGroup.scopes, editForm.selectedScopes, toggleEditScope)}
+																</div>
+															</AccordionContent>
+														</AccordionItem>
+													))}
+												</Accordion>
+											</CardContent>
+										</Card>
+									) : null}
+								</div>
+							</details>
+						</div>
+					) : null}
+					<DialogFooter>
+						<Button variant="secondary" onClick={() => setEditDialogOpen(false)}>
+							Cancel
+						</Button>
+						<Button onClick={handleUpdate} loading={updateClientMutation.isPending} loadingText="Saving...">
+							Save Changes
+						</Button>
+					</DialogFooter>
+				</DialogContent>
+			</Dialog>
 
 			<Dialog open={secretDialogOpen} onOpenChange={setSecretDialogOpen}>
 				<DialogContent>

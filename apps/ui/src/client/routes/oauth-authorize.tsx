@@ -18,6 +18,7 @@ interface OAuthAuthorizePreview {
 	clientName: string | null
 	scope: string[]
 	state: string | null
+	requiresFreshSession?: boolean
 }
 
 interface OAuthAuthorizeResolution {
@@ -42,6 +43,9 @@ export default function OAuthAuthorizePage() {
 		() => preview?.scope.map((scope) => getThirdPartyAppScopeMetadata(scope)) ?? [],
 		[preview?.scope]
 	)
+	const loginUrl = `/login?redirect=${encodeURIComponent(requestUrl)}`
+	const requiresFreshSession = preview?.requiresFreshSession ?? false
+	const requiresFreshSessionError = error?.toLowerCase().includes('reauthentication required') ?? false
 
 	useEffect(() => {
 		if (!isAuthenticated) {
@@ -98,7 +102,6 @@ export default function OAuthAuthorizePage() {
 	}
 
 	if (!isAuthenticated) {
-		const loginUrl = `/login?redirect=${encodeURIComponent(requestUrl)}`
 		return (
 			<div className="flex min-h-screen items-center justify-center bg-background p-4">
 				<Card variant="elevated" className="w-full max-w-md">
@@ -147,9 +150,22 @@ export default function OAuthAuthorizePage() {
 						</div>
 					</CardHeader>
 					<CardContent>
-						<a href="/" className="text-sm font-medium text-primary hover:underline">
-							Return to Home
-						</a>
+						<div className="flex flex-col gap-3">
+							{requiresFreshSessionError ? (
+								<>
+									<Button asChild className="w-full">
+										<a href={loginUrl}>Sign in again</a>
+									</Button>
+									<a href="/" className="text-center text-sm font-medium text-primary hover:underline">
+										Return to Home
+									</a>
+								</>
+							) : (
+								<a href="/" className="text-sm font-medium text-primary hover:underline">
+									Return to Home
+								</a>
+							)}
+						</div>
 					</CardContent>
 				</Card>
 			</div>
@@ -238,10 +254,25 @@ export default function OAuthAuthorizePage() {
 						>
 							{submittingAction === 'deny' ? 'Working...' : 'Deny'}
 						</Button>
-						<Button className="flex-1" onClick={() => handleAction('approve')} disabled={submittingAction !== null}>
+						<Button
+							className="flex-1"
+							onClick={() => handleAction('approve')}
+							disabled={submittingAction !== null || requiresFreshSession}
+						>
 							{submittingAction === 'approve' ? 'Working...' : 'Approve'}
 						</Button>
 					</div>
+					{requiresFreshSession ? (
+						<div className="rounded-lg border border-amber-500/40 bg-amber-500/10 p-4 text-sm text-amber-100">
+							<p className="font-medium text-foreground">Reauthentication required</p>
+							<p className="mt-1 text-muted-foreground">
+								Please sign in again before authorizing this application.
+							</p>
+							<Button asChild className="mt-3 w-full">
+								<a href={loginUrl}>Sign in again</a>
+							</Button>
+						</div>
+					) : null}
 				</CardContent>
 			</Card>
 		</div>

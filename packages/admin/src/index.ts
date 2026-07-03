@@ -547,12 +547,6 @@ export interface OAuthClientCreateInput {
 	tokenEndpointAuthMethod: 'client_secret_basic' | 'client_secret_post' | 'none'
 	grantTypes: string[]
 	responseTypes: string[]
-	clientUri?: string
-	logoUri?: string
-	contacts?: string[]
-	policyUri?: string
-	tosUri?: string
-	jwksUri?: string
 }
 
 /**
@@ -565,12 +559,6 @@ export interface OAuthClientUpdateInput {
 	tokenEndpointAuthMethod?: 'client_secret_basic' | 'client_secret_post' | 'none'
 	grantTypes?: string[]
 	responseTypes?: string[]
-	clientUri?: string
-	logoUri?: string
-	contacts?: string[]
-	policyUri?: string
-	tosUri?: string
-	jwksUri?: string
 }
 
 /**
@@ -595,6 +583,7 @@ export interface OAuthSessionUser {
 	mainCharacterId: string
 	isAdmin: boolean
 	characters: OAuthSessionCharacter[]
+	sessionCreatedAt?: string
 }
 
 export interface OAuthAuthorizationPreview {
@@ -602,6 +591,7 @@ export interface OAuthAuthorizationPreview {
 	clientName: string | null
 	scope: string[]
 	state: string | null
+	requiresFreshSession?: boolean
 }
 
 export interface OAuthAuthorizationResult {
