@@ -56,8 +56,7 @@
 			},
 			{
 				"name": "THIRD_PARTY_APP_QUOTA",
-				"class_name": "ThirdPartyAppQuota",
-				"script_name": "third-party-apps"
+				"class_name": "ThirdPartyAppQuota"
 			}
 		]
 	}
