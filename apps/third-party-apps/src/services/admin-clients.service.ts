@@ -42,6 +42,14 @@ async function hashSecret(secret: string): Promise<string> {
 	return hashArray.map((byte) => byte.toString(16).padStart(2, '0')).join('')
 }
 
+async function generateClientSecret(): Promise<{ rawSecret: string; hashedSecret: string }> {
+	const rawSecret = generateRandomString(32)
+	return {
+		rawSecret,
+		hashedSecret: await hashSecret(rawSecret),
+	}
+}
+
 async function getClient(env: Env, clientId: string): Promise<StoredClientRecord | null> {
 	return await env.OAUTH_KV.get<StoredClientRecord>(`${CLIENT_KEY_PREFIX}${clientId}`, 'json')
 }
@@ -65,19 +73,16 @@ export async function listOAuthClients(
 	}
 
 	const response = await env.OAUTH_KV.list(listOptions)
-	const clients: OAuthClientSummary[] = []
-	await Promise.all(
+	const clients = await Promise.all(
 		response.keys.map(async (key) => {
 			const clientId = key.name.slice(CLIENT_KEY_PREFIX.length)
 			const client = await getClient(env, clientId)
-			if (client) {
-				clients.push(await mapClientSummary(env, client))
-			}
+			return client ? await mapClientSummary(env, client) : null
 		})
 	)
 
 	return {
-		items: clients,
+		items: clients.filter((client): client is OAuthClientSummary => client !== null),
 		cursor: response.list_complete ? undefined : response.cursor,
 	}
 }
@@ -89,7 +94,7 @@ export async function createOAuthClient(
 	const clientId = generateRandomString(16)
 	const tokenEndpointAuthMethod = input.tokenEndpointAuthMethod || 'client_secret_basic'
 	const isPublicClient = tokenEndpointAuthMethod === 'none'
-	const rawClientSecret = isPublicClient ? undefined : generateRandomString(32)
+	const secret = isPublicClient ? null : await generateClientSecret()
 	const storedClient: StoredClientRecord = {
 		clientId,
 		clientName: input.clientName,
@@ -99,14 +104,14 @@ export async function createOAuthClient(
 		responseTypes: input.responseTypes ?? ['code'],
 		registrationDate: Math.floor(Date.now() / 1e3),
 	}
-	if (!isPublicClient && rawClientSecret) {
-		storedClient.clientSecret = await hashSecret(rawClientSecret)
+	if (secret) {
+		storedClient.clientSecret = secret.hashedSecret
 	}
 	await putClient(env, storedClient)
 	await setClientMetadata(env, clientId, { scopes: normalizeScopes(input.scopes) })
 
 	const summary = await mapClientSummary(env, storedClient)
-	return rawClientSecret ? { ...summary, clientSecret: rawClientSecret } : summary
+	return secret ? { ...summary, clientSecret: secret.rawSecret } : summary
 }
 
 export async function updateOAuthClient(
@@ -122,9 +127,14 @@ export async function updateOAuthClient(
 	const nextAuthMethod = input.tokenEndpointAuthMethod || existing.tokenEndpointAuthMethod || 'client_secret_basic'
 	const isPublicClient = nextAuthMethod === 'none'
 	let nextSecret = existing.clientSecret
+	let rawClientSecret: string | undefined
 
 	if (isPublicClient) {
 		nextSecret = undefined
+	} else if (!nextSecret) {
+		const secret = await generateClientSecret()
+		rawClientSecret = secret.rawSecret
+		nextSecret = secret.hashedSecret
 	}
 
 	const updatedClient: StoredClientRecord = {
@@ -145,7 +155,7 @@ export async function updateOAuthClient(
 	}
 
 	const summary = await mapClientSummary(env, updatedClient)
-	return summary
+	return rawClientSecret ? { ...summary, clientSecret: rawClientSecret } : summary
 }
 
 export async function deleteOAuthClient(env: Env, clientId: string): Promise<void> {
@@ -162,15 +172,15 @@ export async function regenerateOAuthClientSecret(
 		return null
 	}
 
-	const nextSecret = generateRandomString(32)
+	const nextSecret = await generateClientSecret()
 	const updatedClient: StoredClientRecord = {
 		...existing,
 		tokenEndpointAuthMethod: 'client_secret_basic',
-		clientSecret: await hashSecret(nextSecret),
+		clientSecret: nextSecret.hashedSecret,
 	}
 	await putClient(env, updatedClient)
 	return {
 		clientId,
-		clientSecret: nextSecret,
+		clientSecret: nextSecret.rawSecret,
 	}
 }

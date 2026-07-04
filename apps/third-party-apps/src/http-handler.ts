@@ -6,7 +6,6 @@ import { THIRD_PARTY_APPS_OAUTH_PROVIDER_OPTIONS } from './oauth-api-handler'
 import type { Env } from './context'
 
 const oauthProvider = new OAuthProvider(THIRD_PARTY_APPS_OAUTH_PROVIDER_OPTIONS)
-const LOCAL_DEV_UI_ORIGIN = 'http://127.0.0.1:5173'
 
 function isLocalHttpUrl(url: URL): boolean {
 	return (
@@ -18,6 +17,12 @@ function isLocalHttpUrl(url: URL): boolean {
 	)
 }
 
+function buildLocalDevUiOrigin(requestUrl: URL): string {
+	const uiUrl = new URL(requestUrl)
+	uiUrl.port = '5173'
+	return uiUrl.origin
+}
+
 export function isOAuthHttpRoute(request: Request): boolean {
 	return isOAuthHttpRoutePath(new URL(request.url).pathname)
 }
@@ -27,7 +32,7 @@ function buildOAuthDiscoveryResponse(request: Request): Response {
 	const tokenEndpoint = `${requestUrl.origin}${THIRD_PARTY_APPS_OAUTH_PROVIDER_CONTRACT.tokenEndpoint}`
 	const authorizationEndpoint =
 		isLocalHttpUrl(requestUrl)
-			? `${LOCAL_DEV_UI_ORIGIN}${THIRD_PARTY_APPS_OAUTH_PROVIDER_CONTRACT.authorizeEndpoint}`
+			? `${buildLocalDevUiOrigin(requestUrl)}${THIRD_PARTY_APPS_OAUTH_PROVIDER_CONTRACT.authorizeEndpoint}`
 			: `${requestUrl.origin}${THIRD_PARTY_APPS_OAUTH_PROVIDER_CONTRACT.authorizeEndpoint}`
 
 	return Response.json({

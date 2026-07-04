@@ -57,6 +57,24 @@ describe('third-party apps http handler', () => {
 		expect(oauthFetchMock).not.toHaveBeenCalled()
 	})
 
+	it('preserves the issuer hostname when building the local dev authorize endpoint', async () => {
+		const response = await handleThirdPartyAppsHttpRequest(
+			new Request('http://localhost:8787/.well-known/oauth-authorization-server'),
+			{
+				ENVIRONMENT: 'development',
+			} as never,
+			{} as ExecutionContext
+		)
+
+		expect(response?.status).toBe(200)
+		expect(await response?.json()).toEqual(
+			expect.objectContaining({
+				issuer: 'http://localhost:8787',
+				authorization_endpoint: 'http://localhost:5173/authorize',
+			})
+		)
+	})
+
 	it('returns null for non-oauth routes', async () => {
 		const response = await handleThirdPartyAppsHttpRequest(
 			new Request('http://127.0.0.1:8787/not-oauth'),

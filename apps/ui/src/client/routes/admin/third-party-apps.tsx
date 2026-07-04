@@ -382,12 +382,16 @@ export default function AdminThirdPartyAppsPage() {
 				method: 'PATCH',
 				body: JSON.stringify(payload),
 			}),
-		onSuccess: async () => {
+		onSuccess: async (data) => {
 			setMessage('Client updated')
 			setError(null)
 			setEditDialogOpen(false)
 			setEditingClient(null)
 			setEditForm(null)
+			if (data.clientSecret) {
+				setLatestSecret({ clientId: data.clientId, clientSecret: data.clientSecret })
+				setSecretDialogOpen(true)
+			}
 			await queryClient.invalidateQueries({ queryKey: ['admin-third-party-oauth-clients'] })
 		},
 		onError: (updateError) => {

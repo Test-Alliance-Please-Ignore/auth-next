@@ -11,6 +11,8 @@ type CommandName =
 	| 'call'
 	| 'scenario-profile'
 	| 'scenario-esi-basic'
+	| 'scenario-esi-forbidden-corporation-structures'
+	| 'scenario-esi-forbidden-write-location'
 type TokenEndpointAuthMethod = 'client_secret_basic' | 'client_secret_post' | 'none'
 
 interface ParsedArgs {
@@ -455,6 +457,8 @@ function writeUsage(): void {
   pnpm -F third-party-apps oauth:harness call --access-token TOKEN --path /oauth/api/me [--method GET] [--body JSON] [--issuer URL]
   pnpm -F third-party-apps oauth:harness scenario-profile --client-id ID [--client-secret SECRET] [--issuer URL]
   pnpm -F third-party-apps oauth:harness scenario-esi-basic --client-id ID [--client-secret SECRET] [--issuer URL]
+  pnpm -F third-party-apps oauth:harness scenario-esi-forbidden-corporation-structures --client-id ID [--client-secret SECRET] [--issuer URL]
+  pnpm -F third-party-apps oauth:harness scenario-esi-forbidden-write-location --client-id ID [--client-secret SECRET] [--issuer URL]
 
 Common flags:
   --issuer              Provider base URL (default: http://127.0.0.1:8787)
@@ -926,6 +930,105 @@ async function runBasicEsiScenario(config: HarnessConfig): Promise<void> {
 	)
 }
 
+async function bootstrapProfileSession(config: HarnessConfig): Promise<{
+	session: AuthorizationSessionResult
+	me: OAuthProfileResponse
+	accessToken: string
+	mainCharacterId: string
+}> {
+	const session = await performAuthorizationCodeFlow({
+		...config,
+		scopes: ['profile'],
+	})
+	const accessToken = session.tokenResponse.access_token
+	assert(accessToken, 'Profile bootstrap did not receive an access token')
+
+	const me = await fetchAuthorizedRequest(config.issuer, accessToken, '/oauth/api/me', 'GET', undefined, config.debug)
+	const mePayload = assertAuthorizedObjectPayload(me, '/oauth/api/me') as OAuthProfileResponse
+	assert(
+		typeof mePayload.mainCharacterId === 'string' && mePayload.mainCharacterId.length > 0,
+		'Profile response is missing mainCharacterId'
+	)
+
+	return {
+		session,
+		me: mePayload,
+		accessToken,
+		mainCharacterId: mePayload.mainCharacterId,
+	}
+}
+
+async function runForbiddenCorporationStructuresScenario(config: HarnessConfig): Promise<void> {
+	const { session, me, accessToken, mainCharacterId } = await bootstrapProfileSession(config)
+	const corporationId = '1'
+	const denied = await fetchAuthorizedRequest(
+		config.issuer,
+		accessToken,
+		`/oauth/api/esi-proxy/latest/corporations/${corporationId}/structures/?character_id=${mainCharacterId}`,
+		'GET',
+		undefined,
+		config.debug
+	)
+	assert(denied.status === 403, `Corporation structures scenario expected HTTP 403 but got ${denied.status}`)
+	assert(typeof denied.payload === 'object' && denied.payload !== null, 'Corporation structures denial returned a non-object payload')
+	const payload = denied.payload as Record<string, unknown>
+	assert(payload.error === 'forbidden', 'Corporation structures denial did not return a forbidden error')
+	assert(
+		typeof payload.message === 'string' && payload.message.includes('Missing required scope'),
+		'Corporation structures denial did not mention the missing scope'
+	)
+
+	printResult(
+		{
+			scenario: 'esi-forbidden-corporation-structures',
+			issuer: config.issuer,
+			callback: session.callback,
+			me,
+			attemptedRequest: {
+				path: `/oauth/api/esi-proxy/latest/corporations/${corporationId}/structures/?character_id=${mainCharacterId}`,
+				method: 'GET',
+			},
+			deniedResponse: denied,
+		},
+		config.json
+	)
+}
+
+async function runForbiddenWriteLocationScenario(config: HarnessConfig): Promise<void> {
+	const { session, me, accessToken, mainCharacterId } = await bootstrapProfileSession(config)
+	const denied = await fetchAuthorizedRequest(
+		config.issuer,
+		accessToken,
+		`/oauth/api/esi-proxy/latest/characters/${mainCharacterId}/location/?character_id=${mainCharacterId}`,
+		'POST',
+		undefined,
+		config.debug
+	)
+	assert(denied.status === 403, `Write-location scenario expected HTTP 403 but got ${denied.status}`)
+	assert(typeof denied.payload === 'object' && denied.payload !== null, 'Write-location denial returned a non-object payload')
+	const payload = denied.payload as Record<string, unknown>
+	assert(payload.error === 'forbidden', 'Write-location denial did not return a forbidden error')
+	assert(
+		typeof payload.message === 'string' && payload.message.includes('No third-party scope allows this ESI path'),
+		'Write-location denial did not mention the allowlist restriction'
+	)
+
+	printResult(
+		{
+			scenario: 'esi-forbidden-write-location',
+			issuer: config.issuer,
+			callback: session.callback,
+			me,
+			attemptedRequest: {
+				path: `/oauth/api/esi-proxy/latest/characters/${mainCharacterId}/location/?character_id=${mainCharacterId}`,
+				method: 'POST',
+			},
+			deniedResponse: denied,
+		},
+		config.json
+	)
+}
+
 function buildConfig(args: ParsedArgs): HarnessConfig {
 	const commandName = (args._[0] ?? 'auth') as CommandName
 	const issuer = getStringArg(args, 'issuer') ?? process.env.OAUTH_ISSUER ?? 'http://127.0.0.1:8787'
@@ -1013,6 +1116,15 @@ function validateConfig(config: HarnessConfig): void {
 				throw new Error('Missing --client-secret or OAUTH_CLIENT_SECRET for confidential client auth')
 			}
 			return
+		case 'scenario-esi-forbidden-corporation-structures':
+		case 'scenario-esi-forbidden-write-location':
+			if (!config.clientId) {
+				throw new Error('Missing --client-id or OAUTH_CLIENT_ID')
+			}
+			if (config.clientAuthMethod !== 'none' && !config.clientSecret) {
+				throw new Error('Missing --client-secret or OAUTH_CLIENT_SECRET for confidential client auth')
+			}
+			return
 		default:
 			throw new Error(`Unsupported command: ${config.command satisfies never}`)
 	}
@@ -1053,6 +1165,12 @@ async function main(): Promise<void> {
 			return
 		case 'scenario-esi-basic':
 			await runBasicEsiScenario(config)
+			return
+		case 'scenario-esi-forbidden-corporation-structures':
+			await runForbiddenCorporationStructuresScenario(config)
+			return
+		case 'scenario-esi-forbidden-write-location':
+			await runForbiddenWriteLocationScenario(config)
 			return
 		default:
 			throw new Error(`Unsupported command: ${config.command satisfies never}`)

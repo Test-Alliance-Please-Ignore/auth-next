@@ -29,6 +29,9 @@ describe('proxy-policy', () => {
 		expect(requiredScopeForEsiRequest('POST', '/latest/ui/autopilot/waypoint/')).toBe('esi:esi-ui.write_waypoint.v1')
 		expect(requiredScopeForEsiRequest('POST', '/latest/characters/123/assets/names/')).toBe('esi:esi-assets.read_assets.v1')
 		expect(requiredScopeForEsiRequest('PUT', '/latest/fleets/42/members/99/')).toBe('esi:esi-fleets.write_fleet.v1')
+		expect(requiredScopeForEsiRequest('GET', '/latest/corporations/123/structures/')).toBe(
+			'esi:esi-corporations.read_structures.v1'
+		)
 		expect(requiredScopeForEsiRequest('GET', '/latest/universe/structures/1024/')).toBe('esi:esi-universe.read_structures.v1')
 		expect(requiredScopeForEsiRequest('GET', '/latest/universe/systems/30000142/')).toBeNull()
 		expect(requiredScopeForEsiRequest('HEAD', '/latest/characters/123/mail/')).toBe('esi:esi-mail.read_mail.v1')
