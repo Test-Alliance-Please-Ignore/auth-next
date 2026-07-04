@@ -3,7 +3,9 @@
 	"name": "third-party-apps",
 	"main": "src/index.ts",
 	"compatibility_date": "2025-04-28",
-	"compatibility_flags": ["nodejs_compat"],
+	"compatibility_flags": [
+		"nodejs_compat"
+	],
 	"workers_dev": false,
 	"routes": [
 		"pleaseignore.app/oauth/token*",
@@ -31,6 +33,18 @@
 		{
 			"binding": "OAUTH_KV",
 			"id": "THIRD_PARTY_APPS_OAUTH_KV_NAMESPACE_ID"
+		},
+		{
+			"binding": "THIRD_PARTY_APPS_ESI_RATE_LIMITS",
+			"id": "153caccfc85142c99c6574f398e6de79"
+		},
+		{
+			"binding": "THIRD_PARTY_APPS_ESI_PROXY_CACHE",
+			"id": "e0f04c946b1e4328b32dcaafc2a72b31"
+		},
+		{
+			"binding": "THIRD_PARTY_APPS_OAUTH_KV",
+			"id": "95d17aac198143a39922e2209a400f5c"
 		}
 	],
 	"services": [
