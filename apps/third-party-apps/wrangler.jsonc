@@ -59,5 +59,11 @@
 				"class_name": "ThirdPartyAppQuota"
 			}
 		]
-	}
+	},
+	"migrations": [
+		{
+			"tag": "v1",
+			"new_sqlite_classes": ["ThirdPartyAppQuota"]
+		}
+	]
 }
