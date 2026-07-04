@@ -52,7 +52,7 @@ function isAllowedLocalHttpRedirect(url: URL): boolean {
 		(url.hostname === 'localhost' ||
 			url.hostname === '127.0.0.1' ||
 			url.hostname === '[::1]' ||
-			url.hostname.endsWith('.localhost'))
+		url.hostname.endsWith('.localhost'))
 	)
 }
 
@@ -61,8 +61,9 @@ function validateRedirectUris(env: App['Bindings'], redirectUris: string[] | und
 	for (const redirectUri of redirectUris) {
 		const url = new URL(redirectUri)
 		if (url.protocol === 'https:') continue
-		if (isLocalDev(env) && isAllowedLocalHttpRedirect(url)) continue
-		return `Redirect URI must use HTTPS: ${redirectUri}`
+		if (isLocalDev(env)) continue
+		if (isAllowedLocalHttpRedirect(url)) continue
+		return `Redirect URI must use HTTPS, except for localhost or loopback HTTP: ${redirectUri}`
 	}
 	return null
 }

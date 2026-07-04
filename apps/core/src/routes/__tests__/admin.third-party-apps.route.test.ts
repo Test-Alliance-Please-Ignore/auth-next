@@ -108,6 +108,84 @@ describe('admin third-party apps rpc routes', () => {
 		)
 	})
 
+	it('allows localhost http redirect uris in production', async () => {
+		const app = createApp(makeUser())
+		const response = await app.request(
+			'/api/admin/third-party-apps/clients',
+			{
+				method: 'POST',
+				body: JSON.stringify({
+					clientName: 'Local Test Client',
+					redirectUris: ['http://127.0.0.1:9786/callback'],
+					scopes: ['profile'],
+					tokenEndpointAuthMethod: 'client_secret_basic',
+					grantTypes: ['authorization_code'],
+					responseTypes: ['code'],
+				}),
+			},
+			env
+		)
+		expect(response.status).toBe(201)
+		expect(thirdPartyAppsStub.createClient).toHaveBeenCalledWith(
+			expect.objectContaining({
+				redirectUris: ['http://127.0.0.1:9786/callback'],
+			})
+		)
+	})
+
+	it('allows unrestricted http redirect uris in development', async () => {
+		const app = createApp(makeUser())
+		const response = await app.request(
+			'/api/admin/third-party-apps/clients',
+			{
+				method: 'POST',
+				body: JSON.stringify({
+					clientName: 'Dev Test Client',
+					redirectUris: ['http://example.com/callback'],
+					scopes: ['profile'],
+					tokenEndpointAuthMethod: 'client_secret_basic',
+					grantTypes: ['authorization_code'],
+					responseTypes: ['code'],
+				}),
+			},
+			{
+				...env,
+				ENVIRONMENT: 'development',
+			}
+		)
+		expect(response.status).toBe(201)
+		expect(thirdPartyAppsStub.createClient).toHaveBeenCalledWith(
+			expect.objectContaining({
+				redirectUris: ['http://example.com/callback'],
+			})
+		)
+	})
+
+	it('rejects non-local http redirect uris', async () => {
+		const app = createApp(makeUser())
+		const response = await app.request(
+			'/api/admin/third-party-apps/clients',
+			{
+				method: 'POST',
+				body: JSON.stringify({
+					clientName: 'Insecure Client',
+					redirectUris: ['http://example.com/callback'],
+					scopes: ['profile'],
+					tokenEndpointAuthMethod: 'client_secret_basic',
+					grantTypes: ['authorization_code'],
+					responseTypes: ['code'],
+				}),
+			},
+			env
+		)
+		expect(response.status).toBe(400)
+		expect(await response.json()).toEqual(
+			expect.objectContaining({
+				error: 'Redirect URI must use HTTPS, except for localhost or loopback HTTP: http://example.com/callback',
+			})
+		)
+	})
+
 	it('updates clients via rpc', async () => {
 		const app = createApp(makeUser())
 		const response = await app.request(
