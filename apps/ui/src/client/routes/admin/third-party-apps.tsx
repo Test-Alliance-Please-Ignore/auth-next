@@ -1,4 +1,4 @@
-import { Plus, RotateCcw, Trash2 } from 'lucide-react'
+import { Check, Copy, Plus, RotateCcw, Trash2 } from 'lucide-react'
 import { useMemo, useState, type KeyboardEvent } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 
@@ -42,6 +42,7 @@ import {
 	TableRow,
 } from '@/components/ui/table'
 import { Textarea } from '@/components/ui/textarea'
+import toast from '@/lib/toast'
 import { usePageTitle } from '@/hooks/usePageTitle'
 import {
 	groupThirdPartyAppScopeOptions,
@@ -322,6 +323,7 @@ export default function AdminThirdPartyAppsPage() {
 	const [editDialogOpen, setEditDialogOpen] = useState(false)
 	const [secretDialogOpen, setSecretDialogOpen] = useState(false)
 	const [latestSecret, setLatestSecret] = useState<{ clientId: string; clientSecret: string } | null>(null)
+	const [secretCopiedField, setSecretCopiedField] = useState<'clientId' | 'clientSecret' | null>(null)
 
 	const clientsQuery = useQuery({
 		queryKey: ['admin-third-party-oauth-clients'],
@@ -344,6 +346,13 @@ export default function AdminThirdPartyAppsPage() {
 		(scope) => !THIRD_PARTY_APP_REQUIRED_SCOPES.includes(scope as (typeof THIRD_PARTY_APP_REQUIRED_SCOPES)[number])
 	)
 	const selectedScopeCount = createForm.selectedScopes.size
+
+	const copySecretField = async (value: string, field: 'clientId' | 'clientSecret', label: string) => {
+		await navigator.clipboard.writeText(value)
+		toast.success(`${label} copied`)
+		setSecretCopiedField(field)
+		setTimeout(() => setSecretCopiedField(null), 2000)
+	}
 
 	const createClientMutation = useMutation({
 		mutationFn: (payload: OAuthClientCreateInput) =>
@@ -688,11 +697,24 @@ export default function AdminThirdPartyAppsPage() {
 			) : null}
 
 			<Card>
-				<CardHeader>
-					<CardTitle>Create OAuth Client</CardTitle>
-					<CardDescription>
-						Add a client app with one or more allowed redirect callback URLs.
-					</CardDescription>
+				<CardHeader className="space-y-0">
+					<div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+						<div className="space-y-1">
+							<CardTitle>Create OAuth Client</CardTitle>
+							<CardDescription>
+								Add a client app with one or more allowed redirect callback URLs.
+							</CardDescription>
+						</div>
+						<Button
+							onClick={handleCreate}
+							loading={createClientMutation.isPending}
+							loadingText="Creating..."
+							className="shrink-0"
+						>
+							<Plus className="h-4 w-4" />
+							Create Client
+						</Button>
+					</div>
 				</CardHeader>
 				<CardContent className="space-y-4">
 					<div className="space-y-2">
@@ -858,14 +880,6 @@ export default function AdminThirdPartyAppsPage() {
 							) : null}
 						</div>
 					</details>
-					<Button
-						onClick={handleCreate}
-						loading={createClientMutation.isPending}
-						loadingText="Creating..."
-					>
-						<Plus className="h-4 w-4" />
-						Create Client
-					</Button>
 				</CardContent>
 			</Card>
 
@@ -922,7 +936,7 @@ export default function AdminThirdPartyAppsPage() {
 										</div>
 										<div className="flex flex-wrap items-center gap-2 lg:justify-end">
 											<Button
-												variant="secondary"
+												variant="ghost"
 												size="sm"
 												onClick={() => openEditClientDialog(client)}
 												showIcon={false}
@@ -930,7 +944,7 @@ export default function AdminThirdPartyAppsPage() {
 												Edit
 											</Button>
 											<Button
-												variant="secondary"
+												variant="primary"
 												size="sm"
 												onClick={() => regenerateSecretMutation.mutate(client.clientId)}
 												loading={regenerateSecretMutation.isPending}
@@ -1182,13 +1196,27 @@ export default function AdminThirdPartyAppsPage() {
 							This secret is only shown once. Copy it now and store it securely.
 						</DialogDescription>
 					</DialogHeader>
-					<div className="space-y-2">
-						<Label>Client ID</Label>
-						<Input readOnly value={latestSecret?.clientId ?? ''} />
-					</div>
-					<div className="space-y-2">
-						<Label>Client Secret</Label>
-						<Textarea readOnly value={latestSecret?.clientSecret ?? ''} className="font-mono text-xs" />
+					<div className="space-y-3">
+						<SecretCopyRow
+							label="Client ID"
+							value={latestSecret?.clientId ?? ''}
+							copied={secretCopiedField === 'clientId'}
+							onCopy={() =>
+								latestSecret?.clientId
+									? void copySecretField(latestSecret.clientId, 'clientId', 'Client ID')
+									: undefined
+							}
+						/>
+						<SecretCopyRow
+							label="Client Secret"
+							value={latestSecret?.clientSecret ?? ''}
+							copied={secretCopiedField === 'clientSecret'}
+							onCopy={() =>
+								latestSecret?.clientSecret
+									? void copySecretField(latestSecret.clientSecret, 'clientSecret', 'Client Secret')
+									: undefined
+							}
+						/>
 					</div>
 					<DialogFooter>
 						<Button variant="secondary" onClick={() => setSecretDialogOpen(false)}>
@@ -1197,6 +1225,44 @@ export default function AdminThirdPartyAppsPage() {
 					</DialogFooter>
 				</DialogContent>
 			</Dialog>
+		</div>
+	)
+}
+
+function SecretCopyRow({
+	label,
+	value,
+	copied,
+	onCopy,
+}: {
+	label: string
+	value: string
+	copied: boolean
+	onCopy: () => void
+}) {
+	return (
+		<div className="flex items-center gap-2">
+			<span className="w-24 shrink-0 text-xs text-muted-foreground">{label}</span>
+			<div
+				role="button"
+				tabIndex={0}
+				onClick={onCopy}
+				onKeyDown={(event) => {
+					if (event.key === 'Enter' || event.key === ' ') {
+						event.preventDefault()
+						onCopy()
+					}
+				}}
+				className={`flex cursor-pointer items-center gap-2.5 rounded-md border-2 px-3 py-2 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 ${
+					copied
+						? 'border-teal-500 bg-teal-500/30 shadow-[inset_0_0_0_1px_rgba(255,255,255,0.18)]'
+						: 'border-zinc-500/50 bg-zinc-500/20 shadow-sm hover:border-zinc-500/70 hover:bg-zinc-500/30'
+				}`}
+			>
+				<Copy className="h-4 w-4 shrink-0 text-muted-foreground" />
+				<span className="break-all font-mono text-base">{value}</span>
+				{copied ? <Check className="h-4 w-4 shrink-0 text-teal-300" /> : null}
+			</div>
 		</div>
 	)
 }

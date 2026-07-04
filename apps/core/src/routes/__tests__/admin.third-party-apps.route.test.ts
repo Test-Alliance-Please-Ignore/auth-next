@@ -146,4 +146,28 @@ describe('admin third-party apps rpc routes', () => {
 		expect(response.status).toBe(200)
 		expect(thirdPartyAppsStub.regenerateClientSecret).toHaveBeenCalledWith('client-1')
 	})
+
+	it('returns a clear error when the third-party apps binding is missing', async () => {
+		const app = createApp(makeUser())
+		const response = await app.request('/api/admin/third-party-apps/clients', {
+			method: 'POST',
+			body: JSON.stringify({
+				clientName: 'Client One',
+				redirectUris: ['https://example.app/callback'],
+				scopes: ['profile'],
+				tokenEndpointAuthMethod: 'client_secret_basic',
+				grantTypes: ['authorization_code'],
+				responseTypes: ['code'],
+			}),
+		}, {
+			ENVIRONMENT: 'development',
+		} as any)
+
+		expect(response.status).toBe(503)
+		expect(await response.json()).toEqual(
+			expect.objectContaining({
+				error: 'Third-party apps service binding is not configured',
+			})
+		)
+	})
 })

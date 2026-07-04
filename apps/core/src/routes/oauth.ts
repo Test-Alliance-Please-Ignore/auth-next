@@ -3,11 +3,12 @@ import { z } from 'zod'
 
 import { logger } from '@repo/hono-helpers'
 
-import { getStub } from '@repo/do-utils'
-
+import { getThirdPartyAppsFetchBinding } from '../lib/third-party-apps'
 import { requireAuth } from '../middleware/session'
 
 import type {
+	OAuthAuthorizationPreview,
+	OAuthAuthorizationResult,
 	OAuthSessionUser,
 } from '@repo/admin'
 import type { App, SessionUser } from '../context'
@@ -74,10 +75,6 @@ function isFreshOAuthConsentSession(sessionCreatedAt?: string | null): boolean {
 	return Date.now() - createdAtMs <= OAUTH_CONSENT_MAX_SESSION_AGE_MS
 }
 
-function getThirdPartyAppsClient(c: App['Bindings']) {
-	return c.THIRD_PARTY_APPS
-}
-
 app.get('/authorize', requireAuth(), async (c) => {
 	const requestUrl = c.req.query('requestUrl')
 	if (!requestUrl) {
@@ -89,9 +86,34 @@ app.get('/authorize', requireAuth(), async (c) => {
 	}
 
 	try {
-		const client = getThirdPartyAppsClient(c.env)
-		const preview = await client.previewAuthorization(requestUrl, expectedOrigin)
+		const client = getThirdPartyAppsFetchBinding(c.env)
+		if (!client) {
+			return c.json({ error: 'Third-party apps service binding is not configured' }, 503)
+		}
+		const previewResponse = await client.fetch(
+			new Request('http://third-party-apps.internal/__internal/oauth/authorize/preview', {
+				method: 'POST',
+				headers: { 'content-type': 'application/json' },
+				body: JSON.stringify({ requestUrl, expectedOrigin }),
+			})
+		)
+		if (!previewResponse.ok) {
+			logger.warn('[OAuthRoute.authorize.preview] Internal preview request failed', {
+				requestUrl,
+				expectedOrigin,
+				status: previewResponse.status,
+				environment: c.env.ENVIRONMENT,
+			})
+			return c.json({ error: 'Failed to load authorization request' }, 500)
+		}
+		const preview = (await previewResponse.json().catch(() => null)) as OAuthAuthorizationPreview | null
 		if (!preview) {
+			logger.warn('[OAuthRoute.authorize.preview] Authorization request rejected by provider', {
+				requestUrl,
+				expectedOrigin,
+				userId: c.get('user')?.id ?? null,
+				environment: c.env.ENVIRONMENT,
+			})
 			return c.json({ error: 'Invalid authorization request' }, 400)
 		}
 
@@ -133,14 +155,42 @@ app.post('/authorize', requireAuth(), async (c) => {
 	}
 
 	try {
-		const client = getThirdPartyAppsClient(c.env)
-		const result = await client.resolveAuthorization(
-			parsed.data.requestUrl,
-			expectedOrigin,
-			toOAuthSessionUser(user),
-			parsed.data.action
+		const client = getThirdPartyAppsFetchBinding(c.env)
+		if (!client) {
+			return c.json({ error: 'Third-party apps service binding is not configured' }, 503)
+		}
+		const resultResponse = await client.fetch(
+			new Request('http://third-party-apps.internal/__internal/oauth/authorize/resolve', {
+				method: 'POST',
+				headers: { 'content-type': 'application/json' },
+				body: JSON.stringify({
+					requestUrl: parsed.data.requestUrl,
+					expectedOrigin,
+					user: toOAuthSessionUser(user),
+					action: parsed.data.action,
+				}),
+			})
 		)
+		if (!resultResponse.ok) {
+			logger.warn('[OAuthRoute.authorize.resolve] Internal resolve request failed', {
+				requestUrl: parsed.data.requestUrl,
+				expectedOrigin,
+				userId: user.id,
+				action: parsed.data.action,
+				status: resultResponse.status,
+				environment: c.env.ENVIRONMENT,
+			})
+			return c.json({ error: 'Failed to complete authorization' }, 500)
+		}
+		const result = (await resultResponse.json().catch(() => null)) as OAuthAuthorizationResult | null
 		if (!result) {
+			logger.warn('[OAuthRoute.authorize.resolve] Authorization resolution rejected by provider', {
+				requestUrl: parsed.data.requestUrl,
+				expectedOrigin,
+				userId: user.id,
+				action: parsed.data.action,
+				environment: c.env.ENVIRONMENT,
+			})
 			return c.json({ error: 'Invalid authorization request' }, 400)
 		}
 

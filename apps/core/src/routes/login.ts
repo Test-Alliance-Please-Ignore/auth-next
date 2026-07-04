@@ -14,16 +14,22 @@ const login = new Hono<App>()
 login.get('/', async (c) => {
 	const user = c.get('user')
 	const redirectUrl = c.req.query('redirect')
-
-	// If already logged in, redirect to dashboard or specified redirect
-	if (user) {
-		return c.redirect(redirectUrl || '/dashboard')
-	}
+	const forceReauth = c.req.query('reauth') === '1' || c.req.query('reauth') === 'true'
 
 	// Build the auth URL with redirect parameter
 	const authUrl = redirectUrl
 		? `/api/auth/login?redirect=${encodeURIComponent(redirectUrl)}`
 		: '/api/auth/login'
+
+	// If already logged in, redirect to dashboard or specified redirect unless a fresh
+	// login was explicitly requested for OAuth consent reauthentication.
+	if (user && !forceReauth) {
+		return c.redirect(redirectUrl || '/dashboard')
+	}
+
+	if (user && forceReauth) {
+		return c.redirect(authUrl)
+	}
 
 	return c.html(html`
 		<!DOCTYPE html>

@@ -8,6 +8,7 @@ import { MemberAvatar } from '@/components/member-avatar'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { LoadingPage } from '@/components/ui/loading'
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
 import { useAuth } from '@/hooks/useAuth'
 import { usePageTitle } from '@/hooks/usePageTitle'
 import { apiClient } from '@/lib/api'
@@ -43,9 +44,15 @@ export default function OAuthAuthorizePage() {
 		() => preview?.scope.map((scope) => getThirdPartyAppScopeMetadata(scope)) ?? [],
 		[preview?.scope]
 	)
-	const loginUrl = `/login?redirect=${encodeURIComponent(requestUrl)}`
 	const requiresFreshSession = preview?.requiresFreshSession ?? false
 	const requiresFreshSessionError = error?.toLowerCase().includes('reauthentication required') ?? false
+	const loginUrl = useMemo(() => {
+		const params = new URLSearchParams({ redirect: requestUrl })
+		if (requiresFreshSession || requiresFreshSessionError) {
+			params.set('reauth', '1')
+		}
+		return `/login?${params.toString()}`
+	}, [requestUrl, requiresFreshSession, requiresFreshSessionError])
 
 	useEffect(() => {
 		if (!isAuthenticated) {
@@ -172,7 +179,7 @@ export default function OAuthAuthorizePage() {
 		)
 	}
 
-	const { clientName, clientId, state } = preview
+	const { clientName, clientId } = preview
 
 	return (
 		<div className="flex min-h-screen items-center justify-center bg-background p-4">
@@ -191,45 +198,49 @@ export default function OAuthAuthorizePage() {
 					</div>
 				</CardHeader>
 				<CardContent className="space-y-5">
-					<div className="space-y-3 rounded-lg border border-border/60 bg-card/60 p-4">
-						<div className="flex items-start justify-between gap-4">
-							<span className="text-sm text-muted-foreground">Client</span>
-							<span className="text-right text-sm font-medium text-foreground">
+					<div className="space-y-4 rounded-lg border border-border/60 bg-card/60 p-4">
+						<div className="rounded-md border border-primary/20 bg-primary/10 px-4 py-4 text-center shadow-sm">
+							<h2 className="mt-2 text-2xl font-semibold tracking-tight text-foreground">
 								{clientName ?? clientId}
-							</span>
+							</h2>
+							<p className="mt-2 text-sm text-muted-foreground">
+								Review this app before granting access to your account and linked character data.
+							</p>
 						</div>
-						<div className="space-y-2">
-							<div className="flex items-start justify-between gap-4">
-								<span className="text-sm text-muted-foreground">Requested scopes</span>
-								<span className="text-right text-sm font-medium text-foreground">
-									{requestedScopes.length}
+						<details className="group overflow-hidden rounded-md border border-border/60 bg-background/70">
+							<summary className="flex cursor-pointer list-none items-center justify-between gap-4 px-3 py-2 text-sm font-medium text-foreground hover:bg-muted/50">
+								<span>Requested access</span>
+								<span className="rounded-full bg-muted px-2 py-0.5 text-xs font-medium text-muted-foreground">
+									{requestedScopes.length} scopes
 								</span>
+							</summary>
+							<div className="border-t border-border/60">
+								<Table>
+									<TableHeader>
+										<TableRow className="hover:bg-transparent">
+											<TableHead className="h-9 px-3 text-[11px] uppercase tracking-wide">
+												Name
+											</TableHead>
+											<TableHead className="h-9 px-3 text-[11px] uppercase tracking-wide">
+												Description
+											</TableHead>
+										</TableRow>
+									</TableHeader>
+									<TableBody>
+										{requestedScopes.map((scopeInfo) => (
+											<TableRow key={scopeInfo.scope} className="align-top">
+												<TableCell className="px-3 py-2 align-top text-sm font-medium text-foreground">
+													{scopeInfo.name}
+												</TableCell>
+												<TableCell className="px-3 py-2 align-top text-xs leading-5 text-muted-foreground">
+													{scopeInfo.description}
+												</TableCell>
+											</TableRow>
+										))}
+									</TableBody>
+								</Table>
 							</div>
-							<details className="group rounded-md bg-background/70 px-3 py-2">
-								<summary className="cursor-pointer text-sm font-medium text-foreground">
-									View requested access
-								</summary>
-								<ul className="mt-3 space-y-2">
-									{requestedScopes.map((scopeInfo) => (
-										<li key={scopeInfo.scope} className="rounded-md border border-border/60 px-3 py-2">
-											<div className="text-sm font-medium text-foreground">{scopeInfo.name}</div>
-											<p className="mt-1 text-xs leading-5 text-muted-foreground">
-												{scopeInfo.description}
-											</p>
-											<p className="mt-1 break-all font-mono text-[11px] text-muted-foreground">
-												{scopeInfo.scope}
-											</p>
-										</li>
-									))}
-								</ul>
-							</details>
-						</div>
-						{state ? (
-							<div className="flex items-start justify-between gap-4">
-								<span className="text-sm text-muted-foreground">State</span>
-								<span className="text-right font-mono text-xs text-muted-foreground">{state}</span>
-							</div>
-						) : null}
+						</details>
 						<div className="flex items-center justify-between gap-4">
 							<span className="text-sm text-muted-foreground">Signed in as</span>
 							<div className="flex items-center gap-3 text-right">

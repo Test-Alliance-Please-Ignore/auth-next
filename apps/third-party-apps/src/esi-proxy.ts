@@ -59,6 +59,11 @@ function toProxyHeaders(headers: Array<[string, string]>): Headers {
 	return responseHeaders
 }
 
+function hasJsonContentType(headers: Array<[string, string]>): boolean {
+	const contentType = headers.find(([key]) => key.toLowerCase() === 'content-type')?.[1]?.toLowerCase() ?? ''
+	return contentType.includes('application/json') || contentType.includes('+json')
+}
+
 function cacheKey(scope: EsiCacheScopeContext, path: string, page?: number): string {
 	return `esi:proxy:${scope.scope}:${scope.scopeId}:${path}${page !== undefined ? `:page:${page}` : ''}`
 }
@@ -108,6 +113,11 @@ class ThirdPartyAppsProxyCache implements EsiCacheAdapter {
 		const key = cacheKey(scope, path, page)
 		const memoryHit = this.memory.get(key) as EsiResponse<T> | undefined
 		if (memoryHit) {
+			const memoryPayload = memoryHit.data as EsiProxyPayload
+			if (!hasJsonContentType(memoryPayload.headers)) {
+				this.memory.delete(key)
+				return null
+			}
 			if (!includeExpired && this.isExpired(memoryHit)) {
 				this.memory.delete(key)
 			} else {
@@ -131,6 +141,12 @@ class ThirdPartyAppsProxyCache implements EsiCacheAdapter {
 			return null
 		}
 
+		const parsedPayload = parsed.data as EsiProxyPayload
+		if (!hasJsonContentType(parsedPayload.headers)) {
+			await this.kv.delete(key)
+			return null
+		}
+
 		this.memory.set(key, parsed as EsiResponse<EsiProxyPayload>)
 		return parsed
 	}
@@ -142,6 +158,11 @@ class ThirdPartyAppsProxyCache implements EsiCacheAdapter {
 		page?: number,
 		options?: { persistGlobal?: boolean }
 	): Promise<void> {
+		const typedResponse = response as EsiResponse<EsiProxyPayload>
+		if (!hasJsonContentType(typedResponse.data.headers as Array<[string, string]>)) {
+			return
+		}
+
 		const key = cacheKey(scope, path, page)
 		const payload = {
 			data: response.data,
@@ -151,7 +172,6 @@ class ThirdPartyAppsProxyCache implements EsiCacheAdapter {
 			page: response.page,
 			lastModified: response.lastModified ? response.lastModified.toISOString() : undefined,
 		}
-		const typedResponse = response as EsiResponse<EsiProxyPayload>
 		this.memory.set(key, typedResponse)
 		if (options?.persistGlobal === false) {
 			return
@@ -259,11 +279,18 @@ export async function proxyEsiRequest(params: {
 	}
 	const freshCached = await cache.getCachedResponse<EsiProxyPayload>(params.cacheScope, params.path, cachePage, false)
 
-	if (freshCached) {
+	if (freshCached && hasJsonContentType(freshCached.data.headers)) {
 		return buildProxyResponse(freshCached.data, {
 			'X-Third-Party-Cache': 'HIT',
 			'X-Third-Party-Proxy-Mode': 'cached',
 			'X-Third-Party-Quota-Remaining': 'skipped',
+		})
+	}
+
+	if (freshCached) {
+		logger.warn('[ThirdPartyAppsProxy] Ignoring cached ESI response without a JSON content-type', {
+			path: params.path,
+			contentType: freshCached.data.headers.find(([key]) => key.toLowerCase() === 'content-type')?.[1] ?? null,
 		})
 	}
 
@@ -289,7 +316,6 @@ export async function proxyEsiRequest(params: {
 
 	const supportsBody = !['GET', 'HEAD'].includes(method)
 	const contentType = params.request.headers.get('content-type')
-	const accept = params.request.headers.get('accept') ?? 'application/json'
 	let observedRateLimit = parseEsiRateLimitHeaders(new Headers())
 	let observedResponseStatus: number | null = null
 	let networkRequestSeen = false
@@ -304,7 +330,10 @@ export async function proxyEsiRequest(params: {
 			method: method as 'GET' | 'POST' | 'PUT' | 'PATCH' | 'DELETE',
 			jsonBody: parsedBody.value,
 			extraHeaders: {
-				Accept: accept,
+				// ESI callers in this repo always request JSON. Forwarding the browser's
+				// wildcard Accept header can produce non-JSON upstream responses for some
+				// endpoints, which then breaks the consent harness and API clients.
+				Accept: 'application/json',
 				'User-Agent': 'PleaseIgnore-ThirdPartyApps/1.0',
 				...(contentType ? { 'Content-Type': contentType } : {}),
 			},

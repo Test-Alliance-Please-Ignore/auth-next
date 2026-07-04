@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 
-import { buildAuthSessionResponse } from '../auth'
+import { buildAuthSessionResponse, shouldUseSecureSessionCookie } from '../auth'
 
 describe('/auth/session response shaping', () => {
 	it('preserves resolved structure permissions in the session payload', () => {
@@ -72,5 +72,23 @@ describe('/auth/session response shaping', () => {
 			user: null,
 			permissions: [],
 		})
+	})
+
+	it('uses secure cookies only on https requests', () => {
+		expect(
+			shouldUseSecureSessionCookie({
+				req: {
+					url: 'http://localhost:5173/api/auth/callback',
+				},
+			} as never)
+		).toBe(false)
+
+		expect(
+			shouldUseSecureSessionCookie({
+				req: {
+					url: 'https://pleaseignore.app/api/auth/callback',
+				},
+			} as never)
+		).toBe(true)
 	})
 })

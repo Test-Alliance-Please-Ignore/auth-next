@@ -45,6 +45,7 @@ import loginRoutes from './routes/login'
 import mumbleRoutes from './routes/mumble'
 import mumbleTempopRoutes from './routes/mumble-tempop'
 import publicMumbleTempopRoutes from './routes/mumble-tempop-public'
+import { handleOAuthDevProxyRequest, isOAuthDevProxyPath } from './routes/oauth-dev-proxy'
 import oauthRoutes from './routes/oauth'
 import sessionRoutes from './routes/session'
 import skillPlansRoutes from './routes/skill-plans'
@@ -89,6 +90,14 @@ const app = new Hono<App>()
 				release: c.env.SENTRY_RELEASE,
 			})(c, next)
 	)
+
+	// Dev-only OAuth issuer proxy for local client harnesses.
+	.use('*', async (c, next) => {
+		if (c.env.ENVIRONMENT === 'development' && isOAuthDevProxyPath(new URL(c.req.url).pathname)) {
+			return await handleOAuthDevProxyRequest(c)
+		}
+		return await next()
+	})
 
 	// Session middleware - loads user into context if authenticated
 	.use('*', sessionMiddleware())

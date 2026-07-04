@@ -4,6 +4,7 @@ import { z } from 'zod'
 import { logger } from '@repo/hono-helpers'
 import { THIRD_PARTY_APP_SUPPORTED_SCOPES } from '@repo/admin'
 
+import { getThirdPartyAppsClient } from '../../lib/third-party-apps'
 import { requireAdmin, requireAuth } from '../../middleware/session'
 
 import type {
@@ -41,10 +42,6 @@ function toListOptions(
 	}
 }
 
-function getThirdPartyAppsClient(c: App['Bindings']) {
-	return c.THIRD_PARTY_APPS
-}
-
 function isLocalDev(c: App['Bindings']): boolean {
 	return c.ENVIRONMENT === 'development'
 }
@@ -73,6 +70,9 @@ function validateRedirectUris(env: App['Bindings'], redirectUris: string[] | und
 app.get('/clients', requireAuth(), requireAdmin(), async (c) => {
 	try {
 		const client = getThirdPartyAppsClient(c.env)
+		if (!client) {
+			return c.json({ error: 'Third-party apps service binding is not configured' }, 503)
+		}
 		const result = await client.listClients(
 			toListOptions(c.req.query('limit'), c.req.query('cursor'))
 		)
@@ -97,6 +97,9 @@ app.post('/clients', requireAuth(), requireAdmin(), async (c) => {
 
 	try {
 		const client = getThirdPartyAppsClient(c.env)
+		if (!client) {
+			return c.json({ error: 'Third-party apps service binding is not configured' }, 503)
+		}
 		const created = await client.createClient(parsed.data as OAuthClientCreateInput)
 		return c.json(created, 201)
 	} catch (error) {
@@ -120,6 +123,9 @@ app.patch('/clients/:clientId', requireAuth(), requireAdmin(), async (c) => {
 
 	try {
 		const client = getThirdPartyAppsClient(c.env)
+		if (!client) {
+			return c.json({ error: 'Third-party apps service binding is not configured' }, 503)
+		}
 		const updated = await client.updateClient(clientId, parsed.data as OAuthClientUpdateInput)
 		if (!updated) {
 			return c.json({ error: 'OAuth client not found' }, 404)
@@ -139,6 +145,9 @@ app.delete('/clients/:clientId', requireAuth(), requireAdmin(), async (c) => {
 
 	try {
 		const client = getThirdPartyAppsClient(c.env)
+		if (!client) {
+			return c.json({ error: 'Third-party apps service binding is not configured' }, 503)
+		}
 		await client.deleteClient(clientId)
 		return new Response(null, { status: 204 })
 	} catch (error) {
@@ -155,6 +164,9 @@ app.post('/clients/:clientId/regenerate-secret', requireAuth(), requireAdmin(), 
 
 	try {
 		const client = getThirdPartyAppsClient(c.env)
+		if (!client) {
+			return c.json({ error: 'Third-party apps service binding is not configured' }, 503)
+		}
 		const result = await client.regenerateClientSecret(clientId)
 		if (!result) {
 			return c.json({ error: 'OAuth client not found' }, 404)

@@ -47,8 +47,7 @@ function createApp(user?: SessionUser) {
 
 describe('oauth authorize routes', () => {
 	const thirdPartyAppsStub = {
-		previewAuthorization: vi.fn(),
-		resolveAuthorization: vi.fn(),
+		fetch: vi.fn(),
 	}
 
 	const env = {
@@ -59,14 +58,22 @@ describe('oauth authorize routes', () => {
 		vi.useFakeTimers()
 		vi.setSystemTime(new Date('2026-06-01T00:10:00.000Z'))
 		vi.clearAllMocks()
-		thirdPartyAppsStub.previewAuthorization.mockResolvedValue({
-			clientId: 'client-1',
-			clientName: 'Client One',
-			scope: ['profile', 'esi:esi-mail.read_mail.v1'],
-			state: 'state-1',
-		})
-		thirdPartyAppsStub.resolveAuthorization.mockResolvedValue({
-			redirectTo: 'https://example.app/callback?code=abc123',
+		thirdPartyAppsStub.fetch.mockImplementation(async (request: Request) => {
+			const url = new URL(request.url)
+			if (url.pathname === '/__internal/oauth/authorize/preview') {
+				return Response.json({
+					clientId: 'client-1',
+					clientName: 'Client One',
+					scope: ['profile', 'esi:esi-mail.read_mail.v1'],
+					state: 'state-1',
+				})
+			}
+			if (url.pathname === '/__internal/oauth/authorize/resolve') {
+				return Response.json({
+					redirectTo: 'https://example.app/callback?code=abc123',
+				})
+			}
+			return new Response('not found', { status: 404 })
 		})
 	})
 
@@ -82,12 +89,13 @@ describe('oauth authorize routes', () => {
 		expect(await response.json()).toEqual(
 			expect.objectContaining({
 				requestUrl: 'https://pleaseignore.app/authorize?client_id=client-1',
-			requiresFreshSession: false,
+				requiresFreshSession: false,
 			})
 		)
-		expect(thirdPartyAppsStub.previewAuthorization).toHaveBeenCalledWith(
-			'https://pleaseignore.app/authorize?client_id=client-1',
-			'https://pleaseignore.app'
+		expect(thirdPartyAppsStub.fetch).toHaveBeenCalledTimes(1)
+		expect(thirdPartyAppsStub.fetch.mock.calls[0]?.[0]).toBeInstanceOf(Request)
+		expect(new URL(thirdPartyAppsStub.fetch.mock.calls[0]?.[0].url ?? '').pathname).toBe(
+			'/__internal/oauth/authorize/preview'
 		)
 	})
 
@@ -110,23 +118,10 @@ describe('oauth authorize routes', () => {
 		)
 
 		expect(response.status).toBe(200)
-		expect(thirdPartyAppsStub.resolveAuthorization).toHaveBeenCalledWith(
-			'https://pleaseignore.app/authorize?client_id=client-1',
-			'https://pleaseignore.app',
-			expect.objectContaining({
-				id: '00000000-0000-0000-0000-000000000001',
-				mainCharacterId: '7001',
-				isAdmin: false,
-				sessionCreatedAt: '2026-06-01T00:00:00.000Z',
-				characters: expect.arrayContaining([
-					expect.objectContaining({
-						characterId: '7001',
-						characterName: 'Alpha Pilot',
-						isPrimary: true,
-					}),
-				]),
-			}),
-			'approve'
+		expect(thirdPartyAppsStub.fetch).toHaveBeenCalledTimes(1)
+		expect(thirdPartyAppsStub.fetch.mock.calls[0]?.[0]).toBeInstanceOf(Request)
+		expect(new URL(thirdPartyAppsStub.fetch.mock.calls[0]?.[0].url ?? '').pathname).toBe(
+			'/__internal/oauth/authorize/resolve'
 		)
 	})
 
@@ -168,6 +163,24 @@ describe('oauth authorize routes', () => {
 				reauthRequired: true,
 			})
 		)
-		expect(thirdPartyAppsStub.resolveAuthorization).not.toHaveBeenCalled()
+		expect(thirdPartyAppsStub.fetch).toHaveBeenCalledTimes(1)
+	})
+
+	it('returns a clear error when the third-party apps binding is missing', async () => {
+		const app = createApp(makeUser())
+		const response = await app.request(
+			'https://pleaseignore.app/api/oauth/authorize?requestUrl=https%3A%2F%2Fpleaseignore.app%2Fauthorize%3Fclient_id%3Dclient-1',
+			{},
+			{
+				ENVIRONMENT: 'development',
+			} as any
+		)
+
+		expect(response.status).toBe(503)
+		expect(await response.json()).toEqual(
+			expect.objectContaining({
+				error: 'Third-party apps service binding is not configured',
+			})
+		)
 	})
 })
