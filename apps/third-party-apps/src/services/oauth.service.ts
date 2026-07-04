@@ -183,6 +183,7 @@ export async function buildOAuthApiMeResponse(
 	props: OAuthGrantProps
 ): Promise<Record<string, unknown>> {
 	const response: Record<string, unknown> = {
+		id: props.sub,
 		sub: props.sub,
 		clientId: props.clientId,
 		scope: props.scope,
@@ -201,9 +202,26 @@ export async function buildOAuthApiMeResponse(
 		return response
 	}
 
+	const primaryCharacter =
+		details.characters.find((character) => character.characterId === details.mainCharacterId) ??
+		details.characters.find((character) => character.is_primary) ??
+		details.characters[0]
+
 	if (includeProfile) {
+		const primaryCharacterName = primaryCharacter?.characterName ?? null
+		const discourseUsername = primaryCharacterName
+			? primaryCharacterName
+					.toLowerCase()
+					.replace(/[^a-z0-9]+/g, '_')
+					.replace(/^_+|_+$/g, '') || `authnext_${props.sub.replace(/[^a-z0-9]+/gi, '').slice(0, 12).toLowerCase()}`
+			: `authnext_${props.sub.replace(/[^a-z0-9]+/gi, '').slice(0, 12).toLowerCase()}`
+
 		response.mainCharacterId = details.mainCharacterId
+		response.mainCharacterName = primaryCharacterName
 		response.isAdmin = details.is_admin
+		response.username = discourseUsername
+		response.preferred_username = discourseUsername
+		response.name = primaryCharacterName
 		response.characters = details.characters.map((character) => ({
 			characterId: character.characterId,
 			characterName: character.characterName,
@@ -213,12 +231,14 @@ export async function buildOAuthApiMeResponse(
 	}
 
 	if (includeGroups) {
-		response.groupMemberships = details.groupMemberships.map((membership) => ({
+		const groupMemberships = details.groupMemberships.map((membership) => ({
 			groupId: membership.groupId,
 			groupName: membership.groupName,
 			membershipLevel: membership.membershipLevel,
 			joinedAt: membership.joinedAt.toISOString(),
 		}))
+		response.groupMemberships = groupMemberships
+		response.groups = groupMemberships.map((membership) => membership.groupName)
 	}
 
 	if (includePermissions) {
