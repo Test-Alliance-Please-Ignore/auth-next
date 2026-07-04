@@ -9,6 +9,7 @@ vi.mock('../esi-proxy', () => ({
 }))
 
 import { previewOAuthAuthorization } from './oauth.service'
+import { buildOAuthApiMeResponse } from './oauth.service'
 
 describe('oauth service', () => {
 	it('accepts local loopback authorize urls even when the provider binding env is production-like', async () => {
@@ -50,5 +51,59 @@ describe('oauth service', () => {
 		expect(parseAuthRequest).toHaveBeenCalledTimes(1)
 		expect(parseAuthRequest.mock.calls[0]?.[0]).toBeInstanceOf(Request)
 		expect(new URL(parseAuthRequest.mock.calls[0]?.[0].url ?? '').origin).toBe('http://127.0.0.1:5173')
+	})
+
+	it('adds a synthesized authnext.invalid email address to the profile response', async () => {
+		const env = {
+			CORE: {
+				getUserDetails: vi.fn().mockResolvedValue({
+					mainCharacterId: '1402766339',
+					is_admin: true,
+					characters: [
+						{
+							characterId: '1402766339',
+							characterName: 'Gothicus',
+							is_primary: true,
+							hasValidToken: true,
+						},
+					],
+					groupMemberships: [
+						{
+							groupId: 'group-1',
+							groupName: 'Example Group',
+							membershipLevel: 'member',
+							joinedAt: new Date('2025-01-01T00:00:00Z'),
+						},
+					],
+				}),
+			},
+			GROUPS: {
+				getUserPermissions: vi.fn(),
+			},
+		} as any
+
+		const response = await buildOAuthApiMeResponse(env, {
+			sub: '0f5b5f0d-4d6d-4f8e-9c3a-9b9b7f8e1234',
+			clientId: 'client-1',
+			scope: ['profile', 'groups'],
+		})
+
+		expect(response).toEqual(
+			expect.objectContaining({
+				sub: '0f5b5f0d-4d6d-4f8e-9c3a-9b9b7f8e1234',
+				clientId: 'client-1',
+				email: '0f5b5f0d-4d6d-4f8e-9c3a-9b9b7f8e1234@authnext.invalid',
+				emailVerified: true,
+				mainCharacterId: '1402766339',
+				groupMemberships: [
+					{
+						groupId: 'group-1',
+						groupName: 'Example Group',
+						membershipLevel: 'member',
+						joinedAt: '2025-01-01T00:00:00.000Z',
+					},
+				],
+			})
+		)
 	})
 })

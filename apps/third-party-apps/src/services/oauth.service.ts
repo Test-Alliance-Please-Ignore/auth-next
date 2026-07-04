@@ -28,6 +28,10 @@ type OAuthGrantProps = {
 	clientId: string
 }
 
+function buildSynthesizedEmailAddress(userId: string): string {
+	return `${userId}@authnext.invalid`
+}
+
 function isLocalHttpOrigin(origin: string): boolean {
 	try {
 		const url = new URL(origin)
@@ -204,6 +208,8 @@ export async function buildOAuthApiMeResponse(
 	if (includeProfile) {
 		response.mainCharacterId = details.mainCharacterId
 		response.isAdmin = details.is_admin
+		response.email = buildSynthesizedEmailAddress(props.sub)
+		response.emailVerified = true
 		response.characters = details.characters.map((character) => ({
 			characterId: character.characterId,
 			characterName: character.characterName,

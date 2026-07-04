@@ -97,7 +97,7 @@ Supported commands:
 - `refresh` - refresh an access token using a refresh token
 - `me` - call the provider `GET /oauth/api/me` endpoint
 - `call` - call an arbitrary provider API path with a bearer token
-- `scenario-profile` - authorize and verify the profile API response
+- `scenario-profile` - authorize and verify the profile and groups API response
 - `scenario-esi-basic` - authorize and verify `me`, wallet, location, and online ESI proxy calls
 
 Notes:
@@ -109,10 +109,10 @@ Notes:
 Quick smoke test examples:
 
 ```bash
-pnpm -F third-party-apps oauth:scenario:profile \
-	--issuer http://127.0.0.1:8787 \
-	--client-id your-client-id \
-	--client-secret your-client-secret
+	pnpm -F third-party-apps oauth:scenario:profile \
+		--issuer http://127.0.0.1:8787 \
+		--client-id your-client-id \
+		--client-secret your-client-secret
 ```
 
 ```bash

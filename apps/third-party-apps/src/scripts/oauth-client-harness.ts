@@ -93,6 +93,14 @@ interface OAuthProfileResponse {
 	scope?: string[]
 	mainCharacterId?: string
 	isAdmin?: boolean
+	email?: string
+	emailVerified?: boolean
+	groupMemberships?: Array<{
+		groupId: string
+		groupName: string
+		membershipLevel: string
+		joinedAt: string
+	}>
 	characters?: Array<{
 		characterId: string
 		characterName: string
@@ -772,9 +780,10 @@ function assertAuthorizedNumberPayload(result: AuthorizedRequestResult, context:
 }
 
 async function runProfileScenario(config: HarnessConfig): Promise<void> {
+	const desiredScopes = [...new Set([...(config.scopes.length > 0 ? config.scopes : []), 'profile', 'groups'])]
 	const session = await performAuthorizationCodeFlow({
 		...config,
-		scopes: config.scopes.length > 0 ? config.scopes : ['profile'],
+		scopes: desiredScopes,
 	})
 	const accessToken = session.tokenResponse.access_token
 	assert(accessToken, 'Profile scenario did not receive an access token')
@@ -783,11 +792,17 @@ async function runProfileScenario(config: HarnessConfig): Promise<void> {
 	const payload = assertAuthorizedObjectPayload(me, '/oauth/api/me') as OAuthProfileResponse
 	assert(Array.isArray(payload.scope), 'Profile response is missing the scope list')
 	assert(payload.scope.includes('profile'), 'Profile response did not include the profile scope')
+	assert(payload.scope.includes('groups'), 'Profile response did not include the groups scope')
 	assert(typeof payload.sub === 'string' && payload.sub.length > 0, 'Profile response is missing sub')
 	assert(
 		typeof payload.clientId === 'string' && payload.clientId.length > 0,
 		'Profile response is missing clientId'
 	)
+	assert(
+		typeof payload.email === 'string' && payload.email === `${payload.sub}@authnext.invalid`,
+		'Profile response is missing the synthesized email address'
+	)
+	assert(payload.emailVerified === true, 'Profile response is missing the verified email flag')
 	assert(
 		typeof payload.mainCharacterId === 'string' && payload.mainCharacterId.length > 0,
 		'Profile response is missing mainCharacterId'
@@ -796,6 +811,7 @@ async function runProfileScenario(config: HarnessConfig): Promise<void> {
 		Array.isArray(payload.characters) && payload.characters.length > 0,
 		'Profile response is missing character rows'
 	)
+	assert(Array.isArray(payload.groupMemberships), 'Profile response is missing group memberships')
 
 	printResult(
 		{
