@@ -94,6 +94,7 @@ export const sessionMiddleware = (): MiddlewareHandler<App> => {
 				id: userProfile.id,
 				mainCharacterId: userProfile.mainCharacterId,
 				sessionId: session.id,
+				sessionCreatedAt: session.createdAt.toISOString(),
 				characters: userProfile.characters.map((char) => ({
 					id: char.id,
 					characterOwnerHash: char.characterOwnerHash,

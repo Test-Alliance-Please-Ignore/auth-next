@@ -1,0 +1,62 @@
+{
+	"$schema": "node_modules/wrangler/config-schema.json",
+	"name": "third-party-apps",
+	"main": "src/index.ts",
+	"compatibility_date": "2025-04-28",
+	"compatibility_flags": ["nodejs_compat"],
+	"workers_dev": false,
+	"routes": [
+		"pleaseignore.app/oauth/token*",
+		"pleaseignore.app/oauth/api/*",
+		"pleaseignore.app/.well-known/*"
+	],
+	"logpush": false,
+	"observability": {
+		"enabled": true
+	},
+	"vars": {
+		"NAME": "third-party-apps",
+		"ENVIRONMENT": "production",
+		"SENTRY_RELEASE": "unknown"
+	},
+	"kv_namespaces": [
+		{
+			"binding": "ESI_RATE_LIMITS",
+			"id": "THIRD_PARTY_APPS_ESI_RATE_LIMITS_NAMESPACE_ID"
+		},
+		{
+			"binding": "ESI_PROXY_CACHE",
+			"id": "THIRD_PARTY_APPS_ESI_PROXY_CACHE_NAMESPACE_ID"
+		},
+		{
+			"binding": "OAUTH_KV",
+			"id": "THIRD_PARTY_APPS_OAUTH_KV_NAMESPACE_ID"
+		}
+	],
+	"services": [
+		{
+			"binding": "CORE",
+			"service": "core",
+			"entrypoint": "CoreWorker"
+		}
+	],
+	"durable_objects": {
+		"bindings": [
+			{
+				"name": "GROUPS",
+				"class_name": "Groups",
+				"script_name": "groups"
+			},
+			{
+				"name": "EVE_TOKEN_STORE",
+				"class_name": "EveTokenStore",
+				"script_name": "eve-token-store"
+			},
+			{
+				"name": "THIRD_PARTY_APP_QUOTA",
+				"class_name": "ThirdPartyAppQuota",
+				"script_name": "third-party-apps"
+			}
+		]
+	}
+}

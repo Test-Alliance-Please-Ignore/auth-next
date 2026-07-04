@@ -14,6 +14,7 @@ import {
 	Receipt,
 	ScrollText,
 	ShieldBan,
+	Waypoints,
 	UserCircle,
 	Users,
 } from 'lucide-react'
@@ -131,6 +132,11 @@ export function AdminNav({ onNavigate }: AdminNavProps) {
 			label: 'Legacy Migrations',
 			href: '/admin/legacy-migrations',
 			icon: ArchiveRestore,
+		},
+		{
+			label: 'Third-Party Apps',
+			href: '/admin/third-party-apps',
+			icon: Waypoints,
 		},
 		{
 			label: 'Blacklist',

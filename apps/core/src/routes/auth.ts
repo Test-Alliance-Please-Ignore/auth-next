@@ -45,6 +45,10 @@ import type { App } from '../context'
  */
 const auth = new Hono<App>()
 
+export function shouldUseSecureSessionCookie(c: Context<App>): boolean {
+	return new URL(c.req.url).protocol === 'https:'
+}
+
 interface AuthSessionPermissionView {
 	permissionId: string | null
 	urn: string
@@ -892,7 +896,7 @@ auth.get('/callback', async (c) => {
 		// Set session cookie
 		setCookie(c, 'session', session.sessionToken, {
 			httpOnly: true,
-			secure: true,
+			secure: shouldUseSecureSessionCookie(c),
 			sameSite: 'Lax',
 			maxAge: 60 * 60 * 24 * 30, // 30 days
 			path: '/',
@@ -1055,7 +1059,7 @@ auth.post('/claim-main', async (c) => {
 	// Set session cookie
 	setCookie(c, 'session', session.sessionToken, {
 		httpOnly: true,
-		secure: true,
+		secure: shouldUseSecureSessionCookie(c),
 		sameSite: 'Lax',
 		maxAge: 60 * 60 * 24 * 30, // 30 days
 		path: '/',
