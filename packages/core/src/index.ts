@@ -58,6 +58,7 @@ export interface Core {
 	getUserCorporations(
 		userId: string
 	): Promise<Array<{ corporationId: string; corporationName: string }>>
+	isActiveDiscordGuild(guildId: string): Promise<boolean>
 	getUserCorporationsBatch(
 		userIds: string[]
 	): Promise<Map<string, Array<{ corporationId: string; corporationName: string }>>>

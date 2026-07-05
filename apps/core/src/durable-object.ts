@@ -11,7 +11,7 @@ import {
 import { logger } from '@repo/hono-helpers'
 
 import { createDb } from './db'
-import { managedCorporations, userCharacters, userIpAddresses, users } from './db/schema'
+import { discordServers, managedCorporations, userCharacters, userIpAddresses, users } from './db/schema'
 import {
 	buildImmunitasAccessAlertMessage,
 	IMMUNITAS_ALERT_INITIAL_DELAY_MS,
@@ -573,6 +573,15 @@ export class CoreDO extends DurableObject<Env> implements Core {
 			refreshAttempted: transition.validation?.refreshAttempted ?? false,
 			refreshSucceeded: transition.validation?.refreshSucceeded ?? false,
 		}))
+	}
+
+	async isActiveDiscordGuild(guildId: string): Promise<boolean> {
+		const server = await this.getDb().query.discordServers.findFirst({
+			where: and(eq(discordServers.guildId, guildId), eq(discordServers.isActive, true)),
+			columns: { id: true },
+		})
+
+		return server !== null
 	}
 
 	async getUserCorporations(

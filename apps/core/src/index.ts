@@ -713,6 +713,13 @@ export class CoreWorker extends WorkerEntrypoint<Env> {
 	}
 
 	/**
+	 * Check whether a Discord guild is active in the registry.
+	 */
+	async isActiveDiscordGuild(guildId: string): Promise<boolean> {
+		return this.getService().isActiveDiscordGuild(guildId)
+	}
+
+	/**
 	 * Award DKP to a character
 	 */
 	async awardDkp(params: {

@@ -11,6 +11,9 @@
 		"head_sampling_rate": 1
 	},
 	"vars": {
+		"NAME": "discord",
+		"ENVIRONMENT": "VITEST",
+		"SENTRY_RELEASE": "unknown",
 		"DISCORD_CLIENT_ID": "1428533721585418350",
 		"DISCORD_AUTHORIZE_URL": "https://discord.com/oauth2/authorize",
 		"DISCORD_TOKEN_URL": "https://discord.com/api/oauth2/token",
@@ -24,6 +27,10 @@
 			{
 				"name": "DISCORD",
 				"class_name": "Discord"
+			},
+			{
+				"name": "DISCORD_GATEWAY",
+				"class_name": "DiscordGateway"
 			}
 		]
 	},
@@ -31,6 +38,10 @@
 		{
 			"tag": "v1",
 			"new_sqlite_classes": ["Discord"]
+		},
+		{
+			"tag": "v2",
+			"new_classes": ["DiscordGateway"]
 		}
 	]
 }

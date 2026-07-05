@@ -12,6 +12,7 @@ export interface DiscordInteractionOption {
 export type Env = SharedHonoEnv & {
 	DATABASE_URL: string
 	DISCORD: DurableObjectNamespace
+	DISCORD_GATEWAY: DurableObjectNamespace
 	DISCORD_RATE_LIMITS: KVNamespace
 	DISCORD_AUTHORIZE_URL: string
 	DISCORD_TOKEN_URL: string
@@ -61,6 +62,38 @@ export type Env = SharedHonoEnv & {
 			commandId?: string
 			reason: string
 		}>
+		syncUserDiscordAccess(userId: string): Promise<{
+			ok: boolean
+			rpcRequestId: string
+			method: 'syncUserDiscordAccess'
+			durationMs: number
+			result?: {
+				results: Array<{
+					guildId: string
+					guildName: string
+					corporationName?: string
+					groupName?: string
+					success: boolean
+					errorMessage?: string
+					alreadyMember?: boolean
+					type?: 'corporation' | 'group'
+					operation?: 'invite' | 'update' | 'revoke-ban'
+				}>
+				totalInvited: number
+				totalUpdated: number
+				totalFailed: number
+			}
+			error?: { message: string; name?: string }
+		}>
+		isActiveDiscordGuild(guildId: string): Promise<boolean>
+		addPendingDiscordRefreshes(
+			userIds: string[],
+			options?: {
+				source?: string
+				force?: boolean
+				userRefreshWorkflowInstanceIdByUserId?: Record<string, string>
+			}
+		): Promise<{ pendingCount: number; added: number; skipped: number }>
 	}
 }
 

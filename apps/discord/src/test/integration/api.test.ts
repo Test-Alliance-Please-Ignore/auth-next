@@ -3,6 +3,18 @@ import { describe, expect, it, vi } from 'vitest'
 
 import { getStub } from '@repo/do-utils'
 
+vi.mock('@repo/hono-helpers', () => ({
+	logger: {
+		debug: vi.fn(),
+		info: vi.fn(),
+		warn: vi.fn(),
+		error: vi.fn(),
+	},
+	withOnError: () => () => new Response('Internal Server Error', { status: 500 }),
+	withNotFound: () => (c: any) => c.json({ error: 'Not Found' }, 404),
+	withSentry: <T>(app: T) => app,
+}))
+
 import worker from '../../index'
 
 import type { Discord } from '@repo/discord'
@@ -10,13 +22,34 @@ import type { Env } from '../../context'
 
 // Cast env to have correct types
 const testEnv = env as unknown as Env
+const FIXED_TIMESTAMP = '1710000000'
+const FIXED_PUBLIC_KEY_HEX = 'bf6d7e6c953b0d1cb09c300e5a53493d9bcb013d1475a45bd34245236c3ddb7b'
+const FIXED_SIGNATURES = new Map<string, string>([
+	[
+		JSON.stringify({ id: 'ping-1', type: 1 }),
+		'9245ba865f75e1876a1bf5e0390936f2d6a936f2af673bda84395a2fdb0c96442a4b61baa65cd275ad613b0085d92dc89def1255ec0fbe55fffbf3cadafd0507',
+	],
+	[
+		JSON.stringify({
+			id: 'interaction-1',
+			type: 2,
+			guild_id: 'guild-1',
+			channel_id: 'channel-1',
+			member: { user: { id: 'discord-user-1' } },
+			data: {
+				name: 'status',
+				options: [{ name: 'target', value: 'eve' }],
+			},
+		}),
+		'0ca7609e54ccf88f5f9c4631d14766997a3a458ea06bd3d345af7604730accf91ed24fc1b2403d79199aa8401978ad16bddaa610e222d5e05caf4c362ae2fb07',
+	],
+])
 
 describe('Discord Worker', () => {
 	it('responds to root endpoint', async () => {
 		const request = new Request('http://example.com/')
 		const ctx = createExecutionContext()
-		const response = await worker.fetch(request, testEnv, ctx)
-		await waitOnExecutionContext(ctx)
+		const response = await fetchDiscordWorker(request, testEnv, ctx)
 
 		expect(response.status).toBe(200)
 		const text = await response.text()
@@ -28,8 +61,7 @@ describe('Discord Worker', () => {
 			'http://example.com/discord/profile/550e8400-e29b-41d4-a716-446655440000'
 		)
 		const ctx = createExecutionContext()
-		const response = await worker.fetch(request, testEnv, ctx)
-		await waitOnExecutionContext(ctx)
+		const response = await fetchDiscordWorker(request, testEnv, ctx)
 
 		expect(response.status).toBe(404)
 		const data = (await response.json()) as { error: string }
@@ -64,8 +96,7 @@ describe('Discord Worker', () => {
 		})
 
 		const ctx = createExecutionContext()
-		const response = await worker.fetch(request, testEnv, ctx)
-		await waitOnExecutionContext(ctx)
+		const response = await fetchDiscordWorker(request, testEnv, ctx)
 
 		expect(response.status).toBe(200)
 		await expect(response.json()).resolves.toEqual({ type: 1 })
@@ -116,8 +147,7 @@ describe('Discord Worker', () => {
 		})
 
 		const ctx = createExecutionContext()
-		const response = await worker.fetch(request, testEnv, ctx)
-		await waitOnExecutionContext(ctx)
+		const response = await fetchDiscordWorker(request, testEnv, ctx)
 
 		expect(response.status).toBe(200)
 		await expect(response.json()).resolves.toEqual({
@@ -157,10 +187,6 @@ describe('Discord Durable Object', () => {
 	})
 })
 
-function bytesToHex(bytes: Uint8Array): string {
-	return Array.from(bytes, (byte) => byte.toString(16).padStart(2, '0')).join('')
-}
-
 async function signDiscordInteractionPayload(payload: unknown): Promise<{
 	rawBody: string
 	timestamp: string
@@ -168,23 +194,32 @@ async function signDiscordInteractionPayload(payload: unknown): Promise<{
 	publicKeyHex: string
 }> {
 	const rawBody = JSON.stringify(payload)
-	const timestamp = String(Math.floor(Date.now() / 1000))
-	const bodyWithTimestamp = new TextEncoder().encode(`${timestamp}${rawBody}`)
-	const keyPair = (await crypto.subtle.generateKey(
-		{ name: 'Ed25519' },
-		true,
-		['sign', 'verify']
-	)) as CryptoKeyPair
-	const signature = await crypto.subtle.sign({ name: 'Ed25519' }, keyPair.privateKey, bodyWithTimestamp)
-	const publicKey = await crypto.subtle.exportKey('raw', keyPair.publicKey)
-	if (!(publicKey instanceof ArrayBuffer)) {
-		throw new Error('Expected raw public key as ArrayBuffer')
+	const timestamp = FIXED_TIMESTAMP
+	const signatureHex = FIXED_SIGNATURES.get(rawBody)
+	if (!signatureHex) {
+		throw new Error(`No fixed signature fixture for payload: ${rawBody}`)
 	}
 
 	return {
 		rawBody,
 		timestamp,
-		signatureHex: bytesToHex(new Uint8Array(signature)),
-		publicKeyHex: bytesToHex(new Uint8Array(publicKey)),
+		signatureHex,
+		publicKeyHex: FIXED_PUBLIC_KEY_HEX,
+	}
+}
+
+async function fetchDiscordWorker(
+	request: Request,
+	env: Env,
+	ctx: ReturnType<typeof createExecutionContext>
+): Promise<Response> {
+	try {
+		const response = await worker.fetch(request, env, ctx)
+		await waitOnExecutionContext(ctx)
+		return response
+	} catch (error) {
+		throw new Error(
+			`Discord worker request failed: ${error instanceof Error ? error.stack ?? error.message : String(error)}`
+		)
 	}
 }

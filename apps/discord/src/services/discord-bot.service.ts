@@ -15,6 +15,17 @@ import type {
 } from 'discord-api-types/v10'
 import type { Env } from '../context'
 
+interface DiscordGatewayBotInfoResponse {
+	url: string
+	shards: number
+	session_start_limit: {
+		total: number
+		remaining: number
+		reset_after: number
+		max_concurrency: number
+	}
+}
+
 /**
  * Discord API Error
  */
@@ -225,6 +236,54 @@ export class DiscordBotService {
 			context: `Discord getGuildRoles response for ${url}`,
 		})
 		return roles.map((role) => ({ id: role.id, name: role.name }))
+	}
+
+	/**
+	 * Get Discord gateway connection info for bot clients.
+	 * Uses GET /gateway/bot so callers can respect Discord's recommended URL and shard count.
+	 */
+	async getGatewayBotInfo(): Promise<{
+		url: string
+		shards: number
+		sessionStartLimit: {
+			total: number
+			remaining: number
+			resetAfter: number
+			maxConcurrency: number
+		}
+	}> {
+		const proxyUrl = getDiscordProxyUrl(this.env)
+		const url = `${this.baseUrl}/gateway/bot`
+		const response = await fetchWithRetry(url, {
+			method: 'GET',
+			headers: {
+				Authorization: `Bot ${this.env.DISCORD_BOT_TOKEN}`,
+			},
+			...(proxyUrl ? { proxy: proxyUrl } : {}),
+		})
+
+		if (!response.ok) {
+			const errorData = await parseJsonResponse(response, {
+				context: `Discord getGatewayBotInfo error for ${url}`,
+				allowEmpty: true,
+			}).catch(() => ({}))
+			throw new DiscordAPIError(response.status, errorData)
+		}
+
+		const gatewayInfo = await parseJsonResponse<DiscordGatewayBotInfoResponse>(response, {
+			context: `Discord getGatewayBotInfo response for ${url}`,
+		})
+
+		return {
+			url: gatewayInfo.url,
+			shards: gatewayInfo.shards,
+			sessionStartLimit: {
+				total: gatewayInfo.session_start_limit.total,
+				remaining: gatewayInfo.session_start_limit.remaining,
+				resetAfter: gatewayInfo.session_start_limit.reset_after,
+				maxConcurrency: gatewayInfo.session_start_limit.max_concurrency,
+			},
+		}
 	}
 
 	/**
