@@ -195,7 +195,7 @@ describe('HR application submission alerts', () => {
 	})
 
 	it('dispatches a first-time acceptance alert after acceptance', async () => {
-		const app = createApp(makeUser(), createDb())
+		const app = createApp(makeUser({ is_admin: true }), createDb())
 		const executionCtx = createExecutionContext()
 		const response = await app.request(
 			'/api/hr/applications/app-1',
@@ -242,6 +242,41 @@ describe('HR application submission alerts', () => {
 		)
 	})
 
+	it.each(['rejected', 'withdrawn', 'completed'] as const)(
+		'does not dispatch a first-time acceptance alert when the application is %s',
+		async (status) => {
+			const app = createApp(makeUser({ is_admin: true }), createDb())
+			const executionCtx = createExecutionContext()
+			const response = await app.request(
+				'/api/hr/applications/app-1',
+				{
+					method: 'PATCH',
+					headers: { 'Content-Type': 'application/json' },
+					body: JSON.stringify({
+						status,
+						reviewNotes: 'Not accepted.',
+					}),
+				},
+				{
+					HR: { name: 'HR' },
+				} as any,
+				executionCtx
+			)
+
+			expect(response.status).toBe(200)
+			expect(serviceMocks.updateApplicationStatus).toHaveBeenCalledWith(
+				'app-1',
+				status,
+				'user-1',
+				'main-1',
+				'Main Pilot',
+				'Not accepted.'
+			)
+			expect(serviceMocks.dispatchCorporationAlert).not.toHaveBeenCalled()
+			expect(serviceMocks.waitUntilWithTelemetry).not.toHaveBeenCalled()
+		}
+	)
+
 	it('does not dispatch a first-time acceptance alert for repeat applications', async () => {
 		serviceMocks.getApplication.mockResolvedValueOnce({
 			id: 'app-1',
@@ -265,7 +300,7 @@ describe('HR application submission alerts', () => {
 			activityLog: [],
 		})
 
-		const app = createApp(makeUser(), createDb())
+		const app = createApp(makeUser({ is_admin: true }), createDb())
 		const executionCtx = createExecutionContext()
 		const response = await app.request(
 			'/api/hr/applications/app-1',

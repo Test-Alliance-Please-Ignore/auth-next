@@ -715,6 +715,7 @@ app.patch('/applications/:id', requireAuth(), async (c) => {
 		await hr.updateApplicationStatus(applicationId, status, user.id, characterId, characterName, reviewNotes)
 
 		if (
+			status === 'accepted' &&
 			applicationBeforeUpdate &&
 			applicationBeforeUpdate.status !== 'accepted' &&
 			applicationBeforeUpdate.isFirstApplication
