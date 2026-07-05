@@ -219,12 +219,20 @@ export async function buildOAuthApiMeResponse(
 	}
 
 	if (includeGroups) {
+		const sluggifiedGroupNames = Array.from(
+			new Set(
+				details.groupMemberships
+					.map((membership) => membership.groupName.trim().toLowerCase().replace(/\s+/g, '-'))
+					.filter((groupName) => groupName.length > 0)
+			)
+		)
 		response.groupMemberships = details.groupMemberships.map((membership) => ({
 			groupId: membership.groupId,
 			groupName: membership.groupName,
 			membershipLevel: membership.membershipLevel,
 			joinedAt: membership.joinedAt.toISOString(),
 		}))
+		response.groups = sluggifiedGroupNames
 	}
 
 	if (includePermissions) {
