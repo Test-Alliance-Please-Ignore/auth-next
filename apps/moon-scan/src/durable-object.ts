@@ -2,7 +2,18 @@ import { DurableObject } from 'cloudflare:workers'
 
 import { count } from 'drizzle-orm'
 
-import { and, asc, desc, eq, gte, inArray, isNotNull, sql } from '@repo/db-utils'
+import {
+	and,
+	asc,
+	desc,
+	eq,
+	gte,
+	ilike,
+	inArray,
+	isNotNull,
+	or,
+	sql,
+} from '@repo/db-utils'
 
 import { createDb } from './db'
 import {
@@ -12,6 +23,7 @@ import {
 	moonScans,
 	structureProfiles,
 	verifiedCompositions,
+	verifiedMoonSummaries,
 } from './db/schema'
 
 import type { schema } from './db'
@@ -22,13 +34,16 @@ import type {
 	MoonCoverageStat,
 	MoonScan,
 	MoonScanDO as IMoonScanDO,
-	MoonScanOre,
+	OreRarity,
 	PaginatedScans,
 	ScanFilters,
 	StructureProfile,
 	StructureType,
 	SubmitScanInput,
 	VerifiedComposition,
+	VerifiedMoonPage,
+	VerifiedMoonSummaryRecord,
+	VerifiedMoonsSortBy,
 } from '@repo/moon-scan'
 import type { DbClient } from './db'
 import type { Env } from './context'
@@ -49,6 +64,35 @@ export class MoonScanDO extends DurableObject<Env> implements IMoonScanDO {
 	constructor(state: DurableObjectState, env: Env) {
 		super(state, env)
 		this.db = createDb(env.DATABASE_URL)
+
+		void state.blockConcurrencyWhile(async () => {
+			await this.initializeVerifiedMoonSummarySchema()
+		})
+	}
+
+	private async initializeVerifiedMoonSummarySchema(): Promise<void> {
+		try {
+			await this.db.execute(sql.raw(`
+				CREATE TABLE IF NOT EXISTS "moon_verified_moon_summaries" (
+					"moon_id" text PRIMARY KEY NOT NULL,
+					"source_scan_id" text NOT NULL REFERENCES "moon_scans"("id") ON DELETE NO ACTION ON UPDATE NO ACTION,
+					"verified_at" timestamp with time zone DEFAULT now() NOT NULL,
+					"verified_by" text,
+					"moon_name" text NOT NULL,
+					"solar_system_id" text NOT NULL,
+					"solar_system_name" text NOT NULL,
+					"region_id" text NOT NULL,
+					"region_name" text NOT NULL,
+					"constellation_id" text NOT NULL,
+					"constellation_name" text NOT NULL,
+					"security_status" text,
+					"highest_rarity" text
+				)
+			`))
+		} catch (error) {
+			console.error('Failed to initialize moon verified summary schema', { error })
+			throw error
+		}
 	}
 
 	async submitScans(scans: SubmitScanInput[], submittedBy: string | null, autoVerify: boolean): Promise<MoonScan[]> {
@@ -89,10 +133,10 @@ export class MoonScanDO extends DurableObject<Env> implements IMoonScanDO {
 						target: verifiedCompositions.moonId,
 						set: {
 							sourceScanId: inserted.id,
-							verifiedAt: new Date(),
-							verifiedBy: submittedBy,
-						},
-					})
+						verifiedAt: new Date(),
+						verifiedBy: submittedBy,
+					},
+				})
 			}
 
 			results.push(await this._buildScan(inserted, scan.ores.map((o) => ({ ...o, id: '', scanId: inserted.id }))))
@@ -173,6 +217,7 @@ export class MoonScanDO extends DurableObject<Env> implements IMoonScanDO {
 			})
 
 		const ores = await this.db.select().from(moonScanOres).where(eq(moonScanOres.scanId, scanId))
+
 		return this._buildScan(updated, ores)
 	}
 
@@ -271,6 +316,165 @@ export class MoonScanDO extends DurableObject<Env> implements IMoonScanDO {
 			.where(sql`${verifiedCompositions.moonId} like ${systemId + '%'}`)
 
 		return Promise.all(rows.map((vc) => this._buildVerifiedComposition(vc)))
+	}
+
+	async getVerifiedMoonPage(filters: {
+		page: number
+		pageSize: number
+		regionId?: string
+		constellationId?: string
+		rarity?: OreRarity[]
+		search?: string
+		sortBy: VerifiedMoonsSortBy
+		sortDir: 'asc' | 'desc'
+	}): Promise<VerifiedMoonPage> {
+		const offset = (filters.page - 1) * filters.pageSize
+		const conditions = []
+
+		if (filters.regionId) {
+			conditions.push(eq(verifiedMoonSummaries.regionId, filters.regionId))
+		}
+		if (filters.constellationId) {
+			conditions.push(eq(verifiedMoonSummaries.constellationId, filters.constellationId))
+		}
+		if (filters.rarity && filters.rarity.length > 0) {
+			conditions.push(
+				inArray(
+					verifiedMoonSummaries.highestRarity,
+					filters.rarity.map((rarity) => rarity)
+				)
+			)
+		}
+		if (filters.search) {
+			const q = `%${filters.search.trim()}%`
+			conditions.push(
+				or(
+					ilike(verifiedMoonSummaries.moonName, q),
+					ilike(verifiedMoonSummaries.solarSystemName, q)
+				)
+			)
+		}
+
+		const where = conditions.length > 0 ? and(...conditions) : undefined
+		const [{ total }] = await this.db
+			.select({ total: count() })
+			.from(verifiedMoonSummaries)
+			.where(where)
+
+		const constellations = filters.regionId
+			? await this.db
+				.selectDistinct({
+					constellationId: verifiedMoonSummaries.constellationId,
+					constellationName: verifiedMoonSummaries.constellationName,
+				})
+				.from(verifiedMoonSummaries)
+				.where(eq(verifiedMoonSummaries.regionId, filters.regionId))
+				.orderBy(asc(verifiedMoonSummaries.constellationName))
+			: await this.db
+				.selectDistinct({
+					constellationId: verifiedMoonSummaries.constellationId,
+					constellationName: verifiedMoonSummaries.constellationName,
+				})
+				.from(verifiedMoonSummaries)
+				.orderBy(asc(verifiedMoonSummaries.constellationName))
+
+		const rarityOrderExpr = sql<number>`case ${verifiedMoonSummaries.highestRarity}
+			when 'R4' then 1
+			when 'R8' then 2
+			when 'R16' then 3
+			when 'R32' then 4
+			when 'R64' then 5
+			else -1
+		end`
+		const securityStatusExpr = sql<number>`case
+			when ${verifiedMoonSummaries.securityStatus} is null then null
+			else ${verifiedMoonSummaries.securityStatus}::double precision
+		end`
+		const direction = filters.sortDir === 'asc' ? asc : desc
+		const orderByColumns = (() => {
+			switch (filters.sortBy) {
+				case 'solarSystemName':
+					return [direction(verifiedMoonSummaries.solarSystemName)]
+				case 'regionName':
+					return [direction(verifiedMoonSummaries.regionName)]
+				case 'securityStatus':
+					return [direction(securityStatusExpr)]
+				case 'highestRarity':
+					return [direction(rarityOrderExpr)]
+				case 'moonName':
+				default:
+					return [direction(verifiedMoonSummaries.moonName)]
+			}
+		})()
+
+		const rows = await this.db
+			.select()
+			.from(verifiedMoonSummaries)
+			.where(where)
+			.orderBy(...orderByColumns, asc(verifiedMoonSummaries.moonName))
+			.limit(filters.pageSize)
+			.offset(offset)
+
+		return {
+			items: rows.map((row) => ({
+				moonId: row.moonId,
+				moonName: row.moonName,
+				solarSystemId: row.solarSystemId,
+				solarSystemName: row.solarSystemName,
+				regionId: row.regionId,
+				regionName: row.regionName,
+				constellationId: row.constellationId,
+				constellationName: row.constellationName,
+				securityStatus: row.securityStatus,
+				highestRarity: row.highestRarity as OreRarity | null,
+			})),
+			total,
+			page: filters.page,
+			pageSize: filters.pageSize,
+			constellations: constellations.map((row) => ({
+				constellationId: row.constellationId,
+				constellationName: row.constellationName,
+			})),
+		}
+	}
+
+	async getVerifiedMoonSummaryIds(): Promise<string[]> {
+		const rows = await this.db
+			.select({ moonId: verifiedMoonSummaries.moonId })
+			.from(verifiedMoonSummaries)
+		return rows.map((row) => row.moonId)
+	}
+
+	async upsertVerifiedMoonSummaries(
+		summaries: VerifiedMoonSummaryRecord[]
+	): Promise<void> {
+		if (summaries.length === 0) return
+
+		await this.db
+			.insert(verifiedMoonSummaries)
+			.values(
+				summaries.map((summary) => ({
+					...summary,
+					verifiedAt: new Date(summary.verifiedAt),
+				}))
+			)
+			.onConflictDoUpdate({
+				target: verifiedMoonSummaries.moonId,
+				set: {
+					sourceScanId: sql`excluded.source_scan_id`,
+					verifiedAt: sql`excluded.verified_at`,
+					verifiedBy: sql`excluded.verified_by`,
+					moonName: sql`excluded.moon_name`,
+					solarSystemId: sql`excluded.solar_system_id`,
+					solarSystemName: sql`excluded.solar_system_name`,
+					regionId: sql`excluded.region_id`,
+					regionName: sql`excluded.region_name`,
+					constellationId: sql`excluded.constellation_id`,
+					constellationName: sql`excluded.constellation_name`,
+					securityStatus: sql`excluded.security_status`,
+					highestRarity: sql`excluded.highest_rarity`,
+				},
+			})
 	}
 
 	async getLeaderboard(window: LeaderboardWindow): Promise<LeaderboardEntry[]> {
