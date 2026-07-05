@@ -120,6 +120,14 @@ export async function verifyScan(id: string, notes?: string): Promise<MoonScan> 
 	return apiClient.post(`/moon-scan/scans/${id}/verify`, { notes })
 }
 
+export async function verifyScans(scanIds: string[]): Promise<MoonScan[]> {
+	return apiClient.post('/moon-scan/scans/queue/verify-all', { scanIds })
+}
+
+export async function rejectScans(scanIds: string[]): Promise<MoonScan[]> {
+	return apiClient.post('/moon-scan/scans/queue/reject-all', { scanIds })
+}
+
 export async function rejectScan(id: string, notes?: string): Promise<MoonScan> {
 	return apiClient.post(`/moon-scan/scans/${id}/reject`, { notes })
 }

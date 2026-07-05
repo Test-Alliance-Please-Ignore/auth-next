@@ -99,6 +99,8 @@ describe('moon-scan access matrix', () => {
 			getScanSummary: vi.fn(),
 			getScans: vi.fn(),
 			resolveCharacterNames: vi.fn(),
+			rejectScans: vi.fn(),
+			verifyScans: vi.fn(),
 		}
 		universeStub = {
 			getMoonRegionIds: vi.fn(),
@@ -205,6 +207,52 @@ describe('moon-scan access matrix', () => {
 
 		expect(res.status).toBe(200)
 		expect(await res.json()).toMatchObject({ items: [], total: 0, page: 1, pageSize: 20 })
+	})
+
+	it('allows validators to approve all scans on the review queue page', async () => {
+		getCachedUserPermissionsMock.mockResolvedValue([{ urn: 'urn:moons:scan:validate' }] as any)
+		moonScanStub.verifyScans.mockResolvedValue([
+			makeScan('verified'),
+			makeScan('verified', '8888'),
+		])
+
+		const app = createApp(makeUser({ id: 'validate-approve-all' }))
+		const res = await app.request(
+			'/api/moon-scan/scans/queue/verify-all',
+			{
+				method: 'POST',
+				headers: { 'Content-Type': 'application/json' },
+				body: JSON.stringify({ scanIds: ['scan-1', 'scan-2'] }),
+			},
+			env
+		)
+
+		expect(res.status).toBe(200)
+		expect(await res.json()).toHaveLength(2)
+		expect(moonScanStub.verifyScans).toHaveBeenCalledWith(['scan-1', 'scan-2'], '1001', null)
+	})
+
+	it('allows validators to reject all scans on the review queue page', async () => {
+		getCachedUserPermissionsMock.mockResolvedValue([{ urn: 'urn:moons:scan:validate' }] as any)
+		moonScanStub.rejectScans.mockResolvedValue([
+			makeScan('rejected'),
+			makeScan('rejected', '8888'),
+		])
+
+		const app = createApp(makeUser({ id: 'validate-reject-all' }))
+		const res = await app.request(
+			'/api/moon-scan/scans/queue/reject-all',
+			{
+				method: 'POST',
+				headers: { 'Content-Type': 'application/json' },
+				body: JSON.stringify({ scanIds: ['scan-1', 'scan-2'] }),
+			},
+			env
+		)
+
+		expect(res.status).toBe(200)
+		expect(await res.json()).toHaveLength(2)
+		expect(moonScanStub.rejectScans).toHaveBeenCalledWith(['scan-1', 'scan-2'], '1001', null)
 	})
 
 	it('allows submitters to read their scans', async () => {

@@ -8,6 +8,8 @@ import { Card } from '@/components/ui/card'
 import { Container } from '@/components/ui/container'
 import { PageHeader } from '@/components/ui/page-header'
 import { Skeleton } from '@/components/ui/skeleton'
+import { useConfirmationDialog } from '@/hooks/useConfirmationDialog'
+import toast from '@/lib/toast'
 import {
 	Table,
 	TableBody,
@@ -20,7 +22,7 @@ import { Textarea } from '@/components/ui/textarea'
 import { usePageTitle } from '@/hooks/usePageTitle'
 
 import { formatMoonScanDate } from '../date'
-import { useRejectScan, useScanQueue, useVerifyScan } from '../hooks'
+import { useRejectScan, useRejectScans, useScanQueue, useVerifyScan, useVerifyScans } from '../hooks'
 import { useMoonScanPermissions } from '../permissions'
 
 import type { ScanQueueEntry } from '../types'
@@ -122,11 +124,14 @@ export default function QueuePage() {
 	usePageTitle('Moon Scan Review Queue')
 
 	const { canValidate, canView } = useMoonScanPermissions()
+	const { requestConfirmation, confirmationDialog } = useConfirmationDialog()
 
 	const [page, setPage] = useState(1)
 	const [pageSize, setPageSize] = useState(20)
 
 	const { data, isLoading, error } = useScanQueue({ page, pageSize }, canValidate)
+	const verifyAllMutation = useVerifyScans()
+	const rejectAllMutation = useRejectScans()
 
 	if (!canValidate) {
 		return (
@@ -138,6 +143,48 @@ export default function QueuePage() {
 
 	const totalCount = data?.total ?? 0
 	const hasPagination = Math.ceil(totalCount / pageSize) > 1
+	const pendingScanIds = data?.items.map((scan) => scan.id) ?? []
+	const pendingScanCount = pendingScanIds.length
+
+	function handleApproveAll() {
+		if (pendingScanIds.length === 0 || verifyAllMutation.isPending) return
+		requestConfirmation({
+			title: 'Approve all scans on this page?',
+			description: `This will verify ${pendingScanIds.length} pending scan${pendingScanIds.length === 1 ? '' : 's'} currently shown in the queue.`,
+			confirmLabel: 'Approve All',
+			confirmButtonVariant: 'success',
+			onConfirm: async () => {
+				try {
+					const verified = await verifyAllMutation.mutateAsync(pendingScanIds)
+					toast.success(
+						`Approved ${verified.length} pending scan${verified.length === 1 ? '' : 's'}.`
+					)
+				} catch (error) {
+					toast.error(error instanceof Error ? error.message : 'Failed to approve scans.')
+				}
+			},
+		})
+	}
+
+	function handleRejectAll() {
+		if (pendingScanIds.length === 0 || rejectAllMutation.isPending) return
+		requestConfirmation({
+			title: 'Reject all scans on this page?',
+			description: `This will reject ${pendingScanIds.length} pending scan${pendingScanIds.length === 1 ? '' : 's'} currently shown in the queue.`,
+			confirmLabel: 'Reject All',
+			intent: 'destructive',
+			onConfirm: async () => {
+				try {
+					const rejected = await rejectAllMutation.mutateAsync(pendingScanIds)
+					toast.success(
+						`Rejected ${rejected.length} pending scan${rejected.length === 1 ? '' : 's'}.`
+					)
+				} catch (error) {
+					toast.error(error instanceof Error ? error.message : 'Failed to reject scans.')
+				}
+			},
+		})
+	}
 
 	const renderPaginationControls = () => (
 		<UserSearchPaginationControls
@@ -159,6 +206,32 @@ export default function QueuePage() {
 			<PageHeader
 				title="Validation Queue"
 				description="Review and approve pending moon scan submissions"
+				action={
+					<div className="flex flex-wrap gap-2">
+						<Button
+							variant="success"
+							disabled={isLoading || pendingScanCount === 0 || verifyAllMutation.isPending}
+							onClick={handleApproveAll}
+						>
+							{verifyAllMutation.isPending
+								? 'Approving…'
+								: pendingScanCount > 0
+									? `Approve all (${pendingScanCount})`
+									: 'Approve all'}
+						</Button>
+						<Button
+							variant="destructive"
+							disabled={isLoading || pendingScanCount === 0 || rejectAllMutation.isPending}
+							onClick={handleRejectAll}
+						>
+							{rejectAllMutation.isPending
+								? 'Rejecting…'
+								: pendingScanCount > 0
+									? `Reject all (${pendingScanCount})`
+									: 'Reject all'}
+						</Button>
+					</div>
+				}
 			/>
 
 			{error && (
@@ -203,6 +276,7 @@ export default function QueuePage() {
 
 				{hasPagination && <div className="border-t p-4">{renderPaginationControls()}</div>}
 			</Card>
+			{confirmationDialog}
 		</Container>
 	)
 }

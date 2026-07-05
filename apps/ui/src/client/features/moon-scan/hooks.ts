@@ -15,10 +15,12 @@ import {
 	getSystemDetail,
 	parseScanTsv,
 	rejectScan,
+	rejectScans,
 	submitScanTsv,
 	updateExtractionSettings,
 	updateStructureProfile,
 	verifyScan,
+	verifyScans,
 } from './api'
 import { moonScanKeys } from './query-keys'
 
@@ -191,6 +193,20 @@ export function useVerifyScan() {
 			void queryClient.invalidateQueries({ queryKey: moonScanKeys.scans() })
 			void queryClient.invalidateQueries({ queryKey: [...moonScanKeys.scans(), 'queue'] })
 			void queryClient.invalidateQueries({ queryKey: moonScanKeys.moon(scan.moonId) })
+			void queryClient.invalidateQueries({ queryKey: [...moonScanKeys.all, 'leaderboard'] })
+			invalidateMoonReadModels(queryClient)
+		},
+	})
+}
+
+export function useVerifyScans() {
+	const queryClient = useQueryClient()
+	return useMutation({
+		mutationFn: (scanIds: string[]) => verifyScans(scanIds),
+		onSuccess: () => {
+			void queryClient.invalidateQueries({ queryKey: moonScanKeys.scans() })
+			void queryClient.invalidateQueries({ queryKey: [...moonScanKeys.scans(), 'queue'] })
+			void queryClient.invalidateQueries({ queryKey: [...moonScanKeys.all, 'leaderboard'] })
 			invalidateMoonReadModels(queryClient)
 		},
 	})
@@ -204,6 +220,19 @@ export function useRejectScan() {
 			void queryClient.invalidateQueries({ queryKey: moonScanKeys.scan(scan.id) })
 			void queryClient.invalidateQueries({ queryKey: moonScanKeys.scans() })
 			void queryClient.invalidateQueries({ queryKey: [...moonScanKeys.scans(), 'queue'] })
+		},
+	})
+}
+
+export function useRejectScans() {
+	const queryClient = useQueryClient()
+	return useMutation({
+		mutationFn: (scanIds: string[]) => rejectScans(scanIds),
+		onSuccess: () => {
+			void queryClient.invalidateQueries({ queryKey: moonScanKeys.scans() })
+			void queryClient.invalidateQueries({ queryKey: [...moonScanKeys.scans(), 'queue'] })
+			void queryClient.invalidateQueries({ queryKey: [...moonScanKeys.all, 'leaderboard'] })
+			invalidateMoonReadModels(queryClient)
 		},
 	})
 }
