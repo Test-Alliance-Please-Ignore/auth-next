@@ -124,7 +124,7 @@ export class LegacyDO extends DurableObject<Env> implements Legacy {
 
 	private async getCoreAdminUserDetails(targetUserId: string): Promise<{
 		id: string
-		characters: Array<{ characterId: string }>
+		characters: Array<{ characterId: string; characterName: string }>
 		discordUserId?: string | null
 	} | null> {
 		const coreStub = getStub<Core>(this.env.CORE, 'default')
@@ -135,7 +135,10 @@ export class LegacyDO extends DurableObject<Env> implements Legacy {
 		if (characters.length === 0) return null
 		return {
 			id: targetUserId,
-			characters: characters.map((character) => ({ characterId: character.characterId })),
+			characters: characters.map((character) => ({
+				characterId: character.characterId,
+				characterName: character.characterName,
+			})),
 			discordUserId,
 		}
 	}
@@ -492,6 +495,30 @@ export class LegacyDO extends DurableObject<Env> implements Legacy {
 					legacyAuthUserId: existing.legacyAuthUserId,
 					characters: importableCharacters,
 				})
+				if (applyBlacklistToUser && importableCharacters.length > 0) {
+					for (const character of importableCharacters) {
+						await coreStub.createCharacterBlacklist({
+							characterId: character.characterId,
+							characterName: character.characterName,
+							reason: `Legacy migration blacklist action for legacy user ${existing.legacyAuthUserId}`,
+							blacklistedBy: performedByUserId,
+							triggeredBy: existing.id,
+							metadata: {
+								source: 'legacy_migration_apply',
+								queueId: existing.id,
+								legacyAuthUserId: existing.legacyAuthUserId,
+								modernUserId: existing.modernUserId,
+								legacyCharacterSource: character.source,
+							},
+						})
+					}
+					applyResults.importCharacterBlacklists = {
+						status: 'applied',
+						message: `Blacklisted ${importableCharacters.length} imported character(s)`,
+					}
+				} else {
+					applyResults.importCharacterBlacklists = { status: 'skipped' }
+				}
 				applyResults.importCharacterLinks = { status: 'applied' }
 			} catch (error) {
 				applyResults.importCharacterLinks = {
@@ -951,7 +978,7 @@ export class LegacyDO extends DurableObject<Env> implements Legacy {
 			const sourceHints: Array<{
 				targetType: 'character_id' | 'character_name' | 'discord_id'
 				targetValue: string
-				source: 'legacy_direct' | 'legacy_ip_association'
+				source: 'legacy_direct' | 'legacy_ip_association' | 'tang_direct'
 			}> = []
 			for (const character of associatedCharacters) {
 				sourceHints.push({ targetType: 'character_id', targetValue: character.characterId, source: 'legacy_direct' })
@@ -959,6 +986,17 @@ export class LegacyDO extends DurableObject<Env> implements Legacy {
 			}
 			for (const discordUserId of associatedDiscordUserIds) {
 				sourceHints.push({ targetType: 'discord_id', targetValue: discordUserId, source: 'legacy_direct' })
+			}
+			for (const character of targetUser.characters) {
+				sourceHints.push({ targetType: 'character_id', targetValue: character.characterId, source: 'tang_direct' })
+				sourceHints.push({ targetType: 'character_name', targetValue: character.characterName, source: 'tang_direct' })
+			}
+			if (targetUser.discordUserId) {
+				sourceHints.push({
+					targetType: 'discord_id',
+					targetValue: targetUser.discordUserId,
+					source: 'tang_direct',
+				})
 			}
 			for (const neighborLegacyUserId of ipNeighborLegacyUsers) {
 				for (const pair of neighborCharactersByLegacyUser.get(neighborLegacyUserId) ?? []) {

@@ -1730,7 +1730,14 @@ export interface CreateUserBlacklistRequest {
 }
 
 export interface CreateCharacterBlacklistRequest {
-	characterId: string
+	characterId?: string
+	characterName?: string
+	reason: string
+	metadata?: Record<string, unknown>
+}
+
+export interface CreateDiscordBlacklistRequest {
+	discordUserId: string
 	reason: string
 	metadata?: Record<string, unknown>
 }
@@ -3940,6 +3947,12 @@ export class ApiClient {
 		autoBlacklistedCount: number
 	}> {
 		return this.post('/admin/blacklist/character', request)
+	}
+
+	async createDiscordBlacklist(request: CreateDiscordBlacklistRequest): Promise<{
+		entry: BlacklistEntry
+	}> {
+		return this.post('/admin/blacklist/discord', request)
 	}
 
 	async getBlacklists(filters?: BlacklistFilters): Promise<PaginatedResponse<BlacklistEntry>> {

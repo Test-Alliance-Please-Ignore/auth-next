@@ -12,6 +12,7 @@ import type {
 	CharacterIdNameBlacklistResult,
 	CharacterIdNamePair,
 	CreateCharacterBlacklistParams,
+	CreateDiscordBlacklistParams,
 	CreateUserBlacklistParams,
 } from '@repo/hr'
 import type { ServiceContext } from './context'
@@ -409,19 +410,29 @@ export class BlacklistService {
 	 * The Core worker will handle finding users with this character and auto-blacklisting them
 	 */
 	async createCharacterBlacklist(params: CreateCharacterBlacklistParams): Promise<BlacklistEntry> {
+		const characterId = params.characterId?.trim()
+		const characterName = params.characterName?.trim()
+		const normalizedCharacterName = characterName ? this.normalizeCharacterName(characterName) : null
+		if (!characterId && !normalizedCharacterName) {
+			throw new Error('Either characterId or characterName is required')
+		}
+
+		const targetType = characterId ? 'character_id' : 'character_name'
+		const targetValue = characterId ?? normalizedCharacterName ?? ''
+
 		const existing = await this.ctx.db.query.blacklistEntries.findFirst({
 			where: and(
-				eq(blacklistEntries.targetType, 'character_id'),
-				eq(blacklistEntries.targetValue, params.characterId)
+				eq(blacklistEntries.targetType, targetType),
+				eq(blacklistEntries.targetValue, targetValue)
 			),
 		})
 
 		if (existing) {
 			await this.ensureCharacterNameBlacklist({
-				characterName: params.characterName,
+				characterName,
 				blacklistedBy: params.blacklistedBy,
 				triggeredBy: existing.id,
-				characterId: params.characterId,
+				characterId: characterId ?? existing.targetValue,
 				metadata: params.metadata ?? null,
 			})
 			return this.mapToBlacklistEntry(existing)
@@ -430,8 +441,8 @@ export class BlacklistService {
 		const [entry] = await this.ctx.db
 			.insert(blacklistEntries)
 			.values({
-				targetType: 'character_id',
-				targetValue: params.characterId,
+				targetType,
+				targetValue,
 				reason: params.reason,
 				blacklistedBy: params.blacklistedBy,
 				triggeredBy: params.triggeredBy ?? null,
@@ -445,12 +456,52 @@ export class BlacklistService {
 		}
 
 		await this.ensureCharacterNameBlacklist({
-			characterName: params.characterName,
+			characterName,
 			blacklistedBy: params.blacklistedBy,
 			triggeredBy: entry.id,
-			characterId: params.characterId,
+			characterId: characterId ?? entry.targetValue,
 			metadata: params.metadata ?? null,
 		})
+
+		return this.mapToBlacklistEntry(entry)
+	}
+
+	/**
+	 * Create a Discord blacklist entry
+	 */
+	async createDiscordBlacklist(params: CreateDiscordBlacklistParams): Promise<BlacklistEntry> {
+		const discordUserId = params.discordUserId.trim()
+		if (!discordUserId) {
+			throw new Error('discordUserId is required')
+		}
+
+		const existing = await this.ctx.db.query.blacklistEntries.findFirst({
+			where: and(
+				eq(blacklistEntries.targetType, 'discord_id'),
+				eq(blacklistEntries.targetValue, discordUserId)
+			),
+		})
+
+		if (existing) {
+			return this.mapToBlacklistEntry(existing)
+		}
+
+		const [entry] = await this.ctx.db
+			.insert(blacklistEntries)
+			.values({
+				targetType: 'discord_id',
+				targetValue: discordUserId,
+				reason: params.reason,
+				blacklistedBy: params.blacklistedBy,
+				triggeredBy: params.triggeredBy ?? null,
+				isAutoBlacklist: false,
+				metadata: params.metadata ?? null,
+			})
+			.returning()
+
+		if (!entry) {
+			throw new Error('Failed to create Discord blacklist entry')
+		}
 
 		return this.mapToBlacklistEntry(entry)
 	}

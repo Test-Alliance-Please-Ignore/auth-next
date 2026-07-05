@@ -22,9 +22,11 @@ const { coreStubMock } = vi.hoisted(() => ({
 		getUserCharacters: vi.fn(),
 		getUserDiscordUserId: vi.fn(),
 		createUserBlacklist: vi.fn(),
+		createCharacterBlacklist: vi.fn(),
 		legacyImportCharacterLinks: vi.fn(),
 		legacyImportNotes: vi.fn(),
 		legacyImportIpAssociations: vi.fn(),
+		evaluateLegacyMigrationBlacklistSignals: vi.fn(),
 	},
 }))
 
@@ -117,6 +119,7 @@ describe('legacy durable object rpc', () => {
 		coreStubMock.getUserCharacters.mockResolvedValue([{ characterId: '2001', characterName: 'One' }])
 		coreStubMock.getUserDiscordUserId.mockResolvedValue(null)
 		coreStubMock.createUserBlacklist.mockResolvedValue({ entryId: 'entry-1' })
+		coreStubMock.createCharacterBlacklist.mockResolvedValue({ entryId: 'char-entry-1' })
 		coreStubMock.legacyImportCharacterLinks.mockResolvedValue({
 			inserted: 1,
 			alreadyLinkedToUser: 0,
@@ -129,6 +132,14 @@ describe('legacy durable object rpc', () => {
 			failed: 0,
 			totalRequested: 1,
 		})
+		coreStubMock.evaluateLegacyMigrationBlacklistSignals.mockResolvedValue({
+			hasAnyBlacklistSignal: false,
+			modernUserBlacklisted: false,
+			matchedTargets: [],
+			matchingCharactersBlacklisted: [],
+			matchingDiscordUserIdsBlacklisted: [],
+			ipAssociatedBlacklistedUsers: [],
+		})
 
 		legacy = new LegacyDO({} as DurableObjectState, {
 			DATABASE_URL: 'postgresql://test',
@@ -138,6 +149,7 @@ describe('legacy durable object rpc', () => {
 
 	it('executes import actions and records apply payload results', async () => {
 		const result = await legacy.applyMigration('queue-1', {
+			applyBlacklistToUser: true,
 			importCharacterLinks: true,
 			importNotes: true,
 			importIpAssociations: true,
@@ -145,6 +157,19 @@ describe('legacy durable object rpc', () => {
 
 		expect(result?.item.status).toBe('applied')
 		expect(coreStubMock.legacyImportCharacterLinks).toHaveBeenCalledTimes(1)
+		expect(coreStubMock.createCharacterBlacklist).toHaveBeenCalledWith(
+			expect.objectContaining({
+				characterId: '2001',
+				characterName: 'One',
+				reason: 'Legacy migration blacklist action for legacy user legacy-1',
+				metadata: expect.objectContaining({
+					source: 'legacy_migration_apply',
+					queueId: 'queue-1',
+					legacyAuthUserId: 'legacy-1',
+					modernUserId: '11111111-1111-4111-8111-111111111111',
+				}),
+			})
+		)
 		expect(coreStubMock.legacyImportNotes).toHaveBeenCalledTimes(1)
 		expect(coreStubMock.legacyImportIpAssociations).toHaveBeenCalledTimes(1)
 		expect(actionInsertValues).toHaveBeenCalledWith(
@@ -152,7 +177,9 @@ describe('legacy durable object rpc', () => {
 				action: 'apply',
 				payload: expect.objectContaining({
 					applyResults: expect.objectContaining({
+						applyBlacklistToUser: expect.objectContaining({ status: 'applied' }),
 						importCharacterLinks: expect.objectContaining({ status: 'applied' }),
+						importCharacterBlacklists: expect.objectContaining({ status: 'applied' }),
 						importNotes: expect.objectContaining({ status: 'applied' }),
 						importIpAssociations: expect.objectContaining({ status: 'applied' }),
 					}),
@@ -210,9 +237,35 @@ describe('legacy durable object rpc', () => {
 	})
 
 	it('rechecks a user and returns queue summary', async () => {
+		coreStubMock.getUserCharacters.mockResolvedValue([
+			{ characterId: '2001', characterName: 'One' },
+			{ characterId: '2002', characterName: 'Two' },
+		])
+		coreStubMock.getUserDiscordUserId.mockResolvedValue('discord-1')
 		const result = await legacy.recheckUser('11111111-1111-4111-8111-111111111111', 'admin-1')
 		expect(result.ok).toBe(true)
 		expect(result.modernUserId).toBe('11111111-1111-4111-8111-111111111111')
+		expect(coreStubMock.evaluateLegacyMigrationBlacklistSignals).toHaveBeenCalledWith(
+			expect.objectContaining({
+				sourceHints: expect.arrayContaining([
+					expect.objectContaining({
+						targetType: 'character_id',
+						targetValue: '2001',
+						source: 'tang_direct',
+					}),
+					expect.objectContaining({
+						targetType: 'character_name',
+						targetValue: 'One',
+						source: 'tang_direct',
+					}),
+					expect.objectContaining({
+						targetType: 'discord_id',
+						targetValue: 'discord-1',
+						source: 'tang_direct',
+					}),
+				]),
+			})
+		)
 	})
 
 	it('keeps an applied migration applied when a recheck finds no new evidence', async () => {

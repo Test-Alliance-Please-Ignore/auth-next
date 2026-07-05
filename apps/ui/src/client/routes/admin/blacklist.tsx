@@ -18,7 +18,7 @@ import {
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { LoadingSpinner } from '@/components/ui/loading'
-import { Select } from '@/components/ui/select'
+import { Select, type SelectOption } from '@/components/ui/select'
 import { Skeleton } from '@/components/ui/skeleton'
 import {
 	Table,
@@ -46,6 +46,57 @@ const TARGET_TYPE_LABELS: Record<BlacklistTargetType, string> = {
 	alliance_name: 'Alliance Name',
 }
 
+type BlacklistCreateTargetType = 'user' | 'character_id' | 'character_name' | 'discord_id'
+
+const BLACKLIST_CREATE_TARGET_OPTIONS: SelectOption[] = [
+	{
+		value: 'user',
+		label: 'User',
+		description: 'Block a platform account from logging in.',
+	},
+	{
+		value: 'character_id',
+		label: 'Character ID',
+		description: 'Block a specific EVE character and auto-blacklist linked users.',
+	},
+	{
+		value: 'character_name',
+		label: 'Character Name',
+		description: 'Block a character name and auto-blacklist currently linked users.',
+	},
+	{
+		value: 'discord_id',
+		label: 'Discord ID',
+		description: 'Block a Discord account from linking to the platform.',
+	},
+]
+
+const BLACKLIST_CREATE_FIELD_CONFIG: Record<
+	BlacklistCreateTargetType,
+	{ label: string; placeholder: string; helperText: string }
+> = {
+	user: {
+		label: 'User ID',
+		placeholder: 'Enter user UUID',
+		helperText: 'Find the user ID from the Users page or a user detail page.',
+	},
+	character_id: {
+		label: 'Character ID',
+		placeholder: 'Enter EVE character ID',
+		helperText: 'This will also auto-blacklist users currently linked to that character.',
+	},
+	character_name: {
+		label: 'Character Name',
+		placeholder: 'Enter EVE character name',
+		helperText: 'This will auto-blacklist users currently linked to that character name.',
+	},
+	discord_id: {
+		label: 'Discord ID',
+		placeholder: 'Enter Discord snowflake ID',
+		helperText: 'This blocks the Discord account from linking, even if it is not linked yet.',
+	},
+}
+
 export default function BlacklistPage() {
 	usePageTitle('Blacklist Management')
 
@@ -67,9 +118,8 @@ export default function BlacklistPage() {
 
 	// Form state
 	const [formData, setFormData] = useState({
-		targetType: 'user' as 'user' | 'character_id',
-		userId: '',
-		characterId: '',
+		targetType: 'user' as BlacklistCreateTargetType,
+		targetValue: '',
 		reason: '',
 	})
 
@@ -97,47 +147,81 @@ export default function BlacklistPage() {
 			}),
 	})
 
-	// Create user blacklist mutation
-	const createUserBlacklist = useMutation({
-		mutationFn: (data: { userId: string; reason: string }) => api.createUserBlacklist(data),
-		onSuccess: (result) => {
-			queryClient.invalidateQueries({ queryKey: ['blacklists'] })
-			setAddDialogOpen(false)
-			setFormData({ targetType: 'user', userId: '', characterId: '', reason: '' })
-			const cascadeMsg =
-				result.autoBlacklisted.totalCount > 0
-					? ` Auto-blacklisted ${result.autoBlacklisted.characters.length} character(s) and ${result.autoBlacklisted.users.length} user(s).`
-					: ''
-			setMessage({ type: 'success', text: `User blacklisted successfully.${cascadeMsg}` })
-			setTimeout(() => setMessage(null), 5000)
-		},
-		onError: (error: any) => {
-			setMessage({
-				type: 'error',
-				text: error.message || 'Failed to blacklist user',
-			})
-			setTimeout(() => setMessage(null), 5000)
-		},
-	})
+	type CreateBlacklistRequest = {
+		targetType: BlacklistCreateTargetType
+		targetValue: string
+		reason: string
+	}
 
-	// Create character blacklist mutation
-	const createCharacterBlacklist = useMutation({
-		mutationFn: (data: { characterId: string; reason: string }) =>
-			api.createCharacterBlacklist(data),
-		onSuccess: (result) => {
+	const resetAddForm = () => {
+		setFormData({
+			targetType: 'user',
+			targetValue: '',
+			reason: '',
+		})
+	}
+
+	const createBlacklist = useMutation({
+		mutationFn: async (data: CreateBlacklistRequest) => {
+			switch (data.targetType) {
+				case 'user':
+					return {
+						targetType: data.targetType,
+						result: await api.createUserBlacklist({ userId: data.targetValue, reason: data.reason }),
+					}
+				case 'character_id':
+					return {
+						targetType: data.targetType,
+						result: await api.createCharacterBlacklist({
+							characterId: data.targetValue,
+							reason: data.reason,
+						}),
+					}
+				case 'character_name':
+					return {
+						targetType: data.targetType,
+						result: await api.createCharacterBlacklist({
+							characterName: data.targetValue,
+							reason: data.reason,
+						}),
+					}
+				case 'discord_id':
+					return {
+						targetType: data.targetType,
+						result: await api.createDiscordBlacklist({
+							discordUserId: data.targetValue,
+							reason: data.reason,
+						}),
+					}
+			}
+		},
+		onSuccess: ({ targetType, result }) => {
 			queryClient.invalidateQueries({ queryKey: ['blacklists'] })
 			setAddDialogOpen(false)
-			setFormData({ targetType: 'user', userId: '', characterId: '', reason: '' })
-			setMessage({
-				type: 'success',
-				text: `Character blacklisted successfully. ${result.autoBlacklistedCount} user(s) auto-blacklisted.`,
-			})
+			resetAddForm()
+
+			let successMessage = `${TARGET_TYPE_LABELS[targetType]} blacklisted successfully.`
+			if (targetType === 'user') {
+				const autoBlacklisted = result as {
+					autoBlacklisted: { characters: string[]; users: string[]; totalCount: number }
+				}
+				const cascadeMsg =
+					autoBlacklisted.autoBlacklisted.totalCount > 0
+						? ` Auto-blacklisted ${autoBlacklisted.autoBlacklisted.characters.length} character(s) and ${autoBlacklisted.autoBlacklisted.users.length} user(s).`
+						: ''
+				successMessage += cascadeMsg
+			} else if (targetType === 'character_id' || targetType === 'character_name') {
+				const characterResult = result as { autoBlacklistedCount: number }
+				successMessage += ` ${characterResult.autoBlacklistedCount} user(s) auto-blacklisted.`
+			}
+
+			setMessage({ type: 'success', text: successMessage })
 			setTimeout(() => setMessage(null), 5000)
 		},
 		onError: (error: any) => {
 			setMessage({
 				type: 'error',
-				text: error.message || 'Failed to blacklist character',
+				text: error.message || 'Failed to create blacklist entry',
 			})
 			setTimeout(() => setMessage(null), 5000)
 		},
@@ -169,27 +253,20 @@ export default function BlacklistPage() {
 	const handleAdd = (e: React.FormEvent) => {
 		e.preventDefault()
 
-		if (formData.targetType === 'user') {
-			if (!formData.userId.trim() || !formData.reason.trim()) {
-				setMessage({ type: 'error', text: 'User ID and reason are required' })
-				setTimeout(() => setMessage(null), 5000)
-				return
-			}
-			createUserBlacklist.mutate({
-				userId: formData.userId.trim(),
-				reason: formData.reason.trim(),
+		if (!formData.targetValue.trim() || !formData.reason.trim()) {
+			setMessage({
+				type: 'error',
+				text: `${BLACKLIST_CREATE_FIELD_CONFIG[formData.targetType].label} and reason are required`,
 			})
-		} else {
-			if (!formData.characterId.trim() || !formData.reason.trim()) {
-				setMessage({ type: 'error', text: 'Character ID and reason are required' })
-				setTimeout(() => setMessage(null), 5000)
-				return
-			}
-			createCharacterBlacklist.mutate({
-				characterId: formData.characterId.trim(),
-				reason: formData.reason.trim(),
-			})
+			setTimeout(() => setMessage(null), 5000)
+			return
 		}
+
+		createBlacklist.mutate({
+			targetType: formData.targetType,
+			targetValue: formData.targetValue.trim(),
+			reason: formData.reason.trim(),
+		})
 	}
 
 	const openDeleteDialog = (entry: BlacklistEntry) => {
@@ -221,6 +298,8 @@ export default function BlacklistPage() {
 		setPageSize(newSize)
 		setPage(1)
 	}
+
+	const addBlacklistFieldConfig = BLACKLIST_CREATE_FIELD_CONFIG[formData.targetType]
 
 	return (
 		<div className="space-y-6">
@@ -494,12 +573,20 @@ export default function BlacklistPage() {
 			</Card>
 
 			{/* Add Dialog */}
-			<Dialog open={addDialogOpen} onOpenChange={setAddDialogOpen}>
+			<Dialog
+				open={addDialogOpen}
+				onOpenChange={(open) => {
+					setAddDialogOpen(open)
+					if (!open) {
+						resetAddForm()
+					}
+				}}
+			>
 				<DialogContent>
 					<DialogHeader>
 						<DialogTitle>Add to Blacklist</DialogTitle>
 						<DialogDescription>
-							Block a user or character from accessing the platform
+							Block a user account, character, or Discord account from accessing the platform
 						</DialogDescription>
 					</DialogHeader>
 					<form onSubmit={handleAdd}>
@@ -509,47 +596,28 @@ export default function BlacklistPage() {
 								<Select
 									value={formData.targetType}
 									onValueChange={(v) =>
-										setFormData({ ...formData, targetType: v as 'user' | 'character_id' })
+										setFormData({
+											...formData,
+											targetType: v as BlacklistCreateTargetType,
+											targetValue: '',
+										})
 									}
 									inputId="targetType"
-									options={[
-										{ value: 'user', label: 'User' },
-										{ value: 'character_id',
-											label: 'Character (Auto-blacklists linked users)',
-										},
-									]}
+									options={BLACKLIST_CREATE_TARGET_OPTIONS}
 								/>
 							</div>
 
-							{formData.targetType === 'user' ? (
-								<div className="space-y-2">
-									<Label htmlFor="userId">User ID</Label>
-									<Input
-										id="userId"
-										placeholder="Enter user UUID"
-										value={formData.userId}
-										onChange={(e) => setFormData({ ...formData, userId: e.target.value })}
-										required
-									/>
-									<p className="text-xs text-muted-foreground">
-										Find user ID from the Users page or user detail page
-									</p>
-								</div>
-							) : (
-								<div className="space-y-2">
-									<Label htmlFor="characterId">Character ID</Label>
-									<Input
-										id="characterId"
-										placeholder="Enter EVE character ID"
-										value={formData.characterId}
-										onChange={(e) => setFormData({ ...formData, characterId: e.target.value })}
-										required
-									/>
-									<p className="text-xs text-muted-foreground">
-										All users with this character will be auto-blacklisted
-									</p>
-								</div>
-							)}
+							<div className="space-y-2">
+								<Label htmlFor="targetValue">{addBlacklistFieldConfig.label}</Label>
+								<Input
+									id="targetValue"
+									placeholder={addBlacklistFieldConfig.placeholder}
+									value={formData.targetValue}
+									onChange={(e) => setFormData({ ...formData, targetValue: e.target.value })}
+									required
+								/>
+								<p className="text-xs text-muted-foreground">{addBlacklistFieldConfig.helperText}</p>
+							</div>
 
 							<div className="space-y-2">
 								<Label htmlFor="reason">Reason</Label>
@@ -564,9 +632,19 @@ export default function BlacklistPage() {
 							</div>
 						</div>
 						<DialogFooter className="mt-6">
-							<Button variant="cancel" onClick={() => setAddDialogOpen(false)}>Cancel</Button>
-							<Button variant="confirm"
-								loading={createUserBlacklist.isPending || createCharacterBlacklist.isPending}
+							<Button
+								variant="cancel"
+								type="button"
+								onClick={() => {
+									setAddDialogOpen(false)
+									resetAddForm()
+								}}
+							>
+								Cancel
+							</Button>
+							<Button
+								variant="confirm"
+								loading={createBlacklist.isPending}
 								loadingText="Adding..."
 							>
 								Add to Blacklist

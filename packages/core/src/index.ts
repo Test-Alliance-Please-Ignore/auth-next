@@ -143,6 +143,14 @@ export interface Core {
 		blacklistedBy: string
 		metadata?: Record<string, unknown>
 	}): Promise<{ entryId: string }>
+	createCharacterBlacklist(input: {
+		characterId?: string
+		characterName?: string
+		reason: string
+		blacklistedBy: string
+		triggeredBy?: string
+		metadata?: Record<string, unknown>
+	}): Promise<{ entryId: string }>
 	legacyImportCharacterLinks(input: {
 		modernUserId: string
 		legacyAuthUserId: string

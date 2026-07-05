@@ -310,8 +310,19 @@ export interface CreateUserBlacklistParams {
  * Parameters for creating a character blacklist
  */
 export interface CreateCharacterBlacklistParams {
-	characterId: string
+	characterId?: string
 	characterName?: string
+	reason: string
+	blacklistedBy: string
+	triggeredBy?: string
+	metadata?: Record<string, unknown>
+}
+
+/**
+ * Parameters for creating a Discord blacklist
+ */
+export interface CreateDiscordBlacklistParams {
+	discordUserId: string
 	reason: string
 	blacklistedBy: string
 	triggeredBy?: string
@@ -981,6 +992,13 @@ export interface Hr extends DurableObject {
 	 * @returns The created blacklist entry
 	 */
 	createCharacterBlacklist(params: CreateCharacterBlacklistParams): Promise<BlacklistEntry>
+
+	/**
+	 * Create a Discord blacklist entry
+	 * @param params - Parameters for creating the Discord blacklist
+	 * @returns The created blacklist entry
+	 */
+	createDiscordBlacklist(params: CreateDiscordBlacklistParams): Promise<BlacklistEntry>
 
 	/**
 	 * Remove a blacklist entry
