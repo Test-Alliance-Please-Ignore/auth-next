@@ -18,6 +18,8 @@ import {
 	type MoonProfitability,
 	type OreRarity,
 	type OreWithProfitability,
+	type VerifiedMoonSummaryRecord,
+	type VerifiedMoonsSortBy,
 	type StructureProfitability,
 	type VerifiedComposition,
 } from '@repo/moon-scan'
@@ -63,6 +65,7 @@ const MAX_SCAN_RAW_BYTES = 1_000_000
 // ─── Caches ──────────────────────────────────────────────────────────────────
 
 const permissionCache = new TimeCache<boolean>(15_000)
+const VERIFIED_MOON_SUMMARY_BACKFILL_BATCH_SIZE = 250
 
 // Minerals that Metenox does NOT output (only moon goo materials)
 const MINERAL_TYPE_IDS = new Set(['35', '36'])
@@ -144,6 +147,14 @@ function parseSecurityStatus(secStatus: string | null | undefined): number | nul
 function isMoonMiningEligibleSecurity(secStatus: string | null | undefined): boolean {
 	const parsed = parseSecurityStatus(secStatus)
 	return parsed !== null && parsed < SEC_STATUS_THRESHOLD
+}
+
+function chunkArray<T>(items: readonly T[], size: number): T[][] {
+	const chunks: T[][] = []
+	for (let index = 0; index < items.length; index += size) {
+		chunks.push(items.slice(index, index + size) as T[])
+	}
+	return chunks
 }
 
 // ─── Zod schemas ──────────────────────────────────────────────────────────────
@@ -424,6 +435,152 @@ moonScanRoutes.get('/moons/verified', async (c) => {
 
 	const moonScan = getMoonScanStub(c.env)
 	const universe = getUniverseStub(c.env)
+	const usesProfitSort = query.data.sortBy === 'metenoxProfit' || query.data.sortBy === 'tataraProfit'
+
+	if (!usesProfitSort) {
+		let summary: Awaited<ReturnType<MoonScanDO['getVerifiedMoonPage']>> | null = null
+		try {
+			const [scanSummary, summaryMoonIds] = await Promise.all([
+				moonScan.getScanSummary(),
+				moonScan.getVerifiedMoonSummaryIds(),
+			])
+			const summaryMoonIdSet = new Set(summaryMoonIds)
+			const missingMoonIds = scanSummary.verifiedMoonIds.filter((moonId) => !summaryMoonIdSet.has(moonId))
+			if (missingMoonIds.length > 0) {
+				for (const missingMoonIdChunk of chunkArray(missingMoonIds, VERIFIED_MOON_SUMMARY_BACKFILL_BATCH_SIZE)) {
+					const missingCompositions = await moonScan.getVerifiedCompositions(missingMoonIdChunk)
+					const summaryRecords = await buildVerifiedMoonSummaryRecords(missingCompositions, universe)
+					await moonScan.upsertVerifiedMoonSummaries(summaryRecords)
+				}
+			}
+
+			summary = await moonScan.getVerifiedMoonPage({
+				...query.data,
+				sortBy: query.data.sortBy as VerifiedMoonsSortBy,
+			})
+		} catch (error) {
+			console.warn('Falling back to legacy verified-moons hydration', {
+				error,
+				sortBy: query.data.sortBy,
+			})
+		}
+
+		if (summary) {
+			if (summary.items.length === 0) {
+				return c.json({
+					items: [],
+					total: summary.total,
+					page: summary.page,
+					pageSize: summary.pageSize,
+					constellations: summary.constellations,
+					updatedAt: new Date().toISOString(),
+				})
+			}
+
+			const pageMoonIds = summary.items.map((item) => item.moonId)
+			const [compositions, settings, profiles] = await Promise.all([
+				moonScan.getVerifiedCompositions(pageMoonIds),
+				moonScan.getExtractionSettings(),
+				moonScan.getStructureProfiles(),
+			])
+
+			// Collect all unique ore type IDs across the current page for typeMaterials lookup
+			const allOreTypeIds = [...new Set(compositions.flatMap((c) => c.ores.map((o) => o.oreTypeId)))]
+
+			// Fetch live typeMaterials first, then price all discovered materials + consumables.
+			const markets = getMarketsStub(c.env)
+			const typeMaterialsMap = await universe.getTypeMaterials(allOreTypeIds)
+			const allMaterialTypeIds = [...new Set(
+				Object.values(typeMaterialsMap).flatMap((materials) => materials.map((material) => material.materialTypeId))
+			)]
+			const priceResponse = await markets.getBatchMarketDataAtTime({
+				regionId: createEveRegionId('universe'),
+				typeIds: [...allMaterialTypeIds, FUEL_BLOCK_TYPE_ID, MAGMATIC_GAS_TYPE_ID].map(createEveTypeId),
+				atTime: new Date(),
+			})
+			const priceMap: Record<string, number> = {}
+			for (const p of priceResponse.prices) {
+				if (p.bestSellPrice) priceMap[p.typeId] = parseFloat(p.bestSellPrice)
+			}
+
+			const fuelBlockPrice = resolveEffectivePrice(
+				settings.fuelBlockPriceOverride,
+				priceMap[FUEL_BLOCK_TYPE_ID] ?? 0
+			)
+			const magmaticGasPrice = resolveEffectivePrice(
+				settings.magmaticGasPriceOverride,
+				priceMap[MAGMATIC_GAS_TYPE_ID] ?? 0
+			)
+			const reprocessingYield = parseFloat(settings.defaultReprocessingYield)
+			const cycleDays = settings.defaultCycleDays
+
+			function computeMoonProfit(composition: typeof compositions[number]) {
+				let metenoxProfit: number | null = null
+				let tataraProfit: number | null = null
+
+				for (const profile of profiles) {
+					const baseRate = parseFloat(profile.baseVolumePerHr) * (1 + parseFloat(profile.rigBonus))
+					const fuelPerHr = parseFloat(profile.fuelPerHr)
+					const magmaticGasPerHr = profile.magmaticGasPerHr ? parseFloat(profile.magmaticGasPerHr) : 0
+					const cycleHours = cycleDays * 24
+					const totalVolume = profile.isPassive
+						? baseRate * parseFloat(profile.nullsecModifier) * cycleHours
+						: baseRate * cycleHours
+					const fuelUnits = fuelPerHr * cycleHours
+					const magmaticGasUnits = profile.isPassive ? magmaticGasPerHr * cycleHours : 0
+
+					let grossIsk = 0
+					for (const ore of composition.ores) {
+						const liveMaterials = typeMaterialsMap[ore.oreTypeId] ?? []
+						const fraction = parseFloat(ore.quantity)
+						const oreVolumeM3 = totalVolume * fraction
+						const oreUnits = oreVolumeM3 / getOreVolume(ore.oreTypeId)
+						for (const mat of liveMaterials) {
+							if (profile.isPassive && MINERAL_TYPE_IDS.has(mat.materialTypeId)) continue
+							const rawUnits = Math.floor(oreUnits / 100) * mat.quantity * reprocessingYield
+							grossIsk += Math.floor(rawUnits) * (priceMap[mat.materialTypeId] ?? 0)
+						}
+					}
+
+					const fuelCost = fuelUnits * fuelBlockPrice
+					const magmaticGasCost = magmaticGasUnits * magmaticGasPrice
+					const profit = Math.round(grossIsk - fuelCost - magmaticGasCost)
+
+					if (profile.id === 'metenox') metenoxProfit = profit
+					else if (profile.id === 'tatara') tataraProfit = profit
+				}
+
+				return { metenoxProfit, tataraProfit }
+			}
+
+			const compositionMap = new Map(compositions.map((composition) => [composition.moonId, composition]))
+			const items = summary.items.map((item) => {
+				const composition = compositionMap.get(item.moonId)
+				if (!composition) {
+					return {
+						...item,
+						metenoxProfit: null,
+						tataraProfit: null,
+					}
+				}
+				const { metenoxProfit, tataraProfit } = computeMoonProfit(composition)
+				return {
+					...item,
+					metenoxProfit: metenoxProfit !== null ? String(metenoxProfit) : null,
+					tataraProfit: tataraProfit !== null ? String(tataraProfit) : null,
+				}
+			})
+
+			return c.json({
+				items,
+				total: summary.total,
+				page: summary.page,
+				pageSize: summary.pageSize,
+				constellations: summary.constellations,
+				updatedAt: new Date().toISOString(),
+			})
+		}
+	}
 
 	// Get all verified moon IDs
 	const summary = await moonScan.getScanSummary()
@@ -681,6 +838,74 @@ moonScanRoutes.get('/moons/verified', async (c) => {
 
 function getMarketsStub(env: App['Bindings']): Markets {
 	return getStub<Markets>(env.MARKETS, 'region-10000002')
+}
+
+async function buildVerifiedMoonSummaryRecords(
+	compositions: VerifiedComposition[],
+	universe: Universe,
+): Promise<VerifiedMoonSummaryRecord[]> {
+	if (compositions.length === 0) return []
+
+	const moonIds = [...new Set(compositions.map((composition) => composition.moonId))]
+	const moonMap = await universe.resolveStaticMoonsByIds(moonIds)
+	const systemIds = [...new Set(
+		Object.values(moonMap)
+			.filter((moon): moon is NonNullable<typeof moon> => moon !== null)
+			.map((moon) => moon.solarSystemId)
+	)]
+	const systemsById = systemIds.length > 0 ? await universe.resolveSolarSystemsByIds(systemIds) : {}
+	const regionIds = [...new Set(
+		Object.values(systemsById)
+			.filter((system): system is NonNullable<typeof system> => system !== null)
+			.map((system) => system.regionId)
+			.filter((regionId): regionId is string => Boolean(regionId))
+	)]
+	const constellationIds = [...new Set(
+		Object.values(systemsById)
+			.filter((system): system is NonNullable<typeof system> => system !== null)
+			.map((system) => system.constellationId)
+			.filter((constellationId): constellationId is string => Boolean(constellationId))
+	)]
+	const [regionsById, constellationsById] = await Promise.all([
+		regionIds.length > 0
+			? universe.resolveRegionsByIds(regionIds)
+			: Promise.resolve({} as Record<string, { regionId: string; regionName: string } | null>),
+		constellationIds.length > 0
+			? universe.resolveConstellationsByIds(constellationIds)
+			: Promise.resolve({} as Record<string, { constellationId: string; constellationName: string } | null>),
+	]) as [
+		Record<string, { regionId: string; regionName: string } | null>,
+		Record<string, { constellationId: string; constellationName: string } | null>,
+	]
+
+	return compositions.map((composition) => {
+		const moon = moonMap[composition.moonId]
+		const system = moon ? systemsById[moon.solarSystemId] : null
+		const regionId = system?.regionId ?? ''
+		const constellationId = system?.constellationId ?? ''
+		const highestRarity = composition.ores.reduce<OreRarity | null>((best, ore) => {
+			const rarity = ORE_TYPE_RARITY[ore.oreTypeId]
+			if (!rarity) return best
+			if (!best) return rarity
+			return (RARITY_ORDER[rarity] ?? 0) > (RARITY_ORDER[best] ?? 0) ? rarity : best
+		}, null)
+
+		return {
+			moonId: composition.moonId,
+			sourceScanId: composition.sourceScanId,
+			verifiedAt: composition.verifiedAt,
+			verifiedBy: composition.verifiedBy,
+			moonName: moon?.moonName ?? composition.moonId,
+			solarSystemId: moon?.solarSystemId ?? system?.solarSystemId ?? '',
+			solarSystemName: system?.solarSystemName ?? moon?.solarSystemId ?? composition.moonId,
+			regionId,
+			regionName: regionId ? regionsById[regionId]?.regionName ?? regionId : '',
+			constellationId,
+			constellationName: constellationId ? constellationsById[constellationId]?.constellationName ?? constellationId : '',
+			securityStatus: system?.securityStatus ?? null,
+			highestRarity,
+		}
+	})
 }
 
 async function computeProfitability(

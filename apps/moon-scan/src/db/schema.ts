@@ -37,6 +37,31 @@ export const verifiedCompositions = pgTable('moon_verified_compositions', {
 	verifiedBy: text('verified_by'),
 })
 
+export const verifiedMoonSummaries = pgTable('moon_verified_moon_summaries', {
+	moonId: text('moon_id').primaryKey(),
+	sourceScanId: text('source_scan_id').notNull().references(() => moonScans.id),
+	verifiedAt: timestamp('verified_at', { withTimezone: true }).defaultNow().notNull(),
+	verifiedBy: text('verified_by'),
+	moonName: text('moon_name').notNull(),
+	solarSystemId: text('solar_system_id').notNull(),
+	solarSystemName: text('solar_system_name').notNull(),
+	regionId: text('region_id').notNull(),
+	regionName: text('region_name').notNull(),
+	constellationId: text('constellation_id').notNull(),
+	constellationName: text('constellation_name').notNull(),
+	securityStatus: text('security_status'),
+	highestRarity: text('highest_rarity'),
+}, (t) => [
+	index('moon_verified_moon_summaries_source_scan_id_idx').on(t.sourceScanId),
+	index('moon_verified_moon_summaries_verified_at_idx').on(t.verifiedAt),
+	index('moon_verified_moon_summaries_region_id_idx').on(t.regionId),
+	index('moon_verified_moon_summaries_constellation_id_idx').on(t.constellationId),
+	index('moon_verified_moon_summaries_moon_name_idx').on(t.moonName),
+	index('moon_verified_moon_summaries_solar_system_name_idx').on(t.solarSystemName),
+	index('moon_verified_moon_summaries_highest_rarity_idx').on(t.highestRarity),
+	index('moon_verified_moon_summaries_security_status_idx').on(t.securityStatus),
+])
+
 export const extractionSettings = pgTable('moon_extraction_settings', {
 	id: text('id').primaryKey().default('default'),
 	defaultReprocessingYield: text('default_reprocessing_yield').default('0.80').notNull(),
@@ -70,6 +95,7 @@ export type NewMoonScan = typeof moonScans.$inferInsert
 export type MoonScanOre = typeof moonScanOres.$inferSelect
 export type NewMoonScanOre = typeof moonScanOres.$inferInsert
 export type VerifiedComposition = typeof verifiedCompositions.$inferSelect
+export type VerifiedMoonSummary = typeof verifiedMoonSummaries.$inferSelect
 export type ExtractionSetting = typeof extractionSettings.$inferSelect
 export type StructureProfile = typeof structureProfiles.$inferSelect
 export type CharacterNameCache = typeof characterNameCache.$inferSelect

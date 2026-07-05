@@ -85,6 +85,15 @@ describe('moon-scan profitability and batching behavior', () => {
 			getMoonCoverage: vi.fn().mockResolvedValue([]),
 			getVerifiedCompositions: vi.fn().mockResolvedValue([]),
 			getVerifiedComposition: vi.fn().mockResolvedValue(null),
+			getVerifiedMoonPage: vi.fn().mockResolvedValue({
+				items: [],
+				total: 0,
+				page: 1,
+				pageSize: 50,
+				constellations: [],
+			}),
+			getVerifiedMoonSummaryIds: vi.fn().mockResolvedValue([]),
+			upsertVerifiedMoonSummaries: vi.fn().mockResolvedValue(undefined),
 			getScans: vi.fn().mockResolvedValue({ items: [], total: 0, page: 1, pageSize: 50 }),
 			resolveCharacterNames: vi.fn().mockResolvedValue({}),
 			getScanSummary: vi.fn().mockResolvedValue({ scannedMoonIds: [], verifiedMoonIds: [] }),
@@ -132,6 +141,7 @@ describe('moon-scan profitability and batching behavior', () => {
 			resolveStaticMoonsByIds: vi.fn().mockResolvedValue({}),
 			getMoonRegionIds: vi.fn().mockResolvedValue({}),
 			resolveRegionsByIds: vi.fn().mockResolvedValue({}),
+			resolveConstellationsByIds: vi.fn().mockResolvedValue({}),
 			getTypeMaterials: vi.fn().mockResolvedValue({}),
 			resolveTypeNamesByIds: vi.fn().mockResolvedValue({}),
 		}
@@ -165,7 +175,7 @@ describe('moon-scan profitability and batching behavior', () => {
 		const res = await app.request('/api/moon-scan/moons/region/10000002', {}, env)
 
 		expect(res.status).toBe(200)
-		expect(universeStub.getMoonsBySystemIds).toHaveBeenCalledWith(['sys-low'])
+		expect(universeStub.getMoonsBySystemIds).toHaveBeenCalledWith(['sys-low', 'sys-high', 'sys-null'])
 		expect(universeStub.getMoonsBySystemId).not.toHaveBeenCalled()
 	})
 
@@ -200,6 +210,64 @@ describe('moon-scan profitability and batching behavior', () => {
 		expect(moonScanStub.getVerifiedComposition).not.toHaveBeenCalled()
 		expect(body.moons.find((m) => m.moonId === 'moon-1')?.composition).not.toBeNull()
 		expect(body.moons.find((m) => m.moonId === 'moon-2')?.composition).toBeNull()
+	})
+
+	it('pages verified moons through the summary read model before computing profitability', async () => {
+		moonScanStub.getVerifiedMoonPage.mockResolvedValue({
+			items: [
+				{
+					moonId: 'moon-1',
+					moonName: 'Moon 1',
+					solarSystemId: 'sys-1',
+					solarSystemName: 'Jita',
+					regionId: 'region-1',
+					regionName: 'The Forge',
+					constellationId: 'const-1',
+					constellationName: 'Kimotoro',
+					securityStatus: '0.5',
+					highestRarity: 'R64',
+				},
+			],
+			total: 1,
+			page: 1,
+			pageSize: 50,
+			constellations: [{ constellationId: 'const-1', constellationName: 'Kimotoro' }],
+		})
+		moonScanStub.getVerifiedCompositions.mockResolvedValue([
+			{
+				moonId: 'moon-1',
+				sourceScanId: 'scan-1',
+				verifiedAt: '2026-05-01T00:00:00.000Z',
+				verifiedBy: '1001',
+				ores: [{ oreTypeId: '45490', quantity: '1' }],
+			},
+		])
+		universeStub.getTypeMaterials.mockResolvedValue({
+			'45490': [{ materialTypeId: '16633', quantity: 100 }],
+		})
+		marketsStub.getBatchMarketDataAtTime.mockResolvedValue({
+			prices: [
+				{ typeId: '16633', bestSellPrice: '10' },
+				{ typeId: '4247', bestSellPrice: '1' },
+				{ typeId: '81143', bestSellPrice: '2' },
+			],
+		})
+
+		const app = createApp(makeUser())
+		const res = await app.request('/api/moon-scan/moons/verified', {}, env)
+		const body = await res.json() as {
+			items: Array<{ moonId: string; moonName: string; metenoxProfit: string | null }>
+			total: number
+			constellations: Array<{ constellationId: string }>
+		}
+
+		expect(res.status).toBe(200)
+		expect(moonScanStub.getVerifiedMoonPage).toHaveBeenCalled()
+		expect(moonScanStub.getVerifiedCompositions).toHaveBeenCalledWith(['moon-1'])
+		expect(universeStub.resolveStaticMoonsByIds).not.toHaveBeenCalled()
+		expect(body.total).toBe(1)
+		expect(body.items).toHaveLength(1)
+		expect(body.items[0]?.moonId).toBe('moon-1')
 	})
 
 	it('applies fuel and magmatic override prices in single-moon profitability', async () => {
@@ -264,6 +332,27 @@ describe('moon-scan profitability and batching behavior', () => {
 			scannedMoonIds: ['moon-1'],
 			verifiedMoonIds: ['moon-1'],
 		})
+		moonScanStub.getVerifiedMoonSummaryIds.mockResolvedValue(['moon-1'])
+		moonScanStub.getVerifiedMoonPage.mockResolvedValue({
+			items: [
+				{
+					moonId: 'moon-1',
+					moonName: 'Moon 1',
+					solarSystemId: 'sys-1',
+					solarSystemName: 'Jita',
+					regionId: '10000002',
+					regionName: 'The Forge',
+					constellationId: 'const-1',
+					constellationName: 'Kimotoro',
+					securityStatus: '0.5',
+					highestRarity: 'R64',
+				},
+			],
+			total: 1,
+			page: 1,
+			pageSize: 50,
+			constellations: [{ constellationId: 'const-1', constellationName: 'Kimotoro' }],
+		})
 		moonScanStub.getVerifiedCompositions.mockResolvedValue([
 			{
 				moonId: 'moon-1',
@@ -305,5 +394,66 @@ describe('moon-scan profitability and batching behavior', () => {
 		expect(call.typeIds).toContain('99999')
 		expect(call.typeIds).toContain('4247')
 		expect(call.typeIds).toContain('81143')
+	})
+
+	it('batches verified moon summary backfill writes', async () => {
+		const verifiedMoonIds = Array.from({ length: 501 }, (_value, index) => `moon-${index + 1}`)
+		moonScanStub.getScanSummary.mockResolvedValue({
+			scannedMoonIds: verifiedMoonIds,
+			verifiedMoonIds,
+		})
+		moonScanStub.getVerifiedMoonSummaryIds.mockResolvedValue([])
+		moonScanStub.getVerifiedMoonPage.mockResolvedValue({
+			items: [],
+			total: 0,
+			page: 1,
+			pageSize: 50,
+			constellations: [],
+		})
+		moonScanStub.getVerifiedCompositions.mockImplementation(async (moonIds: string[]) => moonIds.map((moonId) => ({
+			moonId,
+			sourceScanId: `scan-${moonId}`,
+			verifiedAt: '2026-05-01T00:00:00.000Z',
+			verifiedBy: null,
+			ores: [],
+		})))
+		universeStub.resolveStaticMoonsByIds.mockImplementation(async (moonIds: string[]) =>
+			Object.fromEntries(moonIds.map((moonId) => [
+				moonId,
+				{
+					moonId,
+					moonName: `Moon ${moonId}`,
+					solarSystemId: `sys-${moonId}`,
+				},
+			]))
+		)
+		universeStub.resolveSolarSystemsByIds.mockImplementation(async (systemIds: string[]) =>
+			Object.fromEntries(systemIds.map((systemId) => [
+				systemId,
+				{
+					solarSystemId: systemId,
+					solarSystemName: `System ${systemId}`,
+					regionId: 'region-1',
+					constellationId: 'const-1',
+					securityStatus: '0.5',
+				},
+			]))
+		)
+		universeStub.resolveRegionsByIds.mockResolvedValue({
+			'region-1': { regionId: 'region-1', regionName: 'Region 1' },
+		})
+		universeStub.resolveConstellationsByIds.mockResolvedValue({
+			'const-1': { constellationId: 'const-1', constellationName: 'Constellation 1' },
+		})
+
+		const app = createApp(makeUser())
+		const res = await app.request('/api/moon-scan/moons/verified', {}, env)
+
+		expect(res.status).toBe(200)
+		expect(moonScanStub.upsertVerifiedMoonSummaries).toHaveBeenCalledTimes(3)
+		for (const call of moonScanStub.upsertVerifiedMoonSummaries.mock.calls) {
+			const summaries = call[0] as Array<{ moonId: string }>
+			expect(summaries.length).toBeLessThanOrEqual(250)
+		}
 	})
 })

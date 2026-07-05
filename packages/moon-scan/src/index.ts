@@ -10,6 +10,39 @@ export type MoonScanSource = 'user' | 'system'
 export type LeaderboardWindow = 'all' | '7d' | '30d'
 export type StructureType = 'tatara' | 'metenox'
 export type OreRarity = 'R4' | 'R8' | 'R16' | 'R32' | 'R64'
+export type VerifiedMoonsSortBy =
+	| 'moonName'
+	| 'solarSystemName'
+	| 'regionName'
+	| 'securityStatus'
+	| 'highestRarity'
+
+export interface VerifiedMoonSummary {
+	moonId: string
+	moonName: string
+	solarSystemId: string
+	solarSystemName: string
+	regionId: string
+	regionName: string
+	constellationId: string
+	constellationName: string
+	securityStatus: string | null
+	highestRarity: OreRarity | null
+}
+
+export interface VerifiedMoonSummaryRecord extends VerifiedMoonSummary {
+	sourceScanId: string
+	verifiedAt: string
+	verifiedBy: string | null
+}
+
+export interface VerifiedMoonPage {
+	items: VerifiedMoonSummary[]
+	total: number
+	page: number
+	pageSize: number
+	constellations: Array<{ constellationId: string; constellationName: string }>
+}
 
 const RARITY_BUCKETS: readonly OreRarity[] = ['R4', 'R8', 'R16', 'R32', 'R64']
 
@@ -180,6 +213,19 @@ export interface MoonScanDO {
 	getVerifiedComposition(moonId: string): Promise<VerifiedComposition | null>
 	getVerifiedCompositions(moonIds: string[]): Promise<VerifiedComposition[]>
 	getVerifiedCompositionsBySystem(systemId: string): Promise<VerifiedComposition[]>
+	// Verified moon read model
+	getVerifiedMoonPage(filters: {
+		page: number
+		pageSize: number
+		regionId?: string
+		constellationId?: string
+		rarity?: OreRarity[]
+		search?: string
+		sortBy: VerifiedMoonsSortBy
+		sortDir: 'asc' | 'desc'
+	}): Promise<VerifiedMoonPage>
+	getVerifiedMoonSummaryIds(): Promise<string[]>
+	upsertVerifiedMoonSummaries(summaries: VerifiedMoonSummaryRecord[]): Promise<void>
 	// Leaderboard
 	getLeaderboard(window: LeaderboardWindow): Promise<LeaderboardEntry[]>
 	// Stats for map

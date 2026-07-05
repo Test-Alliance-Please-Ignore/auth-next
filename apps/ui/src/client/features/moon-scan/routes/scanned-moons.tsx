@@ -17,6 +17,7 @@ import {
 	TableHeader,
 	TableRow,
 } from '@/components/ui/table'
+import { TableRefreshFrame } from '@/components/table-refresh-frame'
 import { usePageTitle } from '@/hooks/usePageTitle'
 import { formatISK } from '@/lib/format-utils'
 
@@ -361,77 +362,82 @@ export default function ScannedMoonsPage() {
 
 			<Card className="mt-4 overflow-hidden">
 				{hasPagination && <div className="border-b p-4">{renderPaginationControls()}</div>}
-				<Table>
-					<TableHeader>
-						<TableRow>
-							<SortableHead label="Moon" column="moonName" />
-							<SortableHead label="System" column="solarSystemName" />
-							<SortableHead label="Region" column="regionName" />
-							<SortableHead label="Security" column="securityStatus" />
-							<SortableHead label="Rarity" column="highestRarity" />
-							<SortableHead
-								label="Metenox 30d"
-								column="metenoxProfit"
-								className="text-right"
-								alignRight
-							/>
-							<SortableHead
-								label="Refinery 30d"
-								column="tataraProfit"
-								className="text-right"
-								alignRight
-							/>
-						</TableRow>
-					</TableHeader>
-					<TableBody>
-						{isLoading
-							? Array.from({ length: 8 }).map((_, i) => (
-									<TableRow key={i}>
-										{Array.from({ length: 7 }).map((__, j) => (
-											<TableCell key={j}>
-												<Skeleton className="h-4 w-20" />
-											</TableCell>
-										))}
-									</TableRow>
-								))
-							: viewMode === 'ungrouped'
-								? (data?.items ?? []).map((moon) => <MoonRow key={moon.moonId} moon={moon} />)
-								: groupedItems.map((group) => {
-									const collapsed = collapsedConstellations.has(group.constellationId)
-									return (
-										<Fragment key={group.constellationId || '_unknown'}>
-											<TableRow
-												className="bg-muted/30 hover:bg-muted/40 cursor-pointer"
-												onClick={() => toggleConstellationCollapse(group.constellationId)}
-											>
-												<TableCell colSpan={7} className="py-2">
-													<div className="flex items-center gap-2 text-sm font-medium">
-														{collapsed ? (
-															<ChevronRight className="h-4 w-4 text-muted-foreground" />
-														) : (
-															<ChevronDown className="h-4 w-4 text-muted-foreground" />
-														)}
-														<span>{group.constellationName}</span>
-														<span className="text-xs font-normal text-muted-foreground">
-															{group.moons.length} moon{group.moons.length === 1 ? '' : 's'}
-														</span>
-													</div>
-												</TableCell>
-											</TableRow>
-											{!collapsed &&
-												group.moons.map((moon) => <MoonRow key={moon.moonId} moon={moon} />)}
-										</Fragment>
-									)
-								})}
-						{!isLoading && (data?.items.length ?? 0) === 0 && (
+				<TableRefreshFrame
+					isRefreshing={Boolean(data) && isFetching}
+					refreshMessage="Refreshing scanned moons..."
+				>
+					<Table>
+						<TableHeader>
 							<TableRow>
-								<TableCell colSpan={7} className="py-8 text-center text-sm text-muted-foreground">
-									No moons match the current filters.
-								</TableCell>
+								<SortableHead label="Moon" column="moonName" />
+								<SortableHead label="System" column="solarSystemName" />
+								<SortableHead label="Region" column="regionName" />
+								<SortableHead label="Security" column="securityStatus" />
+								<SortableHead label="Rarity" column="highestRarity" />
+								<SortableHead
+									label="Metenox 30d"
+									column="metenoxProfit"
+									className="text-right"
+									alignRight
+								/>
+								<SortableHead
+									label="Refinery 30d"
+									column="tataraProfit"
+									className="text-right"
+									alignRight
+								/>
 							</TableRow>
-						)}
-					</TableBody>
-				</Table>
+						</TableHeader>
+						<TableBody>
+							{isLoading
+								? Array.from({ length: 8 }).map((_, i) => (
+										<TableRow key={i}>
+											{Array.from({ length: 7 }).map((__, j) => (
+												<TableCell key={j}>
+													<Skeleton className="h-4 w-20" />
+												</TableCell>
+											))}
+										</TableRow>
+									))
+								: viewMode === 'ungrouped'
+									? (data?.items ?? []).map((moon) => <MoonRow key={moon.moonId} moon={moon} />)
+									: groupedItems.map((group) => {
+										const collapsed = collapsedConstellations.has(group.constellationId)
+										return (
+											<Fragment key={group.constellationId || '_unknown'}>
+												<TableRow
+													className="bg-muted/30 cursor-pointer hover:bg-muted/40"
+													onClick={() => toggleConstellationCollapse(group.constellationId)}
+												>
+													<TableCell colSpan={7} className="py-2">
+														<div className="flex items-center gap-2 text-sm font-medium">
+															{collapsed ? (
+																<ChevronRight className="h-4 w-4 text-muted-foreground" />
+															) : (
+																<ChevronDown className="h-4 w-4 text-muted-foreground" />
+															)}
+															<span>{group.constellationName}</span>
+															<span className="text-xs font-normal text-muted-foreground">
+																{group.moons.length} moon{group.moons.length === 1 ? '' : 's'}
+															</span>
+														</div>
+													</TableCell>
+												</TableRow>
+												{!collapsed &&
+													group.moons.map((moon) => <MoonRow key={moon.moonId} moon={moon} />)}
+											</Fragment>
+										)
+									})}
+							{!isLoading && (data?.items.length ?? 0) === 0 && (
+								<TableRow>
+									<TableCell colSpan={7} className="py-8 text-center text-sm text-muted-foreground">
+										No moons match the current filters.
+									</TableCell>
+								</TableRow>
+							)}
+						</TableBody>
+					</Table>
+				</TableRefreshFrame>
 				{hasPagination && <div className="border-t p-4">{renderPaginationControls()}</div>}
 			</Card>
 		</Container>
