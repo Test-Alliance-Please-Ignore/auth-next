@@ -75,6 +75,15 @@ import type { Env } from './context'
  */
 let allSolarSystemNamesCache: Array<{ id: string; name: string }> | null = null
 let allSolarSystemNamesCacheExpiry = 0
+const UNIVERSE_BATCH_SIZE = 500
+
+function chunkArray<T>(items: readonly T[], size: number): T[][] {
+	const chunks: T[][] = []
+	for (let index = 0; index < items.length; index += size) {
+		chunks.push(items.slice(index, index + size) as T[])
+	}
+	return chunks
+}
 
 /**
  * Universe Durable Object
@@ -1486,11 +1495,12 @@ export class UniverseDO extends DurableObject<Env, {}> implements Universe {
 				}
 			}
 
-			if (cacheMisses.length > 0) {
+			for (const moonIdChunk of chunkArray(cacheMisses, UNIVERSE_BATCH_SIZE)) {
+				if (moonIdChunk.length === 0) continue
 				const moonsRows = await this.db
 					.select()
 					.from(moons)
-					.where(inArray(moons.moonId, cacheMisses))
+					.where(inArray(moons.moonId, moonIdChunk))
 
 				for (const moon of moonsRows) {
 					const moonData: UniverseStaticMoon = {
@@ -1504,7 +1514,7 @@ export class UniverseDO extends DurableObject<Env, {}> implements Universe {
 					result[moon.moonId] = moonData
 				}
 
-				for (const missedId of cacheMisses) {
+				for (const missedId of moonIdChunk) {
 					if (!(missedId in result)) {
 						result[missedId] = null
 					}

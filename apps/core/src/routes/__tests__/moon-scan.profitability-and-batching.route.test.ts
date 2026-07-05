@@ -165,7 +165,7 @@ describe('moon-scan profitability and batching behavior', () => {
 		const res = await app.request('/api/moon-scan/moons/region/10000002', {}, env)
 
 		expect(res.status).toBe(200)
-		expect(universeStub.getMoonsBySystemIds).toHaveBeenCalledWith(['sys-low'])
+		expect(universeStub.getMoonsBySystemIds).toHaveBeenCalledWith(['sys-low', 'sys-high', 'sys-null'])
 		expect(universeStub.getMoonsBySystemId).not.toHaveBeenCalled()
 	})
 

@@ -33,6 +33,16 @@ import type {
 import type { DbClient } from './db'
 import type { Env } from './context'
 
+const BATCH_SIZE = 500
+
+function chunkArray<T>(items: readonly T[], size: number): T[][] {
+	const chunks: T[][] = []
+	for (let index = 0; index < items.length; index += size) {
+		chunks.push(items.slice(index, index + size) as T[])
+	}
+	return chunks
+}
+
 export class MoonScanDO extends DurableObject<Env> implements IMoonScanDO {
 	private db: DbClient<typeof schema>
 
@@ -205,18 +215,34 @@ export class MoonScanDO extends DurableObject<Env> implements IMoonScanDO {
 
 	async getVerifiedCompositions(moonIds: string[]): Promise<VerifiedComposition[]> {
 		if (moonIds.length === 0) return []
-		const vcs = await this.db
-			.select()
-			.from(verifiedCompositions)
-			.where(inArray(verifiedCompositions.moonId, moonIds))
+
+		const uniqueMoonIds = [...new Set(moonIds)]
+		const vcs: typeof verifiedCompositions.$inferSelect[] = []
+		for (const moonIdChunk of chunkArray(uniqueMoonIds, BATCH_SIZE)) {
+			const rows = await this.db
+				.select()
+				.from(verifiedCompositions)
+				.where(inArray(verifiedCompositions.moonId, moonIdChunk))
+			vcs.push(...rows)
+		}
 
 		// Batch-load all ores for these compositions in one query
 		const scanIds = vcs.map((vc) => vc.sourceScanId)
-		const allOres = scanIds.length > 0
-			? await this.db.select({ scanId: moonScanOres.scanId, oreTypeId: moonScanOres.oreTypeId, quantity: moonScanOres.quantity })
-				.from(moonScanOres)
-				.where(inArray(moonScanOres.scanId, scanIds))
-			: []
+		const allOres: Array<{ scanId: string; oreTypeId: string; quantity: string }> = []
+		for (const scanIdChunk of chunkArray([...new Set(scanIds)], BATCH_SIZE)) {
+			const rows =
+				scanIdChunk.length > 0
+					? await this.db
+						.select({
+							scanId: moonScanOres.scanId,
+							oreTypeId: moonScanOres.oreTypeId,
+							quantity: moonScanOres.quantity,
+						})
+						.from(moonScanOres)
+						.where(inArray(moonScanOres.scanId, scanIdChunk))
+					: []
+			allOres.push(...rows)
+		}
 
 		const oresByScanId = new Map<string, Array<{ oreTypeId: string; quantity: string }>>()
 		for (const ore of allOres) {
@@ -309,15 +335,23 @@ export class MoonScanDO extends DurableObject<Env> implements IMoonScanDO {
 	async getMoonCoverage(moonIds: string[]): Promise<MoonCoverageStat[]> {
 		if (moonIds.length === 0) return []
 
-		const scannedMoonIds = await this.db
-			.selectDistinct({ moonId: moonScans.moonId })
-			.from(moonScans)
-			.where(inArray(moonScans.moonId, moonIds))
-
-		const verifiedMoonIds = await this.db
-			.select({ moonId: verifiedCompositions.moonId })
-			.from(verifiedCompositions)
-			.where(inArray(verifiedCompositions.moonId, moonIds))
+		const uniqueMoonIds = [...new Set(moonIds)]
+		const scannedMoonIds: Array<{ moonId: string }> = []
+		const verifiedMoonIds: Array<{ moonId: string }> = []
+		for (const moonIdChunk of chunkArray(uniqueMoonIds, BATCH_SIZE)) {
+			const [scannedRows, verifiedRows] = await Promise.all([
+				this.db
+					.selectDistinct({ moonId: moonScans.moonId })
+					.from(moonScans)
+					.where(inArray(moonScans.moonId, moonIdChunk)),
+				this.db
+					.select({ moonId: verifiedCompositions.moonId })
+					.from(verifiedCompositions)
+					.where(inArray(verifiedCompositions.moonId, moonIdChunk)),
+			])
+			scannedMoonIds.push(...scannedRows)
+			verifiedMoonIds.push(...verifiedRows)
+		}
 
 		const scannedSet = new Set(scannedMoonIds.map((r) => r.moonId))
 		const verifiedSet = new Set(verifiedMoonIds.map((r) => r.moonId))
