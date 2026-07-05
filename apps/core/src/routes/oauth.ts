@@ -14,7 +14,7 @@ import type {
 import type { App, SessionUser } from '../context'
 
 const app = new Hono<App>()
-const OAUTH_CONSENT_MAX_SESSION_AGE_MS = 15 * 60 * 1000
+const OAUTH_CONSENT_MAX_SESSION_AGE_MS = 2 * 24 * 60 * 60 * 1000
 
 const authorizeActionSchema = z.object({
 	requestUrl: z.string().url(),
