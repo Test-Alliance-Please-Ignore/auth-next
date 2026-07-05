@@ -128,7 +128,7 @@ describe('oauth authorize routes', () => {
 	it('requires a fresh session before completing authorization', async () => {
 		const app = createApp(
 			makeUser({
-				sessionCreatedAt: '2026-05-01T00:00:00.000Z',
+				sessionCreatedAt: '2026-05-29T00:00:00.000Z',
 			})
 		)
 		const previewResponse = await app.request(

@@ -72,7 +72,7 @@ Supported fields:
 
 ## Consent freshness
 
-The consent flow requires a fresh authenticated session before consent is finalized. The current implementation uses the session creation timestamp as the freshness marker.
+The consent flow requires a fresh authenticated session before consent is finalized. The current implementation uses the session creation timestamp as the freshness marker and currently treats sessions older than 2 days as stale.
 
 ## Local OAuth client harness
 
