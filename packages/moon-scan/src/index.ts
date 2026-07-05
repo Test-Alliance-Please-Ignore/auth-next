@@ -173,7 +173,9 @@ export interface MoonScanDO {
 	getScans(filters: ScanFilters): Promise<PaginatedScans>
 	getScan(scanId: string): Promise<MoonScan | null>
 	verifyScan(scanId: string, verifiedBy: string, notes: string | null): Promise<MoonScan>
+	verifyScans(scanIds: string[], verifiedBy: string, notes: string | null): Promise<MoonScan[]>
 	rejectScan(scanId: string, verifiedBy: string, notes: string | null): Promise<MoonScan>
+	rejectScans(scanIds: string[], verifiedBy: string, notes: string | null): Promise<MoonScan[]>
 	// Verified compositions
 	getVerifiedComposition(moonId: string): Promise<VerifiedComposition | null>
 	getVerifiedCompositions(moonIds: string[]): Promise<VerifiedComposition[]>

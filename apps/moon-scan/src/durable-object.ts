@@ -166,6 +166,14 @@ export class MoonScanDO extends DurableObject<Env> implements IMoonScanDO {
 		return this._buildScan(updated, ores)
 	}
 
+	async verifyScans(scanIds: string[], verifiedBy: string, notes: string | null): Promise<MoonScan[]> {
+		const results: MoonScan[] = []
+		for (const scanId of [...new Set(scanIds)]) {
+			results.push(await this.verifyScan(scanId, verifiedBy, notes))
+		}
+		return results
+	}
+
 	async rejectScan(scanId: string, verifiedBy: string, notes: string | null): Promise<MoonScan> {
 		const [updated] = await this.db
 			.update(moonScans)
@@ -175,6 +183,14 @@ export class MoonScanDO extends DurableObject<Env> implements IMoonScanDO {
 
 		const ores = await this.db.select().from(moonScanOres).where(eq(moonScanOres.scanId, scanId))
 		return this._buildScan(updated, ores)
+	}
+
+	async rejectScans(scanIds: string[], verifiedBy: string, notes: string | null): Promise<MoonScan[]> {
+		const results: MoonScan[] = []
+		for (const scanId of [...new Set(scanIds)]) {
+			results.push(await this.rejectScan(scanId, verifiedBy, notes))
+		}
+		return results
 	}
 
 	async getVerifiedComposition(moonId: string): Promise<VerifiedComposition | null> {

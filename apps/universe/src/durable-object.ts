@@ -19,6 +19,7 @@ import {
 } from '@repo/universe'
 
 import { createDb } from './db'
+import { resolveMoonRegionIds } from './utils/moon-region-lookup'
 import {
 	invCategories,
 	invFlags,
@@ -1977,20 +1978,7 @@ export class UniverseDO extends DurableObject<Env, {}> implements Universe {
 	 * Map moon IDs to their region IDs (for aggregating scan coverage by region).
 	 */
 	async getMoonRegionIds(moonIds: string[]): Promise<Record<string, string>> {
-		if (moonIds.length === 0) return {}
-
-		const rows = await this.db
-			.select({
-				moonId: moons.moonId,
-				regionId: universeSolarSystems.regionId,
-			})
-			.from(moons)
-			.innerJoin(universeSolarSystems, eq(moons.solarSystemId, universeSolarSystems.solarSystemId))
-			.where(inArray(moons.moonId, moonIds))
-
-		const result: Record<string, string> = {}
-		for (const r of rows) result[r.moonId] = r.regionId
-		return result
+		return await resolveMoonRegionIds(this.db, moonIds)
 	}
 
 	/**

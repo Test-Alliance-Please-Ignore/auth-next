@@ -152,6 +152,12 @@ const VerifyRejectSchema = z.object({
 	notes: z.string().max(2000).optional(),
 })
 
+const VerifyQueueSchema = z.object({
+	scanIds: z.array(z.string().min(1)).min(1),
+})
+
+const RejectQueueSchema = VerifyQueueSchema
+
 const ScanFiltersSchema = z.object({
 	status: z.enum(['pending', 'verified', 'rejected']).optional(),
 	moonId: z.string().optional(),
@@ -1042,6 +1048,40 @@ moonScanRoutes.get('/scans/queue', async (c) => {
 		...result,
 		items,
 	})
+})
+
+moonScanRoutes.post('/scans/queue/verify-all', async (c) => {
+	const user = c.get('user')!
+	if (!await hasMoonPerm(c.env, user.id, MOON_URNS.validate, user.is_admin)) {
+		return c.json({ error: 'Forbidden' }, 403)
+	}
+
+	const body = VerifyQueueSchema.safeParse(await c.req.json())
+	if (!body.success) return c.json({ error: 'Invalid body', issues: body.error.issues }, 400)
+
+	const primaryChar = user.characters.find((ch) => ch.is_primary)
+	const verifiedBy = primaryChar?.characterId ?? user.id
+
+	const moonScan = getMoonScanStub(c.env)
+	const scans = await moonScan.verifyScans(body.data.scanIds, verifiedBy, null)
+	return c.json(scans)
+})
+
+moonScanRoutes.post('/scans/queue/reject-all', async (c) => {
+	const user = c.get('user')!
+	if (!await hasMoonPerm(c.env, user.id, MOON_URNS.validate, user.is_admin)) {
+		return c.json({ error: 'Forbidden' }, 403)
+	}
+
+	const body = RejectQueueSchema.safeParse(await c.req.json())
+	if (!body.success) return c.json({ error: 'Invalid body', issues: body.error.issues }, 400)
+
+	const primaryChar = user.characters.find((ch) => ch.is_primary)
+	const verifiedBy = primaryChar?.characterId ?? user.id
+
+	const moonScan = getMoonScanStub(c.env)
+	const scans = await moonScan.rejectScans(body.data.scanIds, verifiedBy, null)
+	return c.json(scans)
 })
 
 // ─── My scans ────────────────────────────────────────────────────────────────
