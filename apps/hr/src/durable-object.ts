@@ -26,6 +26,7 @@ import type {
 	CharacterIdNameBlacklistResult,
 	CharacterIdNamePair,
 	CreateCharacterBlacklistParams,
+	CreateDiscordBlacklistParams,
 	CreateUserBlacklistParams,
 	Hr,
 	HrNote,
@@ -742,6 +743,10 @@ export class HrDO extends DurableObject<Env> implements Hr {
 	 */
 	async createCharacterBlacklist(params: CreateCharacterBlacklistParams): Promise<BlacklistEntry> {
 		return await this.blacklistService.createCharacterBlacklist(params)
+	}
+
+	async createDiscordBlacklist(params: CreateDiscordBlacklistParams): Promise<BlacklistEntry> {
+		return await this.blacklistService.createDiscordBlacklist(params)
 	}
 
 	/**

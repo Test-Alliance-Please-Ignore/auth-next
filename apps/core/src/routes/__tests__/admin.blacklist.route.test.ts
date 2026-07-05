@@ -8,11 +8,21 @@ import adminRoutes from '../admin'
 
 import type { SessionUser } from '../../context'
 
-const { createDbMock, invalidateAllUserSessionsMock, enforceBlacklistedDiscordAccessMock } =
+const {
+	createDbMock,
+	invalidateAllUserSessionsMock,
+	enforceBlacklistedDiscordAccessMock,
+	enforceBlacklistedMumbleAccessMock,
+	srpGetUserRequestsMock,
+	srpUpdateReviewStateMock,
+} =
 	vi.hoisted(() => ({
 		createDbMock: vi.fn(),
 		invalidateAllUserSessionsMock: vi.fn(),
 		enforceBlacklistedDiscordAccessMock: vi.fn(),
+		enforceBlacklistedMumbleAccessMock: vi.fn(),
+		srpGetUserRequestsMock: vi.fn(),
+		srpUpdateReviewStateMock: vi.fn(),
 	}))
 
 vi.mock('@repo/do-utils', () => ({
@@ -33,15 +43,21 @@ vi.mock('../../services/discord.service', () => ({
 	enforceBlacklistedDiscordAccess: enforceBlacklistedDiscordAccessMock,
 }))
 
+vi.mock('../../services/mumble.service', () => ({
+	enforceBlacklistedMumbleAccess: enforceBlacklistedMumbleAccessMock,
+}))
+
 const env = {
 	DATABASE_URL: 'postgresql://test',
 	HR: { name: 'HR' },
 	GROUPS: { name: 'GROUPS' },
+	SRP: { name: 'SRP' },
 } as any
 
 const hrStub = {
 	createUserBlacklist: vi.fn(),
 	createCharacterBlacklist: vi.fn(),
+	createDiscordBlacklist: vi.fn(),
 }
 
 const groupsStub = {
@@ -95,10 +111,14 @@ describe('admin blacklist cleanup hooks', () => {
 		createDbMock.mockReturnValue({ query: dbQueryMocks })
 		hrStub.createUserBlacklist.mockResolvedValue({ id: 'user-bl-entry' })
 		hrStub.createCharacterBlacklist.mockResolvedValue({ id: 'char-bl-entry' })
+		hrStub.createDiscordBlacklist.mockResolvedValue({ id: 'discord-bl-entry' })
 		groupsStub.getUserMemberships.mockResolvedValue([])
 		groupsStub.removeMember.mockResolvedValue(undefined)
 		invalidateAllUserSessionsMock.mockResolvedValue(undefined)
 		enforceBlacklistedDiscordAccessMock.mockResolvedValue(undefined)
+		enforceBlacklistedMumbleAccessMock.mockResolvedValue(undefined)
+		srpGetUserRequestsMock.mockResolvedValue([])
+		srpUpdateReviewStateMock.mockResolvedValue(undefined)
 		dbQueryMocks.userCharacters.findMany.mockResolvedValue([])
 		dbQueryMocks.userCharacters.findFirst.mockResolvedValue(undefined)
 		dbQueryMocks.users.findFirst.mockResolvedValue({ discordUserId: null })
@@ -106,6 +126,12 @@ describe('admin blacklist cleanup hooks', () => {
 		vi.mocked(getStub).mockImplementation((namespace: any) => {
 			if (namespace === env.HR) return hrStub as any
 			if (namespace === env.GROUPS) return groupsStub as any
+			if (namespace === env.SRP) {
+				return {
+					getUserRequests: srpGetUserRequestsMock,
+					updateReviewState: srpUpdateReviewStateMock,
+				} as any
+			}
 			throw new Error('Unexpected namespace')
 		})
 	})
@@ -225,6 +251,73 @@ describe('admin blacklist cleanup hooks', () => {
 			env,
 			'22222222-2222-2222-2222-222222222222',
 			'Blacklisted via character 9001'
+		)
+	})
+
+	it('creates name-only character blacklists and auto-blacklists linked users on /blacklist/character', async () => {
+		const app = createApp(makeUser())
+		dbQueryMocks.userCharacters.findMany.mockResolvedValue([
+			{
+				userId: '33333333-3333-4333-8333-333333333333',
+				characterId: '9003',
+				characterName: 'Pilot Three',
+			},
+		])
+		dbQueryMocks.users.findFirst.mockResolvedValue({ discordUserId: 'discord-user-3333' })
+
+		const response = await app.request(
+			'/api/admin/blacklist/character',
+			{
+				method: 'POST',
+				body: JSON.stringify({
+					characterName: 'Pilot Three',
+					reason: 'policy violation',
+				}),
+			},
+			env
+		)
+
+		expect(response.status).toBe(200)
+		expect(hrStub.createCharacterBlacklist).toHaveBeenCalledWith(
+			expect.objectContaining({
+				characterName: 'Pilot Three',
+				characterId: undefined,
+			})
+		)
+		expect(hrStub.createUserBlacklist).toHaveBeenCalledWith(
+			expect.objectContaining({
+				userId: '33333333-3333-4333-8333-333333333333',
+				discordUserId: 'discord-user-3333',
+			})
+		)
+		expect(enforceBlacklistedDiscordAccessMock).toHaveBeenCalledWith(
+			env,
+			'33333333-3333-4333-8333-333333333333',
+			'Blacklisted via character Pilot Three'
+		)
+	})
+
+	it('creates discord blacklists on /blacklist/discord', async () => {
+		const app = createApp(makeUser())
+
+		const response = await app.request(
+			'/api/admin/blacklist/discord',
+			{
+				method: 'POST',
+				body: JSON.stringify({
+					discordUserId: '123456789012345678',
+					reason: 'policy violation',
+				}),
+			},
+			env
+		)
+
+		expect(response.status).toBe(200)
+		expect(hrStub.createDiscordBlacklist).toHaveBeenCalledWith(
+			expect.objectContaining({
+				discordUserId: '123456789012345678',
+				reason: 'policy violation',
+			})
 		)
 	})
 

@@ -8,7 +8,7 @@
 import { Hono } from 'hono'
 import { z } from 'zod'
 
-import { and, desc, eq, gt, inArray, sql } from '@repo/db-utils'
+import { and, desc, eq, gt, ilike, inArray, sql } from '@repo/db-utils'
 import { getStub } from '@repo/do-utils'
 import { logger } from '@repo/hono-helpers'
 
@@ -45,6 +45,7 @@ import type { App } from '../context'
 import thirdPartyAppsRoutes from './admin/third-party-apps'
 
 const app = new Hono<App>()
+const DISCORD_SNOWFLAKE_REGEX = /^\d{17,20}$/
 
 function buildFleetMonitorTestPageHtml(fleetsBaseUrl: string): string {
 	const safeBase = fleetsBaseUrl.replace(/"/g, '&quot;')
@@ -1604,7 +1605,8 @@ app.post('/blacklist/user', requireAuth(), requireAdmin(), async (c) => {
 /**
  * POST /admin/blacklist/character
  * Create a character blacklist entry
- * Automatically blacklists all users with this character linked
+ * Automatically blacklists all users with this character linked, or with the same
+ * character name when only a name is provided.
  *
  * Body: {
  *   characterId: string,
@@ -1653,38 +1655,10 @@ app.post('/blacklist/character', requireAuth(), requireAdmin(), async (c) => {
 		} = validation.data
 
 		const db = createDb(c.env.DATABASE_URL)
-		let characterId = inputCharacterId
-		let characterName = inputCharacterName
-
-		if (!characterId && characterName) {
-			const matchedCharacter = await db.query.userCharacters.findFirst({
-				where: eq(userCharacters.characterName, characterName),
-				columns: { characterId: true, characterName: true },
-			})
-			if (!matchedCharacter) {
-				return c.json(
-					{
-						error:
-							'Character name is not currently linked to any user. Provide characterId to create a paired ID+name blacklist.',
-					},
-					400
-				)
-			}
-			characterId = matchedCharacter.characterId
-			characterName = matchedCharacter.characterName
-		}
-
-		if (!characterName && characterId) {
-			const matchedCharacter = await db.query.userCharacters.findFirst({
-				where: eq(userCharacters.characterId, characterId),
-				columns: { characterName: true },
-			})
-			characterName = matchedCharacter?.characterName
-		}
-
-		if (!characterId) {
-			return c.json({ error: 'characterId could not be resolved' }, 400)
-		}
+		const characterId = inputCharacterId?.trim() || undefined
+		const characterName = inputCharacterName?.trim() || undefined
+		const resolvedCharacterName = characterName ?? undefined
+		const characterLabel = characterId ?? resolvedCharacterName ?? 'unknown character'
 
 		// Call HR DO via RPC
 		const hrStub = getStub<Hr>(c.env.HR, 'default')
@@ -1696,9 +1670,13 @@ app.post('/blacklist/character', requireAuth(), requireAdmin(), async (c) => {
 			metadata,
 		})
 
-		// Find all users with this character and auto-blacklist them
-		const usersWithChar = await db.query.userCharacters.findMany({
-			where: eq(userCharacters.characterId, characterId),
+	// Find all users with this character or name and auto-blacklist them
+	const usersWithChar = await db.query.userCharacters.findMany({
+			where: characterId
+				? eq(userCharacters.characterId, characterId)
+				: resolvedCharacterName
+					? ilike(userCharacters.characterName, resolvedCharacterName)
+					: undefined,
 		})
 		const sessionService = new SessionService(db)
 		const autoBlacklistedUsers: string[] = []
@@ -1713,7 +1691,7 @@ app.post('/blacklist/character', requireAuth(), requireAdmin(), async (c) => {
 			await hrStub.createUserBlacklist({
 				userId: char.userId,
 				discordUserId: linkedUser?.discordUserId ?? undefined,
-				reason: `Auto-blacklisted: linked to blacklisted character ${characterId}`,
+				reason: `Auto-blacklisted: linked to blacklisted character ${characterLabel}`,
 				blacklistedBy: user.id,
 				triggeredBy: entry.id,
 				isAutoBlacklist: true,
@@ -1732,7 +1710,7 @@ app.post('/blacklist/character', requireAuth(), requireAdmin(), async (c) => {
 			)
 			if (rejectedSrpCount > 0) {
 				logger.info('[Admin] Rejected unpaid SRP requests for character-linked blacklisted user', {
-					characterId,
+					characterLabel,
 					userId: char.userId,
 					rejectedSrpCount,
 				})
@@ -1751,7 +1729,7 @@ app.post('/blacklist/character', requireAuth(), requireAdmin(), async (c) => {
 				logger.error(
 					'[Admin] Failed to remove character-linked user from groups during blacklist',
 					{
-						characterId,
+						characterLabel,
 						userId: char.userId,
 						error: error instanceof Error ? error.message : String(error),
 					}
@@ -1761,11 +1739,11 @@ app.post('/blacklist/character', requireAuth(), requireAdmin(), async (c) => {
 				await discordService.enforceBlacklistedDiscordAccess(
 					c.env,
 					char.userId,
-					`Blacklisted via character ${characterId}`
+					`Blacklisted via character ${characterLabel}`
 				)
 			} catch (error) {
 				logger.error('[Admin] Failed Discord blacklist enforcement for character-linked user', {
-					characterId,
+					characterLabel,
 					userId: char.userId,
 					error: error instanceof Error ? error.message : String(error),
 				})
@@ -1773,14 +1751,15 @@ app.post('/blacklist/character', requireAuth(), requireAdmin(), async (c) => {
 			await enforceBlacklistedMumbleAccess(
 				c.env,
 				char.userId,
-				`Blacklisted via character ${characterId}`
+				`Blacklisted via character ${characterLabel}`
 			)
 			autoBlacklistedUsers.push(char.userId)
 		}
 
 		logger.info('[Admin] Character blacklisted', {
 			adminUserId: user.id,
-			characterId,
+			characterId: characterId ?? null,
+			characterName: resolvedCharacterName ?? null,
 			reason,
 			autoBlacklistedUserCount: autoBlacklistedUsers.length,
 		})
@@ -1793,6 +1772,60 @@ app.post('/blacklist/character', requireAuth(), requireAdmin(), async (c) => {
 	} catch (error) {
 		logger.error('Error creating character blacklist:', error)
 		return c.json({ error: 'Failed to create character blacklist' }, 500)
+	}
+})
+
+/**
+ * POST /admin/blacklist/discord
+ * Create a Discord blacklist entry
+ * This blocks the Discord account from future linking.
+ */
+app.post('/blacklist/discord', requireAuth(), requireAdmin(), async (c) => {
+	const user = c.get('user')
+
+	if (!user) {
+		return c.json({ error: 'Unauthorized' }, 401)
+	}
+
+	try {
+		const bodySchema = z.object({
+			discordUserId: z.string().regex(DISCORD_SNOWFLAKE_REGEX),
+			reason: z.string().min(1),
+			metadata: z.record(z.string(), z.unknown()).optional(),
+		})
+
+		const body = await c.req.json()
+		const validation = bodySchema.safeParse(body)
+
+		if (!validation.success) {
+			return c.json(
+				{
+					error: 'Invalid request body',
+					details: validation.error.format(),
+				},
+				400
+			)
+		}
+
+		const { discordUserId, reason, metadata } = validation.data
+		const hrStub = getStub<Hr>(c.env.HR, 'default')
+		const entry = await hrStub.createDiscordBlacklist({
+			discordUserId,
+			reason,
+			blacklistedBy: user.id,
+			metadata,
+		})
+
+		logger.info('[Admin] Discord blacklisted', {
+			adminUserId: user.id,
+			discordUserId,
+			reason,
+		})
+
+		return c.json({ entry })
+	} catch (error) {
+		logger.error('Error creating Discord blacklist:', error)
+		return c.json({ error: 'Failed to create Discord blacklist' }, 500)
 	}
 })
 

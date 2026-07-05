@@ -836,6 +836,26 @@ export class CoreDO extends DurableObject<Env> implements Core {
 		return { entryId: entry.id }
 	}
 
+	async createCharacterBlacklist(input: {
+		characterId?: string
+		characterName?: string
+		reason: string
+		blacklistedBy: string
+		triggeredBy?: string
+		metadata?: Record<string, unknown>
+	}): Promise<{ entryId: string }> {
+		const hrStub = getStub<Hr>(this.env.HR, 'default')
+		const entry = await hrStub.createCharacterBlacklist({
+			characterId: input.characterId,
+			characterName: input.characterName,
+			reason: input.reason,
+			blacklistedBy: input.blacklistedBy,
+			triggeredBy: input.triggeredBy,
+			metadata: input.metadata,
+		})
+		return { entryId: entry.id }
+	}
+
 	async legacyImportCharacterLinks(input: {
 		modernUserId: string
 		legacyAuthUserId: string
