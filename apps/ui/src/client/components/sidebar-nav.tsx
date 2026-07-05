@@ -17,6 +17,7 @@ import {
 	Mic,
 	Moon,
 	Package,
+	MessageSquare,
 	Radar,
 	Radio,
 	Receipt,
@@ -443,6 +444,12 @@ export function SidebarNav({ onNavigate, isSidebarOpen = true, onToggleSidebar }
 					label: 'Wiki',
 					href: 'https://wiki.pleaseignore.com/start',
 					icon: BookMarked,
+					external: true,
+				},
+				{
+					label: 'Forums',
+					href: 'https://disc.pleaseignore.com/',
+					icon: MessageSquare,
 					external: true,
 				},
 				{
