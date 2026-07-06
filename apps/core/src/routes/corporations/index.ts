@@ -170,6 +170,11 @@ type CorporationMemberCoverageSummary = {
 	none: number
 	unlinked: number
 	linkedUsers: number
+	fullCharacters: number
+	partialCharacters: number
+	noneCharacters: number
+	unlinkedCharacters: number
+	totalCharacters: number
 }
 
 function countDistinctLinkedUsers(members: { authUserId?: string | null }[]): number {
@@ -193,6 +198,11 @@ function buildCorporationMemberCoverageSummary(
 		none: 0,
 		unlinked: 0,
 		linkedUsers: 0,
+		fullCharacters: 0,
+		partialCharacters: 0,
+		noneCharacters: 0,
+		unlinkedCharacters: 0,
+		totalCharacters: members.length,
 	}
 
 	const bucketMap = new Map<string, { total: number; valid: number }>()
@@ -214,6 +224,7 @@ function buildCorporationMemberCoverageSummary(
 		bucketMap.set(bucketKey, bucket)
 	}
 
+	const coverageByUserId = new Map<string, AccountCoverageStatus>()
 	for (const bucket of bucketMap.values()) {
 		if (bucket.valid === 0) {
 			coverage.none += 1
@@ -225,6 +236,29 @@ function buildCorporationMemberCoverageSummary(
 	}
 
 	coverage.linkedUsers = bucketMap.size
+
+	for (const [bucketKey, bucket] of bucketMap.entries()) {
+		const userId = bucketKey.slice('user:'.length)
+		const status: AccountCoverageStatus =
+			bucket.valid === 0 ? 'none' : bucket.valid === bucket.total ? 'full' : 'partial'
+		coverageByUserId.set(userId, status)
+	}
+
+	for (const member of members) {
+		if (!member.authUserId) {
+			coverage.unlinkedCharacters += 1
+			continue
+		}
+
+		const status = coverageByUserId.get(member.authUserId) ?? 'none'
+		if (status === 'full') {
+			coverage.fullCharacters += 1
+		} else if (status === 'partial') {
+			coverage.partialCharacters += 1
+		} else {
+			coverage.noneCharacters += 1
+		}
+	}
 
 	return coverage
 }

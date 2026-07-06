@@ -131,6 +131,11 @@ export interface CorporationMembersResponse {
 			none: number
 			unlinked: number
 			linkedUsers: number
+			fullCharacters: number
+			partialCharacters: number
+			noneCharacters: number
+			unlinkedCharacters: number
+			totalCharacters: number
 		}
 	}
 }

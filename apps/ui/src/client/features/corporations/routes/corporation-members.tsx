@@ -177,9 +177,13 @@ export default function CorporationMembers() {
 		none: 0,
 		unlinked: 0,
 		linkedUsers: 0,
+		fullCharacters: 0,
+		partialCharacters: 0,
+		noneCharacters: 0,
+		unlinkedCharacters: 0,
+		totalCharacters: 0,
 	}
-	const esiCoverageTotal =
-		esiCoverage.full + esiCoverage.partial + esiCoverage.none + esiCoverage.unlinked
+	const esiCoverageTotal = esiCoverage.totalCharacters
 	const esiCoveragePercentage = (value: number) =>
 		esiCoverageTotal > 0 ? Math.round((value / esiCoverageTotal) * 100) : 0
 
@@ -225,7 +229,7 @@ export default function CorporationMembers() {
 			...prev,
 			page: 1,
 			authFilter: 'all',
-			coverageFilter,
+			coverageFilter: prev.coverageFilter === coverageFilter ? 'all' : coverageFilter,
 			sortField: 'auth',
 			sortOrder: 'asc',
 		}))
@@ -508,7 +512,7 @@ export default function CorporationMembers() {
 									{esiCoverage.full}
 								</div>
 								<div className="text-[10px] text-muted-foreground">
-									{esiCoveragePercentage(esiCoverage.full)}%
+									{esiCoveragePercentage(esiCoverage.fullCharacters)}%
 								</div>
 							</button>
 							<button
@@ -527,7 +531,7 @@ export default function CorporationMembers() {
 									{esiCoverage.partial}
 								</div>
 								<div className="text-[10px] text-muted-foreground">
-									{esiCoveragePercentage(esiCoverage.partial)}%
+									{esiCoveragePercentage(esiCoverage.partialCharacters)}%
 								</div>
 							</button>
 							<button
@@ -546,7 +550,7 @@ export default function CorporationMembers() {
 									{esiCoverage.none}
 								</div>
 								<div className="text-[10px] text-muted-foreground">
-									{esiCoveragePercentage(esiCoverage.none)}%
+									{esiCoveragePercentage(esiCoverage.noneCharacters)}%
 								</div>
 							</button>
 							<button
@@ -565,7 +569,7 @@ export default function CorporationMembers() {
 									{esiCoverage.unlinked}
 								</div>
 								<div className="text-[10px] text-muted-foreground">
-									{esiCoveragePercentage(esiCoverage.unlinked)}%
+									{esiCoveragePercentage(esiCoverage.unlinkedCharacters)}%
 								</div>
 							</button>
 						</div>
