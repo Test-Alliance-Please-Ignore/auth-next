@@ -122,6 +122,7 @@ export interface Srp {
 		notes?: string
 	): Promise<SRPRequestResponse>
 	getRequest(requestId: string, userId: string): Promise<SRPRequestResponse | null>
+	getPublicRequestSummary(requestId: string): Promise<SRPPublicRequestSummaryResponse | null>
 	getUserRequests(userId: string, limit?: number, offset?: number): Promise<SRPRequestResponse[]>
 	getRecentLosses(
 		characters: RecentLossRefreshCharacterInput[],
@@ -558,6 +559,18 @@ export interface SRPRequestResponse {
 	// Populated relations
 	comments?: SRPCommentResponse[]
 	history?: SRPHistoryResponse[]
+}
+
+/**
+ * Minimal public SRP request summary exposed to external consumers.
+ */
+export interface SRPPublicRequestSummaryResponse {
+	killmailId: string
+	userId: string
+	shipTypeId: string
+	shipTypeName: string
+	requestStatus: RequestStatus
+	approvedAmount: string | null
 }
 
 /**

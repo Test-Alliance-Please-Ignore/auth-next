@@ -61,6 +61,7 @@ import type {
 	SRPPolicy,
 	SRPPolicyConfig,
 	SRPRequestResponse,
+	SRPPublicRequestSummaryResponse,
 	SRPReviewSubmission,
 	SRPStatsResponse,
 	SRPValuationPreview,
@@ -640,6 +641,36 @@ export class SrpDO extends DurableObject<Env> implements Srp {
 		}
 
 		return await this.formatRequestWithShipSlotCapacities(request)
+	}
+
+	/**
+	 * Get a public summary for a single SRP request without exposing review details.
+	 */
+	async getPublicRequestSummary(
+		requestId: string
+	): Promise<SRPPublicRequestSummaryResponse | null> {
+		const request = await this.db.query.srpRequests.findFirst({
+			where: eq(srpRequests.id, requestId),
+			columns: {
+				id: true,
+				userId: true,
+				shipTypeId: true,
+				shipTypeName: true,
+				requestStatus: true,
+				approvedAmount: true,
+			},
+		})
+
+		if (!request) return null
+
+		return {
+			killmailId: request.id,
+			userId: request.userId,
+			shipTypeId: request.shipTypeId,
+			shipTypeName: request.shipTypeName,
+			requestStatus: request.requestStatus,
+			approvedAmount: request.approvedAmount ?? null,
+		}
 	}
 
 	/**
