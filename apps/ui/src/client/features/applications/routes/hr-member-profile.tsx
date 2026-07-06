@@ -21,6 +21,7 @@ import { Navigate, useNavigate, useParams } from 'react-router-dom'
 import { formatDistanceToNow } from 'date-fns'
 
 import { MemberAvatar } from '@/components/member-avatar'
+import { CopyableMetaPill } from '@/components/copyable-meta-pill'
 import { getEsiStatusBadgeState } from '@/components/esi-status-badge'
 import { Badge } from '@/components/ui/badge'
 import {
@@ -466,6 +467,22 @@ export default function HrMemberProfile() {
 										</Badge>
 									)}
 								</div>
+								{(representative.discordUsername || representative.discordUserId) && (
+									<div className="flex flex-wrap items-center justify-center gap-2">
+										{representative.discordUsername ? (
+											<CopyableMetaPill
+												label="Discord username"
+												value={representative.discordUsername}
+											/>
+										) : null}
+										{representative.discordUserId ? (
+											<CopyableMetaPill
+												label="Discord ID"
+												value={representative.discordUserId}
+											/>
+										) : null}
+									</div>
+								)}
 							</div>
 						</CardContent>
 					</Card>

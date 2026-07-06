@@ -26,6 +26,8 @@ export interface CorporationMember {
 	mainCharacterId?: string
 	mainCharacterName?: string
 	status?: 'active' | 'emeritus'
+	discordUserId?: string | null
+	discordUsername?: string | null
 	joinDate: string
 	lastEsiUpdate: string
 	lastLogin?: string
