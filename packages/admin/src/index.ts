@@ -3,6 +3,10 @@
  * Shared between admin worker and core worker for type-safe RPC calls
  */
 
+import { SIDEBAR_EXTERNAL_LINK_ICON_NAMES } from './sidebar-external-link-icon-names'
+
+export { SIDEBAR_EXTERNAL_LINK_ICON_NAMES } from './sidebar-external-link-icon-names'
+
 /**
  * Admin audit log action types
  */
@@ -599,6 +603,102 @@ export interface OAuthAuthorizationResult {
 }
 
 export type OAuthAuthorizationAction = 'approve' | 'deny'
+
+export type SidebarExternalLinkIconName = (typeof SIDEBAR_EXTERNAL_LINK_ICON_NAMES)[number]
+
+const SIDEBAR_EXTERNAL_LINK_ICON_NAME_SET = new Set<SidebarExternalLinkIconName>(
+	SIDEBAR_EXTERNAL_LINK_ICON_NAMES
+)
+
+function legacySidebarExternalLinkIconNameToCanonical(value: string): string {
+	return value
+		.trim()
+		.replace(/_/g, '-')
+		.replace(/([a-z0-9])([A-Z])/g, '$1-$2')
+		.replace(/([A-Za-z])(\d)/g, '$1-$2')
+		.replace(/(\d)([A-Za-z])/g, '$1-$2')
+		.toLowerCase()
+}
+
+export function normalizeSidebarExternalLinkIconName(
+	value: string
+): SidebarExternalLinkIconName | null {
+	const trimmed = value.trim()
+	if (trimmed.length === 0) {
+		return null
+	}
+
+	const canonical = trimmed.toLowerCase()
+	if (SIDEBAR_EXTERNAL_LINK_ICON_NAME_SET.has(canonical as SidebarExternalLinkIconName)) {
+		return canonical as SidebarExternalLinkIconName
+	}
+
+	const legacyCanonical = legacySidebarExternalLinkIconNameToCanonical(trimmed)
+	if (SIDEBAR_EXTERNAL_LINK_ICON_NAME_SET.has(legacyCanonical as SidebarExternalLinkIconName)) {
+		return legacyCanonical as SidebarExternalLinkIconName
+	}
+
+	return null
+}
+
+export function resolveSidebarExternalLinkIconName(
+	value: string
+): SidebarExternalLinkIconName {
+	return normalizeSidebarExternalLinkIconName(value) ?? 'external-link'
+}
+
+function humanizeSidebarExternalLinkIconName(value: SidebarExternalLinkIconName): string {
+	return value
+		.split('-')
+		.filter(Boolean)
+		.map((segment: string) => segment.charAt(0).toUpperCase() + segment.slice(1))
+		.join(' ')
+}
+
+export interface SidebarExternalLinkIconOption {
+	value: SidebarExternalLinkIconName
+	label: string
+}
+
+export const SIDEBAR_EXTERNAL_LINK_ICON_OPTIONS: SidebarExternalLinkIconOption[] = [
+	...SIDEBAR_EXTERNAL_LINK_ICON_NAMES,
+]
+	.sort((left, right) => {
+		const leftLabel = humanizeSidebarExternalLinkIconName(left)
+		const rightLabel = humanizeSidebarExternalLinkIconName(right)
+		return leftLabel.localeCompare(rightLabel) || left.localeCompare(right)
+	})
+	.map((value) => ({
+		value,
+		label: humanizeSidebarExternalLinkIconName(value),
+	}))
+
+export interface SidebarExternalLinkSummary {
+	id: string
+	displayName: string
+	url: string
+	iconName: SidebarExternalLinkIconName
+	sortOrder: number
+	isEnabled: boolean
+	createdAt: string
+	updatedAt: string
+}
+
+export interface SidebarExternalLinkCreateInput {
+	displayName: string
+	url: string
+	iconName: SidebarExternalLinkIconName
+	sortOrder?: number
+	isEnabled?: boolean
+}
+
+export interface SidebarExternalLinkUpdateInput {
+	displayName?: string
+	url?: string
+	iconName?: SidebarExternalLinkIconName
+	sortOrder?: number
+	isEnabled?: boolean
+}
 
 /**
  * Third-party apps RPC interface.

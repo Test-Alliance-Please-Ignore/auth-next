@@ -9,6 +9,7 @@ import {
 	Factory,
 	FolderKanban,
 	Key,
+	Link2,
 	MessageSquare,
 	Radio,
 	Receipt,
@@ -137,6 +138,11 @@ export function AdminNav({ onNavigate }: AdminNavProps) {
 			label: 'Third-Party Apps',
 			href: '/admin/third-party-apps',
 			icon: Waypoints,
+		},
+		{
+			label: 'External Links',
+			href: '/admin/external-links',
+			icon: Link2,
 		},
 		{
 			label: 'Blacklist',

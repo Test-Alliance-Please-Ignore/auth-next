@@ -51,6 +51,7 @@ import AdminUserDiscordAccessPage from '@/routes/admin/user-discord-access'
 import AdminUserGroupsPage from '@/routes/admin/user-groups'
 import AdminUsersPage from '@/routes/admin/users'
 import AdminIpHistoryInspectionPage from '@/routes/admin/ip-history-inspection'
+import AdminExternalLinksPage from '@/routes/admin/external-links'
 import AdminThirdPartyAppsPage from '@/routes/admin/third-party-apps'
 
 const UserHrNotes = lazy(() => import('@/features/applications/routes/user-hr-notes'))
@@ -101,6 +102,7 @@ export const adminRouteElements = (
 		<Route path="legacy-migrations" element={<AdminLegacyMigrationsPage />} />
 		<Route path="legacy-migrations/:modernUserId" element={<AdminLegacyMigrationDetailPage />} />
 		<Route path="blacklist" element={<AdminBlacklistPage />} />
+		<Route path="external-links" element={<AdminExternalLinksPage />} />
 		<Route path="activity-log" element={<AdminActivityLogPage />} />
 		<Route path="pastes" element={<AdminPastesPage />} />
 		<Route path="dev/components" element={<DevComponentsPage />} />

@@ -252,6 +252,21 @@ export const userPreferences = pgTable('user_preferences', {
 	updatedAt: timestamp('updated_at').defaultNow().notNull(),
 })
 
+export const sidebarExternalLinks = pgTable(
+	'sidebar_external_links',
+	{
+		id: uuid('id').defaultRandom().primaryKey(),
+		displayName: text('display_name').notNull(),
+		url: text('url').notNull(),
+		iconName: text('icon_name').notNull(),
+		sortOrder: integer('sort_order').default(0).notNull(),
+		isEnabled: boolean('is_enabled').default(true).notNull(),
+		createdAt: timestamp('created_at').defaultNow().notNull(),
+		updatedAt: timestamp('updated_at').defaultNow().notNull(),
+	},
+	(table) => [index('sidebar_external_links_sort_order_idx').on(table.sortOrder, table.displayName)]
+)
+
 /**
  * User activity log table - Audit trail
  *

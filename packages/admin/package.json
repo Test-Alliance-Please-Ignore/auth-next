@@ -9,6 +9,9 @@
 		"check:lint": "run-eslint",
 		"check:types": "run-tsc"
 	},
+	"dependencies": {
+		"lucide-react": "0.554.0"
+	},
 	"devDependencies": {
 		"@repo/eslint-config": "workspace:*",
 		"@repo/tools": "workspace:*",
