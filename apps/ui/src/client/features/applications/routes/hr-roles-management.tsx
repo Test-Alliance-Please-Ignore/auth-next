@@ -71,14 +71,23 @@ export default function HrRolesManagement() {
 	const { showSuccess, showError } = useMessage()
 
 	const { user, isAuthenticated, isLoading: authLoading } = useAuth()
-	const { canAccess, userRole } = useCanAccessCorporation(corporationId!)
+	const {
+		canAccess,
+		isLoading: accessLoading,
+		userRole,
+		corporation: accessCorp,
+	} = useCanAccessCorporation(corporationId!)
 	const { data: corporation, isLoading: corpLoading } = useMyCorporation(corporationId!)
 	const { data: membersResponse, isLoading: membersLoading } = useCorporationMembers(
 		corporationId!,
 		{}
 	)
 	const members = membersResponse?.items ?? []
-	const { data: hrRoles, isLoading: hrRolesLoading, error } = useHrRoles(corporationId!)
+	const corp = corporation ?? accessCorp
+	const isMemberCorporation = corp?.isMemberCorporation ?? false
+	const { data: hrRoles, isLoading: hrRolesLoading, error } = useHrRoles(corporationId!, {
+		enabled: isMemberCorporation && canAccess,
+	})
 
 	const [grantDialogMember, setGrantDialogMember] = useState<CorporationMember | null>(null)
 	const [revokeDialogMember, setRevokeDialogMember] = useState<CorporationMember | null>(null)
@@ -95,13 +104,13 @@ export default function HrRolesManagement() {
 	// Check if current user can manage HR roles (CEO, site admin, or HR admin)
 	const canManageHrRoles = useMemo(() => {
 		return (
-			(corporation?.isMemberCorporation ?? false) &&
+			isMemberCorporation &&
 			(userRole === 'CEO' || userRole === 'admin' || userRole === 'hr_admin')
 		)
-	}, [corporation?.isMemberCorporation, userRole])
+	}, [isMemberCorporation, userRole])
 	const canRevokeHrAdmin = useMemo(
-		() => (corporation?.isMemberCorporation ?? false) && (userRole === 'CEO' || userRole === 'admin'),
-		[corporation?.isMemberCorporation, userRole]
+		() => isMemberCorporation && (userRole === 'CEO' || userRole === 'admin'),
+		[isMemberCorporation, userRole]
 	)
 
 	const memberByUserId = useMemo(() => {
@@ -191,7 +200,7 @@ export default function HrRolesManagement() {
 	)
 
 	// Set page title
-	usePageTitle(corporation ? `${corporation.name} HR Roles | HR Management` : 'HR Roles Management')
+	usePageTitle(corp ? `${corp.name} HR Roles | HR Management` : 'HR Roles Management')
 
 	// Check authentication
 	if (!authLoading && !isAuthenticated) {
@@ -204,7 +213,7 @@ export default function HrRolesManagement() {
 	}
 
 	// Loading state
-	if (corpLoading || hrRolesLoading || membersLoading) {
+	if (accessLoading || corpLoading || hrRolesLoading || membersLoading) {
 		return (
 			<Container>
 				<div className="flex items-center justify-center min-h-[400px]">
@@ -216,7 +225,7 @@ export default function HrRolesManagement() {
 
 	// Access denied
 	if (!canAccess || !canManageHrRoles) {
-		const accessMessage = corporation?.isMemberCorporation
+		const accessMessage = isMemberCorporation
 			? "You don't have permission to manage HR roles for this corporation. CEO, HR admin, or site admin access is required."
 			: 'HR roles can only be managed for member corporations.'
 		return (
@@ -423,8 +432,8 @@ export default function HrRolesManagement() {
 							HR Role Management
 						</h1>
 						<p className="text-muted-foreground mt-2">
-							Manage HR roles for {corporation?.name || 'this corporation'}
-							{corporation?.ticker && ` [${corporation.ticker}]`}
+							Manage HR roles for {corp?.name || 'this corporation'}
+							{corp?.ticker && ` [${corp.ticker}]`}
 						</p>
 						{userRole && (
 							<p className="text-sm text-muted-foreground mt-1">
