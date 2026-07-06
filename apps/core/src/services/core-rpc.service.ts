@@ -389,6 +389,8 @@ export class CoreRpcService {
 			characterOwnerHash: char.characterOwnerHash,
 			corporationId: char.corporationId,
 			corporationName: char.corporationName,
+			allianceId: char.allianceId,
+			allianceName: char.allianceName,
 			is_primary: char.is_primary,
 			linkedAt: char.linkedAt,
 			hasValidToken: tokenValidityByCharacterId.get(char.characterId) ?? (char.hasValidToken === true),

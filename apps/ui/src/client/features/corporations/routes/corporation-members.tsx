@@ -11,6 +11,7 @@ import {
 	Download,
 	FileText,
 	RefreshCw,
+	Search,
 	Settings,
 } from 'lucide-react'
 import { lazy, Suspense, useCallback, useMemo, useState } from 'react'
@@ -32,9 +33,11 @@ import { useDebounce } from '@/hooks/useDebounce'
 import { useMessage } from '@/hooks/useMessage'
 import { usePageTitle } from '@/hooks/usePageTitle'
 import { useUserPermissions } from '@/hooks/useUserPermissions'
+import { cn } from '@/lib/utils'
 
 import { useHrRoles } from '../../hr'
-import { myCorporationsApi } from '../api'
+import { buildCorporationMembersExportUrl, myCorporationsApi } from '../api'
+import { CorporationUserSearchDialog } from '../components/corporation-user-search-dialog'
 import {
 	useCanAccessCorporation,
 	formatCorporationRoleLabel,
@@ -49,6 +52,7 @@ import { Button } from '@/components/ui/button'
 // Lazy load the members table for code splitting
 const CorporationMembersTable = lazy(() => import('../components/corporation-members-table'))
 const MEMBERS_SEARCH_DEBOUNCE_MS = 400
+type MembersCoverageFilter = NonNullable<CorporationMembersQuery['coverageFilter']>
 
 /**
  * Main Corporation Members Component
@@ -71,11 +75,14 @@ export default function CorporationMembers() {
 	const { data: corporation, isLoading: corpLoading } = useMyCorporation(corporationId!)
 	const { invalidateMembers } = useCorporationManager()
 	const [isRefreshing, setIsRefreshing] = useState(false)
+	const [isExporting, setIsExporting] = useState(false)
+	const [isUserSearchOpen, setIsUserSearchOpen] = useState(false)
 	const [membersQuery, setMembersQuery] = useState<CorporationMembersQuery>({
 		page: 1,
 		limit: 25,
 		search: '',
 		authFilter: 'all',
+		coverageFilter: 'all',
 		activityFilter: 'all',
 		roleFilter: 'all',
 		sortField: 'role',
@@ -107,6 +114,7 @@ export default function CorporationMembers() {
 
 	// Can export CSV: site admins or member corporations only, for leadership or HR admin
 	const canExport = user?.is_admin === true || (isMemberCorporation && (isLeadership || isHrAdmin))
+	const canUseUserSearchTool = canAccess && isMemberCorporation
 
 	// Can manage HR roles: member corp only, with CEO/admin/hr_admin access
 	const canManageHrRoles = useMemo(() => {
@@ -212,6 +220,17 @@ export default function CorporationMembers() {
 		[navigate, corporationId]
 	)
 
+	const handleCoverageFilterSelect = useCallback((coverageFilter: MembersCoverageFilter) => {
+		setMembersQuery((prev) => ({
+			...prev,
+			page: 1,
+			authFilter: 'all',
+			coverageFilter,
+			sortField: 'auth',
+			sortOrder: 'asc',
+		}))
+	}, [])
+
 	const handleLinkAccount = useCallback(
 		(member: CorporationMember) => {
 			// This would open a modal or navigate to a linking flow
@@ -221,49 +240,42 @@ export default function CorporationMembers() {
 		[showError]
 	)
 
-	const handleExport = useCallback(() => {
-		if (!membersWithHrRoles) return
+	const handleExport = useCallback(async () => {
+		if (!corporationId || isExporting) return
 
-		// Create CSV content
-		const headers = [
-			'Character Name',
-			'Character ID',
-			'Role',
-			'HR Role',
-			'Auth Account',
-			'Activity Status',
-			'Last Login',
-			'Join Date',
-			'Alliance',
-			'Location',
-		]
+		setIsExporting(true)
+		try {
+			const url = buildCorporationMembersExportUrl(corporationId, effectiveMembersQuery)
+			const response = await fetch(url, {
+				credentials: 'include',
+				headers: {
+					'X-Requested-With': 'XMLHttpRequest',
+				},
+			})
 
-		const rows = membersWithHrRoles.map((m) => [
-			m.characterName,
-			m.characterId,
-			m.role,
-			m.hrRole?.role || '',
-			m.hasAuthAccount ? 'Yes' : 'No',
-			m.activityStatus,
-			m.lastLogin || 'Never',
-			m.joinDate,
-			m.allianceName || '',
-			m.locationSystem || '',
-		])
+			if (!response.ok) {
+				const message = await response.text()
+				throw new Error(message || 'Failed to export corporation members')
+			}
 
-		const csvContent = [headers, ...rows].map((row) => row.join(',')).join('\n')
+			const blob = await response.blob()
+			const downloadUrl = URL.createObjectURL(blob)
+			const a = document.createElement('a')
+			a.href = downloadUrl
 
-		// Download CSV
-		const blob = new Blob([csvContent], { type: 'text/csv' })
-		const url = URL.createObjectURL(blob)
-		const a = document.createElement('a')
-		a.href = url
-		a.download = `${corpName}-members-${new Date().toISOString().split('T')[0]}.csv`
-		a.click()
-		URL.revokeObjectURL(url)
+			const contentDisposition = response.headers.get('content-disposition') ?? ''
+			const match = contentDisposition.match(/filename=\"?([^\";]+)\"?/i)
+			a.download = match?.[1] ?? `${corpName}-members-${new Date().toISOString().split('T')[0]}.csv`
+			a.click()
+			URL.revokeObjectURL(downloadUrl)
 
-		showSuccess('Member list exported')
-	}, [membersWithHrRoles, corpName, showSuccess])
+			showSuccess('Member list exported')
+		} catch (error) {
+			showError(error instanceof Error ? error.message : 'Failed to export corporation members')
+		} finally {
+			setIsExporting(false)
+		}
+	}, [corporationId, corpName, effectiveMembersQuery, isExporting, showError, showSuccess])
 
 	// Check authentication
 	if (!authLoading && !isAuthenticated) {
@@ -392,12 +404,15 @@ export default function CorporationMembers() {
 							</Button>
 						)}
 						{canExport && (
-							<Button variant="ghost"
-								onClick={handleExport}
-								disabled={!membersWithHrRoles || membersWithHrRoles.length === 0}
-							>
+							<Button variant="ghost" onClick={handleExport} disabled={isExporting}>
 								<Download className="h-4 w-4" />
-								Export CSV
+								{isExporting ? 'Exporting...' : 'Export CSV'}
+							</Button>
+						)}
+						{canUseUserSearchTool && (
+							<Button variant="ghost" onClick={() => setIsUserSearchOpen(true)}>
+								<Search className="h-4 w-4" />
+								User Search
 							</Button>
 						)}
 						<Button variant="ghost" asChild>
@@ -477,7 +492,17 @@ export default function CorporationMembers() {
 					</CardHeader>
 					<CardContent className="space-y-3 pt-0">
 						<div className="grid grid-cols-2 gap-2">
-							<div className="rounded-md border bg-background/80 px-2 py-2 text-center">
+							<button
+								type="button"
+								onClick={() => handleCoverageFilterSelect('full')}
+								aria-pressed={membersQuery.coverageFilter === 'full'}
+								className={cn(
+									'cursor-pointer rounded-md border px-2 py-2 text-center transition-colors hover:shadow-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring',
+									membersQuery.coverageFilter === 'full'
+										? 'border-success/60 bg-success/20 shadow-sm'
+										: 'bg-background/80 hover:border-success/50 hover:bg-background/95'
+								)}
+							>
 								<div className="text-[11px] uppercase tracking-wide text-muted-foreground">Full</div>
 								<div className="text-base font-bold text-success leading-none">
 									{esiCoverage.full}
@@ -485,8 +510,18 @@ export default function CorporationMembers() {
 								<div className="text-[10px] text-muted-foreground">
 									{esiCoveragePercentage(esiCoverage.full)}%
 								</div>
-							</div>
-							<div className="rounded-md border bg-background/80 px-2 py-2 text-center">
+							</button>
+							<button
+								type="button"
+								onClick={() => handleCoverageFilterSelect('partial')}
+								aria-pressed={membersQuery.coverageFilter === 'partial'}
+								className={cn(
+									'cursor-pointer rounded-md border px-2 py-2 text-center transition-colors hover:shadow-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring',
+									membersQuery.coverageFilter === 'partial'
+										? 'border-warning/60 bg-warning/20 shadow-sm'
+										: 'bg-background/80 hover:border-warning/50 hover:bg-background/95'
+								)}
+							>
 								<div className="text-[11px] uppercase tracking-wide text-muted-foreground">Partial</div>
 								<div className="text-base font-bold text-warning leading-none">
 									{esiCoverage.partial}
@@ -494,8 +529,18 @@ export default function CorporationMembers() {
 								<div className="text-[10px] text-muted-foreground">
 									{esiCoveragePercentage(esiCoverage.partial)}%
 								</div>
-							</div>
-							<div className="rounded-md border bg-background/80 px-2 py-2 text-center">
+							</button>
+							<button
+								type="button"
+								onClick={() => handleCoverageFilterSelect('none')}
+								aria-pressed={membersQuery.coverageFilter === 'none'}
+								className={cn(
+									'cursor-pointer rounded-md border px-2 py-2 text-center transition-colors hover:shadow-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring',
+									membersQuery.coverageFilter === 'none'
+										? 'border-destructive/60 bg-destructive/20 shadow-sm'
+										: 'bg-background/80 hover:border-destructive/50 hover:bg-background/95'
+								)}
+							>
 								<div className="text-[11px] uppercase tracking-wide text-muted-foreground">None</div>
 								<div className="text-base font-bold text-destructive leading-none">
 									{esiCoverage.none}
@@ -503,8 +548,18 @@ export default function CorporationMembers() {
 								<div className="text-[10px] text-muted-foreground">
 									{esiCoveragePercentage(esiCoverage.none)}%
 								</div>
-							</div>
-							<div className="rounded-md border bg-background/80 px-2 py-2 text-center">
+							</button>
+							<button
+								type="button"
+								onClick={() => handleCoverageFilterSelect('unlinked')}
+								aria-pressed={membersQuery.coverageFilter === 'unlinked'}
+								className={cn(
+									'cursor-pointer rounded-md border px-2 py-2 text-center transition-colors hover:shadow-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring',
+									membersQuery.coverageFilter === 'unlinked'
+										? 'border-muted-foreground/60 bg-muted/30 shadow-sm'
+										: 'bg-background/80 hover:border-muted-foreground/50 hover:bg-background/95'
+								)}
+							>
 								<div className="text-[11px] uppercase tracking-wide text-muted-foreground">Unlinked</div>
 								<div className="text-base font-bold text-muted-foreground leading-none">
 									{esiCoverage.unlinked}
@@ -512,7 +567,7 @@ export default function CorporationMembers() {
 								<div className="text-[10px] text-muted-foreground">
 									{esiCoveragePercentage(esiCoverage.unlinked)}%
 								</div>
-							</div>
+							</button>
 						</div>
 					</CardContent>
 				</Card>
@@ -545,6 +600,14 @@ export default function CorporationMembers() {
 					summary={membersResponse?.summary}
 				/>
 			</Suspense>
+
+			{canUseUserSearchTool && corporationId && (
+				<CorporationUserSearchDialog
+					corporationId={corporationId}
+					open={isUserSearchOpen}
+					onOpenChange={setIsUserSearchOpen}
+				/>
+			)}
 
 		</Container>
 	)

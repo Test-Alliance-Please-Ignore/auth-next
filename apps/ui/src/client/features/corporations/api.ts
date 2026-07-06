@@ -5,7 +5,7 @@
  * functionality, including member lists and access control.
  */
 
-import { apiClient } from '../../lib/api'
+import { API_BASE_URL, apiClient } from '../../lib/api'
 
 // ============================================================================
 // Type Definitions
@@ -23,6 +23,7 @@ export interface CorporationMember {
 	hasAuthAccount: boolean
 	hasValidToken?: boolean | null
 	authUserId?: string
+	mainCharacterId?: string
 	mainCharacterName?: string
 	status?: 'active' | 'emeritus'
 	joinDate: string
@@ -44,6 +45,7 @@ export type CorporationMembersAuthFilter =
 	| 'linked_valid'
 	| 'linked_invalid'
 	| 'linked_unknown'
+export type CorporationMembersCoverageFilter = 'all' | 'full' | 'partial' | 'none' | 'unlinked'
 export type CorporationMembersActivityFilter = 'all' | 'active' | 'inactive' | 'unknown'
 export type CorporationMembersRoleFilter = 'all' | 'CEO' | 'Director' | 'Member'
 export type CorporationMembersSortField = 'name' | 'role' | 'auth' | 'activity' | 'lastLogin' | 'joinDate'
@@ -54,10 +56,56 @@ export interface CorporationMembersQuery {
 	limit?: number
 	search?: string
 	authFilter?: CorporationMembersAuthFilter
+	coverageFilter?: CorporationMembersCoverageFilter
 	activityFilter?: CorporationMembersActivityFilter
 	roleFilter?: CorporationMembersRoleFilter
 	sortField?: CorporationMembersSortField
 	sortOrder?: CorporationMembersSortOrder
+}
+
+export function buildCorporationMembersQueryString(
+	query: CorporationMembersQuery = {},
+	options: { includePagination?: boolean } = {}
+): string {
+	const params = new URLSearchParams()
+	if (options.includePagination !== false && query.page) params.set('page', String(query.page))
+	if (options.includePagination !== false && query.limit) params.set('limit', String(query.limit))
+	if (query.search) params.set('search', query.search)
+	if (query.authFilter && query.authFilter !== 'all') params.set('authFilter', query.authFilter)
+	if (query.coverageFilter && query.coverageFilter !== 'all') {
+		params.set('coverageFilter', query.coverageFilter)
+	}
+	if (query.activityFilter && query.activityFilter !== 'all') {
+		params.set('activityFilter', query.activityFilter)
+	}
+	if (query.roleFilter && query.roleFilter !== 'all') params.set('roleFilter', query.roleFilter)
+	if (query.sortField) params.set('sortField', query.sortField)
+	if (query.sortOrder) params.set('sortOrder', query.sortOrder)
+	return params.toString()
+}
+
+export function buildCorporationMembersExportUrl(
+	corporationId: string,
+	query: CorporationMembersQuery = {}
+): string {
+	const queryString = buildCorporationMembersQueryString(query, { includePagination: false })
+	return `${API_BASE_URL}/corporations/${encodeURIComponent(corporationId)}/members/export${
+		queryString ? `?${queryString}` : ''
+	}`
+}
+
+export function buildCorporationUserSearchUrl(
+	corporationId: string,
+	query: { search?: string; limit?: number; offset?: number } = {}
+): string {
+	const params = new URLSearchParams()
+	if (query.search) params.set('search', query.search)
+	if (query.limit !== undefined) params.set('limit', String(query.limit))
+	if (query.offset !== undefined) params.set('offset', String(query.offset))
+	const queryString = params.toString()
+	return `${API_BASE_URL}/corporations/${encodeURIComponent(corporationId)}/members/user-search${
+		queryString ? `?${queryString}` : ''
+	}`
 }
 
 export interface CorporationMembersResponse {
@@ -85,6 +133,56 @@ export interface CorporationMembersResponse {
 			linkedUsers: number
 		}
 	}
+}
+
+export interface CorporationUserSearchCharacter {
+	characterId: string
+	characterName: string
+	characterOwnerHash: string
+	corporationId?: string | null
+	corporationName?: string | null
+	allianceId?: string | null
+	allianceName?: string | null
+	is_primary: boolean
+	hasValidToken: boolean
+	isBlacklisted: boolean
+}
+
+export interface CorporationUserSearchDetails {
+	characters: CorporationUserSearchCharacter[]
+}
+
+export interface CorporationUserSearchSummary {
+	id: string
+	mainCharacterId: string
+	mainCharacterName: string | null
+	characterCount: number
+	is_admin: boolean
+	discordUserId: string | null
+	discordUsername: string | null
+	matchedCharacterId: string | null
+	matchedCharacterName: string | null
+	matchedBy:
+		| 'main_character_name'
+		| 'character_name'
+		| 'character_id'
+		| 'user_id'
+		| 'discord_user_id'
+		| 'discord_username'
+		| 'legacy_auth_username'
+		| null
+	createdAt: string
+	updatedAt: string
+}
+
+export interface CorporationUserSearchResult {
+	users: Array<{
+		summary: CorporationUserSearchSummary
+		details: CorporationUserSearchDetails | null
+	}>
+	total: number
+	limit: number
+	offset: number
 }
 
 export interface CorporationMemberAccountResponse {
@@ -180,18 +278,7 @@ export const myCorporationsApi = {
 		corporationId: string,
 		query: CorporationMembersQuery = {}
 	): Promise<CorporationMembersResponse> {
-		const params = new URLSearchParams()
-		if (query.page) params.set('page', String(query.page))
-		if (query.limit) params.set('limit', String(query.limit))
-		if (query.search) params.set('search', query.search)
-		if (query.authFilter && query.authFilter !== 'all') params.set('authFilter', query.authFilter)
-		if (query.activityFilter && query.activityFilter !== 'all') {
-			params.set('activityFilter', query.activityFilter)
-		}
-		if (query.roleFilter && query.roleFilter !== 'all') params.set('roleFilter', query.roleFilter)
-		if (query.sortField) params.set('sortField', query.sortField)
-		if (query.sortOrder) params.set('sortOrder', query.sortOrder)
-		const queryString = params.toString()
+		const queryString = buildCorporationMembersQueryString(query)
 		return apiClient.get(
 			`/corporations/${corporationId}/members${queryString ? `?${queryString}` : ''}`
 		)
@@ -215,6 +302,23 @@ export const myCorporationsApi = {
 		accountId: string
 	): Promise<CorporationMemberAccountResponse> {
 		return apiClient.get(`/corporations/${corporationId}/members/${accountId}`)
+	},
+
+	/**
+	 * Search users for the corp member page lookup dialog.
+	 * Returns matched users and all linked characters with no detail-page links.
+	 */
+	async searchCorporationUsers(
+		corporationId: string,
+		query: { search?: string; limit?: number; offset?: number } = {}
+	): Promise<CorporationUserSearchResult> {
+		const queryString = new URLSearchParams()
+		if (query.search) queryString.set('search', query.search)
+		if (query.limit !== undefined) queryString.set('limit', String(query.limit))
+		if (query.offset !== undefined) queryString.set('offset', String(query.offset))
+		return apiClient.get(
+			`/corporations/${corporationId}/members/user-search${queryString.toString() ? `?${queryString.toString()}` : ''}`
+		)
 	},
 
 	/**

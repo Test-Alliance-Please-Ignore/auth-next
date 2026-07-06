@@ -21,6 +21,7 @@ import type { EveTokenStore } from '@repo/eve-token-store'
 import type { Groups } from '@repo/groups'
 import type { Hr } from '@repo/hr'
 import type { App } from '../../context'
+import { CoreRpcService } from '../../services/core-rpc.service'
 
 const app = new Hono<App>()
 const MS_PER_DAY = 86_400_000
@@ -30,6 +31,8 @@ const ACTIVE_MEMBER_THRESHOLD_MS = 7 * MS_PER_DAY
  * Cache duration for corporation member data (5 minutes)
  */
 const CACHE_TTL = 5 * 60 // 5 minutes in seconds
+const MEMBERS_ACCESS_DENIED_MESSAGE =
+	'Access denied. Corporation CEO, Director, site admin, HR role, or HR auditor permission required.'
 
 /**
  * Helper to get cache instance
@@ -65,6 +68,36 @@ async function hasMemberCorpHrPermission(
 	return hr.checkPermission(userId, corporationId, requiredRole)
 }
 
+async function resolveCorporationMembersAccess(
+	c: Context<App>,
+	corporationId: string,
+	managedCorp: MemberCorpHrAccess | null
+): Promise<'admin' | 'CEO' | 'Director' | 'hr_admin' | 'hr_reviewer' | 'hr_viewer'> {
+	const user = c.get('user')!
+
+	try {
+		const access = await checkCorporationAccess(c, corporationId)
+		return access.role
+	} catch {
+		const hr = getStub<Hr>(c.env.HR, 'default')
+		const hasHrAccess = managedCorp?.isMemberCorporation
+			? await hr.checkPermission(user.id, corporationId, 'hr_viewer')
+			: false
+		const isAuditor = !hasHrAccess && await isHrAuditorUser(c)
+		if (!hasHrAccess && !isAuditor) {
+			throw new Error(
+				'Access denied. Corporation CEO, Director, site admin, HR role, or HR auditor permission required.'
+			)
+		}
+		if (isAuditor) {
+			return 'hr_viewer'
+		}
+		const isHrAdmin = await hr.checkPermission(user.id, corporationId, 'hr_admin')
+		const isHrReviewer = !isHrAdmin && await hr.checkPermission(user.id, corporationId, 'hr_reviewer')
+		return isHrAdmin ? 'hr_admin' : isHrReviewer ? 'hr_reviewer' : 'hr_viewer'
+	}
+}
+
 type CorporationMemberListItem = {
 	characterId: string
 	characterName: string
@@ -74,6 +107,7 @@ type CorporationMemberListItem = {
 	hasAuthAccount: boolean
 	hasValidToken?: boolean | null
 	authUserId?: string
+	mainCharacterId?: string
 	mainCharacterName?: string
 	status?: 'active' | 'emeritus'
 	joinDate: string
@@ -87,6 +121,18 @@ type CorporationMemberListItem = {
 	isBlacklisted: boolean
 }
 
+type CorporationUserSearchEntry = {
+	summary: Awaited<ReturnType<CoreRpcService['searchUsers']>>['users'][number]
+	details: NonNullable<Awaited<ReturnType<CoreRpcService['getUserDetails']>>>
+}
+
+type CorporationUserSearchResponse = {
+	users: CorporationUserSearchEntry[]
+	total: number
+	limit: number
+	offset: number
+}
+
 type MembersAuthFilter =
 	| 'all'
 	| 'linked'
@@ -94,6 +140,7 @@ type MembersAuthFilter =
 	| 'linked_valid'
 	| 'linked_invalid'
 	| 'linked_unknown'
+type MembersCoverageFilter = 'all' | 'full' | 'partial' | 'none' | 'unlinked'
 type MembersActivityFilter = 'all' | 'active' | 'inactive' | 'unknown'
 type MembersRoleFilter = 'all' | 'CEO' | 'Director' | 'Member'
 type MembersSortField = 'name' | 'role' | 'auth' | 'activity' | 'lastLogin' | 'joinDate'
@@ -104,6 +151,7 @@ type MembersQuery = {
 	limit: number
 	search: string
 	authFilter: MembersAuthFilter
+	coverageFilter: MembersCoverageFilter
 	activityFilter: MembersActivityFilter
 	roleFilter: MembersRoleFilter
 	sortField: MembersSortField
@@ -181,6 +229,38 @@ function buildCorporationMemberCoverageSummary(
 	return coverage
 }
 
+type AccountCoverageStatus = Exclude<MembersCoverageFilter, 'all'>
+
+function buildCoverageStatusByUserId(
+	members: CorporationMemberCoverageInput[]
+): Map<string, AccountCoverageStatus> {
+	const bucketMap = new Map<string, { total: number; valid: number }>()
+
+	for (const member of members) {
+		if (!member.authUserId) {
+			continue
+		}
+
+		const bucketKey = `user:${member.authUserId}`
+		const bucket = bucketMap.get(bucketKey) ?? { total: 0, valid: 0 }
+		bucket.total += 1
+		if (member.hasValidToken === true) {
+			bucket.valid += 1
+		}
+		bucketMap.set(bucketKey, bucket)
+	}
+
+	const coverageByUserId = new Map<string, AccountCoverageStatus>()
+	for (const [bucketKey, bucket] of bucketMap.entries()) {
+		const userId = bucketKey.slice('user:'.length)
+		const status: AccountCoverageStatus =
+			bucket.valid === 0 ? 'none' : bucket.valid === bucket.total ? 'full' : 'partial'
+		coverageByUserId.set(userId, status)
+	}
+
+	return coverageByUserId
+}
+
 function hasAnyMembersQueryParams(c: Context<App>): boolean {
 	return (
 		typeof c.req.query('page') === 'string' ||
@@ -207,6 +287,7 @@ function parseMembersQuery(c: Context<App>): MembersQuery {
 	const limit = Math.min(parsePositiveInt(c.req.query('limit'), 50), 200)
 	const search = (c.req.query('search') ?? '').trim().toLowerCase()
 	const authFilterRaw = c.req.query('authFilter')
+	const coverageFilterRaw = c.req.query('coverageFilter')
 	const activityFilterRaw = c.req.query('activityFilter')
 	const roleFilterRaw = c.req.query('roleFilter')
 	const sortFieldRaw = c.req.query('sortField')
@@ -218,7 +299,14 @@ function parseMembersQuery(c: Context<App>): MembersQuery {
 		authFilterRaw === 'linked_valid' ||
 		authFilterRaw === 'linked_invalid' ||
 		authFilterRaw === 'linked_unknown'
-			? authFilterRaw
+		? authFilterRaw
+			: 'all'
+	const coverageFilter: MembersCoverageFilter =
+		coverageFilterRaw === 'full' ||
+		coverageFilterRaw === 'partial' ||
+		coverageFilterRaw === 'none' ||
+		coverageFilterRaw === 'unlinked'
+			? coverageFilterRaw
 			: 'all'
 	const activityFilter: MembersActivityFilter =
 		activityFilterRaw === 'active' || activityFilterRaw === 'inactive' || activityFilterRaw === 'unknown'
@@ -244,6 +332,7 @@ function parseMembersQuery(c: Context<App>): MembersQuery {
 		limit,
 		search,
 		authFilter,
+		coverageFilter,
 		activityFilter,
 		roleFilter,
 		sortField,
@@ -255,11 +344,23 @@ function canUseBackendPaginatedMembersPath(query: MembersQuery): boolean {
 	return (
 		!query.search &&
 		query.authFilter === 'all' &&
+		query.coverageFilter === 'all' &&
 		query.activityFilter === 'all' &&
 		query.roleFilter === 'all' &&
 		query.sortField === 'role' &&
 		query.sortOrder === 'asc'
 	)
+}
+
+function getMemberCoverageStatus(
+	member: CorporationMemberListItem,
+	coverageByUserId: Map<string, AccountCoverageStatus>
+): MembersCoverageFilter {
+	if (!member.hasAuthAccount || !member.authUserId) {
+		return 'unlinked'
+	}
+
+	return coverageByUserId.get(member.authUserId) ?? 'none'
 }
 
 function filterSortAndPaginateMembers(members: CorporationMemberListItem[], query: MembersQuery) {
@@ -269,6 +370,7 @@ function filterSortAndPaginateMembers(members: CorporationMemberListItem[], quer
 		unknown: 2,
 		unlinked: 3,
 	}
+	const coverageByUserId = buildCoverageStatusByUserId(members)
 
 	const getAuthSortRank = (member: CorporationMemberListItem): number => {
 		const key: 'valid' | 'invalid' | 'unknown' | 'unlinked' = !member.hasAuthAccount
@@ -306,6 +408,10 @@ function filterSortAndPaginateMembers(members: CorporationMemberListItem[], quer
 			return true
 		})
 		.filter((member) => {
+			if (query.coverageFilter === 'all') return true
+			return getMemberCoverageStatus(member, coverageByUserId) === query.coverageFilter
+		})
+		.filter((member) => {
 			if (query.activityFilter === 'all') return true
 			return member.activityStatus === query.activityFilter
 		})
@@ -329,7 +435,13 @@ function filterSortAndPaginateMembers(members: CorporationMemberListItem[], quer
 				break
 			}
 			case 'auth':
-				comparison = getAuthSortRank(a) - getAuthSortRank(b)
+				comparison = (a.authUserId || '').localeCompare(b.authUserId || '')
+				if (comparison === 0) {
+					comparison = getAuthSortRank(a) - getAuthSortRank(b)
+				}
+				if (comparison === 0) {
+					comparison = a.characterName.localeCompare(b.characterName)
+				}
 				break
 			case 'activity': {
 				const activityOrder = { active: 0, inactive: 1, unknown: 2 }
@@ -395,6 +507,248 @@ function buildUnpaginatedMembersResponse(members: CorporationMemberListItem[]) {
 			esiCoverage: buildCorporationMemberCoverageSummary(members),
 		},
 	}
+}
+
+function filterSortMembers(members: CorporationMemberListItem[], query: MembersQuery) {
+	const AUTH_SORT_RANK: Record<'valid' | 'invalid' | 'unknown' | 'unlinked', number> = {
+		valid: 0,
+		invalid: 1,
+		unknown: 2,
+		unlinked: 3,
+	}
+	const coverageByUserId = buildCoverageStatusByUserId(members)
+
+	const getAuthSortRank = (member: CorporationMemberListItem): number => {
+		const key: 'valid' | 'invalid' | 'unknown' | 'unlinked' = !member.hasAuthAccount
+			? 'unlinked'
+			: member.hasValidToken === true
+				? 'valid'
+				: member.hasValidToken === false
+					? 'invalid'
+					: 'unknown'
+		return AUTH_SORT_RANK[key]
+	}
+
+	const filtered = [...members]
+		.filter((member) => {
+			if (!query.search) return true
+			return (
+				member.characterName.toLowerCase().includes(query.search) ||
+				member.mainCharacterName?.toLowerCase().includes(query.search) ||
+				member.locationSystem?.toLowerCase().includes(query.search)
+			)
+		})
+		.filter((member) => {
+			if (query.authFilter === 'all') return true
+			if (query.authFilter === 'linked') return member.hasAuthAccount
+			if (query.authFilter === 'unlinked') return !member.hasAuthAccount
+			if (query.authFilter === 'linked_valid') {
+				return member.hasAuthAccount && member.hasValidToken === true
+			}
+			if (query.authFilter === 'linked_invalid') {
+				return member.hasAuthAccount && member.hasValidToken === false
+			}
+			if (query.authFilter === 'linked_unknown') {
+				return member.hasAuthAccount && member.hasValidToken !== true && member.hasValidToken !== false
+			}
+			return true
+		})
+		.filter((member) => {
+			if (query.coverageFilter === 'all') return true
+			return getMemberCoverageStatus(member, coverageByUserId) === query.coverageFilter
+		})
+		.filter((member) => {
+			if (query.activityFilter === 'all') return true
+			return member.activityStatus === query.activityFilter
+		})
+		.filter((member) => {
+			if (query.roleFilter === 'all') return true
+			return member.role === query.roleFilter
+		})
+
+	filtered.sort((a, b) => {
+		let comparison = 0
+		switch (query.sortField) {
+			case 'name':
+				comparison = a.characterName.localeCompare(b.characterName)
+				break
+			case 'role': {
+				const roleOrder = { CEO: 0, Director: 1, Member: 2 }
+				comparison = roleOrder[a.role] - roleOrder[b.role]
+				if (comparison === 0) {
+					comparison = a.characterName.localeCompare(b.characterName)
+				}
+				break
+			}
+			case 'auth':
+				comparison = (a.authUserId || '').localeCompare(b.authUserId || '')
+				if (comparison === 0) {
+					comparison = getAuthSortRank(a) - getAuthSortRank(b)
+				}
+				if (comparison === 0) {
+					comparison = a.characterName.localeCompare(b.characterName)
+				}
+				break
+			case 'activity': {
+				const activityOrder = { active: 0, inactive: 1, unknown: 2 }
+				comparison = activityOrder[a.activityStatus] - activityOrder[b.activityStatus]
+				break
+			}
+			case 'lastLogin':
+				comparison = (b.lastLogin || '').localeCompare(a.lastLogin || '')
+				break
+			case 'joinDate':
+				comparison = a.joinDate.localeCompare(b.joinDate)
+				break
+		}
+		return query.sortOrder === 'asc' ? comparison : -comparison
+	})
+
+	return filtered
+}
+
+function escapeCsvValue(value: string | number | boolean | null | undefined): string {
+	if (value === null || value === undefined) return ''
+	const text = String(value)
+	return /[",\r\n]/.test(text) ? `"${text.replace(/"/g, '""')}"` : text
+}
+
+function buildCsvLine(values: Array<string | number | boolean | null | undefined>): string {
+	return values.map((value) => escapeCsvValue(value)).join(',')
+}
+
+function getEsiStatusLabel(member: Pick<CorporationMemberListItem, 'hasAuthAccount' | 'hasValidToken'>) {
+	if (!member.hasAuthAccount) return 'Unlinked'
+	if (member.hasValidToken === true) return 'ESI Valid'
+	if (member.hasValidToken === false) return 'ESI Invalid'
+	return 'ESI Unknown'
+}
+
+function buildCorporationMembersCsv(
+	members: CorporationMemberListItem[],
+	hrRoleMap: Map<string, string>
+): string {
+	const headers = [
+		'Character Name',
+		'Character ID',
+		'Role',
+		'HR Role',
+		'ESI Status',
+		'Auth Account UUID',
+		'Auth Account Primary Character Name',
+		'Auth Account Primary Character ID',
+		'Activity Status',
+		'Last Login',
+		'Join Date',
+	]
+
+	const rows = members.map((member) => [
+		member.characterName,
+		member.characterId,
+		member.role,
+		hrRoleMap.get(member.authUserId || '') || '',
+		getEsiStatusLabel(member),
+		member.authUserId || '',
+		member.mainCharacterName || '',
+		member.mainCharacterId || '',
+		member.activityStatus,
+		member.lastLogin || 'Never',
+		member.joinDate,
+	])
+
+	return [buildCsvLine(headers), ...rows.map((row) => buildCsvLine(row))].join('\n')
+}
+
+async function hydrateCorporationMembers(
+	c: Context<App>,
+	corporationId: string,
+	managedCorp: { name: string },
+	corpStub: EveCorporationData,
+	tokenStoreStub: EveTokenStore
+): Promise<CorporationMemberListItem[]> {
+	const db = c.get('db')
+	if (!db) {
+		throw new Error('Database not available')
+	}
+
+	const [corpInfo, coreData] = await Promise.all([
+		corpStub.getCorporationInfo(corporationId),
+		corpStub.getCoreData(corporationId),
+	])
+
+	if (!coreData || !coreData.members) {
+		return []
+	}
+
+	const memberCharacterIds = coreData.members.map((member) => String(member.characterId))
+	const linkedCharacters =
+		memberCharacterIds.length > 0
+			? await db.query.userCharacters.findMany({
+				where: inArray(userCharacters.characterId, memberCharacterIds),
+			})
+			: []
+	const linkedCharacterMap = new Map(linkedCharacters.map((row) => [row.characterId, row]))
+	const directors = await corpStub.getDirectors(corporationId)
+	const directorIds = new Set(directors.map((director) => director.characterId))
+	const characterNameMap =
+		memberCharacterIds.length > 0 ? await tokenStoreStub.resolveIds(memberCharacterIds) : {}
+	const linkedUserIds = [...new Set(linkedCharacters.map((row) => row.userId))]
+	const linkedUsers =
+		linkedUserIds.length > 0
+			? await db.query.users.findMany({
+				where: inArray(users.id, linkedUserIds),
+			})
+			: []
+	const mainCharacterIds = linkedUsers.map((user) => user.mainCharacterId)
+	const mainCharacterNameMap =
+		mainCharacterIds.length > 0 ? await tokenStoreStub.resolveIds(mainCharacterIds) : {}
+	const userIdToMainCharacterName = new Map(
+		linkedUsers.map((user) => [user.id, mainCharacterNameMap[user.mainCharacterId] || 'Unknown'])
+	)
+	const userIdToMainCharacterId = new Map(linkedUsers.map((user) => [user.id, user.mainCharacterId]))
+	const hrStub = getStub<Hr>(c.env.HR, 'default')
+	const blacklistStatuses =
+		memberCharacterIds.length > 0 ? await hrStub.checkCharactersBlacklisted(memberCharacterIds) : {}
+	const now = Date.now()
+
+	return coreData.members.map((member) => {
+		const characterId = String(member.characterId)
+		const linkedChar = linkedCharacterMap.get(characterId)
+		let role: 'CEO' | 'Director' | 'Member' = 'Member'
+		if (corpInfo && String(corpInfo.ceoId) === characterId) {
+			role = 'CEO'
+		} else if (directorIds.has(characterId)) {
+			role = 'Director'
+		}
+		const tracking = coreData.memberTracking?.find((row) => row.characterId === characterId)
+
+		return {
+			characterId,
+			characterName: characterNameMap[characterId] || 'Unknown',
+			corporationId,
+			corporationName: managedCorp.name,
+			role,
+			hasAuthAccount: !!linkedChar,
+			hasValidToken: linkedChar ? (linkedChar.hasValidToken ?? null) : null,
+			authUserId: linkedChar?.userId,
+			mainCharacterId: linkedChar?.userId ? userIdToMainCharacterId.get(linkedChar.userId) : undefined,
+			mainCharacterName: linkedChar?.userId ? userIdToMainCharacterName.get(linkedChar.userId) : undefined,
+			status: linkedChar?.status,
+			joinDate: tracking?.startDate?.toISOString() || member.updatedAt.toISOString(),
+			lastEsiUpdate: member.updatedAt.toISOString(),
+			lastLogin: tracking?.logonDate?.toISOString(),
+			allianceId: corpInfo?.allianceId ? String(corpInfo.allianceId) : undefined,
+			allianceName: undefined,
+			locationSystem: undefined,
+			locationRegion: undefined,
+			activityStatus: tracking?.logonDate
+				? now - tracking.logonDate.getTime() < ACTIVE_MEMBER_THRESHOLD_MS
+					? 'active'
+					: 'inactive'
+				: 'unknown',
+			isBlacklisted: blacklistStatuses[characterId] || false,
+		}
+	})
 }
 
 /**
@@ -1697,32 +2051,14 @@ app.get('/:corporationId/members', requireAuth(), async (c) => {
 			return c.json({ error: 'Corporation not found or not managed' }, 404)
 		}
 
-		// Check if user has CEO/Director/Admin access, an HR role, or HR auditor permission
 		let userRole: 'admin' | 'CEO' | 'Director' | 'hr_admin' | 'hr_reviewer' | 'hr_viewer'
 		try {
-			const access = await checkCorporationAccess(c, corporationId)
-			userRole = access.role
-		} catch {
-			// CEO/Director/Admin check failed — fall back to HR role / auditor check
-			const hr = getStub<Hr>(c.env.HR, 'default')
-			const hasHrAccess = managedCorp.isMemberCorporation
-				? await hr.checkPermission(user.id, corporationId, 'hr_viewer')
-				: false
-			const isAuditor = !hasHrAccess && await isHrAuditorUser(c)
-			if (!hasHrAccess && !isAuditor) {
-				return c.json(
-					{ error: 'Access denied. Corporation CEO, Director, site admin, HR role, or HR auditor permission required.' },
-					403
-				)
+			userRole = await resolveCorporationMembersAccess(c, corporationId, managedCorp)
+		} catch (error) {
+			if (error instanceof Error && error.message === MEMBERS_ACCESS_DENIED_MESSAGE) {
+				return c.json({ error: error.message }, 403)
 			}
-			if (isAuditor) {
-				userRole = 'hr_viewer'
-			} else {
-				// Determine the specific HR role for logging
-				const isHrAdmin = await hr.checkPermission(user.id, corporationId, 'hr_admin')
-				const isHrReviewer = !isHrAdmin && await hr.checkPermission(user.id, corporationId, 'hr_reviewer')
-				userRole = isHrAdmin ? 'hr_admin' : isHrReviewer ? 'hr_reviewer' : 'hr_viewer'
-			}
+			throw error
 		}
 
 		logger.info('[Corporations] User has access', { corporationId, userId: user.id, userRole })
@@ -1797,6 +2133,7 @@ app.get('/:corporationId/members', requireAuth(), async (c) => {
 			const userIdToMainCharacterName = new Map(
 				linkedUsers.map((u) => [u.id, mainCharacterNameMap[u.mainCharacterId] || 'Unknown'])
 			)
+			const userIdToMainCharacterId = new Map(linkedUsers.map((u) => [u.id, u.mainCharacterId]))
 
 			const hrStub = getStub<Hr>(c.env.HR, 'default')
 			const blacklistStatuses =
@@ -1818,6 +2155,7 @@ app.get('/:corporationId/members', requireAuth(), async (c) => {
 					hasAuthAccount: !!linkedChar,
 					hasValidToken: linkedChar ? (linkedChar.hasValidToken ?? null) : null,
 					authUserId: linkedChar?.userId,
+					mainCharacterId: linkedChar?.userId ? userIdToMainCharacterId.get(linkedChar.userId) : undefined,
 					mainCharacterName: linkedChar?.userId
 						? userIdToMainCharacterName.get(linkedChar.userId)
 						: undefined,
@@ -1972,6 +2310,7 @@ app.get('/:corporationId/members', requireAuth(), async (c) => {
 		const userIdToMainCharacterName = new Map(
 			linkedUsers.map((u) => [u.id, mainCharacterNameMap[u.mainCharacterId] || 'Unknown'])
 		)
+		const userIdToMainCharacterId = new Map(linkedUsers.map((u) => [u.id, u.mainCharacterId]))
 
 		logger.info('[Corporations Members] Resolved main character names for linked accounts', {
 			corporationId,
@@ -2018,6 +2357,7 @@ app.get('/:corporationId/members', requireAuth(), async (c) => {
 					hasAuthAccount,
 					hasValidToken: linkedChar ? (linkedChar.hasValidToken ?? null) : null,
 					authUserId: linkedChar?.userId,
+					mainCharacterId: linkedChar?.userId ? userIdToMainCharacterId.get(linkedChar.userId) : undefined,
 					mainCharacterName: linkedChar?.userId
 						? userIdToMainCharacterName.get(linkedChar.userId)
 						: undefined,
@@ -2066,6 +2406,181 @@ app.get('/:corporationId/members', requireAuth(), async (c) => {
 			stack: error instanceof Error ? error.stack : undefined,
 		})
 		return c.json({ error: 'Failed to fetch corporation members' }, 500)
+	}
+})
+
+/**
+ * GET /corporations/:corporationId/members/export
+ * Download a CSV of all corporation members matching the current filters.
+ */
+app.get('/:corporationId/members/export', requireAuth(), async (c) => {
+	const corporationId = c.req.param('corporationId')
+	const query = parseMembersQuery(c)
+	const user = c.get('user')!
+	const db = c.get('db')
+
+	if (!db) {
+		return c.json({ error: 'Database not available' }, 500)
+	}
+
+	logger.info('[Corporations] Export members request', { corporationId, userId: user.id })
+
+	try {
+		const managedCorp = await db.query.managedCorporations.findFirst({
+			where: and(
+				eq(managedCorporations.corporationId, corporationId),
+				eq(managedCorporations.isActive, true)
+			),
+		})
+
+		if (!managedCorp) {
+			return c.json({ error: 'Corporation not found or not managed' }, 404)
+		}
+
+		let userRole: 'admin' | 'CEO' | 'Director' | 'hr_admin' | 'hr_reviewer' | 'hr_viewer'
+		try {
+			userRole = await resolveCorporationMembersAccess(c, corporationId, managedCorp)
+		} catch (error) {
+			if (error instanceof Error && error.message === MEMBERS_ACCESS_DENIED_MESSAGE) {
+				return c.json({ error: error.message }, 403)
+			}
+			throw error
+		}
+
+		logger.info('[Corporations] Export members access granted', {
+			corporationId,
+			userId: user.id,
+			userRole,
+		})
+
+		const corpStub = getStub<EveCorporationData>(c.env.EVE_CORPORATION_DATA, corporationId)
+		const tokenStoreStub = getStub<EveTokenStore>(c.env.EVE_TOKEN_STORE, 'default')
+		const hrStub = getStub<Hr>(c.env.HR, 'default')
+		const members = await hydrateCorporationMembers(c, corporationId, managedCorp, corpStub, tokenStoreStub)
+		const filteredMembers = filterSortMembers(members, query)
+		const hrRoles = await hrStub.getCorporationRoles(corporationId, true)
+		const hrRoleMap = new Map(hrRoles.map((role) => [role.userId, role.role]))
+		const csv = buildCorporationMembersCsv(filteredMembers, hrRoleMap)
+		const safeFileName = managedCorp.name
+			.trim()
+			.replace(/[^a-zA-Z0-9._-]+/g, '-')
+			.replace(/^-+|-+$/g, '')
+			.toLowerCase() || 'corporation'
+
+		return new Response(csv, {
+			status: 200,
+			headers: {
+				'Content-Type': 'text/csv; charset=utf-8',
+				'Content-Disposition': `attachment; filename="${safeFileName}-members.csv"`,
+				'Cache-Control': 'no-store',
+			},
+		})
+	} catch (error) {
+		logger.error('[Corporations] Error exporting corporation members', {
+			corporationId,
+			error: error instanceof Error ? error.message : String(error),
+			stack: error instanceof Error ? error.stack : undefined,
+		})
+		return c.json({ error: 'Failed to export corporation members' }, 500)
+	}
+})
+
+/**
+ * GET /corporations/:corporationId/members/user-search
+ * Search users for the corp member lookup dialog.
+ */
+app.get('/:corporationId/members/user-search', requireAuth(), async (c) => {
+	const corporationId = c.req.param('corporationId')
+	const user = c.get('user')!
+	const db = c.get('db')
+	const search = (c.req.query('search') ?? '').trim()
+	const limit = Math.min(parsePositiveInt(c.req.query('limit'), 10), 50)
+	const parsedOffset = Number.parseInt(c.req.query('offset') ?? '', 10)
+	const offset = Number.isFinite(parsedOffset) && parsedOffset >= 0 ? parsedOffset : 0
+
+	if (!db) {
+		return c.json({ error: 'Database not available' }, 500)
+	}
+
+	try {
+		const managedCorp = await db.query.managedCorporations.findFirst({
+			where: and(
+				eq(managedCorporations.corporationId, corporationId),
+				eq(managedCorporations.isActive, true)
+			),
+		})
+
+		if (!managedCorp) {
+			return c.json({ error: 'Corporation not found or not managed' }, 404)
+		}
+		if (!managedCorp.isMemberCorporation) {
+			return c.json({ error: 'User search is only available for member corporations' }, 403)
+		}
+
+		let userRole: 'admin' | 'CEO' | 'Director' | 'hr_admin' | 'hr_reviewer' | 'hr_viewer'
+		try {
+			userRole = await resolveCorporationMembersAccess(c, corporationId, managedCorp)
+		} catch (error) {
+			if (error instanceof Error && error.message === MEMBERS_ACCESS_DENIED_MESSAGE) {
+				return c.json({ error: error.message }, 403)
+			}
+			throw error
+		}
+
+		logger.info('[Corporations] User search request', {
+			corporationId,
+			userId: user.id,
+			search,
+			limit,
+			offset,
+			userRole,
+		})
+
+		if (search.length === 0) {
+			return c.json({
+				users: [],
+				total: 0,
+				limit,
+				offset,
+			} satisfies CorporationUserSearchResponse)
+		}
+
+		const coreService = new CoreRpcService(db, c.env)
+		const result = await coreService.searchUsers({
+			search,
+			limit,
+			offset,
+		})
+
+		const usersWithDetails = (
+			await Promise.all(
+				result.users.map(async (summary) => {
+					const details = await coreService.getUserDetails(summary.id)
+					if (!details) {
+						return null
+					}
+					return {
+						summary,
+						details,
+					}
+				})
+			)
+		).filter((entry): entry is CorporationUserSearchEntry => entry !== null)
+
+		return c.json({
+			users: usersWithDetails,
+			total: result.total,
+			limit: result.limit,
+			offset: result.offset,
+		} satisfies CorporationUserSearchResponse)
+	} catch (error) {
+		logger.error('[Corporations] Error searching users for corporation member dialog', {
+			corporationId,
+			userId: user.id,
+			error: error instanceof Error ? error.message : String(error),
+			stack: error instanceof Error ? error.stack : undefined,
+		})
+		return c.json({ error: 'Failed to search users' }, 500)
 	}
 })
 
