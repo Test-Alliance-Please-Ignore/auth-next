@@ -33,6 +33,7 @@ import { useDebounce } from '@/hooks/useDebounce'
 import { useMessage } from '@/hooks/useMessage'
 import { usePageTitle } from '@/hooks/usePageTitle'
 import { useUserPermissions } from '@/hooks/useUserPermissions'
+import { cn } from '@/lib/utils'
 
 import { useHrRoles } from '../../hr'
 import { buildCorporationMembersExportUrl, myCorporationsApi } from '../api'
@@ -51,6 +52,7 @@ import { Button } from '@/components/ui/button'
 // Lazy load the members table for code splitting
 const CorporationMembersTable = lazy(() => import('../components/corporation-members-table'))
 const MEMBERS_SEARCH_DEBOUNCE_MS = 400
+type MembersCoverageFilter = NonNullable<CorporationMembersQuery['coverageFilter']>
 
 /**
  * Main Corporation Members Component
@@ -80,6 +82,7 @@ export default function CorporationMembers() {
 		limit: 25,
 		search: '',
 		authFilter: 'all',
+		coverageFilter: 'all',
 		activityFilter: 'all',
 		roleFilter: 'all',
 		sortField: 'role',
@@ -216,6 +219,17 @@ export default function CorporationMembers() {
 		},
 		[navigate, corporationId]
 	)
+
+	const handleCoverageFilterSelect = useCallback((coverageFilter: MembersCoverageFilter) => {
+		setMembersQuery((prev) => ({
+			...prev,
+			page: 1,
+			authFilter: 'all',
+			coverageFilter,
+			sortField: 'auth',
+			sortOrder: 'asc',
+		}))
+	}, [])
 
 	const handleLinkAccount = useCallback(
 		(member: CorporationMember) => {
@@ -478,7 +492,17 @@ export default function CorporationMembers() {
 					</CardHeader>
 					<CardContent className="space-y-3 pt-0">
 						<div className="grid grid-cols-2 gap-2">
-							<div className="rounded-md border bg-background/80 px-2 py-2 text-center">
+							<button
+								type="button"
+								onClick={() => handleCoverageFilterSelect('full')}
+								aria-pressed={membersQuery.coverageFilter === 'full'}
+								className={cn(
+									'cursor-pointer rounded-md border px-2 py-2 text-center transition-colors hover:shadow-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring',
+									membersQuery.coverageFilter === 'full'
+										? 'border-success/60 bg-success/20 shadow-sm'
+										: 'bg-background/80 hover:border-success/50 hover:bg-background/95'
+								)}
+							>
 								<div className="text-[11px] uppercase tracking-wide text-muted-foreground">Full</div>
 								<div className="text-base font-bold text-success leading-none">
 									{esiCoverage.full}
@@ -486,8 +510,18 @@ export default function CorporationMembers() {
 								<div className="text-[10px] text-muted-foreground">
 									{esiCoveragePercentage(esiCoverage.full)}%
 								</div>
-							</div>
-							<div className="rounded-md border bg-background/80 px-2 py-2 text-center">
+							</button>
+							<button
+								type="button"
+								onClick={() => handleCoverageFilterSelect('partial')}
+								aria-pressed={membersQuery.coverageFilter === 'partial'}
+								className={cn(
+									'cursor-pointer rounded-md border px-2 py-2 text-center transition-colors hover:shadow-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring',
+									membersQuery.coverageFilter === 'partial'
+										? 'border-warning/60 bg-warning/20 shadow-sm'
+										: 'bg-background/80 hover:border-warning/50 hover:bg-background/95'
+								)}
+							>
 								<div className="text-[11px] uppercase tracking-wide text-muted-foreground">Partial</div>
 								<div className="text-base font-bold text-warning leading-none">
 									{esiCoverage.partial}
@@ -495,8 +529,18 @@ export default function CorporationMembers() {
 								<div className="text-[10px] text-muted-foreground">
 									{esiCoveragePercentage(esiCoverage.partial)}%
 								</div>
-							</div>
-							<div className="rounded-md border bg-background/80 px-2 py-2 text-center">
+							</button>
+							<button
+								type="button"
+								onClick={() => handleCoverageFilterSelect('none')}
+								aria-pressed={membersQuery.coverageFilter === 'none'}
+								className={cn(
+									'cursor-pointer rounded-md border px-2 py-2 text-center transition-colors hover:shadow-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring',
+									membersQuery.coverageFilter === 'none'
+										? 'border-destructive/60 bg-destructive/20 shadow-sm'
+										: 'bg-background/80 hover:border-destructive/50 hover:bg-background/95'
+								)}
+							>
 								<div className="text-[11px] uppercase tracking-wide text-muted-foreground">None</div>
 								<div className="text-base font-bold text-destructive leading-none">
 									{esiCoverage.none}
@@ -504,8 +548,18 @@ export default function CorporationMembers() {
 								<div className="text-[10px] text-muted-foreground">
 									{esiCoveragePercentage(esiCoverage.none)}%
 								</div>
-							</div>
-							<div className="rounded-md border bg-background/80 px-2 py-2 text-center">
+							</button>
+							<button
+								type="button"
+								onClick={() => handleCoverageFilterSelect('unlinked')}
+								aria-pressed={membersQuery.coverageFilter === 'unlinked'}
+								className={cn(
+									'cursor-pointer rounded-md border px-2 py-2 text-center transition-colors hover:shadow-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring',
+									membersQuery.coverageFilter === 'unlinked'
+										? 'border-muted-foreground/60 bg-muted/30 shadow-sm'
+										: 'bg-background/80 hover:border-muted-foreground/50 hover:bg-background/95'
+								)}
+							>
 								<div className="text-[11px] uppercase tracking-wide text-muted-foreground">Unlinked</div>
 								<div className="text-base font-bold text-muted-foreground leading-none">
 									{esiCoverage.unlinked}
@@ -513,7 +567,7 @@ export default function CorporationMembers() {
 								<div className="text-[10px] text-muted-foreground">
 									{esiCoveragePercentage(esiCoverage.unlinked)}%
 								</div>
-							</div>
+							</button>
 						</div>
 					</CardContent>
 				</Card>

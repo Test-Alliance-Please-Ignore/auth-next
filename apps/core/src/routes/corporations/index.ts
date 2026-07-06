@@ -140,6 +140,7 @@ type MembersAuthFilter =
 	| 'linked_valid'
 	| 'linked_invalid'
 	| 'linked_unknown'
+type MembersCoverageFilter = 'all' | 'full' | 'partial' | 'none' | 'unlinked'
 type MembersActivityFilter = 'all' | 'active' | 'inactive' | 'unknown'
 type MembersRoleFilter = 'all' | 'CEO' | 'Director' | 'Member'
 type MembersSortField = 'name' | 'role' | 'auth' | 'activity' | 'lastLogin' | 'joinDate'
@@ -150,6 +151,7 @@ type MembersQuery = {
 	limit: number
 	search: string
 	authFilter: MembersAuthFilter
+	coverageFilter: MembersCoverageFilter
 	activityFilter: MembersActivityFilter
 	roleFilter: MembersRoleFilter
 	sortField: MembersSortField
@@ -227,6 +229,38 @@ function buildCorporationMemberCoverageSummary(
 	return coverage
 }
 
+type AccountCoverageStatus = Exclude<MembersCoverageFilter, 'all'>
+
+function buildCoverageStatusByUserId(
+	members: CorporationMemberCoverageInput[]
+): Map<string, AccountCoverageStatus> {
+	const bucketMap = new Map<string, { total: number; valid: number }>()
+
+	for (const member of members) {
+		if (!member.authUserId) {
+			continue
+		}
+
+		const bucketKey = `user:${member.authUserId}`
+		const bucket = bucketMap.get(bucketKey) ?? { total: 0, valid: 0 }
+		bucket.total += 1
+		if (member.hasValidToken === true) {
+			bucket.valid += 1
+		}
+		bucketMap.set(bucketKey, bucket)
+	}
+
+	const coverageByUserId = new Map<string, AccountCoverageStatus>()
+	for (const [bucketKey, bucket] of bucketMap.entries()) {
+		const userId = bucketKey.slice('user:'.length)
+		const status: AccountCoverageStatus =
+			bucket.valid === 0 ? 'none' : bucket.valid === bucket.total ? 'full' : 'partial'
+		coverageByUserId.set(userId, status)
+	}
+
+	return coverageByUserId
+}
+
 function hasAnyMembersQueryParams(c: Context<App>): boolean {
 	return (
 		typeof c.req.query('page') === 'string' ||
@@ -253,6 +287,7 @@ function parseMembersQuery(c: Context<App>): MembersQuery {
 	const limit = Math.min(parsePositiveInt(c.req.query('limit'), 50), 200)
 	const search = (c.req.query('search') ?? '').trim().toLowerCase()
 	const authFilterRaw = c.req.query('authFilter')
+	const coverageFilterRaw = c.req.query('coverageFilter')
 	const activityFilterRaw = c.req.query('activityFilter')
 	const roleFilterRaw = c.req.query('roleFilter')
 	const sortFieldRaw = c.req.query('sortField')
@@ -264,7 +299,14 @@ function parseMembersQuery(c: Context<App>): MembersQuery {
 		authFilterRaw === 'linked_valid' ||
 		authFilterRaw === 'linked_invalid' ||
 		authFilterRaw === 'linked_unknown'
-			? authFilterRaw
+		? authFilterRaw
+			: 'all'
+	const coverageFilter: MembersCoverageFilter =
+		coverageFilterRaw === 'full' ||
+		coverageFilterRaw === 'partial' ||
+		coverageFilterRaw === 'none' ||
+		coverageFilterRaw === 'unlinked'
+			? coverageFilterRaw
 			: 'all'
 	const activityFilter: MembersActivityFilter =
 		activityFilterRaw === 'active' || activityFilterRaw === 'inactive' || activityFilterRaw === 'unknown'
@@ -290,6 +332,7 @@ function parseMembersQuery(c: Context<App>): MembersQuery {
 		limit,
 		search,
 		authFilter,
+		coverageFilter,
 		activityFilter,
 		roleFilter,
 		sortField,
@@ -301,11 +344,23 @@ function canUseBackendPaginatedMembersPath(query: MembersQuery): boolean {
 	return (
 		!query.search &&
 		query.authFilter === 'all' &&
+		query.coverageFilter === 'all' &&
 		query.activityFilter === 'all' &&
 		query.roleFilter === 'all' &&
 		query.sortField === 'role' &&
 		query.sortOrder === 'asc'
 	)
+}
+
+function getMemberCoverageStatus(
+	member: CorporationMemberListItem,
+	coverageByUserId: Map<string, AccountCoverageStatus>
+): MembersCoverageFilter {
+	if (!member.hasAuthAccount || !member.authUserId) {
+		return 'unlinked'
+	}
+
+	return coverageByUserId.get(member.authUserId) ?? 'none'
 }
 
 function filterSortAndPaginateMembers(members: CorporationMemberListItem[], query: MembersQuery) {
@@ -315,6 +370,7 @@ function filterSortAndPaginateMembers(members: CorporationMemberListItem[], quer
 		unknown: 2,
 		unlinked: 3,
 	}
+	const coverageByUserId = buildCoverageStatusByUserId(members)
 
 	const getAuthSortRank = (member: CorporationMemberListItem): number => {
 		const key: 'valid' | 'invalid' | 'unknown' | 'unlinked' = !member.hasAuthAccount
@@ -352,6 +408,10 @@ function filterSortAndPaginateMembers(members: CorporationMemberListItem[], quer
 			return true
 		})
 		.filter((member) => {
+			if (query.coverageFilter === 'all') return true
+			return getMemberCoverageStatus(member, coverageByUserId) === query.coverageFilter
+		})
+		.filter((member) => {
 			if (query.activityFilter === 'all') return true
 			return member.activityStatus === query.activityFilter
 		})
@@ -375,7 +435,13 @@ function filterSortAndPaginateMembers(members: CorporationMemberListItem[], quer
 				break
 			}
 			case 'auth':
-				comparison = getAuthSortRank(a) - getAuthSortRank(b)
+				comparison = (a.authUserId || '').localeCompare(b.authUserId || '')
+				if (comparison === 0) {
+					comparison = getAuthSortRank(a) - getAuthSortRank(b)
+				}
+				if (comparison === 0) {
+					comparison = a.characterName.localeCompare(b.characterName)
+				}
 				break
 			case 'activity': {
 				const activityOrder = { active: 0, inactive: 1, unknown: 2 }
@@ -450,6 +516,7 @@ function filterSortMembers(members: CorporationMemberListItem[], query: MembersQ
 		unknown: 2,
 		unlinked: 3,
 	}
+	const coverageByUserId = buildCoverageStatusByUserId(members)
 
 	const getAuthSortRank = (member: CorporationMemberListItem): number => {
 		const key: 'valid' | 'invalid' | 'unknown' | 'unlinked' = !member.hasAuthAccount
@@ -487,6 +554,10 @@ function filterSortMembers(members: CorporationMemberListItem[], query: MembersQ
 			return true
 		})
 		.filter((member) => {
+			if (query.coverageFilter === 'all') return true
+			return getMemberCoverageStatus(member, coverageByUserId) === query.coverageFilter
+		})
+		.filter((member) => {
 			if (query.activityFilter === 'all') return true
 			return member.activityStatus === query.activityFilter
 		})
@@ -510,9 +581,9 @@ function filterSortMembers(members: CorporationMemberListItem[], query: MembersQ
 				break
 			}
 			case 'auth':
-				comparison = getAuthSortRank(a) - getAuthSortRank(b)
+				comparison = (a.authUserId || '').localeCompare(b.authUserId || '')
 				if (comparison === 0) {
-					comparison = (a.authUserId || '').localeCompare(b.authUserId || '')
+					comparison = getAuthSortRank(a) - getAuthSortRank(b)
 				}
 				if (comparison === 0) {
 					comparison = a.characterName.localeCompare(b.characterName)

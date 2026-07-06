@@ -522,7 +522,7 @@ describe('corporations members access matrix', () => {
 		})
 	})
 
-	it('sorts auth account rows by esi status first and auth account id second', async () => {
+	it('sorts auth account rows by auth account id first and esi status second', async () => {
 		getCachedUserPermissionsMock.mockResolvedValue([
 			{
 				permissionId: 'perm-auditor',
@@ -592,7 +592,7 @@ describe('corporations members access matrix', () => {
 		const body = (await res.json()) as {
 			items: Array<{ characterId: string }>
 		}
-		expect(body.items.map((member) => member.characterId)).toEqual(['2001', '2002', '2003', '2004'])
+		expect(body.items.map((member) => member.characterId)).toEqual(['2004', '2002', '2001', '2003'])
 	})
 
 	it('exports the full member list with auth account UUID and primary character columns', async () => {
@@ -748,6 +748,99 @@ describe('corporations members access matrix', () => {
 			hasValidToken: false,
 		})
 		expect(body.summary.linkedUsers).toBe(1)
+	})
+
+	it('filters member list by ESI coverage partial and sorts by auth account', async () => {
+		getCachedUserPermissionsMock.mockResolvedValue([
+			{
+				permissionId: 'perm-auditor',
+				urn: 'urn:hr:auditor',
+				name: 'HR Auditor',
+				description: null,
+				category: null,
+				groupId: 'g-1',
+				groupName: 'HR',
+				targetType: 'all_members',
+				source: 'global',
+			},
+		] as any)
+
+		dbStub.query.managedCorporations.findFirst.mockResolvedValue({
+			corporationId: '1001',
+			name: 'Alpha Corp',
+			ticker: 'ALP',
+			isActive: true,
+			isMemberCorporation: true,
+		} as any)
+		corpStub.getCoreData.mockResolvedValue({
+			members: [
+				{ characterId: '2001', updatedAt: new Date('2026-04-01T00:00:00.000Z') },
+				{ characterId: '2002', updatedAt: new Date('2026-04-01T00:00:00.000Z') },
+				{ characterId: '2003', updatedAt: new Date('2026-04-01T00:00:00.000Z') },
+				{ characterId: '2004', updatedAt: new Date('2026-04-01T00:00:00.000Z') },
+			],
+			memberTracking: [],
+		})
+		dbStub.query.userCharacters.findMany.mockResolvedValue([
+			{ characterId: '2001', userId: 'user-a', status: 'active', hasValidToken: true },
+			{ characterId: '2002', userId: 'user-a', status: 'active', hasValidToken: false },
+			{ characterId: '2003', userId: 'user-b', status: 'active', hasValidToken: true },
+			{ characterId: '2004', userId: 'user-b', status: 'active', hasValidToken: false },
+		])
+		dbStub.query.users.findMany.mockResolvedValue([
+			{ id: 'user-a', mainCharacterId: '3001' },
+			{ id: 'user-b', mainCharacterId: '3002' },
+		] as any)
+		getStubMock.mockImplementation((binding: unknown) => {
+			if (binding === env.HR) return hrStub as any
+			if (binding === env.EVE_CHARACTER_DATA) return charStub as any
+			if (binding === env.EVE_CORPORATION_DATA) return corpStub as any
+			if (binding === env.EVE_TOKEN_STORE) {
+				return makeTokenStoreStub({
+					resolveIds: vi.fn().mockImplementation(async (ids: string[]) =>
+						Object.fromEntries(
+							ids.map((id) => [
+								id,
+								id === '2001'
+									? 'Alpha One'
+									: id === '2002'
+										? 'Alpha Two'
+										: id === '2003'
+											? 'Beta Three'
+											: id === '2004'
+												? 'Beta Four'
+												: `Character ${id}`,
+							])
+						)
+					),
+				}) as any
+			}
+			throw new Error('Unexpected binding')
+		})
+
+		const app = createApp({ user: makeUser(), db: dbStub })
+		const res = await app.request(
+			'/api/corporations/1001/members?coverageFilter=partial&sortField=auth&sortOrder=asc',
+			{},
+			env
+		)
+
+		expect(res.status).toBe(200)
+		const body = (await res.json()) as {
+			items: Array<{ characterId: string; authUserId?: string | null }>
+			pagination: { totalItems: number }
+			summary: { esiCoverage: { full: number; partial: number; none: number; unlinked: number } }
+		}
+		expect(body.pagination.totalItems).toBe(4)
+		expect(body.items.map((item) => item.characterId)).toEqual(['2001', '2002', '2003', '2004'])
+		expect(body.items.slice(0, 2).every((item) => item.authUserId === 'user-a')).toBe(true)
+		expect(body.items.slice(2).every((item) => item.authUserId === 'user-b')).toBe(true)
+		expect(body.summary.esiCoverage).toMatchObject({
+			full: 0,
+			partial: 2,
+			none: 0,
+			unlinked: 0,
+		})
 	})
 
 	it('returns a user search dialog payload with all linked characters', async () => {

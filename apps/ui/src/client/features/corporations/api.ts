@@ -45,6 +45,7 @@ export type CorporationMembersAuthFilter =
 	| 'linked_valid'
 	| 'linked_invalid'
 	| 'linked_unknown'
+export type CorporationMembersCoverageFilter = 'all' | 'full' | 'partial' | 'none' | 'unlinked'
 export type CorporationMembersActivityFilter = 'all' | 'active' | 'inactive' | 'unknown'
 export type CorporationMembersRoleFilter = 'all' | 'CEO' | 'Director' | 'Member'
 export type CorporationMembersSortField = 'name' | 'role' | 'auth' | 'activity' | 'lastLogin' | 'joinDate'
@@ -55,6 +56,7 @@ export interface CorporationMembersQuery {
 	limit?: number
 	search?: string
 	authFilter?: CorporationMembersAuthFilter
+	coverageFilter?: CorporationMembersCoverageFilter
 	activityFilter?: CorporationMembersActivityFilter
 	roleFilter?: CorporationMembersRoleFilter
 	sortField?: CorporationMembersSortField
@@ -70,6 +72,9 @@ export function buildCorporationMembersQueryString(
 	if (options.includePagination !== false && query.limit) params.set('limit', String(query.limit))
 	if (query.search) params.set('search', query.search)
 	if (query.authFilter && query.authFilter !== 'all') params.set('authFilter', query.authFilter)
+	if (query.coverageFilter && query.coverageFilter !== 'all') {
+		params.set('coverageFilter', query.coverageFilter)
+	}
 	if (query.activityFilter && query.activityFilter !== 'all') {
 		params.set('activityFilter', query.activityFilter)
 	}
