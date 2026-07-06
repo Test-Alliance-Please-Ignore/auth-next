@@ -36,6 +36,14 @@ export interface AuditorUserDetails {
 	mainCharacterId: string
 	is_admin: boolean
 	discordUserId: string | null
+	discord: {
+		userId: string
+		username: string
+		discriminator: string
+		authRevoked: boolean
+		authRevokedAt: string | null
+		lastSuccessfulAuth: string | null
+	} | null
 	characters: Array<{
 		characterId: string
 		characterName: string

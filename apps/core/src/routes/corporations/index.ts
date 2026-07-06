@@ -15,6 +15,7 @@ import corporationsPermissionsRoutes from './permissions-routes'
 
 import type { Context } from 'hono'
 import type { Core } from '@repo/core'
+import type { Discord } from '@repo/discord'
 import type { EveCharacterData } from '@repo/eve-character-data'
 import type { EveCorporationData } from '@repo/eve-corporation-data'
 import type { EveTokenStore } from '@repo/eve-token-store'
@@ -110,6 +111,8 @@ type CorporationMemberListItem = {
 	mainCharacterId?: string
 	mainCharacterName?: string
 	status?: 'active' | 'emeritus'
+	discordUserId?: string | null
+	discordUsername?: string | null
 	joinDate: string
 	lastEsiUpdate: string
 	lastLogin?: string
@@ -2704,6 +2707,12 @@ app.get('/:corporationId/members/:accountId', requireAuth(), async (c) => {
 		const linkedUser = await db.query.users.findFirst({
 			where: eq(users.id, accountId),
 		})
+		const discordUsername =
+			linkedUser?.discordUserId && accountId
+				? (
+						await getStub<Discord>(c.env.DISCORD, 'default').getDiscordUserStatus(accountId)
+				  )?.username ?? null
+				: null
 		const mainCharacterNameMap =
 			linkedUser?.mainCharacterId
 				? await tokenStoreStub.resolveIds([linkedUser.mainCharacterId])
@@ -2738,6 +2747,8 @@ app.get('/:corporationId/members/:accountId', requireAuth(), async (c) => {
 				authUserId: linkedChar?.userId,
 				mainCharacterName,
 				status: linkedChar?.status,
+				discordUserId: linkedUser?.discordUserId ?? null,
+				discordUsername,
 				joinDate: tracking?.startDate?.toISOString() || member.updatedAt.toISOString(),
 				lastEsiUpdate: member.updatedAt.toISOString(),
 				lastLogin: tracking?.logonDate?.toISOString(),

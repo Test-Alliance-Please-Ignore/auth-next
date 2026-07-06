@@ -1,6 +1,7 @@
 import { Search, Users } from 'lucide-react'
 import { useEffect, useMemo, useState } from 'react'
 
+import { CopyableMetaPill } from '@/components/copyable-meta-pill'
 import { CharacterIdentitySummary } from '@/features/applications/components/character-identity-summary'
 import { UserSearchPaginationControls } from '@/components/user-search-pagination-controls'
 import { Badge } from '@/components/ui/badge'
@@ -16,7 +17,6 @@ import { Input } from '@/components/ui/input'
 import { LoadingSpinner } from '@/components/ui/loading'
 import { useDebounce } from '@/hooks/useDebounce'
 import { characterPortraitUrl } from '@/lib/eve-images'
-import toast from '@/lib/toast'
 import { cn } from '@/lib/utils'
 
 import { useCorporationUserSearch } from '../hooks'
@@ -40,41 +40,6 @@ function formatUserDisplayName(user: CorporationUserSearchResult['users'][number
 	return isAltMatch ? `${matchedName} (${mainName})` : mainName
 }
 
-function CopyableMetaPill({
-	label,
-	value,
-	copied,
-	onCopy,
-}: {
-	label: string
-	value: string
-	copied: boolean
-	onCopy: () => void
-}) {
-	return (
-		<button
-			type="button"
-			onClick={onCopy}
-			className={cn(
-				'inline-flex items-center gap-1.5 rounded-full border px-2.5 py-1 text-xs transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring cursor-copy',
-				copied
-					? 'border-emerald-500/60 bg-emerald-500/15 text-muted-foreground'
-					: 'border-border/60 bg-background/80 text-muted-foreground hover:border-primary/40'
-			)}
-			aria-label={`Copy ${label} to clipboard`}
-			title={copied ? 'Copied' : `Copy ${label}`}
-		>
-			<span className="shrink-0 font-medium uppercase tracking-wide text-[10px] text-muted-foreground">
-				{label}
-			</span>
-			<span className="max-w-[18rem] truncate font-mono text-[11px] font-semibold text-white">
-				{value}
-			</span>
-			{copied ? <span className="text-[10px] font-medium text-emerald-300">Copied</span> : null}
-		</button>
-	)
-}
-
 export function CorporationUserSearchDialog({
 	corporationId,
 	open,
@@ -83,7 +48,6 @@ export function CorporationUserSearchDialog({
 	const [searchQuery, setSearchQuery] = useState('')
 	const [page, setPage] = useState(1)
 	const [pageSize, setPageSize] = useState(10)
-	const [copiedField, setCopiedField] = useState<string | null>(null)
 	const debouncedQuery = useDebounce(searchQuery.trim(), 400)
 
 	useEffect(() => {
@@ -108,21 +72,6 @@ export function CorporationUserSearchDialog({
 	const totalPages = Math.ceil(total / pageSize)
 	const hasPagination = totalPages > 1
 	const isSearching = isLoading || isFetching
-
-	const copyToClipboard = (text: string, field: string, label: string) => {
-		void navigator.clipboard
-			.writeText(text)
-			.then(() => {
-				toast.success(`${label} copied`)
-				setCopiedField(field)
-				window.setTimeout(() => {
-					setCopiedField((current) => (current === field ? null : current))
-				}, 2000)
-			})
-			.catch(() => {
-				toast.error(`Failed to copy ${label.toLowerCase()}`)
-			})
-	}
 
 	return (
 		<Dialog
@@ -204,9 +153,6 @@ export function CorporationUserSearchDialog({
 											const displayName = formatUserDisplayName(user)
 											const portraitId =
 												user.summary.matchedCharacterId || user.summary.mainCharacterId
-											const userIdCopy = `user:${user.summary.id}`
-											const discordCopyValue =
-												user.summary.discordUsername ?? user.summary.discordUserId ?? ''
 											const characters = [...(user.details?.characters ?? [])].sort((a, b) => {
 												if (a.is_primary !== b.is_primary) {
 													return a.is_primary ? -1 : 1
@@ -234,35 +180,32 @@ export function CorporationUserSearchDialog({
 															<div className="min-w-0 flex-1">
 																<div className="flex flex-wrap items-center gap-2">
 																	<p className="truncate text-base font-semibold">{displayName}</p>
+																	<span className="inline-flex items-center rounded-full border border-border/60 bg-muted/40 px-2 py-0.5 text-[10px] font-medium text-muted-foreground">
+																		<span className="text-white">
+																			{user.summary.characterCount} character
+																			{user.summary.characterCount !== 1 ? 's' : ''}
+																		</span>
+																	</span>
 																	{user.summary.is_admin && <Badge variant="default">Admin</Badge>}
 																	{user.summary.discordUserId && (
 																		<Badge variant="secondary">Discord linked</Badge>
 																	)}
 																</div>
 																<div className="mt-2 flex flex-wrap gap-2">
-																	<span className="inline-flex items-center rounded-full border border-border/60 bg-muted/40 px-2.5 py-1 text-xs font-medium text-muted-foreground">
-																		<span className="text-white">
-																			Character count: {user.summary.characterCount}
-																		</span>
-																	</span>
 																	<CopyableMetaPill
 																		label="User ID"
 																		value={user.summary.id}
-																		copied={copiedField === userIdCopy}
-																		onCopy={() => copyToClipboard(user.summary.id, userIdCopy, 'User ID')}
 																	/>
-																	{discordCopyValue ? (
+																	{user.summary.discordUsername ? (
 																		<CopyableMetaPill
-																			label={user.summary.discordUsername ? 'Discord' : 'Discord ID'}
-																			value={discordCopyValue}
-																			copied={copiedField === `discord:${user.summary.id}`}
-																			onCopy={() =>
-																				copyToClipboard(
-																					discordCopyValue,
-																					`discord:${user.summary.id}`,
-																					user.summary.discordUsername ? 'Discord username' : 'Discord ID'
-																				)
-																			}
+																			label="Discord username"
+																			value={user.summary.discordUsername}
+																		/>
+																	) : null}
+																	{user.summary.discordUserId ? (
+																		<CopyableMetaPill
+																			label="Discord ID"
+																			value={user.summary.discordUserId}
 																		/>
 																	) : null}
 																</div>

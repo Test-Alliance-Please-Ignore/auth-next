@@ -6,6 +6,7 @@ import { Navigate, Link, useLocation, useNavigate, useParams } from 'react-route
 
 import { IpHistoryCard } from '@/components/ip-history-card'
 import { ArrowLeft } from 'lucide-react'
+import { CopyableMetaPill } from '@/components/copyable-meta-pill'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Container } from '@/components/ui/container'
@@ -413,6 +414,22 @@ export default function HrAuditorUserProfilePage() {
 						<UserProfileStatusBadge variant="success">Discord Linked</UserProfileStatusBadge>
 					) : (
 						<UserProfileStatusBadge variant="secondary">No Discord</UserProfileStatusBadge>
+					)}
+					{(userDetails.discord?.username || userDetails.discordUserId) && (
+						<div className="mt-2 flex flex-wrap items-center justify-center gap-2">
+							{userDetails.discord?.username ? (
+								<CopyableMetaPill
+									label="Discord username"
+									value={userDetails.discord.username}
+								/>
+							) : null}
+							{userDetails.discordUserId ? (
+								<CopyableMetaPill
+									label="Discord ID"
+									value={userDetails.discordUserId}
+								/>
+							) : null}
+						</div>
 					)}
 				</>
 			}
