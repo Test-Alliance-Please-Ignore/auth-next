@@ -11,6 +11,7 @@ import {
 	Download,
 	FileText,
 	RefreshCw,
+	Search,
 	Settings,
 } from 'lucide-react'
 import { lazy, Suspense, useCallback, useMemo, useState } from 'react'
@@ -35,6 +36,7 @@ import { useUserPermissions } from '@/hooks/useUserPermissions'
 
 import { useHrRoles } from '../../hr'
 import { buildCorporationMembersExportUrl, myCorporationsApi } from '../api'
+import { CorporationUserSearchDialog } from '../components/corporation-user-search-dialog'
 import {
 	useCanAccessCorporation,
 	formatCorporationRoleLabel,
@@ -72,6 +74,7 @@ export default function CorporationMembers() {
 	const { invalidateMembers } = useCorporationManager()
 	const [isRefreshing, setIsRefreshing] = useState(false)
 	const [isExporting, setIsExporting] = useState(false)
+	const [isUserSearchOpen, setIsUserSearchOpen] = useState(false)
 	const [membersQuery, setMembersQuery] = useState<CorporationMembersQuery>({
 		page: 1,
 		limit: 25,
@@ -108,6 +111,7 @@ export default function CorporationMembers() {
 
 	// Can export CSV: site admins or member corporations only, for leadership or HR admin
 	const canExport = user?.is_admin === true || (isMemberCorporation && (isLeadership || isHrAdmin))
+	const canUseUserSearchTool = canAccess && isMemberCorporation
 
 	// Can manage HR roles: member corp only, with CEO/admin/hr_admin access
 	const canManageHrRoles = useMemo(() => {
@@ -391,6 +395,12 @@ export default function CorporationMembers() {
 								{isExporting ? 'Exporting...' : 'Export CSV'}
 							</Button>
 						)}
+						{canUseUserSearchTool && (
+							<Button variant="ghost" onClick={() => setIsUserSearchOpen(true)}>
+								<Search className="h-4 w-4" />
+								User Search
+							</Button>
+						)}
 						<Button variant="ghost" asChild>
 							<Link to="/corporations">
 								<ArrowLeft className="h-4 w-4" />
@@ -536,6 +546,14 @@ export default function CorporationMembers() {
 					summary={membersResponse?.summary}
 				/>
 			</Suspense>
+
+			{canUseUserSearchTool && corporationId && (
+				<CorporationUserSearchDialog
+					corporationId={corporationId}
+					open={isUserSearchOpen}
+					onOpenChange={setIsUserSearchOpen}
+				/>
+			)}
 
 		</Container>
 	)

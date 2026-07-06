@@ -21,6 +21,7 @@ import type { EveTokenStore } from '@repo/eve-token-store'
 import type { Groups } from '@repo/groups'
 import type { Hr } from '@repo/hr'
 import type { App } from '../../context'
+import { CoreRpcService } from '../../services/core-rpc.service'
 
 const app = new Hono<App>()
 const MS_PER_DAY = 86_400_000
@@ -118,6 +119,18 @@ type CorporationMemberListItem = {
 	locationRegion?: string
 	activityStatus: 'active' | 'inactive' | 'unknown'
 	isBlacklisted: boolean
+}
+
+type CorporationUserSearchEntry = {
+	summary: Awaited<ReturnType<CoreRpcService['searchUsers']>>['users'][number]
+	details: NonNullable<Awaited<ReturnType<CoreRpcService['getUserDetails']>>>
+}
+
+type CorporationUserSearchResponse = {
+	users: CorporationUserSearchEntry[]
+	total: number
+	limit: number
+	offset: number
 }
 
 type MembersAuthFilter =
@@ -2398,6 +2411,105 @@ app.get('/:corporationId/members/export', requireAuth(), async (c) => {
 			stack: error instanceof Error ? error.stack : undefined,
 		})
 		return c.json({ error: 'Failed to export corporation members' }, 500)
+	}
+})
+
+/**
+ * GET /corporations/:corporationId/members/user-search
+ * Search users for the corp member lookup dialog.
+ */
+app.get('/:corporationId/members/user-search', requireAuth(), async (c) => {
+	const corporationId = c.req.param('corporationId')
+	const user = c.get('user')!
+	const db = c.get('db')
+	const search = (c.req.query('search') ?? '').trim()
+	const limit = Math.min(parsePositiveInt(c.req.query('limit'), 10), 50)
+	const parsedOffset = Number.parseInt(c.req.query('offset') ?? '', 10)
+	const offset = Number.isFinite(parsedOffset) && parsedOffset >= 0 ? parsedOffset : 0
+
+	if (!db) {
+		return c.json({ error: 'Database not available' }, 500)
+	}
+
+	try {
+		const managedCorp = await db.query.managedCorporations.findFirst({
+			where: and(
+				eq(managedCorporations.corporationId, corporationId),
+				eq(managedCorporations.isActive, true)
+			),
+		})
+
+		if (!managedCorp) {
+			return c.json({ error: 'Corporation not found or not managed' }, 404)
+		}
+		if (!managedCorp.isMemberCorporation) {
+			return c.json({ error: 'User search is only available for member corporations' }, 403)
+		}
+
+		let userRole: 'admin' | 'CEO' | 'Director' | 'hr_admin' | 'hr_reviewer' | 'hr_viewer'
+		try {
+			userRole = await resolveCorporationMembersAccess(c, corporationId, managedCorp)
+		} catch (error) {
+			if (error instanceof Error && error.message === MEMBERS_ACCESS_DENIED_MESSAGE) {
+				return c.json({ error: error.message }, 403)
+			}
+			throw error
+		}
+
+		logger.info('[Corporations] User search request', {
+			corporationId,
+			userId: user.id,
+			search,
+			limit,
+			offset,
+			userRole,
+		})
+
+		if (search.length === 0) {
+			return c.json({
+				users: [],
+				total: 0,
+				limit,
+				offset,
+			} satisfies CorporationUserSearchResponse)
+		}
+
+		const coreService = new CoreRpcService(db, c.env)
+		const result = await coreService.searchUsers({
+			search,
+			limit,
+			offset,
+		})
+
+		const usersWithDetails = (
+			await Promise.all(
+				result.users.map(async (summary) => {
+					const details = await coreService.getUserDetails(summary.id)
+					if (!details) {
+						return null
+					}
+					return {
+						summary,
+						details,
+					}
+				})
+			)
+		).filter((entry): entry is CorporationUserSearchEntry => entry !== null)
+
+		return c.json({
+			users: usersWithDetails,
+			total: result.total,
+			limit: result.limit,
+			offset: result.offset,
+		} satisfies CorporationUserSearchResponse)
+	} catch (error) {
+		logger.error('[Corporations] Error searching users for corporation member dialog', {
+			corporationId,
+			userId: user.id,
+			error: error instanceof Error ? error.message : String(error),
+			stack: error instanceof Error ? error.stack : undefined,
+		})
+		return c.json({ error: 'Failed to search users' }, 500)
 	}
 })
 

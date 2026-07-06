@@ -97,6 +97,8 @@ export interface CharacterSummary {
 	characterOwnerHash: string
 	corporationId?: string | null
 	corporationName?: string | null
+	allianceId?: string | null
+	allianceName?: string | null
 	is_primary: boolean
 	linkedAt: Date
 	hasValidToken: boolean

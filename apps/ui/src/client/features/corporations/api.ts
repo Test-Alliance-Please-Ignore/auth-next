@@ -89,6 +89,20 @@ export function buildCorporationMembersExportUrl(
 	}`
 }
 
+export function buildCorporationUserSearchUrl(
+	corporationId: string,
+	query: { search?: string; limit?: number; offset?: number } = {}
+): string {
+	const params = new URLSearchParams()
+	if (query.search) params.set('search', query.search)
+	if (query.limit !== undefined) params.set('limit', String(query.limit))
+	if (query.offset !== undefined) params.set('offset', String(query.offset))
+	const queryString = params.toString()
+	return `${API_BASE_URL}/corporations/${encodeURIComponent(corporationId)}/members/user-search${
+		queryString ? `?${queryString}` : ''
+	}`
+}
+
 export interface CorporationMembersResponse {
 	items: CorporationMember[]
 	pagination: {
@@ -114,6 +128,56 @@ export interface CorporationMembersResponse {
 			linkedUsers: number
 		}
 	}
+}
+
+export interface CorporationUserSearchCharacter {
+	characterId: string
+	characterName: string
+	characterOwnerHash: string
+	corporationId?: string | null
+	corporationName?: string | null
+	allianceId?: string | null
+	allianceName?: string | null
+	is_primary: boolean
+	hasValidToken: boolean
+	isBlacklisted: boolean
+}
+
+export interface CorporationUserSearchDetails {
+	characters: CorporationUserSearchCharacter[]
+}
+
+export interface CorporationUserSearchSummary {
+	id: string
+	mainCharacterId: string
+	mainCharacterName: string | null
+	characterCount: number
+	is_admin: boolean
+	discordUserId: string | null
+	discordUsername: string | null
+	matchedCharacterId: string | null
+	matchedCharacterName: string | null
+	matchedBy:
+		| 'main_character_name'
+		| 'character_name'
+		| 'character_id'
+		| 'user_id'
+		| 'discord_user_id'
+		| 'discord_username'
+		| 'legacy_auth_username'
+		| null
+	createdAt: string
+	updatedAt: string
+}
+
+export interface CorporationUserSearchResult {
+	users: Array<{
+		summary: CorporationUserSearchSummary
+		details: CorporationUserSearchDetails | null
+	}>
+	total: number
+	limit: number
+	offset: number
 }
 
 export interface CorporationMemberAccountResponse {
@@ -233,6 +297,23 @@ export const myCorporationsApi = {
 		accountId: string
 	): Promise<CorporationMemberAccountResponse> {
 		return apiClient.get(`/corporations/${corporationId}/members/${accountId}`)
+	},
+
+	/**
+	 * Search users for the corp member page lookup dialog.
+	 * Returns matched users and all linked characters with no detail-page links.
+	 */
+	async searchCorporationUsers(
+		corporationId: string,
+		query: { search?: string; limit?: number; offset?: number } = {}
+	): Promise<CorporationUserSearchResult> {
+		const queryString = new URLSearchParams()
+		if (query.search) queryString.set('search', query.search)
+		if (query.limit !== undefined) queryString.set('limit', String(query.limit))
+		if (query.offset !== undefined) queryString.set('offset', String(query.offset))
+		return apiClient.get(
+			`/corporations/${corporationId}/members/user-search${queryString.toString() ? `?${queryString.toString()}` : ''}`
+		)
 	},
 
 	/**

@@ -14,6 +14,7 @@ import type {
 	CorporationAccessResult,
 	CorporationMembersQuery,
 	CorporationMembersResponse,
+	CorporationUserSearchResult,
 	MyCorporation,
 } from './api'
 
@@ -32,6 +33,8 @@ export const corporationKeys = {
 		[...corporationKeys.all, 'members', corpId, query] as const,
 	memberAccount: (corpId: string, accountId: string) =>
 		[...corporationKeys.all, 'member-account', corpId, accountId] as const,
+	userSearch: (corpId: string, query: { search?: string; limit?: number; offset?: number }) =>
+		[...corporationKeys.all, 'user-search', corpId, query] as const,
 	access: () => [...corporationKeys.all, 'access'] as const,
 }
 
@@ -129,6 +132,27 @@ export function useCorporationMemberAccount(corporationId: string, accountId: st
 		staleTime: 1000 * 60,
 		gcTime: 1000 * 60 * 3,
 		enabled: Boolean(corporationId && accountId),
+	})
+}
+
+/**
+ * Hook to search for users from the corporation member page lookup dialog.
+ */
+export function useCorporationUserSearch(
+	corporationId: string,
+	query: { search?: string; limit?: number; offset?: number },
+	options?: { enabled?: boolean }
+) {
+	return useQuery<CorporationUserSearchResult>({
+		queryKey: corporationKeys.userSearch(corporationId, query),
+		queryFn: () => myCorporationsApi.searchCorporationUsers(corporationId, query),
+		placeholderData: (previousData) => previousData,
+		staleTime: 1000 * 30,
+		gcTime: 1000 * 60 * 3,
+		enabled: options?.enabled ?? !!corporationId,
+		meta: {
+			suppressErrorToast: true,
+		},
 	})
 }
 
