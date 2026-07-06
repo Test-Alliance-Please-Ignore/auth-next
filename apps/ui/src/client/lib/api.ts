@@ -12,6 +12,11 @@ import type {
 	StructureSkyhookListQuery as RepoStructureSkyhookListQuery,
 	StructureSovereigntyListQuery as RepoStructureSovereigntyListQuery,
 } from '@repo/structures'
+import type {
+	SidebarExternalLinkCreateInput,
+	SidebarExternalLinkSummary,
+	SidebarExternalLinkUpdateInput,
+} from '@repo/admin'
 
 import type { TrackingSession } from '../features/fleet-tracking/types'
 
@@ -3259,6 +3264,31 @@ export class ApiClient {
 		configId: string
 	): Promise<{ success: boolean }> {
 		return this.delete(`/admin/structures/groups/${groupId}/alert-configs/${configId}`)
+	}
+
+	async getSidebarExternalLinks(): Promise<SidebarExternalLinkSummary[]> {
+		return this.get('/navigation/external-links')
+	}
+
+	async getAdminSidebarExternalLinks(): Promise<SidebarExternalLinkSummary[]> {
+		return this.get('/admin/navigation/external-links')
+	}
+
+	async createAdminSidebarExternalLink(
+		data: SidebarExternalLinkCreateInput
+	): Promise<SidebarExternalLinkSummary> {
+		return this.post('/admin/navigation/external-links', data)
+	}
+
+	async updateAdminSidebarExternalLink(
+		id: string,
+		data: SidebarExternalLinkUpdateInput
+	): Promise<SidebarExternalLinkSummary> {
+		return this.patch(`/admin/navigation/external-links/${id}`, data)
+	}
+
+	async deleteAdminSidebarExternalLink(id: string): Promise<{ success: boolean }> {
+		return this.delete(`/admin/navigation/external-links/${id}`)
 	}
 
 	async getCitadelStructures(query: StructureCitadelListQuery = {}): Promise<StructureCitadelListResponse> {

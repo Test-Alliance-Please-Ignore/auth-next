@@ -1,5 +1,4 @@
 import {
-	BookMarked,
 	BookOpen,
 	Briefcase,
 	Building2,
@@ -17,17 +16,16 @@ import {
 	Mic,
 	Moon,
 	Package,
-	MessageSquare,
 	Radar,
 	Radio,
 	Receipt,
 	Scale,
 	Shield,
 	Swords,
-	Timer,
 	Truck,
 	Users,
 } from 'lucide-react'
+import { DynamicIcon } from 'lucide-react/dynamic.mjs'
 import { useQuery } from '@tanstack/react-query'
 import { useEffect, useState } from 'react'
 import { Link, useLocation } from 'react-router-dom'
@@ -49,6 +47,7 @@ import { api } from '@/lib/api'
 import { characterPortraitUrl } from '@/lib/eve-images'
 import { extractCorporationIdFromTaxViewerScopedUrn } from '@/lib/tax-permissions'
 import { cn } from '@/lib/utils'
+import { resolveSidebarExternalLinkIconName } from '@/lib/sidebar-external-links'
 import {
 	hasAnyStructurePermission,
 	hasAllStructureManagerPermission,
@@ -92,6 +91,14 @@ export function SidebarNav({ onNavigate, isSidebarOpen = true, onToggleSidebar }
 	const hasSrpManagerPermission = hasAnyPermission('urn:srp:manager')
 	const hasSrpPayerPermission = hasAnyPermission('urn:srp:payer')
 	const hasSrpReviewerPermission = hasAnyPermission('urn:srp:reviewer')
+	const { data: sidebarExternalLinks } = useQuery({
+		queryKey: ['sidebar', 'external-links'],
+		queryFn: () => api.getSidebarExternalLinks(),
+		enabled: canSeeAllianceMemberNav,
+		staleTime: 1000 * 60 * 5,
+		gcTime: 1000 * 60 * 5,
+	})
+	const resolvedSidebarExternalLinks = canSeeAllianceMemberNav ? (sidebarExternalLinks ?? []) : []
 	const previewSrpState = resolveSrpNavState({
 		isSiteAdmin,
 		hasSrpReviewerPermission,
@@ -180,7 +187,7 @@ export function SidebarNav({ onNavigate, isSidebarOpen = true, onToggleSidebar }
 		'/freight': isFreightRoute,
 		'/srp': isSrpRoute,
 		'#hr': isHrRoute || !canSeeAllianceMemberNav,
-		'#external': true,
+		'#external': canSeeAllianceMemberNav,
 	})
 
 	const toggleMenu = (href: string) => {
@@ -210,6 +217,12 @@ export function SidebarNav({ onNavigate, isSidebarOpen = true, onToggleSidebar }
 			setOpenMenus((prev) => ({ ...prev, '#hr': true }))
 		}
 	}, [isHrRoute, canSeeAllianceMemberNav])
+
+	useEffect(() => {
+		if (canSeeAllianceMemberNav) {
+			setOpenMenus((prev) => ({ ...prev, '#external': true }))
+		}
+	}, [canSeeAllianceMemberNav])
 
 	useEffect(() => {
 		if (location.pathname.startsWith('/fleet-tracking')) {
@@ -429,37 +442,23 @@ export function SidebarNav({ onNavigate, isSidebarOpen = true, onToggleSidebar }
 			icon: FileText,
 		})
 
-		navItems.push({
-			label: 'External',
-			href: '#external',
-			icon: ExternalLink,
-			children: [
-				{
-					label: 'Timerboard',
-					href: 'https://timers.pleaseignore.app/',
-					icon: Timer,
-					external: true,
-				},
-				{
-					label: 'Wiki',
-					href: 'https://wiki.pleaseignore.com/start',
-					icon: BookMarked,
-					external: true,
-				},
-				{
-					label: 'Forums',
-					href: 'https://disc.pleaseignore.com/',
-					icon: MessageSquare,
-					external: true,
-				},
-				{
-					label: 'WinterCo Services',
-					href: 'https://auth.wintercoalition.space/',
-					icon: Globe,
-					external: true,
-				},
-			],
-		})
+		const externalLinkChildren = resolvedSidebarExternalLinks.map((link) => ({
+			label: link.displayName,
+			href: link.url,
+			icon: (props: { className?: string }) => (
+				<DynamicIcon name={resolveSidebarExternalLinkIconName(link.iconName)} {...props} />
+			),
+			external: true,
+		}))
+
+		if (externalLinkChildren.length > 0) {
+			navItems.push({
+				label: 'External',
+				href: '#external',
+				icon: ExternalLink,
+				children: externalLinkChildren,
+			})
+		}
 
 		const canReadTaxFeature =
 			isSiteAdmin ||

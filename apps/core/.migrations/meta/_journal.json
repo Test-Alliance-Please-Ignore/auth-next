@@ -274,6 +274,13 @@
       "when": 1782796453813,
       "tag": "0038_unique_shinko_yamashiro",
       "breakpoints": true
+    },
+    {
+      "idx": 39,
+      "version": "7",
+      "when": 1783296420378,
+      "tag": "0039_dizzy_fenris",
+      "breakpoints": true
     }
   ]
 }
