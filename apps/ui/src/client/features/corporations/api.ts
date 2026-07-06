@@ -5,7 +5,7 @@
  * functionality, including member lists and access control.
  */
 
-import { apiClient } from '../../lib/api'
+import { API_BASE_URL, apiClient } from '../../lib/api'
 
 // ============================================================================
 // Type Definitions
@@ -23,6 +23,7 @@ export interface CorporationMember {
 	hasAuthAccount: boolean
 	hasValidToken?: boolean | null
 	authUserId?: string
+	mainCharacterId?: string
 	mainCharacterName?: string
 	status?: 'active' | 'emeritus'
 	joinDate: string
@@ -58,6 +59,34 @@ export interface CorporationMembersQuery {
 	roleFilter?: CorporationMembersRoleFilter
 	sortField?: CorporationMembersSortField
 	sortOrder?: CorporationMembersSortOrder
+}
+
+export function buildCorporationMembersQueryString(
+	query: CorporationMembersQuery = {},
+	options: { includePagination?: boolean } = {}
+): string {
+	const params = new URLSearchParams()
+	if (options.includePagination !== false && query.page) params.set('page', String(query.page))
+	if (options.includePagination !== false && query.limit) params.set('limit', String(query.limit))
+	if (query.search) params.set('search', query.search)
+	if (query.authFilter && query.authFilter !== 'all') params.set('authFilter', query.authFilter)
+	if (query.activityFilter && query.activityFilter !== 'all') {
+		params.set('activityFilter', query.activityFilter)
+	}
+	if (query.roleFilter && query.roleFilter !== 'all') params.set('roleFilter', query.roleFilter)
+	if (query.sortField) params.set('sortField', query.sortField)
+	if (query.sortOrder) params.set('sortOrder', query.sortOrder)
+	return params.toString()
+}
+
+export function buildCorporationMembersExportUrl(
+	corporationId: string,
+	query: CorporationMembersQuery = {}
+): string {
+	const queryString = buildCorporationMembersQueryString(query, { includePagination: false })
+	return `${API_BASE_URL}/corporations/${encodeURIComponent(corporationId)}/members/export${
+		queryString ? `?${queryString}` : ''
+	}`
 }
 
 export interface CorporationMembersResponse {
@@ -180,18 +209,7 @@ export const myCorporationsApi = {
 		corporationId: string,
 		query: CorporationMembersQuery = {}
 	): Promise<CorporationMembersResponse> {
-		const params = new URLSearchParams()
-		if (query.page) params.set('page', String(query.page))
-		if (query.limit) params.set('limit', String(query.limit))
-		if (query.search) params.set('search', query.search)
-		if (query.authFilter && query.authFilter !== 'all') params.set('authFilter', query.authFilter)
-		if (query.activityFilter && query.activityFilter !== 'all') {
-			params.set('activityFilter', query.activityFilter)
-		}
-		if (query.roleFilter && query.roleFilter !== 'all') params.set('roleFilter', query.roleFilter)
-		if (query.sortField) params.set('sortField', query.sortField)
-		if (query.sortOrder) params.set('sortOrder', query.sortOrder)
-		const queryString = params.toString()
+		const queryString = buildCorporationMembersQueryString(query)
 		return apiClient.get(
 			`/corporations/${corporationId}/members${queryString ? `?${queryString}` : ''}`
 		)

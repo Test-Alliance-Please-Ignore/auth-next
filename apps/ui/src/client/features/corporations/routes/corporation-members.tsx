@@ -34,7 +34,7 @@ import { usePageTitle } from '@/hooks/usePageTitle'
 import { useUserPermissions } from '@/hooks/useUserPermissions'
 
 import { useHrRoles } from '../../hr'
-import { myCorporationsApi } from '../api'
+import { buildCorporationMembersExportUrl, myCorporationsApi } from '../api'
 import {
 	useCanAccessCorporation,
 	formatCorporationRoleLabel,
@@ -71,6 +71,7 @@ export default function CorporationMembers() {
 	const { data: corporation, isLoading: corpLoading } = useMyCorporation(corporationId!)
 	const { invalidateMembers } = useCorporationManager()
 	const [isRefreshing, setIsRefreshing] = useState(false)
+	const [isExporting, setIsExporting] = useState(false)
 	const [membersQuery, setMembersQuery] = useState<CorporationMembersQuery>({
 		page: 1,
 		limit: 25,
@@ -221,49 +222,42 @@ export default function CorporationMembers() {
 		[showError]
 	)
 
-	const handleExport = useCallback(() => {
-		if (!membersWithHrRoles) return
+	const handleExport = useCallback(async () => {
+		if (!corporationId || isExporting) return
 
-		// Create CSV content
-		const headers = [
-			'Character Name',
-			'Character ID',
-			'Role',
-			'HR Role',
-			'Auth Account',
-			'Activity Status',
-			'Last Login',
-			'Join Date',
-			'Alliance',
-			'Location',
-		]
+		setIsExporting(true)
+		try {
+			const url = buildCorporationMembersExportUrl(corporationId, effectiveMembersQuery)
+			const response = await fetch(url, {
+				credentials: 'include',
+				headers: {
+					'X-Requested-With': 'XMLHttpRequest',
+				},
+			})
 
-		const rows = membersWithHrRoles.map((m) => [
-			m.characterName,
-			m.characterId,
-			m.role,
-			m.hrRole?.role || '',
-			m.hasAuthAccount ? 'Yes' : 'No',
-			m.activityStatus,
-			m.lastLogin || 'Never',
-			m.joinDate,
-			m.allianceName || '',
-			m.locationSystem || '',
-		])
+			if (!response.ok) {
+				const message = await response.text()
+				throw new Error(message || 'Failed to export corporation members')
+			}
 
-		const csvContent = [headers, ...rows].map((row) => row.join(',')).join('\n')
+			const blob = await response.blob()
+			const downloadUrl = URL.createObjectURL(blob)
+			const a = document.createElement('a')
+			a.href = downloadUrl
 
-		// Download CSV
-		const blob = new Blob([csvContent], { type: 'text/csv' })
-		const url = URL.createObjectURL(blob)
-		const a = document.createElement('a')
-		a.href = url
-		a.download = `${corpName}-members-${new Date().toISOString().split('T')[0]}.csv`
-		a.click()
-		URL.revokeObjectURL(url)
+			const contentDisposition = response.headers.get('content-disposition') ?? ''
+			const match = contentDisposition.match(/filename=\"?([^\";]+)\"?/i)
+			a.download = match?.[1] ?? `${corpName}-members-${new Date().toISOString().split('T')[0]}.csv`
+			a.click()
+			URL.revokeObjectURL(downloadUrl)
 
-		showSuccess('Member list exported')
-	}, [membersWithHrRoles, corpName, showSuccess])
+			showSuccess('Member list exported')
+		} catch (error) {
+			showError(error instanceof Error ? error.message : 'Failed to export corporation members')
+		} finally {
+			setIsExporting(false)
+		}
+	}, [corporationId, corpName, effectiveMembersQuery, isExporting, showError, showSuccess])
 
 	// Check authentication
 	if (!authLoading && !isAuthenticated) {
@@ -392,12 +386,9 @@ export default function CorporationMembers() {
 							</Button>
 						)}
 						{canExport && (
-							<Button variant="ghost"
-								onClick={handleExport}
-								disabled={!membersWithHrRoles || membersWithHrRoles.length === 0}
-							>
+							<Button variant="ghost" onClick={handleExport} disabled={isExporting}>
 								<Download className="h-4 w-4" />
-								Export CSV
+								{isExporting ? 'Exporting...' : 'Export CSV'}
 							</Button>
 						)}
 						<Button variant="ghost" asChild>

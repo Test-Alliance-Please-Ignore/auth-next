@@ -30,6 +30,8 @@ const ACTIVE_MEMBER_THRESHOLD_MS = 7 * MS_PER_DAY
  * Cache duration for corporation member data (5 minutes)
  */
 const CACHE_TTL = 5 * 60 // 5 minutes in seconds
+const MEMBERS_ACCESS_DENIED_MESSAGE =
+	'Access denied. Corporation CEO, Director, site admin, HR role, or HR auditor permission required.'
 
 /**
  * Helper to get cache instance
@@ -65,6 +67,36 @@ async function hasMemberCorpHrPermission(
 	return hr.checkPermission(userId, corporationId, requiredRole)
 }
 
+async function resolveCorporationMembersAccess(
+	c: Context<App>,
+	corporationId: string,
+	managedCorp: MemberCorpHrAccess | null
+): Promise<'admin' | 'CEO' | 'Director' | 'hr_admin' | 'hr_reviewer' | 'hr_viewer'> {
+	const user = c.get('user')!
+
+	try {
+		const access = await checkCorporationAccess(c, corporationId)
+		return access.role
+	} catch {
+		const hr = getStub<Hr>(c.env.HR, 'default')
+		const hasHrAccess = managedCorp?.isMemberCorporation
+			? await hr.checkPermission(user.id, corporationId, 'hr_viewer')
+			: false
+		const isAuditor = !hasHrAccess && await isHrAuditorUser(c)
+		if (!hasHrAccess && !isAuditor) {
+			throw new Error(
+				'Access denied. Corporation CEO, Director, site admin, HR role, or HR auditor permission required.'
+			)
+		}
+		if (isAuditor) {
+			return 'hr_viewer'
+		}
+		const isHrAdmin = await hr.checkPermission(user.id, corporationId, 'hr_admin')
+		const isHrReviewer = !isHrAdmin && await hr.checkPermission(user.id, corporationId, 'hr_reviewer')
+		return isHrAdmin ? 'hr_admin' : isHrReviewer ? 'hr_reviewer' : 'hr_viewer'
+	}
+}
+
 type CorporationMemberListItem = {
 	characterId: string
 	characterName: string
@@ -74,6 +106,7 @@ type CorporationMemberListItem = {
 	hasAuthAccount: boolean
 	hasValidToken?: boolean | null
 	authUserId?: string
+	mainCharacterId?: string
 	mainCharacterName?: string
 	status?: 'active' | 'emeritus'
 	joinDate: string
@@ -395,6 +428,237 @@ function buildUnpaginatedMembersResponse(members: CorporationMemberListItem[]) {
 			esiCoverage: buildCorporationMemberCoverageSummary(members),
 		},
 	}
+}
+
+function filterSortMembers(members: CorporationMemberListItem[], query: MembersQuery) {
+	const AUTH_SORT_RANK: Record<'valid' | 'invalid' | 'unknown' | 'unlinked', number> = {
+		valid: 0,
+		invalid: 1,
+		unknown: 2,
+		unlinked: 3,
+	}
+
+	const getAuthSortRank = (member: CorporationMemberListItem): number => {
+		const key: 'valid' | 'invalid' | 'unknown' | 'unlinked' = !member.hasAuthAccount
+			? 'unlinked'
+			: member.hasValidToken === true
+				? 'valid'
+				: member.hasValidToken === false
+					? 'invalid'
+					: 'unknown'
+		return AUTH_SORT_RANK[key]
+	}
+
+	const filtered = [...members]
+		.filter((member) => {
+			if (!query.search) return true
+			return (
+				member.characterName.toLowerCase().includes(query.search) ||
+				member.mainCharacterName?.toLowerCase().includes(query.search) ||
+				member.locationSystem?.toLowerCase().includes(query.search)
+			)
+		})
+		.filter((member) => {
+			if (query.authFilter === 'all') return true
+			if (query.authFilter === 'linked') return member.hasAuthAccount
+			if (query.authFilter === 'unlinked') return !member.hasAuthAccount
+			if (query.authFilter === 'linked_valid') {
+				return member.hasAuthAccount && member.hasValidToken === true
+			}
+			if (query.authFilter === 'linked_invalid') {
+				return member.hasAuthAccount && member.hasValidToken === false
+			}
+			if (query.authFilter === 'linked_unknown') {
+				return member.hasAuthAccount && member.hasValidToken !== true && member.hasValidToken !== false
+			}
+			return true
+		})
+		.filter((member) => {
+			if (query.activityFilter === 'all') return true
+			return member.activityStatus === query.activityFilter
+		})
+		.filter((member) => {
+			if (query.roleFilter === 'all') return true
+			return member.role === query.roleFilter
+		})
+
+	filtered.sort((a, b) => {
+		let comparison = 0
+		switch (query.sortField) {
+			case 'name':
+				comparison = a.characterName.localeCompare(b.characterName)
+				break
+			case 'role': {
+				const roleOrder = { CEO: 0, Director: 1, Member: 2 }
+				comparison = roleOrder[a.role] - roleOrder[b.role]
+				if (comparison === 0) {
+					comparison = a.characterName.localeCompare(b.characterName)
+				}
+				break
+			}
+			case 'auth':
+				comparison = getAuthSortRank(a) - getAuthSortRank(b)
+				break
+			case 'activity': {
+				const activityOrder = { active: 0, inactive: 1, unknown: 2 }
+				comparison = activityOrder[a.activityStatus] - activityOrder[b.activityStatus]
+				break
+			}
+			case 'lastLogin':
+				comparison = (b.lastLogin || '').localeCompare(a.lastLogin || '')
+				break
+			case 'joinDate':
+				comparison = a.joinDate.localeCompare(b.joinDate)
+				break
+		}
+		return query.sortOrder === 'asc' ? comparison : -comparison
+	})
+
+	return filtered
+}
+
+function escapeCsvValue(value: string | number | boolean | null | undefined): string {
+	if (value === null || value === undefined) return ''
+	const text = String(value)
+	return /[",\r\n]/.test(text) ? `"${text.replace(/"/g, '""')}"` : text
+}
+
+function buildCsvLine(values: Array<string | number | boolean | null | undefined>): string {
+	return values.map((value) => escapeCsvValue(value)).join(',')
+}
+
+function getEsiStatusLabel(member: Pick<CorporationMemberListItem, 'hasAuthAccount' | 'hasValidToken'>) {
+	if (!member.hasAuthAccount) return 'Unlinked'
+	if (member.hasValidToken === true) return 'ESI Valid'
+	if (member.hasValidToken === false) return 'ESI Invalid'
+	return 'ESI Unknown'
+}
+
+function buildCorporationMembersCsv(
+	members: CorporationMemberListItem[],
+	hrRoleMap: Map<string, string>
+): string {
+	const headers = [
+		'Character Name',
+		'Character ID',
+		'Role',
+		'HR Role',
+		'ESI Status',
+		'Auth Account UUID',
+		'Auth Account Primary Character Name',
+		'Auth Account Primary Character ID',
+		'Activity Status',
+		'Last Login',
+		'Join Date',
+	]
+
+	const rows = members.map((member) => [
+		member.characterName,
+		member.characterId,
+		member.role,
+		hrRoleMap.get(member.authUserId || '') || '',
+		getEsiStatusLabel(member),
+		member.authUserId || '',
+		member.mainCharacterName || '',
+		member.mainCharacterId || '',
+		member.activityStatus,
+		member.lastLogin || 'Never',
+		member.joinDate,
+	])
+
+	return [buildCsvLine(headers), ...rows.map((row) => buildCsvLine(row))].join('\n')
+}
+
+async function hydrateCorporationMembers(
+	c: Context<App>,
+	corporationId: string,
+	managedCorp: { name: string },
+	corpStub: EveCorporationData,
+	tokenStoreStub: EveTokenStore
+): Promise<CorporationMemberListItem[]> {
+	const db = c.get('db')
+	if (!db) {
+		throw new Error('Database not available')
+	}
+
+	const [corpInfo, coreData] = await Promise.all([
+		corpStub.getCorporationInfo(corporationId),
+		corpStub.getCoreData(corporationId),
+	])
+
+	if (!coreData || !coreData.members) {
+		return []
+	}
+
+	const memberCharacterIds = coreData.members.map((member) => String(member.characterId))
+	const linkedCharacters =
+		memberCharacterIds.length > 0
+			? await db.query.userCharacters.findMany({
+				where: inArray(userCharacters.characterId, memberCharacterIds),
+			})
+			: []
+	const linkedCharacterMap = new Map(linkedCharacters.map((row) => [row.characterId, row]))
+	const directors = await corpStub.getDirectors(corporationId)
+	const directorIds = new Set(directors.map((director) => director.characterId))
+	const characterNameMap =
+		memberCharacterIds.length > 0 ? await tokenStoreStub.resolveIds(memberCharacterIds) : {}
+	const linkedUserIds = [...new Set(linkedCharacters.map((row) => row.userId))]
+	const linkedUsers =
+		linkedUserIds.length > 0
+			? await db.query.users.findMany({
+				where: inArray(users.id, linkedUserIds),
+			})
+			: []
+	const mainCharacterIds = linkedUsers.map((user) => user.mainCharacterId)
+	const mainCharacterNameMap =
+		mainCharacterIds.length > 0 ? await tokenStoreStub.resolveIds(mainCharacterIds) : {}
+	const userIdToMainCharacterName = new Map(
+		linkedUsers.map((user) => [user.id, mainCharacterNameMap[user.mainCharacterId] || 'Unknown'])
+	)
+	const userIdToMainCharacterId = new Map(linkedUsers.map((user) => [user.id, user.mainCharacterId]))
+	const hrStub = getStub<Hr>(c.env.HR, 'default')
+	const blacklistStatuses =
+		memberCharacterIds.length > 0 ? await hrStub.checkCharactersBlacklisted(memberCharacterIds) : {}
+	const now = Date.now()
+
+	return coreData.members.map((member) => {
+		const characterId = String(member.characterId)
+		const linkedChar = linkedCharacterMap.get(characterId)
+		let role: 'CEO' | 'Director' | 'Member' = 'Member'
+		if (corpInfo && String(corpInfo.ceoId) === characterId) {
+			role = 'CEO'
+		} else if (directorIds.has(characterId)) {
+			role = 'Director'
+		}
+		const tracking = coreData.memberTracking?.find((row) => row.characterId === characterId)
+
+		return {
+			characterId,
+			characterName: characterNameMap[characterId] || 'Unknown',
+			corporationId,
+			corporationName: managedCorp.name,
+			role,
+			hasAuthAccount: !!linkedChar,
+			hasValidToken: linkedChar ? (linkedChar.hasValidToken ?? null) : null,
+			authUserId: linkedChar?.userId,
+			mainCharacterId: linkedChar?.userId ? userIdToMainCharacterId.get(linkedChar.userId) : undefined,
+			mainCharacterName: linkedChar?.userId ? userIdToMainCharacterName.get(linkedChar.userId) : undefined,
+			status: linkedChar?.status,
+			joinDate: tracking?.startDate?.toISOString() || member.updatedAt.toISOString(),
+			lastEsiUpdate: member.updatedAt.toISOString(),
+			lastLogin: tracking?.logonDate?.toISOString(),
+			allianceId: corpInfo?.allianceId ? String(corpInfo.allianceId) : undefined,
+			allianceName: undefined,
+			locationSystem: undefined,
+			locationRegion: undefined,
+			activityStatus: tracking?.logonDate
+				? now - tracking.logonDate.getTime() < ACTIVE_MEMBER_THRESHOLD_MS
+					? 'active'
+					: 'inactive'
+				: 'unknown',
+			isBlacklisted: blacklistStatuses[characterId] || false,
+		}
+	})
 }
 
 /**
@@ -1697,32 +1961,14 @@ app.get('/:corporationId/members', requireAuth(), async (c) => {
 			return c.json({ error: 'Corporation not found or not managed' }, 404)
 		}
 
-		// Check if user has CEO/Director/Admin access, an HR role, or HR auditor permission
 		let userRole: 'admin' | 'CEO' | 'Director' | 'hr_admin' | 'hr_reviewer' | 'hr_viewer'
 		try {
-			const access = await checkCorporationAccess(c, corporationId)
-			userRole = access.role
-		} catch {
-			// CEO/Director/Admin check failed — fall back to HR role / auditor check
-			const hr = getStub<Hr>(c.env.HR, 'default')
-			const hasHrAccess = managedCorp.isMemberCorporation
-				? await hr.checkPermission(user.id, corporationId, 'hr_viewer')
-				: false
-			const isAuditor = !hasHrAccess && await isHrAuditorUser(c)
-			if (!hasHrAccess && !isAuditor) {
-				return c.json(
-					{ error: 'Access denied. Corporation CEO, Director, site admin, HR role, or HR auditor permission required.' },
-					403
-				)
+			userRole = await resolveCorporationMembersAccess(c, corporationId, managedCorp)
+		} catch (error) {
+			if (error instanceof Error && error.message === MEMBERS_ACCESS_DENIED_MESSAGE) {
+				return c.json({ error: error.message }, 403)
 			}
-			if (isAuditor) {
-				userRole = 'hr_viewer'
-			} else {
-				// Determine the specific HR role for logging
-				const isHrAdmin = await hr.checkPermission(user.id, corporationId, 'hr_admin')
-				const isHrReviewer = !isHrAdmin && await hr.checkPermission(user.id, corporationId, 'hr_reviewer')
-				userRole = isHrAdmin ? 'hr_admin' : isHrReviewer ? 'hr_reviewer' : 'hr_viewer'
-			}
+			throw error
 		}
 
 		logger.info('[Corporations] User has access', { corporationId, userId: user.id, userRole })
@@ -1797,6 +2043,7 @@ app.get('/:corporationId/members', requireAuth(), async (c) => {
 			const userIdToMainCharacterName = new Map(
 				linkedUsers.map((u) => [u.id, mainCharacterNameMap[u.mainCharacterId] || 'Unknown'])
 			)
+			const userIdToMainCharacterId = new Map(linkedUsers.map((u) => [u.id, u.mainCharacterId]))
 
 			const hrStub = getStub<Hr>(c.env.HR, 'default')
 			const blacklistStatuses =
@@ -1818,6 +2065,7 @@ app.get('/:corporationId/members', requireAuth(), async (c) => {
 					hasAuthAccount: !!linkedChar,
 					hasValidToken: linkedChar ? (linkedChar.hasValidToken ?? null) : null,
 					authUserId: linkedChar?.userId,
+					mainCharacterId: linkedChar?.userId ? userIdToMainCharacterId.get(linkedChar.userId) : undefined,
 					mainCharacterName: linkedChar?.userId
 						? userIdToMainCharacterName.get(linkedChar.userId)
 						: undefined,
@@ -1972,6 +2220,7 @@ app.get('/:corporationId/members', requireAuth(), async (c) => {
 		const userIdToMainCharacterName = new Map(
 			linkedUsers.map((u) => [u.id, mainCharacterNameMap[u.mainCharacterId] || 'Unknown'])
 		)
+		const userIdToMainCharacterId = new Map(linkedUsers.map((u) => [u.id, u.mainCharacterId]))
 
 		logger.info('[Corporations Members] Resolved main character names for linked accounts', {
 			corporationId,
@@ -2018,6 +2267,7 @@ app.get('/:corporationId/members', requireAuth(), async (c) => {
 					hasAuthAccount,
 					hasValidToken: linkedChar ? (linkedChar.hasValidToken ?? null) : null,
 					authUserId: linkedChar?.userId,
+					mainCharacterId: linkedChar?.userId ? userIdToMainCharacterId.get(linkedChar.userId) : undefined,
 					mainCharacterName: linkedChar?.userId
 						? userIdToMainCharacterName.get(linkedChar.userId)
 						: undefined,
@@ -2066,6 +2316,82 @@ app.get('/:corporationId/members', requireAuth(), async (c) => {
 			stack: error instanceof Error ? error.stack : undefined,
 		})
 		return c.json({ error: 'Failed to fetch corporation members' }, 500)
+	}
+})
+
+/**
+ * GET /corporations/:corporationId/members/export
+ * Download a CSV of all corporation members matching the current filters.
+ */
+app.get('/:corporationId/members/export', requireAuth(), async (c) => {
+	const corporationId = c.req.param('corporationId')
+	const query = parseMembersQuery(c)
+	const user = c.get('user')!
+	const db = c.get('db')
+
+	if (!db) {
+		return c.json({ error: 'Database not available' }, 500)
+	}
+
+	logger.info('[Corporations] Export members request', { corporationId, userId: user.id })
+
+	try {
+		const managedCorp = await db.query.managedCorporations.findFirst({
+			where: and(
+				eq(managedCorporations.corporationId, corporationId),
+				eq(managedCorporations.isActive, true)
+			),
+		})
+
+		if (!managedCorp) {
+			return c.json({ error: 'Corporation not found or not managed' }, 404)
+		}
+
+		let userRole: 'admin' | 'CEO' | 'Director' | 'hr_admin' | 'hr_reviewer' | 'hr_viewer'
+		try {
+			userRole = await resolveCorporationMembersAccess(c, corporationId, managedCorp)
+		} catch (error) {
+			if (error instanceof Error && error.message === MEMBERS_ACCESS_DENIED_MESSAGE) {
+				return c.json({ error: error.message }, 403)
+			}
+			throw error
+		}
+
+		logger.info('[Corporations] Export members access granted', {
+			corporationId,
+			userId: user.id,
+			userRole,
+		})
+
+		const corpStub = getStub<EveCorporationData>(c.env.EVE_CORPORATION_DATA, corporationId)
+		const tokenStoreStub = getStub<EveTokenStore>(c.env.EVE_TOKEN_STORE, 'default')
+		const hrStub = getStub<Hr>(c.env.HR, 'default')
+		const members = await hydrateCorporationMembers(c, corporationId, managedCorp, corpStub, tokenStoreStub)
+		const filteredMembers = filterSortMembers(members, query)
+		const hrRoles = await hrStub.getCorporationRoles(corporationId, true)
+		const hrRoleMap = new Map(hrRoles.map((role) => [role.userId, role.role]))
+		const csv = buildCorporationMembersCsv(filteredMembers, hrRoleMap)
+		const safeFileName = managedCorp.name
+			.trim()
+			.replace(/[^a-zA-Z0-9._-]+/g, '-')
+			.replace(/^-+|-+$/g, '')
+			.toLowerCase() || 'corporation'
+
+		return new Response(csv, {
+			status: 200,
+			headers: {
+				'Content-Type': 'text/csv; charset=utf-8',
+				'Content-Disposition': `attachment; filename="${safeFileName}-members.csv"`,
+				'Cache-Control': 'no-store',
+			},
+		})
+	} catch (error) {
+		logger.error('[Corporations] Error exporting corporation members', {
+			corporationId,
+			error: error instanceof Error ? error.message : String(error),
+			stack: error instanceof Error ? error.stack : undefined,
+		})
+		return c.json({ error: 'Failed to export corporation members' }, 500)
 	}
 })
 

@@ -133,12 +133,14 @@ describe('corporations members access matrix', () => {
 	let hrStub: {
 		checkPermission: ReturnType<typeof vi.fn>
 		checkCharactersBlacklisted: ReturnType<typeof vi.fn>
+		getCorporationRoles: ReturnType<typeof vi.fn>
 	}
 	let corpStub: {
 		getCorporationInfo: ReturnType<typeof vi.fn>
 		getCoreData: ReturnType<typeof vi.fn>
 		getMembers: ReturnType<typeof vi.fn>
 		getDirectors: ReturnType<typeof vi.fn>
+		getCorporationRoles: ReturnType<typeof vi.fn>
 		fetchCoreData: ReturnType<typeof vi.fn>
 	}
 	let charStub: {
@@ -152,6 +154,7 @@ describe('corporations members access matrix', () => {
 		hrStub = {
 			checkPermission: vi.fn().mockResolvedValue(false),
 			checkCharactersBlacklisted: vi.fn().mockResolvedValue({}),
+			getCorporationRoles: vi.fn().mockResolvedValue([]),
 		}
 		charStub = {
 			getCharacterInfo: vi.fn().mockResolvedValue(null),
@@ -162,6 +165,7 @@ describe('corporations members access matrix', () => {
 			getMembers: vi.fn().mockResolvedValue([
 				{ characterId: '2001', updatedAt: new Date('2026-04-01T00:00:00.000Z') },
 			]),
+			getCorporationRoles: vi.fn().mockResolvedValue([]),
 			getCoreData: vi.fn().mockResolvedValue({
 				members: [{ characterId: '2001', updatedAt: new Date('2026-04-01T00:00:00.000Z') }],
 				memberTracking: [],
@@ -476,6 +480,88 @@ describe('corporations members access matrix', () => {
 				linkedUsers: 2,
 			},
 		})
+	})
+
+	it('exports the full member list with auth account UUID and primary character columns', async () => {
+		getCachedUserPermissionsMock.mockResolvedValue([
+			{
+				permissionId: 'perm-auditor',
+				urn: 'urn:hr:auditor',
+				name: 'HR Auditor',
+				description: null,
+				category: null,
+				groupId: 'g-1',
+				groupName: 'HR',
+				targetType: 'all_members',
+				source: 'global',
+			},
+		] as any)
+
+		corpStub.getCoreData.mockResolvedValue({
+			members: [
+				{ characterId: '2001', updatedAt: new Date('2026-04-01T00:00:00.000Z') },
+				{ characterId: '2002', updatedAt: new Date('2026-04-01T00:00:00.000Z') },
+			],
+			memberTracking: [],
+		})
+		corpStub.getDirectors.mockResolvedValue([])
+		hrStub.getCorporationRoles.mockResolvedValue([
+			{ userId: 'target-user-1', role: 'hr_admin' },
+		] as any)
+		dbStub.query.userCharacters.findMany.mockResolvedValue([
+			{
+				characterId: '2001',
+				userId: 'target-user-1',
+				status: 'active',
+				hasValidToken: true,
+			},
+		])
+		dbStub.query.users.findMany.mockResolvedValue([
+			{
+				id: 'target-user-1',
+				mainCharacterId: '3001',
+			},
+		] as any)
+		getStubMock.mockImplementation((binding: unknown) => {
+			if (binding === env.HR) return hrStub as any
+			if (binding === env.EVE_CHARACTER_DATA) return charStub as any
+			if (binding === env.EVE_CORPORATION_DATA) return corpStub as any
+			if (binding === env.EVE_TOKEN_STORE) {
+				return makeTokenStoreStub({
+					resolveIds: vi.fn().mockImplementation(async (ids: string[]) =>
+						Object.fromEntries(
+							ids.map((id) => [
+								id,
+								id === '2001' ? 'Pilot One' : id === '2002' ? 'Pilot Two' : 'Captain Main',
+							])
+						)
+					),
+				}) as any
+			}
+			throw new Error('Unexpected binding')
+		})
+
+		const app = createApp({ user: makeUser(), db: dbStub })
+		const res = await app.request(
+			'/api/corporations/1001/members/export?page=1&limit=1&sortField=role&sortOrder=asc',
+			{},
+			env
+		)
+
+		expect(res.status).toBe(200)
+		expect(res.headers.get('content-type')).toContain('text/csv')
+		expect(res.headers.get('content-disposition')).toContain('attachment;')
+
+		const csv = await res.text()
+		const lines = csv.trim().split('\n')
+		expect(lines[0]).toBe(
+			'Character Name,Character ID,Role,HR Role,ESI Status,Auth Account UUID,Auth Account Primary Character Name,Auth Account Primary Character ID,Activity Status,Last Login,Join Date'
+		)
+		expect(lines).toHaveLength(3)
+		expect(lines[1]).toContain('Pilot One,2001,Member,hr_admin,ESI Valid,target-user-1,Captain Main,3001,unknown,Never,2026-04-01T00:00:00.000Z')
+		expect(lines[2]).toContain('Pilot Two,2002,Member,,Unlinked,,,,unknown,Never,2026-04-01T00:00:00.000Z')
+		expect(lines[0]).not.toContain('Alliance')
+		expect(lines[0]).not.toContain('Location')
 	})
 
 	it('supports authFilter=linked_invalid', async () => {
