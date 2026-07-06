@@ -103,6 +103,8 @@ export type Env = SharedHonoEnv & {
 	IP_ADDRESS_HASH_SECRET: string
 	/** Optional comma-separated Discord user IDs to exclude from member audits */
 	DISCORD_AUDIT_EXCLUDED_USER_IDS?: string
+	/** Shared token for public SRP lookups */
+	SRP_PUBLIC_API_TOKEN?: string
 	/** Shared key for trusted internal legacy-worker operations */
 	LEGACY_INTERNAL_KEY?: string
 }

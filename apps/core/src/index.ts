@@ -49,6 +49,7 @@ import { handleOAuthDevProxyRequest, isOAuthDevProxyPath } from './routes/oauth-
 import oauthRoutes from './routes/oauth'
 import adminNavigationLinksRoutes from './routes/admin/navigation-links'
 import sessionRoutes from './routes/session'
+import publicSrpRoutes from './routes/srp-public'
 import skillPlansRoutes from './routes/skill-plans'
 import skillsRoutes from './routes/skills'
 import flagsRoutes from './routes/flags'
@@ -123,6 +124,7 @@ const app = new Hono<App>()
 	.route('/images', imagesRoutes)
 	.route('/api/public/paste', publicPasteRoutes)
 	.route('/api/public/mumble-tempop', publicMumbleTempopRoutes)
+	.route('/api/public/srp', publicSrpRoutes)
 
 	// API routes - mounted under /api prefix
 	.route('/api/admin', adminRoutes)
