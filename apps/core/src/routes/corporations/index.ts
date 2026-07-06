@@ -2227,6 +2227,11 @@ app.get('/:corporationId/members', requireAuth(), async (c) => {
 				none: 0,
 				unlinked: 0,
 				linkedUsers: 0,
+				fullCharacters: 0,
+				partialCharacters: 0,
+				noneCharacters: 0,
+				unlinkedCharacters: 0,
+				totalCharacters: 0,
 			}
 			try {
 				const coverageMemberRows = await corpStub.getMembers(corporationId)
