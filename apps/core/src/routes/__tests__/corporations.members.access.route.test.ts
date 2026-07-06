@@ -482,6 +482,79 @@ describe('corporations members access matrix', () => {
 		})
 	})
 
+	it('sorts auth account rows by esi status first and auth account id second', async () => {
+		getCachedUserPermissionsMock.mockResolvedValue([
+			{
+				permissionId: 'perm-auditor',
+				urn: 'urn:hr:auditor',
+				name: 'HR Auditor',
+				description: null,
+				category: null,
+				groupId: 'g-1',
+				groupName: 'HR',
+				targetType: 'all_members',
+				source: 'global',
+			},
+		] as any)
+
+		corpStub.getCoreData.mockResolvedValue({
+			members: [
+				{ characterId: '2001', updatedAt: new Date('2026-04-01T00:00:00.000Z') },
+				{ characterId: '2002', updatedAt: new Date('2026-04-01T00:00:00.000Z') },
+				{ characterId: '2003', updatedAt: new Date('2026-04-01T00:00:00.000Z') },
+				{ characterId: '2004', updatedAt: new Date('2026-04-01T00:00:00.000Z') },
+			],
+			memberTracking: [],
+		})
+		dbStub.query.userCharacters.findMany.mockResolvedValue([
+			{ characterId: '2001', userId: 'user-b', status: 'active', hasValidToken: true },
+			{ characterId: '2002', userId: 'user-a', status: 'active', hasValidToken: false },
+			{ characterId: '2003', userId: 'user-c', status: 'active', hasValidToken: null },
+		])
+		dbStub.query.users.findMany.mockResolvedValue([
+			{ id: 'user-a', mainCharacterId: '3001' },
+			{ id: 'user-b', mainCharacterId: '3002' },
+			{ id: 'user-c', mainCharacterId: '3003' },
+		] as any)
+		getStubMock.mockImplementation((binding: unknown) => {
+			if (binding === env.HR) return hrStub as any
+			if (binding === env.EVE_CHARACTER_DATA) return charStub as any
+			if (binding === env.EVE_CORPORATION_DATA) return corpStub as any
+			if (binding === env.EVE_TOKEN_STORE) {
+				return makeTokenStoreStub({
+					resolveIds: vi.fn().mockImplementation(async (ids: string[]) =>
+						Object.fromEntries(
+							ids.map((id) => [
+								id,
+								id === '2001'
+									? 'Zulu'
+									: id === '2002'
+										? 'Alpha'
+										: id === '2003'
+											? 'Echo'
+											: 'Delta',
+							])
+						)
+					),
+				}) as any
+			}
+			throw new Error('Unexpected binding')
+		})
+
+		const app = createApp({ user: makeUser(), db: dbStub })
+		const res = await app.request(
+			'/api/corporations/1001/members?sortField=auth&sortOrder=asc',
+			{},
+			env
+		)
+
+		expect(res.status).toBe(200)
+		const body = (await res.json()) as {
+			items: Array<{ characterId: string }>
+		}
+		expect(body.items.map((member) => member.characterId)).toEqual(['2001', '2002', '2003', '2004'])
+	})
+
 	it('exports the full member list with auth account UUID and primary character columns', async () => {
 		getCachedUserPermissionsMock.mockResolvedValue([
 			{

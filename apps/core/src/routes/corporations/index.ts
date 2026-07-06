@@ -498,6 +498,12 @@ function filterSortMembers(members: CorporationMemberListItem[], query: MembersQ
 			}
 			case 'auth':
 				comparison = getAuthSortRank(a) - getAuthSortRank(b)
+				if (comparison === 0) {
+					comparison = (a.authUserId || '').localeCompare(b.authUserId || '')
+				}
+				if (comparison === 0) {
+					comparison = a.characterName.localeCompare(b.characterName)
+				}
 				break
 			case 'activity': {
 				const activityOrder = { active: 0, inactive: 1, unknown: 2 }
