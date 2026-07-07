@@ -19,6 +19,7 @@ import adminRoutes from './routes/admin'
 import adminStructuresRoutes from './routes/admin/structures'
 import authRoutes from './routes/auth'
 import billsAdminRoutes from './routes/bills-admin'
+import predictionMarketsAdminRoutes from './routes/prediction-markets-admin'
 import billsUserRoutes from './routes/bills-user'
 import broadcastsRoutes from './routes/broadcasts'
 import charactersRoutes from './routes/characters'
@@ -133,6 +134,7 @@ const app = new Hono<App>()
 	.route('/api/admin/structures', adminStructuresRoutes)
 	.route('/api/admin/navigation', adminNavigationLinksRoutes)
 	.route('/api/admin/bills', billsAdminRoutes) // Admin bills API
+	.route('/api/admin/prediction-markets', predictionMarketsAdminRoutes) // Admin prediction-markets API
 	.route('/api/admin', industryAdminRoutes) // Admin industry API
 	.route('/api/auth', authRoutes)
 	.route('/api/users', usersRoutes)

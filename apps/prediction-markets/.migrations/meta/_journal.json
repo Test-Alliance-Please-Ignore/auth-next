@@ -8,6 +8,13 @@
       "when": 1783387930608,
       "tag": "0000_mixed_black_widow",
       "breakpoints": true
+    },
+    {
+      "idx": 1,
+      "version": "7",
+      "when": 1783397156429,
+      "tag": "0001_hard_reavers",
+      "breakpoints": true
     }
   ]
 }
