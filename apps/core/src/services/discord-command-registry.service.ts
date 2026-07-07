@@ -1,4 +1,5 @@
 import type {
+	CommandEnv,
 	DiscordInteractionResponse,
 	ExecuteDiscordSlashCommandInput,
 } from './discord-commands.service'
@@ -21,6 +22,10 @@ export interface DiscordCommandExecutionContext {
 	isAdmin: boolean
 	command: RegisteredDiscordCommand
 	optionValues: Record<string, string>
+	/** Bindings available to command handlers (e.g. for cross-worker RPC). */
+	env: CommandEnv
+	/** Discord interaction id; use as an idempotency key for write commands. */
+	interactionId: string | null
 }
 
 export type DiscordCommandHandler = (

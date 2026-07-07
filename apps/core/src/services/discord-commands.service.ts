@@ -8,6 +8,7 @@ import {
 	PROGRAMMATIC_COMMAND_DEFINITIONS,
 	programmaticCommandDefinitionByName,
 } from './discord-programmatic-commands'
+import type { DeferralMode } from './discord-programmatic-commands'
 import {
 	clearRegisteredDiscordCommandsBySource,
 	getRegisteredDiscordCommand,
@@ -63,6 +64,16 @@ export interface ExecuteDiscordSlashCommandInput {
 	guildId?: string | null
 	channelId?: string | null
 	options?: DiscordInteractionOption[]
+	/** Discord interaction id; passed through to handlers as an idempotency key. */
+	interactionId?: string | null
+}
+
+/**
+ * Deferral routing map consumed by the interactions worker to decide, per command
+ * (and subcommand), whether to ACK synchronously or defer (and how).
+ */
+export interface DiscordInteractionRouting {
+	commands: Record<string, { default: DeferralMode; subcommands: Record<string, DeferralMode> }>
 }
 
 export interface ExecuteDiscordSlashCommandResult {
@@ -80,7 +91,7 @@ export interface ExecuteDiscordSlashCommandResult {
 		| 'execution-failed'
 }
 
-type CommandEnv = Pick<Env, 'GROUPS' | 'DISCORD'>
+export type CommandEnv = Pick<Env, 'GROUPS' | 'DISCORD'>
 
 function normalizeCommandName(name: string): string {
 	return name.trim().toLowerCase()
@@ -273,7 +284,15 @@ async function loadConfiguredCommandsIntoRegistry(db: ReturnType<typeof createDb
 					categoryId: command.categoryId,
 					commandType: command.commandType,
 				},
-				handler: ({ optionValues }) => definition.handler({ optionValues }),
+				handler: (context) =>
+					definition.handler({
+						optionValues: context.optionValues,
+						coreUserId: context.coreUserId,
+						isAdmin: context.isAdmin,
+						env: context.env,
+						input: context.input,
+						interactionId: context.interactionId,
+					}),
 			})
 			continue
 		}
@@ -482,6 +501,8 @@ export async function executeDiscordSlashCommand(
 			isAdmin: user.is_admin,
 			command: registeredCommand,
 			optionValues,
+			env,
+			interactionId: normalizedInput.interactionId ?? null,
 		})
 
 		return {
@@ -506,6 +527,38 @@ export async function executeDiscordSlashCommand(
 			reason: 'execution-failed',
 		}
 	}
+}
+
+/**
+ * Build the deferral routing map the interactions worker uses to decide, per command
+ * (and subcommand), whether to ACK synchronously or defer (and whether ephemerally).
+ * Computed purely from the programmatic command definitions (no DB); static-response
+ * commands are absent from the map and therefore default to 'sync'.
+ */
+export function buildDiscordInteractionRouting(): DiscordInteractionRouting {
+	const commands: DiscordInteractionRouting['commands'] = {}
+
+	for (const definition of PROGRAMMATIC_COMMAND_DEFINITIONS) {
+		const name = normalizeCommandName(definition.name)
+		const deferral = definition.deferral
+		let defaultMode: DeferralMode = 'sync'
+		const subcommands: Record<string, DeferralMode> = {}
+
+		if (typeof deferral === 'string') {
+			defaultMode = deferral
+		} else if (deferral) {
+			defaultMode = deferral.default ?? 'sync'
+			for (const [key, mode] of Object.entries(deferral.subcommands ?? {})) {
+				if (mode) {
+					subcommands[key.trim().toLowerCase()] = mode
+				}
+			}
+		}
+
+		commands[name] = { default: defaultMode, subcommands }
+	}
+
+	return { commands }
 }
 
 export function buildDiscordSlashCommandDefinition(command: {

@@ -9,6 +9,14 @@ export interface DiscordInteractionOption {
 	options?: DiscordInteractionOption[]
 }
 
+/** Mirrors the core service DeferralMode. Keep in sync with apps/core. */
+export type DeferralMode = 'sync' | 'defer-public' | 'defer-ephemeral'
+
+/** Mirrors the core service DiscordInteractionRouting. Keep in sync with apps/core. */
+export interface DiscordInteractionRouting {
+	commands: Record<string, { default: DeferralMode; subcommands: Record<string, DeferralMode> }>
+}
+
 export type Env = SharedHonoEnv & {
 	DATABASE_URL: string
 	DISCORD: DurableObjectNamespace
@@ -48,6 +56,7 @@ export type Env = SharedHonoEnv & {
 			guildId?: string | null
 			channelId?: string | null
 			options?: DiscordInteractionOption[]
+			interactionId?: string | null
 		}): Promise<{
 			ok: boolean
 			response: {
@@ -62,6 +71,7 @@ export type Env = SharedHonoEnv & {
 			commandId?: string
 			reason: string
 		}>
+		getDiscordInteractionRouting(): Promise<DiscordInteractionRouting>
 		syncUserDiscordAccess(userId: string): Promise<{
 			ok: boolean
 			rpcRequestId: string

@@ -22,6 +22,7 @@ import { augmentRequestedRoleIdsForRefresh, calculateRoleChanges } from './utils
 
 import type {
 	Discord,
+	DiscordEmbed,
 	DiscordGuildMemberSnapshot,
 	DiscordGuildMembershipDetail,
 	DiscordRegisteredSlashCommand,
@@ -1838,6 +1839,41 @@ export class DiscordDO extends DurableObject<Env> implements Discord {
 		}
 	}
 
+	/**
+	 * Edit the original (deferred) interaction response via the interaction webhook.
+	 * Authorized by the interaction token in the URL path — no bot token is sent.
+	 */
+	async editOriginalInteractionResponse(
+		interactionToken: string,
+		message: { content: string; embeds?: DiscordEmbed[] }
+	): Promise<{ success: boolean; error?: string }> {
+		const applicationId = this.env.DISCORD_CLIENT_ID?.trim()
+		if (!applicationId) {
+			return { success: false, error: 'DISCORD_CLIENT_ID is not configured' }
+		}
+		if (!interactionToken) {
+			return { success: false, error: 'interactionToken is required' }
+		}
+
+		const route = `/webhooks/${applicationId}/${interactionToken}/messages/@original`
+		const client = this.createInteractionWebhookClient()
+		try {
+			await client.patch(route, {
+				content: message.content,
+				...(message.embeds && message.embeds.length > 0 ? { embeds: message.embeds } : {}),
+			})
+			return { success: true }
+		} catch (error) {
+			logger.error('[DiscordDO] Failed to edit original interaction response', {
+				error: error instanceof Error ? error.message : String(error),
+			})
+			return {
+				success: false,
+				error: error instanceof Error ? error.message : 'Failed to edit interaction response',
+			}
+		}
+	}
+
 	// ==================== PRIVATE HELPER METHODS ====================
 
 	/**
@@ -1850,6 +1886,22 @@ export class DiscordDO extends DurableObject<Env> implements Discord {
 		return new DiscordFetch({
 			token: this.env.DISCORD_BOT_TOKEN,
 			tokenType: 'Bot',
+			...(proxy ? { proxy } : {}),
+			maxRetries: 3,
+		})
+	}
+
+	/**
+	 * Create a Discord fetch client for interaction-webhook endpoints. These endpoints are
+	 * authorized by the interaction token in the URL, so no Authorization header is sent.
+	 * @returns Configured DiscordFetch client instance (no auth, proxy-aware)
+	 */
+	private createInteractionWebhookClient(): DiscordFetch {
+		const proxy = this.getDiscordFetchProxy()
+
+		return new DiscordFetch({
+			token: '',
+			tokenType: 'None',
 			...(proxy ? { proxy } : {}),
 			maxRetries: 3,
 		})

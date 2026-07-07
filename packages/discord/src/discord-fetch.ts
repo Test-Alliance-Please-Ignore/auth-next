@@ -18,8 +18,11 @@ export interface DiscordProxyConfig {
 export interface DiscordFetchOptions {
 	/** Discord API token */
 	token: string
-	/** Token type (Bot or Bearer) */
-	tokenType?: 'Bot' | 'Bearer'
+	/**
+	 * Token type. 'None' omits the Authorization header entirely — use for interaction
+	 * webhook endpoints, which are authorized by the interaction token in the URL path.
+	 */
+	tokenType?: 'Bot' | 'Bearer' | 'None'
 	/** Optional proxy configuration */
 	proxy?: DiscordProxyConfig
 	/** Maximum number of retries on rate limit (default: 3) */
@@ -49,7 +52,7 @@ export class DiscordAPIError extends Error {
 
 export class DiscordFetch {
 	private readonly token: string
-	private readonly tokenType: 'Bot' | 'Bearer'
+	private readonly tokenType: 'Bot' | 'Bearer' | 'None'
 	private readonly proxyUrl?: string
 	private readonly maxRetries: number
 
@@ -76,7 +79,9 @@ export class DiscordFetch {
 			const fetchOptions: RequestInit & { proxy?: string } = {
 				...options,
 				headers: {
-					Authorization: `${this.tokenType} ${this.token}`,
+					...(this.tokenType === 'None'
+						? {}
+						: { Authorization: `${this.tokenType} ${this.token}` }),
 					'Content-Type': 'application/json',
 					...options?.headers,
 				},
