@@ -78,6 +78,7 @@ const EXPECTED_BET_ERRORS = new Set([
 	'MARKET_NOT_FOUND',
 	'MARKET_NOT_OPEN',
 	'MARKET_CLOSED',
+	'CREATOR_CANNOT_BET',
 	'OUTCOME_NOT_FOUND',
 	'STAKE_BELOW_MIN',
 	'STAKE_ABOVE_MAX',
@@ -662,6 +663,9 @@ export class PredictionMarketsDO extends DurableObject<Env> implements Predictio
 				if (!market) throw new Error('MARKET_NOT_FOUND')
 				if (market.status !== 'open') throw new Error('MARKET_NOT_OPEN')
 				if (market.closesAt.getTime() <= Date.now()) throw new Error('MARKET_CLOSED')
+				// Governance: a creator can't take a position on their own market (mirrors the
+				// creator-can't-resolve / resolver-holds-no-position guards elsewhere).
+				if (market.createdBy === input.userId) throw new Error('CREATOR_CANNOT_BET')
 
 				const [outcome] = await tx
 					.select({ id: pmMarketOutcomes.id })
