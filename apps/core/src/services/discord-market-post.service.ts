@@ -171,10 +171,10 @@ export async function updateMarketPostFromDetail(
 }
 
 /**
- * Post an anonymized "bet placed" announcement into a market's forum thread — the amount and
- * chosen outcome only, never who placed it. Sent as a regular thread message (a thread is a
- * channel), reusing sendMessage's rate-limit retry; mentions are suppressed so a user-authored
- * outcome label can't ping anyone. Best-effort: no-op if the market has no post yet, and the
+ * Post a public "bet placed" announcement into a market's forum thread — who bet, how much, on
+ * which outcome. `bettor` is a Discord mention (`<@id>`) that renders the username; mentions stay
+ * suppressed (allowed_mentions empty) so the name shows without pinging, and a user-authored
+ * outcome label can't ping either. Best-effort: no-op if the market has no post yet, and the
  * returned {success,error} is for logging only — a failed announcement must never fail the bet.
  * `guildId` is used only for the DO's log context (sendMessage POSTs by channel/thread id).
  */
@@ -182,13 +182,14 @@ export async function announceBetPlaced(
 	discord: Discord,
 	guildId: string,
 	market: MarketDetail,
+	bettor: string,
 	amount: string,
 	outcomeLabel: string
 ): Promise<SendMessageResult> {
 	if (!market.discordThreadId) return { success: false, error: 'no post' }
 	if (!outcomeLabel) return { success: false, error: 'no outcome' }
 	return discord.sendMessage(guildId, market.discordThreadId, {
-		content: buildBetAnnouncement(amount, outcomeLabel),
+		content: buildBetAnnouncement(bettor, amount, outcomeLabel),
 		allowEveryone: false,
 	})
 }

@@ -129,6 +129,33 @@ export interface ResolveResult {
 	resolvedOutcomeId?: string | null
 }
 
+/** One participant's net result on a settled (resolved/voided) market — the DM target. */
+export interface SettlementUser {
+	/** Core user id (also the DM target). */
+	userId: string
+	/** Total staked across this user's bets on the market. */
+	staked: string
+	/** Total returned to this user (winning payouts, or refunds on a void). */
+	returned: string
+	/** `returned - staked` (positive = net win, negative = net loss); may be negative. */
+	net: string
+}
+
+/** The financial outcome of a settled market — drives the resolve thread post + per-user DMs. */
+export interface MarketSettlement {
+	marketId: string
+	status: MarketStatus
+	resolvedOutcomeId: string | null
+	/** Sum of all stakes on the market (the total pool). */
+	totalStaked: string
+	/** Sum returned to users (winner payouts, or all stakes on a void). */
+	totalPaidOut: string
+	/** Sum of stakes on losing outcomes (0 for a void). */
+	totalLost: string
+	/** Per-user aggregates, one row per participant. */
+	users: SettlementUser[]
+}
+
 export interface PendingProposalView {
 	id: string
 	/** Proposed winning outcome, or null for a proposed void. */
@@ -253,6 +280,12 @@ export interface PredictionMarkets {
 		userId: string,
 		opts?: { activeOnly?: boolean }
 	): Promise<DetailedBetView[]>
+	/**
+	 * The financial settlement of a market (totals + per-user net results). Intended for a market
+	 * that has resolved/voided; the caller uses it to post the outcome to the thread and DM each
+	 * participant. Returns null if the market doesn't exist.
+	 */
+	getMarketSettlement(marketId: string): Promise<MarketSettlement | null>
 	getLeaderboard(opts?: { window?: 'all' | '30d'; limit?: number }): Promise<LeaderboardRow[]>
 	getLedger(userId: string, opts?: { limit?: number; cursor?: string }): Promise<LedgerRow[]>
 

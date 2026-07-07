@@ -19,6 +19,9 @@ const hoisted = vi.hoisted(() => ({
 		applyMarketPostStatus: vi.fn(),
 		publishMarketPost: vi.fn(),
 	},
+	notify: {
+		announceMarketClosed: vi.fn(),
+	},
 }))
 
 // getStub returns the PM stub for the PREDICTION_MARKETS binding; the Discord stub is an opaque
@@ -33,6 +36,10 @@ vi.mock('../discord-market-post.service', () => ({
 	updateMarketPostFromDetail: hoisted.post.updateMarketPostFromDetail,
 	applyMarketPostStatus: hoisted.post.applyMarketPostStatus,
 	publishMarketPost: hoisted.post.publishMarketPost,
+}))
+
+vi.mock('../discord-market-notify.service', () => ({
+	announceMarketClosed: hoisted.notify.announceMarketClosed,
 }))
 
 const db = {} as unknown as Parameters<typeof reconcileMarketPosts>[0]
@@ -83,6 +90,7 @@ describe('reconcileMarketPosts', () => {
 		hoisted.post.updateMarketPostFromDetail.mockResolvedValue({ success: true })
 		hoisted.post.applyMarketPostStatus.mockResolvedValue(undefined)
 		hoisted.post.publishMarketPost.mockResolvedValue({ threadId: 't', messageId: 'm' })
+		hoisted.notify.announceMarketClosed.mockResolvedValue(undefined)
 	})
 
 	it('no-ops when the forum guild/category is not configured', async () => {
@@ -93,12 +101,14 @@ describe('reconcileMarketPosts', () => {
 		expect(hoisted.prediction.listMarketsNeedingPost).not.toHaveBeenCalled()
 	})
 
-	it('reports the count of auto-closed markets', async () => {
+	it('auto-closes markets and announces each close to its thread', async () => {
 		hoisted.prediction.closeDueMarkets.mockResolvedValue({ closedMarketIds: ['a', 'b', 'c'] })
 		const res = await reconcileMarketPosts(db, makeEnv())
 		expect(res.closed).toBe(3)
 		// Auto-close is bounded to keep the run inside the cron budget.
 		expect(hoisted.prediction.closeDueMarkets).toHaveBeenCalledWith(expect.any(Number))
+		// Each just-closed market gets a "betting closed" post (once per market).
+		expect(hoisted.notify.announceMarketClosed).toHaveBeenCalledTimes(3)
 	})
 
 	it('refreshes each drifted post (embed + tag/lock) from the self-healing refresh list', async () => {

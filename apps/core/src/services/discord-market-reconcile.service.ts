@@ -19,6 +19,7 @@
 import { getStub } from '@repo/do-utils'
 import { logger } from '@repo/hono-helpers'
 
+import { announceMarketClosed } from './discord-market-notify.service'
 import {
 	applyMarketPostStatus,
 	publishMarketPost,
@@ -76,6 +77,20 @@ export async function reconcileMarketPosts(db: CoreDb, env: ReconcileEnv): Promi
 	// market's `updatedAt` is fresh, so it lands in the refresh list below on this same tick.
 	const { closedMarketIds } = await prediction.closeDueMarkets(CLOSE_LIMIT)
 	result.closed = closedMarketIds.length
+	// Announce each auto-close to its thread. closedMarketIds only holds markets that transitioned
+	// open→closed this pass, so this fires once per market. Best-effort and per-market isolated.
+	for (const marketId of closedMarketIds) {
+		try {
+			const market = await prediction.getMarket(marketId)
+			if (market) await announceMarketClosed(discord, guildId, market)
+		} catch (error) {
+			result.failed++
+			logger.warn('[PMReconcile] auto-close announcement failed', {
+				marketId,
+				error: error instanceof Error ? error.message : String(error),
+			})
+		}
+	}
 
 	// (b) Refresh drifted posts (embed + status buttons + tag/lock). Driven by a self-shrinking
 	// "recently changed, has a post" list rather than the one-shot close result, so a refresh that

@@ -985,6 +985,11 @@ export class CoreWorker extends WorkerEntrypoint<Env> {
 				reason: result.reason,
 			})
 		}
+		// Deferred work (the settlement DM fan-out) runs AFTER we return the confirmation, so a
+		// large market's rate-limited DMs never delay/time-out the resolver's ephemeral reply.
+		if (result.background) {
+			waitUntilWithTelemetry(this.ctx, 'pm-settlement-dms', result.background)
+		}
 		return {
 			ok,
 			response: result.response,
@@ -1005,6 +1010,10 @@ export class CoreWorker extends WorkerEntrypoint<Env> {
 	}> {
 		const db = createDb(this.env.DATABASE_URL)
 		const result = await executeDiscordComponent(db, this.env, input)
+		// Deferred settlement DM fan-out runs off the confirmation path (see executeDiscordModalSubmit).
+		if (result.background) {
+			waitUntilWithTelemetry(this.ctx, 'pm-settlement-dms', result.background)
+		}
 		return {
 			ok: result.reason === 'ok',
 			response: result.response,

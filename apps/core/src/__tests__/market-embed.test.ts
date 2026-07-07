@@ -2,7 +2,11 @@ import { describe, expect, it } from 'vitest'
 
 import {
 	buildBetAnnouncement,
+	buildMarketCloseAnnouncement,
 	buildMarketEmbed,
+	buildMarketResolveAnnouncement,
+	buildMarketVoidAnnouncement,
+	buildWagerResultDm,
 	formatMarketPoints,
 	truncateForEmbed,
 } from '../lib/market-embed'
@@ -89,20 +93,72 @@ describe('formatMarketPoints', () => {
 })
 
 describe('buildBetAnnouncement', () => {
-	it('reports the amount and outcome and no bettor identity', () => {
-		const msg = buildBetAnnouncement('1000', 'Yes')
-		expect(msg).toBe('🎲 A bet of **1,000 points** was placed on **Yes**.')
+	it('names the bettor with the amount and outcome', () => {
+		const msg = buildBetAnnouncement('<@42>', '1000', 'Yes')
+		expect(msg).toBe('🎲 <@42> bet **1,000 points** on **Yes**.')
 	})
 
 	it('groups the amount using formatMarketPoints', () => {
-		expect(buildBetAnnouncement('1234567', 'No')).toContain('1,234,567 points')
+		expect(buildBetAnnouncement('<@1>', '1234567', 'No')).toContain('1,234,567 points')
 	})
 
 	it('truncates an over-long outcome label so the message stays within limits', () => {
 		const long = 'x'.repeat(300)
-		const msg = buildBetAnnouncement('5', long)
+		const msg = buildBetAnnouncement('<@1>', '5', long)
 		expect(msg).toContain('…')
 		expect(msg).not.toContain('x'.repeat(300))
+	})
+})
+
+describe('close / resolve / void announcements', () => {
+	it('resolve announcement carries the outcome and aggregate totals', () => {
+		const msg = buildMarketResolveAnnouncement('Yes', '10000', '4000')
+		expect(msg).toContain('Yes')
+		expect(msg).toContain('10,000 points')
+		expect(msg).toContain('4,000 points')
+	})
+
+	it('void announcement states the refunded total', () => {
+		expect(buildMarketVoidAnnouncement('5000')).toContain('5,000 points')
+	})
+
+	it('close announcement mentions closed', () => {
+		expect(buildMarketCloseAnnouncement().toLowerCase()).toContain('closed')
+	})
+})
+
+describe('buildWagerResultDm', () => {
+	const base = { question: 'Will it rain?', voided: false, outcomeLabel: 'Yes' }
+
+	it('frames a net win with a + sign', () => {
+		const msg = buildWagerResultDm({ ...base, staked: '1000', returned: '1500', net: '500' })
+		expect(msg).toContain('net **+500 points**')
+		expect(msg).toContain('🎉')
+	})
+
+	it('frames a net loss with the signed (negative) amount', () => {
+		const msg = buildWagerResultDm({ ...base, staked: '1000', returned: '0', net: '-1000' })
+		expect(msg).toContain('net **-1,000 points**')
+		expect(msg).toContain('😔')
+	})
+
+	it('frames break-even', () => {
+		const msg = buildWagerResultDm({ ...base, staked: '1000', returned: '1000', net: '0' })
+		expect(msg).toContain('🤝')
+		expect(msg).toContain('net **0 points**')
+	})
+
+	it('reports a refund on a void', () => {
+		const msg = buildWagerResultDm({
+			...base,
+			voided: true,
+			outcomeLabel: null,
+			staked: '750',
+			returned: '750',
+			net: '0',
+		})
+		expect(msg).toContain('voided')
+		expect(msg).toContain('750 points')
 	})
 })
 
