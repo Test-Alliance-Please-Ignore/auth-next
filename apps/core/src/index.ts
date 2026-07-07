@@ -62,8 +62,10 @@ import usersRoutes from './routes/users'
 import universeRoutes from './routes/universe'
 import { CoreRpcService } from './services/core-rpc.service'
 import {
+	buildDiscordInteractionRouting,
 	ensureDiscordCommandRegistryLoaded,
 	executeDiscordSlashCommand,
+	type DiscordInteractionRouting,
 	type ExecuteDiscordSlashCommandInput,
 } from './services/discord-commands.service'
 import { DkpService } from './services/dkp.service'
@@ -934,6 +936,15 @@ export class CoreWorker extends WorkerEntrypoint<Env> {
 			commandId: result.commandId,
 			reason: result.reason,
 		}
+	}
+
+	/**
+	 * Return the Discord interaction deferral routing map, telling the interactions worker
+	 * which commands/subcommands to defer (and whether ephemerally). Pure/in-memory —
+	 * safe to call on the hot path and cache in the caller.
+	 */
+	async getDiscordInteractionRouting(): Promise<DiscordInteractionRouting> {
+		return buildDiscordInteractionRouting()
 	}
 
 	/**

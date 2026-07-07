@@ -9,17 +9,22 @@ import { logger, withNotFound, withOnError, withSentry } from '@repo/hono-helper
 import { DiscordDO, DiscordGatewayDO } from './durable-object'
 import type { DiscordGateway } from './gateway/types'
 import * as discordService from './services/discord.service'
+import { resolveDeferralMode, resolveSubcommandKey } from './utils/interaction-routing'
 
-import type { App, DiscordInteractionOption } from './context'
+import type { Discord } from '@repo/discord'
+import type { App, DiscordInteractionOption, DiscordInteractionRouting } from './context'
 
 const DISCORD_INTERACTION_PING = 1
 const DISCORD_INTERACTION_APPLICATION_COMMAND = 2
+const DISCORD_INTERACTION_DEFERRED_RESPONSE = 5
 const DISCORD_EPHEMERAL_FLAG = 1 << 6
 const DISCORD_REPLAY_WINDOW_SECONDS = 5 * 60
+const DISCORD_ROUTING_CACHE_TTL_MS = 60_000
 
 interface DiscordInteractionPayload {
 	id: string
 	type: number
+	token: string
 	guild_id?: string
 	channel_id?: string
 	user?: {
@@ -34,6 +39,110 @@ interface DiscordInteractionPayload {
 	data?: {
 		name?: string
 		options?: DiscordInteractionOption[]
+	}
+}
+
+interface RoutingCacheState {
+	value: DiscordInteractionRouting | null
+	loadedAtMs: number
+	loading: Promise<DiscordInteractionRouting> | null
+}
+
+const routingCache: RoutingCacheState = {
+	value: null,
+	loadedAtMs: 0,
+	loading: null,
+}
+
+/**
+ * Load the interaction deferral routing map from core, cached for 60s (mirrors core's own
+ * registry TTL). On failure, fall back to the last known value or an empty map (⇒ all 'sync',
+ * preserving today's synchronous behavior).
+ */
+async function getInteractionRouting(env: App['Bindings']): Promise<DiscordInteractionRouting> {
+	if (routingCache.value && Date.now() - routingCache.loadedAtMs < DISCORD_ROUTING_CACHE_TTL_MS) {
+		return routingCache.value
+	}
+
+	if (!routingCache.loading) {
+		routingCache.loading = (async () => {
+			try {
+				const routing = await env.CORE.getDiscordInteractionRouting()
+				routingCache.value = routing
+				routingCache.loadedAtMs = Date.now()
+				return routing
+			} catch (error) {
+				logger.warn('[DiscordInteractions] Failed to load interaction routing; defaulting to sync', {
+					error: error instanceof Error ? error.message : String(error),
+				})
+				return routingCache.value ?? { commands: {} }
+			} finally {
+				routingCache.loading = null
+			}
+		})()
+	}
+
+	return routingCache.loading
+}
+
+interface DeferredCommandContext {
+	interactionId: string
+	token: string
+	commandName: string
+	discordUserId: string
+	guildId: string | null
+	channelId: string | null
+	options: DiscordInteractionOption[]
+}
+
+/**
+ * Run a deferred slash command out-of-band (after the type:5 ACK) and deliver the result by
+ * editing the original interaction response. Any failure is delivered as an error message so
+ * the user never sees a stuck "thinking…" state.
+ */
+async function runDeferredCommand(
+	env: App['Bindings'],
+	ctx: DeferredCommandContext
+): Promise<void> {
+	const startedAt = Date.now()
+	try {
+		const execution = await env.CORE.executeDiscordSlashCommand({
+			commandName: ctx.commandName,
+			discordUserId: ctx.discordUserId,
+			guildId: ctx.guildId,
+			channelId: ctx.channelId,
+			options: ctx.options,
+			interactionId: ctx.interactionId,
+		})
+
+		// Zero-width space fallback: Discord rejects empty content on an edit.
+		const content = execution.response.data?.content ?? '​'
+		const stub = getStub<Discord>(env.DISCORD, 'default')
+		const result = await stub.editOriginalInteractionResponse(ctx.token, { content })
+
+		if (!result.success) {
+			logger.error('[DiscordInteractions] Failed to deliver deferred response', {
+				interactionId: ctx.interactionId,
+				commandName: ctx.commandName,
+				error: result.error,
+				durationMs: Date.now() - startedAt,
+			})
+		}
+	} catch (error) {
+		logger.error('[DiscordInteractions] Deferred command execution failed', {
+			interactionId: ctx.interactionId,
+			commandName: ctx.commandName,
+			error: error instanceof Error ? error.message : String(error),
+			durationMs: Date.now() - startedAt,
+		})
+		try {
+			const stub = getStub<Discord>(env.DISCORD, 'default')
+			await stub.editOriginalInteractionResponse(ctx.token, {
+				content: 'Command execution failed. Please try again later.',
+			})
+		} catch {
+			// Best-effort delivery; nothing more we can do.
+		}
 	}
 }
 
@@ -182,6 +291,36 @@ const app = new Hono<App>()
 			})
 		}
 
+		const routing = await getInteractionRouting(c.env)
+		const subKey = resolveSubcommandKey(interaction.data.options)
+		const deferralMode = resolveDeferralMode(routing, commandName.trim().toLowerCase(), subKey)
+
+		if (deferralMode !== 'sync') {
+			// Deferred path: ACK within 3s (type:5), then run the work out-of-band and deliver
+			// via a followup edit. Ephemerality is fixed here at ACK time.
+			logger.info('[DiscordInteractions] Deferring slash command', {
+				requestId,
+				interactionId: interaction.id,
+				commandName,
+				deferralMode,
+			})
+			c.executionCtx.waitUntil(
+				runDeferredCommand(c.env, {
+					interactionId: interaction.id,
+					token: interaction.token,
+					commandName,
+					discordUserId,
+					guildId,
+					channelId,
+					options: interaction.data.options ?? [],
+				})
+			)
+			return c.json({
+				type: DISCORD_INTERACTION_DEFERRED_RESPONSE,
+				data: deferralMode === 'defer-ephemeral' ? { flags: DISCORD_EPHEMERAL_FLAG } : {},
+			})
+		}
+
 		try {
 			const execution = await c.env.CORE.executeDiscordSlashCommand({
 				commandName,
@@ -189,6 +328,7 @@ const app = new Hono<App>()
 				guildId,
 				channelId,
 				options: interaction.data.options ?? [],
+				interactionId: interaction.id,
 			})
 
 			logger.info('[DiscordInteractions] Slash command handled', {

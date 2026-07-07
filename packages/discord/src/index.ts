@@ -629,6 +629,19 @@ export interface Discord {
 		guildId: string,
 		opts: { commandId?: string; commandName?: string }
 	): Promise<{ success: boolean; deletedCommandId?: string; error?: string }>
+
+	/**
+	 * Edit the original (deferred) interaction response via the interaction webhook.
+	 * Used to deliver the result of a deferred (type:5) slash command. Authorized by the
+	 * interaction token in the URL path — no bot token is sent. Ephemerality was fixed at
+	 * ACK time, so no flags are sent here.
+	 * @param interactionToken - The token from the original interaction
+	 * @param message - The message content (and optional embeds) to set
+	 */
+	editOriginalInteractionResponse(
+		interactionToken: string,
+		message: { content: string; embeds?: DiscordEmbed[] }
+	): Promise<{ success: boolean; error?: string }>
 }
 
 /**

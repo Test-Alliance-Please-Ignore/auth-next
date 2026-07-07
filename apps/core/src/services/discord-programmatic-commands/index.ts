@@ -5,7 +5,7 @@ import type { ProgrammaticCommandDefinition } from './types'
 
 export { EVETIME_PROGRAMMATIC_COMMAND } from './evetime'
 export { HOW_PROGRAMMATIC_COMMAND } from './how'
-export type { ProgrammaticCommandDefinition } from './types'
+export type { DeferralMode, ProgrammaticCommandDefinition } from './types'
 
 export const PROGRAMMATIC_COMMAND_DEFINITIONS: ProgrammaticCommandDefinition[] = [
 	EVETIME_PROGRAMMATIC_COMMAND,
