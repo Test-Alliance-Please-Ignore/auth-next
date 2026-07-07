@@ -234,6 +234,19 @@ export interface PredictionMarkets {
 	getWalletBalance(userId: string): Promise<{ balance: string }>
 	listMarkets(filter?: ListMarketsFilter): Promise<MarketSummary[]>
 	getMarket(marketId: string): Promise<MarketDetail | null>
+	/**
+	 * Non-terminal markets (open/closed/resolving) that have no forum post yet
+	 * (`discordThreadId IS NULL`), oldest first, bounded — the reconcile cron's backfill work-list.
+	 * `minAgeMinutes` skips very fresh markets whose create-route publish may still be in flight.
+	 */
+	listMarketsNeedingPost(limit?: number, minAgeMinutes?: number): Promise<MarketDetail[]>
+	/**
+	 * Ids of non-terminal markets that HAVE a post and changed within the last `sinceMinutes`, newest
+	 * first, bounded — the reconcile cron's self-healing refresh work-list. A failed post refresh keeps
+	 * a fresh `updatedAt`, so it stays here and is retried each tick until the edit lands. Returns ids
+	 * (not details) so the caller re-reads current state just before editing.
+	 */
+	listMarketsToRefresh(sinceMinutes?: number, limit?: number): Promise<string[]>
 	getUserBets(userId: string, opts?: { marketId?: string; activeOnly?: boolean }): Promise<BetView[]>
 	/** A user's bets joined to market question + outcome label (for `/market mybets`). */
 	getUserBetsDetailed(
@@ -272,7 +285,12 @@ export interface PredictionMarkets {
 	 */
 	placeBet(input: PlaceBetInput): Promise<BetResult & { deduped: boolean }>
 	closeMarket(input: { actorUserId: string; marketId: string }): Promise<void>
-	closeDueMarkets(): Promise<{ closed: number }>
+	/**
+	 * Auto-close up to `limit` open markets whose close time has passed (bounded so a backlog
+	 * can't blow the reconcile cron's budget; it drains over ticks). Returns the closed ids
+	 * (empty on a no-op re-run). Idempotent.
+	 */
+	closeDueMarkets(limit?: number): Promise<{ closedMarketIds: string[] }>
 	proposeResolution(input: {
 		resolverId: string
 		marketId: string
