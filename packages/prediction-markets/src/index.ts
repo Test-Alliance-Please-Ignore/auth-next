@@ -43,6 +43,12 @@ export interface CreateMarketInput {
 	maxStake?: string
 	perUserCap?: string
 	twoOfN?: boolean
+	/**
+	 * When true, consume the per-user `create_market` rate budget and reject (RATE_LIMITED) if it's
+	 * exhausted. Server-set policy flag — the member create route sets it for non-admins; admin
+	 * creation leaves it unset (uncapped). Never populated from client input.
+	 */
+	enforceRateLimit?: boolean
 }
 
 export interface PlaceBetInput {

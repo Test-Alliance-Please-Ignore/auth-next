@@ -76,7 +76,7 @@ describe('member prediction-markets create route', () => {
 		expect(mocks.createAndPublishMarket).not.toHaveBeenCalled()
 	})
 
-	it('creates for a permitted user, with createdBy taken from the session (not the client)', async () => {
+	it('creates for a permitted user, createdBy from session, rate-limited for a non-admin', async () => {
 		mocks.hasMarketPermission.mockResolvedValue(true)
 		// Even if the client tries to spoof createdBy, the route ignores it.
 		const res = await post(createApp(makeUser({ id: 'user-1' })), { ...validBody, createdBy: 'evil' })
@@ -86,8 +86,29 @@ describe('member prediction-markets create route', () => {
 			expect.anything(),
 			env,
 			'user-1',
-			expect.objectContaining({ question: 'Will it rain tomorrow?' })
+			expect.objectContaining({ question: 'Will it rain tomorrow?' }),
+			{ enforceRateLimit: true }
 		)
+	})
+
+	it('does not rate-limit a site admin using the member route', async () => {
+		mocks.hasMarketPermission.mockResolvedValue(true)
+		await post(createApp(makeUser({ is_admin: true })), validBody)
+		expect(mocks.createAndPublishMarket).toHaveBeenCalledWith(
+			expect.anything(),
+			env,
+			'user-1',
+			expect.anything(),
+			{ enforceRateLimit: false }
+		)
+	})
+
+	it('429s when the per-user creation rate budget is exhausted', async () => {
+		mocks.hasMarketPermission.mockResolvedValue(true)
+		mocks.createAndPublishMarket.mockRejectedValue(new Error('RATE_LIMITED:5000'))
+		const res = await post(createApp(makeUser()), validBody)
+		expect(res.status).toBe(429)
+		expect(await res.json()).toMatchObject({ retryAfterMs: 5000 })
 	})
 
 	it('400s an invalid body (validation) even when permitted', async () => {

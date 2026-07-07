@@ -39,7 +39,11 @@ app.post('/markets', async (c) => {
 	}
 	try {
 		const body = createMarketSchema.parse(await c.req.json())
-		const result = await createAndPublishMarket(db, c.env, user.id, body)
+		// Rate-limit non-admin member creation so a creator can't flood the forum; site admins
+		// using this route are uncapped (they're fully trusted and could use the admin route anyway).
+		const result = await createAndPublishMarket(db, c.env, user.id, body, {
+			enforceRateLimit: !user.is_admin,
+		})
 		logger.info('[PMMember] market created', {
 			actorId: user.id,
 			marketId: result.market.id,

@@ -595,6 +595,14 @@ export class PredictionMarketsDO extends DurableObject<Env> implements Predictio
 			throw new Error('INVALID_PER_USER_CAP')
 		}
 
+		// Rate limit member-created markets (opt-in per request; admin creation is uncapped). Consume
+		// the budget after input validation but before any write; a rejected create still counts
+		// (anti-spam), same as placeBet. `create_market` throttles the public forum-post fan-out.
+		if (input.enforceRateLimit) {
+			const rate = await this.consumeRateBudget(input.createdBy, 'create_market')
+			if (!rate.allowed) throw new Error(`RATE_LIMITED:${rate.retryAfterMs}`)
+		}
+
 		try {
 			return await this.db.transaction(async (tx) => {
 				const [cfg] = await tx
