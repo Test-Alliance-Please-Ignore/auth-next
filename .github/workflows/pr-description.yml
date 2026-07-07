@@ -1,0 +1,107 @@
+name: Generate PR Description
+
+# Fires when a PR is opened and every time new commits are pushed to its
+# branch (that's what `synchronize` means — effectively "on push" for a PR).
+on:
+  pull_request:
+    types: [opened, synchronize, reopened]
+
+# If someone pushes several times quickly, cancel the in-flight run and keep
+# only the latest so the description reflects the newest diff.
+concurrency:
+  group: pr-description-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+jobs:
+  describe:
+    runs-on: ubuntu-latest
+
+    # Skip PRs from forks: secrets (ANTHROPIC_API_KEY) aren't available to them,
+    # so the job would fail anyway. Remove this line if you don't take fork PRs.
+    if: github.event.pull_request.head.repo.full_name == github.repository
+
+    permissions:
+      contents: read # read the code / diff
+      pull-requests: write # update the PR body
+      id-token: write # required by the action's default auth path
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0 # full history so Claude can diff against the base
+
+      - name: Generate description with Claude
+        uses: anthropics/claude-code-action@v1
+        with:
+          anthropic_api_key: ${{ secrets.ANTHROPIC_API_KEY }}
+          # Pin a model if you like, e.g. add:  --model claude-sonnet-4-6
+          claude_args: |
+            --allowedTools "Bash(gh pr view:*),Bash(gh pr diff:*),Bash(gh pr edit:*),Bash(git diff:*),Bash(git log:*)"
+          prompt: |
+            REPO: ${{ github.repository }}
+            PR NUMBER: ${{ github.event.pull_request.number }}
+
+            Write a clear, accurate description for this pull request and update
+            the PR body with it.
+
+            Steps:
+            1. Inspect the change. Run:
+                 gh pr diff ${{ github.event.pull_request.number }}
+               and, for context on intent:
+                 gh pr view ${{ github.event.pull_request.number }} --json title,body,commits
+            2. Draft a description in Markdown with these sections:
+                 ## Summary
+                 One to three sentences: what this PR does and why.
+                 ## Changes
+                 A short bulleted list of the notable changes.
+                 ## Testing
+                 How the changes were or should be verified (include only if it's
+                 evident from the diff or commits — don't invent test steps).
+            3. Wrap ONLY your generated text between these two marker comments:
+                 <!-- claude:begin -->
+                 ...your description...
+                 <!-- claude:end -->
+            4. Update the PR body:
+               - If the current body already contains the markers, replace only
+                 the text between them and keep everything the author wrote
+                 outside the markers untouched.
+               - If there are no markers, and the body already has meaningful
+                 author-written content, append your marked block at the bottom
+                 rather than overwriting their text.
+               - Otherwise (empty body or just a template), set the body to your
+                 marked block.
+               Apply the update with:
+                 gh pr edit ${{ github.event.pull_request.number }} --body "<full new body>"
+
+            Guidelines:
+            - Base everything strictly on the actual diff and commit messages.
+              Do not describe changes that aren't in the diff.
+            - Keep it concise and skimmable; prefer plain language.
+            - Do not leave a chat-style message; your only side effect is the
+              updated PR body.
+
+# ----------------------------------------------------------------------------
+# Want a LITERAL `push` trigger instead (e.g. push to any feature branch)?
+# Replace the `on:` block above with the one below. It looks up the open PR
+# for the pushed branch and no-ops if there isn't one.
+#
+# on:
+#   push:
+#     branches-ignore: [main, master]
+#
+# Then add this as the first real step in the job, and gate the Claude step on
+# its output (steps.find_pr.outputs.number != ''):
+#
+#   - name: Find PR for this branch
+#     id: find_pr
+#     env:
+#       GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+#     run: |
+#       num=$(gh pr list --head "${GITHUB_REF_NAME}" --state open \
+#               --json number --jq '.[0].number // empty')
+#       echo "number=$num" >> "$GITHUB_OUTPUT"
+#
+# ...and swap every `${{ github.event.pull_request.number }}` above for
+# `${{ steps.find_pr.outputs.number }}`.
+# ----------------------------------------------------------------------------
