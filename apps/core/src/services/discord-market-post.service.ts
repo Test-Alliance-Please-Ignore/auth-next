@@ -134,12 +134,15 @@ export async function publishMarketPost(
 	const cfg = await ensureForumChannel(db, discord, guildId, categoryId)
 	if (!cfg.forumChannelId) throw new ForumInitInProgressError()
 
+	// Tag by the market's actual status, not a hardcoded "Open": a reconcile backfill can publish a
+	// market that has already auto-closed, which must land under the Closed tag, not Open.
+	const tagId = statusTagId(cfg, market.status)
 	const post = await discord.createMarketForumPost(cfg.forumChannelId, {
 		// Forum thread name max is 100 chars; the full question lives in the embed title.
 		name: truncateForEmbed(market.question, 100),
 		embeds: [buildMarketEmbed(market)],
 		components: buildMarketComponents(market),
-		...(cfg.tagOpenId ? { appliedTagIds: [cfg.tagOpenId] } : {}),
+		...(tagId ? { appliedTagIds: [tagId] } : {}),
 	})
 	await prediction.attachDiscordPost({
 		marketId: market.id,

@@ -4,7 +4,7 @@ import { useWorkersLogger } from 'workers-tagged-logger'
 
 import { and, eq, inArray, ne } from '@repo/db-utils'
 import { getStub } from '@repo/do-utils'
-import { logger, withNotFound, withOnError, withSentry } from '@repo/hono-helpers'
+import { captureException, logger, withNotFound, withOnError, withSentry } from '@repo/hono-helpers'
 
 import { createDb } from './db'
 import { waitUntilWithTelemetry } from './lib/background-task'
@@ -75,6 +75,7 @@ import {
 	type ExecuteComponentInput,
 	type ExecuteModalSubmitInput,
 } from './services/discord-components.service'
+import { reconcileMarketPosts } from './services/discord-market-reconcile.service'
 import { DkpService } from './services/dkp.service'
 
 import type {
@@ -183,7 +184,7 @@ const sentryApp = withSentry(app)
 
 export default {
 	fetch: sentryApp.fetch.bind(sentryApp),
-	async scheduled(event: ScheduledEvent, env: Env, _ctx: ExecutionContext): Promise<void> {
+	async scheduled(event: ScheduledEvent, env: Env, ctx: ExecutionContext): Promise<void> {
 		const coreStub = getStub<Core>(env.CORE, 'default')
 		if (event.cron === '3-58/5 * * * *') {
 			const result = await coreStub.processPendingDiscordRefreshes()
@@ -195,6 +196,19 @@ export default {
 			if (tempopResult.expired > 0) {
 				console.log('[Core:Scheduled] Expired Mumble temp-ops', tempopResult)
 			}
+
+			// Prediction-markets forum-post drift sweep: auto-close due markets + refresh/backfill
+			// posts. Best-effort and out-of-band so a slow Discord run never delays the cron; a real
+			// failure is paged, not swallowed.
+			ctx.waitUntil(
+				reconcileMarketPosts(createDb(env.DATABASE_URL), env)
+					.then((r) => {
+						if (r.closed > 0 || r.refreshed > 0 || r.posted > 0 || r.failed > 0) {
+							console.log('[Core:Scheduled] Prediction-market reconcile', r)
+						}
+					})
+					.catch((error) => captureException(error as Error, { tags: { job: 'pm-reconcile' } }))
+			)
 		}
 
 		if (event.cron === TOKEN_INVALID_ALERT_DRAIN_CRON) {

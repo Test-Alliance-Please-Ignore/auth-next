@@ -1,0 +1,158 @@
+import { beforeEach, describe, expect, it, vi } from 'vitest'
+
+import { reconcileMarketPosts } from '../discord-market-reconcile.service'
+
+import type { ReconcileEnv } from '../discord-market-reconcile.service'
+import type { MarketDetail } from '@repo/prediction-markets'
+
+const hoisted = vi.hoisted(() => ({
+	predictionBinding: {} as DurableObjectNamespace,
+	discordBinding: {} as DurableObjectNamespace,
+	prediction: {
+		closeDueMarkets: vi.fn(),
+		listMarketsToRefresh: vi.fn(),
+		getMarket: vi.fn(),
+		listMarketsNeedingPost: vi.fn(),
+	},
+	post: {
+		updateMarketPostFromDetail: vi.fn(),
+		applyMarketPostStatus: vi.fn(),
+		publishMarketPost: vi.fn(),
+	},
+}))
+
+// getStub returns the PM stub for the PREDICTION_MARKETS binding; the Discord stub is an opaque
+// object the (mocked) post-service functions ignore.
+vi.mock('@repo/do-utils', () => ({
+	getStub: vi.fn((binding: DurableObjectNamespace) =>
+		binding === hoisted.predictionBinding ? hoisted.prediction : {}
+	),
+}))
+
+vi.mock('../discord-market-post.service', () => ({
+	updateMarketPostFromDetail: hoisted.post.updateMarketPostFromDetail,
+	applyMarketPostStatus: hoisted.post.applyMarketPostStatus,
+	publishMarketPost: hoisted.post.publishMarketPost,
+}))
+
+const db = {} as unknown as Parameters<typeof reconcileMarketPosts>[0]
+
+function makeEnv(overrides?: Partial<ReconcileEnv>): ReconcileEnv {
+	return {
+		PREDICTION_MARKETS: hoisted.predictionBinding,
+		DISCORD: hoisted.discordBinding,
+		PM_FORUM_GUILD_ID: 'g1',
+		PM_FORUM_CATEGORY_ID: 'c1',
+		...overrides,
+	} as ReconcileEnv
+}
+
+function market(id: string, status: MarketDetail['status'] = 'closed'): MarketDetail {
+	return {
+		id,
+		question: 'Q',
+		status,
+		closesAt: '2020-01-01T00:00:00.000Z',
+		totalPool: '0',
+		outcomeCount: 2,
+		createdAt: '2020-01-01T00:00:00.000Z',
+		discordThreadId: 't',
+		discordMessageId: 'm',
+		description: null,
+		createdBy: 'u',
+		rakeBps: 0,
+		minStake: '1',
+		maxStake: null,
+		perUserCap: null,
+		twoOfN: false,
+		resolvedOutcomeId: null,
+		resolvedBy: null,
+		resolvedAt: null,
+		voidReason: null,
+		outcomes: [],
+	}
+}
+
+describe('reconcileMarketPosts', () => {
+	beforeEach(() => {
+		vi.clearAllMocks()
+		hoisted.prediction.closeDueMarkets.mockResolvedValue({ closedMarketIds: [] })
+		hoisted.prediction.listMarketsToRefresh.mockResolvedValue([])
+		hoisted.prediction.getMarket.mockImplementation((id: string) => Promise.resolve(market(id)))
+		hoisted.prediction.listMarketsNeedingPost.mockResolvedValue([])
+		hoisted.post.updateMarketPostFromDetail.mockResolvedValue({ success: true })
+		hoisted.post.applyMarketPostStatus.mockResolvedValue(undefined)
+		hoisted.post.publishMarketPost.mockResolvedValue({ threadId: 't', messageId: 'm' })
+	})
+
+	it('no-ops when the forum guild/category is not configured', async () => {
+		const res = await reconcileMarketPosts(db, makeEnv({ PM_FORUM_GUILD_ID: undefined }))
+		expect(res).toEqual({ closed: 0, refreshed: 0, posted: 0, failed: 0, skipped: true })
+		expect(hoisted.prediction.closeDueMarkets).not.toHaveBeenCalled()
+		expect(hoisted.prediction.listMarketsToRefresh).not.toHaveBeenCalled()
+		expect(hoisted.prediction.listMarketsNeedingPost).not.toHaveBeenCalled()
+	})
+
+	it('reports the count of auto-closed markets', async () => {
+		hoisted.prediction.closeDueMarkets.mockResolvedValue({ closedMarketIds: ['a', 'b', 'c'] })
+		const res = await reconcileMarketPosts(db, makeEnv())
+		expect(res.closed).toBe(3)
+		// Auto-close is bounded to keep the run inside the cron budget.
+		expect(hoisted.prediction.closeDueMarkets).toHaveBeenCalledWith(expect.any(Number))
+	})
+
+	it('refreshes each drifted post (embed + tag/lock) from the self-healing refresh list', async () => {
+		hoisted.prediction.listMarketsToRefresh.mockResolvedValue(['a', 'b'])
+		const res = await reconcileMarketPosts(db, makeEnv())
+		expect(res.refreshed).toBe(2)
+		expect(hoisted.post.updateMarketPostFromDetail).toHaveBeenCalledTimes(2)
+		expect(hoisted.post.applyMarketPostStatus).toHaveBeenCalledTimes(2)
+	})
+
+	it('re-reads state and skips a market that went terminal mid-sweep (no clobber)', async () => {
+		hoisted.prediction.listMarketsToRefresh.mockResolvedValue(['a'])
+		// Snapshot said "changed recently", but it resolved before we got to it — leave it alone.
+		hoisted.prediction.getMarket.mockResolvedValue(market('a', 'resolved'))
+		const res = await reconcileMarketPosts(db, makeEnv())
+		expect(res.refreshed).toBe(0)
+		expect(res.failed).toBe(0)
+		expect(hoisted.post.updateMarketPostFromDetail).not.toHaveBeenCalled()
+	})
+
+	it('counts a soft refresh failure and skips the tag/lock step (retried next tick)', async () => {
+		hoisted.prediction.listMarketsToRefresh.mockResolvedValue(['a'])
+		hoisted.post.updateMarketPostFromDetail.mockResolvedValue({ success: false, error: 'no post' })
+		const res = await reconcileMarketPosts(db, makeEnv())
+		expect(res.failed).toBe(1)
+		expect(res.refreshed).toBe(0)
+		expect(hoisted.post.applyMarketPostStatus).not.toHaveBeenCalled()
+	})
+
+	it('isolates a throwing refresh and still processes the rest', async () => {
+		hoisted.prediction.listMarketsToRefresh.mockResolvedValue(['a', 'b'])
+		hoisted.post.updateMarketPostFromDetail
+			.mockRejectedValueOnce(new Error('discord 500'))
+			.mockResolvedValueOnce({ success: true })
+		const res = await reconcileMarketPosts(db, makeEnv())
+		expect(res.failed).toBe(1)
+		expect(res.refreshed).toBe(1)
+	})
+
+	it('backfills posts for non-terminal markets missing one', async () => {
+		hoisted.prediction.listMarketsNeedingPost.mockResolvedValue([market('x'), market('y')])
+		const res = await reconcileMarketPosts(db, makeEnv())
+		expect(res.posted).toBe(2)
+		expect(hoisted.post.publishMarketPost).toHaveBeenCalledTimes(2)
+	})
+
+	it('isolates a failing backfill and still processes the rest', async () => {
+		hoisted.prediction.listMarketsNeedingPost.mockResolvedValue([market('x'), market('y')])
+		hoisted.post.publishMarketPost
+			.mockRejectedValueOnce(new Error('discord 500'))
+			.mockResolvedValueOnce({ threadId: 't', messageId: 'm' })
+		const res = await reconcileMarketPosts(db, makeEnv())
+		expect(res.failed).toBe(1)
+		expect(res.posted).toBe(1)
+		expect(hoisted.post.publishMarketPost).toHaveBeenCalledTimes(2)
+	})
+})

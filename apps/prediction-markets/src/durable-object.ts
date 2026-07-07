@@ -1,6 +1,6 @@
 import { DurableObject } from 'cloudflare:workers'
 
-import { and, asc, desc, eq, gte, inArray, lte, ne, sql } from '@repo/db-utils'
+import { and, asc, desc, eq, gte, inArray, isNotNull, isNull, lte, ne, sql } from '@repo/db-utils'
 import { captureException, logger } from '@repo/hono-helpers'
 import { parseDateOrNull } from '@repo/worker-utils'
 
@@ -833,12 +833,33 @@ export class PredictionMarketsDO extends DurableObject<Env> implements Predictio
 	}
 
 	/** Cron sweep: close all open markets whose close time has passed. */
-	async closeDueMarkets(): Promise<{ closed: number }> {
+	async closeDueMarkets(limit = 25): Promise<{ closedMarketIds: string[] }> {
+		const bounded = Math.min(Math.max(limit, 1), 100)
 		try {
+			// Bound the batch so a backlog of due markets can't blow the reconcile cron's wall-clock
+			// budget; a large backlog drains over successive ticks.
+			const due = await this.db
+				.select({ id: pmMarkets.id })
+				.from(pmMarkets)
+				.where(and(eq(pmMarkets.status, 'open'), sql`${pmMarkets.closesAt} <= now()`))
+				.orderBy(asc(pmMarkets.closesAt))
+				.limit(bounded)
+			if (due.length === 0) return { closedMarketIds: [] }
+
+			// Re-guard status='open' in the UPDATE so a market that transitioned between the select
+			// and the update isn't clobbered; RETURNING yields the ids actually closed.
 			const closed = await this.db
 				.update(pmMarkets)
 				.set({ status: 'closed', updatedAt: new Date() })
-				.where(and(eq(pmMarkets.status, 'open'), sql`${pmMarkets.closesAt} <= now()`))
+				.where(
+					and(
+						inArray(
+							pmMarkets.id,
+							due.map((d) => d.id)
+						),
+						eq(pmMarkets.status, 'open')
+					)
+				)
 				.returning({ id: pmMarkets.id })
 
 			for (const market of closed) {
@@ -850,13 +871,76 @@ export class PredictionMarketsDO extends DurableObject<Env> implements Predictio
 					metadata: { auto: true },
 				})
 			}
-			return { closed: closed.length }
+			return { closedMarketIds: closed.map((m) => m.id) }
 		} catch (error) {
 			captureException(error as Error, {
 				tags: { durableObject: 'PredictionMarketsDO', method: 'closeDueMarkets' },
 			})
 			throw error
 		}
+	}
+
+	/**
+	 * Non-terminal markets with no forum post yet (`discord_thread_id IS NULL`), oldest first,
+	 * bounded — the reconcile cron's backfill work-list. Drafts and terminal (resolved/voided)
+	 * markets are excluded. `minAgeMinutes` skips very fresh markets whose create-route publish may
+	 * still be in flight, so the sweep doesn't race it into a duplicate post.
+	 */
+	async listMarketsNeedingPost(limit = 25, minAgeMinutes = 2): Promise<MarketDetail[]> {
+		const bounded = Math.min(Math.max(limit, 1), 100)
+		const maxCreatedAt = new Date(Date.now() - Math.max(minAgeMinutes, 0) * 60_000)
+		const rows = await this.db
+			.select({ id: pmMarkets.id })
+			.from(pmMarkets)
+			.where(
+				and(
+					isNull(pmMarkets.discordThreadId),
+					inArray(pmMarkets.status, ['open', 'closed', 'resolving']),
+					lte(pmMarkets.createdAt, maxCreatedAt)
+				)
+			)
+			.orderBy(asc(pmMarkets.createdAt))
+			.limit(bounded)
+
+		return this.buildMarketDetails(rows.map((r) => r.id))
+	}
+
+	/**
+	 * Ids of non-terminal markets that HAVE a forum post and were updated within the last
+	 * `sinceMinutes`, newest first, bounded — the reconcile cron's self-healing refresh work-list.
+	 * A post whose refresh failed (auto-close tag flip, or a live bet/resolve refresh) keeps a fresh
+	 * `updated_at`, so it stays in this set and is retried on the next tick until the edit lands.
+	 * Self-shrinking: once markets stop changing they age out of the window. Returns ids (not details)
+	 * so the caller re-reads current state just before editing — a stale detail could otherwise clobber
+	 * a market that went terminal mid-sweep.
+	 */
+	async listMarketsToRefresh(sinceMinutes = 15, limit = 25): Promise<string[]> {
+		const bounded = Math.min(Math.max(limit, 1), 100)
+		const cutoff = new Date(Date.now() - Math.max(sinceMinutes, 1) * 60_000)
+		const rows = await this.db
+			.select({ id: pmMarkets.id })
+			.from(pmMarkets)
+			.where(
+				and(
+					isNotNull(pmMarkets.discordThreadId),
+					inArray(pmMarkets.status, ['open', 'closed', 'resolving']),
+					gte(pmMarkets.updatedAt, cutoff)
+				)
+			)
+			.orderBy(desc(pmMarkets.updatedAt))
+			.limit(bounded)
+
+		return rows.map((r) => r.id)
+	}
+
+	/** Build full details for a list of market ids, skipping any that vanished. */
+	private async buildMarketDetails(marketIds: string[]): Promise<MarketDetail[]> {
+		const details: MarketDetail[] = []
+		for (const id of marketIds) {
+			const detail = await this.buildMarketDetail(this.db, id)
+			if (detail) details.push(detail)
+		}
+		return details
 	}
 
 	async proposeResolution(input: {
