@@ -111,10 +111,19 @@ export const pmMarkets = pgTable(
 		maxStake: numeric('max_stake'),
 		perUserCap: numeric('per_user_cap'),
 		twoOfN: boolean('two_of_n').notNull().default(false),
+		/** Discord forum thread id for this market's post (null until the post is created). */
+		discordThreadId: text('discord_thread_id'),
+		/** Discord starter-message id of the forum post (equals the thread id for forum posts). */
+		discordMessageId: text('discord_message_id'),
 		createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
 		updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
 	},
-	(t) => [index('pm_markets_status_closes_idx').on(t.status, t.closesAt)]
+	(t) => [
+		index('pm_markets_status_closes_idx').on(t.status, t.closesAt),
+		// One market per forum thread. NULLs are distinct in Postgres b-tree, so many
+		// pre-post markets can coexist.
+		uniqueIndex('pm_markets_thread_uq').on(t.discordThreadId),
+	]
 )
 
 export const pmMarketOutcomes = pgTable(

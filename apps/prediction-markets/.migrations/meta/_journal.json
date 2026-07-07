@@ -15,6 +15,13 @@
       "when": 1783397156429,
       "tag": "0001_hard_reavers",
       "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "7",
+      "when": 1783438171157,
+      "tag": "0002_exotic_captain_cross",
+      "breakpoints": true
     }
   ]
 }

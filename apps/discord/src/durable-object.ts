@@ -6,6 +6,7 @@ import {
 	DiscordAPIError,
 	DiscordFetch,
 	DiscordRoutes,
+	DISCORD_CHANNEL_TYPE,
 	DISCORD_EXCLUDED_AUTH_GIGACHAD_ROLE_ID,
 	discordRateLimitGuard,
 } from '@repo/discord'
@@ -22,9 +23,13 @@ import { augmentRequestedRoleIdsForRefresh, calculateRoleChanges } from './utils
 
 import type {
 	Discord,
+	DiscordActionRow,
+	DiscordChannelSummary,
 	DiscordEmbed,
+	DiscordForumTag,
 	DiscordGuildMemberSnapshot,
 	DiscordGuildMembershipDetail,
+	DiscordPermissionOverwrite,
 	DiscordRegisteredSlashCommand,
 	DiscordSlashCommandDefinition,
 	DiscordTokenResponse,
@@ -1870,6 +1875,164 @@ export class DiscordDO extends DurableObject<Env> implements Discord {
 			return {
 				success: false,
 				error: error instanceof Error ? error.message : 'Failed to edit interaction response',
+			}
+		}
+	}
+
+	// ==================== FORUM / MARKET POST METHODS ====================
+
+	/**
+	 * Read a channel (GET /channels/{id}). Used to copy a category's permission overwrites
+	 * onto a new forum channel and to read a forum's available tags.
+	 */
+	async getChannel(channelId: string): Promise<DiscordChannelSummary> {
+		const client = this.createDiscordClient()
+		return client.get<DiscordChannelSummary>(DiscordRoutes.channel(channelId))
+	}
+
+	/**
+	 * Create a GUILD_FORUM channel under a category with (synced) permission overwrites + tags.
+	 * Requires the bot to hold MANAGE_CHANNELS + MANAGE_ROLES, and it can only set overwrite
+	 * bits it itself holds — a 403 (code 50013) here means the bot lacks those permissions.
+	 */
+	async createForumChannel(
+		guildId: string,
+		input: {
+			name: string
+			parentId: string
+			permissionOverwrites?: DiscordPermissionOverwrite[]
+			availableTags?: Array<{ name: string; moderated?: boolean }>
+			topic?: string
+		}
+	): Promise<DiscordChannelSummary> {
+		const client = this.createDiscordClient()
+		return client.post<DiscordChannelSummary>(DiscordRoutes.guildChannels(guildId), {
+			name: input.name,
+			type: DISCORD_CHANNEL_TYPE.GUILD_FORUM,
+			parent_id: input.parentId,
+			...(input.topic ? { topic: input.topic } : {}),
+			...(input.permissionOverwrites
+				? { permission_overwrites: input.permissionOverwrites }
+				: {}),
+			...(input.availableTags ? { available_tags: input.availableTags } : {}),
+		})
+	}
+
+	/**
+	 * Create a forum post (thread) for a market. POST /channels/{forumChannelId}/threads.
+	 * The message must carry at least one of content/embeds/components (else Discord 400s).
+	 */
+	async createMarketForumPost(
+		forumChannelId: string,
+		input: {
+			name: string
+			content?: string
+			embeds?: DiscordEmbed[]
+			components?: DiscordActionRow[]
+			appliedTagIds?: string[]
+		}
+	): Promise<{ threadId: string; messageId: string }> {
+		if (!input.content && !input.embeds?.length && !input.components?.length) {
+			throw new Error('createMarketForumPost: message must include content, embeds, or components')
+		}
+		const client = this.createDiscordClient()
+		const message: Record<string, unknown> = { allowed_mentions: { parse: [] } }
+		if (input.content) message.content = input.content
+		if (input.embeds?.length) message.embeds = input.embeds
+		if (input.components?.length) message.components = input.components
+
+		const thread = await client.post<{ id: string; message?: { id: string } }>(
+			DiscordRoutes.forumThreads(forumChannelId),
+			{
+				name: input.name,
+				message,
+				...(input.appliedTagIds?.length ? { applied_tags: input.appliedTagIds } : {}),
+			}
+		)
+		return { threadId: thread.id, messageId: thread.message?.id ?? thread.id }
+	}
+
+	/**
+	 * Edit a forum post's starter message (embed + components) — the embed-capable
+	 * replacement for editMessage. Pass components:[] to strip buttons; omit to leave intact.
+	 */
+	async updateMarketPostMessage(
+		threadId: string,
+		messageId: string,
+		input: { content?: string; embeds?: DiscordEmbed[]; components?: DiscordActionRow[] }
+	): Promise<{ success: boolean; error?: string }> {
+		const client = this.createDiscordClient()
+		const body: Record<string, unknown> = {}
+		if (input.content !== undefined) body.content = input.content
+		if (input.embeds !== undefined) body.embeds = input.embeds
+		if (input.components !== undefined) body.components = input.components
+		try {
+			await client.patch(DiscordRoutes.channelMessageById(threadId, messageId), body)
+			return { success: true }
+		} catch (error) {
+			logger.error('[DiscordDO] Failed to update market post message', {
+				threadId,
+				messageId,
+				error: error instanceof Error ? error.message : String(error),
+			})
+			return {
+				success: false,
+				error: error instanceof Error ? error.message : 'Failed to update market post message',
+			}
+		}
+	}
+
+	/** List a forum channel's available tags. */
+	async getForumTags(forumChannelId: string): Promise<DiscordForumTag[]> {
+		const channel = await this.getChannel(forumChannelId)
+		return channel.available_tags ?? []
+	}
+
+	/** Replace a thread's applied tag set (PATCH /channels/{threadId} { applied_tags }). */
+	async setThreadTags(
+		threadId: string,
+		appliedTagIds: string[]
+	): Promise<{ success: boolean; error?: string }> {
+		const client = this.createDiscordClient()
+		try {
+			await client.patch(DiscordRoutes.channel(threadId), { applied_tags: appliedTagIds })
+			return { success: true }
+		} catch (error) {
+			logger.error('[DiscordDO] Failed to set thread tags', {
+				threadId,
+				error: error instanceof Error ? error.message : String(error),
+			})
+			return {
+				success: false,
+				error: error instanceof Error ? error.message : 'Failed to set thread tags',
+			}
+		}
+	}
+
+	/**
+	 * Archive/lock a thread (optionally flipping tags) in one PATCH — combining the tag flip
+	 * with archive/lock avoids the reorder needed when a thread is already archived.
+	 */
+	async lockThread(
+		threadId: string,
+		opts: { archived?: boolean; locked?: boolean; appliedTagIds?: string[] }
+	): Promise<{ success: boolean; error?: string }> {
+		const client = this.createDiscordClient()
+		const body: Record<string, unknown> = {}
+		if (opts.appliedTagIds !== undefined) body.applied_tags = opts.appliedTagIds
+		if (opts.archived !== undefined) body.archived = opts.archived
+		if (opts.locked !== undefined) body.locked = opts.locked
+		try {
+			await client.patch(DiscordRoutes.channel(threadId), body)
+			return { success: true }
+		} catch (error) {
+			logger.error('[DiscordDO] Failed to lock thread', {
+				threadId,
+				error: error instanceof Error ? error.message : String(error),
+			})
+			return {
+				success: false,
+				error: error instanceof Error ? error.message : 'Failed to lock thread',
 			}
 		}
 	}

@@ -281,6 +281,13 @@
       "when": 1783296420378,
       "tag": "0039_dizzy_fenris",
       "breakpoints": true
+    },
+    {
+      "idx": 40,
+      "version": "7",
+      "when": 1783438177210,
+      "tag": "0040_common_tinkerer",
+      "breakpoints": true
     }
   ]
 }

@@ -9,12 +9,22 @@
 import type {
 	GlobalLedgerRow,
 	LedgerType,
+	MarketDetail,
 	MarketHistoryRow,
 	MarketStatus,
+	MarketSummary,
 	WalletRow,
 } from '@repo/prediction-markets'
 
-export type { GlobalLedgerRow, LedgerType, MarketHistoryRow, MarketStatus, WalletRow }
+export type {
+	GlobalLedgerRow,
+	LedgerType,
+	MarketDetail,
+	MarketHistoryRow,
+	MarketStatus,
+	MarketSummary,
+	WalletRow,
+}
 
 /** Generic paged envelope returned by every L1 list endpoint. */
 export interface Paged<T> {
@@ -89,4 +99,39 @@ export interface DepositResponse {
 	/** Resulting wallet balance, integer string. */
 	balance: string
 	deduped: boolean
+}
+
+// --- markets ---------------------------------------------------------------
+
+export interface CreateMarketRequest {
+	question: string
+	description?: string
+	outcomes: string[]
+	/** ISO-8601 timestamp when betting closes. */
+	closesAt: string
+	rakeBps?: number
+	/** Integer strings (numeric). DISPLAY ONLY — never Number() arithmetic. */
+	minStake?: string
+	maxStake?: string
+	perUserCap?: string
+	twoOfN?: boolean
+}
+
+export interface CreateMarketResponse {
+	market: MarketDetail
+	/** Discord forum post ids, or null if posting failed / not configured. */
+	post: { threadId: string; messageId: string } | null
+	/** Human-readable reason the forum post did not publish (market still created). */
+	postError: string | null
+}
+
+export interface MarketsFilters {
+	status?: MarketStatus
+	limit?: number
+}
+
+export interface MarketsResponse {
+	markets: MarketSummary[]
+	/** Configured markets guild id, for building forum thread deep-links. */
+	guildId: string | null
 }

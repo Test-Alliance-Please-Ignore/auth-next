@@ -101,6 +101,7 @@ export class PredictionMarketsDO extends DurableObject<Env> implements Predictio
 				closesAt: pmMarkets.closesAt,
 				totalPool: pmMarkets.totalPool,
 				createdAt: pmMarkets.createdAt,
+				discordThreadId: pmMarkets.discordThreadId,
 				outcomeCount: sql<number>`(select count(*)::int from ${pmMarketOutcomes} where ${pmMarketOutcomes.marketId} = ${pmMarkets.id})`,
 			})
 			.from(pmMarkets)
@@ -116,6 +117,7 @@ export class PredictionMarketsDO extends DurableObject<Env> implements Predictio
 			totalPool: r.totalPool,
 			outcomeCount: r.outcomeCount,
 			createdAt: r.createdAt.toISOString(),
+			discordThreadId: r.discordThreadId,
 		}))
 	}
 
@@ -438,6 +440,25 @@ export class PredictionMarketsDO extends DurableObject<Env> implements Predictio
 			})
 			throw error
 		}
+	}
+
+	/**
+	 * Persist the Discord forum post mapping after Core creates the post. Pure UPDATE —
+	 * the PM DO never calls Discord; Core orchestrates the post and writes the ids back here.
+	 */
+	async attachDiscordPost(input: {
+		marketId: string
+		threadId: string
+		messageId: string
+	}): Promise<void> {
+		await this.db
+			.update(pmMarkets)
+			.set({
+				discordThreadId: input.threadId,
+				discordMessageId: input.messageId,
+				updatedAt: new Date(),
+			})
+			.where(eq(pmMarkets.id, input.marketId))
 	}
 
 	async placeBet(input: PlaceBetInput): Promise<BetResult> {
@@ -1067,6 +1088,7 @@ export class PredictionMarketsDO extends DurableObject<Env> implements Predictio
 			totalPool: market.totalPool,
 			outcomeCount: outcomes.length,
 			createdAt: market.createdAt.toISOString(),
+			discordThreadId: market.discordThreadId,
 			rakeBps: market.rakeBps,
 			minStake: market.minStake,
 			maxStake: market.maxStake,

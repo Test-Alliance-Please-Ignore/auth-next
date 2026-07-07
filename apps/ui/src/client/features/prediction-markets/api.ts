@@ -13,10 +13,14 @@ import type {
 	AdminMarketHistoryRow,
 	AdminWalletRow,
 	AuditLedgerFilters,
+	CreateMarketRequest,
+	CreateMarketResponse,
 	DepositRequest,
 	DepositResponse,
 	LedgerFilters,
 	MarketHistoryFilters,
+	MarketsFilters,
+	MarketsResponse,
 	Paged,
 	WalletDetail,
 	WalletsFilters,
@@ -94,4 +98,18 @@ export async function getMarketHistory(
 /** POST /deposits — credit a wallet. 400 self/validation, 409 idempotency-conflict. */
 export async function createDeposit(body: DepositRequest): Promise<DepositResponse> {
 	return apiClient.post<DepositResponse>(`${BASE}/deposits`, body)
+}
+
+/** GET /markets — recent markets + the configured guild id (for forum links). */
+export async function getMarkets(filters?: MarketsFilters): Promise<MarketsResponse> {
+	const params = new URLSearchParams()
+	if (filters?.status) params.set('status', filters.status)
+	if (filters?.limit !== undefined) params.set('limit', String(filters.limit))
+	const query = params.toString()
+	return apiClient.get<MarketsResponse>(`${BASE}/markets${query ? `?${query}` : ''}`)
+}
+
+/** POST /markets — create a market; the bot best-effort publishes its forum post. */
+export async function createMarket(body: CreateMarketRequest): Promise<CreateMarketResponse> {
+	return apiClient.post<CreateMarketResponse>(`${BASE}/markets`, body)
 }

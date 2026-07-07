@@ -65,6 +65,9 @@ const IndustryProviderEditPage = lazy(
 const IndustryProviderNewPage = lazy(
 	() => import('@/features/industry/routes/industry-provider-new')
 )
+const PredictionMarketMarketsPage = lazy(
+	() => import('@/features/prediction-markets/routes/prediction-market-markets')
+)
 const PredictionMarketWalletsPage = lazy(
 	() => import('@/features/prediction-markets/routes/prediction-market-wallets')
 )
@@ -173,7 +176,15 @@ export const adminRouteElements = (
 			}
 		/>
 		<Route path="prediction-markets">
-			<Route index element={<Navigate to="/admin/prediction-markets/wallets" replace />} />
+			<Route index element={<Navigate to="/admin/prediction-markets/markets" replace />} />
+			<Route
+				path="markets"
+				element={
+					<Suspense fallback={<LoadingPage />}>
+						<PredictionMarketMarketsPage />
+					</Suspense>
+				}
+			/>
 			<Route
 				path="wallets"
 				element={
