@@ -1,7 +1,7 @@
 import { DurableObject } from 'cloudflare:workers'
 
 import { and, asc, desc, eq, gte, inArray, lte, ne, sql } from '@repo/db-utils'
-import { captureException } from '@repo/hono-helpers'
+import { captureException, logger } from '@repo/hono-helpers'
 import { parseDateOrNull } from '@repo/worker-utils'
 
 import { createDb } from './db'
@@ -74,6 +74,26 @@ const EXPECTED_BET_ERRORS = new Set([
 	'PER_USER_CAP_EXCEEDED',
 	'INSUFFICIENT_FUNDS',
 ])
+
+/**
+ * True for expected bet rejections — the user-facing outcomes we deliberately don't page on.
+ * Covers the coded domain errors above plus INVALID_AMOUNT and the RATE_LIMITED:<ms> throw.
+ */
+function isExpectedBetError(error: unknown): boolean {
+	const msg = error instanceof Error ? error.message : String(error)
+	return EXPECTED_BET_ERRORS.has(msg) || msg === 'INVALID_AMOUNT' || msg.startsWith('RATE_LIMITED')
+}
+
+/**
+ * Pull the underlying driver error off a Drizzle "Failed query: …" wrapper. Drizzle surfaces only
+ * the SQL + params in `.message`; the real Postgres reason (e.g. `relation "pm_rate_limits" does
+ * not exist`) lives on `.cause`. Logging the cause is what turns an opaque failure into a diagnosis.
+ */
+function dbErrorCause(error: unknown): string | undefined {
+	const cause = (error as { cause?: unknown } | null)?.cause
+	if (cause == null) return undefined
+	return cause instanceof Error ? cause.message : String(cause)
+}
 
 /** Resolver methods (close/resolve/approve/void) throw these on normal rejections — not paged. */
 const EXPECTED_RESOLVER_ERRORS = new Set([
@@ -574,25 +594,29 @@ export class PredictionMarketsDO extends DurableObject<Env> implements Predictio
 	}
 
 	async placeBet(input: PlaceBetInput): Promise<BetResult> {
-		if (!isPositiveIntegerString(input.amount)) throw new Error('INVALID_AMOUNT')
-		const amount = parseAmount(input.amount)
-
-		// Dedupe pre-check (outside the txn): a duplicate delivery (same interaction id) returns
-		// the prior bet WITHOUT consuming rate budget. The in-txn onConflictDoNothing below is the
-		// race backstop for two identical deliveries that both pass this check.
-		const [priorBet] = await this.db
-			.select()
-			.from(pmBets)
-			.where(eq(pmBets.idempotencyKey, input.idempotencyKey))
-			.limit(1)
-		if (priorBet) return this.toBetResult(priorBet)
-
-		// Rate limit (committed atomic upsert, before the bet txn): a rejected bet still consumes
-		// budget (anti-spam); idempotent retries never reach here (handled above).
-		const rate = await this.consumeRateBudget(input.userId, 'bet')
-		if (!rate.allowed) throw new Error(`RATE_LIMITED:${rate.retryAfterMs}`)
-
+		// The try spans the WHOLE method — the dedupe SELECT and the rate-limit upsert run before
+		// the txn and can also fail (e.g. a missing table/migration or a Neon outage). They used to
+		// throw outside any catch, so those infra errors were never logged or paged and surfaced to
+		// the member as a bare "Could not place your bet". Wrapping everything closes that gap.
 		try {
+			if (!isPositiveIntegerString(input.amount)) throw new Error('INVALID_AMOUNT')
+			const amount = parseAmount(input.amount)
+
+			// Dedupe pre-check (outside the txn): a duplicate delivery (same interaction id) returns
+			// the prior bet WITHOUT consuming rate budget. The in-txn onConflictDoNothing below is the
+			// race backstop for two identical deliveries that both pass this check.
+			const [priorBet] = await this.db
+				.select()
+				.from(pmBets)
+				.where(eq(pmBets.idempotencyKey, input.idempotencyKey))
+				.limit(1)
+			if (priorBet) return this.toBetResult(priorBet)
+
+			// Rate limit (committed atomic upsert, before the bet txn): a rejected bet still consumes
+			// budget (anti-spam); idempotent retries never reach here (handled above).
+			const rate = await this.consumeRateBudget(input.userId, 'bet')
+			if (!rate.allowed) throw new Error(`RATE_LIMITED:${rate.retryAfterMs}`)
+
 			return await this.db.transaction(async (tx) => {
 				// Lock the market row: serializes bet-vs-bet and bet-vs-resolve on this market.
 				const [market] = await tx
@@ -710,16 +734,27 @@ export class PredictionMarketsDO extends DurableObject<Env> implements Predictio
 				return this.toBetResult(bet)
 			})
 		} catch (error) {
-			const msg = error instanceof Error ? error.message : String(error)
-			// Business rejections (insufficient funds, market closed, …) are normal user-facing
-			// outcomes, not server errors — don't page Sentry on them.
-			if (!EXPECTED_BET_ERRORS.has(msg)) {
+			// Business rejections (insufficient funds, market closed, rate-limited, invalid amount)
+			// are normal user-facing outcomes — don't log or page on them. Everything else (a failed
+			// query, a missing table/migration, a Neon outage) is an infra failure: log it WITH the
+			// underlying driver cause and page Sentry, so a bet never dies as a silent "try again".
+			if (!isExpectedBetError(error)) {
+				const cause = dbErrorCause(error)
+				logger.error('[PredictionMarkets] placeBet failed', {
+					marketId: input.marketId,
+					outcomeId: input.outcomeId,
+					userId: input.userId,
+					error: error instanceof Error ? error.message : String(error),
+					cause,
+				})
 				captureException(error as Error, {
 					tags: {
 						durableObject: 'PredictionMarketsDO',
 						method: 'placeBet',
 						marketId: input.marketId,
+						userId: input.userId,
 					},
+					extra: { cause, outcomeId: input.outcomeId },
 				})
 			}
 			throw error
