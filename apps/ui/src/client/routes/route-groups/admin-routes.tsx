@@ -65,6 +65,15 @@ const IndustryProviderEditPage = lazy(
 const IndustryProviderNewPage = lazy(
 	() => import('@/features/industry/routes/industry-provider-new')
 )
+const PredictionMarketWalletsPage = lazy(
+	() => import('@/features/prediction-markets/routes/prediction-market-wallets')
+)
+const PredictionMarketWalletDetailPage = lazy(
+	() => import('@/features/prediction-markets/routes/prediction-market-wallet-detail')
+)
+const PredictionMarketAuditPage = lazy(
+	() => import('@/features/prediction-markets/routes/prediction-market-audit')
+)
 
 export const adminRouteElements = (
 	<Route path="/admin" element={<AdminLayout />}>
@@ -163,5 +172,32 @@ export const adminRouteElements = (
 				</Suspense>
 			}
 		/>
+		<Route path="prediction-markets">
+			<Route index element={<Navigate to="/admin/prediction-markets/wallets" replace />} />
+			<Route
+				path="wallets"
+				element={
+					<Suspense fallback={<LoadingPage />}>
+						<PredictionMarketWalletsPage />
+					</Suspense>
+				}
+			/>
+			<Route
+				path="wallets/:userId"
+				element={
+					<Suspense fallback={<LoadingPage />}>
+						<PredictionMarketWalletDetailPage />
+					</Suspense>
+				}
+			/>
+			<Route
+				path="audit"
+				element={
+					<Suspense fallback={<LoadingPage />}>
+						<PredictionMarketAuditPage />
+					</Suspense>
+				}
+			/>
+		</Route>
 	</Route>
 )

@@ -15,6 +15,7 @@ import {
 	Receipt,
 	ScrollText,
 	ShieldBan,
+	Wallet,
 	Waypoints,
 	UserCircle,
 	Users,
@@ -118,6 +119,15 @@ export function AdminNav({ onNavigate }: AdminNavProps) {
 			label: 'DKP',
 			href: '/admin/dkp',
 			icon: Coins,
+		},
+		{
+			label: 'Prediction Markets',
+			href: '/admin/prediction-markets',
+			icon: Wallet,
+			children: [
+				{ label: 'Wallets', href: '/admin/prediction-markets/wallets' },
+				{ label: 'Audit Log', href: '/admin/prediction-markets/audit' },
+			],
 		},
 		{
 			label: 'Industry Providers',
