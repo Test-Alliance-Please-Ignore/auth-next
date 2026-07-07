@@ -150,8 +150,9 @@ export async function publishMarketPost(
 }
 
 /**
- * Refresh a market's forum post embed in place after state changes (e.g. a new bet). Leaves
- * the bet buttons intact (components omitted). No-op if the market has no post yet.
+ * Refresh a market's forum post — embed + status-appropriate buttons (bet buttons on open
+ * markets; resolver controls per status; none when terminal). Editing the message must happen
+ * before any archive (see applyMarketPostStatus). No-op if the market has no post yet.
  */
 export async function updateMarketPostFromDetail(
 	discord: Discord,
@@ -162,5 +163,50 @@ export async function updateMarketPostFromDetail(
 	}
 	return discord.updateMarketPostMessage(market.discordThreadId, market.discordMessageId, {
 		embeds: [buildMarketEmbed(market)],
+		components: buildMarketComponents(market),
+	})
+}
+
+/** The status → forum-tag-id for a market's current status (null if unmapped/unconfigured). */
+function statusTagId(cfg: ForumConfig, status: MarketDetail['status']): string | null {
+	switch (status) {
+		case 'open':
+			return cfg.tagOpenId
+		case 'closed':
+		case 'resolving':
+			return cfg.tagClosedId
+		case 'resolved':
+			return cfg.tagResolvedId
+		case 'voided':
+			return cfg.tagVoidedId
+		default:
+			return null
+	}
+}
+
+/**
+ * Apply the forum-thread status side of a transition: flip the status tag and, on a terminal
+ * status (resolved/voided), archive + lock — combined into one PATCH (an archived thread would
+ * otherwise need to be unarchived first). Call AFTER updateMarketPostFromDetail so the message
+ * edit lands before the archive. Best-effort; no-op if the market has no post.
+ */
+export async function applyMarketPostStatus(
+	db: CoreDb,
+	discord: Discord,
+	guildId: string,
+	market: MarketDetail
+): Promise<void> {
+	if (!market.discordThreadId) return
+	const [cfg] = await db
+		.select()
+		.from(pmForumConfig)
+		.where(eq(pmForumConfig.guildId, guildId))
+		.limit(1)
+	const tagId = cfg ? statusTagId(toForumConfig(cfg), market.status) : null
+	const terminal = market.status === 'resolved' || market.status === 'voided'
+	if (!tagId && !terminal) return
+	await discord.lockThread(market.discordThreadId, {
+		...(tagId ? { appliedTagIds: [tagId] } : {}),
+		...(terminal ? { archived: true, locked: true } : {}),
 	})
 }

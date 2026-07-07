@@ -70,7 +70,9 @@ import {
 	type ExecuteDiscordSlashCommandInput,
 } from './services/discord-commands.service'
 import {
+	executeDiscordComponent,
 	executeDiscordModalSubmit,
+	type ExecuteComponentInput,
 	type ExecuteModalSubmitInput,
 } from './services/discord-components.service'
 import { DkpService } from './services/dkp.service'
@@ -956,6 +958,26 @@ export class CoreWorker extends WorkerEntrypoint<Env> {
 	}> {
 		const db = createDb(this.env.DATABASE_URL)
 		const result = await executeDiscordModalSubmit(db, this.env, input)
+		return {
+			ok: result.reason === 'ok',
+			response: result.response,
+			coreUserId: result.coreUserId,
+			reason: result.reason,
+		}
+	}
+
+	/**
+	 * Handle a Discord component (button) interaction (P3: resolver Close/Approve). Resolves
+	 * the core user, gates on urn:markets:resolver, runs the PM write, refreshes the post.
+	 */
+	async executeDiscordComponent(input: ExecuteComponentInput): Promise<{
+		ok: boolean
+		response: { type: number; data?: { content: string; flags?: number; embeds?: unknown[] } }
+		coreUserId: string | null
+		reason: string
+	}> {
+		const db = createDb(this.env.DATABASE_URL)
+		const result = await executeDiscordComponent(db, this.env, input)
 		return {
 			ok: result.reason === 'ok',
 			response: result.response,

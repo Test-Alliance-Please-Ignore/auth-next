@@ -36,8 +36,9 @@ export function truncateForEmbed(value: string, max: number): string {
 export function buildMarketEmbed(market: MarketDetail): DiscordEmbed {
 	const closesUnix = Math.floor(new Date(market.closesAt).getTime() / 1000)
 
-	const outcomeFields = market.outcomes.map((o) => ({
-		name: truncateForEmbed(o.label, 256),
+	// 1-based numbering doubles as the outcome picker in the resolve modal.
+	const outcomeFields = market.outcomes.map((o, i) => ({
+		name: truncateForEmbed(`${i + 1}. ${o.label}`, 256),
 		value:
 			o.impliedOddsBps === null
 				? `${formatMarketPoints(o.poolAmount)} · no bets yet`
