@@ -109,6 +109,18 @@ export interface BetResult {
 
 export type BetView = BetResult
 
+/** A bet enriched with its market question + outcome label (for `/market mybets`). */
+export interface DetailedBetView {
+	id: string
+	marketId: string
+	marketQuestion: string
+	outcomeLabel: string
+	amount: string
+	status: BetStatus
+	payoutAmount: string | null
+	createdAt: string
+}
+
 export interface ResolveResult {
 	marketId: string
 	status: MarketStatus
@@ -223,6 +235,11 @@ export interface PredictionMarkets {
 	listMarkets(filter?: ListMarketsFilter): Promise<MarketSummary[]>
 	getMarket(marketId: string): Promise<MarketDetail | null>
 	getUserBets(userId: string, opts?: { marketId?: string; activeOnly?: boolean }): Promise<BetView[]>
+	/** A user's bets joined to market question + outcome label (for `/market mybets`). */
+	getUserBetsDetailed(
+		userId: string,
+		opts?: { activeOnly?: boolean }
+	): Promise<DetailedBetView[]>
 	getLeaderboard(opts?: { window?: 'all' | '30d'; limit?: number }): Promise<LeaderboardRow[]>
 	getLedger(userId: string, opts?: { limit?: number; cursor?: string }): Promise<LedgerRow[]>
 
