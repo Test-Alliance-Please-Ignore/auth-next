@@ -1,0 +1,212 @@
+import { sql } from 'drizzle-orm'
+import {
+	boolean,
+	index,
+	integer,
+	jsonb,
+	numeric,
+	pgEnum,
+	pgTable,
+	text,
+	timestamp,
+	uniqueIndex,
+	uuid,
+} from 'drizzle-orm/pg-core'
+
+// ---------------------------------------------------------------------------
+// Enums
+// ---------------------------------------------------------------------------
+
+export const pmMarketStatus = pgEnum('pm_market_status', [
+	'draft',
+	'open',
+	'closed',
+	'resolving',
+	'resolved',
+	'voided',
+])
+
+export const pmBetStatus = pgEnum('pm_bet_status', ['active', 'won', 'lost', 'refunded'])
+
+export const pmLedgerType = pgEnum('pm_ledger_type', [
+	'grant',
+	'wager',
+	'refund',
+	'payout',
+	'rake',
+	'burn',
+	'adjustment',
+])
+
+export const pmProposalStatus = pgEnum('pm_proposal_status', [
+	'pending',
+	'approved',
+	'rejected',
+	'superseded',
+])
+
+export const pmVisibility = pgEnum('pm_visibility', ['public', 'internal'])
+
+// ---------------------------------------------------------------------------
+// Tables
+//
+// All monetary columns are `numeric` (returned as strings by Drizzle) so we can
+// perform atomic SQL arithmetic (e.g. balance guards) without JS BigInt
+// serialization hazards. References to users.id are app-level (no hard FK) to
+// avoid cross-app cascade coupling.
+// ---------------------------------------------------------------------------
+
+/** Per-user cached balance. A row is created lazily on first grant. */
+export const pmWallets = pgTable('pm_wallets', {
+	userId: uuid('user_id').primaryKey(),
+	balance: numeric('balance').notNull().default('0'),
+	updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+})
+
+/** Append-only ledger. Never UPDATE or DELETE — only INSERT. */
+export const pmLedger = pgTable(
+	'pm_ledger',
+	{
+		id: uuid('id').primaryKey().defaultRandom(),
+		userId: uuid('user_id'),
+		/** Signed: positive for credits, negative for debits. */
+		amount: numeric('amount').notNull(),
+		type: pmLedgerType('type').notNull(),
+		marketId: uuid('market_id'),
+		betId: uuid('bet_id'),
+		balanceAfter: numeric('balance_after'),
+		idempotencyKey: text('idempotency_key'),
+		metadata: jsonb('metadata'),
+		createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+	},
+	(t) => [
+		// One wager/payout/refund per bet (NULL bet_id rows — grants/burns — are unconstrained).
+		uniqueIndex('pm_ledger_bet_type_uq').on(t.betId, t.type),
+		uniqueIndex('pm_ledger_idempotency_key_uq')
+			.on(t.idempotencyKey)
+			.where(sql`${t.idempotencyKey} is not null`),
+		index('pm_ledger_user_created_idx').on(t.userId, t.createdAt),
+		index('pm_ledger_market_idx').on(t.marketId),
+	]
+)
+
+export const pmMarkets = pgTable(
+	'pm_markets',
+	{
+		id: uuid('id').primaryKey().defaultRandom(),
+		question: text('question').notNull(),
+		description: text('description'),
+		status: pmMarketStatus('status').notNull().default('draft'),
+		createdBy: uuid('created_by').notNull(),
+		closesAt: timestamp('closes_at', { withTimezone: true }).notNull(),
+		resolvedOutcomeId: uuid('resolved_outcome_id'),
+		resolvedBy: uuid('resolved_by'),
+		resolvedAt: timestamp('resolved_at', { withTimezone: true }),
+		voidReason: text('void_reason'),
+		totalPool: numeric('total_pool').notNull().default('0'),
+		rakeBps: integer('rake_bps').notNull().default(0),
+		minStake: numeric('min_stake').notNull().default('1'),
+		maxStake: numeric('max_stake'),
+		perUserCap: numeric('per_user_cap'),
+		twoOfN: boolean('two_of_n').notNull().default(false),
+		createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+		updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+	},
+	(t) => [index('pm_markets_status_closes_idx').on(t.status, t.closesAt)]
+)
+
+export const pmMarketOutcomes = pgTable(
+	'pm_market_outcomes',
+	{
+		id: uuid('id').primaryKey().defaultRandom(),
+		marketId: uuid('market_id').notNull(),
+		label: text('label').notNull(),
+		poolAmount: numeric('pool_amount').notNull().default('0'),
+		sortOrder: integer('sort_order').notNull().default(0),
+	},
+	(t) => [
+		uniqueIndex('pm_market_outcomes_market_label_uq').on(t.marketId, t.label),
+		index('pm_market_outcomes_market_idx').on(t.marketId),
+	]
+)
+
+export const pmBets = pgTable(
+	'pm_bets',
+	{
+		id: uuid('id').primaryKey().defaultRandom(),
+		marketId: uuid('market_id').notNull(),
+		outcomeId: uuid('outcome_id').notNull(),
+		userId: uuid('user_id').notNull(),
+		amount: numeric('amount').notNull(),
+		status: pmBetStatus('status').notNull().default('active'),
+		payoutAmount: numeric('payout_amount'),
+		/** Idempotency key (Discord interaction id for bot bets). */
+		idempotencyKey: text('idempotency_key').notNull(),
+		createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+	},
+	(t) => [
+		uniqueIndex('pm_bets_idempotency_key_uq').on(t.idempotencyKey),
+		index('pm_bets_market_user_idx').on(t.marketId, t.userId),
+		index('pm_bets_user_created_idx').on(t.userId, t.createdAt),
+		index('pm_bets_market_outcome_idx').on(t.marketId, t.outcomeId),
+	]
+)
+
+export const pmResolutionProposals = pgTable(
+	'pm_resolution_proposals',
+	{
+		id: uuid('id').primaryKey().defaultRandom(),
+		marketId: uuid('market_id').notNull(),
+		/** Proposed winning outcome, or NULL for a proposed void. */
+		outcomeId: uuid('outcome_id'),
+		proposedBy: uuid('proposed_by').notNull(),
+		approvedBy: uuid('approved_by'),
+		status: pmProposalStatus('status').notNull().default('pending'),
+		createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+		resolvedAt: timestamp('resolved_at', { withTimezone: true }),
+	},
+	(t) => [index('pm_resolution_proposals_market_status_idx').on(t.marketId, t.status)]
+)
+
+/** Immutable audit trail. Every market mutation writes exactly one row here. */
+export const pmMarketHistory = pgTable(
+	'pm_market_history',
+	{
+		id: uuid('id').primaryKey().defaultRandom(),
+		marketId: uuid('market_id').notNull(),
+		actorUserId: uuid('actor_user_id'),
+		action: text('action').notNull(),
+		previousStatus: pmMarketStatus('previous_status'),
+		newStatus: pmMarketStatus('new_status'),
+		visibility: pmVisibility('visibility').notNull().default('public'),
+		metadata: jsonb('metadata'),
+		createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+	},
+	(t) => [index('pm_market_history_market_created_idx').on(t.marketId, t.createdAt)]
+)
+
+/** Single-active-config for defaults. */
+export const pmConfig = pgTable('pm_config', {
+	id: uuid('id').primaryKey().defaultRandom(),
+	isActive: boolean('is_active').notNull().default(true),
+	defaultRakeBps: integer('default_rake_bps').notNull().default(100),
+	defaultMinStake: numeric('default_min_stake').notNull().default('1'),
+	/** Markets with total_pool ≥ this require two-of-N settlement. NULL disables. */
+	twoOfNThreshold: numeric('two_of_n_threshold'),
+	effectiveFrom: timestamp('effective_from', { withTimezone: true }).notNull().defaultNow(),
+	effectiveTo: timestamp('effective_to', { withTimezone: true }),
+})
+
+// ---------------------------------------------------------------------------
+// Row types
+// ---------------------------------------------------------------------------
+
+export type PmWallet = typeof pmWallets.$inferSelect
+export type PmLedgerRow = typeof pmLedger.$inferSelect
+export type NewPmLedgerRow = typeof pmLedger.$inferInsert
+export type PmMarket = typeof pmMarkets.$inferSelect
+export type PmMarketOutcome = typeof pmMarketOutcomes.$inferSelect
+export type PmBet = typeof pmBets.$inferSelect
+export type PmResolutionProposal = typeof pmResolutionProposals.$inferSelect
+export type PmMarketHistoryRow = typeof pmMarketHistory.$inferSelect
+export type PmConfig = typeof pmConfig.$inferSelect
