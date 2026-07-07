@@ -2,13 +2,17 @@ import { DurableObject } from 'cloudflare:workers'
 
 import { createDb } from './db'
 import { FeatureFlagService } from './services/feature-flag.service'
+import { UserFeatureFlagService } from './services/user-feature-flag.service'
 
 import type {
 	FeatureFlag,
 	Features,
 	ListFlagsOptions,
+	ListFlagUsersOptions,
+	ListUserFlagsOptions,
 	RegisterFlagOptions,
 	SetFlagOptions,
+	UserFeatureFlag,
 } from '@repo/features'
 import type { Env } from './context'
 
@@ -20,6 +24,7 @@ import type { Env } from './context'
  */
 export class FeaturesDO extends DurableObject implements Features {
 	private service: FeatureFlagService
+	private userService: UserFeatureFlagService
 
 	/**
 	 * Initialize the Durable Object
@@ -30,9 +35,10 @@ export class FeaturesDO extends DurableObject implements Features {
 	) {
 		super(state, env)
 
-		// Initialize database client and service
+		// Initialize database client and services
 		const db = createDb(env.DATABASE_URL)
 		this.service = new FeatureFlagService(db)
+		this.userService = new UserFeatureFlagService(db)
 	}
 
 	/**
@@ -86,6 +92,58 @@ export class FeaturesDO extends DurableObject implements Features {
 	 */
 	async getFlag(key: string): Promise<FeatureFlag | null> {
 		return await this.service.getFlag(key)
+	}
+
+	/**
+	 * Set (create or update) a per-user override for a feature flag
+	 */
+	async setUserFlag(userId: string, key: string, enabled: boolean): Promise<UserFeatureFlag> {
+		return await this.userService.setUserFlag(userId, key, enabled)
+	}
+
+	/**
+	 * Get a user's override for a feature flag
+	 */
+	async getUserFlag(userId: string, key: string): Promise<UserFeatureFlag | null> {
+		return await this.userService.getUserFlag(userId, key)
+	}
+
+	/**
+	 * Delete a user's override for a feature flag
+	 */
+	async deleteUserFlag(userId: string, key: string): Promise<boolean> {
+		return await this.userService.deleteUserFlag(userId, key)
+	}
+
+	/**
+	 * Resolve whether a feature is enabled for a specific user
+	 */
+	async checkUserFlag(userId: string, key: string): Promise<boolean> {
+		return await this.userService.checkUserFlag(userId, key)
+	}
+
+	/**
+	 * Resolve multiple feature flags for a user in a single call
+	 */
+	async checkUserFlags(userId: string, keys: string[]): Promise<Record<string, boolean>> {
+		return await this.userService.checkUserFlags(userId, keys)
+	}
+
+	/**
+	 * List a user's feature flag overrides
+	 */
+	async listUserFlags(
+		userId: string,
+		options?: ListUserFlagsOptions
+	): Promise<UserFeatureFlag[]> {
+		return await this.userService.listUserFlags(userId, options)
+	}
+
+	/**
+	 * List the users who have an override for a given feature flag
+	 */
+	async listFlagUsers(key: string, options?: ListFlagUsersOptions): Promise<UserFeatureFlag[]> {
+		return await this.userService.listFlagUsers(key, options)
 	}
 
 	/**
