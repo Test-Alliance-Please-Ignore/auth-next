@@ -16,6 +16,7 @@ import { hasMarketPermission } from '../lib/market-permissions'
 import { requireAuth } from '../middleware/session'
 import {
 	createAndPublishMarket,
+	createMarketCreatorSchema,
 	createMarketSchema,
 	mapMarketCreateError,
 } from '../services/market-create.service'
@@ -37,12 +38,15 @@ app.post('/markets', async (c) => {
 	if (!(await hasMarketPermission(c.env, user.id, 'creator', user.is_admin))) {
 		return c.json({ error: 'You don’t have permission to create markets' }, 403)
 	}
+	// Trust tiers: managers/admins get the full param set and are uncapped; a lower-trust
+	// creator gets the slim schema (economic params default from pmConfig) and is rate-limited so
+	// they can't distort the parimutuel/rake economy or flood the forum.
+	const isManager = await hasMarketPermission(c.env, user.id, 'manager', user.is_admin)
 	try {
-		const body = createMarketSchema.parse(await c.req.json())
-		// Rate-limit non-admin member creation so a creator can't flood the forum; site admins
-		// using this route are uncapped (they're fully trusted and could use the admin route anyway).
+		const schema = isManager ? createMarketSchema : createMarketCreatorSchema
+		const body = schema.parse(await c.req.json())
 		const result = await createAndPublishMarket(db, c.env, user.id, body, {
-			enforceRateLimit: !user.is_admin,
+			enforceRateLimit: !isManager,
 		})
 		logger.info('[PMMember] market created', {
 			actorId: user.id,

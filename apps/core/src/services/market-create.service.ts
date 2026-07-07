@@ -52,6 +52,19 @@ export const createMarketSchema = z.object({
 
 export type CreateMarketBody = z.infer<typeof createMarketSchema>
 
+/**
+ * Slim schema for lower-trust `urn:markets:creator` users: question/outcomes/close only. The
+ * economic params (rakeBps, min/max stake, per-user cap, twoOfN) are omitted — a creator can't set
+ * them (zod strips any that are sent), so they fall back to the pmConfig defaults in createMarket.
+ * Managers/admins use the full createMarketSchema. Its output is a subset of CreateMarketBody.
+ */
+export const createMarketCreatorSchema = createMarketSchema.pick({
+	question: true,
+	description: true,
+	outcomes: true,
+	closesAt: true,
+})
+
 /** createMarket domain errors that are the caller's fault (bad input) → 400, not a server 500. */
 export const CREATE_MARKET_BAD_REQUEST_CODES = [
 	'AT_LEAST_TWO_OUTCOMES',

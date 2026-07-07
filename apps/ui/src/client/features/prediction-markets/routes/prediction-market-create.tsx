@@ -16,6 +16,9 @@ export default function PredictionMarketCreate() {
 	const [createOpen, setCreateOpen] = useState(false)
 	const { hasAnyPermission } = useUserPermissions()
 	const canCreate = hasAnyPermission('urn:markets:creator', 'urn:markets:manager')
+	// Managers/admins get the full param set; a lower-trust creator sees only question/outcomes/close
+	// (economic params default from config server-side).
+	const isManager = hasAnyPermission('urn:markets:manager')
 
 	return (
 		<div className="space-y-6">
@@ -42,7 +45,12 @@ export default function PredictionMarketCreate() {
 				</p>
 			) : null}
 
-			<CreateMarketDialog open={createOpen} onOpenChange={setCreateOpen} scope="member" />
+			<CreateMarketDialog
+				open={createOpen}
+				onOpenChange={setCreateOpen}
+				scope="member"
+				showAdvanced={isManager}
+			/>
 		</div>
 	)
 }
