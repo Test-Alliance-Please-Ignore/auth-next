@@ -494,6 +494,9 @@ importers:
       '@repo/paste':
         specifier: workspace:*
         version: link:../../packages/paste
+      '@repo/prediction-markets':
+        specifier: workspace:*
+        version: link:../../packages/prediction-markets
       '@repo/skills':
         specifier: workspace:*
         version: link:../../packages/skills

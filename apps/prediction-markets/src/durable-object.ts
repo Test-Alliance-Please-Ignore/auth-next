@@ -1,6 +1,6 @@
 import { DurableObject } from 'cloudflare:workers'
 
-import { and, desc, eq, ne, sql } from '@repo/db-utils'
+import { and, asc, desc, eq, gte, inArray, lte, ne, sql } from '@repo/db-utils'
 import { captureException } from '@repo/hono-helpers'
 import { parseDateOrNull } from '@repo/worker-utils'
 
@@ -23,20 +23,27 @@ import type {
 	BetResult,
 	BetView,
 	CreateMarketInput,
+	GlobalLedgerOpts,
+	GlobalLedgerRow,
 	GrantPointsInput,
 	LeaderboardRow,
 	LedgerRow,
 	ListMarketsFilter,
+	ListWalletsOpts,
 	MarketDetail,
+	MarketHistoryOpts,
+	MarketHistoryRow,
 	MarketStatus,
 	MarketSummary,
+	Paged,
 	PlaceBetInput,
 	PredictionMarkets,
 	ResolveResult,
 	Visibility,
+	WalletRow,
 } from '@repo/prediction-markets'
 import type { Env } from './context'
-import type { PmBet, PmMarket } from './db/schema'
+import type { PmBet, PmLedgerRow, PmMarket, PmMarketHistoryRow } from './db/schema'
 
 type PmDatabase = ReturnType<typeof createDb>
 type PmTransaction = Parameters<Parameters<PmDatabase['transaction']>[0]>[0]
@@ -180,30 +187,149 @@ export class PredictionMarketsDO extends DurableObject<Env> implements Predictio
 		}))
 	}
 
+	// ---- admin reads (offset + total) ----
+
+	async listWallets(opts?: ListWalletsOpts): Promise<Paged<WalletRow>> {
+		const limit = Math.min(Math.max(opts?.limit ?? 25, 1), 100)
+		const offset = Math.max(opts?.offset ?? 0, 0)
+		const column =
+			opts?.sort === 'updatedAt'
+				? pmWallets.updatedAt
+				: opts?.sort === 'userId'
+					? pmWallets.userId
+					: pmWallets.balance
+		const direction = opts?.order === 'asc' ? asc : desc
+		const where = opts?.userIds?.length ? inArray(pmWallets.userId, opts.userIds) : undefined
+
+		const rows = await this.db
+			.select()
+			.from(pmWallets)
+			.where(where)
+			.orderBy(direction(column), desc(pmWallets.userId))
+			.limit(limit)
+			.offset(offset)
+		const [{ total }] = await this.db
+			.select({ total: sql<number>`count(*)::int` })
+			.from(pmWallets)
+			.where(where)
+
+		return {
+			rows: rows.map((w) => ({
+				userId: w.userId,
+				balance: w.balance,
+				updatedAt: w.updatedAt.toISOString(),
+			})),
+			total,
+		}
+	}
+
+	async getGlobalLedger(opts?: GlobalLedgerOpts): Promise<Paged<GlobalLedgerRow>> {
+		const limit = Math.min(Math.max(opts?.limit ?? 50, 1), 200)
+		const offset = Math.max(opts?.offset ?? 0, 0)
+		const since = parseDateOrNull(opts?.since)
+		const until = parseDateOrNull(opts?.until)
+		const where = and(
+			opts?.userId ? eq(pmLedger.userId, opts.userId) : undefined,
+			opts?.type ? eq(pmLedger.type, opts.type) : undefined,
+			opts?.marketId ? eq(pmLedger.marketId, opts.marketId) : undefined,
+			since ? gte(pmLedger.createdAt, since) : undefined,
+			until ? lte(pmLedger.createdAt, until) : undefined
+		)
+
+		const rows = await this.db
+			.select()
+			.from(pmLedger)
+			.where(where)
+			.orderBy(desc(pmLedger.createdAt), desc(pmLedger.id))
+			.limit(limit)
+			.offset(offset)
+		const [{ total }] = await this.db
+			.select({ total: sql<number>`count(*)::int` })
+			.from(pmLedger)
+			.where(where)
+
+		return { rows: rows.map((r) => this.toGlobalLedgerRow(r)), total }
+	}
+
+	async getGlobalMarketHistory(opts?: MarketHistoryOpts): Promise<Paged<MarketHistoryRow>> {
+		const limit = Math.min(Math.max(opts?.limit ?? 50, 1), 200)
+		const offset = Math.max(opts?.offset ?? 0, 0)
+		const since = parseDateOrNull(opts?.since)
+		const until = parseDateOrNull(opts?.until)
+		const where = and(
+			opts?.marketId ? eq(pmMarketHistory.marketId, opts.marketId) : undefined,
+			// Default to public-only; internal rows (e.g. bet_placed) carry bettor identity.
+			opts?.includeInternal ? undefined : eq(pmMarketHistory.visibility, 'public'),
+			since ? gte(pmMarketHistory.createdAt, since) : undefined,
+			until ? lte(pmMarketHistory.createdAt, until) : undefined
+		)
+
+		const rows = await this.db
+			.select()
+			.from(pmMarketHistory)
+			.where(where)
+			.orderBy(desc(pmMarketHistory.createdAt), desc(pmMarketHistory.id))
+			.limit(limit)
+			.offset(offset)
+		const [{ total }] = await this.db
+			.select({ total: sql<number>`count(*)::int` })
+			.from(pmMarketHistory)
+			.where(where)
+
+		return { rows: rows.map((r) => this.toMarketHistoryRow(r)), total }
+	}
+
+	async getMarketHistory(
+		marketId: string,
+		opts?: { includeInternal?: boolean; limit?: number; offset?: number }
+	): Promise<Paged<MarketHistoryRow>> {
+		return this.getGlobalMarketHistory({
+			marketId,
+			includeInternal: opts?.includeInternal ?? false,
+			limit: opts?.limit,
+			offset: opts?.offset,
+		})
+	}
+
 	// =====================================================================
 	// Writes
 	// =====================================================================
 
-	async grantPoints(input: GrantPointsInput): Promise<{ balance: string }> {
+	async grantPoints(input: GrantPointsInput): Promise<{ balance: string; deduped: boolean }> {
 		if (!isPositiveIntegerString(input.amount)) {
 			throw new Error('INVALID_AMOUNT')
 		}
+		if (!input.reason?.trim()) {
+			throw new Error('REASON_REQUIRED')
+		}
+		// Defense-in-depth: the route also blocks this, but never let an admin fund their own wallet.
+		if (input.actorUserId === input.targetUserId) {
+			throw new Error('SELF_TARGET_FORBIDDEN')
+		}
 		try {
 			return await this.db.transaction(async (tx) => {
-				// Idempotent grant: if this key already credited, return current balance.
+				// Idempotent grant: a repeated key must match the original (user, amount, type),
+				// otherwise a reused/forged key would silently drop a real deposit.
 				if (input.idempotencyKey) {
 					const [existing] = await tx
-						.select({ id: pmLedger.id })
+						.select()
 						.from(pmLedger)
 						.where(eq(pmLedger.idempotencyKey, input.idempotencyKey))
 						.limit(1)
 					if (existing) {
+						const same =
+							existing.type === 'grant' &&
+							existing.userId === input.targetUserId &&
+							parseAmount(existing.amount) === parseAmount(input.amount)
+						if (!same) {
+							throw new Error('IDEMPOTENCY_KEY_CONFLICT')
+						}
 						const [wallet] = await tx
 							.select({ balance: pmWallets.balance })
 							.from(pmWallets)
 							.where(eq(pmWallets.userId, input.targetUserId))
 							.limit(1)
-						return { balance: wallet?.balance ?? '0' }
+						return { balance: wallet?.balance ?? '0', deduped: true }
 					}
 				}
 
@@ -230,7 +356,7 @@ export class PredictionMarketsDO extends DurableObject<Env> implements Predictio
 					metadata: { actorUserId: input.actorUserId, reason: input.reason },
 				})
 
-				return { balance: credited.balance }
+				return { balance: credited.balance, deduped: false }
 			})
 		} catch (error) {
 			captureException(error as Error, {
@@ -970,6 +1096,35 @@ export class PredictionMarketsDO extends DurableObject<Env> implements Predictio
 			visibility: entry.visibility ?? 'public',
 			metadata: entry.metadata ?? null,
 		})
+	}
+
+	private toGlobalLedgerRow(r: PmLedgerRow): GlobalLedgerRow {
+		return {
+			id: r.id,
+			userId: r.userId,
+			amount: r.amount,
+			type: r.type,
+			marketId: r.marketId,
+			betId: r.betId,
+			balanceAfter: r.balanceAfter,
+			idempotencyKey: r.idempotencyKey,
+			metadata: r.metadata,
+			createdAt: r.createdAt.toISOString(),
+		}
+	}
+
+	private toMarketHistoryRow(r: PmMarketHistoryRow): MarketHistoryRow {
+		return {
+			id: r.id,
+			marketId: r.marketId,
+			actorUserId: r.actorUserId,
+			action: r.action,
+			previousStatus: r.previousStatus,
+			newStatus: r.newStatus,
+			visibility: r.visibility,
+			metadata: r.metadata,
+			createdAt: r.createdAt.toISOString(),
+		}
 	}
 
 	private toBetResult(bet: PmBet): BetResult {

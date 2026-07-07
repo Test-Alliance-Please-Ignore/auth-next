@@ -138,6 +138,70 @@ export interface ListMarketsFilter {
 }
 
 // ---------------------------------------------------------------------------
+// Admin views (wallets + audit)
+// ---------------------------------------------------------------------------
+
+export interface WalletRow {
+	userId: string
+	balance: string
+	updatedAt: string
+}
+
+/** A ledger row with its owning user id (the base `LedgerRow` omits it) + idempotency key for audit. */
+export interface GlobalLedgerRow extends LedgerRow {
+	userId: string | null
+	idempotencyKey: string | null
+}
+
+export interface MarketHistoryRow {
+	id: string
+	marketId: string
+	actorUserId: string | null
+	action: string
+	previousStatus: MarketStatus | null
+	newStatus: MarketStatus | null
+	visibility: Visibility
+	metadata: unknown
+	createdAt: string
+}
+
+export interface Paged<T> {
+	rows: T[]
+	total: number
+}
+
+export interface ListWalletsOpts {
+	/** Restrict to these user ids (used by the admin route to apply a name search). */
+	userIds?: string[]
+	sort?: 'balance' | 'updatedAt' | 'userId'
+	order?: 'asc' | 'desc'
+	limit?: number
+	offset?: number
+}
+
+export interface GlobalLedgerOpts {
+	userId?: string
+	type?: LedgerType
+	marketId?: string
+	/** ISO-8601 lower bound (inclusive). */
+	since?: string
+	/** ISO-8601 upper bound (inclusive). */
+	until?: string
+	limit?: number
+	offset?: number
+}
+
+export interface MarketHistoryOpts {
+	marketId?: string
+	/** Admin-only: include `internal`-visibility rows. Defaults false. */
+	includeInternal?: boolean
+	since?: string
+	until?: string
+	limit?: number
+	offset?: number
+}
+
+// ---------------------------------------------------------------------------
 // RPC interface
 // ---------------------------------------------------------------------------
 
@@ -150,8 +214,18 @@ export interface PredictionMarkets {
 	getLeaderboard(opts?: { window?: 'all' | '30d'; limit?: number }): Promise<LeaderboardRow[]>
 	getLedger(userId: string, opts?: { limit?: number; cursor?: string }): Promise<LedgerRow[]>
 
+	// admin reads (offset + total)
+	listWallets(opts?: ListWalletsOpts): Promise<Paged<WalletRow>>
+	/** Global financial audit feed; also serves the per-user ledger via `{ userId }`. */
+	getGlobalLedger(opts?: GlobalLedgerOpts): Promise<Paged<GlobalLedgerRow>>
+	getGlobalMarketHistory(opts?: MarketHistoryOpts): Promise<Paged<MarketHistoryRow>>
+	getMarketHistory(
+		marketId: string,
+		opts?: { includeInternal?: boolean; limit?: number; offset?: number }
+	): Promise<Paged<MarketHistoryRow>>
+
 	// writes
-	grantPoints(input: GrantPointsInput): Promise<{ balance: string }>
+	grantPoints(input: GrantPointsInput): Promise<{ balance: string; deduped: boolean }>
 	createMarket(input: CreateMarketInput): Promise<MarketDetail>
 	placeBet(input: PlaceBetInput): Promise<BetResult>
 	closeMarket(input: { actorUserId: string; marketId: string }): Promise<void>

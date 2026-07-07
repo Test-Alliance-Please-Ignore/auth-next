@@ -1,0 +1,2 @@
+CREATE INDEX "pm_ledger_created_id_idx" ON "pm_ledger" USING btree ("created_at","id");--> statement-breakpoint
+CREATE INDEX "pm_market_history_created_id_idx" ON "pm_market_history" USING btree ("created_at","id");

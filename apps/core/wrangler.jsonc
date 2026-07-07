@@ -67,6 +67,11 @@
 				"script_name": "bills"
 			},
 			{
+				"name": "PREDICTION_MARKETS",
+				"class_name": "PredictionMarkets",
+				"script_name": "prediction-markets"
+			},
+			{
 				"name": "CORPORATION_TAX",
 				"class_name": "CorporationTax",
 				"script_name": "corporation-tax"

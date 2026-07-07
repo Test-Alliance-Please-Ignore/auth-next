@@ -56,6 +56,7 @@
 		"@repo/markets": "workspace:*",
 		"@repo/moon-scan": "workspace:*",
 		"@repo/paste": "workspace:*",
+		"@repo/prediction-markets": "workspace:*",
 		"@repo/structures": "workspace:*",
 		"@repo/skills": "workspace:*",
 		"@repo/srp": "workspace:*",

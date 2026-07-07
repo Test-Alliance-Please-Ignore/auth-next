@@ -87,6 +87,8 @@ export const pmLedger = pgTable(
 			.where(sql`${t.idempotencyKey} is not null`),
 		index('pm_ledger_user_created_idx').on(t.userId, t.createdAt),
 		index('pm_ledger_market_idx').on(t.marketId),
+		// Global admin ledger/audit feed: ORDER BY created_at DESC, id DESC (scanned backward).
+		index('pm_ledger_created_id_idx').on(t.createdAt, t.id),
 	]
 )
 
@@ -182,7 +184,11 @@ export const pmMarketHistory = pgTable(
 		metadata: jsonb('metadata'),
 		createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
 	},
-	(t) => [index('pm_market_history_market_created_idx').on(t.marketId, t.createdAt)]
+	(t) => [
+		index('pm_market_history_market_created_idx').on(t.marketId, t.createdAt),
+		// Global admin market-lifecycle audit feed: ORDER BY created_at DESC, id DESC.
+		index('pm_market_history_created_id_idx').on(t.createdAt, t.id),
+	]
 )
 
 /** Single-active-config for defaults. */

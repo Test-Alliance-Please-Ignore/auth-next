@@ -31,6 +31,8 @@ export type Env = SharedHonoEnv & {
 	DISCORD: DurableObjectNamespace
 	/** Bills Durable Object binding */
 	BILLS: DurableObjectNamespace
+	/** Prediction Markets Durable Object binding */
+	PREDICTION_MARKETS: DurableObjectNamespace
 	/** Corporation Tax Durable Object binding */
 	CORPORATION_TAX: DurableObjectNamespace
 	/** Broadcasts Durable Object binding */
