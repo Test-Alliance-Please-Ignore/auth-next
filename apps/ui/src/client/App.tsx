@@ -74,6 +74,9 @@ const HrLegacyHistoryDetailPage = lazy(() => import('./routes/hr-legacy-history-
 const StructuresPage = lazy(() => import('./routes/structures'))
 const StructuresDetailPage = lazy(() => import('./routes/structures-detail'))
 const StructuresConfigPage = lazy(() => import('./routes/structures-config'))
+const PredictionMarketCreatePage = lazy(
+	() => import('./features/prediction-markets/routes/prediction-market-create')
+)
 
 // Lazy load the Skill Plans feature for code splitting
 const TrackingSessionsList = lazy(
@@ -297,6 +300,7 @@ export default function App() {
 							/>
 							<Route path="/my-groups" element={<MyGroupsPage />} />
 							<Route path="/mumble" element={<MumblePage />} />
+							<Route path="/prediction-markets" element={<PredictionMarketCreatePage />} />
 							<Route path="/pastes" element={<PastesPage />} />
 							<Route path="/pastes/:id/edit" element={<PasteEditPage />} />
 

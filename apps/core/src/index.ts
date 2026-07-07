@@ -20,6 +20,7 @@ import adminStructuresRoutes from './routes/admin/structures'
 import authRoutes from './routes/auth'
 import billsAdminRoutes from './routes/bills-admin'
 import predictionMarketsAdminRoutes from './routes/prediction-markets-admin'
+import predictionMarketsRoutes from './routes/prediction-markets'
 import billsUserRoutes from './routes/bills-user'
 import broadcastsRoutes from './routes/broadcasts'
 import charactersRoutes from './routes/characters'
@@ -153,6 +154,7 @@ const app = new Hono<App>()
 	.route('/api/discord-commands', discordCommandsRoutes)
 	.route('/api/dkp', dkpRoutes)
 	.route('/api/doctrines', doctrinesRoutes)
+	.route('/api/prediction-markets', predictionMarketsRoutes) // Member prediction-markets API (create)
 	.route('/api/entities', entitiesRoutes)
 	.route('/api/esi', esiRoutes)
 	.route('/api/skills', skillsRoutes)

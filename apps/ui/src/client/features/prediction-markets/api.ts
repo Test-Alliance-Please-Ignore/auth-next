@@ -113,3 +113,13 @@ export async function getMarkets(filters?: MarketsFilters): Promise<MarketsRespo
 export async function createMarket(body: CreateMarketRequest): Promise<CreateMarketResponse> {
 	return apiClient.post<CreateMarketResponse>(`${BASE}/markets`, body)
 }
+
+/**
+ * Member (non-admin) create — the /api/prediction-markets router, gated on urn:markets:creator.
+ * Same request/response shape as the admin create; different endpoint + permission.
+ */
+export async function createMarketAsMember(
+	body: CreateMarketRequest
+): Promise<CreateMarketResponse> {
+	return apiClient.post<CreateMarketResponse>('/prediction-markets/markets', body)
+}

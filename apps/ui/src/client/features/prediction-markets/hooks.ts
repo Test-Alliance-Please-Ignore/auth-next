@@ -5,6 +5,7 @@ import { useApiMutation } from '@/hooks/useApiMutation'
 import {
 	createDeposit,
 	createMarket,
+	createMarketAsMember,
 	getAuditLedger,
 	getMarketHistory,
 	getMarkets,
@@ -87,11 +88,12 @@ export function useMarkets(filters?: MarketsFilters) {
  * POST /markets — creates the market + best-effort forum post. Toasts on success (noting
  * a `postError` if the post failed), invalidates the markets list.
  */
-export function useCreateMarket() {
+export function useCreateMarket(scope: 'admin' | 'member' = 'admin') {
 	const queryClient = useQueryClient()
+	const submit = scope === 'member' ? createMarketAsMember : createMarket
 
 	return useApiMutation({
-		mutationFn: (body: CreateMarketRequest) => createMarket(body),
+		mutationFn: (body: CreateMarketRequest) => submit(body),
 		successMessage: (res) =>
 			res.postError
 				? `Market created, but the forum post failed: ${res.postError}`
