@@ -17,6 +17,25 @@ export function formatISK(value: string | number, options?: { showDecimals?: boo
 }
 
 /**
+ * Format a points amount (prediction-market currency) with comma separators + " points".
+ * Points are integer strings — display-only, never used for arithmetic. Groups the raw
+ * digit string so arbitrarily large integers keep full precision (no Number()).
+ * e.g. "1500000" → "1,500,000 points"; "-50" → "-50 points"
+ */
+export function formatPoints(value: string): string {
+	const trimmed = value.trim()
+	if (/^-?\d+$/.test(trimmed)) {
+		const negative = trimmed.startsWith('-')
+		const digits = negative ? trimmed.slice(1) : trimmed
+		const grouped = digits.replace(/\B(?=(\d{3})+(?!\d))/g, ',')
+		return `${negative ? '-' : ''}${grouped} points`
+	}
+	const num = Number(trimmed)
+	if (!Number.isFinite(num)) return '0 points'
+	return new Intl.NumberFormat('en-US', { maximumFractionDigits: 0 }).format(num) + ' points'
+}
+
+/**
  * Format an ISK amount in abbreviated form with " ISK" suffix.
  * e.g. 1500000000 → "1.50B ISK"
  */
