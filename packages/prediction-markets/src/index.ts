@@ -117,6 +117,14 @@ export interface ResolveResult {
 	resolvedOutcomeId?: string | null
 }
 
+export interface PendingProposalView {
+	id: string
+	/** Proposed winning outcome, or null for a proposed void. */
+	outcomeId: string | null
+	proposedBy: string
+	createdAt: string
+}
+
 export interface LeaderboardRow {
 	userId: string
 	balance: string
@@ -244,6 +252,8 @@ export interface PredictionMarkets {
 		marketId: string
 		proposalId: string
 	}): Promise<ResolveResult>
+	/** The single pending resolution proposal for a market (for two-of-N approve), or null. */
+	getPendingProposal(marketId: string): Promise<PendingProposalView | null>
 	voidMarket(input: {
 		actorUserId: string
 		marketId: string

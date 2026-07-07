@@ -1,10 +1,14 @@
 /**
  * Discord component / modal-submit handling for prediction markets.
  *
- * P2 handles the bet flow's modal submit: a member clicks a "bet" button (the interactions
- * worker opens the stake modal inline), enters an amount, and this runs `placeBet`, refreshes
- * the public post embed, and returns an ephemeral confirmation. Resolver component actions
- * (close/resolve/void) arrive in P3. Core is the sole Discord orchestrator.
+ * - Member bet flow (P2): a "bet" button opens the stake modal (in the interactions worker);
+ *   the modal submit runs placeBet and refreshes the post.
+ * - Resolver flow (P3): Close/Approve buttons run directly; Resolve/Void buttons open a modal
+ *   (outcome / reason) whose submit runs the write. Resolver actions gate on
+ *   `urn:markets:resolver` (buttons are visible to all — gating is server-side).
+ *
+ * Core is the sole Discord orchestrator: it runs the PM write, then refreshes the public post
+ * (embed + status buttons + tag + lock-on-terminal). The PM DO never calls Discord.
  */
 
 import { eq } from '@repo/db-utils'
@@ -12,9 +16,18 @@ import { getStub } from '@repo/do-utils'
 import { logger } from '@repo/hono-helpers'
 
 import { users } from '../db/schema'
-import { BET_AMOUNT_INPUT_ID, customIdAction, decodeBetTarget } from '../lib/market-custom-id'
+import {
+	BET_AMOUNT_INPUT_ID,
+	RESOLVE_OUTCOME_INPUT_ID,
+	VOID_REASON_INPUT_ID,
+	customIdAction,
+	decodeBetTarget,
+	decodeMarketAction,
+	decodeSingleMarketId,
+} from '../lib/market-custom-id'
 import { formatMarketPoints } from '../lib/market-embed'
-import { updateMarketPostFromDetail } from './discord-market-post.service'
+import { hasMarketPermission } from '../lib/market-permissions'
+import { applyMarketPostStatus, updateMarketPostFromDetail } from './discord-market-post.service'
 
 import type { createDb } from '../db'
 import type { Env } from '../context'
@@ -22,9 +35,12 @@ import type { Discord, DiscordEmbed } from '@repo/discord'
 import type { PredictionMarkets } from '@repo/prediction-markets'
 
 const EPHEMERAL_FLAG = 1 << 6
+const NOT_LINKED =
+	'Your Discord account is not linked to a core user. Link it in the app first.'
+const RESOLVER_ONLY = 'Resolver only — you don’t have permission for this action.'
 
-/** Bindings the component/modal path needs (money DO + Discord DO for the post refresh). */
-export type ComponentEnv = Pick<Env, 'DISCORD' | 'PREDICTION_MARKETS'>
+/** Bindings the component/modal path needs (money DO, Discord DO, groups for the tier gate). */
+export type ComponentEnv = Pick<Env, 'DISCORD' | 'PREDICTION_MARKETS' | 'GROUPS' | 'PM_FORUM_GUILD_ID'>
 
 export interface DiscordComponentResult {
 	response: { type: number; data: { content: string; flags?: number; embeds?: DiscordEmbed[] } }
@@ -32,18 +48,22 @@ export interface DiscordComponentResult {
 	reason: string
 }
 
-export interface ExecuteModalSubmitInput {
+export interface ExecuteComponentInput {
 	customId: string
-	/** Modal text-input values keyed by their custom_id. */
-	fields: Record<string, string>
 	discordUserId: string
-	/** The modal-submit interaction id — the idempotency key for placeBet. */
+	/** The interaction id (bet idempotency key for the modal-submit path). */
 	interactionId?: string | null
 	guildId?: string | null
 	channelId?: string | null
 }
 
-const BET_ERROR_MESSAGES: Record<string, string> = {
+export interface ExecuteModalSubmitInput extends ExecuteComponentInput {
+	/** Modal text-input values keyed by their custom_id. */
+	fields: Record<string, string>
+}
+
+const ERROR_MESSAGES: Record<string, string> = {
+	// bet
 	MARKET_NOT_FOUND: 'That market no longer exists.',
 	MARKET_NOT_OPEN: 'This market is not open for betting.',
 	MARKET_CLOSED: 'Betting has closed on this market.',
@@ -53,6 +73,18 @@ const BET_ERROR_MESSAGES: Record<string, string> = {
 	PER_USER_CAP_EXCEEDED: 'That would exceed your per-user cap on this market.',
 	INSUFFICIENT_FUNDS: 'Not enough points — ask an admin for a grant, or lower your stake.',
 	INVALID_AMOUNT: 'Enter a whole number of points.',
+	// resolver
+	MARKET_NOT_CLOSED: 'The market must be closed before it can be resolved.',
+	MARKET_NOT_RESOLVING: 'There is no pending resolution to approve.',
+	MARKET_TERMINAL: 'This market is already resolved or voided.',
+	CREATOR_CANNOT_RESOLVE: 'You created this market, so you can’t resolve it.',
+	RESOLVER_HAS_POSITION: 'You bet on this market, so you can’t resolve it.',
+	APPROVER_MUST_DIFFER: 'A different resolver must approve this proposal.',
+	PROPOSAL_NOT_FOUND: 'That proposal no longer exists.',
+	PROPOSAL_NOT_PENDING: 'That proposal is no longer pending.',
+	CONTESTED_VOID_REQUIRES_APPROVER:
+		'This market has bets on multiple outcomes — a contested void needs a second approver (use the admin UI).',
+	VOID_REASON_REQUIRED: 'A void reason is required.',
 }
 
 function ephemeral(
@@ -63,37 +95,155 @@ function ephemeral(
 	return { response: { type: 4, data: { content, flags: EPHEMERAL_FLAG } }, coreUserId, reason }
 }
 
-/**
- * Handle a modal submit. Deferred (ephemeral) by the interactions worker, so this may take
- * >3s; the returned `response.data.content` is delivered as the followup.
- */
+function mapError(error: unknown, coreUserId: string): DiscordComponentResult {
+	const msg = error instanceof Error ? error.message : String(error)
+	if (msg.startsWith('RATE_LIMITED')) {
+		const ms = Number(msg.split(':')[1]) || 0
+		return ephemeral(`Slow down — try again in ${Math.max(1, Math.ceil(ms / 1000))}s.`, 'rate-limited', coreUserId)
+	}
+	const friendly = ERROR_MESSAGES[msg]
+	if (friendly) return ephemeral(friendly, 'domain-error', coreUserId)
+	// closeMarket guards state via assertTransition (a raw "invalid market transition" string),
+	// not a coded status error — surface a stale-state message rather than the generic one.
+	if (msg.startsWith('prediction-markets: invalid market transition')) {
+		return ephemeral('This market can’t be changed in its current state.', 'stale-state', coreUserId)
+	}
+	logger.error('[DiscordComponents] action failed', { error: msg })
+	return ephemeral('Could not complete this action. Please try again later.', 'error', coreUserId)
+}
+
+async function resolveUser(
+	db: ReturnType<typeof createDb>,
+	discordUserId: string
+): Promise<{ id: string; is_admin: boolean } | null> {
+	const user = await db.query.users.findFirst({
+		where: eq(users.discordUserId, discordUserId),
+		columns: { id: true, is_admin: true },
+	})
+	return user ?? null
+}
+
+/** Refresh the public post after a state change: embed + status buttons + tag + lock-on-terminal. */
+async function refreshPost(
+	db: ReturnType<typeof createDb>,
+	env: ComponentEnv,
+	prediction: PredictionMarkets,
+	marketId: string
+): Promise<void> {
+	try {
+		const market = await prediction.getMarket(marketId)
+		if (!market) return
+		const discord = getStub<Discord>(env.DISCORD, 'default')
+		const edit = await updateMarketPostFromDetail(discord, market)
+		// Only flip the tag / archive+lock if the message edit (which strips buttons on a
+		// terminal market) actually landed — otherwise we'd lock a post with stale buttons.
+		if (env.PM_FORUM_GUILD_ID && edit.success) {
+			await applyMarketPostStatus(db, discord, env.PM_FORUM_GUILD_ID, market)
+		}
+	} catch (err) {
+		logger.warn('[DiscordComponents] post refresh failed', {
+			marketId,
+			error: err instanceof Error ? err.message : String(err),
+		})
+	}
+}
+
+async function requireResolver(
+	db: ReturnType<typeof createDb>,
+	env: ComponentEnv,
+	discordUserId: string
+): Promise<{ id: string; is_admin: boolean } | DiscordComponentResult> {
+	const user = await resolveUser(db, discordUserId)
+	if (!user) return ephemeral(NOT_LINKED, 'not-linked')
+	if (!(await hasMarketPermission(env, user.id, 'resolver', user.is_admin))) {
+		return ephemeral(RESOLVER_ONLY, 'forbidden', user.id)
+	}
+	return user
+}
+
+function isResult(x: { id: string } | DiscordComponentResult): x is DiscordComponentResult {
+	return 'response' in x
+}
+
+// ---------------------------------------------------------------------------
+// Buttons (no modal): Close, Approve — resolver-gated
+// ---------------------------------------------------------------------------
+
+export async function executeDiscordComponent(
+	db: ReturnType<typeof createDb>,
+	env: ComponentEnv,
+	input: ExecuteComponentInput
+): Promise<DiscordComponentResult> {
+	const decoded = decodeMarketAction(input.customId)
+	if (!decoded || (decoded.action !== 'close' && decoded.action !== 'approve')) {
+		return ephemeral('This action is not available.', 'invalid-component')
+	}
+
+	const auth = await requireResolver(db, env, input.discordUserId)
+	if (isResult(auth)) return auth
+	const user = auth
+
+	const prediction = getStub<PredictionMarkets>(env.PREDICTION_MARKETS, 'default')
+	try {
+		if (decoded.action === 'close') {
+			await prediction.closeMarket({ actorUserId: user.id, marketId: decoded.marketId })
+			await refreshPost(db, env, prediction, decoded.marketId)
+			return ephemeral('Market closed.', 'ok', user.id)
+		}
+		// approve
+		const proposal = await prediction.getPendingProposal(decoded.marketId)
+		if (!proposal) return ephemeral('No pending resolution to approve.', 'no-proposal', user.id)
+		const result = await prediction.approveResolution({
+			resolverId: user.id,
+			marketId: decoded.marketId,
+			proposalId: proposal.id,
+		})
+		await refreshPost(db, env, prediction, decoded.marketId)
+		return ephemeral(
+			result.status === 'voided' ? 'Resolution approved — market voided.' : 'Resolution approved.',
+			'ok',
+			user.id
+		)
+	} catch (error) {
+		return mapError(error, user.id)
+	}
+}
+
+// ---------------------------------------------------------------------------
+// Modal submits: betmodal (member), resolvemodal / voidmodal (resolver)
+// ---------------------------------------------------------------------------
+
 export async function executeDiscordModalSubmit(
 	db: ReturnType<typeof createDb>,
 	env: ComponentEnv,
 	input: ExecuteModalSubmitInput
 ): Promise<DiscordComponentResult> {
-	if (customIdAction(input.customId) !== 'betmodal') {
-		return ephemeral('Unsupported modal.', 'invalid-component')
+	switch (customIdAction(input.customId)) {
+		case 'betmodal':
+			return handleBetModal(db, env, input)
+		case 'resolvemodal':
+			return handleResolveModal(db, env, input)
+		case 'voidmodal':
+			return handleVoidModal(db, env, input)
+		default:
+			return ephemeral('Unsupported modal.', 'invalid-component')
 	}
+}
 
+async function handleBetModal(
+	db: ReturnType<typeof createDb>,
+	env: ComponentEnv,
+	input: ExecuteModalSubmitInput
+): Promise<DiscordComponentResult> {
 	const target = decodeBetTarget(input.customId)
 	if (!target) return ephemeral('Could not read this bet. Please try again.', 'invalid-component')
-
 	if (!input.interactionId) {
 		// Real interactions always carry an id; guard so a bet is never placed without a key.
 		return ephemeral('Could not process this bet. Please try again.', 'invalid-component')
 	}
 
-	const user = await db.query.users.findFirst({
-		where: eq(users.discordUserId, input.discordUserId),
-		columns: { id: true },
-	})
-	if (!user) {
-		return ephemeral(
-			'Your Discord account is not linked to a core user. Link it in the app first.',
-			'not-linked'
-		)
-	}
+	const user = await resolveUser(db, input.discordUserId)
+	if (!user) return ephemeral(NOT_LINKED, 'not-linked')
 
 	const amountRaw = (input.fields[BET_AMOUNT_INPUT_ID] ?? '').trim()
 	if (!/^\d+$/.test(amountRaw) || BigInt(amountRaw) <= 0n) {
@@ -109,8 +259,6 @@ export async function executeDiscordModalSubmit(
 			amount: amountRaw,
 			idempotencyKey: input.interactionId,
 		})
-
-		// Refresh the public post embed (pools/odds) + grab the outcome label — best-effort.
 		let outcomeLabel = ''
 		try {
 			const market = await prediction.getMarket(target.marketId)
@@ -124,19 +272,87 @@ export async function executeDiscordModalSubmit(
 				error: err instanceof Error ? err.message : String(err),
 			})
 		}
-
 		const on = outcomeLabel ? ` on **${outcomeLabel}**` : ''
 		return ephemeral(`Bet placed: ${formatMarketPoints(bet.amount)}${on}.`, 'ok', user.id)
 	} catch (error) {
-		const msg = error instanceof Error ? error.message : String(error)
-		if (msg.startsWith('RATE_LIMITED')) {
-			const ms = Number(msg.split(':')[1]) || 0
-			const secs = Math.max(1, Math.ceil(ms / 1000))
-			return ephemeral(`Slow down — try again in ${secs}s.`, 'rate-limited', user.id)
+		return mapError(error, user.id)
+	}
+}
+
+async function handleResolveModal(
+	db: ReturnType<typeof createDb>,
+	env: ComponentEnv,
+	input: ExecuteModalSubmitInput
+): Promise<DiscordComponentResult> {
+	const marketId = decodeSingleMarketId(input.customId, 'resolvemodal')
+	if (!marketId) return ephemeral('Could not read this action.', 'invalid-component')
+
+	const auth = await requireResolver(db, env, input.discordUserId)
+	if (isResult(auth)) return auth
+	const user = auth
+
+	const prediction = getStub<PredictionMarkets>(env.PREDICTION_MARKETS, 'default')
+	const market = await prediction.getMarket(marketId)
+	if (!market) return ephemeral('That market no longer exists.', 'not-found', user.id)
+
+	const raw = (input.fields[RESOLVE_OUTCOME_INPUT_ID] ?? '').trim()
+	const idx = Number(raw)
+	if (!/^\d+$/.test(raw) || idx < 1 || idx > market.outcomes.length) {
+		return ephemeral(
+			`Enter a valid outcome number (1–${market.outcomes.length}).`,
+			'invalid-outcome',
+			user.id
+		)
+	}
+	const outcome = market.outcomes[idx - 1]
+
+	try {
+		const result = await prediction.proposeResolution({
+			resolverId: user.id,
+			marketId,
+			outcomeId: outcome.id,
+		})
+		await refreshPost(db, env, prediction, marketId)
+		if (result.status === 'resolved') {
+			return ephemeral(`Market resolved: **${outcome.label}**.`, 'ok', user.id)
 		}
-		const friendly = BET_ERROR_MESSAGES[msg]
-		if (friendly) return ephemeral(friendly, 'bet-error', user.id)
-		logger.error('[DiscordComponents] placeBet failed', { marketId: target.marketId, error: msg })
-		return ephemeral('Could not place your bet. Please try again later.', 'error', user.id)
+		if (result.status === 'voided') {
+			return ephemeral('Market resolved with no winning bets — everyone refunded.', 'ok', user.id)
+		}
+		// resolving (two-of-N): a second resolver must approve.
+		return ephemeral(
+			`Resolution proposed: **${outcome.label}**. A second resolver must approve.`,
+			'ok',
+			user.id
+		)
+	} catch (error) {
+		return mapError(error, user.id)
+	}
+}
+
+async function handleVoidModal(
+	db: ReturnType<typeof createDb>,
+	env: ComponentEnv,
+	input: ExecuteModalSubmitInput
+): Promise<DiscordComponentResult> {
+	const marketId = decodeSingleMarketId(input.customId, 'voidmodal')
+	if (!marketId) return ephemeral('Could not read this action.', 'invalid-component')
+
+	const auth = await requireResolver(db, env, input.discordUserId)
+	if (isResult(auth)) return auth
+	const user = auth
+
+	const reason = (input.fields[VOID_REASON_INPUT_ID] ?? '').trim()
+	if (reason.length < 3) {
+		return ephemeral('Enter a void reason (at least 3 characters).', 'invalid-reason', user.id)
+	}
+
+	const prediction = getStub<PredictionMarkets>(env.PREDICTION_MARKETS, 'default')
+	try {
+		await prediction.voidMarket({ actorUserId: user.id, marketId, reason })
+		await refreshPost(db, env, prediction, marketId)
+		return ephemeral('Market voided and all bets refunded.', 'ok', user.id)
+	} catch (error) {
+		return mapError(error, user.id)
 	}
 }

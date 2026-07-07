@@ -37,7 +37,7 @@ function market(overrides: Partial<MarketDetail> = {}): MarketDetail {
 describe('buildMarketEmbed', () => {
 	it('renders "no bets yet" for a fresh market, never 0%', () => {
 		const embed = buildMarketEmbed(market())
-		const yes = embed.fields?.find((f) => f.name === 'Yes')
+		const yes = embed.fields?.find((f) => f.name.endsWith('Yes'))
 		expect(yes?.value).toContain('no bets yet')
 		expect(yes?.value).not.toContain('%')
 	})
@@ -52,7 +52,7 @@ describe('buildMarketEmbed', () => {
 				],
 			})
 		)
-		const yes = embed.fields?.find((f) => f.name === 'Yes')
+		const yes = embed.fields?.find((f) => f.name.endsWith('Yes'))
 		expect(yes?.value).toContain('66.7%')
 		expect(yes?.value).toContain('100 points')
 	})

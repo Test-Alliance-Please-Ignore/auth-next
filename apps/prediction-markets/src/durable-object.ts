@@ -38,6 +38,7 @@ import type {
 	MarketStatus,
 	MarketSummary,
 	Paged,
+	PendingProposalView,
 	PlaceBetInput,
 	PredictionMarkets,
 	ResolveResult,
@@ -72,6 +73,31 @@ const EXPECTED_BET_ERRORS = new Set([
 	'PER_USER_CAP_EXCEEDED',
 	'INSUFFICIENT_FUNDS',
 ])
+
+/** Resolver methods (close/resolve/approve/void) throw these on normal rejections — not paged. */
+const EXPECTED_RESOLVER_ERRORS = new Set([
+	'MARKET_NOT_FOUND',
+	'MARKET_NOT_CLOSED',
+	'MARKET_NOT_RESOLVING',
+	'MARKET_TERMINAL',
+	'OUTCOME_NOT_FOUND',
+	'CREATOR_CANNOT_RESOLVE',
+	'RESOLVER_HAS_POSITION',
+	'APPROVER_MUST_DIFFER',
+	'PROPOSAL_NOT_FOUND',
+	'PROPOSAL_NOT_PENDING',
+	'CONTESTED_VOID_REQUIRES_APPROVER',
+	'VOID_REASON_REQUIRED',
+])
+
+/** True for expected resolver rejections, incl. the raw assertTransition (stale-state) string. */
+function isExpectedResolverError(error: unknown): boolean {
+	const msg = error instanceof Error ? error.message : String(error)
+	return (
+		EXPECTED_RESOLVER_ERRORS.has(msg) ||
+		msg.startsWith('prediction-markets: invalid market transition')
+	)
+}
 
 /**
  * Prediction Markets Durable Object.
@@ -385,6 +411,9 @@ export class PredictionMarketsDO extends DurableObject<Env> implements Predictio
 	async createMarket(input: CreateMarketInput): Promise<MarketDetail> {
 		const labels = input.outcomes.map((o) => o.trim()).filter(Boolean)
 		if (labels.length < 2) throw new Error('AT_LEAST_TWO_OUTCOMES')
+		// Cap at 20 so the embed (≤25 fields) and button rows (≤25 buttons / 5 rows) can't
+		// overflow Discord limits. The admin route enforces this too; the DO owns the invariant.
+		if (labels.length > 20) throw new Error('TOO_MANY_OUTCOMES')
 		if (new Set(labels.map((l) => l.toLowerCase())).size !== labels.length) {
 			throw new Error('DUPLICATE_OUTCOMES')
 		}
@@ -682,9 +711,11 @@ export class PredictionMarketsDO extends DurableObject<Env> implements Predictio
 				})
 			})
 		} catch (error) {
-			captureException(error as Error, {
-				tags: { durableObject: 'PredictionMarketsDO', method: 'closeMarket' },
-			})
+			if (!isExpectedResolverError(error)) {
+				captureException(error as Error, {
+					tags: { durableObject: 'PredictionMarketsDO', method: 'closeMarket' },
+				})
+			}
 			throw error
 		}
 	}
@@ -792,9 +823,11 @@ export class PredictionMarketsDO extends DurableObject<Env> implements Predictio
 				}
 			})
 		} catch (error) {
-			captureException(error as Error, {
-				tags: { durableObject: 'PredictionMarketsDO', method: 'proposeResolution' },
-			})
+			if (!isExpectedResolverError(error)) {
+				captureException(error as Error, {
+					tags: { durableObject: 'PredictionMarketsDO', method: 'proposeResolution' },
+				})
+			}
 			throw error
 		}
 	}
@@ -859,9 +892,11 @@ export class PredictionMarketsDO extends DurableObject<Env> implements Predictio
 				return { marketId: market.id, status: finalStatus, resolvedOutcomeId }
 			})
 		} catch (error) {
-			captureException(error as Error, {
-				tags: { durableObject: 'PredictionMarketsDO', method: 'approveResolution' },
-			})
+			if (!isExpectedResolverError(error)) {
+				captureException(error as Error, {
+					tags: { durableObject: 'PredictionMarketsDO', method: 'approveResolution' },
+				})
+			}
 			throw error
 		}
 	}
@@ -896,10 +931,33 @@ export class PredictionMarketsDO extends DurableObject<Env> implements Predictio
 				await this.executeVoidRefund(tx, market, input.actorUserId, input.reason.trim())
 			})
 		} catch (error) {
-			captureException(error as Error, {
-				tags: { durableObject: 'PredictionMarketsDO', method: 'voidMarket' },
-			})
+			if (!isExpectedResolverError(error)) {
+				captureException(error as Error, {
+					tags: { durableObject: 'PredictionMarketsDO', method: 'voidMarket' },
+				})
+			}
 			throw error
+		}
+	}
+
+	/** The single pending resolution proposal for a market (two-of-N approve), or null. */
+	async getPendingProposal(marketId: string): Promise<PendingProposalView | null> {
+		const [p] = await this.db
+			.select()
+			.from(pmResolutionProposals)
+			.where(
+				and(
+					eq(pmResolutionProposals.marketId, marketId),
+					eq(pmResolutionProposals.status, 'pending')
+				)
+			)
+			.limit(1)
+		if (!p) return null
+		return {
+			id: p.id,
+			outcomeId: p.outcomeId,
+			proposedBy: p.proposedBy,
+			createdAt: p.createdAt.toISOString(),
 		}
 	}
 

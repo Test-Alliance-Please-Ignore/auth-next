@@ -42,3 +42,49 @@ export function decodeBetTarget(customId: string): BetTarget | null {
 
 /** The text-input custom_id inside the stake modal (its own 100-char budget). */
 export const BET_AMOUNT_INPUT_ID = 'amount'
+
+// --- resolver actions (P3) --------------------------------------------------
+
+export type MarketAction = 'close' | 'resolve' | 'void' | 'approve'
+const MARKET_ACTIONS: readonly MarketAction[] = ['close', 'resolve', 'void', 'approve']
+
+/** Resolver button: `mkt:<action>:<marketId>` (close/resolve/void/approve). */
+export function encodeMarketActionId(action: MarketAction, marketId: string): string {
+	return `mkt:${action}:${marketId}`
+}
+
+/** Parse a `mkt:<action>:<marketId>` button custom_id; null if malformed/unknown action. */
+export function decodeMarketAction(
+	customId: string
+): { action: MarketAction; marketId: string } | null {
+	const parts = customId.split(':')
+	if (parts.length !== 3 || parts[0] !== 'mkt') return null
+	const [, action, marketId] = parts
+	if (!MARKET_ACTIONS.includes(action as MarketAction) || !marketId) return null
+	return { action: action as MarketAction, marketId }
+}
+
+// The resolver modals are opened by the interactions worker (apps/discord), which builds
+// these ids inline (it can't import core). These encoders are the canonical definition the
+// worker mirrors and the round-trip tests pin; `decodeSingleMarketId` parses them here.
+
+/** Resolve outcome-picker modal: `resolvemodal:<marketId>`. */
+export function encodeResolveModalId(marketId: string): string {
+	return `resolvemodal:${marketId}`
+}
+
+/** Void reason modal: `voidmodal:<marketId>`. */
+export function encodeVoidModalId(marketId: string): string {
+	return `voidmodal:${marketId}`
+}
+
+/** Parse a `resolvemodal:<id>` / `voidmodal:<id>` custom_id → the market id; null if malformed. */
+export function decodeSingleMarketId(customId: string, prefix: string): string | null {
+	const parts = customId.split(':')
+	if (parts.length !== 2 || parts[0] !== prefix || !parts[1]) return null
+	return parts[1]
+}
+
+/** Text-input custom_ids inside the resolver modals. */
+export const RESOLVE_OUTCOME_INPUT_ID = 'outcome'
+export const VOID_REASON_INPUT_ID = 'reason'

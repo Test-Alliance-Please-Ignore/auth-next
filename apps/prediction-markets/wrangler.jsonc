@@ -9,7 +9,6 @@
 	"observability": {
 		"enabled": true
 	},
-	"vars": {},
 	"durable_objects": {
 		"bindings": [
 			{

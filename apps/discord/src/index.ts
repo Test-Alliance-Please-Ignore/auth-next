@@ -216,6 +216,99 @@ async function runDeferredModalSubmit(
 	}
 }
 
+interface DeferredComponentContext {
+	interactionId: string
+	token: string
+	customId: string
+	discordUserId: string
+	guildId: string | null
+	channelId: string | null
+}
+
+/**
+ * Run a deferred component (button) interaction after the type:5 ephemeral ACK — P3 resolver
+ * Close/Approve. Calls core (which runs the PM write + refreshes the public post) and delivers
+ * the ephemeral confirmation by editing the original interaction response.
+ */
+async function runDeferredComponent(
+	env: App['Bindings'],
+	ctx: DeferredComponentContext
+): Promise<void> {
+	const startedAt = Date.now()
+	try {
+		const execution = await env.CORE.executeDiscordComponent({
+			customId: ctx.customId,
+			discordUserId: ctx.discordUserId,
+			interactionId: ctx.interactionId,
+			guildId: ctx.guildId,
+			channelId: ctx.channelId,
+		})
+		const content = execution.response.data?.content ?? '​'
+		const stub = getStub<Discord>(env.DISCORD, 'default')
+		const result = await stub.editOriginalInteractionResponse(ctx.token, { content })
+		if (!result.success) {
+			logger.error('[DiscordInteractions] Failed to deliver component response', {
+				interactionId: ctx.interactionId,
+				error: result.error,
+				durationMs: Date.now() - startedAt,
+			})
+		}
+	} catch (error) {
+		logger.error('[DiscordInteractions] Deferred component failed', {
+			interactionId: ctx.interactionId,
+			error: error instanceof Error ? error.message : String(error),
+			durationMs: Date.now() - startedAt,
+		})
+		try {
+			const stub = getStub<Discord>(env.DISCORD, 'default')
+			await stub.editOriginalInteractionResponse(ctx.token, {
+				content: 'Could not complete this action. Please try again later.',
+			})
+		} catch {
+			// Best-effort delivery; nothing more we can do.
+		}
+	}
+}
+
+/** Build a type:9 MODAL response with a single required text input. */
+function buildModalResponse(
+	customId: string,
+	title: string,
+	input: {
+		customId: string
+		label: string
+		style: 1 | 2 // 1 SHORT, 2 PARAGRAPH
+		minLength?: number
+		maxLength?: number
+		placeholder?: string
+	}
+) {
+	return {
+		type: DISCORD_RESPONSE_MODAL,
+		data: {
+			custom_id: customId,
+			title,
+			components: [
+				{
+					type: 1, // ACTION_ROW
+					components: [
+						{
+							type: 4, // TEXT_INPUT
+							custom_id: input.customId,
+							style: input.style,
+							label: input.label,
+							required: true,
+							...(input.minLength !== undefined ? { min_length: input.minLength } : {}),
+							...(input.maxLength !== undefined ? { max_length: input.maxLength } : {}),
+							...(input.placeholder ? { placeholder: input.placeholder } : {}),
+						},
+					],
+				},
+			],
+		},
+	}
+}
+
 function hexToBytes(hex: string): Uint8Array | null {
 	const normalized = hex.trim()
 	if (!/^[0-9a-fA-F]+$/.test(normalized) || normalized.length % 2 !== 0) {
@@ -322,37 +415,72 @@ const app = new Hono<App>()
 			return c.json({ type: DISCORD_INTERACTION_PING })
 		}
 
-		// Component (button) interactions. A "bet" button opens the stake modal inline
-		// (zero I/O — trivially within the 3s ACK). Other component actions arrive in P3.
+		// Component (button) interactions. bet/resolve/void buttons open a modal inline (zero
+		// I/O — within the 3s ACK); close/approve defer (they hit the money DO).
 		if (interaction.type === DISCORD_INTERACTION_MESSAGE_COMPONENT) {
 			const customId = interaction.data?.custom_id ?? ''
 			const parts = customId.split(':')
+			const componentUserId = interaction.member?.user?.id ?? interaction.user?.id ?? null
+
+			// bet:<mkt>:<out> → stake modal
 			if (parts[0] === 'bet' && parts.length === 3) {
-				return c.json({
-					type: DISCORD_RESPONSE_MODAL,
-					data: {
-						custom_id: `betmodal:${parts[1]}:${parts[2]}`,
-						title: 'Place a bet',
-						components: [
-							{
-								type: 1, // ACTION_ROW
-								components: [
-									{
-										type: 4, // TEXT_INPUT
-										custom_id: 'amount',
-										style: 1, // SHORT
-										label: 'Stake (points)',
-										min_length: 1,
-										max_length: 12,
-										required: true,
-										placeholder: '100',
-									},
-								],
-							},
-						],
-					},
-				})
+				return c.json(
+					buildModalResponse(`betmodal:${parts[1]}:${parts[2]}`, 'Place a bet', {
+						customId: 'amount',
+						label: 'Stake (points)',
+						style: 1,
+						minLength: 1,
+						maxLength: 12,
+						placeholder: '100',
+					})
+				)
 			}
+
+			// mkt:<action>:<mkt> — resolver controls
+			if (parts[0] === 'mkt' && parts.length === 3) {
+				const [, action, marketId] = parts
+				if (action === 'resolve') {
+					return c.json(
+						buildModalResponse(`resolvemodal:${marketId}`, 'Resolve market', {
+							customId: 'outcome',
+							label: 'Winning outcome number',
+							style: 1,
+							minLength: 1,
+							maxLength: 3,
+							placeholder: '1',
+						})
+					)
+				}
+				if (action === 'void') {
+					return c.json(
+						buildModalResponse(`voidmodal:${marketId}`, 'Void market', {
+							customId: 'reason',
+							label: 'Void reason',
+							style: 2,
+							minLength: 3,
+							maxLength: 500,
+							placeholder: 'Why is this market being voided?',
+						})
+					)
+				}
+				if ((action === 'close' || action === 'approve') && componentUserId) {
+					c.executionCtx.waitUntil(
+						runDeferredComponent(c.env, {
+							interactionId: interaction.id,
+							token: interaction.token,
+							customId,
+							discordUserId: componentUserId,
+							guildId: interaction.guild_id ?? null,
+							channelId: interaction.channel_id ?? null,
+						})
+					)
+					return c.json({
+						type: DISCORD_INTERACTION_DEFERRED_RESPONSE,
+						data: { flags: DISCORD_EPHEMERAL_FLAG },
+					})
+				}
+			}
+
 			logger.warn('[DiscordInteractions] Unsupported component', {
 				requestId,
 				interactionId: interaction.id,
@@ -369,7 +497,10 @@ const app = new Hono<App>()
 		if (interaction.type === DISCORD_INTERACTION_MODAL_SUBMIT) {
 			const customId = interaction.data?.custom_id ?? ''
 			const modalUserId = interaction.member?.user?.id ?? interaction.user?.id ?? null
-			if (customId.split(':')[0] !== 'betmodal' || !modalUserId) {
+			const modalAction = customId.split(':')[0]
+			const isMarketModal =
+				modalAction === 'betmodal' || modalAction === 'resolvemodal' || modalAction === 'voidmodal'
+			if (!isMarketModal || !modalUserId) {
 				return c.json({
 					type: 4,
 					data: { content: 'This action is not available.', flags: DISCORD_EPHEMERAL_FLAG },
