@@ -1,4 +1,4 @@
-import { boolean, index, jsonb, pgTable, text, timestamp } from 'drizzle-orm/pg-core'
+import { boolean, index, jsonb, pgTable, text, timestamp, uniqueIndex } from 'drizzle-orm/pg-core'
 
 /**
  * Feature flags table
@@ -42,7 +42,37 @@ export const featureFlags = pgTable(
 	})
 )
 
+export const userFeatureFlags = pgTable(
+	'user_feature_flags',
+	{
+		// Primary identifier
+		id: text('id')
+			.primaryKey()
+			.$defaultFn(() => crypto.randomUUID()),
+
+		featureFlagId: text('feature_flag_id')
+			.notNull()
+			.references(() => featureFlags.id),
+
+		userId: text('user_id').notNull(),
+
+		enabled: boolean('enabled').notNull().default(false),
+
+		createdAt: timestamp('created_at').notNull().defaultNow(),
+		updatedAt: timestamp('updated_at').notNull().defaultNow(),
+	},
+	(table) => ({
+		pk: uniqueIndex('user_feature_flags_pk').on(table.featureFlagId, table.userId),
+		userIdEnabledIdx: index('user_feature_flags_user_id_enabled_idx').on(table.userId, table.enabled),
+		featureFlagIdEnabledIdx: index('user_feature_flags_feature_flag_id_enabled_idx').on(
+			table.featureFlagId,
+			table.enabled
+		),
+	})
+)
+
 // Export schema object for Drizzle
 export const schema = {
 	featureFlags,
+	userFeatureFlags,
 }
