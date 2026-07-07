@@ -1,6 +1,7 @@
 /**
- * Builds the Discord embed shown in a prediction market's forum post.
- * Pure (no I/O) so it is unit-testable and reusable across create/update flows.
+ * Rendering helpers for a prediction market's Discord forum post — the outcome/pool embed and
+ * the plain-text "bet placed" announcement. Pure (no I/O) so they are unit-testable and reusable
+ * across create/update/bet flows.
  */
 
 import type { DiscordEmbed } from '@repo/discord'
@@ -27,6 +28,19 @@ export function formatMarketPoints(value: string): string {
 /** Truncate to `max` chars with an ellipsis (Discord field/title/name limits). */
 export function truncateForEmbed(value: string, max: number): string {
 	return value.length <= max ? value : `${value.slice(0, max - 1)}…`
+}
+
+/**
+ * The public message posted to a market's forum thread when a bet lands. Deliberately
+ * anonymous — it carries the amount and chosen outcome ONLY, never any bettor identity.
+ * The outcome label is truncated so a long label can't blow past Discord's 2000-char message
+ * limit; mention suppression is handled by the caller (allowed_mentions).
+ */
+export function buildBetAnnouncement(amount: string, outcomeLabel: string): string {
+	return `🎲 A bet of **${formatMarketPoints(amount)}** was placed on **${truncateForEmbed(
+		outcomeLabel,
+		256
+	)}**.`
 }
 
 /**

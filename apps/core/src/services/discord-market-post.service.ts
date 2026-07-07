@@ -10,10 +10,10 @@ import { eq } from '@repo/db-utils'
 
 import { pmForumConfig } from '../db/schema'
 import { buildMarketComponents } from '../lib/market-components'
-import { buildMarketEmbed, truncateForEmbed } from '../lib/market-embed'
+import { buildBetAnnouncement, buildMarketEmbed, truncateForEmbed } from '../lib/market-embed'
 
 import type { createDb } from '../db'
-import type { Discord } from '@repo/discord'
+import type { Discord, SendMessageResult } from '@repo/discord'
 import type { MarketDetail, PredictionMarkets } from '@repo/prediction-markets'
 
 type CoreDb = ReturnType<typeof createDb>
@@ -164,6 +164,29 @@ export async function updateMarketPostFromDetail(
 	return discord.updateMarketPostMessage(market.discordThreadId, market.discordMessageId, {
 		embeds: [buildMarketEmbed(market)],
 		components: buildMarketComponents(market),
+	})
+}
+
+/**
+ * Post an anonymized "bet placed" announcement into a market's forum thread — the amount and
+ * chosen outcome only, never who placed it. Sent as a regular thread message (a thread is a
+ * channel), reusing sendMessage's rate-limit retry; mentions are suppressed so a user-authored
+ * outcome label can't ping anyone. Best-effort: no-op if the market has no post yet, and the
+ * returned {success,error} is for logging only — a failed announcement must never fail the bet.
+ * `guildId` is used only for the DO's log context (sendMessage POSTs by channel/thread id).
+ */
+export async function announceBetPlaced(
+	discord: Discord,
+	guildId: string,
+	market: MarketDetail,
+	amount: string,
+	outcomeLabel: string
+): Promise<SendMessageResult> {
+	if (!market.discordThreadId) return { success: false, error: 'no post' }
+	if (!outcomeLabel) return { success: false, error: 'no outcome' }
+	return discord.sendMessage(guildId, market.discordThreadId, {
+		content: buildBetAnnouncement(amount, outcomeLabel),
+		allowEveryone: false,
 	})
 }
 

@@ -1,6 +1,11 @@
 import { describe, expect, it } from 'vitest'
 
-import { buildMarketEmbed, formatMarketPoints, truncateForEmbed } from '../lib/market-embed'
+import {
+	buildBetAnnouncement,
+	buildMarketEmbed,
+	formatMarketPoints,
+	truncateForEmbed,
+} from '../lib/market-embed'
 
 import type { MarketDetail } from '@repo/prediction-markets'
 
@@ -80,6 +85,24 @@ describe('formatMarketPoints', () => {
 		expect(formatMarketPoints('0')).toBe('0 points')
 		expect(formatMarketPoints('1000')).toBe('1,000 points')
 		expect(formatMarketPoints('000123')).toBe('123 points')
+	})
+})
+
+describe('buildBetAnnouncement', () => {
+	it('reports the amount and outcome and no bettor identity', () => {
+		const msg = buildBetAnnouncement('1000', 'Yes')
+		expect(msg).toBe('🎲 A bet of **1,000 points** was placed on **Yes**.')
+	})
+
+	it('groups the amount using formatMarketPoints', () => {
+		expect(buildBetAnnouncement('1234567', 'No')).toContain('1,234,567 points')
+	})
+
+	it('truncates an over-long outcome label so the message stays within limits', () => {
+		const long = 'x'.repeat(300)
+		const msg = buildBetAnnouncement('5', long)
+		expect(msg).toContain('…')
+		expect(msg).not.toContain('x'.repeat(300))
 	})
 })
 

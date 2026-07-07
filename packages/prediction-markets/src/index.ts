@@ -256,7 +256,12 @@ export interface PredictionMarkets {
 	// writes
 	grantPoints(input: GrantPointsInput): Promise<{ balance: string; deduped: boolean }>
 	createMarket(input: CreateMarketInput): Promise<MarketDetail>
-	placeBet(input: PlaceBetInput): Promise<BetResult>
+	/**
+	 * Place a bet. `deduped` is true when this was a duplicate delivery of an already-recorded
+	 * bet (same idempotency key) — the prior bet is returned and no money moved. Callers must
+	 * gate any non-idempotent side effect (e.g. a public "bet placed" post) on `deduped === false`.
+	 */
+	placeBet(input: PlaceBetInput): Promise<BetResult & { deduped: boolean }>
 	closeMarket(input: { actorUserId: string; marketId: string }): Promise<void>
 	closeDueMarkets(): Promise<{ closed: number }>
 	proposeResolution(input: {

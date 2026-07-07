@@ -27,7 +27,11 @@ import {
 } from '../lib/market-custom-id'
 import { formatMarketPoints } from '../lib/market-embed'
 import { hasMarketPermission } from '../lib/market-permissions'
-import { applyMarketPostStatus, updateMarketPostFromDetail } from './discord-market-post.service'
+import {
+	announceBetPlaced,
+	applyMarketPostStatus,
+	updateMarketPostFromDetail,
+} from './discord-market-post.service'
 
 import type { createDb } from '../db'
 import type { Env } from '../context'
@@ -309,7 +313,14 @@ async function handleBetModal(
 			const market = await prediction.getMarket(target.marketId)
 			if (market) {
 				outcomeLabel = market.outcomes.find((o) => o.id === target.outcomeId)?.label ?? ''
-				await updateMarketPostFromDetail(getStub<Discord>(env.DISCORD, 'default'), market)
+				const discord = getStub<Discord>(env.DISCORD, 'default')
+				await updateMarketPostFromDetail(discord, market)
+				// Announce the bet publicly in the market's forum thread — amount + outcome only,
+				// never the bettor's identity. Best-effort (sibling to the embed refresh above).
+				// Skip on a deduped (duplicate-delivery) bet so a retried interaction can't post twice.
+				if (!bet.deduped) {
+					await announceBetPlaced(discord, env.PM_FORUM_GUILD_ID ?? '', market, bet.amount, outcomeLabel)
+				}
 			}
 		} catch (err) {
 			logger.warn('[DiscordComponents] post refresh after bet failed', {

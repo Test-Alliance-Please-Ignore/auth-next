@@ -593,7 +593,7 @@ export class PredictionMarketsDO extends DurableObject<Env> implements Predictio
 		return { allowed, retryAfterMs }
 	}
 
-	async placeBet(input: PlaceBetInput): Promise<BetResult> {
+	async placeBet(input: PlaceBetInput): Promise<BetResult & { deduped: boolean }> {
 		// The try spans the WHOLE method — the dedupe SELECT and the rate-limit upsert run before
 		// the txn and can also fail (e.g. a missing table/migration or a Neon outage). They used to
 		// throw outside any catch, so those infra errors were never logged or paged and surfaced to
@@ -610,7 +610,7 @@ export class PredictionMarketsDO extends DurableObject<Env> implements Predictio
 				.from(pmBets)
 				.where(eq(pmBets.idempotencyKey, input.idempotencyKey))
 				.limit(1)
-			if (priorBet) return this.toBetResult(priorBet)
+			if (priorBet) return { ...this.toBetResult(priorBet), deduped: true }
 
 			// Rate limit (committed atomic upsert, before the bet txn): a rejected bet still consumes
 			// budget (anti-spam); idempotent retries never reach here (handled above).
@@ -682,7 +682,7 @@ export class PredictionMarketsDO extends DurableObject<Env> implements Predictio
 						.from(pmBets)
 						.where(eq(pmBets.idempotencyKey, input.idempotencyKey))
 						.limit(1)
-					return this.toBetResult(existing)
+					return { ...this.toBetResult(existing), deduped: true }
 				}
 				const bet = inserted[0]
 
@@ -731,7 +731,7 @@ export class PredictionMarketsDO extends DurableObject<Env> implements Predictio
 					metadata: { outcomeId: input.outcomeId, amount: input.amount },
 				})
 
-				return this.toBetResult(bet)
+				return { ...this.toBetResult(bet), deduped: false }
 			})
 		} catch (error) {
 			// Business rejections (insufficient funds, market closed, rate-limited, invalid amount)
