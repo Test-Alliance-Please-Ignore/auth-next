@@ -9,6 +9,7 @@
 import { eq } from '@repo/db-utils'
 
 import { pmForumConfig } from '../db/schema'
+import { buildMarketComponents } from '../lib/market-components'
 import { buildMarketEmbed, truncateForEmbed } from '../lib/market-embed'
 
 import type { createDb } from '../db'
@@ -137,6 +138,7 @@ export async function publishMarketPost(
 		// Forum thread name max is 100 chars; the full question lives in the embed title.
 		name: truncateForEmbed(market.question, 100),
 		embeds: [buildMarketEmbed(market)],
+		components: buildMarketComponents(market),
 		...(cfg.tagOpenId ? { appliedTagIds: [cfg.tagOpenId] } : {}),
 	})
 	await prediction.attachDiscordPost({
@@ -145,4 +147,20 @@ export async function publishMarketPost(
 		messageId: post.messageId,
 	})
 	return post
+}
+
+/**
+ * Refresh a market's forum post embed in place after state changes (e.g. a new bet). Leaves
+ * the bet buttons intact (components omitted). No-op if the market has no post yet.
+ */
+export async function updateMarketPostFromDetail(
+	discord: Discord,
+	market: MarketDetail
+): Promise<{ success: boolean; error?: string }> {
+	if (!market.discordThreadId || !market.discordMessageId) {
+		return { success: false, error: 'no post' }
+	}
+	return discord.updateMarketPostMessage(market.discordThreadId, market.discordMessageId, {
+		embeds: [buildMarketEmbed(market)],
+	})
 }

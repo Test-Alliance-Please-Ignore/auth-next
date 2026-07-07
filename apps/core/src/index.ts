@@ -69,6 +69,10 @@ import {
 	type DiscordInteractionRouting,
 	type ExecuteDiscordSlashCommandInput,
 } from './services/discord-commands.service'
+import {
+	executeDiscordModalSubmit,
+	type ExecuteModalSubmitInput,
+} from './services/discord-components.service'
 import { DkpService } from './services/dkp.service'
 
 import type {
@@ -936,6 +940,26 @@ export class CoreWorker extends WorkerEntrypoint<Env> {
 			coreUserId: result.coreUserId,
 			authorized: result.authorized,
 			commandId: result.commandId,
+			reason: result.reason,
+		}
+	}
+
+	/**
+	 * Handle a Discord modal submit (P2: a prediction-market bet). Resolves the core user,
+	 * runs placeBet, refreshes the public forum post, and returns an ephemeral confirmation.
+	 */
+	async executeDiscordModalSubmit(input: ExecuteModalSubmitInput): Promise<{
+		ok: boolean
+		response: { type: number; data?: { content: string; flags?: number; embeds?: unknown[] } }
+		coreUserId: string | null
+		reason: string
+	}> {
+		const db = createDb(this.env.DATABASE_URL)
+		const result = await executeDiscordModalSubmit(db, this.env, input)
+		return {
+			ok: result.reason === 'ok',
+			response: result.response,
+			coreUserId: result.coreUserId,
 			reason: result.reason,
 		}
 	}

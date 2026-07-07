@@ -81,6 +81,8 @@ export interface MarketSummary {
 
 export interface MarketDetail extends MarketSummary {
 	description: string | null
+	/** Discord starter-message id of the forum post (for in-place embed updates). */
+	discordMessageId: string | null
 	createdBy: string
 	rakeBps: number
 	minStake: string

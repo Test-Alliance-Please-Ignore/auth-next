@@ -22,6 +22,13 @@
       "when": 1783438171157,
       "tag": "0002_exotic_captain_cross",
       "breakpoints": true
+    },
+    {
+      "idx": 3,
+      "version": "7",
+      "when": 1783439551480,
+      "tag": "0003_fancy_hairball",
+      "breakpoints": true
     }
   ]
 }

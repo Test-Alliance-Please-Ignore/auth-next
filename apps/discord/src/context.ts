@@ -71,6 +71,25 @@ export type Env = SharedHonoEnv & {
 			commandId?: string
 			reason: string
 		}>
+		executeDiscordModalSubmit(input: {
+			customId: string
+			fields: Record<string, string>
+			discordUserId: string
+			interactionId?: string | null
+			guildId?: string | null
+			channelId?: string | null
+		}): Promise<{
+			ok: boolean
+			response: {
+				type: number
+				data?: {
+					content: string
+					flags?: number
+				}
+			}
+			coreUserId: string | null
+			reason: string
+		}>
 		getDiscordInteractionRouting(): Promise<DiscordInteractionRouting>
 		syncUserDiscordAccess(userId: string): Promise<{
 			ok: boolean
