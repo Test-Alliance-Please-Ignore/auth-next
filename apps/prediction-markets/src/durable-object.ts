@@ -28,6 +28,7 @@ import type {
 	GlobalLedgerOpts,
 	GlobalLedgerRow,
 	GrantPointsInput,
+	DetailedBetView,
 	LeaderboardRow,
 	LedgerRow,
 	ListMarketsFilter,
@@ -180,6 +181,43 @@ export class PredictionMarketsDO extends DurableObject<Env> implements Predictio
 			.orderBy(desc(pmBets.createdAt))
 			.limit(200)
 		return rows.map((b) => this.toBetResult(b))
+	}
+
+	/** A user's bets joined to market question + outcome label (for `/market mybets`). */
+	async getUserBetsDetailed(
+		userId: string,
+		opts?: { activeOnly?: boolean }
+	): Promise<DetailedBetView[]> {
+		const conditions = [eq(pmBets.userId, userId)]
+		if (opts?.activeOnly) conditions.push(eq(pmBets.status, 'active'))
+
+		const rows = await this.db
+			.select({
+				id: pmBets.id,
+				marketId: pmBets.marketId,
+				marketQuestion: pmMarkets.question,
+				outcomeLabel: pmMarketOutcomes.label,
+				amount: pmBets.amount,
+				status: pmBets.status,
+				payoutAmount: pmBets.payoutAmount,
+				createdAt: pmBets.createdAt,
+			})
+			.from(pmBets)
+			.innerJoin(pmMarkets, eq(pmMarkets.id, pmBets.marketId))
+			.innerJoin(pmMarketOutcomes, eq(pmMarketOutcomes.id, pmBets.outcomeId))
+			.where(and(...conditions))
+			.orderBy(desc(pmBets.createdAt))
+			.limit(25)
+		return rows.map((r) => ({
+			id: r.id,
+			marketId: r.marketId,
+			marketQuestion: r.marketQuestion,
+			outcomeLabel: r.outcomeLabel,
+			amount: r.amount,
+			status: r.status,
+			payoutAmount: r.payoutAmount,
+			createdAt: r.createdAt.toISOString(),
+		}))
 	}
 
 	async getLeaderboard(opts?: {

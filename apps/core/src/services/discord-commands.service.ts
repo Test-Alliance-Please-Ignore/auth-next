@@ -91,7 +91,7 @@ export interface ExecuteDiscordSlashCommandResult {
 		| 'execution-failed'
 }
 
-export type CommandEnv = Pick<Env, 'GROUPS' | 'DISCORD'>
+export type CommandEnv = Pick<Env, 'GROUPS' | 'DISCORD' | 'PREDICTION_MARKETS'>
 
 function normalizeCommandName(name: string): string {
 	return name.trim().toLowerCase()

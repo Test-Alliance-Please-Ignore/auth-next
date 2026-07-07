@@ -22,7 +22,7 @@ export interface ProgrammaticCommandResponse {
 export type DeferralMode = 'sync' | 'defer-public' | 'defer-ephemeral'
 
 /** Subset of bindings a programmatic handler may use. Extend as new command surfaces need more. */
-export type ProgrammaticCommandEnv = Pick<Env, 'GROUPS' | 'DISCORD'>
+export type ProgrammaticCommandEnv = Pick<Env, 'GROUPS' | 'DISCORD' | 'PREDICTION_MARKETS'>
 
 export interface ProgrammaticCommandContext {
 	optionValues: Record<string, string>
@@ -54,5 +54,20 @@ export function commandResponse(content: string): ProgrammaticCommandResponse {
 	return {
 		type: 4,
 		data: { content },
+	}
+}
+
+const DISCORD_EPHEMERAL_FLAG = 1 << 6
+
+/**
+ * An ephemeral (private) response. On the deferred path ephemerality is fixed at the type:5
+ * ACK and this flag is ignored; the flag only matters as a safety net if the command ever
+ * runs sync (e.g. the routing map failed to load) — use this for commands whose content is
+ * private/self-only so a sync fallback can't post it publicly.
+ */
+export function ephemeralCommandResponse(content: string): ProgrammaticCommandResponse {
+	return {
+		type: 4,
+		data: { content, flags: DISCORD_EPHEMERAL_FLAG },
 	}
 }
