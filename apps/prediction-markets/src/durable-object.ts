@@ -12,10 +12,12 @@ import {
 	pmMarketHistory,
 	pmMarketOutcomes,
 	pmMarkets,
+	pmRateLimits,
 	pmResolutionProposals,
 	pmWallets,
 } from './db/schema'
 import { formatAmount, isPositiveIntegerString, negateAmount, parseAmount } from './lib/money'
+import { RATE_BUDGETS } from './lib/rate-limit'
 import { computeResolution } from './lib/payout'
 import { assertTransition, isTerminal } from './lib/state-machine'
 
@@ -58,6 +60,18 @@ interface HistoryEntry {
 	visibility?: Visibility
 	metadata?: unknown
 }
+
+/** placeBet throws these on normal user-facing rejections — not paged to Sentry. */
+const EXPECTED_BET_ERRORS = new Set([
+	'MARKET_NOT_FOUND',
+	'MARKET_NOT_OPEN',
+	'MARKET_CLOSED',
+	'OUTCOME_NOT_FOUND',
+	'STAKE_BELOW_MIN',
+	'STAKE_ABOVE_MAX',
+	'PER_USER_CAP_EXCEEDED',
+	'INSUFFICIENT_FUNDS',
+])
 
 /**
  * Prediction Markets Durable Object.
@@ -461,9 +475,55 @@ export class PredictionMarketsDO extends DurableObject<Env> implements Predictio
 			.where(eq(pmMarkets.id, input.marketId))
 	}
 
+	/**
+	 * Consume one unit of a user's fixed-window budget for `command`. Atomic committed upsert
+	 * (a single Postgres row per user+command, row-lock-serialized) — safe under the DO's
+	 * yield-at-await concurrency. SQL mirrors `nextRateState`. Unknown command ⇒ unlimited.
+	 */
+	private async consumeRateBudget(
+		userId: string,
+		command: string
+	): Promise<{ allowed: boolean; retryAfterMs: number }> {
+		const budget = RATE_BUDGETS[command]
+		if (!budget) return { allowed: true, retryAfterMs: 0 }
+		// `<=` (not `<`) so this exactly mirrors nextRateState's `elapsed >= windowMs` at the boundary.
+		const expired = sql`${pmRateLimits.windowStart} <= now() - (interval '1 millisecond' * ${budget.windowMs})`
+		const [row] = await this.db
+			.insert(pmRateLimits)
+			.values({ userId, command, windowStart: new Date(), count: 1 })
+			.onConflictDoUpdate({
+				target: [pmRateLimits.userId, pmRateLimits.command],
+				set: {
+					count: sql`case when ${expired} then 1 else ${pmRateLimits.count} + 1 end`,
+					windowStart: sql`case when ${expired} then now() else ${pmRateLimits.windowStart} end`,
+				},
+			})
+			.returning({ count: pmRateLimits.count, windowStart: pmRateLimits.windowStart })
+		const allowed = row.count <= budget.limit
+		const retryAfterMs = allowed
+			? 0
+			: Math.max(0, row.windowStart.getTime() + budget.windowMs - Date.now())
+		return { allowed, retryAfterMs }
+	}
+
 	async placeBet(input: PlaceBetInput): Promise<BetResult> {
 		if (!isPositiveIntegerString(input.amount)) throw new Error('INVALID_AMOUNT')
 		const amount = parseAmount(input.amount)
+
+		// Dedupe pre-check (outside the txn): a duplicate delivery (same interaction id) returns
+		// the prior bet WITHOUT consuming rate budget. The in-txn onConflictDoNothing below is the
+		// race backstop for two identical deliveries that both pass this check.
+		const [priorBet] = await this.db
+			.select()
+			.from(pmBets)
+			.where(eq(pmBets.idempotencyKey, input.idempotencyKey))
+			.limit(1)
+		if (priorBet) return this.toBetResult(priorBet)
+
+		// Rate limit (committed atomic upsert, before the bet txn): a rejected bet still consumes
+		// budget (anti-spam); idempotent retries never reach here (handled above).
+		const rate = await this.consumeRateBudget(input.userId, 'bet')
+		if (!rate.allowed) throw new Error(`RATE_LIMITED:${rate.retryAfterMs}`)
 
 		try {
 			return await this.db.transaction(async (tx) => {
@@ -583,13 +643,18 @@ export class PredictionMarketsDO extends DurableObject<Env> implements Predictio
 				return this.toBetResult(bet)
 			})
 		} catch (error) {
-			captureException(error as Error, {
-				tags: {
-					durableObject: 'PredictionMarketsDO',
-					method: 'placeBet',
-					marketId: input.marketId,
-				},
-			})
+			const msg = error instanceof Error ? error.message : String(error)
+			// Business rejections (insufficient funds, market closed, …) are normal user-facing
+			// outcomes, not server errors — don't page Sentry on them.
+			if (!EXPECTED_BET_ERRORS.has(msg)) {
+				captureException(error as Error, {
+					tags: {
+						durableObject: 'PredictionMarketsDO',
+						method: 'placeBet',
+						marketId: input.marketId,
+					},
+				})
+			}
 			throw error
 		}
 	}
@@ -1089,6 +1154,7 @@ export class PredictionMarketsDO extends DurableObject<Env> implements Predictio
 			outcomeCount: outcomes.length,
 			createdAt: market.createdAt.toISOString(),
 			discordThreadId: market.discordThreadId,
+			discordMessageId: market.discordMessageId,
 			rakeBps: market.rakeBps,
 			minStake: market.minStake,
 			maxStake: market.maxStake,

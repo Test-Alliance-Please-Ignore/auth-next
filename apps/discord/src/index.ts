@@ -16,7 +16,10 @@ import type { App, DiscordInteractionOption, DiscordInteractionRouting } from '.
 
 const DISCORD_INTERACTION_PING = 1
 const DISCORD_INTERACTION_APPLICATION_COMMAND = 2
-const DISCORD_INTERACTION_DEFERRED_RESPONSE = 5
+const DISCORD_INTERACTION_MESSAGE_COMPONENT = 3
+const DISCORD_INTERACTION_MODAL_SUBMIT = 5
+const DISCORD_INTERACTION_DEFERRED_RESPONSE = 5 // response type: DEFERRED_CHANNEL_MESSAGE_WITH_SOURCE
+const DISCORD_RESPONSE_MODAL = 9 // response type: MODAL
 const DISCORD_EPHEMERAL_FLAG = 1 << 6
 const DISCORD_REPLAY_WINDOW_SECONDS = 5 * 60
 const DISCORD_ROUTING_CACHE_TTL_MS = 60_000
@@ -39,7 +42,18 @@ interface DiscordInteractionPayload {
 	data?: {
 		name?: string
 		options?: DiscordInteractionOption[]
+		/** Present on MESSAGE_COMPONENT (type 3) + MODAL_SUBMIT (type 5). */
+		custom_id?: string
+		component_type?: number
+		values?: string[]
+		/** Modal-submit action rows → text inputs. */
+		components?: Array<{
+			type: number
+			components?: Array<{ type: number; custom_id?: string; value?: string }>
+		}>
 	}
+	/** Source message on a component interaction (unreliable on modal submit). */
+	message?: { id: string }
 }
 
 interface RoutingCacheState {
@@ -139,6 +153,62 @@ async function runDeferredCommand(
 			const stub = getStub<Discord>(env.DISCORD, 'default')
 			await stub.editOriginalInteractionResponse(ctx.token, {
 				content: 'Command execution failed. Please try again later.',
+			})
+		} catch {
+			// Best-effort delivery; nothing more we can do.
+		}
+	}
+}
+
+interface DeferredModalSubmitContext {
+	interactionId: string
+	token: string
+	customId: string
+	fields: Record<string, string>
+	discordUserId: string
+	guildId: string | null
+	channelId: string | null
+}
+
+/**
+ * Run a deferred modal submit (a bet) after the type:5 ephemeral ACK: call core (which runs
+ * placeBet + refreshes the public post) and deliver the ephemeral confirmation by editing the
+ * original interaction response. Failures deliver an error so the user never sees "thinking…".
+ */
+async function runDeferredModalSubmit(
+	env: App['Bindings'],
+	ctx: DeferredModalSubmitContext
+): Promise<void> {
+	const startedAt = Date.now()
+	try {
+		const execution = await env.CORE.executeDiscordModalSubmit({
+			customId: ctx.customId,
+			fields: ctx.fields,
+			discordUserId: ctx.discordUserId,
+			interactionId: ctx.interactionId,
+			guildId: ctx.guildId,
+			channelId: ctx.channelId,
+		})
+		const content = execution.response.data?.content ?? '​'
+		const stub = getStub<Discord>(env.DISCORD, 'default')
+		const result = await stub.editOriginalInteractionResponse(ctx.token, { content })
+		if (!result.success) {
+			logger.error('[DiscordInteractions] Failed to deliver modal-submit response', {
+				interactionId: ctx.interactionId,
+				error: result.error,
+				durationMs: Date.now() - startedAt,
+			})
+		}
+	} catch (error) {
+		logger.error('[DiscordInteractions] Deferred modal submit failed', {
+			interactionId: ctx.interactionId,
+			error: error instanceof Error ? error.message : String(error),
+			durationMs: Date.now() - startedAt,
+		})
+		try {
+			const stub = getStub<Discord>(env.DISCORD, 'default')
+			await stub.editOriginalInteractionResponse(ctx.token, {
+				content: 'Could not process your bet. Please try again later.',
 			})
 		} catch {
 			// Best-effort delivery; nothing more we can do.
@@ -250,6 +320,82 @@ const app = new Hono<App>()
 		if (interaction.type === DISCORD_INTERACTION_PING) {
 			logger.info('[DiscordInteractions] Ping interaction', { requestId, interactionId: interaction.id })
 			return c.json({ type: DISCORD_INTERACTION_PING })
+		}
+
+		// Component (button) interactions. A "bet" button opens the stake modal inline
+		// (zero I/O — trivially within the 3s ACK). Other component actions arrive in P3.
+		if (interaction.type === DISCORD_INTERACTION_MESSAGE_COMPONENT) {
+			const customId = interaction.data?.custom_id ?? ''
+			const parts = customId.split(':')
+			if (parts[0] === 'bet' && parts.length === 3) {
+				return c.json({
+					type: DISCORD_RESPONSE_MODAL,
+					data: {
+						custom_id: `betmodal:${parts[1]}:${parts[2]}`,
+						title: 'Place a bet',
+						components: [
+							{
+								type: 1, // ACTION_ROW
+								components: [
+									{
+										type: 4, // TEXT_INPUT
+										custom_id: 'amount',
+										style: 1, // SHORT
+										label: 'Stake (points)',
+										min_length: 1,
+										max_length: 12,
+										required: true,
+										placeholder: '100',
+									},
+								],
+							},
+						],
+					},
+				})
+			}
+			logger.warn('[DiscordInteractions] Unsupported component', {
+				requestId,
+				interactionId: interaction.id,
+				customId,
+			})
+			return c.json({
+				type: 4,
+				data: { content: 'This action is not available.', flags: DISCORD_EPHEMERAL_FLAG },
+			})
+		}
+
+		// Modal submits. A "betmodal" submit places the bet: defer (ephemeral) then run
+		// placeBet out-of-band, since it hits Neon + the money DO and may exceed 3s.
+		if (interaction.type === DISCORD_INTERACTION_MODAL_SUBMIT) {
+			const customId = interaction.data?.custom_id ?? ''
+			const modalUserId = interaction.member?.user?.id ?? interaction.user?.id ?? null
+			if (customId.split(':')[0] !== 'betmodal' || !modalUserId) {
+				return c.json({
+					type: 4,
+					data: { content: 'This action is not available.', flags: DISCORD_EPHEMERAL_FLAG },
+				})
+			}
+			const fields: Record<string, string> = {}
+			for (const row of interaction.data?.components ?? []) {
+				for (const comp of row.components ?? []) {
+					if (comp.custom_id) fields[comp.custom_id] = comp.value ?? ''
+				}
+			}
+			c.executionCtx.waitUntil(
+				runDeferredModalSubmit(c.env, {
+					interactionId: interaction.id,
+					token: interaction.token,
+					customId,
+					fields,
+					discordUserId: modalUserId,
+					guildId: interaction.guild_id ?? null,
+					channelId: interaction.channel_id ?? null,
+				})
+			)
+			return c.json({
+				type: DISCORD_INTERACTION_DEFERRED_RESPONSE,
+				data: { flags: DISCORD_EPHEMERAL_FLAG },
+			})
 		}
 
 		if (interaction.type !== DISCORD_INTERACTION_APPLICATION_COMMAND || !interaction.data?.name) {

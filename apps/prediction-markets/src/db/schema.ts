@@ -7,6 +7,7 @@ import {
 	numeric,
 	pgEnum,
 	pgTable,
+	primaryKey,
 	text,
 	timestamp,
 	uniqueIndex,
@@ -139,6 +140,23 @@ export const pmMarketOutcomes = pgTable(
 		uniqueIndex('pm_market_outcomes_market_label_uq').on(t.marketId, t.label),
 		index('pm_market_outcomes_market_idx').on(t.marketId),
 	]
+)
+
+/**
+ * Per-user fixed-window rate limit counters (one row per user+command). Written by an
+ * atomic committed upsert inside the money DO — the single Postgres row serializes
+ * concurrent bets by the same user (DO input gates open across Neon awaits, so a DO-storage
+ * counter would race). A rejected bet still consumes budget (anti-spam).
+ */
+export const pmRateLimits = pgTable(
+	'pm_rate_limits',
+	{
+		userId: uuid('user_id').notNull(),
+		command: text('command').notNull(),
+		windowStart: timestamp('window_start', { withTimezone: true }).notNull().defaultNow(),
+		count: integer('count').notNull().default(0),
+	},
+	(t) => [primaryKey({ columns: [t.userId, t.command] })]
 )
 
 export const pmBets = pgTable(

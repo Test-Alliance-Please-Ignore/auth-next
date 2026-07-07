@@ -14,6 +14,7 @@ function market(overrides: Partial<MarketDetail> = {}): MarketDetail {
 		outcomeCount: 2,
 		createdAt: '2026-01-01T00:00:00.000Z',
 		discordThreadId: null,
+		discordMessageId: null,
 		description: null,
 		createdBy: 'u1',
 		rakeBps: 0,
