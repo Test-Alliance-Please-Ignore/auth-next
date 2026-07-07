@@ -13,7 +13,7 @@
 
 import { eq } from '@repo/db-utils'
 import { getStub } from '@repo/do-utils'
-import { logger } from '@repo/hono-helpers'
+import { captureException, logger } from '@repo/hono-helpers'
 
 import { users } from '../db/schema'
 import {
@@ -95,7 +95,18 @@ function ephemeral(
 	return { response: { type: 4, data: { content, flags: EPHEMERAL_FLAG } }, coreUserId, reason }
 }
 
-function mapError(error: unknown, coreUserId: string): DiscordComponentResult {
+/** Pull the underlying driver error off a Drizzle "Failed query: …" wrapper (the real cause). */
+function dbErrorCause(error: unknown): string | undefined {
+	const cause = (error as { cause?: unknown } | null)?.cause
+	if (cause == null) return undefined
+	return cause instanceof Error ? cause.message : String(cause)
+}
+
+function mapError(
+	error: unknown,
+	coreUserId: string,
+	ctx: { action: string; marketId?: string }
+): DiscordComponentResult {
 	const msg = error instanceof Error ? error.message : String(error)
 	if (msg.startsWith('RATE_LIMITED')) {
 		const ms = Number(msg.split(':')[1]) || 0
@@ -108,7 +119,24 @@ function mapError(error: unknown, coreUserId: string): DiscordComponentResult {
 	if (msg.startsWith('prediction-markets: invalid market transition')) {
 		return ephemeral('This market can’t be changed in its current state.', 'stale-state', coreUserId)
 	}
-	logger.error('[DiscordComponents] action failed', { error: msg })
+	// Anything else is unexpected — an infra failure (failed query, missing migration, Neon outage)
+	// or an RPC error from the money DO. This is the branch that previously logged only a bare
+	// message and left us guessing: log the full context + underlying driver cause + stack, and
+	// page Sentry, so the next occurrence is diagnosable at a glance.
+	const cause = dbErrorCause(error)
+	logger.error('[DiscordComponents] action failed', {
+		action: ctx.action,
+		marketId: ctx.marketId,
+		coreUserId,
+		error: msg,
+		errorName: error instanceof Error ? error.name : undefined,
+		cause,
+		stack: error instanceof Error ? error.stack : undefined,
+	})
+	captureException(error as Error, {
+		tags: { service: 'discord-components', action: ctx.action, marketId: ctx.marketId ?? '', coreUserId },
+		extra: { cause },
+	})
 	return ephemeral('Could not complete this action. Please try again later.', 'error', coreUserId)
 }
 
@@ -205,7 +233,7 @@ export async function executeDiscordComponent(
 			user.id
 		)
 	} catch (error) {
-		return mapError(error, user.id)
+		return mapError(error, user.id, { action: decoded.action, marketId: decoded.marketId })
 	}
 }
 
@@ -251,6 +279,16 @@ async function handleBetModal(
 	}
 
 	const prediction = getStub<PredictionMarkets>(env.PREDICTION_MARKETS, 'default')
+	// Breadcrumb before the money DO call — pairs with the '[DiscordComponents] action failed' /
+	// PM DO 'placeBet failed' logs (correlate on interactionId) so a failure shows exactly how far
+	// the bet got and what the inputs were.
+	logger.info('[DiscordComponents] placing bet', {
+		interactionId: input.interactionId,
+		marketId: target.marketId,
+		outcomeId: target.outcomeId,
+		userId: user.id,
+		amount: amountRaw,
+	})
 	try {
 		const bet = await prediction.placeBet({
 			userId: user.id,
@@ -258,6 +296,13 @@ async function handleBetModal(
 			outcomeId: target.outcomeId,
 			amount: amountRaw,
 			idempotencyKey: input.interactionId,
+		})
+		logger.info('[DiscordComponents] bet placed', {
+			interactionId: input.interactionId,
+			marketId: target.marketId,
+			betId: bet.id,
+			userId: user.id,
+			amount: bet.amount,
 		})
 		let outcomeLabel = ''
 		try {
@@ -275,7 +320,7 @@ async function handleBetModal(
 		const on = outcomeLabel ? ` on **${outcomeLabel}**` : ''
 		return ephemeral(`Bet placed: ${formatMarketPoints(bet.amount)}${on}.`, 'ok', user.id)
 	} catch (error) {
-		return mapError(error, user.id)
+		return mapError(error, user.id, { action: 'bet', marketId: target.marketId })
 	}
 }
 
@@ -326,7 +371,7 @@ async function handleResolveModal(
 			user.id
 		)
 	} catch (error) {
-		return mapError(error, user.id)
+		return mapError(error, user.id, { action: 'resolve', marketId })
 	}
 }
 
@@ -353,6 +398,6 @@ async function handleVoidModal(
 		await refreshPost(db, env, prediction, marketId)
 		return ephemeral('Market voided and all bets refunded.', 'ok', user.id)
 	} catch (error) {
-		return mapError(error, user.id)
+		return mapError(error, user.id, { action: 'void', marketId })
 	}
 }

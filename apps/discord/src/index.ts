@@ -189,6 +189,17 @@ async function runDeferredModalSubmit(
 			guildId: ctx.guildId,
 			channelId: ctx.channelId,
 		})
+		// Core returns ok:false when it hands back a graceful error ephemeral (domain rejection OR
+		// an infra failure it already logged/paged). We still deliver that content to the user, but
+		// log it here too — otherwise a failed bet is invisible on this side of the RPC boundary.
+		if (!execution.ok) {
+			logger.warn('[DiscordInteractions] Modal submit returned an error result', {
+				interactionId: ctx.interactionId,
+				customId: ctx.customId,
+				reason: execution.reason,
+				coreUserId: execution.coreUserId,
+			})
+		}
 		const content = execution.response.data?.content ?? '​'
 		const stub = getStub<Discord>(env.DISCORD, 'default')
 		const result = await stub.editOriginalInteractionResponse(ctx.token, { content })

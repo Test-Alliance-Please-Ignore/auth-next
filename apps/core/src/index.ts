@@ -4,7 +4,7 @@ import { useWorkersLogger } from 'workers-tagged-logger'
 
 import { and, eq, inArray, ne } from '@repo/db-utils'
 import { getStub } from '@repo/do-utils'
-import { withNotFound, withOnError, withSentry } from '@repo/hono-helpers'
+import { logger, withNotFound, withOnError, withSentry } from '@repo/hono-helpers'
 
 import { createDb } from './db'
 import { waitUntilWithTelemetry } from './lib/background-task'
@@ -958,8 +958,21 @@ export class CoreWorker extends WorkerEntrypoint<Env> {
 	}> {
 		const db = createDb(this.env.DATABASE_URL)
 		const result = await executeDiscordModalSubmit(db, this.env, input)
+		const ok = result.reason === 'ok'
+		// A non-ok result is a graceful error ephemeral (delivered to the user as a friendly/`try
+		// again` message) — the interactions worker treats it as a successful delivery, so without
+		// this line a failed bet would leave no trace on the core RPC boundary. Correlate on
+		// interactionId with the '[DiscordComponents] …' service logs.
+		if (!ok) {
+			logger.warn('[CoreWorker] Discord modal submit returned a non-ok result', {
+				interactionId: input.interactionId ?? null,
+				customId: input.customId,
+				coreUserId: result.coreUserId,
+				reason: result.reason,
+			})
+		}
 		return {
-			ok: result.reason === 'ok',
+			ok,
 			response: result.response,
 			coreUserId: result.coreUserId,
 			reason: result.reason,
