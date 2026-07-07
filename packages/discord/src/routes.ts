@@ -16,6 +16,32 @@ export const DiscordRoutes = {
 	channelMessages: (channelId: string) => `/channels/${channelId}/messages`,
 
 	/**
+	 * Route for a single channel (GET/PATCH)
+	 * GET/PATCH /channels/{channelId}
+	 */
+	channel: (channelId: string) => `/channels/${channelId}`,
+
+	/**
+	 * Route for a single channel message (PATCH/DELETE)
+	 * PATCH/DELETE /channels/{channelId}/messages/{messageId}
+	 * Note: distinct from the plural channelMessages (collection) above.
+	 */
+	channelMessageById: (channelId: string, messageId: string) =>
+		`/channels/${channelId}/messages/${messageId}`,
+
+	/**
+	 * Route for a guild's channels (POST creates a channel)
+	 * POST /guilds/{guildId}/channels
+	 */
+	guildChannels: (guildId: string) => `/guilds/${guildId}/channels`,
+
+	/**
+	 * Route for creating a thread in a forum/media channel
+	 * POST /channels/{channelId}/threads
+	 */
+	forumThreads: (channelId: string) => `/channels/${channelId}/threads`,
+
+	/**
 	 * Route for getting user's guilds
 	 * GET /users/@me/guilds
 	 */

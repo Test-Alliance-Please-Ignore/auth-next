@@ -10,17 +10,19 @@
 import { Hono } from 'hono'
 import { z } from 'zod'
 
-import { and, eq, ilike, inArray } from '@repo/db-utils'
+import { eq, ilike, inArray } from '@repo/db-utils'
 import { getStub } from '@repo/do-utils'
 import { logger } from '@repo/hono-helpers'
 
 import { requireAdmin, requireAuth } from '../middleware/session'
+import { publishMarketPost } from '../services/discord-market-post.service'
 import { userCharacters, users } from '../db/schema'
 
 import type { createDb } from '../db'
 import type { App } from '../context'
 import type { Context } from 'hono'
-import type { LedgerType, PredictionMarkets } from '@repo/prediction-markets'
+import type { Discord } from '@repo/discord'
+import type { LedgerType, MarketStatus, PredictionMarkets } from '@repo/prediction-markets'
 
 type CoreDb = ReturnType<typeof createDb>
 
@@ -35,6 +37,8 @@ app.use('*', requireAuth(), requireAdmin())
 
 const stubOf = (c: Context<App>): PredictionMarkets =>
 	getStub<PredictionMarkets>(c.env.PREDICTION_MARKETS, 'default')
+
+const discordStubOf = (c: Context<App>): Discord => getStub<Discord>(c.env.DISCORD, 'default')
 
 function parsePage(
 	limitRaw: string | undefined,
@@ -89,12 +93,27 @@ function fail(c: Context<App>, error: unknown, what: string) {
 	if (msg === 'IDEMPOTENCY_KEY_CONFLICT') {
 		return c.json({ error: 'Idempotency key already used with different parameters' }, 409)
 	}
-	if (msg === 'INVALID_AMOUNT' || msg === 'REASON_REQUIRED') {
+	// Client-input domain errors from the PM DO → 400 (would otherwise be a misleading 500).
+	if (BAD_REQUEST_CODES.has(msg)) {
 		return c.json({ error: msg }, 400)
 	}
 	logger.error(`[PMAdmin] ${what} failed`, { error: msg })
 	return c.json({ error: msg }, 500)
 }
+
+/** PM DO error codes that are the caller's fault (bad input) rather than a server error. */
+const BAD_REQUEST_CODES = new Set([
+	'INVALID_AMOUNT',
+	'REASON_REQUIRED',
+	'AT_LEAST_TWO_OUTCOMES',
+	'DUPLICATE_OUTCOMES',
+	'QUESTION_REQUIRED',
+	'INVALID_CLOSES_AT',
+	'INVALID_RAKE',
+	'INVALID_MIN_STAKE',
+	'INVALID_MAX_STAKE',
+	'INVALID_PER_USER_CAP',
+])
 
 // -------------------------------------------------------------------------
 // Wallets
@@ -210,6 +229,106 @@ app.post('/deposits', async (c) => {
 		return c.json(result)
 	} catch (error) {
 		return fail(c, error, 'deposit')
+	}
+})
+
+// -------------------------------------------------------------------------
+// Markets (create → forum post)
+// -------------------------------------------------------------------------
+
+const positiveIntString = z
+	.string()
+	.regex(/^\d+$/, 'must be a positive integer')
+	.refine((v) => BigInt(v) > 0n, 'must be greater than 0')
+
+const createMarketSchema = z.object({
+	question: z.string().trim().min(3).max(500),
+	description: z.string().trim().max(2000).optional(),
+	outcomes: z
+		.array(z.string().trim().min(1).max(100))
+		.min(2)
+		.max(20)
+		// case-insensitive dedupe: the PM DO rejects DUPLICATE_OUTCOMES the same way
+		.refine((o) => new Set(o.map((s) => s.toLowerCase())).size === o.length, 'outcomes must be distinct'),
+	closesAt: z
+		.string()
+		.datetime()
+		.refine((s) => new Date(s).getTime() > Date.now(), 'closesAt must be in the future'),
+	rakeBps: z.number().int().min(0).max(2000).optional(),
+	minStake: positiveIntString.optional(),
+	maxStake: positiveIntString.optional(),
+	perUserCap: positiveIntString.optional(),
+	twoOfN: z.boolean().optional(),
+})
+
+const MARKET_STATUSES: readonly MarketStatus[] = [
+	'draft',
+	'open',
+	'closed',
+	'resolving',
+	'resolved',
+	'voided',
+]
+
+// GET /markets?status=&limit= — recent markets + the configured guild id (for forum links).
+app.get('/markets', async (c) => {
+	try {
+		const statusRaw = c.req.query('status')
+		const status = MARKET_STATUSES.includes(statusRaw as MarketStatus)
+			? (statusRaw as MarketStatus)
+			: undefined
+		const limit = Math.min(Math.max(parseInt(c.req.query('limit') || '50', 10) || 50, 1), 100)
+		const markets = await stubOf(c).listMarkets({ status, limit })
+		return c.json({ markets, guildId: c.env.PM_FORUM_GUILD_ID ?? null })
+	} catch (error) {
+		return fail(c, error, 'list markets')
+	}
+})
+
+// POST /markets — create a market, then best-effort publish its forum post.
+app.post('/markets', async (c) => {
+	try {
+		const db = c.get('db')
+		if (!db) return c.json({ error: 'Database not initialized' }, 500)
+		const user = c.get('user')!
+		const body = createMarketSchema.parse(await c.req.json())
+
+		// Market is source-of-truth first; the forum post is best-effort second.
+		const market = await stubOf(c).createMarket({ createdBy: user.id, ...body })
+
+		let post: { threadId: string; messageId: string } | null = null
+		let postError: string | null = null
+		const guildId = c.env.PM_FORUM_GUILD_ID
+		const categoryId = c.env.PM_FORUM_CATEGORY_ID
+		if (!guildId || !categoryId) {
+			postError = 'PM_FORUM_GUILD_ID / PM_FORUM_CATEGORY_ID not configured'
+		} else {
+			try {
+				post = await publishMarketPost(
+					db,
+					discordStubOf(c),
+					stubOf(c),
+					guildId,
+					categoryId,
+					market
+				)
+			} catch (err) {
+				postError = err instanceof Error ? err.message : String(err)
+				logger.error('[PMAdmin] market forum post failed', {
+					marketId: market.id,
+					error: postError,
+				})
+			}
+		}
+
+		logger.info('[PMAdmin] market created', {
+			actorId: user.id,
+			marketId: market.id,
+			posted: Boolean(post),
+		})
+		return c.json({ market, post, postError }, 201)
+	} catch (error) {
+		return fail(c, error, 'create market')
 	}
 })
 

@@ -6,6 +6,7 @@ import type {
 	AuditLedgerFilters,
 	LedgerFilters,
 	MarketHistoryFilters,
+	MarketsFilters,
 	WalletsFilters,
 } from './types'
 
@@ -18,4 +19,5 @@ export const pmKeys = {
 	auditLedger: (filters?: AuditLedgerFilters) => [...pmKeys.all, 'auditLedger', filters] as const,
 	marketHistory: (filters?: MarketHistoryFilters) =>
 		[...pmKeys.all, 'marketHistory', filters] as const,
+	markets: (filters?: MarketsFilters) => [...pmKeys.all, 'markets', filters] as const,
 }

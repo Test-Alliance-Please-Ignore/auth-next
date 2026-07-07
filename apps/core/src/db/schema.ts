@@ -1325,3 +1325,26 @@ export const schema = {
 	mumbleTempopsRelations,
 	mumbleTempopGuestsRelations,
 }
+
+/**
+ * Prediction-markets Discord forum config (one row per guild).
+ *
+ * Core owns Discord orchestration, so this config lives in the core DB. The forum
+ * channel is bot-created once under the configured category (`ensureForumChannel`):
+ * a row is inserted as a "claim" (forumChannelId null) to serialize the create, then
+ * updated with the created channel id + the four status-tag ids. `guildId` as the PK
+ * makes the claim atomic (ON CONFLICT DO NOTHING) so a concurrent first-create can't
+ * spawn two forum channels.
+ */
+export const pmForumConfig = pgTable('pm_forum_config', {
+	guildId: text('guild_id').primaryKey(),
+	categoryId: text('category_id').notNull(),
+	/** Null while a create is in progress (the claim row); set once the channel exists. */
+	forumChannelId: text('forum_channel_id'),
+	tagOpenId: text('tag_open_id'),
+	tagClosedId: text('tag_closed_id'),
+	tagResolvedId: text('tag_resolved_id'),
+	tagVoidedId: text('tag_voided_id'),
+	createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+	updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+})

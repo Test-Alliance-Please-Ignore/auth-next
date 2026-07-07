@@ -4,8 +4,10 @@ import { useApiMutation } from '@/hooks/useApiMutation'
 
 import {
 	createDeposit,
+	createMarket,
 	getAuditLedger,
 	getMarketHistory,
+	getMarkets,
 	getUserLedger,
 	getWallet,
 	getWallets,
@@ -14,9 +16,11 @@ import { pmKeys } from './query-keys'
 
 import type {
 	AuditLedgerFilters,
+	CreateMarketRequest,
 	DepositRequest,
 	LedgerFilters,
 	MarketHistoryFilters,
+	MarketsFilters,
 	WalletsFilters,
 } from './types'
 
@@ -67,6 +71,35 @@ export function useMarketHistory(filters?: MarketHistoryFilters) {
 		queryFn: () => getMarketHistory(filters),
 		staleTime: STALE_TIME,
 		gcTime: GC_TIME,
+	})
+}
+
+export function useMarkets(filters?: MarketsFilters) {
+	return useQuery({
+		queryKey: pmKeys.markets(filters),
+		queryFn: () => getMarkets(filters),
+		staleTime: STALE_TIME,
+		gcTime: GC_TIME,
+	})
+}
+
+/**
+ * POST /markets — creates the market + best-effort forum post. Toasts on success (noting
+ * a `postError` if the post failed), invalidates the markets list.
+ */
+export function useCreateMarket() {
+	const queryClient = useQueryClient()
+
+	return useApiMutation({
+		mutationFn: (body: CreateMarketRequest) => createMarket(body),
+		successMessage: (res) =>
+			res.postError
+				? `Market created, but the forum post failed: ${res.postError}`
+				: 'Market created and posted to the forum.',
+		onSuccess: () => {
+			// Broad key so every markets-list variant (any filter) refetches.
+			queryClient.invalidateQueries({ queryKey: [...pmKeys.all, 'markets'] })
+		},
 	})
 }
 

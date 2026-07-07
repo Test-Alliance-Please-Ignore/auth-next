@@ -75,6 +75,8 @@ export interface MarketSummary {
 	totalPool: string
 	outcomeCount: number
 	createdAt: string
+	/** Discord forum thread id for this market's post, or null before the post exists. */
+	discordThreadId: string | null
 }
 
 export interface MarketDetail extends MarketSummary {
@@ -245,5 +247,14 @@ export interface PredictionMarkets {
 		marketId: string
 		reason: string
 		approverId?: string
+	}): Promise<void>
+	/**
+	 * Persist the Discord forum post mapping after Core creates the post.
+	 * Pure UPDATE — the PM DO never calls Discord itself.
+	 */
+	attachDiscordPost(input: {
+		marketId: string
+		threadId: string
+		messageId: string
 	}): Promise<void>
 }

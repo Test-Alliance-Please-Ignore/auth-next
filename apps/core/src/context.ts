@@ -109,6 +109,10 @@ export type Env = SharedHonoEnv & {
 	SRP_PUBLIC_API_TOKEN?: string
 	/** Shared key for trusted internal legacy-worker operations */
 	LEGACY_INTERNAL_KEY?: string
+	/** Guild id hosting the prediction-markets forum channel */
+	PM_FORUM_GUILD_ID?: string
+	/** Category id under which the prediction-markets forum channel is created (perms inherited from it) */
+	PM_FORUM_CATEGORY_ID?: string
 }
 
 /** Session user data attached to request context */

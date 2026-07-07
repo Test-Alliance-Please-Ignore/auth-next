@@ -176,6 +176,78 @@ export function buildDiscordWebhookMessagePayload(
 }
 
 /**
+ * Message components (action rows + buttons).
+ * https://discord.com/developers/docs/interactions/message-components
+ */
+export const DISCORD_COMPONENT_TYPE = {
+	ACTION_ROW: 1,
+	BUTTON: 2,
+} as const
+
+export const DISCORD_BUTTON_STYLE = {
+	PRIMARY: 1,
+	SECONDARY: 2,
+	SUCCESS: 3,
+	DANGER: 4,
+	LINK: 5,
+} as const
+
+export type DiscordButtonStyle = (typeof DISCORD_BUTTON_STYLE)[keyof typeof DISCORD_BUTTON_STYLE]
+
+export interface DiscordButtonComponent {
+	type: 2
+	style: DiscordButtonStyle
+	/** Text label (≤80 chars). Omit only for emoji-only buttons. */
+	label?: string
+	/** Developer-defined id (≤100 chars). Required for non-link buttons. */
+	custom_id?: string
+	/** URL for LINK-style buttons. */
+	url?: string
+	disabled?: boolean
+	emoji?: { id?: string; name?: string }
+}
+
+export interface DiscordActionRow {
+	type: 1
+	components: DiscordButtonComponent[]
+}
+
+/**
+ * Discord channel type subset we use.
+ * https://discord.com/developers/docs/resources/channel#channel-object-channel-types
+ */
+export const DISCORD_CHANNEL_TYPE = {
+	GUILD_CATEGORY: 4,
+	GUILD_FORUM: 15,
+} as const
+
+/** A forum channel tag (available_tags / applied_tags). */
+export interface DiscordForumTag {
+	id: string
+	name: string
+	moderated?: boolean
+	emoji_id?: string | null
+	emoji_name?: string | null
+}
+
+/** A channel permission overwrite. type: 0 = role, 1 = member; allow/deny are stringified bitfields. */
+export interface DiscordPermissionOverwrite {
+	id: string
+	type: number
+	allow: string
+	deny: string
+}
+
+/** Minimal channel shape returned by GET /channels/{id} (category or forum). */
+export interface DiscordChannelSummary {
+	id: string
+	type: number
+	parent_id?: string | null
+	permission_overwrites?: DiscordPermissionOverwrite[]
+	available_tags?: DiscordForumTag[]
+}
+
+/**
  * Result of sending a message
  */
 export interface SendMessageResult {
@@ -641,6 +713,72 @@ export interface Discord {
 	editOriginalInteractionResponse(
 		interactionToken: string,
 		message: { content: string; embeds?: DiscordEmbed[] }
+	): Promise<{ success: boolean; error?: string }>
+
+	/**
+	 * Read a channel (GET /channels/{id}). Used to copy a category's permission
+	 * overwrites onto a new forum channel and to read a forum's available tags.
+	 */
+	getChannel(channelId: string): Promise<DiscordChannelSummary>
+
+	/**
+	 * Create a GUILD_FORUM channel under a category. `permissionOverwrites` should be the
+	 * category's overwrites (copied verbatim = Discord "synced/inherited" permissions).
+	 * `availableTags` are created with the channel; the returned channel carries their ids.
+	 * Requires the bot to hold MANAGE_CHANNELS + MANAGE_ROLES.
+	 */
+	createForumChannel(
+		guildId: string,
+		input: {
+			name: string
+			parentId: string
+			permissionOverwrites?: DiscordPermissionOverwrite[]
+			availableTags?: Array<{ name: string; moderated?: boolean }>
+			topic?: string
+		}
+	): Promise<DiscordChannelSummary>
+
+	/**
+	 * Create a forum post (thread) for a market via
+	 * POST /channels/{forumChannelId}/threads. Returns the thread id and starter message id.
+	 */
+	createMarketForumPost(
+		forumChannelId: string,
+		input: {
+			name: string
+			content?: string
+			embeds?: DiscordEmbed[]
+			components?: DiscordActionRow[]
+			appliedTagIds?: string[]
+		}
+	): Promise<{ threadId: string; messageId: string }>
+
+	/**
+	 * Edit a forum post's starter message (embed + components), the embed-capable
+	 * replacement for editMessage. Pass `components: []` to strip buttons; omit to leave intact.
+	 */
+	updateMarketPostMessage(
+		threadId: string,
+		messageId: string,
+		input: { content?: string; embeds?: DiscordEmbed[]; components?: DiscordActionRow[] }
+	): Promise<{ success: boolean; error?: string }>
+
+	/** List a forum channel's available tags (GET /channels/{id} → available_tags). */
+	getForumTags(forumChannelId: string): Promise<DiscordForumTag[]>
+
+	/** Replace a thread's applied tag set (PATCH /channels/{threadId} { applied_tags }). */
+	setThreadTags(
+		threadId: string,
+		appliedTagIds: string[]
+	): Promise<{ success: boolean; error?: string }>
+
+	/**
+	 * Archive/lock a thread (optionally flipping tags) in one PATCH — combining avoids
+	 * the reorder needed when a thread is already archived.
+	 */
+	lockThread(
+		threadId: string,
+		opts: { archived?: boolean; locked?: boolean; appliedTagIds?: string[] }
 	): Promise<{ success: boolean; error?: string }>
 }
 

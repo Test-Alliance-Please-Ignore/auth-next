@@ -125,6 +125,7 @@ export function AdminNav({ onNavigate }: AdminNavProps) {
 			href: '/admin/prediction-markets',
 			icon: Wallet,
 			children: [
+				{ label: 'Markets', href: '/admin/prediction-markets/markets' },
 				{ label: 'Wallets', href: '/admin/prediction-markets/wallets' },
 				{ label: 'Audit Log', href: '/admin/prediction-markets/audit' },
 			],
