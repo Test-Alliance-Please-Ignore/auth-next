@@ -4,6 +4,7 @@
 	"main": "src/index.ts",
 	"compatibility_date": "2025-04-28",
 	"compatibility_flags": ["nodejs_compat"],
+	"keep_vars": true,
 	"routes": [
 		"pleaseignore.app/api/*",
 		"pleaseignore.app/images/*",
@@ -32,11 +33,11 @@
 		"LEGACY_AUTH_CALLBACK_URL": "https://pleaseignore.app/api/auth/legacy-auth/callback",
 		"MUMBLE_SERVER_ID": "srv-1",
 		"MUMBLE_HOST": "numumble.pleaseignore.com",
-		"MUMBLE_PORT": "64737"
+		"MUMBLE_PORT": "64737",
 		// Prediction markets: guild + category the bot creates the markets forum channel under.
 		// Replace with the real ids per environment; the bot needs MANAGE_CHANNELS + MANAGE_ROLES.
-		// "PM_FORUM_GUILD_ID": "356398105404375041",
-		// "PM_FORUM_CATEGORY_ID": "1524076742745260093"
+		"PM_FORUM_GUILD_ID": "356398105404375041",
+		"PM_FORUM_CATEGORY_ID": "1524076742745260093"
 	},
 	"durable_objects": {
 		"bindings": [
