@@ -63,6 +63,16 @@ interface HistoryEntry {
 	metadata?: unknown
 }
 
+/** One-time starting grant deposited on a member's first `/market onboard`. */
+const ONBOARDING_GRANT = '5'
+/** Ledger reason recorded for the onboarding grant. */
+const ONBOARDING_REASON = 'Initial onboarding'
+/**
+ * Actor recorded for system-issued grants (e.g. onboarding). A sentinel string that is never a
+ * real user id, so grantPoints' self-target guard is not tripped when a member onboards themselves.
+ */
+const SYSTEM_ACTOR = 'system'
+
 /** placeBet throws these on normal user-facing rejections — not paged to Sentry. */
 const EXPECTED_BET_ERRORS = new Set([
 	'MARKET_NOT_FOUND',
@@ -408,6 +418,22 @@ export class PredictionMarketsDO extends DurableObject<Env> implements Predictio
 		}
 		try {
 			return await this.db.transaction(async (tx) => {
+				// Ensure the wallet row exists, then lock it FOR UPDATE. Locking BEFORE the idempotency
+				// pre-check serializes concurrent grants to the same user, so a losing race sees the
+				// winner's committed ledger row here and dedupes gracefully — rather than racing past
+				// the pre-check into a ledger unique-violation (money was always safe, but the raw
+				// 23505 pages Sentry and surfaces a spurious failure to an already-granted user).
+				await tx
+					.insert(pmWallets)
+					.values({ userId: input.targetUserId, balance: '0' })
+					.onConflictDoNothing()
+				const [locked] = await tx
+					.select({ balance: pmWallets.balance })
+					.from(pmWallets)
+					.where(eq(pmWallets.userId, input.targetUserId))
+					.for('update')
+					.limit(1)
+
 				// Idempotent grant: a repeated key must match the original (user, amount, type),
 				// otherwise a reused/forged key would silently drop a real deposit.
 				if (input.idempotencyKey) {
@@ -424,19 +450,9 @@ export class PredictionMarketsDO extends DurableObject<Env> implements Predictio
 						if (!same) {
 							throw new Error('IDEMPOTENCY_KEY_CONFLICT')
 						}
-						const [wallet] = await tx
-							.select({ balance: pmWallets.balance })
-							.from(pmWallets)
-							.where(eq(pmWallets.userId, input.targetUserId))
-							.limit(1)
-						return { balance: wallet?.balance ?? '0', deduped: true }
+						return { balance: locked?.balance ?? '0', deduped: true }
 					}
 				}
-
-				await tx
-					.insert(pmWallets)
-					.values({ userId: input.targetUserId, balance: '0' })
-					.onConflictDoNothing()
 
 				const [credited] = await tx
 					.update(pmWallets)
@@ -464,6 +480,25 @@ export class PredictionMarketsDO extends DurableObject<Env> implements Predictio
 			})
 			throw error
 		}
+	}
+
+	/**
+	 * Onboard a member: ensure their wallet exists and deposit the one-time ONBOARDING_GRANT.
+	 * Built on grantPoints as a system-actor grant keyed on `onboard:{userId}`, so it inherits
+	 * wallet creation, the atomic credit, and idempotency — and is once-per-user: a repeat call
+	 * (`deduped`) grants nothing and reports `alreadyOnboarded: true`.
+	 */
+	async onboardUser(
+		userId: string
+	): Promise<{ balance: string; granted: string; alreadyOnboarded: boolean }> {
+		const { balance, deduped } = await this.grantPoints({
+			actorUserId: SYSTEM_ACTOR,
+			targetUserId: userId,
+			amount: ONBOARDING_GRANT,
+			reason: ONBOARDING_REASON,
+			idempotencyKey: `onboard:${userId}`,
+		})
+		return { balance, granted: deduped ? '0' : ONBOARDING_GRANT, alreadyOnboarded: deduped }
 	}
 
 	async createMarket(input: CreateMarketInput): Promise<MarketDetail> {

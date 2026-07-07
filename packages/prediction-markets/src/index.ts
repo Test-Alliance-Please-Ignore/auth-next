@@ -255,6 +255,15 @@ export interface PredictionMarkets {
 
 	// writes
 	grantPoints(input: GrantPointsInput): Promise<{ balance: string; deduped: boolean }>
+	/**
+	 * Onboard a member: create their wallet if it does not exist and deposit a one-time starting
+	 * grant. Idempotent per user (keyed on `onboard:{userId}`) — a repeat call grants nothing and
+	 * returns `alreadyOnboarded: true`. `granted` is the amount credited on this call ('0' when
+	 * already onboarded); `balance` is the resulting wallet balance.
+	 */
+	onboardUser(
+		userId: string
+	): Promise<{ balance: string; granted: string; alreadyOnboarded: boolean }>
 	createMarket(input: CreateMarketInput): Promise<MarketDetail>
 	/**
 	 * Place a bet. `deduped` is true when this was a duplicate delivery of an already-recorded
