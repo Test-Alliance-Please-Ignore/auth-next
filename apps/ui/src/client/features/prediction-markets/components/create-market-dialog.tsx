@@ -49,11 +49,13 @@ const schema = z.object({
 export interface CreateMarketDialogProps {
 	open: boolean
 	onOpenChange: (open: boolean) => void
+	/** Which endpoint to create through: 'admin' (default) or 'member' (urn:markets:creator). */
+	scope?: 'admin' | 'member'
 }
 
 const digitsOnly = (v: string) => v.replace(/\D/g, '')
 
-export function CreateMarketDialog({ open, onOpenChange }: CreateMarketDialogProps) {
+export function CreateMarketDialog({ open, onOpenChange, scope = 'admin' }: CreateMarketDialogProps) {
 	const [question, setQuestion] = useState('')
 	const [description, setDescription] = useState('')
 	const [outcomes, setOutcomes] = useState<string[]>(['Yes', 'No'])
@@ -64,7 +66,7 @@ export function CreateMarketDialog({ open, onOpenChange }: CreateMarketDialogPro
 	const [perUserCap, setPerUserCap] = useState('')
 	const [twoOfN, setTwoOfN] = useState(false)
 
-	const create = useCreateMarket()
+	const create = useCreateMarket(scope)
 
 	useEffect(() => {
 		if (open) {

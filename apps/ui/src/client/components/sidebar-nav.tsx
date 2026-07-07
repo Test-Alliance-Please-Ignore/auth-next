@@ -442,6 +442,15 @@ export function SidebarNav({ onNavigate, isSidebarOpen = true, onToggleSidebar }
 			icon: FileText,
 		})
 
+		// Prediction markets: visible to anyone who can create one (managers + admins also pass).
+		if (hasAnyPermission('urn:markets:creator', 'urn:markets:manager')) {
+			navItems.push({
+				label: 'Prediction Markets',
+				href: '/prediction-markets',
+				icon: CircleDollarSign,
+			})
+		}
+
 		const externalLinkChildren = resolvedSidebarExternalLinks.map((link) => ({
 			label: link.displayName,
 			href: link.url,

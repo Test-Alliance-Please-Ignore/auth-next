@@ -15,13 +15,16 @@ import { getStub } from '@repo/do-utils'
 import { logger } from '@repo/hono-helpers'
 
 import { requireAdmin, requireAuth } from '../middleware/session'
-import { publishMarketPost } from '../services/discord-market-post.service'
+import {
+	CREATE_MARKET_BAD_REQUEST_CODES,
+	createAndPublishMarket,
+	createMarketSchema,
+} from '../services/market-create.service'
 import { userCharacters, users } from '../db/schema'
 
 import type { createDb } from '../db'
 import type { App } from '../context'
 import type { Context } from 'hono'
-import type { Discord } from '@repo/discord'
 import type { LedgerType, MarketStatus, PredictionMarkets } from '@repo/prediction-markets'
 
 type CoreDb = ReturnType<typeof createDb>
@@ -37,8 +40,6 @@ app.use('*', requireAuth(), requireAdmin())
 
 const stubOf = (c: Context<App>): PredictionMarkets =>
 	getStub<PredictionMarkets>(c.env.PREDICTION_MARKETS, 'default')
-
-const discordStubOf = (c: Context<App>): Discord => getStub<Discord>(c.env.DISCORD, 'default')
 
 function parsePage(
 	limitRaw: string | undefined,
@@ -102,18 +103,12 @@ function fail(c: Context<App>, error: unknown, what: string) {
 }
 
 /** PM DO error codes that are the caller's fault (bad input) rather than a server error. */
-const BAD_REQUEST_CODES = new Set([
+const BAD_REQUEST_CODES = new Set<string>([
+	// deposit path (grantPoints)
 	'INVALID_AMOUNT',
 	'REASON_REQUIRED',
-	'AT_LEAST_TWO_OUTCOMES',
-	'TOO_MANY_OUTCOMES',
-	'DUPLICATE_OUTCOMES',
-	'QUESTION_REQUIRED',
-	'INVALID_CLOSES_AT',
-	'INVALID_RAKE',
-	'INVALID_MIN_STAKE',
-	'INVALID_MAX_STAKE',
-	'INVALID_PER_USER_CAP',
+	// create path (shared with the member create route)
+	...CREATE_MARKET_BAD_REQUEST_CODES,
 ])
 
 // -------------------------------------------------------------------------
@@ -237,31 +232,6 @@ app.post('/deposits', async (c) => {
 // Markets (create → forum post)
 // -------------------------------------------------------------------------
 
-const positiveIntString = z
-	.string()
-	.regex(/^\d+$/, 'must be a positive integer')
-	.refine((v) => BigInt(v) > 0n, 'must be greater than 0')
-
-const createMarketSchema = z.object({
-	question: z.string().trim().min(3).max(500),
-	description: z.string().trim().max(2000).optional(),
-	outcomes: z
-		.array(z.string().trim().min(1).max(100))
-		.min(2)
-		.max(20)
-		// case-insensitive dedupe: the PM DO rejects DUPLICATE_OUTCOMES the same way
-		.refine((o) => new Set(o.map((s) => s.toLowerCase())).size === o.length, 'outcomes must be distinct'),
-	closesAt: z
-		.string()
-		.datetime()
-		.refine((s) => new Date(s).getTime() > Date.now(), 'closesAt must be in the future'),
-	rakeBps: z.number().int().min(0).max(2000).optional(),
-	minStake: positiveIntString.optional(),
-	maxStake: positiveIntString.optional(),
-	perUserCap: positiveIntString.optional(),
-	twoOfN: z.boolean().optional(),
-})
-
 const MARKET_STATUSES: readonly MarketStatus[] = [
 	'draft',
 	'open',
@@ -293,41 +263,13 @@ app.post('/markets', async (c) => {
 		if (!db) return c.json({ error: 'Database not initialized' }, 500)
 		const user = c.get('user')!
 		const body = createMarketSchema.parse(await c.req.json())
-
-		// Market is source-of-truth first; the forum post is best-effort second.
-		const market = await stubOf(c).createMarket({ createdBy: user.id, ...body })
-
-		let post: { threadId: string; messageId: string } | null = null
-		let postError: string | null = null
-		const guildId = c.env.PM_FORUM_GUILD_ID
-		const categoryId = c.env.PM_FORUM_CATEGORY_ID
-		if (!guildId || !categoryId) {
-			postError = 'PM_FORUM_GUILD_ID / PM_FORUM_CATEGORY_ID not configured'
-		} else {
-			try {
-				post = await publishMarketPost(
-					db,
-					discordStubOf(c),
-					stubOf(c),
-					guildId,
-					categoryId,
-					market
-				)
-			} catch (err) {
-				postError = err instanceof Error ? err.message : String(err)
-				logger.error('[PMAdmin] market forum post failed', {
-					marketId: market.id,
-					error: postError,
-				})
-			}
-		}
-
+		const result = await createAndPublishMarket(db, c.env, user.id, body)
 		logger.info('[PMAdmin] market created', {
 			actorId: user.id,
-			marketId: market.id,
-			posted: Boolean(post),
+			marketId: result.market.id,
+			posted: Boolean(result.post),
 		})
-		return c.json({ market, post, postError }, 201)
+		return c.json(result, 201)
 	} catch (error) {
 		return fail(c, error, 'create market')
 	}
