@@ -28,6 +28,11 @@ import {
 import { formatMarketPoints } from '../lib/market-embed'
 import { hasMarketPermission } from '../lib/market-permissions'
 import {
+	announceMarketClosed,
+	announceMarketResolved,
+	dmWagerResults,
+} from './discord-market-notify.service'
+import {
 	announceBetPlaced,
 	applyMarketPostStatus,
 	updateMarketPostFromDetail,
@@ -50,6 +55,13 @@ export interface DiscordComponentResult {
 	response: { type: number; data: { content: string; flags?: number; embeds?: DiscordEmbed[] } }
 	coreUserId: string | null
 	reason: string
+	/**
+	 * Optional out-of-band work to run AFTER the user's confirmation is delivered — the RPC layer
+	 * (executeDiscord* in index.ts) runs it in `ctx.waitUntil`. Used for the settlement DM fan-out,
+	 * which is too slow (one rate-limited DM per participant) to block the resolver's confirmation.
+	 * Never serialized to the interactions worker; consumed in-process by the RPC method.
+	 */
+	background?: () => Promise<void>
 }
 
 export interface ExecuteComponentInput {
@@ -95,9 +107,15 @@ const ERROR_MESSAGES: Record<string, string> = {
 function ephemeral(
 	content: string,
 	reason: string,
-	coreUserId: string | null = null
+	coreUserId: string | null = null,
+	background?: () => Promise<void>
 ): DiscordComponentResult {
-	return { response: { type: 4, data: { content, flags: EPHEMERAL_FLAG } }, coreUserId, reason }
+	return {
+		response: { type: 4, data: { content, flags: EPHEMERAL_FLAG } },
+		coreUserId,
+		reason,
+		...(background ? { background } : {}),
+	}
 }
 
 /** Pull the underlying driver error off a Drizzle "Failed query: …" wrapper (the real cause). */
@@ -181,6 +199,55 @@ async function refreshPost(
 	}
 }
 
+/** Post the "betting closed" notice to a market's thread. Best-effort — never fails the close. */
+async function notifyClose(
+	env: ComponentEnv,
+	prediction: PredictionMarkets,
+	marketId: string
+): Promise<void> {
+	try {
+		const market = await prediction.getMarket(marketId)
+		if (!market) return
+		const discord = getStub<Discord>(env.DISCORD, 'default')
+		await announceMarketClosed(discord, env.PM_FORUM_GUILD_ID ?? '', market)
+	} catch (err) {
+		logger.warn('[DiscordComponents] close notify failed', {
+			marketId,
+			error: err instanceof Error ? err.message : String(err),
+		})
+	}
+}
+
+/**
+ * Announce a just-settled (resolved/voided) market to its thread NOW (fast, one message) and
+ * return a thunk that DMs each participant their result. The DM fan-out is returned — not awaited —
+ * so the caller runs it in the RPC's `ctx.waitUntil`, off the resolver's confirmation path (one
+ * rate-limited DM per participant would otherwise make a large market's confirmation hang or time
+ * out). Best-effort; returns undefined when there's nothing to notify. The resolution already
+ * committed, so a Discord failure here is never fatal.
+ */
+async function announceSettlement(
+	env: ComponentEnv,
+	prediction: PredictionMarkets,
+	marketId: string
+): Promise<(() => Promise<void>) | undefined> {
+	try {
+		const market = await prediction.getMarket(marketId)
+		if (!market) return undefined
+		const settlement = await prediction.getMarketSettlement(marketId)
+		if (!settlement) return undefined
+		const discord = getStub<Discord>(env.DISCORD, 'default')
+		await announceMarketResolved(discord, env.PM_FORUM_GUILD_ID ?? '', market, settlement)
+		return () => dmWagerResults(discord, market, settlement)
+	} catch (err) {
+		logger.warn('[DiscordComponents] settlement announce failed', {
+			marketId,
+			error: err instanceof Error ? err.message : String(err),
+		})
+		return undefined
+	}
+}
+
 async function requireResolver(
 	db: ReturnType<typeof createDb>,
 	env: ComponentEnv,
@@ -221,6 +288,7 @@ export async function executeDiscordComponent(
 		if (decoded.action === 'close') {
 			await prediction.closeMarket({ actorUserId: user.id, marketId: decoded.marketId })
 			await refreshPost(db, env, prediction, decoded.marketId)
+			await notifyClose(env, prediction, decoded.marketId)
 			return ephemeral('Market closed.', 'ok', user.id)
 		}
 		// approve
@@ -232,10 +300,15 @@ export async function executeDiscordComponent(
 			proposalId: proposal.id,
 		})
 		await refreshPost(db, env, prediction, decoded.marketId)
+		let background: (() => Promise<void>) | undefined
+		if (result.status === 'resolved' || result.status === 'voided') {
+			background = await announceSettlement(env, prediction, decoded.marketId)
+		}
 		return ephemeral(
 			result.status === 'voided' ? 'Resolution approved — market voided.' : 'Resolution approved.',
 			'ok',
-			user.id
+			user.id,
+			background
 		)
 	} catch (error) {
 		return mapError(error, user.id, { action: decoded.action, marketId: decoded.marketId })
@@ -316,11 +389,19 @@ async function handleBetModal(
 				outcomeLabel = market.outcomes.find((o) => o.id === target.outcomeId)?.label ?? ''
 				const discord = getStub<Discord>(env.DISCORD, 'default')
 				await updateMarketPostFromDetail(discord, market)
-				// Announce the bet publicly in the market's forum thread — amount + outcome only,
-				// never the bettor's identity. Best-effort (sibling to the embed refresh above).
-				// Skip on a deduped (duplicate-delivery) bet so a retried interaction can't post twice.
+				// Announce the bet publicly in the market's forum thread — who bet, how much, on which
+				// outcome. Best-effort (sibling to the embed refresh above). Skip on a deduped
+				// (duplicate-delivery) bet so a retried interaction can't post twice. `<@id>` renders
+				// the bettor's name without pinging (allowed_mentions stays empty).
 				if (!bet.deduped) {
-					await announceBetPlaced(discord, env.PM_FORUM_GUILD_ID ?? '', market, bet.amount, outcomeLabel)
+					await announceBetPlaced(
+						discord,
+						env.PM_FORUM_GUILD_ID ?? '',
+						market,
+						`<@${input.discordUserId}>`,
+						bet.amount,
+						outcomeLabel
+					)
 				}
 			}
 		} catch (err) {
@@ -370,11 +451,20 @@ async function handleResolveModal(
 			outcomeId: outcome.id,
 		})
 		await refreshPost(db, env, prediction, marketId)
+		let background: (() => Promise<void>) | undefined
+		if (result.status === 'resolved' || result.status === 'voided') {
+			background = await announceSettlement(env, prediction, marketId)
+		}
 		if (result.status === 'resolved') {
-			return ephemeral(`Market resolved: **${outcome.label}**.`, 'ok', user.id)
+			return ephemeral(`Market resolved: **${outcome.label}**.`, 'ok', user.id, background)
 		}
 		if (result.status === 'voided') {
-			return ephemeral('Market resolved with no winning bets — everyone refunded.', 'ok', user.id)
+			return ephemeral(
+				'Market resolved with no winning bets — everyone refunded.',
+				'ok',
+				user.id,
+				background
+			)
 		}
 		// resolving (two-of-N): a second resolver must approve.
 		return ephemeral(
@@ -408,7 +498,8 @@ async function handleVoidModal(
 	try {
 		await prediction.voidMarket({ actorUserId: user.id, marketId, reason })
 		await refreshPost(db, env, prediction, marketId)
-		return ephemeral('Market voided and all bets refunded.', 'ok', user.id)
+		const background = await announceSettlement(env, prediction, marketId)
+		return ephemeral('Market voided and all bets refunded.', 'ok', user.id, background)
 	} catch (error) {
 		return mapError(error, user.id, { action: 'void', marketId })
 	}

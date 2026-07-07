@@ -31,16 +31,70 @@ export function truncateForEmbed(value: string, max: number): string {
 }
 
 /**
- * The public message posted to a market's forum thread when a bet lands. Deliberately
- * anonymous — it carries the amount and chosen outcome ONLY, never any bettor identity.
- * The outcome label is truncated so a long label can't blow past Discord's 2000-char message
- * limit; mention suppression is handled by the caller (allowed_mentions).
+ * The public message posted to a market's forum thread when a bet lands. Names the bettor
+ * (`bettor` is a Discord mention like `<@id>`, which renders the username; the caller keeps
+ * allowed_mentions empty so it displays without pinging). The outcome label is truncated so a
+ * long label can't blow past Discord's 2000-char message limit.
  */
-export function buildBetAnnouncement(amount: string, outcomeLabel: string): string {
-	return `🎲 A bet of **${formatMarketPoints(amount)}** was placed on **${truncateForEmbed(
+export function buildBetAnnouncement(bettor: string, amount: string, outcomeLabel: string): string {
+	return `🎲 ${bettor} bet **${formatMarketPoints(amount)}** on **${truncateForEmbed(
 		outcomeLabel,
 		256
 	)}**.`
+}
+
+/** Posted to the thread when a market closes to betting (manual Close or auto-close on time). */
+export function buildMarketCloseAnnouncement(): string {
+	return '🔒 Betting is now closed on this market. Awaiting resolution.'
+}
+
+/** Posted to the thread when a market resolves: the winning outcome + aggregate paid-out/lost. */
+export function buildMarketResolveAnnouncement(
+	outcomeLabel: string,
+	totalPaidOut: string,
+	totalLost: string
+): string {
+	return (
+		`✅ Market resolved: **${truncateForEmbed(outcomeLabel, 256)}**.\n` +
+		`**${formatMarketPoints(totalPaidOut)}** paid out to winners · **${formatMarketPoints(totalLost)}** lost.`
+	)
+}
+
+/** Posted to the thread when a market is voided (no winner): everyone's stake is refunded. */
+export function buildMarketVoidAnnouncement(totalRefunded: string): string {
+	return `⚖️ Market voided — no winner. All **${formatMarketPoints(totalRefunded)}** in stakes refunded.`
+}
+
+/**
+ * The DM sent to one participant with the result of their wagers on a settled market. `net` is a
+ * signed integer-point string (negative = net loss). `outcomeLabel` is the winning outcome, or null
+ * on a void. Question/outcome are truncated to keep the DM within Discord's message limit.
+ */
+export function buildWagerResultDm(input: {
+	question: string
+	voided: boolean
+	outcomeLabel: string | null
+	staked: string
+	returned: string
+	net: string
+}): string {
+	const question = truncateForEmbed(input.question, 200)
+	if (input.voided) {
+		return `⚖️ The market “${question}” was voided — your **${formatMarketPoints(
+			input.staked
+		)}** stake was refunded.`
+	}
+	const negative = input.net.trim().startsWith('-')
+	const zero = input.net.trim().replace(/^0+(?=\d)/, '') === '0'
+	const emoji = zero ? '🤝' : negative ? '😔' : '🎉'
+	const netDisplay = negative || zero ? formatMarketPoints(input.net) : `+${formatMarketPoints(input.net)}`
+	const outcome = input.outcomeLabel ? `**${truncateForEmbed(input.outcomeLabel, 256)}**` : 'the market'
+	return (
+		`${emoji} “${question}” resolved: ${outcome}.\n` +
+		`You staked **${formatMarketPoints(input.staked)}**, got back **${formatMarketPoints(
+			input.returned
+		)}** — net **${netDisplay}**.`
+	)
 }
 
 /**

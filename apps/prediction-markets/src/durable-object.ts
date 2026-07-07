@@ -36,6 +36,7 @@ import type {
 	MarketDetail,
 	MarketHistoryOpts,
 	MarketHistoryRow,
+	MarketSettlement,
 	MarketStatus,
 	MarketSummary,
 	Paged,
@@ -249,6 +250,73 @@ export class PredictionMarketsDO extends DurableObject<Env> implements Predictio
 			payoutAmount: r.payoutAmount,
 			createdAt: r.createdAt.toISOString(),
 		}))
+	}
+
+	/**
+	 * Aggregate a market's financial settlement: overall totals + one net-result row per
+	 * participant. Reads every bet on the market (bounded by market size) and folds them by user —
+	 * a won bet returns its `payoutAmount`, a refunded bet returns its stake, a lost bet returns
+	 * nothing. Intended for a resolved/voided market; returns null if the market doesn't exist.
+	 */
+	async getMarketSettlement(marketId: string): Promise<MarketSettlement | null> {
+		const [market] = await this.db
+			.select({
+				status: pmMarkets.status,
+				resolvedOutcomeId: pmMarkets.resolvedOutcomeId,
+			})
+			.from(pmMarkets)
+			.where(eq(pmMarkets.id, marketId))
+			.limit(1)
+		if (!market) return null
+
+		const bets = await this.db
+			.select({
+				userId: pmBets.userId,
+				amount: pmBets.amount,
+				status: pmBets.status,
+				payoutAmount: pmBets.payoutAmount,
+			})
+			.from(pmBets)
+			.where(eq(pmBets.marketId, marketId))
+			.orderBy(pmBets.userId)
+
+		let totalStaked = 0n
+		let totalPaidOut = 0n
+		let totalLost = 0n
+		const byUser = new Map<string, { staked: bigint; returned: bigint }>()
+		for (const bet of bets) {
+			const stake = parseAmount(bet.amount)
+			// Money returned to the bettor: full payout for a win, stake back for a refund, nothing
+			// for a loss. (An 'active' bet on an unsettled market returns nothing here.)
+			let returned = 0n
+			if (bet.status === 'won') returned = parseAmount(bet.payoutAmount)
+			else if (bet.status === 'refunded') returned = stake
+			else if (bet.status === 'lost') totalLost += stake
+
+			totalStaked += stake
+			totalPaidOut += returned
+			const acc = byUser.get(bet.userId) ?? { staked: 0n, returned: 0n }
+			acc.staked += stake
+			acc.returned += returned
+			byUser.set(bet.userId, acc)
+		}
+
+		const users = Array.from(byUser, ([userId, acc]) => ({
+			userId,
+			staked: formatAmount(acc.staked),
+			returned: formatAmount(acc.returned),
+			net: formatAmount(acc.returned - acc.staked),
+		}))
+
+		return {
+			marketId,
+			status: market.status,
+			resolvedOutcomeId: market.resolvedOutcomeId,
+			totalStaked: formatAmount(totalStaked),
+			totalPaidOut: formatAmount(totalPaidOut),
+			totalLost: formatAmount(totalLost),
+			users,
+		}
 	}
 
 	async getLeaderboard(opts?: {
