@@ -12,6 +12,7 @@ alias new-worker := gen
 alias new-do := new-durable-object
 alias up := update
 alias i := install
+alias wt := worktree
 
 # =============================== #
 #         DEV COMMANDS            #
@@ -330,6 +331,12 @@ update *flags:
 [group('5. utility')]
 runx *flags:
   bun runx {{flags}}
+
+# Create/manage git worktrees under worktrees/<name>: git-ignored path, machete-tracked, env files copied.
+# Examples: `just worktree new my-feature`  |  `just wt new my-feature --neon`  |  `just wt list`  |  `just wt rm my-feature`
+[group('5. utility')]
+worktree *flags:
+  bun runx worktree {{flags}}
 
 [group('5. utility')]
 tail worker:

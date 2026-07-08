@@ -16,7 +16,10 @@
 		"VITE_DISCORD_CLIENT_ID",
 		"DATABASE_URL",
 		"DATABASE_URL_MIGRATIONS",
-		"PROD"
+		"PROD",
+		"EDITOR",
+		"NEON_AUTH_NG_PROJECT_ID",
+		"NEON_AUTH_NG_ORG_ID"
 	],
 	"globalPassThroughEnv": ["WRANGLER_LOG", "FORCE_COLOR"],
 	"remoteCache": {
