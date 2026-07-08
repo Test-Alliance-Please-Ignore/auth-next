@@ -57,6 +57,13 @@
       "when": 1783529218025,
       "tag": "0007_pale_brood",
       "breakpoints": true
+    },
+    {
+      "idx": 8,
+      "version": "7",
+      "when": 1783530528952,
+      "tag": "0008_public_demogoblin",
+      "breakpoints": true
     }
   ]
 }

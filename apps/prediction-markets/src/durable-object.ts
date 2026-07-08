@@ -24,7 +24,7 @@ import {
 	normalizeDesignatedResolvers,
 } from './lib/designated-resolvers'
 import { formatAmount, isPositiveIntegerString, negateAmount, parseAmount } from './lib/money'
-import { computeResolution } from './lib/payout'
+import { computeResolution, pickCreatorRewardBps, splitCreatorReward } from './lib/payout'
 import { RATE_BUDGETS } from './lib/rate-limit'
 import { assertTransition, isTerminal } from './lib/state-machine'
 import { bucketThresholdImpact, thresholdEqual } from './lib/threshold-impact'
@@ -1606,6 +1606,28 @@ export class PredictionMarketsDO extends DurableObject<Env> implements Predictio
 			BigInt(market.rakeBps)
 		)
 
+		// Creator rake-reward: on a successful resolution the market's creator earns a random slice of
+		// the rake (band configured on pm_config.creator_reward_{min,max}_bps; both 0 disables it). Read
+		// the band under this same tx snapshot, draw the share, and split — creatorReward + houseRake ==
+		// rake, so pool conservation is unchanged and only how the rake is *attributed* moves. A fresh
+		// draw per attempt is safe: the whole resolution is one atomic, status-guarded transaction, so
+		// only the committing attempt's draw ever persists.
+		const [rewardCfg] = await tx
+			.select({
+				minBps: pmConfig.creatorRewardMinBps,
+				maxBps: pmConfig.creatorRewardMaxBps,
+			})
+			.from(pmConfig)
+			.where(eq(pmConfig.isActive, true))
+			.orderBy(desc(pmConfig.effectiveFrom))
+			.limit(1)
+		const creatorShareBps = pickCreatorRewardBps(
+			rewardCfg?.minBps ?? 0,
+			rewardCfg?.maxBps ?? 0,
+			Math.random()
+		)
+		const { creatorReward, houseRake } = splitCreatorReward(rake, creatorShareBps)
+
 		// Credit winners in deterministic user order (multi-wallet deadlock-safe).
 		for (const p of payouts) {
 			const updated = await tx
@@ -1644,27 +1666,54 @@ export class PredictionMarketsDO extends DurableObject<Env> implements Predictio
 				)
 			)
 
-		// House cut (rake) and rounding dust (burn) accumulate in the system wallet rather than
-		// leaving circulation via a null-user sink — the points stay conserved and recoverable.
-		// Each is a distinct, attributed ledger line carrying the wallet's running balanceAfter.
-		if (rake > 0n || dust > 0n) {
+		// Creator rake-reward: pay the market's creator their drawn slice of the rake. The creator is a
+		// real user (never the system wallet; by CREATOR_CANNOT_RESOLVE never the resolver) but may have
+		// no wallet yet if they never bet, so lazily create it. Booked as its own attributed line whose
+		// metadata records the draw for audit; the remaining houseRake still books as 'rake' below.
+		if (creatorReward > 0n) {
+			await tx
+				.insert(pmWallets)
+				.values({ userId: market.createdBy, balance: '0' })
+				.onConflictDoNothing()
+			const [credited] = await tx
+				.update(pmWallets)
+				.set({
+					balance: sql`${pmWallets.balance} + ${formatAmount(creatorReward)}::numeric`,
+					updatedAt: new Date(),
+				})
+				.where(eq(pmWallets.userId, market.createdBy))
+				.returning({ balance: pmWallets.balance })
+			await tx.insert(pmLedger).values({
+				userId: market.createdBy,
+				amount: formatAmount(creatorReward),
+				type: 'creator_reward',
+				marketId: market.id,
+				balanceAfter: credited?.balance ?? null,
+				metadata: { shareBps: creatorShareBps, rakeBase: formatAmount(rake) },
+			})
+		}
+
+		// House cut (net rake, after any creator reward) and rounding dust (burn) accumulate in the
+		// system wallet rather than leaving circulation via a null-user sink — the points stay conserved
+		// and recoverable. Each is a distinct, attributed ledger line carrying the running balanceAfter.
+		if (houseRake > 0n || dust > 0n) {
 			await tx
 				.insert(pmWallets)
 				.values({ userId: SYSTEM_WALLET_USER_ID, balance: '0' })
 				.onConflictDoNothing()
 		}
-		if (rake > 0n) {
+		if (houseRake > 0n) {
 			const [credited] = await tx
 				.update(pmWallets)
 				.set({
-					balance: sql`${pmWallets.balance} + ${formatAmount(rake)}::numeric`,
+					balance: sql`${pmWallets.balance} + ${formatAmount(houseRake)}::numeric`,
 					updatedAt: new Date(),
 				})
 				.where(eq(pmWallets.userId, SYSTEM_WALLET_USER_ID))
 				.returning({ balance: pmWallets.balance })
 			await tx.insert(pmLedger).values({
 				userId: SYSTEM_WALLET_USER_ID,
-				amount: formatAmount(rake),
+				amount: formatAmount(houseRake),
 				type: 'rake',
 				marketId: market.id,
 				balanceAfter: credited.balance,
@@ -1711,6 +1760,9 @@ export class PredictionMarketsDO extends DurableObject<Env> implements Predictio
 				totalPool: formatAmount(totalPool),
 				poolW: formatAmount(poolW),
 				rake: formatAmount(rake),
+				creatorReward: formatAmount(creatorReward),
+				creatorRewardBps: creatorShareBps,
+				houseRake: formatAmount(houseRake),
 				dust: formatAmount(dust),
 				...(viaOverride ? { viaOverride: true } : {}),
 			},
@@ -1826,6 +1878,8 @@ export class PredictionMarketsDO extends DurableObject<Env> implements Predictio
 			defaultRakeBps: row.defaultRakeBps,
 			defaultMinStake: row.defaultMinStake,
 			twoOfNThreshold: row.twoOfNThreshold,
+			creatorRewardMinBps: row.creatorRewardMinBps,
+			creatorRewardMaxBps: row.creatorRewardMaxBps,
 			effectiveFrom: row.effectiveFrom.toISOString(),
 			actorUserId: row.actorUserId,
 			changeNote: row.changeNote,
@@ -1845,6 +1899,8 @@ export class PredictionMarketsDO extends DurableObject<Env> implements Predictio
 				defaultRakeBps: 0,
 				defaultMinStake: '1',
 				twoOfNThreshold: null,
+				creatorRewardMinBps: 0,
+				creatorRewardMaxBps: 0,
 				effectiveFrom: null,
 				actorUserId: null,
 				changeNote: null,
@@ -1901,6 +1957,20 @@ export class PredictionMarketsDO extends DurableObject<Env> implements Predictio
 		if (input.twoOfNThreshold !== null && !isPositiveIntegerString(input.twoOfNThreshold)) {
 			throw new Error('INVALID_THRESHOLD')
 		}
+		// Creator rake-reward band: both bounds whole bps in [0, 10000] (fraction of the rake) and
+		// min ≤ max. Both 0 disables the feature. Enforced here (route also validates) so the stored
+		// invariant the settlement draw relies on can never be violated.
+		if (
+			!Number.isInteger(input.creatorRewardMinBps) ||
+			!Number.isInteger(input.creatorRewardMaxBps) ||
+			input.creatorRewardMinBps < 0 ||
+			input.creatorRewardMaxBps < 0 ||
+			input.creatorRewardMinBps > 10_000 ||
+			input.creatorRewardMaxBps > 10_000 ||
+			input.creatorRewardMinBps > input.creatorRewardMaxBps
+		) {
+			throw new Error('INVALID_CREATOR_REWARD')
+		}
 		// DO owns the invariant (the route caps at 500 too). Bound the free-text note defensively.
 		if (input.changeNote != null && input.changeNote.length > 500) {
 			throw new Error('INVALID_CHANGE_NOTE')
@@ -1922,6 +1992,8 @@ export class PredictionMarketsDO extends DurableObject<Env> implements Predictio
 					cur.defaultRakeBps === input.defaultRakeBps &&
 					parseAmount(cur.defaultMinStake) === parseAmount(input.defaultMinStake) &&
 					thresholdEqual(curThreshold, input.twoOfNThreshold) &&
+					cur.creatorRewardMinBps === input.creatorRewardMinBps &&
+					cur.creatorRewardMaxBps === input.creatorRewardMaxBps &&
 					(cur.changeNote ?? null) === (input.changeNote ?? null)
 				) {
 					return this.toConfigView(cur) // no-op: skip a value-identical generation
@@ -1954,6 +2026,8 @@ export class PredictionMarketsDO extends DurableObject<Env> implements Predictio
 						defaultRakeBps: input.defaultRakeBps,
 						defaultMinStake: input.defaultMinStake,
 						twoOfNThreshold: input.twoOfNThreshold,
+						creatorRewardMinBps: input.creatorRewardMinBps,
+						creatorRewardMaxBps: input.creatorRewardMaxBps,
 						actorUserId: input.actorUserId,
 						changeNote: input.changeNote ?? null,
 					})

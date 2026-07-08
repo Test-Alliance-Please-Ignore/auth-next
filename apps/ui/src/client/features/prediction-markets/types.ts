@@ -169,5 +169,8 @@ export interface UpdateConfigRequest {
 	defaultRakeBps: number
 	defaultMinStake: string
 	twoOfNThreshold: string | null
+	/** Creator rake-reward band as a fraction of the rake in bps (0–10000). Both 0 disables it. */
+	creatorRewardMinBps: number
+	creatorRewardMaxBps: number
 	changeNote?: string
 }

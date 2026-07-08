@@ -26,6 +26,9 @@ export default function PredictionMarketConfig() {
 	const [minStake, setMinStake] = useState('')
 	const [twoOfNEnabled, setTwoOfNEnabled] = useState(false)
 	const [threshold, setThreshold] = useState('')
+	const [creatorRewardEnabled, setCreatorRewardEnabled] = useState(false)
+	const [creatorRewardMin, setCreatorRewardMin] = useState('')
+	const [creatorRewardMax, setCreatorRewardMax] = useState('')
 	const [changeNote, setChangeNote] = useState('')
 
 	// Prefill from the TRUTHFUL runtime values getConfig reports (rake 0 on an unseeded table) — never
@@ -37,6 +40,9 @@ export default function PredictionMarketConfig() {
 		setMinStake(data.defaultMinStake)
 		setTwoOfNEnabled(data.twoOfNThreshold !== null)
 		setThreshold(data.twoOfNThreshold ?? '')
+		setCreatorRewardEnabled(data.creatorRewardMaxBps > 0)
+		setCreatorRewardMin(String(data.creatorRewardMinBps))
+		setCreatorRewardMax(String(data.creatorRewardMaxBps))
 		setChangeNote('')
 	}, [data])
 
@@ -61,10 +67,41 @@ export default function PredictionMarketConfig() {
 			return
 		}
 
+		// Creator rake-reward band (fraction of the rake in bps). Disabled ⇒ 0/0.
+		let creatorMin = 0
+		let creatorMax = 0
+		if (creatorRewardEnabled) {
+			creatorMin = Number(creatorRewardMin)
+			creatorMax = Number(creatorRewardMax)
+			if (
+				!Number.isInteger(creatorMin) ||
+				!Number.isInteger(creatorMax) ||
+				creatorMin < 0 ||
+				creatorMax < 0 ||
+				creatorMin > 10000 ||
+				creatorMax > 10000
+			) {
+				toast.error(
+					'Creator reward bounds must be whole basis points between 0 and 10000 (0–100%).'
+				)
+				return
+			}
+			if (creatorMax === 0) {
+				toast.error('Enable creator reward with a maximum above 0, or turn it off.')
+				return
+			}
+			if (creatorMin > creatorMax) {
+				toast.error('Creator reward minimum must be less than or equal to the maximum.')
+				return
+			}
+		}
+
 		const body = {
 			defaultRakeBps: rake,
 			defaultMinStake: minStake,
 			twoOfNThreshold: candidate,
+			creatorRewardMinBps: creatorMin,
+			creatorRewardMaxBps: creatorMax,
 			changeNote: changeNote.trim() || undefined,
 		}
 		const submit = async () => {
@@ -73,6 +110,8 @@ export default function PredictionMarketConfig() {
 
 		const thresholdChanged = candidate !== data.twoOfNThreshold
 		const rakeChanged = rake !== data.defaultRakeBps
+		const creatorRewardChanged =
+			creatorMin !== data.creatorRewardMinBps || creatorMax !== data.creatorRewardMaxBps
 
 		// A threshold change is read at SETTLE time — retroactive on existing markets. Fetch the exact
 		// impact; hard-block if it would strand a single-resolver market (the server enforces this too).
@@ -120,6 +159,28 @@ export default function PredictionMarketConfig() {
 				description:
 					`New markets will take ${bps(rake)} rake (was ${bps(data.defaultRakeBps)}). ` +
 					`Existing markets keep their frozen rake. Continue?`,
+				confirmLabel: 'Apply',
+				cancelLabel: 'Cancel',
+				intent: 'destructive',
+				confirmButtonVariant: 'danger',
+				confirmDelaySeconds: 5,
+				onConfirm: submit,
+			})
+			return
+		}
+
+		// Creator rake reward redirects part of the house's rake to market creators at settlement.
+		// Rake is frozen per market, so this only affects FUTURE settlements — but it's an economic
+		// change worth confirming (and a same-submit rake/threshold change already confirmed above).
+		if (creatorRewardChanged) {
+			requestConfirmation({
+				title: 'Change creator rake reward?',
+				description:
+					creatorMax > 0
+						? `On each successful resolution, the market's creator will receive a random ` +
+							`${bps(creatorMin)}–${bps(creatorMax)} of that market's rake (drawn per settlement). ` +
+							`This reduces the house's share of the rake. Continue?`
+						: `Creator rake reward will be disabled — all rake returns to the house. Continue?`,
 				confirmLabel: 'Apply',
 				cancelLabel: 'Cancel',
 				intent: 'destructive',
@@ -238,6 +299,69 @@ export default function PredictionMarketConfig() {
 					) : (
 						<p className="text-sm text-muted-foreground">
 							Disabled — no market requires two-of-N by pool size.
+						</p>
+					)}
+				</section>
+
+				<section className="space-y-4 rounded-md border border-border p-4">
+					<div className="flex items-center justify-between gap-4">
+						<div>
+							<h2 className="text-lg font-semibold">Creator rake reward</h2>
+							<p className="text-sm text-muted-foreground">
+								On a successful resolution, pay the market's creator a{' '}
+								<strong>random slice of that market's rake</strong>, drawn uniformly from the band
+								below; the house keeps the rest. Affects future settlements only — a market's rake
+								itself is frozen at creation.
+							</p>
+						</div>
+						<Switch
+							checked={creatorRewardEnabled}
+							onCheckedChange={setCreatorRewardEnabled}
+							disabled={busy || isLoading}
+							aria-label="Enable creator rake reward"
+						/>
+					</div>
+
+					{creatorRewardEnabled ? (
+						<div className="grid gap-4 sm:grid-cols-2">
+							<div className="space-y-2">
+								<Label htmlFor="pm-cfg-creator-min">Minimum (basis points)</Label>
+								<Input
+									id="pm-cfg-creator-min"
+									type="text"
+									inputMode="numeric"
+									pattern="\d*"
+									placeholder="1000"
+									value={creatorRewardMin}
+									onChange={(e) => setCreatorRewardMin(digitsOnly(e.target.value))}
+									disabled={busy || isLoading}
+								/>
+								<p className="text-xs text-muted-foreground">
+									Share of the rake, 0–10000 bps.{' '}
+									{creatorRewardMin !== '' ? `= ${bps(Number(creatorRewardMin) || 0)}` : null}
+								</p>
+							</div>
+							<div className="space-y-2">
+								<Label htmlFor="pm-cfg-creator-max">Maximum (basis points)</Label>
+								<Input
+									id="pm-cfg-creator-max"
+									type="text"
+									inputMode="numeric"
+									pattern="\d*"
+									placeholder="5000"
+									value={creatorRewardMax}
+									onChange={(e) => setCreatorRewardMax(digitsOnly(e.target.value))}
+									disabled={busy || isLoading}
+								/>
+								<p className="text-xs text-muted-foreground">
+									Must be ≥ minimum.{' '}
+									{creatorRewardMax !== '' ? `= ${bps(Number(creatorRewardMax) || 0)}` : null}
+								</p>
+							</div>
+						</div>
+					) : (
+						<p className="text-sm text-muted-foreground">
+							Disabled — the full rake goes to the house on every resolution.
 						</p>
 					)}
 				</section>

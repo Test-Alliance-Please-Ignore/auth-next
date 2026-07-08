@@ -21,8 +21,8 @@ import { characterPortraitUrl } from '@/lib/eve-images'
 import { formatPoints } from '@/lib/format-utils'
 import { cn } from '@/lib/utils'
 
-import type { AdminLedgerRow, LedgerType } from '../types'
 import type { BadgeVariant } from '@/components/ui/badge'
+import type { AdminLedgerRow, LedgerType } from '../types'
 
 const LEDGER_TYPE_VARIANTS: Record<LedgerType, BadgeVariant> = {
 	grant: 'success',
@@ -32,14 +32,14 @@ const LEDGER_TYPE_VARIANTS: Record<LedgerType, BadgeVariant> = {
 	rake: 'special',
 	burn: 'destructive',
 	adjustment: 'ghost',
+	creator_reward: 'gold',
 }
 
 const COL_COUNT = 8
 
 function hasMetadata(metadata: unknown): boolean {
 	return (
-		metadata != null &&
-		(typeof metadata !== 'object' || Object.keys(metadata as object).length > 0)
+		metadata != null && (typeof metadata !== 'object' || Object.keys(metadata as object).length > 0)
 	)
 }
 

@@ -37,6 +37,9 @@ export const pmLedgerType = pgEnum('pm_ledger_type', [
 	'rake',
 	'burn',
 	'adjustment',
+	// A random slice of a resolved market's rake paid to the market's creator (see
+	// creator_reward_{min,max}_bps on pm_config). The remaining rake still books as a 'rake' line.
+	'creator_reward',
 ])
 
 export const pmProposalStatus = pgEnum('pm_proposal_status', [
@@ -259,6 +262,15 @@ export const pmConfig = pgTable('pm_config', {
 	defaultMinStake: numeric('default_min_stake').notNull().default('1'),
 	/** Markets with total_pool ≥ this require two-of-N settlement. NULL disables. */
 	twoOfNThreshold: numeric('two_of_n_threshold'),
+	/**
+	 * Creator rake-reward band, as a fraction OF THE RAKE in basis points (0–10000 = 0–100%). On a
+	 * successful resolution the market's creator is paid a random slice of the rake drawn uniformly
+	 * from [min, max] bps; the remainder stays with the house. Both 0 (the default) disables the
+	 * feature entirely — legacy/unseeded configs keep the pre-feature "all rake to house" behavior.
+	 * Invariant (enforced on write): 0 ≤ min ≤ max ≤ 10000.
+	 */
+	creatorRewardMinBps: integer('creator_reward_min_bps').notNull().default(0),
+	creatorRewardMaxBps: integer('creator_reward_max_bps').notNull().default(0),
 	/** Admin who wrote this generation (null for pre-editor / seed rows). Durable WHO audit. */
 	actorUserId: uuid('actor_user_id'),
 	/** Optional free-text reason the admin gave for this config change. */

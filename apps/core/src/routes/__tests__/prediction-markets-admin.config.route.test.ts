@@ -59,11 +59,19 @@ function req(app: ReturnType<typeof createApp>, method: string, path: string, bo
 	)
 }
 
-const validBody = { defaultRakeBps: 100, defaultMinStake: '1', twoOfNThreshold: '5000' }
+const validBody = {
+	defaultRakeBps: 100,
+	defaultMinStake: '1',
+	twoOfNThreshold: '5000',
+	creatorRewardMinBps: 0,
+	creatorRewardMaxBps: 0,
+}
 const configView = {
 	defaultRakeBps: 100,
 	defaultMinStake: '1',
 	twoOfNThreshold: '5000',
+	creatorRewardMinBps: 0,
+	creatorRewardMaxBps: 0,
 	effectiveFrom: '2026-07-08T00:00:00.000Z',
 	actorUserId: 'admin-1',
 	changeNote: null,
@@ -128,6 +136,38 @@ describe('admin prediction-markets /config', () => {
 			twoOfNThreshold: '0',
 		})
 		expect(res.status).toBe(400)
+	})
+
+	it('PATCH /config accepts a creator-reward band and forwards it', async () => {
+		const res = await req(createApp(makeUser()), 'PATCH', '/config', {
+			...validBody,
+			creatorRewardMinBps: 1000,
+			creatorRewardMaxBps: 5000,
+		})
+		expect(res.status).toBe(200)
+		expect(stub.updateConfig).toHaveBeenCalledWith(
+			expect.objectContaining({ creatorRewardMinBps: 1000, creatorRewardMaxBps: 5000 })
+		)
+	})
+
+	it('PATCH /config 400s a creator-reward band above 100% (zod max)', async () => {
+		const res = await req(createApp(makeUser()), 'PATCH', '/config', {
+			...validBody,
+			creatorRewardMinBps: 0,
+			creatorRewardMaxBps: 10001,
+		})
+		expect(res.status).toBe(400)
+		expect(stub.updateConfig).not.toHaveBeenCalled()
+	})
+
+	it('PATCH /config 400s an inverted creator-reward band (min > max)', async () => {
+		const res = await req(createApp(makeUser()), 'PATCH', '/config', {
+			...validBody,
+			creatorRewardMinBps: 6000,
+			creatorRewardMaxBps: 5000,
+		})
+		expect(res.status).toBe(400)
+		expect(stub.updateConfig).not.toHaveBeenCalled()
 	})
 
 	it('PATCH /config maps THRESHOLD_WOULD_STRAND to 400', async () => {
