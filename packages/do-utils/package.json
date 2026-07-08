@@ -7,7 +7,8 @@
 	"main": "src/index.ts",
 	"scripts": {
 		"check:lint": "run-eslint",
-		"check:types": "run-tsc"
+		"check:types": "run-tsc",
+		"test": "run-vitest"
 	},
 	"dependencies": {
 		"drizzle-orm": "0.44.7"
@@ -15,6 +16,7 @@
 	"devDependencies": {
 		"@repo/eslint-config": "workspace:*",
 		"@repo/tools": "workspace:*",
-		"@repo/typescript-config": "workspace:*"
+		"@repo/typescript-config": "workspace:*",
+		"vitest": "3.2.4"
 	}
 }
