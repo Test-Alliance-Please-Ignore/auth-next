@@ -83,7 +83,6 @@ const ERROR_MESSAGES: Record<string, string> = {
 	MARKET_NOT_FOUND: 'That market no longer exists.',
 	MARKET_NOT_OPEN: 'This market is not open for betting.',
 	MARKET_CLOSED: 'Betting has closed on this market.',
-	CREATOR_CANNOT_BET: 'You created this market, so you can’t bet on it.',
 	OUTCOME_NOT_FOUND: 'That outcome is no longer available.',
 	STAKE_BELOW_MIN: 'Your stake is below the minimum for this market.',
 	STAKE_ABOVE_MAX: 'Your stake is above the maximum for this market.',

@@ -27,8 +27,8 @@ export default function PredictionMarketCreate() {
 					<h1 className="text-3xl font-bold gradient-text">Prediction Markets</h1>
 					<p className="mt-1 max-w-2xl text-muted-foreground">
 						Create a market for the community. It’s posted to the predictions forum channel, where
-						members place bets and a resolver settles it. You can’t bet on or resolve a market you
-						create.
+						members place bets and a resolver settles it. You can bet on your own market, but you
+						can’t resolve it.
 					</p>
 				</div>
 				{canCreate ? (

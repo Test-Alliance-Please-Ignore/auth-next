@@ -82,7 +82,6 @@ const EXPECTED_BET_ERRORS = new Set([
 	'MARKET_NOT_FOUND',
 	'MARKET_NOT_OPEN',
 	'MARKET_CLOSED',
-	'CREATOR_CANNOT_BET',
 	'OUTCOME_NOT_FOUND',
 	'STAKE_BELOW_MIN',
 	'STAKE_ABOVE_MAX',
@@ -871,9 +870,9 @@ export class PredictionMarketsDO extends DurableObject<Env> implements Predictio
 				if (!market) throw new Error('MARKET_NOT_FOUND')
 				if (market.status !== 'open') throw new Error('MARKET_NOT_OPEN')
 				if (market.closesAt.getTime() <= Date.now()) throw new Error('MARKET_CLOSED')
-				// Governance: a creator can't take a position on their own market (mirrors the
-				// creator-can't-resolve / resolver-holds-no-position guards elsewhere).
-				if (market.createdBy === input.userId) throw new Error('CREATOR_CANNOT_BET')
+				// A creator MAY bet on their own market — they just can't resolve it (enforced by the
+				// CREATOR_CANNOT_RESOLVE / RESOLVER_HAS_POSITION guards), so they hold no power over the
+				// outcome and can't self-deal.
 
 				const [outcome] = await tx
 					.select({ id: pmMarketOutcomes.id })
@@ -1324,6 +1323,14 @@ export class PredictionMarketsDO extends DurableObject<Env> implements Predictio
 					.for('update')
 				if (!market) throw new Error('MARKET_NOT_FOUND')
 				if (isTerminal(market.status)) throw new Error('MARKET_TERMINAL')
+
+				// Voiding is a terminal settlement, so it carries the same conflict-of-interest guards as
+				// resolve/approve: a creator can't void their own market, and a resolver holding a position
+				// can't void one they have a stake in.
+				if (market.createdBy === input.actorUserId) throw new Error('CREATOR_CANNOT_RESOLVE')
+				if (await this.hasPosition(tx, input.marketId, input.actorUserId)) {
+					throw new Error('RESOLVER_HAS_POSITION')
+				}
 
 				// Contested markets (bets on 2+ outcomes) require a distinct second approver.
 				const [distinctRow] = await tx
