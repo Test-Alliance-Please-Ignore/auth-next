@@ -2,6 +2,8 @@ import { ChevronDown } from 'lucide-react'
 import { Fragment, useState } from 'react'
 import { Link } from 'react-router-dom'
 
+import { SYSTEM_WALLET_USER_ID } from '@repo/prediction-markets'
+
 import { JsonViewer } from '@/components/json-viewer'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
@@ -109,7 +111,8 @@ export function LedgerTable({ rows, isLoading, error }: LedgerTableProps) {
 										{row.balanceAfter != null ? formatPoints(row.balanceAfter) : '—'}
 									</TableCell>
 									<TableCell>
-										{row.userId ? (
+										{/* Nil-UUID system wallet renders as a plain "System" label, not a broken user link. */}
+										{row.userId && row.userId !== SYSTEM_WALLET_USER_ID ? (
 											<Link
 												to={`/admin/users/${row.userId}`}
 												className="flex items-center gap-2 text-primary hover:underline"
