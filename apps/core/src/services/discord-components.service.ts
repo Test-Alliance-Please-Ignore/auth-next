@@ -547,6 +547,10 @@ async function handleVoidModal(
 			marketId,
 			reason,
 			bypassDesignated: await canBypassDesignated(env, user),
+			// A site admin may void ANY market, including one they created or bet on (a void only refunds,
+			// so there's no self-dealing risk). is_admin-only — managers keep the conflict-of-interest
+			// guards. The DO trusts this flag unverified, so it MUST come straight from is_admin.
+			adminOverride: user.is_admin,
 		})
 		await refreshPost(db, env, prediction, marketId)
 		const background = await announceSettlement(env, prediction, marketId)

@@ -1475,6 +1475,7 @@ export class PredictionMarketsDO extends DurableObject<Env> implements Predictio
 		reason: string
 		approverId?: string
 		bypassDesignated?: boolean
+		adminOverride?: boolean
 	}): Promise<void> {
 		if (!input.reason.trim()) throw new Error('VOID_REASON_REQUIRED')
 		try {
@@ -1487,35 +1488,46 @@ export class PredictionMarketsDO extends DurableObject<Env> implements Predictio
 				if (!market) throw new Error('MARKET_NOT_FOUND')
 				if (isTerminal(market.status)) throw new Error('MARKET_TERMINAL')
 
-				// Voiding is a terminal settlement, so it carries the same conflict-of-interest guards as
-				// resolve/approve: a creator can't void their own market, and a resolver holding a position
-				// can't void one they have a stake in.
-				if (market.createdBy === input.actorUserId) throw new Error('CREATOR_CANNOT_RESOLVE')
-				if (await this.hasPosition(tx, input.marketId, input.actorUserId)) {
-					throw new Error('RESOLVER_HAS_POSITION')
-				}
 				const bypass = input.bypassDesignated ?? false
-				if (!canResolveDesignated(market.designatedResolvers, input.actorUserId, bypass)) {
-					throw new Error('NOT_DESIGNATED_RESOLVER')
-				}
-
-				// Contested markets (bets on 2+ outcomes) require a distinct second approver.
-				const [distinctRow] = await tx
-					.select({ n: sql<number>`count(distinct ${pmBets.outcomeId})::int` })
-					.from(pmBets)
-					.where(and(eq(pmBets.marketId, input.marketId), eq(pmBets.status, 'active')))
-				const contested = (distinctRow?.n ?? 0) >= 2
-				if (contested && (!input.approverId || input.approverId === input.actorUserId)) {
-					throw new Error('CONTESTED_VOID_REQUIRES_APPROVER')
-				}
-				// On a designated market, the contested-void second approver must ALSO be a designated
-				// member (unless overriding). NOTE: the DO cannot verify approverId's resolver TIER — Core
-				// authenticates only the initiating actor. The Discord path never supplies approverId, so
-				// this seat is currently unreachable; any future admin contested-void route MUST Core-side
-				// tier-validate approverId before calling, exactly as it does for the initiating actor.
-				if (contested && input.approverId && !bypass) {
-					if (!canResolveDesignated(market.designatedResolvers, input.approverId, false)) {
+				// A site admin (adminOverride) may void ANY market unconditionally. A void refunds every
+				// active bet at its exact stake, so — unlike resolve/approve, where picking an outcome can
+				// enrich a position — voiding carries no self-dealing risk, and an admin is the trust root
+				// for settlement. So the admin path skips every conflict-of-interest guard below (creator,
+				// position, designated membership, and the contested second-approver rule). adminOverride
+				// is a trusted, DO-unverifiable capability: Core derives it solely from is_admin, never a
+				// client literal. Every non-admin actor stays fully bound by these guards.
+				const adminOverride = input.adminOverride ?? false
+				if (!adminOverride) {
+					// Voiding is a terminal settlement, so it carries the same conflict-of-interest guards as
+					// resolve/approve: a creator can't void their own market, and a resolver holding a
+					// position can't void one they have a stake in.
+					if (market.createdBy === input.actorUserId) throw new Error('CREATOR_CANNOT_RESOLVE')
+					if (await this.hasPosition(tx, input.marketId, input.actorUserId)) {
+						throw new Error('RESOLVER_HAS_POSITION')
+					}
+					if (!canResolveDesignated(market.designatedResolvers, input.actorUserId, bypass)) {
 						throw new Error('NOT_DESIGNATED_RESOLVER')
+					}
+
+					// Contested markets (bets on 2+ outcomes) require a distinct second approver.
+					const [distinctRow] = await tx
+						.select({ n: sql<number>`count(distinct ${pmBets.outcomeId})::int` })
+						.from(pmBets)
+						.where(and(eq(pmBets.marketId, input.marketId), eq(pmBets.status, 'active')))
+					const contested = (distinctRow?.n ?? 0) >= 2
+					if (contested && (!input.approverId || input.approverId === input.actorUserId)) {
+						throw new Error('CONTESTED_VOID_REQUIRES_APPROVER')
+					}
+					// On a designated market, the contested-void second approver must ALSO be a designated
+					// member (unless overriding). NOTE: the DO cannot verify approverId's resolver TIER —
+					// Core authenticates only the initiating actor. The Discord path never supplies
+					// approverId, so this seat is currently unreachable; any future admin contested-void
+					// route MUST Core-side tier-validate approverId before calling, exactly as it does for
+					// the initiating actor.
+					if (contested && input.approverId && !bypass) {
+						if (!canResolveDesignated(market.designatedResolvers, input.approverId, false)) {
+							throw new Error('NOT_DESIGNATED_RESOLVER')
+						}
 					}
 				}
 
@@ -1529,7 +1541,8 @@ export class PredictionMarketsDO extends DurableObject<Env> implements Predictio
 					market,
 					input.actorUserId,
 					input.reason.trim(),
-					viaOverride
+					viaOverride,
+					adminOverride
 				)
 			})
 		} catch (error) {
@@ -1776,7 +1789,8 @@ export class PredictionMarketsDO extends DurableObject<Env> implements Predictio
 		market: PmMarket,
 		actorUserId: string,
 		reason: string,
-		viaOverride = false
+		viaOverride = false,
+		adminOverride = false
 	): Promise<void> {
 		const bets = await tx
 			.select()
@@ -1822,7 +1836,11 @@ export class PredictionMarketsDO extends DurableObject<Env> implements Predictio
 			previousStatus: market.status,
 			newStatus: 'voided',
 			visibility: 'public',
-			metadata: { reason, ...(viaOverride ? { viaOverride: true } : {}) },
+			metadata: {
+				reason,
+				...(viaOverride ? { viaOverride: true } : {}),
+				...(adminOverride ? { adminOverride: true } : {}),
+			},
 		})
 	}
 
