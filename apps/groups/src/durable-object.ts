@@ -32,7 +32,7 @@ import {
 	findUserByMainCharacterName,
 } from './services/character-lookup'
 import { generateInviteCode } from './services/code-generator'
-import { GroupsDOCache } from './services/groups-do-cache' // Added
+import { GROUPS_WITH_DISCORD_CACHE_KEY, GroupsDOCache } from './services/groups-do-cache' // Added
 import {
 	mapCategory,
 	mapGroup,
@@ -1813,6 +1813,7 @@ export class GroupsDO extends DurableObject<Env> implements Groups {
 				return {
 					id: roleAssignment.id,
 					discordRoleId: roleAssignment.discordRoleId,
+					membershipType: roleAssignment.membershipType,
 					discordRole: roleDetails || {
 						id: roleAssignment.discordRoleId,
 						roleName: roleAssignment.roleName,
@@ -1941,8 +1942,9 @@ export class GroupsDO extends DurableObject<Env> implements Groups {
 	 */
 	async assignRoleToDiscordServer(
 		attachmentId: string,
-		discordRoleId: string
-	): Promise<{ id: string; discordRoleId: string }> {
+		discordRoleId: string,
+		membershipType: 'member' | 'owner_admin' = 'member'
+	): Promise<{ id: string; discordRoleId: string; membershipType: 'member' | 'owner_admin' }> {
 		// Verify attachment exists
 		const attachment = await this.db.query.groupDiscordServers.findFirst({
 			where: eq(groupDiscordServers.id, attachmentId),
@@ -1979,6 +1981,7 @@ export class GroupsDO extends DurableObject<Env> implements Groups {
 			.values({
 				groupDiscordServerId: attachmentId,
 				discordRoleId,
+				membershipType,
 				roleName: roleDetails.roleName,
 			})
 			.returning()
@@ -1989,6 +1992,7 @@ export class GroupsDO extends DurableObject<Env> implements Groups {
 		return {
 			id: roleAssignment.id,
 			discordRoleId: roleAssignment.discordRoleId,
+			membershipType: roleAssignment.membershipType,
 		}
 	}
 
@@ -2136,13 +2140,15 @@ export class GroupsDO extends DurableObject<Env> implements Groups {
 				id: string
 				discordServerId: string
 				roleIds?: string[]
+				memberRoleIds?: string[]
+				ownerAdminRoleIds?: string[]
 				autoInvite?: boolean
 				autoAssignRoles?: boolean
 			}>
 		}>
 	> {
 		// Try to get from DO storage cache
-		const cacheKey = 'groups-with-discord-servers' // Updated cache key
+		const cacheKey = GROUPS_WITH_DISCORD_CACHE_KEY
 		const cached = await this.state.storage.get<{
 			data: any[]
 			expires: number
@@ -2172,6 +2178,8 @@ export class GroupsDO extends DurableObject<Env> implements Groups {
 					id: string
 					discordServerId: string
 					roleIds?: string[]
+					memberRoleIds?: string[]
+					ownerAdminRoleIds?: string[]
 					autoInvite?: boolean
 					autoAssignRoles?: boolean
 				}>
@@ -2188,13 +2196,24 @@ export class GroupsDO extends DurableObject<Env> implements Groups {
 				})
 			}
 
-			// Collect role IDs if auto-assign is enabled
-			const roleIds = server.autoAssignRoles ? server.roles.map((r) => r.discordRoleId) : []
+			// Collect role IDs by membership bucket if auto-assign is enabled.
+			const memberRoleIds = server.autoAssignRoles
+				? server.roles
+						.filter((role) => role.membershipType === 'member')
+						.map((role) => role.discordRoleId)
+				: []
+			const ownerAdminRoleIds = server.autoAssignRoles
+				? server.roles
+						.filter((role) => role.membershipType === 'owner_admin')
+						.map((role) => role.discordRoleId)
+				: []
 
 			groupsMap.get(groupId)!.discordServers.push({
 				id: server.id,
 				discordServerId: server.discordServerId,
-				roleIds,
+				roleIds: [...new Set([...memberRoleIds, ...ownerAdminRoleIds])],
+				memberRoleIds,
+				ownerAdminRoleIds,
 				autoInvite: server.autoInvite, // Include autoInvite flag
 				autoAssignRoles: server.autoAssignRoles, // Include autoAssignRoles flag
 			})
@@ -2264,6 +2283,8 @@ export class GroupsDO extends DurableObject<Env> implements Groups {
 		groupId: string
 		guildId: string
 		roleIds: string[]
+		memberRoleIds?: string[]
+		ownerAdminRoleIds?: string[]
 	}> {
 		// Fetch the attachment with its role assignments
 		const attachment = await this.db.query.groupDiscordServers.findFirst({
@@ -2287,22 +2308,34 @@ export class GroupsDO extends DurableObject<Env> implements Groups {
 		}
 
 		// Extract role IDs from the Discord role details
-		const roleIds = await Promise.all(
+		const resolvedRoles = await Promise.all(
 			(attachment.roles || []).map(async (roleAssignment) => {
 				const roleDetails = await this.coreDb.query.discordRoles.findFirst({
 					where: eq(discordRoles.id, roleAssignment.discordRoleId),
 				})
-				return roleDetails?.roleId || null
+				return {
+					membershipType: roleAssignment.membershipType,
+					roleId: roleDetails?.roleId || null,
+				}
 			})
 		)
 
-		// Filter out null values (in case some roles weren't found)
-		const validRoleIds = roleIds.filter((id): id is string => id !== null)
+		const memberRoleIds = resolvedRoles
+			.filter((role) => role.membershipType === 'member')
+			.map((role) => role.roleId)
+			.filter((id): id is string => id !== null)
+		const ownerAdminRoleIds = resolvedRoles
+			.filter((role) => role.membershipType === 'owner_admin')
+			.map((role) => role.roleId)
+			.filter((id): id is string => id !== null)
+		const validRoleIds = [...new Set([...memberRoleIds, ...ownerAdminRoleIds])]
 
 		return {
 			groupId: attachment.groupId,
 			guildId: discordServer.guildId,
 			roleIds: validRoleIds,
+			memberRoleIds,
+			ownerAdminRoleIds,
 		}
 	}
 
@@ -3611,11 +3644,10 @@ export class GroupsDO extends DurableObject<Env> implements Groups {
 	 */
 
 	/**
-	 * Invalidate the groups with Discord auto-invite cache in DO storage
+	 * Invalidate the groups with Discord attachment cache in DO storage
 	 */
 	private async invalidateGroupsWithDiscordCache(): Promise<void> {
-		const cacheKey = 'groups-with-discord-auto-invite'
-		await this.state.storage.delete(cacheKey)
+		await this.state.storage.delete(GROUPS_WITH_DISCORD_CACHE_KEY)
 	}
 
 	/**

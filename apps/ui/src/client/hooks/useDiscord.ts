@@ -104,6 +104,18 @@ export function useDiscordServers() {
 }
 
 /**
+ * Fetch a specific Discord server with its roles
+ */
+export function useDiscordServer(serverId: string) {
+	return useQuery({
+		queryKey: [...discordKeys.servers(), 'server', serverId] as const,
+		queryFn: () => apiClient.getDiscordServer(serverId),
+		enabled: !!serverId,
+		staleTime: 1000 * 60 * 5, // 5 minutes
+	})
+}
+
+/**
  * Create a new Discord server in the registry
  */
 export function useCreateDiscordServer() {

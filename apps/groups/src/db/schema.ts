@@ -45,6 +45,12 @@ export const joinRequestStatusEnum = pgEnum('join_request_status', [
 	'cancelled',
 ])
 
+/** Discord group role target */
+export const groupDiscordServerMembershipTypeEnum = pgEnum('group_discord_server_membership_type', [
+	'member',
+	'owner_admin',
+])
+
 /** Permission target - defines who receives the permission */
 export const permissionTargetEnum = pgEnum('permission_target', [
 	'all_members',
@@ -354,12 +360,17 @@ export const groupDiscordServerRoles = pgTable(
 			.references(() => groupDiscordServers.id, { onDelete: 'cascade' }),
 		/** Which role from the Discord server (references core.discord_roles.id) */
 		discordRoleId: uuid('discord_role_id').notNull(),
+		/** Which group membership bucket receives this role */
+		membershipType: groupDiscordServerMembershipTypeEnum('membership_type')
+			.notNull()
+			.default('member'),
 		/** Role name cached for display */
 		roleName: text('role_name').notNull(),
 		createdAt: timestamp('created_at').defaultNow().notNull(),
 	},
 	(table) => [
 		index('group_discord_server_roles_attachment_idx').on(table.groupDiscordServerId),
+		index('group_discord_server_roles_membership_type_idx').on(table.membershipType),
 		unique('unique_group_discord_server_role').on(table.groupDiscordServerId, table.discordRoleId),
 	]
 )

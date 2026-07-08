@@ -359,6 +359,7 @@ export interface GroupDiscordServer {
 	roles?: Array<{
 		id: string
 		discordRoleId: string
+		membershipType: 'member' | 'owner_admin'
 		discordRole: DiscordRole
 	}>
 }
@@ -640,6 +641,12 @@ export interface CorporationDiscordServer {
 	discordServerId: string
 	autoInvite: boolean
 	autoAssignRoles: boolean
+	corpMemberRoleId: string | null
+	corpMemberAutoApply: boolean
+	allianceGuestRoleId: string | null
+	allianceGuestAutoApply: boolean
+	nonAllianceGuestRoleId: string | null
+	nonAllianceGuestAutoApply: boolean
 	createdAt: string
 	updatedAt: string
 	discordServer?: DiscordServerWithRoles
@@ -1126,15 +1133,28 @@ export interface AttachDiscordServerRequest {
 	discordServerId: string
 	autoInvite?: boolean
 	autoAssignRoles?: boolean
+	corpMemberRoleId?: string | null
+	corpMemberAutoApply?: boolean
+	allianceGuestRoleId?: string | null
+	allianceGuestAutoApply?: boolean
+	nonAllianceGuestRoleId?: string | null
+	nonAllianceGuestAutoApply?: boolean
 }
 
 export interface UpdateDiscordServerAttachmentRequest {
 	autoInvite?: boolean
 	autoAssignRoles?: boolean
+	corpMemberRoleId?: string | null
+	corpMemberAutoApply?: boolean
+	allianceGuestRoleId?: string | null
+	allianceGuestAutoApply?: boolean
+	nonAllianceGuestRoleId?: string | null
+	nonAllianceGuestAutoApply?: boolean
 }
 
 export interface AssignRoleRequest {
 	discordRoleId: string
+	membershipType?: 'member' | 'owner_admin'
 }
 
 export interface RefreshDiscordServerMembersResponse {

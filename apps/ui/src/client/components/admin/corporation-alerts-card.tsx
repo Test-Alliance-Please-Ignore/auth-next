@@ -301,7 +301,7 @@ export function CorporationAlertsCard({ corporationId }: { corporationId: string
 													isExisting
 													saveButtonVariant="primary"
 													removeButtonVariant="destructive"
-													className="rounded-md border bg-muted/20 p-3"
+													className="rounded-md border border-border/90 bg-card p-3 shadow-md ring-1 ring-border/50"
 												/>
 											)
 										})}
@@ -318,7 +318,7 @@ export function CorporationAlertsCard({ corporationId }: { corporationId: string
 												onRemove={() => handleClearNew(row.id)}
 												isSaving={createDestination.isPending}
 												removeButtonVariant="cancel"
-												className="rounded-md border border-dashed bg-muted/10 p-3"
+												className="rounded-md border border-dashed border-border/90 bg-card p-3 shadow-md ring-1 ring-border/50"
 											/>
 										))}
 									</div>
@@ -371,7 +371,7 @@ export function CorporationAlertsCard({ corporationId }: { corporationId: string
 												isExisting
 												saveButtonVariant="primary"
 												removeButtonVariant="destructive"
-												className="rounded-md border bg-muted/20 p-3"
+												className="rounded-md border border-border/90 bg-card p-3 shadow-md ring-1 ring-border/50"
 											/>
 										)
 									})}
@@ -388,7 +388,7 @@ export function CorporationAlertsCard({ corporationId }: { corporationId: string
 											onRemove={() => handleClearNew(row.id)}
 											isSaving={createDestination.isPending}
 											removeButtonVariant="cancel"
-											className="rounded-md border border-dashed bg-muted/10 p-3"
+											className="rounded-md border border-dashed border-border/90 bg-card p-3 shadow-md ring-1 ring-border/50"
 										/>
 									))}
 								</div>

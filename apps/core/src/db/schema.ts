@@ -601,6 +601,25 @@ export const corporationDiscordServers = pgTable(
 		autoInvite: boolean('auto_invite').default(false).notNull(),
 		/** Whether to automatically assign roles on invite */
 		autoAssignRoles: boolean('auto_assign_roles').default(false).notNull(),
+		/** Scenario role for corp members */
+		corpMemberRoleId: uuid('corp_member_role_id').references(() => discordRoles.id, {
+			onDelete: 'set null',
+		}),
+		/** Whether to auto-apply the corp member scenario role */
+		corpMemberAutoApply: boolean('corp_member_auto_apply').default(false).notNull(),
+		/** Scenario role for alliance guests */
+		allianceGuestRoleId: uuid('alliance_guest_role_id').references(() => discordRoles.id, {
+			onDelete: 'set null',
+		}),
+		/** Whether to auto-apply the alliance guest scenario role */
+		allianceGuestAutoApply: boolean('alliance_guest_auto_apply').default(false).notNull(),
+		/** Scenario role for non-alliance guests */
+		nonAllianceGuestRoleId: uuid('non_alliance_guest_role_id').references(
+			() => discordRoles.id,
+			{ onDelete: 'set null' }
+		),
+		/** Whether to auto-apply the non-alliance guest scenario role */
+		nonAllianceGuestAutoApply: boolean('non_alliance_guest_auto_apply').default(false).notNull(),
 		createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
 		updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow().notNull(),
 	},

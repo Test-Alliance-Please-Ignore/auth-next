@@ -1,5 +1,7 @@
 import type { UserPermission } from '@repo/groups'
 
+export const GROUPS_WITH_DISCORD_CACHE_KEY = 'groups-with-discord-servers'
+
 export class GroupsDOCache {
 	private readonly CACHE_TTL = 5 * 60 * 1000 // 5 minutes
 	private readonly MAX_CACHE_ENTRIES = 1000
@@ -41,11 +43,10 @@ export class GroupsDOCache {
 	}
 
 	/**
-	 * Invalidate the groups with Discord auto-invite cache in DO storage
+	 * Invalidate the groups with Discord attachment cache in DO storage
 	 */
 	async invalidateGroupsWithDiscordCache(): Promise<void> {
-		const cacheKey = 'groups-with-discord-auto-invite'
-		await this.state.storage.delete(cacheKey)
+		await this.state.storage.delete(GROUPS_WITH_DISCORD_CACHE_KEY)
 	}
 
 	/**

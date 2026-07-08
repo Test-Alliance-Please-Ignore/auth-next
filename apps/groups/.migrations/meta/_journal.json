@@ -148,6 +148,13 @@
       "when": 1781917583091,
       "tag": "0020_redundant_whistler",
       "breakpoints": true
+    },
+    {
+      "idx": 21,
+      "version": "7",
+      "when": 1783503889730,
+      "tag": "0021_glossy_slapstick",
+      "breakpoints": true
     }
   ]
 }
