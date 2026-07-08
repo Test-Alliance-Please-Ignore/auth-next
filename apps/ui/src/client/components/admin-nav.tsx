@@ -1,12 +1,13 @@
+import { useQuery } from '@tanstack/react-query'
 import {
-	ArrowLeft,
 	ArchiveRestore,
+	ArrowLeft,
 	Building2,
 	ChevronDown,
 	ChevronRight,
 	Coins,
-	FileText,
 	Factory,
+	FileText,
 	FolderKanban,
 	Key,
 	Link2,
@@ -15,12 +16,11 @@ import {
 	Receipt,
 	ScrollText,
 	ShieldBan,
-	Wallet,
-	Waypoints,
 	UserCircle,
 	Users,
+	Wallet,
+	Waypoints,
 } from 'lucide-react'
-import { useQuery } from '@tanstack/react-query'
 import { useState } from 'react'
 import { Link, useLocation } from 'react-router-dom'
 
@@ -128,6 +128,7 @@ export function AdminNav({ onNavigate }: AdminNavProps) {
 				{ label: 'Markets', href: '/admin/prediction-markets/markets' },
 				{ label: 'Wallets', href: '/admin/prediction-markets/wallets' },
 				{ label: 'Audit Log', href: '/admin/prediction-markets/audit' },
+				{ label: 'Config', href: '/admin/prediction-markets/config' },
 			],
 		},
 		{

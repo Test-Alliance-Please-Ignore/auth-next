@@ -27,6 +27,7 @@ import { formatAmount, isPositiveIntegerString, negateAmount, parseAmount } from
 import { computeResolution } from './lib/payout'
 import { RATE_BUDGETS } from './lib/rate-limit'
 import { assertTransition, isTerminal } from './lib/state-machine'
+import { bucketThresholdImpact, thresholdEqual } from './lib/threshold-impact'
 
 import type {
 	BetResult,
@@ -50,14 +51,17 @@ import type {
 	Paged,
 	PendingProposalView,
 	PlaceBetInput,
+	PmConfigView,
 	PredictionMarkets,
 	ResolveResult,
+	ThresholdImpact,
+	UpdateConfigInput,
 	UpdateMarketInput,
 	Visibility,
 	WalletRow,
 } from '@repo/prediction-markets'
 import type { Env } from './context'
-import type { PmBet, PmLedgerRow, PmMarket, PmMarketHistoryRow } from './db/schema'
+import type { PmBet, PmConfig, PmLedgerRow, PmMarket, PmMarketHistoryRow } from './db/schema'
 
 type PmDatabase = ReturnType<typeof createDb>
 type PmTransaction = Parameters<Parameters<PmDatabase['transaction']>[0]>[0]
@@ -644,6 +648,21 @@ export class PredictionMarketsDO extends DurableObject<Env> implements Predictio
 			throw new Error('INVALID_PER_USER_CAP')
 		}
 
+		// Read the active config ONCE and reuse it for the size-1 designated guard AND the market's frozen
+		// rake/minStake below. Reading it twice (a separate threshold read here + another inside the tx)
+		// let a concurrent updateConfig commit land between them and slip a size-1 designated market past
+		// the guard under a threshold the market was then created with. This read sits before the tx's
+		// try/catch, so wrap it to keep DO-level Sentry context on an infra failure (e.g. unmigrated table).
+		let cfg
+		try {
+			cfg = await this.readActiveConfig()
+		} catch (error) {
+			captureException(error as Error, {
+				tags: { durableObject: 'PredictionMarketsDO', method: 'createMarket' },
+			})
+			throw error
+		}
+
 		// Designated resolvers (optional). Core has already validated tier-membership + creator-exclusion
 		// (it alone can read GROUPS); the DO re-enforces only the structural invariants as a backstop.
 		// These throws are OUTSIDE the try below, so they surface to the caller without paging Sentry.
@@ -666,8 +685,7 @@ export class PredictionMarketsDO extends DurableObject<Env> implements Predictio
 			// do NOT weaken requiresTwoOfN for small designated sets, so the two-of-N safeguard on large
 			// pools is never silently skipped by designating a single resolver.
 			if (designatedResolvers.length < 2) {
-				const twoOfNPossible =
-					(input.twoOfN ?? false) || (await this.activeTwoOfNThreshold()) != null
+				const twoOfNPossible = (input.twoOfN ?? false) || (cfg?.twoOfNThreshold ?? null) != null
 				if (twoOfNPossible) throw new Error('DESIGNATED_RESOLVERS_INSUFFICIENT_FOR_TWO_OF_N')
 			}
 		}
@@ -682,13 +700,7 @@ export class PredictionMarketsDO extends DurableObject<Env> implements Predictio
 
 		try {
 			return await this.db.transaction(async (tx) => {
-				const [cfg] = await tx
-					.select()
-					.from(pmConfig)
-					.where(eq(pmConfig.isActive, true))
-					.orderBy(desc(pmConfig.effectiveFrom))
-					.limit(1)
-
+				// Defaults come from the single `cfg` snapshot read above (same snapshot as the guard).
 				const rakeBps = input.rakeBps ?? cfg?.defaultRakeBps ?? 0
 				const minStake = input.minStake ?? cfg?.defaultMinStake ?? '1'
 
@@ -1785,19 +1797,173 @@ export class PredictionMarketsDO extends DurableObject<Env> implements Predictio
 		return false
 	}
 
-	/**
-	 * The active config's two-of-N pool threshold, or null when unset. Read outside a transaction for
-	 * the create-time designated-set sizing check: a configured threshold means two-of-N can trigger
-	 * dynamically as bets accumulate, so a designated set must be able to supply two distinct approvers.
-	 */
-	private async activeTwoOfNThreshold(): Promise<string | null> {
+	/** The single active config row (WHERE is_active ORDER BY effective_from DESC LIMIT 1), or undefined. */
+	private async readActiveConfig(): Promise<PmConfig | undefined> {
 		const [cfg] = await this.db
-			.select({ threshold: pmConfig.twoOfNThreshold })
+			.select()
 			.from(pmConfig)
 			.where(eq(pmConfig.isActive, true))
 			.orderBy(desc(pmConfig.effectiveFrom))
 			.limit(1)
-		return cfg?.threshold ?? null
+		return cfg
+	}
+
+	private toConfigView(row: PmConfig): PmConfigView {
+		return {
+			defaultRakeBps: row.defaultRakeBps,
+			defaultMinStake: row.defaultMinStake,
+			twoOfNThreshold: row.twoOfNThreshold,
+			effectiveFrom: row.effectiveFrom.toISOString(),
+			actorUserId: row.actorUserId,
+			changeNote: row.changeNote,
+			configured: true,
+		}
+	}
+
+	/**
+	 * The active config defaults. With no active row, returns the RUNTIME-EFFECTIVE fallbacks the readers
+	 * actually use (rake 0 — createMarket's `?? 0`, minStake '1', threshold null) with configured:false —
+	 * NOT the column defaults (100/'1') — so the admin UI reports what markets truly get today.
+	 */
+	async getConfig(): Promise<PmConfigView> {
+		const cfg = await this.readActiveConfig()
+		if (!cfg) {
+			return {
+				defaultRakeBps: 0,
+				defaultMinStake: '1',
+				twoOfNThreshold: null,
+				effectiveFrom: null,
+				actorUserId: null,
+				changeNote: null,
+				configured: false,
+			}
+		}
+		return this.toConfigView(cfg)
+	}
+
+	/**
+	 * Read-only retroactive impact of setting twoOfNThreshold to `candidate` (null = disable). Excludes
+	 * 'resolving' markets (a threshold change is inert once committed to the two-signer flow) and
+	 * terminal markets. Delegates the pure bucketing to lib/threshold-impact.
+	 */
+	private async computeThresholdImpact(candidate: string | null): Promise<ThresholdImpact> {
+		if (candidate !== null && !isPositiveIntegerString(candidate))
+			throw new Error('INVALID_THRESHOLD')
+		const cfg = await this.readActiveConfig()
+		const rows = await this.db
+			.select({
+				id: pmMarkets.id,
+				question: pmMarkets.question,
+				status: pmMarkets.status,
+				totalPool: pmMarkets.totalPool,
+				twoOfN: pmMarkets.twoOfN,
+				designatedResolvers: pmMarkets.designatedResolvers,
+			})
+			.from(pmMarkets)
+			.where(inArray(pmMarkets.status, ['open', 'closed']))
+		return bucketThresholdImpact(rows, cfg?.twoOfNThreshold ?? null, candidate)
+	}
+
+	async previewTwoOfNThreshold(candidateThreshold: string | null): Promise<ThresholdImpact> {
+		return this.computeThresholdImpact(candidateThreshold)
+	}
+
+	/**
+	 * Replace the active config via temporal supersession (close current active row + insert a fresh
+	 * one), recording the acting admin (durable WHO audit). Input validation runs OUTSIDE the tx (no
+	 * Sentry page); the stranding hard-block runs INSIDE the tx under the advisory lock (authoritative —
+	 * a concurrent config write can't leave it stale) and throws the expected THRESHOLD_WOULD_STRAND
+	 * which the catch surfaces without paging. A no-op (all values AND the note equal the active row,
+	 * compared by numeric VALUE not raw string) writes no new generation.
+	 */
+	async updateConfig(input: UpdateConfigInput): Promise<PmConfigView> {
+		if (
+			!Number.isInteger(input.defaultRakeBps) ||
+			input.defaultRakeBps < 0 ||
+			input.defaultRakeBps > 2000
+		) {
+			throw new Error('INVALID_RAKE')
+		}
+		if (!isPositiveIntegerString(input.defaultMinStake)) throw new Error('INVALID_MIN_STAKE')
+		if (input.twoOfNThreshold !== null && !isPositiveIntegerString(input.twoOfNThreshold)) {
+			throw new Error('INVALID_THRESHOLD')
+		}
+		// DO owns the invariant (the route caps at 500 too). Bound the free-text note defensively.
+		if (input.changeNote != null && input.changeNote.length > 500) {
+			throw new Error('INVALID_CHANGE_NOTE')
+		}
+
+		try {
+			const view = await this.db.transaction(async (tx) => {
+				// Serialize concurrent config writes so supersession can't leave two active rows.
+				await tx.execute(sql`select pg_advisory_xact_lock(hashtext('pm_config'))`)
+				const [cur] = await tx
+					.select()
+					.from(pmConfig)
+					.where(eq(pmConfig.isActive, true))
+					.orderBy(desc(pmConfig.effectiveFrom))
+					.limit(1)
+				const curThreshold = cur?.twoOfNThreshold ?? null
+				if (
+					cur &&
+					cur.defaultRakeBps === input.defaultRakeBps &&
+					parseAmount(cur.defaultMinStake) === parseAmount(input.defaultMinStake) &&
+					thresholdEqual(curThreshold, input.twoOfNThreshold) &&
+					(cur.changeNote ?? null) === (input.changeNote ?? null)
+				) {
+					return this.toConfigView(cur) // no-op: skip a value-identical generation
+				}
+				// Authoritative stranding hard-block: re-evaluated UNDER the lock against the CURRENT
+				// active threshold, so a concurrent config write can't move `current` out from under the
+				// pre-lock UI check. Only runs when the threshold actually moves.
+				if (!thresholdEqual(curThreshold, input.twoOfNThreshold)) {
+					const marketRows = await tx
+						.select({
+							id: pmMarkets.id,
+							question: pmMarkets.question,
+							status: pmMarkets.status,
+							totalPool: pmMarkets.totalPool,
+							twoOfN: pmMarkets.twoOfN,
+							designatedResolvers: pmMarkets.designatedResolvers,
+						})
+						.from(pmMarkets)
+						.where(inArray(pmMarkets.status, ['open', 'closed']))
+					const impact = bucketThresholdImpact(marketRows, curThreshold, input.twoOfNThreshold)
+					if (impact.strandedCandidates.length > 0) throw new Error('THRESHOLD_WOULD_STRAND')
+				}
+				await tx
+					.update(pmConfig)
+					.set({ isActive: false, effectiveTo: sql`now()` })
+					.where(eq(pmConfig.isActive, true))
+				const [row] = await tx
+					.insert(pmConfig)
+					.values({
+						defaultRakeBps: input.defaultRakeBps,
+						defaultMinStake: input.defaultMinStake,
+						twoOfNThreshold: input.twoOfNThreshold,
+						actorUserId: input.actorUserId,
+						changeNote: input.changeNote ?? null,
+					})
+					.returning()
+				return this.toConfigView(row)
+			})
+			logger.info('[PredictionMarkets] config updated', {
+				actorUserId: input.actorUserId,
+				defaultRakeBps: input.defaultRakeBps,
+				defaultMinStake: input.defaultMinStake,
+				twoOfNThreshold: input.twoOfNThreshold,
+			})
+			return view
+		} catch (error) {
+			// THRESHOLD_WOULD_STRAND is an expected governance rejection (thrown in-tx) — surface it
+			// without paging; everything else is an infra failure worth capturing.
+			if (!(error instanceof Error && error.message === 'THRESHOLD_WOULD_STRAND')) {
+				captureException(error as Error, {
+					tags: { durableObject: 'PredictionMarketsDO', method: 'updateConfig' },
+				})
+			}
+			throw error
+		}
 	}
 
 	private async buildMarketDetail(

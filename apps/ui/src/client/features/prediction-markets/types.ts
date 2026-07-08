@@ -13,6 +13,9 @@ import type {
 	MarketHistoryRow,
 	MarketStatus,
 	MarketSummary,
+	PmConfigView,
+	StrandedMarket,
+	ThresholdImpact,
 	WalletRow,
 } from '@repo/prediction-markets'
 
@@ -23,6 +26,9 @@ export type {
 	MarketHistoryRow,
 	MarketStatus,
 	MarketSummary,
+	PmConfigView,
+	StrandedMarket,
+	ThresholdImpact,
 	WalletRow,
 }
 
@@ -152,4 +158,14 @@ export interface MarketsResponse {
 	markets: MarketSummary[]
 	/** Configured markets guild id, for building forum thread deep-links. */
 	guildId: string | null
+}
+
+// --- config ----------------------------------------------------------------
+
+/** Full-replace config write. Monetary fields are integer strings; threshold null = disable two-of-N. */
+export interface UpdateConfigRequest {
+	defaultRakeBps: number
+	defaultMinStake: string
+	twoOfNThreshold: string | null
+	changeNote?: string
 }

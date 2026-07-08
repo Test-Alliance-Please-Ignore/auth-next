@@ -43,6 +43,13 @@
       "when": 1783513747069,
       "tag": "0005_faithful_shatterstar",
       "breakpoints": true
+    },
+    {
+      "idx": 6,
+      "version": "7",
+      "when": 1783523517575,
+      "tag": "0006_silky_mandroid",
+      "breakpoints": true
     }
   ]
 }

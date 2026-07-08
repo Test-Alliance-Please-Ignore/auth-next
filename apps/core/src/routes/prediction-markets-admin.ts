@@ -15,6 +15,7 @@ import { getStub } from '@repo/do-utils'
 import { logger } from '@repo/hono-helpers'
 import { SYSTEM_WALLET_USER_ID } from '@repo/prediction-markets'
 
+import { userCharacters, users } from '../db/schema'
 import { requireAdmin, requireAuth } from '../middleware/session'
 import {
 	CREATE_MARKET_BAD_REQUEST_CODES,
@@ -22,12 +23,11 @@ import {
 	createMarketSchema,
 } from '../services/market-create.service'
 import { updateAndAnnounceMarket, updateMarketSchema } from '../services/market-update.service'
-import { userCharacters, users } from '../db/schema'
 
-import type { createDb } from '../db'
-import type { App } from '../context'
 import type { Context } from 'hono'
 import type { LedgerType, MarketStatus, PredictionMarkets } from '@repo/prediction-markets'
+import type { App } from '../context'
+import type { createDb } from '../db'
 
 type CoreDb = ReturnType<typeof createDb>
 
@@ -120,6 +120,10 @@ const BAD_REQUEST_CODES = new Set<string>([
 	// edit path (updateMarket) — INVALID_CLOSES_AT / QUESTION_REQUIRED are already in the create set
 	'MARKET_NOT_EDITABLE',
 	'CLOSES_AT_NOT_EDITABLE',
+	// config path (updateConfig) — INVALID_RAKE / INVALID_MIN_STAKE already flow in via the create set
+	'INVALID_THRESHOLD',
+	'INVALID_CHANGE_NOTE',
+	'THRESHOLD_WOULD_STRAND',
 ])
 
 // -------------------------------------------------------------------------
@@ -204,10 +208,11 @@ app.get('/wallets/:userId/ledger', async (c) => {
 
 const depositSchema = z.object({
 	targetUserId: z.string().uuid(),
+	// Single refine so BigInt() never runs on a non-digit string (see configSchema note) — a chained
+	// regex+refine would 500 on e.g. "1.5" instead of returning a clean 400.
 	amount: z
 		.string()
-		.regex(/^\d+$/, 'amount must be a positive integer')
-		.refine((v) => BigInt(v) > 0n, 'amount must be greater than 0'),
+		.refine((v) => /^\d+$/.test(v) && BigInt(v) > 0n, 'amount must be a positive integer'),
 	reason: z.string().trim().min(3).max(500),
 	idempotencyKey: z.string().min(8).max(200).optional(),
 })
@@ -303,6 +308,71 @@ app.patch('/markets/:id', async (c) => {
 			return c.json({ error: 'Market not found' }, 404)
 		}
 		return fail(c, error, 'update market')
+	}
+})
+
+// -------------------------------------------------------------------------
+// Config (defaults: rake / min stake / two-of-N threshold)
+// -------------------------------------------------------------------------
+
+// Full-replace: all three defaults required (a supersession INSERT needs a complete row, and it
+// collapses the empty-table "create first config" and the "edit" cases into one path). threshold
+// null = disable pool-based two-of-N; '0'/'' are rejected (would force two-of-N on every market).
+const configSchema = z.object({
+	defaultRakeBps: z.number().int().min(0).max(2000),
+	// Gate BigInt() behind the digit test in ONE refine: a chained `.regex().refine(BigInt())` still
+	// runs BigInt() on a non-digit string (a failed regex only marks the field "dirty", not "aborted"),
+	// which throws a SyntaxError that escapes as a 500 instead of a clean 400.
+	defaultMinStake: z
+		.string()
+		.refine((v) => /^\d+$/.test(v) && BigInt(v) > 0n, 'min stake must be a positive integer'),
+	twoOfNThreshold: z
+		.string()
+		.refine((v) => /^\d+$/.test(v) && BigInt(v) > 0n, 'threshold must be a positive integer')
+		.nullable(),
+	changeNote: z.string().trim().max(500).optional(),
+})
+
+// GET /config — the active config defaults (runtime fallbacks with configured:false when unseeded).
+app.get('/config', async (c) => {
+	try {
+		return c.json(await stubOf(c).getConfig())
+	} catch (error) {
+		return fail(c, error, 'get config')
+	}
+})
+
+// GET /config/threshold-impact?threshold= — read-only retroactive impact of a candidate threshold
+// (empty/absent => null = disable). Validated like PATCH so a bad value 400s instead of 500ing.
+app.get('/config/threshold-impact', async (c) => {
+	try {
+		const raw = c.req.query('threshold')
+		const candidate = raw == null || raw === '' ? null : raw
+		if (candidate !== null && !(/^\d+$/.test(candidate) && BigInt(candidate) > 0n)) {
+			return c.json({ error: 'INVALID_THRESHOLD' }, 400)
+		}
+		return c.json(await stubOf(c).previewTwoOfNThreshold(candidate))
+	} catch (error) {
+		return fail(c, error, 'threshold impact')
+	}
+})
+
+// PATCH /config — full-replace the active config (temporal supersession). Hard-rejects a threshold
+// change that would strand a size-1 designated market (THRESHOLD_WOULD_STRAND -> 400). The
+// session-derived actor is spread LAST so a stray body field can never forge attribution.
+app.patch('/config', async (c) => {
+	try {
+		const body = configSchema.parse(await c.req.json())
+		const actorId = c.get('user')!.id
+		const result = await stubOf(c).updateConfig({ ...body, actorUserId: actorId })
+		logger.info('[PMAdmin] config updated', {
+			actorId,
+			defaultRakeBps: body.defaultRakeBps,
+			twoOfNThreshold: body.twoOfNThreshold,
+		})
+		return c.json(result, 200)
+	} catch (error) {
+		return fail(c, error, 'update config')
 	}
 })
 
