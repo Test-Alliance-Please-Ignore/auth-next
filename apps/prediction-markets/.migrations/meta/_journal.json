@@ -50,6 +50,13 @@
       "when": 1783523517575,
       "tag": "0006_silky_mandroid",
       "breakpoints": true
+    },
+    {
+      "idx": 7,
+      "version": "7",
+      "when": 1783529218025,
+      "tag": "0007_pale_brood",
+      "breakpoints": true
     }
   ]
 }

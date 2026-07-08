@@ -54,6 +54,7 @@ function market(overrides: Partial<MarketDetail> = {}): MarketDetail {
 		resolvedBy: null,
 		resolvedAt: null,
 		voidReason: null,
+		resolvesOn: null,
 		designatedResolverIds: null,
 		outcomes: [],
 		...overrides,

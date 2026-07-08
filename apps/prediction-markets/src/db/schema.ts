@@ -102,6 +102,12 @@ export const pmMarkets = pgTable(
 		status: pmMarketStatus('status').notNull().default('draft'),
 		createdBy: uuid('created_by').notNull(),
 		closesAt: timestamp('closes_at', { withTimezone: true }).notNull(),
+		/**
+		 * The expected/scheduled resolution date (distinct from `resolvedAt`, the actual settlement
+		 * timestamp). REQUIRED at create for new markets, but NULLABLE so pre-existing markets created
+		 * before this field keep working with no backfill. Must be at or after `closesAt`.
+		 */
+		resolvesOn: timestamp('resolves_on', { withTimezone: true }),
 		resolvedOutcomeId: uuid('resolved_outcome_id'),
 		resolvedBy: uuid('resolved_by'),
 		resolvedAt: timestamp('resolved_at', { withTimezone: true }),

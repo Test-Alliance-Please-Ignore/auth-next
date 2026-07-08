@@ -1,0 +1,1 @@
+ALTER TABLE "pm_markets" ADD COLUMN "resolves_on" timestamp with time zone;

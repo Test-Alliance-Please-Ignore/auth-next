@@ -49,6 +49,12 @@ export const createMarketSchema = z.object({
 		.string()
 		.datetime()
 		.refine((s) => new Date(s).getTime() > Date.now(), 'closesAt must be in the future'),
+	// Expected resolution date — REQUIRED for new markets. Must be a valid future ISO datetime; the
+	// PM DO additionally enforces resolvesOn >= closesAt (RESOLVES_ON_BEFORE_CLOSE).
+	resolvesOn: z
+		.string()
+		.datetime()
+		.refine((s) => new Date(s).getTime() > Date.now(), 'resolvesOn must be in the future'),
 	rakeBps: z.number().int().min(0).max(2000).optional(),
 	minStake: positiveIntString.optional(),
 	maxStake: positiveIntString.optional(),
@@ -82,6 +88,8 @@ export const createMarketCreatorSchema = createMarketSchema.pick({
 	description: true,
 	outcomes: true,
 	closesAt: true,
+	// resolvesOn is required for ALL new markets, including member-created ones.
+	resolvesOn: true,
 })
 
 /** createMarket domain errors that are the caller's fault (bad input) → 400, not a server 500. */
@@ -91,6 +99,8 @@ export const CREATE_MARKET_BAD_REQUEST_CODES = [
 	'DUPLICATE_OUTCOMES',
 	'QUESTION_REQUIRED',
 	'INVALID_CLOSES_AT',
+	'INVALID_RESOLVES_ON',
+	'RESOLVES_ON_BEFORE_CLOSE',
 	'INVALID_RAKE',
 	'INVALID_MIN_STAKE',
 	'INVALID_MAX_STAKE',

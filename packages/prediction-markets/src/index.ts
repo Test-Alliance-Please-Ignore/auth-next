@@ -46,6 +46,8 @@ export interface CreateMarketInput {
 	outcomes: string[]
 	/** ISO-8601 timestamp when betting closes. */
 	closesAt: string
+	/** ISO-8601 expected resolution date. REQUIRED for new markets; must be at or after `closesAt`. */
+	resolvesOn: string
 	rakeBps?: number
 	minStake?: string
 	maxStake?: string
@@ -131,6 +133,8 @@ export interface MarketDetail extends MarketSummary {
 	maxStake: string | null
 	perUserCap: string | null
 	twoOfN: boolean
+	/** ISO-8601 expected resolution date, or null for markets created before this field existed. */
+	resolvesOn: string | null
 	resolvedOutcomeId: string | null
 	resolvedBy: string | null
 	resolvedAt: string | null

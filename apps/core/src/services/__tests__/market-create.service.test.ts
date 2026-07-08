@@ -46,6 +46,7 @@ const baseInput = {
 	question: 'Will it rain tomorrow?',
 	outcomes: ['Yes', 'No'],
 	closesAt: new Date(Date.now() + 86_400_000).toISOString(),
+	resolvesOn: new Date(Date.now() + 2 * 86_400_000).toISOString(),
 }
 
 describe('createAndPublishMarket — designated-resolver validation', () => {
