@@ -319,6 +319,25 @@ export interface PredictionMarkets {
 	 * participant. Returns null if the market doesn't exist.
 	 */
 	getMarketSettlement(marketId: string): Promise<MarketSettlement | null>
+	/**
+	 * Terminal (resolved/voided) markets that HAVE a forum post but whose settlement notification never
+	 * completed (`settlementAnnouncedAt IS NULL`) — the reconcile cron's settlement self-heal work-list.
+	 * Bounded to markets that went terminal within `[now − maxAgeMinutes, now − minAgeMinutes]`: the
+	 * lower bound (`minAgeMinutes`) avoids racing a healthy live-path DM fan-out still in flight; the
+	 * upper bound (`maxAgeMinutes`) keeps this forward-only (deep history never re-fires) and stops
+	 * retrying a permanently-failing market forever. Oldest first, bounded.
+	 */
+	listMarketsNeedingSettlementNotice(
+		limit?: number,
+		minAgeMinutes?: number,
+		maxAgeMinutes?: number
+	): Promise<MarketDetail[]>
+	/**
+	 * Mark a terminal market's settlement notification (thread result post + result DMs) as delivered.
+	 * Idempotent: sets `settlementAnnouncedAt` only when currently NULL and the market is terminal, so a
+	 * live-path completion and a racing reconcile pass converge to the same single flag.
+	 */
+	markSettlementAnnounced(marketId: string): Promise<void>
 	getLeaderboard(opts?: { window?: 'all' | '30d'; limit?: number }): Promise<LeaderboardRow[]>
 	getLedger(userId: string, opts?: { limit?: number; cursor?: string }): Promise<LedgerRow[]>
 

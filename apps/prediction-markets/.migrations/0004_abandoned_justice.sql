@@ -1,0 +1,2 @@
+ALTER TABLE "pm_markets" ADD COLUMN "settlement_announced_at" timestamp with time zone;--> statement-breakpoint
+CREATE INDEX "pm_markets_settle_unannounced_idx" ON "pm_markets" USING btree ("updated_at") WHERE "pm_markets"."settlement_announced_at" is null and "pm_markets"."status" in ('resolved', 'voided');

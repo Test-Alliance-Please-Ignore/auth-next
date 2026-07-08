@@ -218,12 +218,22 @@ async function notifyClose(
 }
 
 /**
- * Announce a just-settled (resolved/voided) market to its thread NOW (fast, one message) and
- * return a thunk that DMs each participant their result. The DM fan-out is returned — not awaited —
- * so the caller runs it in the RPC's `ctx.waitUntil`, off the resolver's confirmation path (one
- * rate-limited DM per participant would otherwise make a large market's confirmation hang or time
- * out). Best-effort; returns undefined when there's nothing to notify. The resolution already
- * committed, so a Discord failure here is never fatal.
+ * Announce a just-settled (resolved/voided) market to its thread NOW (fast, one message), mark it
+ * settlement-announced the instant that post lands, and return a thunk that DMs each participant their
+ * result. The DM fan-out is returned — not awaited — so the caller runs it in the RPC's `ctx.waitUntil`,
+ * off the resolver's confirmation path (one rate-limited DM per participant would otherwise make a large
+ * market's confirmation hang or time out). The resolution already committed, so a Discord failure here
+ * is never fatal.
+ *
+ * The `settlementAnnounced` flag is set here, SYNCHRONOUSLY, right after the thread post succeeds — NOT
+ * after the DM fan-out. That is deliberate:
+ *   - it makes the public aggregate result at-least-once: if the post fails we leave the flag NULL and
+ *     return undefined, so the reconcile sweep re-posts it later;
+ *   - it closes the race the fan-out would otherwise open — marking after a multi-minute DM loop leaves
+ *     the flag NULL throughout, so a reconcile tick could fire mid-fan-out and double-notify. Marking
+ *     before the fan-out means a healthy live path is already flagged done before any tick sees it.
+ * The trade-off: per-participant DMs are best-effort (an eviction mid-fan-out drops the rest) — the same
+ * best-effort guarantee they already had. The reconcile sweep self-heals the thread post, not the DMs.
  */
 async function announceSettlement(
 	env: ComponentEnv,
@@ -236,7 +246,11 @@ async function announceSettlement(
 		const settlement = await prediction.getMarketSettlement(marketId)
 		if (!settlement) return undefined
 		const discord = getStub<Discord>(env.DISCORD, 'default')
-		await announceMarketResolved(discord, env.PM_FORUM_GUILD_ID ?? '', market, settlement)
+		const posted = await announceMarketResolved(discord, env.PM_FORUM_GUILD_ID ?? '', market, settlement)
+		// Post failed → leave the flag NULL so the reconcile sweep re-posts (and re-DMs) later; don't
+		// half-notify by DMing now against a market whose public result never landed.
+		if (!posted) return undefined
+		await prediction.markSettlementAnnounced(marketId)
 		return () => dmWagerResults(discord, market, settlement)
 	} catch (err) {
 		logger.warn('[DiscordComponents] settlement announce failed', {
