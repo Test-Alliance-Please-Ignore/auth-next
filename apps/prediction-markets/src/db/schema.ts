@@ -112,6 +112,14 @@ export const pmMarkets = pgTable(
 		maxStake: numeric('max_stake'),
 		perUserCap: numeric('per_user_cap'),
 		twoOfN: boolean('two_of_n').notNull().default(false),
+		/**
+		 * Optional set of core user ids the market maker designated as this market's resolver(s). NULL
+		 * (or empty) means NO designation — settlement falls back to the global `urn:markets:resolver`
+		 * authority, exactly as before this feature (so every legacy / in-flight market keeps working
+		 * with no backfill). A non-empty set NARROWS settlement to these ids (plus admin/manager
+		 * override). Each id is validated to hold the resolver tier at create time; stored lowercased.
+		 */
+		designatedResolvers: uuid('designated_resolvers').array(),
 		/** Discord forum thread id for this market's post (null until the post is created). */
 		discordThreadId: text('discord_thread_id'),
 		/** Discord starter-message id of the forum post (equals the thread id for forum posts). */

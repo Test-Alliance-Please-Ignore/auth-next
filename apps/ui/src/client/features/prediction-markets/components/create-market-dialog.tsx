@@ -18,6 +18,7 @@ import { Textarea } from '@/components/ui/textarea'
 import toast from '@/lib/toast'
 
 import { useCreateMarket } from '../hooks'
+import { UserSearchSelect } from './user-search-select'
 
 import type { CreateMarketRequest } from '../types'
 
@@ -44,6 +45,7 @@ const schema = z.object({
 	maxStake: z.string().optional(),
 	perUserCap: z.string().optional(),
 	twoOfN: z.boolean().optional(),
+	designatedResolverIds: z.array(z.string().uuid()).max(10).optional(),
 })
 
 export interface CreateMarketDialogProps {
@@ -76,6 +78,12 @@ export function CreateMarketDialog({
 	const [maxStake, setMaxStake] = useState('')
 	const [perUserCap, setPerUserCap] = useState('')
 	const [twoOfN, setTwoOfN] = useState(false)
+	// Designated resolvers (admin scope only). A parallel id→label map keeps chip names visible
+	// without re-searching. No MultiSelect primitive exists, so we compose one from the single-select
+	// UserSearchSelect used as an always-empty "add" picker + removable chips.
+	const [resolverIds, setResolverIds] = useState<string[]>([])
+	const [resolverLabels, setResolverLabels] = useState<Record<string, string>>({})
+	const canDesignate = scope === 'admin'
 
 	const create = useCreateMarket(scope)
 
@@ -90,8 +98,17 @@ export function CreateMarketDialog({
 			setMaxStake('')
 			setPerUserCap('')
 			setTwoOfN(false)
+			setResolverIds([])
+			setResolverLabels({})
 		}
 	}, [open])
+
+	const addResolver = (id: string, labelText: string) => {
+		if (!id) return
+		setResolverIds((prev) => (prev.includes(id) ? prev : [...prev, id]))
+		setResolverLabels((prev) => ({ ...prev, [id]: labelText }))
+	}
+	const removeResolver = (id: string) => setResolverIds((prev) => prev.filter((r) => r !== id))
 
 	const close = () => onOpenChange(false)
 
@@ -116,6 +133,7 @@ export function CreateMarketDialog({
 			maxStake: maxStake || undefined,
 			perUserCap: perUserCap || undefined,
 			twoOfN,
+			designatedResolverIds: canDesignate && resolverIds.length ? resolverIds : undefined,
 		})
 		if (!parsed.success) {
 			toast.error(parsed.error.issues[0]?.message ?? 'Invalid market')
@@ -135,6 +153,7 @@ export function CreateMarketDialog({
 		if (d.minStake) body.minStake = d.minStake
 		if (d.maxStake) body.maxStake = d.maxStake
 		if (d.perUserCap) body.perUserCap = d.perUserCap
+		if (d.designatedResolverIds?.length) body.designatedResolverIds = d.designatedResolverIds
 
 		// Success/error toast handled by useCreateMarket; close only on success.
 		await create.mutateAsync(body)
@@ -296,6 +315,46 @@ export function CreateMarketDialog({
 								/>
 							</div>
 						</>
+					) : null}
+
+					{canDesignate ? (
+						<div className="space-y-2">
+							<Label>Designated resolvers (optional)</Label>
+							<p className="text-xs text-muted-foreground">
+								Restrict who can resolve or void this market. Each must already hold the resolver
+								role; you can’t designate yourself. Leave empty to allow any resolver. Two-of-N
+								markets need at least two.
+							</p>
+							<UserSearchSelect
+								value=""
+								placeholder="Search resolvers by name…"
+								disabled={create.isPending || resolverIds.length >= 10}
+								onChange={(id, user) => addResolver(id, user?.label ?? id)}
+							/>
+							{resolverIds.length > 0 ? (
+								<div className="flex flex-wrap gap-2">
+									{resolverIds.map((id) => (
+										<span
+											key={id}
+											className="inline-flex items-center gap-1 rounded-md border border-border bg-muted px-2 py-1 text-sm"
+										>
+											<span className="max-w-[12rem] truncate" title={resolverLabels[id] ?? id}>
+												{resolverLabels[id] ?? id}
+											</span>
+											<button
+												type="button"
+												onClick={() => removeResolver(id)}
+												disabled={create.isPending}
+												aria-label={`Remove resolver ${resolverLabels[id] ?? id}`}
+												className="text-muted-foreground hover:text-foreground"
+											>
+												<X className="h-3.5 w-3.5" />
+											</button>
+										</span>
+									))}
+								</div>
+							) : null}
+						</div>
 					) : null}
 
 					<DialogFooter>

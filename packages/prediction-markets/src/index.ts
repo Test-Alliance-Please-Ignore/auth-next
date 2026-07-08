@@ -52,6 +52,15 @@ export interface CreateMarketInput {
 	perUserCap?: string
 	twoOfN?: boolean
 	/**
+	 * Optional set of core user ids to designate as this market's resolver(s). NULL/empty/absent =>
+	 * global resolver authority (unchanged behavior). A non-empty set narrows settlement to these ids
+	 * (plus admin/manager override). Core validates — before this call — that none is the creator and
+	 * that each already holds `urn:markets:resolver` (designation narrows, never grants); the DO
+	 * enforces only the structural invariants (creator-exclusion backstop, two-of-N minimum size) and
+	 * persists the set lowercased. Ignored/undefined for creators without designation rights.
+	 */
+	designatedResolverIds?: string[]
+	/**
 	 * When true, consume the per-user `create_market` rate budget and reject (RATE_LIMITED) if it's
 	 * exhausted. Server-set policy flag — the member create route sets it for non-admins; admin
 	 * creation leaves it unset (uncapped). Never populated from client input.
@@ -126,6 +135,12 @@ export interface MarketDetail extends MarketSummary {
 	resolvedBy: string | null
 	resolvedAt: string | null
 	voidReason: string | null
+	/**
+	 * The market's designated resolver core user ids, or null when undesignated (global authority).
+	 * Only these users (plus admin/manager override) may settle the market. On MarketDetail (not
+	 * MarketSummary) so list/refresh payloads stay lean.
+	 */
+	designatedResolverIds: string[] | null
 	outcomes: OutcomeView[]
 }
 
@@ -307,12 +322,12 @@ export interface PredictionMarkets {
 	 * (not details) so the caller re-reads current state just before editing.
 	 */
 	listMarketsToRefresh(sinceMinutes?: number, limit?: number): Promise<string[]>
-	getUserBets(userId: string, opts?: { marketId?: string; activeOnly?: boolean }): Promise<BetView[]>
-	/** A user's bets joined to market question + outcome label (for `/market mybets`). */
-	getUserBetsDetailed(
+	getUserBets(
 		userId: string,
-		opts?: { activeOnly?: boolean }
-	): Promise<DetailedBetView[]>
+		opts?: { marketId?: string; activeOnly?: boolean }
+	): Promise<BetView[]>
+	/** A user's bets joined to market question + outcome label (for `/market mybets`). */
+	getUserBetsDetailed(userId: string, opts?: { activeOnly?: boolean }): Promise<DetailedBetView[]>
 	/**
 	 * The financial settlement of a market (totals + per-user net results). Intended for a market
 	 * that has resolved/voided; the caller uses it to post the outcome to the thread and DM each
@@ -391,11 +406,21 @@ export interface PredictionMarkets {
 		resolverId: string
 		marketId: string
 		outcomeId: string
+		/**
+		 * When true, skip the per-market designated-resolver membership check ONLY (never the
+		 * conflict-of-interest guards). Core sets it for is_admin / `urn:markets:manager` holders so
+		 * they retain "resolve any market" authority. Absent/false => the actor must be designated (or
+		 * the market must be undesignated). A trusted, DO-unverifiable capability — derive it solely
+		 * from a tier check, never a literal.
+		 */
+		bypassDesignated?: boolean
 	}): Promise<ResolveResult>
 	approveResolution(input: {
 		resolverId: string
 		marketId: string
 		proposalId: string
+		/** See proposeResolution.bypassDesignated. */
+		bypassDesignated?: boolean
 	}): Promise<ResolveResult>
 	/** The single pending resolution proposal for a market (for two-of-N approve), or null. */
 	getPendingProposal(marketId: string): Promise<PendingProposalView | null>
@@ -404,14 +429,12 @@ export interface PredictionMarkets {
 		marketId: string
 		reason: string
 		approverId?: string
+		/** See proposeResolution.bypassDesignated. */
+		bypassDesignated?: boolean
 	}): Promise<void>
 	/**
 	 * Persist the Discord forum post mapping after Core creates the post.
 	 * Pure UPDATE — the PM DO never calls Discord itself.
 	 */
-	attachDiscordPost(input: {
-		marketId: string
-		threadId: string
-		messageId: string
-	}): Promise<void>
+	attachDiscordPost(input: { marketId: string; threadId: string; messageId: string }): Promise<void>
 }

@@ -17,19 +17,25 @@ import {
 	pmResolutionProposals,
 	pmWallets,
 } from './db/schema'
+import {
+	canResolveDesignated,
+	isDesignatedOverride,
+	isDesignatedResolver,
+	normalizeDesignatedResolvers,
+} from './lib/designated-resolvers'
 import { formatAmount, isPositiveIntegerString, negateAmount, parseAmount } from './lib/money'
-import { RATE_BUDGETS } from './lib/rate-limit'
 import { computeResolution } from './lib/payout'
+import { RATE_BUDGETS } from './lib/rate-limit'
 import { assertTransition, isTerminal } from './lib/state-machine'
 
 import type {
 	BetResult,
 	BetView,
 	CreateMarketInput,
+	DetailedBetView,
 	GlobalLedgerOpts,
 	GlobalLedgerRow,
 	GrantPointsInput,
-	DetailedBetView,
 	LeaderboardRow,
 	LedgerRow,
 	ListMarketsFilter,
@@ -40,9 +46,9 @@ import type {
 	MarketSettlement,
 	MarketStatus,
 	MarketSummary,
+	MarketUpdateResult,
 	Paged,
 	PendingProposalView,
-	MarketUpdateResult,
 	PlaceBetInput,
 	PredictionMarkets,
 	ResolveResult,
@@ -87,6 +93,8 @@ const EXPECTED_BET_ERRORS = new Set([
 	'STAKE_ABOVE_MAX',
 	'PER_USER_CAP_EXCEEDED',
 	'INSUFFICIENT_FUNDS',
+	// A designated resolver may not bet on the market they're designated to settle (position-free rule).
+	'DESIGNATED_RESOLVER_CANNOT_BET',
 ])
 
 /**
@@ -123,6 +131,8 @@ const EXPECTED_RESOLVER_ERRORS = new Set([
 	'PROPOSAL_NOT_PENDING',
 	'CONTESTED_VOID_REQUIRES_APPROVER',
 	'VOID_REASON_REQUIRED',
+	// Actor is not one of this market's designated resolvers (and holds no admin/manager override).
+	'NOT_DESIGNATED_RESOLVER',
 ])
 
 /** updateMarket throws these on normal caller-input rejections — not paged to Sentry. */
@@ -634,6 +644,34 @@ export class PredictionMarketsDO extends DurableObject<Env> implements Predictio
 			throw new Error('INVALID_PER_USER_CAP')
 		}
 
+		// Designated resolvers (optional). Core has already validated tier-membership + creator-exclusion
+		// (it alone can read GROUPS); the DO re-enforces only the structural invariants as a backstop.
+		// These throws are OUTSIDE the try below, so they surface to the caller without paging Sentry.
+		const designatedResolvers = normalizeDesignatedResolvers(input.designatedResolverIds)
+		if (designatedResolvers) {
+			if (isDesignatedResolver(designatedResolvers, input.createdBy)) {
+				throw new Error('CREATOR_IS_RESOLVER')
+			}
+			// Two-of-N settlement needs two DISTINCT approvers. It fires on the explicit `twoOfN` flag OR
+			// dynamically once the pool crosses the configured threshold (which happens AFTER create, as
+			// bets accumulate). A size-1 designated set can never supply the second distinct signer, so
+			// require >=2 whenever two-of-N is even possible for this market.
+			//
+			// ACCEPTED RESIDUAL (product decision — "allow a single resolver"): this guarantee is
+			// CREATE-TIME ONLY. If a size-1 designated market is created while NO threshold is active and
+			// an admin LATER activates/lowers `pmConfig.twoOfNThreshold` such that the pool crosses it,
+			// requiresTwoOfN() flips true at settle and the sole designated resolver can't self-complete
+			// (no distinct second signer). That market is then settleable only via admin/manager bypass
+			// (bypassDesignated) or the resolving->voided path — never permanently stuck. We deliberately
+			// do NOT weaken requiresTwoOfN for small designated sets, so the two-of-N safeguard on large
+			// pools is never silently skipped by designating a single resolver.
+			if (designatedResolvers.length < 2) {
+				const twoOfNPossible =
+					(input.twoOfN ?? false) || (await this.activeTwoOfNThreshold()) != null
+				if (twoOfNPossible) throw new Error('DESIGNATED_RESOLVERS_INSUFFICIENT_FOR_TWO_OF_N')
+			}
+		}
+
 		// Rate limit member-created markets (opt-in per request; admin creation is uncapped). Consume
 		// the budget after input validation but before any write; a rejected create still counts
 		// (anti-spam), same as placeBet. `create_market` throttles the public forum-post fan-out.
@@ -667,6 +705,7 @@ export class PredictionMarketsDO extends DurableObject<Env> implements Predictio
 						maxStake: input.maxStake ?? null,
 						perUserCap: input.perUserCap ?? null,
 						twoOfN: input.twoOfN ?? false,
+						designatedResolvers: designatedResolvers ?? null,
 					})
 					.returning()
 
@@ -679,7 +718,7 @@ export class PredictionMarketsDO extends DurableObject<Env> implements Predictio
 					actorUserId: input.createdBy,
 					action: 'created',
 					newStatus: 'open',
-					metadata: { outcomes: labels },
+					metadata: { outcomes: labels, designatedResolvers: designatedResolvers ?? null },
 				})
 
 				const detail = await this.buildMarketDetail(tx, market.id)
@@ -872,7 +911,12 @@ export class PredictionMarketsDO extends DurableObject<Env> implements Predictio
 				if (market.closesAt.getTime() <= Date.now()) throw new Error('MARKET_CLOSED')
 				// A creator MAY bet on their own market — they just can't resolve it (enforced by the
 				// CREATOR_CANNOT_RESOLVE / RESOLVER_HAS_POSITION guards), so they hold no power over the
-				// outcome and can't self-deal.
+				// outcome and can't self-deal. A DESIGNATED resolver, however, holds settlement power over
+				// this market, so they must stay position-free: block their bet up front (otherwise the
+				// RESOLVER_HAS_POSITION guard would later strand a small/size-1 designated set).
+				if (isDesignatedResolver(market.designatedResolvers, input.userId)) {
+					throw new Error('DESIGNATED_RESOLVER_CANNOT_BET')
+				}
 
 				const [outcome] = await tx
 					.select({ id: pmMarketOutcomes.id })
@@ -1216,6 +1260,7 @@ export class PredictionMarketsDO extends DurableObject<Env> implements Predictio
 		resolverId: string
 		marketId: string
 		outcomeId: string
+		bypassDesignated?: boolean
 	}): Promise<ResolveResult> {
 		try {
 			return await this.db.transaction(async (tx) => {
@@ -1243,13 +1288,23 @@ export class PredictionMarketsDO extends DurableObject<Env> implements Predictio
 				if (await this.hasPosition(tx, input.marketId, input.resolverId)) {
 					throw new Error('RESOLVER_HAS_POSITION')
 				}
+				const bypass = input.bypassDesignated ?? false
+				if (!canResolveDesignated(market.designatedResolvers, input.resolverId, bypass)) {
+					throw new Error('NOT_DESIGNATED_RESOLVER')
+				}
+				const viaOverride = isDesignatedOverride(
+					market.designatedResolvers,
+					input.resolverId,
+					bypass
+				)
 
 				if (!(await this.requiresTwoOfN(tx, market))) {
 					const finalStatus = await this.executeResolution(
 						tx,
 						market,
 						input.outcomeId,
-						input.resolverId
+						input.resolverId,
+						viaOverride
 					)
 					return {
 						marketId: market.id,
@@ -1278,7 +1333,11 @@ export class PredictionMarketsDO extends DurableObject<Env> implements Predictio
 					action: 'resolution_proposed',
 					previousStatus: 'closed',
 					newStatus: 'resolving',
-					metadata: { outcomeId: input.outcomeId, proposalId: proposal.id },
+					metadata: {
+						outcomeId: input.outcomeId,
+						proposalId: proposal.id,
+						...(viaOverride ? { viaOverride: true } : {}),
+					},
 				})
 				return {
 					marketId: market.id,
@@ -1301,6 +1360,7 @@ export class PredictionMarketsDO extends DurableObject<Env> implements Predictio
 		resolverId: string
 		marketId: string
 		proposalId: string
+		bypassDesignated?: boolean
 	}): Promise<ResolveResult> {
 		try {
 			return await this.db.transaction(async (tx) => {
@@ -1322,24 +1382,42 @@ export class PredictionMarketsDO extends DurableObject<Env> implements Predictio
 				}
 				if (proposal.status !== 'pending') throw new Error('PROPOSAL_NOT_PENDING')
 
-				// Two distinct resolvers, neither the creator, neither holding a position.
+				// Two distinct resolvers, neither the creator, neither holding a position, and — when the
+				// market is designated — both the proposer (checked in proposeResolution) and this approver
+				// must be designated members (or hold the admin/manager override).
 				if (proposal.proposedBy === input.resolverId) throw new Error('APPROVER_MUST_DIFFER')
 				if (market.createdBy === input.resolverId) throw new Error('CREATOR_CANNOT_RESOLVE')
 				if (await this.hasPosition(tx, input.marketId, input.resolverId)) {
 					throw new Error('RESOLVER_HAS_POSITION')
 				}
+				const bypass = input.bypassDesignated ?? false
+				if (!canResolveDesignated(market.designatedResolvers, input.resolverId, bypass)) {
+					throw new Error('NOT_DESIGNATED_RESOLVER')
+				}
+				const viaOverride = isDesignatedOverride(
+					market.designatedResolvers,
+					input.resolverId,
+					bypass
+				)
 
 				let finalStatus: MarketStatus
 				let resolvedOutcomeId: string | null = null
 				if (!proposal.outcomeId) {
-					await this.executeVoidRefund(tx, market, input.resolverId, 'resolution voided by approval')
+					await this.executeVoidRefund(
+						tx,
+						market,
+						input.resolverId,
+						'resolution voided by approval',
+						viaOverride
+					)
 					finalStatus = 'voided'
 				} else {
 					finalStatus = await this.executeResolution(
 						tx,
 						market,
 						proposal.outcomeId,
-						input.resolverId
+						input.resolverId,
+						viaOverride
 					)
 					resolvedOutcomeId = finalStatus === 'resolved' ? proposal.outcomeId : null
 				}
@@ -1371,6 +1449,7 @@ export class PredictionMarketsDO extends DurableObject<Env> implements Predictio
 		marketId: string
 		reason: string
 		approverId?: string
+		bypassDesignated?: boolean
 	}): Promise<void> {
 		if (!input.reason.trim()) throw new Error('VOID_REASON_REQUIRED')
 		try {
@@ -1390,6 +1469,10 @@ export class PredictionMarketsDO extends DurableObject<Env> implements Predictio
 				if (await this.hasPosition(tx, input.marketId, input.actorUserId)) {
 					throw new Error('RESOLVER_HAS_POSITION')
 				}
+				const bypass = input.bypassDesignated ?? false
+				if (!canResolveDesignated(market.designatedResolvers, input.actorUserId, bypass)) {
+					throw new Error('NOT_DESIGNATED_RESOLVER')
+				}
 
 				// Contested markets (bets on 2+ outcomes) require a distinct second approver.
 				const [distinctRow] = await tx
@@ -1400,8 +1483,29 @@ export class PredictionMarketsDO extends DurableObject<Env> implements Predictio
 				if (contested && (!input.approverId || input.approverId === input.actorUserId)) {
 					throw new Error('CONTESTED_VOID_REQUIRES_APPROVER')
 				}
+				// On a designated market, the contested-void second approver must ALSO be a designated
+				// member (unless overriding). NOTE: the DO cannot verify approverId's resolver TIER — Core
+				// authenticates only the initiating actor. The Discord path never supplies approverId, so
+				// this seat is currently unreachable; any future admin contested-void route MUST Core-side
+				// tier-validate approverId before calling, exactly as it does for the initiating actor.
+				if (contested && input.approverId && !bypass) {
+					if (!canResolveDesignated(market.designatedResolvers, input.approverId, false)) {
+						throw new Error('NOT_DESIGNATED_RESOLVER')
+					}
+				}
 
-				await this.executeVoidRefund(tx, market, input.actorUserId, input.reason.trim())
+				const viaOverride = isDesignatedOverride(
+					market.designatedResolvers,
+					input.actorUserId,
+					bypass
+				)
+				await this.executeVoidRefund(
+					tx,
+					market,
+					input.actorUserId,
+					input.reason.trim(),
+					viaOverride
+				)
 			})
 		} catch (error) {
 			if (!isExpectedResolverError(error)) {
@@ -1447,13 +1551,14 @@ export class PredictionMarketsDO extends DurableObject<Env> implements Predictio
 		tx: PmTransaction,
 		market: PmMarket,
 		winningOutcomeId: string,
-		resolverId: string
+		resolverId: string,
+		viaOverride = false
 	): Promise<MarketStatus> {
 		const totalPool = await this.sumStakes(tx, market.id)
 		const poolW = await this.sumStakes(tx, market.id, winningOutcomeId)
 
 		if (poolW === 0n) {
-			await this.executeVoidRefund(tx, market, resolverId, 'no winning bets')
+			await this.executeVoidRefund(tx, market, resolverId, 'no winning bets', viaOverride)
 			return 'voided'
 		}
 
@@ -1582,6 +1687,7 @@ export class PredictionMarketsDO extends DurableObject<Env> implements Predictio
 				poolW: formatAmount(poolW),
 				rake: formatAmount(rake),
 				dust: formatAmount(dust),
+				...(viaOverride ? { viaOverride: true } : {}),
 			},
 		})
 		return 'resolved'
@@ -1592,7 +1698,8 @@ export class PredictionMarketsDO extends DurableObject<Env> implements Predictio
 		tx: PmTransaction,
 		market: PmMarket,
 		actorUserId: string,
-		reason: string
+		reason: string,
+		viaOverride = false
 	): Promise<void> {
 		const bets = await tx
 			.select()
@@ -1638,7 +1745,7 @@ export class PredictionMarketsDO extends DurableObject<Env> implements Predictio
 			previousStatus: market.status,
 			newStatus: 'voided',
 			visibility: 'public',
-			metadata: { reason },
+			metadata: { reason, ...(viaOverride ? { viaOverride: true } : {}) },
 		})
 	}
 
@@ -1656,11 +1763,7 @@ export class PredictionMarketsDO extends DurableObject<Env> implements Predictio
 		return parseAmount(row.total)
 	}
 
-	private async hasPosition(
-		tx: PmTransaction,
-		marketId: string,
-		userId: string
-	): Promise<boolean> {
+	private async hasPosition(tx: PmTransaction, marketId: string, userId: string): Promise<boolean> {
 		const [row] = await tx
 			.select({ n: sql<number>`count(*)::int` })
 			.from(pmBets)
@@ -1680,6 +1783,21 @@ export class PredictionMarketsDO extends DurableObject<Env> implements Predictio
 			return parseAmount(market.totalPool) >= parseAmount(cfg.threshold)
 		}
 		return false
+	}
+
+	/**
+	 * The active config's two-of-N pool threshold, or null when unset. Read outside a transaction for
+	 * the create-time designated-set sizing check: a configured threshold means two-of-N can trigger
+	 * dynamically as bets accumulate, so a designated set must be able to supply two distinct approvers.
+	 */
+	private async activeTwoOfNThreshold(): Promise<string | null> {
+		const [cfg] = await this.db
+			.select({ threshold: pmConfig.twoOfNThreshold })
+			.from(pmConfig)
+			.where(eq(pmConfig.isActive, true))
+			.orderBy(desc(pmConfig.effectiveFrom))
+			.limit(1)
+		return cfg?.threshold ?? null
 	}
 
 	private async buildMarketDetail(
@@ -1721,6 +1839,7 @@ export class PredictionMarketsDO extends DurableObject<Env> implements Predictio
 			resolvedBy: market.resolvedBy,
 			resolvedAt: market.resolvedAt ? market.resolvedAt.toISOString() : null,
 			voidReason: market.voidReason,
+			designatedResolverIds: market.designatedResolvers,
 			outcomes: outcomes.map((o) => ({
 				id: o.id,
 				label: o.label,

@@ -83,6 +83,7 @@ function market(id: string, status: MarketDetail['status'] = 'closed'): MarketDe
 		resolvedBy: null,
 		resolvedAt: null,
 		voidReason: null,
+		designatedResolverIds: null,
 		outcomes: [],
 	}
 }

@@ -2,8 +2,8 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 
 import { updateAndAnnounceMarket } from '../market-update.service'
 
-import type { UpdateMarketEnv } from '../market-update.service'
 import type { MarketDetail } from '@repo/prediction-markets'
+import type { UpdateMarketEnv } from '../market-update.service'
 
 const hoisted = vi.hoisted(() => ({
 	predictionBinding: {} as DurableObjectNamespace,
@@ -54,6 +54,7 @@ function market(overrides: Partial<MarketDetail> = {}): MarketDetail {
 		resolvedBy: null,
 		resolvedAt: null,
 		voidReason: null,
+		designatedResolverIds: null,
 		outcomes: [],
 		...overrides,
 	}
@@ -83,11 +84,16 @@ describe('updateAndAnnounceMarket', () => {
 		})
 		expect(res.market.closesAt).toBe('2031-01-01T00:00:00.000Z')
 		expect(hoisted.post.updateMarketPostFromDetail).toHaveBeenCalledTimes(1)
-		expect(hoisted.notify.announceMarketUpdated).toHaveBeenCalledWith(expect.anything(), 'g1', expect.anything(), {
-			closesAt: '2031-01-01T00:00:00.000Z',
-			question: false,
-			description: false,
-		})
+		expect(hoisted.notify.announceMarketUpdated).toHaveBeenCalledWith(
+			expect.anything(),
+			'g1',
+			expect.anything(),
+			{
+				closesAt: '2031-01-01T00:00:00.000Z',
+				question: false,
+				description: false,
+			}
+		)
 	})
 
 	it('announces question + description (not closesAt) when only those changed', async () => {
@@ -98,11 +104,16 @@ describe('updateAndAnnounceMarket', () => {
 
 		await updateAndAnnounceMarket(db, env, 'admin-1', 'm1', { question: 'Q2', description: null })
 
-		expect(hoisted.notify.announceMarketUpdated).toHaveBeenCalledWith(expect.anything(), 'g1', expect.anything(), {
-			closesAt: undefined,
-			question: true,
-			description: true,
-		})
+		expect(hoisted.notify.announceMarketUpdated).toHaveBeenCalledWith(
+			expect.anything(),
+			'g1',
+			expect.anything(),
+			{
+				closesAt: undefined,
+				question: true,
+				description: true,
+			}
+		)
 	})
 
 	it('propagates MARKET_NOT_FOUND from updateMarket', async () => {

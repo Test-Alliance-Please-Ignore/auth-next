@@ -115,6 +115,12 @@ export interface CreateMarketRequest {
 	maxStake?: string
 	perUserCap?: string
 	twoOfN?: boolean
+	/**
+	 * Optional core user ids to designate as this market's resolver(s). Admin surface only; the server
+	 * validates each holds the resolver tier and rejects designating the creator. Omit/empty => the
+	 * market uses global resolver authority.
+	 */
+	designatedResolverIds?: string[]
 }
 
 export interface CreateMarketResponse {

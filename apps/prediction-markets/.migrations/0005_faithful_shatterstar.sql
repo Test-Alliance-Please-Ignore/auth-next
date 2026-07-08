@@ -1,0 +1,1 @@
+ALTER TABLE "pm_markets" ADD COLUMN "designated_resolvers" uuid[];

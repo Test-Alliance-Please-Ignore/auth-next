@@ -35,6 +35,7 @@ function market(overrides: Partial<MarketDetail> = {}): MarketDetail {
 		resolvedBy: 'r',
 		resolvedAt: '2026-01-02T00:00:00.000Z',
 		voidReason: null,
+		designatedResolverIds: null,
 		outcomes: [
 			{ id: 'o1', label: 'Yes', poolAmount: '0', sortOrder: 0, impliedOddsBps: null },
 			{ id: 'o2', label: 'No', poolAmount: '0', sortOrder: 1, impliedOddsBps: null },
@@ -99,7 +100,12 @@ describe('announceMarketResolved (thread post — aggregate only)', () => {
 			discord,
 			'g1',
 			market({ status: 'voided', resolvedOutcomeId: null }),
-			settlement({ status: 'voided', resolvedOutcomeId: null, totalPaidOut: '3000', totalLost: '0' })
+			settlement({
+				status: 'voided',
+				resolvedOutcomeId: null,
+				totalPaidOut: '3000',
+				totalLost: '0',
+			})
 		)
 		expect(sendMessage.mock.calls[0][2].content.toLowerCase()).toContain('voided')
 	})
