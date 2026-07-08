@@ -1,11 +1,33 @@
 name: Branches
 
+# Runs on the pull_request event only (not push). Previously this listened to
+# both, so every branch push triggered two identical "Check" runs — one for the
+# push and one for the PR's synchronize event. The pull_request event is the
+# better signal anyway: it tests the simulated merge into main, not the raw tip.
 on:
-  push:
-    branches-ignore: ['main']
   pull_request:
     branches: ['main']
+    # Skip CI when a PR touches only docs / changelogs / editor config — nothing
+    # that affects the build, types, lint, or tests. paths-ignore fails open: a
+    # PR is only skipped when EVERY changed file matches, so a mixed doc+code PR
+    # still runs.
+    paths-ignore:
+      - '**/*.md'
+      - 'docs/**'
+      - '.changeset/**'
+      - '.vscode/**'
+      - '.cursor/**'
+      - '.claude/**'
+      - '.editorconfig'
+  # merge_group can't be path-filtered (GitHub always runs it fully) — that's the
+  # behavior we want: a complete check right before the commit lands in the queue.
   merge_group:
+
+# If several commits are pushed to a PR in quick succession, cancel the older
+# in-flight run and keep only the newest — no point checking a superseded diff.
+concurrency:
+  group: branches-${{ github.head_ref || github.ref }}
+  cancel-in-progress: true
 
 env:
   FORCE_COLOR: 1
