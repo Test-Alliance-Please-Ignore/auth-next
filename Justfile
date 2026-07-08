@@ -109,6 +109,7 @@ db-generate-all:
   cd apps/eve-character-data && bun run db:generate
   cd apps/eve-token-store && bun run db:generate
   cd apps/moon-scan && bun run db:generate
+  cd apps/prediction-markets && bun run db:generate
 
 # Push schema changes to database (for development)
 [group('2. database')]
@@ -163,12 +164,11 @@ db-migrate-all:
   cd apps/esi && bun run db:migrate
   cd apps/corporation-tax && bun run db:migrate
   cd apps/donations && bun run db:migrate
-  cd apps/postman && bun run db:migrate
-  cd apps/mumble && bun run db:migrate
   cd apps/eve-corporation-data && bun run db:migrate
   cd apps/eve-character-data && bun run db:migrate
   cd apps/eve-token-store && bun run db:migrate
   cd apps/moon-scan && bun run db:migrate
+  cd apps/prediction-markets && bun run db:migrate
 
 # Seed moon permissions into groups DB
 [group('2. database')]

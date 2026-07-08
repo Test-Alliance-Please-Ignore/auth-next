@@ -1143,6 +1143,65 @@ export class PredictionMarketsDO extends DurableObject<Env> implements Predictio
 		return rows.map((r) => r.id)
 	}
 
+	/**
+	 * Terminal markets whose settlement result was never posted — the reconcile cron's settlement
+	 * self-heal work-list. Selects resolved/voided markets that have a forum post, are still
+	 * `settlementAnnouncedAt IS NULL`, and were last touched within `[now − maxAgeMinutes, now − minAgeMinutes]`.
+	 * The lower bound clears any in-flight live resolve request (the live path marks the flag right after
+	 * its post); the upper bound caps retries of a permanently-failing post and bounds the first-deploy
+	 * re-post window. Keyed off `updatedAt` as a proxy for the terminal-transition time: it's set at the
+	 * transition and normally not touched again for a terminal market (the refresh pass skips terminal
+	 * markets), the one exception being a rare `attachDiscordPost` backfill landing on a market that went
+	 * terminal mid-create — which only nudges `updatedAt` forward by ~one tick (both window bounds move
+	 * together), so it can delay a self-heal by seconds but never drop it.
+	 */
+	async listMarketsNeedingSettlementNotice(
+		limit = 25,
+		minAgeMinutes = 15,
+		maxAgeMinutes = 360
+	): Promise<MarketDetail[]> {
+		const bounded = Math.min(Math.max(limit, 1), 100)
+		const now = Date.now()
+		const newestAllowed = new Date(now - Math.max(minAgeMinutes, 0) * 60_000)
+		const oldestAllowed = new Date(now - Math.max(maxAgeMinutes, minAgeMinutes) * 60_000)
+		const rows = await this.db
+			.select({ id: pmMarkets.id })
+			.from(pmMarkets)
+			.where(
+				and(
+					isNull(pmMarkets.settlementAnnouncedAt),
+					isNotNull(pmMarkets.discordThreadId),
+					inArray(pmMarkets.status, ['resolved', 'voided']),
+					lte(pmMarkets.updatedAt, newestAllowed),
+					gte(pmMarkets.updatedAt, oldestAllowed)
+				)
+			)
+			.orderBy(asc(pmMarkets.updatedAt))
+			.limit(bounded)
+
+		return this.buildMarketDetails(rows.map((r) => r.id))
+	}
+
+	/**
+	 * Mark a terminal market's settlement notification as delivered. Idempotent and self-guarding:
+	 * the `settlementAnnouncedAt IS NULL` + terminal-status predicate means a live-path completion and a
+	 * racing reconcile self-heal converge on one flag, and it can never be set on a non-terminal market.
+	 * Deliberately does NOT bump `updatedAt` — the self-heal work-list keys off `updatedAt` as the
+	 * terminal-transition time, which must stay stable.
+	 */
+	async markSettlementAnnounced(marketId: string): Promise<void> {
+		await this.db
+			.update(pmMarkets)
+			.set({ settlementAnnouncedAt: new Date() })
+			.where(
+				and(
+					eq(pmMarkets.id, marketId),
+					isNull(pmMarkets.settlementAnnouncedAt),
+					inArray(pmMarkets.status, ['resolved', 'voided'])
+				)
+			)
+	}
+
 	/** Build full details for a list of market ids, skipping any that vanished. */
 	private async buildMarketDetails(marketIds: string[]): Promise<MarketDetail[]> {
 		const details: MarketDetail[] = []

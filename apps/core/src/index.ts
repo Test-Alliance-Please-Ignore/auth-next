@@ -205,7 +205,7 @@ export default {
 			ctx.waitUntil(
 				reconcileMarketPosts(createDb(env.DATABASE_URL), env)
 					.then((r) => {
-						if (r.closed > 0 || r.refreshed > 0 || r.posted > 0 || r.failed > 0) {
+						if (r.closed > 0 || r.refreshed > 0 || r.posted > 0 || r.notified > 0 || r.failed > 0) {
 							console.log('[Core:Scheduled] Prediction-market reconcile', r)
 						}
 					})
