@@ -26,6 +26,7 @@ function market(status: MarketStatus, outcomes = 2): MarketDetail {
 		resolvedBy: null,
 		resolvedAt: null,
 		voidReason: null,
+		designatedResolverIds: null,
 		outcomes: Array.from({ length: outcomes }, (_, i) => ({
 			id: `o${i + 1}`,
 			label: `Outcome ${i + 1}`,

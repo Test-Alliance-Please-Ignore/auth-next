@@ -18,12 +18,12 @@ import { captureException, logger } from '@repo/hono-helpers'
 import { users } from '../db/schema'
 import {
 	BET_AMOUNT_INPUT_ID,
-	RESOLVE_OUTCOME_INPUT_ID,
-	VOID_REASON_INPUT_ID,
 	customIdAction,
 	decodeBetTarget,
 	decodeMarketAction,
 	decodeSingleMarketId,
+	RESOLVE_OUTCOME_INPUT_ID,
+	VOID_REASON_INPUT_ID,
 } from '../lib/market-custom-id'
 import { formatMarketPoints } from '../lib/market-embed'
 import { hasMarketPermission } from '../lib/market-permissions'
@@ -38,18 +38,20 @@ import {
 	updateMarketPostFromDetail,
 } from './discord-market-post.service'
 
-import type { createDb } from '../db'
-import type { Env } from '../context'
 import type { Discord, DiscordEmbed } from '@repo/discord'
 import type { PredictionMarkets } from '@repo/prediction-markets'
+import type { Env } from '../context'
+import type { createDb } from '../db'
 
 const EPHEMERAL_FLAG = 1 << 6
-const NOT_LINKED =
-	'Your Discord account is not linked to a core user. Link it in the app first.'
+const NOT_LINKED = 'Your Discord account is not linked to a core user. Link it in the app first.'
 const RESOLVER_ONLY = 'Resolver only — you don’t have permission for this action.'
 
 /** Bindings the component/modal path needs (money DO, Discord DO, groups for the tier gate). */
-export type ComponentEnv = Pick<Env, 'DISCORD' | 'PREDICTION_MARKETS' | 'GROUPS' | 'PM_FORUM_GUILD_ID'>
+export type ComponentEnv = Pick<
+	Env,
+	'DISCORD' | 'PREDICTION_MARKETS' | 'GROUPS' | 'PM_FORUM_GUILD_ID'
+>
 
 export interface DiscordComponentResult {
 	response: { type: number; data: { content: string; flags?: number; embeds?: DiscordEmbed[] } }
@@ -101,6 +103,7 @@ const ERROR_MESSAGES: Record<string, string> = {
 	CONTESTED_VOID_REQUIRES_APPROVER:
 		'This market has bets on multiple outcomes — a contested void needs a second approver (use the admin UI).',
 	VOID_REASON_REQUIRED: 'A void reason is required.',
+	NOT_DESIGNATED_RESOLVER: 'Only this market’s designated resolver(s) can settle it.',
 }
 
 function ephemeral(
@@ -132,14 +135,22 @@ function mapError(
 	const msg = error instanceof Error ? error.message : String(error)
 	if (msg.startsWith('RATE_LIMITED')) {
 		const ms = Number(msg.split(':')[1]) || 0
-		return ephemeral(`Slow down — try again in ${Math.max(1, Math.ceil(ms / 1000))}s.`, 'rate-limited', coreUserId)
+		return ephemeral(
+			`Slow down — try again in ${Math.max(1, Math.ceil(ms / 1000))}s.`,
+			'rate-limited',
+			coreUserId
+		)
 	}
 	const friendly = ERROR_MESSAGES[msg]
 	if (friendly) return ephemeral(friendly, 'domain-error', coreUserId)
 	// closeMarket guards state via assertTransition (a raw "invalid market transition" string),
 	// not a coded status error — surface a stale-state message rather than the generic one.
 	if (msg.startsWith('prediction-markets: invalid market transition')) {
-		return ephemeral('This market can’t be changed in its current state.', 'stale-state', coreUserId)
+		return ephemeral(
+			'This market can’t be changed in its current state.',
+			'stale-state',
+			coreUserId
+		)
 	}
 	// Anything else is unexpected — an infra failure (failed query, missing migration, Neon outage)
 	// or an RPC error from the money DO. This is the branch that previously logged only a bare
@@ -156,7 +167,12 @@ function mapError(
 		stack: error instanceof Error ? error.stack : undefined,
 	})
 	captureException(error as Error, {
-		tags: { service: 'discord-components', action: ctx.action, marketId: ctx.marketId ?? '', coreUserId },
+		tags: {
+			service: 'discord-components',
+			action: ctx.action,
+			marketId: ctx.marketId ?? '',
+			coreUserId,
+		},
 		extra: { cause },
 	})
 	return ephemeral('Could not complete this action. Please try again later.', 'error', coreUserId)
@@ -264,6 +280,19 @@ function isResult(x: { id: string } | DiscordComponentResult): x is DiscordCompo
 	return 'response' in x
 }
 
+/**
+ * Whether this settler may bypass a market's designated-resolver set. Admins and `urn:markets:manager`
+ * holders keep their "resolve any market" authority; a plain `urn:markets:resolver` does not. This
+ * bypasses ONLY the per-market membership check — every conflict-of-interest guard still binds them.
+ * Derive it solely from the tier check, never a literal (the DO trusts this flag unverified).
+ */
+async function canBypassDesignated(
+	env: ComponentEnv,
+	user: { id: string; is_admin: boolean }
+): Promise<boolean> {
+	return user.is_admin || (await hasMarketPermission(env, user.id, 'manager', user.is_admin))
+}
+
 // ---------------------------------------------------------------------------
 // Buttons (no modal): Close, Approve — resolver-gated
 // ---------------------------------------------------------------------------
@@ -297,6 +326,7 @@ export async function executeDiscordComponent(
 			resolverId: user.id,
 			marketId: decoded.marketId,
 			proposalId: proposal.id,
+			bypassDesignated: await canBypassDesignated(env, user),
 		})
 		await refreshPost(db, env, prediction, decoded.marketId)
 		let background: (() => Promise<void>) | undefined
@@ -448,6 +478,7 @@ async function handleResolveModal(
 			resolverId: user.id,
 			marketId,
 			outcomeId: outcome.id,
+			bypassDesignated: await canBypassDesignated(env, user),
 		})
 		await refreshPost(db, env, prediction, marketId)
 		let background: (() => Promise<void>) | undefined
@@ -495,7 +526,12 @@ async function handleVoidModal(
 
 	const prediction = getStub<PredictionMarkets>(env.PREDICTION_MARKETS, 'default')
 	try {
-		await prediction.voidMarket({ actorUserId: user.id, marketId, reason })
+		await prediction.voidMarket({
+			actorUserId: user.id,
+			marketId,
+			reason,
+			bypassDesignated: await canBypassDesignated(env, user),
+		})
 		await refreshPost(db, env, prediction, marketId)
 		const background = await announceSettlement(env, prediction, marketId)
 		return ephemeral('Market voided and all bets refunded.', 'ok', user.id, background)

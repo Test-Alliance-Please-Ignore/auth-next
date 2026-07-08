@@ -29,6 +29,13 @@
       "when": 1783439551480,
       "tag": "0003_fancy_hairball",
       "breakpoints": true
+    },
+    {
+      "idx": 4,
+      "version": "7",
+      "when": 1783511950557,
+      "tag": "0004_fuzzy_silver_centurion",
+      "breakpoints": true
     }
   ]
 }

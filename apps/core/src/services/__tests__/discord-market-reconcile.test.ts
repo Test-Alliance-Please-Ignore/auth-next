@@ -2,8 +2,8 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 
 import { reconcileMarketPosts } from '../discord-market-reconcile.service'
 
-import type { ReconcileEnv } from '../discord-market-reconcile.service'
 import type { MarketDetail } from '@repo/prediction-markets'
+import type { ReconcileEnv } from '../discord-market-reconcile.service'
 
 const hoisted = vi.hoisted(() => ({
 	predictionBinding: {} as DurableObjectNamespace,
@@ -76,6 +76,7 @@ function market(id: string, status: MarketDetail['status'] = 'closed'): MarketDe
 		resolvedBy: null,
 		resolvedAt: null,
 		voidReason: null,
+		designatedResolverIds: null,
 		outcomes: [],
 	}
 }
