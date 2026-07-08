@@ -2,8 +2,8 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 
 import { reconcileMarketPosts } from '../discord-market-reconcile.service'
 
-import type { ReconcileEnv } from '../discord-market-reconcile.service'
 import type { MarketDetail, MarketSettlement } from '@repo/prediction-markets'
+import type { ReconcileEnv } from '../discord-market-reconcile.service'
 
 const hoisted = vi.hoisted(() => ({
 	predictionBinding: {} as DurableObjectNamespace,
@@ -83,6 +83,7 @@ function market(id: string, status: MarketDetail['status'] = 'closed'): MarketDe
 		resolvedBy: null,
 		resolvedAt: null,
 		voidReason: null,
+		resolvesOn: null,
 		designatedResolverIds: null,
 		outcomes: [],
 	}
@@ -123,7 +124,14 @@ describe('reconcileMarketPosts', () => {
 
 	it('no-ops when the forum guild/category is not configured', async () => {
 		const res = await reconcileMarketPosts(db, makeEnv({ PM_FORUM_GUILD_ID: undefined }))
-		expect(res).toEqual({ closed: 0, refreshed: 0, posted: 0, notified: 0, failed: 0, skipped: true })
+		expect(res).toEqual({
+			closed: 0,
+			refreshed: 0,
+			posted: 0,
+			notified: 0,
+			failed: 0,
+			skipped: true,
+		})
 		expect(hoisted.prediction.closeDueMarkets).not.toHaveBeenCalled()
 		expect(hoisted.prediction.listMarketsToRefresh).not.toHaveBeenCalled()
 		expect(hoisted.prediction.listMarketsNeedingPost).not.toHaveBeenCalled()
@@ -228,7 +236,9 @@ describe('reconcileMarketPosts', () => {
 	})
 
 	it('leaves the market un-announced and skips DMs when the thread post soft-fails (retried next tick)', async () => {
-		hoisted.prediction.listMarketsNeedingSettlementNotice.mockResolvedValue([market('a', 'resolved')])
+		hoisted.prediction.listMarketsNeedingSettlementNotice.mockResolvedValue([
+			market('a', 'resolved'),
+		])
 		hoisted.notify.announceMarketResolved.mockResolvedValue(false)
 		const res = await reconcileMarketPosts(db, makeEnv())
 		expect(res.notified).toBe(0)
@@ -240,7 +250,9 @@ describe('reconcileMarketPosts', () => {
 
 	it('marks BEFORE the DM fan-out and only after the post lands', async () => {
 		const calls: string[] = []
-		hoisted.prediction.listMarketsNeedingSettlementNotice.mockResolvedValue([market('a', 'resolved')])
+		hoisted.prediction.listMarketsNeedingSettlementNotice.mockResolvedValue([
+			market('a', 'resolved'),
+		])
 		hoisted.notify.announceMarketResolved.mockImplementation(async () => {
 			calls.push('post')
 			return true

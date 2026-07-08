@@ -35,6 +35,7 @@ function market(overrides: Partial<MarketDetail> = {}): MarketDetail {
 		resolvedBy: 'r',
 		resolvedAt: '2026-01-02T00:00:00.000Z',
 		voidReason: null,
+		resolvesOn: null,
 		designatedResolverIds: null,
 		outcomes: [
 			{ id: 'o1', label: 'Yes', poolAmount: '0', sortOrder: 0, impliedOddsBps: null },

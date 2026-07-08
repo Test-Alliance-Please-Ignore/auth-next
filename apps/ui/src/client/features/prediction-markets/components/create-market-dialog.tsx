@@ -25,28 +25,38 @@ import type { CreateMarketRequest } from '../types'
 const MAX_OUTCOMES = 20
 
 // Client guard mirrors the server route (defense-in-depth; server is authoritative).
-const schema = z.object({
-	question: z.string().trim().min(3, 'Question must be at least 3 characters').max(500),
-	description: z.string().trim().max(2000).optional(),
-	outcomes: z
-		.array(z.string().trim().min(1))
-		.min(2, 'Add at least two outcomes')
-		.max(MAX_OUTCOMES)
-		.refine(
-			(o) => new Set(o.map((s) => s.toLowerCase())).size === o.length,
-			'Outcomes must be distinct'
-		),
-	closesAt: z.string().refine((s) => {
-		const t = new Date(s).getTime()
-		return Number.isFinite(t) && t > Date.now()
-	}, 'Close time must be in the future'),
-	rakeBps: z.number().int().min(0).max(2000).optional(),
-	minStake: z.string().optional(),
-	maxStake: z.string().optional(),
-	perUserCap: z.string().optional(),
-	twoOfN: z.boolean().optional(),
-	designatedResolverIds: z.array(z.string().uuid()).max(10).optional(),
-})
+const schema = z
+	.object({
+		question: z.string().trim().min(3, 'Question must be at least 3 characters').max(500),
+		description: z.string().trim().max(2000).optional(),
+		outcomes: z
+			.array(z.string().trim().min(1))
+			.min(2, 'Add at least two outcomes')
+			.max(MAX_OUTCOMES)
+			.refine(
+				(o) => new Set(o.map((s) => s.toLowerCase())).size === o.length,
+				'Outcomes must be distinct'
+			),
+		closesAt: z.string().refine((s) => {
+			const t = new Date(s).getTime()
+			return Number.isFinite(t) && t > Date.now()
+		}, 'Close time must be in the future'),
+		resolvesOn: z.string().refine((s) => {
+			const t = new Date(s).getTime()
+			return Number.isFinite(t) && t > Date.now()
+		}, 'Resolution date must be in the future'),
+		rakeBps: z.number().int().min(0).max(2000).optional(),
+		minStake: z.string().optional(),
+		maxStake: z.string().optional(),
+		perUserCap: z.string().optional(),
+		twoOfN: z.boolean().optional(),
+		designatedResolverIds: z.array(z.string().uuid()).max(10).optional(),
+	})
+	// A market can't be scheduled to resolve before its own betting closes (server enforces this too).
+	.refine((d) => new Date(d.resolvesOn).getTime() >= new Date(d.closesAt).getTime(), {
+		message: 'Resolution date must be on or after the close time',
+		path: ['resolvesOn'],
+	})
 
 export interface CreateMarketDialogProps {
 	open: boolean
@@ -73,6 +83,7 @@ export function CreateMarketDialog({
 	const [description, setDescription] = useState('')
 	const [outcomes, setOutcomes] = useState<string[]>(['Yes', 'No'])
 	const [closesAt, setClosesAt] = useState('')
+	const [resolvesOn, setResolvesOn] = useState('')
 	const [rakeBps, setRakeBps] = useState('')
 	const [minStake, setMinStake] = useState('')
 	const [maxStake, setMaxStake] = useState('')
@@ -93,6 +104,7 @@ export function CreateMarketDialog({
 			setDescription('')
 			setOutcomes(['Yes', 'No'])
 			setClosesAt('')
+			setResolvesOn('')
 			setRakeBps('')
 			setMinStake('')
 			setMaxStake('')
@@ -128,6 +140,7 @@ export function CreateMarketDialog({
 			description: description.trim() || undefined,
 			outcomes: trimmedOutcomes,
 			closesAt,
+			resolvesOn,
 			rakeBps: rakeBps ? Number(rakeBps) : undefined,
 			minStake: minStake || undefined,
 			maxStake: maxStake || undefined,
@@ -146,6 +159,7 @@ export function CreateMarketDialog({
 			outcomes: d.outcomes,
 			// datetime-local (local time, no zone) → absolute ISO-8601.
 			closesAt: new Date(d.closesAt).toISOString(),
+			resolvesOn: new Date(d.resolvesOn).toISOString(),
 			twoOfN: d.twoOfN,
 		}
 		if (d.description) body.description = d.description
@@ -245,6 +259,21 @@ export function CreateMarketDialog({
 							disabled={create.isPending}
 							required
 						/>
+					</div>
+
+					<div className="space-y-2">
+						<Label htmlFor="pm-resolves">Resolves on</Label>
+						<Input
+							id="pm-resolves"
+							type="datetime-local"
+							value={resolvesOn}
+							onChange={(e) => setResolvesOn(e.target.value)}
+							disabled={create.isPending}
+							required
+						/>
+						<p className="text-xs text-muted-foreground">
+							Expected resolution date — on or after the close time.
+						</p>
 					</div>
 
 					{showAdvanced ? (

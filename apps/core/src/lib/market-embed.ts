@@ -109,8 +109,11 @@ export function buildWagerResultDm(input: {
 	const negative = input.net.trim().startsWith('-')
 	const zero = input.net.trim().replace(/^0+(?=\d)/, '') === '0'
 	const emoji = zero ? '🤝' : negative ? '😔' : '🎉'
-	const netDisplay = negative || zero ? formatMarketPoints(input.net) : `+${formatMarketPoints(input.net)}`
-	const outcome = input.outcomeLabel ? `**${truncateForEmbed(input.outcomeLabel, 256)}**` : 'the market'
+	const netDisplay =
+		negative || zero ? formatMarketPoints(input.net) : `+${formatMarketPoints(input.net)}`
+	const outcome = input.outcomeLabel
+		? `**${truncateForEmbed(input.outcomeLabel, 256)}**`
+		: 'the market'
 	return (
 		`${emoji} “${question}” resolved: ${outcome}.\n` +
 		`You staked **${formatMarketPoints(input.staked)}**, got back **${formatMarketPoints(
@@ -136,14 +139,21 @@ export function buildMarketEmbed(market: MarketDetail): DiscordEmbed {
 		inline: true,
 	}))
 
+	const fields = [
+		...outcomeFields,
+		{ name: 'Total pool', value: formatMarketPoints(market.totalPool), inline: false },
+		{ name: 'Closes', value: `<t:${closesUnix}:R>`, inline: true },
+	]
+	// resolvesOn is nullable — legacy markets created before the field simply omit it.
+	if (market.resolvesOn) {
+		const resolvesUnix = Math.floor(new Date(market.resolvesOn).getTime() / 1000)
+		fields.push({ name: 'Resolves on', value: `<t:${resolvesUnix}:D>`, inline: true })
+	}
+
 	const embed: DiscordEmbed = {
 		title: truncateForEmbed(market.question, 256),
 		color: STATUS_COLOR[market.status] ?? STATUS_COLOR.draft,
-		fields: [
-			...outcomeFields,
-			{ name: 'Total pool', value: formatMarketPoints(market.totalPool), inline: false },
-			{ name: 'Closes', value: `<t:${closesUnix}:R>`, inline: false },
-		],
+		fields,
 		footer: { text: `Status: ${market.status}` },
 	}
 	if (market.description) {

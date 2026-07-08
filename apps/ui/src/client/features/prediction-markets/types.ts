@@ -115,6 +115,8 @@ export interface CreateMarketRequest {
 	outcomes: string[]
 	/** ISO-8601 timestamp when betting closes. */
 	closesAt: string
+	/** ISO-8601 expected resolution date. Required; must be at or after closesAt. */
+	resolvesOn: string
 	rakeBps?: number
 	/** Integer strings (numeric). DISPLAY ONLY — never Number() arithmetic. */
 	minStake?: string

@@ -48,10 +48,12 @@ function createApp(user: SessionUser) {
 }
 
 const futureIso = new Date(Date.now() + 86_400_000).toISOString()
+const resolvesOnIso = new Date(Date.now() + 2 * 86_400_000).toISOString()
 const validBody = {
 	question: 'Will it rain tomorrow?',
 	outcomes: ['Yes', 'No'],
 	closesAt: futureIso,
+	resolvesOn: resolvesOnIso,
 }
 const env = { GROUPS: {}, PREDICTION_MARKETS: {}, DISCORD: {} } as any
 

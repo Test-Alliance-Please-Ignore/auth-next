@@ -145,6 +145,7 @@ const EXPECTED_MARKET_EDIT_ERRORS = new Set([
 	'MARKET_NOT_EDITABLE',
 	'CLOSES_AT_NOT_EDITABLE',
 	'INVALID_CLOSES_AT',
+	'RESOLVES_ON_BEFORE_CLOSE',
 	'QUESTION_REQUIRED',
 ])
 
@@ -635,6 +636,12 @@ export class PredictionMarketsDO extends DurableObject<Env> implements Predictio
 		if (!input.question.trim()) throw new Error('QUESTION_REQUIRED')
 		const closesAt = parseDateOrNull(input.closesAt)
 		if (!closesAt) throw new Error('INVALID_CLOSES_AT')
+		// Expected resolution date: REQUIRED at create (the column is nullable only for backward-compat
+		// with pre-existing markets) and must be at or after betting close — a market can't be scheduled
+		// to resolve before its own bets stop.
+		const resolvesOn = parseDateOrNull(input.resolvesOn)
+		if (!resolvesOn) throw new Error('INVALID_RESOLVES_ON')
+		if (resolvesOn.getTime() < closesAt.getTime()) throw new Error('RESOLVES_ON_BEFORE_CLOSE')
 		if (input.rakeBps != null && (input.rakeBps < 0 || input.rakeBps > 2000)) {
 			throw new Error('INVALID_RAKE')
 		}
@@ -712,6 +719,7 @@ export class PredictionMarketsDO extends DurableObject<Env> implements Predictio
 						status: 'open',
 						createdBy: input.createdBy,
 						closesAt,
+						resolvesOn,
 						rakeBps,
 						minStake,
 						maxStake: input.maxStake ?? null,
@@ -778,6 +786,11 @@ export class PredictionMarketsDO extends DurableObject<Env> implements Predictio
 					if (market.status !== 'open') throw new Error('CLOSES_AT_NOT_EDITABLE')
 					const closesAt = parseDateOrNull(updates.closesAt)
 					if (!closesAt || closesAt.getTime() <= Date.now()) throw new Error('INVALID_CLOSES_AT')
+					// Preserve the create-time invariant: a market can't be scheduled to resolve before its
+					// betting closes. NULL-safe — legacy markets have no resolvesOn to violate.
+					if (market.resolvesOn && closesAt.getTime() > market.resolvesOn.getTime()) {
+						throw new Error('RESOLVES_ON_BEFORE_CLOSE')
+					}
 					if (closesAt.getTime() !== market.closesAt.getTime()) {
 						set.closesAt = closesAt
 						changes.closesAt = closesAt.toISOString()
@@ -2001,6 +2014,7 @@ export class PredictionMarketsDO extends DurableObject<Env> implements Predictio
 			maxStake: market.maxStake,
 			perUserCap: market.perUserCap,
 			twoOfN: market.twoOfN,
+			resolvesOn: market.resolvesOn ? market.resolvesOn.toISOString() : null,
 			resolvedOutcomeId: market.resolvedOutcomeId,
 			resolvedBy: market.resolvedBy,
 			resolvedAt: market.resolvedAt ? market.resolvedAt.toISOString() : null,
