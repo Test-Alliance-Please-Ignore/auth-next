@@ -29,6 +29,12 @@ import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import {
+	Accordion,
+	AccordionContent,
+	AccordionItem,
+	AccordionTrigger,
+} from '@/components/ui/accordion'
+import {
 	Dialog,
 	DialogContent,
 	DialogDescription,
@@ -81,6 +87,16 @@ const ACCESS_ROLE_GROUPS = [
 	},
 	{ label: 'Factory Manager', roles: ['Factory_Manager'] },
 ] as const
+
+const DEFAULT_ATTACHMENT_SETTINGS = {
+	autoInvite: false,
+	autoAssignRoles: false,
+} as const
+
+type AttachmentSettingsState = {
+	autoInvite: boolean
+	autoAssignRoles: boolean
+}
 
 export default function CorporationDetailPage() {
 	const { corporationId } = useParams<{ corporationId: string }>()
@@ -148,14 +164,36 @@ export default function CorporationDetailPage() {
 	const [showAddServerDialog, setShowAddServerDialog] = useState(false)
 	const [selectedServerId, setSelectedServerId] = useState('')
 	const [pendingRoleSelections, setPendingRoleSelections] = useState<Record<string, string>>({})
-	const [attachmentSettings, setAttachmentSettings] = useState({
-		autoInvite: false,
-		autoAssignRoles: false,
+	const [attachmentSettings, setAttachmentSettings] = useState<AttachmentSettingsState>({
+		...DEFAULT_ATTACHMENT_SETTINGS,
 	})
 
 	// Permission UI state
 	const [showAttachPermissionDialog, setShowAttachPermissionDialog] = useState(false)
 	const [selectedPermissionId, setSelectedPermissionId] = useState('')
+	const noneScenarioRoleValue = '__none__'
+
+	useEffect(() => {
+		setAttachmentSettings({ ...DEFAULT_ATTACHMENT_SETTINGS })
+	}, [selectedServerId])
+
+	const updateDiscordAttachment = async (
+		attachmentId: string,
+		data: Parameters<typeof updateAttachment.mutateAsync>[0]['data'],
+		successMessage: string,
+		errorMessage: string
+	) => {
+		try {
+			await updateAttachment.mutateAsync({
+				corporationId: corpId,
+				attachmentId,
+				data,
+			})
+			showSuccess(successMessage)
+		} catch (error) {
+			showError(error instanceof Error ? error.message : errorMessage)
+		}
+	}
 
 	// Handlers for Discord servers
 	const handleAttachServer = async () => {
@@ -172,7 +210,7 @@ export default function CorporationDetailPage() {
 			})
 			setShowAddServerDialog(false)
 			setSelectedServerId('')
-			setAttachmentSettings({ autoInvite: false, autoAssignRoles: false })
+			setAttachmentSettings({ ...DEFAULT_ATTACHMENT_SETTINGS })
 			showSuccess('Discord server attached successfully!')
 		} catch (error) {
 			showError(error instanceof Error ? error.message : 'Failed to attach Discord server')
@@ -198,31 +236,21 @@ export default function CorporationDetailPage() {
 	}
 
 	const handleToggleAutoInvite = async (attachmentId: string, currentValue: boolean) => {
-		try {
-			await updateAttachment.mutateAsync({
-				corporationId: corpId,
-				attachmentId,
-				data: { autoInvite: !currentValue },
-			})
-			showSuccess('Auto-invite setting updated!')
-		} catch (error) {
-			showError(error instanceof Error ? error.message : 'Failed to update auto-invite setting')
-		}
+		await updateDiscordAttachment(
+			attachmentId,
+			{ autoInvite: !currentValue },
+			'Auto-invite setting updated!',
+			'Failed to update auto-invite setting'
+		)
 	}
 
 	const handleToggleAutoAssignRoles = async (attachmentId: string, currentValue: boolean) => {
-		try {
-			await updateAttachment.mutateAsync({
-				corporationId: corpId,
-				attachmentId,
-				data: { autoAssignRoles: !currentValue },
-			})
-			showSuccess('Auto-assign roles setting updated!')
-		} catch (error) {
-			showError(
-				error instanceof Error ? error.message : 'Failed to update auto-assign roles setting'
-			)
-		}
+		await updateDiscordAttachment(
+			attachmentId,
+			{ autoAssignRoles: !currentValue },
+			'Auto-assign roles setting updated!',
+			'Failed to update auto-assign roles setting'
+		)
 	}
 
 	const handleAssignRole = async (attachmentId: string, discordRoleId: string) => {
@@ -236,6 +264,36 @@ export default function CorporationDetailPage() {
 		} catch (error) {
 			showError(error instanceof Error ? error.message : 'Failed to assign role')
 		}
+	}
+
+	const handleScenarioRoleChange = async (
+		attachmentId: string,
+		field: 'corpMemberRoleId' | 'allianceGuestRoleId' | 'nonAllianceGuestRoleId',
+		nextValue: string
+	) => {
+		await updateDiscordAttachment(
+			attachmentId,
+			{
+				[field]: nextValue === noneScenarioRoleValue ? null : nextValue,
+			} as Parameters<typeof updateAttachment.mutateAsync>[0]['data'],
+			'Scenario role updated!',
+			'Failed to update scenario role'
+		)
+	}
+
+	const handleScenarioAutoApplyToggle = async (
+		attachmentId: string,
+		field: 'corpMemberAutoApply' | 'allianceGuestAutoApply' | 'nonAllianceGuestAutoApply',
+		currentValue: boolean
+	) => {
+		await updateDiscordAttachment(
+			attachmentId,
+			{
+				[field]: !currentValue,
+			} as Parameters<typeof updateAttachment.mutateAsync>[0]['data'],
+			'Scenario auto-apply updated!',
+			'Failed to update scenario auto-apply'
+		)
 	}
 
 	const handleUnassignRole = async (attachmentId: string, roleAssignmentId: string) => {
@@ -385,6 +443,62 @@ export default function CorporationDetailPage() {
 	const formatDate = (date: string | Date | null) => {
 		if (!date) return 'Never'
 		return formatDistanceToNow(new Date(date), { addSuffix: true })
+	}
+
+	const scenarioRoleConfigs = [
+		{
+			label: 'Corp Member',
+			description: 'Members of this corporation',
+			roleIdKey: 'corpMemberRoleId' as const,
+			autoApplyKey: 'corpMemberAutoApply' as const,
+		},
+		{
+			label: 'Alliance Guest',
+			description: 'Guest access for users affiliated with member corporations',
+			roleIdKey: 'allianceGuestRoleId' as const,
+			autoApplyKey: 'allianceGuestAutoApply' as const,
+		},
+		{
+			label: 'Non-Alliance Guest',
+			description: 'Guest access for linked users outside the alliance',
+			roleIdKey: 'nonAllianceGuestRoleId' as const,
+			autoApplyKey: 'nonAllianceGuestAutoApply' as const,
+		},
+	] as const
+
+	const getAttachmentUsedRoleIds = (attachment: (typeof corporationDiscordServers)[number]) => {
+		const roleIds = new Set<string>()
+		for (const roleAssignment of attachment.roles ?? []) {
+			roleIds.add(roleAssignment.discordRole.id)
+		}
+		if (attachment.corpMemberRoleId) roleIds.add(attachment.corpMemberRoleId)
+		if (attachment.allianceGuestRoleId) roleIds.add(attachment.allianceGuestRoleId)
+		if (attachment.nonAllianceGuestRoleId) roleIds.add(attachment.nonAllianceGuestRoleId)
+		return roleIds
+	}
+
+	const buildRoleOptions = (
+		attachment: (typeof corporationDiscordServers)[number],
+		currentRoleId?: string | null
+	) => {
+		const usedRoleIds = getAttachmentUsedRoleIds(attachment)
+		const options = [
+			{
+				value: noneScenarioRoleValue,
+				label: 'None',
+			},
+		]
+
+		for (const role of attachment.discordServer?.roles ?? []) {
+			if (role.id === currentRoleId || !usedRoleIds.has(role.id)) {
+				options.push({
+					value: role.id,
+					label: role.roleName,
+				})
+			}
+		}
+
+		return options
 	}
 
 	if (isLoading) {
@@ -803,144 +917,231 @@ export default function CorporationDetailPage() {
 									)}
 								</div>
 							) : (
-								<div className="space-y-4">
+								<Accordion
+									type="multiple"
+									defaultValue={[]}
+									className="space-y-4"
+								>
 									{corporationDiscordServers.map((attachment) => (
-										<div key={attachment.id} className="rounded-lg border p-4 space-y-3">
-											<div className="flex items-start justify-between">
+										<AccordionItem
+											key={attachment.id}
+											value={attachment.id}
+											className="overflow-hidden rounded-lg border border-border/90 bg-card shadow-md ring-1 ring-border/50"
+										>
+											<AccordionTrigger className="px-4 py-4 text-left hover:bg-muted/40">
 												<div>
 													<h4 className="font-medium">{attachment.discordServer?.guildName}</h4>
 													<p className="text-xs text-muted-foreground">
 														ID: {attachment.discordServer?.guildId}
 													</p>
 													{attachment.discordServer?.description && (
-														<p className="text-sm text-muted-foreground mt-1">
+														<p className="mt-1 text-sm text-muted-foreground">
 															{attachment.discordServer.description}
 														</p>
 													)}
 												</div>
-												<Button
-													variant="ghost"
-													size="sm"
-													onClick={() => handleDetachServer(attachment.id)}
-												>
-													<Trash2 className="h-4 w-4 text-destructive" />
-												</Button>
-											</div>
+											</AccordionTrigger>
+											<AccordionContent className="px-4">
+												<div className="space-y-4">
+													<div className="flex justify-end">
+														<Button
+															variant="ghost"
+															size="sm"
+															onClick={() => handleDetachServer(attachment.id)}
+														>
+															<Trash2 className="h-4 w-4 text-destructive" />
+														</Button>
+													</div>
 
-											<div className="flex gap-4">
-												<div className="flex items-center space-x-2">
-													<Switch
-														id={`auto-invite-${attachment.id}`}
-														checked={attachment.autoInvite}
-														onCheckedChange={() =>
-															handleToggleAutoInvite(attachment.id, attachment.autoInvite)
-														}
-													/>
-													<Label
-														htmlFor={`auto-invite-${attachment.id}`}
-														className="cursor-pointer"
-													>
-														Auto-Invite
-													</Label>
-												</div>
-
-												<div className="flex items-center space-x-2">
-													<Switch
-														id={`auto-assign-${attachment.id}`}
-														checked={attachment.autoAssignRoles}
-														onCheckedChange={() =>
-															handleToggleAutoAssignRoles(attachment.id, attachment.autoAssignRoles)
-														}
-													/>
-													<Label
-														htmlFor={`auto-assign-${attachment.id}`}
-														className="cursor-pointer"
-													>
-														Auto-Assign Roles
-													</Label>
-												</div>
-											</div>
-
-											{/* Role Management */}
-											{attachment.discordServer?.roles &&
-												attachment.discordServer.roles.length > 0 && (
-													<div className="space-y-2">
-														<p className="text-sm font-medium">Assigned Roles</p>
-														<div className="flex flex-wrap gap-2">
-															{attachment.roles?.map((roleAssignment) => (
-																<div
-																	key={roleAssignment.id}
-																	className="inline-flex items-center gap-1 px-2 py-1 rounded-md bg-primary/10 text-sm"
-																>
-																	<span>{roleAssignment.discordRole.roleName}</span>
-																	<button
-																		onClick={() =>
-																			handleUnassignRole(attachment.id, roleAssignment.id)
-																		}
-																		className="ml-1 hover:text-destructive"
-																	>
-																		<X className="h-3 w-3" />
-																	</button>
-																</div>
-															))}
+													<div className="flex gap-4">
+														<div className="flex items-center space-x-2">
+															<Switch
+																id={`auto-invite-${attachment.id}`}
+																checked={attachment.autoInvite}
+																onCheckedChange={() =>
+																	handleToggleAutoInvite(
+																		attachment.id,
+																		attachment.autoInvite
+																	)
+																}
+															/>
+															<Label
+																htmlFor={`auto-invite-${attachment.id}`}
+																className="cursor-pointer"
+															>
+																Auto-Invite
+															</Label>
 														</div>
 
-														{/* Role Selection */}
-														{attachment.discordServer.roles.filter(
-															(role) =>
-																!attachment.roles?.some(
-																	(ra) => ra.discordRole.roleId === role.roleId
-																)
-														).length > 0 && (
-															<div className="flex gap-2 items-center">
-																<Select
-																	value=""
-																	onValueChange={(nextValue) => {
-																		if (!nextValue) {
-																			return
-																		}
-																		void handleAssignRole(attachment.id, nextValue).finally(() => {
-																			setPendingRoleSelections((prev) => {
-																				const { [attachment.id]: _, ...rest } = prev
-																				return rest
-																			})
-																		})
-																	}}
-																	query={pendingRoleSelections[attachment.id] ?? ''}
-																	onQueryChange={(value) =>
-																		setPendingRoleSelections((prev) => ({
-																			...prev,
-																			[attachment.id]: value,
-																		}))
-																	}
-																	searchable
-																	options={attachment.discordServer.roles
-																		.filter(
-																			(role) =>
-																				!attachment.roles?.some(
-																					(ra) => ra.discordRole.roleId === role.roleId
-																				)
-																		)
-																		.map((role) => ({ value: role.id,
-																			label: role.roleName,
-																		}))}
-																	placeholder="Add role..."
-																	emptyText="No matching roles found"
-																	className="w-full"
-																	contentClassName="w-[min(90vw,36rem)]"
-																	inputClassName="h-9"
-																/>
-															</div>
-														)}
+														<div className="flex items-center space-x-2">
+															<Switch
+																id={`auto-assign-${attachment.id}`}
+																checked={attachment.autoAssignRoles}
+																onCheckedChange={() =>
+																	handleToggleAutoAssignRoles(
+																		attachment.id,
+																		attachment.autoAssignRoles
+																	)
+																}
+															/>
+															<Label
+																htmlFor={`auto-assign-${attachment.id}`}
+																className="cursor-pointer"
+															>
+																Auto-Assign Roles
+															</Label>
+														</div>
 													</div>
-												)}
-										</div>
+
+													<div className="space-y-4">
+														<div className="space-y-2 rounded-md border border-dashed p-3">
+															<p className="text-sm font-medium">All Members</p>
+															<div className="flex flex-wrap gap-2">
+																{attachment.roles?.map((roleAssignment) => (
+																	<div
+																		key={roleAssignment.id}
+																		className="inline-flex items-center gap-1 rounded-md bg-primary/10 px-2 py-1 text-sm"
+																	>
+																		<span>{roleAssignment.discordRole.roleName}</span>
+																		<button
+																			onClick={() =>
+																				handleUnassignRole(attachment.id, roleAssignment.id)
+																			}
+																			className="ml-1 hover:text-destructive"
+																		>
+																			<X className="h-3 w-3" />
+																		</button>
+																	</div>
+																))}
+															</div>
+															{(attachment.discordServer?.roles ?? []).filter(
+																(role) =>
+																	!getAttachmentUsedRoleIds(attachment).has(role.roleId)
+															).length > 0 && (
+																<div className="flex items-center gap-2">
+																	<Select
+																		value=""
+																		onValueChange={(nextValue) => {
+																			if (!nextValue) {
+																				return
+																			}
+																			void handleAssignRole(attachment.id, nextValue).finally(() => {
+																				setPendingRoleSelections((prev) => {
+																					const { [attachment.id]: _, ...rest } = prev
+																					return rest
+																				})
+																			})
+																		}}
+																		query={pendingRoleSelections[attachment.id] ?? ''}
+																		onQueryChange={(value) =>
+																			setPendingRoleSelections((prev) => ({
+																				...prev,
+																				[attachment.id]: value,
+																			}))
+																		}
+																		searchable
+																		options={buildRoleOptions(attachment).filter(
+																			(option) => option.value !== noneScenarioRoleValue
+																		)}
+																		placeholder="Add role..."
+																		emptyText="No matching roles found"
+																		className="w-full"
+																		contentClassName="w-[min(90vw,36rem)]"
+																		inputClassName="h-9"
+																	/>
+																</div>
+															)}
+														</div>
+
+														{scenarioRoleConfigs.map((config) => {
+															const currentRoleId = attachment[config.roleIdKey]
+															const currentRoleLabel =
+																attachment.discordServer?.roles?.find(
+																	(role) => role.id === currentRoleId
+																)?.roleName ?? 'None'
+															const currentValue = currentRoleId ?? noneScenarioRoleValue
+
+															return (
+																<div
+																	key={`${attachment.id}-${config.roleIdKey}`}
+																	className="space-y-2 rounded-md border border-dashed p-3"
+																>
+																	<div className="flex items-start justify-between gap-3">
+																		<div>
+																			<p className="text-sm font-medium">
+																				{config.label}
+																			</p>
+																			<p className="text-xs text-muted-foreground">
+																				{config.description}
+																			</p>
+																		</div>
+																		<div className="flex items-center space-x-2">
+																			<Switch
+																				id={`${config.autoApplyKey}-${attachment.id}`}
+																				checked={attachment[config.autoApplyKey]}
+																				onCheckedChange={() =>
+																					handleScenarioAutoApplyToggle(
+																						attachment.id,
+																						config.autoApplyKey,
+																						attachment[config.autoApplyKey]
+																					)
+																				}
+																			/>
+																			<Label
+																				htmlFor={`${config.autoApplyKey}-${attachment.id}`}
+																				className="cursor-pointer"
+																			>
+																				Auto-apply
+																			</Label>
+																		</div>
+																	</div>
+																	<div className="space-y-1">
+																		<Select
+																			value={currentValue}
+																			onValueChange={(nextValue) =>
+																				void handleScenarioRoleChange(
+																					attachment.id,
+																					config.roleIdKey,
+																					nextValue
+																				)
+																			}
+																			searchable
+																			options={buildRoleOptions(
+																				attachment,
+																				currentRoleId
+																			)}
+																			placeholder="Select a role..."
+																			emptyText="No roles available"
+																			className="w-full"
+																			contentClassName="w-[min(90vw,36rem)]"
+																			inputClassName="h-9"
+																		/>
+																		<p className="text-xs text-muted-foreground">
+																			Currently {currentRoleLabel}
+																		</p>
+																	</div>
+																</div>
+															)
+														})}
+													</div>
+												</div>
+											</AccordionContent>
+										</AccordionItem>
 									))}
-								</div>
+								</Accordion>
 							)}
 
 							{/* Add Server Dialog */}
-							<Dialog open={showAddServerDialog} onOpenChange={setShowAddServerDialog}>
+							<Dialog
+								open={showAddServerDialog}
+								onOpenChange={(open) => {
+									setShowAddServerDialog(open)
+									if (!open) {
+										setSelectedServerId('')
+										setAttachmentSettings({ ...DEFAULT_ATTACHMENT_SETTINGS })
+									}
+								}}
+							>
 								<DialogContent>
 									<DialogHeader>
 										<DialogTitle>Attach Discord Server</DialogTitle>
@@ -1000,6 +1201,10 @@ export default function CorporationDetailPage() {
 													Auto-Assign Roles
 												</Label>
 											</div>
+											<p className="text-xs text-muted-foreground">
+												When enabled, the roles assigned on the main page for this attachment
+												are applied to all matching members.
+											</p>
 										</div>
 									</div>
 

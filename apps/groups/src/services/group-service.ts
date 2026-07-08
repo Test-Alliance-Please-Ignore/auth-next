@@ -10,6 +10,7 @@ import {
 	canViewGroup,
 } from './permissions'
 import { getGroupMemberCount, isUserGroupAdmin, isUserMember } from './query-helpers'
+import { GROUPS_WITH_DISCORD_CACHE_KEY } from './groups-do-cache'
 
 import type {
 	CreateGroupRequest,
@@ -45,13 +46,12 @@ export class GroupService {
 	constructor(private ctx: ServiceContext) {}
 
 	/**
-	 * Invalidate the groups with Discord auto-invite cache in DO storage
+	 * Invalidate the groups with Discord attachment cache in DO storage
 	 * Note: This duplicates logic from the DO, but we can't easily access the DO's private method.
 	 * We should consider moving this to a shared cache service eventually.
 	 */
 	private async invalidateGroupsWithDiscordCache(): Promise<void> {
-		const cacheKey = 'groups-with-discord-auto-invite'
-		await this.ctx.state.storage.delete(cacheKey)
+		await this.ctx.state.storage.delete(GROUPS_WITH_DISCORD_CACHE_KEY)
 	}
 
 	/**

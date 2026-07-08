@@ -28,6 +28,18 @@ import type { App } from '../context'
 const groups = new Hono<App>()
 groups.use('*', requireAuth({ any: [ROLE_CORE_ALLIANCE_MEMBER] }))
 
+function parseDiscordRoleMembershipType(value: unknown): 'member' | 'owner_admin' | null {
+	if (value === undefined) {
+		return 'member'
+	}
+
+	if (value === 'member' || value === 'owner_admin') {
+		return value
+	}
+
+	return null
+}
+
 const groupsListQuerySchema = z.object({
 	limit: z.coerce.number().int().min(1).max(100).optional().default(100),
 	offset: z.coerce.number().int().min(0).optional().default(0),
@@ -1837,6 +1849,7 @@ groups.get(
  *   discordServerId: string (UUID from registry)
  *   autoInvite?: boolean
  *   autoAssignRoles?: boolean
+ *   membershipType?: 'member' | 'owner_admin'
  * }
  */
 groups.post(
@@ -1948,7 +1961,19 @@ groups.post(
 		}
 
 		try {
-			const result = await groupsDO.assignRoleToDiscordServer(attachmentId, body.discordRoleId)
+			const membershipType = parseDiscordRoleMembershipType(body.membershipType)
+			if (!membershipType) {
+				return c.json(
+					{ error: "membershipType must be 'member' or 'owner_admin'" },
+					400
+				)
+			}
+
+			const result = await groupsDO.assignRoleToDiscordServer(
+				attachmentId,
+				body.discordRoleId,
+				membershipType
+			)
 			return c.json(result, 201)
 		} catch (error) {
 			if (error instanceof Error) {

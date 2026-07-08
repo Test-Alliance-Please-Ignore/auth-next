@@ -1,0 +1,3 @@
+CREATE TYPE "public"."group_discord_server_membership_type" AS ENUM('member', 'owner_admin');--> statement-breakpoint
+ALTER TABLE "group_discord_server_roles" ADD COLUMN "membership_type" "group_discord_server_membership_type" DEFAULT 'member' NOT NULL;--> statement-breakpoint
+CREATE INDEX "group_discord_server_roles_membership_type_idx" ON "group_discord_server_roles" USING btree ("membership_type");

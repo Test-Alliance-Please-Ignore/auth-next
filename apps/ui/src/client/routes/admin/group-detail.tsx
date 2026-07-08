@@ -37,6 +37,12 @@ import { TransferOwnershipDialog } from '@/components/transfer-ownership-dialog'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import {
+	Accordion,
+	AccordionContent,
+	AccordionItem,
+	AccordionTrigger,
+} from '@/components/ui/accordion'
+import {
 	Dialog,
 	DialogContent,
 	DialogDescription,
@@ -78,6 +84,10 @@ import {
 } from '@/hooks/useInviteCodes'
 import { usePageTitle } from '@/hooks/usePageTitle'
 import { apiClient } from '@/lib/api'
+import {
+	groupDiscordRoleAssignmentSections,
+	groupDiscordRoleAssignmentSummary,
+} from './group-discord-role-sections'
 
 import type { GroupDiscordServer, GroupPermissionWithDetails } from '@/lib/api'
 
@@ -352,14 +362,18 @@ export default function GroupDetailPage() {
 		}
 	}
 
-	const handleAssignRole = async (attachmentId: string, discordRoleId: string) => {
+	const handleAssignRole = async (
+		attachmentId: string,
+		discordRoleId: string,
+		membershipType: 'member' | 'owner_admin'
+	) => {
 		if (!groupId) return
 
 		try {
 			await assignRole.mutateAsync({
 				groupId,
 				attachmentId,
-				data: { discordRoleId },
+				data: { discordRoleId, membershipType },
 			})
 			setMessage({ type: 'success', text: 'Role assigned successfully!' })
 			setTimeout(() => setMessage(null), 3000)
@@ -586,7 +600,6 @@ export default function GroupDetailPage() {
 	// Calculate stats
 	const memberCount = members?.length || 0
 	const adminCount = adminUserIds.size
-
 	return (
 		<div className="space-y-6">
 			{/* Back Button */}
@@ -876,7 +889,8 @@ export default function GroupDetailPage() {
 								<CardTitle>Discord Servers</CardTitle>
 							</div>
 							<CardDescription>
-								Attach Discord servers from the registry to enable auto-invite for group members.
+								Attach Discord servers from the registry to enable auto-invite and split role
+								assignment for members versus owners/admins.
 							</CardDescription>
 						</div>
 						<Button
@@ -906,146 +920,210 @@ export default function GroupDetailPage() {
 							)}
 						</div>
 					) : (
-						<div className="space-y-4">
+						<Accordion
+							type="multiple"
+							defaultValue={[]}
+							className="space-y-4"
+						>
 							{groupDiscordServers.map((attachment) => (
-								<div key={attachment.id} className="rounded-lg border p-4 space-y-3">
-									<div className="flex items-start justify-between">
+								<AccordionItem
+									key={attachment.id}
+									value={attachment.id}
+									className="overflow-hidden rounded-lg border border-border/90 bg-card shadow-md ring-1 ring-border/50"
+								>
+									<AccordionTrigger className="px-4 py-4 text-left hover:bg-muted/40">
 										<div>
 											<h4 className="font-medium">{attachment.discordServer?.guildName}</h4>
 											<p className="text-xs text-muted-foreground">
 												ID: {attachment.discordServer?.guildId}
 											</p>
 											{attachment.discordServer?.description && (
-												<p className="text-sm text-muted-foreground mt-1">
+												<p className="mt-1 text-sm text-muted-foreground">
 													{attachment.discordServer.description}
 												</p>
 											)}
 										</div>
-										<div className="flex gap-1">
-											<Button
-												variant="ghost"
-												size="sm"
-												onClick={() => handleRefreshServerRoles(attachment.id)}
-												disabled={
-													refreshServerRoles.isPending || (attachment.roles?.length ?? 0) === 0
-												}
-												title={
-													(attachment.roles?.length ?? 0) === 0
-														? 'No roles configured'
-														: 'Refresh role assignments for all group members'
-												}
-											>
-												<RefreshCw
-													className={`h-4 w-4 ${refreshServerRoles.isPending ? 'animate-spin' : ''}`}
-												/>
-											</Button>
-											<Button
-												variant="ghost"
-												size="sm"
-												onClick={() => handleDetachServer(attachment.id)}
-											>
-												<Trash2 className="h-4 w-4 text-destructive" />
-											</Button>
-										</div>
-									</div>
-
-									<div className="flex gap-4">
-										<div className="flex items-center space-x-2">
-											<Switch
-												id={`auto-invite-${attachment.id}`}
-												checked={attachment.autoInvite}
-												onCheckedChange={() =>
-													handleToggleAutoInvite(attachment.id, attachment.autoInvite)
-												}
-											/>
-											<Label htmlFor={`auto-invite-${attachment.id}`} className="cursor-pointer">
-												Auto-Invite
-											</Label>
-										</div>
-
-										<div className="flex items-center space-x-2">
-											<Switch
-												id={`auto-assign-${attachment.id}`}
-												checked={attachment.autoAssignRoles}
-												onCheckedChange={() =>
-													handleToggleAutoAssignRoles(attachment.id, attachment.autoAssignRoles)
-												}
-											/>
-											<Label htmlFor={`auto-assign-${attachment.id}`} className="cursor-pointer">
-												Auto-Assign Roles
-											</Label>
-										</div>
-									</div>
-
-									{/* Role Management */}
-									{attachment.discordServer?.roles && attachment.discordServer.roles.length > 0 && (
-										<div className="space-y-2">
-											<p className="text-sm font-medium">Assigned Roles</p>
-											<div className="flex flex-wrap gap-2">
-												{attachment.roles?.map((roleAssignment) => (
-													<div
-														key={roleAssignment.id}
-														className="inline-flex items-center gap-1 px-2 py-1 rounded-md bg-primary/10 text-sm"
-													>
-														<span>{roleAssignment.discordRole.roleName}</span>
-														<button
-															onClick={() => handleUnassignRole(attachment.id, roleAssignment.id)}
-															className="ml-1 hover:text-destructive"
-														>
-															<X className="h-3 w-3" />
-														</button>
-													</div>
-												))}
+									</AccordionTrigger>
+									<AccordionContent className="px-4">
+										<div className="space-y-4">
+											<div className="flex justify-end gap-1">
+												<Button
+													variant="ghost"
+													size="sm"
+													onClick={() => handleRefreshServerRoles(attachment.id)}
+													disabled={
+														refreshServerRoles.isPending || (attachment.roles?.length ?? 0) === 0
+													}
+													title={
+														(attachment.roles?.length ?? 0) === 0
+															? 'No roles configured'
+															: 'Refresh role assignments for all group members'
+													}
+												>
+													<RefreshCw
+														className={`h-4 w-4 ${refreshServerRoles.isPending ? 'animate-spin' : ''}`}
+													/>
+												</Button>
+												<Button
+													variant="ghost"
+													size="sm"
+													onClick={() => handleDetachServer(attachment.id)}
+												>
+													<Trash2 className="h-4 w-4 text-destructive" />
+												</Button>
 											</div>
 
-											{/* Role Selection */}
-											{attachment.discordServer.roles.filter(
-												(role) =>
-													!attachment.roles?.some((ra) => ra.discordRole.roleId === role.roleId)
-											).length > 0 && (
-												<div className="flex gap-2 items-center">
-													<Select
-														value=""
-														onValueChange={(nextValue) => {
-															if (!nextValue) {
-																return
-															}
-															void handleAssignRole(attachment.id, nextValue).finally(() => {
-																setPendingRoleSelections((prev) => {
-																	const { [attachment.id]: _, ...rest } = prev
-																	return rest
-																})
-															})
-														}}
-														query={pendingRoleSelections[attachment.id] ?? ''}
-														onQueryChange={(value) =>
-															setPendingRoleSelections((prev) => ({
-																...prev,
-																[attachment.id]: value,
-															}))
+											<div className="flex gap-4">
+												<div className="flex items-center space-x-2">
+													<Switch
+														id={`auto-invite-${attachment.id}`}
+														checked={attachment.autoInvite}
+														onCheckedChange={() =>
+															handleToggleAutoInvite(attachment.id, attachment.autoInvite)
 														}
-														searchable
-														options={attachment.discordServer.roles
-															.filter(
+													/>
+													<Label htmlFor={`auto-invite-${attachment.id}`} className="cursor-pointer">
+														Auto-Invite
+													</Label>
+												</div>
+
+												<div className="flex items-center space-x-2">
+													<Switch
+														id={`auto-assign-${attachment.id}`}
+														checked={attachment.autoAssignRoles}
+														onCheckedChange={() =>
+															handleToggleAutoAssignRoles(attachment.id, attachment.autoAssignRoles)
+														}
+													/>
+													<Label htmlFor={`auto-assign-${attachment.id}`} className="cursor-pointer">
+														Auto-Assign Roles
+													</Label>
+												</div>
+											</div>
+
+											{/* Role Management */}
+											{(() => {
+												const discordServer = attachment.discordServer
+												if (!discordServer?.roles || discordServer.roles.length === 0) {
+													return null
+												}
+
+												return (
+													<div className="space-y-4">
+														<p className="text-xs text-muted-foreground">
+															{groupDiscordRoleAssignmentSummary}
+														</p>
+														{groupDiscordRoleAssignmentSections.map((section) => {
+															const sectionAssignments = (attachment.roles ?? []).filter(
+																(roleAssignment) => roleAssignment.membershipType === section.membershipType
+															)
+															const selectionKey = `${attachment.id}:${section.membershipType}`
+															const availableRoles = discordServer.roles.filter(
 																(role) =>
 																	!attachment.roles?.some(
-																		(ra) => ra.discordRole.roleId === role.roleId
+																		(roleAssignment) => roleAssignment.discordRole.roleId === role.roleId
 																	)
 															)
-															.map((role) => ({ value: role.id, label: role.roleName }))}
-														placeholder="Add role..."
-														emptyText="No matching roles found"
-														className="w-full"
-														contentClassName="w-[min(90vw,36rem)]"
-														inputClassName="h-9"
-													/>
-												</div>
-											)}
+
+															return (
+																<div
+																	key={`${attachment.id}-${section.membershipType}`}
+																	className="space-y-3 rounded-md border border-dashed border-border/70 p-3"
+																>
+																	<div className="flex items-start justify-between gap-3">
+																		<div>
+																			<p className="text-sm font-medium">{section.label}</p>
+																			<p className="text-xs text-muted-foreground">
+																				{section.description}
+																			</p>
+																		</div>
+																		<p className="text-xs text-muted-foreground">
+																			{sectionAssignments.length} assigned
+																		</p>
+																	</div>
+
+																	<div className="flex flex-wrap gap-2">
+																		{sectionAssignments.length === 0 ? (
+																			<p className="text-sm text-muted-foreground">
+																				No roles assigned.
+																			</p>
+																		) : (
+																			sectionAssignments.map((roleAssignment) => (
+																				<div
+																					key={roleAssignment.id}
+																					className="inline-flex items-center gap-1 rounded-md bg-primary/10 px-2 py-1 text-sm"
+																				>
+																					<span>{roleAssignment.discordRole.roleName}</span>
+																					<button
+																						onClick={() =>
+																							handleUnassignRole(
+																								attachment.id,
+																								roleAssignment.id
+																							)
+																						}
+																						className="ml-1 hover:text-destructive"
+																					>
+																						<X className="h-3 w-3" />
+																					</button>
+																				</div>
+																			))
+																		)}
+																	</div>
+
+																	{availableRoles.length > 0 ? (
+																		<div className="flex items-center gap-2">
+																			<Select
+																				value=""
+																				onValueChange={(nextValue) => {
+																					if (!nextValue) {
+																						return
+																					}
+																					void handleAssignRole(
+																						attachment.id,
+																						nextValue,
+																						section.membershipType
+																					).finally(() => {
+																						setPendingRoleSelections((prev) => {
+																							const { [selectionKey]: _, ...rest } = prev
+																							return rest
+																						})
+																					})
+																				}}
+																				query={pendingRoleSelections[selectionKey] ?? ''}
+																				onQueryChange={(value) =>
+																					setPendingRoleSelections((prev) => ({
+																						...prev,
+																						[selectionKey]: value,
+																					}))
+																				}
+																				searchable
+																				options={availableRoles.map((role) => ({
+																					value: role.id,
+																					label: role.roleName,
+																				}))}
+																				placeholder="Add role..."
+																				emptyText="No matching roles found"
+																				className="w-full"
+																				contentClassName="w-[min(90vw,36rem)]"
+																				inputClassName="h-9"
+																			/>
+																		</div>
+																	) : (
+																		<p className="text-xs text-muted-foreground">
+																			No available roles left to assign.
+																		</p>
+																	)}
+															</div>
+																)
+															})}
+													</div>
+												)
+											})()}
 										</div>
-									)}
-								</div>
+									</AccordionContent>
+								</AccordionItem>
 							))}
-						</div>
+						</Accordion>
 					)}
 
 					{/* Add Server Dialog */}

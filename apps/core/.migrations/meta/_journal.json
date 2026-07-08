@@ -288,6 +288,13 @@
       "when": 1783438177210,
       "tag": "0040_common_tinkerer",
       "breakpoints": true
+    },
+    {
+      "idx": 41,
+      "version": "7",
+      "when": 1783503885537,
+      "tag": "0041_motionless_emma_frost",
+      "breakpoints": true
     }
   ]
 }

@@ -1,6 +1,6 @@
 import { Hono } from 'hono'
 
-import { and, desc, eq } from '@repo/db-utils'
+import { and, desc, eq, inArray } from '@repo/db-utils'
 import { getStub } from '@repo/do-utils'
 import { logger } from '@repo/hono-helpers'
 
@@ -17,6 +17,32 @@ import type { Core } from '@repo/core'
 import type { App } from '../../context'
 
 const app = new Hono<App>()
+
+async function validateScenarioRoleSelections(
+	db: any,
+	discordServerId: string,
+	roleIds: Array<string | null | undefined>
+): Promise<void> {
+	const uniqueRoleIds = Array.from(new Set(roleIds.filter((roleId): roleId is string => !!roleId)))
+	if (uniqueRoleIds.length === 0) {
+		return
+	}
+
+	const roles = await db.query.discordRoles.findMany({
+		where: inArray(discordRoles.id, uniqueRoleIds),
+		columns: { id: true, discordServerId: true },
+	})
+
+	for (const roleId of uniqueRoleIds) {
+		const role = roles.find((candidate: { id: string; discordServerId: string }) => candidate.id === roleId)
+		if (!role) {
+			throw new Error(`Role ${roleId} not found`)
+		}
+		if (role.discordServerId !== discordServerId) {
+			throw new Error(`Role ${roleId} does not belong to this Discord server`)
+		}
+	}
+}
 
 /**
  * GET /corporations/:corporationId/discord-servers
@@ -68,8 +94,15 @@ app.post('/:corporationId/discord-servers', requireAuth(), requireAdmin(), async
 	}
 
 	try {
-		const body = await c.req.json()
-		const { discordServerId, autoInvite = false, autoAssignRoles = false } = body
+		const body = (await c.req.json()) as Record<string, unknown>
+		const discordServerId = body.discordServerId as string | undefined
+		const autoInvite = body.autoInvite as boolean | undefined
+		const autoAssignRoles = body.autoAssignRoles as boolean | undefined
+		const scenarioRoleIds = [
+			body.corpMemberRoleId as string | null | undefined,
+			body.allianceGuestRoleId as string | null | undefined,
+			body.nonAllianceGuestRoleId as string | null | undefined,
+		]
 
 		if (!discordServerId) {
 			return c.json({ error: 'discordServerId is required' }, 400)
@@ -94,13 +127,22 @@ app.post('/:corporationId/discord-servers', requireAuth(), requireAdmin(), async
 			return c.json({ error: 'Discord server already attached to this corporation' }, 409)
 		}
 
+		await validateScenarioRoleSelections(db, server.id, scenarioRoleIds)
+
 		const [attachment] = await db
 			.insert(corporationDiscordServers)
 			.values({
 				corporationId,
 				discordServerId,
-				autoInvite,
-				autoAssignRoles,
+				autoInvite: autoInvite ?? false,
+				autoAssignRoles: autoAssignRoles ?? false,
+				corpMemberRoleId: body.corpMemberRoleId as string | null | undefined,
+				corpMemberAutoApply: (body.corpMemberAutoApply as boolean | undefined) ?? false,
+				allianceGuestRoleId: body.allianceGuestRoleId as string | null | undefined,
+				allianceGuestAutoApply: (body.allianceGuestAutoApply as boolean | undefined) ?? false,
+				nonAllianceGuestRoleId: body.nonAllianceGuestRoleId as string | null | undefined,
+				nonAllianceGuestAutoApply:
+					(body.nonAllianceGuestAutoApply as boolean | undefined) ?? false,
 			})
 			.returning()
 
@@ -109,6 +151,10 @@ app.post('/:corporationId/discord-servers', requireAuth(), requireAdmin(), async
 		return c.json(attachment, 201)
 	} catch (error) {
 		logger.error('Error attaching Discord server to corporation:', error)
+		const message = error instanceof Error ? error.message : ''
+		if (message.startsWith('Role ')) {
+			return c.json({ error: message }, 400)
+		}
 		return c.json({ error: 'Failed to attach Discord server' }, 500)
 	}
 })
@@ -177,22 +223,57 @@ app.put(
 		}
 
 		try {
-			const body = await c.req.json()
-			const { autoInvite, autoAssignRoles } = body
+			const body = (await c.req.json()) as Record<string, unknown>
+			const autoInvite = body.autoInvite as boolean | undefined
+			const autoAssignRoles = body.autoAssignRoles as boolean | undefined
+			const scenarioRoleIds = [
+				body.corpMemberRoleId as string | null | undefined,
+				body.allianceGuestRoleId as string | null | undefined,
+				body.nonAllianceGuestRoleId as string | null | undefined,
+			]
 
 			const existing = await db.query.corporationDiscordServers.findFirst({
 				where: eq(corporationDiscordServers.id, attachmentId),
+				with: {
+					discordServer: {
+						columns: { id: true },
+					},
+				},
 			})
 
 			if (!existing) {
 				return c.json({ error: 'Discord server attachment not found' }, 404)
 			}
 
+			await validateScenarioRoleSelections(
+				db,
+				existing.discordServer.id,
+				scenarioRoleIds
+			)
+
 			const [updated] = await db
 				.update(corporationDiscordServers)
 				.set({
 					...(autoInvite !== undefined && { autoInvite }),
 					...(autoAssignRoles !== undefined && { autoAssignRoles }),
+					...(body.corpMemberRoleId !== undefined && {
+						corpMemberRoleId: body.corpMemberRoleId as string | null,
+					}),
+					...(body.corpMemberAutoApply !== undefined && {
+						corpMemberAutoApply: body.corpMemberAutoApply as boolean,
+					}),
+					...(body.allianceGuestRoleId !== undefined && {
+						allianceGuestRoleId: body.allianceGuestRoleId as string | null,
+					}),
+					...(body.allianceGuestAutoApply !== undefined && {
+						allianceGuestAutoApply: body.allianceGuestAutoApply as boolean,
+					}),
+					...(body.nonAllianceGuestRoleId !== undefined && {
+						nonAllianceGuestRoleId: body.nonAllianceGuestRoleId as string | null,
+					}),
+					...(body.nonAllianceGuestAutoApply !== undefined && {
+						nonAllianceGuestAutoApply: body.nonAllianceGuestAutoApply as boolean,
+					}),
 					updatedAt: new Date(),
 				})
 				.where(eq(corporationDiscordServers.id, attachmentId))
@@ -201,6 +282,10 @@ app.put(
 			return c.json(updated)
 		} catch (error) {
 			logger.error('Error updating Discord server attachment:', error)
+			const message = error instanceof Error ? error.message : ''
+			if (message.startsWith('Role ')) {
+				return c.json({ error: message }, 400)
+			}
 			return c.json({ error: 'Failed to update Discord server attachment' }, 500)
 		}
 	}

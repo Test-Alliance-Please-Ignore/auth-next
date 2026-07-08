@@ -82,6 +82,7 @@ export class DiscordService {
 				return {
 					id: roleAssignment.id,
 					discordRoleId: roleAssignment.discordRoleId,
+					membershipType: roleAssignment.membershipType,
 					discordRole: roleDetails || {
 						id: roleAssignment.discordRoleId,
 						roleName: roleAssignment.roleName,
@@ -189,6 +190,7 @@ export class DiscordService {
 		discordRoleId: string,
 		roleName: string,
 		addedBy: string,
+		membershipType: 'member' | 'owner_admin' = 'member',
 		isAdmin: boolean = false
 	): Promise<void> {
 		const group = await this.ctx.db.query.groups.findFirst({
@@ -244,6 +246,7 @@ export class DiscordService {
 		await this.ctx.db.insert(groupDiscordServerRoles).values({
 			groupDiscordServerId: groupDiscordServer.id,
 			discordRoleId,
+			membershipType,
 			roleName,
 		})
 	}

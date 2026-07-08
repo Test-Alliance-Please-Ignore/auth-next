@@ -52,6 +52,7 @@ export type CategoryPermission = 'anyone' | 'admin_only'
 export type JoinMode = 'open' | 'approval' | 'invitation_only'
 export type InvitationStatus = 'pending' | 'accepted' | 'declined' | 'expired' | 'cancelled'
 export type JoinRequestStatus = 'pending' | 'approved' | 'rejected' | 'cancelled'
+export type GroupDiscordMembershipType = 'member' | 'owner_admin'
 
 /**
  * Data types matching database tables
@@ -504,8 +505,9 @@ export interface Groups {
 	/** Assign a Discord role to a group Discord server attachment */
 	assignRoleToDiscordServer(
 		attachmentId: string,
-		discordRoleId: string
-	): Promise<{ id: string; discordRoleId: string }>
+		discordRoleId: string,
+		membershipType?: GroupDiscordMembershipType
+	): Promise<{ id: string; discordRoleId: string; membershipType: GroupDiscordMembershipType }>
 
 	/** Unassign a Discord role from a group Discord server attachment */
 	unassignRoleFromDiscordServer(roleAssignmentId: string): Promise<void>
@@ -518,6 +520,8 @@ export interface Groups {
 		groupId: string
 		guildId: string
 		roleIds: string[]
+		memberRoleIds?: string[]
+		ownerAdminRoleIds?: string[]
 	}>
 
 	/** Get groups with Discord auto-invite enabled */
