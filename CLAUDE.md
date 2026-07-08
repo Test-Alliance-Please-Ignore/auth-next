@@ -2,6 +2,13 @@
 
 This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
+## Git Workflow
+
+**CRITICAL: 100% of git branch work is managed with `git machete` — every branch MUST appear in `git machete status`.**
+- Register each branch immediately on creation: `git machete add <branch> --onto <parent>` (e.g. `--onto main`).
+- Branches created indirectly by tooling (`git worktree add -b`, the EnterWorktree tool) do NOT auto-register in machete's definition file — add them manually right after creation or they're invisible to machete.
+- Never leave a branch created with bare `git checkout -b` / `git branch` unregistered.
+
 ## Project Overview
 
 This is a Cloudflare Workers monorepo built with:
