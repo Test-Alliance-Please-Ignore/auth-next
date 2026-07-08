@@ -482,13 +482,12 @@ just db-migrate <app-name>
 just db-studio <app-name>
 ```
 
-**CRITICAL: NEVER USE `db-push` OR `drizzle-kit push`**
-- **NEVER** run `just db-push` or `pnpm db:push` - not even in development
-- **NEVER** run `drizzle-kit push` directly
-- **ALWAYS** use migrations via `db:generate` and `db:migrate`
-- **NEVER** run `db:generate` (or `just db-generate*`) automatically without an explicit user request in the current task
-- Schema changes must be tracked in version control as migration files
-- Using push bypasses migration history and can cause data loss
+**CRITICAL: `db-generate` is fine to run; `db-migrate` and `db-push` are NEVER run by the assistant**
+- **`db:generate` / `just db-generate*` — allowed to run freely, no confirmation needed.** It only diffs the schema against the meta snapshots and emits `.migrations/` files locally; it never connects to a database.
+- **NEVER run `db:migrate` / `just db-migrate` (applying migrations to a DB).** Generating the migration files is the assistant's job; **applying** them is the operator's — hand it off, never run it.
+- **NEVER run `db:push` / `pnpm db:push` / `drizzle-kit push`** - not even in development (it bypasses migration history and can cause data loss).
+- **NEVER hand-write or hand-edit a migration SQL / journal / snapshot file** — always regenerate via `db:generate` so the schema, migrations, and meta snapshots stay consistent.
+- Schema changes must be tracked in version control as tool-generated migration files.
 
 ### Generators
 ```bash
