@@ -22,6 +22,9 @@ import type {
 	MarketsFilters,
 	MarketsResponse,
 	Paged,
+	PmConfigView,
+	ThresholdImpact,
+	UpdateConfigRequest,
 	UpdateMarketRequest,
 	UpdateMarketResponse,
 	WalletDetail,
@@ -132,4 +135,20 @@ export async function createMarketAsMember(
 	body: CreateMarketRequest
 ): Promise<CreateMarketResponse> {
 	return apiClient.post<CreateMarketResponse>('/prediction-markets/markets', body)
+}
+
+/** GET /config — active config defaults (configured:false + runtime fallbacks when unseeded). */
+export async function getConfig(): Promise<PmConfigView> {
+	return apiClient.get<PmConfigView>(`${BASE}/config`)
+}
+
+/** GET /config/threshold-impact — retroactive impact of a candidate threshold (null = disable). */
+export async function getThresholdImpact(threshold: string | null): Promise<ThresholdImpact> {
+	const query = threshold === null ? '' : `?threshold=${encodeURIComponent(threshold)}`
+	return apiClient.get<ThresholdImpact>(`${BASE}/config/threshold-impact${query}`)
+}
+
+/** PATCH /config — full-replace the active config. 400 on bad value / stranding threshold. */
+export async function updateConfig(body: UpdateConfigRequest): Promise<PmConfigView> {
+	return apiClient.patch<PmConfigView>(`${BASE}/config`, body)
 }

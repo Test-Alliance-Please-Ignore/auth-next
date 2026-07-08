@@ -20,4 +20,5 @@ export const pmKeys = {
 	marketHistory: (filters?: MarketHistoryFilters) =>
 		[...pmKeys.all, 'marketHistory', filters] as const,
 	markets: (filters?: MarketsFilters) => [...pmKeys.all, 'markets', filters] as const,
+	config: () => [...pmKeys.all, 'config'] as const,
 }

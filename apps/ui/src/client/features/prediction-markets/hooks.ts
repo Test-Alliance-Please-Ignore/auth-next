@@ -7,11 +7,13 @@ import {
 	createMarket,
 	createMarketAsMember,
 	getAuditLedger,
+	getConfig,
 	getMarketHistory,
 	getMarkets,
 	getUserLedger,
 	getWallet,
 	getWallets,
+	updateConfig,
 	updateMarket,
 } from './api'
 import { pmKeys } from './query-keys'
@@ -23,6 +25,7 @@ import type {
 	LedgerFilters,
 	MarketHistoryFilters,
 	MarketsFilters,
+	UpdateConfigRequest,
 	UpdateMarketRequest,
 	WalletsFilters,
 } from './types'
@@ -119,6 +122,29 @@ export function useUpdateMarket() {
 		successMessage: 'Market updated.',
 		onSuccess: () => {
 			queryClient.invalidateQueries({ queryKey: [...pmKeys.all, 'markets'] })
+		},
+	})
+}
+
+/** GET /config — the active config defaults. */
+export function useConfig() {
+	return useQuery({
+		queryKey: pmKeys.config(),
+		queryFn: getConfig,
+		staleTime: STALE_TIME,
+		gcTime: GC_TIME,
+	})
+}
+
+/** PATCH /config — full-replace the active config; toasts on success, invalidates the config query. */
+export function useUpdateConfig() {
+	const queryClient = useQueryClient()
+
+	return useApiMutation({
+		mutationFn: (body: UpdateConfigRequest) => updateConfig(body),
+		successMessage: 'Configuration updated.',
+		onSuccess: () => {
+			queryClient.invalidateQueries({ queryKey: pmKeys.config() })
 		},
 	})
 }

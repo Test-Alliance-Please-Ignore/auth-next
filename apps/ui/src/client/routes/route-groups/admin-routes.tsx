@@ -3,12 +3,11 @@ import { Navigate, Route } from 'react-router-dom'
 
 import { LoadingPage } from '@/components/ui/loading'
 import AdminActivityLogPage from '@/routes/admin/activity-log'
-import DevComponentsPage from '@/routes/admin/dev-components'
 import AdminBillsPage from '@/routes/admin/bills'
 import AdminBillsDashboardPage from '@/routes/admin/bills-dashboard'
 import AdminBillsDetailPage from '@/routes/admin/bills-detail'
-import AdminBillsGroupDetailPage from '@/routes/admin/bills-group-detail'
 import AdminBillsEditPage from '@/routes/admin/bills-edit'
+import AdminBillsGroupDetailPage from '@/routes/admin/bills-group-detail'
 import AdminBillsGroupEditPage from '@/routes/admin/bills-group-edit'
 import AdminBillsNewPage from '@/routes/admin/bills-new'
 import AdminBillsSchedulesPage from '@/routes/admin/bills-schedules'
@@ -25,11 +24,10 @@ import AdminBroadcastTemplatesPage from '@/routes/admin/broadcasts-templates'
 import AdminCategoriesPage from '@/routes/admin/categories'
 import AdminCorporationDetailPage from '@/routes/admin/corporation-detail'
 import AdminCorporationsPage from '@/routes/admin/corporations'
-import AdminStructuresPage from '@/routes/admin/structures'
+import DevComponentsPage from '@/routes/admin/dev-components'
+import AdminDiscordAuditPage from '@/routes/admin/discord-audit'
 import AdminDiscordCommandCategoriesPage from '@/routes/admin/discord-command-categories'
 import AdminDiscordCommandsPage from '@/routes/admin/discord-commands'
-import AdminDiscordAuditPage from '@/routes/admin/discord-audit'
-import AdminEveCharacterSyncPage from '@/routes/admin/eve-character-sync'
 import AdminDiscordServerCommandsPage from '@/routes/admin/discord-server-commands'
 import AdminDiscordServerRolesPage from '@/routes/admin/discord-server-roles'
 import AdminDiscordServersPage from '@/routes/admin/discord-servers'
@@ -37,22 +35,24 @@ import AdminDkpAwardsPage from '@/routes/admin/dkp-awards'
 import AdminDkpDashboardPage from '@/routes/admin/dkp-dashboard'
 import AdminDkpHistoryPage from '@/routes/admin/dkp-history'
 import AdminDkpLeaderboardsPage from '@/routes/admin/dkp-leaderboards'
+import AdminEveCharacterSyncPage from '@/routes/admin/eve-character-sync'
+import AdminExternalLinksPage from '@/routes/admin/external-links'
 import AdminGroupDetailPage from '@/routes/admin/group-detail'
 import AdminGroupsPage from '@/routes/admin/groups'
+import AdminIpHistoryInspectionPage from '@/routes/admin/ip-history-inspection'
 import AdminLayout from '@/routes/admin/layout'
-import AdminLegacyMigrationsPage from '@/routes/admin/legacy-migrations'
 import AdminLegacyMigrationDetailPage from '@/routes/admin/legacy-migration-detail'
+import AdminLegacyMigrationsPage from '@/routes/admin/legacy-migrations'
 import AdminPastesPage from '@/routes/admin/pastes'
 import AdminPermissionCategoriesPage from '@/routes/admin/permissions/categories'
 import AdminGlobalPermissionsPage from '@/routes/admin/permissions/global'
+import AdminStructuresPage from '@/routes/admin/structures'
+import AdminThirdPartyAppsPage from '@/routes/admin/third-party-apps'
 import AdminUserActivityPage from '@/routes/admin/user-activity'
 import AdminUserDetailPage from '@/routes/admin/user-detail'
 import AdminUserDiscordAccessPage from '@/routes/admin/user-discord-access'
 import AdminUserGroupsPage from '@/routes/admin/user-groups'
 import AdminUsersPage from '@/routes/admin/users'
-import AdminIpHistoryInspectionPage from '@/routes/admin/ip-history-inspection'
-import AdminExternalLinksPage from '@/routes/admin/external-links'
-import AdminThirdPartyAppsPage from '@/routes/admin/third-party-apps'
 
 const UserHrNotes = lazy(() => import('@/features/applications/routes/user-hr-notes'))
 const IndustryProvidersPage = lazy(() => import('@/features/industry/routes/industry-providers'))
@@ -76,6 +76,9 @@ const PredictionMarketWalletDetailPage = lazy(
 )
 const PredictionMarketAuditPage = lazy(
 	() => import('@/features/prediction-markets/routes/prediction-market-audit')
+)
+const PredictionMarketConfigPage = lazy(
+	() => import('@/features/prediction-markets/routes/prediction-market-config')
 )
 
 export const adminRouteElements = (
@@ -206,6 +209,14 @@ export const adminRouteElements = (
 				element={
 					<Suspense fallback={<LoadingPage />}>
 						<PredictionMarketAuditPage />
+					</Suspense>
+				}
+			/>
+			<Route
+				path="config"
+				element={
+					<Suspense fallback={<LoadingPage />}>
+						<PredictionMarketConfigPage />
 					</Suspense>
 				}
 			/>

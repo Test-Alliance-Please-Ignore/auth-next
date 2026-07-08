@@ -301,6 +301,62 @@ export interface MarketHistoryOpts {
 }
 
 // ---------------------------------------------------------------------------
+// Config
+// ---------------------------------------------------------------------------
+
+/**
+ * The active config as seen by the admin editor. Money fields are decimal strings. `configured` is
+ * false when no active row exists yet — the fields then carry the RUNTIME-EFFECTIVE fallbacks the
+ * readers actually use today (rake 0, minStake '1', threshold null), NOT the column defaults, so the
+ * admin sees the truth about current behavior.
+ */
+export interface PmConfigView {
+	defaultRakeBps: number
+	defaultMinStake: string
+	/** NULL disables pool-based two-of-N. */
+	twoOfNThreshold: string | null
+	/** ISO-8601 when this generation took effect, or null when unseeded. */
+	effectiveFrom: string | null
+	/** Admin who wrote the active generation, or null (unseeded / pre-audit rows). */
+	actorUserId: string | null
+	changeNote: string | null
+	configured: boolean
+}
+
+/** Full-replace config write. `actorUserId` is server-derived (session), never client-supplied. */
+export interface UpdateConfigInput {
+	actorUserId: string
+	defaultRakeBps: number
+	defaultMinStake: string
+	/** NULL disables pool-based two-of-N. '' / '0' are rejected — send real null to disable. */
+	twoOfNThreshold: string | null
+	changeNote?: string | null
+}
+
+/** A market a threshold change would strand (a lone designated resolver can't reach two-of-N). */
+export interface StrandedMarket {
+	marketId: string
+	question: string
+	totalPool: string
+	status: MarketStatus
+	designatedResolverIds: string[] | null
+}
+
+/**
+ * The retroactive impact of a candidate `twoOfNThreshold`. Counts are a snapshot at CURRENT pools for
+ * closed markets (frozen) — open-market pools can still grow, so `strandedCandidates` flags any
+ * size-1 designated open market whenever the candidate is non-null, independent of its current pool.
+ */
+export interface ThresholdImpact {
+	/** twoOfN=false markets (open/closed) that flip false→true at current pools. */
+	newlyRequiringCount: number
+	/** twoOfN=false markets (open/closed) that flip true→false at current pools. */
+	noLongerRequiringCount: number
+	/** Size-1 designated markets the change would newly strand — updateConfig hard-rejects if non-empty. */
+	strandedCandidates: StrandedMarket[]
+}
+
+// ---------------------------------------------------------------------------
 // RPC interface
 // ---------------------------------------------------------------------------
 
@@ -365,6 +421,16 @@ export interface PredictionMarkets {
 		marketId: string,
 		opts?: { includeInternal?: boolean; limit?: number; offset?: number }
 	): Promise<Paged<MarketHistoryRow>>
+	/** The active config defaults (or runtime fallbacks with `configured:false` when unseeded). */
+	getConfig(): Promise<PmConfigView>
+	/**
+	 * Read-only impact of changing `twoOfNThreshold` to `candidateThreshold` (null = disable). Because
+	 * the threshold is read at SETTLE time, changing it retroactively re-evaluates which existing open/
+	 * closed markets need two-of-N. Returns the flip counts plus the markets that would be STRANDED (a
+	 * lone designated resolver can't supply a second signer). `updateConfig` hard-rejects a change with
+	 * any stranded candidate — this preview drives the UI's block message.
+	 */
+	previewTwoOfNThreshold(candidateThreshold: string | null): Promise<ThresholdImpact>
 
 	// writes
 	grantPoints(input: GrantPointsInput): Promise<{ balance: string; deduped: boolean }>
@@ -389,6 +455,13 @@ export interface PredictionMarkets {
 		actorUserId: string,
 		updates: UpdateMarketInput
 	): Promise<MarketUpdateResult>
+	/**
+	 * Replace the active config (temporal supersession: closes the current active row, inserts a new
+	 * active one — an append-only audited value-history). Full-replace: all three defaults are required.
+	 * Hard-rejects (THRESHOLD_WOULD_STRAND) a threshold change that would leave a size-1 designated
+	 * market unable to reach two-of-N. A no-op (values equal the active row) writes no new generation.
+	 */
+	updateConfig(input: UpdateConfigInput): Promise<PmConfigView>
 	/**
 	 * Place a bet. `deduped` is true when this was a duplicate delivery of an already-recorded
 	 * bet (same idempotency key) — the prior bet is returned and no money moved. Callers must

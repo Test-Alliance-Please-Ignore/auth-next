@@ -240,7 +240,12 @@ export const pmMarketHistory = pgTable(
 	]
 )
 
-/** Single-active-config for defaults. */
+/**
+ * Config defaults, versioned by temporal supersession: each edit closes the current active row
+ * (is_active=false, effective_to=now()) and inserts a fresh active row, giving an append-only,
+ * queryable value-history. Readers always take the single newest active row
+ * (WHERE is_active ORDER BY effective_from DESC LIMIT 1).
+ */
 export const pmConfig = pgTable('pm_config', {
 	id: uuid('id').primaryKey().defaultRandom(),
 	isActive: boolean('is_active').notNull().default(true),
@@ -248,6 +253,10 @@ export const pmConfig = pgTable('pm_config', {
 	defaultMinStake: numeric('default_min_stake').notNull().default('1'),
 	/** Markets with total_pool ≥ this require two-of-N settlement. NULL disables. */
 	twoOfNThreshold: numeric('two_of_n_threshold'),
+	/** Admin who wrote this generation (null for pre-editor / seed rows). Durable WHO audit. */
+	actorUserId: uuid('actor_user_id'),
+	/** Optional free-text reason the admin gave for this config change. */
+	changeNote: text('change_note'),
 	effectiveFrom: timestamp('effective_from', { withTimezone: true }).notNull().defaultNow(),
 	effectiveTo: timestamp('effective_to', { withTimezone: true }),
 })
