@@ -20,6 +20,7 @@ import {
 	createAndPublishMarket,
 	createMarketSchema,
 } from '../services/market-create.service'
+import { updateAndAnnounceMarket, updateMarketSchema } from '../services/market-update.service'
 import { userCharacters, users } from '../db/schema'
 
 import type { createDb } from '../db'
@@ -109,6 +110,9 @@ const BAD_REQUEST_CODES = new Set<string>([
 	'REASON_REQUIRED',
 	// create path (shared with the member create route)
 	...CREATE_MARKET_BAD_REQUEST_CODES,
+	// edit path (updateMarket) — INVALID_CLOSES_AT / QUESTION_REQUIRED are already in the create set
+	'MARKET_NOT_EDITABLE',
+	'CLOSES_AT_NOT_EDITABLE',
 ])
 
 // -------------------------------------------------------------------------
@@ -272,6 +276,26 @@ app.post('/markets', async (c) => {
 		return c.json(result, 201)
 	} catch (error) {
 		return fail(c, error, 'create market')
+	}
+})
+
+// PATCH /markets/:id — edit a market's safe fields (close time / question / description), then
+// refresh its forum post and announce the change in the thread.
+app.patch('/markets/:id', async (c) => {
+	try {
+		const db = c.get('db')
+		if (!db) return c.json({ error: 'Database not initialized' }, 500)
+		const marketId = c.req.param('id')
+		const actorId = c.get('user')!.id
+		const body = updateMarketSchema.parse(await c.req.json())
+		const result = await updateAndAnnounceMarket(db, c.env, actorId, marketId, body)
+		logger.info('[PMAdmin] market updated', { actorId, marketId })
+		return c.json(result, 200)
+	} catch (error) {
+		if (error instanceof Error && error.message === 'MARKET_NOT_FOUND') {
+			return c.json({ error: 'Market not found' }, 404)
+		}
+		return fail(c, error, 'update market')
 	}
 })
 

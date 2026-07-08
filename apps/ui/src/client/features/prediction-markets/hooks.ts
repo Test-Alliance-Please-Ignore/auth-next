@@ -12,6 +12,7 @@ import {
 	getUserLedger,
 	getWallet,
 	getWallets,
+	updateMarket,
 } from './api'
 import { pmKeys } from './query-keys'
 
@@ -22,6 +23,7 @@ import type {
 	LedgerFilters,
 	MarketHistoryFilters,
 	MarketsFilters,
+	UpdateMarketRequest,
 	WalletsFilters,
 } from './types'
 
@@ -100,6 +102,22 @@ export function useCreateMarket(scope: 'admin' | 'member' = 'admin') {
 				: 'Market created and posted to the forum.',
 		onSuccess: () => {
 			// Broad key so every markets-list variant (any filter) refetches.
+			queryClient.invalidateQueries({ queryKey: [...pmKeys.all, 'markets'] })
+		},
+	})
+}
+
+/**
+ * PATCH /markets/:id — edit a market's safe fields; the bot refreshes the forum post + announces
+ * the change. Toasts on success, invalidates the markets list.
+ */
+export function useUpdateMarket() {
+	const queryClient = useQueryClient()
+
+	return useApiMutation({
+		mutationFn: ({ id, body }: { id: string; body: UpdateMarketRequest }) => updateMarket(id, body),
+		successMessage: 'Market updated.',
+		onSuccess: () => {
 			queryClient.invalidateQueries({ queryKey: [...pmKeys.all, 'markets'] })
 		},
 	})

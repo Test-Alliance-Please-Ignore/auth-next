@@ -125,6 +125,18 @@ export interface CreateMarketResponse {
 	postError: string | null
 }
 
+/** Partial admin edit of a market's safe fields. At least one must be present. */
+export interface UpdateMarketRequest {
+	/** ISO-8601; must be in the future. */
+	closesAt?: string
+	question?: string
+	description?: string | null
+}
+
+export interface UpdateMarketResponse {
+	market: MarketDetail
+}
+
 export interface MarketsFilters {
 	status?: MarketStatus
 	limit?: number
