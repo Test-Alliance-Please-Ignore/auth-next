@@ -45,6 +45,25 @@ export interface CreateMarketInput {
 	twoOfN?: boolean
 }
 
+/**
+ * A partial edit to a non-terminal market. Only the provided fields change; omitted fields are left
+ * as-is (pass `description: null` to clear it). Only the safe-to-change fields are editable —
+ * economic params (rake/stakes/cap) and outcomes are deliberately excluded.
+ */
+export interface UpdateMarketInput {
+	/** New betting-close time (ISO-8601); must be in the future and the market must be open. */
+	closesAt?: string
+	question?: string
+	/** New description, or `null` to clear it. */
+	description?: string | null
+}
+
+export interface MarketUpdateResult {
+	market: MarketDetail
+	/** Which safe fields actually changed (computed under the row lock) — drives the thread notice. */
+	changed: { closesAt: boolean; question: boolean; description: boolean }
+}
+
 export interface PlaceBetInput {
 	userId: string
 	marketId: string
@@ -311,6 +330,17 @@ export interface PredictionMarkets {
 		userId: string
 	): Promise<{ balance: string; granted: string; alreadyOnboarded: boolean }>
 	createMarket(input: CreateMarketInput): Promise<MarketDetail>
+	/**
+	 * Edit a non-terminal market's safe fields (closing time / question / description). `closesAt` is
+	 * only editable while the market is open. Only fields that actually change are applied; the audit
+	 * row records the acting admin. Returns the updated market plus which fields changed (computed
+	 * atomically under the row lock) so the caller can refresh the post + announce exactly the changes.
+	 */
+	updateMarket(
+		marketId: string,
+		actorUserId: string,
+		updates: UpdateMarketInput
+	): Promise<MarketUpdateResult>
 	/**
 	 * Place a bet. `deduped` is true when this was a duplicate delivery of an already-recorded
 	 * bet (same idempotency key) — the prior bet is returned and no money moved. Callers must

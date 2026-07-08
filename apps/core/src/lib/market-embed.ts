@@ -66,6 +66,28 @@ export function buildMarketVoidAnnouncement(totalRefunded: string): string {
 }
 
 /**
+ * Posted to the thread when an admin edits a market — one bullet per changed field. `closesAt` (the
+ * new ISO time, present iff it changed) renders as an absolute + relative Discord timestamp;
+ * question/description just note that they changed (the refreshed embed shows the new values).
+ * Returns null when nothing actually changed, so the caller can skip announcing a no-op edit.
+ */
+export function buildMarketUpdateAnnouncement(changes: {
+	closesAt?: string
+	question?: boolean
+	description?: boolean
+}): string | null {
+	const lines: string[] = []
+	if (changes.closesAt) {
+		const unix = Math.floor(new Date(changes.closesAt).getTime() / 1000)
+		lines.push(`Closing time is now <t:${unix}:F> (<t:${unix}:R>)`)
+	}
+	if (changes.question) lines.push('Question updated')
+	if (changes.description) lines.push('Description updated')
+	if (lines.length === 0) return null
+	return `📣 **Market updated**\n${lines.map((l) => `• ${l}`).join('\n')}`
+}
+
+/**
  * The DM sent to one participant with the result of their wagers on a settled market. `net` is a
  * signed integer-point string (negative = net loss). `outcomeLabel` is the winning outcome, or null
  * on a void. Question/outcome are truncated to keep the DM within Discord's message limit.

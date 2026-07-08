@@ -5,6 +5,7 @@ import {
 	buildMarketCloseAnnouncement,
 	buildMarketEmbed,
 	buildMarketResolveAnnouncement,
+	buildMarketUpdateAnnouncement,
 	buildMarketVoidAnnouncement,
 	buildWagerResultDm,
 	formatMarketPoints,
@@ -120,6 +121,23 @@ describe('close / resolve / void announcements', () => {
 
 	it('void announcement states the refunded total', () => {
 		expect(buildMarketVoidAnnouncement('5000')).toContain('5,000 points')
+	})
+
+	it('update announcement renders a closesAt change as a Discord timestamp', () => {
+		const msg = buildMarketUpdateAnnouncement({ closesAt: '2030-01-01T00:00:00.000Z' })
+		expect(msg).toContain('Market updated')
+		expect(msg).toMatch(/<t:\d+:F>/)
+	})
+
+	it('update announcement notes question / description changes', () => {
+		const msg = buildMarketUpdateAnnouncement({ question: true, description: true })
+		expect(msg).toContain('Question updated')
+		expect(msg).toContain('Description updated')
+	})
+
+	it('update announcement is null when nothing changed', () => {
+		expect(buildMarketUpdateAnnouncement({})).toBeNull()
+		expect(buildMarketUpdateAnnouncement({ question: false })).toBeNull()
 	})
 
 	it('close announcement mentions closed', () => {

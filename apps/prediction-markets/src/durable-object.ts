@@ -41,9 +41,11 @@ import type {
 	MarketSummary,
 	Paged,
 	PendingProposalView,
+	MarketUpdateResult,
 	PlaceBetInput,
 	PredictionMarkets,
 	ResolveResult,
+	UpdateMarketInput,
 	Visibility,
 	WalletRow,
 } from '@repo/prediction-markets'
@@ -121,6 +123,15 @@ const EXPECTED_RESOLVER_ERRORS = new Set([
 	'PROPOSAL_NOT_PENDING',
 	'CONTESTED_VOID_REQUIRES_APPROVER',
 	'VOID_REASON_REQUIRED',
+])
+
+/** updateMarket throws these on normal caller-input rejections — not paged to Sentry. */
+const EXPECTED_MARKET_EDIT_ERRORS = new Set([
+	'MARKET_NOT_FOUND',
+	'MARKET_NOT_EDITABLE',
+	'CLOSES_AT_NOT_EDITABLE',
+	'INVALID_CLOSES_AT',
+	'QUESTION_REQUIRED',
 ])
 
 /** True for expected resolver rejections, incl. the raw assertTransition (stale-state) string. */
@@ -648,6 +659,98 @@ export class PredictionMarketsDO extends DurableObject<Env> implements Predictio
 	}
 
 	/**
+	 * Edit a non-terminal market's safe fields (closesAt / question / description). Rejects a
+	 * resolved/voided market (MARKET_NOT_EDITABLE); `closesAt` is editable only while the market is
+	 * open (CLOSES_AT_NOT_EDITABLE otherwise — the close time is meaningless on a closed/resolving
+	 * market) and must be in the future (INVALID_CLOSES_AT). Only fields that ACTUALLY differ from
+	 * the row are written — computed under the FOR UPDATE lock, so the returned `changed` flags can't
+	 * be corrupted by a concurrent edit. Records the acting admin + the new values in the audit log.
+	 */
+	async updateMarket(
+		marketId: string,
+		actorUserId: string,
+		updates: UpdateMarketInput
+	): Promise<MarketUpdateResult> {
+		try {
+			return await this.db.transaction(async (tx) => {
+				const [market] = await tx
+					.select()
+					.from(pmMarkets)
+					.where(eq(pmMarkets.id, marketId))
+					.for('update')
+				if (!market) throw new Error('MARKET_NOT_FOUND')
+				if (isTerminal(market.status)) throw new Error('MARKET_NOT_EDITABLE')
+
+				const set: Partial<typeof pmMarkets.$inferInsert> = {}
+				// New values for the fields that genuinely changed — the audit metadata.
+				const changes: Record<string, unknown> = {}
+
+				if (updates.closesAt !== undefined) {
+					// The close time only governs an OPEN market; editing it on a closed/resolving one
+					// would falsely read as "betting reopened" while status stays closed.
+					if (market.status !== 'open') throw new Error('CLOSES_AT_NOT_EDITABLE')
+					const closesAt = parseDateOrNull(updates.closesAt)
+					if (!closesAt || closesAt.getTime() <= Date.now()) throw new Error('INVALID_CLOSES_AT')
+					if (closesAt.getTime() !== market.closesAt.getTime()) {
+						set.closesAt = closesAt
+						changes.closesAt = closesAt.toISOString()
+					}
+				}
+				if (updates.question !== undefined) {
+					const question = updates.question.trim()
+					if (!question) throw new Error('QUESTION_REQUIRED')
+					if (question !== market.question) {
+						set.question = question
+						changes.question = question
+					}
+				}
+				if (updates.description !== undefined) {
+					const description = updates.description?.trim() || null
+					if (description !== market.description) {
+						set.description = description
+						changes.description = description
+					}
+				}
+
+				// Only write + audit when something actually changed (a no-op edit is idempotent).
+				if (Object.keys(changes).length > 0) {
+					set.updatedAt = new Date()
+					await tx.update(pmMarkets).set(set).where(eq(pmMarkets.id, marketId))
+					await this.logHistory(tx, {
+						marketId,
+						actorUserId,
+						action: 'updated',
+						previousStatus: market.status,
+						newStatus: market.status,
+						visibility: 'internal',
+						metadata: { changes },
+					})
+				}
+
+				const detail = await this.buildMarketDetail(tx, marketId)
+				if (!detail) throw new Error('MARKET_NOT_FOUND')
+				return {
+					market: detail,
+					changed: {
+						closesAt: 'closesAt' in changes,
+						question: 'question' in changes,
+						description: 'description' in changes,
+					},
+				}
+			})
+		} catch (error) {
+			// Caller-input rejections are expected outcomes — don't page on them.
+			const msg = error instanceof Error ? error.message : String(error)
+			if (!EXPECTED_MARKET_EDIT_ERRORS.has(msg)) {
+				captureException(error as Error, {
+					tags: { durableObject: 'PredictionMarketsDO', method: 'updateMarket' },
+				})
+			}
+			throw error
+		}
+	}
+
+	/**
 	 * Persist the Discord forum post mapping after Core creates the post. Pure UPDATE —
 	 * the PM DO never calls Discord; Core orchestrates the post and writes the ids back here.
 	 */
@@ -914,8 +1017,10 @@ export class PredictionMarketsDO extends DurableObject<Env> implements Predictio
 				.limit(bounded)
 			if (due.length === 0) return { closedMarketIds: [] }
 
-			// Re-guard status='open' in the UPDATE so a market that transitioned between the select
-			// and the update isn't clobbered; RETURNING yields the ids actually closed.
+			// Re-guard BOTH the status AND the due condition in the UPDATE: a market that transitioned
+			// (status) or had its close time extended (admin updateMarket) between the select and the
+			// update must not be clobbered. Re-checking closes_at <= now() makes an extended market
+			// drop out. RETURNING yields the ids actually closed.
 			const closed = await this.db
 				.update(pmMarkets)
 				.set({ status: 'closed', updatedAt: new Date() })
@@ -925,7 +1030,8 @@ export class PredictionMarketsDO extends DurableObject<Env> implements Predictio
 							pmMarkets.id,
 							due.map((d) => d.id)
 						),
-						eq(pmMarkets.status, 'open')
+						eq(pmMarkets.status, 'open'),
+						sql`${pmMarkets.closesAt} <= now()`
 					)
 				)
 				.returning({ id: pmMarkets.id })

@@ -13,6 +13,7 @@ import { logger } from '@repo/hono-helpers'
 import {
 	buildMarketCloseAnnouncement,
 	buildMarketResolveAnnouncement,
+	buildMarketUpdateAnnouncement,
 	buildMarketVoidAnnouncement,
 	buildWagerResultDm,
 } from '../lib/market-embed'
@@ -33,6 +34,28 @@ export async function announceMarketClosed(
 	})
 	if (!res.success) {
 		logger.warn('[PMNotify] close announcement failed', { marketId: market.id, error: res.error })
+	}
+}
+
+/**
+ * Post an "market updated" notice to the thread — one bullet per changed field. No-op if the market
+ * has no post or nothing actually changed. Best-effort.
+ */
+export async function announceMarketUpdated(
+	discord: Discord,
+	guildId: string,
+	market: MarketDetail,
+	changes: { closesAt?: string; question?: boolean; description?: boolean }
+): Promise<void> {
+	if (!market.discordThreadId) return
+	const content = buildMarketUpdateAnnouncement(changes)
+	if (!content) return
+	const res = await discord.sendMessage(guildId, market.discordThreadId, {
+		content,
+		allowEveryone: false,
+	})
+	if (!res.success) {
+		logger.warn('[PMNotify] update announcement failed', { marketId: market.id, error: res.error })
 	}
 }
 

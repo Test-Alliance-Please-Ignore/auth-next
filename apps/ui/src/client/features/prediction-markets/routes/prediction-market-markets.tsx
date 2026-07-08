@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { ExternalLink } from 'lucide-react'
+import { ExternalLink, Pencil } from 'lucide-react'
 
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
@@ -15,10 +15,12 @@ import { usePageTitle } from '@/hooks/usePageTitle'
 import { formatPoints } from '@/lib/format-utils'
 
 import { CreateMarketDialog } from '../components/create-market-dialog'
+import { EditMarketDialog } from '../components/edit-market-dialog'
 import { useMarkets } from '../hooks'
 
 import type { BadgeVariant } from '@/components/ui/badge'
 import type { MarketStatus } from '../types'
+import type { MarketSummary } from '@repo/prediction-markets'
 
 const STATUS_VARIANT: Record<MarketStatus, BadgeVariant> = {
 	draft: 'secondary',
@@ -32,6 +34,7 @@ const STATUS_VARIANT: Record<MarketStatus, BadgeVariant> = {
 export default function PredictionMarketMarkets() {
 	usePageTitle('Admin - Prediction Markets')
 	const [createOpen, setCreateOpen] = useState(false)
+	const [editMarket, setEditMarket] = useState<MarketSummary | null>(null)
 	const { data, isLoading, error } = useMarkets({ limit: 50 })
 
 	const markets = data?.markets ?? []
@@ -70,18 +73,19 @@ export default function PredictionMarketMarkets() {
 							<TableHead>Pool</TableHead>
 							<TableHead>Closes</TableHead>
 							<TableHead>Forum</TableHead>
+							<TableHead className="text-right">Actions</TableHead>
 						</TableRow>
 					</TableHeader>
 					<TableBody>
 						{isLoading ? (
 							<TableRow>
-								<TableCell colSpan={6} className="text-center text-muted-foreground">
+								<TableCell colSpan={7} className="text-center text-muted-foreground">
 									Loading…
 								</TableCell>
 							</TableRow>
 						) : markets.length === 0 ? (
 							<TableRow>
-								<TableCell colSpan={6} className="text-center text-muted-foreground">
+								<TableCell colSpan={7} className="text-center text-muted-foreground">
 									No markets yet.
 								</TableCell>
 							</TableRow>
@@ -113,6 +117,19 @@ export default function PredictionMarketMarkets() {
 												</span>
 											)}
 										</TableCell>
+										<TableCell className="text-right">
+											{/* Editable while non-terminal; a resolved/voided market is frozen. */}
+											{m.status !== 'resolved' && m.status !== 'voided' ? (
+												<Button
+													variant="secondary"
+													showIcon={false}
+													size="sm"
+													onClick={() => setEditMarket(m)}
+												>
+													<Pencil className="mr-1 h-3.5 w-3.5" /> Edit
+												</Button>
+											) : null}
+										</TableCell>
 									</TableRow>
 								)
 							})
@@ -122,6 +139,13 @@ export default function PredictionMarketMarkets() {
 			</div>
 
 			<CreateMarketDialog open={createOpen} onOpenChange={setCreateOpen} />
+			<EditMarketDialog
+				market={editMarket}
+				open={editMarket !== null}
+				onOpenChange={(o) => {
+					if (!o) setEditMarket(null)
+				}}
+			/>
 		</div>
 	)
 }

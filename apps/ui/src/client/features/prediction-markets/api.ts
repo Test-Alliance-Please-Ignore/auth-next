@@ -22,6 +22,8 @@ import type {
 	MarketsFilters,
 	MarketsResponse,
 	Paged,
+	UpdateMarketRequest,
+	UpdateMarketResponse,
 	WalletDetail,
 	WalletsFilters,
 } from './types'
@@ -112,6 +114,14 @@ export async function getMarkets(filters?: MarketsFilters): Promise<MarketsRespo
 /** POST /markets — create a market; the bot best-effort publishes its forum post. */
 export async function createMarket(body: CreateMarketRequest): Promise<CreateMarketResponse> {
 	return apiClient.post<CreateMarketResponse>(`${BASE}/markets`, body)
+}
+
+/** PATCH /markets/:id — edit a market's safe fields; the bot refreshes + announces the change. */
+export async function updateMarket(
+	id: string,
+	body: UpdateMarketRequest
+): Promise<UpdateMarketResponse> {
+	return apiClient.patch<UpdateMarketResponse>(`${BASE}/markets/${id}`, body)
 }
 
 /**
