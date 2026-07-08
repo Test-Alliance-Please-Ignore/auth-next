@@ -29,8 +29,9 @@ const app = new Hono<App>()
 app.use('*', requireAuth())
 
 // POST /markets — a member with urn:markets:creator (or manager/admin) creates a market. `createdBy`
-// comes from the session, never the client. The creator can neither bet on nor resolve it (enforced
-// in the PM DO: CREATOR_CANNOT_BET / CREATOR_CANNOT_RESOLVE), so open creation is self-dealing-safe.
+// comes from the session, never the client. The creator may bet on their own market but can't resolve
+// it (enforced in the PM DO: CREATOR_CANNOT_RESOLVE / RESOLVER_HAS_POSITION), so they hold no power
+// over the outcome and open creation stays self-dealing-safe.
 app.post('/markets', async (c) => {
 	const db = c.get('db')
 	if (!db) return c.json({ error: 'Database not initialized' }, 500)
