@@ -318,20 +318,29 @@ app.patch('/markets/:id', async (c) => {
 // Full-replace: all three defaults required (a supersession INSERT needs a complete row, and it
 // collapses the empty-table "create first config" and the "edit" cases into one path). threshold
 // null = disable pool-based two-of-N; '0'/'' are rejected (would force two-of-N on every market).
-const configSchema = z.object({
-	defaultRakeBps: z.number().int().min(0).max(2000),
-	// Gate BigInt() behind the digit test in ONE refine: a chained `.regex().refine(BigInt())` still
-	// runs BigInt() on a non-digit string (a failed regex only marks the field "dirty", not "aborted"),
-	// which throws a SyntaxError that escapes as a 500 instead of a clean 400.
-	defaultMinStake: z
-		.string()
-		.refine((v) => /^\d+$/.test(v) && BigInt(v) > 0n, 'min stake must be a positive integer'),
-	twoOfNThreshold: z
-		.string()
-		.refine((v) => /^\d+$/.test(v) && BigInt(v) > 0n, 'threshold must be a positive integer')
-		.nullable(),
-	changeNote: z.string().trim().max(500).optional(),
-})
+const configSchema = z
+	.object({
+		defaultRakeBps: z.number().int().min(0).max(2000),
+		// Gate BigInt() behind the digit test in ONE refine: a chained `.regex().refine(BigInt())` still
+		// runs BigInt() on a non-digit string (a failed regex only marks the field "dirty", not "aborted"),
+		// which throws a SyntaxError that escapes as a 500 instead of a clean 400.
+		defaultMinStake: z
+			.string()
+			.refine((v) => /^\d+$/.test(v) && BigInt(v) > 0n, 'min stake must be a positive integer'),
+		twoOfNThreshold: z
+			.string()
+			.refine((v) => /^\d+$/.test(v) && BigInt(v) > 0n, 'threshold must be a positive integer')
+			.nullable(),
+		// Creator rake-reward band, as a fraction of the rake in bps (0–10000). Both 0 disables it.
+		creatorRewardMinBps: z.number().int().min(0).max(10_000),
+		creatorRewardMaxBps: z.number().int().min(0).max(10_000),
+		changeNote: z.string().trim().max(500).optional(),
+	})
+	// Cross-field: the band must be well-ordered so the settlement draw can never exceed 100% of rake.
+	.refine((v) => v.creatorRewardMinBps <= v.creatorRewardMaxBps, {
+		message: 'creator reward min must be ≤ max',
+		path: ['creatorRewardMinBps'],
+	})
 
 // GET /config — the active config defaults (runtime fallbacks with configured:false when unseeded).
 app.get('/config', async (c) => {
@@ -388,6 +397,7 @@ const LEDGER_TYPES: readonly LedgerType[] = [
 	'rake',
 	'burn',
 	'adjustment',
+	'creator_reward',
 ]
 
 // GET /audit/ledger?userId=&type=&marketId=&since=&until=&limit=&offset=

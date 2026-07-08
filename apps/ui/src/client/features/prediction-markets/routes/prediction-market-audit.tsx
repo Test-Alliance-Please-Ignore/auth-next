@@ -1,10 +1,10 @@
 import { useState } from 'react'
 
-import { UserSearchPaginationControls } from '@/components/user-search-pagination-controls'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Select } from '@/components/ui/select'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
+import { UserSearchPaginationControls } from '@/components/user-search-pagination-controls'
 import { usePageTitle } from '@/hooks/usePageTitle'
 
 import { LedgerTable } from '../components/ledger-table'
@@ -22,6 +22,7 @@ const LEDGER_TYPE_OPTIONS = [
 	{ value: 'rake', label: 'Rake' },
 	{ value: 'burn', label: 'Burn' },
 	{ value: 'adjustment', label: 'Adjustment' },
+	{ value: 'creator_reward', label: 'Creator reward' },
 ]
 
 /** A YYYY-MM-DD date-input value → an ISO instant (start or end of day, UTC). */

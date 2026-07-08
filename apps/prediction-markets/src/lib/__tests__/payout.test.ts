@@ -1,6 +1,11 @@
 import { describe, expect, it } from 'vitest'
 
-import { computeResolution, computeWinnings } from '../payout'
+import {
+	computeResolution,
+	computeWinnings,
+	pickCreatorRewardBps,
+	splitCreatorReward,
+} from '../payout'
 
 describe('computeWinnings', () => {
 	it('does not truncate to zero for a sub-pool stake (numerator-first)', () => {
@@ -115,5 +120,69 @@ describe('computeResolution', () => {
 		expect(() =>
 			computeResolution([{ betId: 'a', userId: 'u1', stake: 200n }], 100n, 200n, 0n)
 		).toThrow()
+	})
+})
+
+describe('pickCreatorRewardBps', () => {
+	it('maps the ends of [0,1) to the band endpoints (inclusive)', () => {
+		expect(pickCreatorRewardBps(1000, 5000, 0)).toBe(1000) // rand=0 → low
+		expect(pickCreatorRewardBps(1000, 5000, 0.999999)).toBe(5000) // rand→1 → high (inclusive)
+	})
+
+	it('stays within the band across the unit interval', () => {
+		for (const r of [0, 0.1, 0.25, 0.5, 0.75, 0.9, 0.999999]) {
+			const v = pickCreatorRewardBps(1000, 5000, r)
+			expect(v).toBeGreaterThanOrEqual(1000)
+			expect(v).toBeLessThanOrEqual(5000)
+		}
+	})
+
+	it('returns the point when the band collapses (min == max)', () => {
+		expect(pickCreatorRewardBps(2500, 2500, 0)).toBe(2500)
+		expect(pickCreatorRewardBps(2500, 2500, 0.5)).toBe(2500)
+	})
+
+	it('treats an all-zero band as disabled (always 0)', () => {
+		expect(pickCreatorRewardBps(0, 0, 0)).toBe(0)
+		expect(pickCreatorRewardBps(0, 0, 0.99)).toBe(0)
+	})
+
+	it('normalizes an inverted band and clamps out-of-range input', () => {
+		// swapped bounds behave like the ordered band
+		expect(pickCreatorRewardBps(5000, 1000, 0)).toBe(1000)
+		// negatives clamp to 0, > 10000 clamps to 10000
+		expect(pickCreatorRewardBps(-500, 20_000, 0)).toBe(0)
+		expect(pickCreatorRewardBps(-500, 20_000, 0.999999)).toBe(10_000)
+	})
+
+	it('guards against an out-of-range rand', () => {
+		expect(pickCreatorRewardBps(1000, 5000, 1)).toBe(1000) // rand≥1 treated as 0
+		expect(pickCreatorRewardBps(1000, 5000, -1)).toBe(1000)
+	})
+})
+
+describe('splitCreatorReward', () => {
+	it('splits the rake and conserves it exactly (floor-first)', () => {
+		const { creatorReward, houseRake } = splitCreatorReward(1000n, 2500) // 25%
+		expect(creatorReward).toBe(250n)
+		expect(houseRake).toBe(750n)
+		expect(creatorReward + houseRake).toBe(1000n)
+	})
+
+	it('floors the creator slice so the house never goes negative', () => {
+		const { creatorReward, houseRake } = splitCreatorReward(7n, 3333) // 33.33% of 7 = 2.33
+		expect(creatorReward).toBe(2n)
+		expect(houseRake).toBe(5n)
+		expect(creatorReward + houseRake).toBe(7n)
+	})
+
+	it('pays nothing when the share is 0 or the rake is 0 (feature disabled / no rake)', () => {
+		expect(splitCreatorReward(1000n, 0)).toEqual({ creatorReward: 0n, houseRake: 1000n })
+		expect(splitCreatorReward(0n, 5000)).toEqual({ creatorReward: 0n, houseRake: 0n })
+	})
+
+	it('can pay the whole rake at 100% and clamps beyond it', () => {
+		expect(splitCreatorReward(1000n, 10_000)).toEqual({ creatorReward: 1000n, houseRake: 0n })
+		expect(splitCreatorReward(1000n, 99_999)).toEqual({ creatorReward: 1000n, houseRake: 0n })
 	})
 })

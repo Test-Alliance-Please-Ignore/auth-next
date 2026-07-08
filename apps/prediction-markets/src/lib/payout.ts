@@ -43,6 +43,43 @@ export function computePayout(
 	return stake + computeWinnings(stake, losingPool, poolW, rakeBps)
 }
 
+/**
+ * Pick a creator-reward share (a fraction of the rake, in basis points) uniformly from the inclusive
+ * band [minBps, maxBps]. `rand` is a caller-supplied uniform in [0, 1) (i.e. `Math.random()`) so this
+ * stays pure and testable — the randomness is injected, not sourced here.
+ *
+ * The band is normalized defensively: values are clamped to [0, 10000] and swapped if inverted, so a
+ * mis-ordered or out-of-range config can never produce a share above 100% of the rake. When the band
+ * collapses to a single point (min == max) that point is returned with no draw.
+ */
+export function pickCreatorRewardBps(minBps: number, maxBps: number, rand: number): number {
+	const lo = Math.min(Math.max(Math.trunc(minBps), 0), 10_000)
+	const hi = Math.min(Math.max(Math.trunc(maxBps), 0), 10_000)
+	const [low, high] = lo <= hi ? [lo, hi] : [hi, lo]
+	if (high <= 0) return 0
+	if (low === high) return low
+	const span = high - low + 1
+	const r = rand >= 0 && rand < 1 ? rand : 0
+	return low + Math.min(Math.floor(r * span), span - 1)
+}
+
+/**
+ * Split a market's rake into the creator's slice and the house remainder, given a share in basis
+ * points (fraction of the rake). Floor-first keeps the creator slice ≤ rake, so the house remainder is
+ * always ≥ 0 and creatorReward + houseRake == rake exactly (no points created or lost).
+ */
+export function splitCreatorReward(
+	rake: bigint,
+	shareBps: number
+): { creatorReward: bigint; houseRake: bigint } {
+	if (rake <= 0n || shareBps <= 0) {
+		return { creatorReward: 0n, houseRake: rake > 0n ? rake : 0n }
+	}
+	const clamped = BigInt(Math.min(Math.trunc(shareBps), 10_000))
+	const creatorReward = (rake * clamped) / BPS_DENOMINATOR
+	return { creatorReward, houseRake: rake - creatorReward }
+}
+
 export interface ResolutionBet {
 	betId: string
 	userId: string

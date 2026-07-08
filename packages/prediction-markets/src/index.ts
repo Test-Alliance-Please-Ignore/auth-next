@@ -10,7 +10,15 @@
 
 export type MarketStatus = 'draft' | 'open' | 'closed' | 'resolving' | 'resolved' | 'voided'
 export type BetStatus = 'active' | 'won' | 'lost' | 'refunded'
-export type LedgerType = 'grant' | 'wager' | 'refund' | 'payout' | 'rake' | 'burn' | 'adjustment'
+export type LedgerType =
+	| 'grant'
+	| 'wager'
+	| 'refund'
+	| 'payout'
+	| 'rake'
+	| 'burn'
+	| 'adjustment'
+	| 'creator_reward'
 export type ProposalStatus = 'pending' | 'approved' | 'rejected' | 'superseded'
 export type Visibility = 'public' | 'internal'
 
@@ -319,6 +327,12 @@ export interface PmConfigView {
 	defaultMinStake: string
 	/** NULL disables pool-based two-of-N. */
 	twoOfNThreshold: string | null
+	/**
+	 * Creator rake-reward band, as a fraction of the rake in basis points (0–10000). On a successful
+	 * resolution the creator is paid a random slice of the rake in [min, max] bps. Both 0 disables it.
+	 */
+	creatorRewardMinBps: number
+	creatorRewardMaxBps: number
 	/** ISO-8601 when this generation took effect, or null when unseeded. */
 	effectiveFrom: string | null
 	/** Admin who wrote the active generation, or null (unseeded / pre-audit rows). */
@@ -334,6 +348,9 @@ export interface UpdateConfigInput {
 	defaultMinStake: string
 	/** NULL disables pool-based two-of-N. '' / '0' are rejected — send real null to disable. */
 	twoOfNThreshold: string | null
+	/** Creator rake-reward band as a fraction of the rake in bps. Both 0 disables. 0 ≤ min ≤ max ≤ 10000. */
+	creatorRewardMinBps: number
+	creatorRewardMaxBps: number
 	changeNote?: string | null
 }
 
