@@ -35,9 +35,11 @@ jobs:
         uses: anthropics/claude-code-action@v1
         with:
           anthropic_api_key: ${{ secrets.ANTHROPIC_API_KEY }}
-          # Pin a model if you like, e.g. add:  --model claude-sonnet-4-6
+          # `--model` must be its own arg — folding it into the --allowedTools string (as it was)
+          # makes it part of the tool list, so it's never applied and the default model is used.
           claude_args: |
-            --allowedTools "Bash(gh pr view:*),Bash(gh pr diff:*),Bash(gh pr edit:*),Bash(git diff:*),Bash(git log:*) --model claude-sonnet-4-6"
+            --allowedTools "Bash(gh pr view:*),Bash(gh pr diff:*),Bash(gh pr edit:*),Bash(git diff:*),Bash(git log:*)"
+            --model claude-sonnet-5
           prompt: |
             REPO: ${{ github.repository }}
             PR NUMBER: ${{ github.event.pull_request.number }}
