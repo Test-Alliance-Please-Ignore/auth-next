@@ -1,7 +1,8 @@
-import { useEffect, useState } from 'react'
 import { Plus, X } from 'lucide-react'
+import { useEffect, useState } from 'react'
 import { z } from 'zod'
 
+import { Button } from '@/components/ui/button'
 import {
 	Dialog,
 	DialogContent,
@@ -10,7 +11,6 @@ import {
 	DialogHeader,
 	DialogTitle,
 } from '@/components/ui/dialog'
-import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Switch } from '@/components/ui/switch'
@@ -51,11 +51,22 @@ export interface CreateMarketDialogProps {
 	onOpenChange: (open: boolean) => void
 	/** Which endpoint to create through: 'admin' (default) or 'member' (urn:markets:creator). */
 	scope?: 'admin' | 'member'
+	/**
+	 * Show the economic params (rake / stakes / cap / two-of-N). Default true. Hidden for a
+	 * lower-trust `urn:markets:creator` — the server strips those anyway and defaults from config,
+	 * so showing them would just be ignored input.
+	 */
+	showAdvanced?: boolean
 }
 
 const digitsOnly = (v: string) => v.replace(/\D/g, '')
 
-export function CreateMarketDialog({ open, onOpenChange, scope = 'admin' }: CreateMarketDialogProps) {
+export function CreateMarketDialog({
+	open,
+	onOpenChange,
+	scope = 'admin',
+	showAdvanced = true,
+}: CreateMarketDialogProps) {
 	const [question, setQuestion] = useState('')
 	const [description, setDescription] = useState('')
 	const [outcomes, setOutcomes] = useState<string[]>(['Yes', 'No'])
@@ -217,71 +228,75 @@ export function CreateMarketDialog({ open, onOpenChange, scope = 'admin' }: Crea
 						/>
 					</div>
 
-					<div className="grid grid-cols-2 gap-3">
-						<div className="space-y-2">
-							<Label htmlFor="pm-rake">Rake (bps, optional)</Label>
-							<Input
-								id="pm-rake"
-								type="text"
-								inputMode="numeric"
-								placeholder="default"
-								value={rakeBps}
-								onChange={(e) => setRakeBps(digitsOnly(e.target.value))}
-								disabled={create.isPending}
-							/>
-						</div>
-						<div className="space-y-2">
-							<Label htmlFor="pm-min">Min stake (optional)</Label>
-							<Input
-								id="pm-min"
-								type="text"
-								inputMode="numeric"
-								placeholder="default"
-								value={minStake}
-								onChange={(e) => setMinStake(digitsOnly(e.target.value))}
-								disabled={create.isPending}
-							/>
-						</div>
-						<div className="space-y-2">
-							<Label htmlFor="pm-max">Max stake (optional)</Label>
-							<Input
-								id="pm-max"
-								type="text"
-								inputMode="numeric"
-								placeholder="none"
-								value={maxStake}
-								onChange={(e) => setMaxStake(digitsOnly(e.target.value))}
-								disabled={create.isPending}
-							/>
-						</div>
-						<div className="space-y-2">
-							<Label htmlFor="pm-cap">Per-user cap (optional)</Label>
-							<Input
-								id="pm-cap"
-								type="text"
-								inputMode="numeric"
-								placeholder="none"
-								value={perUserCap}
-								onChange={(e) => setPerUserCap(digitsOnly(e.target.value))}
-								disabled={create.isPending}
-							/>
-						</div>
-					</div>
+					{showAdvanced ? (
+						<>
+							<div className="grid grid-cols-2 gap-3">
+								<div className="space-y-2">
+									<Label htmlFor="pm-rake">Rake (bps, optional)</Label>
+									<Input
+										id="pm-rake"
+										type="text"
+										inputMode="numeric"
+										placeholder="default"
+										value={rakeBps}
+										onChange={(e) => setRakeBps(digitsOnly(e.target.value))}
+										disabled={create.isPending}
+									/>
+								</div>
+								<div className="space-y-2">
+									<Label htmlFor="pm-min">Min stake (optional)</Label>
+									<Input
+										id="pm-min"
+										type="text"
+										inputMode="numeric"
+										placeholder="default"
+										value={minStake}
+										onChange={(e) => setMinStake(digitsOnly(e.target.value))}
+										disabled={create.isPending}
+									/>
+								</div>
+								<div className="space-y-2">
+									<Label htmlFor="pm-max">Max stake (optional)</Label>
+									<Input
+										id="pm-max"
+										type="text"
+										inputMode="numeric"
+										placeholder="none"
+										value={maxStake}
+										onChange={(e) => setMaxStake(digitsOnly(e.target.value))}
+										disabled={create.isPending}
+									/>
+								</div>
+								<div className="space-y-2">
+									<Label htmlFor="pm-cap">Per-user cap (optional)</Label>
+									<Input
+										id="pm-cap"
+										type="text"
+										inputMode="numeric"
+										placeholder="none"
+										value={perUserCap}
+										onChange={(e) => setPerUserCap(digitsOnly(e.target.value))}
+										disabled={create.isPending}
+									/>
+								</div>
+							</div>
 
-					<div className="flex items-center justify-between rounded-md border border-border p-3">
-						<div>
-							<Label htmlFor="pm-twoofn">Require two-of-N resolution</Label>
-							<p className="text-xs text-muted-foreground">
-								A second resolver must approve before this market resolves.
-							</p>
-						</div>
-						<Switch
-							id="pm-twoofn"
-							checked={twoOfN}
-							onCheckedChange={setTwoOfN}
-							disabled={create.isPending}
-						/>
-					</div>
+							<div className="flex items-center justify-between rounded-md border border-border p-3">
+								<div>
+									<Label htmlFor="pm-twoofn">Require two-of-N resolution</Label>
+									<p className="text-xs text-muted-foreground">
+										A second resolver must approve before this market resolves.
+									</p>
+								</div>
+								<Switch
+									id="pm-twoofn"
+									checked={twoOfN}
+									onCheckedChange={setTwoOfN}
+									disabled={create.isPending}
+								/>
+							</div>
+						</>
+					) : null}
 
 					<DialogFooter>
 						<Button

@@ -11,9 +11,14 @@ export interface RateBudget {
 	windowMs: number
 }
 
-/** Per-command budgets. Bets are the spammable path; other commands aren't rate-limited yet. */
+/**
+ * Per-command budgets. Bets are the spammable member path; `create_market` throttles member-created
+ * markets (each spawns a public forum post) so a creator-tier user can't flood the channel. Admin
+ * creation is uncapped (the caller opts in per-request). Other commands aren't rate-limited yet.
+ */
 export const RATE_BUDGETS: Record<string, RateBudget> = {
 	bet: { limit: 5, windowMs: 10_000 },
+	create_market: { limit: 10, windowMs: 3_600_000 }, // 10 markets/hour per user
 }
 
 export interface RateState {

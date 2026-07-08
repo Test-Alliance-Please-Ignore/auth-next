@@ -52,6 +52,19 @@ export const createMarketSchema = z.object({
 
 export type CreateMarketBody = z.infer<typeof createMarketSchema>
 
+/**
+ * Slim schema for lower-trust `urn:markets:creator` users: question/outcomes/close only. The
+ * economic params (rakeBps, min/max stake, per-user cap, twoOfN) are omitted — a creator can't set
+ * them (zod strips any that are sent), so they fall back to the pmConfig defaults in createMarket.
+ * Managers/admins use the full createMarketSchema. Its output is a subset of CreateMarketBody.
+ */
+export const createMarketCreatorSchema = createMarketSchema.pick({
+	question: true,
+	description: true,
+	outcomes: true,
+	closesAt: true,
+})
+
 /** createMarket domain errors that are the caller's fault (bad input) → 400, not a server 500. */
 export const CREATE_MARKET_BAD_REQUEST_CODES = [
 	'AT_LEAST_TWO_OUTCOMES',
@@ -67,12 +80,19 @@ export const CREATE_MARKET_BAD_REQUEST_CODES = [
 
 const CREATE_BAD_REQUEST_SET = new Set<string>(CREATE_MARKET_BAD_REQUEST_CODES)
 
-/** Map a create-market error to the right HTTP status (shared by the admin + member routes). */
+/** Map a create-market error to the right HTTP status (used by the member create route). */
 export function mapMarketCreateError(c: Context<App>, error: unknown) {
 	if (error instanceof z.ZodError) {
 		return c.json({ error: 'Validation failed', issues: error.issues }, 400)
 	}
 	const msg = error instanceof Error ? error.message : String(error)
+	if (msg.startsWith('RATE_LIMITED')) {
+		const retryAfterMs = Number(msg.split(':')[1]) || 0
+		return c.json(
+			{ error: 'You’re creating markets too fast — try again shortly.', retryAfterMs },
+			429
+		)
+	}
 	if (CREATE_BAD_REQUEST_SET.has(msg)) {
 		return c.json({ error: msg }, 400)
 	}
@@ -95,10 +115,15 @@ export async function createAndPublishMarket(
 	db: CoreDb,
 	env: CreateMarketEnv,
 	createdBy: string,
-	input: CreateMarketBody
+	input: CreateMarketBody,
+	opts?: { enforceRateLimit?: boolean }
 ): Promise<CreateMarketResult> {
 	const prediction = getStub<PredictionMarkets>(env.PREDICTION_MARKETS, 'default')
-	const market = await prediction.createMarket({ createdBy, ...input })
+	const market = await prediction.createMarket({
+		createdBy,
+		...input,
+		enforceRateLimit: opts?.enforceRateLimit,
+	})
 
 	let post: { threadId: string; messageId: string } | null = null
 	let postError: string | null = null

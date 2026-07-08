@@ -69,15 +69,23 @@ describe('member prediction-markets create route', () => {
 		})
 	})
 
+	// hasMarketPermission is called per-tier: ('creator') gates the route, ('manager') picks the
+	// schema + rate-limit exemption. Resolve per the tier argument.
+	function mockTiers(creator: boolean, manager: boolean) {
+		mocks.hasMarketPermission.mockImplementation((_env, _userId, tier) =>
+			Promise.resolve(tier === 'manager' ? manager : creator)
+		)
+	}
+
 	it('403s a user without urn:markets:creator and never creates', async () => {
-		mocks.hasMarketPermission.mockResolvedValue(false)
+		mockTiers(false, false)
 		const res = await post(createApp(makeUser()), validBody)
 		expect(res.status).toBe(403)
 		expect(mocks.createAndPublishMarket).not.toHaveBeenCalled()
 	})
 
-	it('creates for a permitted user, with createdBy taken from the session (not the client)', async () => {
-		mocks.hasMarketPermission.mockResolvedValue(true)
+	it('creator (non-manager): 201, createdBy from session, rate-limited', async () => {
+		mockTiers(true, false)
 		// Even if the client tries to spoof createdBy, the route ignores it.
 		const res = await post(createApp(makeUser({ id: 'user-1' })), { ...validBody, createdBy: 'evil' })
 		expect(res.status).toBe(201)
@@ -86,12 +94,43 @@ describe('member prediction-markets create route', () => {
 			expect.anything(),
 			env,
 			'user-1',
-			expect.objectContaining({ question: 'Will it rain tomorrow?' })
+			expect.objectContaining({ question: 'Will it rain tomorrow?' }),
+			{ enforceRateLimit: true }
 		)
 	})
 
+	it('creator: slim schema strips economic params (they default from config)', async () => {
+		mockTiers(true, false)
+		await post(createApp(makeUser()), { ...validBody, rakeBps: 1500, minStake: '50', twoOfN: true })
+		const body = mocks.createAndPublishMarket.mock.calls[0][3]
+		expect(body).not.toHaveProperty('rakeBps')
+		expect(body).not.toHaveProperty('minStake')
+		expect(body).not.toHaveProperty('twoOfN')
+		expect(body).toMatchObject({ question: 'Will it rain tomorrow?' })
+	})
+
+	it('manager/admin: full schema, uncapped (economic params pass through)', async () => {
+		mockTiers(true, true)
+		await post(createApp(makeUser()), { ...validBody, rakeBps: 1500 })
+		expect(mocks.createAndPublishMarket).toHaveBeenCalledWith(
+			expect.anything(),
+			env,
+			'user-1',
+			expect.objectContaining({ rakeBps: 1500 }),
+			{ enforceRateLimit: false }
+		)
+	})
+
+	it('429s when the per-user creation rate budget is exhausted', async () => {
+		mockTiers(true, false)
+		mocks.createAndPublishMarket.mockRejectedValue(new Error('RATE_LIMITED:5000'))
+		const res = await post(createApp(makeUser()), validBody)
+		expect(res.status).toBe(429)
+		expect(await res.json()).toMatchObject({ retryAfterMs: 5000 })
+	})
+
 	it('400s an invalid body (validation) even when permitted', async () => {
-		mocks.hasMarketPermission.mockResolvedValue(true)
+		mockTiers(true, true)
 		const res = await post(createApp(makeUser()), { question: 'x', outcomes: ['only one'] })
 		expect(res.status).toBe(400)
 		expect(mocks.createAndPublishMarket).not.toHaveBeenCalled()
