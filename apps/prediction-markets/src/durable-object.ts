@@ -61,7 +61,14 @@ import type {
 	WalletRow,
 } from '@repo/prediction-markets'
 import type { Env } from './context'
-import type { PmBet, PmConfig, PmLedgerRow, PmMarket, PmMarketHistoryRow } from './db/schema'
+import type {
+	NewPmLedgerRow,
+	PmBet,
+	PmConfig,
+	PmLedgerRow,
+	PmMarket,
+	PmMarketHistoryRow,
+} from './db/schema'
 
 type PmDatabase = ReturnType<typeof createDb>
 type PmTransaction = Parameters<Parameters<PmDatabase['transaction']>[0]>[0]
@@ -561,25 +568,17 @@ export class PredictionMarketsDO extends DurableObject<Env> implements Predictio
 					}
 				}
 
-				const [credited] = await tx
-					.update(pmWallets)
-					.set({
-						balance: sql`${pmWallets.balance} + ${input.amount}::numeric`,
-						updatedAt: new Date(),
-					})
-					.where(eq(pmWallets.userId, input.targetUserId))
-					.returning({ balance: pmWallets.balance })
-
-				await tx.insert(pmLedger).values({
+				// Wallet already exists and is locked FOR UPDATE above, so skip the lazy upsert.
+				const { balanceAfter } = await this.creditWallet(tx, {
 					userId: input.targetUserId,
-					amount: input.amount,
+					amount: parseAmount(input.amount),
 					type: 'grant',
-					balanceAfter: credited.balance,
-					idempotencyKey: input.idempotencyKey ?? null,
+					idempotencyKey: input.idempotencyKey,
 					metadata: { actorUserId: input.actorUserId, reason: input.reason },
+					ensureWallet: false,
 				})
 
-				return { balance: credited.balance, deduped: false }
+				return { balance: balanceAfter ?? locked?.balance ?? '0', deduped: false }
 			})
 		} catch (error) {
 			// A mismatched idempotency key is a caller-side outcome (the admin route maps it to 409;
@@ -1650,21 +1649,14 @@ export class PredictionMarketsDO extends DurableObject<Env> implements Predictio
 				.returning({ id: pmBets.id })
 			if (updated.length === 0) continue // already credited on a retry
 
-			const [credited] = await tx
-				.update(pmWallets)
-				.set({
-					balance: sql`${pmWallets.balance} + ${formatAmount(p.payout)}::numeric`,
-					updatedAt: new Date(),
-				})
-				.where(eq(pmWallets.userId, p.userId))
-				.returning({ balance: pmWallets.balance })
-			await tx.insert(pmLedger).values({
+			// Winner already has a wallet (they bet), so skip the lazy upsert.
+			await this.creditWallet(tx, {
 				userId: p.userId,
-				amount: formatAmount(p.payout),
+				amount: p.payout,
 				type: 'payout',
 				marketId: market.id,
 				betId: p.betId,
-				balanceAfter: credited?.balance ?? null,
+				ensureWallet: false,
 			})
 		}
 
@@ -1684,24 +1676,12 @@ export class PredictionMarketsDO extends DurableObject<Env> implements Predictio
 		// no wallet yet if they never bet, so lazily create it. Booked as its own attributed line whose
 		// metadata records the draw for audit; the remaining houseRake still books as 'rake' below.
 		if (creatorReward > 0n) {
-			await tx
-				.insert(pmWallets)
-				.values({ userId: market.createdBy, balance: '0' })
-				.onConflictDoNothing()
-			const [credited] = await tx
-				.update(pmWallets)
-				.set({
-					balance: sql`${pmWallets.balance} + ${formatAmount(creatorReward)}::numeric`,
-					updatedAt: new Date(),
-				})
-				.where(eq(pmWallets.userId, market.createdBy))
-				.returning({ balance: pmWallets.balance })
-			await tx.insert(pmLedger).values({
+			// The creator may have no wallet yet (never bet), so lazily create it.
+			await this.creditWallet(tx, {
 				userId: market.createdBy,
-				amount: formatAmount(creatorReward),
+				amount: creatorReward,
 				type: 'creator_reward',
 				marketId: market.id,
-				balanceAfter: credited?.balance ?? null,
 				metadata: { shareBps: creatorShareBps, rakeBase: formatAmount(rake) },
 			})
 		}
@@ -1709,44 +1689,21 @@ export class PredictionMarketsDO extends DurableObject<Env> implements Predictio
 		// House cut (net rake, after any creator reward) and rounding dust (burn) accumulate in the
 		// system wallet rather than leaving circulation via a null-user sink — the points stay conserved
 		// and recoverable. Each is a distinct, attributed ledger line carrying the running balanceAfter.
-		if (houseRake > 0n || dust > 0n) {
-			await tx
-				.insert(pmWallets)
-				.values({ userId: SYSTEM_WALLET_USER_ID, balance: '0' })
-				.onConflictDoNothing()
-		}
+		// creditWallet lazily upserts the system wallet, so each credit is self-contained.
 		if (houseRake > 0n) {
-			const [credited] = await tx
-				.update(pmWallets)
-				.set({
-					balance: sql`${pmWallets.balance} + ${formatAmount(houseRake)}::numeric`,
-					updatedAt: new Date(),
-				})
-				.where(eq(pmWallets.userId, SYSTEM_WALLET_USER_ID))
-				.returning({ balance: pmWallets.balance })
-			await tx.insert(pmLedger).values({
+			await this.creditWallet(tx, {
 				userId: SYSTEM_WALLET_USER_ID,
-				amount: formatAmount(houseRake),
+				amount: houseRake,
 				type: 'rake',
 				marketId: market.id,
-				balanceAfter: credited.balance,
 			})
 		}
 		if (dust > 0n) {
-			const [credited] = await tx
-				.update(pmWallets)
-				.set({
-					balance: sql`${pmWallets.balance} + ${formatAmount(dust)}::numeric`,
-					updatedAt: new Date(),
-				})
-				.where(eq(pmWallets.userId, SYSTEM_WALLET_USER_ID))
-				.returning({ balance: pmWallets.balance })
-			await tx.insert(pmLedger).values({
+			await this.creditWallet(tx, {
 				userId: SYSTEM_WALLET_USER_ID,
-				amount: formatAmount(dust),
+				amount: dust,
 				type: 'burn',
 				marketId: market.id,
-				balanceAfter: credited.balance,
 			})
 		}
 
@@ -1806,21 +1763,14 @@ export class PredictionMarketsDO extends DurableObject<Env> implements Predictio
 				.returning({ id: pmBets.id })
 			if (updated.length === 0) continue
 
-			const [credited] = await tx
-				.update(pmWallets)
-				.set({
-					balance: sql`${pmWallets.balance} + ${bet.amount}::numeric`,
-					updatedAt: new Date(),
-				})
-				.where(eq(pmWallets.userId, bet.userId))
-				.returning({ balance: pmWallets.balance })
-			await tx.insert(pmLedger).values({
+			// The bettor already has a wallet (they bet), so skip the lazy upsert.
+			await this.creditWallet(tx, {
 				userId: bet.userId,
-				amount: bet.amount,
+				amount: parseAmount(bet.amount),
 				type: 'refund',
 				marketId: market.id,
 				betId: bet.id,
-				balanceAfter: credited?.balance ?? null,
+				ensureWallet: false,
 			})
 		}
 
@@ -2120,6 +2070,64 @@ export class PredictionMarketsDO extends DurableObject<Env> implements Predictio
 				impliedOddsBps: total > 0n ? Number((parseAmount(o.poolAmount) * 10_000n) / total) : null,
 			})),
 		}
+	}
+
+	/**
+	 * The single audited money-credit primitive. Optionally lazily creates the wallet row, applies one
+	 * atomic balance increment, and appends the matching `pm_ledger` line carrying the running
+	 * `balanceAfter`. Every credit (payout / refund / creator_reward / rake / burn / grant) routes
+	 * through here so the credit-then-record invariant — and the balanceAfter snapshot — lives in
+	 * exactly one place rather than being hand-rolled per call site.
+	 *
+	 * `amount` is a non-negative points bigint. Because every caller has already ensured (or is about
+	 * to ensure) the wallet exists, `credited` is always present; the `?? null` fallbacks are defensive.
+	 * Returns the post-credit balance string (null only if the wallet row vanished mid-transaction).
+	 */
+	private async creditWallet(
+		tx: PmExecutor,
+		args: {
+			userId: string
+			amount: bigint
+			type: NewPmLedgerRow['type']
+			marketId?: string
+			betId?: string
+			idempotencyKey?: string
+			metadata?: unknown
+			/** Lazily `INSERT ... ON CONFLICT DO NOTHING` the wallet row first (default true). Pass false
+			 * when the caller has already created/locked the wallet in this transaction. */
+			ensureWallet?: boolean
+		}
+	): Promise<{ balanceAfter: string | null }> {
+		const {
+			userId,
+			amount,
+			type,
+			marketId,
+			betId,
+			idempotencyKey,
+			metadata,
+			ensureWallet = true,
+		} = args
+		if (ensureWallet) {
+			await tx.insert(pmWallets).values({ userId, balance: '0' }).onConflictDoNothing()
+		}
+		const formatted = formatAmount(amount)
+		const [credited] = await tx
+			.update(pmWallets)
+			.set({ balance: sql`${pmWallets.balance} + ${formatted}::numeric`, updatedAt: new Date() })
+			.where(eq(pmWallets.userId, userId))
+			.returning({ balance: pmWallets.balance })
+		await tx.insert(pmLedger).values({
+			userId,
+			amount: formatted,
+			type,
+			marketId: marketId ?? null,
+			betId: betId ?? null,
+			balanceAfter: credited?.balance ?? null,
+			idempotencyKey: idempotencyKey ?? null,
+			metadata: metadata ?? null,
+		})
+		return { balanceAfter: credited?.balance ?? null }
 	}
 
 	private async logHistory(executor: PmExecutor, entry: HistoryEntry): Promise<void> {
