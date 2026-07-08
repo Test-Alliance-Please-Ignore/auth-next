@@ -84,8 +84,11 @@ describe('createAndPublishMarket — designated-resolver validation', () => {
 		expect(hoisted.prediction.createMarket).not.toHaveBeenCalled()
 	})
 
-	it('rejects an unknown user id with a generic DESIGNATED_RESOLVER_INVALID (no existence oracle)', async () => {
-		const db = makeDb([{ id: R1, isAdmin: false }]) // R2 absent
+	it('rejects an unknown user id with the same generic DESIGNATED_RESOLVER_INVALID (no existence oracle)', async () => {
+		// R2 is absent from the users table → holds no permissions → fails the resolver-tier check via
+		// the same path as an existing non-resolver (no distinct "not found" branch).
+		const db = makeDb([{ id: R1, isAdmin: false }])
+		hoisted.hasMarketPermission.mockImplementation((_e, id: string) => Promise.resolve(id === R1))
 		await expect(
 			createAndPublishMarket(db, env, CREATOR, {
 				...baseInput,

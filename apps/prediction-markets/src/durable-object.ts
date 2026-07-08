@@ -656,6 +656,15 @@ export class PredictionMarketsDO extends DurableObject<Env> implements Predictio
 			// dynamically once the pool crosses the configured threshold (which happens AFTER create, as
 			// bets accumulate). A size-1 designated set can never supply the second distinct signer, so
 			// require >=2 whenever two-of-N is even possible for this market.
+			//
+			// ACCEPTED RESIDUAL (product decision — "allow a single resolver"): this guarantee is
+			// CREATE-TIME ONLY. If a size-1 designated market is created while NO threshold is active and
+			// an admin LATER activates/lowers `pmConfig.twoOfNThreshold` such that the pool crosses it,
+			// requiresTwoOfN() flips true at settle and the sole designated resolver can't self-complete
+			// (no distinct second signer). That market is then settleable only via admin/manager bypass
+			// (bypassDesignated) or the resolving->voided path — never permanently stuck. We deliberately
+			// do NOT weaken requiresTwoOfN for small designated sets, so the two-of-N safeguard on large
+			// pools is never silently skipped by designating a single resolver.
 			if (designatedResolvers.length < 2) {
 				const twoOfNPossible =
 					(input.twoOfN ?? false) || (await this.activeTwoOfNThreshold()) != null
@@ -1265,7 +1274,11 @@ export class PredictionMarketsDO extends DurableObject<Env> implements Predictio
 					action: 'resolution_proposed',
 					previousStatus: 'closed',
 					newStatus: 'resolving',
-					metadata: { outcomeId: input.outcomeId, proposalId: proposal.id },
+					metadata: {
+						outcomeId: input.outcomeId,
+						proposalId: proposal.id,
+						...(viaOverride ? { viaOverride: true } : {}),
+					},
 				})
 				return {
 					marketId: market.id,

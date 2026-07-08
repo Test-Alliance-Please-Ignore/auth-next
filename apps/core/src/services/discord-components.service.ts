@@ -91,6 +91,8 @@ const ERROR_MESSAGES: Record<string, string> = {
 	PER_USER_CAP_EXCEEDED: 'That would exceed your per-user cap on this market.',
 	INSUFFICIENT_FUNDS: 'Not enough points — ask an admin for a grant, or lower your stake.',
 	INVALID_AMOUNT: 'Enter a whole number of points.',
+	DESIGNATED_RESOLVER_CANNOT_BET:
+		'You’re a designated resolver for this market, so you can’t bet on it.',
 	// resolver
 	MARKET_NOT_CLOSED: 'The market must be closed before it can be resolved.',
 	MARKET_NOT_RESOLVING: 'There is no pending resolution to approve.',

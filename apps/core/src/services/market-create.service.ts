@@ -147,15 +147,19 @@ async function validateDesignatedResolvers(
 	const unique = [...new Set(ids)]
 	if (unique.includes(createdBy.toLowerCase())) throw new Error('CREATOR_IS_RESOLVER')
 
+	// Look up each id's is_admin (hasMarketPermission's admin bypass depends on it). We deliberately do
+	// NOT branch on "user missing": an unknown id holds no permissions, so it fails the SAME resolver-
+	// tier check below as an existing non-resolver — one generic code AND one code path, so neither the
+	// error body nor the response timing can distinguish "no such user" from "not a resolver".
 	const rows = await db
 		.select({ id: users.id, isAdmin: users.is_admin })
 		.from(users)
 		.where(inArray(users.id, unique))
 	const adminById = new Map(rows.map((r) => [r.id.toLowerCase(), r.isAdmin]))
-	// Unknown user id → generic invalid (no distinct "not found" signal).
-	if (unique.some((id) => !adminById.has(id))) throw new Error('DESIGNATED_RESOLVER_INVALID')
 
 	// Each designee must independently hold the resolver tier (evaluated with their own admin flag).
+	// This is the "designation narrows, never grants" enforcement; an unknown id resolves to no
+	// permissions and fails here too.
 	const tierOk = await Promise.all(
 		unique.map((id) => hasMarketPermission(env, id, 'resolver', adminById.get(id) ?? false))
 	)
