@@ -4,6 +4,18 @@ import { DurableObject } from 'cloudflare:workers'
 export { createSqliteDbClient, migrateSqlite } from './sqlite-client'
 export type { DrizzleSqliteDODatabase, SqliteMigrationConfig } from './sqlite-client'
 
+// Fluent, type-safe DO namespace accessor: singleton / per-name / sharded (+ fan-out)
+export { forDO, shardIndex, shardName } from './for-do'
+export type {
+	AnyDoNamespace,
+	DoClient,
+	ExplicitInterfaceRequired,
+	ResolveStub,
+	ShardOptions,
+	ShardedClient,
+	StubOptions,
+} from './for-do'
+
 /**
  * Get a typed Durable Object stub with automatic resource management
  *
