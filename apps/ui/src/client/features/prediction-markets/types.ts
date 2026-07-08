@@ -7,15 +7,20 @@
  */
 
 import type {
+	CreateMarketInput,
 	GlobalLedgerRow,
+	GrantPointsInput,
 	LedgerType,
 	MarketDetail,
 	MarketHistoryRow,
 	MarketStatus,
 	MarketSummary,
+	Paged,
 	PmConfigView,
 	StrandedMarket,
 	ThresholdImpact,
+	UpdateConfigInput,
+	UpdateMarketInput,
 	WalletRow,
 } from '@repo/prediction-markets'
 
@@ -26,16 +31,12 @@ export type {
 	MarketHistoryRow,
 	MarketStatus,
 	MarketSummary,
+	// Re-exported from the DO contract so the L1 list endpoints share one paged envelope.
+	Paged,
 	PmConfigView,
 	StrandedMarket,
 	ThresholdImpact,
 	WalletRow,
-}
-
-/** Generic paged envelope returned by every L1 list endpoint. */
-export interface Paged<T> {
-	rows: T[]
-	total: number
 }
 
 /** Enriched display identity attached to wallet/ledger rows by the core route. */
@@ -93,13 +94,11 @@ export interface MarketHistoryFilters {
 
 // --- deposit mutation ------------------------------------------------------
 
-export interface DepositRequest {
-	targetUserId: string
-	/** Integer string (numeric). DISPLAY ONLY — never Number() arithmetic. */
-	amount: string
-	reason: string
-	idempotencyKey?: string
-}
+/**
+ * Deposit (grant) wire body. Derived from the DO contract minus the server-injected `actorUserId`
+ * (the core route fills it from the session), so it can never drift from GrantPointsInput.
+ */
+export type DepositRequest = Omit<GrantPointsInput, 'actorUserId'>
 
 export interface DepositResponse {
 	/** Resulting wallet balance, integer string. */
@@ -109,27 +108,12 @@ export interface DepositResponse {
 
 // --- markets ---------------------------------------------------------------
 
-export interface CreateMarketRequest {
-	question: string
-	description?: string
-	outcomes: string[]
-	/** ISO-8601 timestamp when betting closes. */
-	closesAt: string
-	/** ISO-8601 expected resolution date. Required; must be at or after closesAt. */
-	resolvesOn: string
-	rakeBps?: number
-	/** Integer strings (numeric). DISPLAY ONLY — never Number() arithmetic. */
-	minStake?: string
-	maxStake?: string
-	perUserCap?: string
-	twoOfN?: boolean
-	/**
-	 * Optional core user ids to designate as this market's resolver(s). Admin surface only; the server
-	 * validates each holds the resolver tier and rejects designating the creator. Omit/empty => the
-	 * market uses global resolver authority.
-	 */
-	designatedResolverIds?: string[]
-}
+/**
+ * Market-create wire body. Derived from the DO contract minus the fields the server injects
+ * (`createdBy` from the session, `enforceRateLimit` as a server-set policy flag), so the admin and
+ * member create forms stay in lockstep with CreateMarketInput.
+ */
+export type CreateMarketRequest = Omit<CreateMarketInput, 'createdBy' | 'enforceRateLimit'>
 
 export interface CreateMarketResponse {
 	market: MarketDetail
@@ -139,13 +123,8 @@ export interface CreateMarketResponse {
 	postError: string | null
 }
 
-/** Partial admin edit of a market's safe fields. At least one must be present. */
-export interface UpdateMarketRequest {
-	/** ISO-8601; must be in the future. */
-	closesAt?: string
-	question?: string
-	description?: string | null
-}
+/** Partial admin edit of a market's safe fields (at least one present). Identical to the DO contract. */
+export type UpdateMarketRequest = UpdateMarketInput
 
 export interface UpdateMarketResponse {
 	market: MarketDetail
@@ -164,13 +143,9 @@ export interface MarketsResponse {
 
 // --- config ----------------------------------------------------------------
 
-/** Full-replace config write. Monetary fields are integer strings; threshold null = disable two-of-N. */
-export interface UpdateConfigRequest {
-	defaultRakeBps: number
-	defaultMinStake: string
-	twoOfNThreshold: string | null
-	/** Creator rake-reward band as a fraction of the rake in bps (0–10000). Both 0 disables it. */
-	creatorRewardMinBps: number
-	creatorRewardMaxBps: number
-	changeNote?: string
-}
+/**
+ * Full-replace config write. Derived from the DO contract minus the server-injected `actorUserId`.
+ * (Previously re-declared here with `changeNote: string`, which had drifted from the contract's
+ * `changeNote?: string | null` — deriving keeps the wire type and the DO input in lockstep.)
+ */
+export type UpdateConfigRequest = Omit<UpdateConfigInput, 'actorUserId'>
