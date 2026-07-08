@@ -525,6 +525,15 @@ export interface PredictionMarkets {
 		approverId?: string
 		/** See proposeResolution.bypassDesignated. */
 		bypassDesignated?: boolean
+		/**
+		 * When true, void this market UNCONDITIONALLY — skip every conflict-of-interest guard (creator
+		 * ≠ voider, no-position, designated membership, AND the contested-void second-approver rule). A
+		 * void refunds every bet at its stake, so it carries no self-dealing risk; this is the site-admin
+		 * escape hatch to settle any market. Unlike bypassDesignated (held by admins AND managers, waiving
+		 * ONLY the membership check), adminOverride is is_admin-only. Core sets it solely from is_admin — a
+		 * trusted, DO-unverifiable capability, never a client literal.
+		 */
+		adminOverride?: boolean
 	}): Promise<void>
 	/**
 	 * Persist the Discord forum post mapping after Core creates the post.
