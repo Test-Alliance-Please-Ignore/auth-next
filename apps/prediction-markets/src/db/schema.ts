@@ -124,6 +124,14 @@ export const pmMarkets = pgTable(
 		discordThreadId: text('discord_thread_id'),
 		/** Discord starter-message id of the forum post (equals the thread id for forum posts). */
 		discordMessageId: text('discord_message_id'),
+		/**
+		 * When the terminal (resolved/voided) settlement notification — the thread result post +
+		 * per-participant result DMs — finished. NULL until then. The live resolve/void path sets it
+		 * after its `waitUntil` fan-out completes; the reconcile sweep re-sends any terminal market
+		 * still NULL past a grace window (cross-eviction self-heal: Core dying mid-notify drops the
+		 * best-effort `waitUntil` work with no other trace).
+		 */
+		settlementAnnouncedAt: timestamp('settlement_announced_at', { withTimezone: true }),
 		createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
 		updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
 	},
@@ -132,6 +140,12 @@ export const pmMarkets = pgTable(
 		// One market per forum thread. NULLs are distinct in Postgres b-tree, so many
 		// pre-post markets can coexist.
 		uniqueIndex('pm_markets_thread_uq').on(t.discordThreadId),
+		// Partial index over the settlement self-heal work-list: only terminal markets whose
+		// notification never completed. Keeps the reconcile scan O(pending failures), not
+		// O(all resolved markets ever) as terminal markets accumulate.
+		index('pm_markets_settle_unannounced_idx')
+			.on(t.updatedAt)
+			.where(sql`${t.settlementAnnouncedAt} is null and ${t.status} in ('resolved', 'voided')`),
 	]
 )
 

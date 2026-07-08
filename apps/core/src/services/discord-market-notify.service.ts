@@ -69,14 +69,19 @@ function winningOutcomeLabel(market: MarketDetail, settlement: MarketSettlement)
  * Post the settled market's outcome + aggregate totals to its thread (aggregate only — never a
  * per-user amount; those go out privately via DM). Best-effort; no-op if the market has no post.
  * Fast (one message) so it can stay on the interactive resolve path.
+ *
+ * Returns whether the aggregate result is now in the thread — `true` when the post landed (or there's
+ * no thread to post to, i.e. nothing owed), `false` when the send failed. Callers gate the persisted
+ * `settlementAnnounced` flag on this: a `false` leaves the market un-announced so the reconcile sweep
+ * re-posts it (at-least-once delivery of the public result).
  */
 export async function announceMarketResolved(
 	discord: Discord,
 	guildId: string,
 	market: MarketDetail,
 	settlement: MarketSettlement
-): Promise<void> {
-	if (!market.discordThreadId) return
+): Promise<boolean> {
+	if (!market.discordThreadId) return true
 	const content =
 		settlement.status === 'voided'
 			? buildMarketVoidAnnouncement(settlement.totalStaked)
@@ -92,6 +97,7 @@ export async function announceMarketResolved(
 	if (!res.success) {
 		logger.warn('[PMNotify] resolve announcement failed', { marketId: market.id, error: res.error })
 	}
+	return res.success
 }
 
 /**

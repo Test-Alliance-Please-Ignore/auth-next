@@ -1,5 +1,5 @@
 {
-  "id": "d8c9d796-5033-4fcf-a465-ee6720b7bf90",
+  "id": "e60ffb47-ab97-4ac2-b707-bfb53913218a",
   "prevId": "f15b859a-2e1e-4ffd-a5c0-d4052df4915f",
   "version": "7",
   "dialect": "postgresql",
@@ -691,12 +691,6 @@
           "notNull": true,
           "default": false
         },
-        "designated_resolvers": {
-          "name": "designated_resolvers",
-          "type": "uuid[]",
-          "primaryKey": false,
-          "notNull": false
-        },
         "discord_thread_id": {
           "name": "discord_thread_id",
           "type": "text",
@@ -706,6 +700,12 @@
         "discord_message_id": {
           "name": "discord_message_id",
           "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "settlement_announced_at": {
+          "name": "settlement_announced_at",
+          "type": "timestamp with time zone",
           "primaryKey": false,
           "notNull": false
         },
@@ -757,6 +757,22 @@
             }
           ],
           "isUnique": true,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "pm_markets_settle_unannounced_idx": {
+          "name": "pm_markets_settle_unannounced_idx",
+          "columns": [
+            {
+              "expression": "updated_at",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "where": "\"pm_markets\".\"settlement_announced_at\" is null and \"pm_markets\".\"status\" in ('resolved', 'voided')",
           "concurrently": false,
           "method": "btree",
           "with": {}
