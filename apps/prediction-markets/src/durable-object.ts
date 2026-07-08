@@ -65,7 +65,7 @@ interface HistoryEntry {
 }
 
 /** One-time starting grant deposited on a member's first `/market onboard`. */
-const ONBOARDING_GRANT = '5'
+const ONBOARDING_GRANT = '50'
 /** Ledger reason recorded for the onboarding grant. */
 const ONBOARDING_REASON = 'Initial onboarding'
 /**
@@ -544,9 +544,13 @@ export class PredictionMarketsDO extends DurableObject<Env> implements Predictio
 				return { balance: credited.balance, deduped: false }
 			})
 		} catch (error) {
-			captureException(error as Error, {
-				tags: { durableObject: 'PredictionMarketsDO', method: 'grantPoints' },
-			})
+			// A mismatched idempotency key is a caller-side outcome (the admin route maps it to 409;
+			// onboardUser handles it), not an infra failure — don't page on it.
+			if (!(error instanceof Error && error.message === 'IDEMPOTENCY_KEY_CONFLICT')) {
+				captureException(error as Error, {
+					tags: { durableObject: 'PredictionMarketsDO', method: 'grantPoints' },
+				})
+			}
 			throw error
 		}
 	}
@@ -556,18 +560,30 @@ export class PredictionMarketsDO extends DurableObject<Env> implements Predictio
 	 * Built on grantPoints as a system-actor grant keyed on `onboard:{userId}`, so it inherits
 	 * wallet creation, the atomic credit, and idempotency — and is once-per-user: a repeat call
 	 * (`deduped`) grants nothing and reports `alreadyOnboarded: true`.
+	 *
+	 * If a member already onboarded when ONBOARDING_GRANT was a DIFFERENT size, the repeat grant
+	 * collides on the key at a mismatched amount (IDEMPOTENCY_KEY_CONFLICT). Once-per-user still
+	 * holds — treat it as already onboarded rather than erroring or topping up.
 	 */
 	async onboardUser(
 		userId: string
 	): Promise<{ balance: string; granted: string; alreadyOnboarded: boolean }> {
-		const { balance, deduped } = await this.grantPoints({
-			actorUserId: SYSTEM_ACTOR,
-			targetUserId: userId,
-			amount: ONBOARDING_GRANT,
-			reason: ONBOARDING_REASON,
-			idempotencyKey: `onboard:${userId}`,
-		})
-		return { balance, granted: deduped ? '0' : ONBOARDING_GRANT, alreadyOnboarded: deduped }
+		try {
+			const { balance, deduped } = await this.grantPoints({
+				actorUserId: SYSTEM_ACTOR,
+				targetUserId: userId,
+				amount: ONBOARDING_GRANT,
+				reason: ONBOARDING_REASON,
+				idempotencyKey: `onboard:${userId}`,
+			})
+			return { balance, granted: deduped ? '0' : ONBOARDING_GRANT, alreadyOnboarded: deduped }
+		} catch (error) {
+			if (error instanceof Error && error.message === 'IDEMPOTENCY_KEY_CONFLICT') {
+				const { balance } = await this.getWalletBalance(userId)
+				return { balance, granted: '0', alreadyOnboarded: true }
+			}
+			throw error
+		}
 	}
 
 	async createMarket(input: CreateMarketInput): Promise<MarketDetail> {

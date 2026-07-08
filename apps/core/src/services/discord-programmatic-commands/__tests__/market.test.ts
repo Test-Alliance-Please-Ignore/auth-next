@@ -45,14 +45,14 @@ describe('MARKET_PROGRAMMATIC_COMMAND', () => {
 	describe('onboard', () => {
 		it('welcomes a fresh member with the deposited amount and new balance', async () => {
 			hoisted.onboardUser.mockResolvedValue({
-				balance: '5',
-				granted: '5',
+				balance: '50',
+				granted: '50',
 				alreadyOnboarded: false,
 			})
 			const res = await MARKET_PROGRAMMATIC_COMMAND.handler(ctx('onboard'))
 			expect(hoisted.onboardUser).toHaveBeenCalledWith('u1')
 			expect(res.data?.content).toContain('Welcome')
-			expect(res.data?.content).toContain('5 points')
+			expect(res.data?.content).toContain('50 points')
 			// Self-only content must be ephemeral even on a sync fallback.
 			expect(res.data?.flags).toBe(EPHEMERAL_FLAG)
 		})
