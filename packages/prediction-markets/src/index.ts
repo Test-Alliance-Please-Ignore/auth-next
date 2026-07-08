@@ -14,6 +14,14 @@ export type LedgerType = 'grant' | 'wager' | 'refund' | 'payout' | 'rake' | 'bur
 export type ProposalStatus = 'pending' | 'approved' | 'rejected' | 'superseded'
 export type Visibility = 'public' | 'internal'
 
+/**
+ * The house/system wallet. On resolution, the rake (house cut) and rounding dust accumulate here
+ * instead of leaving circulation — the points stay conserved and recoverable. The nil UUID is a
+ * valid `uuid` that `defaultRandom()` never mints, so it can never collide with a real user id.
+ * Surfaced as "System" in admin views and excluded from the member leaderboard.
+ */
+export const SYSTEM_WALLET_USER_ID = '00000000-0000-0000-0000-000000000000'
+
 // ---------------------------------------------------------------------------
 // Write inputs
 // ---------------------------------------------------------------------------

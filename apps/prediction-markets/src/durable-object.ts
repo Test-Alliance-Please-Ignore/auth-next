@@ -2,6 +2,7 @@ import { DurableObject } from 'cloudflare:workers'
 
 import { and, asc, desc, eq, gte, inArray, isNotNull, isNull, lte, ne, sql } from '@repo/db-utils'
 import { captureException, logger } from '@repo/hono-helpers'
+import { SYSTEM_WALLET_USER_ID } from '@repo/prediction-markets'
 import { parseDateOrNull } from '@repo/worker-utils'
 
 import { createDb } from './db'
@@ -343,6 +344,7 @@ export class PredictionMarketsDO extends DurableObject<Env> implements Predictio
 					0
 				) as "netProfit"
 			from pm_wallets w
+			where w.user_id != ${SYSTEM_WALLET_USER_ID}
 			order by w.balance desc
 			limit ${limit}
 		`)
@@ -389,7 +391,13 @@ export class PredictionMarketsDO extends DurableObject<Env> implements Predictio
 					? pmWallets.userId
 					: pmWallets.balance
 		const direction = opts?.order === 'asc' ? asc : desc
-		const where = opts?.userIds?.length ? inArray(pmWallets.userId, opts.userIds) : undefined
+		// The house/system wallet is an internal accumulator, not a user wallet — keep it out of the
+		// admin wallet grid (and its deposit/ledger actions). Its rake/burn entries still appear,
+		// labeled "System", in the audit ledger.
+		const excludeSystem = ne(pmWallets.userId, SYSTEM_WALLET_USER_ID)
+		const where = opts?.userIds?.length
+			? and(inArray(pmWallets.userId, opts.userIds), excludeSystem)
+			: excludeSystem
 
 		const rows = await this.db
 			.select()
@@ -495,6 +503,11 @@ export class PredictionMarketsDO extends DurableObject<Env> implements Predictio
 		// Defense-in-depth: the route also blocks this, but never let an admin fund their own wallet.
 		if (input.actorUserId === input.targetUserId) {
 			throw new Error('SELF_TARGET_FORBIDDEN')
+		}
+		// The house/system wallet is an accumulator for rake + dust; keep its balance meaningful by
+		// forbidding manual deposits into it (so house balance == Σ collected rake/dust).
+		if (input.targetUserId === SYSTEM_WALLET_USER_ID) {
+			throw new Error('SYSTEM_TARGET_FORBIDDEN')
 		}
 		try {
 			return await this.db.transaction(async (tx) => {
@@ -1435,21 +1448,47 @@ export class PredictionMarketsDO extends DurableObject<Env> implements Predictio
 				)
 			)
 
-		// House cut and rounding dust are recorded as distinct sink lines (both leave circulation).
+		// House cut (rake) and rounding dust (burn) accumulate in the system wallet rather than
+		// leaving circulation via a null-user sink — the points stay conserved and recoverable.
+		// Each is a distinct, attributed ledger line carrying the wallet's running balanceAfter.
+		if (rake > 0n || dust > 0n) {
+			await tx
+				.insert(pmWallets)
+				.values({ userId: SYSTEM_WALLET_USER_ID, balance: '0' })
+				.onConflictDoNothing()
+		}
 		if (rake > 0n) {
+			const [credited] = await tx
+				.update(pmWallets)
+				.set({
+					balance: sql`${pmWallets.balance} + ${formatAmount(rake)}::numeric`,
+					updatedAt: new Date(),
+				})
+				.where(eq(pmWallets.userId, SYSTEM_WALLET_USER_ID))
+				.returning({ balance: pmWallets.balance })
 			await tx.insert(pmLedger).values({
-				userId: null,
+				userId: SYSTEM_WALLET_USER_ID,
 				amount: formatAmount(rake),
 				type: 'rake',
 				marketId: market.id,
+				balanceAfter: credited.balance,
 			})
 		}
 		if (dust > 0n) {
+			const [credited] = await tx
+				.update(pmWallets)
+				.set({
+					balance: sql`${pmWallets.balance} + ${formatAmount(dust)}::numeric`,
+					updatedAt: new Date(),
+				})
+				.where(eq(pmWallets.userId, SYSTEM_WALLET_USER_ID))
+				.returning({ balance: pmWallets.balance })
 			await tx.insert(pmLedger).values({
-				userId: null,
+				userId: SYSTEM_WALLET_USER_ID,
 				amount: formatAmount(dust),
 				type: 'burn',
 				marketId: market.id,
+				balanceAfter: credited.balance,
 			})
 		}
 

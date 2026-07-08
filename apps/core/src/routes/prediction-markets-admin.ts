@@ -13,6 +13,7 @@ import { z } from 'zod'
 import { eq, ilike, inArray } from '@repo/db-utils'
 import { getStub } from '@repo/do-utils'
 import { logger } from '@repo/hono-helpers'
+import { SYSTEM_WALLET_USER_ID } from '@repo/prediction-markets'
 
 import { requireAdmin, requireAuth } from '../middleware/session'
 import {
@@ -31,6 +32,8 @@ import type { LedgerType, MarketStatus, PredictionMarkets } from '@repo/predicti
 type CoreDb = ReturnType<typeof createDb>
 
 const NULL_NAME = { userName: null as string | null, mainCharacterId: null as string | null }
+/** Display label for the house/system wallet (nil-UUID owner, not a real user). */
+const SYSTEM_NAME = { userName: 'System', mainCharacterId: null as string | null }
 
 const app = new Hono<App>()
 
@@ -81,6 +84,7 @@ function nameOf(
 	names: Map<string, { userName: string | null; mainCharacterId: string | null }>,
 	userId: string | null
 ): { userName: string | null; mainCharacterId: string | null } {
+	if (userId === SYSTEM_WALLET_USER_ID) return SYSTEM_NAME
 	return userId ? (names.get(userId) ?? NULL_NAME) : NULL_NAME
 }
 
@@ -91,6 +95,9 @@ function fail(c: Context<App>, error: unknown, what: string) {
 	const msg = error instanceof Error ? error.message : String(error)
 	if (msg === 'SELF_TARGET_FORBIDDEN') {
 		return c.json({ error: 'Cannot deposit to your own wallet' }, 400)
+	}
+	if (msg === 'SYSTEM_TARGET_FORBIDDEN') {
+		return c.json({ error: 'Cannot deposit to the system wallet' }, 400)
 	}
 	if (msg === 'IDEMPOTENCY_KEY_CONFLICT') {
 		return c.json({ error: 'Idempotency key already used with different parameters' }, 409)
