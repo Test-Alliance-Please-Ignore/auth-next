@@ -9,7 +9,20 @@ describe('PmError', () => {
 		expect(err).toBeInstanceOf(Error)
 		expect(err.message).toBe('MARKET_NOT_FOUND')
 		expect(err.code).toBe('MARKET_NOT_FOUND')
-		expect(err.name).toBe('PmError')
+	})
+
+	it('keeps the inherited name "Error" — a custom name breaks Workers RPC message serialization', () => {
+		// Regression guard (incident 2026-07-09): Cloudflare Workers RPC only preserves `.message`
+		// verbatim for a thrown error whose `.name` is a recognized built-in. Setting
+		// `this.name = 'PmError'` here made the RPC-reconstructed error on the DO CALLER's side
+		// (apps/core, across getStub RPC) read `.message === 'PmError: <code>'` instead of the bare
+		// code — silently breaking every exact-string match (core's ERROR_MESSAGES lookup, admin-route
+		// `.message === 'CODE'` checks) across the whole feature. Confirmed via a live getStub RPC
+		// round-trip in the real workers-pool/workerd runtime — a direct in-process function call (as
+		// in money-flow.int.test.ts) or a plain `new PmError(...)` unit test does NOT reproduce this;
+		// only an actual DO RPC call does, which is why this class-level property is so easy to get
+		// wrong without a live round-trip check.
+		expect(new PmError('MARKET_NOT_FOUND').name).toBe('Error')
 	})
 
 	it('defaults to expected=true (a normal user-facing rejection)', () => {
