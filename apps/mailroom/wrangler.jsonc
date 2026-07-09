@@ -1,0 +1,24 @@
+{
+	"$schema": "node_modules/wrangler/config-schema.json",
+	"name": "mailroom",
+	"main": "src/index.ts",
+	"compatibility_date": "2025-04-28",
+	"compatibility_flags": ["nodejs_compat"],
+	"workers_dev": false,
+	// Inbound email is delivered by an Email Routing rule ("Send to a Worker" / catch-all)
+	// configured in the Cloudflare dashboard or API — NOT by an HTTP route or a binding.
+	// The fetch handler is only a health endpoint for local dev; leave routes empty.
+	"routes": [],
+	"logpush": false,
+	"observability": {
+		"enabled": true
+	},
+	"vars": {
+		"NAME": "mailroom",
+		"ENVIRONMENT": "production",
+		"SENTRY_RELEASE": "unknown"
+		// Optional framework config (set to VERIFIED Email Routing destinations before relying on them):
+		//   "FALLBACK_FORWARD_ADDRESS": "ops@pleaseignore.app"  // receives mail when inbound processing fails
+		//   "FORWARD_TEAM_TO": "team-inbox@pleaseignore.app"     // destination for the example "team@" alias
+	}
+}

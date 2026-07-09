@@ -1820,6 +1820,52 @@ importers:
         specifier: 4.87.0
         version: 4.87.0(@cloudflare/workers-types@4.20260501.1)
 
+  apps/mailroom:
+    dependencies:
+      '@repo/hono-helpers':
+        specifier: workspace:*
+        version: link:../../packages/hono-helpers
+      '@repo/worker-utils':
+        specifier: workspace:*
+        version: link:../../packages/worker-utils
+      hono:
+        specifier: 4.10.6
+        version: 4.10.6
+      postal-mime:
+        specifier: 2.7.5
+        version: 2.7.5
+      workers-tagged-logger:
+        specifier: 0.13.7
+        version: 0.13.7
+    devDependencies:
+      '@cloudflare/vite-plugin':
+        specifier: 1.15.0
+        version: 1.15.0(vite@7.2.2(@types/node@24.10.1)(jiti@2.6.1)(lightningcss@1.30.2)(tsx@4.21.0)(yaml@2.8.1))(workerd@1.20251106.1)(wrangler@4.87.0(@cloudflare/workers-types@4.20260501.1))
+      '@cloudflare/vitest-pool-workers':
+        specifier: 0.10.8
+        version: 0.10.8(@cloudflare/workers-types@4.20260501.1)(@vitest/runner@3.2.4)(@vitest/snapshot@3.2.4)(vitest@3.2.4)
+      '@repo/eslint-config':
+        specifier: workspace:*
+        version: link:../../packages/eslint-config
+      '@repo/tools':
+        specifier: workspace:*
+        version: link:../../packages/tools
+      '@repo/typescript-config':
+        specifier: workspace:*
+        version: link:../../packages/typescript-config
+      '@types/node':
+        specifier: 24.10.1
+        version: 24.10.1
+      vite:
+        specifier: 7.2.2
+        version: 7.2.2(@types/node@24.10.1)(jiti@2.6.1)(lightningcss@1.30.2)(tsx@4.21.0)(yaml@2.8.1)
+      vitest:
+        specifier: 3.2.4
+        version: 3.2.4(@types/node@24.10.1)(@vitest/browser@3.2.4)(jiti@2.6.1)(lightningcss@1.30.2)(tsx@4.21.0)(yaml@2.8.1)
+      wrangler:
+        specifier: 4.87.0
+        version: 4.87.0(@cloudflare/workers-types@4.20260501.1)
+
   apps/markets:
     dependencies:
       '@neondatabase/serverless':
@@ -8675,6 +8721,9 @@ packages:
     resolution: {integrity: sha512-/+5VFTchJDoVj3bhoqi6UeymcD00DAwb1nJwamzPvHEszJ4FpF6SNNbUbOS8yI56qHzdV8eK0qEfOSiodkTdxg==}
     engines: {node: '>= 0.4'}
 
+  postal-mime@2.7.5:
+    resolution: {integrity: sha512-GNEXKvWFQnbgO5NlrGzVa0FmWzBZ24PersAWErttSg1Hjpf0ATxTwS5DOMGaOpTG6bUh5cTr7xi0jAD942wCJA==}
+
   postcss-selector-parser@7.1.0:
     resolution: {integrity: sha512-8sLjZwK0R+JlxlYcTuVnyT2v+htpdrjDOKuMcOVdYjt52Lh8hWRYpxBPoKx/Zg+bcjc3wx6fmQevMmUztS/ccA==}
     engines: {node: '>=4'}
@@ -9938,7 +9987,7 @@ snapshots:
       cjs-module-lexer: 1.4.3
       devalue: 5.5.0
       miniflare: 4.20251113.0
-      semver: 7.7.3
+      semver: 7.7.4
       vitest: 3.2.4(@types/node@24.10.1)(@vitest/browser@3.2.4)(jiti@2.6.1)(lightningcss@1.30.2)(tsx@4.21.0)(yaml@2.8.1)
       wrangler: 4.49.0(@cloudflare/workers-types@4.20260501.1)
       zod: 3.25.76
@@ -14032,6 +14081,8 @@ snapshots:
 
   possible-typed-array-names@1.1.0: {}
 
+  postal-mime@2.7.5: {}
+
   postcss-selector-parser@7.1.0:
     dependencies:
       cssesc: 3.0.0
@@ -14916,11 +14967,11 @@ snapshots:
       expect-type: 1.2.2
       magic-string: 0.30.21
       pathe: 2.0.3
-      picomatch: 4.0.3
+      picomatch: 4.0.4
       std-env: 3.10.0
       tinybench: 2.9.0
       tinyexec: 0.3.2
-      tinyglobby: 0.2.15
+      tinyglobby: 0.2.16
       tinypool: 1.1.1
       tinyrainbow: 2.0.0
       vite: 7.2.2(@types/node@24.10.1)(jiti@2.6.1)(lightningcss@1.30.2)(tsx@4.21.0)(yaml@2.8.1)
