@@ -68,9 +68,16 @@ export class PmError extends Error {
 	constructor(code: PmErrorCode, opts?: { expected?: boolean; detail?: string | number }) {
 		// message === code (optionally `code:detail`, e.g. `RATE_LIMITED:1234`) so the existing
 		// string-matching consumers across the RPC boundary keep working — the class and its extra
-		// properties do NOT survive RPC serialization, only `.message` does.
+		// properties do NOT survive Workers RPC serialization, only `.message` does.
+		//
+		// CRITICAL: do NOT set `this.name` to anything but the inherited 'Error'. Cloudflare's Workers
+		// RPC only cleanly preserves `.message` for a thrown error whose `.name` is a recognized
+		// built-in (Error/TypeError/RangeError/...); an unrecognized name (e.g. 'PmError') makes the
+		// receiving side reconstruct a generic Error whose `.message` becomes `"<name>: <message>"` —
+		// silently breaking every exact-string match on the caller side (core's ERROR_MESSAGES lookup,
+		// admin route `.message === 'CODE'` checks, etc.). Verified via an actual DO RPC round-trip in
+		// the workers pool test runtime — a direct in-process function call does NOT reproduce this.
 		super(opts?.detail != null ? `${code}:${opts.detail}` : code)
-		this.name = 'PmError'
 		this.code = code
 		this.expected = opts?.expected ?? true
 	}
