@@ -23,6 +23,7 @@ import {
 	isDesignatedResolver,
 	normalizeDesignatedResolvers,
 } from './lib/designated-resolvers'
+import { isExpectedError, PmError } from './lib/errors'
 import { formatAmount, isPositiveIntegerString, negateAmount, parseAmount } from './lib/money'
 import { computeResolution, pickCreatorRewardBps, splitCreatorReward } from './lib/payout'
 import { RATE_BUDGETS } from './lib/rate-limit'
@@ -94,29 +95,6 @@ const ONBOARDING_REASON = 'Initial onboarding'
  */
 const SYSTEM_ACTOR = 'system'
 
-/** placeBet throws these on normal user-facing rejections — not paged to Sentry. */
-const EXPECTED_BET_ERRORS = new Set([
-	'MARKET_NOT_FOUND',
-	'MARKET_NOT_OPEN',
-	'MARKET_CLOSED',
-	'OUTCOME_NOT_FOUND',
-	'STAKE_BELOW_MIN',
-	'STAKE_ABOVE_MAX',
-	'PER_USER_CAP_EXCEEDED',
-	'INSUFFICIENT_FUNDS',
-	// A designated resolver may not bet on the market they're designated to settle (position-free rule).
-	'DESIGNATED_RESOLVER_CANNOT_BET',
-])
-
-/**
- * True for expected bet rejections — the user-facing outcomes we deliberately don't page on.
- * Covers the coded domain errors above plus INVALID_AMOUNT and the RATE_LIMITED:<ms> throw.
- */
-function isExpectedBetError(error: unknown): boolean {
-	const msg = error instanceof Error ? error.message : String(error)
-	return EXPECTED_BET_ERRORS.has(msg) || msg === 'INVALID_AMOUNT' || msg.startsWith('RATE_LIMITED')
-}
-
 /**
  * Pull the underlying driver error off a Drizzle "Failed query: …" wrapper. Drizzle surfaces only
  * the SQL + params in `.message`; the real Postgres reason (e.g. `relation "pm_rate_limits" does
@@ -126,43 +104,6 @@ function dbErrorCause(error: unknown): string | undefined {
 	const cause = (error as { cause?: unknown } | null)?.cause
 	if (cause == null) return undefined
 	return cause instanceof Error ? cause.message : String(cause)
-}
-
-/** Resolver methods (close/resolve/approve/void) throw these on normal rejections — not paged. */
-const EXPECTED_RESOLVER_ERRORS = new Set([
-	'MARKET_NOT_FOUND',
-	'MARKET_NOT_CLOSED',
-	'MARKET_NOT_RESOLVING',
-	'MARKET_TERMINAL',
-	'OUTCOME_NOT_FOUND',
-	'CREATOR_CANNOT_RESOLVE',
-	'RESOLVER_HAS_POSITION',
-	'APPROVER_MUST_DIFFER',
-	'PROPOSAL_NOT_FOUND',
-	'PROPOSAL_NOT_PENDING',
-	'CONTESTED_VOID_REQUIRES_APPROVER',
-	'VOID_REASON_REQUIRED',
-	// Actor is not one of this market's designated resolvers (and holds no admin/manager override).
-	'NOT_DESIGNATED_RESOLVER',
-])
-
-/** updateMarket throws these on normal caller-input rejections — not paged to Sentry. */
-const EXPECTED_MARKET_EDIT_ERRORS = new Set([
-	'MARKET_NOT_FOUND',
-	'MARKET_NOT_EDITABLE',
-	'CLOSES_AT_NOT_EDITABLE',
-	'INVALID_CLOSES_AT',
-	'RESOLVES_ON_BEFORE_CLOSE',
-	'QUESTION_REQUIRED',
-])
-
-/** True for expected resolver rejections, incl. the raw assertTransition (stale-state) string. */
-function isExpectedResolverError(error: unknown): boolean {
-	const msg = error instanceof Error ? error.message : String(error)
-	return (
-		EXPECTED_RESOLVER_ERRORS.has(msg) ||
-		msg.startsWith('prediction-markets: invalid market transition')
-	)
 }
 
 /**
@@ -516,19 +457,19 @@ export class PredictionMarketsDO extends DurableObject<Env> implements Predictio
 
 	async grantPoints(input: GrantPointsInput): Promise<{ balance: string; deduped: boolean }> {
 		if (!isPositiveIntegerString(input.amount)) {
-			throw new Error('INVALID_AMOUNT')
+			throw new PmError('INVALID_AMOUNT')
 		}
 		if (!input.reason?.trim()) {
-			throw new Error('REASON_REQUIRED')
+			throw new PmError('REASON_REQUIRED')
 		}
 		// Defense-in-depth: the route also blocks this, but never let an admin fund their own wallet.
 		if (input.actorUserId === input.targetUserId) {
-			throw new Error('SELF_TARGET_FORBIDDEN')
+			throw new PmError('SELF_TARGET_FORBIDDEN')
 		}
 		// The house/system wallet is an accumulator for rake + dust; keep its balance meaningful by
 		// forbidding manual deposits into it (so house balance == Σ collected rake/dust).
 		if (input.targetUserId === SYSTEM_WALLET_USER_ID) {
-			throw new Error('SYSTEM_TARGET_FORBIDDEN')
+			throw new PmError('SYSTEM_TARGET_FORBIDDEN')
 		}
 		try {
 			return await this.db.transaction(async (tx) => {
@@ -562,7 +503,7 @@ export class PredictionMarketsDO extends DurableObject<Env> implements Predictio
 							existing.userId === input.targetUserId &&
 							parseAmount(existing.amount) === parseAmount(input.amount)
 						if (!same) {
-							throw new Error('IDEMPOTENCY_KEY_CONFLICT')
+							throw new PmError('IDEMPOTENCY_KEY_CONFLICT')
 						}
 						return { balance: locked?.balance ?? '0', deduped: true }
 					}
@@ -583,7 +524,7 @@ export class PredictionMarketsDO extends DurableObject<Env> implements Predictio
 		} catch (error) {
 			// A mismatched idempotency key is a caller-side outcome (the admin route maps it to 409;
 			// onboardUser handles it), not an infra failure — don't page on it.
-			if (!(error instanceof Error && error.message === 'IDEMPOTENCY_KEY_CONFLICT')) {
+			if (!isExpectedError(error)) {
 				captureException(error as Error, {
 					tags: { durableObject: 'PredictionMarketsDO', method: 'grantPoints' },
 				})
@@ -625,33 +566,33 @@ export class PredictionMarketsDO extends DurableObject<Env> implements Predictio
 
 	async createMarket(input: CreateMarketInput): Promise<MarketDetail> {
 		const labels = input.outcomes.map((o) => o.trim()).filter(Boolean)
-		if (labels.length < 2) throw new Error('AT_LEAST_TWO_OUTCOMES')
+		if (labels.length < 2) throw new PmError('AT_LEAST_TWO_OUTCOMES')
 		// Cap at 20 so the embed (≤25 fields) and button rows (≤25 buttons / 5 rows) can't
 		// overflow Discord limits. The admin route enforces this too; the DO owns the invariant.
-		if (labels.length > 20) throw new Error('TOO_MANY_OUTCOMES')
+		if (labels.length > 20) throw new PmError('TOO_MANY_OUTCOMES')
 		if (new Set(labels.map((l) => l.toLowerCase())).size !== labels.length) {
-			throw new Error('DUPLICATE_OUTCOMES')
+			throw new PmError('DUPLICATE_OUTCOMES')
 		}
-		if (!input.question.trim()) throw new Error('QUESTION_REQUIRED')
+		if (!input.question.trim()) throw new PmError('QUESTION_REQUIRED')
 		const closesAt = parseDateOrNull(input.closesAt)
-		if (!closesAt) throw new Error('INVALID_CLOSES_AT')
+		if (!closesAt) throw new PmError('INVALID_CLOSES_AT')
 		// Expected resolution date: REQUIRED at create (the column is nullable only for backward-compat
 		// with pre-existing markets) and must be at or after betting close — a market can't be scheduled
 		// to resolve before its own bets stop.
 		const resolvesOn = parseDateOrNull(input.resolvesOn)
-		if (!resolvesOn) throw new Error('INVALID_RESOLVES_ON')
-		if (resolvesOn.getTime() < closesAt.getTime()) throw new Error('RESOLVES_ON_BEFORE_CLOSE')
+		if (!resolvesOn) throw new PmError('INVALID_RESOLVES_ON')
+		if (resolvesOn.getTime() < closesAt.getTime()) throw new PmError('RESOLVES_ON_BEFORE_CLOSE')
 		if (input.rakeBps != null && (input.rakeBps < 0 || input.rakeBps > 2000)) {
-			throw new Error('INVALID_RAKE')
+			throw new PmError('INVALID_RAKE')
 		}
 		if (input.minStake != null && !isPositiveIntegerString(input.minStake)) {
-			throw new Error('INVALID_MIN_STAKE')
+			throw new PmError('INVALID_MIN_STAKE')
 		}
 		if (input.maxStake != null && !isPositiveIntegerString(input.maxStake)) {
-			throw new Error('INVALID_MAX_STAKE')
+			throw new PmError('INVALID_MAX_STAKE')
 		}
 		if (input.perUserCap != null && !isPositiveIntegerString(input.perUserCap)) {
-			throw new Error('INVALID_PER_USER_CAP')
+			throw new PmError('INVALID_PER_USER_CAP')
 		}
 
 		// Read the active config ONCE and reuse it for the size-1 designated guard AND the market's frozen
@@ -675,7 +616,7 @@ export class PredictionMarketsDO extends DurableObject<Env> implements Predictio
 		const designatedResolvers = normalizeDesignatedResolvers(input.designatedResolverIds)
 		if (designatedResolvers) {
 			if (isDesignatedResolver(designatedResolvers, input.createdBy)) {
-				throw new Error('CREATOR_IS_RESOLVER')
+				throw new PmError('CREATOR_IS_RESOLVER')
 			}
 			// Two-of-N settlement needs two DISTINCT approvers. It fires on the explicit `twoOfN` flag OR
 			// dynamically once the pool crosses the configured threshold (which happens AFTER create, as
@@ -692,7 +633,7 @@ export class PredictionMarketsDO extends DurableObject<Env> implements Predictio
 			// pools is never silently skipped by designating a single resolver.
 			if (designatedResolvers.length < 2) {
 				const twoOfNPossible = (input.twoOfN ?? false) || (cfg?.twoOfNThreshold ?? null) != null
-				if (twoOfNPossible) throw new Error('DESIGNATED_RESOLVERS_INSUFFICIENT_FOR_TWO_OF_N')
+				if (twoOfNPossible) throw new PmError('DESIGNATED_RESOLVERS_INSUFFICIENT_FOR_TWO_OF_N')
 			}
 		}
 
@@ -701,7 +642,7 @@ export class PredictionMarketsDO extends DurableObject<Env> implements Predictio
 		// (anti-spam), same as placeBet. `create_market` throttles the public forum-post fan-out.
 		if (input.enforceRateLimit) {
 			const rate = await this.consumeRateBudget(input.createdBy, 'create_market')
-			if (!rate.allowed) throw new Error(`RATE_LIMITED:${rate.retryAfterMs}`)
+			if (!rate.allowed) throw new PmError('RATE_LIMITED', { detail: rate.retryAfterMs })
 		}
 
 		try {
@@ -741,7 +682,8 @@ export class PredictionMarketsDO extends DurableObject<Env> implements Predictio
 				})
 
 				const detail = await this.buildMarketDetail(tx, market.id)
-				if (!detail) throw new Error('MARKET_CREATE_FAILED')
+				// Internal invariant (the row was just inserted) — page if it ever fails.
+				if (!detail) throw new PmError('MARKET_CREATE_FAILED', { expected: false })
 				return detail
 			})
 		} catch (error) {
@@ -772,8 +714,8 @@ export class PredictionMarketsDO extends DurableObject<Env> implements Predictio
 					.from(pmMarkets)
 					.where(eq(pmMarkets.id, marketId))
 					.for('update')
-				if (!market) throw new Error('MARKET_NOT_FOUND')
-				if (isTerminal(market.status)) throw new Error('MARKET_NOT_EDITABLE')
+				if (!market) throw new PmError('MARKET_NOT_FOUND')
+				if (isTerminal(market.status)) throw new PmError('MARKET_NOT_EDITABLE')
 
 				const set: Partial<typeof pmMarkets.$inferInsert> = {}
 				// New values for the fields that genuinely changed — the audit metadata.
@@ -782,13 +724,13 @@ export class PredictionMarketsDO extends DurableObject<Env> implements Predictio
 				if (updates.closesAt !== undefined) {
 					// The close time only governs an OPEN market; editing it on a closed/resolving one
 					// would falsely read as "betting reopened" while status stays closed.
-					if (market.status !== 'open') throw new Error('CLOSES_AT_NOT_EDITABLE')
+					if (market.status !== 'open') throw new PmError('CLOSES_AT_NOT_EDITABLE')
 					const closesAt = parseDateOrNull(updates.closesAt)
-					if (!closesAt || closesAt.getTime() <= Date.now()) throw new Error('INVALID_CLOSES_AT')
+					if (!closesAt || closesAt.getTime() <= Date.now()) throw new PmError('INVALID_CLOSES_AT')
 					// Preserve the create-time invariant: a market can't be scheduled to resolve before its
 					// betting closes. NULL-safe — legacy markets have no resolvesOn to violate.
 					if (market.resolvesOn && closesAt.getTime() > market.resolvesOn.getTime()) {
-						throw new Error('RESOLVES_ON_BEFORE_CLOSE')
+						throw new PmError('RESOLVES_ON_BEFORE_CLOSE')
 					}
 					if (closesAt.getTime() !== market.closesAt.getTime()) {
 						set.closesAt = closesAt
@@ -797,7 +739,7 @@ export class PredictionMarketsDO extends DurableObject<Env> implements Predictio
 				}
 				if (updates.question !== undefined) {
 					const question = updates.question.trim()
-					if (!question) throw new Error('QUESTION_REQUIRED')
+					if (!question) throw new PmError('QUESTION_REQUIRED')
 					if (question !== market.question) {
 						set.question = question
 						changes.question = question
@@ -827,7 +769,7 @@ export class PredictionMarketsDO extends DurableObject<Env> implements Predictio
 				}
 
 				const detail = await this.buildMarketDetail(tx, marketId)
-				if (!detail) throw new Error('MARKET_NOT_FOUND')
+				if (!detail) throw new PmError('MARKET_NOT_FOUND')
 				return {
 					market: detail,
 					changed: {
@@ -839,8 +781,7 @@ export class PredictionMarketsDO extends DurableObject<Env> implements Predictio
 			})
 		} catch (error) {
 			// Caller-input rejections are expected outcomes — don't page on them.
-			const msg = error instanceof Error ? error.message : String(error)
-			if (!EXPECTED_MARKET_EDIT_ERRORS.has(msg)) {
+			if (!isExpectedError(error)) {
 				captureException(error as Error, {
 					tags: { durableObject: 'PredictionMarketsDO', method: 'updateMarket' },
 				})
@@ -905,7 +846,7 @@ export class PredictionMarketsDO extends DurableObject<Env> implements Predictio
 		// throw outside any catch, so those infra errors were never logged or paged and surfaced to
 		// the member as a bare "Could not place your bet". Wrapping everything closes that gap.
 		try {
-			if (!isPositiveIntegerString(input.amount)) throw new Error('INVALID_AMOUNT')
+			if (!isPositiveIntegerString(input.amount)) throw new PmError('INVALID_AMOUNT')
 			const amount = parseAmount(input.amount)
 
 			// Dedupe pre-check (outside the txn): a duplicate delivery (same interaction id) returns
@@ -921,7 +862,7 @@ export class PredictionMarketsDO extends DurableObject<Env> implements Predictio
 			// Rate limit (committed atomic upsert, before the bet txn): a rejected bet still consumes
 			// budget (anti-spam); idempotent retries never reach here (handled above).
 			const rate = await this.consumeRateBudget(input.userId, 'bet')
-			if (!rate.allowed) throw new Error(`RATE_LIMITED:${rate.retryAfterMs}`)
+			if (!rate.allowed) throw new PmError('RATE_LIMITED', { detail: rate.retryAfterMs })
 
 			return await this.db.transaction(async (tx) => {
 				// Lock the market row: serializes bet-vs-bet and bet-vs-resolve on this market.
@@ -930,16 +871,16 @@ export class PredictionMarketsDO extends DurableObject<Env> implements Predictio
 					.from(pmMarkets)
 					.where(eq(pmMarkets.id, input.marketId))
 					.for('update')
-				if (!market) throw new Error('MARKET_NOT_FOUND')
-				if (market.status !== 'open') throw new Error('MARKET_NOT_OPEN')
-				if (market.closesAt.getTime() <= Date.now()) throw new Error('MARKET_CLOSED')
+				if (!market) throw new PmError('MARKET_NOT_FOUND')
+				if (market.status !== 'open') throw new PmError('MARKET_NOT_OPEN')
+				if (market.closesAt.getTime() <= Date.now()) throw new PmError('MARKET_CLOSED')
 				// A creator MAY bet on their own market — they just can't resolve it (enforced by the
 				// CREATOR_CANNOT_RESOLVE / RESOLVER_HAS_POSITION guards), so they hold no power over the
 				// outcome and can't self-deal. A DESIGNATED resolver, however, holds settlement power over
 				// this market, so they must stay position-free: block their bet up front (otherwise the
 				// RESOLVER_HAS_POSITION guard would later strand a small/size-1 designated set).
 				if (isDesignatedResolver(market.designatedResolvers, input.userId)) {
-					throw new Error('DESIGNATED_RESOLVER_CANNOT_BET')
+					throw new PmError('DESIGNATED_RESOLVER_CANNOT_BET')
 				}
 
 				const [outcome] = await tx
@@ -952,11 +893,11 @@ export class PredictionMarketsDO extends DurableObject<Env> implements Predictio
 						)
 					)
 					.limit(1)
-				if (!outcome) throw new Error('OUTCOME_NOT_FOUND')
+				if (!outcome) throw new PmError('OUTCOME_NOT_FOUND')
 
-				if (amount < parseAmount(market.minStake)) throw new Error('STAKE_BELOW_MIN')
+				if (amount < parseAmount(market.minStake)) throw new PmError('STAKE_BELOW_MIN')
 				if (market.maxStake != null && amount > parseAmount(market.maxStake)) {
-					throw new Error('STAKE_ABOVE_MAX')
+					throw new PmError('STAKE_ABOVE_MAX')
 				}
 				if (market.perUserCap != null) {
 					const [capRow] = await tx
@@ -970,7 +911,7 @@ export class PredictionMarketsDO extends DurableObject<Env> implements Predictio
 							)
 						)
 					if (parseAmount(capRow.total) + amount > parseAmount(market.perUserCap)) {
-						throw new Error('PER_USER_CAP_EXCEEDED')
+						throw new PmError('PER_USER_CAP_EXCEEDED')
 					}
 				}
 
@@ -1014,7 +955,7 @@ export class PredictionMarketsDO extends DurableObject<Env> implements Predictio
 						)
 					)
 					.returning({ balance: pmWallets.balance })
-				if (debited.length === 0) throw new Error('INSUFFICIENT_FUNDS')
+				if (debited.length === 0) throw new PmError('INSUFFICIENT_FUNDS')
 
 				await tx.insert(pmLedger).values({
 					userId: input.userId,
@@ -1052,7 +993,7 @@ export class PredictionMarketsDO extends DurableObject<Env> implements Predictio
 			// are normal user-facing outcomes — don't log or page on them. Everything else (a failed
 			// query, a missing table/migration, a Neon outage) is an infra failure: log it WITH the
 			// underlying driver cause and page Sentry, so a bet never dies as a silent "try again".
-			if (!isExpectedBetError(error)) {
+			if (!isExpectedError(error)) {
 				const cause = dbErrorCause(error)
 				logger.error('[PredictionMarkets] placeBet failed', {
 					marketId: input.marketId,
@@ -1083,7 +1024,7 @@ export class PredictionMarketsDO extends DurableObject<Env> implements Predictio
 					.from(pmMarkets)
 					.where(eq(pmMarkets.id, input.marketId))
 					.for('update')
-				if (!market) throw new Error('MARKET_NOT_FOUND')
+				if (!market) throw new PmError('MARKET_NOT_FOUND')
 				assertTransition(market.status, 'closed')
 				await tx
 					.update(pmMarkets)
@@ -1098,7 +1039,7 @@ export class PredictionMarketsDO extends DurableObject<Env> implements Predictio
 				})
 			})
 		} catch (error) {
-			if (!isExpectedResolverError(error)) {
+			if (!isExpectedError(error)) {
 				captureException(error as Error, {
 					tags: { durableObject: 'PredictionMarketsDO', method: 'closeMarket' },
 				})
@@ -1293,8 +1234,8 @@ export class PredictionMarketsDO extends DurableObject<Env> implements Predictio
 					.from(pmMarkets)
 					.where(eq(pmMarkets.id, input.marketId))
 					.for('update')
-				if (!market) throw new Error('MARKET_NOT_FOUND')
-				if (market.status !== 'closed') throw new Error('MARKET_NOT_CLOSED')
+				if (!market) throw new PmError('MARKET_NOT_FOUND')
+				if (market.status !== 'closed') throw new PmError('MARKET_NOT_CLOSED')
 
 				const [outcome] = await tx
 					.select({ id: pmMarketOutcomes.id })
@@ -1306,15 +1247,15 @@ export class PredictionMarketsDO extends DurableObject<Env> implements Predictio
 						)
 					)
 					.limit(1)
-				if (!outcome) throw new Error('OUTCOME_NOT_FOUND')
+				if (!outcome) throw new PmError('OUTCOME_NOT_FOUND')
 
-				if (market.createdBy === input.resolverId) throw new Error('CREATOR_CANNOT_RESOLVE')
+				if (market.createdBy === input.resolverId) throw new PmError('CREATOR_CANNOT_RESOLVE')
 				if (await this.hasPosition(tx, input.marketId, input.resolverId)) {
-					throw new Error('RESOLVER_HAS_POSITION')
+					throw new PmError('RESOLVER_HAS_POSITION')
 				}
 				const bypass = input.bypassDesignated ?? false
 				if (!canResolveDesignated(market.designatedResolvers, input.resolverId, bypass)) {
-					throw new Error('NOT_DESIGNATED_RESOLVER')
+					throw new PmError('NOT_DESIGNATED_RESOLVER')
 				}
 				const viaOverride = isDesignatedOverride(
 					market.designatedResolvers,
@@ -1371,7 +1312,7 @@ export class PredictionMarketsDO extends DurableObject<Env> implements Predictio
 				}
 			})
 		} catch (error) {
-			if (!isExpectedResolverError(error)) {
+			if (!isExpectedError(error)) {
 				captureException(error as Error, {
 					tags: { durableObject: 'PredictionMarketsDO', method: 'proposeResolution' },
 				})
@@ -1393,8 +1334,8 @@ export class PredictionMarketsDO extends DurableObject<Env> implements Predictio
 					.from(pmMarkets)
 					.where(eq(pmMarkets.id, input.marketId))
 					.for('update')
-				if (!market) throw new Error('MARKET_NOT_FOUND')
-				if (market.status !== 'resolving') throw new Error('MARKET_NOT_RESOLVING')
+				if (!market) throw new PmError('MARKET_NOT_FOUND')
+				if (market.status !== 'resolving') throw new PmError('MARKET_NOT_RESOLVING')
 
 				const [proposal] = await tx
 					.select()
@@ -1402,21 +1343,21 @@ export class PredictionMarketsDO extends DurableObject<Env> implements Predictio
 					.where(eq(pmResolutionProposals.id, input.proposalId))
 					.limit(1)
 				if (!proposal || proposal.marketId !== input.marketId) {
-					throw new Error('PROPOSAL_NOT_FOUND')
+					throw new PmError('PROPOSAL_NOT_FOUND')
 				}
-				if (proposal.status !== 'pending') throw new Error('PROPOSAL_NOT_PENDING')
+				if (proposal.status !== 'pending') throw new PmError('PROPOSAL_NOT_PENDING')
 
 				// Two distinct resolvers, neither the creator, neither holding a position, and — when the
 				// market is designated — both the proposer (checked in proposeResolution) and this approver
 				// must be designated members (or hold the admin/manager override).
-				if (proposal.proposedBy === input.resolverId) throw new Error('APPROVER_MUST_DIFFER')
-				if (market.createdBy === input.resolverId) throw new Error('CREATOR_CANNOT_RESOLVE')
+				if (proposal.proposedBy === input.resolverId) throw new PmError('APPROVER_MUST_DIFFER')
+				if (market.createdBy === input.resolverId) throw new PmError('CREATOR_CANNOT_RESOLVE')
 				if (await this.hasPosition(tx, input.marketId, input.resolverId)) {
-					throw new Error('RESOLVER_HAS_POSITION')
+					throw new PmError('RESOLVER_HAS_POSITION')
 				}
 				const bypass = input.bypassDesignated ?? false
 				if (!canResolveDesignated(market.designatedResolvers, input.resolverId, bypass)) {
-					throw new Error('NOT_DESIGNATED_RESOLVER')
+					throw new PmError('NOT_DESIGNATED_RESOLVER')
 				}
 				const viaOverride = isDesignatedOverride(
 					market.designatedResolvers,
@@ -1459,7 +1400,7 @@ export class PredictionMarketsDO extends DurableObject<Env> implements Predictio
 				return { marketId: market.id, status: finalStatus, resolvedOutcomeId }
 			})
 		} catch (error) {
-			if (!isExpectedResolverError(error)) {
+			if (!isExpectedError(error)) {
 				captureException(error as Error, {
 					tags: { durableObject: 'PredictionMarketsDO', method: 'approveResolution' },
 				})
@@ -1476,7 +1417,7 @@ export class PredictionMarketsDO extends DurableObject<Env> implements Predictio
 		bypassDesignated?: boolean
 		adminOverride?: boolean
 	}): Promise<void> {
-		if (!input.reason.trim()) throw new Error('VOID_REASON_REQUIRED')
+		if (!input.reason.trim()) throw new PmError('VOID_REASON_REQUIRED')
 		try {
 			await this.db.transaction(async (tx) => {
 				const [market] = await tx
@@ -1484,8 +1425,8 @@ export class PredictionMarketsDO extends DurableObject<Env> implements Predictio
 					.from(pmMarkets)
 					.where(eq(pmMarkets.id, input.marketId))
 					.for('update')
-				if (!market) throw new Error('MARKET_NOT_FOUND')
-				if (isTerminal(market.status)) throw new Error('MARKET_TERMINAL')
+				if (!market) throw new PmError('MARKET_NOT_FOUND')
+				if (isTerminal(market.status)) throw new PmError('MARKET_TERMINAL')
 
 				const bypass = input.bypassDesignated ?? false
 				// A site admin (adminOverride) may void ANY market unconditionally. A void refunds every
@@ -1500,12 +1441,12 @@ export class PredictionMarketsDO extends DurableObject<Env> implements Predictio
 					// Voiding is a terminal settlement, so it carries the same conflict-of-interest guards as
 					// resolve/approve: a creator can't void their own market, and a resolver holding a
 					// position can't void one they have a stake in.
-					if (market.createdBy === input.actorUserId) throw new Error('CREATOR_CANNOT_RESOLVE')
+					if (market.createdBy === input.actorUserId) throw new PmError('CREATOR_CANNOT_RESOLVE')
 					if (await this.hasPosition(tx, input.marketId, input.actorUserId)) {
-						throw new Error('RESOLVER_HAS_POSITION')
+						throw new PmError('RESOLVER_HAS_POSITION')
 					}
 					if (!canResolveDesignated(market.designatedResolvers, input.actorUserId, bypass)) {
-						throw new Error('NOT_DESIGNATED_RESOLVER')
+						throw new PmError('NOT_DESIGNATED_RESOLVER')
 					}
 
 					// Contested markets (bets on 2+ outcomes) require a distinct second approver.
@@ -1515,7 +1456,7 @@ export class PredictionMarketsDO extends DurableObject<Env> implements Predictio
 						.where(and(eq(pmBets.marketId, input.marketId), eq(pmBets.status, 'active')))
 					const contested = (distinctRow?.n ?? 0) >= 2
 					if (contested && (!input.approverId || input.approverId === input.actorUserId)) {
-						throw new Error('CONTESTED_VOID_REQUIRES_APPROVER')
+						throw new PmError('CONTESTED_VOID_REQUIRES_APPROVER')
 					}
 					// On a designated market, the contested-void second approver must ALSO be a designated
 					// member (unless overriding). NOTE: the DO cannot verify approverId's resolver TIER —
@@ -1525,7 +1466,7 @@ export class PredictionMarketsDO extends DurableObject<Env> implements Predictio
 					// the initiating actor.
 					if (contested && input.approverId && !bypass) {
 						if (!canResolveDesignated(market.designatedResolvers, input.approverId, false)) {
-							throw new Error('NOT_DESIGNATED_RESOLVER')
+							throw new PmError('NOT_DESIGNATED_RESOLVER')
 						}
 					}
 				}
@@ -1545,7 +1486,7 @@ export class PredictionMarketsDO extends DurableObject<Env> implements Predictio
 				)
 			})
 		} catch (error) {
-			if (!isExpectedResolverError(error)) {
+			if (!isExpectedError(error)) {
 				captureException(error as Error, {
 					tags: { durableObject: 'PredictionMarketsDO', method: 'voidMarket' },
 				})
@@ -1885,7 +1826,7 @@ export class PredictionMarketsDO extends DurableObject<Env> implements Predictio
 	 */
 	private async computeThresholdImpact(candidate: string | null): Promise<ThresholdImpact> {
 		if (candidate !== null && !isPositiveIntegerString(candidate))
-			throw new Error('INVALID_THRESHOLD')
+			throw new PmError('INVALID_THRESHOLD')
 		const cfg = await this.readActiveConfig()
 		const rows = await this.db
 			.select({
@@ -1919,11 +1860,11 @@ export class PredictionMarketsDO extends DurableObject<Env> implements Predictio
 			input.defaultRakeBps < 0 ||
 			input.defaultRakeBps > 2000
 		) {
-			throw new Error('INVALID_RAKE')
+			throw new PmError('INVALID_RAKE')
 		}
-		if (!isPositiveIntegerString(input.defaultMinStake)) throw new Error('INVALID_MIN_STAKE')
+		if (!isPositiveIntegerString(input.defaultMinStake)) throw new PmError('INVALID_MIN_STAKE')
 		if (input.twoOfNThreshold !== null && !isPositiveIntegerString(input.twoOfNThreshold)) {
-			throw new Error('INVALID_THRESHOLD')
+			throw new PmError('INVALID_THRESHOLD')
 		}
 		// Creator rake-reward band: both bounds whole bps in [0, 10000] (fraction of the rake) and
 		// min ≤ max. Both 0 disables the feature. Enforced here (route also validates) so the stored
@@ -1937,11 +1878,11 @@ export class PredictionMarketsDO extends DurableObject<Env> implements Predictio
 			input.creatorRewardMaxBps > 10_000 ||
 			input.creatorRewardMinBps > input.creatorRewardMaxBps
 		) {
-			throw new Error('INVALID_CREATOR_REWARD')
+			throw new PmError('INVALID_CREATOR_REWARD')
 		}
 		// DO owns the invariant (the route caps at 500 too). Bound the free-text note defensively.
 		if (input.changeNote != null && input.changeNote.length > 500) {
-			throw new Error('INVALID_CHANGE_NOTE')
+			throw new PmError('INVALID_CHANGE_NOTE')
 		}
 
 		try {
@@ -1982,7 +1923,7 @@ export class PredictionMarketsDO extends DurableObject<Env> implements Predictio
 						.from(pmMarkets)
 						.where(inArray(pmMarkets.status, ['open', 'closed']))
 					const impact = bucketThresholdImpact(marketRows, curThreshold, input.twoOfNThreshold)
-					if (impact.strandedCandidates.length > 0) throw new Error('THRESHOLD_WOULD_STRAND')
+					if (impact.strandedCandidates.length > 0) throw new PmError('THRESHOLD_WOULD_STRAND')
 				}
 				await tx
 					.update(pmConfig)
@@ -2012,7 +1953,7 @@ export class PredictionMarketsDO extends DurableObject<Env> implements Predictio
 		} catch (error) {
 			// THRESHOLD_WOULD_STRAND is an expected governance rejection (thrown in-tx) — surface it
 			// without paging; everything else is an infra failure worth capturing.
-			if (!(error instanceof Error && error.message === 'THRESHOLD_WOULD_STRAND')) {
+			if (!isExpectedError(error)) {
 				captureException(error as Error, {
 					tags: { durableObject: 'PredictionMarketsDO', method: 'updateConfig' },
 				})
