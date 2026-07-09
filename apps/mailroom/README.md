@@ -1,9 +1,9 @@
 # mailroom
 
 Inbound-email worker for **pleaseignore.app**. Receives mail via Cloudflare Email
-Routing and processes it through a small, modular routing framework. This is the initial
-setup: the worker, the framework, and example routes — no persistence, outbound sending,
-or replies yet (all easy to add; see [Extending](#extending)).
+Routing and processes it through a small, modular routing framework. Its first feature
+posts mail sent to `markeedragon@` into a Discord channel. Outbound sending, replies, and
+persistence are deferred by design (all easy to add; see [Extending](#extending)).
 
 ## How inbound email reaches this worker
 
@@ -55,6 +55,17 @@ Dispositions (`src/email/dispositions.ts`):
 | `consume`        | Accept and intentionally discard (the only sanctioned no-op).     |
 | `next`           | Not terminal — continue to the next route.                        |
 
+### Current routes (`src/routes.ts`)
+
+1. **log-inbound** — structured-logs every message (`sideEffect`, non-terminal).
+2. **markeedragon-to-discord** — mail to `markeedragon@` is posted to a Discord channel via
+   the shared Discord Durable Object (`@repo/discord`, reached with `forDO`), then
+   `consume`d. The Discord send is awaited inline, so a failure surfaces (Sentry +
+   forward-to-fallback) instead of the notification being silently lost. See
+   `src/notify-discord.ts`.
+3. **forward-team** — example alias forward, active only when `FORWARD_TEAM_TO` is set.
+4. **otherwise** — unknown recipients get a permanent reject.
+
 ### Safety: no silent drops
 
 Dropping mail is the cardinal sin of an email worker, and `setReject` is **always a
@@ -71,14 +82,22 @@ platform behaviour:
 
 ## Configuration (`wrangler.jsonc` vars)
 
-| Var                                     | Required | Purpose                                                  |
-| --------------------------------------- | -------- | -------------------------------------------------------- |
-| `NAME`, `ENVIRONMENT`, `SENTRY_RELEASE` | yes      | Standard worker vars.                                    |
-| `FALLBACK_FORWARD_ADDRESS`              | no       | Verified mailbox that receives mail on internal failure. |
-| `FORWARD_TEAM_TO`                       | no       | Example: destination for the `team@` alias route.        |
+| Var                                     | Required    | Purpose                                                  |
+| --------------------------------------- | ----------- | -------------------------------------------------------- |
+| `NAME`, `ENVIRONMENT`, `SENTRY_RELEASE` | yes         | Standard worker vars.                                    |
+| `FALLBACK_FORWARD_ADDRESS`              | no          | Verified mailbox that receives mail on internal failure. |
+| `FORWARD_TEAM_TO`                       | no          | Example: destination for the `team@` alias route.        |
+| `DISCORD_GUILD_ID`                      | for Discord | Guild the bot posts to for the `markeedragon@` route.    |
+| `MARKEE_DISCORD_CHANNEL_ID`             | for Discord | Channel that receives mail sent to `markeedragon@`.      |
 
 Set forwarding targets to **verified Email Routing destination addresses** — an unverified
 address makes `forward()` fail (which then hits the fallback path).
+
+The `markeedragon@` → Discord route also needs the `DISCORD` binding (a cross-worker binding
+to `apps/discord`, already in `wrangler.jsonc`), the `discord` worker deployed in the same
+account, and the Discord **bot** to be a member of the guild with permission to post in the
+channel. Until `DISCORD_GUILD_ID` + `MARKEE_DISCORD_CHANNEL_ID` are set, mail to
+`markeedragon@` errors to the fallback/last-resort path rather than posting.
 
 ## Extending
 

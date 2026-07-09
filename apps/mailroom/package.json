@@ -16,6 +16,8 @@
 		"test": "run-vitest"
 	},
 	"dependencies": {
+		"@repo/discord": "workspace:*",
+		"@repo/do-utils": "workspace:*",
 		"@repo/hono-helpers": "workspace:*",
 		"@repo/worker-utils": "workspace:*",
 		"hono": "4.10.6",
