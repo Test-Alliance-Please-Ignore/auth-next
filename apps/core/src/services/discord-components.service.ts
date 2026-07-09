@@ -343,6 +343,10 @@ export async function executeDiscordComponent(
 			marketId: decoded.marketId,
 			proposalId: proposal.id,
 			bypassDesignated: await canBypassDesignated(env, user),
+			// A site admin may finalize ANY pending proposal (even single-signing a two-of-N), matching
+			// their unconditional resolve/void authority. is_admin-only — managers keep the guards. The
+			// DO trusts this flag unverified, so it MUST come straight from is_admin.
+			adminOverride: user.is_admin,
 		})
 		await refreshPost(db, env, prediction, decoded.marketId)
 		let background: (() => Promise<void>) | undefined
@@ -495,6 +499,11 @@ async function handleResolveModal(
 			marketId,
 			outcomeId: outcome.id,
 			bypassDesignated: await canBypassDesignated(env, user),
+			// A site admin may resolve ANY market unconditionally — skipping the creator/position/
+			// designated guards AND the two-of-N second-signer rule (a lone admin settles in one step).
+			// Unlike a void this pays out the chosen outcome, so it's recorded in the audit history.
+			// is_admin-only; the DO trusts this flag unverified, so it MUST come straight from is_admin.
+			adminOverride: user.is_admin,
 		})
 		await refreshPost(db, env, prediction, marketId)
 		let background: (() => Promise<void>) | undefined

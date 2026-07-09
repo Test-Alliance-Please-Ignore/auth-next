@@ -508,6 +508,15 @@ export interface PredictionMarkets {
 		 * from a tier check, never a literal.
 		 */
 		bypassDesignated?: boolean
+		/**
+		 * When true, resolve this market UNCONDITIONALLY — skip every conflict-of-interest guard (creator
+		 * ≠ resolver, no-position, designated membership) AND collapse the two-of-N second-signer rule so
+		 * a lone admin settles in one step. This is the site-admin escape hatch to settle ANY market;
+		 * unlike a void it PAYS positions on the chosen outcome, so it is recorded in the audit history.
+		 * Like voidMarket.adminOverride it is is_admin-only (managers keep the guards). Core sets it solely
+		 * from is_admin — a trusted, DO-unverifiable capability, never a client literal.
+		 */
+		adminOverride?: boolean
 	}): Promise<ResolveResult>
 	approveResolution(input: {
 		resolverId: string
@@ -515,6 +524,8 @@ export interface PredictionMarkets {
 		proposalId: string
 		/** See proposeResolution.bypassDesignated. */
 		bypassDesignated?: boolean
+		/** See proposeResolution.adminOverride. Lets an admin single-sign a pending two-of-N proposal. */
+		adminOverride?: boolean
 	}): Promise<ResolveResult>
 	/** The single pending resolution proposal for a market (for two-of-N approve), or null. */
 	getPendingProposal(marketId: string): Promise<PendingProposalView | null>

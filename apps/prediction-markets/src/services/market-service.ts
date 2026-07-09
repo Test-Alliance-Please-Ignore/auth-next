@@ -86,8 +86,10 @@ export async function createMarket(deps: PmDeps, input: CreateMarketInput): Prom
 		// CREATE-TIME ONLY. If a size-1 designated market is created while NO threshold is active and
 		// an admin LATER activates/lowers `pmConfig.twoOfNThreshold` such that the pool crosses it,
 		// requiresTwoOfN() flips true at settle and the sole designated resolver can't self-complete
-		// (no distinct second signer). That market is then settleable only via admin/manager bypass
-		// (bypassDesignated) or the resolving->voided path — never permanently stuck. We deliberately
+		// (no distinct second signer). It is still never permanently stuck: a DISTINCT urn:markets:manager
+		// can supply the second signature (bypassDesignated waives the designated-membership check), a
+		// site admin can adminOverride to collapse two-of-N and resolve/void in one step, or it can simply
+		// be voided. We deliberately
 		// do NOT weaken requiresTwoOfN for small designated sets, so the two-of-N safeguard on large
 		// pools is never silently skipped by designating a single resolver.
 		if (designatedResolvers.length < 2) {
