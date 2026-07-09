@@ -1,0 +1,286 @@
+/**
+ * Prediction-markets money-flow INTEGRATION tests.
+ *
+ * Drives the real service functions against a real Postgres (a fresh ephemeral Neon branch per run,
+ * provisioned by ./global-setup.ts), exercising the flows the pure-lib unit suite cannot cover:
+ *   A) place-bet → close → resolve, with rake + creator-reward + dust conservation
+ *   B) void → refund
+ *   C) bet idempotency (no double-debit on a re-delivered interaction)
+ *
+ * These run in a Node vitest project (vitest.config.node.ts), NOT the workers pool: after the fix-5
+ * decomposition every operation is a standalone `service(deps, …)` taking `deps = { db }`, so we build
+ * `deps` with a real client and call the services directly. A real DB is required because placeBet /
+ * proposeResolution use interactive FOR UPDATE transactions (the neon-http driver can't do those).
+ *
+ * Skips cleanly when globalSetup found no Neon creds (TEST_DATABASE_URL unset).
+ */
+
+import { neonConfig, Pool } from '@neondatabase/serverless'
+import { drizzle } from 'drizzle-orm/neon-serverless'
+import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest'
+
+import { and, desc, eq, inArray, sql } from '@repo/db-utils'
+
+import { schema } from '../../db'
+import { pmBets, pmLedger, pmWallets } from '../../db/schema'
+import * as betting from '../../services/betting-service'
+import * as governance from '../../services/governance-service'
+import * as market from '../../services/market-service'
+import * as reads from '../../services/read-service'
+import * as settlement from '../../services/settlement-service'
+import * as wallet from '../../services/wallet-service'
+
+import type { PmDeps } from '../../services/context'
+
+// Neon's serverless driver needs a WebSocket constructor in Node (globally available on Node ≥ 22).
+// The global type is structurally stricter than neon's WebSocketConstructor; the runtime shape is
+// compatible, so cast.
+neonConfig.webSocketConstructor = WebSocket as unknown as typeof neonConfig.webSocketConstructor
+
+const HAS_DB = Boolean(process.env.TEST_DATABASE_URL)
+const suite = HAS_DB ? describe : describe.skip
+
+const ADMIN = '00000000-0000-0000-0000-0000000000aa' // grant actor (never a participant)
+const SYSTEM = '00000000-0000-0000-0000-000000000000' // house accumulator (rake + burned dust)
+const uuid = (n: number) => `00000000-0000-0000-0000-0000000000${n.toString(16).padStart(2, '0')}`
+const hoursFromNow = (h: number) => new Date(Date.now() + h * 3_600_000).toISOString()
+
+let pool: Pool
+let deps: PmDeps
+
+beforeAll(() => {
+	if (!HAS_DB) return
+	pool = new Pool({ connectionString: process.env.TEST_DATABASE_URL })
+	deps = { db: drizzle(pool, { schema }) }
+})
+
+afterAll(async () => {
+	await pool?.end()
+})
+
+// Isolate every test: wipe all pm_* rows so balances/ledger start clean.
+beforeEach(async () => {
+	if (!HAS_DB) return
+	await deps.db.execute(sql`
+		truncate pm_ledger, pm_bets, pm_market_outcomes, pm_resolution_proposals,
+		         pm_market_history, pm_markets, pm_wallets, pm_config, pm_rate_limits restart identity cascade
+	`)
+})
+
+// --- helpers ---------------------------------------------------------------
+const balance = async (userId: string) => (await reads.getWalletBalance(deps, userId)).balance
+
+/** Pin the creator-reward band to a single point so executeResolution's random draw is deterministic. */
+async function seedConfig(over?: { creatorRewardBps?: number }) {
+	const bps = over?.creatorRewardBps ?? 2000
+	await governance.updateConfig(deps, {
+		actorUserId: ADMIN,
+		defaultRakeBps: 500,
+		defaultMinStake: '1',
+		twoOfNThreshold: null, // disable two-of-N ⇒ single-step resolve
+		creatorRewardMinBps: bps,
+		creatorRewardMaxBps: bps,
+	})
+}
+
+const grant = (userId: string, amount: string) =>
+	wallet.grantPoints(deps, {
+		actorUserId: ADMIN,
+		targetUserId: userId,
+		amount,
+		reason: 'test seed',
+		idempotencyKey: `seed:${userId}:${amount}`,
+	})
+
+const sumText = (col: typeof pmLedger.amount | typeof pmWallets.balance) =>
+	sql<string>`coalesce(sum(${col}), 0)::text`
+
+/** Global invariant: signed ledger sum == Σ wallet balances == total granted supply. */
+async function assertConservation(expectedTotal: bigint) {
+	const [{ v: ledger }] = await deps.db.select({ v: sumText(pmLedger.amount) }).from(pmLedger)
+	const [{ v: wallets }] = await deps.db.select({ v: sumText(pmWallets.balance) }).from(pmWallets)
+	expect(BigInt(ledger)).toBe(expectedTotal)
+	expect(BigInt(wallets)).toBe(expectedTotal)
+}
+
+// ---------------------------------------------------------------------------
+// A) place-bet → resolve
+// ---------------------------------------------------------------------------
+suite('resolve flow', () => {
+	it('pays winners, rakes the house, rewards the creator, burns dust, and conserves the pool', async () => {
+		const [creator, resolver, u1, u2, u3] = [1, 2, 3, 4, 5].map(uuid)
+		await seedConfig({ creatorRewardBps: 2000 })
+		for (const u of [u1, u2, u3]) await grant(u, '1000') // total supply = 3000
+
+		const m = await market.createMarket(deps, {
+			createdBy: creator,
+			question: 'A or B?',
+			outcomes: ['A', 'B'],
+			closesAt: hoursFromNow(1),
+			resolvesOn: hoursFromNow(2),
+			rakeBps: 500,
+		})
+		const A = m.outcomes.find((o) => o.label === 'A')!.id
+		const B = m.outcomes.find((o) => o.label === 'B')!.id
+
+		await betting.placeBet(deps, {
+			userId: u1,
+			marketId: m.id,
+			outcomeId: A,
+			amount: '100',
+			idempotencyKey: 'i-u1',
+		})
+		await betting.placeBet(deps, {
+			userId: u2,
+			marketId: m.id,
+			outcomeId: A,
+			amount: '100',
+			idempotencyKey: 'i-u2',
+		})
+		await betting.placeBet(deps, {
+			userId: u3,
+			marketId: m.id,
+			outcomeId: B,
+			amount: '100',
+			idempotencyKey: 'i-u3',
+		})
+		expect(await balance(u1)).toBe('900') // debited once
+
+		await market.closeMarket(deps, { actorUserId: resolver, marketId: m.id })
+		const res = await settlement.proposeResolution(deps, {
+			resolverId: resolver, // not creator, holds no position ⇒ single-step resolve
+			marketId: m.id,
+			outcomeId: A,
+		})
+		expect(res.status).toBe('resolved')
+
+		// losingPool 100 @ 5% ⇒ rake 5; winnings = floor(100·100·9500/(200·10000)) = 47 ⇒ payout 147.
+		// dust = (300 − 294) − 5 = 1. creatorReward = floor(5·0.2) = 1, houseRake = 4.
+		expect(await balance(u1)).toBe('1047')
+		expect(await balance(u2)).toBe('1047')
+		expect(await balance(u3)).toBe('900')
+		expect(await balance(creator)).toBe('1') // creator_reward; wallet lazily created (fix-1 path)
+		expect(await balance(SYSTEM)).toBe('5') // rake 4 + burn 1
+
+		// Nothing created or destroyed — 3000 in, 3000 across all wallets and the ledger.
+		await assertConservation(3000n)
+
+		// Ledger line-type accounting for this market.
+		const [{ v: payout }] = await deps.db
+			.select({ v: sumText(pmLedger.amount) })
+			.from(pmLedger)
+			.where(and(eq(pmLedger.type, 'payout'), eq(pmLedger.marketId, m.id)))
+		expect(BigInt(payout)).toBe(294n)
+
+		const lines = await deps.db
+			.select({ type: pmLedger.type, amount: pmLedger.amount })
+			.from(pmLedger)
+			.where(
+				and(eq(pmLedger.marketId, m.id), inArray(pmLedger.type, ['rake', 'burn', 'creator_reward']))
+			)
+		expect(Object.fromEntries(lines.map((l) => [l.type, l.amount]))).toEqual({
+			rake: '4',
+			burn: '1',
+			creator_reward: '1',
+		})
+
+		// balanceAfter snapshot on the winner's last ledger row equals their wallet balance.
+		const [{ ba }] = await deps.db
+			.select({ ba: pmLedger.balanceAfter })
+			.from(pmLedger)
+			.where(eq(pmLedger.userId, u1))
+			.orderBy(desc(pmLedger.createdAt), desc(pmLedger.id))
+			.limit(1)
+		expect(ba).toBe('1047')
+
+		// Losing bet marked lost; winning bets marked won.
+		expect(res.resolvedOutcomeId).toBe(A)
+		void B
+	})
+})
+
+// ---------------------------------------------------------------------------
+// B) void → refund
+// ---------------------------------------------------------------------------
+suite('void flow', () => {
+	it('refunds every active bet at full stake and voids the market', async () => {
+		const [creator, actor, u1, u2] = [1, 2, 3, 4].map(uuid)
+		await seedConfig()
+		for (const u of [u1, u2]) await grant(u, '500')
+
+		const m = await market.createMarket(deps, {
+			createdBy: creator,
+			question: 'void me',
+			outcomes: ['A', 'B'],
+			closesAt: hoursFromNow(1),
+			resolvesOn: hoursFromNow(2),
+		})
+		const A = m.outcomes.find((o) => o.label === 'A')!.id
+		await betting.placeBet(deps, {
+			userId: u1,
+			marketId: m.id,
+			outcomeId: A,
+			amount: '100',
+			idempotencyKey: 'v-u1',
+		})
+		await betting.placeBet(deps, {
+			userId: u2,
+			marketId: m.id,
+			outcomeId: A,
+			amount: '200',
+			idempotencyKey: 'v-u2',
+		})
+		expect(await balance(u1)).toBe('400')
+
+		// actor: non-creator, non-participant with resolver authority. A market with NO designated
+		// resolvers is voidable by a single actor (a designated market would need approverId).
+		await settlement.voidMarket(deps, {
+			actorUserId: actor,
+			marketId: m.id,
+			reason: 'bad question',
+		})
+
+		expect((await reads.getMarket(deps, m.id))?.status).toBe('voided')
+		expect(await balance(u1)).toBe('500') // full refund
+		expect(await balance(u2)).toBe('500')
+		await assertConservation(1000n) // wagers and refunds net to zero
+
+		const [{ n }] = await deps.db
+			.select({ n: sql<number>`count(*)::int` })
+			.from(pmBets)
+			.where(and(eq(pmBets.marketId, m.id), eq(pmBets.status, 'refunded')))
+		expect(n).toBe(2)
+	})
+})
+
+// ---------------------------------------------------------------------------
+// C) bet idempotency
+// ---------------------------------------------------------------------------
+suite('bet idempotency', () => {
+	it('a re-delivered bet (same idempotencyKey) returns the prior bet and debits once', async () => {
+		const [creator, u1] = [1, 3].map(uuid)
+		await seedConfig()
+		await grant(u1, '500')
+		const m = await market.createMarket(deps, {
+			createdBy: creator,
+			question: 'dupe?',
+			outcomes: ['A', 'B'],
+			closesAt: hoursFromNow(1),
+			resolvesOn: hoursFromNow(2),
+		})
+		const A = m.outcomes.find((o) => o.label === 'A')!.id
+		const bet = {
+			userId: u1,
+			marketId: m.id,
+			outcomeId: A,
+			amount: '100',
+			idempotencyKey: 'dupe-1',
+		}
+
+		const first = await betting.placeBet(deps, bet)
+		const second = await betting.placeBet(deps, bet) // same key ⇒ re-delivery
+		expect(second.deduped).toBe(true)
+		expect(second.id).toBe(first.id)
+		expect(await balance(u1)).toBe('400') // debited once, not twice
+	})
+})
