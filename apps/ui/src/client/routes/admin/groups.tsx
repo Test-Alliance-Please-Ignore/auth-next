@@ -151,6 +151,7 @@ export default function GroupsPage() {
 								onValueChange={(value) =>
 									updateFilter('categoryId', value === 'all' ? undefined : value)
 								}
+								searchable
 								options={[
 									{ value: 'all', label: 'All categories' },
 									...(categories?.map((category) => ({ value: category.id,
@@ -169,6 +170,7 @@ export default function GroupsPage() {
 								onValueChange={(value) =>
 									updateFilter('visibility', value === 'all' ? undefined : value)
 								}
+								searchable
 								options={[
 									{ value: 'all', label: 'All visibilities' },
 									{ value: 'public', label: 'Public' },
@@ -187,6 +189,7 @@ export default function GroupsPage() {
 								onValueChange={(value) =>
 									updateFilter('joinMode', value === 'all' ? undefined : value)
 								}
+								searchable
 								options={[
 									{ value: 'all', label: 'All modes' },
 									{ value: 'open', label: 'Open' },

@@ -7,8 +7,10 @@ import type {
 	AttachDiscordServerRequest,
 	CreateDiscordRoleRequest,
 	CreateDiscordServerRequest,
+	CorporationDiscordServer,
 	UpdateDiscordRoleRequest,
 	UpdateDiscordServerAttachmentRequest,
+	UpdateDiscordServerNicknameConfigRequest,
 	UpdateDiscordServerRequest,
 } from '@/lib/api'
 
@@ -90,6 +92,20 @@ export const discordKeys = {
 		[...discordKeys.all, 'audit', serverId, tab, page, pageSize] as const,
 	corporationServers: (corporationId: string) =>
 		['admin', 'corporations', corporationId, 'discord-servers'] as const,
+}
+
+function patchCorporationServerCache(
+	queryClient: ReturnType<typeof useQueryClient>,
+	corporationId: string,
+	updatedAttachment: CorporationDiscordServer
+): void {
+	queryClient.setQueryData<CorporationDiscordServer[]>(
+		discordKeys.corporationServers(corporationId),
+		(current) =>
+			current?.map((attachment) =>
+				attachment.id === updatedAttachment.id ? updatedAttachment : attachment
+			) ?? current
+	)
 }
 
 /**
@@ -281,11 +297,31 @@ export function useUpdateCorporationDiscordServer() {
 			attachmentId: string
 			data: UpdateDiscordServerAttachmentRequest
 		}) => apiClient.updateCorporationDiscordServer(corporationId, attachmentId, data),
-		onSuccess: (_, { corporationId }) => {
-			void queryClient.invalidateQueries({
-				queryKey: discordKeys.corporationServers(corporationId),
-				refetchType: 'active',
-			})
+		onSuccess: (updatedAttachment, { corporationId }) => {
+			patchCorporationServerCache(queryClient, corporationId, updatedAttachment)
+		},
+	})
+}
+
+/**
+ * Update nickname ticker settings for a corporation Discord server attachment
+ */
+export function useUpdateCorporationDiscordServerNicknameConfig() {
+	const queryClient = useQueryClient()
+
+	return useMutation({
+		mutationFn: ({
+			corporationId,
+			attachmentId,
+			data,
+		}: {
+			corporationId: string
+			attachmentId: string
+			data: UpdateDiscordServerNicknameConfigRequest
+		}) =>
+			apiClient.updateCorporationDiscordServerNicknameConfig(corporationId, attachmentId, data),
+		onSuccess: (updatedAttachment, { corporationId }) => {
+			patchCorporationServerCache(queryClient, corporationId, updatedAttachment)
 		},
 	})
 }
