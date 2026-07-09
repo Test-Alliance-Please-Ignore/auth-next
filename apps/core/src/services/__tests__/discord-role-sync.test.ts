@@ -56,6 +56,11 @@ const hrStubMethods = {
 
 const eveCorpStubMethods = {
 	getCorporationIdsByCharacterIds: vi.fn(),
+	getCorporationInfo: vi.fn(),
+}
+
+const tokenStoreStubMethods = {
+	getAllianceById: vi.fn(),
 }
 
 // DB query mock — every table.findMany / table.findFirst is wired per-test
@@ -124,6 +129,7 @@ const mockedGetStub = vi.mocked(getStub)
 const GROUPS_NS = Symbol('GROUPS')
 const HR_NS = Symbol('HR')
 const EVE_CORP_NS = Symbol('EVE_CORPORATION_DATA')
+const EVE_TOKEN_STORE_NS = Symbol('EVE_TOKEN_STORE')
 const DISCORD_NS = Symbol('DISCORD')
 
 const mockEnv = {
@@ -131,6 +137,7 @@ const mockEnv = {
 	GROUPS: GROUPS_NS,
 	HR: HR_NS,
 	EVE_CORPORATION_DATA: EVE_CORP_NS,
+	EVE_TOKEN_STORE: EVE_TOKEN_STORE_NS,
 	DISCORD: DISCORD_NS,
 	DISCORD_ROLE_ADD_ONLY_MODE: false,
 } as any
@@ -140,6 +147,7 @@ function setupGetStubRouting() {
 		if (namespace === GROUPS_NS) return groupsStubMethods as any
 		if (namespace === HR_NS) return hrStubMethods as any
 		if (namespace === EVE_CORP_NS) return eveCorpStubMethods as any
+		if (namespace === EVE_TOKEN_STORE_NS) return tokenStoreStubMethods as any
 		return {} as any
 	})
 }
@@ -202,12 +210,19 @@ function makeCorpAttachment(
 		guildName?: string
 		corpName?: string
 		isMemberCorporation?: boolean
-		corpMemberRoleId?: string | null
-		corpMemberAutoApply?: boolean
+		corpMemberNicknameEnabled?: boolean
+		corpMemberNicknameSource?: 'corp' | 'alliance' | 'custom'
+		corpMemberNicknameCustomTicker?: string | null
 		allianceGuestRoleId?: string | null
 		allianceGuestAutoApply?: boolean
+		allianceGuestNicknameEnabled?: boolean
+		allianceGuestNicknameSource?: 'corp' | 'alliance' | 'custom'
+		allianceGuestNicknameCustomTicker?: string | null
 		nonAllianceGuestRoleId?: string | null
 		nonAllianceGuestAutoApply?: boolean
+		nonAllianceGuestNicknameEnabled?: boolean
+		nonAllianceGuestNicknameSource?: 'corp' | 'alliance' | 'custom'
+		nonAllianceGuestNicknameCustomTicker?: string | null
 		roleIds?: string[]
 	} = {}
 ) {
@@ -218,18 +233,57 @@ function makeCorpAttachment(
 	const roleData = (overrides.roleIds ?? []).map((roleId) => ({
 		discordRole: { roleId, isActive: true },
 	}))
+	const scenarioRoles = [
+		{
+			bucket: 'alliance_guest' as const,
+			discordRoleId: overrides.allianceGuestRoleId ?? null,
+			autoApply: overrides.allianceGuestAutoApply ?? false,
+		},
+		{
+			bucket: 'non_alliance_guest' as const,
+			discordRoleId: overrides.nonAllianceGuestRoleId ?? null,
+			autoApply: overrides.nonAllianceGuestAutoApply ?? false,
+		},
+	]
+	const nicknameConfigs = [
+		{
+			bucket: 'corp_member' as const,
+			enabled: overrides.corpMemberNicknameEnabled ?? false,
+			source: overrides.corpMemberNicknameSource ?? 'corp',
+			customTicker: overrides.corpMemberNicknameCustomTicker ?? null,
+		},
+		{
+			bucket: 'alliance_guest' as const,
+			enabled: overrides.allianceGuestNicknameEnabled ?? false,
+			source: overrides.allianceGuestNicknameSource ?? 'corp',
+			customTicker: overrides.allianceGuestNicknameCustomTicker ?? null,
+		},
+		{
+			bucket: 'non_alliance_guest' as const,
+			enabled: overrides.nonAllianceGuestNicknameEnabled ?? false,
+			source: overrides.nonAllianceGuestNicknameSource ?? 'corp',
+			customTicker: overrides.nonAllianceGuestNicknameCustomTicker ?? null,
+		},
+	]
 	return {
 		id: `cds-${corpId}-${dsId}`,
 		corporationId: corpId,
 		discordServerId: dsId,
 		autoInvite: overrides.autoInvite ?? true,
 		autoAssignRoles: overrides.autoAssignRoles ?? true,
-		corpMemberRoleId: overrides.corpMemberRoleId ?? null,
-		corpMemberAutoApply: overrides.corpMemberAutoApply ?? false,
+		corpMemberNicknameEnabled: overrides.corpMemberNicknameEnabled ?? false,
+		corpMemberNicknameSource: overrides.corpMemberNicknameSource ?? 'corp',
+		corpMemberNicknameCustomTicker: overrides.corpMemberNicknameCustomTicker ?? null,
 		allianceGuestRoleId: overrides.allianceGuestRoleId ?? null,
 		allianceGuestAutoApply: overrides.allianceGuestAutoApply ?? false,
+		allianceGuestNicknameEnabled: overrides.allianceGuestNicknameEnabled ?? false,
+		allianceGuestNicknameSource: overrides.allianceGuestNicknameSource ?? 'corp',
+		allianceGuestNicknameCustomTicker: overrides.allianceGuestNicknameCustomTicker ?? null,
 		nonAllianceGuestRoleId: overrides.nonAllianceGuestRoleId ?? null,
 		nonAllianceGuestAutoApply: overrides.nonAllianceGuestAutoApply ?? false,
+		nonAllianceGuestNicknameEnabled: overrides.nonAllianceGuestNicknameEnabled ?? false,
+		nonAllianceGuestNicknameSource: overrides.nonAllianceGuestNicknameSource ?? 'corp',
+		nonAllianceGuestNicknameCustomTicker: overrides.nonAllianceGuestNicknameCustomTicker ?? null,
 		corporation: {
 			id: corpId,
 			name: overrides.corpName ?? 'Test Corp',
@@ -237,6 +291,8 @@ function makeCorpAttachment(
 		},
 		discordServer: { id: dsId, guildId, guildName, isActive: true },
 		roles: roleData,
+		scenarioRoles,
+		nicknameConfigs,
 	}
 }
 
@@ -278,6 +334,7 @@ beforeEach(() => {
 		groupsStubMethods,
 		hrStubMethods,
 		eveCorpStubMethods,
+		tokenStoreStubMethods,
 	]) {
 		for (const value of Object.values(stub)) {
 			value.mockReset()
@@ -299,6 +356,17 @@ beforeEach(() => {
 	hrStubMethods.isUserBlacklisted.mockResolvedValue(false)
 	// Default: character→corp mapping
 	eveCorpStubMethods.getCorporationIdsByCharacterIds.mockResolvedValue({ 'char-1': 'corp-1' })
+	eveCorpStubMethods.getCorporationInfo.mockResolvedValue({
+		corporationId: 'corp-1',
+		name: 'Test Corp',
+		ticker: 'TEST',
+		allianceId: null,
+	} as any)
+	tokenStoreStubMethods.getAllianceById.mockResolvedValue({
+		allianceId: 'alliance-1',
+		name: 'Test Alliance',
+		ticker: 'ALLY',
+	} as any)
 	// Default: empty groups
 	groupsStubMethods.getGroupsWithDiscordAutoInvite.mockResolvedValue([])
 	groupsStubMethods.getGroupsByDiscordServer.mockResolvedValue([])
@@ -750,8 +818,93 @@ describe('updateUserDiscordRoles', () => {
 			expect(scopedGuildIds).toEqual(['guild-1', 'guild-2'])
 			expect(discordStubMethods.updateUserNickname).toHaveBeenCalledWith(
 				'user-1',
-				['guild-1', 'guild-2'],
+				['guild-1'],
 				'Test Pilot'
+			)
+		})
+
+		it('should append the configured alliance ticker for corp members when that bucket is enabled', async () => {
+			dbQueryMocks.users.findFirst.mockResolvedValue(makeUser())
+			dbQueryMocks.userCharacters.findMany.mockResolvedValue([makeCharacter()])
+			dbQueryMocks.discordServers.findMany.mockResolvedValue([
+				makeDiscordServer({
+					id: 'ds-1',
+					guildId: 'guild-1',
+					guildName: 'Nick Server',
+					manageNicknames: true,
+				}),
+			])
+			dbQueryMocks.corporationDiscordServers.findMany.mockResolvedValue([
+				makeCorpAttachment({
+					corporationId: 'corp-1',
+					discordServerId: 'ds-1',
+					guildId: 'guild-1',
+					isMemberCorporation: true,
+					corpMemberNicknameEnabled: true,
+					corpMemberNicknameSource: 'alliance',
+					corpMemberNicknameCustomTicker: null,
+				}),
+			])
+			dbQueryMocks.managedCorporations.findMany.mockResolvedValue([
+				{ corporationId: 'corp-1', ticker: 'CORP' } as any,
+			])
+			eveCorpStubMethods.getCorporationInfo.mockResolvedValue({
+				corporationId: 'corp-1',
+				name: 'Test Corp',
+				allianceId: 'alliance-1',
+			} as any)
+			tokenStoreStubMethods.getAllianceById.mockResolvedValue({
+				allianceId: 'alliance-1',
+				name: 'Test Alliance',
+				ticker: 'ALLY',
+			} as any)
+			discordStubMethods.checkGuildMembershipWithBot.mockResolvedValue(['guild-1'])
+
+			await updateUserDiscordNickname(mockEnv, 'user-1', ['guild-1'])
+
+			expect(discordStubMethods.updateUserNickname).toHaveBeenCalledWith(
+				'user-1',
+				['guild-1'],
+				'[ALLY] Test Pilot'
+			)
+		})
+
+		it('should use the custom ticker configured for the all-members bucket', async () => {
+			dbQueryMocks.users.findFirst.mockResolvedValue(makeUser())
+			dbQueryMocks.userCharacters.findMany.mockResolvedValue([makeCharacter()])
+			dbQueryMocks.discordServers.findMany.mockResolvedValue([
+				makeDiscordServer({
+					id: 'ds-1',
+					guildId: 'guild-1',
+					guildName: 'Nick Server',
+					manageNicknames: true,
+				}),
+			])
+			dbQueryMocks.corporationDiscordServers.findMany.mockResolvedValue([
+				makeCorpAttachment({
+					corporationId: 'corp-1',
+					discordServerId: 'ds-1',
+					guildId: 'guild-1',
+					isMemberCorporation: true,
+					corpMemberNicknameEnabled: true,
+					corpMemberNicknameSource: 'custom',
+					corpMemberNicknameCustomTicker: 'corpx',
+				}),
+			])
+			dbQueryMocks.managedCorporations.findMany.mockResolvedValue([])
+			eveCorpStubMethods.getCorporationInfo.mockResolvedValue({
+				corporationId: 'corp-1',
+				name: 'Test Corp',
+				allianceId: null,
+			} as any)
+			discordStubMethods.checkGuildMembershipWithBot.mockResolvedValue(['guild-1'])
+
+			await updateUserDiscordNickname(mockEnv, 'user-1', ['guild-1'])
+
+			expect(discordStubMethods.updateUserNickname).toHaveBeenCalledWith(
+				'user-1',
+				['guild-1'],
+				'[CORPX] Test Pilot'
 			)
 		})
 	})
@@ -1450,6 +1603,34 @@ describe('inviteUserToDiscordServers', () => {
 			expect(guildIds).toContain('guild-2')
 			expect(result.totalInvited).toBeGreaterThanOrEqual(0) // depends on mock return
 		})
+
+		it('should not invite user when they are only a group owner/admin', async () => {
+			eveCorpStubMethods.getCorporationIdsByCharacterIds.mockResolvedValue({})
+			dbQueryMocks.corporationDiscordServers.findMany.mockResolvedValue([])
+
+			groupsStubMethods.getGroupsWithDiscordAutoInvite.mockResolvedValue([
+				makeGroupWithDiscord({
+					groupId: 'group-1',
+					discordServers: [
+						{
+							discordServerId: 'ds-2',
+							autoInvite: true,
+							autoAssignRoles: true,
+							roleIds: ['dr-role'],
+						},
+					],
+				}),
+			])
+			groupsStubMethods.getGroupMemberUserIds.mockResolvedValue([])
+			groupsStubMethods.getGroupOwnerAndAdminUserIds.mockResolvedValue(['user-1'])
+			dbQueryMocks.discordRoles.findMany.mockResolvedValue([])
+
+			const result = await inviteUserToDiscordServers(mockEnv, 'user-1')
+
+			expect(discordStubMethods.joinUserToServers).not.toHaveBeenCalled()
+			expect(result.totalInvited).toBe(0)
+			expect(result.results).toHaveLength(0)
+		})
 	})
 
 	describe('Corp with auto-invite', () => {
@@ -1478,6 +1659,31 @@ describe('inviteUserToDiscordServers', () => {
 			expect(discordStubMethods.joinUserToServers).toHaveBeenCalled()
 			const guildIds = discordStubMethods.joinUserToServers.mock.calls[0][1]
 			expect(guildIds).toContain('guild-1')
+		})
+
+		it('should not invite a non-member user even when guest buckets are configured', async () => {
+			eveCorpStubMethods.getCorporationIdsByCharacterIds.mockResolvedValue({})
+			dbQueryMocks.corporationDiscordServers.findMany.mockResolvedValue([
+				makeCorpAttachment({
+					corporationId: 'corp-1',
+					guildId: 'guild-1',
+					autoInvite: true,
+					autoAssignRoles: true,
+					allianceGuestRoleId: 'alliance-guest-role-db',
+					allianceGuestAutoApply: true,
+					nonAllianceGuestRoleId: 'non-alliance-guest-role-db',
+					nonAllianceGuestAutoApply: true,
+				}),
+			])
+
+			groupsStubMethods.getGroupsWithDiscordAutoInvite.mockResolvedValue([])
+			dbQueryMocks.discordRoles.findMany.mockResolvedValue([])
+
+			const result = await inviteUserToDiscordServers(mockEnv, 'user-1')
+
+			expect(discordStubMethods.joinUserToServers).not.toHaveBeenCalled()
+			expect(result.totalInvited).toBe(0)
+			expect(result.results).toHaveLength(0)
 		})
 	})
 
@@ -1605,6 +1811,55 @@ describe('inviteUserToDiscordServers', () => {
 			const uniqueGuildIds = [...new Set(guildIds)]
 			expect(uniqueGuildIds).toEqual(guildIds)
 		})
+
+		it('should only invite via the group path when a shared guild also has a corp attachment but the user lacks corp entitlement', async () => {
+			eveCorpStubMethods.getCorporationIdsByCharacterIds.mockResolvedValue({})
+			dbQueryMocks.corporationDiscordServers.findMany.mockResolvedValue([
+				makeCorpAttachment({
+					corporationId: 'corp-1',
+					guildId: 'guild-1',
+					autoInvite: true,
+					autoAssignRoles: true,
+					roleIds: ['corp-role-db'],
+				}),
+			])
+
+			groupsStubMethods.getGroupsWithDiscordAutoInvite.mockResolvedValue([
+				makeGroupWithDiscord({
+					groupId: 'group-1',
+					discordServers: [
+						{
+							discordServerId: 'ds-1',
+							autoInvite: true,
+							autoAssignRoles: true,
+							roleIds: ['group-role-db'],
+						},
+					],
+				}),
+			])
+			groupsStubMethods.getGroupMemberUserIds.mockResolvedValue(['user-1'])
+			dbQueryMocks.discordServers.findFirst.mockResolvedValue(
+				makeDiscordServer({ id: 'ds-1', guildId: 'guild-1', guildName: 'Shared Guild' })
+			)
+			dbQueryMocks.discordRoles.findMany
+				.mockResolvedValueOnce([{ id: 'group-role-db', roleId: 'group-role', isActive: true } as any])
+				.mockResolvedValueOnce([] as any)
+			discordStubMethods.joinUserToServers.mockResolvedValue([
+				{ guildId: 'guild-1', success: true, alreadyMember: false },
+			])
+			groupsStubMethods.insertDiscordInviteAuditRecords.mockResolvedValue(undefined)
+
+			const result = await inviteUserToDiscordServers(mockEnv, 'user-1')
+
+			expect(discordStubMethods.joinUserToServers).toHaveBeenCalledTimes(1)
+			expect(discordStubMethods.joinUserToServers.mock.calls[0][1]).toEqual(['guild-1'])
+			expect(result.results).toHaveLength(1)
+			expect(result.results[0].type).toBe('group')
+			expect(discordStubMethods.updateUserRoles).toHaveBeenCalledTimes(1)
+			expect(discordStubMethods.updateUserRoles.mock.calls[0][1][0].roleIds).toEqual([
+				'group-role',
+			])
+		})
 	})
 })
 
@@ -1634,6 +1889,49 @@ describe('syncUserDiscordAccess', () => {
 		expect(result.totalUpdated).toBe(2)
 		expect(result.totalFailed).toBe(0)
 		expect(result.results.map((r) => r.operation)).toEqual(['revoke-ban', 'revoke-ban'])
+	})
+
+	it('should not auto-invite on refresh when only exclusive corp buckets or group owner/admin access exist', async () => {
+		eveCorpStubMethods.getCorporationIdsByCharacterIds.mockResolvedValue({})
+		dbQueryMocks.corporationDiscordServers.findMany.mockResolvedValue([
+				makeCorpAttachment({
+					corporationId: 'corp-1',
+					guildId: 'guild-1',
+					autoInvite: true,
+					autoAssignRoles: true,
+					allianceGuestRoleId: 'alliance-guest-role-db',
+					allianceGuestAutoApply: true,
+					nonAllianceGuestRoleId: 'non-alliance-guest-role-db',
+				nonAllianceGuestAutoApply: true,
+			}),
+		])
+
+		groupsStubMethods.getGroupsWithDiscordAutoInvite.mockResolvedValue([
+			makeGroupWithDiscord({
+				groupId: 'group-1',
+				discordServers: [
+					{
+						discordServerId: 'ds-2',
+						autoInvite: true,
+						autoAssignRoles: true,
+						roleIds: ['dr-role'],
+					},
+				],
+			}),
+		])
+		groupsStubMethods.getGroupMemberUserIds.mockResolvedValue([])
+		groupsStubMethods.getGroupOwnerAndAdminUserIds.mockResolvedValue(['user-1'])
+		dbQueryMocks.discordServers.findFirst.mockResolvedValue(
+			makeDiscordServer({ id: 'ds-2', guildId: 'guild-2', guildName: 'Group Guild' })
+		)
+		dbQueryMocks.discordRoles.findMany.mockResolvedValue([])
+		groupsStubMethods.insertDiscordInviteAuditRecords.mockResolvedValue(undefined)
+
+		const result = await syncUserDiscordAccess(mockEnv, 'user-1')
+
+		expect(discordStubMethods.joinUserToServers).not.toHaveBeenCalled()
+		expect(result.totalInvited).toBe(0)
+		expect(result.results.filter((r) => r.operation === 'invite')).toHaveLength(0)
 	})
 
 	it('should run invite then role sync and pass allowRemoval through to role updates', async () => {
@@ -1715,6 +2013,52 @@ describe('syncUserDiscordAccess', () => {
 		expect(result.totalUpdated).toBe(1)
 		expect(result.totalFailed).toBe(0)
 		expect(result.results.map((r) => r.operation)).toEqual(['invite', 'update'])
+	})
+})
+
+describe('updateUserDiscordRoles matrix', () => {
+	it('should still assign corp roles when autoInvite is disabled', async () => {
+		discordStubMethods.checkGuildMembershipWithBot.mockResolvedValue(['guild-1'])
+		dbQueryMocks.discordServers.findMany.mockResolvedValue([makeDiscordServer({ guildId: 'guild-1' })])
+		dbQueryMocks.corporationDiscordServers.findMany
+			.mockResolvedValueOnce([
+				makeCorpAttachment({
+					corporationId: 'corp-1',
+					guildId: 'guild-1',
+					autoInvite: false,
+					autoAssignRoles: true,
+					roleIds: ['corp-role-db'],
+				}),
+			])
+			.mockResolvedValueOnce([
+				makeCorpAttachment({
+					corporationId: 'corp-1',
+					discordServerId: 'ds-1',
+					guildId: 'guild-1',
+				}),
+			])
+		groupsStubMethods.getGroupsWithDiscordAutoInvite.mockResolvedValue([])
+		groupsStubMethods.getGroupsByDiscordServer.mockResolvedValue([])
+		dbQueryMocks.discordRoles.findMany.mockImplementation(async (query: any) => {
+			if (query?.with?.discordServer) {
+				return []
+			}
+			if (query?.columns?.roleName) {
+				return []
+			}
+			return [{ id: 'corp-role-db', roleId: 'corp-role', isActive: true }]
+		})
+		discordStubMethods.updateUserRoles.mockResolvedValue([
+			{ guildId: 'guild-1', success: true, rolesAdded: ['corp-role'], rolesRemoved: [] },
+		])
+
+		const result = await updateUserDiscordRoles(mockEnv, 'user-1')
+
+		expect(discordStubMethods.updateUserRoles).toHaveBeenCalledTimes(1)
+		expect(discordStubMethods.updateUserRoles.mock.calls[0][1][0].roleIds).toEqual([
+			'corp-role-db',
+		])
+		expect(result.totalUpdated).toBe(1)
 	})
 })
 
@@ -2027,55 +2371,10 @@ describe('getExpectedManagedRoleIdsByGuild', () => {
 		)
 	})
 
-	it('should prefer corp-member scenarios over alliance guest scenarios', async () => {
-		dbQueryMocks.discordServers.findMany.mockResolvedValue([
-			makeDiscordServer({ id: 'ds-1', guildId: 'guild-1', guildName: 'Guild One' }),
-		])
-		dbQueryMocks.userCharacters.findMany.mockResolvedValue([
-			{
-				userId: 'user-1',
-				characterId: 'char-1',
-			},
-		] as any)
-		eveCorpStubMethods.getCorporationIdsByCharacterIds.mockResolvedValue({
-			'char-1': 'corp-target',
-		})
-		dbQueryMocks.managedCorporations.findMany.mockResolvedValue([
-			{ corporationId: 'corp-target' },
-		] as any)
-		dbQueryMocks.corporationDiscordServers.findMany.mockResolvedValue([
-			makeCorpAttachment({
-				corporationId: 'corp-target',
-				discordServerId: 'ds-1',
-				guildId: 'guild-1',
-				isMemberCorporation: true,
-				corpMemberRoleId: 'corp-role-db',
-				corpMemberAutoApply: true,
-				allianceGuestRoleId: 'alliance-role-db',
-				allianceGuestAutoApply: true,
-				nonAllianceGuestRoleId: 'guest-role-db',
-				nonAllianceGuestAutoApply: true,
-			}),
-		])
-		groupsStubMethods.getGroupsWithDiscordAutoInvite.mockResolvedValue([])
-		groupsStubMethods.getGroupsByDiscordServer.mockResolvedValue([])
-		dbQueryMocks.discordRoles.findMany
-			.mockResolvedValueOnce([
-				{ id: 'corp-role-db', roleId: 'corp-role', isActive: true },
-				{ id: 'alliance-role-db', roleId: 'alliance-role', isActive: true },
-				{ id: 'guest-role-db', roleId: 'guest-role', isActive: true },
-			] as any)
-			.mockResolvedValueOnce([] as any)
-
-		const result = await getExpectedManagedRoleIdsByGuild(mockEnv, 'user-1')
-
-		expect(Array.from(result.get('guild-1') ?? [])).toEqual(['corp-role'])
-	})
-
-	it('should use alliance guest scenarios for linked users affiliated through member corps', async () => {
-		dbQueryMocks.discordServers.findMany.mockResolvedValue([
-			makeDiscordServer({ id: 'ds-1', guildId: 'guild-1', guildName: 'Guild One' }),
-		])
+		it('should use alliance guest scenarios for linked users affiliated through member corps', async () => {
+			dbQueryMocks.discordServers.findMany.mockResolvedValue([
+				makeDiscordServer({ id: 'ds-1', guildId: 'guild-1', guildName: 'Guild One' }),
+			])
 		dbQueryMocks.userCharacters.findMany.mockResolvedValue([
 			{
 				userId: 'user-1',
@@ -2085,23 +2384,21 @@ describe('getExpectedManagedRoleIdsByGuild', () => {
 		eveCorpStubMethods.getCorporationIdsByCharacterIds.mockResolvedValue({
 			'char-1': 'corp-affiliated',
 		})
-		dbQueryMocks.managedCorporations.findMany.mockResolvedValue([
-			{ corporationId: 'corp-affiliated' },
-		] as any)
-		dbQueryMocks.corporationDiscordServers.findMany.mockResolvedValue([
-			makeCorpAttachment({
-				corporationId: 'corp-target',
-				discordServerId: 'ds-1',
-				guildId: 'guild-1',
-				isMemberCorporation: true,
-				corpMemberRoleId: 'corp-role-db',
-				corpMemberAutoApply: false,
-				allianceGuestRoleId: 'alliance-role-db',
-				allianceGuestAutoApply: true,
-				nonAllianceGuestRoleId: 'guest-role-db',
-				nonAllianceGuestAutoApply: true,
-			}),
-		])
+			dbQueryMocks.managedCorporations.findMany.mockResolvedValue([
+				{ corporationId: 'corp-affiliated' },
+			] as any)
+			dbQueryMocks.corporationDiscordServers.findMany.mockResolvedValue([
+				makeCorpAttachment({
+					corporationId: 'corp-target',
+					discordServerId: 'ds-1',
+					guildId: 'guild-1',
+					isMemberCorporation: true,
+					allianceGuestRoleId: 'alliance-role-db',
+					allianceGuestAutoApply: true,
+					nonAllianceGuestRoleId: 'guest-role-db',
+					nonAllianceGuestAutoApply: true,
+				}),
+			])
 		groupsStubMethods.getGroupsWithDiscordAutoInvite.mockResolvedValue([])
 		groupsStubMethods.getGroupsByDiscordServer.mockResolvedValue([])
 		dbQueryMocks.discordRoles.findMany
@@ -2116,7 +2413,7 @@ describe('getExpectedManagedRoleIdsByGuild', () => {
 		expect(Array.from(result.get('guild-1') ?? [])).toEqual(['alliance-role'])
 	})
 
-	it('should include corp roles and both group membership buckets when building expected managed roles', async () => {
+	it('should include corp-managed roles when building expected managed roles', async () => {
 		dbQueryMocks.discordServers.findMany.mockReset()
 		dbQueryMocks.userCharacters.findMany.mockReset()
 		dbQueryMocks.corporationDiscordServers.findMany.mockReset()
@@ -2144,49 +2441,20 @@ describe('getExpectedManagedRoleIdsByGuild', () => {
 				discordServerId: 'ds-1',
 				guildId: 'guild-1',
 				autoAssignRoles: true,
-				corpMemberRoleId: 'corp-member-db',
-				corpMemberAutoApply: true,
 				roleIds: ['corp-managed-role-db'],
 			}),
 		])
-		groupsStubMethods.getGroupsWithDiscordAutoInvite.mockResolvedValue([
-			makeGroupWithDiscord({
-				groupId: 'group-1',
-				discordServers: [
-					{
-						discordServerId: 'ds-1',
-						autoInvite: true,
-						autoAssignRoles: true,
-						memberRoleIds: ['group-member-db'],
-						ownerAdminRoleIds: ['group-owner-db'],
-					},
-				],
-			}),
-		])
-		groupsStubMethods.getGroupMemberUserIds.mockResolvedValue(['user-1'])
-		groupsStubMethods.getGroupOwnerAndAdminUserIds.mockResolvedValue(['user-1'])
-		dbQueryMocks.discordRoles.findMany
-			.mockResolvedValueOnce([
-				{ id: 'corp-member-db', roleId: 'corp-member-role', isActive: true },
-				{ id: 'corp-managed-role-db', roleId: 'corp-managed-role', isActive: true },
-			] as any)
-			.mockResolvedValueOnce([
-				{ id: 'group-member-db', roleId: 'group-member-role', isActive: true },
-				{ id: 'group-owner-db', roleId: 'group-owner-role', isActive: true },
-			] as any)
-			.mockResolvedValueOnce([] as any)
+		groupsStubMethods.getGroupsWithDiscordAutoInvite.mockResolvedValue([])
+		groupsStubMethods.getGroupMemberUserIds.mockResolvedValue([])
+		groupsStubMethods.getGroupOwnerAndAdminUserIds.mockResolvedValue([])
+		dbQueryMocks.discordRoles.findMany.mockResolvedValueOnce([
+			{ id: 'corp-managed-role-db', roleId: 'corp-managed-role', isActive: true },
+		] as any)
 		discordStubMethods.getGuildRoles.mockResolvedValue([{ id: 'some-other-role' }])
 
 		const result = await getExpectedManagedRoleIdsByGuild(mockEnv, 'user-1')
 
-		expect(Array.from(result.get('guild-1') ?? [])).toEqual(
-			expect.arrayContaining([
-				'corp-member-role',
-				'corp-managed-role-db',
-				'group-member-role',
-				'group-owner-role',
-			])
-		)
+		expect(Array.from(result.get('guild-1') ?? [])).toEqual(['corp-managed-role-db'])
 	})
 })
 
@@ -2234,17 +2502,15 @@ describe('refreshServerMembers', () => {
 			'char-1': 'corp-1',
 		})
 		dbQueryMocks.managedCorporations.findMany.mockResolvedValue([])
-		dbQueryMocks.corporationDiscordServers.findMany.mockResolvedValue([
-			makeCorpAttachment({
-				corporationId: 'corp-1',
-				discordServerId: 'ds-1',
-				guildId: 'guild-1',
-				autoAssignRoles: true,
-				corpMemberRoleId: 'corp-member-role',
-				corpMemberAutoApply: true,
-				roleIds: ['corp-managed-role'],
-			}),
-		])
+			dbQueryMocks.corporationDiscordServers.findMany.mockResolvedValue([
+				makeCorpAttachment({
+					corporationId: 'corp-1',
+					discordServerId: 'ds-1',
+					guildId: 'guild-1',
+					autoAssignRoles: true,
+					roleIds: ['corp-managed-role'],
+				}),
+			])
 		groupsStubMethods.getGroupsByDiscordServer.mockResolvedValue([
 			{
 				groupId: 'group-1',
@@ -2263,17 +2529,11 @@ describe('refreshServerMembers', () => {
 		})
 		dbQueryMocks.discordRoles.findMany
 			.mockResolvedValueOnce([
-				{ id: 'corp-member-role', roleId: 'corp-member-role', isActive: true },
-			] as any)
-			.mockResolvedValueOnce([
 				{ id: 'group-member-role', roleId: 'group-member-role', isActive: true },
 				{ id: 'group-owner-role', roleId: 'group-owner-role', isActive: true },
 			] as any)
 			.mockResolvedValueOnce([] as any)
 			.mockResolvedValueOnce([] as any)
-			.mockResolvedValueOnce([
-				{ id: 'corp-member-role', roleId: 'corp-member-role', isActive: true },
-			] as any)
 			.mockResolvedValueOnce([
 				{ id: 'group-member-role', roleId: 'group-member-role', isActive: true },
 				{ id: 'group-owner-role', roleId: 'group-owner-role', isActive: true },
@@ -2283,28 +2543,23 @@ describe('refreshServerMembers', () => {
 			{ guildId: 'guild-1', success: true, rolesAdded: [], rolesRemoved: [] },
 		])
 		discordStubMethods.getDiscordUserStatus.mockResolvedValue(null)
-		discordStubMethods.updateUserRoles.mockResolvedValue([
-			{
-				guildId: 'guild-1',
-				success: true,
-				rolesAdded: ['corp-member-role', 'corp-managed-role', 'group-member-role', 'group-owner-role'],
-				rolesRemoved: [],
-			},
-		])
+			discordStubMethods.updateUserRoles.mockResolvedValue([
+				{
+					guildId: 'guild-1',
+					success: true,
+					rolesAdded: ['corp-managed-role', 'group-member-role', 'group-owner-role'],
+					rolesRemoved: [],
+				},
+			])
 
 		const result = await refreshServerMembers(mockEnv, 'ds-1', ['user-1'])
 
 		expect(result.successCount).toBe(1)
 		expect(result.failCount).toBe(0)
 		expect(discordStubMethods.updateUserRoles).toHaveBeenCalledTimes(1)
-		const requests = discordStubMethods.updateUserRoles.mock.calls[0][1]
-		expect(requests[0].roleIds).toEqual(
-			expect.arrayContaining([
-				'corp-member-role',
-				'corp-managed-role',
-				'group-member-role',
-				'group-owner-role',
-			])
-		)
+			const requests = discordStubMethods.updateUserRoles.mock.calls[0][1]
+			expect(requests[0].roleIds).toEqual(
+				expect.arrayContaining(['corp-managed-role', 'group-member-role', 'group-owner-role'])
+			)
 	})
 })

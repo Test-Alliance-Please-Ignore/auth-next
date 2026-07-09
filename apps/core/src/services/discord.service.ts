@@ -9,6 +9,8 @@ import { logger } from '@repo/hono-helpers'
 import { createDb } from '../db'
 import {
 	corporationDiscordServers,
+	corporationDiscordServerNicknameConfigs,
+	corporationDiscordServerScenarioRoles,
 	discordRoles,
 	discordServers,
 	managedCorporations,
@@ -19,6 +21,7 @@ import {
 
 import type { Discord, DiscordProfile, JoinServerResult } from '@repo/discord'
 import type { EveCorporationData } from '@repo/eve-corporation-data'
+import type { EveTokenStore } from '@repo/eve-token-store'
 import type { Groups } from '@repo/groups'
 import type { Hr } from '@repo/hr'
 import type { Env } from '../context'
@@ -402,16 +405,7 @@ async function getAllManagedRolesForGuild(
 	// Query 2: Corporation-managed roles and scenario roles
 	const corpAttachments = await db.query.corporationDiscordServers.findMany({
 		where: eq(corporationDiscordServers.discordServerId, discordServerId),
-		columns: {
-			id: true,
-			autoAssignRoles: true,
-			corpMemberRoleId: true,
-			corpMemberAutoApply: true,
-			allianceGuestRoleId: true,
-			allianceGuestAutoApply: true,
-			nonAllianceGuestRoleId: true,
-			nonAllianceGuestAutoApply: true,
-		},
+		columns: { autoAssignRoles: true },
 		with: {
 			roles: {
 				with: {
@@ -419,6 +413,9 @@ async function getAllManagedRolesForGuild(
 						columns: { roleId: true, isActive: true },
 					},
 				},
+			},
+			scenarioRoles: {
+				columns: { bucket: true, discordRoleId: true, autoApply: true },
 			},
 		},
 	})
@@ -575,26 +572,214 @@ async function getUserCorporationIds(env: Env, characterIds: string[]): Promise<
 }
 
 type CorpAttachmentScenarioKey = 'corp-member' | 'alliance-guest' | 'non-alliance-guest'
+type CorporationDiscordScenarioRoleBucket = 'alliance_guest' | 'non_alliance_guest'
+type CorporationDiscordNicknameBucket =
+	| 'corp_member'
+	| 'alliance_guest'
+	| 'non_alliance_guest'
 
 type CorporationDiscordAttachmentScenarioFields = {
 	corporationId: string
-	corpMemberRoleId: string | null
-	corpMemberAutoApply: boolean
-	allianceGuestRoleId: string | null
-	allianceGuestAutoApply: boolean
-	nonAllianceGuestRoleId: string | null
-	nonAllianceGuestAutoApply: boolean
+	corporation: {
+		isMemberCorporation: boolean
+	}
+	scenarioRoles?: Array<{
+		bucket: CorporationDiscordScenarioRoleBucket
+		discordRoleId: string | null
+		autoApply: boolean
+	}>
 }
 
-type CorporationDiscordScenarioRoleFields = Pick<
-	CorporationDiscordAttachmentScenarioFields,
-	| 'corpMemberRoleId'
-	| 'corpMemberAutoApply'
-	| 'allianceGuestRoleId'
-	| 'allianceGuestAutoApply'
-	| 'nonAllianceGuestRoleId'
-	| 'nonAllianceGuestAutoApply'
->
+type CorporationDiscordScenarioRoleFields = {
+	scenarioRoles?: Array<{
+		bucket: CorporationDiscordScenarioRoleBucket
+		discordRoleId: string | null
+		autoApply: boolean
+	}>
+}
+
+type DiscordNicknameSource = 'corp' | 'alliance' | 'custom'
+
+type CorporationDiscordNicknameFields = {
+	corporationId: string
+	nicknameConfigs?: Array<{
+		bucket: CorporationDiscordNicknameBucket
+		enabled: boolean
+		source: DiscordNicknameSource
+		customTicker: string | null
+	}>
+	corporation: {
+		isMemberCorporation: boolean
+	}
+}
+
+type CorporationTickerSources = {
+	corpTicker: string | null
+	allianceTicker: string | null
+}
+
+function normalizeDiscordTicker(ticker?: string | null): string | null {
+	const normalized = ticker?.trim().toUpperCase().replace(/[^A-Z0-9]/g, '')
+	if (!normalized) {
+		return null
+	}
+
+	return normalized.slice(0, 5)
+}
+
+function buildDiscordNicknameWithTickers(baseName: string, suffixes: string[]): string {
+	if (suffixes.length === 0) {
+		return baseName
+	}
+
+	return `${suffixes.map((suffix) => `[${suffix}]`).join(' ')} ${baseName}`
+}
+
+function getScenarioRoleRecord(
+	attachment: CorporationDiscordScenarioRoleFields,
+	bucket: CorporationDiscordScenarioRoleBucket
+): { discordRoleId: string | null; autoApply: boolean } {
+	const row = attachment.scenarioRoles?.find((candidate) => candidate.bucket === bucket)
+	return row ?? { discordRoleId: null, autoApply: false }
+}
+
+function getNicknameConfigRecord(
+	attachment: CorporationDiscordNicknameFields,
+	bucket: CorporationDiscordNicknameBucket
+): {
+	enabled: boolean
+	source: DiscordNicknameSource
+	customTicker: string | null
+} {
+	const row = attachment.nicknameConfigs?.find((candidate) => candidate.bucket === bucket)
+	return row ?? { enabled: false, source: 'corp', customTicker: null }
+}
+
+function resolveTickerPreference(
+	source: DiscordNicknameSource,
+	tickerSources: CorporationTickerSources,
+	customTicker: string | null
+): string | null {
+	if (source === 'custom') {
+		return normalizeDiscordTicker(customTicker)
+	}
+
+	const corpTicker = normalizeDiscordTicker(tickerSources.corpTicker)
+	const allianceTicker = normalizeDiscordTicker(tickerSources.allianceTicker)
+
+	if (source === 'alliance') {
+		return allianceTicker ?? corpTicker
+	}
+
+	return corpTicker ?? allianceTicker
+}
+
+function resolveAttachmentNicknameSuffix(
+	attachment: CorporationDiscordNicknameFields,
+	isCorpMember: boolean,
+	isAllianceMember: boolean,
+	tickerSources: CorporationTickerSources
+): string | null {
+	const bucketConfigs = [
+		{
+			matches: isCorpMember,
+			...getNicknameConfigRecord(attachment, 'corp_member'),
+		},
+		{
+			matches: !isCorpMember && attachment.corporation.isMemberCorporation && isAllianceMember,
+			...getNicknameConfigRecord(attachment, 'alliance_guest'),
+		},
+		{
+			matches: !isCorpMember,
+			...getNicknameConfigRecord(attachment, 'non_alliance_guest'),
+		},
+	] as const
+
+	for (const bucket of bucketConfigs) {
+		if (!bucket.matches || !bucket.enabled) {
+			continue
+		}
+
+		const suffix = resolveTickerPreference(bucket.source, tickerSources, bucket.customTicker)
+		if (suffix) {
+			return suffix
+		}
+	}
+
+	return null
+}
+
+async function getCorporationTickerSources(
+	db: ReturnType<typeof createDb>,
+	env: Env,
+	corporationIds: string[]
+): Promise<Map<string, CorporationTickerSources>> {
+	if (corporationIds.length === 0) {
+		return new Map()
+	}
+
+	const uniqueCorporationIds = Array.from(new Set(corporationIds))
+	const corpRows = await db.query.managedCorporations.findMany({
+		where: inArray(managedCorporations.corporationId, uniqueCorporationIds),
+		columns: {
+			corporationId: true,
+			ticker: true,
+		},
+	})
+	const corpTickerById = new Map(corpRows.map((row) => [row.corporationId, row.ticker]))
+
+	const corpStub = getStub<EveCorporationData>(env.EVE_CORPORATION_DATA, 'default')
+	const tokenStoreStub = getStub<EveTokenStore>(env.EVE_TOKEN_STORE, 'default')
+	const corpInfoEntries = await Promise.all(
+		uniqueCorporationIds.map(async (corporationId) => {
+			try {
+				return [corporationId, await corpStub.getCorporationInfo(corporationId)] as const
+			} catch (error) {
+				logger.warn('[Discord] Failed to resolve corporation info for nickname routing', {
+					corporationId,
+					error: String(error),
+				})
+				return [corporationId, null] as const
+			}
+		})
+	)
+
+	const allianceIds = Array.from(
+		new Set(
+			corpInfoEntries
+				.map(([, corpInfo]) => corpInfo?.allianceId ?? null)
+				.filter((allianceId): allianceId is string => !!allianceId)
+		)
+	)
+
+	const allianceTickerById = new Map<string, string>()
+	await Promise.all(
+		allianceIds.map(async (allianceId) => {
+			try {
+				const allianceInfo = await tokenStoreStub.getAllianceById(allianceId)
+				if (allianceInfo?.ticker) {
+					allianceTickerById.set(allianceId, allianceInfo.ticker)
+				}
+			} catch (error) {
+				logger.warn('[Discord] Failed to resolve alliance info for nickname routing', {
+					allianceId,
+					error: String(error),
+				})
+			}
+		})
+	)
+
+	const result = new Map<string, CorporationTickerSources>()
+	for (const [corporationId, corpInfo] of corpInfoEntries) {
+		result.set(corporationId, {
+			corpTicker: corpTickerById.get(corporationId) ?? corpInfo?.ticker ?? null,
+			allianceTicker:
+				corpInfo?.allianceId ? allianceTickerById.get(corpInfo.allianceId) ?? null : null,
+		})
+	}
+
+	return result
+}
 
 async function getUserAllianceMemberCorporationIds(
 	db: ReturnType<typeof createDb>,
@@ -623,27 +808,22 @@ function resolveScenarioRoleId(
 	attachmentIsMemberCorp: boolean,
 	activeRoleIdByDbId: Map<string, string>
 ): { roleId: string | null; scenario: CorpAttachmentScenarioKey | null } {
-	if (isCorpMember && attachment.corpMemberAutoApply && attachment.corpMemberRoleId) {
-		const roleId = activeRoleIdByDbId.get(attachment.corpMemberRoleId) ?? null
-		if (roleId) {
-			return { roleId, scenario: 'corp-member' }
-		}
-	}
-
+	const allianceGuestRole = getScenarioRoleRecord(attachment, 'alliance_guest')
 	if (
 		attachmentIsMemberCorp &&
 		isAllianceMember &&
-		attachment.allianceGuestAutoApply &&
-		attachment.allianceGuestRoleId
+		allianceGuestRole.autoApply &&
+		allianceGuestRole.discordRoleId
 	) {
-		const roleId = activeRoleIdByDbId.get(attachment.allianceGuestRoleId) ?? null
+		const roleId = activeRoleIdByDbId.get(allianceGuestRole.discordRoleId) ?? null
 		if (roleId) {
 			return { roleId, scenario: 'alliance-guest' }
 		}
 	}
 
-	if (attachment.nonAllianceGuestAutoApply && attachment.nonAllianceGuestRoleId) {
-		const roleId = activeRoleIdByDbId.get(attachment.nonAllianceGuestRoleId) ?? null
+	const nonAllianceGuestRole = getScenarioRoleRecord(attachment, 'non_alliance_guest')
+	if (nonAllianceGuestRole.autoApply && nonAllianceGuestRole.discordRoleId) {
+		const roleId = activeRoleIdByDbId.get(nonAllianceGuestRole.discordRoleId) ?? null
 		if (roleId) {
 			return { roleId, scenario: 'non-alliance-guest' }
 		}
@@ -654,9 +834,12 @@ function resolveScenarioRoleId(
 
 function getScenarioManagedRoleDbIds(attachment: CorporationDiscordScenarioRoleFields): string[] {
 	const roleIds = [
-		attachment.corpMemberAutoApply ? attachment.corpMemberRoleId : null,
-		attachment.allianceGuestAutoApply ? attachment.allianceGuestRoleId : null,
-		attachment.nonAllianceGuestAutoApply ? attachment.nonAllianceGuestRoleId : null,
+		getScenarioRoleRecord(attachment, 'alliance_guest').autoApply
+			? getScenarioRoleRecord(attachment, 'alliance_guest').discordRoleId
+			: null,
+		getScenarioRoleRecord(attachment, 'non_alliance_guest').autoApply
+			? getScenarioRoleRecord(attachment, 'non_alliance_guest').discordRoleId
+			: null,
 	].filter((roleId): roleId is string => !!roleId)
 
 	return roleIds
@@ -760,16 +943,7 @@ export async function getExpectedManagedRoleIdsByGuild(
 		knownServerDbIds.length > 0
 			? await db.query.corporationDiscordServers.findMany({
 					where: inArray(corporationDiscordServers.discordServerId, knownServerDbIds),
-					columns: {
-						corporationId: true,
-						autoAssignRoles: true,
-						corpMemberRoleId: true,
-						corpMemberAutoApply: true,
-						allianceGuestRoleId: true,
-						allianceGuestAutoApply: true,
-						nonAllianceGuestRoleId: true,
-						nonAllianceGuestAutoApply: true,
-					},
+					columns: { corporationId: true, autoAssignRoles: true },
 					with: {
 						corporation: {
 							columns: { isMemberCorporation: true },
@@ -781,6 +955,9 @@ export async function getExpectedManagedRoleIdsByGuild(
 									columns: { id: true, roleId: true, isActive: true },
 								},
 							},
+						},
+						scenarioRoles: {
+							columns: { bucket: true, discordRoleId: true, autoApply: true },
 						},
 					},
 				})
@@ -1083,17 +1260,7 @@ export async function inviteUserToDiscordServers(
 	// Fetch all corporation attachments that may apply to this user via corp, alliance, or guest fallback.
 	const corpAttachments = await db.query.corporationDiscordServers.findMany({
 		where: eq(corporationDiscordServers.autoInvite, true),
-		columns: {
-			corporationId: true,
-			discordServerId: true,
-			autoAssignRoles: true,
-			corpMemberRoleId: true,
-			corpMemberAutoApply: true,
-			allianceGuestRoleId: true,
-			allianceGuestAutoApply: true,
-			nonAllianceGuestRoleId: true,
-			nonAllianceGuestAutoApply: true,
-		},
+		columns: { corporationId: true, discordServerId: true, autoAssignRoles: true },
 		with: {
 			corporation: {
 				columns: { name: true, isMemberCorporation: true },
@@ -1105,6 +1272,9 @@ export async function inviteUserToDiscordServers(
 						columns: { id: true, roleId: true, isActive: true },
 					},
 				},
+			},
+			scenarioRoles: {
+				columns: { bucket: true, discordRoleId: true, autoApply: true },
 			},
 		},
 	})
@@ -1186,7 +1356,10 @@ export async function inviteUserToDiscordServers(
 			roleIds.push(scenarioRoleId)
 		}
 
-		const shouldInvite = isCorpMember || scenarioRoleId !== null
+		// Auto-invite is intentionally reserved for actual corporation members.
+		// Guest buckets may still resolve a role for existing members, but they
+		// must not be used as a reason to join an unaffiliated user to the guild.
+		const shouldInvite = isCorpMember
 		if (!shouldInvite) {
 			logger.debug('[Discord] inviteUserToDiscordServers: Skipping corporation attachment', {
 				userId,
@@ -1249,7 +1422,10 @@ export async function inviteUserToDiscordServers(
 					isOwnerAdmin: membership.isOwnerAdmin,
 				})
 
-				if (membership.isMember || membership.isOwnerAdmin) {
+				// Auto-invite is reserved for actual group members.
+				// Owner/admin status can still matter for role assignment on existing members,
+				// but it must not cause a join for someone who is not a member.
+				if (membership.isMember) {
 					for (const discordServer of group.discordServers) {
 						// ONLY process servers with autoInvite=true
 						if (!discordServer.autoInvite) {
@@ -1272,15 +1448,9 @@ export async function inviteUserToDiscordServers(
 						})
 
 						if (serverInfo) {
-							const memberRoleDbIds =
-								discordServer.autoAssignRoles && membership.isMember
-									? getGroupMemberRoleDbIds(discordServer)
-									: []
-							const ownerAdminRoleDbIds =
-								discordServer.autoAssignRoles && membership.isOwnerAdmin
-									? getGroupOwnerAdminRoleDbIds(discordServer)
-									: []
-							const roleDbIds = [...new Set([...memberRoleDbIds, ...ownerAdminRoleDbIds])]
+							const roleDbIds = discordServer.autoAssignRoles
+								? getGroupMemberRoleDbIds(discordServer)
+								: []
 							const actualRoleIds: string[] = []
 							if (roleDbIds.length > 0) {
 								const roleRecords = await db.query.discordRoles.findMany({
@@ -1533,14 +1703,14 @@ export async function inviteUserToDiscordServers(
 		manageNicknamesByGuildId: Object.fromEntries(manageNicknamesByGuildId),
 	})
 
-	if (guildsForNicknameUpdate.length > 0 && primaryCharacterName) {
-		logger.info('[Discord] inviteUserToDiscordServers: Updating nicknames', {
-			userId,
-			guilds: guildsForNicknameUpdate,
-			nickname: primaryCharacterName,
-		})
-		await discordStub.updateUserNickname(userId, guildsForNicknameUpdate, primaryCharacterName)
-	}
+		if (guildsForNicknameUpdate.length > 0) {
+			logger.info('[Discord] inviteUserToDiscordServers: Updating nicknames', {
+				userId,
+				guilds: guildsForNicknameUpdate,
+				primaryCharacterName,
+			})
+			await updateUserDiscordNickname(env, userId, guildsForNicknameUpdate)
+		}
 
 	// === UPDATE ROLES (only for successful joins) ===
 
@@ -1752,16 +1922,7 @@ export async function updateUserDiscordRoles(
 			targetServerDbIds.length > 0
 				? await db.query.corporationDiscordServers.findMany({
 						where: inArray(corporationDiscordServers.discordServerId, targetServerDbIds),
-						columns: {
-							corporationId: true,
-							autoAssignRoles: true,
-							corpMemberRoleId: true,
-							corpMemberAutoApply: true,
-							allianceGuestRoleId: true,
-							allianceGuestAutoApply: true,
-							nonAllianceGuestRoleId: true,
-							nonAllianceGuestAutoApply: true,
-						},
+						columns: { corporationId: true, autoAssignRoles: true },
 						with: {
 							corporation: {
 								columns: { name: true, isMemberCorporation: true },
@@ -1773,6 +1934,9 @@ export async function updateUserDiscordRoles(
 										columns: { id: true, roleId: true, isActive: true },
 									},
 								},
+							},
+							scenarioRoles: {
+								columns: { bucket: true, discordRoleId: true, autoApply: true },
 							},
 						},
 					})
@@ -2004,14 +2168,16 @@ export async function updateUserDiscordRoles(
 	const updateResults = await discordStub.updateUserRoles(userId, updateRequests, allowRemoval)
 
 	// Best-effort nickname sync for servers that opt into nickname management.
-	// This is scoped to the servers included in this role refresh.
-	try {
-		await updateUserDiscordNickname(env, userId, serversToUpdate)
-	} catch (error) {
-		logger.error('[Discord] updateUserDiscordRoles: Nickname update failed', {
-			userId,
-			error: error instanceof Error ? error.message : String(error),
-		})
+	// Skip when Discord authorization has been revoked so we avoid extra user lookups.
+	if (!isAuthorizationRevoked) {
+		try {
+			await updateUserDiscordNickname(env, userId, serversToUpdate)
+		} catch (error) {
+			logger.error('[Discord] updateUserDiscordRoles: Nickname update failed', {
+				userId,
+				error: error instanceof Error ? error.message : String(error),
+			})
+		}
 	}
 
 	// Resolve role names for display/debug output.
@@ -2541,16 +2707,30 @@ export async function updateUserDiscordNickname(
 		return // User doesn't have Discord linked
 	}
 
-	// Get primary character
-	const primaryChar = await db.query.userCharacters.findFirst({
-		where: and(eq(userCharacters.userId, userId), eq(userCharacters.is_primary, true)),
+	// Get all linked characters so nickname suffixes can reflect corp attachment buckets.
+	const userChars = await db.query.userCharacters.findMany({
+		where: eq(userCharacters.userId, userId),
+		columns: {
+			characterId: true,
+			characterName: true,
+			is_primary: true,
+		},
 	})
 
-	if (!primaryChar) {
+	const primaryChar = userChars.find((char) => char.is_primary)
+	const primaryCharacterName = primaryChar?.characterName
+
+	if (!primaryCharacterName) {
 		return // No primary character set
 	}
 
-	const nickname = primaryChar.characterName
+	const characterIds = userChars.map((char) => char.characterId)
+	const userCorporationIds = await getUserCorporationIds(env, characterIds)
+	const userAllianceMemberCorporationIds = await getUserAllianceMemberCorporationIds(
+		db,
+		userCorporationIds
+	)
+	const isAllianceMember = userAllianceMemberCorporationIds.size > 0
 
 	// Get all servers with nickname management enabled.
 	// When guildIds are provided, only inspect that subset.
@@ -2562,8 +2742,8 @@ export async function updateUserDiscordNickname(
 						eq(discordServers.isActive, true),
 						inArray(discordServers.guildId, guildIds)
 					)
-				: and(eq(discordServers.manageNicknames, true), eq(discordServers.isActive, true)),
-		columns: { guildId: true },
+					: and(eq(discordServers.manageNicknames, true), eq(discordServers.isActive, true)),
+		columns: { id: true, guildId: true },
 	})
 
 	if (serverSettings.length === 0) {
@@ -2580,13 +2760,77 @@ export async function updateUserDiscordNickname(
 		return // User is not in any Discord servers with nickname management
 	}
 
-	// Update nickname on each server
-	await discordStub.updateUserNickname(userId, userGuildIds, nickname)
+	const activeServerSettings = serverSettings.filter((server) => userGuildIds.includes(server.guildId))
+	if (activeServerSettings.length === 0) {
+		return
+	}
+
+	const corpAttachments = await db.query.corporationDiscordServers.findMany({
+		where: inArray(
+			corporationDiscordServers.discordServerId,
+			activeServerSettings.map((server) => server.id)
+		),
+		columns: { corporationId: true, discordServerId: true },
+		with: {
+			corporation: {
+				columns: { isMemberCorporation: true },
+			},
+			nicknameConfigs: {
+				columns: { bucket: true, enabled: true, source: true, customTicker: true },
+			},
+		},
+	})
+
+	const tickerSourcesByCorporationId = await getCorporationTickerSources(
+		db,
+		env,
+		corpAttachments.map((attachment) => attachment.corporationId)
+	)
+
+	const nicknameToGuildIds = new Map<string, string[]>()
+	for (const server of activeServerSettings) {
+		const suffixes = new Set<string>()
+		const attachmentsForServer = corpAttachments.filter(
+			(attachment) => attachment.discordServerId === server.id
+		)
+
+		for (const attachment of attachmentsForServer) {
+			const suffix = resolveAttachmentNicknameSuffix(
+				attachment as CorporationDiscordNicknameFields,
+				userCorporationIds.has(attachment.corporationId),
+				isAllianceMember,
+				tickerSourcesByCorporationId.get(attachment.corporationId) ?? {
+					corpTicker: null,
+					allianceTicker: null,
+				}
+			)
+
+			if (suffix) {
+				suffixes.add(suffix)
+			}
+		}
+
+		const nickname = buildDiscordNicknameWithTickers(
+			primaryCharacterName,
+			Array.from(suffixes)
+		)
+		const existingGuildIds = nicknameToGuildIds.get(nickname) ?? []
+		existingGuildIds.push(server.guildId)
+		nicknameToGuildIds.set(nickname, existingGuildIds)
+	}
+
+	// Update nickname on each guild, grouping guilds that share the same resolved nickname.
+	for (const [nickname, guildIdGroup] of nicknameToGuildIds.entries()) {
+		await discordStub.updateUserNickname(userId, guildIdGroup, nickname)
+	}
 
 	logger.info('[Discord] Updated user nickname', {
 		userId,
 		discordUserId: user.discordUserId,
-		nickname,
+		nicknameGroups: Array.from(nicknameToGuildIds.entries()).map(([resolvedNickname, guildIdGroup]) => ({
+			nickname: resolvedNickname,
+			guildIds: guildIdGroup,
+		})),
 		serverCount: serverSettings.length,
 	})
 }
@@ -2640,16 +2884,7 @@ async function calculateUserRolesForServer(
 	// === CORPORATION ROLES ===
 	const corpAttachments = await db.query.corporationDiscordServers.findMany({
 		where: eq(corporationDiscordServers.discordServerId, serverId),
-		columns: {
-			corporationId: true,
-			autoAssignRoles: true,
-			corpMemberRoleId: true,
-			corpMemberAutoApply: true,
-			allianceGuestRoleId: true,
-			allianceGuestAutoApply: true,
-			nonAllianceGuestRoleId: true,
-			nonAllianceGuestAutoApply: true,
-		},
+		columns: { corporationId: true, autoAssignRoles: true },
 		with: {
 			corporation: {
 				columns: { isMemberCorporation: true },
@@ -2658,6 +2893,9 @@ async function calculateUserRolesForServer(
 				with: {
 					discordRole: true,
 				},
+			},
+			scenarioRoles: {
+				columns: { bucket: true, discordRoleId: true, autoApply: true },
 			},
 		},
 	})
@@ -2854,7 +3092,7 @@ export async function refreshServerMembers(
 					nickname,
 					guildId: server.guildId,
 				})
-				await discordStub.updateUserNickname(userId, [server.guildId], nickname)
+				await updateUserDiscordNickname(env, userId, [server.guildId])
 			}
 
 			// 3. SET ROLES (after nickname)

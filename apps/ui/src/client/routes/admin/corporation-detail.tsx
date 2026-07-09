@@ -69,6 +69,7 @@ import {
 	useDiscordServers,
 	useUnassignRoleFromCorporationServer,
 	useUpdateCorporationDiscordServer,
+	useUpdateCorporationDiscordServerNicknameConfig,
 } from '@/hooks/useDiscord'
 import { useConfirmationDialog } from '@/hooks/useConfirmationDialog'
 import { useMessage } from '@/hooks/useMessage'
@@ -98,6 +99,60 @@ type AttachmentSettingsState = {
 	autoAssignRoles: boolean
 }
 
+type NicknameBucketSource = 'corp' | 'alliance' | 'custom'
+
+type NicknameBucketKey = 'corpMember' | 'allianceGuest' | 'nonAllianceGuest'
+
+type NicknameBucketDraft = {
+	enabled: boolean
+	source: NicknameBucketSource
+	customTicker: string
+}
+
+const NICKNAME_SOURCE_OPTIONS: Array<{ value: NicknameBucketSource; label: string }> = [
+	{ value: 'corp', label: 'Corp ticker' },
+	{ value: 'alliance', label: 'Alliance ticker' },
+	{ value: 'custom', label: 'Custom ticker' },
+]
+
+function sanitizeNicknameTickerInput(value: string): string {
+	return value.toUpperCase().replace(/[^A-Z0-9]/g, '').slice(0, 5)
+}
+
+const NICKNAME_BUCKET_CONFIGS: Array<{
+	key: NicknameBucketKey
+	label: string
+	description: string
+	enabledField: 'corpMemberNicknameEnabled' | 'allianceGuestNicknameEnabled' | 'nonAllianceGuestNicknameEnabled'
+	sourceField: 'corpMemberNicknameSource' | 'allianceGuestNicknameSource' | 'nonAllianceGuestNicknameSource'
+	customField: 'corpMemberNicknameCustomTicker' | 'allianceGuestNicknameCustomTicker' | 'nonAllianceGuestNicknameCustomTicker'
+}> = [
+	{
+		key: 'corpMember',
+		label: 'Corp Members',
+		description: 'Multi-select roles and ticker settings for members of this corporation.',
+		enabledField: 'corpMemberNicknameEnabled',
+		sourceField: 'corpMemberNicknameSource',
+		customField: 'corpMemberNicknameCustomTicker',
+	},
+	{
+		key: 'allianceGuest',
+		label: 'Alliance Guest',
+		description: 'Guest access for users affiliated with member corporations.',
+		enabledField: 'allianceGuestNicknameEnabled',
+		sourceField: 'allianceGuestNicknameSource',
+		customField: 'allianceGuestNicknameCustomTicker',
+	},
+	{
+		key: 'nonAllianceGuest',
+		label: 'Non-Alliance Guest',
+		description: 'Guest access for linked users outside the alliance.',
+		enabledField: 'nonAllianceGuestNicknameEnabled',
+		sourceField: 'nonAllianceGuestNicknameSource',
+		customField: 'nonAllianceGuestNicknameCustomTicker',
+	},
+] as const
+
 export default function CorporationDetailPage() {
 	const { corporationId } = useParams<{ corporationId: string }>()
 	const corpId = corporationId || ''
@@ -118,6 +173,7 @@ export default function CorporationDetailPage() {
 	const attachServer = useAttachDiscordServer()
 	const detachServer = useDetachDiscordServer()
 	const updateAttachment = useUpdateCorporationDiscordServer()
+	const updateNicknameConfig = useUpdateCorporationDiscordServerNicknameConfig()
 	const assignRole = useAssignRoleToCorporationServer()
 	const unassignRole = useUnassignRoleFromCorporationServer()
 
@@ -164,6 +220,9 @@ export default function CorporationDetailPage() {
 	const [showAddServerDialog, setShowAddServerDialog] = useState(false)
 	const [selectedServerId, setSelectedServerId] = useState('')
 	const [pendingRoleSelections, setPendingRoleSelections] = useState<Record<string, string>>({})
+	const [nicknameConfigDrafts, setNicknameConfigDrafts] = useState<
+		Record<string, Record<NicknameBucketKey, NicknameBucketDraft>>
+	>({})
 	const [attachmentSettings, setAttachmentSettings] = useState<AttachmentSettingsState>({
 		...DEFAULT_ATTACHMENT_SETTINGS,
 	})
@@ -177,7 +236,34 @@ export default function CorporationDetailPage() {
 		setAttachmentSettings({ ...DEFAULT_ATTACHMENT_SETTINGS })
 	}, [selectedServerId])
 
-	const updateDiscordAttachment = async (
+	useEffect(() => {
+		setNicknameConfigDrafts(
+			Object.fromEntries(
+				corporationDiscordServers.map((attachment) => [
+					attachment.id,
+					{
+						corpMember: {
+							enabled: attachment.corpMemberNicknameEnabled,
+							source: attachment.corpMemberNicknameSource,
+							customTicker: attachment.corpMemberNicknameCustomTicker ?? '',
+						},
+						allianceGuest: {
+							enabled: attachment.allianceGuestNicknameEnabled,
+							source: attachment.allianceGuestNicknameSource,
+							customTicker: attachment.allianceGuestNicknameCustomTicker ?? '',
+						},
+						nonAllianceGuest: {
+							enabled: attachment.nonAllianceGuestNicknameEnabled,
+							source: attachment.nonAllianceGuestNicknameSource,
+							customTicker: attachment.nonAllianceGuestNicknameCustomTicker ?? '',
+						},
+					},
+				])
+			)
+		)
+	}, [corporationDiscordServers])
+
+	const updateRoleAttachment = async (
 		attachmentId: string,
 		data: Parameters<typeof updateAttachment.mutateAsync>[0]['data'],
 		successMessage: string,
@@ -185,6 +271,24 @@ export default function CorporationDetailPage() {
 	) => {
 		try {
 			await updateAttachment.mutateAsync({
+				corporationId: corpId,
+				attachmentId,
+				data,
+			})
+			showSuccess(successMessage)
+		} catch (error) {
+			showError(error instanceof Error ? error.message : errorMessage)
+		}
+	}
+
+	const updateNicknameAttachment = async (
+		attachmentId: string,
+		data: Parameters<typeof updateNicknameConfig.mutateAsync>[0]['data'],
+		successMessage: string,
+		errorMessage: string
+	) => {
+		try {
+			await updateNicknameConfig.mutateAsync({
 				corporationId: corpId,
 				attachmentId,
 				data,
@@ -236,7 +340,7 @@ export default function CorporationDetailPage() {
 	}
 
 	const handleToggleAutoInvite = async (attachmentId: string, currentValue: boolean) => {
-		await updateDiscordAttachment(
+		await updateRoleAttachment(
 			attachmentId,
 			{ autoInvite: !currentValue },
 			'Auto-invite setting updated!',
@@ -245,7 +349,7 @@ export default function CorporationDetailPage() {
 	}
 
 	const handleToggleAutoAssignRoles = async (attachmentId: string, currentValue: boolean) => {
-		await updateDiscordAttachment(
+		await updateRoleAttachment(
 			attachmentId,
 			{ autoAssignRoles: !currentValue },
 			'Auto-assign roles setting updated!',
@@ -268,10 +372,10 @@ export default function CorporationDetailPage() {
 
 	const handleScenarioRoleChange = async (
 		attachmentId: string,
-		field: 'corpMemberRoleId' | 'allianceGuestRoleId' | 'nonAllianceGuestRoleId',
+		field: 'allianceGuestRoleId' | 'nonAllianceGuestRoleId',
 		nextValue: string
 	) => {
-		await updateDiscordAttachment(
+		await updateRoleAttachment(
 			attachmentId,
 			{
 				[field]: nextValue === noneScenarioRoleValue ? null : nextValue,
@@ -283,16 +387,67 @@ export default function CorporationDetailPage() {
 
 	const handleScenarioAutoApplyToggle = async (
 		attachmentId: string,
-		field: 'corpMemberAutoApply' | 'allianceGuestAutoApply' | 'nonAllianceGuestAutoApply',
+		field: 'allianceGuestAutoApply' | 'nonAllianceGuestAutoApply',
 		currentValue: boolean
 	) => {
-		await updateDiscordAttachment(
+		await updateRoleAttachment(
 			attachmentId,
 			{
 				[field]: !currentValue,
 			} as Parameters<typeof updateAttachment.mutateAsync>[0]['data'],
 			'Scenario auto-apply updated!',
 			'Failed to update scenario auto-apply'
+		)
+	}
+
+	const updateNicknameBucketDraft = (
+		attachmentId: string,
+		bucket: NicknameBucketKey,
+		patch: Partial<NicknameBucketDraft>
+	) => {
+		setNicknameConfigDrafts((current) => ({
+			...current,
+			[attachmentId]: {
+				...(current[attachmentId] ?? {
+					corpMember: { enabled: false, source: 'corp', customTicker: '' },
+					allianceGuest: { enabled: false, source: 'corp', customTicker: '' },
+					nonAllianceGuest: { enabled: false, source: 'corp', customTicker: '' },
+				}),
+				[bucket]: {
+					...(current[attachmentId]?.[bucket] ?? {
+						enabled: false,
+						source: 'corp',
+						customTicker: '',
+					}),
+					...patch,
+				},
+			},
+		}))
+	}
+
+	const saveNicknameBucketDraft = async (attachmentId: string, bucket: NicknameBucketKey) => {
+		const attachmentDraft = nicknameConfigDrafts[attachmentId]?.[bucket]
+		if (!attachmentDraft) {
+			return
+		}
+
+		const bucketConfig = NICKNAME_BUCKET_CONFIGS.find((config) => config.key === bucket)
+		if (!bucketConfig) {
+			return
+		}
+
+		await updateNicknameAttachment(
+			attachmentId,
+			{
+				[bucketConfig.enabledField]: attachmentDraft.enabled,
+				[bucketConfig.sourceField]: attachmentDraft.source,
+				[bucketConfig.customField]:
+					attachmentDraft.source === 'custom'
+						? sanitizeNicknameTickerInput(attachmentDraft.customTicker) || null
+						: null,
+			} as Parameters<typeof updateNicknameConfig.mutateAsync>[0]['data'],
+			'Nickname config updated!',
+			'Failed to update nickname config'
 		)
 	}
 
@@ -447,18 +602,14 @@ export default function CorporationDetailPage() {
 
 	const scenarioRoleConfigs = [
 		{
-			label: 'Corp Member',
-			description: 'Members of this corporation',
-			roleIdKey: 'corpMemberRoleId' as const,
-			autoApplyKey: 'corpMemberAutoApply' as const,
-		},
-		{
+			key: 'allianceGuest',
 			label: 'Alliance Guest',
 			description: 'Guest access for users affiliated with member corporations',
 			roleIdKey: 'allianceGuestRoleId' as const,
 			autoApplyKey: 'allianceGuestAutoApply' as const,
 		},
 		{
+			key: 'nonAllianceGuest',
 			label: 'Non-Alliance Guest',
 			description: 'Guest access for linked users outside the alliance',
 			roleIdKey: 'nonAllianceGuestRoleId' as const,
@@ -471,7 +622,6 @@ export default function CorporationDetailPage() {
 		for (const roleAssignment of attachment.roles ?? []) {
 			roleIds.add(roleAssignment.discordRole.id)
 		}
-		if (attachment.corpMemberRoleId) roleIds.add(attachment.corpMemberRoleId)
 		if (attachment.allianceGuestRoleId) roleIds.add(attachment.allianceGuestRoleId)
 		if (attachment.nonAllianceGuestRoleId) roleIds.add(attachment.nonAllianceGuestRoleId)
 		return roleIds
@@ -921,11 +1071,33 @@ export default function CorporationDetailPage() {
 									type="multiple"
 									defaultValue={[]}
 									className="space-y-4"
-								>
-									{corporationDiscordServers.map((attachment) => (
-										<AccordionItem
-											key={attachment.id}
-											value={attachment.id}
+									>
+										{corporationDiscordServers.map((attachment) => {
+											const nicknameManagementEnabled =
+												attachment.discordServer?.manageNicknames ?? false
+											const nicknameControlsDisabled = !nicknameManagementEnabled
+												const attachmentNicknameDrafts = nicknameConfigDrafts[attachment.id] ?? {
+													corpMember: {
+														enabled: attachment.corpMemberNicknameEnabled,
+														source: attachment.corpMemberNicknameSource,
+													customTicker: attachment.corpMemberNicknameCustomTicker ?? '',
+												},
+												allianceGuest: {
+													enabled: attachment.allianceGuestNicknameEnabled,
+													source: attachment.allianceGuestNicknameSource,
+													customTicker: attachment.allianceGuestNicknameCustomTicker ?? '',
+												},
+												nonAllianceGuest: {
+													enabled: attachment.nonAllianceGuestNicknameEnabled,
+													source: attachment.nonAllianceGuestNicknameSource,
+													customTicker: attachment.nonAllianceGuestNicknameCustomTicker ?? '',
+												},
+											}
+
+											return (
+											<AccordionItem
+												key={attachment.id}
+												value={attachment.id}
 											className="overflow-hidden rounded-lg border border-border/90 bg-card shadow-md ring-1 ring-border/50"
 										>
 											<AccordionTrigger className="px-4 py-4 text-left hover:bg-muted/40">
@@ -941,7 +1113,7 @@ export default function CorporationDetailPage() {
 													)}
 												</div>
 											</AccordionTrigger>
-											<AccordionContent className="px-4">
+											<AccordionContent className="px-4 pb-4">
 												<div className="space-y-4">
 													<div className="flex justify-end">
 														<Button
@@ -953,182 +1125,354 @@ export default function CorporationDetailPage() {
 														</Button>
 													</div>
 
-													<div className="flex gap-4">
-														<div className="flex items-center space-x-2">
-															<Switch
-																id={`auto-invite-${attachment.id}`}
-																checked={attachment.autoInvite}
-																onCheckedChange={() =>
-																	handleToggleAutoInvite(
-																		attachment.id,
-																		attachment.autoInvite
-																	)
-																}
-															/>
-															<Label
-																htmlFor={`auto-invite-${attachment.id}`}
-																className="cursor-pointer"
-															>
-																Auto-Invite
-															</Label>
+													<div className="grid gap-4 md:grid-cols-2">
+														<div className="rounded-xl border border-border/80 bg-background/75 p-4 shadow-sm">
+															<div className="flex items-start justify-between gap-3">
+																<div>
+																	<p className="text-sm font-medium">Auto-Invite</p>
+																	<p className="text-xs text-muted-foreground">
+																		Invite matching members automatically.
+																	</p>
+																</div>
+																<Switch
+																	id={`auto-invite-${attachment.id}`}
+																	checked={attachment.autoInvite}
+																	onCheckedChange={() =>
+																		handleToggleAutoInvite(
+																			attachment.id,
+																			attachment.autoInvite
+																		)
+																	}
+																/>
+															</div>
 														</div>
 
-														<div className="flex items-center space-x-2">
-															<Switch
-																id={`auto-assign-${attachment.id}`}
-																checked={attachment.autoAssignRoles}
-																onCheckedChange={() =>
-																	handleToggleAutoAssignRoles(
-																		attachment.id,
-																		attachment.autoAssignRoles
-																	)
-																}
-															/>
-															<Label
-																htmlFor={`auto-assign-${attachment.id}`}
-																className="cursor-pointer"
-															>
-																Auto-Assign Roles
-															</Label>
+														<div className="rounded-xl border border-border/80 bg-background/75 p-4 shadow-sm">
+															<div className="flex items-start justify-between gap-3">
+																<div>
+																	<p className="text-sm font-medium">Role Sync</p>
+																	<p className="text-xs text-muted-foreground">
+																		When off, the role buckets below are ignored. Nickname tickers still
+																		apply if the server is configured to manage nicknames.
+																	</p>
+																</div>
+																<Switch
+																	id={`auto-assign-${attachment.id}`}
+																	checked={attachment.autoAssignRoles}
+																	onCheckedChange={() =>
+																		handleToggleAutoAssignRoles(
+																			attachment.id,
+																			attachment.autoAssignRoles
+																		)
+																	}
+																/>
+															</div>
 														</div>
 													</div>
 
-													<div className="space-y-4">
-														<div className="space-y-2 rounded-md border border-dashed p-3">
-															<p className="text-sm font-medium">All Members</p>
-															<div className="flex flex-wrap gap-2">
-																{attachment.roles?.map((roleAssignment) => (
-																	<div
-																		key={roleAssignment.id}
-																		className="inline-flex items-center gap-1 rounded-md bg-primary/10 px-2 py-1 text-sm"
-																	>
-																		<span>{roleAssignment.discordRole.roleName}</span>
-																		<button
-																			onClick={() =>
-																				handleUnassignRole(attachment.id, roleAssignment.id)
-																			}
-																			className="ml-1 hover:text-destructive"
-																		>
-																			<X className="h-3 w-3" />
-																		</button>
-																	</div>
-																))}
-															</div>
-															{(attachment.discordServer?.roles ?? []).filter(
-																(role) =>
-																	!getAttachmentUsedRoleIds(attachment).has(role.roleId)
-															).length > 0 && (
-																<div className="flex items-center gap-2">
-																	<Select
-																		value=""
-																		onValueChange={(nextValue) => {
-																			if (!nextValue) {
-																				return
-																			}
-																			void handleAssignRole(attachment.id, nextValue).finally(() => {
-																				setPendingRoleSelections((prev) => {
-																					const { [attachment.id]: _, ...rest } = prev
-																					return rest
-																				})
-																			})
-																		}}
-																		query={pendingRoleSelections[attachment.id] ?? ''}
-																		onQueryChange={(value) =>
-																			setPendingRoleSelections((prev) => ({
-																				...prev,
-																				[attachment.id]: value,
-																			}))
-																		}
-																		searchable
-																		options={buildRoleOptions(attachment).filter(
-																			(option) => option.value !== noneScenarioRoleValue
-																		)}
-																		placeholder="Add role..."
-																		emptyText="No matching roles found"
-																		className="w-full"
-																		contentClassName="w-[min(90vw,36rem)]"
-																		inputClassName="h-9"
-																	/>
+													<div className="rounded-xl border border-border/90 bg-card/90 p-4 shadow-md ring-1 ring-border/60">
+														<div className="grid gap-6 xl:grid-cols-2">
+														<div className="space-y-3">
+															<div className="flex items-start justify-between gap-3">
+																<div>
+																	<p className="text-sm font-medium">Corp Members</p>
+																	<p className="text-xs text-muted-foreground">
+																		Multi-select roles that apply to every linked user. This bucket
+																		is the fallback ticker choice for corporation members.
+																	</p>
 																</div>
-															)}
+															</div>
+																{attachment.roles?.length ? (
+																	<div className="flex flex-wrap gap-2">
+																		{attachment.roles.map((roleAssignment) => (
+																			<div
+																				key={roleAssignment.id}
+																				className="inline-flex items-center gap-1 rounded-md border border-primary/50 bg-primary/10 px-2 py-1 text-sm text-primary"
+																			>
+																				<span>{roleAssignment.discordRole.roleName}</span>
+																				<button
+																					onClick={() =>
+																						handleUnassignRole(
+																							attachment.id,
+																							roleAssignment.id
+																						)
+																					}
+																					className="ml-1 hover:text-destructive"
+																				>
+																					<X className="h-3 w-3" />
+																				</button>
+																			</div>
+																		))}
+																	</div>
+																) : (
+																	<p className="text-xs text-muted-foreground">
+																		No Corp Members roles assigned yet.
+																	</p>
+																)}
+																{(attachment.discordServer?.roles ?? []).filter(
+																	(role) => !getAttachmentUsedRoleIds(attachment).has(role.roleId)
+																).length > 0 && (
+																	<div className="flex items-center gap-2">
+																		<Select
+																			value=""
+																			onValueChange={(nextValue) => {
+																				if (!nextValue) {
+																					return
+																				}
+																				void handleAssignRole(attachment.id, nextValue).finally(() => {
+																					setPendingRoleSelections((prev) => {
+																						const { [attachment.id]: _, ...rest } = prev
+																						return rest
+																					})
+																				})
+																			}}
+																			query={pendingRoleSelections[attachment.id] ?? ''}
+																			onQueryChange={(value) =>
+																				setPendingRoleSelections((prev) => ({
+																					...prev,
+																					[attachment.id]: value,
+																				}))
+																			}
+																			searchable
+																			options={buildRoleOptions(attachment).filter(
+																				(option) => option.value !== noneScenarioRoleValue
+																			)}
+																			placeholder="Add role..."
+																			emptyText="No matching roles found"
+																			className="w-full"
+																			contentClassName="w-[min(90vw,36rem)]"
+																			inputClassName="h-9"
+																		/>
+																	</div>
+																)}
+															</div>
+
+															<div className="space-y-3 border-border/60 xl:border-l xl:pl-6">
+																<div className="flex items-start justify-between gap-3">
+																	<div>
+																		<p className="text-sm font-medium">Nickname Ticker</p>
+																		<p className="text-xs text-muted-foreground">
+																			Only applies when the server manages nicknames. Specific
+																			member-level buckets override Corp Members.
+																		</p>
+																		{!nicknameManagementEnabled && (
+																			<p className="mt-1 text-xs text-muted-foreground">
+																				Enable nickname management on the Discord server to edit ticker settings.
+																			</p>
+																		)}
+																	</div>
+																	<div className="flex items-center gap-2">
+																		<Switch
+																			id={`corp-members-nickname-enabled-${attachment.id}`}
+																			aria-label="Enable Corp Members ticker"
+																			checked={attachmentNicknameDrafts.corpMember.enabled}
+																			disabled={nicknameControlsDisabled}
+																			onCheckedChange={() =>
+																				updateNicknameBucketDraft(attachment.id, 'corpMember', {
+																					enabled: !attachmentNicknameDrafts.corpMember.enabled,
+																				})
+																			}
+																		/>
+																		<Button
+																			variant="confirm"
+																			size="sm"
+																			showIcon={false}
+																			disabled={nicknameControlsDisabled || updateNicknameConfig.isPending}
+																			onClick={() => void saveNicknameBucketDraft(attachment.id, 'corpMember')}
+																		>
+																			Save
+																		</Button>
+																	</div>
+																</div>
+																<div className="grid gap-3 sm:grid-cols-2">
+																	<Select
+																		value={attachmentNicknameDrafts.corpMember.source}
+																		disabled={
+																			nicknameControlsDisabled ||
+																			!attachmentNicknameDrafts.corpMember.enabled
+																		}
+																		onValueChange={(nextValue) =>
+																			updateNicknameBucketDraft(attachment.id, 'corpMember', {
+																				source: nextValue as NicknameBucketSource,
+																			})
+																		}
+																		options={NICKNAME_SOURCE_OPTIONS}
+																		className="w-full"
+																		contentClassName="w-[min(90vw,24rem)]"
+																	/>
+																	<div className="space-y-1">
+																		<Input
+																			value={attachmentNicknameDrafts.corpMember.customTicker}
+																			disabled={
+																				nicknameControlsDisabled ||
+																				!attachmentNicknameDrafts.corpMember.enabled ||
+																				attachmentNicknameDrafts.corpMember.source !== 'custom'
+																			}
+																			onChange={(event) =>
+																				updateNicknameBucketDraft(attachment.id, 'corpMember', {
+																					customTicker: sanitizeNicknameTickerInput(event.target.value),
+																				})
+																			}
+																			placeholder="Custom ticker"
+																			maxLength={5}
+																		/>
+																			<p className="text-xs text-muted-foreground">
+																				Max 5 characters.
+																			</p>
+																	</div>
+																</div>
+															</div>
 														</div>
+													</div>
 
-														{scenarioRoleConfigs.map((config) => {
-															const currentRoleId = attachment[config.roleIdKey]
-															const currentRoleLabel =
-																attachment.discordServer?.roles?.find(
-																	(role) => role.id === currentRoleId
-																)?.roleName ?? 'None'
-															const currentValue = currentRoleId ?? noneScenarioRoleValue
+													{scenarioRoleConfigs.map((config) => {
+														const currentRoleId = attachment[config.roleIdKey]
+													const currentRoleLabel =
+														attachment.discordServer?.roles?.find(
+															(role) => role.id === currentRoleId
+														)?.roleName ?? 'None'
+													const currentValue = currentRoleId ?? noneScenarioRoleValue
+													const nicknameDraft = attachmentNicknameDrafts[config.key]
 
-															return (
-																<div
-																	key={`${attachment.id}-${config.roleIdKey}`}
-																	className="space-y-2 rounded-md border border-dashed p-3"
-																>
+													return (
+															<div
+																key={`${attachment.id}-${config.roleIdKey}`}
+																className="rounded-xl border border-border/90 bg-card/90 p-4 shadow-md ring-1 ring-border/60"
+															>
+																<div className="grid gap-6 xl:grid-cols-2">
+																	<div className="space-y-3">
 																	<div className="flex items-start justify-between gap-3">
 																		<div>
-																			<p className="text-sm font-medium">
-																				{config.label}
-																			</p>
+																			<p className="text-sm font-medium">{config.label}</p>
 																			<p className="text-xs text-muted-foreground">
 																				{config.description}
 																			</p>
 																		</div>
-																		<div className="flex items-center space-x-2">
+																		<div className="flex items-center gap-2">
 																			<Switch
 																				id={`${config.autoApplyKey}-${attachment.id}`}
 																				checked={attachment[config.autoApplyKey]}
 																				onCheckedChange={() =>
 																					handleScenarioAutoApplyToggle(
+																							attachment.id,
+																							config.autoApplyKey,
+																							attachment[config.autoApplyKey]
+																						)
+																					}
+																				/>
+																				<Label
+																					htmlFor={`${config.autoApplyKey}-${attachment.id}`}
+																					className="cursor-pointer"
+																				>
+																					Auto-apply
+																				</Label>
+																			</div>
+																		</div>
+																		<div className="space-y-1">
+																			<Select
+																				value={currentValue}
+																				onValueChange={(nextValue) =>
+																					void handleScenarioRoleChange(
 																						attachment.id,
-																						config.autoApplyKey,
-																						attachment[config.autoApplyKey]
+																						config.roleIdKey,
+																						nextValue
 																					)
 																				}
+																				searchable
+																				options={buildRoleOptions(
+																					attachment,
+																					currentRoleId
+																				)}
+																				placeholder="Select a role..."
+																				emptyText="No roles available"
+																				className="w-full"
+																				contentClassName="w-[min(90vw,36rem)]"
+																				inputClassName="h-9"
 																			/>
-																			<Label
-																				htmlFor={`${config.autoApplyKey}-${attachment.id}`}
-																				className="cursor-pointer"
-																			>
-																				Auto-apply
-																			</Label>
+																			<p className="text-xs text-muted-foreground">
+																				Currently {currentRoleLabel}
+																			</p>
 																		</div>
 																	</div>
-																	<div className="space-y-1">
-																		<Select
-																			value={currentValue}
-																			onValueChange={(nextValue) =>
-																				void handleScenarioRoleChange(
-																					attachment.id,
-																					config.roleIdKey,
-																					nextValue
-																				)
-																			}
-																			searchable
-																			options={buildRoleOptions(
-																				attachment,
-																				currentRoleId
-																			)}
-																			placeholder="Select a role..."
-																			emptyText="No roles available"
-																			className="w-full"
-																			contentClassName="w-[min(90vw,36rem)]"
-																			inputClassName="h-9"
-																		/>
-																		<p className="text-xs text-muted-foreground">
-																			Currently {currentRoleLabel}
-																		</p>
+
+																		<div className="space-y-3 border-border/60 xl:border-l xl:pl-6">
+																			<div className="flex items-start justify-between gap-3">
+																				<div>
+																					<p className="text-sm font-medium">Nickname Ticker</p>
+																					<p className="text-xs text-muted-foreground">
+																						Choose which ticker is prefixed before the nickname.
+																						More specific member buckets override All Members.
+																					</p>
+																				</div>
+																				<div className="flex items-center gap-2">
+																					<Switch
+																						id={`${attachment.id}-${config.key}-nickname-enabled`}
+																						checked={nicknameDraft.enabled}
+																						disabled={nicknameControlsDisabled}
+																						onCheckedChange={() =>
+																							updateNicknameBucketDraft(attachment.id, config.key, {
+																								enabled: !nicknameDraft.enabled,
+																							})
+																						}
+																					/>
+																					<Button
+																					variant="confirm"
+																					size="sm"
+																					showIcon={false}
+																					disabled={nicknameControlsDisabled || updateNicknameConfig.isPending}
+																					onClick={() =>
+																						void saveNicknameBucketDraft(attachment.id, config.key)
+																					}
+																					>
+																						Save
+																					</Button>
+																				</div>
+																			</div>
+																			<div className="grid gap-3 sm:grid-cols-2">
+																				<Select
+																					value={nicknameDraft.source}
+																					disabled={nicknameControlsDisabled || !nicknameDraft.enabled}
+																					onValueChange={(nextValue) =>
+																						updateNicknameBucketDraft(attachment.id, config.key, {
+																							source: nextValue as NicknameBucketSource,
+																						})
+																					}
+																					options={NICKNAME_SOURCE_OPTIONS}
+																					className="w-full"
+																					contentClassName="w-[min(90vw,24rem)]"
+																				/>
+																				<div className="space-y-1">
+																					<Input
+																						value={nicknameDraft.customTicker}
+																						disabled={
+																							nicknameControlsDisabled ||
+																							!nicknameDraft.enabled ||
+																							nicknameDraft.source !== 'custom'
+																						}
+																						onChange={(event) =>
+																							updateNicknameBucketDraft(attachment.id, config.key, {
+																								customTicker: sanitizeNicknameTickerInput(event.target.value),
+																							})
+																						}
+																						placeholder="Custom ticker"
+																						maxLength={5}
+																					/>
+																					<p className="text-xs text-muted-foreground">
+																						Max 5 characters.
+																					</p>
+																			</div>
+																		</div>
 																	</div>
 																</div>
-															)
-														})}
-													</div>
+															</div>
+														)
+													})}
 												</div>
 											</AccordionContent>
 										</AccordionItem>
-									))}
-								</Accordion>
+										)
+										})}
+									</Accordion>
 							)}
 
 							{/* Add Server Dialog */}

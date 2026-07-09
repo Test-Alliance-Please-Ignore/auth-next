@@ -641,12 +641,19 @@ export interface CorporationDiscordServer {
 	discordServerId: string
 	autoInvite: boolean
 	autoAssignRoles: boolean
-	corpMemberRoleId: string | null
-	corpMemberAutoApply: boolean
+	corpMemberNicknameEnabled: boolean
+	corpMemberNicknameSource: 'corp' | 'alliance' | 'custom'
+	corpMemberNicknameCustomTicker: string | null
 	allianceGuestRoleId: string | null
 	allianceGuestAutoApply: boolean
+	allianceGuestNicknameEnabled: boolean
+	allianceGuestNicknameSource: 'corp' | 'alliance' | 'custom'
+	allianceGuestNicknameCustomTicker: string | null
 	nonAllianceGuestRoleId: string | null
 	nonAllianceGuestAutoApply: boolean
+	nonAllianceGuestNicknameEnabled: boolean
+	nonAllianceGuestNicknameSource: 'corp' | 'alliance' | 'custom'
+	nonAllianceGuestNicknameCustomTicker: string | null
 	createdAt: string
 	updatedAt: string
 	discordServer?: DiscordServerWithRoles
@@ -1133,23 +1140,40 @@ export interface AttachDiscordServerRequest {
 	discordServerId: string
 	autoInvite?: boolean
 	autoAssignRoles?: boolean
-	corpMemberRoleId?: string | null
-	corpMemberAutoApply?: boolean
+	corpMemberNicknameEnabled?: boolean
+	corpMemberNicknameSource?: 'corp' | 'alliance' | 'custom'
+	corpMemberNicknameCustomTicker?: string | null
+	allianceGuestRoleId?: string | null
+	allianceGuestAutoApply?: boolean
+	allianceGuestNicknameEnabled?: boolean
+	allianceGuestNicknameSource?: 'corp' | 'alliance' | 'custom'
+	allianceGuestNicknameCustomTicker?: string | null
+	nonAllianceGuestRoleId?: string | null
+	nonAllianceGuestAutoApply?: boolean
+	nonAllianceGuestNicknameEnabled?: boolean
+	nonAllianceGuestNicknameSource?: 'corp' | 'alliance' | 'custom'
+	nonAllianceGuestNicknameCustomTicker?: string | null
+}
+
+export interface UpdateDiscordServerAttachmentRequest {
+	autoInvite?: boolean
+	autoAssignRoles?: boolean
 	allianceGuestRoleId?: string | null
 	allianceGuestAutoApply?: boolean
 	nonAllianceGuestRoleId?: string | null
 	nonAllianceGuestAutoApply?: boolean
 }
 
-export interface UpdateDiscordServerAttachmentRequest {
-	autoInvite?: boolean
-	autoAssignRoles?: boolean
-	corpMemberRoleId?: string | null
-	corpMemberAutoApply?: boolean
-	allianceGuestRoleId?: string | null
-	allianceGuestAutoApply?: boolean
-	nonAllianceGuestRoleId?: string | null
-	nonAllianceGuestAutoApply?: boolean
+export interface UpdateDiscordServerNicknameConfigRequest {
+	corpMemberNicknameEnabled?: boolean
+	corpMemberNicknameSource?: 'corp' | 'alliance' | 'custom'
+	corpMemberNicknameCustomTicker?: string | null
+	allianceGuestNicknameEnabled?: boolean
+	allianceGuestNicknameSource?: 'corp' | 'alliance' | 'custom'
+	allianceGuestNicknameCustomTicker?: string | null
+	nonAllianceGuestNicknameEnabled?: boolean
+	nonAllianceGuestNicknameSource?: 'corp' | 'alliance' | 'custom'
+	nonAllianceGuestNicknameCustomTicker?: string | null
 }
 
 export interface AssignRoleRequest {
@@ -3650,6 +3674,17 @@ export class ApiClient {
 		data: UpdateDiscordServerAttachmentRequest
 	): Promise<CorporationDiscordServer> {
 		return this.put(`/corporations/${corporationId}/discord-servers/${attachmentId}`, data)
+	}
+
+	async updateCorporationDiscordServerNicknameConfig(
+		corporationId: string,
+		attachmentId: string,
+		data: UpdateDiscordServerNicknameConfigRequest
+	): Promise<CorporationDiscordServer> {
+		return this.put(
+			`/corporations/${corporationId}/discord-servers/${attachmentId}/nickname-config`,
+			data
+		)
 	}
 
 	async detachDiscordServerFromCorporation(

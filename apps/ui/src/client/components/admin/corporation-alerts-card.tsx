@@ -229,7 +229,7 @@ export function CorporationAlertsCard({ corporationId }: { corporationId: string
 
 	if (isLoading) {
 		return (
-			<Card>
+			<Card className="border-border/80 bg-card/95 shadow-elevated">
 				<CardHeader>
 					<CardTitle>Alert Destinations</CardTitle>
 					<CardDescription>Loading configured alert destinations...</CardDescription>
@@ -239,7 +239,7 @@ export function CorporationAlertsCard({ corporationId }: { corporationId: string
 	}
 
 	return (
-		<Card>
+	<Card className="border-border/80 bg-card/95 shadow-elevated">
 			<CardHeader>
 				<div className="flex items-center justify-between gap-4">
 					<div>
@@ -260,8 +260,11 @@ export function CorporationAlertsCard({ corporationId }: { corporationId: string
 								alertDestinations.filter((destination) => destination.alertType === section.type)
 							const draftRowsForType = newRows.filter((row) => row.alertType === section.type)
 
-							return (
-								<div key={section.type} className="space-y-4 rounded-lg border p-4">
+								return (
+									<div
+										key={section.type}
+										className="space-y-4 rounded-xl border border-border/80 bg-background/75 p-4 shadow-sm"
+									>
 									<div className="flex flex-wrap items-start justify-between gap-3">
 										<div className="space-y-1">
 											<h3 className="text-sm font-semibold">{section.title}</h3>
@@ -301,7 +304,7 @@ export function CorporationAlertsCard({ corporationId }: { corporationId: string
 													isExisting
 													saveButtonVariant="primary"
 													removeButtonVariant="destructive"
-													className="rounded-md border border-border/90 bg-card p-3 shadow-md ring-1 ring-border/50"
+														className="rounded-xl border border-border/90 bg-card/95 p-4 shadow-md ring-1 ring-border/60"
 												/>
 											)
 										})}
@@ -318,7 +321,7 @@ export function CorporationAlertsCard({ corporationId }: { corporationId: string
 												onRemove={() => handleClearNew(row.id)}
 												isSaving={createDestination.isPending}
 												removeButtonVariant="cancel"
-												className="rounded-md border border-dashed border-border/90 bg-card p-3 shadow-md ring-1 ring-border/50"
+													className="rounded-xl border border-dashed border-border/90 bg-card/90 p-4 shadow-md ring-1 ring-border/60"
 											/>
 										))}
 									</div>
@@ -330,8 +333,11 @@ export function CorporationAlertsCard({ corporationId }: { corporationId: string
 							const destinationsForType = rowsByType.get(definition.type) ?? []
 							const draftRowsForType = newRowsByType.get(definition.type) ?? []
 
-							return (
-							<div key={definition.type} className="space-y-4 rounded-lg border p-4">
+								return (
+									<div
+										key={definition.type}
+										className="space-y-4 rounded-xl border border-border/80 bg-background/75 p-4 shadow-sm"
+									>
 								<div className="flex flex-wrap items-start justify-between gap-3">
 									<div className="space-y-1">
 										<h3 className="text-sm font-semibold">{definition.label}</h3>
@@ -371,7 +377,7 @@ export function CorporationAlertsCard({ corporationId }: { corporationId: string
 												isExisting
 												saveButtonVariant="primary"
 												removeButtonVariant="destructive"
-												className="rounded-md border border-border/90 bg-card p-3 shadow-md ring-1 ring-border/50"
+													className="rounded-xl border border-border/90 bg-card/95 p-4 shadow-md ring-1 ring-border/60"
 											/>
 										)
 									})}
@@ -388,13 +394,13 @@ export function CorporationAlertsCard({ corporationId }: { corporationId: string
 											onRemove={() => handleClearNew(row.id)}
 											isSaving={createDestination.isPending}
 											removeButtonVariant="cancel"
-											className="rounded-md border border-dashed border-border/90 bg-card p-3 shadow-md ring-1 ring-border/50"
-										/>
-									))}
-								</div>
-								</div>
-							)
-						})}
+												className="rounded-xl border border-dashed border-border/90 bg-card/90 p-4 shadow-md ring-1 ring-border/60"
+											/>
+										))}
+									</div>
+									</div>
+								)
+							})}
 					</>
 				)}
 			</CardContent>

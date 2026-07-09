@@ -601,25 +601,6 @@ export const corporationDiscordServers = pgTable(
 		autoInvite: boolean('auto_invite').default(false).notNull(),
 		/** Whether to automatically assign roles on invite */
 		autoAssignRoles: boolean('auto_assign_roles').default(false).notNull(),
-		/** Scenario role for corp members */
-		corpMemberRoleId: uuid('corp_member_role_id').references(() => discordRoles.id, {
-			onDelete: 'set null',
-		}),
-		/** Whether to auto-apply the corp member scenario role */
-		corpMemberAutoApply: boolean('corp_member_auto_apply').default(false).notNull(),
-		/** Scenario role for alliance guests */
-		allianceGuestRoleId: uuid('alliance_guest_role_id').references(() => discordRoles.id, {
-			onDelete: 'set null',
-		}),
-		/** Whether to auto-apply the alliance guest scenario role */
-		allianceGuestAutoApply: boolean('alliance_guest_auto_apply').default(false).notNull(),
-		/** Scenario role for non-alliance guests */
-		nonAllianceGuestRoleId: uuid('non_alliance_guest_role_id').references(
-			() => discordRoles.id,
-			{ onDelete: 'set null' }
-		),
-		/** Whether to auto-apply the non-alliance guest scenario role */
-		nonAllianceGuestAutoApply: boolean('non_alliance_guest_auto_apply').default(false).notNull(),
 		createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
 		updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow().notNull(),
 	},
@@ -630,6 +611,73 @@ export const corporationDiscordServers = pgTable(
 			.on(table.discordServerId, table.autoAssignRoles)
 			.where(sql`${table.autoAssignRoles} = true`),
 		unique('unique_corp_discord_server').on(table.corporationId, table.discordServerId),
+	]
+)
+
+/**
+ * Corporation Discord Server Scenario Roles
+ *
+ * Stores one row per bucket for corp member, alliance guest, and non-alliance guest role sync.
+ */
+export const corporationDiscordServerScenarioRoles = pgTable(
+	'corporation_discord_server_scenario_roles',
+	{
+		id: uuid('id').defaultRandom().primaryKey(),
+		corporationDiscordServerId: uuid('corporation_discord_server_id')
+			.notNull()
+			.references(() => corporationDiscordServers.id, { onDelete: 'cascade' }),
+		bucket: text('bucket', {
+			enum: ['alliance_guest', 'non_alliance_guest'],
+		}).notNull(),
+		discordRoleId: uuid('discord_role_id').references(() => discordRoles.id, {
+			onDelete: 'set null',
+		}),
+		autoApply: boolean('auto_apply').default(false).notNull(),
+		createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
+		updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow().notNull(),
+	},
+	(table) => [
+		index('corp_discord_server_scenario_roles_attachment_idx').on(table.corporationDiscordServerId),
+		unique('unique_corp_discord_server_scenario_role').on(
+			table.corporationDiscordServerId,
+			table.bucket
+		),
+	]
+)
+
+/**
+ * Corporation Discord Server Nickname Configs
+ *
+ * Stores one row per nickname bucket, including All Members and the three member/guest buckets.
+ */
+export const corporationDiscordServerNicknameConfigs = pgTable(
+	'corporation_discord_server_nickname_configs',
+	{
+		id: uuid('id').defaultRandom().primaryKey(),
+		corporationDiscordServerId: uuid('corporation_discord_server_id')
+			.notNull()
+			.references(() => corporationDiscordServers.id, { onDelete: 'cascade' }),
+		bucket: text('bucket', {
+			enum: ['corp_member', 'alliance_guest', 'non_alliance_guest'],
+		}).notNull(),
+		enabled: boolean('enabled').default(false).notNull(),
+		source: text('source', {
+			enum: ['corp', 'alliance', 'custom'],
+		})
+			.default('corp')
+			.notNull(),
+		customTicker: text('custom_ticker'),
+		createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
+		updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow().notNull(),
+	},
+	(table) => [
+		index('corp_discord_server_nickname_configs_attachment_idx').on(
+			table.corporationDiscordServerId
+		),
+		unique('unique_corp_discord_server_nickname_config').on(
+			table.corporationDiscordServerId,
+			table.bucket
+		),
 	]
 )
 
@@ -1092,8 +1140,34 @@ export const corporationDiscordServersRelations = relations(
 			fields: [corporationDiscordServers.discordServerId],
 			references: [discordServers.id],
 		}),
+		scenarioRoles: many(corporationDiscordServerScenarioRoles),
+		nicknameConfigs: many(corporationDiscordServerNicknameConfigs),
 		roles: many(corporationDiscordServerRoles),
 		invites: many(corporationDiscordInvites),
+	})
+)
+
+export const corporationDiscordServerScenarioRolesRelations = relations(
+	corporationDiscordServerScenarioRoles,
+	({ one }) => ({
+		corporationDiscordServer: one(corporationDiscordServers, {
+			fields: [corporationDiscordServerScenarioRoles.corporationDiscordServerId],
+			references: [corporationDiscordServers.id],
+		}),
+		discordRole: one(discordRoles, {
+			fields: [corporationDiscordServerScenarioRoles.discordRoleId],
+			references: [discordRoles.id],
+		}),
+	})
+)
+
+export const corporationDiscordServerNicknameConfigsRelations = relations(
+	corporationDiscordServerNicknameConfigs,
+	({ one }) => ({
+		corporationDiscordServer: one(corporationDiscordServers, {
+			fields: [corporationDiscordServerNicknameConfigs.corporationDiscordServerId],
+			references: [corporationDiscordServers.id],
+		}),
 	})
 )
 
@@ -1310,6 +1384,8 @@ export const schema = {
 	discordCommandPermissions,
 	discordServerCommands,
 	corporationDiscordServers,
+	corporationDiscordServerScenarioRoles,
+	corporationDiscordServerNicknameConfigs,
 	corporationDiscordServerRoles,
 	corporationDiscordInvites,
 	alertDestinations,
@@ -1335,6 +1411,8 @@ export const schema = {
 	discordCommandPermissionsRelations,
 	discordServerCommandsRelations,
 	corporationDiscordServersRelations,
+	corporationDiscordServerScenarioRolesRelations,
+	corporationDiscordServerNicknameConfigsRelations,
 	corporationDiscordServerRolesRelations,
 	corporationDiscordInvitesRelations,
 	corporationAlertDestinationsRelations,

@@ -295,6 +295,13 @@
       "when": 1783503885537,
       "tag": "0041_motionless_emma_frost",
       "breakpoints": true
+    },
+    {
+      "idx": 42,
+      "version": "7",
+      "when": 1783567591406,
+      "tag": "0042_even_blazing_skull",
+      "breakpoints": true
     }
   ]
 }

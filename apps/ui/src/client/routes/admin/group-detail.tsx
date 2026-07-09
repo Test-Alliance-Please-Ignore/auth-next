@@ -1009,7 +1009,7 @@ export default function GroupDetailPage() {
 												}
 
 												return (
-													<div className="space-y-4">
+													<div className="rounded-xl border border-border/90 bg-card/90 p-4 shadow-md ring-1 ring-border/60 space-y-4">
 														<p className="text-xs text-muted-foreground">
 															{groupDiscordRoleAssignmentSummary}
 														</p>
@@ -1028,7 +1028,7 @@ export default function GroupDetailPage() {
 															return (
 																<div
 																	key={`${attachment.id}-${section.membershipType}`}
-																	className="space-y-3 rounded-md border border-dashed border-border/70 p-3"
+																	className="space-y-3 rounded-lg border border-border/80 bg-background/75 p-4 shadow-sm"
 																>
 																	<div className="flex items-start justify-between gap-3">
 																		<div>
@@ -1051,7 +1051,7 @@ export default function GroupDetailPage() {
 																			sectionAssignments.map((roleAssignment) => (
 																				<div
 																					key={roleAssignment.id}
-																					className="inline-flex items-center gap-1 rounded-md bg-primary/10 px-2 py-1 text-sm"
+																					className="inline-flex items-center gap-1 rounded-md border border-primary/50 bg-primary/10 px-2 py-1 text-sm text-primary"
 																				>
 																					<span>{roleAssignment.discordRole.roleName}</span>
 																					<button
