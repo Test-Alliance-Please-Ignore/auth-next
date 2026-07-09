@@ -9,6 +9,7 @@ describe('structure inventory filtering', () => {
 	it('recognizes structure inventory bay and hold flags', () => {
 		expect(isStructureInventoryLocationFlag('SpecializedAmmoHold')).toBe(true)
 		expect(isStructureInventoryLocationFlag('FighterTube3')).toBe(true)
+		expect(isStructureInventoryLocationFlag('MoonMaterialBay')).toBe(true)
 		expect(isStructureInventoryLocationFlag('ServiceSlot0')).toBe(false)
 		expect(isStructureInventoryLocationFlag('RigSlot0')).toBe(false)
 	})
@@ -57,6 +58,15 @@ describe('structure inventory filtering', () => {
 				{
 					item_id: '5',
 					is_singleton: false,
+					location_flag: 'MoonMaterialBay',
+					location_id: '1002',
+					location_type: 'item',
+					quantity: 99,
+					type_id: '12345',
+				},
+				{
+					item_id: '6',
+					is_singleton: false,
 					location_flag: 'CorpSAG1',
 					location_id: '1002',
 					location_type: 'station',
@@ -86,6 +96,16 @@ describe('structure inventory filtering', () => {
 				locationType: 'item',
 				quantity: 12,
 				typeId: '404',
+			},
+			{
+				corporationId: '98000001',
+				structureId: '1002',
+				itemId: '5',
+				isSingleton: false,
+				locationFlag: 'MoonMaterialBay',
+				locationType: 'item',
+				quantity: 99,
+				typeId: '12345',
 			},
 		])
 	})
