@@ -10,6 +10,7 @@ const STRUCTURE_INVENTORY_LOCATION_FLAG_PREFIXES = [
 	'DroneBay',
 	'FighterBay',
 	'FighterTube',
+	'MoonMaterialBay',
 ] as const
 
 export interface StructureInventoryRowInput {

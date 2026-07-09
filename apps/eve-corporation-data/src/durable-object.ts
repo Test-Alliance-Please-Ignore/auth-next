@@ -2981,9 +2981,6 @@ export class EveCorporationDataDO extends DurableObject<Env> implements EveCorpo
 		})
 
 		if (values.length === 0) {
-			await this.getDb()
-				.delete(structureMiningStates)
-				.where(eq(structureMiningStates.corporationId, corporationId))
 			return
 		}
 
@@ -3013,15 +3010,6 @@ export class EveCorporationDataDO extends DurableObject<Env> implements EveCorpo
 					},
 				})
 		}
-
-		await this.getDb()
-			.delete(structureMiningStates)
-			.where(
-				and(
-					eq(structureMiningStates.corporationId, corporationId),
-					notInArray(structureMiningStates.structureId, values.map((row) => row.structureId))
-				)
-			)
 	}
 
 	/**

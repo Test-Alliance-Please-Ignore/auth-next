@@ -48,4 +48,16 @@ describe('augmentRequestedRoleIdsForRefresh', () => {
 		expect(result.newRoleIds).toContain('1431816436640256060')
 		expect(result.rolesRemoved).not.toContain('1431816436640256060')
 	})
+
+	it('preserves roles that are not managed by the resolver during removal-mode updates', () => {
+		const result = calculateRoleChanges({
+			currentRoleIds: ['manual-role', 'managed-role'],
+			requestedRoleIds: ['managed-role-2'],
+			managedRoleIds: ['managed-role', 'managed-role-2'],
+			isAddOnlyMode: false,
+		})
+
+		expect(result.newRoleIds).toEqual(['manual-role', 'managed-role-2'])
+		expect(result.rolesRemoved).toEqual(['managed-role'])
+	})
 })
