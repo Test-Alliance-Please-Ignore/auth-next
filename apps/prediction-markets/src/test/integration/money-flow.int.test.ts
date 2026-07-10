@@ -22,7 +22,7 @@ import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest'
 import { and, desc, eq, inArray, sql } from '@repo/db-utils'
 
 import { schema } from '../../db'
-import { pmBets, pmLedger, pmWallets } from '../../db/schema'
+import { pmBets, pmLedger, pmMarketHistory, pmWallets } from '../../db/schema'
 import * as betting from '../../services/betting-service'
 import * as governance from '../../services/governance-service'
 import * as market from '../../services/market-service'
@@ -282,5 +282,189 @@ suite('bet idempotency', () => {
 		expect(second.deduped).toBe(true)
 		expect(second.id).toBe(first.id)
 		expect(await balance(u1)).toBe('400') // debited once, not twice
+	})
+})
+
+// ---------------------------------------------------------------------------
+// D) admin override resolve — a site admin can ALWAYS resolve a market
+// ---------------------------------------------------------------------------
+suite('admin override resolve', () => {
+	it('lets a site admin resolve a market they created AND bet on, collapsing two-of-N in one step', async () => {
+		const [adminCreator, u1, u2] = [1, 3, 4].map(uuid)
+		// twoOfNThreshold '0' ⇒ requiresTwoOfN is true for EVERY market (pool ≥ 0), so a normal resolve
+		// would only PROPOSE and await a second distinct signer. rake 0 + reward band 0 keeps the payout
+		// arithmetic exact and self-contained.
+		await governance.updateConfig(deps, {
+			actorUserId: ADMIN,
+			defaultRakeBps: 0,
+			defaultMinStake: '1',
+			twoOfNThreshold: '0',
+			creatorRewardMinBps: 0,
+			creatorRewardMaxBps: 0,
+		})
+		for (const u of [adminCreator, u1, u2]) await grant(u, '1000') // supply 3000
+
+		const m = await market.createMarket(deps, {
+			createdBy: adminCreator,
+			question: 'admin resolves own?',
+			outcomes: ['A', 'B'],
+			closesAt: hoursFromNow(1),
+			resolvesOn: hoursFromNow(2),
+			rakeBps: 0,
+		})
+		const A = m.outcomes.find((o) => o.label === 'A')!.id
+
+		// The admin creator ALSO bets on A — normally BOTH CREATOR_CANNOT_RESOLVE and
+		// RESOLVER_HAS_POSITION would block them from resolving.
+		await betting.placeBet(deps, {
+			userId: adminCreator,
+			marketId: m.id,
+			outcomeId: A,
+			amount: '100',
+			idempotencyKey: 'ao-admin',
+		})
+		await betting.placeBet(deps, {
+			userId: u1,
+			marketId: m.id,
+			outcomeId: A,
+			amount: '100',
+			idempotencyKey: 'ao-u1',
+		})
+		await betting.placeBet(deps, {
+			userId: u2,
+			marketId: m.id,
+			outcomeId: m.outcomes.find((o) => o.label === 'B')!.id,
+			amount: '100',
+			idempotencyKey: 'ao-u2',
+		})
+
+		await market.closeMarket(deps, { actorUserId: adminCreator, marketId: m.id })
+
+		// Without adminOverride the creator-and-positioned resolver is blocked outright. The creator
+		// guard fires first (PmError.message IS the code across the RPC boundary).
+		await expect(
+			settlement.proposeResolution(deps, { resolverId: adminCreator, marketId: m.id, outcomeId: A })
+		).rejects.toThrow('CREATOR_CANNOT_RESOLVE')
+		// Market is untouched by the rejected attempt — still closed, not resolving.
+		expect((await reads.getMarket(deps, m.id))?.status).toBe('closed')
+
+		// adminOverride skips every conflict-of-interest guard AND the two-of-N second-signer rule ⇒
+		// resolves directly in a single step (never 'resolving').
+		const res = await settlement.proposeResolution(deps, {
+			resolverId: adminCreator,
+			marketId: m.id,
+			outcomeId: A,
+			adminOverride: true,
+		})
+		expect(res.status).toBe('resolved')
+		expect(res.resolvedOutcomeId).toBe(A)
+
+		// rake 0 ⇒ each A-bettor gets stake back + a pro-rata share of the 100-point losing pool:
+		// payout = 100 + floor(100 · 100 / 200) = 150. The admin self-dealt a win — now permitted.
+		expect(await balance(adminCreator)).toBe('1050')
+		expect(await balance(u1)).toBe('1050')
+		expect(await balance(u2)).toBe('900') // lost their stake
+		await assertConservation(3000n)
+
+		// Audit trail: the resolution records the admin override for accountability.
+		const [row] = await deps.db
+			.select({ metadata: pmMarketHistory.metadata })
+			.from(pmMarketHistory)
+			.where(and(eq(pmMarketHistory.marketId, m.id), eq(pmMarketHistory.action, 'resolved')))
+			.limit(1)
+		expect((row?.metadata as { adminOverride?: boolean }).adminOverride).toBe(true)
+	})
+
+	it('lets a site admin single-sign a pending two-of-N proposal they created AND bet on', async () => {
+		// Covers approveResolution's OWN adminOverride guard-skip branch (independent of proposeResolution's):
+		// a non-admin proposer opens a two-of-N proposal, then an admin who is the creator and holds a
+		// position — normally doubly blocked — finalizes it alone via adminOverride.
+		const [adminCreator, proposer, u1, u2] = [1, 2, 3, 4].map(uuid)
+		await governance.updateConfig(deps, {
+			actorUserId: ADMIN,
+			defaultRakeBps: 0,
+			defaultMinStake: '1',
+			twoOfNThreshold: '0', // every market is two-of-N ⇒ a normal resolve only PROPOSES
+			creatorRewardMinBps: 0,
+			creatorRewardMaxBps: 0,
+		})
+		for (const u of [adminCreator, u1, u2]) await grant(u, '1000') // supply 3000
+
+		const m = await market.createMarket(deps, {
+			createdBy: adminCreator,
+			question: 'admin approves own?',
+			outcomes: ['A', 'B'],
+			closesAt: hoursFromNow(1),
+			resolvesOn: hoursFromNow(2),
+			rakeBps: 0,
+		})
+		const A = m.outcomes.find((o) => o.label === 'A')!.id
+		const B = m.outcomes.find((o) => o.label === 'B')!.id
+
+		await betting.placeBet(deps, {
+			userId: adminCreator,
+			marketId: m.id,
+			outcomeId: A,
+			amount: '100',
+			idempotencyKey: 'ap-admin',
+		})
+		await betting.placeBet(deps, {
+			userId: u1,
+			marketId: m.id,
+			outcomeId: A,
+			amount: '100',
+			idempotencyKey: 'ap-u1',
+		})
+		await betting.placeBet(deps, {
+			userId: u2,
+			marketId: m.id,
+			outcomeId: B,
+			amount: '100',
+			idempotencyKey: 'ap-u2',
+		})
+
+		await market.closeMarket(deps, { actorUserId: adminCreator, marketId: m.id })
+
+		// A distinct non-creator, position-free resolver proposes ⇒ two-of-N ⇒ market enters 'resolving'
+		// with a pending proposal awaiting a second signer.
+		const proposed = await settlement.proposeResolution(deps, {
+			resolverId: proposer,
+			marketId: m.id,
+			outcomeId: A,
+		})
+		expect(proposed.status).toBe('resolving')
+		const proposalId = proposed.proposalId!
+
+		// The admin creator (also positioned) cannot approve normally — CREATOR_CANNOT_RESOLVE fires
+		// (RESOLVER_HAS_POSITION would too). The rejected attempt leaves the proposal pending.
+		await expect(
+			settlement.approveResolution(deps, { resolverId: adminCreator, marketId: m.id, proposalId })
+		).rejects.toThrow('CREATOR_CANNOT_RESOLVE')
+		expect((await reads.getMarket(deps, m.id))?.status).toBe('resolving')
+
+		// adminOverride lets them single-sign the pending proposal ⇒ resolved (self-dealt win — permitted).
+		const res = await settlement.approveResolution(deps, {
+			resolverId: adminCreator,
+			marketId: m.id,
+			proposalId,
+			adminOverride: true,
+		})
+		expect(res.status).toBe('resolved')
+		expect(res.resolvedOutcomeId).toBe(A)
+
+		// Same parimutuel arithmetic as the direct-resolve case: each A-bettor gets 100 + 50 = 150.
+		expect(await balance(adminCreator)).toBe('1050')
+		expect(await balance(u1)).toBe('1050')
+		expect(await balance(u2)).toBe('900')
+		await assertConservation(3000n)
+
+		// The 'resolved' audit row records the override; proposer earns nothing (never bet).
+		const [row] = await deps.db
+			.select({ metadata: pmMarketHistory.metadata })
+			.from(pmMarketHistory)
+			.where(and(eq(pmMarketHistory.marketId, m.id), eq(pmMarketHistory.action, 'resolved')))
+			.limit(1)
+		expect((row?.metadata as { adminOverride?: boolean }).adminOverride).toBe(true)
+		expect(await balance(proposer)).toBe('0')
 	})
 })

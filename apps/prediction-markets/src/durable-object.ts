@@ -200,6 +200,7 @@ export class PredictionMarketsDO extends DurableObject<Env> implements Predictio
 		marketId: string
 		outcomeId: string
 		bypassDesignated?: boolean
+		adminOverride?: boolean
 	}): Promise<ResolveResult> {
 		return settlement.proposeResolution(this.deps, input)
 	}
@@ -209,6 +210,7 @@ export class PredictionMarketsDO extends DurableObject<Env> implements Predictio
 		marketId: string
 		proposalId: string
 		bypassDesignated?: boolean
+		adminOverride?: boolean
 	}): Promise<ResolveResult> {
 		return settlement.approveResolution(this.deps, input)
 	}

@@ -21,6 +21,7 @@ export async function proposeResolution(
 		marketId: string
 		outcomeId: string
 		bypassDesignated?: boolean
+		adminOverride?: boolean
 	}
 ): Promise<ResolveResult> {
 	try {
@@ -45,23 +46,36 @@ export async function proposeResolution(
 				.limit(1)
 			if (!outcome) throw new PmError('OUTCOME_NOT_FOUND')
 
-			if (market.createdBy === input.resolverId) throw new PmError('CREATOR_CANNOT_RESOLVE')
-			if (await hasPosition(tx, input.marketId, input.resolverId)) {
-				throw new PmError('RESOLVER_HAS_POSITION')
-			}
+			// A site admin (adminOverride) may resolve ANY market unconditionally: skip every
+			// conflict-of-interest guard (creator ≠ resolver, no-position, designated membership) AND
+			// collapse the two-of-N second-signer requirement, so a lone admin settles in one step. This
+			// mirrors voidMarket's admin escape hatch, but demands sharper trust: unlike a void (which only
+			// refunds at stake), picking a winning outcome PAYS positions on it, so an admin who holds a
+			// stake could self-deal — the override is recorded in the resolution's audit history for
+			// accountability. adminOverride is is_admin-only, a trusted, DO-unverifiable capability Core
+			// derives solely from is_admin (never a client literal). Every non-admin actor stays fully
+			// bound by the guards below.
+			const adminOverride = input.adminOverride ?? false
 			const bypass = input.bypassDesignated ?? false
-			if (!canResolveDesignated(market.designatedResolvers, input.resolverId, bypass)) {
-				throw new PmError('NOT_DESIGNATED_RESOLVER')
+			if (!adminOverride) {
+				if (market.createdBy === input.resolverId) throw new PmError('CREATOR_CANNOT_RESOLVE')
+				if (await hasPosition(tx, input.marketId, input.resolverId)) {
+					throw new PmError('RESOLVER_HAS_POSITION')
+				}
+				if (!canResolveDesignated(market.designatedResolvers, input.resolverId, bypass)) {
+					throw new PmError('NOT_DESIGNATED_RESOLVER')
+				}
 			}
 			const viaOverride = isDesignatedOverride(market.designatedResolvers, input.resolverId, bypass)
 
-			if (!(await requiresTwoOfN(tx, market))) {
+			if (adminOverride || !(await requiresTwoOfN(tx, market))) {
 				const finalStatus = await executeResolution(
 					tx,
 					market,
 					input.outcomeId,
 					input.resolverId,
-					viaOverride
+					viaOverride,
+					adminOverride
 				)
 				return {
 					marketId: market.id,
@@ -120,6 +134,7 @@ export async function approveResolution(
 		marketId: string
 		proposalId: string
 		bypassDesignated?: boolean
+		adminOverride?: boolean
 	}
 ): Promise<ResolveResult> {
 	try {
@@ -142,17 +157,23 @@ export async function approveResolution(
 			}
 			if (proposal.status !== 'pending') throw new PmError('PROPOSAL_NOT_PENDING')
 
-			// Two distinct resolvers, neither the creator, neither holding a position, and — when the
-			// market is designated — both the proposer (checked in proposeResolution) and this approver
-			// must be designated members (or hold the admin/manager override).
-			if (proposal.proposedBy === input.resolverId) throw new PmError('APPROVER_MUST_DIFFER')
-			if (market.createdBy === input.resolverId) throw new PmError('CREATOR_CANNOT_RESOLVE')
-			if (await hasPosition(tx, input.marketId, input.resolverId)) {
-				throw new PmError('RESOLVER_HAS_POSITION')
-			}
+			// A site admin (adminOverride) may finalize ANY pending proposal unconditionally — the same
+			// escape hatch, trust model, and self-dealing caveat as proposeResolution above (an admin can
+			// even single-sign a two-of-N proposal). For every non-admin approver the two-of-N contract
+			// holds: two distinct resolvers, neither the creator, neither holding a position, and — when
+			// the market is designated — both the proposer (checked in proposeResolution) and this
+			// approver must be designated members (or hold the admin/manager designated bypass).
+			const adminOverride = input.adminOverride ?? false
 			const bypass = input.bypassDesignated ?? false
-			if (!canResolveDesignated(market.designatedResolvers, input.resolverId, bypass)) {
-				throw new PmError('NOT_DESIGNATED_RESOLVER')
+			if (!adminOverride) {
+				if (proposal.proposedBy === input.resolverId) throw new PmError('APPROVER_MUST_DIFFER')
+				if (market.createdBy === input.resolverId) throw new PmError('CREATOR_CANNOT_RESOLVE')
+				if (await hasPosition(tx, input.marketId, input.resolverId)) {
+					throw new PmError('RESOLVER_HAS_POSITION')
+				}
+				if (!canResolveDesignated(market.designatedResolvers, input.resolverId, bypass)) {
+					throw new PmError('NOT_DESIGNATED_RESOLVER')
+				}
 			}
 			const viaOverride = isDesignatedOverride(market.designatedResolvers, input.resolverId, bypass)
 
@@ -164,7 +185,8 @@ export async function approveResolution(
 					market,
 					input.resolverId,
 					'resolution voided by approval',
-					viaOverride
+					viaOverride,
+					adminOverride
 				)
 				finalStatus = 'voided'
 			} else {
@@ -173,7 +195,8 @@ export async function approveResolution(
 					market,
 					proposal.outcomeId,
 					input.resolverId,
-					viaOverride
+					viaOverride,
+					adminOverride
 				)
 				resolvedOutcomeId = finalStatus === 'resolved' ? proposal.outcomeId : null
 			}
@@ -320,13 +343,14 @@ export async function executeResolution(
 	market: PmMarket,
 	winningOutcomeId: string,
 	resolverId: string,
-	viaOverride = false
+	viaOverride = false,
+	adminOverride = false
 ): Promise<MarketStatus> {
 	const totalPool = await sumStakes(tx, market.id)
 	const poolW = await sumStakes(tx, market.id, winningOutcomeId)
 
 	if (poolW === 0n) {
-		await executeVoidRefund(tx, market, resolverId, 'no winning bets', viaOverride)
+		await executeVoidRefund(tx, market, resolverId, 'no winning bets', viaOverride, adminOverride)
 		return 'voided'
 	}
 
@@ -466,6 +490,7 @@ export async function executeResolution(
 			houseRake: formatAmount(houseRake),
 			dust: formatAmount(dust),
 			...(viaOverride ? { viaOverride: true } : {}),
+			...(adminOverride ? { adminOverride: true } : {}),
 		},
 	})
 	return 'resolved'

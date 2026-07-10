@@ -2,9 +2,12 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 
 import { executeDiscordComponent } from '../discord-components.service'
 
-// Verifies Core threads the admin/manager `bypassDesignated` capability into the settlement RPC:
-// a plain urn:markets:resolver passes false (narrowed to the market's designated set); an is_admin
-// or urn:markets:manager holder passes true (retains "resolve any market").
+// Verifies Core threads the admin/manager `bypassDesignated` capability AND the is_admin-only
+// `adminOverride` capability into the approveResolution RPC. bypassDesignated: a plain
+// urn:markets:resolver passes false (narrowed to the market's designated set); an is_admin or
+// urn:markets:manager holder passes true (retains "resolve any market"). adminOverride: only an
+// is_admin passes true (may single-sign any pending proposal); resolvers and non-admin managers pass
+// false (stay bound by every conflict-of-interest guard).
 
 const hoisted = vi.hoisted(() => ({
 	predictionBinding: {} as DurableObjectNamespace,
@@ -59,7 +62,7 @@ function mockTiers(isAdmin: boolean, manager: boolean) {
 	)
 }
 
-describe('executeDiscordComponent — bypassDesignated threading (approve)', () => {
+describe('executeDiscordComponent — bypassDesignated + adminOverride threading (approve)', () => {
 	beforeEach(() => {
 		vi.clearAllMocks()
 		hoisted.prediction.getMarket.mockResolvedValue(null)
@@ -71,27 +74,32 @@ describe('executeDiscordComponent — bypassDesignated threading (approve)', () 
 		})
 	})
 
-	it('a plain resolver passes bypassDesignated: false', async () => {
+	it('a plain resolver passes bypassDesignated: false and adminOverride: false', async () => {
 		mockTiers(false, false)
 		await executeDiscordComponent(db, env, input)
 		expect(hoisted.prediction.approveResolution).toHaveBeenCalledWith(
-			expect.objectContaining({ resolverId: 'u1', proposalId: 'p1', bypassDesignated: false })
+			expect.objectContaining({
+				resolverId: 'u1',
+				proposalId: 'p1',
+				bypassDesignated: false,
+				adminOverride: false,
+			})
 		)
 	})
 
-	it('a manager passes bypassDesignated: true', async () => {
+	it('a non-admin manager passes bypassDesignated: true but adminOverride: false', async () => {
 		mockTiers(false, true)
 		await executeDiscordComponent(db, env, input)
 		expect(hoisted.prediction.approveResolution).toHaveBeenCalledWith(
-			expect.objectContaining({ bypassDesignated: true })
+			expect.objectContaining({ bypassDesignated: true, adminOverride: false })
 		)
 	})
 
-	it('an admin passes bypassDesignated: true', async () => {
+	it('an admin passes bypassDesignated: true and adminOverride: true', async () => {
 		mockTiers(true, false)
 		await executeDiscordComponent(db, env, input)
 		expect(hoisted.prediction.approveResolution).toHaveBeenCalledWith(
-			expect.objectContaining({ bypassDesignated: true })
+			expect.objectContaining({ bypassDesignated: true, adminOverride: true })
 		)
 	})
 })
