@@ -51,6 +51,7 @@ import AdminThirdPartyAppsPage from '@/routes/admin/third-party-apps'
 import AdminUserActivityPage from '@/routes/admin/user-activity'
 import AdminUserDetailPage from '@/routes/admin/user-detail'
 import AdminUserDiscordAccessPage from '@/routes/admin/user-discord-access'
+import AdminUserOAuthInspectionPage from '@/routes/admin/user-oauth-inspection'
 import AdminUserGroupsPage from '@/routes/admin/user-groups'
 import AdminUsersPage from '@/routes/admin/users'
 
@@ -103,6 +104,7 @@ export const adminRouteElements = (
 		<Route path="third-party-apps" element={<AdminThirdPartyAppsPage />} />
 		<Route path="users/:userId" element={<AdminUserDetailPage />} />
 		<Route path="users/:userId/discord-access" element={<AdminUserDiscordAccessPage />} />
+		<Route path="users/:userId/oauth-inspection" element={<AdminUserOAuthInspectionPage />} />
 		<Route path="users/:userId/groups" element={<AdminUserGroupsPage />} />
 		<Route path="users/:userId/activity" element={<AdminUserActivityPage />} />
 		<Route path="ip-history/:ipAddressHash" element={<AdminIpHistoryInspectionPage />} />

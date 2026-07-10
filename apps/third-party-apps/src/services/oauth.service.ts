@@ -5,15 +5,12 @@ import type {
 	OAuthSessionUser,
 	ThirdPartyAppScope,
 } from '@repo/admin'
-import type { CoreWorker } from '@repo/admin'
-import { getStub } from '@repo/do-utils'
+import { buildOAuthApiMeResponseFromUserDetails } from '@repo/admin'
 import { logger } from '@repo/hono-helpers'
-import type { Groups } from '@repo/groups'
 
 import { proxyEsiRequest } from '../esi-proxy'
 import {
 	extractCharacterIdFromEsiPath,
-	hasScope,
 	isAllowedWritePath,
 	isReadMethod,
 	normalizeEsiProxyPath,
@@ -26,10 +23,6 @@ type OAuthGrantProps = {
 	sub: string
 	scope: ThirdPartyAppScope[]
 	clientId: string
-}
-
-function buildSynthesizedEmailAddress(userId: string): string {
-	return `${userId}@authnext.invalid`
 }
 
 function isLocalHttpOrigin(origin: string): boolean {
@@ -186,62 +179,17 @@ export async function buildOAuthApiMeResponse(
 	env: Env,
 	props: OAuthGrantProps
 ): Promise<Record<string, unknown>> {
-	const response: Record<string, unknown> = {
-		sub: props.sub,
-		clientId: props.clientId,
-		scope: props.scope,
-	}
-
-	const includeProfile = hasScope(props.scope, 'profile')
-	const includeGroups = hasScope(props.scope, 'groups')
-	const includePermissions = hasScope(props.scope, 'permissions')
-	if (!includeProfile && !includeGroups && !includePermissions) {
-		return response
-	}
-
-	const core = env.CORE as CoreWorker
+	const core = env.CORE
 	const details = await core.getUserDetails(props.sub)
 	if (!details) {
-		return response
+		return {
+			sub: props.sub,
+			clientId: props.clientId,
+			scope: props.scope,
+		}
 	}
 
-	if (includeProfile) {
-		response.mainCharacterId = details.mainCharacterId
-		response.isAdmin = details.is_admin
-		response.email = buildSynthesizedEmailAddress(props.sub)
-		response.emailVerified = true
-		response.characters = details.characters.map((character) => ({
-			characterId: character.characterId,
-			characterName: character.characterName,
-			isPrimary: character.is_primary,
-			hasValidToken: character.hasValidToken,
-		}))
-	}
-
-	if (includeGroups) {
-		const sluggifiedGroupNames = Array.from(
-			new Set(
-				details.groupMemberships
-					.map((membership) => membership.groupName.trim().toLowerCase().replace(/\s+/g, '-'))
-					.filter((groupName) => groupName.length > 0)
-			)
-		)
-		response.groupMemberships = details.groupMemberships.map((membership) => ({
-			groupId: membership.groupId,
-			groupName: membership.groupName,
-			membershipLevel: membership.membershipLevel,
-			joinedAt: membership.joinedAt.toISOString(),
-		}))
-		response.groups = sluggifiedGroupNames
-	}
-
-	if (includePermissions) {
-		const groups = getStub<Groups>(env.GROUPS, 'default')
-		const permissions = await groups.getUserPermissions(props.sub)
-		response.permissionUrns = permissions.map((permission) => permission.urn)
-	}
-
-	return response
+	return buildOAuthApiMeResponseFromUserDetails(details, props)
 }
 
 export async function previewOAuthAuthorization(
