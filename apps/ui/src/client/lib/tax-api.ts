@@ -796,6 +796,9 @@ export class CorporationTaxApiClient extends ApiClient {
 		corporationId: string,
 		filters?: TaxMemberSummaryFilters
 	): Promise<TaxPagedResult<TaxMemberSummary>> {
+		if (!corporationId?.trim()) {
+			throw new Error('Corporation id is required for member summary')
+		}
 		if (this.shouldUseDemo()) return taxDemoApi.getMemberSummary(corporationId, filters)
 		const params = new URLSearchParams()
 		if (filters?.characterQuery) params.set('character', filters.characterQuery)

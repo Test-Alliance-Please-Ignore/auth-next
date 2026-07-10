@@ -69,13 +69,23 @@ function createApp(user: SessionUser) {
 describe('moon-scan profitability and batching behavior', () => {
 	const env = {
 		MOON_SCAN: { name: 'MOON_SCAN' },
+		MOON_SCAN_EXPORTS: { name: 'MOON_SCAN_EXPORTS' },
 		UNIVERSE: { name: 'UNIVERSE' },
 		MARKETS: { name: 'MARKETS' },
+		EXPORT_WORKFLOW: { create: vi.fn(), get: vi.fn() },
 	} as any
 
 	let moonScanStub: Record<string, ReturnType<typeof vi.fn>>
 	let universeStub: Record<string, ReturnType<typeof vi.fn>>
 	let marketsStub: Record<string, ReturnType<typeof vi.fn>>
+	let exportWorkflowStub: {
+		create: ReturnType<typeof vi.fn>
+		get: ReturnType<typeof vi.fn>
+	}
+	let exportBucketStub: {
+		get: ReturnType<typeof vi.fn>
+		delete: ReturnType<typeof vi.fn>
+	}
 
 	beforeEach(() => {
 		vi.clearAllMocks()
@@ -149,6 +159,34 @@ describe('moon-scan profitability and batching behavior', () => {
 		marketsStub = {
 			getBatchMarketDataAtTime: vi.fn().mockResolvedValue({ prices: [] }),
 		}
+		const storedExports = new Map<string, { text: string; fileName: string }>()
+		exportWorkflowStub = {
+			create: vi.fn().mockResolvedValue({ id: 'workflow-1' }),
+			get: vi.fn().mockResolvedValue({
+				status: vi.fn().mockResolvedValue({
+					status: 'queued',
+					output: null,
+				}),
+			}),
+		}
+		exportBucketStub = {
+			get: vi.fn(async (key: string) => {
+				const stored = storedExports.get(key)
+				if (!stored) return null
+				const response = new Response(stored.text, {
+					headers: { 'content-type': 'text/csv; charset=utf-8' },
+				}) as Response & {
+					customMetadata?: { fileName?: string }
+					httpMetadata?: { contentType?: string }
+				}
+				response.customMetadata = { fileName: stored.fileName }
+				response.httpMetadata = { contentType: 'text/csv; charset=utf-8' }
+				return response
+			}),
+			delete: vi.fn().mockResolvedValue(undefined),
+		}
+		env.MOON_SCAN_EXPORTS = exportBucketStub as any
+		env.EXPORT_WORKFLOW = exportWorkflowStub as any
 
 		getStubMock.mockImplementation((binding: unknown) => {
 			if (binding === env.MOON_SCAN) return moonScanStub as any
@@ -455,5 +493,111 @@ describe('moon-scan profitability and batching behavior', () => {
 			const summaries = call[0] as Array<{ moonId: string }>
 			expect(summaries.length).toBeLessThanOrEqual(250)
 		}
+	})
+
+	it('starts a chunked export workflow and ignores sort params', async () => {
+		const app = createApp(makeUser())
+		const response = await app.request(
+			'/api/moon-scan/moons/verified/export?regionId=region-1&sortBy=moonName&sortDir=asc',
+			{ method: 'POST' },
+			env
+		)
+		expect(response.status).toBe(202)
+		const payload = await response.json() as { exportId: string; fileName: string; workflowInstanceId: string }
+		expect(payload.fileName).toMatch(/^scanned-moons-export-/)
+		const workflowInput = exportWorkflowStub.create.mock.calls[0]?.[0] as {
+			params?: { query?: Record<string, unknown> }
+		}
+		expect(workflowInput.params?.query).toMatchObject({ regionId: 'region-1' })
+		expect(workflowInput.params?.query).not.toHaveProperty('sortBy')
+		expect(workflowInput.params?.query).not.toHaveProperty('sortDir')
+
+		const key = `moon-scan/verified-moons-exports/${payload.exportId}.csv`
+		const csv = 'regionId,regionName,solarSystemId,solarSystemName,moonId,moonName\nmoon-1'
+		const responseBody = new Response(csv, {
+			headers: { 'content-type': 'text/csv; charset=utf-8' },
+		}) as Response & {
+			customMetadata?: { fileName?: string }
+			httpMetadata?: { contentType?: string }
+		}
+		responseBody.customMetadata = { fileName: payload.fileName }
+		responseBody.httpMetadata = { contentType: 'text/csv; charset=utf-8' }
+		const storedExports = new Map<string, Response>()
+		storedExports.set(key, responseBody)
+		exportBucketStub.get.mockImplementation(async (requestKey: string) => storedExports.get(requestKey) ?? null)
+
+		const exportResponse = await app.request(
+			`/api/moon-scan/moons/verified/export/${payload.exportId}/download`,
+			{},
+			env
+		)
+		expect(exportResponse.status).toBe(200)
+		expect(exportResponse.headers.get('content-type')).toContain('text/csv')
+		expect(exportResponse.headers.get('content-disposition')).toContain(payload.fileName)
+		expect(await exportResponse.text()).toContain('moon-1')
+		expect(exportBucketStub.delete).toHaveBeenCalledWith(key)
+	})
+
+	it('allows constellation-scoped exports without a region', async () => {
+		const app = createApp(makeUser())
+		const response = await app.request(
+			'/api/moon-scan/moons/verified/export?constellationId=const-1&sortBy=moonName&sortDir=asc',
+			{ method: 'POST' },
+			env
+		)
+
+		expect(response.status).toBe(202)
+		const workflowInput = exportWorkflowStub.create.mock.calls[0]?.[0] as {
+			params?: { query?: Record<string, unknown> }
+		}
+		expect(workflowInput.params?.query).toMatchObject({ constellationId: 'const-1' })
+		expect(workflowInput.params?.query?.regionId).toBeUndefined()
+	})
+
+	it('returns workflow status for an export', async () => {
+		exportWorkflowStub.get.mockResolvedValue({
+			status: vi.fn().mockResolvedValue({
+				status: 'complete',
+				output: {
+					status: 'completed',
+					rowCount: 1,
+					fileName: 'scanned-moons-export-12345678.csv',
+				},
+			}),
+		})
+
+		const app = createApp(makeUser())
+		const response = await app.request('/api/moon-scan/moons/verified/export/workflow-1', {}, env)
+
+		expect(response.status).toBe(200)
+		expect(await response.json()).toMatchObject({
+			workflowInstanceId: 'workflow-1',
+			status: 'completed',
+		})
+	})
+
+	it('ignores profit sort params when starting the export workflow', async () => {
+		moonScanStub.getScanSummary.mockResolvedValue({
+			scannedMoonIds: ['moon-1', 'moon-2'],
+			verifiedMoonIds: ['moon-1', 'moon-2'],
+		})
+		const app = createApp(makeUser())
+		const response = await app.request(
+			'/api/moon-scan/moons/verified/export?regionId=region-1&sortBy=metenoxProfit&sortDir=desc',
+			{ method: 'POST' },
+			env
+		)
+
+		expect(response.status).toBe(202)
+		expect(await response.json()).toMatchObject({
+			exportId: 'workflow-1',
+			workflowInstanceId: 'workflow-1',
+		})
+		const workflowInput = exportWorkflowStub.create.mock.calls[0]?.[0] as {
+			params?: { query?: Record<string, unknown> }
+		}
+		expect(workflowInput.params?.query).toMatchObject({ regionId: 'region-1' })
+		expect(workflowInput.params?.query).not.toHaveProperty('sortBy')
+		expect(workflowInput.params?.query).not.toHaveProperty('sortDir')
 	})
 })

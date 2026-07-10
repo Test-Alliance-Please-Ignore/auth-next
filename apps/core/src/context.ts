@@ -8,6 +8,7 @@ import type { StructuresWorker } from '@repo/structures'
 import type { Skills } from '@repo/skills'
 import type { PasteWorker } from '@repo/paste'
 import type { createDb } from './db'
+import type { CsvExportWorkflowParams } from './workflows/csv-export.workflow'
 import type { UserDiscordRefreshWorkflowParams } from './workflows/user-discord-refresh.workflow'
 import type { UserMumbleRefreshWorkflowParams } from './workflows/user-mumble-refresh.workflow'
 import type { DiscordMemberAuditWorkflowParams } from './workflows/discord-member-audit.workflow'
@@ -69,6 +70,8 @@ export type Env = SharedHonoEnv & {
 	DISCORD_MEMBER_AUDIT_WORKFLOW: Workflow<DiscordMemberAuditWorkflowParams>
 	/** User Mumble Refresh Workflow binding */
 	USER_MUMBLE_REFRESH_WORKFLOW: Workflow<UserMumbleRefreshWorkflowParams>
+	/** CSV Export Workflow binding */
+	EXPORT_WORKFLOW: Workflow<CsvExportWorkflowParams>
 	/** ESI Type Resolver Durable Object binding */
 	ESI_TYPE_RESOLVER: DurableObjectNamespace
 	/** Industry Durable Object binding */
@@ -85,6 +88,10 @@ export type Env = SharedHonoEnv & {
 	PASTE: PasteWorker
 	/** Moon Scan Durable Object binding */
 	MOON_SCAN: DurableObjectNamespace
+	/** Moon Scan export artifact bucket */
+	MOON_SCAN_EXPORTS: R2Bucket
+	/** SRP export artifact bucket */
+	SRP_EXPORTS: R2Bucket
 	/** Markets Durable Object binding */
 	MARKETS: DurableObjectNamespace
 	/** Mumble Durable Object binding */

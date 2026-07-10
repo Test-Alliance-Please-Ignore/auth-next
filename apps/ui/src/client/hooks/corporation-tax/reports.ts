@@ -124,7 +124,12 @@ export function useTaxMemberSummary(
 ) {
 	return useQuery({
 		queryKey: corporationTaxKeys.memberSummary(corporationId ?? 'none', filters),
-		queryFn: () => corporationTaxApi.getMemberSummary(corporationId!, filters),
+		queryFn: () => {
+			if (!corporationId) {
+				throw new Error('Corporation id is required for member summary')
+			}
+			return corporationTaxApi.getMemberSummary(corporationId, filters)
+		},
 		staleTime: 1000 * 60 * 10,
 		enabled: Boolean(corporationId) && (filters?.enabled ?? true),
 	})

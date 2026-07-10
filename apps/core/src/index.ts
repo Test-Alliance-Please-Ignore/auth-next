@@ -209,7 +209,7 @@ export default {
 							console.log('[Core:Scheduled] Prediction-market reconcile', r)
 						}
 					})
-					.catch((error) => captureException(error as Error, { tags: { job: 'pm-reconcile' } }))
+				.catch((error) => captureException(error as Error, { tags: { job: 'pm-reconcile' } }))
 			)
 		}
 
@@ -1163,3 +1163,4 @@ export { UserRefreshWorkflow } from './workflows/user-refresh.workflow'
 export { UserDiscordRefreshWorkflow } from './workflows/user-discord-refresh.workflow'
 export { DiscordMemberAuditWorkflow } from './workflows/discord-member-audit.workflow'
 export { UserMumbleRefreshWorkflow } from './workflows/user-mumble-refresh.workflow'
+export { CsvExportWorkflow } from './workflows/csv-export.workflow'

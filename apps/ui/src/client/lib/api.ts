@@ -19,6 +19,9 @@ import type {
 } from '@repo/admin'
 
 import type { TrackingSession } from '../features/fleet-tracking/types'
+import { isDateRangeWithinOneYear } from '../features/srp/utils'
+
+import { downloadTextFile } from './csv-utils'
 
 export const API_BASE_URL =
 	import.meta.env.VITE_API_BASE_URL || '/api'
@@ -4498,6 +4501,133 @@ export class ApiClient {
 			`/srp/payments/wallet-history/search-values?${searchParams.toString()}`
 		)
 		return result.values ?? []
+	}
+
+	async requestSrpWalletHistoryCsvExport(params?: {
+		reason?: string
+		recipientId?: string
+		alertsOnly?: boolean
+		dateFrom?: string
+		dateTo?: string
+	}): Promise<{ workflowInstanceId: string; exportId: string; fileName: string; status: 'queued' }> {
+		if (!params?.dateFrom || !params?.dateTo || !isDateRangeWithinOneYear(params.dateFrom, params.dateTo)) {
+			throw new Error('Entry date range is required for wallet history export and must not exceed 1 year')
+		}
+
+		const searchParams = new URLSearchParams()
+		if (params.reason) searchParams.set('reason', params.reason)
+		if (params.recipientId) searchParams.set('recipientId', params.recipientId)
+		if (params.alertsOnly) searchParams.set('alertsOnly', 'true')
+		searchParams.set('dateFrom', params.dateFrom)
+		searchParams.set('dateTo', params.dateTo)
+
+		const response = await fetch(`/api/srp/payments/wallet-history/export?${searchParams.toString()}`, {
+			method: 'POST',
+			credentials: 'include',
+			headers: {
+				'X-Requested-With': 'XMLHttpRequest',
+			},
+		})
+		if (!response.ok) {
+			const message = await response.text()
+			throw new Error(message || 'Failed to request SRP wallet history export')
+		}
+
+		return (await response.json()) as {
+			workflowInstanceId: string
+			exportId: string
+			fileName: string
+			status: 'queued'
+		}
+	}
+
+	async getSrpWalletHistoryCsvExportStatus(workflowInstanceId: string): Promise<{
+		workflowInstanceId: string
+		status: 'queued' | 'running' | 'completed' | 'failed' | 'unknown'
+		rawStatus?: string
+		output: unknown | null
+	}> {
+		return this.get(`/srp/payments/wallet-history/export/${workflowInstanceId}`)
+	}
+
+	async downloadSrpWalletHistoryCsv(workflowInstanceId: string, fileName: string): Promise<void> {
+		const response = await fetch(`/api/srp/payments/wallet-history/export/${workflowInstanceId}/download`, {
+			credentials: 'include',
+			headers: {
+				'X-Requested-With': 'XMLHttpRequest',
+			},
+		})
+		if (!response.ok) {
+			const message = await response.text()
+			throw new Error(message || 'Failed to export SRP wallet history')
+		}
+
+		const csv = await response.text()
+		downloadTextFile(fileName, 'text/csv; charset=utf-8', csv)
+	}
+
+	async requestSrpPaidRequestsCsvExport(params: {
+		characterName?: string
+		shipTypeName?: string
+		solarSystemName?: string
+		dateFrom: string
+		dateTo: string
+	}): Promise<{ workflowInstanceId: string; exportId: string; fileName: string; status: 'queued' }> {
+		if (!isDateRangeWithinOneYear(params.dateFrom, params.dateTo)) {
+			throw new Error('Paid SRP export requires a date range of no more than 1 year')
+		}
+
+		const searchParams = new URLSearchParams()
+		if (params.characterName) searchParams.set('characterName', params.characterName)
+		if (params.shipTypeName) searchParams.set('shipTypeName', params.shipTypeName)
+		if (params.solarSystemName) searchParams.set('solarSystemName', params.solarSystemName)
+		searchParams.set('dateFrom', params.dateFrom)
+		searchParams.set('dateTo', params.dateTo)
+
+		const query = searchParams.toString()
+		const response = await fetch(`/api/srp/requests/paid/export${query ? `?${query}` : ''}`, {
+			method: 'POST',
+			credentials: 'include',
+			headers: {
+				'X-Requested-With': 'XMLHttpRequest',
+			},
+		})
+		if (!response.ok) {
+			const message = await response.text()
+			throw new Error(message || 'Failed to request paid SRP export')
+		}
+
+		return (await response.json()) as {
+			workflowInstanceId: string
+			exportId: string
+			fileName: string
+			status: 'queued'
+		}
+	}
+
+	async getSrpPaidRequestsCsvExportStatus(workflowInstanceId: string): Promise<{
+		workflowInstanceId: string
+		status: 'queued' | 'running' | 'completed' | 'failed' | 'unknown'
+		rawStatus?: string
+		output: unknown | null
+	}> {
+		return this.get(`/srp/requests/paid/export/${workflowInstanceId}`)
+	}
+
+	async downloadSrpPaidRequestsCsv(workflowInstanceId: string, fileName: string): Promise<void> {
+		const response = await fetch(`/api/srp/requests/paid/export/${workflowInstanceId}/download`, {
+			credentials: 'include',
+			headers: {
+				'X-Requested-With': 'XMLHttpRequest',
+			},
+		})
+		if (!response.ok) {
+			const message = await response.text()
+			throw new Error(message || 'Failed to download paid SRP requests')
+		}
+
+		const csv = await response.text()
+		downloadTextFile(fileName, 'text/csv; charset=utf-8', csv)
 	}
 
 	async getSrpPaymentMismatchAlerts(params?: {

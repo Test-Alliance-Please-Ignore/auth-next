@@ -37,10 +37,15 @@ const env = {
 		idFromName: vi.fn(),
 		get: vi.fn(),
 	},
+	SRP_EXPORTS: {
+		name: 'SRP_EXPORTS',
+	},
 	EVE_TOKEN_STORE: { name: 'EVE_TOKEN_STORE' },
 	DOCTRINES: { name: 'DOCTRINES' },
 	UNIVERSE: { name: 'UNIVERSE' },
+	ESI_TYPE_RESOLVER: { name: 'ESI_TYPE_RESOLVER' },
 	GROUPS: { name: 'GROUPS' },
+	EXPORT_WORKFLOW: { create: vi.fn(), get: vi.fn() },
 	DATABASE_URL: 'postgres://test',
 } as any
 
@@ -66,15 +71,18 @@ function makeUser(overrides: Partial<SessionUser> = {}): SessionUser {
 	}
 }
 
-function createApp(user?: SessionUser) {
+function createApp(user?: SessionUser, db?: any) {
 	const app = new Hono<{
 		Bindings: any
-		Variables: { user?: SessionUser }
+		Variables: { user?: SessionUser; db?: any }
 	}>()
 
 	if (user) {
 		app.use('*', async (c, next) => {
 			c.set('user', user)
+			if (db) {
+				c.set('db', db)
+			}
 			await next()
 		})
 	}
@@ -160,6 +168,15 @@ describe('srp routes - permissions', () => {
 		resolveTypeNamesByIds: ReturnType<typeof vi.fn>
 		resolveSolarSystemsByIds: ReturnType<typeof vi.fn>
 	}
+	let resolverStub: { resolveIds: ReturnType<typeof vi.fn> }
+	let exportWorkflowStub: {
+		create: ReturnType<typeof vi.fn>
+		get: ReturnType<typeof vi.fn>
+	}
+	let exportBucketStub: {
+		get: ReturnType<typeof vi.fn>
+		delete: ReturnType<typeof vi.fn>
+	}
 
 	beforeEach(() => {
 		vi.clearAllMocks()
@@ -180,6 +197,23 @@ describe('srp routes - permissions', () => {
 			resolveTypeNamesByIds: vi.fn().mockResolvedValue({}),
 			resolveSolarSystemsByIds: vi.fn().mockResolvedValue({}),
 		}
+		resolverStub = {
+			resolveIds: vi.fn().mockResolvedValue({}),
+		}
+		exportWorkflowStub = {
+			create: vi.fn().mockResolvedValue({ id: 'workflow-1' }),
+			get: vi.fn().mockResolvedValue({
+				status: vi.fn().mockResolvedValue({
+					status: 'queued',
+					output: null,
+				}),
+			}),
+		}
+		exportBucketStub = {
+			get: vi.fn(),
+			delete: vi.fn().mockResolvedValue(undefined),
+		}
+		env.SRP_EXPORTS = exportBucketStub as any
 
 		getStubMock.mockImplementation((binding: any) => {
 			if (binding === env.SRP) return srpStub as any
@@ -187,11 +221,178 @@ describe('srp routes - permissions', () => {
 			if (binding === env.EVE_TOKEN_STORE) return tokenStoreStub as any
 			if (binding === env.DOCTRINES) return doctrinesStub as any
 			if (binding === env.UNIVERSE) return universeStub as any
+			if (binding === env.ESI_TYPE_RESOLVER) return resolverStub as any
 			throw new Error('Unexpected binding')
 		})
+		env.EXPORT_WORKFLOW = exportWorkflowStub as any
 
-		getCachedUserPermissionsMock.mockResolvedValue([])
-		mockDbPrimaryCharacterRows([])
+	getCachedUserPermissionsMock.mockResolvedValue([])
+	mockDbPrimaryCharacterRows([])
+	})
+
+	it('requires a selected entry date range for wallet history CSV export', async () => {
+		const app = createApp(makeUser({ is_admin: true }))
+
+		const response = await app.request('/api/srp/payments/wallet-history/export', { method: 'POST' }, env)
+
+		expect(response.status).toBe(400)
+		expect(await response.json()).toEqual({
+			error: 'dateFrom and dateTo must be selected for CSV export',
+		})
+	})
+
+	it('rejects wallet history CSV exports that exceed one year', async () => {
+		const app = createApp(makeUser({ is_admin: true }))
+		srpStub.getConfig.mockResolvedValue({ paymentProcessorCorporationId: '9000' })
+
+		const response = await app.request(
+			'/api/srp/payments/wallet-history/export?dateFrom=2025-01-01&dateTo=2026-02-01',
+			{ method: 'POST' },
+			env
+		)
+
+		expect(response.status).toBe(400)
+		expect(await response.json()).toEqual({
+			error: 'CSV export date range cannot exceed 1 year',
+		})
+	})
+
+	it('exports wallet history as CSV with alerts and resolved recipient names', async () => {
+		const app = createApp(makeUser({ id: 'wallet-export-user', is_admin: true }))
+		const response = await app.request(
+			'/api/srp/payments/wallet-history/export?dateFrom=2026-07-01&dateTo=2026-07-31&alertsOnly=true',
+			{ method: 'POST' },
+			env
+		)
+
+		expect(response.status).toBe(202)
+		expect(await response.json()).toMatchObject({
+			workflowInstanceId: 'workflow-1',
+			fileName: 'srp-wallet-history-2026-07-01-2026-07-31.csv',
+		})
+		expect(exportWorkflowStub.create).toHaveBeenCalledWith(
+			expect.objectContaining({
+				params: expect.objectContaining({
+					kind: 'srp-wallet-history',
+					dateFrom: '2026-07-01',
+					dateTo: '2026-07-31',
+					alertsOnly: true,
+				}),
+			})
+		)
+	})
+
+	it('exports paid SRP requests as CSV for reviewer users', async () => {
+		const app = createApp(makeUser({ id: 'paid-export-user' }))
+		getCachedUserPermissionsMock.mockResolvedValue([{ urn: 'urn:srp:reviewer' }] as any)
+
+		const response = await app.request(
+			'/api/srp/requests/paid/export?characterName=Losing&shipTypeName=Rifter&solarSystemName=Jita&dateFrom=2026-07-01&dateTo=2026-07-31',
+			{ method: 'POST' },
+			env
+		)
+
+		expect(response.status).toBe(202)
+		expect(await response.json()).toMatchObject({
+			workflowInstanceId: 'workflow-1',
+			fileName: 'srp-paid-requests-2026-07-01-2026-07-31.csv',
+		})
+		expect(exportWorkflowStub.create).toHaveBeenCalledWith(
+			expect.objectContaining({
+				params: expect.objectContaining({
+					kind: 'srp-paid-requests',
+					characterName: 'Losing',
+					shipTypeName: 'Rifter',
+					solarSystemName: 'Jita',
+					dateFrom: '2026-07-01',
+					dateTo: '2026-07-31',
+				}),
+			})
+		)
+	})
+
+	it('deletes paid SRP exports after download', async () => {
+		const app = createApp(makeUser({ id: 'paid-export-user' }))
+		getCachedUserPermissionsMock.mockResolvedValue([{ urn: 'urn:srp:reviewer' }] as any)
+
+		const storedResponse = new Response('userId,losingCharacterId\n1,2', {
+			headers: { 'content-type': 'text/csv; charset=utf-8' },
+		}) as Response & {
+			customMetadata?: { fileName?: string; expiresAt?: string }
+			httpMetadata?: { contentType?: string }
+		}
+		storedResponse.customMetadata = {
+			fileName: 'srp-paid-requests-2026-07-01-2026-07-31.csv',
+			expiresAt: new Date(Date.now() + 60_000).toISOString(),
+		}
+		storedResponse.httpMetadata = { contentType: 'text/csv; charset=utf-8' }
+		exportBucketStub.get.mockResolvedValue(storedResponse)
+
+		const response = await app.request(
+			'/api/srp/requests/paid/export/workflow-1/download',
+			{},
+			env
+		)
+
+		expect(response.status).toBe(200)
+		expect(await response.text()).toContain('userId,losingCharacterId')
+		expect(exportBucketStub.delete).toHaveBeenCalledWith('srp-exports/paid-requests/workflow-1.csv')
+	})
+
+	it('deletes wallet history exports after download', async () => {
+		const app = createApp(makeUser({ id: 'wallet-export-user', is_admin: true }))
+		srpStub.getConfig.mockResolvedValue({ paymentProcessorCorporationId: '9000' })
+
+		const storedResponse = new Response('date,reason\n2026-07-01,refund', {
+			headers: { 'content-type': 'text/csv; charset=utf-8' },
+		}) as Response & {
+			customMetadata?: { fileName?: string; expiresAt?: string }
+			httpMetadata?: { contentType?: string }
+		}
+		storedResponse.customMetadata = {
+			fileName: 'srp-wallet-history-2026-07-01-2026-07-31.csv',
+			expiresAt: new Date(Date.now() + 60_000).toISOString(),
+		}
+		storedResponse.httpMetadata = { contentType: 'text/csv; charset=utf-8' }
+		exportBucketStub.get.mockResolvedValue(storedResponse)
+
+		const response = await app.request(
+			'/api/srp/payments/wallet-history/export/workflow-1/download',
+			{},
+			env
+		)
+
+		expect(response.status).toBe(200)
+		expect(await response.text()).toContain('date,reason')
+		expect(exportBucketStub.delete).toHaveBeenCalledWith('srp-exports/wallet-history/workflow-1.csv')
+	})
+
+	it('requires a selected entry date range for paid SRP CSV export', async () => {
+		const app = createApp(makeUser({ id: 'paid-export-user' }))
+		getCachedUserPermissionsMock.mockResolvedValue([{ urn: 'urn:srp:reviewer' }] as any)
+
+		const response = await app.request('/api/srp/requests/paid/export', { method: 'POST' }, env)
+
+		expect(response.status).toBe(400)
+		expect(await response.json()).toEqual({
+			error: 'dateFrom and dateTo must be selected for CSV export',
+		})
+	})
+
+	it('rejects paid SRP CSV exports that exceed one year', async () => {
+		const app = createApp(makeUser({ id: 'paid-export-user' }))
+		getCachedUserPermissionsMock.mockResolvedValue([{ urn: 'urn:srp:reviewer' }] as any)
+
+		const response = await app.request(
+			'/api/srp/requests/paid/export?dateFrom=2025-01-01&dateTo=2026-02-01',
+			{ method: 'POST' },
+			env
+		)
+
+		expect(response.status).toBe(400)
+		expect(await response.json()).toEqual({
+			error: 'CSV export date range cannot exceed 1 year',
+		})
 	})
 
 	it('lists requests for the authenticated user only', async () => {

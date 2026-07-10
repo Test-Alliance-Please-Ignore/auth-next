@@ -39,6 +39,16 @@
 		"PM_FORUM_GUILD_ID": "356398105404375041",
 		"PM_FORUM_CATEGORY_ID": "1524076742745260093"
 	},
+	"r2_buckets": [
+		{
+			"binding": "MOON_SCAN_EXPORTS",
+			"bucket_name": "moon-scan-exports"
+		},
+		{
+			"binding": "SRP_EXPORTS",
+			"bucket_name": "srp-exports"
+		}
+	],
 	"durable_objects": {
 		"bindings": [
 			{
@@ -206,6 +216,11 @@
 		}
 	],
 	"workflows": [
+		{
+			"name": "csv-export-workflow",
+			"binding": "EXPORT_WORKFLOW",
+			"class_name": "CsvExportWorkflow"
+		},
 		{
 			"name": "user-refresh-workflow",
 			"binding": "USER_REFRESH_WORKFLOW",

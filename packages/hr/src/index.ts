@@ -586,7 +586,8 @@ export interface Hr extends DurableObject {
 	getApplicationForRecommender(
 		applicationId: string,
 		userId: string,
-		userCorporationIds: string[]
+		userCorporationIds: string[],
+		access?: HrAccessContext
 	): Promise<RecommenderApplicationDetail>
 
 	/**

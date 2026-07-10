@@ -14,10 +14,13 @@ import {
 	UpdateSRPConfigSchema,
 	WithdrawSRPRequestSchema,
 } from '@repo/srp'
+import { buildCsvLine, createR2MultipartTextWriter, parseDateOrNull } from '@repo/worker-utils'
 
 import { createDb } from '../db'
 import { managedCorporations, userCharacters } from '../db/schema'
+import { isExportArtifactExpired } from '../lib/export-retention'
 import { getCachedUserPermissions } from '../lib/groups-cache'
+import { normalizeWorkflowStatus } from '../lib/workflow-status'
 import { requireAllianceMember } from '../middleware/session'
 
 import type { Doctrines, FittingWithItems } from '@repo/doctrines'
@@ -74,9 +77,62 @@ function getPrimaryCharacterName(user: any): string {
 
 const SRP_ROLE_URNS = ['urn:srp:reviewer', 'urn:srp:payer', 'urn:srp:manager']
 const SRP_REQUEST_ID_PATTERN = /^\d+$/
+const SRP_CSV_EXPORT_MAX_RANGE_YEARS = 1
+
+function getExecutionContextOrNull(c: { executionCtx?: ExecutionContext }): ExecutionContext | null {
+	try {
+		return c.executionCtx ?? null
+	} catch {
+		return null
+	}
+}
 
 function isValidSrpRequestId(requestId: string): boolean {
 	return SRP_REQUEST_ID_PATTERN.test(requestId)
+}
+
+function normalizeUtcStartOfDay(date: Date): Date {
+	return new Date(Date.UTC(date.getUTCFullYear(), date.getUTCMonth(), date.getUTCDate(), 0, 0, 0, 0))
+}
+
+function normalizeUtcEndOfDay(date: Date): Date {
+	return new Date(Date.UTC(date.getUTCFullYear(), date.getUTCMonth(), date.getUTCDate(), 23, 59, 59, 999))
+}
+
+export function parseSrpCsvExportDateRange(dateFromRaw: string | undefined, dateToRaw: string | undefined): {
+	dateFrom: string
+	dateTo: string
+	startDate: Date
+	endDate: Date
+} | { error: string } {
+	if (!dateFromRaw || !dateToRaw) {
+		return { error: 'dateFrom and dateTo must be selected for CSV export' }
+	}
+
+	const dateFrom = parseDateOrNull(dateFromRaw)
+	const dateTo = parseDateOrNull(dateToRaw)
+	if (!dateFrom || !dateTo) {
+		return { error: 'dateFrom and dateTo must be valid dates' }
+	}
+
+	const startDate = normalizeUtcStartOfDay(dateFrom)
+	const endDate = normalizeUtcEndOfDay(dateTo)
+	if (endDate < startDate) {
+		return { error: 'dateTo must be on or after dateFrom' }
+	}
+
+	const maxEndDate = normalizeUtcEndOfDay(new Date(startDate.getTime()))
+	maxEndDate.setUTCFullYear(maxEndDate.getUTCFullYear() + SRP_CSV_EXPORT_MAX_RANGE_YEARS)
+	if (endDate > maxEndDate) {
+		return { error: 'CSV export date range cannot exceed 1 year' }
+	}
+
+	return {
+		dateFrom: dateFromRaw,
+		dateTo: dateToRaw,
+		startDate,
+		endDate,
+	}
 }
 
 async function enrichRequestsWithSystemRegions<T extends SRPRequestResponse>(
@@ -1499,6 +1555,499 @@ srp.get('/payments/pending-total', async (c) => {
 	return c.json({ pendingPayoutTotal })
 })
 
+const SRP_EXPORT_BUCKET_PREFIX = 'srp-exports'
+
+export function getSrpExportBucket(env: App['Bindings']): R2Bucket {
+	return env.SRP_EXPORTS
+}
+
+export interface SrpCsvExportDateRange {
+	dateFrom: string
+	dateTo: string
+	startDate: Date
+	endDate: Date
+}
+
+export interface SrpPaidRequestsExportFilters {
+	characterName?: string
+	shipTypeName?: string
+	solarSystemName?: string
+	dateRange: SrpCsvExportDateRange
+}
+
+export interface SrpWalletHistoryExportFilters {
+	reason?: string
+	recipientId?: string
+	alertsOnly?: boolean
+	dateRange: SrpCsvExportDateRange
+}
+
+export function buildSrpPaidRequestsExportKey(exportId: string): string {
+	return `${SRP_EXPORT_BUCKET_PREFIX}/paid-requests/${exportId}.csv`
+}
+
+export function buildSrpPaidRequestsExportFileName(dateFrom: string, dateTo: string): string {
+	return `srp-paid-requests-${dateFrom.slice(0, 10)}-${dateTo.slice(0, 10)}.csv`
+}
+
+export function buildSrpWalletHistoryExportKey(exportId: string): string {
+	return `${SRP_EXPORT_BUCKET_PREFIX}/wallet-history/${exportId}.csv`
+}
+
+export function buildSrpWalletHistoryExportFileName(dateFrom: string, dateTo: string): string {
+	return `srp-wallet-history-${dateFrom.slice(0, 10)}-${dateTo.slice(0, 10)}.csv`
+}
+
+export async function writeSrpPaidRequestsExportToBucket(args: {
+	bucket: R2Bucket
+	exportKey: string
+	fileName: string
+	expiresAt: string
+	env: App['Bindings']
+	filters: SrpPaidRequestsExportFilters
+}): Promise<number> {
+	const writer = await createR2MultipartTextWriter(args.bucket, args.exportKey, {
+		httpMetadata: {
+			contentType: 'text/csv; charset=utf-8',
+		},
+		customMetadata: {
+			fileName: args.fileName,
+			expiresAt: args.expiresAt,
+		},
+	})
+
+	const srpStub = getStub<Srp>(args.env.SRP, 'default')
+	let rowCount = 0
+
+	try {
+		await writer.writeLine(
+			buildCsvLine([
+				'userId',
+				'losingCharacterId',
+				'losingCharacterName',
+				'shipTypeId',
+				'shipTypeName',
+				'srpCapType',
+				'payoutModifierType',
+				'fullValue',
+				'paidValue',
+			])
+		)
+
+		const pageSize = 200
+		let offset = 0
+		for (;;) {
+			const result = await srpStub.getRequestsByStatus('paid', {
+				limit: pageSize,
+				offset,
+				characterName: args.filters.characterName,
+				shipTypeName: args.filters.shipTypeName,
+				solarSystemName: args.filters.solarSystemName,
+				dateFrom: args.filters.dateRange.startDate.toISOString(),
+				dateTo: args.filters.dateRange.endDate.toISOString(),
+			})
+			for (const request of result.requests) {
+				await writer.writeLine(
+					buildCsvLine([
+						request.userId,
+						request.characterId,
+						request.characterName,
+						request.shipTypeId,
+						request.shipTypeName,
+						request.appliedCapPolicyName ?? 'None',
+						request.appliedModifierPolicyName ?? 'None',
+						request.shipValue,
+						request.approvedAmount ?? '',
+					])
+				)
+				rowCount += 1
+			}
+			if (result.requests.length < pageSize || rowCount >= result.total) {
+				break
+			}
+			offset += pageSize
+		}
+
+		await writer.close()
+		return rowCount
+	} catch (error) {
+		await writer.abort().catch(() => {})
+		throw error
+	}
+}
+
+export async function writeSrpWalletHistoryExportToBucket(args: {
+	bucket: R2Bucket
+	exportKey: string
+	fileName: string
+	expiresAt: string
+	env: App['Bindings']
+	filters: SrpWalletHistoryExportFilters
+}): Promise<number> {
+	const writer = await createR2MultipartTextWriter(args.bucket, args.exportKey, {
+		httpMetadata: {
+			contentType: 'text/csv; charset=utf-8',
+		},
+		customMetadata: {
+			fileName: args.fileName,
+			expiresAt: args.expiresAt,
+		},
+	})
+
+	const srpStub = getStub<Srp>(args.env.SRP, 'default')
+	const config = await srpStub.getConfig()
+	const processorCorporationId = config?.paymentProcessorCorporationId?.trim() ?? ''
+	if (!processorCorporationId) {
+		await writer.abort().catch(() => {})
+		throw new Error('SRP payment processor corporation is not configured')
+	}
+
+	const db = createDb(args.env.DATABASE_URL)
+	let rowCount = 0
+	const whereParts = [
+		sql`corporation_id = ${processorCorporationId}`,
+		sql`ref_type = 'corporation_account_withdrawal'`,
+		sql`exists (
+			select 1
+			from user_characters recipient_char
+			where recipient_char.character_id = second_party_id
+		)`,
+	]
+	if (args.filters.reason) whereParts.push(sql`reason ilike ${`%${args.filters.reason}%`}`)
+	if (args.filters.recipientId) whereParts.push(sql`second_party_id = ${args.filters.recipientId}`)
+	whereParts.push(
+		sql`date >= ${args.filters.dateRange.startDate}`,
+		sql`date <= ${args.filters.dateRange.endDate}`,
+	)
+	const whereClause = sql.join(whereParts, sql` and `)
+
+	const [rowsResult, matchingRequestsResult, paymentAlertsResult] = await Promise.all([
+		db.execute<{
+			journalId: string
+			refType: string | null
+			amount: string
+			reason: string | null
+			recipientId: string | null
+			entryDate: Date
+		}>(sql`select
+				journal_id::text as "journalId",
+				ref_type as "refType",
+				amount as "amount",
+				reason as "reason",
+				second_party_id as "recipientId",
+				date as "entryDate"
+			from corporation_wallet_journal
+			where ${whereClause}
+			order by date desc`),
+		db.execute<{ id: string; characterId: string }>(
+			sql`select id::text as "id", character_id as "characterId"
+				from srp_requests
+				where id in (
+					select distinct substring(coalesce(reason, '') from 'KM#([0-9]+)')::text
+					from corporation_wallet_journal
+					where ${whereClause}
+						and reason ~ 'KM#[0-9]+'
+				)`
+		).catch(() => ({ rows: [] as Array<{ id: string; characterId: string }> })),
+		db.execute<{
+			journalId: string
+			kind: string
+			state: string
+			expectedAmount: string | null
+			observedAmount: string | null
+			expectedRecipientCharacterId: string | null
+			expectedRecipientCharacterName: string | null
+			actualRecipientCharacterId: string | null
+			actualRecipientCharacterName: string | null
+		}>(sql`select
+				journal_id::text as "journalId",
+				kind,
+				state,
+				expected_amount as "expectedAmount",
+				observed_amount as "observedAmount",
+				expected_recipient_character_id as "expectedRecipientCharacterId",
+				expected_recipient_character_name as "expectedRecipientCharacterName",
+				actual_recipient_character_id as "actualRecipientCharacterId",
+				actual_recipient_character_name as "actualRecipientCharacterName"
+			from srp_payment_alerts
+			where journal_id in (
+				select journal_id
+				from corporation_wallet_journal
+				where ${whereClause}
+			)`).catch(() => ({
+			rows: [] as Array<{
+				journalId: string
+				kind: string
+				state: string
+				expectedAmount: string | null
+				observedAmount: string | null
+				expectedRecipientCharacterId: string | null
+				expectedRecipientCharacterName: string | null
+				actualRecipientCharacterId: string | null
+				actualRecipientCharacterName: string | null
+			}>,
+		})),
+	])
+
+	const requestById = new Map(
+		(matchingRequestsResult.rows ?? []).map((row) => [row.id, row.characterId])
+	)
+	const alertKindsByJournalId = new Map<string, string[]>()
+	const paymentAlertDetailByJournalId = new Map<
+		string,
+		{
+			expectedAmount: string | null
+			observedAmount: string | null
+			expectedRecipientCharacterId: string | null
+			expectedRecipientCharacterName: string | null
+			actualRecipientCharacterId: string | null
+			actualRecipientCharacterName: string | null
+		}
+	>()
+	for (const row of paymentAlertsResult.rows ?? []) {
+		const existing = alertKindsByJournalId.get(row.journalId) ?? []
+		if (row.state === 'open' && !existing.includes(row.kind)) {
+			existing.push(row.kind)
+			alertKindsByJournalId.set(row.journalId, existing)
+		}
+		if (row.state === 'open' && !paymentAlertDetailByJournalId.has(row.journalId)) {
+			paymentAlertDetailByJournalId.set(row.journalId, {
+				expectedAmount: row.expectedAmount,
+				observedAmount: row.observedAmount,
+				expectedRecipientCharacterId: row.expectedRecipientCharacterId,
+				expectedRecipientCharacterName: row.expectedRecipientCharacterName,
+				actualRecipientCharacterId: row.actualRecipientCharacterId,
+				actualRecipientCharacterName: row.actualRecipientCharacterName,
+			})
+		}
+	}
+
+	const requestCharacterIds = [...new Set((matchingRequestsResult.rows ?? []).map((row) => row.characterId))]
+	const idsToResolve = [
+		...new Set(
+			[...rowsResult.rows.map((row) => row.recipientId), ...requestCharacterIds].filter(
+				(id): id is string => Boolean(id)
+			)
+		),
+	]
+	const resolver = getStub<EsiTypeResolver>(args.env.ESI_TYPE_RESOLVER, 'global')
+	const resolvedNames: Record<string, string> =
+		idsToResolve.length > 0 ? await resolver.resolveIds(idsToResolve).catch(() => ({})) : {}
+
+	const computedItems = rowsResult.rows.map((row) => {
+		const requestIdFromReason = (() => {
+			const reasonText = row.reason ?? ''
+			const match = reasonText.match(SRP_REQUEST_ID_IN_REASON_REGEX)
+			return match?.[1] ?? null
+		})()
+		const expectedRequestCharacterId = requestIdFromReason
+			? (requestById.get(requestIdFromReason) ?? null)
+			: null
+		const hasRecipientMismatch = Boolean(
+			expectedRequestCharacterId && row.recipientId && row.recipientId !== expectedRequestCharacterId
+		)
+		const hasMissingReasonWarning = Boolean(
+			row.refType === 'corporation_account_withdrawal' &&
+				row.recipientId &&
+				(!row.reason || row.reason.trim().length === 0)
+		)
+
+		return {
+			hasRecipientMismatch,
+			hasMissingReasonWarning,
+			linkedRequestId: (() => {
+				if (!requestIdFromReason) return null
+				return requestById.has(requestIdFromReason) ? requestIdFromReason : null
+			})(),
+			journalId: row.journalId,
+			refType: row.refType,
+			amount: row.amount,
+			reason: row.reason,
+			recipientId: row.recipientId,
+			recipientName: row.recipientId ? (resolvedNames[row.recipientId] ?? null) : null,
+			entryDate:
+				row.entryDate instanceof Date
+					? row.entryDate.toISOString()
+					: new Date(String(row.entryDate)).toISOString(),
+			matchingAlertKinds: alertKindsByJournalId.get(row.journalId) ?? [],
+			alertDetail:
+				paymentAlertDetailByJournalId.get(row.journalId) ??
+				(hasRecipientMismatch
+					? {
+							expectedAmount: null,
+							observedAmount: row.amount,
+							expectedRecipientCharacterId: expectedRequestCharacterId,
+							expectedRecipientCharacterName: expectedRequestCharacterId
+								? (resolvedNames[expectedRequestCharacterId] ?? null)
+								: null,
+							actualRecipientCharacterId: row.recipientId,
+							actualRecipientCharacterName: row.recipientId
+								? (resolvedNames[row.recipientId] ?? null)
+								: null,
+					  }
+					: null),
+			hasOpenAlert:
+				(alertKindsByJournalId.get(row.journalId) ?? []).length > 0 ||
+				hasRecipientMismatch,
+		}
+	})
+
+	const filteredItems = args.filters.alertsOnly
+		? computedItems.filter((item) => item.hasOpenAlert || item.hasMissingReasonWarning)
+		: computedItems
+
+	try {
+		await writer.writeLine(
+			buildCsvLine([
+				'entryDate',
+				'reason',
+				'recipientId',
+				'recipientName',
+				'amount',
+				'journalId',
+				'refType',
+				'hasOpenAlert',
+				'hasMissingReasonWarning',
+				'linkedRequestId',
+				'alertKinds',
+				'alertDetail',
+			])
+		)
+
+		for (const item of filteredItems) {
+			await writer.writeLine(
+				buildCsvLine([
+					item.entryDate,
+					item.reason,
+					item.recipientId,
+					item.recipientName,
+					item.amount,
+					item.journalId,
+					item.refType,
+					item.hasOpenAlert,
+					item.hasMissingReasonWarning,
+					item.linkedRequestId,
+					(item.matchingAlertKinds ?? []).join('|'),
+					item.alertDetail ? JSON.stringify(item.alertDetail) : '',
+				])
+			)
+			rowCount += 1
+		}
+
+		await writer.close()
+		return rowCount
+	} catch (error) {
+		await writer.abort().catch(() => {})
+		throw error
+	}
+}
+
+/**
+ * Start a paid SRP requests export workflow.
+ * POST /api/srp/requests/paid/export?characterName=&shipTypeName=&solarSystemName=&dateFrom=&dateTo=
+ */
+srp.post('/requests/paid/export', async (c) => {
+	const user = c.get('user')!
+	const canReview = await hasSrpTierPermission(c.env, user.id, 'reviewer', user.is_admin)
+	if (!canReview) return c.json({ error: 'Requires SRP staff permissions' }, 403)
+
+	const characterName = c.req.query('characterName')?.trim() || undefined
+	const shipTypeName = c.req.query('shipTypeName')?.trim() || undefined
+	const solarSystemName = c.req.query('solarSystemName')?.trim() || undefined
+	const dateFrom = c.req.query('dateFrom')?.trim() || undefined
+	const dateTo = c.req.query('dateTo')?.trim() || undefined
+	const dateRange = parseSrpCsvExportDateRange(dateFrom, dateTo)
+	if ('error' in dateRange) {
+		return c.json({ error: dateRange.error }, 400)
+	}
+
+	const workflow = await c.env.EXPORT_WORKFLOW.create({
+		params: {
+			kind: 'srp-paid-requests',
+			userId: user.id,
+			characterName,
+			shipTypeName,
+			solarSystemName,
+			dateFrom: dateRange.dateFrom,
+			dateTo: dateRange.dateTo,
+		},
+	})
+
+	return c.json(
+		{
+			workflowInstanceId: workflow.id,
+			exportId: workflow.id,
+			fileName: buildSrpPaidRequestsExportFileName(dateRange.dateFrom, dateRange.dateTo),
+			status: 'queued',
+		},
+		202
+	)
+})
+
+srp.get('/requests/paid/export/:workflowInstanceId', async (c) => {
+	const user = c.get('user')!
+	const canReview = await hasSrpTierPermission(c.env, user.id, 'reviewer', user.is_admin)
+	if (!canReview) return c.json({ error: 'Requires SRP staff permissions' }, 403)
+
+	const workflowInstanceId = c.req.param('workflowInstanceId')
+	if (!workflowInstanceId) {
+		return c.json({ error: 'workflowInstanceId is required' }, 400)
+	}
+
+	const workflow = await c.env.EXPORT_WORKFLOW.get(workflowInstanceId)
+	const status = await workflow.status()
+	const outputStatus =
+		status.output && typeof status.output === 'object' && 'status' in status.output
+			? String((status.output as { status?: string }).status ?? '')
+			: undefined
+	return c.json({
+		workflowInstanceId,
+		status: normalizeWorkflowStatus(status.status, outputStatus),
+		rawStatus: status.status,
+		output: status.output ?? null,
+	})
+})
+
+srp.get('/requests/paid/export/:workflowInstanceId/download', async (c) => {
+	const user = c.get('user')!
+	const canReview = await hasSrpTierPermission(c.env, user.id, 'reviewer', user.is_admin)
+	if (!canReview) return c.json({ error: 'Requires SRP staff permissions' }, 403)
+
+	const workflowInstanceId = c.req.param('workflowInstanceId')
+	if (!workflowInstanceId) {
+		return c.json({ error: 'workflowInstanceId is required' }, 400)
+	}
+
+	const bucket = getSrpExportBucket(c.env)
+	const exportKey = buildSrpPaidRequestsExportKey(workflowInstanceId)
+	const object = await bucket.get(exportKey)
+	if (!object) {
+		return c.json({ error: 'Export not found' }, 404)
+	}
+	if (isExportArtifactExpired(object.customMetadata?.expiresAt)) {
+		await bucket.delete(exportKey).catch(() => {})
+		return c.json({ error: 'Export expired' }, 404)
+	}
+
+	const fileName = object.customMetadata?.fileName ?? `${workflowInstanceId}.csv`
+	const response = new Response(object.body, {
+		status: 200,
+		headers: {
+			'Content-Type': object.httpMetadata?.contentType ?? 'text/csv; charset=utf-8',
+			'Content-Disposition': `attachment; filename="${fileName}"`,
+			'Cache-Control': 'no-store',
+		},
+	})
+	const executionCtx = getExecutionContextOrNull(c)
+	const cleanup = bucket.delete(exportKey).catch(() => {})
+	if (executionCtx) {
+		executionCtx.waitUntil(cleanup)
+	} else {
+		void cleanup
+	}
+	return response
+})
+
 /**
  * Wallet history for configured SRP payment processor corporation
  * GET /api/srp/payments/wallet-history?reason=&recipientId=&alertsOnly=false&dateFrom=&dateTo=&limit=50&offset=0
@@ -1766,6 +2315,112 @@ srp.get('/payments/wallet-history', async (c) => {
 		limit,
 		offset,
 	})
+})
+
+/**
+ * Start an SRP wallet history export workflow.
+ * POST /api/srp/payments/wallet-history/export?reason=&recipientId=&alertsOnly=false&dateFrom=&dateTo=
+ */
+srp.post('/payments/wallet-history/export', async (c) => {
+	const user = c.get('user')!
+	const canPay = await hasSrpTierPermission(c.env, user.id, 'payer', user.is_admin)
+	if (!canPay) return c.json({ error: 'Requires payer-or-higher permissions' }, 403)
+
+	const reason = c.req.query('reason')?.trim()
+	const recipientId = c.req.query('recipientId')?.trim()
+	const alertsOnly = c.req.query('alertsOnly') === 'true'
+	const dateFrom = c.req.query('dateFrom')?.trim()
+	const dateTo = c.req.query('dateTo')?.trim()
+	const dateRange = parseSrpCsvExportDateRange(dateFrom, dateTo)
+	if ('error' in dateRange) {
+		return c.json({ error: dateRange.error }, 400)
+	}
+
+	const workflow = await c.env.EXPORT_WORKFLOW.create({
+		params: {
+			kind: 'srp-wallet-history',
+			userId: user.id,
+			reason,
+			recipientId,
+			alertsOnly,
+			dateFrom: dateRange.dateFrom,
+			dateTo: dateRange.dateTo,
+		},
+	})
+
+	return c.json(
+		{
+			workflowInstanceId: workflow.id,
+			exportId: workflow.id,
+			fileName: buildSrpWalletHistoryExportFileName(dateRange.dateFrom, dateRange.dateTo),
+			status: 'queued',
+		},
+		202
+	)
+})
+
+srp.get('/payments/wallet-history/export/:workflowInstanceId', async (c) => {
+	const user = c.get('user')!
+	const canPay = await hasSrpTierPermission(c.env, user.id, 'payer', user.is_admin)
+	if (!canPay) return c.json({ error: 'Requires payer-or-higher permissions' }, 403)
+
+	const workflowInstanceId = c.req.param('workflowInstanceId')
+	if (!workflowInstanceId) {
+		return c.json({ error: 'workflowInstanceId is required' }, 400)
+	}
+
+	const workflow = await c.env.EXPORT_WORKFLOW.get(workflowInstanceId)
+	const status = await workflow.status()
+	const outputStatus =
+		status.output && typeof status.output === 'object' && 'status' in status.output
+			? String((status.output as { status?: string }).status ?? '')
+			: undefined
+	return c.json({
+		workflowInstanceId,
+		status: normalizeWorkflowStatus(status.status, outputStatus),
+		rawStatus: status.status,
+		output: status.output ?? null,
+	})
+})
+
+srp.get('/payments/wallet-history/export/:workflowInstanceId/download', async (c) => {
+	const user = c.get('user')!
+	const canPay = await hasSrpTierPermission(c.env, user.id, 'payer', user.is_admin)
+	if (!canPay) return c.json({ error: 'Requires payer-or-higher permissions' }, 403)
+
+	const workflowInstanceId = c.req.param('workflowInstanceId')
+	if (!workflowInstanceId) {
+		return c.json({ error: 'workflowInstanceId is required' }, 400)
+	}
+
+	const bucket = getSrpExportBucket(c.env)
+	const exportKey = buildSrpWalletHistoryExportKey(workflowInstanceId)
+	const object = await bucket.get(exportKey)
+	if (!object) {
+		return c.json({ error: 'Export not found' }, 404)
+	}
+	if (isExportArtifactExpired(object.customMetadata?.expiresAt)) {
+		await bucket.delete(exportKey).catch(() => {})
+		return c.json({ error: 'Export expired' }, 404)
+	}
+
+	const fileName = object.customMetadata?.fileName ?? `${workflowInstanceId}.csv`
+	const response = new Response(object.body, {
+		status: 200,
+		headers: {
+			'Content-Type': object.httpMetadata?.contentType ?? 'text/csv; charset=utf-8',
+			'Content-Disposition': `attachment; filename="${fileName}"`,
+			'Cache-Control': 'no-store',
+		},
+	})
+	const executionCtx = getExecutionContextOrNull(c)
+	const cleanup = bucket.delete(exportKey).catch(() => {})
+	if (executionCtx) {
+		executionCtx.waitUntil(cleanup)
+	} else {
+		void cleanup
+	}
+	return response
 })
 
 /**

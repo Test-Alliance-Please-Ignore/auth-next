@@ -300,12 +300,14 @@ export class HrDO extends DurableObject<Env> implements Hr {
 	async getApplicationForRecommender(
 		applicationId: string,
 		userId: string,
-		userCorporationIds: string[]
+		userCorporationIds: string[],
+		access?: { isAdmin: boolean; isAuditor: boolean }
 	): Promise<RecommenderApplicationDetail> {
 		return await this.applicationService.getApplicationForRecommender(
 			applicationId,
 			userId,
-			userCorporationIds
+			userCorporationIds,
+			access
 		)
 	}
 

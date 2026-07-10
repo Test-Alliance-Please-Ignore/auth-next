@@ -1,10 +1,13 @@
-import { Fragment, useMemo, useState } from 'react'
+import { Fragment, useCallback, useEffect, useMemo, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { ArrowDown, ArrowUp, ChevronDown, ChevronRight } from 'lucide-react'
+import { useQuery } from '@tanstack/react-query'
 
 import { UserSearchPaginationControls } from '@/components/user-search-pagination-controls'
+import { Button } from '@/components/ui/button'
 import { Card } from '@/components/ui/card'
 import { Container } from '@/components/ui/container'
+import { HoverPopover } from '@/components/ui/hover-popover'
 import { Input } from '@/components/ui/input'
 import { PageHeader } from '@/components/ui/page-header'
 import { Select } from '@/components/ui/select'
@@ -20,8 +23,14 @@ import {
 import { TableRefreshFrame } from '@/components/table-refresh-frame'
 import { usePageTitle } from '@/hooks/usePageTitle'
 import { formatISK } from '@/lib/format-utils'
+import toast from '@/lib/toast'
 
 import { RARITY_COLORS } from '../ore-rarities'
+import {
+	downloadScannedMoonsExport,
+	getScannedMoonsExportStatus,
+	requestScannedMoonsExport,
+} from '../api'
 import { useScannedMoons, useMoonRegions } from '../hooks'
 import { useMoonScanPermissions } from '../permissions'
 import { parseSecurityStatus, securityStatusTextClass } from '../security-status'
@@ -107,6 +116,50 @@ export default function ScannedMoonsPage() {
 	const [sortDir, setSortDir] = useState<SortDir>('asc')
 	const [viewMode, setViewMode] = useState<ViewMode>('grouped')
 	const [collapsedConstellations, setCollapsedConstellations] = useState<Set<string>>(new Set())
+	const [pendingExport, setPendingExport] = useState<{ workflowInstanceId: string; fileName: string } | null>(null)
+	const [isExporting, setIsExporting] = useState(false)
+
+	const exportStatusQuery = useQuery({
+		queryKey: ['moon-scan', 'verified-moons', 'export-status', pendingExport?.workflowInstanceId ?? null],
+		queryFn: () => getScannedMoonsExportStatus(pendingExport!.workflowInstanceId),
+		enabled: Boolean(pendingExport?.workflowInstanceId),
+		refetchInterval: (query) => {
+			const status = query.state.data?.status
+			return status === 'queued' || status === 'running' ? 5000 : false
+		},
+		refetchOnWindowFocus: false,
+	})
+	const exportStatus = exportStatusQuery.data?.status
+	const isExportPolling =
+		Boolean(pendingExport) && (exportStatus === undefined || exportStatus === 'queued' || exportStatus === 'running')
+	const isExportBusy = isExporting || isExportPolling
+
+	useEffect(() => {
+		if (!pendingExport) return
+		if (!exportStatusQuery.data) return
+		if (exportStatusQuery.data.status === 'completed') {
+			void (async () => {
+				try {
+					await downloadScannedMoonsExport(pendingExport.workflowInstanceId, pendingExport.fileName)
+					toast.success('Scanned moons export ready')
+				} catch (error) {
+					const messageText =
+						error instanceof Error ? error.message : 'Failed to download scanned moons export'
+					toast.error(messageText)
+					console.error('[MoonScan] Failed to download scanned moons export', error)
+				} finally {
+					setPendingExport(null)
+					setIsExporting(false)
+				}
+			})()
+			return
+		}
+		if (exportStatusQuery.data.status === 'failed' || exportStatusQuery.data.status === 'unknown') {
+			toast.error('Scanned moons export failed')
+			setPendingExport(null)
+			setIsExporting(false)
+		}
+	}, [exportStatusQuery.data, pendingExport])
 
 	const toggleRarity = (rarity: OreRarity) => {
 		setSelectedRarities((prev) =>
@@ -177,6 +230,9 @@ export default function ScannedMoonsPage() {
 
 	const totalCount = data?.total ?? 0
 	const hasPagination = Math.ceil(totalCount / pageSize) > 1
+	const hasExportScope = regionFilter !== 'all' || constellationFilter !== 'all'
+	const canExportCsv = canView && hasExportScope
+	const exportHelpMessage = 'Select a region or constellation to export this scope.'
 	const toggleSort = (column: SortBy) => {
 		if (sortBy === column) {
 			setSortDir((dir) => (dir === 'asc' ? 'desc' : 'asc'))
@@ -225,6 +281,41 @@ export default function ScannedMoonsPage() {
 			itemLabel="moons"
 		/>
 	)
+	const handleExport = useCallback(async () => {
+		if (!canExportCsv || isExporting) {
+			return
+		}
+
+		setIsExporting(true)
+		try {
+			const exportResult = await requestScannedMoonsExport({
+				regionId: regionFilter,
+				constellationId: constellationFilter,
+				rarities: selectedRarities,
+				search,
+				sortBy,
+				sortDir,
+			})
+			setPendingExport({
+				workflowInstanceId: exportResult.workflowInstanceId,
+				fileName: exportResult.fileName,
+			})
+		} catch (error) {
+			const messageText = error instanceof Error ? error.message : 'Failed to export scanned moons'
+			toast.error(messageText)
+			console.error('[MoonScan] Failed to export scanned moons', error)
+			setIsExporting(false)
+		}
+	}, [
+		canExportCsv,
+		constellationFilter,
+		isExporting,
+		regionFilter,
+		search,
+		selectedRarities,
+		sortBy,
+		sortDir,
+	])
 
 	if (!canView) {
 		return (
@@ -239,13 +330,50 @@ export default function ScannedMoonsPage() {
 			<PageHeader
 				title="Scanned Moons"
 				description="All verified moon compositions with profitability estimates"
+				action={
+					<div className="flex items-center gap-3">
+						{isExportPolling && (
+							<span className="text-xs text-muted-foreground">Waiting for export to generate...</span>
+						)}
+						{!canExportCsv && !isExportBusy ? (
+							<HoverPopover
+								align="end"
+								side="bottom"
+								className="w-72 border border-border bg-popover p-3 text-popover-foreground shadow-lg"
+								trigger={
+									<span className="inline-block cursor-help">
+										<Button type="button" variant="ghost" disabled>
+											Export CSV
+										</Button>
+									</span>
+								}
+							>
+								<div className="text-sm font-medium">Export scope required</div>
+								<div className="text-sm text-muted-foreground">{exportHelpMessage}</div>
+							</HoverPopover>
+						) : (
+							<Button
+								type="button"
+								variant="ghost"
+								onClick={() => {
+									void handleExport()
+								}}
+								disabled={!canExportCsv || isExportBusy}
+								loading={isExportBusy}
+								loadingText={isExporting ? 'Exporting…' : 'Generating…'}
+							>
+								Export CSV
+							</Button>
+						)}
+					</div>
+				}
 			/>
 
 			{error && (
 				<div className="mt-4 rounded-lg border border-red-500/50 bg-red-500/10 p-4 text-sm text-red-500">
 					Failed to load moon data
 				</div>
-			)}
+				)}
 
 			{/* Filters */}
 			<div className="mt-section flex flex-wrap items-center gap-3">
@@ -348,7 +476,7 @@ export default function ScannedMoonsPage() {
 				</div>
 
 				{!isLoading && data && (
-					<span className="ml-auto flex items-center gap-2 text-xs text-muted-foreground">
+					<span className="flex items-center gap-2 text-xs text-muted-foreground">
 						{isFetching && (
 							<span
 								className="inline-block h-2 w-2 animate-pulse rounded-full bg-primary"

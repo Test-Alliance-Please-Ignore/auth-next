@@ -8,6 +8,7 @@ import { managedCorporations, userCharacters, users } from '../../db/schema'
 import { isNpcCorporationId } from '../../lib/corporation-id'
 import { getCachedUserPermissions } from '../../lib/groups-cache'
 import { requireAdmin, requireAuth } from '../../middleware/session'
+import { buildCsvLine } from '@repo/worker-utils'
 import corporationsAlertsRoutes from './alerts-routes'
 import corporationsDirectorsRoutes from './directors-routes'
 import corporationsDiscordRoutes from './discord-routes'
@@ -642,16 +643,6 @@ function filterSortMembers(members: CorporationMemberListItem[], query: MembersQ
 	})
 
 	return filtered
-}
-
-function escapeCsvValue(value: string | number | boolean | null | undefined): string {
-	if (value === null || value === undefined) return ''
-	const text = String(value)
-	return /[",\r\n]/.test(text) ? `"${text.replace(/"/g, '""')}"` : text
-}
-
-function buildCsvLine(values: Array<string | number | boolean | null | undefined>): string {
-	return values.map((value) => escapeCsvValue(value)).join(',')
 }
 
 function getEsiStatusLabel(member: Pick<CorporationMemberListItem, 'hasAuthAccount' | 'hasValidToken'>) {
