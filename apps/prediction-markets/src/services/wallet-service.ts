@@ -1,15 +1,15 @@
-import { eq } from '@repo/db-utils'
+import { and, eq, ne, sql } from '@repo/db-utils'
 import { captureException } from '@repo/hono-helpers'
 import { SYSTEM_WALLET_USER_ID } from '@repo/prediction-markets'
 
 import { pmLedger, pmWallets } from '../db/schema'
 import { isExpectedError, PmError } from '../lib/errors'
-import { isPositiveIntegerString, parseAmount } from '../lib/money'
+import { formatAmount, isPositiveIntegerString, parseAmount } from '../lib/money'
 import { ONBOARDING_GRANT, ONBOARDING_REASON, SYSTEM_ACTOR } from './context'
 import { getWalletBalance } from './read-service'
 import { creditWallet } from './shared'
 
-import type { GrantPointsInput } from '@repo/prediction-markets'
+import type { AwardBonusInput, AwardBonusResult, GrantPointsInput } from '@repo/prediction-markets'
 import type { PmDeps } from './context'
 
 export async function grantPoints(
@@ -120,6 +120,104 @@ export async function onboardUser(
 		if (error instanceof Error && error.message === 'IDEMPOTENCY_KEY_CONFLICT') {
 			const { balance } = await getWalletBalance(deps, userId)
 			return { balance, granted: '0', alreadyOnboarded: true }
+		}
+		throw error
+	}
+}
+
+/**
+ * Award a small bonus to a random existing (non-system) wallet, paid FROM the house/system wallet.
+ *
+ * A pure, points-conserving transfer done atomically in one transaction: pick a random real wallet,
+ * debit the house wallet overdraft-safe, then credit the winner — booked as two `adjustment` ledger
+ * lines tagged `source: 'bonus'` (the recipient credit routes through the shared `creditWallet`
+ * primitive; the house debit is its signed mirror). Reusing `adjustment` (rather than a new ledger
+ * enum value) keeps this migration-free — it is the type reserved for exactly these out-of-band
+ * balance movements, and it already renders/filters in the admin audit UI.
+ *
+ * Best-effort by contract: it no-ops (`{ awarded: false }`) when there is no eligible wallet or the
+ * house lacks the funds, so a caller (e.g. the mailroom Easter-egg) can fire it without special-
+ * casing an empty house. It throws only on a genuinely invalid request or an infra failure.
+ */
+export async function awardRandomBonus(
+	deps: PmDeps,
+	input: AwardBonusInput
+): Promise<AwardBonusResult> {
+	if (!isPositiveIntegerString(input.amount)) {
+		throw new PmError('INVALID_AMOUNT')
+	}
+	if (!input.reason?.trim()) {
+		throw new PmError('REASON_REQUIRED')
+	}
+	const amount = parseAmount(input.amount)
+	const formatted = formatAmount(amount)
+	try {
+		return await deps.db.transaction(async (tx) => {
+			// Pick a random real recipient and lock its wallet row. The house/system wallet is an
+			// internal accumulator, never a prize target, so exclude it. `FOR UPDATE` here is NOT for
+			// credit correctness (the credit below is an atomic increment) — it enforces a consistent
+			// lock ORDER: every money op must take member-wallet locks BEFORE the SYSTEM-wallet lock.
+			// executeResolution locks winners then SYSTEM (rake/dust); locking the winner here first
+			// keeps this in the same order and avoids a deadlock cycle with a concurrent resolution.
+			const [winner] = await tx
+				.select({ userId: pmWallets.userId })
+				.from(pmWallets)
+				.where(ne(pmWallets.userId, SYSTEM_WALLET_USER_ID))
+				.orderBy(sql`random()`)
+				.limit(1)
+				.for('update')
+			if (!winner) return { awarded: false, reason: 'NO_ELIGIBLE_WALLETS' }
+
+			// Debit the house wallet, overdraft-safe (mirrors placeBet's guarded debit): the balance
+			// guard makes 0 affected rows mean "house can't fund this" — skip without moving money. This
+			// also handles a house wallet that has never been created (no row ⇒ 0 rows ⇒ skip).
+			const debited = await tx
+				.update(pmWallets)
+				.set({
+					balance: sql`${pmWallets.balance} - ${formatted}::numeric`,
+					updatedAt: new Date(),
+				})
+				.where(
+					and(
+						eq(pmWallets.userId, SYSTEM_WALLET_USER_ID),
+						sql`${pmWallets.balance} >= ${formatted}::numeric`
+					)
+				)
+				.returning({ balance: pmWallets.balance })
+			if (debited.length === 0) {
+				return { awarded: false, reason: 'INSUFFICIENT_HOUSE_FUNDS' }
+			}
+
+			// Record the house debit as a signed (negative) adjustment line carrying its running balance.
+			await tx.insert(pmLedger).values({
+				userId: SYSTEM_WALLET_USER_ID,
+				amount: formatAmount(-amount),
+				type: 'adjustment',
+				balanceAfter: debited[0].balance,
+				metadata: { source: 'bonus', reason: input.reason, counterpartyUserId: winner.userId },
+			})
+
+			// Credit the winner. Their wallet exists (we just selected it), so skip the lazy upsert.
+			const { balanceAfter } = await creditWallet(tx, {
+				userId: winner.userId,
+				amount,
+				type: 'adjustment',
+				metadata: { source: 'bonus', reason: input.reason },
+				ensureWallet: false,
+			})
+
+			return {
+				awarded: true,
+				userId: winner.userId,
+				amount: formatted,
+				balanceAfter: balanceAfter ?? '0',
+			}
+		})
+	} catch (error) {
+		if (!isExpectedError(error)) {
+			captureException(error as Error, {
+				tags: { durableObject: 'PredictionMarketsDO', method: 'awardRandomBonus' },
+			})
 		}
 		throw error
 	}

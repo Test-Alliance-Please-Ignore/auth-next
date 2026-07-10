@@ -19,6 +19,14 @@ export type Env = SharedHonoEnv & {
 	DISCORD_GUILD_ID?: string
 	/** Discord channel ID that receives mail sent to `markeedragon@`. */
 	MARKEE_DISCORD_CHANNEL_ID?: string
+
+	/** Cross-worker binding to the Prediction Markets Durable Object (`apps/prediction-markets`). */
+	PREDICTION_MARKETS: DurableObjectNamespace
+	/**
+	 * Points awarded to a random prediction-market wallet on a markeedragon@ email (paid from the
+	 * house wallet). Optional — defaults to a small fixed amount when unset. Must be a positive integer.
+	 */
+	MARKEE_BONUS_AMOUNT?: string
 }
 
 /** Variables can be extended per-request as needed. */

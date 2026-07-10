@@ -13,14 +13,20 @@
 	"observability": {
 		"enabled": true
 	},
-	// Cross-worker binding to the shared Discord Durable Object (apps/discord). Used by the
-	// markeedragon@ → Discord route. The `discord` worker must be deployed in the same account.
+	// Cross-worker bindings to shared Durable Objects (both workers must be deployed in the same
+	// account). DISCORD (apps/discord) powers the markeedragon@ → Discord post; PREDICTION_MARKETS
+	// (apps/prediction-markets) lets that same route award a random wallet a small house-funded bonus.
 	"durable_objects": {
 		"bindings": [
 			{
 				"name": "DISCORD",
 				"class_name": "Discord",
 				"script_name": "discord"
+			},
+			{
+				"name": "PREDICTION_MARKETS",
+				"class_name": "PredictionMarkets",
+				"script_name": "prediction-markets"
 			}
 		]
 	},
@@ -32,7 +38,10 @@
 		// in that guild and able to post in the channel). Until both are set, mail to markeedragon@
 		// errors out to the fallback/last-resort path rather than posting.
 		"DISCORD_GUILD_ID": "356398105404375041",
-		"MARKEE_DISCORD_CHANNEL_ID": "730208741181358100"
+		"MARKEE_DISCORD_CHANNEL_ID": "362144221148479489",
+		// Points awarded to a random prediction-market wallet on each markeedragon@ email, paid from
+		// the house wallet. Tune without a code change; the award silently no-ops if the house can't fund it.
+		"MARKEE_BONUS_AMOUNT": "5"
 		// Optional framework config (set to VERIFIED Email Routing destinations before relying on them):
 		//   "FALLBACK_FORWARD_ADDRESS": "ops@pleaseignore.app"  // receives mail when inbound processing fails
 		//   "FORWARD_TEAM_TO": "team-inbox@pleaseignore.app"     // destination for the example "team@" alias

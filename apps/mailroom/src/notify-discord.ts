@@ -1,25 +1,22 @@
 import { forDO } from '@repo/do-utils'
-import { parseDateOrNull } from '@repo/worker-utils'
 
 import { consume } from './email'
+import { awardAndAnnounce } from './markee-bonus'
 
-import type { Discord, DiscordEmbed, MessageContent } from '@repo/discord'
+import type { Discord, MessageContent } from '@repo/discord'
 import type { Env } from './context'
 import type { EmailHandler } from './email'
 
-/** Discord "blurple". */
-const EMBED_COLOR = 0x5865f2
-/** Discord embed field limits (characters). */
-const LIMIT = { title: 256, description: 4000, fieldValue: 1024 }
-
 /**
- * Route handler: post an inbound email to a Discord channel via the shared Discord
- * Durable Object (`@repo/discord`), reached with `forDO`.
+ * Route handler for markeedragon@ inbound mail. The message is a Markee Dragon affiliate-sale
+ * notification; its only job here is to trigger a reward. So on each one we award a random
+ * prediction-market wallet a small house-funded bonus and post a celebratory announcement naming the
+ * winner to a Discord channel, via the shared Discord Durable Object (`@repo/discord`, reached with
+ * `forDO`). The email body itself is not posted (it was only ever shown while debugging).
  *
- * On success the email is `consume`d — its purpose is fulfilled by the Discord post, so it
- * is accepted and discarded. Any failure (missing config, or the send failing) throws, so
- * the framework's error fallback preserves the mail (forward-to-fallback) and Sentry
- * captures it rather than the notification being silently lost.
+ * Once the post succeeds the mail is `consume`d (accepted and discarded). The award is best-effort and
+ * never throws; only a missing config or the Discord send failing throws, so the framework's error
+ * fallback preserves the mail (forward-to-fallback) and Sentry captures it.
  */
 export const notifyDiscord: EmailHandler<Env> = async (ctx) => {
 	const guildId = ctx.env.DISCORD_GUILD_ID
@@ -30,24 +27,14 @@ export const notifyDiscord: EmailHandler<Env> = async (ctx) => {
 		)
 	}
 
-	const parsed = await ctx.parsed()
-	const body = (parsed.text ?? htmlToText(parsed.html) ?? '').trim()
-	const timestamp = parseDateOrNull(parsed.date)?.toISOString()
-
-	const embed: DiscordEmbed = {
-		title: truncate(parsed.subject ?? '(no subject)', LIMIT.title),
-		description: body ? truncate(body, LIMIT.description) : '_(empty body)_',
-		color: EMBED_COLOR,
-		fields: [
-			{ name: 'From', value: truncate(ctx.sender, LIMIT.fieldValue), inline: true },
-			{ name: 'To', value: truncate(ctx.recipient, LIMIT.fieldValue), inline: true },
-		],
-		...(timestamp ? { timestamp } : {}),
-	}
+	// Award a random prediction-market wallet a house-funded bonus and build the announcement naming
+	// the winner. Best-effort (never throws); returns null when no one was bonused (empty house / no
+	// wallets / a failure), in which case we post a plain sale notice. As Discord message content, the
+	// announcement renders emoji + custom emotes and the winner mention resolves to their display name.
+	const announcement = await awardAndAnnounce(ctx)
 
 	const message: MessageContent = {
-		content: `📧 New email to **${ctx.recipient}**`,
-		embeds: [embed],
+		content: announcement ?? '📣 A Markee Dragon referral sale just came in!',
 		allowEveryone: false,
 	}
 
@@ -57,28 +44,14 @@ export const notifyDiscord: EmailHandler<Env> = async (ctx) => {
 		throw new Error(`Discord sendMessage failed: ${result.error ?? 'unknown error'}`)
 	}
 
-	ctx.log.info('email posted to Discord', {
+	ctx.log.info('markee bonus announcement posted to Discord', {
 		from: ctx.sender,
 		to: ctx.recipient,
 		channelId,
 		messageId: result.messageId,
+		announced: announcement !== null,
 	})
 
-	// The email's purpose is fulfilled by the Discord post — accept and discard.
+	// The email's purpose (trigger the bonus + announce it) is fulfilled — accept and discard.
 	return consume
-}
-
-function truncate(value: string, max: number): string {
-	return value.length > max ? `${value.slice(0, max - 1)}…` : value
-}
-
-/** Rough HTML→text fallback for emails that carry only an HTML body. */
-function htmlToText(html: string | null): string | null {
-	if (!html) return null
-	return html
-		.replace(/<(script|style)[^>]*>[\s\S]*?<\/\1>/gi, ' ')
-		.replace(/<[^>]+>/g, ' ')
-		.replace(/&nbsp;/gi, ' ')
-		.replace(/\s+/g, ' ')
-		.trim()
 }

@@ -9,6 +9,8 @@ import * as settlement from './services/settlement-service'
 import * as wallet from './services/wallet-service'
 
 import type {
+	AwardBonusInput,
+	AwardBonusResult,
 	BetResult,
 	BetView,
 	CreateMarketInput,
@@ -141,6 +143,10 @@ export class PredictionMarketsDO extends DurableObject<Env> implements Predictio
 		userId: string
 	): Promise<{ balance: string; granted: string; alreadyOnboarded: boolean }> {
 		return wallet.onboardUser(this.deps, userId)
+	}
+
+	async awardRandomBonus(input: AwardBonusInput): Promise<AwardBonusResult> {
+		return wallet.awardRandomBonus(this.deps, input)
 	}
 
 	async createMarket(input: CreateMarketInput): Promise<MarketDetail> {
