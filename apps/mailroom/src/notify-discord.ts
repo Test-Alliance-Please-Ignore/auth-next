@@ -2,6 +2,7 @@ import { forDO } from '@repo/do-utils'
 import { parseDateOrNull } from '@repo/worker-utils'
 
 import { consume } from './email'
+import { awardAndAnnounce } from './markee-bonus'
 
 import type { Discord, DiscordEmbed, MessageContent } from '@repo/discord'
 import type { Env } from './context'
@@ -34,6 +35,14 @@ export const notifyDiscord: EmailHandler<Env> = async (ctx) => {
 	const body = (parsed.text ?? htmlToText(parsed.html) ?? '').trim()
 	const timestamp = parseDateOrNull(parsed.date)?.toISOString()
 
+	// Side perk of a markeedragon@ email: award a random prediction-market wallet a small bonus from
+	// the house wallet, and get back a celebratory announcement naming the winner. Runs BEFORE the post
+	// because the post announces the winner; it is fully self-contained (never throws) and returns null
+	// when no one was bonused (empty house / no wallets / a failure), in which case the post keeps its
+	// plain "new email" line. As Discord message content, the announcement renders emoji AND custom
+	// emotes, and the winner mention resolves to their display name.
+	const announcement = await awardAndAnnounce(ctx)
+
 	const embed: DiscordEmbed = {
 		title: truncate(parsed.subject ?? '(no subject)', LIMIT.title),
 		description: body ? truncate(body, LIMIT.description) : '_(empty body)_',
@@ -46,7 +55,7 @@ export const notifyDiscord: EmailHandler<Env> = async (ctx) => {
 	}
 
 	const message: MessageContent = {
-		content: `📧 New email to **${ctx.recipient}**`,
+		content: announcement ?? `📧 New email to **${ctx.recipient}**`,
 		embeds: [embed],
 		allowEveryone: false,
 	}
@@ -62,6 +71,7 @@ export const notifyDiscord: EmailHandler<Env> = async (ctx) => {
 		to: ctx.recipient,
 		channelId,
 		messageId: result.messageId,
+		announced: announcement !== null,
 	})
 
 	// The email's purpose is fulfilled by the Discord post — accept and discard.

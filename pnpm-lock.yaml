@@ -1831,6 +1831,9 @@ importers:
       '@repo/hono-helpers':
         specifier: workspace:*
         version: link:../../packages/hono-helpers
+      '@repo/prediction-markets':
+        specifier: workspace:*
+        version: link:../../packages/prediction-markets
       '@repo/worker-utils':
         specifier: workspace:*
         version: link:../../packages/worker-utils

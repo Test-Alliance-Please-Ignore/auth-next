@@ -19,6 +19,7 @@
 		"@repo/discord": "workspace:*",
 		"@repo/do-utils": "workspace:*",
 		"@repo/hono-helpers": "workspace:*",
+		"@repo/prediction-markets": "workspace:*",
 		"@repo/worker-utils": "workspace:*",
 		"hono": "4.10.6",
 		"postal-mime": "2.7.5",

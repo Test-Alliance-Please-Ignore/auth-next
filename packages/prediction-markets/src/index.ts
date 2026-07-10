@@ -46,6 +46,25 @@ export interface GrantPointsInput {
 	idempotencyKey?: string
 }
 
+export interface AwardBonusInput {
+	/** Positive integer amount as a decimal string, paid FROM the house/system wallet. */
+	amount: string
+	/** Audit reason recorded on both ledger lines (the house debit and the recipient credit). */
+	reason: string
+}
+
+/**
+ * Outcome of {@link PredictionMarkets.awardRandomBonus}. A discriminated union so callers must
+ * handle the no-op cases explicitly rather than assuming a payout always happened.
+ * - `awarded: true`  — `amount` moved from the house wallet to `userId`; `balanceAfter` is their
+ *   resulting balance.
+ * - `awarded: false` — nothing moved: either no eligible wallet existed, or the house wallet lacked
+ *   the funds to cover the bonus.
+ */
+export type AwardBonusResult =
+	| { awarded: true; userId: string; amount: string; balanceAfter: string }
+	| { awarded: false; reason: 'NO_ELIGIBLE_WALLETS' | 'INSUFFICIENT_HOUSE_FUNDS' }
+
 export interface CreateMarketInput {
 	createdBy: string
 	question: string
@@ -464,6 +483,16 @@ export interface PredictionMarkets {
 	onboardUser(
 		userId: string
 	): Promise<{ balance: string; granted: string; alreadyOnboarded: boolean }>
+	/**
+	 * Award a small bonus to a RANDOM existing (non-system) wallet, paid FROM the house/system
+	 * wallet. This is a pure transfer — the house is debited and the recipient credited by the same
+	 * amount in one atomic transaction, so the total points supply is conserved — booked as two
+	 * `adjustment` ledger lines (metadata `source: 'bonus'`). It is a best-effort perk, so it cleanly
+	 * no-ops (`{ awarded: false }`) when there is no eligible wallet or the house can't fund it,
+	 * rather than throwing. Throws only on a genuinely invalid request (non-positive amount, missing
+	 * reason) or an infra failure.
+	 */
+	awardRandomBonus(input: AwardBonusInput): Promise<AwardBonusResult>
 	createMarket(input: CreateMarketInput): Promise<MarketDetail>
 	/**
 	 * Edit a non-terminal market's safe fields (closing time / question / description). `closesAt` is

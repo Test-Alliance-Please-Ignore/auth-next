@@ -468,3 +468,136 @@ suite('admin override resolve', () => {
 		expect(await balance(proposer)).toBe('0')
 	})
 })
+
+// ---------------------------------------------------------------------------
+// E) award random bonus — a house-funded transfer to a random member
+// ---------------------------------------------------------------------------
+suite('award random bonus', () => {
+	/** Resolve a raked market so the house/system wallet accrues a real, conserved balance. */
+	async function fundHouseViaResolve(): Promise<{ house: bigint; u1: string; u2: string }> {
+		const [creator, resolver, u1, u2] = [1, 2, 3, 4].map(uuid)
+		// rake 10%, no creator reward ⇒ all the rake lands in the house wallet (nothing to the creator,
+		// whose wallet therefore never gets created), keeping the eligible set exactly {u1, u2}.
+		await governance.updateConfig(deps, {
+			actorUserId: ADMIN,
+			defaultRakeBps: 0,
+			defaultMinStake: '1',
+			twoOfNThreshold: null,
+			creatorRewardMinBps: 0,
+			creatorRewardMaxBps: 0,
+		})
+		for (const u of [u1, u2]) await grant(u, '1000') // supply 2000
+		const m = await market.createMarket(deps, {
+			createdBy: creator,
+			question: 'fund the house',
+			outcomes: ['A', 'B'],
+			closesAt: hoursFromNow(1),
+			resolvesOn: hoursFromNow(2),
+			rakeBps: 1000,
+		})
+		const A = m.outcomes.find((o) => o.label === 'A')!.id
+		const B = m.outcomes.find((o) => o.label === 'B')!.id
+		await betting.placeBet(deps, {
+			userId: u1,
+			marketId: m.id,
+			outcomeId: A,
+			amount: '100',
+			idempotencyKey: 'ab-u1',
+		})
+		await betting.placeBet(deps, {
+			userId: u2,
+			marketId: m.id,
+			outcomeId: B,
+			amount: '100',
+			idempotencyKey: 'ab-u2',
+		})
+		await market.closeMarket(deps, { actorUserId: resolver, marketId: m.id })
+		const res = await settlement.proposeResolution(deps, {
+			resolverId: resolver,
+			marketId: m.id,
+			outcomeId: A,
+		})
+		expect(res.status).toBe('resolved')
+		const house = BigInt(await balance(SYSTEM))
+		expect(house).toBeGreaterThan(0n)
+		await assertConservation(2000n) // a resolve is a pure redistribution
+		return { house, u1, u2 }
+	}
+
+	it('moves the bonus from the house wallet to a random member and conserves supply', async () => {
+		const { house, u1, u2 } = await fundHouseViaResolve()
+		const before1 = BigInt(await balance(u1))
+		const before2 = BigInt(await balance(u2))
+
+		const result = await wallet.awardRandomBonus(deps, { amount: '3', reason: 'markee bonus' })
+		expect(result.awarded).toBe(true)
+		if (!result.awarded) throw new Error('expected an award')
+		// The winner is a real member (never the house), drawn from the only eligible wallets.
+		expect(result.userId).not.toBe(SYSTEM)
+		expect([u1, u2]).toContain(result.userId)
+		expect(result.amount).toBe('3')
+
+		// House down by exactly 3; exactly one member up by exactly 3; nothing created or destroyed.
+		expect(BigInt(await balance(SYSTEM))).toBe(house - 3n)
+		const d1 = BigInt(await balance(u1)) - before1
+		const d2 = BigInt(await balance(u2)) - before2
+		expect(d1 + d2).toBe(3n)
+		expect([d1, d2]).toContain(3n)
+		expect(BigInt(await balance(result.userId))).toBe(
+			result.userId === u1 ? before1 + 3n : before2 + 3n
+		)
+		await assertConservation(2000n)
+
+		// Booked as two `adjustment` lines (house −3, member +3) that net to zero, tagged source:'bonus'.
+		const adj = await deps.db
+			.select({ userId: pmLedger.userId, amount: pmLedger.amount, metadata: pmLedger.metadata })
+			.from(pmLedger)
+			.where(eq(pmLedger.type, 'adjustment'))
+		expect(adj).toHaveLength(2)
+		expect(adj.reduce((s, r) => s + BigInt(r.amount), 0n)).toBe(0n)
+		const houseLine = adj.find((r) => r.userId === SYSTEM)!
+		const memberLine = adj.find((r) => r.userId === result.userId)!
+		expect(BigInt(houseLine.amount)).toBe(-3n)
+		expect(BigInt(memberLine.amount)).toBe(3n)
+		// Audit payload (not just the tag): the reason is stamped on BOTH lines, and the house debit
+		// carries counterpartyUserId linking it to the winner — the adjustment lines have no
+		// marketId/betId, so this is the only ledger link pairing the two halves of the transfer.
+		const meta = (r: (typeof adj)[number]) =>
+			r.metadata as { source?: string; reason?: string; counterpartyUserId?: string }
+		expect(meta(houseLine)).toMatchObject({ source: 'bonus', reason: 'markee bonus' })
+		expect(meta(memberLine)).toMatchObject({ source: 'bonus', reason: 'markee bonus' })
+		expect(meta(houseLine).counterpartyUserId).toBe(result.userId)
+	})
+
+	it('skips cleanly when there are no eligible wallets', async () => {
+		// Fresh truncated state ⇒ pm_wallets is empty (not even a house wallet exists).
+		const result = await wallet.awardRandomBonus(deps, { amount: '5', reason: 'x' })
+		expect(result).toEqual({ awarded: false, reason: 'NO_ELIGIBLE_WALLETS' })
+	})
+
+	it('skips (and moves no money) when the house wallet cannot fund the bonus', async () => {
+		await grant(uuid(3), '10') // creates only the member's wallet; the house wallet stays absent
+		const result = await wallet.awardRandomBonus(deps, { amount: '5', reason: 'x' })
+		expect(result).toEqual({ awarded: false, reason: 'INSUFFICIENT_HOUSE_FUNDS' })
+		expect(await balance(uuid(3))).toBe('10') // untouched
+		const [{ n }] = await deps.db
+			.select({ n: sql<number>`count(*)::int` })
+			.from(pmLedger)
+			.where(eq(pmLedger.type, 'adjustment'))
+		expect(n).toBe(0) // no ledger lines written on a skip
+		await assertConservation(10n)
+	})
+
+	it('rejects an invalid request (non-positive amount / missing reason)', async () => {
+		await grant(uuid(3), '10')
+		await expect(wallet.awardRandomBonus(deps, { amount: '0', reason: 'x' })).rejects.toThrow(
+			'INVALID_AMOUNT'
+		)
+		await expect(wallet.awardRandomBonus(deps, { amount: 'abc', reason: 'x' })).rejects.toThrow(
+			'INVALID_AMOUNT'
+		)
+		await expect(wallet.awardRandomBonus(deps, { amount: '5', reason: '  ' })).rejects.toThrow(
+			'REASON_REQUIRED'
+		)
+	})
+})
