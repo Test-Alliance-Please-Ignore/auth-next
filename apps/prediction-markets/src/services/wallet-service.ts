@@ -1,13 +1,13 @@
-import { and, eq, ne, sql } from '@repo/db-utils'
+import { eq, ne, sql } from '@repo/db-utils'
 import { captureException } from '@repo/hono-helpers'
 import { SYSTEM_WALLET_USER_ID } from '@repo/prediction-markets'
 
-import { pmLedger } from '../db/schema'
+import { pmLedger, pmWallets } from '../db/schema'
 import { isExpectedError, PmError } from '../lib/errors'
 import { formatAmount, isPositiveIntegerString, parseAmount } from '../lib/money'
 import { ONBOARDING_GRANT, ONBOARDING_REASON, SYSTEM_ACTOR } from './context'
 import { getWalletBalance } from './read-service'
-import { creditWallet, lockWallet } from './transaction-service'
+import { creditWallet, lockWallet, transfer } from './transaction-service'
 
 import type { AwardBonusInput, AwardBonusResult, GrantPointsInput } from '@repo/prediction-markets'
 import type { PmDeps } from './context'
@@ -159,49 +159,46 @@ export async function awardRandomBonus(
 				.for('update')
 			if (!winner) return { awarded: false, reason: 'NO_ELIGIBLE_WALLETS' }
 
-			// Debit the house wallet, overdraft-safe (mirrors placeBet's guarded debit): the balance
-			// guard makes 0 affected rows mean "house can't fund this" — skip without moving money. This
-			// also handles a house wallet that has never been created (no row ⇒ 0 rows ⇒ skip).
-			const debited = await tx
-				.update(pmWallets)
-				.set({
-					balance: sql`${pmWallets.balance} - ${formatted}::numeric`,
-					updatedAt: new Date(),
+			// Move the bonus house → winner through the money engine's single audited transfer path
+			// (its docstring names exactly this "system → member bonuses" use). transfer debits the
+			// house overdraft-safe and never lazily creates it, so a broke or never-created house
+			// wallet surfaces as INSUFFICIENT_FUNDS — which we map to the best-effort no-op the
+			// contract promises rather than letting it throw. Booked as two `adjustment` lines tagged
+			// source:'bonus'; the house-debit line also records the counterparty for audit.
+			try {
+				const { toBalanceAfter } = await transfer(tx, {
+					fromUserId: SYSTEM_WALLET_USER_ID,
+					toUserId: winner.userId,
+					amount,
+					debit: {
+						type: 'adjustment',
+						metadata: {
+							source: 'bonus',
+							reason: input.reason,
+							counterpartyUserId: winner.userId,
+						},
+					},
+					credit: {
+						type: 'adjustment',
+						metadata: { source: 'bonus', reason: input.reason },
+					},
+					// The winner's wallet exists (we just locked it above); the house wallet must NOT be
+					// lazily created — a missing house row has to read as insufficient, not spring to life.
+					ensureTo: false,
 				})
-				.where(
-					and(
-						eq(pmWallets.userId, SYSTEM_WALLET_USER_ID),
-						sql`${pmWallets.balance} >= ${formatted}::numeric`
-					)
-				)
-				.returning({ balance: pmWallets.balance })
-			if (debited.length === 0) {
-				return { awarded: false, reason: 'INSUFFICIENT_HOUSE_FUNDS' }
-			}
-
-			// Record the house debit as a signed (negative) adjustment line carrying its running balance.
-			await tx.insert(pmLedger).values({
-				userId: SYSTEM_WALLET_USER_ID,
-				amount: formatAmount(-amount),
-				type: 'adjustment',
-				balanceAfter: debited[0].balance,
-				metadata: { source: 'bonus', reason: input.reason, counterpartyUserId: winner.userId },
-			})
-
-			// Credit the winner. Their wallet exists (we just selected it), so skip the lazy upsert.
-			const { balanceAfter } = await creditWallet(tx, {
-				userId: winner.userId,
-				amount,
-				type: 'adjustment',
-				metadata: { source: 'bonus', reason: input.reason },
-				ensureWallet: false,
-			})
-
-			return {
-				awarded: true,
-				userId: winner.userId,
-				amount: formatted,
-				balanceAfter: balanceAfter ?? '0',
+				return {
+					awarded: true,
+					userId: winner.userId,
+					amount: formatted,
+					balanceAfter: toBalanceAfter ?? '0',
+				}
+			} catch (error) {
+				// Best-effort contract: an underfunded (or never-created) house can't cover the bonus —
+				// no-op instead of failing the caller. Every other error propagates to the outer boundary.
+				if (error instanceof PmError && error.message === 'INSUFFICIENT_FUNDS') {
+					return { awarded: false, reason: 'INSUFFICIENT_HOUSE_FUNDS' }
+				}
+				throw error
 			}
 		})
 	} catch (error) {
