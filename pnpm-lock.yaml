@@ -1834,9 +1834,6 @@ importers:
       '@repo/prediction-markets':
         specifier: workspace:*
         version: link:../../packages/prediction-markets
-      '@repo/worker-utils':
-        specifier: workspace:*
-        version: link:../../packages/worker-utils
       hono:
         specifier: 4.10.6
         version: 4.10.6
