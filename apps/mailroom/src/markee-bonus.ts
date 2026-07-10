@@ -12,19 +12,22 @@ const DEFAULT_BONUS_AMOUNT = '5'
 
 /**
  * Predefined celebratory openers for the bonus announcement. One is chosen at random and the winner's
- * display name is appended (see {@link awardAndAnnounce}). These are sent as Discord message *content*,
- * so both unicode emoji AND custom guild emotes render — drop `<:name:id>` / `<a:name:id>` syntax in
- * here (using the real emote id from this guild) and it comes across as a live emote.
+ * display name is appended (see {@link awardAndAnnounce}). Each states WHY the bonus is being paid — a
+ * Markee Dragon referral/affiliate sale generated a commission, so the house shares points with a
+ * random member — so the announcement is self-explanatory even when no {@link BONUS_HEADINGS} is set.
+ * These are sent as Discord message *content*, so both unicode emoji AND custom guild emotes render —
+ * drop `<:name:id>` / `<a:name:id>` syntax in here (using the real emote id from this guild) and it
+ * comes across as a live emote.
  */
 export const BONUS_MESSAGES: readonly string[] = [
-	'🎉 Jackpot! Bonus points just landed for',
-	'💰 Ka-ching! The house is feeling generous toward',
-	'✨ A wild bonus appears for',
-	'🍀 Fortune smiles upon',
-	'🎁 Surprise! A little something from the vault for',
-	'🚀 Points incoming — congrats to',
-	'🏆 Winner winner! Bonus points go to',
-	'📬 The mail carrier brought a gift for',
+	'🎉 A Markee Dragon referral sale just landed, so bonus points go to',
+	'💰 Our referral link earned a commission — sharing the winnings with',
+	'✨ Someone bought game codes through our code, so a bonus flies to',
+	'🍀 A Markee Dragon affiliate sale means free points for',
+	'🎁 Thanks to a referral purchase, the house is gifting points to',
+	'🚀 Referral commission in the bank — bonus points launched to',
+	'🏆 A Markee Dragon sale just paid out, and the lucky winner is',
+	'📬 A referral order came through, so points are headed to',
 ]
 
 /**

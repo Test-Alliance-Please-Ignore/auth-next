@@ -95,6 +95,39 @@ describe('notifyDiscord', () => {
 		expect(disposition).toEqual({ type: 'consume' })
 	})
 
+	it('reproduces a real Markee Dragon affiliate email body in the Discord embed', async () => {
+		const sendMessage = vi.fn().mockResolvedValue({ success: true, messageId: 'm1' })
+		const from = 'test.high.command+caf_=markeedragon=pleaseignore.app@gmail.com'
+		// The actual affiliate-notification body Markee Dragon sends (whitespace-collapsed to one run,
+		// exactly as it reaches Discord).
+		const body =
+			'Your link to Markee Dragon Game Codes has generated a sale! Customer Service: ' +
+			'support@markeedragon.com | Phone: (512) 666-7740 | Postal: PO Box # 106 ,Hereford, USA 85615 ' +
+			'Your link to Markee Dragon Game Codes generated a sale on 2026-07-10 19:30:43 Order ID: 914805, ' +
+			'Your commission: $6.06 Total owed to you: $15.31 Thank you for your help! You can log in to ' +
+			'check how much you have earned at: https://store.markeedragon.com/affiliate/login.php ' +
+			'Markee Dragon Game Codes'
+		const mime =
+			`From: ${from}\r\nTo: markeedragon@pleaseignore.app\r\n` +
+			`Subject: Markee Dragon Game Codes affiliate notification\r\n\r\n${body}`
+		const message = makeMessage({ to: 'markeedragon@pleaseignore.app', from, mime })
+		const ctx = createEmailContext(message, envWith(sendMessage), fakeExecutionCtx(), log)
+
+		await notifyDiscord(ctx)
+		const [, , sent] = sendMessage.mock.calls[0]
+		const embed = sent.embeds[0]
+		expect(embed.title).toBe('Markee Dragon Game Codes affiliate notification')
+		expect(embed.description).toContain('has generated a sale')
+		expect(embed.description).toContain('Order ID: 914805')
+		expect(embed.description).toContain('Your commission: $6.06')
+		expect(embed.description).toContain('Total owed to you: $15.31')
+		expect(embed.description).toContain('https://store.markeedragon.com/affiliate/login.php')
+		expect(embed.fields).toEqual([
+			{ name: 'From', value: from, inline: true },
+			{ name: 'To', value: 'markeedragon@pleaseignore.app', inline: true },
+		])
+	})
+
 	it('throws when guild/channel are not configured (before any award)', async () => {
 		const sendMessage = vi.fn()
 		const award = skippedAward()
