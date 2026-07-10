@@ -38,7 +38,7 @@
 		// in that guild and able to post in the channel). Until both are set, mail to markeedragon@
 		// errors out to the fallback/last-resort path rather than posting.
 		"DISCORD_GUILD_ID": "356398105404375041",
-		"MARKEE_DISCORD_CHANNEL_ID": "730208741181358100",
+		"MARKEE_DISCORD_CHANNEL_ID": "362144221148479489",
 		// Points awarded to a random prediction-market wallet on each markeedragon@ email, paid from
 		// the house wallet. Tune without a code change; the award silently no-ops if the house can't fund it.
 		"MARKEE_BONUS_AMOUNT": "5"
