@@ -1,12 +1,13 @@
 import { and, eq, sql } from '@repo/db-utils'
 import { captureException, logger } from '@repo/hono-helpers'
 
-import { pmBets, pmLedger, pmMarketOutcomes, pmMarkets, pmWallets } from '../db/schema'
+import { pmBets, pmMarketOutcomes, pmMarkets } from '../db/schema'
 import { isDesignatedResolver } from '../lib/designated-resolvers'
 import { isExpectedError, PmError } from '../lib/errors'
-import { isPositiveIntegerString, negateAmount, parseAmount } from '../lib/money'
+import { isPositiveIntegerString, parseAmount } from '../lib/money'
 import { dbErrorCause } from './context'
 import { consumeRateBudget, logHistory, toBetResult } from './shared'
+import { debitWallet } from './transaction-service'
 
 import type { BetResult, PlaceBetInput } from '@repo/prediction-markets'
 import type { PmDeps } from './context'
@@ -115,29 +116,15 @@ export async function placeBet(
 			}
 			const bet = inserted[0]
 
-			// Atomic overdraft-safe debit. 0 rows ⇒ insufficient funds ⇒ rolls back the bet.
-			const debited = await tx
-				.update(pmWallets)
-				.set({
-					balance: sql`${pmWallets.balance} - ${input.amount}::numeric`,
-					updatedAt: new Date(),
-				})
-				.where(
-					and(
-						eq(pmWallets.userId, input.userId),
-						sql`${pmWallets.balance} >= ${input.amount}::numeric`
-					)
-				)
-				.returning({ balance: pmWallets.balance })
-			if (debited.length === 0) throw new PmError('INSUFFICIENT_FUNDS')
-
-			await tx.insert(pmLedger).values({
+			// Atomic overdraft-safe debit (throws INSUFFICIENT_FUNDS on too-low balance, rolling back
+			// the bet). The wager ledger line — negative amount, running balanceAfter — is written by
+			// debitWallet, the mirror of the credit path every payout/refund/rake routes through.
+			await debitWallet(tx, {
 				userId: input.userId,
-				amount: negateAmount(input.amount),
+				amount,
 				type: 'wager',
 				marketId: input.marketId,
 				betId: bet.id,
-				balanceAfter: debited[0].balance,
 			})
 
 			await tx

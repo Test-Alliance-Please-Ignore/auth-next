@@ -2,12 +2,12 @@ import { and, eq, ne, sql } from '@repo/db-utils'
 import { captureException } from '@repo/hono-helpers'
 import { SYSTEM_WALLET_USER_ID } from '@repo/prediction-markets'
 
-import { pmLedger, pmWallets } from '../db/schema'
+import { pmLedger } from '../db/schema'
 import { isExpectedError, PmError } from '../lib/errors'
 import { formatAmount, isPositiveIntegerString, parseAmount } from '../lib/money'
 import { ONBOARDING_GRANT, ONBOARDING_REASON, SYSTEM_ACTOR } from './context'
 import { getWalletBalance } from './read-service'
-import { creditWallet } from './shared'
+import { creditWallet, lockWallet } from './transaction-service'
 
 import type { AwardBonusInput, AwardBonusResult, GrantPointsInput } from '@repo/prediction-markets'
 import type { PmDeps } from './context'
@@ -38,16 +38,7 @@ export async function grantPoints(
 			// winner's committed ledger row here and dedupes gracefully — rather than racing past
 			// the pre-check into a ledger unique-violation (money was always safe, but the raw
 			// 23505 pages Sentry and surfaces a spurious failure to an already-granted user).
-			await tx
-				.insert(pmWallets)
-				.values({ userId: input.targetUserId, balance: '0' })
-				.onConflictDoNothing()
-			const [locked] = await tx
-				.select({ balance: pmWallets.balance })
-				.from(pmWallets)
-				.where(eq(pmWallets.userId, input.targetUserId))
-				.for('update')
-				.limit(1)
+			const locked = await lockWallet(tx, input.targetUserId)
 
 			// Idempotent grant: a repeated key must match the original (user, amount, type),
 			// otherwise a reused/forged key would silently drop a real deposit.
@@ -65,7 +56,7 @@ export async function grantPoints(
 					if (!same) {
 						throw new PmError('IDEMPOTENCY_KEY_CONFLICT')
 					}
-					return { balance: locked?.balance ?? '0', deduped: true }
+					return { balance: locked.balance, deduped: true }
 				}
 			}
 
@@ -79,7 +70,7 @@ export async function grantPoints(
 				ensureWallet: false,
 			})
 
-			return { balance: balanceAfter ?? locked?.balance ?? '0', deduped: false }
+			return { balance: balanceAfter ?? locked.balance, deduped: false }
 		})
 	} catch (error) {
 		// A mismatched idempotency key is a caller-side outcome (the admin route maps it to 409;

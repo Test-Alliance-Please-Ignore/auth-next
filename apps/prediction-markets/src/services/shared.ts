@@ -3,14 +3,12 @@ import { and, desc, eq, sql } from '@repo/db-utils'
 import {
 	pmBets,
 	pmConfig,
-	pmLedger,
 	pmMarketHistory,
 	pmMarketOutcomes,
 	pmMarkets,
 	pmRateLimits,
-	pmWallets,
 } from '../db/schema'
-import { formatAmount, parseAmount } from '../lib/money'
+import { parseAmount } from '../lib/money'
 import { RATE_BUDGETS } from '../lib/rate-limit'
 
 import type {
@@ -20,73 +18,8 @@ import type {
 	MarketHistoryRow,
 	PmConfigView,
 } from '@repo/prediction-markets'
-import type {
-	NewPmLedgerRow,
-	PmBet,
-	PmConfig,
-	PmLedgerRow,
-	PmMarket,
-	PmMarketHistoryRow,
-} from '../db/schema'
+import type { PmBet, PmConfig, PmLedgerRow, PmMarket, PmMarketHistoryRow } from '../db/schema'
 import type { HistoryEntry, PmDatabase, PmExecutor, PmTransaction } from './context'
-
-/**
- * The single audited money-credit primitive. Optionally lazily creates the wallet row, applies one
- * atomic balance increment, and appends the matching `pm_ledger` line carrying the running
- * `balanceAfter`. Every credit (payout / refund / creator_reward / rake / burn / grant) routes
- * through here so the credit-then-record invariant — and the balanceAfter snapshot — lives in
- * exactly one place rather than being hand-rolled per call site.
- *
- * `amount` is a non-negative points bigint. Because every caller has already ensured (or is about
- * to ensure) the wallet exists, `credited` is always present; the `?? null` fallbacks are defensive.
- * Returns the post-credit balance string (null only if the wallet row vanished mid-transaction).
- */
-export async function creditWallet(
-	tx: PmExecutor,
-	args: {
-		userId: string
-		amount: bigint
-		type: NewPmLedgerRow['type']
-		marketId?: string
-		betId?: string
-		idempotencyKey?: string
-		metadata?: unknown
-		/** Lazily `INSERT ... ON CONFLICT DO NOTHING` the wallet row first (default true). Pass false
-		 * when the caller has already created/locked the wallet in this transaction. */
-		ensureWallet?: boolean
-	}
-): Promise<{ balanceAfter: string | null }> {
-	const {
-		userId,
-		amount,
-		type,
-		marketId,
-		betId,
-		idempotencyKey,
-		metadata,
-		ensureWallet = true,
-	} = args
-	if (ensureWallet) {
-		await tx.insert(pmWallets).values({ userId, balance: '0' }).onConflictDoNothing()
-	}
-	const formatted = formatAmount(amount)
-	const [credited] = await tx
-		.update(pmWallets)
-		.set({ balance: sql`${pmWallets.balance} + ${formatted}::numeric`, updatedAt: new Date() })
-		.where(eq(pmWallets.userId, userId))
-		.returning({ balance: pmWallets.balance })
-	await tx.insert(pmLedger).values({
-		userId,
-		amount: formatted,
-		type,
-		marketId: marketId ?? null,
-		betId: betId ?? null,
-		balanceAfter: credited?.balance ?? null,
-		idempotencyKey: idempotencyKey ?? null,
-		metadata: metadata ?? null,
-	})
-	return { balanceAfter: credited?.balance ?? null }
-}
 
 export async function logHistory(executor: PmExecutor, entry: HistoryEntry): Promise<void> {
 	await executor.insert(pmMarketHistory).values({
