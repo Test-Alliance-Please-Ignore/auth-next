@@ -19,6 +19,7 @@ export type LedgerType =
 	| 'burn'
 	| 'adjustment'
 	| 'creator_reward'
+	| 'wallet_created'
 export type ProposalStatus = 'pending' | 'approved' | 'rejected' | 'superseded'
 export type Visibility = 'public' | 'internal'
 

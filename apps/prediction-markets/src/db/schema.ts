@@ -40,6 +40,10 @@ export const pmLedgerType = pgEnum('pm_ledger_type', [
 	// A random slice of a resolved market's rake paid to the market's creator (see
 	// creator_reward_{min,max}_bps on pm_config). The remaining rake still books as a 'rake' line.
 	'creator_reward',
+	// A zero-amount genesis marker booked the moment a wallet row is first created (whether by
+	// onboarding or a lazy credit). Purely an audit breadcrumb — it never moves points — so every
+	// wallet's creation is traceable in the ledger, not just its first funding event.
+	'wallet_created',
 ])
 
 export const pmProposalStatus = pgEnum('pm_proposal_status', [
