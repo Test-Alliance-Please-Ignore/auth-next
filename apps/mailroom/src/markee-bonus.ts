@@ -34,10 +34,8 @@ export const BONUS_MESSAGES: readonly string[] = [
  * rules as {@link BONUS_MESSAGES} — unicode emoji and custom `<:name:id>` emotes both render.
  */
 export const BONUS_HEADINGS: readonly string[] = [
-	'Someone just used our referral code to buy ETCs from Markee Dragon!' +
-		'\n' +
-		'Get your own at https://etc.pleaseignore.com, use code tapi for a discount' +
-		'Additionally',
+	'📣 Someone just used our referral code to buy ETCs from **Markee Dragon**!\n' +
+		'Get your own at <https://etc.pleaseignore.com> — use code **tapi** for a discount.\n',
 ]
 
 /** Pick a random predefined opener. */
