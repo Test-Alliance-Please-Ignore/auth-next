@@ -4,6 +4,7 @@ import { TaxCorporationScopeSelector } from '@/components/tax-corporation-scope-
 import { MemberSummaryGridCard } from '@/components/tax-member-summary/member-summary-grid-card'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Container } from '@/components/ui/container'
+import { Button } from '@/components/ui/button'
 import { DateRangeInput } from '@/components/ui/date-range-input'
 import { Input } from '@/components/ui/input'
 import { PageHeader } from '@/components/ui/page-header'
@@ -18,33 +19,41 @@ import { useEntityNames } from '@/hooks/useEntityNames'
 import { usePageTitle } from '@/hooks/usePageTitle'
 import { getCurrentMonthDateRange } from '@/lib/tax-date'
 import { formatTaxIskCompact, formatTaxNumber } from '@/lib/tax-display'
-import { Button } from '@/components/ui/button'
 
 const DEFAULT_MONTH_RANGE = getCurrentMonthDateRange()
 export default function TaxMemberSummaryPage() {
 	usePageTitle('Tax Member Summary')
 
-	const { data: globalCapabilities } = useTaxCapabilities()
+	const { data: globalCapabilities, isLoading: globalCapabilitiesLoading } = useTaxCapabilities()
 	const canReadWithUrn = globalCapabilities?.global.canRead ?? false
-	const { data: corporationAccess } = useCorporationAccess()
+	const { data: corporationAccess, isLoading: corporationAccessLoading } = useCorporationAccess()
 
-	const { data: corporationSettings = [] } = useTaxCorporations({
+	const { data: corporationSettings = [], isLoading: corporationSettingsLoading } = useTaxCorporations({
 		limit: 1000,
 		enabled: canReadWithUrn,
 	})
+	const isCorporationScopeLoading =
+		globalCapabilitiesLoading || corporationAccessLoading || corporationSettingsLoading
+
 	const unresolvedCorporationIds = useMemo(() => {
+		if (isCorporationScopeLoading) {
+			return []
+		}
 		const accessIdSet = new Set(
 			(corporationAccess?.corporations ?? []).map((corp) => corp.corporationId)
 		)
 		return corporationSettings
 			.map((setting) => setting.corporationId)
 			.filter((corporationId) => !accessIdSet.has(corporationId))
-	}, [corporationAccess?.corporations, corporationSettings])
+	}, [isCorporationScopeLoading, corporationAccess?.corporations, corporationSettings])
 	const { data: resolvedCorporationNames = {} } = useEntityNames(unresolvedCorporationIds, {
-		enabled: unresolvedCorporationIds.length > 0,
+		enabled: !isCorporationScopeLoading && unresolvedCorporationIds.length > 0,
 	})
 
 	const corporationOptions = useMemo(() => {
+		if (isCorporationScopeLoading) {
+			return []
+		}
 		const map = new Map<string, string>()
 		for (const corp of corporationAccess?.corporations ?? []) {
 			map.set(corp.corporationId, corp.name)
@@ -58,7 +67,7 @@ export default function TaxMemberSummaryPage() {
 			}
 		}
 		return Array.from(map.entries()).map(([corporationId, name]) => ({ corporationId, name }))
-	}, [corporationAccess?.corporations, corporationSettings, resolvedCorporationNames])
+	}, [isCorporationScopeLoading, corporationAccess?.corporations, corporationSettings, resolvedCorporationNames])
 
 	const [selectedCorporationId, setSelectedCorporationId] = useState<string | undefined>(undefined)
 	const [characterQuery, setCharacterQuery] = useState('')
@@ -84,6 +93,9 @@ export default function TaxMemberSummaryPage() {
 	)
 
 	const effectiveCorporationId = useMemo(() => {
+		if (isCorporationScopeLoading) {
+			return undefined
+		}
 		if (selectedCorporationId) {
 			return selectedCorporationId
 		}
@@ -91,12 +103,18 @@ export default function TaxMemberSummaryPage() {
 			return corporationOptions[0]?.corporationId
 		}
 		return undefined
-	}, [selectedCorporationId, corporationOptions])
+	}, [isCorporationScopeLoading, selectedCorporationId, corporationOptions])
 
 	const { data: scopedCapabilities } = useTaxCapabilities(
 		effectiveCorporationId,
 		Boolean(effectiveCorporationId)
 	)
+	const canViewSummaryTotals =
+		(globalCapabilities?.global.canAudit ?? false) || (scopedCapabilities?.scoped.canAudit ?? false)
+	const canViewMemberSummary =
+		canReadWithUrn ||
+		(scopedCapabilities?.scoped.canRead ?? false) ||
+		(corporationAccess?.hasAccess ?? false)
 	const canSearchCharacter =
 		canReadWithUrn ||
 		(scopedCapabilities?.scoped.canRead ?? false) ||
@@ -113,7 +131,7 @@ export default function TaxMemberSummaryPage() {
 		corporationId: effectiveCorporationId,
 		fromDate: fromDateIso,
 		toDate: toDateIso,
-		enabled: Boolean(effectiveCorporationId),
+		enabled: Boolean(effectiveCorporationId) && !isCorporationScopeLoading && canViewSummaryTotals,
 	})
 
 	const isRefreshing = isSummaryReportFetching
@@ -126,7 +144,16 @@ export default function TaxMemberSummaryPage() {
 			/>
 
 			<Section>
-				{corporationOptions.length > 0 ? (
+				{isCorporationScopeLoading ? (
+					<Card>
+						<CardHeader>
+							<CardTitle>Loading Corporation Scope</CardTitle>
+							<CardDescription>
+								Resolving accessible corporations before loading member summaries.
+							</CardDescription>
+						</CardHeader>
+					</Card>
+				) : corporationOptions.length > 0 ? (
 					<TaxCorporationScopeSelector
 						corporations={corporationOptions}
 						effectiveCorporationId={effectiveCorporationId}
@@ -180,13 +207,14 @@ export default function TaxMemberSummaryPage() {
 										className="h-10"
 									/>
 								</div>
-								<Button variant="ghost"
+								<Button
 									type="button"
 									onClick={() => {
 										void refetchSummaryReport()
 										setRefreshToken((value) => value + 1)
 									}}
 									disabled={isRefreshing}
+									variant="ghost"
 									className="h-10"
 								>
 									{isRefreshing ? 'Refreshing…' : 'Refresh'}
@@ -221,18 +249,22 @@ export default function TaxMemberSummaryPage() {
 							{formatTaxIskCompact(memberStats.totalTaxableIncome)}
 						</CardContent>
 					</Card>
-					<Card>
-						<CardHeader className="pb-2">
-							<CardTitle className="text-sm">Taxes Paid</CardTitle>
-						</CardHeader>
-						<CardContent className="text-2xl font-semibold">
-							{formatTaxIskCompact(summaryReport?.taxPaid ?? '0')}
-						</CardContent>
-					</Card>
+					{canViewSummaryTotals ? (
+						<Card>
+							<CardHeader className="pb-2">
+								<CardTitle className="text-sm">Taxes Paid</CardTitle>
+							</CardHeader>
+							<CardContent className="text-2xl font-semibold">
+								{formatTaxIskCompact(summaryReport?.taxPaid ?? '0')}
+							</CardContent>
+						</Card>
+					) : null}
 				</div>
 
 				<MemberSummaryGridCard
 					effectiveCorporationId={effectiveCorporationId}
+					isScopeLoading={isCorporationScopeLoading}
+					canViewSummary={canViewMemberSummary}
 					canSearchCharacter={canSearchCharacter}
 					characterQuery={characterQuery}
 					fromDateIso={fromDateIso}

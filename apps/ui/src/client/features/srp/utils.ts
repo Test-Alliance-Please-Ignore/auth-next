@@ -154,3 +154,14 @@ export function getRequestCharacterRole(
 	}
 	return undefined
 }
+
+export function isDateRangeWithinOneYear(dateFrom?: string, dateTo?: string): boolean {
+	if (!dateFrom || !dateTo) return false
+	const from = new Date(dateFrom.includes('T') ? dateFrom : `${dateFrom}T00:00:00.000Z`)
+	const to = new Date(dateTo.includes('T') ? dateTo : `${dateTo}T23:59:59.999Z`)
+	if (Number.isNaN(from.getTime()) || Number.isNaN(to.getTime())) return false
+	if (to < from) return false
+	const maxTo = new Date(from.getTime())
+	maxTo.setUTCFullYear(maxTo.getUTCFullYear() + 1)
+	return to <= maxTo
+}

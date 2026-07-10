@@ -1,5 +1,6 @@
 import { AlertTriangle } from 'lucide-react'
-import { useEffect, useState } from 'react'
+import { useQuery } from '@tanstack/react-query'
+import { useCallback, useEffect, useState } from 'react'
 import { Link, Navigate } from 'react-router-dom'
 
 import { UserSearchPaginationControls } from '@/components/user-search-pagination-controls'
@@ -8,6 +9,7 @@ import { Container } from '@/components/ui/container'
 import { DateRangeInput } from '@/components/ui/date-range-input'
 import { EveTimeDisplay } from '@/components/ui/eve-time-display'
 import { HoverPopover } from '@/components/ui/hover-popover'
+import { Button } from '@/components/ui/button'
 import { PageHeader } from '@/components/ui/page-header'
 import { Select } from '@/components/ui/select'
 import { Switch } from '@/components/ui/switch'
@@ -30,7 +32,7 @@ import {
 	useWalletHistoryUiState,
 	updateWalletHistoryFilters,
 } from '../state/wallet-history-store'
-import { formatISK } from '../utils'
+import { formatISK, isDateRangeWithinOneYear } from '../utils'
 
 export default function SRPWalletHistoryPage() {
 	usePageTitle('SRP - Wallet History')
@@ -38,6 +40,49 @@ export default function SRPWalletHistoryPage() {
 	const filters = useWalletHistoryUiState((state) => state.filters)
 	const page = useWalletHistoryUiState((state) => state.page)
 	const pageSize = useWalletHistoryUiState((state) => state.pageSize)
+	const [pendingExport, setPendingExport] = useState<{
+		workflowInstanceId: string
+		fileName: string
+	} | null>(null)
+	const [isExporting, setIsExporting] = useState(false)
+
+	const exportStatusQuery = useQuery({
+		queryKey: ['srp', 'payments', 'wallet-history', 'export-status', pendingExport?.workflowInstanceId ?? null],
+		queryFn: () => api.getSrpWalletHistoryCsvExportStatus(pendingExport!.workflowInstanceId),
+		enabled: Boolean(pendingExport?.workflowInstanceId),
+		refetchInterval: (query) => {
+			const status = query.state.data?.status
+			return status === 'queued' || status === 'running' ? 5000 : false
+		},
+		refetchOnWindowFocus: false,
+	})
+	const exportStatus = exportStatusQuery.data?.status
+	const isExportPolling =
+		Boolean(pendingExport) && (exportStatus === undefined || exportStatus === 'queued' || exportStatus === 'running')
+	const isExportBusy = isExporting || isExportPolling
+
+	useEffect(() => {
+		if (!pendingExport) return
+		if (!exportStatusQuery.data) return
+		if (exportStatusQuery.data.status === 'completed') {
+			void (async () => {
+				try {
+					await api.downloadSrpWalletHistoryCsv(
+						pendingExport.workflowInstanceId,
+						pendingExport.fileName
+					)
+				} finally {
+					setPendingExport(null)
+					setIsExporting(false)
+				}
+			})()
+			return
+		}
+		if (exportStatusQuery.data.status === 'failed' || exportStatusQuery.data.status === 'unknown') {
+			setPendingExport(null)
+			setIsExporting(false)
+		}
+	}, [exportStatusQuery.data, pendingExport])
 
 	const canAccess = hasAnyPermission('urn:srp:payer', 'urn:srp:manager')
 	if (!canAccess) return <Navigate to="/srp" replace />
@@ -59,6 +104,34 @@ export default function SRPWalletHistoryPage() {
 	const total = effectiveData?.total ?? 0
 	const hasPagination = Math.ceil(total / pageSize) > 1
 	const isSoftLoading = Boolean(effectiveData) && (isLoading || isFetching)
+	const canExportCsv = Boolean(
+		filters.dateFrom &&
+		filters.dateTo &&
+		isDateRangeWithinOneYear(filters.dateFrom, filters.dateTo)
+	)
+
+	const handleExport = useCallback(async () => {
+		if (!canExportCsv || isExporting) {
+			return
+		}
+
+		setIsExporting(true)
+		try {
+			const exportResult = await api.requestSrpWalletHistoryCsvExport({
+				reason: filters.reason,
+				recipientId: filters.recipientId,
+				alertsOnly: filters.alertsOnly,
+				dateFrom: filters.dateFrom,
+				dateTo: filters.dateTo,
+			})
+			setPendingExport({
+				workflowInstanceId: exportResult.workflowInstanceId,
+				fileName: exportResult.fileName,
+			})
+		} catch {
+			setIsExporting(false)
+		}
+	}, [canExportCsv, filters, isExporting])
 
 	const getAlertReasonLines = (item: (typeof items)[number]): string[] => {
 		const lines: string[] = []
@@ -171,6 +244,28 @@ export default function SRPWalletHistoryPage() {
 								}}
 							/>
 							<span className="text-sm text-muted-foreground">Alerts only</span>
+						</div>
+					</div>
+
+					<div className="flex items-center justify-end">
+						<div className="flex items-center gap-3">
+							<Button
+								type="button"
+								variant="ghost"
+								onClick={() => {
+									void handleExport()
+								}}
+								disabled={!canExportCsv || isExportBusy}
+								loading={isExportBusy}
+								loadingText={isExporting ? 'Exporting…' : 'Generating…'}
+							>
+								Export CSV
+							</Button>
+							{isExportPolling && (
+								<span className="text-xs text-muted-foreground">
+									Waiting for export to generate...
+								</span>
+							)}
 						</div>
 					</div>
 

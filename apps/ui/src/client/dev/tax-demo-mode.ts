@@ -1975,6 +1975,9 @@ export const taxDemoApi = {
 			sortDir?: 'asc' | 'desc'
 		}
 	) {
+		if (!corporationId?.trim()) {
+			throw new Error('Corporation id is required for member summary')
+		}
 		const query = filters?.characterQuery?.trim()
 		let rows = ensureDemoState().memberSummary.filter((row) => {
 			if (row.corporationId !== corporationId) return false

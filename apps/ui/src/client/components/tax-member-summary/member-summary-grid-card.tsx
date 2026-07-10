@@ -14,6 +14,8 @@ type MemberSummaryStats = {
 
 type MemberSummaryGridCardProps = {
 	effectiveCorporationId?: string
+	isScopeLoading?: boolean
+	canViewSummary: boolean
 	canSearchCharacter: boolean
 	characterQuery: string
 	fromDateIso?: string
@@ -61,13 +63,16 @@ export function MemberSummaryGridCard(props: MemberSummaryGridCardProps) {
 					| 'assessmentCount'
 					| 'lastAssessmentAt') ?? 'contributionIncome',
 			sortDir: grid.sortDir,
-			enabled: Boolean(props.effectiveCorporationId),
+			enabled: Boolean(props.effectiveCorporationId) && props.canViewSummary,
 		}
 	)
 
 	useEffect(() => {
+		if (!props.effectiveCorporationId || !props.canViewSummary) {
+			return
+		}
 		void refetch()
-	}, [props.refreshToken, refetch])
+	}, [props.canViewSummary, props.effectiveCorporationId, props.refreshToken, refetch])
 
 	const rows = useMemo(() => data?.rows ?? [], [data?.rows])
 	const totalRows = data?.totalRows ?? 0
@@ -85,7 +90,7 @@ export function MemberSummaryGridCard(props: MemberSummaryGridCardProps) {
 	}, [rows])
 
 	const { data: entityNames = {} } = useEntityNames(entityIds, {
-		enabled: Boolean(props.effectiveCorporationId),
+		enabled: Boolean(props.effectiveCorporationId) && props.canViewSummary && entityIds.length > 0,
 	})
 
 	useEffect(() => {
@@ -111,16 +116,28 @@ export function MemberSummaryGridCard(props: MemberSummaryGridCardProps) {
 
 	return (
 		<Card>
-			<CardHeader>
-				<CardTitle>Member Contribution Summary</CardTitle>
-				<CardDescription>
-					Aggregated from corporation wallet entries attributed to members in the selected period.
-				</CardDescription>
+			<CardHeader className="space-y-3">
+				<div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+					<div className="space-y-1">
+						<CardTitle>Member Contribution Summary</CardTitle>
+						<CardDescription>
+							Aggregated from corporation wallet entries attributed to members in the selected period.
+						</CardDescription>
+					</div>
+				</div>
 			</CardHeader>
 			<CardContent>
-				{!props.effectiveCorporationId ? (
+				{props.isScopeLoading ? (
+					<div className="py-8 text-sm text-muted-foreground">
+						Resolving corporation access before loading member summaries.
+					</div>
+				) : !props.effectiveCorporationId ? (
 					<div className="py-8 text-sm text-muted-foreground">
 						Select a corporation to load member summaries.
+					</div>
+				) : !props.canViewSummary ? (
+					<div className="py-8 text-sm text-muted-foreground">
+						You do not have permission to view this member summary.
 					</div>
 				) : (
 					<MemberSummaryReportGrid

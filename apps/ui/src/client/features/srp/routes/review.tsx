@@ -1,6 +1,6 @@
 import { Loader2, RefreshCw } from 'lucide-react'
 import { useQuery } from '@tanstack/react-query'
-import { useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useState } from 'react'
 import { Link, Navigate } from 'react-router-dom'
 
 import { UserSearchPaginationControls } from '@/components/user-search-pagination-controls'
@@ -9,6 +9,7 @@ import { DateRangeInput } from '@/components/ui/date-range-input'
 import { Card, CardContent } from '@/components/ui/card'
 import { Container } from '@/components/ui/container'
 import { EveTimeDisplay } from '@/components/ui/eve-time-display'
+import { HoverPopover } from '@/components/ui/hover-popover'
 import { PageHeader } from '@/components/ui/page-header'
 import { Select } from '@/components/ui/select'
 import {
@@ -38,7 +39,7 @@ import {
 	useReviewQueueUiState,
 	updateReviewQueueFilters,
 } from '../state/review-queue-snapshot-store'
-import { formatISKShort, formatRelativeTime, getRequestCharacterRole } from '../utils'
+import { formatISKShort, formatRelativeTime, getRequestCharacterRole, isDateRangeWithinOneYear } from '../utils'
 
 import type { RequestStatus, SRPRequestResponse } from '../types'
 
@@ -282,6 +283,85 @@ function ReviewTabContent({
 		gcTime: 1000 * 60 * 5,
 	})
 	const [showLoadWarning, setShowLoadWarning] = useState(false)
+	const [pendingExport, setPendingExport] = useState<{
+		workflowInstanceId: string
+		fileName: string
+	} | null>(null)
+	const [isExporting, setIsExporting] = useState(false)
+
+	const exportStatusQuery = useQuery({
+		queryKey: ['srp', 'requests', 'paid', 'export-status', pendingExport?.workflowInstanceId ?? null],
+		queryFn: () => api.getSrpPaidRequestsCsvExportStatus(pendingExport!.workflowInstanceId),
+		enabled: Boolean(pendingExport?.workflowInstanceId),
+		refetchInterval: (query) => {
+			const status = query.state.data?.status
+			return status === 'queued' || status === 'running' ? 5000 : false
+		},
+		refetchOnWindowFocus: false,
+	})
+	const exportStatus = exportStatusQuery.data?.status
+	const isExportPolling =
+		Boolean(pendingExport) && (exportStatus === undefined || exportStatus === 'queued' || exportStatus === 'running')
+	const isExportBusy = isExporting || isExportPolling
+
+	useEffect(() => {
+		if (!pendingExport) return
+		if (!exportStatusQuery.data) return
+		if (exportStatusQuery.data.status === 'completed') {
+			void (async () => {
+				try {
+					await api.downloadSrpPaidRequestsCsv(
+						pendingExport.workflowInstanceId,
+						pendingExport.fileName
+					)
+				} finally {
+					setPendingExport(null)
+					setIsExporting(false)
+				}
+			})()
+			return
+		}
+		if (exportStatusQuery.data.status === 'failed' || exportStatusQuery.data.status === 'unknown') {
+			setPendingExport(null)
+			setIsExporting(false)
+		}
+	}, [exportStatusQuery.data, pendingExport])
+
+	const handleExportPaidRequests = useCallback(async () => {
+		if (status !== 'paid' || isExporting) {
+			return
+		}
+		const dateFrom = filters.dateFrom
+		const dateTo = filters.dateTo
+		if (!dateFrom || !dateTo || !isDateRangeWithinOneYear(dateFrom, dateTo)) {
+			return
+		}
+
+		setIsExporting(true)
+		try {
+			const exportResult = await api.requestSrpPaidRequestsCsvExport({
+				characterName: filters.characterName?.trim() || undefined,
+				shipTypeName: filters.shipTypeName?.trim() || undefined,
+				solarSystemName: filters.solarSystemName?.trim() || undefined,
+				dateFrom,
+				dateTo,
+			})
+			setPendingExport({
+				workflowInstanceId: exportResult.workflowInstanceId,
+				fileName: exportResult.fileName,
+			})
+		} catch {
+			setIsExporting(false)
+		}
+	}, [
+		filters.characterName,
+		filters.dateFrom,
+		filters.dateTo,
+		filters.shipTypeName,
+		filters.solarSystemName,
+		isExporting,
+		status,
+	])
 
 	useEffect(() => {
 		if (!data) return
@@ -332,6 +412,62 @@ function ReviewTabContent({
 			<span className="ml-2">Refresh</span>
 		</Button>
 	)
+	const actionButtons =
+		status === 'paid' ? (
+			<div className="flex items-center gap-2">
+				{refreshButton}
+				<div className="flex items-center gap-3">
+					{isExportPolling && (
+						<span className="text-xs text-muted-foreground">Waiting for export to generate...</span>
+					)}
+					{!isExportBusy &&
+					(!filters.dateFrom ||
+						!filters.dateTo ||
+						!isDateRangeWithinOneYear(filters.dateFrom, filters.dateTo)) ? (
+						<HoverPopover
+							align="end"
+							side="bottom"
+							className="w-72 border border-border bg-popover p-3 text-popover-foreground shadow-lg"
+							trigger={
+								<span className="inline-block cursor-help">
+									<Button type="button" variant="secondary" size="sm" className="h-8" disabled>
+										Export CSV
+									</Button>
+								</span>
+							}
+						>
+							<div className="text-sm font-medium">Date range required</div>
+							<div className="text-sm text-muted-foreground">
+								Select a date range up to 1 year to export paid requests.
+							</div>
+						</HoverPopover>
+					) : (
+						<Button
+							type="button"
+							variant="secondary"
+							size="sm"
+							className="h-8"
+							onClick={() => {
+								void handleExportPaidRequests()
+							}}
+							disabled={
+								isFetching ||
+								isExportBusy ||
+								!filters.dateFrom ||
+								!filters.dateTo ||
+								!isDateRangeWithinOneYear(filters.dateFrom, filters.dateTo)
+							}
+							loading={isExportBusy}
+							loadingText={isExporting ? 'Exporting…' : 'Generating…'}
+						>
+							Export CSV
+						</Button>
+					)}
+				</div>
+			</div>
+		) : (
+			refreshButton
+		)
 
 	if (!effectiveData && (isLoading || isFetching)) {
 		if (showLoadWarning) {
@@ -399,146 +535,145 @@ function ReviewTabContent({
 						? 'No requests match the current filters'
 						: `No ${status.replace('_', ' ')} requests`}
 				</p>
-				<div className="mt-4 flex justify-center">{refreshButton}</div>
+				<div className="mt-4 flex justify-center">{actionButtons}</div>
 			</div>
 		)
 	}
 
-		return (
-			<div>
-				<TableRefreshFrame
-					isRefreshing={isSoftLoading}
-					refreshMessage="Refreshing recent losses..."
-					errorMessage={error && effectiveData ? (error instanceof Error ? error.message : 'Failed to refresh requests.') : null}
-					onRetry={error && effectiveData ? () => void refetch() : undefined}
-					retryDisabled={isFetching}
-				>
-					<div className="mb-3 rounded-md border p-3">
-						<UserSearchPaginationControls
-							totalCount={totalCount}
-							page={page}
-							pageSize={pageSize}
-							onPageChange={onPageChange}
-							onPageSizeChange={onPageSizeChange}
-							pageSizeOptions={[10, 25, 50, 100]}
-							itemLabel="requests"
-							nextButtonLoading={isFetching}
-							summaryAction={refreshButton}
-						/>
-					</div>
-					<div className="rounded-md border">
-						<Table>
-							<TableHeader>
-								<TableRow>
-									<TableHead className="w-14" />
-									<TableHead>Ship</TableHead>
-									<TableHead>Pilot</TableHead>
-									<TableHead className="text-right">Payout / Value</TableHead>
-									<TableHead>System</TableHead>
-									<TableHead>
-										<button
-											type="button"
-											className="inline-flex items-center gap-1 text-left hover:text-foreground"
-											onClick={() => toggleSort('loss')}
-										>
-											Lost
-											<span className="text-xs text-muted-foreground">{sortIndicator('loss')}</span>
-										</button>
-									</TableHead>
-									<TableHead>
-										<button
-											type="button"
-											className="inline-flex items-center gap-1 text-left hover:text-foreground"
-											onClick={() => toggleSort('submitted')}
-										>
-											Submitted
-											<span className="text-xs text-muted-foreground">
-												{sortIndicator('submitted')}
-											</span>
-										</button>
-									</TableHead>
-									<TableHead>Status</TableHead>
-									<TableHead className="text-right">Actions</TableHead>
-								</TableRow>
-							</TableHeader>
-							<TableBody>
-								{visibleRequests.map((req) => (
-									<TableRow key={req.id}>
-										<TableCell className="py-2">
-											{req.shipTypeId && (
-												<div className="h-10 w-10 overflow-hidden rounded border border-border/50">
-													<img
-														src={typeIconUrl(req.shipTypeId, 32)}
-														alt={req.shipTypeName ?? ''}
-														className="h-full w-full object-contain"
-														loading="lazy"
-													/>
-												</div>
-											)}
-										</TableCell>
-										<TableCell className="font-semibold">
-											<Link
-												to={`/srp/review/${req.id}`}
-												className="underline-offset-4 hover:underline focus-visible:underline"
-											>
-												{req.shipTypeName ?? '—'}
-											</Link>
-										</TableCell>
-										<TableCell className="text-sm">
-											<div className="inline-flex items-center gap-2">
-												<span>{req.characterName}</span>
-												<CharacterRoleBadge
-													role={getRequestCharacterRole(req)}
-													mainCharacterName={req.mainCharacterName}
-													mainCharacterId={req.mainCharacterId}
+	return (
+		<div>
+			<TableRefreshFrame
+				isRefreshing={isSoftLoading}
+				refreshMessage="Refreshing recent losses..."
+				errorMessage={error && effectiveData ? (error instanceof Error ? error.message : 'Failed to refresh requests.') : null}
+				onRetry={error && effectiveData ? () => void refetch() : undefined}
+				retryDisabled={isFetching}
+			>
+				<div className="mb-3 rounded-md border p-3">
+					<UserSearchPaginationControls
+						totalCount={totalCount}
+						page={page}
+						pageSize={pageSize}
+						onPageChange={onPageChange}
+						onPageSizeChange={onPageSizeChange}
+						pageSizeOptions={[10, 25, 50, 100]}
+						itemLabel="requests"
+						nextButtonLoading={isFetching}
+						summaryAction={actionButtons}
+					/>
+				</div>
+				<div className="rounded-md border">
+					<Table>
+						<TableHeader>
+							<TableRow>
+								<TableHead className="w-14" />
+								<TableHead>Ship</TableHead>
+								<TableHead>Pilot</TableHead>
+								<TableHead className="text-right">Payout / Value</TableHead>
+								<TableHead>System</TableHead>
+								<TableHead>
+									<button
+										type="button"
+										className="inline-flex items-center gap-1 text-left hover:text-foreground"
+										onClick={() => toggleSort('loss')}
+									>
+										Lost
+										<span className="text-xs text-muted-foreground">{sortIndicator('loss')}</span>
+									</button>
+								</TableHead>
+								<TableHead>
+									<button
+										type="button"
+										className="inline-flex items-center gap-1 text-left hover:text-foreground"
+										onClick={() => toggleSort('submitted')}
+									>
+										Submitted
+										<span className="text-xs text-muted-foreground">
+											{sortIndicator('submitted')}
+										</span>
+									</button>
+								</TableHead>
+								<TableHead>Status</TableHead>
+								<TableHead className="text-right">Actions</TableHead>
+							</TableRow>
+						</TableHeader>
+						<TableBody>
+							{visibleRequests.map((req) => (
+								<TableRow key={req.id}>
+									<TableCell className="py-2">
+										{req.shipTypeId && (
+											<div className="h-10 w-10 overflow-hidden rounded border border-border/50">
+												<img
+													src={typeIconUrl(req.shipTypeId, 32)}
+													alt={req.shipTypeName ?? ''}
+													className="h-full w-full object-contain"
+													loading="lazy"
 												/>
 											</div>
-											{req.corporationName && req.corporationName !== 'Unknown' && (
-												<div className="text-xs text-muted-foreground">{req.corporationName}</div>
-											)}
-										</TableCell>
-										<TableCell className="text-right font-mono text-sm tabular-nums">
-											{formatISKShort(
-												req.approvedAmount ?? req.srpEquipmentValue ?? req.shipValue,
-												{ showDecimals: false }
-											)}
-										</TableCell>
-										<TableCell className="text-sm text-muted-foreground">
-											<div>{req.solarSystemName ?? '—'}</div>
-											{req.solarSystemRegionName ? (
-												<div className="text-xs text-muted-foreground/80">
-													{req.solarSystemRegionName}
-												</div>
-											) : null}
-										</TableCell>
-										<TableCell className="text-sm text-muted-foreground">
-											{req.lossDate ? (
-												<EveTimeDisplay
-													dateStr={req.lossDate}
-													format="compact"
-													className="whitespace-nowrap text-sm text-muted-foreground"
-												/>
-											) : (
-												'—'
-											)}
-										</TableCell>
-										<TableCell className="text-sm text-muted-foreground">
-											{formatRelativeTime(req.createdAt)}
-										</TableCell>
-										<TableCell>
-											<RequestStatusBadge status={req.requestStatus as any} />
-										</TableCell>
-										<TableCell className="text-right">
-											<Button size="sm" variant="secondary" asChild>
-												<Link to={`/srp/review/${req.id}`}>View</Link>
-											</Button>
-										</TableCell>
-									</TableRow>
-								))}
-							</TableBody>
-						</Table>
-					</div>
-				</TableRefreshFrame>
-			</div>
-		)
+										)}
+									</TableCell>
+									<TableCell className="font-semibold">
+										<Link
+											to={`/srp/review/${req.id}`}
+											className="underline-offset-4 hover:underline focus-visible:underline"
+										>
+											{req.shipTypeName ?? '—'}
+										</Link>
+									</TableCell>
+									<TableCell className="text-sm">
+										<div className="inline-flex items-center gap-2">
+											<span>{req.characterName}</span>
+											<CharacterRoleBadge
+												role={getRequestCharacterRole(req)}
+												mainCharacterName={req.mainCharacterName}
+												mainCharacterId={req.mainCharacterId}
+											/>
+										</div>
+										{req.corporationName && req.corporationName !== 'Unknown' && (
+											<div className="text-xs text-muted-foreground">{req.corporationName}</div>
+										)}
+									</TableCell>
+									<TableCell className="text-right font-mono text-sm tabular-nums">
+										{formatISKShort(req.approvedAmount ?? req.srpEquipmentValue ?? req.shipValue, {
+											showDecimals: false,
+										})}
+									</TableCell>
+									<TableCell className="text-sm text-muted-foreground">
+										<div>{req.solarSystemName ?? '—'}</div>
+										{req.solarSystemRegionName ? (
+											<div className="text-xs text-muted-foreground/80">
+												{req.solarSystemRegionName}
+											</div>
+										) : null}
+									</TableCell>
+									<TableCell className="text-sm text-muted-foreground">
+										{req.lossDate ? (
+											<EveTimeDisplay
+												dateStr={req.lossDate}
+												format="compact"
+												className="whitespace-nowrap text-sm text-muted-foreground"
+											/>
+										) : (
+											'—'
+										)}
+									</TableCell>
+									<TableCell className="text-sm text-muted-foreground">
+										{formatRelativeTime(req.createdAt)}
+									</TableCell>
+									<TableCell>
+										<RequestStatusBadge status={req.requestStatus as any} />
+									</TableCell>
+									<TableCell className="text-right">
+										<Button size="sm" variant="secondary" asChild>
+											<Link to={`/srp/review/${req.id}`}>View</Link>
+										</Button>
+									</TableCell>
+								</TableRow>
+							))}
+						</TableBody>
+					</Table>
+				</div>
+			</TableRefreshFrame>
+		</div>
+	)
 	}

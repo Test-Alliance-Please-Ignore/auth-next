@@ -1,4 +1,5 @@
 import { apiClient } from '@/lib/api'
+import { downloadTextFile } from '@/lib/csv-utils'
 
 import type {
 	AdminSettings,
@@ -42,6 +43,54 @@ export async function getScannedMoons(params: {
 	if (params.sortDir) qs.set('sortDir', params.sortDir)
 	const query = qs.toString()
 	return apiClient.get(`/moon-scan/moons/verified${query ? `?${query}` : ''}`)
+}
+
+export async function requestScannedMoonsExport(params: {
+	regionId?: string
+	constellationId?: string
+	rarities?: string[]
+	search?: string
+	sortBy?: string
+	sortDir?: 'asc' | 'desc'
+} = {}): Promise<{ workflowInstanceId: string; exportId: string; fileName: string; status: 'queued' }> {
+	const qs = new URLSearchParams()
+	if (params.regionId && params.regionId !== 'all') qs.set('regionId', params.regionId)
+	if (params.constellationId && params.constellationId !== 'all') qs.set('constellationId', params.constellationId)
+	if (params.rarities && params.rarities.length > 0) qs.set('rarity', params.rarities.join(','))
+	if (params.search?.trim()) qs.set('search', params.search.trim())
+	if (params.sortBy) qs.set('sortBy', params.sortBy)
+	if (params.sortDir) qs.set('sortDir', params.sortDir)
+
+	const query = qs.toString()
+	return apiClient.post(`/moon-scan/moons/verified/export${query ? `?${query}` : ''}`, {})
+}
+
+export async function getScannedMoonsExportStatus(workflowInstanceId: string): Promise<{
+	workflowInstanceId: string
+	status: 'queued' | 'running' | 'completed' | 'failed' | 'unknown'
+	rawStatus?: string
+	output: unknown | null
+}> {
+	return apiClient.get(`/moon-scan/moons/verified/export/${workflowInstanceId}`)
+}
+
+export async function downloadScannedMoonsExport(
+	workflowInstanceId: string,
+	fileName: string
+): Promise<void> {
+	const response = await fetch(`/api/moon-scan/moons/verified/export/${workflowInstanceId}/download`, {
+		credentials: 'include',
+		headers: {
+			'X-Requested-With': 'XMLHttpRequest',
+		},
+	})
+	if (!response.ok) {
+		const message = await response.text()
+		throw new Error(message || 'Failed to download scanned moons export')
+	}
+
+	const csv = await response.text()
+	downloadTextFile(fileName, 'text/csv; charset=utf-8', csv)
 }
 
 export async function getRegions(): Promise<RegionsResponse> {

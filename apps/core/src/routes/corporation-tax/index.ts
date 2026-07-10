@@ -30,6 +30,7 @@ import {
 	TAX_RULE_PRIORITY_MAX,
 	TAX_RULE_PRIORITY_MIN,
 } from './shared'
+import { buildCsvLine } from '@repo/worker-utils'
 
 import type { CorporationTax } from '@repo/corporation-tax'
 import type { EveCharacterData } from '@repo/eve-character-data'
@@ -267,6 +268,28 @@ async function getMemberCharacterIdsInCorporation(
 		)
 
 		return memberships.filter((characterId): characterId is string => characterId !== null)
+	})
+}
+
+async function getCorporationMemberCharacterIds(
+	c: { env: App['Bindings'] },
+	corporationId: string
+): Promise<string[]> {
+	const cacheKey = `corp:${corporationId}:member-character-ids`
+	return corpMembershipCache.getOrSet(cacheKey, async () => {
+		try {
+			const corporationStub = getStub<EveCorporationData>(c.env.EVE_CORPORATION_DATA, 'default')
+			const members = await corporationStub.getMembers(corporationId)
+			return members
+				.map((member) => member.characterId)
+				.filter((characterId): characterId is string => Boolean(characterId))
+		} catch (error) {
+			logger.warn('[CorporationTax] Failed corporation membership lookup for member summary', {
+				corporationId,
+				error: error instanceof Error ? error.message : String(error),
+			})
+			return []
+		}
 	})
 }
 
@@ -2167,6 +2190,98 @@ app.post('/corporations/:corporationId/bills/sync', requireAuth(), async (c) => 
 	}
 })
 
+async function resolveMemberSummaryTargets(input: {
+	c: any
+	user: SessionUser
+	corporationId: string
+	characterQuery?: string
+}): Promise<
+	| { targetCharacterIds: string[] | undefined }
+	| { response: Response }
+> {
+	const { c, user, corporationId, characterQuery } = input
+	const canReadWithTaxScopes = await canReadTaxFeature(c.env, user, corporationId)
+	const memberCharacterIds = await getMemberCharacterIdsInCorporation(c, user, corporationId)
+	const corporationMemberIds = canReadWithTaxScopes
+		? await getCorporationMemberCharacterIds(c, corporationId)
+		: []
+	const allowedCharacterIds = [...new Set([...memberCharacterIds, ...corporationMemberIds])]
+	const hasMemberReadAccess = memberCharacterIds.length > 0
+
+	if (!canReadWithTaxScopes && !hasMemberReadAccess) {
+		return { response: c.json({ error: 'Forbidden' }, 403) }
+	}
+
+	if (characterQuery) {
+		const numericOnly = /^\d+$/.test(characterQuery)
+		if (numericOnly) {
+			const targetCharacterIds = allowedCharacterIds.includes(characterQuery) ? [characterQuery] : []
+			if (!canReadWithTaxScopes && targetCharacterIds.length === 0) {
+				return { response: c.json({ error: 'Forbidden' }, 403) }
+			}
+			return { targetCharacterIds }
+		}
+
+		const scopedCharacterIds = [...allowedCharacterIds]
+		if (scopedCharacterIds.length === 0) {
+			return { targetCharacterIds: [] }
+		}
+
+		const matchedCharacterIds = new Set<string>()
+
+		try {
+			const tokenStoreStub = getStub<EveTokenStore>(c.env.EVE_TOKEN_STORE, 'default')
+			try {
+				const searchResultIds = await tokenStoreStub.searchCharacter(characterQuery, false)
+				for (const characterId of searchResultIds) {
+					if (scopedCharacterIds.includes(characterId)) {
+						matchedCharacterIds.add(characterId)
+					}
+				}
+			} finally {
+				disposeRpcStub(tokenStoreStub)
+			}
+		} catch (error) {
+			logger.warn('[CorporationTax] Failed ESI character search for member summary', {
+				corporationId,
+				characterQuery,
+				error: error instanceof Error ? error.message : String(error),
+			})
+		}
+
+		const db = c.get('db')
+		if (db) {
+			const rows = await db
+				.select({
+					characterId: userCharacters.characterId,
+				})
+				.from(userCharacters)
+				.where(
+					and(
+						inArray(userCharacters.characterId, scopedCharacterIds),
+						ilike(userCharacters.characterName, `${characterQuery}%`)
+					)
+				)
+				.limit(100)
+			for (const row of rows) {
+				matchedCharacterIds.add(row.characterId)
+			}
+		}
+
+		const targetCharacterIds = Array.from(matchedCharacterIds)
+		if (!canReadWithTaxScopes && targetCharacterIds.length === 0) {
+			return { response: c.json({ error: 'Forbidden' }, 403) }
+		}
+		return { targetCharacterIds }
+	}
+
+	if (!canReadWithTaxScopes) {
+		return { targetCharacterIds: memberCharacterIds }
+	}
+
+	return { targetCharacterIds: undefined }
+}
+
 /**
  * GET /corporation-tax/corporations/:corporationId/member-summary
  * Member-level tax summary. Without characterId, returns caller-owned member character summaries only.
@@ -2210,95 +2325,22 @@ app.get('/corporations/:corporationId/member-summary', requireAuth(), async (c) 
 		return c.json({ error: 'sortDir must be "asc" or "desc"' }, 400)
 	}
 
-	const canReadWithTaxScopes = await canReadTaxFeature(c.env, user, corporationId)
-	const memberCharacterIds = await getMemberCharacterIdsInCorporation(c, user, corporationId)
-	const hasMemberReadAccess = memberCharacterIds.length > 0
-
-	if (!canReadWithTaxScopes && !hasMemberReadAccess) {
-		return c.json({ error: 'Forbidden' }, 403)
-	}
-
 	try {
 		const stub = getStub<CorporationTax>(c.env.CORPORATION_TAX, 'default')
-		let scopedCharacterIds: string[] = memberCharacterIds
-		if (canReadWithTaxScopes) {
-			const corpStub = getStub<EveCorporationData>(c.env.EVE_CORPORATION_DATA, corporationId)
-			try {
-				const members = await corpStub.getMembers(corporationId)
-				scopedCharacterIds = members.map((member) => member.characterId)
-			} finally {
-				disposeRpcStub(corpStub)
-			}
-		}
-		const scopedCharacterIdSet = new Set(scopedCharacterIds)
-
-		let targetCharacterIds: string[] | undefined
-		if (characterQuery) {
-			const numericOnly = /^\d+$/.test(characterQuery)
-			if (numericOnly) {
-				targetCharacterIds = scopedCharacterIdSet.has(characterQuery) ? [characterQuery] : []
-			} else if (scopedCharacterIds.length > 0) {
-				const matchedCharacterIds = new Set<string>()
-
-				// Resolve name matches via ESI search and then scope to corporation members.
-				// This includes members that are not linked site users.
-				try {
-					const tokenStoreStub = getStub<EveTokenStore>(c.env.EVE_TOKEN_STORE, 'default')
-					try {
-						const searchResultIds = await tokenStoreStub.searchCharacter(characterQuery, false)
-						for (const characterId of searchResultIds) {
-							if (scopedCharacterIdSet.has(characterId)) {
-								matchedCharacterIds.add(characterId)
-							}
-						}
-					} finally {
-						disposeRpcStub(tokenStoreStub)
-					}
-				} catch (error) {
-					logger.warn('[CorporationTax] Failed ESI character search for member summary', {
-						corporationId,
-						characterQuery,
-						error: error instanceof Error ? error.message : String(error),
-					})
-				}
-
-				// Keep local fallback for linked-user rows so name-prefix search still works
-				// when ESI search is unavailable in development/test paths.
-				const db = c.get('db')
-				if (db) {
-					const rows = await db
-						.select({
-							characterId: userCharacters.characterId,
-						})
-						.from(userCharacters)
-						.where(
-							and(
-								inArray(userCharacters.characterId, scopedCharacterIds),
-								ilike(userCharacters.characterName, `${characterQuery}%`)
-							)
-						)
-						.limit(100)
-					for (const row of rows) {
-						matchedCharacterIds.add(row.characterId)
-					}
-				}
-
-				targetCharacterIds = Array.from(matchedCharacterIds)
-			} else {
-				targetCharacterIds = []
-			}
-
-			if (!canReadWithTaxScopes && targetCharacterIds.length === 0) {
-				return c.json({ error: 'Forbidden' }, 403)
-			}
-		} else if (!canReadWithTaxScopes) {
-			targetCharacterIds = memberCharacterIds
+		const resolvedTargets = await resolveMemberSummaryTargets({
+			c,
+			user,
+			corporationId,
+			characterQuery,
+		})
+		if ('response' in resolvedTargets) {
+			return resolvedTargets.response
 		}
 
 		try {
 			const result = await stub.getMemberSummaryReport({
 				corporationId,
-				characterIds: targetCharacterIds,
+				characterIds: resolvedTargets.targetCharacterIds,
 				fromDate: fromDate ?? undefined,
 				toDate: toDate ?? undefined,
 				topRefTypesLimit: topRefTypesLimit ?? undefined,
@@ -2326,6 +2368,7 @@ app.get('/corporations/:corporationId/member-summary', requireAuth(), async (c) 
 		return c.json({ error: 'Failed to fetch member summary' }, 500)
 	}
 })
+
 registerCorporationTaxReportsRoutes(app)
 registerCorporationTaxAlertsRoutes(app, { validateDiscordDestinationInput })
 

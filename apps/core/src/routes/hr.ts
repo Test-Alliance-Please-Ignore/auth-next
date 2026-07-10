@@ -16,6 +16,7 @@ import { waitUntilWithTelemetry } from '../lib/background-task'
 import { getIpHashMatches, getUserIpHistory } from '../lib/ip-history'
 import { dispatchCorporationAlert } from '../services/corporation-alerts.service'
 import { validatePagination } from '../lib/validation'
+import { getUserCorporationAffiliationIds } from '../lib/user-corporation-affiliations'
 import { requireAdmin, requireAuth } from '../middleware/session'
 
 import type { Context } from 'hono'
@@ -88,6 +89,40 @@ function getLegacyStub(c: Context<App>): Legacy {
 function getCharacterName(user: Context<App>['var']['user'], characterId: string): string {
 	const character = user?.characters.find((c) => c.characterId === characterId)
 	return character?.characterName || 'Unknown'
+}
+
+async function getActiveMemberCorporationIds(c: Context<App>): Promise<string[]> {
+	const db = c.get('db')
+	if (!db) {
+		throw new Error('Database not available')
+	}
+
+	const memberCorporations = await db.query.managedCorporations.findMany({
+		where: and(eq(managedCorporations.isActive, true), eq(managedCorporations.isMemberCorporation, true)),
+		columns: { corporationId: true },
+	})
+
+	return memberCorporations.map((corp) => corp.corporationId)
+}
+
+async function getAccessibleRecommendationCorporationIds(c: Context<App>): Promise<string[]> {
+	const user = c.get('user')!
+	const db = c.get('db')
+	if (!db) {
+		throw new Error('Database not available')
+	}
+
+	const memberCorporationIds = await getActiveMemberCorporationIds(c)
+	if (user.is_admin) {
+		return memberCorporationIds
+	}
+
+	if (await hasHrAuditorPermissionForUser({ env: c.env, userId: user.id })) {
+		return memberCorporationIds
+	}
+
+	const userCorporationIds = await getUserCorporationAffiliationIds(db, user.id)
+	return memberCorporationIds.filter((corporationId) => userCorporationIds.includes(corporationId))
 }
 
 /**
@@ -895,41 +930,14 @@ app.delete('/applications/:id', requireAdmin(), async (c) => {
  */
 app.get('/recommendations/pending', requireAuth(), async (c) => {
 	const user = c.get('user')!
-	const db = c.get('db')!
-	const isAdmin = user.is_admin
-	const isAuditor = await hasHrAuditorPermission(c)
+	const accessibleCorporationIds = await getAccessibleRecommendationCorporationIds(c)
 
-	// Resolve corporation IDs from the database (session user doesn't carry corporationId)
-	const userChars = await db.query.userCharacters.findMany({
-		where: and(eq(userCharacters.userId, user.id), eq(userCharacters.isDeleted, false)),
-	})
-	const corporationIds = [
-		...new Set(userChars.map((ch) => ch.corporationId).filter(Boolean)),
-	] as string[]
-
-	if (corporationIds.length === 0) {
+	if (accessibleCorporationIds.length === 0) {
 		return c.json([])
 	}
 
 	try {
 		const hr = getHrStub(c)
-		const accessibleCorporationIds = isAdmin || isAuditor
-			? corporationIds
-			: (
-				await db.query.managedCorporations.findMany({
-					where: and(
-						eq(managedCorporations.isActive, true),
-						eq(managedCorporations.isMemberCorporation, true),
-						inArray(managedCorporations.corporationId, corporationIds)
-					),
-					columns: { corporationId: true },
-				})
-			).map((corp) => corp.corporationId)
-
-		if (accessibleCorporationIds.length === 0) {
-			return c.json([])
-		}
-
 		const applications = await hr.listCorpApplicationsForRecommendation(accessibleCorporationIds, user.id)
 		return c.json(applications)
 	} catch (error) {
@@ -948,28 +956,27 @@ app.get('/recommendations/pending', requireAuth(), async (c) => {
 app.get('/recommendations/applications/:id', requireAuth(), async (c) => {
 	const user = c.get('user')!
 	const applicationId = c.req.param('id')
-	const db = c.get('db')!
-	const isAdmin = user.is_admin
-	const isAuditor = await hasHrAuditorPermission(c)
-
-	// Resolve corporation IDs from the database (session user doesn't carry corporationId)
-	const userChars = await db.query.userCharacters.findMany({
-		where: and(eq(userCharacters.userId, user.id), eq(userCharacters.isDeleted, false)),
-	})
-	const corporationIds = [
-		...new Set(userChars.map((ch) => ch.corporationId).filter(Boolean)),
-	] as string[]
+	const isAuditor = await hasHrAuditorPermissionForUser({ env: c.env, userId: user.id })
+	const db = c.get('db')
+	if (!db) {
+		return c.json({ error: 'Database not available' }, 500)
+	}
+	const userCorporationIds = await getUserCorporationAffiliationIds(db, user.id)
+	const accessibleCorporationIds = await getAccessibleRecommendationCorporationIds(c)
 
 	try {
 		const hr = getHrStub(c)
 		const application = await hr.getApplicationForRecommender(
 			applicationId,
 			user.id,
-			corporationIds
+			userCorporationIds,
+			{ isAdmin: user.is_admin, isAuditor }
 		)
-		if (!isAdmin && !isAuditor && !(await canUseHrToolsForCorporation(c, application.corporationId))) {
+		if (!accessibleCorporationIds.includes(application.corporationId)) {
 			return c.json(
-				{ error: 'Access denied. HR tools are only available for member corporations.' },
+				{
+					error: 'Access denied. Recommendations are only available for member corporations you are attached to.',
+				},
 				403
 			)
 		}
@@ -990,6 +997,13 @@ app.post('/applications/:applicationId/recommendations', requireAuth(), async (c
 	const user = c.get('user')!
 	const applicationId = c.req.param('applicationId')
 	const { characterId, recommendationText, sentiment, isPublic } = await c.req.json()
+	const isAuditor = await hasHrAuditorPermissionForUser({ env: c.env, userId: user.id })
+	const db = c.get('db')
+	if (!db) {
+		return c.json({ error: 'Database not available' }, 500)
+	}
+	const userCorporationIds = await getUserCorporationAffiliationIds(db, user.id)
+	const accessibleCorporationIds = await getAccessibleRecommendationCorporationIds(c)
 
 	// Validate character ownership
 	const ownsCharacter = user.characters.some((char) => char.characterId === characterId)
@@ -1001,13 +1015,17 @@ app.post('/applications/:applicationId/recommendations', requireAuth(), async (c
 
 	try {
 		const hr = getHrStub(c)
-		const application = await hr.getApplication(applicationId, user.id, {
-			isAdmin: user.is_admin,
-			isAuditor: false,
-		})
-		if (!(await canUseHrToolsForCorporation(c, application.corporationId))) {
+		const application = await hr.getApplicationForRecommender(
+			applicationId,
+			user.id,
+			userCorporationIds,
+			{ isAdmin: user.is_admin, isAuditor }
+		)
+		if (!accessibleCorporationIds.includes(application.corporationId)) {
 			return c.json(
-				{ error: 'Access denied. HR tools are only available for member corporations.' },
+				{
+					error: 'Access denied. Recommendations are only available for member corporations you are attached to.',
+				},
 				403
 			)
 		}

@@ -9,6 +9,7 @@ import type {
 	ApplicationFilters,
 	ApplicationListResult,
 	ApplicationStatus,
+	HrAccessContext,
 	RecommendableApplication,
 	RecommendationSentiment,
 	RecommenderApplicationDetail,
@@ -649,7 +650,8 @@ export class ApplicationService {
 	async getApplicationForRecommender(
 		applicationId: string,
 		userId: string,
-		userCorporationIds: string[]
+		userCorporationIds: string[],
+		access: HrAccessContext = { isAdmin: false, isAuditor: false }
 	): Promise<RecommenderApplicationDetail> {
 		const application = await this.ctx.db.query.applications.findFirst({
 			where: eq(applications.id, applicationId),
@@ -659,8 +661,12 @@ export class ApplicationService {
 			throw new Error('Application not found')
 		}
 
-		// Verify the user is in the same corporation
-		if (!userCorporationIds.includes(application.corporationId)) {
+		// Site admins and HR auditors can recommend against any member corporation target.
+		// All other users must be attached to the target corporation.
+		const hasCorporationAccess =
+			access.isAdmin || access.isAuditor || userCorporationIds.includes(application.corporationId)
+
+		if (!hasCorporationAccess) {
 			throw new Error('You do not have permission to view this application')
 		}
 

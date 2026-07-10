@@ -78,6 +78,31 @@ function makeHrStub() {
 			createdAt: new Date().toISOString(),
 			updatedAt: new Date().toISOString(),
 		}),
+		listCorpApplicationsForRecommendation: vi.fn().mockResolvedValue([]),
+		getApplicationForRecommender: vi.fn().mockResolvedValue({
+			id: 'app-1',
+			corporationId: '1001',
+			characterId: '2001',
+			characterName: 'Target Pilot',
+			applicationText: 'Test application',
+			status: 'pending',
+			createdAt: new Date().toISOString(),
+			recommendations: [],
+			recommendationCount: 0,
+			userRecommendation: null,
+		}),
+		addRecommendation: vi.fn().mockResolvedValue({
+			id: 'rec-1',
+			applicationId: 'app-1',
+			userId: 'user-1',
+			characterId: '1001',
+			characterName: 'Main Pilot',
+			recommendationText: 'Looks good to me',
+			sentiment: 'positive',
+			isPublic: false,
+			createdAt: new Date().toISOString(),
+			updatedAt: new Date().toISOString(),
+		}),
 		listMessages: vi.fn().mockResolvedValue([]),
 		getMessageCount: vi.fn().mockResolvedValue(0),
 		listApplicationStaffNotes: vi.fn().mockResolvedValue([
@@ -663,6 +688,175 @@ describe('hr route access matrix', () => {
 			isAdmin: false,
 			isAuditor: true,
 		})
+	})
+
+	it('allows attached corp members to discover, view, and submit recommendations for member corporations', async () => {
+		dbStub.query.userCharacters.findMany.mockResolvedValue([
+			{
+				corporationId: '1001',
+			},
+		] as any)
+
+		const app = createApp({ user: makeUser(), db: dbStub })
+
+		const pendingRes = await app.request('/api/hr/recommendations/pending', {}, env)
+		expect(pendingRes.status).toBe(200)
+		expect(hrStub.listCorpApplicationsForRecommendation).toHaveBeenCalledWith(['1001'], 'user-1')
+
+		const detailRes = await app.request('/api/hr/recommendations/applications/app-1', {}, env)
+		expect(detailRes.status).toBe(200)
+		expect(hrStub.getApplicationForRecommender).toHaveBeenCalledWith(
+			'app-1',
+			'user-1',
+			['1001'],
+			{ isAdmin: false, isAuditor: false }
+		)
+
+		const submitRes = await app.request(
+			'/api/hr/applications/app-1/recommendations',
+			{
+				method: 'POST',
+				body: JSON.stringify({
+					characterId: '1001',
+					recommendationText: 'Looks good to me',
+					sentiment: 'positive',
+					isPublic: false,
+				}),
+				headers: { 'content-type': 'application/json' },
+			},
+			env
+		)
+
+		expect(submitRes.status).toBe(201)
+		expect(hrStub.addRecommendation).toHaveBeenCalledWith(
+			'app-1',
+			'user-1',
+			'1001',
+			'Main Pilot',
+			'Looks good to me',
+			'positive',
+			false
+		)
+	})
+
+	it('denies recommendation access when the user is not attached to the target corporation', async () => {
+		dbStub.query.userCharacters.findMany.mockResolvedValue([
+			{
+				corporationId: '2001',
+			},
+		] as any)
+		dbStub.query.managedCorporations.findMany.mockResolvedValue([])
+		hrStub.getApplicationForRecommender.mockResolvedValue({
+			id: 'app-2',
+			corporationId: '2001',
+			characterId: '2002',
+			characterName: 'Target Pilot',
+			applicationText: 'Test application',
+			status: 'pending',
+			createdAt: new Date().toISOString(),
+			recommendations: [],
+			recommendationCount: 0,
+			userRecommendation: null,
+		})
+
+		const app = createApp({ user: makeUser(), db: dbStub })
+
+		const pendingRes = await app.request('/api/hr/recommendations/pending', {}, env)
+		expect(pendingRes.status).toBe(200)
+		expect(await pendingRes.json()).toEqual([])
+
+		const detailRes = await app.request('/api/hr/recommendations/applications/app-2', {}, env)
+		expect(detailRes.status).toBe(403)
+		expect(await detailRes.json()).toEqual({
+			error: 'Access denied. Recommendations are only available for member corporations you are attached to.',
+		})
+
+		const submitRes = await app.request(
+			'/api/hr/applications/app-2/recommendations',
+			{
+				method: 'POST',
+				body: JSON.stringify({
+					characterId: '1001',
+					recommendationText: 'Looks good to me',
+					sentiment: 'positive',
+					isPublic: false,
+				}),
+				headers: { 'content-type': 'application/json' },
+			},
+			env
+		)
+
+		expect(submitRes.status).toBe(403)
+		expect(await submitRes.json()).toEqual({
+			error: 'Access denied. Recommendations are only available for member corporations you are attached to.',
+		})
+		expect(hrStub.addRecommendation).not.toHaveBeenCalled()
+	})
+
+	it('allows an HR auditor to recommend against a member corporation without a corp attachment', async () => {
+		getCachedUserPermissionsMock.mockResolvedValue([
+			{
+				permissionId: 'perm-auditor',
+				urn: 'urn:hr:auditor',
+				name: 'HR Auditor',
+				description: null,
+				category: null,
+				groupId: 'g-1',
+				groupName: 'HR',
+				targetType: 'all_members',
+				source: 'global',
+			},
+		] as any)
+		dbStub.query.userCharacters.findMany.mockResolvedValue([] as any)
+		hrStub.getApplicationForRecommender.mockResolvedValue({
+			id: 'app-1',
+			corporationId: '1001',
+			characterId: '2001',
+			characterName: 'Target Pilot',
+			applicationText: 'Test application',
+			status: 'pending',
+			createdAt: new Date().toISOString(),
+			recommendations: [],
+			recommendationCount: 0,
+			userRecommendation: null,
+		})
+
+		const app = createApp({ user: makeUser(), db: dbStub })
+
+		const detailRes = await app.request('/api/hr/recommendations/applications/app-1', {}, env)
+		expect(detailRes.status).toBe(200)
+		expect(hrStub.getApplicationForRecommender).toHaveBeenCalledWith(
+			'app-1',
+			'user-1',
+			[],
+			{ isAdmin: false, isAuditor: true }
+		)
+
+		const submitRes = await app.request(
+			'/api/hr/applications/app-1/recommendations',
+			{
+				method: 'POST',
+				body: JSON.stringify({
+					characterId: '1001',
+					recommendationText: 'Looks good to me',
+					sentiment: 'positive',
+					isPublic: false,
+				}),
+				headers: { 'content-type': 'application/json' },
+			},
+			env
+		)
+
+		expect(submitRes.status).toBe(201)
+		expect(hrStub.addRecommendation).toHaveBeenCalledWith(
+			'app-1',
+			'user-1',
+			'1001',
+			'Main Pilot',
+			'Looks good to me',
+			'positive',
+			false
+		)
 	})
 
 	it('denies /applications/:id read for non-member corporations', async () => {

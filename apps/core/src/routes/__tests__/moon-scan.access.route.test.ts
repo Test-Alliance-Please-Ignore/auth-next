@@ -86,6 +86,7 @@ describe('moon-scan access matrix', () => {
 	const env = {
 		MOON_SCAN: { name: 'MOON_SCAN' },
 		UNIVERSE: { name: 'UNIVERSE' },
+		EXPORT_WORKFLOW: { create: vi.fn(), get: vi.fn() },
 	} as any
 
 	let moonScanStub: Record<string, ReturnType<typeof vi.fn>>
@@ -144,6 +145,26 @@ describe('moon-scan access matrix', () => {
 
 		expect(res.status).toBe(403)
 		expect(await res.json()).toEqual({ error: 'Forbidden' })
+	})
+
+	it('denies submitters from exporting verified moons', async () => {
+		getCachedUserPermissionsMock.mockResolvedValue([{ urn: 'urn:moons:scan:submit' }] as any)
+
+		const app = createApp(makeUser({ id: 'submit-export' }))
+		const res = await app.request('/api/moon-scan/moons/verified/export', { method: 'POST' }, env)
+
+		expect(res.status).toBe(403)
+		expect(await res.json()).toEqual({ error: 'Forbidden' })
+	})
+
+	it('requires a region selection before exporting verified moons', async () => {
+		getCachedUserPermissionsMock.mockResolvedValue([{ urn: 'urn:moons:view' }] as any)
+
+		const app = createApp(makeUser({ id: 'view-export' }))
+		const res = await app.request('/api/moon-scan/moons/verified/export', { method: 'POST' }, env)
+
+		expect(res.status).toBe(400)
+		expect(await res.json()).toEqual({ error: 'regionId is required for moon export' })
 	})
 
 	it('allows submitters to read the leaderboard', async () => {
