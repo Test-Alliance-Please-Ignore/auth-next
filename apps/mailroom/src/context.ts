@@ -12,6 +12,13 @@ export type Env = SharedHonoEnv & {
 	 * falls through to the no-match policy (nothing is forwarded).
 	 */
 	FORWARD_TEAM_TO?: string
+
+	/** Cross-worker binding to the shared Discord Durable Object (`apps/discord`). */
+	DISCORD: DurableObjectNamespace
+	/** Discord guild/server ID the bot posts to (required for the markeedragon→Discord route). */
+	DISCORD_GUILD_ID?: string
+	/** Discord channel ID that receives mail sent to `markeedragon@`. */
+	MARKEE_DISCORD_CHANNEL_ID?: string
 }
 
 /** Variables can be extended per-request as needed. */

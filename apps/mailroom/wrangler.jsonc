@@ -13,10 +13,26 @@
 	"observability": {
 		"enabled": true
 	},
+	// Cross-worker binding to the shared Discord Durable Object (apps/discord). Used by the
+	// markeedragon@ → Discord route. The `discord` worker must be deployed in the same account.
+	"durable_objects": {
+		"bindings": [
+			{
+				"name": "DISCORD",
+				"class_name": "Discord",
+				"script_name": "discord"
+			}
+		]
+	},
 	"vars": {
 		"NAME": "mailroom",
 		"ENVIRONMENT": "production",
-		"SENTRY_RELEASE": "unknown"
+		"SENTRY_RELEASE": "unknown",
+		// markeedragon@ → Discord: set to the target guild + channel IDs (the Discord bot must be
+		// in that guild and able to post in the channel). Until both are set, mail to markeedragon@
+		// errors out to the fallback/last-resort path rather than posting.
+		"DISCORD_GUILD_ID": "356398105404375041",
+		"MARKEE_DISCORD_CHANNEL_ID": "730208741181358100"
 		// Optional framework config (set to VERIFIED Email Routing destinations before relying on them):
 		//   "FALLBACK_FORWARD_ADDRESS": "ops@pleaseignore.app"  // receives mail when inbound processing fails
 		//   "FORWARD_TEAM_TO": "team-inbox@pleaseignore.app"     // destination for the example "team@" alias

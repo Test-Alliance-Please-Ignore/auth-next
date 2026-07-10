@@ -7,6 +7,7 @@ import {
 	reject,
 	sideEffect,
 } from './email'
+import { notifyDiscord } from './notify-discord'
 
 import type { Env } from './context'
 
@@ -33,6 +34,11 @@ export const emailRouter = new EmailRouter<Env>()
 		}),
 		'log-inbound'
 	)
+
+	// markeedragon@ → post the email to a Discord channel (via the shared Discord DO), then
+	// consume it. Envelope-only match, so the body is parsed only when it's actually for
+	// this address. Sends inline so a Discord failure surfaces (Sentry + forward-to-fallback).
+	.on(recipientLocalPartIs('markeedragon'), notifyDiscord, 'markeedragon-to-discord')
 
 	// Example alias: forward "team@…" to a configured, verified destination. The match is
 	// envelope-only; the handler forwards only when FORWARD_TEAM_TO is set, otherwise it
