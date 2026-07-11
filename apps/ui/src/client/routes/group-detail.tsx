@@ -253,30 +253,40 @@ export default function GroupDetailPage() {
 							</div>
 						</CardHeader>
 						<CardContent>
-							{inviteCodes.length === 0 ? (
-								<div className="text-center py-8">
-									<Ticket className="mx-auto h-12 w-12 text-muted-foreground" />
-									<h3 className="mt-4 text-sm font-medium">No active invite codes</h3>
-									<p className="text-sm text-muted-foreground mt-2">
-										Create an invite code to allow users to join this group
-									</p>
-								</div>
+					{inviteCodes.length === 0 ? (
+						<div className="text-center py-8">
+							<Ticket className="mx-auto h-12 w-12 text-muted-foreground" />
+							<h3 className="mt-4 text-sm font-medium">No invite codes</h3>
+							<p className="text-sm text-muted-foreground mt-2">
+								Create an invite code to allow users to join this group
+							</p>
+						</div>
 							) : (
-								<div className="space-y-3">
-									{inviteCodes.map((inviteCode) => {
-										const isExpired = new Date(inviteCode.expiresAt) < new Date()
-										const isMaxedOut =
-											inviteCode.maxUses !== null && inviteCode.currentUses >= inviteCode.maxUses
-										const inviteUrl = `${window.location.origin}/invite/${inviteCode.code}`
+						<div className="space-y-3">
+							{inviteCodes.map((inviteCode) => {
+								const isRevoked = inviteCode.revokedAt !== null
+								const isExpired = new Date(inviteCode.expiresAt) < new Date()
+								const isMaxedOut =
+									!isRevoked &&
+									!isExpired &&
+									inviteCode.maxUses !== null && inviteCode.currentUses >= inviteCode.maxUses
+								const statusLabel = isRevoked
+									? 'Revoked'
+									: isExpired
+										? 'Expired'
+										: isMaxedOut
+											? 'Max uses reached'
+											: null
+								const inviteUrl = `${window.location.origin}/invite/${inviteCode.code}`
 
-										return (
-											<div
-												key={inviteCode.id}
-												className={`rounded-lg border p-4 ${isExpired || isMaxedOut ? 'opacity-50' : ''}`}
-											>
-												<div className="flex items-start justify-between">
-													<div className="flex-1 space-y-2">
-														<div className="flex items-center gap-2">
+								return (
+									<div
+										key={inviteCode.id}
+										className={`rounded-lg border p-4 ${statusLabel ? 'opacity-50' : ''}`}
+									>
+										<div className="flex items-start justify-between">
+											<div className="flex-1 space-y-2">
+												<div className="flex items-center gap-2">
 															<code className="text-sm font-mono bg-muted px-2 py-1 rounded">
 																{inviteCode.code}
 															</code>
@@ -287,18 +297,18 @@ export default function GroupDetailPage() {
 																className="h-7 px-2"
 																title="Copy code"
 															>
-																{copiedCode === inviteCode.code ? (
-																	<Check className="h-4 w-4 text-green-500" />
-																) : (
-																	<Copy className="h-4 w-4" />
-																)}
-															</Button>
-															{(isExpired || isMaxedOut) && (
-																<span className="text-xs text-destructive font-medium">
-																	{isExpired ? 'Expired' : 'Max uses reached'}
-																</span>
-															)}
-														</div>
+														{copiedCode === inviteCode.code ? (
+															<Check className="h-4 w-4 text-green-500" />
+														) : (
+															<Copy className="h-4 w-4" />
+														)}
+													</Button>
+													{statusLabel && (
+														<span className="text-xs text-destructive font-medium">
+															{statusLabel}
+														</span>
+													)}
+												</div>
 														<div className="flex items-center gap-2 text-xs">
 															<code className="bg-muted/50 px-2 py-1 rounded text-muted-foreground truncate max-w-md">
 																{inviteUrl}
