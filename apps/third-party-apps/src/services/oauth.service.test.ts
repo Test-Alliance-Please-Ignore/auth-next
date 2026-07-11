@@ -107,7 +107,7 @@ describe('oauth service', () => {
 		)
 	})
 
-	it('deduplicates identical permission urns and includes the synthetic test-alliance group from permissions', async () => {
+	it('deduplicates identical permission urns without synthesizing extra groups', async () => {
 		const env = {
 			CORE: {
 				getUserDetails: vi.fn().mockResolvedValue({
@@ -163,46 +163,9 @@ describe('oauth service', () => {
 
 		expect(response).toEqual(
 			expect.objectContaining({
-				groups: ['example-group', 'test-alliance'],
+				groups: ['example-group'],
 				permissionUrns: ['urn:moons:view', 'urn:eve:alliance:test-alliance'],
 			})
 		)
-	})
-
-	it('includes the synthetic test-alliance group even without the permissions scope', async () => {
-		const env = {
-			CORE: {
-				getUserDetails: vi.fn().mockResolvedValue({
-					mainCharacterId: '1402766339',
-					is_admin: false,
-					characters: [],
-					groupMemberships: [],
-					permissionGrants: [
-						{
-							urn: 'urn:eve:alliance:test-alliance',
-							name: 'Test Alliance',
-							description: null,
-							groupId: 'corp-1',
-							groupName: 'Corp Access',
-							targetType: 'all_members',
-							source: 'global',
-						},
-					],
-				}),
-			},
-		} as any
-
-		const response = await buildOAuthApiMeResponse(env, {
-			sub: '0f5b5f0d-4d6d-4f8e-9c3a-9b9b7f8e1234',
-			clientId: 'client-1',
-			scope: ['groups'],
-		})
-
-		expect(response).toEqual(
-			expect.objectContaining({
-				groups: ['test-alliance'],
-			})
-		)
-		expect(response).not.toHaveProperty('permissionUrns')
 	})
 })

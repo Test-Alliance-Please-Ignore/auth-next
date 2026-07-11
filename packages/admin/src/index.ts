@@ -605,8 +605,6 @@ export interface OAuthAuthorizationResult {
 }
 
 export type OAuthAuthorizationAction = 'approve' | 'deny'
-const TEST_ALLIANCE_PERMISSION_URN = 'urn:eve:alliance:test-alliance'
-const TEST_ALLIANCE_GROUP_NAME = 'test-alliance'
 
 type OAuthApiMeResponseInput = Pick<
 	UserDetails,
@@ -666,17 +664,13 @@ export function buildOAuthApiMeResponseFromUserDetails(
 			joinedAt: toIsoString(membership.joinedAt),
 		}))
 		response.groupMemberships = groupMemberships
-		const groups = Array.from(
+		response.groups = Array.from(
 			new Set(
 				details.groupMemberships
 					.map((membership) => membership.groupName.trim().toLowerCase().replace(/\s+/g, '-'))
 					.filter((groupName) => groupName.length > 0)
 			)
 		)
-		if (permissionGrants.some((grant) => grant.urn === TEST_ALLIANCE_PERMISSION_URN)) {
-			groups.push(TEST_ALLIANCE_GROUP_NAME)
-		}
-		response.groups = Array.from(new Set(groups))
 	}
 
 	if (includePermissions) {
