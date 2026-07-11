@@ -739,6 +739,11 @@ describe('Groups Durable Object - Invite Codes', () => {
 
 		await stub.revokeInviteCode(code.id, USER_1_ID)
 
+		const codes = await stub.listInviteCodes(group.id, USER_1_ID)
+		const revokedCode = codes.find((inviteCode) => inviteCode.id === code.id)
+		expect(revokedCode).toBeDefined()
+		expect(revokedCode?.revokedAt).not.toBeNull()
+
 		await expect(stub.redeemInviteCode(code.code, USER_2_ID)).rejects.toThrow('revoked')
 	})
 })
