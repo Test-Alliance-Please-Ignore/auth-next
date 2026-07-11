@@ -35,7 +35,7 @@ import { updateCharacterPublicInfo } from './workflows/steps/update-character'
 
 import type { Core } from '@repo/core'
 import type { Discord } from '@repo/discord'
-import type { CharacterPublicInfo } from '@repo/esi'
+import type { CharacterAffiliation, CharacterPublicInfo } from '@repo/esi'
 import type { EveTokenStore } from '@repo/eve-token-store'
 import type { CreateRoleRequest, Groups } from '@repo/groups'
 import type { BlacklistTargetCheckItem, BlacklistTargetType, Hr } from '@repo/hr'
@@ -289,8 +289,32 @@ export class CoreDO extends DurableObject<Env> implements Core {
 
 	private async getCharacterInfo(characterId: string): Promise<CharacterPublicInfo | null> {
 		const instance = getEsiInstanceForCharacter(this.env.ESI, characterId)
-		const characterInfo = await instance.fetchCharacterPublicInfo(characterId)
-		return characterInfo
+		const [publicInfoResult, affiliationResult] = await Promise.allSettled([
+			instance.fetchCharacterPublicInfo(characterId),
+			instance.fetchCharacterAffiliation(characterId, [characterId]),
+		])
+
+		if (publicInfoResult.status === 'rejected') {
+			throw publicInfoResult.reason
+		}
+
+		const publicInfo = publicInfoResult.value
+		const affiliation =
+			affiliationResult.status === 'fulfilled'
+				? affiliationResult.value.find(
+						(entry: CharacterAffiliation) => String(entry.character_id) === characterId
+					)
+				: null
+
+		if (!affiliation) {
+			return publicInfo
+		}
+
+		return {
+			...publicInfo,
+			corporation_id: affiliation.corporation_id ?? publicInfo.corporation_id,
+			alliance_id: affiliation.alliance_id ?? publicInfo.alliance_id,
+		}
 	}
 
 	private async getCorporationName(corporationId: string): Promise<string | null> {
