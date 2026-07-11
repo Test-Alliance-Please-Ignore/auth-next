@@ -1566,6 +1566,35 @@ export interface AdminDiscordAccessInspection {
 	}
 }
 
+export interface AdminOAuthResolverInspection {
+	userId: string
+	inspectedAt: string
+	scopes: Array<'profile' | 'groups' | 'permissions'>
+	response: {
+		sub: string
+		clientId: string
+		scope: Array<'profile' | 'groups' | 'permissions'>
+		mainCharacterId?: string
+		isAdmin?: boolean
+		email?: string
+		emailVerified?: boolean
+		characters?: Array<{
+			characterId: string
+			characterName: string
+			isPrimary: boolean
+			hasValidToken: boolean
+		}>
+		groupMemberships?: Array<{
+			groupId: string
+			groupName: string
+			membershipLevel: 'member' | 'admin' | 'owner'
+			joinedAt: string
+		}>
+		groups?: string[]
+		permissionUrns?: string[]
+	}
+}
+
 export interface AdminUserDetail {
 	id: string
 	mainCharacterId: string
@@ -3875,6 +3904,10 @@ export class ApiClient {
 
 	async inspectDiscordAccess(userId: string): Promise<AdminDiscordAccessInspection> {
 		return this.get(`/admin/users/${userId}/discord/inspect`)
+	}
+
+	async inspectOAuthResolver(userId: string): Promise<AdminOAuthResolverInspection> {
+		return this.get(`/admin/users/${userId}/oauth/inspect`)
 	}
 
 	async refreshCorporationDiscord(

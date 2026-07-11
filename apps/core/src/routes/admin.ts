@@ -10,6 +10,7 @@ import { z } from 'zod'
 
 import { and, desc, eq, gt, ilike, inArray, sql } from '@repo/db-utils'
 import { getStub } from '@repo/do-utils'
+import { buildOAuthApiMeResponseFromUserDetails } from '@repo/admin'
 import { logger } from '@repo/hono-helpers'
 
 import { createDb } from '../db'
@@ -1071,6 +1072,45 @@ app.get('/users/:userId/discord/inspect', requireAuth(), requireAdmin(), async (
 		return c.json(
 			{
 				error: error instanceof Error ? error.message : 'Failed to inspect Discord access',
+			},
+			500
+		)
+	}
+})
+
+/**
+ * GET /admin/users/:userId/oauth/inspect
+ * Inspect the OAuth identity resolver payload for a specific user (admin action)
+ */
+app.get('/users/:userId/oauth/inspect', requireAuth(), requireAdmin(), async (c) => {
+	const user = c.get('user')
+	const userId = c.req.param('userId')
+
+	if (!user) {
+		return c.json({ error: 'Unauthorized' }, 401)
+	}
+
+	try {
+		const result = await c.env.ADMIN.getUserDetails(userId, user.id)
+		if (!result) {
+			return c.json({ error: 'User not found' }, 404)
+		}
+
+		return c.json({
+			userId: result.id,
+			inspectedAt: new Date().toISOString(),
+			scopes: ['profile', 'groups', 'permissions'],
+			response: buildOAuthApiMeResponseFromUserDetails(result, {
+				sub: result.id,
+				clientId: 'admin-user-profile-inspection',
+				scope: ['profile', 'groups', 'permissions'],
+			}),
+		})
+	} catch (error) {
+		logger.error('Error inspecting user OAuth resolver response:', error)
+		return c.json(
+			{
+				error: error instanceof Error ? error.message : 'Failed to inspect OAuth resolver response',
 			},
 			500
 		)

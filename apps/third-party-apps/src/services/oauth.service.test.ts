@@ -106,4 +106,66 @@ describe('oauth service', () => {
 			})
 		)
 	})
+
+	it('deduplicates identical permission urns without synthesizing extra groups', async () => {
+		const env = {
+			CORE: {
+				getUserDetails: vi.fn().mockResolvedValue({
+					mainCharacterId: '1402766339',
+					is_admin: false,
+					characters: [],
+					groupMemberships: [
+						{
+							groupId: 'group-1',
+							groupName: 'Example Group',
+							membershipLevel: 'member',
+							joinedAt: new Date('2025-01-01T00:00:00Z'),
+						},
+					],
+					permissionGrants: [
+						{
+							urn: 'urn:moons:view',
+							name: 'Moons View',
+							description: null,
+							groupId: 'group-1',
+							groupName: 'Example Group',
+							targetType: 'all_members',
+							source: 'global',
+						},
+						{
+							urn: 'urn:eve:alliance:test-alliance',
+							name: 'Test Alliance',
+							description: null,
+							groupId: 'corp-1',
+							groupName: 'Corp Access',
+							targetType: 'all_members',
+							source: 'global',
+						},
+						{
+							urn: 'urn:eve:alliance:test-alliance',
+							name: 'Test Alliance Duplicate',
+							description: null,
+							groupId: 'corp-2',
+							groupName: 'Corp Access Two',
+							targetType: 'all_members',
+							source: 'group_scoped',
+						},
+					],
+				}),
+			},
+		} as any
+
+		const response = await buildOAuthApiMeResponse(env, {
+			sub: '0f5b5f0d-4d6d-4f8e-9c3a-9b9b7f8e1234',
+			clientId: 'client-1',
+			scope: ['groups', 'permissions'],
+		})
+
+		expect(response).toEqual(
+			expect.objectContaining({
+				groups: ['example-group'],
+				permissionUrns: ['urn:moons:view', 'urn:eve:alliance:test-alliance'],
+			})
+		)
+	})
 })

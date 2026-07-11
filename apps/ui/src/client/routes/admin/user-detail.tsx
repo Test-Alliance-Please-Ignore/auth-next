@@ -529,6 +529,12 @@ export default function UserDetailPage() {
 						</Link>
 					</Button>
 					<Button variant="ghost" asChild>
+						<Link to={`/admin/users/${user.id}/oauth-inspection`}>
+							<ExternalLink className="h-4 w-4" />
+							OAuth Resolver
+						</Link>
+					</Button>
+					<Button variant="ghost" asChild>
 						<Link to={`/admin/users/${user.id}/groups`}>
 							<Users className="h-4 w-4" />
 							Group Memberships

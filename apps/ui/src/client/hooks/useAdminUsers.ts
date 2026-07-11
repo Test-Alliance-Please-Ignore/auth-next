@@ -5,6 +5,7 @@ import { api } from '@/lib/api'
 import type {
 	AdminActivityLogFilters,
 	AdminDiscordAccessInspection,
+	AdminOAuthResolverInspection,
 	AdminUser,
 	AdminUserDetail,
 	AdminUsersFilters,
@@ -81,6 +82,15 @@ export function useAdminDiscordInspection(userId: string, enabled: boolean) {
 	return useQuery<AdminDiscordAccessInspection>({
 		queryKey: adminUserKeys.discordInspection(userId),
 		queryFn: () => api.inspectDiscordAccess(userId),
+		enabled: !!userId && enabled,
+		staleTime: 1000 * 30, // 30 seconds
+	})
+}
+
+export function useAdminOAuthResolverInspection(userId: string, enabled: boolean) {
+	return useQuery<AdminOAuthResolverInspection>({
+		queryKey: [...adminUserKeys.detail(userId), 'oauth-inspection'],
+		queryFn: () => api.inspectOAuthResolver(userId),
 		enabled: !!userId && enabled,
 		staleTime: 1000 * 30, // 30 seconds
 	})

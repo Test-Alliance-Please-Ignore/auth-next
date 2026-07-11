@@ -606,6 +606,80 @@ export interface OAuthAuthorizationResult {
 
 export type OAuthAuthorizationAction = 'approve' | 'deny'
 
+type OAuthApiMeResponseInput = Pick<
+	UserDetails,
+	'id' | 'mainCharacterId' | 'is_admin' | 'characters' | 'groupMemberships' | 'permissionGrants'
+>
+
+type OAuthApiMeResponseProps = {
+	sub: string
+	scope: ThirdPartyAppScope[]
+	clientId: string
+}
+
+/**
+ * Build the OAuth /api/me response for the third-party apps worker.
+ * This is shared with the admin inspection endpoint so the diagnostics show the exact
+ * payload shape the resolver would emit for profile/groups/permissions scopes.
+ */
+export function buildOAuthApiMeResponseFromUserDetails(
+	details: OAuthApiMeResponseInput,
+	props: OAuthApiMeResponseProps
+): Record<string, unknown> {
+	const response: Record<string, unknown> = {
+		sub: props.sub,
+		clientId: props.clientId,
+		scope: props.scope,
+	}
+
+	const includeProfile = props.scope.includes('profile')
+	const includeGroups = props.scope.includes('groups')
+	const includePermissions = props.scope.includes('permissions')
+	if (!includeProfile && !includeGroups && !includePermissions) {
+		return response
+	}
+
+	const toIsoString = (value: Date | string): string =>
+		value instanceof Date ? value.toISOString() : value
+	const permissionGrants = details.permissionGrants ?? []
+
+	if (includeProfile) {
+		response.mainCharacterId = details.mainCharacterId
+		response.isAdmin = details.is_admin
+		response.email = `${props.sub}@authnext.invalid`
+		response.emailVerified = true
+		response.characters = details.characters.map((character) => ({
+			characterId: character.characterId,
+			characterName: character.characterName,
+			isPrimary: character.is_primary,
+			hasValidToken: character.hasValidToken,
+		}))
+	}
+
+	if (includeGroups) {
+		const groupMemberships = details.groupMemberships.map((membership) => ({
+			groupId: membership.groupId,
+			groupName: membership.groupName,
+			membershipLevel: membership.membershipLevel,
+			joinedAt: toIsoString(membership.joinedAt),
+		}))
+		response.groupMemberships = groupMemberships
+		response.groups = Array.from(
+			new Set(
+				details.groupMemberships
+					.map((membership) => membership.groupName.trim().toLowerCase().replace(/\s+/g, '-'))
+					.filter((groupName) => groupName.length > 0)
+			)
+		)
+	}
+
+	if (includePermissions) {
+		response.permissionUrns = Array.from(new Set(permissionGrants.map((grant) => grant.urn)))
+	}
+
+	return response
+}
+
 export type SidebarExternalLinkIconName = (typeof SIDEBAR_EXTERNAL_LINK_ICON_NAMES)[number]
 
 const SIDEBAR_EXTERNAL_LINK_ICON_NAME_SET = new Set<SidebarExternalLinkIconName>(
