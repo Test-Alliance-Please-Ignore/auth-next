@@ -327,6 +327,7 @@ export function useUpdateStagingSystem() {
 			api.updateStagingSystem(id, data),
 		onSuccess: () => {
 			queryClient.invalidateQueries({ queryKey: stagingSystemKeys.all })
+			queryClient.invalidateQueries({ queryKey: doctrineKeys.all })
 		},
 	})
 }
