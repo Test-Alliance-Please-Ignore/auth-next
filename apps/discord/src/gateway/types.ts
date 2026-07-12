@@ -61,7 +61,7 @@ export interface DiscordGatewayEventHandler<T = unknown> {
 
 export interface DiscordGatewayStatus {
 	connected: boolean
-	connectionState: 'idle' | 'connecting' | 'open' | 'resuming' | 'disconnected'
+	connectionState: 'idle' | 'connecting' | 'open' | 'resuming' | 'disconnected' | 'disabled'
 	gatewayUrl: string | null
 	resumeGatewayUrl: string | null
 	sessionId: string | null
@@ -74,7 +74,7 @@ export interface DiscordGatewayStatus {
 }
 
 export interface DiscordGatewayBootstrapResult {
-	status: 'started' | 'already-running' | 'connecting' | 'failed'
+	status: 'started' | 'already-running' | 'connecting' | 'disabled' | 'failed'
 	reason?: string
 }
 
@@ -94,6 +94,7 @@ export interface DiscordGateway {
 	ensureConnected(): Promise<DiscordGatewayBootstrapResult>
 	getGatewayStatus(): Promise<DiscordGatewayStatus>
 	alarm(): Promise<void>
+	shutdown(): Promise<void>
 	reserveJoinSuppressions(input: {
 		discordUserId: string
 		guildIds: string[]

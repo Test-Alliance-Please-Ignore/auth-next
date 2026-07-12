@@ -21,6 +21,7 @@ export type Env = SharedHonoEnv & {
 	DATABASE_URL: string
 	DISCORD: DurableObjectNamespace
 	DISCORD_GATEWAY: DurableObjectNamespace
+	DISCORD_GATEWAY_ENABLED: string
 	DISCORD_RATE_LIMITS: KVNamespace
 	DISCORD_AUTHORIZE_URL: string
 	DISCORD_TOKEN_URL: string

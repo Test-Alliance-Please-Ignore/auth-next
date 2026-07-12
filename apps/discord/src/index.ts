@@ -7,7 +7,6 @@ import { z } from 'zod'
 import { logger, withNotFound, withOnError, withSentry } from '@repo/hono-helpers'
 
 import { DiscordDO, DiscordGatewayDO } from './durable-object'
-import type { DiscordGateway } from './gateway/types'
 import * as discordService from './services/discord.service'
 import { resolveDeferralMode, resolveSubcommandKey } from './utils/interaction-routing'
 
@@ -730,23 +729,14 @@ const app = new Hono<App>()
 const sentryApp = withSentry(app)
 
 async function scheduled(event: ScheduledEvent, env: App['Bindings'], _ctx: ExecutionContext): Promise<void> {
-	try {
-		const gatewayStub = getStub<DiscordGateway>(env.DISCORD_GATEWAY, 'gateway')
-		const result = await gatewayStub.ensureConnected()
-
-		logger.info('[DiscordScheduled] Gateway bootstrap checked', {
-			cron: event.cron,
-			scheduledTime: new Date(event.scheduledTime).toISOString(),
-			status: result.status,
-			reason: result.reason ?? null,
-		})
-	} catch (error) {
-		logger.error('[DiscordScheduled] Gateway bootstrap failed', {
-			cron: event.cron,
-			scheduledTime: new Date(event.scheduledTime).toISOString(),
-			error: error instanceof Error ? error.message : String(error),
-		})
-	}
+	// Intentionally stubbed: the Discord gateway listener has been disabled because
+	// the always-on websocket bootstrap caused unacceptable hosting cost inflation.
+	// We keep the scheduled entrypoint and gateway DO stub in place so the feature can
+	// be reintroduced later without changing the worker shape again.
+	logger.info('[DiscordScheduled] Discord gateway bootstrap is disabled; skipping', {
+		cron: event.cron,
+		scheduledTime: new Date(event.scheduledTime).toISOString(),
+	})
 }
 
 // Export Hono app wrapped with Sentry for automatic error tracking

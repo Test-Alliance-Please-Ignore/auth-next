@@ -2327,6 +2327,10 @@ export class DiscordGatewayDO extends DurableObject<Env> implements DiscordGatew
 		await this.gateway.alarm()
 	}
 
+	async shutdown(): Promise<void> {
+		await this.gateway.shutdown()
+	}
+
 	async reserveJoinSuppressions(input: {
 		discordUserId: string
 		guildIds: string[]
