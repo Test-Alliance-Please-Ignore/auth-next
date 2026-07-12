@@ -1,10 +1,9 @@
 import { zValidator } from '@hono/zod-validator'
 import { Hono } from 'hono'
 import { getStub } from '@repo/do-utils'
-import { useWorkersLogger } from 'workers-tagged-logger'
 import { z } from 'zod'
 
-import { logger, withNotFound, withOnError, withSentry } from '@repo/hono-helpers'
+import { logger, withNotFound, withOnError, withSentry, withWorkersLogger } from '@repo/hono-helpers'
 
 import { DiscordDO, DiscordGatewayDO } from './durable-object'
 import * as discordService from './services/discord.service'
@@ -358,9 +357,8 @@ async function verifyDiscordInteractionSignature(
 const app = new Hono<App>()
 	.use(
 		'*',
-		// middleware
 		(c, next) =>
-			useWorkersLogger(c.env.NAME ?? 'discord', {
+			withWorkersLogger(c.env.NAME ?? 'discord', {
 				environment: c.env.ENVIRONMENT ?? 'development',
 				release: c.env.SENTRY_RELEASE ?? 'unknown',
 			})(c, next)

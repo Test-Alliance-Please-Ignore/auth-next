@@ -21,6 +21,11 @@ export type SharedHonoEnv = {
 	 */
 	SENTRY_RELEASE: string
 	/**
+	 * Optional runtime log level override.
+	 * Defaults to warn when omitted.
+	 */
+	LOG_LEVEL?: string
+	/**
 	 * Sentry DSN for error tracking.
 	 * Optional - if not provided, Sentry will not be initialized.
 	 */

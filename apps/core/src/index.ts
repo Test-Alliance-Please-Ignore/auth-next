@@ -1,26 +1,31 @@
 import { WorkerEntrypoint } from 'cloudflare:workers'
 import { Hono } from 'hono'
-import { useWorkersLogger } from 'workers-tagged-logger'
 
 import { and, eq, inArray, ne } from '@repo/db-utils'
 import { getStub } from '@repo/do-utils'
-import { captureException, logger, withNotFound, withOnError, withSentry } from '@repo/hono-helpers'
+import {
+	captureException,
+	logger,
+	withNotFound,
+	withOnError,
+	withSentry,
+	withWorkersLogger,
+} from '@repo/hono-helpers'
 
 import { createDb } from './db'
+import { discordMemberAuditRuns, userCharacters, userIpAddresses, users } from './db/schema'
+import { CoreDO } from './durable-object'
 import { waitUntilWithTelemetry } from './lib/background-task'
 import { IMMUNITAS_ALERT_DRAIN_CRON } from './lib/immunitas-alerts'
 import { TOKEN_INVALID_ALERT_DRAIN_CRON } from './lib/token-invalid-alerts'
-import { discordMemberAuditRuns, userCharacters, userIpAddresses, users } from './db/schema'
-import { CoreDO } from './durable-object'
 import { triggerDiscordRefreshWorkflow, triggerUserRefreshWorkflow } from './lib/workflow-triggers'
 import { csrfProtection } from './middleware/csrf'
 import { sessionMiddleware } from './middleware/session'
 import adminRoutes from './routes/admin'
+import adminNavigationLinksRoutes from './routes/admin/navigation-links'
 import adminStructuresRoutes from './routes/admin/structures'
 import authRoutes from './routes/auth'
 import billsAdminRoutes from './routes/bills-admin'
-import predictionMarketsAdminRoutes from './routes/prediction-markets-admin'
-import predictionMarketsRoutes from './routes/prediction-markets'
 import billsUserRoutes from './routes/bills-user'
 import broadcastsRoutes from './routes/broadcasts'
 import charactersRoutes from './routes/characters'
@@ -33,6 +38,7 @@ import dkpRoutes from './routes/dkp'
 import doctrinesRoutes from './routes/doctrines'
 import entitiesRoutes from './routes/entities'
 import esiRoutes from './routes/esi'
+import flagsRoutes from './routes/flags'
 import fleetsRoutes from './routes/fleets'
 import freightRoutes from './routes/freight'
 import fulcrumRoutes from './routes/fulcrum'
@@ -44,37 +50,33 @@ import industryOrdersRoutes from './routes/industry-orders'
 import inventoryRoutes from './routes/inventory'
 import inviteRoutes from './routes/invite'
 import loginRoutes from './routes/login'
+import { moonScanRoutes } from './routes/moon-scan'
 import mumbleRoutes from './routes/mumble'
 import mumbleTempopRoutes from './routes/mumble-tempop'
 import publicMumbleTempopRoutes from './routes/mumble-tempop-public'
-import { handleOAuthDevProxyRequest, isOAuthDevProxyPath } from './routes/oauth-dev-proxy'
+import navigationLinksRoutes from './routes/navigation-links'
 import oauthRoutes from './routes/oauth'
-import adminNavigationLinksRoutes from './routes/admin/navigation-links'
+import { handleOAuthDevProxyRequest, isOAuthDevProxyPath } from './routes/oauth-dev-proxy'
+import pastesRoutes, { publicPasteRoutes } from './routes/pastes'
+import predictionMarketsRoutes from './routes/prediction-markets'
+import predictionMarketsAdminRoutes from './routes/prediction-markets-admin'
 import sessionRoutes from './routes/session'
-import publicSrpRoutes from './routes/srp-public'
 import skillPlansRoutes from './routes/skill-plans'
 import skillsRoutes from './routes/skills'
-import flagsRoutes from './routes/flags'
-import { moonScanRoutes } from './routes/moon-scan'
-import pastesRoutes, { publicPasteRoutes } from './routes/pastes'
-import navigationLinksRoutes from './routes/navigation-links'
 import srpRoutes from './routes/srp'
+import publicSrpRoutes from './routes/srp-public'
 import structuresRoutes from './routes/structures'
-import usersRoutes from './routes/users'
 import universeRoutes from './routes/universe'
+import usersRoutes from './routes/users'
 import { CoreRpcService } from './services/core-rpc.service'
 import {
 	buildDiscordInteractionRouting,
 	ensureDiscordCommandRegistryLoaded,
 	executeDiscordSlashCommand,
-	type DiscordInteractionRouting,
-	type ExecuteDiscordSlashCommandInput,
 } from './services/discord-commands.service'
 import {
 	executeDiscordComponent,
 	executeDiscordModalSubmit,
-	type ExecuteComponentInput,
-	type ExecuteModalSubmitInput,
 } from './services/discord-components.service'
 import { reconcileMarketPosts } from './services/discord-market-reconcile.service'
 import { DkpService } from './services/dkp.service'
@@ -93,13 +95,20 @@ import type { EveTokenStore } from '@repo/eve-token-store'
 import type { Hr } from '@repo/hr'
 import type { Legacy } from '@repo/legacy'
 import type { App, Env } from './context'
+import type {
+	DiscordInteractionRouting,
+	ExecuteDiscordSlashCommandInput,
+} from './services/discord-commands.service'
+import type {
+	ExecuteComponentInput,
+	ExecuteModalSubmitInput,
+} from './services/discord-components.service'
 
 const app = new Hono<App>()
 	.use(
 		'*',
-		// middleware
 		(c, next) =>
-			useWorkersLogger(c.env.NAME, {
+			withWorkersLogger(c.env.NAME, {
 				environment: c.env.ENVIRONMENT,
 				release: c.env.SENTRY_RELEASE,
 			})(c, next)
@@ -209,7 +218,7 @@ export default {
 							console.log('[Core:Scheduled] Prediction-market reconcile', r)
 						}
 					})
-				.catch((error) => captureException(error as Error, { tags: { job: 'pm-reconcile' } }))
+					.catch((error) => captureException(error as Error, { tags: { job: 'pm-reconcile' } }))
 			)
 		}
 
@@ -294,10 +303,7 @@ export class CoreWorker extends WorkerEntrypoint<Env> {
 	/**
 	 * List a page of users that currently have at least one active linked character.
 	 */
-	async listUsersWithActiveCharactersPage(input: {
-		limit: number
-		offset: number
-	}): Promise<{
+	async listUsersWithActiveCharactersPage(input: { limit: number; offset: number }): Promise<{
 		users: Array<{ userId: string; characterIds: string[] }>
 		totalCount: number
 	}> {
@@ -307,7 +313,9 @@ export class CoreWorker extends WorkerEntrypoint<Env> {
 	/**
 	 * List every core user that currently has at least one active linked character.
 	 */
-	async listUsersWithActiveCharacters(): Promise<Array<{ userId: string; characterIds: string[] }>> {
+	async listUsersWithActiveCharacters(): Promise<
+		Array<{ userId: string; characterIds: string[] }>
+	> {
 		const db = createDb(this.env.DATABASE_URL)
 		const rows = await db.query.userCharacters.findMany({
 			columns: {
@@ -462,7 +470,10 @@ export class CoreWorker extends WorkerEntrypoint<Env> {
 		if (linkedUserIds.length === 0) return { subjectUserId: ownership.userId, matches: [] }
 
 		const blacklistChecks = await Promise.all(
-			linkedUserIds.map(async (userId) => ({ userId, isBlacklisted: await hrStub.isUserBlacklisted(userId) }))
+			linkedUserIds.map(async (userId) => ({
+				userId,
+				isBlacklisted: await hrStub.isUserBlacklisted(userId),
+			}))
 		)
 		const blacklistedUserIds = blacklistChecks
 			.filter((result) => result.isBlacklisted)
@@ -836,7 +847,7 @@ export class CoreWorker extends WorkerEntrypoint<Env> {
 	 * Get user's main character id/name by user ID.
 	 */
 	async getUserMainCharacter(
-		userId: string,
+		userId: string
 	): Promise<{ characterId: string; characterName: string } | null> {
 		return this.getService().getUserMainCharacter(userId)
 	}
@@ -1140,9 +1151,8 @@ export class CoreWorker extends WorkerEntrypoint<Env> {
 			}
 		}
 
-		const discordQueueResult = await this.addPendingDiscordRefreshesForCharacters(
-			normalizedCharacterIds
-		)
+		const discordQueueResult =
+			await this.addPendingDiscordRefreshesForCharacters(normalizedCharacterIds)
 
 		return {
 			usersMatched: uniqueUserIds.length,
@@ -1151,7 +1161,6 @@ export class CoreWorker extends WorkerEntrypoint<Env> {
 		}
 	}
 }
-
 
 // Export Durable Object class
 // Note: Automatic Sentry instrumentation for DOs is not supported in Cloudflare Workers

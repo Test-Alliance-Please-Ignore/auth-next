@@ -1,7 +1,6 @@
 import { Hono } from 'hono'
-import { useWorkersLogger } from 'workers-tagged-logger'
 
-import { logger, withNotFound, withOnError } from '@repo/hono-helpers'
+import { logger, withNotFound, withOnError, withWorkersLogger } from '@repo/hono-helpers'
 
 import { EveCharacterDataDO } from './durable-object'
 import { buildUserSyncWorkflowOptions } from './workflows/build-user-sync-workflow-options'
@@ -13,7 +12,7 @@ const app = new Hono<App>()
 	.use(
 		'*',
 		(c, next) =>
-			useWorkersLogger(c.env.NAME, {
+			withWorkersLogger(c.env.NAME, {
 				environment: c.env.ENVIRONMENT,
 				release: c.env.SENTRY_RELEASE,
 			})(c, next)
