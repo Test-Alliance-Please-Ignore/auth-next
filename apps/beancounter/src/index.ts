@@ -1,8 +1,7 @@
 import { Hono } from 'hono'
-import { useWorkersLogger } from 'workers-tagged-logger'
 
 import { getStub } from '@repo/do-utils'
-import { withNotFound, withOnError } from '@repo/hono-helpers'
+import { withNotFound, withOnError, withWorkersLogger } from '@repo/hono-helpers'
 
 import { registerCoordinatorRoutes } from './coordinator/routes'
 import { StructureCoordinatorDO } from './coordinator/structure-coordinator'
@@ -14,9 +13,8 @@ import type { App } from './context'
 const app = new Hono<App>()
 	.use(
 		'*',
-		// middleware
 		(c, next) =>
-			useWorkersLogger(c.env.NAME, {
+			withWorkersLogger(c.env.NAME, {
 				environment: c.env.ENVIRONMENT,
 				release: c.env.SENTRY_RELEASE,
 				service: 'beancounter',

@@ -8,18 +8,19 @@
  */
 
 import { Hono } from 'hono'
-import { useWorkersLogger } from 'workers-tagged-logger'
 
-import { withNotFound, withOnError } from '@repo/hono-helpers'
+import { withNotFound, withOnError, withWorkersLogger } from '@repo/hono-helpers'
 
 import type { App } from './context'
 
 const app = new Hono<App>()
-	.use('*', (c, next) =>
-		useWorkersLogger(c.env.NAME, {
-			environment: c.env.ENVIRONMENT,
-			release: c.env.SENTRY_RELEASE,
-		})(c, next)
+	.use(
+		'*',
+		(c, next) =>
+			withWorkersLogger(c.env.NAME, {
+				environment: c.env.ENVIRONMENT,
+				release: c.env.SENTRY_RELEASE,
+			})(c, next)
 	)
 	.onError(withOnError())
 	.notFound(withNotFound())

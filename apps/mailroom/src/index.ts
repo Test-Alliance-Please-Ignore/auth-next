@@ -1,7 +1,6 @@
 import { Hono } from 'hono'
-import { useWorkersLogger } from 'workers-tagged-logger'
 
-import { captureException, withNotFound, withOnError, withSentry } from '@repo/hono-helpers'
+import { captureException, withNotFound, withOnError, withSentry, withWorkersLogger } from '@repo/hono-helpers'
 
 import { createEmailHandler, errorMessage } from './email'
 import { emailRouter } from './routes'
@@ -9,11 +8,13 @@ import { emailRouter } from './routes'
 import type { App, Env } from './context'
 
 const app = new Hono<App>()
-	.use('*', (c, next) =>
-		useWorkersLogger(c.env.NAME, {
-			environment: c.env.ENVIRONMENT,
-			release: c.env.SENTRY_RELEASE,
-		})(c, next)
+	.use(
+		'*',
+		(c, next) =>
+			withWorkersLogger(c.env.NAME, {
+				environment: c.env.ENVIRONMENT,
+				release: c.env.SENTRY_RELEASE,
+			})(c, next)
 	)
 
 	.onError(withOnError())

@@ -1,9 +1,8 @@
 import { WorkerEntrypoint } from 'cloudflare:workers'
 import { Hono } from 'hono'
-import { useWorkersLogger } from 'workers-tagged-logger'
 
 import { getStub } from '@repo/do-utils'
-import { withNotFound, withOnError } from '@repo/hono-helpers'
+import { withNotFound, withOnError, withWorkersLogger } from '@repo/hono-helpers'
 
 import { EveCorporationDataDO } from './durable-object'
 import { scheduledHandler } from './scheduled'
@@ -15,9 +14,8 @@ import type { App, Env } from './context'
 const app = new Hono<App>()
 	.use(
 		'*',
-		// middleware
 		(c, next) =>
-			useWorkersLogger(c.env.NAME, {
+			withWorkersLogger(c.env.NAME, {
 				environment: c.env.ENVIRONMENT,
 				release: c.env.SENTRY_RELEASE,
 			})(c, next)
