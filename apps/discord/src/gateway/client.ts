@@ -33,6 +33,7 @@ export class DiscordGatewayClient implements DiscordGateway {
 	private readonly router = new DiscordGatewayEventRouter(
 		createDiscordGatewayEventRegistry(defaultDiscordGatewayHandlers)
 	)
+	private readonly gatewayEnabled: boolean
 	private websocket: WebSocket | null = null
 	private connectPromise: Promise<DiscordGatewayBootstrapResult> | null = null
 	private heartbeatTimer: ReturnType<typeof setInterval> | null = null
@@ -54,6 +55,8 @@ export class DiscordGatewayClient implements DiscordGateway {
 		private readonly state: DurableObjectState,
 		private readonly env: Env
 	) {
+		this.gatewayEnabled = env.DISCORD_GATEWAY_ENABLED === 'true'
+
 		state.blockConcurrencyWhile(async () => {
 			const persisted = await state.storage.get<Partial<DiscordGatewayStatus>>('gateway-state')
 			if (!persisted) {
@@ -70,6 +73,11 @@ export class DiscordGatewayClient implements DiscordGateway {
 			this.lastEventAt = persisted.lastEventAt ?? null
 			this.lastError = persisted.lastError ?? null
 			this.connectionState = persisted.connectionState ?? 'idle'
+
+			if (!this.gatewayEnabled) {
+				this.connectionState = 'disabled'
+				this.lastError = 'Discord gateway is disabled by configuration'
+			}
 		})
 	}
 
@@ -356,6 +364,10 @@ export class DiscordGatewayClient implements DiscordGateway {
 	}
 
 	private scheduleReconnect(reason: string): void {
+		if (!this.gatewayEnabled) {
+			return
+		}
+
 		this.clearReconnectTimer()
 		this.clearHeartbeatTimer()
 
@@ -382,6 +394,16 @@ export class DiscordGatewayClient implements DiscordGateway {
 	}
 
 	private async connect(resume = true): Promise<DiscordGatewayBootstrapResult> {
+		if (!this.gatewayEnabled) {
+			this.closeWebSocket(1000, 'gateway-disabled', true)
+			this.clearReconnectTimer()
+			this.clearHeartbeatTimer()
+			this.connectionState = 'disabled'
+			this.lastError = 'Discord gateway is disabled by configuration'
+			await this.persistStatus()
+			return { status: 'disabled' as const, reason: 'Discord gateway is disabled' }
+		}
+
 		if (this.websocket && this.websocket.readyState === WebSocket.OPEN) {
 			return { status: 'already-running' }
 		}
@@ -520,12 +542,34 @@ export class DiscordGatewayClient implements DiscordGateway {
 	}
 
 	async alarm(): Promise<void> {
+		if (!this.gatewayEnabled) {
+			await this.shutdown()
+			return
+		}
+
 		const status = this.getStatus()
 		logger.info('[DiscordGateway] Alarm triggered', {
 			connectionState: status.connectionState,
 			connected: status.connected,
 		})
 		await this.connect(true)
+	}
+
+	async shutdown(): Promise<void> {
+		this.clearReconnectTimer()
+		this.clearHeartbeatTimer()
+		this.closeWebSocket(1000, 'gateway-disabled', true)
+		this.gatewayUrl = null
+		this.resumeGatewayUrl = null
+		this.sessionId = null
+		this.sequence = null
+		this.heartbeatIntervalMs = null
+		this.lastHelloAt = null
+		this.lastHeartbeatAckAt = null
+		this.lastEventAt = null
+		this.lastError = 'Discord gateway is disabled by configuration'
+		this.connectionState = 'disabled'
+		await this.persistStatus()
 	}
 
 	async reserveJoinSuppressions(input: {

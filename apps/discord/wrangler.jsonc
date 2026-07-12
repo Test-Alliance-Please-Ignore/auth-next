@@ -7,9 +7,6 @@
 	"workers_dev": false,
 	"routes": ["pleaseignore.app/api/discord/interactions"],
 	"logpush": false,
-	"triggers": {
-		"crons": ["*/5 * * * *"]
-	},
 	"kv_namespaces": [
 		{
 			"binding": "DISCORD_RATE_LIMITS",
@@ -20,6 +17,9 @@
 		"enabled": true,
 		"head_sampling_rate": 1
 	},
+	// The Discord gateway websocket listener is intentionally disabled. It caused
+	// sustained Cloudflare cost inflation and is kept only as a dormant stub for
+	// future experimentation if we find a lower-cost design.
 	"vars": {
 		"NAME": "discord",
 		"ENVIRONMENT": "production",
@@ -30,6 +30,7 @@
 		"DISCORD_TOKEN_REVOKE_URL": "https://discord.com/api/oauth2/token/revoke",
 		"DISCORD_USER_INFO_URL": "https://discord.com/api/users/@me",
 		"DISCORD_CALLBACK_URL": "https://pleaseignore.app/api/discord/callback",
+		"DISCORD_GATEWAY_ENABLED": "false",
 		"DISCORD_ROLE_ADD_ONLY_MODE": "true",
 		"SENTRY_DSN": "https://c06f13e3a5604fcaacc1d897752246a2@app.glitchtip.com/13710"
 	},
