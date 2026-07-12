@@ -76,30 +76,32 @@ export function StagingSystemDialog({
 						<DialogTitle>{isEdit ? 'Edit Staging System' : 'New Staging System'}</DialogTitle>
 					</DialogHeader>
 					<div className="space-y-4 py-4">
-						{isEdit ? (
-							<div className="space-y-2">
-								<Label>System</Label>
-								<p className="text-sm text-foreground">{solarSystemName}</p>
-							</div>
-						) : (
-							<div className="space-y-2">
-								<Label>Solar System</Label>
-								<Select
-									options={[]}
-									value={solarSystemId}
-									onValueChange={(val, option) => {
-										setSolarSystemId(val)
-										setSolarSystemName(option?.label || '')
-									}}
-									searchable
-									searchDelegate={searchSystems}
-									minQueryLength={3}
-									debounceMs={500}
-									placeholder="Search for a system..."
-									emptyText="No systems found"
-									queryHintText="Type at least 3 characters to search"
-								/>
-							</div>
+						<div className="space-y-2">
+							<Label>Solar System</Label>
+							<Select
+								options={
+									isEdit && solarSystemId && solarSystemName
+										? [{ value: solarSystemId, label: solarSystemName, description: 'Current system' }]
+										: []
+								}
+								value={solarSystemId}
+								onValueChange={(val, option) => {
+									setSolarSystemId(val)
+									setSolarSystemName(option?.label || '')
+								}}
+								searchable
+								searchDelegate={searchSystems}
+								minQueryLength={3}
+								debounceMs={500}
+								placeholder="Search for a system..."
+								emptyText="No systems found"
+								queryHintText="Type at least 3 characters to search"
+							/>
+						</div>
+						{isEdit && (
+							<p className="text-xs text-muted-foreground">
+								Changing the system updates this shared staging entry everywhere it is used.
+							</p>
 						)}
 						<div className="space-y-2">
 							<Label htmlFor="sys-sort">Sort Order</Label>
