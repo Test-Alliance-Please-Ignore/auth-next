@@ -1,8 +1,7 @@
 import { WorkflowEntrypoint } from 'cloudflare:workers'
-import { withLogTags } from 'workers-tagged-logger'
 
 import { getStub } from '@repo/do-utils'
-import { logger, resolveLogLevel } from '@repo/hono-helpers'
+import { logger, withWorkerLogContext } from '@repo/hono-helpers'
 import {
 	esiRetryOptions,
 	NonRetryableError,
@@ -150,8 +149,7 @@ async function syncCoreAuthHealthSnapshot(
 
 export class EveCorporationSyncWorkflow extends WorkflowEntrypoint<Env, EveCorporationSyncParams> {
 	async run(event: WorkflowEvent<EveCorporationSyncParams>, step: WorkflowStep) {
-		return await withLogTags({ source: 'EveCorporationSyncWorkflow' }, async () => {
-			logger.setLogLevel(resolveLogLevel(this.env.LOG_LEVEL))
+		return await withWorkerLogContext('EveCorporationSyncWorkflow', this.env, async () => {
 			const { corporationId, dataTypes, trigger } = event.payload
 			const workflowInstanceId = event.instanceId
 			const assetsSyncEnabled = readEnvFlag(this.env.ASSETS_SYNC_ENABLED, true)

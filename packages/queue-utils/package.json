@@ -11,6 +11,7 @@
 		"test": "run-vitest"
 	},
 	"dependencies": {
+		"@repo/hono-helpers": "workspace:*",
 		"zod": "4.1.12"
 	},
 	"devDependencies": {

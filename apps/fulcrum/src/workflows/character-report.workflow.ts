@@ -36,6 +36,7 @@ import type { Hr } from '@repo/hr'
 import type { WorkflowEvent, WorkflowStep, WorkflowStepConfig } from 'cloudflare:workers'
 import type { Env } from '../context'
 import type { StepResult } from './utils/storage'
+import { logger } from '@repo/hono-helpers'
 
 /**
  * Character Report Workflow
@@ -120,7 +121,7 @@ export class CharacterReportWorkflow extends WorkflowEntrypoint<Env, WorkflowPar
 		// to see how far a replayed workflow has progressed.
 		const doStep = async <T>(name: string, config: WorkflowStepConfig, fn: () => Promise<T>): Promise<T> => {
 			const stepStartedAt = Date.now()
-			console.log('[Workflow] step:start', { step: name, config, ...logCtx })
+			logger.log('[Workflow] step:start', { step: name, config, ...logCtx })
 			try {
 				// eslint-disable-next-line @typescript-eslint/no-explicit-any
 				const result = await step.do(name, config, fn as () => Promise<any>) as T
@@ -133,13 +134,13 @@ export class CharacterReportWorkflow extends WorkflowEntrypoint<Env, WorkflowPar
 				}
 				stepDurationsMs[name] = Date.now() - stepStartedAt
 				logFields.durationMs = stepDurationsMs[name]
-				console.log('[Workflow] step:done', logFields)
+				logger.log('[Workflow] step:done', logFields)
 				return result
 			} catch (error) {
 				failedStep = name
 				const serializedError = serializeError(error)
 				stepDurationsMs[name] = Date.now() - stepStartedAt
-				console.error('[Workflow] step:error', {
+				logger.error('[Workflow] step:error', {
 					step: name,
 					durationMs: stepDurationsMs[name],
 					config,
@@ -150,7 +151,7 @@ export class CharacterReportWorkflow extends WorkflowEntrypoint<Env, WorkflowPar
 			}
 		}
 
-		console.log('[Workflow] started', logCtx)
+		logger.log('[Workflow] started', logCtx)
 
 		try {
 
@@ -620,7 +621,7 @@ export class CharacterReportWorkflow extends WorkflowEntrypoint<Env, WorkflowPar
 				),
 			)
 
-			console.log('[Workflow] completed', {
+			logger.log('[Workflow] completed', {
 				...logCtx,
 				durationMs: Date.now() - startedAt,
 				stepDurationsMs,
@@ -629,7 +630,7 @@ export class CharacterReportWorkflow extends WorkflowEntrypoint<Env, WorkflowPar
 			const serializedError = serializeError(error)
 			const errorMsgBase = serializedError.message
 			const errorMsg = failedStep ? `[${failedStep}] ${errorMsgBase}` : errorMsgBase
-			console.error('[Workflow] failed', {
+			logger.error('[Workflow] failed', {
 				...logCtx,
 				failedStep,
 				durationMs: Date.now() - startedAt,
@@ -658,7 +659,7 @@ export class CharacterReportWorkflow extends WorkflowEntrypoint<Env, WorkflowPar
 						const db = createDb(this.env.DATABASE_URL)
 						const report = await getReport(db, reportId)
 						if (!report) {
-							console.warn('[Workflow] send-failed-dm skipped: report not found', {
+							logger.warn('[Workflow] send-failed-dm skipped: report not found', {
 								...logCtx,
 								failedStep,
 							})
@@ -695,7 +696,7 @@ export class CharacterReportWorkflow extends WorkflowEntrypoint<Env, WorkflowPar
 							usedFallbackMetadata: metadata === null,
 						}
 					} catch (notifyError) {
-						console.error('[Workflow] Failed to send report failed DM', {
+						logger.error('[Workflow] Failed to send report failed DM', {
 							...logCtx,
 							failedStep,
 							error: serializeError(notifyError),
@@ -708,7 +709,7 @@ export class CharacterReportWorkflow extends WorkflowEntrypoint<Env, WorkflowPar
 					}
 				})
 			} catch (markError) {
-				console.error('[CharacterReportWorkflow] Failed to mark report as failed:', {
+				logger.error('[CharacterReportWorkflow] Failed to mark report as failed:', {
 					reportId,
 					characterId,
 					failedStep,

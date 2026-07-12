@@ -34,6 +34,7 @@ import { createEveRegionId, createEveTypeId } from '@repo/eve-types'
 import type { Markets } from '@repo/markets'
 import type { Universe } from '@repo/universe'
 import type { App } from '../context'
+import { logger } from '@repo/hono-helpers'
 
 // ─── Permission URNs ─────────────────────────────────────────────────────────
 
@@ -398,7 +399,7 @@ function getMoonProfitabilityInputsFromComposition(
 			updatedAt: new Date().toISOString(),
 		}
 	} catch (error) {
-		console.error('[moon-scan] failed to build profitability from cached inputs', { error })
+		logger.error('[moon-scan] failed to build profitability from cached inputs', { error })
 		return null
 	}
 }
@@ -832,7 +833,7 @@ moonScanRoutes.get('/moons/verified', async (c) => {
 				sortBy: query.data.sortBy as VerifiedMoonsSortBy,
 			})
 		} catch (error) {
-			console.warn('Falling back to legacy verified-moons hydration', {
+			logger.warn('Falling back to legacy verified-moons hydration', {
 				error,
 				sortBy: query.data.sortBy,
 			})
@@ -1401,7 +1402,7 @@ async function computeProfitability(
 		const inputs = await getMoonPricingInputs(env, universe, moonScan, [composition])
 		return getMoonProfitabilityInputsFromComposition(composition, inputs)
 	} catch (err) {
-		console.error('[computeProfitability] failed:', err)
+		logger.error('[computeProfitability] failed:', err)
 		return null
 	}
 }

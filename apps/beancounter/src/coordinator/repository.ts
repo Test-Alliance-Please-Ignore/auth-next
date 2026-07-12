@@ -11,6 +11,7 @@ import {
 
 import type { StructureRow } from '../common/db/schema'
 import type { CorporationScanTarget } from '../types'
+import { logger } from '@repo/hono-helpers'
 
 /**
  * Persistence layer for the structure coordinator.
@@ -114,7 +115,7 @@ export class StructureMonitorRepository {
 				})
 		} catch (error) {
 			// Log error but don't throw - monitor creation should still proceed
-			console.error('[Repository] Failed to record monitor instance', {
+			logger.error('[Repository] Failed to record monitor instance', {
 				structureId,
 				durableObjectName,
 				error: error instanceof Error ? error.message : String(error),
@@ -162,7 +163,7 @@ export class StructureMonitorRepository {
 				.where(eq(structureMonitorInstances.structureId, structureId))
 		} catch (error) {
 			// Log error but don't throw - heartbeat recording failure shouldn't break monitoring
-			console.error('[Repository] Failed to record monitor heartbeat', {
+			logger.error('[Repository] Failed to record monitor heartbeat', {
 				structureId,
 				status,
 				error: error instanceof Error ? error.message : String(error),
@@ -203,7 +204,7 @@ export class StructureMonitorRepository {
 			})
 		} catch (error) {
 			// Log error but don't throw - run result recording failure shouldn't break monitoring
-			console.error('[Repository] Failed to record monitor run result', {
+			logger.error('[Repository] Failed to record monitor run result', {
 				structureId,
 				status: result.status,
 				error: error instanceof Error ? error.message : String(error),
@@ -245,7 +246,7 @@ export class StructureMonitorRepository {
 			.where(inArray(structureSnapshots.structureId, structureIds))
 			.orderBy(desc(structureSnapshots.recordedAt))
 
-		console.log('[Repository] Query results', {
+		logger.log('[Repository] Query results', {
 			requestedIds: structureIds,
 			requestedCount: structureIds.length,
 			foundSnapshots: allSnapshots.length,
@@ -272,7 +273,7 @@ export class StructureMonitorRepository {
 			}
 		}
 
-		console.log('[Repository] Latest map', {
+		logger.log('[Repository] Latest map', {
 			mapSize: latestMap.size,
 			mapKeys: Array.from(latestMap.keys()),
 		})

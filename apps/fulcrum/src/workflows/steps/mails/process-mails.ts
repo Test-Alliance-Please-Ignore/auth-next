@@ -4,6 +4,7 @@ import type { CharacterAffiliationCoordinator } from '../../processors/helpers/c
 import type { EntityLinkCoordinator } from '../../processors/helpers/entity-links'
 import type { CoreBinding } from '../../../types/core-binding'
 import type { MailFetchResult } from './fetch-mails'
+import { logger } from '@repo/hono-helpers'
 
 export async function processMails(
 	env: {
@@ -42,7 +43,7 @@ export async function processMails(
 		const fetchData = data as MailFetchResult
 		const { mails, mailingLists, labels } = fetchData
 
-		console.log('[processMails] Starting enrichment', {
+		logger.log('[processMails] Starting enrichment', {
 			count: mails.length,
 			mailingListCount: mailingLists.length,
 			sample: mails[0]
@@ -65,7 +66,7 @@ export async function processMails(
 			entityLinkCoordinator,
 		)
 
-		console.log('[processMails] Enrichment complete', {
+		logger.log('[processMails] Enrichment complete', {
 			count: enrichedData.mails.length,
 			sample: enrichedData.mails[0]
 				? {

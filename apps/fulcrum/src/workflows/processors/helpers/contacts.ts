@@ -9,6 +9,7 @@ import type { CharacterContact, EsiTypeResolver } from '@repo/esi'
 import type { CharacterAffiliationCoordinator } from './character-affiliation'
 import type { EntityLinkCoordinator } from './entity-links'
 import type { CoreBinding } from '../../../types/core-binding'
+import { logger } from '@repo/hono-helpers'
 
 /**
  * Enriched character contact with resolved names
@@ -147,7 +148,7 @@ export async function enrichContacts(
 	// Collect all contact IDs that need resolution
 	const contactIds = contacts.map((contact) => contact.contact_id).filter(Boolean)
 
-	console.log('[enrichContacts] Starting enrichment', {
+	logger.log('[enrichContacts] Starting enrichment', {
 		totalContacts: contacts.length,
 		uniqueContactIds: contactIds.length,
 		sampleContactIds: contactIds.slice(0, 5),
@@ -161,14 +162,14 @@ export async function enrichContacts(
 			const resolved = await resolver.resolveIds(contactIds)
 			Object.assign(nameMap, resolved)
 		} catch (error) {
-			console.error('[enrichContacts] Failed to resolve contact IDs:', {
+			logger.error('[enrichContacts] Failed to resolve contact IDs:', {
 				error: error instanceof Error ? error.message : String(error),
 				idCount: contactIds.length,
 			})
 		}
 	}
 
-	console.log('[enrichContacts] Resolution complete', {
+	logger.log('[enrichContacts] Resolution complete', {
 		nameMapSize: Object.keys(nameMap).length,
 		sampleResolved: Object.entries(nameMap).slice(0, 5),
 	})

@@ -10,6 +10,7 @@ import type { StructureResolutionCoordinator } from '../../processors/helpers/st
 import type { CoreBinding } from '../../../types/core-binding'
 import { retrieveData, storeOrReturn, type StepResult } from '../../utils/storage'
 import { enrichWalletTransactions } from '../../processors/helpers/wallet-transactions'
+import { logger } from '@repo/hono-helpers'
 
 /**
  * Process wallet transactions by enriching with resolved names
@@ -80,7 +81,7 @@ export async function processWalletTransactions(
 		}
 
 		// Enrich data by resolving IDs to names
-		console.log('[processWalletTransactions] Starting enrichment', {
+		logger.log('[processWalletTransactions] Starting enrichment', {
 			transactionCount: transactions.length,
 			sampleTransaction: transactions[0]
 				? {
@@ -100,7 +101,7 @@ export async function processWalletTransactions(
 			entityLinkCoordinator,
 		)
 
-		console.log('[processWalletTransactions] Enrichment complete', {
+		logger.log('[processWalletTransactions] Enrichment complete', {
 			enrichedCount: enrichedData.length,
 			sampleEnriched: enrichedData[0]
 				? {
@@ -124,7 +125,7 @@ export async function processWalletTransactions(
 			{ transactions: enrichedData, truncated },
 		)
 
-		console.log('[processWalletTransactions] Storage result', {
+		logger.log('[processWalletTransactions] Storage result', {
 			source: result.source,
 			success: result.success,
 		})

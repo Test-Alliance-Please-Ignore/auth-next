@@ -30,6 +30,7 @@ import type {
 	Skills,
 } from '@repo/skills'
 import type { Env } from './context'
+import { logger } from '@repo/hono-helpers'
 
 export class SkillsDO extends DurableObject<Env, {}> implements Skills {
 	private db: ReturnType<typeof createDb>
@@ -62,7 +63,7 @@ export class SkillsDO extends DurableObject<Env, {}> implements Skills {
 	 * Called when a scheduled alarm triggers
 	 */
 	async alarm(): Promise<void> {
-		console.log('SkillsDO alarm triggered at:', new Date().toISOString())
+		logger.log('SkillsDO alarm triggered at:', new Date().toISOString())
 		// Schedule next alarm (optional)
 		// await this.state.storage.setAlarm(Date.now() + 60000) // 1 minute
 	}
@@ -89,7 +90,7 @@ export class SkillsDO extends DurableObject<Env, {}> implements Skills {
 		this.allSkillsCache.clear()
 		this.skillGroupCache.clear()
 		this.skillGroupsCache = null
-		console.log('All skill caches cleared')
+		logger.log('All skill caches cleared')
 	}
 
 	/**
@@ -520,7 +521,7 @@ export class SkillsDO extends DurableObject<Env, {}> implements Skills {
 
 			// Log if skill not found for debugging
 			if (!skill) {
-				console.warn(`Skill not found in database: ${ps.skillId}`)
+				logger.warn(`Skill not found in database: ${ps.skillId}`)
 			}
 
 			return {
@@ -920,7 +921,7 @@ export class SkillsDO extends DurableObject<Env, {}> implements Skills {
 			where: eq(skills.id, skillIdStr),
 		})
 		if (!skillExists) {
-			console.warn(`Adding unknown skill to plan: ${skillIdStr}`)
+			logger.warn(`Adding unknown skill to plan: ${skillIdStr}`)
 		}
 
 		// Add the skill to the plan

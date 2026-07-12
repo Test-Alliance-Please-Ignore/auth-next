@@ -8,6 +8,7 @@ import type {
 } from './character-affiliation'
 import type { EntityLinkCoordinator } from './entity-links'
 import type { CoreBinding } from '../../../types/core-binding'
+import { logger } from '@repo/hono-helpers'
 
 export interface ProcessedNotification extends CharacterNotification {
     senderName?: string
@@ -187,7 +188,7 @@ export async function enrichNotifications(
             const typeResolver = getStub<EsiTypeResolver>(env.ESI_TYPE_RESOLVER, 'global')
             nameMap = await typeResolver.resolveIds(Array.from(idsToResolve), characterId)
         } catch (error) {
-            console.error('Failed to resolve IDs for notifications:', error)
+            logger.error('Failed to resolve IDs for notifications:', error)
         }
     }
 

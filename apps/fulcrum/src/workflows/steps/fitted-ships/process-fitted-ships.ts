@@ -9,6 +9,7 @@ import { retrieveData, storeOrReturn } from '../../utils/storage'
 
 import type { CharacterAsset } from '@repo/esi'
 import type { StepResult } from '../../utils/storage'
+import { logger } from '@repo/hono-helpers'
 
 /**
  * Process fitted ships by finding all ships and their fitted items
@@ -67,7 +68,7 @@ export async function processFittedShips(
 		}
 
 		// Find all fitted ships
-		console.log('[processFittedShips] Starting fitted ships discovery', {
+		logger.log('[processFittedShips] Starting fitted ships discovery', {
 			totalAssets: assets.length,
 			sampleAsset: assets[0]
 				? {
@@ -86,7 +87,7 @@ export async function processFittedShips(
 			structureResolutionCoordinator,
 		)
 
-		console.log('[processFittedShips] Fitted ships discovery complete', {
+		logger.log('[processFittedShips] Fitted ships discovery complete', {
 			fittedShipsCount: fittedShips.length,
 			sampleShip: fittedShips[0]
 				? {
@@ -102,7 +103,7 @@ export async function processFittedShips(
 		})
 
 		// Store in R2
-		console.log('[processFittedShips] Storing fitted ships in R2', {
+		logger.log('[processFittedShips] Storing fitted ships in R2', {
 			count: fittedShips.length,
 			bucketName,
 			workflowInstanceId,
@@ -115,7 +116,7 @@ export async function processFittedShips(
 			fittedShips,
 		)
 
-		console.log('[processFittedShips] Storage result', {
+		logger.log('[processFittedShips] Storage result', {
 			source: result.source,
 			success: result.success,
 			r2Bucket: result.source === 'r2' ? result.r2Bucket : 'N/A',

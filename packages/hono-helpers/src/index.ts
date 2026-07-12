@@ -1,5 +1,6 @@
 export type { HonoApp, SharedHonoEnv, SharedHonoVariables, SharedAppContext } from './types'
 export { logger, resolveLogLevel } from './helpers/logger'
+export { withWorkerLogContext, type LogLevelEnv } from './helpers/logging-context'
 export { getRequestLogData, type LogDataRequest } from './helpers/request'
 export * from './helpers/errors'
 export * from './helpers/sentry'

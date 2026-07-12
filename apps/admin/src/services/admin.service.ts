@@ -16,6 +16,7 @@ import type { DbClient } from '@repo/db-utils'
 import type { EveCharacterData } from '@repo/eve-character-data'
 import type { EveTokenStore } from '@repo/eve-token-store'
 import type { schema } from '../db'
+import { logger } from '@repo/hono-helpers'
 
 /**
  * Admin service - Business logic for administrative operations
@@ -161,7 +162,7 @@ export class AdminService {
 			const accessToken = await this.eveTokenStore.getAccessToken(characterId)
 			hasValidToken = accessToken !== null
 		} catch (error) {
-			console.error(`Failed to check token for character ${characterId}:`, error)
+			logger.error(`Failed to check token for character ${characterId}:`, error)
 		}
 
 		// 5. Log admin view action
@@ -300,7 +301,7 @@ export class AdminService {
 		try {
 			await this.logAdminAction(adminUserId, action, metadata)
 		} catch (error) {
-			console.error('[AdminService] Failed to write admin audit log', {
+			logger.error('[AdminService] Failed to write admin audit log', {
 				adminUserId,
 				action,
 				error: error instanceof Error ? error.message : String(error),

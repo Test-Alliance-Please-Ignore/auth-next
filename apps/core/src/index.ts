@@ -6,6 +6,7 @@ import { getStub } from '@repo/do-utils'
 import {
 	captureException,
 	logger,
+	withWorkerLogContext,
 	withNotFound,
 	withOnError,
 	withSentry,
@@ -196,64 +197,67 @@ const sentryApp = withSentry(app)
 export default {
 	fetch: sentryApp.fetch.bind(sentryApp),
 	async scheduled(event: ScheduledEvent, env: Env, ctx: ExecutionContext): Promise<void> {
-		const coreStub = getStub<Core>(env.CORE, 'default')
-		if (event.cron === '3-58/5 * * * *') {
-			const result = await coreStub.processPendingDiscordRefreshes()
-			if (result.processed > 0) {
-				console.log('[Core:Scheduled] Processed pending Discord refreshes', result)
+		await withWorkerLogContext('core-scheduled', env, async () => {
+			const scheduledLogger = logger.withTags({ component: 'core-scheduled' })
+			const coreStub = getStub<Core>(env.CORE, 'default')
+			if (event.cron === '3-58/5 * * * *') {
+				const result = await coreStub.processPendingDiscordRefreshes()
+				if (result.processed > 0) {
+					scheduledLogger.info('[Core:Scheduled] Processed pending Discord refreshes', result)
+				}
+
+				const tempopResult = await coreStub.processExpiredTempops()
+				if (tempopResult.expired > 0) {
+					scheduledLogger.info('[Core:Scheduled] Expired Mumble temp-ops', tempopResult)
+				}
+
+				// Prediction-markets forum-post drift sweep: auto-close due markets + refresh/backfill
+				// posts. Best-effort and out-of-band so a slow Discord run never delays the cron; a real
+				// failure is paged, not swallowed.
+				ctx.waitUntil(
+					reconcileMarketPosts(createDb(env.DATABASE_URL), env)
+						.then((r) => {
+							if (r.closed > 0 || r.refreshed > 0 || r.posted > 0 || r.notified > 0 || r.failed > 0) {
+								scheduledLogger.info('[Core:Scheduled] Prediction-market reconcile', r)
+							}
+						})
+						.catch((error) => captureException(error as Error, { tags: { job: 'pm-reconcile' } }))
+				)
 			}
 
-			const tempopResult = await coreStub.processExpiredTempops()
-			if (tempopResult.expired > 0) {
-				console.log('[Core:Scheduled] Expired Mumble temp-ops', tempopResult)
+			if (event.cron === TOKEN_INVALID_ALERT_DRAIN_CRON) {
+				const tokenAlertResult = await coreStub.processPendingTokenInvalidationAlerts()
+				if (tokenAlertResult.processed > 0) {
+					scheduledLogger.info(
+						'[Core:Scheduled] Processed pending token invalidation alerts',
+						tokenAlertResult
+					)
+				}
 			}
 
-			// Prediction-markets forum-post drift sweep: auto-close due markets + refresh/backfill
-			// posts. Best-effort and out-of-band so a slow Discord run never delays the cron; a real
-			// failure is paged, not swallowed.
-			ctx.waitUntil(
-				reconcileMarketPosts(createDb(env.DATABASE_URL), env)
-					.then((r) => {
-						if (r.closed > 0 || r.refreshed > 0 || r.posted > 0 || r.notified > 0 || r.failed > 0) {
-							console.log('[Core:Scheduled] Prediction-market reconcile', r)
-						}
+			if (event.cron === IMMUNITAS_ALERT_DRAIN_CRON) {
+				const immunitasAlertResult = await coreStub.processPendingImmunitasAccessAlerts()
+				if (immunitasAlertResult.processed > 0) {
+					scheduledLogger.info(
+						'[Core:Scheduled] Processed pending immunitas access alerts',
+						immunitasAlertResult
+					)
+				}
+			}
+
+			// Daily full cleanup of Discord member audit history at midnight UTC.
+			if (event.cron === '0 0 * * *') {
+				const db = createDb(env.DATABASE_URL)
+				const deletedRuns = await db
+					.delete(discordMemberAuditRuns)
+					.returning({ id: discordMemberAuditRuns.id })
+				if (deletedRuns.length > 0) {
+					scheduledLogger.info('[Core:Scheduled] Deleted Discord member audit runs', {
+						count: deletedRuns.length,
 					})
-					.catch((error) => captureException(error as Error, { tags: { job: 'pm-reconcile' } }))
-			)
-		}
-
-		if (event.cron === TOKEN_INVALID_ALERT_DRAIN_CRON) {
-			const tokenAlertResult = await coreStub.processPendingTokenInvalidationAlerts()
-			if (tokenAlertResult.processed > 0) {
-				console.log(
-					'[Core:Scheduled] Processed pending token invalidation alerts',
-					tokenAlertResult
-				)
+				}
 			}
-		}
-
-		if (event.cron === IMMUNITAS_ALERT_DRAIN_CRON) {
-			const immunitasAlertResult = await coreStub.processPendingImmunitasAccessAlerts()
-			if (immunitasAlertResult.processed > 0) {
-				console.log(
-					'[Core:Scheduled] Processed pending immunitas access alerts',
-					immunitasAlertResult
-				)
-			}
-		}
-
-		// Daily full cleanup of Discord member audit history at midnight UTC.
-		if (event.cron === '0 0 * * *') {
-			const db = createDb(env.DATABASE_URL)
-			const deletedRuns = await db
-				.delete(discordMemberAuditRuns)
-				.returning({ id: discordMemberAuditRuns.id })
-			if (deletedRuns.length > 0) {
-				console.log('[Core:Scheduled] Deleted Discord member audit runs', {
-					count: deletedRuns.length,
-				})
-			}
-		}
+		})
 	},
 }
 

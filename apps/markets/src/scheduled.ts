@@ -1,5 +1,6 @@
 import { sql } from '@repo/db-utils'
 import { getStub } from '@repo/do-utils'
+import { logger, withWorkerLogContext } from '@repo/hono-helpers'
 
 import { createDb } from './db'
 
@@ -33,36 +34,38 @@ async function isPricingIngestEnabled(env: Env): Promise<boolean> {
  * Skipped entirely when the `markets.pricing.ingest.enabled` feature flag is false.
  */
 export async function scheduledHandler(_event: ScheduledEvent, env: Env): Promise<void> {
-	if (!(await isPricingIngestEnabled(env))) {
-		console.log('[scheduledHandler] Pricing ingest disabled by feature flag — skipping')
-		return
-	}
+	await withWorkerLogContext('markets-scheduled', env, async () => {
+		if (!(await isPricingIngestEnabled(env))) {
+			logger.info('[scheduledHandler] Pricing ingest disabled by feature flag — skipping')
+			return
+		}
 
-	// Stop lingering order-book alarm on the Jita region DO (idempotent)
-	try {
-		const jitaStub = getStub<Markets>(env.MARKETS, 'region-10000002')
-		await jitaStub.stopHourlySnapshots('10000002')
-	} catch {
-		// Never started or already stopped — safe to ignore
-	}
+		// Stop lingering order-book alarm on the Jita region DO (idempotent)
+		try {
+			const jitaStub = getStub<Markets>(env.MARKETS, 'region-10000002')
+			await jitaStub.stopHourlySnapshots('10000002')
+		} catch {
+			// Never started or already stopped — safe to ignore
+		}
 
-	const now = new Date()
-	const targetDate = now.toISOString().slice(0, 10) // today's UTC date: 'YYYY-MM-DD'
-	const hour = now.getUTCHours().toString().padStart(2, '0')
+		const now = new Date()
+		const targetDate = now.toISOString().slice(0, 10) // today's UTC date: 'YYYY-MM-DD'
+		const hour = now.getUTCHours().toString().padStart(2, '0')
 
-	console.log(`[scheduledHandler] Dispatching price snapshot for ${targetDate} hour ${hour}`)
+		logger.info(`[scheduledHandler] Dispatching price snapshot for ${targetDate} hour ${hour}`)
 
-	await env.DAILY_PRICE_BATCH_WORKFLOW.create({
-		id: `price-snapshot-${targetDate}-${hour}`,
-		params: { targetDate },
+		await env.DAILY_PRICE_BATCH_WORKFLOW.create({
+			id: `price-snapshot-${targetDate}-${hour}`,
+			params: { targetDate },
+		})
+
+		// Trim daily price rows beyond retention window
+		const maxDays = env.MAX_DAILY_PRICE_HISTORY_DAYS ?? 60
+		const db = createDb(env.DATABASE_URL)
+		await db.execute(sql`
+			DELETE FROM market_daily_prices
+			WHERE price_date < (CURRENT_DATE - (${maxDays} || ' days')::interval)::date
+		`)
+		logger.info(`[scheduledHandler] Trimmed prices older than ${maxDays} days`)
 	})
-
-	// Trim daily price rows beyond retention window
-	const maxDays = env.MAX_DAILY_PRICE_HISTORY_DAYS ?? 60
-	const db = createDb(env.DATABASE_URL)
-	await db.execute(sql`
-		DELETE FROM market_daily_prices
-		WHERE price_date < (CURRENT_DATE - (${maxDays} || ' days')::interval)::date
-	`)
-	console.log(`[scheduledHandler] Trimmed prices older than ${maxDays} days`)
 }

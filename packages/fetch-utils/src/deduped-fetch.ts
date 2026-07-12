@@ -1,4 +1,5 @@
 import { defaultAuthAwareKeyGenerator } from './key-generator'
+import { logger } from '@repo/hono-helpers/logger'
 
 import type { DedupConfig, DedupStats } from './types'
 
@@ -69,7 +70,7 @@ export class DedupedFetch {
 		// Check if this request should be deduplicated
 		if (!this.config.shouldDedupe(input, init)) {
 			if (this.config.debug) {
-				console.log('[DedupedFetch] Not deduplicating request (shouldDedupe returned false)')
+				logger.debug('[DedupedFetch] Not deduplicating request (shouldDedupe returned false)')
 			}
 			return fetch(input, init)
 		}
@@ -82,7 +83,7 @@ export class DedupedFetch {
 		if (existing) {
 			this.stats.hits++
 			if (this.config.debug) {
-				console.log(`[DedupedFetch] HIT: ${key} (${this.stats.hits} total hits)`)
+				logger.debug(`[DedupedFetch] HIT: ${key} (${this.stats.hits} total hits)`)
 			}
 			// Clone the response so each caller can consume it independently
 			return existing.then((r) => r.clone())
@@ -91,7 +92,7 @@ export class DedupedFetch {
 		// No in-flight request - create new fetch
 		this.stats.misses++
 		if (this.config.debug) {
-			console.log(`[DedupedFetch] MISS: ${key} (${this.stats.misses} total misses)`)
+			logger.debug(`[DedupedFetch] MISS: ${key} (${this.stats.misses} total misses)`)
 		}
 
 		// Enforce maxSize limit by removing oldest entry if needed
@@ -100,7 +101,7 @@ export class DedupedFetch {
 			if (firstKey) {
 				this.inFlight.delete(firstKey)
 				if (this.config.debug) {
-					console.log(`[DedupedFetch] Removed oldest entry due to maxSize: ${firstKey}`)
+					logger.debug(`[DedupedFetch] Removed oldest entry due to maxSize: ${firstKey}`)
 				}
 			}
 		}
@@ -111,7 +112,7 @@ export class DedupedFetch {
 			this.inFlight.delete(key)
 			this.stats.inFlight = this.inFlight.size
 			if (this.config.debug) {
-				console.log(`[DedupedFetch] Completed: ${key} (${this.stats.inFlight} in-flight remaining)`)
+				logger.debug(`[DedupedFetch] Completed: ${key} (${this.stats.inFlight} in-flight remaining)`)
 			}
 		})
 
@@ -131,7 +132,7 @@ export class DedupedFetch {
 		this.inFlight.clear()
 		this.stats.inFlight = 0
 		if (this.config.debug) {
-			console.log('[DedupedFetch] Cleared all in-flight requests')
+			logger.debug('[DedupedFetch] Cleared all in-flight requests')
 		}
 	}
 

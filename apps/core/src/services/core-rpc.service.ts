@@ -22,6 +22,7 @@ import type { Groups } from '@repo/groups'
 import type { Hr } from '@repo/hr'
 import type { Env } from '../context'
 import type { DbClient, schema } from '../db'
+import { logger } from '@repo/hono-helpers'
 
 /**
  * Core RPC Service - Business logic for user/character management operations
@@ -58,7 +59,7 @@ export class CoreRpcService {
 					discordUsernameMatchedCoreUserIds.add(match.coreUserId)
 				}
 			} catch (error) {
-				console.error('[CoreRpcService.searchUsers] Discord username search failed', {
+				logger.error('[CoreRpcService.searchUsers] Discord username search failed', {
 					search,
 					error: error instanceof Error ? error.message : String(error),
 				})
@@ -234,7 +235,7 @@ export class CoreRpcService {
 					}
 				}
 			} catch (error) {
-				console.error('[CoreRpcService.searchUsers] Discord status lookup failed', {
+				logger.error('[CoreRpcService.searchUsers] Discord status lookup failed', {
 					error: error instanceof Error ? error.message : String(error),
 				})
 			}
@@ -343,7 +344,7 @@ export class CoreRpcService {
 				joinedAt: membership.joinedAt,
 			}))
 		} catch (error) {
-			console.error(`Failed to load groups for user ${userId}:`, error)
+			logger.error(`Failed to load groups for user ${userId}:`, error)
 		}
 
 		// 5.6 Fetch resolved permission grants for admin visibility.
@@ -361,7 +362,7 @@ export class CoreRpcService {
 				source: grant.source,
 			}))
 		} catch (error) {
-			console.error(`Failed to load permission grants for user ${userId}:`, error)
+			logger.error(`Failed to load permission grants for user ${userId}:`, error)
 		}
 
 		// 6. Build character summaries with batch token validation and blacklist status.
@@ -380,7 +381,7 @@ export class CoreRpcService {
 					tokenValidityByCharacterId.set(transition.characterId, transition.nextHasValidToken)
 				}
 			} catch (error) {
-				console.error(`Failed to batch-check tokens for user ${userId}:`, error)
+				logger.error(`Failed to batch-check tokens for user ${userId}:`, error)
 			}
 		}
 		const characterSummaries = chars.map((char) => ({
@@ -414,7 +415,7 @@ export class CoreRpcService {
 					}
 				}
 			} catch (error) {
-				console.error('Failed to load Discord status:', error)
+				logger.error('Failed to load Discord status:', error)
 			}
 		}
 
@@ -467,7 +468,7 @@ export class CoreRpcService {
 		const matchedIds = new Set(rows.map((row) => row.characterId))
 		const missingCharacterIds = normalizedCharacterIds.filter((id) => !matchedIds.has(id))
 		if (missingCharacterIds.length > 0) {
-			console.warn('[CoreRpcService] Some requested characters were not owned by the target user', {
+			logger.warn('[CoreRpcService] Some requested characters were not owned by the target user', {
 				userId: input.userId,
 				requestedCount: normalizedCharacterIds.length,
 				matchedCount: rows.length,
@@ -533,7 +534,7 @@ export class CoreRpcService {
 				}
 			} catch (error) {
 				// Log failure but continue - we don't want token issues to block deletion
-				console.error(`Failed to revoke token for character ${characterId}:`, error)
+				logger.error(`Failed to revoke token for character ${characterId}:`, error)
 			}
 		}
 
@@ -601,7 +602,7 @@ export class CoreRpcService {
 		try {
 			tokensRevoked = await eveTokenStore.revokeToken(characterId)
 		} catch (error) {
-			console.error(`Failed to revoke token for character ${characterId}:`, error)
+			logger.error(`Failed to revoke token for character ${characterId}:`, error)
 		}
 
 		// 6. Transfer character to new user
@@ -655,7 +656,7 @@ export class CoreRpcService {
 		try {
 			tokensRevoked = await eveTokenStore.revokeToken(characterId)
 		} catch (error) {
-			console.error(`Failed to revoke token for character ${characterId}:`, error)
+			logger.error(`Failed to revoke token for character ${characterId}:`, error)
 		}
 
 		// 4. Delete character link

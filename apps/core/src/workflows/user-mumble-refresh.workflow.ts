@@ -4,6 +4,7 @@ import * as mumbleService from '../services/mumble.service'
 
 import type { WorkflowEvent, WorkflowStep } from 'cloudflare:workers'
 import type { Env } from '../context'
+import { logger } from '@repo/hono-helpers'
 
 /**
  * Workflow parameters
@@ -75,7 +76,7 @@ export class UserMumbleRefreshWorkflow extends WorkflowEntrypoint<
 			steps['apply-jitter'] = 'ok'
 		}
 
-		console.log('[UserMumbleRefreshWorkflow] Starting', logContext)
+		logger.log('[UserMumbleRefreshWorkflow] Starting', logContext)
 
 		try {
 			const syncResult = await step.do(
@@ -94,7 +95,7 @@ export class UserMumbleRefreshWorkflow extends WorkflowEntrypoint<
 			)
 			steps['sync-mumble-groups'] = 'ok'
 
-			console.log('[UserMumbleRefreshWorkflow] Mumble sync completed', {
+			logger.log('[UserMumbleRefreshWorkflow] Mumble sync completed', {
 				...logContext,
 				totalSynced: syncResult.synced.length,
 				totalSkipped: syncResult.skipped.length,
@@ -116,7 +117,7 @@ export class UserMumbleRefreshWorkflow extends WorkflowEntrypoint<
 			)
 			steps['sync-mumble-profiles'] = 'ok'
 
-			console.log('[UserMumbleRefreshWorkflow] Mumble profile sync completed', {
+			logger.log('[UserMumbleRefreshWorkflow] Mumble profile sync completed', {
 				...logContext,
 				totalSynced: profileSyncResult.synced.length,
 				totalSkipped: profileSyncResult.skipped.length,
@@ -136,7 +137,7 @@ export class UserMumbleRefreshWorkflow extends WorkflowEntrypoint<
 		} catch (error) {
 			const errorMessage = error instanceof Error ? error.message : String(error)
 			steps['workflow'] = 'failed'
-			console.error('[UserMumbleRefreshWorkflow] Workflow failed', {
+			logger.error('[UserMumbleRefreshWorkflow] Workflow failed', {
 				...logContext,
 				error: errorMessage,
 				stack: error instanceof Error ? error.stack : undefined,

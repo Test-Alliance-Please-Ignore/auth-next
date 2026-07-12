@@ -302,7 +302,7 @@ export class UniverseDO extends DurableObject<Env, {}> implements Universe {
 			return validatedData
 		} catch (error) {
 			// If the structure doesn't exist, the character doesn't have access, or token is invalid, return null
-			console.error(
+			logger.error(
 				`Failed to fetch structure info for structure ${structureId} with character ${authorizedCharacterId}:`,
 				error
 			)
@@ -350,7 +350,7 @@ export class UniverseDO extends DurableObject<Env, {}> implements Universe {
 			return validatedData
 		} catch (error) {
 			// If the structure doesn't exist, the character doesn't have access, or token is invalid, return null
-			console.error(
+			logger.error(
 				`Failed to fetch structure market data for structure ${structureId} with character ${authorizedCharacterId}:`,
 				error
 			)
@@ -397,7 +397,7 @@ export class UniverseDO extends DurableObject<Env, {}> implements Universe {
 
 			return moon
 		} catch (error) {
-			console.error(`Failed to get moon ${normalizedMoonId}`, error)
+			logger.error(`Failed to get moon ${normalizedMoonId}`, error)
 			throw error
 		}
 	}
@@ -454,7 +454,7 @@ export class UniverseDO extends DurableObject<Env, {}> implements Universe {
 				resources,
 			})
 		} catch (error) {
-			console.error(`Failed to get moon with resources ${normalizedMoonId}`, error)
+			logger.error(`Failed to get moon with resources ${normalizedMoonId}`, error)
 			throw error
 		}
 	}
@@ -508,7 +508,7 @@ export class UniverseDO extends DurableObject<Env, {}> implements Universe {
 
 			return result
 		} catch (error) {
-			console.error('Failed to resolve moon geography by IDs', error)
+			logger.error('Failed to resolve moon geography by IDs', error)
 			throw error
 		}
 	}
@@ -560,7 +560,7 @@ export class UniverseDO extends DurableObject<Env, {}> implements Universe {
 
 			return result
 		} catch (error) {
-			console.error('Failed to resolve planet geography by IDs', error)
+			logger.error('Failed to resolve planet geography by IDs', error)
 			throw error
 		}
 	}
@@ -619,7 +619,7 @@ export class UniverseDO extends DurableObject<Env, {}> implements Universe {
 
 			return result
 		} catch (error) {
-			console.error('Failed to resolve invFlags', error)
+			logger.error('Failed to resolve invFlags', error)
 			throw error
 		}
 	}
@@ -679,7 +679,7 @@ export class UniverseDO extends DurableObject<Env, {}> implements Universe {
 
 			return result
 		} catch (error) {
-			console.error('Failed to resolve invGroups', error)
+			logger.error('Failed to resolve invGroups', error)
 			throw error
 		}
 	}
@@ -731,7 +731,7 @@ export class UniverseDO extends DurableObject<Env, {}> implements Universe {
 
 			return result
 		} catch (error) {
-			console.error('Failed to resolve type details', error)
+			logger.error('Failed to resolve type details', error)
 			throw error
 		}
 	}
@@ -828,7 +828,7 @@ export class UniverseDO extends DurableObject<Env, {}> implements Universe {
 
 			return result
 		} catch (error) {
-			console.error('Failed to resolve type details', error)
+			logger.error('Failed to resolve type details', error)
 			throw error
 		}
 	}
@@ -870,7 +870,7 @@ export class UniverseDO extends DurableObject<Env, {}> implements Universe {
 
 			return metadataMap
 		} catch (error) {
-			console.error('Failed to resolve type metadata', error)
+			logger.error('Failed to resolve type metadata', error)
 			throw error
 		}
 	}
@@ -947,7 +947,7 @@ export class UniverseDO extends DurableObject<Env, {}> implements Universe {
 		try {
 			return await parseInventory(this.db, inventoryText)
 		} catch (error) {
-			console.error('Failed to parse inventory text', error)
+			logger.error('Failed to parse inventory text', error)
 			throw error
 		}
 	}
@@ -1023,7 +1023,7 @@ export class UniverseDO extends DurableObject<Env, {}> implements Universe {
 
 			return result
 		} catch (error) {
-			console.error('Failed to resolve regions by IDs', error)
+			logger.error('Failed to resolve regions by IDs', error)
 			throw error
 		}
 	}
@@ -1070,7 +1070,7 @@ export class UniverseDO extends DurableObject<Env, {}> implements Universe {
 
 			return result
 		} catch (error) {
-			console.error('Failed to resolve regions by names', error)
+			logger.error('Failed to resolve regions by names', error)
 			throw error
 		}
 	}
@@ -1099,7 +1099,7 @@ export class UniverseDO extends DurableObject<Env, {}> implements Universe {
 							.from(universeConstellations)
 							.where(inArray(universeConstellations.constellationId, cacheMisses))
 					} catch (error) {
-						console.warn(
+						logger.warn(
 							'Constellation DB lookup failed; falling back to ESI for unresolved IDs',
 							error
 						)
@@ -1179,7 +1179,7 @@ export class UniverseDO extends DurableObject<Env, {}> implements Universe {
 
 			return result
 		} catch (error) {
-			console.error('Failed to resolve constellations by IDs', error)
+			logger.error('Failed to resolve constellations by IDs', error)
 			throw error
 		}
 	}
@@ -1211,7 +1211,7 @@ export class UniverseDO extends DurableObject<Env, {}> implements Universe {
 							.from(universeSolarSystems)
 							.where(inArray(universeSolarSystems.solarSystemId, cacheMisses))
 					} catch (error) {
-						console.warn(
+						logger.warn(
 							'Solar system DB lookup failed; falling back to ESI for unresolved IDs',
 							error
 						)
@@ -1317,7 +1317,7 @@ export class UniverseDO extends DurableObject<Env, {}> implements Universe {
 
 			return result
 		} catch (error) {
-			console.error('Failed to resolve solar systems by IDs', error)
+			logger.error('Failed to resolve solar systems by IDs', error)
 			throw error
 		}
 	}
@@ -1369,7 +1369,7 @@ export class UniverseDO extends DurableObject<Env, {}> implements Universe {
 
 			return result
 		} catch (error) {
-			console.error('Failed to resolve solar systems by names', error)
+			logger.error('Failed to resolve solar systems by names', error)
 			throw error
 		}
 	}
@@ -1419,7 +1419,7 @@ export class UniverseDO extends DurableObject<Env, {}> implements Universe {
 
 			return result
 		} catch (error) {
-			console.error('Failed to resolve planets by IDs', error)
+			logger.error('Failed to resolve planets by IDs', error)
 			throw error
 		}
 	}
@@ -1471,7 +1471,7 @@ export class UniverseDO extends DurableObject<Env, {}> implements Universe {
 
 			return result
 		} catch (error) {
-			console.error('Failed to resolve planets by names', error)
+			logger.error('Failed to resolve planets by names', error)
 			throw error
 		}
 	}
@@ -1523,7 +1523,7 @@ export class UniverseDO extends DurableObject<Env, {}> implements Universe {
 
 			return result
 		} catch (error) {
-			console.error('Failed to resolve static moons by IDs', error)
+			logger.error('Failed to resolve static moons by IDs', error)
 			throw error
 		}
 	}
@@ -1574,7 +1574,7 @@ export class UniverseDO extends DurableObject<Env, {}> implements Universe {
 
 			return result
 		} catch (error) {
-			console.error('Failed to resolve static moons by names', error)
+			logger.error('Failed to resolve static moons by names', error)
 			throw error
 		}
 	}
@@ -1627,7 +1627,7 @@ export class UniverseDO extends DurableObject<Env, {}> implements Universe {
 
 			return result
 		} catch (error) {
-			console.error('Failed to resolve stargates by IDs', error)
+			logger.error('Failed to resolve stargates by IDs', error)
 			throw error
 		}
 	}
@@ -1680,7 +1680,7 @@ export class UniverseDO extends DurableObject<Env, {}> implements Universe {
 
 			return result
 		} catch (error) {
-			console.error('Failed to resolve stargates by names', error)
+			logger.error('Failed to resolve stargates by names', error)
 			throw error
 		}
 	}
@@ -1735,7 +1735,7 @@ export class UniverseDO extends DurableObject<Env, {}> implements Universe {
 
 			return result
 		} catch (error) {
-			console.error('Failed to resolve NPC stations by IDs', error)
+			logger.error('Failed to resolve NPC stations by IDs', error)
 			throw error
 		}
 	}
@@ -1790,7 +1790,7 @@ export class UniverseDO extends DurableObject<Env, {}> implements Universe {
 
 			return result
 		} catch (error) {
-			console.error('Failed to resolve NPC stations by names', error)
+			logger.error('Failed to resolve NPC stations by names', error)
 			throw error
 		}
 	}
@@ -2129,7 +2129,7 @@ export class UniverseDO extends DurableObject<Env, {}> implements Universe {
 	 * Called when a WebSocket error occurs
 	 */
 	async webSocketError(ws: WebSocket, error: unknown): Promise<void> {
-		console.error('WebSocket error:', error)
+		logger.error('WebSocket error:', error)
 	}
 
 	async getTypeMaterials(typeIds: string[]): Promise<Record<string, TypeMaterial[]>> {

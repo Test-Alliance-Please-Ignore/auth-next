@@ -15,6 +15,7 @@ import type {
 	RecommenderApplicationDetail,
 } from '@repo/hr'
 import type { ServiceContext } from './context'
+import { logger } from '@repo/hono-helpers'
 
 /**
  * Application Service
@@ -160,7 +161,7 @@ export class ApplicationService {
 		// Log the submission
 		await this.logActivity(application.id, userId, characterId, characterName, 'submitted', null, 'pending')
 
-		console.log('[HR] application submitted', {
+		logger.log('[HR] application submitted', {
 			applicationId: application.id,
 			userId,
 			characterId,
@@ -412,7 +413,7 @@ export class ApplicationService {
 			{ reviewNotes }
 		)
 
-		console.log('[HR] application status updated', {
+		logger.log('[HR] application status updated', {
 			applicationId,
 			from: previousStatus,
 			to: status,

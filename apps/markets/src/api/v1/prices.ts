@@ -7,6 +7,7 @@ import { latestMarketPrices, marketSnapshots } from '../../db/schema'
 import { BatchPricesRequestSchema, formatZodErrors, validateEntityId } from '../../utils/validation'
 
 import type { App } from '../../context'
+import { logger } from '@repo/hono-helpers'
 
 const pricesRouter = new Hono<App>()
 
@@ -152,7 +153,7 @@ pricesRouter.post('/:locationId/prices', async (c) => {
 			},
 		})
 	} catch (error) {
-		console.error('[prices] Database error:', error)
+		logger.error('[prices] Database error:', error)
 		return c.json(
 			{
 				error: 'Failed to fetch price data',

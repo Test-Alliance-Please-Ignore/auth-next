@@ -14,6 +14,7 @@ import type { CoreBinding } from '../../../types/core-binding'
 
 import type { CharacterMarketTransaction, EsiTypeResolver } from '@repo/esi'
 import type { Universe } from '@repo/universe'
+import { logger } from '@repo/hono-helpers'
 
 /**
  * Enriched wallet transaction with resolved names
@@ -88,7 +89,7 @@ export async function enrichWalletTransactions(
 	const resolvableLocationIds = uniqueLocationIds.filter((id) => !isStructureId(id))
 	const allIdsToResolve = [...uniqueTypeIds, ...uniqueClientIds, ...resolvableLocationIds]
 
-	console.log('[enrichWalletTransactions] Starting enrichment', {
+	logger.log('[enrichWalletTransactions] Starting enrichment', {
 		totalTransactions: transactions.length,
 		uniqueTypeIds: uniqueTypeIds.length,
 		uniqueClientIds: uniqueClientIds.length,
@@ -120,7 +121,7 @@ export async function enrichWalletTransactions(
 				Object.assign(typeMetadataMap, batchMetadata)
 			}
 		} catch (error) {
-			console.error('[enrichWalletTransactions] Error fetching type metadata:', {
+			logger.error('[enrichWalletTransactions] Error fetching type metadata:', {
 				error: error instanceof Error ? error.message : String(error),
 			})
 		}
@@ -131,7 +132,7 @@ export async function enrichWalletTransactions(
 		new Set(uniqueLocationIds.filter((id) => isStructureId(id)))
 	)
 
-	console.log('[enrichWalletTransactions] Resolution complete', {
+	logger.log('[enrichWalletTransactions] Resolution complete', {
 		nameMapSize: Object.keys(nameMap).length,
 		structureLocationIds: structureLocationIds.length,
 		sampleStructureIds: structureLocationIds.slice(0, 3),
@@ -176,7 +177,7 @@ export async function enrichWalletTransactions(
 			: {}
 
 	if (structureLocationIds.length > 0) {
-		console.log('[enrichWalletTransactions] Structure resolution complete', {
+		logger.log('[enrichWalletTransactions] Structure resolution complete', {
 			requested: structureLocationIds.length,
 			resolved: Object.keys(structureNameMap).length,
 			denied: structureResolutionCoordinator?.getDeniedCount() ?? 0,
@@ -226,7 +227,7 @@ export async function enrichWalletTransactions(
 	// Log sample enriched transaction
 	if (enriched.length > 0) {
 		const sample = enriched[0]
-		console.log('[enrichWalletTransactions] Sample enriched transaction', {
+		logger.log('[enrichWalletTransactions] Sample enriched transaction', {
 			typeId: sample.type_id,
 			typeName: sample.typeName,
 			clientId: sample.client_id,

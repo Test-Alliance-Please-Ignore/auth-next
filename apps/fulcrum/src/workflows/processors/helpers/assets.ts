@@ -11,6 +11,7 @@ import { StructureResolutionCoordinator } from './structure-resolution'
 
 import type { CharacterAsset, Esi, EsiTypeResolver } from '@repo/esi'
 import type { Universe } from '@repo/universe'
+import { logger } from '@repo/hono-helpers'
 
 function isContainerType(typeName?: string, categoryName?: string): boolean {
 	return Boolean(
@@ -116,7 +117,7 @@ export async function enrichAssets(
 	const resolvableLocationIds = uniqueLocationIds.filter((id) => !isStructureId(id))
 	const allIdsToResolve = [...uniqueTypeIds, ...resolvableLocationIds]
 
-	console.log('[enrichAssets] Starting enrichment', {
+	logger.log('[enrichAssets] Starting enrichment', {
 		totalAssets: assets.length,
 		uniqueTypeIds: uniqueTypeIds.length,
 		uniqueLocationIds: uniqueLocationIds.length,
@@ -150,7 +151,7 @@ export async function enrichAssets(
 				Object.assign(typeMetadataMap, batchMetadata)
 			}
 		} catch (error) {
-			console.error('[enrichAssets] Error fetching type metadata:', {
+			logger.error('[enrichAssets] Error fetching type metadata:', {
 				error: error instanceof Error ? error.message : String(error),
 			})
 		}
@@ -165,7 +166,7 @@ export async function enrichAssets(
 		)
 	)
 
-	console.log('[enrichAssets] Resolution complete', {
+	logger.log('[enrichAssets] Resolution complete', {
 		nameMapSize: Object.keys(nameMap).length,
 		structureLocationIds: structureLocationIds.length,
 		sampleStructureIds: structureLocationIds.slice(0, 3),
@@ -182,7 +183,7 @@ export async function enrichAssets(
 			: {}
 
 	if (structureLocationIds.length > 0) {
-		console.log('[enrichAssets] Structure resolution complete', {
+		logger.log('[enrichAssets] Structure resolution complete', {
 			requested: structureLocationIds.length,
 			resolved: Object.keys(structureNameMap).length,
 			denied: structureResolutionCoordinator?.getDeniedCount() ?? 0,
@@ -236,7 +237,7 @@ export async function enrichAssets(
 	// Log sample enriched asset
 	if (enriched.length > 0) {
 		const sample = enriched[0]
-		console.log('[enrichAssets] Sample enriched asset', {
+		logger.log('[enrichAssets] Sample enriched asset', {
 			typeId: sample.type_id,
 			typeName: sample.typeName,
 			locationId: sample.location_id,

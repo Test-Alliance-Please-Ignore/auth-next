@@ -8,6 +8,7 @@ import { createPaginationMeta, decodeCursor } from '../../utils/pagination'
 import { formatZodErrors, SnapshotsQuerySchema, validateEntityId } from '../../utils/validation'
 
 import type { App } from '../../context'
+import { logger } from '@repo/hono-helpers'
 
 const snapshotsRouter = new Hono<App>()
 
@@ -172,7 +173,7 @@ snapshotsRouter.get('/:locationId/snapshots', async (c) => {
 			},
 		})
 	} catch (error) {
-		console.error('[snapshots] Database error:', error)
+		logger.error('[snapshots] Database error:', error)
 		return c.json(
 			{
 				error: 'Failed to fetch snapshots',

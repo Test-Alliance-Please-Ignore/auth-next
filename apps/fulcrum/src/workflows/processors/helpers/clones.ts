@@ -9,6 +9,7 @@ import { isStructureId } from '@repo/eve-types'
 import { StructureResolutionCoordinator } from './structure-resolution'
 
 import type { CharacterClones, CharacterImplants, Esi, EsiTypeResolver, JumpClone } from '@repo/esi'
+import { logger } from '@repo/hono-helpers'
 
 /**
  * Enriched jump clone with resolved names
@@ -95,7 +96,7 @@ export async function enrichClones(
             : {}
 
     if (structureLocationIds.size > 0) {
-        console.log('[enrichClones] Structure resolution complete', {
+        logger.log('[enrichClones] Structure resolution complete', {
             requested: structureLocationIds.size,
             resolved: Object.keys(structureNameMap).length,
             denied: structureResolutionCoordinator?.getDeniedCount() ?? 0,

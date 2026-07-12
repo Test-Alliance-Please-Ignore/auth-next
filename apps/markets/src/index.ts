@@ -1,7 +1,7 @@
 import { Hono } from 'hono'
 
 import { getStub } from '@repo/do-utils'
-import { withNotFound, withOnError, withWorkersLogger } from '@repo/hono-helpers'
+import { logger, withNotFound, withOnError, withWorkersLogger } from '@repo/hono-helpers'
 
 import { v1Router } from './api/v1'
 import { MarketsDO } from './durable-object'
@@ -40,7 +40,7 @@ const app = new Hono<App>()
 	.notFound(withNotFound())
 
 	.get('/', async (c) => {
-		console.log('[/] Root endpoint accessed')
+		logger.info('[/] Root endpoint accessed')
 		return c.text('Markets Durable Object Worker')
 	})
 
@@ -51,11 +51,11 @@ const app = new Hono<App>()
 	 * Health check endpoint - verifies database connectivity
 	 */
 	.get('/health', async (c) => {
-		console.log('[/health] Health check requested')
+		logger.info('[/health] Health check requested')
 		try {
 			// Verify environment bindings are available
 			if (!c.env.DATABASE_URL) {
-				console.error('[/health] DATABASE_URL not configured')
+				logger.error('[/health] DATABASE_URL not configured')
 				return c.json(
 					{
 						status: 'unhealthy',
@@ -67,7 +67,7 @@ const app = new Hono<App>()
 			}
 
 			if (!c.env.MARKETS) {
-				console.error('[/health] MARKETS Durable Object binding not found')
+				logger.error('[/health] MARKETS Durable Object binding not found')
 				return c.json(
 					{
 						status: 'unhealthy',
@@ -78,7 +78,7 @@ const app = new Hono<App>()
 				)
 			}
 
-			console.log('[/health] All checks passed')
+			logger.info('[/health] All checks passed')
 			return c.json({
 				status: 'healthy',
 				timestamp: new Date().toISOString(),
@@ -88,7 +88,9 @@ const app = new Hono<App>()
 				},
 			})
 		} catch (error) {
-			console.error('[/health] Health check failed:', error)
+			logger.error('[/health] Health check failed:', {
+				error,
+			})
 			return c.json(
 				{
 					status: 'unhealthy',
@@ -116,7 +118,7 @@ const app = new Hono<App>()
 			return c.json({ error: validation.error }, 400)
 		}
 
-		console.log(`[/region/${regionId}/alarm/status] Checking region alarm status`)
+		logger.info(`[/region/${regionId}/alarm/status] Checking region alarm status`)
 
 		const stub = getStub<Markets>(c.env.MARKETS, `region-${regionId}`)
 		const status = await stub.getAlarmStatus()
@@ -140,7 +142,7 @@ const app = new Hono<App>()
 			return c.json({ error: validation.error }, 400)
 		}
 
-		console.log(`[/structure/${structureId}/alarm/status] Checking structure alarm status`)
+		logger.info(`[/structure/${structureId}/alarm/status] Checking structure alarm status`)
 
 		const stub = getStub<Markets>(c.env.MARKETS, `structure-${structureId}`)
 		const status = await stub.getAlarmStatus()

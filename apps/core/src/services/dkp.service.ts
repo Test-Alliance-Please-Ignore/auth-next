@@ -6,6 +6,7 @@ import { dkpDecayConfig, dkpTransactions, userCharacters, users } from '../db/sc
 import type { EveCharacterData } from '@repo/eve-character-data'
 import type { EveCorporationData } from '@repo/eve-corporation-data'
 import type { DbClient, schema } from '../db'
+import { logger } from '@repo/hono-helpers'
 
 const MS_PER_DAY = 86_400_000
 
@@ -90,7 +91,7 @@ export class DkpService {
 					corporationName = characterInfo.corporationName || ''
 				}
 			} catch (error) {
-				console.warn('Failed to get character info from eve-character-data:', error)
+				logger.warn('Failed to get character info from eve-character-data:', error)
 			}
 		}
 
@@ -126,7 +127,7 @@ export class DkpService {
 					corporationName = corpInfo.name
 				}
 			} catch (error) {
-				console.warn('Failed to get corporation info from eve-corporation-data:', error)
+				logger.warn('Failed to get corporation info from eve-corporation-data:', error)
 			}
 		}
 
@@ -163,7 +164,7 @@ export class DkpService {
 			})
 			userId = userChar?.userId || null
 		} catch (error) {
-			console.warn('Failed to lookup userId from characterId:', error)
+			logger.warn('Failed to lookup userId from characterId:', error)
 		}
 
 		// Create transaction

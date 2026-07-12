@@ -674,7 +674,7 @@ export interface EveTokenStore {
 	 *   characterId,
 	 *   { maxConcurrent: 10 }
 	 * )
-	 * console.log(`Fetched ${result.data.length} items across ${result.pages} pages`)
+	 * logger.info(`Fetched ${result.data.length} items across ${result.pages} pages`)
 	 * ```
 	 */
 	fetchEsiAllPages<T>(
@@ -703,7 +703,7 @@ export interface EveTokenStore {
 	 *   `/markets/10000002/orders`,
 	 *   { maxConcurrent: 10 }
 	 * )
-	 * console.log(`Fetched ${result.data.length} orders across ${result.pages} pages`)
+	 * logger.info(`Fetched ${result.data.length} orders across ${result.pages} pages`)
 	 * ```
 	 */
 	fetchPublicEsiAllPages<T>(

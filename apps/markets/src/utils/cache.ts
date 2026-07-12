@@ -1,5 +1,6 @@
 import type { Context, Next } from 'hono'
 import type { App } from '../context'
+import { logger } from '@repo/hono-helpers'
 
 /**
  * Generate cache key for Cloudflare Cache API
@@ -116,14 +117,14 @@ export function withCache() {
 		const cachedResponse = await cache.match(cacheUrl)
 
 		if (cachedResponse) {
-			console.log(`[cache] HIT: ${path}`)
+			logger.log(`[cache] HIT: ${path}`)
 			// Add header to indicate cache hit
 			const response = new Response(cachedResponse.body, cachedResponse)
 			response.headers.set('X-Cache', 'HIT')
 			return response
 		}
 
-		console.log(`[cache] MISS: ${path}`)
+		logger.log(`[cache] MISS: ${path}`)
 
 		// Process request
 		await next()
@@ -141,7 +142,7 @@ export function withCache() {
 
 			// Store in cache (fire and forget)
 			cache.put(cacheUrl, responseToCache).catch((error) => {
-				console.error('[cache] Failed to store in cache:', error)
+				logger.error('[cache] Failed to store in cache:', error)
 			})
 		}
 	}

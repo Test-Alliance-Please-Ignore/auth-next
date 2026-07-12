@@ -1,5 +1,6 @@
 import { drizzle } from 'drizzle-orm/durable-sqlite'
 import { migrate as drizzleMigrate } from 'drizzle-orm/durable-sqlite/migrator'
+import { logger } from '@repo/hono-helpers/logger'
 
 import type { DrizzleSqliteDODatabase } from 'drizzle-orm/durable-sqlite'
 
@@ -75,16 +76,15 @@ export async function migrateSqlite(
 ): Promise<void> {
 	// Use blockConcurrencyWhile to ensure migrations complete before any queries
 	await state.blockConcurrencyWhile(async () => {
-		console.log('[SQLite Migration] Running migrations...')
+		logger.info('[SQLite Migration] Running migrations...')
 
 		// Drizzle durable-sqlite migrator expects the migrations object directly
 		// This matches the pattern from: https://orm.drizzle.team/docs/connect-cloudflare-do
 		drizzleMigrate(db, migrations)
 
-		console.log('[SQLite Migration] Migrations completed successfully')
+		logger.info('[SQLite Migration] Migrations completed successfully')
 	})
 }
 
 // Export type for convenience
 export type { DrizzleSqliteDODatabase } from 'drizzle-orm/durable-sqlite'
-

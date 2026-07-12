@@ -4,6 +4,7 @@ import { resolve } from 'node:path'
 import { sql } from 'drizzle-orm'
 import { migrate as drizzleMigrateHttp } from 'drizzle-orm/neon-http/migrator'
 import { migrate as drizzleMigrateWs } from 'drizzle-orm/neon-serverless/migrator'
+import { logger } from '@repo/hono-helpers/logger'
 
 import type { NeonHttpDatabase } from 'drizzle-orm/neon-http'
 import type { NeonDatabase } from 'drizzle-orm/neon-serverless'
@@ -101,7 +102,7 @@ async function logMigrationPlan(
 	const pending = migrationEntries.filter((entry) => !beforeAppliedHashes.has(entry.hash))
 	const alreadyApplied = migrationEntries.length - pending.length
 
-	console.log(
+	logger.info(
 		`[db:migrate] plan=${JSON.stringify({
 			totalInJournal: migrationEntries.length,
 			alreadyApplied,
@@ -112,9 +113,9 @@ async function logMigrationPlan(
 	)
 
 	if (pending.length > 0) {
-		console.log(`[db:migrate] pending tags: ${pending.map((entry) => entry.tag).join(', ')}`)
+		logger.debug(`[db:migrate] pending tags: ${pending.map((entry) => entry.tag).join(', ')}`)
 	} else {
-		console.log('[db:migrate] no pending migrations detected')
+		logger.debug('[db:migrate] no pending migrations detected')
 	}
 
 	return {
@@ -139,7 +140,7 @@ async function logMigrationResult(
 	const newlyAppliedTags = newlyAppliedEntries.map((entry) => entry.tag)
 	const totalApplied = migrationEntries.filter((entry) => afterAppliedHashes.has(entry.hash)).length
 
-	console.log(
+	logger.info(
 		`[db:migrate] result=${JSON.stringify({
 			newlyApplied: newlyAppliedEntries.length,
 			totalApplied,
@@ -149,7 +150,7 @@ async function logMigrationResult(
 	)
 
 	if (newlyAppliedTags.length > 0) {
-		console.log(`[db:migrate] applied tags: ${newlyAppliedTags.join(', ')}`)
+		logger.debug(`[db:migrate] applied tags: ${newlyAppliedTags.join(', ')}`)
 	}
 }
 
@@ -159,7 +160,7 @@ async function logMigrationResult(
  * @param config - Migration configuration
  */
 export async function migrate(db: NeonHttpDatabase<any>, config: MigrationConfig): Promise<void> {
-	console.log(`Running migrations from ${config.migrationsFolder}...`)
+	logger.info(`Running migrations from ${config.migrationsFolder}...`)
 
 	let plan: {
 		beforeAppliedHashes: Set<string>
@@ -167,7 +168,7 @@ export async function migrate(db: NeonHttpDatabase<any>, config: MigrationConfig
 		migrationsSchema: string
 		migrationsTable: string
 	} | null = null
-	console.log(
+	logger.info(
 		`[db:migrate] config=${JSON.stringify({
 			migrationsFolder: config.migrationsFolder,
 			migrationsSchema: config.migrationsSchema ?? 'drizzle',
@@ -175,7 +176,7 @@ export async function migrate(db: NeonHttpDatabase<any>, config: MigrationConfig
 		})}`
 	)
 	plan = await logMigrationPlan(db, config)
-	console.log('[db:migrate] starting drizzle migrate (http)')
+	logger.info('[db:migrate] starting drizzle migrate (http)')
 
 	await drizzleMigrateHttp(db, {
 		migrationsFolder: config.migrationsFolder,
@@ -191,7 +192,7 @@ export async function migrate(db: NeonHttpDatabase<any>, config: MigrationConfig
 			plan.migrationsTable
 		)
 	}
-	console.log('[db:migrate] drizzle migrate complete (http)')
+	logger.info('[db:migrate] drizzle migrate complete (http)')
 }
 
 /**
@@ -200,7 +201,7 @@ export async function migrate(db: NeonHttpDatabase<any>, config: MigrationConfig
  * @param config - Migration configuration
  */
 export async function migrateWs(db: NeonDatabase<any>, config: MigrationConfig): Promise<void> {
-	console.log(`Running migrations from ${config.migrationsFolder}...`)
+	logger.info(`Running migrations from ${config.migrationsFolder}...`)
 
 	let plan: {
 		beforeAppliedHashes: Set<string>
@@ -208,7 +209,7 @@ export async function migrateWs(db: NeonDatabase<any>, config: MigrationConfig):
 		migrationsSchema: string
 		migrationsTable: string
 	} | null = null
-	console.log(
+	logger.info(
 		`[db:migrate] config=${JSON.stringify({
 			migrationsFolder: config.migrationsFolder,
 			migrationsSchema: config.migrationsSchema ?? 'drizzle',
@@ -216,7 +217,7 @@ export async function migrateWs(db: NeonDatabase<any>, config: MigrationConfig):
 		})}`
 	)
 	plan = await logMigrationPlan(db, config)
-	console.log('[db:migrate] starting drizzle migrate (ws)')
+	logger.info('[db:migrate] starting drizzle migrate (ws)')
 
 	await drizzleMigrateWs(db, {
 		migrationsFolder: config.migrationsFolder,
@@ -232,7 +233,7 @@ export async function migrateWs(db: NeonDatabase<any>, config: MigrationConfig):
 			plan.migrationsTable
 		)
 	}
-	console.log('[db:migrate] drizzle migrate complete (ws)')
+	logger.info('[db:migrate] drizzle migrate complete (ws)')
 
-	console.log('Migrations completed successfully')
+	logger.info('Migrations completed successfully')
 }

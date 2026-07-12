@@ -4,6 +4,7 @@ import { getStub } from '@repo/do-utils'
 
 import type { Bills, ScheduleExecutionResult } from '@repo/bills'
 import type { Env } from '../context'
+import { logger } from '@repo/hono-helpers'
 
 /**
  * Bill Schedule Executor Workflow
@@ -47,7 +48,7 @@ export class BillScheduleExecutorWorkflow extends WorkflowEntrypoint<Env, { sche
 		if (!result.success) {
 			await step.do('handle-failure', async () => {
 				// Log the failure
-				console.error(`Schedule ${scheduleId} execution failed:`, result.error)
+				logger.error(`Schedule ${scheduleId} execution failed:`, result.error)
 
 				return { notified: false }
 			})
@@ -58,11 +59,11 @@ export class BillScheduleExecutorWorkflow extends WorkflowEntrypoint<Env, { sche
 		// Step 3: Handle success
 		await step.do('handle-success', async () => {
 			if (result.groupBillId) {
-				console.log(
+				logger.log(
 					`Schedule ${scheduleId} executed successfully, created group bill ${result.groupBillId} with ${result.billCount} sub-bills`
 				)
 			} else {
-				console.log(`Schedule ${scheduleId} executed successfully, created bill ${result.billId}`)
+				logger.log(`Schedule ${scheduleId} executed successfully, created bill ${result.billId}`)
 			}
 
 			return { billId: result.billId, groupBillId: result.groupBillId, billCount: result.billCount }

@@ -2,6 +2,7 @@ import { DurableObject } from 'cloudflare:workers'
 
 import type { Postman } from '@repo/postman'
 import type { Env } from './context'
+import { logger } from '@repo/hono-helpers'
 
 /**
  * Postman Durable Object
@@ -44,7 +45,7 @@ export class PostmanDO extends DurableObject<Env, {}> implements Postman {
 	 * Called when a WebSocket error occurs
 	 */
 	async webSocketError(ws: WebSocket, error: unknown): Promise<void> {
-		console.error('WebSocket error:', error)
+		logger.error('WebSocket error:', error)
 	}
 
 	/**

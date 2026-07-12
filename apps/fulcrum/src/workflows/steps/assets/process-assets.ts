@@ -17,6 +17,7 @@ import { isStructureId } from '@repo/eve-types'
 
 import type { CharacterAsset } from '@repo/esi'
 import type { StepResult } from '../../utils/storage'
+import { logger } from '@repo/hono-helpers'
 
 type AssetRecord = CharacterAsset & {
 	isShipAsset?: boolean
@@ -176,7 +177,7 @@ export async function processAssets(
 		}
 
 		// Enrich data by resolving IDs to names
-		console.log('[processAssets] Starting enrichment', {
+		logger.log('[processAssets] Starting enrichment', {
 			totalAssets: assets.length,
 			filteredAssets: filteredAssets.length,
 			filteredOut: assets.length - filteredAssets.length,
@@ -212,7 +213,7 @@ export async function processAssets(
 			}
 		}
 
-		console.log('[processAssets] Enrichment complete', {
+		logger.log('[processAssets] Enrichment complete', {
 			enrichedCount: enrichedData.length,
 			sampleEnriched: enrichedData[0]
 				? {
@@ -235,7 +236,7 @@ export async function processAssets(
 			enrichedData
 		)
 
-		console.log('[processAssets] Storage result', {
+		logger.log('[processAssets] Storage result', {
 			source: result.source,
 			success: result.success,
 		})

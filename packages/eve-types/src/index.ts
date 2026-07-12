@@ -169,7 +169,7 @@ export type EveMarketGroupId = EveBrandedType<string, 'EveMarketGroupId'>
  *
  * // Type-safe usage
  * function processCorporation(id: EveCorporationId) {
- *   console.log('Processing corporation:', id);
+ *   logger.info('Processing corporation:', { id });
  * }
  *
  * processCorporation(corpId); // Works correctly

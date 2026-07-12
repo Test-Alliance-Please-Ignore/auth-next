@@ -432,7 +432,7 @@ export class FleetsDO extends DurableObject implements Fleets {
 			const notFoundAge = Date.now() - cached.notFoundAt.getTime()
 			const twentyFourHours = 24 * 60 * 60 * 1000
 			if (notFoundAge < twentyFourHours) {
-				console.log(
+				logger.log(
 					`[Fleet ${fleetId}] Marked as 404, skipping ESI query (age: ${Math.round(notFoundAge / 1000 / 60)} minutes)`
 				)
 				throw new Error('Fleet not found (404)')
@@ -489,7 +489,7 @@ export class FleetsDO extends DurableObject implements Fleets {
 				errorMessage.includes('Not found') ||
 				errorMessage.includes('Not Found')
 			) {
-				console.log(`[Fleet ${fleetId}] Received 404 from ESI, marking as not found`)
+				logger.log(`[Fleet ${fleetId}] Received 404 from ESI, marking as not found`)
 
 				// Mark fleet as not found
 				await this.db
@@ -528,15 +528,15 @@ export class FleetsDO extends DurableObject implements Fleets {
 			)
 
 			// Debug logging to see raw ESI response
-			console.log(
+			logger.log(
 				'[Fleet Members] Raw ESI response sample (first member):',
 				JSON.stringify(membersResponse.data[0], null, 2)
 			)
-			console.log(
+			logger.log(
 				'[Fleet Members] First member station_id type:',
 				typeof membersResponse.data[0]?.station_id
 			)
-			console.log(
+			logger.log(
 				'[Fleet Members] First member station_id value:',
 				membersResponse.data[0]?.station_id
 			)
@@ -545,7 +545,7 @@ export class FleetsDO extends DurableObject implements Fleets {
 			memberCount = members.length
 		} catch (error) {
 			// Members fetch failed, but continue
-			console.error('[Fleet Members] Failed to parse or fetch:', error)
+			logger.error('[Fleet Members] Failed to parse or fetch:', error)
 			members = undefined
 		}
 
@@ -663,15 +663,15 @@ export class FleetsDO extends DurableObject implements Fleets {
 			)
 
 			// Debug logging to see raw ESI response
-			console.log(
+			logger.log(
 				'[Fleet Join] Raw ESI response sample (first member):',
 				JSON.stringify(membersResponse.data[0], null, 2)
 			)
-			console.log(
+			logger.log(
 				'[Fleet Join] First member station_id type:',
 				typeof membersResponse.data[0]?.station_id
 			)
-			console.log(
+			logger.log(
 				'[Fleet Join] First member station_id value:',
 				membersResponse.data[0]?.station_id
 			)
@@ -690,7 +690,7 @@ export class FleetsDO extends DurableObject implements Fleets {
 			}
 		} catch (error) {
 			// Continue even if member check fails
-			console.error('Failed to check fleet members:', error)
+			logger.error('Failed to check fleet members:', error)
 		}
 
 		// Create fleet invitation using FC's credentials
@@ -727,7 +727,7 @@ export class FleetsDO extends DurableObject implements Fleets {
 					error: 'ESI is temporarily rate limited. Please retry shortly.',
 				}
 			}
-			console.error('Failed to create fleet invitation:', error)
+			logger.error('Failed to create fleet invitation:', error)
 			return {
 				success: false,
 				error: 'Failed to create fleet invitation',
@@ -774,7 +774,7 @@ export class FleetsDO extends DurableObject implements Fleets {
 				const notFoundAge = Date.now() - cached.notFoundAt.getTime()
 				const twentyFourHours = 24 * 60 * 60 * 1000
 				if (notFoundAge < twentyFourHours) {
-					console.log(
+					logger.log(
 						`[Fleet ${fleetId}] Marked as 404, skipping ESI query (age: ${Math.round(notFoundAge / 1000 / 60)} minutes)`
 					)
 					return false
@@ -805,7 +805,7 @@ export class FleetsDO extends DurableObject implements Fleets {
 				errorMessage.includes('Not found') ||
 				errorMessage.includes('Not Found')
 			) {
-				console.log(`[Fleet ${fleetId}] Received 404 from ESI, marking as not found`)
+				logger.log(`[Fleet ${fleetId}] Received 404 from ESI, marking as not found`)
 				isNotFound = true
 			}
 			isActive = false
@@ -2825,7 +2825,7 @@ export class FleetsDO extends DurableObject implements Fleets {
 					? JSON.parse(message)
 					: JSON.parse(new TextDecoder().decode(message))
 
-			console.log('WebSocket message received:', data)
+			logger.log('WebSocket message received:', data)
 
 			switch (data.type) {
 				case 'ping':
@@ -2846,7 +2846,7 @@ export class FleetsDO extends DurableObject implements Fleets {
 					ws.send(JSON.stringify({ type: 'error', payload: 'Unknown message type' }))
 			}
 		} catch (error) {
-			console.error('Error processing WebSocket message:', error)
+			logger.error('Error processing WebSocket message:', error)
 			ws.send(JSON.stringify({ type: 'error', payload: 'Invalid message format' }))
 		}
 	}
@@ -2861,7 +2861,7 @@ export class FleetsDO extends DurableObject implements Fleets {
 		reason: string,
 		wasClean: boolean
 	): Promise<void> {
-		console.log('WebSocket closed:', { code, reason, wasClean })
+		logger.log('WebSocket closed:', { code, reason, wasClean })
 		// Cleanup logic here
 	}
 
@@ -2870,7 +2870,7 @@ export class FleetsDO extends DurableObject implements Fleets {
 	 * Called when a WebSocket error occurs
 	 */
 	async webSocketError(ws: WebSocket, error: unknown): Promise<void> {
-		console.error('WebSocket error:', error)
+		logger.error('WebSocket error:', error)
 	}
 
 	/**

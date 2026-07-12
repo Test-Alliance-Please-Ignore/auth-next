@@ -47,6 +47,7 @@ import type {
 } from '@repo/moon-scan'
 import type { DbClient } from './db'
 import type { Env } from './context'
+import { logger } from '@repo/hono-helpers'
 
 const BATCH_SIZE = 500
 
@@ -90,7 +91,7 @@ export class MoonScanDO extends DurableObject<Env> implements IMoonScanDO {
 				)
 			`))
 		} catch (error) {
-			console.error('Failed to initialize moon verified summary schema', { error })
+			logger.error('Failed to initialize moon verified summary schema', { error })
 			throw error
 		}
 	}

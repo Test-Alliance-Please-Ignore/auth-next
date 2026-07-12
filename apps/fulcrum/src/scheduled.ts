@@ -3,7 +3,7 @@
  * Handles stalled-job reconciliation and auto-expiration of character reports
  */
 
-import { logger } from '@repo/hono-helpers'
+import { logger, withWorkerLogContext } from '@repo/hono-helpers'
 import { createDb } from './db'
 import * as queries from './db/queries'
 import type { Env } from './context'
@@ -29,35 +29,37 @@ export async function scheduledHandler(
 	env: Env,
 	_ctx: ExecutionContext,
 ): Promise<void> {
-	const start = Date.now()
-	const scheduledLogger = logger.withTags({ component: 'scheduled-maintenance' })
+	await withWorkerLogContext('fulcrum-scheduled', env, async () => {
+		const start = Date.now()
+		const scheduledLogger = logger.withTags({ component: 'scheduled-maintenance' })
 
-	scheduledLogger.info('Starting scheduled maintenance', {
-		scheduledTime: new Date(event.scheduledTime).toISOString(),
-		cron: event.cron,
-	})
-
-	try {
-		const db = createDb(env.DATABASE_URL)
-		await reconcileStalledReports(env, db)
-
-		// Keep report expiration as a daily task.
-		if (event.cron !== DAILY_EXPIRATION_CRON) {
-			scheduledLogger.info('Skipping expiration for this cron invocation', {
-				cron: event.cron,
-				expectedCron: DAILY_EXPIRATION_CRON,
-			})
-			return
-		}
-
-		await expireReports(env, db, start)
-	} catch (error) {
-		scheduledLogger.error('Unexpected error during scheduled maintenance', {
-			error: error instanceof Error ? error.message : String(error),
-			errorStack: error instanceof Error ? error.stack : undefined,
+		scheduledLogger.info('Starting scheduled maintenance', {
+			scheduledTime: new Date(event.scheduledTime).toISOString(),
+			cron: event.cron,
 		})
-		throw error
-	}
+
+		try {
+			const db = createDb(env.DATABASE_URL)
+			await reconcileStalledReports(env, db)
+
+			// Keep report expiration as a daily task.
+			if (event.cron !== DAILY_EXPIRATION_CRON) {
+				scheduledLogger.info('Skipping expiration for this cron invocation', {
+					cron: event.cron,
+					expectedCron: DAILY_EXPIRATION_CRON,
+				})
+				return
+			}
+
+			await expireReports(env, db, start)
+		} catch (error) {
+			scheduledLogger.error('Unexpected error during scheduled maintenance', {
+				error: error instanceof Error ? error.message : String(error),
+				errorStack: error instanceof Error ? error.stack : undefined,
+			})
+			throw error
+		}
+	})
 }
 
 async function reconcileStalledReports(

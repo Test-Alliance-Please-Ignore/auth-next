@@ -27,6 +27,7 @@ import type { WorkflowEvent, WorkflowStep } from 'cloudflare:workers'
 import type { MoonScanDO } from '@repo/moon-scan'
 import type { Universe } from '@repo/universe'
 import type { Env } from '../context'
+import { logger } from '@repo/hono-helpers'
 
 export type CsvExportWorkflowParams =
 	| {
@@ -103,7 +104,7 @@ async function runMoonScanExport(
 			}
 		}
 	} catch (error) {
-		console.warn('Failed to backfill moon summary export read model', {
+		logger.warn('Failed to backfill moon summary export read model', {
 			error,
 		})
 	}

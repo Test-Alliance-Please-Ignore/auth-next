@@ -6,6 +6,7 @@ import { requireAuth } from '../middleware/session'
 
 import type { Skills } from '@repo/skills'
 import type { App } from '../context'
+import { logger } from '@repo/hono-helpers'
 
 /**
  * Skills routes
@@ -121,7 +122,7 @@ skills.get('/', async (c) => {
 			return c.json(allSkills)
 		}
 	} catch (error) {
-		console.error('Failed to get skills:', error)
+		logger.error('Failed to get skills:', error)
 		return c.json({ error: 'Failed to get skills' }, 500)
 	}
 })
@@ -148,7 +149,7 @@ skills.get('/groups', async (c) => {
 
 		return c.json(groupData)
 	} catch (error) {
-		console.error('Failed to get skill groups:', error)
+		logger.error('Failed to get skill groups:', error)
 		return c.json({ error: 'Failed to get skill groups' }, 500)
 	}
 })
@@ -165,7 +166,7 @@ skills.get('/group/:groupId', async (c) => {
 		const skillsInGroup = await skillsStub.getSkillsByGroupId(groupId as any)
 		return c.json(skillsInGroup)
 	} catch (error) {
-		console.error('Failed to get skills for group:', error)
+		logger.error('Failed to get skills for group:', error)
 		return c.json({ error: 'Failed to get skills for group' }, 500)
 	}
 })
@@ -185,7 +186,7 @@ skills.get('/:skillId', async (c) => {
 		}
 		return c.json(skill)
 	} catch (error) {
-		console.error('Failed to get skill:', error)
+		logger.error('Failed to get skill:', error)
 		return c.json({ error: 'Failed to get skill' }, 500)
 	}
 })
@@ -208,7 +209,7 @@ skills.post('/cache/clear', async (c) => {
 		await skillsStub.clearAllCaches()
 		return c.json({ message: 'All skill caches cleared successfully' })
 	} catch (error) {
-		console.error('Failed to clear caches:', error)
+		logger.error('Failed to clear caches:', error)
 		return c.json({ error: 'Failed to clear caches' }, 500)
 	}
 })

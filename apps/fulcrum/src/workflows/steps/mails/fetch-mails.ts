@@ -6,6 +6,7 @@ import { fetchItemsInBatches } from './mail-content-batching'
 
 import type { Esi, CharacterMail, MailContent, MailingList, MailLabelsResponse } from '@repo/esi'
 import type { StepResult } from '../../utils/storage'
+import { logger } from '@repo/hono-helpers'
 
 export interface MailWithContent extends CharacterMail {
 	body?: string
@@ -70,7 +71,7 @@ export async function fetchMailsFromEsi(esiStub: Esi, characterId: string): Prom
 		).catch(() => ({ labels: [], total_unread_count: 0 }) as MailLabelsResponse),
 	])
 
-	console.log(`[fetchMails] Fetched ${allMails.length} mail headers`)
+	logger.log(`[fetchMails] Fetched ${allMails.length} mail headers`)
 
 	// Only fetch content for the most recent 100 mails during initial report generation.
 	// Older mail content can be loaded on-demand by the reviewer via the UI.
@@ -80,7 +81,7 @@ export async function fetchMailsFromEsi(esiStub: Esi, characterId: string): Prom
 	const mailsSkipped = allMails.slice(maxContentFetches)
 
 	if (mailsSkipped.length > 0) {
-		console.log(`[fetchMails] Capping content fetches to ${maxContentFetches} (skipping ${mailsSkipped.length} oldest mails) due to ESI rate limits`)
+		logger.log(`[fetchMails] Capping content fetches to ${maxContentFetches} (skipping ${mailsSkipped.length} oldest mails) due to ESI rate limits`)
 	}
 
 	// Fetch content in smaller parallel batches to avoid connection pressure.
@@ -100,7 +101,7 @@ export async function fetchMailsFromEsi(esiStub: Esi, characterId: string): Prom
 				)
 				return { ...mail, body: content.body } as MailWithContent
 			} catch (error) {
-				console.error(`Failed to fetch content for mail ${mail.mail_id}:`, error)
+				logger.error(`Failed to fetch content for mail ${mail.mail_id}:`, error)
 				return mail as MailWithContent
 			}
 		},
@@ -111,7 +112,7 @@ export async function fetchMailsFromEsi(esiStub: Esi, characterId: string): Prom
 		mailsWithContent.push(mail as MailWithContent)
 	}
 
-	console.log(`[fetchMails] Done: ${mailsWithContent.length} mails total (${mailsWithContent.filter(m => m.body).length} with body, ${mailsSkipped.length} skipped)`)
+	logger.log(`[fetchMails] Done: ${mailsWithContent.length} mails total (${mailsWithContent.filter(m => m.body).length} with body, ${mailsSkipped.length} skipped)`)
 	return { mails: mailsWithContent, mailingLists, labels }
 }
 

@@ -10,6 +10,7 @@ import { insuranceDailyPrices, marketDailyPrices } from '../db/schema'
 
 import type { WorkflowEvent, WorkflowStep } from 'cloudflare:workers'
 import type { Env } from '../context'
+import { logger } from '@repo/hono-helpers'
 
 export interface DailyPriceBatchParams {
 	/** Target date in 'YYYY-MM-DD' format */
@@ -45,7 +46,7 @@ export class DailyPriceBatchWorkflow extends WorkflowEntrypoint<Env, DailyPriceB
 		})
 
 		if (typeIds.length === 0) {
-			console.log('[DailyPriceWorkflow] Empty whitelist — nothing to upsert')
+			logger.log('[DailyPriceWorkflow] Empty whitelist — nothing to upsert')
 			return
 		}
 
@@ -130,7 +131,7 @@ export class DailyPriceBatchWorkflow extends WorkflowEntrypoint<Env, DailyPriceB
 						})
 				}
 
-				console.log(
+				logger.log(
 					`[DailyPriceWorkflow] ${targetDate}: upserted ${marketRows.length} market prices, ${insuranceRows.length} insurance prices (whitelist: ${typeIds.length})`
 				)
 			}

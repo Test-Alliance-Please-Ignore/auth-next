@@ -1,6 +1,6 @@
 import { useWorkersLogger } from 'workers-tagged-logger'
 
-import { logger, resolveLogLevel } from '../helpers/logger'
+import { logger, resolveLogLevel, withWorkerLogLevelContext } from '../helpers/logger'
 
 import type { Context, MiddlewareHandler, Next } from 'hono'
 
@@ -13,8 +13,10 @@ export function withWorkersLogger(
 	const baseMiddleware = useWorkersLogger(source, tags) as MiddlewareHandler<any>
 
 	return (c, next) =>
-		baseMiddleware(c as unknown as Context<any>, async () => {
-			logger.setLogLevel(resolveLogLevel(c.env.LOG_LEVEL))
-			return await next()
-		})
+		withWorkerLogLevelContext(resolveLogLevel(c.env.LOG_LEVEL), () =>
+			baseMiddleware(c as unknown as Context<any>, async () => {
+				logger.setLogLevel(resolveLogLevel(c.env.LOG_LEVEL))
+				return await next()
+			})
+		)
 }

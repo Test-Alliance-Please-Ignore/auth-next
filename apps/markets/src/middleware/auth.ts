@@ -5,6 +5,7 @@ import { apiKeys } from '../db/schema'
 
 import type { Context, Next } from 'hono'
 import type { App } from '../context'
+import { logger } from '@repo/hono-helpers'
 
 /**
  * In-memory cache for validated API keys
@@ -57,7 +58,7 @@ export async function withDatabaseAuth(c: Context<App>, next: Next) {
 	const token = extractBearerToken(authHeader)
 
 	if (!token) {
-		console.warn('[auth] Missing or invalid Authorization header')
+		logger.warn('[auth] Missing or invalid Authorization header')
 		return c.json(
 			{
 				error: 'Authorization header is required',
@@ -77,7 +78,7 @@ export async function withDatabaseAuth(c: Context<App>, next: Next) {
 
 	if (cached) {
 		if (!cached.isActive) {
-			console.warn(`[auth] API key inactive (cached): ${cached.name}`)
+			logger.warn(`[auth] API key inactive (cached): ${cached.name}`)
 			return c.json(
 				{
 					error: 'API key is inactive',
@@ -105,7 +106,7 @@ export async function withDatabaseAuth(c: Context<App>, next: Next) {
 		const [apiKey] = await db.select().from(apiKeys).where(eq(apiKeys.key, token)).limit(1)
 
 		if (!apiKey) {
-			console.warn('[auth] Invalid API key')
+			logger.warn('[auth] Invalid API key')
 			return c.json(
 				{
 					error: 'Invalid API key',
@@ -120,7 +121,7 @@ export async function withDatabaseAuth(c: Context<App>, next: Next) {
 		}
 
 		if (!apiKey.isActive) {
-			console.warn(`[auth] API key inactive: ${apiKey.name}`)
+			logger.warn(`[auth] API key inactive: ${apiKey.name}`)
 
 			// Cache inactive keys too (prevents repeated DB lookups for disabled keys)
 			keyCache.set(token, {
@@ -161,7 +162,7 @@ export async function withDatabaseAuth(c: Context<App>, next: Next) {
 			.where(eq(apiKeys.id, apiKey.id))
 			.execute()
 			.catch((error) => {
-				console.error('[auth] Failed to update lastUsedAt:', error)
+				logger.error('[auth] Failed to update lastUsedAt:', error)
 				// Don't fail the request if we can't update usage stats
 			})
 
@@ -169,10 +170,10 @@ export async function withDatabaseAuth(c: Context<App>, next: Next) {
 		c.set('apiKeyId', apiKey.id)
 		c.set('apiKeyName', apiKey.name)
 
-		console.log(`[auth] API key validated: ${apiKey.name}`)
+		logger.log(`[auth] API key validated: ${apiKey.name}`)
 		await next()
 	} catch (error) {
-		console.error('[auth] Database error during authentication:', error)
+		logger.error('[auth] Database error during authentication:', error)
 		return c.json(
 			{
 				error: 'Authentication service unavailable',

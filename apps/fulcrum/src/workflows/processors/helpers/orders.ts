@@ -10,6 +10,7 @@ import { StructureResolutionCoordinator } from './structure-resolution'
 
 import type { CharacterMarketOrder, Esi, EsiTypeResolver } from '@repo/esi'
 import type { Universe } from '@repo/universe'
+import { logger } from '@repo/hono-helpers'
 
 /**
  * Enriched market order with resolved names
@@ -55,7 +56,7 @@ export async function enrichMarketOrders(
 	const resolvableLocationIds = uniqueLocationIds.filter((id) => !isStructureId(id))
 	const idsToResolve = [...uniqueTypeIds, ...resolvableLocationIds]
 
-	console.log('[enrichMarketOrders] Starting enrichment', {
+	logger.log('[enrichMarketOrders] Starting enrichment', {
 		totalOrders: orders.length,
 		uniqueTypeIds: uniqueTypeIds.length,
 		uniqueLocationIds: uniqueLocationIds.length,
@@ -84,7 +85,7 @@ export async function enrichMarketOrders(
 				Object.assign(typeMetadataMap, batchMetadata)
 			}
 		} catch (error) {
-			console.error('[enrichMarketOrders] Error fetching type metadata:', {
+			logger.error('[enrichMarketOrders] Error fetching type metadata:', {
 				error: error instanceof Error ? error.message : String(error),
 			})
 		}
@@ -102,7 +103,7 @@ export async function enrichMarketOrders(
 			: {}
 
 	if (structureLocationIds.length > 0) {
-		console.log('[enrichMarketOrders] Structure resolution complete', {
+		logger.log('[enrichMarketOrders] Structure resolution complete', {
 			requested: structureLocationIds.length,
 			resolved: Object.keys(structureNameMap).length,
 			denied: structureResolutionCoordinator?.getDeniedCount() ?? 0,

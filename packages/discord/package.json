@@ -6,6 +6,7 @@
 	"type": "module",
 	"main": "src/index.ts",
 	"dependencies": {
+		"@repo/hono-helpers": "workspace:*",
 		"@repo/worker-utils": "workspace:*"
 	},
 	"scripts": {

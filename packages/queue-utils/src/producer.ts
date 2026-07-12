@@ -1,4 +1,5 @@
 import { MessageValidationError } from './errors'
+import { logger } from '@repo/hono-helpers/logger'
 
 import type { z } from 'zod'
 import type { QueueProducerConfig, SendBatchOptions, SendMessageOptions } from './types'
@@ -62,7 +63,7 @@ export class QueueProducer<T extends z.ZodType> {
 		}
 
 		if (this.debug) {
-			console.log('[QueueProducer] Sending message:', validated)
+			logger.debug('[QueueProducer] Sending message:', validated)
 		}
 
 		// Send to queue
@@ -91,7 +92,7 @@ export class QueueProducer<T extends z.ZodType> {
 		}
 
 		if (this.debug) {
-			console.log(`[QueueProducer] Sending batch of ${validated.length} messages`)
+			logger.debug(`[QueueProducer] Sending batch of ${validated.length} messages`)
 		}
 
 		// Send to queue
@@ -130,7 +131,7 @@ export class QueueProducer<T extends z.ZodType> {
 		}
 
 		if (this.debug) {
-			console.log(`[QueueProducer] Sending batch of ${validated.length} messages with options`)
+			logger.debug(`[QueueProducer] Sending batch of ${validated.length} messages with options`)
 		}
 
 		// Send to queue

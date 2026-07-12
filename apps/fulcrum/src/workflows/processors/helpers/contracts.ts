@@ -11,6 +11,7 @@ import type { CharacterContract, CharacterContractItem, EsiTypeResolver } from '
 import type { CharacterAffiliationCoordinator } from './character-affiliation'
 import type { EntityLinkCoordinator } from './entity-links'
 import type { CoreBinding } from '../../../types/core-binding'
+import { logger } from '@repo/hono-helpers'
 
 /**
  * Contract item with resolved type name
@@ -219,7 +220,7 @@ export async function enrichContracts(
 			const resolved = await resolver.resolveIds([...typeIds])
 			Object.assign(typeNameMap, resolved)
 		} catch (error) {
-			console.error('[enrichContracts] Failed to resolve type IDs:', {
+			logger.error('[enrichContracts] Failed to resolve type IDs:', {
 				error: error instanceof Error ? error.message : String(error),
 				typeCount: typeIds.size,
 			})
@@ -287,7 +288,7 @@ async function resolveEntityNames(
 			const resolved = await resolver.resolveIds(idsArray)
 			Object.assign(nameMap, resolved)
 		} catch (error) {
-			console.error('[enrichContracts] Failed to resolve IDs:', {
+			logger.error('[enrichContracts] Failed to resolve IDs:', {
 				error: error instanceof Error ? error.message : String(error),
 				idCount: idsArray.length,
 			})

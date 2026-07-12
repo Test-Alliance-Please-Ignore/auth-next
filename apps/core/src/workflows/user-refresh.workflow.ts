@@ -26,6 +26,7 @@ import type { WorkflowEvent, WorkflowStep } from 'cloudflare:workers'
 import type { Core } from '@repo/core'
 import type { Env } from '../context'
 import type { WorkflowContext } from './context'
+import { logger } from '@repo/hono-helpers'
 
 const CHARACTER_REFRESH_CONCURRENCY = 5
 const CHARACTER_STEP_OPTIONS = { ...esiRetryOptions, timeout: '1 minute' as const }
@@ -227,7 +228,7 @@ export class UserRefreshWorkflow extends WorkflowEntrypoint<Env, UserRefreshWork
 		forceTokenValidation: boolean,
 		characterId: string
 	): Promise<CharacterRefreshOutcome> {
-		console.log('[Workflow] Character refresh started', {
+		logger.log('[Workflow] Character refresh started', {
 			userId,
 			workflowInstanceId,
 			characterId,
@@ -307,7 +308,7 @@ export class UserRefreshWorkflow extends WorkflowEntrypoint<Env, UserRefreshWork
 			)
 
 			if (!authenticatedFetchResult.success) {
-				console.error('[Workflow] Failed character authenticated fetch', {
+				logger.error('[Workflow] Failed character authenticated fetch', {
 					userId,
 					workflowInstanceId,
 					characterId,
@@ -326,7 +327,7 @@ export class UserRefreshWorkflow extends WorkflowEntrypoint<Env, UserRefreshWork
 		} catch (error) {
 			const status = classifyCharacterRefreshError(error)
 			const errorMessage = error instanceof Error ? error.message : String(error)
-			console.error('[Workflow] Character refresh failed after retries; continuing workflow', {
+			logger.error('[Workflow] Character refresh failed after retries; continuing workflow', {
 				userId,
 				workflowInstanceId,
 				characterId,
@@ -339,7 +340,7 @@ export class UserRefreshWorkflow extends WorkflowEntrypoint<Env, UserRefreshWork
 				error: errorMessage,
 			}
 		} finally {
-			console.log('[Workflow] Character refresh finished', {
+			logger.log('[Workflow] Character refresh finished', {
 				userId,
 				workflowInstanceId,
 				characterId,
@@ -374,7 +375,7 @@ export class UserRefreshWorkflow extends WorkflowEntrypoint<Env, UserRefreshWork
 		})
 		steps['init-workflow'] = 'ok'
 
-		console.log('[Workflow] Starting user refresh workflow', logContext)
+		logger.log('[Workflow] Starting user refresh workflow', logContext)
 		try {
 			// Step 1: Check if user is blacklisted
 			const checkUserBlacklistedResult = await step.do('check-user-blacklisted', () => {
@@ -389,7 +390,7 @@ export class UserRefreshWorkflow extends WorkflowEntrypoint<Env, UserRefreshWork
 			})
 			steps['check-user-blacklisted'] = 'ok'
 
-			console.log('[Workflow] Checked user blacklisted', {
+			logger.log('[Workflow] Checked user blacklisted', {
 				...logContext,
 				isBlacklisted: checkUserBlacklistedResult.isBlacklisted,
 			})
@@ -408,7 +409,7 @@ export class UserRefreshWorkflow extends WorkflowEntrypoint<Env, UserRefreshWork
 				})
 				steps['disable-blacklisted-user'] = 'ok'
 
-				console.log('[Workflow] Disabled user', logContext)
+				logger.log('[Workflow] Disabled user', logContext)
 			} else {
 				steps['disable-blacklisted-user'] = 'skipped'
 			}
@@ -423,7 +424,7 @@ export class UserRefreshWorkflow extends WorkflowEntrypoint<Env, UserRefreshWork
 			})
 			steps['fetch-user-characters'] = 'ok'
 			characterCount = characters.length
-			console.log('[Workflow] Fetched user characters', {
+			logger.log('[Workflow] Fetched user characters', {
 				...logContext,
 				characterCount: characters.length,
 				characterIds: characters.map((character) => character.characterId),
@@ -467,7 +468,7 @@ export class UserRefreshWorkflow extends WorkflowEntrypoint<Env, UserRefreshWork
 			for (const outcome of characterOutcomes) {
 				outcomeSummary[outcome.status]++
 			}
-			console.log('[Workflow] Character refresh outcomes', {
+			logger.log('[Workflow] Character refresh outcomes', {
 				...logContext,
 				totalCharacters: characters.length,
 				...outcomeSummary,
@@ -491,12 +492,12 @@ export class UserRefreshWorkflow extends WorkflowEntrypoint<Env, UserRefreshWork
 			) {
 				try {
 					await syncUsersMumbleProfiles(this.env, [userId])
-					console.log('[Workflow] Refreshed Mumble profile metadata for main character change', {
+					logger.log('[Workflow] Refreshed Mumble profile metadata for main character change', {
 						...logContext,
 						mainCharacterId,
 					})
 				} catch (error) {
-					console.warn('[Workflow] Failed to refresh Mumble profile metadata; continuing', {
+					logger.warn('[Workflow] Failed to refresh Mumble profile metadata; continuing', {
 						...logContext,
 						mainCharacterId,
 						error: error instanceof Error ? error.message : String(error),
@@ -532,7 +533,7 @@ export class UserRefreshWorkflow extends WorkflowEntrypoint<Env, UserRefreshWork
 					steps['get-user-role-attachments'] = 'ok'
 				} catch (error) {
 					steps['get-user-role-attachments'] = 'failed'
-					console.warn(
+					logger.warn(
 						'[Workflow] Failed to fetch user role attachments before reconcile; continuing',
 						{
 							...logContext,
@@ -541,7 +542,7 @@ export class UserRefreshWorkflow extends WorkflowEntrypoint<Env, UserRefreshWork
 					)
 				}
 
-				console.log('[Workflow] Got user role attachments', {
+				logger.log('[Workflow] Got user role attachments', {
 					...logContext,
 					roleAttachments: getUserRoleAttachmentsResult.roleAttachments.length,
 					coreRoleAttachments: toCoreAttachmentSummaries(
@@ -562,7 +563,7 @@ export class UserRefreshWorkflow extends WorkflowEntrypoint<Env, UserRefreshWork
 				})
 				steps['attach-user-roles'] = 'ok'
 
-				console.log('[Workflow] Attached user roles', {
+				logger.log('[Workflow] Attached user roles', {
 					...logContext,
 					corporationRoleAttachments: attachUserRolesResult.corporationRoleAttachments.length,
 					allianceRoleAttachments: attachUserRolesResult.allianceRoleAttachments.length,
@@ -578,7 +579,7 @@ export class UserRefreshWorkflow extends WorkflowEntrypoint<Env, UserRefreshWork
 				const coreAttachmentChanged =
 					coreAttachmentDelta.addedCoreAttachments > 0 ||
 					coreAttachmentDelta.removedCoreAttachments > 0
-				console.log('[Workflow] Core role attachment reconciliation delta', {
+				logger.log('[Workflow] Core role attachment reconciliation delta', {
 					...logContext,
 					...coreAttachmentDelta,
 				})
@@ -608,7 +609,7 @@ export class UserRefreshWorkflow extends WorkflowEntrypoint<Env, UserRefreshWork
 					steps['reconcile-affiliation-group-memberships'] = 'ok'
 				} catch (error) {
 					steps['reconcile-affiliation-group-memberships'] = 'failed'
-					console.warn(
+					logger.warn(
 						'[Workflow] Failed to reconcile affiliation-based group memberships; continuing',
 						{
 							...logContext,
@@ -647,7 +648,7 @@ export class UserRefreshWorkflow extends WorkflowEntrypoint<Env, UserRefreshWork
 				}
 
 				if (groupCleanupResult.shouldStripGroups) {
-					console.log('[Workflow] Stripped affiliation-based group memberships', {
+					logger.log('[Workflow] Stripped affiliation-based group memberships', {
 						...logContext,
 						removedGroupCount: groupCleanupResult.removedGroupIds.length,
 						transferredOwnershipGroupCount: groupCleanupResult.transferredOwnershipGroupIds.length,
@@ -669,8 +670,8 @@ export class UserRefreshWorkflow extends WorkflowEntrypoint<Env, UserRefreshWork
 			})
 			steps['update-completion-timestamp'] = 'ok'
 
-			console.log('[Workflow] Updated completion timestamp', logContext)
-			console.log('[Workflow] User refresh workflow completed', logContext)
+			logger.log('[Workflow] Updated completion timestamp', logContext)
+			logger.log('[Workflow] User refresh workflow completed', logContext)
 
 			const summary = {
 				characterCount,
@@ -702,7 +703,7 @@ export class UserRefreshWorkflow extends WorkflowEntrypoint<Env, UserRefreshWork
 		} catch (error) {
 			const errorMessage = error instanceof Error ? error.message : String(error)
 			steps['workflow'] = 'failed'
-			console.error('[Workflow] User refresh workflow failed', {
+			logger.error('[Workflow] User refresh workflow failed', {
 				...logContext,
 				error: errorMessage,
 				stack: error instanceof Error ? error.stack : undefined,

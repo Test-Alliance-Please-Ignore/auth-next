@@ -1,7 +1,7 @@
 import { and, eq, inArray, isNull, lte, or } from 'drizzle-orm'
 
 import { getStub } from '@repo/do-utils'
-import { logger } from '@repo/hono-helpers'
+import { logger, withWorkerLogContext } from '@repo/hono-helpers'
 
 import { createDb } from './db'
 import { billNotificationEvents, bills, billSchedules } from './db/schema'
@@ -389,19 +389,21 @@ export async function scheduledHandler(
 	env: Env,
 	_ctx: ExecutionContext
 ): Promise<void> {
-	const start = Date.now()
-	const scheduledLogger = logger.withTags({ component: 'bills-cron-handler' })
-	scheduledLogger.info('[Scheduled] Starting scheduled refresh via workflows', {
-		scheduledTime: new Date(event.scheduledTime).toISOString(),
-		cron: event.cron,
-	})
-	await enqueueDueSchedules(env, { scheduledTimeMs: event.scheduledTime })
-	await enqueueDueSoonNotifications(env, { scheduledTimeMs: event.scheduledTime })
-	await refreshBillPayments(env, { scheduledTimeMs: event.scheduledTime })
-	await dispatchPendingNotificationWorkflows(env, { scheduledTimeMs: event.scheduledTime })
+	await withWorkerLogContext('bills-scheduled', env, async () => {
+		const start = Date.now()
+		const scheduledLogger = logger.withTags({ component: 'bills-cron-handler' })
+		scheduledLogger.info('[Scheduled] Starting scheduled refresh via workflows', {
+			scheduledTime: new Date(event.scheduledTime).toISOString(),
+			cron: event.cron,
+		})
+		await enqueueDueSchedules(env, { scheduledTimeMs: event.scheduledTime })
+		await enqueueDueSoonNotifications(env, { scheduledTimeMs: event.scheduledTime })
+		await refreshBillPayments(env, { scheduledTimeMs: event.scheduledTime })
+		await dispatchPendingNotificationWorkflows(env, { scheduledTimeMs: event.scheduledTime })
 
-	const duration = Date.now() - start
-	scheduledLogger.info('[Scheduled] Scheduled refresh via workflows complete', {
-		durationMs: duration,
+		const duration = Date.now() - start
+		scheduledLogger.info('[Scheduled] Scheduled refresh via workflows complete', {
+			durationMs: duration,
+		})
 	})
 }

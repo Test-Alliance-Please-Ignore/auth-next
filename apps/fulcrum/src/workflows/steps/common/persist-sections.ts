@@ -14,6 +14,7 @@ import { safeJsonStringify } from '../../utils/json'
 
 import type { ReportSectionMeta } from '@repo/fulcrum'
 import type { StepResult } from '../../utils/storage'
+import { logger } from '@repo/hono-helpers'
 
 /** Maximum items per chunk file. Sections at or below this size stay flat. */
 const CHUNK_THRESHOLD = 500
@@ -43,7 +44,7 @@ async function putWithRetry(
 			return
 		} catch (err) {
 			if (attempt === 2) throw err
-			console.warn(`[persistSections] ${label} write attempt ${attempt + 1} failed, retrying...`)
+			logger.warn(`[persistSections] ${label} write attempt ${attempt + 1} failed, retrying...`)
 		}
 	}
 }
@@ -123,21 +124,21 @@ export async function persistSections(
 	await Promise.all(
 		sections.map(async ({ name, result }) => {
 			if (!result.success) {
-				console.log(`[persistSections] Skipping section '${name}': fetch/process failed`)
+				logger.log(`[persistSections] Skipping section '${name}': fetch/process failed`)
 				return
 			}
 
 			try {
 				const data = await retrieveData(getBucket, result)
 				if (!data) {
-					console.log(`[persistSections] Skipping section '${name}': no data`)
+					logger.log(`[persistSections] Skipping section '${name}': no data`)
 					return
 				}
 
 				const meta = await persistSection(bucket, baseKey, name, data)
 				sectionMeta[name] = meta
 			} catch (error) {
-				console.error(`[persistSections] Failed to persist section '${name}':`, {
+				logger.error(`[persistSections] Failed to persist section '${name}':`, {
 					error: error instanceof Error ? error.message : String(error),
 				})
 			}
@@ -161,17 +162,17 @@ export async function persistSections(
 			break
 		} catch (error) {
 			if (attempt === 2) {
-				console.error('[persistSections] Failed to write manifest after 3 attempts:', {
+				logger.error('[persistSections] Failed to write manifest after 3 attempts:', {
 					error: error instanceof Error ? error.message : String(error),
 				})
 				throw error
 			}
-			console.warn(`[persistSections] Manifest write attempt ${attempt + 1} failed, retrying...`)
+			logger.warn(`[persistSections] Manifest write attempt ${attempt + 1} failed, retrying...`)
 		}
 	}
 
 	const successfulSections = Object.keys(sectionMeta)
-	console.log(`[persistSections] Persisted ${successfulSections.length}/${sections.length} sections`, {
+	logger.log(`[persistSections] Persisted ${successfulSections.length}/${sections.length} sections`, {
 		successful: successfulSections,
 	})
 

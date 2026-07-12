@@ -22,6 +22,7 @@ import type {
 	Skills,
 } from '@repo/skills'
 import type { App } from '../context'
+import { logger } from '@repo/hono-helpers'
 
 /**
  * Helper function to resolve maintainer name from maintainerId
@@ -39,7 +40,7 @@ async function resolveMaintainerName(
 			const group = await getCachedGroup(env, groupId, currentUserId)
 			return group?.name || groupId
 		} catch (error) {
-			console.error('Failed to fetch group name:', error)
+			logger.error('Failed to fetch group name:', error)
 			return groupId
 		}
 	} else {
@@ -54,7 +55,7 @@ async function resolveMaintainerName(
 			})
 			return character?.characterName || maintainerId
 		} catch (error) {
-			console.error('Failed to fetch user character name:', error)
+			logger.error('Failed to fetch user character name:', error)
 			return maintainerId
 		}
 	}
@@ -147,7 +148,7 @@ const skillPlansRoutes = new Hono<App>()
 			})
 			return c.json(category, 201)
 		} catch (error) {
-			console.error('Failed to create category:', error)
+			logger.error('Failed to create category:', error)
 			return c.json({ error: 'Failed to create category' }, 500)
 		}
 	})
@@ -184,7 +185,7 @@ const skillPlansRoutes = new Hono<App>()
 			})
 			return c.json(category)
 		} catch (error) {
-			console.error('Failed to update category:', error)
+			logger.error('Failed to update category:', error)
 			return c.json({ error: 'Failed to update category' }, 500)
 		}
 	})
@@ -212,7 +213,7 @@ const skillPlansRoutes = new Hono<App>()
 				return c.json({ error: 'Category not found' }, 404)
 			}
 		} catch (error) {
-			console.error('Failed to delete category:', error)
+			logger.error('Failed to delete category:', error)
 			return c.json({ error: 'Failed to delete category' }, 500)
 		}
 	})
@@ -279,7 +280,7 @@ const skillPlansRoutes = new Hono<App>()
 				})
 			}
 		} catch (error) {
-			console.error('Failed to list skill plans:', error)
+			logger.error('Failed to list skill plans:', error)
 			return c.json({ error: 'Failed to list skill plans' }, 500)
 		}
 	})
@@ -355,7 +356,7 @@ const skillPlansRoutes = new Hono<App>()
 				offset,
 			})
 		} catch (error) {
-			console.error('Failed to get user skill plans:', error)
+			logger.error('Failed to get user skill plans:', error)
 			return c.json({ error: 'Failed to get user skill plans' }, 500)
 		}
 	})
@@ -441,13 +442,13 @@ const skillPlansRoutes = new Hono<App>()
 
 			// If skills not found, try to fetch them from ESI
 			if (!skillsData || !skillsData.skills) {
-				console.log(`Skills not found for character ${characterId}, fetching from ESI...`)
+				logger.log(`Skills not found for character ${characterId}, fetching from ESI...`)
 				try {
 					await eveCharacterDataStub.fetchAuthenticatedData(characterId)
 					// Try getting skills again after fetching
 					skillsData = await eveCharacterDataStub.getSkills(characterId)
 				} catch (fetchError) {
-					console.error(`Failed to fetch skills from ESI for character ${characterId}:`, fetchError)
+					logger.error(`Failed to fetch skills from ESI for character ${characterId}:`, fetchError)
 					// Continue - will check if skills exist below
 				}
 			}
@@ -501,7 +502,7 @@ const skillPlansRoutes = new Hono<App>()
 
 			return c.json(transformedProgress)
 		} catch (error) {
-			console.error('Failed to check character progress:', error)
+			logger.error('Failed to check character progress:', error)
 			return c.json({ error: 'Failed to check character progress' }, 500)
 		}
 	})
@@ -543,13 +544,13 @@ const skillPlansRoutes = new Hono<App>()
 
 			// If skills not found, try to fetch them from ESI
 			if (!skillsData || !skillsData.skills) {
-				console.log(`Skills not found for character ${characterId}, fetching from ESI...`)
+				logger.log(`Skills not found for character ${characterId}, fetching from ESI...`)
 				try {
 					await eveCharacterDataStub.fetchAuthenticatedData(characterId)
 					// Try getting skills again after fetching
 					skillsData = await eveCharacterDataStub.getSkills(characterId)
 				} catch (fetchError) {
-					console.error(`Failed to fetch skills from ESI for character ${characterId}:`, fetchError)
+					logger.error(`Failed to fetch skills from ESI for character ${characterId}:`, fetchError)
 					// Continue - will check if skills exist below
 				}
 			}
@@ -603,7 +604,7 @@ const skillPlansRoutes = new Hono<App>()
 
 			return c.json(transformedProgress)
 		} catch (error) {
-			console.error('Failed to check character progress:', error)
+			logger.error('Failed to check character progress:', error)
 			return c.json({ error: 'Failed to check character progress' }, 500)
 		}
 	})
@@ -706,7 +707,7 @@ const skillPlansRoutes = new Hono<App>()
 			})
 			return c.json(plan, 201)
 		} catch (error) {
-			console.error('Failed to create skill plan:', error)
+			logger.error('Failed to create skill plan:', error)
 			return c.json({ error: 'Failed to create skill plan' }, 500)
 		}
 	})
@@ -763,7 +764,7 @@ const skillPlansRoutes = new Hono<App>()
 			})
 			return c.json(updatedPlan)
 		} catch (error) {
-			console.error('Failed to update skill plan:', error)
+			logger.error('Failed to update skill plan:', error)
 			return c.json({ error: 'Failed to update skill plan' }, 500)
 		}
 	})
@@ -800,7 +801,7 @@ const skillPlansRoutes = new Hono<App>()
 				return c.json({ error: 'Failed to delete skill plan' }, 500)
 			}
 		} catch (error) {
-			console.error('Failed to delete skill plan:', error)
+			logger.error('Failed to delete skill plan:', error)
 			return c.json({ error: 'Failed to delete skill plan' }, 500)
 		}
 	})
@@ -876,7 +877,7 @@ const skillPlansRoutes = new Hono<App>()
 				return c.json({ error: 'Failed to add skill to plan' }, 500)
 			}
 		} catch (error: any) {
-			console.error('Failed to add skill to plan:', error)
+			logger.error('Failed to add skill to plan:', error)
 			if (error.message?.includes('already exists')) {
 				return c.json({ error: 'Skill already exists in this plan' }, 409)
 			}
@@ -995,7 +996,7 @@ const skillPlansRoutes = new Hono<App>()
 				return c.json(result, 400)
 			}
 		} catch (error: any) {
-			console.error('Failed to batch add skills to plan:', error)
+			logger.error('Failed to batch add skills to plan:', error)
 			return c.json({ error: 'Failed to batch add skills to plan' }, 500)
 		}
 	})
@@ -1067,7 +1068,7 @@ const skillPlansRoutes = new Hono<App>()
 				return c.json({ error: 'Failed to update skill in plan' }, 500)
 			}
 		} catch (error: any) {
-			console.error('Failed to update skill in plan:', error)
+			logger.error('Failed to update skill in plan:', error)
 			if (error.message?.includes('not found')) {
 				return c.json({ error: 'Skill not found in plan' }, 404)
 			}
@@ -1114,7 +1115,7 @@ const skillPlansRoutes = new Hono<App>()
 				return c.json({ error: 'Skill not found in plan' }, 404)
 			}
 		} catch (error) {
-			console.error('Failed to remove skill from plan:', error)
+			logger.error('Failed to remove skill from plan:', error)
 			return c.json({ error: 'Failed to remove skill from plan' }, 500)
 		}
 	})
@@ -1157,7 +1158,7 @@ const skillPlansRoutes = new Hono<App>()
 				return c.json({ error: 'Failed to add category to plan' }, 500)
 			}
 		} catch (error) {
-			console.error('Failed to add category to plan:', error)
+			logger.error('Failed to add category to plan:', error)
 			return c.json({ error: 'Failed to add category to plan' }, 500)
 		}
 	})
@@ -1198,7 +1199,7 @@ const skillPlansRoutes = new Hono<App>()
 				return c.json({ error: 'Category not found in plan' }, 404)
 			}
 		} catch (error) {
-			console.error('Failed to remove category from plan:', error)
+			logger.error('Failed to remove category from plan:', error)
 			return c.json({ error: 'Failed to remove category from plan' }, 500)
 		}
 	})
@@ -1260,13 +1261,13 @@ const skillPlansRoutes = new Hono<App>()
 
 			// If skills not found, try to fetch them from ESI
 			if (!skillsData || !skillsData.skills) {
-				console.log(`Skills not found for character ${characterId}, fetching from ESI...`)
+				logger.log(`Skills not found for character ${characterId}, fetching from ESI...`)
 				try {
 					await eveCharacterDataStub.fetchAuthenticatedData(characterId)
 					// Try getting skills again after fetching
 					skillsData = await eveCharacterDataStub.getSkills(characterId)
 				} catch (fetchError) {
-					console.error(`Failed to fetch skills from ESI for character ${characterId}:`, fetchError)
+					logger.error(`Failed to fetch skills from ESI for character ${characterId}:`, fetchError)
 					// Continue - will check if skills exist below
 				}
 			}
@@ -1320,7 +1321,7 @@ const skillPlansRoutes = new Hono<App>()
 
 			return c.json(transformedProgress)
 		} catch (error) {
-			console.error('Failed to check character progress:', error)
+			logger.error('Failed to check character progress:', error)
 			return c.json({ error: 'Failed to check character progress' }, 500)
 		}
 	})
@@ -1368,13 +1369,13 @@ const skillPlansRoutes = new Hono<App>()
 
 			// If skills not found, try to fetch them from ESI
 			if (!skillsData || !skillsData.skills) {
-				console.log(`Skills not found for character ${characterId}, fetching from ESI...`)
+				logger.log(`Skills not found for character ${characterId}, fetching from ESI...`)
 				try {
 					await eveCharacterDataStub.fetchAuthenticatedData(characterId)
 					// Try getting skills again after fetching
 					skillsData = await eveCharacterDataStub.getSkills(characterId)
 				} catch (fetchError) {
-					console.error(`Failed to fetch skills from ESI for character ${characterId}:`, fetchError)
+					logger.error(`Failed to fetch skills from ESI for character ${characterId}:`, fetchError)
 					// Continue - will check if skills exist below
 				}
 			}
@@ -1407,7 +1408,7 @@ const skillPlansRoutes = new Hono<App>()
 
 			return c.json(progressResults)
 		} catch (error) {
-			console.error('Failed to check character progress:', error)
+			logger.error('Failed to check character progress:', error)
 			return c.json({ error: 'Failed to check character progress' }, 500)
 		}
 	})

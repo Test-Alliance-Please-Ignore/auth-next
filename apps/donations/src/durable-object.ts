@@ -2,6 +2,7 @@ import { DurableObject } from 'cloudflare:workers'
 
 import type { Donations } from '@repo/donations'
 import type { Env } from './context'
+import { logger } from '@repo/hono-helpers'
 
 /**
  * Donations Durable Object
@@ -44,7 +45,7 @@ export class DonationsDO extends DurableObject<Env, {}> implements Donations {
 	 * Called when a WebSocket error occurs
 	 */
 	async webSocketError(ws: WebSocket, error: unknown): Promise<void> {
-		console.error('WebSocket error:', error)
+		logger.error('WebSocket error:', error)
 	}
 
 	/**
