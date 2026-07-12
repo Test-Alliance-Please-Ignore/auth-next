@@ -1,5 +1,5 @@
 import { getStub } from '@repo/do-utils'
-import { logger } from '@repo/hono-helpers'
+import { logger, withWorkerLogContext } from '@repo/hono-helpers'
 
 import type { CorporationTax } from '@repo/corporation-tax'
 import type { Env } from './context'
@@ -43,45 +43,47 @@ export async function scheduledHandler(
 	env: Env,
 	_ctx: ExecutionContext
 ): Promise<void> {
-	const startedAt = Date.now()
-	const runAt = new Date(event.scheduledTime)
-	const taxStub = getStub<CorporationTax>(env.CORPORATION_TAX, 'default')
+	await withWorkerLogContext('corporation-tax-scheduled', env, async () => {
+		const startedAt = Date.now()
+		const runAt = new Date(event.scheduledTime)
+		const taxStub = getStub<CorporationTax>(env.CORPORATION_TAX, 'default')
 
-	logger.info('[CorporationTax] Scheduled operations starting', {
-		cron: event.cron,
-		scheduledTime: runAt.toISOString(),
-	})
-
-	try {
-		const result = await taxStub.runScheduledOperations(
-			SYSTEM_SCHEDULER_ACTOR,
-			runAt,
-			EXPORT_SCHEDULE_BATCH_LIMIT,
-			ALERT_RETRY_BATCH_LIMIT
-		)
-
-		logger.info('[CorporationTax] Scheduled operations completed', {
-			cron: event.cron,
-			asOf: result.asOf.toISOString(),
-			includedCorporationCount: result.includedCorporationCount,
-			dailyIngestCorporationsProcessed: result.dailyIngestCorporationsProcessed,
-			dailyIngestFailures: result.dailyIngestFailures,
-			monthlyAssessmentCorporationsProcessed: result.monthlyAssessmentCorporationsProcessed,
-			monthlyAssessmentFailures: result.monthlyAssessmentFailures,
-			ledgerRetentionCorporationsProcessed: result.ledgerRetentionCorporationsProcessed,
-			ledgerRetentionFailures: result.ledgerRetentionFailures,
-			ledgerRetentionEntriesDeleted: result.ledgerRetentionEntriesDeleted,
-			dueExportSchedulesProcessed: result.dueExportSchedulesProcessed,
-			failedAlertDeliveriesRetried: result.failedAlertDeliveriesRetried,
-			durationMs: Date.now() - startedAt,
-		})
-	} catch (error) {
-		logger.error('[CorporationTax] Scheduled operations failed', {
+		logger.info('[CorporationTax] Scheduled operations starting', {
 			cron: event.cron,
 			scheduledTime: runAt.toISOString(),
-			durationMs: Date.now() - startedAt,
-			error: error instanceof Error ? error.message : String(error),
 		})
-		await publishScheduledFailureAlert(taxStub, event.cron, runAt, error)
-	}
+
+		try {
+			const result = await taxStub.runScheduledOperations(
+				SYSTEM_SCHEDULER_ACTOR,
+				runAt,
+				EXPORT_SCHEDULE_BATCH_LIMIT,
+				ALERT_RETRY_BATCH_LIMIT
+			)
+
+			logger.info('[CorporationTax] Scheduled operations completed', {
+				cron: event.cron,
+				asOf: result.asOf.toISOString(),
+				includedCorporationCount: result.includedCorporationCount,
+				dailyIngestCorporationsProcessed: result.dailyIngestCorporationsProcessed,
+				dailyIngestFailures: result.dailyIngestFailures,
+				monthlyAssessmentCorporationsProcessed: result.monthlyAssessmentCorporationsProcessed,
+				monthlyAssessmentFailures: result.monthlyAssessmentFailures,
+				ledgerRetentionCorporationsProcessed: result.ledgerRetentionCorporationsProcessed,
+				ledgerRetentionFailures: result.ledgerRetentionFailures,
+				ledgerRetentionEntriesDeleted: result.ledgerRetentionEntriesDeleted,
+				dueExportSchedulesProcessed: result.dueExportSchedulesProcessed,
+				failedAlertDeliveriesRetried: result.failedAlertDeliveriesRetried,
+				durationMs: Date.now() - startedAt,
+			})
+		} catch (error) {
+			logger.error('[CorporationTax] Scheduled operations failed', {
+				cron: event.cron,
+				scheduledTime: runAt.toISOString(),
+				durationMs: Date.now() - startedAt,
+				error: error instanceof Error ? error.message : String(error),
+			})
+			await publishScheduledFailureAlert(taxStub, event.cron, runAt, error)
+		}
+	})
 }

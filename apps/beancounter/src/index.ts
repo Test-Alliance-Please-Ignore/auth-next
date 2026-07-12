@@ -1,7 +1,7 @@
 import { Hono } from 'hono'
 
 import { getStub } from '@repo/do-utils'
-import { withNotFound, withOnError, withWorkersLogger } from '@repo/hono-helpers'
+import { logger, withNotFound, withOnError, withWorkersLogger } from '@repo/hono-helpers'
 
 import { registerCoordinatorRoutes } from './coordinator/routes'
 import { StructureCoordinatorDO } from './coordinator/structure-coordinator'
@@ -41,7 +41,7 @@ const app = new Hono<App>()
 				coordinatorStub as unknown as { fetch: (request: Request) => Promise<Response> }
 			).fetch(c.req.raw)
 		} catch (error) {
-			console.error('[Worker] WebSocket connection error:', error)
+			logger.error('[Worker] WebSocket connection error', { error })
 			return c.json(
 				{
 					error: 'Failed to establish WebSocket connection',

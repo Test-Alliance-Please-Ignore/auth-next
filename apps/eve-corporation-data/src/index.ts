@@ -2,7 +2,13 @@ import { WorkerEntrypoint } from 'cloudflare:workers'
 import { Hono } from 'hono'
 
 import { getStub } from '@repo/do-utils'
-import { withNotFound, withOnError, withWorkersLogger } from '@repo/hono-helpers'
+import {
+	logger,
+	withNotFound,
+	withOnError,
+	withWorkerLogContext,
+	withWorkersLogger,
+} from '@repo/hono-helpers'
 
 import { EveCorporationDataDO } from './durable-object'
 import { scheduledHandler } from './scheduled'
@@ -32,12 +38,15 @@ const app = new Hono<App>()
 export default {
 	fetch: app.fetch.bind(app),
 	async queue(batch: MessageBatch, env: Env, ctx: ExecutionContext): Promise<void> {
-		// No queue consumers anymore - this handler exists only because
-		// we have the hr-member-departed producer binding which requires
-		// a queue handler to be defined
-		console.warn(
-			`Received unexpected queue message on ${batch.queue} - all queue consumers have been migrated to workflows`
-		)
+		await withWorkerLogContext('eve-corporation-data-queue', env, async () => {
+			// No queue consumers anymore - this handler exists only because
+			// we have the hr-member-departed producer binding which requires
+			// a queue handler to be defined
+			logger.warn('Received unexpected queue message', {
+				queue: batch.queue,
+				message: 'all queue consumers have been migrated to workflows',
+			})
+		})
 	},
 	async scheduled(event: ScheduledEvent, env: Env, ctx: ExecutionContext): Promise<void> {
 		await scheduledHandler(event, env, ctx)

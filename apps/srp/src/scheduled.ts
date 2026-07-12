@@ -1,6 +1,6 @@
 import { and, eq } from 'drizzle-orm'
 
-import { logger } from '@repo/hono-helpers'
+import { logger, withWorkerLogContext } from '@repo/hono-helpers'
 
 import { createDb } from './db'
 import { srpRequests } from './db/schema'
@@ -102,5 +102,7 @@ export async function scheduledHandler(
 	env: Env,
 	_ctx: ExecutionContext
 ): Promise<void> {
-	await refreshPendingPaymentChecks(env, { scheduledTimeMs: Date.now() })
+	await withWorkerLogContext('srp-scheduled', env, async () => {
+		await refreshPendingPaymentChecks(env, { scheduledTimeMs: Date.now() })
+	})
 }

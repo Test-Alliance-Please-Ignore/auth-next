@@ -1,4 +1,4 @@
-import { logger } from '@repo/hono-helpers'
+import { logger, withWorkerLogContext } from '@repo/hono-helpers'
 
 import {
 	computeNextAttemptAtMs,
@@ -62,6 +62,12 @@ async function saveQueue(cache: KVNamespace, queue: QueueEntry[]): Promise<void>
  * 4. Tracks instance creation success/failure
  */
 export async function scheduledHandler(event: ScheduledEvent, env: Env, _ctx: ExecutionContext) {
+	return await withWorkerLogContext('eve-corporation-data-scheduled', env, async () => {
+		return await runScheduledRefresh(event, env)
+	})
+}
+
+async function runScheduledRefresh(event: ScheduledEvent, env: Env): Promise<void> {
 	const start = Date.now()
 	logger.info('[BackgroundRefresh] Starting scheduled refresh via workflows', {
 		scheduledTime: new Date(event.scheduledTime).toISOString(),
@@ -194,9 +200,7 @@ export async function scheduledHandler(event: ScheduledEvent, env: Env, _ctx: Ex
 		const nextQueue = [
 			...queue.filter((entry) => !drainingIds.has(entry.corporationId)),
 			...requeued,
-		].sort(
-			(a, b) => a.nextAttemptAtMs - b.nextAttemptAtMs
-		)
+		].sort((a, b) => a.nextAttemptAtMs - b.nextAttemptAtMs)
 		await saveQueue(env.CACHE, nextQueue)
 
 		const duration = Date.now() - start
@@ -217,6 +221,7 @@ export async function scheduledHandler(event: ScheduledEvent, env: Env, _ctx: Ex
 			drained: draining.length,
 			deferred: deferred.length,
 			durationMs: duration,
+			failures: failures.slice(0, 10),
 		})
 
 		// Log failed corporations for debugging
@@ -236,12 +241,10 @@ export async function scheduledHandler(event: ScheduledEvent, env: Env, _ctx: Ex
 }
 
 /**
- * Create a workflow instance for a specific corporation
+ * Create a workflow instance for a specific corporation.
  *
  * Checks if a workflow is already running for this corporation to maintain idempotency.
  * Uses timestamped IDs to avoid conflicts with completed workflows that are still retained.
- *
- * @returns Object indicating whether workflow was created or already running
  */
 async function createWorkflowInstance(
 	env: Env,
@@ -249,7 +252,6 @@ async function createWorkflowInstance(
 	corporationName: string
 ): Promise<{ created: boolean; instanceId: string }> {
 	try {
-		// Check if a workflow is already running for this corporation
 		try {
 			const existingInstance = await env.EVE_CORPORATION_SYNC.get(corporationId)
 			const status = await existingInstance.status()
@@ -267,10 +269,9 @@ async function createWorkflowInstance(
 				}
 			}
 		} catch {
-			// No existing instance, proceed to create new one
+			// No existing instance, proceed to create new one.
 		}
 
-		// Create new workflow instance with timestamped ID to avoid conflicts with completed workflows
 		const instance = await env.EVE_CORPORATION_SYNC.create({
 			id: `${corporationId}-${Date.now()}`,
 			params: {

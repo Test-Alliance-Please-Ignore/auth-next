@@ -1,6 +1,12 @@
 import { Hono } from 'hono'
 
-import { withNotFound, withOnError, withWorkersLogger } from '@repo/hono-helpers'
+import {
+	logger,
+	withNotFound,
+	withOnError,
+	withWorkerLogContext,
+	withWorkersLogger,
+} from '@repo/hono-helpers'
 
 import { createDb } from './db'
 import { HrDO } from './durable-object'
@@ -38,36 +44,38 @@ async function handleMemberDepartedQueue(
 	env: Env,
 	_ctx: ExecutionContext
 ): Promise<void> {
-	const db = createDb(env.DATABASE_URL)
-	const hrRoleService = new HrRoleService({ db, env })
+	await withWorkerLogContext('hr-member-departed', env, async () => {
+		const db = createDb(env.DATABASE_URL)
+		const hrRoleService = new HrRoleService({ db, env })
 
-	for (const message of batch.messages) {
-		try {
-			const { corporationId, characterId } = message.body
+		for (const message of batch.messages) {
+			try {
+				const { corporationId, characterId } = message.body
 
-			const deactivatedCount = await hrRoleService.deactivateRolesForDepartedMember(
-				corporationId,
-				characterId
-			)
-
-			if (deactivatedCount > 0) {
-				console.log('[hr-member-departed] Deactivated HR roles:', {
+				const deactivatedCount = await hrRoleService.deactivateRolesForDepartedMember(
 					corporationId,
-					characterId,
-					count: deactivatedCount,
-				})
-			}
+					characterId
+				)
 
-			message.ack()
-		} catch (error) {
-			console.error('[hr-member-departed] Failed to process message:', {
-				error,
-				errorMessage: error instanceof Error ? error.message : String(error),
-				messageId: message.id,
-			})
-			message.retry()
+				if (deactivatedCount > 0) {
+					logger.info('[hr-member-departed] Deactivated HR roles', {
+						corporationId,
+						characterId,
+						count: deactivatedCount,
+					})
+				}
+
+				message.ack()
+			} catch (error) {
+				logger.error('[hr-member-departed] Failed to process message', {
+					error,
+					errorMessage: error instanceof Error ? error.message : String(error),
+					messageId: message.id,
+				})
+				message.retry()
+			}
 		}
-	}
+	})
 }
 
 // Export default worker with fetch and queue handlers
@@ -81,7 +89,9 @@ export default {
 		if (batch.queue === 'hr-member-departed') {
 			await handleMemberDepartedQueue(batch, env, ctx)
 		} else {
-			console.error(`No handler found for queue: ${batch.queue}`)
+			await withWorkerLogContext('hr-queue', env, async () => {
+				logger.error('No handler found for queue', { queue: batch.queue })
+			})
 		}
 	},
 }
