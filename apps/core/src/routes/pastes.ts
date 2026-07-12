@@ -5,6 +5,7 @@ import { requireAdmin, requireAllianceMember } from '../middleware/session'
 
 import type { PasteWorker } from '@repo/paste'
 import type { App } from '../context'
+import { logger } from '@repo/hono-helpers'
 
 const app = new Hono<App>()
 
@@ -91,7 +92,7 @@ function handlePasteRouteError(c: any, error: unknown, fallbackMessage: string =
 	if (error instanceof Error && isPasteValidationErrorMessage(error.message)) {
 		return c.json({ error: error.message }, 400)
 	}
-	console.error('[Pastes] Unexpected route error', error)
+	logger.error('[Pastes] Unexpected route error', error)
 	return c.json({ error: fallbackMessage }, 500)
 }
 

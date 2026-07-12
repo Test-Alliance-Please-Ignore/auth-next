@@ -248,7 +248,7 @@ export class DirectorManager {
 			)
 
 			if (healthyDirectors.length === 0) {
-				console.error('[DirectorManager] No healthy directors available', {
+				logger.error('[DirectorManager] No healthy directors available', {
 					corporationId: this.corporationId,
 				})
 				return null
@@ -353,13 +353,13 @@ export class DirectorManager {
 				}
 			}
 
-			console.error('[DirectorManager] No directors with valid tokens available', {
+			logger.error('[DirectorManager] No directors with valid tokens available', {
 				corporationId: this.corporationId,
 				candidatesChecked: healthyDirectors.length,
 			})
 			return null
 		} catch (error) {
-			console.error(
+			logger.error(
 				'[DirectorManager] Director selection failed; falling back to unauthenticated sync',
 				{
 					corporationId: this.corporationId,
@@ -384,7 +384,7 @@ export class DirectorManager {
 		try {
 			await this.markSelected(directorId)
 		} catch (error) {
-			console.error('[DirectorManager] Failed to update director lastUsed on selection', {
+			logger.error('[DirectorManager] Failed to update director lastUsed on selection', {
 				corporationId: this.corporationId,
 				directorId,
 				error: error instanceof Error ? error.message : String(error),
@@ -459,7 +459,7 @@ export class DirectorManager {
 					params.actualCorporationId
 				)
 			} catch (error) {
-				console.error('[DirectorManager] Affiliation mismatch callback failed', {
+				logger.error('[DirectorManager] Affiliation mismatch callback failed', {
 					corporationId: this.corporationId,
 					characterId: params.characterId,
 					context: params.context,
@@ -472,7 +472,7 @@ export class DirectorManager {
 
 		try {
 			await this.removeDirector(params.characterId)
-			console.warn('[DirectorManager] Auto-pruned director due to affiliation mismatch', {
+			logger.warn('[DirectorManager] Auto-pruned director due to affiliation mismatch', {
 				corporationId: this.corporationId,
 				directorId: params.directorId,
 				characterId: params.characterId,
@@ -480,7 +480,7 @@ export class DirectorManager {
 				context: params.context,
 			})
 		} catch (error) {
-			console.error('[DirectorManager] Failed to auto-prune mismatched director', {
+			logger.error('[DirectorManager] Failed to auto-prune mismatched director', {
 				corporationId: this.corporationId,
 				directorId: params.directorId,
 				characterId: params.characterId,
@@ -493,7 +493,7 @@ export class DirectorManager {
 			try {
 				await this.onDirectorPruned(params.characterId, this.corporationId, reason)
 			} catch (error) {
-				console.error('[DirectorManager] Director pruned callback failed', {
+				logger.error('[DirectorManager] Director pruned callback failed', {
 					corporationId: this.corporationId,
 					characterId: params.characterId,
 					context: params.context,
@@ -534,7 +534,7 @@ export class DirectorManager {
 		try {
 			await this.recordFailure(directorId, reason, options)
 		} catch (error) {
-			console.error('[DirectorManager] Failed to record director failure', {
+			logger.error('[DirectorManager] Failed to record director failure', {
 				corporationId: this.corporationId,
 				directorId,
 				reason,
@@ -556,7 +556,7 @@ export class DirectorManager {
 				isVerified: healthyDirectorCount > 0,
 			})
 		} catch (error) {
-			console.error('[DirectorManager] Failed to propagate corp auth health snapshot', {
+			logger.error('[DirectorManager] Failed to propagate corp auth health snapshot', {
 				corporationId: this.corporationId,
 				error: error instanceof Error ? error.message : String(error),
 			})
@@ -835,7 +835,7 @@ export class DirectorManager {
 			.where(eq(corporationDirectors.id, directorId))
 
 		if (shouldMarkUnhealthy) {
-			console.error('[DirectorManager] Director marked as unhealthy', {
+			logger.error('[DirectorManager] Director marked as unhealthy', {
 				directorId,
 				characterId: director.characterId,
 				failureCount: newFailureCount,
@@ -864,7 +864,7 @@ export class DirectorManager {
 		// Check if all directors are now unhealthy
 		const healthyCount = await this.getHealthyDirectorsCount()
 		if (healthyCount === 0) {
-			console.error('[DirectorManager] ALL DIRECTORS UNHEALTHY - CRITICAL', {
+			logger.error('[DirectorManager] ALL DIRECTORS UNHEALTHY - CRITICAL', {
 				corporationId: this.corporationId,
 			})
 			// TODO: Trigger notification/alert here
@@ -1005,7 +1005,7 @@ export class DirectorManager {
 					.map((set) => `[${set.join('|')}]`)
 					.join(', ')}`
 				await this.recordFailure(directorId, reason, { forceUnhealthy: true })
-				console.warn('[DirectorManager] Director missing required roles', {
+				logger.warn('[DirectorManager] Director missing required roles', {
 					directorId,
 					characterId: director.characterId,
 					missingRoleSets,
@@ -1017,7 +1017,7 @@ export class DirectorManager {
 		} catch (error) {
 			const errorMessage = error instanceof Error ? error.message : String(error)
 
-			console.error('[DirectorManager] Director health verification failed', {
+			logger.error('[DirectorManager] Director health verification failed', {
 				directorId,
 				characterId: director.characterId,
 				error: errorMessage,
@@ -1136,7 +1136,7 @@ export class DirectorManager {
 				return result
 			} catch (error) {
 				lastError = error instanceof Error ? error : new Error(String(error))
-				console.error('[DirectorManager] ESI request failed with director', {
+				logger.error('[DirectorManager] ESI request failed with director', {
 					directorId: director.directorId,
 					characterId: director.characterId,
 					error: lastError.message,

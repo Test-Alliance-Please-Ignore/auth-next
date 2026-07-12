@@ -18,6 +18,7 @@ import { requireAdmin, requireAuth } from '../middleware/session'
 import type { Discord } from '@repo/discord'
 import type { Groups } from '@repo/groups'
 import type { App } from '../context'
+import { logger } from '@repo/hono-helpers'
 
 /**
  * Groups management routes
@@ -369,7 +370,7 @@ groups.post(
 						inviteeUserId: invitation.inviteeUserId ?? '',
 						createdAt: invitation.createdAt,
 					})
-					console.log('[Groups] Dispatched group invitation alert', {
+					logger.log('[Groups] Dispatched group invitation alert', {
 						groupId,
 						invitationId: invitation.id,
 						alertResult,
@@ -749,21 +750,21 @@ groups.get(
 	requireAuth({ any: [ROLE_CORE_ALLIANCE_MEMBER] }),
 	requireAdmin(),
 	async (c) => {
-		console.log('[API] GET /permissions/categories - Start')
+		logger.log('[API] GET /permissions/categories - Start')
 
 		try {
 			const groupsDO = getStub<Groups>(c.env.GROUPS, 'default')
-			console.log('[API] GET /permissions/categories - Got DO stub')
+			logger.log('[API] GET /permissions/categories - Got DO stub')
 
 			const categories = await groupsDO.listPermissionCategories()
-			console.log('[API] GET /permissions/categories - Got categories, count:', categories?.length)
+			logger.log('[API] GET /permissions/categories - Got categories, count:', categories?.length)
 
 			return c.json(categories)
 		} catch (error) {
-			console.error('[API] GET /permissions/categories - Error:', error)
+			logger.error('[API] GET /permissions/categories - Error:', error)
 			if (error instanceof Error) {
-				console.error('[API] GET /permissions/categories - Error message:', error.message)
-				console.error('[API] GET /permissions/categories - Error stack:', error.stack)
+				logger.error('[API] GET /permissions/categories - Error message:', error.message)
+				logger.error('[API] GET /permissions/categories - Error stack:', error.stack)
 				return c.json({ error: error.message }, 500)
 			}
 			throw error
@@ -881,23 +882,23 @@ groups.get(
 	requireAuth({ any: [ROLE_CORE_ALLIANCE_MEMBER] }),
 	requireAdmin(),
 	async (c) => {
-		console.log('[API] GET /permissions - Start')
+		logger.log('[API] GET /permissions - Start')
 		const categoryId = c.req.query('categoryId')
-		console.log('[API] GET /permissions - categoryId:', categoryId)
+		logger.log('[API] GET /permissions - categoryId:', categoryId)
 
 		try {
 			const groupsDO = getStub<Groups>(c.env.GROUPS, 'default')
-			console.log('[API] GET /permissions - Got DO stub')
+			logger.log('[API] GET /permissions - Got DO stub')
 
 			const permissions = await groupsDO.listPermissions(categoryId)
-			console.log('[API] GET /permissions - Got permissions, count:', permissions?.length)
+			logger.log('[API] GET /permissions - Got permissions, count:', permissions?.length)
 
 			return c.json(permissions)
 		} catch (error) {
-			console.error('[API] GET /permissions - Error:', error)
+			logger.error('[API] GET /permissions - Error:', error)
 			if (error instanceof Error) {
-				console.error('[API] GET /permissions - Error message:', error.message)
-				console.error('[API] GET /permissions - Error stack:', error.stack)
+				logger.error('[API] GET /permissions - Error message:', error.message)
+				logger.error('[API] GET /permissions - Error stack:', error.stack)
 				return c.json({ error: error.message }, 500)
 			}
 			throw error
@@ -1346,7 +1347,7 @@ groups.patch(
 					memberUserIds = await groupsDO.getGroupMemberUserIds(groupId)
 				} catch (error) {
 					// Best effort: the group update already succeeded, so we only log and move on.
-					console.warn('[Groups] Failed to load members for Mumble refresh after group update', {
+					logger.warn('[Groups] Failed to load members for Mumble refresh after group update', {
 						groupId,
 						error: error instanceof Error ? error.message : String(error),
 					})
@@ -1770,7 +1771,7 @@ groups.post('/:id/join-requests', requireAuth({ any: [ROLE_CORE_ALLIANCE_MEMBER]
 					applicationNote: request.reason,
 					submittedAt: request.createdAt,
 				})
-				console.log('[Groups] Dispatched group application alert', {
+				logger.log('[Groups] Dispatched group application alert', {
 					groupId,
 					applicationId: request.id,
 					alertResult,
@@ -2076,7 +2077,7 @@ groups.post(
 					const joinResult = joinResults[0]
 
 					if (!joinResult?.success) {
-						console.error(
+						logger.error(
 							`Failed to invite user ${user.id} to guild ${config.guildId}:`,
 							joinResult?.errorMessage
 						)
@@ -2098,7 +2099,7 @@ groups.post(
 						failedCount++
 					}
 				} catch (error) {
-					console.error(`Failed to refresh roles for user ${user.id}:`, error)
+					logger.error(`Failed to refresh roles for user ${user.id}:`, error)
 					failedCount++
 				}
 			}

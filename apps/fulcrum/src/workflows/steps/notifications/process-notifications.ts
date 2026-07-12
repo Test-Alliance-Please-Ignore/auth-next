@@ -4,6 +4,7 @@ import type { CharacterAffiliationCoordinator } from '../../processors/helpers/c
 import type { EntityLinkCoordinator } from '../../processors/helpers/entity-links'
 import type { CoreBinding } from '../../../types/core-binding'
 import type { NotificationFetchResult } from './fetch-notifications'
+import { logger } from '@repo/hono-helpers'
 
 export async function processNotifications(
     env: {
@@ -42,7 +43,7 @@ export async function processNotifications(
         const fetchData = data as NotificationFetchResult
         const { notifications } = fetchData
 
-        console.log('[processNotifications] Starting enrichment', {
+        logger.log('[processNotifications] Starting enrichment', {
             count: notifications.length,
         })
 
@@ -54,7 +55,7 @@ export async function processNotifications(
             entityLinkCoordinator,
         )
 
-        console.log('[processNotifications] Enrichment complete', {
+        logger.log('[processNotifications] Enrichment complete', {
             count: enrichedData.notifications.length,
             types: enrichedData.types.length,
         })

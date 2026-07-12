@@ -2,6 +2,7 @@ import { getStub } from '@repo/do-utils'
 import { getIdClassification } from '@repo/eve-types'
 
 import type { Esi } from '@repo/esi'
+import { logger } from '@repo/hono-helpers'
 
 export interface CharacterAffiliationDisplayCandidate {
 	characterId: string
@@ -116,7 +117,7 @@ export class CharacterAffiliationCoordinator {
 				}
 			}
 		} catch (error) {
-			console.warn(`[${label}] Failed to resolve character affiliations`, {
+			logger.warn(`[${label}] Failed to resolve character affiliations`, {
 				characterId,
 				requestedCount: missingCharacterIds.length,
 				error: error instanceof Error ? error.message : String(error),
@@ -174,7 +175,7 @@ export class CharacterAffiliationCoordinator {
 						this.corporationTickerCache.set(corporationId, corporation?.ticker?.trim() || null)
 					} catch (error) {
 						this.corporationTickerCache.set(corporationId, null)
-						console.warn(`[${label}] Failed to resolve corporation ticker`, {
+						logger.warn(`[${label}] Failed to resolve corporation ticker`, {
 							corporationId,
 							error: error instanceof Error ? error.message : String(error),
 						})
@@ -205,7 +206,7 @@ export class CharacterAffiliationCoordinator {
 						this.allianceTickerCache.set(allianceId, alliance?.ticker?.trim() || null)
 					} catch (error) {
 						this.allianceTickerCache.set(allianceId, null)
-						console.warn(`[${label}] Failed to resolve alliance ticker`, {
+						logger.warn(`[${label}] Failed to resolve alliance ticker`, {
 							allianceId,
 							error: error instanceof Error ? error.message : String(error),
 						})

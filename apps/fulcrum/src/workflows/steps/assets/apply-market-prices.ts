@@ -11,6 +11,7 @@ import { retrieveData, storeInR2 } from '../../utils/storage'
 import type { ProcessedAsset } from '../../processors/helpers/assets'
 import type { FittedShip } from '../../processors/helpers/ships'
 import type { StepResult } from '../../utils/storage'
+import { logger } from '@repo/hono-helpers'
 
 /**
  * Fetch stored market prices and apply to processed assets and fitted ships
@@ -138,7 +139,7 @@ export async function applyMarketPrices(
 			await storeInR2(shipBucket, fittedShipsResult.r2Key, shipTypes)
 		}
 
-		console.log('[applyMarketPrices] Applied prices', {
+		logger.log('[applyMarketPrices] Applied prices', {
 			priceMapSize: priceMap.size,
 			assetsCount: assets.length,
 			applied,
@@ -149,7 +150,7 @@ export async function applyMarketPrices(
 		return { applied, totalValue: Math.round(totalValue), shipsEnriched }
 	} catch (error) {
 		const msg = error instanceof Error ? error.message : String(error)
-		console.error('[applyMarketPrices] Non-critical enrichment failed:', { error: msg })
+		logger.error('[applyMarketPrices] Non-critical enrichment failed:', { error: msg })
 		return { applied: 0, totalValue: 0, warning: msg }
 	}
 }

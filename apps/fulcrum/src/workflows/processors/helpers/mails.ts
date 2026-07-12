@@ -7,6 +7,7 @@ import type { EntityLinkCoordinator } from './entity-links'
 import type { EsiTypeResolver, MailingList, MailLabelsResponse } from '@repo/esi'
 import type { MailWithContent } from '../../steps/mails/fetch-mails'
 import type { CoreBinding } from '../../../types/core-binding'
+import { logger } from '@repo/hono-helpers'
 
 export interface ProcessedMail extends MailWithContent {
 	fromName?: string
@@ -105,7 +106,7 @@ export async function enrichMails(
 			const typeResolver = getStub<EsiTypeResolver>(env.ESI_TYPE_RESOLVER, 'global')
 			nameMap = await typeResolver.resolveIds(Array.from(idsToResolve))
 		} catch (error) {
-			console.error('Failed to resolve IDs for mails:', error)
+			logger.error('Failed to resolve IDs for mails:', error)
 		}
 	}
 

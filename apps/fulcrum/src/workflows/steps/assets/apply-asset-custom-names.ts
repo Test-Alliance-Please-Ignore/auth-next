@@ -10,6 +10,7 @@ import type { ProcessedAsset } from '../../processors/helpers/assets'
 import type { FittedShip } from '../../processors/helpers/ships'
 import type { AssetNameMap } from './fetch-asset-names'
 import type { StepResult } from '../../utils/storage'
+import { logger } from '@repo/hono-helpers'
 
 /**
  * Merge custom names into processed assets and fitted ships
@@ -81,7 +82,7 @@ export async function applyAssetCustomNames(
         return { applied }
     } catch (error) {
         const msg = error instanceof Error ? error.message : String(error)
-        console.error('[applyAssetCustomNames] Non-critical enrichment failed:', { error: msg })
+        logger.error('[applyAssetCustomNames] Non-critical enrichment failed:', { error: msg })
         return { applied: 0, warning: msg }
     }
 }

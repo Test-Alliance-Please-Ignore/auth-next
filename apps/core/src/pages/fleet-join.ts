@@ -5,6 +5,7 @@ import type { Context } from 'hono'
 import type { EveCharacterData } from '@repo/eve-character-data'
 import type { EveTokenStore } from '@repo/eve-token-store'
 import type { CharacterForFleetJoin, Fleets } from '@repo/fleets'
+import { logger } from '@repo/hono-helpers'
 
 /**
  * Render the fleet quick join page
@@ -440,7 +441,7 @@ export async function renderFleetJoinPage(
 					window.location.href = '?error=' + encodeURIComponent(result.error || 'Failed to join fleet');
 				}
 			} catch (err) {
-				console.error('Failed to join fleet:', err);
+				logger.error('Failed to join fleet:', err);
 				window.location.href = '?error=' + encodeURIComponent('Network error. Please try again.');
 			}
 		}

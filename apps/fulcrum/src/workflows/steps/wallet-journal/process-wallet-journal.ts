@@ -5,6 +5,7 @@ import type { StructureResolutionCoordinator } from '../../processors/helpers/st
 import type { CoreBinding } from '../../../types/core-binding'
 import { retrieveData, storeOrReturn, type StepResult } from '../../utils/storage'
 import { enrichWalletJournalEntries } from '../../processors/helpers/wallet-journal'
+import { logger } from '@repo/hono-helpers'
 
 export async function processWalletJournal(
 	env: {
@@ -50,7 +51,7 @@ export async function processWalletJournal(
 			}
 		}
 
-		console.log('[processWalletJournal] Starting enrichment', {
+		logger.log('[processWalletJournal] Starting enrichment', {
 			count: entries.length,
 			sample: entries[0]
 				? {
@@ -70,7 +71,7 @@ export async function processWalletJournal(
 			entityLinkCoordinator,
 		)
 
-		console.log('[processWalletJournal] Enrichment complete', {
+		logger.log('[processWalletJournal] Enrichment complete', {
 			count: enrichedData.length,
 			sample: enrichedData[0]
 				? {

@@ -34,7 +34,7 @@ export class RoleService {
 			}
 			return role[0] as Role
 		} catch (error) {
-			console.error('[RoleService.createRole] Failed to create role', {
+			logger.error('[RoleService.createRole] Failed to create role', {
 				error: error instanceof Error ? error.message : String(error),
 				stack: error instanceof Error ? error.stack : undefined,
 				request,
@@ -58,7 +58,7 @@ export class RoleService {
 				.returning()
 			return insertedRoles.map((r) => r as Role)
 		} catch (error) {
-			console.error('[RoleService.batchCreateRoles] Failed to batch create roles', {
+			logger.error('[RoleService.batchCreateRoles] Failed to batch create roles', {
 				error: error instanceof Error ? error.message : String(error),
 				stack: error instanceof Error ? error.stack : undefined,
 				request,
@@ -74,7 +74,7 @@ export class RoleService {
 			})
 			return role as Role | null
 		} catch (error) {
-			console.error('[RoleService.getRole] Failed to get role', {
+			logger.error('[RoleService.getRole] Failed to get role', {
 				error: error instanceof Error ? error.message : String(error),
 				stack: error instanceof Error ? error.stack : undefined,
 				roleId,
@@ -90,7 +90,7 @@ export class RoleService {
 			})
 			return role as Role | null
 		} catch (error) {
-			console.error('[RoleService.getRoleByName] Failed to get role by name', {
+			logger.error('[RoleService.getRoleByName] Failed to get role by name', {
 				error: error instanceof Error ? error.message : String(error),
 				stack: error instanceof Error ? error.stack : undefined,
 				name,
@@ -109,7 +109,7 @@ export class RoleService {
 			}
 			return foundRoles.map((r) => r as Role)
 		} catch (error) {
-			console.error('[RoleService.getRolesForOwnedBy] Failed to get roles for owned by', {
+			logger.error('[RoleService.getRolesForOwnedBy] Failed to get roles for owned by', {
 				error: error instanceof Error ? error.message : String(error),
 				stack: error instanceof Error ? error.stack : undefined,
 				ownedBy,
@@ -197,7 +197,7 @@ export class RoleService {
 				updatedAt: inserted[0].updatedAt,
 			} as RoleAttachment
 		} catch (error) {
-			console.error('[RoleService.attachRoleTo] Failed to attach role to', {
+			logger.error('[RoleService.attachRoleTo] Failed to attach role to', {
 				error: error instanceof Error ? error.message : String(error),
 				stack: error instanceof Error ? error.stack : undefined,
 				request,
@@ -312,7 +312,7 @@ export class RoleService {
 				updatedAt: attachment.updatedAt,
 			}))
 		} catch (error) {
-			console.error('[RoleService.batchAttachRolesTo] Failed to batch attach roles', {
+			logger.error('[RoleService.batchAttachRolesTo] Failed to batch attach roles', {
 				error: error instanceof Error ? error.message : String(error),
 				stack: error instanceof Error ? error.stack : undefined,
 				request,
@@ -337,7 +337,7 @@ export class RoleService {
 			}
 			return true
 		} catch (error) {
-			console.error('[RoleService.detachRoleFrom] Failed to detatch role from', {
+			logger.error('[RoleService.detachRoleFrom] Failed to detatch role from', {
 				error: error instanceof Error ? error.message : String(error),
 				stack: error instanceof Error ? error.stack : undefined,
 				request: request,
@@ -353,7 +353,7 @@ export class RoleService {
 				.where(eq(roleAttachments.id, attachmentId))
 			return (result.rowCount ?? 0) > 0
 		} catch (error) {
-			console.error('[RoleService.deleteRoleAttachment] Failed to delete role attachment', {
+			logger.error('[RoleService.deleteRoleAttachment] Failed to delete role attachment', {
 				error: error instanceof Error ? error.message : String(error),
 				stack: error instanceof Error ? error.stack : undefined,
 				attachmentId,
@@ -459,7 +459,7 @@ export class RoleService {
 							.delete(roleAttachments)
 							.where(inArray(roleAttachments.id, insertedAttachmentIds))
 					} catch (rollbackError) {
-						console.error(
+						logger.error(
 							'[RoleService.replaceCoreMembershipRolesForUser] Failed to rollback inserted rows after delete failure',
 							{
 								userId: request.userId,
@@ -502,7 +502,7 @@ export class RoleService {
 				detachedCount,
 			}
 		} catch (error) {
-			console.error(
+			logger.error(
 				'[RoleService.replaceCoreMembershipRolesForUser] Failed to reconcile core membership roles',
 				{
 					error: error instanceof Error ? error.message : String(error),
@@ -539,7 +539,7 @@ export class RoleService {
 				updatedAt: r.updatedAt,
 			}))
 		} catch (error) {
-			console.error('[RoleService.batchGetRolesFor] Failed to get roles for', {
+			logger.error('[RoleService.batchGetRolesFor] Failed to get roles for', {
 				error: error instanceof Error ? error.message : String(error),
 				stack: error instanceof Error ? error.stack : undefined,
 				request: request,
@@ -647,7 +647,7 @@ export class RoleService {
 				updatedAt: r.updatedAt,
 			}))
 		} catch (error) {
-			console.error('[RoleService.getRolesFor] Failed to get roles for', {
+			logger.error('[RoleService.getRolesFor] Failed to get roles for', {
 				error: error instanceof Error ? error.message : String(error),
 				stack: error instanceof Error ? error.stack : undefined,
 				request: request,

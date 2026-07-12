@@ -111,6 +111,7 @@ import type {
 } from '@repo/groups'
 import type { Env } from './context'
 import type { ServiceContext } from './services/context' // Added
+import { logger } from '@repo/hono-helpers'
 
 const FALLBACK_OWNER = '4a16f141-ddd2-4179-8e3f-7d64a6548f74'
 
@@ -2385,25 +2386,25 @@ export class GroupsDO extends DurableObject<Env> implements Groups {
 	}
 
 	async listPermissionCategories(): Promise<PermissionCategory[]> {
-		console.log('[DO] listPermissionCategories - Start')
+		logger.log('[DO] listPermissionCategories - Start')
 
 		try {
-			console.log('[DO] listPermissionCategories - About to query database')
+			logger.log('[DO] listPermissionCategories - About to query database')
 			const cats = await this.db.query.permissionCategories.findMany({
 				orderBy: (permissionCategories, { asc }) => [asc(permissionCategories.name)],
 			})
 
-			console.log('[DO] listPermissionCategories - Query complete, count:', cats?.length)
+			logger.log('[DO] listPermissionCategories - Query complete, count:', cats?.length)
 
 			const result = cats.map((cat) => this.mapPermissionCategory(cat))
-			console.log('[DO] listPermissionCategories - Mapped results, count:', result?.length)
+			logger.log('[DO] listPermissionCategories - Mapped results, count:', result?.length)
 
 			return result
 		} catch (error) {
-			console.error('[DO] listPermissionCategories - Error:', error)
+			logger.error('[DO] listPermissionCategories - Error:', error)
 			if (error instanceof Error) {
-				console.error('[DO] listPermissionCategories - Error message:', error.message)
-				console.error('[DO] listPermissionCategories - Error stack:', error.stack)
+				logger.error('[DO] listPermissionCategories - Error message:', error.message)
+				logger.error('[DO] listPermissionCategories - Error stack:', error.stack)
 			}
 			throw error
 		}
@@ -2467,13 +2468,13 @@ export class GroupsDO extends DurableObject<Env> implements Groups {
 	}
 
 	async listPermissions(categoryId?: string): Promise<PermissionWithDetails[]> {
-		console.log('[DO] listPermissions - Start, categoryId:', categoryId)
+		logger.log('[DO] listPermissions - Start, categoryId:', categoryId)
 
 		try {
 			const whereClause = categoryId ? eq(permissions.categoryId, categoryId) : undefined
-			console.log('[DO] listPermissions - whereClause:', whereClause)
+			logger.log('[DO] listPermissions - whereClause:', whereClause)
 
-			console.log('[DO] listPermissions - About to query database')
+			logger.log('[DO] listPermissions - About to query database')
 			const perms = await this.db.query.permissions.findMany({
 				where: whereClause,
 				with: {
@@ -2482,20 +2483,20 @@ export class GroupsDO extends DurableObject<Env> implements Groups {
 				orderBy: (permissions, { asc }) => [asc(permissions.name)],
 			})
 
-			console.log('[DO] listPermissions - Query complete, count:', perms?.length)
+			logger.log('[DO] listPermissions - Query complete, count:', perms?.length)
 
 			const result = perms.map((perm) => ({
 				...this.mapPermission(perm),
 				category: perm.category ? this.mapPermissionCategory(perm.category) : null,
 			}))
 
-			console.log('[DO] listPermissions - Mapped results, count:', result?.length)
+			logger.log('[DO] listPermissions - Mapped results, count:', result?.length)
 			return result
 		} catch (error) {
-			console.error('[DO] listPermissions - Error:', error)
+			logger.error('[DO] listPermissions - Error:', error)
 			if (error instanceof Error) {
-				console.error('[DO] listPermissions - Error message:', error.message)
-				console.error('[DO] listPermissions - Error stack:', error.stack)
+				logger.error('[DO] listPermissions - Error message:', error.message)
+				logger.error('[DO] listPermissions - Error stack:', error.stack)
 			}
 			throw error
 		}
@@ -2959,14 +2960,14 @@ export class GroupsDO extends DurableObject<Env> implements Groups {
 	}
 
 	async getCharacterPermissions(characterId: string): Promise<UserPermission[]> {
-		console.log('[getCharacterPermissions] Fetching permissions for character', { characterId })
+		logger.log('[getCharacterPermissions] Fetching permissions for character', { characterId })
 
 		// Resolve character's corporation via EveCharacterData DO
 		const charStub = getStub<EveCharacterData>(this.env.EVE_CHARACTER_DATA, characterId)
 		const charInfo = await charStub.getCharacterInfo(characterId)
 
 		if (!charInfo || !charInfo.corporationId) {
-			console.log('[getCharacterPermissions] No character info or corporation ID', {
+			logger.log('[getCharacterPermissions] No character info or corporation ID', {
 				characterId,
 				hasCharInfo: !!charInfo,
 				corporationId: charInfo?.corporationId,
@@ -2975,7 +2976,7 @@ export class GroupsDO extends DurableObject<Env> implements Groups {
 		}
 
 		const corporationId = String(charInfo.corporationId)
-		console.log('[getCharacterPermissions] Character corporation resolved', {
+		logger.log('[getCharacterPermissions] Character corporation resolved', {
 			characterId,
 			corporationId,
 		})
@@ -2992,7 +2993,7 @@ export class GroupsDO extends DurableObject<Env> implements Groups {
 			},
 		})
 
-		console.log('[getCharacterPermissions] Found corporation permissions', {
+		logger.log('[getCharacterPermissions] Found corporation permissions', {
 			characterId,
 			corporationId,
 			count: corpPerms.length,
@@ -3274,7 +3275,7 @@ export class GroupsDO extends DurableObject<Env> implements Groups {
 	}
 
 	private async resolveUserPermissionGrants(userId: string): Promise<UserPermission[]> {
-		console.log('[resolveUserPermissionGrants] Fetching permission grants for user', { userId })
+		logger.log('[resolveUserPermissionGrants] Fetching permission grants for user', { userId })
 
 		// Get all groups the user is a member of and user's corporations in parallel
 		const [memberships, { corporations }] = await Promise.all([
@@ -3286,7 +3287,7 @@ export class GroupsDO extends DurableObject<Env> implements Groups {
 		let groupPermissions: UserPermission[] = []
 		if (memberships.length > 0) {
 			const groupIds = memberships.map((m) => m.groupId)
-			console.log('[getUserPermissions] User memberships found', {
+			logger.log('[getUserPermissions] User memberships found', {
 				userId,
 				groupCount: memberships.length,
 				groupIds,
@@ -3301,7 +3302,7 @@ export class GroupsDO extends DurableObject<Env> implements Groups {
 			// Resolve permissions based on user's role in each group
 			groupPermissions = this.resolveUserPermissions(groupPerms, userId, adminGroupIds)
 		} else {
-			console.log('[getUserPermissions] User has no group memberships', { userId })
+			logger.log('[getUserPermissions] User has no group memberships', { userId })
 		}
 
 		// Resolve corporation permissions
@@ -3312,7 +3313,7 @@ export class GroupsDO extends DurableObject<Env> implements Groups {
 				corporations.map((c) => [c.corporationId, c.corporationName])
 			)
 
-			console.log('[getUserPermissions] User corporations found', {
+			logger.log('[getUserPermissions] User corporations found', {
 				userId,
 				corporationCount: corporations.length,
 				corporationIds,
@@ -3327,7 +3328,7 @@ export class GroupsDO extends DurableObject<Env> implements Groups {
 		// Combine group and corporation permissions
 		const allPermissions = [...groupPermissions, ...corporationPermissions]
 
-		console.log('[resolveUserPermissionGrants] Resolved user permission grants', {
+		logger.log('[resolveUserPermissionGrants] Resolved user permission grants', {
 			userId,
 			groupPermissions: groupPermissions.length,
 			corporationPermissions: corporationPermissions.length,
@@ -3339,12 +3340,12 @@ export class GroupsDO extends DurableObject<Env> implements Groups {
 	}
 
 	async getUserPermissions(userId: string): Promise<UserPermission[]> {
-		console.log('[getUserPermissions] Fetching permissions for user', { userId })
+		logger.log('[getUserPermissions] Fetching permissions for user', { userId })
 
 		// Check cache first
 		const cached = this.getCachedUserPermissions(userId)
 		if (cached) {
-			console.log('[getUserPermissions] Returning cached permissions', {
+			logger.log('[getUserPermissions] Returning cached permissions', {
 				userId,
 				count: cached.length,
 				permissions: cached.map((p) => p.urn),
@@ -3374,7 +3375,7 @@ export class GroupsDO extends DurableObject<Env> implements Groups {
 			return new Map()
 		}
 
-		console.log('[getUserPermissionsBatch] Fetching permissions for users', {
+		logger.log('[getUserPermissionsBatch] Fetching permissions for users', {
 			userCount: userIds.length,
 		})
 
@@ -3393,7 +3394,7 @@ export class GroupsDO extends DurableObject<Env> implements Groups {
 
 		// If all users were cached, return early
 		if (uncachedUserIds.length === 0) {
-			console.log('[getUserPermissionsBatch] All users cached', {
+			logger.log('[getUserPermissionsBatch] All users cached', {
 				cachedCount: userIds.length,
 			})
 			return result
@@ -3526,7 +3527,7 @@ export class GroupsDO extends DurableObject<Env> implements Groups {
 			result.set(userId, deduped)
 		}
 
-		console.log('[getUserPermissionsBatch] Completed', {
+		logger.log('[getUserPermissionsBatch] Completed', {
 			totalUsers: userIds.length,
 			cachedUsers: userIds.length - uncachedUserIds.length,
 			fetchedUsers: uncachedUserIds.length,

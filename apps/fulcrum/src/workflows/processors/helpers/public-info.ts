@@ -4,6 +4,7 @@ import type { EntityLinkCoordinator } from './entity-links'
 
 import type { CharacterPublicInfo, EsiTypeResolver } from '@repo/esi'
 import type { CoreBinding } from '../../../types/core-binding'
+import { logger } from '@repo/hono-helpers'
 
 /**
  * Data enrichment functions for public character information
@@ -66,7 +67,7 @@ export async function enrichPublicInfo(
 	const typeResolver = getStub<EsiTypeResolver>(env.ESI_TYPE_RESOLVER, 'global')
 	const nameMap = await typeResolver.resolveIds(idsToResolve)
 
-	console.log('[enrichPublicInfo] Resolution complete', {
+	logger.log('[enrichPublicInfo] Resolution complete', {
 		idsToResolve,
 		nameMapSize: Object.keys(nameMap).length,
 		sampleNameMapEntries: Object.entries(nameMap).slice(0, 5),

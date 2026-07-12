@@ -9,6 +9,7 @@ import { validateEntityId } from '../../utils/validation'
 
 import type { Markets } from '@repo/markets'
 import type { App } from '../../context'
+import { logger } from '@repo/hono-helpers'
 
 const refreshRouter = new Hono<App>()
 
@@ -89,7 +90,7 @@ refreshRouter.get('/:locationId/refresh', async (c) => {
 			},
 		})
 	} catch (error) {
-		console.error('[refresh] Error:', error)
+		logger.error('[refresh] Error:', error)
 		return c.json(
 			{
 				error: 'Failed to fetch refresh information',

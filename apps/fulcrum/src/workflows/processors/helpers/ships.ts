@@ -7,6 +7,7 @@ import { StructureResolutionCoordinator } from './structure-resolution'
 import { shipTypeIds } from './ship-types'
 
 import type { CharacterAsset, Esi, EsiTypeResolver } from '@repo/esi'
+import { logger } from '@repo/hono-helpers'
 
 export interface FittedShipItem {
 	slot: string
@@ -127,7 +128,7 @@ export async function findFittedShips(
 			: {}
 
 	if (structureLocationIds.size > 0) {
-		console.log('[findFittedShips] Structure resolution complete', {
+		logger.log('[findFittedShips] Structure resolution complete', {
 			requested: structureLocationIds.size,
 			resolved: Object.keys(structureNameMap).length,
 			denied: structureResolutionCoordinator?.getDeniedCount() ?? 0,
@@ -272,7 +273,7 @@ export async function findShipItems(
 	const locationType = resolvedLocation?.locationType ?? ship.location_type
 
 	if (!nameMap[ship.type_id]) {
-		console.warn('[findShipItems] Ship type ID not resolved:', {
+		logger.warn('[findShipItems] Ship type ID not resolved:', {
 			shipTypeId: ship.type_id,
 			resolvedIds: Object.keys(nameMap).length,
 			hasShipTypeInMap: ship.type_id in nameMap,

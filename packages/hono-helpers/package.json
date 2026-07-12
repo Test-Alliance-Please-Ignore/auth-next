@@ -5,6 +5,11 @@
 	"sideEffects": false,
 	"type": "module",
 	"main": "src/index.ts",
+	"exports": {
+		".": "./src/index.ts",
+		"./src/types": "./src/types.ts",
+		"./logger": "./src/logger.ts"
+	},
 	"scripts": {
 		"check:lint": "run-eslint",
 		"check:types": "run-tsc",

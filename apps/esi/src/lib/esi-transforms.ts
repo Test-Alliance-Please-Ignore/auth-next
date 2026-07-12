@@ -112,6 +112,7 @@ import type {
 	MailLabelsResponse,
 	StructureInfo,
 } from '@repo/esi'
+import { logger } from '@repo/hono-helpers'
 
 export function transformCharacterAffiliation(
 	data: EsiCharacterAffiliation[]
@@ -169,7 +170,7 @@ export function transformCharacterPublicInfo(data: EsiCharacterPublicInfo): Char
 			title: data.title,
 		}
 	} catch (error) {
-		console.log(`[transformCharacterPublicInfo] Error: ${String(error)}`, {
+		logger.log(`[transformCharacterPublicInfo] Error: ${String(error)}`, {
 			data,
 			error,
 		})

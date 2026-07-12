@@ -3,10 +3,9 @@
  * All step outputs are stored in R2 to enable analyze steps to access previous outputs
  */
 
-import {
-	safeJsonParse,
-	safeJsonStringify,
-} from './json'
+import { logger } from '@repo/hono-helpers'
+
+import { safeJsonParse, safeJsonStringify } from './json'
 
 /**
  * Result type that indicates where data is stored
@@ -106,7 +105,7 @@ export async function retrieveData<T>(
 			const bucket = getBucket(result.r2Bucket)
 			return await retrieveFromR2<T>(bucket, result.r2Key)
 		} catch (error) {
-			console.error(`[retrieveData] Failed to retrieve from R2 key '${result.r2Key}':`, {
+			logger.error(`[retrieveData] Failed to retrieve from R2 key '${result.r2Key}':`, {
 				error: error instanceof Error ? error.message : String(error),
 				bucket: result.r2Bucket,
 			})

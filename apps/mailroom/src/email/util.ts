@@ -1,4 +1,5 @@
 import type { EmailLogger } from './types'
+import { logger } from '@repo/hono-helpers'
 
 /** Extract a human-readable message from an unknown thrown value. */
 export function errorMessage(error: unknown): string {
@@ -13,9 +14,9 @@ export function errorMessage(error: unknown): string {
 
 /** Default console-backed logger used when no logger is injected into the handler. */
 export const consoleLogger: EmailLogger = {
-	info: (message, data) => console.log(format('info', message, data)),
-	warn: (message, data) => console.warn(format('warn', message, data)),
-	error: (message, data) => console.error(format('error', message, data)),
+	info: (message, data) => logger.log(format('info', message, data)),
+	warn: (message, data) => logger.warn(format('warn', message, data)),
+	error: (message, data) => logger.error(format('error', message, data)),
 }
 
 function format(level: string, message: string, data?: Record<string, unknown>): string {

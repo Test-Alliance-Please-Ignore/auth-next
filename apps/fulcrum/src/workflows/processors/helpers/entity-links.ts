@@ -1,6 +1,7 @@
 import { getIdClassification } from '@repo/eve-types'
 
 import type { CoreBinding } from '../../../types/core-binding'
+import { logger } from '@repo/hono-helpers'
 
 export interface EntityLinkCandidate {
 	entityId: string
@@ -134,7 +135,7 @@ export class EntityLinkCoordinator {
 							const href = buildEveWhoHref('character', characterId)
 							this.hrefCache.set(characterId, href)
 							result[characterId] = href
-							console.warn(`[${label}] Failed to resolve character ownership`, {
+							logger.warn(`[${label}] Failed to resolve character ownership`, {
 								characterId,
 								error: error instanceof Error ? error.message : String(error),
 							})

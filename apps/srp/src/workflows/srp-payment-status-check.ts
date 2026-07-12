@@ -14,6 +14,7 @@ import type { MessageContent } from '@repo/discord'
 import type { EsiTypeResolver } from '@repo/esi'
 import type { Srp } from '@repo/srp'
 import type { Env } from '../context'
+import { logger } from '@repo/hono-helpers'
 
 export interface SrpPaymentStatusCheckWorkflowParams {
 	requestId: string
@@ -260,11 +261,11 @@ export class SrpPaymentStatusCheckWorkflow extends WorkflowEntrypoint<
 		const srpStub = getStub<Srp>(this.env.SRP, 'default')
 		const request = await srpStub.getRequest(requestId, SYSTEM_ACTOR_USER_ID)
 		if (!request) {
-			console.info('[SRP Payment Workflow] Request not found', { requestId, workflowInstanceId })
+			logger.info('[SRP Payment Workflow] Request not found', { requestId, workflowInstanceId })
 			return { success: true, skipped: 'request_not_found' as const }
 		}
 		if (request.requestStatus !== 'payment_pending') {
-			console.info('[SRP Payment Workflow] Request not in payment_pending state', {
+			logger.info('[SRP Payment Workflow] Request not in payment_pending state', {
 				requestId,
 				workflowInstanceId,
 				status: request.requestStatus,
@@ -272,7 +273,7 @@ export class SrpPaymentStatusCheckWorkflow extends WorkflowEntrypoint<
 			return { success: true, skipped: 'not_payment_pending' as const }
 		}
 		if (!request.approvedAmount || parseAmountToBigInt(request.approvedAmount) === null) {
-			console.warn('[SRP Payment Workflow] Request missing approved amount', {
+			logger.warn('[SRP Payment Workflow] Request missing approved amount', {
 				requestId,
 				workflowInstanceId,
 				approvedAmount: request.approvedAmount,
@@ -283,7 +284,7 @@ export class SrpPaymentStatusCheckWorkflow extends WorkflowEntrypoint<
 		const config = await srpStub.getConfig()
 		const processorCorporationId = config?.paymentProcessorCorporationId?.trim() ?? ''
 		if (!processorCorporationId) {
-			console.info('[SRP Payment Workflow] Payment processor corporation is not configured', {
+			logger.info('[SRP Payment Workflow] Payment processor corporation is not configured', {
 				requestId,
 				workflowInstanceId,
 			})
@@ -637,7 +638,7 @@ export class SrpPaymentStatusCheckWorkflow extends WorkflowEntrypoint<
 				)
 			}
 
-			console.warn('[SRP Payment Workflow] Reason matched but amount mismatched', {
+			logger.warn('[SRP Payment Workflow] Reason matched but amount mismatched', {
 				requestId,
 				workflowInstanceId,
 				processorCorporationId,
@@ -862,7 +863,7 @@ export class SrpPaymentStatusCheckWorkflow extends WorkflowEntrypoint<
 				}
 			}
 
-			console.info('[SRP Payment Workflow] No matching wallet transaction found', {
+			logger.info('[SRP Payment Workflow] No matching wallet transaction found', {
 				requestId,
 				workflowInstanceId,
 				processorCorporationId,
@@ -893,7 +894,7 @@ export class SrpPaymentStatusCheckWorkflow extends WorkflowEntrypoint<
 			`Auto-confirmed by wallet transaction ${matchedEntry.journalId} (${matchedEntry.reason ?? reasonNeedle})`
 		)
 
-		console.info('[SRP Payment Workflow] Marked request as paid', {
+		logger.info('[SRP Payment Workflow] Marked request as paid', {
 			requestId,
 			workflowInstanceId,
 			processorCorporationId,

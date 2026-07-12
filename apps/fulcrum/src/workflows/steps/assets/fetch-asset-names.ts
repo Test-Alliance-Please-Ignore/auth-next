@@ -10,6 +10,7 @@ import { retrieveData, storeOrReturn } from '../../utils/storage'
 
 import type { CharacterAsset } from '@repo/esi'
 import type { StepResult } from '../../utils/storage'
+import { logger } from '@repo/hono-helpers'
 
 /**
  * Map of item_id → custom name
@@ -86,7 +87,7 @@ export async function fetchAssetNames(
             )
             .map((a) => a.item_id)
 
-        console.log('[fetchAssetNames] Fetching custom names', {
+        logger.log('[fetchAssetNames] Fetching custom names', {
             totalAssets: assets.length,
             nameableItemIds: nameableItemIds.length,
         })
@@ -112,14 +113,14 @@ export async function fetchAssetNames(
             }
         }
 
-        console.log('[fetchAssetNames] Custom names fetched', {
+        logger.log('[fetchAssetNames] Custom names fetched', {
             requestedCount: nameableItemIds.length,
             namedCount: Object.keys(nameMap).length,
         })
 
         return await storeOrReturn(bucket, bucketName, workflowInstanceId, 'fetch-asset-names', nameMap)
     } catch (error) {
-        console.error('[fetchAssetNames] Error:', {
+        logger.error('[fetchAssetNames] Error:', {
             error: error instanceof Error ? error.message : String(error),
         })
         // Non-critical — return empty map so report generation continues without custom names

@@ -50,6 +50,7 @@ import type {
 } from '@repo/eve-character-data'
 import type { EsiResponse, EveTokenStore } from '@repo/eve-token-store'
 import type { Env } from './context'
+import { logger } from '@repo/hono-helpers'
 
 /**
  * EveCharacterData Durable Object
@@ -110,7 +111,7 @@ export class EveCharacterDataDO extends DurableObject<Env> implements EveCharact
 		error: unknown,
 		context?: Record<string, unknown>
 	): void {
-		console.error('[EveCharacterDataDO] Database operation failed', {
+		logger.error('[EveCharacterDataDO] Database operation failed', {
 			operation,
 			characterId,
 			...context,
@@ -136,7 +137,7 @@ export class EveCharacterDataDO extends DurableObject<Env> implements EveCharact
 	 * Fetch and store all public character data
 	 */
 	async fetchCharacterData(characterId: string, forceRefresh = false): Promise<void> {
-		console.log(
+		logger.log(
 			'EveCharacterData.fetchCharacterData called with:',
 			characterId,
 			'type:',
@@ -146,9 +147,9 @@ export class EveCharacterDataDO extends DurableObject<Env> implements EveCharact
 		)
 		try {
 			await this.refreshPublicCharacterData(characterId, forceRefresh)
-			console.log('EveCharacterData.fetchCharacterData completed successfully')
+			logger.log('EveCharacterData.fetchCharacterData completed successfully')
 		} catch (error) {
-			console.error('EveCharacterData.fetchCharacterData failed:', error)
+			logger.error('EveCharacterData.fetchCharacterData failed:', error)
 			throw error
 		}
 	}
@@ -160,7 +161,7 @@ export class EveCharacterDataDO extends DurableObject<Env> implements EveCharact
 		characterId: string,
 		forceRefresh = false
 	): Promise<CharacterPublicRefreshResult> {
-		console.info('[EveCharacterDataDO] refreshPublicCharacterData started', {
+		logger.info('[EveCharacterDataDO] refreshPublicCharacterData started', {
 			characterId,
 			forceRefresh,
 		})
@@ -170,7 +171,7 @@ export class EveCharacterDataDO extends DurableObject<Env> implements EveCharact
 		try {
 			currentCharacterInfo = await this.fetchAndStorePublicInfo(characterId, forceRefresh)
 			if (currentCharacterInfo === null) {
-				console.info('[EveCharacterDataDO] refreshPublicCharacterData resolved deleted character', {
+				logger.info('[EveCharacterDataDO] refreshPublicCharacterData resolved deleted character', {
 					characterId,
 					forceRefresh,
 					hadPreviousCharacterInfo: previousCharacterInfo !== null,
@@ -193,7 +194,7 @@ export class EveCharacterDataDO extends DurableObject<Env> implements EveCharact
 				previousCorporationId !== currentCorporationId || previousAllianceId !== currentAllianceId
 			const isDeleted = String(currentCorporationId ?? '') === '1000001'
 
-			console.info('[EveCharacterDataDO] refreshPublicCharacterData completed', {
+			logger.info('[EveCharacterDataDO] refreshPublicCharacterData completed', {
 				characterId,
 				forceRefresh,
 				characterName: currentCharacterInfo.name,
@@ -225,7 +226,7 @@ export class EveCharacterDataDO extends DurableObject<Env> implements EveCharact
 				lowerMessage.includes('esi request failed: 404')
 
 			if (!isDeletedCharacterError) {
-				console.error('[EveCharacterDataDO] refreshPublicCharacterData failed', {
+				logger.error('[EveCharacterDataDO] refreshPublicCharacterData failed', {
 					characterId,
 					forceRefresh,
 					previousCorporationId: previousCharacterInfo?.corporationId ?? null,
@@ -236,7 +237,7 @@ export class EveCharacterDataDO extends DurableObject<Env> implements EveCharact
 				throw error
 			}
 
-			console.info('[EveCharacterDataDO] refreshPublicCharacterData treated missing character as deleted', {
+			logger.info('[EveCharacterDataDO] refreshPublicCharacterData treated missing character as deleted', {
 				characterId,
 				forceRefresh,
 				previousCorporationId: previousCharacterInfo?.corporationId ?? null,
@@ -449,7 +450,7 @@ export class EveCharacterDataDO extends DurableObject<Env> implements EveCharact
 			return response.data
 		} catch (error) {
 			// If the character doesn't have the required scope or token is invalid, return null
-			console.error(
+			logger.error(
 				`Failed to fetch corporation roles for character ${characterId}:`,
 				error instanceof Error ? error.message : String(error)
 			)
@@ -1379,7 +1380,7 @@ export class EveCharacterDataDO extends DurableObject<Env> implements EveCharact
 			// Return the newly fetched skills
 			return await this.getSkills(characterId)
 		} catch (error) {
-			console.error(`Failed to fetch skills from ESI for character ${characterId}:`, error)
+			logger.error(`Failed to fetch skills from ESI for character ${characterId}:`, error)
 			// Return existing skills if we have them, even if stale
 			return existingSkills
 		}

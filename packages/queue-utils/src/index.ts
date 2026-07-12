@@ -29,7 +29,7 @@
  *   queue: createQueueConsumer(
  *     messageSchema,
  *     async (message, metadata) => {
- *       console.log(`Processing ${message.type} for character ${message.characterId}`)
+ *       logger.info(`Processing ${message.type} for character ${message.characterId}`)
  *     }
  *   )
  * }
@@ -52,7 +52,7 @@
  *   }
  *
  *   async handleMessage(message, metadata) {
- *     console.log(`Processing ${message.type} for character ${message.characterId}`)
+ *     logger.info(`Processing ${message.type} for character ${message.characterId}`)
  *   }
  * }
  *

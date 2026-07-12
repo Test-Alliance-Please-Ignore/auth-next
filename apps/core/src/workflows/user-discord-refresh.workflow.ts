@@ -4,6 +4,7 @@ import * as discordService from '../services/discord.service'
 
 import type { WorkflowEvent, WorkflowStep } from 'cloudflare:workers'
 import type { Env } from '../context'
+import { logger } from '@repo/hono-helpers'
 
 /**
  * Workflow parameters
@@ -84,7 +85,7 @@ export class UserDiscordRefreshWorkflow extends WorkflowEntrypoint<
 			steps['apply-jitter'] = 'ok'
 		}
 
-		console.log('[UserDiscordRefreshWorkflow] Starting', logContext)
+		logger.log('[UserDiscordRefreshWorkflow] Starting', logContext)
 
 		try {
 			const refreshResult = await step.do(
@@ -108,7 +109,7 @@ export class UserDiscordRefreshWorkflow extends WorkflowEntrypoint<
 			)
 			steps['sync-discord-access'] = 'ok'
 
-			console.log('[UserDiscordRefreshWorkflow] Discord sync completed', {
+			logger.log('[UserDiscordRefreshWorkflow] Discord sync completed', {
 				...logContext,
 				totalInvited: refreshResult.totalInvited,
 				totalUpdated: refreshResult.totalUpdated,
@@ -128,7 +129,7 @@ export class UserDiscordRefreshWorkflow extends WorkflowEntrypoint<
 		} catch (error) {
 			const errorMessage = error instanceof Error ? error.message : String(error)
 			steps['workflow'] = 'failed'
-			console.error('[UserDiscordRefreshWorkflow] Workflow failed', {
+			logger.error('[UserDiscordRefreshWorkflow] Workflow failed', {
 				...logContext,
 				error: errorMessage,
 				stack: error instanceof Error ? error.stack : undefined,

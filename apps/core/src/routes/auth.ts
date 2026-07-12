@@ -37,6 +37,7 @@ import type { BlacklistEntry, Hr } from '@repo/hr'
 import type { Legacy } from '@repo/legacy'
 import type { TempopOAuthMetadata } from '../db/schema'
 import type { App } from '../context'
+import { logger } from '@repo/hono-helpers'
 
 /**
  * Authentication routes
@@ -180,7 +181,7 @@ async function hydrateAndReconcileUserRoles(
 			executionCtx: c.executionCtx,
 		})
 	} catch (error) {
-		console.error('[Auth] Failed to hydrate character affiliation at link-time', {
+		logger.error('[Auth] Failed to hydrate character affiliation at link-time', {
 			userId,
 			characterId,
 			error: toErrorMessage(error),
@@ -189,7 +190,7 @@ async function hydrateAndReconcileUserRoles(
 
 	try {
 		const reconcileResult = await reconcileUserCoreMembershipRoles(c.env, userId)
-		console.log('[Auth] Reconciled core membership roles after link-time update', {
+		logger.log('[Auth] Reconciled core membership roles after link-time update', {
 			userId,
 			characterId,
 			desiredCount: reconcileResult.desiredCount,
@@ -198,7 +199,7 @@ async function hydrateAndReconcileUserRoles(
 			finalCount: reconcileResult.roleAttachments.length,
 		})
 	} catch (error) {
-		console.error('[Auth] Failed to reconcile core membership roles at link-time', {
+		logger.error('[Auth] Failed to reconcile core membership roles at link-time', {
 			userId,
 			characterId,
 			error: toErrorMessage(error),
@@ -248,7 +249,7 @@ async function scheduleDirectorHealthRecheckAfterTokenReauth(
 		}
 
 		if (result.matchedCorporations.length > 1) {
-			console.warn('[Auth] Character is configured as director in multiple corporations', {
+			logger.warn('[Auth] Character is configured as director in multiple corporations', {
 				characterId,
 				characterName,
 				corporationIds: result.matchedCorporations,
@@ -256,14 +257,14 @@ async function scheduleDirectorHealthRecheckAfterTokenReauth(
 		}
 
 		for (const corporationId of result.verifiedCorporations) {
-			console.log('[Auth] Director recovered after token reauth', {
+			logger.log('[Auth] Director recovered after token reauth', {
 				characterId,
 				characterName,
 				corporationId,
 			})
 		}
 	} catch (error) {
-		console.error('[Auth] Failed to schedule director health recheck after token reauth', {
+		logger.error('[Auth] Failed to schedule director health recheck after token reauth', {
 			characterId,
 			characterName,
 			error: toErrorMessage(error),
@@ -441,7 +442,7 @@ async function handleMumbleTempopCallback(
 			redirectUrl: `/tempop/${key}?provisioned=1&h=${encodeURIComponent(handoff)}`,
 		})
 	} catch (error) {
-		console.error('[Mumble] Temp-op guest provisioning failed', {
+		logger.error('[Mumble] Temp-op guest provisioning failed', {
 			tempopId,
 			error: error instanceof Error ? error.message : String(error),
 		})
@@ -752,7 +753,7 @@ auth.get('/callback', async (c) => {
 			)
 		} catch (error) {
 			// Don't fail character linking if auto-registration fails
-			console.error('[Auth] Auto-registration failed:', toErrorMessage(error))
+			logger.error('[Auth] Auto-registration failed:', toErrorMessage(error))
 		}
 
 		return c.json({
@@ -890,7 +891,7 @@ auth.get('/callback', async (c) => {
 			)
 		} catch (error) {
 			// Don't fail login if auto-registration fails
-			console.error('[Auth] Auto-registration failed:', toErrorMessage(error))
+			logger.error('[Auth] Auto-registration failed:', toErrorMessage(error))
 		}
 
 		// Set session cookie
@@ -1053,7 +1054,7 @@ auth.post('/claim-main', async (c) => {
 		)
 	} catch (error) {
 		// Don't fail user creation if auto-registration fails
-		console.error('[Auth] Auto-registration failed:', toErrorMessage(error))
+		logger.error('[Auth] Auto-registration failed:', toErrorMessage(error))
 	}
 
 	// Set session cookie
@@ -1253,7 +1254,7 @@ auth.get('/session', async (c) => {
 	try {
 		profile = await userService.getUserProfile(user.id)
 	} catch (error) {
-		console.error('[Auth Session] Failed to fetch user profile', {
+		logger.error('[Auth Session] Failed to fetch user profile', {
 			userId: user.id,
 			error: error instanceof Error ? error.message : String(error),
 			stack: error instanceof Error ? error.stack : undefined,
@@ -1452,7 +1453,7 @@ auth.get('/legacy-auth/callback', async (c) => {
 
 	if (!tokenResponse.ok) {
 		const errorText = await tokenResponse.text()
-		console.error('[Legacy Auth] Token exchange failed:', errorText)
+		logger.error('[Legacy Auth] Token exchange failed:', errorText)
 		await db.delete(oauthStates).where(eq(oauthStates.state, state))
 		return c.redirect(
 			'/legacy-auth/callback?error=' +
@@ -1473,7 +1474,7 @@ auth.get('/legacy-auth/callback', async (c) => {
 		)
 	}
 
-	console.log('[Legacy Auth] Access token fetched', {
+	logger.log('[Legacy Auth] Access token fetched', {
 		accessToken: tokenData.access_token,
 		tokenType: tokenData.token_type,
 		expiresIn: tokenData.expires_in,
@@ -1487,7 +1488,7 @@ auth.get('/legacy-auth/callback', async (c) => {
 
 	if (!profileResponse.ok) {
 		const errorText = await profileResponse.text()
-		console.error(
+		logger.error(
 			'[Legacy Auth] Profile fetch failed:',
 			errorText,
 			profileResponse.status,

@@ -10,6 +10,7 @@ import type {
 	UpdateFreightRouteInput,
 } from '@repo/freight'
 import type { FreightDb } from '../db'
+import { logger } from '@repo/hono-helpers'
 
 /**
  * Route Service
@@ -26,12 +27,12 @@ export class RouteService {
 	 * Create a new freight route
 	 */
 	async createRoute(_adminId: string, data: CreateFreightRouteInput): Promise<FreightRoute> {
-		console.log('[RouteService.createRoute] Starting route creation', { data })
+		logger.log('[RouteService.createRoute] Starting route creation', { data })
 
 		try {
 			const routeId = generateUuidV7()
 
-			console.log('[RouteService.createRoute] Generated route ID', { routeId })
+			logger.log('[RouteService.createRoute] Generated route ID', { routeId })
 
 			const insertData = {
 				id: routeId,
@@ -50,18 +51,18 @@ export class RouteService {
 				status: data.status || ('active' as const),
 			}
 
-			console.log('[RouteService.createRoute] Insert data prepared', insertData)
+			logger.log('[RouteService.createRoute] Insert data prepared', insertData)
 
 			const [route] = await this.db.insert(freightRoutes).values(insertData).returning()
 
-			console.log('[RouteService.createRoute] Route inserted successfully', { routeId: route.id })
+			logger.log('[RouteService.createRoute] Route inserted successfully', { routeId: route.id })
 
 			const response = this.toFreightRouteResponse(route)
-			console.log('[RouteService.createRoute] Returning response', { routeId: response.id })
+			logger.log('[RouteService.createRoute] Returning response', { routeId: response.id })
 
 			return response
 		} catch (error) {
-			console.error('[RouteService.createRoute] Error creating route', {
+			logger.error('[RouteService.createRoute] Error creating route', {
 				error: error instanceof Error ? error.message : String(error),
 				stack: error instanceof Error ? error.stack : undefined,
 				data,
@@ -112,7 +113,7 @@ export class RouteService {
 		routeId: string,
 		data: UpdateFreightRouteInput
 	): Promise<FreightRoute> {
-		console.log('[RouteService.updateRoute] Starting route update', { routeId, data })
+		logger.log('[RouteService.updateRoute] Starting route update', { routeId, data })
 
 		// Check if route exists
 		const existingRoute = await this.db.query.freightRoutes.findFirst({
@@ -180,7 +181,7 @@ export class RouteService {
 			updateData.status = data.status
 		}
 
-		console.log('[RouteService.updateRoute] Update data prepared', updateData)
+		logger.log('[RouteService.updateRoute] Update data prepared', updateData)
 
 		const [updated] = await this.db
 			.update(freightRoutes)
@@ -188,7 +189,7 @@ export class RouteService {
 			.where(eq(freightRoutes.id, routeId))
 			.returning()
 
-		console.log('[RouteService.updateRoute] Route updated successfully', { routeId: updated.id })
+		logger.log('[RouteService.updateRoute] Route updated successfully', { routeId: updated.id })
 
 		return this.toFreightRouteResponse(updated)
 	}
@@ -197,7 +198,7 @@ export class RouteService {
 	 * Activate a freight route (set status to active)
 	 */
 	async activateRoute(adminId: string, routeId: string): Promise<FreightRoute> {
-		console.log('[RouteService.activateRoute] Activating route', { routeId, adminId })
+		logger.log('[RouteService.activateRoute] Activating route', { routeId, adminId })
 		return this.updateRoute(adminId, routeId, { status: 'active' })
 	}
 
@@ -205,7 +206,7 @@ export class RouteService {
 	 * Deactivate a freight route (set status to inactive)
 	 */
 	async deactivateRoute(adminId: string, routeId: string): Promise<FreightRoute> {
-		console.log('[RouteService.deactivateRoute] Deactivating route', { routeId, adminId })
+		logger.log('[RouteService.deactivateRoute] Deactivating route', { routeId, adminId })
 		return this.updateRoute(adminId, routeId, { status: 'inactive' })
 	}
 
@@ -213,7 +214,7 @@ export class RouteService {
 	 * Delete a freight route
 	 */
 	async deleteRoute(adminId: string, routeId: string): Promise<void> {
-		console.log('[RouteService.deleteRoute] Deleting route', { adminId, routeId })
+		logger.log('[RouteService.deleteRoute] Deleting route', { adminId, routeId })
 
 		const existingRoute = await this.db.query.freightRoutes.findFirst({
 			where: eq(freightRoutes.id, routeId),
@@ -225,7 +226,7 @@ export class RouteService {
 
 		await this.db.delete(freightRoutes).where(eq(freightRoutes.id, routeId))
 
-		console.log('[RouteService.deleteRoute] Route deleted successfully', { adminId, routeId })
+		logger.log('[RouteService.deleteRoute] Route deleted successfully', { adminId, routeId })
 	}
 
 	/**

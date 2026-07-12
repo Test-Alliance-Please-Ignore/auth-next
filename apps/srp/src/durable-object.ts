@@ -69,6 +69,7 @@ import type {
 } from '@repo/srp'
 import type { KillmailDetail, Universe } from '@repo/universe'
 import type { Env } from './context'
+import { logger } from '@repo/hono-helpers'
 
 const SRP_REQUIRED_KILLMAIL_SCOPES = ['esi-killmails.read_killmails.v1']
 
@@ -482,7 +483,7 @@ export class SrpDO extends DurableObject<Env> implements Srp {
 			)
 		} catch (err) {
 			// Non-fatal — request is still created, valuation fields will be null
-			console.error('[createRequest] SRP valuation failed:', err)
+			logger.error('[createRequest] SRP valuation failed:', err)
 		}
 
 		// Create the request
@@ -1593,7 +1594,7 @@ export class SrpDO extends DurableObject<Env> implements Srp {
 					if (p.source === 'fallback') pricingSource = 'fallback'
 				}
 			} catch (err) {
-				console.warn('[calculateSrpValuation] Markets price fallback failed:', err)
+				logger.warn('[calculateSrpValuation] Markets price fallback failed:', err)
 				pricingSource = 'fallback'
 			}
 		}
@@ -1664,7 +1665,7 @@ export class SrpDO extends DurableObject<Env> implements Srp {
 					insuranceSource = ins.source
 				}
 			} catch (err) {
-				console.error('[calculateSrpValuation] Failed to fetch insurance prices:', err)
+				logger.error('[calculateSrpValuation] Failed to fetch insurance prices:', err)
 				// Non-fatal — proceed with no insurance credit
 			}
 		}

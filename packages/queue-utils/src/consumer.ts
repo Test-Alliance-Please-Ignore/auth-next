@@ -6,6 +6,7 @@ import {
 	wrapError,
 } from './errors'
 import { defaultRetryStrategy, getRetryDelay } from './retry'
+import { logger } from '@repo/hono-helpers/logger'
 
 import type { z } from 'zod'
 import type {
@@ -33,7 +34,7 @@ import type {
  *   }
  *
  *   async handleMessage(message, metadata) {
- *     console.log(`Processing character ${message.characterId}`)
+ *     logger.info(`Processing character ${message.characterId}`)
  *     // ... processing logic
  *   }
  * }
@@ -75,7 +76,7 @@ export abstract class QueueConsumer<T extends z.ZodType> {
 	 */
 	async queue(batch: MessageBatch<unknown>, env: unknown, ctx: ExecutionContext): Promise<void> {
 		if (this.debug) {
-			console.log(`[QueueConsumer] Processing batch of ${batch.messages.length} messages`)
+			logger.debug(`[QueueConsumer] Processing batch of ${batch.messages.length} messages`)
 		}
 
 		// Call onBatchStart hook
@@ -134,7 +135,7 @@ export abstract class QueueConsumer<T extends z.ZodType> {
 					}
 
 					if (this.debug) {
-						console.log(`[QueueConsumer] Successfully processed message ${message.id}`)
+						logger.debug(`[QueueConsumer] Successfully processed message ${message.id}`)
 					}
 				} catch (error) {
 					const wrappedError = wrapError(error)
@@ -196,7 +197,7 @@ export abstract class QueueConsumer<T extends z.ZodType> {
 						retried++
 
 						if (this.debug) {
-							console.log(
+							logger.debug(
 								`[QueueConsumer] Retrying message ${message.id} (attempt ${metadata.attempt}) after ${delaySeconds}s`
 							)
 						}
@@ -206,7 +207,7 @@ export abstract class QueueConsumer<T extends z.ZodType> {
 						failed++
 
 						if (this.debug) {
-							console.error(
+							logger.error(
 								`[QueueConsumer] Failed to process message ${message.id} (attempt ${metadata.attempt}):`,
 								wrappedError
 							)
@@ -243,7 +244,7 @@ export abstract class QueueConsumer<T extends z.ZodType> {
 		}
 
 		if (this.debug) {
-			console.log(
+			logger.debug(
 				`[QueueConsumer] Batch complete: ${successful} successful, ${failed} failed, ${retried} retried`
 			)
 		}

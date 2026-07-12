@@ -2,6 +2,7 @@ import { getStub } from '@repo/do-utils'
 import { parseEsiErrorMetadata, retryWithBackoff } from '@repo/workflow-utils'
 
 import type { Esi } from '@repo/esi'
+import { logger } from '@repo/hono-helpers'
 
 function getErrorStatus(error: unknown): number | null {
 	if (!(error instanceof Error)) return null
@@ -58,7 +59,7 @@ export class StructureResolutionCoordinator {
 						maxDelayMs: 30000,
 						backoffMultiplier: 2,
 						onRetry: (attempt, error, delayMs) => {
-							console.warn(`[${label}] Retrying structure fetch after rate limit`, {
+							logger.warn(`[${label}] Retrying structure fetch after rate limit`, {
 								structureId,
 								attempt,
 								delayMs,
@@ -74,13 +75,13 @@ export class StructureResolutionCoordinator {
 			} catch (error) {
 				if (isForbiddenStructureError(error)) {
 					this.deniedStructureIds.add(structureId)
-					console.warn(`[${label}] Structure access denied, skipping future lookups`, {
+					logger.warn(`[${label}] Structure access denied, skipping future lookups`, {
 						structureId,
 						characterId,
 						error: error instanceof Error ? error.message : String(error),
 					})
 				} else {
-					console.warn(`[${label}] Failed to fetch structure info`, {
+					logger.warn(`[${label}] Failed to fetch structure info`, {
 						structureId,
 						characterId,
 						error: error instanceof Error ? error.message : String(error),

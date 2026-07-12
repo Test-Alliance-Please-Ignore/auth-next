@@ -10,6 +10,7 @@ import type {
 	UserProfileDTO,
 } from '@repo/core'
 import type { createDb } from '../db'
+import { logger } from '@repo/hono-helpers'
 
 /**
  * User Service
@@ -142,7 +143,7 @@ export class UserService {
 				}),
 			])
 		} catch (error) {
-			console.error('[UserService] Database query failed', {
+			logger.error('[UserService] Database query failed', {
 				userId,
 				error: error instanceof Error ? error.message : String(error),
 				stack: error instanceof Error ? error.stack : undefined,
@@ -151,7 +152,7 @@ export class UserService {
 		}
 
 		if (!user) {
-			console.error('[UserService] User not found', { userId })
+			logger.error('[UserService] User not found', { userId })
 			throw new Error('User not found')
 		}
 

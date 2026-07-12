@@ -2,6 +2,7 @@ import * as discordService from '../services/discord.service'
 
 import type { Context } from 'hono'
 import type { App } from '../context'
+import { logger } from '@repo/hono-helpers'
 
 /**
  * Discord status information
@@ -55,7 +56,7 @@ export async function getDiscordStatus(c: Context<App>): Promise<DiscordStatus |
 		}
 	} catch (error) {
 		// Log but don't throw - graceful degradation
-		console.error('Error loading Discord status:', error)
+		logger.error('Error loading Discord status:', error)
 	}
 
 	return null

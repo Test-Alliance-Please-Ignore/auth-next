@@ -34,6 +34,7 @@ import type { ProcessedWalletJournalEntry } from '../../processors/helpers/walle
 import type { EnrichedMailData } from '../../processors/helpers/mails'
 import type { AssetNameMap } from '../assets/fetch-asset-names'
 import type { ReportAlert, ReportAlerts, ResolvedCharacter } from '../../processors/alerts'
+import { logger } from '@repo/hono-helpers'
 
 type LegacyAssociationItem = Awaited<
 		ReturnType<CoreBinding['getLegacyAssociationsForCharacter']>
@@ -113,7 +114,7 @@ async function resolveNamesToCharacters(
             characterId: Number(characterId),
         }))
     } catch (error) {
-        console.warn('[generate-alerts] resolveNames call error:', error)
+        logger.warn('[generate-alerts] resolveNames call error:', error)
         return []
     }
 }
@@ -139,7 +140,7 @@ async function getSiblingCharacterNames(
             .map((c) => c.characterName)
             .filter((name) => name.toLowerCase() !== characterName.toLowerCase())
     } catch (error) {
-        console.warn('[generate-alerts] Failed to get sibling characters:', error)
+        logger.warn('[generate-alerts] Failed to get sibling characters:', error)
         return []
     }
 }
@@ -274,7 +275,7 @@ export async function generateAlerts(
             ])
 
         if (Object.keys(retrievalErrors).length > 0) {
-            console.warn('[generate-alerts] Retrieval errors:', retrievalErrors)
+            logger.warn('[generate-alerts] Retrieval errors:', retrievalErrors)
         }
 
         // Unwrap wallet transactions — process step stores as { transactions, truncated }
@@ -491,7 +492,7 @@ export async function generateAlerts(
                 }
             }
         } catch (error) {
-            console.warn('[generate-alerts] Blacklist association check failed:', error)
+            logger.warn('[generate-alerts] Blacklist association check failed:', error)
         }
 
         const result = {
@@ -501,7 +502,7 @@ export async function generateAlerts(
 
         return await storeOrReturn(bucket, bucketName, workflowInstanceId, 'generate-alerts', result)
     } catch (error) {
-        console.error('[generate-alerts] Error generating alerts:', {
+        logger.error('[generate-alerts] Error generating alerts:', {
             message: error instanceof Error ? error.message : String(error),
             stack: error instanceof Error ? error.stack : undefined,
             alertsCollectedBeforeError: alerts.length,

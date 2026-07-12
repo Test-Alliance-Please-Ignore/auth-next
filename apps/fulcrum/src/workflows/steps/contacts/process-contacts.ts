@@ -9,6 +9,7 @@ import { enrichContacts } from '../../processors/helpers/contacts'
 import type { CharacterAffiliationCoordinator } from '../../processors/helpers/character-affiliation'
 import type { EntityLinkCoordinator } from '../../processors/helpers/entity-links'
 import type { CoreBinding } from '../../../types/core-binding'
+import { logger } from '@repo/hono-helpers'
 
 /**
  * Process character contacts by enriching with resolved names
@@ -69,7 +70,7 @@ export async function processContacts(
 			}
 		}
 
-		console.log('[processContacts] Starting enrichment', {
+		logger.log('[processContacts] Starting enrichment', {
 			totalContacts: contacts.length,
 			sampleContact: contacts[0]
 				? {
@@ -89,7 +90,7 @@ export async function processContacts(
 			entityLinkCoordinator,
 		)
 
-		console.log('[processContacts] Enrichment complete', {
+		logger.log('[processContacts] Enrichment complete', {
 			enrichedCount: enrichedData.length,
 			sampleEnriched: enrichedData[0]
 				? {
@@ -110,7 +111,7 @@ export async function processContacts(
 			enrichedData,
 		)
 
-		console.log('[processContacts] Storage result', {
+		logger.log('[processContacts] Storage result', {
 			source: result.source,
 			success: result.success,
 		})

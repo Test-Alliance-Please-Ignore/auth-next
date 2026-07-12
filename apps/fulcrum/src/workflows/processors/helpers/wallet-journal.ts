@@ -8,6 +8,7 @@ import { StructureResolutionCoordinator } from './structure-resolution'
 import type { CoreBinding } from '../../../types/core-binding'
 
 import type { CharacterWalletJournalEntry, Esi, EsiTypeResolver } from '@repo/esi'
+import { logger } from '@repo/hono-helpers'
 
 /** context_id_type values that represent entity IDs resolvable by /universe/names/ */
 const RESOLVABLE_CONTEXT_TYPES = new Set([
@@ -95,7 +96,7 @@ export async function enrichWalletJournalEntries(
 			const resolved = await resolver.resolveIds(Array.from(idsToResolve))
 			Object.assign(nameMap, resolved)
 		} catch (error) {
-			console.error('Failed to resolve type IDs:', {
+			logger.error('Failed to resolve type IDs:', {
 				error: error instanceof Error ? error.message : String(error),
 				idCount: idsToResolve.size,
 			})
@@ -175,7 +176,7 @@ export async function enrichWalletJournalEntries(
 			: {}
 
 	if (structureIds.size > 0) {
-		console.log('[enrichWalletJournalEntries] Structure resolution complete', {
+		logger.log('[enrichWalletJournalEntries] Structure resolution complete', {
 			requested: structureIds.size,
 			resolved: Object.keys(structureNameMap).length,
 			denied: structureResolutionCoordinator?.getDeniedCount() ?? 0,

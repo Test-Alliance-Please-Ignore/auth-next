@@ -208,7 +208,7 @@ export class StructureMonitorDO extends DurableObject<Env> implements StructureM
 	}
 
 	async alarm(): Promise<void> {
-		console.info('[StructureMonitorDO] alarm fired')
+		logger.info('[StructureMonitorDO] alarm fired')
 		const config = await this.getMonitorConfig()
 		if (!config) {
 			this.logger.error('[StructureMonitorDO] No config found')

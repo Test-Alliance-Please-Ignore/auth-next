@@ -6,6 +6,7 @@ import {
 	wrapError,
 } from './errors'
 import { defaultRetryStrategy, getRetryDelay } from './retry'
+import { logger } from '@repo/hono-helpers/logger'
 
 import type { z } from 'zod'
 import type {
@@ -32,7 +33,7 @@ import type {
  * const queueHandler = createQueueConsumer(
  *   characterUpdateSchema,
  *   async (message, metadata) => {
- *     console.log(`Processing character ${message.characterId}`)
+ *     logger.info(`Processing character ${message.characterId}`)
  *     // ... processing logic
  *   }
  * )
@@ -55,7 +56,7 @@ export function createQueueConsumer<T extends z.ZodType>(
 
 	return async (batch: MessageBatch<unknown>, env: unknown, ctx: ExecutionContext) => {
 		if (debug) {
-			console.log(`[createQueueConsumer] Processing batch of ${batch.messages.length} messages`)
+			logger.debug(`[createQueueConsumer] Processing batch of ${batch.messages.length} messages`)
 		}
 
 		// Call onBatchStart hook
@@ -114,7 +115,7 @@ export function createQueueConsumer<T extends z.ZodType>(
 					}
 
 					if (debug) {
-						console.log(`[createQueueConsumer] Successfully processed message ${message.id}`)
+						logger.debug(`[createQueueConsumer] Successfully processed message ${message.id}`)
 					}
 				} catch (error) {
 					const wrappedError = wrapError(error)
@@ -176,7 +177,7 @@ export function createQueueConsumer<T extends z.ZodType>(
 						retried++
 
 						if (debug) {
-							console.log(
+							logger.debug(
 								`[createQueueConsumer] Retrying message ${message.id} (attempt ${metadata.attempt}) after ${delaySeconds}s`
 							)
 						}
@@ -186,7 +187,7 @@ export function createQueueConsumer<T extends z.ZodType>(
 						failed++
 
 						if (debug) {
-							console.error(
+							logger.error(
 								`[createQueueConsumer] Failed to process message ${message.id} (attempt ${metadata.attempt}):`,
 								wrappedError
 							)
@@ -223,7 +224,7 @@ export function createQueueConsumer<T extends z.ZodType>(
 		}
 
 		if (debug) {
-			console.log(
+			logger.debug(
 				`[createQueueConsumer] Batch complete: ${successful} successful, ${failed} failed, ${retried} retried`
 			)
 		}

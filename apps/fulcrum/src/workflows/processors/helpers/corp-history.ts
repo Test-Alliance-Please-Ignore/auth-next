@@ -6,6 +6,7 @@
 import { getStub } from '@repo/do-utils'
 
 import type { CorporationHistoryEntry, EsiTypeResolver } from '@repo/esi'
+import { logger } from '@repo/hono-helpers'
 
 /**
  * Enriched corporation history entry with resolved names
@@ -67,7 +68,7 @@ export async function enrichCorpHistory(
 			const resolved = await resolver.resolveIds(corpIds)
 			Object.assign(nameMap, resolved)
 		} catch (error) {
-			console.error('[enrichCorpHistory] Failed to resolve corporation IDs:', {
+			logger.error('[enrichCorpHistory] Failed to resolve corporation IDs:', {
 				error: error instanceof Error ? error.message : String(error),
 				idCount: corpIds.length,
 			})

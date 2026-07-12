@@ -11,6 +11,7 @@
 		"test": "run-vitest"
 	},
 	"dependencies": {
+		"@repo/hono-helpers": "workspace:*",
 		"drizzle-orm": "0.44.7"
 	},
 	"devDependencies": {

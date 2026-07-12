@@ -6,6 +6,7 @@
 import { getStub } from '@repo/do-utils'
 
 import type { CharacterSkills, CharacterSkillQueue, EsiTypeResolver } from '@repo/esi'
+import { logger } from '@repo/hono-helpers'
 
 /**
  * Enriched skill entry with resolved name
@@ -76,7 +77,7 @@ export async function enrichSkills(
 			const resolved = await resolver.resolveIds(idsArray)
 			Object.assign(nameMap, resolved)
 		} catch (error) {
-			console.error('[enrichSkills] Failed to resolve skill IDs:', {
+			logger.error('[enrichSkills] Failed to resolve skill IDs:', {
 				error: error instanceof Error ? error.message : String(error),
 				idCount: idsArray.length,
 			})

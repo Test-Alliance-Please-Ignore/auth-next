@@ -1,4 +1,5 @@
 import { parseJsonResponse } from '@repo/worker-utils'
+import { logger } from '@repo/hono-helpers/logger'
 
 type DiscordRateLimitBody = {
 	global?: boolean
@@ -103,7 +104,7 @@ export class DiscordRateLimitGuard {
 
 			return record
 		} catch (error) {
-			console.warn('[DiscordRateLimit] Failed to load persisted cooldown', {
+			logger.warn('[DiscordRateLimit] Failed to load persisted cooldown', {
 				key,
 				error: String(error),
 			})
@@ -120,7 +121,7 @@ export class DiscordRateLimitGuard {
 			const ttlSeconds = DiscordRateLimitGuard.ttlSecondsFromExpiresAt(record.expiresAt)
 			await this.store.put(key, record, ttlSeconds)
 		} catch (error) {
-			console.warn('[DiscordRateLimit] Failed to persist cooldown', {
+			logger.warn('[DiscordRateLimit] Failed to persist cooldown', {
 				key,
 				error: String(error),
 			})
@@ -192,7 +193,7 @@ export class DiscordRateLimitGuard {
 
 		const delayMs = this.getDelayMs(routeKey)
 		if (delayMs > 0) {
-			console.warn('[DiscordRateLimit] Waiting for Discord cooldown', {
+			logger.warn('[DiscordRateLimit] Waiting for Discord cooldown', {
 				routeKey,
 				delayMs,
 			})
@@ -263,7 +264,7 @@ export class DiscordRateLimitGuard {
 					body && typeof body.retry_after === 'number' ? body.retry_after : null
 				bodyGlobal = body?.global === true
 			} catch (error) {
-				console.warn('[DiscordRateLimit] Failed to parse Discord rate limit body', {
+				logger.warn('[DiscordRateLimit] Failed to parse Discord rate limit body', {
 					routeKey,
 					error: String(error),
 				})

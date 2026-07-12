@@ -12,6 +12,7 @@ import { updateCheckTimestamp } from './steps/update-check-timestamp'
 import type { BillStatus } from '@repo/bills'
 import type { Env } from '../context'
 import type { WorkflowContext } from './context'
+import { logger } from '@repo/hono-helpers'
 
 const TAX_SYNC_ACTOR = 'system:bills:payment-status-check'
 type CorporationTaxSyncStub = {
@@ -92,7 +93,7 @@ export class BillPaymentStatusCheckWorkflow extends WorkflowEntrypoint<Env, Work
 		// Note: Logger is created outside steps for logging purposes only
 		// It doesn't need to survive hibernation as each step can recreate it
 		const logContext = { billId, workflowInstanceId }
-		console.log('[Workflow] Starting payment status check', logContext)
+		logger.log('[Workflow] Starting payment status check', logContext)
 
 		try {
 			// Step 1: Fetch bill data
@@ -112,7 +113,7 @@ export class BillPaymentStatusCheckWorkflow extends WorkflowEntrypoint<Env, Work
 				}
 			)
 
-			console.log('[Workflow] Fetched bill data', {
+			logger.log('[Workflow] Fetched bill data', {
 				...logContext,
 				status: fetchBillDataResult.bill.status,
 			})
@@ -195,7 +196,7 @@ export class BillPaymentStatusCheckWorkflow extends WorkflowEntrypoint<Env, Work
 				}
 			)
 
-			console.log('[Workflow] Checked payment status', logContext)
+			logger.log('[Workflow] Checked payment status', logContext)
 
 			if (paymentStatusResult.markedPaid) {
 				await step.do(
@@ -250,14 +251,14 @@ export class BillPaymentStatusCheckWorkflow extends WorkflowEntrypoint<Env, Work
 				return updateCheckTimestamp(ctx)
 			})
 
-			console.log('[Workflow] Payment status check completed', logContext)
+			logger.log('[Workflow] Payment status check completed', logContext)
 
 			return {
 				success: true,
 				billId,
 			}
 		} catch (error) {
-			console.error('[Workflow] Payment status check failed', {
+			logger.error('[Workflow] Payment status check failed', {
 				...logContext,
 				error: error instanceof Error ? error.message : String(error),
 				errorStack: error instanceof Error ? error.stack : undefined,
