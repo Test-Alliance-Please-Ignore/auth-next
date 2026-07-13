@@ -14,6 +14,7 @@ vi.mock('@repo/hono-helpers', () => ({
 }))
 
 import {
+	getVisibleStructureDetail,
 	listMiningCitadelStructures,
 	listMoonDrillStructures,
 	listVisibleStructures,
@@ -34,7 +35,6 @@ function makeDb(
 			systemName: string
 			regionId: string
 			regionName: string
-			profileId: string
 			state: string
 			nextReinforceApply: null
 			stateTimerEnd: null
@@ -77,7 +77,6 @@ function makeDb(
 				systemName: 'Jita',
 				regionId: '10000002',
 				regionName: 'The Forge',
-				profileId: 'profile-1',
 				state: 'online',
 				nextReinforceApply: null,
 				stateTimerEnd: null,
@@ -137,6 +136,9 @@ function makeDb(
 			findFirst: vi.fn().mockResolvedValue(null),
 			findMany: vi.fn().mockResolvedValue(options.miningStates ?? []),
 		},
+		corporationStructureInventory: {
+			findMany: vi.fn().mockResolvedValue([]),
+		},
 	}
 
 	return { query } as unknown as FakeDb
@@ -159,7 +161,23 @@ describe('structure permission gating', () => {
 		expect(db.query.corporationStructures.findMany).toHaveBeenCalledTimes(1)
 		expect(result.items).toHaveLength(1)
 		expect(result.items[0]?.structureId).toBe('structure-1')
+		expect(result.items[0]?.canViewDetails).toBe(false)
 		expect(result.summary.total).toBe(1)
+	})
+
+	it('returns visible structures for all-scope details permissions', async () => {
+		const db = makeDb()
+
+		const result = await listVisibleStructures(db as never, {
+			id: 'user-1d',
+			is_admin: false,
+			roles: ['urn:structures:all:details'],
+		})
+
+		expect(db.query.corporationStructures.findMany).toHaveBeenCalledTimes(1)
+		expect(result.items).toHaveLength(1)
+		expect(result.items[0]?.structureId).toBe('structure-1')
+		expect(result.items[0]?.canViewDetails).toBe(true)
 	})
 
 	it('returns corporation-scoped structures when the user only has a corp-scoped viewer permission', async () => {
@@ -174,6 +192,41 @@ describe('structure permission gating', () => {
 		expect(db.query.corporationStructures.findMany).toHaveBeenCalledTimes(1)
 		expect(result.items).toHaveLength(1)
 		expect(result.items[0]?.corporationId).toBe('corp-1')
+		expect(result.items[0]?.canViewDetails).toBe(false)
+	})
+
+	it('allows detail access for details permission and denies it for viewer-only access', async () => {
+		const db = makeDb()
+		const env = {
+			UNIVERSE: {} as never,
+			EVE_CORPORATION_DATA: {} as never,
+		}
+
+		const viewerResult = await getVisibleStructureDetail(
+			env as never,
+			db as never,
+			{
+				id: 'user-viewer',
+				is_admin: false,
+				roles: ['urn:structures:all:viewer'],
+			},
+			'structure-1'
+		)
+		expect(viewerResult).toBeNull()
+
+		const detailsResult = await getVisibleStructureDetail(
+			env as never,
+			db as never,
+			{
+				id: 'user-details',
+				is_admin: false,
+				roles: ['urn:structures:all:details'],
+			},
+			'structure-1'
+		)
+		expect(detailsResult).not.toBeNull()
+		expect(detailsResult?.canViewDetails).toBe(true)
+		expect(detailsResult?.canEdit).toBe(false)
 	})
 
 	it('does not leak citadels to a tab-scoped moon-drills permission', async () => {
@@ -202,7 +255,6 @@ describe('structure permission gating', () => {
 					systemName: 'Jita',
 					regionId: '10000002',
 					regionName: 'The Forge',
-					profileId: 'profile-1',
 					state: 'online',
 					nextReinforceApply: null,
 					stateTimerEnd: null,
@@ -242,7 +294,6 @@ describe('structure permission gating', () => {
 					systemName: 'Jita',
 					regionId: '10000002',
 					regionName: 'The Forge',
-					profileId: 'profile-1',
 					state: 'online',
 					nextReinforceApply: null,
 					stateTimerEnd: null,
@@ -283,7 +334,6 @@ describe('structure permission gating', () => {
 					systemName: 'Jita',
 					regionId: '10000002',
 					regionName: 'The Forge',
-					profileId: 'profile-1',
 					state: 'online',
 					nextReinforceApply: null,
 					stateTimerEnd: null,
@@ -306,7 +356,6 @@ describe('structure permission gating', () => {
 		})
 
 		expect(sensitiveResult.items).toHaveLength(1)
-		expect(sensitiveResult.items[0]?.canEdit).toBe(false)
 
 		const managerResult = await listMoonDrillStructures(db as never, {
 			id: 'user-4d',
@@ -315,7 +364,6 @@ describe('structure permission gating', () => {
 		})
 
 		expect(managerResult.items).toHaveLength(1)
-		expect(managerResult.items[0]?.canEdit).toBe(true)
 	})
 
 	it('returns mining snapshot data for mining citadels when permissioned', async () => {
@@ -331,7 +379,6 @@ describe('structure permission gating', () => {
 					systemName: 'Jita',
 					regionId: '10000002',
 					regionName: 'The Forge',
-					profileId: 'profile-1',
 					state: 'online',
 					nextReinforceApply: null,
 					stateTimerEnd: null,
@@ -396,7 +443,6 @@ describe('structure permission gating', () => {
 					systemName: 'Jita',
 					regionId: '10000002',
 					regionName: 'The Forge',
-					profileId: 'profile-1',
 					state: 'online',
 					nextReinforceApply: null,
 					stateTimerEnd: null,
@@ -419,7 +465,6 @@ describe('structure permission gating', () => {
 					systemName: 'Perimeter',
 					regionId: '10000002',
 					regionName: 'The Forge',
-					profileId: 'profile-2',
 					state: 'online',
 					nextReinforceApply: null,
 					stateTimerEnd: null,
@@ -459,7 +504,6 @@ describe('structure permission gating', () => {
 					systemName: 'Jita',
 					regionId: '10000002',
 					regionName: 'The Forge',
-					profileId: 'profile-1',
 					state: 'online',
 					nextReinforceApply: null,
 					stateTimerEnd: null,
@@ -482,7 +526,6 @@ describe('structure permission gating', () => {
 					systemName: 'Perimeter',
 					regionId: '10000002',
 					regionName: 'The Forge',
-					profileId: 'profile-2',
 					state: 'online',
 					nextReinforceApply: null,
 					stateTimerEnd: null,
@@ -542,7 +585,6 @@ describe('structure permission gating', () => {
 
 		expect(sensitiveResult.items).toHaveLength(1)
 		expect(sensitiveResult.items[0]?.structureId).toBe('structure-1')
-		expect(sensitiveResult.items[0]?.canEdit).toBe(false)
 
 		const corpSensitiveResult = await listVisibleStructures(db as never, {
 			id: 'user-5b',
@@ -552,7 +594,6 @@ describe('structure permission gating', () => {
 
 		expect(corpSensitiveResult.items).toHaveLength(1)
 		expect(corpSensitiveResult.items[0]?.structureId).toBe('structure-1')
-		expect(corpSensitiveResult.items[0]?.canEdit).toBe(false)
 
 		const corpManagerResult = await listVisibleStructures(db as never, {
 			id: 'user-5c',
@@ -562,7 +603,6 @@ describe('structure permission gating', () => {
 
 		expect(corpManagerResult.items).toHaveLength(1)
 		expect(corpManagerResult.items[0]?.structureId).toBe('structure-1')
-		expect(corpManagerResult.items[0]?.canEdit).toBe(true)
 
 		const managerResult = await listVisibleStructures(db as never, {
 			id: 'user-6',
@@ -572,6 +612,5 @@ describe('structure permission gating', () => {
 
 		expect(managerResult.items).toHaveLength(1)
 		expect(managerResult.items[0]?.structureId).toBe('structure-1')
-		expect(managerResult.items[0]?.canEdit).toBe(true)
 	})
 })

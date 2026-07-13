@@ -3,9 +3,11 @@ import { describe, expect, it } from 'vitest'
 import {
 	buildStructurePermissionUrn,
 	buildStructureTabPermissionUrn,
+	hasAllStructureDetailsPermission,
 	hasAllStructureManagerPermission,
 	hasAllStructureSensitivePermission,
 	hasAnyStructurePermission,
+	hasStructureDetailsPermission,
 	hasStructureManagerPermission,
 	hasStructureSensitivePermission,
 	hasStructureTabPermission,
@@ -40,6 +42,19 @@ describe('structure permission utilities', () => {
 		})
 	})
 
+	it('builds and parses corporation-scoped details URNs', () => {
+		const urn = buildStructurePermissionUrn('1234567890', 'details')
+
+		expect(urn).toBe('urn:structures:1234567890:details')
+		expect(isStructurePermissionUrn(urn)).toBe(true)
+		expect(parseStructurePermissionUrn(urn)).toEqual({
+			tab: 'all',
+			scope: 'corp',
+			corporationId: '1234567890',
+			role: 'details',
+		})
+	})
+
 	it('builds and parses corporation-scoped sensitive URNs', () => {
 		const urn = buildStructurePermissionUrn('1234567890', 'sensitive')
 
@@ -63,6 +78,18 @@ describe('structure permission utilities', () => {
 			scope: 'all',
 			corporationId: null,
 			role: 'viewer',
+		})
+	})
+
+	it('builds and parses tab-scoped details URNs', () => {
+		const urn = buildStructureTabPermissionUrn('moon-drills', '1234567890', 'details')
+
+		expect(urn).toBe('urn:structures:moon-drills:1234567890:details')
+		expect(parseStructurePermissionUrn(urn)).toEqual({
+			tab: 'moon-drills',
+			scope: 'corp',
+			corporationId: '1234567890',
+			role: 'details',
 		})
 	})
 
@@ -130,6 +157,7 @@ describe('structure permission utilities', () => {
 		expect(hasAnyStructurePermission([{ urn: 'urn:structures:all:viewer' }])).toBe(true)
 		expect(hasAnyStructurePermission([{ urn: 'urn:structures:1001:viewer' }])).toBe(true)
 		expect(hasAnyStructurePermission([{ urn: 'urn:structures:all:view' }])).toBe(false)
+		expect(hasAnyStructurePermission([{ urn: 'urn:structures:all:details' }])).toBe(true)
 		expect(hasAnyStructurePermission([{ urn: 'urn:structures:all:manager' }])).toBe(true)
 		expect(hasAnyStructurePermission([{ urn: 'urn:structures:1001:sensitive' }])).toBe(true)
 		expect(hasAnyStructurePermission([{ urn: 'urn:structures:moon-drills:all:viewer' }])).toBe(true)
@@ -148,15 +176,28 @@ describe('structure permission utilities', () => {
 	it('only treats manager structure URNs as manager access', () => {
 		expect(hasStructureManagerPermission([{ urn: 'urn:structures:all:viewer' }])).toBe(false)
 		expect(hasStructureManagerPermission([{ urn: 'urn:structures:1001:viewer' }])).toBe(false)
+		expect(hasStructureManagerPermission([{ urn: 'urn:structures:all:details' }])).toBe(false)
 		expect(hasStructureManagerPermission([{ urn: 'urn:structures:all:manager' }])).toBe(true)
 		expect(hasStructureManagerPermission([{ urn: 'urn:structures:1001:manager' }])).toBe(true)
 		expect(hasStructureManagerPermission([{ urn: 'urn:structures:1001:sensitive' }])).toBe(false)
 		expect(hasStructureManagerPermission([{ urn: 'urn:srp:reviewer' }])).toBe(false)
 	})
 
+	it('treats details structure URNs as read-only detail access', () => {
+		expect(hasStructureDetailsPermission([{ urn: 'urn:structures:all:viewer' }])).toBe(false)
+		expect(hasStructureDetailsPermission([{ urn: 'urn:structures:1001:viewer' }])).toBe(false)
+		expect(hasStructureDetailsPermission([{ urn: 'urn:structures:all:details' }])).toBe(true)
+		expect(hasStructureDetailsPermission([{ urn: 'urn:structures:1001:details' }])).toBe(true)
+		expect(hasStructureDetailsPermission([{ urn: 'urn:structures:all:sensitive' }])).toBe(true)
+		expect(hasStructureDetailsPermission([{ urn: 'urn:structures:1001:sensitive' }])).toBe(true)
+		expect(hasStructureDetailsPermission([{ urn: 'urn:structures:all:manager' }])).toBe(true)
+		expect(hasStructureDetailsPermission([{ urn: 'urn:srp:reviewer' }])).toBe(false)
+	})
+
 	it('treats sensitive structure URNs as read-only sensitive access', () => {
 		expect(hasStructureSensitivePermission([{ urn: 'urn:structures:all:viewer' }])).toBe(false)
 		expect(hasStructureSensitivePermission([{ urn: 'urn:structures:1001:viewer' }])).toBe(false)
+		expect(hasStructureSensitivePermission([{ urn: 'urn:structures:all:details' }])).toBe(false)
 		expect(hasStructureSensitivePermission([{ urn: 'urn:structures:all:manager' }])).toBe(true)
 		expect(hasStructureSensitivePermission([{ urn: 'urn:structures:1001:manager' }])).toBe(true)
 		expect(hasStructureSensitivePermission([{ urn: 'urn:structures:all:sensitive' }])).toBe(true)
@@ -169,6 +210,15 @@ describe('structure permission utilities', () => {
 		expect(hasStructureSensitivePermission([{ urn: 'urn:structures:1001:sensitive' }])).toBe(true)
 		expect(hasStructureManagerPermission([{ urn: 'urn:structures:1001:manager' }])).toBe(true)
 		expect(hasStructureSensitivePermission([{ urn: 'urn:structures:1001:manager' }])).toBe(true)
+	})
+
+	it('only treats all-scope details URNs as all-scope detail access', () => {
+		expect(hasAllStructureDetailsPermission([{ urn: 'urn:structures:all:viewer' }])).toBe(false)
+		expect(hasAllStructureDetailsPermission([{ urn: 'urn:structures:1001:details' }])).toBe(false)
+		expect(hasAllStructureDetailsPermission([{ urn: 'urn:structures:all:details' }])).toBe(true)
+		expect(hasAllStructureDetailsPermission([{ urn: 'urn:structures:all:sensitive' }])).toBe(true)
+		expect(hasAllStructureDetailsPermission([{ urn: 'urn:structures:all:manager' }])).toBe(true)
+		expect(hasAllStructureDetailsPermission([{ urn: 'urn:srp:reviewer' }])).toBe(false)
 	})
 
 	it('only treats all-scope manager URNs as manager access', () => {

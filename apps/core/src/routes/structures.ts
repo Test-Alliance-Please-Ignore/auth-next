@@ -38,6 +38,8 @@ const structureListSortFields = [
 	'system',
 	'type',
 	'state',
+	'magmaticGasEstimatedDepletionAt',
+	'superionicIceEstimatedDepletionAt',
 ] as const
 
 const structureListPagingSchema = z.object({
@@ -352,6 +354,22 @@ async function enrichStructureDetailTypeNames(
 	}
 }
 
+function stripUpdatedAtFromStructureItem(item: any): any {
+	if (!item || typeof item !== 'object') {
+		return item
+	}
+
+	const { updatedAt: _updatedAt, ...rest } = item as Record<string, unknown>
+	return rest
+}
+
+function stripUpdatedAtFromStructureListResponse(response: any): any {
+	return {
+		...response,
+		items: response.items.map((item: any) => stripUpdatedAtFromStructureItem(item)),
+	}
+}
+
 async function enrichSovereigntyStructureListResponse(
 	env: App['Bindings'],
 	response: StructureSovereigntyListResponse
@@ -565,7 +583,11 @@ async function handleCitadelStructuresRequest(c: Context<App>): Promise<Response
 			typeId: c.req.query('typeId') || undefined,
 		}) satisfies StructureCitadelListQuery
 
-		return c.json(await c.env.STRUCTURES.listCitadelStructures(await getStructureActor(c), query))
+		return c.json(
+			stripUpdatedAtFromStructureListResponse(
+				await c.env.STRUCTURES.listCitadelStructures(await getStructureActor(c), query)
+			)
+		)
 	} catch (error) {
 		return c.json(
 			{
@@ -598,7 +620,9 @@ async function handleNavigationStructuresRequest(c: Context<App>): Promise<Respo
 			typeId: c.req.query('typeId') || undefined,
 		}) satisfies StructureNavigationListQuery
 		return c.json(
-			await c.env.STRUCTURES.listNavigationStructures(await getStructureActor(c), query)
+			stripUpdatedAtFromStructureListResponse(
+				await c.env.STRUCTURES.listNavigationStructures(await getStructureActor(c), query)
+			)
 		)
 	} catch (error) {
 		return c.json(
@@ -630,7 +654,11 @@ async function handleSovereigntyStructuresRequest(c: Context<App>): Promise<Resp
 			vulnerabilityState: c.req.query('vulnerabilityState') || undefined,
 		}) satisfies StructureSovereigntyListQuery
 		const response = await c.env.STRUCTURES.listSovereigntyStructures(await getStructureActor(c), query)
-		return c.json(await enrichSovereigntyStructureListResponse(c.env, response))
+		return c.json(
+			stripUpdatedAtFromStructureListResponse(
+				await enrichSovereigntyStructureListResponse(c.env, response)
+			)
+		)
 	} catch (error) {
 		return c.json(
 			{
@@ -664,7 +692,11 @@ async function handleSkyhookStructuresRequest(c: Context<App>): Promise<Response
 			planetId: c.req.query('planetId') || undefined,
 			isRaidable: c.req.query('isRaidable') || undefined,
 		}) satisfies StructureSkyhookListQuery
-		return c.json(await c.env.STRUCTURES.listSkyhookStructures(await getStructureActor(c), query))
+		return c.json(
+			stripUpdatedAtFromStructureListResponse(
+				await c.env.STRUCTURES.listSkyhookStructures(await getStructureActor(c), query)
+			)
+		)
 	} catch (error) {
 		return c.json(
 			{
@@ -697,7 +729,11 @@ async function handleMiningStructuresRequest(c: Context<App>): Promise<Response>
 			typeId: c.req.query('typeId') || undefined,
 			planetId: c.req.query('planetId') || undefined,
 		}) satisfies StructureMiningListQuery
-		return c.json(await c.env.STRUCTURES.listMoonDrillStructures(await getStructureActor(c), query))
+		return c.json(
+			stripUpdatedAtFromStructureListResponse(
+				await c.env.STRUCTURES.listMoonDrillStructures(await getStructureActor(c), query)
+			)
+		)
 	} catch (error) {
 		return c.json(
 			{
@@ -731,7 +767,9 @@ async function handleMiningCitadelsStructuresRequest(c: Context<App>): Promise<R
 			planetId: c.req.query('planetId') || undefined,
 		}) satisfies StructureMiningListQuery
 		return c.json(
-			await c.env.STRUCTURES.listMiningCitadelStructures(await getStructureActor(c), query)
+			stripUpdatedAtFromStructureListResponse(
+				await c.env.STRUCTURES.listMiningCitadelStructures(await getStructureActor(c), query)
+			)
 		)
 	} catch (error) {
 		return c.json(
@@ -813,7 +851,11 @@ app.get('/:structureId', async (c) => {
 		if (!structure) {
 			return c.json({ error: 'Structure not found' }, 404)
 		}
-		return c.json(await enrichStructureDetailTypeNames(c.env, structure as StructureDetailResponse))
+		return c.json(
+			stripUpdatedAtFromStructureItem(
+				await enrichStructureDetailTypeNames(c.env, structure as StructureDetailResponse)
+			)
+		)
 	} catch (error) {
 		return c.json(
 			{
@@ -844,7 +886,11 @@ app.patch('/:structureId/config', async (c) => {
 		if (!structure) {
 			return c.json({ error: 'Structure not found' }, 404)
 		}
-		return c.json(await enrichStructureDetailTypeNames(c.env, structure as StructureDetailResponse))
+		return c.json(
+			stripUpdatedAtFromStructureItem(
+				await enrichStructureDetailTypeNames(c.env, structure as StructureDetailResponse)
+			)
+		)
 	} catch (error) {
 		if (error instanceof z.ZodError) {
 			return c.json({ error: 'Invalid structure config payload', issues: error.issues }, 400)

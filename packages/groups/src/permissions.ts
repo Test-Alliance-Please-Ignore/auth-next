@@ -220,7 +220,7 @@ export interface GetMultiGroupMemberPermissionsResponse {
  * The scope is encoded directly into the URN so the UI and authorization helpers can
  * reason about the visibility target without needing extra lookup state.
  */
-export const STRUCTURE_PERMISSION_ROLES = ['viewer', 'manager', 'sensitive'] as const
+export const STRUCTURE_PERMISSION_ROLES = ['viewer', 'details', 'sensitive', 'manager'] as const
 export type StructurePermissionRole = (typeof STRUCTURE_PERMISSION_ROLES)[number]
 
 export const STRUCTURE_PERMISSION_TABS = [
@@ -360,6 +360,17 @@ export function hasStructureManagerPermission(permissions: Array<PermissionLike>
 	})
 }
 
+export function hasStructureDetailsPermission(permissions: Array<PermissionLike>): boolean {
+	return permissions.some((permission) => {
+		const parsed = parseStructurePermissionUrn(permission.urn)
+		if (!parsed) {
+			return false
+		}
+
+		return parsed.role === 'details' || parsed.role === 'sensitive' || parsed.role === 'manager'
+	})
+}
+
 export function hasStructureSensitivePermission(permissions: Array<PermissionLike>): boolean {
 	return permissions.some((permission) => {
 		const parsed = parseStructurePermissionUrn(permission.urn)
@@ -368,6 +379,21 @@ export function hasStructureSensitivePermission(permissions: Array<PermissionLik
 		}
 
 		return parsed.role === 'manager' || parsed.role === 'sensitive'
+	})
+}
+
+export function hasAllStructureDetailsPermission(permissions: Array<PermissionLike>): boolean {
+	return permissions.some((permission) => {
+		const parsed = parseStructurePermissionUrn(permission.urn)
+		if (!parsed || parsed.scope !== 'all') {
+			return false
+		}
+
+		return (
+			parsed.role === 'details' ||
+			parsed.role === 'sensitive' ||
+			parsed.role === 'manager'
+		)
 	})
 }
 

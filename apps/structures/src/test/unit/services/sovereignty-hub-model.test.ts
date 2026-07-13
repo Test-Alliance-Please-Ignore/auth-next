@@ -441,6 +441,154 @@ describe('sovereignty hub model', () => {
 		expect(result.items.map((item) => item.activityDefenseMultiplier)).toEqual(['2.0', '10.0'])
 	})
 
+	it('sorts sovereignty hubs by magmatic gas depletion time', async () => {
+		const db = makeDb()
+		mocks.getStubMock.mockReturnValue(db.universeStub)
+		const nowSpy = vi.spyOn(Date, 'now').mockReturnValue(
+			new Date('2026-07-12T00:00:00Z').getTime()
+		)
+		db.query.structureSovereigntyHubs.findMany.mockResolvedValue([
+			{
+				structureId: 'hub-slow',
+				corporationId: 'corp-1',
+				systemId: '30000142',
+				systemName: 'Jita',
+				name: 'Slow Gas Hub',
+				typeId: '32458',
+				fuelAccessListId: null,
+				controllerAllianceId: 'alliance-1',
+				reagentBayLastUpdated: new Date('2026-07-12T19:36:46.834Z'),
+				reagentBay: {
+					lastUpdated: '2026-07-12T19:36:46.834Z',
+					reagents: [
+						{
+							typeId: '81143',
+							amount: 20,
+							burningPerHour: 1,
+							lastCycle: '2026-07-12T18:30:00Z',
+						},
+					],
+				},
+				resources: {
+					power: { allocated: 100, available: 200 },
+					workforce: { allocated: 300, available: 400 },
+				},
+				upgrades: [],
+				vulnerabilityWindowStart: new Date('2026-07-13T08:40:00Z'),
+				vulnerabilityWindowEnd: new Date('2026-07-13T15:20:00Z'),
+				workforceTransport: {
+					configuration: { mode: 'unknown', systems: [] },
+					state: { mode: 'unknown', systems: [] },
+				},
+				sourceSyncAt: new Date('2026-07-12T19:36:47.369Z'),
+				lastSyncedAt: new Date('2026-07-12T19:36:47.369Z'),
+				updatedAt: new Date('2026-07-12T19:36:47.369Z'),
+			},
+			{
+				structureId: 'hub-fast',
+				corporationId: 'corp-1',
+				systemId: '30000143',
+				systemName: 'Perimeter',
+				name: 'Fast Gas Hub',
+				typeId: '32458',
+				fuelAccessListId: null,
+				controllerAllianceId: 'alliance-1',
+				reagentBayLastUpdated: new Date('2026-07-12T19:36:46.834Z'),
+				reagentBay: {
+					lastUpdated: '2026-07-12T19:36:46.834Z',
+					reagents: [
+						{
+							typeId: '81143',
+							amount: 10,
+							burningPerHour: 5,
+							lastCycle: '2026-07-12T18:30:00Z',
+						},
+					],
+				},
+				resources: {
+					power: { allocated: 100, available: 200 },
+					workforce: { allocated: 300, available: 400 },
+				},
+				upgrades: [],
+				vulnerabilityWindowStart: new Date('2026-07-13T08:40:00Z'),
+				vulnerabilityWindowEnd: new Date('2026-07-13T15:20:00Z'),
+				workforceTransport: {
+					configuration: { mode: 'unknown', systems: [] },
+					state: { mode: 'unknown', systems: [] },
+				},
+				sourceSyncAt: new Date('2026-07-12T19:36:47.369Z'),
+				lastSyncedAt: new Date('2026-07-12T19:36:47.369Z'),
+				updatedAt: new Date('2026-07-12T19:36:47.369Z'),
+			},
+		])
+		db.query.structureSovereigntySystems.findMany.mockResolvedValue([
+			{
+				systemId: '30000142',
+				systemName: 'Jita',
+				corporationId: 'corp-1',
+				claimType: 'alliance',
+				allianceId: 'alliance-1',
+				corporationClaimantId: null,
+				factionId: null,
+				claimedSince: new Date('2026-07-12T18:00:00Z'),
+				sovereigntyHubStructureId: 'hub-slow',
+				isCapitalSystem: false,
+				vulnerabilityWindowStart: new Date('2026-07-13T08:40:00Z'),
+				vulnerabilityWindowEnd: new Date('2026-07-13T15:20:00Z'),
+				activityDefenseMultiplier: '1.2',
+				militaryLevel: 2,
+				industrialLevel: 3,
+				strategicLevel: 4,
+				sourceSyncAt: new Date('2026-07-12T19:36:47.369Z'),
+				lastSyncedAt: new Date('2026-07-12T19:36:47.369Z'),
+				updatedAt: new Date('2026-07-12T19:36:47.369Z'),
+			},
+			{
+				systemId: '30000143',
+				systemName: 'Perimeter',
+				corporationId: 'corp-1',
+				claimType: 'alliance',
+				allianceId: 'alliance-1',
+				corporationClaimantId: null,
+				factionId: null,
+				claimedSince: new Date('2026-07-12T18:00:00Z'),
+				sovereigntyHubStructureId: 'hub-fast',
+				isCapitalSystem: false,
+				vulnerabilityWindowStart: new Date('2026-07-13T08:40:00Z'),
+				vulnerabilityWindowEnd: new Date('2026-07-13T15:20:00Z'),
+				activityDefenseMultiplier: '1.2',
+				militaryLevel: 2,
+				industrialLevel: 3,
+				strategicLevel: 4,
+				sourceSyncAt: new Date('2026-07-12T19:36:47.369Z'),
+				lastSyncedAt: new Date('2026-07-12T19:36:47.369Z'),
+				updatedAt: new Date('2026-07-12T19:36:47.369Z'),
+			},
+		])
+
+		try {
+			const result = await listSovereigntyStructures(
+				{
+					UNIVERSE: {} as never,
+				} as never,
+				db as never,
+				{
+					id: 'user-1',
+					is_admin: true,
+					roles: [],
+				},
+				{
+					sortBy: 'magmaticGasEstimatedDepletionAt',
+					sortDirection: 'asc',
+				}
+			)
+
+			expect(result.items.map((item) => item.structureId)).toEqual(['hub-fast', 'hub-slow'])
+		} finally {
+			nowSpy.mockRestore()
+		}
+	})
+
 	it('loads sovereignty hub details even when the base structure row is absent', async () => {
 		const db = makeDb()
 		mocks.getStubMock.mockReturnValue(db.universeStub)
