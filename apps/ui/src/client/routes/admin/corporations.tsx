@@ -208,7 +208,9 @@ export default function CorporationsPage() {
 	// Format date (memoized for performance)
 	const formatDate = useCallback((date: string | null) => {
 		if (!date) return 'Never'
-		return formatDistanceToNow(new Date(date), { addSuffix: true })
+		const parsedDate = new Date(date)
+		if (Number.isNaN(parsedDate.getTime())) return 'Never'
+		return formatDistanceToNow(parsedDate, { addSuffix: true })
 	}, [])
 
 	return (

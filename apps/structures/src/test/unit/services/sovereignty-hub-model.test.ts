@@ -236,6 +236,16 @@ describe('sovereignty hub model', () => {
 			claimType: 'alliance',
 			sovereigntyHubStructureId: 'hub-1',
 			controllerAllianceId: 'alliance-1',
+			vulnerabilityWindowStart: '2026-07-13T08:40:00.000Z',
+			vulnerabilityWindowEnd: '2026-07-13T15:20:00.000Z',
+			activityDefenseMultiplier: '1.2',
+			militaryLevel: 2,
+			industrialLevel: 3,
+			strategicLevel: 4,
+			resourceWorkforceAllocated: 300,
+			resourceWorkforceAvailable: 400,
+			resourcePowerAllocated: 100,
+			resourcePowerAvailable: 200,
 		})
 	})
 
@@ -260,6 +270,144 @@ describe('sovereignty hub model', () => {
 
 		expect(result.items).toHaveLength(1)
 		expect(result.items[0]?.regionId).toBe('10000002')
+	})
+
+	it('sorts sovereignty hubs by ADM numerically', async () => {
+		const db = makeDb()
+		mocks.getStubMock.mockReturnValue(db.universeStub)
+		db.universeStub.resolveSolarSystemsByIds.mockResolvedValue({
+			'30000142': {
+				solarSystemId: '30000142',
+				solarSystemName: 'Jita',
+				regionId: '10000002',
+				constellationId: '20000020',
+				securityStatus: '0.9',
+			},
+			'30000143': {
+				solarSystemId: '30000143',
+				solarSystemName: 'Perimeter',
+				regionId: '10000002',
+				constellationId: '20000021',
+				securityStatus: '0.8',
+			},
+		})
+		db.query.structureSovereigntyHubs.findMany.mockResolvedValue([
+			{
+				structureId: 'hub-high',
+				corporationId: 'corp-1',
+				systemId: '30000142',
+				systemName: 'Jita',
+				name: 'High ADM Hub',
+				typeId: '32458',
+				fuelAccessListId: null,
+				controllerAllianceId: 'alliance-1',
+				reagentBayLastUpdated: new Date('2026-07-12T19:36:46.834Z'),
+				reagentBay: {
+					lastUpdated: '2026-07-12T19:36:46.834Z',
+					reagents: [],
+				},
+				resources: {
+					power: { allocated: 100, available: 200 },
+					workforce: { allocated: 300, available: 400 },
+				},
+				upgrades: [],
+				vulnerabilityWindowStart: new Date('2026-07-13T08:40:00Z'),
+				vulnerabilityWindowEnd: new Date('2026-07-13T15:20:00Z'),
+				workforceTransport: {},
+				sourceSyncAt: new Date('2026-07-12T19:36:47.369Z'),
+				lastSyncedAt: new Date('2026-07-12T19:36:47.369Z'),
+				updatedAt: new Date('2026-07-12T19:36:47.369Z'),
+			},
+			{
+				structureId: 'hub-low',
+				corporationId: 'corp-1',
+				systemId: '30000143',
+				systemName: 'Perimeter',
+				name: 'Low ADM Hub',
+				typeId: '32458',
+				fuelAccessListId: null,
+				controllerAllianceId: 'alliance-1',
+				reagentBayLastUpdated: new Date('2026-07-12T19:36:46.834Z'),
+				reagentBay: {
+					lastUpdated: '2026-07-12T19:36:46.834Z',
+					reagents: [],
+				},
+				resources: {
+					power: { allocated: 100, available: 200 },
+					workforce: { allocated: 300, available: 400 },
+				},
+				upgrades: [],
+				vulnerabilityWindowStart: new Date('2026-07-13T08:40:00Z'),
+				vulnerabilityWindowEnd: new Date('2026-07-13T15:20:00Z'),
+				workforceTransport: {},
+				sourceSyncAt: new Date('2026-07-12T19:36:47.369Z'),
+				lastSyncedAt: new Date('2026-07-12T19:36:47.369Z'),
+				updatedAt: new Date('2026-07-12T19:36:47.369Z'),
+			},
+		])
+		db.query.structureSovereigntySystems.findMany.mockResolvedValue([
+			{
+				systemId: '30000142',
+				systemName: 'Jita',
+				corporationId: 'corp-1',
+				claimType: 'alliance',
+				allianceId: 'alliance-1',
+				corporationClaimantId: null,
+				factionId: null,
+				claimedSince: new Date('2026-07-12T18:00:00Z'),
+				sovereigntyHubStructureId: 'hub-high',
+				isCapitalSystem: false,
+				vulnerabilityWindowStart: new Date('2026-07-13T08:40:00Z'),
+				vulnerabilityWindowEnd: new Date('2026-07-13T15:20:00Z'),
+				activityDefenseMultiplier: '10.0',
+				militaryLevel: 2,
+				industrialLevel: 3,
+				strategicLevel: 4,
+				sourceSyncAt: new Date('2026-07-12T19:36:47.369Z'),
+				lastSyncedAt: new Date('2026-07-12T19:36:47.369Z'),
+				updatedAt: new Date('2026-07-12T19:36:47.369Z'),
+			},
+			{
+				systemId: '30000143',
+				systemName: 'Perimeter',
+				corporationId: 'corp-1',
+				claimType: 'alliance',
+				allianceId: 'alliance-1',
+				corporationClaimantId: null,
+				factionId: null,
+				claimedSince: new Date('2026-07-12T18:00:00Z'),
+				sovereigntyHubStructureId: 'hub-low',
+				isCapitalSystem: false,
+				vulnerabilityWindowStart: new Date('2026-07-13T08:40:00Z'),
+				vulnerabilityWindowEnd: new Date('2026-07-13T15:20:00Z'),
+				activityDefenseMultiplier: '2.0',
+				militaryLevel: 2,
+				industrialLevel: 3,
+				strategicLevel: 4,
+				sourceSyncAt: new Date('2026-07-12T19:36:47.369Z'),
+				lastSyncedAt: new Date('2026-07-12T19:36:47.369Z'),
+				updatedAt: new Date('2026-07-12T19:36:47.369Z'),
+			},
+		])
+
+		const result = await listSovereigntyStructures(
+			{
+				UNIVERSE: {} as never,
+			} as never,
+			db as never,
+			{
+				id: 'user-1',
+				is_admin: true,
+				roles: [],
+			},
+			{
+				sortBy: 'activityDefenseMultiplier',
+				sortDirection: 'asc',
+			}
+		)
+
+		expect(result.items.map((item) => item.structureId)).toEqual(['hub-low', 'hub-high'])
+		expect(result.items.map((item) => item.activityDefenseMultiplier)).toEqual(['2.0', '10.0'])
 	})
 
 	it('loads sovereignty hub details even when the base structure row is absent', async () => {

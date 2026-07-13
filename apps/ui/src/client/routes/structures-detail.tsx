@@ -1,42 +1,42 @@
-import { ArrowLeft, CircleHelp, Factory, Package, Recycle, Save, Search, Store, Users } from 'lucide-react'
+import { useQuery, useQueryClient } from '@tanstack/react-query'
+import {
+	ArrowLeft,
+	CircleHelp,
+	Factory,
+	Package,
+	Recycle,
+	Save,
+	Search,
+	Shield,
+	Store,
+	Users,
+} from 'lucide-react'
 import { useEffect, useMemo, useState } from 'react'
 import { Link, Navigate, useParams } from 'react-router-dom'
 
+import { FittingPanel } from '@repo/eve-fitting/fitting-panel'
+import { FittingSlotTable } from '@repo/eve-fitting/fitting-slot-table'
+import { hasAnyStructurePermission } from '@repo/groups'
+import { getStructureTabForTypeId, isReinforcedStructureState } from '@repo/structures'
+
+import { CorporationLogo } from '@/components/corporation-logo'
+import { InventoryBaysTable } from '@/components/inventory-bays-table'
+import { StructureFuelUsageChart } from '@/components/structure-fuel-usage-chart'
+import { StructureStateBadge } from '@/components/structure-state-badge'
+import { StructureSyncStatusBadge } from '@/components/structure-sync-status-badge'
 import { Badge } from '@/components/ui/badge'
-import type { BadgeVariant } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Container } from '@/components/ui/container'
+import { DurationDisplay } from '@/components/ui/duration-display'
+import { EveTimeDisplay } from '@/components/ui/eve-time-display'
 import { FilterField } from '@/components/ui/filter-field'
-import { StructureSyncStatusBadge } from '@/components/structure-sync-status-badge'
 import { LoadingPage } from '@/components/ui/loading'
 import { PageHeader } from '@/components/ui/page-header'
-import { Select, type SelectOption } from '@/components/ui/select'
-import { EveTimeDisplay } from '@/components/ui/eve-time-display'
-import { DurationDisplay } from '@/components/ui/duration-display'
-import { Switch } from '@/components/ui/switch'
-import { StructureStateBadge } from '@/components/structure-state-badge'
-import { useApiMutation } from '@/hooks/useApiMutation'
-import { useAuth } from '@/hooks/useAuth'
-import { useGroups } from '@/hooks/useGroups'
-import { usePageTitle } from '@/hooks/usePageTitle'
-import { useUserPermissions } from '@/hooks/useUserPermissions'
-import { useSystemDetails } from '@/hooks/useLocationSearch'
-import { InventoryBaysTable } from '@/components/inventory-bays-table'
-import { CorporationLogo } from '@/components/corporation-logo'
-import { StructureFuelUsageChart } from '@/components/structure-fuel-usage-chart'
+import { Progress } from '@/components/ui/progress'
+import { Select } from '@/components/ui/select'
 import { Skeleton } from '@/components/ui/skeleton'
-import { FittingPanel } from '@repo/eve-fitting/fitting-panel'
-import { FittingSlotTable } from '@repo/eve-fitting/fitting-slot-table'
-import type { FittingDisplayItem, FittingShipSlotType } from '@repo/eve-fitting/flags'
-import {
-	api,
-	type StructureAssetsDebugResult,
-	type StructureDetailResult,
-	type StructureInventoryBay,
-} from '@/lib/api'
-import { typeIconUrl, typeImageUrl, typeRenderUrl } from '@/lib/eve-images'
-import { formatDateTimeLong } from '@/lib/date-utils'
+import { Switch } from '@/components/ui/switch'
 import {
 	Table,
 	TableBody,
@@ -45,11 +45,24 @@ import {
 	TableHeader,
 	TableRow,
 } from '@/components/ui/table'
+import { useApiMutation } from '@/hooks/useApiMutation'
+import { useAuth } from '@/hooks/useAuth'
+import { useGroups } from '@/hooks/useGroups'
+import { useSystemDetails } from '@/hooks/useLocationSearch'
+import { usePageTitle } from '@/hooks/usePageTitle'
+import { useUserPermissions } from '@/hooks/useUserPermissions'
+import { api } from '@/lib/api'
+import { formatDateTimeLong } from '@/lib/date-utils'
+import { allianceLogoUrl, typeIconUrl, typeImageUrl, typeRenderUrl } from '@/lib/eve-images'
 
-import { useQuery, useQueryClient } from '@tanstack/react-query'
-import { hasAnyStructurePermission } from '@repo/groups'
-import { isReinforcedStructureState } from '@repo/structures'
-import { getStructureTabForTypeId } from '@repo/structures'
+import type { FittingDisplayItem, FittingShipSlotType } from '@repo/eve-fitting/flags'
+import type { BadgeVariant } from '@/components/ui/badge'
+import type { SelectOption } from '@/components/ui/select'
+import type {
+	StructureAssetsDebugResult,
+	StructureDetailResult,
+	StructureInventoryBay,
+} from '@/lib/api'
 
 function structureSyncStatusDescription(
 	syncStatus: StructureDetailResult['syncStatus'],
@@ -81,7 +94,10 @@ function structureSyncStatusDescription(
 		)
 	}
 
-	return lastSyncText || 'The latest corporation-data sync completed successfully and the stored snapshot is current.'
+	return (
+		lastSyncText ||
+		'The latest corporation-data sync completed successfully and the stored snapshot is current.'
+	)
 }
 
 function serviceBadgeVariant(state: string): BadgeVariant {
@@ -138,9 +154,49 @@ function formatNullableNumber(value: number | null | undefined): string {
 	return value.toLocaleString()
 }
 
+function getSovereigntyVulnerabilityState(
+	sovereignty: StructureDetailResult['sovereignty'] | null | undefined
+): { label: string; variant: BadgeVariant } {
+	if (!sovereignty?.vulnerabilityWindowStart || !sovereignty?.vulnerabilityWindowEnd) {
+		return { label: 'Unknown', variant: 'ghost' }
+	}
+
+	const start = new Date(sovereignty.vulnerabilityWindowStart).getTime()
+	const end = new Date(sovereignty.vulnerabilityWindowEnd).getTime()
+	const now = Date.now()
+	if (Number.isFinite(start) && Number.isFinite(end) && now >= start && now <= end) {
+		return { label: 'Vulnerable', variant: 'warning' }
+	}
+
+	return { label: 'Invulnerable', variant: 'success' }
+}
+
+function toFiniteNumber(value: unknown): number {
+	const parsed = typeof value === 'number' ? value : Number(value)
+	return Number.isFinite(parsed) ? parsed : 0
+}
+
 function formatBurnRate(value: number | null | undefined): string {
 	if (value === null || value === undefined) return '-'
 	return `${value.toLocaleString(undefined, { maximumFractionDigits: 2 })}/hr`
+}
+
+function AllianceLogo({ allianceId, allianceName }: { allianceId: string; allianceName?: string | null }) {
+	const [failed, setFailed] = useState(false)
+
+	if (failed) {
+		return <Shield className="h-4 w-4 text-muted-foreground" />
+	}
+
+	return (
+		<img
+			src={allianceLogoUrl(allianceId, 32)}
+			alt={allianceName ? `${allianceName} logo` : 'Alliance logo'}
+			className="h-4 w-4 rounded-sm object-cover"
+			loading="lazy"
+			onError={() => setFailed(true)}
+		/>
+	)
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -184,7 +240,9 @@ function parseWorkforceTransportSources(value: unknown): WorkforceTransportSourc
 		const amount =
 			typeof entry.amount === 'number'
 				? entry.amount
-				: typeof entry.amount === 'string' && entry.amount.trim() !== '' && Number.isFinite(Number(entry.amount))
+				: typeof entry.amount === 'string' &&
+					  entry.amount.trim() !== '' &&
+					  Number.isFinite(Number(entry.amount))
 					? Number(entry.amount)
 					: null
 		return [
@@ -235,7 +293,9 @@ function formatWorkforceTransportMode(mode: ParsedWorkforceTransportSection['mod
 	}
 }
 
-function workforceTransportBadgeVariant(mode: ParsedWorkforceTransportSection['mode']): BadgeVariant {
+function workforceTransportBadgeVariant(
+	mode: ParsedWorkforceTransportSection['mode']
+): BadgeVariant {
 	return mode === 'unknown' ? 'ghost' : 'success'
 }
 
@@ -268,13 +328,6 @@ function WorkforceTransportSection({
 			<div className="flex items-start justify-between gap-3">
 				<div>
 					<div className="font-medium">{label}</div>
-					<div className="text-xs text-muted-foreground">
-						{parsed.mode === 'transit'
-							? 'This hub is configured for transit routing.'
-							: parsed.mode === 'unknown'
-								? 'No recognizable workforce transport configuration was recorded.'
-								: `This hub is configured for ${formatWorkforceTransportMode(parsed.mode).toLowerCase()} routing.`}
-					</div>
 				</div>
 				<Badge variant={workforceTransportBadgeVariant(parsed.mode)}>
 					{formatWorkforceTransportMode(parsed.mode)}
@@ -313,6 +366,35 @@ function WorkforceTransportSection({
 	)
 }
 
+function ResourceAllocationCard({
+	label,
+	allocated,
+	available,
+}: {
+	label: string
+	allocated: number | null | undefined
+	available: number | null | undefined
+}) {
+	const allocatedValue = toFiniteNumber(allocated)
+	const availableValue = toFiniteNumber(available)
+	const percentage =
+		availableValue > 0 ? Math.min(100, Math.max(0, (allocatedValue / availableValue) * 100)) : 0
+
+	return (
+		<div className="rounded-lg border border-border/60 bg-muted/20 p-4">
+			<div className="flex items-center justify-between gap-3">
+				<div className="font-medium">{label}</div>
+				<div className="font-mono text-sm tabular-nums">
+					<span>{formatNullableNumber(allocatedValue)}</span>
+					<span className="mx-1 text-muted-foreground">/</span>
+					<span>{formatNullableNumber(availableValue)}</span>
+				</div>
+			</div>
+			<Progress value={percentage} className="mt-3 h-2 bg-border/60" />
+		</div>
+	)
+}
+
 function InventoryItemIcon({ typeId }: { typeId: string }) {
 	const [failed, setFailed] = useState(false)
 
@@ -345,7 +427,9 @@ const FITTING_SLOT_TYPE_BY_NAME: Record<string, FittingShipSlotType> = {
 
 const STRUCTURE_SLOT_TABLE_TYPES: FittingShipSlotType[] = ['high', 'mid', 'low', 'rig']
 
-function structureFittingItemsToDisplayItems(structure: StructureDetailResult): FittingDisplayItem[] {
+function structureFittingItemsToDisplayItems(
+	structure: StructureDetailResult
+): FittingDisplayItem[] {
 	return (structure.fittingItems ?? []).map((item, index) => ({
 		typeId: item.typeId,
 		typeName: item.typeName ?? item.typeId,
@@ -405,8 +489,11 @@ export default function StructuresDetailPage() {
 	}, [groups])
 
 	const updateMutation = useApiMutation({
-		mutationFn: (data: { hidden: boolean; lowPowerAllowed: boolean; assignedGroupId: string | null }) =>
-			api.updateStructureConfig(structureId!, data),
+		mutationFn: (data: {
+			hidden: boolean
+			lowPowerAllowed: boolean
+			assignedGroupId: string | null
+		}) => api.updateStructureConfig(structureId!, data),
 		successMessage: 'Structure configuration saved.',
 		onSuccess: async () => {
 			await Promise.all([
@@ -433,6 +520,44 @@ export default function StructuresDetailPage() {
 	}, [structure])
 	const hasStructureFitting = fittingItems.length > 0
 	const isReinforced = structure ? isReinforcedStructureState(structure.state) : false
+	type SovereigntyReagent = NonNullable<
+		NonNullable<StructureDetailResult['sovereignty']>['hub']
+	>['reagentBay']['reagents'][number]
+	const sovereigntyReagentBays = useMemo<StructureInventoryBay[]>(() => {
+		const hub = structure?.sovereignty?.hub
+		if (!hub) {
+			return []
+		}
+
+		const totalQuantity = hub.reagentBay.reagents.reduce(
+			(accumulator, reagent) =>
+				accumulator + toFiniteNumber(reagent.securedStock) + toFiniteNumber(reagent.unsecuredStock),
+			0
+		)
+
+		return [
+			{
+				locationFlag: 'SovereigntyReagentBay',
+				label: 'Reagent Bay',
+				totalQuantity,
+				totalStacks: hub.reagentBay.reagents.length,
+				items: hub.reagentBay.reagents.map((reagent) => ({
+					typeId: reagent.typeId,
+					typeName: reagent.typeName ?? null,
+					quantity: toFiniteNumber(reagent.securedStock) + toFiniteNumber(reagent.unsecuredStock),
+					stackCount: 1,
+				})),
+			},
+		]
+	}, [structure?.sovereignty?.hub])
+	const sovereigntyReagentDetailsByTypeId = useMemo(() => {
+		const hub = structure?.sovereignty?.hub
+		if (!hub) {
+			return new Map<string, SovereigntyReagent>()
+		}
+
+		return new Map(hub.reagentBay.reagents.map((reagent) => [reagent.typeId, reagent] as const))
+	}, [structure?.sovereignty?.hub])
 
 	if (!authLoading && !permissionsLoading && !canViewStructures) {
 		return <Navigate to="/dashboard" replace />
@@ -475,41 +600,8 @@ export default function StructuresDetailPage() {
 	const hasSovereigntySummary = structureFamily === 'sovereignty' && structure.sovereignty
 	const hasSkyhookSummary = structureFamily === 'skyhooks' && structure.skyhook
 	const hasMiningSummary = structureFamily === 'mining-citadels'
-	type SovereigntyReagent = NonNullable<NonNullable<StructureDetailResult['sovereignty']>['hub']>['reagentBay']['reagents'][number]
-	const sovereigntyReagentBays = useMemo<StructureInventoryBay[]>(() => {
-		const hub = structure.sovereignty?.hub
-		if (!hub) {
-			return []
-		}
-
-		const totalQuantity = hub.reagentBay.reagents.reduce(
-			(accumulator, reagent) => accumulator + reagent.securedStock + reagent.unsecuredStock,
-			0
-		)
-
-		return [
-			{
-				locationFlag: 'SovereigntyReagentBay',
-				label: 'Reagent Bay',
-				totalQuantity,
-				totalStacks: hub.reagentBay.reagents.length,
-				items: hub.reagentBay.reagents.map((reagent) => ({
-					typeId: reagent.typeId,
-					typeName: null,
-					quantity: reagent.securedStock + reagent.unsecuredStock,
-					stackCount: 1,
-				})),
-			},
-		]
-	}, [structure.sovereignty?.hub])
-	const sovereigntyReagentDetailsByTypeId = useMemo(() => {
-		const hub = structure.sovereignty?.hub
-		if (!hub) {
-			return new Map<string, SovereigntyReagent>()
-		}
-
-		return new Map(hub.reagentBay.reagents.map((reagent) => [reagent.typeId, reagent] as const))
-	}, [structure.sovereignty?.hub])
+	const sovereigntyHub = structure.sovereignty?.hub ?? null
+	const sovereigntyVulnerabilityState = getSovereigntyVulnerabilityState(structure.sovereignty)
 
 	const handleSave = async () => {
 		await updateMutation.mutateAsync({
@@ -567,149 +659,230 @@ export default function StructuresDetailPage() {
 							</Button>
 						)}
 					</CardHeader>
-					<CardContent className="space-y-4 text-sm">
-						<div className="grid grid-cols-2 gap-4">
-							<div>
-								<div className="text-muted-foreground">Region</div>
-								<div className="font-medium">{structure.regionName ?? structure.regionId ?? '-'}</div>
-							</div>
-							<div>
-								<div className="text-muted-foreground">System</div>
-								<div className="font-medium">{structure.systemName ?? structure.systemId}</div>
-							</div>
-							<div>
-								<div className="text-muted-foreground">Type</div>
-								<div className="font-medium">{structure.typeName ?? structure.typeId}</div>
-							</div>
-							<div>
-								<div className="text-muted-foreground">Low Power</div>
-								<div className="font-medium">{structure.lowPower ? 'Yes' : 'No'}</div>
-							</div>
-							<div>
-								<div className="text-muted-foreground">Fuel</div>
-								<div className="font-medium">
-									{structure.fuelAmount !== null ? (
-										`${structure.fuelAmount.toLocaleString()} units`
-									) : structure.fuelExpires ? (
-										<DurationDisplay endDate={structure.fuelExpires} format="compact" />
-									) : (
-										'-'
-									)}
+						<CardContent className="space-y-4 text-sm">
+							<div className="grid grid-cols-2 gap-4">
+								<div>
+									<div className="text-muted-foreground">Region</div>
+									<div className="font-medium">
+										{structure.regionName ?? structure.regionId ?? '-'}
+									</div>
 								</div>
-							</div>
-							<div>
-								<div className="text-muted-foreground">Last Refilled</div>
-								<div className="font-medium">
-									{structure.lastRefilledAt ? (
-										<EveTimeDisplay dateStr={structure.lastRefilledAt} format="compact" />
-									) : (
-										'-'
-									)}
+								<div>
+									<div className="text-muted-foreground">System</div>
+									<div className="font-medium">{structure.systemName ?? structure.systemId}</div>
 								</div>
-							</div>
-							<div>
-								<div className="text-muted-foreground">State</div>
-								<div className="font-medium">
-									<StructureStateBadge state={structure.state} />
+								<div>
+									<div className="text-muted-foreground">
+										{hasSovereigntySummary ? 'Controlling Alliance' : 'Type'}
+									</div>
+									<div className="font-medium">
+										{hasSovereigntySummary
+											? sovereigntyHub?.controllerAllianceId ? (
+													<div className="flex items-center gap-2">
+														<AllianceLogo
+															allianceId={sovereigntyHub.controllerAllianceId}
+															allianceName={sovereigntyHub.controllerAllianceName}
+														/>
+														<span>
+															{sovereigntyHub.controllerAllianceName ??
+																sovereigntyHub.controllerAllianceId}
+														</span>
+													</div>
+												) : (
+													'-'
+												)
+											: structure.typeName ?? structure.typeId}
+									</div>
 								</div>
-							</div>
-							<div>
-								<div className="text-muted-foreground">
-									{isReinforced ? 'Reinforced until' : 'Next State'}
-								</div>
-								<div className="font-medium">
-									{structure.nextStateAt ? (
-										<EveTimeDisplay dateStr={structure.nextStateAt} format="compact" />
-									) : (
-										'-'
-									)}
-								</div>
-							</div>
-						</div>
-						<div className="flex flex-wrap gap-2 pt-2">
-							{structure.hidden && <Badge variant="ghost">Hidden</Badge>}
-							{structure.lowPowerAllowed && <Badge variant="success">Low Power Alerts Suppressed</Badge>}
-							{structure.assignedGroupId && <Badge variant="special">Group Assigned</Badge>}
-						</div>
-						<div className="space-y-3">
-							<div className="space-y-2">
-								<div className="text-xs uppercase tracking-wider text-muted-foreground">Reinforcement</div>
-								<div className="rounded-lg border border-border/60 bg-muted/20 p-3 text-sm">
-									<div className="grid gap-3">
+								{!hasSovereigntySummary && (
+									<div>
+										<div className="text-muted-foreground">Low Power</div>
+										<div className="font-medium">{structure.lowPower ? 'Yes' : 'No'}</div>
+									</div>
+								)}
+								{!hasSovereigntySummary && (
+									<>
 										<div>
-											<div className="text-xs text-muted-foreground">Reinforcement Hour</div>
+											<div className="text-muted-foreground">Fuel</div>
 											<div className="font-medium">
-												{formatReinforcementHourUtc(structure.reinforceHour)}
-											</div>
-										</div>
-										<div>
-											<div className="text-xs text-muted-foreground">Next Reinforcement Hour</div>
-											<div className="font-medium">
-												{structure.nextReinforceHour !== null
-													? formatReinforcementHourUtc(structure.nextReinforceHour)
-													: '-'}
-											</div>
-										</div>
-										<div>
-											<div className="text-xs text-muted-foreground">Next Reinforcement Applies</div>
-											<div className="font-medium">
-												{structure.nextReinforceApply ? (
-													<EveTimeDisplay dateStr={structure.nextReinforceApply} format="compact" />
+												{structure.fuelAmount !== null ? (
+													`${structure.fuelAmount.toLocaleString()} units`
+												) : structure.fuelExpires ? (
+													<DurationDisplay endDate={structure.fuelExpires} format="compact" />
 												) : (
 													'-'
 												)}
 											</div>
 										</div>
-									</div>
-								</div>
-							</div>
-							<div className="space-y-2">
-								<div className="text-xs uppercase tracking-wider text-muted-foreground">
-									Structure Services
-								</div>
-								{structure.services.length > 0 ? (
-									<div className="space-y-1.5">
-										{structure.services.map((service) => (
-											<div
-												key={`${service.name}-${service.state}`}
-												className="flex items-center justify-between gap-3 rounded-lg border border-border/60 bg-muted/20 px-3 py-2"
-											>
-												<div className="flex min-w-0 items-center gap-2">
-													<div className="flex h-7 w-7 shrink-0 items-center justify-center rounded-md border border-border/60 bg-muted/50 text-muted-foreground">
-														{renderServiceIcon(service.name)}
-													</div>
-													<div className="min-w-0">
-														<div className="truncate text-sm font-medium">{service.name}</div>
-													</div>
-												</div>
-												<Badge variant={serviceBadgeVariant(service.state)} className="shrink-0">
-													{formatServiceStateLabel(service.state)}
-												</Badge>
+										<div>
+											<div className="text-muted-foreground">Last Refilled</div>
+											<div className="font-medium">
+												{structure.lastRefilledAt ? (
+													<EveTimeDisplay dateStr={structure.lastRefilledAt} format="compact" />
+												) : (
+													'-'
+												)}
 											</div>
-										))}
-									</div>
-								) : (
-									<div className="rounded-lg border border-border/60 bg-muted/20 px-3 py-2 text-sm text-muted-foreground">
-										No structure services were reported for this structure.
+										</div>
+									</>
+								)}
+								{hasSovereigntySummary && (
+									<div>
+										<div className="text-muted-foreground">Claimed Since</div>
+										<div className="font-medium">
+											{formatNullableDateTime(structure.sovereignty?.claimedSince)}
+										</div>
 									</div>
 								)}
-							</div>
-							<div className="space-y-2">
-								<div className="text-xs uppercase tracking-wider text-muted-foreground">Sync Status</div>
-								<div className="rounded-lg border border-border/60 p-4">
-									<div className="mb-3 flex flex-wrap items-center gap-2">
-										{structure.includeInStructureAssetSync && (
-											<Badge variant="success">Asset Sync Enabled</Badge>
+								{hasSovereigntySummary && (
+									<div>
+										<div className="text-muted-foreground">Capital System</div>
+										<div className="font-medium">
+											{structure.sovereignty?.isCapitalSystem ? 'Yes' : 'No'}
+										</div>
+									</div>
+								)}
+								{hasSovereigntySummary && (
+									<div>
+										<div className="text-muted-foreground">Activity Defense Multiplier</div>
+										<div className="font-medium">
+											{structure.sovereignty?.activityDefenseMultiplier ?? '-'}
+										</div>
+									</div>
+								)}
+								<div>
+									<div className="text-muted-foreground">
+										{hasSovereigntySummary ? 'Vulnerability State' : 'State'}
+									</div>
+									<div className="font-medium">
+										{hasSovereigntySummary ? (
+											<Badge variant={sovereigntyVulnerabilityState.variant}>
+												{sovereigntyVulnerabilityState.label}
+											</Badge>
+										) : (
+											<StructureStateBadge state={structure.state} />
 										)}
-									<div className="mt-0.5">
-										<StructureSyncStatusBadge status={structure.syncStatus} description={syncDescription} />
 									</div>
+								</div>
+								<div>
+									<div className="text-muted-foreground">
+										{hasSovereigntySummary ? 'Vulnerability Window' : isReinforced ? 'Reinforced until' : 'Next State'}
 									</div>
-									<div className="mt-2 text-sm text-muted-foreground">{syncDescription}</div>
+									<div className="font-medium">
+										{hasSovereigntySummary ? (
+											structure.sovereignty?.vulnerabilityWindowStart &&
+											structure.sovereignty?.vulnerabilityWindowEnd ? (
+												`${formatDateTimeLong(structure.sovereignty.vulnerabilityWindowStart)} - ${formatDateTimeLong(structure.sovereignty.vulnerabilityWindowEnd)}`
+											) : (
+												formatNullableDateTime(structure.sovereignty?.vulnerabilityWindowEnd)
+											)
+										) : structure.nextStateAt ? (
+											<EveTimeDisplay dateStr={structure.nextStateAt} format="compact" />
+										) : (
+											'-'
+										)}
+									</div>
 								</div>
 							</div>
-						</div>
-					</CardContent>
+							<div className="flex flex-wrap gap-2 pt-2">
+								{structure.hidden && <Badge variant="ghost">Hidden</Badge>}
+								{!hasSovereigntySummary && structure.lowPowerAllowed && (
+									<Badge variant="success">Low Power Alerts Suppressed</Badge>
+								)}
+								{structure.assignedGroupId && <Badge variant="special">Group Assigned</Badge>}
+							</div>
+								<div className="space-y-3">
+									{!hasSovereigntySummary && (
+										<div className="space-y-2">
+											<div className="text-xs uppercase tracking-wider text-muted-foreground">
+												Reinforcement
+											</div>
+											<div className="rounded-lg border border-border/60 bg-muted/20 p-3 text-sm">
+												<div className="grid gap-3">
+													<div>
+														<div className="text-xs text-muted-foreground">Reinforcement Hour</div>
+														<div className="font-medium">
+															{formatReinforcementHourUtc(structure.reinforceHour)}
+														</div>
+													</div>
+													<div>
+														<div className="text-xs text-muted-foreground">Next Reinforcement Hour</div>
+														<div className="font-medium">
+															{structure.nextReinforceHour !== null
+																? formatReinforcementHourUtc(structure.nextReinforceHour)
+																: '-'}
+														</div>
+													</div>
+													<div>
+														<div className="text-xs text-muted-foreground">
+															Next Reinforcement Applies
+														</div>
+														<div className="font-medium">
+															{structure.nextReinforceApply ? (
+																<EveTimeDisplay dateStr={structure.nextReinforceApply} format="compact" />
+															) : (
+																'-'
+															)}
+														</div>
+													</div>
+												</div>
+											</div>
+										</div>
+									)}
+								{!hasSovereigntySummary && (
+									<div className="space-y-2">
+										<div className="text-xs uppercase tracking-wider text-muted-foreground">
+											Structure Services
+										</div>
+										{structure.services.length > 0 ? (
+											<div className="space-y-1.5">
+												{structure.services.map((service) => (
+													<div
+														key={`${service.name}-${service.state}`}
+														className="flex items-center justify-between gap-3 rounded-lg border border-border/60 bg-muted/20 px-3 py-2"
+													>
+														<div className="flex min-w-0 items-center gap-2">
+															<div className="flex h-7 w-7 shrink-0 items-center justify-center rounded-md border border-border/60 bg-muted/50 text-muted-foreground">
+																{renderServiceIcon(service.name)}
+															</div>
+															<div className="min-w-0">
+																<div className="truncate text-sm font-medium">{service.name}</div>
+															</div>
+														</div>
+														<Badge variant={serviceBadgeVariant(service.state)} className="shrink-0">
+															{formatServiceStateLabel(service.state)}
+														</Badge>
+													</div>
+												))}
+											</div>
+										) : (
+											<div className="rounded-lg border border-border/60 bg-muted/20 px-3 py-2 text-sm text-muted-foreground">
+												No structure services were reported for this structure.
+											</div>
+										)}
+									</div>
+								)}
+								<div className="space-y-2">
+									<div className="text-xs uppercase tracking-wider text-muted-foreground">
+										Sync Status
+									</div>
+									<div className="rounded-lg border border-border/60 p-4">
+										<div className="mb-3 flex flex-wrap items-center gap-2">
+											{!hasSovereigntySummary && structure.includeInStructureAssetSync && (
+												<Badge variant="success">Asset Sync Enabled</Badge>
+											)}
+											<div className="mt-0.5">
+												<StructureSyncStatusBadge
+													status={structure.syncStatus}
+													description={syncDescription}
+												/>
+											</div>
+										</div>
+										<div className="mt-2 text-sm text-muted-foreground">{syncDescription}</div>
+									</div>
+								</div>
+							</div>
+						</CardContent>
 				</Card>
 
 				<Card>
@@ -729,15 +902,17 @@ export default function StructuresDetailPage() {
 							</div>
 							<Switch checked={hidden} onCheckedChange={setHidden} />
 						</div>
-						<div className="flex items-center justify-between gap-4 rounded-lg border border-border/60 p-4">
-							<div>
-								<div className="font-medium">Low Power Allowed</div>
-								<div className="text-sm text-muted-foreground">
-									Suppress low-power alerts for structures where that is intentional.
+						{!hasSovereigntySummary && (
+							<div className="flex items-center justify-between gap-4 rounded-lg border border-border/60 p-4">
+								<div>
+									<div className="font-medium">Low Power Allowed</div>
+									<div className="text-sm text-muted-foreground">
+										Suppress low-power alerts for structures where that is intentional.
+									</div>
 								</div>
+								<Switch checked={lowPowerAllowed} onCheckedChange={setLowPowerAllowed} />
 							</div>
-							<Switch checked={lowPowerAllowed} onCheckedChange={setLowPowerAllowed} />
-						</div>
+						)}
 						<FilterField label="Assigned Group">
 							<Select
 								options={groupOptions}
@@ -747,14 +922,16 @@ export default function StructuresDetailPage() {
 							/>
 						</FilterField>
 						<div className="flex items-center justify-end gap-3 pt-2">
-							<Button
-								variant="ghost"
-								onClick={() => {
-									setHidden(structure.hidden)
-									setLowPowerAllowed(structure.lowPowerAllowed)
-									setAssignedGroupId(structure.assignedGroupId ?? '')
-								}}
-							>
+								<Button
+									variant="ghost"
+									onClick={() => {
+										setHidden(structure.hidden)
+										if (!hasSovereigntySummary) {
+											setLowPowerAllowed(structure.lowPowerAllowed)
+										}
+										setAssignedGroupId(structure.assignedGroupId ?? '')
+									}}
+								>
 								Reset
 							</Button>
 							<Button
@@ -774,123 +951,80 @@ export default function StructuresDetailPage() {
 				<div className="space-y-4">
 					<Card>
 						<CardHeader>
-							<CardTitle>Sovereignty State</CardTitle>
+							<CardTitle>Hub Configuration</CardTitle>
 							<CardDescription>
-								System ownership and the currently linked sovereignty hub snapshot.
+								Workforce transport routing and the hub's current resource allocation.
 							</CardDescription>
 						</CardHeader>
-						<CardContent className="grid gap-4 md:grid-cols-2 text-sm">
-							<div>
-								<div className="text-muted-foreground">Activity Defense Multiplier</div>
-								<div className="font-medium">
-									{structure.sovereignty?.activityDefenseMultiplier ?? '-'}
-								</div>
+						<CardContent className="space-y-6 text-sm">
+							<div className="grid gap-4 md:grid-cols-2">
+								<ResourceAllocationCard
+									label="Power Allocation"
+									allocated={sovereigntyHub?.resourcePowerAllocated}
+									available={sovereigntyHub?.resourcePowerAvailable}
+								/>
+								<ResourceAllocationCard
+									label="Workforce Allocation"
+									allocated={sovereigntyHub?.resourceWorkforceAllocated}
+									available={sovereigntyHub?.resourceWorkforceAvailable}
+								/>
 							</div>
-							<div>
-								<div className="text-muted-foreground">Claimed Since</div>
-								<div className="font-medium">{formatNullableDateTime(structure.sovereignty?.claimedSince)}</div>
-							</div>
-							<div>
-								<div className="text-muted-foreground">Capital System</div>
-								<div className="font-medium">{structure.sovereignty?.isCapitalSystem ? 'Yes' : 'No'}</div>
-							</div>
-							<div>
-								<div className="text-muted-foreground">Sovereignty Hub</div>
-								<div className="font-medium">
-									{structure.sovereignty?.sovereigntyHubStructureId ?? '-'}
-								</div>
-							</div>
-							<div>
-								<div className="text-muted-foreground">Controller Alliance</div>
-								<div className="font-medium">
-									{structure.sovereignty?.hub?.controllerAllianceId ?? '-'}
-								</div>
-							</div>
-							<div>
-								<div className="text-muted-foreground">Vulnerability Window</div>
-								<div className="font-medium">
-									{structure.sovereignty?.vulnerabilityWindowStart &&
-									structure.sovereignty?.vulnerabilityWindowEnd
-										? `${formatDateTimeLong(structure.sovereignty.vulnerabilityWindowStart)} - ${formatDateTimeLong(structure.sovereignty.vulnerabilityWindowEnd)}`
-										: formatNullableDateTime(structure.sovereignty?.vulnerabilityWindowEnd)}
-								</div>
-							</div>
-							<div>
-								<div className="text-muted-foreground">System Resources</div>
-								<div className="font-medium">
-									{structure.sovereignty?.hub
-										? `${formatNullableNumber(structure.sovereignty.hub.resourcePowerAllocated)} / ${formatNullableNumber(structure.sovereignty.hub.resourcePowerAvailable)} power, ${formatNullableNumber(structure.sovereignty.hub.resourceWorkforceAllocated)} / ${formatNullableNumber(structure.sovereignty.hub.resourceWorkforceAvailable)} workforce`
-										: '-'}
-								</div>
-							</div>
-							<div>
-								<div className="text-muted-foreground">Fuel Access List</div>
-								<div className="font-medium">
-									{structure.sovereignty?.hub?.fuelAccessListId ?? '-'}
-								</div>
+
+							<div className="grid gap-4 lg:grid-cols-2">
+								<WorkforceTransportSection
+									label="Workforce Transport Configuration"
+									section={sovereigntyHub?.workforceTransport?.configuration}
+								/>
+								<WorkforceTransportSection
+									label="Workforce Transport State"
+									section={sovereigntyHub?.workforceTransport?.state}
+								/>
 							</div>
 						</CardContent>
 					</Card>
 
+					<div className="grid gap-4 lg:grid-cols-2">
 						<Card>
 							<CardHeader>
-								<CardTitle>Hub Configuration</CardTitle>
+								<CardTitle>Upgrades</CardTitle>
 								<CardDescription>
-									Workforce transport routing and the hub's current resource allocation.
+									Installed sovereignty hub upgrades and their current power state.
 								</CardDescription>
 							</CardHeader>
-							<CardContent className="space-y-6 text-sm">
-								<div className="grid gap-4 lg:grid-cols-2">
-									<WorkforceTransportSection
-										label="Workforce Transport Configuration"
-										section={structure.sovereignty?.hub?.workforceTransport?.configuration}
-									/>
-									<WorkforceTransportSection
-										label="Workforce Transport State"
-										section={structure.sovereignty?.hub?.workforceTransport?.state}
-									/>
-								</div>
-
-								<div className="grid gap-4 md:grid-cols-2">
-									<div className="rounded-lg border border-border/60 bg-muted/20 p-4">
-										<div className="text-xs uppercase tracking-wide text-muted-foreground">Power Allocation</div>
-										<div className="mt-2 grid grid-cols-2 gap-4">
-											<div>
-												<div className="text-muted-foreground">Allocated</div>
-												<div className="font-medium">
-													{formatNullableNumber(structure.sovereignty?.hub?.resourcePowerAllocated)}
+							<CardContent className="space-y-2">
+								{sovereigntyHub?.upgrades?.length ? (
+									<div className="space-y-1.5">
+										{sovereigntyHub.upgrades.map((upgrade) => (
+											<div
+												key={`${upgrade.typeId}-${upgrade.powerState}`}
+												className="flex items-center justify-between gap-3 rounded-lg border border-border/60 bg-muted/20 px-3 py-2"
+											>
+												<div className="flex min-w-0 items-center gap-2">
+													<div className="flex h-7 w-7 shrink-0 items-center justify-center rounded-md border border-border/60 bg-muted/50 text-muted-foreground">
+														<InventoryItemIcon typeId={upgrade.typeId} />
+													</div>
+													<div className="min-w-0">
+														<div className="truncate text-sm font-medium">
+															{upgrade.typeName ?? upgrade.typeId}
+														</div>
+													</div>
 												</div>
+												<Badge
+													variant={upgrade.powerState.toLowerCase() === 'online' ? 'success' : 'ghost'}
+													className="shrink-0"
+												>
+													{upgrade.powerState}
+												</Badge>
 											</div>
-											<div>
-												<div className="text-muted-foreground">Available</div>
-												<div className="font-medium">
-													{formatNullableNumber(structure.sovereignty?.hub?.resourcePowerAvailable)}
-												</div>
-											</div>
-										</div>
+										))}
 									</div>
-
-									<div className="rounded-lg border border-border/60 bg-muted/20 p-4">
-										<div className="text-xs uppercase tracking-wide text-muted-foreground">Workforce Allocation</div>
-										<div className="mt-2 grid grid-cols-2 gap-4">
-											<div>
-												<div className="text-muted-foreground">Allocated</div>
-												<div className="font-medium">
-													{formatNullableNumber(structure.sovereignty?.hub?.resourceWorkforceAllocated)}
-												</div>
-											</div>
-											<div>
-												<div className="text-muted-foreground">Available</div>
-												<div className="font-medium">
-													{formatNullableNumber(structure.sovereignty?.hub?.resourceWorkforceAvailable)}
-												</div>
-											</div>
-										</div>
+								) : (
+									<div className="rounded-lg border border-dashed border-border/60 px-3 py-4 text-sm text-muted-foreground">
+										No upgrades reported.
 									</div>
-								</div>
+								)}
 							</CardContent>
 						</Card>
-
 						<Card>
 							<CardHeader>
 								<CardTitle>Reagent Bay</CardTitle>
@@ -902,19 +1036,19 @@ export default function StructuresDetailPage() {
 								<div className="grid gap-4 md:grid-cols-3 text-sm">
 									<div>
 										<div className="text-muted-foreground">Last Updated</div>
-									<div className="font-medium">
-										{formatNullableDateTime(structure.sovereignty?.hub?.reagentBayLastUpdated)}
-									</div>
-								</div>
-								<div>
-									<div className="text-muted-foreground">Reagent Count</div>
-									<div className="font-medium">{structure.sovereignty?.hub?.reagentCount ?? 0}</div>
-								</div>
-								<div>
-									<div className="text-muted-foreground">Stock Totals</div>
 										<div className="font-medium">
-											{structure.sovereignty?.hub
-												? `${formatNullableNumber(structure.sovereignty.hub.totalSecuredStock)} secured, ${formatNullableNumber(structure.sovereignty.hub.totalUnsecuredStock)} unsecured`
+											{formatNullableDateTime(sovereigntyHub?.reagentBayLastUpdated)}
+										</div>
+									</div>
+									<div>
+										<div className="text-muted-foreground">Reagent Count</div>
+										<div className="font-medium">{sovereigntyHub?.reagentCount ?? 0}</div>
+									</div>
+									<div>
+										<div className="text-muted-foreground">Stock Totals</div>
+										<div className="font-medium">
+											{sovereigntyHub
+												? `${formatNullableNumber(sovereigntyHub.totalSecuredStock)} secured, ${formatNullableNumber(sovereigntyHub.totalUnsecuredStock)} unsecured`
 												: '-'}
 										</div>
 									</div>
@@ -932,56 +1066,16 @@ export default function StructuresDetailPage() {
 
 										return (
 											<span>
-												Secured {formatNullableNumber(reagent.securedStock)} · Unsecured{' '}
-												{formatNullableNumber(reagent.unsecuredStock)} · Last cycle{' '}
-												{formatNullableDateTime(reagent.lastCycle)}
+												Secured {formatNullableNumber(toFiniteNumber(reagent.securedStock))} ·
+												Unsecured {formatNullableNumber(toFiniteNumber(reagent.unsecuredStock))} ·
+												Last cycle {formatNullableDateTime(reagent.lastCycle)}
 											</span>
 										)
 									}}
 								/>
 							</CardContent>
 						</Card>
-
-						<Card>
-							<CardHeader>
-							<CardTitle>Upgrades</CardTitle>
-							<CardDescription>
-								Installed sovereignty hub upgrades and their current power state.
-							</CardDescription>
-							</CardHeader>
-							<CardContent>
-								<div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
-									{structure.sovereignty?.hub?.upgrades.length ? (
-										structure.sovereignty.hub.upgrades.map((upgrade) => (
-											<Card key={`${upgrade.typeId}-${upgrade.powerState}`} className="border-border/60 bg-muted/20">
-												<CardContent className="space-y-3 p-4">
-													<div className="flex items-start justify-between gap-3">
-														<div className="space-y-1">
-															<div className="text-xs uppercase tracking-wide text-muted-foreground">
-																Installed Upgrade
-															</div>
-															<div className="font-medium">{upgrade.typeId}</div>
-														</div>
-														<Badge
-															variant={upgrade.powerState.toLowerCase() === 'online' ? 'success' : 'ghost'}
-														>
-															{upgrade.powerState}
-														</Badge>
-													</div>
-													<div className="text-sm text-muted-foreground">
-														Sovereignty hub upgrade slot currently reporting this state.
-													</div>
-												</CardContent>
-											</Card>
-										))
-									) : (
-										<div className="rounded-lg border border-dashed border-border/60 px-3 py-4 text-sm text-muted-foreground">
-											No upgrades reported.
-										</div>
-									)}
-								</div>
-							</CardContent>
-						</Card>
+					</div>
 				</div>
 			)}
 
@@ -1006,7 +1100,9 @@ export default function StructuresDetailPage() {
 						</div>
 						<div>
 							<div className="text-muted-foreground">Effective Workforce</div>
-							<div className="font-medium">{formatNullableNumber(structure.skyhook?.effectiveWorkforce)}</div>
+							<div className="font-medium">
+								{formatNullableNumber(structure.skyhook?.effectiveWorkforce)}
+							</div>
 						</div>
 						<div>
 							<div className="text-muted-foreground">Raidable</div>
@@ -1019,7 +1115,8 @@ export default function StructuresDetailPage() {
 						<div>
 							<div className="text-muted-foreground">Theft Vulnerability</div>
 							<div className="font-medium">
-								{structure.skyhook?.theftVulnerabilityStart && structure.skyhook?.theftVulnerabilityEnd
+								{structure.skyhook?.theftVulnerabilityStart &&
+								structure.skyhook?.theftVulnerabilityEnd
 									? `${formatDateTimeLong(structure.skyhook.theftVulnerabilityStart)} - ${formatDateTimeLong(structure.skyhook.theftVulnerabilityEnd)}`
 									: formatNullableDateTime(structure.skyhook?.vulnerableAt)}
 							</div>
@@ -1046,7 +1143,9 @@ export default function StructuresDetailPage() {
 				<Card>
 					<CardHeader>
 						<CardTitle>Mining Extraction</CardTitle>
-						<CardDescription>Last known moon extraction snapshot for this structure.</CardDescription>
+						<CardDescription>
+							Last known moon extraction snapshot for this structure.
+						</CardDescription>
 					</CardHeader>
 					<CardContent className="space-y-4 text-sm">
 						{!structure.mining ? (
@@ -1055,42 +1154,42 @@ export default function StructuresDetailPage() {
 							</div>
 						) : null}
 						<div className="grid gap-4 md:grid-cols-2">
-						<div>
-							<div className="text-muted-foreground">Moon</div>
-							<div className="font-medium">
-								{structure.mining?.moonName ?? structure.mining?.moonId ?? '-'}
+							<div>
+								<div className="text-muted-foreground">Moon</div>
+								<div className="font-medium">
+									{structure.mining?.moonName ?? structure.mining?.moonId ?? '-'}
+								</div>
 							</div>
-						</div>
-						<div>
-							<div className="text-muted-foreground">Planet</div>
-							<div className="font-medium">
-								{structure.mining?.planetName ?? structure.mining?.planetId ?? '-'}
+							<div>
+								<div className="text-muted-foreground">Planet</div>
+								<div className="font-medium">
+									{structure.mining?.planetName ?? structure.mining?.planetId ?? '-'}
+								</div>
 							</div>
-						</div>
-						<div>
-							<div className="text-muted-foreground">System</div>
-							<div className="font-medium">
-								{structure.mining?.systemName ?? structure.mining?.systemId ?? '-'}
+							<div>
+								<div className="text-muted-foreground">System</div>
+								<div className="font-medium">
+									{structure.mining?.systemName ?? structure.mining?.systemId ?? '-'}
+								</div>
 							</div>
-						</div>
-						<div>
-							<div className="text-muted-foreground">Extraction Start</div>
-							<div className="font-medium">
-								{formatNullableDateTime(structure.mining?.extractionStartTime)}
+							<div>
+								<div className="text-muted-foreground">Extraction Start</div>
+								<div className="font-medium">
+									{formatNullableDateTime(structure.mining?.extractionStartTime)}
+								</div>
 							</div>
-						</div>
-						<div>
-							<div className="text-muted-foreground">Chunk Arrival</div>
-							<div className="font-medium">
-								{formatNullableDateTime(structure.mining?.chunkArrivalTime)}
+							<div>
+								<div className="text-muted-foreground">Chunk Arrival</div>
+								<div className="font-medium">
+									{formatNullableDateTime(structure.mining?.chunkArrivalTime)}
+								</div>
 							</div>
-						</div>
-						<div>
-							<div className="text-muted-foreground">Natural Decay</div>
-							<div className="font-medium">
-								{formatNullableDateTime(structure.mining?.naturalDecayTime)}
+							<div>
+								<div className="text-muted-foreground">Natural Decay</div>
+								<div className="font-medium">
+									{formatNullableDateTime(structure.mining?.naturalDecayTime)}
+								</div>
 							</div>
-						</div>
 						</div>
 					</CardContent>
 				</Card>
@@ -1101,9 +1200,7 @@ export default function StructuresDetailPage() {
 					<Card>
 						<CardHeader>
 							<CardTitle>Fitting</CardTitle>
-							<CardDescription>
-								Structure fitting from the latest known snapshot.
-							</CardDescription>
+							<CardDescription>Structure fitting from the latest known snapshot.</CardDescription>
 						</CardHeader>
 						<CardContent className="space-y-6">
 							<div className="overflow-x-auto">
@@ -1119,8 +1216,8 @@ export default function StructuresDetailPage() {
 								<div>
 									<div className="text-sm font-medium">Slot Layout</div>
 									<div className="text-sm text-muted-foreground">
-										High, mid, low, and rig slot fittings from the latest structure asset snapshot, with
-										loaded charges and scripts shown beneath their parent modules.
+										High, mid, low, and rig slot fittings from the latest structure asset snapshot,
+										with loaded charges and scripts shown beneath their parent modules.
 									</div>
 								</div>
 								<FittingSlotTable
@@ -1152,41 +1249,46 @@ export default function StructuresDetailPage() {
 				) : null}
 			</div>
 
-			<Card>
-				<CardHeader>
-					<CardTitle>Fuel Usage</CardTitle>
-					<CardDescription>
-						Hourly fuel block count and burn rate over the last 7 days.
-					</CardDescription>
-				</CardHeader>
-				<CardContent className="space-y-5">
-					<div className="grid gap-4 md:grid-cols-3 text-sm">
-						<div>
-							<div className="text-muted-foreground">Current Burn Rate</div>
-							<div className="font-medium">{formatBurnRate(structure.fuelUsage?.fuelBurnRatePerHour)}</div>
-						</div>
-						<div>
-							<div className="text-muted-foreground">Hourly Samples</div>
-							<div className="font-medium">{structure.fuelUsage?.sampleCount ?? 0}</div>
-						</div>
-						<div>
-							<div className="text-muted-foreground">Last Refilled</div>
-							<div className="font-medium">
-								{formatNullableDateTime(structure.fuelUsage?.lastRefilledAt)}
+				{!hasSovereigntySummary && (
+					<Card>
+						<CardHeader>
+							<CardTitle>Fuel Usage</CardTitle>
+							<CardDescription>
+								Hourly fuel block count and burn rate over the last 7 days.
+							</CardDescription>
+						</CardHeader>
+						<CardContent className="space-y-5">
+							<div className="grid gap-4 md:grid-cols-3 text-sm">
+								<div>
+									<div className="text-muted-foreground">Current Burn Rate</div>
+									<div className="font-medium">
+										{formatBurnRate(structure.fuelUsage?.fuelBurnRatePerHour)}
+									</div>
+								</div>
+								<div>
+									<div className="text-muted-foreground">Hourly Samples</div>
+									<div className="font-medium">{structure.fuelUsage?.sampleCount ?? 0}</div>
+								</div>
+								<div>
+									<div className="text-muted-foreground">Last Refilled</div>
+									<div className="font-medium">
+										{formatNullableDateTime(structure.fuelUsage?.lastRefilledAt)}
+									</div>
+								</div>
 							</div>
-						</div>
-					</div>
-					<StructureFuelUsageChart points={structure.fuelUsage?.points ?? []} />
-				</CardContent>
-			</Card>
+							<StructureFuelUsageChart points={structure.fuelUsage?.points ?? []} />
+						</CardContent>
+					</Card>
+				)}
 
 			{isAdmin && assetsDebug && assetsDebug.items.length > 0 ? (
 				<Card>
 					<CardHeader>
 						<CardTitle>Asset Debug</CardTitle>
 						<CardDescription>
-							Raw corporation assets fetched for this structure&apos;s owning corporation and filtered to
-							this structure ID. This is a direct asset snapshot, not the grouped inventory view.
+							Raw corporation assets fetched for this structure&apos;s owning corporation and
+							filtered to this structure ID. This is a direct asset snapshot, not the grouped
+							inventory view.
 						</CardDescription>
 					</CardHeader>
 					<CardContent className="space-y-4">
@@ -1233,13 +1335,17 @@ export default function StructuresDetailPage() {
 														</div>
 													</div>
 												</TableCell>
-												<TableCell className="text-right font-mono">{item.quantity.toLocaleString()}</TableCell>
+												<TableCell className="text-right font-mono">
+													{item.quantity.toLocaleString()}
+												</TableCell>
 												<TableCell>
 													<div className="font-medium">{item.locationFlagLabel}</div>
 													<div className="text-xs text-muted-foreground">{item.locationFlag}</div>
 												</TableCell>
 												<TableCell>{item.locationType}</TableCell>
-												<TableCell className="text-right">{item.isSingleton ? 'Yes' : 'No'}</TableCell>
+												<TableCell className="text-right">
+													{item.isSingleton ? 'Yes' : 'No'}
+												</TableCell>
 												<TableCell className="font-mono text-xs">{item.itemId}</TableCell>
 												<TableCell className="text-xs text-muted-foreground">
 													{formatDateTimeLong(item.updatedAt)}
@@ -1257,7 +1363,6 @@ export default function StructuresDetailPage() {
 					</CardContent>
 				</Card>
 			) : null}
-
 		</Container>
 	)
 }

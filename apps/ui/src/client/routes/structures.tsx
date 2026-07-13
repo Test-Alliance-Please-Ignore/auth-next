@@ -6,6 +6,7 @@ import {
 	Building2,
 	Filter,
 	RefreshCcw,
+	Shield,
 } from 'lucide-react'
 import { useEffect, useMemo, useState } from 'react'
 import { Link, Navigate } from 'react-router-dom'
@@ -15,7 +16,7 @@ import {
 	hasAnyStructurePermission,
 	hasStructureTabPermission,
 } from '@repo/groups'
-import { STRUCTURE_TABS, type StructureTab } from '@repo/structures'
+import { STRUCTURE_TABS, isReinforcedStructureState, type StructureTab } from '@repo/structures'
 
 import { TableRefreshFrame } from '@/components/table-refresh-frame'
 import { CorporationLogo } from '@/components/corporation-logo'
@@ -32,6 +33,7 @@ import { PageHeader } from '@/components/ui/page-header'
 import { Select } from '@/components/ui/select'
 import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { formatDateTimeLong } from '@/lib/date-utils'
+import { allianceLogoUrl } from '@/lib/eve-images'
 import {
 	Table,
 	TableBody,
@@ -47,9 +49,11 @@ import { usePageTitle } from '@/hooks/usePageTitle'
 import { useUserPermissions } from '@/hooks/useUserPermissions'
 import {
 	type StructureListBaseItem,
+	type StructureListFilterOptions,
 	type StructureListSortBy,
 	type StructureMiningListItem,
 	type StructureSkyhookListItem,
+	type StructureSovereigntyListFilterOptions,
 	type StructureSovereigntyListItem,
 } from '@/lib/api'
 import { cn } from '@/lib/utils'
@@ -122,12 +126,64 @@ function formatNullableNumber(value: number | null | undefined): string {
 	return value.toLocaleString()
 }
 
-function formatSovereigntyClaimType(value: 'alliance' | 'faction' | 'unclaimed' | null | undefined): string {
-	if (!value) return '-'
-	return value[0].toUpperCase() + value.slice(1)
+function formatNullableDecimal(
+	value: string | number | null | undefined,
+	fractionDigits = 2
+): string {
+	if (value === null || value === undefined || value === '') return '-'
+	const numericValue = typeof value === 'number' ? value : Number.parseFloat(value)
+	if (!Number.isFinite(numericValue)) return '-'
+	return numericValue.toFixed(fractionDigits)
 }
 
-type PrimaryStructureFilterSlot = 'type' | 'raidable' | 'alliance'
+function getSovereigntyVulnerabilityState(
+	sovereignty:
+		| Pick<
+				StructureSovereigntyListItem,
+				'vulnerabilityWindowStart' | 'vulnerabilityWindowEnd'
+		  >
+		| null
+		| undefined
+): { label: string; variant: 'ghost' | 'warning' | 'success' } {
+	if (!sovereignty?.vulnerabilityWindowStart || !sovereignty?.vulnerabilityWindowEnd) {
+		return { label: 'Unknown', variant: 'ghost' }
+	}
+
+	const start = new Date(sovereignty.vulnerabilityWindowStart).getTime()
+	const end = new Date(sovereignty.vulnerabilityWindowEnd).getTime()
+	const now = Date.now()
+	if (Number.isFinite(start) && Number.isFinite(end) && now >= start && now <= end) {
+		return { label: 'Vulnerable', variant: 'warning' }
+	}
+
+	return { label: 'Invulnerable', variant: 'success' }
+}
+
+function AllianceLogo({
+	allianceId,
+	allianceName,
+}: {
+	allianceId: string
+	allianceName?: string | null
+}) {
+	const [failed, setFailed] = useState(false)
+
+	if (failed) {
+		return <Shield className="h-4 w-4 text-muted-foreground" />
+	}
+
+	return (
+		<img
+			src={allianceLogoUrl(allianceId, 32)}
+			alt={allianceName ? `${allianceName} logo` : 'Alliance logo'}
+			className="h-5 w-5 rounded-sm object-cover"
+			loading="lazy"
+			onError={() => setFailed(true)}
+		/>
+	)
+}
+
+type PrimaryStructureFilterSlot = 'type' | 'raidable'
 
 export default function StructuresPage() {
 	usePageTitle('Structures')
@@ -149,6 +205,9 @@ export default function StructuresPage() {
 	const activeTab = visibleTabs.some((tab) => tab.tab === tableState.tab)
 		? tableState.tab
 		: visibleTabs[0]?.tab ?? tableState.tab
+	const isSovereigntyTab = activeTab === 'sovereignty'
+	const isSkyhooksTab = activeTab === 'skyhooks'
+	const isMiningCitadelTab = activeTab === 'mining-citadels'
 	const [nowMs, setNowMs] = useState(() => Date.now())
 	const { data: moduleConfig } = useStructureModuleConfig()
 	const {
@@ -191,8 +250,12 @@ export default function StructuresPage() {
 			case 'sovereignty':
 				return {
 					...base,
-					...common,
-					allianceId: tableState.filters.allianceId,
+					corporationId: tableState.filters.corporationId,
+					assignedGroupId: tableState.filters.assignedGroupId,
+					regionId: tableState.filters.regionId,
+					systemId: tableState.filters.systemId,
+					controllerAllianceId: tableState.filters.controllerAllianceId,
+					vulnerabilityState: tableState.filters.vulnerabilityState,
 				}
 			case 'skyhooks':
 				return {
@@ -229,6 +292,10 @@ export default function StructuresPage() {
 	const structures = structuresResponse?.items ?? []
 	const pagination = structuresResponse?.pagination
 	const filterOptions = structuresResponse?.filterOptions
+	const genericFilterOptions = filterOptions as StructureListFilterOptions | undefined
+	const sovereigntyFilterOptions = isSovereigntyTab
+		? (filterOptions as StructureSovereigntyListFilterOptions | undefined)
+		: undefined
 	const isInitialLoading = isLoading && !structuresResponse
 	const isSoftLoading = Boolean(structuresResponse) && isFetching
 	const refreshAll = () => {
@@ -306,46 +373,55 @@ export default function StructuresPage() {
 	const stateOptions = useMemo<SelectOption[]>(
 		() =>
 			withAllOption(
-				(filterOptions?.states ?? []).map((option) => ({
-					value: option.value,
-					label: option.label,
-				})),
-				'All States'
+				((isSovereigntyTab
+					? sovereigntyFilterOptions?.vulnerabilityStates ?? []
+					: genericFilterOptions?.states ?? []
+				).map(
+					(option) => ({
+						value: option.value,
+						label: option.label,
+					})
+				)),
+				isSovereigntyTab ? 'All Vulnerability States' : 'All States'
 			),
-		[filterOptions]
+		[genericFilterOptions, isSovereigntyTab, sovereigntyFilterOptions]
 	)
 	const typeOptions = useMemo<SelectOption[]>(
 		() =>
 			withAllOption(
-				(filterOptions?.types ?? []).map((option) => ({
+				(genericFilterOptions?.types ?? []).map((option) => ({
 					value: option.value,
 					label: option.label,
 				})),
 				'All Types'
 			),
-		[filterOptions]
+		[genericFilterOptions]
 	)
 	const allianceOptions = useMemo<SelectOption[]>(
 		() =>
 			withAllOption(
-				(filterOptions?.alliances ?? []).map((option) => ({
+				(
+					isSovereigntyTab
+						? sovereigntyFilterOptions?.controllerAlliances ?? []
+						: genericFilterOptions?.alliances ?? []
+				).map((option) => ({
 					value: option.value,
 					label: option.label,
 				})),
-				'All Alliances'
+				isSovereigntyTab ? 'All Controlling Alliances' : 'All Alliances'
 			),
-		[filterOptions]
+		[genericFilterOptions, isSovereigntyTab, sovereigntyFilterOptions]
 	)
 	const raidableStateOptions = useMemo<SelectOption[]>(
 		() =>
 			withAllOption(
-				(filterOptions?.raidableStates ?? []).map((option) => ({
+				(genericFilterOptions?.raidableStates ?? []).map((option) => ({
 					value: option.value,
 					label: option.label,
 				})),
 				'All Raidable States'
 			),
-		[filterOptions]
+		[genericFilterOptions]
 	)
 	const structuresContentKey = [
 		activeTab,
@@ -353,32 +429,52 @@ export default function StructuresPage() {
 		tableState.pageSize,
 		tableState.sortBy,
 		tableState.sortDirection,
-		tableState.filters.corporationId ?? '',
-		tableState.filters.assignedGroupId ?? '',
-		tableState.filters.lowPower ?? '',
-		tableState.filters.lowPowerAllowed ?? '',
-		tableState.filters.regionId ?? '',
-		tableState.filters.systemId ?? '',
-		tableState.filters.state ?? '',
-		tableState.filters.typeId ?? '',
-		tableState.filters.allianceId ?? '',
-		tableState.filters.planetId ?? '',
-		tableState.filters.isRaidable ?? '',
+		...(isSovereigntyTab
+			? [
+					tableState.filters.corporationId ?? '',
+					tableState.filters.assignedGroupId ?? '',
+					tableState.filters.regionId ?? '',
+					tableState.filters.systemId ?? '',
+					tableState.filters.controllerAllianceId ?? '',
+					tableState.filters.vulnerabilityState ?? '',
+				]
+			: [
+					tableState.filters.corporationId ?? '',
+					tableState.filters.assignedGroupId ?? '',
+					tableState.filters.regionId ?? '',
+					tableState.filters.systemId ?? '',
+					tableState.filters.state ?? '',
+					tableState.filters.lowPower ?? '',
+					tableState.filters.lowPowerAllowed ?? '',
+					tableState.filters.typeId ?? '',
+					tableState.filters.planetId ?? '',
+					tableState.filters.isRaidable ?? '',
+				]),
 	].join(':')
 
-	const activeFilterCount = [
-		tableState.filters.corporationId,
-		tableState.filters.assignedGroupId,
-		tableState.filters.lowPower,
-		tableState.filters.lowPowerAllowed,
-		tableState.filters.regionId,
-		tableState.filters.systemId,
-		tableState.filters.state,
-		tableState.filters.typeId,
-		tableState.filters.allianceId,
-		tableState.filters.planetId,
-		tableState.filters.isRaidable,
-	].filter(Boolean).length
+	const activeFilterCount = (
+		isSovereigntyTab
+			? [
+					tableState.filters.corporationId,
+					tableState.filters.assignedGroupId,
+					tableState.filters.regionId,
+					tableState.filters.systemId,
+					tableState.filters.controllerAllianceId,
+					tableState.filters.vulnerabilityState,
+				]
+			: [
+					tableState.filters.corporationId,
+					tableState.filters.assignedGroupId,
+					tableState.filters.regionId,
+					tableState.filters.systemId,
+					tableState.filters.state,
+					tableState.filters.lowPower,
+					tableState.filters.lowPowerAllowed,
+					tableState.filters.typeId,
+					tableState.filters.planetId,
+					tableState.filters.isRaidable,
+				]
+	).filter(Boolean).length
 
 	const refreshButton = (
 		<Button
@@ -430,13 +526,10 @@ export default function StructuresPage() {
 		</TableHead>
 	)
 
-	const isSovereigntyTab = activeTab === 'sovereignty'
-	const isSkyhooksTab = activeTab === 'skyhooks'
-	const isMiningCitadelTab = activeTab === 'mining-citadels'
 	const primaryFilterSlot: PrimaryStructureFilterSlot = (() => {
 		switch (activeTab) {
 			case 'sovereignty':
-				return 'alliance'
+				return 'type'
 			case 'skyhooks':
 				return 'raidable'
 			case 'citadels':
@@ -445,23 +538,10 @@ export default function StructuresPage() {
 			case 'moon-drills':
 				return 'type'
 		}
+		throw new Error(`Unsupported structures tab for primary filter: ${activeTab}`)
 	})()
 	const primaryFilterControl = (() => {
 		switch (primaryFilterSlot) {
-			case 'alliance':
-				return (
-					<FilterField label="Alliance">
-						<Select
-							options={allianceOptions}
-							value={tableState.filters.allianceId ?? ''}
-							onValueChange={(value) =>
-								setStructureTableFilters({ allianceId: value || undefined })
-							}
-							placeholder="All Alliances"
-							searchable
-						/>
-					</FilterField>
-				)
 			case 'raidable':
 				return (
 					<FilterField label="Raidable">
@@ -489,6 +569,76 @@ export default function StructuresPage() {
 				)
 		}
 	})()
+	const sovereigntyFilterControls = (
+		<div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-3">
+			<FilterField label="Region">
+				<Select
+					options={regionOptions}
+					value={tableState.filters.regionId ?? ''}
+					onValueChange={(value) => setStructureTableFilters({ regionId: value || undefined })}
+					placeholder="All Regions"
+					searchable
+				/>
+			</FilterField>
+			<FilterField label="System">
+				<Select
+					options={systemOptions}
+					value={tableState.filters.systemId ?? ''}
+					onValueChange={(value) => setStructureTableFilters({ systemId: value || undefined })}
+					placeholder="All Systems"
+					searchable
+				/>
+			</FilterField>
+			<FilterField label="Corporation">
+				<Select
+					options={corporationOptions}
+					value={tableState.filters.corporationId ?? ''}
+					onValueChange={(value) => setStructureTableFilters({ corporationId: value || undefined })}
+					placeholder="All Corporations"
+					searchable
+				/>
+			</FilterField>
+			<FilterField label="Controlling Alliance">
+				<Select
+					options={allianceOptions}
+					value={tableState.filters.controllerAllianceId ?? ''}
+					onValueChange={(value) =>
+						setStructureTableFilters({ controllerAllianceId: value || undefined })
+					}
+					placeholder="All Controlling Alliances"
+					searchable
+				/>
+			</FilterField>
+			<FilterField label="Vulnerability State">
+				<Select
+					options={stateOptions}
+					value={tableState.filters.vulnerabilityState ?? ''}
+					onValueChange={(value) =>
+						setStructureTableFilters({
+							vulnerabilityState: value
+								? (value as 'vulnerable' | 'invulnerable' | 'reinforced')
+								: undefined,
+						})
+					}
+					placeholder="All Vulnerability States"
+					searchable
+				/>
+			</FilterField>
+			<FilterField label="Group">
+				<Select
+					options={assignedGroupOptions}
+					value={tableState.filters.assignedGroupId ?? ''}
+					onValueChange={(value) =>
+						setStructureTableFilters({
+							assignedGroupId: value || undefined,
+						})
+					}
+					placeholder="All Groups"
+					searchable
+				/>
+			</FilterField>
+		</div>
+	)
 	const commonFilterControls = (
 		<div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4 2xl:grid-cols-4">
 			<FilterField label="Region">
@@ -697,7 +847,7 @@ export default function StructuresPage() {
 						</div>
 					)}
 					<div className="space-y-4">
-						{commonFilterControls}
+						{isSovereigntyTab ? sovereigntyFilterControls : commonFilterControls}
 					</div>
 					<div className="space-y-4 border-t border-border/60 pt-4">
 						<div className="border-b p-3">
@@ -753,61 +903,66 @@ export default function StructuresPage() {
 									No structures were returned for the selected filters.
 								</div>
 							) : (
-						<Table
-							className={cn(
-								'min-w-[118rem]',
-								isSovereigntyTab && 'min-w-[128rem]',
-								isSkyhooksTab && 'min-w-[126rem]',
-								isMiningCitadelTab && 'min-w-[124rem]'
-							)}
-						>
-									<TableHeader>
-										<TableRow>
-											<SortableHead field="region" label="Region" />
-											<SortableHead field="system" label="System" />
-											<SortableHead field="name" label="Name" />
-											<SortableHead field="corporation" label="Corporation" />
-											<SortableHead field="type" label="Type" />
-											<SortableHead field="state" label="State" />
-											<SortableHead field="fuel" label="Fuel" />
-											<TableHead>LP</TableHead>
-											<TableHead>LP Allowed</TableHead>
-											<SortableHead field="nextStateAt" label="Next State In" />
-											<TableHead>Group</TableHead>
-											{isSovereigntyTab ? (
-												<>
-													<TableHead>Claim Type</TableHead>
-													<TableHead>ADM</TableHead>
-													<TableHead>Hub</TableHead>
-													<TableHead>Vulnerability</TableHead>
-												</>
-											) : isSkyhooksTab ? (
-												<>
-													<TableHead>Planet</TableHead>
-													<TableHead>Workforce</TableHead>
-													<TableHead>Raidable</TableHead>
-													<TableHead>Vulnerable</TableHead>
-												</>
-											) : isMiningCitadelTab ? (
-												<>
-													<TableHead>Moon</TableHead>
-													<TableHead>Planet</TableHead>
-													<TableHead>Chunk Arrival</TableHead>
-													<TableHead>Natural Decay</TableHead>
-												</>
-											) : null}
-											<TableHead>Sync</TableHead>
-											<TableHead className="sticky right-0 z-20 table-header-bg border-l border-border/50 text-right">
-												Actions
-											</TableHead>
-										</TableRow>
-									</TableHeader>
-									<TableBody>
-										{structures.map((structure) => {
-											const structureBase = structure as StructureListBaseItem
-											const sovereigntyStructure = structure as StructureSovereigntyListItem
-											const skyhookStructure = structure as StructureSkyhookListItem
-											const miningStructure = structure as StructureMiningListItem
+							<Table
+								className={cn(
+									'min-w-[118rem]',
+									isSovereigntyTab && 'min-w-[128rem]',
+									isSkyhooksTab && 'min-w-[126rem]',
+									isMiningCitadelTab && 'min-w-[124rem]'
+								)}
+							>
+								<TableHeader>
+									<TableRow>
+										<SortableHead field="region" label="Region" />
+										<SortableHead field="system" label="System" />
+										{isSovereigntyTab ? null : <SortableHead field="name" label="Name" />}
+										<SortableHead field="corporation" label="Corporation" />
+										{isSovereigntyTab ? null : <SortableHead field="type" label="Type" />}
+										<SortableHead field="state" label="State" />
+										{isSovereigntyTab ? (
+											<TableHead>Controlling Alliance</TableHead>
+										) : (
+											<>
+												<SortableHead field="fuel" label="Fuel" />
+												<TableHead>LP</TableHead>
+												<TableHead>LP Allowed</TableHead>
+												<SortableHead field="nextStateAt" label="Next State In" />
+											</>
+										)}
+										<TableHead>Group</TableHead>
+										{isSovereigntyTab ? (
+											<>
+												<SortableHead field="activityDefenseMultiplier" label="ADM" />
+												<TableHead>Workforce</TableHead>
+												<TableHead>Power</TableHead>
+											</>
+										) : isSkyhooksTab ? (
+											<>
+												<TableHead>Planet</TableHead>
+												<TableHead>Workforce</TableHead>
+												<TableHead>Raidable</TableHead>
+												<TableHead>Vulnerable</TableHead>
+											</>
+										) : isMiningCitadelTab ? (
+											<>
+												<TableHead>Moon</TableHead>
+												<TableHead>Planet</TableHead>
+												<TableHead>Chunk Arrival</TableHead>
+												<TableHead>Natural Decay</TableHead>
+											</>
+										) : null}
+										<TableHead>Sync</TableHead>
+										<TableHead className="sticky right-0 z-20 table-header-bg border-l border-border/50 text-right">
+											Actions
+										</TableHead>
+									</TableRow>
+								</TableHeader>
+								<TableBody>
+									{structures.map((structure) => {
+												const structureBase = structure as StructureListBaseItem
+												const sovereigntyStructure = structure as StructureSovereigntyListItem
+												const skyhookStructure = structure as StructureSkyhookListItem
+												const miningStructure = structure as StructureMiningListItem
 											const fuelLabel = structureBase.fuelExpires ? (
 												<DurationDisplay
 													endDate={structureBase.fuelExpires}
@@ -825,143 +980,178 @@ export default function StructuresPage() {
 													structureBase.assignedGroupId)
 												: '-'
 											const isHidden = structureBase.hidden
+											const sovereigntyVulnerabilityState = getSovereigntyVulnerabilityState(
+												sovereigntyStructure
+											)
 
-											return (
-												<TableRow key={structure.structureId}>
-													<TableCell className="font-medium">
-														{structure.regionName ?? structure.regionId ?? '-'}
-													</TableCell>
-													<TableCell>{structure.systemName ?? structure.systemId}</TableCell>
-													<TableCell className="max-w-[16rem]">
-														<div className="flex min-w-0 items-center gap-2">
-															<div className="truncate font-medium">{structure.name}</div>
-															{isHidden && <Badge variant="ghost">Hidden</Badge>}
-														</div>
-														<div className="text-xs text-muted-foreground">
-															{structure.structureId}
-														</div>
-													</TableCell>
-													<TableCell className="max-w-[18rem]">
-														<div className="flex min-w-0 items-center gap-2">
-															<CorporationLogo
-																corporationId={structure.corporationId}
-																corporationName={structure.corporationName}
-															/>
-															<span className="truncate font-medium" title={structure.corporationName}>
-																{structure.corporationName}
-															</span>
-														</div>
-													</TableCell>
-													<TableCell>{structure.typeName ?? structure.typeId}</TableCell>
-													<TableCell>
-														<StructureStateBadge state={structure.state} />
-													</TableCell>
-													<TableCell>{fuelLabel}</TableCell>
-													<TableCell>
-														<Badge variant={structureBase.lowPower ? 'warning' : 'ghost'}>
-															{structureBase.lowPower ? 'Yes' : 'No'}
-														</Badge>
-													</TableCell>
-													<TableCell>
-														<Badge variant={structureBase.lowPowerAllowed ? 'success' : 'ghost'}>
-															{structureBase.lowPowerAllowed ? 'Yes' : 'No'}
-														</Badge>
-													</TableCell>
-													<TableCell>
-														{structureBase.nextStateAt ? (
-															<DurationDisplay
-																endDate={structureBase.nextStateAt}
-																referenceTimeMs={nowMs}
-																maxUnits={3}
-																durationStyle="compact"
-																format="compact"
-															/>
-														) : (
-															'-'
-														)}
-													</TableCell>
-													<TableCell>{groupLabel}</TableCell>
-													{isSovereigntyTab ? (
-														<>
-															<TableCell>
-																{formatSovereigntyClaimType(sovereigntyStructure.claimType)}
-															</TableCell>
-															<TableCell>
-																{sovereigntyStructure.activityDefenseMultiplier ?? '-'}
-															</TableCell>
-															<TableCell>
-																<div className="font-medium">
-																	{sovereigntyStructure.controllerAllianceId ??
-																		sovereigntyStructure.sovereigntyHubStructureId ??
-																		'-'}
+												return (
+													<TableRow key={structure.structureId}>
+														<TableCell className="font-medium">
+															{structure.regionName ?? structure.regionId ?? '-'}
+														</TableCell>
+														<TableCell>{structure.systemName ?? structure.systemId}</TableCell>
+														{!isSovereigntyTab && (
+															<TableCell className="max-w-[16rem]">
+																<div className="flex min-w-0 items-center gap-2">
+																	<div className="truncate font-medium">{structure.name}</div>
+																	{isHidden && <Badge variant="ghost">Hidden</Badge>}
 																</div>
 																<div className="text-xs text-muted-foreground">
-																	{sovereigntyStructure.reagentCount
-																		? `${formatNullableNumber(sovereigntyStructure.resourcePowerAllocated)} / ${formatNullableNumber(sovereigntyStructure.resourcePowerAvailable)} power`
-																		: '-'}
+																	{structure.structureId}
 																</div>
 															</TableCell>
-															<TableCell>
-																{sovereigntyStructure.vulnerabilityWindowStart &&
-																sovereigntyStructure.vulnerabilityWindowEnd
-																	? `${formatDateTimeLong(sovereigntyStructure.vulnerabilityWindowStart)} - ${formatDateTimeLong(sovereigntyStructure.vulnerabilityWindowEnd)}`
-																	: formatNullableDateTime(sovereigntyStructure.vulnerabilityWindowEnd)}
-															</TableCell>
-														</>
-													) : isSkyhooksTab ? (
-														<>
-															<TableCell>{skyhookStructure.planetName ?? skyhookStructure.planetId}</TableCell>
-															<TableCell>
-																{formatNullableNumber(skyhookStructure.effectiveWorkforce)}
-															</TableCell>
-															<TableCell>
-																<Badge variant={skyhookStructure.isRaidable ? 'warning' : 'ghost'}>
-																	{skyhookStructure.isRaidable ? 'Yes' : 'No'}
-																</Badge>
-															</TableCell>
-															<TableCell>
-																{skyhookStructure.theftVulnerabilityStart &&
-																skyhookStructure.theftVulnerabilityEnd
-																	? `${formatDateTimeLong(skyhookStructure.theftVulnerabilityStart)} - ${formatDateTimeLong(skyhookStructure.theftVulnerabilityEnd)}`
-																: formatNullableDateTime(skyhookStructure.vulnerableAt)}
-															</TableCell>
-														</>
-													) : isMiningCitadelTab ? (
-														<>
-															<TableCell>
-																{(miningStructure.moonName ?? miningStructure.moonId) || '-'}
-															</TableCell>
-															<TableCell>
-																{miningStructure.planetName ?? miningStructure.planetId ?? '-'}
-															</TableCell>
-															<TableCell>{formatNullableDateTime(miningStructure.chunkArrivalTime)}</TableCell>
-															<TableCell>{formatNullableDateTime(miningStructure.naturalDecayTime)}</TableCell>
-														</>
-													) : null}
-													<TableCell>
-														<StructureSyncStatusBadge
-															status={structure.syncStatus}
-															description={structureSyncStatusDescription(structure)}
-														/>
-													</TableCell>
-													<TableCell className="sticky right-0 z-10 border-l border-border/50 bg-card text-right">
-														{structure.canEdit ? (
-															<Button asChild size="sm" variant="ghost">
-																<Link to={`/structures/${structure.structureId}`}>
-																	<ArrowRight className="h-4 w-4" />
-																	Details
-																</Link>
-															</Button>
-														) : (
-															<Badge variant="ghost" className="justify-center">
-																<Building2 className="h-3 w-3" />
-																View only
-															</Badge>
 														)}
-													</TableCell>
-												</TableRow>
-											)
-										})}
+														<TableCell className="max-w-[18rem]">
+															<div className="flex min-w-0 items-center gap-2">
+																<CorporationLogo
+																	corporationId={structure.corporationId}
+																	corporationName={structure.corporationName}
+																/>
+																<span className="truncate font-medium" title={structure.corporationName}>
+																	{structure.corporationName}
+																</span>
+															</div>
+														</TableCell>
+														{isSovereigntyTab ? (
+															<>
+																<TableCell>
+																	<div className="space-y-1">
+																		<Badge variant={sovereigntyVulnerabilityState.variant}>
+																			{sovereigntyVulnerabilityState.label}
+																		</Badge>
+																		{isReinforcedStructureState(structureBase.state) && (
+																			<div className="text-xs text-muted-foreground">Reinforced</div>
+																		)}
+																	</div>
+																</TableCell>
+																<TableCell className="max-w-[18rem]">
+																	<div className="flex min-w-0 items-center gap-2">
+																		{sovereigntyStructure.controllerAllianceId ? (
+																			<AllianceLogo
+																				allianceId={sovereigntyStructure.controllerAllianceId}
+																				allianceName={sovereigntyStructure.controllerAllianceName}
+																			/>
+																		) : (
+																			<div className="flex h-5 w-5 items-center justify-center rounded-sm bg-muted text-muted-foreground">
+																				<Shield className="h-3 w-3" />
+																			</div>
+																		)}
+																		<span
+																			className="truncate font-medium"
+																			title={
+																				sovereigntyStructure.controllerAllianceName ??
+																				sovereigntyStructure.controllerAllianceId ??
+																				'-'
+																			}
+																		>
+																			{sovereigntyStructure.controllerAllianceName ??
+																				sovereigntyStructure.controllerAllianceId ??
+																				'-'}
+																		</span>
+																</div>
+															</TableCell>
+															<TableCell>{groupLabel}</TableCell>
+															<TableCell>
+																{formatNullableDecimal(
+																	sovereigntyStructure.activityDefenseMultiplier
+																)}
+															</TableCell>
+															<TableCell>
+																{formatNullableNumber(sovereigntyStructure.resourceWorkforceAllocated)} /{' '}
+																	{formatNullableNumber(sovereigntyStructure.resourceWorkforceAvailable)}
+																</TableCell>
+																<TableCell>
+																	{formatNullableNumber(sovereigntyStructure.resourcePowerAllocated)} /{' '}
+																	{formatNullableNumber(sovereigntyStructure.resourcePowerAvailable)}
+																</TableCell>
+															</>
+														) : (
+															<>
+																<TableCell>{structure.typeName ?? structure.typeId}</TableCell>
+																<TableCell>
+																	<StructureStateBadge state={structure.state} />
+																</TableCell>
+																<TableCell>{fuelLabel}</TableCell>
+																<TableCell>
+																	<Badge variant={structureBase.lowPower ? 'warning' : 'ghost'}>
+																		{structureBase.lowPower ? 'Yes' : 'No'}
+																	</Badge>
+																</TableCell>
+																<TableCell>
+																	<Badge variant={structureBase.lowPowerAllowed ? 'success' : 'ghost'}>
+																		{structureBase.lowPowerAllowed ? 'Yes' : 'No'}
+																	</Badge>
+																</TableCell>
+																<TableCell>
+																	{structureBase.nextStateAt ? (
+																		<DurationDisplay
+																			endDate={structureBase.nextStateAt}
+																			referenceTimeMs={nowMs}
+																			maxUnits={3}
+																			durationStyle="compact"
+																			format="compact"
+																		/>
+																	) : (
+																		'-'
+																	)}
+																</TableCell>
+																<TableCell>{groupLabel}</TableCell>
+															</>
+														)}
+														{isSovereigntyTab ? null : isSkyhooksTab ? (
+															<>
+																<TableCell>{skyhookStructure.planetName ?? skyhookStructure.planetId}</TableCell>
+																<TableCell>
+																	{formatNullableNumber(skyhookStructure.effectiveWorkforce)}
+																</TableCell>
+																<TableCell>
+																	<Badge variant={skyhookStructure.isRaidable ? 'warning' : 'ghost'}>
+																		{skyhookStructure.isRaidable ? 'Yes' : 'No'}
+																	</Badge>
+																</TableCell>
+																<TableCell>
+																	{skyhookStructure.theftVulnerabilityStart &&
+																	skyhookStructure.theftVulnerabilityEnd
+																		? `${formatDateTimeLong(skyhookStructure.theftVulnerabilityStart)} - ${formatDateTimeLong(skyhookStructure.theftVulnerabilityEnd)}`
+																	: formatNullableDateTime(skyhookStructure.vulnerableAt)}
+																</TableCell>
+															</>
+														) : isMiningCitadelTab ? (
+															<>
+																<TableCell>
+																	{(miningStructure.moonName ?? miningStructure.moonId) || '-'}
+																</TableCell>
+																<TableCell>
+																	{miningStructure.planetName ?? miningStructure.planetId ?? '-'}
+																</TableCell>
+																<TableCell>{formatNullableDateTime(miningStructure.chunkArrivalTime)}</TableCell>
+																<TableCell>{formatNullableDateTime(miningStructure.naturalDecayTime)}</TableCell>
+															</>
+														) : null}
+														<TableCell>
+															<StructureSyncStatusBadge
+																status={structure.syncStatus}
+																description={structureSyncStatusDescription(structure)}
+															/>
+														</TableCell>
+														<TableCell className="sticky right-0 z-10 border-l border-border/50 bg-card text-right">
+															{structure.canEdit ? (
+																<Button asChild size="sm" variant="ghost">
+																	<Link to={`/structures/${structure.structureId}`}>
+																		<ArrowRight className="h-4 w-4" />
+																		Details
+																	</Link>
+																</Button>
+															) : (
+																<Badge variant="ghost" className="justify-center">
+																	<Building2 className="h-3 w-3" />
+																	View only
+																</Badge>
+															)}
+														</TableCell>
+													</TableRow>
+												)
+											})}
 								</TableBody>
 							</Table>
 						)}

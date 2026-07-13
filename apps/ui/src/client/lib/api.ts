@@ -2,6 +2,14 @@
  * API client for making requests to the core worker
  */
 
+import { isDateRangeWithinOneYear } from '../features/srp/utils'
+import { downloadTextFile } from './csv-utils'
+
+import type {
+	SidebarExternalLinkCreateInput,
+	SidebarExternalLinkSummary,
+	SidebarExternalLinkUpdateInput,
+} from '@repo/admin'
 import type { FreightRoute } from '@repo/freight'
 import type { InventoryDisplayBay as SharedInventoryDisplayBay } from '@repo/inventory-display'
 import type {
@@ -10,21 +18,16 @@ import type {
 	StructureNavigationListQuery as RepoStructureNavigationListQuery,
 	StructureOverviewMetrics as RepoStructureOverviewMetrics,
 	StructureSkyhookListQuery as RepoStructureSkyhookListQuery,
+	StructureSovereigntyListFilterOptions as RepoStructureSovereigntyListFilterOptions,
+	StructureSovereigntyListFilterOption as RepoStructureSovereigntyListFilterOption,
+	StructureSovereigntyListItem as RepoStructureSovereigntyListItem,
+	StructureSovereigntyListResponse as RepoStructureSovereigntyListResponse,
+	StructureSovereigntyListSummary as RepoStructureSovereigntyListSummary,
 	StructureSovereigntyListQuery as RepoStructureSovereigntyListQuery,
 } from '@repo/structures'
-import type {
-	SidebarExternalLinkCreateInput,
-	SidebarExternalLinkSummary,
-	SidebarExternalLinkUpdateInput,
-} from '@repo/admin'
-
 import type { TrackingSession } from '../features/fleet-tracking/types'
-import { isDateRangeWithinOneYear } from '../features/srp/utils'
 
-import { downloadTextFile } from './csv-utils'
-
-export const API_BASE_URL =
-	import.meta.env.VITE_API_BASE_URL || '/api'
+export const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || '/api'
 const API_REQUEST_TIMEOUT_MS = 30_000
 
 export interface ApiError {
@@ -140,7 +143,9 @@ type ApiErrorWithLogMarker = Error & {
 	[API_ERROR_LOGGED_SYMBOL]?: boolean
 }
 
-function maskRequestInfo(requestInfo: ApiRequestDebugInfo | undefined): ApiRequestDebugInfo | undefined {
+function maskRequestInfo(
+	requestInfo: ApiRequestDebugInfo | undefined
+): ApiRequestDebugInfo | undefined {
 	if (!requestInfo) return undefined
 	return {
 		...requestInfo,
@@ -158,7 +163,7 @@ function maskRequestInfo(requestInfo: ApiRequestDebugInfo | undefined): ApiReque
 export function logApiError(error: unknown, fallbackRequestInfo?: ApiRequestDebugInfo): void {
 	const requestInfo =
 		error instanceof BaseApiError || error instanceof NetworkError
-			? error.requestInfo ?? fallbackRequestInfo
+			? (error.requestInfo ?? fallbackRequestInfo)
 			: fallbackRequestInfo
 
 	if (error instanceof Error) {
@@ -667,7 +672,11 @@ export interface CorporationDiscordServer {
 	}>
 }
 
-export type CorporationAlertDestinationType = 'discord_channel' | 'discord_user' | 'discord_webhook' | 'group'
+export type CorporationAlertDestinationType =
+	| 'discord_channel'
+	| 'discord_user'
+	| 'discord_webhook'
+	| 'group'
 
 export interface CorporationAlertTypeDefinition {
 	type: string
@@ -716,6 +725,7 @@ export type StructureListSortBy =
 	| 'updatedAt'
 	| 'nextStateAt'
 	| 'fuel'
+	| 'activityDefenseMultiplier'
 	| 'name'
 	| 'corporation'
 	| 'region'
@@ -754,11 +764,16 @@ export interface StructureListFilterOptions {
 	regions: StructureListFilterOption[]
 	systems: StructureListFilterOption[]
 	states: StructureListFilterOption[]
+	vulnerabilityStates?: StructureListFilterOption[]
 	types: StructureListFilterOption[]
 	alliances: StructureListFilterOption[]
 	planets: StructureListFilterOption[]
 	raidableStates: StructureListFilterOption[]
 }
+
+export type StructureSovereigntyListFilterOption = RepoStructureSovereigntyListFilterOption
+export type StructureSovereigntyListFilterOptions = RepoStructureSovereigntyListFilterOptions
+export type StructureSovereigntyListSummary = RepoStructureSovereigntyListSummary
 
 export interface StructureListSummary {
 	total: number
@@ -804,12 +819,14 @@ export interface StructureNavigationListItem extends StructureCitadelListItem {}
 export interface StructureSovereigntyHubSummary {
 	fuelAccessListId: string | null
 	controllerAllianceId: string | null
+	controllerAllianceName?: string | null
 	reagentBayLastUpdated: string | null
 	reagentCount: number
 	reagentBay: {
 		lastUpdated: string
 		reagents: Array<{
 			typeId: string
+			typeName?: string | null
 			securedStock: number
 			unsecuredStock: number
 			lastCycle: string
@@ -827,6 +844,7 @@ export interface StructureSovereigntyHubSummary {
 	}
 	upgrades: Array<{
 		typeId: string
+		typeName?: string | null
 		powerState: string
 	}>
 	workforceTransport: {
@@ -892,31 +910,7 @@ export interface StructureMiningSummary {
 	naturalDecayTime: string | null
 }
 
-export interface StructureSovereigntyListItem extends StructureListBaseItem {
-	claimType: 'alliance' | 'faction' | 'unclaimed'
-	allianceId: string | null
-	corporationClaimantId: string | null
-	factionId: string | null
-	claimedSince: string | null
-	sovereigntyHubStructureId: string | null
-	vulnerabilityWindowStart: string | null
-	vulnerabilityWindowEnd: string | null
-	activityDefenseMultiplier: string | null
-	militaryLevel: number | null
-	industrialLevel: number | null
-	strategicLevel: number | null
-	fuelAccessListId: string | null
-	controllerAllianceId: string | null
-	reagentBayLastUpdated: string | null
-	reagentCount: number
-	totalSecuredStock: number
-	totalUnsecuredStock: number
-	resourcePowerAllocated: number
-	resourcePowerAvailable: number
-	resourceWorkforceAllocated: number
-	resourceWorkforceAvailable: number
-	upgradeCount: number
-}
+export type StructureSovereigntyListItem = RepoStructureSovereigntyListItem
 
 export interface StructureSkyhookListItem extends StructureListBaseItem {
 	planetId: string
@@ -1025,11 +1019,15 @@ export interface StructureListResponse<TItem = StructureCitadelListItem> {
 	summary: StructureListSummary
 }
 
-export interface StructureCitadelListResponse extends StructureListResponse<StructureCitadelListItem> {}
-export interface StructureNavigationListResponse extends StructureListResponse<StructureNavigationListItem> {}
-export interface StructureSovereigntyListResponse extends StructureListResponse<StructureSovereigntyListItem> {}
-export interface StructureSkyhookListResponse extends StructureListResponse<StructureSkyhookListItem> {}
-export interface StructureMiningListResponse extends StructureListResponse<StructureMiningListItem> {}
+export interface StructureCitadelListResponse
+	extends StructureListResponse<StructureCitadelListItem> {}
+export interface StructureNavigationListResponse
+	extends StructureListResponse<StructureNavigationListItem> {}
+export type StructureSovereigntyListResponse = RepoStructureSovereigntyListResponse
+export interface StructureSkyhookListResponse
+	extends StructureListResponse<StructureSkyhookListItem> {}
+export interface StructureMiningListResponse
+	extends StructureListResponse<StructureMiningListItem> {}
 
 export interface UpdateStructureConfigRequest {
 	hidden?: boolean
@@ -1527,14 +1525,14 @@ export interface AdminUser {
 	matchedCharacterId: string | null
 	matchedCharacterName: string | null
 	matchedBy:
-	| 'main_character_name'
-	| 'character_name'
-	| 'character_id'
-	| 'user_id'
-	| 'discord_user_id'
-	| 'discord_username'
-	| 'legacy_auth_username'
-	| null
+		| 'main_character_name'
+		| 'character_name'
+		| 'character_id'
+		| 'user_id'
+		| 'discord_user_id'
+		| 'discord_username'
+		| 'legacy_auth_username'
+		| null
 	createdAt: string
 	updatedAt: string
 }
@@ -1705,7 +1703,12 @@ export interface AdminActivityLogFilters {
 	pageSize?: number
 }
 
-export type LegacyMigrationStatus = 'pending' | 'partially_applied' | 'applied' | 'dismissed' | 'error'
+export type LegacyMigrationStatus =
+	| 'pending'
+	| 'partially_applied'
+	| 'applied'
+	| 'dismissed'
+	| 'error'
 
 export interface LegacyMigrationQueueItem {
 	id: string
@@ -2549,45 +2552,39 @@ export class ApiClient {
 
 				// Throw appropriate error type based on status code
 				switch (response.status) {
-					case 400:
-						{
-							const error = new ValidationError(errorMessage, errorFields, requestInfo)
-							logApiError(error)
-							throw error
-						}
-					case 401:
-						{
-							const error = new AuthenticationError(errorMessage, requestInfo)
-							logApiError(error)
-							throw error
-						}
-					case 403:
-						{
-							const error = new AuthorizationError(errorMessage, requestInfo)
-							logApiError(error)
-							throw error
-						}
-					case 404:
-						{
-							const error = new NotFoundError(errorMessage, requestInfo)
-							logApiError(error)
-							throw error
-						}
+					case 400: {
+						const error = new ValidationError(errorMessage, errorFields, requestInfo)
+						logApiError(error)
+						throw error
+					}
+					case 401: {
+						const error = new AuthenticationError(errorMessage, requestInfo)
+						logApiError(error)
+						throw error
+					}
+					case 403: {
+						const error = new AuthorizationError(errorMessage, requestInfo)
+						logApiError(error)
+						throw error
+					}
+					case 404: {
+						const error = new NotFoundError(errorMessage, requestInfo)
+						logApiError(error)
+						throw error
+					}
 					case 500:
 					case 502:
 					case 503:
-					case 504:
-						{
-							const error = new ServerError(errorMessage, requestInfo)
-							logApiError(error)
-							throw error
-						}
-					default:
-						{
-							const error = new BaseApiError(errorMessage, response.status, requestInfo)
-							logApiError(error)
-							throw error
-						}
+					case 504: {
+						const error = new ServerError(errorMessage, requestInfo)
+						logApiError(error)
+						throw error
+					}
+					default: {
+						const error = new BaseApiError(errorMessage, response.status, requestInfo)
+						logApiError(error)
+						throw error
+					}
 				}
 			}
 
@@ -2599,7 +2596,7 @@ export class ApiClient {
 					{
 						...requestInfo,
 						status: response.status,
-					},
+					}
 				)
 				logApiError(error)
 				throw error
@@ -2634,7 +2631,10 @@ export class ApiClient {
 			}
 
 			// Unknown error
-			const unexpectedError = new NetworkError('An unexpected error occurred. Please try again.', requestInfo)
+			const unexpectedError = new NetworkError(
+				'An unexpected error occurred. Please try again.',
+				requestInfo
+			)
 			logApiError(unexpectedError)
 			throw unexpectedError
 		} finally {
@@ -2712,7 +2712,7 @@ export class ApiClient {
 					{
 						...requestInfo,
 						status: response.status,
-					},
+					}
 				)
 				logApiError(error)
 				throw error
@@ -2736,7 +2736,10 @@ export class ApiClient {
 				throw error
 			}
 
-			const unexpectedError = new NetworkError('An unexpected error occurred. Please try again.', requestInfo)
+			const unexpectedError = new NetworkError(
+				'An unexpected error occurred. Please try again.',
+				requestInfo
+			)
 			logApiError(unexpectedError)
 			throw unexpectedError
 		} finally {
@@ -2818,7 +2821,9 @@ export class ApiClient {
 		return this.get(`/characters/${characterId}/skills`)
 	}
 
-	async getCharacterOwnerships(characterIds: string[]): Promise<Record<string, { userId: string }>> {
+	async getCharacterOwnerships(
+		characterIds: string[]
+	): Promise<Record<string, { userId: string }>> {
 		return this.post('/characters/ownership', { characterIds })
 	}
 
@@ -3317,7 +3322,9 @@ export class ApiClient {
 		return this.patch(`/admin/structures/corporation-defaults/${corporationId}`, data)
 	}
 
-	async getAdminStructureAlertDestinations(groupId: string): Promise<CorporationAlertDestination[]> {
+	async getAdminStructureAlertDestinations(
+		groupId: string
+	): Promise<CorporationAlertDestination[]> {
 		return this.get(`/admin/structures/groups/${groupId}/destinations`)
 	}
 
@@ -3394,7 +3401,9 @@ export class ApiClient {
 		return this.delete(`/admin/navigation/external-links/${id}`)
 	}
 
-	async getCitadelStructures(query: StructureCitadelListQuery = {}): Promise<StructureCitadelListResponse> {
+	async getCitadelStructures(
+		query: StructureCitadelListQuery = {}
+	): Promise<StructureCitadelListResponse> {
 		const params = new URLSearchParams()
 		if (query.page) params.set('page', String(query.page))
 		if (query.pageSize) params.set('pageSize', String(query.pageSize))
@@ -3437,8 +3446,11 @@ export class ApiClient {
 		if (query.sortBy) params.set('sortBy', query.sortBy)
 		if (query.sortDirection) params.set('sortDirection', query.sortDirection)
 		if (query.corporationId) params.set('corporationId', query.corporationId)
+		if (query.assignedGroupId) params.set('assignedGroupId', query.assignedGroupId)
+		if (query.regionId) params.set('regionId', query.regionId)
 		if (query.systemId) params.set('systemId', query.systemId)
-		if (query.allianceId) params.set('allianceId', query.allianceId)
+		if (query.controllerAllianceId) params.set('controllerAllianceId', query.controllerAllianceId)
+		if (query.vulnerabilityState) params.set('vulnerabilityState', query.vulnerabilityState)
 		const queryString = params.toString()
 		return this.get(`/structures/sovereignty${queryString ? `?${queryString}` : ''}`)
 	}
@@ -3460,7 +3472,9 @@ export class ApiClient {
 		return this.get(`/structures/skyhooks${queryString ? `?${queryString}` : ''}`)
 	}
 
-	async getMoonDrillStructures(query: StructureMiningListQuery = {}): Promise<StructureMiningListResponse> {
+	async getMoonDrillStructures(
+		query: StructureMiningListQuery = {}
+	): Promise<StructureMiningListResponse> {
 		const params = new URLSearchParams()
 		if (query.page) params.set('page', String(query.page))
 		if (query.pageSize) params.set('pageSize', String(query.pageSize))
@@ -3490,7 +3504,9 @@ export class ApiClient {
 		return this.get(`/structures/mining-citadels${queryString ? `?${queryString}` : ''}`)
 	}
 
-	async getMiningStructures(query: StructureMiningListQuery = {}): Promise<StructureMiningListResponse> {
+	async getMiningStructures(
+		query: StructureMiningListQuery = {}
+	): Promise<StructureMiningListResponse> {
 		return this.getMoonDrillStructures(query)
 	}
 
@@ -3498,7 +3514,9 @@ export class ApiClient {
 		return this.get('/structures/overview')
 	}
 
-	async getStructures(query: StructureCitadelListQuery = {}): Promise<StructureCitadelListResponse> {
+	async getStructures(
+		query: StructureCitadelListQuery = {}
+	): Promise<StructureCitadelListResponse> {
 		return this.getCitadelStructures(query)
 	}
 
@@ -3693,7 +3711,10 @@ export class ApiClient {
 		return this.post('/discord-commands', data)
 	}
 
-	async updateDiscordCommand(id: string, data: UpdateDiscordCommandRequest): Promise<DiscordCommand> {
+	async updateDiscordCommand(
+		id: string,
+		data: UpdateDiscordCommandRequest
+	): Promise<DiscordCommand> {
 		return this.patch(`/discord-commands/${id}`, data)
 	}
 
@@ -4084,9 +4105,7 @@ export class ApiClient {
 		return this.get(`/hr/legacy/history${query ? `?${query}` : ''}`)
 	}
 
-	async getLegacyHistoryApplication(
-		legacyApplicationId: string
-	): Promise<{
+	async getLegacyHistoryApplication(legacyApplicationId: string): Promise<{
 		application: LegacyHistoryApplication
 		events: LegacyHistoryEvent[]
 		modernUserMatch: LegacyHistoryModernUserMatch | null
@@ -4195,7 +4214,10 @@ export class ApiClient {
 	}
 
 	// Broadcast Templates
-	async getBroadcastTemplates(targetType?: string, targetId?: string): Promise<BroadcastTemplate[]> {
+	async getBroadcastTemplates(
+		targetType?: string,
+		targetId?: string
+	): Promise<BroadcastTemplate[]> {
 		const params = new URLSearchParams()
 		if (targetType) params.set('targetType', targetType)
 		if (targetId) params.set('targetId', targetId)
@@ -4514,7 +4536,9 @@ export class ApiClient {
 		return this.get(`/srp/payments/pending${query ? `?${query}` : ''}`)
 	}
 
-	async getPendingPayoutTotal(params?: { corporationId?: string }): Promise<{ pendingPayoutTotal: string }> {
+	async getPendingPayoutTotal(params?: {
+		corporationId?: string
+	}): Promise<{ pendingPayoutTotal: string }> {
 		const searchParams = new URLSearchParams()
 		if (params?.corporationId) searchParams.set('corporationId', params.corporationId)
 
@@ -4577,9 +4601,9 @@ export class ApiClient {
 		const searchParams = new URLSearchParams()
 		searchParams.set('field', params.field)
 		searchParams.set('q', params.query)
-		const result = await this.get<{ values: Array<{ value: string; label: string; description?: string }> }>(
-			`/srp/payments/wallet-history/search-values?${searchParams.toString()}`
-		)
+		const result = await this.get<{
+			values: Array<{ value: string; label: string; description?: string }>
+		}>(`/srp/payments/wallet-history/search-values?${searchParams.toString()}`)
 		return result.values ?? []
 	}
 
@@ -4589,9 +4613,20 @@ export class ApiClient {
 		alertsOnly?: boolean
 		dateFrom?: string
 		dateTo?: string
-	}): Promise<{ workflowInstanceId: string; exportId: string; fileName: string; status: 'queued' }> {
-		if (!params?.dateFrom || !params?.dateTo || !isDateRangeWithinOneYear(params.dateFrom, params.dateTo)) {
-			throw new Error('Entry date range is required for wallet history export and must not exceed 1 year')
+	}): Promise<{
+		workflowInstanceId: string
+		exportId: string
+		fileName: string
+		status: 'queued'
+	}> {
+		if (
+			!params?.dateFrom ||
+			!params?.dateTo ||
+			!isDateRangeWithinOneYear(params.dateFrom, params.dateTo)
+		) {
+			throw new Error(
+				'Entry date range is required for wallet history export and must not exceed 1 year'
+			)
 		}
 
 		const searchParams = new URLSearchParams()
@@ -4601,13 +4636,16 @@ export class ApiClient {
 		searchParams.set('dateFrom', params.dateFrom)
 		searchParams.set('dateTo', params.dateTo)
 
-		const response = await fetch(`/api/srp/payments/wallet-history/export?${searchParams.toString()}`, {
-			method: 'POST',
-			credentials: 'include',
-			headers: {
-				'X-Requested-With': 'XMLHttpRequest',
-			},
-		})
+		const response = await fetch(
+			`/api/srp/payments/wallet-history/export?${searchParams.toString()}`,
+			{
+				method: 'POST',
+				credentials: 'include',
+				headers: {
+					'X-Requested-With': 'XMLHttpRequest',
+				},
+			}
+		)
 		if (!response.ok) {
 			const message = await response.text()
 			throw new Error(message || 'Failed to request SRP wallet history export')
@@ -4631,12 +4669,15 @@ export class ApiClient {
 	}
 
 	async downloadSrpWalletHistoryCsv(workflowInstanceId: string, fileName: string): Promise<void> {
-		const response = await fetch(`/api/srp/payments/wallet-history/export/${workflowInstanceId}/download`, {
-			credentials: 'include',
-			headers: {
-				'X-Requested-With': 'XMLHttpRequest',
-			},
-		})
+		const response = await fetch(
+			`/api/srp/payments/wallet-history/export/${workflowInstanceId}/download`,
+			{
+				credentials: 'include',
+				headers: {
+					'X-Requested-With': 'XMLHttpRequest',
+				},
+			}
+		)
 		if (!response.ok) {
 			const message = await response.text()
 			throw new Error(message || 'Failed to export SRP wallet history')
@@ -4652,7 +4693,12 @@ export class ApiClient {
 		solarSystemName?: string
 		dateFrom: string
 		dateTo: string
-	}): Promise<{ workflowInstanceId: string; exportId: string; fileName: string; status: 'queued' }> {
+	}): Promise<{
+		workflowInstanceId: string
+		exportId: string
+		fileName: string
+		status: 'queued'
+	}> {
 		if (!isDateRangeWithinOneYear(params.dateFrom, params.dateTo)) {
 			throw new Error('Paid SRP export requires a date range of no more than 1 year')
 		}
@@ -4859,10 +4905,7 @@ export class ApiClient {
 		return this.post(`/srp/requests/${id}/review`, data)
 	}
 
-	async updateReviewState(
-		id: string,
-		data: { newState: string; notes?: string }
-	): Promise<any> {
+	async updateReviewState(id: string, data: { newState: string; notes?: string }): Promise<any> {
 		return this.patch(`/srp/requests/${id}/state`, data)
 	}
 
@@ -4953,11 +4996,17 @@ export class ApiClient {
 		return this.get('/doctrines/categories')
 	}
 
-	async createDoctrineCategory(data: { name: string; sortOrder?: number }): Promise<DoctrineCategory> {
+	async createDoctrineCategory(data: {
+		name: string
+		sortOrder?: number
+	}): Promise<DoctrineCategory> {
 		return this.post('/doctrines/categories', data)
 	}
 
-	async updateDoctrineCategory(id: string, data: { name?: string; sortOrder?: number }): Promise<DoctrineCategory> {
+	async updateDoctrineCategory(
+		id: string,
+		data: { name?: string; sortOrder?: number }
+	): Promise<DoctrineCategory> {
 		return this.patch(`/doctrines/categories/${id}`, data)
 	}
 
@@ -4970,11 +5019,18 @@ export class ApiClient {
 		return this.get('/doctrines/staging-systems')
 	}
 
-	async createStagingSystem(data: { solarSystemId: string; solarSystemName: string; sortOrder?: number }): Promise<StagingSystem> {
+	async createStagingSystem(data: {
+		solarSystemId: string
+		solarSystemName: string
+		sortOrder?: number
+	}): Promise<StagingSystem> {
 		return this.post('/doctrines/staging-systems', data)
 	}
 
-	async updateStagingSystem(id: string, data: { solarSystemId?: string; solarSystemName?: string; sortOrder?: number }): Promise<StagingSystem> {
+	async updateStagingSystem(
+		id: string,
+		data: { solarSystemId?: string; solarSystemName?: string; sortOrder?: number }
+	): Promise<StagingSystem> {
 		return this.patch(`/doctrines/staging-systems/${id}`, data)
 	}
 
@@ -4983,7 +5039,10 @@ export class ApiClient {
 	}
 
 	// Doctrine-Staging
-	async setDoctrineStagingSystem(doctrineId: string, data: { stagingSystemId: string; note: string }): Promise<void> {
+	async setDoctrineStagingSystem(
+		doctrineId: string,
+		data: { stagingSystemId: string; note: string }
+	): Promise<void> {
 		return this.put(`/doctrines/${doctrineId}/staging-systems`, data)
 	}
 
@@ -5023,7 +5082,10 @@ export class ApiClient {
 		return this.get('/doctrines/fittings/with-doctrines')
 	}
 
-	async saveFittingIngame(fittingId: string, characterId: string): Promise<SaveFittingIngameResponse> {
+	async saveFittingIngame(
+		fittingId: string,
+		characterId: string
+	): Promise<SaveFittingIngameResponse> {
 		return this.post(`/doctrines/fittings/${fittingId}/save-ingame`, { characterId })
 	}
 
@@ -5247,7 +5309,10 @@ export class ApiClient {
 		return this.post('/pastes', input)
 	}
 
-	async getMyPastes(limit = 50, offset = 0): Promise<{
+	async getMyPastes(
+		limit = 50,
+		offset = 0
+	): Promise<{
 		items: PasteRecord[]
 		total: number
 		activeCount: number
