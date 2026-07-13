@@ -22,6 +22,7 @@ export interface InventoryBaysTableProps {
 	searchPlaceholder?: string
 	className?: string
 	renderItemIcon?: (item: InventoryDisplayItem) => ReactNode
+	renderItemDetails?: (item: InventoryDisplayItem) => ReactNode
 }
 
 function formatCount(value: number): string {
@@ -34,6 +35,7 @@ export function InventoryBaysTable({
 	searchPlaceholder = 'Search inventory bays...',
 	className,
 	renderItemIcon,
+	renderItemDetails,
 }: InventoryBaysTableProps) {
 	const [search, setSearch] = useState('')
 	const [expandedBays, setExpandedBays] = useState<Set<string>>(new Set())
@@ -170,8 +172,8 @@ export function InventoryBaysTable({
 											<TableCell className="text-right font-mono">{formatCount(bay.totalStacks)}</TableCell>
 											<TableCell className="text-right font-mono">{formatCount(bay.totalQuantity)}</TableCell>
 										</TableRow>
-										{isExpanded ? (
-											<TableRow className="bg-muted/20">
+											{isExpanded ? (
+												<TableRow className="bg-muted/20">
 												<TableCell colSpan={3} className="px-0 py-0">
 													<div className="border-l-2 border-muted px-4 py-3">
 														<Table>
@@ -186,16 +188,21 @@ export function InventoryBaysTable({
 																{bay.items.length > 0 ? (
 																	bay.items.map((item) => (
 																		<TableRow key={`${bay.locationFlag}-${item.typeId}`}>
-																			<TableCell>
-																				<div className="flex items-start gap-2">
-																					{renderItemIcon ? (
-																						<div className="mt-0.5 shrink-0">{renderItemIcon(item)}</div>
-																					) : null}
-																					<div className="min-w-0">
-																						<div className="font-medium">{item.typeName ?? item.typeId}</div>
+																				<TableCell>
+																					<div className="flex items-start gap-2">
+																						{renderItemIcon ? (
+																							<div className="mt-0.5 shrink-0">{renderItemIcon(item)}</div>
+																						) : null}
+																						<div className="min-w-0">
+																							<div className="font-medium">{item.typeName ?? item.typeId}</div>
+																							{renderItemDetails ? (
+																								<div className="text-xs text-muted-foreground">
+																									{renderItemDetails(item)}
+																								</div>
+																							) : null}
+																						</div>
 																					</div>
-																				</div>
-																			</TableCell>
+																				</TableCell>
 																			<TableCell className="text-right font-mono">{formatCount(item.quantity)}</TableCell>
 																			<TableCell className="text-right font-mono">{formatCount(item.stackCount)}</TableCell>
 																		</TableRow>

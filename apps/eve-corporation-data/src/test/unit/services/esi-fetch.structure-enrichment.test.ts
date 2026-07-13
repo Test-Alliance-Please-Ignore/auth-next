@@ -8,6 +8,7 @@ import {
 } from '../../../services/esi-fetch'
 
 const ORBITAL_SKYHOOK_TYPE_ID = '81080'
+const SOVEREIGNTY_HUB_TYPE_ID = '32458'
 
 describe('esi structure enrichment ownership handling', () => {
 	it('maps the requested corporation id onto base structures', async () => {
@@ -258,7 +259,7 @@ describe('esi structure enrichment ownership handling', () => {
 			structure_id: '81001',
 			corporation_id: '98000001',
 			system_id: '30000142',
-			type_id: '35835',
+			type_id: SOVEREIGNTY_HUB_TYPE_ID,
 			name: null,
 		})
 	})

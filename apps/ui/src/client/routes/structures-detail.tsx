@@ -21,9 +21,11 @@ import { useAuth } from '@/hooks/useAuth'
 import { useGroups } from '@/hooks/useGroups'
 import { usePageTitle } from '@/hooks/usePageTitle'
 import { useUserPermissions } from '@/hooks/useUserPermissions'
+import { useSystemDetails } from '@/hooks/useLocationSearch'
 import { InventoryBaysTable } from '@/components/inventory-bays-table'
 import { CorporationLogo } from '@/components/corporation-logo'
 import { StructureFuelUsageChart } from '@/components/structure-fuel-usage-chart'
+import { Skeleton } from '@/components/ui/skeleton'
 import { FittingPanel } from '@repo/eve-fitting/fitting-panel'
 import { FittingSlotTable } from '@repo/eve-fitting/fitting-slot-table'
 import type { FittingDisplayItem, FittingShipSlotType } from '@repo/eve-fitting/flags'
@@ -31,6 +33,7 @@ import {
 	api,
 	type StructureAssetsDebugResult,
 	type StructureDetailResult,
+	type StructureInventoryBay,
 } from '@/lib/api'
 import { typeIconUrl, typeImageUrl, typeRenderUrl } from '@/lib/eve-images'
 import { formatDateTimeLong } from '@/lib/date-utils'
@@ -138,6 +141,176 @@ function formatNullableNumber(value: number | null | undefined): string {
 function formatBurnRate(value: number | null | undefined): string {
 	if (value === null || value === undefined) return '-'
 	return `${value.toLocaleString(undefined, { maximumFractionDigits: 2 })}/hr`
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+	return typeof value === 'object' && value !== null && !Array.isArray(value)
+}
+
+type WorkforceTransportSource = {
+	solarSystemId: string
+	amount: number | null
+}
+
+type ParsedWorkforceTransportSection =
+	| {
+			mode: 'import' | 'export'
+			sources: WorkforceTransportSource[]
+	  }
+	| {
+			mode: 'transit'
+			sources: []
+	  }
+	| {
+			mode: 'unknown'
+			sources: []
+	  }
+
+function parseWorkforceTransportSources(value: unknown): WorkforceTransportSource[] {
+	if (!Array.isArray(value)) {
+		return []
+	}
+
+	return value.flatMap((entry) => {
+		if (!isRecord(entry)) {
+			return []
+		}
+
+		const sourceId = entry.solar_system_id ?? entry.solarSystemId
+		if (sourceId === null || sourceId === undefined) {
+			return []
+		}
+
+		const amount =
+			typeof entry.amount === 'number'
+				? entry.amount
+				: typeof entry.amount === 'string' && entry.amount.trim() !== '' && Number.isFinite(Number(entry.amount))
+					? Number(entry.amount)
+					: null
+		return [
+			{
+				solarSystemId: String(sourceId),
+				amount,
+			},
+		]
+	})
+}
+
+function parseWorkforceTransportSection(section: unknown): ParsedWorkforceTransportSection {
+	if (!isRecord(section)) {
+		return { mode: 'unknown', sources: [] }
+	}
+
+	if ('import' in section && isRecord(section.import)) {
+		return {
+			mode: 'import',
+			sources: parseWorkforceTransportSources(section.import.sources),
+		}
+	}
+
+	if ('export' in section && isRecord(section.export)) {
+		return {
+			mode: 'export',
+			sources: parseWorkforceTransportSources(section.export.sources),
+		}
+	}
+
+	if (section.transit === true) {
+		return { mode: 'transit', sources: [] }
+	}
+
+	return { mode: 'unknown', sources: [] }
+}
+
+function formatWorkforceTransportMode(mode: ParsedWorkforceTransportSection['mode']): string {
+	switch (mode) {
+		case 'import':
+			return 'Import'
+		case 'export':
+			return 'Export'
+		case 'transit':
+			return 'Transit'
+		default:
+			return 'Unrecognized'
+	}
+}
+
+function workforceTransportBadgeVariant(mode: ParsedWorkforceTransportSection['mode']): BadgeVariant {
+	return mode === 'unknown' ? 'ghost' : 'success'
+}
+
+function WorkforceTransportSystemName({ systemId }: { systemId: string }) {
+	const { data: systemDetails, isLoading } = useSystemDetails(systemId)
+
+	if (isLoading) {
+		return <Skeleton className="h-8 w-32" />
+	}
+
+	return (
+		<div className="space-y-0.5">
+			<div className="font-medium">{systemDetails?.name ?? systemId}</div>
+			<div className="text-xs text-muted-foreground">System ID {systemId}</div>
+		</div>
+	)
+}
+
+function WorkforceTransportSection({
+	label,
+	section,
+}: {
+	label: string
+	section: Record<string, unknown> | null | undefined
+}) {
+	const parsed = parseWorkforceTransportSection(section)
+
+	return (
+		<div className="rounded-lg border border-border/60 bg-muted/20 p-4">
+			<div className="flex items-start justify-between gap-3">
+				<div>
+					<div className="font-medium">{label}</div>
+					<div className="text-xs text-muted-foreground">
+						{parsed.mode === 'transit'
+							? 'This hub is configured for transit routing.'
+							: parsed.mode === 'unknown'
+								? 'No recognizable workforce transport configuration was recorded.'
+								: `This hub is configured for ${formatWorkforceTransportMode(parsed.mode).toLowerCase()} routing.`}
+					</div>
+				</div>
+				<Badge variant={workforceTransportBadgeVariant(parsed.mode)}>
+					{formatWorkforceTransportMode(parsed.mode)}
+				</Badge>
+			</div>
+
+			{parsed.mode !== 'unknown' && parsed.sources.length > 0 ? (
+				<div className="mt-4 overflow-hidden rounded-md border border-border/60 bg-background">
+					<Table>
+						<TableHeader>
+							<TableRow>
+								<TableHead>Source System</TableHead>
+								<TableHead>Amount</TableHead>
+							</TableRow>
+						</TableHeader>
+						<TableBody>
+							{parsed.sources.map((source) => (
+								<TableRow key={`${label}-${source.solarSystemId}`}>
+									<TableCell>
+										<WorkforceTransportSystemName systemId={source.solarSystemId} />
+									</TableCell>
+									<TableCell>{formatNullableNumber(source.amount)}</TableCell>
+								</TableRow>
+							))}
+						</TableBody>
+					</Table>
+				</div>
+			) : (
+				<div className="mt-4 rounded-md border border-dashed border-border/60 bg-background px-3 py-2 text-sm text-muted-foreground">
+					{parsed.mode === 'transit'
+						? 'Transit mode does not list source systems.'
+						: 'No source systems recorded.'}
+				</div>
+			)}
+		</div>
+	)
 }
 
 function InventoryItemIcon({ typeId }: { typeId: string }) {
@@ -302,6 +475,41 @@ export default function StructuresDetailPage() {
 	const hasSovereigntySummary = structureFamily === 'sovereignty' && structure.sovereignty
 	const hasSkyhookSummary = structureFamily === 'skyhooks' && structure.skyhook
 	const hasMiningSummary = structureFamily === 'mining-citadels'
+	type SovereigntyReagent = NonNullable<NonNullable<StructureDetailResult['sovereignty']>['hub']>['reagentBay']['reagents'][number]
+	const sovereigntyReagentBays = useMemo<StructureInventoryBay[]>(() => {
+		const hub = structure.sovereignty?.hub
+		if (!hub) {
+			return []
+		}
+
+		const totalQuantity = hub.reagentBay.reagents.reduce(
+			(accumulator, reagent) => accumulator + reagent.securedStock + reagent.unsecuredStock,
+			0
+		)
+
+		return [
+			{
+				locationFlag: 'SovereigntyReagentBay',
+				label: 'Reagent Bay',
+				totalQuantity,
+				totalStacks: hub.reagentBay.reagents.length,
+				items: hub.reagentBay.reagents.map((reagent) => ({
+					typeId: reagent.typeId,
+					typeName: null,
+					quantity: reagent.securedStock + reagent.unsecuredStock,
+					stackCount: 1,
+				})),
+			},
+		]
+	}, [structure.sovereignty?.hub])
+	const sovereigntyReagentDetailsByTypeId = useMemo(() => {
+		const hub = structure.sovereignty?.hub
+		if (!hub) {
+			return new Map<string, SovereigntyReagent>()
+		}
+
+		return new Map(hub.reagentBay.reagents.map((reagent) => [reagent.typeId, reagent] as const))
+	}, [structure.sovereignty?.hub])
 
 	const handleSave = async () => {
 		await updateMutation.mutateAsync({
@@ -563,57 +771,218 @@ export default function StructuresDetailPage() {
 			</div>
 
 			{hasSovereigntySummary && (
-				<Card>
-					<CardHeader>
-						<CardTitle>Sovereignty State</CardTitle>
-						<CardDescription>System ownership and hub snapshot for this sovereignty structure.</CardDescription>
-					</CardHeader>
-					<CardContent className="grid gap-4 md:grid-cols-2 text-sm">
-						<div>
-							<div className="text-muted-foreground">Activity Defense Multiplier</div>
-							<div className="font-medium">
-								{structure.sovereignty?.activityDefenseMultiplier ?? '-'}
+				<div className="space-y-4">
+					<Card>
+						<CardHeader>
+							<CardTitle>Sovereignty State</CardTitle>
+							<CardDescription>
+								System ownership and the currently linked sovereignty hub snapshot.
+							</CardDescription>
+						</CardHeader>
+						<CardContent className="grid gap-4 md:grid-cols-2 text-sm">
+							<div>
+								<div className="text-muted-foreground">Activity Defense Multiplier</div>
+								<div className="font-medium">
+									{structure.sovereignty?.activityDefenseMultiplier ?? '-'}
+								</div>
 							</div>
-						</div>
-						<div>
-							<div className="text-muted-foreground">Claimed Since</div>
-							<div className="font-medium">{formatNullableDateTime(structure.sovereignty?.claimedSince)}</div>
-						</div>
-						<div>
-							<div className="text-muted-foreground">Capital System</div>
-							<div className="font-medium">{structure.sovereignty?.isCapitalSystem ? 'Yes' : 'No'}</div>
-						</div>
-						<div>
-							<div className="text-muted-foreground">Sovereignty Hub</div>
-							<div className="font-medium">
-								{structure.sovereignty?.sovereigntyHubStructureId ?? '-'}
+							<div>
+								<div className="text-muted-foreground">Claimed Since</div>
+								<div className="font-medium">{formatNullableDateTime(structure.sovereignty?.claimedSince)}</div>
 							</div>
-						</div>
-						<div>
-							<div className="text-muted-foreground">Controller Alliance</div>
-							<div className="font-medium">
-								{structure.sovereignty?.hub?.controllerAllianceId ?? '-'}
+							<div>
+								<div className="text-muted-foreground">Capital System</div>
+								<div className="font-medium">{structure.sovereignty?.isCapitalSystem ? 'Yes' : 'No'}</div>
 							</div>
-						</div>
-						<div>
-							<div className="text-muted-foreground">Vulnerability Window</div>
-							<div className="font-medium">
-								{structure.sovereignty?.vulnerabilityWindowStart &&
-								structure.sovereignty?.vulnerabilityWindowEnd
-									? `${formatDateTimeLong(structure.sovereignty.vulnerabilityWindowStart)} - ${formatDateTimeLong(structure.sovereignty.vulnerabilityWindowEnd)}`
-									: formatNullableDateTime(structure.sovereignty?.vulnerabilityWindowEnd)}
+							<div>
+								<div className="text-muted-foreground">Sovereignty Hub</div>
+								<div className="font-medium">
+									{structure.sovereignty?.sovereigntyHubStructureId ?? '-'}
+								</div>
 							</div>
-						</div>
-						<div>
-							<div className="text-muted-foreground">Hub Resources</div>
-							<div className="font-medium">
-								{structure.sovereignty?.hub
-									? `${formatNullableNumber(structure.sovereignty.hub.resourcePowerAllocated)} / ${formatNullableNumber(structure.sovereignty.hub.resourcePowerAvailable)} power, ${formatNullableNumber(structure.sovereignty.hub.resourceWorkforceAllocated)} / ${formatNullableNumber(structure.sovereignty.hub.resourceWorkforceAvailable)} workforce`
-									: '-'}
+							<div>
+								<div className="text-muted-foreground">Controller Alliance</div>
+								<div className="font-medium">
+									{structure.sovereignty?.hub?.controllerAllianceId ?? '-'}
+								</div>
 							</div>
-						</div>
-					</CardContent>
-				</Card>
+							<div>
+								<div className="text-muted-foreground">Vulnerability Window</div>
+								<div className="font-medium">
+									{structure.sovereignty?.vulnerabilityWindowStart &&
+									structure.sovereignty?.vulnerabilityWindowEnd
+										? `${formatDateTimeLong(structure.sovereignty.vulnerabilityWindowStart)} - ${formatDateTimeLong(structure.sovereignty.vulnerabilityWindowEnd)}`
+										: formatNullableDateTime(structure.sovereignty?.vulnerabilityWindowEnd)}
+								</div>
+							</div>
+							<div>
+								<div className="text-muted-foreground">System Resources</div>
+								<div className="font-medium">
+									{structure.sovereignty?.hub
+										? `${formatNullableNumber(structure.sovereignty.hub.resourcePowerAllocated)} / ${formatNullableNumber(structure.sovereignty.hub.resourcePowerAvailable)} power, ${formatNullableNumber(structure.sovereignty.hub.resourceWorkforceAllocated)} / ${formatNullableNumber(structure.sovereignty.hub.resourceWorkforceAvailable)} workforce`
+										: '-'}
+								</div>
+							</div>
+							<div>
+								<div className="text-muted-foreground">Fuel Access List</div>
+								<div className="font-medium">
+									{structure.sovereignty?.hub?.fuelAccessListId ?? '-'}
+								</div>
+							</div>
+						</CardContent>
+					</Card>
+
+						<Card>
+							<CardHeader>
+								<CardTitle>Hub Configuration</CardTitle>
+								<CardDescription>
+									Workforce transport routing and the hub's current resource allocation.
+								</CardDescription>
+							</CardHeader>
+							<CardContent className="space-y-6 text-sm">
+								<div className="grid gap-4 lg:grid-cols-2">
+									<WorkforceTransportSection
+										label="Workforce Transport Configuration"
+										section={structure.sovereignty?.hub?.workforceTransport?.configuration}
+									/>
+									<WorkforceTransportSection
+										label="Workforce Transport State"
+										section={structure.sovereignty?.hub?.workforceTransport?.state}
+									/>
+								</div>
+
+								<div className="grid gap-4 md:grid-cols-2">
+									<div className="rounded-lg border border-border/60 bg-muted/20 p-4">
+										<div className="text-xs uppercase tracking-wide text-muted-foreground">Power Allocation</div>
+										<div className="mt-2 grid grid-cols-2 gap-4">
+											<div>
+												<div className="text-muted-foreground">Allocated</div>
+												<div className="font-medium">
+													{formatNullableNumber(structure.sovereignty?.hub?.resourcePowerAllocated)}
+												</div>
+											</div>
+											<div>
+												<div className="text-muted-foreground">Available</div>
+												<div className="font-medium">
+													{formatNullableNumber(structure.sovereignty?.hub?.resourcePowerAvailable)}
+												</div>
+											</div>
+										</div>
+									</div>
+
+									<div className="rounded-lg border border-border/60 bg-muted/20 p-4">
+										<div className="text-xs uppercase tracking-wide text-muted-foreground">Workforce Allocation</div>
+										<div className="mt-2 grid grid-cols-2 gap-4">
+											<div>
+												<div className="text-muted-foreground">Allocated</div>
+												<div className="font-medium">
+													{formatNullableNumber(structure.sovereignty?.hub?.resourceWorkforceAllocated)}
+												</div>
+											</div>
+											<div>
+												<div className="text-muted-foreground">Available</div>
+												<div className="font-medium">
+													{formatNullableNumber(structure.sovereignty?.hub?.resourceWorkforceAvailable)}
+												</div>
+											</div>
+										</div>
+									</div>
+								</div>
+							</CardContent>
+						</Card>
+
+						<Card>
+							<CardHeader>
+								<CardTitle>Reagent Bay</CardTitle>
+								<CardDescription>
+									Current reagent bay contents and resource totals for the sovereignty hub.
+								</CardDescription>
+							</CardHeader>
+							<CardContent className="space-y-4">
+								<div className="grid gap-4 md:grid-cols-3 text-sm">
+									<div>
+										<div className="text-muted-foreground">Last Updated</div>
+									<div className="font-medium">
+										{formatNullableDateTime(structure.sovereignty?.hub?.reagentBayLastUpdated)}
+									</div>
+								</div>
+								<div>
+									<div className="text-muted-foreground">Reagent Count</div>
+									<div className="font-medium">{structure.sovereignty?.hub?.reagentCount ?? 0}</div>
+								</div>
+								<div>
+									<div className="text-muted-foreground">Stock Totals</div>
+										<div className="font-medium">
+											{structure.sovereignty?.hub
+												? `${formatNullableNumber(structure.sovereignty.hub.totalSecuredStock)} secured, ${formatNullableNumber(structure.sovereignty.hub.totalUnsecuredStock)} unsecured`
+												: '-'}
+										</div>
+									</div>
+								</div>
+								<InventoryBaysTable
+									bays={sovereigntyReagentBays}
+									emptyLabel="No reagents reported."
+									searchPlaceholder="Search reagent bay..."
+									renderItemIcon={(item) => <InventoryItemIcon typeId={item.typeId} />}
+									renderItemDetails={(item) => {
+										const reagent = sovereigntyReagentDetailsByTypeId.get(item.typeId)
+										if (!reagent) {
+											return null
+										}
+
+										return (
+											<span>
+												Secured {formatNullableNumber(reagent.securedStock)} · Unsecured{' '}
+												{formatNullableNumber(reagent.unsecuredStock)} · Last cycle{' '}
+												{formatNullableDateTime(reagent.lastCycle)}
+											</span>
+										)
+									}}
+								/>
+							</CardContent>
+						</Card>
+
+						<Card>
+							<CardHeader>
+							<CardTitle>Upgrades</CardTitle>
+							<CardDescription>
+								Installed sovereignty hub upgrades and their current power state.
+							</CardDescription>
+							</CardHeader>
+							<CardContent>
+								<div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
+									{structure.sovereignty?.hub?.upgrades.length ? (
+										structure.sovereignty.hub.upgrades.map((upgrade) => (
+											<Card key={`${upgrade.typeId}-${upgrade.powerState}`} className="border-border/60 bg-muted/20">
+												<CardContent className="space-y-3 p-4">
+													<div className="flex items-start justify-between gap-3">
+														<div className="space-y-1">
+															<div className="text-xs uppercase tracking-wide text-muted-foreground">
+																Installed Upgrade
+															</div>
+															<div className="font-medium">{upgrade.typeId}</div>
+														</div>
+														<Badge
+															variant={upgrade.powerState.toLowerCase() === 'online' ? 'success' : 'ghost'}
+														>
+															{upgrade.powerState}
+														</Badge>
+													</div>
+													<div className="text-sm text-muted-foreground">
+														Sovereignty hub upgrade slot currently reporting this state.
+													</div>
+												</CardContent>
+											</Card>
+										))
+									) : (
+										<div className="rounded-lg border border-dashed border-border/60 px-3 py-4 text-sm text-muted-foreground">
+											No upgrades reported.
+										</div>
+									)}
+								</div>
+							</CardContent>
+						</Card>
+				</div>
 			)}
 
 			{hasSkyhookSummary && (

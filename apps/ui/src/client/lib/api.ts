@@ -806,6 +806,33 @@ export interface StructureSovereigntyHubSummary {
 	controllerAllianceId: string | null
 	reagentBayLastUpdated: string | null
 	reagentCount: number
+	reagentBay: {
+		lastUpdated: string
+		reagents: Array<{
+			typeId: string
+			securedStock: number
+			unsecuredStock: number
+			lastCycle: string
+		}>
+	}
+	resources: {
+		power: {
+			allocated: number
+			available: number
+		}
+		workforce: {
+			allocated: number
+			available: number
+		}
+	}
+	upgrades: Array<{
+		typeId: string
+		powerState: string
+	}>
+	workforceTransport: {
+		configuration: Record<string, unknown>
+		state: Record<string, unknown>
+	}
 	totalSecuredStock: number
 	totalUnsecuredStock: number
 	resourcePowerAllocated: number

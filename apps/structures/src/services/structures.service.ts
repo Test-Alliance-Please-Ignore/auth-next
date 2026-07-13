@@ -230,6 +230,33 @@ export interface StructureSovereigntyHubSummary {
 	controllerAllianceId: string | null
 	reagentBayLastUpdated: string | null
 	reagentCount: number
+	reagentBay: {
+		lastUpdated: string
+		reagents: Array<{
+			typeId: string
+			securedStock: number
+			unsecuredStock: number
+			lastCycle: string
+		}>
+	}
+	resources: {
+		power: {
+			allocated: number
+			available: number
+		}
+		workforce: {
+			allocated: number
+			available: number
+		}
+	}
+	upgrades: Array<{
+		typeId: string
+		powerState: string
+	}>
+	workforceTransport: {
+		configuration: Record<string, unknown>
+		state: Record<string, unknown>
+	}
 	totalSecuredStock: number
 	totalUnsecuredStock: number
 	resourcePowerAllocated: number
@@ -628,6 +655,13 @@ function compareNullableNumbers(
 
 type StructureWhereCondition = NonNullable<Parameters<typeof and>[number]>
 
+type SovereigntyHubUniverseStub = {
+	resolveSolarSystemsByIds(systemIds: string[]): Promise<
+		Record<string, { solarSystemName: string; regionId: string } | null>
+	>
+	resolveRegionsByIds(regionIds: string[]): Promise<Record<string, { regionName: string } | null>>
+}
+
 function combineWhereConditions(
 	conditions: Array<StructureWhereCondition | undefined>
 ): any {
@@ -673,6 +707,10 @@ function summarizeStructureSovereigntyHub(
 		controllerAllianceId: hub.controllerAllianceId ?? null,
 		reagentBayLastUpdated: hub.reagentBayLastUpdated ? hub.reagentBayLastUpdated.toISOString() : null,
 		reagentCount: hub.reagentBay.reagents.length,
+		reagentBay: hub.reagentBay,
+		resources: hub.resources,
+		upgrades: hub.upgrades,
+		workforceTransport: hub.workforceTransport as StructureSovereigntyHubSummary['workforceTransport'],
 		totalSecuredStock: reagentTotals.secured,
 		totalUnsecuredStock: reagentTotals.unsecured,
 		resourcePowerAllocated: hub.resources.power.allocated,
@@ -807,6 +845,81 @@ function buildStructureListItem(context: VisibleStructureContext): StructureList
 		canViewSensitive,
 		canEdit,
 	}
+}
+
+interface SovereigntyHubGeography {
+	solarSystemName: string
+	regionId: string
+	regionName: string
+}
+
+async function resolveSovereigntyHubGeographies(
+	env: Env,
+	systemIds: string[]
+): Promise<Record<string, SovereigntyHubGeography | null>> {
+	if (systemIds.length === 0) {
+		return {}
+	}
+
+	const universe = getStub<SovereigntyHubUniverseStub>(env.UNIVERSE, 'default')
+	const systemsById = await universe.resolveSolarSystemsByIds(systemIds)
+	const regionIds = [...new Set(Object.values(systemsById).flatMap((system) => (system ? [system.regionId] : [])))]
+	const regionsById = regionIds.length > 0 ? await universe.resolveRegionsByIds(regionIds) : {}
+
+	return Object.fromEntries(
+		Object.entries(systemsById).map(([systemId, system]) => {
+			if (!system) {
+				return [systemId, null]
+			}
+
+			const region = regionsById[system.regionId] ?? null
+			return [
+				systemId,
+				{
+					solarSystemName: system.solarSystemName,
+					regionId: system.regionId,
+					regionName: region?.regionName ?? system.regionId,
+				},
+			]
+		})
+	)
+}
+
+function buildSyntheticSovereigntyStructureRow(
+	hub: typeof structureSovereigntyHubs.$inferSelect,
+	system: typeof structureSovereigntySystems.$inferSelect | null,
+	geography: SovereigntyHubGeography | null
+): DirectCorporationStructureRecord {
+	const lastSyncedAt = hub.lastSyncedAt ?? system?.lastSyncedAt ?? null
+	return {
+		id: hub.structureId,
+		corporationId: hub.corporationId,
+		structureId: hub.structureId,
+		name: hub.name ?? geography?.solarSystemName ?? hub.systemName ?? system?.systemName ?? hub.structureId,
+		typeId: hub.typeId,
+		typeName: 'Sovereignty Hub',
+		systemId: hub.systemId,
+		systemName: geography?.solarSystemName ?? hub.systemName ?? system?.systemName ?? null,
+		regionId: geography?.regionId ?? null,
+		regionName: geography?.regionName ?? null,
+		profileId: 'sovereignty',
+		fuelExpires: null,
+		fuelAmount: null,
+		lastRefilledAt: null,
+		nextReinforceApply: null,
+		nextReinforceHour: null,
+		reinforceHour: null,
+		state: 'online',
+		stateTimerEnd: null,
+		stateTimerStart: null,
+		unanchorsAt: null,
+		lowPower: false,
+		syncStatus: 'ok',
+		syncFailureReason: null,
+		lastSyncedAt,
+		services: [],
+		updatedAt: hub.updatedAt,
+	} as DirectCorporationStructureRecord
 }
 
 async function loadStructureTabDetailData(
@@ -1292,7 +1405,69 @@ async function getVisibleStructureContext(
 	})
 
 	if (!structure) {
-		return null
+		const sovereigntyHub = await db.query.structureSovereigntyHubs.findFirst({
+			where: (() => {
+				const conditions = [eq(structureSovereigntyHubs.structureId, structureId)]
+				if (!accessibleCorporations.hasGlobalAccess) {
+					if (accessibleCorporations.corporationIds.size === 0) {
+						return and(...conditions, eq(structureSovereigntyHubs.corporationId, '__no_access__'))
+					}
+					conditions.push(inArray(structureSovereigntyHubs.corporationId, [...accessibleCorporations.corporationIds]))
+				}
+				return and(...conditions)
+			})(),
+		})
+
+		if (!sovereigntyHub) {
+			return null
+		}
+
+		const corporation = await db.query.managedCorporations.findFirst({
+			where: eq(managedCorporations.corporationId, sovereigntyHub.corporationId),
+			columns: {
+				corporationId: true,
+				name: true,
+				includeInStructureAssetSync: true,
+			},
+		})
+		const systemRow = await db.query.structureSovereigntySystems.findFirst({
+			where: eq(structureSovereigntySystems.sovereigntyHubStructureId, structureId),
+		})
+		const geographyBySystemId = await resolveSovereigntyHubGeographies(env, [sovereigntyHub.systemId])
+		const syntheticStructure = buildSyntheticSovereigntyStructureRow(
+			sovereigntyHub,
+			systemRow ?? null,
+			geographyBySystemId[sovereigntyHub.systemId] ?? null
+		)
+		const structureTab = getStructureTab(syntheticStructure)
+		if (!hasStructureAccessForTab(access, sovereigntyHub.corporationId, structureTab)) {
+			return null
+		}
+
+		const canViewSensitive = user.is_admin || canViewSensitiveStructure(access, sovereigntyHub.corporationId, structureTab)
+		const canEdit = user.is_admin || canEditStructure(access, sovereigntyHub.corporationId, structureTab)
+
+		const [tabData, inventoryBays, fittingItems] = await Promise.all([
+			loadStructureTabDetailData(db, syntheticStructure),
+			loadStructureInventoryDetailData(db, syntheticStructure),
+			loadStructureFittingDetailData(env, syntheticStructure),
+		])
+
+		return {
+			structure: syntheticStructure,
+			corporationName: corporation?.name ?? sovereigntyHub.corporationId,
+			includeInStructureAssetSync: corporation?.includeInStructureAssetSync ?? false,
+			config: null,
+			canViewSensitive,
+			canEdit,
+			tabData: {
+				...(tabData ?? {}),
+				inventoryBays,
+			},
+			fittingItems,
+			lastRefilledAt: null,
+			fuelUsage: null,
+		}
 	}
 
 	const config = await db.query.structureConfigs.findFirst({
@@ -1728,6 +1903,174 @@ async function loadVisibleStructureContexts(
 	}
 }
 
+async function loadVisibleSovereigntyHubContexts(
+	env: Env,
+	db: DbClient<DbSchema>,
+	user: SessionUser,
+	query: StructureSovereigntyListQuery
+): Promise<{
+	moduleConfig: StructureModuleConfigResult
+	access: StructureAccessScope
+	contexts: VisibleStructureContext[]
+	hubRows: Array<typeof structureSovereigntyHubs.$inferSelect>
+	systemRows: Array<typeof structureSovereigntySystems.$inferSelect>
+}> {
+	const moduleConfig = await getStructureModuleConfig(db)
+	const access = computeStructureAccess(user.roles, user.is_admin)
+	const accessForTab = getStructureAccessTarget(access, 'sovereignty')
+	if (!hasAnyStructureAccess(accessForTab)) {
+		return {
+			moduleConfig,
+			access,
+			contexts: [],
+			hubRows: [],
+			systemRows: [],
+		}
+	}
+
+	const accessibleCorporations = getAccessibleCorporationIds(access, 'sovereignty')
+	if (!accessibleCorporations.hasGlobalAccess && accessibleCorporations.corporationIds.size === 0) {
+		return {
+			moduleConfig,
+			access,
+			contexts: [],
+			hubRows: [],
+			systemRows: [],
+		}
+	}
+
+	if (query.state && query.state !== 'online') {
+		return {
+			moduleConfig,
+			access,
+			contexts: [],
+			hubRows: [],
+			systemRows: [],
+		}
+	}
+
+	if (query.lowPower === 'true' || query.lowPowerAllowed === 'true') {
+		return {
+			moduleConfig,
+			access,
+			contexts: [],
+			hubRows: [],
+			systemRows: [],
+		}
+	}
+
+	if (query.assignedGroupId && query.assignedGroupId !== '__unassigned__') {
+		return {
+			moduleConfig,
+			access,
+			contexts: [],
+			hubRows: [],
+			systemRows: [],
+		}
+	}
+
+	const corpWhere = (() => {
+		const conditions: StructureWhereCondition[] = []
+		if (query.corporationId) {
+			conditions.push(eq(structureSovereigntyHubs.corporationId, query.corporationId))
+		}
+		if (!accessibleCorporations.hasGlobalAccess) {
+			conditions.push(inArray(structureSovereigntyHubs.corporationId, [...accessibleCorporations.corporationIds]))
+		}
+		if (query.systemId) {
+			conditions.push(eq(structureSovereigntyHubs.systemId, query.systemId))
+		}
+		if (query.typeId) {
+			conditions.push(eq(structureSovereigntyHubs.typeId, query.typeId))
+		}
+		return combineWhereConditions(conditions)
+	})()
+
+	const hubRows = await db.query.structureSovereigntyHubs.findMany({
+		where: corpWhere,
+		orderBy: desc(structureSovereigntyHubs.updatedAt),
+	})
+	if (hubRows.length === 0) {
+		return {
+			moduleConfig,
+			access,
+			contexts: [],
+			hubRows,
+			systemRows: [],
+		}
+	}
+
+	const geographyBySystemId = await resolveSovereigntyHubGeographies(
+		env,
+		[...new Set(hubRows.map((hub) => hub.systemId))]
+	)
+	const hubStructureIds = hubRows.map((hub) => hub.structureId)
+	const systemRows = await db.query.structureSovereigntySystems.findMany({
+		where: combineWhereConditions([
+			inArray(structureSovereigntySystems.sovereigntyHubStructureId, hubStructureIds),
+			query.allianceId ? eq(structureSovereigntySystems.allianceId, query.allianceId) : undefined,
+		]),
+		orderBy: desc(structureSovereigntySystems.updatedAt),
+	})
+	const systemByHubStructureId = new Map(
+		systemRows
+			.filter((row): row is typeof structureSovereigntySystems.$inferSelect & { sovereigntyHubStructureId: string } =>
+				Boolean(row.sovereigntyHubStructureId)
+			)
+			.map((row) => [row.sovereigntyHubStructureId, row])
+	)
+	const corporationIds = [...new Set(hubRows.map((hub) => hub.corporationId))]
+	const corporationRows = corporationIds.length
+		? await db.query.managedCorporations.findMany({
+				where: inArray(managedCorporations.corporationId, corporationIds),
+				columns: {
+					corporationId: true,
+					name: true,
+					includeInStructureAssetSync: true,
+				},
+			})
+		: []
+	const corporationById = new Map(corporationRows.map((row) => [row.corporationId, row] as const))
+
+	return {
+		moduleConfig,
+		access,
+		contexts: hubRows
+			.map<VisibleStructureContext | null>((hub) => {
+				const systemRow = systemByHubStructureId.get(hub.structureId) ?? null
+				const geography = geographyBySystemId[hub.systemId] ?? null
+				const structure = buildSyntheticSovereigntyStructureRow(hub, systemRow, geography)
+				const structureTab = getStructureTab(structure)
+				const canViewSensitive = user.is_admin || canViewSensitiveStructure(access, hub.corporationId, structureTab)
+				const canEdit = user.is_admin || canEditStructure(access, hub.corporationId, structureTab)
+				const corporation = corporationById.get(hub.corporationId)
+
+				return {
+					structure,
+					corporationName: corporation?.name ?? hub.corporationId,
+					includeInStructureAssetSync: corporation?.includeInStructureAssetSync ?? false,
+					config: null,
+					canViewSensitive,
+					canEdit,
+					tabData: null,
+					fittingItems: null,
+					lastRefilledAt: null,
+					fuelUsage: null,
+				}
+			})
+			.filter((item): item is VisibleStructureContext => item !== null)
+			.filter((context) => {
+				if (query.regionId && context.structure.regionId !== query.regionId) return false
+				if (query.systemId && context.structure.systemId !== query.systemId) return false
+				if (query.lowPower === 'false' && context.structure.lowPower) return false
+				if (query.lowPowerAllowed === 'false' && context.config?.lowPowerAllowed) return false
+				return true
+			}),
+		hubRows,
+		systemRows,
+	}
+}
+
 async function listVisibleOperationalStructures(
 	db: DbClient<DbSchema>,
 	user: SessionUser,
@@ -1883,8 +2226,8 @@ function buildSovereigntyListItem(input: {
 }): StructureSovereigntyListItem {
 	const { context, systemRow, hubRow } = input
 	const { structure: structureRow, corporationName, canViewSensitive, canEdit } = context
-	const hasSystemSnapshot = systemRow !== null
-	const lastSyncedAt = systemRow?.lastSyncedAt ?? hubRow?.lastSyncedAt ?? structureRow.lastSyncedAt ?? null
+	const hasHubSnapshot = hubRow !== null
+	const lastSyncedAt = hubRow?.lastSyncedAt ?? systemRow?.lastSyncedAt ?? structureRow.lastSyncedAt ?? null
 	const sourceUpdatedAt = systemRow?.updatedAt ?? hubRow?.updatedAt ?? structureRow.updatedAt
 
 	const hubSummary = hubRow ? summarizeStructureSovereigntyHub(hubRow) : null
@@ -1929,10 +2272,10 @@ function buildSovereigntyListItem(input: {
 		resourceWorkforceAllocated: hubSummary?.resourceWorkforceAllocated ?? 0,
 		resourceWorkforceAvailable: hubSummary?.resourceWorkforceAvailable ?? 0,
 		upgradeCount: hubSummary?.upgradeCount ?? 0,
-		syncStatus: hasSystemSnapshot ? getSnapshotSyncStatus(lastSyncedAt) : 'warning',
-		syncFailureReason: hasSystemSnapshot
+		syncStatus: hasHubSnapshot ? getSnapshotSyncStatus(lastSyncedAt) : 'warning',
+		syncFailureReason: hasHubSnapshot
 			? null
-			: 'Sovereignty snapshot has not been ingested yet for this structure.',
+			: 'Sovereignty hub snapshot has not been ingested yet for this structure.',
 		lastSyncedAt: toIso(lastSyncedAt),
 		updatedAt: sourceUpdatedAt ? sourceUpdatedAt.toISOString() : structureRow.updatedAt.toISOString(),
 		canViewSensitive,
@@ -2010,23 +2353,18 @@ function buildMiningListItem(input: {
 }
 
 export async function listSovereigntyStructures(
+	env: Env,
 	db: DbClient<DbSchema>,
 	user: SessionUser,
 	query: StructureSovereigntyListQuery = {}
 ): Promise<StructureListResponse<StructureSovereigntyListItem>> {
-	const { moduleConfig, contexts, access } = await loadVisibleStructureContexts(db, user, {
-		corporationId: query.corporationId,
-		assignedGroupId: query.assignedGroupId,
-		lowPower: query.lowPower,
-		lowPowerAllowed: query.lowPowerAllowed,
-		regionId: query.regionId,
-		systemId: query.systemId,
-		state: query.state,
-		typeId: query.typeId,
-	})
-
-	const accessForTab = getStructureAccessTarget(access, 'sovereignty')
-	if (!hasAnyStructureAccess(accessForTab)) {
+	const { moduleConfig, contexts, access, hubRows, systemRows } = await loadVisibleSovereigntyHubContexts(
+		env,
+		db,
+		user,
+		query
+	)
+	if (!hasAnyStructureAccess(getStructureAccessTarget(access, 'sovereignty'))) {
 		return {
 			items: [],
 			pagination: {
@@ -2047,70 +2385,28 @@ export async function listSovereigntyStructures(
 		}
 	}
 
-	const sovereigntyContexts = contexts.filter((context) => getStructureTab(context.structure) === 'sovereignty')
-	const structureIds = sovereigntyContexts.map((context) => context.structure.structureId)
-
-	if (structureIds.length === 0) {
-		return {
-			items: [],
-			pagination: {
-				page: 1,
-				pageSize: query.pageSize ?? 25,
-				totalCount: 0,
-				totalPages: 1,
-				hasNextPage: false,
-				hasPreviousPage: false,
-			},
-			filterOptions: emptyStructureFilterOptions(),
-			summary: {
-				total: 0,
-				lowFuel: 0,
-				lowPower: 0,
-				reinforced: 0,
-			},
-		}
-	}
-
-	const systemWhere = (() => {
-		const conditions: StructureWhereCondition[] = []
-		if (query.allianceId) {
-			conditions.push(eq(structureSovereigntySystems.allianceId, query.allianceId))
-		}
-		return combineWhereConditions(conditions)
-	})()
-
-	const systemRows = await db.query.structureSovereigntySystems.findMany({
-		where: combineWhereConditions([
-			inArray(structureSovereigntySystems.sovereigntyHubStructureId, structureIds),
-			systemWhere,
-		]),
-		orderBy: desc(structureSovereigntySystems.updatedAt),
-	})
+	const hubById = new Map(hubRows.map((row) => [row.structureId, row] as const))
 	const systemByHubStructureId = new Map(
 		systemRows
 			.filter((row): row is typeof structureSovereigntySystems.$inferSelect & { sovereigntyHubStructureId: string } =>
 				Boolean(row.sovereigntyHubStructureId)
 			)
-			.map((row) => [row.sovereigntyHubStructureId, row])
+			.map((row) => [row.sovereigntyHubStructureId, row] as const)
 	)
-	const hubRows = await db.query.structureSovereigntyHubs.findMany({
-		where: inArray(structureSovereigntyHubs.structureId, structureIds),
-	})
-	const hubById = new Map(hubRows.map((row) => [row.structureId, row]))
-
-	const items = sovereigntyContexts.map((context) => {
-		const systemRow = systemByHubStructureId.get(context.structure.structureId) ?? null
-		const hubRow = hubById.get(context.structure.structureId) ?? null
-		return buildSovereigntyListItem({
+	const items = contexts.map((context) =>
+		buildSovereigntyListItem({
 			context,
-			systemRow,
-			hubRow,
+			systemRow: systemByHubStructureId.get(context.structure.structureId) ?? null,
+			hubRow: hubById.get(context.structure.structureId) ?? null,
 		})
-	})
+	)
+	const filteredItems = query.allianceId
+		? items.filter((item) => item.allianceId === query.allianceId)
+		: items
 
 	const sortBy = query.sortBy ?? 'fuel'
 	const sortDirection = query.sortDirection ?? 'asc'
-	const sortedItems = sortStructures(items, sortBy, sortDirection)
+	const sortedItems = sortStructures(filteredItems, sortBy, sortDirection)
 	const pageSize = Math.min(Math.max(query.pageSize ?? 25, 1), STRUCTURE_LIST_PAGE_SIZE_MAX)
 	const totalCount = sortedItems.length
 	const totalPages = Math.max(1, Math.ceil(totalCount / pageSize))
@@ -2128,8 +2424,8 @@ export async function listSovereigntyStructures(
 			hasNextPage: page < totalPages,
 			hasPreviousPage: page > 1,
 		},
-		filterOptions: buildStructureFilterOptions(items),
-		summary: buildStructureSummary(items, moduleConfig),
+		filterOptions: buildStructureFilterOptions(filteredItems),
+		summary: buildStructureSummary(filteredItems, moduleConfig),
 	}
 }
 
@@ -2493,14 +2789,6 @@ export async function syncCorporationStructures(
 			newState: structure.state,
 			detectedAt: now,
 			sourceSyncAt: structure.lastSyncedAt ?? now,
-			rawPayload: {
-				structureId: structure.structureId,
-				corporationId,
-				name: structure.name,
-				systemId: structure.systemId,
-				state: structure.state,
-				previousState: previous.state,
-			},
 		})
 	}
 

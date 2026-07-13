@@ -57,7 +57,6 @@ describe('storeMiningExtractions', () => {
 				naturalDecayTime: new Date('2026-07-03T00:00:00.000Z'),
 				sourceSyncAt: new Date('2026-07-01T00:00:00.000Z'),
 				lastSyncedAt: new Date('2026-07-01T00:00:00.000Z'),
-				rawPayload: {},
 				updatedAt: new Date('2026-07-01T00:00:00.000Z'),
 			},
 		])

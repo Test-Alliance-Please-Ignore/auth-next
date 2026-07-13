@@ -1,5 +1,15 @@
 import { describe, expect, it, vi } from 'vitest'
 
+import {
+	corporationStructures,
+	structureMiningStates,
+	structureSkyhookStates,
+	structureSovereigntyHubs,
+} from '../../../db/schema'
+import { EveCorporationDataDO } from '../../../durable-object'
+
+const SOVEREIGNTY_HUB_TYPE_ID = '32458'
+
 const mocks = vi.hoisted(() => {
 	const findMany = vi.fn()
 	const onConflictDoUpdate = vi.fn()
@@ -26,26 +36,36 @@ vi.mock('@repo/do-utils', () => ({
 	getStub: mocks.getStub,
 }))
 
-import { EveCorporationDataDO } from '../../../durable-object'
-import {
-	corporationStructures,
-	structureMiningStates,
-	structureSkyhookStates,
-	structureSovereigntyHubs,
-} from '../../../db/schema'
-
 function makeDb() {
 	const where = vi.fn().mockResolvedValue(undefined)
 	const deleteMock = vi.fn(() => ({ where }))
 	const onConflictDoUpdate = vi.fn().mockResolvedValue(undefined)
 	const values = vi.fn((rows) => ({ onConflictDoUpdate, rows }))
 	const insert = vi.fn(() => ({ values }))
-	const findMany = vi.fn().mockResolvedValue([])
+	const corporationStructuresFindMany = vi
+		.fn()
+		.mockResolvedValue([{ structureId: 'stale-structure' }])
+	const structureSkyhookStatesFindMany = vi
+		.fn()
+		.mockResolvedValue([{ structureId: 'stale-structure' }])
+	const structureMiningStatesFindMany = vi
+		.fn()
+		.mockResolvedValue([{ structureId: 'stale-structure' }])
+	const structureSovereigntyHubsFindMany = vi.fn().mockResolvedValue([])
 
 	return {
 		query: {
+			corporationStructures: {
+				findMany: corporationStructuresFindMany,
+			},
+			structureSkyhookStates: {
+				findMany: structureSkyhookStatesFindMany,
+			},
+			structureMiningStates: {
+				findMany: structureMiningStatesFindMany,
+			},
 			structureSovereigntyHubs: {
-				findMany,
+				findMany: structureSovereigntyHubsFindMany,
 			},
 		},
 		delete: deleteMock,
@@ -147,7 +167,7 @@ describe('structure prune cleanup', () => {
 				corporation_id: 'corp-1',
 				system_id: '30000142',
 				system_name: 'Jita',
-				type_id: '35835',
+				type_id: SOVEREIGNTY_HUB_TYPE_ID,
 				name: 'Jita',
 				fuel_access_list_id: null,
 				controller_alliance_id: null,
@@ -174,6 +194,6 @@ describe('structure prune cleanup', () => {
 			systemName: 'Jita',
 			name: 'Jita',
 		})
-		expect(db.delete).toHaveBeenCalledWith(structureSovereigntyHubs)
+		expect(db.delete).not.toHaveBeenCalled()
 	})
 })

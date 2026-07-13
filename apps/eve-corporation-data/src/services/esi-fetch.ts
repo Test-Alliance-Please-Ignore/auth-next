@@ -46,7 +46,7 @@ import type {
 } from '@repo/eve-corporation-data'
 import type { EsiResponse, EveTokenStore } from '@repo/eve-token-store'
 
-const SOVEREIGNTY_HUB_TYPE_ID = '35835'
+const SOVEREIGNTY_HUB_TYPE_ID = '32458'
 
 // ========================================================================
 // PUBLIC DATA FETCHING
