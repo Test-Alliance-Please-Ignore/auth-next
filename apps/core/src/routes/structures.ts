@@ -1,11 +1,17 @@
 import { Hono } from 'hono'
 import { z } from 'zod'
 
-import { parseFittingSlotFlag } from '@repo/eve-fitting/flags'
-import { getInventoryBayLabel } from '@repo/inventory-display'
 import { getStub } from '@repo/do-utils'
+import { parseFittingSlotFlag } from '@repo/eve-fitting/flags'
 import { hasAllStructureManagerPermission } from '@repo/groups'
+import { getInventoryBayLabel } from '@repo/inventory-display'
 
+import { getCachedUserPermissions } from '../lib/groups-cache'
+import { EntityResolverService } from '../services/entity-resolver.service'
+
+import type { Context } from 'hono'
+import type { EveCorporationData } from '@repo/eve-corporation-data'
+import type { EveTokenStore } from '@repo/eve-token-store'
 import type {
 	StructureCitadelListQuery,
 	StructureMiningListQuery,
@@ -13,14 +19,12 @@ import type {
 	StructureOverviewMetrics,
 	StructureSkyhookListQuery,
 	StructureSovereigntyListQuery,
+	StructureSovereigntyListResponse,
 	UpdateStructureConfigInput,
 	UpdateStructureModuleConfigInput,
 } from '@repo/structures'
-import type { EveCorporationData } from '@repo/eve-corporation-data'
 import type { TypeMetadata, Universe } from '@repo/universe'
-import type { Context } from 'hono'
 import type { App } from '../context'
-import { getCachedUserPermissions } from '../lib/groups-cache'
 
 const app = new Hono<App>()
 
@@ -58,8 +62,13 @@ const citadelStructureListQuerySchema = structureCommonListQuerySchema
 
 const navigationStructureListQuerySchema = structureCommonListQuerySchema
 
-const sovereigntyStructureListQuerySchema = structureCommonListQuerySchema.extend({
-	allianceId: z.string().trim().min(1).optional(),
+const sovereigntyStructureListQuerySchema = structureListPagingSchema.extend({
+	corporationId: z.string().trim().min(1).optional(),
+	assignedGroupId: z.string().trim().min(1).optional(),
+	regionId: z.string().trim().min(1).optional(),
+	systemId: z.string().trim().min(1).optional(),
+	controllerAllianceId: z.string().trim().min(1).optional(),
+	vulnerabilityState: z.enum(['vulnerable', 'invulnerable', 'reinforced']).optional(),
 })
 
 const skyhookStructureListQuerySchema = structureCommonListQuerySchema.extend({
@@ -112,6 +121,27 @@ interface StructureFittingItemView {
 interface StructureDetailResponse {
 	inventoryBays?: StructureInventoryBayView[]
 	fittingItems?: StructureFittingItemView[]
+	sovereignty?: {
+		hub?: {
+			controllerAllianceId?: string | null
+			controllerAllianceName?: string | null
+			reagentBay?: {
+				lastUpdated: string
+				reagents: Array<{
+					typeId: string
+					typeName?: string | null
+					securedStock: number
+					unsecuredStock: number
+					lastCycle: string
+				}>
+			}
+			upgrades?: Array<{
+				typeId: string
+				typeName?: string | null
+				powerState: string
+			}>
+		} | null
+	} | null
 	includeInStructureAssetSync?: boolean
 	[key: string]: unknown
 }
@@ -186,24 +216,50 @@ async function enrichStructureDetailTypeNames(
 	env: App['Bindings'],
 	structure: StructureDetailResponse
 ): Promise<StructureDetailResponse> {
-	if (
-		(!structure.inventoryBays || structure.inventoryBays.length === 0) &&
-		(!structure.fittingItems || structure.fittingItems.length === 0)
-	) {
+	const sovereigntyHub = structure.sovereignty?.hub ?? null
+	const allianceIds = sovereigntyHub?.controllerAllianceId
+		? [sovereigntyHub.controllerAllianceId]
+		: []
+	const structureTypeIds = new Set<string>([
+		...(structure.inventoryBays?.flatMap((bay) => bay.items.map((item) => item.typeId)) ?? []),
+		...(structure.fittingItems?.map((item) => item.typeId) ?? []),
+		...(sovereigntyHub?.reagentBay?.reagents.map((reagent) => reagent.typeId) ?? []),
+		...(sovereigntyHub?.upgrades?.map((upgrade) => upgrade.typeId) ?? []),
+	])
+	if (structureTypeIds.size === 0 && allianceIds.length === 0) {
 		return structure
 	}
 
-	const typeIds = Array.from(
-		new Set([
-			...(structure.inventoryBays?.flatMap((bay) => bay.items.map((item) => item.typeId)) ?? []),
-			...(structure.fittingItems?.map((item) => item.typeId) ?? []),
-		])
-	)
+	const typeIds = Array.from(structureTypeIds)
 	if (typeIds.length === 0) {
-		return structure
+		const allianceNameMap =
+			allianceIds.length > 0
+				? await new EntityResolverService(
+						getStub<EveTokenStore>(env.EVE_TOKEN_STORE, 'default')
+					).resolveEntityNames(allianceIds)
+				: new Map<string, string>()
+
+		return {
+			...structure,
+			sovereignty: sovereigntyHub
+				? {
+						...structure.sovereignty,
+						hub: {
+							...sovereigntyHub,
+							controllerAllianceName: sovereigntyHub.controllerAllianceId
+								? (allianceNameMap.get(sovereigntyHub.controllerAllianceId) ?? null)
+								: null,
+						},
+					}
+				: structure.sovereignty,
+		}
 	}
 
 	const universe = getUniverseStub(env)
+	const allianceResolver =
+		allianceIds.length > 0
+			? new EntityResolverService(getStub<EveTokenStore>(env.EVE_TOKEN_STORE, 'default'))
+			: null
 	const typeNameMap: Record<string, string> = {}
 	const typeMetaMap: Record<string, TypeMetadata> = {}
 	const batchSize = 1000
@@ -211,8 +267,8 @@ async function enrichStructureDetailTypeNames(
 	for (let index = 0; index < typeIds.length; index += batchSize) {
 		const batch = typeIds.slice(index, index + batchSize)
 		const [resolvedNames, resolvedMeta] = await Promise.all([
-			universe.resolveTypeNamesByIds(batch).catch(() => ({} as Record<string, null>)),
-			universe.resolveTypeMetadataByIds(batch).catch(() => ({} as Record<string, TypeMetadata>)),
+			universe.resolveTypeNamesByIds(batch).catch(() => ({}) as Record<string, null>),
+			universe.resolveTypeMetadataByIds(batch).catch(() => ({}) as Record<string, TypeMetadata>),
 		])
 		for (const [typeId, typeData] of Object.entries(resolvedNames)) {
 			typeNameMap[typeId] = typeData?.typeName ?? typeId
@@ -221,6 +277,11 @@ async function enrichStructureDetailTypeNames(
 			typeMetaMap[typeId] = typeMeta
 		}
 	}
+
+	const allianceNameMap =
+		allianceResolver !== null
+			? await allianceResolver.resolveEntityNames(allianceIds)
+			: new Map<string, string>()
 
 	return {
 		...structure,
@@ -241,6 +302,74 @@ async function enrichStructureDetailTypeNames(
 			typeName: typeNameMap[item.typeId] ?? item.typeId,
 			...(typeMetaMap[item.typeId]?.categoryName === 'Charge' ? { isConsumable: true } : {}),
 		})),
+		sovereignty: sovereigntyHub
+			? {
+					...structure.sovereignty,
+					hub: {
+						...sovereigntyHub,
+						controllerAllianceName: sovereigntyHub.controllerAllianceId
+							? (allianceNameMap.get(sovereigntyHub.controllerAllianceId) ?? null)
+							: null,
+						reagentBay: sovereigntyHub.reagentBay
+							? {
+									...sovereigntyHub.reagentBay,
+									reagents: sovereigntyHub.reagentBay.reagents.map((reagent) => ({
+										...reagent,
+										typeName: typeNameMap[reagent.typeId] ?? reagent.typeId,
+									})),
+								}
+							: sovereigntyHub.reagentBay,
+						upgrades: sovereigntyHub.upgrades?.map((upgrade) => ({
+							...upgrade,
+							typeName: typeNameMap[upgrade.typeId] ?? upgrade.typeId,
+						})),
+					},
+				}
+			: structure.sovereignty,
+	}
+}
+
+async function enrichSovereigntyStructureListResponse(
+	env: App['Bindings'],
+	response: StructureSovereigntyListResponse
+): Promise<StructureSovereigntyListResponse> {
+	const allianceIds = [
+		...new Set(
+			[
+				...response.items.map((item) => item.controllerAllianceId),
+				...response.filterOptions.controllerAlliances.map((option) => option.value),
+			].filter((value): value is string => Boolean(value))
+		),
+	]
+
+	if (allianceIds.length === 0) {
+		return response
+	}
+
+	const allianceNameMap = await new EntityResolverService(
+		getStub<EveTokenStore>(env.EVE_TOKEN_STORE, 'default')
+	).resolveEntityNames(allianceIds)
+
+	return {
+		...response,
+		items: response.items.map((item) =>
+			item.controllerAllianceId
+				? {
+						...item,
+						controllerAllianceName:
+							allianceNameMap.get(item.controllerAllianceId) ??
+							item.controllerAllianceName ??
+							item.controllerAllianceId,
+					}
+				: item
+		),
+		filterOptions: {
+			...response.filterOptions,
+			controllerAlliances: response.filterOptions.controllerAlliances.map((option) => ({
+				...option,
+				label: allianceNameMap.get(option.value) ?? option.label ?? option.value,
+			})),
+		},
 	}
 }
 
@@ -323,19 +452,20 @@ app.post('/:structureId/assets-debug', async (c) => {
 	const structureId = c.req.param('structureId')
 	try {
 		const actor = await getStructureActor(c)
-		const structure = (await c.env.STRUCTURES.getVisibleStructureDetail(actor, structureId)) as
-			| {
-					corporationId: string
-					corporationName: string | null
-					structureId: string
-					name: string | null
-			  }
-			| null
+		const structure = (await c.env.STRUCTURES.getVisibleStructureDetail(actor, structureId)) as {
+			corporationId: string
+			corporationName: string | null
+			structureId: string
+			name: string | null
+		} | null
 		if (!structure) {
 			return c.json({ error: 'Structure not found' }, 404)
 		}
 
-		const corpData = getStub<EveCorporationData>(c.env.EVE_CORPORATION_DATA, structure.corporationId)
+		const corpData = getStub<EveCorporationData>(
+			c.env.EVE_CORPORATION_DATA,
+			structure.corporationId
+		)
 		const { assetsCount } = await corpData.fetchAssets(structure.corporationId, true)
 		const rawItems = await corpData.searchAssets(structure.corporationId, {
 			locationId: structure.structureId,
@@ -358,10 +488,11 @@ app.post('/:structureId/assets-debug', async (c) => {
 					locationFlagLabel: getStructureAssetLocationLabel(item.locationFlag),
 					updatedAt: item.updatedAt.toISOString(),
 				}))
-				.sort((left, right) =>
-					left.locationFlagLabel.localeCompare(right.locationFlagLabel) ||
-					left.typeId.localeCompare(right.typeId) ||
-					left.itemId.localeCompare(right.itemId)
+				.sort(
+					(left, right) =>
+						left.locationFlagLabel.localeCompare(right.locationFlagLabel) ||
+						left.typeId.localeCompare(right.typeId) ||
+						left.itemId.localeCompare(right.itemId)
 				)
 		)
 
@@ -380,7 +511,8 @@ app.post('/:structureId/assets-debug', async (c) => {
 	} catch (error) {
 		return c.json(
 			{
-				error: error instanceof Error ? error.message : 'Failed to fetch structure assets debug data',
+				error:
+					error instanceof Error ? error.message : 'Failed to fetch structure assets debug data',
 			},
 			500
 		)
@@ -441,7 +573,9 @@ async function handleNavigationStructuresRequest(c: Context<App>): Promise<Respo
 			state: c.req.query('state') || undefined,
 			typeId: c.req.query('typeId') || undefined,
 		}) satisfies StructureNavigationListQuery
-		return c.json(await c.env.STRUCTURES.listNavigationStructures(await getStructureActor(c), query))
+		return c.json(
+			await c.env.STRUCTURES.listNavigationStructures(await getStructureActor(c), query)
+		)
 	} catch (error) {
 		return c.json(
 			{
@@ -466,15 +600,13 @@ async function handleSovereigntyStructuresRequest(c: Context<App>): Promise<Resp
 			sortDirection: c.req.query('sortDirection') || undefined,
 			corporationId: c.req.query('corporationId') || undefined,
 			assignedGroupId: c.req.query('assignedGroupId') || undefined,
-			lowPower: c.req.query('lowPower') || undefined,
-			lowPowerAllowed: c.req.query('lowPowerAllowed') || undefined,
 			regionId: c.req.query('regionId') || undefined,
 			systemId: c.req.query('systemId') || undefined,
-			state: c.req.query('state') || undefined,
-			typeId: c.req.query('typeId') || undefined,
-			allianceId: c.req.query('allianceId') || undefined,
+			controllerAllianceId: c.req.query('controllerAllianceId') || undefined,
+			vulnerabilityState: c.req.query('vulnerabilityState') || undefined,
 		}) satisfies StructureSovereigntyListQuery
-		return c.json(await c.env.STRUCTURES.listSovereigntyStructures(await getStructureActor(c), query))
+		const response = await c.env.STRUCTURES.listSovereigntyStructures(await getStructureActor(c), query)
+		return c.json(await enrichSovereigntyStructureListResponse(c.env, response))
 	} catch (error) {
 		return c.json(
 			{
@@ -526,8 +658,8 @@ async function handleMiningStructuresRequest(c: Context<App>): Promise<Response>
 	}
 
 	try {
-	const query = miningStructureListQuerySchema.parse({
-		page: c.req.query('page'),
+		const query = miningStructureListQuerySchema.parse({
+			page: c.req.query('page'),
 			pageSize: c.req.query('pageSize'),
 			sortBy: c.req.query('sortBy') || undefined,
 			sortDirection: c.req.query('sortDirection') || undefined,
@@ -539,8 +671,8 @@ async function handleMiningStructuresRequest(c: Context<App>): Promise<Response>
 			systemId: c.req.query('systemId') || undefined,
 			state: c.req.query('state') || undefined,
 			typeId: c.req.query('typeId') || undefined,
-		planetId: c.req.query('planetId') || undefined,
-	}) satisfies StructureMiningListQuery
+			planetId: c.req.query('planetId') || undefined,
+		}) satisfies StructureMiningListQuery
 		return c.json(await c.env.STRUCTURES.listMoonDrillStructures(await getStructureActor(c), query))
 	} catch (error) {
 		return c.json(
@@ -574,7 +706,9 @@ async function handleMiningCitadelsStructuresRequest(c: Context<App>): Promise<R
 			typeId: c.req.query('typeId') || undefined,
 			planetId: c.req.query('planetId') || undefined,
 		}) satisfies StructureMiningListQuery
-		return c.json(await c.env.STRUCTURES.listMiningCitadelStructures(await getStructureActor(c), query))
+		return c.json(
+			await c.env.STRUCTURES.listMiningCitadelStructures(await getStructureActor(c), query)
+		)
 	} catch (error) {
 		return c.json(
 			{
@@ -593,7 +727,9 @@ async function handleStructureOverviewRequest(c: Context<App>): Promise<Response
 
 	try {
 		return c.json(
-			(await c.env.STRUCTURES.getStructureOverviewMetrics(await getStructureActor(c))) satisfies StructureOverviewMetrics
+			(await c.env.STRUCTURES.getStructureOverviewMetrics(
+				await getStructureActor(c)
+			)) satisfies StructureOverviewMetrics
 		)
 	} catch (error) {
 		return c.json(
@@ -624,8 +760,12 @@ app.patch('/config', async (c) => {
 	}
 
 	try {
-		const body = structureModuleConfigSchema.parse(await c.req.json()) satisfies UpdateStructureModuleConfigInput
-		return c.json(await c.env.STRUCTURES.updateStructureModuleConfig(await getStructureActor(c), body))
+		const body = structureModuleConfigSchema.parse(
+			await c.req.json()
+		) satisfies UpdateStructureModuleConfigInput
+		return c.json(
+			await c.env.STRUCTURES.updateStructureModuleConfig(await getStructureActor(c), body)
+		)
 	} catch (error) {
 		if (error instanceof z.ZodError) {
 			return c.json({ error: 'Invalid structure config payload', issues: error.issues }, 400)
@@ -642,7 +782,10 @@ app.get('/:structureId', async (c) => {
 
 	const structureId = c.req.param('structureId')
 	try {
-		const structure = await c.env.STRUCTURES.getVisibleStructureDetail(await getStructureActor(c), structureId)
+		const structure = await c.env.STRUCTURES.getVisibleStructureDetail(
+			await getStructureActor(c),
+			structureId
+		)
 		if (!structure) {
 			return c.json({ error: 'Structure not found' }, 404)
 		}
@@ -666,8 +809,14 @@ app.patch('/:structureId/config', async (c) => {
 	const structureId = c.req.param('structureId')
 
 	try {
-		const body = updateStructureConfigSchema.parse(await c.req.json()) satisfies UpdateStructureConfigInput
-		const structure = await c.env.STRUCTURES.updateStructureConfig(await getStructureActor(c), structureId, body)
+		const body = updateStructureConfigSchema.parse(
+			await c.req.json()
+		) satisfies UpdateStructureConfigInput
+		const structure = await c.env.STRUCTURES.updateStructureConfig(
+			await getStructureActor(c),
+			structureId,
+			body
+		)
 		if (!structure) {
 			return c.json({ error: 'Structure not found' }, 404)
 		}

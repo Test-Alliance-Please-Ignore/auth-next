@@ -11,6 +11,7 @@ export type StructureListSortBy =
 	| 'updatedAt'
 	| 'nextStateAt'
 	| 'fuel'
+	| 'activityDefenseMultiplier'
 	| 'name'
 	| 'corporation'
 	| 'region'
@@ -134,10 +135,101 @@ export interface StructureNavigationListQuery extends StructureCommonListQuery {
 	systemId?: string
 }
 
-export interface StructureSovereigntyListQuery extends StructureCommonListQuery {
+export interface StructureSovereigntyListQuery extends StructureListPagingQuery {
 	corporationId?: string
+	assignedGroupId?: string
+	regionId?: string
 	systemId?: string
-	allianceId?: string
+	controllerAllianceId?: string
+	vulnerabilityState?: 'vulnerable' | 'invulnerable' | 'reinforced'
+}
+
+export interface StructureSovereigntyListFilterOption {
+	value: string
+	label: string
+}
+
+export interface StructureSovereigntyListFilterOptions {
+	corporations: StructureSovereigntyListFilterOption[]
+	assignedGroups: StructureSovereigntyListFilterOption[]
+	regions: StructureSovereigntyListFilterOption[]
+	systems: StructureSovereigntyListFilterOption[]
+	controllerAlliances: StructureSovereigntyListFilterOption[]
+	vulnerabilityStates: StructureSovereigntyListFilterOption[]
+}
+
+export interface StructureSovereigntyListSummary {
+	total: number
+	vulnerable: number
+	invulnerable: number
+	reinforced: number
+	unknown: number
+}
+
+export interface StructureSovereigntyListItem {
+	structureId: string
+	corporationId: string
+	corporationName: string
+	systemId: string
+	systemName: string | null
+	regionId: string | null
+	regionName: string | null
+	name: string
+	state: string
+	typeId: string
+	typeName: string | null
+	profileId: string
+	nextStateAt: string | null
+	fuelExpires: string | null
+	fuelAmount: number | null
+	lowPower: boolean
+	hidden: boolean
+	lowPowerAllowed: boolean
+	assignedGroupId: string | null
+	claimType: 'alliance' | 'faction' | 'unclaimed'
+	allianceId: string | null
+	controllerAllianceId: string | null
+	controllerAllianceName: string | null
+	corporationClaimantId: string | null
+	factionId: string | null
+	claimedSince: string | null
+	sovereigntyHubStructureId: string | null
+	vulnerabilityWindowStart: string | null
+	vulnerabilityWindowEnd: string | null
+	activityDefenseMultiplier: string | null
+	militaryLevel: number | null
+	industrialLevel: number | null
+	strategicLevel: number | null
+	fuelAccessListId: string | null
+	reagentBayLastUpdated: string | null
+	reagentCount: number
+	totalSecuredStock: number
+	totalUnsecuredStock: number
+	resourcePowerAllocated: number
+	resourcePowerAvailable: number
+	resourceWorkforceAllocated: number
+	resourceWorkforceAvailable: number
+	upgradeCount: number
+	syncStatus: 'ok' | 'warning' | 'error'
+	syncFailureReason: string | null
+	lastSyncedAt: string | null
+	updatedAt: string
+	canViewSensitive: boolean
+	canEdit: boolean
+}
+
+export interface StructureSovereigntyListResponse {
+	items: StructureSovereigntyListItem[]
+	pagination: {
+		page: number
+		pageSize: number
+		totalCount: number
+		totalPages: number
+		hasNextPage: boolean
+		hasPreviousPage: boolean
+	}
+	filterOptions: StructureSovereigntyListFilterOptions
+	summary: StructureSovereigntyListSummary
 }
 
 export interface StructureOverviewMetrics {
@@ -234,7 +326,10 @@ export interface StructuresWorker {
 	listVisibleStructures(actor: StructureActor, query?: StructureListQuery): Promise<unknown>
 	listCitadelStructures(actor: StructureActor, query?: StructureCitadelListQuery): Promise<unknown>
 	listNavigationStructures(actor: StructureActor, query?: StructureNavigationListQuery): Promise<unknown>
-	listSovereigntyStructures(actor: StructureActor, query?: StructureSovereigntyListQuery): Promise<unknown>
+	listSovereigntyStructures(
+		actor: StructureActor,
+		query?: StructureSovereigntyListQuery
+	): Promise<StructureSovereigntyListResponse>
 	listSkyhookStructures(actor: StructureActor, query?: StructureSkyhookListQuery): Promise<unknown>
 	listMiningStructures(actor: StructureActor, query?: StructureMiningListQuery): Promise<unknown>
 	listMoonDrillStructures(actor: StructureActor, query?: StructureMiningListQuery): Promise<unknown>

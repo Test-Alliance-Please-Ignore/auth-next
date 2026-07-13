@@ -597,7 +597,9 @@ export default function CorporationDetailPage() {
 
 	const formatDate = (date: string | Date | null) => {
 		if (!date) return 'Never'
-		return formatDistanceToNow(new Date(date), { addSuffix: true })
+		const parsedDate = date instanceof Date ? date : new Date(date)
+		if (Number.isNaN(parsedDate.getTime())) return 'Never'
+		return formatDistanceToNow(parsedDate, { addSuffix: true })
 	}
 
 	const scenarioRoleConfigs = [

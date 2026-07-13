@@ -12,8 +12,9 @@ export interface StructureTableFilters {
 	regionId?: string
 	systemId?: string
 	state?: string
+	vulnerabilityState?: 'vulnerable' | 'invulnerable' | 'reinforced'
 	typeId?: string
-	allianceId?: string
+	controllerAllianceId?: string
 	planetId?: string
 	isRaidable?: 'true' | 'false'
 }
@@ -49,8 +50,9 @@ function normalizeFilters(filters: StructureTableFilters): StructureTableFilters
 		regionId: filters.regionId,
 		systemId: filters.systemId,
 		state: filters.state,
+		vulnerabilityState: filters.vulnerabilityState,
 		typeId: filters.typeId,
-		allianceId: filters.allianceId,
+		controllerAllianceId: filters.controllerAllianceId,
 		planetId: filters.planetId,
 		isRaidable: filters.isRaidable,
 	}
@@ -74,7 +76,14 @@ const SKYHOOK_TAB_FILTER_FIELDS = COMMON_TAB_FILTER_FIELDS.filter(
 const TAB_FILTER_FIELDS: Record<StructureTab, Array<keyof StructureTableFilters>> = {
 	citadels: [...COMMON_TAB_FILTER_FIELDS],
 	navigation: [...COMMON_TAB_FILTER_FIELDS],
-	sovereignty: [...COMMON_TAB_FILTER_FIELDS.filter((field) => field !== 'typeId'), 'allianceId'],
+	sovereignty: [
+		'corporationId',
+		'assignedGroupId',
+		'regionId',
+		'systemId',
+		'vulnerabilityState',
+		'controllerAllianceId',
+	],
 	skyhooks: [...SKYHOOK_TAB_FILTER_FIELDS, 'isRaidable'],
 	'mining-citadels': [...COMMON_TAB_FILTER_FIELDS],
 	'moon-drills': [...COMMON_TAB_FILTER_FIELDS],

@@ -41,6 +41,7 @@ import type {
 	StructureNavigationListQuery,
 	StructureSkyhookListQuery,
 	StructureSovereigntyListQuery,
+	StructureSovereigntyListResponse,
 	StructureListQuery,
 	StructureOverviewMetrics,
 	StructuresWorker,
@@ -81,7 +82,7 @@ export class StructuresWorkerEntrypoint extends WorkerEntrypoint<Env> implements
 	async listSovereigntyStructures(
 		actor: StructureActor,
 		query: StructureSovereigntyListQuery = {}
-	): Promise<unknown> {
+	): Promise<StructureSovereigntyListResponse> {
 		return listSovereigntyStructures(this.env, this.getDb(), actor, query)
 	}
 
