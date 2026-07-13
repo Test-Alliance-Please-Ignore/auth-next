@@ -46,6 +46,8 @@ import type {
 } from '@repo/eve-corporation-data'
 import type { EsiResponse, EveTokenStore } from '@repo/eve-token-store'
 
+const SOVEREIGNTY_HUB_TYPE_ID = '35835'
+
 // ========================================================================
 // PUBLIC DATA FETCHING
 // ========================================================================
@@ -346,8 +348,7 @@ export async function fetchSovereigntySystems(
 export async function fetchSovereigntyHubs(
 	tokenStore: EveTokenStore,
 	corporationId: string,
-	characterId: string,
-	knownStructures: Array<Pick<EsiCorporationStructure, 'structure_id' | 'type_id'>> = []
+	characterId: string
 ): Promise<EsiSovereigntyHub[]> {
 	type RawSovereigntyHubsListing = {
 		sovereignty_hubs: Array<{
@@ -447,10 +448,6 @@ export async function fetchSovereigntyHubs(
 		return []
 	}
 
-	const knownStructureById = new Map(
-		knownStructures.map((structure) => [structure.structure_id, structure])
-	)
-
 	const details: Array<EsiSovereigntyHub | null> = await Promise.all(
 		sovereigntyHubs.map(async (hub) => {
 			try {
@@ -460,24 +457,13 @@ export async function fetchSovereigntyHubs(
 					{ cacheMode: 'no-store' }
 				)
 				const detail = detailResult.data
-				const hubId = String(hub.id)
-				const knownStructure = knownStructureById.get(hubId) ?? null
-
-				const typeId = knownStructure?.type_id ?? null
-				if (!typeId) {
-					logger.warn('[ESI Fetch] Skipping sovereignty hub without type metadata', {
-						corporationId,
-						structureId: hubId,
-					})
-					return null
-				}
 
 				return {
 					structure_id: String(detail.id),
 					corporation_id: corporationId,
 					system_id: String(detail.solar_system_id),
 					name: null,
-					type_id: typeId,
+					type_id: SOVEREIGNTY_HUB_TYPE_ID,
 					fuel_access_list_id:
 						detail.fuel_access_list_id !== undefined && detail.fuel_access_list_id !== null
 							? String(detail.fuel_access_list_id)

@@ -59,8 +59,7 @@ export async function storeStructures(
 export async function fetchSovereigntyEnrichment(
 	env: Env,
 	corporationId: string,
-	directorCharacterId: string,
-	structures: StructuresData
+	directorCharacterId: string
 ): Promise<SovereigntyEnrichmentData | null> {
 	const tokenStore = createTokenStore(env)
 
@@ -68,8 +67,7 @@ export async function fetchSovereigntyEnrichment(
 		const sovereigntyHubs = await esiFetch.fetchSovereigntyHubs(
 			tokenStore,
 			corporationId,
-			directorCharacterId,
-			structures
+			directorCharacterId
 		)
 		const universe = getStub<Universe>(env.UNIVERSE, 'default')
 		const systemGeography =
