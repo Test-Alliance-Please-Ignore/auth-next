@@ -299,6 +299,14 @@ app.get('/mining', async (c) => {
 	return handleMiningStructuresRequest(c)
 })
 
+app.get('/moon-drills', async (c) => {
+	return handleMiningStructuresRequest(c)
+})
+
+app.get('/mining-citadels', async (c) => {
+	return handleMiningCitadelsStructuresRequest(c)
+})
+
 app.get('/overview', async (c) => {
 	return handleStructureOverviewRequest(c)
 })
@@ -518,6 +526,39 @@ async function handleMiningStructuresRequest(c: Context<App>): Promise<Response>
 	}
 
 	try {
+	const query = miningStructureListQuerySchema.parse({
+		page: c.req.query('page'),
+			pageSize: c.req.query('pageSize'),
+			sortBy: c.req.query('sortBy') || undefined,
+			sortDirection: c.req.query('sortDirection') || undefined,
+			corporationId: c.req.query('corporationId') || undefined,
+			assignedGroupId: c.req.query('assignedGroupId') || undefined,
+			lowPower: c.req.query('lowPower') || undefined,
+			lowPowerAllowed: c.req.query('lowPowerAllowed') || undefined,
+			regionId: c.req.query('regionId') || undefined,
+			systemId: c.req.query('systemId') || undefined,
+			state: c.req.query('state') || undefined,
+			typeId: c.req.query('typeId') || undefined,
+		planetId: c.req.query('planetId') || undefined,
+	}) satisfies StructureMiningListQuery
+		return c.json(await c.env.STRUCTURES.listMoonDrillStructures(await getStructureActor(c), query))
+	} catch (error) {
+		return c.json(
+			{
+				error: error instanceof Error ? error.message : 'Failed to list structures',
+			},
+			error instanceof z.ZodError ? 400 : 500
+		)
+	}
+}
+
+async function handleMiningCitadelsStructuresRequest(c: Context<App>): Promise<Response> {
+	const user = c.get('user')
+	if (!user) {
+		return c.json({ error: 'Unauthorized' }, 401)
+	}
+
+	try {
 		const query = miningStructureListQuerySchema.parse({
 			page: c.req.query('page'),
 			pageSize: c.req.query('pageSize'),
@@ -533,7 +574,7 @@ async function handleMiningStructuresRequest(c: Context<App>): Promise<Response>
 			typeId: c.req.query('typeId') || undefined,
 			planetId: c.req.query('planetId') || undefined,
 		}) satisfies StructureMiningListQuery
-		return c.json(await c.env.STRUCTURES.listMiningStructures(await getStructureActor(c), query))
+		return c.json(await c.env.STRUCTURES.listMiningCitadelStructures(await getStructureActor(c), query))
 	} catch (error) {
 		return c.json(
 			{

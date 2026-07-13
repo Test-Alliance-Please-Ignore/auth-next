@@ -46,50 +46,6 @@ import type {
 } from '@repo/eve-corporation-data'
 import type { EsiResponse, EveTokenStore } from '@repo/eve-token-store'
 
-type RawUniverseStructureInfo = {
-	name: string | null
-	owner_id: number
-	position: {
-		x: number
-		y: number
-		z: number
-	}
-	solar_system_id: number
-	type_id: number
-}
-
-function getUniverseStructureCorporationId(universe: RawUniverseStructureInfo): string {
-	return String(universe.owner_id)
-}
-
-async function fetchUniverseStructureMetadata(
-	tokenStore: EveTokenStore,
-	structureId: string,
-	characterId: string,
-	context: 'sovereignty hub' | 'skyhook'
-): Promise<RawUniverseStructureInfo | null> {
-	try {
-		const result = await tokenStore.fetchEsi<RawUniverseStructureInfo>(
-			`/universe/structures/${structureId}`,
-			characterId,
-			{ cacheMode: 'no-store' }
-		)
-		return result.data
-	} catch (error) {
-		const message = error instanceof Error ? error.message.toLowerCase() : String(error).toLowerCase()
-		if (message.includes('403') || message.includes('404')) {
-			logger.warn(`[ESI Fetch] Skipping ${context} enrichment for inaccessible universe metadata`, {
-				structureId,
-				characterId,
-				error: error instanceof Error ? error.message : String(error),
-			})
-			return null
-		}
-
-		throw error
-	}
-}
-
 // ========================================================================
 // PUBLIC DATA FETCHING
 // ========================================================================
@@ -390,7 +346,8 @@ export async function fetchSovereigntySystems(
 export async function fetchSovereigntyHubs(
 	tokenStore: EveTokenStore,
 	corporationId: string,
-	characterId: string
+	characterId: string,
+	knownStructures: Array<Pick<EsiCorporationStructure, 'structure_id' | 'type_id'>> = []
 ): Promise<EsiSovereigntyHub[]> {
 	type RawSovereigntyHubsListing = {
 		sovereignty_hubs: Array<{
@@ -490,70 +447,72 @@ export async function fetchSovereigntyHubs(
 		return []
 	}
 
+	const knownStructureById = new Map(
+		knownStructures.map((structure) => [structure.structure_id, structure])
+	)
+
 	const details: Array<EsiSovereigntyHub | null> = await Promise.all(
 		sovereigntyHubs.map(async (hub) => {
-			const universe = await fetchUniverseStructureMetadata(
-				tokenStore,
-				String(hub.id),
-				characterId,
-				'sovereignty hub'
-			)
-			if (!universe) {
-				return null
-			}
-			const universeCorporationId = getUniverseStructureCorporationId(universe)
+			try {
+				const detailResult = await tokenStore.fetchEsi<RawSovereigntyHubDetail>(
+					`/corporations/${corporationId}/structures/sovereignty-hubs/${hub.id}`,
+					characterId,
+					{ cacheMode: 'no-store' }
+				)
+				const detail = detailResult.data
+				const hubId = String(hub.id)
+				const knownStructure = knownStructureById.get(hubId) ?? null
 
-			if (universeCorporationId !== corporationId) {
-				logger.warn('[ESI Fetch] Skipping sovereignty hub enrichment for mismatched owner', {
+				const typeId = knownStructure?.type_id ?? null
+				if (!typeId) {
+					logger.warn('[ESI Fetch] Skipping sovereignty hub without type metadata', {
+						corporationId,
+						structureId: hubId,
+					})
+					return null
+				}
+
+				return {
+					structure_id: String(detail.id),
+					corporation_id: corporationId,
+					system_id: String(detail.solar_system_id),
+					name: null,
+					type_id: typeId,
+					fuel_access_list_id:
+						detail.fuel_access_list_id !== undefined && detail.fuel_access_list_id !== null
+							? String(detail.fuel_access_list_id)
+							: null,
+					reagent_bay: {
+						last_updated: detail.reagent_bay.last_updated,
+						reagents: detail.reagent_bay.reagents.map((reagent) => ({
+							type_id: String(reagent.type_id),
+							secured_stock: reagent.secured_stock,
+							unsecured_stock: reagent.unsecured_stock,
+							last_cycle: reagent.last_cycle,
+						})),
+					},
+					resources: detail.resources,
+					upgrades: detail.upgrades.map((upgrade) => ({
+						type_id: String(upgrade.type_id),
+						power_state: upgrade.power_state,
+					})),
+					vulnerability_window: detail.vulnerability_window ?? null,
+					workforce_transport: {
+						configuration: detail.workforce_transport.configuration,
+						state: detail.workforce_transport.state,
+					},
+					raw: {
+						detail,
+					},
+				} as EsiSovereigntyHub
+			} catch (error) {
+				logger.warn('[ESI Fetch] Failed to enrich sovereignty hub', {
 					corporationId,
 					structureId: String(hub.id),
-					universeCorporationId,
+					error: error instanceof Error ? error.message : String(error),
 				})
 				return null
 			}
-
-			const detailResult = await tokenStore.fetchEsi<RawSovereigntyHubDetail>(
-				`/corporations/${corporationId}/structures/sovereignty-hubs/${hub.id}`,
-				characterId,
-				{ cacheMode: 'no-store' }
-			)
-
-			const detail = detailResult.data
-
-			return {
-				structure_id: String(detail.id),
-				corporation_id: universeCorporationId,
-				system_id: String(detail.solar_system_id),
-				name: universe.name ?? null,
-				type_id: String(universe.type_id),
-				fuel_access_list_id:
-					detail.fuel_access_list_id !== undefined && detail.fuel_access_list_id !== null
-						? String(detail.fuel_access_list_id)
-						: null,
-				reagent_bay: {
-					last_updated: detail.reagent_bay.last_updated,
-					reagents: detail.reagent_bay.reagents.map((reagent) => ({
-						type_id: String(reagent.type_id),
-						secured_stock: reagent.secured_stock,
-						unsecured_stock: reagent.unsecured_stock,
-						last_cycle: reagent.last_cycle,
-					})),
-				},
-				resources: detail.resources,
-				upgrades: detail.upgrades.map((upgrade) => ({
-					type_id: String(upgrade.type_id),
-					power_state: upgrade.power_state,
-				})),
-				vulnerability_window: detail.vulnerability_window ?? null,
-				workforce_transport: {
-					configuration: detail.workforce_transport.configuration,
-					state: detail.workforce_transport.state,
-				},
-				raw: {
-					detail,
-					universe,
-				},
-			} as EsiSovereigntyHub
 		})
 	)
 

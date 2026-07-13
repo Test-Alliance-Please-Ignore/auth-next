@@ -201,7 +201,7 @@ describe('esi structure enrichment ownership handling', () => {
 		expect(base?.stateTimerEnd?.toISOString()).toBe('2026-06-27T12:30:00.000Z')
 	})
 
-	it('skips sovereignty hub detail fetch when the authenticated universe owner does not match', async () => {
+	it('keeps sovereignty hub details when the base structure metadata is available', async () => {
 		const tokenStore = {
 			fetchEsi: vi
 				.fn()
@@ -213,33 +213,59 @@ describe('esi structure enrichment ownership handling', () => {
 				})
 				.mockResolvedValueOnce({
 					data: {
-						name: 'Wrong Corp Hub',
-						owner_id: 98000002,
-						position: { x: 0, y: 0, z: 0 },
+						id: 81001,
 						solar_system_id: 30000142,
-						type_id: 35835,
+						fuel_access_list_id: null,
+						reagent_bay: {
+							last_updated: '2026-07-12T19:36:46.834Z',
+							reagents: [],
+						},
+						resources: {
+							power: { allocated: 0, available: 0 },
+							workforce: { allocated: 0, available: 0 },
+						},
+						upgrades: [],
+						vulnerability_window: null,
+						workforce_transport: {
+							configuration: { transit: true },
+							state: { transit: true },
+						},
 					},
 				}),
 		}
 
-		const hubs = await fetchSovereigntyHubs(tokenStore as never, '98000001', '211')
+		const hubs = await fetchSovereigntyHubs(
+			tokenStore as never,
+			'98000001',
+			'211',
+			[
+				{
+					structure_id: '81001',
+					type_id: '35835',
+				},
+			]
+		)
 
 		expect(tokenStore.fetchEsi).toHaveBeenCalledTimes(2)
-		expect(tokenStore.fetchEsi).toHaveBeenCalledWith(
+		expect(tokenStore.fetchEsi).toHaveBeenNthCalledWith(
+			1,
 			'/corporations/98000001/structures/sovereignty-hubs?page=1',
 			'211',
 			{ cacheMode: 'no-store' }
 		)
-		expect(tokenStore.fetchEsi).toHaveBeenCalledWith(
-			'/universe/structures/81001',
-			'211',
-			{ cacheMode: 'no-store' }
-		)
-		expect(tokenStore.fetchEsi).not.toHaveBeenCalledWith(
+		expect(tokenStore.fetchEsi).toHaveBeenNthCalledWith(
+			2,
 			'/corporations/98000001/structures/sovereignty-hubs/81001',
 			'211',
 			{ cacheMode: 'no-store' }
 		)
-		expect(hubs).toEqual([])
+		expect(hubs).toHaveLength(1)
+		expect(hubs[0]).toMatchObject({
+			structure_id: '81001',
+			corporation_id: '98000001',
+			system_id: '30000142',
+			type_id: '35835',
+			name: null,
+		})
 	})
 })

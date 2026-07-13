@@ -298,10 +298,10 @@ export default function StructuresDetailPage() {
 		structure.syncFailureReason,
 		structure.lastSyncedAt
 	)
-	const structureFamily = getStructureTabForTypeId(structure.typeId)
+	const structureFamily = getStructureTabForTypeId(structure.typeId, structure.typeName)
 	const hasSovereigntySummary = structureFamily === 'sovereignty' && structure.sovereignty
 	const hasSkyhookSummary = structureFamily === 'skyhooks' && structure.skyhook
-	const hasMiningSummary = structureFamily === 'mining'
+	const hasMiningSummary = structureFamily === 'mining-citadels'
 
 	const handleSave = async () => {
 		await updateMutation.mutateAsync({
