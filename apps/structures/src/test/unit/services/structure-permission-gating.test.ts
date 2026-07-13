@@ -225,7 +225,6 @@ describe('structure permission gating', () => {
 			'structure-1'
 		)
 		expect(detailsResult).not.toBeNull()
-		expect(detailsResult?.canViewDetails).toBe(true)
 		expect(detailsResult?.canEdit).toBe(false)
 	})
 

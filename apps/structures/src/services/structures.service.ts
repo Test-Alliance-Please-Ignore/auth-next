@@ -173,7 +173,7 @@ export interface StructureSovereigntyListItem extends StructureListItem {
 	claimType: 'alliance' | 'faction' | 'unclaimed'
 	allianceId: string | null
 	allianceName: string | null
-	controllerAllianceName?: string | null
+	controllerAllianceName: string | null
 	corporationClaimantId: string | null
 	factionId: string | null
 	claimedSince: string | null
@@ -1062,6 +1062,7 @@ function buildSyntheticSovereigntyStructureRow(
 		systemName: geography?.solarSystemName ?? hub.systemName ?? system?.systemName ?? null,
 		regionId: geography?.regionId ?? null,
 		regionName: geography?.regionName ?? null,
+		profileId: 'sovereignty',
 		fuelExpires: null,
 		fuelAmount: null,
 		lastRefilledAt: null,
@@ -2606,7 +2607,7 @@ function buildSovereigntyListItem(input: {
 	context: VisibleStructureContext
 	systemRow: typeof structureSovereigntySystems.$inferSelect | null
 	hubRow: typeof structureSovereigntyHubs.$inferSelect | null
-}): RepoStructureSovereigntyListItem {
+}): StructureSovereigntyListItem {
 	const { context, systemRow, hubRow } = input
 	const { structure: structureRow, corporationName, canViewSensitive, canEdit } = context
 	const hasHubSnapshot = hubRow !== null
@@ -2676,8 +2677,6 @@ function buildSovereigntyListItem(input: {
 		updatedAt: sourceUpdatedAt
 			? sourceUpdatedAt.toISOString()
 			: structureRow.updatedAt.toISOString(),
-		canViewSensitive,
-		canEdit,
 	}
 }
 
@@ -2810,10 +2809,10 @@ export async function listSovereigntyStructures(
 	const end = start + pageSize
 
 	return {
-		items: sortedItems
-			.slice(start, end)
-			.map((item) => items.find((row) => row.structureId === item.structureId)!)
-			.filter((item): item is RepoStructureSovereigntyListItem => Boolean(item)),
+		items: sortedItems.slice(start, end).map((item) => {
+			const { updatedAt: _updatedAt, ...rest } = item
+			return rest
+		}) as RepoStructureSovereigntyListItem[],
 		pagination: {
 			page,
 			pageSize,
