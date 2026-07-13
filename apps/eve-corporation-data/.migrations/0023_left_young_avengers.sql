@@ -1,0 +1,1 @@
+ALTER TABLE "structure_sovereignty_hubs" ALTER COLUMN "workforce_transport" SET DEFAULT '{"configuration":{"mode":"unknown","systems":[]},"state":{"mode":"unknown","systems":[]}}'::jsonb;

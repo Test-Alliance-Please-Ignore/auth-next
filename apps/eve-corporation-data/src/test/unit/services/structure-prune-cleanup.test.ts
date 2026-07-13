@@ -182,8 +182,19 @@ describe('structure prune cleanup', () => {
 				upgrades: [],
 				vulnerability_window: null,
 				workforce_transport: {
-					configuration: { transit: true },
-					state: { transit: true },
+					configuration: {
+						import: {
+							sources: [{ solar_system_id: 30000142 }, { solar_system_id: 30000143 }],
+						},
+					},
+					state: {
+						import: {
+							sources: [
+								{ solar_system_id: 30000142, amount: 12 },
+								{ solar_system_id: 30000143, amount: 34 },
+							],
+						},
+					},
 				},
 				raw: { detail: { id: 1 } },
 			} as never,
@@ -193,6 +204,22 @@ describe('structure prune cleanup', () => {
 		expect(db._values.mock.calls[0][0][0]).toMatchObject({
 			systemName: 'Jita',
 			name: 'Jita',
+			workforceTransport: {
+				configuration: {
+					mode: 'import',
+					systems: [
+						{ solarSystemId: '30000142', amount: null },
+						{ solarSystemId: '30000143', amount: null },
+					],
+				},
+				state: {
+					mode: 'import',
+					systems: [
+						{ solarSystemId: '30000142', amount: 12 },
+						{ solarSystemId: '30000143', amount: 34 },
+					],
+				},
+			},
 		})
 		expect(db.delete).not.toHaveBeenCalled()
 	})

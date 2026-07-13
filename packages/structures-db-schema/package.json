@@ -12,6 +12,7 @@
 	"dependencies": {
 		"@repo/core-db-schema": "workspace:*",
 		"@repo/eve-corporation-data-db-schema": "workspace:*",
+		"@repo/structures": "workspace:*",
 		"drizzle-orm": "0.44.7"
 	},
 	"devDependencies": {

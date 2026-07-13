@@ -211,8 +211,8 @@ export interface EsiSovereigntyHub {
 		last_updated: string
 		reagents: Array<{
 			type_id: string
-			secured_stock: number
-			unsecured_stock: number
+			amount: number
+			burning_per_hour: number
 			last_cycle: string
 		}>
 	}
@@ -239,8 +239,7 @@ export interface EsiSovereigntyHub {
 			| {
 					import: {
 						sources: Array<{
-							amount: number
-							solar_system_id?: number
+							solar_system_id: number
 						}>
 					}
 			  }
@@ -252,13 +251,13 @@ export interface EsiSovereigntyHub {
 			  }
 			| {
 					transit: boolean | null
-			  }
+			}
 		state:
 			| {
 					import: {
 						sources: Array<{
 							amount: number
-							solar_system_id?: number
+							solar_system_id: number
 						}>
 					}
 			  }

@@ -122,16 +122,23 @@ interface StructureDetailResponse {
 	inventoryBays?: StructureInventoryBayView[]
 	fittingItems?: StructureFittingItemView[]
 	sovereignty?: {
-		hub?: {
-			controllerAllianceId?: string | null
-			controllerAllianceName?: string | null
-			reagentBay?: {
-				lastUpdated: string
-				reagents: Array<{
-					typeId: string
-					typeName?: string | null
-					securedStock: number
-					unsecuredStock: number
+			hub?: {
+				controllerAllianceId?: string | null
+				controllerAllianceName?: string | null
+				reagentCount?: number
+				magmaticGasQuantity?: number
+				magmaticGasBurningPerHour?: number
+				magmaticGasEstimatedDepletionAt?: string | null
+				superionicIceQuantity?: number
+				superionicIceBurningPerHour?: number
+				superionicIceEstimatedDepletionAt?: string | null
+				reagentBay?: {
+					lastUpdated: string
+					reagents: Array<{
+						typeId: string
+						typeName?: string | null
+					amount: number
+					burningPerHour: number
 					lastCycle: string
 				}>
 			}
@@ -140,6 +147,22 @@ interface StructureDetailResponse {
 				typeName?: string | null
 				powerState: string
 			}>
+			workforceTransport?: {
+				configuration: {
+					mode: 'import' | 'export' | 'transit' | 'unknown'
+					systems: Array<{
+						solarSystemId: string
+						amount: number | null
+					}>
+				}
+				state: {
+					mode: 'import' | 'export' | 'transit' | 'unknown'
+					systems: Array<{
+						solarSystemId: string
+						amount: number | null
+					}>
+				}
+			}
 		} | null
 	} | null
 	includeInStructureAssetSync?: boolean
@@ -336,6 +359,7 @@ async function enrichSovereigntyStructureListResponse(
 	const allianceIds = [
 		...new Set(
 			[
+				...response.items.map((item) => item.allianceId),
 				...response.items.map((item) => item.controllerAllianceId),
 				...response.filterOptions.controllerAlliances.map((option) => option.value),
 			].filter((value): value is string => Boolean(value))
@@ -352,17 +376,17 @@ async function enrichSovereigntyStructureListResponse(
 
 	return {
 		...response,
-		items: response.items.map((item) =>
-			item.controllerAllianceId
-				? {
-						...item,
-						controllerAllianceName:
-							allianceNameMap.get(item.controllerAllianceId) ??
-							item.controllerAllianceName ??
-							item.controllerAllianceId,
-					}
-				: item
-		),
+		items: response.items.map((item) => ({
+			...item,
+			allianceName: item.allianceId
+				? (allianceNameMap.get(item.allianceId) ?? item.allianceName ?? item.allianceId)
+				: null,
+			controllerAllianceName: item.controllerAllianceId
+				? (allianceNameMap.get(item.controllerAllianceId) ??
+					item.controllerAllianceName ??
+					item.controllerAllianceId)
+				: null,
+		})),
 		filterOptions: {
 			...response.filterOptions,
 			controllerAlliances: response.filterOptions.controllerAlliances.map((option) => ({
