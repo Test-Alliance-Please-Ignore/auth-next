@@ -365,8 +365,8 @@ export async function fetchSovereigntyHubs(
 			last_updated: string
 			reagents: Array<{
 				type_id: number
-				secured_stock: number
-				unsecured_stock: number
+				amount: number
+				burning_per_hour: number
 				last_cycle: string
 			}>
 		}
@@ -390,16 +390,15 @@ export async function fetchSovereigntyHubs(
 		} | null
 		workforce_transport: {
 			configuration:
-				| {
-						import: {
-							sources: Array<{
-								amount: number
-								solar_system_id?: number
-							}>
-						}
-				  }
-				| {
-						export: {
+			| {
+					import: {
+						sources: Array<{
+							solar_system_id: number
+						}>
+					}
+			  }
+			| {
+					export: {
 							amount: number
 							solar_system_id?: number
 						}
@@ -408,14 +407,14 @@ export async function fetchSovereigntyHubs(
 						transit: boolean | null
 				  }
 			state:
-				| {
-						import: {
-							sources: Array<{
-								amount: number
-								solar_system_id?: number
-							}>
-						}
-				  }
+			| {
+					import: {
+						sources: Array<{
+							amount: number
+							solar_system_id: number
+						}>
+					}
+			  }
 				| {
 						export: {
 							amount: number
@@ -468,15 +467,15 @@ export async function fetchSovereigntyHubs(
 						detail.fuel_access_list_id !== undefined && detail.fuel_access_list_id !== null
 							? String(detail.fuel_access_list_id)
 							: null,
-					reagent_bay: {
-						last_updated: detail.reagent_bay.last_updated,
-						reagents: detail.reagent_bay.reagents.map((reagent) => ({
-							type_id: String(reagent.type_id),
-							secured_stock: reagent.secured_stock,
-							unsecured_stock: reagent.unsecured_stock,
-							last_cycle: reagent.last_cycle,
-						})),
-					},
+						reagent_bay: {
+							last_updated: detail.reagent_bay.last_updated,
+							reagents: detail.reagent_bay.reagents.map((reagent) => ({
+								type_id: String(reagent.type_id),
+								amount: reagent.amount,
+								burning_per_hour: reagent.burning_per_hour,
+								last_cycle: reagent.last_cycle,
+							})),
+						},
 					resources: detail.resources,
 					upgrades: detail.upgrades.map((upgrade) => ({
 						type_id: String(upgrade.type_id),

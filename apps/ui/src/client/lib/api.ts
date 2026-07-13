@@ -24,6 +24,8 @@ import type {
 	StructureSovereigntyListResponse as RepoStructureSovereigntyListResponse,
 	StructureSovereigntyListSummary as RepoStructureSovereigntyListSummary,
 	StructureSovereigntyListQuery as RepoStructureSovereigntyListQuery,
+	StructureSovereigntyReagent,
+	StructureSovereigntyTransportState,
 } from '@repo/structures'
 import type { TrackingSession } from '../features/fleet-tracking/types'
 
@@ -822,15 +824,15 @@ export interface StructureSovereigntyHubSummary {
 	controllerAllianceName?: string | null
 	reagentBayLastUpdated: string | null
 	reagentCount: number
+	magmaticGasQuantity: number
+	magmaticGasBurningPerHour: number
+	magmaticGasEstimatedDepletionAt: string | null
+	superionicIceQuantity: number
+	superionicIceBurningPerHour: number
+	superionicIceEstimatedDepletionAt: string | null
 	reagentBay: {
 		lastUpdated: string
-		reagents: Array<{
-			typeId: string
-			typeName?: string | null
-			securedStock: number
-			unsecuredStock: number
-			lastCycle: string
-		}>
+		reagents: StructureSovereigntyReagent[]
 	}
 	resources: {
 		power: {
@@ -847,12 +849,7 @@ export interface StructureSovereigntyHubSummary {
 		typeName?: string | null
 		powerState: string
 	}>
-	workforceTransport: {
-		configuration: Record<string, unknown>
-		state: Record<string, unknown>
-	}
-	totalSecuredStock: number
-	totalUnsecuredStock: number
+	workforceTransport: StructureSovereigntyTransportState
 	resourcePowerAllocated: number
 	resourcePowerAvailable: number
 	resourceWorkforceAllocated: number

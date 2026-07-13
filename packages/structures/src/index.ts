@@ -166,6 +166,31 @@ export interface StructureSovereigntyListSummary {
 	unknown: number
 }
 
+export interface StructureSovereigntyReagent {
+	typeId: string
+	typeName?: string | null
+	amount: number
+	burningPerHour: number
+	lastCycle: string
+}
+
+export interface StructureSovereigntyTransportEntry {
+	solarSystemId: string
+	amount: number | null
+}
+
+export type StructureSovereigntyTransportMode = 'import' | 'export' | 'transit' | 'unknown'
+
+export interface StructureSovereigntyTransportSection {
+	mode: StructureSovereigntyTransportMode
+	systems: StructureSovereigntyTransportEntry[]
+}
+
+export interface StructureSovereigntyTransportState {
+	configuration: StructureSovereigntyTransportSection
+	state: StructureSovereigntyTransportSection
+}
+
 export interface StructureSovereigntyListItem {
 	structureId: string
 	corporationId: string
@@ -188,6 +213,7 @@ export interface StructureSovereigntyListItem {
 	assignedGroupId: string | null
 	claimType: 'alliance' | 'faction' | 'unclaimed'
 	allianceId: string | null
+	allianceName: string | null
 	controllerAllianceId: string | null
 	controllerAllianceName: string | null
 	corporationClaimantId: string | null
@@ -203,8 +229,12 @@ export interface StructureSovereigntyListItem {
 	fuelAccessListId: string | null
 	reagentBayLastUpdated: string | null
 	reagentCount: number
-	totalSecuredStock: number
-	totalUnsecuredStock: number
+	magmaticGasQuantity: number
+	magmaticGasBurningPerHour: number
+	magmaticGasEstimatedDepletionAt: string | null
+	superionicIceQuantity: number
+	superionicIceBurningPerHour: number
+	superionicIceEstimatedDepletionAt: string | null
 	resourcePowerAllocated: number
 	resourcePowerAvailable: number
 	resourceWorkforceAllocated: number

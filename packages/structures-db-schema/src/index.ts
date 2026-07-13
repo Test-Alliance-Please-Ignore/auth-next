@@ -13,6 +13,10 @@ import {
 
 import { managedCorporations, users } from '@repo/core-db-schema'
 import { corporationStructures } from '@repo/eve-corporation-data-db-schema'
+import type {
+	StructureSovereigntyReagent,
+	StructureSovereigntyTransportState,
+} from '@repo/structures'
 
 export const structureGroupSettings = pgTable(
 	'structure_group_settings',
@@ -147,12 +151,7 @@ export const structureSovereigntyHubs = pgTable(
 		reagentBay: jsonb('reagent_bay')
 			.$type<{
 				lastUpdated: string
-				reagents: Array<{
-					typeId: string
-					securedStock: number
-					unsecuredStock: number
-					lastCycle: string
-				}>
+				reagents: StructureSovereigntyReagent[]
 			}>()
 			.notNull()
 			.default({ lastUpdated: '', reagents: [] }),
@@ -183,7 +182,13 @@ export const structureSovereigntyHubs = pgTable(
 			.default([]),
 		vulnerabilityWindowStart: timestamp('vulnerability_window_start', { withTimezone: true }),
 		vulnerabilityWindowEnd: timestamp('vulnerability_window_end', { withTimezone: true }),
-		workforceTransport: jsonb('workforce_transport').$type<Record<string, unknown>>().notNull().default({}),
+		workforceTransport: jsonb('workforce_transport')
+			.$type<StructureSovereigntyTransportState>()
+			.notNull()
+			.default({
+				configuration: { mode: 'unknown', systems: [] },
+				state: { mode: 'unknown', systems: [] },
+			}),
 		sourceSyncAt: timestamp('source_sync_at', { withTimezone: true }),
 		lastSyncedAt: timestamp('last_synced_at', { withTimezone: true }),
 		updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow().notNull(),

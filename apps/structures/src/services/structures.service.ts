@@ -47,6 +47,8 @@ import type {
 	StructureSovereigntyListItem as RepoStructureSovereigntyListItem,
 	StructureSovereigntyListResponse as RepoStructureSovereigntyListResponse,
 	StructureSovereigntyListSummary as RepoStructureSovereigntyListSummary,
+	StructureSovereigntyReagent,
+	StructureSovereigntyTransportState,
 	StructureSkyhookListQuery,
 	StructureSovereigntyListQuery,
 	StructureTab,
@@ -58,6 +60,9 @@ import type {
 	StructureFuelUsageHistory,
 } from './structure-fuel-history'
 
+const MAGMATIC_GAS_TYPE_ID = '81143'
+const SUPERIONIC_ICE_TYPE_ID = '81144'
+const HOURS_TO_MS = 60 * 60 * 1000
 const STRUCTURE_LIST_PAGE_SIZE_MAX = 100
 
 export type StructureListSortField =
@@ -165,6 +170,7 @@ export interface StructureNavigationListItem extends StructureListItem {
 export interface StructureSovereigntyListItem extends StructureListItem {
 	claimType: 'alliance' | 'faction' | 'unclaimed'
 	allianceId: string | null
+	allianceName: string | null
 	controllerAllianceName?: string | null
 	corporationClaimantId: string | null
 	factionId: string | null
@@ -180,8 +186,12 @@ export interface StructureSovereigntyListItem extends StructureListItem {
 	controllerAllianceId: string | null
 	reagentBayLastUpdated: string | null
 	reagentCount: number
-	totalSecuredStock: number
-	totalUnsecuredStock: number
+	magmaticGasQuantity: number
+	magmaticGasBurningPerHour: number
+	magmaticGasEstimatedDepletionAt: string | null
+	superionicIceQuantity: number
+	superionicIceBurningPerHour: number
+	superionicIceEstimatedDepletionAt: string | null
 	resourcePowerAllocated: number
 	resourcePowerAvailable: number
 	resourceWorkforceAllocated: number
@@ -239,15 +249,15 @@ export interface StructureSovereigntyHubSummary {
 	controllerAllianceName?: string | null
 	reagentBayLastUpdated: string | null
 	reagentCount: number
+	magmaticGasQuantity: number
+	magmaticGasBurningPerHour: number
+	magmaticGasEstimatedDepletionAt: string | null
+	superionicIceQuantity: number
+	superionicIceBurningPerHour: number
+	superionicIceEstimatedDepletionAt: string | null
 	reagentBay: {
 		lastUpdated: string
-		reagents: Array<{
-			typeId: string
-			typeName?: string | null
-			securedStock: number
-			unsecuredStock: number
-			lastCycle: string
-		}>
+		reagents: StructureSovereigntyReagent[]
 	}
 	resources: {
 		power: {
@@ -264,12 +274,7 @@ export interface StructureSovereigntyHubSummary {
 		typeName?: string | null
 		powerState: string
 	}>
-	workforceTransport: {
-		configuration: Record<string, unknown>
-		state: Record<string, unknown>
-	}
-	totalSecuredStock: number
-	totalUnsecuredStock: number
+	workforceTransport: StructureSovereigntyTransportState
 	resourcePowerAllocated: number
 	resourcePowerAvailable: number
 	resourceWorkforceAllocated: number
@@ -730,20 +735,66 @@ function isFuelBelowThreshold(
 	return hoursRemaining <= moduleConfig.lowFuelTimeThresholdHours
 }
 
+function estimateReagentDepletionAt(
+	quantity: number,
+	burningPerHour: number,
+	referenceTimeMs: number
+): string | null {
+	if (!Number.isFinite(quantity) || !Number.isFinite(burningPerHour) || burningPerHour <= 0) {
+		return null
+	}
+
+	return new Date(referenceTimeMs + (quantity / burningPerHour) * HOURS_TO_MS).toISOString()
+}
+
+function summarizeSovereigntyReagentStats(
+	reagents: StructureSovereigntyReagent[],
+	match: { typeId: string; typeName: string },
+	referenceTimeMs: number
+): {
+	quantity: number
+	burningPerHour: number
+	estimatedDepletionAt: string | null
+} {
+	const totals = reagents.reduce(
+		(accumulator, reagent) => {
+			const normalizedTypeName = reagent.typeName?.trim().toLowerCase() ?? ''
+			const matches =
+				reagent.typeId === match.typeId || normalizedTypeName === match.typeName.toLowerCase()
+
+			if (!matches) {
+				return accumulator
+			}
+
+			accumulator.quantity += reagent.amount
+			accumulator.burningPerHour += reagent.burningPerHour
+			return accumulator
+		},
+		{ quantity: 0, burningPerHour: 0 }
+	)
+
+	return {
+		...totals,
+		estimatedDepletionAt: estimateReagentDepletionAt(
+			totals.quantity,
+			totals.burningPerHour,
+			referenceTimeMs
+		),
+	}
+}
+
 function summarizeStructureSovereigntyHub(
 	hub: typeof structureSovereigntyHubs.$inferSelect
 ): StructureSovereigntyHubSummary {
-	const reagentTotals = hub.reagentBay.reagents.reduce(
-		(
-			accumulator: { secured: number; unsecured: number },
-			reagent: { securedStock: number; unsecuredStock: number }
-		) => {
-			accumulator.secured += reagent.securedStock
-			accumulator.unsecured += reagent.unsecuredStock
-			return accumulator
-		},
-		{ secured: 0, unsecured: 0 }
-	)
+	const referenceTimeMs = Date.now()
+	const magmaticGasStats = summarizeSovereigntyReagentStats(hub.reagentBay.reagents, {
+		typeId: MAGMATIC_GAS_TYPE_ID,
+		typeName: 'Magmatic Gas',
+	}, referenceTimeMs)
+	const superionicIceStats = summarizeSovereigntyReagentStats(hub.reagentBay.reagents, {
+		typeId: SUPERIONIC_ICE_TYPE_ID,
+		typeName: 'Superionic Ice',
+	}, referenceTimeMs)
 
 	return {
 		fuelAccessListId: hub.fuelAccessListId ?? null,
@@ -752,13 +803,17 @@ function summarizeStructureSovereigntyHub(
 			? hub.reagentBayLastUpdated.toISOString()
 			: null,
 		reagentCount: hub.reagentBay.reagents.length,
+		magmaticGasQuantity: magmaticGasStats.quantity,
+		magmaticGasBurningPerHour: magmaticGasStats.burningPerHour,
+		magmaticGasEstimatedDepletionAt: magmaticGasStats.estimatedDepletionAt,
+		superionicIceQuantity: superionicIceStats.quantity,
+		superionicIceBurningPerHour: superionicIceStats.burningPerHour,
+		superionicIceEstimatedDepletionAt: superionicIceStats.estimatedDepletionAt,
 		reagentBay: hub.reagentBay,
 		resources: hub.resources,
 		upgrades: hub.upgrades,
 		workforceTransport:
 			hub.workforceTransport as StructureSovereigntyHubSummary['workforceTransport'],
-		totalSecuredStock: reagentTotals.secured,
-		totalUnsecuredStock: reagentTotals.unsecured,
 		resourcePowerAllocated: hub.resources.power.allocated,
 		resourcePowerAvailable: hub.resources.power.available,
 		resourceWorkforceAllocated: hub.resources.workforce.allocated,
@@ -2508,6 +2563,7 @@ function buildSovereigntyListItem(input: {
 		...structureIdentity,
 		claimType: systemRow?.claimType ?? 'unclaimed',
 		allianceId: systemRow?.allianceId ?? null,
+		allianceName: null,
 		controllerAllianceName: hubSummary?.controllerAllianceId
 			? (hubSummary.controllerAllianceName ?? null)
 			: null,
@@ -2529,8 +2585,12 @@ function buildSovereigntyListItem(input: {
 		controllerAllianceId: hubSummary?.controllerAllianceId ?? null,
 		reagentBayLastUpdated: hubSummary?.reagentBayLastUpdated ?? null,
 		reagentCount: hubSummary?.reagentCount ?? 0,
-		totalSecuredStock: hubSummary?.totalSecuredStock ?? 0,
-		totalUnsecuredStock: hubSummary?.totalUnsecuredStock ?? 0,
+		magmaticGasQuantity: hubSummary?.magmaticGasQuantity ?? 0,
+		magmaticGasBurningPerHour: hubSummary?.magmaticGasBurningPerHour ?? 0,
+		magmaticGasEstimatedDepletionAt: hubSummary?.magmaticGasEstimatedDepletionAt ?? null,
+		superionicIceQuantity: hubSummary?.superionicIceQuantity ?? 0,
+		superionicIceBurningPerHour: hubSummary?.superionicIceBurningPerHour ?? 0,
+		superionicIceEstimatedDepletionAt: hubSummary?.superionicIceEstimatedDepletionAt ?? null,
 		resourcePowerAllocated: hubSummary?.resourcePowerAllocated ?? 0,
 		resourcePowerAvailable: hubSummary?.resourcePowerAvailable ?? 0,
 		resourceWorkforceAllocated: hubSummary?.resourceWorkforceAllocated ?? 0,

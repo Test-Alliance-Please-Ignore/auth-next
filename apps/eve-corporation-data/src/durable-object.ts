@@ -93,6 +93,7 @@ import type {
 	WalletJournalWindowFilters,
 	WalletTransactionWindowFilters,
 } from '@repo/eve-corporation-data'
+import type { StructureSovereigntyTransportState } from '@repo/structures'
 import type { EsiResponse, EveTokenStore } from '@repo/eve-token-store'
 import type { EveCharacterId, EveStructureId } from '@repo/eve-types'
 import type {
@@ -109,6 +110,59 @@ type CorporationConfigRow = typeof corporationConfig.$inferSelect
 
 function minutesAgo(minutes: number): Date {
 	return new Date(Date.now() - minutes * 60 * 1000)
+}
+
+function normalizeSovereigntyWorkforceTransport(
+	transport: EsiSovereigntyHub['workforce_transport']
+): StructureSovereigntyTransportState {
+	const normalizeImport = (section: { sources: Array<{ solar_system_id: number }> }) => ({
+		mode: 'import' as const,
+		systems: section.sources.map((source) => ({
+			solarSystemId: String(source.solar_system_id),
+			amount: null,
+		})),
+	})
+
+	const normalizeExport = (section: { amount: number; solar_system_id?: number }) => ({
+		mode: 'export' as const,
+		systems: [
+			{
+				solarSystemId: String(section.solar_system_id ?? ''),
+				amount: section.amount,
+			},
+		].filter((entry) => entry.solarSystemId.length > 0),
+	})
+
+	const normalizeTransit = () => ({ mode: 'transit' as const, systems: [] })
+
+	const normalizeSection = (
+		section: EsiSovereigntyHub['workforce_transport']['configuration']
+	): StructureSovereigntyTransportState['configuration'] => {
+		if ('import' in section) return normalizeImport(section.import)
+		if ('export' in section) return normalizeExport(section.export)
+		return normalizeTransit()
+	}
+
+	const normalizeStateSection = (
+		section: EsiSovereigntyHub['workforce_transport']['state']
+	): StructureSovereigntyTransportState['state'] => {
+		if ('import' in section) {
+			return {
+				mode: 'import',
+				systems: section.import.sources.map((source) => ({
+					solarSystemId: String(source.solar_system_id),
+					amount: source.amount,
+				})),
+			}
+		}
+		if ('export' in section) return normalizeExport(section.export)
+		return normalizeTransit()
+	}
+
+	return {
+		configuration: normalizeSection(transport.configuration),
+		state: normalizeStateSection(transport.state),
+	}
 }
 
 type SortDirection = 'asc' | 'desc'
@@ -2724,8 +2778,8 @@ export class EveCorporationDataDO extends DurableObject<Env> implements EveCorpo
 					lastUpdated: hub.reagent_bay.last_updated,
 					reagents: hub.reagent_bay.reagents.map((reagent) => ({
 						typeId: reagent.type_id,
-						securedStock: reagent.secured_stock,
-						unsecuredStock: reagent.unsecured_stock,
+						amount: reagent.amount,
+						burningPerHour: reagent.burning_per_hour,
 						lastCycle: reagent.last_cycle,
 					})),
 				},
@@ -2736,7 +2790,7 @@ export class EveCorporationDataDO extends DurableObject<Env> implements EveCorpo
 				})),
 				vulnerabilityWindowStart: parseDateOrNull(hub.vulnerability_window?.start) ?? null,
 				vulnerabilityWindowEnd: parseDateOrNull(hub.vulnerability_window?.end) ?? null,
-				workforceTransport: hub.workforce_transport,
+				workforceTransport: normalizeSovereigntyWorkforceTransport(hub.workforce_transport),
 				sourceSyncAt: now,
 				lastSyncedAt: now,
 				updatedAt: now,

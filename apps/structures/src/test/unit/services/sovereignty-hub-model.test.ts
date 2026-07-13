@@ -90,9 +90,15 @@ function makeDb() {
 					lastUpdated: '2026-07-12T19:36:46.834Z',
 					reagents: [
 						{
+							typeId: '81143',
+							amount: 10,
+							burningPerHour: 4,
+							lastCycle: '2026-07-12T18:30:00Z',
+						},
+						{
 							typeId: '81144',
-							securedStock: 10,
-							unsecuredStock: 5,
+							amount: 15,
+							burningPerHour: 6,
 							lastCycle: '2026-07-12T19:00:00Z',
 						},
 					],
@@ -109,7 +115,10 @@ function makeDb() {
 				],
 				vulnerabilityWindowStart: new Date('2026-07-13T08:40:00Z'),
 				vulnerabilityWindowEnd: new Date('2026-07-13T15:20:00Z'),
-				workforceTransport: {},
+				workforceTransport: {
+					configuration: { mode: 'unknown', systems: [] },
+					state: { mode: 'unknown', systems: [] },
+				},
 				sourceSyncAt: new Date('2026-07-12T19:36:47.369Z'),
 				lastSyncedAt: new Date('2026-07-12T19:36:47.369Z'),
 				updatedAt: new Date('2026-07-12T19:36:47.369Z'),
@@ -136,7 +145,10 @@ function makeDb() {
 			upgrades: [],
 			vulnerabilityWindowStart: null,
 			vulnerabilityWindowEnd: null,
-			workforceTransport: {},
+			workforceTransport: {
+				configuration: { mode: 'unknown', systems: [] },
+				state: { mode: 'unknown', systems: [] },
+			},
 			sourceSyncAt: new Date('2026-07-12T19:36:47.369Z'),
 			lastSyncedAt: new Date('2026-07-12T19:36:47.369Z'),
 			updatedAt: new Date('2026-07-12T19:36:47.369Z'),
@@ -207,46 +219,59 @@ describe('sovereignty hub model', () => {
 	it('lists sovereignty hubs without requiring corporation structures rows', async () => {
 		const db = makeDb()
 		mocks.getStubMock.mockReturnValue(db.universeStub)
-
-		const result = await listSovereigntyStructures(
-			{
-				UNIVERSE: {} as never,
-			} as never,
-			db as never,
-			{
-				id: 'user-1',
-				is_admin: true,
-				roles: [],
-			}
+		const nowSpy = vi.spyOn(Date, 'now').mockReturnValue(
+			new Date('2026-07-12T00:00:00Z').getTime()
 		)
 
-		expect(mocks.getStubMock).toHaveBeenCalledWith({}, 'default')
-		expect(db.query.corporationStructures.findMany).not.toHaveBeenCalled()
-		expect(result.items).toHaveLength(1)
-		expect(result.items[0]).toMatchObject({
-			structureId: 'hub-1',
-			corporationId: 'corp-1',
-			corporationName: 'Test Corp',
-			typeId: '32458',
-			typeName: 'Sovereignty Hub',
-			systemId: '30000142',
-			systemName: 'Jita',
-			regionId: '10000002',
-			regionName: 'The Forge',
-			claimType: 'alliance',
-			sovereigntyHubStructureId: 'hub-1',
-			controllerAllianceId: 'alliance-1',
-			vulnerabilityWindowStart: '2026-07-13T08:40:00.000Z',
-			vulnerabilityWindowEnd: '2026-07-13T15:20:00.000Z',
-			activityDefenseMultiplier: '1.2',
-			militaryLevel: 2,
-			industrialLevel: 3,
-			strategicLevel: 4,
-			resourceWorkforceAllocated: 300,
-			resourceWorkforceAvailable: 400,
-			resourcePowerAllocated: 100,
-			resourcePowerAvailable: 200,
-		})
+		try {
+			const result = await listSovereigntyStructures(
+				{
+					UNIVERSE: {} as never,
+				} as never,
+				db as never,
+				{
+					id: 'user-1',
+					is_admin: true,
+					roles: [],
+				}
+			)
+
+			expect(mocks.getStubMock).toHaveBeenCalledWith({}, 'default')
+			expect(db.query.corporationStructures.findMany).not.toHaveBeenCalled()
+			expect(result.items).toHaveLength(1)
+			expect(result.items[0]).toMatchObject({
+				structureId: 'hub-1',
+				corporationId: 'corp-1',
+				corporationName: 'Test Corp',
+				typeId: '32458',
+				typeName: 'Sovereignty Hub',
+				systemId: '30000142',
+				systemName: 'Jita',
+				regionId: '10000002',
+				regionName: 'The Forge',
+				claimType: 'alliance',
+				sovereigntyHubStructureId: 'hub-1',
+				controllerAllianceId: 'alliance-1',
+				vulnerabilityWindowStart: '2026-07-13T08:40:00.000Z',
+				vulnerabilityWindowEnd: '2026-07-13T15:20:00.000Z',
+				activityDefenseMultiplier: '1.2',
+				militaryLevel: 2,
+				industrialLevel: 3,
+				strategicLevel: 4,
+				magmaticGasQuantity: 10,
+				magmaticGasBurningPerHour: 4,
+				magmaticGasEstimatedDepletionAt: '2026-07-12T02:30:00.000Z',
+				superionicIceQuantity: 15,
+				superionicIceBurningPerHour: 6,
+				superionicIceEstimatedDepletionAt: '2026-07-12T02:30:00.000Z',
+				resourceWorkforceAllocated: 300,
+				resourceWorkforceAvailable: 400,
+				resourcePowerAllocated: 100,
+				resourcePowerAvailable: 200,
+			})
+		} finally {
+			nowSpy.mockRestore()
+		}
 	})
 
 	it('filters sovereignty hubs by region using universe geography', async () => {
@@ -313,7 +338,10 @@ describe('sovereignty hub model', () => {
 				upgrades: [],
 				vulnerabilityWindowStart: new Date('2026-07-13T08:40:00Z'),
 				vulnerabilityWindowEnd: new Date('2026-07-13T15:20:00Z'),
-				workforceTransport: {},
+				workforceTransport: {
+					configuration: { mode: 'unknown', systems: [] },
+					state: { mode: 'unknown', systems: [] },
+				},
 				sourceSyncAt: new Date('2026-07-12T19:36:47.369Z'),
 				lastSyncedAt: new Date('2026-07-12T19:36:47.369Z'),
 				updatedAt: new Date('2026-07-12T19:36:47.369Z'),
@@ -339,7 +367,10 @@ describe('sovereignty hub model', () => {
 				upgrades: [],
 				vulnerabilityWindowStart: new Date('2026-07-13T08:40:00Z'),
 				vulnerabilityWindowEnd: new Date('2026-07-13T15:20:00Z'),
-				workforceTransport: {},
+				workforceTransport: {
+					configuration: { mode: 'unknown', systems: [] },
+					state: { mode: 'unknown', systems: [] },
+				},
 				sourceSyncAt: new Date('2026-07-12T19:36:47.369Z'),
 				lastSyncedAt: new Date('2026-07-12T19:36:47.369Z'),
 				updatedAt: new Date('2026-07-12T19:36:47.369Z'),

@@ -17,10 +17,13 @@ import { Link, Navigate, useParams } from 'react-router-dom'
 import { FittingPanel } from '@repo/eve-fitting/fitting-panel'
 import { FittingSlotTable } from '@repo/eve-fitting/fitting-slot-table'
 import { hasAnyStructurePermission } from '@repo/groups'
-import { getStructureTabForTypeId, isReinforcedStructureState } from '@repo/structures'
+import {
+	getStructureTabForTypeId,
+	isReinforcedStructureState,
+	type StructureSovereigntyTransportSection,
+} from '@repo/structures'
 
 import { CorporationLogo } from '@/components/corporation-logo'
-import { InventoryBaysTable } from '@/components/inventory-bays-table'
 import { StructureFuelUsageChart } from '@/components/structure-fuel-usage-chart'
 import { StructureStateBadge } from '@/components/structure-state-badge'
 import { StructureSyncStatusBadge } from '@/components/structure-sync-status-badge'
@@ -37,6 +40,7 @@ import { Progress } from '@/components/ui/progress'
 import { Select } from '@/components/ui/select'
 import { Skeleton } from '@/components/ui/skeleton'
 import { Switch } from '@/components/ui/switch'
+import { InventoryBaysTable } from '@/components/inventory-bays-table'
 import {
 	Table,
 	TableBody,
@@ -53,6 +57,7 @@ import { usePageTitle } from '@/hooks/usePageTitle'
 import { useUserPermissions } from '@/hooks/useUserPermissions'
 import { api } from '@/lib/api'
 import { formatDateTimeLong } from '@/lib/date-utils'
+import { formatDurationMs } from '@/lib/duration-utils'
 import { allianceLogoUrl, typeIconUrl, typeImageUrl, typeRenderUrl } from '@/lib/eve-images'
 
 import type { FittingDisplayItem, FittingShipSlotType } from '@repo/eve-fitting/flags'
@@ -61,7 +66,7 @@ import type { SelectOption } from '@/components/ui/select'
 import type {
 	StructureAssetsDebugResult,
 	StructureDetailResult,
-	StructureInventoryBay,
+	StructureSovereigntyListItem,
 } from '@/lib/api'
 
 function structureSyncStatusDescription(
@@ -69,11 +74,10 @@ function structureSyncStatusDescription(
 	syncFailureReason: string | null,
 	lastSyncedAt: string | null
 ) {
-	const lastSyncText = lastSyncedAt ? `Last sync at ${formatDateTimeLong(lastSyncedAt)}.` : ''
-	const appendWithLastSync = (text: string) => (lastSyncText ? `${lastSyncText} ${text}` : text)
-
 	if (syncFailureReason) {
-		return appendWithLastSync(syncFailureReason)
+		return lastSyncedAt
+			? `Last sync at ${formatDateTimeLong(lastSyncedAt)}. ${syncFailureReason}`
+			: syncFailureReason
 	}
 
 	if (syncStatus === 'ok') {
@@ -83,21 +87,20 @@ function structureSyncStatusDescription(
 	}
 
 	if (syncStatus === 'warning') {
-		return appendWithLastSync(
-			'The latest corporation-data sync completed with warnings, so some fields may be incomplete or stale.'
-		)
+		return lastSyncedAt
+			? `Last sync at ${formatDateTimeLong(lastSyncedAt)}. The latest corporation-data sync completed with warnings, so some fields may be incomplete or stale.`
+			: 'The latest corporation-data sync completed with warnings, so some fields may be incomplete or stale.'
 	}
 
 	if (syncStatus === 'error') {
-		return appendWithLastSync(
-			'The latest corporation-data sync failed, so this snapshot may be stale until the next successful refresh.'
-		)
+		return lastSyncedAt
+			? `Last sync at ${formatDateTimeLong(lastSyncedAt)}. The latest corporation-data sync failed, so this snapshot may be stale until the next successful refresh.`
+			: 'The latest corporation-data sync failed, so this snapshot may be stale until the next successful refresh.'
 	}
 
-	return (
-		lastSyncText ||
-		'The latest corporation-data sync completed successfully and the stored snapshot is current.'
-	)
+	return lastSyncedAt
+		? `Last sync at ${formatDateTimeLong(lastSyncedAt)}. The latest corporation-data sync completed successfully and the stored snapshot is current.`
+		: 'The latest corporation-data sync completed successfully and the stored snapshot is current.'
 }
 
 function serviceBadgeVariant(state: string): BadgeVariant {
@@ -154,6 +157,22 @@ function formatNullableNumber(value: number | null | undefined): string {
 	return value.toLocaleString()
 }
 
+function formatEstimatedRemaining(amount: number | null | undefined, burningPerHour: number | null | undefined): string {
+	const amountValue = toFiniteNumber(amount)
+	const burnRate = toFiniteNumber(burningPerHour)
+
+	if (amount === null || amount === undefined || burningPerHour === null || burningPerHour === undefined) {
+		return '-'
+	}
+
+	if (burnRate <= 0) {
+		return amountValue > 0 ? 'Not burning' : '0s'
+	}
+
+	const remainingMs = (amountValue / burnRate) * 60 * 60 * 1000
+	return formatDurationMs(remainingMs, { style: 'compact', maxUnits: 2 })
+}
+
 function getSovereigntyVulnerabilityState(
 	sovereignty: StructureDetailResult['sovereignty'] | null | undefined
 ): { label: string; variant: BadgeVariant } {
@@ -203,7 +222,7 @@ function isRecord(value: unknown): value is Record<string, unknown> {
 	return typeof value === 'object' && value !== null && !Array.isArray(value)
 }
 
-type WorkforceTransportSource = {
+type WorkforceTransportEntry = {
 	solarSystemId: string
 	amount: number | null
 }
@@ -211,18 +230,18 @@ type WorkforceTransportSource = {
 type ParsedWorkforceTransportSection =
 	| {
 			mode: 'import' | 'export'
-			sources: WorkforceTransportSource[]
+			systems: WorkforceTransportEntry[]
 	  }
 	| {
 			mode: 'transit'
-			sources: []
+			systems: []
 	  }
 	| {
 			mode: 'unknown'
-			sources: []
+			systems: []
 	  }
 
-function parseWorkforceTransportSources(value: unknown): WorkforceTransportSource[] {
+function parseWorkforceTransportSystems(value: unknown, defaultAmount: number | null = null): WorkforceTransportEntry[] {
 	if (!Array.isArray(value)) {
 		return []
 	}
@@ -244,7 +263,7 @@ function parseWorkforceTransportSources(value: unknown): WorkforceTransportSourc
 					  entry.amount.trim() !== '' &&
 					  Number.isFinite(Number(entry.amount))
 					? Number(entry.amount)
-					: null
+					: defaultAmount
 		return [
 			{
 				solarSystemId: String(sourceId),
@@ -256,28 +275,60 @@ function parseWorkforceTransportSources(value: unknown): WorkforceTransportSourc
 
 function parseWorkforceTransportSection(section: unknown): ParsedWorkforceTransportSection {
 	if (!isRecord(section)) {
-		return { mode: 'unknown', sources: [] }
+		return { mode: 'unknown', systems: [] }
+	}
+
+	if ('mode' in section && Array.isArray(section.systems)) {
+		const mode = section.mode
+		if (mode === 'import' || mode === 'export') {
+			return {
+				mode,
+				systems: parseWorkforceTransportSystems(section.systems),
+			}
+		}
+
+		if (mode === 'transit') {
+			return { mode: 'transit', systems: [] }
+		}
 	}
 
 	if ('import' in section && isRecord(section.import)) {
 		return {
 			mode: 'import',
-			sources: parseWorkforceTransportSources(section.import.sources),
+			systems: parseWorkforceTransportSystems(section.import.sources),
 		}
 	}
 
 	if ('export' in section && isRecord(section.export)) {
-		return {
-			mode: 'export',
-			sources: parseWorkforceTransportSources(section.export.sources),
+		if (Array.isArray(section.export.sources)) {
+			return {
+				mode: 'export',
+				systems: parseWorkforceTransportSystems(section.export.sources, null),
+			}
+		}
+
+		const exportSystemId = section.export.solar_system_id ?? section.export.solarSystemId
+		if (exportSystemId !== null && exportSystemId !== undefined) {
+			return {
+				mode: 'export',
+				systems: parseWorkforceTransportSystems(
+					[
+						{
+							solar_system_id: exportSystemId,
+							amount: section.export.amount,
+						},
+					],
+					null
+				),
+			}
 		}
 	}
 
-	if (section.transit === true) {
-		return { mode: 'transit', sources: [] }
+	if (section.transit === true || section.mode === 'transit') {
+		return { mode: 'transit', systems: [] }
 	}
 
-	return { mode: 'unknown', sources: [] }
+	return { mode: 'unknown', systems: [] }
 }
 
 function formatWorkforceTransportMode(mode: ParsedWorkforceTransportSection['mode']): string {
@@ -299,7 +350,13 @@ function workforceTransportBadgeVariant(
 	return mode === 'unknown' ? 'ghost' : 'success'
 }
 
-function WorkforceTransportSystemName({ systemId }: { systemId: string }) {
+function WorkforceTransportSystemName({
+	systemId,
+	linkTo,
+}: {
+	systemId: string
+	linkTo: string | null
+}) {
 	const { data: systemDetails, isLoading } = useSystemDetails(systemId)
 
 	if (isLoading) {
@@ -308,7 +365,15 @@ function WorkforceTransportSystemName({ systemId }: { systemId: string }) {
 
 	return (
 		<div className="space-y-0.5">
-			<div className="font-medium">{systemDetails?.name ?? systemId}</div>
+			<div className="font-medium">
+				{linkTo ? (
+					<Link to={linkTo} className="text-primary hover:underline">
+						{systemDetails?.name ?? systemId}
+					</Link>
+				) : (
+					systemDetails?.name ?? systemId
+				)}
+			</div>
 			<div className="text-xs text-muted-foreground">System ID {systemId}</div>
 		</div>
 	)
@@ -317,11 +382,14 @@ function WorkforceTransportSystemName({ systemId }: { systemId: string }) {
 function WorkforceTransportSection({
 	label,
 	section,
+	systemLinkById,
 }: {
 	label: string
-	section: Record<string, unknown> | null | undefined
+	section: StructureSovereigntyTransportSection | null | undefined
+	systemLinkById: Map<string, string>
 }) {
 	const parsed = parseWorkforceTransportSection(section)
+	const hasSystems = parsed.mode !== 'unknown' && parsed.systems.length > 0
 
 	return (
 		<div className="rounded-lg border border-border/60 bg-muted/20 p-4">
@@ -334,20 +402,23 @@ function WorkforceTransportSection({
 				</Badge>
 			</div>
 
-			{parsed.mode !== 'unknown' && parsed.sources.length > 0 ? (
+			{hasSystems ? (
 				<div className="mt-4 overflow-hidden rounded-md border border-border/60 bg-background">
 					<Table>
 						<TableHeader>
 							<TableRow>
-								<TableHead>Source System</TableHead>
+								<TableHead>System</TableHead>
 								<TableHead>Amount</TableHead>
 							</TableRow>
 						</TableHeader>
 						<TableBody>
-							{parsed.sources.map((source) => (
+							{parsed.systems.map((source) => (
 								<TableRow key={`${label}-${source.solarSystemId}`}>
 									<TableCell>
-										<WorkforceTransportSystemName systemId={source.solarSystemId} />
+										<WorkforceTransportSystemName
+											systemId={source.solarSystemId}
+											linkTo={systemLinkById.get(source.solarSystemId) ?? null}
+										/>
 									</TableCell>
 									<TableCell>{formatNullableNumber(source.amount)}</TableCell>
 								</TableRow>
@@ -358,8 +429,8 @@ function WorkforceTransportSection({
 			) : (
 				<div className="mt-4 rounded-md border border-dashed border-border/60 bg-background px-3 py-2 text-sm text-muted-foreground">
 					{parsed.mode === 'transit'
-						? 'Transit mode does not list source systems.'
-						: 'No source systems recorded.'}
+						? 'Transit mode does not list systems.'
+						: 'No systems recorded.'}
 				</div>
 			)}
 		</div>
@@ -520,45 +591,43 @@ export default function StructuresDetailPage() {
 	}, [structure])
 	const hasStructureFitting = fittingItems.length > 0
 	const isReinforced = structure ? isReinforcedStructureState(structure.state) : false
-	type SovereigntyReagent = NonNullable<
-		NonNullable<StructureDetailResult['sovereignty']>['hub']
-	>['reagentBay']['reagents'][number]
-	const sovereigntyReagentBays = useMemo<StructureInventoryBay[]>(() => {
-		const hub = structure?.sovereignty?.hub
-		if (!hub) {
-			return []
-		}
+	const structureFamily = structure ? getStructureTabForTypeId(structure.typeId, structure.typeName) : null
+	const corporationId = structure?.corporationId ?? ''
+	const hasSovereigntySummary = structureFamily === 'sovereignty' && Boolean(structure?.sovereignty)
+	const hasSkyhookSummary = structureFamily === 'skyhooks' && Boolean(structure?.skyhook)
+	const hasMiningSummary = structureFamily === 'mining-citadels'
+	const sovereigntyHub = structure?.sovereignty?.hub ?? null
+	const sovereigntyVulnerabilityState = getSovereigntyVulnerabilityState(structure?.sovereignty)
+	const { data: sovereigntyStructures = [] } = useQuery({
+		queryKey: ['structures', 'sovereignty', corporationId],
+		queryFn: async () => {
+			const allItems: StructureSovereigntyListItem[] = []
+			let page = 1
+			let totalPages = 1
 
-		const totalQuantity = hub.reagentBay.reagents.reduce(
-			(accumulator, reagent) =>
-				accumulator + toFiniteNumber(reagent.securedStock) + toFiniteNumber(reagent.unsecuredStock),
-			0
+			while (page <= totalPages) {
+				const response = await api.getSovereigntyStructures({
+					corporationId,
+					page,
+					pageSize: 100,
+				})
+				allItems.push(...response.items)
+				totalPages = response.pagination.totalPages
+				page += 1
+			}
+
+			return allItems
+		},
+		enabled: hasSovereigntySummary,
+	})
+	const sovereigntyHubStructureIdBySystemId = useMemo(() => {
+		return new Map(
+			sovereigntyStructures.map((item) => [
+				item.systemId,
+				`/structures/${item.sovereigntyHubStructureId ?? item.structureId}`,
+			])
 		)
-
-		return [
-			{
-				locationFlag: 'SovereigntyReagentBay',
-				label: 'Reagent Bay',
-				totalQuantity,
-				totalStacks: hub.reagentBay.reagents.length,
-				items: hub.reagentBay.reagents.map((reagent) => ({
-					typeId: reagent.typeId,
-					typeName: reagent.typeName ?? null,
-					quantity: toFiniteNumber(reagent.securedStock) + toFiniteNumber(reagent.unsecuredStock),
-					stackCount: 1,
-				})),
-			},
-		]
-	}, [structure?.sovereignty?.hub])
-	const sovereigntyReagentDetailsByTypeId = useMemo(() => {
-		const hub = structure?.sovereignty?.hub
-		if (!hub) {
-			return new Map<string, SovereigntyReagent>()
-		}
-
-		return new Map(hub.reagentBay.reagents.map((reagent) => [reagent.typeId, reagent] as const))
-	}, [structure?.sovereignty?.hub])
-
+	}, [sovereigntyStructures])
 	if (!authLoading && !permissionsLoading && !canViewStructures) {
 		return <Navigate to="/dashboard" replace />
 	}
@@ -596,12 +665,6 @@ export default function StructuresDetailPage() {
 		structure.syncFailureReason,
 		structure.lastSyncedAt
 	)
-	const structureFamily = getStructureTabForTypeId(structure.typeId, structure.typeName)
-	const hasSovereigntySummary = structureFamily === 'sovereignty' && structure.sovereignty
-	const hasSkyhookSummary = structureFamily === 'skyhooks' && structure.skyhook
-	const hasMiningSummary = structureFamily === 'mining-citadels'
-	const sovereigntyHub = structure.sovereignty?.hub ?? null
-	const sovereigntyVulnerabilityState = getSovereigntyVulnerabilityState(structure.sovereignty)
 
 	const handleSave = async () => {
 		await updateMutation.mutateAsync({
@@ -730,7 +793,14 @@ export default function StructuresDetailPage() {
 									<div>
 										<div className="text-muted-foreground">Claimed Since</div>
 										<div className="font-medium">
-											{formatNullableDateTime(structure.sovereignty?.claimedSince)}
+											{structure.sovereignty?.claimedSince ? (
+												<EveTimeDisplay
+													dateStr={structure.sovereignty.claimedSince}
+													format="compact"
+												/>
+											) : (
+												'-'
+											)}
 										</div>
 									</div>
 								)}
@@ -772,9 +842,27 @@ export default function StructuresDetailPage() {
 										{hasSovereigntySummary ? (
 											structure.sovereignty?.vulnerabilityWindowStart &&
 											structure.sovereignty?.vulnerabilityWindowEnd ? (
-												`${formatDateTimeLong(structure.sovereignty.vulnerabilityWindowStart)} - ${formatDateTimeLong(structure.sovereignty.vulnerabilityWindowEnd)}`
+												<span className="inline-flex flex-wrap items-center gap-1">
+													<EveTimeDisplay
+														dateStr={structure.sovereignty.vulnerabilityWindowStart}
+														format="window"
+														className="whitespace-nowrap"
+													/>
+													<span>-</span>
+													<EveTimeDisplay
+														dateStr={structure.sovereignty.vulnerabilityWindowEnd}
+														format="window"
+														className="whitespace-nowrap"
+													/>
+												</span>
+											) : structure.sovereignty?.vulnerabilityWindowEnd ? (
+												<EveTimeDisplay
+													dateStr={structure.sovereignty.vulnerabilityWindowEnd}
+													format="window"
+													className="whitespace-nowrap"
+												/>
 											) : (
-												formatNullableDateTime(structure.sovereignty?.vulnerabilityWindowEnd)
+												'-'
 											)
 										) : structure.nextStateAt ? (
 											<EveTimeDisplay dateStr={structure.nextStateAt} format="compact" />
@@ -974,10 +1062,12 @@ export default function StructuresDetailPage() {
 								<WorkforceTransportSection
 									label="Workforce Transport Configuration"
 									section={sovereigntyHub?.workforceTransport?.configuration}
+									systemLinkById={sovereigntyHubStructureIdBySystemId}
 								/>
 								<WorkforceTransportSection
 									label="Workforce Transport State"
 									section={sovereigntyHub?.workforceTransport?.state}
+									systemLinkById={sovereigntyHubStructureIdBySystemId}
 								/>
 							</div>
 						</CardContent>
@@ -1029,50 +1119,66 @@ export default function StructuresDetailPage() {
 							<CardHeader>
 								<CardTitle>Reagent Bay</CardTitle>
 								<CardDescription>
-									Current reagent bay contents and resource totals for the sovereignty hub.
+									Current sovereignty hub reagents, burn rates, and estimated remaining time.
 								</CardDescription>
 							</CardHeader>
 							<CardContent className="space-y-4">
-								<div className="grid gap-4 md:grid-cols-3 text-sm">
+								<div className="grid gap-4 md:grid-cols-2 text-sm">
+						<div>
+							<div className="text-muted-foreground">Last Updated</div>
+							<div className="font-medium">
+								{sovereigntyHub?.reagentBayLastUpdated ? (
+									<EveTimeDisplay
+										dateStr={sovereigntyHub.reagentBayLastUpdated}
+										format="compact"
+									/>
+								) : (
+									'-'
+								)}
+							</div>
+						</div>
 									<div>
-										<div className="text-muted-foreground">Last Updated</div>
-										<div className="font-medium">
-											{formatNullableDateTime(sovereigntyHub?.reagentBayLastUpdated)}
-										</div>
-									</div>
-									<div>
-										<div className="text-muted-foreground">Reagent Count</div>
-										<div className="font-medium">{sovereigntyHub?.reagentCount ?? 0}</div>
-									</div>
-									<div>
-										<div className="text-muted-foreground">Stock Totals</div>
-										<div className="font-medium">
-											{sovereigntyHub
-												? `${formatNullableNumber(sovereigntyHub.totalSecuredStock)} secured, ${formatNullableNumber(sovereigntyHub.totalUnsecuredStock)} unsecured`
-												: '-'}
-										</div>
+										<div className="text-muted-foreground">Reagent Types</div>
+										<div className="font-medium">{sovereigntyHub?.reagentBay?.reagents.length ?? 0}</div>
 									</div>
 								</div>
-								<InventoryBaysTable
-									bays={sovereigntyReagentBays}
-									emptyLabel="No reagents reported."
-									searchPlaceholder="Search reagent bay..."
-									renderItemIcon={(item) => <InventoryItemIcon typeId={item.typeId} />}
-									renderItemDetails={(item) => {
-										const reagent = sovereigntyReagentDetailsByTypeId.get(item.typeId)
-										if (!reagent) {
-											return null
-										}
-
-										return (
-											<span>
-												Secured {formatNullableNumber(toFiniteNumber(reagent.securedStock))} ·
-												Unsecured {formatNullableNumber(toFiniteNumber(reagent.unsecuredStock))} ·
-												Last cycle {formatNullableDateTime(reagent.lastCycle)}
-											</span>
-										)
-									}}
-								/>
+								{sovereigntyHub?.reagentBay?.reagents.length ? (
+									<div className="overflow-hidden rounded-lg border border-border/60 bg-background">
+										<Table>
+											<TableHeader>
+												<TableRow>
+													<TableHead>Reagent</TableHead>
+													<TableHead>Amount</TableHead>
+													<TableHead>Burn / Hr</TableHead>
+													<TableHead>Est. Remaining</TableHead>
+													<TableHead>Last Cycle</TableHead>
+												</TableRow>
+											</TableHeader>
+											<TableBody>
+												{sovereigntyHub.reagentBay.reagents.map((reagent) => (
+													<TableRow key={reagent.typeId}>
+														<TableCell>
+															<div className="flex min-w-0 items-center gap-2">
+																<InventoryItemIcon typeId={reagent.typeId} />
+																<span className="truncate font-medium">
+																	{reagent.typeName ?? reagent.typeId}
+																</span>
+															</div>
+														</TableCell>
+														<TableCell>{formatNullableNumber(reagent.amount)}</TableCell>
+														<TableCell>{formatNullableNumber(reagent.burningPerHour)}</TableCell>
+														<TableCell>{formatEstimatedRemaining(reagent.amount, reagent.burningPerHour)}</TableCell>
+														<TableCell>{formatNullableDateTime(reagent.lastCycle)}</TableCell>
+													</TableRow>
+												))}
+											</TableBody>
+										</Table>
+									</div>
+								) : (
+									<div className="rounded-lg border border-dashed border-border/60 px-3 py-4 text-sm text-muted-foreground">
+										No reagent data reported.
+									</div>
+								)}
 							</CardContent>
 						</Card>
 					</div>
@@ -1117,8 +1223,30 @@ export default function StructuresDetailPage() {
 							<div className="font-medium">
 								{structure.skyhook?.theftVulnerabilityStart &&
 								structure.skyhook?.theftVulnerabilityEnd
-									? `${formatDateTimeLong(structure.skyhook.theftVulnerabilityStart)} - ${formatDateTimeLong(structure.skyhook.theftVulnerabilityEnd)}`
-									: formatNullableDateTime(structure.skyhook?.vulnerableAt)}
+									? (
+										<span className="inline-flex flex-wrap items-center gap-1">
+											<EveTimeDisplay
+												dateStr={structure.skyhook.theftVulnerabilityStart}
+												format="window"
+												className="whitespace-nowrap"
+											/>
+											<span>-</span>
+											<EveTimeDisplay
+												dateStr={structure.skyhook.theftVulnerabilityEnd}
+												format="window"
+												className="whitespace-nowrap"
+											/>
+										</span>
+									)
+									: structure.skyhook?.vulnerableAt ? (
+										<EveTimeDisplay
+											dateStr={structure.skyhook.vulnerableAt}
+											format="window"
+											className="whitespace-nowrap"
+										/>
+									) : (
+										'-'
+									)}
 							</div>
 						</div>
 						<div>

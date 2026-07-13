@@ -697,83 +697,132 @@ export class EveCorporationSyncWorkflow extends WorkflowEntrypoint<Env, EveCorpo
 			if (shouldSyncAuthenticated('structures')) {
 				// Keep the structure refresh from blocking the asset projection refresh.
 				// The inventory path can fall back to the DB or refresh structures on its own.
+				let structures: Awaited<ReturnType<typeof fetchStructures>> | null = null
+				let miningCitadelStructureIds = new Set<string>()
 				try {
-					const structures = await runDirectorStepWithFailover({
+					structures = await runDirectorStepWithFailover({
 						stepName: 'fetch-structures',
-						timeout: '1 minute',
+						timeout: '5 minutes',
 						requiredRoles: ['Station_Manager'],
 						run: (directorCharacterId) =>
 							fetchStructures(this.env, corporationId, directorCharacterId),
 					})
 					ownedStructureIdsForAssets = structures.map((structure) => String(structure.structure_id))
+					const fetchedStructures = structures
 
 					await step.do('store-structures', {}, async () => {
-						await storeStructures(this.env, corporationId, structures)
+						await storeStructures(this.env, corporationId, fetchedStructures)
 					})
 
-					const miningCitadelStructureIds = new Set(
-						structures
+					miningCitadelStructureIds = new Set(
+						fetchedStructures
 							.filter((structure) => isMiningCitadelStructure(structure))
 							.map((structure) => String(structure.structure_id))
 					)
+				} catch (error) {
+					logger.warn(
+						'[EveCorporationSyncWorkflow] Structure sync failed; continuing to asset sync',
+						{
+							corporationId,
+							error: error instanceof Error ? error.message : String(error),
+						}
+					)
+				}
 
-					const sovereigntyEnrichment = structureEnrichmentEnabled
-						? await runDirectorStepWithFailover({
+				let sovereigntyEnrichment: Awaited<
+					ReturnType<typeof fetchSovereigntyEnrichment>
+				> = null
+				let skyhookEnrichment: Awaited<ReturnType<typeof fetchSkyhookEnrichment>> = null
+				let miningExtractions: Awaited<ReturnType<typeof fetchMiningEnrichment>> | null = null
+
+				if (structures) {
+					if (structureEnrichmentEnabled) {
+						try {
+							sovereigntyEnrichment = await runDirectorStepWithFailover({
 								stepName: 'fetch-structure-sovereignty-enrichment',
-								timeout: '5 minutes',
+								timeout: '10 minutes',
 								requiredRoles: ['Station_Manager'],
 								run: (directorCharacterId) =>
 									fetchSovereigntyEnrichment(this.env, corporationId, directorCharacterId),
 							})
-						: null
-					const skyhookEnrichment = structureEnrichmentEnabled
-						? await runDirectorStepWithFailover({
-								stepName: 'fetch-structure-skyhook-enrichment',
-								timeout: '5 minutes',
-								requiredRoles: ['Station_Manager'],
-								run: (directorCharacterId) =>
-									fetchSkyhookEnrichment(this.env, corporationId, directorCharacterId),
-							})
-						: null
-					let miningExtractions: Awaited<ReturnType<typeof fetchMiningEnrichment>> | null = null
-					if (structureEnrichmentEnabled && miningCitadelStructureIds.size > 0) {
-						try {
-							const fetchedMiningExtractions = await runDirectorStepWithFailover({
-								stepName: 'fetch-structure-mining-enrichment',
-								timeout: '5 minutes',
-								requiredRoles: ['Station_Manager'],
-								run: (directorCharacterId) =>
-									fetchMiningEnrichment(this.env, corporationId, directorCharacterId),
-							})
-							miningExtractions = fetchedMiningExtractions.filter((extraction) =>
-								miningCitadelStructureIds.has(String(extraction.structure_id))
-							)
-
-							if (miningExtractions.length > 0) {
-								await step.do('store-structure-mining-enrichment', {}, async () => {
-									await storeMiningEnrichment(this.env, corporationId, miningExtractions!)
-								})
-							}
 						} catch (error) {
 							logger.warn(
-								'[EveCorporationSyncWorkflow] Mining enrichment failed; continuing without it',
+								'[EveCorporationSyncWorkflow] Sovereignty enrichment failed; continuing without it',
 								{
 									corporationId,
 									error: error instanceof Error ? error.message : String(error),
 								}
 							)
 						}
-					}
 
-					if (sovereigntyEnrichment) {
-						await step.do('store-structure-sovereignty-enrichment', {}, async () => {
-							await storeSovereigntyEnrichment(this.env, corporationId, sovereigntyEnrichment)
-						})
-					}
-					if (skyhookEnrichment) {
-						await step.do('store-structure-skyhook-enrichment', {}, async () => {
-							await storeSkyhookEnrichment(this.env, corporationId, skyhookEnrichment)
-						})
+						try {
+							skyhookEnrichment = await runDirectorStepWithFailover({
+								stepName: 'fetch-structure-skyhook-enrichment',
+								timeout: '10 minutes',
+								requiredRoles: ['Station_Manager'],
+								run: (directorCharacterId) =>
+									fetchSkyhookEnrichment(this.env, corporationId, directorCharacterId),
+							})
+						} catch (error) {
+							logger.warn(
+								'[EveCorporationSyncWorkflow] Skyhook enrichment failed; continuing without it',
+								{
+									corporationId,
+									error: error instanceof Error ? error.message : String(error),
+								}
+							)
+						}
+
+						if (miningCitadelStructureIds.size > 0) {
+							try {
+								const fetchedMiningExtractions = await runDirectorStepWithFailover({
+									stepName: 'fetch-structure-mining-enrichment',
+									timeout: '10 minutes',
+									requiredRoles: ['Station_Manager'],
+									run: (directorCharacterId) =>
+										fetchMiningEnrichment(this.env, corporationId, directorCharacterId),
+								})
+								miningExtractions = fetchedMiningExtractions.filter((extraction) =>
+									miningCitadelStructureIds.has(String(extraction.structure_id))
+								)
+
+								if (miningExtractions.length > 0) {
+									await step.do('store-structure-mining-enrichment', {}, async () => {
+										await storeMiningEnrichment(this.env, corporationId, miningExtractions!)
+									})
+								}
+							} catch (error) {
+								logger.warn(
+									'[EveCorporationSyncWorkflow] Mining enrichment failed; continuing without it',
+									{
+										corporationId,
+										error: error instanceof Error ? error.message : String(error),
+									}
+								)
+							}
+						}
+
+						if (sovereigntyEnrichment) {
+							const fetchedSovereigntyEnrichment = sovereigntyEnrichment
+							await step.do('store-structure-sovereignty-enrichment', {}, async () => {
+								await storeSovereigntyEnrichment(
+									this.env,
+									corporationId,
+									fetchedSovereigntyEnrichment
+								)
+							})
+						}
+						if (skyhookEnrichment) {
+							const fetchedSkyhookEnrichment = skyhookEnrichment
+							await step.do('store-structure-skyhook-enrichment', {}, async () => {
+								await storeSkyhookEnrichment(
+									this.env,
+									corporationId,
+									fetchedSkyhookEnrichment
+								)
+							})
+						}
+
 					}
 
 					structuresSync = {
@@ -786,14 +835,6 @@ export class EveCorporationSyncWorkflow extends WorkflowEntrypoint<Env, EveCorpo
 							miningExtractionsCount: miningExtractions?.length ?? 0,
 						},
 					}
-				} catch (error) {
-					logger.warn(
-						'[EveCorporationSyncWorkflow] Structure sync failed; continuing to asset sync',
-						{
-							corporationId,
-							error: error instanceof Error ? error.message : String(error),
-						}
-					)
 				}
 			}
 

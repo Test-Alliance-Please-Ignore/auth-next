@@ -8,11 +8,16 @@ import { Popover, PopoverAnchor, PopoverContent } from './popover'
 interface EveTimeDisplayProps {
 	dateStr: string
 	className?: string
-	format?: 'full' | 'compact'
+	format?: 'full' | 'compact' | 'window'
 }
 
-function formatEveDateTime(dateStr: string, format: 'full' | 'compact'): string {
+function formatEveDateTime(dateStr: string, format: 'full' | 'compact' | 'window'): string {
 	if (format === 'compact') {
+		const formatted = formatUtcDateTime(dateStr, true)
+		return `${formatted} EVE`
+	}
+
+	if (format === 'window') {
 		const formatted = formatUtcDateTime(dateStr, true)
 		return `${formatted} EVE`
 	}

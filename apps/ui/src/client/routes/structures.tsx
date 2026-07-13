@@ -29,6 +29,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { Container } from '@/components/ui/container'
 import { FilterField } from '@/components/ui/filter-field'
 import { LoadingSpinner } from '@/components/ui/loading'
+import { EveTimeDisplay } from '@/components/ui/eve-time-display'
 import { PageHeader } from '@/components/ui/page-header'
 import { Select } from '@/components/ui/select'
 import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs'
@@ -78,13 +79,10 @@ const BOOLEAN_FILTER_OPTIONS: SelectOption[] = [
 ]
 
 function structureSyncStatusDescription(structure: StructureListBaseItem) {
-	const lastSyncText = structure.lastSyncedAt
-		? `Last sync at ${formatDateTimeLong(structure.lastSyncedAt)}.`
-		: ''
-	const appendWithLastSync = (text: string) => (lastSyncText ? `${lastSyncText} ${text}` : text)
-
 	if (structure.syncFailureReason) {
-		return appendWithLastSync(structure.syncFailureReason)
+		return structure.lastSyncedAt
+			? `Last sync at ${formatDateTimeLong(structure.lastSyncedAt)}. ${structure.syncFailureReason}`
+			: structure.syncFailureReason
 	}
 
 	if (structure.syncStatus === 'ok') {
@@ -94,18 +92,20 @@ function structureSyncStatusDescription(structure: StructureListBaseItem) {
 	}
 
 	if (structure.syncStatus === 'warning') {
-		return appendWithLastSync(
-			'The latest corporation-data sync completed with warnings, so some snapshot fields may be stale or incomplete.'
-		)
+		return structure.lastSyncedAt
+			? `Last sync at ${formatDateTimeLong(structure.lastSyncedAt)}. The latest corporation-data sync completed with warnings, so some snapshot fields may be stale or incomplete.`
+			: 'The latest corporation-data sync completed with warnings, so some snapshot fields may be stale or incomplete.'
 	}
 
 	if (structure.syncStatus === 'error') {
-		return appendWithLastSync(
-			'The latest corporation-data sync failed, so this snapshot may be stale until the next successful refresh.'
-		)
+		return structure.lastSyncedAt
+			? `Last sync at ${formatDateTimeLong(structure.lastSyncedAt)}. The latest corporation-data sync failed, so this snapshot may be stale until the next successful refresh.`
+			: 'The latest corporation-data sync failed, so this snapshot may be stale until the next successful refresh.'
 	}
 
-	return lastSyncText || 'The latest corporation-data sync completed successfully and the stored snapshot is current.'
+	return structure.lastSyncedAt
+		? `Last sync at ${formatDateTimeLong(structure.lastSyncedAt)}. The latest corporation-data sync completed successfully and the stored snapshot is current.`
+		: 'The latest corporation-data sync completed successfully and the stored snapshot is current.'
 }
 
 function withAllOption(options: SelectOption[], label: string): SelectOption[] {
@@ -134,6 +134,48 @@ function formatNullableDecimal(
 	const numericValue = typeof value === 'number' ? value : Number.parseFloat(value)
 	if (!Number.isFinite(numericValue)) return '-'
 	return numericValue.toFixed(fractionDigits)
+}
+
+function formatReagentBurnRate(value: number | null | undefined): string {
+	if (value === null || value === undefined || !Number.isFinite(value) || value < 0) return '-'
+	return `${value.toLocaleString(undefined, { maximumFractionDigits: 2 })}/hr`
+}
+
+function SovereigntyReagentCell({
+	quantity,
+	burningPerHour,
+	estimatedDepletionAt,
+	nowMs,
+}: {
+	quantity: number
+	burningPerHour: number
+	estimatedDepletionAt: string | null
+	nowMs: number
+}) {
+	return (
+		<div className="space-y-1.5">
+			<div className="font-medium tabular-nums">{formatNullableNumber(quantity)}</div>
+			<div className="text-xs text-muted-foreground">
+				Burn {formatReagentBurnRate(burningPerHour)}
+			</div>
+			<div className="text-xs text-muted-foreground">
+				{estimatedDepletionAt ? (
+					<>
+						<span className="mr-1">Remaining</span>
+						<DurationDisplay
+							endDate={estimatedDepletionAt}
+							referenceTimeMs={nowMs}
+							maxUnits={3}
+							durationStyle="compact"
+							format="compact"
+						/>
+					</>
+				) : (
+					'-'
+				)}
+			</div>
+		</div>
+	)
 }
 
 function getSovereigntyVulnerabilityState(
@@ -906,7 +948,7 @@ export default function StructuresPage() {
 							<Table
 								className={cn(
 									'min-w-[118rem]',
-									isSovereigntyTab && 'min-w-[128rem]',
+									isSovereigntyTab && 'min-w-[136rem]',
 									isSkyhooksTab && 'min-w-[126rem]',
 									isMiningCitadelTab && 'min-w-[124rem]'
 								)}
@@ -918,11 +960,14 @@ export default function StructuresPage() {
 										{isSovereigntyTab ? null : <SortableHead field="name" label="Name" />}
 										<SortableHead field="corporation" label="Corporation" />
 										{isSovereigntyTab ? null : <SortableHead field="type" label="Type" />}
-										<SortableHead field="state" label="State" />
 										{isSovereigntyTab ? (
-											<TableHead>Controlling Alliance</TableHead>
+											<>
+												<TableHead>System Alliance</TableHead>
+												<SortableHead field="state" label="State" />
+											</>
 										) : (
 											<>
+												<SortableHead field="state" label="State" />
 												<SortableHead field="fuel" label="Fuel" />
 												<TableHead>LP</TableHead>
 												<TableHead>LP Allowed</TableHead>
@@ -933,6 +978,8 @@ export default function StructuresPage() {
 										{isSovereigntyTab ? (
 											<>
 												<SortableHead field="activityDefenseMultiplier" label="ADM" />
+												<TableHead>Magmatic Gas</TableHead>
+												<TableHead>Superionic Ice</TableHead>
 												<TableHead>Workforce</TableHead>
 												<TableHead>Power</TableHead>
 											</>
@@ -1014,6 +1061,32 @@ export default function StructuresPage() {
 														</TableCell>
 														{isSovereigntyTab ? (
 															<>
+																<TableCell className="max-w-[18rem]">
+																	<div className="flex min-w-0 items-center gap-2">
+																		{sovereigntyStructure.allianceId ? (
+																			<AllianceLogo
+																				allianceId={sovereigntyStructure.allianceId}
+																				allianceName={sovereigntyStructure.allianceName}
+																			/>
+																		) : (
+																			<div className="flex h-5 w-5 items-center justify-center rounded-sm bg-muted text-muted-foreground">
+																				<Shield className="h-3 w-3" />
+																			</div>
+																		)}
+																		<span
+																			className="truncate font-medium"
+																			title={
+																				sovereigntyStructure.allianceName ??
+																				sovereigntyStructure.allianceId ??
+																				'-'
+																			}
+																		>
+																			{sovereigntyStructure.allianceName ??
+																				sovereigntyStructure.allianceId ??
+																				'-'}
+																		</span>
+																	</div>
+																</TableCell>
 																<TableCell>
 																	<div className="space-y-1">
 																		<Badge variant={sovereigntyVulnerabilityState.variant}>
@@ -1024,40 +1097,36 @@ export default function StructuresPage() {
 																		)}
 																	</div>
 																</TableCell>
-																<TableCell className="max-w-[18rem]">
-																	<div className="flex min-w-0 items-center gap-2">
-																		{sovereigntyStructure.controllerAllianceId ? (
-																			<AllianceLogo
-																				allianceId={sovereigntyStructure.controllerAllianceId}
-																				allianceName={sovereigntyStructure.controllerAllianceName}
-																			/>
-																		) : (
-																			<div className="flex h-5 w-5 items-center justify-center rounded-sm bg-muted text-muted-foreground">
-																				<Shield className="h-3 w-3" />
-																			</div>
-																		)}
-																		<span
-																			className="truncate font-medium"
-																			title={
-																				sovereigntyStructure.controllerAllianceName ??
-																				sovereigntyStructure.controllerAllianceId ??
-																				'-'
-																			}
-																		>
-																			{sovereigntyStructure.controllerAllianceName ??
-																				sovereigntyStructure.controllerAllianceId ??
-																				'-'}
-																		</span>
-																</div>
-															</TableCell>
-															<TableCell>{groupLabel}</TableCell>
-															<TableCell>
-																{formatNullableDecimal(
-																	sovereigntyStructure.activityDefenseMultiplier
-																)}
-															</TableCell>
-															<TableCell>
-																{formatNullableNumber(sovereigntyStructure.resourceWorkforceAllocated)} /{' '}
+																<TableCell>{groupLabel}</TableCell>
+																<TableCell>
+																	{formatNullableDecimal(sovereigntyStructure.activityDefenseMultiplier)}
+																</TableCell>
+																<TableCell>
+																	<SovereigntyReagentCell
+																		quantity={sovereigntyStructure.magmaticGasQuantity}
+																		burningPerHour={
+																			sovereigntyStructure.magmaticGasBurningPerHour
+																		}
+																		estimatedDepletionAt={
+																			sovereigntyStructure.magmaticGasEstimatedDepletionAt
+																		}
+																		nowMs={nowMs}
+																	/>
+																</TableCell>
+																<TableCell>
+																	<SovereigntyReagentCell
+																		quantity={sovereigntyStructure.superionicIceQuantity}
+																		burningPerHour={
+																			sovereigntyStructure.superionicIceBurningPerHour
+																		}
+																		estimatedDepletionAt={
+																			sovereigntyStructure.superionicIceEstimatedDepletionAt
+																		}
+																		nowMs={nowMs}
+																	/>
+																</TableCell>
+																<TableCell>
+																	{formatNullableNumber(sovereigntyStructure.resourceWorkforceAllocated)} /{' '}
 																	{formatNullableNumber(sovereigntyStructure.resourceWorkforceAvailable)}
 																</TableCell>
 																<TableCell>
@@ -1112,15 +1181,35 @@ export default function StructuresPage() {
 																<TableCell>
 																	{skyhookStructure.theftVulnerabilityStart &&
 																	skyhookStructure.theftVulnerabilityEnd
-																		? `${formatDateTimeLong(skyhookStructure.theftVulnerabilityStart)} - ${formatDateTimeLong(skyhookStructure.theftVulnerabilityEnd)}`
-																	: formatNullableDateTime(skyhookStructure.vulnerableAt)}
+																		? (
+																			<span className="inline-flex flex-wrap items-center gap-1">
+																				<EveTimeDisplay
+																					dateStr={skyhookStructure.theftVulnerabilityStart}
+																					format="window"
+																					className="whitespace-nowrap"
+																				/>
+																				<span>-</span>
+																				<EveTimeDisplay
+																					dateStr={skyhookStructure.theftVulnerabilityEnd}
+																					format="window"
+																					className="whitespace-nowrap"
+																				/>
+																			</span>
+																		)
+																		: skyhookStructure.vulnerableAt ? (
+																			<EveTimeDisplay
+																				dateStr={skyhookStructure.vulnerableAt}
+																				format="window"
+																				className="whitespace-nowrap"
+																			/>
+																		) : (
+																			'-'
+																		)}
 																</TableCell>
 															</>
 														) : isMiningCitadelTab ? (
 															<>
-																<TableCell>
-																	{(miningStructure.moonName ?? miningStructure.moonId) || '-'}
-																</TableCell>
+																<TableCell>{(miningStructure.moonName ?? miningStructure.moonId) || '-'}</TableCell>
 																<TableCell>
 																	{miningStructure.planetName ?? miningStructure.planetId ?? '-'}
 																</TableCell>
