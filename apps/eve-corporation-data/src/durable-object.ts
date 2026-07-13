@@ -2626,25 +2626,17 @@ export class EveCorporationDataDO extends DurableObject<Env> implements EveCorpo
 	 */
 	async storeSovereigntyHubs(corporationId: string, hubs: EsiSovereigntyHub[]): Promise<void> {
 		const now = new Date()
-		const universe = getStub<Universe>(this.env.UNIVERSE, 'default')
 		const existingRows = await this.getDb().query.structureSovereigntyHubs.findMany({
 			where: eq(structureSovereigntyHubs.corporationId, corporationId),
 		})
 		const existingByStructureId = new Map(existingRows.map((row) => [row.structureId, row]))
-		const systemGeography: Awaited<ReturnType<Universe['resolveSolarSystemsByIds']>> =
-			hubs.length > 0
-				? await universe.resolveSolarSystemsByIds([...new Set(hubs.map((hub) => hub.system_id))])
-				: {}
 		const values = hubs.map((hub) => {
 			const existing = existingByStructureId.get(hub.structure_id) ?? null
-			const resolvedSystemName =
-				systemGeography[hub.system_id]?.solarSystemName ?? hub.system_name ?? null
-
 			return {
 				structureId: hub.structure_id,
 				corporationId,
 				systemId: hub.system_id,
-				systemName: resolvedSystemName ?? existing?.systemName ?? null,
+				systemName: hub.system_name ?? existing?.systemName ?? null,
 				name: hub.name ?? existing?.name ?? null,
 				typeId: hub.type_id,
 				fuelAccessListId: hub.fuel_access_list_id ?? null,

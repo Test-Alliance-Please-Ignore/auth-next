@@ -1,19 +1,57 @@
 import { describe, expect, it, vi } from 'vitest'
 
+const mocks = vi.hoisted(() => {
+	const findMany = vi.fn()
+	const onConflictDoUpdate = vi.fn()
+	const values = vi.fn(() => ({ onConflictDoUpdate }))
+	const insert = vi.fn(() => ({ values }))
+	const deleteMock = vi.fn()
+	const resolveSolarSystemsByIds = vi.fn()
+	const getStub = vi.fn(() => ({
+		resolveSolarSystemsByIds,
+	}))
+
+	return {
+		findMany,
+		onConflictDoUpdate,
+		values,
+		insert,
+		deleteMock,
+		resolveSolarSystemsByIds,
+		getStub,
+	}
+})
+
+vi.mock('@repo/do-utils', () => ({
+	getStub: mocks.getStub,
+}))
+
 import { EveCorporationDataDO } from '../../../durable-object'
-import { corporationStructures, structureMiningStates, structureSkyhookStates } from '../../../db/schema'
+import {
+	corporationStructures,
+	structureMiningStates,
+	structureSkyhookStates,
+	structureSovereigntyHubs,
+} from '../../../db/schema'
 
 function makeDb() {
 	const where = vi.fn().mockResolvedValue(undefined)
 	const deleteMock = vi.fn(() => ({ where }))
 	const onConflictDoUpdate = vi.fn().mockResolvedValue(undefined)
-	const values = vi.fn(() => ({ onConflictDoUpdate }))
+	const values = vi.fn((rows) => ({ onConflictDoUpdate, rows }))
 	const insert = vi.fn(() => ({ values }))
+	const findMany = vi.fn().mockResolvedValue([])
 
 	return {
+		query: {
+			structureSovereigntyHubs: {
+				findMany,
+			},
+		},
 		delete: deleteMock,
 		insert,
 		_where: where,
+		_values: values,
 	}
 }
 
@@ -97,5 +135,45 @@ describe('structure prune cleanup', () => {
 		expect(db.delete).toHaveBeenNthCalledWith(2, structureSkyhookStates)
 		expect(db.delete).toHaveBeenNthCalledWith(3, structureMiningStates)
 		expect(db._where).toHaveBeenCalledTimes(3)
+	})
+
+	it('stores sovereignty hub names using resolved solar system names', async () => {
+		const db = makeDb()
+		const instance = createDoInstance(db)
+
+		await instance.storeSovereigntyHubs('corp-1', [
+			{
+				structure_id: 'hub-1',
+				corporation_id: 'corp-1',
+				system_id: '30000142',
+				system_name: 'Jita',
+				type_id: '35835',
+				name: 'Jita',
+				fuel_access_list_id: null,
+				controller_alliance_id: null,
+				reagent_bay: {
+					last_updated: '2026-07-12T19:36:46.834Z',
+					reagents: [],
+				},
+				resources: {
+					power: { allocated: 0, available: 0 },
+					workforce: { allocated: 0, available: 0 },
+				},
+				upgrades: [],
+				vulnerability_window: null,
+				workforce_transport: {
+					configuration: { transit: true },
+					state: { transit: true },
+				},
+				raw: { detail: { id: 1 } },
+			} as never,
+		])
+
+		expect(db._values).toHaveBeenCalled()
+		expect(db._values.mock.calls[0][0][0]).toMatchObject({
+			systemName: 'Jita',
+			name: 'Jita',
+		})
+		expect(db.delete).toHaveBeenCalledWith(structureSovereigntyHubs)
 	})
 })

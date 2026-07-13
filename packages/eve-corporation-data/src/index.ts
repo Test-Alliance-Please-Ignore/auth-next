@@ -196,8 +196,8 @@ export interface EsiSovereigntySystem {
 }
 
 /**
- * ESI sovereignty hub details enriched with universe metadata.
- * GET /corporations/{corporation_id}/structures/sovereignty-hubs/{sovereignty_hub_id}
+ * ESI sovereignty hub details from the corporation sovereignty hub endpoint.
+ * Solar-system display metadata is resolved during persistence.
  */
 export interface EsiSovereigntyHub {
 	structure_id: string

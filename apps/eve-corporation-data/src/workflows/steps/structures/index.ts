@@ -1,9 +1,11 @@
 import { logger } from '@repo/hono-helpers'
+import { getStub } from '@repo/do-utils'
 
 import * as esiFetch from '../../../services/esi-fetch'
 import { shouldSuppressDirectorUnhealthyOnStructureEnrichmentAuthFailure } from '../../utils/structure-enrichment-auth'
 import { createTokenStore, getCorporationDataStub } from '../../utils/services'
 import { readSharedSovereigntySystemsByIds } from '../../utils/sovereignty-systems-cache'
+import type { Universe } from '@repo/universe'
 
 import type { Env } from '../../../context'
 
@@ -57,7 +59,8 @@ export async function storeStructures(
 export async function fetchSovereigntyEnrichment(
 	env: Env,
 	corporationId: string,
-	directorCharacterId: string
+	directorCharacterId: string,
+	structures: StructuresData
 ): Promise<SovereigntyEnrichmentData | null> {
 	const tokenStore = createTokenStore(env)
 
@@ -65,8 +68,16 @@ export async function fetchSovereigntyEnrichment(
 		const sovereigntyHubs = await esiFetch.fetchSovereigntyHubs(
 			tokenStore,
 			corporationId,
-			directorCharacterId
+			directorCharacterId,
+			structures
 		)
+		const universe = getStub<Universe>(env.UNIVERSE, 'default')
+		const systemGeography =
+			sovereigntyHubs.length > 0
+				? await universe.resolveSolarSystemsByIds(
+						[...new Set(sovereigntyHubs.map((hub) => hub.system_id))]
+					)
+				: {}
 		const sovereigntySystems = await readSharedSovereigntySystemsByIds(
 			env,
 			sovereigntyHubs.map((hub) => hub.system_id)
@@ -85,6 +96,8 @@ export async function fetchSovereigntyEnrichment(
 		)
 		const enrichedSovereigntyHubs = sovereigntyHubs.map((hub) => ({
 			...hub,
+			name: systemGeography[hub.system_id]?.solarSystemName ?? hub.name ?? null,
+			system_name: systemGeography[hub.system_id]?.solarSystemName ?? hub.system_name ?? null,
 			controller_alliance_id: allianceBySystemId.get(hub.system_id) ?? null,
 		}))
 
