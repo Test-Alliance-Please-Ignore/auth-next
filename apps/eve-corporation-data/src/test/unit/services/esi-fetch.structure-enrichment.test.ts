@@ -237,13 +237,7 @@ describe('esi structure enrichment ownership handling', () => {
 		const hubs = await fetchSovereigntyHubs(
 			tokenStore as never,
 			'98000001',
-			'211',
-			[
-				{
-					structure_id: '81001',
-					type_id: '35835',
-				},
-			]
+			'211'
 		)
 
 		expect(tokenStore.fetchEsi).toHaveBeenCalledTimes(2)

@@ -723,12 +723,7 @@ export class EveCorporationSyncWorkflow extends WorkflowEntrypoint<Env, EveCorpo
 								timeout: '5 minutes',
 								requiredRoles: ['Station_Manager'],
 								run: (directorCharacterId) =>
-									fetchSovereigntyEnrichment(
-										this.env,
-										corporationId,
-										directorCharacterId,
-										structures
-									),
+									fetchSovereigntyEnrichment(this.env, corporationId, directorCharacterId),
 							})
 						: null
 					const skyhookEnrichment = structureEnrichmentEnabled
