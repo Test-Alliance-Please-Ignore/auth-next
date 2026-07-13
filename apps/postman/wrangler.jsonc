@@ -7,7 +7,11 @@
 	"routes": [],
 	"logpush": false,
 	"observability": {
-		"enabled": true
+		"enabled": true,
+		"logs": {
+			"enabled": true,
+			"invocation_logs": false
+		}
 	},
 	"vars": {},
 	"durable_objects": {

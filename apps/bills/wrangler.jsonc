@@ -8,7 +8,11 @@
 	"routes": [],
 	"logpush": false,
 	"observability": {
-		"enabled": true
+		"enabled": true,
+		"logs": {
+			"enabled": true,
+			"invocation_logs": false
+		}
 	},
 	"triggers": {
 		"crons": ["*/30 * * * *"]

@@ -8,7 +8,11 @@
 	"logpush": false,
 	"workers_dev": true,
 	"observability": {
-		"enabled": true
+		"enabled": true,
+		"logs": {
+			"enabled": true,
+			"invocation_logs": false
+		}
 	},
 	"vars": {},
 	"kv_namespaces": [

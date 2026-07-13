@@ -11,7 +11,11 @@
 		"crons": ["*/5 * * * *"]
 	},
 	"observability": {
-		"enabled": true
+		"enabled": true,
+		"logs": {
+			"enabled": true,
+			"invocation_logs": false
+		}
 	},
 	"vars": {
 		"ASSETS_SYNC_ENABLED": true,
