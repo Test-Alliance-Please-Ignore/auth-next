@@ -1,6 +1,12 @@
 export type StructurePermissionRole = 'viewer' | 'manager' | 'sensitive'
 export type CorporationAlertDestinationType = 'discord_channel' | 'discord_user' | 'discord_webhook' | 'group'
-export type StructureTab = 'citadels' | 'sovereignty' | 'skyhooks' | 'navigation' | 'mining'
+export type StructureTab =
+	| 'citadels'
+	| 'sovereignty'
+	| 'skyhooks'
+	| 'navigation'
+	| 'mining-citadels'
+	| 'moon-drills'
 export type StructureListSortBy =
 	| 'updatedAt'
 	| 'nextStateAt'
@@ -24,6 +30,8 @@ export const ANSIBLEX_JUMP_GATE_TYPE_ID = '35841'
 export const TENEBREX_CYNO_JAMMER_TYPE_ID = '37534'
 export const PHAROLUX_CYNO_BEACON_TYPE_ID = '35840'
 export const METENOX_MOON_DRILL_TYPE_ID = '81826'
+export const METENOX_MOON_DRILL_TYPE_NAME = 'Metenox Moon Drill'
+export const MINING_CITADEL_TYPE_NAMES = new Set(['Athanor', 'Tatara'])
 
 export const SOVEREIGNTY_STRUCTURE_TYPE_IDS = new Set([SOVEREIGNTY_HUB_TYPE_ID])
 export const SKYHOOK_STRUCTURE_TYPE_IDS = new Set([ORBITAL_SKYHOOK_TYPE_ID])
@@ -47,18 +55,27 @@ export const STRUCTURE_TABS: StructureTabDefinition[] = [
 	{ tab: 'sovereignty', label: 'Sovereignty' },
 	{ tab: 'skyhooks', label: 'Skyhooks' },
 	{ tab: 'navigation', label: 'Navigation' },
-	{ tab: 'mining', label: 'Mining' },
+	{ tab: 'mining-citadels', label: 'Mining Citadels' },
+	{ tab: 'moon-drills', label: 'Moon Drills' },
 ]
 
 function normalizeStructureTypeId(value: string | null | undefined): string {
 	return (value ?? '').trim()
 }
 
-export function getStructureTabForTypeId(typeId: string | null | undefined): StructureTab {
+export function getStructureTabForTypeId(
+	typeId: string | null | undefined,
+	typeName?: string | null | undefined
+): StructureTab {
 	const normalized = normalizeStructureTypeId(typeId)
+	const normalizedName = (typeName ?? '').trim()
 
-	if (MINING_STRUCTURE_TYPE_IDS.has(normalized)) {
-		return 'mining'
+	if (normalizedName === METENOX_MOON_DRILL_TYPE_NAME || MINING_STRUCTURE_TYPE_IDS.has(normalized)) {
+		return 'moon-drills'
+	}
+
+	if (MINING_CITADEL_TYPE_NAMES.has(normalizedName)) {
+		return 'mining-citadels'
 	}
 	if (SOVEREIGNTY_STRUCTURE_TYPE_IDS.has(normalized)) {
 		return 'sovereignty'
@@ -220,6 +237,8 @@ export interface StructuresWorker {
 	listSovereigntyStructures(actor: StructureActor, query?: StructureSovereigntyListQuery): Promise<unknown>
 	listSkyhookStructures(actor: StructureActor, query?: StructureSkyhookListQuery): Promise<unknown>
 	listMiningStructures(actor: StructureActor, query?: StructureMiningListQuery): Promise<unknown>
+	listMoonDrillStructures(actor: StructureActor, query?: StructureMiningListQuery): Promise<unknown>
+	listMiningCitadelStructures(actor: StructureActor, query?: StructureMiningListQuery): Promise<unknown>
 	getStructureOverviewMetrics(actor: StructureActor): Promise<StructureOverviewMetrics>
 	getVisibleStructureDetail(actor: StructureActor, structureId: string): Promise<unknown>
 	updateStructureConfig(

@@ -88,12 +88,25 @@ export function useSkyhookStructures(
 	)
 }
 
-export function useMiningStructures(
+export function useMiningCitadelStructures(
 	query: StructureMiningListQuery,
 	options: Pick<UseQueryOptions<StructureMiningListResponse>, 'enabled'> = {}
 ) {
 	return useQuery<StructureMiningListResponse>(
-		createStructureListQueryOptions(structureKeys.mining(query), () => api.getMiningStructures(query), options)
+		createStructureListQueryOptions(
+			structureKeys.miningCitadels(query),
+			() => api.getMiningCitadelStructures(query),
+			options
+		)
+	)
+}
+
+export function useMoonDrillStructures(
+	query: StructureMiningListQuery,
+	options: Pick<UseQueryOptions<StructureMiningListResponse>, 'enabled'> = {}
+) {
+	return useQuery<StructureMiningListResponse>(
+		createStructureListQueryOptions(structureKeys.moonDrills(query), () => api.getMoonDrillStructures(query), options)
 	)
 }
 
@@ -133,8 +146,10 @@ export function useStructuresForTab(
 				return structureKeys.sovereignty(query)
 			case 'skyhooks':
 				return structureKeys.skyhooks(query)
-			case 'mining':
-				return structureKeys.mining(query)
+			case 'mining-citadels':
+				return structureKeys.miningCitadels(query)
+			case 'moon-drills':
+				return structureKeys.moonDrills(query)
 		}
 		throw new Error(`Unknown structures tab: ${tab}`)
 	})()
@@ -153,8 +168,10 @@ export function useStructuresForTab(
 					return api.getSovereigntyStructures(query)
 				case 'skyhooks':
 					return api.getSkyhookStructures(query)
-				case 'mining':
-					return api.getMiningStructures(query)
+				case 'mining-citadels':
+					return api.getMiningCitadelStructures(query)
+				case 'moon-drills':
+					return api.getMoonDrillStructures(query)
 			}
 			throw new Error(`Unknown structures tab: ${tab}`)
 		},

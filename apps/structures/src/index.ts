@@ -8,6 +8,7 @@ import {
 	updateAlertDestination,
 } from './services/alert-destinations.service'
 import {
+	listMiningCitadelStructures,
 	deleteStructureGroupAlertConfig,
 	deleteStructureGroupSetting,
 	getStructureModuleConfig,
@@ -15,6 +16,7 @@ import {
 	getVisibleStructureDetail,
 	listCitadelStructures,
 	listMiningStructures,
+	listMoonDrillStructures,
 	listNavigationStructures,
 	listSkyhookStructures,
 	listSovereigntyStructures,
@@ -89,6 +91,17 @@ export class StructuresWorkerEntrypoint extends WorkerEntrypoint<Env> implements
 
 	async listMiningStructures(actor: StructureActor, query: StructureMiningListQuery = {}): Promise<unknown> {
 		return listMiningStructures(this.getDb(), actor, query)
+	}
+
+	async listMoonDrillStructures(actor: StructureActor, query: StructureMiningListQuery = {}): Promise<unknown> {
+		return listMoonDrillStructures(this.getDb(), actor, query)
+	}
+
+	async listMiningCitadelStructures(
+		actor: StructureActor,
+		query: StructureMiningListQuery = {}
+	): Promise<unknown> {
+		return listMiningCitadelStructures(this.getDb(), actor, query)
 	}
 
 	async getStructureOverviewMetrics(actor: StructureActor): Promise<StructureOverviewMetrics> {

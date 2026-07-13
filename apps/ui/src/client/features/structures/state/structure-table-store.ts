@@ -76,15 +76,19 @@ const TAB_FILTER_FIELDS: Record<StructureTab, Array<keyof StructureTableFilters>
 	navigation: [...COMMON_TAB_FILTER_FIELDS],
 	sovereignty: [...COMMON_TAB_FILTER_FIELDS.filter((field) => field !== 'typeId'), 'allianceId'],
 	skyhooks: [...SKYHOOK_TAB_FILTER_FIELDS, 'isRaidable'],
-	mining: [...COMMON_TAB_FILTER_FIELDS],
+	'mining-citadels': [...COMMON_TAB_FILTER_FIELDS],
+	'moon-drills': [...COMMON_TAB_FILTER_FIELDS],
 }
 
 function normalizeTab(tab: unknown): StructureTab {
 	return tab === 'sovereignty' ||
 		tab === 'skyhooks' ||
 		tab === 'navigation' ||
-		tab === 'mining'
+		tab === 'mining-citadels' ||
+		tab === 'moon-drills'
 		? tab
+		: tab === 'mining'
+			? 'moon-drills'
 		: 'citadels'
 }
 

@@ -20,7 +20,8 @@ export const structureKeys = {
 	navigation: (query: StructureTabQuery) => [...structureKeys.all, 'navigation', query] as const,
 	sovereignty: (query: StructureTabQuery) => [...structureKeys.all, 'sovereignty', query] as const,
 	skyhooks: (query: StructureTabQuery) => [...structureKeys.all, 'skyhooks', query] as const,
-	mining: (query: StructureTabQuery) => [...structureKeys.all, 'mining', query] as const,
+	miningCitadels: (query: StructureTabQuery) => [...structureKeys.all, 'mining-citadels', query] as const,
+	moonDrills: (query: StructureTabQuery) => [...structureKeys.all, 'moon-drills', query] as const,
 	detail: (structureId: string) => [...structureKeys.all, 'detail', structureId] as const,
 	config: () => [...structureKeys.all, 'config'] as const,
 }

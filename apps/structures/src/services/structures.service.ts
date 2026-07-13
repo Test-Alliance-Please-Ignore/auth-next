@@ -109,13 +109,18 @@ export interface StructureListResponse<TItem = StructureListItem> {
 	summary: StructureListSummary
 }
 
-interface StructureAccessScope {
+interface StructurePermissionAccessTarget {
 	viewAll: boolean
 	sensitiveAll: boolean
 	managerAll: boolean
 	viewCorporationIds: Set<string>
 	sensitiveCorporationIds: Set<string>
 	managerCorporationIds: Set<string>
+}
+
+interface StructureAccessScope {
+	all: StructurePermissionAccessTarget
+	tabs: Record<StructureTab, StructurePermissionAccessTarget>
 }
 
 export interface StructureListItem {
@@ -383,78 +388,206 @@ export interface UpsertStructureGroupAlertConfigInput {
 	isEnabled: boolean
 }
 
-function computeStructureAccess(roles: string[], isAdmin: boolean): StructureAccessScope {
-	if (isAdmin) {
-		return {
-			viewAll: true,
-			sensitiveAll: true,
-			managerAll: true,
-			viewCorporationIds: new Set<string>(),
-			sensitiveCorporationIds: new Set<string>(),
-			managerCorporationIds: new Set<string>(),
+const STRUCTURE_ACCESS_TABS: StructureTab[] = [
+	'citadels',
+	'navigation',
+	'sovereignty',
+	'skyhooks',
+	'moon-drills',
+	'mining-citadels',
+]
+
+function createStructurePermissionAccessTarget(): StructurePermissionAccessTarget {
+	return {
+		viewAll: false,
+		sensitiveAll: false,
+		managerAll: false,
+		viewCorporationIds: new Set<string>(),
+		sensitiveCorporationIds: new Set<string>(),
+		managerCorporationIds: new Set<string>(),
+	}
+}
+
+function addParsedStructurePermissionToTarget(
+	target: StructurePermissionAccessTarget,
+	parsed: NonNullable<ReturnType<typeof parseStructurePermissionUrn>>
+): void {
+	if (parsed.scope === STRUCTURE_PERMISSION_SCOPE_ALL) {
+		target.viewAll = true
+		if (parsed.role === 'manager' || parsed.role === 'sensitive') {
+			target.sensitiveAll = true
+		}
+		if (parsed.role === 'manager') {
+			target.managerAll = true
+		}
+		return
+	}
+
+	if (!parsed.corporationId) {
+		return
+	}
+
+	target.viewCorporationIds.add(parsed.corporationId)
+	if (parsed.role === 'manager' || parsed.role === 'sensitive') {
+		target.sensitiveCorporationIds.add(parsed.corporationId)
+	}
+	if (parsed.role === 'manager') {
+		target.managerCorporationIds.add(parsed.corporationId)
+	}
+}
+
+function buildStructureAccessTargetSummary(
+	access: StructurePermissionAccessTarget,
+	corporationId: string
+): {
+	canView: boolean
+	canViewSensitive: boolean
+	canEdit: boolean
+} {
+	const canView =
+		access.viewAll ||
+		access.sensitiveAll ||
+		access.managerAll ||
+		access.viewCorporationIds.has(corporationId) ||
+		access.sensitiveCorporationIds.has(corporationId) ||
+		access.managerCorporationIds.has(corporationId)
+	const canViewSensitive =
+		access.sensitiveAll ||
+		access.managerAll ||
+		access.sensitiveCorporationIds.has(corporationId) ||
+		access.managerCorporationIds.has(corporationId)
+	const canEdit = access.managerAll || access.managerCorporationIds.has(corporationId)
+
+	return {
+		canView,
+		canViewSensitive,
+		canEdit,
+	}
+}
+
+function getStructureAccessTarget(access: StructureAccessScope, tab: StructureTab): StructurePermissionAccessTarget {
+	return {
+		viewAll: access.all.viewAll || access.tabs[tab].viewAll,
+		sensitiveAll: access.all.sensitiveAll || access.tabs[tab].sensitiveAll,
+		managerAll: access.all.managerAll || access.tabs[tab].managerAll,
+		viewCorporationIds: new Set([
+			...access.all.viewCorporationIds,
+			...access.tabs[tab].viewCorporationIds,
+		]),
+		sensitiveCorporationIds: new Set([
+			...access.all.sensitiveCorporationIds,
+			...access.tabs[tab].sensitiveCorporationIds,
+		]),
+		managerCorporationIds: new Set([
+			...access.all.managerCorporationIds,
+			...access.tabs[tab].managerCorporationIds,
+		]),
+	}
+}
+
+function hasAnyStructureAccess(target: StructurePermissionAccessTarget): boolean {
+	return (
+		target.viewAll ||
+		target.sensitiveAll ||
+		target.managerAll ||
+		target.viewCorporationIds.size > 0 ||
+		target.sensitiveCorporationIds.size > 0 ||
+		target.managerCorporationIds.size > 0
+	)
+}
+
+function hasStructureAccessForTab(access: StructureAccessScope, corporationId: string, tab: StructureTab): boolean {
+	const target = getStructureAccessTarget(access, tab)
+	return buildStructureAccessTargetSummary(target, corporationId).canView
+}
+
+function canViewSensitiveStructure(access: StructureAccessScope, corporationId: string, tab: StructureTab): boolean {
+	const target = getStructureAccessTarget(access, tab)
+	return buildStructureAccessTargetSummary(target, corporationId).canViewSensitive
+}
+
+function canEditStructure(access: StructureAccessScope, corporationId: string, tab: StructureTab): boolean {
+	const target = getStructureAccessTarget(access, tab)
+	return buildStructureAccessTargetSummary(target, corporationId).canEdit
+}
+
+function getAccessibleCorporationIds(
+	access: StructureAccessScope,
+	tab?: StructureTab
+): { hasGlobalAccess: boolean; corporationIds: Set<string> } {
+	const targets = tab ? [access.all, access.tabs[tab]] : [access.all, ...STRUCTURE_ACCESS_TABS.map((entry) => access.tabs[entry])]
+	const corporationIds = new Set<string>()
+	let hasGlobalAccess = false
+
+	for (const target of targets) {
+		if (target.viewAll) {
+			hasGlobalAccess = true
+		}
+		for (const corporationId of target.viewCorporationIds) {
+			corporationIds.add(corporationId)
+		}
+		for (const corporationId of target.sensitiveCorporationIds) {
+			corporationIds.add(corporationId)
+		}
+		for (const corporationId of target.managerCorporationIds) {
+			corporationIds.add(corporationId)
 		}
 	}
 
-	const viewCorporationIds = new Set<string>()
-	const sensitiveCorporationIds = new Set<string>()
-	const managerCorporationIds = new Set<string>()
-	let viewAll = false
-	let sensitiveAll = false
-	let managerAll = false
+	return { hasGlobalAccess, corporationIds }
+}
+
+function computeStructureAccess(roles: string[], isAdmin: boolean): StructureAccessScope {
+	if (isAdmin) {
+		return {
+			all: {
+				viewAll: true,
+				sensitiveAll: true,
+				managerAll: true,
+				viewCorporationIds: new Set<string>(),
+				sensitiveCorporationIds: new Set<string>(),
+				managerCorporationIds: new Set<string>(),
+			},
+			tabs: Object.fromEntries(
+				STRUCTURE_ACCESS_TABS.map((tab) => [
+					tab,
+					{
+						viewAll: true,
+						sensitiveAll: true,
+						managerAll: true,
+						viewCorporationIds: new Set<string>(),
+						sensitiveCorporationIds: new Set<string>(),
+						managerCorporationIds: new Set<string>(),
+					},
+				])
+			) as Record<StructureTab, StructurePermissionAccessTarget>,
+		}
+	}
+
+	const all = createStructurePermissionAccessTarget()
+	const tabs = Object.fromEntries(
+		STRUCTURE_ACCESS_TABS.map((tab) => [tab, createStructurePermissionAccessTarget()])
+	) as Record<StructureTab, StructurePermissionAccessTarget>
 
 	for (const roleUrn of roles) {
 		const parsed = parseStructurePermissionUrn(roleUrn)
 		if (!parsed) continue
-		if (parsed.scope === STRUCTURE_PERMISSION_SCOPE_ALL) {
-			viewAll = true
-			if (parsed.role === 'manager' || parsed.role === 'sensitive') {
-				sensitiveAll = true
-			}
-			if (parsed.role === 'manager') {
-				managerAll = true
-			}
-			continue
-		}
-
-		if (parsed.corporationId) {
-			if (STRUCTURE_PERMISSION_ROLES.includes(parsed.role)) {
-				viewCorporationIds.add(parsed.corporationId)
-			}
-			if (parsed.role === 'manager' || parsed.role === 'sensitive') {
-				sensitiveCorporationIds.add(parsed.corporationId)
-			}
-			if (parsed.role === 'manager') {
-				managerCorporationIds.add(parsed.corporationId)
-			}
+		if (parsed.tab === 'all') {
+			addParsedStructurePermissionToTarget(all, parsed)
+		} else {
+			addParsedStructurePermissionToTarget(tabs[parsed.tab], parsed)
 		}
 	}
 
 	return {
-		viewAll,
-		sensitiveAll,
-		managerAll,
-		viewCorporationIds,
-		sensitiveCorporationIds,
-		managerCorporationIds,
+		all,
+		tabs,
 	}
 }
 
 export function canManageStructureModule(user: SessionUser): boolean {
 	const access = computeStructureAccess(user.roles, user.is_admin)
-	return user.is_admin || access.managerAll
-}
-
-function canViewSensitiveStructure(access: StructureAccessScope, corporationId: string): boolean {
-	return (
-		access.sensitiveAll ||
-		access.managerAll ||
-		access.sensitiveCorporationIds.has(corporationId) ||
-		access.managerCorporationIds.has(corporationId)
-	)
-}
-
-function canEditStructure(access: StructureAccessScope, corporationId: string): boolean {
-	return access.managerAll || access.managerCorporationIds.has(corporationId)
+	return user.is_admin || access.all.managerAll
 }
 
 function toIso(value: Date | null | undefined): string | null {
@@ -709,7 +842,7 @@ async function loadStructureTabDetailData(
 		}
 	}
 
-	if (tab === 'mining') {
+	if (tab === 'mining-citadels') {
 		const miningRow = await db.query.structureMiningStates.findFirst({
 			where: eq(structureMiningStates.structureId, structure.structureId),
 		})
@@ -1097,11 +1230,11 @@ const EMPTY_STRUCTURE_FUEL_USAGE_HISTORY: StructureFuelUsageHistory = {
 	sampleCount: 0,
 }
 
-export function getStructureTab(structure: Pick<StructureListItem, 'typeId'>): StructureTab {
-	return getStructureTabForTypeId(structure.typeId)
+export function getStructureTab(structure: Pick<StructureListItem, 'typeId' | 'typeName'>): StructureTab {
+	return getStructureTabForTypeId(structure.typeId, structure.typeName)
 }
 
-function matchesStructureTab(structure: Pick<StructureListItem, 'typeId'>, tab: StructureTab): boolean {
+function matchesStructureTab(structure: Pick<StructureListItem, 'typeId' | 'typeName'>, tab: StructureTab): boolean {
 	return getStructureTab(structure) === tab
 }
 
@@ -1144,14 +1277,15 @@ async function getVisibleStructureContext(
 	structureId: string
 ): Promise<VisibleStructureContext | null> {
 	const access = computeStructureAccess(user.roles, user.is_admin)
+	const accessibleCorporations = getAccessibleCorporationIds(access)
 	const structure = await db.query.corporationStructures.findFirst({
 		where: (() => {
 			const conditions = [eq(corporationStructures.structureId, structureId)]
-			if (!access.viewAll) {
-				if (access.viewCorporationIds.size === 0) {
+			if (!accessibleCorporations.hasGlobalAccess) {
+				if (accessibleCorporations.corporationIds.size === 0) {
 					return and(...conditions, eq(corporationStructures.corporationId, '__no_access__'))
 				}
-				conditions.push(inArray(corporationStructures.corporationId, [...access.viewCorporationIds]))
+				conditions.push(inArray(corporationStructures.corporationId, [...accessibleCorporations.corporationIds]))
 			}
 			return and(...conditions)
 		})(),
@@ -1172,8 +1306,13 @@ async function getVisibleStructureContext(
 			includeInStructureAssetSync: true,
 		},
 	})
-	const canViewSensitive = user.is_admin || canViewSensitiveStructure(access, structure.corporationId)
-	const canEdit = user.is_admin || canEditStructure(access, structure.corporationId)
+	const structureTab = getStructureTab(structure)
+	if (!hasStructureAccessForTab(access, structure.corporationId, structureTab)) {
+		return null
+	}
+
+	const canViewSensitive = user.is_admin || canViewSensitiveStructure(access, structure.corporationId, structureTab)
+	const canEdit = user.is_admin || canEditStructure(access, structure.corporationId, structureTab)
 	if (config?.hidden && !canViewSensitive) {
 		return null
 	}
@@ -1477,8 +1616,9 @@ async function loadVisibleStructureContexts(
 }> {
 	const moduleConfig = await getStructureModuleConfig(db)
 	const access = computeStructureAccess(user.roles, user.is_admin)
+	const accessibleCorporations = getAccessibleCorporationIds(access)
 
-	if (!access.viewAll && access.viewCorporationIds.size === 0) {
+	if (!accessibleCorporations.hasGlobalAccess && accessibleCorporations.corporationIds.size === 0) {
 		return {
 			moduleConfig,
 			access,
@@ -1490,8 +1630,12 @@ async function loadVisibleStructureContexts(
 		const conditions: StructureWhereCondition[] = []
 		if (query.corporationId) {
 			conditions.push(eq(corporationStructures.corporationId, query.corporationId))
-		} else if (!access.viewAll && access.viewCorporationIds.size > 0) {
-			conditions.push(inArray(corporationStructures.corporationId, [...access.viewCorporationIds]))
+		}
+		if (!accessibleCorporations.hasGlobalAccess) {
+			if (accessibleCorporations.corporationIds.size === 0) {
+				return combineWhereConditions([eq(corporationStructures.corporationId, '__no_access__')])
+			}
+			conditions.push(inArray(corporationStructures.corporationId, [...accessibleCorporations.corporationIds]))
 		}
 		if (query.lowPower === 'true') {
 			conditions.push(eq(corporationStructures.lowPower, true))
@@ -1543,8 +1687,9 @@ async function loadVisibleStructureContexts(
 		contexts: corpStructures
 			.map<VisibleStructureContext | null>((structure) => {
 				const config = configsByStructureId.get(structure.structureId) ?? null
-				const canViewSensitive = user.is_admin || canViewSensitiveStructure(access, structure.corporationId)
-				const canEdit = user.is_admin || canEditStructure(access, structure.corporationId)
+				const structureTab = getStructureTab(structure)
+				const canViewSensitive = user.is_admin || canViewSensitiveStructure(access, structure.corporationId, structureTab)
+				const canEdit = user.is_admin || canEditStructure(access, structure.corporationId, structureTab)
 				if (config?.hidden && !canViewSensitive) {
 					return null
 				}
@@ -1590,7 +1735,8 @@ async function listVisibleOperationalStructures(
 	activeTab: StructureTab
 ): Promise<StructureListResponse> {
 	const { moduleConfig, access, contexts } = await loadVisibleStructureContexts(db, user, query)
-	if (contexts.length === 0 && !access.viewAll && access.viewCorporationIds.size === 0) {
+	const tabAccess = getStructureAccessTarget(access, activeTab)
+	if (!hasAnyStructureAccess(tabAccess)) {
 		return {
 			items: [],
 			pagination: {
@@ -1614,6 +1760,7 @@ async function listVisibleOperationalStructures(
 	const baseItems = contexts
 		.map((context) => buildStructureListItem(context))
 		.filter((item) => matchesStructureTab(item, activeTab))
+		.filter((item) => hasStructureAccessForTab(access, item.corporationId, activeTab))
 	const filterOptions = buildStructureFilterOptions(baseItems)
 	const filteredItems = baseItems
 	const sortBy = query.sortBy ?? 'fuel'
@@ -1648,15 +1795,18 @@ export async function getStructureOverviewMetrics(
 	user: SessionUser
 ): Promise<StructureOverviewMetrics> {
 	const { moduleConfig, access, contexts } = await loadVisibleStructureContexts(db, user, {})
-	if (contexts.length === 0 && !access.viewAll && access.viewCorporationIds.size === 0) {
+	const visibleContexts = contexts.filter((context) =>
+		hasStructureAccessForTab(access, context.structure.corporationId, getStructureTab(context.structure))
+	)
+	if (visibleContexts.length === 0) {
 		return emptyStructureOverviewMetrics()
 	}
 
-	const items = contexts.map((context) => buildStructureListItem(context))
+	const items = visibleContexts.map((context) => buildStructureListItem(context))
 	const summary = buildStructureSummary(items, moduleConfig)
 	const fuelHistorySamplesByStructure = await loadFuelHistorySamplesByStructure(
 		db,
-		contexts.map((context) => context.structure.structureId)
+		visibleContexts.map((context) => context.structure.structureId)
 	)
 	const burnRate = aggregateFuelBurnRatePerHour(fuelHistorySamplesByStructure)
 
@@ -1688,6 +1838,14 @@ export async function listNavigationStructures(
 	query: StructureNavigationListQuery = {}
 ): Promise<StructureListResponse> {
 	return listVisibleOperationalStructures(db, user, query as StructureListQuery, 'navigation')
+}
+
+export async function listMoonDrillStructures(
+	db: DbClient<DbSchema>,
+	user: SessionUser,
+	query: StructureMiningListQuery = {}
+): Promise<StructureListResponse> {
+	return listVisibleOperationalStructures(db, user, query as StructureListQuery, 'moon-drills')
 }
 
 function getSnapshotSyncStatus(lastSyncedAt: Date | null | undefined): 'ok' | 'warning' | 'error' {
@@ -1867,7 +2025,8 @@ export async function listSovereigntyStructures(
 		typeId: query.typeId,
 	})
 
-	if (!access.viewAll && access.viewCorporationIds.size === 0) {
+	const accessForTab = getStructureAccessTarget(access, 'sovereignty')
+	if (!hasAnyStructureAccess(accessForTab)) {
 		return {
 			items: [],
 			pagination: {
@@ -1990,7 +2149,8 @@ export async function listSkyhookStructures(
 		typeId: query.typeId,
 	})
 
-	if (!access.viewAll && access.viewCorporationIds.size === 0) {
+	const accessForTab = getStructureAccessTarget(access, 'skyhooks')
+	if (!hasAnyStructureAccess(accessForTab)) {
 		return {
 			items: [],
 			pagination: {
@@ -2093,10 +2253,11 @@ export async function listSkyhookStructures(
 	}
 }
 
-export async function listMiningStructures(
+async function listStructuresWithMiningSnapshot(
 	db: DbClient<DbSchema>,
 	user: SessionUser,
-	query: StructureMiningListQuery = {}
+	query: StructureMiningListQuery,
+	tab: Extract<StructureTab, 'moon-drills' | 'mining-citadels'>
 ): Promise<StructureListResponse<StructureMiningListItem>> {
 	const { moduleConfig, contexts, access } = await loadVisibleStructureContexts(db, user, {
 		corporationId: query.corporationId,
@@ -2109,7 +2270,8 @@ export async function listMiningStructures(
 		typeId: query.typeId,
 	})
 
-	if (!access.viewAll && access.viewCorporationIds.size === 0) {
+	const accessForTab = getStructureAccessTarget(access, tab)
+	if (!hasAnyStructureAccess(accessForTab)) {
 		return {
 			items: [],
 			pagination: {
@@ -2130,8 +2292,8 @@ export async function listMiningStructures(
 		}
 	}
 
-	const miningContexts = contexts.filter((context) => getStructureTab(context.structure) === 'mining')
-	const structureIds = miningContexts.map((context) => context.structure.structureId)
+	const matchingContexts = contexts.filter((context) => getStructureTab(context.structure) === tab)
+	const structureIds = matchingContexts.map((context) => context.structure.structureId)
 
 	if (structureIds.length === 0) {
 		return {
@@ -2170,7 +2332,7 @@ export async function listMiningStructures(
 		orderBy: desc(structureMiningStates.updatedAt),
 	})
 	const miningByStructureId = new Map(miningRows.map((row) => [row.structureId, row]))
-	const items = miningContexts.map((context) =>
+	const items = matchingContexts.map((context) =>
 		buildMiningListItem({
 			context,
 			miningRow: miningByStructureId.get(context.structure.structureId) ?? null,
@@ -2202,6 +2364,22 @@ export async function listMiningStructures(
 	}
 }
 
+export async function listMiningStructures(
+	db: DbClient<DbSchema>,
+	user: SessionUser,
+	query: StructureMiningListQuery = {}
+): Promise<StructureListResponse> {
+	return await listMoonDrillStructures(db, user, query)
+}
+
+export async function listMiningCitadelStructures(
+	db: DbClient<DbSchema>,
+	user: SessionUser,
+	query: StructureMiningListQuery = {}
+): Promise<StructureListResponse<StructureMiningListItem>> {
+	return await listStructuresWithMiningSnapshot(db, user, query, 'mining-citadels')
+}
+
 export async function getVisibleStructureDetail(
 	env: Env,
 	db: DbClient<DbSchema>,
@@ -2231,10 +2409,8 @@ export async function updateStructureConfig(
 	}
 
 	const access = computeStructureAccess(user.roles, user.is_admin)
-	const canEdit =
-		user.is_admin ||
-		access.managerAll ||
-		access.managerCorporationIds.has(context.structure.corporationId)
+	const structureTab = getStructureTab(context.structure)
+	const canEdit = user.is_admin || canEditStructure(access, context.structure.corporationId, structureTab)
 	if (!canEdit) {
 		return null
 	}

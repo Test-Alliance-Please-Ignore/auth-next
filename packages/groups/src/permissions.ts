@@ -223,6 +223,17 @@ export interface GetMultiGroupMemberPermissionsResponse {
 export const STRUCTURE_PERMISSION_ROLES = ['viewer', 'manager', 'sensitive'] as const
 export type StructurePermissionRole = (typeof STRUCTURE_PERMISSION_ROLES)[number]
 
+export const STRUCTURE_PERMISSION_TABS = [
+	'all',
+	'citadels',
+	'navigation',
+	'sovereignty',
+	'skyhooks',
+	'moon-drills',
+	'mining-citadels',
+] as const
+export type StructurePermissionTab = (typeof STRUCTURE_PERMISSION_TABS)[number]
+
 export const STRUCTURE_PERMISSION_SCOPE_ALL = 'all' as const
 export type StructurePermissionScope = string
 
@@ -231,6 +242,7 @@ export interface PermissionLike {
 }
 
 export interface ParsedStructurePermissionUrn {
+	tab: StructurePermissionTab
 	scope: 'all' | 'corp'
 	corporationId: string | null
 	role: StructurePermissionRole
@@ -245,6 +257,14 @@ export function buildStructurePermissionUrn(
 	return `${STRUCTURE_PERMISSION_URN_PREFIX}${scope}:${role}`
 }
 
+export function buildStructureTabPermissionUrn(
+	tab: Exclude<StructurePermissionTab, 'all'>,
+	scope: StructurePermissionScope | typeof STRUCTURE_PERMISSION_SCOPE_ALL,
+	role: StructurePermissionRole
+): string {
+	return `${STRUCTURE_PERMISSION_URN_PREFIX}${tab}:${scope}:${role}`
+}
+
 export function isStructurePermissionUrn(value: string): boolean {
 	return value.startsWith(STRUCTURE_PERMISSION_URN_PREFIX)
 }
@@ -255,29 +275,78 @@ export function parseStructurePermissionUrn(value: string): ParsedStructurePermi
 	}
 
 	const remainder = value.slice(STRUCTURE_PERMISSION_URN_PREFIX.length)
-	const [scope, role] = remainder.split(':')
-	if (!scope || !role) return null
-	if (!STRUCTURE_PERMISSION_ROLES.includes(role as StructurePermissionRole)) {
-		return null
-	}
+	const parts = remainder.split(':')
 
-	if (scope === STRUCTURE_PERMISSION_SCOPE_ALL) {
+	if (parts.length === 2) {
+		const [scope, role] = parts
+		if (!scope || !role) return null
+		if (!STRUCTURE_PERMISSION_ROLES.includes(role as StructurePermissionRole)) {
+			return null
+		}
+
+		if (scope === STRUCTURE_PERMISSION_SCOPE_ALL) {
+			return {
+				tab: 'all',
+				scope: 'all',
+				corporationId: null,
+				role: role as StructurePermissionRole,
+			}
+		}
+
 		return {
-			scope: 'all',
-			corporationId: null,
+			tab: 'all',
+			scope: 'corp',
+			corporationId: scope,
 			role: role as StructurePermissionRole,
 		}
 	}
 
-	return {
-		scope: 'corp',
-		corporationId: scope,
-		role: role as StructurePermissionRole,
+	if (parts.length === 3) {
+		const [tab, scope, role] = parts
+		if (!tab || !scope || !role) return null
+		if (!STRUCTURE_PERMISSION_TABS.includes(tab as StructurePermissionTab)) {
+			return null
+		}
+		if (!STRUCTURE_PERMISSION_ROLES.includes(role as StructurePermissionRole)) {
+			return null
+		}
+
+		if (scope === STRUCTURE_PERMISSION_SCOPE_ALL) {
+			return {
+				tab: tab as Exclude<StructurePermissionTab, 'all'>,
+				scope: 'all',
+				corporationId: null,
+				role: role as StructurePermissionRole,
+			}
+		}
+
+		return {
+			tab: tab as Exclude<StructurePermissionTab, 'all'>,
+			scope: 'corp',
+			corporationId: scope,
+			role: role as StructurePermissionRole,
+		}
 	}
+
+	return null
 }
 
 export function hasAnyStructurePermission(permissions: Array<PermissionLike>): boolean {
 	return permissions.some((permission) => parseStructurePermissionUrn(permission.urn) !== null)
+}
+
+export function hasStructureTabPermission(
+	permissions: Array<PermissionLike>,
+	tab: Exclude<StructurePermissionTab, 'all'>
+): boolean {
+	return permissions.some((permission) => {
+		const parsed = parseStructurePermissionUrn(permission.urn)
+		if (!parsed) {
+			return false
+		}
+
+		return parsed.tab === 'all' || parsed.tab === tab
+	})
 }
 
 export function hasStructureManagerPermission(permissions: Array<PermissionLike>): boolean {

@@ -10,7 +10,11 @@ import {
 import { useEffect, useMemo, useState } from 'react'
 import { Link, Navigate } from 'react-router-dom'
 
-import { hasAllStructureManagerPermission, hasAnyStructurePermission } from '@repo/groups'
+import {
+	hasAllStructureManagerPermission,
+	hasAnyStructurePermission,
+	hasStructureTabPermission,
+} from '@repo/groups'
 import { STRUCTURE_TABS, type StructureTab } from '@repo/structures'
 
 import { TableRefreshFrame } from '@/components/table-refresh-frame'
@@ -135,6 +139,16 @@ export default function StructuresPage() {
 	const canManageStructures =
 		user?.is_admin === true || hasAllStructureManagerPermission(permissions)
 	const tableState = useStructureTableUiState((state) => state)
+	const visibleTabs = useMemo(
+		() =>
+			user?.is_admin === true
+				? STRUCTURE_TABS
+				: STRUCTURE_TABS.filter((tab) => hasStructureTabPermission(permissions, tab.tab)),
+		[user, permissions]
+	)
+	const activeTab = visibleTabs.some((tab) => tab.tab === tableState.tab)
+		? tableState.tab
+		: visibleTabs[0]?.tab ?? tableState.tab
 	const [nowMs, setNowMs] = useState(() => Date.now())
 	const { data: moduleConfig } = useStructureModuleConfig()
 	const {
@@ -163,7 +177,7 @@ export default function StructuresPage() {
 			typeId: tableState.filters.typeId,
 		}
 
-		switch (tableState.tab) {
+		switch (activeTab) {
 			case 'citadels':
 				return {
 					...base,
@@ -187,15 +201,20 @@ export default function StructuresPage() {
 					planetId: tableState.filters.planetId,
 					isRaidable: tableState.filters.isRaidable,
 				}
-			case 'mining':
+			case 'mining-citadels':
 				return {
 					...base,
 					...common,
 					planetId: tableState.filters.planetId,
 				}
+			case 'moon-drills':
+				return {
+					...base,
+					...common,
+				}
 		}
-		throw new Error(`Unknown structures tab: ${tableState.tab}`)
-	}, [tableState])
+		throw new Error(`Unknown structures tab: ${activeTab}`)
+	}, [activeTab, tableState])
 
 	const {
 		data: structuresResponse,
@@ -203,7 +222,7 @@ export default function StructuresPage() {
 		error,
 		refetch,
 		isFetching,
-	} = useStructuresForTab(tableState.tab, query, {
+	} = useStructuresForTab(activeTab, query, {
 		enabled: !authLoading && !permissionsLoading && canViewStructures,
 	})
 
@@ -222,6 +241,16 @@ export default function StructuresPage() {
 		}, 60_000)
 		return () => window.clearInterval(timer)
 	}, [])
+
+	useEffect(() => {
+		if (visibleTabs.length === 0) {
+			return
+		}
+
+		if (!visibleTabs.some((tab) => tab.tab === tableState.tab)) {
+			setStructureTableTab(visibleTabs[0]?.tab ?? 'citadels')
+		}
+	}, [tableState.tab, visibleTabs])
 
 	const corporationOptions = useMemo<SelectOption[]>(
 		() =>
@@ -319,7 +348,7 @@ export default function StructuresPage() {
 		[filterOptions]
 	)
 	const structuresContentKey = [
-		tableState.tab,
+		activeTab,
 		tableState.page,
 		tableState.pageSize,
 		tableState.sortBy,
@@ -401,18 +430,19 @@ export default function StructuresPage() {
 		</TableHead>
 	)
 
-	const isSovereigntyTab = tableState.tab === 'sovereignty'
-	const isSkyhooksTab = tableState.tab === 'skyhooks'
-	const isMiningTab = tableState.tab === 'mining'
+	const isSovereigntyTab = activeTab === 'sovereignty'
+	const isSkyhooksTab = activeTab === 'skyhooks'
+	const isMiningCitadelTab = activeTab === 'mining-citadels'
 	const primaryFilterSlot: PrimaryStructureFilterSlot = (() => {
-		switch (tableState.tab) {
+		switch (activeTab) {
 			case 'sovereignty':
 				return 'alliance'
 			case 'skyhooks':
 				return 'raidable'
 			case 'citadels':
 			case 'navigation':
-			case 'mining':
+			case 'mining-citadels':
+			case 'moon-drills':
 				return 'type'
 		}
 	})()
@@ -648,11 +678,11 @@ export default function StructuresPage() {
 				</CardHeader>
 				<CardContent className="space-y-4">
 					<Tabs
-						value={tableState.tab}
+						value={activeTab}
 						onValueChange={(value) => setStructureTableTab(value as StructureTab)}
 					>
 						<TabsList className="flex w-full flex-wrap gap-1 border-b-0">
-							{STRUCTURE_TABS.map((tab) => (
+							{visibleTabs.map((tab) => (
 								<TabsTrigger key={tab.tab} value={tab.tab}>
 									{tab.label}
 								</TabsTrigger>
@@ -723,14 +753,14 @@ export default function StructuresPage() {
 									No structures were returned for the selected filters.
 								</div>
 							) : (
-								<Table
-									className={cn(
-										'min-w-[118rem]',
-										isSovereigntyTab && 'min-w-[128rem]',
-										isSkyhooksTab && 'min-w-[126rem]',
-										isMiningTab && 'min-w-[124rem]'
-									)}
-								>
+						<Table
+							className={cn(
+								'min-w-[118rem]',
+								isSovereigntyTab && 'min-w-[128rem]',
+								isSkyhooksTab && 'min-w-[126rem]',
+								isMiningCitadelTab && 'min-w-[124rem]'
+							)}
+						>
 									<TableHeader>
 										<TableRow>
 											<SortableHead field="region" label="Region" />
@@ -758,7 +788,7 @@ export default function StructuresPage() {
 													<TableHead>Raidable</TableHead>
 													<TableHead>Vulnerable</TableHead>
 												</>
-											) : isMiningTab ? (
+											) : isMiningCitadelTab ? (
 												<>
 													<TableHead>Moon</TableHead>
 													<TableHead>Planet</TableHead>
@@ -893,10 +923,10 @@ export default function StructuresPage() {
 																{skyhookStructure.theftVulnerabilityStart &&
 																skyhookStructure.theftVulnerabilityEnd
 																	? `${formatDateTimeLong(skyhookStructure.theftVulnerabilityStart)} - ${formatDateTimeLong(skyhookStructure.theftVulnerabilityEnd)}`
-																	: formatNullableDateTime(skyhookStructure.vulnerableAt)}
+																: formatNullableDateTime(skyhookStructure.vulnerableAt)}
 															</TableCell>
 														</>
-													) : isMiningTab ? (
+													) : isMiningCitadelTab ? (
 														<>
 															<TableCell>
 																{(miningStructure.moonName ?? miningStructure.moonId) || '-'}

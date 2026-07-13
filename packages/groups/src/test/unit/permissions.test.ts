@@ -2,11 +2,13 @@ import { describe, expect, it } from 'vitest'
 
 import {
 	buildStructurePermissionUrn,
+	buildStructureTabPermissionUrn,
 	hasAllStructureManagerPermission,
 	hasAllStructureSensitivePermission,
 	hasAnyStructurePermission,
 	hasStructureManagerPermission,
 	hasStructureSensitivePermission,
+	hasStructureTabPermission,
 	isStructurePermissionUrn,
 	parseStructurePermissionUrn,
 } from '../../permissions'
@@ -18,6 +20,7 @@ describe('structure permission utilities', () => {
 		expect(urn).toBe('urn:structures:all:viewer')
 		expect(isStructurePermissionUrn(urn)).toBe(true)
 		expect(parseStructurePermissionUrn(urn)).toEqual({
+			tab: 'all',
 			scope: 'all',
 			corporationId: null,
 			role: 'viewer',
@@ -30,6 +33,7 @@ describe('structure permission utilities', () => {
 		expect(urn).toBe('urn:structures:1234567890:manager')
 		expect(isStructurePermissionUrn(urn)).toBe(true)
 		expect(parseStructurePermissionUrn(urn)).toEqual({
+			tab: 'all',
 			scope: 'corp',
 			corporationId: '1234567890',
 			role: 'manager',
@@ -42,16 +46,83 @@ describe('structure permission utilities', () => {
 		expect(urn).toBe('urn:structures:1234567890:sensitive')
 		expect(isStructurePermissionUrn(urn)).toBe(true)
 		expect(parseStructurePermissionUrn(urn)).toEqual({
+			tab: 'all',
 			scope: 'corp',
 			corporationId: '1234567890',
 			role: 'sensitive',
 		})
 	})
 
+	it('builds and parses tab-scoped viewer URNs', () => {
+		const urn = buildStructureTabPermissionUrn('moon-drills', 'all', 'viewer')
+
+		expect(urn).toBe('urn:structures:moon-drills:all:viewer')
+		expect(isStructurePermissionUrn(urn)).toBe(true)
+		expect(parseStructurePermissionUrn(urn)).toEqual({
+			tab: 'moon-drills',
+			scope: 'all',
+			corporationId: null,
+			role: 'viewer',
+		})
+	})
+
+	it('builds and parses corp-scoped tab URNs', () => {
+		const urn = buildStructureTabPermissionUrn('citadels', '1234567890', 'manager')
+
+		expect(urn).toBe('urn:structures:citadels:1234567890:manager')
+		expect(parseStructurePermissionUrn(urn)).toEqual({
+			tab: 'citadels',
+			scope: 'corp',
+			corporationId: '1234567890',
+			role: 'manager',
+		})
+	})
+
+	it.each([
+		'citadels',
+		'navigation',
+		'sovereignty',
+		'skyhooks',
+		'moon-drills',
+		'mining-citadels',
+	] as const)('builds and parses every valid tab scope: %s', (tab) => {
+		const viewerUrn = buildStructureTabPermissionUrn(tab, 'all', 'viewer')
+		const corpUrn = buildStructureTabPermissionUrn(tab, '1234567890', 'manager')
+
+		expect(parseStructurePermissionUrn(viewerUrn)).toEqual({
+			tab,
+			scope: 'all',
+			corporationId: null,
+			role: 'viewer',
+		})
+		expect(parseStructurePermissionUrn(corpUrn)).toEqual({
+			tab,
+			scope: 'corp',
+			corporationId: '1234567890',
+			role: 'manager',
+		})
+		expect(hasStructureTabPermission([{ urn: viewerUrn }], tab)).toBe(true)
+		expect(hasStructureTabPermission([{ urn: corpUrn }], tab)).toBe(true)
+	})
+
+	it.each([
+		'citadels',
+		'navigation',
+		'sovereignty',
+		'skyhooks',
+		'moon-drills',
+		'mining-citadels',
+	] as const)('treats legacy all-scope permissions as access to every tab: %s', (tab) => {
+		expect(hasStructureTabPermission([{ urn: 'urn:structures:all:viewer' }], tab)).toBe(true)
+		expect(hasStructureTabPermission([{ urn: 'urn:structures:all:manager' }], tab)).toBe(true)
+	})
+
 	it('rejects malformed or non-structure URNs', () => {
 		expect(isStructurePermissionUrn('urn:srp:reviewer')).toBe(false)
 		expect(parseStructurePermissionUrn('urn:srp:reviewer')).toBeNull()
 		expect(parseStructurePermissionUrn('urn:structures:all:not-a-role')).toBeNull()
+		expect(parseStructurePermissionUrn('urn:structures:not-a-tab:all:viewer')).toBeNull()
+		expect(parseStructurePermissionUrn('urn:structures:moon-drills:all:not-a-role')).toBeNull()
 		expect(parseStructurePermissionUrn('urn:structures:')).toBeNull()
 	})
 
@@ -61,10 +132,17 @@ describe('structure permission utilities', () => {
 		expect(hasAnyStructurePermission([{ urn: 'urn:structures:all:view' }])).toBe(false)
 		expect(hasAnyStructurePermission([{ urn: 'urn:structures:all:manager' }])).toBe(true)
 		expect(hasAnyStructurePermission([{ urn: 'urn:structures:1001:sensitive' }])).toBe(true)
+		expect(hasAnyStructurePermission([{ urn: 'urn:structures:moon-drills:all:viewer' }])).toBe(true)
 		expect(hasAnyStructurePermission([{ urn: 'urn:structures:all:not-a-role' }])).toBe(false)
 		expect(hasAnyStructurePermission([{ urn: 'urn:structures:' }])).toBe(false)
 		expect(hasAnyStructurePermission([{ urn: 'urn:srp:reviewer' }])).toBe(false)
 		expect(hasAnyStructurePermission([])).toBe(false)
+	})
+
+	it('treats tab-scoped structure URNs as access only for that tab', () => {
+		expect(hasStructureTabPermission([{ urn: 'urn:structures:moon-drills:all:viewer' }], 'moon-drills')).toBe(true)
+		expect(hasStructureTabPermission([{ urn: 'urn:structures:moon-drills:all:viewer' }], 'citadels')).toBe(false)
+		expect(hasStructureTabPermission([{ urn: 'urn:structures:all:viewer' }], 'citadels')).toBe(true)
 	})
 
 	it('only treats manager structure URNs as manager access', () => {

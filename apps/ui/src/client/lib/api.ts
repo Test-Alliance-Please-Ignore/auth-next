@@ -3433,7 +3433,7 @@ export class ApiClient {
 		return this.get(`/structures/skyhooks${queryString ? `?${queryString}` : ''}`)
 	}
 
-	async getMiningStructures(query: StructureMiningListQuery = {}): Promise<StructureMiningListResponse> {
+	async getMoonDrillStructures(query: StructureMiningListQuery = {}): Promise<StructureMiningListResponse> {
 		const params = new URLSearchParams()
 		if (query.page) params.set('page', String(query.page))
 		if (query.pageSize) params.set('pageSize', String(query.pageSize))
@@ -3444,7 +3444,27 @@ export class ApiClient {
 		if (query.planetId) params.set('planetId', query.planetId)
 		if (query.typeId) params.set('typeId', query.typeId)
 		const queryString = params.toString()
-		return this.get(`/structures/mining${queryString ? `?${queryString}` : ''}`)
+		return this.get(`/structures/moon-drills${queryString ? `?${queryString}` : ''}`)
+	}
+
+	async getMiningCitadelStructures(
+		query: StructureMiningListQuery = {}
+	): Promise<StructureMiningListResponse> {
+		const params = new URLSearchParams()
+		if (query.page) params.set('page', String(query.page))
+		if (query.pageSize) params.set('pageSize', String(query.pageSize))
+		if (query.sortBy) params.set('sortBy', query.sortBy)
+		if (query.sortDirection) params.set('sortDirection', query.sortDirection)
+		if (query.corporationId) params.set('corporationId', query.corporationId)
+		if (query.systemId) params.set('systemId', query.systemId)
+		if (query.planetId) params.set('planetId', query.planetId)
+		if (query.typeId) params.set('typeId', query.typeId)
+		const queryString = params.toString()
+		return this.get(`/structures/mining-citadels${queryString ? `?${queryString}` : ''}`)
+	}
+
+	async getMiningStructures(query: StructureMiningListQuery = {}): Promise<StructureMiningListResponse> {
+		return this.getMoonDrillStructures(query)
 	}
 
 	async getStructureOverviewMetrics(): Promise<StructureOverviewMetrics> {
