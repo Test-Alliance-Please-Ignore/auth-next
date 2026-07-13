@@ -1,4 +1,5 @@
 import { describe, expect, it, vi } from 'vitest'
+const SOVEREIGNTY_HUB_TYPE_ID = '32458'
 
 const mocks = vi.hoisted(() => {
 	const fetchSovereigntyHubsMock = vi.fn()
@@ -48,7 +49,7 @@ describe('fetchSovereigntyEnrichment', () => {
 				system_id: '30000142',
 				system_name: null,
 				name: null,
-				type_id: '35835',
+				type_id: SOVEREIGNTY_HUB_TYPE_ID,
 				controller_alliance_id: null,
 				fuel_access_list_id: null,
 				reagent_bay: {

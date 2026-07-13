@@ -82,7 +82,7 @@ export class StructuresWorkerEntrypoint extends WorkerEntrypoint<Env> implements
 		actor: StructureActor,
 		query: StructureSovereigntyListQuery = {}
 	): Promise<unknown> {
-		return listSovereigntyStructures(this.getDb(), actor, query)
+		return listSovereigntyStructures(this.env, this.getDb(), actor, query)
 	}
 
 	async listSkyhookStructures(actor: StructureActor, query: StructureSkyhookListQuery = {}): Promise<unknown> {

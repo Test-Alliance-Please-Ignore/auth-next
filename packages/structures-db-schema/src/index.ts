@@ -82,7 +82,6 @@ export const structureStateEvents = pgTable(
 		newState: text('new_state').notNull(),
 		detectedAt: timestamp('detected_at', { withTimezone: true }).defaultNow().notNull(),
 		sourceSyncAt: timestamp('source_sync_at', { withTimezone: true }),
-		rawPayload: jsonb('raw_payload').$type<Record<string, unknown>>().notNull().default({}),
 	},
 	(table) => [
 		index('structure_state_events_structure_id_idx').on(table.structureId),
@@ -106,10 +105,7 @@ export const structureSovereigntySystems = pgTable(
 		corporationClaimantId: text('corporation_claimant_id'),
 		factionId: text('faction_id'),
 		claimedSince: timestamp('claimed_since', { withTimezone: true }),
-		sovereigntyHubStructureId: text('sovereignty_hub_structure_id').references(
-			() => corporationStructures.structureId,
-			{ onDelete: 'set null' }
-		),
+		sovereigntyHubStructureId: text('sovereignty_hub_structure_id'),
 		isCapitalSystem: boolean('is_capital_system'),
 		vulnerabilityWindowStart: timestamp('vulnerability_window_start', { withTimezone: true }),
 		vulnerabilityWindowEnd: timestamp('vulnerability_window_end', { withTimezone: true }),
@@ -122,12 +118,14 @@ export const structureSovereigntySystems = pgTable(
 		strategicLevel: integer('strategic_level'),
 		sourceSyncAt: timestamp('source_sync_at', { withTimezone: true }),
 		lastSyncedAt: timestamp('last_synced_at', { withTimezone: true }),
-		rawPayload: jsonb('raw_payload').$type<Record<string, unknown>>().notNull().default({}),
 		updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow().notNull(),
 	},
 	(table) => [
 		index('structure_sovereignty_systems_corporation_id_idx').on(table.corporationId),
 		index('structure_sovereignty_systems_alliance_id_idx').on(table.allianceId),
+		index('structure_sovereignty_systems_sovereignty_hub_structure_id_idx').on(
+			table.sovereigntyHubStructureId
+		),
 		index('structure_sovereignty_systems_last_synced_at_idx').on(table.lastSyncedAt),
 	]
 )
@@ -135,9 +133,7 @@ export const structureSovereigntySystems = pgTable(
 export const structureSovereigntyHubs = pgTable(
 	'structure_sovereignty_hubs',
 	{
-		structureId: text('structure_id')
-			.primaryKey()
-			.references(() => corporationStructures.structureId, { onDelete: 'cascade' }),
+		structureId: text('structure_id').primaryKey(),
 		corporationId: text('corporation_id')
 			.notNull()
 			.references(() => managedCorporations.corporationId, { onDelete: 'cascade' }),
@@ -190,7 +186,6 @@ export const structureSovereigntyHubs = pgTable(
 		workforceTransport: jsonb('workforce_transport').$type<Record<string, unknown>>().notNull().default({}),
 		sourceSyncAt: timestamp('source_sync_at', { withTimezone: true }),
 		lastSyncedAt: timestamp('last_synced_at', { withTimezone: true }),
-		rawPayload: jsonb('raw_payload').$type<Record<string, unknown>>().notNull().default({}),
 		updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow().notNull(),
 	},
 	(table) => [
@@ -239,7 +234,6 @@ export const structureSkyhookStates = pgTable(
 		lastObservedAt: timestamp('last_observed_at', { withTimezone: true }),
 		sourceSyncAt: timestamp('source_sync_at', { withTimezone: true }),
 		lastSyncedAt: timestamp('last_synced_at', { withTimezone: true }),
-		rawPayload: jsonb('raw_payload').$type<Record<string, unknown>>().notNull().default({}),
 		updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow().notNull(),
 	},
 	(table) => [
@@ -272,7 +266,6 @@ export const structureMiningStates = pgTable(
 		naturalDecayTime: timestamp('natural_decay_time', { withTimezone: true }),
 		sourceSyncAt: timestamp('source_sync_at', { withTimezone: true }),
 		lastSyncedAt: timestamp('last_synced_at', { withTimezone: true }),
-		rawPayload: jsonb('raw_payload').$type<Record<string, unknown>>().notNull().default({}),
 		updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow().notNull(),
 	},
 	(table) => [

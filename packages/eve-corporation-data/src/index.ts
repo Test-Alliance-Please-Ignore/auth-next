@@ -192,7 +192,6 @@ export interface EsiSovereigntySystem {
 	military_level?: number | null
 	industrial_level?: number | null
 	strategic_level?: number | null
-	raw?: Record<string, unknown>
 }
 
 /**
