@@ -216,6 +216,78 @@ describe('EveCorporationSyncWorkflow', () => {
 		expect(corpDataStub.getCorporationSyncConfig).toHaveBeenCalledWith('693378155')
 	})
 
+	it('passes the current corporation structure listing through to storage so stale rows can be pruned', async () => {
+		vi.clearAllMocks()
+		const { env, updateCorporationAuthHealth } = createWorkflowEnv()
+
+		verifyAllDirectorsHealthMock.mockResolvedValue({
+			verified: 1,
+			failed: 0,
+		})
+		selectDirectorMock.mockResolvedValue({
+			directorId: 'director-1',
+			characterId: '900000001',
+			characterName: 'Director One',
+		})
+		reconcileDirectorsFromCorporationRolesMock.mockResolvedValue(undefined)
+		fetchStructuresMock.mockResolvedValue([
+			{
+				structure_id: 'structure-1',
+				type_id: '35832',
+			},
+		])
+		storeStructuresMock.mockResolvedValue(undefined)
+		syncAssetsMock.mockResolvedValue({ assetsCount: 1 })
+		updateSyncTimestampsMock.mockResolvedValue(undefined)
+		updateCoreLastSyncMock.mockResolvedValue(undefined)
+		recordDirectorSuccessMock.mockResolvedValue(undefined)
+		replayTaxProjectionRetryIntentMock.mockResolvedValue({
+			replayed: false,
+			succeeded: false,
+			retryCount: 0,
+			reason: 'none',
+		})
+		clearTaxProjectionRetryIntentMock.mockResolvedValue(undefined)
+		recordTaxProjectionRetryIntentMock.mockResolvedValue(undefined)
+		sendHrDepartedMessagesMock.mockResolvedValue(undefined)
+		triggerTaxProjectionRefreshMock.mockResolvedValue({
+			triggered: false,
+			reason: 'not-needed',
+		})
+
+		const workflow = new EveCorporationSyncWorkflow({} as ExecutionContext, env)
+		const { step } = createStep()
+
+		await expect(
+			workflow.run(
+				{
+					payload: {
+						corporationId: '693378155',
+						dataTypes: ['structures', 'assets'],
+						trigger: 'cron',
+					},
+					instanceId: 'wf-1b',
+					timestamp: new Date('2026-07-12T19:36:47.369Z'),
+				} as never,
+				step
+			)
+		).resolves.toMatchObject({
+			success: true,
+			corporationId: '693378155',
+			trigger: 'cron',
+		})
+
+		expect(storeStructuresMock).toHaveBeenCalledTimes(1)
+		expect(storeStructuresMock).toHaveBeenCalledWith(env, '693378155', [
+			{
+				structure_id: 'structure-1',
+				type_id: '35832',
+			},
+		])
+		expect(syncAssetsMock).toHaveBeenCalledWith(env, '693378155', '900000001', ['structure-1'])
+		expect(updateCorporationAuthHealth).toHaveBeenCalled()
+	})
+
 	it('skips mining enrichment for moon-drills and still continues to asset sync', async () => {
 		vi.clearAllMocks()
 		const { env, updateCorporationAuthHealth } = createWorkflowEnv()

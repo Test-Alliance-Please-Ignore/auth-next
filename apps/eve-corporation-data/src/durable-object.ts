@@ -2085,6 +2085,12 @@ export class EveCorporationDataDO extends DurableObject<Env> implements EveCorpo
 			await this.getDb()
 				.delete(corporationStructures)
 				.where(eq(corporationStructures.corporationId, corporationId))
+			await this.getDb()
+				.delete(structureSkyhookStates)
+				.where(eq(structureSkyhookStates.corporationId, corporationId))
+			await this.getDb()
+				.delete(structureMiningStates)
+				.where(eq(structureMiningStates.corporationId, corporationId))
 			return
 		}
 		const BATCH_SIZE = 10
@@ -2131,6 +2137,22 @@ export class EveCorporationDataDO extends DurableObject<Env> implements EveCorpo
 				and(
 					eq(corporationStructures.corporationId, corporationId),
 					notInArray(corporationStructures.structureId, structureIds)
+				)
+			)
+		await this.getDb()
+			.delete(structureSkyhookStates)
+			.where(
+				and(
+					eq(structureSkyhookStates.corporationId, corporationId),
+					notInArray(structureSkyhookStates.structureId, structureIds)
+				)
+			)
+		await this.getDb()
+			.delete(structureMiningStates)
+			.where(
+				and(
+					eq(structureMiningStates.corporationId, corporationId),
+					notInArray(structureMiningStates.structureId, structureIds)
 				)
 			)
 	}
