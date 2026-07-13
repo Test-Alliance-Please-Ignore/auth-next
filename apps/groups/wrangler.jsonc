@@ -9,7 +9,11 @@
 	"logpush": false,
 	"observability": {
 		"enabled": true,
-		"head_sampling_rate": 1
+		"head_sampling_rate": 1,
+		"logs": {
+			"enabled": true,
+			"invocation_logs": false
+		}
 	},
 	"vars": {
 		"SENTRY_DSN": "https://88d010dc5ed04607aaf6452c456c7a00@app.glitchtip.com/13712"

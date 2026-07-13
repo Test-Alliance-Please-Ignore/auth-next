@@ -14,7 +14,11 @@
 	],
 	"logpush": false,
 	"observability": {
-		"enabled": true
+		"enabled": true,
+		"logs": {
+			"enabled": true,
+			"invocation_logs": false
+		}
 	},
 	"vars": {
 		"NAME": "third-party-apps",

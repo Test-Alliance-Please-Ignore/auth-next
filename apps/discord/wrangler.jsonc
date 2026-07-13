@@ -15,7 +15,11 @@
 	],
 	"observability": {
 		"enabled": true,
-		"head_sampling_rate": 1
+		"head_sampling_rate": 1,
+		"logs": {
+			"enabled": true,
+			"invocation_logs": false
+		}
 	},
 	// The Discord gateway websocket listener is intentionally disabled. It caused
 	// sustained Cloudflare cost inflation and is kept only as a dormant stub for

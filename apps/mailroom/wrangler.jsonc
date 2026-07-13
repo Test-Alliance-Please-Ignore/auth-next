@@ -11,7 +11,11 @@
 	"routes": [],
 	"logpush": false,
 	"observability": {
-		"enabled": true
+		"enabled": true,
+		"logs": {
+			"enabled": true,
+			"invocation_logs": false
+		}
 	},
 	// Cross-worker bindings to shared Durable Objects (both workers must be deployed in the same
 	// account). DISCORD (apps/discord) powers the markeedragon@ → Discord post; PREDICTION_MARKETS
