@@ -2,15 +2,19 @@ import { Hono } from 'hono'
 import { z } from 'zod'
 
 import { getStub } from '@repo/do-utils'
-import { parseFittingSlotFlag } from '@repo/eve-fitting/flags'
 import { hasAllStructureManagerPermission } from '@repo/groups'
-import { getInventoryBayLabel } from '@repo/inventory-display'
 
 import { getCachedUserPermissions } from '../lib/groups-cache'
+import {
+	buildStructureAssetsDebugExportKey,
+	buildStructureAssetsDebugFileName,
+	getStructureAssetsDebugBucket,
+	readStructureAssetsDebugArtifact,
+} from '../lib/structure-assets-debug'
+import { normalizeWorkflowStatus } from '../lib/workflow-status'
 import { EntityResolverService } from '../services/entity-resolver.service'
 
 import type { Context } from 'hono'
-import type { EveCorporationData } from '@repo/eve-corporation-data'
 import type { EveTokenStore } from '@repo/eve-token-store'
 import type {
 	StructureCitadelListQuery,
@@ -171,30 +175,6 @@ interface StructureDetailResponse {
 	[key: string]: unknown
 }
 
-interface StructureAssetsDebugItemView {
-	itemId: string
-	typeId: string
-	typeName: string | null
-	quantity: number
-	isSingleton: boolean
-	locationId: string
-	locationType: string
-	locationFlag: string
-	locationFlagLabel: string
-	updatedAt: string
-}
-
-interface StructureAssetsDebugResponse {
-	corporationId: string
-	corporationName: string
-	structureId: string
-	structureName: string
-	fetchedAt: string
-	fetchedAssetCount: number
-	itemCount: number
-	items: StructureAssetsDebugItemView[]
-}
-
 async function getStructureActor(c: Context<App>) {
 	const user = c.get('user')
 	if (!user) {
@@ -228,13 +208,12 @@ function getUniverseStub(env: App['Bindings']): Universe {
 	return getStub<Universe>(env.UNIVERSE, 'default')
 }
 
-function getStructureAssetLocationLabel(locationFlag: string): string {
-	const fittingSlot = parseFittingSlotFlag(locationFlag)
-	if (fittingSlot) {
-		return `${fittingSlot.flagName} ${fittingSlot.slotIndex}`
+function getExecutionContextOrNull(c: { executionCtx?: ExecutionContext }): ExecutionContext | null {
+	try {
+		return c.executionCtx ?? null
+	} catch {
+		return null
 	}
-
-	return getInventoryBayLabel(locationFlag)
 }
 
 async function enrichStructureDetailTypeNames(
@@ -415,37 +394,6 @@ async function enrichSovereigntyStructureListResponse(
 	}
 }
 
-async function enrichStructureAssetsDebugTypeNames(
-	env: App['Bindings'],
-	items: StructureAssetsDebugItemView[]
-): Promise<StructureAssetsDebugItemView[]> {
-	if (items.length === 0) {
-		return items
-	}
-
-	const typeIds = Array.from(new Set(items.map((item) => item.typeId)))
-	if (typeIds.length === 0) {
-		return items
-	}
-
-	const universe = getUniverseStub(env)
-	const typeNameMap: Record<string, string> = {}
-	const batchSize = 1000
-
-	for (let index = 0; index < typeIds.length; index += batchSize) {
-		const batch = typeIds.slice(index, index + batchSize)
-		const resolved = await universe.resolveTypeNamesByIds(batch)
-		for (const [typeId, typeData] of Object.entries(resolved)) {
-			typeNameMap[typeId] = typeData?.typeName ?? typeId
-		}
-	}
-
-	return items.map((item) => ({
-		...item,
-		typeName: typeNameMap[item.typeId] ?? item.typeId,
-	}))
-}
-
 app.get('/', async (c) => {
 	return handleCitadelStructuresRequest(c)
 })
@@ -504,61 +452,95 @@ app.post('/:structureId/assets-debug', async (c) => {
 			return c.json({ error: 'Structure not found' }, 404)
 		}
 
-		const corpData = getStub<EveCorporationData>(
-			c.env.EVE_CORPORATION_DATA,
-			structure.corporationId
-		)
-		const { assetsCount } = await corpData.fetchAssets(structure.corporationId, true)
-		const rawItems = await corpData.searchAssets(structure.corporationId, {
-			locationId: structure.structureId,
-			locationType: 'item',
-			limit: 10000,
+		const workflow = await c.env.EXPORT_WORKFLOW.create({
+			params: {
+				kind: 'structure-assets-debug',
+				userId: user.id,
+				corporationId: structure.corporationId,
+				corporationName: structure.corporationName ?? structure.corporationId,
+				structureId: structure.structureId,
+				structureName: structure.name ?? structure.structureId,
+			},
 		})
 
-		const items = await enrichStructureAssetsDebugTypeNames(
-			c.env,
-			rawItems
-				.map((item) => ({
-					itemId: item.itemId,
-					typeId: item.typeId,
-					typeName: null,
-					quantity: item.quantity,
-					isSingleton: item.isSingleton,
-					locationId: item.locationId,
-					locationType: item.locationType,
-					locationFlag: item.locationFlag,
-					locationFlagLabel: getStructureAssetLocationLabel(item.locationFlag),
-					updatedAt: item.updatedAt.toISOString(),
-				}))
-				.sort(
-					(left, right) =>
-						left.locationFlagLabel.localeCompare(right.locationFlagLabel) ||
-						left.typeId.localeCompare(right.typeId) ||
-						left.itemId.localeCompare(right.itemId)
-				)
+		return c.json(
+			{
+				workflowInstanceId: workflow.id,
+				exportId: workflow.id,
+				fileName: buildStructureAssetsDebugFileName(workflow.id),
+				status: 'queued',
+			},
+			202
 		)
-
-		const response: StructureAssetsDebugResponse = {
-			corporationId: structure.corporationId,
-			corporationName: structure.corporationName ?? structure.corporationId,
-			structureId: structure.structureId,
-			structureName: structure.name ?? structure.structureId,
-			fetchedAt: new Date().toISOString(),
-			fetchedAssetCount: assetsCount,
-			itemCount: items.length,
-			items,
-		}
-
-		return c.json(response)
 	} catch (error) {
 		return c.json(
 			{
 				error:
-					error instanceof Error ? error.message : 'Failed to fetch structure assets debug data',
+					error instanceof Error ? error.message : 'Failed to queue structure assets debug export',
 			},
 			500
 		)
 	}
+})
+
+app.get('/:structureId/assets-debug/:workflowInstanceId', async (c) => {
+	const user = c.get('user')
+	if (!user) {
+		return c.json({ error: 'Unauthorized' }, 401)
+	}
+	if (!user.is_admin) {
+		return c.json({ error: 'Requires site administrator permission' }, 403)
+	}
+
+	const workflowInstanceId = c.req.param('workflowInstanceId')
+	if (!workflowInstanceId) {
+		return c.json({ error: 'workflowInstanceId is required' }, 400)
+	}
+
+	const workflow = await c.env.EXPORT_WORKFLOW.get(workflowInstanceId)
+	const status = await workflow.status()
+	const outputStatus =
+		status.output && typeof status.output === 'object' && 'status' in status.output
+			? String((status.output as { status?: string }).status ?? '')
+			: undefined
+	return c.json({
+		workflowInstanceId,
+		status: normalizeWorkflowStatus(status.status, outputStatus),
+		rawStatus: status.status,
+		output: status.output ?? null,
+	})
+})
+
+app.get('/:structureId/assets-debug/:workflowInstanceId/download', async (c) => {
+	const user = c.get('user')
+	if (!user) {
+		return c.json({ error: 'Unauthorized' }, 401)
+	}
+	if (!user.is_admin) {
+		return c.json({ error: 'Requires site administrator permission' }, 403)
+	}
+
+	const workflowInstanceId = c.req.param('workflowInstanceId')
+	if (!workflowInstanceId) {
+		return c.json({ error: 'workflowInstanceId is required' }, 400)
+	}
+
+	const bucket = getStructureAssetsDebugBucket(c.env)
+	const exportKey = buildStructureAssetsDebugExportKey(workflowInstanceId)
+	const artifact = await readStructureAssetsDebugArtifact(bucket, exportKey)
+	if (!artifact) {
+		return c.json({ error: 'Export not found' }, 404)
+	}
+
+	const executionCtx = getExecutionContextOrNull(c)
+	const cleanup = bucket.delete(exportKey).catch(() => {})
+	if (executionCtx) {
+		executionCtx.waitUntil(cleanup)
+	} else {
+		void cleanup
+	}
+
+	return c.json(artifact)
 })
 
 async function handleCitadelStructuresRequest(c: Context<App>): Promise<Response> {

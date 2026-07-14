@@ -1,6 +1,6 @@
 import { DurableObject } from 'cloudflare:workers'
 
-import { and, desc, eq, gt, gte, inArray, lte, notInArray, sql } from '@repo/db-utils'
+import { and, asc, desc, eq, gt, gte, inArray, lte, notInArray, sql } from '@repo/db-utils'
 import { getStub } from '@repo/do-utils'
 import { logger } from '@repo/hono-helpers'
 import { parseDateOrNull } from '@repo/worker-utils'
@@ -35,8 +35,8 @@ import { DirectorManager } from './services/director-manager'
 import * as esiFetch from './services/esi-fetch'
 import { preserveStructureHydrationFields } from './services/structure-hydration'
 import {
-	filterStructureInventoryAssets,
 	summarizeFuelBlockUnitsByStructure,
+	projectStructureInventoryFromStoredAssets,
 } from './services/structure-inventory'
 
 import type { SQL } from 'drizzle-orm'
@@ -1860,6 +1860,53 @@ export class EveCorporationDataDO extends DurableObject<Env> implements EveCorpo
 		})
 
 		return new Set(rows.map((row) => row.structureId))
+	}
+
+	private async rebuildStructureInventoryFromStoredAssets(
+		corporationId: string,
+		ownedStructureIds: ReadonlySet<string>
+	): Promise<StructureInventoryRowInput[]> {
+		const structureIds = [...ownedStructureIds]
+		if (structureIds.length === 0) {
+			return []
+		}
+
+		const projectedRows: StructureInventoryRowInput[] = []
+		const BATCH_SIZE = 100
+		for (let i = 0; i < structureIds.length; i += BATCH_SIZE) {
+			const batch = structureIds.slice(i, i + BATCH_SIZE)
+			const rawAssets = await this.getDb().query.corporationAssets.findMany({
+				where: and(
+					eq(corporationAssets.corporationId, corporationId),
+					inArray(corporationAssets.locationId, batch),
+					eq(corporationAssets.locationType, 'item')
+				),
+				orderBy: [
+					asc(corporationAssets.locationId),
+					asc(corporationAssets.locationFlag),
+					asc(corporationAssets.typeId),
+					asc(corporationAssets.itemId),
+				],
+			})
+
+			projectedRows.push(
+				...projectStructureInventoryFromStoredAssets(
+					corporationId,
+					ownedStructureIds,
+					rawAssets.map((asset) => ({
+						itemId: asset.itemId,
+						isSingleton: asset.isSingleton,
+						locationFlag: asset.locationFlag,
+						locationId: asset.locationId,
+						locationType: asset.locationType,
+						quantity: asset.quantity,
+						typeId: asset.typeId,
+					}))
+				)
+			)
+		}
+
+		return projectedRows
 	}
 
 	async storeStructureInventory(
@@ -3892,42 +3939,25 @@ export class EveCorporationDataDO extends DurableObject<Env> implements EveCorpo
 
 		const tokenStore = getStub<EveTokenStore>(this.env.EVE_TOKEN_STORE, 'default')
 		const basePath = `/corporations/${corporationId}/assets`
-		const inventoryRows: StructureInventoryRowInput[] = []
 		try {
 			logger.info(
-				'[EveCorporationData] fetchAndStoreStructureInventoryByCharacter: Fetching structure inventory',
+				'[EveCorporationData] fetchAndStoreStructureInventoryByCharacter: Refreshing raw assets and rebuilding structure inventory',
 				{
 					corporationId,
 					ownedStructureCount: ownedStructureIds.size,
 				}
 			)
-			const result = await syncAssetsPaged({
-				fetchPage: (page) =>
-					tokenStore.fetchEsi(`${basePath}?page=${page}`, characterId, {
-						cacheMode: 'no-store',
-					}) as Promise<EsiResponse<RawEsiAsset[]>>,
-				storeAssets: async (assets) => {
-					inventoryRows.push(
-						...filterStructureInventoryAssets(corporationId, ownedStructureIds, assets)
-					)
-				},
-				onProgress: ({ page, totalPages, totalAssets }) => {
-					if (page % 10 === 0 || page === totalPages) {
-						logger.debug('[fetchAndStoreStructureInventory] Page progress', {
-							corporationId,
-							page,
-							totalPages,
-							totalAssets,
-						})
-					}
-				},
-			})
+			const result = await this.fetchAndStoreAssetsByCharacter(corporationId, characterId)
+			const inventoryRows = await this.rebuildStructureInventoryFromStoredAssets(
+				corporationId,
+				ownedStructureIds
+			)
 
 			await this.storeStructureInventory(corporationId, inventoryRows)
 			await this.updateCorporationSyncTimestamp(corporationId, 'assetsLastSync')
 			logger.info('[EveCorporationData] Stored structure inventory snapshot', {
 				corporationId,
-				fetchedAssetCount: result.assetsCount,
+				fetchedAssetCount: result,
 				storedInventoryCount: inventoryRows.length,
 			})
 
@@ -4346,12 +4376,8 @@ export class EveCorporationDataDO extends DurableObject<Env> implements EveCorpo
 	 */
 	async fetchAssetsData(corporationId: string, forceRefresh = false): Promise<void> {
 		this.assertNonNpcCorporation(corporationId)
-		await this.fetchAndStoreStructures(corporationId, forceRefresh).catch((e) =>
-			logger.error('Structures fetch failed:', e instanceof Error ? e.message : String(e))
-		)
-		await this.fetchAndStoreStructureInventory(corporationId, forceRefresh).catch((e) =>
-			logger.error('Structure inventory fetch failed:', e instanceof Error ? e.message : String(e))
-		)
+		await this.fetchAndStoreStructures(corporationId, forceRefresh)
+		await this.fetchAndStoreStructureInventory(corporationId, forceRefresh)
 	}
 
 	/**
@@ -5225,6 +5251,7 @@ export class EveCorporationDataDO extends DurableObject<Env> implements EveCorpo
 		}
 		const results = await this.getDb().query.corporationAssets.findMany({
 			where: and(...where),
+			orderBy: [desc(corporationAssets.updatedAt), asc(corporationAssets.itemId)],
 			limit: filters?.limit,
 		})
 		return results
@@ -5265,7 +5292,7 @@ export class EveCorporationDataDO extends DurableObject<Env> implements EveCorpo
 	async getStructureInventory(
 		corporationId: string,
 		structureId?: string,
-		limit = 10000
+		limit?: number
 	): Promise<CorporationStructureInventoryData[]> {
 		const where = structureId
 			? and(
@@ -5276,6 +5303,12 @@ export class EveCorporationDataDO extends DurableObject<Env> implements EveCorpo
 
 		const results = await this.getDb().query.corporationStructureInventory.findMany({
 			where,
+			orderBy: [
+				asc(corporationStructureInventory.structureId),
+				asc(corporationStructureInventory.locationFlag),
+				asc(corporationStructureInventory.typeId),
+				asc(corporationStructureInventory.itemId),
+			],
 			limit,
 		})
 

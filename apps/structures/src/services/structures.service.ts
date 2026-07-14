@@ -1179,7 +1179,6 @@ async function loadStructureFittingDetailData(
 		const rawAssets = await corpData.searchAssets(structure.corporationId, {
 			locationId: structure.structureId,
 			locationType: 'item',
-			limit: 10000,
 		})
 
 		return rawAssets

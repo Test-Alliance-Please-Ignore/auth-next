@@ -3,6 +3,7 @@ import { describe, expect, it } from 'vitest'
 import {
 	filterStructureInventoryAssets,
 	isStructureInventoryLocationFlag,
+	projectStructureInventoryFromStoredAssets,
 } from '../../../services/structure-inventory'
 
 describe('structure inventory filtering', () => {
@@ -106,6 +107,55 @@ describe('structure inventory filtering', () => {
 				locationType: 'item',
 				quantity: 99,
 				typeId: '12345',
+			},
+		])
+	})
+
+	it('projects stored raw assets into structure inventory rows', () => {
+		const inventory = projectStructureInventoryFromStoredAssets(
+			'98000001',
+			new Set(['1001']),
+			[
+				{
+					itemId: '100',
+					isSingleton: false,
+					locationFlag: 'Cargo',
+					locationId: '1001',
+					locationType: 'item',
+					quantity: 12,
+					typeId: '37843',
+				},
+				{
+					itemId: '101',
+					isSingleton: false,
+					locationFlag: 'ServiceSlot0',
+					locationId: '1001',
+					locationType: 'item',
+					quantity: 1,
+					typeId: '35894',
+				},
+				{
+					itemId: '102',
+					isSingleton: false,
+					locationFlag: 'Cargo',
+					locationId: '9999',
+					locationType: 'item',
+					quantity: 1,
+					typeId: '37844',
+				},
+			]
+		)
+
+		expect(inventory).toEqual([
+			{
+				corporationId: '98000001',
+				structureId: '1001',
+				itemId: '100',
+				isSingleton: false,
+				locationFlag: 'Cargo',
+				locationType: 'item',
+				quantity: 12,
+				typeId: '37843',
 			},
 		])
 	})

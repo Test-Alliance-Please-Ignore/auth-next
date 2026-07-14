@@ -3,6 +3,15 @@ import { WorkflowEntrypoint } from 'cloudflare:workers'
 import { getStub } from '@repo/do-utils'
 
 import { getExportArtifactExpiresAtIso } from '../lib/export-retention'
+import {
+	buildStructureAssetsDebugExportKey,
+	buildStructureAssetsDebugFileName,
+	enrichStructureAssetsDebugTypeNames,
+	getStructureAssetsDebugBucket,
+	getStructureAssetLocationLabel,
+	type StructureAssetsDebugWorkflowParams,
+	writeStructureAssetsDebugArtifact,
+} from '../lib/structure-assets-debug'
 
 import {
 	buildVerifiedMoonsExportFileName,
@@ -24,6 +33,7 @@ import {
 } from '../routes/srp'
 
 import type { WorkflowEvent, WorkflowStep } from 'cloudflare:workers'
+import type { EveCorporationData } from '@repo/eve-corporation-data'
 import type { MoonScanDO } from '@repo/moon-scan'
 import type { Universe } from '@repo/universe'
 import type { Env } from '../context'
@@ -53,6 +63,7 @@ export type CsvExportWorkflowParams =
 			dateFrom: string
 			dateTo: string
 	  }
+	| StructureAssetsDebugWorkflowParams
 
 export type CsvExportWorkflowKind = CsvExportWorkflowParams['kind']
 
@@ -78,6 +89,72 @@ function chunkArray<T>(items: readonly T[], size: number): T[][] {
 		chunks.push(items.slice(index, index + size) as T[])
 	}
 	return chunks
+}
+
+async function runStructureAssetsDebugExport(
+	env: Env,
+	workflowInstanceId: string,
+	params: StructureAssetsDebugWorkflowParams
+): Promise<{ fileName: string; expiresAt: string; rowCount: number }> {
+	const corpData = getStub<EveCorporationData>(env.EVE_CORPORATION_DATA, params.corporationId)
+	const expiresAt = getExportArtifactExpiresAtIso()
+	const exportKey = buildStructureAssetsDebugExportKey(workflowInstanceId)
+	const fileName = buildStructureAssetsDebugFileName(workflowInstanceId)
+	const bucket = getStructureAssetsDebugBucket(env)
+
+	const { assetsCount: fetchedAssetCount } = await corpData.fetchAssets(
+		params.corporationId,
+		true
+	)
+	const rawItems = await corpData.searchAssets(params.corporationId, {
+		locationId: params.structureId,
+		locationType: 'item',
+	})
+	const items = await enrichStructureAssetsDebugTypeNames(
+		env,
+		rawItems
+			.map((item) => ({
+				itemId: item.itemId,
+				typeId: item.typeId,
+				typeName: null,
+				quantity: item.quantity,
+				isSingleton: item.isSingleton,
+				locationId: item.locationId,
+				locationType: item.locationType,
+				locationFlag: item.locationFlag,
+				locationFlagLabel: getStructureAssetLocationLabel(item.locationFlag),
+				updatedAt: item.updatedAt.toISOString(),
+			}))
+			.sort(
+				(left, right) =>
+					left.locationFlagLabel.localeCompare(right.locationFlagLabel) ||
+					left.typeId.localeCompare(right.typeId) ||
+					left.itemId.localeCompare(right.itemId)
+			)
+	)
+
+	await writeStructureAssetsDebugArtifact({
+		bucket,
+		exportKey,
+		fileName,
+		expiresAt,
+		result: {
+			corporationId: params.corporationId,
+			corporationName: params.corporationName,
+			structureId: params.structureId,
+			structureName: params.structureName,
+			fetchedAt: new Date().toISOString(),
+			fetchedAssetCount,
+			itemCount: items.length,
+			items,
+		},
+	})
+
+	return {
+		fileName,
+		expiresAt,
+		rowCount: items.length,
+	}
 }
 
 async function runMoonScanExport(
@@ -231,6 +308,8 @@ export class CsvExportWorkflow extends WorkflowEntrypoint<Env, CsvExportWorkflow
 							return await runSrpPaidRequestsExport(this.env, workflowInstanceId, payload)
 						case 'srp-wallet-history':
 							return await runSrpWalletHistoryExport(this.env, workflowInstanceId, payload)
+						case 'structure-assets-debug':
+							return await runStructureAssetsDebugExport(this.env, workflowInstanceId, payload)
 					}
 				}
 			)
