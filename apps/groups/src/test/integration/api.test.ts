@@ -161,6 +161,52 @@ describe('Groups Durable Object - Groups', () => {
 		expect(group.mumbleTicker).toBeNull()
 	})
 
+	it('should allow a site admin to create an admin-managed group', async () => {
+		const stub = getStub<Groups>(testEnv.GROUPS, 'test-group-create-admin-managed')
+
+		const category = await stub.createCategory(
+			{
+				name: 'Locked Group Category',
+				visibility: 'public',
+			},
+			ADMIN_USER_ID
+		)
+
+		const group = await stub.createGroup(
+			{
+				categoryId: category.id,
+				name: 'Admin Managed Group',
+				joinMode: 'admin_managed',
+			},
+			ADMIN_USER_ID
+		)
+
+		expect(group.joinMode).toBe('admin_managed')
+	})
+
+	it('should reject non-admin attempts to create an admin-managed group', async () => {
+		const stub = getStub<Groups>(testEnv.GROUPS, 'test-group-create-admin-managed-denied')
+
+		const category = await stub.createCategory(
+			{
+				name: 'Locked Denied Category',
+				visibility: 'public',
+			},
+			ADMIN_USER_ID
+		)
+
+		await expect(
+			stub.createGroup(
+				{
+					categoryId: category.id,
+					name: 'Should Not Admin Manage',
+					joinMode: 'admin_managed',
+				},
+				USER_1_ID
+			)
+		).rejects.toThrow('Only site admins can configure admin-managed groups')
+	})
+
 	it('should allow a site admin to create a group with mumble settings', async () => {
 		const stub = getStub<Groups>(testEnv.GROUPS, 'test-group-create-admin-mumble')
 
@@ -386,6 +432,121 @@ describe('Groups Durable Object - Groups', () => {
 
 		expect(updated.mumbleSyncEnabled).toBe(true)
 		expect(updated.mumbleTicker).toBe('FC123')
+	})
+
+	it('should allow a site admin to toggle admin-managed groups', async () => {
+		const stub = getStub<Groups>(testEnv.GROUPS, 'test-group-update-admin-managed-admin')
+
+		const category = await stub.createCategory(
+			{
+				name: 'Update Locked Category',
+				visibility: 'public',
+			},
+			ADMIN_USER_ID
+		)
+
+		const group = await stub.createGroup(
+			{
+				categoryId: category.id,
+				name: 'Admin Managed Toggle Group',
+			},
+			USER_1_ID
+		)
+
+		const updated = await stub.updateGroup(
+			group.id,
+			{
+				joinMode: 'admin_managed',
+			},
+			ADMIN_USER_ID
+		)
+
+		expect(updated.joinMode).toBe('admin_managed')
+	})
+
+	it('should reject non-admin attempts to toggle admin-managed groups', async () => {
+		const stub = getStub<Groups>(testEnv.GROUPS, 'test-group-update-admin-managed-denied')
+
+		const category = await stub.createCategory(
+			{
+				name: 'Update Locked Denied Category',
+				visibility: 'public',
+			},
+			ADMIN_USER_ID
+		)
+
+		const group = await stub.createGroup(
+			{
+				categoryId: category.id,
+				name: 'Admin Managed Toggle Denied Group',
+			},
+			USER_1_ID
+		)
+
+		await expect(
+			stub.updateGroup(
+				group.id,
+				{
+					joinMode: 'admin_managed',
+				},
+				USER_1_ID
+			)
+		).rejects.toThrow('Only site admins can configure admin-managed groups')
+	})
+
+	it('should allow a site admin to force-add a member to an admin-managed group and block self-leave', async () => {
+		const stub = getStub<Groups>(testEnv.GROUPS, 'test-group-force-add-admin-managed')
+
+		const category = await stub.createCategory(
+			{
+				name: 'Force Add Locked Category',
+				visibility: 'public',
+			},
+			ADMIN_USER_ID
+		)
+
+		const group = await stub.createGroup(
+			{
+				categoryId: category.id,
+				name: 'Force Add Admin Managed Group',
+				joinMode: 'admin_managed',
+			},
+			ADMIN_USER_ID
+		)
+
+		await stub.addMember(group.id, ADMIN_USER_ID, USER_2_ID)
+
+		const members = await stub.getGroupMembers(group.id, ADMIN_USER_ID)
+		expect(members.some((member) => member.userId === USER_2_ID)).toBe(true)
+
+		await expect(stub.leaveGroup(group.id, USER_2_ID)).rejects.toThrow(
+			'This group is admin managed. Members can only be removed by a site admin.'
+		)
+	})
+
+	it('should block direct self-join for admin-managed groups', async () => {
+		const stub = getStub<Groups>(testEnv.GROUPS, 'test-group-admin-managed-join-blocked')
+
+		const category = await stub.createCategory(
+			{
+				name: 'Admin Managed Join Blocked Category',
+				visibility: 'public',
+			},
+			ADMIN_USER_ID
+		)
+
+		const group = await stub.createGroup(
+			{
+				categoryId: category.id,
+				name: 'Admin Managed Join Blocked Group',
+				joinMode: 'admin_managed',
+			},
+			ADMIN_USER_ID
+		)
+
+		await expect(stub.joinGroup(group.id, USER_2_ID)).rejects.toThrow(
+			'This group is admin managed. Members must be added by a site admin.'
+		)
 	})
 
 	it('should reject an invalid mumble ticker when updating a group', async () => {
@@ -637,6 +798,37 @@ describe('Groups Durable Object - Invite Codes', () => {
 		expect(result.code).toBeDefined()
 		expect(result.code.code).toBeTruthy()
 		expect(result.code.maxUses).toBe(10)
+	})
+
+	it('should reject invite code creation for admin-managed groups', async () => {
+		const stub = getStub<Groups>(testEnv.GROUPS, 'test-invite-code-admin-managed-reject')
+
+		const category = await stub.createCategory(
+			{
+				name: 'Admin Managed Invite Code Category',
+				visibility: 'public',
+			},
+			ADMIN_USER_ID
+		)
+
+		const group = await stub.createGroup(
+			{
+				categoryId: category.id,
+				name: 'Admin Managed Invite Code Group',
+				joinMode: 'admin_managed',
+			},
+			ADMIN_USER_ID
+		)
+
+		await expect(
+			stub.createInviteCode(
+				{
+					groupId: group.id,
+					expiresInDays: 7,
+				},
+				ADMIN_USER_ID
+			)
+		).rejects.toThrow('Invite codes are disabled')
 	})
 
 	it('should list invite codes', async () => {

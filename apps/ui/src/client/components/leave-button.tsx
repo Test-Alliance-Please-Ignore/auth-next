@@ -52,6 +52,14 @@ export function LeaveButton({ group, onSuccess }: LeaveButtonProps) {
 		)
 	}
 
+	if (group.joinMode === 'admin_managed') {
+		return (
+			<Button disabled variant="ghost">
+				Managed by Admins
+			</Button>
+		)
+	}
+
 	return (
 		<>
 			<Button variant="destructive" onClick={() => setConfirmOpen(true)}>

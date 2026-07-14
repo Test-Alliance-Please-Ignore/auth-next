@@ -2,10 +2,11 @@ import { Hono } from 'hono'
 import { z } from 'zod'
 
 import { ROLE_CORE_ALLIANCE_MEMBER } from '@repo/core'
-import { and } from '@repo/db-utils'
+import { and, eq } from '@repo/db-utils'
 import { getStub } from '@repo/do-utils'
 
 import { createDb } from '../db'
+import { userCharacters } from '../db/schema.js'
 import { waitUntilWithTelemetry } from '../lib/background-task'
 import {
 	dispatchGroupApplicationSubmittedAlert,
@@ -1596,6 +1597,92 @@ groups.delete(
 				if (error.message.includes('not found')) {
 					return c.json({ error: 'Group or admin not found' }, 404)
 				}
+				return c.json({ error: error.message }, 400)
+			}
+			throw error
+		}
+	}
+)
+
+/**
+ * POST /:groupId/members
+ *
+ * Force-add a member to an admin-managed group (site admin only)
+ */
+groups.post(
+	'/:groupId/members',
+	requireAuth({ any: [ROLE_CORE_ALLIANCE_MEMBER] }),
+	requireAdmin(),
+	async (c) => {
+		const user = c.get('user')!
+		const groupId = c.req.param('groupId')
+		const body = await c.req.json()
+		const groupsDO = getStub<Groups>(c.env.GROUPS, 'default')
+
+		if (!body.characterName) {
+			return c.json({ error: 'characterName is required' }, 400)
+		}
+
+		try {
+			const group = await groupsDO.getGroup(groupId, user.id)
+			if (!group) {
+				return c.json({ error: 'Group not found' }, 404)
+			}
+
+			if (group.joinMode !== 'admin_managed') {
+				return c.json({ error: 'Direct member adds are reserved for admin-managed groups' }, 400)
+			}
+
+			const db = createDb(c.env.DATABASE_URL)
+			const targetUser = await db.query.userCharacters.findFirst({
+				where: and(eq(userCharacters.is_primary, true), eq(userCharacters.characterName, body.characterName)),
+				columns: {
+					userId: true,
+				},
+			})
+
+			if (!targetUser) {
+				return c.json({ error: `Character '${body.characterName}' not found` }, 404)
+			}
+
+			await groupsDO.addMember(groupId, user.id, targetUser.userId)
+			clearUserCache(targetUser.userId)
+
+			waitUntilWithTelemetry(
+				c.executionCtx,
+				'groups.discord-refresh.force-add-member',
+				() =>
+					triggerDiscordRefreshWorkflow({
+						env: c.env,
+						userId: targetUser.userId,
+						source: 'group-forced-added',
+					}),
+				{
+					userId: targetUser.userId,
+					groupId,
+					source: 'group-forced-added',
+				}
+			)
+
+			waitUntilWithTelemetry(
+				c.executionCtx,
+				'groups.mumble-refresh.force-add-member',
+				() =>
+					triggerMumbleRefreshWorkflow({
+						env: c.env,
+						userIds: [targetUser.userId],
+						source: 'group-forced-added',
+					}),
+				{
+					userId: targetUser.userId,
+					groupId,
+					source: 'group-forced-added',
+				}
+			)
+
+			return c.json({ success: true }, 200)
+		} catch (error) {
+			if (error instanceof Error) {
 				return c.json({ error: error.message }, 400)
 			}
 			throw error

@@ -48,6 +48,10 @@ export class InvitationService {
 			throw new Error('Group not found')
 		}
 
+		if (group.joinMode === 'admin_managed') {
+			throw new Error('This group is admin managed. Members must be added by a site admin.')
+		}
+
 		const inviterIsAdmin = await isUserGroupAdmin(this.ctx, data.groupId, inviterId)
 
 		if (!canModerateGroup(group, inviterId, inviterIsAdmin)) {
@@ -133,6 +137,9 @@ export class InvitationService {
 	async acceptInvitation(invitationId: string, userId: string): Promise<void> {
 		const invitation = await this.ctx.db.query.groupInvitations.findFirst({
 			where: eq(groupInvitations.id, invitationId),
+			with: {
+				group: true,
+			},
 		})
 
 		if (!invitation) {
@@ -145,6 +152,10 @@ export class InvitationService {
 
 		if (invitation.status !== 'pending') {
 			throw new Error('Invitation is not pending')
+		}
+
+		if (invitation.group.joinMode === 'admin_managed') {
+			throw new Error('This group is admin managed. Members must be added by a site admin.')
 		}
 
 		if (invitation.expiresAt && invitation.expiresAt < new Date()) {
@@ -225,6 +236,10 @@ export class InvitationService {
 			throw new Error('Group not found')
 		}
 
+		if (group.joinMode === 'admin_managed') {
+			throw new Error('This group is admin managed. Invite codes are disabled.')
+		}
+
 		const creatorIsAdmin = await isUserGroupAdmin(this.ctx, data.groupId, createdBy)
 
 		if (!canManageGroup(group, createdBy, creatorIsAdmin)) {
@@ -258,6 +273,10 @@ export class InvitationService {
 
 		if (!group) {
 			throw new Error('Group not found')
+		}
+
+		if (group.joinMode === 'admin_managed') {
+			throw new Error('This group is admin managed. Invite codes are disabled.')
 		}
 
 		const isAdmin = await isUserGroupAdmin(this.ctx, groupId, userId)
@@ -317,6 +336,28 @@ export class InvitationService {
 
 		if (!inviteCode) {
 			return null // Return null if invite code not found
+		}
+
+		if (inviteCode.group.joinMode === 'admin_managed') {
+			return {
+				group: {
+					...mapGroup(inviteCode.group),
+					category: mapCategory(inviteCode.group.category),
+					memberCount: await getGroupMemberCount(this.ctx, inviteCode.group.id),
+					isOwner: userId ? inviteCode.group.ownerId === userId : false,
+					isAdmin: userId ? await isUserGroupAdmin(this.ctx, inviteCode.group.id, userId) : false,
+					isMember: userId ? await isUserMember(this.ctx, inviteCode.group.id, userId) : false,
+				},
+				inviteCode: {
+					isValid: false,
+					isExpired: false,
+					isRevoked: false,
+					hasRemainingUses: true,
+					expiresAt: inviteCode.expiresAt,
+				},
+				canJoin: false,
+				errorMessage: 'This group is admin managed and cannot be joined with an invite code',
+			}
 		}
 
 		const now = new Date()
@@ -414,6 +455,14 @@ export class InvitationService {
 		}
 
 		const group = inviteCode.group
+
+		if (group.joinMode === 'admin_managed') {
+			return {
+				success: false,
+				group: mapGroup(group),
+				message: 'This group is admin managed. Members must be added by a site admin.',
+			}
+		}
 
 		// Check if user is already a member
 		const isMember = await isUserMember(this.ctx, group.id, userId)

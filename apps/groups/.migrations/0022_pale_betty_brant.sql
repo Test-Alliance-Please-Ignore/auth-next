@@ -1,0 +1,1 @@
+ALTER TYPE "public"."join_mode" ADD VALUE 'admin_managed';

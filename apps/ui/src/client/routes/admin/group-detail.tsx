@@ -99,6 +99,7 @@ export default function GroupDetailPage() {
 	const { user } = useAuth()
 	const queryClient = useQueryClient()
 	const { data: group, isLoading: groupLoading } = useGroup(groupId!)
+	const isAdminManaged = group?.joinMode === 'admin_managed'
 	const { data: categories = [] } = useCategories()
 	const updateGroup = useUpdateGroup()
 	const deleteGroup = useDeleteGroup()
@@ -120,7 +121,7 @@ export default function GroupDetailPage() {
 	const refreshServerRoles = useRefreshGroupDiscordServerRoles()
 
 	// Invite code hooks
-	const { data: inviteCodes = [] } = useGroupInviteCodes(groupId!)
+	const { data: inviteCodes = [] } = useGroupInviteCodes(groupId!, Boolean(group && !isAdminManaged))
 	const createInviteCode = useCreateInviteCode()
 	const revokeInviteCode = useRevokeInviteCode()
 
@@ -688,16 +689,17 @@ export default function GroupDetailPage() {
 			</div>
 
 			{/* Invite Member Form */}
-			<InviteMemberForm groupId={groupId!} />
+			<InviteMemberForm group={group} allowDirectAdd={user?.is_admin ?? false} />
 
 			{/* Pending Invitations */}
-			<PendingInvitationsList groupId={groupId!} />
+			{!isAdminManaged && <PendingInvitationsList groupId={groupId!} />}
 
 			{/* Pending Join Requests */}
-			<PendingJoinRequestsList groupId={groupId!} />
+			{!isAdminManaged && <PendingJoinRequestsList groupId={groupId!} />}
 
 			{/* Invite Codes */}
-			<Card>
+			{!isAdminManaged && (
+				<Card>
 				<CardHeader>
 					<div className="flex items-center justify-between">
 						<div>
@@ -887,7 +889,8 @@ export default function GroupDetailPage() {
 						</DialogContent>
 					</Dialog>
 				</CardContent>
-			</Card>
+				</Card>
+			)}
 
 			{/* Discord Servers */}
 			<Card>
@@ -1553,6 +1556,7 @@ export default function GroupDetailPage() {
 					open={editGroupDialogOpen}
 					onOpenChange={setEditGroupDialogOpen}
 					onSubmit={handleEditGroup}
+					canEditAdminManaged={user?.is_admin ?? false}
 				/>
 			)}
 

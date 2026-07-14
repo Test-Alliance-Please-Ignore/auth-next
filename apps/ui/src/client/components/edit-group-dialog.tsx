@@ -22,6 +22,7 @@ interface EditGroupDialogProps {
 	open: boolean
 	onOpenChange: (open: boolean) => void
 	onSubmit: (data: UpdateGroupRequest) => Promise<void>
+	canEditAdminManaged?: boolean
 }
 
 export function EditGroupDialog({
@@ -30,6 +31,7 @@ export function EditGroupDialog({
 	open,
 	onOpenChange,
 	onSubmit,
+	canEditAdminManaged = false,
 }: EditGroupDialogProps) {
 	const [formData, setFormData] = useState<UpdateGroupRequest>({
 		categoryId: group.categoryId,
@@ -197,6 +199,14 @@ export function EditGroupDialog({
 								{ value: 'invitation_only',
 									label: 'Invitation Only (invite required)',
 								},
+								...(canEditAdminManaged
+									? [
+											{
+												value: 'admin_managed',
+												label: 'Admin managed (site admins add members)',
+											},
+									  ]
+									: []),
 							]}
 							disabled={isSubmitting}
 						/>

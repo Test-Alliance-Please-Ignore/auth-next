@@ -21,6 +21,10 @@ export function JoinModeBadge({ joinMode, className }: JoinModeBadgeProps) {
 			variant: 'ghost' as const,
 			label: 'Invitation Only',
 		},
+		admin_managed: {
+			variant: 'secondary' as const,
+			label: 'Admin Managed',
+		},
 	}
 
 	const { variant, label } = config[joinMode]

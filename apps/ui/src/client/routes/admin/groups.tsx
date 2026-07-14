@@ -16,6 +16,7 @@ import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Select } from '@/components/ui/select'
 import { useCategories } from '@/hooks/useCategories'
+import { useAuth } from '@/hooks/useAuth'
 import { useCreateGroup, useGroups } from '@/hooks/useGroups'
 import { usePageTitle } from '@/hooks/usePageTitle'
 
@@ -23,6 +24,7 @@ import type { CreateGroupRequest, GroupsFilters } from '@/lib/api'
 
 export default function GroupsPage() {
 	usePageTitle('Admin - Groups')
+	const { user } = useAuth()
 	const [filters, setFilters] = useState<GroupsFilters>({})
 	const { data: groups, isLoading: groupsLoading } = useGroups(filters)
 	const { data: categories } = useCategories()
@@ -246,6 +248,7 @@ export default function GroupsPage() {
 						onSubmit={handleCreate}
 						onCancel={() => setCreateDialogOpen(false)}
 						isSubmitting={createGroup.isPending}
+						canEditAdminManaged={user?.is_admin ?? false}
 					/>
 				</DialogContent>
 			</Dialog>

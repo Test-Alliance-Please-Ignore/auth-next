@@ -13,9 +13,16 @@ interface GroupFormProps {
 	onSubmit: (data: CreateGroupRequest) => void
 	onCancel: () => void
 	isSubmitting?: boolean
+	canEditAdminManaged?: boolean
 }
 
-export function GroupForm({ categories, onSubmit, onCancel, isSubmitting }: GroupFormProps) {
+export function GroupForm({
+	categories,
+	onSubmit,
+	onCancel,
+	isSubmitting,
+	canEditAdminManaged = false,
+}: GroupFormProps) {
 	const [formData, setFormData] = useState<CreateGroupRequest>({
 		categoryId: '',
 		name: '',
@@ -149,6 +156,14 @@ export function GroupForm({ categories, onSubmit, onCancel, isSubmitting }: Grou
 						{ value: 'invitation_only',
 							label: 'Invitation Only (invite required)',
 						},
+						...(canEditAdminManaged
+							? [
+									{
+										value: 'admin_managed',
+										label: 'Admin managed (site admins add members)',
+									},
+							  ]
+							: []),
 					]}
 					disabled={isSubmitting}
 				/>
