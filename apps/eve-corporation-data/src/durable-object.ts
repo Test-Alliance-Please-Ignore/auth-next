@@ -3095,6 +3095,13 @@ export class EveCorporationDataDO extends DurableObject<Env> implements EveCorpo
 			)
 
 		if (synthesizedRows.length === 0) {
+			if (skyhooks.length > 0) {
+				logger.warn('[storeSkyhooks] Preserving existing skyhook snapshot because synthesis failed', {
+					corporationId,
+					skyhookCount: skyhooks.length,
+				})
+				return
+			}
 			await this.getDb()
 				.delete(structureSkyhookStates)
 				.where(eq(structureSkyhookStates.corporationId, corporationId))
