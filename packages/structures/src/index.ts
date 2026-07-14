@@ -1,4 +1,4 @@
-export type StructurePermissionRole = 'viewer' | 'manager' | 'sensitive'
+export type StructurePermissionRole = 'viewer' | 'details' | 'sensitive' | 'manager'
 export type CorporationAlertDestinationType = 'discord_channel' | 'discord_user' | 'discord_webhook' | 'group'
 export type StructureTab =
 	| 'citadels'
@@ -12,6 +12,8 @@ export type StructureListSortBy =
 	| 'nextStateAt'
 	| 'fuel'
 	| 'activityDefenseMultiplier'
+	| 'magmaticGasEstimatedDepletionAt'
+	| 'superionicIceEstimatedDepletionAt'
 	| 'name'
 	| 'corporation'
 	| 'region'
@@ -203,7 +205,6 @@ export interface StructureSovereigntyListItem {
 	state: string
 	typeId: string
 	typeName: string | null
-	profileId: string
 	nextStateAt: string | null
 	fuelExpires: string | null
 	fuelAmount: number | null
@@ -243,9 +244,7 @@ export interface StructureSovereigntyListItem {
 	syncStatus: 'ok' | 'warning' | 'error'
 	syncFailureReason: string | null
 	lastSyncedAt: string | null
-	updatedAt: string
-	canViewSensitive: boolean
-	canEdit: boolean
+	canViewDetails: boolean
 }
 
 export interface StructureSovereigntyListResponse {

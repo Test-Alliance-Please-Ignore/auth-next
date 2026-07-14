@@ -3,7 +3,6 @@ import {
 	ArrowRight,
 	ArrowUp,
 	ArrowUpDown,
-	Building2,
 	Filter,
 	RefreshCcw,
 	Shield,
@@ -14,6 +13,7 @@ import { Link, Navigate } from 'react-router-dom'
 import {
 	hasAllStructureManagerPermission,
 	hasAnyStructurePermission,
+	hasStructureDetailsPermission,
 	hasStructureTabPermission,
 } from '@repo/groups'
 import { STRUCTURE_TABS, isReinforcedStructureState, type StructureTab } from '@repo/structures'
@@ -234,6 +234,7 @@ export default function StructuresPage() {
 	const { data: groups = [] } = useGroups({ limit: 100 })
 	const { permissions, isLoading: permissionsLoading } = useUserPermissions()
 	const canViewStructures = user?.is_admin === true || hasAnyStructurePermission(permissions)
+	const canViewStructureDetails = user?.is_admin === true || hasStructureDetailsPermission(permissions)
 	const canManageStructures =
 		user?.is_admin === true || hasAllStructureManagerPermission(permissions)
 	const tableState = useStructureTableUiState((state) => state)
@@ -978,8 +979,14 @@ export default function StructuresPage() {
 										{isSovereigntyTab ? (
 											<>
 												<SortableHead field="activityDefenseMultiplier" label="ADM" />
-												<TableHead>Magmatic Gas</TableHead>
-												<TableHead>Superionic Ice</TableHead>
+												<SortableHead
+													field="magmaticGasEstimatedDepletionAt"
+													label="Magmatic Gas"
+												/>
+												<SortableHead
+													field="superionicIceEstimatedDepletionAt"
+													label="Superionic Ice"
+												/>
 												<TableHead>Workforce</TableHead>
 												<TableHead>Power</TableHead>
 											</>
@@ -999,9 +1006,11 @@ export default function StructuresPage() {
 											</>
 										) : null}
 										<TableHead>Sync</TableHead>
-										<TableHead className="sticky right-0 z-20 table-header-bg border-l border-border/50 text-right">
-											Actions
-										</TableHead>
+										{canViewStructureDetails && (
+											<TableHead className="sticky right-0 z-20 table-header-bg border-l border-border/50 text-right">
+												Actions
+											</TableHead>
+										)}
 									</TableRow>
 								</TableHeader>
 								<TableBody>
@@ -1223,21 +1232,20 @@ export default function StructuresPage() {
 																description={structureSyncStatusDescription(structure)}
 															/>
 														</TableCell>
-														<TableCell className="sticky right-0 z-10 border-l border-border/50 bg-card text-right">
-															{structure.canEdit ? (
-																<Button asChild size="sm" variant="ghost">
-																	<Link to={`/structures/${structure.structureId}`}>
-																		<ArrowRight className="h-4 w-4" />
-																		Details
-																	</Link>
-																</Button>
-															) : (
-																<Badge variant="ghost" className="justify-center">
-																	<Building2 className="h-3 w-3" />
-																	View only
-																</Badge>
-															)}
-														</TableCell>
+														{canViewStructureDetails && (
+															<TableCell className="sticky right-0 z-10 border-l border-border/50 bg-card text-right">
+																{structure.canViewDetails ? (
+																	<Button asChild size="sm" variant="ghost">
+																		<Link to={`/structures/${structure.structureId}`}>
+																			<ArrowRight className="h-4 w-4" />
+																			Details
+																		</Link>
+																	</Button>
+																) : (
+																	<span className="text-sm text-muted-foreground">-</span>
+																)}
+															</TableCell>
+														)}
 													</TableRow>
 												)
 											})}

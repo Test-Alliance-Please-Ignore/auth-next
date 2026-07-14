@@ -16,7 +16,7 @@ import { Link, Navigate, useParams } from 'react-router-dom'
 
 import { FittingPanel } from '@repo/eve-fitting/fitting-panel'
 import { FittingSlotTable } from '@repo/eve-fitting/fitting-slot-table'
-import { hasAnyStructurePermission } from '@repo/groups'
+import { hasAnyStructurePermission, hasStructureDetailsPermission } from '@repo/groups'
 import {
 	getStructureTabForTypeId,
 	isReinforcedStructureState,
@@ -517,7 +517,8 @@ export default function StructuresDetailPage() {
 	const { user, isLoading: authLoading } = useAuth()
 	const { permissions, isLoading: permissionsLoading } = useUserPermissions()
 	const canViewStructures = user?.is_admin === true || hasAnyStructurePermission(permissions)
-	const canAccess = canViewStructures && Boolean(structureId)
+	const canViewStructureDetails = user?.is_admin === true || hasStructureDetailsPermission(permissions)
+	const canAccess = canViewStructureDetails && Boolean(structureId)
 	const {
 		data: structure,
 		isLoading,
@@ -630,6 +631,10 @@ export default function StructuresDetailPage() {
 	}, [sovereigntyStructures])
 	if (!authLoading && !permissionsLoading && !canViewStructures) {
 		return <Navigate to="/dashboard" replace />
+	}
+
+	if (!authLoading && !permissionsLoading && canViewStructures && !canViewStructureDetails) {
+		return <Navigate to="/structures" replace />
 	}
 
 	if (!structureId) {

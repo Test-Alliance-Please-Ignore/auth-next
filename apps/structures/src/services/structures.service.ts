@@ -70,6 +70,8 @@ export type StructureListSortField =
 	| 'nextStateAt'
 	| 'fuel'
 	| 'activityDefenseMultiplier'
+	| 'magmaticGasEstimatedDepletionAt'
+	| 'superionicIceEstimatedDepletionAt'
 	| 'name'
 	| 'corporation'
 	| 'region'
@@ -121,9 +123,11 @@ export interface StructureListResponse<TItem = StructureListItem> {
 
 interface StructurePermissionAccessTarget {
 	viewAll: boolean
+	detailsAll: boolean
 	sensitiveAll: boolean
 	managerAll: boolean
 	viewCorporationIds: Set<string>
+	detailsCorporationIds: Set<string>
 	sensitiveCorporationIds: Set<string>
 	managerCorporationIds: Set<string>
 }
@@ -146,7 +150,6 @@ export interface StructureListItem {
 	systemName: string | null
 	regionId: string | null
 	regionName: string | null
-	profileId: string
 	state: string
 	nextStateAt: string | null
 	fuelExpires: string | null
@@ -159,8 +162,7 @@ export interface StructureListItem {
 	syncFailureReason: string | null
 	lastSyncedAt: string | null
 	updatedAt: string
-	canViewSensitive: boolean
-	canEdit: boolean
+	canViewDetails: boolean
 }
 
 export interface StructureNavigationListItem extends StructureListItem {
@@ -171,7 +173,7 @@ export interface StructureSovereigntyListItem extends StructureListItem {
 	claimType: 'alliance' | 'faction' | 'unclaimed'
 	allianceId: string | null
 	allianceName: string | null
-	controllerAllianceName?: string | null
+	controllerAllianceName: string | null
 	corporationClaimantId: string | null
 	factionId: string | null
 	claimedSince: string | null
@@ -201,8 +203,6 @@ export interface StructureSovereigntyListItem extends StructureListItem {
 	syncFailureReason: string | null
 	lastSyncedAt: string | null
 	updatedAt: string
-	canViewSensitive: boolean
-	canEdit: boolean
 }
 
 export interface StructureSkyhookListItem extends StructureListItem {
@@ -223,8 +223,6 @@ export interface StructureSkyhookListItem extends StructureListItem {
 	syncFailureReason: string | null
 	lastSyncedAt: string | null
 	updatedAt: string
-	canViewSensitive: boolean
-	canEdit: boolean
 }
 
 export interface StructureMiningListItem extends StructureListItem {
@@ -239,8 +237,6 @@ export interface StructureMiningListItem extends StructureListItem {
 	syncFailureReason: string | null
 	lastSyncedAt: string | null
 	updatedAt: string
-	canViewSensitive: boolean
-	canEdit: boolean
 }
 
 export interface StructureSovereigntyHubSummary {
@@ -351,8 +347,10 @@ interface StructureTabData {
 	inventoryBays?: StructureInventoryBaySummary[]
 }
 
-export interface StructureDetailResult extends StructureListItem {
+export interface StructureDetailResult extends Omit<StructureListItem, 'canViewDetails'> {
 	includeInStructureAssetSync: boolean
+	canViewSensitive: boolean
+	canEdit: boolean
 	services: Array<{
 		name: string
 		state: string
@@ -443,9 +441,11 @@ const STRUCTURE_ACCESS_TABS: StructureTab[] = [
 function createStructurePermissionAccessTarget(): StructurePermissionAccessTarget {
 	return {
 		viewAll: false,
+		detailsAll: false,
 		sensitiveAll: false,
 		managerAll: false,
 		viewCorporationIds: new Set<string>(),
+		detailsCorporationIds: new Set<string>(),
 		sensitiveCorporationIds: new Set<string>(),
 		managerCorporationIds: new Set<string>(),
 	}
@@ -457,7 +457,10 @@ function addParsedStructurePermissionToTarget(
 ): void {
 	if (parsed.scope === STRUCTURE_PERMISSION_SCOPE_ALL) {
 		target.viewAll = true
-		if (parsed.role === 'manager' || parsed.role === 'sensitive') {
+		if (parsed.role === 'details' || parsed.role === 'sensitive' || parsed.role === 'manager') {
+			target.detailsAll = true
+		}
+		if (parsed.role === 'sensitive' || parsed.role === 'manager') {
 			target.sensitiveAll = true
 		}
 		if (parsed.role === 'manager') {
@@ -471,7 +474,10 @@ function addParsedStructurePermissionToTarget(
 	}
 
 	target.viewCorporationIds.add(parsed.corporationId)
-	if (parsed.role === 'manager' || parsed.role === 'sensitive') {
+	if (parsed.role === 'details' || parsed.role === 'sensitive' || parsed.role === 'manager') {
+		target.detailsCorporationIds.add(parsed.corporationId)
+	}
+	if (parsed.role === 'sensitive' || parsed.role === 'manager') {
 		target.sensitiveCorporationIds.add(parsed.corporationId)
 	}
 	if (parsed.role === 'manager') {
@@ -484,14 +490,24 @@ function buildStructureAccessTargetSummary(
 	corporationId: string
 ): {
 	canView: boolean
+	canViewDetails: boolean
 	canViewSensitive: boolean
 	canEdit: boolean
 } {
 	const canView =
 		access.viewAll ||
+		access.detailsAll ||
 		access.sensitiveAll ||
 		access.managerAll ||
 		access.viewCorporationIds.has(corporationId) ||
+		access.detailsCorporationIds.has(corporationId) ||
+		access.sensitiveCorporationIds.has(corporationId) ||
+		access.managerCorporationIds.has(corporationId)
+	const canViewDetails =
+		access.detailsAll ||
+		access.sensitiveAll ||
+		access.managerAll ||
+		access.detailsCorporationIds.has(corporationId) ||
 		access.sensitiveCorporationIds.has(corporationId) ||
 		access.managerCorporationIds.has(corporationId)
 	const canViewSensitive =
@@ -503,6 +519,7 @@ function buildStructureAccessTargetSummary(
 
 	return {
 		canView,
+		canViewDetails,
 		canViewSensitive,
 		canEdit,
 	}
@@ -514,11 +531,16 @@ function getStructureAccessTarget(
 ): StructurePermissionAccessTarget {
 	return {
 		viewAll: access.all.viewAll || access.tabs[tab].viewAll,
+		detailsAll: access.all.detailsAll || access.tabs[tab].detailsAll,
 		sensitiveAll: access.all.sensitiveAll || access.tabs[tab].sensitiveAll,
 		managerAll: access.all.managerAll || access.tabs[tab].managerAll,
 		viewCorporationIds: new Set([
 			...access.all.viewCorporationIds,
 			...access.tabs[tab].viewCorporationIds,
+		]),
+		detailsCorporationIds: new Set([
+			...access.all.detailsCorporationIds,
+			...access.tabs[tab].detailsCorporationIds,
 		]),
 		sensitiveCorporationIds: new Set([
 			...access.all.sensitiveCorporationIds,
@@ -534,9 +556,11 @@ function getStructureAccessTarget(
 function hasAnyStructureAccess(target: StructurePermissionAccessTarget): boolean {
 	return (
 		target.viewAll ||
+		target.detailsAll ||
 		target.sensitiveAll ||
 		target.managerAll ||
 		target.viewCorporationIds.size > 0 ||
+		target.detailsCorporationIds.size > 0 ||
 		target.sensitiveCorporationIds.size > 0 ||
 		target.managerCorporationIds.size > 0
 	)
@@ -549,6 +573,15 @@ function hasStructureAccessForTab(
 ): boolean {
 	const target = getStructureAccessTarget(access, tab)
 	return buildStructureAccessTargetSummary(target, corporationId).canView
+}
+
+function canViewDetailsStructure(
+	access: StructureAccessScope,
+	corporationId: string,
+	tab: StructureTab
+): boolean {
+	const target = getStructureAccessTarget(access, tab)
+	return buildStructureAccessTargetSummary(target, corporationId).canViewDetails
 }
 
 function canViewSensitiveStructure(
@@ -586,6 +619,9 @@ function getAccessibleCorporationIds(
 		for (const corporationId of target.viewCorporationIds) {
 			corporationIds.add(corporationId)
 		}
+		for (const corporationId of target.detailsCorporationIds) {
+			corporationIds.add(corporationId)
+		}
 		for (const corporationId of target.sensitiveCorporationIds) {
 			corporationIds.add(corporationId)
 		}
@@ -602,9 +638,11 @@ function computeStructureAccess(roles: string[], isAdmin: boolean): StructureAcc
 		return {
 			all: {
 				viewAll: true,
+				detailsAll: true,
 				sensitiveAll: true,
 				managerAll: true,
 				viewCorporationIds: new Set<string>(),
+				detailsCorporationIds: new Set<string>(),
 				sensitiveCorporationIds: new Set<string>(),
 				managerCorporationIds: new Set<string>(),
 			},
@@ -613,9 +651,11 @@ function computeStructureAccess(roles: string[], isAdmin: boolean): StructureAcc
 					tab,
 					{
 						viewAll: true,
+						detailsAll: true,
 						sensitiveAll: true,
 						managerAll: true,
 						viewCorporationIds: new Set<string>(),
+						detailsCorporationIds: new Set<string>(),
 						sensitiveCorporationIds: new Set<string>(),
 						managerCorporationIds: new Set<string>(),
 					},
@@ -929,7 +969,7 @@ function summarizeStructureMining(
 }
 
 function buildStructureListItem(context: VisibleStructureContext): StructureListItem {
-	const { structure, corporationName, config, canViewSensitive, canEdit } = context
+	const { structure, corporationName, config, canViewDetails } = context
 	const nextStateAt =
 		structure.stateTimerEnd ?? structure.nextReinforceApply ?? structure.unanchorsAt
 
@@ -944,7 +984,6 @@ function buildStructureListItem(context: VisibleStructureContext): StructureList
 		systemName: structure.systemName,
 		regionId: structure.regionId,
 		regionName: structure.regionName,
-		profileId: structure.profileId,
 		state: structure.state,
 		nextStateAt: toIso(nextStateAt),
 		fuelExpires: toIso(structure.fuelExpires),
@@ -957,8 +996,7 @@ function buildStructureListItem(context: VisibleStructureContext): StructureList
 		syncFailureReason: structure.syncFailureReason,
 		lastSyncedAt: toIso(structure.lastSyncedAt),
 		updatedAt: structure.updatedAt.toISOString(),
-		canViewSensitive,
-		canEdit,
+		canViewDetails,
 	}
 }
 
@@ -1463,6 +1501,7 @@ interface VisibleStructureContext {
 	corporationName: string
 	includeInStructureAssetSync: boolean
 	config: typeof structureConfigs.$inferSelect | null
+	canViewDetails: boolean
 	canViewSensitive: boolean
 	canEdit: boolean
 	tabData: StructureTabData | null
@@ -1492,10 +1531,12 @@ function matchesStructureTab(
 }
 
 function buildStructureDetailResult(context: VisibleStructureContext): StructureDetailResult {
-	const structure = buildStructureListItem(context)
+	const { canViewDetails: _canViewDetails, ...structure } = buildStructureListItem(context)
 	return {
 		...structure,
 		includeInStructureAssetSync: context.includeInStructureAssetSync,
+		canViewSensitive: context.canViewSensitive,
+		canEdit: context.canEdit,
 		services: context.structure.services ?? [],
 		stateTimerStart: toIso(context.structure.stateTimerStart),
 		stateTimerEnd: toIso(context.structure.stateTimerEnd),
@@ -1527,8 +1568,12 @@ async function getVisibleStructureContext(
 	env: Env,
 	db: DbClient<DbSchema>,
 	user: SessionUser,
-	structureId: string
+	structureId: string,
+	options: {
+		requireDetailsPermission?: boolean
+	} = {}
 ): Promise<VisibleStructureContext | null> {
+	const requireDetailsPermission = options.requireDetailsPermission ?? false
 	const access = computeStructureAccess(user.roles, user.is_admin)
 	const accessibleCorporations = getAccessibleCorporationIds(access)
 	const structure = await db.query.corporationStructures.findFirst({
@@ -1592,6 +1637,11 @@ async function getVisibleStructureContext(
 			return null
 		}
 
+		const canViewDetails =
+			user.is_admin || canViewDetailsStructure(access, sovereigntyHub.corporationId, structureTab)
+		if (requireDetailsPermission && !canViewDetails) {
+			return null
+		}
 		const canViewSensitive =
 			user.is_admin || canViewSensitiveStructure(access, sovereigntyHub.corporationId, structureTab)
 		const canEdit =
@@ -1608,6 +1658,7 @@ async function getVisibleStructureContext(
 			corporationName: corporation?.name ?? sovereigntyHub.corporationId,
 			includeInStructureAssetSync: corporation?.includeInStructureAssetSync ?? false,
 			config: null,
+			canViewDetails,
 			canViewSensitive,
 			canEdit,
 			tabData: {
@@ -1636,6 +1687,10 @@ async function getVisibleStructureContext(
 		return null
 	}
 
+	const canViewDetails = user.is_admin || canViewDetailsStructure(access, structure.corporationId, structureTab)
+	if (requireDetailsPermission && !canViewDetails) {
+		return null
+	}
 	const canViewSensitive =
 		user.is_admin || canViewSensitiveStructure(access, structure.corporationId, structureTab)
 	const canEdit = user.is_admin || canEditStructure(access, structure.corporationId, structureTab)
@@ -1654,6 +1709,7 @@ async function getVisibleStructureContext(
 		corporationName: corporation?.name ?? structure.corporationId,
 		includeInStructureAssetSync: corporation?.includeInStructureAssetSync ?? false,
 		config: config ?? null,
+		canViewDetails,
 		canViewSensitive,
 		canEdit,
 		tabData: {
@@ -1681,12 +1737,16 @@ function getStructureSortValue(
 			return structure.fuelExpires
 				? new Date(structure.fuelExpires).getTime()
 				: (structure.fuelAmount ?? Number.POSITIVE_INFINITY)
-		case 'activityDefenseMultiplier':
-			return parseNullableNumber(
-				(structure as StructureSovereigntyListItem).activityDefenseMultiplier ?? null
-			)
-		case 'name':
-			return structure.name
+	case 'activityDefenseMultiplier':
+		return parseNullableNumber(
+			(structure as StructureSovereigntyListItem).activityDefenseMultiplier ?? null
+		)
+	case 'magmaticGasEstimatedDepletionAt':
+		return (structure as StructureSovereigntyListItem).magmaticGasEstimatedDepletionAt
+	case 'superionicIceEstimatedDepletionAt':
+		return (structure as StructureSovereigntyListItem).superionicIceEstimatedDepletionAt
+	case 'name':
+		return structure.name
 		case 'corporation':
 			return structure.corporationName
 		case 'region':
@@ -1736,6 +1796,13 @@ function sortStructures(
 				comparison = compareNullableNumbers(
 					getStructureSortValue(left, sortBy) as number | null | undefined,
 					getStructureSortValue(right, sortBy) as number | null | undefined
+				)
+				break
+			case 'magmaticGasEstimatedDepletionAt':
+			case 'superionicIceEstimatedDepletionAt':
+				comparison = compareNullableDates(
+					getStructureSortValue(left, sortBy) as string | null | undefined,
+					getStructureSortValue(right, sortBy) as string | null | undefined
 				)
 				break
 			case 'fuel':
@@ -2191,6 +2258,8 @@ async function loadVisibleStructureContexts(
 			.map<VisibleStructureContext | null>((structure) => {
 				const config = configsByStructureId.get(structure.structureId) ?? null
 				const structureTab = getStructureTab(structure)
+				const canViewDetails =
+					user.is_admin || canViewDetailsStructure(access, structure.corporationId, structureTab)
 				const canViewSensitive =
 					user.is_admin || canViewSensitiveStructure(access, structure.corporationId, structureTab)
 				const canEdit =
@@ -2206,6 +2275,7 @@ async function loadVisibleStructureContexts(
 					corporationName: corporation?.name ?? structure.corporationId,
 					includeInStructureAssetSync: corporation?.includeInStructureAssetSync ?? false,
 					config,
+					canViewDetails,
 					canViewSensitive,
 					canEdit,
 					tabData: null,
@@ -2349,6 +2419,8 @@ async function loadVisibleSovereigntyHubContexts(
 				const geography = geographyBySystemId[hub.systemId] ?? null
 				const structure = buildSyntheticSovereigntyStructureRow(hub, systemRow, geography)
 				const structureTab = getStructureTab(structure)
+				const canViewDetails =
+					user.is_admin || canViewDetailsStructure(access, hub.corporationId, structureTab)
 				const canViewSensitive =
 					user.is_admin || canViewSensitiveStructure(access, hub.corporationId, structureTab)
 				const canEdit = user.is_admin || canEditStructure(access, hub.corporationId, structureTab)
@@ -2359,6 +2431,7 @@ async function loadVisibleSovereigntyHubContexts(
 					corporationName: corporation?.name ?? hub.corporationId,
 					includeInStructureAssetSync: corporation?.includeInStructureAssetSync ?? false,
 					config: null,
+					canViewDetails,
 					canViewSensitive,
 					canEdit,
 					tabData: null,
@@ -2534,7 +2607,7 @@ function buildSovereigntyListItem(input: {
 	context: VisibleStructureContext
 	systemRow: typeof structureSovereigntySystems.$inferSelect | null
 	hubRow: typeof structureSovereigntyHubs.$inferSelect | null
-}): RepoStructureSovereigntyListItem {
+}): StructureSovereigntyListItem {
 	const { context, systemRow, hubRow } = input
 	const { structure: structureRow, corporationName, canViewSensitive, canEdit } = context
 	const hasHubSnapshot = hubRow !== null
@@ -2604,8 +2677,6 @@ function buildSovereigntyListItem(input: {
 		updatedAt: sourceUpdatedAt
 			? sourceUpdatedAt.toISOString()
 			: structureRow.updatedAt.toISOString(),
-		canViewSensitive,
-		canEdit,
 	}
 }
 
@@ -2738,10 +2809,10 @@ export async function listSovereigntyStructures(
 	const end = start + pageSize
 
 	return {
-		items: sortedItems
-			.slice(start, end)
-			.map((item) => items.find((row) => row.structureId === item.structureId)!)
-			.filter((item): item is RepoStructureSovereigntyListItem => Boolean(item)),
+		items: sortedItems.slice(start, end).map((item) => {
+			const { updatedAt: _updatedAt, ...rest } = item
+			return rest
+		}) as RepoStructureSovereigntyListItem[],
 		pagination: {
 			page,
 			pageSize,
@@ -3018,7 +3089,9 @@ export async function getVisibleStructureDetail(
 	user: SessionUser,
 	structureId: string
 ): Promise<StructureDetailResult | null> {
-	const context = await getVisibleStructureContext(env, db, user, structureId)
+	const context = await getVisibleStructureContext(env, db, user, structureId, {
+		requireDetailsPermission: true,
+	})
 	if (!context) {
 		return null
 	}

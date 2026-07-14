@@ -722,12 +722,14 @@ export interface CreateCorporationAlertDestinationRequest {
 	isEnabled?: boolean
 }
 
-export type StructurePermissionRole = 'viewer' | 'manager' | 'sensitive'
+export type StructurePermissionRole = 'viewer' | 'details' | 'sensitive' | 'manager'
 export type StructureListSortBy =
 	| 'updatedAt'
 	| 'nextStateAt'
 	| 'fuel'
 	| 'activityDefenseMultiplier'
+	| 'magmaticGasEstimatedDepletionAt'
+	| 'superionicIceEstimatedDepletionAt'
 	| 'name'
 	| 'corporation'
 	| 'region'
@@ -798,7 +800,6 @@ export interface StructureListBaseItem {
 	regionId: string | null
 	regionName: string | null
 	state: string
-	profileId: string
 	nextStateAt: string | null
 	fuelExpires: string | null
 	fuelAmount: number | null
@@ -809,9 +810,7 @@ export interface StructureListBaseItem {
 	syncStatus: 'ok' | 'warning' | 'error'
 	syncFailureReason: string | null
 	lastSyncedAt: string | null
-	updatedAt: string
-	canViewSensitive: boolean
-	canEdit: boolean
+	canViewDetails: boolean
 }
 
 export interface StructureCitadelListItem extends StructureListBaseItem {}
@@ -961,8 +960,10 @@ export interface StructureFittingItem {
 	isConsumable?: boolean
 }
 
-export interface StructureDetailResult extends StructureCitadelListItem {
+export interface StructureDetailResult extends Omit<StructureCitadelListItem, 'canViewDetails'> {
 	includeInStructureAssetSync: boolean
+	canViewSensitive: boolean
+	canEdit: boolean
 	services: Array<{
 		name: string
 		state: string
