@@ -289,6 +289,89 @@ describe('EveCorporationSyncWorkflow', () => {
 		expect(updateCorporationAuthHealth).toHaveBeenCalled()
 	})
 
+	it('includes skyhook listing and prune metrics in the structures sync stats', async () => {
+		vi.clearAllMocks()
+		const { env, updateCorporationAuthHealth } = createWorkflowEnv()
+		const workflowEnv = env as any
+		workflowEnv.STRUCTURE_ENRICHMENT_ENABLED = true
+
+		verifyAllDirectorsHealthMock.mockResolvedValue({
+			verified: 1,
+			failed: 0,
+		})
+		selectDirectorMock.mockResolvedValue({
+			directorId: 'director-1',
+			characterId: '900000001',
+			characterName: 'Director One',
+		})
+		reconcileDirectorsFromCorporationRolesMock.mockResolvedValue(undefined)
+		fetchStructuresMock.mockResolvedValue([
+			{
+				structure_id: 'structure-1',
+				type_id: '35832',
+			},
+		])
+		fetchSovereigntyEnrichmentMock.mockResolvedValue(null)
+		fetchSkyhookEnrichmentMock.mockResolvedValue({
+			skyhooks: [
+				{
+					structure_id: 'skyhook-1',
+				},
+			],
+		})
+		storeStructuresMock.mockResolvedValue(undefined)
+		storeSovereigntyEnrichmentMock.mockResolvedValue(undefined)
+		storeSkyhookEnrichmentMock.mockResolvedValue({ prunedCount: 2 })
+		storeMiningEnrichmentMock.mockResolvedValue(undefined)
+		syncAssetsMock.mockResolvedValue({ assetsCount: 0 })
+		updateSyncTimestampsMock.mockResolvedValue(undefined)
+		updateCoreLastSyncMock.mockResolvedValue(undefined)
+		recordDirectorSuccessMock.mockResolvedValue(undefined)
+		replayTaxProjectionRetryIntentMock.mockResolvedValue({
+			replayed: false,
+			succeeded: false,
+			retryCount: 0,
+			reason: 'none',
+		})
+		clearTaxProjectionRetryIntentMock.mockResolvedValue(undefined)
+		recordTaxProjectionRetryIntentMock.mockResolvedValue(undefined)
+		sendHrDepartedMessagesMock.mockResolvedValue(undefined)
+		triggerTaxProjectionRefreshMock.mockResolvedValue({
+			triggered: false,
+			reason: 'not-needed',
+		})
+
+		const workflow = new EveCorporationSyncWorkflow({} as ExecutionContext, workflowEnv)
+		const { step } = createStep()
+
+		await expect(
+			workflow.run(
+				{
+					payload: {
+						corporationId: '693378155',
+						dataTypes: ['structures'],
+						trigger: 'cron',
+					},
+					instanceId: 'wf-structures-metrics',
+					timestamp: new Date('2026-07-12T19:36:47.369Z'),
+				} as never,
+				step
+			)
+		).resolves.toMatchObject({
+			success: true,
+			corporationId: '693378155',
+			trigger: 'cron',
+			stats: {
+				structuresCount: 1,
+				skyhooksCount: 1,
+				skyhooksReturnedCount: 1,
+				skyhooksPrunedCount: 2,
+			},
+		})
+
+		expect(updateCorporationAuthHealth).toHaveBeenCalled()
+	})
+
 	it('skips mining enrichment for moon-drills and still continues to asset sync', async () => {
 		vi.clearAllMocks()
 		const { env, updateCorporationAuthHealth } = createWorkflowEnv()

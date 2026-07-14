@@ -538,7 +538,7 @@ export async function fetchCorporationSkyhooks(
 	}
 
 	const listing = await tokenStore.fetchEsi<RawCorporationSkyhooksListing>(
-		`/corporations/${corporationId}/structures/skyhooks?page=1`,
+		`/corporations/${corporationId}/structures/skyhooks`,
 		characterId,
 		{ cacheMode: 'no-store' }
 	)

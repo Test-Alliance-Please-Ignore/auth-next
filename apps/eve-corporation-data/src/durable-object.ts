@@ -89,6 +89,7 @@ import type {
 	EsiSovereigntyHub,
 	EsiSovereigntySystem,
 	EveCorporationData,
+	SkyhookStoreResult,
 	SearchAssetsFilters,
 	WalletJournalWindowFilters,
 	WalletTransactionWindowFilters,
@@ -2958,7 +2959,10 @@ export class EveCorporationDataDO extends DurableObject<Env> implements EveCorpo
 	/**
 	 * Store skyhook snapshots (workflow-friendly)
 	 */
-	async storeSkyhooks(corporationId: string, skyhooks: EsiCorporationSkyhook[]): Promise<void> {
+	async storeSkyhooks(
+		corporationId: string,
+		skyhooks: EsiCorporationSkyhook[]
+	): Promise<SkyhookStoreResult> {
 		const now = new Date()
 		const universe = getStub<Universe>(this.env.UNIVERSE, 'default')
 		const existingRows = await this.getDb().query.structureSkyhookStates.findMany({
@@ -3095,6 +3099,13 @@ export class EveCorporationDataDO extends DurableObject<Env> implements EveCorpo
 			)
 
 		if (synthesizedRows.length === 0) {
+			if (skyhooks.length > 0) {
+				logger.warn('[storeSkyhooks] Preserving existing skyhook snapshot because synthesis failed', {
+					corporationId,
+					skyhookCount: skyhooks.length,
+				})
+				return { prunedCount: 0 }
+			}
 			await this.getDb()
 				.delete(structureSkyhookStates)
 				.where(eq(structureSkyhookStates.corporationId, corporationId))
@@ -3106,7 +3117,7 @@ export class EveCorporationDataDO extends DurableObject<Env> implements EveCorpo
 						eq(corporationStructures.typeId, ORBITAL_SKYHOOK_TYPE_ID)
 					)
 				)
-			return
+			return { prunedCount: existingRows.length }
 		}
 
 		const baseValues = synthesizedRows.map((row) => row.baseStructure)
@@ -3214,6 +3225,8 @@ export class EveCorporationDataDO extends DurableObject<Env> implements EveCorpo
 					)
 				)
 		})
+
+		return { prunedCount: departedStateIds.length }
 	}
 
 	/**

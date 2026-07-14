@@ -745,6 +745,7 @@ export class EveCorporationSyncWorkflow extends WorkflowEntrypoint<Env, EveCorpo
 					ReturnType<typeof fetchSovereigntyEnrichment>
 				> = null
 				let skyhookEnrichment: Awaited<ReturnType<typeof fetchSkyhookEnrichment>> = null
+				let skyhookStoreResult: { prunedCount: number } | null = null
 				let miningExtractions: Awaited<ReturnType<typeof fetchMiningEnrichment>> | null = null
 
 				if (structures) {
@@ -826,13 +827,17 @@ export class EveCorporationSyncWorkflow extends WorkflowEntrypoint<Env, EveCorpo
 						}
 						if (skyhookEnrichment) {
 							const fetchedSkyhookEnrichment = skyhookEnrichment
-							await step.do('store-structure-skyhook-enrichment', {}, async () => {
-								await storeSkyhookEnrichment(
-									this.env,
-									corporationId,
-									fetchedSkyhookEnrichment
-								)
-							})
+							skyhookStoreResult = await step.do(
+								'store-structure-skyhook-enrichment',
+								{},
+								async () => {
+									return await storeSkyhookEnrichment(
+										this.env,
+										corporationId,
+										fetchedSkyhookEnrichment
+									)
+								}
+							)
 						}
 					} else if (structureEnrichmentEnabled && structureEnrichmentCooldownActive) {
 						logger.info('[EveCorporationSyncWorkflow] Skipping structure enrichment due to cooldown', {
@@ -848,6 +853,8 @@ export class EveCorporationSyncWorkflow extends WorkflowEntrypoint<Env, EveCorpo
 							sovereigntySystemsCount: sovereigntyEnrichment?.sovereigntySystems?.length ?? 0,
 							sovereigntyHubsCount: sovereigntyEnrichment?.sovereigntyHubs.length ?? 0,
 							skyhooksCount: skyhookEnrichment?.skyhooks.length ?? 0,
+							skyhooksReturnedCount: skyhookEnrichment?.skyhooks.length ?? 0,
+							skyhooksPrunedCount: skyhookStoreResult?.prunedCount ?? 0,
 							miningExtractionsCount: miningExtractions?.length ?? 0,
 						},
 					}

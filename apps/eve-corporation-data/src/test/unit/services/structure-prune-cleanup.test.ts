@@ -16,9 +16,13 @@ const mocks = vi.hoisted(() => {
 	const values = vi.fn(() => ({ onConflictDoUpdate }))
 	const insert = vi.fn(() => ({ values }))
 	const deleteMock = vi.fn()
+	const resolvePlanetGeographyByIds = vi.fn()
 	const resolveSolarSystemsByIds = vi.fn()
+	const resolveRegionsByIds = vi.fn()
 	const getStub = vi.fn(() => ({
+		resolvePlanetGeographyByIds,
 		resolveSolarSystemsByIds,
+		resolveRegionsByIds,
 	}))
 
 	return {
@@ -27,7 +31,9 @@ const mocks = vi.hoisted(() => {
 		values,
 		insert,
 		deleteMock,
+		resolvePlanetGeographyByIds,
 		resolveSolarSystemsByIds,
+		resolveRegionsByIds,
 		getStub,
 	}
 })
@@ -222,5 +228,75 @@ describe('structure prune cleanup', () => {
 			},
 		})
 		expect(db.delete).not.toHaveBeenCalled()
+	})
+
+	it('preserves existing skyhook snapshots when upstream skyhooks cannot be synthesized', async () => {
+		const db = makeDb()
+		db.query.corporationStructures.findMany = vi.fn().mockResolvedValue([])
+		db.query.structureSkyhookStates.findMany = vi.fn().mockResolvedValue([
+			{
+				structureId: 'skyhook-1',
+				planetName: 'Planet One',
+				systemName: 'Jita',
+				name: 'Skyhook One',
+			},
+		])
+
+		mocks.getStub.mockReturnValue({
+			resolvePlanetGeographyByIds: vi.fn().mockResolvedValue({
+				401: null,
+			}),
+			resolveSolarSystemsByIds: vi.fn().mockResolvedValue({}),
+			resolveRegionsByIds: vi.fn().mockResolvedValue({}),
+		})
+
+		const instance = createDoInstance(db)
+
+		await instance.storeSkyhooks('corp-1', [
+			{
+				structure_id: 'skyhook-1',
+				planet_id: '401',
+				corporation_id: 'corp-1',
+				state: 'active',
+				is_active: true,
+				effective_workforce: 0,
+				reagents: [],
+				reinforcement_timer: null,
+				theft_vulnerability: null,
+				is_raidable: false,
+				becomes_raidable_at: null,
+				vulnerable_at: null,
+				raw: { id: 1 },
+			} as never,
+		])
+
+		expect(db.delete).not.toHaveBeenCalled()
+		expect(db.insert).not.toHaveBeenCalled()
+	})
+
+	it('returns the number of skyhooks pruned when the upstream listing is empty', async () => {
+		const db = makeDb()
+		db.query.corporationStructures.findMany = vi.fn().mockResolvedValue([])
+		db.query.structureSkyhookStates.findMany = vi.fn().mockResolvedValue([
+			{
+				structureId: 'skyhook-1',
+				planetName: 'Planet One',
+				systemName: 'Jita',
+				name: 'Skyhook One',
+			},
+		])
+
+		mocks.getStub.mockReturnValue({
+			resolvePlanetGeographyByIds: vi.fn().mockResolvedValue({}),
+			resolveSolarSystemsByIds: vi.fn().mockResolvedValue({}),
+			resolveRegionsByIds: vi.fn().mockResolvedValue({}),
+		})
+
+		const instance = createDoInstance(db)
+
+		await expect(instance.storeSkyhooks('corp-1', [])).resolves.toEqual({ prunedCount: 1 })
+		expect(db.delete).toHaveBeenCalledTimes(2)
+		expect(db.delete).toHaveBeenNthCalledWith(1, structureSkyhookStates)
+		expect(db.delete).toHaveBeenNthCalledWith(2, corporationStructures)
 	})
 })

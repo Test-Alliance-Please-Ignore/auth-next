@@ -444,6 +444,10 @@ export interface WalletTransactionsStoreResult {
 	persistedNewRows: number
 }
 
+export interface SkyhookStoreResult {
+	prunedCount: number
+}
+
 /**
  * Corporation configuration data
  */
@@ -1339,7 +1343,7 @@ export interface EveCorporationData {
 	/**
 	 * Store skyhook snapshots (workflow-friendly)
 	 */
-	storeSkyhooks(corporationId: string, skyhooks: EsiCorporationSkyhook[]): Promise<void>
+	storeSkyhooks(corporationId: string, skyhooks: EsiCorporationSkyhook[]): Promise<SkyhookStoreResult>
 
 	/**
 	 * Store mining extraction snapshots (workflow-friendly)

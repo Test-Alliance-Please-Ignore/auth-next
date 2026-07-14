@@ -78,6 +78,12 @@ describe('esi structure enrichment ownership handling', () => {
 			'211',
 			{ cacheMode: 'no-store' }
 		)
+		expect(tokenStore.fetchEsi).toHaveBeenNthCalledWith(
+			1,
+			'/corporations/98000001/structures/skyhooks',
+			'211',
+			{ cacheMode: 'no-store' }
+		)
 		expect(tokenStore.fetchEsi).not.toHaveBeenCalledWith(
 			'/universe/structures/71001',
 			'211',
