@@ -109,11 +109,15 @@ export interface DepositResponse {
 // --- markets ---------------------------------------------------------------
 
 /**
- * Market-create wire body. Derived from the DO contract minus the fields the server injects
- * (`createdBy` from the session, `enforceRateLimit` as a server-set policy flag), so the admin and
- * member create forms stay in lockstep with CreateMarketInput.
+ * Market-create wire body. Derived from the DO contract minus the fields the server injects from the
+ * session (`createdBy`) and the server-set policy flags (`enforceRateLimit`, `createdByAdmin`), so the
+ * admin and member create forms stay in lockstep with CreateMarketInput without exposing a server-only
+ * flag as client-settable.
  */
-export type CreateMarketRequest = Omit<CreateMarketInput, 'createdBy' | 'enforceRateLimit'>
+export type CreateMarketRequest = Omit<
+	CreateMarketInput,
+	'createdBy' | 'enforceRateLimit' | 'createdByAdmin'
+>
 
 export interface CreateMarketResponse {
 	market: MarketDetail

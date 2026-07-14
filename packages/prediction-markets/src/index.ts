@@ -30,6 +30,15 @@ export type Visibility = 'public' | 'internal'
  */
 export const SYSTEM_WALLET_USER_ID = '00000000-0000-0000-0000-000000000000'
 
+/**
+ * Maximum time a market may stay open for betting — the window from creation to `closesAt`. Enforced
+ * for markets NOT created by a site admin; admins are uncapped (see {@link CreateMarketInput.createdByAdmin}).
+ * The DO's `createMarket` owns the invariant; this is the single source of truth so Core (error
+ * messaging), the UI (client hint/soft-cap), and tests all reference the same value.
+ */
+export const MAX_MARKET_OPEN_DAYS = 7
+export const MAX_MARKET_OPEN_DURATION_MS = MAX_MARKET_OPEN_DAYS * 24 * 60 * 60 * 1000
+
 // ---------------------------------------------------------------------------
 // Write inputs
 // ---------------------------------------------------------------------------
@@ -95,6 +104,13 @@ export interface CreateMarketInput {
 	 * creation leaves it unset (uncapped). Never populated from client input.
 	 */
 	enforceRateLimit?: boolean
+	/**
+	 * When true, waive the max market-open-duration cap ({@link MAX_MARKET_OPEN_DAYS} days from
+	 * creation to `closesAt`) — site admins are uncapped. Server-set from the session's `is_admin` at
+	 * BOTH create routes; never populated from client input. Absent/false => the cap is enforced
+	 * (fail-closed), rejecting a `closesAt` more than the max window out with MARKET_DURATION_TOO_LONG.
+	 */
+	createdByAdmin?: boolean
 }
 
 /**

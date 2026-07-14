@@ -2,6 +2,8 @@ import { Plus, X } from 'lucide-react'
 import { useEffect, useState } from 'react'
 import { z } from 'zod'
 
+import { MAX_MARKET_OPEN_DAYS, MAX_MARKET_OPEN_DURATION_MS } from '@repo/prediction-markets'
+
 import { Button } from '@/components/ui/button'
 import {
 	Dialog,
@@ -15,6 +17,7 @@ import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Switch } from '@/components/ui/switch'
 import { Textarea } from '@/components/ui/textarea'
+import { useUserPermissions } from '@/hooks/useUserPermissions'
 import toast from '@/lib/toast'
 
 import { useCreateMarket } from '../hooks'
@@ -73,6 +76,12 @@ export interface CreateMarketDialogProps {
 
 const digitsOnly = (v: string) => v.replace(/\D/g, '')
 
+/** Format a Date as a `datetime-local` input value (local wall-clock, no timezone). */
+function toLocalDatetimeInput(d: Date): string {
+	const pad = (n: number) => String(n).padStart(2, '0')
+	return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`
+}
+
 export function CreateMarketDialog({
 	open,
 	onOpenChange,
@@ -95,6 +104,13 @@ export function CreateMarketDialog({
 	const [resolverIds, setResolverIds] = useState<string[]>([])
 	const [resolverLabels, setResolverLabels] = useState<Record<string, string>>({})
 	const canDesignate = scope === 'admin'
+
+	// Non-admins are capped at MAX_MARKET_OPEN_DAYS of open time (creation → close); site admins are
+	// exempt. Mirrors the server, which is authoritative — this is just UX (hint + soft cap + a `max`
+	// on the picker). Applies in either scope: admin-scope callers are always site admins (isAdmin true).
+	const { isAdmin } = useUserPermissions()
+	const durationCapped = !isAdmin
+	const maxCloseLocal = toLocalDatetimeInput(new Date(Date.now() + MAX_MARKET_OPEN_DURATION_MS))
 
 	const create = useCreateMarket(scope)
 
@@ -153,6 +169,16 @@ export function CreateMarketDialog({
 			return
 		}
 		const d = parsed.data
+
+		// Soft-enforce the open-duration cap for non-admins (the server rejects it too, but a clear
+		// client message beats a round-trip 400). Admins are exempt.
+		if (
+			durationCapped &&
+			new Date(d.closesAt).getTime() - Date.now() > MAX_MARKET_OPEN_DURATION_MS
+		) {
+			toast.error(`Markets can stay open for at most ${MAX_MARKET_OPEN_DAYS} days.`)
+			return
+		}
 
 		const body: CreateMarketRequest = {
 			question: d.question,
@@ -256,9 +282,15 @@ export function CreateMarketDialog({
 							type="datetime-local"
 							value={closesAt}
 							onChange={(e) => setClosesAt(e.target.value)}
+							max={durationCapped ? maxCloseLocal : undefined}
 							disabled={create.isPending}
 							required
 						/>
+						{durationCapped ? (
+							<p className="text-xs text-muted-foreground">
+								Markets can stay open for up to {MAX_MARKET_OPEN_DAYS} days.
+							</p>
+						) : null}
 					</div>
 
 					<div className="space-y-2">

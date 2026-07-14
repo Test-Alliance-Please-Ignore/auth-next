@@ -46,8 +46,11 @@ app.post('/markets', async (c) => {
 	try {
 		const schema = isManager ? createMarketSchema : createMarketCreatorSchema
 		const body = schema.parse(await c.req.json())
+		// Non-admins (creators AND non-admin managers) are capped at MAX_MARKET_OPEN_DAYS; only a site
+		// admin is exempt. `createdByAdmin` is derived from the session's is_admin, never client input.
 		const result = await createAndPublishMarket(db, c.env, user.id, body, {
 			enforceRateLimit: !isManager,
+			createdByAdmin: user.is_admin,
 		})
 		logger.info('[PMMember] market created', {
 			actorId: user.id,

@@ -104,7 +104,7 @@ describe('member prediction-markets create route', () => {
 			env,
 			'user-1',
 			expect.objectContaining({ question: 'Will it rain tomorrow?' }),
-			{ enforceRateLimit: true }
+			{ enforceRateLimit: true, createdByAdmin: false }
 		)
 	})
 
@@ -118,7 +118,7 @@ describe('member prediction-markets create route', () => {
 		expect(body).toMatchObject({ question: 'Will it rain tomorrow?' })
 	})
 
-	it('manager/admin: full schema, uncapped (economic params pass through)', async () => {
+	it('non-admin manager: full schema, no rate limit, but still duration-capped (createdByAdmin false)', async () => {
 		mockTiers(true, true)
 		await post(createApp(makeUser()), { ...validBody, rakeBps: 1500 })
 		expect(mocks.createAndPublishMarket).toHaveBeenCalledWith(
@@ -126,7 +126,19 @@ describe('member prediction-markets create route', () => {
 			env,
 			'user-1',
 			expect.objectContaining({ rakeBps: 1500 }),
-			{ enforceRateLimit: false }
+			{ enforceRateLimit: false, createdByAdmin: false }
+		)
+	})
+
+	it('site admin: exempt from the duration cap (createdByAdmin true)', async () => {
+		mockTiers(true, true)
+		await post(createApp(makeUser({ is_admin: true })), validBody)
+		expect(mocks.createAndPublishMarket).toHaveBeenCalledWith(
+			expect.anything(),
+			env,
+			'user-1',
+			expect.objectContaining({ question: 'Will it rain tomorrow?' }),
+			{ enforceRateLimit: false, createdByAdmin: true }
 		)
 	})
 
