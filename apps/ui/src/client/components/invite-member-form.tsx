@@ -1,17 +1,21 @@
 import { useEffect, useState } from 'react'
 
-import { useCreateInvitation, useSearchCharacters } from '@/hooks/useGroups'
+import { useAddGroupMember, useCreateInvitation, useSearchCharacters } from '@/hooks/useGroups'
 
 import { Button } from './ui/button'
 import { Card } from './ui/card'
 import { Select } from './ui/select'
 
+import type { GroupWithDetails } from '@/lib/api'
+
 interface InviteMemberFormProps {
-	groupId: string
+	group: GroupWithDetails
+	allowDirectAdd?: boolean
 	onSuccess?: () => void
 }
 
-export function InviteMemberForm({ groupId, onSuccess }: InviteMemberFormProps) {
+export function InviteMemberForm({ group, allowDirectAdd = false, onSuccess }: InviteMemberFormProps) {
+	const isAdminManaged = group.joinMode === 'admin_managed'
 	const [searchQuery, setSearchQuery] = useState('')
 	const [debouncedSearchQuery, setDebouncedSearchQuery] = useState('')
 	const [selectedCharacter, setSelectedCharacter] = useState<string>('')
@@ -20,6 +24,7 @@ export function InviteMemberForm({ groupId, onSuccess }: InviteMemberFormProps) 
 
 	const { data: searchResults, isLoading: isSearching } = useSearchCharacters(debouncedSearchQuery)
 	const createInvitation = useCreateInvitation()
+	const addGroupMember = useAddGroupMember()
 
 	// Debounce search query - only update after 400ms of no typing
 	useEffect(() => {
@@ -43,6 +48,17 @@ export function InviteMemberForm({ groupId, onSuccess }: InviteMemberFormProps) 
 		setSuccessMessage(null)
 	}
 
+	if (isAdminManaged && !allowDirectAdd) {
+		return (
+			<Card className="p-4 border-dashed">
+				<h3 className="text-lg font-semibold mb-2">Admin Managed Group</h3>
+				<p className="text-sm text-muted-foreground">
+					This group is admin managed. Members can only be added by site admins.
+				</p>
+			</Card>
+		)
+	}
+
 	const handleSubmit = async (e: React.FormEvent) => {
 		e.preventDefault()
 		setErrorMessage(null)
@@ -56,12 +72,19 @@ export function InviteMemberForm({ groupId, onSuccess }: InviteMemberFormProps) 
 		}
 
 		try {
-			await createInvitation.mutateAsync({
-				groupId,
-				characterName,
-			})
-
-			setSuccessMessage(`Invitation sent to ${characterName}`)
+			if (isAdminManaged) {
+				await addGroupMember.mutateAsync({
+					groupId: group.id,
+					characterName,
+				})
+				setSuccessMessage(`Member added directly: ${characterName}`)
+			} else {
+				await createInvitation.mutateAsync({
+					groupId: group.id,
+					characterName,
+				})
+				setSuccessMessage(`Invitation sent to ${characterName}`)
+			}
 			setSearchQuery('')
 			setSelectedCharacter('')
 			onSuccess?.()
@@ -75,7 +98,7 @@ export function InviteMemberForm({ groupId, onSuccess }: InviteMemberFormProps) 
 
 	return (
 		<Card className="p-4">
-			<h3 className="text-lg font-semibold mb-3">Invite Member</h3>
+			<h3 className="text-lg font-semibold mb-3">{isAdminManaged ? 'Add User' : 'Invite Member'}</h3>
 
 			<form onSubmit={handleSubmit} className="space-y-3">
 				<div className="flex gap-2">
@@ -112,8 +135,17 @@ export function InviteMemberForm({ groupId, onSuccess }: InviteMemberFormProps) 
 						loadingText="Searching..."
 						emptyText="No characters found"
 					/>
-					<Button type="submit" disabled={createInvitation.isPending || !searchQuery.trim()}>
-						{createInvitation.isPending ? 'Sending...' : 'Invite'}
+					<Button
+						type="submit"
+						disabled={(isAdminManaged ? addGroupMember.isPending : createInvitation.isPending) || !searchQuery.trim()}
+					>
+						{isAdminManaged
+							? addGroupMember.isPending
+								? 'Adding...'
+								: 'Add User'
+							: createInvitation.isPending
+								? 'Sending...'
+								: 'Invite'}
 					</Button>
 				</div>
 
@@ -130,7 +162,8 @@ export function InviteMemberForm({ groupId, onSuccess }: InviteMemberFormProps) 
 				)}
 
 				<p className="text-xs text-muted-foreground">
-					Start typing to search for characters. Only main characters can be invited.
+					Start typing to search for characters. Only main characters can be{' '}
+					{isAdminManaged ? 'added directly' : 'invited'}.
 				</p>
 			</form>
 		</Card>

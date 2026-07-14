@@ -42,6 +42,12 @@ function hasMumbleSettingsInput(data: {
 	return data.mumbleSyncEnabled !== undefined || data.mumbleTicker !== undefined
 }
 
+function hasSiteAdminOnlyGroupSettingsInput(data: {
+	joinMode?: CreateGroupRequest['joinMode'] | UpdateGroupRequest['joinMode']
+}): boolean {
+	return data.joinMode === 'admin_managed'
+}
+
 export class GroupService {
 	constructor(private ctx: ServiceContext) {}
 
@@ -80,6 +86,10 @@ export class GroupService {
 
 		if (!isAdmin && hasMumbleSettingsInput(data)) {
 			throw new Error('Only site admins can configure Mumble settings')
+		}
+
+		if (!isAdmin && hasSiteAdminOnlyGroupSettingsInput(data)) {
+			throw new Error('Only site admins can configure admin-managed groups')
 		}
 
 		// Create the group
@@ -275,6 +285,10 @@ export class GroupService {
 			throw new Error('Only site admins can configure Mumble settings')
 		}
 
+		if (!isAdmin && hasSiteAdminOnlyGroupSettingsInput(data)) {
+			throw new Error('Only site admins can configure admin-managed groups')
+		}
+
 		const updates: Partial<typeof groups.$inferInsert> = {}
 
 		if (data.name !== undefined) updates.name = data.name
@@ -284,7 +298,6 @@ export class GroupService {
 		if (data.mumbleSyncEnabled !== undefined) updates.mumbleSyncEnabled = data.mumbleSyncEnabled
 		if (data.mumbleTicker !== undefined) updates.mumbleTicker = normalizeMumbleTicker(data.mumbleTicker)
 		if (data.categoryId !== undefined) updates.categoryId = data.categoryId
-
 		updates.updatedAt = new Date()
 
 		const [updated] = await this.ctx.db

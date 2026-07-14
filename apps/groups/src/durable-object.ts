@@ -136,6 +136,12 @@ function hasMumbleSettingsInput(data: {
 	return data.mumbleSyncEnabled !== undefined || data.mumbleTicker !== undefined
 }
 
+function hasSiteAdminOnlyGroupSettingsInput(data: {
+	joinMode?: CreateGroupRequest['joinMode'] | UpdateGroupRequest['joinMode']
+}): boolean {
+	return data.joinMode === 'admin_managed'
+}
+
 /**
  * Groups Durable Object
  *
@@ -266,6 +272,10 @@ export class GroupsDO extends DurableObject<Env> implements Groups {
 
 		if (!isSiteAdmin && hasMumbleSettingsInput(data)) {
 			throw new Error('Only site admins can configure Mumble settings')
+		}
+
+		if (!isSiteAdmin && hasSiteAdminOnlyGroupSettingsInput(data)) {
+			throw new Error('Only site admins can configure admin-managed groups')
 		}
 
 		// Create the group
@@ -528,6 +538,10 @@ export class GroupsDO extends DurableObject<Env> implements Groups {
 			throw new Error('Only site admins can configure Mumble settings')
 		}
 
+		if (!isSiteAdmin && hasSiteAdminOnlyGroupSettingsInput(data)) {
+			throw new Error('Only site admins can configure admin-managed groups')
+		}
+
 		const updates: Partial<typeof groups.$inferInsert> = {}
 
 		if (data.name !== undefined) updates.name = data.name
@@ -636,6 +650,10 @@ export class GroupsDO extends DurableObject<Env> implements Groups {
 			throw new Error('Group not found')
 		}
 
+		if (group.joinMode === 'admin_managed') {
+			throw new Error('This group is admin managed. Members must be added by a site admin.')
+		}
+
 		// Can only join open groups via this method
 		if (group.joinMode !== 'open') {
 			throw new Error('Group is not open for joining. Use join request or invitation.')
@@ -664,6 +682,41 @@ export class GroupsDO extends DurableObject<Env> implements Groups {
 		this.invalidateUserPermissionsCache(actorId)
 	}
 
+	async addMember(groupId: string, actorId: string, targetUserId: string): Promise<void> {
+		const group = await this.db.query.groups.findFirst({
+			where: eq(groups.id, groupId),
+		})
+
+		if (!group) {
+			throw new Error('Group not found')
+		}
+
+		if (group.joinMode !== 'admin_managed') {
+			throw new Error('Direct member adds are reserved for admin-managed groups')
+		}
+
+		const isSiteAdmin = await this.isUserSiteAdmin(actorId)
+		if (!isSiteAdmin) {
+			throw new Error('Only site admins can add members to admin-managed groups')
+		}
+
+		const isMember = await this.isUserMember(groupId, targetUserId)
+		if (isMember) {
+			throw new Error('Already a member of this group')
+		}
+
+		await this.db.insert(groupMembers).values({
+			groupId,
+			userId: targetUserId,
+		})
+
+		await this.cancelPendingJoinRequests(groupId, targetUserId)
+		await this.cancelPendingInvitations(groupId, targetUserId)
+
+		this.invalidateGroupMembersCache(groupId)
+		this.invalidateUserPermissionsCache(targetUserId)
+	}
+
 	async leaveGroup(groupId: string, actorId: string): Promise<void> {
 		const group = await this.db.query.groups.findFirst({
 			where: eq(groups.id, groupId),
@@ -671,6 +724,10 @@ export class GroupsDO extends DurableObject<Env> implements Groups {
 
 		if (!group) {
 			throw new Error('Group not found')
+		}
+
+		if (group.joinMode === 'admin_managed') {
+			throw new Error('This group is admin managed. Members can only be removed by a site admin.')
 		}
 
 		// Owner cannot leave (must transfer ownership first)
@@ -989,6 +1046,10 @@ export class GroupsDO extends DurableObject<Env> implements Groups {
 			throw new Error('Group not found')
 		}
 
+		if (group.joinMode === 'admin_managed') {
+			throw new Error('This group is admin managed. Members must be added by a site admin.')
+		}
+
 		// Can only create join requests for approval-mode groups
 		if (group.joinMode !== 'approval') {
 			throw new Error('Group does not accept join requests')
@@ -1079,6 +1140,10 @@ export class GroupsDO extends DurableObject<Env> implements Groups {
 
 		if (!group) {
 			throw new Error('Group not found')
+		}
+
+		if (group.joinMode === 'admin_managed') {
+			throw new Error('This group is admin managed. Members must be added by a site admin.')
 		}
 
 		const [isGroupAdmin, isSiteAdmin] = await Promise.all([
@@ -1186,6 +1251,10 @@ export class GroupsDO extends DurableObject<Env> implements Groups {
 			throw new Error('Group not found')
 		}
 
+		if (group.joinMode === 'admin_managed') {
+			throw new Error('This group is admin managed. Members must be added by a site admin.')
+		}
+
 		const [isGroupAdmin, isSiteAdmin] = await Promise.all([
 			this.isUserGroupAdmin(data.groupId, actorId),
 			this.isUserSiteAdmin(actorId),
@@ -1286,6 +1355,9 @@ export class GroupsDO extends DurableObject<Env> implements Groups {
 	async acceptInvitation(invitationId: string, actorId: string): Promise<void> {
 		const invitation = await this.db.query.groupInvitations.findFirst({
 			where: eq(groupInvitations.id, invitationId),
+			with: {
+				group: true,
+			},
 		})
 
 		if (!invitation) {
@@ -1298,6 +1370,10 @@ export class GroupsDO extends DurableObject<Env> implements Groups {
 
 		if (invitation.status !== 'pending') {
 			throw new Error('Invitation is not pending')
+		}
+
+		if (invitation.group.joinMode === 'admin_managed') {
+			throw new Error('This group is admin managed. Members must be added by a site admin.')
 		}
 
 		// Check if expired
@@ -1469,6 +1545,10 @@ export class GroupsDO extends DurableObject<Env> implements Groups {
 			throw new Error('Group not found')
 		}
 
+		if (group.joinMode === 'admin_managed') {
+			throw new Error('This group is admin managed. Invite codes are disabled.')
+		}
+
 		const [isGroupAdmin, isSiteAdmin] = await Promise.all([
 			this.isUserGroupAdmin(data.groupId, actorId),
 			this.isUserSiteAdmin(actorId),
@@ -1597,7 +1677,8 @@ export class GroupsDO extends DurableObject<Env> implements Groups {
 		const isRevoked = inviteCode.revokedAt !== null
 		const hasRemainingUses =
 			inviteCode.maxUses === null || inviteCode.currentUses < inviteCode.maxUses
-		const isValid = !isExpired && !isRevoked && hasRemainingUses
+		const isAdminManaged = inviteCode.group.joinMode === 'admin_managed'
+		const isValid = !isExpired && !isRevoked && hasRemainingUses && !isAdminManaged
 
 		// Build group details directly (bypass permission checks since invite code is the authorization)
 		const group = inviteCode.group
@@ -1661,6 +1742,8 @@ export class GroupsDO extends DurableObject<Env> implements Groups {
 				errorMessage = 'This invite code has expired'
 			} else if (!hasRemainingUses) {
 				errorMessage = 'This invite code has reached its usage limit'
+			} else if (isAdminManaged) {
+				errorMessage = 'This group is admin managed and cannot be joined with an invite code'
 			}
 		}
 
@@ -1688,6 +1771,10 @@ export class GroupsDO extends DurableObject<Env> implements Groups {
 
 		if (!inviteCode) {
 			throw new Error('Invalid invite code')
+		}
+
+		if (inviteCode.group.joinMode === 'admin_managed') {
+			throw new Error('This group is admin managed. Members can only be added by a site admin.')
 		}
 
 		// Check if revoked
@@ -3090,9 +3177,32 @@ export class GroupsDO extends DurableObject<Env> implements Groups {
 						category: true,
 					},
 				},
-				group: true,
 			},
 		})
+	}
+
+	/**
+	 * Fetch minimal group metadata needed for permission resolution.
+	 * Avoid loading the full group record so auth/session does not depend on
+	 * unrelated group columns that may still be migrating.
+	 */
+	private async getGroupOwnershipMap(
+		groupIds: string[]
+	): Promise<Map<string, { ownerId: string; name: string }>> {
+		if (groupIds.length === 0) {
+			return new Map()
+		}
+
+		const rows = await this.db
+			.select({
+				id: groups.id,
+				ownerId: groups.ownerId,
+				name: groups.name,
+			})
+			.from(groups)
+			.where(inArray(groups.id, groupIds))
+
+		return new Map(rows.map((group) => [group.id, { ownerId: group.ownerId, name: group.name }]))
 	}
 
 	/**
@@ -3216,7 +3326,8 @@ export class GroupsDO extends DurableObject<Env> implements Groups {
 	 */
 	private buildUserPermission(
 		groupPerm: Awaited<ReturnType<typeof this.getGroupPermissionsForGroups>>[number],
-		userId: string
+		userId: string,
+		groupInfo?: { ownerId: string; name: string }
 	): UserPermission {
 		// Determine URN and name based on whether this is global or group-scoped
 		const urn = groupPerm.permissionId ? groupPerm.permission!.urn : groupPerm.customUrn!
@@ -3236,7 +3347,7 @@ export class GroupsDO extends DurableObject<Env> implements Groups {
 			description,
 			category: category ? this.mapPermissionCategory(category) : null,
 			groupId: groupPerm.groupId,
-			groupName: groupPerm.group.name,
+			groupName: groupInfo?.name ?? groupPerm.groupId,
 			targetType: groupPerm.targetType,
 			source: groupPerm.permissionId ? 'global' : 'group_scoped',
 		}
@@ -3248,12 +3359,14 @@ export class GroupsDO extends DurableObject<Env> implements Groups {
 	private resolveUserPermissions(
 		groupPerms: Awaited<ReturnType<typeof this.getGroupPermissionsForGroups>>,
 		userId: string,
-		adminGroupIds: Set<string>
+		adminGroupIds: Set<string>,
+		groupInfoMap: Map<string, { ownerId: string; name: string }>
 	): UserPermission[] {
 		const resolvedPermissions: UserPermission[] = []
 
 		for (const gp of groupPerms) {
-			const isOwner = gp.group.ownerId === userId
+			const groupInfo = groupInfoMap.get(gp.groupId)
+			const isOwner = groupInfo?.ownerId === userId
 			const isAdmin = adminGroupIds.has(gp.groupId)
 
 			// Determine if user gets this permission based on target type
@@ -3261,7 +3374,7 @@ export class GroupsDO extends DurableObject<Env> implements Groups {
 				continue
 			}
 
-			resolvedPermissions.push(this.buildUserPermission(gp, userId))
+			resolvedPermissions.push(this.buildUserPermission(gp, userId, groupInfo))
 		}
 
 		return resolvedPermissions
@@ -3294,13 +3407,19 @@ export class GroupsDO extends DurableObject<Env> implements Groups {
 			})
 
 			// Get user's admin roles and group permissions
-			const [adminGroupIds, groupPerms] = await Promise.all([
+			const [adminGroupIds, groupPerms, groupInfoMap] = await Promise.all([
 				this.getUserAdminGroupIds(userId, groupIds),
 				this.getGroupPermissionsForGroups(groupIds),
+				this.getGroupOwnershipMap(groupIds),
 			])
 
 			// Resolve permissions based on user's role in each group
-			groupPermissions = this.resolveUserPermissions(groupPerms, userId, adminGroupIds)
+			groupPermissions = this.resolveUserPermissions(
+				groupPerms,
+				userId,
+				adminGroupIds,
+				groupInfoMap
+			)
 		} else {
 			logger.log('[getUserPermissions] User has no group memberships', { userId })
 		}
@@ -3403,9 +3522,6 @@ export class GroupsDO extends DurableObject<Env> implements Groups {
 		// STEP 1: Batch fetch all group memberships for uncached users
 		const allMemberships = await this.db.query.groupMembers.findMany({
 			where: inArray(groupMembers.userId, uncachedUserIds),
-			with: {
-				group: true,
-			},
 		})
 
 		// Build user -> memberships map
@@ -3443,7 +3559,7 @@ export class GroupsDO extends DurableObject<Env> implements Groups {
 		}
 
 		// STEP 4: Batch fetch admin roles and group permissions (shared data)
-		const [allAdminRoles, allGroupPerms] = await Promise.all([
+		const [allAdminRoles, allGroupPerms, allGroupInfoRows] = await Promise.all([
 			allGroupIds.size > 0
 				? this.db.query.groupAdmins.findMany({
 						where: and(
@@ -3453,6 +3569,7 @@ export class GroupsDO extends DurableObject<Env> implements Groups {
 					})
 				: [],
 			allGroupIds.size > 0 ? this.getGroupPermissionsForGroups(Array.from(allGroupIds)) : [],
+			allGroupIds.size > 0 ? this.getGroupOwnershipMap(Array.from(allGroupIds)) : new Map(),
 		])
 
 		// Build user -> admin groupIds map
@@ -3472,6 +3589,8 @@ export class GroupsDO extends DurableObject<Env> implements Groups {
 			}
 			groupPermsMap.get(gp.groupId)!.push(gp)
 		}
+
+		const groupInfoMap = allGroupInfoRows
 
 		// STEP 5: Fetch corporation permissions (with caching)
 		const corpPermissions = await this.getCorporationPermissionsForCorporations(
@@ -3498,8 +3617,8 @@ export class GroupsDO extends DurableObject<Env> implements Groups {
 			const groupPermissions: UserPermission[] = []
 			for (const membership of memberships) {
 				const groupId = membership.groupId
-				const group = membership.group
-				const isOwner = group.ownerId === userId
+				const group = groupInfoMap.get(groupId)
+				const isOwner = group?.ownerId === userId
 				const isAdmin = adminGroupIds.has(groupId)
 
 				const permsForGroup = groupPermsMap.get(groupId) || []
@@ -3507,7 +3626,7 @@ export class GroupsDO extends DurableObject<Env> implements Groups {
 					if (!this.userHasPermission(gp.targetType, isOwner, isAdmin)) {
 						continue
 					}
-					groupPermissions.push(this.buildUserPermission(gp, userId))
+					groupPermissions.push(this.buildUserPermission(gp, userId, group))
 				}
 			}
 

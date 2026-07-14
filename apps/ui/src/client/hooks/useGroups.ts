@@ -223,6 +223,26 @@ export function useLeaveGroup() {
 }
 
 /**
+ * Directly add a member to an admin-managed group
+ */
+export function useAddGroupMember() {
+	const queryClient = useQueryClient()
+
+	return useApiMutation({
+		mutationFn: ({ groupId, characterName }: { groupId: string; characterName: string }) =>
+			api.addGroupMember(groupId, characterName),
+		successMessage: 'Member added successfully',
+		onSuccess: async (_, variables) => {
+			await Promise.all([
+				queryClient.invalidateQueries({ queryKey: groupKeys.detail(variables.groupId) }),
+				queryClient.invalidateQueries({ queryKey: ['admin', 'group-members', 'list', variables.groupId] }),
+				queryClient.invalidateQueries({ queryKey: groupKeys.all }),
+			])
+		},
+	})
+}
+
+/**
  * Create a join request
  */
 export function useCreateJoinRequest() {

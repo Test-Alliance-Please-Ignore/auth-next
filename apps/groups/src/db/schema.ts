@@ -26,7 +26,7 @@ export const visibilityEnum = pgEnum('visibility', ['public', 'hidden', 'system'
 export const categoryPermissionEnum = pgEnum('category_permission', ['anyone', 'admin_only'])
 
 /** Group join modes */
-export const joinModeEnum = pgEnum('join_mode', ['open', 'approval', 'invitation_only'])
+export const joinModeEnum = pgEnum('join_mode', ['open', 'approval', 'invitation_only', 'admin_managed'])
 
 /** Invitation status */
 export const invitationStatusEnum = pgEnum('invitation_status', [

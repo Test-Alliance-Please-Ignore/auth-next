@@ -31,6 +31,10 @@ export class JoinRequestService {
 			throw new Error('Group not found')
 		}
 
+		if (group.joinMode === 'admin_managed') {
+			throw new Error('This group is admin managed. Members must be added by a site admin.')
+		}
+
 		// Can only create join requests for approval-mode groups
 		if (group.joinMode !== 'approval') {
 			throw new Error('Group does not accept join requests')
@@ -121,6 +125,10 @@ export class JoinRequestService {
 
 		if (!group) {
 			throw new Error('Group not found')
+		}
+
+		if (group.joinMode === 'admin_managed') {
+			throw new Error('This group is admin managed. Members must be added by a site admin.')
 		}
 
 		const isAdmin = await isUserGroupAdmin(this.ctx, request.groupId, adminUserId)

@@ -198,7 +198,7 @@ export function logApiError(error: unknown, fallbackRequestInfo?: ApiRequestDebu
 
 export type Visibility = 'public' | 'hidden' | 'system'
 export type CategoryPermission = 'anyone' | 'admin_only'
-export type JoinMode = 'open' | 'approval' | 'invitation_only'
+export type JoinMode = 'open' | 'approval' | 'invitation_only' | 'admin_managed'
 
 export interface Category {
 	id: string
@@ -2919,6 +2919,10 @@ export class ApiClient {
 	// User-Facing Group Operations
 	async joinGroup(id: string): Promise<void> {
 		return this.post(`/groups/${id}/join`)
+	}
+
+	async addGroupMember(id: string, characterName: string): Promise<void> {
+		return this.post(`/groups/${id}/members`, { characterName })
 	}
 
 	async leaveGroup(id: string): Promise<void> {

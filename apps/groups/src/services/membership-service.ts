@@ -143,6 +143,10 @@ export class MembershipService {
 			throw new Error('Group not found')
 		}
 
+		if (group.joinMode === 'admin_managed') {
+			throw new Error('This group is admin managed. Members must be added by a site admin.')
+		}
+
 		// Can only join open groups via this method
 		if (group.joinMode !== 'open') {
 			throw new Error('Group is not open for joining. Use join request or invitation.')
@@ -178,6 +182,10 @@ export class MembershipService {
 
 		if (!group) {
 			throw new Error('Group not found')
+		}
+
+		if (group.joinMode === 'admin_managed') {
+			throw new Error('This group is admin managed. Members can only be removed by a site admin.')
 		}
 
 		// Owner cannot leave (must transfer ownership first)

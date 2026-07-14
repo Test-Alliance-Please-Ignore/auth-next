@@ -65,6 +65,15 @@ export function JoinButton({ group, onSuccess }: JoinButtonProps) {
 		return null
 	}
 
+	if (group.joinMode === 'admin_managed') {
+		return (
+			<Button disabled variant="ghost">
+				<UserPlus className="h-4 w-4" />
+				Managed by Admins
+			</Button>
+		)
+	}
+
 	if (group.hasPendingJoinRequest) {
 		return (
 			<Button disabled variant="ghost">

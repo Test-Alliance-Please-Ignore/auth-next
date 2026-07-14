@@ -49,7 +49,7 @@ export * from './permissions'
 
 export type Visibility = 'public' | 'hidden' | 'system'
 export type CategoryPermission = 'anyone' | 'admin_only'
-export type JoinMode = 'open' | 'approval' | 'invitation_only'
+export type JoinMode = 'open' | 'approval' | 'invitation_only' | 'admin_managed'
 export type InvitationStatus = 'pending' | 'accepted' | 'declined' | 'expired' | 'cancelled'
 export type JoinRequestStatus = 'pending' | 'approved' | 'rejected' | 'cancelled'
 export type GroupDiscordMembershipType = 'member' | 'owner_admin'
@@ -362,8 +362,11 @@ export interface Groups {
 	 * Membership Operations
 	 */
 
-	/** Join an open group */
+	/** Join a group according to its join mode */
 	joinGroup(groupId: string, actorId: string): Promise<void>
+
+	/** Force-add a member to an admin-managed group (site admin only) */
+	addMember(groupId: string, actorId: string, targetUserId: string): Promise<void>
 
 	/** Leave a group */
 	leaveGroup(groupId: string, actorId: string): Promise<void>
