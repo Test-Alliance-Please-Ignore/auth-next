@@ -799,12 +799,17 @@ export class EveCorporationDataDO extends DurableObject<Env> implements EveCorpo
 	 */
 	async getCorporationSyncConfig(
 		corporationId: string
-	): Promise<{ includeInBackgroundRefresh: boolean; includeInStructureAssetSync: boolean } | null> {
+	): Promise<{
+		includeInBackgroundRefresh: boolean
+		includeInStructureAssetSync: boolean
+		structuresLastSync: Date | null
+	} | null> {
 		const config = await this.getDb().query.corporationConfig.findFirst({
 			where: eq(corporationConfig.corporationId, corporationId),
 			columns: {
 				includeInBackgroundRefresh: true,
 				includeInStructureAssetSync: true,
+				structuresLastSync: true,
 			},
 		})
 
@@ -815,6 +820,7 @@ export class EveCorporationDataDO extends DurableObject<Env> implements EveCorpo
 		return {
 			includeInBackgroundRefresh: config.includeInBackgroundRefresh,
 			includeInStructureAssetSync: config.includeInStructureAssetSync,
+			structuresLastSync: config.structuresLastSync,
 		}
 	}
 
@@ -2357,6 +2363,58 @@ export class EveCorporationDataDO extends DurableObject<Env> implements EveCorpo
 					},
 				})
 		}
+	}
+
+	async rebuildStructureInventorySnapshot(
+		corporationId: string,
+		structureId: string
+	): Promise<{ inventoryCount: number }> {
+		this.assertNonNpcCorporation(corporationId)
+
+		const ownedStructureIds = new Set([String(structureId)])
+		const inventoryRows = await this.rebuildStructureInventoryFromStoredAssets(
+			corporationId,
+			ownedStructureIds
+		)
+		const rowsForStructure = inventoryRows.filter(
+			(row) => row.structureId === String(structureId)
+		)
+
+		const db = this.getDb()
+		await db
+			.delete(corporationStructureInventory)
+			.where(
+				and(
+					eq(corporationStructureInventory.corporationId, corporationId),
+					eq(corporationStructureInventory.structureId, String(structureId))
+				)
+			)
+
+		const BATCH_SIZE = 100
+		for (let i = 0; i < rowsForStructure.length; i += BATCH_SIZE) {
+			const batch = rowsForStructure.slice(i, i + BATCH_SIZE)
+			await db.insert(corporationStructureInventory).values(
+				batch.map((row) => ({
+					corporationId: String(corporationId),
+					structureId: row.structureId,
+					itemId: row.itemId,
+					isSingleton: row.isSingleton,
+					locationFlag: row.locationFlag,
+					locationType: row.locationType,
+					quantity: row.quantity,
+					typeId: row.typeId,
+					updatedAt: new Date(),
+				}))
+			)
+		}
+
+		logger.info('[EveCorporationData] Rebuilt structure inventory snapshot from stored assets', {
+			corporationId,
+			structureId: String(structureId),
+			inventoryCount: rowsForStructure.length,
+		})
+
+		return { inventoryCount: rowsForStructure.length }
 	}
 
 	/**

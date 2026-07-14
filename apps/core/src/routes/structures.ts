@@ -27,6 +27,7 @@ import type {
 	UpdateStructureConfigInput,
 	UpdateStructureModuleConfigInput,
 } from '@repo/structures'
+import type { EveCorporationData } from '@repo/eve-corporation-data'
 import type { TypeMetadata, Universe } from '@repo/universe'
 import type { App } from '../context'
 
@@ -477,6 +478,50 @@ app.post('/:structureId/assets-debug', async (c) => {
 			{
 				error:
 					error instanceof Error ? error.message : 'Failed to queue structure assets debug export',
+			},
+			500
+		)
+	}
+})
+
+app.post('/:structureId/inventory-rebuild', async (c) => {
+	const user = c.get('user')
+	if (!user) {
+		return c.json({ error: 'Unauthorized' }, 401)
+	}
+	if (!user.is_admin) {
+		return c.json({ error: 'Requires site administrator permission' }, 403)
+	}
+
+	const structureId = c.req.param('structureId')
+	try {
+		const actor = await getStructureActor(c)
+		const structure = (await c.env.STRUCTURES.getVisibleStructureDetail(actor, structureId)) as {
+			corporationId: string
+			structureId: string
+		} | null
+		if (!structure) {
+			return c.json({ error: 'Structure not found' }, 404)
+		}
+
+		const corpData = getStub<EveCorporationData>(c.env.EVE_CORPORATION_DATA, structure.corporationId)
+		const result = await corpData.rebuildStructureInventorySnapshot(
+			structure.corporationId,
+			structure.structureId
+		)
+
+		return c.json({
+			structureId: structure.structureId,
+			corporationId: structure.corporationId,
+			inventoryCount: result.inventoryCount,
+		})
+	} catch (error) {
+		return c.json(
+			{
+				error:
+					error instanceof Error
+						? error.message
+						: 'Failed to rebuild structure inventory snapshot',
 			},
 			500
 		)

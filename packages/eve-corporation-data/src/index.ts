@@ -463,6 +463,7 @@ export interface CorporationConfigData extends CorporationLastSyncData {
 export interface CorporationSyncConfigData {
 	includeInBackgroundRefresh: boolean
 	includeInStructureAssetSync: boolean
+	structuresLastSync: Date | null
 }
 
 export interface CorporationNeedingRefreshData {
@@ -1269,6 +1270,15 @@ export interface EveCorporationData {
 			typeId: string
 		}>
 	): Promise<void>
+
+	/**
+	 * Rebuild the stored inventory snapshot for a single structure from already-ingested assets.
+	 * This avoids a live ESI fetch and only refreshes the targeted structure rows.
+	 */
+	rebuildStructureInventorySnapshot(
+		corporationId: string,
+		structureId: string
+	): Promise<{ inventoryCount: number }>
 
 	/**
 	 * Fetch and store corporation assets using a specific director character.

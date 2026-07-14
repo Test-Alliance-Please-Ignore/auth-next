@@ -592,6 +592,20 @@ export default function StructuresDetailPage() {
 		},
 	})
 
+	const rebuildInventoryMutation = useApiMutation({
+		mutationFn: () => api.requestStructureInventoryRebuild(structureId!),
+		showSuccessToast: false,
+		onSuccess: async (result) => {
+			toast.success(
+				`Rebuilt the structure inventory snapshot with ${result.inventoryCount.toLocaleString()} row${result.inventoryCount === 1 ? '' : 's'}.`
+			)
+			await Promise.all([
+				queryClient.invalidateQueries({ queryKey: ['structures'] }),
+				queryClient.invalidateQueries({ queryKey: ['structures', structureId] }),
+			])
+		},
+	})
+
 	const assetsDebugStatusQuery = useQuery({
 		queryKey: ['structures', structureId, 'assets-debug', pendingAssetsDebug?.workflowInstanceId ?? null],
 		queryFn: () =>
@@ -610,6 +624,7 @@ export default function StructuresDetailPage() {
 			assetsDebugStatus === 'queued' ||
 			assetsDebugStatus === 'running')
 	const isAssetsDebugBusy = debugAssetsMutation.isPending || isAssetsDebugPolling
+	const isInventoryRebuildBusy = rebuildInventoryMutation.isPending
 
 	useEffect(() => {
 		if (!pendingAssetsDebug) return
@@ -792,11 +807,24 @@ export default function StructuresDetailPage() {
 										if (isAssetsDebugBusy) return
 										void debugAssetsMutation.mutateAsync()
 									}}
-									loading={isAssetsDebugBusy}
-									loadingText={isAssetsDebugPolling ? 'Generating...' : 'Queueing...'}
+										loading={isAssetsDebugBusy}
+										loadingText={isAssetsDebugPolling ? 'Generating...' : 'Queueing...'}
+									>
+										<Search className="h-4 w-4" />
+										Debug Assets
+									</Button>
+								<Button
+									variant="ghost"
+									size="sm"
+									onClick={() => {
+										if (isInventoryRebuildBusy) return
+										void rebuildInventoryMutation.mutateAsync()
+									}}
+									loading={isInventoryRebuildBusy}
+									loadingText="Rebuilding..."
 								>
-									<Search className="h-4 w-4" />
-									Debug Assets
+									<Recycle className="h-4 w-4" />
+									Rebuild Inventory Snapshot
 								</Button>
 							</div>
 						)}
