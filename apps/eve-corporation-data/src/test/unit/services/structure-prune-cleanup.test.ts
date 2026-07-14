@@ -273,4 +273,30 @@ describe('structure prune cleanup', () => {
 		expect(db.delete).not.toHaveBeenCalled()
 		expect(db.insert).not.toHaveBeenCalled()
 	})
+
+	it('returns the number of skyhooks pruned when the upstream listing is empty', async () => {
+		const db = makeDb()
+		db.query.corporationStructures.findMany = vi.fn().mockResolvedValue([])
+		db.query.structureSkyhookStates.findMany = vi.fn().mockResolvedValue([
+			{
+				structureId: 'skyhook-1',
+				planetName: 'Planet One',
+				systemName: 'Jita',
+				name: 'Skyhook One',
+			},
+		])
+
+		mocks.getStub.mockReturnValue({
+			resolvePlanetGeographyByIds: vi.fn().mockResolvedValue({}),
+			resolveSolarSystemsByIds: vi.fn().mockResolvedValue({}),
+			resolveRegionsByIds: vi.fn().mockResolvedValue({}),
+		})
+
+		const instance = createDoInstance(db)
+
+		await expect(instance.storeSkyhooks('corp-1', [])).resolves.toEqual({ prunedCount: 1 })
+		expect(db.delete).toHaveBeenCalledTimes(2)
+		expect(db.delete).toHaveBeenNthCalledWith(1, structureSkyhookStates)
+		expect(db.delete).toHaveBeenNthCalledWith(2, corporationStructures)
+	})
 })

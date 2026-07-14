@@ -6,6 +6,7 @@ import { shouldSuppressDirectorUnhealthyOnStructureEnrichmentAuthFailure } from 
 import { createTokenStore, getCorporationDataStub } from '../../utils/services'
 import { readSharedSovereigntySystemsByIds } from '../../utils/sovereignty-systems-cache'
 import type { Universe } from '@repo/universe'
+import type { SkyhookStoreResult } from '@repo/eve-corporation-data'
 
 import type { Env } from '../../../context'
 
@@ -181,16 +182,17 @@ export async function storeSkyhookEnrichment(
 	env: Env,
 	corporationId: string,
 	enrichment: SkyhookEnrichmentData
-): Promise<void> {
+): Promise<SkyhookStoreResult> {
 	const corpData = getCorporationDataStub(env, corporationId)
-	await Promise.all([
-		corpData.storeSkyhooks(corporationId, enrichment.skyhooks),
-	])
+	const result = await corpData.storeSkyhooks(corporationId, enrichment.skyhooks)
 
 	logger.info('[StructuresStep] Stored skyhook enrichment', {
 		corporationId,
 		skyhooks: enrichment.skyhooks.length,
+		prunedSkyhooks: result.prunedCount,
 	})
+
+	return result
 }
 
 export async function fetchMiningEnrichment(

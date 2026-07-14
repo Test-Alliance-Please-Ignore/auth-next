@@ -42,6 +42,8 @@ export interface SyncStats {
 	sovereigntySystemsCount?: number
 	sovereigntyHubsCount?: number
 	skyhooksCount?: number
+	skyhooksReturnedCount?: number
+	skyhooksPrunedCount?: number
 	miningExtractionsCount?: number
 	ordersCount?: number
 	contractsCount?: number
