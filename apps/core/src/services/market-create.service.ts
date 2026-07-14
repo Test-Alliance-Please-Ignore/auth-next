@@ -9,6 +9,7 @@ import { z } from 'zod'
 import { inArray } from '@repo/db-utils'
 import { getStub } from '@repo/do-utils'
 import { logger } from '@repo/hono-helpers'
+import { MAX_MARKET_OPEN_DAYS } from '@repo/prediction-markets'
 
 import { users } from '../db/schema'
 import { hasMarketPermission } from '../lib/market-permissions'
@@ -101,6 +102,8 @@ export const CREATE_MARKET_BAD_REQUEST_CODES = [
 	'INVALID_CLOSES_AT',
 	'INVALID_RESOLVES_ON',
 	'RESOLVES_ON_BEFORE_CLOSE',
+	// A non-admin creator's market may stay open for at most MAX_MARKET_OPEN_DAYS (create → close).
+	'MARKET_DURATION_TOO_LONG',
 	'INVALID_RAKE',
 	'INVALID_MIN_STAKE',
 	'INVALID_MAX_STAKE',
@@ -126,6 +129,9 @@ export function mapMarketCreateError(c: Context<App>, error: unknown) {
 			{ error: 'You’re creating markets too fast — try again shortly.', retryAfterMs },
 			429
 		)
+	}
+	if (msg === 'MARKET_DURATION_TOO_LONG') {
+		return c.json({ error: `Markets can stay open for at most ${MAX_MARKET_OPEN_DAYS} days.` }, 400)
 	}
 	if (CREATE_BAD_REQUEST_SET.has(msg)) {
 		return c.json({ error: msg }, 400)
@@ -186,7 +192,7 @@ export async function createAndPublishMarket(
 	env: CreateMarketEnv,
 	createdBy: string,
 	input: CreateMarketBody,
-	opts?: { enforceRateLimit?: boolean }
+	opts?: { enforceRateLimit?: boolean; createdByAdmin?: boolean }
 ): Promise<CreateMarketResult> {
 	// Tier-validate designated resolvers before creating (the DO can't read GROUPS). The DO re-checks
 	// creator-exclusion + set sizing as a structural backstop.
@@ -198,7 +204,10 @@ export async function createAndPublishMarket(
 	const market = await prediction.createMarket({
 		createdBy,
 		...input,
+		// Server-set policy flags spread LAST so a stray body key can never forge them (the create
+		// schemas don't include either, and zod strips unknowns — this is belt-and-suspenders).
 		enforceRateLimit: opts?.enforceRateLimit,
+		createdByAdmin: opts?.createdByAdmin,
 	})
 
 	let post: { threadId: string; messageId: string } | null = null

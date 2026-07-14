@@ -122,4 +122,20 @@ describe('createAndPublishMarket — designated-resolver validation', () => {
 			expect.objectContaining({ createdBy: CREATOR })
 		)
 	})
+
+	it('threads the createdByAdmin exemption flag to the DO (true bypasses the duration cap)', async () => {
+		const db = makeDb([])
+		await createAndPublishMarket(db, env, CREATOR, baseInput, { createdByAdmin: true })
+		expect(hoisted.prediction.createMarket).toHaveBeenCalledWith(
+			expect.objectContaining({ createdBy: CREATOR, createdByAdmin: true })
+		)
+	})
+
+	it('forwards createdByAdmin:false for a non-admin creator (cap enforced by the DO)', async () => {
+		const db = makeDb([])
+		await createAndPublishMarket(db, env, CREATOR, baseInput, { createdByAdmin: false })
+		expect(hoisted.prediction.createMarket).toHaveBeenCalledWith(
+			expect.objectContaining({ createdBy: CREATOR, createdByAdmin: false })
+		)
+	})
 })

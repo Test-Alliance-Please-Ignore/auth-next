@@ -5,6 +5,7 @@ import { parseDateOrNull } from '@repo/worker-utils'
 import { pmMarketOutcomes, pmMarkets } from '../db/schema'
 import { isDesignatedResolver, normalizeDesignatedResolvers } from '../lib/designated-resolvers'
 import { isExpectedError, PmError } from '../lib/errors'
+import { exceedsMaxOpenDuration } from '../lib/market-duration'
 import { isPositiveIntegerString } from '../lib/money'
 import { assertTransition, isTerminal } from '../lib/state-machine'
 import {
@@ -41,6 +42,13 @@ export async function createMarket(deps: PmDeps, input: CreateMarketInput): Prom
 	const resolvesOn = parseDateOrNull(input.resolvesOn)
 	if (!resolvesOn) throw new PmError('INVALID_RESOLVES_ON')
 	if (resolvesOn.getTime() < closesAt.getTime()) throw new PmError('RESOLVES_ON_BEFORE_CLOSE')
+	// Cap how long a NON-admin-created market may stay open for betting (creation → close). Site admins
+	// are exempt: Core sets `createdByAdmin` from the session's is_admin (the DO can't read that itself),
+	// and it's fail-closed — absent/false enforces the cap. This can't be circumvented by
+	// create-short-then-extend, because editing `closesAt` (updateMarket) is admin-only.
+	if (!input.createdByAdmin && exceedsMaxOpenDuration(closesAt, Date.now())) {
+		throw new PmError('MARKET_DURATION_TOO_LONG')
+	}
 	if (input.rakeBps != null && (input.rakeBps < 0 || input.rakeBps > 2000)) {
 		throw new PmError('INVALID_RAKE')
 	}

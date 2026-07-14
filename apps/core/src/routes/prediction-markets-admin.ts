@@ -279,7 +279,11 @@ app.post('/markets', async (c) => {
 		if (!db) return c.json({ error: 'Database not initialized' }, 500)
 		const user = c.get('user')!
 		const body = createMarketSchema.parse(await c.req.json())
-		const result = await createAndPublishMarket(db, c.env, user.id, body)
+		// This router is requireAdmin-gated, so the actor is always a site admin → uncapped market
+		// duration. Pass is_admin explicitly (not a literal) so the exemption tracks the real flag.
+		const result = await createAndPublishMarket(db, c.env, user.id, body, {
+			createdByAdmin: user.is_admin,
+		})
 		logger.info('[PMAdmin] market created', {
 			actorId: user.id,
 			marketId: result.market.id,
