@@ -3522,8 +3522,46 @@ export class ApiClient {
 		return this.get(`/structures/${structureId}`)
 	}
 
-	async fetchStructureAssetsDebug(structureId: string): Promise<StructureAssetsDebugResult> {
-		return this.post(`/structures/${structureId}/assets-debug`)
+	async requestStructureAssetsDebug(structureId: string): Promise<{
+		workflowInstanceId: string
+		exportId: string
+		fileName: string
+		status: 'queued'
+	}> {
+		return this.post(`/structures/${structureId}/assets-debug`, {})
+	}
+
+	async getStructureAssetsDebugStatus(
+		structureId: string,
+		workflowInstanceId: string
+	): Promise<{
+		workflowInstanceId: string
+		status: 'queued' | 'running' | 'completed' | 'failed' | 'unknown'
+		rawStatus?: string
+		output: unknown | null
+	}> {
+		return this.get(`/structures/${structureId}/assets-debug/${workflowInstanceId}`)
+	}
+
+	async downloadStructureAssetsDebug(
+		structureId: string,
+		workflowInstanceId: string
+	): Promise<StructureAssetsDebugResult> {
+		const response = await fetch(
+			`/api/structures/${structureId}/assets-debug/${workflowInstanceId}/download`,
+			{
+				credentials: 'include',
+				headers: {
+					'X-Requested-With': 'XMLHttpRequest',
+				},
+			}
+		)
+		if (!response.ok) {
+			const message = await response.text()
+			throw new Error(message || 'Failed to download structure assets debug data')
+		}
+
+		return (await response.json()) as StructureAssetsDebugResult
 	}
 
 	async updateStructureConfig(

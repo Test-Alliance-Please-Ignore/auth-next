@@ -8,6 +8,7 @@ import type { SessionUser } from '../../context'
 
 const structuresMocks = vi.hoisted(() => ({
 	listCitadelStructures: vi.fn(),
+	getVisibleStructureDetail: vi.fn(),
 }))
 
 vi.mock('../../lib/groups-cache', () => ({
@@ -45,6 +46,12 @@ describe('structures routes', () => {
 	beforeEach(() => {
 		vi.clearAllMocks()
 		vi.mocked(getCachedUserPermissions).mockResolvedValue([])
+		structuresMocks.getVisibleStructureDetail.mockResolvedValue({
+			corporationId: 'corp-1',
+			corporationName: 'Test Corp',
+			structureId: 'structure-1',
+			name: 'Structure One',
+		})
 		structuresMocks.listCitadelStructures.mockResolvedValue({
 			items: [
 				{
@@ -118,5 +125,109 @@ describe('structures routes', () => {
 			items: Array<Record<string, unknown>>
 		}
 		expect(body.items[0]).not.toHaveProperty('updatedAt')
+	})
+
+	it('queues structure asset debug as a workflow and exposes status/download endpoints', async () => {
+		const exportWorkflow = {
+			create: vi.fn().mockResolvedValue({ id: 'workflow-1' }),
+			get: vi.fn().mockResolvedValue({
+				status: vi.fn().mockResolvedValue({
+					status: 'completed',
+					output: { status: 'completed' },
+				}),
+			}),
+		}
+		const storedArtifact = {
+			text: vi.fn().mockResolvedValue(
+				JSON.stringify({
+					corporationId: 'corp-1',
+					corporationName: 'Test Corp',
+					structureId: 'structure-1',
+					structureName: 'Structure One',
+					fetchedAt: '2026-07-13T00:00:00.000Z',
+					fetchedAssetCount: 2,
+					itemCount: 1,
+					items: [],
+				})
+			),
+			customMetadata: {
+				fileName: 'structure-assets-debug-workflow-1.json',
+				expiresAt: '2030-07-13T23:59:00.000Z',
+			},
+			httpMetadata: {
+				contentType: 'application/json; charset=utf-8',
+			},
+		}
+		const debugBucket = {
+			get: vi.fn().mockResolvedValue(storedArtifact),
+			delete: vi.fn().mockResolvedValue(undefined),
+		}
+
+		const app = createApp(makeUser({ is_admin: true }))
+		const env = {
+			STRUCTURES: {
+				getVisibleStructureDetail: structuresMocks.getVisibleStructureDetail,
+			},
+			EXPORT_WORKFLOW: exportWorkflow,
+			STRUCTURE_ASSETS_DEBUG_EXPORTS: debugBucket,
+		} as any
+
+		const startResponse = await app.request(
+			'/api/structures/structure-1/assets-debug',
+			{ method: 'POST' },
+			env
+		)
+		expect(startResponse.status).toBe(202)
+		expect(exportWorkflow.create).toHaveBeenCalledWith({
+			params: {
+				kind: 'structure-assets-debug',
+				userId: 'user-1',
+				corporationId: 'corp-1',
+				corporationName: 'Test Corp',
+				structureId: 'structure-1',
+				structureName: 'Structure One',
+			},
+		})
+		const startBody = (await startResponse.json()) as {
+			workflowInstanceId: string
+			exportId: string
+			fileName: string
+			status: string
+		}
+		expect(startBody).toMatchObject({
+			workflowInstanceId: 'workflow-1',
+			exportId: 'workflow-1',
+			fileName: 'structure-assets-debug-workflow.json',
+			status: 'queued',
+		})
+
+		const statusResponse = await app.request(
+			'/api/structures/structure-1/assets-debug/workflow-1',
+			{},
+			env
+		)
+		expect(statusResponse.status).toBe(200)
+		const statusBody = (await statusResponse.json()) as {
+			workflowInstanceId: string
+			status: string
+			rawStatus: string
+			output: unknown
+		}
+		expect(statusBody).toMatchObject({
+			workflowInstanceId: 'workflow-1',
+			status: 'completed',
+			rawStatus: 'completed',
+		})
+
+		const downloadResponse = await app.request(
+			'/api/structures/structure-1/assets-debug/workflow-1/download',
+			{},
+			env
+		)
+		expect(debugBucket.get).toHaveBeenCalledWith('structure-assets-debug/workflow-1.json')
+		expect(downloadResponse.status).toBe(200)
+		expect(debugBucket.delete).toHaveBeenCalledWith('structure-assets-debug/workflow-1.json')
+		const downloadBody = (await downloadResponse.json()) as { corporationId: string; items: [] }
+		expect(downloadBody.corporationId).toBe('corp-1')
 	})
 })

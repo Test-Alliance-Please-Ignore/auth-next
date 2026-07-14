@@ -92,6 +92,8 @@ export type Env = SharedHonoEnv & {
 	MOON_SCAN_EXPORTS: R2Bucket
 	/** SRP export artifact bucket */
 	SRP_EXPORTS: R2Bucket
+	/** Structure asset debug artifact bucket */
+	STRUCTURE_ASSETS_DEBUG_EXPORTS: R2Bucket
 	/** Markets Durable Object binding */
 	MARKETS: DurableObjectNamespace
 	/** Mumble Durable Object binding */

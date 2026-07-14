@@ -51,6 +51,10 @@
 		{
 			"binding": "SRP_EXPORTS",
 			"bucket_name": "srp-exports"
+		},
+		{
+			"binding": "STRUCTURE_ASSETS_DEBUG_EXPORTS",
+			"bucket_name": "structure-assets-debug-exports"
 		}
 	],
 	"durable_objects": {

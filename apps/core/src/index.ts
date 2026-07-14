@@ -16,9 +16,11 @@ import {
 import { createDb } from './db'
 import { discordMemberAuditRuns, userCharacters, userIpAddresses, users } from './db/schema'
 import { CoreDO } from './durable-object'
+import { cleanupExpiredExportArtifacts } from './lib/export-retention'
 import { waitUntilWithTelemetry } from './lib/background-task'
 import { IMMUNITAS_ALERT_DRAIN_CRON } from './lib/immunitas-alerts'
 import { TOKEN_INVALID_ALERT_DRAIN_CRON } from './lib/token-invalid-alerts'
+import { getStructureAssetsDebugBucket } from './lib/structure-assets-debug'
 import { triggerDiscordRefreshWorkflow, triggerUserRefreshWorkflow } from './lib/workflow-triggers'
 import { csrfProtection } from './middleware/csrf'
 import { sessionMiddleware } from './middleware/session'
@@ -222,6 +224,12 @@ export default {
 							}
 						})
 						.catch((error) => captureException(error as Error, { tags: { job: 'pm-reconcile' } }))
+				)
+
+				ctx.waitUntil(
+					cleanupExpiredExportArtifacts(getStructureAssetsDebugBucket(env), 'structure-assets-debug').catch(
+						(error) => captureException(error as Error, { tags: { job: 'structure-assets-debug-cleanup' } })
+					)
 				)
 			}
 

@@ -59,6 +59,7 @@ import { api } from '@/lib/api'
 import { formatDateTimeLong } from '@/lib/date-utils'
 import { formatDurationMs } from '@/lib/duration-utils'
 import { allianceLogoUrl, typeIconUrl, typeImageUrl, typeRenderUrl } from '@/lib/eve-images'
+import toast from '@/lib/toast'
 
 import type { FittingDisplayItem, FittingShipSlotType } from '@repo/eve-fitting/flags'
 import type { BadgeVariant } from '@/components/ui/badge'
@@ -534,6 +535,10 @@ export default function StructuresDetailPage() {
 	const [lowPowerAllowed, setLowPowerAllowed] = useState(false)
 	const [assignedGroupId, setAssignedGroupId] = useState('')
 	const [assetsDebug, setAssetsDebug] = useState<StructureAssetsDebugResult | null>(null)
+	const [pendingAssetsDebug, setPendingAssetsDebug] = useState<{
+		workflowInstanceId: string
+		fileName: string
+	} | null>(null)
 
 	const isAdmin = user?.is_admin === true
 
@@ -548,6 +553,7 @@ export default function StructuresDetailPage() {
 
 	useEffect(() => {
 		setAssetsDebug(null)
+		setPendingAssetsDebug(null)
 	}, [structureId])
 
 	const groupOptions = useMemo<SelectOption[]>(() => {
@@ -576,13 +582,71 @@ export default function StructuresDetailPage() {
 	})
 
 	const debugAssetsMutation = useApiMutation({
-		mutationFn: () => api.fetchStructureAssetsDebug(structureId!),
-		successMessage: (result) =>
-			`Fetched ${result.fetchedAssetCount.toLocaleString()} raw assets and found ${result.itemCount.toLocaleString()} rows for this structure.`,
+		mutationFn: () => api.requestStructureAssetsDebug(structureId!),
+		showSuccessToast: false,
 		onSuccess: (result) => {
-			setAssetsDebug(result)
+			setPendingAssetsDebug({
+				workflowInstanceId: result.workflowInstanceId,
+				fileName: result.fileName,
+			})
 		},
 	})
+
+	const assetsDebugStatusQuery = useQuery({
+		queryKey: ['structures', structureId, 'assets-debug', pendingAssetsDebug?.workflowInstanceId ?? null],
+		queryFn: () =>
+			api.getStructureAssetsDebugStatus(structureId!, pendingAssetsDebug!.workflowInstanceId),
+		enabled: Boolean(pendingAssetsDebug?.workflowInstanceId),
+		refetchInterval: (query) => {
+			const status = query.state.data?.status
+			return status === 'queued' || status === 'running' || status === undefined ? 5000 : false
+		},
+		refetchOnWindowFocus: false,
+	})
+	const assetsDebugStatus = assetsDebugStatusQuery.data?.status
+	const isAssetsDebugPolling =
+		Boolean(pendingAssetsDebug) &&
+		(assetsDebugStatus === undefined ||
+			assetsDebugStatus === 'queued' ||
+			assetsDebugStatus === 'running')
+	const isAssetsDebugBusy = debugAssetsMutation.isPending || isAssetsDebugPolling
+
+	useEffect(() => {
+		if (!pendingAssetsDebug) return
+		if (!assetsDebugStatusQuery.data) return
+
+		if (assetsDebugStatusQuery.data.status === 'completed') {
+			void (async () => {
+				try {
+					const result = await api.downloadStructureAssetsDebug(
+						structureId!,
+						pendingAssetsDebug.workflowInstanceId
+					)
+					setAssetsDebug(result)
+					toast.success(
+						`Fetched ${result.fetchedAssetCount.toLocaleString()} raw assets and found ${result.itemCount.toLocaleString()} rows for this structure.`
+					)
+				} catch (error) {
+					toast.error(
+						error instanceof Error
+							? error.message
+							: 'Failed to download structure assets debug data'
+					)
+				} finally {
+					setPendingAssetsDebug(null)
+				}
+			})()
+			return
+		}
+
+		if (
+			assetsDebugStatusQuery.data.status === 'failed' ||
+			assetsDebugStatusQuery.data.status === 'unknown'
+		) {
+			toast.error('Failed to generate structure assets debug data.')
+			setPendingAssetsDebug(null)
+		}
+	}, [assetsDebugStatusQuery.data, pendingAssetsDebug, structureId])
 	const fittingItems = useMemo(() => {
 		if (!structure) {
 			return []
@@ -715,16 +779,26 @@ export default function StructuresDetailPage() {
 							<CardDescription>Current synced state and operational metadata.</CardDescription>
 						</div>
 						{isAdmin && (
-							<Button
-								variant="ghost"
-								size="sm"
-								onClick={() => void debugAssetsMutation.mutateAsync()}
-								loading={debugAssetsMutation.isPending}
-								loadingText="Fetching..."
-							>
-								<Search className="h-4 w-4" />
-								Debug Assets
-							</Button>
+							<div className="flex items-center gap-3">
+								{isAssetsDebugPolling ? (
+									<span className="text-xs text-muted-foreground">
+										Generating asset debug snapshot...
+									</span>
+								) : null}
+								<Button
+									variant="ghost"
+									size="sm"
+									onClick={() => {
+										if (isAssetsDebugBusy) return
+										void debugAssetsMutation.mutateAsync()
+									}}
+									loading={isAssetsDebugBusy}
+									loadingText={isAssetsDebugPolling ? 'Generating...' : 'Queueing...'}
+								>
+									<Search className="h-4 w-4" />
+									Debug Assets
+								</Button>
+							</div>
 						)}
 					</CardHeader>
 						<CardContent className="space-y-4 text-sm">
@@ -1414,7 +1488,7 @@ export default function StructuresDetailPage() {
 					</Card>
 				)}
 
-			{isAdmin && assetsDebug && assetsDebug.items.length > 0 ? (
+			{isAdmin && assetsDebug ? (
 				<Card>
 					<CardHeader>
 						<CardTitle>Asset Debug</CardTitle>
