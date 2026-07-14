@@ -10,9 +10,24 @@ const structuresMocks = vi.hoisted(() => ({
 	listCitadelStructures: vi.fn(),
 	getVisibleStructureDetail: vi.fn(),
 }))
+const corpDataMocks = vi.hoisted(() => ({
+	rebuildStructureInventorySnapshot: vi.fn(),
+}))
+const corpDataNamespace = vi.hoisted(
+	() => ({ __ns: 'EVE_CORPORATION_DATA' } as unknown as DurableObjectNamespace)
+)
 
 vi.mock('../../lib/groups-cache', () => ({
 	getCachedUserPermissions: vi.fn(),
+}))
+
+vi.mock('@repo/do-utils', () => ({
+	getStub: (namespace: unknown) =>
+		namespace === corpDataNamespace
+			? {
+					rebuildStructureInventorySnapshot: corpDataMocks.rebuildStructureInventorySnapshot,
+				}
+			: {},
 }))
 
 function makeUser(overrides: Partial<SessionUser> = {}): SessionUser {
@@ -229,5 +244,42 @@ describe('structures routes', () => {
 		expect(debugBucket.delete).toHaveBeenCalledWith('structure-assets-debug/workflow-1.json')
 		const downloadBody = (await downloadResponse.json()) as { corporationId: string; items: [] }
 		expect(downloadBody.corporationId).toBe('corp-1')
+	})
+
+	it('rebuilds a structure inventory snapshot for site admins', async () => {
+		corpDataMocks.rebuildStructureInventorySnapshot.mockResolvedValue({
+			inventoryCount: 42,
+		})
+
+		const app = createApp(makeUser({ is_admin: true }))
+		const env = {
+			STRUCTURES: {
+				getVisibleStructureDetail: structuresMocks.getVisibleStructureDetail,
+			},
+			EVE_CORPORATION_DATA: corpDataNamespace,
+		} as any
+
+		const response = await app.request(
+			'/api/structures/structure-1/inventory-rebuild',
+			{ method: 'POST' },
+			env
+		)
+
+		expect(response.status).toBe(200)
+		expect(structuresMocks.getVisibleStructureDetail).toHaveBeenCalled()
+		expect(corpDataMocks.rebuildStructureInventorySnapshot).toHaveBeenCalledWith(
+			'corp-1',
+			'structure-1'
+		)
+		const body = (await response.json()) as {
+			structureId: string
+			corporationId: string
+			inventoryCount: number
+		}
+		expect(body).toEqual({
+			structureId: 'structure-1',
+			corporationId: 'corp-1',
+			inventoryCount: 42,
+		})
 	})
 })

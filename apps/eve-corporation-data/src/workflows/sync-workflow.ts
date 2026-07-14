@@ -70,9 +70,14 @@ import type {
 
 const STEP_RETRY_OPTIONS = esiRetryOptions
 const MINING_CITADEL_STRUCTURE_TYPE_IDS = new Set(['35833', '35834'])
+const STRUCTURE_ENRICHMENT_COOLDOWN_HOURS = 1
 
 function isMiningCitadelStructure(structure: Pick<EsiCorporationStructure, 'type_id'>): boolean {
 	return MINING_CITADEL_STRUCTURE_TYPE_IDS.has(structure.type_id)
+}
+
+function addHours(date: Date, hours: number): Date {
+	return new Date(date.getTime() + hours * 60 * 60 * 1000)
 }
 
 function readEnvFlag(value: boolean | string | undefined, defaultValue: boolean): boolean {
@@ -191,6 +196,13 @@ export class EveCorporationSyncWorkflow extends WorkflowEntrypoint<Env, EveCorpo
 			)
 
 			const structureAssetSyncEnabled = corporationConfig?.includeInStructureAssetSync ?? false
+			const structureEnrichmentNextAllowedAt = corporationConfig?.structuresLastSync
+				? addHours(corporationConfig.structuresLastSync, STRUCTURE_ENRICHMENT_COOLDOWN_HOURS)
+				: null
+			const workflowObservedAt = event.timestamp ?? new Date()
+			const structureEnrichmentCooldownActive =
+				structureEnrichmentNextAllowedAt !== null &&
+				structureEnrichmentNextAllowedAt > workflowObservedAt
 			const shouldSync = createShouldSyncPredicate(dataTypes, {
 				disabledDataTypes: assetsSyncEnabled && structureAssetSyncEnabled ? [] : ['assets'],
 			})
@@ -736,7 +748,7 @@ export class EveCorporationSyncWorkflow extends WorkflowEntrypoint<Env, EveCorpo
 				let miningExtractions: Awaited<ReturnType<typeof fetchMiningEnrichment>> | null = null
 
 				if (structures) {
-					if (structureEnrichmentEnabled) {
+					if (structureEnrichmentEnabled && !structureEnrichmentCooldownActive) {
 						try {
 							sovereigntyEnrichment = await runDirectorStepWithFailover({
 								stepName: 'fetch-structure-sovereignty-enrichment',
@@ -822,7 +834,11 @@ export class EveCorporationSyncWorkflow extends WorkflowEntrypoint<Env, EveCorpo
 								)
 							})
 						}
-
+					} else if (structureEnrichmentEnabled && structureEnrichmentCooldownActive) {
+						logger.info('[EveCorporationSyncWorkflow] Skipping structure enrichment due to cooldown', {
+							corporationId,
+							nextAllowedAt: structureEnrichmentNextAllowedAt?.toISOString() ?? null,
+						})
 					}
 
 					structuresSync = {

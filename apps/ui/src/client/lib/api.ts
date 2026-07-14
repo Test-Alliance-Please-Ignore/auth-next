@@ -3535,6 +3535,14 @@ export class ApiClient {
 		return this.post(`/structures/${structureId}/assets-debug`, {})
 	}
 
+	async requestStructureInventoryRebuild(structureId: string): Promise<{
+		structureId: string
+		corporationId: string
+		inventoryCount: number
+	}> {
+		return this.post(`/structures/${structureId}/inventory-rebuild`, {})
+	}
+
 	async getStructureAssetsDebugStatus(
 		structureId: string,
 		workflowInstanceId: string
