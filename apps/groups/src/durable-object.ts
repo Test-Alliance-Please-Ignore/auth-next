@@ -2558,7 +2558,13 @@ export class GroupsDO extends DurableObject<Env> implements Groups {
 		logger.log('[DO] listPermissions - Start, categoryId:', categoryId)
 
 		try {
-			const whereClause = categoryId ? eq(permissions.categoryId, categoryId) : undefined
+			const normalizedCategoryId = categoryId?.trim()
+			const whereClause =
+				normalizedCategoryId === 'uncategorized'
+					? isNull(permissions.categoryId)
+					: normalizedCategoryId
+						? eq(permissions.categoryId, normalizedCategoryId)
+						: undefined
 			logger.log('[DO] listPermissions - whereClause:', whereClause)
 
 			logger.log('[DO] listPermissions - About to query database')
