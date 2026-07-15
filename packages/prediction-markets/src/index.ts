@@ -39,6 +39,29 @@ export const SYSTEM_WALLET_USER_ID = '00000000-0000-0000-0000-000000000000'
 export const MAX_MARKET_OPEN_DAYS = 7
 export const MAX_MARKET_OPEN_DURATION_MS = MAX_MARKET_OPEN_DAYS * 24 * 60 * 60 * 1000
 
+/**
+ * The dedicated LMSR liquidity/house wallet — the counterparty every LMSR trade settles against.
+ *
+ * Distinct from the parimutuel {@link SYSTEM_WALLET_USER_ID} ON PURPOSE: LMSR subsidy/liquidity flows
+ * must never move the parimutuel house balance that rake accounting and `awardRandomBonus` depend on.
+ * A fixed, valid UUID that `defaultRandom()` (a v4 generator) can never mint — so it never collides
+ * with a real member. Funded by a normal admin grant; excluded from member-facing reads (see
+ * {@link EXCLUDED_WALLET_USER_IDS}). NOT added to the grant-target guard, so it remains fundable.
+ */
+export const LMSR_HOUSE_WALLET_USER_ID = '00000000-0000-0000-0000-000000000001'
+
+/**
+ * Internal accumulator wallets that must be excluded from every member-facing read — the member
+ * leaderboard, the admin wallet grid, and random-bonus recipient selection. Both are sentinels, never
+ * real members. The parimutuel read/wallet-service exclusion clauses reference this single set so the
+ * two houses are filtered uniformly (an additive, behavior-preserving extension of the existing
+ * SYSTEM-wallet handling).
+ */
+export const EXCLUDED_WALLET_USER_IDS = [
+	SYSTEM_WALLET_USER_ID,
+	LMSR_HOUSE_WALLET_USER_ID,
+] as const
+
 // ---------------------------------------------------------------------------
 // Write inputs
 // ---------------------------------------------------------------------------

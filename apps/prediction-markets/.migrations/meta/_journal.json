@@ -64,6 +64,13 @@
       "when": 1783530528952,
       "tag": "0008_public_demogoblin",
       "breakpoints": true
+    },
+    {
+      "idx": 9,
+      "version": "7",
+      "when": 1784075146531,
+      "tag": "0009_eminent_blindfold",
+      "breakpoints": true
     }
   ]
 }
