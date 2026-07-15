@@ -1,6 +1,7 @@
 import { sql } from '@repo/db-utils'
 import { getStub } from '@repo/do-utils'
 import { logger, withWorkerLogContext } from '@repo/hono-helpers'
+import { createWorkflow } from '@repo/workflow-utils'
 
 import { createDb } from './db'
 
@@ -54,7 +55,7 @@ export async function scheduledHandler(_event: ScheduledEvent, env: Env): Promis
 
 		logger.info(`[scheduledHandler] Dispatching price snapshot for ${targetDate} hour ${hour}`)
 
-		await env.DAILY_PRICE_BATCH_WORKFLOW.create({
+		await createWorkflow(env.DAILY_PRICE_BATCH_WORKFLOW, {
 			id: `price-snapshot-${targetDate}-${hour}`,
 			params: { targetDate },
 		})

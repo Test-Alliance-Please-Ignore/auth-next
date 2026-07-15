@@ -5,6 +5,7 @@
 
 import { logger, withWorkerLogContext } from '@repo/hono-helpers'
 import { DEFAULT_RETENTION_DAYS, RETENTION_POLICIES } from '@repo/fulcrum'
+import { createWorkflow } from '@repo/workflow-utils'
 import { createDb } from './db'
 import * as queries from './db/queries'
 import { sendReportFailedDM } from './lib/discord-webhook'
@@ -84,7 +85,7 @@ export async function handleCharacterReportsQueue(
 					sendDm,
 				}
 
-				const workflowInstance = await env.CHARACTER_REPORT_WORKFLOW.create({
+				const workflowInstance = await createWorkflow(env.CHARACTER_REPORT_WORKFLOW, {
 					id: `${characterId}-${reportId}-${Date.now()}`,
 					params: workflowParams,
 				})

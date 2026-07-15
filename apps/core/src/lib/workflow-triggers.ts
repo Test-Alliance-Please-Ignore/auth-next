@@ -1,5 +1,6 @@
 import { eq } from '@repo/db-utils'
 import { logger } from '@repo/hono-helpers'
+import { createWorkflow } from '@repo/workflow-utils'
 
 import { users } from '../db/schema'
 import { isMumbleFeatureEnabled } from './mumble-feature'
@@ -92,7 +93,7 @@ export async function triggerDiscordRefreshWorkflow({
 			hardStripAllRoles,
 			jitterDelaySeconds,
 		}
-		const instance = await env.USER_DISCORD_REFRESH_WORKFLOW.create({
+		const instance = await createWorkflow(env.USER_DISCORD_REFRESH_WORKFLOW, {
 			id: createDiscordRefreshWorkflowId(source, userId),
 			params,
 		})
@@ -182,7 +183,7 @@ export async function triggerMumbleRefreshWorkflow({
 			source,
 			jitterDelaySeconds,
 		}
-		const instance = await env.USER_MUMBLE_REFRESH_WORKFLOW.create({
+		const instance = await createWorkflow(env.USER_MUMBLE_REFRESH_WORKFLOW, {
 			id: createMumbleRefreshWorkflowId(source, userIds),
 			params,
 		})
@@ -246,7 +247,7 @@ export async function triggerUserRefreshWorkflow({
 			.set({ lastRefreshWorkflowAttempt: new Date() })
 			.where(eq(users.id, userId))
 
-		const instance = await env.USER_REFRESH_WORKFLOW.create({
+		const instance = await createWorkflow(env.USER_REFRESH_WORKFLOW, {
 			id: createUserRefreshWorkflowId(source, userId),
 			params: { userId, refreshMode, suppressDiscordRefresh, forceTokenValidation },
 		})

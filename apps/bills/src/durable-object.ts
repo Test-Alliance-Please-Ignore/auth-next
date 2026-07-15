@@ -3,6 +3,7 @@ import { and, eq, isNull, lte } from 'drizzle-orm'
 
 import { getStub } from '@repo/do-utils'
 import { logger, toErrorLogDetails } from '@repo/hono-helpers'
+import { createWorkflowBatch } from '@repo/workflow-utils'
 
 import { createDb } from './db'
 import { BillService } from './services/bill.service'
@@ -663,7 +664,7 @@ export class BillsDO extends DurableObject<Env> implements Bills {
 			return
 		}
 
-		await this.env.BILL_DISCORD_NOTIFY.createBatch(
+		await createWorkflowBatch(this.env.BILL_DISCORD_NOTIFY, 
 			pendingRows.map((row) => ({
 				id: `bill-notify-immediate-${row.id}-${Date.now()}`,
 				params: { notificationEventId: row.id },

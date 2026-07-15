@@ -1,6 +1,7 @@
 import { and, eq } from 'drizzle-orm'
 
 import { logger, withWorkerLogContext } from '@repo/hono-helpers'
+import { createWorkflowBatch } from '@repo/workflow-utils'
 
 import { createDb } from './db'
 import { srpRequests } from './db/schema'
@@ -42,7 +43,7 @@ async function refreshPendingPaymentChecks(
 		const batchResults = await Promise.allSettled(
 			batches.map(async (batch, batchIndex) => {
 				try {
-					const instances = await env.SRP_PAYMENT_STATUS_CHECK.createBatch(batch)
+					const instances = await createWorkflowBatch(env.SRP_PAYMENT_STATUS_CHECK, batch)
 					refreshLogger.info('[SRP] Created payment-check workflow batch', {
 						batchIndex: batchIndex + 1,
 						totalBatches: batches.length,

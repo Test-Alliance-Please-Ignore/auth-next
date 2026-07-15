@@ -9,6 +9,7 @@ import {
 import { getStub } from '@repo/do-utils'
 import { logger } from '@repo/hono-helpers'
 import { ResourceType, RoleAttachmentType } from '@repo/groups'
+import { createWorkflow } from '@repo/workflow-utils'
 
 import {
 	corporationDiscordServers,
@@ -682,7 +683,7 @@ app.post('/:id/audit/runs', requireAuth(), requireAdmin(), async (c) => {
 				status: discordMemberAuditRuns.status,
 			})
 
-		await c.env.DISCORD_MEMBER_AUDIT_WORKFLOW.create({
+		await createWorkflow(c.env.DISCORD_MEMBER_AUDIT_WORKFLOW, {
 			id: workflowId,
 			params: {
 				runId: run.id,

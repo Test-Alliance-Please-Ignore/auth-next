@@ -1,5 +1,7 @@
 import { DurableObject } from 'cloudflare:workers'
 
+import { createWorkflow } from '@repo/workflow-utils'
+
 import type {
 	RecentLossRefreshCharacterInput,
 	RecentLossRefreshCoordinator,
@@ -145,7 +147,7 @@ export class RecentLossRefreshCoordinatorDO extends DurableObject<Env> implement
 		await this.rescheduleCleanup()
 
 		try {
-			await this.env.SRP_RECENT_LOSS_REFRESH_WORKFLOW.create({
+			await createWorkflow(this.env.SRP_RECENT_LOSS_REFRESH_WORKFLOW, {
 				id: workflowInstanceId,
 				params: {
 					userId,

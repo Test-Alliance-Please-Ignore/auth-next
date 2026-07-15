@@ -4,6 +4,8 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 import structuresRoutes from '../structures'
 import { getCachedUserPermissions } from '../../lib/groups-cache'
 
+import { DEFAULT_WORKFLOW_RETENTION } from '@repo/workflow-utils'
+
 import type { SessionUser } from '../../context'
 
 const structuresMocks = vi.hoisted(() => ({
@@ -202,6 +204,7 @@ describe('structures routes', () => {
 				structureId: 'structure-1',
 				structureName: 'Structure One',
 			},
+			retention: DEFAULT_WORKFLOW_RETENTION,
 		})
 		const startBody = (await startResponse.json()) as {
 			workflowInstanceId: string

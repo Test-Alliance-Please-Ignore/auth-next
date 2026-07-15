@@ -1,5 +1,6 @@
 import { DEFAULT_RETENTION_DAYS, RETENTION_POLICIES } from '@repo/fulcrum'
 import { logger, withWorkerLogContext } from '@repo/hono-helpers'
+import { createWorkflow } from '@repo/workflow-utils'
 
 import { createDb } from '../db'
 import * as queries from '../db/queries'
@@ -47,10 +48,12 @@ function sleep(ms: number): Promise<void> {
 
 type StepDo = <T>(name: string, config: unknown, fn: () => Promise<T>) => Promise<T>
 
-type CharacterWorkflowBinding = {
-	create: (input: { id: string; params: { reportId: string; characterId: string; targetUserId?: string; sendDm: boolean } }) => Promise<{ id: string }>
-	get: (id: string) => Promise<{ status: () => Promise<{ status: string }> }>
-}
+type CharacterWorkflowBinding = Workflow<{
+	reportId: string
+	characterId: string
+	targetUserId?: string
+	sendDm: boolean
+}>
 
 type RunnerEnv = {
 	DATABASE_URL: string
@@ -132,7 +135,7 @@ export async function runBulkCharacterReportWorkflow(
 						})
 
 						try {
-							const childWorkflowInstance = await env.CHARACTER_REPORT_WORKFLOW.create({
+							const childWorkflowInstance = await createWorkflow(env.CHARACTER_REPORT_WORKFLOW, {
 								id: `${characterId}-${reportId}-${Date.now()}-${crypto.randomUUID()}`,
 								params: {
 									reportId,

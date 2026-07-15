@@ -2,6 +2,7 @@ import { and, eq, inArray, isNull, lte, or } from 'drizzle-orm'
 
 import { getStub } from '@repo/do-utils'
 import { logger, withWorkerLogContext } from '@repo/hono-helpers'
+import { createWorkflowBatch } from '@repo/workflow-utils'
 
 import { createDb } from './db'
 import { billNotificationEvents, bills, billSchedules } from './db/schema'
@@ -82,7 +83,7 @@ async function refreshBillPayments(env: Env, options: { scheduledTimeMs: number 
 		const batchResults = await Promise.allSettled(
 			batches.map(async (batch, batchIndex) => {
 				try {
-					const instances = await env.BILL_PAYMENT_STATUS_CHECK.createBatch(batch)
+					const instances = await createWorkflowBatch(env.BILL_PAYMENT_STATUS_CHECK, batch)
 
 					refreshLogger.info('[Bills] Created workflow batch', {
 						batchIndex: batchIndex + 1,
@@ -207,7 +208,7 @@ async function enqueueDueSchedules(env: Env, options: { scheduledTimeMs: number 
 		const batchResults = await Promise.allSettled(
 			batches.map(async (batch, batchIndex) => {
 				try {
-					const instances = await env.BILLS_SCHEDULE_EXECUTOR.createBatch(batch)
+					const instances = await createWorkflowBatch(env.BILLS_SCHEDULE_EXECUTOR, batch)
 					scheduleLogger.info('[Bills] Created schedule workflow batch', {
 						batchIndex: batchIndex + 1,
 						totalBatches: batches.length,
@@ -365,7 +366,7 @@ async function dispatchPendingNotificationWorkflows(
 		let created = 0
 		for (let i = 0; i < workflowOptions.length; i += BATCH_SIZE) {
 			const batch = workflowOptions.slice(i, i + BATCH_SIZE)
-			const instances = await env.BILL_DISCORD_NOTIFY.createBatch(batch)
+			const instances = await createWorkflowBatch(env.BILL_DISCORD_NOTIFY, batch)
 			created += instances.length
 		}
 

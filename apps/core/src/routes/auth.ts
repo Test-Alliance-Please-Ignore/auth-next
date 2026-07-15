@@ -38,6 +38,7 @@ import type { Legacy } from '@repo/legacy'
 import type { TempopOAuthMetadata } from '../db/schema'
 import type { App } from '../context'
 import { logger } from '@repo/hono-helpers'
+import { createWorkflow } from '@repo/workflow-utils'
 
 /**
  * Authentication routes
@@ -728,7 +729,7 @@ auth.get('/callback', async (c) => {
 					.set({ lastRefreshWorkflowAttempt: new Date() })
 					.where(eq(users.id, stateUserId))
 
-				await c.env.USER_REFRESH_WORKFLOW.create({
+				await createWorkflow(c.env.USER_REFRESH_WORKFLOW, {
 					id: createUserRefreshWorkflowId('link', stateUserId),
 					params: { userId: stateUserId, refreshMode: 'event' },
 				})
@@ -865,7 +866,7 @@ auth.get('/callback', async (c) => {
 						.set({ lastRefreshWorkflowAttempt: new Date() })
 						.where(eq(users.id, user.id))
 
-					await c.env.USER_REFRESH_WORKFLOW.create({
+					await createWorkflow(c.env.USER_REFRESH_WORKFLOW, {
 						id: createUserRefreshWorkflowId('login', user.id),
 						params: { userId: user.id, refreshMode: 'event' },
 					})
@@ -1029,7 +1030,7 @@ auth.post('/claim-main', async (c) => {
 				.set({ lastRefreshWorkflowAttempt: new Date() })
 				.where(eq(users.id, user.id))
 
-			await c.env.USER_REFRESH_WORKFLOW.create({
+			await createWorkflow(c.env.USER_REFRESH_WORKFLOW, {
 				id: createUserRefreshWorkflowId('login', user.id),
 				params: { userId: user.id, refreshMode: 'event' },
 			})
@@ -1164,7 +1165,7 @@ auth.post('/link-character', requireAuth(), async (c) => {
 				.set({ lastRefreshWorkflowAttempt: new Date() })
 				.where(eq(users.id, user.id))
 
-			await c.env.USER_REFRESH_WORKFLOW.create({
+			await createWorkflow(c.env.USER_REFRESH_WORKFLOW, {
 				id: createUserRefreshWorkflowId('link', user.id),
 				params: { userId: user.id, refreshMode: 'event' },
 			})
