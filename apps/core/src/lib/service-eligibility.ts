@@ -3,6 +3,7 @@ import { and, eq, sql } from '@repo/db-utils'
 import { managedCorporations, userCharacters } from '../db/schema'
 
 import type { DbClient, schema } from '../db'
+import type { SERVICE_ELIGIBILITY_REASONS } from '../db/schema'
 
 /**
  * THE SERVICES ELIGIBILITY RULE — stated once, here.
@@ -33,21 +34,13 @@ import type { DbClient, schema } from '../db'
  * predicate. The equivalence test in __tests__/service-eligibility.test.ts pins
  * each of these exclusions.
  */
-export type ServiceEligibilityReason =
-	/** Eligible: at least one non-deleted character in a member corporation. */
-	| 'member_corp'
-	/** Eligible: no member-corp attachment, but `users.is_admin` is true. */
-	| 'admin_exempt'
-	/** Ineligible: the user has no non-deleted characters at all. */
-	| 'no_characters'
-	/** Ineligible: has non-deleted characters, but every one has a NULL corporation. */
-	| 'null_corp'
-	/** Ineligible: the only member-corp character(s) are soft-deleted. */
-	| 'only_deleted_member_char'
-	/** Ineligible: has corporations, none flagged `is_member_corporation`. */
-	| 'unmanaged_corp'
-	/** Ineligible: no `users` row exists for this id. */
-	| 'no_user_row'
+/**
+ * Derived from the schema's const so the TypeScript union and the Postgres enum
+ * are the same list by construction — the scan cannot write a reason the column
+ * would reject. See SERVICE_ELIGIBILITY_REASONS in db/schema.ts for each
+ * subcode's meaning.
+ */
+export type ServiceEligibilityReason = (typeof SERVICE_ELIGIBILITY_REASONS)[number]
 
 export interface ServiceEligibilityVerdict {
 	userId: string

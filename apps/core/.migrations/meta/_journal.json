@@ -302,6 +302,13 @@
       "when": 1783567591406,
       "tag": "0042_even_blazing_skull",
       "breakpoints": true
+    },
+    {
+      "idx": 43,
+      "version": "7",
+      "when": 1784157634176,
+      "tag": "0043_whole_bromley",
+      "breakpoints": true
     }
   ]
 }
