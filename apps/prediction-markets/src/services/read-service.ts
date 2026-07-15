@@ -1,5 +1,5 @@
-import { and, asc, desc, eq, gte, inArray, lte, ne, sql } from '@repo/db-utils'
-import { SYSTEM_WALLET_USER_ID } from '@repo/prediction-markets'
+import { and, asc, desc, eq, gte, inArray, lte, notInArray, sql } from '@repo/db-utils'
+import { EXCLUDED_WALLET_USER_IDS } from '@repo/prediction-markets'
 import { parseDateOrNull } from '@repo/worker-utils'
 
 import {
@@ -220,7 +220,7 @@ export async function getLeaderboard(
 				0
 			) as "netProfit"
 		from pm_wallets w
-		where w.user_id != ${SYSTEM_WALLET_USER_ID}
+		where w.user_id not in (${sql.join(EXCLUDED_WALLET_USER_IDS.map((id) => sql`${id}`), sql`, `)})
 		order by w.balance desc
 		limit ${limit}
 	`)
@@ -268,13 +268,14 @@ export async function listWallets(deps: PmDeps, opts?: ListWalletsOpts): Promise
 				? pmWallets.userId
 				: pmWallets.balance
 	const direction = opts?.order === 'asc' ? asc : desc
-	// The house/system wallet is an internal accumulator, not a user wallet — keep it out of the
-	// admin wallet grid (and its deposit/ledger actions). Its rake/burn entries still appear,
-	// labeled "System", in the audit ledger.
-	const excludeSystem = ne(pmWallets.userId, SYSTEM_WALLET_USER_ID)
+	// Internal accumulator wallets (the parimutuel SYSTEM house + the LMSR liquidity house) are not
+	// user wallets — keep them out of the admin wallet grid (and its deposit/ledger actions). Their
+	// entries still appear in the audit ledger. EXCLUDED_WALLET_USER_IDS is the single source shared
+	// with getLeaderboard and awardRandomBonus so every house is filtered uniformly.
+	const excludeHouses = notInArray(pmWallets.userId, [...EXCLUDED_WALLET_USER_IDS])
 	const where = opts?.userIds?.length
-		? and(inArray(pmWallets.userId, opts.userIds), excludeSystem)
-		: excludeSystem
+		? and(inArray(pmWallets.userId, opts.userIds), excludeHouses)
+		: excludeHouses
 
 	const rows = await deps.db
 		.select()

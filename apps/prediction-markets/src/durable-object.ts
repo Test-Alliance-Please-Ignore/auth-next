@@ -3,6 +3,9 @@ import { DurableObject } from 'cloudflare:workers'
 import { createDb } from './db'
 import * as betting from './services/betting-service'
 import * as governance from './services/governance-service'
+import * as lmsrMarket from './services/lmsr-market-service'
+import * as lmsrReads from './services/lmsr-read-service'
+import * as lmsrTrade from './services/lmsr-trade-service'
 import * as market from './services/market-service'
 import * as reads from './services/read-service'
 import * as settlement from './services/settlement-service'
@@ -13,6 +16,12 @@ import type {
 	AwardBonusResult,
 	BetResult,
 	BetView,
+	BuyLmsrSharesInput,
+	CreateLmsrMarketInput,
+	LmsrCostPreview,
+	LmsrMarketDetail,
+	LmsrPositionView,
+	LmsrTradeResult,
 	CreateMarketInput,
 	DetailedBetView,
 	GlobalLedgerOpts,
@@ -246,5 +255,37 @@ export class PredictionMarketsDO extends DurableObject<Env> implements Predictio
 
 	async updateConfig(input: UpdateConfigInput): Promise<PmConfigView> {
 		return governance.updateConfig(this.deps, input)
+	}
+
+	// =====================================================================
+	// LMSR (isolated automated-market-maker). Each method delegates to a
+	// dedicated services/lmsr-* module over the same shared `this.deps`.
+	// =====================================================================
+
+	async createLmsrMarket(input: CreateLmsrMarketInput): Promise<LmsrMarketDetail> {
+		return lmsrMarket.createLmsrMarket(this.deps, input)
+	}
+
+	async buyLmsrShares(input: BuyLmsrSharesInput): Promise<LmsrTradeResult & { deduped: boolean }> {
+		return lmsrTrade.buyShares(this.deps, input)
+	}
+
+	async getLmsrMarket(marketId: string): Promise<LmsrMarketDetail | null> {
+		return lmsrReads.getLmsrMarket(this.deps, marketId)
+	}
+
+	async previewLmsrCost(input: {
+		marketId: string
+		outcomeId: string
+		shares: string
+	}): Promise<LmsrCostPreview | null> {
+		return lmsrReads.previewLmsrCost(this.deps, input)
+	}
+
+	async getUserLmsrPositions(
+		userId: string,
+		opts?: { marketId?: string }
+	): Promise<LmsrPositionView[]> {
+		return lmsrReads.getUserLmsrPositions(this.deps, userId, opts)
 	}
 }

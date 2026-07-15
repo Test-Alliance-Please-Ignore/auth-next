@@ -60,6 +60,15 @@ export type PmErrorCode =
 	| 'THRESHOLD_WOULD_STRAND'
 	| 'TOO_MANY_OUTCOMES'
 	| 'VOID_REASON_REQUIRED'
+	// LMSR (isolated automated-market-maker) codes. Additive; parimutuel paths never throw these.
+	| 'LMSR_INVALID_B'
+	| 'LMSR_INVALID_SHARES'
+	| 'LMSR_MARKET_NOT_FOUND'
+	| 'LMSR_MARKET_NOT_OPEN'
+	| 'LMSR_MARKET_CLOSED'
+	| 'LMSR_OUTCOME_NOT_FOUND'
+	| 'LMSR_HOUSE_UNDERFUNDED'
+	| 'LMSR_SLIPPAGE_EXCEEDED'
 
 export class PmError extends Error {
 	readonly code: PmErrorCode

@@ -436,6 +436,115 @@ export interface ThresholdImpact {
 }
 
 // ---------------------------------------------------------------------------
+// LMSR (isolated automated-market-maker) — types live alongside the parimutuel
+// contract but describe a separate mechanism backed by its own lmsr_* tables.
+// ---------------------------------------------------------------------------
+
+/** LMSR market lifecycle. A distinct type from {@link MarketStatus} so the two mechanisms stay decoupled. */
+export type LmsrMarketStatus = 'draft' | 'open' | 'closed' | 'resolving' | 'resolved' | 'voided'
+
+export interface CreateLmsrMarketInput {
+	createdBy: string
+	question: string
+	description?: string
+	/** Two or more distinct outcome labels. */
+	outcomes: string[]
+	/** ISO-8601 timestamp when trading closes. */
+	closesAt: string
+	/** ISO-8601 expected resolution date; must be at or after `closesAt`. */
+	resolvesOn: string
+	/**
+	 * The LMSR liquidity parameter `b`, a positive integer decimal string (points). Deeper `b` means
+	 * more liquidity (prices move less per trade) and a larger pre-funded max maker loss `ceil(b·ln n)`.
+	 */
+	liquidityParam: string
+	/** Optional designated resolver core user ids (NULL/empty/absent => global resolver authority). */
+	designatedResolverIds?: string[]
+	/** When true, consume the per-user `lmsr_create` rate budget and reject (RATE_LIMITED) if exhausted. */
+	enforceRateLimit?: boolean
+	/** When true, waive the max market-open-duration cap (site admins are uncapped). Server-set only. */
+	createdByAdmin?: boolean
+}
+
+export interface LmsrOutcomeView {
+	id: string
+	label: string
+	/** Net shares outstanding for this outcome (q_i). */
+	netShares: string
+	sortOrder: number
+	/** Implied probability in basis points (across all outcomes, Σ ≈ 10000). */
+	priceBps: number
+}
+
+export interface LmsrMarketSummary {
+	id: string
+	question: string
+	status: LmsrMarketStatus
+	closesAt: string
+	/** The LMSR liquidity parameter `b` (points). */
+	liquidityParam: string
+	outcomeCount: number
+	createdAt: string
+	discordThreadId: string | null
+}
+
+export interface LmsrMarketDetail extends LmsrMarketSummary {
+	description: string | null
+	discordMessageId: string | null
+	createdBy: string
+	resolvesOn: string | null
+	/** Pre-funded max-loss reservation ceil(b·ln n), in points. */
+	subsidy: string
+	resolvedOutcomeId: string | null
+	resolvedBy: string | null
+	resolvedAt: string | null
+	voidReason: string | null
+	designatedResolverIds: string[] | null
+	outcomes: LmsrOutcomeView[]
+}
+
+export interface BuyLmsrSharesInput {
+	userId: string
+	marketId: string
+	outcomeId: string
+	/** Positive integer share count to buy (the delta added to this outcome's q). */
+	shares: string
+	/** Idempotency key (the Discord interaction id for bot trades). */
+	idempotencyKey: string
+	/** Optional slippage cap: reject (LMSR_SLIPPAGE_EXCEEDED) if the quoted cost exceeds this. */
+	maxCost?: string
+}
+
+export interface LmsrTradeResult {
+	id: string
+	marketId: string
+	userId: string
+	outcomeId: string
+	side: 'buy' | 'sell'
+	shares: string
+	/** Signed cost in points: positive = paid by the trader (buy), negative = paid to them (sell). */
+	costPoints: string
+	createdAt: string
+}
+
+export interface LmsrCostPreview {
+	marketId: string
+	outcomeId: string
+	shares: string
+	/** Integer points a buy of `shares` would cost at the current state (rounded in the maker's favor). */
+	cost: string
+	/** Current implied probability of the outcome, in basis points. */
+	priceBps: number
+}
+
+export interface LmsrPositionView {
+	marketId: string
+	outcomeId: string
+	outcomeLabel: string
+	shares: string
+}
+
+// ---------------------------------------------------------------------------
 // RPC interface
 // ---------------------------------------------------------------------------
 
@@ -619,4 +728,30 @@ export interface PredictionMarkets {
 	 * Pure UPDATE — the PM DO never calls Discord itself.
 	 */
 	attachDiscordPost(input: { marketId: string; threadId: string; messageId: string }): Promise<void>
+
+	// LMSR (isolated automated-market-maker). Additive to this contract; every parimutuel method above
+	// is unchanged. Backed by lmsr_* tables + services/lmsr-*; shares the pm_wallets/pm_ledger currency.
+	/**
+	 * Create an LMSR market: seeds `n` outcomes at q=0 and reserves ceil(b·ln n) against the dedicated
+	 * LMSR house wallet (a balance CHECK — no points move at create). Throws LMSR_HOUSE_UNDERFUNDED when
+	 * the house can't cover the combined reservation of all currently-live LMSR markets plus this one.
+	 */
+	createLmsrMarket(input: CreateLmsrMarketInput): Promise<LmsrMarketDetail>
+	/**
+	 * Buy `shares` of an outcome at the current LMSR price. The trader pays an integer cost (quantized in
+	 * the maker's favor) that moves to the LMSR house wallet; the shares are minted to their position.
+	 * `deduped` is true on a duplicate delivery (same idempotencyKey) — the prior trade is returned and no
+	 * money moved; callers must gate any non-idempotent side effect on `deduped === false`.
+	 */
+	buyLmsrShares(input: BuyLmsrSharesInput): Promise<LmsrTradeResult & { deduped: boolean }>
+	getLmsrMarket(marketId: string): Promise<LmsrMarketDetail | null>
+	/** Quote the cost + current price for a prospective buy without moving money (null if the market or
+	 * outcome doesn't exist). */
+	previewLmsrCost(input: {
+		marketId: string
+		outcomeId: string
+		shares: string
+	}): Promise<LmsrCostPreview | null>
+	/** A user's non-zero LMSR share positions, optionally scoped to a single market. */
+	getUserLmsrPositions(userId: string, opts?: { marketId?: string }): Promise<LmsrPositionView[]>
 }

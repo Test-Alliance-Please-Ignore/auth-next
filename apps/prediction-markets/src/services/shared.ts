@@ -88,6 +88,50 @@ export async function creditWallet(
 	return { balanceAfter: credited?.balance ?? null }
 }
 
+/**
+ * The single audited money-DEBIT primitive — the guarded, overdraft-safe mirror of {@link creditWallet}.
+ *
+ * Atomically decrements the balance only if it covers `amount` (the guard lives INSIDE the WHERE, so
+ * 0 affected rows means insufficient funds — also covering a wallet row that does not exist, which can
+ * never be debited); on success it appends the matching NEGATIVE `pm_ledger` line carrying the running
+ * `balanceAfter`. Returns `null` on insufficient funds so the caller throws the appropriate PmError.
+ *
+ * This is the reusable form of the guarded-debit idiom that placeBet/awardRandomBonus currently inline;
+ * new money paths (LMSR) route through it so the debit-then-record invariant lives in one place.
+ */
+export async function debitWallet(
+	tx: PmExecutor,
+	args: {
+		userId: string
+		amount: bigint
+		type: NewPmLedgerRow['type']
+		marketId?: string
+		betId?: string
+		idempotencyKey?: string
+		metadata?: unknown
+	}
+): Promise<{ balanceAfter: string } | null> {
+	const { userId, amount, type, marketId, betId, idempotencyKey, metadata } = args
+	const formatted = formatAmount(amount)
+	const debited = await tx
+		.update(pmWallets)
+		.set({ balance: sql`${pmWallets.balance} - ${formatted}::numeric`, updatedAt: new Date() })
+		.where(and(eq(pmWallets.userId, userId), sql`${pmWallets.balance} >= ${formatted}::numeric`))
+		.returning({ balance: pmWallets.balance })
+	if (debited.length === 0) return null
+	await tx.insert(pmLedger).values({
+		userId,
+		amount: formatAmount(-amount),
+		type,
+		marketId: marketId ?? null,
+		betId: betId ?? null,
+		balanceAfter: debited[0].balance,
+		idempotencyKey: idempotencyKey ?? null,
+		metadata: metadata ?? null,
+	})
+	return { balanceAfter: debited[0].balance }
+}
+
 export async function logHistory(executor: PmExecutor, entry: HistoryEntry): Promise<void> {
 	await executor.insert(pmMarketHistory).values({
 		marketId: entry.marketId,

@@ -1,6 +1,6 @@
-import { and, eq, ne, sql } from '@repo/db-utils'
+import { and, eq, notInArray, sql } from '@repo/db-utils'
 import { captureException } from '@repo/hono-helpers'
-import { SYSTEM_WALLET_USER_ID } from '@repo/prediction-markets'
+import { EXCLUDED_WALLET_USER_IDS, SYSTEM_WALLET_USER_ID } from '@repo/prediction-markets'
 
 import { pmLedger, pmWallets } from '../db/schema'
 import { isExpectedError, PmError } from '../lib/errors'
@@ -153,16 +153,18 @@ export async function awardRandomBonus(
 	const formatted = formatAmount(amount)
 	try {
 		return await deps.db.transaction(async (tx) => {
-			// Pick a random real recipient and lock its wallet row. The house/system wallet is an
-			// internal accumulator, never a prize target, so exclude it. `FOR UPDATE` here is NOT for
-			// credit correctness (the credit below is an atomic increment) — it enforces a consistent
-			// lock ORDER: every money op must take member-wallet locks BEFORE the SYSTEM-wallet lock.
-			// executeResolution locks winners then SYSTEM (rake/dust); locking the winner here first
-			// keeps this in the same order and avoids a deadlock cycle with a concurrent resolution.
+			// Pick a random real recipient and lock its wallet row. Internal accumulator wallets (the
+			// SYSTEM house AND the LMSR liquidity house) are never prize targets, so exclude both via the
+			// shared EXCLUDED_WALLET_USER_IDS set — otherwise a parimutuel house-funded bonus could be paid
+			// INTO the LMSR house, mixing the two mechanisms' money. `FOR UPDATE` here is NOT for credit
+			// correctness (the credit below is an atomic increment) — it enforces a consistent lock ORDER:
+			// every money op must take member-wallet locks BEFORE the SYSTEM-wallet lock. executeResolution
+			// locks winners then SYSTEM (rake/dust); locking the winner here first keeps this in the same
+			// order and avoids a deadlock cycle with a concurrent resolution.
 			const [winner] = await tx
 				.select({ userId: pmWallets.userId })
 				.from(pmWallets)
-				.where(ne(pmWallets.userId, SYSTEM_WALLET_USER_ID))
+				.where(notInArray(pmWallets.userId, [...EXCLUDED_WALLET_USER_IDS]))
 				.orderBy(sql`random()`)
 				.limit(1)
 				.for('update')

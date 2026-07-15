@@ -19,6 +19,10 @@ export interface RateBudget {
 export const RATE_BUDGETS: Record<string, RateBudget> = {
 	bet: { limit: 5, windowMs: 10_000 },
 	create_market: { limit: 10, windowMs: 3_600_000 }, // 10 markets/hour per user
+	// LMSR uses its own budget keys (distinct per-command rows) so its traffic never shares a counter
+	// with the parimutuel `bet`/`create_market` limits.
+	lmsr_trade: { limit: 5, windowMs: 10_000 },
+	lmsr_create: { limit: 10, windowMs: 3_600_000 },
 }
 
 export interface RateState {
