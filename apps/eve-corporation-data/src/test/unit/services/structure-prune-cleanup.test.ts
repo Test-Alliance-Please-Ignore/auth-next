@@ -19,10 +19,12 @@ const mocks = vi.hoisted(() => {
 	const resolvePlanetGeographyByIds = vi.fn()
 	const resolveSolarSystemsByIds = vi.fn()
 	const resolveRegionsByIds = vi.fn()
+	const resolveNearestMoonGeographyBySystemPosition = vi.fn()
 	const getStub = vi.fn(() => ({
 		resolvePlanetGeographyByIds,
 		resolveSolarSystemsByIds,
 		resolveRegionsByIds,
+		resolveNearestMoonGeographyBySystemPosition,
 	}))
 
 	return {
@@ -34,6 +36,7 @@ const mocks = vi.hoisted(() => {
 		resolvePlanetGeographyByIds,
 		resolveSolarSystemsByIds,
 		resolveRegionsByIds,
+		resolveNearestMoonGeographyBySystemPosition,
 		getStub,
 	}
 })
@@ -184,6 +187,9 @@ describe('structure prune cleanup', () => {
 
 		const resolveNearestMoonGeographyBySystemPosition = vi.fn().mockResolvedValue(null)
 		mocks.getStub.mockReturnValue({
+			resolvePlanetGeographyByIds: vi.fn(),
+			resolveSolarSystemsByIds: vi.fn(),
+			resolveRegionsByIds: vi.fn(),
 			resolveNearestMoonGeographyBySystemPosition,
 		})
 
@@ -325,6 +331,7 @@ describe('structure prune cleanup', () => {
 			}),
 			resolveSolarSystemsByIds: vi.fn().mockResolvedValue({}),
 			resolveRegionsByIds: vi.fn().mockResolvedValue({}),
+			resolveNearestMoonGeographyBySystemPosition: vi.fn().mockResolvedValue(null),
 		})
 
 		const instance = createDoInstance(db)
@@ -367,6 +374,7 @@ describe('structure prune cleanup', () => {
 			resolvePlanetGeographyByIds: vi.fn().mockResolvedValue({}),
 			resolveSolarSystemsByIds: vi.fn().mockResolvedValue({}),
 			resolveRegionsByIds: vi.fn().mockResolvedValue({}),
+			resolveNearestMoonGeographyBySystemPosition: vi.fn().mockResolvedValue(null),
 		})
 
 		const instance = createDoInstance(db)
