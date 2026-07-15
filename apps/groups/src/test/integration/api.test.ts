@@ -130,6 +130,47 @@ describe('Groups Durable Object - Categories', () => {
 	})
 })
 
+describe('Groups Durable Object - Global Permissions', () => {
+	it('should list uncategorized permissions when filtering by uncategorized', async () => {
+		const stub = getStub<Groups>(testEnv.GROUPS, 'test-permissions-uncategorized')
+
+		const category = await stub.createCategory(
+			{
+				name: 'Categorized Permissions Test',
+				visibility: 'public',
+			},
+			ADMIN_USER_ID
+		)
+
+		const categorizedPermission = await stub.createPermission(
+			{
+				urn: 'urn:broadcasts:test:categorized:send',
+				name: 'Categorized Permission',
+				categoryId: category.id,
+			},
+			ADMIN_USER_ID
+		)
+
+		const uncategorizedPermission = await stub.createPermission(
+			{
+				urn: 'urn:broadcasts:test:uncategorized:send',
+				name: 'Uncategorized Permission',
+			},
+			ADMIN_USER_ID
+		)
+
+		const uncategorizedPermissions = await stub.listPermissions('uncategorized')
+
+		expect(uncategorizedPermissions.some((permission) => permission.id === uncategorizedPermission.id)).toBe(
+			true
+		)
+		expect(uncategorizedPermissions.some((permission) => permission.id === categorizedPermission.id)).toBe(
+			false
+		)
+		expect(uncategorizedPermissions.every((permission) => permission.category === null)).toBe(true)
+	})
+})
+
 describe('Groups Durable Object - Groups', () => {
 	it('should create a group', async () => {
 		const stub = getStub<Groups>(testEnv.GROUPS, 'test-group-create')
