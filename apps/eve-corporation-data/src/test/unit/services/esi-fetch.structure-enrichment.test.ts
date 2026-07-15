@@ -159,8 +159,49 @@ describe('esi structure enrichment ownership handling', () => {
 			systemName: 'Jita',
 			name: null,
 			typeId: '35842',
-			state: 'active',
+			state: 'invulnerable',
 		})
+	})
+
+	it('normalizes skyhook vulnerability state labels before storage', () => {
+		const stored = buildSkyhookStorageRow({
+			corporationId: '98000001',
+			skyhook: {
+				structure_id: '71001',
+				planet_id: '401',
+				corporation_id: '98000001',
+				state: 'ShieldVulnerable',
+				is_active: true,
+				effective_workforce: 12,
+				reagents: [],
+				reinforcement_timer: null,
+				theft_vulnerability: {
+					start: '2026-06-27T12:10:00.000Z',
+					end: '2026-06-27T12:20:00.000Z',
+				},
+				is_raidable: true,
+				becomes_raidable_at: '2026-06-27T12:10:00.000Z',
+				vulnerable_at: '2026-06-27T12:20:00.000Z',
+				raw: { id: 71001, planet_id: 401 },
+			},
+			baseStructure: {
+				corporationId: '98000001',
+				structureId: '71001',
+				typeId: '35842',
+				systemId: '30000142',
+				systemName: 'Jita',
+				name: null,
+			},
+			existingRow: null,
+			planet: {
+				planetId: '401',
+				planetName: 'Planet One',
+				solarSystemName: 'Jita',
+			},
+			observedAt: new Date('2026-06-27T12:00:00.000Z'),
+		})
+
+		expect(stored?.state).toBe('vulnerable')
 	})
 
 	it('synthesizes the base structure row for a skyhook from the requesting corp and planet geography', () => {
@@ -215,7 +256,7 @@ describe('esi structure enrichment ownership handling', () => {
 			regionId: '10000002',
 			regionName: 'The Forge',
 			profileId: 'skyhook',
-			state: 'active',
+			state: 'reinforced',
 			lowPower: false,
 			syncStatus: 'ok',
 		})

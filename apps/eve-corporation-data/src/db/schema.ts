@@ -13,6 +13,7 @@ import {
 
 import {
 	structureMoonDrills,
+	structureMoonGeographies,
 	structureMiningExtractions,
 	structureSkyhooks,
 	structureSovereigntyHubs,
@@ -21,6 +22,7 @@ import {
 
 export {
 	structureMoonDrills,
+	structureMoonGeographies,
 	structureMiningExtractions,
 	structureSkyhooks,
 	structureSovereigntyHubs,
@@ -614,6 +616,7 @@ export const schema = {
 	structureSovereigntyHubs,
 	structureSkyhooks,
 	structureMoonDrills,
+	structureMoonGeographies,
 	structureMiningExtractions,
 	corporationStructureInventory,
 	structureFuelLog,

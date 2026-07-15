@@ -2,6 +2,7 @@ import { describe, expect, it, vi } from 'vitest'
 
 import {
 	corporationStructures,
+	structureMoonGeographies,
 	structureMoonDrills,
 	structureSkyhooks,
 	structureSovereigntyHubs,
@@ -76,6 +77,9 @@ function makeDb() {
 			structureMiningExtractions: {
 				findMany: structureMiningExtractionsFindMany,
 			},
+			structureMoonGeographies: {
+				findMany: vi.fn().mockResolvedValue([{ structureId: 'stale-structure' }]),
+			},
 			structureMoonDrills: {
 				findMany: structureMoonDrillsFindMany,
 			},
@@ -136,6 +140,9 @@ describe('structure prune cleanup', () => {
 				syncFailureReason: null,
 				lastSyncedAt: new Date('2026-07-12T19:36:47.369Z'),
 				services: null,
+				structureInfo: {
+					position: { x: 1, y: 2, z: 3 },
+				},
 				updatedAt: new Date('2026-07-12T19:36:47.369Z'),
 			},
 		])
@@ -150,10 +157,11 @@ describe('structure prune cleanup', () => {
 			},
 		])
 
-		expect(db.delete).toHaveBeenCalledTimes(2)
+		expect(db.delete).toHaveBeenCalledTimes(3)
 		expect(db.delete).toHaveBeenNthCalledWith(1, corporationStructures)
-		expect(db.delete).toHaveBeenNthCalledWith(2, structureMoonDrills)
-		expect(db._where).toHaveBeenCalledTimes(2)
+		expect(db.delete).toHaveBeenNthCalledWith(2, structureMoonGeographies)
+		expect(db.delete).toHaveBeenNthCalledWith(3, structureMoonDrills)
+		expect(db._where).toHaveBeenCalledTimes(3)
 	})
 
 	it('clears all structure-side rows when the successful sync returns no structures', async () => {
@@ -164,10 +172,11 @@ describe('structure prune cleanup', () => {
 
 		await instance.storeStructures('corp-1', [])
 
-		expect(db.delete).toHaveBeenCalledTimes(2)
+		expect(db.delete).toHaveBeenCalledTimes(3)
 		expect(db.delete).toHaveBeenNthCalledWith(1, corporationStructures)
-		expect(db.delete).toHaveBeenNthCalledWith(2, structureMoonDrills)
-		expect(db._where).toHaveBeenCalledTimes(2)
+		expect(db.delete).toHaveBeenNthCalledWith(2, structureMoonGeographies)
+		expect(db.delete).toHaveBeenNthCalledWith(3, structureMoonDrills)
+		expect(db._where).toHaveBeenCalledTimes(3)
 	})
 
 	it('clears moon drill rows when the moon-drill synchronization returns no structures', async () => {
@@ -181,7 +190,7 @@ describe('structure prune cleanup', () => {
 		expect(db._where).toHaveBeenCalledTimes(1)
 	})
 
-	it('preserves existing moon drill snapshots when synthesis fails for a live structure', async () => {
+	it('preserves existing moon geography snapshots when synthesis fails for a live structure', async () => {
 		const db = makeDb()
 		const instance = createDoInstance(db)
 
@@ -191,7 +200,7 @@ describe('structure prune cleanup', () => {
 			resolveSolarSystemsByIds: vi.fn(),
 			resolveRegionsByIds: vi.fn(),
 			resolveNearestMoonGeographyBySystemPosition,
-		})
+		} as never)
 
 		;(instance as any).hydrateStructureRows = vi.fn().mockResolvedValue([
 			{
@@ -223,7 +232,7 @@ describe('structure prune cleanup', () => {
 			},
 		])
 
-		await (instance as any).storeMoonDrills('corp-1', [
+		await (instance as any).storeMoonGeographies('corp-1', [
 			{
 				structureId: 'moon-drill-1',
 				corporationId: 'corp-1',
@@ -332,7 +341,7 @@ describe('structure prune cleanup', () => {
 			resolveSolarSystemsByIds: vi.fn().mockResolvedValue({}),
 			resolveRegionsByIds: vi.fn().mockResolvedValue({}),
 			resolveNearestMoonGeographyBySystemPosition: vi.fn().mockResolvedValue(null),
-		})
+		} as never)
 
 		const instance = createDoInstance(db)
 
@@ -375,7 +384,7 @@ describe('structure prune cleanup', () => {
 			resolveSolarSystemsByIds: vi.fn().mockResolvedValue({}),
 			resolveRegionsByIds: vi.fn().mockResolvedValue({}),
 			resolveNearestMoonGeographyBySystemPosition: vi.fn().mockResolvedValue(null),
-		})
+		} as never)
 
 		const instance = createDoInstance(db)
 
