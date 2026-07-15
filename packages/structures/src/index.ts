@@ -497,6 +497,7 @@ export interface StructureMoonDrillListItem
 
 export interface StructureMiningCitadelListItem
 	extends StructureIdentity, StructureSyncState, StructureConfig, StructureMoonGeography {
+	name: string
 	state: string
 	typeId: string
 	typeName: string | null
