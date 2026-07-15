@@ -7,13 +7,8 @@ import { parseMumbleError } from '@repo/mumble'
 import { createDb } from '../db'
 import { getCachedUserRoles } from '../lib/groups-cache'
 import { isMumbleFeatureEnabled } from '../lib/mumble-feature'
-import {
-	managedCorporations,
-	mumbleTempopGuests,
-	mumbleTempops,
-	userCharacters,
-	users,
-} from '../db/schema'
+import { hasMemberCorporationAttachment } from '../lib/service-eligibility'
+import { mumbleTempopGuests, mumbleTempops, userCharacters, users } from '../db/schema'
 
 import type { EveCharacterData } from '@repo/eve-character-data'
 import type { EveCorporationData } from '@repo/eve-corporation-data'
@@ -175,31 +170,6 @@ async function isUserBlacklisted(env: Env, userId: string): Promise<boolean> {
 	return hrStub.isUserBlacklisted(userId)
 }
 
-async function hasMemberCorporationAttachment(env: Env, userId: string): Promise<boolean> {
-	const db = createDb(env.DATABASE_URL)
-	const [characters, memberCorporations] = await Promise.all([
-		db.query.userCharacters.findMany({
-			where: and(eq(userCharacters.userId, userId), eq(userCharacters.isDeleted, false)),
-			columns: {
-				corporationId: true,
-			},
-		}),
-		db.query.managedCorporations.findMany({
-			where: eq(managedCorporations.isMemberCorporation, true),
-			columns: {
-				corporationId: true,
-			},
-		}),
-	])
-
-	const memberCorporationIds = new Set(
-		memberCorporations.map((corporation) => corporation.corporationId)
-	)
-	return characters.some(
-		(character) => !!character.corporationId && memberCorporationIds.has(character.corporationId)
-	)
-}
-
 async function runWithConcurrencyLimit<T, R>(
 	items: T[],
 	limit: number,
@@ -252,7 +222,7 @@ async function getUserGroupNames(
 				is_admin: true,
 			},
 		}),
-		hasMemberCorporationAttachment(env, userId),
+		hasMemberCorporationAttachment(db, userId),
 		getCachedUserRoles(env, userId),
 	])
 	const isAllianceMember = roleAttachments.some(
