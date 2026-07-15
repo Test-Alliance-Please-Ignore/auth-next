@@ -986,6 +986,7 @@ export default function StructuresPage() {
 	const renderMiningCitadelRows = (items: StructureMiningCitadelListItem[]) =>
 		items.map((structure) => {
 			const displayMoonName = stripLeadingContextName(structure.moonName, structure.planetName)
+			const displayStructureName = stripLeadingContextName(structure.name, structure.systemName)
 
 			return (
 				<TableRow key={structure.structureId}>
@@ -994,6 +995,13 @@ export default function StructuresPage() {
 					</TableCell>
 					<TableCell className="font-medium">{structure.regionName ?? structure.regionId ?? '-'}</TableCell>
 					<TableCell>{structure.systemName ?? structure.systemId}</TableCell>
+					<TableCell>{structure.planetName ?? structure.planetId ?? '-'}</TableCell>
+					<TableCell title={structure.moonName ?? structure.moonId}>{displayMoonName}</TableCell>
+					<TableCell className="max-w-[18rem]">
+						<span className="truncate font-medium" title={structure.name}>
+							{displayStructureName}
+						</span>
+					</TableCell>
 					<TableCell className="max-w-[18rem]">
 						<div className="flex min-w-0 items-center gap-2">
 							<CorporationLogo
@@ -1046,8 +1054,6 @@ export default function StructuresPage() {
 					<TableCell>
 						{structure.assignedGroupId ? groupNameById.get(structure.assignedGroupId) ?? structure.assignedGroupId : '-'}
 					</TableCell>
-					<TableCell title={structure.moonName ?? structure.moonId}>{displayMoonName}</TableCell>
-					<TableCell>{structure.planetName ?? structure.planetId ?? '-'}</TableCell>
 					<TableCell>{formatNullableDateTime(structure.chunkArrivalTime)}</TableCell>
 					<TableCell>{formatNullableDateTime(structure.naturalDecayTime)}</TableCell>
 					<TableCell>
@@ -1730,6 +1736,9 @@ export default function StructuresPage() {
 												<SortableHead field="state" label="State" />
 												<SortableHead field="region" label="Region" />
 												<SortableHead field="system" label="System" />
+												<SortableHead field="planet" label="Planet" />
+												<TableHead>Moon</TableHead>
+												<SortableHead field="name" label="Name" />
 												<SortableHead field="corporation" label="Corporation" />
 												<SortableHead field="type" label="Type" />
 												<SortableHead field="fuel" label="Fuel" />
@@ -1737,8 +1746,6 @@ export default function StructuresPage() {
 												<TableHead>LP Allowed</TableHead>
 												<SortableHead field="nextStateAt" label="Next State In" />
 												<TableHead>Group</TableHead>
-												<TableHead>Moon</TableHead>
-												<TableHead>Planet</TableHead>
 												<TableHead>Chunk Arrival</TableHead>
 												<TableHead>Natural Decay</TableHead>
 												<TableHead>Sync</TableHead>

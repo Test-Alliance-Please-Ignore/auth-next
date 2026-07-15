@@ -3097,7 +3097,7 @@ function buildMiningCitadelListItem(input: {
 	const { context, miningExtractionRow, moonGeographyRow } = input
 	const { structure: structureRow } = context
 	const hasMiningSnapshot = miningExtractionRow !== null && moonGeographyRow !== null
-	const { name: _structureName, ...structureBase } = buildStructureListItem(context)
+	const structureBase = buildStructureListItem(context)
 
 	return {
 		...structureBase,
