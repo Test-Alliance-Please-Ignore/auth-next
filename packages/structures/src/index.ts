@@ -14,9 +14,12 @@ export type StructureListSortBy =
 	| 'activityDefenseMultiplier'
 	| 'magmaticGasEstimatedDepletionAt'
 	| 'superionicIceEstimatedDepletionAt'
+	| 'skyhookSecureFullness'
+	| 'skyhookSurplusFullness'
 	| 'name'
 	| 'corporation'
 	| 'region'
+	| 'planet'
 	| 'system'
 	| 'type'
 	| 'state'
@@ -222,6 +225,15 @@ export interface StructureIdentity {
 	regionName: string | null
 }
 
+export interface StructureMoonGeography {
+	moonId: string
+	moonName: string | null
+	planetId: string | null
+	planetName: string | null
+	systemId: string
+	systemName: string | null
+}
+
 export interface StructureSyncState {
 	syncStatus: StructureSyncStatus
 	syncFailureReason: string | null
@@ -368,8 +380,6 @@ export interface StructureSovereigntyListItem
 	typeId: string
 	typeName: string | null
 	nextStateAt: string | null
-	fuelExpires: string | null
-	fuelAmount: number | null
 	lowPower: boolean
 	claimType: 'alliance' | 'faction' | 'unclaimed'
 	allianceId: string | null
@@ -386,7 +396,6 @@ export interface StructureSovereigntyListItem
 	militaryLevel: number | null
 	industrialLevel: number | null
 	strategicLevel: number | null
-	fuelAccessListId: string | null
 	reagentBayLastUpdated: string | null
 	reagentCount: number
 	magmaticGasQuantity: number
@@ -419,8 +428,15 @@ export interface StructureSovereigntyListResponse {
 export interface StructureSkyhookReagent {
 	typeId: string
 	typeName: string | null
+	unitVolumeM3: number
 	securedStock: number
 	unsecuredStock: number
+	securedVolumeM3: number
+	unsecuredVolumeM3: number
+	securedCapacityM3: number
+	unsecuredCapacityM3: number
+	securedFillPercent: number
+	unsecuredFillPercent: number
 	lastCycle: string
 }
 
@@ -430,8 +446,6 @@ export interface StructureSkyhookListItem
 	typeId: string
 	typeName: string | null
 	nextStateAt: string | null
-	fuelExpires: string | null
-	fuelAmount: number | null
 	lowPower: boolean
 	planetId: string
 	planetName: string | null
@@ -440,6 +454,12 @@ export interface StructureSkyhookListItem
 	totalReagents: number
 	totalSecuredStock: number
 	totalUnsecuredStock: number
+	totalSecuredVolumeM3: number
+	totalUnsecuredVolumeM3: number
+	securedCapacityM3: number
+	unsecuredCapacityM3: number
+	securedFillPercent: number
+	unsecuredFillPercent: number
 	reagents: StructureSkyhookReagent[]
 	reinforcementTimerEnd: string | null
 	theftVulnerabilityStart: string | null
@@ -464,7 +484,8 @@ export interface StructureSkyhookListResponse {
 }
 
 export interface StructureMoonDrillListItem
-	extends StructureIdentity, StructureSyncState, StructureConfig {
+	extends StructureIdentity, StructureSyncState, StructureConfig, StructureMoonGeography {
+	name: string
 	state: string
 	typeId: string
 	typeName: string | null
@@ -472,14 +493,10 @@ export interface StructureMoonDrillListItem
 	fuelExpires: string | null
 	fuelAmount: number | null
 	lowPower: boolean
-	moonId: string
-	moonName: string | null
-	planetId: string | null
-	planetName: string | null
 }
 
 export interface StructureMiningCitadelListItem
-	extends StructureIdentity, StructureSyncState, StructureConfig {
+	extends StructureIdentity, StructureSyncState, StructureConfig, StructureMoonGeography {
 	state: string
 	typeId: string
 	typeName: string | null
@@ -487,10 +504,6 @@ export interface StructureMiningCitadelListItem
 	fuelExpires: string | null
 	fuelAmount: number | null
 	lowPower: boolean
-	moonId: string
-	moonName: string | null
-	planetId: string | null
-	planetName: string | null
 	extractionStartTime: string | null
 	chunkArrivalTime: string | null
 	naturalDecayTime: string | null
@@ -525,7 +538,6 @@ export interface StructureMiningCitadelListResponse {
 }
 
 export interface StructureSovereigntyHubSummary {
-	fuelAccessListId: string | null
 	controllerAllianceId: string | null
 	controllerAllianceName?: string | null
 	reagentBayLastUpdated: string | null
@@ -593,11 +605,24 @@ export interface StructureSkyhookSummary {
 	totalReagents: number
 	totalSecuredStock: number
 	totalUnsecuredStock: number
+	totalSecuredVolumeM3: number
+	totalUnsecuredVolumeM3: number
+	securedCapacityM3: number
+	unsecuredCapacityM3: number
+	securedFillPercent: number
+	unsecuredFillPercent: number
 	reagents: Array<{
 		typeId: string
 		typeName: string | null
+		unitVolumeM3: number
 		securedStock: number
 		unsecuredStock: number
+		securedVolumeM3: number
+		unsecuredVolumeM3: number
+		securedCapacityM3: number
+		unsecuredCapacityM3: number
+		securedFillPercent: number
+		unsecuredFillPercent: number
 		lastCycle: string
 	}>
 	reinforcementTimerEnd: string | null
@@ -608,22 +633,9 @@ export interface StructureSkyhookSummary {
 	vulnerableAt: string | null
 }
 
-export interface StructureMoonDrillSummary {
-	moonId: string
-	moonName: string | null
-	planetId: string | null
-	planetName: string | null
-	systemId: string | null
-	systemName: string | null
-}
+export interface StructureMoonDrillSummary extends StructureMoonGeography {}
 
-export interface StructureMiningCitadelSummary {
-	moonId: string
-	moonName: string | null
-	planetId: string | null
-	planetName: string | null
-	systemId: string | null
-	systemName: string | null
+export interface StructureMiningCitadelSummary extends StructureMoonGeography {
 	extractionStartTime: string | null
 	chunkArrivalTime: string | null
 	naturalDecayTime: string | null

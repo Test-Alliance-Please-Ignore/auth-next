@@ -260,22 +260,41 @@ export const structureMoonDrills = pgTable(
 		corporationId: text('corporation_id')
 			.notNull()
 			.references(() => managedCorporations.corporationId, { onDelete: 'cascade' }),
-		moonId: text('moon_id').notNull(),
-		moonName: text('moon_name'),
-		planetId: text('planet_id'),
-		planetName: text('planet_name'),
-		systemId: text('system_id'),
-		systemName: text('system_name'),
 		sourceSyncAt: timestamp('source_sync_at', { withTimezone: true }),
 		lastSyncedAt: timestamp('last_synced_at', { withTimezone: true }),
 		updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow().notNull(),
 	},
 	(table) => [
 		index('structure_moon_drills_corporation_id_idx').on(table.corporationId),
-		index('structure_moon_drills_moon_id_idx').on(table.moonId),
-		index('structure_moon_drills_planet_id_idx').on(table.planetId),
-		index('structure_moon_drills_system_id_idx').on(table.systemId),
 		index('structure_moon_drills_last_synced_at_idx').on(table.lastSyncedAt),
+	]
+)
+
+export const structureMoonGeographies = pgTable(
+	'structure_moon_geographies',
+	{
+		structureId: text('structure_id')
+			.primaryKey()
+			.references(() => corporationStructures.structureId, { onDelete: 'cascade' }),
+		corporationId: text('corporation_id')
+			.notNull()
+			.references(() => managedCorporations.corporationId, { onDelete: 'cascade' }),
+		moonId: text('moon_id').notNull(),
+		moonName: text('moon_name'),
+		planetId: text('planet_id').notNull(),
+		planetName: text('planet_name'),
+		systemId: text('system_id').notNull(),
+		systemName: text('system_name'),
+		sourceSyncAt: timestamp('source_sync_at', { withTimezone: true }),
+		lastSyncedAt: timestamp('last_synced_at', { withTimezone: true }),
+		updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow().notNull(),
+	},
+	(table) => [
+		index('structure_moon_geographies_corporation_id_idx').on(table.corporationId),
+		index('structure_moon_geographies_moon_id_idx').on(table.moonId),
+		index('structure_moon_geographies_planet_id_idx').on(table.planetId),
+		index('structure_moon_geographies_system_id_idx').on(table.systemId),
+		index('structure_moon_geographies_last_synced_at_idx').on(table.lastSyncedAt),
 	]
 )
 
@@ -288,12 +307,6 @@ export const structureMiningExtractions = pgTable(
 		corporationId: text('corporation_id')
 			.notNull()
 			.references(() => managedCorporations.corporationId, { onDelete: 'cascade' }),
-		moonId: text('moon_id').notNull(),
-		moonName: text('moon_name'),
-		planetId: text('planet_id'),
-		planetName: text('planet_name'),
-		systemId: text('system_id'),
-		systemName: text('system_name'),
 		extractionStartTime: timestamp('extraction_start_time', { withTimezone: true }),
 		chunkArrivalTime: timestamp('chunk_arrival_time', { withTimezone: true }),
 		naturalDecayTime: timestamp('natural_decay_time', { withTimezone: true }),
@@ -303,9 +316,6 @@ export const structureMiningExtractions = pgTable(
 	},
 	(table) => [
 		index('structure_mining_citadel_extractions_corporation_id_idx').on(table.corporationId),
-		index('structure_mining_citadel_extractions_moon_id_idx').on(table.moonId),
-		index('structure_mining_citadel_extractions_planet_id_idx').on(table.planetId),
-		index('structure_mining_citadel_extractions_system_id_idx').on(table.systemId),
 		index('structure_mining_citadel_extractions_last_synced_at_idx').on(table.lastSyncedAt),
 	]
 )
@@ -342,6 +352,7 @@ export const schema = {
 	structureSovereigntyHubs,
 	structureSkyhooks,
 	structureMoonDrills,
+	structureMoonGeographies,
 	structureMiningExtractions,
 	structureGroupAlertConfigs,
 }

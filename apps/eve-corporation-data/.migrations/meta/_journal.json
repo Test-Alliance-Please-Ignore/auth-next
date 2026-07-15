@@ -176,6 +176,13 @@
       "when": 1784085393701,
       "tag": "0024_kind_sir_ram",
       "breakpoints": true
+    },
+    {
+      "idx": 25,
+      "version": "7",
+      "when": 1784112964441,
+      "tag": "0025_mysterious_lady_mastermind",
+      "breakpoints": true
     }
   ]
 }

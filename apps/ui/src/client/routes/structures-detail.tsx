@@ -59,6 +59,7 @@ import { api } from '@/lib/api'
 import { formatDateTimeLong } from '@/lib/date-utils'
 import { formatDurationMs } from '@/lib/duration-utils'
 import { allianceLogoUrl, typeIconUrl, typeImageUrl, typeRenderUrl } from '@/lib/eve-images'
+import { stripLeadingContextName } from '@/lib/structure-name-utils'
 import toast from '@/lib/toast'
 
 import type { FittingDisplayItem, FittingShipSlotType } from '@repo/eve-fitting/flags'
@@ -199,6 +200,79 @@ function toFiniteNumber(value: unknown): number {
 function formatBurnRate(value: number | null | undefined): string {
 	if (value === null || value === undefined) return '-'
 	return `${value.toLocaleString(undefined, { maximumFractionDigits: 2 })}/hr`
+}
+
+function formatVolumeM3(value: number | null | undefined): string {
+	if (value === null || value === undefined || !Number.isFinite(value)) {
+		return '-'
+	}
+	return `${value.toLocaleString(undefined, { maximumFractionDigits: 2 })} m3`
+}
+
+function formatPercent(value: number | null | undefined): string {
+	if (value === null || value === undefined || !Number.isFinite(value)) {
+		return '-'
+	}
+	return `${value.toLocaleString(undefined, { maximumFractionDigits: 1 })}%`
+}
+
+function getSkyhookFullnessPercent(structure: {
+	totalSecuredVolumeM3?: number | null
+	totalUnsecuredVolumeM3?: number | null
+	securedCapacityM3?: number | null
+	unsecuredCapacityM3?: number | null
+}): number {
+	const totalVolume =
+		Number(structure.totalSecuredVolumeM3 ?? 0) + Number(structure.totalUnsecuredVolumeM3 ?? 0)
+	const totalCapacity =
+		Number(structure.securedCapacityM3 ?? 0) + Number(structure.unsecuredCapacityM3 ?? 0)
+	if (!Number.isFinite(totalVolume) || !Number.isFinite(totalCapacity) || totalCapacity <= 0) {
+		return 0
+	}
+	return (totalVolume / totalCapacity) * 100
+}
+
+function SkyhookFullnessBar({
+	volumeM3,
+	capacityM3,
+	fillPercent,
+}: {
+	volumeM3: number
+	capacityM3: number
+	fillPercent: number
+}) {
+	return (
+		<div className="space-y-1.5">
+			<div className="font-medium tabular-nums">
+				{formatVolumeM3(volumeM3)} / {formatVolumeM3(capacityM3)}
+			</div>
+			<Progress value={Math.min(100, Math.max(0, fillPercent))} className="h-2 bg-muted/30" />
+			<div className="text-xs text-muted-foreground">{formatPercent(fillPercent)} full</div>
+		</div>
+	)
+}
+
+function SkyhookBayFillCell({
+	stock,
+	volumeM3,
+	capacityM3,
+	fillPercent,
+}: {
+	stock: number
+	volumeM3: number
+	capacityM3: number
+	fillPercent: number
+}) {
+	return (
+		<div className="space-y-1.5">
+			<div className="font-medium tabular-nums">{stock.toLocaleString()}</div>
+			<div className="text-xs text-muted-foreground">
+				{formatVolumeM3(volumeM3)} / {formatVolumeM3(capacityM3)}
+			</div>
+			<Progress value={Math.min(100, Math.max(0, fillPercent))} className="h-2 bg-muted/30" />
+			<div className="text-xs text-muted-foreground">{formatPercent(fillPercent)} full</div>
+		</div>
+	)
 }
 
 function AllianceLogo({ allianceId, allianceName }: { allianceId: string; allianceName?: string | null }) {
@@ -683,6 +757,7 @@ export default function StructuresDetailPage() {
 	const corporationId = structure?.corporationId ?? ''
 	const hasSovereigntySummary = structureFamily === 'sovereignty' && Boolean(structure?.sovereignty)
 	const hasSkyhookSummary = structureFamily === 'skyhooks' && Boolean(structure?.skyhook)
+	const isSkyhookStructure = structureFamily === 'skyhooks'
 	const hasMoonDrillSummary = structureFamily === 'moon-drills' && Boolean(structure?.moonDrill)
 	const hasMiningExtractionSummary =
 		structureFamily === 'mining-citadels' && Boolean(structure?.miningExtraction)
@@ -761,13 +836,6 @@ export default function StructuresDetailPage() {
 		structure.syncFailureReason,
 		structure.lastSyncedAt
 	)
-	const skyhookVulnerabilityCountdownTarget = structure.skyhook?.isRaidable
-		? structure.skyhook.theftVulnerabilityEnd
-		: structure.skyhook?.theftVulnerabilityStart ??
-			structure.skyhook?.theftVulnerabilityEnd ??
-			structure.skyhook?.vulnerableAt ??
-			null
-	const skyhookVulnerabilityCountdownLabel = structure.skyhook?.isRaidable ? 'Ends in' : 'Starts in'
 
 	const handleSave = async () => {
 		await updateMutation.mutateAsync({
@@ -780,7 +848,13 @@ export default function StructuresDetailPage() {
 	return (
 		<Container className="space-y-6 py-6">
 			<PageHeader
-		title={hasSkyhookSummary ? 'Skyhook Details' : structure.name}
+				title={
+					hasSkyhookSummary
+						? 'Skyhook Details'
+						: hasMoonDrillSummary || hasMiningExtractionSummary
+							? stripLeadingContextName(structure.name, structure.systemName)
+							: structure.name
+				}
 				description={
 					<div className="flex flex-wrap items-center gap-x-2 gap-y-1">
 						<div className="inline-flex items-center gap-2">
@@ -883,13 +957,13 @@ export default function StructuresDetailPage() {
 											: structure.typeName ?? structure.typeId}
 									</div>
 								</div>
-								{!hasSovereigntySummary && (
+								{!hasSovereigntySummary && !isSkyhookStructure && (
 									<div>
 										<div className="text-muted-foreground">Low Power</div>
 										<div className="font-medium">{structure.lowPower ? 'Yes' : 'No'}</div>
 									</div>
 								)}
-								{!hasSovereigntySummary && (
+								{!hasSovereigntySummary && !isSkyhookStructure && (
 									<>
 										<div>
 											<div className="text-muted-foreground">Fuel</div>
@@ -1000,16 +1074,16 @@ export default function StructuresDetailPage() {
 							</div>
 							<div className="flex flex-wrap gap-2 pt-2">
 								{structure.hidden && <Badge variant="ghost">Hidden</Badge>}
-								{!hasSovereigntySummary && structure.lowPowerAllowed && (
+								{!hasSovereigntySummary && !isSkyhookStructure && structure.lowPowerAllowed && (
 									<Badge variant="success">Low Power Alerts Suppressed</Badge>
 								)}
 								{structure.assignedGroupId && <Badge variant="special">Group Assigned</Badge>}
 							</div>
 								<div className="space-y-3">
-									{!hasSovereigntySummary && (
-										<div className="space-y-2">
-											<div className="text-xs uppercase tracking-wider text-muted-foreground">
-												Reinforcement
+								{!hasSovereigntySummary && !isSkyhookStructure && (
+									<div className="space-y-2">
+										<div className="text-xs uppercase tracking-wider text-muted-foreground">
+											Reinforcement
 											</div>
 											<div className="rounded-lg border border-border/60 bg-muted/20 p-3 text-sm">
 												<div className="grid gap-3">
@@ -1040,10 +1114,10 @@ export default function StructuresDetailPage() {
 														</div>
 													</div>
 												</div>
-											</div>
 										</div>
-									)}
-								{!hasSovereigntySummary && (
+									</div>
+								)}
+								{!hasSovereigntySummary && !isSkyhookStructure && (
 									<div className="space-y-2">
 										<div className="text-xs uppercase tracking-wider text-muted-foreground">
 											Structure Services
@@ -1116,7 +1190,7 @@ export default function StructuresDetailPage() {
 							</div>
 							<Switch checked={hidden} onCheckedChange={setHidden} />
 						</div>
-						{!hasSovereigntySummary && (
+						{!hasSovereigntySummary && !isSkyhookStructure && (
 							<div className="flex items-center justify-between gap-4 rounded-lg border border-border/60 p-4">
 								<div>
 									<div className="font-medium">Low Power Allowed</div>
@@ -1315,7 +1389,7 @@ export default function StructuresDetailPage() {
 				<Card>
 					<CardHeader>
 						<CardTitle>Skyhook State</CardTitle>
-						<CardDescription>Raidability and inventory state for this skyhook.</CardDescription>
+						<CardDescription>Vulnerability state and ownership context for this skyhook.</CardDescription>
 					</CardHeader>
 					<CardContent className="grid gap-4 md:grid-cols-2 text-sm">
 						<div>
@@ -1337,69 +1411,66 @@ export default function StructuresDetailPage() {
 							</div>
 						</div>
 						<div>
-							<div className="text-muted-foreground">Raidable</div>
-							<div className="font-medium">{structure.skyhook?.isRaidable ? 'Yes' : 'No'}</div>
+							<div className="text-muted-foreground">State</div>
+							<div className="font-medium">
+								{structure.skyhook ? (
+									<StructureStateBadge state={structure.skyhook.state} />
+								) : (
+									'-'
+								)}
+							</div>
+						</div>
+						<div className="md:col-span-2">
+							<div className="text-muted-foreground">Fullness</div>
+							<div className="mt-1">
+								{structure.skyhook ? (
+									<SkyhookFullnessBar
+										volumeM3={
+											(structure.skyhook.totalSecuredVolumeM3 ?? 0) +
+											(structure.skyhook.totalUnsecuredVolumeM3 ?? 0)
+										}
+										capacityM3={
+											(structure.skyhook.securedCapacityM3 ?? 0) +
+											(structure.skyhook.unsecuredCapacityM3 ?? 0)
+										}
+										fillPercent={getSkyhookFullnessPercent(structure.skyhook)}
+									/>
+								) : (
+									'-'
+								)}
+							</div>
 						</div>
 						<div>
-							<div className="text-muted-foreground">Active</div>
-							<div className="font-medium">{structure.skyhook?.isActive ? 'Yes' : 'No'}</div>
-						</div>
-						<div>
-							<div className="text-muted-foreground">Vulnerable In</div>
+							<div className="text-muted-foreground">Theft Vulnerability</div>
 							<div className="font-medium">
 								{structure.skyhook
-									? skyhookVulnerabilityCountdownTarget ? (
-											<span className="inline-flex items-center gap-1">
-												<span className="text-muted-foreground">{skyhookVulnerabilityCountdownLabel}</span>
-												<DurationDisplay
-													endDate={skyhookVulnerabilityCountdownTarget}
-													format="compact"
-													durationStyle="compact"
+									? structure.skyhook.theftVulnerabilityStart &&
+									  structure.skyhook.theftVulnerabilityEnd ? (
+											<span className="inline-flex flex-wrap items-center gap-1">
+												<EveTimeDisplay
+													dateStr={structure.skyhook.theftVulnerabilityStart}
+													format="window"
+													className="whitespace-nowrap"
+												/>
+												<span>-</span>
+												<EveTimeDisplay
+													dateStr={structure.skyhook.theftVulnerabilityEnd}
+													format="window"
+													className="whitespace-nowrap"
 												/>
 											</span>
+										) : structure.skyhook.vulnerableAt ? (
+											<EveTimeDisplay
+												dateStr={structure.skyhook.vulnerableAt}
+												format="window"
+												className="whitespace-nowrap"
+											/>
 										) : (
 											'-'
 										)
 									: '-'}
 							</div>
 						</div>
-						<div>
-							<div className="text-muted-foreground">Theft Vulnerability</div>
-							<div className="font-medium">
-								{structure.skyhook?.theftVulnerabilityStart &&
-								structure.skyhook?.theftVulnerabilityEnd
-									? (
-										<span className="inline-flex flex-wrap items-center gap-1">
-											<EveTimeDisplay
-												dateStr={structure.skyhook.theftVulnerabilityStart}
-												format="window"
-												className="whitespace-nowrap"
-											/>
-											<span>-</span>
-											<EveTimeDisplay
-												dateStr={structure.skyhook.theftVulnerabilityEnd}
-												format="window"
-												className="whitespace-nowrap"
-											/>
-										</span>
-									)
-									: structure.skyhook?.vulnerableAt ? (
-										<EveTimeDisplay
-											dateStr={structure.skyhook.vulnerableAt}
-											format="window"
-											className="whitespace-nowrap"
-										/>
-									) : (
-										'-'
-									)}
-							</div>
-						</div>
-							<div>
-								<div className="text-muted-foreground">Reinforcement Timer</div>
-								<div className="font-medium">
-									{formatNullableDateTime(structure.skyhook?.reinforcementTimerEnd)}
-								</div>
-							</div>
 					</CardContent>
 				</Card>
 			)}
@@ -1408,9 +1479,33 @@ export default function StructuresDetailPage() {
 				<Card>
 					<CardHeader>
 						<CardTitle>Reagents</CardTitle>
-						<CardDescription>Skyhook reagent stock, security, and last cycle timestamps.</CardDescription>
+						<CardDescription>Skyhook reagent stock, bay fullness, and last cycle timestamps.</CardDescription>
 					</CardHeader>
-					<CardContent>
+					<CardContent className="space-y-4">
+						<div className="grid gap-4 md:grid-cols-2 text-sm">
+							<div className="rounded-lg border border-border/60 bg-muted/20 p-3">
+								<div className="text-muted-foreground">Secure Bay</div>
+								<div className="mt-1">
+									<SkyhookBayFillCell
+										stock={structure.skyhook?.totalSecuredStock ?? 0}
+										volumeM3={structure.skyhook?.totalSecuredVolumeM3 ?? 0}
+										capacityM3={structure.skyhook?.securedCapacityM3 ?? 0}
+										fillPercent={structure.skyhook?.securedFillPercent ?? 0}
+									/>
+								</div>
+							</div>
+							<div className="rounded-lg border border-border/60 bg-muted/20 p-3">
+								<div className="text-muted-foreground">Surplus Bay</div>
+								<div className="mt-1">
+									<SkyhookBayFillCell
+										stock={structure.skyhook?.totalUnsecuredStock ?? 0}
+										volumeM3={structure.skyhook?.totalUnsecuredVolumeM3 ?? 0}
+										capacityM3={structure.skyhook?.unsecuredCapacityM3 ?? 0}
+										fillPercent={structure.skyhook?.unsecuredFillPercent ?? 0}
+									/>
+								</div>
+							</div>
+						</div>
 						{!structure.skyhook || structure.skyhook.reagents.length === 0 ? (
 							<div className="rounded-md border border-dashed border-border/70 px-3 py-4 text-sm text-muted-foreground">
 								No reagent snapshot is currently available for this skyhook.
@@ -1420,8 +1515,8 @@ export default function StructuresDetailPage() {
 								<TableHeader>
 									<TableRow>
 										<TableHead>Type</TableHead>
-										<TableHead>Secured Stock</TableHead>
-										<TableHead>Unsecured Stock</TableHead>
+										<TableHead>Secure Bay</TableHead>
+										<TableHead>Surplus Bay</TableHead>
 										<TableHead>Last Cycle</TableHead>
 									</TableRow>
 								</TableHeader>
@@ -1431,8 +1526,22 @@ export default function StructuresDetailPage() {
 											<TableCell className="font-medium">
 												{reagent.typeName ?? reagent.typeId}
 											</TableCell>
-											<TableCell>{formatNullableNumber(reagent.securedStock)}</TableCell>
-											<TableCell>{formatNullableNumber(reagent.unsecuredStock)}</TableCell>
+											<TableCell>
+												<SkyhookBayFillCell
+													stock={reagent.securedStock}
+													volumeM3={reagent.securedVolumeM3}
+													capacityM3={reagent.securedCapacityM3}
+													fillPercent={reagent.securedFillPercent}
+												/>
+											</TableCell>
+											<TableCell>
+												<SkyhookBayFillCell
+													stock={reagent.unsecuredStock}
+													volumeM3={reagent.unsecuredVolumeM3}
+													capacityM3={reagent.unsecuredCapacityM3}
+													fillPercent={reagent.unsecuredFillPercent}
+												/>
+											</TableCell>
 											<TableCell>
 												<EveTimeDisplay dateStr={reagent.lastCycle} format="compact" />
 											</TableCell>
@@ -1461,7 +1570,10 @@ export default function StructuresDetailPage() {
 							<div>
 								<div className="text-muted-foreground">Moon</div>
 								<div className="font-medium">
-									{moonDrill?.moonName ?? moonDrill?.moonId ?? '-'}
+									{stripLeadingContextName(
+										moonDrill?.moonName ?? moonDrill?.moonId,
+										moonDrill?.planetName
+									)}
 								</div>
 							</div>
 							<div>
@@ -1497,7 +1609,10 @@ export default function StructuresDetailPage() {
 							<div>
 								<div className="text-muted-foreground">Moon</div>
 								<div className="font-medium">
-									{miningExtraction?.moonName ?? miningExtraction?.moonId ?? '-'}
+									{stripLeadingContextName(
+										miningExtraction?.moonName ?? miningExtraction?.moonId,
+										miningExtraction?.planetName
+									)}
 								</div>
 							</div>
 							<div>
@@ -1589,7 +1704,7 @@ export default function StructuresDetailPage() {
 				) : null}
 			</div>
 
-				{!hasSovereigntySummary && (
+				{!hasSovereigntySummary && !isSkyhookStructure && (
 					<Card>
 						<CardHeader>
 							<CardTitle>Fuel Usage</CardTitle>

@@ -312,11 +312,6 @@ export interface EsiCorporationSkyhook {
 export interface EsiCorporationMiningExtraction {
 	structure_id: string
 	moon_id: string
-	moon_name?: string | null
-	planet_id?: string | null
-	planet_name?: string | null
-	system_id?: string | null
-	system_name?: string | null
 	extraction_start_time?: string | null
 	chunk_arrival_time?: string | null
 	natural_decay_time?: string | null

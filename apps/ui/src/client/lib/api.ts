@@ -739,9 +739,12 @@ export type StructureListSortBy =
 	| 'activityDefenseMultiplier'
 	| 'magmaticGasEstimatedDepletionAt'
 	| 'superionicIceEstimatedDepletionAt'
+	| 'skyhookSecureFullness'
+	| 'skyhookSurplusFullness'
 	| 'name'
 	| 'corporation'
 	| 'region'
+	| 'planet'
 	| 'system'
 	| 'type'
 	| 'state'
@@ -897,11 +900,24 @@ export interface StructureSkyhookSummary {
 	totalReagents: number
 	totalSecuredStock: number
 	totalUnsecuredStock: number
+	totalSecuredVolumeM3: number
+	totalUnsecuredVolumeM3: number
+	securedCapacityM3: number
+	unsecuredCapacityM3: number
+	securedFillPercent: number
+	unsecuredFillPercent: number
 	reagents: Array<{
 		typeId: string
 		typeName: string | null
+		unitVolumeM3: number
 		securedStock: number
 		unsecuredStock: number
+		securedVolumeM3: number
+		unsecuredVolumeM3: number
+		securedCapacityM3: number
+		unsecuredCapacityM3: number
+		securedFillPercent: number
+		unsecuredFillPercent: number
 		lastCycle: string
 	}>
 	reinforcementTimerEnd: string | null

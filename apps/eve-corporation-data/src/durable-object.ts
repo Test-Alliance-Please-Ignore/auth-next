@@ -26,6 +26,7 @@ import {
 	corporationWallets,
 	corporationWalletTransactions,
 	structureFuelLog,
+	structureMoonGeographies,
 	structureMoonDrills,
 	structureMiningExtractions,
 	structureSkyhooks,
@@ -276,26 +277,61 @@ type SkyhookBaseStructureRow = {
 	services: Array<{ name: string; state: string }> | null
 	updatedAt: Date
 }
+const SKYHOOK_SECURED_BAY_CAPACITY_M3 = 70080
+const SKYHOOK_SURPLUS_BAY_CAPACITY_M3 = 70080
+const MAGMATIC_GAS_TYPE_ID = '81143'
+const SUPERIONIC_ICE_TYPE_ID = '81144'
+
+function getSkyhookReagentUnitVolumeM3(typeId: string): number {
+	switch (typeId) {
+		case MAGMATIC_GAS_TYPE_ID:
+			return 0.01
+		case SUPERIONIC_ICE_TYPE_ID:
+			return 1.5
+		default:
+			return 0
+	}
+}
+
+function normalizeSkyhookState(
+	state: string,
+	isRaidable: boolean,
+	reinforcementTimerEnd: Date | null
+): 'invulnerable' | 'vulnerable' | 'reinforced' {
+	const normalized = state.trim().toLowerCase()
+	if (reinforcementTimerEnd !== null || normalized.includes('reinforce')) {
+		return 'reinforced'
+	}
+	if (isRaidable || normalized.includes('vulnerable')) {
+		return 'vulnerable'
+	}
+	return 'invulnerable'
+}
+
 type SkyhookPlanetGeography = Pick<
 	UniversePlanetGeography,
 	'planetId' | 'planetName' | 'solarSystemName'
 > | null
 
-type MoonDrillStorageRow = {
+type MoonGeographyStorageRow = {
 	structureId: string
 	corporationId: string
 	moonId: string
 	moonName: string | null
-	planetId: string | null
+	planetId: string
 	planetName: string | null
-	systemId: string | null
+	systemId: string
 	systemName: string | null
 	sourceSyncAt: Date
 	lastSyncedAt: Date
 	updatedAt: Date
 }
 
-type MoonDrillStorageInsertRow = MoonDrillStorageRow & {
+type MoonDrillStorageRow = {
+	structureId: string
+	corporationId: string
+	sourceSyncAt: Date
+	lastSyncedAt: Date
 	updatedAt: Date
 }
 
@@ -329,7 +365,11 @@ export function buildSkyhookStorageRow(input: {
 		systemName: resolvedSystemName,
 		name: null,
 		typeId: baseStructure.typeId,
-		state: skyhook.state,
+		state: normalizeSkyhookState(
+			skyhook.state,
+			skyhook.is_raidable ?? false,
+			parseDateOrNull(skyhook.reinforcement_timer?.end) ?? null
+		),
 		isActive: skyhook.is_active,
 		effectiveWorkforce: skyhook.effective_workforce ?? null,
 		reagents:
@@ -353,6 +393,26 @@ export function buildSkyhookStorageRow(input: {
 
 function buildMoonDrillStorageRow(input: {
 	corporationId: string
+	structure: Pick<{ structureId: string; corporationId: string }, 'structureId' | 'corporationId'>
+	observedAt: Date
+}): MoonDrillStorageRow | null {
+	const { corporationId, structure, observedAt } = input
+
+	if (structure.corporationId !== corporationId) {
+		return null
+	}
+
+	return {
+		structureId: structure.structureId,
+		corporationId,
+		sourceSyncAt: observedAt,
+		lastSyncedAt: observedAt,
+		updatedAt: observedAt,
+	}
+}
+
+function buildMoonGeographyStorageRow(input: {
+	corporationId: string
 	structure: Pick<
 		{
 			structureId: string
@@ -364,13 +424,9 @@ function buildMoonDrillStorageRow(input: {
 		'structureId' | 'corporationId' | 'systemId' | 'systemName' | 'structureInfo'
 	>
 	moonGeography: Awaited<ReturnType<Universe['resolveNearestMoonGeographyBySystemPosition']>> | null
-	existingRow: Pick<
-		typeof structureMoonDrills.$inferSelect,
-		'moonName' | 'planetId' | 'planetName' | 'systemId' | 'systemName'
-	> | null
 	observedAt: Date
-}): MoonDrillStorageRow | null {
-	const { corporationId, structure, moonGeography, existingRow, observedAt } = input
+}): MoonGeographyStorageRow | null {
+	const { corporationId, structure, moonGeography, observedAt } = input
 
 	if (structure.corporationId !== corporationId) {
 		return null
@@ -384,11 +440,11 @@ function buildMoonDrillStorageRow(input: {
 		structureId: structure.structureId,
 		corporationId,
 		moonId: moonGeography.moonId,
-		moonName: moonGeography.moonName ?? existingRow?.moonName ?? null,
-		planetId: moonGeography.planetId ?? existingRow?.planetId ?? null,
-		planetName: moonGeography.planetName ?? existingRow?.planetName ?? null,
-		systemId: moonGeography.solarSystemId ?? structure.systemId,
-		systemName: moonGeography.solarSystemName ?? structure.systemName ?? existingRow?.systemName ?? null,
+		moonName: moonGeography.moonName ?? null,
+		planetId: moonGeography.planetId,
+		planetName: moonGeography.planetName ?? null,
+		systemId: moonGeography.solarSystemId,
+		systemName: moonGeography.solarSystemName ?? structure.systemName ?? null,
 		sourceSyncAt: observedAt,
 		lastSyncedAt: observedAt,
 		updatedAt: observedAt,
@@ -2364,6 +2420,7 @@ export class EveCorporationDataDO extends DurableObject<Env> implements EveCorpo
 					)
 				)
 		})
+		await this.storeMoonGeographies(corporationId, hydratedStructures)
 		await this.storeMoonDrills(corporationId, hydratedStructures)
 	}
 
@@ -2374,28 +2431,18 @@ export class EveCorporationDataDO extends DurableObject<Env> implements EveCorpo
 			corporationId: string
 			typeId: string
 			typeName: string | null
-			systemId: string
-			systemName: string | null
-			structureInfo: EsiGetStructureResponse | null
 		}>
 	): Promise<void> {
 		const now = new Date()
 		const moonDrillStructures = structures.filter(
 			(structure) => getStructureTabForTypeId(structure.typeId, structure.typeName) === 'moon-drills'
 		)
-
 		const existingRows = await this.getDb().query.structureMoonDrills.findMany({
 			where: eq(structureMoonDrills.corporationId, corporationId),
 			columns: {
 				structureId: true,
-				moonName: true,
-				planetId: true,
-				planetName: true,
-				systemId: true,
-				systemName: true,
 			},
 		})
-		const existingByStructureId = new Map(existingRows.map((row) => [row.structureId, row]))
 
 		if (moonDrillStructures.length === 0) {
 			await this.getDb()
@@ -2404,34 +2451,15 @@ export class EveCorporationDataDO extends DurableObject<Env> implements EveCorpo
 			return
 		}
 
-		const universe = getStub<Universe>(this.env.UNIVERSE, 'default')
-		const synthesizedRows = (
-			await Promise.all(
-				moonDrillStructures.map(async (structure) => {
-					if (!structure.structureInfo) {
-						return null
-					}
-
-					const moonGeography = await universe.resolveNearestMoonGeographyBySystemPosition(
-						structure.systemId,
-						structure.structureInfo.position
-					)
-					const existing = existingByStructureId.get(structure.structureId) ?? null
-
-					return buildMoonDrillStorageRow({
-						corporationId,
-						structure,
-						moonGeography,
-						existingRow: existing,
-						observedAt: now,
-					})
+		const synthesizedRows = moonDrillStructures
+			.map((structure) =>
+				buildMoonDrillStorageRow({
+					corporationId,
+					structure,
+					observedAt: now,
 				})
 			)
-		).filter(
-			(
-				row
-			): row is MoonDrillStorageRow => row !== null
-		)
+			.filter((row): row is MoonDrillStorageRow => row !== null)
 
 		if (synthesizedRows.length === 0) {
 			logger.warn('[storeMoonDrills] Preserving existing moon drill snapshot because synthesis failed', {
@@ -2453,12 +2481,6 @@ export class EveCorporationDataDO extends DurableObject<Env> implements EveCorpo
 					target: structureMoonDrills.structureId,
 					set: {
 						corporationId: sql`excluded.corporation_id`,
-						moonId: sql`excluded.moon_id`,
-						moonName: sql`excluded.moon_name`,
-						planetId: sql`excluded.planet_id`,
-						planetName: sql`excluded.planet_name`,
-						systemId: sql`excluded.system_id`,
-						systemName: sql`excluded.system_name`,
 						sourceSyncAt: sql`excluded.source_sync_at`,
 						lastSyncedAt: sql`excluded.last_synced_at`,
 						updatedAt: sql`excluded.updated_at`,
@@ -2487,6 +2509,130 @@ export class EveCorporationDataDO extends DurableObject<Env> implements EveCorpo
 					and(
 						eq(structureMoonDrills.corporationId, corporationId),
 						inArray(structureMoonDrills.structureId, batch)
+					)
+				)
+		})
+	}
+
+	private async storeMoonGeographies(
+		corporationId: string,
+		structures: Array<{
+			structureId: string
+			corporationId: string
+			typeId: string
+			typeName: string | null
+			systemId: string
+			systemName: string | null
+			structureInfo: EsiGetStructureResponse | null
+		}>
+	): Promise<void> {
+		const now = new Date()
+		const moonGeographyStructures = structures.filter((structure) =>
+			['moon-drills', 'mining-citadels'].includes(
+				getStructureTabForTypeId(structure.typeId, structure.typeName)
+			)
+		)
+
+		const existingRows = await this.getDb().query.structureMoonGeographies.findMany({
+			where: eq(structureMoonGeographies.corporationId, corporationId),
+			columns: {
+				structureId: true,
+			},
+		})
+		const universe = getStub<Universe>(this.env.UNIVERSE, 'default')
+
+		const synthesizedRows = (
+			await Promise.all(
+				moonGeographyStructures.map(async (structure) => {
+					if (!structure.structureInfo) {
+						return null
+					}
+
+					try {
+						const moonGeography = await universe.resolveNearestMoonGeographyBySystemPosition(
+							structure.systemId,
+							structure.structureInfo.position
+						)
+
+						return buildMoonGeographyStorageRow({
+							corporationId,
+							structure,
+							moonGeography,
+							observedAt: now,
+						})
+					} catch (error) {
+						logger.warn('[storeMoonGeographies] Failed to resolve moon geography for structure', {
+							corporationId,
+							structureId: structure.structureId,
+							error: error instanceof Error ? error.message : String(error),
+						})
+						return null
+					}
+				})
+			)
+		).filter((row): row is MoonGeographyStorageRow => row !== null)
+
+		if (moonGeographyStructures.length === 0) {
+			await this.getDb()
+				.delete(structureMoonGeographies)
+				.where(eq(structureMoonGeographies.corporationId, corporationId))
+			return
+		}
+
+		if (synthesizedRows.length === 0) {
+			logger.warn('[storeMoonGeographies] Preserving existing moon geography snapshot because synthesis failed', {
+				corporationId,
+				structureCount: moonGeographyStructures.length,
+			})
+			return
+		}
+
+		const shouldPrune = synthesizedRows.length === moonGeographyStructures.length
+		const BATCH_SIZE = STRUCTURE_SNAPSHOT_BATCH_SIZE
+
+		for (let i = 0; i < synthesizedRows.length; i += BATCH_SIZE) {
+			const batch = synthesizedRows.slice(i, i + BATCH_SIZE)
+			await this.getDb()
+				.insert(structureMoonGeographies)
+				.values(batch.map((row) => ({ ...row, updatedAt: now })))
+				.onConflictDoUpdate({
+					target: structureMoonGeographies.structureId,
+					set: {
+						corporationId: sql`excluded.corporation_id`,
+						moonId: sql`excluded.moon_id`,
+						moonName: sql`excluded.moon_name`,
+						planetId: sql`excluded.planet_id`,
+						planetName: sql`excluded.planet_name`,
+						systemId: sql`excluded.system_id`,
+						systemName: sql`excluded.system_name`,
+						sourceSyncAt: sql`excluded.source_sync_at`,
+						lastSyncedAt: sql`excluded.last_synced_at`,
+						updatedAt: sql`excluded.updated_at`,
+					},
+				})
+		}
+
+		if (!shouldPrune) {
+			logger.warn('[storeMoonGeographies] Skipping moon geography prune because synthesis was partial', {
+				corporationId,
+				synthesizedCount: synthesizedRows.length,
+				candidateCount: moonGeographyStructures.length,
+			})
+			return
+		}
+
+		const currentStructureIds = new Set(synthesizedRows.map((row) => row.structureId))
+		const departedStructureIds = existingRows
+			.map((row) => row.structureId)
+			.filter((structureId) => !currentStructureIds.has(structureId))
+
+		await deleteIdsInBatches(departedStructureIds, STRUCTURE_CLEANUP_BATCH_SIZE, async (batch) => {
+			await this.getDb()
+				.delete(structureMoonGeographies)
+				.where(
+					and(
+						eq(structureMoonGeographies.corporationId, corporationId),
+						inArray(structureMoonGeographies.structureId, batch)
 					)
 				)
 		})
@@ -3404,41 +3550,17 @@ export class EveCorporationDataDO extends DurableObject<Env> implements EveCorpo
 		miningExtractions: EsiCorporationMiningExtraction[]
 	): Promise<void> {
 		const now = new Date()
-		const universe = getStub<Universe>(this.env.UNIVERSE, 'default')
 		const existingRows = await this.getDb().query.structureMiningExtractions.findMany({
 			where: eq(structureMiningExtractions.corporationId, corporationId),
 			columns: {
 				structureId: true,
-				moonName: true,
-				planetId: true,
-				planetName: true,
-				systemId: true,
-				systemName: true,
 			},
 		})
-		const existingByStructureId = new Map(existingRows.map((row) => [row.structureId, row]))
-		const moonGeography: Awaited<ReturnType<Universe['resolveMoonGeographyByIds']>> =
-			miningExtractions.length > 0
-				? await universe.resolveMoonGeographyByIds([
-						...new Set(miningExtractions.map((extraction) => extraction.moon_id)),
-					])
-				: {}
 
 		const values = miningExtractions.map((extraction) => {
-			const existing = existingByStructureId.get(extraction.structure_id) ?? null
-			const resolvedMoon = moonGeography[extraction.moon_id]
-
 			return {
 				structureId: extraction.structure_id,
 				corporationId,
-				moonId: extraction.moon_id,
-				moonName: resolvedMoon?.moonName ?? extraction.moon_name ?? existing?.moonName ?? null,
-				planetId: resolvedMoon?.planetId ?? extraction.planet_id ?? existing?.planetId ?? null,
-				planetName:
-					resolvedMoon?.planetName ?? extraction.planet_name ?? existing?.planetName ?? null,
-				systemId: resolvedMoon?.solarSystemId ?? extraction.system_id ?? existing?.systemId ?? null,
-				systemName:
-					resolvedMoon?.solarSystemName ?? extraction.system_name ?? existing?.systemName ?? null,
 				extractionStartTime: parseDateOrNull(extraction.extraction_start_time) ?? null,
 				chunkArrivalTime: parseDateOrNull(extraction.chunk_arrival_time) ?? null,
 				naturalDecayTime: parseDateOrNull(extraction.natural_decay_time) ?? null,
@@ -3466,12 +3588,6 @@ export class EveCorporationDataDO extends DurableObject<Env> implements EveCorpo
 					target: structureMiningExtractions.structureId,
 					set: {
 						corporationId: sql`excluded.corporation_id`,
-						moonId: sql`excluded.moon_id`,
-						moonName: sql`excluded.moon_name`,
-						planetId: sql`excluded.planet_id`,
-						planetName: sql`excluded.planet_name`,
-						systemId: sql`excluded.system_id`,
-						systemName: sql`excluded.system_name`,
 						extractionStartTime: sql`excluded.extraction_start_time`,
 						chunkArrivalTime: sql`excluded.chunk_arrival_time`,
 						naturalDecayTime: sql`excluded.natural_decay_time`,
@@ -6059,7 +6175,11 @@ export function buildSkyhookBaseStructureRow(input: {
 		nextReinforceApply: null,
 		nextReinforceHour: null,
 		reinforceHour: null,
-		state: skyhook.state,
+		state: normalizeSkyhookState(
+			skyhook.state,
+			skyhook.is_raidable ?? false,
+			parseDateOrNull(skyhook.reinforcement_timer?.end) ?? null
+		),
 		stateTimerEnd: skyhook.reinforcement_timer?.end
 			? new Date(skyhook.reinforcement_timer.end)
 			: null,

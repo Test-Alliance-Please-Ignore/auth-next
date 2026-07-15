@@ -40,6 +40,7 @@ import { Select } from '@/components/ui/select'
 import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { formatDateTimeLong } from '@/lib/date-utils'
 import { allianceLogoUrl } from '@/lib/eve-images'
+import { stripLeadingContextName } from '@/lib/structure-name-utils'
 import {
 	Table,
 	TableBody,
@@ -158,6 +159,25 @@ function formatNullableDecimal(
 	const numericValue = typeof value === 'number' ? value : Number.parseFloat(value)
 	if (!Number.isFinite(numericValue)) return '-'
 	return numericValue.toFixed(fractionDigits)
+}
+
+function formatPercent(value: number | null | undefined): string {
+	if (value === null || value === undefined || !Number.isFinite(value)) return '-'
+	return `${value.toLocaleString(undefined, { maximumFractionDigits: 1 })}%`
+}
+
+function SkyhookFillBar({ value }: { value: number }) {
+	return (
+		<div className="space-y-1.5">
+			<div className="h-2 w-full overflow-hidden rounded-full bg-muted/30">
+				<div
+					className="h-full rounded-full bg-primary transition-all"
+					style={{ width: `${Math.min(100, Math.max(0, value))}%` }}
+				/>
+			</div>
+			<div className="text-xs text-muted-foreground">{formatPercent(value)} full</div>
+		</div>
+	)
 }
 
 function formatReagentBurnRate(value: number | null | undefined): string {
@@ -665,6 +685,9 @@ export default function StructuresPage() {
 
 			return (
 				<TableRow key={structure.structureId}>
+					<TableCell>
+						<StructureStateBadge state={structure.state} />
+					</TableCell>
 					<TableCell className="font-medium">
 						{structure.regionName ?? structure.regionId ?? '-'}
 					</TableCell>
@@ -690,9 +713,6 @@ export default function StructuresPage() {
 						</div>
 					</TableCell>
 					<TableCell>{structure.typeName ?? structure.typeId}</TableCell>
-					<TableCell>
-						<StructureStateBadge state={structure.state} />
-					</TableCell>
 					<TableCell>{fuelLabel}</TableCell>
 					<TableCell>
 						<Badge variant={structure.lowPower ? 'warning' : 'ghost'}>
@@ -751,6 +771,14 @@ export default function StructuresPage() {
 			const vulnerabilityState = getSovereigntyVulnerabilityState(structure)
 			return (
 				<TableRow key={structure.structureId}>
+					<TableCell>
+						<div className="space-y-1">
+							<Badge variant={vulnerabilityState.variant}>{vulnerabilityState.label}</Badge>
+							{isReinforcedStructureState(structure.state) && (
+								<div className="text-xs text-muted-foreground">Reinforced</div>
+							)}
+						</div>
+					</TableCell>
 					<TableCell className="font-medium">
 						{structure.regionName ?? structure.regionId ?? '-'}
 					</TableCell>
@@ -781,14 +809,6 @@ export default function StructuresPage() {
 							>
 								{structure.allianceName ?? structure.allianceId ?? '-'}
 							</span>
-						</div>
-					</TableCell>
-					<TableCell>
-						<div className="space-y-1">
-							<Badge variant={vulnerabilityState.variant}>{vulnerabilityState.label}</Badge>
-							{isReinforcedStructureState(structure.state) && (
-								<div className="text-xs text-muted-foreground">Reinforced</div>
-							)}
 						</div>
 					</TableCell>
 					<TableCell>{structure.assignedGroupId ? groupNameById.get(structure.assignedGroupId) ?? structure.assignedGroupId : '-'}</TableCell>
@@ -849,10 +869,14 @@ export default function StructuresPage() {
 
 			return (
 				<TableRow key={structure.structureId}>
+					<TableCell>
+						<StructureStateBadge state={structure.state} />
+					</TableCell>
 					<TableCell className="font-medium">
 						{structure.regionName ?? structure.regionId ?? '-'}
 					</TableCell>
 					<TableCell>{structure.systemName ?? structure.systemId}</TableCell>
+					<TableCell>{structure.planetName ?? structure.planetId}</TableCell>
 					<TableCell className="max-w-[18rem]">
 						<div className="flex min-w-0 items-center gap-2">
 							<CorporationLogo
@@ -864,39 +888,12 @@ export default function StructuresPage() {
 							</span>
 						</div>
 					</TableCell>
-					<TableCell>{structure.typeName ?? structure.typeId}</TableCell>
 					<TableCell>
-						<StructureStateBadge state={structure.state} />
+						<SkyhookFillBar value={structure.securedFillPercent} />
 					</TableCell>
 					<TableCell>
-						{structure.fuelExpires ? (
-							<DurationDisplay
-								endDate={structure.fuelExpires}
-								referenceTimeMs={nowMs}
-								maxUnits={3}
-								durationStyle="compact"
-							/>
-						) : structure.fuelAmount != null ? (
-							`${structure.fuelAmount.toLocaleString()} units`
-						) : (
-							'-'
-						)}
+						<SkyhookFillBar value={structure.unsecuredFillPercent} />
 					</TableCell>
-					<TableCell>
-						{structure.nextStateAt ? (
-							<DurationDisplay
-								endDate={structure.nextStateAt}
-								referenceTimeMs={nowMs}
-								maxUnits={3}
-								durationStyle="compact"
-								format="compact"
-							/>
-						) : (
-							'-'
-						)}
-					</TableCell>
-					<TableCell>{structure.assignedGroupId ? groupNameById.get(structure.assignedGroupId) ?? structure.assignedGroupId : '-'}</TableCell>
-					<TableCell>{structure.planetName ?? structure.planetId}</TableCell>
 					<TableCell>{formatNullableNumber(structure.effectiveWorkforce)}</TableCell>
 					<TableCell>
 						<Badge variant={structure.isRaidable ? 'warning' : 'ghost'}>
@@ -949,6 +946,20 @@ export default function StructuresPage() {
 						</div>
 					</TableCell>
 					<TableCell>
+						{structure.nextStateAt ? (
+							<DurationDisplay
+								endDate={structure.nextStateAt}
+								referenceTimeMs={nowMs}
+								maxUnits={3}
+								durationStyle="compact"
+								format="compact"
+							/>
+						) : (
+							'-'
+						)}
+					</TableCell>
+					<TableCell>{structure.assignedGroupId ? groupNameById.get(structure.assignedGroupId) ?? structure.assignedGroupId : '-'}</TableCell>
+					<TableCell>
 						<StructureSyncStatusBadge
 							status={structure.syncStatus}
 							description={structureSyncStatusDescription(structure)}
@@ -973,92 +984,100 @@ export default function StructuresPage() {
 		})
 
 	const renderMiningCitadelRows = (items: StructureMiningCitadelListItem[]) =>
-		items.map((structure) => (
-			<TableRow key={structure.structureId}>
-				<TableCell className="font-medium">{structure.regionName ?? structure.regionId ?? '-'}</TableCell>
-				<TableCell>{structure.systemName ?? structure.systemId}</TableCell>
-				<TableCell className="max-w-[18rem]">
-					<div className="flex min-w-0 items-center gap-2">
-						<CorporationLogo
-							corporationId={structure.corporationId}
-							corporationName={structure.corporationName}
-						/>
-						<span className="truncate font-medium" title={structure.corporationName}>
-							{structure.corporationName}
-						</span>
-					</div>
-				</TableCell>
-				<TableCell>{structure.typeName ?? structure.typeId}</TableCell>
-				<TableCell>
-					<StructureStateBadge state={structure.state} />
-				</TableCell>
-				<TableCell>
-					{structure.fuelExpires ? (
-						<DurationDisplay
-							endDate={structure.fuelExpires}
-							referenceTimeMs={nowMs}
-							maxUnits={3}
-							durationStyle="compact"
-						/>
-					) : structure.fuelAmount != null ? (
-						`${structure.fuelAmount.toLocaleString()} units`
-					) : (
-						'-'
-					)}
-				</TableCell>
-				<TableCell>
-					<Badge variant={structure.lowPower ? 'warning' : 'ghost'}>
-						{structure.lowPower ? 'Yes' : 'No'}
-					</Badge>
-				</TableCell>
-				<TableCell>
-					<Badge variant={structure.lowPowerAllowed ? 'success' : 'ghost'}>
-						{structure.lowPowerAllowed ? 'Yes' : 'No'}
-					</Badge>
-				</TableCell>
-				<TableCell>
-					{structure.nextStateAt ? (
-						<DurationDisplay
-							endDate={structure.nextStateAt}
-							referenceTimeMs={nowMs}
-							maxUnits={3}
-							durationStyle="compact"
-							format="compact"
-						/>
-					) : (
-						'-'
-					)}
-				</TableCell>
-				<TableCell>{structure.assignedGroupId ? groupNameById.get(structure.assignedGroupId) ?? structure.assignedGroupId : '-'}</TableCell>
-				<TableCell>{structure.moonName ?? structure.moonId}</TableCell>
-				<TableCell>{structure.planetName ?? structure.planetId ?? '-'}</TableCell>
-				<TableCell>{formatNullableDateTime(structure.chunkArrivalTime)}</TableCell>
-				<TableCell>{formatNullableDateTime(structure.naturalDecayTime)}</TableCell>
-				<TableCell>
-					<StructureSyncStatusBadge
-						status={structure.syncStatus}
-						description={structureSyncStatusDescription(structure)}
-					/>
-				</TableCell>
-				{canViewStructureDetails && (
-					<TableCell className="sticky right-0 z-10 border-l border-border/50 bg-card text-right">
-						{structure.canViewDetails ? (
-							<Button asChild size="sm" variant="ghost">
-								<Link to={`/structures/${structure.structureId}`}>
-									<ArrowRight className="h-4 w-4" />
-									Details
-								</Link>
-							</Button>
+		items.map((structure) => {
+			const displayMoonName = stripLeadingContextName(structure.moonName, structure.planetName)
+
+			return (
+				<TableRow key={structure.structureId}>
+					<TableCell>
+						<StructureStateBadge state={structure.state} />
+					</TableCell>
+					<TableCell className="font-medium">{structure.regionName ?? structure.regionId ?? '-'}</TableCell>
+					<TableCell>{structure.systemName ?? structure.systemId}</TableCell>
+					<TableCell className="max-w-[18rem]">
+						<div className="flex min-w-0 items-center gap-2">
+							<CorporationLogo
+								corporationId={structure.corporationId}
+								corporationName={structure.corporationName}
+							/>
+							<span className="truncate font-medium" title={structure.corporationName}>
+								{structure.corporationName}
+							</span>
+						</div>
+					</TableCell>
+					<TableCell>{structure.typeName ?? structure.typeId}</TableCell>
+					<TableCell>
+						{structure.fuelExpires ? (
+							<DurationDisplay
+								endDate={structure.fuelExpires}
+								referenceTimeMs={nowMs}
+								maxUnits={3}
+								durationStyle="compact"
+							/>
+						) : structure.fuelAmount != null ? (
+							`${structure.fuelAmount.toLocaleString()} units`
 						) : (
-							<span className="text-sm text-muted-foreground">-</span>
+							'-'
 						)}
 					</TableCell>
-				)}
-			</TableRow>
-		))
+					<TableCell>
+						<Badge variant={structure.lowPower ? 'warning' : 'ghost'}>
+							{structure.lowPower ? 'Yes' : 'No'}
+						</Badge>
+					</TableCell>
+					<TableCell>
+						<Badge variant={structure.lowPowerAllowed ? 'success' : 'ghost'}>
+							{structure.lowPowerAllowed ? 'Yes' : 'No'}
+						</Badge>
+					</TableCell>
+					<TableCell>
+						{structure.nextStateAt ? (
+							<DurationDisplay
+								endDate={structure.nextStateAt}
+								referenceTimeMs={nowMs}
+								maxUnits={3}
+								durationStyle="compact"
+								format="compact"
+							/>
+						) : (
+							'-'
+						)}
+					</TableCell>
+					<TableCell>
+						{structure.assignedGroupId ? groupNameById.get(structure.assignedGroupId) ?? structure.assignedGroupId : '-'}
+					</TableCell>
+					<TableCell title={structure.moonName ?? structure.moonId}>{displayMoonName}</TableCell>
+					<TableCell>{structure.planetName ?? structure.planetId ?? '-'}</TableCell>
+					<TableCell>{formatNullableDateTime(structure.chunkArrivalTime)}</TableCell>
+					<TableCell>{formatNullableDateTime(structure.naturalDecayTime)}</TableCell>
+					<TableCell>
+						<StructureSyncStatusBadge
+							status={structure.syncStatus}
+							description={structureSyncStatusDescription(structure)}
+						/>
+					</TableCell>
+					{canViewStructureDetails && (
+						<TableCell className="sticky right-0 z-10 border-l border-border/50 bg-card text-right">
+							{structure.canViewDetails ? (
+								<Button asChild size="sm" variant="ghost">
+									<Link to={`/structures/${structure.structureId}`}>
+										<ArrowRight className="h-4 w-4" />
+										Details
+									</Link>
+								</Button>
+							) : (
+								<span className="text-sm text-muted-foreground">-</span>
+							)}
+						</TableCell>
+					)}
+				</TableRow>
+			)
+		})
 
 	const renderMoonDrillRows = (items: StructureMoonDrillListItem[]) =>
 		items.map((structure) => {
+			const displayMoonName = stripLeadingContextName(structure.moonName, structure.planetName)
+			const displayStructureName = stripLeadingContextName(structure.name, structure.systemName)
 			const fuelLabel = structure.fuelExpires ? (
 				<DurationDisplay
 					endDate={structure.fuelExpires}
@@ -1077,8 +1096,18 @@ export default function StructuresPage() {
 
 			return (
 				<TableRow key={structure.structureId}>
+					<TableCell>
+						<StructureStateBadge state={structure.state} />
+					</TableCell>
 					<TableCell className="font-medium">{structure.regionName ?? structure.regionId ?? '-'}</TableCell>
 					<TableCell>{structure.systemName ?? structure.systemId}</TableCell>
+					<TableCell>{structure.planetName ?? structure.planetId ?? '-'}</TableCell>
+					<TableCell title={structure.moonName ?? structure.moonId}>{displayMoonName}</TableCell>
+					<TableCell className="max-w-[18rem]">
+						<span className="truncate font-medium" title={structure.name}>
+							{displayStructureName}
+						</span>
+					</TableCell>
 					<TableCell className="max-w-[18rem]">
 						<div className="flex min-w-0 items-center gap-2">
 							<CorporationLogo
@@ -1089,10 +1118,6 @@ export default function StructuresPage() {
 								{structure.corporationName}
 							</span>
 						</div>
-					</TableCell>
-					<TableCell>{structure.typeName ?? structure.typeId}</TableCell>
-					<TableCell>
-						<StructureStateBadge state={structure.state} />
 					</TableCell>
 					<TableCell>{fuelLabel}</TableCell>
 					<TableCell>
@@ -1109,8 +1134,6 @@ export default function StructuresPage() {
 						)}
 					</TableCell>
 					<TableCell>{groupLabel}</TableCell>
-					<TableCell>{structure.moonName ?? structure.moonId}</TableCell>
-					<TableCell>{structure.planetName ?? structure.planetId ?? '-'}</TableCell>
 					<TableCell>
 						<StructureSyncStatusBadge
 							status={structure.syncStatus}
@@ -1645,48 +1668,20 @@ export default function StructuresPage() {
 								className={cn(
 									'min-w-[118rem]',
 									isSovereigntyTab && 'min-w-[136rem]',
-									isSkyhooksTab && 'min-w-[126rem]',
+									isSkyhooksTab && 'min-w-[132rem]',
 									isMiningCitadelTab && 'min-w-[124rem]'
 								)}
 							>
 								<TableHeader>
 									<TableRow>
-										<SortableHead field="region" label="Region" />
-										<SortableHead field="system" label="System" />
-										{isSovereigntyTab || isSkyhooksTab || isMoonDrillsTab || isMiningCitadelTab ? null : (
-											<SortableHead field="name" label="Name" />
-										)}
-										<SortableHead field="corporation" label="Corporation" />
-										{isSovereigntyTab ? null : <SortableHead field="type" label="Type" />}
 										{isSovereigntyTab ? (
 											<>
+												<SortableHead field="state" label="State" />
+												<SortableHead field="region" label="Region" />
+												<SortableHead field="system" label="System" />
+												<SortableHead field="corporation" label="Corporation" />
 												<TableHead>System Alliance</TableHead>
-												<SortableHead field="state" label="State" />
-											</>
-										) : isSkyhooksTab ? (
-											<>
-												<SortableHead field="state" label="State" />
-												<SortableHead field="fuel" label="Fuel" />
-												<SortableHead field="nextStateAt" label="Next State In" />
-											</>
-										) : isMoonDrillsTab ? (
-											<>
-												<SortableHead field="state" label="State" />
-												<SortableHead field="fuel" label="Fuel" />
-												<SortableHead field="nextStateAt" label="Next State In" />
-											</>
-										) : (
-											<>
-												<SortableHead field="state" label="State" />
-												<SortableHead field="fuel" label="Fuel" />
-												<TableHead>LP</TableHead>
-												<TableHead>LP Allowed</TableHead>
-												<SortableHead field="nextStateAt" label="Next State In" />
-											</>
-										)}
-										<TableHead>Group</TableHead>
-										{isSovereigntyTab ? (
-											<>
+												<TableHead>Group</TableHead>
 												<SortableHead field="activityDefenseMultiplier" label="ADM" />
 												<SortableHead
 													field="magmaticGasEstimatedDepletionAt"
@@ -1698,28 +1693,72 @@ export default function StructuresPage() {
 												/>
 												<TableHead>Workforce</TableHead>
 												<TableHead>Power</TableHead>
+												<TableHead>Sync</TableHead>
 											</>
 										) : isSkyhooksTab ? (
 											<>
+												<SortableHead field="state" label="State" />
+												<SortableHead field="region" label="Region" />
+												<SortableHead field="system" label="System" />
 												<TableHead>Planet</TableHead>
+												<SortableHead field="corporation" label="Corporation" />
+												<SortableHead field="skyhookSecureFullness" label="Fullness (Secure)" />
+												<SortableHead field="skyhookSurplusFullness" label="Fullness (Surplus)" />
 												<TableHead>Workforce</TableHead>
 												<TableHead>Raidable</TableHead>
-												<TableHead>Vulnerable</TableHead>
+												<TableHead>Vulnerability Window</TableHead>
+												<SortableHead field="nextStateAt" label="Next State In" />
+												<TableHead>Group</TableHead>
+												<TableHead>Sync</TableHead>
 											</>
 										) : isMoonDrillsTab ? (
 											<>
+												<SortableHead field="state" label="State" />
+												<SortableHead field="region" label="Region" />
+												<SortableHead field="system" label="System" />
+												<SortableHead field="planet" label="Planet" />
 												<TableHead>Moon</TableHead>
-												<TableHead>Planet</TableHead>
+												<SortableHead field="name" label="Name" />
+												<SortableHead field="corporation" label="Corporation" />
+												<SortableHead field="fuel" label="Fuel" />
+												<SortableHead field="nextStateAt" label="Next State In" />
+												<TableHead>Group</TableHead>
+												<TableHead>Sync</TableHead>
 											</>
 										) : isMiningCitadelTab ? (
 											<>
+												<SortableHead field="state" label="State" />
+												<SortableHead field="region" label="Region" />
+												<SortableHead field="system" label="System" />
+												<SortableHead field="corporation" label="Corporation" />
+												<SortableHead field="type" label="Type" />
+												<SortableHead field="fuel" label="Fuel" />
+												<TableHead>LP</TableHead>
+												<TableHead>LP Allowed</TableHead>
+												<SortableHead field="nextStateAt" label="Next State In" />
+												<TableHead>Group</TableHead>
 												<TableHead>Moon</TableHead>
 												<TableHead>Planet</TableHead>
 												<TableHead>Chunk Arrival</TableHead>
 												<TableHead>Natural Decay</TableHead>
+												<TableHead>Sync</TableHead>
 											</>
-										) : null}
-										<TableHead>Sync</TableHead>
+										) : (
+											<>
+												<SortableHead field="state" label="State" />
+												<SortableHead field="region" label="Region" />
+												<SortableHead field="system" label="System" />
+												<SortableHead field="name" label="Name" />
+												<SortableHead field="corporation" label="Corporation" />
+												<SortableHead field="type" label="Type" />
+												<SortableHead field="fuel" label="Fuel" />
+												<TableHead>LP</TableHead>
+												<TableHead>LP Allowed</TableHead>
+												<SortableHead field="nextStateAt" label="Next State In" />
+												<TableHead>Group</TableHead>
+												<TableHead>Sync</TableHead>
+											</>
+										)}
 										{canViewStructureDetails && (
 											<TableHead className="sticky right-0 z-20 table-header-bg border-l border-border/50 text-right">
 												Actions
