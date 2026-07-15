@@ -291,14 +291,16 @@ suite('bet idempotency', () => {
 suite('admin override resolve', () => {
 	it('lets a site admin resolve a market they created AND bet on, collapsing two-of-N in one step', async () => {
 		const [adminCreator, u1, u2] = [1, 3, 4].map(uuid)
-		// twoOfNThreshold '0' ⇒ requiresTwoOfN is true for EVERY market (pool ≥ 0), so a normal resolve
-		// would only PROPOSE and await a second distinct signer. rake 0 + reward band 0 keeps the payout
-		// arithmetic exact and self-contained.
+		// twoOfNThreshold '1' ⇒ requiresTwoOfN (pool >= threshold) is true for every market that has
+		// taken a bet, so a normal resolve would only PROPOSE and await a second distinct signer. The
+		// threshold must be a POSITIVE integer (updateConfig and the admin route both reject '0'), and
+		// '1' is the lowest value that means "always" for any market with money in it — which this one
+		// has. rake 0 + reward band 0 keeps the payout arithmetic exact and self-contained.
 		await governance.updateConfig(deps, {
 			actorUserId: ADMIN,
 			defaultRakeBps: 0,
 			defaultMinStake: '1',
-			twoOfNThreshold: '0',
+			twoOfNThreshold: '1',
 			creatorRewardMinBps: 0,
 			creatorRewardMaxBps: 0,
 		})
@@ -384,7 +386,9 @@ suite('admin override resolve', () => {
 			actorUserId: ADMIN,
 			defaultRakeBps: 0,
 			defaultMinStake: '1',
-			twoOfNThreshold: '0', // every market is two-of-N ⇒ a normal resolve only PROPOSES
+			// Lowest POSITIVE threshold ('0' is rejected): every market holding a bet is two-of-N ⇒ a
+			// normal resolve only PROPOSES.
+			twoOfNThreshold: '1',
 			creatorRewardMinBps: 0,
 			creatorRewardMaxBps: 0,
 		})
