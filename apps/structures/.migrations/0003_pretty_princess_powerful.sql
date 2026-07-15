@@ -1,0 +1,1 @@
+ALTER TABLE "structure_state_events" DROP COLUMN "raw_payload";

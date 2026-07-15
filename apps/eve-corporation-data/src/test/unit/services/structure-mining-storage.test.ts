@@ -24,11 +24,11 @@ const mocks = vi.hoisted(() => {
 
 vi.mock('../../../db', () => ({
 	createDb: vi.fn(() => ({
-		query: {
-			structureMiningStates: {
-				findMany: mocks.findMany,
+			query: {
+				structureMiningExtractions: {
+					findMany: mocks.findMany,
+				},
 			},
-		},
 		insert: mocks.insert,
 		delete: mocks.deleteMock,
 	})),

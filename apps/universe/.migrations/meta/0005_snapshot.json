@@ -1,0 +1,2001 @@
+{
+  "id": "112f6123-abeb-4784-8f00-091d3b7c0542",
+  "prevId": "7ed6fe2c-f977-419c-89cd-4eed173c12af",
+  "version": "7",
+  "dialect": "postgresql",
+  "tables": {
+    "public.universe_eve_constellations": {
+      "name": "universe_eve_constellations",
+      "schema": "",
+      "columns": {
+        "constellation_id": {
+          "name": "constellation_id",
+          "type": "text",
+          "primaryKey": true,
+          "notNull": true
+        },
+        "constellation_name": {
+          "name": "constellation_name",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "region_id": {
+          "name": "region_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        }
+      },
+      "indexes": {
+        "universe_eve_constellations_constellation_id_idx": {
+          "name": "universe_eve_constellations_constellation_id_idx",
+          "columns": [
+            {
+              "expression": "constellation_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "universe_eve_constellations_region_id_idx": {
+          "name": "universe_eve_constellations_region_id_idx",
+          "columns": [
+            {
+              "expression": "region_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        }
+      },
+      "foreignKeys": {},
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {},
+      "isRLSEnabled": false
+    },
+    "public.universe_eve_npc_stations": {
+      "name": "universe_eve_npc_stations",
+      "schema": "",
+      "columns": {
+        "station_id": {
+          "name": "station_id",
+          "type": "text",
+          "primaryKey": true,
+          "notNull": true
+        },
+        "station_name": {
+          "name": "station_name",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "solar_system_id": {
+          "name": "solar_system_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "orbit_id": {
+          "name": "orbit_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "owner_id": {
+          "name": "owner_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "operation_id": {
+          "name": "operation_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "type_id": {
+          "name": "type_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "use_operation_name": {
+          "name": "use_operation_name",
+          "type": "boolean",
+          "primaryKey": false,
+          "notNull": true,
+          "default": false
+        }
+      },
+      "indexes": {
+        "universe_eve_npc_stations_station_id_idx": {
+          "name": "universe_eve_npc_stations_station_id_idx",
+          "columns": [
+            {
+              "expression": "station_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "universe_eve_npc_stations_station_name_idx": {
+          "name": "universe_eve_npc_stations_station_name_idx",
+          "columns": [
+            {
+              "expression": "station_name",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "universe_eve_npc_stations_solar_system_id_idx": {
+          "name": "universe_eve_npc_stations_solar_system_id_idx",
+          "columns": [
+            {
+              "expression": "solar_system_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        }
+      },
+      "foreignKeys": {},
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {},
+      "isRLSEnabled": false
+    },
+    "public.universe_eve_planets": {
+      "name": "universe_eve_planets",
+      "schema": "",
+      "columns": {
+        "planet_id": {
+          "name": "planet_id",
+          "type": "text",
+          "primaryKey": true,
+          "notNull": true
+        },
+        "planet_name": {
+          "name": "planet_name",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "solar_system_id": {
+          "name": "solar_system_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "celestial_index": {
+          "name": "celestial_index",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "type_id": {
+          "name": "type_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        }
+      },
+      "indexes": {
+        "universe_eve_planets_planet_id_idx": {
+          "name": "universe_eve_planets_planet_id_idx",
+          "columns": [
+            {
+              "expression": "planet_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "universe_eve_planets_planet_name_idx": {
+          "name": "universe_eve_planets_planet_name_idx",
+          "columns": [
+            {
+              "expression": "planet_name",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "universe_eve_planets_solar_system_id_idx": {
+          "name": "universe_eve_planets_solar_system_id_idx",
+          "columns": [
+            {
+              "expression": "solar_system_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        }
+      },
+      "foreignKeys": {},
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {},
+      "isRLSEnabled": false
+    },
+    "public.universe_eve_regions": {
+      "name": "universe_eve_regions",
+      "schema": "",
+      "columns": {
+        "region_id": {
+          "name": "region_id",
+          "type": "text",
+          "primaryKey": true,
+          "notNull": true
+        },
+        "region_name": {
+          "name": "region_name",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        }
+      },
+      "indexes": {
+        "universe_eve_regions_region_id_idx": {
+          "name": "universe_eve_regions_region_id_idx",
+          "columns": [
+            {
+              "expression": "region_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "universe_eve_regions_region_name_idx": {
+          "name": "universe_eve_regions_region_name_idx",
+          "columns": [
+            {
+              "expression": "region_name",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        }
+      },
+      "foreignKeys": {},
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {},
+      "isRLSEnabled": false
+    },
+    "public.universe_eve_solar_systems": {
+      "name": "universe_eve_solar_systems",
+      "schema": "",
+      "columns": {
+        "solar_system_id": {
+          "name": "solar_system_id",
+          "type": "text",
+          "primaryKey": true,
+          "notNull": true
+        },
+        "solar_system_name": {
+          "name": "solar_system_name",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "region_id": {
+          "name": "region_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "constellation_id": {
+          "name": "constellation_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "security_status": {
+          "name": "security_status",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        }
+      },
+      "indexes": {
+        "universe_eve_solar_systems_solar_system_id_idx": {
+          "name": "universe_eve_solar_systems_solar_system_id_idx",
+          "columns": [
+            {
+              "expression": "solar_system_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "universe_eve_solar_systems_solar_system_name_idx": {
+          "name": "universe_eve_solar_systems_solar_system_name_idx",
+          "columns": [
+            {
+              "expression": "solar_system_name",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "universe_eve_solar_systems_region_id_idx": {
+          "name": "universe_eve_solar_systems_region_id_idx",
+          "columns": [
+            {
+              "expression": "region_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "universe_eve_solar_systems_constellation_id_idx": {
+          "name": "universe_eve_solar_systems_constellation_id_idx",
+          "columns": [
+            {
+              "expression": "constellation_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        }
+      },
+      "foreignKeys": {},
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {},
+      "isRLSEnabled": false
+    },
+    "public.universe_eve_stargates": {
+      "name": "universe_eve_stargates",
+      "schema": "",
+      "columns": {
+        "stargate_id": {
+          "name": "stargate_id",
+          "type": "text",
+          "primaryKey": true,
+          "notNull": true
+        },
+        "stargate_name": {
+          "name": "stargate_name",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "solar_system_id": {
+          "name": "solar_system_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "destination_solar_system_id": {
+          "name": "destination_solar_system_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "destination_stargate_id": {
+          "name": "destination_stargate_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "type_id": {
+          "name": "type_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        }
+      },
+      "indexes": {
+        "universe_eve_stargates_stargate_id_idx": {
+          "name": "universe_eve_stargates_stargate_id_idx",
+          "columns": [
+            {
+              "expression": "stargate_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "universe_eve_stargates_stargate_name_idx": {
+          "name": "universe_eve_stargates_stargate_name_idx",
+          "columns": [
+            {
+              "expression": "stargate_name",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "universe_eve_stargates_solar_system_id_idx": {
+          "name": "universe_eve_stargates_solar_system_id_idx",
+          "columns": [
+            {
+              "expression": "solar_system_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "universe_eve_stargates_destination_solar_system_id_idx": {
+          "name": "universe_eve_stargates_destination_solar_system_id_idx",
+          "columns": [
+            {
+              "expression": "destination_solar_system_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        }
+      },
+      "foreignKeys": {},
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {},
+      "isRLSEnabled": false
+    },
+    "public.universe_killmails": {
+      "name": "universe_killmails",
+      "schema": "",
+      "columns": {
+        "killmail_id": {
+          "name": "killmail_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "killmail_hash": {
+          "name": "killmail_hash",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "killmail_time": {
+          "name": "killmail_time",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "solar_system_id": {
+          "name": "solar_system_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "solar_system_name": {
+          "name": "solar_system_name",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "moon_id": {
+          "name": "moon_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "moon_name": {
+          "name": "moon_name",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "war_id": {
+          "name": "war_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "war_name": {
+          "name": "war_name",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "victim_character_id": {
+          "name": "victim_character_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "victim_character_name": {
+          "name": "victim_character_name",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "victim_corporation_id": {
+          "name": "victim_corporation_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "victim_corporation_name": {
+          "name": "victim_corporation_name",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "victim_alliance_id": {
+          "name": "victim_alliance_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "victim_alliance_name": {
+          "name": "victim_alliance_name",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "victim_ship_type_id": {
+          "name": "victim_ship_type_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "victim_ship_type_name": {
+          "name": "victim_ship_type_name",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "victim_damage_taken": {
+          "name": "victim_damage_taken",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "attacker_character_ids": {
+          "name": "attacker_character_ids",
+          "type": "jsonb",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "attacker_character_names": {
+          "name": "attacker_character_names",
+          "type": "jsonb",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "attacker_corporation_ids": {
+          "name": "attacker_corporation_ids",
+          "type": "jsonb",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "attacker_corporation_names": {
+          "name": "attacker_corporation_names",
+          "type": "jsonb",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "killmail_data": {
+          "name": "killmail_data",
+          "type": "jsonb",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        },
+        "updated_at": {
+          "name": "updated_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        }
+      },
+      "indexes": {
+        "universe_killmails_killmail_id_idx": {
+          "name": "universe_killmails_killmail_id_idx",
+          "columns": [
+            {
+              "expression": "killmail_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "universe_killmails_victim_character_time_idx": {
+          "name": "universe_killmails_victim_character_time_idx",
+          "columns": [
+            {
+              "expression": "victim_character_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "killmail_time",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "universe_killmails_victim_corporation_time_idx": {
+          "name": "universe_killmails_victim_corporation_time_idx",
+          "columns": [
+            {
+              "expression": "victim_corporation_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "killmail_time",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "universe_killmails_attacker_character_gin_idx": {
+          "name": "universe_killmails_attacker_character_gin_idx",
+          "columns": [
+            {
+              "expression": "attacker_character_ids",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "gin",
+          "with": {}
+        },
+        "universe_killmails_attacker_corporation_gin_idx": {
+          "name": "universe_killmails_attacker_corporation_gin_idx",
+          "columns": [
+            {
+              "expression": "attacker_corporation_ids",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "gin",
+          "with": {}
+        },
+        "universe_killmails_solar_system_time_idx": {
+          "name": "universe_killmails_solar_system_time_idx",
+          "columns": [
+            {
+              "expression": "solar_system_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "killmail_time",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "universe_killmails_killmail_time_idx": {
+          "name": "universe_killmails_killmail_time_idx",
+          "columns": [
+            {
+              "expression": "killmail_time",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        }
+      },
+      "foreignKeys": {},
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {
+        "universe_killmails_killmail_id_killmail_hash_unique": {
+          "name": "universe_killmails_killmail_id_killmail_hash_unique",
+          "nullsNotDistinct": false,
+          "columns": [
+            "killmail_id",
+            "killmail_hash"
+          ]
+        }
+      },
+      "policies": {},
+      "checkConstraints": {},
+      "isRLSEnabled": false
+    },
+    "public.universe_moon_resources": {
+      "name": "universe_moon_resources",
+      "schema": "",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "integer",
+          "primaryKey": true,
+          "notNull": true,
+          "identity": {
+            "type": "always",
+            "name": "universe_moon_resources_id_seq",
+            "schema": "public",
+            "increment": "1",
+            "startWith": "1",
+            "minValue": "1",
+            "maxValue": "2147483647",
+            "cache": "1",
+            "cycle": false
+          }
+        },
+        "moon_id": {
+          "name": "moon_id",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "product_name": {
+          "name": "product_name",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "quantity": {
+          "name": "quantity",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "ore_type_id": {
+          "name": "ore_type_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        },
+        "updated_at": {
+          "name": "updated_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        }
+      },
+      "indexes": {
+        "universe_moon_resources_moon_id_idx": {
+          "name": "universe_moon_resources_moon_id_idx",
+          "columns": [
+            {
+              "expression": "moon_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "universe_moon_resources_lookup_idx": {
+          "name": "universe_moon_resources_lookup_idx",
+          "columns": [
+            {
+              "expression": "product_name",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "ore_type_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "universe_moon_resources_covering_idx": {
+          "name": "universe_moon_resources_covering_idx",
+          "columns": [
+            {
+              "expression": "moon_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "product_name",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "quantity",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        }
+      },
+      "foreignKeys": {
+        "universe_moon_resources_moon_id_universe_moons_id_fk": {
+          "name": "universe_moon_resources_moon_id_universe_moons_id_fk",
+          "tableFrom": "universe_moon_resources",
+          "tableTo": "universe_moons",
+          "columnsFrom": [
+            "moon_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {},
+      "isRLSEnabled": false
+    },
+    "public.universe_moons": {
+      "name": "universe_moons",
+      "schema": "",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "integer",
+          "primaryKey": true,
+          "notNull": true,
+          "identity": {
+            "type": "always",
+            "name": "universe_moons_id_seq",
+            "schema": "public",
+            "increment": "1",
+            "startWith": "1",
+            "minValue": "1",
+            "maxValue": "2147483647",
+            "cache": "1",
+            "cycle": false
+          }
+        },
+        "name": {
+          "name": "name",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "moon_id": {
+          "name": "moon_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "planet_id": {
+          "name": "planet_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "solar_system_id": {
+          "name": "solar_system_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "position_x": {
+          "name": "position_x",
+          "type": "real",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "position_y": {
+          "name": "position_y",
+          "type": "real",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "position_z": {
+          "name": "position_z",
+          "type": "real",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        },
+        "updated_at": {
+          "name": "updated_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        }
+      },
+      "indexes": {
+        "universe_moons_moon_id_idx": {
+          "name": "universe_moons_moon_id_idx",
+          "columns": [
+            {
+              "expression": "moon_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "universe_moons_location_idx": {
+          "name": "universe_moons_location_idx",
+          "columns": [
+            {
+              "expression": "solar_system_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "planet_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "universe_moons_name_idx": {
+          "name": "universe_moons_name_idx",
+          "columns": [
+            {
+              "expression": "name",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        }
+      },
+      "foreignKeys": {},
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {
+        "universe_moons_name_unique": {
+          "name": "universe_moons_name_unique",
+          "nullsNotDistinct": false,
+          "columns": [
+            "name"
+          ]
+        },
+        "universe_moons_moon_id_unique": {
+          "name": "universe_moons_moon_id_unique",
+          "nullsNotDistinct": false,
+          "columns": [
+            "moon_id"
+          ]
+        }
+      },
+      "policies": {},
+      "checkConstraints": {},
+      "isRLSEnabled": false
+    },
+    "public.universe_eve_alliance_ids": {
+      "name": "universe_eve_alliance_ids",
+      "schema": "",
+      "columns": {
+        "alliance_id": {
+          "name": "alliance_id",
+          "type": "text",
+          "primaryKey": true,
+          "notNull": true
+        },
+        "alliance_name": {
+          "name": "alliance_name",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "ticker": {
+          "name": "ticker",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        }
+      },
+      "indexes": {
+        "universe_eve_alliance_ids_alliance_id_idx": {
+          "name": "universe_eve_alliance_ids_alliance_id_idx",
+          "columns": [
+            {
+              "expression": "alliance_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "universe_eve_alliance_ids_alliance_name_idx": {
+          "name": "universe_eve_alliance_ids_alliance_name_idx",
+          "columns": [
+            {
+              "expression": "alliance_name",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "universe_eve_alliance_ids_ticker_idx": {
+          "name": "universe_eve_alliance_ids_ticker_idx",
+          "columns": [
+            {
+              "expression": "ticker",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        }
+      },
+      "foreignKeys": {},
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {},
+      "isRLSEnabled": false
+    },
+    "public.universe_eve_character_ids": {
+      "name": "universe_eve_character_ids",
+      "schema": "",
+      "columns": {
+        "character_id": {
+          "name": "character_id",
+          "type": "text",
+          "primaryKey": true,
+          "notNull": true
+        },
+        "character_name": {
+          "name": "character_name",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        }
+      },
+      "indexes": {
+        "universe_eve_character_ids_character_id_idx": {
+          "name": "universe_eve_character_ids_character_id_idx",
+          "columns": [
+            {
+              "expression": "character_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "universe_eve_character_ids_character_name_idx": {
+          "name": "universe_eve_character_ids_character_name_idx",
+          "columns": [
+            {
+              "expression": "character_name",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        }
+      },
+      "foreignKeys": {},
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {},
+      "isRLSEnabled": false
+    },
+    "public.universe_eve_corporation_ids": {
+      "name": "universe_eve_corporation_ids",
+      "schema": "",
+      "columns": {
+        "corporation_id": {
+          "name": "corporation_id",
+          "type": "text",
+          "primaryKey": true,
+          "notNull": true
+        },
+        "corporation_name": {
+          "name": "corporation_name",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "ticker": {
+          "name": "ticker",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        }
+      },
+      "indexes": {
+        "universe_eve_corporation_ids_corporation_id_idx": {
+          "name": "universe_eve_corporation_ids_corporation_id_idx",
+          "columns": [
+            {
+              "expression": "corporation_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "universe_eve_corporation_ids_corporation_name_idx": {
+          "name": "universe_eve_corporation_ids_corporation_name_idx",
+          "columns": [
+            {
+              "expression": "corporation_name",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "universe_eve_corporation_ids_ticker_idx": {
+          "name": "universe_eve_corporation_ids_ticker_idx",
+          "columns": [
+            {
+              "expression": "ticker",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        }
+      },
+      "foreignKeys": {},
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {},
+      "isRLSEnabled": false
+    },
+    "public.universe_eve_inv_categories": {
+      "name": "universe_eve_inv_categories",
+      "schema": "",
+      "columns": {
+        "category_id": {
+          "name": "category_id",
+          "type": "text",
+          "primaryKey": true,
+          "notNull": true
+        },
+        "category_name": {
+          "name": "category_name",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "icon_id": {
+          "name": "icon_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "published": {
+          "name": "published",
+          "type": "boolean",
+          "primaryKey": false,
+          "notNull": true,
+          "default": false
+        }
+      },
+      "indexes": {
+        "universe_eve_inv_categories_category_id_idx": {
+          "name": "universe_eve_inv_categories_category_id_idx",
+          "columns": [
+            {
+              "expression": "category_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "universe_eve_inv_categories_category_name_idx": {
+          "name": "universe_eve_inv_categories_category_name_idx",
+          "columns": [
+            {
+              "expression": "category_name",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "universe_eve_inv_categories_published_idx": {
+          "name": "universe_eve_inv_categories_published_idx",
+          "columns": [
+            {
+              "expression": "published",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        }
+      },
+      "foreignKeys": {},
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {},
+      "isRLSEnabled": false
+    },
+    "public.universe_eve_inv_flags": {
+      "name": "universe_eve_inv_flags",
+      "schema": "",
+      "columns": {
+        "flag_id": {
+          "name": "flag_id",
+          "type": "text",
+          "primaryKey": true,
+          "notNull": true
+        },
+        "flag_name": {
+          "name": "flag_name",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "flag_text": {
+          "name": "flag_text",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "order_id": {
+          "name": "order_id",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true
+        }
+      },
+      "indexes": {
+        "universe_eve_inv_flags_flag_id_idx": {
+          "name": "universe_eve_inv_flags_flag_id_idx",
+          "columns": [
+            {
+              "expression": "flag_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "universe_eve_inv_flags_flag_name_idx": {
+          "name": "universe_eve_inv_flags_flag_name_idx",
+          "columns": [
+            {
+              "expression": "flag_name",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        }
+      },
+      "foreignKeys": {},
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {},
+      "isRLSEnabled": false
+    },
+    "public.universe_eve_inv_groups": {
+      "name": "universe_eve_inv_groups",
+      "schema": "",
+      "columns": {
+        "group_id": {
+          "name": "group_id",
+          "type": "text",
+          "primaryKey": true,
+          "notNull": true
+        },
+        "category_id": {
+          "name": "category_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "group_name": {
+          "name": "group_name",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "icon_id": {
+          "name": "icon_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "use_base_price": {
+          "name": "use_base_price",
+          "type": "boolean",
+          "primaryKey": false,
+          "notNull": true,
+          "default": false
+        },
+        "anchored": {
+          "name": "anchored",
+          "type": "boolean",
+          "primaryKey": false,
+          "notNull": true,
+          "default": false
+        },
+        "anchorable": {
+          "name": "anchorable",
+          "type": "boolean",
+          "primaryKey": false,
+          "notNull": true,
+          "default": false
+        },
+        "fittable_non_singleton": {
+          "name": "fittable_non_singleton",
+          "type": "boolean",
+          "primaryKey": false,
+          "notNull": true,
+          "default": false
+        },
+        "published": {
+          "name": "published",
+          "type": "boolean",
+          "primaryKey": false,
+          "notNull": true,
+          "default": true
+        }
+      },
+      "indexes": {
+        "universe_eve_inv_groups_group_id_idx": {
+          "name": "universe_eve_inv_groups_group_id_idx",
+          "columns": [
+            {
+              "expression": "group_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "universe_eve_inv_groups_category_id_idx": {
+          "name": "universe_eve_inv_groups_category_id_idx",
+          "columns": [
+            {
+              "expression": "category_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "universe_eve_inv_groups_group_name_idx": {
+          "name": "universe_eve_inv_groups_group_name_idx",
+          "columns": [
+            {
+              "expression": "group_name",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "universe_eve_inv_groups_published_idx": {
+          "name": "universe_eve_inv_groups_published_idx",
+          "columns": [
+            {
+              "expression": "published",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "universe_eve_inv_groups_icon_id_idx": {
+          "name": "universe_eve_inv_groups_icon_id_idx",
+          "columns": [
+            {
+              "expression": "icon_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        }
+      },
+      "foreignKeys": {},
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {},
+      "isRLSEnabled": false
+    },
+    "public.universe_eve_market_groups": {
+      "name": "universe_eve_market_groups",
+      "schema": "",
+      "columns": {
+        "market_group_id": {
+          "name": "market_group_id",
+          "type": "text",
+          "primaryKey": true,
+          "notNull": true
+        },
+        "parent_group_id": {
+          "name": "parent_group_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "market_group_name": {
+          "name": "market_group_name",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "description": {
+          "name": "description",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "icon_id": {
+          "name": "icon_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "has_types": {
+          "name": "has_types",
+          "type": "boolean",
+          "primaryKey": false,
+          "notNull": true,
+          "default": false
+        }
+      },
+      "indexes": {
+        "universe_eve_market_groups_market_group_id_idx": {
+          "name": "universe_eve_market_groups_market_group_id_idx",
+          "columns": [
+            {
+              "expression": "market_group_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "universe_eve_market_groups_parent_group_id_idx": {
+          "name": "universe_eve_market_groups_parent_group_id_idx",
+          "columns": [
+            {
+              "expression": "parent_group_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "universe_eve_market_groups_market_group_name_idx": {
+          "name": "universe_eve_market_groups_market_group_name_idx",
+          "columns": [
+            {
+              "expression": "market_group_name",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "universe_eve_market_groups_has_types_idx": {
+          "name": "universe_eve_market_groups_has_types_idx",
+          "columns": [
+            {
+              "expression": "has_types",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        }
+      },
+      "foreignKeys": {},
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {},
+      "isRLSEnabled": false
+    },
+    "public.universe_eve_inv_types": {
+      "name": "universe_eve_inv_types",
+      "schema": "",
+      "columns": {
+        "type_id": {
+          "name": "type_id",
+          "type": "text",
+          "primaryKey": true,
+          "notNull": true
+        },
+        "group_id": {
+          "name": "group_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "type_name": {
+          "name": "type_name",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "description": {
+          "name": "description",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "mass": {
+          "name": "mass",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "volume": {
+          "name": "volume",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "capacity": {
+          "name": "capacity",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "portion_size": {
+          "name": "portion_size",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "race_id": {
+          "name": "race_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "base_price": {
+          "name": "base_price",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "published": {
+          "name": "published",
+          "type": "boolean",
+          "primaryKey": false,
+          "notNull": true,
+          "default": false
+        },
+        "market_group_id": {
+          "name": "market_group_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "icon_id": {
+          "name": "icon_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "sound_id": {
+          "name": "sound_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "graphic_id": {
+          "name": "graphic_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        }
+      },
+      "indexes": {
+        "universe_eve_inv_types_type_id_idx": {
+          "name": "universe_eve_inv_types_type_id_idx",
+          "columns": [
+            {
+              "expression": "type_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "universe_eve_inv_types_group_id_idx": {
+          "name": "universe_eve_inv_types_group_id_idx",
+          "columns": [
+            {
+              "expression": "group_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "universe_eve_inv_types_type_name_idx": {
+          "name": "universe_eve_inv_types_type_name_idx",
+          "columns": [
+            {
+              "expression": "type_name",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "universe_eve_inv_types_published_idx": {
+          "name": "universe_eve_inv_types_published_idx",
+          "columns": [
+            {
+              "expression": "published",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "universe_eve_inv_types_market_group_id_idx": {
+          "name": "universe_eve_inv_types_market_group_id_idx",
+          "columns": [
+            {
+              "expression": "market_group_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        }
+      },
+      "foreignKeys": {},
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {},
+      "isRLSEnabled": false
+    },
+    "public.universe_eve_type_materials": {
+      "name": "universe_eve_type_materials",
+      "schema": "",
+      "columns": {
+        "type_id": {
+          "name": "type_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "material_type_id": {
+          "name": "material_type_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "quantity": {
+          "name": "quantity",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true
+        }
+      },
+      "indexes": {
+        "universe_eve_type_materials_type_id_idx": {
+          "name": "universe_eve_type_materials_type_id_idx",
+          "columns": [
+            {
+              "expression": "type_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        }
+      },
+      "foreignKeys": {},
+      "compositePrimaryKeys": {
+        "universe_eve_type_materials_type_id_material_type_id_pk": {
+          "name": "universe_eve_type_materials_type_id_material_type_id_pk",
+          "columns": [
+            "type_id",
+            "material_type_id"
+          ]
+        }
+      },
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {},
+      "isRLSEnabled": false
+    }
+  },
+  "enums": {},
+  "schemas": {},
+  "sequences": {},
+  "roles": {},
+  "policies": {},
+  "views": {},
+  "_meta": {
+    "columns": {},
+    "schemas": {},
+    "tables": {}
+  }
+}

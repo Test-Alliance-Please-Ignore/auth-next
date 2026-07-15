@@ -43,7 +43,7 @@ export const NAVIGATION_STRUCTURE_TYPE_IDS = new Set([
 	TENEBREX_CYNO_JAMMER_TYPE_ID,
 	PHAROLUX_CYNO_BEACON_TYPE_ID,
 ])
-export const MINING_STRUCTURE_TYPE_IDS = new Set([METENOX_MOON_DRILL_TYPE_ID])
+export const MOON_DRILL_STRUCTURE_TYPE_IDS = new Set([METENOX_MOON_DRILL_TYPE_ID])
 export const STRUCTURE_REINFORCED_STATES = new Set([
 	'shield',
 	'armor',
@@ -62,6 +62,23 @@ export const STRUCTURE_TABS: StructureTabDefinition[] = [
 	{ tab: 'moon-drills', label: 'Moon Drills' },
 ]
 
+const STRUCTURE_TAB_VALUES = new Set<string>(STRUCTURE_TABS.map((definition) => definition.tab))
+const STRUCTURE_VULNERABILITY_STATE_VALUES = new Set<string>([
+	'vulnerable',
+	'invulnerable',
+	'reinforced',
+])
+
+export function isStructureTab(value: unknown): value is StructureTab {
+	return typeof value === 'string' && STRUCTURE_TAB_VALUES.has(value)
+}
+
+export function isStructureVulnerabilityState(
+	value: unknown
+): value is 'vulnerable' | 'invulnerable' | 'reinforced' {
+	return typeof value === 'string' && STRUCTURE_VULNERABILITY_STATE_VALUES.has(value)
+}
+
 function normalizeStructureTypeId(value: string | null | undefined): string {
 	return (value ?? '').trim()
 }
@@ -73,7 +90,7 @@ export function getStructureTabForTypeId(
 	const normalized = normalizeStructureTypeId(typeId)
 	const normalizedName = (typeName ?? '').trim()
 
-	if (normalizedName === METENOX_MOON_DRILL_TYPE_NAME || MINING_STRUCTURE_TYPE_IDS.has(normalized)) {
+	if (normalizedName === METENOX_MOON_DRILL_TYPE_NAME || MOON_DRILL_STRUCTURE_TYPE_IDS.has(normalized)) {
 		return 'moon-drills'
 	}
 
@@ -193,7 +210,9 @@ export interface StructureSovereigntyTransportState {
 	state: StructureSovereigntyTransportSection
 }
 
-export interface StructureSovereigntyListItem {
+export type StructureSyncStatus = 'ok' | 'warning' | 'error'
+
+export interface StructureIdentity {
 	structureId: string
 	corporationId: string
 	corporationName: string
@@ -201,7 +220,150 @@ export interface StructureSovereigntyListItem {
 	systemName: string | null
 	regionId: string | null
 	regionName: string | null
+}
+
+export interface StructureSyncState {
+	syncStatus: StructureSyncStatus
+	syncFailureReason: string | null
+	lastSyncedAt: string | null
+	updatedAt: string
+	canViewDetails: boolean
+}
+
+export interface StructureConfig {
+	assignedGroupId: string | null
+	hidden: boolean
+	lowPowerAllowed: boolean
+}
+
+export interface StructureListFilterOption {
+	value: string
+	label: string
+}
+
+export interface StructureListFilterOptions {
+	corporations: StructureListFilterOption[]
+	assignedGroups: StructureListFilterOption[]
+	regions: StructureListFilterOption[]
+	systems: StructureListFilterOption[]
+	states: StructureListFilterOption[]
+	vulnerabilityStates?: StructureListFilterOption[]
+	types: StructureListFilterOption[]
+	alliances: StructureListFilterOption[]
+	planets: StructureListFilterOption[]
+	raidableStates: StructureListFilterOption[]
+}
+
+export interface StructureListSummary {
+	total: number
+	lowFuel: number
+	lowPower: number
+	reinforced: number
+}
+
+export interface StructureListBaseItem
+	extends StructureIdentity,
+		StructureSyncState,
+		StructureConfig {
 	name: string
+	typeId: string
+	typeName: string | null
+	state: string
+	nextStateAt: string | null
+	fuelExpires: string | null
+	fuelAmount: number | null
+	lowPower: boolean
+}
+
+export interface StructureCitadelListItem extends StructureListBaseItem {}
+
+export interface StructureNavigationListItem extends StructureCitadelListItem {}
+
+export interface StructureModuleConfig {
+	id: string
+	lowFuelTimeThresholdHours: number
+	criticalFuelTimeThresholdHours: number
+	lowFuelAmountThreshold: number
+	criticalFuelAmountThreshold: number
+	updatedBy: string | null
+	createdAt: Date
+	updatedAt: Date
+}
+
+export interface StructureGroupSetting {
+	id: string
+	groupId: string
+	createdBy: string | null
+	updatedBy: string | null
+	createdAt: Date
+	updatedAt: Date
+}
+
+export interface StructureCorporationGroupDefault {
+	corporationId: string
+	corporationName?: string
+	groupId: string | null
+	updatedBy: string | null
+	createdAt: Date
+	updatedAt: Date
+}
+
+export interface StructureGroupAlertConfig {
+	id: string
+	groupId: string
+	alertType: string
+	destinationIds: string[]
+	config: Record<string, unknown>
+	isEnabled: boolean
+	createdAt: Date
+	updatedAt: Date
+}
+
+export interface StructureAlertDestinationRecord {
+	id: string
+	scopeType: 'corporation' | 'structure_group'
+	scopeId: string
+	alertType: string
+	destinationType: CorporationAlertDestinationType
+	discordServerId: string | null
+	channelId: string | null
+	coreUserId: string | null
+	groupId: string | null
+	destinationConfig: Record<string, unknown>
+	isEnabled: boolean
+	createdBy: string | null
+	updatedBy: string | null
+	createdAt: Date
+	updatedAt: Date
+}
+
+export interface StructureAlertDestination extends StructureAlertDestinationRecord {
+	discordServer: {
+		id: string
+		guildId: string
+		guildName: string
+	} | null
+}
+
+export interface StructureInventoryItem {
+	typeId: string
+	typeName?: string | null
+	quantity: number
+	stackCount: number
+}
+
+export interface StructureInventoryBay {
+	locationFlag: string
+	label: string
+	totalQuantity: number
+	totalStacks: number
+	items: StructureInventoryItem[]
+}
+
+export interface StructureSovereigntyListItem
+	extends StructureIdentity,
+		StructureSyncState,
+		StructureConfig {
 	state: string
 	typeId: string
 	typeName: string | null
@@ -209,9 +371,6 @@ export interface StructureSovereigntyListItem {
 	fuelExpires: string | null
 	fuelAmount: number | null
 	lowPower: boolean
-	hidden: boolean
-	lowPowerAllowed: boolean
-	assignedGroupId: string | null
 	claimType: 'alliance' | 'faction' | 'unclaimed'
 	allianceId: string | null
 	allianceName: string | null
@@ -241,10 +400,6 @@ export interface StructureSovereigntyListItem {
 	resourceWorkforceAllocated: number
 	resourceWorkforceAvailable: number
 	upgradeCount: number
-	syncStatus: 'ok' | 'warning' | 'error'
-	syncFailureReason: string | null
-	lastSyncedAt: string | null
-	canViewDetails: boolean
 }
 
 export interface StructureSovereigntyListResponse {
@@ -260,6 +415,281 @@ export interface StructureSovereigntyListResponse {
 	filterOptions: StructureSovereigntyListFilterOptions
 	summary: StructureSovereigntyListSummary
 }
+
+export interface StructureSkyhookReagent {
+	typeId: string
+	typeName: string | null
+	securedStock: number
+	unsecuredStock: number
+	lastCycle: string
+}
+
+export interface StructureSkyhookListItem
+	extends StructureIdentity, StructureSyncState, StructureConfig {
+	state: string
+	typeId: string
+	typeName: string | null
+	nextStateAt: string | null
+	fuelExpires: string | null
+	fuelAmount: number | null
+	lowPower: boolean
+	planetId: string
+	planetName: string | null
+	isActive: boolean
+	effectiveWorkforce: number | null
+	totalReagents: number
+	totalSecuredStock: number
+	totalUnsecuredStock: number
+	reagents: StructureSkyhookReagent[]
+	reinforcementTimerEnd: string | null
+	theftVulnerabilityStart: string | null
+	theftVulnerabilityEnd: string | null
+	isRaidable: boolean
+	becomesRaidableAt: string | null
+	vulnerableAt: string | null
+}
+
+export interface StructureSkyhookListResponse {
+	items: StructureSkyhookListItem[]
+	pagination: {
+		page: number
+		pageSize: number
+		totalCount: number
+		totalPages: number
+		hasNextPage: boolean
+		hasPreviousPage: boolean
+	}
+	filterOptions: StructureListFilterOptions
+	summary: StructureListSummary
+}
+
+export interface StructureMoonDrillListItem
+	extends StructureIdentity, StructureSyncState, StructureConfig {
+	state: string
+	typeId: string
+	typeName: string | null
+	nextStateAt: string | null
+	fuelExpires: string | null
+	fuelAmount: number | null
+	lowPower: boolean
+	moonId: string
+	moonName: string | null
+	planetId: string | null
+	planetName: string | null
+}
+
+export interface StructureMiningCitadelListItem
+	extends StructureIdentity, StructureSyncState, StructureConfig {
+	state: string
+	typeId: string
+	typeName: string | null
+	nextStateAt: string | null
+	fuelExpires: string | null
+	fuelAmount: number | null
+	lowPower: boolean
+	moonId: string
+	moonName: string | null
+	planetId: string | null
+	planetName: string | null
+	extractionStartTime: string | null
+	chunkArrivalTime: string | null
+	naturalDecayTime: string | null
+}
+
+export interface StructureMoonDrillListResponse {
+	items: StructureMoonDrillListItem[]
+	pagination: {
+		page: number
+		pageSize: number
+		totalCount: number
+		totalPages: number
+		hasNextPage: boolean
+		hasPreviousPage: boolean
+	}
+	filterOptions: StructureListFilterOptions
+	summary: StructureListSummary
+}
+
+export interface StructureMiningCitadelListResponse {
+	items: StructureMiningCitadelListItem[]
+	pagination: {
+		page: number
+		pageSize: number
+		totalCount: number
+		totalPages: number
+		hasNextPage: boolean
+		hasPreviousPage: boolean
+	}
+	filterOptions: StructureListFilterOptions
+	summary: StructureListSummary
+}
+
+export interface StructureSovereigntyHubSummary {
+	fuelAccessListId: string | null
+	controllerAllianceId: string | null
+	controllerAllianceName?: string | null
+	reagentBayLastUpdated: string | null
+	reagentCount: number
+	magmaticGasQuantity: number
+	magmaticGasBurningPerHour: number
+	magmaticGasEstimatedDepletionAt: string | null
+	superionicIceQuantity: number
+	superionicIceBurningPerHour: number
+	superionicIceEstimatedDepletionAt: string | null
+	reagentBay: {
+		lastUpdated: string
+		reagents: StructureSovereigntyReagent[]
+	}
+	resources: {
+		power: {
+			allocated: number
+			available: number
+		}
+		workforce: {
+			allocated: number
+			available: number
+		}
+	}
+	upgrades: Array<{
+		typeId: string
+		typeName?: string | null
+		powerState: string
+	}>
+	workforceTransport: StructureSovereigntyTransportState
+	resourcePowerAllocated: number
+	resourcePowerAvailable: number
+	resourceWorkforceAllocated: number
+	resourceWorkforceAvailable: number
+	upgradeCount: number
+	vulnerabilityWindowStart: string | null
+	vulnerabilityWindowEnd: string | null
+}
+
+export interface StructureSovereigntySummary {
+	claimType: 'alliance' | 'faction' | 'unclaimed'
+	allianceId: string | null
+	corporationClaimantId: string | null
+	factionId: string | null
+	claimedSince: string | null
+	sovereigntyHubStructureId: string | null
+	isCapitalSystem: boolean | null
+	vulnerabilityWindowStart: string | null
+	vulnerabilityWindowEnd: string | null
+	activityDefenseMultiplier: string | null
+	militaryLevel: number | null
+	industrialLevel: number | null
+	strategicLevel: number | null
+	hub: StructureSovereigntyHubSummary | null
+}
+
+export interface StructureSkyhookSummary {
+	planetId: string | null
+	planetName: string | null
+	systemId: string | null
+	systemName: string | null
+	state: string
+	isActive: boolean
+	effectiveWorkforce: number | null
+	totalReagents: number
+	totalSecuredStock: number
+	totalUnsecuredStock: number
+	reagents: Array<{
+		typeId: string
+		typeName: string | null
+		securedStock: number
+		unsecuredStock: number
+		lastCycle: string
+	}>
+	reinforcementTimerEnd: string | null
+	theftVulnerabilityStart: string | null
+	theftVulnerabilityEnd: string | null
+	isRaidable: boolean
+	becomesRaidableAt: string | null
+	vulnerableAt: string | null
+}
+
+export interface StructureMoonDrillSummary {
+	moonId: string
+	moonName: string | null
+	planetId: string | null
+	planetName: string | null
+	systemId: string | null
+	systemName: string | null
+}
+
+export interface StructureMiningCitadelSummary {
+	moonId: string
+	moonName: string | null
+	planetId: string | null
+	planetName: string | null
+	systemId: string | null
+	systemName: string | null
+	extractionStartTime: string | null
+	chunkArrivalTime: string | null
+	naturalDecayTime: string | null
+}
+
+export interface StructureFittingItem {
+	locationFlag: string
+	slotIndex: number
+	flagName: 'High Slot' | 'Mid Slot' | 'Low Slot' | 'Rig Slot' | 'Subsystem Slot'
+	typeId: string
+	typeName: string | null
+	quantity: number
+	isConsumable?: boolean
+}
+
+export interface StructureDetailResult extends Omit<StructureCitadelListItem, 'canViewDetails'> {
+	includeInStructureAssetSync: boolean
+	canViewSensitive: boolean
+	canEdit: boolean
+	services: Array<{
+		name: string
+		state: string
+	}>
+	stateTimerStart: string | null
+	stateTimerEnd: string | null
+	unanchorsAt: string | null
+	nextReinforceApply: string | null
+	nextReinforceHour: number | null
+	reinforceHour: number | null
+	lastRefilledAt: string | null
+	fuelUsage: {
+		points: Array<{
+			observedAt: string
+			fuelBlockUnits: number | null
+			fuelBurnRatePerHour: number | null
+		}>
+		fuelBurnRatePerHour: number | null
+		lastRefilledAt: string | null
+		sampleCount: number
+	} | null
+	sovereignty?: StructureSovereigntySummary | null
+	skyhook?: StructureSkyhookSummary | null
+	moonDrill?: StructureMoonDrillSummary | null
+	miningExtraction?: StructureMiningCitadelSummary | null
+	inventoryBays?: StructureInventoryBay[]
+	fittingItems?: StructureFittingItem[]
+}
+
+export interface StructureListResponse<TItem = StructureCitadelListItem> {
+	items: TItem[]
+	pagination: {
+		page: number
+		pageSize: number
+		totalCount: number
+		totalPages: number
+		hasNextPage: boolean
+		hasPreviousPage: boolean
+	}
+	filterOptions: StructureListFilterOptions
+	summary: StructureListSummary
+}
+
+export interface StructureCitadelListResponse extends StructureListResponse<StructureCitadelListItem> {}
+
+export interface StructureNavigationListResponse
+	extends StructureListResponse<StructureNavigationListItem> {}
 
 export interface StructureOverviewMetrics {
 	total: number
@@ -277,7 +707,13 @@ export interface StructureSkyhookListQuery extends StructureCommonListQuery {
 	isRaidable?: 'true' | 'false'
 }
 
-export interface StructureMiningListQuery extends StructureCommonListQuery {
+export interface StructureMoonDrillListQuery extends StructureCommonListQuery {
+	corporationId?: string
+	systemId?: string
+	planetId?: string
+}
+
+export interface StructureMiningCitadelListQuery extends StructureCommonListQuery {
 	corporationId?: string
 	systemId?: string
 	planetId?: string
@@ -352,78 +788,106 @@ export interface UpdateStructureGroupAlertConfigRequest {
 }
 
 export interface StructuresWorker {
-	listVisibleStructures(actor: StructureActor, query?: StructureListQuery): Promise<unknown>
-	listCitadelStructures(actor: StructureActor, query?: StructureCitadelListQuery): Promise<unknown>
-	listNavigationStructures(actor: StructureActor, query?: StructureNavigationListQuery): Promise<unknown>
+	listVisibleStructures(
+		actor: StructureActor,
+		query?: StructureListQuery
+	): Promise<StructureListResponse<StructureCitadelListItem>>
+	listCitadelStructures(
+		actor: StructureActor,
+		query?: StructureCitadelListQuery
+	): Promise<StructureCitadelListResponse>
+	listNavigationStructures(
+		actor: StructureActor,
+		query?: StructureNavigationListQuery
+	): Promise<StructureNavigationListResponse>
 	listSovereigntyStructures(
 		actor: StructureActor,
 		query?: StructureSovereigntyListQuery
 	): Promise<StructureSovereigntyListResponse>
-	listSkyhookStructures(actor: StructureActor, query?: StructureSkyhookListQuery): Promise<unknown>
-	listMiningStructures(actor: StructureActor, query?: StructureMiningListQuery): Promise<unknown>
-	listMoonDrillStructures(actor: StructureActor, query?: StructureMiningListQuery): Promise<unknown>
-	listMiningCitadelStructures(actor: StructureActor, query?: StructureMiningListQuery): Promise<unknown>
+	listSkyhookStructures(
+		actor: StructureActor,
+		query?: StructureSkyhookListQuery
+	): Promise<StructureSkyhookListResponse>
+	listMoonDrillStructures(
+		actor: StructureActor,
+		query?: StructureMoonDrillListQuery
+	): Promise<StructureMoonDrillListResponse>
+	listMiningCitadelStructures(
+		actor: StructureActor,
+		query?: StructureMiningCitadelListQuery
+	): Promise<StructureMiningCitadelListResponse>
 	getStructureOverviewMetrics(actor: StructureActor): Promise<StructureOverviewMetrics>
-	getVisibleStructureDetail(actor: StructureActor, structureId: string): Promise<unknown>
+	getVisibleStructureDetail(
+		actor: StructureActor,
+		structureId: string
+	): Promise<StructureDetailResult | null>
 	updateStructureConfig(
 		actor: StructureActor,
 		structureId: string,
 		input: UpdateStructureConfigInput
-	): Promise<unknown>
-	getStructureModuleConfig(actor: StructureActor): Promise<unknown>
+	): Promise<StructureDetailResult | null>
+	getStructureModuleConfig(actor: StructureActor): Promise<StructureModuleConfig>
 	updateStructureModuleConfig(
 		actor: StructureActor,
 		input: UpdateStructureModuleConfigInput
-	): Promise<unknown>
+	): Promise<StructureModuleConfig>
 	syncCorporationStructures(
 		corporationId: string,
 		forceRefresh?: boolean
 	): Promise<{ structureCount: number; stateChangeCount: number }>
-	listStructureGroupSettings(actor: StructureActor): Promise<unknown>
+	listStructureGroupSettings(actor: StructureActor): Promise<StructureGroupSetting[]>
 	upsertStructureGroupSetting(
 		actor: StructureActor,
 		input: UpsertStructureGroupSettingInput
-	): Promise<unknown>
-	deleteStructureGroupSetting(actor: StructureActor, groupId: string): Promise<unknown>
-	listStructureCorporationGroupDefaults(actor: StructureActor): Promise<unknown>
+	): Promise<StructureGroupSetting>
+	deleteStructureGroupSetting(actor: StructureActor, groupId: string): Promise<StructureGroupSetting | null>
+	listStructureCorporationGroupDefaults(
+		actor: StructureActor
+	): Promise<StructureCorporationGroupDefault[]>
 	upsertStructureCorporationDefault(
 		actor: StructureActor,
 		input: UpsertStructureCorporationDefaultInput
-	): Promise<unknown>
-	listStructureGroupAlertDestinations(actor: StructureActor, groupId: string): Promise<unknown>
+	): Promise<StructureCorporationGroupDefault>
+	listStructureGroupAlertDestinations(
+		actor: StructureActor,
+		groupId: string
+	): Promise<StructureAlertDestination[]>
 	createStructureAlertDestination(
 		actor: StructureActor,
 		groupId: string,
 		input: CreateStructureAlertDestinationRequest
-	): Promise<unknown>
+	): Promise<StructureAlertDestinationRecord>
 	updateStructureAlertDestination(
 		actor: StructureActor,
 		groupId: string,
 		destinationId: string,
 		input: UpdateStructureAlertDestinationRequest
-	): Promise<unknown>
+	): Promise<StructureAlertDestinationRecord>
 	deleteStructureAlertDestination(
 		actor: StructureActor,
 		groupId: string,
 		destinationId: string
-	): Promise<unknown>
-	listStructureGroupAlertConfigs(actor: StructureActor, groupId: string): Promise<unknown>
+	): Promise<void>
+	listStructureGroupAlertConfigs(
+		actor: StructureActor,
+		groupId: string
+	): Promise<StructureGroupAlertConfig[]>
 	createStructureGroupAlertConfig(
 		actor: StructureActor,
 		groupId: string,
 		input: CreateStructureGroupAlertConfigRequest
-	): Promise<unknown>
+	): Promise<StructureGroupAlertConfig>
 	updateStructureGroupAlertConfig(
 		actor: StructureActor,
 		groupId: string,
 		configId: string,
 		input: UpdateStructureGroupAlertConfigRequest
-	): Promise<unknown>
+	): Promise<StructureGroupAlertConfig>
 	deleteStructureGroupAlertConfig(
 		actor: StructureActor,
 		groupId: string,
 		configId: string
-	): Promise<unknown>
+	): Promise<void>
 }
 
 export interface StructureAlertTypeDefinition {

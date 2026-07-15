@@ -2,8 +2,8 @@ import { describe, expect, it, vi } from 'vitest'
 
 import {
 	corporationStructures,
-	structureMiningStates,
-	structureSkyhookStates,
+	structureMoonDrills,
+	structureSkyhooks,
 	structureSovereigntyHubs,
 } from '../../../db/schema'
 import { EveCorporationDataDO } from '../../../durable-object'
@@ -19,10 +19,12 @@ const mocks = vi.hoisted(() => {
 	const resolvePlanetGeographyByIds = vi.fn()
 	const resolveSolarSystemsByIds = vi.fn()
 	const resolveRegionsByIds = vi.fn()
+	const resolveNearestMoonGeographyBySystemPosition = vi.fn()
 	const getStub = vi.fn(() => ({
 		resolvePlanetGeographyByIds,
 		resolveSolarSystemsByIds,
 		resolveRegionsByIds,
+		resolveNearestMoonGeographyBySystemPosition,
 	}))
 
 	return {
@@ -34,6 +36,7 @@ const mocks = vi.hoisted(() => {
 		resolvePlanetGeographyByIds,
 		resolveSolarSystemsByIds,
 		resolveRegionsByIds,
+		resolveNearestMoonGeographyBySystemPosition,
 		getStub,
 	}
 })
@@ -51,10 +54,13 @@ function makeDb() {
 	const corporationStructuresFindMany = vi
 		.fn()
 		.mockResolvedValue([{ structureId: 'stale-structure' }])
-	const structureSkyhookStatesFindMany = vi
+	const structureSkyhooksFindMany = vi
 		.fn()
 		.mockResolvedValue([{ structureId: 'stale-structure' }])
-	const structureMiningStatesFindMany = vi
+	const structureMiningExtractionsFindMany = vi
+		.fn()
+		.mockResolvedValue([{ structureId: 'stale-structure' }])
+	const structureMoonDrillsFindMany = vi
 		.fn()
 		.mockResolvedValue([{ structureId: 'stale-structure' }])
 	const structureSovereigntyHubsFindMany = vi.fn().mockResolvedValue([])
@@ -64,11 +70,14 @@ function makeDb() {
 			corporationStructures: {
 				findMany: corporationStructuresFindMany,
 			},
-			structureSkyhookStates: {
-				findMany: structureSkyhookStatesFindMany,
+			structureSkyhooks: {
+				findMany: structureSkyhooksFindMany,
 			},
-			structureMiningStates: {
-				findMany: structureMiningStatesFindMany,
+			structureMiningExtractions: {
+				findMany: structureMiningExtractionsFindMany,
+			},
+			structureMoonDrills: {
+				findMany: structureMoonDrillsFindMany,
 			},
 			structureSovereigntyHubs: {
 				findMany: structureSovereigntyHubsFindMany,
@@ -141,11 +150,10 @@ describe('structure prune cleanup', () => {
 			},
 		])
 
-		expect(db.delete).toHaveBeenCalledTimes(3)
+		expect(db.delete).toHaveBeenCalledTimes(2)
 		expect(db.delete).toHaveBeenNthCalledWith(1, corporationStructures)
-		expect(db.delete).toHaveBeenNthCalledWith(2, structureSkyhookStates)
-		expect(db.delete).toHaveBeenNthCalledWith(3, structureMiningStates)
-		expect(db._where).toHaveBeenCalledTimes(3)
+		expect(db.delete).toHaveBeenNthCalledWith(2, structureMoonDrills)
+		expect(db._where).toHaveBeenCalledTimes(2)
 	})
 
 	it('clears all structure-side rows when the successful sync returns no structures', async () => {
@@ -156,11 +164,86 @@ describe('structure prune cleanup', () => {
 
 		await instance.storeStructures('corp-1', [])
 
-		expect(db.delete).toHaveBeenCalledTimes(3)
+		expect(db.delete).toHaveBeenCalledTimes(2)
 		expect(db.delete).toHaveBeenNthCalledWith(1, corporationStructures)
-		expect(db.delete).toHaveBeenNthCalledWith(2, structureSkyhookStates)
-		expect(db.delete).toHaveBeenNthCalledWith(3, structureMiningStates)
-		expect(db._where).toHaveBeenCalledTimes(3)
+		expect(db.delete).toHaveBeenNthCalledWith(2, structureMoonDrills)
+		expect(db._where).toHaveBeenCalledTimes(2)
+	})
+
+	it('clears moon drill rows when the moon-drill synchronization returns no structures', async () => {
+		const db = makeDb()
+		const instance = createDoInstance(db)
+
+		await (instance as any).storeMoonDrills('corp-1', [])
+
+		expect(db.delete).toHaveBeenCalledTimes(1)
+		expect(db.delete).toHaveBeenCalledWith(structureMoonDrills)
+		expect(db._where).toHaveBeenCalledTimes(1)
+	})
+
+	it('preserves existing moon drill snapshots when synthesis fails for a live structure', async () => {
+		const db = makeDb()
+		const instance = createDoInstance(db)
+
+		const resolveNearestMoonGeographyBySystemPosition = vi.fn().mockResolvedValue(null)
+		mocks.getStub.mockReturnValue({
+			resolvePlanetGeographyByIds: vi.fn(),
+			resolveSolarSystemsByIds: vi.fn(),
+			resolveRegionsByIds: vi.fn(),
+			resolveNearestMoonGeographyBySystemPosition,
+		})
+
+		;(instance as any).hydrateStructureRows = vi.fn().mockResolvedValue([
+			{
+				corporationId: 'corp-1',
+				structureId: 'moon-drill-1',
+				name: null,
+				typeId: '81826',
+				typeName: 'Metenox Moon Drill',
+				systemId: '30000142',
+				systemName: 'Jita',
+				regionId: '10000002',
+				regionName: 'The Forge',
+				profileId: 'profile-1',
+				fuelExpires: null,
+				fuelAmount: null,
+				nextReinforceApply: null,
+				nextReinforceHour: null,
+				reinforceHour: null,
+				state: 'online',
+				stateTimerEnd: null,
+				stateTimerStart: null,
+				unanchorsAt: null,
+				lowPower: false,
+				syncStatus: 'warning',
+				syncFailureReason: 'Moon drill snapshot has not been ingested yet for this structure.',
+				lastSyncedAt: new Date('2026-07-12T19:36:47.369Z'),
+				services: null,
+				updatedAt: new Date('2026-07-12T19:36:47.369Z'),
+			},
+		])
+
+		await (instance as any).storeMoonDrills('corp-1', [
+			{
+				structureId: 'moon-drill-1',
+				corporationId: 'corp-1',
+				typeId: '81826',
+				typeName: 'Metenox Moon Drill',
+				systemId: '30000142',
+				systemName: 'Jita',
+				structureInfo: {
+					position: {
+						x: 1,
+						y: 2,
+						z: 3,
+					},
+				},
+			},
+		])
+
+		expect(resolveNearestMoonGeographyBySystemPosition).toHaveBeenCalledTimes(1)
+		expect(db.insert).not.toHaveBeenCalled()
+		expect(db.delete).not.toHaveBeenCalled()
 	})
 
 	it('stores sovereignty hub names using resolved solar system names', async () => {
@@ -233,7 +316,7 @@ describe('structure prune cleanup', () => {
 	it('preserves existing skyhook snapshots when upstream skyhooks cannot be synthesized', async () => {
 		const db = makeDb()
 		db.query.corporationStructures.findMany = vi.fn().mockResolvedValue([])
-		db.query.structureSkyhookStates.findMany = vi.fn().mockResolvedValue([
+		db.query.structureSkyhooks.findMany = vi.fn().mockResolvedValue([
 			{
 				structureId: 'skyhook-1',
 				planetName: 'Planet One',
@@ -248,6 +331,7 @@ describe('structure prune cleanup', () => {
 			}),
 			resolveSolarSystemsByIds: vi.fn().mockResolvedValue({}),
 			resolveRegionsByIds: vi.fn().mockResolvedValue({}),
+			resolveNearestMoonGeographyBySystemPosition: vi.fn().mockResolvedValue(null),
 		})
 
 		const instance = createDoInstance(db)
@@ -277,7 +361,7 @@ describe('structure prune cleanup', () => {
 	it('returns the number of skyhooks pruned when the upstream listing is empty', async () => {
 		const db = makeDb()
 		db.query.corporationStructures.findMany = vi.fn().mockResolvedValue([])
-		db.query.structureSkyhookStates.findMany = vi.fn().mockResolvedValue([
+		db.query.structureSkyhooks.findMany = vi.fn().mockResolvedValue([
 			{
 				structureId: 'skyhook-1',
 				planetName: 'Planet One',
@@ -290,13 +374,14 @@ describe('structure prune cleanup', () => {
 			resolvePlanetGeographyByIds: vi.fn().mockResolvedValue({}),
 			resolveSolarSystemsByIds: vi.fn().mockResolvedValue({}),
 			resolveRegionsByIds: vi.fn().mockResolvedValue({}),
+			resolveNearestMoonGeographyBySystemPosition: vi.fn().mockResolvedValue(null),
 		})
 
 		const instance = createDoInstance(db)
 
 		await expect(instance.storeSkyhooks('corp-1', [])).resolves.toEqual({ prunedCount: 1 })
 		expect(db.delete).toHaveBeenCalledTimes(2)
-		expect(db.delete).toHaveBeenNthCalledWith(1, structureSkyhookStates)
+		expect(db.delete).toHaveBeenNthCalledWith(1, structureSkyhooks)
 		expect(db.delete).toHaveBeenNthCalledWith(2, corporationStructures)
 	})
 })

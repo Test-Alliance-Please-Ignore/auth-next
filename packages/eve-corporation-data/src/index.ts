@@ -306,7 +306,7 @@ export interface EsiCorporationSkyhook {
 }
 
 /**
- * ESI corporation moon extraction state.
+ * ESI corporation mining extraction state for refinery-based mining citadels.
  * GET /corporation/{corporation_id}/mining/extractions
  */
 export interface EsiCorporationMiningExtraction {

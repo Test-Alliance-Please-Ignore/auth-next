@@ -31,6 +31,9 @@ export const UniverseMoonSchema = z.object({
 	name: z.string(),
 	planetId: z.string(),
 	solarSystemId: z.string(),
+	positionX: z.number().nullable(),
+	positionY: z.number().nullable(),
+	positionZ: z.number().nullable(),
 	createdAt: z.string().datetime(),
 	updatedAt: z.string().datetime(),
 })

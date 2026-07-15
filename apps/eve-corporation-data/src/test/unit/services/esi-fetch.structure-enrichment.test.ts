@@ -58,7 +58,14 @@ describe('esi structure enrichment ownership handling', () => {
 						state: 'active',
 						is_active: true,
 						effective_workforce: 12,
-						reagents: [],
+						reagents: [
+							{
+								type_id: 81143,
+								secured_stock: 34,
+								unsecured_stock: 12,
+								last_cycle: '2026-06-27T11:30:00.000Z',
+							},
+						],
 						reinforcement_timer: null,
 						theft_vulnerability: null,
 					},
@@ -97,7 +104,14 @@ describe('esi structure enrichment ownership handling', () => {
 			state: 'active',
 			is_active: true,
 			effective_workforce: 12,
-			reagents: [],
+			reagents: [
+				{
+					type_id: '81143',
+					secured_stock: 34,
+					unsecured_stock: 12,
+					last_cycle: '2026-06-27T11:30:00.000Z',
+				},
+			],
 		})
 	})
 
@@ -125,7 +139,7 @@ describe('esi structure enrichment ownership handling', () => {
 				typeId: '35842',
 				systemId: '30000142',
 				systemName: 'Jita',
-				name: 'Skyhook One',
+				name: null,
 			},
 			existingRow: null,
 			planet: {
@@ -143,7 +157,7 @@ describe('esi structure enrichment ownership handling', () => {
 			planetName: 'Planet One',
 			systemId: '30000142',
 			systemName: 'Jita',
-			name: 'Skyhook One',
+			name: null,
 			typeId: '35842',
 			state: 'active',
 		})
@@ -193,7 +207,7 @@ describe('esi structure enrichment ownership handling', () => {
 		expect(base).toMatchObject({
 			structureId: '71001',
 			corporationId: '98000001',
-			name: 'Planet One',
+			name: null,
 			typeId: ORBITAL_SKYHOOK_TYPE_ID,
 			typeName: 'Orbital Skyhook',
 			systemId: '30000142',

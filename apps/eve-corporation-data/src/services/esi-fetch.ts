@@ -34,8 +34,8 @@ import type {
 	EsiCorporationKillmail,
 	EsiCorporationMembers,
 	EsiCorporationMemberTracking,
-	EsiCorporationMiningExtraction,
 	EsiCorporationOrder,
+	EsiCorporationMiningExtraction,
 	EsiCorporationSkyhook,
 	EsiCorporationStructure,
 	EsiSovereigntyHub,
@@ -612,7 +612,7 @@ export async function fetchCorporationSkyhooks(
 }
 
 /**
- * Fetch corporation moon extraction timers from ESI.
+ * Fetch corporation mining extraction timers from ESI for mining citadels.
  */
 export async function fetchCorporationMiningExtractions(
 	tokenStore: EveTokenStore,

@@ -16,6 +16,7 @@ import {
 	UniverseMoonResourceSchema,
 	UniverseMoonSchema,
 	UniverseMoonWithResourcesSchema,
+	selectNearestMoonByPosition,
 } from '@repo/universe'
 
 import { createDb } from './db'
@@ -60,6 +61,7 @@ import type {
 	UniverseStargate,
 	UniverseStaticMoon,
 	UniverseMoonGeography,
+	UniversePosition,
 	TypeMaterial,
 	TypeMetadata,
 	Universe,
@@ -391,6 +393,9 @@ export class UniverseDO extends DurableObject<Env, {}> implements Universe {
 				name: moonRow.name,
 				planetId: moonRow.planetId,
 				solarSystemId: moonRow.solarSystemId,
+				positionX: moonRow.positionX,
+				positionY: moonRow.positionY,
+				positionZ: moonRow.positionZ,
 				createdAt: this.toIsoString(moonRow.createdAt),
 				updatedAt: this.toIsoString(moonRow.updatedAt),
 			})
@@ -421,6 +426,9 @@ export class UniverseDO extends DurableObject<Env, {}> implements Universe {
 				name: moonRow.name,
 				planetId: moonRow.planetId,
 				solarSystemId: moonRow.solarSystemId,
+				positionX: moonRow.positionX,
+				positionY: moonRow.positionY,
+				positionZ: moonRow.positionZ,
 				createdAt: this.toIsoString(moonRow.createdAt),
 				updatedAt: this.toIsoString(moonRow.updatedAt),
 			})
@@ -496,15 +504,15 @@ export class UniverseDO extends DurableObject<Env, {}> implements Universe {
 					continue
 				}
 
-				result[moonId] = {
-					moonId: moon.moonId,
-					moonName: moon.moonName,
-					planetId: planet.planetId,
-					planetName: planet.planetName,
-					solarSystemId: planet.solarSystemId,
-					solarSystemName: planet.solarSystemName,
+					result[moonId] = {
+						moonId: moon.moonId,
+						moonName: moon.moonName,
+						planetId: planet.planetId,
+						planetName: planet.planetName,
+						solarSystemId: planet.solarSystemId,
+						solarSystemName: planet.solarSystemName,
+					}
 				}
-			}
 
 			return result
 		} catch (error) {
@@ -561,6 +569,46 @@ export class UniverseDO extends DurableObject<Env, {}> implements Universe {
 			return result
 		} catch (error) {
 			logger.error('Failed to resolve planet geography by IDs', error)
+			throw error
+		}
+	}
+
+	/**
+	 * Resolve the nearest moon geography for a structure position within a solar system.
+	 */
+	async resolveNearestMoonGeographyBySystemPosition(
+		solarSystemId: string,
+		position: UniversePosition
+	): Promise<UniverseMoonGeography | null> {
+		try {
+			const moonsForSystem = await this.getMoonsBySystemId(solarSystemId)
+			if (moonsForSystem.length === 0) {
+				return null
+			}
+
+			const nearestMoon = selectNearestMoonByPosition(moonsForSystem, position)
+
+			if (!nearestMoon) {
+				return null
+			}
+
+			const planet = (await this.resolvePlanetGeographyByIds([nearestMoon.planetId]))[
+				nearestMoon.planetId
+			]
+			if (!planet) {
+				return null
+			}
+
+			return {
+				moonId: nearestMoon.moonId,
+				moonName: nearestMoon.moonName,
+				planetId: planet.planetId,
+				planetName: planet.planetName,
+				solarSystemId: planet.solarSystemId,
+				solarSystemName: planet.solarSystemName,
+			}
+		} catch (error) {
+			logger.error('Failed to resolve nearest moon geography by system position', error)
 			throw error
 		}
 	}
@@ -1508,6 +1556,9 @@ export class UniverseDO extends DurableObject<Env, {}> implements Universe {
 						moonName: moon.name,
 						planetId: moon.planetId,
 						solarSystemId: moon.solarSystemId,
+						positionX: moon.positionX,
+						positionY: moon.positionY,
+						positionZ: moon.positionZ,
 					}
 					this.moonIdsCache.set(moon.moonId, moonData)
 					this.moonNamesCache.set(moon.name, moonData)
@@ -1559,6 +1610,9 @@ export class UniverseDO extends DurableObject<Env, {}> implements Universe {
 						moonName: moon.name,
 						planetId: moon.planetId,
 						solarSystemId: moon.solarSystemId,
+						positionX: moon.positionX,
+						positionY: moon.positionY,
+						positionZ: moon.positionZ,
 					}
 					this.moonIdsCache.set(moon.moonId, moonData)
 					this.moonNamesCache.set(moon.name, moonData)
@@ -1856,6 +1910,9 @@ export class UniverseDO extends DurableObject<Env, {}> implements Universe {
 					moonName: row.name,
 					planetId: row.planetId,
 					solarSystemId: row.solarSystemId,
+					positionX: row.positionX,
+					positionY: row.positionY,
+					positionZ: row.positionZ,
 				})
 				grouped.set(row.solarSystemId, bucket)
 			}

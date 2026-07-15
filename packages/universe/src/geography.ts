@@ -27,6 +27,15 @@ export interface UniverseSolarSystem {
 }
 
 /**
+ * 3D position metadata.
+ */
+export interface UniversePosition {
+	x: number
+	y: number
+	z: number
+}
+
+/**
  * Planet metadata from SDE geography import.
  */
 export interface UniversePlanet {
@@ -67,6 +76,9 @@ export interface UniverseStaticMoon {
 	moonName: string
 	planetId: string
 	solarSystemId: string
+	positionX: number | null
+	positionY: number | null
+	positionZ: number | null
 }
 
 /**

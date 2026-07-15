@@ -16,8 +16,9 @@ import { logger } from '@repo/hono-helpers'
 import { summarizeInventoryRows } from '@repo/inventory-display'
 import { getStructureTabForTypeId, isReinforcedStructureState } from '@repo/structures'
 import {
-	structureMiningStates,
-	structureSkyhookStates,
+	structureMoonDrills,
+	structureMiningExtractions,
+	structureSkyhooks,
 	structureSovereigntyHubs,
 	structureSovereigntySystems,
 } from '@repo/structures-db-schema'
@@ -39,8 +40,14 @@ import type { DbClient } from '@repo/db-utils'
 import type { EveCorporationData } from '@repo/eve-corporation-data'
 import type { InventoryDisplayBay } from '@repo/inventory-display'
 import type {
+	StructureIdentity,
+	StructureConfig,
+	StructureSyncState,
 	StructureCitadelListQuery,
-	StructureMiningListQuery,
+	StructureMoonDrillListQuery,
+	StructureMiningCitadelListQuery,
+	StructureMiningCitadelListItem as RepoStructureMiningCitadelListItem,
+	StructureMiningCitadelListResponse as RepoStructureMiningCitadelListResponse,
 	StructureNavigationListQuery,
 	StructureOverviewMetrics,
 	StructureSovereigntyListFilterOptions as RepoStructureSovereigntyListFilterOptions,
@@ -49,6 +56,12 @@ import type {
 	StructureSovereigntyListSummary as RepoStructureSovereigntyListSummary,
 	StructureSovereigntyReagent,
 	StructureSovereigntyTransportState,
+	StructureMoonDrillListItem as RepoStructureMoonDrillListItem,
+	StructureMoonDrillListResponse as RepoStructureMoonDrillListResponse,
+	StructureMoonDrillSummary as RepoStructureMoonDrillSummary,
+	StructureMiningCitadelSummary as RepoStructureMiningCitadelSummary,
+	StructureSkyhookListItem as RepoStructureSkyhookListItem,
+	StructureSkyhookListResponse as RepoStructureSkyhookListResponse,
 	StructureSkyhookListQuery,
 	StructureSovereigntyListQuery,
 	StructureTab,
@@ -59,6 +72,23 @@ import type {
 	StructureFuelHistorySample,
 	StructureFuelUsageHistory,
 } from './structure-fuel-history'
+
+type StructureFilterableItemBase = StructureIdentity &
+	StructureSyncState &
+	StructureConfig & {
+		state: string
+		typeId: string
+		typeName: string | null
+		nextStateAt: string | null
+		fuelExpires: string | null
+		fuelAmount: number | null
+		lowPower: boolean
+	}
+
+type StructureSovereigntyFilterableItem = RepoStructureSovereigntyListItem
+type StructureSkyhookFilterableItem = RepoStructureSkyhookListItem
+type StructureMoonDrillFilterableItem = RepoStructureMoonDrillListItem
+type StructureMiningCitadelFilterableItem = RepoStructureMiningCitadelListItem
 
 const MAGMATIC_GAS_TYPE_ID = '81143'
 const SUPERIONIC_ICE_TYPE_ID = '81144'
@@ -169,76 +199,6 @@ export interface StructureNavigationListItem extends StructureListItem {
 	navigationType: StructureTab
 }
 
-export interface StructureSovereigntyListItem extends StructureListItem {
-	claimType: 'alliance' | 'faction' | 'unclaimed'
-	allianceId: string | null
-	allianceName: string | null
-	controllerAllianceName: string | null
-	corporationClaimantId: string | null
-	factionId: string | null
-	claimedSince: string | null
-	sovereigntyHubStructureId: string | null
-	vulnerabilityWindowStart: string | null
-	vulnerabilityWindowEnd: string | null
-	activityDefenseMultiplier: string | null
-	militaryLevel: number | null
-	industrialLevel: number | null
-	strategicLevel: number | null
-	fuelAccessListId: string | null
-	controllerAllianceId: string | null
-	reagentBayLastUpdated: string | null
-	reagentCount: number
-	magmaticGasQuantity: number
-	magmaticGasBurningPerHour: number
-	magmaticGasEstimatedDepletionAt: string | null
-	superionicIceQuantity: number
-	superionicIceBurningPerHour: number
-	superionicIceEstimatedDepletionAt: string | null
-	resourcePowerAllocated: number
-	resourcePowerAvailable: number
-	resourceWorkforceAllocated: number
-	resourceWorkforceAvailable: number
-	upgradeCount: number
-	syncStatus: 'ok' | 'warning' | 'error'
-	syncFailureReason: string | null
-	lastSyncedAt: string | null
-	updatedAt: string
-}
-
-export interface StructureSkyhookListItem extends StructureListItem {
-	planetId: string
-	planetName: string | null
-	isActive: boolean
-	effectiveWorkforce: number | null
-	totalReagents: number
-	totalSecuredStock: number
-	totalUnsecuredStock: number
-	reinforcementTimerEnd: string | null
-	theftVulnerabilityStart: string | null
-	theftVulnerabilityEnd: string | null
-	isRaidable: boolean
-	becomesRaidableAt: string | null
-	vulnerableAt: string | null
-	syncStatus: 'ok' | 'warning' | 'error'
-	syncFailureReason: string | null
-	lastSyncedAt: string | null
-	updatedAt: string
-}
-
-export interface StructureMiningListItem extends StructureListItem {
-	moonId: string
-	moonName: string | null
-	planetId: string | null
-	planetName: string | null
-	extractionStartTime: string | null
-	chunkArrivalTime: string | null
-	naturalDecayTime: string | null
-	syncStatus: 'ok' | 'warning' | 'error'
-	syncFailureReason: string | null
-	lastSyncedAt: string | null
-	updatedAt: string
-}
-
 export interface StructureSovereigntyHubSummary {
 	fuelAccessListId: string | null
 	controllerAllianceId: string | null
@@ -308,6 +268,13 @@ export interface StructureSkyhookSummary {
 	totalReagents: number
 	totalSecuredStock: number
 	totalUnsecuredStock: number
+	reagents: Array<{
+		typeId: string
+		typeName: string | null
+		securedStock: number
+		unsecuredStock: number
+		lastCycle: string
+	}>
 	reinforcementTimerEnd: string | null
 	theftVulnerabilityStart: string | null
 	theftVulnerabilityEnd: string | null
@@ -316,7 +283,16 @@ export interface StructureSkyhookSummary {
 	vulnerableAt: string | null
 }
 
-export interface StructureMiningSummary {
+export interface StructureMoonDrillSummary {
+	moonId: string
+	moonName: string | null
+	planetId: string | null
+	planetName: string | null
+	systemId: string | null
+	systemName: string | null
+}
+
+export interface StructureMiningCitadelSummary {
 	moonId: string
 	moonName: string | null
 	planetId: string | null
@@ -343,7 +319,8 @@ export interface StructureFittingItemSummary {
 interface StructureTabData {
 	sovereignty?: StructureSovereigntySummary | null
 	skyhook?: StructureSkyhookSummary | null
-	mining?: StructureMiningSummary | null
+	moonDrill?: StructureMoonDrillSummary | null
+	miningExtraction?: StructureMiningCitadelSummary | null
 	inventoryBays?: StructureInventoryBaySummary[]
 }
 
@@ -374,7 +351,8 @@ export interface StructureDetailResult extends Omit<StructureListItem, 'canViewD
 	} | null
 	sovereignty?: StructureSovereigntySummary | null
 	skyhook?: StructureSkyhookSummary | null
-	mining?: StructureMiningSummary | null
+	moonDrill?: StructureMoonDrillSummary | null
+	miningExtraction?: StructureMiningCitadelSummary | null
 	inventoryBays?: StructureInventoryBaySummary[]
 	fittingItems?: StructureFittingItemSummary[]
 }
@@ -902,7 +880,7 @@ function summarizeStructureSovereignty(
 }
 
 function summarizeStructureSkyhook(
-	skyhook: typeof structureSkyhookStates.$inferSelect | null
+	skyhook: typeof structureSkyhooks.$inferSelect | null
 ): StructureSkyhookSummary | null {
 	if (!skyhook) {
 		return null
@@ -923,7 +901,7 @@ function summarizeStructureSkyhook(
 	return {
 		planetId: skyhook.planetId ?? null,
 		planetName: skyhook.planetName ?? null,
-		systemId: skyhook.systemId,
+		systemId: skyhook.systemId ?? null,
 		systemName: skyhook.systemName ?? null,
 		state: skyhook.state,
 		isActive: skyhook.isActive,
@@ -931,6 +909,18 @@ function summarizeStructureSkyhook(
 		totalReagents: skyhook.reagents.length,
 		totalSecuredStock: reagentTotals.secured,
 		totalUnsecuredStock: reagentTotals.unsecured,
+		reagents: skyhook.reagents.map((reagent) => ({
+			typeId: reagent.typeId,
+			typeName:
+				reagent.typeId === MAGMATIC_GAS_TYPE_ID
+					? 'Magmatic Gas'
+					: reagent.typeId === SUPERIONIC_ICE_TYPE_ID
+						? 'Superionic Ice'
+						: null,
+			securedStock: reagent.securedStock,
+			unsecuredStock: reagent.unsecuredStock,
+			lastCycle: reagent.lastCycle,
+		})),
 		reinforcementTimerEnd: skyhook.reinforcementTimerEnd
 			? skyhook.reinforcementTimerEnd.toISOString()
 			: null,
@@ -946,25 +936,46 @@ function summarizeStructureSkyhook(
 	}
 }
 
-function summarizeStructureMining(
-	mining: typeof structureMiningStates.$inferSelect | null
-): StructureMiningSummary | null {
-	if (!mining) {
+function summarizeStructureMoonDrill(
+	moonDrill: typeof structureMoonDrills.$inferSelect | null
+): RepoStructureMoonDrillSummary | null {
+	if (!moonDrill) {
 		return null
 	}
 
 	return {
-		moonId: mining.moonId,
-		moonName: mining.moonName ?? null,
-		planetId: mining.planetId ?? null,
-		planetName: mining.planetName ?? null,
-		systemId: mining.systemId ?? null,
-		systemName: mining.systemName ?? null,
-		extractionStartTime: mining.extractionStartTime
-			? mining.extractionStartTime.toISOString()
+		moonId: moonDrill.moonId,
+		moonName: moonDrill.moonName ?? null,
+		planetId: moonDrill.planetId ?? null,
+		planetName: moonDrill.planetName ?? null,
+		systemId: moonDrill.systemId ?? null,
+		systemName: moonDrill.systemName ?? null,
+	}
+}
+
+function summarizeStructureMiningCitadel(
+	miningExtraction: typeof structureMiningExtractions.$inferSelect | null
+): RepoStructureMiningCitadelSummary | null {
+	if (!miningExtraction) {
+		return null
+	}
+
+	return {
+		moonId: miningExtraction.moonId,
+		moonName: miningExtraction.moonName ?? null,
+		planetId: miningExtraction.planetId ?? null,
+		planetName: miningExtraction.planetName ?? null,
+		systemId: miningExtraction.systemId ?? null,
+		systemName: miningExtraction.systemName ?? null,
+		extractionStartTime: miningExtraction.extractionStartTime
+			? miningExtraction.extractionStartTime.toISOString()
 			: null,
-		chunkArrivalTime: mining.chunkArrivalTime ? mining.chunkArrivalTime.toISOString() : null,
-		naturalDecayTime: mining.naturalDecayTime ? mining.naturalDecayTime.toISOString() : null,
+		chunkArrivalTime: miningExtraction.chunkArrivalTime
+			? miningExtraction.chunkArrivalTime.toISOString()
+			: null,
+		naturalDecayTime: miningExtraction.naturalDecayTime
+			? miningExtraction.naturalDecayTime.toISOString()
+			: null,
 	}
 }
 
@@ -1044,7 +1055,7 @@ function buildSyntheticSovereigntyStructureRow(
 	hub: typeof structureSovereigntyHubs.$inferSelect,
 	system: typeof structureSovereigntySystems.$inferSelect | null,
 	geography: SovereigntyHubGeography | null
-): DirectCorporationStructureRecord {
+): StructureSourceRecord {
 	const lastSyncedAt = hub.lastSyncedAt ?? system?.lastSyncedAt ?? null
 	return {
 		id: hub.structureId,
@@ -1062,7 +1073,6 @@ function buildSyntheticSovereigntyStructureRow(
 		systemName: geography?.solarSystemName ?? hub.systemName ?? system?.systemName ?? null,
 		regionId: geography?.regionId ?? null,
 		regionName: geography?.regionName ?? null,
-		profileId: 'sovereignty',
 		fuelExpires: null,
 		fuelAmount: null,
 		lastRefilledAt: null,
@@ -1079,12 +1089,12 @@ function buildSyntheticSovereigntyStructureRow(
 		lastSyncedAt,
 		services: [],
 		updatedAt: hub.updatedAt,
-	} as DirectCorporationStructureRecord
+	} satisfies StructureSourceRecord
 }
 
 async function loadStructureTabDetailData(
 	db: DbClient<DbSchema>,
-	structure: DirectCorporationStructureRecord
+	structure: StructureSourceRecord
 ): Promise<StructureTabData | null> {
 	const tab = getStructureTab(structure)
 
@@ -1107,20 +1117,31 @@ async function loadStructureTabDetailData(
 	}
 
 	if (tab === 'skyhooks') {
-		const skyhookRow = await db.query.structureSkyhookStates.findFirst({
-			where: eq(structureSkyhookStates.structureId, structure.structureId),
+		const skyhookRow = await db.query.structureSkyhooks.findFirst({
+			where: eq(structureSkyhooks.structureId, structure.structureId),
 		})
 		return {
 			skyhook: skyhookRow ? summarizeStructureSkyhook(skyhookRow) : null,
 		}
 	}
 
-	if (tab === 'mining-citadels') {
-		const miningRow = await db.query.structureMiningStates.findFirst({
-			where: eq(structureMiningStates.structureId, structure.structureId),
+	if (tab === 'moon-drills') {
+		const moonDrillRow = await db.query.structureMoonDrills.findFirst({
+			where: eq(structureMoonDrills.structureId, structure.structureId),
 		})
 		return {
-			mining: miningRow ? summarizeStructureMining(miningRow) : null,
+			moonDrill: moonDrillRow ? summarizeStructureMoonDrill(moonDrillRow) : null,
+		}
+	}
+
+	if (tab === 'mining-citadels') {
+		const miningExtractionRow = await db.query.structureMiningExtractions.findFirst({
+			where: eq(structureMiningExtractions.structureId, structure.structureId),
+		})
+		return {
+			miningExtraction: miningExtractionRow
+				? summarizeStructureMiningCitadel(miningExtractionRow)
+				: null,
 		}
 	}
 
@@ -1129,7 +1150,7 @@ async function loadStructureTabDetailData(
 
 async function loadStructureInventoryDetailData(
 	db: DbClient<DbSchema>,
-	structure: DirectCorporationStructureRecord
+	structure: StructureSourceRecord
 ): Promise<StructureInventoryBaySummary[]> {
 	const rows = await db.query.corporationStructureInventory.findMany({
 		where: and(
@@ -1167,7 +1188,7 @@ function compareStructureFittingItems(
 
 async function loadStructureFittingDetailData(
 	env: Env,
-	structure: DirectCorporationStructureRecord
+	structure: StructureSourceRecord
 ): Promise<StructureFittingItemSummary[]> {
 	const structureTab = getStructureTab(structure)
 	if (structureTab !== 'citadels') {
@@ -1494,9 +1515,10 @@ export async function deleteStructureGroupAlertConfig(
 }
 
 type DirectCorporationStructureRecord = typeof corporationStructures.$inferSelect
+type StructureSourceRecord = Omit<DirectCorporationStructureRecord, 'profileId'>
 
 interface VisibleStructureContext {
-	structure: DirectCorporationStructureRecord
+	structure: StructureSourceRecord
 	corporationName: string
 	includeInStructureAssetSync: boolean
 	config: typeof structureConfigs.$inferSelect | null
@@ -1544,10 +1566,10 @@ function buildStructureDetailResult(context: VisibleStructureContext): Structure
 		nextReinforceHour: context.structure.nextReinforceHour,
 		reinforceHour: context.structure.reinforceHour,
 		lastRefilledAt: toIso(context.lastRefilledAt),
-		fuelUsage: context.fuelUsage
-			? {
-					points: context.fuelUsage.points.map((point) => ({
-						observedAt: point.observedAt.toISOString(),
+			fuelUsage: context.fuelUsage
+				? {
+						points: context.fuelUsage.points.map((point) => ({
+							observedAt: point.observedAt.toISOString(),
 						fuelBlockUnits: point.fuelBlockUnits,
 						fuelBurnRatePerHour: point.fuelBurnRatePerHour,
 					})),
@@ -1556,9 +1578,11 @@ function buildStructureDetailResult(context: VisibleStructureContext): Structure
 						? context.fuelUsage.lastRefilledAt.toISOString()
 						: null,
 					sampleCount: context.fuelUsage.sampleCount,
-				}
-			: null,
+						}
+				: null,
 		...(context.tabData ?? {}),
+		moonDrill: context.tabData?.moonDrill ?? null,
+		miningExtraction: context.tabData?.miningExtraction ?? null,
 		fittingItems: context.fittingItems ?? [],
 	}
 }
@@ -1722,9 +1746,10 @@ async function getVisibleStructureContext(
 }
 
 function getStructureSortValue(
-	structure: StructureListItem,
+	structure: StructureFilterableItemBase,
 	field: StructureListSortField
 ): string | number | null {
+	const sovereigntyStructure = structure as Partial<StructureSovereigntyFilterableItem>
 	switch (field) {
 		case 'updatedAt':
 			return new Date(structure.updatedAt).getTime()
@@ -1736,16 +1761,14 @@ function getStructureSortValue(
 			return structure.fuelExpires
 				? new Date(structure.fuelExpires).getTime()
 				: (structure.fuelAmount ?? Number.POSITIVE_INFINITY)
-	case 'activityDefenseMultiplier':
-		return parseNullableNumber(
-			(structure as StructureSovereigntyListItem).activityDefenseMultiplier ?? null
-		)
-	case 'magmaticGasEstimatedDepletionAt':
-		return (structure as StructureSovereigntyListItem).magmaticGasEstimatedDepletionAt
-	case 'superionicIceEstimatedDepletionAt':
-		return (structure as StructureSovereigntyListItem).superionicIceEstimatedDepletionAt
-	case 'name':
-		return structure.name
+		case 'activityDefenseMultiplier':
+			return parseNullableNumber(sovereigntyStructure.activityDefenseMultiplier ?? null)
+		case 'magmaticGasEstimatedDepletionAt':
+			return sovereigntyStructure.magmaticGasEstimatedDepletionAt ?? null
+		case 'superionicIceEstimatedDepletionAt':
+			return sovereigntyStructure.superionicIceEstimatedDepletionAt ?? null
+		case 'name':
+			return structure.structureId
 		case 'corporation':
 			return structure.corporationName
 		case 'region':
@@ -1761,7 +1784,10 @@ function getStructureSortValue(
 	return null
 }
 
-function compareFuelStructures(left: StructureListItem, right: StructureListItem): number {
+function compareFuelStructures(
+	left: Pick<StructureFilterableItemBase, 'fuelExpires' | 'fuelAmount'>,
+	right: Pick<StructureFilterableItemBase, 'fuelExpires' | 'fuelAmount'>
+): number {
 	const leftHasExpiry = left.fuelExpires !== null
 	const rightHasExpiry = right.fuelExpires !== null
 	if (leftHasExpiry !== rightHasExpiry) {
@@ -1775,15 +1801,15 @@ function compareFuelStructures(left: StructureListItem, right: StructureListItem
 	return compareNullableNumbers(left.fuelAmount, right.fuelAmount)
 }
 
-function sortStructures(
-	items: StructureListItem[],
+function sortStructures<TItem extends StructureFilterableItemBase>(
+	items: TItem[],
 	sortBy: StructureListSortField,
 	sortDirection: StructureListSortDirection
-): StructureListItem[] {
+): TItem[] {
 	const direction = sortDirection === 'asc' ? 1 : -1
 	return [...items].sort((left, right) => {
 		let comparison = 0
-	switch (sortBy) {
+		switch (sortBy) {
 			case 'updatedAt':
 			case 'nextStateAt':
 				comparison = compareNullableDates(
@@ -1808,7 +1834,7 @@ function sortStructures(
 				comparison = compareFuelStructures(left, right)
 				break
 			case 'name':
-				comparison = left.name.localeCompare(right.name)
+				comparison = left.structureId.localeCompare(right.structureId)
 				break
 			case 'corporation':
 				comparison = compareNullableStrings(left.corporationName, right.corporationName)
@@ -1832,37 +1858,15 @@ function sortStructures(
 	})
 }
 
-function buildStructureFilterOptions<
-	TItem extends Pick<
-		StructureListItem,
-		| 'corporationId'
-		| 'corporationName'
-		| 'systemId'
-		| 'systemName'
-		| 'state'
-		| 'typeId'
-		| 'typeName'
-	> & {
-		assignedGroupId?: string | null
-		regionId?: string | null
-		regionName?: string | null
-		allianceId?: string | null
-		allianceName?: string | null
-		controllerAllianceId?: string | null
-		controllerAllianceName?: string | null
-		planetId?: string | null
-		isRaidable?: boolean | null
-	},
->(items: TItem[]): StructureListFilterOptions {
+function buildCommonStructureFilterOptions<TItem extends StructureFilterableItemBase>(
+	items: TItem[]
+): StructureListFilterOptions {
 	const corporations = new Map<string, string>()
 	const assignedGroups = new Map<string, string>()
 	const regions = new Map<string, string>()
 	const systems = new Map<string, string>()
 	const states = new Set<string>()
 	const types = new Map<string, string>()
-	const alliances = new Map<string, string>()
-	const planets = new Map<string, string>()
-	const raidableStates = new Set<string>()
 
 	for (const structure of items) {
 		corporations.set(structure.corporationId, structure.corporationName)
@@ -1875,18 +1879,6 @@ function buildStructureFilterOptions<
 		systems.set(structure.systemId, structure.systemName ?? structure.systemId)
 		states.add(structure.state)
 		types.set(structure.typeId, structure.typeName ?? structure.typeId)
-		const allianceId = structure.controllerAllianceId ?? structure.allianceId
-		if (allianceId) {
-			const allianceName =
-				structure.controllerAllianceName ?? structure.allianceName ?? allianceId
-			alliances.set(allianceId, allianceName)
-		}
-		if (structure.planetId) {
-			planets.set(structure.planetId, structure.planetId)
-		}
-		if (structure.isRaidable !== null && structure.isRaidable !== undefined) {
-			raidableStates.add(structure.isRaidable ? 'true' : 'false')
-		}
 	}
 
 	return {
@@ -1908,15 +1900,65 @@ function buildStructureFilterOptions<
 		types: Array.from(types.entries())
 			.sort((left, right) => left[1].localeCompare(right[1]))
 			.map(([value, label]) => ({ value, label })),
-		alliances: Array.from(alliances.entries())
-			.sort((left, right) => left[1].localeCompare(right[1]))
-			.map(([value, label]) => ({ value, label })),
+		alliances: [],
+		planets: [],
+		raidableStates: [],
+	}
+}
+
+function buildStructureFilterOptions<TItem extends StructureFilterableItemBase>(
+	items: TItem[]
+): StructureListFilterOptions {
+	return buildCommonStructureFilterOptions(items)
+}
+
+function buildSkyhookFilterOptions(
+	items: StructureSkyhookFilterableItem[]
+): StructureListFilterOptions {
+	const filterOptions = buildCommonStructureFilterOptions(items)
+	const planets = new Map<string, string>()
+	const raidableStates = new Set<string>()
+
+	for (const structure of items) {
+		if (structure.planetId) {
+			planets.set(structure.planetId, structure.planetName ?? structure.planetId)
+		}
+		raidableStates.add(structure.isRaidable ? 'true' : 'false')
+	}
+
+	return {
+		...filterOptions,
 		planets: Array.from(planets.entries())
 			.sort((left, right) => left[1].localeCompare(right[1]))
 			.map(([value, label]) => ({ value, label })),
 		raidableStates: Array.from(raidableStates.values())
 			.sort((left, right) => left.localeCompare(right))
 			.map((value) => ({ value, label: value === 'true' ? 'Raidable' : 'Not raidable' })),
+	}
+}
+
+function buildMoonGeographyFilterOptions(
+	items: Array<
+		StructureFilterableItemBase & {
+			planetId: string | null
+			planetName: string | null
+		}
+	>
+): StructureListFilterOptions {
+	const filterOptions = buildCommonStructureFilterOptions(items)
+	const planets = new Map<string, string>()
+
+	for (const structure of items) {
+		if (structure.planetId) {
+			planets.set(structure.planetId, structure.planetName ?? structure.planetId)
+		}
+	}
+
+	return {
+		...filterOptions,
+		planets: Array.from(planets.entries())
+			.sort((left, right) => left[1].localeCompare(right[1]))
+			.map(([value, label]) => ({ value, label })),
 	}
 }
 
@@ -2061,7 +2103,7 @@ function emptySovereigntySummary(): RepoStructureSovereigntyListSummary {
 }
 
 function buildStructureSummary(
-	items: StructureListItem[],
+	items: StructureFilterableItemBase[],
 	moduleConfig: Pick<
 		StructureModuleConfigResult,
 		| 'lowFuelTimeThresholdHours'
@@ -2569,9 +2611,110 @@ export async function listNavigationStructures(
 export async function listMoonDrillStructures(
 	db: DbClient<DbSchema>,
 	user: SessionUser,
-	query: StructureMiningListQuery = {}
-): Promise<StructureListResponse> {
-	return listVisibleOperationalStructures(db, user, query as StructureListQuery, 'moon-drills')
+	query: StructureMoonDrillListQuery = {}
+): Promise<RepoStructureMoonDrillListResponse> {
+	const { moduleConfig, contexts, access } = await loadVisibleStructureContexts(db, user, {
+		corporationId: query.corporationId,
+		assignedGroupId: query.assignedGroupId,
+		lowPower: query.lowPower,
+		lowPowerAllowed: query.lowPowerAllowed,
+		regionId: query.regionId,
+		systemId: query.systemId,
+		state: query.state,
+		typeId: query.typeId,
+	})
+
+	const accessForTab = getStructureAccessTarget(access, 'moon-drills')
+	if (!hasAnyStructureAccess(accessForTab)) {
+		return {
+			items: [],
+			pagination: {
+				page: 1,
+				pageSize: query.pageSize ?? 25,
+				totalCount: 0,
+				totalPages: 1,
+				hasNextPage: false,
+				hasPreviousPage: false,
+			},
+			filterOptions: emptyStructureFilterOptions(),
+			summary: {
+				total: 0,
+				lowFuel: 0,
+				lowPower: 0,
+				reinforced: 0,
+			},
+		}
+	}
+
+	const moonDrillContexts = contexts.filter((context) => getStructureTab(context.structure) === 'moon-drills')
+	const structureIds = moonDrillContexts.map((context) => context.structure.structureId)
+
+	if (structureIds.length === 0) {
+		return {
+			items: [],
+			pagination: {
+				page: 1,
+				pageSize: query.pageSize ?? 25,
+				totalCount: 0,
+				totalPages: 1,
+				hasNextPage: false,
+				hasPreviousPage: false,
+			},
+			filterOptions: emptyStructureFilterOptions(),
+			summary: {
+				total: 0,
+				lowFuel: 0,
+				lowPower: 0,
+				reinforced: 0,
+			},
+		}
+	}
+
+	const moonDrillWhere = (() => {
+		const conditions: StructureWhereCondition[] = []
+		if (query.planetId) {
+			conditions.push(eq(structureMoonDrills.planetId, query.planetId))
+		}
+		return combineWhereConditions(conditions)
+	})()
+
+	const moonDrillRows = await db.query.structureMoonDrills.findMany({
+		where: combineWhereConditions([inArray(structureMoonDrills.structureId, structureIds), moonDrillWhere]),
+		orderBy: desc(structureMoonDrills.updatedAt),
+	})
+	const moonDrillByStructureId = new Map(moonDrillRows.map((row) => [row.structureId, row]))
+	const items = moonDrillContexts.map((context) =>
+		buildMoonDrillListItem({
+			context,
+			moonDrillRow: moonDrillByStructureId.get(context.structure.structureId) ?? null,
+		})
+	)
+
+	const sortBy = query.sortBy ?? 'fuel'
+	const sortDirection = query.sortDirection ?? 'asc'
+	const sortedItems = sortStructures(items, sortBy, sortDirection)
+	const pageSize = Math.min(Math.max(query.pageSize ?? 25, 1), STRUCTURE_LIST_PAGE_SIZE_MAX)
+	const totalCount = sortedItems.length
+	const totalPages = Math.max(1, Math.ceil(totalCount / pageSize))
+	const page = Math.min(Math.max(query.page ?? 1, 1), totalPages)
+	const start = (page - 1) * pageSize
+	const end = start + pageSize
+
+	return {
+		items: sortedItems
+			.slice(start, end)
+			.map((item) => items.find((row) => row.structureId === item.structureId)!) as RepoStructureMoonDrillListItem[],
+		pagination: {
+			page,
+			pageSize,
+			totalCount,
+			totalPages,
+			hasNextPage: page < totalPages,
+			hasPreviousPage: page > 1,
+		},
+		filterOptions: buildMoonGeographyFilterOptions(items),
+		summary: buildStructureSummary(items, moduleConfig),
+	}
 }
 
 function getSnapshotSyncStatus(lastSyncedAt: Date | null | undefined): 'ok' | 'warning' | 'error' {
@@ -2581,7 +2724,6 @@ function getSnapshotSyncStatus(lastSyncedAt: Date | null | undefined): 'ok' | 'w
 function buildStructureRowIdentity(
 	corporationId: string,
 	corporationName: string,
-	name: string | null | undefined,
 	typeId: string,
 	typeName: string | null,
 	systemId: string,
@@ -2592,7 +2734,6 @@ function buildStructureRowIdentity(
 	return {
 		corporationId,
 		corporationName,
-		name: name ?? typeName ?? typeId,
 		typeId,
 		typeName,
 		systemId,
@@ -2606,19 +2747,19 @@ function buildSovereigntyListItem(input: {
 	context: VisibleStructureContext
 	systemRow: typeof structureSovereigntySystems.$inferSelect | null
 	hubRow: typeof structureSovereigntyHubs.$inferSelect | null
-}): StructureSovereigntyListItem {
+}): StructureSovereigntyFilterableItem {
 	const { context, systemRow, hubRow } = input
 	const { structure: structureRow, corporationName, canViewSensitive, canEdit } = context
 	const hasHubSnapshot = hubRow !== null
 	const lastSyncedAt =
 		hubRow?.lastSyncedAt ?? systemRow?.lastSyncedAt ?? structureRow.lastSyncedAt ?? null
 	const sourceUpdatedAt = systemRow?.updatedAt ?? hubRow?.updatedAt ?? structureRow.updatedAt
+	const { name: _structureName, ...structureBase } = buildStructureListItem(context)
 
 	const hubSummary = hubRow ? summarizeStructureSovereigntyHub(hubRow) : null
 	const structureIdentity = buildStructureRowIdentity(
 		structureRow.corporationId,
 		corporationName,
-		structureRow?.name ?? hubRow?.name ?? null,
 		structureRow.typeId ??
 			hubRow?.typeId ??
 			systemRow?.sovereigntyHubStructureId ??
@@ -2631,7 +2772,7 @@ function buildSovereigntyListItem(input: {
 	)
 
 	return {
-		...buildStructureListItem(context),
+		...structureBase,
 		...structureIdentity,
 		claimType: systemRow?.claimType ?? 'unclaimed',
 		allianceId: systemRow?.allianceId ?? null,
@@ -2668,24 +2809,23 @@ function buildSovereigntyListItem(input: {
 		resourceWorkforceAllocated: hubSummary?.resourceWorkforceAllocated ?? 0,
 		resourceWorkforceAvailable: hubSummary?.resourceWorkforceAvailable ?? 0,
 		upgradeCount: hubSummary?.upgradeCount ?? 0,
-		syncStatus: hasHubSnapshot ? getSnapshotSyncStatus(lastSyncedAt) : 'warning',
-		syncFailureReason: hasHubSnapshot
-			? null
-			: 'Sovereignty hub snapshot has not been ingested yet for this structure.',
-		lastSyncedAt: toIso(lastSyncedAt),
-		updatedAt: sourceUpdatedAt
-			? sourceUpdatedAt.toISOString()
-			: structureRow.updatedAt.toISOString(),
+			syncStatus: hasHubSnapshot ? getSnapshotSyncStatus(lastSyncedAt) : 'warning',
+			syncFailureReason: hasHubSnapshot
+				? null
+				: 'Sovereignty hub snapshot has not been ingested yet for this structure.',
+			lastSyncedAt: toIso(lastSyncedAt),
+			updatedAt: sourceUpdatedAt.toISOString(),
+		}
 	}
-}
 
 function buildSkyhookListItem(input: {
 	context: VisibleStructureContext
-	skyhookRow: typeof structureSkyhookStates.$inferSelect | null
-}): StructureSkyhookListItem {
+	skyhookRow: typeof structureSkyhooks.$inferSelect | null
+}): StructureSkyhookFilterableItem {
 	const { context, skyhookRow } = input
 	const { structure: structureRow } = context
 	const hasSkyhookSnapshot = skyhookRow !== null
+	const { name: _structureName, ...structureBase } = buildStructureListItem(context)
 	const reagentTotals = skyhookRow?.reagents.reduce(
 		(
 			accumulator: { secured: number; unsecured: number },
@@ -2699,7 +2839,7 @@ function buildSkyhookListItem(input: {
 	) ?? { secured: 0, unsecured: 0 }
 
 	return {
-		...buildStructureListItem(context),
+		...structureBase,
 		systemName: skyhookRow?.systemName ?? structureRow.systemName ?? null,
 		planetId: skyhookRow?.planetId ?? '',
 		planetName: skyhookRow?.planetName ?? null,
@@ -2708,6 +2848,19 @@ function buildSkyhookListItem(input: {
 		totalReagents: skyhookRow?.reagents.length ?? 0,
 		totalSecuredStock: reagentTotals.secured,
 		totalUnsecuredStock: reagentTotals.unsecured,
+		reagents:
+			skyhookRow?.reagents.map((reagent) => ({
+				typeId: reagent.typeId,
+				typeName:
+					reagent.typeId === MAGMATIC_GAS_TYPE_ID
+						? 'Magmatic Gas'
+						: reagent.typeId === SUPERIONIC_ICE_TYPE_ID
+							? 'Superionic Ice'
+							: null,
+				securedStock: reagent.securedStock,
+				unsecuredStock: reagent.unsecuredStock,
+				lastCycle: reagent.lastCycle,
+			})) ?? [],
 		reinforcementTimerEnd: toIso(skyhookRow?.reinforcementTimerEnd ?? null),
 		theftVulnerabilityStart: toIso(skyhookRow?.theftVulnerabilityStart ?? null),
 		theftVulnerabilityEnd: toIso(skyhookRow?.theftVulnerabilityEnd ?? null),
@@ -2723,31 +2876,60 @@ function buildSkyhookListItem(input: {
 	}
 }
 
-function buildMiningListItem(input: {
+function buildMoonDrillListItem(input: {
 	context: VisibleStructureContext
-	miningRow: typeof structureMiningStates.$inferSelect | null
-}): StructureMiningListItem {
-	const { context, miningRow } = input
+	moonDrillRow: typeof structureMoonDrills.$inferSelect | null
+}): StructureMoonDrillFilterableItem {
+	const { context, moonDrillRow } = input
 	const { structure: structureRow } = context
-	const hasMiningSnapshot = miningRow !== null
+	const hasMoonDrillSnapshot = moonDrillRow !== null
+	const { name: _structureName, ...structureBase } = buildStructureListItem(context)
 
 	return {
-		...buildStructureListItem(context),
-		systemId: miningRow?.systemId ?? structureRow.systemId,
-		systemName: miningRow?.systemName ?? structureRow.systemName ?? null,
-		moonId: miningRow?.moonId ?? '',
-		moonName: miningRow?.moonName ?? null,
-		planetId: miningRow?.planetId ?? null,
-		planetName: miningRow?.planetName ?? null,
-		extractionStartTime: toIso(miningRow?.extractionStartTime ?? null),
-		chunkArrivalTime: toIso(miningRow?.chunkArrivalTime ?? null),
-		naturalDecayTime: toIso(miningRow?.naturalDecayTime ?? null),
-		syncStatus: hasMiningSnapshot ? getSnapshotSyncStatus(miningRow.lastSyncedAt) : 'warning',
+		...structureBase,
+		systemId: moonDrillRow?.systemId ?? structureRow.systemId,
+		systemName: moonDrillRow?.systemName ?? structureRow.systemName ?? null,
+		moonId: moonDrillRow?.moonId ?? '',
+		moonName: moonDrillRow?.moonName ?? null,
+		planetId: moonDrillRow?.planetId ?? null,
+		planetName: moonDrillRow?.planetName ?? null,
+		syncStatus: hasMoonDrillSnapshot ? getSnapshotSyncStatus(moonDrillRow.lastSyncedAt) : 'warning',
+		syncFailureReason: hasMoonDrillSnapshot
+			? null
+			: 'Moon drill snapshot has not been ingested yet for this structure.',
+		lastSyncedAt: toIso(moonDrillRow?.lastSyncedAt ?? structureRow.lastSyncedAt),
+		updatedAt: (moonDrillRow?.updatedAt ?? structureRow.updatedAt).toISOString(),
+	}
+}
+
+function buildMiningCitadelListItem(input: {
+	context: VisibleStructureContext
+	miningExtractionRow: typeof structureMiningExtractions.$inferSelect | null
+}): StructureMiningCitadelFilterableItem {
+	const { context, miningExtractionRow } = input
+	const { structure: structureRow } = context
+	const hasMiningSnapshot = miningExtractionRow !== null
+	const { name: _structureName, ...structureBase } = buildStructureListItem(context)
+
+	return {
+		...structureBase,
+		systemId: miningExtractionRow?.systemId ?? structureRow.systemId,
+		systemName: miningExtractionRow?.systemName ?? structureRow.systemName ?? null,
+		moonId: miningExtractionRow?.moonId ?? '',
+		moonName: miningExtractionRow?.moonName ?? null,
+		planetId: miningExtractionRow?.planetId ?? null,
+		planetName: miningExtractionRow?.planetName ?? null,
+		extractionStartTime: toIso(miningExtractionRow?.extractionStartTime ?? null),
+		chunkArrivalTime: toIso(miningExtractionRow?.chunkArrivalTime ?? null),
+		naturalDecayTime: toIso(miningExtractionRow?.naturalDecayTime ?? null),
+		syncStatus: hasMiningSnapshot
+			? getSnapshotSyncStatus(miningExtractionRow.lastSyncedAt)
+			: 'warning',
 		syncFailureReason: hasMiningSnapshot
 			? null
-			: 'Mining state snapshot has not been ingested yet for this structure.',
-		lastSyncedAt: toIso(miningRow?.lastSyncedAt ?? structureRow.lastSyncedAt),
-		updatedAt: (miningRow?.updatedAt ?? structureRow.updatedAt).toISOString(),
+			: 'Mining extraction snapshot has not been ingested yet for this structure.',
+		lastSyncedAt: toIso(miningExtractionRow?.lastSyncedAt ?? structureRow.lastSyncedAt),
+		updatedAt: (miningExtractionRow?.updatedAt ?? structureRow.updatedAt).toISOString(),
 	}
 }
 
@@ -2808,10 +2990,7 @@ export async function listSovereigntyStructures(
 	const end = start + pageSize
 
 	return {
-		items: sortedItems.slice(start, end).map((item) => {
-			const { updatedAt: _updatedAt, ...rest } = item
-			return rest
-		}) as RepoStructureSovereigntyListItem[],
+		items: sortedItems.slice(start, end) as RepoStructureSovereigntyListItem[],
 		pagination: {
 			page,
 			pageSize,
@@ -2829,7 +3008,7 @@ export async function listSkyhookStructures(
 	db: DbClient<DbSchema>,
 	user: SessionUser,
 	query: StructureSkyhookListQuery = {}
-): Promise<StructureListResponse<StructureSkyhookListItem>> {
+): Promise<RepoStructureSkyhookListResponse> {
 	const { moduleConfig, contexts, access } = await loadVisibleStructureContexts(db, user, {
 		corporationId: query.corporationId,
 		assignedGroupId: query.assignedGroupId,
@@ -2892,25 +3071,25 @@ export async function listSkyhookStructures(
 	const skyhookWhere = (() => {
 		const conditions: StructureWhereCondition[] = []
 		if (query.planetId) {
-			conditions.push(eq(structureSkyhookStates.planetId, query.planetId))
+			conditions.push(eq(structureSkyhooks.planetId, query.planetId))
 		}
 		if (query.state) {
-			conditions.push(eq(structureSkyhookStates.state, query.state))
+			conditions.push(eq(structureSkyhooks.state, query.state))
 		}
 		if (query.isRaidable === 'true') {
-			conditions.push(eq(structureSkyhookStates.isRaidable, true))
+			conditions.push(eq(structureSkyhooks.isRaidable, true))
 		} else if (query.isRaidable === 'false') {
-			conditions.push(eq(structureSkyhookStates.isRaidable, false))
+			conditions.push(eq(structureSkyhooks.isRaidable, false))
 		}
 		return combineWhereConditions(conditions)
 	})()
 
-	const skyhookRows = await db.query.structureSkyhookStates.findMany({
+	const skyhookRows = await db.query.structureSkyhooks.findMany({
 		where: combineWhereConditions([
-			inArray(structureSkyhookStates.structureId, structureIds),
+			inArray(structureSkyhooks.structureId, structureIds),
 			skyhookWhere,
 		]),
-		orderBy: desc(structureSkyhookStates.updatedAt),
+		orderBy: desc(structureSkyhooks.updatedAt),
 	})
 	const skyhookByStructureId = new Map(skyhookRows.map((row) => [row.structureId, row]))
 
@@ -2937,7 +3116,7 @@ export async function listSkyhookStructures(
 			.slice(start, end)
 			.map(
 				(item) => items.find((row) => row.structureId === item.structureId)!
-			) as StructureSkyhookListItem[],
+			) as RepoStructureSkyhookListItem[],
 		pagination: {
 			page,
 			pageSize,
@@ -2946,17 +3125,16 @@ export async function listSkyhookStructures(
 			hasNextPage: page < totalPages,
 			hasPreviousPage: page > 1,
 		},
-		filterOptions: buildStructureFilterOptions(items),
+		filterOptions: buildSkyhookFilterOptions(items),
 		summary: buildStructureSummary(items, moduleConfig),
 	}
 }
 
-async function listStructuresWithMiningSnapshot(
+export async function listMiningCitadelStructures(
 	db: DbClient<DbSchema>,
 	user: SessionUser,
-	query: StructureMiningListQuery,
-	tab: Extract<StructureTab, 'moon-drills' | 'mining-citadels'>
-): Promise<StructureListResponse<StructureMiningListItem>> {
+	query: StructureMiningCitadelListQuery = {}
+): Promise<RepoStructureMiningCitadelListResponse> {
 	const { moduleConfig, contexts, access } = await loadVisibleStructureContexts(db, user, {
 		corporationId: query.corporationId,
 		assignedGroupId: query.assignedGroupId,
@@ -2968,7 +3146,7 @@ async function listStructuresWithMiningSnapshot(
 		typeId: query.typeId,
 	})
 
-	const accessForTab = getStructureAccessTarget(access, tab)
+	const accessForTab = getStructureAccessTarget(access, 'mining-citadels')
 	if (!hasAnyStructureAccess(accessForTab)) {
 		return {
 			items: [],
@@ -2990,7 +3168,7 @@ async function listStructuresWithMiningSnapshot(
 		}
 	}
 
-	const matchingContexts = contexts.filter((context) => getStructureTab(context.structure) === tab)
+	const matchingContexts = contexts.filter((context) => getStructureTab(context.structure) === 'mining-citadels')
 	const structureIds = matchingContexts.map((context) => context.structure.structureId)
 
 	if (structureIds.length === 0) {
@@ -3014,26 +3192,29 @@ async function listStructuresWithMiningSnapshot(
 		}
 	}
 
-	const miningWhere = (() => {
+	const miningExtractionWhere = (() => {
 		const conditions: StructureWhereCondition[] = []
 		if (query.planetId) {
-			conditions.push(eq(structureMiningStates.planetId, query.planetId))
+			conditions.push(eq(structureMiningExtractions.planetId, query.planetId))
 		}
 		return combineWhereConditions(conditions)
 	})()
 
-	const miningRows = await db.query.structureMiningStates.findMany({
+	const miningExtractionRows = await db.query.structureMiningExtractions.findMany({
 		where: combineWhereConditions([
-			inArray(structureMiningStates.structureId, structureIds),
-			miningWhere,
+			inArray(structureMiningExtractions.structureId, structureIds),
+			miningExtractionWhere,
 		]),
-		orderBy: desc(structureMiningStates.updatedAt),
+		orderBy: desc(structureMiningExtractions.updatedAt),
 	})
-	const miningByStructureId = new Map(miningRows.map((row) => [row.structureId, row]))
+	const miningExtractionByStructureId = new Map(
+		miningExtractionRows.map((row) => [row.structureId, row])
+	)
 	const items = matchingContexts.map((context) =>
-		buildMiningListItem({
+		buildMiningCitadelListItem({
 			context,
-			miningRow: miningByStructureId.get(context.structure.structureId) ?? null,
+			miningExtractionRow:
+				miningExtractionByStructureId.get(context.structure.structureId) ?? null,
 		})
 	)
 
@@ -3052,7 +3233,7 @@ async function listStructuresWithMiningSnapshot(
 			.slice(start, end)
 			.map(
 				(item) => items.find((row) => row.structureId === item.structureId)!
-			) as StructureMiningListItem[],
+			) as RepoStructureMiningCitadelListItem[],
 		pagination: {
 			page,
 			pageSize,
@@ -3061,25 +3242,9 @@ async function listStructuresWithMiningSnapshot(
 			hasNextPage: page < totalPages,
 			hasPreviousPage: page > 1,
 		},
-		filterOptions: buildStructureFilterOptions(items),
+		filterOptions: buildMoonGeographyFilterOptions(items),
 		summary: buildStructureSummary(items, moduleConfig),
 	}
-}
-
-export async function listMiningStructures(
-	db: DbClient<DbSchema>,
-	user: SessionUser,
-	query: StructureMiningListQuery = {}
-): Promise<StructureListResponse> {
-	return await listMoonDrillStructures(db, user, query)
-}
-
-export async function listMiningCitadelStructures(
-	db: DbClient<DbSchema>,
-	user: SessionUser,
-	query: StructureMiningListQuery = {}
-): Promise<StructureListResponse<StructureMiningListItem>> {
-	return await listStructuresWithMiningSnapshot(db, user, query, 'mining-citadels')
 }
 
 export async function getVisibleStructureDetail(

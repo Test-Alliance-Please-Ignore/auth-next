@@ -36,6 +36,13 @@
       "when": 1779170628727,
       "tag": "0004_conscious_raider",
       "breakpoints": true
+    },
+    {
+      "idx": 5,
+      "version": "7",
+      "when": 1784086049465,
+      "tag": "0005_brave_colonel_america",
+      "breakpoints": true
     }
   ]
 }

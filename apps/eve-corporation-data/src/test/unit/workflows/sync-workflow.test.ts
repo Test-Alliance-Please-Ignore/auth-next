@@ -9,11 +9,11 @@ const syncAssetsMock = vi.fn()
 const fetchStructuresMock = vi.fn()
 const fetchSovereigntyEnrichmentMock = vi.fn()
 const fetchSkyhookEnrichmentMock = vi.fn()
-const fetchMiningEnrichmentMock = vi.fn()
+const fetchMiningExtractionEnrichmentMock = vi.fn()
 const storeStructuresMock = vi.fn()
 const storeSovereigntyEnrichmentMock = vi.fn()
 const storeSkyhookEnrichmentMock = vi.fn()
-const storeMiningEnrichmentMock = vi.fn()
+const storeMiningExtractionEnrichmentMock = vi.fn()
 const selectDirectorMock = vi.fn()
 const verifyAllDirectorsHealthMock = vi.fn()
 const reconcileDirectorsFromCorporationRolesMock = vi.fn()
@@ -87,11 +87,13 @@ vi.mock('../../../workflows/steps/structures', () => ({
 	fetchStructures: (...args: unknown[]) => fetchStructuresMock(...args),
 	fetchSovereigntyEnrichment: (...args: unknown[]) => fetchSovereigntyEnrichmentMock(...args),
 	fetchSkyhookEnrichment: (...args: unknown[]) => fetchSkyhookEnrichmentMock(...args),
-	fetchMiningEnrichment: (...args: unknown[]) => fetchMiningEnrichmentMock(...args),
+	fetchMiningExtractionEnrichment: (...args: unknown[]) =>
+		fetchMiningExtractionEnrichmentMock(...args),
 	storeStructures: (...args: unknown[]) => storeStructuresMock(...args),
 	storeSovereigntyEnrichment: (...args: unknown[]) => storeSovereigntyEnrichmentMock(...args),
 	storeSkyhookEnrichment: (...args: unknown[]) => storeSkyhookEnrichmentMock(...args),
-	storeMiningEnrichment: (...args: unknown[]) => storeMiningEnrichmentMock(...args),
+	storeMiningExtractionEnrichment: (...args: unknown[]) =>
+		storeMiningExtractionEnrichmentMock(...args),
 }))
 
 function createStep() {
@@ -322,7 +324,7 @@ describe('EveCorporationSyncWorkflow', () => {
 		storeStructuresMock.mockResolvedValue(undefined)
 		storeSovereigntyEnrichmentMock.mockResolvedValue(undefined)
 		storeSkyhookEnrichmentMock.mockResolvedValue({ prunedCount: 2 })
-		storeMiningEnrichmentMock.mockResolvedValue(undefined)
+		storeMiningExtractionEnrichmentMock.mockResolvedValue(undefined)
 		syncAssetsMock.mockResolvedValue({ assetsCount: 0 })
 		updateSyncTimestampsMock.mockResolvedValue(undefined)
 		updateCoreLastSyncMock.mockResolvedValue(undefined)
@@ -372,7 +374,7 @@ describe('EveCorporationSyncWorkflow', () => {
 		expect(updateCorporationAuthHealth).toHaveBeenCalled()
 	})
 
-	it('skips mining enrichment for moon-drills and still continues to asset sync', async () => {
+	it('runs mining enrichment for mining citadels and still continues to asset sync', async () => {
 		vi.clearAllMocks()
 		const { env, updateCorporationAuthHealth } = createWorkflowEnv()
 		const workflowEnv = env as any
@@ -391,12 +393,12 @@ describe('EveCorporationSyncWorkflow', () => {
 		fetchStructuresMock.mockResolvedValue([
 			{
 				structure_id: '1000001',
-				type_id: '81826',
+				type_id: '35833',
 			},
 		])
 		fetchSovereigntyEnrichmentMock.mockResolvedValue(null)
 		fetchSkyhookEnrichmentMock.mockResolvedValue(null)
-		fetchMiningEnrichmentMock.mockResolvedValue([
+		fetchMiningExtractionEnrichmentMock.mockResolvedValue([
 			{
 				structure_id: '1000001',
 			},
@@ -407,7 +409,7 @@ describe('EveCorporationSyncWorkflow', () => {
 		storeStructuresMock.mockResolvedValue(undefined)
 		storeSovereigntyEnrichmentMock.mockResolvedValue(undefined)
 		storeSkyhookEnrichmentMock.mockResolvedValue(undefined)
-		storeMiningEnrichmentMock.mockResolvedValue(undefined)
+		storeMiningExtractionEnrichmentMock.mockResolvedValue(undefined)
 		syncAssetsMock.mockResolvedValue({ assetsCount: 1 })
 		updateSyncTimestampsMock.mockResolvedValue(undefined)
 		updateCoreLastSyncMock.mockResolvedValue(undefined)
@@ -448,8 +450,13 @@ describe('EveCorporationSyncWorkflow', () => {
 			trigger: 'cron',
 		})
 
-		expect(fetchMiningEnrichmentMock).not.toHaveBeenCalled()
-		expect(storeMiningEnrichmentMock).not.toHaveBeenCalled()
+		expect(fetchMiningExtractionEnrichmentMock).toHaveBeenCalledTimes(1)
+		expect(storeMiningExtractionEnrichmentMock).toHaveBeenCalledTimes(1)
+		expect(storeMiningExtractionEnrichmentMock).toHaveBeenCalledWith(workflowEnv, '693378155', [
+			{
+				structure_id: '1000001',
+			},
+		])
 		expect(executedStepNames).toContain('sync-assets')
 		expect(syncAssetsMock).toHaveBeenCalledWith(workflowEnv, '693378155', '900000001', ['1000001'])
 		expect(updateCorporationAuthHealth).toHaveBeenCalled()
@@ -479,11 +486,11 @@ describe('EveCorporationSyncWorkflow', () => {
 		])
 		fetchSovereigntyEnrichmentMock.mockResolvedValue(null)
 		fetchSkyhookEnrichmentMock.mockResolvedValue(null)
-		fetchMiningEnrichmentMock.mockRejectedValue(new Error('boom'))
+		fetchMiningExtractionEnrichmentMock.mockRejectedValue(new Error('boom'))
 		storeStructuresMock.mockResolvedValue(undefined)
 		storeSovereigntyEnrichmentMock.mockResolvedValue(undefined)
 		storeSkyhookEnrichmentMock.mockResolvedValue(undefined)
-		storeMiningEnrichmentMock.mockResolvedValue(undefined)
+		storeMiningExtractionEnrichmentMock.mockResolvedValue(undefined)
 		syncAssetsMock.mockResolvedValue({ assetsCount: 1 })
 		updateSyncTimestampsMock.mockResolvedValue(undefined)
 		updateCoreLastSyncMock.mockResolvedValue(undefined)
@@ -524,14 +531,14 @@ describe('EveCorporationSyncWorkflow', () => {
 			trigger: 'cron',
 		})
 
-		expect(fetchMiningEnrichmentMock).toHaveBeenCalledTimes(1)
-		expect(storeMiningEnrichmentMock).not.toHaveBeenCalled()
+		expect(fetchMiningExtractionEnrichmentMock).toHaveBeenCalledTimes(1)
+		expect(storeMiningExtractionEnrichmentMock).not.toHaveBeenCalled()
 		expect(executedStepNames).toContain('sync-assets')
 		expect(syncAssetsMock).toHaveBeenCalledWith(workflowEnv, '693378155', '900000001', ['2000001'])
 		expect(updateCorporationAuthHealth).toHaveBeenCalled()
 	})
 
-	it('skips sovereignty and skyhook enrichment when the structure sync is within the cooldown window', async () => {
+	it('skips sovereignty and mining enrichment when the structure sync is within the cooldown window but still refreshes skyhooks', async () => {
 		vi.clearAllMocks()
 		const { env, corpDataStub, updateCorporationAuthHealth } = createWorkflowEnv()
 		const workflowEnv = env as any
@@ -560,8 +567,11 @@ describe('EveCorporationSyncWorkflow', () => {
 		])
 		storeStructuresMock.mockResolvedValue(undefined)
 		storeSovereigntyEnrichmentMock.mockResolvedValue(undefined)
+		fetchSkyhookEnrichmentMock.mockResolvedValue({
+			skyhooks: [],
+		})
 		storeSkyhookEnrichmentMock.mockResolvedValue(undefined)
-		storeMiningEnrichmentMock.mockResolvedValue(undefined)
+		storeMiningExtractionEnrichmentMock.mockResolvedValue(undefined)
 		syncAssetsMock.mockResolvedValue({ assetsCount: 1 })
 		updateSyncTimestampsMock.mockResolvedValue(undefined)
 		updateCoreLastSyncMock.mockResolvedValue(undefined)
@@ -603,11 +613,12 @@ describe('EveCorporationSyncWorkflow', () => {
 		})
 
 		expect(fetchSovereigntyEnrichmentMock).not.toHaveBeenCalled()
-		expect(fetchSkyhookEnrichmentMock).not.toHaveBeenCalled()
-		expect(fetchMiningEnrichmentMock).not.toHaveBeenCalled()
+		expect(fetchSkyhookEnrichmentMock).toHaveBeenCalledTimes(1)
+		expect(storeSkyhookEnrichmentMock).toHaveBeenCalledTimes(1)
+		expect(fetchMiningExtractionEnrichmentMock).not.toHaveBeenCalled()
 		expect(executedStepNames).not.toContain('store-structure-sovereignty-enrichment')
-		expect(executedStepNames).not.toContain('store-structure-skyhook-enrichment')
-		expect(executedStepNames).not.toContain('store-structure-mining-enrichment')
+		expect(executedStepNames).toContain('store-structure-skyhook-enrichment')
+		expect(executedStepNames).not.toContain('store-structure-mining-extraction-enrichment')
 		expect(updateCorporationAuthHealth).toHaveBeenCalled()
 	})
 })

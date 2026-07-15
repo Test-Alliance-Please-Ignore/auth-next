@@ -12,15 +12,17 @@ import {
 } from 'drizzle-orm/pg-core'
 
 import {
-	structureMiningStates,
-	structureSkyhookStates,
+	structureMoonDrills,
+	structureMiningExtractions,
+	structureSkyhooks,
 	structureSovereigntyHubs,
 	structureSovereigntySystems,
 } from '@repo/structures-db-schema'
 
 export {
-	structureMiningStates,
-	structureSkyhookStates,
+	structureMoonDrills,
+	structureMiningExtractions,
+	structureSkyhooks,
 	structureSovereigntyHubs,
 	structureSovereigntySystems,
 } from '@repo/structures-db-schema'
@@ -610,8 +612,9 @@ export const schema = {
 	corporationKillmails,
 	structureSovereigntySystems,
 	structureSovereigntyHubs,
-	structureSkyhookStates,
-	structureMiningStates,
+	structureSkyhooks,
+	structureMoonDrills,
+	structureMiningExtractions,
 	corporationStructureInventory,
 	structureFuelLog,
 }

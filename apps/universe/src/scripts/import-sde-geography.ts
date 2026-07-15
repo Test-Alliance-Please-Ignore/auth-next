@@ -64,6 +64,14 @@ const moonSchema = z.object({
 	orbitID: z.number().nullable().optional(),
 	orbitIndex: z.number().nullable().optional(),
 	celestialIndex: z.number().nullable().optional(),
+	position: z
+		.object({
+			x: z.number(),
+			y: z.number(),
+			z: z.number(),
+		})
+		.nullable()
+		.optional(),
 })
 
 const stargateSchema = z.object({
@@ -410,6 +418,9 @@ async function importMoons(
 					name: sql`excluded.name`,
 					planetId: sql`excluded.planet_id`,
 					solarSystemId: sql`excluded.solar_system_id`,
+					positionX: sql`excluded.position_x`,
+					positionY: sql`excluded.position_y`,
+					positionZ: sql`excluded.position_z`,
 					updatedAt: sql`now()`,
 				},
 			})
@@ -466,6 +477,9 @@ async function importMoons(
 			moonId,
 			planetId,
 			solarSystemId,
+			positionX: moon.position?.x ?? null,
+			positionY: moon.position?.y ?? null,
+			positionZ: moon.position?.z ?? null,
 		})
 		processed++
 		reportProgress(processed)

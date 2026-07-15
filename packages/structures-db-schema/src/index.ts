@@ -201,8 +201,8 @@ export const structureSovereigntyHubs = pgTable(
 	]
 )
 
-export const structureSkyhookStates = pgTable(
-	'structure_skyhook_states',
+export const structureSkyhooks = pgTable(
+	'structure_skyhooks',
 	{
 		structureId: text('structure_id')
 			.primaryKey()
@@ -242,17 +242,45 @@ export const structureSkyhookStates = pgTable(
 		updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow().notNull(),
 	},
 	(table) => [
-		index('structure_skyhook_states_corporation_id_idx').on(table.corporationId),
-		index('structure_skyhook_states_planet_id_idx').on(table.planetId),
-		index('structure_skyhook_states_system_id_idx').on(table.systemId),
-		index('structure_skyhook_states_type_id_idx').on(table.typeId),
-		index('structure_skyhook_states_is_raidable_idx').on(table.isRaidable),
-		index('structure_skyhook_states_last_synced_at_idx').on(table.lastSyncedAt),
+		index('structure_skyhooks_corporation_id_idx').on(table.corporationId),
+		index('structure_skyhooks_planet_id_idx').on(table.planetId),
+		index('structure_skyhooks_system_id_idx').on(table.systemId),
+		index('structure_skyhooks_type_id_idx').on(table.typeId),
+		index('structure_skyhooks_is_raidable_idx').on(table.isRaidable),
+		index('structure_skyhooks_last_synced_at_idx').on(table.lastSyncedAt),
 	]
 )
 
-export const structureMiningStates = pgTable(
-	'structure_mining_states',
+export const structureMoonDrills = pgTable(
+	'structure_moon_drills',
+	{
+		structureId: text('structure_id')
+			.primaryKey()
+			.references(() => corporationStructures.structureId, { onDelete: 'cascade' }),
+		corporationId: text('corporation_id')
+			.notNull()
+			.references(() => managedCorporations.corporationId, { onDelete: 'cascade' }),
+		moonId: text('moon_id').notNull(),
+		moonName: text('moon_name'),
+		planetId: text('planet_id'),
+		planetName: text('planet_name'),
+		systemId: text('system_id'),
+		systemName: text('system_name'),
+		sourceSyncAt: timestamp('source_sync_at', { withTimezone: true }),
+		lastSyncedAt: timestamp('last_synced_at', { withTimezone: true }),
+		updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow().notNull(),
+	},
+	(table) => [
+		index('structure_moon_drills_corporation_id_idx').on(table.corporationId),
+		index('structure_moon_drills_moon_id_idx').on(table.moonId),
+		index('structure_moon_drills_planet_id_idx').on(table.planetId),
+		index('structure_moon_drills_system_id_idx').on(table.systemId),
+		index('structure_moon_drills_last_synced_at_idx').on(table.lastSyncedAt),
+	]
+)
+
+export const structureMiningExtractions = pgTable(
+	'structure_mining_citadel_extractions',
 	{
 		structureId: text('structure_id')
 			.primaryKey()
@@ -274,11 +302,11 @@ export const structureMiningStates = pgTable(
 		updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow().notNull(),
 	},
 	(table) => [
-		index('structure_mining_states_corporation_id_idx').on(table.corporationId),
-		index('structure_mining_states_moon_id_idx').on(table.moonId),
-		index('structure_mining_states_planet_id_idx').on(table.planetId),
-		index('structure_mining_states_system_id_idx').on(table.systemId),
-		index('structure_mining_states_last_synced_at_idx').on(table.lastSyncedAt),
+		index('structure_mining_citadel_extractions_corporation_id_idx').on(table.corporationId),
+		index('structure_mining_citadel_extractions_moon_id_idx').on(table.moonId),
+		index('structure_mining_citadel_extractions_planet_id_idx').on(table.planetId),
+		index('structure_mining_citadel_extractions_system_id_idx').on(table.systemId),
+		index('structure_mining_citadel_extractions_last_synced_at_idx').on(table.lastSyncedAt),
 	]
 )
 
@@ -312,7 +340,8 @@ export const schema = {
 	structureStateEvents,
 	structureSovereigntySystems,
 	structureSovereigntyHubs,
-	structureSkyhookStates,
-	structureMiningStates,
+	structureSkyhooks,
+	structureMoonDrills,
+	structureMiningExtractions,
 	structureGroupAlertConfigs,
 }

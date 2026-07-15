@@ -132,7 +132,7 @@ function makeDb(
 		structureFuelLog: {
 			findMany: vi.fn().mockResolvedValue([]),
 		},
-		structureMiningStates: {
+		structureMoonDrills: {
 			findFirst: vi.fn().mockResolvedValue(null),
 			findMany: vi.fn().mockResolvedValue(options.miningStates ?? []),
 		},
@@ -415,7 +415,7 @@ describe('structure permission gating', () => {
 			roles: ['urn:structures:mining-citadels:all:viewer'],
 		})
 
-		expect(db.query.structureMiningStates.findMany).toHaveBeenCalledTimes(1)
+		expect(db.query.structureMoonDrills.findMany).toHaveBeenCalledTimes(1)
 		expect(result.items).toHaveLength(1)
 		expect(result.items[0]?.structureId).toBe('structure-mining-citadel')
 		expect(result.items[0]?.moonId).toBe('40200001')

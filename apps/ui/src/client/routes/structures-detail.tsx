@@ -542,7 +542,15 @@ export default function StructuresDetailPage() {
 
 	const isAdmin = user?.is_admin === true
 
-	usePageTitle(structure ? `Structure - ${structure.name}` : 'Structure Details')
+	usePageTitle(
+		structure
+			? `Structure - ${
+					getStructureTabForTypeId(structure.typeId, structure.typeName) === 'skyhooks'
+						? 'Skyhook Details'
+						: structure.name
+				}`
+			: 'Structure Details'
+	)
 
 	useEffect(() => {
 		if (!structure) return
@@ -675,7 +683,11 @@ export default function StructuresDetailPage() {
 	const corporationId = structure?.corporationId ?? ''
 	const hasSovereigntySummary = structureFamily === 'sovereignty' && Boolean(structure?.sovereignty)
 	const hasSkyhookSummary = structureFamily === 'skyhooks' && Boolean(structure?.skyhook)
-	const hasMiningSummary = structureFamily === 'mining-citadels'
+	const hasMoonDrillSummary = structureFamily === 'moon-drills' && Boolean(structure?.moonDrill)
+	const hasMiningExtractionSummary =
+		structureFamily === 'mining-citadels' && Boolean(structure?.miningExtraction)
+	const moonDrill = structure?.moonDrill ?? null
+	const miningExtraction = structure?.miningExtraction ?? null
 	const sovereigntyHub = structure?.sovereignty?.hub ?? null
 	const sovereigntyVulnerabilityState = getSovereigntyVulnerabilityState(structure?.sovereignty)
 	const { data: sovereigntyStructures = [] } = useQuery({
@@ -749,6 +761,13 @@ export default function StructuresDetailPage() {
 		structure.syncFailureReason,
 		structure.lastSyncedAt
 	)
+	const skyhookVulnerabilityCountdownTarget = structure.skyhook?.isRaidable
+		? structure.skyhook.theftVulnerabilityEnd
+		: structure.skyhook?.theftVulnerabilityStart ??
+			structure.skyhook?.theftVulnerabilityEnd ??
+			structure.skyhook?.vulnerableAt ??
+			null
+	const skyhookVulnerabilityCountdownLabel = structure.skyhook?.isRaidable ? 'Ends in' : 'Starts in'
 
 	const handleSave = async () => {
 		await updateMutation.mutateAsync({
@@ -761,7 +780,7 @@ export default function StructuresDetailPage() {
 	return (
 		<Container className="space-y-6 py-6">
 			<PageHeader
-				title={structure.name}
+		title={hasSkyhookSummary ? 'Skyhook Details' : structure.name}
 				description={
 					<div className="flex flex-wrap items-center gap-x-2 gap-y-1">
 						<div className="inline-flex items-center gap-2">
@@ -1326,6 +1345,25 @@ export default function StructuresDetailPage() {
 							<div className="font-medium">{structure.skyhook?.isActive ? 'Yes' : 'No'}</div>
 						</div>
 						<div>
+							<div className="text-muted-foreground">Vulnerable In</div>
+							<div className="font-medium">
+								{structure.skyhook
+									? skyhookVulnerabilityCountdownTarget ? (
+											<span className="inline-flex items-center gap-1">
+												<span className="text-muted-foreground">{skyhookVulnerabilityCountdownLabel}</span>
+												<DurationDisplay
+													endDate={skyhookVulnerabilityCountdownTarget}
+													format="compact"
+													durationStyle="compact"
+												/>
+											</span>
+										) : (
+											'-'
+										)
+									: '-'}
+							</div>
+						</div>
+						<div>
 							<div className="text-muted-foreground">Theft Vulnerability</div>
 							<div className="font-medium">
 								{structure.skyhook?.theftVulnerabilityStart &&
@@ -1356,34 +1394,101 @@ export default function StructuresDetailPage() {
 									)}
 							</div>
 						</div>
-						<div>
-							<div className="text-muted-foreground">Reinforcement Timer</div>
-							<div className="font-medium">
-								{formatNullableDateTime(structure.skyhook?.reinforcementTimerEnd)}
+							<div>
+								<div className="text-muted-foreground">Reinforcement Timer</div>
+								<div className="font-medium">
+									{formatNullableDateTime(structure.skyhook?.reinforcementTimerEnd)}
+								</div>
 							</div>
-						</div>
-						<div>
-							<div className="text-muted-foreground">Reagents</div>
-							<div className="font-medium">
-								{structure.skyhook
-									? `${structure.skyhook.totalReagents} reagents, ${formatNullableNumber(structure.skyhook.totalSecuredStock)} secured, ${formatNullableNumber(structure.skyhook.totalUnsecuredStock)} unsecured`
-									: '-'}
+					</CardContent>
+				</Card>
+			)}
+
+			{hasSkyhookSummary && (
+				<Card>
+					<CardHeader>
+						<CardTitle>Reagents</CardTitle>
+						<CardDescription>Skyhook reagent stock, security, and last cycle timestamps.</CardDescription>
+					</CardHeader>
+					<CardContent>
+						{!structure.skyhook || structure.skyhook.reagents.length === 0 ? (
+							<div className="rounded-md border border-dashed border-border/70 px-3 py-4 text-sm text-muted-foreground">
+								No reagent snapshot is currently available for this skyhook.
+							</div>
+						) : (
+							<Table>
+								<TableHeader>
+									<TableRow>
+										<TableHead>Type</TableHead>
+										<TableHead>Secured Stock</TableHead>
+										<TableHead>Unsecured Stock</TableHead>
+										<TableHead>Last Cycle</TableHead>
+									</TableRow>
+								</TableHeader>
+								<TableBody>
+									{structure.skyhook.reagents.map((reagent) => (
+										<TableRow key={`${reagent.typeId}-${reagent.lastCycle}`}>
+											<TableCell className="font-medium">
+												{reagent.typeName ?? reagent.typeId}
+											</TableCell>
+											<TableCell>{formatNullableNumber(reagent.securedStock)}</TableCell>
+											<TableCell>{formatNullableNumber(reagent.unsecuredStock)}</TableCell>
+											<TableCell>
+												<EveTimeDisplay dateStr={reagent.lastCycle} format="compact" />
+											</TableCell>
+										</TableRow>
+									))}
+								</TableBody>
+							</Table>
+						)}
+					</CardContent>
+				</Card>
+			)}
+
+			{hasMoonDrillSummary && (
+				<Card>
+					<CardHeader>
+						<CardTitle>Moon Drill</CardTitle>
+						<CardDescription>Moon association resolved from the latest snapshot.</CardDescription>
+					</CardHeader>
+					<CardContent className="space-y-4 text-sm">
+						{!moonDrill ? (
+							<div className="rounded-md border border-yellow-500/30 bg-yellow-500/10 px-3 py-2 text-yellow-50">
+								Moon drill snapshot has not been ingested yet for this structure.
+							</div>
+						) : null}
+						<div className="grid gap-4 md:grid-cols-2">
+							<div>
+								<div className="text-muted-foreground">Moon</div>
+								<div className="font-medium">
+									{moonDrill?.moonName ?? moonDrill?.moonId ?? '-'}
+								</div>
+							</div>
+							<div>
+								<div className="text-muted-foreground">Planet</div>
+								<div className="font-medium">
+									{moonDrill?.planetName ?? moonDrill?.planetId ?? '-'}
+								</div>
+							</div>
+							<div>
+								<div className="text-muted-foreground">System</div>
+								<div className="font-medium">
+									{moonDrill?.systemName ?? moonDrill?.systemId ?? '-'}
+								</div>
 							</div>
 						</div>
 					</CardContent>
 				</Card>
 			)}
 
-			{hasMiningSummary && (
+			{hasMiningExtractionSummary && (
 				<Card>
 					<CardHeader>
-						<CardTitle>Mining Extraction</CardTitle>
-						<CardDescription>
-							Last known moon extraction snapshot for this structure.
-						</CardDescription>
+						<CardTitle>Mining Citadel</CardTitle>
+						<CardDescription>Last known moon extraction snapshot for this structure.</CardDescription>
 					</CardHeader>
 					<CardContent className="space-y-4 text-sm">
-						{!structure.mining ? (
+						{!miningExtraction ? (
 							<div className="rounded-md border border-yellow-500/30 bg-yellow-500/10 px-3 py-2 text-yellow-50">
 								Mining extraction snapshot has not been ingested yet for this structure.
 							</div>
@@ -1392,37 +1497,37 @@ export default function StructuresDetailPage() {
 							<div>
 								<div className="text-muted-foreground">Moon</div>
 								<div className="font-medium">
-									{structure.mining?.moonName ?? structure.mining?.moonId ?? '-'}
+									{miningExtraction?.moonName ?? miningExtraction?.moonId ?? '-'}
 								</div>
 							</div>
 							<div>
 								<div className="text-muted-foreground">Planet</div>
 								<div className="font-medium">
-									{structure.mining?.planetName ?? structure.mining?.planetId ?? '-'}
+									{miningExtraction?.planetName ?? miningExtraction?.planetId ?? '-'}
 								</div>
 							</div>
 							<div>
 								<div className="text-muted-foreground">System</div>
 								<div className="font-medium">
-									{structure.mining?.systemName ?? structure.mining?.systemId ?? '-'}
+									{miningExtraction?.systemName ?? miningExtraction?.systemId ?? '-'}
 								</div>
 							</div>
 							<div>
 								<div className="text-muted-foreground">Extraction Start</div>
 								<div className="font-medium">
-									{formatNullableDateTime(structure.mining?.extractionStartTime)}
+									{formatNullableDateTime(miningExtraction?.extractionStartTime)}
 								</div>
 							</div>
 							<div>
 								<div className="text-muted-foreground">Chunk Arrival</div>
 								<div className="font-medium">
-									{formatNullableDateTime(structure.mining?.chunkArrivalTime)}
+									{formatNullableDateTime(miningExtraction?.chunkArrivalTime)}
 								</div>
 							</div>
 							<div>
 								<div className="text-muted-foreground">Natural Decay</div>
 								<div className="font-medium">
-									{formatNullableDateTime(structure.mining?.naturalDecayTime)}
+									{formatNullableDateTime(miningExtraction?.naturalDecayTime)}
 								</div>
 							</div>
 						</div>

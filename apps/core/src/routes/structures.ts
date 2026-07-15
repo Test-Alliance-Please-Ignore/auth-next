@@ -17,10 +17,15 @@ import { EntityResolverService } from '../services/entity-resolver.service'
 import type { Context } from 'hono'
 import type { EveTokenStore } from '@repo/eve-token-store'
 import type {
+	StructureDetailResult,
 	StructureCitadelListQuery,
-	StructureMiningListQuery,
+	StructureFittingItem,
+	StructureMoonDrillListQuery,
+	StructureMiningCitadelListQuery,
 	StructureNavigationListQuery,
 	StructureOverviewMetrics,
+	StructureInventoryBay,
+	StructureInventoryItem,
 	StructureSkyhookListQuery,
 	StructureSovereigntyListQuery,
 	StructureSovereigntyListResponse,
@@ -83,7 +88,7 @@ const skyhookStructureListQuerySchema = structureCommonListQuerySchema.extend({
 	isRaidable: z.enum(['true', 'false']).optional(),
 })
 
-const miningStructureListQuerySchema = structureCommonListQuerySchema.extend({
+const moonDrillStructureListQuerySchema = structureCommonListQuerySchema.extend({
 	planetId: z.string().trim().min(1).optional(),
 })
 
@@ -99,82 +104,6 @@ const structureModuleConfigSchema = z.object({
 	lowFuelAmountThreshold: z.coerce.number().int().min(0).optional(),
 	criticalFuelAmountThreshold: z.coerce.number().int().min(0).optional(),
 })
-
-interface StructureInventoryItemView {
-	typeId: string
-	typeName: string | null
-	quantity: number
-	stackCount: number
-}
-
-interface StructureInventoryBayView {
-	locationFlag: string
-	label: string
-	totalQuantity: number
-	totalStacks: number
-	items: StructureInventoryItemView[]
-}
-
-interface StructureFittingItemView {
-	locationFlag: string
-	slotIndex: number
-	flagName: 'High Slot' | 'Mid Slot' | 'Low Slot' | 'Rig Slot' | 'Subsystem Slot'
-	typeId: string
-	typeName: string | null
-	quantity: number
-	isConsumable?: boolean
-}
-
-interface StructureDetailResponse {
-	inventoryBays?: StructureInventoryBayView[]
-	fittingItems?: StructureFittingItemView[]
-	sovereignty?: {
-			hub?: {
-				controllerAllianceId?: string | null
-				controllerAllianceName?: string | null
-				reagentCount?: number
-				magmaticGasQuantity?: number
-				magmaticGasBurningPerHour?: number
-				magmaticGasEstimatedDepletionAt?: string | null
-				superionicIceQuantity?: number
-				superionicIceBurningPerHour?: number
-				superionicIceEstimatedDepletionAt?: string | null
-				reagentBay?: {
-					lastUpdated: string
-					reagents: Array<{
-						typeId: string
-						typeName?: string | null
-					amount: number
-					burningPerHour: number
-					lastCycle: string
-				}>
-			}
-			upgrades?: Array<{
-				typeId: string
-				typeName?: string | null
-				powerState: string
-			}>
-			workforceTransport?: {
-				configuration: {
-					mode: 'import' | 'export' | 'transit' | 'unknown'
-					systems: Array<{
-						solarSystemId: string
-						amount: number | null
-					}>
-				}
-				state: {
-					mode: 'import' | 'export' | 'transit' | 'unknown'
-					systems: Array<{
-						solarSystemId: string
-						amount: number | null
-					}>
-				}
-			}
-		} | null
-	} | null
-	includeInStructureAssetSync?: boolean
-	[key: string]: unknown
-}
 
 async function getStructureActor(c: Context<App>) {
 	const user = c.get('user')
@@ -219,14 +148,17 @@ function getExecutionContextOrNull(c: { executionCtx?: ExecutionContext }): Exec
 
 async function enrichStructureDetailTypeNames(
 	env: App['Bindings'],
-	structure: StructureDetailResponse
-): Promise<StructureDetailResponse> {
-	const sovereigntyHub = structure.sovereignty?.hub ?? null
+	structure: StructureDetailResult
+): Promise<StructureDetailResult> {
+	const sovereignty = structure.sovereignty ?? null
+	const sovereigntyHub = sovereignty?.hub ?? null
 	const allianceIds = sovereigntyHub?.controllerAllianceId
 		? [sovereigntyHub.controllerAllianceId]
 		: []
 	const structureTypeIds = new Set<string>([
-		...(structure.inventoryBays?.flatMap((bay) => bay.items.map((item) => item.typeId)) ?? []),
+		...(structure.inventoryBays?.flatMap((bay: StructureInventoryBay) =>
+			bay.items.map((item: StructureInventoryItem) => item.typeId)
+		) ?? []),
 		...(structure.fittingItems?.map((item) => item.typeId) ?? []),
 		...(sovereigntyHub?.reagentBay?.reagents.map((reagent) => reagent.typeId) ?? []),
 		...(sovereigntyHub?.upgrades?.map((upgrade) => upgrade.typeId) ?? []),
@@ -243,21 +175,26 @@ async function enrichStructureDetailTypeNames(
 						getStub<EveTokenStore>(env.EVE_TOKEN_STORE, 'default')
 					).resolveEntityNames(allianceIds)
 				: new Map<string, string>()
+		const nextSovereignty = sovereignty
+			? {
+					...sovereignty,
+					hub: sovereigntyHub
+						? {
+								...sovereigntyHub,
+								controllerAllianceName: sovereigntyHub.controllerAllianceId
+									? (allianceNameMap.get(sovereigntyHub.controllerAllianceId) ?? null)
+									: null,
+							}
+						: sovereigntyHub,
+				}
+			: sovereignty
 
-		return {
+		const nextStructure: StructureDetailResult = {
 			...structure,
-			sovereignty: sovereigntyHub
-				? {
-						...structure.sovereignty,
-						hub: {
-							...sovereigntyHub,
-							controllerAllianceName: sovereigntyHub.controllerAllianceId
-								? (allianceNameMap.get(sovereigntyHub.controllerAllianceId) ?? null)
-								: null,
-						},
-					}
-				: structure.sovereignty,
+			sovereignty: nextSovereignty,
 		}
+
+		return nextStructure
 	}
 
 	const universe = getUniverseStub(env)
@@ -290,47 +227,50 @@ async function enrichStructureDetailTypeNames(
 
 	return {
 		...structure,
-		inventoryBays: structure.inventoryBays?.map((bay) => ({
+		inventoryBays: structure.inventoryBays?.map((bay: StructureInventoryBay) => ({
 			...bay,
 			items: bay.items
-				.map((item) => ({
+				.map((item: StructureInventoryItem) => ({
 					...item,
 					typeName: typeNameMap[item.typeId] ?? item.typeId,
 				}))
 				.sort(
-					(left, right) =>
-						left.typeName.localeCompare(right.typeName) || left.typeId.localeCompare(right.typeId)
+					(left: StructureInventoryItem, right: StructureInventoryItem) =>
+						(left.typeName ?? left.typeId).localeCompare(right.typeName ?? right.typeId) ||
+						left.typeId.localeCompare(right.typeId)
 				),
 		})),
-		fittingItems: structure.fittingItems?.map((item) => ({
+		fittingItems: structure.fittingItems?.map((item: StructureFittingItem) => ({
 			...item,
 			typeName: typeNameMap[item.typeId] ?? item.typeId,
 			...(typeMetaMap[item.typeId]?.categoryName === 'Charge' ? { isConsumable: true } : {}),
 		})),
-		sovereignty: sovereigntyHub
+		sovereignty: sovereignty
 			? {
-					...structure.sovereignty,
-					hub: {
-						...sovereigntyHub,
-						controllerAllianceName: sovereigntyHub.controllerAllianceId
-							? (allianceNameMap.get(sovereigntyHub.controllerAllianceId) ?? null)
-							: null,
-						reagentBay: sovereigntyHub.reagentBay
-							? {
-									...sovereigntyHub.reagentBay,
-									reagents: sovereigntyHub.reagentBay.reagents.map((reagent) => ({
-										...reagent,
-										typeName: typeNameMap[reagent.typeId] ?? reagent.typeId,
-									})),
-								}
-							: sovereigntyHub.reagentBay,
-						upgrades: sovereigntyHub.upgrades?.map((upgrade) => ({
-							...upgrade,
-							typeName: typeNameMap[upgrade.typeId] ?? upgrade.typeId,
-						})),
-					},
+					...sovereignty,
+					hub: sovereigntyHub
+						? {
+								...sovereigntyHub,
+							controllerAllianceName: sovereigntyHub.controllerAllianceId
+								? (allianceNameMap.get(sovereigntyHub.controllerAllianceId) ?? null)
+								: null,
+								reagentBay: sovereigntyHub.reagentBay
+									? {
+											...sovereigntyHub.reagentBay,
+											reagents: sovereigntyHub.reagentBay.reagents.map((reagent) => ({
+												...reagent,
+												typeName: typeNameMap[reagent.typeId] ?? reagent.typeId,
+											})),
+										}
+									: sovereigntyHub.reagentBay,
+								upgrades: sovereigntyHub.upgrades?.map((upgrade) => ({
+									...upgrade,
+									typeName: typeNameMap[upgrade.typeId] ?? upgrade.typeId,
+								})),
+							}
+						: sovereigntyHub,
 				}
-			: structure.sovereignty,
+			: sovereignty,
 	}
 }
 
@@ -415,12 +355,8 @@ app.get('/skyhooks', async (c) => {
 	return handleSkyhookStructuresRequest(c)
 })
 
-app.get('/mining', async (c) => {
-	return handleMiningStructuresRequest(c)
-})
-
 app.get('/moon-drills', async (c) => {
-	return handleMiningStructuresRequest(c)
+	return handleMoonDrillStructuresRequest(c)
 })
 
 app.get('/mining-citadels', async (c) => {
@@ -734,14 +670,14 @@ async function handleSkyhookStructuresRequest(c: Context<App>): Promise<Response
 	}
 }
 
-async function handleMiningStructuresRequest(c: Context<App>): Promise<Response> {
+async function handleMoonDrillStructuresRequest(c: Context<App>): Promise<Response> {
 	const user = c.get('user')
 	if (!user) {
 		return c.json({ error: 'Unauthorized' }, 401)
 	}
 
 	try {
-		const query = miningStructureListQuerySchema.parse({
+		const query = moonDrillStructureListQuerySchema.parse({
 			page: c.req.query('page'),
 			pageSize: c.req.query('pageSize'),
 			sortBy: c.req.query('sortBy') || undefined,
@@ -755,7 +691,7 @@ async function handleMiningStructuresRequest(c: Context<App>): Promise<Response>
 			state: c.req.query('state') || undefined,
 			typeId: c.req.query('typeId') || undefined,
 			planetId: c.req.query('planetId') || undefined,
-		}) satisfies StructureMiningListQuery
+		}) satisfies StructureMoonDrillListQuery
 		return c.json(
 			stripUpdatedAtFromStructureListResponse(
 				await c.env.STRUCTURES.listMoonDrillStructures(await getStructureActor(c), query)
@@ -778,7 +714,7 @@ async function handleMiningCitadelsStructuresRequest(c: Context<App>): Promise<R
 	}
 
 	try {
-		const query = miningStructureListQuerySchema.parse({
+		const query = moonDrillStructureListQuerySchema.parse({
 			page: c.req.query('page'),
 			pageSize: c.req.query('pageSize'),
 			sortBy: c.req.query('sortBy') || undefined,
@@ -792,7 +728,7 @@ async function handleMiningCitadelsStructuresRequest(c: Context<App>): Promise<R
 			state: c.req.query('state') || undefined,
 			typeId: c.req.query('typeId') || undefined,
 			planetId: c.req.query('planetId') || undefined,
-		}) satisfies StructureMiningListQuery
+		}) satisfies StructureMiningCitadelListQuery
 		return c.json(
 			stripUpdatedAtFromStructureListResponse(
 				await c.env.STRUCTURES.listMiningCitadelStructures(await getStructureActor(c), query)
@@ -880,7 +816,7 @@ app.get('/:structureId', async (c) => {
 		}
 		return c.json(
 			stripUpdatedAtFromStructureItem(
-				await enrichStructureDetailTypeNames(c.env, structure as StructureDetailResponse)
+				await enrichStructureDetailTypeNames(c.env, structure)
 			)
 		)
 	} catch (error) {
@@ -915,7 +851,7 @@ app.patch('/:structureId/config', async (c) => {
 		}
 		return c.json(
 			stripUpdatedAtFromStructureItem(
-				await enrichStructureDetailTypeNames(c.env, structure as StructureDetailResponse)
+				await enrichStructureDetailTypeNames(c.env, structure)
 			)
 		)
 	} catch (error) {

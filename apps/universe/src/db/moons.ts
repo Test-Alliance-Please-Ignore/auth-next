@@ -1,4 +1,4 @@
-import { index, integer, pgTable, text, timestamp } from 'drizzle-orm/pg-core'
+import { index, integer, pgTable, real, text, timestamp } from 'drizzle-orm/pg-core'
 
 /**
  * Moons table
@@ -14,6 +14,9 @@ export const moons = pgTable(
 		moonId: text('moon_id').notNull().unique(),
 		planetId: text('planet_id').notNull(),
 		solarSystemId: text('solar_system_id').notNull(),
+		positionX: real('position_x'),
+		positionY: real('position_y'),
+		positionZ: real('position_z'),
 		createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
 		updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow().notNull(),
 	},
