@@ -1,4 +1,5 @@
 import { logger, withWorkerLogContext } from '@repo/hono-helpers'
+import { createWorkflow } from '@repo/workflow-utils'
 
 import {
 	computeNextAttemptAtMs,
@@ -272,7 +273,7 @@ async function createWorkflowInstance(
 			// No existing instance, proceed to create new one.
 		}
 
-		const instance = await env.EVE_CORPORATION_SYNC.create({
+		const instance = await createWorkflow(env.EVE_CORPORATION_SYNC, {
 			id: `${corporationId}-${Date.now()}`,
 			params: {
 				corporationId,

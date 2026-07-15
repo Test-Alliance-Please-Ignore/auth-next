@@ -3,6 +3,7 @@ import { z } from 'zod'
 
 import { getStub } from '@repo/do-utils'
 import { hasAllStructureManagerPermission } from '@repo/groups'
+import { createWorkflow } from '@repo/workflow-utils'
 
 import { getCachedUserPermissions } from '../lib/groups-cache'
 import {
@@ -389,7 +390,7 @@ app.post('/:structureId/assets-debug', async (c) => {
 			return c.json({ error: 'Structure not found' }, 404)
 		}
 
-		const workflow = await c.env.EXPORT_WORKFLOW.create({
+		const workflow = await createWorkflow(c.env.EXPORT_WORKFLOW, {
 			params: {
 				kind: 'structure-assets-debug',
 				userId: user.id,

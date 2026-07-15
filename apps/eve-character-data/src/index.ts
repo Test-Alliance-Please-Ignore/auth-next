@@ -1,6 +1,7 @@
 import { Hono } from 'hono'
 
 import { logger, withNotFound, withOnError, withWorkersLogger } from '@repo/hono-helpers'
+import { createWorkflowBatch } from '@repo/workflow-utils'
 
 import { EveCharacterDataDO } from './durable-object'
 import { buildUserSyncWorkflowOptions } from './workflows/build-user-sync-workflow-options'
@@ -88,7 +89,7 @@ async function scheduledHandler(event: ScheduledEvent, env: Env): Promise<void> 
 						firstWorkflowId: batch[0]?.id ?? null,
 						lastWorkflowId: batch[batch.length - 1]?.id ?? null,
 					})
-					const instances = await env.EVE_CHARACTER_SYNC.createBatch(batch)
+					const instances = await createWorkflowBatch(env.EVE_CHARACTER_SYNC, batch)
 					created += batch.length
 					logger.info('[EveCharacterData] Dispatched character sync workflow batch', {
 						pageIndex,

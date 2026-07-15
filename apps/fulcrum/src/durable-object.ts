@@ -12,6 +12,7 @@ import type {
 	ReportSectionName,
 } from '@repo/fulcrum'
 import { DEFAULT_RETENTION_DAYS, RETENTION_POLICIES } from '@repo/fulcrum'
+import { createWorkflow } from '@repo/workflow-utils'
 import { createDb } from './db'
 import { stripHtmlToPlainText } from './workflows/processors/helpers/html-stripper'
 import type { DbClient } from './db/queries'
@@ -132,7 +133,7 @@ export class FulcrumDO extends DurableObject<Env, {}> implements Fulcrum {
 			sendDm,
 		}
 		try {
-			const workflowInstance = await this.env.CHARACTER_REPORT_WORKFLOW.create({
+			const workflowInstance = await createWorkflow(this.env.CHARACTER_REPORT_WORKFLOW, {
 				id: `${characterId}-${reportId}-${Date.now()}`,
 				params: workflowParams,
 			})
@@ -175,7 +176,7 @@ export class FulcrumDO extends DurableObject<Env, {}> implements Fulcrum {
 			throw new Error('At least one characterId is required for bulk report generation')
 		}
 
-		const workflowInstance = await this.env.BULK_CHARACTER_REPORT_WORKFLOW.create({
+		const workflowInstance = await createWorkflow(this.env.BULK_CHARACTER_REPORT_WORKFLOW, {
 			id: `bulk-${requestorUserId}-${Date.now()}-${crypto.randomUUID()}`,
 			params: {
 				characterIds: dedupedCharacterIds,

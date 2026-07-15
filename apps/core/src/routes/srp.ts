@@ -15,6 +15,7 @@ import {
 	WithdrawSRPRequestSchema,
 } from '@repo/srp'
 import { buildCsvLine, createR2MultipartTextWriter, parseDateOrNull } from '@repo/worker-utils'
+import { createWorkflow } from '@repo/workflow-utils'
 
 import { createDb } from '../db'
 import { managedCorporations, userCharacters } from '../db/schema'
@@ -1961,7 +1962,7 @@ srp.post('/requests/paid/export', async (c) => {
 		return c.json({ error: dateRange.error }, 400)
 	}
 
-	const workflow = await c.env.EXPORT_WORKFLOW.create({
+	const workflow = await createWorkflow(c.env.EXPORT_WORKFLOW, {
 		params: {
 			kind: 'srp-paid-requests',
 			userId: user.id,
@@ -2336,7 +2337,7 @@ srp.post('/payments/wallet-history/export', async (c) => {
 		return c.json({ error: dateRange.error }, 400)
 	}
 
-	const workflow = await c.env.EXPORT_WORKFLOW.create({
+	const workflow = await createWorkflow(c.env.EXPORT_WORKFLOW, {
 		params: {
 			kind: 'srp-wallet-history',
 			userId: user.id,

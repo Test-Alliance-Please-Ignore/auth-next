@@ -51,6 +51,7 @@ import type {
 import type { EsiResponse, EveTokenStore } from '@repo/eve-token-store'
 import type { Env } from './context'
 import { logger } from '@repo/hono-helpers'
+import { createWorkflowBatch } from '@repo/workflow-utils'
 
 /**
  * EveCharacterData Durable Object
@@ -1842,7 +1843,7 @@ export class EveCharacterDataDO extends DurableObject<Env> implements EveCharact
 			for (let i = 0; i < workflows.length; i += BATCH_SIZE) {
 				const batch = workflows.slice(i, i + BATCH_SIZE)
 				try {
-					await this.env.EVE_CHARACTER_SYNC.createBatch(batch)
+					await createWorkflowBatch(this.env.EVE_CHARACTER_SYNC, batch)
 					created += batch.length
 					createdIds.push(...batch.map((entry: { id: string }) => entry.id))
 				} catch {

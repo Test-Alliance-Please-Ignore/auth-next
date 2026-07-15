@@ -9,6 +9,7 @@ import {
 	withWorkerLogContext,
 	withWorkersLogger,
 } from '@repo/hono-helpers'
+import { createWorkflowBatch } from '@repo/workflow-utils'
 
 import { EveCorporationDataDO } from './durable-object'
 import { scheduledHandler } from './scheduled'
@@ -106,7 +107,7 @@ export class EveCorporationDataWorker extends WorkerEntrypoint<Env> {
 		for (let i = 0; i < workflowOptions.length; i += BATCH_SIZE) {
 			const batch = workflowOptions.slice(i, i + BATCH_SIZE)
 			try {
-				const instances = await this.env.EVE_CORPORATION_SYNC.createBatch(batch)
+				const instances = await createWorkflowBatch(this.env.EVE_CORPORATION_SYNC, batch)
 				for (const [index, instance] of instances.entries()) {
 					workflows.push({
 						corporationId: batch[index]!.params.corporationId,

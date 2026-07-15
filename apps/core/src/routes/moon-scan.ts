@@ -35,6 +35,7 @@ import type { Markets } from '@repo/markets'
 import type { Universe } from '@repo/universe'
 import type { App } from '../context'
 import { logger } from '@repo/hono-helpers'
+import { createWorkflow } from '@repo/workflow-utils'
 
 // ─── Permission URNs ─────────────────────────────────────────────────────────
 
@@ -1234,7 +1235,7 @@ moonScanRoutes.post('/moons/verified/export', async (c) => {
 	}
 	const { sortBy: _sortBy, sortDir: _sortDir, page: _page, pageSize: _pageSize, ...exportQuery } = query.data
 
-	const workflow = await c.env.EXPORT_WORKFLOW.create({
+	const workflow = await createWorkflow(c.env.EXPORT_WORKFLOW, {
 		params: {
 			kind: 'moon-scan-verified',
 			userId: user.id,

@@ -2,7 +2,22 @@
  * @repo/workflow-utils
  *
  * Shared utilities and helpers for building Cloudflare Workflows.
- * Provides context management, R2 intermediate storage, and step configuration.
+ * Provides instance creation, context management, R2 intermediate storage, and step
+ * configuration.
+ *
+ * ## Creating instances
+ *
+ * Always create instances via `createWorkflow` / `createWorkflowBatch` rather than calling
+ * `binding.create()` directly — they apply the shared retention policy.
+ *
+ * ```typescript
+ * import { createWorkflow } from '@repo/workflow-utils'
+ *
+ * const instance = await createWorkflow(env.MY_WORKFLOW, {
+ *   id: myId,
+ *   params: { hello: 'world' },
+ * })
+ * ```
  *
  * ## Quick Start
  *
@@ -42,6 +57,16 @@
 
 // Types
 export type { Logger, WorkflowContext, StepResult } from './types'
+
+// Instance creation with the default retention policy — use instead of binding.create()
+export {
+	createWorkflow,
+	createWorkflowBatch,
+	DEFAULT_WORKFLOW_RETENTION,
+	type CreateWorkflowOptions,
+	type RetentionDuration,
+	type WorkflowRetentionPolicy,
+} from './create-workflow'
 
 // Context factory
 export { createWorkflowContext } from './types'
