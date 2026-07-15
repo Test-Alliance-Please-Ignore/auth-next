@@ -10,6 +10,7 @@ import type {
 	UniversePlanet,
 	UniversePlanetGeography,
 	UniverseRegion,
+	UniversePosition,
 	UniverseMoonGeography,
 	UniverseSolarSystem,
 	UniverseStargate,
@@ -59,6 +60,7 @@ export * from './type-metadata'
 
 // Export geography types
 export * from './geography'
+export * from './nearest-moon'
 
 // Canonical static IDs for moon extraction and profitability.
 // Universe is the source of truth for static EVE identifiers.
@@ -151,6 +153,14 @@ export interface Universe {
 	resolveMoonGeographyByIds(
 		moonIds: string[]
 	): Promise<Record<string, UniverseMoonGeography | null>>
+
+	/**
+	 * Resolve the nearest moon geography for a structure position within a system.
+	 */
+	resolveNearestMoonGeographyBySystemPosition(
+		solarSystemId: string,
+		position: UniversePosition
+	): Promise<UniverseMoonGeography | null>
 
 	/**
 	 * Resolve planet geography contexts by planet IDs.

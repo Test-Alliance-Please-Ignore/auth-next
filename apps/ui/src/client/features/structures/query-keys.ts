@@ -1,6 +1,7 @@
 import type {
 	StructureCitadelListQuery,
-	StructureMiningListQuery,
+	StructureMiningCitadelListQuery,
+	StructureMoonDrillListQuery,
 	StructureNavigationListQuery,
 	StructureSkyhookListQuery,
 	StructureSovereigntyListQuery,
@@ -11,7 +12,8 @@ type StructureTabQuery =
 	| StructureNavigationListQuery
 	| StructureSovereigntyListQuery
 	| StructureSkyhookListQuery
-	| StructureMiningListQuery
+	| StructureMiningCitadelListQuery
+	| StructureMoonDrillListQuery
 
 export const structureKeys = {
 	all: ['structures'] as const,

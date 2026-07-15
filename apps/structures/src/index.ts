@@ -15,7 +15,6 @@ import {
 	getStructureOverviewMetrics,
 	getVisibleStructureDetail,
 	listCitadelStructures,
-	listMiningStructures,
 	listMoonDrillStructures,
 	listNavigationStructures,
 	listSkyhookStructures,
@@ -35,15 +34,30 @@ import {
 import type {
 	CreateStructureAlertDestinationRequest,
 	CreateStructureGroupAlertConfigRequest,
+	StructureCitadelListItem,
+	StructureCitadelListResponse,
 	StructureCitadelListQuery,
 	StructureActor,
-	StructureMiningListQuery,
+	StructureCorporationGroupDefault,
+	StructureDetailResult,
+	StructureGroupAlertConfig,
+	StructureGroupSetting,
+	StructureListResponse,
+	StructureMoonDrillListQuery,
+	StructureMoonDrillListResponse,
+	StructureMiningCitadelListQuery,
+	StructureMiningCitadelListResponse,
 	StructureNavigationListQuery,
+	StructureNavigationListResponse,
 	StructureSkyhookListQuery,
+	StructureSkyhookListResponse,
 	StructureSovereigntyListQuery,
 	StructureSovereigntyListResponse,
 	StructureListQuery,
 	StructureOverviewMetrics,
+	StructureModuleConfig,
+	StructureAlertDestination,
+	StructureAlertDestinationRecord,
 	StructuresWorker,
 	UpdateStructureAlertDestinationRequest,
 	UpdateStructureConfigInput,
@@ -64,18 +78,24 @@ export class StructuresWorkerEntrypoint extends WorkerEntrypoint<Env> implements
 		return createDb(this.env.DATABASE_URL)
 	}
 
-	async listVisibleStructures(actor: StructureActor, query: StructureListQuery = {}): Promise<unknown> {
+	async listVisibleStructures(
+		actor: StructureActor,
+		query: StructureListQuery = {}
+	): Promise<StructureListResponse<StructureCitadelListItem>> {
 		return listVisibleStructures(this.getDb(), actor, query)
 	}
 
-	async listCitadelStructures(actor: StructureActor, query: StructureCitadelListQuery = {}): Promise<unknown> {
+	async listCitadelStructures(
+		actor: StructureActor,
+		query: StructureCitadelListQuery = {}
+	): Promise<StructureCitadelListResponse> {
 		return listCitadelStructures(this.getDb(), actor, query)
 	}
 
 	async listNavigationStructures(
 		actor: StructureActor,
 		query: StructureNavigationListQuery = {}
-	): Promise<unknown> {
+	): Promise<StructureNavigationListResponse> {
 		return listNavigationStructures(this.getDb(), actor, query)
 	}
 
@@ -86,22 +106,24 @@ export class StructuresWorkerEntrypoint extends WorkerEntrypoint<Env> implements
 		return listSovereigntyStructures(this.env, this.getDb(), actor, query)
 	}
 
-	async listSkyhookStructures(actor: StructureActor, query: StructureSkyhookListQuery = {}): Promise<unknown> {
+	async listSkyhookStructures(
+		actor: StructureActor,
+		query: StructureSkyhookListQuery = {}
+	): Promise<StructureSkyhookListResponse> {
 		return listSkyhookStructures(this.getDb(), actor, query)
 	}
 
-	async listMiningStructures(actor: StructureActor, query: StructureMiningListQuery = {}): Promise<unknown> {
-		return listMiningStructures(this.getDb(), actor, query)
-	}
-
-	async listMoonDrillStructures(actor: StructureActor, query: StructureMiningListQuery = {}): Promise<unknown> {
+	async listMoonDrillStructures(
+		actor: StructureActor,
+		query: StructureMoonDrillListQuery = {}
+	): Promise<StructureMoonDrillListResponse> {
 		return listMoonDrillStructures(this.getDb(), actor, query)
 	}
 
 	async listMiningCitadelStructures(
 		actor: StructureActor,
-		query: StructureMiningListQuery = {}
-	): Promise<unknown> {
+		query: StructureMiningCitadelListQuery = {}
+	): Promise<StructureMiningCitadelListResponse> {
 		return listMiningCitadelStructures(this.getDb(), actor, query)
 	}
 
@@ -109,7 +131,10 @@ export class StructuresWorkerEntrypoint extends WorkerEntrypoint<Env> implements
 		return getStructureOverviewMetrics(this.getDb(), actor)
 	}
 
-	async getVisibleStructureDetail(actor: StructureActor, structureId: string): Promise<unknown> {
+	async getVisibleStructureDetail(
+		actor: StructureActor,
+		structureId: string
+	): Promise<StructureDetailResult | null> {
 		return getVisibleStructureDetail(this.env, this.getDb(), actor, structureId)
 	}
 
@@ -117,18 +142,18 @@ export class StructuresWorkerEntrypoint extends WorkerEntrypoint<Env> implements
 		actor: StructureActor,
 		structureId: string,
 		input: UpdateStructureConfigInput
-	): Promise<unknown> {
+	): Promise<StructureDetailResult | null> {
 		return updateStructureConfig(this.env, this.getDb(), actor, structureId, input)
 	}
 
-	async getStructureModuleConfig(_actor: StructureActor): Promise<unknown> {
+	async getStructureModuleConfig(_actor: StructureActor): Promise<StructureModuleConfig> {
 		return getStructureModuleConfig(this.getDb())
 	}
 
 	async updateStructureModuleConfig(
 		actor: StructureActor,
 		input: UpdateStructureModuleConfigInput
-	): Promise<unknown> {
+	): Promise<StructureModuleConfig> {
 		return updateStructureModuleConfig(this.getDb(), {
 			...input,
 			updatedBy: actor.id,
@@ -145,39 +170,47 @@ export class StructuresWorkerEntrypoint extends WorkerEntrypoint<Env> implements
 		return syncCorporationStructures(this.env, this.getDb(), corporationId, forceRefresh)
 	}
 
-	async listStructureGroupSettings(_actor: StructureActor): Promise<unknown> {
+	async listStructureGroupSettings(_actor: StructureActor): Promise<StructureGroupSetting[]> {
 		return listStructureGroupSettings(this.getDb())
 	}
 
 	async upsertStructureGroupSetting(
 		actor: StructureActor,
 		input: UpsertStructureGroupSettingInput
-	): Promise<unknown> {
+	): Promise<StructureGroupSetting> {
 		return upsertStructureGroupSetting(this.getDb(), {
 			...input,
 			updatedBy: actor.id,
 		})
 	}
 
-	async deleteStructureGroupSetting(_actor: StructureActor, groupId: string): Promise<unknown> {
+	async deleteStructureGroupSetting(
+		_actor: StructureActor,
+		groupId: string
+	): Promise<StructureGroupSetting | null> {
 		return deleteStructureGroupSetting(this.getDb(), { groupId })
 	}
 
-	async listStructureCorporationGroupDefaults(_actor: StructureActor): Promise<unknown> {
+	async listStructureCorporationGroupDefaults(
+		_actor: StructureActor
+	): Promise<StructureCorporationGroupDefault[]> {
 		return listStructureCorporationGroupDefaults(this.getDb())
 	}
 
 	async upsertStructureCorporationDefault(
 		actor: StructureActor,
 		input: UpsertStructureCorporationDefaultInput
-	): Promise<unknown> {
+	): Promise<StructureCorporationGroupDefault> {
 		return upsertStructureCorporationGroupDefault(this.getDb(), {
 			...input,
 			updatedBy: actor.id,
 		})
 	}
 
-	async listStructureGroupAlertDestinations(_actor: StructureActor, groupId: string): Promise<unknown> {
+	async listStructureGroupAlertDestinations(
+		_actor: StructureActor,
+		groupId: string
+	): Promise<StructureAlertDestination[]> {
 		return listAlertDestinations(this.getDb(), 'structure_group', groupId)
 	}
 
@@ -185,7 +218,7 @@ export class StructuresWorkerEntrypoint extends WorkerEntrypoint<Env> implements
 		actor: StructureActor,
 		groupId: string,
 		input: CreateStructureAlertDestinationRequest
-	): Promise<unknown> {
+	): Promise<StructureAlertDestinationRecord> {
 		return createAlertDestination(this.getDb(), {
 			scopeType: 'structure_group',
 			scopeId: groupId,
@@ -207,7 +240,7 @@ export class StructuresWorkerEntrypoint extends WorkerEntrypoint<Env> implements
 		groupId: string,
 		destinationId: string,
 		input: UpdateStructureAlertDestinationRequest
-	): Promise<unknown> {
+	): Promise<StructureAlertDestinationRecord> {
 		return updateAlertDestination(this.getDb(), 'structure_group', groupId, destinationId, {
 			alertType: input.alertType,
 			destinationType: input.destinationType as AlertDestinationType,
@@ -225,11 +258,14 @@ export class StructuresWorkerEntrypoint extends WorkerEntrypoint<Env> implements
 		_actor: StructureActor,
 		groupId: string,
 		destinationId: string
-	): Promise<unknown> {
+	): Promise<void> {
 		return deleteAlertDestination(this.getDb(), 'structure_group', groupId, destinationId)
 	}
 
-	async listStructureGroupAlertConfigs(_actor: StructureActor, groupId: string): Promise<unknown> {
+	async listStructureGroupAlertConfigs(
+		_actor: StructureActor,
+		groupId: string
+	): Promise<StructureGroupAlertConfig[]> {
 		return listStructureGroupAlertConfigs(this.getDb(), groupId)
 	}
 
@@ -237,7 +273,7 @@ export class StructuresWorkerEntrypoint extends WorkerEntrypoint<Env> implements
 		actor: StructureActor,
 		groupId: string,
 		input: CreateStructureGroupAlertConfigRequest
-	): Promise<unknown> {
+	): Promise<StructureGroupAlertConfig> {
 		return upsertStructureGroupAlertConfig(this.getDb(), {
 			groupId,
 			alertType: input.alertType,
@@ -252,7 +288,7 @@ export class StructuresWorkerEntrypoint extends WorkerEntrypoint<Env> implements
 		groupId: string,
 		configId: string,
 		input: UpdateStructureGroupAlertConfigRequest
-	): Promise<unknown> {
+	): Promise<StructureGroupAlertConfig> {
 		return upsertStructureGroupAlertConfig(this.getDb(), {
 			id: configId,
 			groupId,
@@ -267,7 +303,7 @@ export class StructuresWorkerEntrypoint extends WorkerEntrypoint<Env> implements
 		_actor: StructureActor,
 		groupId: string,
 		configId: string
-	): Promise<unknown> {
+	): Promise<void> {
 		return deleteStructureGroupAlertConfig(this.getDb(), groupId, configId)
 	}
 

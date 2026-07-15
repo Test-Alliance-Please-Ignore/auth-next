@@ -14,9 +14,16 @@ import type { FreightRoute } from '@repo/freight'
 import type { InventoryDisplayBay as SharedInventoryDisplayBay } from '@repo/inventory-display'
 import type {
 	StructureCitadelListQuery as RepoStructureCitadelListQuery,
-	StructureMiningListQuery as RepoStructureMiningListQuery,
+	StructureMoonDrillListItem as RepoStructureMoonDrillListItem,
+	StructureMoonDrillListQuery as RepoStructureMoonDrillListQuery,
+	StructureMoonDrillListResponse as RepoStructureMoonDrillListResponse,
+	StructureMiningCitadelListItem as RepoStructureMiningCitadelListItem,
+	StructureMiningCitadelListQuery as RepoStructureMiningCitadelListQuery,
+	StructureMiningCitadelListResponse as RepoStructureMiningCitadelListResponse,
 	StructureNavigationListQuery as RepoStructureNavigationListQuery,
 	StructureOverviewMetrics as RepoStructureOverviewMetrics,
+	StructureSkyhookListItem as RepoStructureSkyhookListItem,
+	StructureSkyhookListResponse as RepoStructureSkyhookListResponse,
 	StructureSkyhookListQuery as RepoStructureSkyhookListQuery,
 	StructureSovereigntyListFilterOptions as RepoStructureSovereigntyListFilterOptions,
 	StructureSovereigntyListFilterOption as RepoStructureSovereigntyListFilterOption,
@@ -24,6 +31,8 @@ import type {
 	StructureSovereigntyListResponse as RepoStructureSovereigntyListResponse,
 	StructureSovereigntyListSummary as RepoStructureSovereigntyListSummary,
 	StructureSovereigntyListQuery as RepoStructureSovereigntyListQuery,
+	StructureMoonDrillSummary as RepoStructureMoonDrillSummary,
+	StructureMiningCitadelSummary as RepoStructureMiningCitadelSummary,
 	StructureSovereigntyReagent,
 	StructureSovereigntyTransportState,
 } from '@repo/structures'
@@ -755,7 +764,9 @@ export interface StructureSovereigntyListQuery extends RepoStructureSovereigntyL
 
 export interface StructureSkyhookListQuery extends RepoStructureSkyhookListQuery {}
 
-export interface StructureMiningListQuery extends RepoStructureMiningListQuery {}
+export interface StructureMoonDrillListQuery extends RepoStructureMoonDrillListQuery {}
+
+export interface StructureMiningCitadelListQuery extends RepoStructureMiningCitadelListQuery {}
 
 export interface StructureListFilterOption {
 	value: string
@@ -886,6 +897,13 @@ export interface StructureSkyhookSummary {
 	totalReagents: number
 	totalSecuredStock: number
 	totalUnsecuredStock: number
+	reagents: Array<{
+		typeId: string
+		typeName: string | null
+		securedStock: number
+		unsecuredStock: number
+		lastCycle: string
+	}>
 	reinforcementTimerEnd: string | null
 	theftVulnerabilityStart: string | null
 	theftVulnerabilityEnd: string | null
@@ -894,45 +912,15 @@ export interface StructureSkyhookSummary {
 	vulnerableAt: string | null
 }
 
-export interface StructureMiningSummary {
-	moonId: string
-	moonName: string | null
-	planetId: string | null
-	planetName: string | null
-	systemId: string | null
-	systemName: string | null
-	extractionStartTime: string | null
-	chunkArrivalTime: string | null
-	naturalDecayTime: string | null
-}
+export type StructureMoonDrillSummary = RepoStructureMoonDrillSummary
+export type StructureMiningCitadelSummary = RepoStructureMiningCitadelSummary
 
 export type StructureSovereigntyListItem = RepoStructureSovereigntyListItem
 
-export interface StructureSkyhookListItem extends StructureListBaseItem {
-	planetId: string
-	planetName: string | null
-	isActive: boolean
-	effectiveWorkforce: number | null
-	totalReagents: number
-	totalSecuredStock: number
-	totalUnsecuredStock: number
-	reinforcementTimerEnd: string | null
-	theftVulnerabilityStart: string | null
-	theftVulnerabilityEnd: string | null
-	isRaidable: boolean
-	becomesRaidableAt: string | null
-	vulnerableAt: string | null
-}
+export type StructureSkyhookListItem = RepoStructureSkyhookListItem
 
-export interface StructureMiningListItem extends StructureListBaseItem {
-	moonId: string
-	moonName: string | null
-	planetId: string | null
-	planetName: string | null
-	extractionStartTime: string | null
-	chunkArrivalTime: string | null
-	naturalDecayTime: string | null
-}
+export type StructureMoonDrillListItem = RepoStructureMoonDrillListItem
+export type StructureMiningCitadelListItem = RepoStructureMiningCitadelListItem
 
 export type StructureInventoryBay = SharedInventoryDisplayBay
 export type StructureInventoryItem = StructureInventoryBay['items'][number]
@@ -987,7 +975,8 @@ export interface StructureDetailResult extends Omit<StructureCitadelListItem, 'c
 	} | null
 	sovereignty?: StructureSovereigntySummary | null
 	skyhook?: StructureSkyhookSummary | null
-	mining?: StructureMiningSummary | null
+	moonDrill?: StructureMoonDrillSummary | null
+	miningExtraction?: StructureMiningCitadelSummary | null
 	inventoryBays?: StructureInventoryBay[]
 	fittingItems?: StructureFittingItem[]
 }
@@ -1022,10 +1011,16 @@ export interface StructureCitadelListResponse
 export interface StructureNavigationListResponse
 	extends StructureListResponse<StructureNavigationListItem> {}
 export type StructureSovereigntyListResponse = RepoStructureSovereigntyListResponse
-export interface StructureSkyhookListResponse
-	extends StructureListResponse<StructureSkyhookListItem> {}
-export interface StructureMiningListResponse
-	extends StructureListResponse<StructureMiningListItem> {}
+export type StructureSkyhookListResponse = RepoStructureSkyhookListResponse
+export type StructureMoonDrillListResponse = RepoStructureMoonDrillListResponse
+export type StructureMiningCitadelListResponse = RepoStructureMiningCitadelListResponse
+export type StructureTabListResponse =
+	| StructureCitadelListResponse
+	| StructureNavigationListResponse
+	| StructureSovereigntyListResponse
+	| StructureSkyhookListResponse
+	| StructureMiningCitadelListResponse
+	| StructureMoonDrillListResponse
 
 export interface UpdateStructureConfigRequest {
 	hidden?: boolean
@@ -3475,8 +3470,8 @@ export class ApiClient {
 	}
 
 	async getMoonDrillStructures(
-		query: StructureMiningListQuery = {}
-	): Promise<StructureMiningListResponse> {
+		query: StructureMoonDrillListQuery = {}
+	): Promise<StructureMoonDrillListResponse> {
 		const params = new URLSearchParams()
 		if (query.page) params.set('page', String(query.page))
 		if (query.pageSize) params.set('pageSize', String(query.pageSize))
@@ -3491,8 +3486,8 @@ export class ApiClient {
 	}
 
 	async getMiningCitadelStructures(
-		query: StructureMiningListQuery = {}
-	): Promise<StructureMiningListResponse> {
+		query: StructureMiningCitadelListQuery = {}
+	): Promise<StructureMiningCitadelListResponse> {
 		const params = new URLSearchParams()
 		if (query.page) params.set('page', String(query.page))
 		if (query.pageSize) params.set('pageSize', String(query.pageSize))
@@ -3504,12 +3499,6 @@ export class ApiClient {
 		if (query.typeId) params.set('typeId', query.typeId)
 		const queryString = params.toString()
 		return this.get(`/structures/mining-citadels${queryString ? `?${queryString}` : ''}`)
-	}
-
-	async getMiningStructures(
-		query: StructureMiningListQuery = {}
-	): Promise<StructureMiningListResponse> {
-		return this.getMoonDrillStructures(query)
 	}
 
 	async getStructureOverviewMetrics(): Promise<StructureOverviewMetrics> {

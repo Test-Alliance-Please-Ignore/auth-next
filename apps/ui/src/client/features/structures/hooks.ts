@@ -9,8 +9,10 @@ import type { UseQueryOptions } from '@tanstack/react-query'
 import type {
 	StructureCitadelListQuery,
 	StructureCitadelListResponse,
-	StructureMiningListQuery,
-	StructureMiningListResponse,
+	StructureMiningCitadelListQuery,
+	StructureMiningCitadelListResponse,
+	StructureMoonDrillListQuery,
+	StructureMoonDrillListResponse,
 	StructureNavigationListQuery,
 	StructureNavigationListResponse,
 	StructureOverviewMetrics,
@@ -20,6 +22,7 @@ import type {
 	StructureSovereigntyListResponse,
 	StructureModuleConfig,
 	UpdateStructureModuleConfigRequest,
+	StructureTabListResponse,
 } from '@/lib/api'
 
 type StructureTabQuery =
@@ -27,7 +30,8 @@ type StructureTabQuery =
 	| StructureNavigationListQuery
 	| StructureSovereigntyListQuery
 	| StructureSkyhookListQuery
-	| StructureMiningListQuery
+	| StructureMiningCitadelListQuery
+	| StructureMoonDrillListQuery
 
 function createStructureListQueryOptions<TResponse>(
 	queryKey: readonly unknown[],
@@ -89,10 +93,10 @@ export function useSkyhookStructures(
 }
 
 export function useMiningCitadelStructures(
-	query: StructureMiningListQuery,
-	options: Pick<UseQueryOptions<StructureMiningListResponse>, 'enabled'> = {}
+	query: StructureMiningCitadelListQuery,
+	options: Pick<UseQueryOptions<StructureMiningCitadelListResponse>, 'enabled'> = {}
 ) {
-	return useQuery<StructureMiningListResponse>(
+	return useQuery<StructureMiningCitadelListResponse>(
 		createStructureListQueryOptions(
 			structureKeys.miningCitadels(query),
 			() => api.getMiningCitadelStructures(query),
@@ -102,10 +106,10 @@ export function useMiningCitadelStructures(
 }
 
 export function useMoonDrillStructures(
-	query: StructureMiningListQuery,
-	options: Pick<UseQueryOptions<StructureMiningListResponse>, 'enabled'> = {}
+	query: StructureMoonDrillListQuery,
+	options: Pick<UseQueryOptions<StructureMoonDrillListResponse>, 'enabled'> = {}
 ) {
-	return useQuery<StructureMiningListResponse>(
+	return useQuery<StructureMoonDrillListResponse>(
 		createStructureListQueryOptions(structureKeys.moonDrills(query), () => api.getMoonDrillStructures(query), options)
 	)
 }
@@ -133,7 +137,7 @@ export function useStructuresForTab(
 	tab: StructureTab,
 	query: StructureTabQuery,
 	options: Pick<UseQueryOptions<
-		StructureCitadelListResponse | StructureNavigationListResponse | StructureSovereigntyListResponse | StructureSkyhookListResponse | StructureMiningListResponse
+		StructureTabListResponse
 	>, 'enabled'> = {}
 ) {
 	const queryKey = (() => {
@@ -154,9 +158,7 @@ export function useStructuresForTab(
 		throw new Error(`Unknown structures tab: ${tab}`)
 	})()
 
-	return useQuery<
-		StructureCitadelListResponse | StructureNavigationListResponse | StructureSovereigntyListResponse | StructureSkyhookListResponse | StructureMiningListResponse
-	>({
+	return useQuery<StructureTabListResponse>({
 		queryKey,
 		queryFn: () => {
 			switch (tab) {

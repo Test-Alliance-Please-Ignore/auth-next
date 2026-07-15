@@ -195,7 +195,7 @@ export async function storeSkyhookEnrichment(
 	return result
 }
 
-export async function fetchMiningEnrichment(
+export async function fetchMiningExtractionEnrichment(
 	env: Env,
 	corporationId: string,
 	directorCharacterId: string
@@ -207,7 +207,7 @@ export async function fetchMiningEnrichment(
 		directorCharacterId
 	)
 
-	logger.debug('[StructuresStep] Fetched mining enrichment', {
+	logger.debug('[StructuresStep] Fetched mining extraction enrichment', {
 		corporationId,
 		miningExtractions: miningExtractions.length,
 	})
@@ -215,7 +215,7 @@ export async function fetchMiningEnrichment(
 	return miningExtractions
 }
 
-export async function storeMiningEnrichment(
+export async function storeMiningExtractionEnrichment(
 	env: Env,
 	corporationId: string,
 	enrichment: MiningExtractionsData
@@ -223,7 +223,7 @@ export async function storeMiningEnrichment(
 	const corpData = getCorporationDataStub(env, corporationId)
 	await corpData.storeMiningExtractions(corporationId, enrichment)
 
-	logger.info('[StructuresStep] Stored mining enrichment', {
+	logger.info('[StructuresStep] Stored mining extraction enrichment', {
 		corporationId,
 		miningExtractions: enrichment.length,
 	})

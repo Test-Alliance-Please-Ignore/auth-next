@@ -58,6 +58,64 @@ function normalizeFilters(filters: StructureTableFilters): StructureTableFilters
 	}
 }
 
+function pruneFiltersForTab(tab: StructureTab, filters: StructureTableFilters): StructureTableFilters {
+	const nextFilters: StructureTableFilters = {}
+
+	for (const field of TAB_FILTER_FIELDS[tab]) {
+		const value = filters[field]
+		if (value === undefined) continue
+
+		switch (field) {
+			case 'corporationId':
+				nextFilters.corporationId = value
+				break
+			case 'assignedGroupId':
+				nextFilters.assignedGroupId = value
+				break
+			case 'lowPower':
+				if (value === 'true' || value === 'false') {
+					nextFilters.lowPower = value
+				}
+				break
+			case 'lowPowerAllowed':
+				if (value === 'true' || value === 'false') {
+					nextFilters.lowPowerAllowed = value
+				}
+				break
+			case 'regionId':
+				nextFilters.regionId = value
+				break
+			case 'systemId':
+				nextFilters.systemId = value
+				break
+			case 'state':
+				nextFilters.state = value
+				break
+			case 'vulnerabilityState':
+				if (value === 'vulnerable' || value === 'invulnerable' || value === 'reinforced') {
+					nextFilters.vulnerabilityState = value
+				}
+				break
+			case 'typeId':
+				nextFilters.typeId = value
+				break
+			case 'controllerAllianceId':
+				nextFilters.controllerAllianceId = value
+				break
+			case 'planetId':
+				nextFilters.planetId = value
+				break
+			case 'isRaidable':
+				if (value === 'true' || value === 'false') {
+					nextFilters.isRaidable = value
+				}
+				break
+		}
+	}
+
+	return normalizeFilters(nextFilters)
+}
+
 const COMMON_TAB_FILTER_FIELDS = [
 	'corporationId',
 	'assignedGroupId',
@@ -69,9 +127,22 @@ const COMMON_TAB_FILTER_FIELDS = [
 	'typeId',
 ] as const satisfies Array<keyof StructureTableFilters>
 
-const SKYHOOK_TAB_FILTER_FIELDS = COMMON_TAB_FILTER_FIELDS.filter(
-	(field) => field !== 'typeId'
-) as Array<keyof StructureTableFilters>
+const SKYHOOK_TAB_FILTER_FIELDS = [
+	'corporationId',
+	'assignedGroupId',
+	'regionId',
+	'systemId',
+	'state',
+] as const satisfies Array<keyof StructureTableFilters>
+
+const MOON_DRILL_TAB_FILTER_FIELDS = [
+	'corporationId',
+	'assignedGroupId',
+	'regionId',
+	'systemId',
+	'state',
+	'typeId',
+] as const satisfies Array<keyof StructureTableFilters>
 
 const TAB_FILTER_FIELDS: Record<StructureTab, Array<keyof StructureTableFilters>> = {
 	citadels: [...COMMON_TAB_FILTER_FIELDS],
@@ -86,7 +157,7 @@ const TAB_FILTER_FIELDS: Record<StructureTab, Array<keyof StructureTableFilters>
 	],
 	skyhooks: [...SKYHOOK_TAB_FILTER_FIELDS, 'isRaidable'],
 	'mining-citadels': [...COMMON_TAB_FILTER_FIELDS],
-	'moon-drills': [...COMMON_TAB_FILTER_FIELDS],
+	'moon-drills': [...MOON_DRILL_TAB_FILTER_FIELDS],
 }
 
 function normalizeTab(tab: unknown): StructureTab {
@@ -108,11 +179,12 @@ function readStateFromStorage(): StructureTableUiState {
 		if (!raw) return defaultState()
 		const parsed = JSON.parse(raw) as StructureTableUiState
 		if (!parsed || typeof parsed !== 'object') return defaultState()
+		const tab = normalizeTab(parsed.tab)
 		return {
 			...defaultState(),
 			...parsed,
-			tab: normalizeTab(parsed.tab),
-			filters: normalizeFilters(parsed.filters ?? {}),
+			tab,
+			filters: pruneFiltersForTab(tab, normalizeFilters(parsed.filters ?? {})),
 		}
 	} catch {
 		return defaultState()
@@ -172,13 +244,7 @@ export function setStructureTableTab(tab: StructureTab): void {
 	updateState((previous) => ({
 		...previous,
 		tab,
-		filters: normalizeFilters(
-			Object.fromEntries(
-				TAB_FILTER_FIELDS[tab]
-					.filter((field) => previous.filters[field] !== undefined)
-					.map((field) => [field, previous.filters[field]])
-			) as StructureTableFilters
-		),
+		filters: pruneFiltersForTab(tab, previous.filters),
 		page: 1,
 	}))
 }
