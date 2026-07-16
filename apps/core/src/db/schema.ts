@@ -1454,6 +1454,25 @@ export const serviceAccessAuditRuns = pgTable(
 		 */
 		memberCorporationIds: text('member_corporation_ids').array().notNull().default([]),
 		memberCorpCount: integer('member_corp_count').notNull().default(0),
+		/**
+		 * The basis shrank against the recent high-water mark. INFORMATIONAL for a
+		 * scan — a scan is read-only and blocking it would refuse the tool's primary
+		 * use case, since de-flagging corps is how a corp legitimately stops being a
+		 * member corp AND it shrinks the basis by construction.
+		 * ENFORCEMENT MUST HARD-REFUSE on a suspect, unacknowledged basis.
+		 */
+		basisSuspect: boolean('basis_suspect').notNull().default(false),
+		/** The high-water count this run's basis was compared against; null on the
+		 * bootstrap run, where nothing has validated the basis. */
+		basisComparedToCount: integer('basis_compared_to_count'),
+		/**
+		 * Exactly which corporations left the basis since the high-water run. A
+		 * count ratio cannot distinguish "an operator de-flagged 13 corps" from "the
+		 * table got truncated"; this list lets a human do it in seconds.
+		 */
+		basisRemovedCorporationIds: text('basis_removed_corporation_ids').array(),
+		/** Operator-facing explanation of the diff; null unless basisSuspect. */
+		basisNote: text('basis_note'),
 		/** Every user row walked, including eligible ones. */
 		scanned: integer('scanned').notNull().default(0),
 		/** Users holding a Mumble account or a Discord link — reported alongside
