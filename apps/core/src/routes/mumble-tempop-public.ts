@@ -7,6 +7,7 @@ import { MUMBLE_FEATURE_FLAG_KEY } from '@repo/features'
 import { createDb } from '../db'
 import { mumbleTempops, oauthStates } from '../db/schema'
 import { consumeCredentialHandoff, hashToken } from '../services/mumble-tempop.service'
+import { setOAuthStateCookie } from './auth'
 import { resolveFlag } from './flags'
 
 import type { EveTokenStore } from '@repo/eve-token-store'
@@ -115,6 +116,10 @@ publicMumbleTempopRoutes.post('/:key/start-sso', async (c) => {
 		metadata: { key, tempopId: tempop.id },
 		expiresAt: new Date(Date.now() + OAUTH_STATE_TTL_MS),
 	})
+
+	// This flow completes at /auth/callback, which requires the state to be bound to the
+	// browser that started it.
+	setOAuthStateCookie(c, state)
 
 	const eveTokenStoreStub = getStub<EveTokenStore>(c.env.EVE_TOKEN_STORE, 'default')
 	const { url } = await eveTokenStoreStub.startPublicDataFlow(state)

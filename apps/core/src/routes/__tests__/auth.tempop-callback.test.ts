@@ -109,7 +109,13 @@ describe('GET /api/auth/callback temp-op flow', () => {
 		storeCredentialHandoffMock.mockResolvedValue('handoff-1')
 
 		const app = createApp()
-		const res = await app.request('/api/auth/callback?code=code-1&state=state-1', {}, env)
+		// The callback requires the state to be bound to the browser that started the flow.
+		// The guest flow sets this cookie when it mints the state (mumble-tempop-public.ts).
+		const res = await app.request(
+			'/api/auth/callback?code=code-1&state=state-1',
+			{ headers: { Cookie: 'oauth_state=state-1' } },
+			env
+		)
 
 		expect(res.status).toBe(200)
 		expect(res.headers.get('content-type')).toContain('application/json')

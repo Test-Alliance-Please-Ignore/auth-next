@@ -4,7 +4,7 @@ import { deleteCookie, getCookie, setCookie } from 'hono/cookie'
 import { eq } from '@repo/db-utils'
 import { getStub } from '@repo/do-utils'
 import { assertEveCharacterId } from '@repo/eve-types'
-import { toErrorMessage } from '@repo/hono-helpers'
+import { captureException, toErrorMessage } from '@repo/hono-helpers'
 
 import { createDb } from '../db'
 import { managedCorporations, mumbleTempops, oauthStates, userCharacters, users } from '../db/schema'
@@ -27,15 +27,19 @@ import { provisionTempopGuest } from '../services/mumble.service'
 import { storeCredentialHandoff } from '../services/mumble-tempop.service'
 import { autoRegisterDirectorCorporation } from '../services/corporation-auto-register.service'
 import { SessionService } from '../services/session.service'
-import { UserService } from '../services/user.service'
+import { CharacterAlreadyClaimedError, UserService } from '../services/user.service'
 
 import type { Context } from 'hono'
-import type { RequestMetadata } from '@repo/core'
+import type { RequestMetadata, UserProfileDTO } from '@repo/core'
 import type { EveCharacterData } from '@repo/eve-character-data'
 import type { EveTokenStore } from '@repo/eve-token-store'
 import type { BlacklistEntry, Hr } from '@repo/hr'
 import type { Legacy } from '@repo/legacy'
-import type { TempopOAuthMetadata } from '../db/schema'
+import type {
+	ClaimMainOAuthMetadata,
+	OAuthStateMetadata,
+	TempopOAuthMetadata,
+} from '../db/schema'
 import type { App } from '../context'
 import { logger } from '@repo/hono-helpers'
 import { createWorkflow } from '@repo/workflow-utils'
@@ -49,6 +53,71 @@ const auth = new Hono<App>()
 
 export function shouldUseSecureSessionCookie(c: Context<App>): boolean {
 	return new URL(c.req.url).protocol === 'https:'
+}
+
+/**
+ * Flows that legitimately terminate at GET /auth/callback.
+ *
+ * oauth_states also holds 'legacy-auth' rows (redeemed at /auth/legacy-auth/callback) and
+ * 'claim-main' tickets (redeemed at /auth/claim-main). Each callback accepts only its own
+ * flow types so a state minted for one flow cannot be replayed against another.
+ */
+const CALLBACK_FLOW_TYPES = ['login', 'character', 'mumble-tempop'] as const
+type CallbackFlowType = (typeof CALLBACK_FLOW_TYPES)[number]
+
+function isCallbackFlowType(flowType: string): flowType is CallbackFlowType {
+	return (CALLBACK_FLOW_TYPES as readonly string[]).includes(flowType)
+}
+
+/** How long a claim-main ticket stays redeemable after SSO verifies the character. */
+const CLAIM_TICKET_TTL_MS = 15 * 60 * 1000
+
+/**
+ * Characters imported from legacy auth carry this placeholder instead of a CCP owner hash
+ * (see legacyImportCharacterLinks in ../durable-object.ts). The import is an admin assertion
+ * with no cryptographic proof of ownership, so the placeholder is not evidence of anything —
+ * it must never be compared against a real hash.
+ */
+const LEGACY_IMPORT_HASH_PREFIX = 'legacy-import:'
+
+const OAUTH_STATE_COOKIE = 'oauth_state'
+
+/**
+ * Deliberately outlives the 15-minute oauth_states row. If the cookie died first, an expired
+ * flow would be reported by the cookie check below instead of by the state-expiry check, which
+ * is the one that knows how to render a friendly per-flow error (the temp-op guest redirect).
+ */
+const OAUTH_STATE_COOKIE_TTL_SECONDS = 30 * 60
+
+/**
+ * Bind an in-flight OAuth state to the browser that started the flow.
+ *
+ * The oauth_states row proves *a* flow was started; it does not prove *this browser* started
+ * it, because /auth/login and /auth/login/start are unauthenticated and will hand a valid
+ * state to anyone who asks. This cookie is what supplies the missing half, and it is the
+ * actual login-CSRF defence — see the check in /auth/callback.
+ *
+ * SameSite=Lax is sufficient: EVE redirects the browser to the SPA's /auth/callback page,
+ * which then calls this API same-origin.
+ */
+export function setOAuthStateCookie(c: Context<App>, state: string): void {
+	setCookie(c, OAUTH_STATE_COOKIE, state, {
+		httpOnly: true,
+		secure: shouldUseSecureSessionCookie(c),
+		sameSite: 'Lax',
+		maxAge: OAUTH_STATE_COOKIE_TTL_SECONDS,
+		path: '/',
+	})
+}
+
+/** Narrow an oauth_states.metadata blob to the temp-op shape, or null if it is not one. */
+function getTempopMetadata(metadata: OAuthStateMetadata | null): TempopOAuthMetadata | null {
+	return metadata && 'key' in metadata ? metadata : null
+}
+
+/** Narrow an oauth_states.metadata blob to the claim-main shape, or null if it is not one. */
+function getClaimMainMetadata(metadata: OAuthStateMetadata | null): ClaimMainOAuthMetadata | null {
+	return metadata && 'characterId' in metadata ? metadata : null
 }
 
 interface AuthSessionPermissionView {
@@ -481,6 +550,10 @@ auth.get('/login', async (c) => {
 		expiresAt,
 	})
 
+	// Tie this state to the browser we are about to send to EVE, so only that browser can
+	// complete the flow.
+	setOAuthStateCookie(c, authUrl.state)
+
 	// Redirect user to EVE SSO
 	return c.redirect(authUrl.url)
 })
@@ -507,6 +580,8 @@ auth.post('/login/start', async (c) => {
 		redirectUrl: null,
 		expiresAt,
 	})
+
+	setOAuthStateCookie(c, authUrl.state)
 
 	return c.json({
 		authorizationUrl: authUrl.url,
@@ -539,6 +614,8 @@ auth.post('/character/start', requireAuth(), async (c) => {
 		expiresAt,
 	})
 
+	setOAuthStateCookie(c, authUrl.state)
+
 	return c.json({
 		authorizationUrl: authUrl.url,
 		state: authUrl.state,
@@ -559,6 +636,29 @@ auth.get('/callback', async (c) => {
 		return c.json({ error: 'Missing authorization code' }, 400)
 	}
 
+	if (!state) {
+		return c.json({ error: 'Missing state parameter' }, 400)
+	}
+
+	// SECURITY: this pair of checks is the login-CSRF defence, and BOTH halves are load-bearing.
+	//
+	// The oauth_states row (checked below) proves only that *a* flow was started — it is not
+	// evidence about *this* browser, because /auth/login and /auth/login/start are
+	// unauthenticated and hand a valid state to any caller. An attacker can therefore mint a
+	// state, complete SSO as their own character, and walk a victim through this endpoint with
+	// the attacker's code; every DB-side check would pass and the victim's browser would be
+	// left holding a 30-day session on the attacker's account.
+	//
+	// The cookie is what ties the state to the browser that started the flow. It is HttpOnly,
+	// so an attacker cannot plant their own state in the victim's browser. Note the EVE token
+	// store accepts `state` but uses it only as a log tag, so nothing downstream re-checks this.
+	const boundState = getCookie(c, OAUTH_STATE_COOKIE)
+	deleteCookie(c, OAUTH_STATE_COOKIE, { path: '/' })
+
+	if (!boundState || boundState !== state) {
+		return c.json({ error: 'OAuth state does not match this browser. Please try again.' }, 400)
+	}
+
 	const db = createDb(c.env.DATABASE_URL)
 	const eveTokenStoreStub = getStub<EveTokenStore>(c.env.EVE_TOKEN_STORE, 'default')
 
@@ -566,46 +666,46 @@ auth.get('/callback', async (c) => {
 	const userService = new UserService(db)
 	const activityService = new ActivityService(db)
 
-	// Look up the flow type from the state parameter
-	let flowType: string | null = null
-	let stateUserId: string | null = null
-	let redirectUrl: string | null = null
-	let stateMetadata: TempopOAuthMetadata | null = null
+	const oauthState = await db.query.oauthStates.findFirst({
+		where: eq(oauthStates.state, state),
+	})
 
-	if (state) {
-		const oauthState = await db.query.oauthStates.findFirst({
-			where: eq(oauthStates.state, state),
-		})
-
-		if (oauthState) {
-			// Check if state has expired
-			if (new Date() > oauthState.expiresAt) {
-				await db.delete(oauthStates).where(eq(oauthStates.state, state))
-				// Guest temp-op flows render in the SPA, so surface a usable error
-				// on the landing page rather than a raw JSON response.
-				if (oauthState.flowType === 'mumble-tempop') {
-					const expiredKey =
-						typeof oauthState.metadata?.key === 'string' ? oauthState.metadata.key : ''
-					return c.redirect(`/tempop/${expiredKey}?error=expired`)
-				}
-				return c.json({ error: 'OAuth state has expired. Please try again.' }, 400)
-			}
-
-			flowType = oauthState.flowType
-			stateUserId = oauthState.userId
-			redirectUrl = oauthState.redirectUrl
-			stateMetadata = oauthState.metadata
-
-			// Delete the state after use (one-time use)
-			await db.delete(oauthStates).where(eq(oauthStates.state, state))
-		}
+	if (!oauthState) {
+		return c.json({ error: 'Invalid OAuth state' }, 400)
 	}
+
+	// Check if state has expired
+	if (new Date() > oauthState.expiresAt) {
+		await db.delete(oauthStates).where(eq(oauthStates.state, state))
+		// Guest temp-op flows render in the SPA, so surface a usable error
+		// on the landing page rather than a raw JSON response.
+		if (oauthState.flowType === 'mumble-tempop') {
+			const expiredKey = getTempopMetadata(oauthState.metadata)?.key ?? ''
+			return c.redirect(`/tempop/${expiredKey}?error=expired`)
+		}
+		return c.json({ error: 'OAuth state has expired. Please try again.' }, 400)
+	}
+
+	// Only flows that actually terminate here may be replayed here. This notably excludes
+	// 'claim-main' tickets, which live in the same table but are redeemable only at
+	// /auth/claim-main.
+	if (!isCallbackFlowType(oauthState.flowType)) {
+		return c.json({ error: 'Invalid flow type' }, 400)
+	}
+
+	const flowType = oauthState.flowType
+	const stateUserId = oauthState.userId
+	const redirectUrl = oauthState.redirectUrl
+	const stateMetadata = oauthState.metadata
+
+	// Delete the state after use (one-time use)
+	await db.delete(oauthStates).where(eq(oauthStates.state, state))
 
 	// Mumble temp-op guest flow: minimal publicData identity → ephemeral voice
 	// credentials. Handled separately because guests never carry full scopes and
 	// no token is persisted (handleCallback would reject and over-persist).
 	if (flowType === 'mumble-tempop') {
-		return handleMumbleTempopCallback(c, code, stateMetadata)
+		return handleMumbleTempopCallback(c, code, getTempopMetadata(stateMetadata))
 	}
 
 	// Handle callback with eve-token-store
@@ -769,6 +869,52 @@ auth.get('/callback', async (c) => {
 	const user = await userService.getUserByCharacterId(characterId)
 
 	if (user) {
+		// SECURITY: EVE rotates CharacterOwnerHash whenever a character changes hands (a
+		// Character Bazaar sale, or any transfer). It is the only evidence CCP gives us that
+		// the human behind this character is no longer the human who linked it, so a mismatch
+		// must never mint a session onto the previous owner's account — that would hand the
+		// buyer every alt, role and permission the seller had.
+		//
+		// This is checked before the blacklist and before anything else reads `user`, because
+		// a broken identity binding makes every other fact about that account meaningless.
+		// Fail closed: refuse both parties and let an admin decide, rather than silently
+		// migrating or destroying an account on the strength of one hash comparison.
+		const ownership = await userService.getCharacterOwnership(characterId)
+
+		if (ownership?.characterOwnerHash.startsWith(LEGACY_IMPORT_HASH_PREFIX)) {
+			// Legacy-imported links carry a placeholder, never a CCP hash, so there is nothing
+			// meaningful to compare against — the import asserted ownership without proving it.
+			// This SSO round-trip is the first real proof we have ever had for this character, so
+			// adopt its hash. Without this branch every migrated user is refused on sight and has
+			// their sessions wiped, with no self-service path back.
+			await userService.adoptCharacterOwnerHash(characterId, characterInfo.characterOwnerHash)
+			logger.info('[Auth] Adopted real owner hash for legacy-imported character', {
+				characterId,
+				userId: ownership.userId,
+			})
+		} else if (ownership && ownership.characterOwnerHash !== characterInfo.characterOwnerHash) {
+			const sessionService = new SessionService(db)
+			await sessionService.invalidateAllUserSessions(ownership.userId)
+			await activityService.logLoginFailed(
+				characterId,
+				'Character owner hash mismatch - character ownership has changed',
+				getRequestMetadata(c)
+			)
+			logger.warn('[Auth] Character owner hash mismatch, refusing login', {
+				characterId,
+				userId: ownership.userId,
+			})
+
+			return c.json(
+				{
+					error:
+						'This character has changed ownership since it was linked. ' +
+						'For security, access has been suspended. Please contact an administrator.',
+				},
+				403
+			)
+		}
+
 		// SECURITY: Check if character ID/name or user is blacklisted
 		const hrStub = getStub<Hr>(c.env.HR, 'default')
 		const charBlacklistTrigger = await findBlacklistedCharacterTrigger(
@@ -929,9 +1075,27 @@ auth.get('/callback', async (c) => {
 		return c.json({ error: 'Account suspended' }, 403)
 	}
 
-	// New user - return character info for claim-main flow
+	// New user - mint a single-use ticket bound to the character SSO just verified, and hand
+	// the client that instead of trusting it to tell us which character to claim. The
+	// characterInfo below is display data for the confirmation screen; nothing is authorized
+	// from it.
+	const claimTicket = crypto.randomUUID()
+	await db.insert(oauthStates).values({
+		state: claimTicket,
+		flowType: 'claim-main',
+		userId: null,
+		redirectUrl: redirectUrl || null,
+		expiresAt: new Date(Date.now() + CLAIM_TICKET_TTL_MS),
+		metadata: {
+			characterId,
+			characterName: characterInfo.characterName,
+			characterOwnerHash: characterInfo.characterOwnerHash,
+		} satisfies ClaimMainOAuthMetadata,
+	})
+
 	return c.json({
 		requiresClaimMain: true,
+		claimTicket,
 		characterInfo: {
 			characterOwnerHash: characterInfo.characterOwnerHash,
 			characterId: characterInfo.characterId,
@@ -944,16 +1108,24 @@ auth.get('/callback', async (c) => {
  * POST /auth/claim-main
  *
  * Claim a character as main and create root user account.
- * This should be called after a successful callback for a new user.
+ * This should be called after a successful callback for a new user, with the claim ticket
+ * that callback issued.
  *
- * Security: Character data comes from the token store, not from client input.
+ * SECURITY: this endpoint is deliberately unauthenticated — the caller has no account yet,
+ * which is the whole point of it. Authority therefore comes from the claim ticket, which is
+ * minted only by /auth/callback after EVE SSO proves the caller controls the character, and
+ * which names that character server-side. Never reintroduce a characterId (or any other
+ * object selector) read from the request body here: `getTokenInfo` resolves whatever id it
+ * is handed with no notion of who is asking, so a body-supplied id let any unauthenticated
+ * caller mint an account and a 30-day session for any character that had authenticated but
+ * not yet been claimed.
  */
 auth.post('/claim-main', async (c) => {
 	const body = await c.req.json()
-	const { characterId } = body
+	const { claimTicket } = body
 
-	if (!characterId) {
-		return c.json({ error: 'Missing characterId' }, 400)
+	if (!claimTicket || typeof claimTicket !== 'string') {
+		return c.json({ error: 'Missing claim ticket' }, 400)
 	}
 
 	const db = createDb(c.env.DATABASE_URL)
@@ -963,11 +1135,51 @@ auth.post('/claim-main', async (c) => {
 	const userService = new UserService(db)
 	const activityService = new ActivityService(db)
 
+	// Resolve which character is being claimed from the ticket, never from the request.
+	const ticket = await db.query.oauthStates.findFirst({
+		where: eq(oauthStates.state, claimTicket),
+	})
+
+	if (!ticket || ticket.flowType !== 'claim-main') {
+		return c.json({ error: 'Invalid or expired claim ticket. Please login again.' }, 400)
+	}
+
+	if (new Date() > ticket.expiresAt) {
+		await db.delete(oauthStates).where(eq(oauthStates.state, claimTicket))
+		return c.json({ error: 'Claim ticket has expired. Please login again.' }, 400)
+	}
+
+	const claimMetadata = getClaimMainMetadata(ticket.metadata)
+
+	if (!claimMetadata) {
+		return c.json({ error: 'Invalid claim ticket. Please login again.' }, 400)
+	}
+
+	// Burn the ticket before doing any work, so a failure below cannot leave a replayable
+	// ticket behind. The cost is that a retry needs a fresh SSO round-trip.
+	await db.delete(oauthStates).where(eq(oauthStates.state, claimTicket))
+
+	const characterId = claimMetadata.characterId
+
 	// Fetch verified character data from token store
 	const tokenInfo = await eveTokenStoreStub.getTokenInfo(characterId)
 
 	if (!tokenInfo) {
 		return c.json({ error: 'Character not authenticated. Please login first.' }, 400)
+	}
+
+	// SECURITY: the token store holds *current* state, so if the character changed hands
+	// between minting and redeeming this ticket, tokenInfo now describes the new owner. Pin it
+	// to what SSO verified when the ticket was issued, or we would stamp the buyer's hash onto
+	// the account the seller is creating and lock the seller out of it forever.
+	if (tokenInfo.characterOwnerHash !== claimMetadata.characterOwnerHash) {
+		logger.warn('[Auth] claim-main ticket owner hash no longer matches, refusing', {
+			characterId,
+		})
+		return c.json(
+			{ error: 'This character has changed ownership. Please login again.' },
+			400
+		)
 	}
 
 	// SECURITY: Check if character ID/name is blacklisted before creating user
@@ -984,11 +1196,36 @@ auth.post('/claim-main', async (c) => {
 	}
 
 	// Create user with verified data from token store (not from client)
-	const user = await userService.createUser({
-		characterOwnerHash: tokenInfo.characterOwnerHash,
-		characterId: tokenInfo.characterId,
-		characterName: tokenInfo.characterName,
-	})
+	let user: UserProfileDTO
+	try {
+		user = await userService.createUser({
+			characterOwnerHash: tokenInfo.characterOwnerHash,
+			characterId: tokenInfo.characterId,
+			characterName: tokenInfo.characterName,
+		})
+	} catch (error) {
+		// A lost race (double submit, stale tab) is not a server fault, so answer it rather than
+		// letting it surface as an unhandled 500 — which also made this endpoint a
+		// claimed/unclaimed oracle, since 400/500/200 were three distinguishable answers.
+		// Everything else IS a fault and must keep reaching Sentry rather than being flattened
+		// into a reassuring 409.
+		if (error instanceof CharacterAlreadyClaimedError) {
+			logger.warn('[Auth] claim-main lost a race for this character', {
+				characterId,
+				reason: toErrorMessage(error),
+			})
+			return c.json(
+				{ error: 'This character has already been claimed. Please login again.' },
+				409
+			)
+		}
+
+		captureException(error as Error, {
+			tags: { route: 'auth.claim-main', characterId },
+		})
+		throw error
+	}
+
 	await hydrateAndReconcileUserRoles(c, db, user.id, tokenInfo.characterId)
 
 	// Update token validity cache (token was just received from SSO)
@@ -1074,111 +1311,6 @@ auth.post('/claim-main', async (c) => {
 			mainCharacterId: user.mainCharacterId,
 		},
 		autoRegistration: autoRegResult,
-	})
-})
-
-/**
- * POST /auth/link-character
- *
- * Link an additional character to the authenticated user.
- * Requires authentication.
- *
- * Security: Character data comes from the token store, not from client input.
- */
-auth.post('/link-character', requireAuth(), async (c) => {
-	const user = c.get('user')!
-	const body = await c.req.json()
-	const { characterId } = body
-
-	if (!characterId) {
-		return c.json({ error: 'Missing characterId' }, 400)
-	}
-
-	const db = c.get('db') || createDb(c.env.DATABASE_URL)
-	const eveTokenStoreStub =
-		c.get('eveTokenStore') || getStub<EveTokenStore>(c.env.EVE_TOKEN_STORE, 'default')
-
-	const userService = new UserService(db)
-	const activityService = new ActivityService(db)
-
-	// Fetch verified character data from token store
-	const tokenInfo = await eveTokenStoreStub.getTokenInfo(characterId)
-
-	if (!tokenInfo) {
-		return c.json(
-			{ error: 'Character not authenticated. Please complete character flow first.' },
-			400
-		)
-	}
-
-	// SECURITY: Check if character ID or name is blacklisted
-	const hrStub = getStub<Hr>(c.env.HR, 'default')
-	const charBlacklistTrigger = await findBlacklistedCharacterTrigger(
-		hrStub,
-		tokenInfo.characterId,
-		tokenInfo.characterName
-	)
-
-	if (charBlacklistTrigger) {
-		// Character is blacklisted - auto-blacklist the user
-		const userBlacklistEntry = await hrStub.createUserBlacklist({
-			userId: user.id,
-			discordUserId: user.discordUserId ?? undefined,
-			reason: `Auto-blacklisted: attempted to link blacklisted character ${tokenInfo.characterId}`,
-			blacklistedBy: charBlacklistTrigger.blacklistedBy,
-			triggeredBy: charBlacklistTrigger.id,
-			isAutoBlacklist: true,
-		})
-		await blacklistUserLinkedTargets(
-			db,
-			hrStub,
-			user.id,
-			charBlacklistTrigger.blacklistedBy,
-			userBlacklistEntry.id
-		)
-
-		// Invalidate all sessions for this user
-		const sessionService = new SessionService(db)
-		await sessionService.invalidateAllUserSessions(user.id)
-
-		return c.json({ error: 'Account suspended' }, 403)
-	}
-
-	// Link character with verified data from token store (not from client)
-	const linkedCharacter = await userService.linkCharacter({
-		userId: user.id,
-		characterOwnerHash: tokenInfo.characterOwnerHash,
-		characterId: tokenInfo.characterId,
-		characterName: tokenInfo.characterName,
-	})
-	await hydrateAndReconcileUserRoles(c, db, user.id, tokenInfo.characterId)
-
-	await activityService.logCharacterLinked(user.id, tokenInfo.characterId, getRequestMetadata(c))
-	triggerLegacyMigrationRecheck(c, user.id)
-
-	waitUntilWithTelemetry(
-		c.executionCtx,
-		'auth.link.refresh',
-		async () => {
-			await db
-				.update(users)
-				.set({ lastRefreshWorkflowAttempt: new Date() })
-				.where(eq(users.id, user.id))
-
-			await createWorkflow(c.env.USER_REFRESH_WORKFLOW, {
-				id: createUserRefreshWorkflowId('link', user.id),
-				params: { userId: user.id, refreshMode: 'event' },
-			})
-		},
-		{
-			userId: user.id,
-			characterId: tokenInfo.characterId,
-			source: 'link',
-		}
-	)
-
-	return c.json({
-		character: linkedCharacter,
 	})
 })
 
