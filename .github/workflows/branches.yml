@@ -1,40 +1,91 @@
 name: Branches
 
-# Runs on the pull_request event only (not push). Previously this listened to
-# both, so every branch push triggered two identical "Check" runs — one for the
-# push and one for the PR's synchronize event. The pull_request event is the
-# better signal anyway: it tests the simulated merge into main, not the raw tip.
+# Runs on the pull_request event (not push). Listening to both meant every branch
+# push triggered two identical "Check" runs — one for the push and one for the
+# PR's synchronize event. The pull_request event is the better signal anyway: it
+# tests the simulated merge into main, not the raw tip.
 on:
   pull_request:
     branches: ['main']
-    # Skip CI when a PR touches only docs / changelogs / editor config — nothing
-    # that affects the build, types, lint, or tests. paths-ignore fails open: a
-    # PR is only skipped when EVERY changed file matches, so a mixed doc+code PR
-    # still runs.
-    paths-ignore:
-      - '**/*.md'
-      - 'docs/**'
-      - '.changeset/**'
-      - '.vscode/**'
-      - '.cursor/**'
-      - '.claude/**'
-      - '.editorconfig'
-  # merge_group can't be path-filtered (GitHub always runs it fully) — that's the
-  # behavior we want: a complete check right before the commit lands in the queue.
+  # Required for the merge queue: without this trigger, "Check" is never reported
+  # for a queued commit and the queue times out waiting for it.
   merge_group:
 
-# If several commits are pushed to a PR in quick succession, cancel the older
-# in-flight run and keep only the newest — no point checking a superseded diff.
+# Cancel superseded PR runs, but NEVER cancel a merge_group run: the queue reads
+# a cancelled check as a failure and ejects the PR. Merge group refs are unique
+# per queue entry, so there is nothing to supersede there anyway.
 concurrency:
-  group: branches-${{ github.head_ref || github.ref }}
-  cancel-in-progress: true
+  group: branches-${{ github.event_name }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+permissions:
+  contents: read
 
 env:
   FORCE_COLOR: 1
 
 jobs:
+  # Docs-only PRs used to be skipped with a workflow-level `paths-ignore`. That is
+  # incompatible with required status checks: a workflow skipped by path filtering
+  # never reports its check at all, so "Check" sits Pending forever and the PR can
+  # never be merged or queued. A job skipped by an `if:` condition instead reports
+  # Success, which is what lets a docs-only PR through. So the path decision has to
+  # be made here, in a job, rather than in the `on:` block.
+  changes:
+    name: Detect Changes
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      contents: read
+      pull-requests: read
+    outputs:
+      code: ${{ steps.filter.outputs.code }}
+    steps:
+      - name: Check for non-doc changes
+        id: filter
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          REPO: ${{ github.repository }}
+          PR: ${{ github.event.pull_request.number }}
+        run: |
+          set -euo pipefail
+
+          # merge_group has no PR and cannot be path-filtered by GitHub — always run
+          # the full check on the exact commit that is about to land.
+          if [ -z "${PR:-}" ]; then
+            echo 'Not a pull_request event — running full checks.'
+            echo 'code=true' >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          files="$(gh api --paginate "repos/$REPO/pulls/$PR/files" --jq '.[].filename')"
+
+          # Anything left after dropping the ignorable paths means real code changed.
+          # A mixed doc+code PR therefore still runs, same as paths-ignore did.
+          code="$(printf '%s\n' "$files" | grep -Ev \
+            -e '\.md$' \
+            -e '^docs/' \
+            -e '^\.changeset/' \
+            -e '^\.vscode/' \
+            -e '^\.cursor/' \
+            -e '^\.claude/' \
+            -e '^\.editorconfig$' \
+            || true)"
+
+          if [ -n "$code" ]; then
+            echo 'Code changed — running checks.'
+            echo 'code=true' >> "$GITHUB_OUTPUT"
+          else
+            echo 'Only docs/config changed — skipping checks.'
+            echo 'code=false' >> "$GITHUB_OUTPUT"
+          fi
+
   check:
     name: Check
+    needs: changes
+    # Fail safe: only an explicit 'false' skips. If the changes job errored, its
+    # output is empty and the checks run rather than silently reporting Success.
+    if: needs.changes.outputs.code != 'false'
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
