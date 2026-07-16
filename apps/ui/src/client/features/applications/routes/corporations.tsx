@@ -46,6 +46,50 @@ function matchesCorporationType(
 	return corporation.isSpecialPurpose
 }
 
+interface CorporationCoverageStats {
+	memberCount: number
+	linkedMemberCount: number
+	unlinkedMemberCount: number
+	validEsiKeyMemberCount: number
+}
+
+function CorporationCoverageBars({ coverage }: { coverage: CorporationCoverageStats }) {
+	const authLinkedUnits = coverage.linkedMemberCount + coverage.unlinkedMemberCount
+	const authLinkedPercentage =
+		authLinkedUnits > 0 ? Math.round((coverage.linkedMemberCount / authLinkedUnits) * 100) : 0
+	const esiCoveragePercentage =
+		coverage.memberCount > 0 ? Math.round((coverage.validEsiKeyMemberCount / coverage.memberCount) * 100) : 0
+
+	return (
+		<div className="w-44 space-y-2">
+			<div className="space-y-1">
+				<div className="flex items-center justify-between text-xs text-muted-foreground">
+					<span>Auth-linked users</span>
+					<span>
+						{coverage.linkedMemberCount}/{authLinkedUnits}
+					</span>
+				</div>
+				<Progress
+					value={authLinkedPercentage}
+					className="h-1.5 bg-red-500/35 [&>div]:bg-green-500"
+				/>
+			</div>
+			<div className="space-y-1">
+				<div className="flex items-center justify-between text-xs text-muted-foreground">
+					<span>Characters with valid ESI</span>
+					<span>
+						{coverage.validEsiKeyMemberCount}/{coverage.memberCount}
+					</span>
+				</div>
+				<Progress
+					value={esiCoveragePercentage}
+					className="h-1.5 bg-red-500/35 [&>div]:bg-green-500"
+				/>
+			</div>
+		</div>
+	)
+}
+
 export default function CorporationsPage() {
 	const { user, isAuthenticated, isLoading: authLoading, permissions } = useAuth()
 	const isAuditor = useMemo(
@@ -225,6 +269,7 @@ export default function CorporationsPage() {
 					const corporationAccessEntry = (corporationAccess?.corporations ?? []).find(
 						(corp) => corp.corporationId === corporation.corporationId
 					)
+					const coverageStats: CorporationCoverageStats | null = myCorporation ?? corporationAccessEntry ?? null
 					const canAccessMembers =
 						user?.is_admin === true ||
 						isAuditor ||
@@ -295,28 +340,9 @@ export default function CorporationsPage() {
 										<div className="flex gap-2">
 											<Skeleton className="h-5 w-20" />
 										</div>
-									) : hasVisibleCounts || myCorporation ? (
+										) : hasVisibleCounts || coverageStats ? (
 										<div className="flex flex-col items-end gap-2">
-											{myCorporation && (
-												<div className="w-44 space-y-1">
-													<div className="flex items-center justify-between text-xs text-muted-foreground">
-														<span>Authed Users</span>
-														<span>
-															{myCorporation.linkedMemberCount}/{myCorporation.memberCount}
-														</span>
-													</div>
-													<Progress
-														value={
-															myCorporation.memberCount > 0
-																? Math.round(
-																		(myCorporation.linkedMemberCount / myCorporation.memberCount) * 100
-																	)
-																: 0
-														}
-														className="h-1.5"
-													/>
-												</div>
-											)}
+											{coverageStats && <CorporationCoverageBars coverage={coverageStats} />}
 											<div className="flex flex-wrap items-center justify-end gap-2">
 												{pendingCount > 0 && (
 													<Badge variant="warning">Pending: {pendingCount}</Badge>

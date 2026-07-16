@@ -216,6 +216,7 @@ export interface MyCorporation {
 	memberCount: number
 	linkedMemberCount: number
 	unlinkedMemberCount: number
+	validEsiKeyMemberCount: number
 	allianceId?: string
 	allianceName?: string
 }
@@ -235,6 +236,10 @@ export interface CorporationAccessResult {
 		isMemberCorporation: boolean
 		isAltCorp: boolean
 		isSpecialPurpose: boolean
+		memberCount: number
+		linkedMemberCount: number
+		unlinkedMemberCount: number
+		validEsiKeyMemberCount: number
 	}>
 }
 

@@ -155,6 +155,20 @@ describe('users corporation access', () => {
 	})
 
 	it('returns only member corporation HR access for non-admin users', async () => {
+		dbStub.query.userCharacters.findMany.mockResolvedValue([
+			{ characterId: '2001', userId: 'user-a', status: 'active', hasValidToken: true },
+			{ characterId: '2002', userId: 'user-a', status: 'active', hasValidToken: true },
+			{ characterId: '2003', userId: 'user-b', status: 'active', hasValidToken: true },
+		] as any)
+		corpStub.getCoreData.mockResolvedValue({
+			members: [
+				{ characterId: '2001' },
+				{ characterId: '2002' },
+				{ characterId: '2003' },
+				{ characterId: '2004' },
+			],
+		} as any)
+
 		const app = createApp({ user: makeUser(), db: dbStub })
 		const res = await app.request('/api/users/corporation-access', {}, env)
 
@@ -172,6 +186,10 @@ describe('users corporation access', () => {
 					isMemberCorporation: true,
 					isAltCorp: false,
 					isSpecialPurpose: false,
+					memberCount: 4,
+					linkedMemberCount: 2,
+					unlinkedMemberCount: 1,
+					validEsiKeyMemberCount: 3,
 				},
 			],
 		})
